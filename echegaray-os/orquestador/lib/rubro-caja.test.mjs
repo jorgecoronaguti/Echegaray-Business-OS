@@ -64,11 +64,14 @@ test('cada regla declara dónde vive su detalle y quién la paga', () => {
     assert.ok(r.detalle, `${r.rubro} no dice en qué pestaña está su detalle`)
     assert.ok(r.paga, `${r.rubro} no dice de dónde sale el monto`)
   }
-  // Los rubros que NO se pagan desde Compras son los DOS de nómina: su monto real está en la
-  // planilla (obra y oficina) o se proyecta desde el bloque de retiros (dirección). Compras los
-  // sigue teniendo cargados a mano, incompletos, y por eso no manda. Ver lib/direccion-retiros.mjs.
+  // Los rubros que NO se pagan desde Compras son los CUATRO de nómina, y en los cuatro por el mismo
+  // motivo: Compras los tiene tipeados a mano —estimaciones incompletas— y existe una planilla que los
+  // CALCULA. Jornales y sueldos, desde la planilla de quincenas; cargas sociales y gremiales, desde la
+  // cadena de "Cargas Sociales" (06/08), que proyecta $8.569.345 en agosto contra los $8.000.000
+  // redondos de Compras. En los cuatro casos la fila de Compras sigue cargada para registrar el PAGO.
   const fuera = REGLAS.filter((r) => r.paga !== 'compras').map((r) => r.rubro)
-  assert.deepEqual(fuera, ['Nómina · Jornales de obra', 'Nómina · Sueldos administración'])
+  assert.deepEqual(fuera, ['Nómina · Cargas sociales', 'Nómina · Gremiales',
+    'Nómina · Jornales de obra', 'Nómina · Sueldos administración'])
 })
 
 test('un plan de pago de F931 es deuda previsional, no un impuesto', () => {

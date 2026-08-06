@@ -317,6 +317,11 @@ export function grilla(cargado, refs) {
     invArs: fBalanzArs ? `$C$${fBalanzArs}` : '',
     invUsd: fBalanzUsd ? `$C$${fBalanzUsd}` : '',
     invFecha: fBalanzArs ? `$D$${fBalanzArs}` : '',
+    // LIBRE = el piso de la escalera (4ª directiva, 06/08): las dos puntas de la fila de cierre
+    // ($H peor caso, $I mínimo simple) y la fecha del punto más bajo, que vive en $G.
+    piso: `$H$${fCierre}`,
+    pisoSimple: `$I$${fCierre}`,
+    pisoFecha: `$G$${fCierre}`,
   })
   const porTarjeta = (campo) => {
     const fila = Array.from({ length: ANCHO }, () => '')

@@ -13,7 +13,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   CONCEPTOS_CADENA, PARAMETROS_CARGAS, A_VERIFICAR,
-  RANGO_FCL_PRIMER_ANIO, RANGO_FCL_POSTERIOR, RANGO_IERIC, RANGO_FODECO,
+  RANGO_FCL_PRIMER_ANIO, RANGO_FCL_POSTERIOR, RANGO_IERIC, RANGO_FODECO, RANGO_DIA_PAGO_F931,
   expresionAlicuotaFCL, formulaProporcionPrimerAnio, proyeccionDeConcepto,
 } from './cargas-cadena.mjs'
 
@@ -69,8 +69,11 @@ test('la fórmula de la alícuota de FCL es es-AR: una coma la parte al medio', 
   assert.doesNotMatch(e, /,/)
 })
 
-test('LAS ALÍCUOTAS NORMATIVAS ESTÁN DECLARADAS COMO NO VERIFICADAS — los cuatro parámetros', () => {
-  const esperados = [RANGO_FCL_PRIMER_ANIO, RANGO_FCL_POSTERIOR, RANGO_IERIC, RANGO_FODECO]
+test('LO NORMATIVO ESTÁ DECLARADO COMO NO VERIFICADO — los cinco parámetros', () => {
+  // El quinto entró el 06/08: el DÍA en que el F931 sale de la caja. Es lo que fecha la serie que
+  // ahora lee el Libro Canónico, y el calendario de ARCA para la seguridad social no está cableado en
+  // el OS — así que viaja como parámetro medido de los pagos reales, igual que las alícuotas.
+  const esperados = [RANGO_FCL_PRIMER_ANIO, RANGO_FCL_POSTERIOR, RANGO_IERIC, RANGO_FODECO, RANGO_DIA_PAGO_F931]
   assert.deepEqual(PARAMETROS_CARGAS.map((p) => p.rango), esperados)
   for (const p of PARAMETROS_CARGAS) {
     assert.ok(p.nota.startsWith(A_VERIFICAR),

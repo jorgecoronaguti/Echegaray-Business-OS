@@ -42,9 +42,14 @@ import { borrarNotas, vaciarColumnaDeProsa } from '../lib/nota-celda.mjs'
 import { celdaF931, celdaCabecera, PESTAÑA as RAW, COL as F931_COL, FILA0 as F931_FILA0 } from './f931-sheet.mjs'
 import { formulaUltimaFecha, formulaUltimoPeriodo, rotuloPorFuente, DIAS_AVISO_MENSUAL } from '../lib/fecha-de-frescura.mjs'
 import {
-  CONCEPTOS_CADENA, PARAMETROS_CARGAS, A_VERIFICAR,
+  CONCEPTOS_CADENA, PARAMETROS_CARGAS, A_VERIFICAR, RANGO_DIA_PAGO_F931,
   formulaProporcionPrimerAnio, proyeccionDeConcepto,
 } from '../lib/cargas-cadena.mjs'
+// LA PESTAÑA PUBLICA, EL LIBRO LEE — y los rótulos que anclan cada nombre se declaran UNA vez, en el
+// módulo que los consume. Escritos de los dos lados, el día que uno cambie el nombre queda apuntando
+// a la fila de al lado y devuelve un número plausible en vez de un error.
+import { ROTULOS_CARGAS, rangosDeCargas, RUBRO_PLANES } from '../lib/libro-extractores-cargas.mjs'
+import { aRangoApi, verificarRangos, explicarProblemas } from '../lib/rangos-con-nombre.mjs'
 import { detectarQuincenas } from '../lib/nomina-sync.mjs'
 import { ultimaQuincenaCerrada } from '../lib/motor-salarial.mjs'
 import { asegurarParametros, ultimoDiaCargado } from './jornales-pestana.mjs'
@@ -294,29 +299,59 @@ export function grilla({ periodos, conceptos, ps, C, bloqueBase = null }) {
   const fAntig = push([sub('   del plantel de obra, en su primer año de antigüedad'),
     formulaProporcionPrimerAnio('_J_OBREROS', bloqueBase), ...Array(12).fill(VACIO),
     'Fecha de ingreso de cada persona en _J_OBREROS, sobre la última quincena cerrada. Es lo que pondera las dos alícuotas del Fondo de Cese.'])
-  const y0 = filas.length + 1
-  const filasProy = []
   const sinBase = []
-  for (const c of CONCEPTOS_CADENA) {
-    const origen = c.de === 'declarado' ? filaDecl[c.codigo] : filaPag[c.rotulo]
-    // UN CONCEPTO SIN BASE NO SE PROYECTA EN CERO EN SILENCIO: se anota y se denuncia abajo. Que
-    // falte una fila de la proyección tiene que verse, porque el titular de la pestaña la suma.
-    if (!origen) { sinBase.push(c.rotulo); continue }
-    const f = filas.length + 1
-    // La regla de cada concepto vive en lib/cargas-cadena.mjs y viaja en la columna de origen escrita
-    // como texto POR FÓRMULA: así lo que se lee en la grilla son pesos —no una mezcla de pesos y
-    // porcentajes en la misma columna— y la regla sigue siendo auditable de un vistazo, con el valor
-    // que efectivamente se aplicó y no el que había el día que corrió el generador.
-    const p = proyeccionDeConcepto(c, {
-      filaOrigen: origen, fRem, fEmp, reales: REALES, colMes: cm, fRemProy, fDot,
-      celdaProporcion: `$B$${fAntig}`,
-    })
-    filasProy.push(mensual(c.rotulo, p.celda, p.origen, { meses: proyMeses }))
-    if (f !== filasProy[filasProy.length - 1]) throw new Error('desalineación al armar la proyección')
+  /**
+   * UN BLOQUE DE LA PROYECCIÓN, CON SU SUBTOTAL. Se arma en dos pasadas —lo que declara la DDJJ y lo
+   * que no— porque el cash flow tiene DOS líneas, cargas sociales y gremiales, y el Libro Canónico
+   * lee cada subtotal por su nombre. Con un solo total, los gremiales se mudarían a la línea de
+   * cargas sociales: el consolidado seguiría bien y las dos líneas dirían cosas falsas.
+   */
+  const bloqueProyectado = (conceptos) => {
+    const desde = filas.length + 1
+    for (const c of conceptos) {
+      const origen = c.de === 'declarado' ? filaDecl[c.codigo] : filaPag[c.rotulo]
+      // UN CONCEPTO SIN BASE NO SE PROYECTA EN CERO EN SILENCIO: se anota y se denuncia abajo. Que
+      // falte una fila de la proyección tiene que verse, porque el titular de la pestaña la suma.
+      if (!origen) { sinBase.push(c.rotulo); continue }
+      // La regla de cada concepto vive en lib/cargas-cadena.mjs y viaja en la columna de origen escrita
+      // como texto POR FÓRMULA: así lo que se lee en la grilla son pesos —no una mezcla de pesos y
+      // porcentajes en la misma columna— y la regla sigue siendo auditable de un vistazo, con el valor
+      // que efectivamente se aplicó y no el que había el día que corrió el generador.
+      const p = proyeccionDeConcepto(c, {
+        filaOrigen: origen, fRem, fEmp, reales: REALES, colMes: cm, fRemProy, fDot,
+        celdaProporcion: `$B$${fAntig}`,
+      })
+      mensual(c.rotulo, p.celda, p.origen, { meses: proyMeses })
+    }
+    return { desde, hasta: filas.length }
   }
-  const y1 = filas.length
-  const fProyTot = mensual(rotuloTotal('Total devengado en el mes'), (m) => `=SUM(${cm(m)}${y0}:${cm(m)}${y1})`,
+  /** El subtotal de un bloque. Con el bloque vacío escribe un cero honesto: `SUM(B45:B44)` sumaría otra cosa. */
+  const subtotal = (rotulo, { desde, hasta }, origen) => mensual(rotulo,
+    (m) => (hasta >= desde ? `=SUM(${cm(m)}${desde}:${cm(m)}${hasta})` : '=0'), origen, { meses: proyMeses })
+
+  const bDecl = bloqueProyectado(CONCEPTOS_CADENA.filter((c) => c.de === 'declarado'))
+  const fSubF931 = subtotal(ROTULOS_CARGAS.f931, bDecl,
+    'Los seis conceptos de la DDJJ. Es la línea "Nómina · Cargas sociales" del cash flow, y el Libro la lee por CARGAS_MES_F931.')
+  const bGrem = bloqueProyectado(CONCEPTOS_CADENA.filter((c) => c.de !== 'declarado'))
+  const fSubGremiales = subtotal(ROTULOS_CARGAS.gremiales, bGrem,
+    'Lo que NO declara la DDJJ y se paga aparte. Es la línea "Nómina · Gremiales" del cash flow, y el Libro la lee por CARGAS_MES_GREMIALES.')
+  const fProyTot = mensual(rotuloTotal('Total devengado en el mes'), (m) => `=${cm(m)}${fSubF931}+${cm(m)}${fSubGremiales}`,
     'Lo que la nómina de ESE mes genera de cargas. Todavía no es lo que sale de la caja: eso es la sección 5.', { meses: proyMeses })
+  // ═══ LA FECHA EN QUE ESA PLATA SALE — LA FILA QUE FALTABA (06/08) ═══
+  //
+  // La pestaña decía "el F931 vence al mes siguiente" y nunca decía QUÉ DÍA. Sin esa fila, el Libro
+  // Canónico no podía leer la cadena: un movimiento sin fecha no entra en ningún tramo del calendario.
+  // El día vive en Parámetros (medido sobre los pagos reales, declarado "a verificar"), no adentro de
+  // esta fórmula, y DICIEMBRE SE RESUELVE SOLO: DATE(2026;13;10) es el 10/01/2027, que es exactamente
+  // la plata que hasta hoy no levantaba nadie.
+  //
+  // Y DICIEMBRE SE ESCRIBE CON SU AÑO, NO COMO "MES 13". `DATE(2026;13;10)` da el mismo día, pero la
+  // celda que uno abre para entender de dónde sale la plata tiene que decir 2027 — es la misma regla
+  // que Jornales ya tiene escrita para el retiro de diciembre (defecto B7 de esa pestaña).
+  const fFechaSalida = mensual(ROTULOS_CARGAS.fechas,
+    (m) => `=DATE(${m === 12 ? AÑO + 1 : AÑO};${m === 12 ? 1 : m + 1};MAX(1;N(${RANGO_DIA_PAGO_F931})))`,
+    `El devengado de ESTE mes sale al siguiente, el día que dice ${RANGO_DIA_PAGO_F931} en Parámetros. El de diciembre cae en enero del año que viene: por eso la última celda dice ${AÑO + 1}.`,
+    { meses: proyMeses, totaliza: false })
   if (sinBase.length) {
     push([`⚠ ${sinBase.length} concepto(s) sin base para proyectar`, ...Array(13).fill(VACIO),
       `${sinBase.join(', ')} — no aparecen en las secciones 1 ni 2, así que no se proyectan. El total de arriba está incompleto en esa medida.`])
@@ -361,9 +396,17 @@ export function grilla({ periodos, conceptos, ps, C, bloqueBase = null }) {
   // ── 6 · SAC Y VACACIONES ───────────────────────────────────────────────────────────────────────
   push([seccion(6, 'SAC y vacaciones — lo devengado que todavía no se pagó')])
   cabecera()
+  // ═══ PAGADO ES PAGADO: SÓLO HASTA HOY, ACÁ TAMBIÉN (06/08) ═══
+  //
+  // La sección 2 aprendió esto el 23/07 y esta fila se quedó afuera: filtraba por fecha de factura SIN
+  // tope. En Compras hay dos filas de SAC con fecha 30/12 y estado "Proyectado" ($7.000.000 y
+  // $1.500.000) —el aguinaldo de diciembre que todavía no existe— y esta fila las contaba como
+  // PAGADAS. Resultado: la provisión acumulada terminaba el año en −$4.914.913, o sea la pestaña
+  // afirmando que se pagó más aguinaldo del que se devengó. El mismo cuadro que la sección 2 vino a
+  // arreglar, un renglón más abajo.
   const fSacPag = mensual('SAC pagado (real, de Compras)', (m) =>
-    `=SUMPRODUCT((LOWER(${rango(C.proveedor)})="sac")*(YEAR(${rango(C.fechaFactura)})=${AÑO})*(MONTH(${rango(C.fechaFactura)})=${m})*IF(ISNUMBER(${rango(C.total)});${rango(C.total)};0))`,
-  'Compras · proveedor "SAC", por fecha de factura.')
+    `=SUMPRODUCT((LOWER(${rango(C.proveedor)})="sac")*(YEAR(${rango(C.fechaFactura)})=${AÑO})*(MONTH(${rango(C.fechaFactura)})=${m})*(N(${rango(C.fechaFactura)})<=TODAY())*IF(ISNUMBER(${rango(C.total)});${rango(C.total)};0))`,
+  'Compras · proveedor "SAC", por fecha de factura y sólo hasta hoy: lo cargado con fecha futura es previsión, no pago.')
   // ═══ EL SAC SE DEVENGA LOS DOCE MESES (06/08 — defecto B10) ═══
   //
   // Decía `=B$20/12`: un doceavo de la remuneración DECLARADA, y las DDJJ llegan hasta junio. De
@@ -422,14 +465,23 @@ export function grilla({ periodos, conceptos, ps, C, bloqueBase = null }) {
   }
   const q1 = filas.length
   const fCuotasTot = mensual(rotuloTotal('Total de cuotas del año'), (m) => `=SUM(${cm(m)}${q0}:${cm(m)}${q1})`, 'Suma de los planes de arriba.')
-  const fCtrl = push([rotuloTotal('Control contra Compras'), `=SUMIF(Compras!$${C.rubro}$4:$${C.rubro};"Deuda previsional (planes de pago)";${rango(C.total)})`,
+  const fCtrl = push([rotuloTotal('Control contra Compras'), `=SUMIF(Compras!$${C.rubro}$4:$${C.rubro};"${RUBRO_PLANES}";${rango(C.total)})`,
     ...Array(11).fill(VACIO), VACIO, 'El total del rubro en Compras, calculado por otro camino.'])
   // EL CONTROL COMPARA LO MISMO CONTRA LO MISMO. La primera versión restaba "cuotas del año" MÁS
   // "saldo pendiente", y una cuota pendiente de agosto está en los dos: se contaba dos veces y la
   // diferencia daba −$473.767 sin que nada estuviera mal. La identidad correcta es simple: el total
   // del rubro en Compras tiene que ser la suma de TODAS las cuotas cargadas de todos los planes.
-  push([rotuloTotal('Diferencia — tiene que ser $0'), `=$B${fCtrl}-${Math.round(ps.reduce((s, p) => s + p.total, 0))}`,
-    ...Array(11).fill(VACIO), VACIO, `Contra la suma de las ${ps.reduce((s, p) => s + p.n, 0)} cuotas cargadas de los ${ps.length} planes. Si no da cero, hay cuotas del rubro que esta tabla no ve.`])
+  // ═══ UN CONTROL NO SE RESTA CONTRA UNA CONSTANTE (06/08) ═══
+  //
+  // Acá decía `=$B77-16536820`: el segundo término era el total de las cuotas calculado en JavaScript
+  // el día de la corrida, estampado en la fórmula. Un control así SIEMPRE da cero el día que se
+  // escribe —los dos lados salen de la misma lectura— y deja de medir apenas alguien agrega una cuota
+  // en Compras: la constante se queda quieta y el "tiene que ser $0" empieza a mentir en la dirección
+  // exacta del error que vino a cazar. Ahora son las DOS celdas vivas: el total del rubro en Compras
+  // contra el total de la tabla de planes. Y si un plan tiene cuotas de 2027, esta resta las denuncia
+  // en vez de taparlas, porque la tabla sólo llega a diciembre.
+  push([rotuloTotal('Diferencia — tiene que ser $0'), `=$B$${fCtrl}-$N$${fCuotasTot}`,
+    ...Array(11).fill(VACIO), VACIO, `Las dos celdas vivas: el total del rubro en Compras menos el total de esta tabla (${ps.reduce((s, p) => s + p.n, 0)} cuota(s) de ${ps.length} plan(es)). Si no da cero, hay cuotas del rubro que esta tabla no ve — por ejemplo, de otro año.`])
   push(['⚠ Lo que falta saber: de cuántas cuotas es cada plan EN TOTAL. En Compras están las cuotas cargadas, no el plan original de ARCA — el saldo pendiente es lo previsto en la planilla, no necesariamente lo que falta pagar de verdad.'])
 
   // ── SECCIÓN 5, RECIÉN AHORA: la fila de "cuotas que vencen" referencia el total de la sección 7 ──
@@ -448,20 +500,40 @@ export function grilla({ periodos, conceptos, ps, C, bloqueBase = null }) {
   // confirmaba ese segundo número. Los dos eran "la deuda en planes" y no coincidían, porque medían
   // cosas distintas: uno el saldo pendiente y el otro el total del año. Ninguno lo decía.
   //
-  // Ahora es UNA FÓRMULA a la fila de totales de la sección 7, y dice qué mide: lo que FALTA pagar
-  // este año. Las columnas B..M son los doce meses en orden, así que "los meses que todavía no
-  // pasaron" es una comparación de posición contra `MONTH(TODAY())` — viva, sin números de mes
-  // escritos a mano y sin un JS que se congela el día que corre.
-  const mesesFuturos = `(COLUMN($B$${fCuotasTot}:$M$${fCuotasTot})-COLUMN($B$${fCuotasTot})+1>MONTH(TODAY()))`
-  filas[hDeuda - 1][1] = `=SUMPRODUCT(${mesesFuturos}*IF(ISNUMBER($B$${fCuotasTot}:$M$${fCuotasTot});$B$${fCuotasTot}:$M$${fCuotasTot};0))`
-  filas[hDeuda - 1][ANCHO - 1] = `Sección 7, cuotas de los meses que faltan de ${AÑO}. NO incluye cuotas de ${AÑO + 1} en adelante: en Compras están las cuotas cargadas, no el plan original de ARCA.`
+  // ═══ Y "EL MES QUE VIENE" NO ES "LO QUE FALTA PAGAR" (06/08) ═══
+  //
+  // La primera corrección lo hizo fórmula, y la fórmula medía mal: `> MONTH(TODAY())` deja afuera el
+  // mes en curso ENTERO. Al 06/08 daba $4.989.751 y las cuotas de agosto —$2.968.643, ninguna pagada,
+  // una de ellas con vencimiento el 16— no estaban en ningún lado del hero. Un titular que dice
+  // "por pagar" y se olvida de la próxima quincena es peor que uno que no está.
+  //
+  // El criterio correcto no es de POSICIÓN sino de HECHO: lo que falta pagar es lo que la planilla no
+  // marcó "Pagado", venza cuando venza. Así entra agosto, y también entraría una cuota vencida y sin
+  // pagar —que es justo la que hay que ver— mientras que la grilla mensual, que agrupa por columna, no
+  // puede distinguir dentro del mes. Sale de Compras, que es donde vive el estado de cada cuota.
+  filas[hDeuda - 1][1] = `=SUMIFS(${rango(C.total)};Compras!$${C.rubro}$4:$${C.rubro};"${RUBRO_PLANES}";${rango(C.estado)};"<>Pagado")`
+  filas[hDeuda - 1][ANCHO - 1] = `Compras · rubro "${RUBRO_PLANES}", todas las cuotas que la planilla NO marcó "Pagado" — incluidas las vencidas sin pagar y las de ${AÑO + 1}, que la tabla de abajo no llega a mostrar.`
   // NO TODO LO QUE ESTÁ EN LA GRILLA ES PLATA. Una dotación de 21 personas mostrada como "$21" y
   // una relación de 0,67 mostrada como "$1" son números que el ojo lee mal y que además hacen dudar
   // del resto del cuadro. Se declaran acá para que el formato las trate por lo que son.
   // El titular de la pestaña: la cifra que contesta la pregunta de arriba de todo.
   // La celda del veredicto (col C del control de plantel) rinde PROSA desde una fórmula: el formato
   // la pinta TEXTO o el barrido de moneda la muestra como número roto.
-  return { filas, cantidades: [fEmp, fDot], ratios: [fRelacion], titular: hCosto, prosaFormula: [{ fila: fPlantel, col: 2 }] }
+  // `fPlantel` son PERSONAS (16, no "$16") y `fAntig` una PROPORCIÓN (0,7 → 70%, no "$1"): las dos se
+  // dibujaban con el barrido de moneda que cubre la grilla entera. Un número mal formateado no da
+  // error y hace dudar del cuadro completo, que es exactamente lo que este bloque vino a evitar.
+  return {
+    filas,
+    cantidades: [fEmp, fDot, fPlantel],
+    ratios: [fRelacion, fAntig],
+    // La fila de fechas es la única de la grilla que NO es plata: sin esto sale "$46.244".
+    fechas: [fFechaSalida],
+    titular: hCosto,
+    prosaFormula: [{ fila: fPlantel, col: 2 }],
+    // La geometría que se publica como rangos con nombre. Sale de la grilla recién armada: si la
+    // pestaña se reordena, los nombres se mueven con ella.
+    rangos: { fF931: fSubF931, fGremiales: fSubGremiales, fFechas: fFechaSalida },
+  }
 }
 
 async function main() {
@@ -487,6 +559,10 @@ async function main() {
   const { col: C, faltan } = resolverColumnas(cab, {
     total: 'Total', cliente: 'Cliente / Asignación', detalle: 'Detalles / Obra',
     fecha: 'Fecha de caja', rubro: 'Rubro de caja', proveedor: 'Proveedor', fechaFactura: 'Fecha factura',
+    // 'Estado' (la columna del cargador: Pagado/Pendiente/Proyectado), NO 'Estado pago', que es el
+    // semáforo derivado con emoji adelante — "<>Pagado" no matchea "✅ Pagado" y el hero de la deuda
+    // en planes daría el total del rubro, pagadas incluidas.
+    estado: 'Estado',
   })
   if (faltan.length) { console.error(`⚠ faltan columnas en Compras: ${faltan.join(', ')} — no escribo con referencias inventadas`); process.exit(1) }
   console.log(`Compras por encabezado: Total=${C.total} · Cliente=${C.cliente} · Fecha de caja=${C.fecha} · Rubro=${C.rubro}`)
@@ -505,7 +581,7 @@ async function main() {
   const ps = await planes()
   console.log(`${periodos.length} período(s) F931 · ${conceptos.length} concepto(s) · ${ps.length} plan(es) de pago`)
 
-  const { filas, cantidades, ratios, titular, prosaFormula } = grilla({ periodos, conceptos, ps, C, bloqueBase })
+  const { filas, cantidades, ratios, fechas, titular, prosaFormula, rangos } = grilla({ periodos, conceptos, ps, C, bloqueBase })
   console.log(`grilla: ${filas.length} filas × ${ANCHO} columnas — un solo ancho para toda la pestaña`)
   if (DRY) return
 
@@ -573,7 +649,11 @@ async function main() {
   const { conservadas } = salteada ? { conservadas: [] } : escritura
   if (conservadas.length) console.log(`✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
 
-  if (!salteada) await formatear(google, hoja.sheetId, gridFinal, { cantidades, ratios, titular, prosaFormula })
+  if (!salteada) await formatear(google, hoja.sheetId, gridFinal, { cantidades, ratios, fechas, titular, prosaFormula })
+  // LOS NOMBRES SE PUBLICAN SOBRE LO QUE SE ESCRIBIÓ, NUNCA SOBRE LO QUE SE QUISO ESCRIBIR: si la
+  // guarda salteó la escritura, la pestaña conserva la geometría de su última corrida y reapuntar los
+  // nombres los dejaría sobre filas que en la pestaña son otra cosa. Es el defecto que vació CAJA.
+  if (!salteada) await publicarRangos(google, hoja.sheetId, gridFinal, rangos)
 
   // ── VERIFICAR MIRANDO LA PESTAÑA, no confiando en que la escritura salió bien ──
   const v = await google.readSheetValues(ID, `'${PESTAÑA}'!A1:${COL_ORIGEN}${filas.length}`)
@@ -588,8 +668,42 @@ async function main() {
   if (errores.length || defectos.length) process.exitCode = 1
 }
 
+/**
+ * PUBLICA LA SERIE DE CARGAS COMO RANGOS CON NOMBRE — la puerta por la que el Libro entra a la cadena.
+ *
+ * ═══ POR QUÉ NO EXISTÍA Y CUÁNTO COSTABA (06/08) ═══
+ *
+ * Esta pestaña calcula las cargas del mes desde los jornales y su fila de caja dice, en el código,
+ * "Ésta es la fila que tiene que mirar el cash flow". No la miraba nadie: no había un solo rango con
+ * nombre `CARGAS_*` y el Libro proyectaba las cargas con las filas planas de Compras ($8.000.000 en
+ * agosto, $6.500.000 de septiembre a diciembre) contra los $8.569.345 · $7.608.663 · $8.633.543 ·
+ * $9.082.359 · $9.121.411 que mide la cadena. Y el devengado de diciembre —que sale en enero del año
+ * siguiente— no estaba en ninguna vista.
+ *
+ * SE VERIFICA CONTRA LA GRILLA ANTES DE PUBLICAR. Un nombre apuntando a doce celdas vacías no da
+ * error: devuelve cero, y el cash flow mostraría "no hay cargas este año" sin una sola celda en rojo.
+ */
+async function publicarRangos(google, sheetId, filas, rangos) {
+  const quiero = rangosDeCargas(rangos)
+  const problemas = verificarRangos(filas, quiero)
+  if (problemas.length) {
+    console.error('✗ NO publico los rangos con nombre: hay rangos ciegos\n' + explicarProblemas(problemas))
+    process.exitCode = 1
+    return
+  }
+  const existentes = new Map((await google.getNamedRanges(ID)).map((r) => [r.name, r.namedRangeId]))
+  const reqs = quiero.map((d) => {
+    const range = aRangoApi(sheetId, d)
+    return existentes.has(d.nombre)
+      ? { updateNamedRange: { namedRange: { namedRangeId: existentes.get(d.nombre), name: d.nombre, range }, fields: 'range' } }
+      : { addNamedRange: { namedRange: { name: d.nombre, range } } }
+  })
+  await google.spreadsheetBatchUpdate(ID, reqs)
+  console.log(`rangos con nombre publicados: ${quiero.map((d) => `${d.nombre}=B${d.r0}:M${d.r1}`).join(' · ')} — el Libro Canónico ya no proyecta cargas con las filas planas de Compras`)
+}
+
 /** El formato: la piel de statement compartida más lo propio de la grilla mensual. */
-async function formatear(google, sheetId, filas, { cantidades = [], ratios = [], titular = 0, prosaFormula = [] } = {}) {
+async function formatear(google, sheetId, filas, { cantidades = [], ratios = [], fechas = [], titular = 0, prosaFormula = [] } = {}) {
   // ═══ NINGUNA NOTA. NI UNA. ═══
   //
   // POR QUÉ (23/07, TERCERA VEZ SOBRE LO MISMO). El dueño: "la pestaña cargas sociales vuelve a
@@ -637,6 +751,11 @@ async function formatear(google, sheetId, filas, { cantidades = [], ratios = [],
   }
   for (const f of ratios) {
     reqs.push({ repeatCell: { range: rg(f - 1, f, 1, 14), cell: { userEnteredFormat: { numberFormat: { type: 'PERCENT', pattern: '0.0%;;"—"' } } }, fields: 'userEnteredFormat.numberFormat' } })
+  }
+  // Las fechas son fechas: el serial con formato de moneda se dibuja "$46.244" y ya rompió tres
+  // cuadros de este libro. Van con el año, porque la última de la fila cae en enero del año siguiente.
+  for (const f of fechas) {
+    reqs.push({ repeatCell: { range: rg(f - 1, f, 1, 14), cell: { userEnteredFormat: { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' } } }, fields: 'userEnteredFormat.numberFormat' } })
   }
   reqs.push(...prosaFormula.map(({ fila, col }) => ({
     repeatCell: {

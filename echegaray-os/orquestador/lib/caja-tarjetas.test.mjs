@@ -19,6 +19,7 @@ import { terminoLibro } from './libro-sumas.mjs'
 
 const REF = {
   total: '$C$15', fecha: '$D$15', invArs: '$C$11', invUsd: '$C$12', invFecha: '$D$11',
+  piso: '$H$15', pisoSimple: '$I$15', pisoFecha: '$G$15',
 }
 const T = () => tarjetas(REF)
 const de = (clave) => T().find((t) => t.clave === clave)
@@ -98,21 +99,24 @@ test('FALLA CERRADO: sin una referencia, rompe antes de escribir una celda en er
   assert.throws(() => tarjetas(), /faltan las referencias/)
 })
 
-test('LIBRE es la liquidez TOTAL menos lo comprometido, con el escenario sin Balanz en el contexto', () => {
-  // ═══ EL CONTRATO CAMBIÓ EL 06/08 (segunda pregunta del dueño) ═══
+test('LIBRE es el PISO de la escalera — 4ª y definitiva (06/08): ninguna resta nueva, una referencia', () => {
+  // ═══ POR QUÉ NINGUNA DE LAS TRES RESTAS ANTERIORES PODÍA ESTAR BIEN ═══
   //
-  // Con `disponible − comprometida` la tarjeta decía $897.367 "libres" en agosto — el peor caso
-  // absoluto (ni una cobranza entra, Balanz intocable) disfrazado de saldo libre. El dueño: "me
-  // parece muy poco para q en agosto solo nos quede eso libre". La auditoría fría dio la razón:
-  // el número era correcto bajo esa definición, pero la definición comparaba TODO el egreso del mes
-  // contra la caja de HOY, con $45,0M rescatables en 24 hs mirando desde la tarjeta de al lado.
-  //
-  // La definición vigente es la de available liquidity (JPM/Kyriba): (operativo + invertido) −
-  // comprometido del mes. El escenario estricto no se pierde: baja al contexto como "sin rescatar
-  // Balanz", que es exactamente lo que era — un escenario, no el titular.
+  // v1 bancos−comprometido ($897k, "muy poco") · v2 +Balanz ($43,2M, "una cosa son los bancos,
+  // otra balanz") · v3 = v1 (−$1,8M, "¿deficitarios? pésimo"). Las tres comparaban la caja de HOY
+  // contra los pagos de TODO el mes ignorando CUÁNDO entran las cobranzas. La pregunta real es
+  // cuánto se puede usar hoy sin que ningún día del recorrido quede al descubierto, y esa respuesta
+  // es el piso de la escalera — que la pestaña ya calcula. La tarjeta lo referencia con MIN de las
+  // dos puntas de la fila de cierre, el mismo criterio con el que esa fila elige su propio rótulo.
   const l = de('libre')
-  assert.equal(l.valor, '=N($A$3)+N($G$3)-N($C$3)',
-    'disponible (A3) más invertido (G3) menos comprometida (C3), por referencia a las tarjetas')
-  assert.match(l.contexto, /sin rescatar Balanz/, 'el escenario conservador queda a la vista, no desaparece')
-  assert.ok(l.contexto.includes('N($A$3)-N($C$3)'), 'el escenario del contexto es la MISMA resta que era el titular')
+  assert.equal(l.valor, `=MIN(N(${REF.piso});N(${REF.pisoSimple}))`,
+    'el MIN de peor-caso ($H) y mínimo simple ($I) de la fila de cierre — no una cuarta aritmética')
+  assert.match(l.contexto, /cobrando lo proyectado/,
+    'sin la cláusula, el piso se lee como plata garantizada — y depende de las cobranzas')
+  assert.ok(l.contexto.includes(REF.pisoFecha), 'la fecha del punto más bajo sale de la fila de cierre')
+})
+
+test('FALLA CERRADO también sin las referencias del piso', () => {
+  assert.throws(() => tarjetas({ ...REF, piso: '' }), /faltan las referencias/)
+  assert.throws(() => tarjetas({ ...REF, pisoFecha: '' }), /faltan las referencias/)
 })

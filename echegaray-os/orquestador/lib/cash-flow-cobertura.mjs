@@ -104,9 +104,17 @@ export const MAPA = [
     nota: 'Vista de las mismas compras, agrupadas por material. El dinero ya está en los rubros de materiales de Compras: NO se suma.',
   },
   {
-    pestania: 'Cargas Sociales', rol: 'DERIVADA', deriva_de: 'Compras',
-    concepto: 'detalle de Cargas sociales (F931), Gremiales y Deuda previsional',
-    nota: 'Vista/proyección de los rubros de cargas sociales de Compras. El pago vive en Compras: NO se suma.',
+    pestania: 'Cargas Sociales', rol: 'FUENTE',
+    concepto: 'las cargas del mes proyectadas desde los jornales (F931 y gremiales)',
+    // ═══ DEJÓ DE SER DERIVADA EL 06/08 ═══
+    //
+    // Decía "el pago vive en Compras: NO se suma", y era cierto mientras nadie leyera la cadena. Desde
+    // que publica CARGAS_MES_F931 y CARGAS_MES_GREMIALES, el Libro toma de acá las cargas de los meses
+    // que la cadena cubre y NO toma las filas planas de Compras de esos rubros. Las cuotas de planes de
+    // pago siguen viniendo de Compras (la cadena no las proyecta) y el pago real, también.
+    nota: 'Proyecta las cargas desde los jornales y publica la serie por rango con nombre. El Libro la '
+      + 'suma y excluye las filas PROYECTADAS de esos rubros en Compras; las PAGADAS entran por Compras. '
+      + 'Si deja de publicar, Compras vuelve a entrar entero (fail-safe).',
   },
   {
     pestania: 'Impuestos y Financieros', rol: 'DERIVADA', deriva_de: 'Compras',

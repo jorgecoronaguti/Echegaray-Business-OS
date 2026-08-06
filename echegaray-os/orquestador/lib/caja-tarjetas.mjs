@@ -80,7 +80,8 @@ const dia = (e) => `TEXT(${e};"dd/mm")`
  * @returns {Array<{clave:string,rotulo:string,valor:string,contexto:string,especie:'plata'|'texto'}>}
  */
 export function tarjetas(ref) {
-  const faltan = ['total', 'fecha', 'invArs', 'invUsd', 'invFecha'].filter((k) => !ref?.[k])
+  const faltan = ['total', 'fecha', 'invArs', 'invUsd', 'invFecha', 'piso', 'pisoSimple', 'pisoFecha']
+    .filter((k) => !ref?.[k])
   // FALLA CERRADO. Una referencia vacía produciría `=` o `=N()+N()` — una celda en error en la primera
   // pantalla de la pestaña más mirada del archivo. Es barato romper acá y carísimo descubrirlo allá.
   if (faltan.length) throw new Error(`caja-tarjetas: faltan las referencias ${faltan.join(', ')}`)
@@ -141,18 +142,26 @@ export function tarjetas(ref) {
       // HOY, con $45,0M en Balanz —rescatables en un día hábil— mirando desde la tarjeta de al lado
       // y sin contarle ni un peso de las cobranzas del mes.
       //
-      // La definición vigente es la de AVAILABLE LIQUIDITY de un panel de tesorería (JPM/Kyriba):
-      // liquidez total (operativa + invertida) menos comprometido del mes — lo que se puede
-      // comprometer HOY sin depender de que ningún cliente pague. Las cobranzas proyectadas siguen
-      // afuera a propósito: una proyección no es plata, y su lugar es CAJA PROYECTADA.
+      // ═══ CUARTA Y DEFINITIVA (06/08, tras tres rechazos del dueño): LIBRE ES EL PISO ═══
       //
-      // El escenario estricto NO desaparece: baja al contexto como "sin rescatar Balanz", que es lo
-      // que siempre fue — un escenario de estrés, no el titular.
+      // La saga completa del día: v1 `disponible − comprometido` dio $897k ("me parece muy poco");
+      // v2 le sumó Balanz y dio $43,2M ("una cosa es el saldo en los bancos, otra en balanz");
+      // v3 volvió a bancos-solos y dio −$1,8M ("¿pasamos a ser totalmente deficitarios? pésimo").
+      // Las tres eran aritmética correcta sobre la pregunta equivocada: comparaban la caja de HOY
+      // contra los pagos de TODO el mes, ignorando que las cobranzas entran el 14-15 y el 28 — un
+      // agregado de fin de mes disfrazado de saldo de hoy.
       //
-      // Referencia a las TRES tarjetas vecinas, no una cuarta aritmética: si una cambia, ésta sigue.
-      // Las cifras viven en la FILA 3: A (disponible), C (comprometida), G (invertido).
-      valor: '=N($A$3)+N($G$3)-N($C$3)',
-      contexto: '="sin rescatar Balanz: "&TEXT((N($A$3)-N($C$3))/1000000;"$#,##0.0")&"M"',
+      // La pregunta correcta de tesorería es: ¿cuánto puedo usar HOY sin que NINGÚN día del
+      // recorrido quede al descubierto? Y esa respuesta ya vive en la pestaña: es el PISO de la
+      // escalera — el mínimo al que llega la posición acumulada día a día, cobranzas y pagos en su
+      // fecha. La tarjeta lo REFERENCIA (regla de siempre: ninguna cuenta nueva); se toma el MIN de
+      // las dos puntas de la fila de cierre ($H = peor caso con los cheques de cobertura incierta
+      // restados, $I = mínimo simple) — el mismo criterio con el que la propia fila elige su rótulo.
+      //
+      // Depende de que lo proyectado se cumpla, y el contexto LO DICE ("cobrando lo proyectado"):
+      // sin esa cláusula el número se leería como plata garantizada, que es el error más caro.
+      valor: `=MIN(N(${ref.piso});N(${ref.pisoSimple}))`,
+      contexto: `="piso el "&${dia(ref.pisoFecha)}&" · cobrando lo proyectado"`,
       especie: 'plata',
     },
     {

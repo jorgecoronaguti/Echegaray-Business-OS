@@ -1311,6 +1311,18 @@ async function recortarGeometria(google, hoja, filasUsadas) {
 }
 
 async function formatear(google, sheetId, filas, g) {
+  await google.spreadsheetBatchUpdate(ID, requestsDeFormato(sheetId, filas, g))
+}
+
+/**
+ * NÚCLEO PURO: los pedidos de formato de la pestaña.
+ *
+ * Separado de la llamada a la API el 06/08 para que se pueda probar en frío QUÉ formato recibe cada
+ * bloque. No es una manía: los tres defectos que este mismo archivo documenta —el entero con separador
+ * colgado, el negativo invisible y el rango generoso que se comía el bloque de abajo— sólo se veían
+ * MIRANDO la pestaña, y ninguno daba error. Un test sobre estos pedidos los caza antes.
+ */
+export function requestsDeFormato(sheetId, filas, g) {
   // NINGUNA NOTA. La procedencia vive en el subtítulo de la pestaña, una vez.
   const { requests: notas } = borrarNotas(filas, ANCHO - 1, sheetId)
   const rg = (r0, r1, c0 = 0, c1 = ANCHO) => ({ sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
@@ -1393,10 +1405,23 @@ async function formatear(google, sheetId, filas, g) {
   }
   const ENTERO = { type: 'NUMBER', pattern: '#,##0;-#,##0;"—"' }
   const HORAS = { type: 'NUMBER', pattern: '#,##0.0;-#,##0.0;"—"' }
-  // Proyección: días hábiles y personas enteros; el ajuste por inflación es un coeficiente, no plata.
+  // Las horas por persona y día llevan DOS decimales: son 7,166 y con uno solo se dibujan "7,2", que
+  // es el número redondeado presentado como el número. Se usa el mismo patrón en la celda medida
+  // (`fHpd`) y en las diez filas que la referencian: la misma cifra no puede verse de dos maneras.
+  const HORAS_FINAS = { type: 'NUMBER', pattern: '#,##0.00;-#,##0.00;"—"' }
+  // Proyección: días hábiles y personas enteros.
   // Todos corridos una columna a la derecha desde el 31/07: entró "Se paga el" en la C.
   fmt(g.p0 - 1, finProy, 3, 5, ENTERO)
-  fmt(g.p0 - 1, finProy, 6, 7, { type: 'NUMBER', pattern: '0.00;-0.00;"—"' })
+  // ═══ DOS FORMATOS QUE APUNTABAN A LA COLUMNA DE AL LADO (06/08) ═══
+  //
+  // La F de este bloque es "Horas por persona" —7,166— y no tenía formato propio, así que se la comía
+  // el barrido de moneda de toda la grilla: la pestaña mostraba "$7" diez veces. La G es "Σ $/hora del
+  // mes", que SÍ es plata, y recibía el patrón "0.00" que en el layout viejo era del ajuste por
+  // inflación: un coeficiente donde ahora hay pesos, dibujado crudo y sin el $. Ninguno de los dos da
+  // error; los dos hacen dudar del cuadro entero. La Σ $/hora del REGISTRO (columna L) va con moneda:
+  // las dos columnas dicen lo mismo y ahora se ven igual.
+  fmt(g.p0 - 1, finProy, 5, 6, HORAS_FINAS)
+  fmt(g.p0 - 1, finProy, 6, 7, moneda)
   // Registro: días y personas enteros, las horas con un decimal.
   fmt(g.f0 - 1, g.fTotalReal, 3, 5, ENTERO)
   fmt(g.f0 - 1, g.fTotalReal, 5, 7, HORAS)
@@ -1410,7 +1435,8 @@ async function formatear(google, sheetId, filas, g) {
   fmt(g.fTotalMensual - 1, g.fTotalMensual, 4, 5, { type: 'DATE', pattern: 'dd/mm/yyyy' })
   fmt(g.d0 - 1, g.dFin, 1, 2, ENTERO)
   fmt(g.o0 - 1, g.oFin, 6, 7, { type: 'NUMBER', pattern: '0.00;-0.00;"—"' })
-  for (const f of g.cantidades) fmt(f - 1, f, 1, 2, HORAS)
+  // `cantidades` es la fila de horas por persona y día: el mismo patrón fino que sus diez referencias.
+  for (const f of g.cantidades) fmt(f - 1, f, 1, 2, HORAS_FINAS)
   for (const f of g.enteros) fmt(f - 1, f, 1, 2, ENTERO)
   // ── EL BLOQUE DEL MOTOR ──
   // 1.1: personas enteras; el margen contra el convenio es un porcentaje, no plata.
@@ -1452,7 +1478,7 @@ async function formatear(google, sheetId, filas, g) {
       },
     })
   }
-  await google.spreadsheetBatchUpdate(ID, reqs)
+  return reqs
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
