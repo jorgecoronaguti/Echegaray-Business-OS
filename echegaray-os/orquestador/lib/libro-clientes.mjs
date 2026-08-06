@@ -104,7 +104,7 @@ export const ALIAS_INFERIDOS = Object.freeze([
     evidencia: 'el rótulo contiene "San Francisco" y sus 8 cobranzas ($104,8M reales) son las del mismo '
       + 'período en que Compras asigna 140 filas a "San Francisco"; no hay ninguna cobranza a "San '
       + 'Francisco" solo con estado Cobrado.',
-    confianza: 'alta, pendiente del visto del dueño',
+    confianza: 'CONFIRMADA por el dueño (06/08/2026): "están ok así"',
   }),
   Object.freeze({
     alias: 'ALIMENTOS DEL SUR SA',
@@ -112,14 +112,14 @@ export const ALIAS_INFERIDOS = Object.freeze([
     evidencia: 'Cobranzas nombra al cliente "LA ESTRELLA /ALIMENTOS DEL SUR SAS"; el librador del '
       + 'cheque en cartera por $10.000.000 es "Alimentos Del Sur SA". Es la misma razón social del '
       + 'rótulo compuesto, con la abreviatura societaria distinta.',
-    confianza: 'alta, pendiente del visto del dueño',
+    confianza: 'CONFIRMADA por el dueño (06/08/2026): "están ok así"',
   }),
   Object.freeze({
     alias: 'Manufacturas Quimicas Juan Messina SA',
     cliente: 'MESSINA',
     evidencia: '_CHEQUES_RAW trae ese librador con su columna "Obra" en "MESSINA": la asignación la '
       + 'hizo el propio archivo, acá sólo se acepta el librador además del rótulo de obra.',
-    confianza: 'alta, pendiente del visto del dueño',
+    confianza: 'CONFIRMADA por el dueño (06/08/2026): "están ok así"',
   }),
 ])
 
