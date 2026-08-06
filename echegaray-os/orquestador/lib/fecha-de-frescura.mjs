@@ -256,9 +256,12 @@ export function rotuloPorFuente(texto, fuentes = [], { avisoDias = DIAS_AVISO, c
   // (las DDJJ de PDF), y una sola fecha le presta la frescura de la viva a la congelada.
   //
   // El largo no venía de declarar cuatro fuentes: venía de que cada expresión aparecía CUATRO veces
-  // (el =0, el TEXT, y dos en el aviso de atraso). La de IIBB sola pesa 250 caracteres, así que se
-  // escribía 1.000. Con LET se evalúa una vez y se nombra. Mismo texto, mismo aviso, mismas cuatro
-  // fuentes declaradas por separado — 80% menos celda.
+  // (el =0, el TEXT, y dos en el aviso de atraso). Con LET se evalúa una vez y se nombra. Mismo
+  // texto, mismo aviso, mismas cuatro fuentes declaradas por separado.
+  //
+  // MEDIDO, no estimado: las cuatro fuentes de "Impuestos y Financieros" pasan de 3.029 a 1.239
+  // caracteres, 59% menos. No llega al 80% porque `formulaUltimoPeriodo` repite su MAX interno dos
+  // veces dentro de sí misma, y eso este LET no lo alcanza — queda declarado, no disimulado.
   //
   // LOS NOMBRES NO PUEDEN PARECER UNA REFERENCIA A1 (`f1` sería la celda F1 y Sheets devuelve #NAME?),
   // así que llevan una letra al final: `fa`, `fb`… Es la trampa que ya costó una pestaña entera.

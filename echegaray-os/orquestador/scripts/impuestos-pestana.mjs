@@ -178,7 +178,7 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, hoy }) {
   // LA FRESCURA, POR FUENTE Y COMPACTA. Una sola fecha está prohibida acá: esta pestaña cruza fuentes
   // vivas (ARCA, el extracto, Cobranzas) con congeladas (las DDJJ de PDF, que se quedan en el último
   // período presentado), y un MAX le prestaría la fecha de la viva a la congelada. Con `compacto` cada
-  // expresión se evalúa UNA vez dentro de un LET: mismas cuatro fuentes, 80% menos celda.
+  // expresión se evalúa UNA vez dentro de un LET: mismas cuatro fuentes, de 3.029 a 1.239 caracteres.
   G.push([rotuloPorFuente('Qué se le debe al fisco, qué está inmovilizado y con qué se cuenta', [
     { nombre: 'IVA de ARCA', expr: formulaUltimaFecha(`${ARCA_RAW}!$C$${ARCA_FILA0}:$C`) },
     // IIBB: NO la fecha en que se bajó el PDF sino el PERÍODO que la DDJJ cubre. Una DDJJ de junio
