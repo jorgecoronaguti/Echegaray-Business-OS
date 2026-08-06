@@ -97,7 +97,9 @@ export function tarjetas(ref) {
       clave: 'proyectada',
       rotulo: `CAJA PROYECTADA · ${HORIZONTE} DÍAS`,
       valor: `=${ref.total}+${terminoLibro(ventana)}`,
-      contexto: `="al "&${dia(`TODAY()+${HORIZONTE}`)}&" · entra "&${plata(entra30)}&" · sale "&${plata(sale30)}`,
+      // EN MILLONES, NO EN PESOS: el auditor de pantalla midió 48 caracteres en una columna de 38.
+      // Un contexto que se corta no informa; el detalle exacto vive en la escalera de al lado.
+      contexto: `="al "&${dia(`TODAY()+${HORIZONTE}`)}&" · +"&TEXT(${entra30}/1000000;"$#,##0.0")&"M · -"&TEXT(${sale30}/1000000;"$#,##0.0")&"M"`,
       especie: 'plata',
     },
     {
