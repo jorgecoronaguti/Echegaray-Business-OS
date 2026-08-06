@@ -55,11 +55,12 @@ import { movimiento, ENTRA, SALE, estadoContraCorte } from './libro-movimientos.
 import { clienteCanonico } from './libro-clientes.mjs'
 import { instrumentoDePago, estadoDeEgreso } from './caja-canales.mjs'
 import { rubroDeCaja, SIN_CLASIFICAR } from './rubro-caja.mjs'
-import { resolverColumnas, columnasObligatorias } from './compras-columnas.mjs'
+import { columnasObligatorias } from './compras-columnas.mjs'
 // EL LADO "COMPRAS" COMO FUENTE vive aparte desde el 06/08: sus rótulos los leen DOS consumidores
 // (este extractor y el cruce cheque↔factura) y tipearlos dos veces deja a uno leyendo índices viejos.
 import { columnasDeCompras, estaPagada, pendienteDeCompra, cuotasEnCheque } from './libro-extractores-compras.mjs'
-import { INSTRUMENTOS, MARCA_ENDOSADO, COL_VALOR_BANCO, colMesDelAnio } from './cash-flow-lineas.mjs'
+import { INSTRUMENTOS, colMesDelAnio } from './cash-flow-lineas.mjs'
+import { cubiertaPorResumen } from './libro-respaldo-banco.mjs'
 // El default de `deChequesEmitidos` era un 20 escrito a mano y el registro se movió a la 27. El
 // llamador real (libro-movimientos-pestana) pasa el ancla viva; el default es para todos los demás.
 import { FILA_DATO0 as FILA_DATO0_CHEQUES } from './cheques-emitidos-geometria.mjs'
@@ -67,12 +68,14 @@ import { MARCAS } from './cheques-cobertura.mjs'
 import { EN_CARTERA } from './cartera-cheques.mjs'
 import { vencimientoIva, vencimientoIibb, serialDe } from './vencimientos-fiscales.mjs'
 import { COL as COL_RAW, FILA0 as FILA0_RAW, PESTAÑA as PESTANA_RAW } from '../scripts/cheques-raw-pestana.mjs'
-import { finDeMes } from './libro-extractores-fechas.mjs'
 import { RUBRO_JORNALES, RUBRO_ADMINISTRACION } from './libro-extractores-nomina.mjs'
 
 export { deJornalesQuincenas, deOficina, deDireccion } from './libro-extractores-nomina.mjs'
 // Se re-exportan para no romper a quien ya los importaba de acá; su casa es el módulo de Compras.
 export { pendienteDeCompra, comprasPagadasConCheque, NOMBRES_COMPRAS } from './libro-extractores-compras.mjs'
+// Ídem Cobranzas: se mudó el 06/08 porque este archivo tocaba el techo de 500 líneas y el extractor
+// que crecía era ése (ahora cruza contra `_CHEQUES_RAW` para ver los valores endosados).
+export { deCobranzas } from './libro-extractores-cobranzas.mjs'
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 const txt = (v) => String(v ?? '').trim()
@@ -181,85 +184,6 @@ export function deCompras(filas = [], corte = null, { aviso = (m) => console.war
         origen: { pestana: 'Compras', fila: i + 1 },
       }))
     }
-  }
-  return out
-}
-
-/**
- * COBRANZAS → movimientos de ingreso.
- *
- * LA FECHA QUE MANDA: la real si está cobrado, la esperada si no. Los CINCO estados de la pestaña se
- * reducen a dos del libro — Cobrado = REAL, Pendiente/Proyectado/Facturado = PROYECTADO — y CANCELAR
- * no es un movimiento: es una fila que el dueño anuló. Mezclar los cinco en un solo filtro ya produjo
- * un reporte equivocado una vez (los $20,1M "cobrados con fecha futura" que eran echeqs).
- *
- * ═══ UN VALOR ENDOSADO NO VA A ENTRAR NUNCA (la columna BB, "Valor banco") ═══
- *
- * Dos echeq de LA ESTRELLA por $10.000.000 cada uno se entregaron a Alumetal para pagarle. Cobranzas
- * los registra con fecha de cobro 15/08 y 31/08 —y hace bien, el echeq entró— pero esa plata no va a
- * pasar por la cuenta corriente jamás. Sin este filtro el cuadro esperaba $20.000.000 de ingreso en
- * agosto que ya se habían entregado. Es el MISMO criterio de `formulaCobranzas` (`MARCA_ENDOSADO`
- * sobre `COL_VALOR_BANCO`), importado y no copiado.
- *
- * @param {Array<Array>} filas de Cobranzas, leída HASTA BB (si se lee menos, el endoso no se ve)
- * @param {number|null} corte
- * @param {{colValorBanco?:number}} opciones el índice de "Valor banco"; por defecto se resuelve por
- *        encabezado y, si no está, cae en la BB que declara `COL_VALOR_BANCO`.
- */
-export function deCobranzas(filas = [], corte = null, { colValorBanco = null } = {}) {
-  const enc = filas[3] ?? [] // fila 4: encabezado; los datos arrancan en la 5
-  // Encabezado real de la fila 4, verificado el 05/08. El importe que mueve la caja es el TOTAL a
-  // cobrar NETO de retenciones: el bruto incluye plata que nunca va a llegar a la cuenta (las
-  // retenciones se sufren en el cobro — son los $7,38M que ninguna pestaña miraba).
-  const c = columnasObligatorias(enc, {
-    cliente: 'Obra / Cliente', estado: 'Estado', importe: 'TOTAL a cobrar (neto de retenciones)',
-    fechaEsperada: 'Fecha cobro', fechaReal: 'Fecha cobro', forma: 'Forma de Cobro',
-  }, 'Cobranzas')
-  // Por encabezado primero: una columna fija ya rompió en silencio. La BB de `COL_VALOR_BANCO` es el
-  // respaldo declarado, porque el rótulo puede no estar escrito en la fila del encabezado.
-  const iBB = colValorBanco ?? (resolverColumnas(enc, { vb: 'Valor banco' }).idx.vb
-    ?? indiceDeColumna(/([A-Z]+)/.exec(COL_VALOR_BANCO)[1]))
-  const out = []
-  for (let i = 4; i < filas.length; i++) {
-    const f = filas[i] ?? []
-    const estadoTxt = txt(f[c.estado]).toLowerCase()
-    if (!estadoTxt || /cancelar/.test(estadoTxt)) continue
-    // Se compara con LEFT, igual que la fórmula: la celda dice "ENDOSADO A ALUMETAL", no "ENDOSADO".
-    if (txt(f[iBB]).toUpperCase().startsWith(MARCA_ENDOSADO)) continue
-    const importe = num(f[c.importe])
-    if (importe === null || importe === 0) continue
-    const cobrado = /^cobrado$/.test(estadoTxt)
-    const fecha = cobrado ? (num(f[c.fechaReal]) ?? num(f[c.fechaEsperada])) : num(f[c.fechaEsperada])
-    if (fecha === null) continue
-    const forma = txt(f[c.forma]).toLowerCase()
-    out.push(movimiento({
-      fecha,
-      signo: ENTRA,
-      // ═══ UN COBRO NEGATIVO ES PLATA QUE VUELVE, NO PLATA QUE ENTRA (06/08) ═══
-      //
-      // `movimiento()` guarda el importe SIEMPRE en magnitud y el signo aparte, así que un −$96.800
-      // con `signo: ENTRA` fijo se convertía en +$96.800: el ajuste sumaba en vez de restar y el
-      // error valía el DOBLE del monto. `deCompras` ya invertía el signo para la nota de crédito;
-      // acá faltaba el espejo, y el espejo no es simetría decorativa — es la misma aritmética.
-      //
-      // MEDIDO EN VIVO: Cobranzas f58, MACRO CONSTRUCCIONES, −$96.800 con fecha 7/08. El Libro lo
-      // emitía como ingreso REAL de +$96.800 y la semana del 3/08 mostraba "· Cobranzas $329.120"
-      // donde la fuente dice $135.520. La línea "Movimientos posteriores al corte" de CAJA —que usa
-      // SUMIFS sobre la misma columna— lo sumaba bien: dos productores del mismo hecho, uno mal.
-      ...(importe < 0 ? { signo: SALE } : {}),
-      importe: Math.abs(importe),
-      concepto: txt(f[c.cliente]),
-      contraparte: txt(f[c.cliente]),
-      // La misma celda es la contraparte Y el cliente: en un cobro son la misma persona. Se manda a
-      // las dos porque `contraparte` guarda el texto crudo (el que se lee en el detalle) y `cliente`
-      // guarda el canónico (el que agrupa) — y el crudo no se pierde al canonizar.
-      cliente: txt(f[c.cliente]),
-      rubro: 'Cobranzas',
-      estado: estadoContraCorte(cobrado ? 'REAL' : 'PROYECTADO', fecha, corte),
-      instrumento: /echeq/.test(forma) ? 'echeq' : /cheque/.test(forma) ? 'cheque'
-        : /efectivo/.test(forma) ? 'efectivo' : /transfer/.test(forma) ? 'transferencia' : 'desconocido',
-      origen: { pestana: 'Cobranzas', fila: i + 1 },
-    }))
   }
   return out
 }
@@ -374,9 +298,22 @@ export function deBancoCargos(filas = [], { fila0 = 4 } = {}) {
  * debitado J, marca L, y el encabezado del registro en la fila 31 —no en la 2, que era la banda de la
  * pestaña y hacía que las marcas se estamparan encima del subtítulo—.
  *
+ * ═══ Y LA CUOTA QUE EL RESUMEN YA PAGÓ NO SIGUE COMPROMETIDA (06/08) ═══
+ *
+ * La marca DEBITADO la pone una persona, cuota por cuota, y se atrasa. El extracto no: cuando el
+ * banco debita el resumen, TODO lo que vencía en ese período ya salió de la cuenta. Medido en vivo:
+ * "Tarjeta de Credito" f46 (Pinturería Córdoba, cuota 1/3, $263.813,91, vence 02/08) seguía
+ * COMPROMETIDA con el resumen ya debitado el 03/08 por $1.384.664,47 — y como su fecha ya pasó,
+ * engordaba el tramo "Vencido" de la escalera a −$487.814 cuando el vencido real son los $224.000 de
+ * PEDRO TELLO. La regla y su lado conservador viven en `libro-respaldo-banco.mjs`.
+ *
+ * SIN `pagos` NO CAMBIA NADA: el que no pasa el extracto obtiene el comportamiento de antes, que es
+ * el correcto cuando no hay testigo.
+ *
  * @param {Array<Array>} filas la pestaña "Tarjeta de Credito" entera, UNFORMATTED_VALUE
+ * @param {{filaCab?:number, pagos?:Array}} opciones `pagos` = los débitos de resumen del extracto
  */
-export function deTarjetaSinFactura(filas = [], { filaCab = INSTRUMENTOS.tarjeta.filaCab } = {}) {
+export function deTarjetaSinFactura(filas = [], { filaCab = INSTRUMENTOS.tarjeta.filaCab, pagos = [] } = {}) {
   const T = INSTRUMENTOS.tarjeta
   const iMonto = indiceDeColumna(T.colMonto)
   const iFecha = indiceDeColumna(T.colFecha)
@@ -388,16 +325,21 @@ export function deTarjetaSinFactura(filas = [], { filaCab = INSTRUMENTOS.tarjeta
     if (!importe) continue
     if (/^si$/i.test(txt(f[iDeb]))) continue
     if (txt(f[T.colMarca]) !== MARCAS.falta) continue
+    // Sin fecha cargada la cuota cae al serial 0 y pesa YA, igual que el cheque sin fecha: un
+    // compromiso sin fecha no es uno que no vence, es uno que puede vencer mañana. Y sin fecha
+    // tampoco hay vencimiento contra el que medir el resumen: `cubiertaPorResumen` devuelve null.
+    const fecha = num(f[iFecha]) ?? 0
+    const debitada = cubiertaPorResumen(fecha, pagos)
     out.push(movimiento({
-      // Sin fecha cargada la cuota cae al serial 0 y pesa YA, igual que el cheque sin fecha: un
-      // compromiso sin fecha no es uno que no vence, es uno que puede vencer mañana.
-      fecha: num(f[iFecha]) ?? 0,
+      // Cuando el resumen ya se pagó, la fecha del movimiento es la del DÉBITO y no la del
+      // vencimiento: es el día en que la plata salió de la cuenta, que es lo que el libro registra.
+      fecha: debitada ?? fecha,
       signo: SALE,
       importe,
       concepto: txt(f[indiceDeColumna(T.colComprobante)]) || 'Cuota de tarjeta sin factura',
       contraparte: 'Tarjeta de crédito',
       rubro: 'Cheques y tarjeta sin factura cargada',
-      estado: 'COMPROMETIDO',
+      estado: debitada ? 'REAL' : 'COMPROMETIDO',
       instrumento: 'tarjeta',
       origen: { pestana: T.pestaña, fila: i + 1 },
     }))
