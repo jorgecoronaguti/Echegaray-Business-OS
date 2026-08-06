@@ -284,7 +284,8 @@ export function grilla({ bloques, pendientes, bloquesOfi, pagoPrevio = [], ultim
     filas.push(r)
     return filas.length
   }
-  const blanco = () => push(Array(ANCHO).fill(VACIO))
+  // El blanco también respeta la columna del dueño: 13 centinelas + '' (la 14 no es nuestra).
+  const blanco = () => push([...Array(ANCHO - 1).fill(VACIO), ''])
 
   // ── El encabezado de la pestaña ──
   push(['Jornales por quincena'])
@@ -817,7 +818,8 @@ async function main() {
   previo.forEach((f, i) => { if ((f || []).some((c) => String(c ?? '').trim())) ultima = i + 1 })
   if (ultima > g.filas.length) {
     console.log(`cola vieja: limpio las filas ${g.filas.length + 1}–${ultima}`)
-    for (let i = g.filas.length; i < ultima; i++) g.filas.push(Array(ANCHO).fill(VACIO))
+    // La cola también: 13 centinelas + '' — la columna 14 es del dueño en TODA la pestaña.
+    for (let i = g.filas.length; i < ultima; i++) g.filas.push([...Array(ANCHO - 1).fill(VACIO), ''])
   }
 
   // ═══ AIRE ABAJO DE LA GRILLA ═══
@@ -886,8 +888,13 @@ async function main() {
   // Y la cabecera, que sí es mía.
   if (nuevo >= 0) grid[nuevo][iPagado] = 'Pagado el'
   if (copiadas) console.log(`  ✋ ${copiadas} fecha(s) de "Pagado el" copiadas de la pestaña: esa columna es TUYA, el generador no la escribe`)
-  // LA COLUMNA DE PROSA SE VA CON LA GRILLA, NO DESPUÉS: ver vaciarColumnaDeProsa en lib/nota-celda.mjs.
-  vaciarColumnaDeProsa(grid, ANCHO - 1)
+  // ═══ ACÁ NO HAY COLUMNA DE PROSA — LA ÚLTIMA COLUMNA ES LA DEL DUEÑO (06/08, 4ª reincidencia) ═══
+  //
+  // `vaciarColumnaDeProsa(grid, ANCHO-1)` pisaba la columna N "Pagado el" con el centinela VACIO
+  // ("es mía y va vacía") DESPUÉS de haberla copiado con cuidado veinte líneas más arriba. En Cargas
+  // Sociales la última columna sí es de prosa; en esta pestaña es la del dueño, y esta llamada era la
+  // segunda vía del mismo borrado que el push() de la mañana (d3c165b). Se retira: las fechas del
+  // dueño ya viajan en la grilla por la copia de arriba, y la prosa de esta pestaña no existe.
   const escritura = await escribirPreservando(google, ID, `'${PESTAÑA}'`, grid, { respetar: false /* la Regla 0 ya se aplicó arriba, a mano: este generador guarda el registro DESPUÉS de releer la pestaña, que es más fiel que hacerlo antes de escribir */, anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
   // ═══ SI LA ESCRITURA SE SALTEÓ, NO SE TOCA LA GEOMETRÍA (31/07) ═══
   //
