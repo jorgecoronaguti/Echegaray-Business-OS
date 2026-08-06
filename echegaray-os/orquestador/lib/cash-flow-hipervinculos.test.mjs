@@ -1,4 +1,6 @@
 import test from 'node:test'
+// El destino del hipervínculo arranca donde arranca el registro, y ese número vive en un solo archivo.
+import { FILA_DATO0 } from './cheques-emitidos-geometria.mjs'
 import assert from 'node:assert/strict'
 import {
   verificarCuadro, hipervinculoDetalle, destinoDetalle, detalleDeRubro, SANGRIA_DETALLE,
@@ -59,7 +61,7 @@ test('el destino de cada tipo de línea es el más específico y cierto', () => 
   // Cobranzas → la columna de monto (M) de la pestaña Cobranzas.
   assert.deepEqual(dest(buscar((l) => l.cobranzas === 'civil')), { pestaña: 'Cobranzas', rango: 'M5:M400' })
   // Cheques y tarjeta → la columna de monto (F) de Cheques Emitidos.
-  assert.deepEqual(dest(buscar((l) => l.cheques)), { pestaña: 'Cheques Emitidos', rango: 'F2:F400' })
+  assert.deepEqual(dest(buscar((l) => l.cheques)), { pestaña: 'Cheques Emitidos', rango: `F${FILA_DATO0}:F400` })
   // Bienes de uso → el sub-rubro de Compras (columna AF).
   assert.deepEqual(dest(buscar((l) => l.soloSub)), { pestaña: 'Compras', rango: 'AF4:AF' })
   // Estructura (rubro con proyección de tabla) → la fila del TOTAL de la pestaña Estructura.
