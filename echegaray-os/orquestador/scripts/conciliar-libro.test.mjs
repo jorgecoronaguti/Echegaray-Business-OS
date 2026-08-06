@@ -40,14 +40,16 @@ test('un borde que este portón no sabe evaluar ROMPE — no compara contra una 
   assert.throws(() => evaluarBorde('WORKDAY(TODAY();3)', HOY), /no sé evaluar el borde/)
 })
 
-test('las ventanas: el que SALE arranca en el corte, el cheque en el serial 0, el que ENTRA en −∞', () => {
-  const v0 = ventanasDeTramo(0, HOY, CORTE)
-  assert.equal(v0.sale.desde, CORTE, 'lo anterior al corte ya está adentro del saldo del banco')
-  assert.equal(v0.cheques.desde, 0, 'un cheque viejo y no debitado todavía va a salir')
-  assert.equal(v0.entra.desde, -Infinity, 'un cobro atrasado sigue siendo plata que va a entrar')
-  const v1 = ventanasDeTramo(1, HOY, CORTE)
-  assert.deepEqual([v1.sale.desde, v1.sale.hasta], [HOY, HOY + 7])
-  assert.deepEqual([v1.cheques.desde, v1.cheques.hasta], [HOY, HOY + 7])
+test('las ventanas: UNA sola por tramo, piso MAX(corte;hoy), y el Vencido abre en [0, hoy)', () => {
+  // MODELO DE LA PORTADA (05/08): lo REAL vive en el saldo del banco y se excluye por ESTADO, no por
+  // fecha. Por eso la ventana es una para todas las fuentes y el Vencido junta todo lo no-real viejo.
+  const hoy = 46239; const corte = 46237
+  const v0 = ventanasDeTramo(0, hoy, corte)
+  assert.equal(v0.entra.desde, 0); assert.equal(v0.entra.hasta, hoy)
+  assert.deepEqual(v0.entra, v0.sale, 'una sola ventana: entra y sale miran lo mismo')
+  const v1 = ventanasDeTramo(1, hoy, corte)
+  assert.equal(v1.sale.desde, Math.max(corte, hoy), 'el piso del tramo presente es MAX(corte; hoy)')
+  assert.equal(v1.sale.hasta, hoy + 7)
 })
 
 // ── Un libro sintético: cada fuente con un movimiento en un tramo conocido ────────────────────────
@@ -106,25 +108,38 @@ test('VEREDICTO: dos errores que se cancelan ENTRE tramos no pasan — el neto e
   assert.equal(conciliar(LIBRO, caja, { hoy: HOY, corte: CORTE }).cierra, false)
 })
 
-test('el cheque del 20/07 pesa aunque sea anterior al corte, y la compra del 20/07 no', () => {
-  const v = ventanasDeTramo(0, HOY, CORTE)
-  assert.equal(libroSale(LIBRO, v).porFuente.cheques, 5000, 'la ventana del cheque abre en el serial 0')
-  const compraVieja = [...LIBRO, mov({ fecha: serialDe(2026, 7, 20), importe: 40000, origen: FUENTE.compras })]
-  assert.equal(libroSale(compraVieja, v).porFuente.compras, 800,
-    'una factura anterior al corte ya está descontada del saldo: sumarla la contaría dos veces')
+test('el cheque viejo no debitado pesa — en el tramo Vencido, como todo lo no-real con fecha pasada', () => {
+  const hoy = 46239; const corte = 46237
+  const cheque = mov({ fecha: 46212, signo: -1, importe: 657000, estado: 'COMPROMETIDO', origen: 'Cheques Emitidos' })
+  const compraReal = mov({ fecha: 46212, signo: -1, importe: 999999, estado: 'REAL', origen: 'Compras' })
+  const v0 = ventanasDeTramo(0, hoy, corte)
+  const sale = libroSale([cheque, compraReal], v0)
+  assert.equal(sale.porFuente.cheques, 657000, 'el papel firmado y no debitado va a salir: pesa')
+  assert.equal(Math.abs(sale.porFuente.compras), 0, 'la compra REAL ya salió por el banco: excluida por ESTADO, no por fecha')
 })
 
-test('COMPRAS va NETO de notas de crédito: el SUMIFS de CAJA las resta', () => {
-  const v = ventanasDeTramo(0, HOY, CORTE)
-  assert.equal(libroSale(LIBRO, v).porFuente.compras, 1000 - 200)
+test('una nota de crédito proyectada cuenta UNA vez: entra por libroEntra y NO resta además en libroSale', () => {
+  const hoy = 46239; const corte = 46237
+  const v1 = ventanasDeTramo(1, hoy, corte)
+  const nc = mov({ fecha: hoy + 2, signo: 1, importe: 21359, estado: 'PROYECTADO', origen: 'Compras' })
+  const compra = mov({ fecha: hoy + 2, signo: -1, importe: 100000, estado: 'PROYECTADO', origen: 'Compras' })
+  const entra = libroEntra([nc, compra], v1)
+  const sale = libroSale([nc, compra], v1)
+  assert.equal(entra.porFuente.otros, 21359, 'la NC entra: es plata que vuelve')
+  assert.equal(sale.porFuente.compras, 100000)
+  assert.equal(entra.total - sale.total, 21359 - 100000, 'el neto cuenta cada fila una vez, con su signo')
 })
 
-test('ENTRA: sólo cartera y cobranzas esperadas — un cobro ya REAL está en el saldo', () => {
-  const v = ventanasDeTramo(1, HOY, CORTE)
-  const e = libroEntra(LIBRO, v)
-  assert.equal(e.porFuente.cartera, 250)
-  assert.equal(e.porFuente.cobranzas, 0, 'los $999.999 cobrados ya están adentro del saldo')
-  assert.equal(e.total, 250)
+test('ENTRA: todo lo no-real que entra — y un cobro REAL nunca, está en el saldo', () => {
+  const hoy = 46239; const corte = 46237
+  const v1 = ventanasDeTramo(1, hoy, corte)
+  const esperado = mov({ fecha: hoy + 3, signo: 1, importe: 500000, estado: 'PROYECTADO', origen: 'Cobranzas' })
+  const enCartera = mov({ fecha: hoy + 3, signo: 1, importe: 200000, estado: 'COMPROMETIDO', origen: '_CHEQUES_RAW' })
+  const cobrado = mov({ fecha: hoy + 3, signo: 1, importe: 999999, estado: 'REAL', origen: 'Cobranzas' })
+  const r = libroEntra([esperado, enCartera, cobrado], v1)
+  assert.equal(r.total, 700000, 'los $999.999 cobrados ya están adentro del saldo')
+  assert.equal(r.porFuente.cobranzas, 500000)
+  assert.equal(r.porFuente.cartera, 200000)
 })
 
 test('las exclusiones tienen nombre y monto: nada se descuenta en silencio', () => {

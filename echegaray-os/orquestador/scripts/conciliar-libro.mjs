@@ -107,15 +107,18 @@ export function evaluarBorde(expr, hoy) {
  *               debitado— la aplica el extractor, y sin ella se restaban $12.188.441 dos veces.
  */
 export function ventanasDeTramo(k, hoy, corte) {
+  // ═══ LA VENTANA ES LA DE LA PORTADA, UNA SOLA PARA TODAS LAS FUENTES (05/08, post-migración) ═══
+  //
+  // El comparador espejaba las ventanas del calendario VIEJO (REAL después del corte por fecha, los
+  // cheques abriendo en el serial 0, cobranzas sin piso). La escalera de la portada usa OTRO modelo,
+  // más simple y correcto: estados NO-REAL con piso MAX(corte; hoy) para todos, y el tramo Vencido
+  // abierto en [0, hoy) — lo REAL ya vive en el saldo del banco, venga de la fuente que venga. Este
+  // portón es una REGRESIÓN de ese modelo: su código y las fórmulas tienen que decir lo mismo.
   const hasta = evaluarBorde(BORDES[k][1], hoy)
   const anterior = k === 0 ? null : evaluarBorde(BORDES[k - 1][1], hoy)
-  const desdeSale = k === 0 ? corte : Math.max(corte, anterior)
-  return {
-    entra: { desde: k === 0 ? -Infinity : anterior, hasta },
-    sale: { desde: desdeSale, hasta },
-    cheques: { desde: k === 0 ? 0 : desdeSale, hasta },
-    borde: hasta,
-  }
+  const desde = k === 0 ? 0 : Math.max(corte, hoy, anterior)
+  const v = { desde, hasta }
+  return { entra: v, sale: v, cheques: v, borde: hasta }
 }
 
 const enVentana = (m, v) => m.fecha >= v.desde && m.fecha < v.hasta
@@ -129,15 +132,13 @@ const netoSale = (ms) => -ms.reduce((a, m) => a + m.signo * m.importe, 0)
  * saldo del que arranca la escalera, y sumarlo otra vez lo contaría dos veces.
  */
 export function libroEntra(libro, v) {
-  const porFuente = {
-    cartera: libro.filter((m) => m.origen === FUENTE.cartera && m.signo === 1
-      && m.estado === 'COMPROMETIDO' && enVentana(m, v.entra)),
-    cobranzas: libro.filter((m) => m.origen === FUENTE.cobranzas && m.signo === 1
-      && (m.estado === 'PROYECTADO' || m.estado === 'VENCIDO') && enVentana(m, v.entra)),
-  }
-  const totales = Object.fromEntries(Object.entries(porFuente)
-    .map(([f, ms]) => [f, ms.reduce((a, m) => a + m.importe, 0)]))
-  return { total: Object.values(totales).reduce((a, b) => a + b, 0), porFuente: totales }
+  // El MISMO filtro que la fórmula: NO-REAL que entra, cualquier fuente (lo REAL vive en el saldo).
+  const noReal = (m) => (m.estado === 'COMPROMETIDO' || m.estado === 'PROYECTADO' || m.estado === 'VENCIDO')
+  const en = libro.filter((m) => m.signo === 1 && noReal(m) && enVentana(m, v.entra))
+  const porFuente = {}
+  for (const m of en) { const k = m.origen === FUENTE.cartera ? 'cartera' : m.origen === FUENTE.cobranzas ? 'cobranzas' : 'otros'
+    porFuente[k] = (porFuente[k] ?? 0) + m.importe }
+  return { total: en.reduce((a, m) => a + m.importe, 0), porFuente }
 }
 
 /**
@@ -149,16 +150,21 @@ export function libroEntra(libro, v) {
  * cuenta con el signo cambiado: es el mismo error que sumó $41,9M de notas como si fueran compras.
  */
 export function libroSale(libro, v, rubros = rubrosDelCuadro()) {
-  const dentro = (m, ventana, fuente) => m.origen === fuente && enVentana(m, ventana)
-  const compras = libro.filter((m) => dentro(m, v.sale, FUENTE.compras) && rubros.has(m.rubro))
-  const comprometidos = (fuente) => libro.filter((m) => dentro(m, v.cheques, fuente)
-    && m.signo === -1 && m.estado === 'COMPROMETIDO')
+  // El MISMO filtro que la fórmula de la escalera: NO-REAL dentro de la ventana única. El desglose
+  // por fuente es diagnóstico; el total es lo que se compara.
+  const noReal = (m) => (m.estado === 'COMPROMETIDO' || m.estado === 'PROYECTADO' || m.estado === 'VENCIDO')
+  const dentro = (m, fuente) => m.origen === fuente && enVentana(m, v.sale) && noReal(m) && m.signo === -1
   const porFuente = {
-    compras: netoSale(compras),
-    nomina: netoSale(libro.filter((m) => dentro(m, v.sale, FUENTE.nomina) && m.signo === -1)),
-    impuestos: netoSale(libro.filter((m) => dentro(m, v.sale, FUENTE.impuestos) && m.signo === -1)),
-    cheques: netoSale(comprometidos(FUENTE.cheques)),
-    tarjeta: netoSale(comprometidos(FUENTE.tarjeta)),
+    compras: netoSale(libro.filter((m) => dentro(m, FUENTE.compras) && rubros.has(m.rubro))),
+    nomina: netoSale(libro.filter((m) => dentro(m, FUENTE.nomina))),
+    impuestos: netoSale(libro.filter((m) => dentro(m, FUENTE.impuestos))),
+    cheques: netoSale(libro.filter((m) => dentro(m, FUENTE.cheques))),
+    tarjeta: netoSale(libro.filter((m) => dentro(m, FUENTE.tarjeta))),
+    otros: netoSale(libro.filter((m) => m.signo === -1 && noReal(m) && enVentana(m, v.sale)
+      && ![FUENTE.compras, FUENTE.nomina, FUENTE.impuestos, FUENTE.cheques, FUENTE.tarjeta].includes(m.origen))),
+    // Las notas de crédito NO van acá: entran con signo +1 y ya las cuenta libroEntra (bucket
+    // 'otros'). Restarlas además del lado que sale las contaría dos veces — cada fila del libro
+    // cuenta UNA vez, con su signo, igual que en la fórmula de la escalera.
   }
   return { total: Object.values(porFuente).reduce((a, b) => a + b, 0), porFuente }
 }
