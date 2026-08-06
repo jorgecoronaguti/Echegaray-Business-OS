@@ -21,6 +21,9 @@ import { esIndistinguible } from './cobranzas-duplicado.mjs'
 import * as CONC from './conciliacion-por-naturaleza.mjs'
 import { MARCAS, expresionTieneNumero } from './cheques-cobertura.mjs'
 import { formulaChequesSinFactura } from './cash-flow-lineas.mjs'
+// Los rangos de "Cheques Emitidos" se armaban acá a mano —`'…'!$K$2:$K$400`— y arrancaban en la 2,
+// o sea adentro de la banda de rótulos. La fila de arranque vive en un solo archivo.
+import { rangoEn } from './cheques-emitidos-geometria.mjs'
 import {
   ESTADOS, ESPERADOS, formulaTotalEstado, formulaCantidadEstado,
   formulaEstadoDesconocido, formulaUltimoCobroRegistrado,
@@ -141,9 +144,9 @@ export function bloqueConciliacion(h) {
  */
 export function bloqueVencido(h) {
   const { push, ch } = h
-  const K400 = `UPPER('${ch}'!$K$2:$K$400)<>"SI"`
-  const I400 = `'${ch}'!$I$2:$I$400`
-  const F400 = `IF(ISNUMBER('${ch}'!$F$2:$F$400);'${ch}'!$F$2:$F$400;0)`
+  const K400 = `UPPER(${rangoEn(ch, 'K')})<>"SI"`
+  const I400 = rangoEn(ch, 'I')
+  const F400 = `IF(ISNUMBER(${rangoEn(ch, 'F')});${rangoEn(ch, 'F')};0)`
   push(['A6 · VENCIDO SIN CONCILIAR — lo que ya debería haber pasado y nadie marcó'])
   push(['Qué quedó sin marcar', '', 'Cuánto', '', '', '', 'Cuántos'])
   const f0 = h.n + 1
@@ -275,11 +278,11 @@ export function bloqueTrazabilidad(h) {
  */
 export function bloqueCalendarioCiego(h) {
   const { push, ch, conceptosCiegos } = h
-  const K400 = `UPPER('${ch}'!$K$2:$K$400)<>"SI"`
-  const I400 = `'${ch}'!$I$2:$I$400`
-  const F400 = `IF(ISNUMBER('${ch}'!$F$2:$F$400);'${ch}'!$F$2:$F$400;0)`
-  const M_CH = `'${ch}'!$M$2:$M$400`
-  const TIENE_NUM = expresionTieneNumero(`'${ch}'!$H$2:$H$400`)
+  const K400 = `UPPER(${rangoEn(ch, 'K')})<>"SI"`
+  const I400 = rangoEn(ch, 'I')
+  const F400 = `IF(ISNUMBER(${rangoEn(ch, 'F')});${rangoEn(ch, 'F')};0)`
+  const M_CH = rangoEn(ch, 'M')
+  const TIENE_NUM = expresionTieneNumero(rangoEn(ch, 'H'))
   const sinMarca = (cond) => `=SUMPRODUCT((${K400})*(${M_CH}="")*${cond}*${F400})`
 
   push(['A8 · LO QUE EL CALENDARIO NO VE — los cuatro controles del piso de caja'])
@@ -295,7 +298,7 @@ export function bloqueCalendarioCiego(h) {
   // debitado ya salió de la cuenta y el saldo del que arranca el calendario lo tiene descontado;
   // restarlo otra vez hundía el piso $12.188.441 y por eso CAJA y el conciliador no cerraban.
   push(['   declarado: ya debitados y sin factura — el saldo del banco ya los tiene descontados', '', '',
-    `=SUMPRODUCT((UPPER('${ch}'!$K$2:$K$400)="SI")*(${M_CH}="${MARCAS.falta}")*${F400})`, '', '', ''])
+    `=SUMPRODUCT((UPPER(${rangoEn(ch, 'K')})="SI")*(${M_CH}="${MARCAS.falta}")*${F400})`, '', '', ''])
   // UN CERO CON NOMBRE ES UNA LIMITACIÓN CONOCIDA; UN CERO MUDO ES UN BUG. Los tres conceptos valen
   // cero en todos los tramos porque el banco los debita solo, sin factura, y su único registro es el
   // extracto — que por definición sólo cubre el pasado.

@@ -10,6 +10,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { grilla, respaldos } from './cheques-cobertura-sheet.mjs'
 import { MARCAS } from '../lib/cheques-cobertura.mjs'
+// Ídem: la fila de arranque del registro sale de la geometría, no de un literal.
+import { FILA_DATO0 } from '../lib/cheques-emitidos-geometria.mjs'
 
 const S = (y, m, d) => Math.round((Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 86400000)
 
@@ -57,8 +59,8 @@ test('el bloque publica los inferidos aparte y lo que el OS no miró todavía', 
   assert.match(celda(g, inf, 2), new RegExp(MARCAS.inferido.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
   // Y el de "sin marcar" mira la marca VACÍA y sólo los no debitados: un cheque ya debitado sin marca
   // no es un riesgo del piso, su plata ya salió y está dentro del saldo.
-  assert.match(celda(g, sm, 2), /\$M\$2:\$M\$400=""/)
-  assert.match(celda(g, sm, 2), /UPPER\('Cheques Emitidos'!\$K\$2:\$K\$400\)<>"SI"/)
+  assert.match(celda(g, sm, 2), new RegExp(`\\$M\\$${FILA_DATO0}:\\$M\\$400=""`))
+  assert.match(celda(g, sm, 2), new RegExp(`UPPER\\('Cheques Emitidos'!\\$K\\$${FILA_DATO0}:\\$K\\$400\\)<>"SI"`))
 })
 
 test('cada renglón del reparto suma una vez: los cuatro estados son una partición', () => {

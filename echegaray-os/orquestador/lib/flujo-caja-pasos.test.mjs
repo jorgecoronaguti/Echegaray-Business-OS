@@ -25,6 +25,20 @@ test('todo script en REPORTES existe como paso real del pipeline', () => {
   for (const r of REPORTES) assert.ok(scripts.has(r), `${r} está en REPORTES pero no es un paso de PASOS`)
 })
 
+// ═══ EL DEFECTO SIMÉTRICO: UN PASO DECLARADO CUYO ARCHIVO NO EXISTE (06/08) ═══
+//
+// `cheques-recibidos-tablero.mjs` figuraba acá como dueño de "Cheques Recibidos" desde el 01/08 y no
+// estaba en el repo. El runner lo lanzaba con `process.execPath`, el hijo moría con ENOENT y el paso
+// contaba como uno más de los que fallan: la pestaña se quedó cinco días sin actualizarse y ningún
+// control lo dijo. Un nombre mal escrito acá cuesta lo mismo.
+
+test('todo paso declarado existe como archivo: un nombre que apunta al vacío no corre nunca', () => {
+  const dir = join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts')
+  for (const [script] of PASOS) {
+    assert.ok(existsSync(join(dir, script)), `PASOS declara ${script} y no existe en orquestador/scripts`)
+  }
+})
+
 // ═══ EL DEFECTO: UN GENERADOR QUE EXISTE, TIENE DUEÑO Y NADIE EJECUTA (05/08) ═══
 //
 // De los seis generadores de la pestaña "Proveedores", cinco no estaban en PASOS: sólo corrían si

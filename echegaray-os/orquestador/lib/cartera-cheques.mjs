@@ -44,6 +44,18 @@ import { PESTAÑA as RAW, COL as R, FILA0 } from '../scripts/cheques-raw-pestana
 /** El estado que significa "todavía es un valor mío y todavía NO es caja". Lo escribe el banco. */
 export const EN_CARTERA = 'En custodia'
 
+/**
+ * LOS CUATRO ESTADOS QUE ESCRIBE EL BANCO, escritos UNA vez.
+ *
+ * Los tres de abajo son TERMINALES y no son cartera: un depositado ya es plata en la cuenta, un
+ * endosado se fue a pagarle a un tercero y un rechazado no va a entrar. Se miran igual —el dueño
+ * necesita ver cuánto se endosó— pero NO se suman a lo que todavía es un valor propio. Es la misma
+ * distinción que ya costó $20.000.000 contados dos veces cuando la pestaña listaba operaciones.
+ */
+export const ESTADOS = Object.freeze({
+  cartera: EN_CARTERA, depositado: 'Depositado', endosado: 'Endosado', rechazado: 'Rechazado',
+})
+
 /** Un rango abierto de la réplica, por letra de columna. Abierto = toma los cheques que entren. */
 export const rango = (col) => `${RAW}!$${col}$${FILA0}:$${col}`
 
@@ -53,8 +65,10 @@ const EST = () => rango(R.estado)
 const FP = () => rango(R.fechaPago)
 const NUM = () => rango(R.numero)
 
+/** Los criterios de un cheque RECIBIDO en un estado cualquiera. */
+const criteriosEstado = (estado) => `${TIPO()};"recibido";${EST()};"${estado}"`
 /** Los criterios comunes: un cheque RECIBIDO que sigue EN CARTERA. */
-const enCartera = () => `${TIPO()};"recibido";${EST()};"${EN_CARTERA}"`
+const enCartera = () => criteriosEstado(EN_CARTERA)
 
 /**
  * NÚCLEO PURO: el total en cartera. Es el número de "Valores a depositar" de CAJA.
@@ -87,6 +101,81 @@ export function formulaCarteraTramo(desde = null, hasta = null) {
   // Sin bordes no hay tramo: devolver el total entero acá sería un error silencioso en el calendario.
   if (!cond.length) return formulaCartera()
   return `=SUMIFS(${IMP()};${enCartera()};${cond.join(';')})`
+}
+
+/** NÚCLEO PURO: cuántos cheques de la cartera caen en un tramo. El gemelo contador del anterior. */
+export function formulaCuentaTramo(desde = null, hasta = null) {
+  const cond = []
+  if (desde) cond.push(`${FP()};">="&${desde}`)
+  if (hasta) cond.push(`${FP()};"<"&${hasta}`)
+  if (!cond.length) return formulaCuentaCartera()
+  return `=COUNTIFS(${enCartera()};${cond.join(';')})`
+}
+
+/**
+ * NÚCLEO PURO: lo que hay en cartera para UN día concreto.
+ *
+ * `fecha` es una EXPRESIÓN de fórmula, no una fecha: el calendario la arma desde su celda de mes
+ * (`EOMONTH($B$7;-1)+1-WEEKDAY(…)+13`) y tiene que moverse solo cuando el dueño cambia de mes. Es un
+ * criterio de IGUALDAD sobre el serial, así que la columna F tiene que ser fecha de verdad — si
+ * volviera a entrar como texto ("Fri Jul 31"), esto devuelve 0 y el calendario queda vacío, que es
+ * exactamente el síntoma que ya se cazó una vez con ISNUMBER.
+ */
+export function formulaCarteraDia(fecha) {
+  return `=SUMIFS(${IMP()};${enCartera()};${FP()};${fecha})`
+}
+
+/** NÚCLEO PURO: cuántos cheques en cartera vencen ese día. La presencia se decide por acá y no por
+ *  el importe: un cheque de $0 existe igual, y "el 0 no es vacío". */
+export function formulaCuentaDia(fecha) {
+  return `=COUNTIFS(${enCartera()};${FP()};${fecha})`
+}
+
+/**
+ * NÚCLEO PURO: lo que está en cartera SIN fecha de pago cargada.
+ *
+ * Ningún tramo lo toma —los tramos comparan contra un borde y una celda vacía no compara— así que
+ * sin esta línea la partición del resumen no cerraría contra el total y un valor real desaparecería
+ * de la vista sin romper ninguna suma. Es el mismo agujero que el canario del detalle ya vigila.
+ */
+export function formulaSinFecha() {
+  return `=SUMIFS(${IMP()};${enCartera()};${FP()};"")`
+}
+
+/** NÚCLEO PURO: cuántos cheques en cartera no tienen fecha de pago. */
+export function formulaCuentaSinFecha() {
+  return `=COUNTIFS(${enCartera()};${FP()};"")`
+}
+
+/** NÚCLEO PURO: el total de un estado terminal (depositado, endosado, rechazado). NO es cartera. */
+export function formulaPorEstado(estado) {
+  return `=SUMIFS(${IMP()};${criteriosEstado(estado)})`
+}
+
+/** NÚCLEO PURO: cuántos cheques hay en un estado terminal. */
+export function formulaCuentaPorEstado(estado) {
+  return `=COUNTIFS(${criteriosEstado(estado)})`
+}
+
+/**
+ * NÚCLEO PURO: EL MAYOR INGRESO DE UN SOLO DÍA, de acá en adelante.
+ *
+ * Contesta la única pregunta de concentración que le importa a tesorería: cuánto de la cartera
+ * depende de que UN día entre bien. Un total de $47M repartido en veinte días y otro de $47M
+ * concentrado en un cheque no son la misma posición, y el total no distingue.
+ *
+ * ═══ POR QUÉ ACÁ HAY UN `ARRAYFORMULA` Y EN NINGUNA OTRA FÓRMULA DE ESTE ARCHIVO ═══
+ *
+ * Un máximo por día es un GROUP BY, y `SUMIFS` con un criterio escalar no agrupa. Pasándole la
+ * columna de fechas COMO criterio, `SUMIFS` devuelve un valor por fila —el total del día de esa
+ * fila— y `MAX` lo colapsa a un escalar. No derrama: el `MAX` de afuera consume el array entero.
+ *
+ * La alternativa era un `QUERY … group by F`, que obliga a construir la fecha de corte como texto
+ * dentro del string de consulta; se descartó porque ese string no está en el idioma de fórmulas del
+ * archivo y no lo protege ninguno de los tests de locale.
+ */
+export function formulaMaximoDiario() {
+  return `=MAX(ARRAYFORMULA(SUMIFS(${IMP()};${enCartera()};${FP()};">="&TODAY();${FP()};${FP()})))`
 }
 
 /**

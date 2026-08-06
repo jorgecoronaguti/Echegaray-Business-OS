@@ -20,6 +20,7 @@ import { loadConfig } from '../lib/config.mjs'
 import { repartirCobertura, aCubrirPorMes, normComprobante, esLlaveUtil, hallarPestana, MARCAS, marcaDe, inferirRespaldo } from '../lib/cheques-cobertura.mjs'
 import { normNombre } from '../lib/razon-social.mjs'
 import { INSTRUMENTOS, formulasInstrumento } from '../lib/cash-flow-lineas.mjs'
+import { FILA_DATO0, FILA_FIN } from '../lib/cheques-emitidos-geometria.mjs'
 import { ARCA as N_ARCA } from '../lib/rangos-nombrados.mjs'
 import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
 
@@ -65,10 +66,16 @@ async function leer(google) {
   // SE GUARDA LA FILA DE CADA UNO. La marca que el OS escribe al lado tiene que caer en SU fila, y
   // filtrar antes de saber la fila corría todas las marcas hacia arriba en cuanto aparecía un
   // importe en cero. Una marca en la fila equivocada es peor que ninguna: acusa al cheque de al lado.
-  const crudoCh = await google.readSheetValues(ID, `${CH}!A2:L400`)
+  // ═══ SE LEÍA DESDE LA FILA 2, O SEA DESDE ADENTRO DE LA BANDA (06/08) ═══
+  // Decía `A2:L400` y `fila: i + 2`. La banda de "Cheques Emitidos" ocupa las primeras 25 filas: las
+  // 25 primeras "filas de cheques" que entraban acá eran rótulos y fórmulas de resumen. Se salvaba
+  // sólo por el `.filter(monto > 0)` de la línea de abajo —la banda no pone importes en la columna F
+  // de sus filas de rótulo—, y el día que la banda publicara un número en F, el OS lo habría marcado
+  // como si fuera un cheque. La fila de arranque sale ahora de la geometría, que es única.
+  const crudoCh = await google.readSheetValues(ID, `${CH}!A${FILA_DATO0}:L${FILA_FIN}`)
   const crudoTj = await google.readSheetValues(ID, `${INSTRUMENTOS.tarjeta.pestaña}!A3:K400`)
   // fecha = la fecha REAL de pago (columna I). fecha_pago es su rótulo "julio 26", que es formato.
-  const cheques = crudoCh.map((f, i) => ({ fila: i + 2, tipo: f[0], proveedor: f[4], monto: num(f[5]), comprobante: f[7], fecha: fechaAR(f[8]), fecha_pago: f[9], debitado: f[10], marca: f[12] })).filter((c) => c.monto > 0)
+  const cheques = crudoCh.map((f, i) => ({ fila: i + FILA_DATO0, tipo: f[0], proveedor: f[4], monto: num(f[5]), comprobante: f[7], fecha: fechaAR(f[8]), fecha_pago: f[9], debitado: f[10], marca: f[12] })).filter((c) => c.monto > 0)
   const tarjeta = crudoTj.map((f, i) => ({ fila: i + 3, proveedor: f[2], monto: num(f[4]), comprobante: f[6], fecha_pago: f[8], debitado: f[9], marca: f[10] })).filter((c) => c.monto > 0)
   // ── EL LADO DE COMPRAS QUE NECESITA EL CRUCE DE RESPALDO, EN CRUDO ────────────────────────────────
   // SE LEE APARTE Y CON UNFORMATTED_VALUE A PROPÓSITO. La lectura de arriba viene formateada y `num()`
@@ -81,7 +88,10 @@ async function leer(google) {
   const filasCompras = crudoCompras.map((f, i) => ({
     fila: i + 4, prov: normNombre(f?.[2]), fecha: numero(f?.[0]) || null, total: numero(f?.[12]),
   })).filter((f) => f.prov && f.total > 0)
-  return { enCompras, filasCompras, cheques, tarjeta, pestanaCheques: CH, filasCh: crudoCh.length + 1, filasTj: crudoTj.length + 2 }
+  // `filasCh` = la última fila REAL del registro. Sale del largo leído más el offset de arranque
+  // menos uno; con el `+ 1` de antes (que asumía arranque en la 2) el marcado se cortaba 25 filas
+  // antes del final y los últimos cheques se quedaban sin marca — invisibles para el calendario.
+  return { enCompras, filasCompras, cheques, tarjeta, pestanaCheques: CH, filasCh: crudoCh.length + FILA_DATO0 - 1, filasTj: crudoTj.length + 2 }
 }
 
 /**

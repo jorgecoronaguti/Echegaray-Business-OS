@@ -13,7 +13,10 @@ import { readFile } from 'node:fs/promises'
  * Se listan por archivo porque es el archivo el que puede regresar.
  */
 const CONVERTIDAS = [
-  'orquestador/scripts/cheques-emitidos-tablero.mjs',
+  // "Cheques Emitidos" construye su grilla en la lib desde el rediseño del 06/08 (el script quedó con
+  // lo que sólo se puede hacer contra Google). El canario apunta a donde vive el RÓTULO, que es lo que
+  // puede regresar; el script sigue vigilado abajo por el test que prohíbe estampar la fecha.
+  'orquestador/lib/cheques-emitidos-cabecera.mjs',
   // CAJA construye su grilla en la lib desde el rediseño del 05/08 (el script quedó con lo que sólo se
   // puede hacer contra Google). El canario apunta a donde vive el RÓTULO, que es lo que puede regresar;
   // el script sigue vigilado abajo por el test que prohíbe estampar la fecha de la corrida.
@@ -77,8 +80,16 @@ test('las pestañas convertidas NO estampan la fecha de la corrida en un rótulo
 })
 
 test('las pestañas convertidas construyen su subtítulo con un rótulo vivo de la lib', async () => {
+  // LO QUE SE MIDE ES LA PROPIEDAD, NO EL NOMBRE DE LA FUNCIÓN (06/08). Pedía `rotuloAlDia(` o
+  // `rotuloPorFuente(`, que son los DOS envoltorios de prosa de la lib. El rediseño de "Cheques
+  // Emitidos" sacó la prosa del subtítulo a propósito —el rótulo quedó en "al 06/08/2026 · 12 cheques
+  // vivos"— y arma la fecha con `formulaFrescuraDe(formulaUltimaFecha(…))`, que es exactamente el
+  // mismo cálculo vivo sobre el dato y de la misma lib. Con el chequeo atado al envoltorio, el canario
+  // habría obligado a devolver la prosa para poder pasar: un control que fuerza un defecto de diseño
+  // dejó de medir lo que dice medir. La propiedad es "la fecha SALE DEL DATO", y se sigue exigiendo.
   for (const f of CONVERTIDAS) {
-    assert.match(await leer(f), /rotuloAlDia\(|rotuloPorFuente\(/, `${f} dejó de usar el rótulo vivo`)
+    assert.match(await leer(f), /rotuloAlDia\(|rotuloPorFuente\(|formulaFrescuraDe\(|formulaUltimaFecha\(/,
+      `${f} dejó de usar el rótulo vivo`)
   }
 })
 

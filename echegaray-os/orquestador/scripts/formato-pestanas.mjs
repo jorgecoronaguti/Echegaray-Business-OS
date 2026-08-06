@@ -54,6 +54,9 @@ export const PESTANAS = [
   // el formateador general no la toca para no pisarle la piel. Sigue en la lista para que el censo y el
   // auditor de pantalla la miren.
   { titulo: 'Cheques Emitidos', congeladas: 9, hastaFila: 200, cols: 14, carga: true, propio: true },
+  // Cabecera propia (cheques-recibidos-tablero.mjs); entra a la lista para que el auditor de pantalla
+  // la mire — hasta el 06/08 no estaba y "auditar Cheques Recibidos" devolvía 0 pestañas en silencio.
+  { titulo: 'Cheques Recibidos', congeladas: 27, hastaFila: 66, cols: 10, propio: true },
   { titulo: 'Tarjeta de Credito', congeladas: 2, hastaFila: 120, cols: 14, carga: true },
   // Piel de statement PROPIA (jornales-pestana.mjs la escribe entera); el formateador general la
   // saltea para no pisarle el estilo — es la causa que ya se pagó una vez, dos formateadores sobre

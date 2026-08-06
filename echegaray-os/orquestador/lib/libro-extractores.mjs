@@ -41,6 +41,9 @@ import { movimiento, ENTRA, SALE, estadoContraCorte } from './libro-movimientos.
 import { rubroDeCaja, SIN_CLASIFICAR } from './rubro-caja.mjs'
 import { resolverColumnas } from './compras-columnas.mjs'
 import { INSTRUMENTOS, MARCA_ENDOSADO, COL_VALOR_BANCO, colMesDelAnio } from './cash-flow-lineas.mjs'
+// El default de `deChequesEmitidos` era un 20 escrito a mano y el registro se movió a la 27. El
+// llamador real (libro-movimientos-pestana) pasa el ancla viva; el default es para todos los demás.
+import { FILA_DATO0 as FILA_DATO0_CHEQUES } from './cheques-emitidos-geometria.mjs'
 import { MARCAS } from './cheques-cobertura.mjs'
 import { EN_CARTERA } from './cartera-cheques.mjs'
 import { COL as COL_RAW, FILA0 as FILA0_RAW, PESTAÑA as PESTANA_RAW } from '../scripts/cheques-raw-pestana.mjs'
@@ -227,9 +230,9 @@ export function deCobranzas(filas = [], corte = null, { colValorBanco = null } =
  * se importa de `INSTRUMENTOS.cheques.colMarca`, que es la MISMA constante que usan el que marca y el
  * que suma — declarada una vez justamente porque escrita tres veces se desincronizaba en silencio.
  */
-export function deChequesEmitidos(filas = [], { fila0 = 20, colMarca = INSTRUMENTOS.cheques.colMarca } = {}) {
+export function deChequesEmitidos(filas = [], { fila0 = FILA_DATO0_CHEQUES, colMarca = INSTRUMENTOS.cheques.colMarca } = {}) {
   const enc = filas[fila0 - 2] ?? [] // el encabezado del registro, una fila arriba del primer dato
-  // El encabezado real del registro (fila 20 del archivo, verificado el 05/08): "Nro" es el número
+  // El encabezado real del registro: "Nro" es el número
   // del cheque, "Monto" el importe, y hay DOS columnas de fecha de pago — "fecha de pago" (la fecha)
   // y "fecha pago" (el mes en texto). resolverColumnas matchea exacto, así que no se confunden.
   const c = columnasObligatorias(enc, {
