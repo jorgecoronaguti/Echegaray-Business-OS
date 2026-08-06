@@ -217,8 +217,10 @@ async function main() {
     if (cola === null) {
       console.log('  ⚠ no pude releer la cola del diseño viejo: la dejo como está (se barre en la próxima corrida)')
     } else if (cola.length) {
-      const { mios } = await leerRegistro(ID, PESTAÑA).catch(() => ({ mios: new Set() }))
-      const { filas: relleno, preservar } = rellenoDeCola(cola, mios ?? new Set(), ANCHO)
+      // leerRegistro devuelve `mios` como ARRAY de rótulos; rellenoDeCola espera un Set.
+      const reg = await leerRegistro(ID, PESTAÑA).catch(() => null)
+      const mios = new Set(Array.isArray(reg?.mios) ? reg.mios : [])
+      const { filas: relleno, preservar } = rellenoDeCola(cola, mios, ANCHO)
       for (const pz of preservar) console.log(`  ✋ fila ${g.filas.length + 1 + pz.i} de la cola tiene texto que no es del generador — CONSERVADA: ${pz.celdas[0]?.slice(0, 40)}`)
       let barridas = 0
       for (let i = 0; i < relleno.length; i++) {
