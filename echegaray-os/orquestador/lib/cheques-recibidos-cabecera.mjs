@@ -206,13 +206,23 @@ export function exprFrescura() {
  * @param {{formula?:unknown, crudo?:unknown}} previo lo leído con render FORMULA y sin formato
  */
 export function valorSelector({ formula = '', crudo = '' } = {}) {
+  // ═══ SÓLO SE PRESERVA LO QUE PUEDE SER UN MES (06/08, pagado en vivo) ═══
+  //
+  // La primera corrida leyó el B7 del LAYOUT VIEJO —la fórmula SUMIFS de "Depositado"— y la preservó
+  // como si fuera el mes elegido por el dueño: la celda mostró "marzo 47917" ($16,8M leídos como
+  // fecha) y las 42 celdas del calendario colgaron de eso. Una fórmula ajena no es una elección de
+  // mes; un serial fuera de la banda 2000–2100 tampoco. Todo lo demás vuelve al defecto.
   const f = String(formula ?? '').trim()
-  if (f.startsWith('=')) return f
-  // El 0 de una celda vacía leída como número no es una fecha: sería el 30/12/1899. Y se descarta
-  // ANTES de pasar por String(), donde se volvía el texto "0" y entraba igual — el test lo cazó.
-  if (typeof crudo === 'number') return crudo > 0 ? crudo : SELECTOR_DEFECTO
-  const t = String(crudo ?? '').trim()
-  return t || SELECTOR_DEFECTO
+  if (f === SELECTOR_DEFECTO) return f
+  const n = typeof crudo === 'number' ? crudo : (/^\d+$/.test(String(crudo ?? '').trim()) ? Number(crudo) : NaN)
+  const SERIAL_2000 = 36526
+  const SERIAL_2100 = 73050
+  if (Number.isFinite(n) && n >= SERIAL_2000 && n <= SERIAL_2100) {
+    // Una fórmula del dueño que RESUELVE a un mes (=DATE(2026;9;1)) se respeta como fórmula; una
+    // fecha tipeada vuelve como número (como texto sería TEXT y el calendario daría #VALUE!).
+    return f.startsWith('=') ? f : n
+  }
+  return SELECTOR_DEFECTO
 }
 
 /** El monto de un tramo. El último suma además lo que no tiene fecha (ver TRAMOS). */
