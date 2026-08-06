@@ -111,6 +111,27 @@ export const CUENTAS = [
     origenSugerido: 'Santander, saldo total en dólares',
   },
   {
+    // ═══ BALANZ — LA INVERSIÓN TAMBIÉN ES CAJA (06/08) ═══
+    //
+    // El 05/08 salieron del banco $22.530.000 ("A balanz capital valores / inv") y U$S 15.000 de la
+    // cuenta USD. Sin estas filas la plata desaparecía del total: el banco la descuenta y ninguna
+    // línea la recibe. Es plata de la empresa en una cuenta comitente — disponibilidad, no gasto.
+    // El saldo es el APORTE probado por extracto, no la posición total (gap declarado en
+    // banco-santander.mjs BALANZ): con el extracto de Balanz se reemplaza.
+    nombre: 'Balanz · inversiones ARS',
+    moneda: 'ARS',
+    banco: 'balanzArs',
+    patron: /^balanz.*\bars\b/i,
+    origenSugerido: 'Transferencia del 05/08 (extracto Santander) — posición pendiente del extracto Balanz',
+  },
+  {
+    nombre: 'Balanz · inversiones USD',
+    moneda: 'USD',
+    banco: 'balanzUsd',
+    patron: /^balanz.*\busd\b/i,
+    origenSugerido: 'Transferencia del 05/08 (base 25.413 de la cta USD) — posición pendiente del extracto Balanz',
+  },
+  {
     // SE CALCULA SOLA, y por eso es la única cuenta sin celda amarilla.
     //
     // POR QUÉ (20/07). El dueño: "en Cobranzas hay cheques que no se encuentran considerados, ¿dónde

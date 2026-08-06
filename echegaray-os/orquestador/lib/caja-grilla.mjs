@@ -119,7 +119,17 @@ export const COLS_FECHA = Object.freeze([3, 6])
 export const COLS_TARJETA = Object.freeze([0, 2, 4, 6, 8])
 
 /** Cuánto vale hoy una cuenta según el banco, cuando la réplica del extracto no está. */
-const saldoDeBanco = (c) => (c.banco === 'cartera' ? BANCO.totalEcheqs(BANCO.enCartera()) : BANCO.CUENTA[c.banco])
+const saldoDeBanco = (c) => (c.banco === 'cartera' ? BANCO.totalEcheqs(BANCO.enCartera())
+  : c.banco === 'balanzArs' ? BANCO.BALANZ.ars
+    : c.banco === 'balanzUsd' ? BANCO.BALANZ.usd
+      : BANCO.CUENTA[c.banco])
+
+/** CADA FUENTE FECHA CON SU PROPIO CORTE. El corte global es el del extracto de julio: fechar con él
+ *  la cuenta USD (movida el 05/08) o Balanz (aportada el 05/08) afirma una frescura que no es la del
+ *  dato — el defecto exacto que el dueño señaló tres veces ("aún noto desactualizadas las fechas"). */
+const corteDeBanco = (c) => (c.banco === 'saldoDolares' ? (BANCO.CUENTA.corteDolares ?? BANCO.CORTE)
+  : c.banco === 'balanzArs' || c.banco === 'balanzUsd' ? BANCO.BALANZ.corte
+    : BANCO.CORTE)
 
 /**
  * LA GRILLA DE CAJA. Pura: sin red, sin base, sin escribir una celda.
@@ -186,7 +196,7 @@ export function grilla(cargado, refs) {
       // de OTRA. Un conteo de caja fechado con TODAY() afirma que se contó hoy, sea cierto o no.
       c.banco === 'saldoPesos' && refs.bancoRaw ? formulaFechaCorte(refs.bancoRaw)
         : c.banco === 'cartera' ? '=TODAY()'
-          : c.banco ? BANCO.CORTE
+          : c.banco ? corteDeBanco(c)
             : c.arqueo ? `=IF(ISNUMBER(${c.arqueo});${c.arqueo};"")`
               : (c.formula ? '=TODAY()' : previo(c.nombre, 'fecha')),
     ])
