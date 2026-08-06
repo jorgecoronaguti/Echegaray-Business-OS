@@ -32,9 +32,9 @@ import { loadConfig } from '../lib/config.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
 import { MONEDA_TOTAL, MONEDA_CUERPO } from '../lib/formato-statement.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
-import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
+import { escribirPreservando, rellenoDeCola } from '../lib/preservar-anotaciones.mjs'
 import { requestsTextoPorContenido } from '../lib/formato-texto-por-contenido.mjs'
-import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
+import { conEdicionesRespetadas, guardarRegistro, leerRegistro } from '../lib/respetar-ediciones.mjs'
 import { CAJA as N_CAJA, publicar } from '../lib/rangos-nombrados.mjs'
 import { filaDeCuenta } from '../lib/caja-disponibilidades.mjs'
 import { DESDE_CAJA, PESTANA_ANEXO } from '../lib/caja-anexo-nombres.mjs'
@@ -193,12 +193,43 @@ async function main() {
   // reapuntaba CAJA_TOTAL_DISPONIBLE y CAJA_FECHA_SALDO a dos celdas vacías. Con el total en cero y la
   // fecha de corte en cero, TODO cheque y TODA quincena pasan el filtro ">=fecha de saldo" y la
   // escalera infla sus tramos. Sin un solo #ERROR y sin un aviso.
-  if (escritura?.bloqueada || escritura?.editadaPorHumano) {
+  // `noVerificable` TAMBIÉN corta (condición D4 del auditor): si la firma no pudo releer la pestaña
+  // (un 429, un corte), la escritura no ocurrió — y reapuntar los rangos con nombre o pintar la
+  // geometría nueva sobre el layout viejo es el incidente del 03/08 ($123,79M → $80,91M) de nuevo.
+  if (escritura?.bloqueada || escritura?.editadaPorHumano || escritura?.noVerificable) {
     console.log(`  🔒 "${PESTAÑA}" bajo tu control: no escribí, y por lo tanto NO le toco el formato, NI muevo sus rangos con nombre, NI reescribo su registro de rótulos.`)
     return
   }
   const { conservadas } = escritura
   if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) escritas por una persona — CONSERVADAS`)
+
+  // ═══ LA COLA DEL DISEÑO VIEJO SE BARRE, NO SE DESTAPA (condición D3 del auditor) ═══
+  //
+  // La portada nueva son 20 filas y la pestaña traía 37: sin esto, debajo del diseño nuevo quedaba la
+  // ESCALERA VIEJA — dos calendarios de la misma plata con números distintos, y `formatear` encima los
+  // destapa. Sólo se limpian las filas cuyo contenido es del generador (el registro de rótulos es la
+  // prueba de propiedad); una fila con algo del dueño se conserva y se GRITA, no se pisa.
+  {
+    const finViejo = Math.max(hoja.rows ?? 0, 0)
+    const cola = finViejo > g.filas.length
+      ? await google.readSheetValues(ID, `${tab}!A${g.filas.length + 1}:${letra(ANCHO - 1)}${Math.min(finViejo, g.filas.length + 60)}`).catch(() => null)
+      : []
+    if (cola === null) {
+      console.log('  ⚠ no pude releer la cola del diseño viejo: la dejo como está (se barre en la próxima corrida)')
+    } else if (cola.length) {
+      const { mios } = await leerRegistro(ID, PESTAÑA).catch(() => ({ mios: new Set() }))
+      const { filas: relleno, preservar } = rellenoDeCola(cola, mios ?? new Set(), ANCHO)
+      for (const pz of preservar) console.log(`  ✋ fila ${g.filas.length + 1 + pz.i} de la cola tiene texto que no es del generador — CONSERVADA: ${pz.celdas[0]?.slice(0, 40)}`)
+      let barridas = 0
+      for (let i = 0; i < relleno.length; i++) {
+        if (!relleno[i]) continue
+        let j = i; while (j + 1 < relleno.length && relleno[j + 1]) j++
+        await google.escribirValoresPorCeldas(ID, hoja.sheetId, relleno.slice(i, j + 1), { fila0: g.filas.length + i })
+        barridas += j - i + 1; i = j
+      }
+      if (barridas) console.log(`  🧹 ${barridas} fila(s) del diseño viejo barridas debajo de la portada`)
+    }
+  }
 
   const publicados = await rangoConNombre(google, hoja.sheetId, g)
   console.log(`  🔖 ${publicados} rango(s) reapuntados a la grilla RECIÉN ESCRITA: ${RANGOS_DE_CAJA.map((r) => r.nombre).join(' · ')}`)

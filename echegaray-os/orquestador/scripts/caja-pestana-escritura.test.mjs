@@ -72,7 +72,7 @@ test('EL DESASTRE DEL 31/07: si la escritura se saltea, NO se formatea ni se mue
   const corte = src.indexOf('await formatear(', i)
   assert.ok(corte > i, 'formatear viene después de escribir')
   const entre = src.slice(i, corte)
-  assert.match(entre, /escritura\?\.bloqueada \|\| escritura\?\.editadaPorHumano/, 'se consulta el skip')
+  assert.match(entre, /escritura\?\.bloqueada \|\| escritura\?\.editadaPorHumano \|\| escritura\?\.noVerificable/, 'se consulta el skip')
   assert.match(entre, /\n\s+return\n/, 'y se CORTA la corrida antes de formatear')
   assert.ok(src.indexOf('await publicar(', corte) > corte, 'publicar queda del lado protegido por el return')
 })
