@@ -73,10 +73,21 @@ export const VENCIMIENTO_IVA = {
  * mensualidades". Terminación "todos": el día NO depende del CUIT.
  * Clave: el mes de la cuota. Valor: la fecha en que se debita.
  *
- * CONTROL CRUZADO: estas nueve fechas coinciden UNA POR UNA con la "Fecha prevista de pago" que el
- * dueño cargó en Compras para las quince cuotas de los tres planes (feb-26 el 18, ago-26 el 18, el
- * resto el 16). Dos fuentes independientes —el organismo y la carga administrativa— que dicen lo
- * mismo. Es la única obligación de este archivo con esa doble confirmación.
+ * ═══ EL CONTROL CRUZADO, CORREGIDO (06/08) ═══
+ *
+ * Acá decía que estas fechas coinciden "UNA POR UNA" con la "Fecha prevista de pago" que el dueño
+ * cargó en Compras para las quince cuotas de los tres planes, y ERA FALSO. Medido fila por fila sobre
+ * Compras: el dueño cargó el 18 en febrero y el DÍA 16 en todos los demás meses. Difieren dos:
+ *
+ *     may-26 → Compras 16/05 (SÁBADO) · ARCA 18/05
+ *     ago-26 → Compras 16/08 (DOMINGO) · ARCA 18/08   (filas 478 y 725, $2.968.642,73)
+ *
+ * Las dos discrepancias son el mismo caso: la fecha cargada cae en fin de semana y ARCA no debita
+ * sábados ni domingos. Los tres corrimientos de la tabla tienen su motivo —16/02 y 17/02 son Carnaval,
+ * el 16/05 es sábado, el 17/08 es el feriado de San Martín trasladado— y por eso la tabla no se
+ * deriva: se consulta. Los otros trece meses sí coinciden.
+ *
+ * La carga del dueño NO se toca: la corrige el libro al leerla, con `debitoRealDePlan`.
  */
 export const VENCIMIENTO_PLAN = {
   '2026-01': '2026-01-16',
@@ -188,6 +199,53 @@ export function vencimientoPlan(mes) {
     fecha: diaHabilODespues(Number(mes.slice(0, 4)), Number(mes.slice(5, 7)), 16),
     confianza: 'supuesto',
     fuente: `regla de reserva (día 16 hábil) — la tabla verificada no cubre ${mes}`,
+  }
+}
+
+/**
+ * NÚCLEO PURO: la fecha en que ARCA DEBITA de verdad una cuota de plan cargada para el día `iso`.
+ *
+ * ═══ POR QUÉ EXISTE (06/08) ═══
+ *
+ * La cuota de agosto de dos planes está cargada en Compras al 16/08/2026, que es DOMINGO, y ARCA no
+ * debita fines de semana. El libro tomaba esa fecha tal cual y llevaba $2.968.642,73 al 16/08 mientras
+ * el calendario de "Impuestos y Financieros" —que sale de la tabla del organismo— los ponía el 18. Dos
+ * fechas para la misma plata, con dos días de diferencia, en el cuadro con el que se decide un pago.
+ *
+ * LOS DATOS DEL DUEÑO NO SE TOCAN. La corrección vive del lado del que LEE: Compras sigue diciendo lo
+ * que él cargó y el libro emite el movimiento en el día en que el débito ocurre.
+ *
+ * SÓLO FIN DE SEMANA, Y ES DELIBERADO. Una fecha cargada en día hábil que no coincide con la tabla es
+ * una decisión (o un dato que el OS no tiene) y manda la suya. Un débito automático en domingo no es
+ * una decisión: es imposible.
+ *
+ * @param {string} iso la fecha cargada, 'YYYY-MM-DD'
+ * @returns {{fecha:string, corregida:boolean, confianza:'verificado'|'supuesto'|'cargada', motivo:string}}
+ */
+export function debitoRealDePlan(iso) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(iso ?? ''))) {
+    throw new Error(`vencimientos-fiscales: fecha inválida "${iso}" (se espera YYYY-MM-DD). No invento un día de débito.`)
+  }
+  const dow = new Date(aUTC(iso)).getUTCDay()
+  if (dow !== 0 && dow !== 6) return { fecha: iso, corregida: false, confianza: 'cargada', motivo: 'la fecha cargada es día hábil' }
+  const mes = iso.slice(0, 7)
+  const tabla = VENCIMIENTO_PLAN[mes]
+  if (tabla) {
+    return {
+      fecha: tabla,
+      corregida: tabla !== iso,
+      confianza: 'verificado',
+      motivo: `${iso} cae ${dow === 0 ? 'domingo' : 'sábado'} y ARCA no debita: va al ${tabla} del calendario de ${FUENTE_VERIFICADA.organismo}`,
+    }
+  }
+  // Sin tabla se corre al lunes, y se corre la fecha QUE ÉL CARGÓ —no el día 16 de la regla de
+  // reserva—: si eligió otro día, el que no se sabe es el corrimiento, no el día.
+  const habil = diaHabilODespues(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)), Number(iso.slice(8, 10)))
+  return {
+    fecha: habil,
+    corregida: habil !== iso,
+    confianza: 'supuesto',
+    motivo: `${iso} cae ${dow === 0 ? 'domingo' : 'sábado'} y la tabla verificada no cubre ${mes}: se corre al hábil siguiente (${habil}), SIN feriados`,
   }
 }
 

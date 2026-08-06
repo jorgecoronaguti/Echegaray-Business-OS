@@ -58,7 +58,7 @@ import { rubroDeCaja, SIN_CLASIFICAR } from './rubro-caja.mjs'
 import { resolverColumnas, columnasObligatorias } from './compras-columnas.mjs'
 // EL LADO "COMPRAS" COMO FUENTE vive aparte desde el 06/08: sus rótulos los leen DOS consumidores
 // (este extractor y el cruce cheque↔factura) y tipearlos dos veces deja a uno leyendo índices viejos.
-import { columnasDeCompras, estaPagada, pendienteDeCompra, cuotasEnCheque } from './libro-extractores-compras.mjs'
+import { columnasDeCompras, estaPagada, pendienteDeCompra, cuotasEnCheque, fechaDeCajaDeCompra } from './libro-extractores-compras.mjs'
 import { INSTRUMENTOS, MARCA_ENDOSADO, COL_VALOR_BANCO, colMesDelAnio } from './cash-flow-lineas.mjs'
 // El default de `deChequesEmitidos` era un 20 escrito a mano y el registro se movió a la 27. El
 // llamador real (libro-movimientos-pestana) pasa el ancla viva; el default es para todos los demás.
@@ -122,12 +122,16 @@ export function deCompras(filas = [], corte = null, { aviso = (m) => console.war
   for (let i = 3; i < filas.length; i++) {
     const f = filas[i] ?? []
     const importe = num(f[c.importe])
-    const fecha = num(f[c.fechaCaja])
-    if (importe === null || fecha === null) continue // sin importe o sin fecha de caja no hay movimiento
+    const cargada = num(f[c.fechaCaja])
+    if (importe === null || cargada === null) continue // sin importe o sin fecha de caja no hay movimiento
     // Se tolera decoración alrededor de la palabra ("✅ Pagado"): se compara sólo lo alfabético.
     const pagado = estaPagada(f[c.estado])
     const tipo = txt(f[c.tipoPago]).toLowerCase()
     const rubro = txt(f[c.rubro])
+    // UNA CUOTA DE PLAN DE ARCA CARGADA EN FIN DE SEMANA SE DEBITA EL DÍA HÁBIL DEL CALENDARIO DEL
+    // ORGANISMO. Se corrige acá, al leer, y nunca en Compras: la carga del dueño no se toca.
+    const fecha = fechaDeCajaDeCompra({ serial: cargada, rubro, pagado },
+      (m) => aviso(`libro-extractores(Compras) fila ${i + 1}: ${m}`))
     // LA NÓMINA NO SALE DE ACÁ, Y NO ES UNA PREFERENCIA: son $30,5M de jornales tipeados a mano como
     // estimación y cinco sueldos de administración cargados en Compras que la planilla ya trae. El
     // CUADRO del cash flow lo resuelve poniendo esa línea en un grupo con `signo: 0` (memo); el libro,

@@ -462,3 +462,50 @@ test('COBRANZAS: el cliente del cobro es el mismo canónico que el del egreso', 
   assert.equal(ms[0].contraparte, 'LA ESTRELLA /ALIMENTOS DEL SUR SAS', 'el texto crudo no se pierde al canonizar')
   assert.equal(ms[1].cliente, 'San Francisco')
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LA CUOTA DE PLAN QUE VENCÍA UN DOMINGO (06/08)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Compras tiene dos cuotas de plan al 16/08/2026 —DOMINGO— por $2.968.642,73 (filas 478 y 725). ARCA
+// no debita fines de semana: su calendario las pone el 18/08, que es lo que muestra "Impuestos y
+// Financieros". El libro las llevaba al 16: la misma plata, dos fechas, dos días de diferencia.
+
+const DOM_16_AGO = serialDe(2026, 8, 16)
+const MAR_18_AGO = serialDe(2026, 8, 18)
+
+test('COMPRAS: una cuota de plan de ARCA cargada en DOMINGO se debita el día hábil del organismo', () => {
+  const ms = deCompras(compras([
+    ['ARCA', '', 'W303094 C1-1V', 2494875.65, 'Pendiente', 'Débito', 'Deuda previsional (planes de pago)', DOM_16_AGO, 'JUNIO Financiación - Cuota 1'],
+    ['ARCA', '', '', 473767.08, 'Proyectado', 'Transferencia', 'Deuda previsional (planes de pago)', DOM_16_AGO, 'Deuda Previcional - 931 Enero 26'],
+  ]), 46240, { aviso: () => {} })
+  const cuotas = ms.filter((m) => m.rubro === 'Deuda previsional (planes de pago)')
+  assert.equal(cuotas.length, 2)
+  for (const q of cuotas) {
+    assert.equal(q.fecha, MAR_18_AGO, `la cuota se debita el 18/08, no el ${isoDeSerial(q.fecha)}`)
+  }
+  // Es exactamente la plata que la pestaña de impuestos pone el 18/08.
+  assert.equal(Math.round(cuotas.reduce((a, q) => a + q.importe, 0) * 100) / 100, 2968642.73)
+})
+
+test('COMPRAS: la corrección de fin de semana NO alcanza a otro rubro ni a una cuota YA PAGADA', () => {
+  const ms = deCompras(compras([
+    // Un proveedor con fecha de sábado: es una estimación del dueño y manda la suya.
+    ['Prov SA', '', '', 500000, 'Pendiente', 'Transferencia', 'Materiales Civil', DOM_16_AGO, ''],
+    // Una cuota de mayo ya pagada un sábado: es un hecho consumado, moverlo desalinea la conciliación.
+    ['ARCA', '', '', 1034931.82, 'Pagado', 'Transferencia', 'Deuda previsional (planes de pago)', serialDe(2026, 5, 16), 'Deuda Previcional - 931 Dic 25'],
+  ]), 46240, { aviso: () => {} })
+  assert.equal(ms.find((m) => m.concepto === 'Prov SA').fecha, DOM_16_AGO, 'una compra a proveedor no se re-fecha')
+  const pagada = ms.find((m) => m.rubro === 'Deuda previsional (planes de pago)')
+  assert.equal(pagada.fecha, serialDe(2026, 5, 16), 'un pago ya ocurrido conserva SU fecha')
+})
+
+test('COMPRAS: una cuota de plan en día HÁBIL se respeta aunque no coincida con la tabla', () => {
+  // 16/09/2026 es miércoles y la tabla de ARCA también dice 16: acá se prueba que la puerta no se
+  // abre por "difiere de la tabla" sino sólo por "cae en fin de semana".
+  const jueves = serialDe(2026, 7, 16)
+  const ms = deCompras(compras([
+    ['ARCA', '', '', 473767.08, 'Pendiente', 'Transferencia', 'Deuda previsional (planes de pago)', jueves, ''],
+  ]), 46100, { aviso: () => {} })
+  assert.equal(ms.find((m) => m.rubro === 'Deuda previsional (planes de pago)').fecha, jueves)
+})

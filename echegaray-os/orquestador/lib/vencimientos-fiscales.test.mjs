@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {
   TERMINACION_CUIT, VENCIMIENTO_IVA, VENCIMIENTO_PLAN, IIBB_SUPUESTO, PRENDARIO_DIA,
   FUENTE_VERIFICADA, vencimientoIva, vencimientoIibb, vencimientoPlan, vencimientoPrendario,
-  diaHabilODespues, diasEntre, serialDe, calendario, enVentana, vencidos, cobertura,
+  diaHabilODespues, diasEntre, serialDe, calendario, enVentana, vencidos, cobertura, debitoRealDePlan,
 } from './vencimientos-fiscales.mjs'
 
 // ── LA TERMINACIÓN DEL CUIT ────────────────────────────────────────────────────────────────────────
@@ -82,28 +82,67 @@ test('IIBB: el día 16 es la moda de las presentaciones reales de _IIBB_RAW', ()
 
 // ── PLANES: LA DOBLE CONFIRMACIÓN ─────────────────────────────────────────────────────────────────
 
-test('planes: las fechas de ARCA coinciden con las fechas previstas cargadas en Compras', () => {
-  // Las quince cuotas reales de los tres planes, leídas de Compras (columna "Fecha prevista de pago"):
-  // 931 Dic 25 feb–jul · 931 Enero 26 mar–ago · W303094 ago–oct.
+test('planes: dónde coincide la carga de Compras con ARCA y dónde NO (medido fila por fila)', () => {
+  // Las quince cuotas reales de los tres planes, leídas de Compras el 06/08 (columna "Fecha prevista
+  // de pago"): 931 Dic 25 feb–jul (filas 389, 402, 417, 429, 443, 463) · 931 Enero 26 mar–ago (403,
+  // 418, 430, 444, 464, 478) · W303094 ago–oct (725, 726, 727). El dueño cargó el 18 en febrero y el
+  // día 16 en todos los demás meses.
+  //
+  // ESTE TEST DECÍA QUE COINCIDÍAN Y DABA MAYO POR EL 18: era falso, en Compras mayo es el 16. Las DOS
+  // discrepancias son el mismo caso —la fecha cargada cae en fin de semana— y las dos las corrige el
+  // libro al leer, nunca escribiendo en Compras.
   const enCompras = {
     '2026-02': '2026-02-18', '2026-03': '2026-03-16', '2026-04': '2026-04-16',
-    '2026-05': '2026-05-18', '2026-06': '2026-06-16', '2026-07': '2026-07-16',
-    '2026-08': '2026-08-16',
+    '2026-05': '2026-05-16', '2026-06': '2026-06-16', '2026-07': '2026-07-16',
+    '2026-08': '2026-08-16', '2026-09': '2026-09-16', '2026-10': '2026-10-16',
   }
+  // 16/05/2026 es sábado; 16/08/2026 es domingo y el 17 es el feriado de San Martín trasladado, así
+  // que ARCA corre las dos al 18.
+  const discrepan = { '2026-05': '2026-05-18', '2026-08': '2026-08-18' }
   for (const [mes, fechaCompras] of Object.entries(enCompras)) {
     const v = vencimientoPlan(mes)
-    if (mes === '2026-08') {
-      // LA ÚNICA DISCREPANCIA, Y ES DEL LADO DE COMPRAS: el 16/08/2026 es domingo y el 17 es feriado
-      // (San Martín), así que ARCA lo corre al martes 18. La carga administrativa puso el 16 igual.
-      // No se "arregla" Compras desde acá: se declara, y manda la fecha del organismo.
-      assert.equal(fechaCompras, '2026-08-16')
-      assert.equal(v.fecha, '2026-08-18')
-    } else {
-      assert.equal(v.fecha, fechaCompras, `cuota de ${mes}`)
-    }
-    assert.equal(v.confianza, 'verificado')
+    assert.equal(v.fecha, discrepan[mes] ?? fechaCompras, `cuota de ${mes}`)
+    // Octubre no está en la tabla verificada: sale por la regla de reserva, y se dice.
+    assert.equal(v.confianza, VENCIMIENTO_PLAN[mes] ? 'verificado' : 'supuesto')
   }
-  assert.equal(VENCIMIENTO_PLAN['2026-09'], '2026-09-16')
+  assert.equal(Object.keys(discrepan).length, 2, 'si aparece una tercera discrepancia hay que mirarla')
+})
+
+test('planes: una cuota cargada en fin de semana se debita el día hábil de ARCA', () => {
+  // ARCA no debita sábados ni domingos. La fecha cargada por el dueño no se toca en Compras: la
+  // corrige el que lee. Sin esto el libro llevaba $2.968.642,73 al domingo 16/08.
+  const dom = debitoRealDePlan('2026-08-16')
+  assert.equal(dom.fecha, '2026-08-18')
+  assert.equal(dom.corregida, true)
+  assert.equal(dom.confianza, 'verificado')
+  assert.match(dom.motivo, /domingo/)
+  const sab = debitoRealDePlan('2026-05-16')
+  assert.equal(sab.fecha, '2026-05-18')
+  assert.match(sab.motivo, /sábado/)
+})
+
+test('planes: una fecha en DÍA HÁBIL manda sobre la tabla — la puerta la abre el fin de semana', () => {
+  // 16/07/2026 es jueves: coincide con la tabla y no se toca. Y si el dueño cargara un hábil que NO
+  // coincide, tampoco: una fecha hábil es una decisión suya, un débito en domingo es imposible.
+  for (const iso of ['2026-07-16', '2026-09-16', '2026-10-16', '2026-08-25']) {
+    const r = debitoRealDePlan(iso)
+    assert.equal(r.fecha, iso, iso)
+    assert.equal(r.corregida, false)
+  }
+})
+
+test('planes: un fin de semana fuera de la tabla verificada se corre al lunes, marcado supuesto', () => {
+  // 2027 no está tabulado. Se corre la fecha QUE ÉL CARGÓ, no el día 16 de la regla de reserva: lo
+  // que no se sabe es el corrimiento, no el día que él eligió. Y sin feriados, que se declara.
+  const r = debitoRealDePlan('2027-05-16') // domingo
+  assert.equal(r.fecha, '2027-05-17')
+  assert.equal(r.confianza, 'supuesto')
+  assert.match(r.motivo, /SIN feriados/)
+})
+
+test('planes: una fecha mal formada ROMPE — no se inventa un día de débito', () => {
+  assert.throws(() => debitoRealDePlan('16/08/2026'), /fecha inválida/)
+  assert.throws(() => debitoRealDePlan(null), /fecha inválida/)
 })
 
 // ── PRENDARIO ─────────────────────────────────────────────────────────────────────────────────────
