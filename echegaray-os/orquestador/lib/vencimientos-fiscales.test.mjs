@@ -21,7 +21,8 @@ test('IVA: las doce fechas verificadas de 2026, período por período', () => {
   // Fuente: ARCA, Agenda de vencimientos, terminación 2-3, consultada el 06/08/2026.
   const esperado = {
     '2025-12': '2026-01-20', '2026-01': '2026-02-19', '2026-02': '2026-03-19', '2026-03': '2026-04-21',
-    '2026-04': '2026-05-19', '2026-05': '2026-06-19', '2026-06': '2026-07-21', '2026-07': '2026-08-19',
+    // 2026-07 al 20/08: zanjado por el dueño (06/08/2026) contra el 19 que decía la tabla.
+    '2026-04': '2026-05-19', '2026-05': '2026-06-19', '2026-06': '2026-07-21', '2026-07': '2026-08-20',
     '2026-08': '2026-09-21', '2026-09': '2026-10-20', '2026-10': '2026-11-19', '2026-11': '2026-12-21',
   }
   assert.deepEqual(VENCIMIENTO_IVA, esperado)
@@ -40,12 +41,13 @@ test('IVA: la regla "día 19 hábil" NO reproduce la tabla — por eso se tabula
     return m === 12 ? diaHabilODespues(a + 1, 1, 19) : diaHabilODespues(a, m + 1, 19)
   }
   const discrepan = Object.entries(VENCIMIENTO_IVA).filter(([p, f]) => regla(p) !== f).map(([p]) => p)
-  assert.deepEqual(discrepan, ['2025-12', '2026-03', '2026-06', '2026-09'])
+  // 2026-07 discrepa desde que el dueño zanjó el 20/08 (la regla daría el 19, que es miércoles hábil).
+  assert.deepEqual(discrepan, ['2025-12', '2026-03', '2026-06', '2026-07', '2026-09'])
   assert.equal(regla('2025-12'), '2026-01-19')  // ARCA dice 20/01, y el 19 es lunes hábil
   assert.equal(regla('2026-03'), '2026-04-20')  // ARCA dice 21/04
   assert.equal(regla('2026-09'), '2026-10-19')  // ARCA dice 20/10, y el 19 es lunes hábil
-  // Y las ocho que sí coinciden no la salvan: una regla que erra el 33% de las fechas de pago no sirve.
-  assert.equal(discrepan.length, 4)
+  // Y las que sí coinciden no la salvan: una regla que erra el 40% de las fechas de pago no sirve.
+  assert.equal(discrepan.length, 5)
 })
 
 test('IVA: fuera de la tabla verificada, la fecha sale marcada como supuesto', () => {
@@ -190,7 +192,7 @@ test('el calendario ordena por fecha y marca lo vencido contra el corte', () => 
   assert.deepEqual(c.map((x) => x.fecha), [
     '2026-07-16', // IIBB de junio — YA VENCIÓ
     '2026-08-18', // plan de agosto
-    '2026-08-19', // IVA de julio
+    '2026-08-20', // IVA de julio (el 20: zanjado por el dueño, 06/08)
     '2026-09-07', // prendario de septiembre
     '2026-09-16', // plan de septiembre
   ])
@@ -211,8 +213,8 @@ test('cada fila del calendario lleva SU celda: el importe sale de la fuente viva
 test('las ventanas 30/60/90 son acumuladas y excluyen lo vencido', () => {
   const c = calendario(OBLIG, { hoy: '2026-08-06' })
   // El prendario del 07/09 queda AFUERA de los 30 días: son 32. El límite es exacto, no "el mes que viene".
-  assert.deepEqual(enVentana(c, 30).map((x) => x.fecha), ['2026-08-18', '2026-08-19'])
-  assert.deepEqual(enVentana(c, 60).map((x) => x.fecha), ['2026-08-18', '2026-08-19', '2026-09-07', '2026-09-16'])
+  assert.deepEqual(enVentana(c, 30).map((x) => x.fecha), ['2026-08-18', '2026-08-20'])
+  assert.deepEqual(enVentana(c, 60).map((x) => x.fecha), ['2026-08-18', '2026-08-20', '2026-09-07', '2026-09-16'])
   assert.equal(enVentana(c, 90).length, 4)
   // Lo vencido NO entra en ninguna ventana: es riesgo, no proyección.
   assert.ok(!enVentana(c, 90).some((x) => x.vencido))

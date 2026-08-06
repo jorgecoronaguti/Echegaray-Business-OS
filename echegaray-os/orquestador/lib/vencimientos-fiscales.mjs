@@ -61,7 +61,11 @@ export const VENCIMIENTO_IVA = {
   '2026-04': '2026-05-19',
   '2026-05': '2026-06-19',
   '2026-06': '2026-07-21',
-  '2026-07': '2026-08-19',
+  // JULIO VENCE EL 20, NO EL 19. La tabla decía 19/08 (terminación 3) y la nota manual del dueño en
+  // la pestaña decía 20/08. Zanjado por el dueño, textual (06/08/2026): "el 20". Su dato manda: él
+  // mira la agenda fiscal real, y una tabla que le discute al que paga es la clase de error que hace
+  // desconfiar del calendario entero.
+  '2026-07': '2026-08-20',
   '2026-08': '2026-09-21',
   '2026-09': '2026-10-20',
   '2026-10': '2026-11-19',

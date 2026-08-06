@@ -43,7 +43,7 @@
 // definición de "lo que sale en los próximos 30 días" — exactamente la enfermedad que el libro vino a
 // curar (ver lib/libro-sumas.mjs). Si mañana el libro suma una columna, cambia un archivo.
 
-import { terminoLibro, formulaLibro } from './libro-sumas.mjs'
+import { terminoLibro } from './libro-sumas.mjs'
 
 /**
  * LOS ESTADOS QUE TODAVÍA NO PASARON POR EL BANCO.
@@ -116,14 +116,20 @@ export function tarjetas(ref) {
     },
     {
       clave: 'comprometida',
-      rotulo: 'CAJA COMPROMETIDA',
-      // MAGNITUD Y NO NETO: lo comprometido se lee como "cuánto debo", un número positivo. Con `neto`
-      // saldría en negativo por el signo del egreso y la tarjeta diría "-$43.380.472 comprometidos",
-      // que se lee como si la deuda fuera a favor.
-      valor: formulaLibro({ signo: -1, estados: NO_REAL, hasta: 'EOMONTH(TODAY();0)+1', medida: 'magnitud' }),
-      // En millones: "de eso $37.560.513 vence antes del 13/08" medía 40 caracteres y la columna
-      // admite 38 (auditor de pantalla, 06/08).
-      contexto: `="$"&TEXT(${venceEn7}/1000000;"#,##0.0")&"M vencen antes del "&${dia('TODAY()+7')}`,
+      rotulo: 'CAJA COMPROMETIDA · 7 DÍAS',
+      // ═══ LA VENTANA ES DE 7 DÍAS, NO DEL MES — LAS TEMPORALIDADES (5ª directiva, 06/08) ═══
+      //
+      // Con la ventana a fin de mes la tarjeta decía $46,8M contra $45,9M disponibles y el dueño la
+      // rechazó, textual: "no puede ser q caja disponible sea menos q comprometida. estan tomandose
+      // mal las temporalidades". Tenía razón en la ventana: la mitad de esas obligaciones vencen
+      // DESPUÉS de las cobranzas del 14, 15 y 28 — se pagan con esa plata, no con la de hoy. Netear
+      // pagos de fin de mes contra la caja de hoy compara dos momentos distintos.
+      //
+      // El titular es lo que vence ANTES de que entre plata nueva — 7 días, la ventana corta que la
+      // caja de HOY sí tiene que cubrir, con lo vencido impago adentro (sin `desde`). El mes completo
+      // no se esconde: queda en el contexto. MAGNITUD y no neto: "cuánto debo" es positivo.
+      valor: `=${venceEn7}`,
+      contexto: `="todo el mes: "&TEXT(${terminoLibro({ signo: -1, estados: NO_REAL, hasta: 'EOMONTH(TODAY();0)+1', medida: 'magnitud' })}/1000000;"$#,##0.0")&"M"`,
       especie: 'plata',
     },
     {
@@ -154,13 +160,17 @@ export function tarjetas(ref) {
       // La pregunta correcta de tesorería es: ¿cuánto puedo usar HOY sin que NINGÚN día del
       // recorrido quede al descubierto? Y esa respuesta ya vive en la pestaña: es el PISO de la
       // escalera — el mínimo al que llega la posición acumulada día a día, cobranzas y pagos en su
-      // fecha. La tarjeta lo REFERENCIA (regla de siempre: ninguna cuenta nueva); se toma el MIN de
-      // las dos puntas de la fila de cierre ($H = peor caso con los cheques de cobertura incierta
-      // restados, $I = mínimo simple) — el mismo criterio con el que la propia fila elige su rótulo.
+      // fecha. La tarjeta lo REFERENCIA (regla de siempre: ninguna cuenta nueva).
+      //
+      // EL MÍNIMO SIMPLE ($I), NO EL PEOR CASO ($H) — 5ª directiva (06/08). El peor caso le resta
+      // $22,6M de cheques de cobertura incierta y la tarjeta decía $7,4M donde el recorrido medido
+      // daba $29,7M: el titular es lo MEDIDO con cada cobro y pago en su fecha. La incertidumbre de
+      // esos cheques no desaparece — la sigue vigilando la fila "⇒ Peor caso · piso" de la escalera
+      // y su alerta, que es donde un escenario pertenece.
       //
       // Depende de que lo proyectado se cumpla, y el contexto LO DICE ("cobrando lo proyectado"):
       // sin esa cláusula el número se leería como plata garantizada, que es el error más caro.
-      valor: `=MIN(N(${ref.piso});N(${ref.pisoSimple}))`,
+      valor: `=N(${ref.pisoSimple})`,
       contexto: `="piso el "&${dia(ref.pisoFecha)}&" · cobrando lo proyectado"`,
       especie: 'plata',
     },
