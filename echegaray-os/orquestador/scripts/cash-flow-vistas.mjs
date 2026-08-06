@@ -56,12 +56,16 @@ async function refsDeCaja(google) {
 
 /** Asegura que la pestaña exista y tenga sitio para lo que se va a escribir. NUNCA la achica. */
 async function asegurarHoja(google, titulo, { filas, cols }) {
-  let hoja = hallarPestana(await google.getSheetMeta(ID), titulo)
+  // `hallarPestana` TIRA cuando la pestaña no existe — no devuelve null. En el arranque en frío
+  // (_PRESUPUESTO_MENSUAL todavía sin crear) eso rompía el --dry y habría roto la corrida real.
+  const buscar = (hojas) => { try { return hallarPestana(hojas, titulo) } catch { return null } }
+  let hoja = buscar(await google.getSheetMeta(ID))
+  if (!hoja && DRY) { console.log(`  ✚ (--dry) la pestaña ${titulo} no existe: se crearía en la corrida real`); return null }
   if (!hoja) {
     await google.spreadsheetBatchUpdate(ID, [{
       addSheet: { properties: { title: titulo, gridProperties: { rowCount: filas, columnCount: cols, frozenRowCount: 2 } } },
     }])
-    hoja = hallarPestana(await google.getSheetMeta(ID), titulo)
+    hoja = buscar(await google.getSheetMeta(ID))
     console.log(`  ✚ creé la pestaña ${titulo}`)
     return hoja
   }
@@ -72,7 +76,7 @@ async function asegurarHoja(google, titulo, { filas, cols }) {
     await google.spreadsheetBatchUpdate(ID, [{
       updateSheetProperties: { properties: { sheetId: hoja.sheetId, gridProperties: props }, fields: Object.keys(props).map((k) => `gridProperties.${k}`).join(',') },
     }])
-    hoja = hallarPestana(await google.getSheetMeta(ID), titulo)
+    hoja = buscar(await google.getSheetMeta(ID))
   }
   return hoja
 }
@@ -83,6 +87,7 @@ async function asegurarHoja(google, titulo, { filas, cols }) {
  */
 async function rehacerPresupuesto(google) {
   const hoja = await asegurarHoja(google, PESTANA_PRESUPUESTO, { filas: 40, cols: ANCHO_PRESUPUESTO })
+  if (!hoja && DRY) { console.log(`${PESTANA_PRESUPUESTO}: se crearía vacía · 0/12 meses con presupuesto cargado`); return { cargados: 0, hoja: null } }
   // Sin `UNFORMATTED_VALUE` un importe cargado vuelve como "$ 1.234" (texto) y se re-escribiría como
   // texto. `mesDeCelda` acepta las dos formas de la columna A justamente porque de esto depende no
   // perder lo cargado.
