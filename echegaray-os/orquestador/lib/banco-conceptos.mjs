@@ -40,7 +40,9 @@ export function conceptoCompatible(a, b) {
  * si no, el mismo movimiento anotado deja de parecerse al que trae la descarga siguiente.
  */
 export const numeroAnotado = (concepto) => {
-  const t = String(concepto ?? '').match(/n[ºo°]\s*0*(\d+)/i)
+  // La "n" tiene que abrir palabra: "canje interNO 24hs" no es una anotación, y leerle un "24" hacía
+  // que el depósito de $290.000 del 04/08 exigiera referencia 24 y quedara huérfano en la conciliación.
+  const t = String(concepto ?? '').match(/(?:^|[^\p{L}])n[ºo°]\.?\s*0*(\d+)/iu)
   return t ? t[1] : null
 }
 

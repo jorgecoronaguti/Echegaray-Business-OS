@@ -33,6 +33,16 @@ test('numeroAnotado lee el número que el OS anotó, con Nº / No / N° y sin lo
   assert.equal(numeroAnotado(null), null)
 })
 
+test('numeroAnotado NO lee un número dentro de una palabra: "canje interno 24hs" no anota nada', () => {
+  // El defecto real del 06/08: "Deposito echeq canje interno 24hs" devolvía "24" y el emparejador
+  // exigía referencia 24 — la fila del depósito de $290.000 quedaba huérfana y el plan no cerraba.
+  assert.equal(numeroAnotado('Deposito echeq canje interno 24hs'), null)
+  assert.equal(numeroAnotado('Echeq canje interno recibido 24hs'), null)
+  assert.equal(numeroAnotado('Canje interno recibido 24 hs'), null)
+  // La anotación de verdad sigue leyéndose aunque venga pegada a otra cosa por un guión.
+  assert.equal(numeroAnotado('Echeq clearing recibido 48hs - Nº 307'), '307')
+})
+
 // El trío que DISCRIMINA la regla del representante: `largo` y `otro` no son compatibles entre sí
 // (difieren en el final), pero los dos lo son con `corto`. Sólo comparando contra el más corto caen
 // juntos. Un trío de prefijos encadenados (a → ab → abc) NO sirve de prueba: da un solo grupo con
