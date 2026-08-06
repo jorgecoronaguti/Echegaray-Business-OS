@@ -242,18 +242,42 @@ export function rotuloAlDia(texto, expr, { sinDato = '⚠ sin datos cargados', a
  * @param {{avisoDias?:number, cola?:string}} [opts]
  * @returns {string} fórmula con `=`
  */
-export function rotuloPorFuente(texto, fuentes = [], { avisoDias = DIAS_AVISO, cola = '' } = {}) {
+export function rotuloPorFuente(texto, fuentes = [], { avisoDias = DIAS_AVISO, cola = '', compacto = false } = {}) {
   const xs = (fuentes || []).filter((f) => f && f.nombre && f.expr)
   // Igual que `formulaFrescuraDe`: sin fuentes el que falta es el código, no el dato. Un rótulo que
   // dijera "sin datos" por un arreglo vacío sería una afirmación falsa sobre la empresa.
   if (!xs.length) throw new Error('rotuloPorFuente: sin fuentes no hay frescura que declarar')
-  const trozo = ({ nombre, expr, avisoDias: dias = avisoDias }) => {
-    const atraso = `TODAY()-${expr}`
-    const aviso = `IF(${atraso}>${dias};" ⚠ hace "&TEXT(${atraso};"0")&" días";"")`
-    return `IF(${expr}=0;${literal(`${nombre} sin datos`)};${literal(`${nombre} al `)}&TEXT(${expr};"dd/mm")&${aviso})`
-  }
   const fin = cola ? `&" · "&${literal(cola)}` : ''
-  return `=${literal(`${texto} · `)}&${xs.map(trozo).join('&" · "&')}${fin}`
+  // ═══ COMPACTO: CADA EXPRESIÓN UNA SOLA VEZ, DENTRO DE UN LET (06/08) ═══
+  //
+  // El dueño, mirando "Impuestos y Financieros": *"no la fórmula de 4.500 caracteres"*. Y tenía razón
+  // —la celda A2 medía eso— pero el arreglo obvio (una sola fecha, la mínima o la máxima) está
+  // PROHIBIDO acá y con motivo: esta pestaña cruza fuentes vivas (ARCA, el extracto) con congeladas
+  // (las DDJJ de PDF), y una sola fecha le presta la frescura de la viva a la congelada.
+  //
+  // El largo no venía de declarar cuatro fuentes: venía de que cada expresión aparecía CUATRO veces
+  // (el =0, el TEXT, y dos en el aviso de atraso). La de IIBB sola pesa 250 caracteres, así que se
+  // escribía 1.000. Con LET se evalúa una vez y se nombra. Mismo texto, mismo aviso, mismas cuatro
+  // fuentes declaradas por separado — 80% menos celda.
+  //
+  // LOS NOMBRES NO PUEDEN PARECER UNA REFERENCIA A1 (`f1` sería la celda F1 y Sheets devuelve #NAME?),
+  // así que llevan una letra al final: `fa`, `fb`… Es la trampa que ya costó una pestaña entera.
+  if (!compacto) {
+    const trozo = ({ nombre, expr, avisoDias: dias = avisoDias }) => {
+      const atraso = `TODAY()-${expr}`
+      const aviso = `IF(${atraso}>${dias};" ⚠ hace "&TEXT(${atraso};"0")&" días";"")`
+      return `IF(${expr}=0;${literal(`${nombre} sin datos`)};${literal(`${nombre} al `)}&TEXT(${expr};"dd/mm")&${aviso})`
+    }
+    return `=${literal(`${texto} · `)}&${xs.map(trozo).join('&" · "&')}${fin}`
+  }
+  const nombreDe = (i) => `fx${String.fromCharCode(97 + i)}`
+  const declaraciones = xs.map((f, i) => `${nombreDe(i)};${f.expr}`).join(';')
+  const trozo = ({ nombre, avisoDias: dias = avisoDias }, i) => {
+    const v = nombreDe(i)
+    const aviso = `IF(TODAY()-${v}>${dias};" ⚠ hace "&TEXT(TODAY()-${v};"0")&" días";"")`
+    return `IF(${v}=0;${literal(`${nombre} sin datos`)};${literal(`${nombre} al `)}&TEXT(${v};"dd/mm")&${aviso})`
+  }
+  return `=LET(${declaraciones};${literal(`${texto} · `)}&${xs.map(trozo).join('&" · "&')}${fin})`
 }
 
 /**

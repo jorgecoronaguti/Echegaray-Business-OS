@@ -278,6 +278,52 @@ export function filasReferenciadas(formulas = [], pestana = 'Impuestos y Financi
 }
 
 /**
+ * ¿ESTÁN LOS DOS RÓTULOS DEL CONTRATO, UNA SOLA VEZ CADA UNO, EN LA GRILLA QUE SE VA A ESCRIBIR? PURA.
+ *
+ * ═══ POR QUÉ HACÍA FALTA (06/08) ═══
+ *
+ * `contratoDeFilas` (abajo) protegía el consumo POR NÚMERO DE FILA, que era como los cash flow leían
+ * esta pestaña. Ese consumo se terminó: hoy CERO celdas de "Cash Flow Mensual", "Cash Flow Semanal" y
+ * "CAJA" referencian "Impuestos y Financieros" por fórmula. Con la lista de referencias vacía,
+ * `contratoDeFilas` cae siempre en la rama "ningún cash flow referencia esta pestaña todavía → ok",
+ * y la guarda más cara del generador —dos lecturas de A1:BZ60 por corrida— pasaba SIEMPRE.
+ *
+ * El consumo real se mudó a JavaScript y es POR RÓTULO, en cinco lugares: `caja-refs`,
+ * `libro-movimientos-pestana`, `cash-flow-rehacer`, `conciliar-caja-vs-cashflow` y `cash-flow-mapa`.
+ * Los cinco buscan el texto exacto en la columna A y los cinco rompen si no lo encuentran. Entonces
+ * lo que hay que proteger no es la FILA: es que el TEXTO exista y sea único.
+ *
+ * Un rótulo DUPLICADO es tan malo como uno faltante y no rompe a nadie: los cinco consumidores usan
+ * `findIndex`, así que se quedarían con la primera aparición — que puede ser el hero, una nota o un
+ * bloque de control — y leerían doce meses de otra cosa sin un solo error.
+ *
+ * @param {Array<Array>} filas la grilla que se va a escribir
+ * @param {{iva:string, iibb:string}} rotulos los del contrato (CALENDARIO_IMPUESTOS.rotulos)
+ * @returns {{ok:boolean, motivo:string, destino:{iva:number|null, iibb:number|null}}}
+ */
+export function contratoDeRotulos(filas = [], rotulos = {}) {
+  const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase()
+  const donde = (rot) => filas.reduce((a, f, i) => (norm(f?.[0]) === norm(rot) ? [...a, i + 1] : a), [])
+  const problemas = []
+  const destino = { iva: null, iibb: null }
+  for (const [clave, rot] of Object.entries(rotulos)) {
+    const hits = donde(rot)
+    if (hits.length === 0) problemas.push(`"${rot}" no aparece en la columna A`)
+    else if (hits.length > 1) problemas.push(`"${rot}" aparece ${hits.length} veces (filas ${hits.join(', ')}): los consumidores toman la primera`)
+    else destino[clave] = hits[0]
+  }
+  if (problemas.length) {
+    return {
+      ok: false,
+      destino,
+      motivo: `${problemas.join(' · ')}. Cinco consumidores ubican estas dos filas POR TEXTO; sin el texto `
+        + 'exacto y único, el IVA/IIBB a pagar vale $0 y el piso de caja sube sin que se haya pagado nada.',
+    }
+  }
+  return { ok: true, destino, motivo: `los dos rótulos del calendario fiscal están una sola vez (filas ${destino.iva} y ${destino.iibb})` }
+}
+
+/**
  * ¿Puede escribirse la pestaña sin romper lo que los cash flow ya referencian? PURA.
  *
  * @param {number[]} referenciadas las filas que los cash flow leen hoy

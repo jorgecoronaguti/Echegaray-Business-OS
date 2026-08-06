@@ -62,6 +62,7 @@ import { INSTRUMENTOS, MARCA_ENDOSADO, COL_VALOR_BANCO, colMesDelAnio } from './
 import { FILA_DATO0 as FILA_DATO0_CHEQUES } from './cheques-emitidos-geometria.mjs'
 import { MARCAS } from './cheques-cobertura.mjs'
 import { EN_CARTERA } from './cartera-cheques.mjs'
+import { vencimientoIva, vencimientoIibb, serialDe } from './vencimientos-fiscales.mjs'
 import { COL as COL_RAW, FILA0 as FILA0_RAW, PESTAÑA as PESTANA_RAW } from '../scripts/cheques-raw-pestana.mjs'
 import { finDeMes } from './libro-extractores-fechas.mjs'
 import { RUBRO_JORNALES, RUBRO_ADMINISTRACION } from './libro-extractores-nomina.mjs'
@@ -464,7 +465,19 @@ export function deImpuestosCalendario(filas = [], { filaIva, filaIibb } = {}, an
     for (let m = 1; m <= 12; m++) {
       const importe = num(f[m]) // B..M = índices 1..12 = meses 1..12
       if (!importe) continue
-      const fecha = finDeMes(anio, m) + 20
+      // ═══ LA FECHA DE VENCIMIENTO REAL, NO "FIN DE MES + 20" (06/08) ═══
+      //
+      // El +20 era la ÚNICA noción de vencimiento fiscal de todo el OS, repetida en tres archivos, y
+      // no distinguía impuesto ni terminación de CUIT. Ahora el calendario existe y está verificado
+      // contra ARCA para el IVA (terminación 3 → día 19, con cuatro corrimientos que ninguna regla
+      // reproduce) y declarado como supuesto para el IIBB de San Juan (día 16, la moda de las seis
+      // presentaciones reales de _IIBB_RAW).
+      //
+      // A escala mensual el cambio es neutro —el +20 y las fechas reales (16 a 21) caen siempre en el
+      // mismo mes, así que ninguna conciliación mensual se mueve— pero el calendario semanal de CAJA
+      // y el "próximo vencimiento" del hero pasan a apuntar al día correcto en vez de al día 20.
+      const periodo = `${anio}-${String(m).padStart(2, '0')}`
+      const fecha = serialDe((clave === 'IVA' ? vencimientoIva(periodo) : vencimientoIibb(periodo)).fecha)
       out.push(movimiento({
         fecha,
         signo: SALE,

@@ -91,6 +91,59 @@ test('un ledger crudo al final es la única excepción al ancho único', () => {
   assert.ok(auditarPatron(f).some((x) => x.regla === 'anchos-mezclados'))
 })
 
+// ── LA EXCEPCIÓN 2: EL BLOQUE DE POSICIÓN, ARRIBA ────────────────────────────────────────────────
+//
+// "Impuestos y Financieros" abre con un calendario de vencimientos (fecha + importe) y una posición
+// de financiamiento (límite, tomado, disponible) antes de su cuadro de doce meses. Ninguno de los dos
+// tiene doce columnas ni tiene por qué tenerlas: forzarlos sería inventar diez celdas vacías por fila
+// para que el auditor esté contento. La excepción se admite ARRIBA y sólo hacia ANGOSTO.
+
+/** Una pestaña que abre con bloques de posición angostos y sigue con su cuadro mensual. */
+const conPosicion = () => [
+  ['Impuestos y financiero'],
+  ['Qué se le debe al fisco · IVA de ARCA al 30/07 · IIBB al 30/06'],
+  [],
+  ['LA POSICIÓN AL 06/08', 'Monto'],
+  [total('IMPUESTOS A FAVOR'), 7973348],
+  [],
+  [seccion(1, 'Calendario de vencimientos')],
+  ['Fecha y concepto', 'Importe'],
+  ['19/08 · IVA · DDJJ F.2051', 14820368],
+  [],
+  [seccion(2, 'Financiamiento')],
+  ['Línea de financiamiento', 'Límite', 'Tomado', 'Disponible'],
+  ['Acuerdo en descubierto', 18200000, 0, 18200000],
+  [],
+  [seccion(3, 'IVA — la DDJJ oficial'), '', '', '', '', ''],
+  ['Concepto', 'ene', 'feb', 'mar', 'abr', 'Total'],
+  ['Débito fiscal del período', 1, 2, 3, 4, 10],
+]
+
+test('los bloques de POSICIÓN arriba pueden ser más angostos que el cuadro', () => {
+  assert.deepEqual(auditarPatron(conPosicion()).filter((x) => x.regla === 'anchos-mezclados'), [])
+})
+
+test('pero un cuadro angosto DESPUÉS del mensual sigue siendo descuadre', () => {
+  const f = conPosicion()
+  f.push([], [seccion(4, 'Otro cuadro')], ['Concepto', 'jul', 'ago'])
+  const m = auditarPatron(f).find((x) => x.regla === 'anchos-mezclados')
+  assert.ok(m, 'un ancho nuevo en el medio del detalle no es posición: es un cuadro que no se puso de acuerdo')
+})
+
+test('y un ancho de la posición que REAPARECE abajo pierde el perdón', () => {
+  // Si el mismo ancho angosto vuelve a aparecer después del cuadro, no era la posición: era un
+  // formato que se coló en dos lados. El perdón se retira entero, no sólo para la de abajo.
+  const f = conPosicion()
+  f.push([], [seccion(4, 'Un cuadro de dos columnas más abajo')], ['Fecha y concepto', 'Importe'])
+  assert.ok(auditarPatron(f).some((x) => x.regla === 'anchos-mezclados'))
+})
+
+test('un bloque MÁS ANCHO arriba no es posición: sólo se perdona hacia angosto', () => {
+  const f = conPosicion()
+  f.splice(6, 0, ['Régimen', 'a', 'b', 'c', 'd', 'e', 'f', 'g'])
+  assert.ok(auditarPatron(f).some((x) => x.regla === 'anchos-mezclados'))
+})
+
 test('un nombre en versalita con importes al lado es un dato, no un título de bloque', () => {
   const f = buena(); f.push(['PEDRO TELLO', 1234567, 'Compras'])
   assert.ok(!auditarPatron(f).some((x) => x.regla === 'bloque-sin-numero'))

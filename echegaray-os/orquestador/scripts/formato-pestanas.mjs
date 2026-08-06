@@ -65,7 +65,11 @@ export const PESTANAS = [
   { titulo: 'Jornales por Quincena', congeladas: 2, hastaFila: 90, cols: 13, propio: true },
   { titulo: 'Cargas Sociales', congeladas: 0, hastaFila: 120, cols: 16 },
   // Piel de statement PROPIA (su generador aplica estilo-statement); el formateador general la saltea.
-  { titulo: 'Impuestos y Financieros', congeladas: 1, hastaFila: 90, cols: 12, propio: true },
+  // congeladas 2 (era 1) y cols 15 (era 12): la entrada estaba desalineada del generador, que escribe
+  // ANCHO=15 (A..O) y congela hasta el subtítulo. Con cols:12 el auditor de pantalla ni miraba la
+  // columna del total (N) ni la de procedencia (O) — o sea, no auditaba justo donde vive el número
+  // que se lee. hastaFila 130: la pestaña pasó de 69 filas a ~105 con la posición y el calendario.
+  { titulo: 'Impuestos y Financieros', congeladas: 2, hastaFila: 130, cols: 15, propio: true },
   { titulo: 'Recurrentes', congeladas: 4, hastaFila: 90, cols: 20 },
   { titulo: 'Estructura', congeladas: 6, hastaFila: 90, cols: 20 },
   // La vieja "Proveedores y Materiales" se partió el 21/07: eran ocho tablas sobre las mismas

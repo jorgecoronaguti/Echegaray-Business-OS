@@ -273,13 +273,27 @@ const impuestos = () => {
   return filas
 }
 
-test('IMPUESTOS: el vencimiento es fin de mes del período + 20 días — enero vence el 20/02', () => {
+test('IMPUESTOS: el vencimiento sale del calendario REAL, no de "fin de mes + 20"', () => {
+  // ═══ CAMBIO DE CONTRATO DECLARADO (06/08) ═══
+  //
+  // Este test decía "enero vence el 20/02" y fijaba la regla `finDeMes + 20`, que era la única noción
+  // de vencimiento fiscal del OS: sin impuesto, sin terminación de CUIT, sin fuente. Ahora existe
+  // `lib/vencimientos-fiscales.mjs` con la tabla de ARCA para la terminación 3 (CUIT 30-71630464-3),
+  // consultada el 06/08/2026, y el IVA de enero vence el 19/02 — no el 20.
+  //
+  // El test no se "ajustó para que pase": se reescribió porque el contrato cambió a propósito, y
+  // ahora fija el contrato NUEVO, que es más fuerte (IVA e IIBB vencen días distintos).
   const ms = deImpuestosCalendario(impuestos(), { filaIva: 18, filaIibb: 19 }, 2026, serialDe(2026, 8, 5))
   const enero = ms.find((m) => /IVA.*01\/2026/.test(m.concepto))
-  assert.equal(isoDeSerial(enero.fecha), '2026-02-20')
+  assert.equal(isoDeSerial(enero.fecha), '2026-02-19', 'IVA ene-26, terminación 2-3, verificado contra ARCA')
+  // EL IIBB NO VENCE EL MISMO DÍA QUE EL IVA, y con el +20 vencían los dos el 20. El día 16 de IIBB
+  // es SUPUESTO (la DGR San Juan no se pudo verificar): sale de las presentaciones reales de _IIBB_RAW.
+  const iibbEne = ms.find((m) => /IIBB.*01\/2026/.test(m.concepto))
+  assert.equal(isoDeSerial(iibbEne.fecha), '2026-02-16')
   // Y diciembre vence en ENERO DEL AÑO SIGUIENTE, que es el caso que un mes+1 ingenuo rompe.
+  // 2026-12 está fuera de la tabla verificada → regla de reserva: día 19 hábil = martes 19/01/2027.
   const dic = ms.find((m) => /IVA.*12\/2026/.test(m.concepto))
-  assert.equal(isoDeSerial(dic.fecha), '2027-01-20')
+  assert.equal(isoDeSerial(dic.fecha), '2027-01-19')
   assert.equal(dic.estado, 'PROYECTADO')
   assert.equal(enero.estado, 'VENCIDO', 'venció antes del corte y nadie lo marcó')
 })

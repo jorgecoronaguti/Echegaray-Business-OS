@@ -8,9 +8,19 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { ubicarLineas, sinSolapamiento } from './impuestos-pestana.mjs'
+import { ubicarLineas, sinSolapamiento, grilla } from './impuestos-pestana.mjs'
+import { CALENDARIO_IMPUESTOS } from '../lib/cash-flow-lineas.mjs'
+import { contratoDeRotulos } from '../lib/iva-libre-disponibilidad.mjs'
+import { auditarPatron } from '../lib/patron-pestana.mjs'
+import { VACIO } from '../lib/preservar-anotaciones.mjs'
 
 const FUENTE = readFileSync(new URL('./impuestos-pestana.mjs', import.meta.url), 'utf8')
+// EL CANARIO SE MUDA CON EL CÓDIGO (06/08). La reconstrucción partió el generador de 1.253 líneas:
+// el centinela AJENO vive ahora en `lib/impuestos-grilla.mjs` y las cuatro filas del bloque de IVA en
+// `lib/impuestos-bloques.mjs`. Un canario que se queda apuntando al archivo viejo deja de vigilar sin
+// avisar — es el mismo movimiento que `rotulos-de-frescura.test.mjs` hace con su lista CONVERTIDAS.
+const GRILLA = readFileSync(new URL('../lib/impuestos-grilla.mjs', import.meta.url), 'utf8')
+const BLOQUES = readFileSync(new URL('../lib/impuestos-bloques.mjs', import.meta.url), 'utf8')
 
 /** La columna A del "Cash Flow Mensual" real, con las filas que importan en su posición real. */
 function colaAReal() {
@@ -47,12 +57,39 @@ test('un mes con dato en la hoja pero sin DDJJ se PRESERVA, no se vacía', () =>
   // como julio es el mes que ancla la proyección, además la falseaba (arrancaría de los $19,3M de
   // junio en vez de los $7,05M de julio, y el cuadro diría que el saldo aguanta todo el año).
   // Las cuatro filas mensuales del bloque tienen que resolver por `ofOAjeno`, nunca por `of`.
-  assert.match(FUENTE, /const AJENO = /, 'tiene que existir el centinela de "no es mi celda"')
-  assert.match(FUENTE, /x === AJENO \? ''/, 'push tiene que traducir AJENO a cadena vacía, que es lo que fusionar() preserva')
+  assert.match(GRILLA, /export const AJENO = /, 'tiene que existir el centinela de "no es mi celda"')
+  assert.match(GRILLA, /x === AJENO \? ''/, 'push tiene que traducir AJENO a cadena vacía, que es lo que fusionar() preserva')
+  // Y `fijar()` —el que escribe la posición sobre el espacio reservado— tiene que traducirlo igual:
+  // si sólo lo hiciera `push`, una celda ajena en el área del hero se borraría por la otra puerta.
+  assert.equal((GRILLA.match(/x === AJENO \? ''/g) ?? []).length, 2,
+    'push Y fijar tienen que respetar el centinela: son las dos puertas por las que se escribe')
   for (const campo of ['debito', 'credito', 'a_pagar_efectivo', 'libre_disp']) {
-    assert.match(FUENTE, new RegExp(`ofOAjeno\\(m, '${campo}'\\)`), `la fila "${campo}" tiene que preservar el mes ajeno`)
-    assert.equal(FUENTE.includes(`: of(m, '${campo}')`), false,
+    assert.match(BLOQUES, new RegExp(`ofOAjeno\\(m, '${campo}'\\)`), `la fila "${campo}" tiene que preservar el mes ajeno`)
+    assert.equal(BLOQUES.includes(`: of(m, '${campo}')`), false,
       `la fila "${campo}" sigue usando of(), que vacía el mes que escribió una persona`)
+  }
+})
+
+test('el generador NO usa IFERROR para tapar una fuente que no resuelve', () => {
+  // LA ORDEN DEL DUEÑO (06/08): "no usar IFERROR para esconder". El cuadro tenía 33: seis en el
+  // bloque de IIBB, doce en Anticipo de Ganancias y quince en los planes. Un plan renombrado en
+  // Compras, o una columna movida, daba $0 en vez de un error — el modo de falla exacto que el resto
+  // del repo persigue, tolerado justo donde se decide un pago.
+  //
+  // Sobrevive UNO solo, y con motivo declarado: el INDEX+MATCH de _IIBB_RAW busca un período que
+  // puede no estar en la réplica todavía (la DDJJ se sube cuando se presenta), y ahí el 0 es la
+  // respuesta correcta —no hay DDJJ de ese mes—, no un error escondido.
+  const conIferror = (BLOQUES.match(/IFERROR\(/g) ?? []).length
+  assert.equal(conIferror, 1, 'sólo el MATCH de _IIBB_RAW puede llevar IFERROR, y está declarado')
+  assert.ok(!/IFERROR\(SUMIFS/.test(BLOQUES), 'un SUMIFS que no resuelve tiene que romperse a la vista, no valer $0')
+})
+
+test('el prendario NO puede volver a salir del extracto en ningún archivo del generador', () => {
+  // El defecto A costaba $6,4M de salida financiera inventada. Si alguien "restaura" la fórmula
+  // vieja en cualquiera de las tres piezas, este test se pone rojo.
+  for (const [nombre, src] of [['el script', FUENTE], ['los bloques', BLOQUES], ['la grilla', GRILLA]]) {
+    assert.ok(!/Préstamo prendario/.test(src), `${nombre}: la cuota del prendario no sale de la naturaleza bancaria`)
+    assert.ok(!/SUMIF\('?_BANCO_RAW/.test(src), `${nombre}: un SUMIF sobre el extracto entero no es una cuota`)
   }
 })
 
@@ -154,4 +191,144 @@ test('el subtotal "(–) Pagos a proveedores de obra" NO se usa como base de cr�
     'Gastos de estructura y administración', 'Servicios recurrentes',
   ])
   assert.equal(credito.includes(subtotal), false)
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LA GRILLA ENTERA, EN FRÍO — sin Google, sin Postgres, sin una sola escritura
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+const C = { total: 'O', concepto: 'L', fecha: 'AD', rubro: 'AB', fechaPrev: 'Q', detalle: 'K' }
+const HOY = '2026-08-06'
+const armar = (extra = {}) => grilla({
+  anio: 2026,
+  C,
+  hoy: HOY,
+  iibb: [1, 2, 3, 4, 5, 6].map((m) => ({ periodo: `2026-0${m}` })),
+  ivaOficial: [1, 2, 3, 4, 5, 6].map((m) => ({
+    periodo: `2026-0${m}`, debito: 1, credito: 1, a_pagar_efectivo: 0, libre_disp: 1e6,
+    fecha_presentacion: '19/02/2026', nro_transaccion: '1',
+  })),
+  planes: [
+    { nombre: 'Plan F931 W303094', patron: 'W303094', campo: 'concepto', cuotas: 3, total: 7484628, monto_cuota: 2494876, porMes: [0, 0, 0, 0, 0, 0, 0, 0, 2494876, 2494876, 2494876, 0, 0] },
+    { nombre: 'Deuda previsional F931 Enero 2026', patron: '931 Enero 26', campo: 'detalle', cuotas: 6, total: 2842602, monto_cuota: 473767, porMes: [0, 0, 0, 473767, 473767, 473767, 473767, 473767, 473767, 0, 0, 0, 0] },
+  ],
+  proy: {
+    meses: [8, 9, 10, 11, 12], ultimoMesConDato: 7, libreDisp: 7050036, alicuotaVigente: 0.21,
+    brutoDebito: (m) => [`BRUTO_DEB_${m}`], brutoCredito: (m) => [`BRUTO_CRE_${m}`], supuesto: 'el supuesto',
+  },
+  ...extra,
+})
+
+/** La pestaña como la ve `main()`: valores renderizados y la columna de prosa ya vaciada. */
+const comoSeVe = (g) => g.filas.map((f) => f.map((c, j) => {
+  if (j === 14 || c === VACIO) return ''
+  return typeof c === 'string' && c.startsWith('=') ? 1234 : c
+}))
+
+const rotulos = (g) => g.filas.map((f) => String(f[0] ?? '').trim())
+const filaDe = (g, re) => rotulos(g).findIndex((r) => re.test(r)) + 1
+
+test('LOS DOS RÓTULOS DEL CONTRATO están, una sola vez, y con el texto exacto', () => {
+  // Cinco consumidores los ubican POR TEXTO (`caja-refs`, `libro-movimientos-pestana`,
+  // `cash-flow-rehacer`, `conciliar-caja-vs-cashflow`, `cash-flow-mapa`). Un rótulo cambiado deja el
+  // IVA/IIBB a pagar en $0 y el piso de caja sube sin que se haya pagado nada; uno DUPLICADO es peor,
+  // porque los cinco usan findIndex y se quedarían con la primera aparición sin dar error.
+  const g = armar()
+  const r = contratoDeRotulos(g.filas, CALENDARIO_IMPUESTOS.rotulos)
+  assert.ok(r.ok, r.motivo)
+  assert.equal(rotulos(g).filter((x) => x === CALENDARIO_IMPUESTOS.rotulos.iva).length, 1)
+  assert.equal(rotulos(g).filter((x) => x === CALENDARIO_IMPUESTOS.rotulos.iibb).length, 1)
+  assert.equal(r.destino.iva, g.filasCalendario.iva)
+  assert.equal(r.destino.iibb, g.filasCalendario.iibb)
+})
+
+test('LA POSICIÓN VA PRIMERO: hero, calendario, riesgo y financiamiento ARRIBA del detalle', () => {
+  // La orden del dueño: "la pantalla muestra PRIMERO posición, vencimientos, riesgo y proyección;
+  // después el detalle técnico".
+  const g = armar()
+  const hero = filaDe(g, /^LA POSICIÓN AL/)
+  const calend = filaDe(g, /^1 · CALENDARIO DE VENCIMIENTOS/)
+  const riesgo = filaDe(g, /^2 · RIESGO Y PROYECCIÓN/)
+  const financ = filaDe(g, /^3 · FINANCIAMIENTO/)
+  const detalle = filaDe(g, /^4 · IVA — LA DDJJ OFICIAL/)
+  assert.ok(hero > 0 && calend > hero && riesgo > calend && financ > riesgo && detalle > financ,
+    `orden real: hero ${hero}, calendario ${calend}, riesgo ${riesgo}, financiamiento ${financ}, detalle ${detalle}`)
+  assert.ok(g.filasCalendario.iva > financ, 'el IVA a pagar es detalle: va abajo')
+  // Y la posición queda congelada, o se va al scrollear y no sirve de nada.
+  assert.ok(g.congeladas >= hero, `congela ${g.congeladas} filas y el hero llega hasta la ${hero + 8}`)
+})
+
+test('la pestaña cumple su propia gramática — cero defectos de patrón', () => {
+  assert.deepEqual(auditarPatron(comoSeVe(armar())), [])
+})
+
+test('el parámetro de alícuota queda ABAJO DE TODO: ninguna fila nueva lo corre', () => {
+  // El rango con nombre ALICUOTA_IVA apunta a esa celda. Una fila insertada arriba lo reapunta a
+  // otra cosa, y toda la proyección de IVA se calcularía con alícuota cero.
+  const g = armar()
+  assert.equal(g.filaAlicuotaIva, g.filas.length, 'la alícuota es la última fila de la pestaña')
+  assert.equal(g.filas[g.filaAlicuotaIva - 1][0], 'Alícuota general de IVA')
+})
+
+test('IIBB PROYECTA de julio en adelante: seis meses en blanco era el hueco', () => {
+  const g = armar()
+  const f = g.filas[g.filasCalendario.iibb - 1]
+  // B..M son los doce meses. Con DDJJ hasta junio y proyección hasta diciembre, los doce tienen algo.
+  for (let m = 1; m <= 12; m++) {
+    assert.notEqual(f[m], VACIO, `el mes ${m} de "IIBB a pagar" no puede estar vacío`)
+  }
+  // Y la base de un mes proyectado sale del Libro, no de un promedio.
+  const base = g.filas[filaDe(g, /^Base imponible declarada$/) - 1]
+  assert.match(String(base[9]), /_MOVIMIENTOS/, 'la base de septiembre sale del Libro')
+  assert.match(String(base[9]), /\/\(1\+ALICUOTA_IVA\)/, 'la base imponible es NETA de IVA')
+  assert.ok(!/AVERAGE/i.test(String(base[9])))
+})
+
+test('los meses proyectados se marcan en ÁMBAR por celda, nunca por columna entera', () => {
+  // Pintar la columna del mes de arriba abajo teñiría de proyección el hero y el calendario, que son
+  // la posición de HOY. Un hecho pintado de proyección miente en el sentido que más caro sale.
+  const g = armar()
+  assert.ok(g.ambar.length > 0)
+  const filasDetalle = new Set([g.filasCalendario.iva, g.filasCalendario.iibb])
+  assert.ok(g.ambar.some((x) => filasDetalle.has(x.fila)))
+  const heroHasta = filaDe(g, /^1 · CALENDARIO DE VENCIMIENTOS/)
+  for (const x of g.ambar) assert.ok(x.fila > heroHasta, `la fila ${x.fila} está en la posición: no se pinta de proyección`)
+})
+
+test('el ancho de toda fila es exactamente el de la pestaña', () => {
+  // Una fila corta deja celdas del generador anterior sin limpiar; una larga escribe fuera del
+  // footprint y le pisa una columna al dueño.
+  const g = armar()
+  for (const [i, f] of g.filas.entries()) assert.equal(f.length, 15, `la fila ${i + 1} mide ${f.length}`)
+})
+
+test('ninguna fórmula de la pestaña lleva coma: el archivo es es-AR', () => {
+  // En es-AR la coma es el DECIMAL; el separador de argumentos es el punto y coma. Una coma deja la
+  // celda en #ERROR o —peor— la interpreta como otro número.
+  // Una coma DENTRO de un texto entrecomillado es prosa y no molesta a nadie ("Ley 25.413, 0,6%").
+  // Lo que rompe es la que separa argumentos. Se saca lo entrecomillado y se mira el resto.
+  const sinTextos = (f) => f.replace(/"(?:[^"]|"")*"/g, '""')
+  const g = armar()
+  for (const [i, f] of g.filas.entries()) {
+    for (const [j, c] of f.entries()) {
+      if (typeof c !== 'string' || !c.startsWith('=')) continue
+      assert.ok(!sinTextos(c).includes(','), `fila ${i + 1} col ${j + 1}: coma en una fórmula es-AR — ${c.slice(0, 90)}`)
+    }
+  }
+  // Y la guarda de la guarda: si `sinTextos` dejara de sacar nada, el test pasaría por vacío.
+  assert.equal(sinTextos('=IF(A1="hola, chau";1;2)'), '=IF(A1="";1;2)')
+})
+
+test('ningún archivo del generador pasa de 500 líneas', () => {
+  // El generador tenía 1.253 y adentro, mezcladas con la orquestación, las fórmulas que deciden
+  // plata. Tres estaban mal y no se veían.
+  const archivos = [
+    './impuestos-pestana.mjs', '../lib/impuestos-informe.mjs', '../lib/impuestos-grilla.mjs', '../lib/impuestos-bloques.mjs',
+    '../lib/impuestos-posicion.mjs', '../lib/impuestos-cuadro.mjs', '../lib/impuestos-fuentes.mjs',
+    '../lib/impuestos-piel.mjs', '../lib/vencimientos-fiscales.mjs',
+  ]
+  for (const a of archivos) {
+    const n = readFileSync(new URL(a, import.meta.url), 'utf8').split('\n').length
+    assert.ok(n <= 500, `${a} tiene ${n} líneas`)
+  }
 })
