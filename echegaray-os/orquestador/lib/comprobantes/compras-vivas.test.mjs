@@ -6,7 +6,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { indexarCompras, buscarEnCompras, importeDeCompras, tipoDeCompras, detallesPorObra, historiaDeCompras, HALLAZGO } from './compras-vivas.mjs'
+import { indexarCompras, buscarEnCompras, importeDeCompras, tipoDeCompras, detallesPorObra, HALLAZGO } from './compras-vivas.mjs'
 import { normalizarLectura } from './lectura.mjs'
 
 const fila = (fecha, prov, tipo, numero, obra, detalle, total, categoria = '') =>
@@ -141,7 +141,7 @@ test('el CUIT manda sobre el nombre cuando alguien puede aportarlo', () => {
 // ── La historia con la que aprende la imputación ─────────────────────────────
 
 test('la MISMA lectura entrega la historia de imputación, con el detalle de la columna K separado', () => {
-  const h = historiaDeCompras(BARCELO)
+  const h = indexarCompras(BARCELO).historia
   assert.deepEqual(h[0], {
     proveedor: 'Combustibles Barcelo',
     unidad_negocio: null,

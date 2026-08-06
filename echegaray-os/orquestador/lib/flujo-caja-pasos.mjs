@@ -31,7 +31,19 @@ export const PASOS = [
   ['rubro-caja-sheet.mjs', 'la columna "Rubro de caja" de Compras — de acá cuelga todo lo demás', []],
   // Recurrentes va ANTES del cash flow: el cuadro lee de ella su proyección y necesita que exista.
   ['recurrentes-pestana.mjs', 'Recurrentes — servicios fijos, sin proyectar meses ya cerrados', ['Recurrentes']],
-  ['cash-flow-rehacer.mjs', 'Cash Flow Semanal y Mensual', ['Cash Flow Semanal', 'Cash Flow Mensual']],
+  // ═══ LAS DOS VISTAS DE CASH FLOW SE REHICIERON COMO BLOQUES (05/08) ═══
+  //
+  // `cash-flow-rehacer.mjs` escribía las mismas dos pestañas como una matriz de 51 columnas. El dueño
+  // pidió una agenda diaria y doce bloques mensuales, y lo escribe `cash-flow-vistas.mjs`. El viejo
+  // SALE de esta lista, no se comenta "por las dudas": dos escritores sobre una misma pestaña es lo que
+  // produce el candado falso —el que escribe último sella la firma y el otro se auto-canda—, y encima
+  // cada uno impondría una estructura distinta cada dos horas.
+  //
+  // El presupuesto va PRIMERO porque el Mensual cita sus rangos con nombre, igual que _CAJA_ANEXO antes
+  // de CAJA: un nombre que todavía no existe deja #NAME? en la pestaña que el dueño abre todos los días.
+  // (Lo publica el mismo script `cash-flow-vistas.mjs`, en su primer paso.)
+  ['cash-flow-vistas.mjs', 'Cash Flow Semanal (agenda diaria), Cash Flow Mensual (bloques) y _PRESUPUESTO_MENSUAL',
+    ['Cash Flow Semanal', 'Cash Flow Mensual', '_PRESUPUESTO_MENSUAL']],
   // LOS NOMBRES SON LOS DE HOY. Declaraba las cuatro pestañas del diseño viejo —"Proveedores —
   // Deuda", "Proveedores — Cuenta Corriente"…— que dejaron de existir cuando el bloque se unificó en
   // una sola pestaña "Proveedores". Con nombres que no existen, el control de "todo se actualiza
@@ -160,7 +172,7 @@ export const PASOS = [
   // publicar sus nombres PRIMERO. Al revés, en un arranque en frío la pestaña que el dueño abre todos
   // los días se llena de #NAME? — y si algo tiene que mostrar un error una corrida, que sea el auxiliar.
   ['caja-anexo-pestana.mjs', '_CAJA_ANEXO — el detalle y las conciliaciones que sostienen los veredictos de CAJA', ['_CAJA_ANEXO']],
-  ['caja-pestana.mjs', 'CAJA — la posición de tesorería en una pantalla (45 filas)', ['CAJA']],
+  ['caja-pestana.mjs', 'CAJA — la portada ejecutiva de tesorería: cinco tarjetas y una pantalla', ['CAJA']],
   // El núcleo Postgres, para que la web y el chat vean lo mismo que la planilla y no un mes atrás.
   // ÚLTIMO ANTES DEL NÚCLEO: unificar el formato de las catorce pestañas. Va al final porque cada
   // script anterior acaba de reescribir la suya, y una pasada de formato hecha antes se pierde.

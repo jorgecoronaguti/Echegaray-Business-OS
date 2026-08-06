@@ -56,7 +56,10 @@ export const CUENTA = {
   // inventa el movimiento faltante: los $143.500 son el único tramo que el banco no explica.
   saldoUltimoMovimiento: 5595130.74,
   saldoPendienteConciliar: -609232.51,
-  saldoDolares: 581.39, // de la captura del 21/07; no se recapturó el 22/07
+  // 05/08/2026: el dueño depositó los U$S 15.400 de la caja física en la cuenta (instrucción por
+  // chat; el arqueo CAJA_ARQUEO_USD quedó en 0 el mismo día). 581,39 + 15.400 = 15.981,39. El
+  // extracto del depósito no se adjuntó todavía: cuando llegue, este número se verifica contra él.
+  saldoDolares: 15981.39,
 }
 
 /**

@@ -127,8 +127,11 @@ export function movimiento(m = {}) {
  *
  * ═══ LAS TRAMPAS YA PAGADAS, CADA UNA CON SU FACTURA ═══
  *
- * · **Un cheque se identifica por (instrumento, número), NUNCA por el número solo.** El FISICO 313 y
- *   el ECHEQ 313 son dos cheques distintos. Con el número solo, uno de los dos desaparece.
+ * · **Un cheque se identifica por (instrumento, número, SIGNO), NUNCA por el número solo.** El FISICO
+ *   313 y el ECHEQ 313 son dos cheques distintos. Y el signo no es un adorno: el cheque 514 que un
+ *   cliente me entregó (ENTRA, está en `_CHEQUES_RAW` como valor en cartera) y el cheque 514 que yo
+ *   libré (SALE, está en "Cheques Emitidos") son dos hechos opuestos que comparten número. Sin el
+ *   signo, la cartera y el compromiso colapsan en una sola fila y desaparece uno de los dos.
  * · **La referencia del banco es la clave, no el saldo corrido.** Usar el saldo dejó entrar 68
  *   duplicados: el saldo cambia cuando se inserta un movimiento anterior, así que la misma operación
  *   se ve distinta en dos importaciones.
@@ -142,9 +145,11 @@ export function movimiento(m = {}) {
  */
 export function claveDe(m = {}) {
   const inst = INSTRUMENTOS.includes(m.instrumento) ? m.instrumento : 'desconocido'
-  // Un cheque tiene identidad propia: su número, dentro de su especie.
+  // Un cheque tiene identidad propia: su número, dentro de su especie y de su dirección.
   const nCheque = soloDigitos(m.numeroCheque)
-  if ((inst === 'cheque' || inst === 'echeq') && nCheque) return `${inst}:${nCheque}`
+  if ((inst === 'cheque' || inst === 'echeq') && nCheque) {
+    return `${inst}:${nCheque}:${m.signo === SALE ? 'S' : 'E'}`
+  }
   // El banco: su referencia es única y sobrevive a que se reordenen los movimientos.
   const ref = norm(m.referenciaBanco)
   if (ref) return `banco:${claveNorm(ref)}`

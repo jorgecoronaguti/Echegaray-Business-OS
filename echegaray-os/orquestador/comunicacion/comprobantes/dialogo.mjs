@@ -139,11 +139,28 @@ export function aplicarCorreccion(item = {}, submission = {}, { obras = [] } = {
 
   const obra = dado('obra')
   if (obra) {
-    // Si la lista estricta está disponible, la obra tiene que estar en ella: escribir una obra que
-    // el desplegable de la columna J va a rechazar deja la celda en rojo y rompe los cruces.
-    const m = obras.length ? obraDeAnotacion(obra, obras) : { valor: obra }
-    if (!m) errors.obra = 'No reconozco esa obra. Elegí una de la lista.'
-    else c.obra = m.valor
+    // ═══ SIN LA LISTA ESTRICTA NO SE ESCRIBE LA OBRA: FALLA CERRADO (05/08) ═══
+    //
+    // Acá decía `obras.length ? obraDeAnotacion(obra, obras) : { valor: obra }`. Ese `: { valor: obra }`
+    // es por donde entró **«Estrella»** a la columna J, que dice «LA ESTRELLA». No hizo falta ningún
+    // error: alcanzó con que la lectura del desplegable volviera vacía —es una llamada a la metadata
+    // de validación de Google, y vuelve vacía sin explotar— para que el formulario aceptara el texto
+    // libre tal como se tipeó.
+    //
+    // Lo que deja atrás no es una celda fea: es una obra PARTIDA EN DOS. Los cruces suman
+    // «LA ESTRELLA» por un lado y «Estrella» por el otro, el margen de la obra deja de cerrar y nada
+    // falla en ningún lado. Es exactamente el error que este repo clasifica como el más caro: el que
+    // no grita.
+    //
+    // La regla del subsistema es fail-closed: sin identidad real no se ejecuta. Sin la lista no se
+    // puede afirmar que esa obra exista, así que no se escribe y se dice por qué.
+    if (!obras.length) {
+      errors.obra = 'No pude leer la lista de obras de Compras, así que no puedo guardar la obra sin arriesgarme a escribir un valor que el desplegable rechaza. Probá de nuevo en un minuto.'
+    } else {
+      const m = obraDeAnotacion(obra, obras)
+      if (!m) errors.obra = 'No reconozco esa obra. Elegí una de la lista.'
+      else c.obra = m.valor
+    }
   }
 
   const num = dado('numero')

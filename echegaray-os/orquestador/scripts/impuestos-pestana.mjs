@@ -18,6 +18,7 @@
 //   node orquestador/scripts/impuestos-pestana.mjs [--dry]
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
+import { terminoLibro } from '../lib/libro-sumas.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
 import { posicionIvaCompleta } from '../lib/posicion-iva.mjs'
@@ -224,6 +225,25 @@ const LINEAS_CREDITO = [
   'Servicios recurrentes',
 ]
 
+// ═══ LA BASE DE LA PROYECCIÓN SALE DEL LIBRO (05/08) — condición D1 del auditor de cierre ═══
+//
+// Las celdas I16:M17 apuntaban por POSICIÓN al Cash Flow Mensual ('I$6', 'I$24'...). El rediseño por
+// bloques puso otra cosa en esas coordenadas y la fórmula habría leído el egreso proyectado de enero
+// como débito fiscal — sin un solo error. La base pasa a calcularse sobre `_MOVIMIENTOS` con
+// `terminoLibro`, la misma fuente única que alimenta las vistas: si el libro está mal, el portón de
+// conciliación lo grita; si el Mensual se rediseña de nuevo, estas fórmulas ni se enteran.
+//
+// CAMBIO DE MODELO DECLARADO: la proyección deja de heredar el ritmo histórico del cuadro viejo
+// (MAX(real; promedio×inflación)) y pasa a lo CARGADO Y COMPROMETIDO en el libro. Es más conservadora
+// donde faltan cargar compras futuras — y honesta: proyecta sobre hechos registrados, no sobre inercia.
+const RUBROS_CREDITO_LIBRO = ['Materiales Civil', 'Materiales Mantenimiento', 'Estructura', 'Servicios recurrentes']
+const ventanaDelMes = (m) => ({ desde: `DATE(${AÑO};${m};1)`, hasta: `EOMONTH(DATE(${AÑO};${m};1);0)+1` })
+/** El bruto de cobranzas del mes (cobrado + esperado), como término del Libro. */
+const brutoDebitoLibro = (m) => [terminoLibro({ ...ventanaDelMes(m), signo: 1, rubros: ['Cobranzas'], medida: 'magnitud' })]
+/** El bruto de compras CON factura del mes: los cuatro rubros, neteando notas de crédito (el término
+ *  neto del libro da entra−sale; el signo se invierte para leerlo como egreso positivo). */
+const brutoCreditoLibro = (m) => [`-(${terminoLibro({ ...ventanaDelMes(m), rubros: RUBROS_CREDITO_LIBRO })})`]
+
 /** La fila de cada rótulo en la columna A del cash flow. Rompe si falta alguno: una referencia a una
  *  fila que no existe devuelve 0 y el cuadro proyectaría $0 de IVA otra vez, que es el defecto que
  *  esto vino a arreglar. */
@@ -388,13 +408,11 @@ function grilla(iva, planes, iibb, ivaOficial, C, proy) {
   const fCred = fDeb + 1
   const fLibreDisp = fDeb + 3
   const colAnt = (m) => `${cmes(m - 1)}${fLibreDisp}`
-  const brutos = (fs, m) => fs.map((f) => `'${CF}'!${cmes(m)}$${f}`)
-
   mensual('Débito fiscal del período',
-    (m) => (esProy(m) ? formulaDebitoProyectado(brutos(proy.filasDebito, m)) : ofOAjeno(m, 'debito')),
+    (m) => (esProy(m) ? formulaDebitoProyectado(brutoDebitoLibro(m)) : ofOAjeno(m, 'debito')),
     'F.2051 · IVA generado por las ventas del mes. Los meses futuros son PROYECCIÓN: el IVA contenido en las cobranzas que el cash flow ya da por cobradas y esperadas.', { meses: mesesIva })
   mensual('Crédito fiscal del período',
-    (m) => (esProy(m) ? formulaCreditoProyectado(brutos(proy.filasCredito, m)) : ofOAjeno(m, 'credito')),
+    (m) => (esProy(m) ? formulaCreditoProyectado(brutoCreditoLibro(m)) : ofOAjeno(m, 'credito')),
     'F.2051 · IVA de las compras computable del mes. Los meses futuros son PROYECCIÓN: el IVA contenido en las compras CON FACTURA que el cash flow ya proyecta (los cheques y la tarjeta sin factura quedan afuera: sin comprobante no hay crédito computable).', { meses: mesesIva })
   // EL RÓTULO NO SE ESCRIBE ACÁ: sale de ROTULOS_CALENDARIO, que es lo que el cash flow BUSCA. Este
   // bloque conserva 5 filas mensuales para no correr la fila de "IIBB a pagar" (28); pero la fila que
@@ -853,27 +871,29 @@ async function planDeProyeccionIva(google, ivaOficial) {
   // pero no para MOSTRAR de qué números sale el impuesto — y un importe fiscal que no se puede
   // rehacer a mano no se puede firmar. Con los valores acá, el --dry imprime la celda, su rótulo y
   // su importe al lado del resultado.
-  const cf = await google.readSheetValues(ID, `'${CF}'!A1:N80`)
-  const filasDebito = sinSolapamiento(cf, ubicarLineas(cf, LINEAS_DEBITO))
-  const filasCredito = sinSolapamiento(cf, ubicarLineas(cf, LINEAS_CREDITO))
-  // LA BASE, CELDA POR CELDA. Es el insumo del cálculo, y se guarda para poder exhibirlo.
-  const base = (fs, m) => fs.map((f) => ({
-    celda: `${cmes(m)}${f}`,
-    fila: f,
-    rotulo: String(cf[f - 1]?.[0] ?? '').trim(),
-    valor: aNumero(cf[f - 1]?.[m]) ?? 0,
-  }))
+  // LA BASE, DEL LIBRO. Se lee `_MOVIMIENTOS` y se recalcula en código el mismo número que la
+  // fórmula va a calcular en la celda: el --dry exhibe el insumo y un importe fiscal se puede
+  // rehacer a mano contra la pestaña del libro, fila por fila.
+  const lib = (await google.readSheetValues(ID, '_MOVIMIENTOS!A2:P', { render: 'UNFORMATTED_VALUE' }).catch(() => [])) ?? []
+  const movs = lib.filter((f) => Number.isFinite(f?.[0]) && Number.isFinite(f?.[2]))
+    .map((f) => ({ fecha: f[0], signo: Number(f[1]), importe: Number(f[2]), rubro: String(f[5] ?? '') }))
+  const serialUTC = (y, m, d) => Math.floor((Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 86400000)
+  const enMes = (mv, m) => mv.fecha >= serialUTC(AÑO, m, 1) && mv.fecha < serialUTC(AÑO, m + 1, 1)
   const bases = Object.fromEntries(mesesAProyectar.map((m) => [m, {
-    debito: base(filasDebito, m),
-    credito: base(filasCredito, m),
+    debito: [{
+      celda: '_MOVIMIENTOS', fila: null, rotulo: 'Cobranzas del Libro (cobrado + esperado del mes)',
+      valor: movs.filter((x) => enMes(x, m) && x.signo === 1 && x.rubro === 'Cobranzas').reduce((a, x) => a + x.importe, 0),
+    }],
+    credito: [{
+      celda: '_MOVIMIENTOS', fila: null, rotulo: 'Compras con factura del Libro (4 rubros, netas de NC)',
+      valor: movs.filter((x) => enMes(x, m) && RUBROS_CREDITO_LIBRO.includes(x.rubro)).reduce((a, x) => a - x.signo * x.importe, 0),
+    }],
   }]))
   return {
     meses: mesesAProyectar,
     ultimoMesConDato,
     libreDisp,
     alicuotaVigente,
-    filasDebito,
-    filasCredito,
     bases,
     supuesto: supuestoDelMes({ cobranzas: LINEAS_DEBITO, compras: LINEAS_CREDITO })
       + ` Arranca del saldo a favor de ${MES[(ultimoMesConDato ?? 1) - 1]} ($${Math.round(libreDisp ?? 0).toLocaleString('es-AR')}).`

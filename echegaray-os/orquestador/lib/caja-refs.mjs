@@ -58,7 +58,12 @@ export async function filasDelCalendarioFiscal(google, fileId, hojas) {
  * calendario fiscal es el único que ROMPE, porque es el único cuyo faltante se lee como un cero.
  */
 export async function refsDelArchivo(google, fileId, hojas) {
-  const colA = await google.readSheetValues(fileId, 'Cash Flow Mensual!A1:A80')
+  // Los tres contratos con el Mensual pasaron de RÓTULOS EN FILAS a RANGOS CON NOMBRE (05/08): el
+  // rediseño por bloques eliminó la fila B..M y publica CF_SALDO_INICIO / CF_SALDO_CIERRE / CF_MESES.
+  // Se verifica que existan de verdad (getNamedRanges): devolver el nombre sin mirar habría
+  // convertido un archivo sin regenerar en doce #NAME? — ruidosos, pero evitables.
+  const nombres = new Set(((await google.getNamedRanges?.(fileId).catch(() => null)) ?? []).map((n) => n.name))
+  const nombreSiExiste = (n) => (nombres.has(n) ? n : null)
   return {
     // 'Cheques Emitidos' completo, no 'Cheques' a secas: desde que existe 'Cheques Recibidos' el
     // nombre corto es ambiguo y hallarPestana corta con error.
@@ -68,11 +73,11 @@ export async function refsDelArchivo(google, fileId, hojas) {
     // La réplica del extracto. Si no está, el saldo del banco vuelve al número declarado: sin corte
     // confiable, la ventana de "movimientos posteriores" no se puede acotar.
     bancoRaw: hojas.some((h) => h.title === '_BANCO_RAW') ? '_BANCO_RAW' : null,
-    cierre: ubicarEnCashFlow(colA, 'Efectivo y equivalentes al cierre'),
+    cierre: nombreSiExiste('CF_SALDO_CIERRE'),
     // El INICIO del mes es contra lo que se concilia de verdad: comparar la caja de HOY contra el
     // CIERRE proyectado da el flujo neto del mes, no un descuadre.
-    inicio: ubicarEnCashFlow(colA, 'Efectivo y equivalentes al inicio'),
-    cab: ubicarEnCashFlow(colA, 'Período'),
+    inicio: nombreSiExiste('CF_SALDO_INICIO'),
+    cab: nombreSiExiste('CF_MESES'),
     filasCal: await filasDelCalendarioFiscal(google, fileId, hojas),
   }
 }

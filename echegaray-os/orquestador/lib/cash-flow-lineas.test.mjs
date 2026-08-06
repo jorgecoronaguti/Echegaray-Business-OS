@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {
   formulaInteresSemana, edicionesConContenidoReal,
   formulaComisionesMes, formulaComisionesSemana, expresionComisionesPromedio, COMISIONES,
-  formulaOficina, formulaLineaMes, CUADRO, expresionReal, verificarCuadro, formulaCobranzas,
+  formulaOficina, formulaLineaMes, CUADRO, expresionReal, verificarCuadro, formulaCobranzas, NOMBRE_MESES,
 } from './cash-flow-lineas.mjs'
 import { NAT } from './banco-santander.mjs'
 import { TASAS } from './costo-descubierto.mjs'
@@ -143,7 +143,11 @@ test('el promedio de comisiones se calcula sobre los meses QUE TIENEN extracto, 
   // Divide por la cantidad de meses de la espina que tienen al menos un movimiento de esa naturaleza:
   // dividir por 12 daría un promedio artificialmente bajo mientras el extracto cubra dos meses.
   assert.ok(p.includes('SUMPRODUCT(--(COUNTIFS('), 'cuenta los meses con dato, como el resto del archivo')
-  assert.ok(p.includes('$B$3:$M$3'), 'contra la espina de doce meses del encabezado')
+  // CONTRA EL RANGO CON NOMBRE, no contra la fila 3 del Mensual: esa fila dejó de tener los meses
+  // cuando las dos vistas se rehicieron como bloques (05/08/2026), y contar sobre celdas vacías da
+  // cero meses con dato — la proyección se apaga sola y sin error.
+  assert.ok(p.includes(NOMBRE_MESES), 'contra los doce meses del ejercicio, citados por su nombre')
+  assert.ok(!p.includes('$B$3:$M$3'), 'la fila 3 del Mensual ya no existe: apuntar ahí es contar cero meses')
   assert.ok(p.startsWith('IF(') && p.includes('=0;0;'), 'sin extracto todavía → 0, nunca una división por cero')
 })
 

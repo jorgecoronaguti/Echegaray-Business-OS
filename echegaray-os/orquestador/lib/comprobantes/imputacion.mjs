@@ -138,6 +138,51 @@ export function matchUnico(texto, lista = []) {
   return ganadoras.length === 1 ? { valor: ganadoras[0], via: 'palabras' } : null
 }
 
+// ── LA CONDICIÓN DE VENTA ESCRITA A MANO ─────────────────────────────────────
+//
+// ═══ POR QUÉ EXISTE (05/08, pedido textual del dueño) ═══
+//
+// «tenés que interpretar lo que sale escrito en manuscrita para más certeza». En las fotos de esta
+// semana la mano del dueño decía «Estrella / pisos - galpón 9 / c/c», «Autoelevador c/c» y
+// «SF. Cuenta cte». Ese `c/c` NO es un adorno: es la condición de venta, y decide tres columnas de
+// la fila (F modalidad, X estado, S total/parcial) vía `condicionAPago` del contrato de columnas.
+// Cuenta corriente ⇒ **Pendiente**; contado o efectivo ⇒ **Pagado**.
+//
+// ═══ Y MANDA SOBRE LA IMPRESA ═══
+//
+// El papel dice lo que el proveedor imprimió al emitirlo; la anotación dice lo que la empresa
+// decidió al recibirlo, y muchas veces se contradicen (un tique impreso «Contado» que se pagó por
+// cuenta corriente). Entre las dos gana la de la mano del dueño: es posterior y es la nuestra.
+//
+// LA LÍNEA ENTRE INTERPRETAR Y ADIVINAR es la misma que gobierna la obra: **marcas inequívocas o
+// null.** Dos marcas contradictorias en la misma anotación devuelven null y se pregunta — un estado
+// de pago inventado hace que una deuda que existe no aparezca en el Flujo de Fondos.
+
+/** Cuenta corriente escrita a mano: `c/c`, `cta cte`, `ctacte`, `cte`, `cuenta corriente`. */
+const RE_CUENTA_CORRIENTE = /\bc\s*[/\-.]\s*c\b|\bcta\.?\s*\.?\s*cte\b|\bctacte\b|\bcuenta\s+c(orrien)?te\b|\bcte\b/
+
+/** Contado escrito a mano. `pagad[oa]` y `pago/pagos` entran: es como lo escribe el dueño. */
+const RE_CONTADO = /\bcontado\b|\befectivo\b|\bpagad[oa]s?\b|\bpagos?\b|\bcash\b/
+
+/**
+ * La condición de venta que dice lo escrito a mano, o null. NÚCLEO PURO, CERO MODELO.
+ *
+ * Devuelve exactamente los rótulos que entiende `condicionAPago` del contrato de columnas, para que
+ * no haya un segundo vocabulario de condiciones en el repo.
+ *
+ * @param {string|null} anotacion
+ * @returns {'Cuenta Corriente'|'Contado'|null}
+ */
+export function condicionDeAnotacion(anotacion) {
+  const a = normalizar(anotacion)
+  if (!a) return null
+  const cc = RE_CUENTA_CORRIENTE.test(a)
+  const co = RE_CONTADO.test(a)
+  // Las dos a la vez no es una condición: es una anotación que hay que leer con el papel delante.
+  if (cc === co) return null
+  return cc ? 'Cuenta Corriente' : 'Contado'
+}
+
 /**
  * La imputación completa que se puede afirmar de una anotación manuscrita.
  *

@@ -307,8 +307,11 @@ test('un adjunto ilegible no tumba a los otros del mismo post', async () => {
   })
   const r = await procesarPost(d, post({ fileIds: ['f1', 'f2'] }))
   assert.equal(r.estado, 'confirmar')
-  assert.match(r.texto, /No pude con estos/)
+  // Desde el 05/08 el ilegible no sale en un bloque aparte: sale en la RENDICIÓN, que además cierra
+  // la cuenta contra los dos adjuntos que entraron. Ver `lib/comprobantes/rendicion.mjs`.
+  assert.match(r.texto, /2 adjuntos/)
   assert.match(r.texto, /malo\.mp3/)
+  assert.match(r.texto, /1 que no pude leer/)
 })
 
 test('un post sin adjuntos no dispara ningún trabajo', async () => {

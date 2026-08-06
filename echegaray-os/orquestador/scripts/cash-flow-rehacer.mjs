@@ -699,7 +699,27 @@ async function faltantesDeCompras(google) {
   return out
 }
 
+/**
+ * ═══ ESTE GENERADOR YA NO ESCRIBE (05/08/2026) ═══
+ *
+ * Las dos pestañas se rehicieron como bloques —una agenda diaria y doce bloques mensuales— y las
+ * escribe `cash-flow-vistas.mjs`. Este archivo sigue existiendo porque `grilla()` y `meses()` son puras
+ * y las importan varios tests y auditores; lo que se retira es su capacidad de ESCRIBIR.
+ *
+ * NO ALCANZABA CON SACARLO DE `PASOS`. Cualquiera puede correrlo a mano —el pipeline no es el único
+ * camino— y dos escritores sobre la misma pestaña es un defecto ya pagado: el que escribe último sella
+ * la firma y el otro se auto-canda en la corrida siguiente, así que la pestaña queda congelada sin que
+ * nadie entienda por qué. Se aborta acá, con el motivo escrito, y `--legacy` existe sólo para poder
+ * volver atrás a mano si el diseño nuevo hubiera que revertirlo.
+ */
+const LEGACY = process.argv.includes('--legacy')
+
 async function main() {
+  if (!LEGACY) {
+    console.error('Este generador quedó RETIRADO: las dos vistas las escribe ahora orquestador/scripts/cash-flow-vistas.mjs')
+    console.error('(bloques diarios y mensuales sobre el libro _MOVIMIENTOS). Si de verdad querés la matriz vieja: --legacy.')
+    process.exit(2)
+  }
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   // Ya no alimenta el cuadro (esa línea es una fórmula), pero se sigue midiendo acá: es el número
   // que tiene que dar igual que la fórmula, y si no da, algo se desalineó entre el código y el Sheet.

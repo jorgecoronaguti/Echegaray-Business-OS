@@ -10,7 +10,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { formulaLineaMes, expresionProyeccionMes, mesCerrado, CUADRO } from './cash-flow-lineas.mjs'
+import { formulaLineaMes, expresionProyeccionMes, mesCerrado, CUADRO, NOMBRE_MESES } from './cash-flow-lineas.mjs'
 import { formulaLineaSemana, expresionFalta } from './cash-flow-horizonte.mjs'
 
 const TABLAS = { Estructura: 15, Recurrentes: 24 }
@@ -60,19 +60,24 @@ test('MAX(real;proy) del mensual y real+falta del semanal son la MISMA cantidad,
   assert.ok(falta.includes(expresionProyeccionMes(l, M, TABLAS, 2026)), 'la proyección es la del mensual, no otra')
 })
 
-test('EL TEST DE HISTORIA APUNTA A LOS DOCE MESES, NO A LAS DOCE PRIMERAS SEMANAS', () => {
+test('EL TEST DE HISTORIA APUNTA A LOS DOCE MESES DEL EJERCICIO, POR SU NOMBRE', () => {
   // `$B$3:$M$3` a secas es relativo a la pestaña donde cae la fórmula: en el Semanal esas doce celdas
   // son las doce primeras SEMANAS (29/12/2025 … 16/03/2026), no los doce meses. El test
   // "¿este rubro tuvo gasto en al menos 4 meses?" medía otra cosa y prendía o apagaba la proyección
   // por el motivo equivocado, sin dar un solo error.
+  //
+  // DESDE EL 05/08/2026 LA REFERENCIA ES UN NOMBRE, y el motivo es el mismo defecto una vuelta más:
+  // calificar con la pestaña arregla el "a qué pestaña", pero no el "a qué fila". Las dos vistas se
+  // rehicieron como bloques y la fila 3 del Mensual quedó vacía — una referencia a celdas vacías no
+  // da error: COUNTIFS cuenta cero meses y la proyección por ritmo se apaga en silencio. CF_MESES
+  // apunta a los doce meses se muevan donde se muevan.
   const conRitmo = lineasQueProyectan()
     .map((l) => expresionProyeccionMes(l, 'B$3', TABLAS, 2026))
     .filter((e) => e.includes('COUNTIFS'))
   assert.ok(conRitmo.length > 0, 'tiene que haber al menos una línea proyectada por ritmo')
   for (const e of conRitmo) {
-    assert.ok(!/[^!]\$B\$3:\$M\$3/.test(e.replace(/'Cash Flow Mensual'!\$B\$3:\$M\$3/g, 'OK')),
-      'la referencia a los doce meses tiene que estar calificada con la pestaña Mensual')
-    assert.ok(e.includes("'Cash Flow Mensual'!$B$3:$M$3"), 'apunta a la fila 3 del Mensual')
+    assert.ok(!/\$B\$3:\$M\$3/.test(e), 'ninguna fórmula puede seguir apuntando a la fila 3 de una pestaña que ya no la tiene')
+    assert.ok(e.includes(NOMBRE_MESES), 'los doce meses se citan por su rango con nombre')
   }
 })
 
