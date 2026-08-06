@@ -24,7 +24,7 @@ import {
 import { CUENTAS } from '../lib/caja-disponibilidades.mjs'
 import { VACIO } from '../lib/preservar-anotaciones.mjs'
 import { terminoLibro, LIBRO } from '../lib/libro-sumas.mjs'
-import { NO_REAL, HORIZONTE } from '../lib/caja-tarjetas.mjs'
+import { NO_REAL, FIN_DE_MES } from '../lib/caja-tarjetas.mjs'
 import { BORDES } from '../lib/caja-calendario.mjs'
 
 /** Una celda VACÍA de la grilla. El generador no escribe cadena vacía: escribe el centinela VACIO, que
@@ -83,7 +83,7 @@ test('LAS CINCO TARJETAS ESTÁN, EN ORDEN, Y CADA UNA OCUPA SUS TRES RENGLONES',
   // RIESGO y CUELLO no aparecen: los borró el dueño (huellas selladas en sheet_huella_celda) y la
   // quinta columna de tarjetas (I) queda vacía. El piso sigue en el cierre de la escalera.
   const g = construir()
-  const esperados = ['CAJA DISPONIBLE', 'CAJA COMPROMETIDA · 7 DÍAS', 'LIBRE DISPONIBILIDAD', 'INVERTIDO', `CAJA PROYECTADA · ${HORIZONTE} DÍAS`]
+  const esperados = ['CAJA DISPONIBLE', 'CAJA COMPROMETIDA', 'A COBRAR', 'INVERTIDO', 'CAJA · FIN DE MES']
   esperados.forEach((rot, i) => {
     const col = COLS_TARJETA[i]
     assert.equal(celda(g, g.fRotulos, col), rot, `la tarjeta ${i + 1} tiene que ser "${rot}" en la columna ${col}`)
@@ -108,15 +108,16 @@ test('LAS CIFRAS DE LAS TARJETAS SALEN DEL LIBRO O DE LA PROPIA PESTAÑA, nunca 
   const g = construir()
   const val = (i) => celda(g, g.fCifras, COLS_TARJETA[i])
   assert.equal(val(0), `=$C$${g.fCierre}`, 'la caja disponible es EL TOTAL del panel de cuentas, no una suma nueva')
-  // 5ª directiva: la ventana del titular es 7 días (las temporalidades); el mes vive en el contexto.
-  assert.equal(val(1), `=${terminoLibro({ signo: -1, estados: NO_REAL, hasta: 'TODAY()+7', medida: 'magnitud' })}`)
+  // 6ª directiva (idioma único): el titular es el MES − lo pagado; los 7 días viven en el contexto.
+  assert.equal(val(1), `=${terminoLibro({ signo: -1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })}`)
   // 06/08 (4ª directiva del dueño): LIBRE = el piso de la escalera, referenciado de su fila de
   // cierre. El porqué vive en caja-tarjetas.mjs; acá sólo se fija que la grilla pase las celdas.
-  assert.equal(val(2), `=N($I$${g.fCierre})`,
-    'LIBRE referencia el mínimo medido del recorrido en la fila de cierre de la escalera')
+  assert.equal(val(2), `=${terminoLibro({ signo: 1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })}`,
+    'A COBRAR es la misma suma del mes con signo contrario')
   assert.equal(val(3), `=N($C$${g.fBalanzArs})+N($C$${g.fBalanzUsd})`,
     'INVERTIDO referencia las filas Balanz del panel, no una segunda fuente')
-  assert.equal(val(4), `=$C$${g.fCierre}+${terminoLibro({ desde: 'TODAY()', hasta: `TODAY()+${HORIZONTE}`, estados: NO_REAL })}`)
+  // 6ª directiva: FIN DE MES es la consecuencia de las otras tres tarjetas, por referencia.
+  assert.equal(val(4), '=N($A$3)+N($E$3)-N($C$3)')
 })
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
