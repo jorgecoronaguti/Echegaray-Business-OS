@@ -25,8 +25,9 @@ import { deduplicar, separarInternas, sumar } from '../lib/libro-movimientos.mjs
 import {
   deCompras, deCobranzas, deChequesEmitidos, deBancoCargos,
   deTarjetaSinFactura, deImpuestosCalendario, deCartera,
-  deJornalesQuincenas, deOficina, deDireccion,
+  deJornalesQuincenas, deOficina, deDireccion, comprasPagadasConCheque,
 } from '../lib/libro-extractores.mjs'
+import { cruzar, chequesDelRegistro } from '../lib/cruce-cheque-factura.mjs'
 import { ROTULOS_CALENDARIO, CALENDARIO_IMPUESTOS } from '../lib/cash-flow-lineas.mjs'
 import { total } from '../lib/patron-pestana.mjs'
 import { ubicarRegistro } from './cheques-emitidos-tablero.mjs'
@@ -96,10 +97,19 @@ async function extraerDeLasFuentes(google, corte) {
       + `${CALENDARIO_IMPUESTOS.pestaña}. Una referencia a una fila muerta devuelve $0 sin un solo error: no extraigo.`)
   }
 
+  // ═══ EL CRUCE SE COMPUTA UNA VEZ, ACÁ, Y LOS EXTRACTORES LO RECIBEN ═══
+  //
+  // Los extractores son funciones puras sobre las filas de UNA pestaña; el cruce necesita LAS DOS
+  // (qué factura paga cada cheque vivo). Calcularlo dentro de cada extractor rompería la pureza y
+  // —peor— podría dar dos repartos distintos: el criterio consume cada factura una sola vez, así que
+  // dos corridas independientes emparejarían distinto y Compras diría una cosa y los cheques otra.
+  // Es el mismo motivo por el que `cheques-cobertura-sheet` calcula sus respaldos una sola vez.
+  const cruce = cruzar(chequesDelRegistro(cheques, { fila0: reg.primera }), comprasPagadasConCheque(compras))
+
   return {
-    Compras: deCompras(compras, corte),
+    Compras: deCompras(compras, corte, { cruce }),
     Cobranzas: deCobranzas(cobranzas, corte),
-    'Cheques Emitidos': deChequesEmitidos(cheques, { fila0: reg.primera }),
+    'Cheques Emitidos': deChequesEmitidos(cheques, { fila0: reg.primera, cruce }),
     'Tarjeta de Credito': deTarjetaSinFactura(tarjeta),
     _BANCO_RAW: deBancoCargos(banco, { fila0: 4 }),
     _CHEQUES_RAW: deCartera(carteraRaw),

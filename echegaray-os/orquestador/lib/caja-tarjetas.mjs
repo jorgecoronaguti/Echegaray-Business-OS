@@ -114,17 +114,6 @@ export function tarjetas(ref) {
       especie: 'plata',
     },
     {
-      clave: 'invertido',
-      rotulo: 'INVERTIDO',
-      // REFERENCIA A LAS FILAS BALANZ DEL PANEL, no una segunda fuente: si mañana la posición se
-      // reemplaza por el extracto de Balanz, la tarjeta cambia con la grilla sin tocar este archivo.
-      valor: `=${invertido}`,
-      // "liquidez T+1": la naturaleza de lo invertido, como en el panel de invested balances de JPM —
-      // está colocado en una comitente y rescatarlo tarda un día hábil, no es plata de HOY.
-      contexto: `=IF(ISNUMBER(${ref.invFecha});"Balanz · al "&${dia(ref.invFecha)}&" · liquidez T+1";"Balanz · liquidez T+1")`,
-      especie: 'plata',
-    },
-    {
       clave: 'comprometida',
       rotulo: 'CAJA COMPROMETIDA',
       // MAGNITUD Y NO NETO: lo comprometido se lee como "cuánto debo", un número positivo. Con `neto`
@@ -134,6 +123,31 @@ export function tarjetas(ref) {
       // En millones: "de eso $37.560.513 vence antes del 13/08" medía 40 caracteres y la columna
       // admite 38 (auditor de pantalla, 06/08).
       contexto: `="$"&TEXT(${venceEn7}/1000000;"#,##0.0")&"M vencen antes del "&${dia('TODAY()+7')}`,
+      especie: 'plata',
+    },
+    {
+      clave: 'libre',
+      rotulo: 'LIBRE DISPONIBILIDAD',
+      // ═══ LA RESPUESTA A "¿PUEDO USAR LA CAJA DISPONIBLE ENTERA?" (06/08, pregunta del dueño) ═══
+      //
+      // NO: parte de lo disponible ya está prometido este mes (quincenas, cargas, impuestos, cheques).
+      // Esta tarjeta es el neto — el "net cash position" de un panel de tesorería: disponible HOY
+      // menos comprometido del mes. ESTE es el número que se puede usar sin romper ningún compromiso.
+      // Referencia a las DOS tarjetas vecinas, no una tercera aritmética: si una cambia, ésta sigue.
+      // Las cifras viven en la FILA 3, columnas A (disponible) y C (comprometida) — los slots 1 y 2.
+      valor: '=N($A$3)-N($C$3)',
+      contexto: '="disponible hoy − comprometido del mes"',
+      especie: 'plata',
+    },
+    {
+      clave: 'invertido',
+      rotulo: 'INVERTIDO',
+      // REFERENCIA A LAS FILAS BALANZ DEL PANEL, no una segunda fuente: si mañana la posición se
+      // reemplaza por el extracto de Balanz, la tarjeta cambia con la grilla sin tocar este archivo.
+      valor: `=${invertido}`,
+      // "liquidez T+1": la naturaleza de lo invertido, como en el panel de invested balances de JPM —
+      // está colocado en una comitente y rescatarlo tarda un día hábil, no es plata de HOY.
+      contexto: `=IF(ISNUMBER(${ref.invFecha});"Balanz · al "&${dia(ref.invFecha)}&" · liquidez T+1";"Balanz · liquidez T+1")`,
       especie: 'plata',
     },
     {

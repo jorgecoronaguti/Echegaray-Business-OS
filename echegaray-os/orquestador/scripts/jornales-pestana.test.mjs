@@ -151,3 +151,13 @@ test('los rangos de Oficina que SÍ funcionan siguen funcionando', () => {
     assert.ok(con > 0, `${n} se quedó sin una sola celda con dato`)
   }
 })
+
+test('LA COLUMNA 14 DE LA GRILLA JAMÁS LLEVA EL CENTINELA — es la del dueño, no una columna de prosa', () => {
+  // 4ª reincidencia del mismo borrado (06/08): vaciarColumnaDeProsa(grid, ANCHO-1) pisaba "Pagado el"
+  // con VACIO después de copiarla. Este guardián escanea la grilla ENTERA: si cualquier vía futura
+  // vuelve a poner el centinela en la columna del dueño, esto se pone rojo antes de llegar al Sheet.
+  const g = grilla({ bloques, pendientes, bloquesOfi })
+  for (const [i, fila] of g.filas.entries()) {
+    assert.notEqual(fila?.[13], VACIO, `fila ${i + 1}: el centinela VACIO en la columna del dueño`)
+  }
+})

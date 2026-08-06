@@ -79,11 +79,11 @@ test('LOS DOS PANELES COMPARTEN LAS MISMAS FILAS: es lo que hace que entre en un
 // LAS CUATRO TARJETAS — LA PORTADA (el orden JPM del 06/08: operativo · invertido · comprometido · proyectado)
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
-test('LAS CUATRO TARJETAS ESTÁN, EN ORDEN, Y CADA UNA OCUPA SUS TRES RENGLONES', () => {
+test('LAS CINCO TARJETAS ESTÁN, EN ORDEN, Y CADA UNA OCUPA SUS TRES RENGLONES', () => {
   // RIESGO y CUELLO no aparecen: los borró el dueño (huellas selladas en sheet_huella_celda) y la
   // quinta columna de tarjetas (I) queda vacía. El piso sigue en el cierre de la escalera.
   const g = construir()
-  const esperados = ['CAJA DISPONIBLE', 'INVERTIDO', 'CAJA COMPROMETIDA', `CAJA PROYECTADA · ${HORIZONTE} DÍAS`]
+  const esperados = ['CAJA DISPONIBLE', 'CAJA COMPROMETIDA', 'LIBRE DISPONIBILIDAD', 'INVERTIDO', `CAJA PROYECTADA · ${HORIZONTE} DÍAS`]
   esperados.forEach((rot, i) => {
     const col = COLS_TARJETA[i]
     assert.equal(celda(g, g.fRotulos, col), rot, `la tarjeta ${i + 1} tiene que ser "${rot}" en la columna ${col}`)
@@ -108,12 +108,11 @@ test('LAS CIFRAS DE LAS TARJETAS SALEN DEL LIBRO O DE LA PROPIA PESTAÑA, nunca 
   const g = construir()
   const val = (i) => celda(g, g.fCifras, COLS_TARJETA[i])
   assert.equal(val(0), `=$C$${g.fCierre}`, 'la caja disponible es EL TOTAL del panel de cuentas, no una suma nueva')
-  // INVERTIDO referencia las filas Balanz DEL PANEL — la misma fuente que se ve abajo, no una segunda
-  // posición: cuando el extracto de Balanz reemplace el aporte, la tarjeta cambia con la grilla.
-  assert.equal(val(1), `=N($C$${g.fBalanzArs})+N($C$${g.fBalanzUsd})`,
-    'lo invertido sale de las celdas de la grilla, nunca de una constante propia')
-  assert.equal(val(2), `=${terminoLibro({ signo: -1, estados: NO_REAL, hasta: 'EOMONTH(TODAY();0)+1', medida: 'magnitud' })}`)
-  assert.equal(val(3), `=$C$${g.fCierre}+${terminoLibro({ desde: 'TODAY()', hasta: `TODAY()+${HORIZONTE}`, estados: NO_REAL })}`)
+  assert.equal(val(1), `=${terminoLibro({ signo: -1, estados: NO_REAL, hasta: 'EOMONTH(TODAY();0)+1', medida: 'magnitud' })}`)
+  assert.equal(val(2), '=N($A$3)-N($C$3)', 'LIBRE = disponible − comprometida, por referencia a las cifras vecinas')
+  assert.equal(val(3), `=N($C$${g.fBalanzArs})+N($C$${g.fBalanzUsd})`,
+    'INVERTIDO referencia las filas Balanz del panel, no una segunda fuente')
+  assert.equal(val(4), `=$C$${g.fCierre}+${terminoLibro({ desde: 'TODAY()', hasta: `TODAY()+${HORIZONTE}`, estados: NO_REAL })}`)
 })
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
