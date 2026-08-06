@@ -210,7 +210,9 @@ test('si CAJA muestra otra cantidad de tramos que BORDES, ROMPE en vez de compar
 })
 
 test('si el borde de la pestaña no coincide con el calculado, no cierra aunque los deltas den cero', () => {
-  const caja = CAJA_QUE_CIERRA.map((t, i) => (i === 0 ? { ...t, hasta: HOY - 1 } : t))
+  // El borde CRUDO en la celda es exactamente la regresión que este control atrapa desde el 06/08:
+  // la pestaña muestra el último día INCLUIDO (borde − 1); estampar el borde se pone rojo.
+  const caja = CAJA_QUE_CIERRA.map((t, i) => (i === 0 ? { ...t, hasta: HOY } : t))
   const r = conciliar(LIBRO, caja, { hoy: HOY, corte: CORTE })
   assert.equal(r.bordesEnDesacuerdo.length, 1)
   assert.equal(r.cierra, false, 'si no miran el mismo día, ninguna comparación vale')
