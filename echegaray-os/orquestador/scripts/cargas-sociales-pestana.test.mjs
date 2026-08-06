@@ -73,7 +73,11 @@ test('separador es-AR en la parte calculada: una coma parte la fórmula', () => 
 // año, la dotación promedio y el número pegado del hero.
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 import { grilla as grillaCS, jornalesDelMes } from './cargas-sociales-pestana.mjs'
-import { A_VERIFICAR, RANGO_FCL_PRIMER_ANIO, RANGO_IERIC } from '../lib/cargas-cadena.mjs'
+import {
+  A_VERIFICAR, RANGO_FCL_PRIMER_ANIO, RANGO_IERIC, RANGO_DIA_PAGO_F931, PARAMETROS_CARGAS,
+} from '../lib/cargas-cadena.mjs'
+import { rangosDeCargas, ROTULOS_CARGAS, NOMBRES_CARGAS } from '../lib/libro-extractores-cargas.mjs'
+import { verificarRangos as verificarRangosCS, explicarProblemas as explicarProblemasCS } from '../lib/rangos-con-nombre.mjs'
 import { auditarPatron as patronCS } from '../lib/patron-pestana.mjs'
 import { VACIO as VACIO_CS } from '../lib/preservar-anotaciones.mjs'
 
@@ -82,6 +86,7 @@ const ANCHO_CS = 15
 
 const COLS = {
   total: 'O', cliente: 'J', detalle: 'K', fecha: 'AD', rubro: 'AB', proveedor: 'E', fechaFactura: 'C',
+  estado: 'X',
 }
 const PERIODOS = ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06']
 const CONCEPTOS = [
@@ -162,14 +167,27 @@ test('LO QUE NO SE PUDO VERIFICAR ESTÁ DECLARADO EN LA PESTAÑA, no sólo en el
   assert.ok(conMarca >= 3, `sólo ${conMarca} fila(s) declaran el límite: FCL, IERIC y FODECO tienen que decirlo`)
 })
 
-test('B9 · LA DEUDA EN PLANES ES UNA FÓRMULA A LA SECCIÓN 7, no un número pegado', () => {
+test('B9 · LA DEUDA EN PLANES ES UNA FÓRMULA VIVA, no un número pegado', () => {
   const deuda = filaCS(/^⇒ Deuda previsional en planes/)
   const v = deuda[1]
   assert.equal(typeof v, 'string', `sigue siendo un número pegado: ${v}`)
   assert.ok(String(v).startsWith('='))
-  assert.match(String(v), /MONTH\(TODAY\(\)\)/, 'tiene que decir qué mide: las cuotas que faltan, y eso cambia con el tiempo')
-  // Y declara lo que NO incluye, que es la mitad de por qué había dos números.
-  assert.match(String(deuda[deuda.length - 1]), /NO incluye cuotas de 2027/)
+})
+
+test('B8 · "POR PAGAR" INCLUYE EL MES EN CURSO — el criterio de posición perdía $2,97M', () => {
+  // EL DEFECTO, MEDIDO EL 06/08. La fórmula sumaba las columnas cuyo número de mes fuera
+  // `> MONTH(TODAY())`: agosto quedaba afuera ENTERO y el hero decía $4.989.751. Las cuotas de agosto
+  // —$473.767 con vencimiento el 16 y $2.494.876 de la financiación de junio, ninguna pagada— no
+  // estaban en ningún lado. Con el criterio por HECHO (lo que la planilla no marcó "Pagado") el hero
+  // da $7.958.394,73, que es exactamente lo que el Libro ya trae como compromiso.
+  const v = String(filaCS(/^⇒ Deuda previsional en planes/)[1])
+  assert.doesNotMatch(v, /MONTH\(TODAY\(\)\)/,
+    'volvió el criterio de posición: el mes en curso se pierde entero y con él la cuota que vence esta semana')
+  assert.match(v, /"<>Pagado"/, 'lo que falta pagar es lo que la planilla no marcó pagado, no lo que vence después')
+  assert.match(v, /Deuda previsional \(planes de pago\)/, 'tiene que filtrar por el rubro, no por el cliente')
+  // La columna del estado es la del cargador (Pagado/Pendiente), NO el semáforo con emoji: "<>Pagado"
+  // contra "✅ Pagado" no excluye nada y el hero mostraría el total del rubro, pagadas incluidas.
+  assert.match(v, new RegExp(`Compras!\\$${COLS.estado}\\$4`), 'la columna de estado tiene que ser la resuelta por rótulo')
 })
 
 test('B11 · los avisos ⚠ tienen su texto EN la celda, no en la columna que el generador vacía', () => {
@@ -189,6 +207,88 @@ test('la pestaña armada cumple el patrón de diseño: cero defectos', () => {
   }))
   const d = patronCS(vista)
   assert.deepEqual(d, [], d.map((x) => `fila ${x.fila} · ${x.regla} · ${x.detalle}`).join('\n'))
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA CADENA PUBLICADA (06/08) — la fila que decía "ésta es la que tiene que mirar el cash flow" y
+// que no miraba nadie. Sin estos tres rangos con nombre, el Libro proyecta las cargas con las filas
+// planas tipeadas en Compras.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('la pestaña publica la serie de cargas, anclada a sus rótulos y sin rangos ciegos', () => {
+  const quiero = rangosDeCargas(gCS.rangos)
+  assert.deepEqual(quiero.map((r) => r.nombre), Object.values(NOMBRES_CARGAS))
+  const problemas = verificarRangosCS(gCS.filas, quiero)
+  assert.deepEqual(problemas, [], explicarProblemasCS(problemas))
+})
+
+test('los subtotales son DOS: el F931 y los gremiales son dos líneas del cash flow', () => {
+  const f931 = filaCS(new RegExp(`^${ROTULOS_CARGAS.f931.replace(/[⇒]/, '⇒')}`))
+  const grem = filaCS(new RegExp(ROTULOS_CARGAS.gremiales.slice(2, 30)))
+  assert.ok(f931 && grem, 'sin los dos subtotales, los gremiales se mudan a la línea de cargas sociales')
+  // El total del mes es la suma de los dos, no un SUM sobre el bloque: con las filas de subtotal
+  // adentro del rango, cada concepto se contaría dos veces.
+  const tot = String(filaCS(/^⇒ Total devengado en el mes/)[8])
+  assert.doesNotMatch(tot, /SUM\(/, 'un SUM sobre el bloque ahora incluiría los dos subtotales')
+  assert.match(tot, /^=I\d+\+I\d+$/)
+})
+
+test('la fila de fechas fecha la salida al MES SIGUIENTE, y diciembre cae en enero del año que viene', () => {
+  const fechas = filaCS(new RegExp(ROTULOS_CARGAS.fechas.trim().slice(0, 20)))
+  assert.ok(fechas, 'sin la fila de fechas el Libro no puede ubicar la cadena en ningún tramo del calendario')
+  assert.equal(fechas[7], `=DATE(2026;8;MAX(1;N(${RANGO_DIA_PAGO_F931})))`, 'el devengado de julio sale en agosto')
+  // DICIEMBRE SALE EN ENERO DEL AÑO QUE VIENE: son $10.507.157 (medidos el 06/08) que ninguna vista
+  // levantaba, porque la grilla del año termina en diciembre. Y se escribe con su año, no como mes 13.
+  assert.equal(fechas[12], `=DATE(2027;1;MAX(1;N(${RANGO_DIA_PAGO_F931})))`)
+  assert.doesNotMatch(gCS.filas.flat().map(String).join(' '), /DATE\(\d{4};1[3-9];/, 'volvió el mes 13')
+  assert.equal(fechas[13], VACIO_CS, 'una fila de fechas no se totaliza')
+})
+
+test('el día de pago vive en Parámetros, no adentro de la fórmula', () => {
+  const p = PARAMETROS_CARGAS.find((x) => x.rango === RANGO_DIA_PAGO_F931)
+  assert.ok(p, 'sin el parámetro, la fila de fechas queda en #NAME? y la cadena no entra al libro')
+  assert.equal(p.valor, 10, 'la moda de los seis pagos reales de F931 cargados en Compras')
+  assert.ok(p.nota.includes(A_VERIFICAR), 'el calendario de ARCA para F931 no está cableado: hay que decirlo')
+})
+
+test('B12 · el SAC "pagado" se corta HOY: lo cargado con fecha futura es previsión', () => {
+  // El defecto: la fila sumaba por fecha de FACTURA sin tope, así que los $8.500.000 con fecha 30/12
+  // y estado "Proyectado" entraban como pagados y la provisión acumulada cerraba el año en
+  // −$4.914.913 — la pestaña afirmando que se pagó más aguinaldo del que se devengó.
+  const pag = String(filaCS(/^SAC pagado/)[12])
+  assert.match(pag, /<=TODAY\(\)/, 'sin el tope, un aguinaldo previsto para diciembre se cuenta como pagado')
+  assert.match(pag, /LOWER\(Compras!\$E\$4:\$E\)="sac"/)
+})
+
+test('B78 · el control de planes resta DOS CELDAS VIVAS: ninguna constante de la corrida', () => {
+  const dif = filaCS(/^⇒ Diferencia — tiene que ser \$0/)
+  assert.match(String(dif[1]), /^=\$B\$\d+-\$N\$\d+$/,
+    `el control volvió a restar contra una constante: ${dif[1]}`)
+})
+
+test('NINGUNA FÓRMULA DE LA GRILLA LLEVA UN LITERAL DE MILLONES ADENTRO', () => {
+  // Un número grande estampado en una fórmula es una foto del día de la corrida: el control que lo
+  // usa da cero cuando se escribe y miente para siempre después. Se escanea la grilla entera y no
+  // sólo el control, porque el defecto se repite solo.
+  const culpables = []
+  gCS.filas.forEach((f, i) => f.forEach((c, j) => {
+    const s = String(c ?? '')
+    if (!s.startsWith('=')) return
+    // Los años (2026, 2027) son cuatro dígitos y son legítimos; un importe tiene siete o más.
+    const m = s.match(/(?<![\d.,])\d{7,}(?![\d.,])/)
+    if (m) culpables.push(`fila ${i + 1} col ${j}: …${s.slice(Math.max(0, s.indexOf(m[0]) - 24), s.indexOf(m[0]) + m[0].length)}`)
+  }))
+  assert.deepEqual(culpables, [], culpables.join('\n'))
+})
+
+test('lo que no es plata no se dibuja como plata: personas, proporción y fechas', () => {
+  const fila = (re) => gCS.filas.findIndex((f) => re.test(String(f[0] ?? ''))) + 1
+  assert.ok(gCS.cantidades.includes(fila(/plantel de la última quincena/)),
+    'las 16 personas del control de plantel se dibujaban "$16"')
+  assert.ok(gCS.ratios.includes(fila(/en su primer año de antigüedad/)),
+    'la proporción 0,7 del plantel se dibujaba "$1"')
+  assert.deepEqual(gCS.fechas, [fila(new RegExp(ROTULOS_CARGAS.fechas.trim().slice(0, 20)))],
+    'la fila de fechas sin formato de fecha sale "$46.244"')
 })
 
 test('la cadena arranca en los jornales: la remuneración proyectada cuelga de sus rangos con nombre', () => {

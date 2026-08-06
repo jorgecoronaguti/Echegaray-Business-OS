@@ -29,9 +29,12 @@ test('el mapa es coherente con el cuadro real (sin huecos ni doble conteo)', () 
 // La lista de pestañas que el cuadro SUMA, derivada del CUADRO+REGLAS, es exactamente la esperada.
 // Cheques Emitidos y Tarjeta entran por la línea "sin factura"; Compras por sus rubros y por los
 // bienes de uso; Jornales por su dato real; Cobranzas por los ingresos. Nada más se suma.
-test('las fuentes sumadas son las cinco esperadas, ni una más', () => {
+test('las fuentes sumadas son las seis esperadas, ni una más', () => {
+  // La sexta entró el 06/08: "Cargas Sociales" dejó de ser una vista de Compras. Su cadena calcula las
+  // cargas del mes desde los jornales y el Libro las toma de ahí; las filas planas de Compras de esos
+  // rubros dejan de entrar. Si esta lista crece sin que el MAPA lo diga, el test de abajo lo caza.
   assert.deepEqual([...fuentesSumadas()].sort(), [
-    'Cheques Emitidos', 'Cobranzas', 'Compras', 'Jornales por Quincena', 'Tarjeta de Credito',
+    'Cargas Sociales', 'Cheques Emitidos', 'Cobranzas', 'Compras', 'Jornales por Quincena', 'Tarjeta de Credito',
   ])
 })
 

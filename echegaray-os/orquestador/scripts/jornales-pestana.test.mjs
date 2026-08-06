@@ -290,3 +290,42 @@ test('la columna "Equivale a (convenio)" del plantel no lleva el centinela en ni
     assert.equal(gm.filas[r - 1][4], '', `fila ${r}: el generador le borraría al dueño la categoría que cargue`)
   }
 })
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL FORMATO, PROBADO EN FRÍO (06/08). Los dos defectos de abajo se vieron MIRANDO la pestaña y
+// ninguno da error: una cifra mal formateada es plausible y equivocada, que es la peor clase.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+import { requestsDeFormato } from './jornales-pestana.mjs'
+
+/** El numberFormat que termina aplicándose a una celda: gana el ÚLTIMO pedido que la cubre. */
+const formatoDe = (reqs, fila, col) => {
+  let fmt = null
+  for (const r of reqs) {
+    const g = r.repeatCell
+    if (!g) continue
+    const { startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 } = g.range
+    if (fila - 1 < r0 || fila - 1 >= r1 || col < c0 || col >= c1) continue
+    const n = g.cell?.userEnteredFormat?.numberFormat
+    if (n) fmt = n
+  }
+  return fmt
+}
+
+test('la proyección: las horas por persona NO son plata, y la Σ $/hora SÍ', () => {
+  const reqs = requestsDeFormato(1, gm.filas, gm)
+  const finProy = gm.p0 + gm.nProy - 1
+  for (const f of [gm.p0, finProy]) {
+    // F = "Horas por persona" (7,166). Sin formato propio se la comía el barrido de moneda: "$7".
+    const horas = formatoDe(reqs, f, 5)
+    assert.equal(horas.type, 'NUMBER', `fila ${f}: las horas volvieron a dibujarse como plata`)
+    assert.match(horas.pattern, /0\.00/, 'con un decimal, 7,166 se muestra "7,2": el redondeo presentado como el dato')
+    // G = "Σ $/hora del mes": pesos por hora. Iba con el patrón "0.00" heredado del ajuste por
+    // inflación del layout viejo, o sea crudo y sin el $, mientras la misma columna del registro va
+    // con moneda. Dos formatos para la misma magnitud en la misma pestaña.
+    const sigma = formatoDe(reqs, f, 6)
+    assert.equal(sigma.type, 'CURRENCY', `fila ${f}: la Σ $/hora sigue cruda`)
+  }
+  // Y la celda MEDIDA de la que salen esas diez filas se ve igual que ellas: la misma cifra no puede
+  // mostrarse de dos maneras en la misma pestaña.
+  for (const f of gm.cantidades) assert.match(formatoDe(reqs, f, 1).pattern, /0\.00/)
+})

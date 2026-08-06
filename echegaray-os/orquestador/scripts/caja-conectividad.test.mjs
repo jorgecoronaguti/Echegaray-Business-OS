@@ -16,11 +16,15 @@ test('con las fuentes reales, ninguna pestaña que aporta plata queda DESCONECTA
 })
 
 test('una DERIVADA no es un hueco: se declara aparte, con la pestaña de la que deriva', () => {
-  // Confundir "no la suma" con "no la ve" llevaría a sumar Proveedores, Materiales, Cargas Sociales,
-  // Impuestos, Estructura y Recurrentes encima de Compras: contar todo dos veces.
+  // Confundir "no la suma" con "no la ve" llevaría a sumar Proveedores, Materiales, Impuestos,
+  // Estructura y Recurrentes encima de Compras: contar todo dos veces.
+  //
+  // "Cargas Sociales" estuvo en esta lista hasta el 06/08 y dejó de estarlo: su cadena calcula las
+  // cargas del mes y publica la serie, así que ahora es FUENTE y el Libro excluye de Compras las
+  // filas planas de esos rubros. Es el mismo camino que hizo la planilla de jornales.
   const v = veredictoConectividad(fuentesSumadas())
   const der = v.filter((x) => x.rol === 'DERIVADA')
-  assert.ok(der.length >= 6)
+  assert.ok(der.length >= 5, `quedaron ${der.length} derivadas: si bajan, alguien dejó de declarar de dónde viene su plata`)
   for (const d of der) {
     assert.equal(d.estado, 'derivada', `${d.pestania} no puede figurar como hueco`)
     assert.match(d.porque, /ya viaja por Compras/)

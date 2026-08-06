@@ -101,13 +101,23 @@ export const REGLAS = [
     sql: `${L(P.concepto)} ~ 'deuda previcional|deuda previsional|plan f931'`,
   },
   {
-    rubro: 'Nómina · Cargas sociales', detalle: 'Cargas Sociales', paga: 'compras',
+    // ═══ EL MONTO SALE DE LA CADENA, NO DE LA FILA PLANA (06/08) ═══
+    //
+    // Decía `paga: 'compras'` y desde hoy es falso para lo que viene: la pestaña "Cargas Sociales"
+    // proyecta las cargas del mes desde los jornales —$8.569.345 en agosto contra los $8.000.000
+    // redondos tipeados en Compras— y publica la serie como rangos con nombre que el Libro lee. Es la
+    // misma forma que ya tienen los jornales de obra: las filas siguen cargadas en Compras para
+    // registrar el PAGO (y ese pago, cuando ocurre, entra por Compras como REAL), pero el monto
+    // proyectado del cuadro sale de la pestaña que lo calcula.
+    rubro: 'Nómina · Cargas sociales', detalle: 'Cargas Sociales', paga: 'Cargas Sociales',
     js: (r) => norm(r.cliente) === 'f931',
     sheet: '(LOWER($J$4:$J)="f931")',
     sql: ES('cliente', 'f931'),
   },
   {
-    rubro: 'Nómina · Gremiales', detalle: 'Cargas Sociales', paga: 'compras',
+    // Ídem: FCL, UOCRA, IERIC y FODECO son cuatro de los diez conceptos de la misma cadena y viajan
+    // en su propio subtotal (CARGAS_MES_GREMIALES) para no mudarse a la línea de cargas sociales.
+    rubro: 'Nómina · Gremiales', detalle: 'Cargas Sociales', paga: 'Cargas Sociales',
     js: (r) => GREMIALES.includes(norm(r.proveedor)) || GREMIALES.slice(1).includes(norm(r.cliente)),
     sheet: `(REGEXMATCH(LOWER($E$4:$E&"");"^(${GREMIALES.join('|')})$")+REGEXMATCH(LOWER($J$4:$J&"");"^(${GREMIALES.slice(1).join('|')})$")>0)`,
     sql: `(${UNO_DE('proveedor', GREMIALES)} or ${UNO_DE('cliente', GREMIALES.slice(1))})`,

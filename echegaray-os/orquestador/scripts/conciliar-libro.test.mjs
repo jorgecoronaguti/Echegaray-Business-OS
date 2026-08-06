@@ -9,7 +9,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   evaluarBorde, ventanasDeTramo, conciliar, libroEntra, libroSale, residuosDeclarados,
-  rubrosDelCuadro, leerLibro, declaracionDeEndosos, FUENTE, TOLERANCIA,
+  rubrosDelCuadro, leerLibro, declaracionDeEndosos, FUENTE, TOLERANCIA, swapDeCargas,
 } from './conciliar-libro.mjs'
 import { ENDOSADO } from '../lib/libro-endosos.mjs'
 import { LIBRO as MAPA_LIBRO } from '../lib/libro-sumas.mjs'
@@ -150,6 +150,50 @@ test('las exclusiones tienen nombre y monto: nada se descuenta en silencio', () 
   assert.equal(r.banco, 900, 'el calendario declara $0 por tramo para los cargos sin factura')
   assert.equal(r.comprasSinRubroDelCuadro, 777)
   assert.deepEqual(r.rubrosSueltos, ['SIN CLASIFICAR'])
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL SWAP DE CARGAS SOCIALES (06/08) — el portón tiene que NOMBRARLO, no absorberlo.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('el swap se declara con las DOS cifras: lo que aporta la cadena y lo que dejó de aportar Compras', () => {
+  const v = ventanasDeTramo(1, HOY, CORTE) // "Esta semana": [hoy, hoy+7)
+  const libro = [
+    mov({ fecha: HOY + 5, importe: 8569345, origen: FUENTE.cargas, rubro: 'Nómina · Cargas sociales' }),
+    // Otro tramo: no puede sumar en éste.
+    mov({ fecha: HOY + 36, importe: 7608663, origen: FUENTE.cargas, rubro: 'Nómina · Cargas sociales' }),
+  ]
+  const reemplazadas = [
+    { fecha: HOY + 5, total: 8000000 },
+    { fecha: HOY + 6, total: 700000 },
+    { fecha: HOY + 36, total: 6500000 },
+  ]
+  const s = swapDeCargas(libro, v, reemplazadas)
+  assert.equal(s.cadena, 8569345, 'la cadena aporta lo que dice el libro, en la ventana del tramo')
+  assert.equal(s.plano, 8700000, 'y lo reemplazado se mide de Compras, no del libro: en el libro ya no está')
+  assert.equal(s.delta, 8569345 - 8700000)
+})
+
+test('EL SWAP NO SE COMPENSA CONTRA EL VEREDICTO: el Δ del tramo se sigue midiendo igual', () => {
+  // Fabricar el cero sería sumarle al lado que falta lo que se excluyó. Acá se prueba lo contrario: con
+  // un swap declarado enorme, un tramo descuadrado sigue descuadrando exactamente lo mismo.
+  const caja = CAJA_QUE_CIERRA.map((t, i) => (i === 1 ? { ...t, neto: t.neto - 1_000_000 } : t))
+  const conSwap = conciliar(LIBRO, caja, {
+    hoy: HOY, corte: CORTE, cargasReemplazadas: [{ fecha: HOY + 2, total: 41_530_186 }],
+  })
+  const sinSwap = conciliar(LIBRO, caja, { hoy: HOY, corte: CORTE })
+  assert.deepEqual(conSwap.filas.map((f) => f.delta), sinSwap.filas.map((f) => f.delta))
+  assert.equal(conSwap.cierra, false)
+  assert.equal(conSwap.filas[1].swapCargas.plano, 41_530_186, 'el monto excluido tiene que quedar a la vista')
+})
+
+test('las cargas tienen su propio renglón en el desglose: adentro de "otros" el swap es invisible', () => {
+  const v = ventanasDeTramo(1, HOY, CORTE)
+  const libro = [mov({ fecha: HOY + 2, importe: 1234, origen: FUENTE.cargas })]
+  const s = libroSale(libro, v)
+  assert.equal(s.porFuente.cargas, 1234)
+  assert.equal(Math.abs(s.porFuente.otros), 0)
+  assert.equal(s.total, 1234, 'la fuente nueva tiene que seguir sumando al total del tramo')
 })
 
 test('los rubros que se comparan salen del CUADRO, no de una lista copiada acá', () => {
