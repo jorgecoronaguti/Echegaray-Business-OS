@@ -138,6 +138,28 @@ export const CONCEPTOS_CADENA = [
 ]
 
 /**
+ * Los jornales netos de un mes: el PRIMER eslabón de la cadena. NO es una suma simple: la pestaña de
+ * quincenas tiene dos bloques y hay que sumar los dos. La expresión se reusa tal cual de la proyección
+ * anterior — dos versiones del mismo cálculo es exactamente lo que la regla de oro prohíbe.
+ *
+ * La "FRAGILIDAD DECLARADA" que decía este comentario —rangos de fila fijos que dejaban de sumar
+ * bien sin dar error— se pagó el 23/07 y se saldó con rangos con nombre. Ver abajo.
+ */
+export function jornalesDelMes(fecha) {
+  // POR RANGO CON NOMBRE, NO POR NÚMERO DE FILA. Acá decía `$A$3:$A$16` y `$A$23:$A$33`, con este
+  // comentario al lado: "FRAGILIDAD DECLARADA: los rangos están fijos. Si la pestaña cambia de
+  // geometría, esto deja de sumar bien SIN dar error". Pasó exactamente eso el 23/07, cuando se
+  // rehizo Jornales y las quincenas reales se mudaron de la fila 3 a la 41. Los nombres los publica
+  // el generador de esa pestaña en cada corrida y se mueven con ella.
+  //
+  // Tampoco hace falta ya el filtro "sólo las anteriores a la primera proyectada": la proyección
+  // arranca el día siguiente al último día pagado, así que los dos bloques no se pueden solapar.
+  const real = `SUMPRODUCT((YEAR(JORNALES_REAL_DESDE)=YEAR(${fecha}))*(MONTH(JORNALES_REAL_DESDE)=MONTH(${fecha}))*JORNALES_REAL_TOTAL)`
+  const proy = `SUMPRODUCT((YEAR(JORNALES_PROY_DESDE)=YEAR(${fecha}))*(MONTH(JORNALES_PROY_DESDE)=MONTH(${fecha}))*JORNALES_PROY_TOTAL)`
+  return `${real}+${proy}`
+}
+
+/**
  * NÚCLEO PURO: la alícuota de FCL ponderada por la antigüedad real del plantel.
  *
  * `p` es la proporción del plantel que lleva MENOS de un año. Sale por fórmula de la fecha de ingreso

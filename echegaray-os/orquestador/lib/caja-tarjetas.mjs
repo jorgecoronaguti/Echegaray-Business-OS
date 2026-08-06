@@ -55,8 +55,10 @@ import { terminoLibro } from './libro-sumas.mjs'
  */
 export const NO_REAL = Object.freeze(['COMPROMETIDO', 'PROYECTADO', 'VENCIDO'])
 
-/** El horizonte de la tarjeta de proyección, en días. Un mes es el ciclo con el que se decide acá. */
+/** El horizonte histórico de la proyección, en días. Lo siguen usando consumidores fuera de acá. */
 export const HORIZONTE = 30
+/** La frontera del idioma único: fin del mes corriente, EXCLUIDA (mismo criterio `hasta` del repo). */
+export const FIN_DE_MES = 'EOMONTH(TODAY();0)+1'
 
 /** Plata dibujada dentro de una frase. Sin decimales: en una línea de contexto los centavos son ruido. */
 const plata = (e) => `TEXT(${e};"$#,##0")`
@@ -80,23 +82,29 @@ const dia = (e) => `TEXT(${e};"dd/mm")`
  * @returns {Array<{clave:string,rotulo:string,valor:string,contexto:string,especie:'plata'|'texto'}>}
  */
 export function tarjetas(ref) {
-  const faltan = ['total', 'fecha', 'invArs', 'invUsd', 'invFecha', 'piso', 'pisoSimple', 'pisoFecha']
-    .filter((k) => !ref?.[k])
+  const faltan = ['total', 'fecha', 'invArs', 'invUsd', 'invFecha'].filter((k) => !ref?.[k])
   // FALLA CERRADO. Una referencia vacía produciría `=` o `=N()+N()` — una celda en error en la primera
   // pantalla de la pestaña más mirada del archivo. Es barato romper acá y carísimo descubrirlo allá.
   if (faltan.length) throw new Error(`caja-tarjetas: faltan las referencias ${faltan.join(', ')}`)
 
-  const ventana = { desde: 'TODAY()', hasta: `TODAY()+${HORIZONTE}`, estados: NO_REAL }
-  const entra30 = terminoLibro({ ...ventana, signo: 1, medida: 'magnitud' })
-  const sale30 = terminoLibro({ ...ventana, signo: -1, medida: 'magnitud' })
-  // ═══ COMPROMETIDA = LAS OBLIGACIONES DEL MES, NO SÓLO LOS CHEQUES (06/08, corrección del dueño) ═══
+  // ═══ EL IDIOMA ÚNICO ES EL MES (6ª directiva del dueño, 06/08 — la definitiva) ═══
   //
-  // Con estados ['COMPROMETIDO'] la tarjeta decía $7,7M a principio de mes — sólo los instrumentos
-  // firmados. La quincena, las cargas sociales y los impuestos viven como PROYECTADO en el libro y
-  // quedaban afuera, siendo obligaciones que igual hay que cubrir. El dueño: "no puede ser que siendo
-  // principio de mes, ya estemos con tan poco gasto proyectado". La definición vigente: TODO egreso
-  // no-REAL con vencimiento hasta fin de MES — quincena, cargas, impuestos, cheques y compras del mes,
-  // más lo vencido que sigue impago (sin `desde`: un vencido de julio sigue siendo plata a cubrir).
+  // Textual: "el fix q quiero es q todas las tarjetas de caja hablen el mismo idioma de base, y q
+  // las tarjetas sean una consecuencia perfecta de esto. la caja disponible es lo q tenemos en banco
+  // y caja, lo comprometido es todo lo q hay q pagar en el mes − lo q ya se pagó, y las otras es lo
+  // invertido y demás".
+  //
+  // Antes de esto la tarjeta LIBRE cambió CUATRO veces en un día (bancos−mes / +Balanz / −Balanz /
+  // piso) y el dueño rechazó las cuatro — y el auditor de cierre rechazó la quinta por publicar el
+  // peor caso sin decirlo. La lección no era la fórmula: era que cada tarjeta hablaba una ventana
+  // distinta (hoy, 7 días, 30 días, el mes) y ninguna historia podía cerrar. Ahora las cinco hablan
+  // AGOSTO, y la última es literalmente la suma de las otras: tengo + cobro − pago = termino.
+  //
+  // La que se fue es LIBRE: el dueño no la nombró en su definición final y en su lugar está lo que
+  // faltaba ver — A COBRAR, la pata de ingresos que todas las versiones anteriores escondían. El
+  // piso del recorrido (el mínimo día a día) sigue vivo en la escalera de al lado, que es su casa.
+  const mesPago = terminoLibro({ signo: -1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })
+  const mesCobro = terminoLibro({ signo: 1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })
   const venceEn7 = terminoLibro({ signo: -1, estados: NO_REAL, hasta: 'TODAY()+7', medida: 'magnitud' })
   // LA SUMA VA CON N(): la celda de una fila sin dato dice "" y "" no se suma — sin el N() la tarjeta
   // entera daría #VALUE! el día que falte una de las dos patas, y con él suma la que esté.
@@ -108,70 +116,31 @@ export function tarjetas(ref) {
       rotulo: 'CAJA DISPONIBLE',
       // NO SE RECALCULA: es la celda del total del bloque de cuentas, que ya vive unas filas abajo con
       // su detalle a la vista. Una segunda suma acá sería un número que puede diferir del de abajo.
-      // Desde el 06/08 ese total EXCLUYE Balanz: es la liquidez OPERATIVA — bancos y efectivo, lo que
-      // puede pagar un cheque mañana.
+      // Excluye Balanz: es la liquidez OPERATIVA — "lo q tenemos en banco y caja".
       valor: `=${ref.total}`,
       contexto: `=IF(ISNUMBER(${ref.fecha});"al "&${dia(ref.fecha)}&" · bancos y efectivo";"⚠ el bloque de cuentas todavía no publicó su fecha")`,
       especie: 'plata',
     },
     {
       clave: 'comprometida',
-      rotulo: 'CAJA COMPROMETIDA · 7 DÍAS',
-      // ═══ LA VENTANA ES DE 7 DÍAS, NO DEL MES — LAS TEMPORALIDADES (5ª directiva, 06/08) ═══
-      //
-      // Con la ventana a fin de mes la tarjeta decía $46,8M contra $45,9M disponibles y el dueño la
-      // rechazó, textual: "no puede ser q caja disponible sea menos q comprometida. estan tomandose
-      // mal las temporalidades". Tenía razón en la ventana: la mitad de esas obligaciones vencen
-      // DESPUÉS de las cobranzas del 14, 15 y 28 — se pagan con esa plata, no con la de hoy. Netear
-      // pagos de fin de mes contra la caja de hoy compara dos momentos distintos.
-      //
-      // El titular es lo que vence ANTES de que entre plata nueva — 7 días, la ventana corta que la
-      // caja de HOY sí tiene que cubrir, con lo vencido impago adentro (sin `desde`). El mes completo
-      // no se esconde: queda en el contexto. MAGNITUD y no neto: "cuánto debo" es positivo.
-      valor: `=${venceEn7}`,
-      contexto: `="todo el mes: "&TEXT(${terminoLibro({ signo: -1, estados: NO_REAL, hasta: 'EOMONTH(TODAY();0)+1', medida: 'magnitud' })}/1000000;"$#,##0.0")&"M"`,
+      rotulo: 'CAJA COMPROMETIDA',
+      // "TODO LO QUE HAY QUE PAGAR EN EL MES − LO QUE YA SE PAGÓ": egresos no-REAL hasta fin de mes
+      // (lo REAL ya salió del saldo del banco — restarlo otra vez lo contaría dos veces), más lo
+      // vencido impago (sin `desde`). MAGNITUD y no neto: "cuánto debo" es positivo. La urgencia no
+      // se pierde: lo que vence esta semana queda en el contexto.
+      valor: `=${mesPago}`,
+      contexto: `="del mes · próx. 7 días: "&TEXT(${venceEn7}/1000000;"$#,##0.0")&"M"`,
       especie: 'plata',
     },
     {
-      clave: 'libre',
-      rotulo: 'LIBRE DISPONIBILIDAD',
-      // ═══ LA RESPUESTA A "¿PUEDO USAR LA CAJA DISPONIBLE ENTERA?" (06/08, pregunta del dueño) ═══
-      //
-      // NO: parte de lo disponible ya está prometido este mes (quincenas, cargas, impuestos, cheques).
-      //
-      // ═══ Y EL CONTRATO CAMBIÓ EL MISMO DÍA (segunda pregunta del dueño) ═══
-      //
-      // La primera versión era `disponible − comprometida`: $897.367 "libres" en agosto. El dueño:
-      // "me parece muy poco para q en agosto solo nos quede eso libre" — y la auditoría fría le dio
-      // la razón. El número era correcto bajo su definición, pero la definición era el PEOR CASO
-      // disfrazado de saldo: comparaba TODO el egreso no-REAL del mes ($45,0M) contra la caja de
-      // HOY, con $45,0M en Balanz —rescatables en un día hábil— mirando desde la tarjeta de al lado
-      // y sin contarle ni un peso de las cobranzas del mes.
-      //
-      // ═══ CUARTA Y DEFINITIVA (06/08, tras tres rechazos del dueño): LIBRE ES EL PISO ═══
-      //
-      // La saga completa del día: v1 `disponible − comprometido` dio $897k ("me parece muy poco");
-      // v2 le sumó Balanz y dio $43,2M ("una cosa es el saldo en los bancos, otra en balanz");
-      // v3 volvió a bancos-solos y dio −$1,8M ("¿pasamos a ser totalmente deficitarios? pésimo").
-      // Las tres eran aritmética correcta sobre la pregunta equivocada: comparaban la caja de HOY
-      // contra los pagos de TODO el mes, ignorando que las cobranzas entran el 14-15 y el 28 — un
-      // agregado de fin de mes disfrazado de saldo de hoy.
-      //
-      // La pregunta correcta de tesorería es: ¿cuánto puedo usar HOY sin que NINGÚN día del
-      // recorrido quede al descubierto? Y esa respuesta ya vive en la pestaña: es el PISO de la
-      // escalera — el mínimo al que llega la posición acumulada día a día, cobranzas y pagos en su
-      // fecha. La tarjeta lo REFERENCIA (regla de siempre: ninguna cuenta nueva).
-      //
-      // EL MÍNIMO SIMPLE ($I), NO EL PEOR CASO ($H) — 5ª directiva (06/08). El peor caso le resta
-      // $22,6M de cheques de cobertura incierta y la tarjeta decía $7,4M donde el recorrido medido
-      // daba $29,7M: el titular es lo MEDIDO con cada cobro y pago en su fecha. La incertidumbre de
-      // esos cheques no desaparece — la sigue vigilando la fila "⇒ Peor caso · piso" de la escalera
-      // y su alerta, que es donde un escenario pertenece.
-      //
-      // Depende de que lo proyectado se cumpla, y el contexto LO DICE ("cobrando lo proyectado"):
-      // sin esa cláusula el número se leería como plata garantizada, que es el error más caro.
-      valor: `=N(${ref.pisoSimple})`,
-      contexto: `="piso el "&${dia(ref.pisoFecha)}&" · cobrando lo proyectado"`,
+      clave: 'aCobrar',
+      rotulo: 'A COBRAR',
+      // LA PATA QUE FALTABA. Todas las versiones anteriores de la portada comparaban la caja de hoy
+      // contra los pagos del mes SIN mostrar lo que entra en el mismo período — y cada número que
+      // salía de ahí se leía como pobreza o como error. Es la misma suma del libro que los pagos,
+      // con el signo contrario: cobranzas y otros ingresos no-REAL hasta fin de mes.
+      valor: `=${mesCobro}`,
+      contexto: `="del mes · si se cobra lo proyectado"`,
       especie: 'plata',
     },
     {
@@ -186,14 +155,14 @@ export function tarjetas(ref) {
       especie: 'plata',
     },
     {
-      clave: 'proyectada',
-      rotulo: `CAJA PROYECTADA · ${HORIZONTE} DÍAS`,
-      // PARTE DEL TOTAL OPERATIVO: proyecta con qué liquidez de pago se termina el mes. Lo invertido
-      // no entra — no cubre un vencimiento hasta que se rescata, y ese rescate sería un movimiento.
-      valor: `=${ref.total}+${terminoLibro(ventana)}`,
-      // EN MILLONES, NO EN PESOS: el auditor de pantalla midió 48 caracteres en una columna de 38.
-      // Un contexto que se corta no informa; el detalle exacto vive en la escalera de al lado.
-      contexto: `="al "&${dia(`TODAY()+${HORIZONTE}`)}&" · +"&TEXT(${entra30}/1000000;"$#,##0.0")&"M · -"&TEXT(${sale30}/1000000;"$#,##0.0")&"M"`,
+      clave: 'finDeMes',
+      rotulo: 'CAJA · FIN DE MES',
+      // LA CONSECUENCIA PERFECTA, por construcción: referencia a las TRES tarjetas hermanas (fila 3,
+      // columnas A, E y C — disponible, a cobrar, comprometida), no una cuarta suma sobre el libro.
+      // Si cualquiera de las tres cambia, ésta cambia con ellas y la identidad no puede romperse.
+      // Lo invertido NO entra: una comitente no paga un cheque, y el dueño lo quiso aparte.
+      valor: '=N($A$3)+N($E$3)-N($C$3)',
+      contexto: `="tengo + cobro − pago · al "&${dia(`EOMONTH(TODAY();0)`)}`,
       especie: 'plata',
     },
   ]
