@@ -64,8 +64,10 @@ test('lo pagado sale del ESTADO de la fila, no de que la fecha ya haya pasado', 
   // Una fila con fecha de caja vencida y estado "🟢 Vigente" es un pago previsto que NO salió.
   // Tomarla como pagada apagaría la proyección de un mes que se sigue debiendo.
   assert.match(f, /REGEXMATCH\('Compras'!\$Z\$4:\$Z&"";"Pagado"\)/)
-  assert.match(f, /DATE\(2026;7;1\)/)
+  // LA VENTANA ES LA DEL MES SIGUIENTE: el retiro de julio se paga el 10/08 — los pagos del 03-04/08
+  // confirman JULIO, no agosto (el defecto de los $9M dobles, 06/08).
   assert.match(f, /DATE\(2026;8;1\)/)
+  assert.match(f, /DATE\(2026;9;1\)/)
   // Dentro de SUMPRODUCT, N() no se expande sobre un rango: tiene que ser IF(ISNUMBER(...)).
   assert.ok(!/\*N\('Compras'/.test(f), `N() sobre un rango adentro de SUMPRODUCT no se expande: ${f}`)
 })

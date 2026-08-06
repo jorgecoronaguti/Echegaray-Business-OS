@@ -274,7 +274,13 @@ export function grilla({ bloques, pendientes, bloquesOfi, pagoPrevio = [], ultim
    */
   const push = (c = []) => {
     const r = [...c]
-    while (r.length < ANCHO) r.push(VACIO)
+    // ═══ LA COLUMNA 14 NUNCA SE RELLENA CON EL CENTINELA (06/08 — tercera vez que muerde) ═══
+    //
+    // "Pagado el" es LA columna del dueño. Rellenar el ancho completo con VACIO significa "es mía y
+    // va vacía": la fusión le borró las 14 fechas por TERCERA vez (las dos anteriores están en la
+    // memoria del repo). El relleno llega hasta la 13; la 14 va con '' = "no es mía, preservá".
+    while (r.length < ANCHO - 1) r.push(VACIO)
+    if (r.length < ANCHO) r.push('')
     filas.push(r)
     return filas.length
   }

@@ -128,8 +128,15 @@ export const formulaPrimerRetiro = (nombres = NOMBRES_DIRECCION) =>
  * `IF(ISNUMBER(x);x;0)` y no `N(x)`: dentro de SUMPRODUCT, N() no se expande sobre un rango.
  */
 export function formulaPagadoMes(mes, anio, nombres = NOMBRES_DIRECCION) {
-  const desde = `DATE(${anio};${mes};1)`
-  const hasta = `DATE(${anio};${mes + 1};1)`
+  // ═══ LA VENTANA ES LA DEL MES SIGUIENTE (06/08, pagado en vivo) ═══
+  //
+  // El retiro del mes M sale el DIA_PAGO de M+1 — la proyección ya lo dice así ("se paga el
+  // 10/08" para julio) y la propia nota del bloque lo midió en Compras. Pero esta fórmula buscaba
+  // pagos con fecha de caja DENTRO de M: los $9M pagados el 03-04/08 cayeron en el balde "Agosto",
+  // "Julio" siguió proyectado $9M al 10/08, y la tarjeta COMPROMETIDA pidió plata que ya salió.
+  // Un pago confirma la proyección más vieja: la ventana de pagado es la MISMA que la de pago.
+  const desde = `DATE(${anio};${mes + 1};1)`
+  const hasta = `DATE(${anio};${mes + 2};1)`
   const f = `IF(ISNUMBER(${COL_FECHA_CAJA});${COL_FECHA_CAJA};0)`
   return `=SUMPRODUCT(REGEXMATCH(LOWER(${COL_PERSONA}&"");"${regexDireccion(nombres)}")`
     + `*(${f}>=${desde})*(${f}<${hasta})`
