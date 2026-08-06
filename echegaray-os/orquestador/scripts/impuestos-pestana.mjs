@@ -212,7 +212,7 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, hoy }) {
   bloqueRetenciones(G, { anio })
   const otros = bloqueOtros(G, { anio, C })
   const pln = bloquePlanes(G, { anio, C, planes })
-  const deuda = bloqueDeudaFinanciera(G, { anio, C, planes, hoy, fPlanTotal: pln.fTotal })
+  const deuda = bloqueDeudaFinanciera(G, { anio, C, planes, fPlanTotal: pln.fTotal })
   const cierre = bloqueCierre(G, {
     proy,
     vencimientos: { iibb: `día ${IIBB_SUPUESTO.dia} de cada mes, ${IIBB_SUPUESTO.porQue}. Lo cierra una consulta a la DGR o al estudio contable.` },

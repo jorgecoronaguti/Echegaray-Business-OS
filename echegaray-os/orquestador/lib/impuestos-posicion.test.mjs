@@ -138,3 +138,41 @@ test('las referencias de "sin fecha cierta" son ABSOLUTAS y del mes en adelante'
   assert.equal(formulaOtrosSinFecha([77], '2026-12-01', 2026, 3), '=$M$77')
   assert.equal(formulaOtrosSinFecha([], HOY, 2026, 3), '=0')
 })
+
+test('NINGUNA celda del cuadro de financiamiento es un número PEGADO donde su fila la calcula', () => {
+  // ═══ D46 (06/08) ═══
+  //
+  // "Disponible" de la tarjeta estaba pegado en 8.693.073,70 mientras B46 − C46 daba 8.693.074,00:
+  // treinta centavos entre la celda y su propia fila, en la única de las cuatro que no calculaba. El
+  // origen era el REDONDEO del tomado, que rompía la identidad límite − tomado = disponible.
+  const filas = posicion()
+  const i0 = filas.findIndex((f) => /^Línea de financiamiento/.test(String(f[0] ?? '')))
+  assert.ok(i0 > 0, 'tiene que existir el encabezado del cuadro de financiamiento')
+  const lineas = filas.slice(i0 + 1).filter((f) => !/^(⇒|$)/.test(String(f[0] ?? ''))).slice(0, 4)
+  assert.equal(lineas.length, 4)
+  for (const f of lineas) {
+    const [rotulo, limite, tomado, disp] = f
+    // Las dos ya tomadas enteras (prendario y planes) no tienen límite y su disponible es 0 explícito.
+    if (typeof limite !== 'number') {
+      assert.equal(disp, 0, `${rotulo}: sin línea disponible, el 0 va explícito`)
+      continue
+    }
+    assert.match(String(disp), /^=\$B\$\d+-\$C\$\d+$/, `${rotulo}: el disponible tiene que salir de su fila`)
+    // Y el tomado conserva los centavos: redondearlo a peso es lo que rompía la identidad de la fila.
+    if (typeof tomado === 'number') {
+      assert.equal(tomado, Math.round(tomado * 100) / 100, `${rotulo}: el tomado no se redondea a peso`)
+    }
+  }
+  // El techo suma la columna: si una celda fuera un pegado, el total sería otra verdad.
+  const techo = filas.find((f) => /FINANCIAMIENTO SIN USAR/.test(String(f[0] ?? '')))
+  assert.match(String(techo[3]), /^=SUM\(\$D\$\d+:\$D\$\d+\)$/)
+})
+
+test('el disponible de la TARJETA sigue siendo el que declara el banco, al centavo', () => {
+  // El dato primario del resumen es el DISPONIBLE; el tomado se despeja de él. Si alguien invierte la
+  // dependencia (tomado = consumido declarado), el disponible cambia $60.433 y nadie lo ve.
+  const filas = posicion()
+  const f = filas.find((x) => /^Tarjeta de crédito/.test(String(x[0] ?? '')))
+  assert.ok(f)
+  assert.equal(Math.round((f[1] - f[2]) * 100) / 100, TARJETA.disponible)
+})
