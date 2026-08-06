@@ -96,6 +96,25 @@ export const altoDeLaPosicion = (cal = []) => 10 + (cal.length + 4) + 10 + 8
  */
 export function filasDeLaPosicion({ cal, base, hoy, refs, acuerdo, tarjeta }) {
   const F = []
+  // ═══ QUÉ ENVEJECE ACÁ, Y POR QUÉ NO SE PUEDE ARREGLAR CON UNA FÓRMULA (06/08) ═══
+  //
+  // Las dos celdas que deciden plata —"prendario/planes: cuotas que todavía no vencieron"— ya no
+  // llevan el serial del día tipeado: cortan con `TODAY()` y quedan exactas aunque la pestaña se
+  // regenere tarde (ver `CORTE_VIVO` en impuestos-cuadro.mjs).
+  //
+  // TODO LO DE ESTE BLOQUE, EN CAMBIO, SE CALCULA CON LA FECHA DE LA CORRIDA Y NO PUEDE SER VIVO:
+  //
+  //   · "LA POSICIÓN AL 06/08" y "PRÓXIMO VENCIMIENTO · 07/08 · …" — el próximo vencimiento sale de
+  //     ORDENAR el calendario y quedarse con el primero no vencido, en JavaScript. Un TEXT(TODAY())
+  //     en el rótulo diría la fecha de hoy al lado de un vencimiento elegido hace una semana: sería
+  //     más nuevo el cartel que el dato. Un rótulo que envejece a la vista es preferible a uno que
+  //     miente sobre su propia frescura.
+  //   · qué obligaciones entran al calendario, cuáles están "⚠ VENCIDO" y las ventanas 30/60/90: son
+  //     sumas de celdas ELEGIDAS por fecha, no un rango. Hacerlas vivas exige rehacer el cuadro
+  //     entero en fórmula (un rango con las fechas y un SUMIFS por ventana), que es otro trabajo.
+  //
+  // La consecuencia queda VISIBLE y no escondida: si la pestaña se queda vieja, las filas del
+  // calendario cuyas fechas ya pasaron aparecen marcadas "⚠ VENCIDO", que es exactamente el aviso.
   // ── HERO ────────────────────────────────────────────────────────────────────────────────────────
   // Cuatro cifras y nada más. Mercury: UNA métrica primaria por pantalla; acá son dos posiciones
   // (a favor y en contra) y dos plazos (el próximo vencimiento y los 30 días), que es lo mínimo con

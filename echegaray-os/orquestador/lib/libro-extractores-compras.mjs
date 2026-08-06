@@ -16,6 +16,8 @@
 import { columnasObligatorias } from './compras-columnas.mjs'
 import { instrumentoDePago } from './caja-canales.mjs'
 import { movimiento, estadoContraCorte } from './libro-movimientos.mjs'
+import { debitoRealDePlan } from './vencimientos-fiscales.mjs'
+import { isoDeSerial, serialDe } from './libro-extractores-fechas.mjs'
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 const txt = (v) => String(v ?? '').trim()
@@ -41,6 +43,12 @@ export const NOMBRES_COMPRAS = Object.freeze({
   // clientes reales y el resto son centros de costo internos que `clienteCanonico` descarta.
   cliente: 'Cliente / Asignación',
 })
+
+/**
+ * EL RUBRO DE LAS CUOTAS DE PLANES DE FACILIDADES DE ARCA. Es el único egreso de Compras que se debita
+ * SOLO, en la fecha que fija el organismo — por eso su fecha se puede corregir y la de las demás no.
+ */
+export const RUBRO_PLANES_ARCA = 'Deuda previsional (planes de pago)'
 
 /** Las columnas de Compras, resueltas por rótulo sobre la fila 3. Falla cerrado si falta alguna. */
 export const columnasDeCompras = (filas = []) => columnasObligatorias(filas[2] ?? [], NOMBRES_COMPRAS, 'Compras')
@@ -74,6 +82,44 @@ export function pendienteDeCompra({ importe, pagado, montoPagado }, aviso = () =
     return importe
   }
   return importe - ya
+}
+
+/**
+ * NÚCLEO PURO: la fecha de caja de una fila de Compras, con el día de débito real si es una cuota de
+ * plan de ARCA cargada en fin de semana.
+ *
+ * ═══ LA CUOTA QUE VENCÍA UN DOMINGO (06/08) ═══
+ *
+ * Compras tiene dos cuotas de plan al 16/08/2026 —domingo— por $2.968.642,73. ARCA no debita fines de
+ * semana: su calendario las pone el 18/08, y ahí las mostraba "Impuestos y Financieros" mientras el
+ * libro las llevaba al 16. La misma plata con dos fechas, dos días de diferencia, en el cuadro con el
+ * que se decide un pago.
+ *
+ * TRES CONDICIONES, TODAS NECESARIAS:
+ *
+ *   · el rubro es el de los planes de ARCA — es el único egreso que se debita SOLO en una fecha que
+ *     fija un tercero, con tabla verificada. Una compra a proveedor con fecha de sábado es una
+ *     estimación del dueño y se respeta;
+ *   · la fila NO está pagada — un pago ya ocurrido es un hecho con su fecha, y moverlo desalinearía la
+ *     conciliación contra el extracto. (La cuota de mayo, cargada el 16/05 sábado y ya pagada, no se
+ *     toca a propósito.);
+ *   · la fecha cargada cae sábado o domingo — un débito automático en domingo no es una decisión del
+ *     dueño, es imposible. Una fecha hábil que no coincide con la tabla SÍ manda sobre la tabla.
+ *
+ * Y NO SE ESCRIBE EN COMPRAS. Lo que el dueño cargó queda como lo cargó; corrige el que lee.
+ *
+ * @param {{serial:number|null, rubro:string, pagado:boolean}} f
+ * @param {(m:string)=>void} aviso
+ * @returns {number|null} el serial corregido (o el mismo)
+ */
+export function fechaDeCajaDeCompra({ serial, rubro, pagado }, aviso = () => {}) {
+  if (serial === null || !Number.isFinite(serial)) return serial
+  if (pagado || txt(rubro) !== RUBRO_PLANES_ARCA) return serial
+  const r = debitoRealDePlan(isoDeSerial(serial))
+  if (!r.corregida) return serial
+  aviso(`cuota de plan ARCA: ${r.motivo}`)
+  const [a, m, d] = r.fecha.split('-').map(Number)
+  return serialDe(a, m, d)
 }
 
 /**

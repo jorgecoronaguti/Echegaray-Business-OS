@@ -232,7 +232,7 @@ export function bloquePlanes(G, { anio, C, planes }) {
 // 9 · DEUDA FINANCIERA — LO QUE FALTA PAGAR (los defectos A y B, muertos)
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
-export function bloqueDeudaFinanciera(G, { anio, C, planes, hoy, fPlanTotal }) {
+export function bloqueDeudaFinanciera(G, { anio, C, planes, fPlanTotal }) {
   G.push([seccion(9, 'Deuda financiera — cuánto se va por mes y cuánto FALTA pagar')])
   G.cabecera()
   const fCuota = G.mensual('Prendario Ford XLS · Santander — cuota',
@@ -247,12 +247,15 @@ export function bloqueDeudaFinanciera(G, { anio, C, planes, hoy, fPlanTotal }) {
   // Estas dos filas sumaban el rubro entero y el total del año —cuotas YA PAGADAS incluidas— y el
   // hero las publicaba como deuda: $31.895.983 donde la pendiente real es $14.372.450. $17,5M de
   // sobredeclaración justo en el número con el que se decide si hay que salir a cubrir un bache.
+  // EL CORTE LO EVALÚA LA PLANILLA, NO LA CORRIDA: `TODAY()`. Con el serial del día tipeado, estas dos
+  // celdas —que son las que el hero publica como DEUDA PENDIENTE— empiezan a contar cuotas ya
+  // debitadas apenas la pestaña se queda un día sin regenerar.
   const fPrendPend = G.lista(subItem('prendario — cuotas que todavía no vencieron'),
-    [formulaPrendarioPendiente(C, hoy)],
-    `Compras, rubro "Financiero", SÓLO las cuotas con fecha prevista posterior al ${hoy}. Es un saldo, no una serie: por eso va fuera de la grilla mensual.`)
+    [formulaPrendarioPendiente(C)],
+    'Compras, rubro "Financiero", SÓLO las cuotas con fecha prevista posterior a HOY (el corte lo evalúa la planilla, no la corrida). Es un saldo, no una serie: por eso va fuera de la grilla mensual.')
   const fPlanesPend = G.lista(subItem('planes F931 — cuotas que todavía no vencieron'),
-    [formulaPlanesPendiente(C, planes, hoy)],
-    `Compras, los ${planes.length} planes por su patrón, SÓLO las cuotas con fecha prevista posterior al ${hoy}.`)
+    [formulaPlanesPendiente(C, planes)],
+    `Compras, los ${planes.length} planes por su patrón, SÓLO las cuotas con fecha prevista posterior a HOY.`)
   const fPend = G.lista(rotuloTotal('Deuda fiscal-financiera PENDIENTE'),
     [`=$B$${fPrendPend}+$B$${fPlanesPend}`],
     'Lo que FALTA pagar con instrumento. Es el número del hero, y el hero lo REFERENCIA: no lo vuelve a calcular.')

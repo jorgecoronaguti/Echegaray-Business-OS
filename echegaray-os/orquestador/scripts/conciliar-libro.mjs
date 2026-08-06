@@ -40,6 +40,7 @@ import { BORDES, PISO_CAJA } from '../lib/caja-calendario.mjs'
 import { CUADRO } from '../lib/cash-flow-lineas.mjs'
 import { eomonth, serialDe } from '../lib/libro-extractores-fechas.mjs'
 import { PESTANA_NOMINA } from '../lib/libro-extractores-nomina.mjs'
+import { endososDeCartera } from '../lib/libro-endosos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const pesos = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(Math.round(n)).toLocaleString('es-AR')
@@ -190,6 +191,29 @@ export function residuosDeclarados(libro, v, rubros = rubrosDelCuadro()) {
 }
 
 /**
+ * NÚCLEO PURO: LO QUE EL LIBRO NO TIENE PORQUE SE EXCLUYÓ A PROPÓSITO — los valores ENDOSADOS.
+ *
+ * ═══ POR QUÉ ESTO VIVE EN EL PORTÓN Y NO SÓLO EN EL GENERADOR (06/08) ═══
+ *
+ * Los dos echeq de $10.000.000 endosados a Alumetal se cobraron (Cobranzas los registra) y no van a
+ * acreditar nunca: `deCobranzas` los saca del libro. Esa exclusión no mueve NINGÚN Δ de tramo —eran
+ * movimientos REAL, y la escalera sólo mira lo NO-REAL— así que este portón la daría por buena sin
+ * enterarse. Pero son $20.000.000 que están en una pestaña del archivo y no están en el libro, y una
+ * plata que desaparece sin que nadie diga cuánta es indistinguible de un error.
+ *
+ * Se lee de `_CHEQUES_RAW`, que es la MISMA fuente que usa el extractor: si mañana el criterio cambia
+ * de un lado, el portón deja de coincidir y hay que mirarlo. Un control con su propia copia de la
+ * regla deja de controlar el día que una de las dos se mueve.
+ *
+ * @param {Array<Array>} filas `_CHEQUES_RAW`
+ * @returns {{total:number, valores:Array}}
+ */
+export function declaracionDeEndosos(filas = []) {
+  const valores = endososDeCartera(filas)
+  return { total: valores.reduce((a, v) => a + v.importe, 0), valores }
+}
+
+/**
  * NÚCLEO PURO: EL VEREDICTO. Compara tramo por tramo y dice si las vistas pueden migrar.
  *
  * EL VEREDICTO ES POR Δ NETO DE TRAMO, no por lado: lo que decide la escalera es con cuánta plata
@@ -317,6 +341,12 @@ function imprimir(r) {
   console.log('\nLO QUE EL LIBRO VE Y EL CALENDARIO DECLARA QUE NO VE (exclusiones, no descuadres):')
   console.log(`  · cargos del banco sin factura (_BANCO_RAW): ${pesos(res.banco)} — el calendario los pone en $0 por tramo`)
   console.log(`  · Compras con rubro fuera del cuadro: ${pesos(res.sinRubro)}${res.rubros.size ? ` (${[...res.rubros].join(', ')})` : ''}`)
+  // La exclusión no mueve ningún Δ (eran REAL), y por eso hay que NOMBRARLA: si no, desaparece.
+  console.log(`  · valores ENDOSADOS que Cobranzas registra y el libro excluye: ${pesos(r.endosados.total)} `
+    + `en ${r.endosados.valores.length} valor(es) — esa plata se entregó a un tercero y no va a acreditar nunca`)
+  for (const v of r.endosados.valores) {
+    console.log(`      ${v.numero || '(sin número)'} · ${pesos(v.importe)} · vence ${v.fecha} · ${v.librador}`)
+  }
   for (const f of r.bordesEnDesacuerdo) {
     console.log(`  ⚠ el borde de "${f.rotulo}" no coincide: CAJA ${f.bordeCaja} · portón ${f.bordeLibro}. `
       + '¿La corrida cruzó la medianoche, o la pestaña quedó sin recalcular?')
@@ -330,11 +360,12 @@ function imprimir(r) {
 async function main() {
   const g = makeGoogleClient({ config: loadConfig() })
   // Se concilia lo ESCRITO en la pestaña, no lo que la memoria del generador cree haber escrito.
-  const [crudo, caja, corteRaw] = await Promise.all([
+  const [crudo, caja, corteRaw, carteraRaw] = await Promise.all([
     g.readSheetValues(ID, '_MOVIMIENTOS!A2:P2000', { render: 'UNFORMATTED_VALUE' }),
     g.readSheetValues(ID, 'CAJA!A1:I45', { render: 'UNFORMATTED_VALUE' }),
     // PISO_CAJA es `CAJA_FECHA_SALDO`, el rango con nombre que publica CAJA: el corte del extracto.
     g.readSheetValues(ID, PISO_CAJA, { render: 'UNFORMATTED_VALUE' }),
+    g.readSheetValues(ID, '_CHEQUES_RAW!A1:L', { render: 'UNFORMATTED_VALUE' }),
   ])
   const libro = leerLibro(crudo)
   if (!libro.length) throw new Error('_MOVIMIENTOS está vacía: corré primero libro-movimientos-pestana.mjs')
@@ -344,7 +375,7 @@ async function main() {
       + 'del extracto, el piso del calendario sería el año 1899 y la comparación no significaría nada.')
   }
   const r = conciliar(libro, leerCalendario(caja), { hoy: hoySerial(), corte })
-  imprimir(r)
+  imprimir({ ...r, endosados: declaracionDeEndosos(carteraRaw) })
   if (!r.cierra) process.exitCode = 1
 }
 

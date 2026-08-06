@@ -42,10 +42,22 @@ test('PROHIBIDO: la cuota del prendario NO puede salir del extracto — el SUMIF
 test('la deuda pendiente del prendario es SÓLO lo futuro — el defecto B', () => {
   // Las doce cuotas cargadas suman $15.359.163 y siete YA se pagaron. "Pendiente" son las cinco que
   // faltan: $6.414.055. La versión anterior sumaba el rubro entero sin condición de fecha.
-  const f = formulaPrendarioPendiente(C, HOY)
-  assert.equal(f, '=SUMIFS(Compras!$O$4:$O;Compras!$AB$4:$AB;"Financiero";Compras!$Q$4:$Q;">"&46240)')
-  assert.equal(serialDe(HOY), 46240)
+  const f = formulaPrendarioPendiente(C)
+  assert.equal(f, '=SUMIFS(Compras!$O$4:$O;Compras!$AB$4:$AB;"Financiero";Compras!$Q$4:$Q;">"&TODAY())')
   assert.ok(/">"&/.test(f), 'sin condición de fecha, "pendiente" es el total histórico')
+})
+
+test('EL CORTE DE "PENDIENTE" LO EVALÚA LA PLANILLA: ni un serial tipeado', () => {
+  // El defecto: `">"&46240` —el serial del día de la corrida— en las dos celdas que el hero publica
+  // como DEUDA PENDIENTE. Con eso, una pestaña que no se regenera un día empieza a contar como
+  // pendientes cuotas que ya se debitaron, y ese es el número con el que se decide cubrir un bache.
+  const planes = [{ patron: 'W303094', campo: 'concepto' }]
+  for (const f of [formulaPrendarioPendiente(C), formulaPlanesPendiente(C, planes)]) {
+    assert.match(f, /">"&TODAY\(\)/, 'el corte tiene que ser vivo')
+    assert.ok(!/">"&\d+/.test(f), `hay un serial tipeado: ${f}`)
+    // Y el serial del día de hoy no puede aparecer por ninguna otra vía.
+    assert.ok(!f.includes(String(serialDe(HOY))), 'el serial del día de la corrida no va en la fórmula')
+  }
 })
 
 test('la deuda pendiente de los planes también es sólo lo futuro, y por plan', () => {
@@ -54,14 +66,14 @@ test('la deuda pendiente de los planes también es sólo lo futuro, y por plan',
     { patron: '931 Dic 25', campo: 'detalle' },
     { patron: '931 Enero 26', campo: 'detalle' },
   ]
-  const f = formulaPlanesPendiente(C, planes, HOY)
+  const f = formulaPlanesPendiente(C, planes)
   assert.ok(f.includes('Compras!$L$4:$L;"*W303094*"'), 'W303094 se identifica por Concepto')
   assert.ok(f.includes('Compras!$K$4:$K;"*931 Dic 25*"'), 'los de deuda previsional, por Detalles / Obra')
   assert.equal((f.match(/SUMIFS/g) ?? []).length, 3, 'un término por plan')
-  assert.equal((f.match(/">"&46240/g) ?? []).length, 3, 'los tres, sólo hacia adelante')
+  assert.equal((f.match(/">"&TODAY\(\)/g) ?? []).length, 3, 'los tres, sólo hacia adelante')
   // Sin planes reconocidos no se inventa un importe: da 0 explícito.
-  assert.equal(formulaPlanesPendiente(C, [], HOY), '=0')
-  assert.equal(formulaPlanesPendiente(C, [{ patron: null, campo: null }], HOY), '=0')
+  assert.equal(formulaPlanesPendiente(C, []), '=0')
+  assert.equal(formulaPlanesPendiente(C, [{ patron: null, campo: null }]), '=0')
 })
 
 test('el rubro del prendario es contrato con Compras y está declarado', () => {
@@ -130,7 +142,13 @@ test('la posición de financiamiento muestra las CUATRO fuentes, no dos', () => 
   assert.equal(filas[0].limite, 18200000)
   assert.match(filas[1].rotulo, /Tarjeta de crédito/)
   assert.equal(filas[1].limite, 10000000)
-  assert.equal(filas[1].disponible, TARJETA.disponible)
+  // EL DISPONIBLE DE LA TARJETA SALE POR FÓRMULA, COMO EL DEL DESCUBIERTO (06/08). Estaba PEGADO en
+  // 8.693.073,70 con B46 − C46 = 8.693.074,00: treinta centavos entre la celda y su propia fila. El
+  // dato del banco sigue siendo el disponible; el tomado se despeja de él, ahora al centavo.
+  assert.equal(filas[1].disponible, null, 'lo calcula la grilla como límite − tomado')
+  assert.equal(filas[1].usado, 1306926.30)
+  assert.equal(Math.round((filas[1].limite - filas[1].usado) * 100) / 100, TARJETA.disponible,
+    'límite − tomado tiene que dar EXACTAMENTE el disponible que declara el banco')
   assert.match(filas[2].rotulo, /Prendario Ford XLS/)
   assert.equal(filas[2].usado, '=$B$44')
   assert.match(filas[3].rotulo, /Planes de pago F931/)
@@ -194,8 +212,8 @@ test('el próximo vencimiento es el primero NO vencido, con su fecha y su celda'
 
 test('todas las fórmulas van en locale es-AR: separador ";", nunca ","', () => {
   const todas = [
-    formulaCuotaPrendario(C, 2026, 9), formulaPrendarioPendiente(C, HOY),
-    formulaPlanesPendiente(C, [{ patron: 'W303094', campo: 'concepto' }], HOY),
+    formulaCuotaPrendario(C, 2026, 9), formulaPrendarioPendiente(C),
+    formulaPlanesPendiente(C, [{ patron: 'W303094', campo: 'concepto' }]),
     formulaAlicuotaIibbVigente(IIBB.hoja, IIBB.fila0, IIBB.col, '2026-06'),
     formulaBaseIibbProyectada(2026, 9), formulaIibbDeterminado('J58', 'J59'),
     formulaImpuestoChequeProyectado(2026, 10), formulaImpuestoCheque('_BANCO_RAW', 2026, 10),

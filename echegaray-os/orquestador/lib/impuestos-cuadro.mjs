@@ -20,7 +20,6 @@ import { terminoLibro } from './libro-sumas.mjs'
 import { ALICUOTA as ALICUOTA_25413 } from './impuesto-cheque.mjs'
 import { TASAS } from './costo-descubierto.mjs'
 import { RANGO_ALICUOTA_IVA } from './iva-libre-disponibilidad.mjs'
-import { serialDe } from './vencimientos-fiscales.mjs'
 
 /** El rubro de Compras donde vive el cuadro de amortización del prendario. Contrato con Compras. */
 export const RUBRO_PRENDARIO = 'Financiero'
@@ -51,24 +50,45 @@ export function formulaCuotaPrendario(C, anio, m) {
 }
 
 /**
- * NÚCLEO PURO: lo que FALTA pagar del prendario. Sólo cuotas con vencimiento POSTERIOR al corte.
+ * EL CORTE DE "PENDIENTE" ES HOY, Y LO EVALÚA LA PLANILLA — NO LA CORRIDA (06/08).
+ *
+ * Estas dos celdas llevaban el serial del día de la corrida TIPEADO (`">"&46240`). Mientras la
+ * pestaña se regenere a diario da lo mismo; el día que el timer no corre, "cuotas que todavía no
+ * vencieron" empieza a contar cuotas ya debitadas, y esas dos celdas son las que el hero publica como
+ * DEUDA PENDIENTE — el número con el que se decide si hay que salir a cubrir un bache. Un cuadro que
+ * envejece mal en el número que decide es peor que uno que se ve viejo.
+ *
+ * LA ASIMETRÍA CON EL CALENDARIO ES DELIBERADA Y SE DECLARA: el calendario de arriba (qué vence,
+ * cuándo, qué está vencido, las ventanas 30/60/90) se arma en JavaScript con la fecha de la corrida,
+ * porque ordenar y elegir vencimientos no es expresable en una celda sin rehacer el cuadro entero en
+ * fórmula. Así que si la pestaña se queda vieja, la deuda pendiente sigue exacta y el calendario se
+ * ve viejo — con sus fechas pasadas marcadas "⚠ VENCIDO", que es visible. La alternativa (todo
+ * anclado al día de la corrida) esconde el envejecimiento justo en el número que decide.
+ *
+ * TODAY() y no HOY(): la API de Sheets recibe SIEMPRE los nombres de función en inglés y los muestra
+ * traducidos según el locale. Lo que sí va en es-AR es el separador de argumentos (`;`).
+ */
+export const CORTE_VIVO = 'TODAY()'
+
+/**
+ * NÚCLEO PURO: lo que FALTA pagar del prendario. Sólo cuotas con vencimiento POSTERIOR a hoy.
  *
  * "Pendiente" quiere decir pendiente. La versión anterior sumaba el rubro entero —las doce cuotas,
  * las pagadas incluidas— y el hero lo publicaba como deuda. Un saldo que sólo crece no es un saldo.
  */
-export function formulaPrendarioPendiente(C, hoyISO) {
-  return `=SUMIFS(${rango(C.total)};${rango(C.rubro)};"${RUBRO_PRENDARIO}";${rango(C.fechaPrev)};">"&${serialDe(hoyISO)})`
+export function formulaPrendarioPendiente(C) {
+  return `=SUMIFS(${rango(C.total)};${rango(C.rubro)};"${RUBRO_PRENDARIO}";${rango(C.fechaPrev)};">"&${CORTE_VIVO})`
 }
 
 /**
  * NÚCLEO PURO: lo que FALTA pagar de los planes F931. Mismo criterio que el prendario.
  * @param {Array<{patron:string, campo:'concepto'|'detalle'}>} planes
  */
-export function formulaPlanesPendiente(C, planes = [], hoyISO) {
+export function formulaPlanesPendiente(C, planes = []) {
   const conPatron = planes.filter((p) => p.patron)
   if (!conPatron.length) return '=0'
   const term = (p) => `SUMIFS(${rango(C.total)};${rango(p.campo === 'concepto' ? C.concepto : C.detalle)};"*${p.patron}*";`
-    + `${rango(C.fechaPrev)};">"&${serialDe(hoyISO)})`
+    + `${rango(C.fechaPrev)};">"&${CORTE_VIVO})`
   return `=${conPatron.map(term).join('+')}`
 }
 
@@ -199,12 +219,22 @@ export function filasFinanciamiento({ acuerdo, tarjeta, celdaPrendario, celdaPla
         + ' (× 1,12, verificado al centavo contra el cargo del banco del 14/07).',
     },
     {
+      // ═══ EL DISPONIBLE SALE POR FÓRMULA, COMO EL DE ARRIBA (06/08) ═══
+      //
+      // D46 estaba PEGADO en 8.693.073,70 mientras B46 − C46 daba 8.693.074,00: treinta centavos de
+      // diferencia entre la celda y su propia fila, en la única línea del cuadro que no calculaba. El
+      // origen no era el pegado sino el REDONDEO del tomado —`Math.round`— que rompía la identidad
+      // límite − tomado = disponible y obligaba a pegar el disponible para no perderlo.
+      //
+      // El dato primario sigue siendo el DISPONIBLE que declara el banco: el tomado se despeja de él,
+      // ahora al centavo, y el disponible vuelve a salir de la resta como en las otras tres filas.
       rotulo: `Tarjeta de crédito · ${tarjeta.cuenta}`,
       limite: tarjeta.limite,
-      usado: Math.round(tarjeta.limite - tarjeta.disponible),
-      disponible: tarjeta.disponible,
+      usado: Math.round((tarjeta.limite - tarjeta.disponible) * 100) / 100,
+      disponible: null, // = límite − tomado, en la propia grilla
       origen: `Resumen del banco al ${tarjeta.al} · cierra ${tarjeta.cierra}, vence ${tarjeta.vence}.`
-        + ' El disponible es el que DECLARA el banco, no límite − consumido (difieren $60.433 y no se inventa el motivo).'
+        + ' El dato del banco es el DISPONIBLE; el "tomado" se despeja de él (límite − disponible) y NO es'
+        + ' el consumido que lista el resumen: difieren $60.433 y no se inventa el motivo.'
         + ' FOTO CAPTURADA A MANO: no hay puerta de carga para el resumen de la tarjeta.',
     },
     {

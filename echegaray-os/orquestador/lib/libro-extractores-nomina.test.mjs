@@ -86,3 +86,72 @@ test('los rangos con nombre llegan como filas de la API y también como lista', 
   assert.equal(porApi.length, 1)
   assert.equal(porApi[0].importe, 1700000)
 })
+
+// ── DIRECCIÓN "PAGADO" CON FECHA FUTURA: los $9.000.000 invisibles del 06/08/2026 ────────────────
+//
+// La planilla marca julio como pagado ($9.000.000, tres socios × $3.000.000) con fecha de caja
+// 46244 = 10/08 — POSTERIOR al corte del extracto (46240 = 06/08). El extracto tiene sólo DOS débitos
+// de $3.000.000, el 46237 = 03/08.
+const HOY = 46240
+const PREVISTA = 46244
+const DEBITOS = [
+  { fecha: 46174, concepto: 'Pago de honorarios - 260601507', importe: 3000000, naturaleza: '', fila: 28 },
+  { fecha: 46223, concepto: 'A herrajes san juan', importe: 750000, naturaleza: '', fila: 250 },
+  { fecha: 46237, concepto: 'A ana laura echegaray ovi', importe: 3000000, naturaleza: '', fila: 328 },
+  { fecha: 46237, concepto: 'Pago de honorarios - 260803507', importe: 3000000, naturaleza: '', fila: 330 },
+]
+const JULIO_PAGADO = { pago: [PREVISTA], pagado: [9000000], proyectado: [''] }
+
+test('DIRECCIÓN: un "Pagado" con fecha POSTERIOR al corte no es REAL — los $9M invisibles', () => {
+  // Un REAL no lo mira ninguna de las tres vistas de proyección porque se asume que ya está en el
+  // saldo del banco. El extracto termina en el corte y esa plata no había salido: no estaba en
+  // COMPROMETIDA, no la restaba la línea de posteriores al corte, no estaba en ninguna parte.
+  const ms = deDireccion(JULIO_PAGADO, HOY, { aviso: () => {} })
+  assert.equal(ms.length, 1)
+  assert.equal(ms[0].estado, 'COMPROMETIDO', 'sin extracto el compromiso vuelve a estar visible, entero')
+  assert.equal(ms[0].importe, 9000000)
+  assert.equal(ms[0].fecha, PREVISTA)
+})
+
+test('DIRECCIÓN: con el extracto, los 2×$3M del 03/08 son REAL y el tercero queda COMPROMETIDO', () => {
+  const usados = new Set()
+  const ms = deDireccion(JULIO_PAGADO, HOY,
+    { aviso: () => {}, extracto: { debitos: DEBITOS, corte: HOY, usados } })
+  assert.equal(ms.length, 2, 'la fila se parte: lo que el banco prueba y lo que falta')
+  const real = ms.find((m) => m.estado === 'REAL')
+  const pendiente = ms.find((m) => m.estado === 'COMPROMETIDO')
+  assert.equal(real.importe, 6000000)
+  assert.equal(real.fecha, 46237, 'REAL a la fecha del DÉBITO, no a la fecha prevista')
+  assert.equal(pendiente.importe, 3000000)
+  assert.equal(pendiente.fecha, PREVISTA)
+  assert.equal(real.signo, SALE)
+  assert.notEqual(real.clave, pendiente.clave, 'dos mitades del mismo renglón: sin clave propia una desaparece')
+  assert.deepEqual([...usados].sort(), [328, 330], 'los débitos quedan consumidos: no respaldan a otro')
+  // Y el total no se mueve: partir no puede crear ni borrar plata.
+  assert.equal(ms.reduce((a, m) => a + m.importe, 0), 9000000)
+})
+
+test('DIRECCIÓN: si el respaldo es ambiguo NO se parte, y el aviso dice por qué', () => {
+  // Ante la duda el compromiso sigue vivo entero. Decir que se debe de menos planifica un pago que no
+  // se puede hacer, que es el error que rompe una tesorería.
+  const avisos = []
+  const dosLotes = [...DEBITOS,
+    { fecha: 46235, concepto: 'x', importe: 4500000, naturaleza: '', fila: 900 },
+    { fecha: 46235, concepto: 'y', importe: 4500000, naturaleza: '', fila: 901 }]
+  const ms = deDireccion(JULIO_PAGADO, HOY,
+    { aviso: (m) => avisos.push(m), extracto: { debitos: dosLotes, corte: HOY, usados: new Set() } })
+  assert.equal(ms.length, 1)
+  assert.equal(ms[0].importe, 9000000)
+  assert.equal(ms[0].estado, 'COMPROMETIDO')
+  assert.match(avisos[0], /posterior al corte del extracto/)
+  assert.match(avisos[0], /2 lotes/)
+})
+
+test('DIRECCIÓN: un "Pagado" con fecha ANTERIOR al corte sigue siendo REAL y no se toca', () => {
+  // El histórico no se vuelve a discutir: si la fecha ya pasó, la plata salió y el saldo lo contiene.
+  const ms = deDireccion({ pago: [46213], pagado: [9000000], proyectado: [''] }, HOY,
+    { aviso: () => {}, extracto: { debitos: DEBITOS, corte: HOY, usados: new Set() } })
+  assert.equal(ms.length, 1)
+  assert.equal(ms[0].estado, 'REAL')
+  assert.equal(ms[0].fecha, 46213)
+})
