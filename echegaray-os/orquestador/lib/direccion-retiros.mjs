@@ -137,8 +137,8 @@ export function formulaPagadoMes(mes, anio, nombres = NOMBRES_DIRECCION) {
   // pagos con fecha de caja DENTRO de M: los $9M pagados el 03-04/08 cayeron en el balde "Agosto",
   // "Julio" siguió proyectado $9M al 10/08, y la tarjeta COMPROMETIDA pidió plata que ya salió.
   // Un pago confirma la proyección más vieja: la ventana de pagado es la MISMA que la de pago.
-  const desde = `DATE(${anio};${mes + 1};1)`
-  const hasta = `DATE(${anio};${mes + 2};1)`
+  const desde = fechaDeMes(anio, mes + 1, '1')
+  const hasta = fechaDeMes(anio, mes + 2, '1')
   const f = `IF(ISNUMBER(${COL_FECHA_CAJA});${COL_FECHA_CAJA};0)`
   return `=SUMPRODUCT(REGEXMATCH(LOWER(${COL_PERSONA}&"");"${regexDireccion(nombres)}")`
     + `*(${f}>=${desde})*(${f}<${hasta})`
@@ -150,7 +150,21 @@ export function formulaPagadoMes(mes, anio, nombres = NOMBRES_DIRECCION) {
  * NÚCLEO PURO: cuándo sale de la caja el retiro del mes `mes` — el día DIA_PAGO del mes siguiente.
  * Diciembre da enero del año que viene, y está bien: es percibido, y ese pago no es caja de este año.
  */
-export const formulaSePagaElDireccion = (mes, anio) => `=DATE(${anio};${mes + 1};${RANGO_DIA_PAGO})`
+export const formulaSePagaElDireccion = (mes, anio) => `=${fechaDeMes(anio, mes + 1, RANGO_DIA_PAGO)}`
+
+/**
+ * NÚCLEO PURO: `DATE(año;mes;día)` con el mes SIEMPRE entre 1 y 12.
+ *
+ * POR QUÉ (06/08, defecto B7 de la auditoría). Diciembre se paga en enero, y el código escribía
+ * `DATE(2026;13;10)`. Sheets lo resuelve por desborde y da 10/01/2027, así que el número está bien —
+ * pero la celda dice "mes 13", que no existe, y el día que alguien copie esa fórmula a otra pestaña o
+ * la traduzca a SQL, el desborde no lo va a salvar. Se corrige donde se genera, no donde se lee.
+ */
+export function fechaDeMes(anio, mes, dia) {
+  const y = anio + Math.floor((mes - 1) / 12)
+  const m = ((mes - 1) % 12) + 1
+  return `DATE(${y};${m};${dia})`
+}
 
 /**
  * NÚCLEO PURO: lo proyectado de un mes. Vacío —no cero— cuando no corresponde proyectar.

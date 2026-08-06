@@ -41,6 +41,13 @@ import { skinRequests } from '../lib/estilo-statement.mjs'
 import { borrarNotas, vaciarColumnaDeProsa } from '../lib/nota-celda.mjs'
 import { celdaF931, celdaCabecera, PESTAÑA as RAW, COL as F931_COL, FILA0 as F931_FILA0 } from './f931-sheet.mjs'
 import { formulaUltimaFecha, formulaUltimoPeriodo, rotuloPorFuente, DIAS_AVISO_MENSUAL } from '../lib/fecha-de-frescura.mjs'
+import {
+  CONCEPTOS_CADENA, PARAMETROS_CARGAS, A_VERIFICAR,
+  formulaProporcionPrimerAnio, proyeccionDeConcepto,
+} from '../lib/cargas-cadena.mjs'
+import { detectarQuincenas } from '../lib/nomina-sync.mjs'
+import { ultimaQuincenaCerrada } from '../lib/motor-salarial.mjs'
+import { asegurarParametros, ultimoDiaCargado } from './jornales-pestana.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Cargas Sociales'
@@ -85,18 +92,9 @@ const HOY = new Date().toISOString().slice(0, 10)
 // proyección. Y no fallaba —el cuadro se dibujaba entero— sólo proyectaba $2,8M por mes en vez de
 // $6,6M. El titular de la pestaña quedaba 60% corto y nada lo avisaba. Un código de la DDJJ no lo
 // reescribe nadie; un rótulo, sí.
-export const CONCEPTOS_PROY = [
-  { codigo: '301', rotulo: 'Aportes Seguridad Social', base: 'remuneracion', de: 'declarado' },
-  { codigo: '302', rotulo: 'Aportes Obra Social', base: 'remuneracion', de: 'declarado' },
-  { codigo: '351', rotulo: 'Contribuciones Seguridad Social', base: 'remuneracion', de: 'declarado' },
-  { codigo: '352', rotulo: 'Contribuciones Obra Social', base: 'remuneracion', de: 'declarado' },
-  { codigo: '312', rotulo: 'L.R.T. — ART', base: 'remuneracion', de: 'declarado', nota: 'La alícuota de ART depende de la siniestralidad y del riesgo de la actividad: se mide, no se supone.' },
-  { codigo: '028', rotulo: 'Seguro de Vida Obligatorio', base: 'dotacion', de: 'declarado', nota: 'NO escala con la masa salarial: es un costo por persona.' },
-  { rotulo: 'FCL', base: 'remuneracion', de: 'pagado', nota: 'Fondo de Cese Laboral — es de la construcción y no está en el F931.' },
-  { rotulo: 'UOCRA', base: 'remuneracion', de: 'pagado', nota: 'Cuota sindical y aportes de convenio.' },
-  { rotulo: 'IERIC', base: 'remuneracion', de: 'pagado' },
-  { rotulo: 'FODECO', base: 'remuneracion', de: 'pagado' },
-]
+// LA LISTA VIVE EN lib/cargas-cadena.mjs, NO ACÁ. Se reexporta con su nombre viejo porque los tests
+// y el resto del OS la citan así: un rename gratuito rompe consumidores sin arreglar nada.
+export const CONCEPTOS_PROY = CONCEPTOS_CADENA
 
 /**
  * Los jornales netos de un mes. NO es una suma simple: la pestaña de quincenas tiene dos bloques y
@@ -160,7 +158,7 @@ async function planes() {
 }
 
 /** NÚCLEO PURO: arma la grilla entera de la pestaña. Devuelve las filas y las marcas que usa el formato. */
-export function grilla({ periodos, conceptos, ps, C }) {
+export function grilla({ periodos, conceptos, ps, C, bloqueBase = null }) {
   const DESDE_PROY = desdeQueMesSeProyecta(periodos)
   const filas = []
   /** Empuja una fila rellenando hasta el ancho de la grilla y devuelve su número de fila real. */
@@ -207,7 +205,7 @@ export function grilla({ periodos, conceptos, ps, C }) {
   const hCosto = push([rotuloTotal('Costo laboral del año — devengado'), '@COSTO', ...Array(11).fill(VACIO), VACIO, 'Declarado ene–jun más lo proyectado jul–dic.'])
   const hDecl = push([sub('declarado en las DDJJ F931 (ene–jun)'), '@DECL', ...Array(11).fill(VACIO), VACIO, `Sección 1 · réplica ${RAW}, leída de los PDF.`])
   const hProy = push([sub('proyectado (jul–dic)'), '@PROY', ...Array(11).fill(VACIO), VACIO, 'Sección 4 · alícuotas medidas sobre los seis meses reales.'])
-  const hDeuda = push([rotuloTotal('Deuda previsional en planes de pago'), '@DEUDA', ...Array(11).fill(VACIO), VACIO, 'Sección 7 · cuotas todavía no pagadas.'])
+  const hDeuda = push([rotuloTotal(`Deuda previsional en planes — cuotas que faltan pagar en ${AÑO}`), '@DEUDA', ...Array(11).fill(VACIO), VACIO, VACIO])
   push()
 
   // ── 1 · DECLARADO ──────────────────────────────────────────────────────────────────────────────
@@ -274,29 +272,46 @@ export function grilla({ periodos, conceptos, ps, C }) {
   'Medido sobre los seis meses que tienen las dos cifras. Lo declarado en F931 no es el neto pagado en mano: esta relación traduce una en otra.', { meses: proyMeses, totaliza: false })
   const fRemProy = mensual('Remuneración proyectada', (m) => `=IFERROR((${jornalesDelMes(`DATE(${AÑO};${m};1)`)})*$${cm(DESDE_PROY)}$${fRelacion};0)`,
     'Jornales proyectados × la relación de arriba.', { meses: proyMeses })
-  const fDot = mensual('Dotación proyectada', () => `=IFERROR(ROUND(AVERAGE(${REALES(fEmp)});0);"")`,
-    'Se mantiene el promedio de ene–jun: no hay un plan de contratación cargado en ningún lado, y suponer que crece sería inventarlo.', { meses: proyMeses, totaliza: false })
+  // ═══ LA DOTACIÓN ES LA ÚLTIMA REAL, NO UN PROMEDIO (defecto A7) ═══
+  //
+  // Decía `AVERAGE(B19:G19)` = 21 personas: el promedio de los seis F931 presentados (18·16·24·22·23·22).
+  // Un promedio no fue cierto ningún mes, y con él se proyectaba el Seguro de Vida y —ahora— IERIC y
+  // FODECO, que son costos POR PERSONA. Se usa el último mes declarado, que sí fue cierto.
+  //
+  // Y AL LADO, EL CONTROL CONTRA OTRA FUENTE. La regla del archivo: un control nunca se valida contra
+  // la misma información que produce. La dotación de la DDJJ y el plantel de la planilla de jornales
+  // vienen de dos lugares distintos; si se separan mucho, uno de los dos está mal.
+  const fDot = mensual('Dotación proyectada', () => `=IFERROR(INDEX(${REALES(fEmp)};COUNT(${REALES(fEmp)}));"")`,
+    'El ÚLTIMO mes con DDJJ, no el promedio: un promedio no fue cierto ningún mes y acá multiplica costos por persona.', { meses: proyMeses, totaliza: false })
+  const fPlantel = filas.length + 1
+  push([sub('   control: plantel de obra de la última quincena (planilla JORNALES)'),
+    '=IFERROR(INDEX(JORNALES_REAL_PERSONAS;COUNT(JORNALES_REAL_PERSONAS));"")',
+    `=IF(N($B$${fPlantel})=0;"";IF(N($${cm(DESDE_PROY)}$${fDot})=0;"";IF(ABS($${cm(DESDE_PROY)}$${fDot}-$B$${fPlantel})/$${cm(DESDE_PROY)}$${fDot}>0,3;"⚠ la DDJJ y la planilla no coinciden";"✓ coherente con la planilla")))`,
+    ...Array(11).fill(VACIO),
+    'Dos fuentes distintas: la cabecera de la DDJJ y el registro de quincenas de Jornales. La DDJJ incluye oficina; la planilla de obra, no — una diferencia chica es esperable, una grande es un dato mal cargado.'])
+  // La proporción del plantel en su primer año: la base de la alícuota legal de FCL. La antigüedad ya
+  // estaba en la fuente que se lee todos los días y no tenía un solo consumidor.
+  const fAntig = push([sub('   del plantel de obra, en su primer año de antigüedad'),
+    formulaProporcionPrimerAnio('_J_OBREROS', bloqueBase), ...Array(12).fill(VACIO),
+    'Fecha de ingreso de cada persona en _J_OBREROS, sobre la última quincena cerrada. Es lo que pondera las dos alícuotas del Fondo de Cese.'])
   const y0 = filas.length + 1
   const filasProy = []
   const sinBase = []
-  for (const c of CONCEPTOS_PROY) {
+  for (const c of CONCEPTOS_CADENA) {
     const origen = c.de === 'declarado' ? filaDecl[c.codigo] : filaPag[c.rotulo]
     // UN CONCEPTO SIN BASE NO SE PROYECTA EN CERO EN SILENCIO: se anota y se denuncia abajo. Que
     // falte una fila de la proyección tiene que verse, porque el titular de la pestaña la suma.
     if (!origen) { sinBase.push(c.rotulo); continue }
     const f = filas.length + 1
-    // La alícuota se MIDE sobre los seis meses reales y viaja en la columna de origen, escrita como
-    // texto por fórmula: así el número que se lee en la grilla son pesos, no una mezcla de pesos con
-    // porcentajes en la misma columna, y la regla sigue siendo auditable de un vistazo.
-    const alicuota = c.base === 'dotacion'
-      ? `IFERROR(SUM(${REALES(origen)})/SUM(${REALES(fEmp)});0)`
-      : `IFERROR(SUM(${REALES(origen)})/SUM(${REALES(fRem)});0)`
-    const celda = (m) => (c.base === 'dotacion'
-      ? `=(${alicuota})*${cm(m)}$${fDot}`
-      : `=(${alicuota})*${cm(m)}$${fRemProy}`)
-    filasProy.push(mensual(c.rotulo, celda,
-      `=${c.base === 'dotacion' ? `"$"&TEXT(${alicuota};"#,##0")&" por empleado por mes"` : `TEXT(${alicuota};"0,00%")&" de la remuneración declarada"`}&", medido sobre ene–jun. ${(c.nota ?? '').replace(/"/g, "'")}"`,
-      { meses: proyMeses }))
+    // La regla de cada concepto vive en lib/cargas-cadena.mjs y viaja en la columna de origen escrita
+    // como texto POR FÓRMULA: así lo que se lee en la grilla son pesos —no una mezcla de pesos y
+    // porcentajes en la misma columna— y la regla sigue siendo auditable de un vistazo, con el valor
+    // que efectivamente se aplicó y no el que había el día que corrió el generador.
+    const p = proyeccionDeConcepto(c, {
+      filaOrigen: origen, fRem, fEmp, reales: REALES, colMes: cm, fRemProy, fDot,
+      celdaProporcion: `$B$${fAntig}`,
+    })
+    filasProy.push(mensual(c.rotulo, p.celda, p.origen, { meses: proyMeses }))
     if (f !== filasProy[filasProy.length - 1]) throw new Error('desalineación al armar la proyección')
   }
   const y1 = filas.length
@@ -333,8 +348,14 @@ export function grilla({ periodos, conceptos, ps, C }) {
   mensual(sub('diferencia contra lo proyectado acá'), (m) => `=${cm(m)}${fPrevisto}-${cm(m - 1)}${fProyTot}`,
     'Si esta fila se aleja de cero, la previsión cargada a mano y la proyección medida no coinciden.',
     { meses: proyMeses.filter((m) => m > DESDE_PROY) })
-  push(['⚠ Lo que esta proyección NO contempla', ...Array(13).fill(VACIO),
-    'SAC y vacaciones (sección 6), y cualquier alta de personal que no esté en los jornales cargados.'])
+  // ═══ EL AVISO VA EN LA CELDA, NO EN LA COLUMNA DE PROSA (06/08 — defecto B11) ═══
+  //
+  // Estas tres filas escribían su explicación en la columna O… y `vaciarColumnaDeProsa` la borra en
+  // la misma corrida, por decisión del dueño ("quitá las notas, son confusas"). Resultado: tres
+  // avisos con el ⚠ puesto y sin una palabra al lado. Un aviso mudo es peor que ninguno: ocupa el
+  // lugar de la explicación y hace creer que se dijo algo. El texto entero va a la columna A, que es
+  // ancha, derrama a la derecha sobre celdas vacías y no la vacía nadie.
+  push(['⚠ Lo que esta proyección NO contempla: SAC y vacaciones (sección 6), y cualquier alta de personal que no esté en los jornales cargados.'])
   push()
 
   // ── 6 · SAC Y VACACIONES ───────────────────────────────────────────────────────────────────────
@@ -343,10 +364,19 @@ export function grilla({ periodos, conceptos, ps, C }) {
   const fSacPag = mensual('SAC pagado (real, de Compras)', (m) =>
     `=SUMPRODUCT((LOWER(${rango(C.proveedor)})="sac")*(YEAR(${rango(C.fechaFactura)})=${AÑO})*(MONTH(${rango(C.fechaFactura)})=${m})*IF(ISNUMBER(${rango(C.total)});${rango(C.total)};0))`,
   'Compras · proveedor "SAC", por fecha de factura.')
-  const fSacDev = mensual('SAC devengado (1/12 de la remuneración)', (m) => `=IFERROR(${cm(m)}$${fRem}/12;"")`,
-    'Así se devenga el aguinaldo: un doceavo de la remuneración de cada mes.')
+  // ═══ EL SAC SE DEVENGA LOS DOCE MESES (06/08 — defecto B10) ═══
+  //
+  // Decía `=B$20/12`: un doceavo de la remuneración DECLARADA, y las DDJJ llegan hasta junio. De
+  // julio en adelante la fila quedaba vacía, así que el devengado se cortaba y el pagado seguía: la
+  // provisión acumulada terminaba diciembre en −$10.308.830. Un aguinaldo pagado contra un devengado
+  // que dejó de devengarse no es un signo raro, es la pestaña afirmando que la empresa se debe plata
+  // a sí misma. La cura es una sola: la remuneración del mes es la DECLARADA si existe, y si no la
+  // PROYECTADA — que es exactamente la cadena que el resto de la pestaña ya usa.
+  const remDelMes = (m) => `IF(N(${cm(m)}$${fRem})>0;${cm(m)}$${fRem};N(${cm(m)}$${fRemProy}))`
+  const fSacDev = mensual('SAC devengado (1/12 de la remuneración)', (m) => `=IFERROR(${remDelMes(m)}/12;"")`,
+    'Un doceavo de la remuneración de CADA mes: declarada mientras hay DDJJ, proyectada después. Antes se cortaba donde se cortan las DDJJ y la provisión acumulada terminaba el año en negativo.')
   mensual('Provisión acumulada (devengado − pagado)', (m) => `=SUM($B${fSacDev}:${cm(m)}${fSacDev})-SUM($B${fSacPag}:${cm(m)}${fSacPag})`,
-    'Acumulado, no del mes: es cuánto se debe de aguinaldo a esta altura del año.', { totaliza: false })
+    'Acumulado, no del mes: es cuánto se debe de aguinaldo a esta altura del año. Si termina en negativo, el devengado dejó de devengarse antes que el pagado.', { totaliza: false })
   // ═══ VACACIONES: LA ANTIGÜEDAD SÍ ESTÁ, LO QUE FALTA ES LA ESCALA ═══
   //
   // Acá decía "falta la antigüedad por legajo" y era FALSO: la columna C del espejo _J_OBREROS trae
@@ -357,8 +387,7 @@ export function grilla({ periodos, conceptos, ps, C }) {
   // Eso no se cita de memoria (la skill laboral lo prohíbe: los valores se verifican, los institutos
   // se nombran). Va a una celda de Parámetros que confirma el contador, y la provisión se calcula
   // sola contra las fechas de ingreso reales.
-  push(['Vacaciones — devengan mes a mes, se pagan cuando se toman', ...Array(13).fill(VACIO),
-    '⚠ La antigüedad está (fecha de ingreso en _J_OBREROS). Falta la escala de días por tramo, que confirma el contador y va a Parámetros. No se inventa: una provisión inventada es peor que una ausente, porque se usa.'])
+  push(['Vacaciones — devengan mes a mes y se pagan cuando se toman. ⚠ La antigüedad ESTÁ (fecha de ingreso en _J_OBREROS); falta la escala de días por tramo, que confirma el contador y va a Parámetros. No se inventa: una provisión inventada es peor que una ausente, porque se usa.'])
   // ═══ FONDO DE CESE LABORAL: ESTÁ, PERO NO POR DONDE UNO LO BUSCA ═══
   //
   // En la construcción NO existe la indemnización por antigüedad de la LCT: rige la Ley 22.250 y el
@@ -373,8 +402,7 @@ export function grilla({ periodos, conceptos, ps, C }) {
   //
   // LA PREGUNTA QUE IMPORTA NO ES CUÁNTO, ES SI ESTÁ AL DÍA. Un Fondo de Cese atrasado es
   // incumplimiento y habilita reclamos, y este cuadro no lo puede contestar solo.
-  push(['Fondo de Cese Laboral (Ley 22.250)', ...Array(13).fill(VACIO),
-    'Se proyecta desde lo PAGADO (Compras), no desde el F931: no lo declara la DDJJ. Reemplaza a la indemnización por antigüedad — por eso no se provisiona despido. Falta verificar que los aportes estén al día.'])
+  push([`Fondo de Cese Laboral (Ley 22.250) — se proyecta con la alícuota LEGAL ponderada por antigüedad (sección 4), no con un % histórico. No lo declara la DDJJ, así que su devengado no se controla contra una declaración: lo único que se sabe es lo que salió de la caja. ${A_VERIFICAR} la alícuota, y que los aportes estén al día.`])
   push()
 
   // ── 7 · PLANES DE PAGO ─────────────────────────────────────────────────────────────────────────
@@ -402,8 +430,7 @@ export function grilla({ periodos, conceptos, ps, C }) {
   // del rubro en Compras tiene que ser la suma de TODAS las cuotas cargadas de todos los planes.
   push([rotuloTotal('Diferencia — tiene que ser $0'), `=$B${fCtrl}-${Math.round(ps.reduce((s, p) => s + p.total, 0))}`,
     ...Array(11).fill(VACIO), VACIO, `Contra la suma de las ${ps.reduce((s, p) => s + p.n, 0)} cuotas cargadas de los ${ps.length} planes. Si no da cero, hay cuotas del rubro que esta tabla no ve.`])
-  push(['⚠ Lo que falta saber', ...Array(13).fill(VACIO),
-    'De cuántas cuotas es cada plan EN TOTAL. En Compras están las cuotas cargadas, no el plan original de ARCA: el saldo pendiente es lo previsto en la planilla, no necesariamente lo que falta pagar de verdad.'])
+  push(['⚠ Lo que falta saber: de cuántas cuotas es cada plan EN TOTAL. En Compras están las cuotas cargadas, no el plan original de ARCA — el saldo pendiente es lo previsto en la planilla, no necesariamente lo que falta pagar de verdad.'])
 
   // ── SECCIÓN 5, RECIÉN AHORA: la fila de "cuotas que vencen" referencia el total de la sección 7 ──
   // Antes escribía el mismo número por dos caminos (JS acá, fórmula allá); ahora hay UNA fuente y el
@@ -411,11 +438,23 @@ export function grilla({ periodos, conceptos, ps, C }) {
   for (const m of proyMeses) filas[fCuotasVencen - 1][m] = `=${cm(m)}${fCuotasTot}`
 
   // ── EL HERO, RECIÉN AHORA: ya se sabe en qué fila quedó cada total ──────────────────────────────
-  const saldoPlanes = Math.round(ps.reduce((s, p) => s + p.saldo, 0))
   filas[hDecl - 1][1] = `=SUM(${REALES(fDeclTot)})`
   filas[hProy - 1][1] = `=SUM($${cm(DESDE_PROY)}$${fProyTot}:$M$${fProyTot})`
   filas[hCosto - 1][1] = `=$B$${hDecl}+$B$${hProy}`
-  filas[hDeuda - 1][1] = saldoPlanes
+  // ═══ DOS VERDADES PARA LO MISMO, EN LA MISMA PESTAÑA (06/08 — defecto B9) ═══
+  //
+  // Acá había un NÚMERO PEGADO: $7.958.394, el saldo de los planes calculado en JavaScript. Doce
+  // filas más abajo, la sección 7 decía $16.536.820 de cuotas del año y el control contra Compras
+  // confirmaba ese segundo número. Los dos eran "la deuda en planes" y no coincidían, porque medían
+  // cosas distintas: uno el saldo pendiente y el otro el total del año. Ninguno lo decía.
+  //
+  // Ahora es UNA FÓRMULA a la fila de totales de la sección 7, y dice qué mide: lo que FALTA pagar
+  // este año. Las columnas B..M son los doce meses en orden, así que "los meses que todavía no
+  // pasaron" es una comparación de posición contra `MONTH(TODAY())` — viva, sin números de mes
+  // escritos a mano y sin un JS que se congela el día que corre.
+  const mesesFuturos = `(COLUMN($B$${fCuotasTot}:$M$${fCuotasTot})-COLUMN($B$${fCuotasTot})+1>MONTH(TODAY()))`
+  filas[hDeuda - 1][1] = `=SUMPRODUCT(${mesesFuturos}*IF(ISNUMBER($B$${fCuotasTot}:$M$${fCuotasTot});$B$${fCuotasTot}:$M$${fCuotasTot};0))`
+  filas[hDeuda - 1][ANCHO - 1] = `Sección 7, cuotas de los meses que faltan de ${AÑO}. NO incluye cuotas de ${AÑO + 1} en adelante: en Compras están las cuotas cargadas, no el plan original de ARCA.`
   // NO TODO LO QUE ESTÁ EN LA GRILLA ES PLATA. Una dotación de 21 personas mostrada como "$21" y
   // una relación de 0,67 mostrada como "$1" son números que el ojo lee mal y que además hacen dudar
   // del resto del cuadro. Se declaran acá para que el formato las trate por lo que son.
@@ -450,15 +489,36 @@ async function main() {
   if (faltan.length) { console.error(`⚠ faltan columnas en Compras: ${faltan.join(', ')} — no escribo con referencias inventadas`); process.exit(1) }
   console.log(`Compras por encabezado: Total=${C.total} · Cliente=${C.cliente} · Fecha de caja=${C.fecha} · Rubro=${C.rubro}`)
 
+  // ── EL BLOQUE DE LA ÚLTIMA QUINCENA CERRADA — de ahí sale la antigüedad del plantel ──
+  //
+  // La fecha de ingreso de cada persona vive en la columna C de `_J_OBREROS` y no tenía un solo
+  // consumidor. Es lo que pondera las dos alícuotas del Fondo de Cese, así que el generador resuelve
+  // el bloque en cada corrida —igual que Jornales— y emite el rango ya apuntado.
+  const espejo = await google.readSheetValues(ID, '_J_OBREROS!A1:AC990').catch(() => [])
+  const bloquesJ = detectarQuincenas(espejo ?? [])
+  const cerrada = ultimaQuincenaCerrada(bloquesJ, (b) => ultimoDiaCargado(espejo[b.filaFecha - 1] ?? []), new Date())
+  const bloqueBase = cerrada?.bloque ?? bloquesJ[bloquesJ.length - 1] ?? null
+  if (!bloqueBase) console.warn('  ⚠ no pude ubicar la última quincena cerrada en _J_OBREROS: la alícuota de FCL queda sin ponderar por antigüedad')
+
   const ps = await planes()
   console.log(`${periodos.length} período(s) F931 · ${conceptos.length} concepto(s) · ${ps.length} plan(es) de pago`)
 
-  const { filas, cantidades, ratios, titular } = grilla({ periodos, conceptos, ps, C })
+  const { filas, cantidades, ratios, titular } = grilla({ periodos, conceptos, ps, C, bloqueBase })
   console.log(`grilla: ${filas.length} filas × ${ANCHO} columnas — un solo ancho para toda la pestaña`)
   if (DRY) return
 
-  const hoja = (await google.getSheetMeta(ID)).find((h) => h.title === PESTAÑA)
+  const hojas = await google.getSheetMeta(ID)
+  const hoja = hojas.find((h) => h.title === PESTAÑA)
   if (!hoja) throw new Error(`no encontré la pestaña "${PESTAÑA}"`)
+
+  // ═══ LOS PARÁMETROS NORMATIVOS SE ASEGURAN ANTES DE ESCRIBIR LA GRILLA ═══
+  //
+  // Las fórmulas de FCL, IERIC y FODECO citan estos nombres. Si los nombres no existen todavía, esas
+  // cuatro filas quedan en #NAME? hasta la corrida siguiente — el mismo motivo por el que Jornales
+  // asegura los suyos antes de escribir. `asegurarParametros` NUNCA pisa un valor cargado: si el
+  // dueño corrigió la alícuota, la corrida siguiente la respeta.
+  await asegurarParametros(google, hojas, PARAMETROS_CARGAS)
+    .catch((e) => console.warn(`  ⚠ no pude asegurar los parámetros normativos: ${e.message} — las filas de FCL/IERIC/FODECO pueden quedar en #NAME?`))
 
   // ═══ LA COLA DE LA PESTAÑA VIEJA ═══
   //
