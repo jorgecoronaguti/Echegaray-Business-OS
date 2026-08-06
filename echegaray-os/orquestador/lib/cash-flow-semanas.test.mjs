@@ -244,7 +244,8 @@ test('el vínculo "hoy" apunta a la columna de la semana corriente, y sin gid no
   const v = vinculoHoy(1234, meta)
   assert.ok(v.startsWith('=HYPERLINK("#gid=1234&range="&ADDRESS('))
   assert.ok(v.includes('TODAY()-WEEKDAY(TODAY();3)'), 'el lunes de hoy se calcula igual que los encabezados')
-  assert.ok(v.endsWith(';"📅 hoy")'))
+  // El rótulo es el BOTÓN de A3 (06/08, pedido del dueño): visible sin scrollear, dice qué hace.
+  assert.ok(v.endsWith(';"⏵  IR A LA SEMANA ACTUAL")'))
   assert.ok(!v.includes('IFERROR'), 'un cuadro vencido tiene que gritar #N/A, no llevar a una celda cualquiera')
 })
 

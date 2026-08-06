@@ -81,7 +81,10 @@ test('LAS INFERENCIAS ESTÁN DECLARADAS, y cada una dice su evidencia', () => {
     assert.ok(esClienteCanonico(a.cliente), `"${a.cliente}" no es un cliente del catálogo`)
     assert.equal(clienteCanonico(a.alias), a.cliente, `el alias inferido "${a.alias}" no está en el catálogo`)
     assert.ok(a.evidencia && a.evidencia.length > 60, `"${a.alias}": una inferencia sin evidencia escrita no se acepta`)
-    assert.ok(/pendiente del visto del dueño/.test(a.confianza), `"${a.alias}": una inferencia no se declara sola como validada`)
+    // Dos estados legítimos: pendiente, o CONFIRMADA con fecha y cita textual del dueño. El 06/08 el
+    // dueño firmó los tres alias ("están ok así"); la firma queda escrita, no implícita.
+    assert.ok(/pendiente del visto del dueño|CONFIRMADA por el dueño \(\d{2}\/\d{2}\/\d{4}\)/.test(a.confianza),
+      `"${a.alias}": una inferencia sin visto pendiente ni firma fechada del dueño`)
   }
   // Y ninguna cadena idéntica al nombre canónico se cuenta como inferencia: sería inflar la lista.
   for (const a of ALIAS_INFERIDOS) assert.notEqual(a.alias, a.cliente)

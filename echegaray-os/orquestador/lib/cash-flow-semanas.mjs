@@ -109,8 +109,10 @@ export function grillaSemanal({ hoy = new Date(), anio = null, refs = {}, gid = 
   poner(FILA.titulo, 0, `${TITULO} ${ejercicio}`)
   poner(FILA.subtitulo, 0,
     '="Qué se cobra, qué se paga y con cuánto cierra cada semana · del libro de movimientos · al "&TEXT(TODAY();"d/mm/yyyy")')
+  // EL BOTÓN VA EN A3, NO EN LA COLUMNA TOTAL (06/08, pedido del dueño): en la columna 55 el atajo
+  // existía y nadie lo veía — un vínculo que hay que scrollear para encontrar no ahorra el scroll.
   const vinculo = vinculoHoy(gid, meta)
-  if (vinculo) poner(FILA.subtitulo, cT, vinculo)
+  if (vinculo) { poner(FILA.subtitulo + 1, 0, vinculo); meta.botonHoy = { fila: FILA.subtitulo + 1, col: 0 } }
 
   bloqueHero(poner, meta, refs)
 
@@ -259,5 +261,5 @@ export function vinculoHoy(gid, meta) {
   // la misma definición con la que se generaron los encabezados.
   const lunes = 'TODAY()-WEEKDAY(TODAY();3)'
   const dir = `ADDRESS(${meta.cab.fila};MATCH(${lunes};${rangoCab};0)+${meta.cab.col0};4)`
-  return `=HYPERLINK("#gid=${gid}&range="&${dir};"📅 hoy")`
+  return `=HYPERLINK("#gid=${gid}&range="&${dir};"⏵  IR A LA SEMANA ACTUAL")`
 }

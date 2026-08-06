@@ -184,6 +184,18 @@ function formatoEncabezado({ celdas, meta }) {
     { textFormat: txt(MUTED, { size: 9 }), horizontalAlignment: 'LEFT' })
   celdas(FILA.subtitulo, meta.cab.colTotal, meta.cab.colTotal + 1, 'userEnteredFormat(textFormat,horizontalAlignment)',
     { textFormat: txt(ACENTO, { size: 9 }), horizontalAlignment: 'RIGHT' })
+  // EL BOTÓN "IR A LA SEMANA ACTUAL" (A3): fondo suave, negrita y borde — que se vea como acción,
+  // no como una celda más. Sólo existe donde la grilla lo declaró (meta.botonHoy).
+  if (meta.botonHoy) {
+    celdas(meta.botonHoy.fila, meta.botonHoy.col, meta.botonHoy.col + 1,
+      'userEnteredFormat(textFormat,backgroundColor,horizontalAlignment,borders)',
+      {
+        textFormat: txt(ACENTO, { bold: true, size: 10 }),
+        backgroundColor: { red: 0.91, green: 0.94, blue: 0.98 },
+        horizontalAlignment: 'CENTER',
+        borders: undefined,
+      })
+  }
 }
 
 /** Las cuatro cifras del titular: rótulo chico gris arriba, número en negrita debajo, glosa apagada. */
