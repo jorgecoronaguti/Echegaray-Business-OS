@@ -35,11 +35,13 @@ test('las cinco tienen rótulo, cifra y contexto: la forma de la tarjeta no se n
   }
 })
 
-test('CAJA COMPROMETIDA sale del libro en MAGNITUD, no en neto', () => {
-  // En neto la tarjeta publicaría un negativo, que se lee como si la deuda fuera a favor. Lo
-  // comprometido contesta "cuánto debo": es un número positivo.
+test('CAJA COMPROMETIDA son las obligaciones del MES, en MAGNITUD — no sólo los cheques', () => {
+  // Con estados ['COMPROMETIDO'] la tarjeta mostró $7,7M a principio de mes: la quincena, las cargas
+  // y los impuestos viven como PROYECTADO y quedaban afuera (corrección del dueño, 06/08). Sin
+  // `desde`: lo vencido impago sigue comprometido. En neto saldría negativo y se leería al revés.
   assert.equal(de('comprometida').valor,
-    `=${terminoLibro({ signo: -1, estados: ['COMPROMETIDO'], medida: 'magnitud' })}`)
+    `=${terminoLibro({ signo: -1, estados: NO_REAL, hasta: 'EOMONTH(TODAY();0)+1', medida: 'magnitud' })}`)
+  assert.ok(!de('comprometida').valor.includes('"REAL"'), 'lo REAL ya salió de la cuenta: no es obligación')
 })
 
 test('CAJA PROYECTADA es la caja de hoy MÁS la ventana del libro, y excluye lo REAL', () => {

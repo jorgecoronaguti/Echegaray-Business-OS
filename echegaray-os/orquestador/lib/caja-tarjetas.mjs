@@ -71,7 +71,15 @@ export function tarjetas(ref) {
   const ventana = { desde: 'TODAY()', hasta: `TODAY()+${HORIZONTE}`, estados: NO_REAL }
   const entra30 = terminoLibro({ ...ventana, signo: 1, medida: 'magnitud' })
   const sale30 = terminoLibro({ ...ventana, signo: -1, medida: 'magnitud' })
-  const venceEn7 = terminoLibro({ signo: -1, estados: ['COMPROMETIDO'], hasta: 'TODAY()+7', medida: 'magnitud' })
+  // ═══ COMPROMETIDA = LAS OBLIGACIONES DEL MES, NO SÓLO LOS CHEQUES (06/08, corrección del dueño) ═══
+  //
+  // Con estados ['COMPROMETIDO'] la tarjeta decía $7,7M a principio de mes — sólo los instrumentos
+  // firmados. La quincena, las cargas sociales y los impuestos viven como PROYECTADO en el libro y
+  // quedaban afuera, siendo obligaciones que igual hay que cubrir. El dueño: "no puede ser que siendo
+  // principio de mes, ya estemos con tan poco gasto proyectado". La definición vigente: TODO egreso
+  // no-REAL con vencimiento hasta fin de MES — quincena, cargas, impuestos, cheques y compras del mes,
+  // más lo vencido que sigue impago (sin `desde`: un vencido de julio sigue siendo plata a cubrir).
+  const venceEn7 = terminoLibro({ signo: -1, estados: NO_REAL, hasta: 'TODAY()+7', medida: 'magnitud' })
 
   return [
     {
@@ -89,7 +97,7 @@ export function tarjetas(ref) {
       // MAGNITUD Y NO NETO: lo comprometido se lee como "cuánto debo", un número positivo. Con `neto`
       // saldría en negativo por el signo del egreso y la tarjeta diría "-$43.380.472 comprometidos",
       // que se lee como si la deuda fuera a favor.
-      valor: formulaLibro({ signo: -1, estados: ['COMPROMETIDO'], medida: 'magnitud' }),
+      valor: formulaLibro({ signo: -1, estados: NO_REAL, hasta: 'EOMONTH(TODAY();0)+1', medida: 'magnitud' }),
       contexto: `="de eso "&${plata(venceEn7)}&" vence antes del "&${dia('TODAY()+7')}`,
       especie: 'plata',
     },

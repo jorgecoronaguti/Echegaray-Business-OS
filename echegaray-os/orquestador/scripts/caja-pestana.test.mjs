@@ -107,7 +107,7 @@ test('LAS CIFRAS DE LAS TARJETAS SALEN DEL LIBRO O DE LA PROPIA PESTAÑA, nunca 
   const g = construir()
   const val = (i) => celda(g, g.fCifras, COLS_TARJETA[i])
   assert.equal(val(0), `=$C$${g.fCierre}`, 'la caja disponible es EL TOTAL del panel de cuentas, no una suma nueva')
-  assert.equal(val(1), `=${terminoLibro({ signo: -1, estados: ['COMPROMETIDO'], medida: 'magnitud' })}`)
+  assert.equal(val(1), `=${terminoLibro({ signo: -1, estados: NO_REAL, hasta: 'EOMONTH(TODAY();0)+1', medida: 'magnitud' })}`)
   assert.equal(val(2), `=$C$${g.fCierre}+${terminoLibro({ desde: 'TODAY()', hasta: `TODAY()+${HORIZONTE}`, estados: NO_REAL })}`)
   assert.equal(val(3), `=$I$${g.fCierre}`, 'el riesgo de liquidez es el piso que calcula la escalera')
   assert.match(val(4), /^=IFERROR\(INDEX\(\$F\$\d+:\$F\$\d+;MATCH\(MIN\(\$I/,
