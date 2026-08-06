@@ -69,8 +69,14 @@ import { vencimientoIva, vencimientoIibb, serialDe } from './vencimientos-fiscal
 import { COL as COL_RAW, FILA0 as FILA0_RAW, PESTAÑA as PESTANA_RAW } from '../scripts/cheques-raw-pestana.mjs'
 import { finDeMes } from './libro-extractores-fechas.mjs'
 import { RUBRO_JORNALES, RUBRO_ADMINISTRACION } from './libro-extractores-nomina.mjs'
+import { cubiertaPorLaCadena } from './libro-extractores-cargas.mjs'
 
 export { deJornalesQuincenas, deOficina, deDireccion } from './libro-extractores-nomina.mjs'
+// LA CADENA DE CARGAS SOCIALES, con su precedencia contra Compras. Vive aparte por el mismo motivo
+// que la nómina: es una fuente con reglas propias, y el que la lee tiene que poder probarla en frío.
+export {
+  deCargasSociales, mesesCubiertos, cargasEnCompras, reemplazadasPorLaCadena, NOMBRES_CARGAS,
+} from './libro-extractores-cargas.mjs'
 // Se re-exportan para no romper a quien ya los importaba de acá; su casa es el módulo de Compras.
 export { pendienteDeCompra, comprasPagadasConCheque, NOMBRES_COMPRAS } from './libro-extractores-compras.mjs'
 
@@ -114,9 +120,20 @@ export const indiceDeColumna = (letra) => String(letra).toUpperCase().split('')
  *
  * @param {Array<Array>} filas todas las filas de Compras (fila 1 = título), UNFORMATTED_VALUE
  * @param {number} corte serial de hoy/corte para vencidos
- * @param {{aviso?:(m:string)=>void}} [opciones] `aviso` recibe las contradicciones de la planilla
+ * ═══ LA CADENA DE CARGAS SOCIALES LE GANA A LA FILA PLANA (06/08) ═══
+ *
+ * Mismo problema que la nómina y misma cura, con una diferencia: acá la precedencia es CONDICIONAL.
+ * Las cargas del mes se proyectan en "Cargas Sociales" desde los jornales —medido: $8.569.345 en
+ * agosto contra los $8.000.000 redondos tipeados en Compras— así que para los meses que esa cadena
+ * cubre, la fila plana no entra. Pero si la cadena no publica sus rangos con nombre, `cargasCubiertas`
+ * llega vacío y Compras vuelve a entrar ENTERO: un rango con nombre falla devolviendo vacío, y ese
+ * modo de falla no puede significar "borrá la proyección de cargas del cash flow". Las filas PAGADAS
+ * entran siempre — una salida real no se descarta nunca. Ver `libro-extractores-cargas.mjs`.
+ *
+ * @param {{aviso?:(m:string)=>void, cargasCubiertas?:Set<string>}} [opciones] `aviso` recibe las
+ *        contradicciones de la planilla; `cargasCubiertas`, los meses ('YYYY-MM') que publica la cadena
  */
-export function deCompras(filas = [], corte = null, { aviso = (m) => console.warn(m), cruce = null } = {}) {
+export function deCompras(filas = [], corte = null, { aviso = (m) => console.warn(m), cruce = null, cargasCubiertas = null } = {}) {
   const c = columnasDeCompras(filas) // fila 3: el encabezado real (1 título, 2 agrupador)
   const out = []
   for (let i = 3; i < filas.length; i++) {
@@ -133,6 +150,9 @@ export function deCompras(filas = [], corte = null, { aviso = (m) => console.war
     // CUADRO del cash flow lo resuelve poniendo esa línea en un grupo con `signo: 0` (memo); el libro,
     // que cuenta cada movimiento UNA vez, lo resuelve no emitiéndola. Ver libro-extractores-nomina.mjs.
     if (rubro === RUBRO_JORNALES || rubro === RUBRO_ADMINISTRACION) continue
+    // LA PRECEDENCIA DECLARADA, NO UN BORRADO: la fila sigue en Compras y sigue siendo la previsión
+    // que alguien cargó a mano; lo que se decide acá es cuál de las dos fuentes cuenta en el libro.
+    if (cubiertaPorLaCadena({ rubro, fecha, pagada: pagado }, cargasCubiertas)) continue
     const instrumento = instrumentoDePago(tipo)
     // ═══ "PAGADO CON CHEQUE" NO ES "LA PLATA SALIÓ" (06/08) ═══
     //

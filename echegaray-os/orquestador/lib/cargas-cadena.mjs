@@ -33,6 +33,8 @@ export const RANGO_FCL_PRIMER_ANIO = 'FCL_ALICUOTA_PRIMER_ANIO'
 export const RANGO_FCL_POSTERIOR = 'FCL_ALICUOTA_POSTERIOR'
 export const RANGO_IERIC = 'IERIC_POR_TRABAJADOR'
 export const RANGO_FODECO = 'FODECO_POR_TRABAJADOR'
+/** El día del mes en que sale de la caja el F931 del mes anterior. Es lo que fecha la serie del Libro. */
+export const RANGO_DIA_PAGO_F931 = 'F931_DIA_DE_PAGO'
 
 /** La marca que el auditor busca para saber que un valor está declarado como no verificado. */
 export const A_VERIFICAR = '⚠ A VERIFICAR POR EL DUEÑO'
@@ -64,6 +66,21 @@ export const PARAMETROS_CARGAS = [
     rotulo: 'FODECO — aporte mensual por trabajador registrado',
     valor: 0,
     nota: `${A_VERIFICAR}. Ídem IERIC: por trabajador, no por masa. En 0, la pestaña proyecta con lo medido y lo declara.`,
+  },
+  {
+    rango: RANGO_DIA_PAGO_F931,
+    rotulo: 'F931 — día del mes en que sale de la caja',
+    // MEDIDO, NO CITADO. El calendario de ARCA para la seguridad social NO está cableado en el OS
+    // (`vencimientos-fiscales.mjs` tiene IVA, planes y prendario, no F931), así que el día no se cita
+    // de memoria: sale de los pagos REALES cargados en Compras — 10/02, 10/03, 09/04, 11/05, 10/06 y
+    // 10/07 (el 19/01 es el F931 de diciembre, otra banda) — cuya moda es 10, y es también el día que
+    // el dueño usa en todas sus previsiones de agosto a diciembre. Dos fuentes, el mismo día.
+    valor: 10,
+    nota: `${A_VERIFICAR}. Es la fecha con la que el Libro Canónico ubica en el calendario las cargas `
+      + 'que la cadena proyecta: un día equivocado no cambia el total del año, pero corre plata de '
+      + 'semana en la escalera de CAJA. Medido sobre los seis pagos reales de F931 cargados en '
+      + 'Compras (moda: día 10) y confirmado por las previsiones que cargó el dueño. Si el calendario de '
+      + 'ARCA para tu terminación de CUIT dice otro día, corregí esta celda: la serie se refecha sola.',
   },
 ]
 

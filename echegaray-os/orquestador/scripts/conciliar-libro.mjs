@@ -40,6 +40,7 @@ import { BORDES, PISO_CAJA } from '../lib/caja-calendario.mjs'
 import { CUADRO } from '../lib/cash-flow-lineas.mjs'
 import { eomonth, serialDe } from '../lib/libro-extractores-fechas.mjs'
 import { PESTANA_NOMINA } from '../lib/libro-extractores-nomina.mjs'
+import { PESTANA_CARGAS, cargasEnCompras, mesesCubiertos, reemplazadasPorLaCadena } from '../lib/libro-extractores-cargas.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const pesos = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(Math.round(n)).toLocaleString('es-AR')
@@ -53,6 +54,7 @@ export const FUENTE = Object.freeze({
   compras: 'Compras',
   cobranzas: 'Cobranzas',
   nomina: PESTANA_NOMINA,
+  cargas: PESTANA_CARGAS,
   impuestos: 'Impuestos y Financieros',
   cartera: '_CHEQUES_RAW',
   cheques: 'Cheques Emitidos',
@@ -157,11 +159,14 @@ export function libroSale(libro, v, rubros = rubrosDelCuadro()) {
   const porFuente = {
     compras: netoSale(libro.filter((m) => dentro(m, FUENTE.compras) && rubros.has(m.rubro))),
     nomina: netoSale(libro.filter((m) => dentro(m, FUENTE.nomina))),
+    // LAS CARGAS SON SU PROPIA FUENTE DESDE EL 06/08. Adentro de "otros" el swap sería invisible: el
+    // tramo mostraría el mismo total con la plata viniendo de otro lado, que es justo lo que hay que ver.
+    cargas: netoSale(libro.filter((m) => dentro(m, FUENTE.cargas))),
     impuestos: netoSale(libro.filter((m) => dentro(m, FUENTE.impuestos))),
     cheques: netoSale(libro.filter((m) => dentro(m, FUENTE.cheques))),
     tarjeta: netoSale(libro.filter((m) => dentro(m, FUENTE.tarjeta))),
     otros: netoSale(libro.filter((m) => m.signo === -1 && noReal(m) && enVentana(m, v.sale)
-      && ![FUENTE.compras, FUENTE.nomina, FUENTE.impuestos, FUENTE.cheques, FUENTE.tarjeta].includes(m.origen))),
+      && ![FUENTE.compras, FUENTE.nomina, FUENTE.cargas, FUENTE.impuestos, FUENTE.cheques, FUENTE.tarjeta].includes(m.origen))),
     // Las notas de crédito NO van acá: entran con signo +1 y ya las cuenta libroEntra (bucket
     // 'otros'). Restarlas además del lado que sale las contaría dos veces — cada fila del libro
     // cuenta UNA vez, con su signo, igual que en la fórmula de la escalera.
@@ -190,6 +195,33 @@ export function residuosDeclarados(libro, v, rubros = rubrosDelCuadro()) {
 }
 
 /**
+ * NÚCLEO PURO: EL SWAP DE CARGAS SOCIALES, MEDIDO DE LOS DOS LADOS.
+ *
+ * ═══ POR QUÉ ESTO NO PUEDE SER UN Δ$0 FABRICADO ═══
+ *
+ * Desde el 06/08 las cargas del mes entran al libro desde la cadena de "Cargas Sociales" y las filas
+ * PROYECTADAS de Compras de esos rubros no entran. Un cambio de fuente de $41,5M que el portón no
+ * nombrara sería exactamente lo que este archivo dice que no acepta: una diferencia sin causa. Pero
+ * tampoco se puede tapar sumándoselo al lado que falta —eso sería dibujar el cero— así que va donde
+ * corresponde: en las EXCLUSIONES DECLARADAS, con las dos cifras y su diferencia a la vista.
+ *
+ * Las dos mitades se miden de fuentes distintas: la cadena, del libro escrito en `_MOVIMIENTOS`; lo
+ * reemplazado, de Compras leído directo. Si un día la exclusión se corriera de mes, las dos cifras se
+ * separan y se ve.
+ *
+ * @param {Array} libro
+ * @param {{sale:{desde:number,hasta:number}}} v
+ * @param {Array<{fecha:number,total:number}>} reemplazadas filas de Compras que la cadena reemplaza
+ */
+export function swapDeCargas(libro, v, reemplazadas = []) {
+  const cadena = netoSale(libro.filter((m) => m.origen === FUENTE.cargas && enVentana(m, v.sale)))
+  const plano = reemplazadas
+    .filter((x) => x.fecha >= v.sale.desde && x.fecha < v.sale.hasta)
+    .reduce((a, x) => a + x.total, 0)
+  return { cadena, plano, delta: cadena - plano, filas: reemplazadas.length }
+}
+
+/**
  * NÚCLEO PURO: EL VEREDICTO. Compara tramo por tramo y dice si las vistas pueden migrar.
  *
  * EL VEREDICTO ES POR Δ NETO DE TRAMO, no por lado: lo que decide la escalera es con cuánta plata
@@ -201,7 +233,7 @@ export function residuosDeclarados(libro, v, rubros = rubrosDelCuadro()) {
  * @param {Array} tramos lo leído de la pestaña CAJA: {rotulo, entra, sale, hasta}
  * @param {{hoy:number, corte:number, tolerancia?:number}} ctx
  */
-export function conciliar(libro, tramos, { hoy, corte, tolerancia = TOLERANCIA }) {
+export function conciliar(libro, tramos, { hoy, corte, tolerancia = TOLERANCIA, cargasReemplazadas = [] }) {
   if (tramos.length !== BORDES.length) {
     throw new Error(`conciliar-libro: CAJA muestra ${tramos.length} tramo(s) y BORDES declara ${BORDES.length}. `
       + 'La pestaña y el código no están hablando del mismo calendario — no comparo.')
@@ -222,6 +254,7 @@ export function conciliar(libro, tramos, { hoy, corte, tolerancia = TOLERANCIA }
       entraPorFuente: entra.porFuente,
       salePorFuente: sale.porFuente,
       residuos: residuosDeclarados(libro, v, rubros),
+      swapCargas: swapDeCargas(libro, v, cargasReemplazadas),
       // EL BORDE DEL SHEET CONTRA EL BORDE CALCULADO: un control que no se mide contra sí mismo. Si
       // difieren, las dos mitades no están mirando el mismo día y ninguna comparación vale.
       bordeCaja: t.hasta,
@@ -314,9 +347,20 @@ function imprimir(r) {
     sinRubro: a.sinRubro + f.residuos.comprasSinRubroDelCuadro,
     rubros: new Set([...a.rubros, ...f.residuos.rubrosSueltos]),
   }), { banco: 0, sinRubro: 0, rubros: new Set() })
+  const swap = r.filas.reduce((a, f) => ({
+    cadena: a.cadena + f.swapCargas.cadena, plano: a.plano + f.swapCargas.plano, filas: f.swapCargas.filas,
+  }), { cadena: 0, plano: 0, filas: 0 })
   console.log('\nLO QUE EL LIBRO VE Y EL CALENDARIO DECLARA QUE NO VE (exclusiones, no descuadres):')
   console.log(`  · cargos del banco sin factura (_BANCO_RAW): ${pesos(res.banco)} — el calendario los pone en $0 por tramo`)
   console.log(`  · Compras con rubro fuera del cuadro: ${pesos(res.sinRubro)}${res.rubros.size ? ` (${[...res.rubros].join(', ')})` : ''}`)
+  // EL SWAP SE DECLARA CON LAS DOS CIFRAS. No es un descuadre —los dos lados del portón ya cuentan la
+  // cadena— pero es un cambio de fuente de decenas de millones y una exclusión sin monto no se audita.
+  if (swap.cadena || swap.plano) {
+    console.log(`  · cargas sociales, tramo SWAPPEADO: la cadena de "Cargas Sociales" aporta ${pesos(swap.cadena)} `
+      + `y por precedencia NO entran ${swap.filas} fila(s) previstas de Compras por ${pesos(swap.plano)} `
+      + `(diferencia ${pesos(swap.delta ?? swap.cadena - swap.plano)}: es lo que la cadena mide de más o de menos que lo tipeado a mano).`)
+    console.log('    Las filas PAGADAS de esos rubros siguen entrando por Compras, y si la cadena deja de publicar sus rangos con nombre, Compras vuelve a entrar entero.')
+  }
   for (const f of r.bordesEnDesacuerdo) {
     console.log(`  ⚠ el borde de "${f.rotulo}" no coincide: CAJA ${f.bordeCaja} · portón ${f.bordeLibro}. `
       + '¿La corrida cruzó la medianoche, o la pestaña quedó sin recalcular?')
@@ -330,11 +374,14 @@ function imprimir(r) {
 async function main() {
   const g = makeGoogleClient({ config: loadConfig() })
   // Se concilia lo ESCRITO en la pestaña, no lo que la memoria del generador cree haber escrito.
-  const [crudo, caja, corteRaw] = await Promise.all([
+  const [crudo, caja, corteRaw, compras] = await Promise.all([
     g.readSheetValues(ID, '_MOVIMIENTOS!A2:P2000', { render: 'UNFORMATTED_VALUE' }),
     g.readSheetValues(ID, 'CAJA!A1:I45', { render: 'UNFORMATTED_VALUE' }),
     // PISO_CAJA es `CAJA_FECHA_SALDO`, el rango con nombre que publica CAJA: el corte del extracto.
     g.readSheetValues(ID, PISO_CAJA, { render: 'UNFORMATTED_VALUE' }),
+    // COMPRAS, PARA MEDIR EL OTRO LADO DEL SWAP. El portón no puede declarar "estas filas no entran"
+    // leyendo únicamente el libro: en el libro no están, justamente. La cifra sale de la fuente.
+    g.readSheetValues(ID, 'Compras!A1:AN', { render: 'UNFORMATTED_VALUE' }).catch(() => []),
   ])
   const libro = leerLibro(crudo)
   if (!libro.length) throw new Error('_MOVIMIENTOS está vacía: corré primero libro-movimientos-pestana.mjs')
@@ -343,7 +390,12 @@ async function main() {
     throw new Error(`el rango con nombre ${PISO_CAJA} no trajo una fecha. Sin el corte `
       + 'del extracto, el piso del calendario sería el año 1899 y la comparación no significaría nada.')
   }
-  const r = conciliar(libro, leerCalendario(caja), { hoy: hoySerial(), corte })
+  // Los meses que la cadena cubre salen del LIBRO ESCRITO (no de recalcular la cadena acá): es lo que
+  // efectivamente reemplazó a Compras en la corrida que se está conciliando.
+  const cargasReemplazadas = compras.length
+    ? reemplazadasPorLaCadena(cargasEnCompras(compras), mesesCubiertos(libro.filter((m) => m.origen === FUENTE.cargas)))
+    : []
+  const r = conciliar(libro, leerCalendario(caja), { hoy: hoySerial(), corte, cargasReemplazadas })
   imprimir(r)
   if (!r.cierra) process.exitCode = 1
 }

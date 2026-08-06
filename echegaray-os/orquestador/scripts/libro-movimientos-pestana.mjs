@@ -26,6 +26,7 @@ import {
   deCompras, deCobranzas, deChequesEmitidos, deBancoCargos,
   deTarjetaSinFactura, deImpuestosCalendario, deCartera,
   deJornalesQuincenas, deOficina, deDireccion, comprasPagadasConCheque,
+  deCargasSociales, mesesCubiertos, cargasEnCompras, reemplazadasPorLaCadena, NOMBRES_CARGAS,
 } from '../lib/libro-extractores.mjs'
 import { cruzar, chequesDelRegistro } from '../lib/cruce-cheque-factura.mjs'
 import { ROTULOS_CALENDARIO, CALENDARIO_IMPUESTOS } from '../lib/cash-flow-lineas.mjs'
@@ -85,6 +86,23 @@ async function extraerDeLasFuentes(google, corte) {
   const leidos = await Promise.all(NOMBRES_NOMINA.map((n) => leer(n)))
   const R = Object.fromEntries(NOMBRES_NOMINA.map((n, i) => [n, leidos[i]]))
 
+  // ═══ LA CADENA DE CARGAS SOCIALES SE LEE OPCIONAL, Y ESO ES DELIBERADO ═══
+  //
+  // Los tres nombres los publica `cargas-sociales-pestana.mjs`. Si todavía no corrió —o si alguien los
+  // borró— la lectura falla, y romper acá dejaría al libro entero sin escribir por una fuente que hasta
+  // ayer no existía. Sin la serie no hay meses cubiertos, así que las filas planas de Compras vuelven a
+  // entrar solas: el cash flow queda como estaba, con la previsión tipeada a mano, y el aviso lo dice.
+  const opcional = async (n) => {
+    try { return await google.readSheetValues(ID, n, { render: 'UNFORMATTED_VALUE' }) } catch (e) {
+      console.warn(`  ⚠ no pude leer ${n} (${e.message}). Las cargas del mes vuelven a salir de las filas `
+        + 'planas de Compras — corré cargas-sociales-pestana.mjs para que publique la serie.')
+      return null
+    }
+  }
+  const [fechasCargas, f931Cargas, gremialesCargas] = await Promise.all([
+    opcional(NOMBRES_CARGAS.fechas), opcional(NOMBRES_CARGAS.f931), opcional(NOMBRES_CARGAS.gremiales),
+  ])
+
   // El registro de cheques se ubica por el DATO (FISICO/ECHEQ), no por una fila fija.
   const reg = ubicarRegistro(cheques.map((f) => [f?.[0]]))
   if (!reg) throw new Error('no encontré el registro de Cheques Emitidos: sin él el COMPROMETIDO queda afuera.')
@@ -108,8 +126,25 @@ async function extraerDeLasFuentes(google, corte) {
   // Es el mismo motivo por el que `cheques-cobertura-sheet` calcula sus respaldos una sola vez.
   const cruce = cruzar(chequesDelRegistro(cheques, { fila0: reg.primera }), comprasPagadasConCheque(compras))
 
+  // ═══ LA PRECEDENCIA SE RESUELVE ACÁ, UNA VEZ, Y LOS DOS EXTRACTORES LA RECIBEN ═══
+  //
+  // Es la misma forma que el cruce cheque↔factura: la decisión de qué puerta le toca a cada peso no se
+  // toma dentro de un extractor —serían dos criterios que se desincronizan— sino en un solo lugar. El
+  // hecho le gana a la proyección (el mes pagado en Compras la cadena no lo emite) y la cadena le gana
+  // a la fila plana (los meses que publica, Compras no los aporta). Ver libro-extractores-cargas.mjs.
+  const enCompras = cargasEnCompras(compras)
+  const cargas = deCargasSociales(
+    { fechas: fechasCargas, f931: f931Cargas, gremiales: gremialesCargas },
+    corte, { mesesPagados: enCompras.mesesPagados, aviso: (m) => console.warn(`  · ${m}`) },
+  )
+  const cargasCubiertas = mesesCubiertos(cargas)
+  const swap = reemplazadasPorLaCadena(enCompras, cargasCubiertas)
+  console.log(`  cargas sociales: la cadena publica ${cargas.length} movimiento(s) en ${cargasCubiertas.size} mes(es) `
+    + `y reemplaza ${swap.length} fila(s) previstas de Compras por ${pesos(swap.reduce((a, x) => a + x.total, 0))}`)
+
   return {
-    Compras: deCompras(compras, corte, { cruce }),
+    Compras: deCompras(compras, corte, { cruce, cargasCubiertas }),
+    'Cargas Sociales': cargas,
     Cobranzas: deCobranzas(cobranzas, corte),
     'Cheques Emitidos': deChequesEmitidos(cheques, { fila0: reg.primera, cruce }),
     'Tarjeta de Credito': deTarjetaSinFactura(tarjeta),
