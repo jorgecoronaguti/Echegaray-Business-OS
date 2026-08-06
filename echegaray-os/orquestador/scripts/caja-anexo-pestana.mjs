@@ -186,6 +186,14 @@ async function formatear(google, sheetId, g) {
   if (g.fTasa) fmt(r(g.fTasa - 1, g.fTasa, 2, 3), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'PERCENT', pattern: '0.00%' } })
   // LOS DÍAS SON DÍAS: "2 días" con formato moneda se dibuja "$2".
   if (g.fDias) fmt(r(g.fDias - 1, g.fDias, 2, 3), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'NUMBER', pattern: '0" días";;"—"' } })
+  // EL EJE DEL AÑO SE LEE "ene", NO "01/01/2026". Son fechas de verdad —el gráfico del punto de
+  // equilibrio necesita un eje temporal ordenado, y un texto "ene" ordena alfabéticamente—, así que lo
+  // que cambia es cómo se MUESTRAN: doce fechas completas en el eje de abajo se dibujan rotadas y se
+  // pisan entre ellas. Va después del formato de la columna F entera, que si no lo pisa.
+  const eq = g.series
+  if (eq?.fEq0) {
+    fmt(r(eq.fEq0 - 1, eq.fEq1, 5, 6), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'DATE', pattern: 'mmm' } })
+  }
   // La cotización es una relación, no plata.
   if (g.fTC) fmt(r(g.fTC - 3, g.fTC, 2, 3), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'NUMBER', pattern: '#,##0.00' } })
   // LA CELDA DE CARGA EN AMARILLO: lo que una persona escribe tiene que verse distinto de lo que el
