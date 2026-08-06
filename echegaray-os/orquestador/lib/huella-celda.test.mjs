@@ -205,3 +205,20 @@ test('(e) un IMPORTE sin huella no se toca aunque yo escriba importes en otras c
   assert.equal(ajenas.length, 1)
   assert.equal(fusionar(grid, hoy).at(-1)[2], '$ 60.433,00', 'el número del dueño sobrevive')
 })
+
+test('(f) UNA PALABRA COMÚN DEL DUEÑO NO SE BORRA aunque el generador también la escriba', () => {
+  // EL CONTRAEJEMPLO DEL AUDITOR DE CIERRE (06/08), probado sobre la grilla real de Impuestos: la
+  // regla reclamaba TODA palabra de la grilla (129 formas — "total", "iva", "disponible") y una
+  // anotación del dueño que coincidiera se borraba. La propiedad exige una marca tipográfica que
+  // ningún humano tipea al anotar (⚠ ⇒ ‖ § · —) o un rótulo largo.
+  const quiere = [...lastre(), ['Calendario', '=$I$86', VACIO, VACIO], ['Detalle', 'Total', 'IVA', 'disponible']]
+  const huellas = huellasDe(quiere)
+  // El dueño anotó "Total" y "IVA" en las celdas que el generador manda a limpiar.
+  const hoy = quiere.map((f, i) => (i === quiere.length - 2 ? [f[0], f[1], 'Total', 'IVA'] : f))
+  const { grid, residuos, ajenas } = aplicarHuella(quiere, hoy, huellas)
+  assert.equal(residuos.length, 0, 'una palabra común NUNCA es evidencia de que la escribí yo')
+  assert.equal(ajenas.length, 2, 'las dos anotaciones son del dueño: se preservan')
+  const fusionada = fusionar(grid, hoy)
+  assert.equal(fusionada[quiere.length - 2][2], 'Total', 'la anotación del dueño sobrevive')
+  assert.equal(fusionada[quiere.length - 2][3], 'IVA')
+})

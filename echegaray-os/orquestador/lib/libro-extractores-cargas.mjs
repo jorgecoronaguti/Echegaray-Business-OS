@@ -130,15 +130,17 @@ export function deCargasSociales({ fechas, f931, gremiales } = {}, corte = null,
     const fecha = num(F[i])
     if (fecha === null) continue
     const mes = mesDeSerial(fecha)
-    // ═══ EL HECHO LE GANA A LA PROYECCIÓN ═══
-    // Si Compras ya tiene el pago de ese mes marcado "Pagado", esta plata salió y su fila real entra
-    // por la puerta de Compras. Emitirla también acá la contaría dos veces —y del lado peor, porque
-    // un PROYECTADO sí pesa en la escalera mientras que el REAL ya está en el saldo del banco.
-    if (mesesPagados.has(mes)) {
-      aviso(`libro-extractores-cargas: ${mes} ya tiene el pago cargado en Compras — la cadena no lo emite.`)
-      continue
-    }
     for (const b of bloques) {
+      // ═══ EL HECHO LE GANA A LA PROYECCIÓN — POR (MES · RUBRO), NO POR MES ═══
+      // El auditor de cierre (06/08) lo rompió con una fila: con la precedencia por mes entero,
+      // marcar "Pagado" la fila de gremiales del 17/08 ($700k) tiraba abajo TAMBIÉN el F931 de
+      // agosto ($7,0M) y el cash flow volvía a los números redondos tipeados. El F931 y los
+      // gremiales vencen en días distintos (10 y 17) y hay una semana por mes en la que el mes está
+      // pagado a medias: cada rubro decide solo.
+      if (mesesPagados.has(`${mes}·${b.rubro}`)) {
+        aviso(`libro-extractores-cargas: ${mes} · ${b.que} ya tiene el pago cargado en Compras — la cadena no lo emite.`)
+        continue
+      }
       const importe = num(b.importes[i])
       if (!importe) continue
       out.push(movimiento({
@@ -147,7 +149,11 @@ export function deCargasSociales({ fechas, f931, gremiales } = {}, corte = null,
         importe,
         // El mes que se nombra es el DEVENGADO (la nómina que la generó), no el de la salida: es lo
         // que permite atarla contra la sección 4 de la pestaña sin contar meses con los dedos.
-        concepto: `${b.que === 'F931' ? 'F931' : 'Gremiales'} · nómina de ${MES[i + 1] ?? i + 1}-${String(anioDe(fecha)).slice(2)}`,
+        // EL AÑO TAMBIÉN ES DEL DEVENGADO. Con `anioDe(fecha)` la nómina de diciembre-26, que sale
+        // de caja el 10/01/2027, se rotulaba "dic-27" — un año que no existe en esta serie (auditor
+        // de cierre, 06/08, leído en el Sheet vivo). Si el mes de salida es menor que el devengado,
+        // la salida cruzó el año y el devengado pertenece al año anterior.
+        concepto: `${b.que === 'F931' ? 'F931' : 'Gremiales'} · nómina de ${MES[i + 1] ?? i + 1}-${String(anioDevengado(fecha, i + 1)).slice(2)}`,
         contraparte: b.que === 'F931' ? 'ARCA' : 'FCL · UOCRA · IERIC · FODECO',
         rubro: b.rubro,
         estado: estadoContraCorte('PROYECTADO', fecha, corte),
@@ -164,13 +170,21 @@ export function deCargasSociales({ fechas, f931, gremiales } = {}, corte = null,
 
 const MES = ['', 'ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
 const anioDe = (serial) => Number(isoDeSerial(serial).slice(0, 4))
+/** El año del mes DEVENGADO: si la salida (fecha) cae en un mes anterior al devengado, cruzó el año. */
+const anioDevengado = (serial, mesDevengado) => {
+  const a = anioDe(serial)
+  const mesSalida = Number(isoDeSerial(serial).slice(5, 7))
+  return mesSalida >= mesDevengado ? a : a - 1
+}
 
 /**
  * NÚCLEO PURO: los meses de caja que la cadena cubre. Es lo que habilita la exclusión en Compras — y
  * si está vacío, no se excluye nada.
  */
 export function mesesCubiertos(movimientos = []) {
-  return new Set(movimientos.map((m) => mesDeSerial(m.fecha)).filter(Boolean))
+  // La clave es (mes · rubro): la cadena puede cubrir el F931 de un mes cuyos gremiales ya se
+  // pagaron por Compras, y al revés. Una clave por mes entero revertía el mes completo (auditor).
+  return new Set(movimientos.map((m) => (mesDeSerial(m.fecha) ? `${mesDeSerial(m.fecha)}·${m.rubro}` : null)).filter(Boolean))
 }
 
 /**
@@ -187,7 +201,7 @@ export function cubiertaPorLaCadena({ rubro, fecha, pagada }, cubiertos = new Se
   if (pagada) return false
   if (rubro !== RUBRO_CARGAS && rubro !== RUBRO_GREMIALES) return false
   if (!Number.isFinite(fecha)) return false
-  return cubiertos.has(mesDeSerial(fecha))
+  return cubiertos.has(`${mesDeSerial(fecha)}·${rubro}`)
 }
 
 /**
@@ -216,7 +230,7 @@ export function cargasEnCompras(filas = []) {
     const total = num(f[c.importe])
     if (fecha === null || !total) continue
     const pagada = estaPagada(f[c.estado])
-    if (pagada) { mesesPagados.add(mesDeSerial(fecha)); continue }
+    if (pagada) { mesesPagados.add(`${mesDeSerial(fecha)}·${rubro}`); continue }
     previstas.push({ fila: i + 1, rubro, fecha, mes: mesDeSerial(fecha), total })
   }
   return { mesesPagados, previstas }

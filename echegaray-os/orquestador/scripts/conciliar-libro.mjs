@@ -40,7 +40,7 @@ import { BORDES, PISO_CAJA } from '../lib/caja-calendario.mjs'
 import { CUADRO } from '../lib/cash-flow-lineas.mjs'
 import { eomonth, serialDe } from '../lib/libro-extractores-fechas.mjs'
 import { PESTANA_NOMINA } from '../lib/libro-extractores-nomina.mjs'
-import { PESTANA_CARGAS, cargasEnCompras, mesesCubiertos, reemplazadasPorLaCadena } from '../lib/libro-extractores-cargas.mjs'
+import { PESTANA_CARGAS, cargasEnCompras, mesesCubiertos, reemplazadasPorLaCadena, mesDeSerial } from '../lib/libro-extractores-cargas.mjs'
 import { endososDeCartera } from '../lib/libro-endosos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -215,11 +215,16 @@ export function residuosDeclarados(libro, v, rubros = rubrosDelCuadro()) {
  * @param {Array<{fecha:number,total:number}>} reemplazadas filas de Compras que la cadena reemplaza
  */
 export function swapDeCargas(libro, v, reemplazadas = []) {
-  const cadena = netoSale(libro.filter((m) => m.origen === FUENTE.cargas && enVentana(m, v.sale)))
-  const plano = reemplazadas
-    .filter((x) => x.fecha >= v.sale.desde && x.fecha < v.sale.hasta)
-    .reduce((a, x) => a + x.total, 0)
-  return { cadena, plano, delta: cadena - plano, filas: reemplazadas.length }
+  const deCadena = libro.filter((m) => m.origen === FUENTE.cargas && enVentana(m, v.sale))
+  const cadena = netoSale(deCadena)
+  const enPlano = reemplazadas.filter((x) => x.fecha >= v.sale.desde && x.fecha < v.sale.hasta)
+  const plano = enPlano.reduce((a, x) => a + x.total, 0)
+  // LA DIFERENCIA SE DESCOMPONE O MIENTE (auditor, 06/08): "$12,0M de más que lo tipeado" sonaba a
+  // que la cadena medía más caro los mismos meses, cuando $10,5M eran ENERO-27 — un mes que Compras
+  // no tenía y que el arreglo hizo visible. Meses nuevos y meses comparados son dos noticias.
+  const mesesPlano = new Set(enPlano.map((x) => x.mes))
+  const soloCadena = netoSale(deCadena.filter((m) => !mesesPlano.has(mesDeSerial(m.fecha))))
+  return { cadena, plano, delta: cadena - plano, filas: reemplazadas.length, soloCadena }
 }
 
 /**
@@ -381,8 +386,10 @@ function imprimir(r) {
   // cadena— pero es un cambio de fuente de decenas de millones y una exclusión sin monto no se audita.
   if (swap.cadena || swap.plano) {
     console.log(`  · cargas sociales, tramo SWAPPEADO: la cadena de "Cargas Sociales" aporta ${pesos(swap.cadena)} `
-      + `y por precedencia NO entran ${swap.filas} fila(s) previstas de Compras por ${pesos(swap.plano)} `
-      + `(diferencia ${pesos(swap.cadena - swap.plano)}: es lo que la cadena mide de más o de menos que lo tipeado a mano).`)
+      + `y por precedencia NO entran ${swap.filas} fila(s) previstas de Compras por ${pesos(swap.plano)}.`)
+    console.log(`    De la cadena, ${pesos(swap.soloCadena)} son meses que Compras NO tenía (obligaciones que el motor `
+      + `hizo visibles); en los meses que ambos tienen, la cadena mide ${pesos(swap.cadena - swap.soloCadena)} contra `
+      + `${pesos(swap.plano)} tipeados (diferencia ${pesos(swap.cadena - swap.soloCadena - swap.plano)}).`)
     console.log('    Las filas PAGADAS de esos rubros siguen entrando por Compras, y si la cadena deja de publicar sus rangos con nombre, Compras vuelve a entrar entero.')
   }
   // La exclusión de endosos no mueve ningún Δ (eran REAL), y por eso hay que NOMBRARLA: si no, desaparece.

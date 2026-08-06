@@ -82,7 +82,7 @@ const dia = (e) => `TEXT(${e};"dd/mm")`
  * @returns {Array<{clave:string,rotulo:string,valor:string,contexto:string,especie:'plata'|'texto'}>}
  */
 export function tarjetas(ref) {
-  const faltan = ['total', 'fecha', 'invArs', 'invUsd', 'invFecha'].filter((k) => !ref?.[k])
+  const faltan = ['total', 'fecha', 'invArs', 'invUsd', 'invFecha', 'pisoSimple', 'pisoFecha'].filter((k) => !ref?.[k])
   // FALLA CERRADO. Una referencia vacía produciría `=` o `=N()+N()` — una celda en error en la primera
   // pantalla de la pestaña más mirada del archivo. Es barato romper acá y carísimo descubrirlo allá.
   if (faltan.length) throw new Error(`caja-tarjetas: faltan las referencias ${faltan.join(', ')}`)
@@ -133,19 +133,22 @@ export function tarjetas(ref) {
       especie: 'plata',
     },
     {
-      clave: 'aCobrar',
-      rotulo: 'A COBRAR',
-      // LA PATA QUE FALTABA. Todas las versiones anteriores de la portada comparaban la caja de hoy
-      // contra los pagos del mes SIN mostrar lo que entra en el mismo período — y cada número que
-      // salía de ahí se leía como pobreza o como error. Es la misma suma del libro que los pagos,
-      // con el signo contrario: cobranzas y otros ingresos no-REAL hasta fin de mes.
-      valor: `=${mesCobro}`,
-      contexto: `="del mes · si se cobra lo proyectado"`,
+      clave: 'libre',
+      rotulo: 'LIBRE DISPONIBILIDAD',
+      // LA ENUMERACIÓN FINAL DEL DUEÑO (06/08): "caja disponible, comprometida, libre
+      // disponibilidad, invertida y saldo al cierre". LIBRE es lo que se puede usar HOY sin dejar
+      // ningún día del recorrido al descubierto: el MÍNIMO de la posición proyectada día a día
+      // (cobros y pagos cada uno en su fecha), referenciado de la fila de cierre de la escalera —
+      // el mínimo simple ($I), no el "peor caso" ($H) que descuenta cheques de cobertura incierta
+      // (rechazo del auditor de cierre: publicaba $7,4M donde el recorrido medido daba $29,7M;
+      // ese escenario vive en la fila de la escalera y su alerta, que es su casa).
+      valor: `=N(${ref.pisoSimple})`,
+      contexto: `="hoy · mínimo del mes el "&${dia(ref.pisoFecha)}`,
       especie: 'plata',
     },
     {
       clave: 'invertido',
-      rotulo: 'INVERTIDO',
+      rotulo: 'CAJA INVERTIDA',
       // REFERENCIA A LAS FILAS BALANZ DEL PANEL, no una segunda fuente: si mañana la posición se
       // reemplaza por el extracto de Balanz, la tarjeta cambia con la grilla sin tocar este archivo.
       valor: `=${invertido}`,
@@ -155,14 +158,17 @@ export function tarjetas(ref) {
       especie: 'plata',
     },
     {
-      clave: 'finDeMes',
-      rotulo: 'CAJA · FIN DE MES',
+      clave: 'cierre',
+      rotulo: 'SALDO AL CIERRE',
       // LA CONSECUENCIA PERFECTA, por construcción: referencia a las TRES tarjetas hermanas (fila 3,
       // columnas A, E y C — disponible, a cobrar, comprometida), no una cuarta suma sobre el libro.
       // Si cualquiera de las tres cambia, ésta cambia con ellas y la identidad no puede romperse.
       // Lo invertido NO entra: una comitente no paga un cheque, y el dueño lo quiso aparte.
-      valor: '=N($A$3)+N($E$3)-N($C$3)',
-      contexto: `="tengo + cobro − pago · al "&${dia(`EOMONTH(TODAY();0)`)}`,
+      // LA CONSECUENCIA: disponible (A3) − comprometida (C3) + lo que se cobra en el mes. Los dos
+      // primeros por referencia a sus tarjetas; los cobros con la misma suma del libro que usa todo
+      // el archivo — y el contexto los publica, para que la identidad se lea entera.
+      valor: `=N($A$3)-N($C$3)+${mesCobro}`,
+      contexto: `="cobrando "&TEXT(${mesCobro}/1000000;"$#,##0.0")&"M proyectados del mes"`,
       especie: 'plata',
     },
   ]

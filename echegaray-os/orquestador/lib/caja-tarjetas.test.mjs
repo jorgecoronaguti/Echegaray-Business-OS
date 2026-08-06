@@ -15,12 +15,13 @@ import { terminoLibro } from './libro-sumas.mjs'
 
 const REF = {
   total: '$C$15', fecha: '$D$15', invArs: '$C$11', invUsd: '$C$12', invFecha: '$D$11',
+  pisoSimple: '$I$15', pisoFecha: '$G$15',
 }
 const T = () => tarjetas(REF)
 const de = (clave) => T().find((t) => t.clave === clave)
 
 test('son CINCO en el orden de la historia: tengo → debo pagar → voy a cobrar → invertido → termino', () => {
-  assert.deepEqual(T().map((t) => t.clave), ['disponible', 'comprometida', 'aCobrar', 'invertido', 'finDeMes'])
+  assert.deepEqual(T().map((t) => t.clave), ['disponible', 'comprometida', 'libre', 'invertido', 'cierre'])
 })
 
 test('las cinco tienen rótulo, cifra y contexto: la forma de la tarjeta no se negocia', () => {
@@ -58,10 +59,12 @@ test('COMPROMETIDA = todo lo que hay que pagar en el mes − lo ya pagado, con l
   assert.ok(!c.valor.includes('"REAL"'), 'lo REAL ya salió de la cuenta: no es obligación')
 })
 
-test('A COBRAR es la MISMA suma del mes con el signo contrario — la pata que faltaba ver', () => {
-  const a = de('aCobrar')
-  assert.equal(a.valor, `=${terminoLibro({ signo: 1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })}`)
-  assert.match(a.contexto, /si se cobra lo proyectado/, 'una proyección no es plata y el contexto lo dice')
+test('LIBRE DISPONIBILIDAD es el mínimo MEDIDO del recorrido, no el peor caso (rechazo del auditor)', () => {
+  const l = de('libre')
+  assert.equal(l.rotulo, 'LIBRE DISPONIBILIDAD')
+  assert.equal(l.valor, `=N(${REF.pisoSimple})`, 'el mínimo simple ($I) de la fila de cierre, por referencia')
+  assert.ok(l.contexto.includes(REF.pisoFecha), 'la fecha del punto más bajo, del mismo criterio que el valor')
+  assert.ok(!l.valor.includes('$H$'), 'el peor caso ($H) es de la escalera, no del titular')
 })
 
 test('INVERTIDO cita las filas Balanz de la grilla — una sola fuente, nunca una segunda posición', () => {
@@ -72,12 +75,12 @@ test('INVERTIDO cita las filas Balanz de la grilla — una sola fuente, nunca un
   assert.ok(t.contexto.includes(REF.invFecha))
 })
 
-test('CAJA · FIN DE MES es la CONSECUENCIA PERFECTA: referencia a las tres hermanas, ninguna suma nueva', () => {
-  // A3 (disponible) + E3 (a cobrar) − C3 (comprometida). Si esta fórmula volviera a sumar el libro
-  // por su cuenta, la identidad podría romperse en silencio — referenciando, no puede.
-  const t = de('finDeMes')
-  assert.equal(t.valor, '=N($A$3)+N($E$3)-N($C$3)')
-  assert.match(t.contexto, /tengo \+ cobro − pago/, 'la identidad queda escrita para el que mira')
+test('SALDO AL CIERRE es la CONSECUENCIA: disponible − comprometida + cobros del mes', () => {
+  const t = de('cierre')
+  assert.equal(t.rotulo, 'SALDO AL CIERRE')
+  assert.equal(t.valor, `=N($A$3)-N($C$3)+${terminoLibro({ signo: 1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })}`,
+    'disponible y comprometida por referencia; los cobros con la suma única del libro')
+  assert.match(t.contexto, /cobrando/, 'la pata de cobros queda publicada en el contexto')
   assert.ok(!t.valor.includes(REF.invArs) && !t.valor.includes(REF.invUsd),
     'lo invertido no entra: una comitente no paga un cheque, y el dueño lo quiso aparte')
 })
@@ -94,5 +97,6 @@ test('NINGUNA fórmula usa la coma como separador de argumentos (es-AR)', () => 
 test('FALLA CERRADO: sin una referencia, rompe antes de escribir una celda en error', () => {
   assert.throws(() => tarjetas({ ...REF, invArs: '' }), /faltan las referencias/)
   assert.throws(() => tarjetas({ ...REF, total: '' }), /faltan las referencias/)
+  assert.throws(() => tarjetas({ ...REF, pisoSimple: '' }), /faltan las referencias/)
   assert.throws(() => tarjetas(), /faltan las referencias/)
 })
