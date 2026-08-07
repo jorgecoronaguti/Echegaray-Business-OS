@@ -192,6 +192,23 @@ export function mesesDelMotor(base, pendientes = [], anclas = []) {
 }
 
 /**
+ * NÚCLEO PURO: la ÚNICA línea que pide lo que le falta al control de convenio para poder hablar.
+ *
+ * La columna "Convenio" es del dueño: él escribe a qué categoría de la escala UOCRA equivale cada
+ * categoría de la planilla ("OF", "A M", …), y sin eso el bloque no puede comparar contra el básico.
+ * Eso hay que decirlo, pero UNA vez y con la cuenta: "faltan 4 de 4" es una decisión de un vistazo;
+ * la misma frase repetida en cada fila es ruido que empuja hacia abajo lo único que el bloque contesta.
+ *
+ * @param {number} f0 primera fila de categorías · @param {number} f1 última
+ */
+export const formulaConvenioPendiente = (f0, f1) => {
+  const faltan = `COUNTBLANK($E$${f0}:$E$${f1})`
+  const total = `COUNTA($A$${f0}:$A$${f1})`
+  return `=IF(${faltan}=0;"   · las "&${total}&" categorías tienen su equivalente en la escala del convenio";`
+    + `"   · faltan "&${faltan}&" de "&${total}&": escribí el equivalente del convenio en la columna «Convenio» y el control se enciende solo")`
+}
+
+/**
  * NÚCLEO PURO: las filas del bloque "1.1 · El plantel base", en el ancho de 8 columnas de la pestaña.
  *
  * @returns {{filas:any[][], fPrimera:number, fUltima:number, fTotal:number, canario:string}}
@@ -222,7 +239,18 @@ export function filasPlantel({ hoja, bloque, categorias, personas, filaInicio, e
         ? `=IFERROR(INDEX('${UOCRA_HOJA}'!$${UOCRA_COL.basico}$${g.r0}:$${UOCRA_COL.basico}$${g.r1};MATCH($E${r};'${UOCRA_HOJA}'!$${UOCRA_COL.categoria}$${g.r0}:$${UOCRA_COL.categoria}$${g.r1};0));"")`
         : '',
       `=IF(N($F${r})=0;"";$D${r}/$F${r}-1)`,
-      `=IF($E${r}="";"escribí la categoría del convenio en la columna de al lado";IF(N($F${r})=0;"esa categoría no está en la escala del mes";IF($G${r}<0;"⚠ por debajo del convenio";"✓ sobre el convenio")))`,
+      // ═══ UN ESTADO, NO UNA INSTRUCCIÓN — Y MENOS REPETIDA UNA VEZ POR FILA (06/08) ═══
+      //
+      // Acá decía "escribí la categoría del convenio en la columna de al lado", y como ninguna de las
+      // cuatro categorías tiene su equivalente cargado, la frase aparecía CUATRO VECES en el cuadro
+      // que abre la pestaña. Un pedido no es un estado: se dice una vez, arriba del bloque, con la
+      // cuenta de lo que falta (ver `formulaConvenioPendiente`). Acá va lo que la fila puede decir,
+      // que sin convenio asignado es nada — y el "—" es el mismo vocabulario que usan los importes
+      // vacíos de toda la pestaña.
+      //
+      // De paso: la frase medía 58 caracteres en una columna del MEDIO de una grilla de catorce. El
+      // auditor de patrón marca las notas en el medio a partir de 60. Pasaba por dos caracteres.
+      `=IF($E${r}="";"—";IF(N($F${r})=0;"esa categoría no está en la escala del mes";IF($G${r}<0;"⚠ por debajo del convenio";"✓ sobre el convenio")))`,
     ])
   })
   const fUltima = fPrimera + categorias.length - 1

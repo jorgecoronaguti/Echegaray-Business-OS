@@ -37,6 +37,11 @@ const esTextoDeVerdad = (v) => {
   // uno reportaba 684 ceros correctos como texto mal puesto, y ese ruido tapaba los 50 defectos
   // reales que sí tiene esa pestaña.
   if (/^\s*[—–-]\s*$/.test(s)) return false
+  // EL TILDE ES EL CERO DE UN CONTROL. "⇒ Diferencia — tiene que ser $0" dibuja su cero como
+  // "✓ $0" (tercera sección del patrón de moneda): el cero ES la respuesta y tiene que verse como
+  // aprobación, no como guion de celda vacía. El valor de la celda sigue siendo un número — el
+  // detector veía el dibujo y lo reportaba como texto (Cargas B83, auditor del 06/08).
+  if (/^✓\s*\$?\s*0$/.test(s)) return false
   // EL SIGNO VA ANTES DEL PESO. La primera versión sólo aceptaba "$-1.234" y marcaba "-$2.949.816"
   // como texto: 2.486 falsos positivos en catorce pestañas, o sea un control inservible. Un
   // detector que grita por todo es peor que no tenerlo, porque enseña a ignorarlo.

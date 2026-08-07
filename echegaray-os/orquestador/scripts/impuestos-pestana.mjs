@@ -53,6 +53,7 @@ import {
 } from '../lib/impuestos-bloques.mjs'
 import {
   obligacionesDelCalendario, altoDeLaPosicion, filasDeLaPosicion, formulaOtrosSinFecha,
+  OFFSET_TITULAR, ALTO_HERO,
 } from '../lib/impuestos-posicion.mjs'
 import { IIBB_SUPUESTO } from '../lib/vencimientos-fiscales.mjs'
 import { informarProyeccion, informarCalendario } from '../lib/impuestos-informe.mjs'
@@ -62,8 +63,6 @@ const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1
 const PESTAÑA = 'Impuestos y Financieros'
 const DRY = process.argv.includes('--dry')
 const AÑO = 2026
-/** Cuántas filas quedan congeladas: el título, la frescura y el hero entero. La posición no se va al scrollear. */
-const CONGELADAS = 12
 
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
 const hoyISO = () => new Date().toISOString().slice(0, 10)
@@ -243,11 +242,18 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, hoy }) {
 
   return {
     filas: G.filas,
-    titular: base + 2,
+    // `base` es 0-based y la primera fila del hero es la siguiente: +1 para pasar a 1-based, y
+    // OFFSET_TITULAR lo declara el propio hero. Antes decía `base + 2` — un número que había que
+    // recordar mover a mano cada vez que el hero cambiaba de orden.
+    titular: base + 1 + OFFSET_TITULAR,
+    // El bloque que la piel jerarquiza distinto del resto: importes grandes, desgloses apagados.
+    hero: { desde: base + 1, hasta: base + ALTO_HERO },
     alicuotas: [ibb.fAli, cierre.fAlic],
     textos: [iva.fDDJJ],
     ambar,
-    congeladas: CONGELADAS,
+    // El título, la frescura y el hero ENTERO quedan congelados: la posición no se va al scrollear.
+    // Sale del hero, no de un 12 tipeado — un renglón más en el hero y el 12 se lo dejaba afuera.
+    congeladas: base + ALTO_HERO,
     filaAlicuotaIva: cierre.fAlic,
     cal,
     refs,

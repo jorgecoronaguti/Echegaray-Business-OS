@@ -3,12 +3,92 @@ import assert from 'node:assert/strict'
 import {
   NOMBRES_DIRECCION, DIA_PAGO_DEFAULT, PARAMETRO_DIA_PAGO, regexDireccion, esRetiro,
   formulaRetiroMensual, formulaPrimerRetiro, formulaPagadoMes, formulaSePagaElDireccion,
-  formulaProyectadoMes, formulaDireccion,
+  formulaProyectadoMes, formulaDireccion, condicionesPagoDelMes,
 } from './direccion-retiros.mjs'
 import { formulaAdministracion, formulaOficina } from './cash-flow-lineas.mjs'
 import { REGLAS } from './rubro-caja.mjs'
 
 const balanceado = (f) => [...f].reduce((n, c) => n + (c === '(' ? 1 : c === ')' ? -1 : 0), 0) === 0
+
+// ═══ UN EVALUADOR MÍNIMO — PARA PROBAR EL NÚMERO, NO LA FORMA ═══
+//
+// Estas fórmulas terminan en una celda del Sheet real, así que un test que sólo mire su texto prueba
+// que la escribí como la escribí. Lo que hay que probar es otra cosa: que sobre las filas REALES de
+// Compras la celda rinde 04/08/2026. Esto compila la fórmula EMITIDA —no una copia del criterio
+// escrita en JS, que envejecería por su lado— a predicados, y los corre contra un fajo de filas.
+//
+// FALLA RUIDOSO ANTE UNA CONDICIÓN QUE NO CONOCE. Es la parte que lo hace un test y no un adorno: si
+// mañana la fórmula cambia de forma, `predicado` tira, el test se pone rojo y alguien mira. Un
+// evaluador que ignora lo que no entiende aprueba cualquier cosa.
+
+/** El serial de Sheets de una fecha: días desde el 30/12/1899. */
+const serial = (y, m, d) => Math.round((Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 86400000)
+
+const COL_AD = "'Compras'!$AD$4:$AD"
+const COL_O = "'Compras'!$O$4:$O"
+/** Parte una lista de argumentos por su separador de NIVEL SUPERIOR: los `;` de un DATE() no cuentan. */
+const args = (s, sep = ';') => {
+  const out = []
+  let nivel = 0; let ini = 0; let comillas = false
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i]
+    if (c === '"') comillas = !comillas
+    else if (comillas) continue
+    else if (c === '(' || c === '{') nivel++
+    else if (c === ')' || c === '}') nivel--
+    else if (c === sep && nivel === 0) { out.push(s.slice(ini, i)); ini = i + 1 }
+  }
+  out.push(s.slice(ini))
+  return out
+}
+
+/** Una condición de Sheets → una función que dice si una fila de Compras la cumple. */
+const predicado = (cond) => {
+  let m = cond.match(/^REGEXMATCH\(LOWER\('Compras'!\$K\$4:\$K&""\);"(.+)"\)$/)
+  if (m) { const re = new RegExp(m[1], 'i'); return (f) => re.test(String(f.persona ?? '').toLowerCase()) }
+  m = cond.match(/^REGEXMATCH\('Compras'!\$Z\$4:\$Z&"";"(.+)"\)$/)
+  if (m) { const re = new RegExp(m[1]); return (f) => re.test(String(f.estado ?? '')) }
+  m = cond.match(/^\((.+?)(>=|<)DATE\((\d+);(\d+);(\d+)\)\)$/)
+  if (m && m[1] === `IF(ISNUMBER(${COL_AD});${COL_AD};0)`) {
+    const s = serial(Number(m[3]), Number(m[4]), Number(m[5]))
+    return m[2] === '>=' ? (f) => f.caja >= s : (f) => f.caja < s
+  }
+  throw new Error(`el evaluador del test no reconoce esta condición: ${cond}`)
+}
+
+/** Lo que rinde la celda "Se paga el" del bloque Dirección sobre unas filas de Compras. */
+const evaluarSePagaEl = (formula, filas, diaPago = DIA_PAGO_DEFAULT) => {
+  const m = formula.match(/^=IFERROR\(MAX\(FILTER\((.+)\)\);DATE\((\d+);(\d+);DIRECCION_DIA_PAGO\)\)$/)
+  assert.ok(m, `la celda ya no es "el máximo de las fechas que pagaron el mes; si no hay, la prevista": ${formula}`)
+  const [rango, ...conds] = args(m[1])
+  assert.equal(rango, COL_AD, 'la fecha de un hecho sale de la fecha de caja de Compras')
+  const preds = conds.map(predicado)
+  const fechas = filas.filter((f) => preds.every((p) => p(f))).map((f) => f.caja)
+  return fechas.length ? Math.max(...fechas) : serial(Number(m[2]), Number(m[3]), diaPago)
+}
+
+/** Lo que rinde la celda "Pagado" del mismo mes, sobre las mismas filas. */
+const evaluarPagado = (formula, filas) => {
+  const m = formula.match(/^=SUMPRODUCT\((.+)\)$/)
+  assert.ok(m, `"Pagado" ya no es un SUMPRODUCT: ${formula}`)
+  const partes = args(m[1], '*')
+  assert.equal(partes.pop(), `IF(ISNUMBER(${COL_O});${COL_O};0)`, 'lo que se suma es el importe de Compras')
+  const preds = partes.map(predicado)
+  return filas.filter((f) => preds.every((p) => p(f))).reduce((a, f) => a + f.importe, 0)
+}
+
+// ═══ LAS FILAS REALES QUE PAGARON JULIO (verificadas contra el extracto, 06/08) ═══
+// Dos débitos de $3.000.000 el 03/08 —uno a nombre de Ana Laura Echegaray, que es el retiro de Jorge
+// Corona— y el retiro de Jorge Echegaray EN EFECTIVO el 04/08. El dueño los confirmó: "sí fueron
+// retiros". Las dos filas de abajo son las trampas que ya mordieron: la compra de materiales que
+// contiene la palabra "Corona" y el retiro de agosto, todavía sin pagar.
+const COMPRAS_JULIO = [
+  { persona: 'Jorge Corona', importe: 3000000, caja: serial(2026, 8, 3), estado: '✅ Pagado' },
+  { persona: 'Rodrigo Echegaray', importe: 3000000, caja: serial(2026, 8, 3), estado: '✅ Pagado' },
+  { persona: 'Jorge Echegaray', importe: 3000000, caja: serial(2026, 8, 4), estado: '✅ Pagado' },
+  { persona: 'Corona de arranque y bomba de agua', importe: 310000, caja: serial(2026, 8, 3), estado: '✅ Pagado' },
+  { persona: 'Jorge Corona', importe: 3000000, caja: serial(2026, 9, 10), estado: '🟢 Vigente' },
+]
 
 const TODAS = () => [
   formulaRetiroMensual('$A$47'),
@@ -79,13 +159,74 @@ test('el retiro de diciembre se paga en ENERO del año siguiente, y el mes 13 no
   // resuelve por desborde y devuelve 10/01/2027, así que el número salía bien; pero la celda declara
   // un mes que no existe, y el día que esa fórmula se copie a otra pestaña o se traduzca a SQL, el
   // desborde no la va a salvar. Un test que exige la forma equivocada la vuelve intocable.
-  assert.equal(formulaSePagaElDireccion(12, 2026), '=DATE(2027;1;DIRECCION_DIA_PAGO)')
-  assert.equal(formulaSePagaElDireccion(7, 2026), '=DATE(2026;8;DIRECCION_DIA_PAGO)')
+  // Sin ninguna fila de Compras que lo pague, diciembre cae en su fecha PREVISTA — y esa fecha es de
+  // enero, no de un mes 13.
+  assert.equal(evaluarSePagaEl(formulaSePagaElDireccion(12, 2026), []), serial(2027, 1, DIA_PAGO_DEFAULT))
+  assert.doesNotMatch(formulaSePagaElDireccion(12, 2026), /DATE\(\d{4};1[3-9];/)
   // Y la ventana de "pagado" del mes de diciembre tampoco puede tener meses 13 ni 14.
   const dic = formulaPagadoMes(12, 2026)
   assert.match(dic, /DATE\(2027;1;1\)/)
   assert.match(dic, /DATE\(2027;2;1\)/)
   assert.doesNotMatch(dic, /DATE\(\d{4};1[3-9];/)
+})
+
+test('EL CASO REAL: julio se pagó el 03 y el 04/08, y la celda dice 04/08 — no la fecha prevista', () => {
+  // ═══ EL DEFECTO QUE ESTE TEST ATRAPA ═══
+  //
+  // La celda devolvía SIEMPRE el DIA_PAGO del mes siguiente. Julio figuraba pagado $9.000.000 y "se
+  // paga el 10/08": una fecha FUTURA para plata que ya había salido. Como el cash flow imputa este
+  // bloque por DIRECCION_PAGO, el libro pedía caja para el 10/08 por algo ya debitado — un
+  // COMPROMETIDO fantasma, sin un solo error de fórmula y sin un descuadre.
+  //
+  // 46238 = 04/08/2026. Es el valor que el dueño ya dejó en la celda viva por edición quirúrgica: el
+  // generador tiene que producir ESE número o la próxima regeneración se lo pisa.
+  const julio = evaluarSePagaEl(formulaSePagaElDireccion(7, 2026), COMPRAS_JULIO)
+  assert.equal(julio, 46238, 'el retiro de julio se termina de pagar el 04/08/2026')
+  assert.equal(julio, serial(2026, 8, 4))
+  // MÁX Y NO MÍN: el mes se cierra cuando salió el ÚLTIMO peso. Con el MÍN diría 03/08 —un día antes
+  // de estarlo— y volvería a haber un compromiso abierto por el efectivo del 04.
+  assert.notEqual(julio, serial(2026, 8, 3))
+
+  // LA MISMA VENTANA QUE "PAGADO": las dos celdas de la fila tienen que hablar de las MISMAS filas de
+  // Compras. Cuando cada una definía la suya, el cuadro dijo las dos cosas a la vez.
+  assert.equal(evaluarPagado(formulaPagadoMes(7, 2026), COMPRAS_JULIO), 9000000)
+})
+
+test('un mes que todavía se debe conserva su fecha PREVISTA', () => {
+  // Agosto tiene su retiro cargado en Compras con fecha de caja 10/09 y estado 🟢 Vigente: es un pago
+  // previsto que NO salió. Ni suma en "Pagado" ni le puede dar la fecha a "Se paga el" — si lo hiciera,
+  // el cuadro daría por saldado un mes que se sigue debiendo, que es el error caro.
+  assert.equal(evaluarPagado(formulaPagadoMes(8, 2026), COMPRAS_JULIO), 0)
+  assert.equal(
+    evaluarSePagaEl(formulaSePagaElDireccion(8, 2026), COMPRAS_JULIO),
+    serial(2026, 9, DIA_PAGO_DEFAULT),
+  )
+})
+
+test('la compra de materiales con la palabra "Corona" no le mueve la fecha a ningún mes', () => {
+  // $310.000 de Zabala Repuestos, fecha de caja 03/08, pagada. Si entrara, sumaría en "Pagado" y
+  // además fecharía meses que nadie pagó.
+  const soloTrampa = COMPRAS_JULIO.filter((f) => f.persona.startsWith('Corona de'))
+  assert.equal(evaluarPagado(formulaPagadoMes(7, 2026), soloTrampa), 0)
+  assert.equal(
+    evaluarSePagaEl(formulaSePagaElDireccion(7, 2026), soloTrampa),
+    serial(2026, 8, DIA_PAGO_DEFAULT),
+  )
+})
+
+test('"Pagado" y "Se paga el" salen de UNA sola definición de las filas que pagan el mes', () => {
+  // El desacuerdo entre las dos celdas es el defecto original, así que la garantía no puede ser la
+  // disciplina de quien las escriba: las dos se arman con `condicionesPagoDelMes`, y esto lo mide.
+  const conds = condicionesPagoDelMes(7, 2026)
+  const pagado = formulaPagadoMes(7, 2026)
+  const cuando = formulaSePagaElDireccion(7, 2026)
+  for (const c of conds) {
+    assert.ok(pagado.includes(c), `"Pagado" no usa la condición compartida: ${c}`)
+    assert.ok(cuando.includes(c), `"Se paga el" no usa la condición compartida: ${c}`)
+  }
+  // Y ninguna de las dos agrega condiciones propias: mismo conteo de condiciones en las dos.
+  assert.equal(args(cuando.match(/FILTER\((.+)\)\);DATE/)[1]).length - 1, conds.length)
+  assert.equal(args(pagado.match(/^=SUMPRODUCT\((.+)\)$/)[1], '*').length - 1, conds.length)
 })
 
 test('el día de pago es un PARÁMETRO de la pestaña, no una constante en el código', () => {

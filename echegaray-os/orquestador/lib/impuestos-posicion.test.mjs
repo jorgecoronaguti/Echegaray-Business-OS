@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   VENTANA, obligacionesDelCalendario, altoDeLaPosicion, filasDeLaPosicion,
-  formulaOtrosSinFecha, diasAlProximo,
+  formulaOtrosSinFecha, diasAlProximo, ALTO_HERO, OFFSET_TITULAR, conceptoCorto, verificarAnclajes,
 } from './impuestos-posicion.mjs'
 import { ACUERDO, TARJETA } from './banco-santander.mjs'
 
@@ -61,8 +61,12 @@ const posicion = () => filasDeLaPosicion({
   refs: { saldoIva: '$H$56', saldoIibb: '$G$66', prendPend: '$B$92', planesPend: '$B$93', otrosSinFecha: '=$I$77+$J$77' },
 })
 
+/** El bloque de posición, y dentro de él la fila de un rótulo — nunca por índice fijo. */
+const heroDe = (filas = posicion()) => filas.slice(0, ALTO_HERO)
+const porRotulo = (filas, re) => filas.find((f) => re.test(String(f[0] ?? '')))
+
 test('el HERO referencia el detalle: no recalcula nada por su cuenta', () => {
-  const hero = posicion().slice(0, 9)
+  const hero = heroDe()
   const formulas = hero.map((f) => String(f[1] ?? '')).filter((x) => x.startsWith('='))
   assert.ok(formulas.length >= 6, 'el hero es todo fórmula')
   for (const f of formulas) {
@@ -70,24 +74,46 @@ test('el HERO referencia el detalle: no recalcula nada por su cuenta', () => {
     assert.ok(!/Compras!|_BANCO_RAW|_MOVIMIENTOS/.test(f), `el hero no toca una fuente: ${f}`)
     assert.ok(/^=(\$?[A-N]\$?\d+)([+]\$?[A-N]\$?\d+)*$/.test(f), `el hero sólo suma celdas: ${f}`)
   }
-  assert.equal(hero[1][1], '=$H$56+$G$66', 'a favor = libre disponibilidad de IVA + saldo de IIBB')
-  assert.equal(hero[4][1], '=$B$92+$B$93', 'deuda pendiente = prendario pendiente + planes pendientes')
+  assert.equal(porRotulo(hero, /IMPUESTOS A FAVOR/)[1], '=$H$56+$G$66', 'a favor = libre disponibilidad de IVA + saldo de IIBB')
+  assert.equal(porRotulo(hero, /DEUDA PENDIENTE/)[1], '=$B$92+$B$93', 'deuda pendiente = prendario pendiente + planes pendientes')
+})
+
+test('EL TITULAR ES LO QUE HAY QUE PAGAR, NO EL SALDO A FAVOR', () => {
+  // ═══ EL DEFECTO DE PRODUCTO QUE ESTE TEST ATRAPA (06/08) ═══
+  //
+  // La versión anterior abría con "IMPUESTOS A FAVOR" y la piel agranda SIEMPRE la fila que sigue al
+  // rótulo del bloque (`OFFSET_TITULAR`): el único número con jerarquía de la pantalla era un activo
+  // fiscal inmovilizado, que no dispara ninguna decisión de tesorería. Dirección abre esta pestaña
+  // para saber cuánto tiene que juntar y para cuándo. Si alguien vuelve a poner el saldo a favor
+  // arriba, esto se pone rojo.
+  const hero = heroDe()
+  assert.match(String(hero[OFFSET_TITULAR][0]), /A PAGAR EN LOS PRÓXIMOS 30 DÍAS/,
+    'la fila que la piel agranda tiene que ser la que decide')
+  const iFavor = hero.findIndex((f) => /IMPUESTOS A FAVOR/.test(String(f[0] ?? '')))
+  const iDeuda = hero.findIndex((f) => /DEUDA PENDIENTE/.test(String(f[0] ?? '')))
+  assert.ok(iDeuda < iFavor, 'primero lo que se debe, después lo que se tiene a favor')
 })
 
 test('el hero dice DEUDA PENDIENTE, y sólo lo que falta pagar', () => {
   // El defecto B: decía $31.895.983 (las doce cuotas del año, siete ya pagadas) donde lo pendiente
   // son $14.372.450. El rótulo tiene que decir de qué habla, o el número se lee como el total.
-  const hero = posicion().slice(0, 9)
+  const hero = heroDe()
   // Rótulos CORTOS (auditor de pantalla, 06/08): PENDIENTE es la palabra que separa deuda real de
   // acumulado histórico; "por vencer" es la condición en tres palabras.
-  assert.match(String(hero[4][0]), /DEUDA PENDIENTE/)
-  assert.match(String(hero[5][0]), /cuotas por vencer/)
-  assert.match(String(hero[6][0]), /cuotas por vencer/)
+  assert.ok(porRotulo(hero, /DEUDA PENDIENTE/))
+  assert.equal(hero.filter((f) => /cuotas por vencer/.test(String(f[0] ?? ''))).length, 2)
 })
 
-test('el próximo vencimiento lleva su fecha y su concepto EN el rótulo', () => {
-  const hero = posicion().slice(0, 9)
-  assert.match(String(hero[7][0]), /PRÓXIMO VENCIMIENTO · 07\/08 · Prendario Ford XLS/)
+test('el próximo vencimiento lleva su fecha y su concepto EN el rótulo, sin el emisor', () => {
+  // Cuelga del titular como sub-ítem: mismo dato, un renglón, sin competirle. Y el emisor entre
+  // paréntesis se saca — a 360 px "⇒ PRÓXIMO VENCIMIENTO · 07/08 · Prendario Ford XLS (Santander)"
+  // se dibujaba cortado con el paréntesis abierto, que es un error de imprenta, no un titular.
+  const f = porRotulo(heroDe(), /primer vencimiento/)
+  assert.ok(f, 'el primer vencimiento sigue estando en el hero')
+  assert.match(String(f[0]), /primer vencimiento · 07\/08 · Prendario Ford XLS/)
+  assert.ok(!/\(Santander\)/.test(String(f[0])), 'en el hero manda el qué, no el de quién')
+  assert.equal(conceptoCorto('IVA · DDJJ F.2051 (ARCA)'), 'IVA · DDJJ F.2051')
+  assert.equal(conceptoCorto('Prendario Ford XLS'), 'Prendario Ford XLS')
 })
 
 test('una fecha SUPUESTA se marca en la columna A, no en una nota que nadie ve', () => {
@@ -166,6 +192,59 @@ test('NINGUNA celda del cuadro de financiamiento es un número PEGADO donde su f
   // El techo suma la columna: si una celda fuera un pegado, el total sería otra verdad.
   const techo = filas.find((f) => /FINANCIAMIENTO SIN USAR/.test(String(f[0] ?? '')))
   assert.match(String(techo[3]), /^=SUM\(\$D\$\d+:\$D\$\d+\)$/)
+})
+
+test('LO QUE DECIDE VA ARRIBA DE SU DETALLE: primero las ventanas, después el calendario', () => {
+  // ═══ EL DEFECTO DE PRODUCTO (06/08, mirando el PDF) ═══
+  //
+  // La primera pantalla eran quince renglones de vencimientos uno por uno —los dos primeros vencidos
+  // y dibujados "—"— y para llegar al único cuadro con el que se decide algo (cuánto juntar a 30, 60
+  // y 90 días) había que scrollear. Un calendario línea por línea contesta "cuándo", no "cuánto
+  // tengo que juntar": es el respaldo del agregado, y va abajo.
+  const filas = posicion()
+  const fila = (re) => filas.findIndex((f) => re.test(String(f[0] ?? '')))
+  const riesgo = fila(/^1 · RIESGO Y PROYECCIÓN/)
+  const calend = fila(/^2 · CALENDARIO DE VENCIMIENTOS/)
+  const financ = fila(/^3 · FINANCIAMIENTO/)
+  assert.ok(riesgo > 0 && calend > riesgo && financ > calend,
+    `orden real: riesgo ${riesgo}, calendario ${calend}, financiamiento ${financ}`)
+  // Y el riesgo entero entra en la primera pantalla, que es de lo que se trata.
+  assert.ok(fila(/A PAGAR EN LA VENTANA/) < 25, 'el cuadro de decisión no puede exigir scroll')
+})
+
+test('LAS REFERENCIAS DE ARRIBA APUNTAN A LAS FILAS QUE DICEN — o el generador rompe', () => {
+  // ═══ EL MODO DE FALLA QUE ESTO CIERRA ═══
+  //
+  // El hero suma `$B$` de las filas del calendario y el techo suma `$D$` de las del financiamiento, y
+  // las dos direcciones se calculan ANTES de escribir los bloques, a partir de las alturas del hero y
+  // del riesgo. Si alguien agrega un renglón al hero y no toca esas constantes, el hero sigue sumando
+  // las mismas celdas —que ahora son otro concepto— y publica un importe distinto con exactamente el
+  // mismo aspecto. No hay error, no hay #REF, no hay negativo imposible.
+  const c = cal()
+  const filas = posicion()
+  const base = 4
+  // La celda que el titular referencia tiene que caer sobre una fila de calendario, no sobre otra cosa.
+  const celdas = String(filas[OFFSET_TITULAR][1]).slice(1).split('+')
+  for (const celda of celdas) {
+    const f = Number(celda.replace(/\$B\$/, ''))
+    assert.match(String(filas[f - base][0]), /^\d{2}\/\d{2} · /,
+      `el titular suma ${celda} y ahí no hay un vencimiento sino "${String(filas[f - base][0]).slice(0, 40)}"`)
+  }
+  // Y la guarda tiene que gritar cuando la dirección calculada NO cae sobre el bloque que dice. Se la
+  // prueba con una geometría desplazada una fila, que es exactamente lo que deja un renglón nuevo en
+  // el hero: el síntoma real, no una condición inventada.
+  const filaCal0 = base + ALTO_HERO + 10 + 2
+  assert.throws(
+    () => verificarAnclajes(filas, base, {
+      filaCal0: filaCal0 + 1, filaFin0: filaCal0 + c.length, cal: c, fin: [{ rotulo: 'x' }],
+    }),
+    /apuntando a otras filas/,
+    'una referencia corrida una fila tiene que romper, no publicar el importe de al lado',
+  )
+  // Y con la geometría real no molesta a nadie.
+  assert.doesNotThrow(() => verificarAnclajes(filas, base, {
+    filaCal0, filaFin0: filaCal0 + c.length + 4, cal: c, fin: [{ rotulo: String(filas[filaCal0 + c.length + 4 - base][0]) }],
+  }))
 })
 
 test('el disponible de la TARJETA sigue siendo el que declara el banco, al centavo', () => {

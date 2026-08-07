@@ -172,8 +172,13 @@ export function tarjetas(ref) {
       // LA CONSECUENCIA: disponible (A3) − comprometida (C3) + lo que se cobra en el mes. Los dos
       // primeros por referencia a sus tarjetas; los cobros con la misma suma del libro que usa todo
       // el archivo — y el contexto los publica, para que la identidad se lea entera.
+      // ═══ EL CIERRE ES LA LIBRE DE FIN DE MES, Y LO DICE (pregunta del dueño, 06/08) ═══
+      //
+      // "¿esto significa q la libre disponibilidad iría en aumento?" — SÍ, exactamente: LIBRE hoy y
+      // SALDO AL CIERRE son el mismo concepto en dos momentos. El contexto deja el vínculo escrito
+      // (y la cláusula "cobrando lo proyectado" sigue: una proyección no es plata garantizada).
       valor: `=N($A$3)-N($C$3)+${mesCobro}`,
-      contexto: `="cobrando "&TEXT(${mesCobro}/1000000;"$#,##0.0")&"M proyectados del mes"`,
+      contexto: `="la libre al "&${dia('EOMONTH(TODAY();0)')}&" cobrando lo proyectado"`,
       especie: 'plata',
     },
   ]

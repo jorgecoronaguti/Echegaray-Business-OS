@@ -168,7 +168,7 @@ test('LO QUE NO SE PUDO VERIFICAR ESTÁ DECLARADO EN LA PESTAÑA, no sólo en el
 })
 
 test('B9 · LA DEUDA EN PLANES ES UNA FÓRMULA VIVA, no un número pegado', () => {
-  const deuda = filaCS(/^⇒ Deuda previsional en planes/)
+  const deuda = filaCS(/^⇒ En planes de pago/)
   const v = deuda[1]
   assert.equal(typeof v, 'string', `sigue siendo un número pegado: ${v}`)
   assert.ok(String(v).startsWith('='))
@@ -180,7 +180,7 @@ test('B8 · "POR PAGAR" INCLUYE EL MES EN CURSO — el criterio de posición per
   // —$473.767 con vencimiento el 16 y $2.494.876 de la financiación de junio, ninguna pagada— no
   // estaban en ningún lado. Con el criterio por HECHO (lo que la planilla no marcó "Pagado") el hero
   // da $7.958.394,73, que es exactamente lo que el Libro ya trae como compromiso.
-  const v = String(filaCS(/^⇒ Deuda previsional en planes/)[1])
+  const v = String(filaCS(/^⇒ En planes de pago/)[1])
   assert.doesNotMatch(v, /MONTH\(TODAY\(\)\)/,
     'volvió el criterio de posición: el mes en curso se pierde entero y con él la cuota que vence esta semana')
   assert.match(v, /"<>Pagado"/, 'lo que falta pagar es lo que la planilla no marcó pagado, no lo que vence después')
@@ -198,6 +198,71 @@ test('B11 · los avisos ⚠ tienen su texto EN la celda, no en la columna que el
       `"${String(a[0]).slice(0, 40)}…" quedó como un ⚠ mudo: su explicación vive en la columna de prosa que este mismo generador borra`)
     assert.equal(a[ANCHO_CS - 1], VACIO_CS, 'la explicación no puede volver a la columna O')
   }
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA POSICIÓN, EN EL IDIOMA DE JORNALES (06/08). El dueño: "separar real / comprometido /
+// proyectado". El hero partía por PROCEDENCIA del dato ("declarado en las DDJJ" contra "proyectado")
+// y hablaba en "devengado": vocabulario contable en una pestaña del Flujo de Caja, que no contesta
+// en qué estado está la plata. Lo que estos tests protegen es que la partición nueva sea EXACTA —si
+// las tres no suman el titular, hay plata en un limbo que nadie mira— y que no vuelva a contar dos
+// veces lo que ya está adentro.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+const heroCS = (re) => gCS.filas.findIndex((f) => re.test(String(f[0] ?? ''))) + 1
+
+test('la posición habla REAL · COMPROMETIDO · PROYECTADO, como su hermana Jornales', () => {
+  for (const estado of [/^ {3}· REAL · /, /^ {3}· COMPROMETIDO · /, /^ {3}· PROYECTADO · /]) {
+    assert.ok(filaCS(estado), `falta la línea ${estado} en la posición: la pestaña sigue hablando sólo en devengado`)
+  }
+})
+
+test('las tres particiones SUMAN el titular: sin huecos y sin solapamiento', () => {
+  // El titular no puede ser una cuarta cifra calculada por su cuenta. Si lo fuera, el día que una
+  // partición se mueva el hero seguiría cerrando contra sí mismo y la plata faltante no se vería.
+  const [fTit, fReal, fComp, fProy] = [
+    /^⇒ Costo laboral del año/, /^ {3}· REAL · /, /^ {3}· COMPROMETIDO · /, /^ {3}· PROYECTADO · /,
+  ].map(heroCS)
+  assert.equal(String(filaCS(/^⇒ Costo laboral del año/)[1]), `=$B$${fReal}+$B$${fComp}+$B$${fProy}`)
+  assert.ok(fTit < fReal, 'el titular va arriba de sus partes')
+})
+
+test('COMPROMETIDO sale POR DIFERENCIA: entre lo declarado y lo pagado no puede quedar un hueco', () => {
+  // Mismo criterio que Jornales. Si algún día lo pagado supera a lo declarado, esta celda se va a
+  // negativo Y SE VE —querría decir que se pagó un período cuya DDJJ no está leída—. Un MAX(...;0)
+  // taparía exactamente el caso que hay que ver.
+  const v = String(filaCS(/^ {3}· COMPROMETIDO · /)[1])
+  const fDecl = heroCS(/^⇒ Total declarado/)
+  assert.equal(v, `=SUM($B$${fDecl}:$M$${fDecl})-$B$${heroCS(/^ {3}· REAL · /)}`)
+  assert.doesNotMatch(v, /MAX\(/, 'un piso en cero esconde el único caso que esta fila tiene que denunciar')
+  // Y el declarado se lee de la fila ENTERA: con el rango de seis meses, la DDJJ de julio entraría a
+  // la pestaña y el hero seguiría mostrando el año hasta junio sin avisar.
+  assert.match(v, /:\$M\$/, 'el hero volvió a leer sólo los seis primeros meses')
+})
+
+test('REAL arranca en FEBRERO: el F931 de enero es la DDJJ de diciembre del año anterior', () => {
+  // Contarlo infla lo REAL y achica lo COMPROMETIDO en $3.811.458 (medido el 06/08) — y COMPROMETIDO
+  // es el número con el que se decide qué hay que pagar.
+  const v = String(filaCS(/^ {3}· REAL · /)[1])
+  assert.match(v, /^=SUM\(\$C\$\d+:\$M\$\d+\)$/, `REAL volvió a incluir enero: ${v}`)
+})
+
+test('los planes NO son una cuarta partición, y la pestaña lo dice al lado del número', () => {
+  // Financian parte de lo que arriba figura como COMPROMETIDO (las DDJJ de enero y junio 2026 se
+  // refinanciaron) y arrastran cuotas de un plan de 2025. Sumarlo al titular lo contaría dos veces.
+  const planes = filaCS(/^⇒ En planes de pago/)
+  assert.match(String(planes[2]), /comprometido/i, 'sin la aclaración al lado, el que lee lo suma al titular')
+  assert.ok(String(planes[2]).length <= 60, 'un texto largo en el medio de la grilla desparrama la fila')
+  assert.doesNotMatch(String(filaCS(/^⇒ Costo laboral del año/)[1]), new RegExp(`\\$B\\$${heroCS(/^⇒ En planes de pago/)}\\b`))
+})
+
+test('las notas al pie y el control se declaran para que la piel los dibuje distinto', () => {
+  // Las cuatro advertencias salían con el peso de un importe (tres, además, en negrita y con regla
+  // encima, porque empiezan con ⚠ y la piel compartida lee eso como un total). Y el control de
+  // integridad, cuyo cero ES la respuesta, salía como el mismo "—" que significa "no hay dato".
+  assert.equal(gCS.pies.length, 4, `esperaba las cuatro notas al pie y llegaron ${gCS.pies.length}`)
+  for (const f of gCS.pies) assert.match(String(gCS.filas[f - 1][0]), /^⚠ /, 'una nota al pie declarada que no es una nota')
+  assert.deepEqual(gCS.controles, [heroCS(/^⇒ Diferencia — tiene que ser \$0/)])
 })
 
 test('la pestaña armada cumple el patrón de diseño: cero defectos', () => {

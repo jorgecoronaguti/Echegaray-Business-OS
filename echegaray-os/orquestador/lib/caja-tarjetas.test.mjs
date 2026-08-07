@@ -84,7 +84,8 @@ test('SALDO AL CIERRE es la CONSECUENCIA: disponible − comprometida + cobros d
   assert.equal(t.rotulo, 'SALDO AL CIERRE')
   assert.equal(t.valor, `=N($A$3)-N($C$3)+${terminoLibro({ signo: 1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })}`,
     'disponible y comprometida por referencia; los cobros con la suma única del libro')
-  assert.match(t.contexto, /cobrando/, 'la pata de cobros queda publicada en el contexto')
+  assert.match(t.contexto, /la libre al /, 'el cierre declara que ES la libre de fin de mes')
+  assert.match(t.contexto, /cobrando lo proyectado/, 'sin la cláusula, se leería como plata garantizada')
   assert.ok(!t.valor.includes(REF.invArs) && !t.valor.includes(REF.invUsd),
     'lo invertido no entra: una comitente no paga un cheque, y el dueño lo quiso aparte')
 })
