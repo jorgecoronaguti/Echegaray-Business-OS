@@ -131,6 +131,23 @@ test('un mes PAGADO no se proyecta — la proyección se apaga sola', () => {
   assert.ok(f.endsWith(';$B$50)))'), `la rama con plata no es la última: ${f}`)
 })
 
+test('EL RETIRO PROYECTADO ESCALA POR LA PARITARIA, Y EL FACTOR SE VALIDA ANTES DE MULTIPLICAR', () => {
+  // Los doce meses repetían el mismo importe: el retiro de diciembre valía lo mismo que el de agosto,
+  // en una economía donde el jornal de obra sube todos los meses. El dueño ordenó el driver (07/08):
+  // el % de la paritaria UOCRA, "por más q no esten en ese gremio y convenio".
+  const f = formulaProyectadoMes('E60', 'C60', '$B$50', '$E$50', 'G60')
+  assert.match(f, /\$B\$50\*IFERROR\(IF\(ISNUMBER\(G60\);G60;1\);1\)/, `no escala por el factor: ${f}`)
+  // POR QUÉ NO ALCANZA `$B$50*G60`: si la celda del factor quedara vacía o con texto, el producto da 0
+  // o #VALUE!. El 0 es la peor de las dos — borra el retiro del mes sin dar un solo error, que es
+  // exactamente el modo de falla que este bloque existe para evitar. Sin factor usable, no se ajusta.
+  assert.doesNotMatch(f, /\$B\$50\*G60/)
+  // Los tres apagados siguen intactos y en orden: el ajuste no puede encender un mes que no corresponde.
+  assert.match(f, /^=IF\(N\(\$B\$50\)=0;"";IF\(N\(C60\)>0;"";IF\(E60<\$E\$50;"";/)
+  // Y sin celda de factor la fórmula queda como estaba: un mes sin factor no se inventa uno.
+  assert.equal(formulaProyectadoMes('E60', 'C60', '$B$50', '$E$50'),
+    '=IF(N($B$50)=0;"";IF(N(C60)>0;"";IF(E60<$E$50;"";$B$50)))')
+})
+
 test('sin fecha de inicio cargada la proyección da CERO, no doce meses', () => {
   // La celda "Desde" vacía devuelve "" (texto). En Sheets un número siempre es menor que un texto,
   // así que `E60 < ""` es VERDADERO y la fórmula devuelve "". Es el lado seguro del error: sin

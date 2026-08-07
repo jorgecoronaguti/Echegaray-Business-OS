@@ -93,8 +93,9 @@ import {
   PARAMETROS_MOTOR, PARAMETRO_MESES_BASE, RANGO_MESES_BASE,
   ultimaQuincenaCerrada, categoriasDelBloque, personasDelBloque,
   mesesDelMotor, filasPlantel, filasEscalon, formulaSigmaDelMes, formulaFactorDelMes,
-  formulaHorasPorPersona, lineaEstadoReplica, formulaConvenioPendiente,
+  formulaHorasPorPersona, lineaEstadoReplica, formulaConvenioPendiente, factorUocraEntre,
 } from '../lib/motor-salarial.mjs'
+import { VERIFICADA_EL, VIGENCIA_HASTA, contrastarEscala, tramoDe } from '../lib/uocra-paritaria.mjs'
 import { registrarSincronizacion } from '../lib/registrar-sincronizacion.mjs'
 import { JORNALES_FILE_ID } from '../lib/espejo-jornales.mjs'
 import { formulaUltimaFechaConImporte, rotuloAlDia } from '../lib/fecha-de-frescura.mjs'
@@ -151,8 +152,8 @@ export function colDe(rotulo, cols = REGISTRO_COLS) {
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
 // Los criterios de fecha que esta pestaña deja escritos en "Parámetros" para que se puedan cambiar
 // sin tocar código: cuándo se paga una quincena y qué día del mes salen los retiros de Dirección.
-// LOS PARÁMETROS DEL MOTOR SE AGREGAN A LA MISMA LISTA. `parametroAumento` necesita los acuerdos
-// parseados para PROPONER su valor por defecto; si todavía no se leyeron, propone el del rótulo.
+// LOS PARÁMETROS DEL MOTOR SE AGREGAN A LA MISMA LISTA. `parametroParitaria` necesita los acuerdos
+// parseados para PROPONER su valor; si todavía no se leyeron, cae al último tramo verificado a mano.
 const TODOS_LOS_PARAMETROS = (escalones = []) => [...PARAMETROS, PARAMETRO_DIA_PAGO, ...PARAMETROS_MOTOR(escalones)]
 /** Sereno se paga por MES: no entra en la comparación por hora. */
 const ES_MENSUAL = (cat) => cat === 'Sereno'
@@ -282,6 +283,9 @@ export function grilla({
   // la grilla, que es lo que los tests pueden ejercitar sin red.
   escalones = [], bloqueBase = null, categorias = [], personasBase = 0,
   escalonVigente = null, meses = [], hoy = new Date(),
+  // EL MES DE LA ÚLTIMA QUINCENA CERRADA DE OBRA. No siempre es el primero del cuadro 1.2: cuando la
+  // planilla de Oficina va atrasada, su mes entra antes y ancla la tabla. Ver `filasEscalon`.
+  periodoBase = null,
 }) {
   // El bloque base por defecto es el último del espejo: mantiene el comportamiento anterior cuando
   // el llamador no resolvió la última quincena cerrada (sólo pasa en tests viejos).
@@ -377,7 +381,13 @@ export function grilla({
   // al lado, y recién después las quincenas.
   push([seccion(1, 'Obra — lo que falta pagar, quincena por quincena hasta fin de año')])
   push([lineaEstadoReplica(escalones, hoy)])
-  push([sub('el jornal sube con el ESCALÓN del convenio (cociente de básicos publicados), no con el IPC: son dos series distintas. Los meses sin acuerdo usan el aumento esperado de Parámetros.')])
+  // EL SUPUESTO, DICHO CON EL DATO QUE LO RESPALDA Y SIN UN SOLO MES ESCRITO A MANO. El rótulo del
+  // acuerdo sale de la réplica ya parseada: el día que se pegue un acuerdo nuevo, esta línea cambia
+  // sola. Un mes escrito en el código envejece el día siguiente y nadie se entera.
+  const ultAc = ultimoEscalon(escalones)
+  push([sub('las tres proyecciones —obra, oficina y dirección— suben por la PARITARIA UOCRA, no por el IPC'
+    + (ultAc ? `: ${ultAc.rotulo}, con acuerdo hasta el ${VIGENCIA_HASTA}` : '')
+    + '. Después de esa fecha se repite el último tramo firmado, y eso es PROYECCIÓN, no acuerdo.')])
 
   // ── 1.1 · EL PLANTEL BASE ──
   push([seccion('1.1', 'El plantel base — la última quincena CERRADA, abierta por categoría')])
@@ -390,7 +400,7 @@ export function grilla({
     filaInicio: filas.length + 1, escalonVigente,
   })
   for (const f of plantel.filas) push(f)
-  filas[fConvenio - 1][0] = formulaConvenioPendiente(plantel.fPrimera, plantel.fUltima)
+  filas[fConvenio - 1][0] = formulaConvenioPendiente(plantel.fPrimera, plantel.fUltima, plantel.equivalencias)
   const fPlantel = plantel.fTotal
   blanco()
 
@@ -399,7 +409,7 @@ export function grilla({
   // La celda de la Σ $/hora del plantel base es la COLUMNA C de la fila de total de 1.1 — no la B,
   // que es la cantidad de personas. Se pasa la celda entera y no el número de fila justamente para
   // que la letra no se pueda perder por el camino.
-  const esc = filasEscalon({ meses, escalones, filaInicio: filas.length + 1, celdaSigmaBase: `$C$${fPlantel}` })
+  const esc = filasEscalon({ meses, escalones, filaInicio: filas.length + 1, celdaSigmaBase: `$C$${fPlantel}`, periodoBase })
   for (const f of esc.filas) push(f)
   blanco()
 
@@ -590,7 +600,15 @@ export function grilla({
   // La MISMA grilla que Oficina, columna por columna: dos bloques que responden la misma pregunta
   // —cuánto sale de nómina cada mes— tienen que leerse igual. "Banco" queda para cuando se registre
   // por qué canal salió; hoy ninguno está pagado.
-  push(['Mes', 'Personas', 'Pagado', 'Estado', 'Se paga el', 'Banco', VACIO, 'Proyectado'])
+  // ═══ LA G DEJA DE ESTAR VACÍA: EL RETIRO TAMBIÉN SE AJUSTA (07/08) ═══
+  //
+  // Los doce meses repetían el mismo importe. Eso es una hipótesis —"el retiro no se actualiza"— que
+  // nadie escribió y que valía cuatro meses de caja. El dueño ordenó el driver: el % de la paritaria
+  // UOCRA, el mismo que ya usan obra y oficina, "por más que no estén en ese gremio".
+  //
+  // MISMA COLUMNA Y MISMO ENCABEZADO QUE OFICINA. Los dos bloques contestan la misma pregunta con la
+  // misma grilla; que el ajuste viviera en la G de uno y en la nada del otro los volvía incomparables.
+  push(['Mes', 'Personas', 'Pagado', 'Estado', 'Se paga el', 'Banco', 'Ajuste escalón', 'Proyectado'])
   const d0 = filas.length + 1
   MESES.forEach((_, i) => {
     const r = filas.length + 1
@@ -601,10 +619,15 @@ export function grilla({
     // EL ESTADO SE DEDUCE, NO SE CARGA. Saber si un mes ya salió obligaba a comparar dos columnas de
     // plata separadas por tres celdas; ahora lo dice una palabra en la misma fila. Sale de las mismas
     // dos celdas, así que no puede contradecirlas.
+    // LA BASE DEL AJUSTE ES EL MES EN CURSO, POR FÓRMULA. El importe del retiro sale de la última carga
+    // en Compras, o sea que es el valor de HOY: el mes en curso entra con factor 1 y los que siguen
+    // acumulan la paritaria. `EOMONTH(TODAY();0)` y no un mes escrito acá — un mes estampado se
+    // congela el día que se escribe y sigue ajustando desde una base vieja sin dar error.
+    const ajusteDir = formulaFactorDelMes(`EOMONTH(DATE(${AÑO};${i + 1};1);0)`, esc, 'EOMONTH(TODAY();0)')
     push([MESES[i], `=COUNTIF($B$${dp0}:$B$${dpFin};">0")`, formulaPagadoMes(i + 1, AÑO),
       `=IF(N(C${r})>0;"pagado";IF(N(H${r})>0;"proyección";""))`,
-      formulaSePagaElDireccion(i + 1, AÑO), '', VACIO,
-      formulaProyectadoMes(`E${r}`, `C${r}`, `$B$${fTotalMensual}`, `$E$${fTotalMensual}`)])
+      formulaSePagaElDireccion(i + 1, AÑO), '', ajusteDir,
+      formulaProyectadoMes(`E${r}`, `C${r}`, `$B$${fTotalMensual}`, `$E$${fTotalMensual}`, `G${r}`)])
   })
   const dFin = d0 + MESES.length - 1
   const fTotalDir = push([rotuloTotal('Dirección — pagado y por pagar en el año'), VACIO,
@@ -633,6 +656,15 @@ export function grilla({
   // el ojo no puede asociar a nada. Es la ficha de la escala que esta línea está declarando vigente,
   // así que va en la misma línea. La A derrama sobre las celdas vacías de su derecha.
   const fVig = push([`${estado.mensaje} · CCT 76/75, Zona A (San Juan)`])
+  // ═══ EL CONTROL DE LA RÉPLICA CONTRA LA ESCALA VERIFICADA (07/08) ═══
+  //
+  // Un control nunca se valida contra la misma información que produce. Todo lo de este bloque sale de
+  // `_UOCRA_RAW`, que llega por IMPORTHTML: si el sitio cambia de forma, la réplica devuelve una tabla
+  // vieja —o la de otra zona— y se ve exactamente igual de sana. La escala verificada a mano contra dos
+  // fuentes es lo único que puede notarlo. Habla SÓLO cuando discrepa: un control que repite "todo
+  // bien" en cada corrida se vuelve invisible al mes.
+  const desvios = contrastarEscala(escalones)
+  if (desvios.length) push([sub(`⚠ la réplica no coincide con la escala verificada el ${VERIFICADA_EL}: ${desvios.join(' · ')}`)])
   // El jornal más bajo sale del bloque BASE (la última quincena cerrada), no del último bloque del
   // espejo: una quincena a medio cargar puede no tener todavía a toda la cuadrilla.
   const rangoW = bloqueBase ? `'${ESPEJO}'!$W$${bloqueBase.inicio}:$W$${bloqueBase.fin}` : null
@@ -930,6 +962,11 @@ async function main() {
   for (const p of problemas.slice(0, 5)) console.warn(`  ⚠ ${UOCRA_HOJA}: ${p}`)
   const est = estadoReplica(escalones, hoy)
   console.log(`convenio: ${escalones.length} escalón(es) parseado(s) · estado "${est.estado}"${est.ultimoPeriodo ? ` · último ${est.ultimoPeriodo}` : ''}`)
+  // EL DRIVER DE LAS TRES PROYECCIONES, DICHO EN LA CORRIDA. Si un día sale "0,00%" o un tramo que no
+  // se parece a ninguna paritaria, se ve acá antes de que llegue a la pestaña.
+  const tramoUlt = est.ultimoPeriodo ? tramoDe(est.ultimoPeriodo, escalones) : null
+  console.log(`paritaria: tramo del último mes publicado ${tramoUlt ? `${(tramoUlt.pct * 100).toFixed(2)}% (${tramoUlt.origen})` : '—'} · acuerdo hasta ${VIGENCIA_HASTA}`)
+  for (const d of contrastarEscala(escalones)) console.warn(`  ⚠ escala verificada el ${VERIFICADA_EL}: ${d}`)
   const escalonVigente = escalonDe(escalones, `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`)
 
   // ── LA OTRA MITAD DE LA NÓMINA ──
@@ -960,12 +997,20 @@ async function main() {
   const colC = await google.readSheetValues(ID, `'${PESTAÑA}'!C1:C400`, { render: 'FORMULA' }).catch(() => [])
   colC.forEach((f, i) => { pagoPrevio[i] = f?.[0] })
 
-  // El cuadro del escalón tiene que cubrir el mes base de obra Y el último mes de oficina: si no, el
-  // ajuste de administración no encuentra su ancla y sale 1 (sin aumento) sin dar error.
-  const meses = mesesDelMotor(cerradaBase?.hasta ?? ultimoDia, pendientes, [ultimoDiaOfi])
+  // El cuadro del escalón tiene que cubrir el mes base de obra, el último mes de oficina Y EL MES EN
+  // CURSO —que es el ancla de Dirección, cuyo importe sale de la última carga en Compras—: si alguno no
+  // está, el MATCH no lo encuentra, el IFERROR devuelve 1 y ese bloque se proyecta SIN un solo aumento,
+  // en silencio. Es el mismo defecto que ya dejó ciega la proyección de administración.
+  const meses = mesesDelMotor(cerradaBase?.hasta ?? ultimoDia, pendientes, [ultimoDiaOfi, hoy])
+  const baseObra = cerradaBase?.hasta ?? ultimoDia
+  const periodoBase = baseObra ? `${baseObra.getFullYear()}-${String(baseObra.getMonth() + 1).padStart(2, '0')}` : null
+  // LO QUE ACUMULA LA PROYECCIÓN, EN LA CORRIDA. Es el efecto de todo lo de arriba en un número: si un
+  // día sale 1,00 (nadie sube) o 1,80 (alguien encadenó de más), se ve acá y no en el cash flow.
+  const acum = periodoBase && meses.length ? factorUocraEntre(periodoBase, meses[meses.length - 1].periodo, escalones) : null
+  if (acum) console.log(`paritaria: de ${periodoBase} a ${meses[meses.length - 1].periodo} acumula ×${acum.factor.toFixed(4)} · ${acum.mesesProyectados} mes(es) proyectado(s) sin acuerdo`)
   const g = grilla({
     bloques, pendientes, bloquesOfi, pagoPrevio, ultimoDiaOfi,
-    escalones, bloqueBase, categorias, personasBase, escalonVigente, meses, hoy,
+    escalones, bloqueBase, categorias, personasBase, escalonVigente, meses, hoy, periodoBase,
   })
   console.log(`grilla: ${g.filas.length} filas × ${ANCHO} columnas · motor sobre ${meses.length} mes(es) (${meses[0]?.periodo} → ${meses[meses.length - 1]?.periodo})`)
   const aMano = g.filas.filter((f) => f[2] === '').length
@@ -1523,7 +1568,13 @@ export function requestsDeFormato(sheetId, filas, g) {
   // fórmula no se puede clasificar sin evaluarla: sin esto, "pagado" queda con formato de moneda.
   fmt(g.d0 - 1, g.dFin, 3, 4, { type: 'TEXT' })
   fmt(g.o0 - 1, g.oFin, 3, 4, { type: 'TEXT' })
-  fmt(g.o0 - 1, g.oFin, 6, 7, { type: 'NUMBER', pattern: '0.00;-0.00;"—"' })
+  // EL "Ajuste escalón" DE LOS DOS BLOQUES MENSUALES, CON CUATRO DECIMALES Y EL MISMO PATRÓN. Iba con
+  // "0.00" —heredado del ajuste por inflación del layout viejo— y un tramo de paritaria de +1,9% se
+  // dibuja "1,02": el cuadro parecía decir que los sueldos no se mueven. Es la misma razón por la que
+  // el factor de 1.2 lleva cuatro, y ahora las tres columnas del mismo concepto se ven igual.
+  const FACTOR = { type: 'NUMBER', pattern: '0.0000;-0.0000;"—"' }
+  fmt(g.o0 - 1, g.oFin, 6, 7, FACTOR)
+  fmt(g.d0 - 1, g.dFin, 6, 7, FACTOR)
   // `cantidades` es la fila de horas por persona y día: el mismo patrón fino que sus diez referencias.
   for (const f of g.cantidades) fmt(f - 1, f, 1, 2, HORAS_FINAS)
   for (const f of g.enteros) fmt(f - 1, f, 1, 2, ENTERO)

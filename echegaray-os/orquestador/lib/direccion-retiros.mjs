@@ -253,9 +253,29 @@ export function fechaDeMes(anio, mes, dia) {
  * El tercero también es el que se cae para el lado seguro: si la celda "desde" quedó vacía, la
  * comparación `fecha < ""` es VERDADERA en Sheets (un número siempre es menor que un texto) y el
  * cuadro proyecta CERO en vez de doce meses de plata sin respaldo.
+ *
+ * ═══ EL RETIRO TAMBIÉN SE AJUSTA POR LA PARITARIA UOCRA (07/08) ═══
+ *
+ * El dueño: *"que las proyecciones en oficina y direccion sean tomando el porcentaje de incremento en
+ * uocra, por mas q no esten en ese gremio y convenio y no tengan categoria"*. Hasta hoy los doce meses
+ * repetían el MISMO importe: el retiro de diciembre valía lo mismo que el de agosto, en una economía
+ * donde el jornal de obra sube todos los meses. Eso no era neutral, era una hipótesis —"el retiro no
+ * se actualiza"— escrita en ningún lado y aplicada a cuatro meses de caja.
+ *
+ * El factor entra como celda, no como número: lo calcula el cuadro 1.2 de la pestaña, que es el único
+ * lugar donde vive el escalón. Sin celda, la fórmula queda como estaba — un mes sin factor no se
+ * inventa uno.
+ *
+ * @param {string|null} celdaFactor la celda con el factor acumulado de paritaria del mes
  */
-export const formulaProyectadoMes = (celdaPago, celdaPagado, celdaTotal, celdaDesde) =>
-  `=IF(N(${celdaTotal})=0;"";IF(N(${celdaPagado})>0;"";IF(${celdaPago}<${celdaDesde};"";${celdaTotal})))`
+export const formulaProyectadoMes = (celdaPago, celdaPagado, celdaTotal, celdaDesde, celdaFactor = null) => {
+  // EL FACTOR SE VALIDA ANTES DE MULTIPLICAR. Si la celda quedara vacía o con texto, `total*celda` da
+  // 0 o #VALUE!: el primero borra el retiro del mes sin dar error —la peor falla de todas— y el
+  // segundo rompe el total. Sin factor usable se proyecta SIN ajuste, que es de menos y se ve.
+  const factor = celdaFactor ? `IFERROR(IF(ISNUMBER(${celdaFactor});${celdaFactor};1);1)` : null
+  const monto = factor ? `${celdaTotal}*${factor}` : celdaTotal
+  return `=IF(N(${celdaTotal})=0;"";IF(N(${celdaPagado})>0;"";IF(${celdaPago}<${celdaDesde};"";${monto})))`
+}
 
 // ═══ LO QUE LEE EL CASH FLOW ═══
 //

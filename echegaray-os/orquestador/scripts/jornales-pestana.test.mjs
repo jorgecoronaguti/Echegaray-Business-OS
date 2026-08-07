@@ -299,6 +299,93 @@ test('B7 · ningún DATE con mes 13 o 14: diciembre se paga en enero del año qu
   assert.match(texto, /DATE\(2027;1;/, 'el retiro de diciembre tiene que salir en enero de 2027')
 })
 
+test('UN SOLO DRIVER: obra, OFICINA y DIRECCIÓN se proyectan con el factor de paritaria del cuadro 1.2', () => {
+  // ═══ LA ORDEN DEL DUEÑO (07/08) ═══
+  // *"en la pestaña jornales por quincena necesito q las proyecciones en oficina y direccion sean
+  // tomando el porcentaje de incremento en uocra, por mas q no esten en ese gremio y convenio y no
+  // tengan categoria"*. Dirección repetía el mismo importe los doce meses —una hipótesis que nadie
+  // escribió, aplicada a cuatro meses de caja— y Oficina ya usaba el factor pero por otro camino.
+  const esc = gm.esc
+  const anclaEnEscalon = new RegExp(`INDEX\\(\\$E\\$${esc.f0}:\\$E\\$${esc.f1};MATCH\\(`)
+
+  // OFICINA: los meses sin cargar toman el factor RELATIVO a su propio mes base (su planilla va
+  // atrasada). Sin la división se le aplicaría el aumento acumulado desde antes de su último sueldo.
+  const ofiProy = gm.filas.slice(gm.o0 - 1, gm.oFin).filter((f) => String(f[3]) === 'proyección')
+  assert.ok(ofiProy.length >= 5, `esperaba meses de oficina proyectados y hay ${ofiProy.length}`)
+  for (const f of ofiProy) {
+    assert.match(String(f[6]), anclaEnEscalon, 'un mes de oficina se proyecta fuera del cuadro del escalón')
+    assert.match(String(f[6]), /\/INDEX/, 'oficina perdió su propio mes base: se le aplica el aumento de otro')
+  }
+
+  // DIRECCIÓN: la misma columna, el mismo cuadro, y la base es el MES EN CURSO por fórmula —el importe
+  // sale de la última carga en Compras, o sea que es el valor de hoy.
+  const dir = gm.filas.slice(gm.d0 - 1, gm.dFin)
+  for (const f of dir) {
+    assert.match(String(f[6]), anclaEnEscalon, 'el retiro de un mes volvió a proyectarse sin ajuste')
+    assert.match(String(f[6]), /EOMONTH\(TODAY\(\);0\)/, 'la base del ajuste quedó estampada en un mes fijo')
+  }
+  // Y el proyectado MULTIPLICA por ese factor, con la celda validada: `total*""` daría 0 y borraría el
+  // retiro del mes sin dar un solo error.
+  const r = gm.d0
+  assert.match(String(dir[0][7]), new RegExp(`\\*IFERROR\\(IF\\(ISNUMBER\\(G${r}\\);G${r};1\\);1\\)`),
+    `el retiro de un mes dejó de escalar por la paritaria: ${dir[0][7]}`)
+})
+
+test('el supuesto de la proyección se declara CON EL DATO, y ningún mes queda estampado en el código', () => {
+  // La línea que explica el driver sale de la réplica ya parseada: si mañana se pega un acuerdo nuevo,
+  // cambia sola. Un mes escrito en el código envejece al día siguiente y nadie se entera.
+  const glosa = gm.filas.map((f) => String(f[0] ?? '')).find((c) => /PARITARIA UOCRA/.test(c))
+  assert.ok(glosa, 'desapareció la línea que declara con qué sube la proyección')
+  assert.match(glosa, /Agosto \+1,9%/, 'el rótulo tiene que salir de la réplica de la fixture')
+  assert.match(glosa, /PROYECCIÓN, no acuerdo/, 'no se puede presentar lo proyectado como acuerdo')
+  // LA PRUEBA DE QUE NO ESTÁ ESTAMPADO: con otra réplica, la línea dice otro mes.
+  const otra = parsearAcuerdos([['Acuerdo Abril 2026'], ...cinco('Mayo\n+2,4%', [6100, 5200, 4800, 4420, 806000])]).escalones
+  const g2 = grilla({
+    bloques: BLOQUES, pendientes: PEND, bloquesOfi: [{ mes: 6, inicio: 5, fin: 8 }],
+    ultimoDiaOfi: new Date(2026, 6, 31), escalones: otra, bloqueBase: BLOQUES[1],
+    categorias: ['OF'], personasBase: 16, escalonVigente: null,
+    meses: mesesDelMotor(new Date(2026, 6, 31), PEND, [new Date(2026, 6, 31)]), hoy: HOY,
+  })
+  const glosa2 = g2.filas.map((f) => String(f[0] ?? '')).find((c) => /PARITARIA UOCRA/.test(c))
+  assert.match(glosa2, /Mayo \+2,4%/, 'la línea trae un mes escrito a mano: no siguió a la réplica')
+})
+
+test('la pestaña le PASA al motor cuál es el mes base de obra: si no, obra se come un aumento de más', () => {
+  // El motor sabe anclar la Σ $/hora en el mes de obra, pero sólo si alguien le dice cuál es. Este es
+  // el cable: con Oficina un mes atrás, el cuadro arranca en junio y la Σ tiene que dividir por la
+  // fila de julio, no por la primera. Sin el `periodoBase`, la proyección entera sube 2,1% en silencio.
+  const mesesOfiAtras = mesesDelMotor(new Date(2026, 6, 31), PEND, [new Date(2026, 5, 30)])
+  assert.equal(mesesOfiAtras[0].periodo, '2026-06')
+  const g2 = grilla({
+    bloques: BLOQUES, pendientes: PEND, bloquesOfi: [{ mes: 6, inicio: 5, fin: 8 }],
+    ultimoDiaOfi: new Date(2026, 5, 30), escalones: ESC, bloqueBase: BLOQUES[1],
+    categorias: ['OF'], personasBase: 16, escalonVigente: escalonDe(ESC, '2026-08'),
+    meses: mesesOfiAtras, hoy: HOY, periodoBase: '2026-07',
+  })
+  const rJulio = g2.esc.f0 + mesesOfiAtras.findIndex((m) => m.periodo === '2026-07')
+  const sigmas = g2.filas.slice(g2.esc.f0 - 1, g2.esc.f1).map((f) => String(f[5]))
+  for (const s of sigmas) assert.match(s, new RegExp(`/\\$E\\$${rJulio};`), `la Σ quedó anclada fuera del mes de obra: ${s}`)
+})
+
+test('LA ESCALA VERIFICADA A MANO CONTROLA A LA RÉPLICA — y calla cuando coinciden', () => {
+  // Todo el bloque 4 sale de _UOCRA_RAW, que llega por IMPORTHTML. Si el sitio cambia de forma, la
+  // réplica devuelve la tabla del mes pasado y se ve igual de sana: un control no se valida contra la
+  // misma información que produce. Lo único que puede notarlo es la escala verificada el 07/08 contra
+  // dos fuentes, que la réplica no produjo.
+  const sano = gm.filas.map((f) => String(f[0] ?? '')).filter((c) => /escala verificada/.test(c))
+  assert.equal(sano.length, 0, 'un control que repite "todo bien" en cada corrida se vuelve invisible')
+  const vieja = parsearAcuerdos([['Acuerdo Mayo 2026'], ...cinco('Agosto\n+1,9%', [6800, 5817, 5375, 4948, 898817])]).escalones
+  const g2 = grilla({
+    bloques: BLOQUES, pendientes: PEND, bloquesOfi: [{ mes: 6, inicio: 5, fin: 8 }],
+    ultimoDiaOfi: new Date(2026, 6, 31), escalones: vieja, bloqueBase: BLOQUES[1],
+    categorias: ['OF'], personasBase: 16, escalonVigente: escalonDe(vieja, '2026-08'),
+    meses: mesesDelMotor(new Date(2026, 6, 31), PEND, [new Date(2026, 6, 31)]), hoy: HOY,
+  })
+  const aviso = g2.filas.map((f) => String(f[0] ?? '')).find((c) => /escala verificada/.test(c))
+  assert.ok(aviso, 'la réplica trae la escala del mes pasado y la pestaña no lo dice')
+  assert.match(aviso, /Ayudante: réplica 4948 ≠ verificado 5399/)
+})
+
 test('el canario del espejo está en la pestaña: si el bloque se movió, lo dice', () => {
   const canario = gm.filas.flat().map(String).find((c) => /el bloque del espejo se movió/.test(c))
   assert.ok(canario, 'sin canario, un rango de filas absoluto que quedó viejo devuelve el plantel de antes en silencio')
@@ -338,13 +425,20 @@ test('LA INSTRUCCIÓN DEL CONVENIO SE DICE UNA VEZ Y CONTADA, no una por categor
   const texto = comoSeVe(gm).flat().map(String)
   assert.equal(texto.filter((c) => /columna de al lado/.test(c)).length, 0,
     'volvió la instrucción repetida fila por fila')
-  const pide = gm.filas.map((f) => String(f[0] ?? '')).filter((c) => /COUNTBLANK\(\$E\$/.test(c))
-  assert.equal(pide.length, 1, 'la línea que pide el convenio tiene que existir UNA sola vez')
-  assert.match(pide[0], /COUNTA\(\$A\$/, 'dice cuántas faltan de cuántas: una cuenta, no un pedido suelto')
-  // Y la fila sigue diciendo lo que SÍ puede decir: sin convenio asignado, nada — con el mismo "—"
-  // que usan los importes vacíos de la pestaña.
+  const linea = gm.filas.map((f) => String(f[0] ?? '')).filter((c) => /COUNTA\(\$A\$/.test(c))
+  assert.equal(linea.length, 1, 'la línea del convenio tiene que existir UNA sola vez')
+  // ═══ Y DESDE EL 07/08 YA NO PIDE: DECLARA (equivalencia del dueño) ═══
+  // Las cuatro categorías del plantel tienen equivalente, así que la línea dice contra qué compara el
+  // bloque en vez de pedir una carga manual que ya no hace falta.
+  assert.match(linea[0], /OF, OF M→Oficial/)
+  assert.match(linea[0], /A, A M→Ayudante/)
+  assert.match(linea[0], /manda la tuya/, 'la columna «Convenio» sigue siendo del dueño y su valor gana')
+  // Y el estado por fila sigue siendo corto y contestando lo único que el bloque contesta.
   const estados = gm.filas.slice(gm.plantel.fPrimera - 1, gm.plantel.fUltima).map((f) => String(f[7]))
-  for (const e of estados) assert.match(e, /^=IF\(\$E\d+="";"—";/, `el estado por fila volvió a ser un texto largo: ${e}`)
+  for (const e of estados) {
+    assert.match(e, /por debajo del convenio|sobre el convenio/, `el estado por fila dejó de opinar: ${e}`)
+    assert.doesNotMatch(e, /"—"/, 'con equivalencia declarada la fila ya tiene respuesta: el "—" es de antes')
+  }
 })
 
 test('NINGUNA COLUMNA MUDA: toda columna con dato tiene encabezado, y el encabezado no miente', () => {
