@@ -16,7 +16,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
-  celdaEstado, celdaImporte, columnaEstadoDeCompras, columnasVivasDeCompras,
+  celdaEstado, celdaImporte, columnaEstadoDeCompras, columnasVivasDeCompras, columnasNeteoDeCompras,
   estadosDecorados, ESTADOS_VIVOS, MARCA_PAGADO,
 } from './libro-estado-vivo.mjs'
 import { estaPagada, NOMBRES_COMPRAS } from './libro-extractores-compras.mjs'
@@ -221,6 +221,18 @@ test('LAS TRES LETRAS SE RESUELVEN POR RÓTULO, o nada va vivo', () => {
   const cols = columnasVivasDeCompras([[], [], CAB])
   assert.deepEqual(cols, { estado: 'X', total: 'O', montoPagado: 'T' })
   assert.equal(columnasVivasDeCompras([[], [], ['nada']]), null, 'encabezado irreconocible → null → valores pegados')
+})
+
+test('EL NETEO DE OBRAS RESUELVE SUS LETRAS POR RÓTULO — con la "Fecha" aparte, o nada va vivo', () => {
+  const CAB = ['id', 'x', 'Fecha', 'x', 'Proveedor', 'CUIT (OS)', 'x', 'N° Comprobante', 'x', 'Cliente / Asignación',
+    'Detalles / Obra', 'x', 'x', 'x', 'Total', 'Tipo pago', 'x', 'x', 'x', 'Monto Pagado', 'x', 'x', 'x', 'Estado',
+    'x', 'x', 'x', 'x', 'Rubro de caja', 'Fecha de caja']
+  const cols = columnasNeteoDeCompras([[], [], CAB])
+  assert.deepEqual(cols, { proveedor: 'E', cliente: 'J', fecha: 'C', total: 'O', pagado: 'T' })
+  // Sin la col "Fecha" ("Fecha de caja" NO es "Fecha": el match es exacto) → null → importes pegados.
+  const sinFecha = CAB.map((n) => (n === 'Fecha' ? 'x' : n))
+  assert.equal(columnasNeteoDeCompras([[], [], sinFecha]), null)
+  assert.equal(columnasNeteoDeCompras([[], [], ['nada']]), null, 'encabezado irreconocible → falla cerrado')
 })
 
 test('EL ESCRITOR USA LA CELDA VIVA DEL IMPORTE, no `m.importe` pegado', () => {

@@ -36,11 +36,12 @@ import {
   deCargasSociales, mesesCubiertos, cargasEnCompras, reemplazadasPorLaCadena, NOMBRES_CARGAS,
 } from '../lib/libro-extractores.mjs'
 import { deRecurrentes } from '../lib/libro-extractores-recurrentes.mjs'
+import { deObras } from '../lib/libro-extractores-obras.mjs'
 import { cruzar, chequesDelRegistro } from '../lib/cruce-cheque-factura.mjs'
 import { endososDeCartera } from '../lib/libro-endosos.mjs'
 import { debitosDelExtracto, corteDelExtracto, pagosDeResumen, chequesCubiertosPorBanco } from '../lib/libro-respaldo-banco.mjs'
 import { ROTULOS_CALENDARIO, CALENDARIO_IMPUESTOS } from '../lib/cash-flow-lineas.mjs'
-import { celdaEstado, celdaImporte, columnaEstadoDeCompras, columnasVivasDeCompras, estadosDecorados } from '../lib/libro-estado-vivo.mjs'
+import { celdaEstado, celdaImporte, columnaEstadoDeCompras, columnasVivasDeCompras, columnasNeteoDeCompras, estadosDecorados } from '../lib/libro-estado-vivo.mjs'
 import { total } from '../lib/patron-pestana.mjs'
 import { ubicarRegistro } from './cheques-emitidos-tablero.mjs'
 
@@ -177,6 +178,24 @@ async function extraerDeLasFuentes(google, corte) {
   // planilla mueva una columna, mientras el extractor se adapta solo. Ver lib/libro-estado-vivo.mjs.
   const colEstadoCompras = columnaEstadoDeCompras(compras)
   const colsVivas = columnasVivasDeCompras(compras)
+  // ═══ LAS OBRAS FUTURAS ENTRAN CON IMPORTE VIVO: MAX(0; planificado − real de Compras) ═══
+  //
+  // El módulo de datos (lib/obras-datos.mjs) se está construyendo en paralelo: el import es dinámico
+  // y con guarda para que este script corra igual sin él — la fuente sale vacía y el aviso lo dice.
+  // Al mergear la rama que lo trae, se activa solo, sin tocar una línea de acá.
+  const OBRAS_FUTURAS = await import('../lib/obras-datos.mjs').then((m) => m.OBRAS_FUTURAS ?? []).catch(() => [])
+  if (!OBRAS_FUTURAS.length) {
+    console.warn('  ⚠ obras futuras: lib/obras-datos.mjs no existe todavía o no publica OBRAS_FUTURAS — la fuente Obras sale vacía.')
+  }
+  const colsNeteo = columnasNeteoDeCompras(compras)
+  if (OBRAS_FUTURAS.length && !colsNeteo) {
+    console.warn('  ⚠ obras futuras: no pude resolver las columnas de Compras para el neteo — los importes van PEGADOS, sin descuento vivo.')
+  }
+  const obrasFuturas = deObras(OBRAS_FUTURAS, colsNeteo, corte, (m) => console.warn(`  · ${m}`))
+  if (obrasFuturas.resumen.movimientos) {
+    console.log(`  obras futuras: ${obrasFuturas.resumen.obras} obra(s) · ${obrasFuturas.resumen.movimientos} egreso(s) `
+      + `proyectado(s) · ${pesos(obrasFuturas.resumen.totalProyectado)} planificado (con neteo vivo contra Compras)`)
+  }
   const decorados = estadosDecorados(compras)
   if (decorados.length) {
     console.warn(`  ⚠ ${decorados.length} fila(s) de Compras dicen "Pagado" con decoración `
@@ -193,6 +212,11 @@ async function extraerDeLasFuentes(google, corte) {
       // mes menos lo ya materializado en Compras. Sin esto, el mes en curso no debía ningún
       // recurrente y el pago real le pegaba a LIBRE (07/08). Ver libro-extractores-recurrentes.mjs.
       Recurrentes: deRecurrentes(compras, corte, (m) => console.log(`  · ${m}`)),
+      // Los egresos de caja de las obras futuras (materiales/alquileres/combustible). La MO va por
+      // Jornales y la máquina propia no es caja: el extractor no los emite NUNCA — ver
+      // lib/libro-extractores-obras.mjs. El importe es fórmula: se descuenta solo cuando la factura
+      // real entra a Compras.
+      Obras: obrasFuturas.movimientos,
       'Cargas Sociales': cargas,
       Cobranzas: deCobranzas(cobranzas, corte, { endosos, excluidos }),
       'Cheques Emitidos': deChequesEmitidos(cheques, { fila0: reg.primera, cruce }),
@@ -291,15 +315,16 @@ async function main() {
  */
 async function escribirYVerificar(google, consolidado, colEstadoCompras = null, colsVivas = null) {
   // ── ESPEJO, ordenada por fecha, con encabezado ──────────────────────────────────────────────────
-  const filas = [ENCABEZADO, ...consolidado
-    .slice()
-    .sort((a, b) => a.fecha - b.fecha)
+  const ordenados = consolidado.slice().sort((a, b) => a.fecha - b.fecha)
+  const filas = [ENCABEZADO, ...ordenados
     // LA COLUMNA H NO ES `m.estado` NI LA C ES `m.importe`: son lo que las celdas vivas deciden
     // escribir. Para las filas de Compras todavía impagas, H es una FÓRMULA que se pregunta sola si
     // el dueño ya marcó el pago, y C es el SALDO VIVO Total−Pagado — un pago PARCIAL descuenta la
     // COMPROMETIDA en el acto, sin esperar regeneración (07/08, "cuando se pagan los compromisos
-    // deben salir de ahí"). Criterio y exclusiones en lib/libro-estado-vivo.mjs.
-    .map((m) => [m.fecha, m.signo, celdaImporte(m, colsVivas), m.moneda, m.concepto, m.rubro, m.actividad,
+    // deben salir de ahí"). Criterio y exclusiones en lib/libro-estado-vivo.mjs. Las filas de Obras
+    // traen su propia fórmula (`importeVivo`, el neteo contra Compras): tiene precedencia porque su
+    // origen no es Compras y `celdaImporte` la dejaría pegada.
+    .map((m) => [m.fecha, m.signo, m.importeVivo ?? celdaImporte(m, colsVivas), m.moneda, m.concepto, m.rubro, m.actividad,
       celdaEstado(m, colEstadoCompras),
       m.instrumento, m.contraparte, m.cuit, m.comprobante, m.obra, m.origen.pestana, m.origen.fila ?? '', m.clave,
       m.cliente])]
@@ -336,8 +361,31 @@ async function escribirYVerificar(google, consolidado, colEstadoCompras = null, 
     const signo = Number(f?.[1]); const imp = Number(f?.[2])
     if (Number.isFinite(signo) && Number.isFinite(imp)) { totalArchivo += signo * imp; filasArchivo++ }
   }
-  const totalMemoria = sumar(consolidado, {}).total
-  const cierra = Math.abs(totalArchivo - totalMemoria) < 1
+  // ═══ EL NETEO DE OBRAS PUEDE HABER ABSORBIDO PLATA ANTES DE LA RELECTURA ═══
+  //
+  // La C de una fila de Obras es MAX(0; planificado − real de Compras): si la factura real ya entró,
+  // el archivo rinde MENOS que el planificado en memoria — y eso es lo CORRECTO, no un descuadre. La
+  // evidencia lo tolera ACOTADO: el valor releído tiene que caer en [0, planificado]; la diferencia
+  // se declara como neteo absorbido y se ajusta el total en memoria, así la comparación sigue siendo
+  // exacta al peso para todas las demás filas. Un valor fuera del rango sí es una escritura rota.
+  let ajusteNeteo = 0
+  let neteoFuera = 0
+  ordenados.forEach((m, i) => {
+    if (!m.importeVivo) return
+    const val = Number(releido?.[i]?.[2])
+    if (!Number.isFinite(val) || val < -0.01 || val > m.importe + 0.01) {
+      neteoFuera++
+      console.log(`  ✗ Obras f${i + 2}: la fórmula de neteo rindió ${JSON.stringify(releido?.[i]?.[2])} `
+        + `y el planificado es ${pesos(m.importe)} — fuera de [0, planificado], la escritura no sirve.`)
+      return
+    }
+    ajusteNeteo += m.signo * (val - m.importe)
+  })
+  if (ajusteNeteo !== 0) {
+    console.log(`  · neteo de Obras ya absorbido por Compras al releer: ${pesos(ajusteNeteo)} (facturas reales que ya entraron)`)
+  }
+  const totalMemoria = sumar(consolidado, {}).total + ajusteNeteo
+  const cierra = Math.abs(totalArchivo - totalMemoria) < 1 && neteoFuera === 0
   console.log(`\nQUEDÓ ESCRITO: ${filasArchivo} movimiento(s) en ${PESTAÑA}`)
   console.log(`  total releído del archivo : ${pesos(totalArchivo)}`)
   console.log(`  total calculado en memoria: ${pesos(totalMemoria)}`)
