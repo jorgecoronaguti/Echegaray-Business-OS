@@ -10,6 +10,13 @@
 // La LÓGICA vive en lib/libro-movimientos.mjs y lib/libro-extractores.mjs (núcleo puro, probado en
 // frío). Este script sólo hace lo que exige red: leer las fuentes, correr los extractores, y escribir.
 //
+// ═══ UNA COLUMNA NO ES UNA FOTO: EL ESTADO DE COMPRAS SE ESCRIBE VIVO (07/08) ═══
+//
+// Todas las columnas son valores pegados salvo la H de las filas que salen de Compras sin pagar: esa
+// va como FÓRMULA contra la columna Estado de Compras. Un estado pegado convertía cada pago del dueño
+// en plata comprometida hasta la regeneración siguiente (medido: 5 pagos, $3.553.544). El criterio,
+// lo que queda afuera y por qué, en lib/libro-estado-vivo.mjs.
+//
 // ═══ EL CONTROL VIAJA CON LA ESCRITURA ═══
 //
 // Después de escribir se RELEE el total del libro desde la pestaña y se compara contra el total
@@ -32,6 +39,7 @@ import { cruzar, chequesDelRegistro } from '../lib/cruce-cheque-factura.mjs'
 import { endososDeCartera } from '../lib/libro-endosos.mjs'
 import { debitosDelExtracto, corteDelExtracto, pagosDeResumen, chequesCubiertosPorBanco } from '../lib/libro-respaldo-banco.mjs'
 import { ROTULOS_CALENDARIO, CALENDARIO_IMPUESTOS } from '../lib/cash-flow-lineas.mjs'
+import { celdaEstado, columnaEstadoDeCompras, estadosDecorados } from '../lib/libro-estado-vivo.mjs'
 import { total } from '../lib/patron-pestana.mjs'
 import { ubicarRegistro } from './cheques-emitidos-tablero.mjs'
 
@@ -161,7 +169,21 @@ async function extraerDeLasFuentes(google, corte) {
   console.log(`  cargas sociales: la cadena publica ${cargas.length} movimiento(s) en ${cargasCubiertas.size} mes(es) `
     + `y reemplaza ${swap.length} fila(s) previstas de Compras por ${pesos(swap.reduce((a, x) => a + x.total, 0))}`)
 
+  // ═══ EL ESTADO DE LAS FILAS DE COMPRAS SE ESCRIBE VIVO (07/08) ═══
+  //
+  // La letra viaja desde acá porque se RESUELVE POR RÓTULO sobre la misma fuente que leen los
+  // extractores: escribir "X" en la fórmula la dejaría apuntando a la columna vieja el día que la
+  // planilla mueva una columna, mientras el extractor se adapta solo. Ver lib/libro-estado-vivo.mjs.
+  const colEstadoCompras = columnaEstadoDeCompras(compras)
+  const decorados = estadosDecorados(compras)
+  if (decorados.length) {
+    console.warn(`  ⚠ ${decorados.length} fila(s) de Compras dicen "Pagado" con decoración `
+      + `(${decorados.slice(0, 3).map((d) => `f${d.fila} "${d.valor}"`).join(', ')}). El generador las lee bien; `
+      + 'la fórmula viva de la columna H no las va a autopromover hasta la corrida siguiente.')
+  }
+
   return {
+    colEstadoCompras,
     fuentes: {
       Compras: deCompras(compras, corte, { cruce, cargasCubiertas }),
       'Cargas Sociales': cargas,
@@ -192,7 +214,7 @@ async function extraerDeLasFuentes(google, corte) {
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const corte = hoySerial()
-  const { fuentes: porFuente, excluidos, corteBanco, debitosBanco } = await extraerDeLasFuentes(google, corte)
+  const { fuentes: porFuente, excluidos, corteBanco, debitosBanco, colEstadoCompras } = await extraerDeLasFuentes(google, corte)
   const todos = Object.values(porFuente).flat()
   // ═══ EL EXTRACTO CORRIGE LOS CHEQUES QUE LAS PESTAÑAS TODAVÍA DAN POR VIVOS (06/08) ═══
   //
@@ -237,21 +259,39 @@ async function main() {
     console.log(`  ${e.padEnd(14)} ${String(porEstado[e].filas).padStart(4)} fila(s) · neto ${pesos(porEstado[e].total)}`)
   }
 
+  // LO QUE SE AUTOPROMUEVE SE CUENTA. Es la mitad del COMPROMETIDO que ya no espera a la próxima
+  // corrida para desaparecer cuando el dueño marca el pago: sin el número, el cambio es invisible.
+  const vivas = consolidado.filter((m) => String(celdaEstado(m, colEstadoCompras)).startsWith('='))
+  console.log(`  ${'— estado vivo'.padEnd(14)} ${String(vivas.length).padStart(4)} fila(s) de Compras escriben su estado `
+    + `como fórmula contra Compras!${colEstadoCompras} · ${pesos(sumar(vivas, {}).total)} `
+    + '— pasan solas a REAL cuando la fila dice "Pagado"')
+
   if (DRY) { console.log('\n--dry: no escribí nada.'); return }
-  await escribirYVerificar(google, consolidado)
+  await escribirYVerificar(google, consolidado, colEstadoCompras)
 }
 
 /**
  * LA ESCRITURA Y SU EVIDENCIA. Van juntas a propósito: la API contestando 200 no prueba que el dato
  * aterrizó —ya se encontró una pestaña donde la escritura por valores reporta éxito y no llega—, así
  * que quien escribe es quien relee y compara contra lo que tenía en memoria.
+ *
+ * LA COMPARACIÓN SIGUE SIENDO VÁLIDA CON LA COLUMNA H VIVA (07/08): se releen A:C —fecha, signo,
+ * importe—, que se escriben como valores y no cambiaron de naturaleza. La H es la única celda que
+ * ahora puede ser fórmula, y no entra en el total que se compara. Si algún día la evidencia se
+ * extendiera al estado, hay que releer con `UNFORMATTED_VALUE` (que trae el RESULTADO de la fórmula)
+ * y compararlo contra `celdaEstado`, no contra `m.estado`: para una fila autopromovida el archivo
+ * dice REAL y la memoria del generador dice PROYECTADO, y las dos tienen razón.
  */
-async function escribirYVerificar(google, consolidado) {
+async function escribirYVerificar(google, consolidado, colEstadoCompras = null) {
   // ── ESPEJO, ordenada por fecha, con encabezado ──────────────────────────────────────────────────
   const filas = [ENCABEZADO, ...consolidado
     .slice()
     .sort((a, b) => a.fecha - b.fecha)
-    .map((m) => [m.fecha, m.signo, m.importe, m.moneda, m.concepto, m.rubro, m.actividad, m.estado,
+    // LA COLUMNA H NO ES `m.estado`: es lo que `celdaEstado` decide escribir. Para las filas de
+    // Compras todavía impagas es una FÓRMULA que se pregunta sola si el dueño ya marcó el pago —
+    // entre regeneraciones, un pago hecho dejaba de ser un pago hecho para la tarjeta COMPROMETIDA.
+    .map((m) => [m.fecha, m.signo, m.importe, m.moneda, m.concepto, m.rubro, m.actividad,
+      celdaEstado(m, colEstadoCompras),
       m.instrumento, m.contraparte, m.cuit, m.comprobante, m.obra, m.origen.pestana, m.origen.fila ?? '', m.clave,
       m.cliente])]
 
