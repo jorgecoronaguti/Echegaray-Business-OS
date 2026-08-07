@@ -59,6 +59,37 @@ test('COMPROMETIDA = todo lo que hay que pagar en el mes − lo ya pagado, con l
   assert.ok(!c.valor.includes('"REAL"'), 'lo REAL ya salió de la cuenta: no es obligación')
 })
 
+test('EL CONTEXTO DE COMPROMETIDA muestra lo YA PAGADO del mes: los pagos salen de esta tarjeta', () => {
+  // "lo que se está pagando no me está descontando de caja comprometida" (dueño, 07/08). El número
+  // sí baja — pero sin verlo, el dueño no puede saber que baja. "Ya pagaste" es lo REAL del mes.
+  const c = de('comprometida')
+  assert.match(c.contexto, /ya pagaste/)
+  assert.ok(c.contexto.includes(terminoLibro({ signo: -1, estados: ['REAL'], desde: 'EOMONTH(TODAY();-1)+1', hasta: FIN_DE_MES, medida: 'magnitud' })))
+})
+
+test('CON FRONTERA, COMPROMETIDA suma en vivo las pendientes que el libro todavía no incorporó', () => {
+  // La asimetría que se comía la LIBRE: disponible lee Compras en vivo, la foto del libro no conoce
+  // las compras cargadas después de la última regeneración. El término vivo arranca EN LA FILA
+  // SIGUIENTE a la frontera, filtra Pendiente y fecha de caja dentro del mes, y suma el SALDO
+  // (total − pagado). Una pagada nueva NO entra: ya salió del banco, sumarla sería doble conteo.
+  const c = tarjetas({ ...REF, fronteraCompras: 833 }).find((t) => t.clave === 'comprometida')
+  assert.match(c.valor, /\+SUMPRODUCT/)
+  assert.ok(c.valor.includes('Compras!$X$834:$X$1334'), 'arranca en la fila siguiente a la frontera')
+  assert.ok(c.valor.includes('="Pendiente"'), 'sólo pendientes: una pagada nueva ya salió del saldo')
+  assert.ok(c.valor.includes(`<${FIN_DE_MES}`), 'sólo lo que cae dentro del mes')
+  assert.ok(c.valor.includes('N(Compras!$O$834:$O$1334)-N(Compras!$T$834:$T$1334)'), 'el saldo, no el total')
+  assert.ok(!c.valor.includes(','), 'locale es-AR: sin comas como separador de argumentos')
+  // Y LA LIBRE LO HEREDA SOLA: sigue siendo la resta de las tarjetas vecinas, por referencia.
+  const l = tarjetas({ ...REF, fronteraCompras: 833 }).find((t) => t.clave === 'libre')
+  assert.equal(l.valor, '=N($A$3)-N($C$3)')
+})
+
+test('SIN FRONTERA, la tarjeta queda como era: falla hacia el comportamiento anterior', () => {
+  // Una corrida vieja del generador o una lectura caída no pueden inventar un término a medias.
+  const c = de('comprometida')
+  assert.ok(!c.valor.includes('SUMPRODUCT((Compras'), 'sin frontera no hay término vivo')
+})
+
 test('LIBRE es la resta de sus dos vecinas — la definición textual del dueño', () => {
   // "disponible es toda la plata q hay, comprometida es lo q hay q pagar el resto del mes, POR
   // ENDE surge libre disponibilidad". Por referencia a A3 y C3: se verifica con los ojos. Y cuando

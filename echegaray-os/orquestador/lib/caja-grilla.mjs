@@ -324,6 +324,10 @@ export function grilla(cargado, refs) {
     // más bajo. El "peor caso" ($H) se queda en la escalera; la tarjeta publica lo medido.
     pisoSimple: `$I$${fCierre}`,
     pisoFecha: `$G$${fCierre}`,
+    // La última fila de Compras que el libro incorporó: detrás de ella, COMPROMETIDA suma en vivo
+    // las pendientes nuevas (la puntada que faltaba para que pagar no toque LIBRE). Sin el dato, la
+    // tarjeta omite el término y queda como era.
+    fronteraCompras: refs?.fronteraCompras,
   })
   const porTarjeta = (campo) => {
     const fila = Array.from({ length: ANCHO }, () => '')

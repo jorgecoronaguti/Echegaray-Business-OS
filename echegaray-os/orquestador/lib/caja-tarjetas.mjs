@@ -106,6 +106,30 @@ export function tarjetas(ref) {
   const mesPago = terminoLibro({ signo: -1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })
   const mesCobro = terminoLibro({ signo: 1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })
   const venceEn7 = terminoLibro({ signo: -1, estados: NO_REAL, hasta: 'TODAY()+7', medida: 'magnitud' })
+  // ═══ LA MISMA FRESCURA EN LAS DOS PUNTAS (orden del dueño, 07/08) ═══
+  //
+  // DISPONIBLE lee Compras EN VIVO (los pagos posteriores al corte se restan por fórmula), pero el
+  // libro es una FOTO: una compra cargada después de la última regeneración no existe para
+  // COMPROMETIDA. El dueño pagaba, la disponible bajaba, la comprometida ni se enteraba — y la
+  // diferencia se la comía LIBRE ("no puede irse bajando la libre dispo", textual). Este término
+  // suma en vivo las compras PENDIENTES que quedaron detrás de la frontera del libro: pendiente
+  // nueva → entra acá hasta que la próxima regeneración la incorpore; pagada nueva → nunca pasa por
+  // acá (ya salió del saldo, contarla sería el doble conteo de siempre).
+  //
+  // La frontera la trae el generador (la última fila de Compras que el libro incorporó). Sin ella
+  // —una corrida vieja, una lectura caída— el término se OMITE y la tarjeta queda como era: falla
+  // hacia el comportamiento anterior, no hacia un número inventado.
+  const f0 = Number.isFinite(ref.fronteraCompras) ? ref.fronteraCompras + 1 : null
+  let nuevas = null
+  if (f0) {
+    const colC = (c) => `Compras!$${c}$${f0}:$${c}$${f0 + 500}`
+    // La fecha de caja (AD) puede venir como texto dd/mm/yyyy o como serial: el mismo doble camino
+    // que ya usa el anexo de caja (DATEVALUE para el texto, N() para el serial).
+    const fechaCaja = `IFERROR(DATEVALUE(${colC('AD')}&"");N(${colC('AD')}))`
+    nuevas = `SUMPRODUCT((${colC('X')}="Pendiente")*(${fechaCaja}<${FIN_DE_MES})*(N(${colC('O')})-N(${colC('T')})))`
+  }
+  // Lo ya pagado del mes: para que el contexto muestre que los pagos salen de ESTA tarjeta.
+  const pagadoMes = terminoLibro({ signo: -1, estados: ['REAL'], desde: 'EOMONTH(TODAY();-1)+1', hasta: FIN_DE_MES, medida: 'magnitud' })
   // LA SUMA VA CON N(): la celda de una fila sin dato dice "" y "" no se suma — sin el N() la tarjeta
   // entera daría #VALUE! el día que falte una de las dos patas, y con él suma la que esté.
   const invertido = `N(${ref.invArs})+N(${ref.invUsd})`
@@ -128,8 +152,9 @@ export function tarjetas(ref) {
       // (lo REAL ya salió del saldo del banco — restarlo otra vez lo contaría dos veces), más lo
       // vencido impago (sin `desde`). MAGNITUD y no neto: "cuánto debo" es positivo. La urgencia no
       // se pierde: lo que vence esta semana queda en el contexto.
-      valor: `=${mesPago}`,
-      contexto: `="del mes · próx. 7 días: "&TEXT(${venceEn7}/1000000;"$#,##0.0")&"M"`,
+      valor: nuevas ? `=${mesPago}+${nuevas}` : `=${mesPago}`,
+      // "ya pagaste": el dueño ve que los pagos del mes salen de ESTA tarjeta — la libre no se toca.
+      contexto: `="del mes · ya pagaste "&TEXT(${pagadoMes}/1000000;"$#,##0.0")&"M · próx. 7 días: "&TEXT(${venceEn7}/1000000;"$#,##0.0")&"M"`,
       especie: 'plata',
     },
     {
