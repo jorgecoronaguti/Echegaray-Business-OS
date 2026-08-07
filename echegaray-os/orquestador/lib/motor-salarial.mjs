@@ -70,6 +70,12 @@ import {
   convenioDe, factorUocraEntre, tramoDe,
 } from './uocra-paritaria.mjs'
 
+// LA BASE AL 100% DEL CONVENIO ENTRA POR ACÁ Y NO POR LA PESTAÑA. El dueño avisó que "esto puede
+// impactar en varias pestañas a la vez": si la definición viviera en el generador de Jornales, el
+// segundo consumidor tendría que copiarla. Vive en el motor y se re-exporta, así hay UNA sola puerta.
+export {
+  formulaSigmaConvenio, lineaSupuestoConvenio, sigmaConvenioDelPlantel,
+} from './proyeccion-convenio.mjs'
 export { factorUocraEntre, tramoDe, convenioDe }
 
 /**
@@ -342,11 +348,34 @@ export function filasPlantel({ hoja, bloque, categorias, personas, filaInicio, e
  * La C se queda: es el PISO del convenio, que es lo que el control de §4 compara contra lo que
  * pagamos. Deja de gobernar el factor, no deja de ser un hecho.
  *
- * @returns {{filas:any[][], f0:number, f1:number}}
+ * ═══ LA F CAMBIÓ DE BASE: DEL JORNAL PACTADO A LA ESCALA DEL CONVENIO (07/08) ═══
+ *
+ * Por orden del dueño la proyección de obreros se valúa al 100% del convenio. Lo que cambia es la BASE
+ * que se escala, no el driver: el factor de la columna E sigue siendo el mismo para los tres bloques.
+ * El razonamiento completo está en lib/proyeccion-convenio.mjs.
+ *
+ * Y CAMBIA TAMBIÉN EL ANCLA. La Σ pactada es la del plantel de la última quincena cerrada de OBRA, así
+ * que se divide por el factor de ESE mes (`periodoBase`). La Σ del convenio, en cambio, sale de las
+ * celdas «Básico convenio» del bloque 1.1, que leen el escalón VIGENTE de la réplica — casi siempre el
+ * mes en curso, un mes por delante del de la última quincena cerrada. Dividir esa Σ por el factor del
+ * mes base le agregaría un tramo entero de paritaria que ya tiene adentro: el mismo doble conteo que
+ * el motor mata en la primera quincena, otra vez de costado. Por eso `periodoConvenio`.
+ *
+ * @returns {{filas:any[][], f0:number, f1:number, alConvenio:boolean}}
  */
-export function filasEscalon({ meses, escalones, filaInicio, celdaSigmaBase, periodoBase = null }) {
+export function filasEscalon({
+  meses, escalones, filaInicio, celdaSigmaBase, periodoBase = null,
+  celdaSigmaConvenio = null, periodoConvenio = null,
+}) {
+  const iConv = periodoConvenio ? meses.findIndex((m) => m.periodo === periodoConvenio) : -1
+  // SIN EL MES DEL ESCALÓN EN EL CUADRO NO HAY DÓNDE ANCLAR, y anclar en otra fila es escalar de más
+  // en silencio: se cae a la base pactada, que es el criterio anterior, y la línea de arriba del cuadro
+  // lo declara. Un criterio que cambia sin decirlo es peor que el criterio viejo.
+  const alConvenio = Boolean(celdaSigmaConvenio) && iConv >= 0
+  const sigma = alConvenio ? celdaSigmaConvenio : celdaSigmaBase
   const filas = []
-  filas.push(['Mes', 'Escalón publicado', `Básico ${CATEGORIA_ANCLA}`, 'Sube en el mes', 'Factor sobre la base', 'Σ $/hora del plantel', 'De dónde sale', 'Estado'])
+  filas.push(['Mes', 'Escalón publicado', `Básico ${CATEGORIA_ANCLA}`, 'Sube en el mes', 'Factor sobre la base',
+    alConvenio ? 'Σ $/hora convenio' : 'Σ $/hora pactada', 'De dónde sale', 'Estado'])
   const f0 = filaInicio + 1
   const ult = ultimoEscalon(escalones)
   // ═══ LA Σ $/hora SE ANCLA EN EL MES DE OBRA, NO EN LA PRIMERA FILA DEL CUADRO (07/08) ═══
@@ -357,7 +386,7 @@ export function filasEscalon({ meses, escalones, filaInicio, celdaSigmaBase, per
   // ya tiene adentro, y el error se arrastra a las diez quincenas siguientes. No da error, da un total
   // más alto y plausible. La división por la fila del mes base de obra lo cierra.
   const iBase = Math.max(0, meses.findIndex((m) => m.periodo === periodoBase))
-  const rBase = f0 + iBase
+  const rAncla = f0 + (alConvenio ? iConv : iBase)
   meses.forEach((m, i) => {
     const r = f0 + i
     const e = escalonDe(escalones, m.periodo)
@@ -387,9 +416,9 @@ export function filasEscalon({ meses, escalones, filaInicio, celdaSigmaBase, per
       // Factor acumulado = el del mes anterior × (1 + tramo del mes). La primera fila es 1 LITERAL:
       // no hay fórmula que pueda devolver otra cosa, que es lo que mata el doble conteo por diseño.
       i === 0 ? '=1' : `=IFERROR($E${r - 1}*(1+$D${r});"")`,
-      // Σ $/hora del plantel = el del mes base de OBRA × el factor acumulado desde ese mes. NO se
-      // recalcula por categoría: el plantel vive UNA sola vez, en 1.1, y acá se referencia.
-      `=IFERROR(${celdaSigmaBase}*$E${r}/$E$${rBase};"")`,
+      // Σ $/hora del plantel × el factor acumulado desde el mes de SU ancla. NO se recalcula por
+      // categoría: el plantel vive UNA sola vez, en 1.1, y acá se referencia.
+      `=IFERROR(${sigma}*$E${r}/$E$${rAncla};"")`,
       firmado && e ? `${String(e.acuerdo ?? 'acuerdo').replace(/^Acuerdo\s+/, 'Ac.')}`.slice(0, 19) : 'proyección',
       i === 0
         ? 'mes base: factor 1,0000, sin aumento'
@@ -397,7 +426,7 @@ export function filasEscalon({ meses, escalones, filaInicio, celdaSigmaBase, per
     ])
   })
   const f1 = f0 + meses.length - 1
-  return { filas, f0, f1 }
+  return { filas, f0, f1, alConvenio }
 }
 
 /**

@@ -94,6 +94,7 @@ import {
   ultimaQuincenaCerrada, categoriasDelBloque, personasDelBloque,
   mesesDelMotor, filasPlantel, filasEscalon, formulaSigmaDelMes, formulaFactorDelMes,
   formulaHorasPorPersona, lineaEstadoReplica, formulaConvenioPendiente, factorUocraEntre,
+  formulaSigmaConvenio, lineaSupuestoConvenio, sigmaConvenioDelPlantel,
 } from '../lib/motor-salarial.mjs'
 import { VERIFICADA_EL, VIGENCIA_HASTA, contrastarEscala, tramoDe } from '../lib/uocra-paritaria.mjs'
 import { registrarSincronizacion } from '../lib/registrar-sincronizacion.mjs'
@@ -406,17 +407,38 @@ export function grilla({
 
   // ── 1.2 · EL ESCALÓN, MES POR MES ──
   push([seccion('1.2', 'El escalón del convenio, mes por mes — de dónde sale cada aumento')])
-  // La celda de la Σ $/hora del plantel base es la COLUMNA C de la fila de total de 1.1 — no la B,
-  // que es la cantidad de personas. Se pasa la celda entera y no el número de fila justamente para
-  // que la letra no se pueda perder por el camino.
-  const esc = filasEscalon({ meses, escalones, filaInicio: filas.length + 1, celdaSigmaBase: `$C$${fPlantel}`, periodoBase })
+  // LA BASE DE LA PROYECCIÓN ES EL CONVENIO, NO EL JORNAL PACTADO (07/08, orden del dueño). Sale de las
+  // DOS columnas del bloque de arriba —personas por categoría × básico del convenio—, las dos fórmulas
+  // vivas: un alta o un cambio de categoría la mueven sin tocar una celda. Por qué y quién lo hereda,
+  // en lib/proyeccion-convenio.mjs.
+  const sigmaConvenio = escalonVigente ? formulaSigmaConvenio(plantel.fPrimera, plantel.fUltima) : null
+  // LA LÍNEA LA DECIDE EL CUADRO, NO LA INTENCIÓN. Se reserva la fila y se llena DESPUÉS de armar el
+  // escalón, cuando `esc.alConvenio` dice qué base quedó de verdad: tener la escala a mano no alcanza
+  // —si el mes del escalón no está en el cuadro no hay dónde anclar y el motor cae al pactado—. Una
+  // línea que anuncia el convenio arriba de un cuadro que usa el pactado es peor que no tenerla.
+  const fSupuesto = push([VACIO])
+  // La celda de la Σ $/hora PACTADA del plantel base es la COLUMNA C de la fila de total de 1.1 — no la
+  // B, que es la cantidad de personas. Se pasa la celda entera y no el número de fila justamente para
+  // que la letra no se pueda perder por el camino. Viaja igual: es el respaldo para cuando la réplica
+  // del convenio no traiga escala, y en ese caso la línea de arriba lo declara en la pestaña.
+  const esc = filasEscalon({
+    meses, escalones, filaInicio: filas.length + 1, celdaSigmaBase: `$C$${fPlantel}`, periodoBase,
+    celdaSigmaConvenio: sigmaConvenio, periodoConvenio: escalonVigente?.periodo ?? null,
+  })
+  filas[fSupuesto - 1][0] = lineaSupuestoConvenio({
+    sigma: esc.alConvenio ? sigmaConvenio : null, celdaPersonas: `$B$${fPlantel}`,
+  })
   for (const f of esc.filas) push(f)
   blanco()
 
   // ── 1.3 · LAS QUINCENAS ──
   push([seccion('1.3', 'Las quincenas que faltan hasta diciembre')])
   const fHpd = push([sub('Horas por persona y día — medidas')])
-  push(['Quincena', 'Hasta', 'Se paga el', 'Días hábiles', 'Personas', 'Horas por persona', 'Σ $/hora del mes', 'Proyectado'])
+  // EL ENCABEZADO DICE CUÁL DE LAS DOS Σ ES. Dejarlo en "Σ $/hora del mes" con la base cambiada sería
+  // el rótulo que hace creer que el número significa otra cosa — el mismo defecto que tenía "Ajuste
+  // inflación" en Oficina después de dejar de ajustar por inflación.
+  push(['Quincena', 'Hasta', 'Se paga el', 'Días hábiles', 'Personas', 'Horas por persona',
+    esc.alConvenio ? 'Σ $/hora convenio' : 'Σ $/hora pactada', 'Proyectado'])
   const p0 = filas.length + 1
   pendientes.forEach((q, i) => {
     const r = p0 + i
@@ -968,6 +990,15 @@ async function main() {
   console.log(`paritaria: tramo del último mes publicado ${tramoUlt ? `${(tramoUlt.pct * 100).toFixed(2)}% (${tramoUlt.origen})` : '—'} · acuerdo hasta ${VIGENCIA_HASTA}`)
   for (const d of contrastarEscala(escalones)) console.warn(`  ⚠ escala verificada el ${VERIFICADA_EL}: ${d}`)
   const escalonVigente = escalonDe(escalones, `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`)
+  // LA BASE AL 100% DEL CONVENIO, DICHA EN LA CORRIDA. Este número NO es el que se escribe —la pestaña
+  // lo calcula por fórmula viva—: es el mismo cálculo por otro camino. Un producto escalar de
+  // referencias de celdas se puede escribir mal de mil maneras y ninguna da error; tener el número
+  // esperado en el log es lo único que permite notarlo antes de que llegue al Sheet.
+  const sigmaConv = sigmaConvenioDelPlantel(espejo, bloqueBase, escalonVigente)
+  const pesos = (n) => `$${Math.round(n).toLocaleString('es-AR')}`
+  console.log(`convenio 100%: Σ $/hora del plantel al convenio ${pesos(sigmaConv.total)} sobre ${sigmaConv.personas} persona(s)`
+    + ` · ${sigmaConv.porCategoria.map((c) => `${c.personas}×${c.convenio} ${pesos(c.basico)}`).join(' · ') || 'sin escala'}`
+    + (sigmaConv.sinEscala.length ? ` · ⚠ SIN ESCALA: ${sigmaConv.sinEscala.join(', ')}` : ''))
 
   // ── LA OTRA MITAD DE LA NÓMINA ──
   const espejoOfi = await google.readSheetValues(ID, `${ESPEJO_OFI}!A1:AA990`)

@@ -350,21 +350,120 @@ test('el supuesto de la proyección se declara CON EL DATO, y ningún mes queda 
   assert.match(glosa2, /Mayo \+2,4%/, 'la línea trae un mes escrito a mano: no siguió a la réplica')
 })
 
-test('la pestaña le PASA al motor cuál es el mes base de obra: si no, obra se come un aumento de más', () => {
-  // El motor sabe anclar la Σ $/hora en el mes de obra, pero sólo si alguien le dice cuál es. Este es
-  // el cable: con Oficina un mes atrás, el cuadro arranca en junio y la Σ tiene que dividir por la
-  // fila de julio, no por la primera. Sin el `periodoBase`, la proyección entera sube 2,1% en silencio.
+test('CADA Σ SE ANCLA EN EL MES DE SU PROPIA FUENTE: la del convenio en el escalón, la pactada en obra', () => {
+  // ═══ EL DEFECTO QUE ESTE TEST CUIDA, Y POR QUÉ CAMBIÓ DE ANCLA EL 07/08 ═══
+  //
+  // El cuadro 1.2 arranca en el mes MÁS VIEJO de los tres bloques —casi siempre el de Oficina, que va
+  // atrasada—. Si la Σ se divide por el factor de una fila que no es la de SU mes, la proyección entera
+  // se lleva un tramo de paritaria de más o de menos, en silencio y con un total plausible.
+  //
+  // Cuál es "su mes" depende de la fuente, y son dos distintas:
+  //   · la Σ PACTADA sale del plantel de la última quincena CERRADA de obra  → `periodoBase`.
+  //   · la Σ del CONVENIO sale de las celdas «Básico convenio» de 1.1, que leen el escalón VIGENTE de
+  //     la réplica —el mes en curso, un mes por delante—                     → `periodoConvenio`.
+  // Anclar la del convenio en el mes de obra le sumaría el tramo de agosto dos veces.
   const mesesOfiAtras = mesesDelMotor(new Date(2026, 6, 31), PEND, [new Date(2026, 5, 30)])
   assert.equal(mesesOfiAtras[0].periodo, '2026-06')
-  const g2 = grilla({
+  const conEscala = grilla({
     bloques: BLOQUES, pendientes: PEND, bloquesOfi: [{ mes: 6, inicio: 5, fin: 8 }],
     ultimoDiaOfi: new Date(2026, 5, 30), escalones: ESC, bloqueBase: BLOQUES[1],
     categorias: ['OF'], personasBase: 16, escalonVigente: escalonDe(ESC, '2026-08'),
     meses: mesesOfiAtras, hoy: HOY, periodoBase: '2026-07',
   })
-  const rJulio = g2.esc.f0 + mesesOfiAtras.findIndex((m) => m.periodo === '2026-07')
-  const sigmas = g2.filas.slice(g2.esc.f0 - 1, g2.esc.f1).map((f) => String(f[5]))
-  for (const s of sigmas) assert.match(s, new RegExp(`/\\$E\\$${rJulio};`), `la Σ quedó anclada fuera del mes de obra: ${s}`)
+  const rAgosto = conEscala.esc.f0 + mesesOfiAtras.findIndex((m) => m.periodo === '2026-08')
+  const sigmas = conEscala.filas.slice(conEscala.esc.f0 - 1, conEscala.esc.f1).map((f) => String(f[5]))
+  for (const s of sigmas) {
+    assert.match(s, new RegExp(`/\\$E\\$${rAgosto};`), `la Σ del convenio quedó anclada fuera del mes del escalón: ${s}`)
+    assert.match(s, /SUMPRODUCT\(\$B\$\d+:\$B\$\d+;\$F\$\d+:\$F\$\d+\)/, `la base dejó de ser el convenio: ${s}`)
+  }
+
+  // SIN ESCALA VIGENTE la proyección vuelve al jornal PACTADO — y entonces el ancla vuelve a ser el mes
+  // base de obra. Si alguien deja el ancla del convenio en el camino de respaldo, obra se come el
+  // aumento de agosto: es el defecto A3 bis, que sigue vivo en ese camino.
+  const sinEscala = grilla({
+    bloques: BLOQUES, pendientes: PEND, bloquesOfi: [{ mes: 6, inicio: 5, fin: 8 }],
+    ultimoDiaOfi: new Date(2026, 5, 30), escalones: ESC, bloqueBase: BLOQUES[1],
+    categorias: ['OF'], personasBase: 16, escalonVigente: null,
+    meses: mesesOfiAtras, hoy: HOY, periodoBase: '2026-07',
+  })
+  const rJulio = sinEscala.esc.f0 + mesesOfiAtras.findIndex((m) => m.periodo === '2026-07')
+  for (const f of sinEscala.filas.slice(sinEscala.esc.f0 - 1, sinEscala.esc.f1)) {
+    assert.match(String(f[5]), new RegExp(`/\\$E\\$${rJulio};`), `sin escala la Σ pactada quedó fuera del mes de obra: ${f[5]}`)
+    assert.doesNotMatch(String(f[5]), /SUMPRODUCT/, 'sin escala no puede valuar al convenio: no hay convenio que leer')
+  }
+})
+
+test('LA CADENA COMPLETA: el plantel del espejo llega valuado AL CONVENIO hasta JORNALES_PROY_TOTAL', () => {
+  // ═══ LA ORDEN (07/08) ═══
+  // *"quiero q realices la proyeccion de las quincenas futuras de los obreros considerando que se paga
+  // el 100% de lo q indica la hora del convenio"*. Este test recorre el cable entero: si se corta en
+  // cualquier eslabón, la proyección vuelve al jornal PACTADO —que está ~15% abajo de la escala— y el
+  // total sigue siendo un número plausible que nadie puede distinguir a ojo.
+  const p = gm.plantel
+  // 1 · las personas por categoría salen del espejo por COUNTIFS, no de una lista en el código.
+  assert.match(String(gm.filas[p.fPrimera - 1][1]), /COUNTIFS\('_J_OBREROS'!\$D\$\d+:\$D\$\d+/)
+  // 2 · el básico de cada categoría sale de la réplica del convenio.
+  assert.match(String(gm.filas[p.fPrimera - 1][5]), /INDEX\('_UOCRA_RAW'!/)
+  // 3 · la Σ del cuadro 1.2 es el producto escalar de esas dos columnas — y de NINGÚN número pegado.
+  const fEsc = String(gm.filas[gm.esc.f0 - 1][5])
+  assert.equal(gm.esc.alConvenio, true, 'con escala vigente la proyección tiene que valuar al convenio')
+  assert.match(fEsc, new RegExp(`SUMPRODUCT\\(\\$B\\$${p.fPrimera}:\\$B\\$${p.fUltima};\\$F\\$${p.fPrimera}:\\$F\\$${p.fUltima}\\)`),
+    `la Σ del cuadro 1.2 dejó de salir del bloque 1.1: ${fEsc}`)
+  assert.doesNotMatch(fEsc, /\d{4,}/, 'apareció un importe estampado donde tiene que haber referencias')
+  // 4 · el encabezado no puede mentir sobre cuál de las dos Σ es la que está abajo. Es el defecto de
+  //     "Ajuste inflación" en Oficina: el rótulo sobrevivió al criterio que lo justificaba.
+  assert.equal(String(gm.filas[gm.esc.f0 - 2][5]), 'Σ $/hora convenio', 'el encabezado de 1.2 quedó con la base vieja')
+  assert.equal(String(gm.filas[gm.p0 - 2][6]), 'Σ $/hora convenio', 'el encabezado de 1.3 quedó con la base vieja')
+  // 5 · cada quincena proyectada busca SU mes en ese cuadro y multiplica por horas × días…
+  const q = gm.filas[gm.p0 - 1]
+  assert.match(String(q[6]), new RegExp(`INDEX\\(\\$F\\$${gm.esc.f0}:\\$F\\$${gm.esc.f1};MATCH\\(EOMONTH\\(`))
+  assert.match(String(q[7]), /^=IFERROR\(G\d+\*F\d+\*D\d+/)
+  // 6 · …y esa columna H es la que publica el rango que consumen Cargas Sociales, el Libro, CAJA y los
+  //     cash flows. Si alguien la mueve de columna, la base nueva no llega a ninguna otra pestaña.
+  const proy = rangosDeJornales(gm).find((x) => x.nombre === 'JORNALES_PROY_TOTAL')
+  assert.equal(proy.c0, 7, 'JORNALES_PROY_TOTAL dejó de apuntar a la columna donde cae la valuación al convenio')
+  assert.equal(proy.r0, gm.p0)
+})
+
+test('EL SUPUESTO SE LEE EN LA PESTAÑA, ARRIBA DEL CUADRO QUE LO USA', () => {
+  // Un número que se lee como un hecho y es una hipótesis es peor que no tenerlo: acá abajo hay diez
+  // quincenas valuadas a una escala que hoy NO se paga.
+  const linea = gm.filas.map((f) => String(f[0] ?? '')).find((c) => /SUPUESTO DEL DUEÑO/.test(c))
+  assert.ok(linea, 'desapareció la línea que declara que la proyección asume el 100% del convenio')
+  assert.match(linea, /100% DEL CONVENIO/)
+  assert.match(linea, /POR DEBAJO/, 'sin esto se lee como que hoy pagamos la escala')
+  // Va ANTES del cuadro 1.2, que es el que la aplica — no al final de la pestaña.
+  assert.ok(gm.filas.findIndex((f) => /SUPUESTO DEL DUEÑO/.test(String(f[0] ?? ''))) < gm.esc.f0 - 1)
+  // Y el bloque 1.1 —pactado contra convenio— NO se toca: esa comparación sigue siendo un hecho, y es
+  // la que prueba que el supuesto no es gratis.
+  const estado = String(gm.filas[gm.plantel.fPrimera - 1][7])
+  assert.match(estado, /por debajo del convenio/)
+  assert.match(String(gm.filas[gm.plantel.fPrimera - 1][2]), /SUMIFS\('_J_OBREROS'!\$W/, 'el pactado dejó de leerse del espejo')
+})
+
+test('LA LÍNEA LA DECIDE EL CUADRO: tener la escala a mano no es haberla podido usar', () => {
+  // EL DEFECTO QUE ESTO ATRAPA, encontrado al revertir el arreglo a propósito (07/08). La línea se
+  // emitía mirando `escalonVigente` y el cuadro decidía con `alConvenio`, que además exige que el mes
+  // del escalón esté EN el cuadro para tener dónde anclar. Con la escala presente pero su mes fuera de
+  // la tabla, la pestaña anunciaba "100% DEL CONVENIO" arriba de una proyección hecha sobre el jornal
+  // PACTADO. Dos flags para la misma decisión: el modo de falla más caro de este libro.
+  const mesesSinAgosto = mesesDelMotor(new Date(2026, 5, 30), [
+    { desde: new Date(2026, 6, 1), hasta: new Date(2026, 6, 15) },
+  ], [new Date(2026, 5, 30)])
+  assert.ok(!mesesSinAgosto.some((m) => m.periodo === '2026-08'), 'la fixture tiene que dejar agosto afuera')
+  const g2 = grilla({
+    bloques: BLOQUES, pendientes: [{ desde: new Date(2026, 6, 1), hasta: new Date(2026, 6, 15) }],
+    bloquesOfi: [{ mes: 6, inicio: 5, fin: 8 }], ultimoDiaOfi: new Date(2026, 5, 30),
+    escalones: ESC, bloqueBase: BLOQUES[1], categorias: ['OF'], personasBase: 16,
+    // La escala de agosto EXISTE y llega al generador… pero su mes no está en el cuadro del escalón.
+    escalonVigente: escalonDe(ESC, '2026-08'),
+    meses: mesesSinAgosto, hoy: HOY, periodoBase: '2026-06',
+  })
+  assert.equal(g2.esc.alConvenio, false, 'sin el mes del escalón en el cuadro no hay dónde anclar la Σ')
+  const linea = g2.filas.map((f) => String(f[0] ?? '')).find((c) => /PACTADO|SUPUESTO DEL DUEÑO/.test(c))
+  assert.match(linea, /PACTADO/, 'la pestaña anuncia el convenio y el cuadro está usando el pactado')
+  assert.doesNotMatch(linea, /SUPUESTO DEL DUEÑO/)
+  assert.equal(String(g2.filas[g2.p0 - 2][6]), 'Σ $/hora pactada', 'el encabezado también tiene que decir la verdad')
 })
 
 test('LA ESCALA VERIFICADA A MANO CONTROLA A LA RÉPLICA — y calla cuando coinciden', () => {
