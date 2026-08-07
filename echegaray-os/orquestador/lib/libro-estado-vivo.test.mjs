@@ -16,7 +16,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
-  celdaEstado, columnaEstadoDeCompras, estadosDecorados, ESTADOS_VIVOS, MARCA_PAGADO,
+  celdaEstado, celdaImporte, columnaEstadoDeCompras, columnasVivasDeCompras,
+  estadosDecorados, ESTADOS_VIVOS, MARCA_PAGADO,
 } from './libro-estado-vivo.mjs'
 import { estaPagada, NOMBRES_COMPRAS } from './libro-extractores-compras.mjs'
 import { terminoLibro, LIBRO } from './libro-sumas.mjs'
@@ -182,4 +183,49 @@ test('el generador escribe la columna H por `celdaEstado`, no por `m.estado`', (
     'la columna H volvió a ser `m.estado` pegado: el pago del dueño deja de verse hasta la regeneración')
   // La letra viaja desde la lectura de Compras, resuelta por rótulo — no escrita a mano en el script.
   assert.ok(/columnaEstadoDeCompras\(compras\)/.test(fuente))
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL IMPORTE VIVO — el pago PARCIAL descuenta la COMPROMETIDA en el acto (07/08)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+const movImporte = (estado, extra = {}) => ({
+  importe: 1300000, signo: -1, estado, saldoVivo: true,
+  origen: { pestana: 'Compras', fila: 832 }, ...extra,
+})
+const COLS_VIVAS = { estado: 'X', total: 'O', montoPagado: 'T' }
+
+test('EL SALDO DE UNA FILA IMPAGA ES FÓRMULA VIVA: Total − Monto Pagado, nunca negativo', () => {
+  // $2M parciales sobre $3,3M dejaban la fila "Pendiente": el estado vivo no la promovía, el libro
+  // mostraba el saldo de la última corrida, DISPONIBLE bajaba en vivo y la diferencia la comía LIBRE.
+  const f = celdaImporte(movImporte('PROYECTADO'), COLS_VIVAS)
+  assert.equal(f, '=MAX(0;N(Compras!$O$832)-N(Compras!$T$832))')
+  assert.ok(!String(f).includes(','), 'locale es-AR: sin comas')
+})
+
+test('SÓLO EL SALDO PURO VA VIVO: los demás casos conservan el valor pegado', () => {
+  // Una fila partida por cheques en vuelo lleva debe−enVuelo de importe: pisarla con O−T contaría
+  // dos veces lo que ya viaja en las cuotas del cheque.
+  assert.equal(celdaImporte(movImporte('PROYECTADO', { saldoVivo: false }), COLS_VIVAS), 1300000)
+  assert.equal(celdaImporte(movImporte('REAL'), COLS_VIVAS), 1300000, 'lo REAL ya salió: valor pegado')
+  assert.equal(celdaImporte(movImporte('PROYECTADO', { signo: 1 }), COLS_VIVAS), 1300000, 'una nota de crédito no es un saldo a pagar')
+  assert.equal(celdaImporte(movImporte('PROYECTADO', { origen: { pestana: 'Cobranzas', fila: 5 } }), COLS_VIVAS), 1300000)
+  assert.equal(celdaImporte(movImporte('PROYECTADO', { origen: { pestana: 'Compras', fila: '457 · cheque 12' } }), COLS_VIVAS), 1300000)
+  assert.equal(celdaImporte(movImporte('PROYECTADO'), null), 1300000, 'sin columnas resueltas, falla cerrado al valor')
+})
+
+test('LAS TRES LETRAS SE RESUELVEN POR RÓTULO, o nada va vivo', () => {
+  const CAB = ['id', 'x', 'x', 'x', 'Proveedor', 'CUIT (OS)', 'x', 'N° Comprobante', 'x', 'Cliente / Asignación',
+    'Detalles / Obra', 'x', 'x', 'x', 'Total', 'Tipo pago', 'x', 'x', 'x', 'Monto Pagado', 'x', 'x', 'x', 'Estado',
+    'x', 'x', 'x', 'x', 'Rubro de caja', 'Fecha de caja']
+  const cols = columnasVivasDeCompras([[], [], CAB])
+  assert.deepEqual(cols, { estado: 'X', total: 'O', montoPagado: 'T' })
+  assert.equal(columnasVivasDeCompras([[], [], ['nada']]), null, 'encabezado irreconocible → null → valores pegados')
+})
+
+test('EL ESCRITOR USA LA CELDA VIVA DEL IMPORTE, no `m.importe` pegado', () => {
+  const fuente = fs.readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), '../scripts/libro-movimientos-pestana.mjs'), 'utf8')
+  assert.ok(/celdaImporte\(m, colsVivas\)/.test(fuente),
+    'la columna C volvió a ser `m.importe`: el parcial del dueño deja de descontar hasta la regeneración')
 })

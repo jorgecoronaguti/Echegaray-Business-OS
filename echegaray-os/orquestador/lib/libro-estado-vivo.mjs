@@ -94,6 +94,47 @@ export function columnaEstadoDeCompras(filas = []) {
 }
 
 /**
+ * NÚCLEO PURO: las tres letras que las celdas vivas necesitan de Compras — estado, total y monto
+ * pagado — resueltas por rótulo. Con cualquiera sin resolver, devuelve null y todo cae al valor
+ * pegado (falla cerrado, comportamiento anterior).
+ */
+export function columnasVivasDeCompras(filas = []) {
+  try {
+    const c = columnasDeCompras(filas)
+    return { estado: letra(c.estado), total: letra(c.importe), montoPagado: letra(c.montoPagado) }
+  } catch { return null }
+}
+
+/**
+ * NÚCLEO PURO: el IMPORTE de la fila, vivo cuando el saldo puede cambiar entre corridas.
+ *
+ * ═══ EL PAGO PARCIAL TAMBIÉN BAJA LA COMPROMETIDA — EN EL ACTO (07/08, textual del dueño) ═══
+ *
+ * "cuando se pagan los compromisos deben salir de ahí". El estado vivo cubría el pago TOTAL (X pasa
+ * a "Pagado" → la fila se promueve a REAL), pero un pago PARCIAL deja la fila en "Pendiente" con el
+ * Monto Pagado cargado: el libro seguía mostrando el saldo de la última regeneración, DISPONIBLE
+ * bajaba en vivo por el otro camino, y la diferencia se la comía LIBRE. Con el importe como fórmula
+ * MAX(0; Total − Monto Pagado), cargar un parcial descuenta la COMPROMETIDA en el mismo instante.
+ *
+ * SÓLO para la fila cuyo importe de generación ES el saldo puro (`saldoVivo`): una fila partida por
+ * cheques en vuelo lleva `debe − enVuelo`, y pisarla con O−T contaría dos veces lo que ya viaja en
+ * las cuotas del cheque.
+ *
+ * @param {{importe:number, signo:number, estado:string, saldoVivo?:boolean, origen:{pestana:string, fila:number|string|null}}} m
+ * @param {{estado:string, total:string, montoPagado:string}|null} cols
+ * @returns {number|string}
+ */
+export function celdaImporte(m = {}, cols = null) {
+  if (!cols?.total || !cols?.montoPagado) return m?.importe
+  if (m?.origen?.pestana !== PESTANA_COMPRAS) return m?.importe
+  if (!ESTADOS_VIVOS.includes(m?.estado)) return m?.importe
+  if (m?.signo !== -1 || m?.saldoVivo !== true) return m?.importe
+  const fila = m?.origen?.fila
+  if (!Number.isInteger(fila) || fila < 1) return m?.importe
+  return `=MAX(0;N(${PESTANA_COMPRAS}!$${cols.total}$${fila})-N(${PESTANA_COMPRAS}!$${cols.montoPagado}$${fila}))`
+}
+
+/**
  * NÚCLEO PURO: lo que va escrito en la columna H de `_MOVIMIENTOS` para este movimiento.
  *
  * Devuelve el estado como TEXTO PLANO en todos los casos salvo uno: la fila que salió de Compras sin

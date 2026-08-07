@@ -40,7 +40,7 @@ import { cruzar, chequesDelRegistro } from '../lib/cruce-cheque-factura.mjs'
 import { endososDeCartera } from '../lib/libro-endosos.mjs'
 import { debitosDelExtracto, corteDelExtracto, pagosDeResumen, chequesCubiertosPorBanco } from '../lib/libro-respaldo-banco.mjs'
 import { ROTULOS_CALENDARIO, CALENDARIO_IMPUESTOS } from '../lib/cash-flow-lineas.mjs'
-import { celdaEstado, columnaEstadoDeCompras, estadosDecorados } from '../lib/libro-estado-vivo.mjs'
+import { celdaEstado, celdaImporte, columnaEstadoDeCompras, columnasVivasDeCompras, estadosDecorados } from '../lib/libro-estado-vivo.mjs'
 import { total } from '../lib/patron-pestana.mjs'
 import { ubicarRegistro } from './cheques-emitidos-tablero.mjs'
 
@@ -176,6 +176,7 @@ async function extraerDeLasFuentes(google, corte) {
   // extractores: escribir "X" en la fórmula la dejaría apuntando a la columna vieja el día que la
   // planilla mueva una columna, mientras el extractor se adapta solo. Ver lib/libro-estado-vivo.mjs.
   const colEstadoCompras = columnaEstadoDeCompras(compras)
+  const colsVivas = columnasVivasDeCompras(compras)
   const decorados = estadosDecorados(compras)
   if (decorados.length) {
     console.warn(`  ⚠ ${decorados.length} fila(s) de Compras dicen "Pagado" con decoración `
@@ -185,6 +186,7 @@ async function extraerDeLasFuentes(google, corte) {
 
   return {
     colEstadoCompras,
+    colsVivas,
     fuentes: {
       Compras: deCompras(compras, corte, { cruce, cargasCubiertas }),
       // La provisión de los servicios recurrentes (Movistar, seguros, honorarios): lo esperado del
@@ -219,7 +221,7 @@ async function extraerDeLasFuentes(google, corte) {
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const corte = hoySerial()
-  const { fuentes: porFuente, excluidos, corteBanco, debitosBanco, colEstadoCompras } = await extraerDeLasFuentes(google, corte)
+  const { fuentes: porFuente, excluidos, corteBanco, debitosBanco, colEstadoCompras, colsVivas } = await extraerDeLasFuentes(google, corte)
   const todos = Object.values(porFuente).flat()
   // ═══ EL EXTRACTO CORRIGE LOS CHEQUES QUE LAS PESTAÑAS TODAVÍA DAN POR VIVOS (06/08) ═══
   //
@@ -272,7 +274,7 @@ async function main() {
     + '— pasan solas a REAL cuando la fila dice "Pagado"')
 
   if (DRY) { console.log('\n--dry: no escribí nada.'); return }
-  await escribirYVerificar(google, consolidado, colEstadoCompras)
+  await escribirYVerificar(google, consolidado, colEstadoCompras, colsVivas)
 }
 
 /**
@@ -287,15 +289,17 @@ async function main() {
  * y compararlo contra `celdaEstado`, no contra `m.estado`: para una fila autopromovida el archivo
  * dice REAL y la memoria del generador dice PROYECTADO, y las dos tienen razón.
  */
-async function escribirYVerificar(google, consolidado, colEstadoCompras = null) {
+async function escribirYVerificar(google, consolidado, colEstadoCompras = null, colsVivas = null) {
   // ── ESPEJO, ordenada por fecha, con encabezado ──────────────────────────────────────────────────
   const filas = [ENCABEZADO, ...consolidado
     .slice()
     .sort((a, b) => a.fecha - b.fecha)
-    // LA COLUMNA H NO ES `m.estado`: es lo que `celdaEstado` decide escribir. Para las filas de
-    // Compras todavía impagas es una FÓRMULA que se pregunta sola si el dueño ya marcó el pago —
-    // entre regeneraciones, un pago hecho dejaba de ser un pago hecho para la tarjeta COMPROMETIDA.
-    .map((m) => [m.fecha, m.signo, m.importe, m.moneda, m.concepto, m.rubro, m.actividad,
+    // LA COLUMNA H NO ES `m.estado` NI LA C ES `m.importe`: son lo que las celdas vivas deciden
+    // escribir. Para las filas de Compras todavía impagas, H es una FÓRMULA que se pregunta sola si
+    // el dueño ya marcó el pago, y C es el SALDO VIVO Total−Pagado — un pago PARCIAL descuenta la
+    // COMPROMETIDA en el acto, sin esperar regeneración (07/08, "cuando se pagan los compromisos
+    // deben salir de ahí"). Criterio y exclusiones en lib/libro-estado-vivo.mjs.
+    .map((m) => [m.fecha, m.signo, celdaImporte(m, colsVivas), m.moneda, m.concepto, m.rubro, m.actividad,
       celdaEstado(m, colEstadoCompras),
       m.instrumento, m.contraparte, m.cuit, m.comprobante, m.obra, m.origen.pestana, m.origen.fila ?? '', m.clave,
       m.cliente])]
