@@ -74,7 +74,7 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
+import { escribirPreservando, VACIO, sinCentinelas } from '../lib/preservar-anotaciones.mjs'
 import { columna, aRangoApi, verificarRangos, explicarProblemas } from '../lib/rangos-con-nombre.mjs'
 import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 import { seccion, sub, total as rotuloTotal, auditarPatron } from '../lib/patron-pestana.mjs'
@@ -1325,30 +1325,51 @@ async function formatear(google, sheetId, filas, g) {
 export function requestsDeFormato(sheetId, filas, g) {
   // NINGUNA NOTA. La procedencia vive en el subtítulo de la pestaña, una vez.
   const { requests: notas } = borrarNotas(filas, ANCHO - 1, sheetId)
+  // ═══ LA PIEL MIRA LA PESTAÑA, NO EL PROTOCOLO DE ESCRITURA (06/08) ═══
+  //
+  // El centinela VACIO significa "es mi celda y va vacía", pero es una CADENA NO VACÍA. `skinRequests`
+  // decide por contenido —y sólo titula una fila si está sola en su fila—, así que con el ancho entero
+  // relleno de centinelas ningún título de sección de esta pestaña recibía su formato: la pestaña se
+  // dibujaba en un solo tono y las reglas salían del ancho de la hoja en vez del ancho del bloque.
+  // Se le pasa lo que va a ver el lector. El resto de los pedidos usan `filas` sólo para contar filas.
+  const vista = sinCentinelas(filas)
   const rg = (r0, r1, c0 = 0, c1 = ANCHO) => ({ sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
   const moneda = { type: 'CURRENCY', pattern: '"$"#,##0;[Red]-"$"#,##0;"—"' }
   const reqs = [
     ...notas,
-    ...skinRequests({ sheetId, filas, cols: ANCHO, congeladas: 2, titular: g.titular, filasHoja: filas.length }),
+    ...skinRequests({ sheetId, filas: vista, cols: ANCHO, congeladas: 2, titular: g.titular, filasHoja: filas.length }),
     // Todo lo que es plata, a la derecha y con cifras tabulares.
     { repeatCell: { range: rg(3, filas.length, 1, ANCHO), cell: { userEnteredFormat: { numberFormat: moneda, horizontalAlignment: 'RIGHT' } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment)' } },
     // La prosa se pinta como TEXTO decidida por contenido, DESPUÉS del barrido de moneda — antes de
     // él, el repeatCell la pisaba y "ver Cargas Sociales" quedaba como un número roto (06/08).
-    ...requestsTextoPorContenido(sheetId, filas).requests,
+    ...requestsTextoPorContenido(sheetId, vista).requests,
     // Las celdas cuya PROSA sale de una fórmula (el pase por contenido las saltea: su contenido
     // empieza con '='): formato TEXTO explícito, decidido por lo que RINDEN, no por lo que contienen.
+    // El ajuste de texto NO se declara acá: lo gobierna la regla de abajo, que vale para la pestaña
+    // entera. Estas dos celdas pedían CLIP, que contradecía el derrame del título y dejaba la frase
+    // cortada a los 112px de su columna aunque a la derecha no hubiera nada que tapar.
     ...(g.celdasDeProsaFormula ?? []).map(({ fila, col }) => ({
       repeatCell: {
         range: rg(fila - 1, fila, col, col + 1),
-        cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', wrapStrategy: 'CLIP' } },
-        fields: 'userEnteredFormat(numberFormat,horizontalAlignment,wrapStrategy)',
+        cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT' } },
+        fields: 'userEnteredFormat(numberFormat,horizontalAlignment)',
       },
     })),
     { updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: 0, endIndex: filas.length }, properties: { pixelSize: 21 }, fields: 'pixelSize' } },
-    // EL TÍTULO Y EL SUBTÍTULO DERRAMAN, NO ENVUELVEN. A su derecha no hay ningún dato, así que se
-    // leen de corrido en un renglón; envolviéndose quedaban partidos en dos y la fila de 21px sólo
-    // mostraba la primera mitad — un subtítulo cortado es peor que no tenerlo.
-    { repeatCell: { range: rg(0, 2, 0, ANCHO), cell: { userEnteredFormat: { wrapStrategy: 'OVERFLOW_CELL' } }, fields: 'userEnteredFormat.wrapStrategy' } },
+    // ═══ TODA LA PESTAÑA DERRAMA, NO ENVUELVE (06/08) ═══
+    //
+    // Esta regla existía sólo para el título y el subtítulo, con este razonamiento: a su derecha no
+    // hay dato, así que se leen de corrido en un renglón; envolviéndose quedaban partidos en dos y la
+    // fila de 21px sólo mostraba la primera mitad. Un subtítulo cortado es peor que no tenerlo.
+    //
+    // El razonamiento vale para TODAS las filas, porque TODAS miden 21px. El generador no declaraba
+    // nada para el cuerpo, así que cada celda se quedaba con el ajuste que le hubiera dejado el layout
+    // anterior o una persona — y el título "1.3 · LAS QUINCENAS QUE FALTAN HASTA DICIEMBRE" se partía
+    // en dos renglones dentro de una fila de uno: en pantalla, "DICIEMBRE" pisando la fila de abajo.
+    //
+    // DERRAMAR NO ES INVADIR: el texto sólo se extiende sobre celdas VACÍAS. Donde hay un número al
+    // lado, se recorta igual que antes. Lo que se elimina es la fila que se parte y se corta sola.
+    { repeatCell: { range: rg(0, filas.length, 0, ANCHO), cell: { userEnteredFormat: { wrapStrategy: 'OVERFLOW_CELL' } }, fields: 'userEnteredFormat.wrapStrategy' } },
     { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 330 }, fields: 'pixelSize' } },
     { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: ANCHO }, properties: { pixelSize: 112 }, fields: 'pixelSize' } },
   ]

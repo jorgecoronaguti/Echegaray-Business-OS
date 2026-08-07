@@ -22,10 +22,45 @@ export const BLANCO = { red: 1, green: 1, blue: 1 }
 
 const txt = (color, { bold = false, size = 10, italic = false } = {}) => ({ foregroundColor: color, bold, italic, fontSize: size, fontFamily: 'Arial' })
 
+// ═══ UNA SOLA GRAMÁTICA, NO DOS (06/08) ═══
+//
+// La estructura de una pestaña la DECLARA `patron-pestana.mjs` —es el módulo que la audita— y acá se
+// tenía una segunda copia, más pobre, para dibujarla. Las dos no coincidían, y donde no coincidían el
+// auditor daba la pestaña por buena mientras la pantalla mostraba otra cosa:
+//
+//   · las SUB-SECCIONES ("1.1 · EL PLANTEL BASE") no matcheaban nada acá: los tres sub-bloques de
+//     Jornales se dibujaban con el mismo cuerpo que una fila de datos.
+//   · el TÍTULO DEL HERO ("JORNALES Y SUELDOS — la posición") tampoco: la única cifra que la pestaña
+//     contesta abría sin ningún marcador.
+//   · "Categoría", "Quincena", "Persona"… no estaban en la lista de encabezados de acá, así que esas
+//     filas no recibían ni la versalita apagada ni la regla de abajo.
+//
+// El resultado era una pestaña de un solo tono, que es exactamente lo que el dueño lee como "no se
+// entiende". Se importa la gramática en vez de repetirla: si mañana cambia, cambia en un solo lugar.
+import { ES_SECCION_NUM, ES_BLOQUE_SIN_NUMERO, ES_ENCABEZADO as ES_ENCABEZADO_GRAMATICA } from './patron-pestana.mjs'
+
 /** Reglas de detección por el contenido de la columna A. El orden importa: total antes que sección. */
+// El "⚠ " es propio de la piel y no de la gramática: una alarma se dibuja como un total (rulada y en
+// negrita) porque es lo que hay que ver primero, aunque no sea la suma de nada.
 export const ES_TOTAL = /^\s*(⇒|total\b|⚠ )/i
+export const ES_ENCABEZADO = ES_ENCABEZADO_GRAMATICA
+/**
+ * Una sección de primer nivel. Se conserva TAL CUAL estaba: hay pestañas que numeran con punto
+ * ("1. IVA REAL DE ARCA") y no con "·", y cambiarla por la del patrón las dejaría sin ningún título.
+ * No matchea "1.1 · …" —después del punto exige un espacio— así que la sub-sección no se le cuela.
+ */
 export const ES_SECCION = /^\s*\d+\s*[.\-·]\s+\S|^[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ0-9 ,.·/—-]{10,}$/
-export const ES_ENCABEZADO = /^(per[ií]odo|concepto|plan|proveedor|obra|rubro|familia|cuenta|tipo|n[°º]|fecha|mes|semana)\b/i
+/**
+ * El bloque del hero: la tirada en versalita con su aclaración en minúscula detrás
+ * ("JORNALES Y SUELDOS — la posición"). Es el único bloque que la gramática admite sin número, y
+ * abre la cifra que la pestaña contesta: sin esto arrancaba sin ningún marcador.
+ */
+export const ES_BLOQUE_HERO = ES_BLOQUE_SIN_NUMERO
+/** Una sub-sección: "1.1 · TÍTULO". Cuelga de la sección abierta y pesa menos que ella. */
+export const ES_SUBSECCION = (a) => {
+  const m = String(a).match(ES_SECCION_NUM)
+  return !!m && m[2] !== undefined
+}
 
 /**
  * NÚCLEO PURO: los requests de formato de la piel, a partir del contenido escrito.
@@ -109,8 +144,18 @@ export function skinRequests({ sheetId, filas, cols, congeladas = 0, titular = 0
     // versalita —"L.R.T. — ART", el nombre de un proveedor— salía en negrita con una regla encima,
     // como si abriera un bloque nuevo. Un renglón con importes al lado nunca es un título.
     const soloEnSuFila = !(fila || []).slice(1).some((x) => String(x ?? '').trim())
-    if (soloEnSuFila && ES_SECCION.test(a)) { // Sección: tinta, negrita, hairline arriba.
+    if (!soloEnSuFila) return
+    if (ES_SECCION.test(a) || ES_BLOQUE_HERO.test(a)) { // Sección: tinta, negrita, cuerpo 11, hairline arriba.
       reqs.push(fmt(i, 'userEnteredFormat(textFormat,horizontalAlignment)', { userEnteredFormat: { textFormat: txt(INK, { bold: true, size: 11 }), horizontalAlignment: 'LEFT' } }), hairlineTop(i))
+      return
+    }
+    // ── LA SUB-SECCIÓN PESA MENOS QUE SU SECCIÓN, Y ESO ES LA JERARQUÍA ──
+    //
+    // Negrita para que se lea como un título, cuerpo 10 y SIN regla: la regla es lo que abre un bloque
+    // nuevo, y una sub-sección no abre nada — cuelga del bloque que ya está abierto. Dibujarla igual
+    // que su madre es lo que hace que el lector no sepa cuál de los dos títulos manda.
+    if (ES_SUBSECCION(a)) {
+      reqs.push(fmt(i, 'userEnteredFormat(textFormat,horizontalAlignment)', { userEnteredFormat: { textFormat: txt(INK, { bold: true, size: 10 }), horizontalAlignment: 'LEFT' } }))
     }
   })
   // ═══ EL TITULAR ES EL NÚMERO MÁS FUERTE DE LA PÁGINA ═══

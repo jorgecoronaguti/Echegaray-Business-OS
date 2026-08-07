@@ -311,6 +311,44 @@ const formatoDe = (reqs, fila, col) => {
   return fmt
 }
 
+test('EL CENTINELA NO LLEGA A LA PIEL: los títulos de sección reciben su formato', () => {
+  // ═══ EL DEFECTO (06/08) ═══
+  //
+  // VACIO significa "es mi celda y va vacía", pero es una cadena NO VACÍA. La piel sólo titula una
+  // fila si está sola en su fila, y como el generador rellena el ancho entero con el centinela, esa
+  // condición era falsa en TODAS las filas: ni un solo título de esta pestaña recibía su negrita, su
+  // cuerpo ni su regla. Cinco secciones y tres sub-secciones dibujadas como una fila de datos.
+  const reqs = requestsDeFormato(1, gm.filas, gm)
+  const vista = comoSeVe(gm)
+  const tipografiaDe = (fila) => {
+    let t = null
+    for (const r of reqs) {
+      const g = r.repeatCell
+      if (!g || fila - 1 < g.range.startRowIndex || fila - 1 >= g.range.endRowIndex) continue
+      if (g.cell?.userEnteredFormat?.textFormat) t = g.cell.userEnteredFormat.textFormat
+    }
+    return t
+  }
+  const secciones = vista.map((f, i) => [String(f[0] ?? ''), i + 1])
+    .filter(([a]) => /^\d+ · /.test(a))
+  assert.ok(secciones.length >= 5, `esperaba las cinco secciones y encontré ${secciones.length}`)
+  for (const [a, fila] of secciones) {
+    assert.equal(tipografiaDe(fila)?.bold, true, `la sección "${a.slice(0, 30)}" no está en negrita`)
+    assert.equal(tipografiaDe(fila)?.fontSize, 11, `la sección "${a.slice(0, 30)}" no tiene su cuerpo`)
+  }
+  const subs = vista.map((f, i) => [String(f[0] ?? ''), i + 1]).filter(([a]) => /^\d+\.\d+ · /.test(a))
+  assert.ok(subs.length >= 3, `esperaba 1.1, 1.2 y 1.3 y encontré ${subs.length}`)
+  for (const [a, fila] of subs) {
+    assert.equal(tipografiaDe(fila)?.bold, true, `la sub-sección "${a.slice(0, 30)}" no está en negrita`)
+    assert.equal(tipografiaDe(fila)?.fontSize, 10, `una sub-sección no pesa lo mismo que su sección`)
+  }
+  // Y las reglas se dibujan del ancho del BLOQUE. Con el centinela, `anchoDe` contaba las catorce
+  // columnas siempre y toda regla salía del ancho de la hoja: líneas largas sobre la nada.
+  const reglas = reqs.filter((r) => r.updateBorders?.top?.style === 'SOLID')
+  assert.ok(reglas.some((r) => r.updateBorders.range.endColumnIndex < 14),
+    'ninguna regla se acortó al ancho de su bloque: el centinela sigue contando como contenido')
+})
+
 test('la proyección: las horas por persona NO son plata, y la Σ $/hora SÍ', () => {
   const reqs = requestsDeFormato(1, gm.filas, gm)
   const finProy = gm.p0 + gm.nProy - 1
