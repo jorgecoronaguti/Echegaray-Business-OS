@@ -232,6 +232,32 @@ export async function publicar(google, fileId, sheetId, destinos = [], { titulo 
       malApuntados = desalineados(destinos, (d) => (leido[d.fila - f0] || [])[d.col - c0])
       const malos = new Set(malApuntados.map((m) => m.name))
       aPublicar = destinos.filter((d) => !malos.has(d.name))
+      // ═══ SI EL DESTINO NUEVO NO CONVENCE PERO EL VIEJO ESTÁ PEOR, SE MUEVE IGUAL (dictamen 07/08) ═══
+      //
+      // El fail-closed dejó dos nombres (ANEXO_DIAS_CAJA, ANEXO_DIF_CONCILIACION) apuntando a celdas
+      // VACÍAS cuando el anexo se compactó dos filas: el destino nuevo se descartó porque su valor
+      // todavía no había recalculado, y el nombre quedó clavado en una celda muerta — el control
+      // "CAJA vs Cash Flow" leyó $0 para siempre sin un solo error. Quedarse quieto sólo protege si
+      // lo que hay es mejor que lo que viene: si el rango ACTUAL apunta fuera de la pestaña o a una
+      // celda vacía, moverlo al destino calculado no puede empeorar nada, y el recálculo lo sana.
+      const porNombre = new Map(existentes.map((r) => [r.name, r]))
+      const rescatar = malApuntados.filter((m) => {
+        const actual = porNombre.get(m.name)?.range
+        // Un nombre que NO existe no se crea sobre contenido dudoso (el caso ARCA del 05/08), y uno
+        // anclado en OTRA pestaña puede estar bien donde está: sólo se rescata el que ya vive en esta
+        // pestaña con su celda actual muerta (vacía dentro del rectángulo leído, o corrida fuera de
+        // él — que es exactamente cómo quedan tras una compactación).
+        if (!actual || actual.sheetId !== sheetId) return false
+        const df = actual.startRowIndex + 1 - f0, dc = actual.startColumnIndex + 1 - c0
+        if (df < 0 || dc < 0 || df >= leido.length) return true
+        const vAct = (leido[df] || [])[dc]
+        return vAct === undefined || vAct === null || vAct === ''
+      }).map((m) => m.name)
+      if (rescatar.length) {
+        console.warn(`  ⚠ ${rescatar.length} nombre(s) con destino dudoso pero rango actual MUERTO — se mueven igual: ${rescatar.join(', ')}`)
+        const set = new Set(rescatar)
+        aPublicar = aPublicar.concat(destinos.filter((d) => set.has(d.name)))
+      }
     }
   }
 

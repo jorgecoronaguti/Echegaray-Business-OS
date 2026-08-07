@@ -14,6 +14,7 @@
 // posible que el anexo cambie de forma sin romper CAJA y al revés.
 
 import * as BANCO from './banco-santander.mjs'
+import { formulaJornalesEfectivoPosteriores, formulaOficinaEfectivoPosteriores } from './caja-posterior-al-corte.mjs'
 import { terminoLibro } from './libro-sumas.mjs'
 import { DESDE_CAJA, ANEXO } from './caja-anexo-nombres.mjs'
 import { formulaEgresoDiario } from './egreso-diario.mjs'
@@ -189,46 +190,52 @@ export function bloqueVencido(h) {
  */
 export function bloqueTrazabilidad(h) {
   const { push } = h
-  const desdeB = BANCO.MOVIMIENTOS[0].fecha
-  const hastaB = BANCO.MOVIMIENTOS[BANCO.MOVIMIENTOS.length - 1].fecha
-  const dateF = (f) => { const [a, m, d] = f.split('-').map(Number); return `DATE(${a};${m};${d})` }
-  push([`A7 · TRAZABILIDAD CONTRA EL BANCO — el extracto del ${desdeB} al ${hastaB} contra las pestañas`])
-  // SÓLO LO "COBRADO": un cobro en estado "Proyectado" no es efectivo en la caja. La primera versión
-  // los sumaba y contaba $15.000.000 que nadie había recibido, inflando el faltante con plata que no
-  // faltaba.
-  const fCob = push([`Cobrado en EFECTIVO en la ventana del extracto (Cobranzas)`, '', '', '',
-    `=SUMIFS(Cobranzas!$M$5:$M$400;Cobranzas!$N$5:$N$400;"Efectivo";Cobranzas!$O$5:$O$400;"Cobrado";Cobranzas!$Q$5:$Q$400;">="&${dateF(desdeB)};Cobranzas!$Q$5:$Q$400;"<="&${dateF(hastaB)})`,
+  // ═══ LA VENTANA FOSILIZADA ERA EL DEFECTO (dictamen 07/08) ═══
+  //
+  // La versión anterior clavaba la ventana en las fechas de la CAPTURA del extracto (22/06–22/07,
+  // constantes de banco-santander.mjs), sumaba los depósitos SIN ventana y NUNCA restaba el efectivo
+  // gastado: publicó $12.219.646 "sin explicar" que eran mayormente plata gastada y registrada — un
+  // número inventado por el método, la clase exacta que la regla de oro 3 prohíbe. La identidad
+  // completa es: todo lo cobrado en efectivo = depositado + gastado + lo que hay en el cajón HOY.
+  // Todo a historia completa (hasta HOY, para que un valor con fecha futura no entre), y el cajón es
+  // el saldo VIVO (arqueo ± posteriores), no el arqueo crudo.
+  push(['A7 · TRAZABILIDAD DEL EFECTIVO — todo lo cobrado contra depósitos, gastos y el cajón'])
+  // SÓLO LO "COBRADO": un cobro en estado "Proyectado" no es efectivo en la caja. Y hasta HOY: un
+  // "Cobrado" con fecha futura (un valor endosado, una carga adelantada) no es billete en la mano.
+  const CONEF = `(Cobranzas!$N$5:$N$400="Efectivo")*(Cobranzas!$O$5:$O$400="Cobrado")*(Cobranzas!$Q$5:$Q$400<=TODAY())`
+  const fCob = push(['Cobrado en EFECTIVO — historia completa (Cobranzas)', '', '', '',
+    `=SUMPRODUCT(${CONEF}*IF(ISNUMBER(Cobranzas!$M$5:$M$400);Cobranzas!$M$5:$M$400;0))`,
     '', ''])
   // ⚠ Mismo ID y mismo importe más de una vez. Caso real del 17/07: San Francisco pagó $16.200.000 en
   // efectivo y quedó cargado dos veces —una al cobrarlo y otra al depositarlo—. Un depósito NO es un
   // cobro. Se divide por dos porque las dos filas del par suman.
   const fDup = push(['  · de eso, cargado DOS VECES con el mismo ID', '', '', '',
-    `=SUMPRODUCT((Cobranzas!$N$5:$N$400="Efectivo")*(Cobranzas!$O$5:$O$400="Cobrado")*(Cobranzas!$Q$5:$Q$400>=${dateF(desdeB)})*(Cobranzas!$Q$5:$Q$400<=${dateF(hastaB)})*(${INDIST_COB})*IF(ISNUMBER(Cobranzas!$M$5:$M$400);Cobranzas!$M$5:$M$400;0))/2`,
+    `=SUMPRODUCT(${CONEF}*(${INDIST_COB})*IF(ISNUMBER(Cobranzas!$M$5:$M$400);Cobranzas!$M$5:$M$400;0))/2`,
     '', ''])
-  const CONEF = `(Cobranzas!$N$5:$N$400="Efectivo")*(Cobranzas!$O$5:$O$400="Cobrado")*(Cobranzas!$Q$5:$Q$400>=${dateF(desdeB)})*(Cobranzas!$Q$5:$Q$400<=${dateF(hastaB)})`
   // EL DETALLE NO VA EN LA COLUMNA DEL DINERO: es una tira larga y el ojo que recorre una columna de
   // números se choca con un párrafo. Va en la columna del rótulo, que ya tiene overflow.
   push([`=IFERROR("   · "&TEXTJOIN("   ·   ";1;ARRAYFORMULA(IF(${CONEF};TEXT(Cobranzas!$Q$5:$Q$400;"dd/mm")&"  "&IF(Cobranzas!$G$5:$G$400="";"";Cobranzas!$G$5:$G$400&"  ")&TEXT(Cobranzas!$M$5:$M$400;"$#,##0");"")));"")`,
     '', '', '', '', '', ''])
   const dep = (col) => `_BANCO_RAW!$${col}$4:$${col}`
   const CONDEP = `(${dep('E')}="entra")*ISNUMBER(SEARCH("deposito";LOWER(SUBSTITUTE(${dep('B')};"ó";"o"))))*(ISNUMBER(SEARCH("efectivo";LOWER(SUBSTITUTE(${dep('B')};"ó";"o"))))+ISNUMBER(SEARCH("efvo";LOWER(SUBSTITUTE(${dep('B')};"ó";"o"))))>0)`
-  const fDep = push(['Depositado en efectivo en esa misma ventana (extracto)', '', '', '',
+  const fDep = push(['Depositado en efectivo al banco — historia completa (extracto)', '', '', '',
     `=SUMPRODUCT(${CONDEP}*IF(ISNUMBER(${dep('C')});${dep('C')};0))`, '', ''])
   push([`=IFERROR("   · "&TEXTJOIN("   ·   ";1;ARRAYFORMULA(IF(${CONDEP};TEXT(${dep('A')};"dd/mm")&"  "&TEXT(${dep('C')};"$#,##0");"")));"")`,
     '', '', '', '', '', ''])
-  // ═══ APUNTA AL ARQUEO CRUDO, NO AL SALDO EN PESOS ═══
-  //
-  // "Caja en pesos" vale arqueo + movimientos POSTERIORES al arqueo, y esta alerta mide otra ventana
-  // (la del extracto). Leer el saldo restaría movimientos que no pertenecen a su ventana: la mezcla de
-  // períodos que la regla de oro prohíbe, y habría bajado el faltante con plata de otro mes.
-  //
-  // Y LA FECHA VA GUARDADA CON ISNUMBER: `=CAJA_ARQUEO_ARS_FECHA` sobre una celda vacía devuelve 0, y
-  // el 0 con formato de fecha se dibuja "30/12/1899". Es el defecto `fecha_cero` del auditor.
-  const fFisica = push(['Arqueo declarado de caja física (a SU fecha)', '', '', '',
-    `=N(${DESDE_CAJA.arqueoArs})`,
+  // LO GASTADO TAMBIÉN SALIÓ DEL CAJÓN — el término que faltaba y que inflaba el "sin explicar" con
+  // plata gastada y registrada. Compras por su MONTO PAGADO (los parciales también son billetes que
+  // salieron), más jornales y oficina pagados por caja. Con arqueo 0, las fórmulas de "posteriores"
+  // cubren la historia entera: todo > 0 es todo.
+  const fGasto = push(['Pagado en efectivo — Compras (monto pagado) + jornales + oficina', '', '', '',
+    `=SUMPRODUCT(('Compras'!$P$4:$P="Efectivo")*N('Compras'!$T$4:$T))`
+    + `+${formulaJornalesEfectivoPosteriores('0')}+${formulaOficinaEfectivoPosteriores('0')}`, '', ''])
+  // EL CAJÓN VIVO, NO EL ARQUEO CRUDO: con la identidad a historia completa, lo que cierra la resta
+  // es lo que HAY en la caja hoy (arqueo ± movimientos posteriores) — el mismo número de CAJA!B7.
+  const fFisica = push(['Efectivo en el cajón HOY (arqueo ± posteriores)', '', '', '',
+    `=N(${DESDE_CAJA.arqueoArs})+N(${ANEXO.efectivoNeto})`,
     `=IF(ISNUMBER(${DESDE_CAJA.arqueoArsFecha});${DESDE_CAJA.arqueoArsFecha};"")`, ''])
   const fSinExpl = push(['⇒ EFECTIVO SIN EXPLICAR', '', '', '',
-    `=E${fCob}-E${fDup}-E${fDep}-E${fFisica}`, '', ''])
+    `=E${fCob}-E${fDup}-E${fDep}-E${fGasto}-E${fFisica}`, '', ''])
 
   // ── Y DEL OTRO LADO: QUÉ SALIÓ DE LA CUENTA Y DÓNDE ESTÁ REGISTRADO ──────────────────────────────
   //

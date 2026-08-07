@@ -180,8 +180,12 @@ function bloqueCartera(h) {
   // viva. Si entra un cheque y esta pestaña no se regenera, el detalle listaría uno menos y NADIE lo
   // vería: el total seguiría estando bien.
   push(['⇒ ¿el detalle está al día? — si dice ⚠, corré la réplica y regenerá el anexo', '', '', '', '', '',
+    // CON CARTERA VACÍA EL RANGO SE INVIERTE ($C$20:$C$19) y el canario apuntaba a las filas de los
+    // ENDOSADOS que se escriben justo después (dictamen 07/08: daba "✓" de casualidad porque todo era
+    // cero — con un cheque en custodia hubiera sumado el renglón equivocado). Sin detalle, el rango
+    // es un 0 literal: el canario compara la réplica contra "no listé ninguno", que es la verdad.
     formulaCanarioDetalle(det1 >= det0 ? det1 - det0 + 1 : 0,
-      DESDE_CAJA.cartera, `$C$${det0}:$C$${det1}`)])
+      DESDE_CAJA.cartera, det1 >= det0 ? `$C$${det0}:$C$${det1}` : '0')])
   // EL CONTROL SALE DE OTRA FUENTE QUE EL TOTAL, o no controla nada. El total de la cartera lo da la
   // réplica del banco (`_CHEQUES_RAW`); esta línea le pregunta lo mismo a COBRANZAS. Los dos miran la
   // misma plata desde lados distintos, que es la única forma de que la diferencia signifique algo.

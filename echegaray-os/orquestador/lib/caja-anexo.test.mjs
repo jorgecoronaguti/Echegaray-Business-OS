@@ -251,29 +251,38 @@ test('los estados de Cobranzas NO se suman entre sí en el cuadro de vencidos', 
   }
 })
 
-test('la trazabilidad compara la MISMA ventana de los dos lados', () => {
-  // La primera versión sumaba el efectivo de TODO EL AÑO ($173.434.381) contra dieciséis días de
-  // depósitos ($9.960.000) y publicaba $161.749.381 "sin explicar": un número inventado por el método,
-  // que es exactamente lo que la regla de oro #3 prohíbe.
+test('la trazabilidad es la IDENTIDAD COMPLETA: cobrado = depositado + gastado + cajón vivo', () => {
+  // La ventana fosilizada (22/06–22/07, constantes de la captura) más los depósitos SIN ventana y
+  // NINGÚN término de gasto publicaron $12,2M "sin explicar" que eran plata gastada y registrada
+  // (dictamen 07/08). Ahora todo va a historia completa hasta HOY y la resta la cierra el cajón VIVO.
   const g = construir()
-  const cob = celda(g, filaDe(g, /Cobrado en EFECTIVO en la ventana/), 4)
-  const dep = celda(g, filaDe(g, /Depositado en efectivo en esa misma ventana/), 4)
-  const fechas = (s) => [...s.matchAll(/DATE\((\d+);(\d+);(\d+)\)/g)].map((m) => m.slice(1).join('-'))
-  assert.ok(fechas(cob).length >= 2, 'el lado de Cobranzas se acota a la ventana del extracto')
-  assert.ok(dep.includes('_BANCO_RAW'), 'y el otro lado sale del extracto, no de un número pegado')
-  // SÓLO LO "COBRADO": un cobro en estado "Proyectado" no es efectivo en la caja. La primera versión los
-  // sumaba y contaba $15.000.000 que nadie había recibido, inflando el faltante con plata que no faltaba.
+  const cob = celda(g, filaDe(g, /Cobrado en EFECTIVO — historia completa/), 4)
+  const dep = celda(g, filaDe(g, /Depositado en efectivo al banco — historia completa/), 4)
+  const gasto = celda(g, filaDe(g, /Pagado en efectivo — Compras/), 4)
+  const cajon = celda(g, filaDe(g, /Efectivo en el cajón HOY/), 4)
+  const sinExpl = celda(g, filaDe(g, /⇒ EFECTIVO SIN EXPLICAR/), 4)
+  // Sin fechas clavadas: la única cota temporal es HOY (un "Cobrado" con fecha futura no es billete).
+  assert.ok(![...cob.matchAll(/DATE\(\d+;\d+;\d+\)/g)].length, 'la ventana fosilizada volvió')
   assert.match(cob, /"Cobrado"/)
+  assert.match(cob, /<=TODAY\(\)/)
+  assert.ok(dep.includes('_BANCO_RAW'), 'los depósitos salen del extracto, no de un número pegado')
+  // El gasto: Compras por MONTO PAGADO (los parciales también salieron) + jornales + oficina por caja.
+  assert.match(gasto, /'Compras'!\$P\$4:\$P="Efectivo"/)
+  assert.match(gasto, /N\('Compras'!\$T\$4:\$T\)/)
+  // El cajón VIVO (arqueo ± posteriores), el mismo número de CAJA!B7 — no el arqueo crudo.
+  assert.match(cajon, /N\(CAJA_ARQUEO_ARS\)\+N\(ANEXO_EFECTIVO_NETO\)/)
+  // Y la resta usa los CINCO términos.
+  assert.match(sinExpl, /^=E\d+-E\d+-E\d+-E\d+-E\d+$/)
 })
 
-test('la alerta de efectivo sin explicar lee el ARQUEO CRUDO, no el saldo en pesos', () => {
-  // "Caja en pesos" vale arqueo + movimientos POSTERIORES al arqueo, y esta alerta mide otra ventana (la
-  // del extracto). Leer el saldo restaría movimientos que no pertenecen a su ventana: la mezcla de
-  // períodos que la regla de oro prohíbe, y habría bajado el faltante con plata de otro mes.
+test('la alerta de efectivo sin explicar cierra contra el CAJÓN VIVO, no el arqueo crudo', () => {
+  // Con la identidad a historia completa (dictamen 07/08), lo que cierra la resta es lo que HAY hoy
+  // en la caja física — arqueo ± movimientos posteriores, el mismo número de CAJA!B7 —, y ambos
+  // términos van POR NOMBRE para sobrevivir a cualquier compactación del anexo.
   const g = construir()
-  const f = filaDe(g, /^Arqueo declarado de caja física/)
+  const f = filaDe(g, /^Efectivo en el cajón HOY/)
   assert.ok(f > 0)
-  assert.match(celda(g, f, 4), /CAJA_ARQUEO_ARS/, 'tiene que leer el conteo físico declarado, por nombre')
+  assert.match(celda(g, f, 4), /N\(CAJA_ARQUEO_ARS\)\+N\(ANEXO_EFECTIVO_NETO\)/)
   // Y LA FECHA VA GUARDADA CON ISNUMBER: `=CAJA_ARQUEO_ARS_FECHA` sobre una celda vacía devuelve 0, y el
   // 0 con formato de fecha se dibuja "30/12/1899". Es el defecto `fecha_cero` del auditor de pantalla.
   assert.match(celda(g, f, 5), /^=IF\(ISNUMBER\(/, 'una fecha vacía no puede dibujarse como 30/12/1899')

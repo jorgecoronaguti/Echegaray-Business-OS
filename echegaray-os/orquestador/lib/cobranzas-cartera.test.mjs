@@ -54,8 +54,12 @@ test('LA LISTA BLANCA SE PAGA CON UN CONTADOR: un sexto estado no puede pasar en
 test('UN CERO MUDO MIENTE: existe la fecha del último cobro para poder distinguirlo', () => {
   // "Está todo conciliado" y "hace tres semanas que nadie carga" se dibujan igual: cero.
   const f = formulaUltimoCobroRegistrado()
-  assert.ok(f.includes(`="${ESTADOS.cobrado}"`), 'el ancla es un cobro REAL, no uno esperado')
-  assert.ok(f.includes('MAX(') && f.includes('ISNUMBER('))
+  assert.ok(f.includes(`"${ESTADOS.cobrado}"`), 'el ancla es un cobro REAL, no uno esperado')
+  // MAXIFS y no MAX(IF(...)): fuera de contexto de array, MAX(IF) devolvía el MAX de TODAS las
+  // fechas y un "Pendiente" al 30/12 clavaba el control en el futuro (dictamen 07/08). Y el tope
+  // TODAY() deja afuera las fechas futuras: un cobro "registrado" mañana no es un cobro registrado.
+  assert.ok(f.includes('MAXIFS('), 'MAX(IF) no filtra fuera de contexto de array')
+  assert.ok(f.includes('"<="&TODAY()'), 'una fecha futura no puede ser el último cobro')
 })
 
 test('EL RANKING NO DERRAMA: todo array está CONSUMIDO por un INDEX', () => {

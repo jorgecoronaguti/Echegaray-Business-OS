@@ -112,7 +112,15 @@ export function formulaEstadoDesconocido() {
  * bloque de vencidos la muestra al lado del total en vez de festejar el cero.
  */
 export function formulaUltimoCobroRegistrado() {
-  return `=IFERROR(MAX(IF((${rango(COB.estado)}="${ESTADOS.cobrado}")*ISNUMBER(${rango(COB.fecha)});${rango(COB.fecha)}));"")`
+  // ═══ MAX(IF(...)) SIN CONTEXTO DE ARRAY NO FILTRA NADA (dictamen 07/08) ═══
+  //
+  // La versión anterior devolvía el MAX de TODAS las fechas de cobro — un "Pendiente" al 30/12/2026
+  // la clavaba en el futuro y el control "hace N días que no se registra un cobro" no podía disparar
+  // NUNCA. MAXIFS filtra de verdad, y el tope TODAY() deja afuera las fechas futuras de los
+  // pendientes y de los valores endosados que figuran "Cobrado" con fecha por venir.
+  const maxifs = `MAXIFS(${rango(COB.fecha)};${rango(COB.estado)};"${ESTADOS.cobrado}";${rango(COB.fecha)};"<="&TODAY())`
+  // MAXIFS sin coincidencias devuelve 0, no un error: el vacío se decide comparando, no con IFERROR.
+  return `=IF(${maxifs}=0;"";${maxifs})`
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════

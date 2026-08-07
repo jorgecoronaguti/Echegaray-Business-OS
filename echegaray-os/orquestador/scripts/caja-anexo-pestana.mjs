@@ -62,8 +62,10 @@ async function main() {
   const egresos = lineasDeCaja().filter(({ signo }) => signo === -1)
   const sinFuente = egresos.filter(({ linea }) => SIN_FUENTE_EN_VENTANA.includes(marcaDeLinea(linea)))
     .map(({ linea }) => linea.nombre)
-  const conceptosCiegos = conceptosFueraDelCalendario(
-    egresos.map(({ linea }) => linea.nombre).filter((n) => !sinFuente.includes(n))).concat(sinFuente)
+  // Set y no concat pelado: conceptosFueraDelCalendario ya puede devolver los sin-fuente, y el
+  // concat los listaba DOS VECES ("6 concepto(s)" donde hay 3 — dictamen 07/08).
+  const conceptosCiegos = [...new Set(conceptosFueraDelCalendario(
+    egresos.map(({ linea }) => linea.nombre).filter((n) => !sinFuente.includes(n))).concat(sinFuente))]
 
   let hoja = hojas.find((h) => h.title === PESTANA_ANEXO)
   const refs = await refsDelArchivo(google, ID, hojas)
