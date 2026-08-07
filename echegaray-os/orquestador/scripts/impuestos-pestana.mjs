@@ -63,8 +63,6 @@ const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1
 const PESTAÑA = 'Impuestos y Financieros'
 const DRY = process.argv.includes('--dry')
 const AÑO = 2026
-/** Cuántas filas quedan congeladas: el título, la frescura y el hero entero. La posición no se va al scrollear. */
-const CONGELADAS = 12
 
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
 const hoyISO = () => new Date().toISOString().slice(0, 10)
@@ -253,7 +251,9 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, hoy }) {
     alicuotas: [ibb.fAli, cierre.fAlic],
     textos: [iva.fDDJJ],
     ambar,
-    congeladas: CONGELADAS,
+    // El título, la frescura y el hero ENTERO quedan congelados: la posición no se va al scrollear.
+    // Sale del hero, no de un 12 tipeado — un renglón más en el hero y el 12 se lo dejaba afuera.
+    congeladas: base + ALTO_HERO,
     filaAlicuotaIva: cierre.fAlic,
     cal,
     refs,

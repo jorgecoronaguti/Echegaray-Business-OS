@@ -255,8 +255,10 @@ test('LA POSICIÓN VA PRIMERO: hero, riesgo, calendario y financiamiento ARRIBA 
   assert.ok(hero > 0 && riesgo > hero && calend > riesgo && financ > calend && detalle > financ,
     `orden real: hero ${hero}, riesgo ${riesgo}, calendario ${calend}, financiamiento ${financ}, detalle ${detalle}`)
   assert.ok(g.filasCalendario.iva > financ, 'el IVA a pagar es detalle: va abajo')
-  // Y la posición queda congelada, o se va al scrollear y no sirve de nada.
-  assert.ok(g.congeladas >= hero, `congela ${g.congeladas} filas y el hero llega hasta la ${hero + 8}`)
+  // Y la posición queda congelada ENTERA, o se va al scrollear y no sirve de nada. El número sale
+  // del hero: con un 12 tipeado, un renglón más arriba dejaba el último sub-ítem fuera del congelado.
+  assert.ok(g.congeladas >= g.hero.hasta, `congela ${g.congeladas} filas y el hero llega hasta la ${g.hero.hasta}`)
+  assert.ok(g.congeladas < riesgo, 'congelar el detalle además de la posición se come media pantalla')
 })
 
 test('el TITULAR que la piel agranda es la fila que decide, y el hero se declara entero', () => {
