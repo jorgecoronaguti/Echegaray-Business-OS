@@ -172,8 +172,8 @@ test('LA COLUMNA 14 DE LA GRILLA JAMÁS LLEVA EL CENTINELA — es la del dueño,
 // CONTRATO (los 22 rangos con nombre y sus consumidores) y que los defectos que vino a matar están
 // muertos por construcción, no por un número corregido a mano.
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
-import { parsearAcuerdos, escalonDe } from '../lib/uocra-acuerdos.mjs'
-import { mesesDelMotor } from '../lib/motor-salarial.mjs'
+import { parsearAcuerdos, escalonDe, escalonVigenteEn } from '../lib/uocra-acuerdos.mjs'
+import { mesesDelMotor, formulaSigmaDelMes } from '../lib/motor-salarial.mjs'
 import { auditarPatron } from '../lib/patron-pestana.mjs'
 
 const cinco = (rotulo, [oe, of, mo, ay, se]) => [
@@ -413,7 +413,10 @@ test('LA CADENA COMPLETA: el plantel del espejo llega valuado AL CONVENIO hasta 
   // 4 · el encabezado no puede mentir sobre cuál de las dos Σ es la que está abajo. Es el defecto de
   //     "Ajuste inflación" en Oficina: el rótulo sobrevivió al criterio que lo justificaba.
   assert.equal(String(gm.filas[gm.esc.f0 - 2][5]), 'Σ $/hora convenio', 'el encabezado de 1.2 quedó con la base vieja')
-  assert.equal(String(gm.filas[gm.p0 - 2][6]), 'Σ $/hora convenio', 'el encabezado de 1.3 quedó con la base vieja')
+  // El de 1.3 dice "aplicada" y no "convenio" desde el 07/08: abajo conviven las dos bases —lo que se
+  // paga este mes va al pactado— y un encabezado que nombra una sola sería el defecto de "Ajuste
+  // inflación", el rótulo que sobrevive al criterio que lo justificaba.
+  assert.equal(String(gm.filas[gm.p0 - 2][6]), 'Σ $/hora aplicada', 'el encabezado de 1.3 quedó con la base vieja')
   // 5 · cada quincena proyectada busca SU mes en ese cuadro y multiplica por horas × días…
   const q = gm.filas[gm.p0 - 1]
   assert.match(String(q[6]), new RegExp(`INDEX\\(\\$F\\$${gm.esc.f0}:\\$F\\$${gm.esc.f1};MATCH\\(EOMONTH\\(`))
@@ -464,6 +467,84 @@ test('LA LÍNEA LA DECIDE EL CUADRO: tener la escala a mano no es haberla podido
   assert.match(linea, /PACTADO/, 'la pestaña anuncia el convenio y el cuadro está usando el pactado')
   assert.doesNotMatch(linea, /SUPUESTO DEL DUEÑO/)
   assert.equal(String(g2.filas[g2.p0 - 2][6]), 'Σ $/hora pactada', 'el encabezado también tiene que decir la verdad')
+})
+
+test('EL 01/09 LA PROYECCIÓN NO VUELVE SOLA AL PACTADO: la escala rige hasta que otra la reemplaza', () => {
+  // ═══ EL DEFECTO, REPRODUCIDO CON LA FECHA QUE LO DISPARA (07/08) ═══
+  //
+  // El motor resolvía el escalón vigente por igualdad exacta de período. El acuerdo publicado termina
+  // el 31/08 y la réplica no trae septiembre: el 01/09, sin que nadie tocara un archivo, la base de la
+  // proyección volvía del convenio al jornal PACTADO —−12,14% sobre la masa— y la glosa de Cargas
+  // seguía declarando el 100% del convenio. Ninguna celda daba error.
+  const sept = new Date(2026, 8, 1)
+  assert.equal(escalonDe(ESC, '2026-09'), null, 'la fixture tiene que NO traer septiembre: es el ANTES')
+  const vigente = escalonVigenteEn(ESC, sept)
+  assert.equal(vigente.periodo, '2026-08', 'el escalón que rige en septiembre es el último publicado')
+  const pend = [
+    { desde: new Date(2026, 8, 1), hasta: new Date(2026, 8, 15) },
+    { desde: new Date(2026, 8, 16), hasta: new Date(2026, 8, 30) },
+    { desde: new Date(2026, 9, 1), hasta: new Date(2026, 9, 15) },
+  ]
+  const g = grilla({
+    bloques: BLOQUES, pendientes: pend, bloquesOfi: [{ mes: 6, inicio: 5, fin: 8 }, { mes: 7, inicio: 12, fin: 15 }],
+    ultimoDiaOfi: new Date(2026, 6, 31), escalones: ESC, bloqueBase: BLOQUES[1],
+    categorias: ['OF', 'A', 'A M', 'OF M'], personasBase: 16, escalonVigente: vigente,
+    meses: mesesDelMotor(new Date(2026, 6, 31), pend, [new Date(2026, 6, 31), sept]), hoy: sept,
+  })
+  assert.equal(g.esc.alConvenio, true, 'en septiembre la proyección se cayó sola al jornal pactado')
+  assert.equal(String(g.filas[g.esc.f0 - 2][5]), 'Σ $/hora convenio')
+  // Y la Σ sale del ÚLTIMO ESCALÓN: el bloque 1.1 tiene que leer las filas de agosto en la réplica,
+  // que es la escala que sigue rigiendo. Si leyera otro grupo, la base sería de otro mes.
+  const basico = String(g.filas[g.plantel.fPrimera - 1][5])
+  assert.match(basico, new RegExp(`\\$D\\$${vigente.categorias.Oficial.fila - 1}`),
+    `«Básico convenio» dejó de leer el grupo del escalón vigente: ${basico}`)
+  for (let r = g.esc.f0; r <= g.esc.f1; r++) {
+    assert.match(String(g.filas[r - 1][5]), new RegExp(`SUMPRODUCT\\(\\$B\\$${g.plantel.fPrimera}:`),
+      'la Σ del cuadro 1.2 dejó de valuar al convenio en septiembre')
+  }
+  const linea = g.filas.map((f) => String(f[0] ?? '')).find((c) => /SUPUESTO DEL DUEÑO|PACTADO/.test(c))
+  assert.match(linea, /SUPUESTO DEL DUEÑO/, 'la pestaña anuncia el pactado con el cuadro al convenio')
+})
+
+test('LA FRONTERA DEL MES EN CURSO VIVE EN LA CELDA: lo que se paga este mes va al PACTADO', () => {
+  // ═══ LA ORDEN DEL DUEÑO (07/08) ═══
+  // *"la caja comprometida … no debe ir comiéndome la libre disponibilidad"*. Las quincenas de agosto
+  // valuadas al convenio inflaban la comprometida del mes con ~$1,3M que no van a salir: este mes se
+  // paga el pactado. El supuesto es planificación y arranca el mes que viene.
+  //
+  // La elección es POR FILA y la decide su fecha de PAGO, no el mes de la quincena: la segunda
+  // quincena de agosto se paga en septiembre, así que dos filas del mismo mes caen de lados distintos.
+  for (let i = 0; i < PEND.length; i++) {
+    const r = gm.p0 + i
+    const s = String(gm.filas[r - 1][6])
+    assert.match(s, new RegExp(`N\\(C${r}\\)>0`), `la fila ${r} no mira SU fecha de pago: ${s}`)
+    assert.match(s, new RegExp(`C${r}<=EOMONTH\\(TODAY\\(\\);0\\)`), `la frontera no es el fin del mes en curso: ${s}`)
+    // La rama del pactado: la Σ del plantel de 1.1 escalada por el factor del mes, anclada en el mes
+    // base de OBRA. Si se anclara en otra fila, la quincena se comería un tramo de paritaria entero.
+    assert.match(s, new RegExp(`\\$C\\$${gm.plantel.fTotal}\\*INDEX\\(\\$E\\$${gm.esc.f0}:\\$E\\$${gm.esc.f1};`),
+      `la rama del pactado no sale del plantel de 1.1: ${s}`)
+    assert.match(s, new RegExp(`/\\$E\\$${gm.esc.rAnclaBase};`), `la Σ pactada quedó anclada fuera del mes de obra: ${s}`)
+    // …y la del convenio sigue siendo la columna F del cuadro 1.2.
+    assert.match(s, new RegExp(`INDEX\\(\\$F\\$${gm.esc.f0}:\\$F\\$${gm.esc.f1};`), `se perdió la rama del convenio: ${s}`)
+    assert.doesNotMatch(s, /,/, 'separador es-AR')
+  }
+  // NINGÚN MES ESCRITO: la frontera se mueve sola el 1° de cada mes, sin esperar una corrida.
+  assert.doesNotMatch(String(gm.filas[gm.p0 - 1][6]), /DATE\(\d{4}/)
+  // Y SIN CONVENIO NO HAY DOS BASES ENTRE LAS CUALES ELEGIR: el cuadro ya publica la pactada.
+  const sinConv = formulaSigmaDelMes('A35', { f0: 25, f1: 30, alConvenio: false }, 'C35')
+  assert.doesNotMatch(sinConv, /TODAY/)
+})
+
+test('EL SERENO NO PUEDE ENTRAR A UNA COLUMNA DE $/hora: cobra por MES', () => {
+  // $980.858 es el sueldo mensual del Sereno. Si el dueño escribe "Sereno" en la columna «Convenio»
+  // —que es suya y gana—, el INDEX de «Básico convenio» le devolvía ese importe a una columna que
+  // después se multiplica por horas y días. El guard ya existía en `mapearEscala` y esta fórmula no lo
+  // había heredado. Ahora el MATCH sólo busca en las filas por hora: un "Sereno" no matchea.
+  const ago = escalonDe(ESC, '2026-08')
+  const f = String(gm.filas[gm.plantel.fPrimera - 1][5])
+  assert.match(f, new RegExp(`\\$B\\$${ago.categorias['Oficial Especializado'].fila}:\\$B\\$${ago.categorias.Ayudante.fila}`),
+    `el rango de búsqueda no es el de las categorías por hora: ${f}`)
+  assert.doesNotMatch(f, new RegExp(`:\\$B\\$${ago.categorias.Sereno.fila}`), 'la fila del Sereno sigue adentro del MATCH')
 })
 
 test('LA ESCALA VERIFICADA A MANO CONTROLA A LA RÉPLICA — y calla cuando coinciden', () => {

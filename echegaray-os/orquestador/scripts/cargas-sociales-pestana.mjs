@@ -40,7 +40,8 @@ import { rangosDeCargas, RUBRO_PLANES } from '../lib/libro-extractores-cargas.mj
 import { aRangoApi, verificarRangos, explicarProblemas } from '../lib/rangos-con-nombre.mjs'
 import { detectarQuincenas } from '../lib/nomina-sync.mjs'
 import { ultimaQuincenaCerrada } from '../lib/motor-salarial.mjs'
-import { asegurarParametros, ultimoDiaCargado } from './jornales-pestana.mjs'
+import { asegurarParametros, ultimoDiaCargado, PESTAÑA as PESTAÑA_JORNALES } from './jornales-pestana.mjs'
+import { baseDeJornales } from '../lib/proyeccion-convenio.mjs'
 import { ANCHO, COL_ORIGEN, cm, crearGrilla } from '../lib/cargas-grilla.mjs'
 import {
   bloqueDeclarado, bloquePagado, bloqueDiferencia, bloqueProyeccion, bloqueCaja, bloqueSac, bloquePlanes,
@@ -84,7 +85,7 @@ export const CONCEPTOS_PROY = CONCEPTOS_CADENA
 export { jornalesDelMes } from '../lib/cargas-cadena.mjs'
 
 /** NÚCLEO PURO: arma la grilla entera de la pestaña. Devuelve las filas y las marcas que usa el formato. */
-export function grilla({ periodos, conceptos, ps, C, bloqueBase = null }) {
+export function grilla({ periodos, conceptos, ps, C, bloqueBase = null, baseJornales = null }) {
   const desdeProy = desdeQueMesSeProyecta(periodos)
   const G = crearGrilla(AÑO)
 
@@ -151,7 +152,8 @@ export function grilla({ periodos, conceptos, ps, C, bloqueBase = null }) {
   const pag = bloquePagado(G, { anio: AÑO, C, fArtDecl: decl.filaDecl['312'], fDeclTot: decl.fDeclTot })
   bloqueDiferencia(G, { fPagF931: pag.filaPag.F931, fDeclTot: decl.fDeclTot })
   const proy = bloqueProyeccion(G, {
-    anio: AÑO, desdeProy, filaDecl: decl.filaDecl, filaPag: pag.filaPag, fRem: decl.fRem, fEmp: decl.fEmp, bloqueBase,
+    anio: AÑO, desdeProy, filaDecl: decl.filaDecl, filaPag: pag.filaPag, fRem: decl.fRem, fEmp: decl.fEmp,
+    bloqueBase, baseJornales,
   })
   const caja = bloqueCaja(G, {
     anio: AÑO, desdeProy, proyMeses: proy.proyMeses, fDeclTot: decl.fDeclTot, fProyTot: proy.fProyTot, C,
@@ -266,10 +268,22 @@ async function main() {
   const bloqueBase = cerrada?.bloque ?? bloquesJ[bloquesJ.length - 1] ?? null
   if (!bloqueBase) console.warn('  ⚠ no pude ubicar la última quincena cerrada en _J_OBREROS: la alícuota de FCL queda sin ponderar por antigüedad')
 
+  // ── CON QUÉ BASE VIENE LA MASA QUE ESTA PESTAÑA MULTIPLICA ──
+  //
+  // La proyección de esta pestaña es jornales × relación declarado/neto, y los jornales llegan por el
+  // rango JORNALES_PROY_TOTAL: la base con que fueron valuados —pactado o 100% del convenio— la decide
+  // Jornales y acá NO se vuelve a decidir. Se lee del encabezado que ese cuadro dejó escrito, que es
+  // el EFECTO de la decisión, no la intención: si la réplica del convenio estaba caída cuando corrió
+  // Jornales, el encabezado dice "pactada" y la glosa de acá dice lo mismo. Sin lectura, la nota
+  // declara que no sabe — nunca afirma un supuesto que no puede probar.
+  const jorn = await google.readSheetValues(ID, `'${PESTAÑA_JORNALES}'!A1:N400`).catch(() => [])
+  const baseJornales = baseDeJornales(jorn ?? [])
+  console.log(`base de los jornales proyectados: ${baseJornales ?? '⚠ no la pude leer de la pestaña de Jornales'}`)
+
   const ps = await planesDePago(AÑO)
   console.log(`${periodos.length} período(s) F931 · ${conceptos.length} concepto(s) · ${ps.length} plan(es) de pago`)
 
-  const { filas, cantidades, ratios, fechas, titular, prosaFormula, pies, controles, rangos } = grilla({ periodos, conceptos, ps, C, bloqueBase })
+  const { filas, cantidades, ratios, fechas, titular, prosaFormula, pies, controles, rangos } = grilla({ periodos, conceptos, ps, C, bloqueBase, baseJornales })
   console.log(`grilla: ${filas.length} filas × ${ANCHO} columnas — un solo ancho para toda la pestaña`)
   if (DRY) return
 

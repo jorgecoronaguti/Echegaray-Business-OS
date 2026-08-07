@@ -63,19 +63,24 @@ import { VACIO } from './preservar-anotaciones.mjs'
 import { sub, total as rotuloTotal } from './patron-pestana.mjs'
 import {
   CATEGORIA_ANCLA, COL as UOCRA_COL, HOJA as UOCRA_HOJA,
-  escalonDe, escalonPromedio, estadoReplica, ultimoEscalon,
+  escalonDe, escalonPromedio, estadoReplica, filasPorHora, ultimoEscalon,
 } from './uocra-acuerdos.mjs'
 import {
   CONVENIO_POR_CODIGO, GAP_SUMAS_NR, ORIGEN_ACUERDO, ULTIMO_TRAMO, VIGENCIA_HASTA,
   convenioDe, factorUocraEntre, tramoDe,
 } from './uocra-paritaria.mjs'
+import { ROTULO_SIGMA } from './proyeccion-convenio.mjs'
 
 // LA BASE AL 100% DEL CONVENIO ENTRA POR ACÁ Y NO POR LA PESTAÑA. El dueño avisó que "esto puede
 // impactar en varias pestañas a la vez": si la definición viviera en el generador de Jornales, el
 // segundo consumidor tendría que copiarla. Vive en el motor y se re-exporta, así hay UNA sola puerta.
+// `formulaSigmaDelMes` vive allá y no acá porque lo que decide NO es la mecánica del cuadro sino el
+// alcance del supuesto —qué quincenas se valúan al convenio y cuáles al pactado—, que es de lo que
+// ese archivo es dueño. Se re-exporta para que el generador siga entrando por una sola puerta.
 export {
-  formulaSigmaConvenio, lineaSupuestoConvenio, sigmaConvenioDelPlantel,
+  formulaSigmaConvenio, formulaSigmaDelMes, lineaSupuestoConvenio, sigmaConvenioDelPlantel,
 } from './proyeccion-convenio.mjs'
+export { ROTULO_SIGMA }
 export { factorUocraEntre, tramoDe, convenioDe }
 
 /**
@@ -270,11 +275,15 @@ export function filasPlantel({ hoja, bloque, categorias, personas, filaInicio, e
   filas.push(['Categoría', 'Personas', 'Σ $/hora', '$/hora mínimo', 'Convenio', 'Básico convenio', 'Margen', 'Estado'])
   const fPrimera = filaInicio + 1
   const equivalencias = categorias.map((c) => [c, convenioDe(c, tabla)])
-  // El grupo de cinco filas del mes vigente en la réplica, resuelto por el parser: sin esto el MATCH
-  // por nombre de mes vuelve a caer en el año equivocado, que es el defecto B3.
-  const g = escalonVigente
-    ? { r0: escalonVigente.fila, r1: escalonVigente.fila + 4 }
-    : null
+  // El grupo del mes vigente en la réplica, resuelto por el parser: sin esto el MATCH por nombre de mes
+  // vuelve a caer en el año equivocado, que es el defecto B3.
+  //
+  // SIN EL SERENO (07/08). El grupo tiene cinco filas y la quinta cobra POR MES: si el dueño escribe
+  // "Sereno" en la columna «Convenio», el INDEX le devolvía $980.858 a una columna de $/hora y esa
+  // categoría entraba a la Σ del plantel multiplicada por horas y días. El guard ya existía en
+  // `mapearEscala` (lib/nomina-replica.mjs) y esta fórmula no lo había heredado. Buscando sólo en las
+  // filas por hora, un "Sereno" no matchea, la celda queda vacía y el Estado de la fila lo dice.
+  const g = filasPorHora(escalonVigente)
   categorias.forEach((cat, i) => {
     const r = fPrimera + i
     const q = `"${cat}"`
@@ -375,7 +384,7 @@ export function filasEscalon({
   const sigma = alConvenio ? celdaSigmaConvenio : celdaSigmaBase
   const filas = []
   filas.push(['Mes', 'Escalón publicado', `Básico ${CATEGORIA_ANCLA}`, 'Sube en el mes', 'Factor sobre la base',
-    alConvenio ? 'Σ $/hora convenio' : 'Σ $/hora pactada', 'De dónde sale', 'Estado'])
+    alConvenio ? ROTULO_SIGMA.convenio : ROTULO_SIGMA.pactado, 'De dónde sale', 'Estado'])
   const f0 = filaInicio + 1
   const ult = ultimoEscalon(escalones)
   // ═══ LA Σ $/hora SE ANCLA EN EL MES DE OBRA, NO EN LA PRIMERA FILA DEL CUADRO (07/08) ═══
@@ -426,16 +435,10 @@ export function filasEscalon({
     ])
   })
   const f1 = f0 + meses.length - 1
-  return { filas, f0, f1, alConvenio }
-}
-
-/**
- * NÚCLEO PURO: la fórmula del Σ $/hora del plantel para el mes de una quincena, buscado en el bloque
- * del escalón por su fecha de fin de mes. Si el mes no está en el bloque devuelve vacío, no cero: un
- * cero acá se multiplicaría por los días y daría "$0 de jornales", que es una mentira redonda.
- */
-export function formulaSigmaDelMes(celdaDesde, { f0, f1 }) {
-  return `=IFERROR(INDEX($F$${f0}:$F$${f1};MATCH(EOMONTH(${celdaDesde};0);$A$${f0}:$A$${f1};0));"")`
+  // LAS DOS ANCLAS VIAJAN, no sólo la que ganó. El cuadro 1.3 necesita poder valuar una quincena al
+  // PACTADO aunque el cuadro esté al convenio (ver `formulaSigmaDelMes`): sin la celda de la Σ pactada
+  // y su fila de ancla tendría que reconstruirlas por su cuenta, que es como aparecen dos bases.
+  return { filas, f0, f1, alConvenio, celdaSigmaBase, rAnclaBase: f0 + iBase }
 }
 
 /**
