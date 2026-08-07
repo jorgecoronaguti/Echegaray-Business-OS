@@ -24,25 +24,40 @@
 // 9,11% y 9,13%, una divergencia de 0,02 puntos—. Entonces:
 //
 //   Proyectado(quincena) = Σ$/hora(plantel de la última quincena CERRADA)
-//                          × factor(mes de la quincena)          ← escalón del convenio, medido
+//                          × factor(mes de la quincena)          ← paritaria UOCRA acumulada
 //                          × horas por persona y día (medidas en una ventana reciente)
 //                          × días hábiles de la quincena
 //
-//   factor(M) = básico_Ayudante(M) / básico_Ayudante(mes base)          si M tiene acuerdo publicado
-//   factor(M) = factor(M-1) × (1 + AUMENTO_SALARIAL_ESPERADO)           si no lo tiene
+//   factor(mes base) = 1                                    exacto, por construcción
+//   factor(M)        = factor(M-1) × (1 + tramo(M))
+//   tramo(M)         = el % del acuerdo publicado para M    ← ACUERDO FIRMADO
+//                    = el último tramo conocido             ← PROYECCIÓN, y la fila lo rotula
 //
 // El mes base es el de la última quincena cerrada, y su factor es 1,0000 POR CONSTRUCCIÓN: el doble
 // conteo de inflación de la primera quincena no puede volver, no porque se haya corregido un número
 // sino porque no hay dónde escribirlo.
 //
-// ═══ POR QUÉ NO SE PROYECTA CATEGORÍA POR CATEGORÍA ═══
+// ═══ EL FACTOR SALE DEL % DE LA PARITARIA, NO DEL COCIENTE DE BÁSICOS (07/08) ═══
 //
-// Se podría, y sería peor. La planilla codifica la categoría como "OF", "A", "OF M", "A M", "M",
-// "AY", "C" y NO existe en ningún lado la tabla que las traduce a las cinco del CCT. Inventar esa
-// equivalencia para poder mostrar un cuadro más lindo es exactamente lo que este repositorio prohíbe.
-// Lo que sí se hace: el plantel se ABRE por código de categoría —la columna D del espejo, que hasta
-// hoy no tenía un solo consumidor— y la traducción al convenio queda como una columna que carga el
-// dueño. En cuanto la escribe, el control por categoría se enciende solo.
+// Hasta hoy el factor era `básico_Ayudante(M) / básico_Ayudante(base)`. Es un hecho medible, pero mide
+// otra cosa: entre julio y agosto ese cociente da +9,11% mientras el acuerdo dice +1,9%, porque el
+// básico publicado ABSORBE sumas no remunerativas. Con eso, un sueldo de Oficina —que no tiene básico
+// de convenio— habría subido 9,11% en agosto por arrastre de una absorción que no le corresponde.
+//
+// El dueño ordenó el driver único: *"que las proyecciones en oficina y direccion sean tomando el
+// porcentaje de incremento en uocra"*. El razonamiento completo y el dato verificado, en
+// lib/uocra-paritaria.mjs. El básico publicado no se va de la pestaña: sigue siendo el PISO contra el
+// que se compara lo que pagamos (§4), que es la pregunta que contesta bien.
+//
+// ═══ EL PLANTEL SE PROYECTA JUNTO, PERO SE CONTROLA POR CATEGORÍA ═══
+//
+// Un solo Σ$/hora para todo el plantel: el escalón sube parejo para las cinco categorías, así que
+// abrirlo por categoría multiplicaría filas sin cambiar un peso del resultado.
+//
+// Lo que SÍ se abre por categoría es el CONTROL. El plantel se lee por la columna D del espejo y la
+// equivalencia con el convenio ya no la tiene que cargar nadie a mano: la declaró el dueño el 07/08 y
+// vive en `CONVENIO_POR_CODIGO`. La columna «Convenio» sigue siendo suya y su valor gana — lo que
+// cambió es que el control ya no espera a que la escriba para poder hablar.
 
 import { VACIO } from './preservar-anotaciones.mjs'
 import { sub, total as rotuloTotal } from './patron-pestana.mjs'
@@ -50,46 +65,64 @@ import {
   CATEGORIA_ANCLA, COL as UOCRA_COL, HOJA as UOCRA_HOJA,
   escalonDe, escalonPromedio, estadoReplica, ultimoEscalon,
 } from './uocra-acuerdos.mjs'
+import {
+  CONVENIO_POR_CODIGO, GAP_SUMAS_NR, ORIGEN_ACUERDO, ULTIMO_TRAMO, VIGENCIA_HASTA,
+  convenioDe, factorUocraEntre, tramoDe,
+} from './uocra-paritaria.mjs'
 
-export const RANGO_AUMENTO = 'AUMENTO_SALARIAL_ESPERADO'
+export { factorUocraEntre, tramoDe, convenioDe }
+
+/**
+ * EL NOMBRE CAMBIÓ A PROPÓSITO, Y NO ES COSMÉTICA (07/08).
+ *
+ * Se llamaba `AUMENTO_SALARIAL_ESPERADO` y valía 5,21%. `asegurarParametros` NUNCA pisa el valor de
+ * una fila que ya existe —bien, es la pestaña del dueño— así que cambiarle el número desde el código
+ * era imposible: la fila vieja habría seguido gobernando la proyección con el criterio derogado. Un
+ * rango nuevo obliga a una fila nueva, con el valor nuevo y su nota. La vieja queda huérfana: nada la
+ * lee, y sacarla del Sheet es trabajo del árbol principal.
+ */
+export const RANGO_PARITARIA = 'PARITARIA_UOCRA_PROYECTADA'
 export const RANGO_MESES_BASE = 'JORNALES_MESES_BASE'
 /** El rótulo del parámetro, en un solo lugar: lo cita la nota, el cuadro y `ubicarParametros`. */
-export const ROTULO_AUMENTO = 'Aumento salarial esperado por mes (paritaria, sin acuerdo publicado)'
+export const ROTULO_PARITARIA = 'Paritaria UOCRA proyectada por mes (meses sin acuerdo firmado)'
 /** Ventana por defecto para medir el ritmo real de horas. Tres meses = seis quincenas cerradas. */
 export const MESES_BASE_DEFAULT = 3
 
+const pctTexto = (x) => (typeof x === 'number' ? `${(x * 100).toFixed(2).replace('.', ',')}%` : '—')
+
 /**
- * NÚCLEO PURO: el parámetro del aumento esperado, con su valor propuesto y su derivación.
+ * NÚCLEO PURO: el parámetro de la paritaria proyectada, con su valor y de dónde sale.
  *
- * NO ES EL IPC, Y ESO VA ESCRITO EN LA NOTA. Son dos series distintas: el IPC mide precios al
- * consumidor y lo publica el INDEC; el escalón salarial sale de una paritaria que se negocia. Usar
- * uno en lugar del otro "porque los dos son porcentajes mensuales" es el error que este motor viene a
- * sacar de la pestaña. Los meses CON acuerdo publicado ni siquiera lo miran.
+ * QUÉ GOBIERNA: los meses POSTERIORES al último acuerdo firmado, en los TRES bloques de la pestaña —
+ * Obra, Oficina y Dirección. Un solo driver, por orden del dueño (07/08).
  *
- * EL VALOR PROPUESTO SE MIDE SOBRE EL BÁSICO PUBLICADO, NO SOBRE EL % DEL RÓTULO. El rótulo de agosto
- * dice "+1,9%" y el básico de Ayudante subió 9,11%: el básico absorbe sumas no remunerativas que el
- * porcentaje no menciona. Con los rótulos la proyección queda corta todos los meses.
+ * EL VALOR ES EL ÚLTIMO TRAMO CONOCIDO, NO UN PROMEDIO MEDIDO. El promedio sobre básicos publicados
+ * daba 5,21%/mes y arrastraba sumas no remunerativas ya absorbidas; ver la cabecera de
+ * lib/uocra-paritaria.mjs. Lo que queda de aquella medición es una LÍNEA DE CONTRASTE en esta nota:
+ * el dueño tiene que poder ver contra qué se decidió, no sólo qué se decidió.
  *
  * @param {Array} escalones salida de parsearAcuerdos
  * @returns {{rango:string, rotulo:string, valor:number, nota:string, derivacion:object|null}}
  */
-export function parametroAumento(escalones = []) {
+export function parametroParitaria(escalones = []) {
+  const ult = ultimoEscalon(escalones)
+  const tramo = ult ? tramoDe(ult.periodo, escalones) : null
+  const valor = tramo && tramo.origen === ORIGEN_ACUERDO ? tramo.pct : ULTIMO_TRAMO
   const p6 = escalonPromedio(escalones, 6)
-  const p12 = escalonPromedio(escalones, 12)
-  const pct = (x) => (typeof x === 'number' ? `${(x * 100).toFixed(2).replace('.', ',')}%` : '—')
-  const derivacion = p6
-    ? `MEDIDO sobre el básico de ${CATEGORIA_ANCLA} de ${UOCRA_HOJA}: ${pct(p6.pct)}/mes promedio entre ${p6.desde} y ${p6.hasta} (${p6.meses} meses)`
-      + (p12 ? `, y ${pct(p12.pct)}/mes sobre los últimos ${p12.meses}` : '')
-      + `. Los rótulos de los acuerdos dicen ~${pct(p6.pctRotulos)}, pero el BÁSICO publicado sube más porque absorbe sumas no remunerativas: se usa el básico, que es el que pagamos.`
-    : 'sin acuerdos suficientes en la réplica para medirlo'
+  const contraste = p6
+    ? ` Contraste: el básico de ${CATEGORIA_ANCLA} de ${UOCRA_HOJA} se movió ${pctTexto(p6.pct)}/mes entre ${p6.desde} y ${p6.hasta} — más que el rótulo, porque absorbe sumas no remunerativas.`
+    : ''
   return {
-    rango: RANGO_AUMENTO,
-    rotulo: ROTULO_AUMENTO,
-    valor: p6 ? p6.pct : 0.019,
-    nota: `Sólo se aplica a los meses que NO tienen acuerdo publicado en ${UOCRA_HOJA}. ${derivacion}. `
-      + 'NO ES EL IPC: el IPC mide precios y esto es una paritaria; usar uno por el otro fue el defecto que este motor vino a sacar. '
-      + '⚠ A CONFIRMAR POR EL DUEÑO: este número gobierna la mitad del costo laboral proyectado del semestre. Cambialo acá y se mueve todo — Jornales, Cargas Sociales, el cash flow y CAJA.',
-    derivacion: p6 ?? null,
+    rango: RANGO_PARITARIA,
+    rotulo: ROTULO_PARITARIA,
+    valor,
+    nota: `Sólo se aplica a los meses SIN acuerdo firmado. El acuerdo UOCRA–Camarco–FAEC rige hasta el ${VIGENCIA_HASTA}`
+      + `${ult ? ` y el último escalón publicado en ${UOCRA_HOJA} es ${ult.rotulo}` : ''}: de ahí en adelante esto es PROYECCIÓN, no acuerdo. `
+      + `Repite el último tramo conocido (${pctTexto(valor)}).${contraste} `
+      + `LÍMITE DECLARADO: ${GAP_SUMAS_NR}. `
+      + 'NO ES EL IPC: el IPC mide precios y esto es una paritaria. '
+      + 'Gobierna los tres bloques —Obra, Oficina y Dirección—: cambialo acá y se mueven Jornales, Cargas Sociales, el cash flow y CAJA.',
+    derivacion: tramo,
   }
 }
 
@@ -101,7 +134,7 @@ export const PARAMETRO_MESES_BASE = {
   nota: 'Sobre cuántos meses de quincenas YA CERRADAS se mide "horas por persona y por día". Antes se promediaba el AÑO ENTERO, ausentismo de enero incluido, y daba 6,7 h contra una jornada de 9. Subilo para suavizar, bajalo para seguir el ritmo actual.',
 }
 
-export const PARAMETROS_MOTOR = (escalones) => [parametroAumento(escalones), PARAMETRO_MESES_BASE]
+export const PARAMETROS_MOTOR = (escalones) => [parametroParitaria(escalones), PARAMETRO_MESES_BASE]
 
 /**
  * NÚCLEO PURO: ¿cuál es la última quincena CERRADA del espejo?
@@ -192,20 +225,31 @@ export function mesesDelMotor(base, pendientes = [], anclas = []) {
 }
 
 /**
- * NÚCLEO PURO: la ÚNICA línea que pide lo que le falta al control de convenio para poder hablar.
+ * NÚCLEO PURO: la ÚNICA línea que dice contra qué escala compara el plantel — y qué falta, si falta.
  *
- * La columna "Convenio" es del dueño: él escribe a qué categoría de la escala UOCRA equivale cada
- * categoría de la planilla ("OF", "A M", …), y sin eso el bloque no puede comparar contra el básico.
- * Eso hay que decirlo, pero UNA vez y con la cuenta: "faltan 4 de 4" es una decisión de un vistazo;
- * la misma frase repetida en cada fila es ruido que empuja hacia abajo lo único que el bloque contesta.
+ * ═══ HASTA AYER ESTA LÍNEA PEDÍA UN DATO; HOY DECLARA UNO (07/08) ═══
+ *
+ * La columna "Convenio" era del dueño y estaba vacía, así que el control no podía comparar nada y esta
+ * línea decía "faltan 4 de 4". El dueño mandó el plantel con su categoría al lado y con eso quedó
+ * declarada la equivalencia (`CONVENIO_POR_CODIGO`): el control se enciende sin esperar a nadie.
+ *
+ * La columna sigue siendo suya y su valor GANA — lo que cambió es el default, no el dueño de la celda.
  *
  * @param {number} f0 primera fila de categorías · @param {number} f1 última
+ * @param {Array<[string, string|null]>} equivalencias [código de la planilla, categoría del convenio]
  */
-export const formulaConvenioPendiente = (f0, f1) => {
-  const faltan = `COUNTBLANK($E$${f0}:$E$${f1})`
+export const formulaConvenioPendiente = (f0, f1, equivalencias = []) => {
   const total = `COUNTA($A$${f0}:$A$${f1})`
-  return `=IF(${faltan}=0;"   · las "&${total}&" categorías tienen su equivalente en la escala del convenio";`
-    + `"   · faltan "&${faltan}&" de "&${total}&": escribí el equivalente del convenio en la columna «Convenio» y el control se enciende solo")`
+  const faltan = equivalencias.filter(([, c]) => !c).map(([k]) => k)
+  if (faltan.length) {
+    return `="   · faltan "&COUNTBLANK($E$${f0}:$E$${f1})&" de "&${total}&": ${faltan.join(', ')} no tiene(n) equivalente en la escala — escribilo en «Convenio» y el control se enciende solo"`
+  }
+  // Agrupado por categoría del convenio: "OF, OF M→Oficial · A, A M→Ayudante". Cuatro flechas sueltas
+  // ocupan el doble y dicen lo mismo.
+  const porConvenio = new Map()
+  for (const [cod, conv] of equivalencias) porConvenio.set(conv, [...(porConvenio.get(conv) ?? []), cod])
+  const mapa = [...porConvenio].map(([conv, cods]) => `${cods.join(', ')}→${conv}`).join(' · ')
+  return `="   · las "&${total}&" categorías comparan contra la escala del convenio: ${mapa} (equivalencia declarada por el dueño). Si escribís otra en «Convenio», manda la tuya."`
 }
 
 /**
@@ -213,12 +257,13 @@ export const formulaConvenioPendiente = (f0, f1) => {
  *
  * @returns {{filas:any[][], fPrimera:number, fUltima:number, fTotal:number, canario:string}}
  */
-export function filasPlantel({ hoja, bloque, categorias, personas, filaInicio, escalonVigente }) {
+export function filasPlantel({ hoja, bloque, categorias, personas, filaInicio, escalonVigente, tabla = CONVENIO_POR_CODIGO }) {
   const R = (c) => `'${hoja}'!$${c}$${bloque.inicio}:$${c}$${bloque.fin}`
   const D = R('D'); const W = R('W')
   const filas = []
   filas.push(['Categoría', 'Personas', 'Σ $/hora', '$/hora mínimo', 'Convenio', 'Básico convenio', 'Margen', 'Estado'])
   const fPrimera = filaInicio + 1
+  const equivalencias = categorias.map((c) => [c, convenioDe(c, tabla)])
   // El grupo de cinco filas del mes vigente en la réplica, resuelto por el parser: sin esto el MATCH
   // por nombre de mes vuelve a caer en el año equivocado, que es el defecto B3.
   const g = escalonVigente
@@ -227,6 +272,11 @@ export function filasPlantel({ hoja, bloque, categorias, personas, filaInicio, e
   categorias.forEach((cat, i) => {
     const r = fPrimera + i
     const q = `"${cat}"`
+    // LA CLAVE DE BÚSQUEDA: lo que escribió el dueño, y si no escribió nada, la equivalencia declarada
+    // (07/08). Antes acá iba `$E{r}` a secas y con la columna vacía el MATCH no encontraba nada: el
+    // control quedaba mudo esperando una carga manual que nunca llegó.
+    const equiv = equivalencias[i][1]
+    const clave = equiv ? `IF($E${r}="";"${equiv}";$E${r})` : `$E${r}`
     filas.push([
       cat,
       `=COUNTIFS(${D};${q})`,
@@ -236,7 +286,7 @@ export function filasPlantel({ hoja, bloque, categorias, personas, filaInicio, e
       // corrida siguiente le borraría lo que escribió — es el defecto que dejó OFICINA_BANCO ciego.
       '',
       g
-        ? `=IFERROR(INDEX('${UOCRA_HOJA}'!$${UOCRA_COL.basico}$${g.r0}:$${UOCRA_COL.basico}$${g.r1};MATCH($E${r};'${UOCRA_HOJA}'!$${UOCRA_COL.categoria}$${g.r0}:$${UOCRA_COL.categoria}$${g.r1};0));"")`
+        ? `=IFERROR(INDEX('${UOCRA_HOJA}'!$${UOCRA_COL.basico}$${g.r0}:$${UOCRA_COL.basico}$${g.r1};MATCH(${clave};'${UOCRA_HOJA}'!$${UOCRA_COL.categoria}$${g.r0}:$${UOCRA_COL.categoria}$${g.r1};0));"")`
         : '',
       `=IF(N($F${r})=0;"";$D${r}/$F${r}-1)`,
       // ═══ UN ESTADO, NO UNA INSTRUCCIÓN — Y MENOS REPETIDA UNA VEZ POR FILA (06/08) ═══
@@ -250,7 +300,12 @@ export function filasPlantel({ hoja, bloque, categorias, personas, filaInicio, e
       //
       // De paso: la frase medía 58 caracteres en una columna del MEDIO de una grilla de catorce. El
       // auditor de patrón marca las notas en el medio a partir de 60. Pasaba por dos caracteres.
-      `=IF($E${r}="";"—";IF(N($F${r})=0;"esa categoría no está en la escala del mes";IF($G${r}<0;"⚠ por debajo del convenio";"✓ sobre el convenio")))`,
+      //
+      // SIN EQUIVALENCIA la fila sigue diciendo "—": es la única forma honesta de responder cuando no
+      // se sabe contra qué comparar. CON equivalencia el "—" desaparece, porque ya hay respuesta.
+      equiv
+        ? `=IF(N($F${r})=0;"sin escala para esa categoría";IF($G${r}<0;"⚠ por debajo del convenio";"✓ sobre el convenio"))`
+        : `=IF($E${r}="";"—";IF(N($F${r})=0;"esa categoría no está en la escala del mes";IF($G${r}<0;"⚠ por debajo del convenio";"✓ sobre el convenio")))`,
     ])
   })
   const fUltima = fPrimera + categorias.length - 1
@@ -262,7 +317,7 @@ export function filasPlantel({ hoja, bloque, categorias, personas, filaInicio, e
     // corrida se saltea (candado, firma, freno de mano) y mientras tanto entra una quincena nueva, el
     // rango queda apuntando al bloque de antes y NO da error: da el plantel viejo. Esto lo dice.
     `=IF(COUNTA('${hoja}'!$B$${bloque.inicio}:$B$${bloque.fin})=${personas};"✓ el bloque del espejo sigue en su lugar";"⚠ el bloque del espejo se movió: estas filas ya no tienen ${personas} obreros. Corré espejar-jornales.mjs y después este generador — mientras tanto el plantel base está mal.")`])
-  return { filas, fPrimera, fUltima, fTotal, canario: `${hoja}!${bloque.inicio}:${bloque.fin}` }
+  return { filas, fPrimera, fUltima, fTotal, equivalencias, canario: `${hoja}!${bloque.inicio}:${bloque.fin}` }
 }
 
 /**
@@ -272,37 +327,73 @@ export function filasPlantel({ hoja, bloque, categorias, personas, filaInicio, e
  *   A Mes · B Escalón publicado · C Básico Ayudante · D Sube en el mes · E Factor sobre la base ·
  *   F Σ $/hora del plantel · G De dónde sale · H Estado
  *
- * @returns {{filas:any[][], f0:number, f1:number, colMes:string, colSigma:string}}
+ * ═══ LA D Y LA E CAMBIARON DE FUENTE (07/08) ═══
+ *
+ * La D era `C/C(anterior)-1` —el cociente de básicos publicados— y la E, el cociente contra el mes
+ * base. Con eso agosto subía 9,11% y el rótulo del acuerdo decía 1,9%: dos números para el mismo
+ * concepto en columnas contiguas, y el que gobernaba las tres proyecciones era el que NO estaba
+ * firmado. Ahora la D es EL TRAMO DE LA PARITARIA y la E su producto acumulado desde el mes base.
+ *
+ * EL TRAMO SE LEE DE LA RÉPLICA, NO SE PEGA. El rótulo del mes trae el porcentaje adentro
+ * ("Agosto\n+1,9%", "Febrero (1,8% s/Ene)") y de ahí sale por REGEXEXTRACT: si mañana se pega un
+ * acuerdo nuevo en `_UOCRA_RAW`, la pestaña se mueve sola. Sin rótulo con %, cae al parámetro — que
+ * es exactamente lo que hay que hacer con un mes sin acuerdo.
+ *
+ * La C se queda: es el PISO del convenio, que es lo que el control de §4 compara contra lo que
+ * pagamos. Deja de gobernar el factor, no deja de ser un hecho.
+ *
+ * @returns {{filas:any[][], f0:number, f1:number}}
  */
-export function filasEscalon({ meses, escalones, filaInicio, celdaSigmaBase }) {
+export function filasEscalon({ meses, escalones, filaInicio, celdaSigmaBase, periodoBase = null }) {
   const filas = []
   filas.push(['Mes', 'Escalón publicado', `Básico ${CATEGORIA_ANCLA}`, 'Sube en el mes', 'Factor sobre la base', 'Σ $/hora del plantel', 'De dónde sale', 'Estado'])
   const f0 = filaInicio + 1
   const ult = ultimoEscalon(escalones)
+  // ═══ LA Σ $/hora SE ANCLA EN EL MES DE OBRA, NO EN LA PRIMERA FILA DEL CUADRO (07/08) ═══
+  //
+  // El cuadro arranca en el mes MÁS VIEJO de los tres bloques, y ése suele ser el de Oficina, que va un
+  // mes atrasada. La Σ $/hora, en cambio, es la del plantel de la última quincena cerrada DE OBRA: si
+  // se la multiplica por el factor medido desde el mes de Oficina, obra se lleva un mes de aumento que
+  // ya tiene adentro, y el error se arrastra a las diez quincenas siguientes. No da error, da un total
+  // más alto y plausible. La división por la fila del mes base de obra lo cierra.
+  const iBase = Math.max(0, meses.findIndex((m) => m.periodo === periodoBase))
+  const rBase = f0 + iBase
   meses.forEach((m, i) => {
     const r = f0 + i
     const e = escalonDe(escalones, m.periodo)
+    const t = tramoDe(m.periodo, escalones)
+    const firmado = t.origen === ORIGEN_ACUERDO
+    // EL TRAMO, VIVO. La celda del rótulo de la réplica ya la resolvió el parser (fila concreta, sin
+    // MATCH por nombre de mes: ése era el defecto B3). VALUE("1,9") en es-AR da 1,9 porque la coma es
+    // el separador decimal del archivo.
+    const tramo = e
+      ? `=IFERROR(VALUE(REGEXEXTRACT(INDEX('${UOCRA_HOJA}'!$${UOCRA_COL.mes}$1:$${UOCRA_COL.mes};${e.fila});"([0-9]+[.,]?[0-9]*)\\s*%"))/100;${RANGO_PARITARIA})`
+      : `=${RANGO_PARITARIA}`
     const basicoFila = e?.categorias?.[CATEGORIA_ANCLA]?.fila ?? null
+    // Sin acuerdo publicado el piso se ESTIMA encadenando desde el último publicado con el MISMO tramo
+    // que mueve el factor: las dos columnas no pueden contar historias distintas. Y en la PRIMERA fila
+    // no hay de dónde encadenar —arriba está el encabezado— así que queda vacía en vez de multiplicar
+    // un rótulo por un porcentaje y publicar un piso inventado.
     const basico = basicoFila
       ? `=IFERROR(INDEX('${UOCRA_HOJA}'!$${UOCRA_COL.basico}$1:$${UOCRA_COL.basico};${basicoFila});"")`
-      // Sin acuerdo publicado el básico se ESTIMA encadenando desde el último publicado, con el
-      // parámetro. Se muestra igual —el lector tiene que poder ver de dónde sale el factor— y la
-      // columna "De dónde sale" dice que es una estimación, no el acuerdo.
-      : `=IFERROR($C${r - 1}*(1+${RANGO_AUMENTO});"")`
+      : (i === 0 ? '' : `=IFERROR($C${r - 1}*(1+$D${r});"")`)
     filas.push([
       `=EOMONTH(DATE(${m.anio};${m.mes};1);0)`,
       // Sólo el escalón (112px ≈ 19 caracteres); el acuerdo va en "De dónde sale".
       e ? `${e.rotulo}` : 'sin acuerdo',
       basico,
-      i === 0 ? VACIO : `=IFERROR($C${r}/$C${r - 1}-1;"")`,
-      `=IFERROR($C${r}/$C$${f0};"")`,
-      // Σ $/hora del plantel = el del mes base × el factor. NO se recalcula por categoría: el plantel
-      // vive UNA sola vez, en 1.1, y acá se referencia. Duplicarlo es tener dos planteles.
-      `=IFERROR(${celdaSigmaBase}*$E${r};"")`,
-      e ? `${String(e.acuerdo ?? 'acuerdo').replace(/^Acuerdo\s+/, 'Ac.')}`.slice(0, 19) : 'estimado·parám.',
+      // El mes base no sube: es el ancla. Un tramo acá sería el doble conteo, otra vez.
+      i === 0 ? VACIO : tramo,
+      // Factor acumulado = el del mes anterior × (1 + tramo del mes). La primera fila es 1 LITERAL:
+      // no hay fórmula que pueda devolver otra cosa, que es lo que mata el doble conteo por diseño.
+      i === 0 ? '=1' : `=IFERROR($E${r - 1}*(1+$D${r});"")`,
+      // Σ $/hora del plantel = el del mes base de OBRA × el factor acumulado desde ese mes. NO se
+      // recalcula por categoría: el plantel vive UNA sola vez, en 1.1, y acá se referencia.
+      `=IFERROR(${celdaSigmaBase}*$E${r}/$E$${rBase};"")`,
+      firmado && e ? `${String(e.acuerdo ?? 'acuerdo').replace(/^Acuerdo\s+/, 'Ac.')}`.slice(0, 19) : 'proyección',
       i === 0
         ? 'mes base: factor 1,0000, sin aumento'
-        : (e ? '✓ acuerdo' : `⚠ est. · últ: ${(ult?.rotulo ?? '—').slice(0, 12)}`),
+        : (firmado ? '✓ acuerdo firmado' : `⚠ proyección · últ: ${(ult?.rotulo ?? '—').slice(0, 12)}`),
     ])
   })
   const f1 = f0 + meses.length - 1
