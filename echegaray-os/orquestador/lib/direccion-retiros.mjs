@@ -52,6 +52,23 @@
 // UN MES ESTÁ PAGADO O PROYECTADO, NUNCA LOS DOS. La proyección se apaga sola en cuanto la celda de
 // pagado tiene plata (`IF(N(pagado)>0;"";…)`), así que sumar las dos columnas —que es lo que hace el
 // cash flow— es correcto por construcción y no por disciplina de quien carga.
+//
+// ═══ DOS RETIROS CONFIRMADOS QUE ESTE BLOQUE NO ASIGNA A NINGÚN MES (06/08) ═══
+//
+// El extracto del Santander tiene dos débitos que el dueño confirmó como retiros:
+//
+//     01/06   $3.000.000
+//     02/07   $2.000.000
+//
+// Quedan DECLARADOS acá y fuera del cuadro, a propósito. La celda "Pagado" de un mes suma filas de
+// COMPRAS, y estos dos débitos no tienen fila de Compras que diga a qué mes de retiro corresponden ni
+// a cuál de los tres socios. Imputarlos por la fecha —el de junio al mes de mayo, el de julio al de
+// junio— sería elegir por ellos: encendería como PAGADOS dos meses que nadie marcó, apagaría su
+// proyección y bajaría el compromiso del año en $5.000.000 sobre una suposición mía.
+//
+// La regla del archivo es la de siempre: un hecho entra al cuadro por su fuente, no por parecerse a
+// uno. Cuando esas dos salidas se carguen en Compras con su persona y su mes, el bloque las va a
+// tomar solo y sin tocar una línea de código — que es la prueba de que el criterio está bien puesto.
 
 /** Las tres personas de Dirección. Definidas UNA vez: de acá salen el rótulo, el regex y el total. */
 export const NOMBRES_DIRECCION = ['Jorge Echegaray', 'Rodrigo Echegaray', 'Jorge Corona']
@@ -121,36 +138,80 @@ export const formulaPrimerRetiro = (nombres = NOMBRES_DIRECCION) =>
   `=IFERROR(MIN(FILTER(${COL_FECHA_CAJA};REGEXMATCH(LOWER(${COL_PERSONA}&"");"${regexDireccion(nombres)}");ISNUMBER(${COL_FECHA_CAJA})));"")`
 
 /**
- * NÚCLEO PURO: lo REALMENTE pagado a Dirección en un mes, según Compras.
+ * NÚCLEO PURO: LAS FILAS DE COMPRAS QUE PAGAN EL RETIRO DEL MES `mes` — definidas UNA sola vez.
  *
- * Mira el estado de pago, no la fecha: una fila con fecha de caja pasada y estado "Vigente" es un
- * pago previsto que todavía no salió. Confundirlos apagaría la proyección de un mes que sigue
- * debiéndose — el error caro, porque desaparece plata del cuadro sin dejar rastro.
+ * Las condiciones viven acá y no adentro de cada fórmula porque DOS celdas de la misma fila del
+ * cuadro tienen que hablar de las MISMAS filas de Compras: "Pagado" (cuánta plata salió) y "Se paga
+ * el" (cuándo salió). Cuando cada una definía su propia ventana, el cuadro dijo las dos cosas a la
+ * vez —julio pagado $9.000.000 y "se paga el 10/08", una fecha que todavía no llegó— y el libro
+ * partió $3.000.000 como COMPROMETIDO fantasma. Con una definición sola, ese desacuerdo no se puede
+ * volver a escribir.
+ *
+ * Mira el ESTADO de pago, no que la fecha ya haya pasado: una fila con fecha de caja vencida y
+ * estado "🟢 Vigente" es un pago previsto que todavía no salió. Confundirlos apagaría la proyección
+ * de un mes que se sigue debiendo — el error caro, porque desaparece plata sin dejar rastro.
+ *
+ * ═══ LA VENTANA ES LA DEL MES SIGUIENTE (06/08, pagado en vivo) ═══
+ *
+ * El retiro del mes M sale el DIA_PAGO de M+1 — la proyección ya lo dice así ("se paga el 10/08"
+ * para julio) y la propia nota del bloque lo midió en Compras. Pero esto buscaba pagos con fecha de
+ * caja DENTRO de M: los $9M pagados el 03-04/08 cayeron en el balde "Agosto", "Julio" siguió
+ * proyectado, y la tarjeta COMPROMETIDA pidió plata que ya había salido. Un pago confirma la
+ * proyección más vieja: la ventana de pagado es la MISMA que la de pago.
  *
  * `IF(ISNUMBER(x);x;0)` y no `N(x)`: dentro de SUMPRODUCT, N() no se expande sobre un rango.
+ *
+ * @returns {string[]} las condiciones, en orden. Se unen con `*` para SUMPRODUCT y con `;` para FILTER.
  */
-export function formulaPagadoMes(mes, anio, nombres = NOMBRES_DIRECCION) {
-  // ═══ LA VENTANA ES LA DEL MES SIGUIENTE (06/08, pagado en vivo) ═══
-  //
-  // El retiro del mes M sale el DIA_PAGO de M+1 — la proyección ya lo dice así ("se paga el
-  // 10/08" para julio) y la propia nota del bloque lo midió en Compras. Pero esta fórmula buscaba
-  // pagos con fecha de caja DENTRO de M: los $9M pagados el 03-04/08 cayeron en el balde "Agosto",
-  // "Julio" siguió proyectado $9M al 10/08, y la tarjeta COMPROMETIDA pidió plata que ya salió.
-  // Un pago confirma la proyección más vieja: la ventana de pagado es la MISMA que la de pago.
+export function condicionesPagoDelMes(mes, anio, nombres = NOMBRES_DIRECCION) {
   const desde = fechaDeMes(anio, mes + 1, '1')
   const hasta = fechaDeMes(anio, mes + 2, '1')
   const f = `IF(ISNUMBER(${COL_FECHA_CAJA});${COL_FECHA_CAJA};0)`
-  return `=SUMPRODUCT(REGEXMATCH(LOWER(${COL_PERSONA}&"");"${regexDireccion(nombres)}")`
-    + `*(${f}>=${desde})*(${f}<${hasta})`
-    + `*REGEXMATCH(${COL_ESTADO_PAGO}&"";"Pagado")`
+  return [
+    `REGEXMATCH(LOWER(${COL_PERSONA}&"");"${regexDireccion(nombres)}")`,
+    `(${f}>=${desde})`,
+    `(${f}<${hasta})`,
+    `REGEXMATCH(${COL_ESTADO_PAGO}&"";"Pagado")`,
+  ]
+}
+
+/** NÚCLEO PURO: lo REALMENTE pagado a Dirección en un mes, según Compras. */
+export function formulaPagadoMes(mes, anio, nombres = NOMBRES_DIRECCION) {
+  return `=SUMPRODUCT(${condicionesPagoDelMes(mes, anio, nombres).join('*')}`
     + `*IF(ISNUMBER(${COL_IMPORTE});${COL_IMPORTE};0))`
 }
 
 /**
- * NÚCLEO PURO: cuándo sale de la caja el retiro del mes `mes` — el día DIA_PAGO del mes siguiente.
+ * NÚCLEO PURO: cuándo sale de la caja el retiro del mes `mes`.
+ *
+ * ═══ UN MES PAGADO NO TIENE FECHA PREVISTA: TIENE FECHA (06/08) ═══
+ *
+ * Esta celda devolvía SIEMPRE el día DIA_PAGO del mes siguiente, estuviera el mes pagado o no. El
+ * caso real: julio figuraba pagado $9.000.000 y "se paga el" 10/08 — una fecha FUTURA para plata que
+ * ya había salido. Los pagos, verificados contra el extracto y confirmados por el dueño ("sí fueron
+ * retiros"), fueron dos débitos de $3.000.000 el 03/08 (uno a nombre de Ana Laura Echegaray, que es
+ * el retiro de Jorge Corona) y el retiro de Jorge Echegaray EN EFECTIVO el 04/08.
+ *
+ * Como el cash flow imputa este bloque por DIRECCION_PAGO, esos $9.000.000 quedaban parados en una
+ * fecha que no había llegado y el libro los partía como COMPROMETIDO fantasma. El importe estaba
+ * bien, la plata estaba pagada, y el cuadro igual pedía caja para el 10/08: ningún error, ningún
+ * descuadre, un compromiso inventado.
+ *
+ * LA FECHA DE UN HECHO SALE DEL HECHO. Si hay filas de Compras que pagaron el mes —exactamente las
+ * mismas que suma "Pagado", por `condicionesPagoDelMes`— la fecha es la de esas filas. Si no las
+ * hay, FILTER da #N/A y la celda cae en la fecha PREVISTA, que es lo correcto para un mes que
+ * todavía se debe.
+ *
+ * MÁX Y NO MÍN. Un mes se termina de pagar cuando salió el último peso: con caja el 03/08 y efectivo
+ * el 04/08, el compromiso se cierra el 04/08. El MÍN diría que el mes estaba saldado un día antes de
+ * que lo estuviera.
+ *
  * Diciembre da enero del año que viene, y está bien: es percibido, y ese pago no es caja de este año.
  */
-export const formulaSePagaElDireccion = (mes, anio) => `=${fechaDeMes(anio, mes + 1, RANGO_DIA_PAGO)}`
+export function formulaSePagaElDireccion(mes, anio, nombres = NOMBRES_DIRECCION) {
+  const prevista = fechaDeMes(anio, mes + 1, RANGO_DIA_PAGO)
+  return `=IFERROR(MAX(FILTER(${COL_FECHA_CAJA};${condicionesPagoDelMes(mes, anio, nombres).join(';')}));${prevista})`
+}
 
 /**
  * NÚCLEO PURO: `DATE(año;mes;día)` con el mes SIEMPRE entre 1 y 12.
