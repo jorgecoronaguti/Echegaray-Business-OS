@@ -35,6 +35,7 @@ import {
   deJornalesQuincenas, deOficina, deDireccion, comprasPagadasConCheque,
   deCargasSociales, mesesCubiertos, cargasEnCompras, reemplazadasPorLaCadena, NOMBRES_CARGAS,
 } from '../lib/libro-extractores.mjs'
+import { deRecurrentes } from '../lib/libro-extractores-recurrentes.mjs'
 import { cruzar, chequesDelRegistro } from '../lib/cruce-cheque-factura.mjs'
 import { endososDeCartera } from '../lib/libro-endosos.mjs'
 import { debitosDelExtracto, corteDelExtracto, pagosDeResumen, chequesCubiertosPorBanco } from '../lib/libro-respaldo-banco.mjs'
@@ -186,6 +187,10 @@ async function extraerDeLasFuentes(google, corte) {
     colEstadoCompras,
     fuentes: {
       Compras: deCompras(compras, corte, { cruce, cargasCubiertas }),
+      // La provisión de los servicios recurrentes (Movistar, seguros, honorarios): lo esperado del
+      // mes menos lo ya materializado en Compras. Sin esto, el mes en curso no debía ningún
+      // recurrente y el pago real le pegaba a LIBRE (07/08). Ver libro-extractores-recurrentes.mjs.
+      Recurrentes: deRecurrentes(compras, corte, (m) => console.log(`  · ${m}`)),
       'Cargas Sociales': cargas,
       Cobranzas: deCobranzas(cobranzas, corte, { endosos, excluidos }),
       'Cheques Emitidos': deChequesEmitidos(cheques, { fila0: reg.primera, cruce }),
