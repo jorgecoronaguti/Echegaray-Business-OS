@@ -153,8 +153,15 @@ export function tarjetas(ref) {
       // vencido impago (sin `desde`). MAGNITUD y no neto: "cuánto debo" es positivo. La urgencia no
       // se pierde: lo que vence esta semana queda en el contexto.
       valor: nuevas ? `=${mesPago}+${nuevas}` : `=${mesPago}`,
-      // "ya pagaste": el dueño ve que los pagos del mes salen de ESTA tarjeta — la libre no se toca.
-      contexto: `="del mes · ya pagaste "&TEXT(${pagadoMes}/1000000;"$#,##0.0")&"M · próx. 7 días: "&TEXT(${venceEn7}/1000000;"$#,##0.0")&"M"`,
+      // ═══ EL TOTAL DEL MES VA EN LA FRASE, O LA TARJETA NO SE PUEDE LEER (07/08, textual) ═══
+      //
+      // "es comprometida y cuando se pagan los compromisos deben salir de ahí". Salen — pero sin el
+      // total a la vista, el lector ve $60M pagados y $44M todavía comprometidos y concluye que nada
+      // salió de ningún lado. La frase completa cierra sola: de $105M del mes, pagaste $61M, faltan
+      // los $44M del titular. El total crece cuando entra un compromiso nuevo y el pagado crece al
+      // pagar: el titular es la diferencia, siempre derivable a ojo. Corto a propósito: la versión
+      // larga se TRUNCABA en la celda ("próx. 7 dí") y una frase cortada es peor que ninguna.
+      contexto: `="de "&TEXT((${pagadoMes}+N($C$3))/1000000;"$#,##0")&"M del mes pagaste "&TEXT(${pagadoMes}/1000000;"$#,##0")&"M · 7 días: "&TEXT(${venceEn7}/1000000;"$#,##0.0")&"M"`,
       especie: 'plata',
     },
     {

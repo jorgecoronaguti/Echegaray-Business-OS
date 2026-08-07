@@ -54,17 +54,22 @@ test('COMPROMETIDA = todo lo que hay que pagar en el mes − lo ya pagado, con l
   // urgencia que antes era el titular.
   const c = de('comprometida')
   assert.equal(c.valor, `=${terminoLibro({ signo: -1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })}`)
-  assert.match(c.contexto, /próx\. 7 días/)
+  assert.match(c.contexto, /7 días:/)
   assert.ok(c.contexto.includes(terminoLibro({ signo: -1, estados: NO_REAL, hasta: 'TODAY()+7', medida: 'magnitud' })))
   assert.ok(!c.valor.includes('"REAL"'), 'lo REAL ya salió de la cuenta: no es obligación')
 })
 
-test('EL CONTEXTO DE COMPROMETIDA muestra lo YA PAGADO del mes: los pagos salen de esta tarjeta', () => {
-  // "lo que se está pagando no me está descontando de caja comprometida" (dueño, 07/08). El número
-  // sí baja — pero sin verlo, el dueño no puede saber que baja. "Ya pagaste" es lo REAL del mes.
+test('EL CONTEXTO DE COMPROMETIDA cuenta la historia entera: total del mes → pagado → falta', () => {
+  // "es comprometida y cuando se pagan los compromisos deben salir de ahí" (dueño, 07/08). Salen —
+  // pero sin el TOTAL a la vista, $60M pagados junto a $44M comprometidos no cierran ninguna
+  // historia. La frase es: de $X del mes pagaste $Y (el titular es la resta, a ojo). Y CORTA: la
+  // versión larga se truncaba en la celda, y una frase cortada es peor que ninguna.
   const c = de('comprometida')
-  assert.match(c.contexto, /ya pagaste/)
-  assert.ok(c.contexto.includes(terminoLibro({ signo: -1, estados: ['REAL'], desde: 'EOMONTH(TODAY();-1)+1', hasta: FIN_DE_MES, medida: 'magnitud' })))
+  const pagado = terminoLibro({ signo: -1, estados: ['REAL'], desde: 'EOMONTH(TODAY();-1)+1', hasta: FIN_DE_MES, medida: 'magnitud' })
+  assert.match(c.contexto, /del mes pagaste/)
+  assert.ok(c.contexto.includes(pagado))
+  // El TOTAL del mes = lo pagado + lo que falta (el titular C3): derivable a ojo, nunca una 3ª suma.
+  assert.ok(c.contexto.includes(`(${pagado}+N($C$3))`), 'el total del mes se arma con el titular, no con otra suma del libro')
 })
 
 test('CON FRONTERA, COMPROMETIDA suma en vivo las pendientes que el libro todavía no incorporó', () => {
