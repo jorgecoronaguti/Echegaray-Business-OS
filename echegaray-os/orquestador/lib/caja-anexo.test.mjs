@@ -35,27 +35,66 @@ test('el anexo se construye sin red, sin base y sin escribir una celda', () => {
 // EL DESGLOSE DEL EFECTIVO — SE VE Y NO SUMA
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
-test('el desglose del efectivo está entero: los seis sumandos, cada uno en su renglón', () => {
+test('el desglose del efectivo está entero: los seis históricos, cada uno en su renglón', () => {
   // Un total solo no se puede discutir: $19,7 millones de efectivo en un cajón es un número que hay que
-  // poder abrir. Las fórmulas son LAS MISMAS que arma el neto (se importan de la lib, no se copian), así
-  // que el desglose no puede decir otra cosa que el total.
+  // poder abrir. Desde el sello (07/08) cada renglón es el HISTÓRICO COMPLETO de su canal — sin ventana
+  // de fecha, porque el día no puede ordenar dos hechos del mismo día — y el neto es la SUMA de lo que
+  // se ve, así que el desglose no puede decir otra cosa que el total.
   const g = construir()
   const renglones = [
-    [/\(\+\) cobrado en efectivo después del arqueo/i, false],
-    [/\(−\) pagado en efectivo después del arqueo/i, true],
-    [/\(−\) jornales pagados en efectivo después del arqueo/i, true],
-    [/\(−\) sueldos de OFICINA en efectivo después del arqueo/i, true],
-    [/\(\+\) extraído del banco después del arqueo/i, false],
-    [/\(−\) depositado en el banco después del arqueo/i, true],
+    [/\(\+\) cobrado en efectivo — histórico completo/i, false],
+    [/\(−\) pagado en efectivo — histórico completo/i, true],
+    [/\(−\) jornales pagados en efectivo — histórico completo/i, true],
+    [/\(−\) sueldos de OFICINA en efectivo — histórico completo/i, true],
+    [/\(\+\) extraído del banco — histórico completo/i, false],
+    [/\(−\) depositado en el banco — histórico completo/i, true],
   ]
   for (const [re, resta] of renglones) {
     const f = filaDe(g, re)
     assert.ok(f > 0, `falta el renglón del desglose: ${re}`)
     assert.match(celda(g, f, 2), /^=/, `${re}: el desglose tiene que ser fórmula`)
-    // El desglose se VE y no SUMA: la columna de pesos va vacía o el mismo efectivo entraría dos veces.
+    // El desglose se VE y no SUMA en pesos: la columna E va vacía o el mismo efectivo entraría dos veces.
     assert.ok(vacia(celda(g, f, 4)), `${re}: el desglose NO puede aportar valor en pesos`)
-    if (resta) assert.match(celda(g, f, 2), /;-\(/, `${re}: una descarga tiene que ir restando`)
+    assert.ok(!celda(g, f, 2).includes('ARQUEO'), `${re}: el histórico no puede depender de la fecha del arqueo`)
+    if (resta) assert.match(celda(g, f, 2), /^=-\(/, `${re}: una descarga tiene que ir restando`)
   }
+  // Y los renglones son EXACTAMENTE los que el neto y el sello suman: filasHistorico los delimita.
+  const [f0, f1] = g.filasHistorico
+  assert.equal(f1 - f0 + 1, 6, 'seis renglones de histórico, ni uno más')
+  assert.equal(filaDe(g, renglones[0][0]), f0)
+  assert.equal(filaDe(g, renglones[5][0]), f1)
+})
+
+test('EL SELLO: con conteo nuevo se autocancela (neto 0 = "lo contado, tal cual"); sellado, resta el número sellado', () => {
+  // El defecto que este diseño cierra, medido en vivo dos veces en 24 horas y en los dos sentidos:
+  // el conteo del mediodía no veía el pago de la tarde, y el conteo de la tarde volvía a restar un
+  // pago que ya tenía adentro. El dueño: "yo se q ahora hay 5920000, por que no myestra eso mismo".
+  const g = construir()
+  const sello = celda(g, g.fSello, 2)
+  const [f0, f1] = g.filasHistorico
+  assert.match(sello, new RegExp(`SUM\\(C${f0}:C${f1}\\)`), 'el sello viejo se autocancela restando el histórico ENTERO')
+  assert.match(sello, new RegExp(`N\\(\\$D\\$${g.fSello}\\)`), 'y el sello vigente resta el número sellado en D')
+  assert.match(sello, /<>N\(CAJA_ARQUEO_ARS\)/, 'la vigencia compara el VALOR del arqueo contra la copia sellada')
+  assert.match(sello, /<>N\(CAJA_ARQUEO_ARS_FECHA\)/, 'y también la FECHA: recontar el mismo monto otro día resella')
+  assert.ok(!sello.includes(','), 'es-AR: separador ; — una coma acá es un decimal, no un argumento')
+  // El neto es la suma de TODO lo visible: los seis históricos y el sello. Nada por fuera.
+  const neto = celda(g, g.fNeto, 2)
+  assert.match(neto, new RegExp(`^=IF\\(NOT\\(ISNUMBER\\(CAJA_ARQUEO_ARS_FECHA\\)\\);0;SUM\\(C${f0}:C${g.fSello}\\)\\)$`))
+  // Sin sellos previos, D del sello y D del estado salen en 0: fuerzan "conteo sin sellar" — el lado
+  // que muestra lo contado tal cual, nunca un descuento fantasma.
+  assert.equal(g.filas[g.fSello - 1][3], 0)
+  assert.equal(g.filas[g.fEstado - 1][3], 0)
+})
+
+test('el sello RESCATADO viaja a su celda: regenerar el anexo no puede deshacer el sello', () => {
+  const cargado = new Map([
+    ['      · (−) lo que ya estaba adentro del conteo — SELLO', { selloNeto: -2000000, selloFecha: 46240 }],
+    ['      ¿el sello está al día?', { selloValor: 5920000 }],
+  ])
+  const g = grillaAnexo({ refs: REFS, cartera: CARTERA, conceptosCiegos: [], cargado })
+  assert.equal(g.filas[g.fSello - 1][3], -2000000, 'el número sellado se re-emite donde estaba')
+  assert.equal(g.filas[g.fSello - 1][5], 46240, 'con la fecha del conteo al que pertenece')
+  assert.equal(g.filas[g.fEstado - 1][3], 5920000, 'y la copia del valor del arqueo, para detectar el próximo conteo')
 })
 
 test('la nómina en efectivo DESCARGA la caja física y la de banco NO: son canales distintos', () => {
@@ -63,7 +102,7 @@ test('la nómina en efectivo DESCARGA la caja física y la de banco NO: son cana
   // por transferencia. Ni una mitad ni la otra bajaba ninguna disponibilidad: la nómina no es una compra
   // ni un cheque. La plata se pagaba y no salía de la pestaña.
   const g = construir()
-  const efvo = celda(g, filaDe(g, /jornales pagados en efectivo después del arqueo/i), 2)
+  const efvo = celda(g, filaDe(g, /jornales pagados en efectivo — histórico completo/i), 2)
   assert.match(efvo, /JORNALES_REAL_ADELANTO/)
   assert.match(efvo, /JORNALES_REAL_RECIBO/)
   assert.ok(!efvo.includes('JORNALES_REAL_BANCO'), 'lo que salió por banco no puede salir también del cajón')
@@ -87,19 +126,24 @@ test('la extracción SUMA al cajón — es el espejo del depósito, que resta', 
   // La caja física sólo sabía BAJAR hacia el banco y nunca subir desde él: una asimetría que sólo puede
   // dar de menos.
   const g = construir()
-  const c = celda(g, filaDe(g, /extraído del banco después del arqueo/i), 2)
+  const c = celda(g, filaDe(g, /extraído del banco — histórico completo/i), 2)
   assert.match(c, /extraccion/)
-  assert.ok(!/;-\(/.test(c), 'la extracción CARGA la caja: no lleva signo negativo')
+  assert.ok(!/^=-\(/.test(c), 'la extracción CARGA la caja: no lleva signo negativo')
 })
 
-test('los dos netos incorporan la nómina y la oficina: el desglose no puede decir algo que el total no dice', () => {
+test('el neto de efectivo incorpora la nómina y la oficina VÍA SU DESGLOSE: suma los renglones a la vista', () => {
+  // Antes el neto era una megafórmula que repetía los seis términos; hoy es la SUMA del desglose (los
+  // términos viven una sola vez, en sus renglones). El invariante es el mismo: la nómina en billetes y
+  // la oficina DESCARGAN la caja física, y los dólares no entran al cajón de pesos.
   const g = construir()
-  const neto = celda(g, filaDe(g, /NETO de efectivo posterior al arqueo/i), 2)
-  assert.match(neto, /JORNALES_REAL_ADELANTO/, 'el neto de efectivo tiene que restar la nómina en billetes')
-  assert.match(neto, /OFICINA_PAGADO/, 'y los sueldos de oficina')
+  const [f0, f1] = g.filasHistorico
+  const bloque = g.filas.slice(f0 - 1, f1).map((f) => String(f?.[2] ?? '')).join('\n')
+  assert.match(bloque, /JORNALES_REAL_ADELANTO/, 'el desglose que el neto suma resta la nómina en billetes')
+  assert.match(bloque, /OFICINA_PAGADO/, 'y los sueldos de oficina')
   // Y el cajón de PESOS no se come los dólares: U$S 15.000 entrando como $15.000 es el importe correcto
   // en la moneda equivocada, que no da error y está mal por dos órdenes de magnitud.
-  assert.match(neto, /"<>USD"/, 'la línea de pesos excluye explícitamente los cobros en dólares')
+  assert.match(bloque, /"<>USD"/, 'la línea de pesos excluye explícitamente los cobros en dólares')
+  assert.equal(filaDe(g, /NETO de efectivo posterior al arqueo/i), g.fNeto, 'el neto vive donde el nombre lo publica')
 })
 
 test('el canal no declarado se NOMBRA, no se adivina', () => {

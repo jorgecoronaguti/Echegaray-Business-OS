@@ -50,7 +50,7 @@
 
 import * as BANCO from './banco-santander.mjs'
 import { ANEXO, DESDE_CAJA } from './caja-anexo-nombres.mjs'
-import { CARGA, CUENTAS, RANGO_TC } from './caja-disponibilidades.mjs'
+import { CUENTAS, RANGO_TC } from './caja-disponibilidades.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 import { rotuloAlDia } from './fecha-de-frescura.mjs'
 import {
@@ -181,6 +181,8 @@ export function grilla(cargado, refs) {
   let fCartera = 0
   let fBalanzArs = 0
   let fBalanzUsd = 0
+  let fArqArs = 0
+  let fArqUsd = 0
   // LAS FILAS ‖ QUE EL TOTAL RESTA. Antes era sólo la cartera y estaba escrita a mano en la fórmula
   // del total; hoy son tres (cartera + las dos de Balanz) y salen de la declaración `noSuma` de cada
   // cuenta: agregar una cuarta fila que no suma es declararla, no acordarse de tocar el total.
@@ -197,31 +199,45 @@ export function grilla(cargado, refs) {
     // EL IMPORTE EN SU MONEDA ES EL HECHO; el saldo en pesos es el CÁLCULO. Un saldo en dólares
     // metido a la fuerza en una columna de pesos es un dato falso, y en Argentina se vuelve falso más
     // rápido que en ningún lado: por eso las dos celdas conviven en vez de guardar sólo el convertido.
+    // EL CONTEO SE TIPEA EN LA MISMA FILA QUE LO MUESTRA (07/08, orden del dueño: "refleja lo que
+    // dice el arqueo y que de ahí surjan las restas, sacá una de las dos celdas"). B es el conteo a
+    // mano (amarilla), C el vivo (conteo + movimientos), D la fecha del conteo (amarilla). La fila
+    // aparte del arqueo se fue: dos filas con casi el mismo número eran la confusión.
+    // Un conteo que llega como FÓRMULA no es un conteo: es el residuo de la fila calculada del
+    // diseño anterior, y re-emitirlo en B armaría una referencia circular (B sumándose a sí misma
+    // vía el neto). Se descarta y la celda queda del dueño.
+    const conteo = (campo) => {
+      const v = suyoOAusente(c.nombre, campo)
+      return typeof v === 'string' && v.trim().startsWith('=') ? AJENA : v
+    }
+    if (c.arqueo === DESDE_CAJA.arqueoArsFecha) fArqArs = f
+    if (c.arqueo === DESDE_CAJA.arqueoUsdFecha) fArqUsd = f
     const origen = c.banco === 'saldoPesos' && refs.bancoRaw ? formulaUltimoSaldo(refs.bancoRaw)
       : c.banco === 'cartera' ? formulaCartera()
         : c.banco ? saldoDeBanco(c)
-          : c.arqueo === DESDE_CAJA.arqueoArsFecha
-            // El efectivo VIVO: el conteo declarado más lo que se movió desde entonces. El neto lo
-            // calcula el anexo y se cita POR NOMBRE — es el único sumando de esta pestaña que vive
-            // afuera, y por eso tiene nombre propio en vez de una referencia a una celda.
-            ? `=N(${DESDE_CAJA.arqueoArs})+N(${ANEXO.efectivoNeto})`
-            : c.arqueo === DESDE_CAJA.arqueoUsdFecha
-              // Y LO MISMO PARA EL CAJÓN EN DÓLARES: sin esto, U$S 15.000 cobrados en efectivo
-              // entraban al cajón de PESOS como $15.000 — el importe correcto en la moneda
-              // equivocada, que no da error y está mal por tres órdenes de magnitud.
-              ? `=N(${DESDE_CAJA.arqueoUsd})+IF(NOT(ISNUMBER(${DESDE_CAJA.arqueoUsdFecha}));0;${formulaCobrosUsdEfectivoPosteriores(DESDE_CAJA.arqueoUsdFecha)})`
-              : (c.formula ?? previo(c.nombre, 'saldo'))
+          : c.arqueo ? conteo('saldo')
+            : (c.formula ?? previo(c.nombre, 'saldo'))
+    // El efectivo VIVO: el conteo tipeado en B más lo que se movió desde entonces. El neto lo
+    // calcula el anexo y se cita POR NOMBRE — es el único sumando de esta pestaña que vive afuera.
+    // En dólares se suman los cobros USD en efectivo y recién ahí se valúa: sin eso, U$S 15.000
+    // cobrados en efectivo entraban al cajón de PESOS como $15.000 — el importe correcto en la
+    // moneda equivocada, que no da error y está mal por tres órdenes de magnitud.
+    const pesos = c.arqueo === DESDE_CAJA.arqueoArsFecha
+      ? `=N(B${f})+N(${ANEXO.efectivoNeto})`
+      : c.arqueo === DESDE_CAJA.arqueoUsdFecha
+        ? `=(N(B${f})+IF(NOT(ISNUMBER(${DESDE_CAJA.arqueoUsdFecha}));0;${formulaCobrosUsdEfectivoPosteriores(DESDE_CAJA.arqueoUsdFecha)}))*${RANGO_TC}`
+        : c.moneda === 'USD' ? `=IF(ISNUMBER(B${f});B${f}*${RANGO_TC};"")` : `=IF(ISNUMBER(B${f});B${f};"")`
     izq.push([
       c.nombre,
       origen,
-      c.moneda === 'USD' ? `=IF(ISNUMBER(B${f});B${f}*${RANGO_TC};"")` : `=IF(ISNUMBER(B${f});B${f};"")`,
+      pesos,
       // CADA CUENTA SE FECHA CON SU PROPIA FUENTE. El dueño, tres veces: *"aún noto desactualizadas
       // las fechas"*. El defecto no era que estuvieran viejas: tres cuentas se fechaban con la fuente
       // de OTRA. Un conteo de caja fechado con TODAY() afirma que se contó hoy, sea cierto o no.
       c.banco === 'saldoPesos' && refs.bancoRaw ? formulaFechaCorte(refs.bancoRaw)
         : c.banco === 'cartera' ? '=TODAY()'
           : c.banco ? corteDeBanco(c)
-            : c.arqueo ? `=IF(ISNUMBER(${c.arqueo});${c.arqueo};"")`
+            : c.arqueo ? conteo('fecha')
               : (c.formula ? '=TODAY()' : previo(c.nombre, 'fecha')),
     ])
   }
@@ -371,20 +387,10 @@ export function grilla(cargado, refs) {
   for (let k = 0; k < Math.max(izq.length, der.length); k++) banda(izq[k], der[k])
   banda(totalIzq, totalDer)
 
-  // EL ARQUEO: LA ÚNICA CAPTURA DE TODA LA PESTAÑA, y por eso queda en la portada aunque el detalle se
-  // haya ido al anexo. Dos filas amarillas debajo del total, fuera del rango que suma: lo que se tipea
-  // acá entra a la caja por la fila "Efectivo en pesos", que lo cita por su rango con nombre.
-  //
-  // EL CONTEO VIAJA CON SU BLOQUE, NO SE QUEDA EN LA FILA. La fusión preserva por POSICIÓN: una
-  // corrida movió el bloque, el conteo se quedó en la fila vieja, los nombres se republicaron en una
-  // celda vacía y $39,28M se fueron a cero sin un solo #ERROR. Se RE-EMITE desde lo que se leyó al
-  // empezar; si no se pudo leer nada, sale AJENA — sin dato no se sobrescribe.
-  // El dato cargado bajo el rótulo VIEJO ("Caja en … — contado") llega igual: el rescate lo
-  // traduce con ALIAS antes de que la grilla lo busque por el nombre nuevo.
-  const arq = (rot) => [rot, suyoOAusente(rot, 'saldo'), '', suyoOAusente(rot, 'fecha')]
-  const fArqArs = banda(arq(CARGA.arqueoArs))
-  const fArqUsd = banda(arq(CARGA.arqueoUsd))
-
+  // EL ARQUEO YA NO TIENE FILA PROPIA (07/08): el conteo se tipea en B/D de las filas "Efectivo en
+  // …" del bloque de cuentas, que son las únicas amarillas. El conteo cargado bajo los rótulos
+  // viejos ("Caja en pesos — contado", "Arqueo en pesos — conteo a mano") llega igual: el rescate lo
+  // traduce con ALIAS antes de que la grilla lo busque por el nombre de la cuenta.
   const fBloques34 = banda(['3 · ALERTAS CRÍTICAS'], ['4 · ACCIONES RECOMENDADAS'])
   const A = alertas({ piso: `$I$${fCierre}`, fechaPiso: `$G$${fCierre}` })
   const AC = acciones({ piso: `$I$${fCierre}`, fechaPiso: `$G$${fCierre}` })

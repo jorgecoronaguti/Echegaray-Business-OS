@@ -25,9 +25,9 @@ import { formulaCanarioDetalle, formulaFechaDeCheque, formulaImporteEnCartera } 
 import {
   formulaCobrosPosteriores, formulaChequesDebitadosPosteriores, formulaComprasPagadasPosteriores,
   formulaJornalesBancoPosteriores, formulaOficinaBancoPosteriores, formulaOficinaSinCanal,
-  formulaNetaEfectivoPosterior, celdaJornalesEfectivo, celdaOficinaEfectivo, celdaExtraccionesEfectivo,
+  formulaCobrosEfectivoPosteriores, formulaComprasEfectivoPosteriores, formulaDepositosEfectivoPosteriores,
+  formulaJornalesEfectivoPosteriores, formulaOficinaEfectivoPosteriores, formulaExtraccionesEfectivoPosteriores,
 } from './caja-posterior-al-corte.mjs'
-import { celdaCobrosEfectivo, celdaPagosEfectivo, celdaDepositosEfectivo } from './caja-efectivo-fisico.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 import {
   bloqueLiquidez, bloqueConciliacion, bloqueVencido, bloqueTrazabilidad, bloqueCalendarioCiego,
@@ -38,6 +38,13 @@ export { PESTANA_ANEXO }
 
 /** A concepto · B moneda · C importe origen · D número 2 · E importe en pesos · F fecha · G texto. */
 export const ANCHO_ANEXO = 7
+
+/** Los rótulos del SELLO del conteo, letra por letra: son el ancla con la que el rescate y la
+ *  corrida que sella encuentran sus celdas aunque el bloque se mueva. */
+export const SELLO_EFECTIVO = {
+  sello: '      · (−) lo que ya estaba adentro del conteo — SELLO',
+  estado: '      ¿el sello está al día?',
+}
 /** Los anchos de columna, en píxeles. Los mismos que CAJA para que las dos se lean igual. */
 export const ANCHOS_ANEXO = [420, 56, 140, 140, 140, 104, 260]
 
@@ -114,40 +121,71 @@ function bloqueMovimientos(h) {
     `=${formulaOficinaSinCanal(corte)}`, '', '', '',
     'OFICINA_PAGADO de los meses sin OFICINA_BANCO cargado'])
 
-  // ═══ EL ESPEJO DE EFECTIVO DEL BANCO ═══
+  // ═══ EL ESPEJO DE EFECTIVO DEL BANCO — CON EL SELLO DEL CONTEO (07/08) ═══
   //
   // Decisión del dueño: "permitir carga manual de efectivo, pero de ahí mismo se tiene que hacer carga
-  // y descarga de manera automática". El arqueo es el ANCLA —el corte de la caja física, igual que el
-  // extracto es el del banco—: de esa fecha en adelante esta línea carga los cobros en efectivo y
-  // descarga los pagos en efectivo y los depósitos al banco.
+  // y descarga de manera automática". El arqueo es el ANCLA — el corte de la caja física, igual que el
+  // extracto es el del banco.
   //
-  // NO DUPLICA NADA POR CONSTRUCCIÓN: el banco excluye el efectivo y la caja física cuenta sólo el
-  // efectivo (partición por canal). La ventana es "> arqueo": lo anterior ya está DENTRO del arqueo,
-  // así que un arqueo nuevo colapsa lo viejo.
+  // POR QUÉ YA NO HAY VENTANAS DE FECHA. Medido en vivo dos veces en 24 horas, en los dos sentidos:
+  // el conteo del mediodía no veía el pago de la tarde (ventana estricta), y el conteo de la tarde
+  // volvía a restar un pago que ya tenía adentro (ventana inclusiva). El dueño: "yo sé que ahora hay
+  // 5.920.000, ¿por qué no muestra eso mismo?". El día no puede ordenar dos hechos del mismo día, y
+  // un parcial que crece sobre una fila vieja es invisible para cualquier ventana y para cualquier
+  // frontera de filas. La única ancla que funciona es la del banco: UN SALDO SELLADO.
+  //
+  // CÓMO FUNCIONA. Cada renglón trae su HISTÓRICO COMPLETO (sin fechas). El renglón del SELLO resta
+  // lo que ese histórico sumaba cuando se cargó el conteo — un número que el generador sella al
+  // detectar un arqueo nuevo (caja-anexo-pestana.mjs). El neto es la SUMA de todos los renglones a
+  // la vista: histórico ahora − histórico al conteo = lo que se movió desde que contaste. Una fila
+  // nueva, un parcial que crece o una corrección mueven el delta al instante.
+  //
+  // Y MIENTRAS EL SELLO ESTÁ VIEJO (el dueño acaba de tipear un conteo nuevo), el sello se
+  // autocancela: resta el histórico entero, el neto da 0 y la caja muestra EXACTAMENTE lo contado —
+  // que es la verdad más nueva que existe. La próxima corrida sella y los movimientos corren de ahí.
   push(['Posteriores al ARQUEO — el neto entra a "Efectivo en pesos" de CAJA', '', '', '', '',
     `=IF(ISNUMBER(${arqueo});${arqueo};"")`, ''])
-  const fNeto = push(['   ⇒ NETO de efectivo posterior al arqueo', 'ARS',
-    formulaNetaEfectivoPosterior(arqueo, { bancoRaw: h.refs.bancoRaw ?? '_BANCO_RAW' }), '', '', '',
+  // Las filas se conocen antes de empujarlas: neto = n+1, luego 6 históricos, el sello y el estado.
+  const fNeto = h.n + 1
+  const f0 = fNeto + 1
+  const fSello = f0 + 6
+  const fEstado = fSello + 1
+  // ¿El sello pertenece al conteo que está cargado? Compara arqueo (valor y fecha) contra la copia
+  // sellada (valor en D del estado, fecha en F del sello). Distinto → el conteo es más nuevo.
+  const selloViejo = `((N($D$${fEstado})<>N(${DESDE_CAJA.arqueoArs}))+(N($F$${fSello})<>N(${arqueo}))>0)`
+  const sello = (campo, def = 0) => { const v = h.previo(SELLO_EFECTIVO.sello, campo); return v === '' ? def : v }
+  const selloEstado = () => { const v = h.previo(SELLO_EFECTIVO.estado, 'selloValor'); return v === '' ? 0 : v }
+  push(['   ⇒ NETO de efectivo posterior al arqueo', 'ARS',
+    `=IF(NOT(ISNUMBER(${arqueo}));0;SUM(C${f0}:C${fSello}))`, '', '', '',
     'Es la mitad viva de: efectivo en caja = arqueo + movimientos posteriores'])
-  // LOS SUMANDOS, UNO POR UNO. Un total solo no se puede discutir: $19,7 millones de efectivo en un
-  // cajón es un número que hay que poder abrir. Las fórmulas son LAS MISMAS que arma el neto (se
-  // importan de la lib, no se copian), así que el desglose no puede decir otra cosa que el total.
-  push(['      · (+) cobrado en efectivo después del arqueo', 'ARS',
-    celdaCobrosEfectivo(arqueo), '', '', '', 'Cobranzas: forma "Efectivo" Y estado "Cobrado"'])
-  push(['      · (−) pagado en efectivo después del arqueo', 'ARS',
-    celdaPagosEfectivo(arqueo), '', '', '', 'Compras: estado "Pagado" y tipo de pago "Efectivo"'])
-  push(['      · (−) jornales pagados en efectivo después del arqueo', 'ARS',
-    celdaJornalesEfectivo(arqueo), '', '', '', 'Jornales por Quincena, columnas Adelanto y Total recibo'])
-  push(['      · (−) sueldos de OFICINA en efectivo después del arqueo', 'ARS',
-    celdaOficinaEfectivo(arqueo), '', '', '', 'Oficina: lo pagado menos lo que salió por banco'])
+  // LOS SUMANDOS, UNO POR UNO — HISTÓRICO COMPLETO, sin ventana. El neto es la suma de lo que se ve,
+  // así que el desglose no puede decir otra cosa que el total.
+  push(['      · (+) cobrado en efectivo — histórico completo', 'ARS',
+    `=${formulaCobrosEfectivoPosteriores('0')}`, '', '', '', 'Cobranzas: forma "Efectivo" Y estado "Cobrado"'])
+  push(['      · (−) pagado en efectivo — histórico completo', 'ARS',
+    `=-(${formulaComprasEfectivoPosteriores('0')})`, '', '', '', 'Compras en efectivo: el MONTO PAGADO, parcial o total'])
+  push(['      · (−) jornales pagados en efectivo — histórico completo', 'ARS',
+    `=-(${formulaJornalesEfectivoPosteriores('0')})`, '', '', '', 'Jornales por Quincena, columnas Adelanto y Total recibo'])
+  push(['      · (−) sueldos de OFICINA en efectivo — histórico completo', 'ARS',
+    `=-(${formulaOficinaEfectivoPosteriores('0')})`, '', '', '', 'Oficina: lo pagado menos lo que salió por banco'])
   // EL ESPEJO DEL DEPÓSITO: el billete deja la cuenta y entra al cajón, así que acá SUMA. La caja
   // física sólo sabía BAJAR hacia el banco y nunca subir desde él — una asimetría que sólo puede dar
   // de menos.
-  push(['      · (+) extraído del banco después del arqueo', 'ARS',
-    celdaExtraccionesEfectivo(arqueo), '', '', '', 'Réplica del extracto: débitos con concepto "extracción"'])
-  push(['      · (−) depositado en el banco después del arqueo', 'ARS',
-    celdaDepositosEfectivo(arqueo), '', '', '', 'Réplica del extracto: créditos con concepto "depósito de efectivo"'])
-  return { fNeto, fSinCanal }
+  push(['      · (+) extraído del banco — histórico completo', 'ARS',
+    `=${formulaExtraccionesEfectivoPosteriores('0')}`, '', '', '', 'Réplica del extracto: débitos con concepto "extracción"'])
+  push(['      · (−) depositado en el banco — histórico completo', 'ARS',
+    `=-(${formulaDepositosEfectivoPosteriores('0')})`, '', '', '', 'Réplica del extracto: créditos con concepto "depósito de efectivo"'])
+  // EL SELLO. D lleva el número sellado (lo escribe el generador, no una persona); F, la fecha del
+  // conteo al que pertenece. Con el sello viejo se autocancela: resta el histórico entero y el neto
+  // queda en 0 — la pestaña muestra el conteo tal cual, nunca un descuento que ya está adentro.
+  push([SELLO_EFECTIVO.sello, 'ARS',
+    `=-IF((NOT(ISNUMBER(${arqueo}))+${selloViejo}>0);SUM(C${f0}:C${fSello - 1});N($D$${fSello}))`,
+    sello('selloNeto'), '', sello('selloFecha', ''),
+    'lo que el histórico sumaba cuando se cargó el conteo; lo sella la corrida del anexo'])
+  push([SELLO_EFECTIVO.estado, '',
+    `=IF(NOT(ISNUMBER(${arqueo}));"— sin conteo cargado";IF(${selloViejo};"⚠ conteo nuevo sin sellar: se muestra tal cual lo contaste; la próxima corrida sella y los movimientos corren desde ahí";"✓ sellado al conteo del "&TEXT(N($F$${fSello});"dd/mm")))`,
+    selloEstado(), '', '', 'compara el conteo cargado contra la copia sellada (D de esta fila y F del sello)'])
+  return { fNeto, fSinCanal, fSello, fEstado, filasHistorico: [f0, fSello - 1] }
 }
 
 /**

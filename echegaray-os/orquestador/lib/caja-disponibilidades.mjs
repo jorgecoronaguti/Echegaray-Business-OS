@@ -203,10 +203,6 @@ export const CUENTAS = [
 export const CARGA = {
   limiteTarjeta: 'Tarjeta de crédito — límite acordado',
   acuerdo: 'Acuerdo en descubierto — importe acordado',
-  // Las dos filas amarillas del conteo físico. El rótulo dice QUIÉN escribe ("conteo a mano") y no
-  // repite "caja", para que nadie las confunda con las filas vivas "Efectivo en …" de arriba.
-  arqueoArs: 'Arqueo en pesos — conteo a mano',
-  arqueoUsd: 'Arqueo en dólares — conteo a mano',
 }
 
 /** Nombres viejos → nombre actual, para no perder un dato ya cargado cuando se renombra una fila. */
@@ -221,13 +217,16 @@ export const ALIAS = new Map([
   // Los rótulos previos al ‖ (06/08): un dato cargado sobre el nombre viejo vuelve a su cuenta.
   ['Balanz · inversiones ARS', 'Balanz · inversiones ARS ‖ invertido'],
   ['Balanz · inversiones USD', 'Balanz · inversiones USD ‖ invertido'],
-  // Los rótulos previos al renombre "caja"→"efectivo"/"arqueo" (07/08). El arqueo del dueño
-  // ($9.200.000 del 07/08) vive cargado bajo el nombre viejo: sin estas cuatro entradas el rescate
-  // no lo encuentra y la primera corrida lo daría por ausente.
+  // Los rótulos previos a la FUSIÓN del conteo en la fila viva (07/08, orden del dueño: "sacá una
+  // de las dos celdas"). El conteo tipeado vive hoy bajo alguno de estos nombres — la fila del
+  // arqueo que se eliminó o el rótulo "caja" anterior—: sin estas entradas el rescate no lo
+  // encuentra y la primera corrida lo daría por ausente. OJO: el mapa es de UN salto, no cadena.
   ['Caja en pesos', 'Efectivo en pesos'],
   ['Caja en dólares', 'Efectivo en dólares'],
-  ['Caja en pesos — contado', CARGA.arqueoArs],
-  ['Caja en dólares — contado', CARGA.arqueoUsd],
+  ['Caja en pesos — contado', 'Efectivo en pesos'],
+  ['Caja en dólares — contado', 'Efectivo en dólares'],
+  ['Arqueo en pesos — conteo a mano', 'Efectivo en pesos'],
+  ['Arqueo en dólares — conteo a mano', 'Efectivo en dólares'],
 ])
 
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')

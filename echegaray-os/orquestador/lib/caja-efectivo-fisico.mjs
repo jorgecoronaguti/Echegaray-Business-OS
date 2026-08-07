@@ -144,6 +144,22 @@ export function formulaCajaEnPesos({ arqueo, tc, neta }) {
 /** La guarda del arqueo, la misma que abre el total. Sin fecha no hay ventana: 0, no el histórico. */
 const guardado = (arqueo, cuerpo) => `=IF(NOT(ISNUMBER(${arqueo}));0;${cuerpo})`
 
+/**
+ * NÚCLEO PURO: ¿el conteo cargado es más nuevo que el sello? — la decisión de resellar.
+ *
+ * Se compara en CENTAVOS redondeados: el valor sellado viaja por la API como flotante y una
+ * comparación exacta resellaría en cada corrida por un decimal fantasma. Sin conteo cargado no hay
+ * nada que sellar: la fórmula ya muestra 0 sola por la guarda ISNUMBER.
+ * @param {{valor:number, fecha:number}} arqueo lo que está tipeado hoy
+ * @param {{valor:number, fecha:number}} sello  la copia sellada en la última corrida
+ * @returns {boolean}
+ */
+export function necesitaSello(arqueo = {}, sello = {}) {
+  const cent = (x) => Math.round((Number(x) || 0) * 100)
+  if (!cent(arqueo.valor) && !cent(arqueo.fecha)) return false
+  return cent(arqueo.valor) !== cent(sello.valor) || cent(arqueo.fecha) !== cent(sello.fecha)
+}
+
 /** Los cobros en efectivo posteriores al arqueo (CARGA la caja). Con `=` adelante, para una celda. */
 export function celdaCobrosEfectivo(arqueo, c = COB) {
   return guardado(arqueo, formulaCobrosEfectivoPosteriores(arqueo, c))

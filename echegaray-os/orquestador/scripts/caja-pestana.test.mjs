@@ -169,12 +169,16 @@ test('EL RÓTULO DEL TOTAL ES EL QUE BUSCAN LOS OTROS MÓDULOS, y por eso no lle
 
 test('la caja en dólares se lleva en dólares y se valúa aparte', () => {
   // "U$S 15.000" cobrados en efectivo entraban al cajón de PESOS como $15.000: el importe correcto en
-  // la moneda equivocada, que no da error y está mal por tres órdenes de magnitud.
+  // la moneda equivocada, que no da error y está mal por tres órdenes de magnitud. Desde la fusión
+  // del conteo (07/08), B es el conteo A MANO y la valuación —conteo + cobros USD en efectivo,
+  // convertida— vive en C.
   const g = construir()
   const f = filaDe(g, /^Efectivo en dólares$/)
   assert.ok(f > 0 && g.usd.includes(f), 'la fila en dólares tiene que estar declarada para pintarse "U$S"')
-  assert.match(celda(g, f, 1), /"USD"/, 'el importe en origen suma sólo los cobros marcados en dólares')
-  assert.equal(celda(g, f, 2), `=IF(ISNUMBER(B${f});B${f}*TIPO_CAMBIO_USD;"")`, 'y se valúa en su propia celda')
+  const c = celda(g, f, 2)
+  assert.match(c, new RegExp(`^=\\(N\\(B${f}\\)\\+`), 'C arranca del conteo tipeado en B')
+  assert.match(c, /"USD"/, 'suma sólo los cobros marcados en dólares')
+  assert.match(c, /\*TIPO_CAMBIO_USD$/, 'y recién al final se valúa a pesos')
 })
 
 test('la fecha de la posición vive en la fila del total y es la MÁS RECIENTE del bloque', () => {
@@ -284,8 +288,10 @@ test('LOS CONTROLES DEL ANEXO NO DESAPARECIERON: cada uno está citado en una al
  *   APORTE probado por el extracto de Santander del 05/08 ($22,53M + U$S 15.000), no la posición
  *   total — gap declarado en banco-santander.mjs BALANZ; se reemplaza cuando llegue su extracto.
  */
-const PEGADO_DECLARADO = new Set(['Santander · cta cte USD', 'Arqueo en pesos — conteo a mano',
-  'Arqueo en dólares — conteo a mano', 'Balanz · inversiones ARS ‖ invertido', 'Balanz · inversiones USD ‖ invertido'])
+// Las filas "Efectivo en …" llevan en B el CONTEO tipeado por el dueño (número, no fórmula): es la
+// única captura de la pestaña desde que el arqueo se fusionó en la fila viva (07/08).
+const PEGADO_DECLARADO = new Set(['Santander · cta cte USD', 'Efectivo en pesos', 'Efectivo en dólares',
+  'Balanz · inversiones ARS ‖ invertido', 'Balanz · inversiones USD ‖ invertido'])
 
 test('CERO NÚMEROS PEGADOS: toda celda de plata es una fórmula', () => {
   // Es la Regla de Oro número 5 del dueño, medida sobre la grilla entera y no bloque por bloque. Un
@@ -340,13 +346,14 @@ test('EL RESCATE LEE LA MISMA COLUMNA EN LA QUE EL GENERADOR ESCRIBE EL ARQUEO',
   const cel = (valor, numero = null) => ({ valor, numero, formula: null, formato: null })
   const grid = [
     g.filas[g.fCab - 1].map((c) => cel(String(c ?? ''))),
-    // El rótulo VIEJO a propósito: es el que está escrito hoy en el archivo real. El rescate tiene
-    // que traducirlo por ALIAS al nombre nuevo — si no, el renombre del 07/08 pierde el conteo.
-    [cel('Caja en pesos — contado'), cel('0', 0), cel(''), cel('30/07/2026', 46233)],
+    // El rótulo VIEJO a propósito: es de los que pueden seguir escritos en el archivo real (la fila
+    // del arqueo eliminada el 07/08). El rescate tiene que traducirlo por ALIAS a la fila viva — si
+    // no, la fusión del conteo lo pierde.
+    [cel('Arqueo en pesos — conteo a mano'), cel('0', 0), cel(''), cel('30/07/2026', 46233)],
   ]
   const cargado = rescatar(grid)
-  assert.equal(cargado.get('Arqueo en pesos — conteo a mano')?.saldo, 0, 'el importe tipeado tiene que viajar')
-  assert.equal(cargado.get('Arqueo en pesos — conteo a mano')?.fecha, 46233, 'y su fecha también: sin fecha no hay ventana')
+  assert.equal(cargado.get('Efectivo en pesos')?.saldo, 0, 'el importe tipeado tiene que viajar')
+  assert.equal(cargado.get('Efectivo en pesos')?.fecha, 46233, 'y su fecha también: sin fecha no hay ventana')
 })
 
 test('con el conteo ya cargado, el arqueo se RE-EMITE en su fila nueva (no se queda en la vieja)', () => {
@@ -354,8 +361,8 @@ test('con el conteo ya cargado, el arqueo se RE-EMITE en su fila nueva (no se qu
   // se quedó en la fila vieja y los rangos con nombre se republicaron en una celda vacía: la caja
   // física ($39,28M) se fue a cero sin un solo #ERROR.
   const cargado = new Map([
-    ['Arqueo en pesos — conteo a mano', { saldo: 0, fecha: 46233, origen: '', quien: '' }],
-    ['Arqueo en dólares — conteo a mano', { saldo: 15000, fecha: 46233, origen: '', quien: '' }],
+    ['Efectivo en pesos', { saldo: 0, fecha: 46233, origen: '', quien: '' }],
+    ['Efectivo en dólares', { saldo: 15000, fecha: 46233, origen: '', quien: '' }],
   ])
   const g = grilla(cargado, REFS)
   assert.equal(g.filas[g.fArqArs - 1][1], 0, 'el importe 0 es un dato, no un vacío')

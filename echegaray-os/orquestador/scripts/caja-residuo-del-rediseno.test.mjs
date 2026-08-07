@@ -12,7 +12,7 @@ import { VACIO } from '../lib/preservar-anotaciones.mjs'
 const fila = (...c) => c
 const NUEVA = [
   fila('POSICIÓN DE CAJA', VACIO, VACIO, VACIO, VACIO, VACIO, '=X', VACIO),
-  fila('Arqueo en pesos — conteo a mano', 'ARS', undefined, VACIO, VACIO, undefined, VACIO, VACIO),
+  fila('Efectivo en pesos', 'ARS', undefined, VACIO, VACIO, undefined, VACIO, VACIO),
 ]
 
 test('lo que el generador reescribe NO es residuo', () => {

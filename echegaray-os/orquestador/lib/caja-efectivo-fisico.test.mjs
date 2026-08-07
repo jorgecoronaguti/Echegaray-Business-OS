@@ -224,3 +224,16 @@ test('sin fecha de arqueo, NINGÚN renglón del desglose muestra el histórico',
     assert.match(celda, /^=IF\(NOT\(ISNUMBER\(\$F\$7\)\);0;/, 'la guarda del total tiene que estar también acá')
   }
 })
+
+test('necesitaSello: sella ante conteo nuevo, no resella por decimales fantasma, y sin conteo no hay nada que sellar', async () => {
+  const { necesitaSello } = await import('./caja-efectivo-fisico.mjs')
+  // El caso real del 07/08: el dueño tipeó 5.920.000 y el sello era del conteo anterior (9.200.000).
+  assert.equal(necesitaSello({ valor: 5920000, fecha: 46240 }, { valor: 9200000, fecha: 46240 }), true)
+  // Recontar el MISMO monto otro día también resella: la fecha es parte de la identidad del conteo.
+  assert.equal(necesitaSello({ valor: 5920000, fecha: 46241 }, { valor: 5920000, fecha: 46240 }), true)
+  // El flotante que vuelve de la API no puede resellar en cada corrida.
+  assert.equal(necesitaSello({ valor: 5920000.0000001, fecha: 46240 }, { valor: 5920000, fecha: 46240 }), false)
+  // Sin conteo cargado, nada que sellar: la guarda ISNUMBER de la formula ya muestra 0 sola.
+  assert.equal(necesitaSello({ valor: 0, fecha: 0 }, { valor: 9200000, fecha: 46240 }), false)
+  assert.equal(necesitaSello({}, {}), false)
+})
