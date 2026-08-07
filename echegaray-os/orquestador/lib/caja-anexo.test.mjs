@@ -271,8 +271,10 @@ test('la trazabilidad es la IDENTIDAD COMPLETA: cobrado = depositado + gastado +
   assert.match(gasto, /N\('Compras'!\$T\$4:\$T\)/)
   // El cajón VIVO (arqueo ± posteriores), el mismo número de CAJA!B7 — no el arqueo crudo.
   assert.match(cajon, /N\(CAJA_ARQUEO_ARS\)\+N\(ANEXO_EFECTIVO_NETO\)/)
-  // Y la resta usa los CINCO términos.
-  assert.match(sinExpl, /^=E\d+-E\d+-E\d+-E\d+-E\d+$/)
+  // Y la identidad usa los SEIS términos: cobrado − duplicado + extraído − depositado − gastado − cajón.
+  const ext = celda(g, filaDe(g, /Extraído del banco en efectivo/), 4)
+  assert.ok(ext.includes('_BANCO_RAW'), 'las extracciones salen del extracto')
+  assert.match(sinExpl, /^=E\d+-E\d+\+E\d+-E\d+-E\d+-E\d+$/)
 })
 
 test('la alerta de efectivo sin explicar cierra contra el CAJÓN VIVO, no el arqueo crudo', () => {

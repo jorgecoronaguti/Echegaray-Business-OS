@@ -14,7 +14,7 @@
 // posible que el anexo cambie de forma sin romper CAJA y al revés.
 
 import * as BANCO from './banco-santander.mjs'
-import { formulaJornalesEfectivoPosteriores, formulaOficinaEfectivoPosteriores } from './caja-posterior-al-corte.mjs'
+import { formulaJornalesEfectivoPosteriores, formulaOficinaEfectivoPosteriores, formulaExtraccionesEfectivoPosteriores } from './caja-posterior-al-corte.mjs'
 import { terminoLibro } from './libro-sumas.mjs'
 import { DESDE_CAJA, ANEXO } from './caja-anexo-nombres.mjs'
 import { formulaEgresoDiario } from './egreso-diario.mjs'
@@ -222,6 +222,11 @@ export function bloqueTrazabilidad(h) {
     `=SUMPRODUCT(${CONDEP}*IF(ISNUMBER(${dep('C')});${dep('C')};0))`, '', ''])
   push([`=IFERROR("   · "&TEXTJOIN("   ·   ";1;ARRAYFORMULA(IF(${CONDEP};TEXT(${dep('A')};"dd/mm")&"  "&TEXT(${dep('C')};"$#,##0");"")));"")`,
     '', '', '', '', '', ''])
+  // LA OTRA ENTRADA DEL CAJÓN: los retiros de efectivo del banco. Sin este término la identidad dio
+  // −$134,9M en la primera corrida — casi todo el efectivo gastado no vino de cobros, vino del
+  // cajero. Con arqueo 0, la fórmula de "posteriores" cubre la historia entera.
+  const fExt = push(['Extraído del banco en efectivo — historia completa (extracto)', '', '', '',
+    `=${formulaExtraccionesEfectivoPosteriores('0')}`, '', ''])
   // LO GASTADO TAMBIÉN SALIÓ DEL CAJÓN — el término que faltaba y que inflaba el "sin explicar" con
   // plata gastada y registrada. Compras por su MONTO PAGADO (los parciales también son billetes que
   // salieron), más jornales y oficina pagados por caja. Con arqueo 0, las fórmulas de "posteriores"
@@ -235,7 +240,7 @@ export function bloqueTrazabilidad(h) {
     `=N(${DESDE_CAJA.arqueoArs})+N(${ANEXO.efectivoNeto})`,
     `=IF(ISNUMBER(${DESDE_CAJA.arqueoArsFecha});${DESDE_CAJA.arqueoArsFecha};"")`, ''])
   const fSinExpl = push(['⇒ EFECTIVO SIN EXPLICAR', '', '', '',
-    `=E${fCob}-E${fDup}-E${fDep}-E${fGasto}-E${fFisica}`, '', ''])
+    `=E${fCob}-E${fDup}+E${fExt}-E${fDep}-E${fGasto}-E${fFisica}`, '', ''])
 
   // ── Y DEL OTRO LADO: QUÉ SALIÓ DE LA CUENTA Y DÓNDE ESTÁ REGISTRADO ──────────────────────────────
   //
