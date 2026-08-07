@@ -26,6 +26,7 @@ import {
 } from './politicas.mjs'
 import { leerChequesFirmados, cajaRestringidaViva, dobleConteoConCompras } from './cheques-firmados.mjs'
 import { restringidaDeVentana, VENTANAS_DIAS } from './excedente-ventana.mjs'
+import { ALIAS } from '../caja-disponibilidades.mjs'
 
 /**
  * RESERVA MÍNIMA OPERATIVA. El default es 0 a propósito: un piso inventado por el software sería un
@@ -157,9 +158,13 @@ export function coherenciaDelTotal(total, composicion) {
  */
 export function cuentasQueDesaparecieron(composicion, composicionAnterior) {
   if (!composicion?.detalle?.length || !composicionAnterior?.detalle?.length) return []
-  const hoy = new Set(composicion.detalle.map((c) => String(c.cuenta ?? '').trim()))
+  // Una cuenta RENOMBRADA no desapareció: el snapshot anterior la tiene con el nombre viejo
+  // ("Caja en pesos") y la foto de hoy con el nuevo ("Efectivo en pesos"). Ambos lados pasan por
+  // ALIAS antes de compararse, o cada renombre dispara una alarma de $7M que no existe.
+  const nombre = (c) => { const n = String(c?.cuenta ?? '').trim(); return ALIAS.get(n) ?? n }
+  const hoy = new Set(composicion.detalle.map(nombre))
   return composicionAnterior.detalle
-    .filter((c) => !hoy.has(String(c.cuenta ?? '').trim()) && Math.abs(Number(c.saldo) || 0) > 0)
+    .filter((c) => !hoy.has(nombre(c)) && Math.abs(Number(c.saldo) || 0) > 0)
     .map((c) => ({ cuenta: c.cuenta, saldo_anterior: Math.round(Number(c.saldo) || 0) }))
 }
 

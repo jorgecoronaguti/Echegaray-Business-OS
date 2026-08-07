@@ -60,9 +60,13 @@ export const TIPO_CAMBIO = {
 /** Las cuentas que SUMAN al efectivo. En el orden en que se leen: de lo más líquido a lo menos. */
 export const CUENTAS = [
   {
-    nombre: 'Caja en pesos',
+    // ═══ "EFECTIVO", NO "CAJA" (07/08). El dueño, sobre los rótulos viejos "Caja en pesos" /
+    // "Caja en pesos — contado": "¿qué mierda es cada cosa?". Tenía razón: dos filas con casi el
+    // mismo nombre parecen el mismo concepto duplicado. Ésta es LA VIVA (arqueo ± movimientos en
+    // efectivo posteriores); la del conteo a mano se llama "Arqueo" y no vuelve a decir "caja".
+    nombre: 'Efectivo en pesos',
     moneda: 'ARS',
-    patron: /^caja en pesos/i,
+    patron: /^efectivo en pesos/i,
     origenSugerido: 'Arqueo de caja',
     // La fecha de esta fila es la del ARQUEO, no la de hoy. Ver caja-pestana.mjs: fechar un conteo
     // de caja con TODAY() afirma que se contó hoy y deja la alarma de antigüedad clavada en 0 días.
@@ -79,9 +83,9 @@ export const CUENTAS = [
     // MONEDA y se valúa con TIPO_CAMBIO_USD para poder sumarlo al total. No se convierte al cargarlo:
     // un cobro en dólares sigue siendo dólares hasta que se venda, y la exposición cambiaria tiene
     // que poder verse (por eso el bloque 4.8 la muestra aparte).
-    nombre: 'Caja en dólares',
+    nombre: 'Efectivo en dólares',
     moneda: 'USD',
-    patron: /^caja en d[oó]lares/i,
+    patron: /^efectivo en d[oó]lares/i,
     origenSugerido: 'Arqueo de caja',
     arqueo: 'CAJA_ARQUEO_USD_FECHA',
   },
@@ -199,6 +203,10 @@ export const CUENTAS = [
 export const CARGA = {
   limiteTarjeta: 'Tarjeta de crédito — límite acordado',
   acuerdo: 'Acuerdo en descubierto — importe acordado',
+  // Las dos filas amarillas del conteo físico. El rótulo dice QUIÉN escribe ("conteo a mano") y no
+  // repite "caja", para que nadie las confunda con las filas vivas "Efectivo en …" de arriba.
+  arqueoArs: 'Arqueo en pesos — conteo a mano',
+  arqueoUsd: 'Arqueo en dólares — conteo a mano',
 }
 
 /** Nombres viejos → nombre actual, para no perder un dato ya cargado cuando se renombra una fila. */
@@ -213,6 +221,13 @@ export const ALIAS = new Map([
   // Los rótulos previos al ‖ (06/08): un dato cargado sobre el nombre viejo vuelve a su cuenta.
   ['Balanz · inversiones ARS', 'Balanz · inversiones ARS ‖ invertido'],
   ['Balanz · inversiones USD', 'Balanz · inversiones USD ‖ invertido'],
+  // Los rótulos previos al renombre "caja"→"efectivo"/"arqueo" (07/08). El arqueo del dueño
+  // ($9.200.000 del 07/08) vive cargado bajo el nombre viejo: sin estas cuatro entradas el rescate
+  // no lo encuentra y la primera corrida lo daría por ausente.
+  ['Caja en pesos', 'Efectivo en pesos'],
+  ['Caja en dólares', 'Efectivo en dólares'],
+  ['Caja en pesos — contado', CARGA.arqueoArs],
+  ['Caja en dólares — contado', CARGA.arqueoUsd],
 ])
 
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')

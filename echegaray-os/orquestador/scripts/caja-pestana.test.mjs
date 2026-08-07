@@ -171,7 +171,7 @@ test('la caja en dólares se lleva en dólares y se valúa aparte', () => {
   // "U$S 15.000" cobrados en efectivo entraban al cajón de PESOS como $15.000: el importe correcto en
   // la moneda equivocada, que no da error y está mal por tres órdenes de magnitud.
   const g = construir()
-  const f = filaDe(g, /^Caja en dólares$/)
+  const f = filaDe(g, /^Efectivo en dólares$/)
   assert.ok(f > 0 && g.usd.includes(f), 'la fila en dólares tiene que estar declarada para pintarse "U$S"')
   assert.match(celda(g, f, 1), /"USD"/, 'el importe en origen suma sólo los cobros marcados en dólares')
   assert.equal(celda(g, f, 2), `=IF(ISNUMBER(B${f});B${f}*TIPO_CAMBIO_USD;"")`, 'y se valúa en su propia celda')
@@ -284,8 +284,8 @@ test('LOS CONTROLES DEL ANEXO NO DESAPARECIERON: cada uno está citado en una al
  *   APORTE probado por el extracto de Santander del 05/08 ($22,53M + U$S 15.000), no la posición
  *   total — gap declarado en banco-santander.mjs BALANZ; se reemplaza cuando llegue su extracto.
  */
-const PEGADO_DECLARADO = new Set(['Santander · cta cte USD', 'Caja en pesos — contado', 'Caja en dólares — contado',
-  'Balanz · inversiones ARS ‖ invertido', 'Balanz · inversiones USD ‖ invertido'])
+const PEGADO_DECLARADO = new Set(['Santander · cta cte USD', 'Arqueo en pesos — conteo a mano',
+  'Arqueo en dólares — conteo a mano', 'Balanz · inversiones ARS ‖ invertido', 'Balanz · inversiones USD ‖ invertido'])
 
 test('CERO NÚMEROS PEGADOS: toda celda de plata es una fórmula', () => {
   // Es la Regla de Oro número 5 del dueño, medida sobre la grilla entera y no bloque por bloque. Un
@@ -340,11 +340,13 @@ test('EL RESCATE LEE LA MISMA COLUMNA EN LA QUE EL GENERADOR ESCRIBE EL ARQUEO',
   const cel = (valor, numero = null) => ({ valor, numero, formula: null, formato: null })
   const grid = [
     g.filas[g.fCab - 1].map((c) => cel(String(c ?? ''))),
+    // El rótulo VIEJO a propósito: es el que está escrito hoy en el archivo real. El rescate tiene
+    // que traducirlo por ALIAS al nombre nuevo — si no, el renombre del 07/08 pierde el conteo.
     [cel('Caja en pesos — contado'), cel('0', 0), cel(''), cel('30/07/2026', 46233)],
   ]
   const cargado = rescatar(grid)
-  assert.equal(cargado.get('Caja en pesos — contado')?.saldo, 0, 'el importe tipeado tiene que viajar')
-  assert.equal(cargado.get('Caja en pesos — contado')?.fecha, 46233, 'y su fecha también: sin fecha no hay ventana')
+  assert.equal(cargado.get('Arqueo en pesos — conteo a mano')?.saldo, 0, 'el importe tipeado tiene que viajar')
+  assert.equal(cargado.get('Arqueo en pesos — conteo a mano')?.fecha, 46233, 'y su fecha también: sin fecha no hay ventana')
 })
 
 test('con el conteo ya cargado, el arqueo se RE-EMITE en su fila nueva (no se queda en la vieja)', () => {
@@ -352,8 +354,8 @@ test('con el conteo ya cargado, el arqueo se RE-EMITE en su fila nueva (no se qu
   // se quedó en la fila vieja y los rangos con nombre se republicaron en una celda vacía: la caja
   // física ($39,28M) se fue a cero sin un solo #ERROR.
   const cargado = new Map([
-    ['Caja en pesos — contado', { saldo: 0, fecha: 46233, origen: '', quien: '' }],
-    ['Caja en dólares — contado', { saldo: 15000, fecha: 46233, origen: '', quien: '' }],
+    ['Arqueo en pesos — conteo a mano', { saldo: 0, fecha: 46233, origen: '', quien: '' }],
+    ['Arqueo en dólares — conteo a mano', { saldo: 15000, fecha: 46233, origen: '', quien: '' }],
   ])
   const g = grilla(cargado, REFS)
   assert.equal(g.filas[g.fArqArs - 1][1], 0, 'el importe 0 es un dato, no un vacío')

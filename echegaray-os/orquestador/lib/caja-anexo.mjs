@@ -124,7 +124,7 @@ function bloqueMovimientos(h) {
   // NO DUPLICA NADA POR CONSTRUCCIÓN: el banco excluye el efectivo y la caja física cuenta sólo el
   // efectivo (partición por canal). La ventana es "> arqueo": lo anterior ya está DENTRO del arqueo,
   // así que un arqueo nuevo colapsa lo viejo.
-  push(['Posteriores al ARQUEO — el neto entra a "Caja en pesos" de CAJA', '', '', '', '',
+  push(['Posteriores al ARQUEO — el neto entra a "Efectivo en pesos" de CAJA', '', '', '', '',
     `=IF(ISNUMBER(${arqueo});${arqueo};"")`, ''])
   const fNeto = push(['   ⇒ NETO de efectivo posterior al arqueo', 'ARS',
     formulaNetaEfectivoPosterior(arqueo, { bancoRaw: h.refs.bancoRaw ?? '_BANCO_RAW' }), '', '', '',

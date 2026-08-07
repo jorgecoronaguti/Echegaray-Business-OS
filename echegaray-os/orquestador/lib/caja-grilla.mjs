@@ -50,7 +50,7 @@
 
 import * as BANCO from './banco-santander.mjs'
 import { ANEXO, DESDE_CAJA } from './caja-anexo-nombres.mjs'
-import { CUENTAS, RANGO_TC } from './caja-disponibilidades.mjs'
+import { CARGA, CUENTAS, RANGO_TC } from './caja-disponibilidades.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 import { rotuloAlDia } from './fecha-de-frescura.mjs'
 import {
@@ -373,15 +373,17 @@ export function grilla(cargado, refs) {
 
   // EL ARQUEO: LA ÚNICA CAPTURA DE TODA LA PESTAÑA, y por eso queda en la portada aunque el detalle se
   // haya ido al anexo. Dos filas amarillas debajo del total, fuera del rango que suma: lo que se tipea
-  // acá entra a la caja por la fila "Caja en pesos", que lo cita por su rango con nombre.
+  // acá entra a la caja por la fila "Efectivo en pesos", que lo cita por su rango con nombre.
   //
   // EL CONTEO VIAJA CON SU BLOQUE, NO SE QUEDA EN LA FILA. La fusión preserva por POSICIÓN: una
   // corrida movió el bloque, el conteo se quedó en la fila vieja, los nombres se republicaron en una
   // celda vacía y $39,28M se fueron a cero sin un solo #ERROR. Se RE-EMITE desde lo que se leyó al
   // empezar; si no se pudo leer nada, sale AJENA — sin dato no se sobrescribe.
+  // El dato cargado bajo el rótulo VIEJO ("Caja en … — contado") llega igual: el rescate lo
+  // traduce con ALIAS antes de que la grilla lo busque por el nombre nuevo.
   const arq = (rot) => [rot, suyoOAusente(rot, 'saldo'), '', suyoOAusente(rot, 'fecha')]
-  const fArqArs = banda(arq('Caja en pesos — contado'))
-  const fArqUsd = banda(arq('Caja en dólares — contado'))
+  const fArqArs = banda(arq(CARGA.arqueoArs))
+  const fArqUsd = banda(arq(CARGA.arqueoUsd))
 
   const fBloques34 = banda(['3 · ALERTAS CRÍTICAS'], ['4 · ACCIONES RECOMENDADAS'])
   const A = alertas({ piso: `$I$${fCierre}`, fechaPiso: `$G$${fCierre}` })
