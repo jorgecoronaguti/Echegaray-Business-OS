@@ -15,7 +15,7 @@ import {
 } from './cargas-cadena.mjs'
 import { ROTULOS_CARGAS, RUBRO_PLANES } from './libro-extractores-cargas.mjs'
 import { MES, cm, REALES } from './cargas-grilla.mjs'
-import { NOTA_SUPUESTO_CONVENIO } from './proyeccion-convenio.mjs'
+import { notaSupuesto } from './proyeccion-convenio.mjs'
 
 const ar = (d) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}` : '')
 
@@ -139,7 +139,13 @@ export function bloqueDiferencia(G, { fPagF931, fDeclTot }) {
 // 4 · PROYECCIÓN — ¿cuánto va a costar lo que viene?
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
-export function bloqueProyeccion(G, { anio, desdeProy, filaDecl, filaPag, fRem, fEmp, bloqueBase = null }) {
+export function bloqueProyeccion(G, {
+  anio, desdeProy, filaDecl, filaPag, fRem, fEmp, bloqueBase = null,
+  // CON QUÉ BASE QUEDÓ VALUADA LA MASA QUE ESTA PESTAÑA MULTIPLICA. No se decide acá —se lee de lo que
+  // Jornales publicó, ver `baseDeJornales`— porque la decisión ya vive en un solo lugar. Sin señal, la
+  // glosa lo dice en vez de afirmar un supuesto que puede no estar adentro del número.
+  baseJornales = null,
+}) {
   G.push([seccion(4, `Proyección ${MES[desdeProy]}–dic — ¿cuánto va a costar lo que viene?`)])
   G.cabecera()
   const proyMeses = Array.from({ length: 12 - desdeProy + 1 }, (_, i) => desdeProy + i)
@@ -150,8 +156,13 @@ export function bloqueProyeccion(G, { anio, desdeProy, filaDecl, filaPag, fRem, 
   // muestra la masa, la MULTIPLICA — y sobre ella corren contribuciones, IERIC, FODECO y FCL. El
   // supuesto llega compuesto hasta la última fila de esta pestaña; declararlo sólo en Jornales lo deja
   // fuera de donde se lee. El texto vive UNA vez, en lib/proyeccion-convenio.mjs.
+  //
+  // Y DICE LA VERDAD EN LOS DOS ESTADOS. Antes se concatenaba siempre: con la réplica del convenio
+  // caída, Jornales publicaba la masa al jornal PACTADO y esta glosa seguía afirmando el 100% de la
+  // escala. Una nota que declara un supuesto que el número de al lado no tiene adentro no es una
+  // limitación declarada: es una afirmación falsa, y encima tranquiliza.
   const fRemProy = G.mensual('Remuneración proyectada', (m) => `=IFERROR((${jornalesDelMes(`DATE(${anio};${m};1)`)})*$${cm(desdeProy)}$${fRelacion};0)`,
-    `Jornales proyectados × la relación de arriba. ${NOTA_SUPUESTO_CONVENIO}`, { meses: proyMeses })
+    `Jornales proyectados × la relación de arriba. ${notaSupuesto(baseJornales)}`, { meses: proyMeses })
   // ═══ LA DOTACIÓN ES LA ÚLTIMA REAL, NO UN PROMEDIO (defecto A7) ═══
   //
   // Decía `AVERAGE(B19:G19)` = 21 personas: el promedio de los seis F931 presentados (18·16·24·22·23·22).

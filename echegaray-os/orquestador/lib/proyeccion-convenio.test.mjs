@@ -8,9 +8,17 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
 import {
-  formulaSigmaConvenio, lineaSupuestoConvenio, sigmaConvenioDelPlantel, NOTA_SUPUESTO_CONVENIO,
+  formulaSigmaConvenio, lineaSupuestoConvenio, sigmaConvenioDelPlantel,
+  baseDeJornales, quincenaAlConvenio, ROTULO_SIGMA,
 } from './proyeccion-convenio.mjs'
 import { parsearAcuerdos } from './uocra-acuerdos.mjs'
+import { crearGrilla } from './cargas-grilla.mjs'
+import { bloqueDeclarado, bloquePagado, bloqueProyeccion } from './cargas-bloques.mjs'
+
+/** Las columnas de Compras que usan los bloques de Cargas. Las letras dan igual: nada las resuelve acá. */
+const COLS = {
+  total: 'O', cliente: 'J', detalle: 'K', fecha: 'AD', rubro: 'AB', proveedor: 'E', fechaFactura: 'C', estado: 'X',
+}
 
 const cinco = (rotulo, [oe, of, mo, ay, se]) => [
   [rotulo, 'Oficial Especializado', 'Hora', String(oe), '', '', String(oe), String(oe)],
@@ -81,11 +89,47 @@ test('LA Σ DE LA PESTAÑA SALE POR FÓRMULA DE LAS DOS COLUMNAS VIVAS DEL BLOQU
   // B = personas por categoría (COUNTIFS sobre el espejo) · F = básico del convenio (INDEX sobre la
   // réplica). El producto escalar de las dos se mueve solo con un alta, una baja, un cambio de
   // categoría o un acuerdo nuevo. Si alguien la reemplaza por un número, esto se pone rojo.
-  assert.equal(formulaSigmaConvenio(18, 21), 'SUMPRODUCT($B$18:$B$21;$F$18:$F$21)')
+  const f = formulaSigmaConvenio(18, 21)
+  assert.match(f, /SUMPRODUCT\(\$B\$18:\$B\$21;\$F\$18:\$F\$21\)/)
   // Separador de argumentos en es-AR: punto y coma. Con coma, Sheets rechaza la fórmula entera.
-  assert.doesNotMatch(formulaSigmaConvenio(18, 21), /,/)
+  assert.doesNotMatch(f, /,/)
   assert.equal(formulaSigmaConvenio(0, 0), null, 'sin bloque no hay Σ que armar')
   assert.equal(formulaSigmaConvenio(18, 17), null)
+})
+
+test('EL GUARD DE LA Σ: sin básicos rinde VACÍO, no cero — que es lo que la prosa promete', () => {
+  // ═══ EL DEFECTO, MEDIDO (07/08) ═══
+  // `SUMPRODUCT($B;$F)` con la réplica caída da 0, NO error: SUMPRODUCT trata el texto "" como cero.
+  // Ese 0 se multiplica por horas y días, y $0 de jornales viaja por JORNALES_PROY_TOTAL a Cargas, al
+  // Libro, a CAJA y a los dos cash flows — mientras la celda de al lado dice "queda VACÍA a propósito".
+  // La celda que avisa y la que publica tienen que contar la misma historia.
+  const f = formulaSigmaConvenio(18, 21)
+  assert.match(f, /^IF\(OR\(/, 'la Σ volvió a ser un SUMPRODUCT pelado: con la réplica caída publica 0')
+  assert.match(f, /SUMPRODUCT\(\$B\$18:\$B\$21;\$F\$18:\$F\$21\)=0/, 'falta el caso "no hay un solo peso valuado"')
+  // Y EL AGUJERO CHICO: una categoría CON PERSONAS y sin básico se valuaba $0 adentro del total. El
+  // total seguía siendo plausible y nadie podía verlo. `--(F="")` × personas lo detecta.
+  assert.match(f, /SUMPRODUCT\(\$B\$18:\$B\$21;--\(\$F\$18:\$F\$21=""\)\)>0/,
+    'una categoría sin escala vuelve a entrar al total valuada en cero')
+  assert.match(f, /;"";/, 'el guard tiene que rendir vacío: un 0 acá dice "no hay jornales que pagar"')
+  assert.doesNotMatch(f, /,/, 'separador es-AR')
+  // La línea del canario evalúa ESTA MISMA expresión —no una copia—, así que hereda el guard.
+  assert.match(lineaSupuestoConvenio({ sigma: f, celdaPersonas: '$B$22' }), /IFERROR\(N\(IF\(OR\(/)
+})
+
+test('LA FRONTERA DEL MES EN CURSO: lo que se paga este mes va al PACTADO, no al convenio', () => {
+  // ═══ LA ORDEN DEL DUEÑO (07/08) ═══
+  // *"la caja comprometida … no debe ir comiéndome la libre disponibilidad"*. Valuar al convenio una
+  // quincena que se paga ESTE mes mete en la comprometida plata que no va a salir: hoy paga el
+  // pactado. El supuesto es de PLANIFICACIÓN y empieza a correr el mes que viene.
+  const hoy = new Date(2026, 7, 7) // agosto
+  assert.equal(quincenaAlConvenio(new Date(2026, 7, 25), hoy), false, 'se paga en agosto: es caja comprometida')
+  assert.equal(quincenaAlConvenio(new Date(2026, 7, 31), hoy), false, 'el último día del mes sigue siendo este mes')
+  assert.equal(quincenaAlConvenio(new Date(2026, 8, 5), hoy), true, 'se paga en septiembre: planificación')
+  // La frontera se mueve sola con el calendario: no hay un mes escrito en ninguna parte.
+  assert.equal(quincenaAlConvenio(new Date(2026, 8, 5), new Date(2026, 8, 1)), false,
+    'el 1° de septiembre esa misma quincena pasa a ser lo que sale de la caja este mes')
+  // Sin fecha de pago no hay frontera que aplicar: queda la base del cuadro.
+  assert.equal(quincenaAlConvenio(null, hoy), true)
 })
 
 test('LA PESTAÑA DECLARA QUE ES UN SUPUESTO, NO EL JORNAL VIGENTE', () => {
@@ -129,7 +173,9 @@ test('LA BASE SE DEFINE EN UN SOLO ARCHIVO: dos definiciones son dos empresas di
   const todos = fuentes()
   assert.ok(todos.length > 100, `sólo leyó ${todos.length} archivos: el escaneo no está mirando el repo`)
   // La Σ AL CONVENIO: el producto escalar de las columnas del bloque 1.1. Sólo lo arma el motor.
-  const arman = todos.filter((f) => /SUMPRODUCT\(\$B\$\$\{|SUMPRODUCT\(\$B\$\d+:\$B\$\d+;\$F\$/.test(f.texto))
+  // El patrón se busca sobre las DOS formas en que puede aparecer escrito —con las filas interpoladas
+  // o ya resueltas— porque lo que importa no es cómo se arma la cadena sino que la arme un solo lugar.
+  const arman = todos.filter((f) => /SUMPRODUCT\(\$\{?B\}?;?|SUMPRODUCT\(\$B\$\d+:\$B\$\d+;\$F\$/.test(f.texto))
   assert.deepEqual(arman.map((f) => f.archivo), ['orquestador/lib/proyeccion-convenio.mjs'],
     'alguien más arma la Σ del convenio: dos definiciones de la misma masa salarial')
   // Y la Σ PACTADA —columna W del espejo—: sólo la lee el bloque 1.1, que es el control, no la
@@ -158,15 +204,74 @@ test('LAS PESTAÑAS CONSUMIDORAS HEREDAN POR RANGO CON NOMBRE — ninguna recalc
   }
 })
 
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL SUPUESTO EN CARGAS SOCIALES — SE PRUEBA LA CELDA, NO EL `import`
+//
+// Acá había un `assert.match(readFileSync('cargas-bloques.mjs'), /NOTA_SUPUESTO_CONVENIO/)`. Eso lo
+// satisface el propio import: se podía borrar la interpolación de la nota en la fila —dejando la
+// glosa muda— y el test seguía verde. Un test que mira el código fuente en vez del resultado no
+// prueba el efecto, prueba que alguien escribió una palabra. Ahora se arma el bloque de verdad y se
+// busca el texto EN LA CELDA que la pestaña va a publicar.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+/** La celda "De dónde sale" de la fila «Remuneración proyectada», armando el bloque como el generador. */
+function glosaDeCargas(baseJornales) {
+  const G = crearGrilla(2026)
+  const decl = bloqueDeclarado(G, {
+    anio: 2026,
+    periodos: ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06'],
+    conceptos: [{ codigo: '301', rotulo: 'Aportes de Seguridad Social (301)' }],
+  })
+  const pag = bloquePagado(G, { anio: 2026, C: COLS })
+  const proy = bloqueProyeccion(G, {
+    anio: 2026, desdeProy: 7, filaDecl: decl.filaDecl, filaPag: pag.filaPag,
+    fRem: decl.fRem, fEmp: decl.fEmp, bloqueBase: { inicio: 495, fin: 510 }, baseJornales,
+  })
+  const fila = G.filas[proy.fRemProy - 1]
+  assert.match(String(fila[0]), /Remuneración proyectada/, 'la fila que devolvió el bloque no es la que dice ser')
+  return String(fila[fila.length - 1] ?? '')
+}
+
 test('EL SUPUESTO LLEGA A CARGAS SOCIALES, que no muestra la masa sino que la MULTIPLICA', () => {
   // Contribuciones, IERIC, FODECO y FCL corren SOBRE la remuneración proyectada: el supuesto llega
   // compuesto hasta la última fila de esa pestaña. Declararlo sólo en Jornales lo deja fuera de donde
   // se lee — y una limitación declarada en otra pestaña no está declarada.
-  const bloques = readFileSync(new URL('cargas-bloques.mjs', new URL('lib/', RAIZ)), 'utf8')
-  assert.match(bloques, /NOTA_SUPUESTO_CONVENIO/, 'Cargas Sociales publica el número sin decir qué asume')
-  assert.match(NOTA_SUPUESTO_CONVENIO, /100% de la hora de convenio/)
-  assert.match(NOTA_SUPUESTO_CONVENIO, /Jornales por Quincena 1\.2/, 'sin la referencia nadie puede ir a verlo')
-  assert.match(NOTA_SUPUESTO_CONVENIO, /por debajo/, 'sin esto se lee como el jornal vigente')
+  const glosa = glosaDeCargas('convenio')
+  assert.match(glosa, /Jornales proyectados × la relación de arriba/, 'la glosa perdió lo que ya decía')
+  assert.match(glosa, /100% de la hora de convenio/, 'Cargas Sociales publica el número sin decir qué asume')
+  assert.match(glosa, /Jornales por Quincena 1\.2/, 'sin la referencia nadie puede ir a verlo')
+  assert.match(glosa, /por debajo/, 'sin esto se lee como el jornal vigente')
+  assert.match(glosa, /dentro del mes en curso/, 'no dice que lo que sale de la caja este mes va al pactado')
   // El texto vive UNA vez: si alguien lo re-escribe a mano en la otra pestaña, envejecen distinto.
+  const bloques = readFileSync(new URL('cargas-bloques.mjs', new URL('lib/', RAIZ)), 'utf8')
   assert.doesNotMatch(bloques, /100% de la hora de convenio/)
+})
+
+test('LA GLOSA DE CARGAS DICE LA VERDAD EN LOS DOS ESTADOS: la decide lo que el cuadro USÓ', () => {
+  // ═══ EL DEFECTO (07/08) ═══
+  // La nota se concatenaba SIEMPRE, sin saber con qué base había quedado valuada la masa. Con la
+  // réplica del convenio caída, Jornales publica los jornales al PACTADO y esta pestaña seguía
+  // declarando el 100% de la escala: una glosa que afirma un supuesto que el número no tiene adentro
+  // hace que el que lee ajuste hacia abajo un número que ya estaba abajo.
+  const alPactado = glosaDeCargas('pactado')
+  assert.match(alPactado, /PACTADO/)
+  assert.doesNotMatch(alPactado, /100% de la hora de convenio/, 'declara un supuesto que la masa no tiene adentro')
+  assert.match(alPactado, /Jornales por Quincena 1\.2/, 'igual tiene que decir dónde mirarlo')
+  // Y SI NO SE PUDO LEER, LO DICE. Afirmar cualquiera de las dos sin evidencia es peor que las dos.
+  const sinSenal = glosaDeCargas(null)
+  assert.match(sinSenal, /No pude leer/)
+  assert.doesNotMatch(sinSenal, /100% de la hora de convenio/)
+  assert.notEqual(alPactado, sinSenal)
+})
+
+test('LA SEÑAL SE LEE DE LO QUE JORNALES PUBLICÓ — el encabezado, no una segunda decisión', () => {
+  // Cargas Sociales no tiene a mano ni la réplica del convenio ni los meses del motor: si recalculara
+  // la decisión habría dos definiciones de la misma cosa y podrían separarse sin que nada avise. Lee
+  // el EFECTO —el encabezado que el cuadro dejó escrito— igual que resuelve las columnas de Compras.
+  assert.equal(baseDeJornales([['Mes', 'Escalón publicado'], ['x', ROTULO_SIGMA.convenio]]), 'convenio')
+  assert.equal(baseDeJornales([[ROTULO_SIGMA.pactado]]), 'pactado')
+  // 1.3 mezcla las dos bases por fila (la frontera del mes en curso): eso SÍ es el supuesto corriendo.
+  assert.equal(baseDeJornales([[ROTULO_SIGMA.aplicada]]), 'convenio')
+  assert.equal(baseDeJornales([]), null, 'sin lectura no se adivina una base')
+  assert.equal(baseDeJornales([['Σ $/hora']]), null, 'un rótulo parecido no es el rótulo')
 })

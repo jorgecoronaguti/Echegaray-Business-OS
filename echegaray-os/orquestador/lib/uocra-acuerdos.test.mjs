@@ -11,9 +11,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  parsearAcuerdos, escalonDe, ultimoEscalon, escalonPromedio, factorEntre,
+  parsearAcuerdos, escalonDe, ultimoEscalon, escalonVigenteEn, escalonPromedio, factorEntre,
   divergenciaEntreCategorias, estadoReplica, mesDeRotulo, pctDeRotulo, cabeceraDeAcuerdo,
-  CATEGORIAS, CATEGORIA_ANCLA,
+  filasPorHora, CATEGORIAS, CATEGORIA_ANCLA,
 } from './uocra-acuerdos.mjs'
 
 /** Cinco filas de un grupo mensual, con el básico de cada categoría. */
@@ -137,4 +137,36 @@ test('los rótulos raros de la réplica se leen: saltos de línea, paréntesis, 
 
 test('el último escalón es el más nuevo, no el primero de la tabla', () => {
   assert.equal(ultimoEscalon(escalones).periodo, '2026-08')
+})
+
+test('UNA ESCALA RIGE HASTA QUE OTRA LA REEMPLAZA: el 01/09 no se queda sin convenio', () => {
+  // ═══ EL DEFECTO, EXACTO ═══
+  // El motor pedía el escalón del mes en curso por igualdad exacta de período. El acuerdo publicado
+  // termina en agosto y la réplica no trae septiembre, así que el 01/09 —sin que nadie tocara nada—
+  // la base de la proyección volvía sola del convenio al jornal PACTADO y nada lo avisaba.
+  assert.equal(escalonDe(escalones, '2026-09'), null, 'la fixture tiene que NO tener septiembre')
+  const sept = escalonVigenteEn(escalones, new Date(2026, 8, 1))
+  assert.ok(sept, 'sin fila del mes en curso la escala no desaparece: sigue rigiendo la última')
+  assert.equal(sept.periodo, '2026-08')
+  assert.equal(sept.categorias[CATEGORIA_ANCLA].basico, 5399)
+  // Y con la fila del mes publicada, gana la suya: el respaldo no puede tapar un acuerdo nuevo.
+  assert.equal(escalonVigenteEn(escalones, new Date(2026, 7, 6)).periodo, '2026-08')
+  assert.equal(escalonVigenteEn(escalones, '2026-07').periodo, '2026-07')
+  // HACIA ATRÁS NO SE EXTRAPOLA. Aplicarle a un mes viejo una escala firmada después sería inventarle
+  // un aumento que no tuvo: antes de todo lo publicado no hay escala, y se dice.
+  assert.equal(escalonVigenteEn(escalones, '2020-01'), null)
+  assert.equal(escalonVigenteEn([], new Date(2026, 8, 1)), null)
+})
+
+test('EL SERENO QUEDA FUERA DEL TRAMO POR HORA: cobra por mes y esa columna es de $/hora', () => {
+  // $980.858 es el sueldo MENSUAL del Sereno. Si el INDEX de «Básico convenio» lo puede alcanzar, un
+  // "Sereno" tipeado en la columna del dueño mete ese número en una columna de $/hora que después se
+  // multiplica por horas y días. El tramo se arma con las filas que el parser resolvió, no contando
+  // posiciones desde el rótulo.
+  const ago = escalonDe(escalones, '2026-08')
+  const tramo = filasPorHora(ago)
+  assert.equal(tramo.r0, ago.categorias['Oficial Especializado'].fila)
+  assert.equal(tramo.r1, ago.categorias[CATEGORIA_ANCLA].fila)
+  assert.ok(tramo.r1 < ago.categorias.Sereno.fila, 'la fila del Sereno quedó adentro del rango de búsqueda')
+  assert.equal(filasPorHora(null), null)
 })

@@ -87,14 +87,14 @@ import { borrarNotas } from '../lib/nota-celda.mjs'
 import { detectarQuincenas, filasQuincenas } from '../lib/nomina-sync.mjs'
 import {
   CATEGORIAS, CATEGORIA_ANCLA, COL as UOCRA_COL, HOJA as UOCRA_HOJA,
-  parsearAcuerdos, escalonDe, estadoReplica, ultimoEscalon,
+  parsearAcuerdos, escalonDe, escalonVigenteEn, estadoReplica, ultimoEscalon,
 } from '../lib/uocra-acuerdos.mjs'
 import {
   PARAMETROS_MOTOR, PARAMETRO_MESES_BASE, RANGO_MESES_BASE,
   ultimaQuincenaCerrada, categoriasDelBloque, personasDelBloque,
   mesesDelMotor, filasPlantel, filasEscalon, formulaSigmaDelMes, formulaFactorDelMes,
   formulaHorasPorPersona, lineaEstadoReplica, formulaConvenioPendiente, factorUocraEntre,
-  formulaSigmaConvenio, lineaSupuestoConvenio, sigmaConvenioDelPlantel,
+  formulaSigmaConvenio, lineaSupuestoConvenio, sigmaConvenioDelPlantel, ROTULO_SIGMA,
 } from '../lib/motor-salarial.mjs'
 import { VERIFICADA_EL, VIGENCIA_HASTA, contrastarEscala, tramoDe } from '../lib/uocra-paritaria.mjs'
 import { registrarSincronizacion } from '../lib/registrar-sincronizacion.mjs'
@@ -107,7 +107,9 @@ import {
 } from '../lib/direccion-retiros.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
-const PESTAÑA = 'Jornales por Quincena'
+// EL NOMBRE DE LA PESTAÑA SE EXPORTA: Cargas Sociales la lee para saber con qué base quedó valuada la
+// masa que multiplica (ver `baseDeJornales`). Escrito dos veces, un rename la deja leyendo un vacío.
+export const PESTAÑA = 'Jornales por Quincena'
 const ESPEJO = '_J_OBREROS'
 /** La otra mitad de la nómina: dos sueldos de oficina, con su propio layout y su propio atraso. */
 const ESPEJO_OFI = '_J_OFICINA'
@@ -437,8 +439,12 @@ export function grilla({
   // EL ENCABEZADO DICE CUÁL DE LAS DOS Σ ES. Dejarlo en "Σ $/hora del mes" con la base cambiada sería
   // el rótulo que hace creer que el número significa otra cosa — el mismo defecto que tenía "Ajuste
   // inflación" en Oficina después de dejar de ajustar por inflación.
+  // ADEMÁS, ACÁ ABAJO CONVIVEN LAS DOS BASES (07/08). Las quincenas que se pagan dentro del mes en
+  // curso van al PACTADO —es la plata que va a salir— y las de después, al convenio: el encabezado no
+  // puede decir "convenio" arriba de una columna que tiene las dos. "Aplicada" es lo que es, y la
+  // línea del supuesto, tres filas más arriba, dice dónde está la frontera.
   push(['Quincena', 'Hasta', 'Se paga el', 'Días hábiles', 'Personas', 'Horas por persona',
-    esc.alConvenio ? 'Σ $/hora convenio' : 'Σ $/hora pactada', 'Proyectado'])
+    esc.alConvenio ? ROTULO_SIGMA.aplicada : ROTULO_SIGMA.pactado, 'Proyectado'])
   const p0 = filas.length + 1
   pendientes.forEach((q, i) => {
     const r = p0 + i
@@ -458,7 +464,10 @@ export function grilla({
       // Σ $/hora del plantel YA AJUSTADO al escalón del mes de esta quincena. Se busca por el fin de
       // mes en el cuadro 1.2: si el mes no está ahí devuelve vacío, no cero — un cero se multiplicaría
       // por los días y diría "$0 de jornales", que es una mentira redonda.
-      formulaSigmaDelMes(`A${r}`, esc),
+      // Y LA BASE LA DECIDE LA FECHA DE PAGO DE ESTA FILA: lo que sale de la caja este mes va al
+      // pactado y lo de después al convenio. El porqué —y el efecto sobre la caja comprometida— en
+      // `formulaSigmaDelMes`.
+      formulaSigmaDelMes(`A${r}`, esc, `C${r}`),
       `=IFERROR(G${r}*F${r}*D${r};"")`,
     ])
   })
@@ -989,7 +998,14 @@ async function main() {
   const tramoUlt = est.ultimoPeriodo ? tramoDe(est.ultimoPeriodo, escalones) : null
   console.log(`paritaria: tramo del último mes publicado ${tramoUlt ? `${(tramoUlt.pct * 100).toFixed(2)}% (${tramoUlt.origen})` : '—'} · acuerdo hasta ${VIGENCIA_HASTA}`)
   for (const d of contrastarEscala(escalones)) console.warn(`  ⚠ escala verificada el ${VERIFICADA_EL}: ${d}`)
-  const escalonVigente = escalonDe(escalones, `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`)
+  // ═══ EL ESCALÓN QUE RIGE, NO EL QUE COINCIDE CON EL MES (07/08) ═══
+  //
+  // Acá decía `escalonDe(escalones, mes en curso)`: igualdad exacta de período. El acuerdo vigente
+  // termina el 31/08 y la réplica no publica septiembre, así que el 01/09 —sin que nadie tocara nada—
+  // esto devolvía null, la base de la proyección volvía sola del convenio al jornal PACTADO (−12,14%
+  // sobre la masa) y la nota de Cargas Sociales seguía declarando el 100% del convenio. Una escala de
+  // convenio rige hasta que otra la reemplaza: el porqué, en `escalonVigenteEn`.
+  const escalonVigente = escalonVigenteEn(escalones, hoy)
   // LA BASE AL 100% DEL CONVENIO, DICHA EN LA CORRIDA. Este número NO es el que se escribe —la pestaña
   // lo calcula por fórmula viva—: es el mismo cálculo por otro camino. Un producto escalar de
   // referencias de celdas se puede escribir mal de mil maneras y ninguna da error; tener el número
@@ -999,6 +1015,13 @@ async function main() {
   console.log(`convenio 100%: Σ $/hora del plantel al convenio ${pesos(sigmaConv.total)} sobre ${sigmaConv.personas} persona(s)`
     + ` · ${sigmaConv.porCategoria.map((c) => `${c.personas}×${c.convenio} ${pesos(c.basico)}`).join(' · ') || 'sin escala'}`
     + (sigmaConv.sinEscala.length ? ` · ⚠ SIN ESCALA: ${sigmaConv.sinEscala.join(', ')}` : ''))
+  // EL LÍMITE DEL CONTROL, AL LADO DEL CONTROL. Este número usa sólo la equivalencia declarada en el
+  // código; la pestaña deja ganar lo que el dueño escriba en la columna «Convenio». Mientras esa
+  // columna esté vacía los dos caminos tienen que dar lo mismo —para eso sirve—, pero en cuanto se use
+  // pueden separarse con razón, y el que manda es el de la pestaña. Un control que no dice contra qué
+  // no compara es un control que engaña.
+  console.log('  ℹ el contraste de arriba vale con la columna «Convenio» de 1.1 VACÍA: si el dueño escribe'
+    + ' una categoría ahí, manda la suya y la pestaña puede dar otro número a propósito')
 
   // ── LA OTRA MITAD DE LA NÓMINA ──
   const espejoOfi = await google.readSheetValues(ID, `${ESPEJO_OFI}!A1:AA990`)
