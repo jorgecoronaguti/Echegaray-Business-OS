@@ -88,7 +88,7 @@ export const CHQ = { hoja: 'Cheques Emitidos', importe: 'F', fechaPago: 'I', deb
  * Efectivo no toca el banco (sale de la caja física). Sólo Transferencia y Débito faltan.
  * Rango ABIERTO.
  */
-export const CMP = { hoja: 'Compras', total: 'O', tipoPago: 'P', estado: 'X', fecha: COL_FECHA_CAJA, desde: 4, tiposBanco: ['Transferencia', 'Débito'] }
+export const CMP = { hoja: 'Compras', total: 'O', montoPagado: 'T', fechaCarga: 'C', tipoPago: 'P', estado: 'X', fecha: COL_FECHA_CAJA, desde: 4, tiposBanco: ['Transferencia', 'Débito'] }
 
 /**
  * Un rango de columna ABIERTO: de la primera fila de datos hasta el final de la pestaña.
@@ -251,18 +251,40 @@ export function formulaCobrosEfectivoPosteriores(arqueo, c = COB) {
 /**
  * NÚCLEO PURO: los pagos en EFECTIVO posteriores al arqueo. Auto-DESCARGA de la caja física.
  * El espejo de formulaComprasPagadasPosteriores del lado del efectivo: cuenta el tipo de pago que
- * aquélla deja afuera a propósito ("Efectivo"), con estado "Pagado" y fecha de caja POSTERIOR al
- * arqueo. SUMPRODUCT, no SUMIFS, por el mismo formato mixto de la "Fecha de caja" (ver fechaCajaCoerc):
- * un SUMIFS perdía en silencio los pagos en efectivo con fecha tipeada y la caja física no bajaba.
+ * aquélla deja afuera a propósito ("Efectivo"). SUMPRODUCT, no SUMIFS, por el formato mixto de las
+ * fechas (ver fechaCajaCoerc): un SUMIFS perdía en silencio los pagos con fecha tipeada.
+ *
+ * ═══ EL PAGO PARCIAL TAMBIÉN ES BILLETE QUE SALIÓ (07/08) ═══
+ *
+ * Medido en vivo: $2.000.000 en efectivo sobre una factura de $3.300.000 —fila Pendiente, Monto
+ * Pagado cargado— y la caja física no bajaba un peso, porque esta fórmula sólo miraba filas con
+ * estado "Pagado". El dueño, textual: "acabo de efectuar otro pago en efectivo y no hay impacto en
+ * la caja". Desde ahora la plata que se cuenta es el MONTO PAGADO (T) — parcial o total — y no el
+ * total de la factura, que además sobrecontaba una compra saldada en dos veces.
+ *
+ * La ventana temporal distingue el estado de la fila, porque el dato de fecha disponible es otro:
+ * - "Pagado": la Fecha de caja (AD) es la fecha del pago → estrictamente POSTERIOR al arqueo. Un
+ *   pago completo del mismo día del arqueo se asume DENTRO del conteo (pagaste, después contaste).
+ * - "Pendiente" con monto pagado: AD apunta al SALDO futuro, no al billete que ya salió; la mejor
+ *   fecha del parcial es la de carga (C), y entra DESDE el día del arqueo inclusive: una entrega
+ *   parcial es operación en curso, casi siempre posterior al conteo. El borde de un parcial cargado
+ *   el mismo día pero ANTES de contar se corrige solo en el próximo arqueo — y es el borde raro;
+ *   el otro (el parcial invisible para siempre) era el defecto.
  * @param {string} arqueo referencia a la celda con la fecha del arqueo
  * @param {object} c columnas de Compras
  * @returns {string} fórmula
  */
 export function formulaComprasEfectivoPosteriores(arqueo, c = CMP) {
-  return `SUMPRODUCT((${rango(c.hoja, c.estado, c.desde)}="Pagado")`
-    + `*(${rango(c.hoja, c.tipoPago, c.desde)}="Efectivo")`
-    + `*(${fechaCajaCoerc(c)}>${arqueo})`
-    + `*${totalCoerc(c)})`
+  const fechaCargaCoerc = () => {
+    const r = rango(c.hoja, c.fechaCarga, c.desde)
+    return `IFERROR(DATEVALUE(${r}&"");N(${r}))`
+  }
+  const pagadoCoerc = `N(${rango(c.hoja, c.montoPagado, c.desde)})`
+  return `SUMPRODUCT((${rango(c.hoja, c.tipoPago, c.desde)}="Efectivo")`
+    + `*${pagadoCoerc}`
+    + `*(((${rango(c.hoja, c.estado, c.desde)}="Pagado")*(${fechaCajaCoerc(c)}>${arqueo}))`
+    + `+((${rango(c.hoja, c.estado, c.desde)}="Pendiente")*(${fechaCargaCoerc()}>=${arqueo})))`
+    + `)`
 }
 
 /**

@@ -148,16 +148,21 @@ test('cobros en efectivo posteriores: SÓLO Efectivo, SÓLO Cobrado, DESPUÉS de
   assert.doesNotMatch(f, />=/)
 })
 
-test('pagos en efectivo posteriores: Compras Pagado/Efectivo por Fecha de caja (tolerante a texto), DESPUÉS del arqueo', () => {
+test('pagos en efectivo posteriores: el MONTO PAGADO (parcial o total), con la ventana por estado', () => {
+  // El defecto del 07/08: $2M en efectivo sobre una factura de $3,3M —fila Pendiente con Monto
+  // Pagado— y la caja física no bajaba, porque la fórmula exigía "Pagado" y sumaba el TOTAL.
   const f = formulaComprasEfectivoPosteriores('$F$4')
   assert.match(f, /^SUMPRODUCT\(/)
   assert.doesNotMatch(f, /SUMIFS/)
-  assert.match(f, /'Compras'!\$X\$4:\$X="Pagado"/) // estado
   assert.match(f, /'Compras'!\$P\$4:\$P="Efectivo"/) // tipo de pago
-  // Fecha de caja coaccionada, ventana posterior al arqueo
-  assert.match(f, new RegExp(`IFERROR\\(DATEVALUE\\('Compras'!\\$${CMP.fecha}\\$4:\\$${CMP.fecha}&""\\);N\\('Compras'!\\$${CMP.fecha}\\$4:\\$${CMP.fecha}\\)\\)>\\$F\\$4`))
-  assert.match(f, /N\('Compras'!\$O\$4:\$O\)/) // total coaccionado
-  assert.doesNotMatch(f, />=/)
+  // La plata es el MONTO PAGADO (T), no el total (O): una compra saldada en dos veces se contaba doble
+  assert.match(f, /N\('Compras'!\$T\$4:\$T\)/)
+  assert.doesNotMatch(f, /N\('Compras'!\$O\$4:\$O\)/)
+  // Rama Pagado: Fecha de caja (AD) estrictamente posterior — lo del día del arqueo ya está contado
+  assert.match(f, new RegExp(`\\('Compras'!\\$X\\$4:\\$X="Pagado"\\)\\*\\(IFERROR\\(DATEVALUE\\('Compras'!\\$${CMP.fecha}\\$4:\\$${CMP.fecha}&""\\);N\\('Compras'!\\$${CMP.fecha}\\$4:\\$${CMP.fecha}\\)\\)>\\$F\\$4\\)`))
+  // Rama Pendiente (parcial): fecha de CARGA (C), desde el día del arqueo inclusive
+  assert.match(f, new RegExp(`\\('Compras'!\\$X\\$4:\\$X="Pendiente"\\)\\*\\(IFERROR\\(DATEVALUE\\('Compras'!\\$C\\$4:\\$C&""\\);N\\('Compras'!\\$C\\$4:\\$C\\)\\)>=\\$F\\$4\\)`))
+  assert.ok(!f.includes(','), 'locale es-AR: sin comas como separador')
 })
 
 test('el pago en efectivo usa el MISMO medio que el banco deja afuera (partición del lado de los pagos)', () => {
@@ -225,10 +230,11 @@ test('la ventana de efectivo cuelga del arqueo que se le pase: cambiar el ancla 
   const nuevo = formulaNetaEfectivoPosterior('$F$99')
   // Toda referencia al ancla vieja desaparece cuando el arqueo se registra en otra celda.
   assert.ok(!viejo.includes('$F$99') && !nuevo.includes('$F$4'))
-  // El ancla aparece en la guarda ISNUMBER y en los CUATRO términos (cobros, pagos, depósitos,
-  // nómina en efectivo): al registrar un arqueo nuevo, la ventana ">" de todos se corre junta y lo
-  // viejo colapsa. Si un canal quedara anclado a otra celda, este número lo delata.
-  assert.equal((nuevo.match(/\$F\$99/g) || []).length, 7)
+  // El ancla aparece en la guarda ISNUMBER y en los términos (cobros, pagos ×2 —la rama Pagado y la
+  // rama del parcial Pendiente—, depósitos, nómina en efectivo): al registrar un arqueo nuevo, la
+  // ventana de todos se corre junta y lo viejo colapsa. Si un canal quedara anclado a otra celda,
+  // este número lo delata.
+  assert.equal((nuevo.match(/\$F\$99/g) || []).length, 8)
 })
 
 test('la exclusividad es por construcción: efectivo y banco no comparten ninguna forma de cobro', () => {
