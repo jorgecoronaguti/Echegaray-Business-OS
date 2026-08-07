@@ -242,20 +242,34 @@ test('LOS DOS RÓTULOS DEL CONTRATO están, una sola vez, y con el texto exacto'
   assert.equal(r.destino.iibb, g.filasCalendario.iibb)
 })
 
-test('LA POSICIÓN VA PRIMERO: hero, calendario, riesgo y financiamiento ARRIBA del detalle', () => {
+test('LA POSICIÓN VA PRIMERO: hero, riesgo, calendario y financiamiento ARRIBA del detalle', () => {
   // La orden del dueño: "la pantalla muestra PRIMERO posición, vencimientos, riesgo y proyección;
-  // después el detalle técnico".
+  // después el detalle técnico". Y entre esos cuatro, el AGREGADO antes que su detalle: el calendario
+  // línea por línea es el respaldo del cuadro de 30/60/90, no la portada.
   const g = armar()
   const hero = filaDe(g, /^LA POSICIÓN AL/)
-  const calend = filaDe(g, /^1 · CALENDARIO DE VENCIMIENTOS/)
-  const riesgo = filaDe(g, /^2 · RIESGO Y PROYECCIÓN/)
+  const riesgo = filaDe(g, /^1 · RIESGO Y PROYECCIÓN/)
+  const calend = filaDe(g, /^2 · CALENDARIO DE VENCIMIENTOS/)
   const financ = filaDe(g, /^3 · FINANCIAMIENTO/)
   const detalle = filaDe(g, /^4 · IVA — LA DDJJ OFICIAL/)
-  assert.ok(hero > 0 && calend > hero && riesgo > calend && financ > riesgo && detalle > financ,
-    `orden real: hero ${hero}, calendario ${calend}, riesgo ${riesgo}, financiamiento ${financ}, detalle ${detalle}`)
+  assert.ok(hero > 0 && riesgo > hero && calend > riesgo && financ > calend && detalle > financ,
+    `orden real: hero ${hero}, riesgo ${riesgo}, calendario ${calend}, financiamiento ${financ}, detalle ${detalle}`)
   assert.ok(g.filasCalendario.iva > financ, 'el IVA a pagar es detalle: va abajo')
   // Y la posición queda congelada, o se va al scrollear y no sirve de nada.
   assert.ok(g.congeladas >= hero, `congela ${g.congeladas} filas y el hero llega hasta la ${hero + 8}`)
+})
+
+test('el TITULAR que la piel agranda es la fila que decide, y el hero se declara entero', () => {
+  // La piel no adivina cuál es el número grande: lo recibe. Si el hero se reordena y `titular` se
+  // queda quieto, el que crece es el renglón de al lado — y la pestaña entera pasa a gritar otra cosa
+  // sin un solo error. Acá se prueba el EFECTO: qué dice la fila que se va a agrandar.
+  const g = armar()
+  assert.match(String(g.filas[g.titular - 1][0]), /A PAGAR EN LOS PRÓXIMOS 30 DÍAS/)
+  assert.ok(String(g.filas[g.titular - 1][1]).startsWith('='), 'el titular es una referencia, no un pegado')
+  // Y el rango del hero contiene al titular y a los tres totales, sin desbordar al riesgo.
+  assert.ok(g.hero.desde <= g.titular && g.titular <= g.hero.hasta)
+  assert.equal(String(g.filas[g.hero.desde - 1][0]).startsWith('LA POSICIÓN AL'), true)
+  assert.ok(g.hero.hasta < filaDe(g, /^1 · RIESGO Y PROYECCIÓN/), 'el hero termina antes de la sección 1')
 })
 
 test('la pestaña cumple su propia gramática — cero defectos de patrón', () => {
@@ -291,7 +305,7 @@ test('los meses proyectados se marcan en ÁMBAR por celda, nunca por columna ent
   assert.ok(g.ambar.length > 0)
   const filasDetalle = new Set([g.filasCalendario.iva, g.filasCalendario.iibb])
   assert.ok(g.ambar.some((x) => filasDetalle.has(x.fila)))
-  const heroHasta = filaDe(g, /^1 · CALENDARIO DE VENCIMIENTOS/)
+  const heroHasta = filaDe(g, /^1 · RIESGO Y PROYECCIÓN/)
   for (const x of g.ambar) assert.ok(x.fila > heroHasta, `la fila ${x.fila} está en la posición: no se pinta de proyección`)
 })
 

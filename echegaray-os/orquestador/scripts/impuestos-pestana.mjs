@@ -53,6 +53,7 @@ import {
 } from '../lib/impuestos-bloques.mjs'
 import {
   obligacionesDelCalendario, altoDeLaPosicion, filasDeLaPosicion, formulaOtrosSinFecha,
+  OFFSET_TITULAR, ALTO_HERO,
 } from '../lib/impuestos-posicion.mjs'
 import { IIBB_SUPUESTO } from '../lib/vencimientos-fiscales.mjs'
 import { informarProyeccion, informarCalendario } from '../lib/impuestos-informe.mjs'
@@ -243,7 +244,12 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, hoy }) {
 
   return {
     filas: G.filas,
-    titular: base + 2,
+    // `base` es 0-based y la primera fila del hero es la siguiente: +1 para pasar a 1-based, y
+    // OFFSET_TITULAR lo declara el propio hero. Antes decía `base + 2` — un número que había que
+    // recordar mover a mano cada vez que el hero cambiaba de orden.
+    titular: base + 1 + OFFSET_TITULAR,
+    // El bloque que la piel jerarquiza distinto del resto: importes grandes, desgloses apagados.
+    hero: { desde: base + 1, hasta: base + ALTO_HERO },
     alicuotas: [ibb.fAli, cierre.fAlic],
     textos: [iva.fDDJJ],
     ambar,
