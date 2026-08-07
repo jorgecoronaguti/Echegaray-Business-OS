@@ -4,15 +4,112 @@
 // moneda sin decimales, aire. Lo propio de esta pestaña son tres cosas: la grilla mensual, las filas
 // que NO son plata (alícuotas, fechas de DDJJ) y los meses PROYECTADOS en ámbar.
 
-import { skinRequests } from './estilo-statement.mjs'
+import { skinRequests, conContenido, MUTED, ACENTO } from './estilo-statement.mjs'
 import { borrarNotas } from './nota-celda.mjs'
 import { requestsTextoPorContenido } from './formato-texto-por-contenido.mjs'
 import { ANCHO } from './impuestos-grilla.mjs'
 
 const AMBAR = { red: 1, green: 0.97, blue: 0.88 }
+const ALARMA = { red: 0.7, green: 0.2, blue: 0.1 }
+/** Un renglón vacío entre bloques respira; uno de datos no. Es el "espacio en blanco" del dueño. */
+const ALTO_SEPARADOR = 32
 
 /**
- * @param {object} g la grilla armada: {filas, titular, alicuotas, textos, ambar, congeladas}
+ * NÚCLEO PURO: qué trato tipográfico le toca a cada fila, decidido por el CONTENIDO.
+ *
+ * ═══ POR QUÉ SE DECIDE ACÁ Y NO EN LA PIEL COMPARTIDA (06/08) ═══
+ *
+ * Mirando la pestaña renderizada, el dueño tenía tres cosas que no se ven en el código:
+ *
+ *   · el ÚNICO importe con jerarquía era el saldo a favor, y todos los demás pesaban igual entre sí:
+ *     un total del hero se veía exactamente como un renglón de detalle nueve bloques más abajo;
+ *   · los desgloses del hero competían con sus propios totales, en el mismo cuerpo y el mismo color;
+ *   · las seis limitaciones declaradas del cierre salían en NEGRITA ROJA con una regla encima cada
+ *     una, porque la piel compartida clasifica todo lo que empieza con "⚠" como total. Seis alarmas
+ *     al pie no son seis alarmas: son ruido que enseña a ignorar la próxima que sí lo sea.
+ *
+ * La diferencia entre una alarma y una limitación declarada es si el renglón trae PLATA calculada:
+ * "⚠ vencido s/verificar" lleva una suma de celdas y decide algo; "⚠ Impuesto de sellos · s/d" dice
+ * que no hay dato. Se decide por contenido —como el formato de texto— y no por una lista de filas
+ * que hay que mantener.
+ *
+ * @param {any[][]} filas la grilla del generador (índice 0 → fila 1)
+ * @param {{desde:number, hasta:number, titular:number}} hero el bloque de posición, en filas 1-based.
+ *   El titular queda AFUERA: se lo lleva la piel compartida, que es la única que lo agranda.
+ * @returns {{alarmas:number[], notas:number[], subitems:number[], totalesHero:number[], separadores:number[]}}
+ */
+export function tratamientoDeFilas(filas = [], hero = null) {
+  const t = { alarmas: [], notas: [], subitems: [], totalesHero: [], separadores: [] }
+  const conPlata = (f) => (f || []).slice(1, 14).some((c) => typeof c === 'number'
+    || (typeof c === 'string' && c.startsWith('=')))
+  filas.forEach((f, i) => {
+    const fila = i + 1
+    const a = conContenido(f?.[0]) ? String(f[0]) : ''
+    if (!a && !(f || []).some(conContenido)) { t.separadores.push(fila); return }
+    if (/^⚠/.test(a)) { (conPlata(f) ? t.alarmas : t.notas).push(fila); return }
+    if (/^\s{2,}·\s/.test(a)) { t.subitems.push(fila); return }
+    if (hero && fila >= hero.desde && fila <= hero.hasta && fila !== hero.titular && /^⇒/.test(a)) {
+      t.totalesHero.push(fila)
+    }
+  })
+  return t
+}
+
+/**
+ * NÚCLEO PURO: los requests que dan los tres pesos de lectura de esta pestaña.
+ *
+ * Tres y no más, que es lo que un ojo distingue sin esfuerzo: el TITULAR (lo pone la piel
+ * compartida), los totales del hero, y el cuerpo. Todo lo que no decide —los desgloses, las
+ * limitaciones declaradas— se apaga para que los importes queden solos adelante.
+ */
+export function requestsDeJerarquia(sheetId, g) {
+  const t = tratamientoDeFilas(g.filas || [], g.hero ? { ...g.hero, titular: g.titular } : null)
+  const rq = []
+  const texto = (filas, format, cols = [0, ANCHO]) => {
+    for (const f of filas) {
+      rq.push({
+        repeatCell: {
+          range: { sheetId, startRowIndex: f - 1, endRowIndex: f, startColumnIndex: cols[0], endColumnIndex: cols[1] },
+          cell: { userEnteredFormat: { textFormat: { ...format, fontFamily: 'Arial' } } },
+          fields: 'userEnteredFormat.textFormat',
+        },
+      })
+    }
+  }
+  // El total del hero pesa más que un total de detalle: son las tres cifras con las que se decide.
+  texto(t.totalesHero, { foregroundColor: ACENTO, bold: true, fontSize: 11 })
+  // El desglose es el respaldo del total, no su competencia.
+  texto(t.subitems, { foregroundColor: MUTED, bold: false, fontSize: 9 })
+  // Una alarma con plata adentro se ve; una limitación declarada se lee cuando se la busca.
+  texto(t.alarmas, { foregroundColor: ALARMA, bold: true, fontSize: 10 }, [0, 1])
+  texto(t.notas, { foregroundColor: MUTED, bold: false, fontSize: 9 })
+  // Y la regla que la piel compartida le puso a cada "⚠" por clasificarlo como total: seis reglas al
+  // pie de la pestaña, una debajo de la otra, sobre renglones que no totalizan nada.
+  for (const f of t.notas) {
+    rq.push({
+      updateBorders: {
+        range: { sheetId, startRowIndex: f - 1, endRowIndex: f, startColumnIndex: 0, endColumnIndex: ANCHO },
+        top: { style: 'NONE' },
+      },
+    })
+  }
+  // EL AIRE. El dueño pidió "mucho espacio en blanco": entre bloque y bloque hay UNA fila, y a 21 px
+  // no separa nada. Se agranda el separador en vez de agregar filas — una fila nueva correría todas
+  // las referencias de abajo.
+  for (const f of t.separadores) {
+    rq.push({
+      updateDimensionProperties: {
+        range: { sheetId, dimension: 'ROWS', startIndex: f - 1, endIndex: f },
+        properties: { pixelSize: ALTO_SEPARADOR },
+        fields: 'pixelSize',
+      },
+    })
+  }
+  return rq
+}
+
+/**
+ * @param {object} g la grilla armada: {filas, titular, hero, alicuotas, textos, ambar, congeladas}
  * @param {number} filasHoja cuántas filas tiene hoy la pestaña
  */
 export async function formatear(google, fileId, sheetId, g, filasHoja = 0) {
@@ -40,7 +137,6 @@ export async function formatear(google, fileId, sheetId, g, filasHoja = 0) {
     if (/^(Concepto|Fecha y concepto|Línea de financiamiento|LA POSICIÓN)/.test(a)) {
       fmt(r(i, i + 1, 1, 14), 'userEnteredFormat(numberFormat,horizontalAlignment)', { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'RIGHT' })
     }
-    if (/^⚠/.test(a)) fmt(r(i, i + 1, 0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, foregroundColor: { red: 0.7, green: 0.2, blue: 0.1 } } })
   })
   for (const f of g.alicuotas ?? []) fmt(r(f - 1, f, 1, 14), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'PERCENT', pattern: '0.00%;;"—"' } })
   for (const f of g.textos ?? []) fmt(r(f - 1, f, 1, 14), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'RIGHT' })
@@ -59,7 +155,12 @@ export async function formatear(google, fileId, sheetId, g, filasHoja = 0) {
   // Al sacar el muro de texto de la derecha, las filas quedaban con el alto que ese texto necesitaba
   // para envolver: la pestaña medía tres pantallas de aire.
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: 0, endIndex: n }, properties: { pixelSize: 21 }, fields: 'pixelSize' } })
-  req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 360 }, fields: 'pixelSize' } })
+  // 400 Y NO 360 (06/08). El rótulo más largo de la pestaña es el del hero —"⇒ PRÓXIMO VENCIMIENTO ·
+  // 07/08 · Prendario Ford XLS (Santander)"— y a 360 px se dibujaba cortado al medio, con el
+  // paréntesis abierto, porque la celda de al lado tiene el importe y no hay adónde rebalsar. Un
+  // titular cortado no es un titular: es un error de imprenta. El rótulo además se acortó (el emisor
+  // entre paréntesis se saca), así que son dos cinturones para el mismo problema.
+  req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 400 }, fields: 'pixelSize' } })
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: 13 }, properties: { pixelSize: 108 }, fields: 'pixelSize' } })
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 13, endIndex: 14 }, properties: { pixelSize: 124 }, fields: 'pixelSize' } })
   // La columna de procedencia ya no muestra texto (se vacía): angosta.
@@ -93,6 +194,10 @@ export async function formatear(google, fileId, sheetId, g, filasHoja = 0) {
   await google.spreadsheetBatchUpdate(fileId, skinRequests({
     sheetId, filas: g.filas, cols: ANCHO, congeladas: g.congeladas ?? 2, titular: g.titular, filasHoja: alto,
   }))
+
+  // ═══ LA JERARQUÍA PROPIA DE ESTA PESTAÑA — DESPUÉS DE LA PIEL, O LA PIEL SE LA LLEVA PUESTA ═══
+  const jerarquia = requestsDeJerarquia(sheetId, g)
+  if (jerarquia.length) await google.spreadsheetBatchUpdate(fileId, jerarquia)
 
   // ═══ UN TEXTO SE DIBUJA COMO TEXTO, DECIDIDO POR CONTENIDO ═══
   // Una celda que dice "s/d" con formato de plata se lee como si hubiera un importe que no se ve. No

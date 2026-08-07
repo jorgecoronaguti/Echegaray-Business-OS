@@ -64,14 +64,19 @@ test('la frescura sale del importe cargado, no del encabezado de la quincena', (
     `la frescura no está condicionada al TOTAL (columna ${T}): ${subtitulo.slice(0, 120)}`)
 })
 
-test('"registro cargado al …" es una FÓRMULA: era el último texto estampado de la pestaña', () => {
+test('hasta dónde llega el registro se dice UNA vez, en el subtítulo, y por FÓRMULA', () => {
   // Era `cargada hasta el ${cargaAlDia}`, medido en JS sobre las horas del espejo: honesto el día que
-  // se escribía y congelado a partir del siguiente.
-  const nota = g.filas.map((f) => String(f[2] ?? '')).find((c) => /registro cargado/.test(c))
-  assert.ok(nota, 'desapareció la nota de hasta dónde llega el registro')
-  assert.ok(nota.startsWith('='), `la nota volvió a ser texto estampado: ${nota}`)
-  assert.match(nota, /MAXIFS\(/)
-  assert.doesNotMatch(nota, /\d{1,2}\/\d{1,2}(\/\d{2,4})?"/, 'hay una fecha estampada en la nota')
+  // se escribía y congelado a partir del siguiente. Y estaba DOS veces —en el subtítulo y al lado del
+  // titular—, donde la copia quedaba tapada por el propio titular en cuerpo 13. Ahora vive sólo en la
+  // fila 2, que es donde la gramática pone la fecha de corte de una pestaña.
+  const subtitulo = String(g.filas[1][0] ?? '')
+  assert.ok(subtitulo.startsWith('='), `el subtítulo volvió a ser texto estampado: ${subtitulo}`)
+  assert.match(subtitulo, /MAXIFS\(/)
+  assert.doesNotMatch(subtitulo, /\d{1,2}\/\d{1,2}(\/\d{2,4})?"/, 'hay una fecha estampada en el subtítulo')
+  // Y la copia NO vuelve: al lado del titular no puede haber texto, porque el importe le pasa por
+  // encima. Se comprueba sobre la fila del titular, no sobre la pestaña entera.
+  assert.equal(String(g.filas[g.titular - 1][2] ?? '').replace(VACIO, ''), '',
+    'volvió la glosa al lado del titular: el importe en cuerpo 13 la tapa')
 })
 
 test('los rangos del registro son CERRADOS y arrancan donde arranca el registro', () => {
@@ -256,20 +261,34 @@ test('COMPROMETIDO sale POR DIFERENCIA: entre REAL y el registro no puede quedar
   assert.match(comp, /-SUMPRODUCT\(\(\$N\$\d+:\$N\$\d+<>""\)/, 'si se calcula aparte, una quincena puede caer en las dos o en ninguna')
 })
 
-test('el próximo pago descarta el 0 de MINIFS: si no, muestra el 30/12/1899', () => {
-  const prox = String(gm.filas.find((f) => /Próximo pago/.test(String(f[0])))[1])
-  assert.match(prox, /MINIFS/)
-  assert.match(prox, /IF\(MAX\(/, 'sin descartar los ceros, MIN(0; fecha) siempre da 0')
+test('el próximo pago: el IMPORTE en la B y la FECHA en la C, como toda la pestaña', () => {
+  const fila = gm.filas.find((f) => /Próximo pago/.test(String(f[0])))
+  // LA REGLA DE COLUMNA: la B es el importe en las catorce filas de esta pestaña. Acá estaba al revés
+  // —fecha en la B, plata en la C— y era la única fila del hero donde la columna de los pesos no tenía
+  // pesos: el ojo baja por la columna de importes y tropieza con un 17/08/2026.
+  assert.match(String(fila[1]), /SUMIFS/, 'la B del próximo pago tiene que ser cuánto')
+  assert.match(String(fila[2]), /MINIFS/, 'la C tiene que ser cuándo')
+  assert.match(String(fila[2]), /IF\(MAX\(/, 'sin descartar los ceros, MIN(0; fecha) siempre da 0')
+  // Y el importe se busca por la celda de la fecha, que ahora es la C: si quedara apuntando a la B
+  // sumaría contra un importe y devolvería 0 sin dar error.
+  assert.match(String(fila[1]), new RegExp(`C${gm.filas.indexOf(fila) + 1}`))
   assert.ok(gm.fechasHero.length === 1, 'esa celda tiene que recibir formato de FECHA, no de moneda')
+  const reqs = requestsDeFormato(1, gm.filas, gm)
+  assert.equal(formatoDe(reqs, gm.fechasHero[0], 2).type, 'DATE', 'la C del hero salió como plata')
+  assert.equal(formatoDe(reqs, gm.fechasHero[0], 1).type, 'CURRENCY', 'la B del hero salió como fecha')
 })
 
 test('B3 · el "escalón que viene" NO puede mostrar un número de otro año', () => {
   // La fixture tiene septiembre de 2025 y NO tiene septiembre de 2026 — el caso exacto del defecto.
   const fila = gm.filas.find((f) => /El escalón que viene/.test(String(f[0])))
   assert.match(String(fila[0]), /SIN ACUERDO PUBLICADO/)
-  // Y las dos filas de abajo (básico y margen del mes que viene) quedan sin número, no con el de 2025.
+  // Y las dos filas de abajo NO SE EMITEN. Antes se emitían vacías: dos rótulos sin cifra debajo de
+  // una oración que ya explicaba la ausencia. Traer el básico de 2025 sigue prohibido, y ahora además
+  // no queda el hueco — la ausencia se declara una vez, en palabras.
   const i = gm.filas.indexOf(fila)
-  assert.equal(gm.filas[i + 1][1], '', 'está trayendo el básico de 2025 como "el que viene"')
+  assert.doesNotMatch(String(gm.filas[i + 1][0] ?? ''), /Básico de .* desde ese mes/,
+    'volvió la fila vacía del básico del mes que viene')
+  assert.equal(gm.ratios.length, 1, 'sin acuerdo publicado hay UN margen, no dos')
   const texto = gm.filas.flat().map(String).join(' ')
   assert.doesNotMatch(texto, /MATCH\(TEXT\(TODAY\(\);"mmmm"\)/, 'volvió el MATCH por nombre de mes')
 })
@@ -311,13 +330,54 @@ const formatoDe = (reqs, fila, col) => {
   return fmt
 }
 
-test('EL CENTINELA NO LLEGA A LA PIEL: los títulos de sección reciben su formato', () => {
-  // ═══ EL DEFECTO (06/08) ═══
+test('LA INSTRUCCIÓN DEL CONVENIO SE DICE UNA VEZ Y CONTADA, no una por categoría', () => {
+  // El cuadro que ABRE la pestaña repetía "escribí la categoría del convenio en la columna de al lado"
+  // en las cuatro filas de categorías. Un pedido no es un estado: se dice una vez, arriba, con la
+  // cuenta de lo que falta. Cuatro renglones idénticos empujan hacia abajo lo único que el bloque
+  // contesta y hacen que el ojo lea el cuadro como si estuviera roto.
+  const texto = comoSeVe(gm).flat().map(String)
+  assert.equal(texto.filter((c) => /columna de al lado/.test(c)).length, 0,
+    'volvió la instrucción repetida fila por fila')
+  const pide = gm.filas.map((f) => String(f[0] ?? '')).filter((c) => /COUNTBLANK\(\$E\$/.test(c))
+  assert.equal(pide.length, 1, 'la línea que pide el convenio tiene que existir UNA sola vez')
+  assert.match(pide[0], /COUNTA\(\$A\$/, 'dice cuántas faltan de cuántas: una cuenta, no un pedido suelto')
+  // Y la fila sigue diciendo lo que SÍ puede decir: sin convenio asignado, nada — con el mismo "—"
+  // que usan los importes vacíos de la pestaña.
+  const estados = gm.filas.slice(gm.plantel.fPrimera - 1, gm.plantel.fUltima).map((f) => String(f[7]))
+  for (const e of estados) assert.match(e, /^=IF\(\$E\d+="";"—";/, `el estado por fila volvió a ser un texto largo: ${e}`)
+})
+
+test('NINGUNA COLUMNA MUDA: toda columna con dato tiene encabezado, y el encabezado no miente', () => {
+  const vista = comoSeVe(gm)
+  const encabezadoDe = (fila) => vista[fila - 1].map((c) => String(c ?? ''))
+  // Oficina y Dirección: la D traía "proyección" bajo un encabezado vacío.
+  assert.equal(encabezadoDe(gm.o0 - 1)[3], 'Estado')
+  assert.equal(encabezadoDe(gm.d0 - 1)[3], 'Estado')
+  for (const f of [gm.o0, gm.d0]) {
+    assert.ok(String(vista[f - 1][3]).trim(), `la fila ${f} dejó su columna Estado vacía`)
+  }
+  // El encabezado de la G de Oficina decía "Ajuste inflación" desde antes de que el bloque dejara de
+  // ajustar por inflación: hoy usa el factor del escalón salarial, igual que la obra.
+  assert.equal(encabezadoDe(gm.o0 - 1)[6], 'Ajuste escalón')
+  // Y "Desde", en la tabla de personas de Dirección, coronaba tres celdas vacías.
+  for (let f = gm.dp0; f <= gm.dpFin; f++) {
+    assert.match(String(gm.filas[f - 1][4] ?? ''), /^=IFERROR\(MIN\(FILTER\(/,
+      `la persona de la fila ${f} no trae su fecha de inicio`)
+  }
+  // La ficha del convenio dejó de flotar seis columnas a la derecha de su línea de vigencia.
+  const vig = vista[gm.fVig - 1]
+  assert.match(String(vig[0]), /CCT 76\/75/, 'el convenio se separó otra vez de su vigencia')
+  assert.equal(vig.slice(1).filter((c) => String(c).trim()).length, 0, 'quedó un rótulo suelto en el medio')
+})
+
+test('LA JERARQUÍA LLEGA A LA PESTAÑA: cinco secciones en 11 y tres sub-secciones en 10', () => {
+  // ═══ EL DEFECTO (06/08), MEDIDO SOBRE EL PDF DE LA PESTAÑA VIVA ═══
   //
-  // VACIO significa "es mi celda y va vacía", pero es una cadena NO VACÍA. La piel sólo titula una
-  // fila si está sola en su fila, y como el generador rellena el ancho entero con el centinela, esa
-  // condición era falsa en TODAS las filas: ni un solo título de esta pestaña recibía su negrita, su
-  // cuerpo ni su regla. Cinco secciones y tres sub-secciones dibujadas como una fila de datos.
+  // Ningún título de esta pestaña recibía su tipografía: cinco secciones y tres sub-secciones
+  // dibujadas igual que una fila de datos, en un solo tono, sin nada que el ojo pueda seguir. Dos
+  // causas — el centinela que la piel leía como contenido (arreglado en estilo-statement) y las
+  // sub-secciones que su gramática no reconocía. Este test mide el EFECTO sobre esta pestaña, que es
+  // lo que se rompe si cualquiera de las dos vuelve.
   const reqs = requestsDeFormato(1, gm.filas, gm)
   const vista = comoSeVe(gm)
   const tipografiaDe = (fila) => {

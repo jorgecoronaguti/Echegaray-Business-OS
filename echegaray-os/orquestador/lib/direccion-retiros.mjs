@@ -138,6 +138,21 @@ export const formulaPrimerRetiro = (nombres = NOMBRES_DIRECCION) =>
   `=IFERROR(MIN(FILTER(${COL_FECHA_CAJA};REGEXMATCH(LOWER(${COL_PERSONA}&"");"${regexDireccion(nombres)}");ISNUMBER(${COL_FECHA_CAJA})));"")`
 
 /**
+ * NÚCLEO PURO: desde cuándo corre el retiro DE UNA PERSONA — su fecha de caja más temprana en Compras.
+ *
+ * El bloque publicaba un solo "Desde" —el del conjunto, en la fila de total— y el encabezado quedaba
+ * coronando tres celdas vacías. Una columna con título y sin dato se lee como un cuadro a medio
+ * llenar, y el dato existe: los tres socios no empezaron a cobrar el mismo día.
+ *
+ * Compara por igualdad y no por regex, como `formulaRetiroMensual`: acá el nombre sale de la celda de
+ * al lado, así que no hay nada que reconocer.
+ *
+ * @param {string} celdaNombre la celda con el nombre de la persona (ej. "$A$47")
+ */
+export const formulaPrimerRetiroDe = (celdaNombre) =>
+  `=IFERROR(MIN(FILTER(${COL_FECHA_CAJA};LOWER(${COL_PERSONA}&"")=LOWER(${celdaNombre});ISNUMBER(${COL_FECHA_CAJA})));"")`
+
+/**
  * NÚCLEO PURO: LAS FILAS DE COMPRAS QUE PAGAN EL RETIRO DEL MES `mes` — definidas UNA sola vez.
  *
  * Las condiciones viven acá y no adentro de cada fórmula porque DOS celdas de la misma fila del
