@@ -849,7 +849,9 @@ export function grilla({
     cantidades: [fHpd],
     // Prosa que RINDE una fórmula: el pase por contenido la saltea (empieza con '='). Se declara acá
     // y el formato la pinta TEXTO. col 0-based.
-    celdasDeProsaFormula: [{ fila: fHpd, col: 2 }, { fila: fCanal.recibo, col: 2 }],
+    // …y el CANARIO del plantel (última fila del bloque 1.1, col H): rinde "✓ el bloque del
+    // espejo…" por fórmula y sin declararlo la piel lo pintaba de plata (auditor, 06/08).
+    celdasDeProsaFormula: [{ fila: fHpd, col: 2 }, { fila: fCanal.recibo, col: 2 }, { fila: plantel.fTotal, col: 7 }],
     enteros: [plantel.fTotal],
     // La única celda del hero que es una FECHA y no plata: la C del próximo pago (la B, como en toda
     // la pestaña, es el importe). Sin esto sale "$46.242".
