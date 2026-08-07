@@ -41,7 +41,7 @@ import { aRangoApi, verificarRangos, explicarProblemas } from '../lib/rangos-con
 import { detectarQuincenas } from '../lib/nomina-sync.mjs'
 import { ultimaQuincenaCerrada } from '../lib/motor-salarial.mjs'
 import { asegurarParametros, ultimoDiaCargado } from './jornales-pestana.mjs'
-import { ANCHO, COL_ORIGEN, cm, REALES, crearGrilla } from '../lib/cargas-grilla.mjs'
+import { ANCHO, COL_ORIGEN, cm, crearGrilla } from '../lib/cargas-grilla.mjs'
 import {
   bloqueDeclarado, bloquePagado, bloqueDiferencia, bloqueProyeccion, bloqueCaja, bloqueSac, bloquePlanes,
 } from '../lib/cargas-bloques.mjs'
@@ -109,27 +109,54 @@ export function grilla({ periodos, conceptos, ps, C, bloqueBase = null }) {
   ])])
   G.push()
 
+  // ═══ LA POSICIÓN HABLA EL IDIOMA DE SU HERMANA: REAL · COMPROMETIDO · PROYECTADO (06/08) ═══
+  //
+  // El dueño, sobre Jornales: "separar real / comprometido / proyectado". Acá el hero partía por
+  // PROCEDENCIA del dato —"declarado en las DDJJ" contra "proyectado"— y decía "devengado", que es
+  // vocabulario contable. En una pestaña del Flujo de Caja eso no contesta la pregunta que se hace el
+  // que la abre, que no es de dónde salió el número sino EN QUÉ ESTADO ESTÁ LA PLATA. Las dos
+  // pestañas hermanas hablaban de la misma nómina en dos idiomas distintos.
+  //
+  // LAS TRES PARTICIONES NO SE SOLAPAN Y SUMAN EL TITULAR AL PESO, igual que en Jornales:
+  //   REAL         — el F931 del mes ya salió de la caja. Sale de Compras, y el banco lo prueba.
+  //   COMPROMETIDO — declarado en la DDJJ y todavía sin salir. POR DIFERENCIA, a propósito: entre lo
+  //                  declarado y lo pagado no puede quedar un hueco escondido.
+  //   PROYECTADO   — lo que la cadena mide de acá a diciembre desde los jornales.
+  // El titular (declarado + proyectado) no cambia de valor: sólo se parte de otra manera. La cadena
+  // que cierra al peso queda intacta.
   G.push(['LA POSICIÓN', 'Monto', ...Array(11).fill(VACIO), VACIO, 'De dónde sale'])
   // El titular se completa al final, cuando ya se sabe en qué filas quedaron los totales.
-  const hCosto = G.push([rotuloTotal('Costo laboral del año — devengado'), '@COSTO', ...Array(11).fill(VACIO), VACIO, 'Declarado ene–jun más lo proyectado jul–dic.'])
-  const hDecl = G.push([sub('declarado en las DDJJ F931 (ene–jun)'), '@DECL', ...Array(11).fill(VACIO), VACIO, `Sección 1 · réplica ${RAW}, leída de los PDF.`])
-  const hProy = G.push([sub('proyectado (jul–dic)'), '@PROY', ...Array(11).fill(VACIO), VACIO, 'Sección 4 · alícuotas medidas sobre los seis meses reales.'])
-  const hDeuda = G.push([rotuloTotal('Deuda previsional en planes · por pagar'), '@DEUDA', ...Array(11).fill(VACIO), VACIO, VACIO])
+  const hCosto = G.push([rotuloTotal('Costo laboral del año — devengado'), '@COSTO', ...Array(11).fill(VACIO), VACIO, 'REAL más COMPROMETIDO más PROYECTADO.'])
+  const hReal = G.push([sub('REAL · el F931 del mes ya salió de la caja'), '@REAL',
+    // El pago de enero es la DDJJ de DICIEMBRE del año anterior: plata que salió este año por una
+    // nómina que no es de este año. Contarla acá inflaría lo REAL y achicaría lo COMPROMETIDO en
+    // $3.811.458 sin que nada lo avise — y COMPROMETIDO es el número que se usa para decidir.
+    'el pago de enero es la DDJJ de diciembre, no cuenta', ...Array(10).fill(VACIO), VACIO, 'Sección 2 · Compras, de febrero en adelante.'])
+  const hComp = G.push([sub('COMPROMETIDO · declarado y todavía sin salir'), '@COMP', ...Array(11).fill(VACIO), VACIO, 'Sección 3 · lo declarado menos lo pagado, por diferencia.'])
+  const hProy = G.push([sub('PROYECTADO · la cadena, desde los jornales'), '@PROY', ...Array(11).fill(VACIO), VACIO, 'Sección 4 · alícuotas medidas sobre los meses reales.'])
+  // LOS PLANES NO SON UNA CUARTA PARTICIÓN, Y DECIRLO EVITA UNA SUMA FALSA. Financian parte de lo que
+  // arriba figura como COMPROMETIDO —la DDJJ de enero 2026 y la de junio 2026 se refinanciaron— y
+  // además arrastran cuotas de un plan de 2025, que no es costo de este año. Sumar este número al
+  // titular lo contaría dos veces; no decirlo deja que lo sume el que lee.
+  const hDeuda = G.push([rotuloTotal('En planes de pago · cuotas sin pagar'), '@DEUDA',
+    'financia parte de lo comprometido; incluye deuda de 2025', ...Array(10).fill(VACIO), VACIO, VACIO])
   G.push()
 
   // ── LOS SIETE CUADROS ──────────────────────────────────────────────────────────────────────────
   // Cada uno devuelve en qué fila quedaron sus totales: el de abajo los REFERENCIA en vez de
   // recalcular el mismo número por otro camino, que es como aparecen dos verdades en una pestaña.
   const decl = bloqueDeclarado(G, { anio: AÑO, periodos, conceptos })
-  const pag = bloquePagado(G, { anio: AÑO, C })
-  bloqueDiferencia(G, { fPagTot: pag.fPagTot, fDeclTot: decl.fDeclTot })
+  // El código 312 es la ART DENTRO de la DDJJ, no un comprobante aparte: el cuadro de lo pagado lo
+  // desglosa sin volver a sumarlo. El porqué, con la evidencia, en `bloquePagado`.
+  const pag = bloquePagado(G, { anio: AÑO, C, fArtDecl: decl.filaDecl['312'], fDeclTot: decl.fDeclTot })
+  bloqueDiferencia(G, { fPagF931: pag.filaPag.F931, fDeclTot: decl.fDeclTot })
   const proy = bloqueProyeccion(G, {
     anio: AÑO, desdeProy, filaDecl: decl.filaDecl, filaPag: pag.filaPag, fRem: decl.fRem, fEmp: decl.fEmp, bloqueBase,
   })
   const caja = bloqueCaja(G, {
     anio: AÑO, desdeProy, proyMeses: proy.proyMeses, fDeclTot: decl.fDeclTot, fProyTot: proy.fProyTot, C,
   })
-  bloqueSac(G, { anio: AÑO, C, fRem: decl.fRem, fRemProy: proy.fRemProy })
+  const sac = bloqueSac(G, { anio: AÑO, C, fRem: decl.fRem, fRemProy: proy.fRemProy })
   const planes = bloquePlanes(G, { ps, C })
 
   // ── SECCIÓN 5, RECIÉN AHORA: la fila de "cuotas que vencen" referencia el total de la sección 7 ──
@@ -138,9 +165,15 @@ export function grilla({ periodos, conceptos, ps, C, bloqueBase = null }) {
   for (const m of proy.proyMeses) G.filas[caja.fCuotasVencen - 1][m] = `=${cm(m)}${planes.fCuotasTot}`
 
   // ── EL HERO, RECIÉN AHORA: ya se sabe en qué fila quedó cada total ──────────────────────────────
-  G.filas[hDecl - 1][1] = `=SUM(${REALES(decl.fDeclTot)})`
+  // REAL de FEBRERO a diciembre: la columna B de lo pagado es el F931 de diciembre del año anterior.
+  G.filas[hReal - 1][1] = `=SUM($C$${pag.filaPag.F931}:$M$${pag.filaPag.F931})`
+  // COMPROMETIDO POR DIFERENCIA. Si algún día lo pagado supera a lo declarado, esta celda se va a
+  // negativo y se ve: querría decir que se pagó un período cuya DDJJ todavía no está leída. Un tope a
+  // cero taparía justo eso. Y el declarado se lee de la fila ENTERA (B..M), no de los seis primeros
+  // meses: en cuanto entre la DDJJ de julio, el hero la toma sin que nadie mueva un rango.
+  G.filas[hComp - 1][1] = `=SUM($B$${decl.fDeclTot}:$M$${decl.fDeclTot})-$B$${hReal}`
   G.filas[hProy - 1][1] = `=SUM($${cm(desdeProy)}$${proy.fProyTot}:$M$${proy.fProyTot})`
-  G.filas[hCosto - 1][1] = `=$B$${hDecl}+$B$${hProy}`
+  G.filas[hCosto - 1][1] = `=$B$${hReal}+$B$${hComp}+$B$${hProy}`
   // ═══ DOS VERDADES PARA LO MISMO, EN LA MISMA PESTAÑA (06/08 — defecto B9) ═══
   //
   // Acá había un NÚMERO PEGADO: $7.958.394, el saldo de los planes calculado en JavaScript. Doce
@@ -177,7 +210,14 @@ export function grilla({ periodos, conceptos, ps, C, bloqueBase = null }) {
     // La fila de fechas es la única de la grilla que NO es plata: sin esto sale "$46.244".
     fechas: [proy.fFechaSalida],
     titular: hCosto,
-    prosaFormula: [{ fila: proy.fPlantel, col: 2 }],
+    // Las notas al pie: apagadas y chicas, para que no compitan con los importes. Las declara el
+    // bloque dueño de cada una — así una nota que se muda no deja el formato apuntando a otra fila.
+    pies: [...(caja.pies ?? []), ...(sac?.pies ?? []), ...(planes.pies ?? [])],
+    // El único control de integridad de la pestaña: el cero es la respuesta, no una celda vacía.
+    controles: [planes.fControl],
+    // Texto en el medio de la grilla: sin esto lo pinta el barrido de moneda y sale a la derecha,
+    // pegado al importe de al lado. Son las dos aclaraciones del hero y el veredicto del plantel.
+    prosaFormula: [{ fila: proy.fPlantel, col: 2 }, { fila: hReal, col: 2 }, { fila: hDeuda, col: 2 }],
     // La geometría que se publica como rangos con nombre. Sale de la grilla recién armada: si la
     // pestaña se reordena, los nombres se mueven con ella.
     rangos: { fF931: proy.fSubF931, fGremiales: proy.fSubGremiales, fFechas: proy.fFechaSalida },
@@ -229,7 +269,7 @@ async function main() {
   const ps = await planesDePago(AÑO)
   console.log(`${periodos.length} período(s) F931 · ${conceptos.length} concepto(s) · ${ps.length} plan(es) de pago`)
 
-  const { filas, cantidades, ratios, fechas, titular, prosaFormula, rangos } = grilla({ periodos, conceptos, ps, C, bloqueBase })
+  const { filas, cantidades, ratios, fechas, titular, prosaFormula, pies, controles, rangos } = grilla({ periodos, conceptos, ps, C, bloqueBase })
   console.log(`grilla: ${filas.length} filas × ${ANCHO} columnas — un solo ancho para toda la pestaña`)
   if (DRY) return
 
@@ -297,7 +337,7 @@ async function main() {
   const { conservadas } = salteada ? { conservadas: [] } : escritura
   if (conservadas.length) console.log(`✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
 
-  if (!salteada) await formatear(google, ID, hoja.sheetId, gridFinal, { cantidades, ratios, fechas, titular, prosaFormula })
+  if (!salteada) await formatear(google, ID, hoja.sheetId, gridFinal, { cantidades, ratios, fechas, titular, prosaFormula, pies, controles })
   // LOS NOMBRES SE PUBLICAN SOBRE LO QUE SE ESCRIBIÓ, NUNCA SOBRE LO QUE SE QUISO ESCRIBIR: si la
   // guarda salteó la escritura, la pestaña conserva la geometría de su última corrida y reapuntar los
   // nombres los dejaría sobre filas que en la pestaña son otra cosa. Es el defecto que vació CAJA.
