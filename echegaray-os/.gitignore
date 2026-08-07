@@ -77,6 +77,9 @@ __pycache__/
 *.pyc
 scripts/arca/credentials/
 scripts/arca/out/
+# Contador local de automatizaciones de AfipSDK: es estado de ESTA máquina, no del repositorio.
+# Versionarlo haría que un checkout nuevo "recuerde" un gasto que no hizo.
+scripts/arca/estado/
 /extension.zip
 orquestador/scripts/.caja-backup-*.json
 orquestador/scripts/.cfsemanal-backup-*.json

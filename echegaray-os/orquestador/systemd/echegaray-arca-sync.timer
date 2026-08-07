@@ -1,0 +1,26 @@
+[Unit]
+Description=Echegaray OS - Sync ARCA semanal (lunes 03:00) — el plan free da 10 automatizaciones/mes
+
+[Timer]
+# SEMANAL, Y LA FRECUENCIA LA DECIDE EL PLAN (31/07).
+#
+# Corría OnCalendar=*-*-05 —una vez por mes— y ARCA estaba al 16/07: faltaban 41 comprobantes, el IVA
+# de julio incompleto y 22 proveedores sin CUIT. Lo pasé a DIARIO sin mirar cómo se paga, y el dueño
+# avisó: "cuidado con eso porque usas tantas automatizaciones de afip sdk".
+#
+# La aritmética: el plan free da 10 automatizaciones por período y cada corrida consume DOS (libro R +
+# libro E). Mensual = 2. Semanal = 8. Diario = ~60, seis veces el límite.
+#
+# Semanal es lo máximo que entra con margen. Y no depende de que este comentario se respete: antes de
+# gastar, el script consulta orquestador/lib/afipsdk-presupuesto.mjs y se niega si no alcanza,
+# reservando 2 automatizaciones para una corrida manual del dueño.
+#
+# ESE GUARDIÁN NO EXISTÍA HASTA EL 07/08, aunque este comentario lo prometía desde el 31/07. Ahora
+# existe, y con un límite importante declarado en su encabezado: AfipSDK NO expone endpoint de cuota
+# (se buscó), así que el contador es LOCAL y cuenta lo que gastó esta máquina. La reserva es el margen
+# para lo que el contador no ve.
+OnCalendar=Mon 03:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

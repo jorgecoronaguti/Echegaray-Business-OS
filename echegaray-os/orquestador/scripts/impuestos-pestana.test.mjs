@@ -278,6 +278,33 @@ test('la pestaña cumple su propia gramática — cero defectos de patrón', () 
   assert.deepEqual(auditarPatron(comoSeVe(armar())), [])
 })
 
+test('con meses de ARCA la pestaña sigue cumpliendo su gramática y su contrato', () => {
+  // El tercer estado del cuadro 4 (comprobantes de ARCA) no puede desacomodar la pestaña: mismas
+  // filas, mismos rótulos, mismo hero. Si agregara o corriera una fila, `contratoDeRotulos` y el
+  // patrón se pondrían rojos acá antes de que ninguna escritura toque el archivo real.
+  const g = armar({ arca: { meses: [1, 2, 3, 4, 5, 6, 7, 8] } })
+  assert.deepEqual(auditarPatron(comoSeVe(g)), [])
+  assert.ok(contratoDeRotulos(g.filas, CALENDARIO_IMPUESTOS.rotulos).ok)
+  assert.equal(g.filas.length, armar().filas.length, 'el estado nuevo no agrega ni corre filas')
+  assert.equal(g.filasCalendario.iva, armar().filasCalendario.iva)
+})
+
+test('el mes EN CURSO queda vinculado a ARCA y se declara como parcial', () => {
+  // La pregunta del dueño: "la columna del mes en curso se debe actualizar sola". Se actualiza porque
+  // es una fórmula contra _ARCA_RAW, no un número que quedó pegado el día que corrió el generador.
+  // HOY es 06/08/2026, así que agosto es el mes en curso.
+  const g = armar({ arca: { meses: [7, 8] } })
+  const fDDJJ = filaDe(g, /^DDJJ presentada$/)
+  assert.equal(g.filas[fDDJJ - 1][8], '⚠ ARCA parcial')
+  const debito = String(g.filas[filaDe(g, /^Débito fiscal del período$/) - 1][8])
+  assert.match(debito, /_ARCA_RAW/, 'agosto sale de la réplica de comprobantes')
+  assert.match(debito, /^=MAX\(/, 'y nunca por debajo de la proyección del Libro')
+  // Julio, en cambio, es del dueño (ancla = 7): cadena vacía, que es lo que `fusionar()` preserva.
+  assert.equal(g.filas[fDDJJ - 1][7], '')
+  // Y los meses de ARCA quedan en ÁMBAR igual que la proyección: no son la DDJJ oficial.
+  assert.ok(g.ambar.some((x) => x.mes === 8 && x.fila === fDDJJ))
+})
+
 test('el parámetro de alícuota queda ABAJO DE TODO: ninguna fila nueva lo corre', () => {
   // El rango con nombre ALICUOTA_IVA apunta a esa celda. Una fila insertada arriba lo reapunta a
   // otra cosa, y toda la proyección de IVA se calcularía con alícuota cero.

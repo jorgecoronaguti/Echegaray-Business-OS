@@ -171,7 +171,7 @@ export function sinSolapamiento(colA = [], filas = []) {
  * detalle —que es quien sabe en qué fila queda cada total— y recién entonces se llena la posición con
  * referencias. Ni un número pegado arriba.
  */
-export function grilla({ anio, C, planes, iibb, ivaOficial, proy, hoy }) {
+export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy }) {
   const G = crearGrilla(anio)
   G.push(['Impuestos y financiero'])
   // LA FRESCURA, POR FUENTE Y COMPACTA. Una sola fecha está prohibida acá: esta pestaña cruza fuentes
@@ -206,7 +206,7 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, hoy }) {
   const base = G.reservar(alto)
 
   // ── EL DETALLE ─────────────────────────────────────────────────────────────────────────────────
-  const iva = bloqueIva(G, { anio, ivaOficial, proy })
+  const iva = bloqueIva(G, { anio, ivaOficial, proy, arca, hoy })
   const ibb = bloqueIibb(G, { anio, iibb, proy })
   bloqueRetenciones(G, { anio })
   const otros = bloqueOtros(G, { anio, C })
@@ -258,6 +258,9 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, hoy }) {
     cal,
     refs,
     filasCalendario: { iva: iva.fAPagar, iibb: ibb.fAPagar },
+    // De dónde sale cada mes del cuadro 4. Se devuelve para poder EXHIBIRLO: un cuadro que cambió de
+    // fuente sin decirlo es la forma más barata de que nadie lo revise.
+    origenIva: iva.porOrigen,
   }
 }
 
@@ -358,9 +361,18 @@ async function main() {
   const ret = await leerRetenciones(google, ID)
   const retIva = Object.fromEntries(Object.entries(ret.porMes)
     .filter(([k]) => k.startsWith('iva|')).map(([k, v]) => [k.slice(4), v]))
-  // LA POSICIÓN TÉCNICA DE ARCA SIGUE CALCULÁNDOSE, PERO COMO CONTROL — NO COMO INSUMO. Es una
-  // segunda medición, independiente de la DDJJ: si las dos se separan mucho, alguna está mal.
+  // LA POSICIÓN TÉCNICA DE ARCA SIGUE CALCULÁNDOSE COMO CONTROL de los meses que SÍ tienen DDJJ: es
+  // una segunda medición, independiente, y si las dos se separan mucho alguna está mal.
+  //
+  // PARA LOS MESES SIN DDJJ YA NO ES SÓLO UN CONTROL (07/08): de ahí sale QUÉ MESES tienen
+  // comprobantes, y el cuadro los calcula con una fórmula sobre _ARCA_RAW. Con lo cual, para esos
+  // meses, el control y el dato pasan a compartir fuente — y un control no se valida contra la
+  // información que produce. Queda declarado: el contraste válido es contra la F.2051 cuando se
+  // presente, no contra este mismo cálculo.
   const iva = await posicionIvaCompleta(AÑO, ventas, factor, retIva)
+  // QUÉ MESES TIENE ARCA. `disponible` quiere decir que el período tiene comprobantes cargados; no
+  // quiere decir que estén TODOS. El mes en curso es parcial por construcción y el cuadro lo declara.
+  const arca = { meses: iva.filter((m) => m.disponible).map((m) => Number(String(m.periodo).slice(5, 7))) }
   const proy = await planDeProyeccionIva(google, ivaOficial)
   const planes = await planesDePago(AÑO)
   const cabCompras = (await google.readSheetValues(ID, 'Compras!A3:BZ3'))[0] || []
@@ -370,13 +382,17 @@ async function main() {
   if (faltan.length) { console.error(`⚠ faltan columnas en Compras: ${faltan.join(', ')} — no escribo con referencias inventadas`); process.exit(1) }
   console.log(`  Compras por encabezado: Total=${C.total} · Concepto=${C.concepto} · Rubro=${C.rubro} · Fecha prevista=${C.fechaPrev}`)
 
-  const g = grilla({ anio: AÑO, C, planes, iibb, ivaOficial, proy, hoy })
+  const g = grilla({ anio: AÑO, C, planes, iibb, ivaOficial, proy, arca, hoy })
   if (ret.sospechosas.length) {
     console.error(`  ⚠ ${ret.sospechosas.length} retención(es) con alícuota que no encaja con ningún régimen — NO se computaron:`)
     for (const x of ret.sospechosas) console.error(`     fila ${x.fila} ${x.cliente}: ${x.regimen} ${Math.round(x.monto).toLocaleString('es-AR')} = ${(x.alicuota * 100).toFixed(2)}%`)
   }
   console.log(`  retenciones sufridas: ${Math.round(ret.total).toLocaleString('es-AR')} · IVA ${Math.round(ret.porRegimen.iva ?? 0).toLocaleString('es-AR')} · Ganancias ${Math.round(ret.porRegimen.ganancias ?? 0).toLocaleString('es-AR')} · IIBB ${Math.round(ret.porRegimen.iibb ?? 0).toLocaleString('es-AR')}`)
   console.log(`${PESTAÑA}: ${g.filas.length} filas · ${planes.length} planes · IVA de ${iva.filter((m) => m.disponible).length} meses reales · ${g.cal.length} vencimientos en el calendario`)
+  const nombresDeMes = (ms) => (ms.length ? ms.map((m) => MES[m - 1]).join(', ') : '—')
+  console.log(`  cuadro 4 · DDJJ: ${nombresDeMes(g.origenIva.ddjj)} · ARCA: ${nombresDeMes(g.origenIva.arca)}`
+    + ` · ARCA parcial (mes en curso): ${nombresDeMes(g.origenIva['arca-parcial'])}`
+    + ` · proyección del Libro: ${nombresDeMes(g.origenIva.proyeccion)} · del dueño: ${nombresDeMes(g.origenIva.ajeno)}`)
   if (DRY) {
     console.log('\n  ══ CONTROL (NO se escribe) — posición técnica sobre comprobantes de ARCA ══')
     console.log('  Otro método y otra fuente que la proyección de abajo: sirve para contrastar la DDJJ,')
