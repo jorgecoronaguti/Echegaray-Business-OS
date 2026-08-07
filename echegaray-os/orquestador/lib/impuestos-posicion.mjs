@@ -83,8 +83,36 @@ export function obligacionesDelCalendario({ hoy, anio, meses, filas }) {
   })
 }
 
+// ═══ LAS ALTURAS DE LOS BLOQUES DE ARRIBA, EN UN SOLO LUGAR ═══
+//
+// El hero y el riesgo miden lo mismo pase lo que pase (son filas de código, no de datos); el
+// calendario y el financiamiento miden lo que traen. De estas cuatro alturas sale TODO: cuánto
+// espacio reservar y en qué fila queda cada importe que el hero referencia. Antes las mismas
+// constantes estaban tipeadas tres veces —`base + 10 + 2`, `base + 10 + cal.length + 4 + 10 + 2`— y
+// mover un bloque exigía acordarse de las tres: una referencia que se queda atrás no da error, apunta
+// a otro importe.
+export const ALTO_HERO = 10
+const ALTO_RIESGO = 10
+/** Título + encabezado + una fila por vencimiento + total + separador. */
+const altoCalendario = (cal = []) => cal.length + 4
+/** Ídem, con las CUATRO fuentes fijas de `filasFinanciamiento`: descubierto, tarjeta, prendario, planes. */
+const ALTO_FINANCIAMIENTO = 4 + 4
+
+/**
+ * En qué fila del hero va el TITULAR — el único número grande de la pantalla.
+ *
+ * Es el 1 (la fila inmediatamente debajo del rótulo del bloque) y lo consume el generador para
+ * pasárselo a la piel. Vive acá, al lado del orden del hero, porque son la misma decisión: si mañana
+ * el hero se reordena y esto se queda en 1, la piel agranda el número equivocado sin dar un error.
+ */
+export const OFFSET_TITULAR = 1
+
 /** Cuántas filas ocupa la posición entera. Se necesita ANTES de escribir el detalle, para reservarlas. */
-export const altoDeLaPosicion = (cal = []) => 10 + (cal.length + 4) + 10 + 8
+export const altoDeLaPosicion = (cal = []) =>
+  ALTO_HERO + ALTO_RIESGO + altoCalendario(cal) + ALTO_FINANCIAMIENTO
+
+/** El concepto, sin el emisor entre paréntesis. En el hero manda el "qué", no el "de quién". */
+export const conceptoCorto = (s) => String(s ?? '').replace(/\s*\([^)]*\)\s*$/, '').trim()
 
 /**
  * NÚCLEO PURO: las filas de la posición, ya con sus referencias resueltas.
@@ -115,45 +143,47 @@ export function filasDeLaPosicion({ cal, base, hoy, refs, acuerdo, tarjeta }) {
   //
   // La consecuencia queda VISIBLE y no escondida: si la pestaña se queda vieja, las filas del
   // calendario cuyas fechas ya pasaron aparecen marcadas "⚠ VENCIDO", que es exactamente el aviso.
-  // ── HERO ────────────────────────────────────────────────────────────────────────────────────────
-  // Cuatro cifras y nada más. Mercury: UNA métrica primaria por pantalla; acá son dos posiciones
-  // (a favor y en contra) y dos plazos (el próximo vencimiento y los 30 días), que es lo mínimo con
-  // lo que se decide un pago. Todo lo demás está abajo.
-  const filaCal0 = base + 10 + 2 // título + encabezado del calendario
+  // ═══ EL ORDEN DE LA PANTALLA ES EL ORDEN DE LA DECISIÓN (06/08, segunda pasada) ═══
+  //
+  // La primera reconstrucción puso el CALENDARIO arriba y las ventanas 30/60/90 abajo. Visto
+  // renderizado, la primera pantalla eran quince renglones de vencimientos uno por uno —los dos
+  // primeros vencidos y en "—"— y había que scrollear para llegar al único cuadro con el que se
+  // decide algo. Un calendario línea por línea es un extracto: contesta "cuándo", no "cuánto tengo
+  // que juntar". Se invierten: primero el agregado (cinco renglones), después su detalle.
+  //
+  // El hero mide 10 filas y el riesgo 10 pase lo que pase, así que la fila del calendario sale de
+  // sumarlas — nunca de volver a tipear el número. Al final del bloque hay una guarda que verifica
+  // que la fila calculada es de verdad la del primer vencimiento.
+  const filaCal0 = base + ALTO_HERO + ALTO_RIESGO + 2 // + título + encabezado del calendario
   const conCelda = cal.map((o, i) => ({ ...o, celdaImporte: `$B$${filaCal0 + i}` }))
   const prox = proximoVencimiento(conCelda)
 
-  F.push([`LA POSICIÓN AL ${ddmm(hoy)}`, 'Monto'])
-  F.push([rotuloTotal('IMPUESTOS A FAVOR'), `=${refs.saldoIva}+${refs.saldoIibb}`])
-  F.push([subItem('saldo a favor de IVA · F.2051'), `=${refs.saldoIva}`])
-  F.push([subItem('saldo a favor de IIBB · DGR'), `=${refs.saldoIibb}`])
+  // ── HERO ────────────────────────────────────────────────────────────────────────────────────────
+  // UNA cifra grande y su contexto, después lo que se debe, y último lo que se tiene a favor. El
+  // titular es lo que hay que JUNTAR —los próximos 30 días—, no el saldo a favor: un activo fiscal
+  // inmovilizado no dispara ninguna decisión de tesorería, y era el único número con jerarquía de la
+  // pantalla. El primer vencimiento cuelga de él como sub-ítem: mismo dato, un renglón, sin competir.
+  F.push([`LA POSICIÓN AL ${ddmm(hoy)}`])
+  F.push([rotuloTotal('A PAGAR EN LOS PRÓXIMOS 30 DÍAS'), formulaVentana(conCelda, 30)])
+  F.push([prox
+    ? subItem(`primer vencimiento · ${ddmm(prox.fecha)} · ${conceptoCorto(prox.concepto)}`)
+    : subItem('no hay ningún vencimiento en la ventana'),
+  prox ? prox.formulaImporte : '=0'])
   F.push([rotuloTotal('DEUDA PENDIENTE · FISCAL Y FINANCIERA'),
     formulaDeudaPendiente(refs.prendPend, refs.planesPend)])
   F.push([subItem('prendario · cuotas por vencer'), `=${refs.prendPend}`])
   F.push([subItem('planes F931 · cuotas por vencer'), `=${refs.planesPend}`])
-  F.push([prox
-    ? rotuloTotal(`PRÓXIMO VENCIMIENTO · ${ddmm(prox.fecha)} · ${prox.concepto}`)
-    : rotuloTotal('PRÓXIMO VENCIMIENTO · no hay ninguno en la ventana'),
-  prox ? prox.formulaImporte : '=0'])
-  F.push([rotuloTotal('A PAGAR EN LOS PRÓXIMOS 30 DÍAS'), formulaVentana(conCelda, 30)])
+  F.push([rotuloTotal('IMPUESTOS A FAVOR'), `=${refs.saldoIva}+${refs.saldoIibb}`])
+  F.push([subItem('saldo a favor de IVA · F.2051'), `=${refs.saldoIva}`])
+  F.push([subItem('saldo a favor de IIBB · DGR'), `=${refs.saldoIibb}`])
   F.push([])
 
-  // ── 1 · CALENDARIO DE VENCIMIENTOS ──────────────────────────────────────────────────────────────
-  F.push([seccion(1, 'Calendario de vencimientos — qué vence, cuándo y cuánto')])
-  F.push(['Fecha y concepto', 'Importe'])
-  for (const o of conCelda) {
-    const marca = o.vencido ? '  ⚠ VENCIDO' : (o.confianza === 'supuesto' ? '  ⚠ fecha supuesta' : '')
-    F.push([`${ddmm(o.fecha)} · ${o.concepto} · ${MESES_LARGO[o.mes - 1]}${marca}`, `=${o.celda}`])
-  }
-  F.push([rotuloTotal(`Total de los próximos ${VENTANA.adelante} días`), formulaVentana(conCelda, VENTANA.adelante)])
-  F.push([])
-
-  // ── 2 · RIESGO Y PROYECCIÓN ─────────────────────────────────────────────────────────────────────
+  // ── 1 · RIESGO Y PROYECCIÓN ─────────────────────────────────────────────────────────────────────
   // Kyriba: posición → forecast → riesgo. Las ventanas son ACUMULADAS (30 está dentro de 60 y de 90)
   // porque la pregunta es "cuánto tengo que juntar para los próximos 60 días", no "cuánto cae en el
-  // segundo mes". Y el riesgo va abajo, separado: lo vencido y lo que no tiene fecha cierta NO son
-  // proyección, y sumarlos a la ventana escondería que son otra cosa.
-  F.push([seccion(2, 'Riesgo y proyección — 30 · 60 · 90 días')])
+  // segundo mes". Y el riesgo va al PIE del bloque, después del total: lo vencido y lo que no tiene
+  // fecha cierta NO son proyección, y sumarlos a la ventana escondería que son otra cosa.
+  F.push([seccion(1, 'Riesgo y proyección — 30 · 60 · 90 días')])
   F.push(['Concepto', '30 días', '60 días', '90 días'])
   const porTipo = (tipo) => conCelda.filter((o) => o.tipo === tipo)
   const filaVentanas = (rotulo, filas) => F.push([rotulo,
@@ -176,6 +206,17 @@ export function filasDeLaPosicion({ cal, base, hoy, refs, acuerdo, tarjeta }) {
     refs.otrosSinFecha ?? '=0'])
   F.push([])
 
+  // ── 2 · CALENDARIO DE VENCIMIENTOS ──────────────────────────────────────────────────────────────
+  // El respaldo del cuadro de arriba: la misma plata, abierta por fecha. Es detalle y va como detalle.
+  F.push([seccion(2, 'Calendario de vencimientos — qué vence, cuándo y cuánto')])
+  F.push(['Fecha y concepto', 'Importe'])
+  for (const o of conCelda) {
+    const marca = o.vencido ? '  ⚠ VENCIDO' : (o.confianza === 'supuesto' ? '  ⚠ fecha supuesta' : '')
+    F.push([`${ddmm(o.fecha)} · ${o.concepto} · ${MESES_LARGO[o.mes - 1]}${marca}`, `=${o.celda}`])
+  }
+  F.push([rotuloTotal(`Total de los próximos ${VENTANA.adelante} días`), formulaVentana(conCelda, VENTANA.adelante)])
+  F.push([])
+
   // ── 3 · FINANCIAMIENTO ──────────────────────────────────────────────────────────────────────────
   // EL DEFECTO L. La pestaña se llama "y Financieros" y mostraba DOS de las cuatro fuentes. El
   // acuerdo en descubierto ($18,2M) vivía en una fila del Cash Flow y la tarjeta ($10M) en su propia
@@ -183,7 +224,9 @@ export function filasDeLaPosicion({ cal, base, hoy, refs, acuerdo, tarjeta }) {
   F.push([seccion(3, 'Financiamiento — con qué se cuenta si no entra la cobranza')])
   F.push(['Línea de financiamiento', 'Límite', 'Tomado', 'Disponible'])
   const fin = filasFinanciamiento({ acuerdo, tarjeta, celdaPrendario: refs.prendPend, celdaPlanes: refs.planesPend })
-  const filaFin0 = base + 10 + cal.length + 4 + 10 + 2
+  // La primera línea del financiamiento = la primera del calendario + el calendario entero. Los dos
+  // bloques tienen título y encabezado, así que el desplazamiento es exactamente su alto.
+  const filaFin0 = filaCal0 + altoCalendario(cal)
   fin.forEach((x, i) => {
     const f = filaFin0 + i
     F.push([x.rotulo, x.limite ?? '', x.usado, x.disponible ?? `=$B$${f}-$C$${f}`, ...Array(10).fill(''), x.origen])
@@ -196,7 +239,35 @@ export function filasDeLaPosicion({ cal, base, hoy, refs, acuerdo, tarjeta }) {
   F.push([rotuloTotal('FINANCIAMIENTO SIN USAR · TECHO'),
     '', '', `=SUM($D$${f0}:$D$${f1})`])
   F.push([])
+  verificarAnclajes(F, base, { filaCal0, filaFin0, cal, fin })
   return F
+}
+
+/**
+ * ¿LAS FILAS QUE EL HERO REFERENCIA SON LAS QUE CREE?
+ *
+ * El hero suma `$B$` de las filas del calendario y el techo suma `$D$` de las del financiamiento, y
+ * las dos direcciones se calculan ANTES de escribir los bloques. Mientras coincidan está bien; el día
+ * que alguien agrega un renglón al hero o mueve un bloque, dejan de coincidir y NADA se rompe: el
+ * hero suma otras celdas y publica un importe distinto, con el mismo aspecto de siempre. Esta guarda
+ * convierte ese modo de falla silencioso en una excepción con nombre.
+ *
+ * Se compara contra el CONTENIDO ya escrito, no contra otra cuenta: un control no se valida con la
+ * misma aritmética que produce lo que controla.
+ */
+export function verificarAnclajes(F, base, { filaCal0, filaFin0, cal, fin }) {
+  const rotulo = (fila) => String(F[fila - base]?.[0] ?? '')
+  const mal = []
+  if (cal.length && !/^\d{2}\/\d{2} · /.test(rotulo(filaCal0))) {
+    mal.push(`el hero suma $B$${filaCal0} creyendo que es el primer vencimiento, y ahí dice "${rotulo(filaCal0).slice(0, 40)}"`)
+  }
+  if (fin.length && rotulo(filaFin0) !== String(fin[0].rotulo)) {
+    mal.push(`el techo suma desde $D$${filaFin0} creyendo que es "${String(fin[0].rotulo).slice(0, 30)}", y ahí dice "${rotulo(filaFin0).slice(0, 30)}"`)
+  }
+  if (mal.length) {
+    throw new Error(`impuestos-posicion: las referencias de arriba quedaron apuntando a otras filas — ${mal.join(' · ')}. `
+      + 'Se movió un bloque y las constantes de altura no lo siguieron: el cuadro habría publicado importes de otro concepto sin un solo error.')
+  }
 }
 
 /**
