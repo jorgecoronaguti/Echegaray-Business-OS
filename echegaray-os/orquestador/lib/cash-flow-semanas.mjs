@@ -17,16 +17,21 @@
 // rotulada 2026. Ahora son las 53 semanas de 2026: la primera es la del lunes 29/12/2025, que contiene
 // el 1° de enero.
 //
-// ═══ Y LO QUE ESO NO SIGNIFICA: LAS DOS VISTAS NO CUBREN EL MISMO PERÍODO (06/08, medido) ═══
+// ═══ LAS DOS VISTAS SÍ CUBREN EL MISMO PERÍODO — DESDE EL 13/08/2026, Y ANTES NO ═══
 //
-// Acá decía "el semanal cubre EXACTAMENTE el mismo período que el mensual". Es falso y se puede
-// medir: el semanal va de [29/12/2025, 4/1/2027) y el mensual de [1/1/2026, 1/1/2027). Son tres días
-// de más de cada lado, y sobre el archivo vivo esos tres días valen **$11.259.575** de nómina
-// proyectada de enero de 2027 que están en el TOTAL del semanal y no en el del mensual.
+// El 06/08 acá se midió que no: el semanal iba de [29/12/2025, 4/1/2027) y el mensual de [1/1/2026,
+// 1/1/2027), tres días de más de cada lado, y se anotó que "no es un defecto arreglable" porque una
+// semana ISO que cruza el 1° de enero tiene que caer en algún lado. **La semana cae en algún lado; lo
+// que se suma, no tiene por qué.** El 13/08 el archivo vivo mostraba $13.073.317 de egresos de enero
+// de 2027 dentro del resultado del año 2026 y, peor, hundiendo el PISO DEL PERÍODO.
 //
-// No es un defecto arreglable —una semana ISO que cruza el 1° de enero tiene que caer en algún lado—,
-// pero la AFIRMACIÓN sí lo era: hace leer las dos columnas TOTAL como si tuvieran que coincidir. La
-// diferencia la mide `bordesEntreVistas` y la imprime `scripts/cf-conectividad.mjs`.
+// Ahora la COLUMNA sigue siendo la semana del 28/12 —su encabezado no se mueve— y su VENTANA corta en
+// el 1/1/2027. El recorte vive en `cash-flow-borde-anio.mjs`, con el porqué de haber descartado la
+// alternativa (que el TOTAL filtrara el libro directo). Las dos columnas TOTAL ahora tienen que
+// coincidir, y `cash-flow-cuadre.mjs` las compara fila por fila en cada corrida.
+//
+// Lo que `bordesEntreVistas` mide sigue siendo real y ya no es una excusa: son los movimientos del año
+// vecino que las semanas ISO del cuadro TOCAN y que ninguna columna suma. Pertenecen al otro ejercicio.
 //
 // Lo que se paga por el año entero: hay scroll horizontal. Se compensa con la columna A congelada y
 // el atajo "📅 hoy", que salta a la columna de la semana corriente.
@@ -58,6 +63,8 @@ import {
 import { terminoLibro } from './libro-sumas.mjs'
 import { bloquesDeCliente, filaTituloPorCliente, formulasPorCliente } from './cash-flow-por-cliente.mjs'
 import { expresionInicioCorrido } from './cash-flow-ancla-saldo.mjs'
+import { columnasDelPasado, expresionRotulo } from './cash-flow-hoy.mjs'
+import { acotarAlEjercicio, bordeDelEjercicio, expresionAcotada } from './cash-flow-borde-anio.mjs'
 
 /** El nombre de la pestaña. Único lugar donde se escribe. */
 export const PESTANA_SEMANAL = 'Cash Flow Semanal'
@@ -103,7 +110,17 @@ export function grillaSemanal({ hoy = new Date(), anio = null, refs = {}, gid = 
     bloques: bloquesDeMedida(TIPO),
     clientes: { titulo: filaTituloPorCliente(TIPO), bloques: bloquesDeCliente(TIPO) },
     grafico: { fila: filaGraficos(TIPO), col: COL.tiempo0 },
+    // LAS SEMANAS ISO (el encabezado y el pliegue) Y LO QUE DE ELLAS PERTENECE AL EJERCICIO.
+    //
+    // Son dos cosas distintas y confundirlas costó $13,07M de egresos de enero de 2027 metidos en el
+    // año 2026. `ventanas` son los lunes —de ahí sale el rótulo de la columna—; `efectivas` es lo que
+    // cada columna SUMA, recortado en el borde del año. Ver cash-flow-borde-anio.mjs.
     ventanas: semanas,
+    efectivas: acotarAlEjercicio(semanas, ejercicio),
+    cubre: bordeDelEjercicio(ejercicio),
+    // QUÉ SE PLIEGA AL ABRIR. Sale de `hoy`, que el llamador inyecta: el pliegue tiene que poder
+    // probarse moviendo la fecha, no esperando al lunes. Ver cash-flow-hoy.mjs.
+    plegar: columnasDelPasado(semanas, hoy, { col0: COL.tiempo0 }),
   }
 
   // ── 1 y 2. El título, de dónde sale todo, y el atajo a la semana corriente ───────────────────────
@@ -124,7 +141,7 @@ export function grillaSemanal({ hoy = new Date(), anio = null, refs = {}, gid = 
 
   // ── Las siete filas de concepto ──────────────────────────────────────────────────────────────────
   for (const c of conceptosDe(TIPO)) poner(fila[c.clave], 0, c.rotulo)
-  for (let j = 0; j < n; j++) columnaDeSemana(poner, meta, j, { refSaldo, refFecha })
+  for (let j = 0; j < n; j++) columnaDeSemana(poner, meta, j, { refSaldo, refFecha, n })
   for (const c of conceptosDe(TIPO)) {
     if (c.total) poner(fila[c.clave], cT, `=SUM(${rangoFila(fila[c.clave], COL.tiempo0, COL.tiempo0 + n - 1)})`)
   }
@@ -180,10 +197,15 @@ function bloqueHero(poner, meta, refs) {
 }
 
 /** Una columna de semana: las cuatro medidas del libro, el resultado y los dos saldos. */
-function columnaDeSemana(poner, meta, j, { refSaldo, refFecha }) {
+function columnaDeSemana(poner, meta, j, { refSaldo, refFecha, n }) {
   const col = meta.cab.col0 + j
   const cab = celda(col, meta.cab.fila)
-  const { desde, hasta } = expresionVentana(cab, meta.tipo)
+  // LA VENTANA SE RECORTA EN EL BORDE DEL AÑO, y sólo en las dos columnas que lo tocan. La primera
+  // semana del ejercicio arranca en diciembre del anterior y la última se derrama sobre enero del
+  // siguiente: sin el recorte, la columna del 28/12 se llevaba al año los movimientos del 01/01/2027 —
+  // y con ellos el TOTAL y, peor, el PISO DEL PERÍODO. Ver cash-flow-borde-anio.mjs.
+  const { desde, hasta } = expresionAcotada(expresionVentana(cab, meta.tipo),
+    { anio: meta.anio, primera: j === 0, ultima: j === n - 1 })
   const f = meta.fila
 
   poner(f.saldoInicial, col, inicioDeLaSemana({
@@ -245,11 +267,20 @@ function inicioDeLaSemana({ desde, hasta, refSaldo, refFecha, anterior = null })
 }
 
 /**
- * EL ATAJO A LA SEMANA CORRIENTE — el que el dueño extrañaba de la versión vieja.
+ * DÓNDE ESTÁ LA SEMANA ACTUAL — y, de paso, un vínculo que lleva a ella.
  *
- * Busca el lunes de hoy en la fila de encabezados y arma la dirección con ADDRESS. Con el cuadro
- * cubriendo el año entero es el atajo que hace tolerable el scroll horizontal: la semana corriente
- * está en algún lugar de 53 columnas y este vínculo salta a ella.
+ * ═══ DEJÓ DE SER UN BOTÓN (13/08/2026) ═══
+ *
+ * El dueño lo reportó roto. No lo estaba el destino —calculaba AH7, la semana del 10/08— sino el
+ * gesto: `HYPERLINK` necesita tres clics para navegar y el doble clic abre el modo edición. Un rótulo
+ * en mayúsculas con un "⏵" adelante promete un botón que Sheets no puede dar.
+ *
+ * Ahora el rótulo INFORMA: "Semana actual: AH  ·  10/08", calculado por fórmula. Sirve sin hacer clic
+ * —dice a qué columna scrollear y de qué lunes se está hablando— y se mueve solo cada lunes. El
+ * vínculo sigue debajo, porque a tres gestos funciona y no cuesta nada.
+ *
+ * Y LO QUE DE VERDAD RESUELVE EL PROBLEMA NO ESTÁ ACÁ: es el pliegue del pasado (`meta.plegar`), que
+ * hace que la pestaña abra directamente en la semana actual sin que nadie tenga que ir a ninguna parte.
  *
  * SI EL CUADRO QUEDÓ VIEJO, LA CELDA MUESTRA #N/A, Y ESTÁ BIEN: significa que hoy ya no cae en el
  * ejercicio que muestra la pestaña —cambió el año y nadie la regeneró—. Taparlo con un IFERROR
@@ -262,6 +293,7 @@ export function vinculoHoy(gid, meta) {
   // la misma definición con la que se generaron los encabezados.
   const lunes = 'TODAY()-WEEKDAY(TODAY();3)'
   const dir = `ADDRESS(${meta.cab.fila};MATCH(${lunes};${rangoCab};0)+${meta.cab.col0};4)`
+  const rotulo = expresionRotulo(ROTULO_HOY.semana, dir, lunes, 'd/mm')
   // LA URL ENTERA, NO EL FRAGMENTO "#gid=…": con el fragmento suelto el clic no navega. Ver URL_ARCHIVO.
-  return `=HYPERLINK("${URL_ARCHIVO()}#gid=${gid}&range="&${dir};"${ROTULO_HOY.semana}")`
+  return `=HYPERLINK("${URL_ARCHIVO()}#gid=${gid}&range="&${dir};${rotulo})`
 }

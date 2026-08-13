@@ -133,7 +133,20 @@ async function verificarPresentacion(bloqueadas = new Set()) {
         // preservación). No debe pasar por la guarda central ni disparar sello de firma.
         await google.batchUpdateValues(ID, [{ range: `${pestaña}!${apunte}`, values: [[`=${f.slice(i + 9, j)}`]] }], { yaGuardado: true })
         rango = (await google.readSheetValues(ID, `${pestaña}!${apunte}`))?.[0]?.[0]
-        await google.batchUpdateValues(ID, [{ range: `${pestaña}!${apunte}`, values: [[previo]] }], { yaGuardado: true })
+        // ═══ Y LA CELDA DE APUNTE SE LIMPIA DE VERDAD (13/08/2026) ═══
+        //
+        // `previo` casi siempre está vacío, y `no-borrar` no deja escribir vacío sobre lleno: la
+        // reposición se descartaba en silencio y el valor resuelto se quedaba a la vista. Medido con
+        // captura: `Cash Flow Semanal!A107 = "AH7"` y `Cash Flow Mensual!A109 = "I7"`, repuestos por
+        // esta misma verificación cada dos horas desde que existe. El OS se pisaba a sí mismo.
+        //
+        // `vaciarPropio` NO es un permiso: es el texto exacto que el OS acaba de escribir acá y leer
+        // de vuelta. La guarda RELEE el destino y compara ella misma — si en el medio el dueño escribió
+        // otra cosa, no coincide y la celda se conserva. Sólo aplica si lo que había era vacío: si el
+        // dueño tenía algo, se repone lo suyo y no hay nada que vaciar.
+        const propio = !String(previo ?? '').trim() && /^[A-Z]{1,3}\d{1,5}$/.test(String(rango ?? ''))
+        await google.batchUpdateValues(ID, [{ range: `${pestaña}!${apunte}`, values: [[previo]] }],
+          { yaGuardado: true, vaciarPropio: propio ? { mios: [String(rango)] } : null })
       } catch (e) {
         console.log(`   ⚠ no pude verificar el atajo de ${pestaña} (${String(e.message).slice(0, 80)}) — sigo con el resto`)
         continue

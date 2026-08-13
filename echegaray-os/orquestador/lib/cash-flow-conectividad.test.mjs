@@ -75,10 +75,14 @@ test('EL DEFECTO: un proyectado de 2027 no cae en NINGUNA columna del cuadro 202
   assert.ok(!v.movimientos.some((m) => m.fecha === 46237))
 })
 
-test('EL DEFECTO: el TOTAL del semanal y el del mensual NO son el mismo período', () => {
-  // $11.259.575 de nómina proyectada de enero de 2027 caen en la semana 53 del cuadro semanal (que
-  // llega hasta el 3/01/2027) y en ninguna columna del mensual. Los dos TOTAL difieren, y está bien:
-  // lo que estaba mal era el comentario que prometía que cubrían lo mismo.
+test('las semanas ISO del cuadro TOCAN el año vecino: cuánto hay ahí se mide', () => {
+  // $11.259.575 de nómina proyectada de enero de 2027 caen en el rango de fechas de la semana 53 del
+  // cuadro semanal (que llega hasta el 3/01/2027) y en ninguna columna del mensual.
+  //
+  // ESTO YA NO EXPLICA UNA DIFERENCIA ENTRE LOS DOS TOTAL (13/08/2026): la ventana de la columna de
+  // borde se recorta en el 1° de enero (`cash-flow-borde-anio.mjs`), así que esa plata no está en el
+  // TOTAL del semanal tampoco. Lo que la función mide sigue siendo cierto y sigue sirviendo — es la
+  // plata del año vecino que el rango del cuadro roza — pero dejó de ser la excusa de un desvío.
   const libro = [mov({ fecha: 46389, importe: 11259575, estado: 'PROYECTADO', origen: 'Jornales por Quincena' })]
   const b = bordesEntreVistas(libro, ANIO)
   assert.equal(b.soloSemanal.length, 1)
