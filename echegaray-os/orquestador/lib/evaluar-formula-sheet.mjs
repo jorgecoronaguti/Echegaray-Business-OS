@@ -18,10 +18,15 @@
 // otra función revienta RUIDOSA en vez de devolver un número inventado. Un evaluador que "hace lo
 // que puede" con lo que no entiende sería peor que no tenerlo: haría pasar tests que no probaron nada.
 //
-// UNA REFERENCIA A OTRA PESTAÑA ES UN ERROR DE HOJA, NO UNA EXCEPCIÓN. El test modela una pestaña
-// sola; lo que apunta afuera (Compras, Parámetros) se comporta como #REF!, que es lo que un IFERROR
-// del generador ya está preparado para absorber. Así el factor de inflación de Parámetros cae en su
-// propio valor por defecto —1— sin que el test tenga que reproducir esa tabla.
+// UNA REFERENCIA A OTRA PESTAÑA ES UN ERROR DE HOJA **MIENTRAS NO ESTÉ MODELADA**. El test modela
+// una pestaña sola; lo que apunta afuera (Compras, Parámetros) se comporta como #REF!, que es lo que
+// un IFERROR del generador ya está preparado para absorber. Así el factor de inflación de Parámetros
+// cae en su propio valor por defecto —1— sin que el test tenga que reproducir esa tabla.
+//
+// Y CUANDO SÍ SE LA MODELA (13/08/2026), la referencia resuelve contra ella. Hizo falta para probar
+// lo único que prueba que dos pestañas miden igual: evaluar la fórmula de OBRAS y la de Materiales
+// —las dos citan `Compras`— sobre EL MISMO Compras y comparar los dos números. Sin eso, "las dos
+// usan la misma función" es una afirmación sobre el código, no sobre lo que el dueño lee.
 
 /** Un error DE LA HOJA (#REF!, #DIV/0!): es lo único que IFERROR absorbe. */
 export class ErrorHoja extends Error {}
@@ -36,7 +41,8 @@ const TOKEN = new RegExp('^(?:'
   + '(\\d+(?:\\.\\d+)?)'                                                       // 1 número
   + '|("(?:[^"])*")'                                                           // 2 texto
   // 3 ref/rango — el prefijo de pestaña va entre comillas simples cuando el nombre tiene espacios,
-  // que es como lo escribe todo generador de este repo ('Cheques Emitidos'!$M$27:$M$400).
+  // que es como lo escribe todo generador de este repo ('Cheques Emitidos'!$M$27:$M$400) y como cita
+  // OBRAS a Compras. La fila final es opcional: los rangos de este repo son ABIERTOS.
   + '|((?:\'[^\']+\'!|[A-Za-zÀ-ÿ_][A-Za-zÀ-ÿ0-9_ ]*!)?\\$?[A-Z]{1,3}\\$?\\d+(?::\\$?[A-Z]{1,3}\\$?\\d*)?)'
   + '|([A-Za-zÀ-ÿ_][A-Za-zÀ-ÿ0-9_.]*)\\s*\\('                                  // 4 función
   + '|(<=|>=|<>|[-+*/<>=;()&])'                                                // 5 operador
@@ -118,8 +124,11 @@ function binario(op, a, b) {
     return Array.from({ length: n }, (_, k) => binario(op, Array.isArray(a) ? a[k] : a, Array.isArray(b) ? b[k] : b))
   }
   if (op === '&') return `${a ?? ''}${b ?? ''}`
-  if (op === '=') return a === b ? 1 : 0
-  if (op === '<>') return a === b ? 0 : 1
+  // Vacío contra número se compara como número: en Sheets una celda vacía ES cero en la comparación.
+  const vsNum = (x, y) => x === '' && typeof y === 'number'
+  const iguales = vsNum(a, b) || vsNum(b, a) ? num(a) === num(b) : a === b
+  if (op === '=') return iguales ? 1 : 0
+  if (op === '<>') return iguales ? 0 : 1
   const [x, y] = [num(a), num(b)]
   switch (op) {
     case '+': return x + y
@@ -144,9 +153,12 @@ const letras = (n) => { let s = ''; for (let x = n; x > 0; x = Math.floor((x - 1
  * comportara como error de hoja, el IFERROR de la fórmula lo absorbería y el test daría verde sobre
  * el valor por defecto — probando exactamente nada.
  */
-export function celdasDelRango(ref) {
+export function celdasDelRango(ref, ultimaFila) {
   const [a, b] = ref.replace(/\$/g, '').split(':')
-  const pa = /^([A-Z]{1,3})(\d+)$/.exec(a); const pb = /^([A-Z]{1,3})(\d+)$/.exec(b ?? a)
+  // UN RANGO ABIERTO (`M4:M`) SE CIERRA CON LA ÚLTIMA FILA MODELADA, no con un tope inventado. Es la
+  // forma que tiene toda referencia a Compras en este repo; sin esto no se puede evaluar ninguna.
+  const cierre = b !== undefined && /^[A-Z]{1,3}$/.test(b) ? `${b}${ultimaFila ?? ''}` : b
+  const pa = /^([A-Z]{1,3})(\d+)$/.exec(a); const pb = /^([A-Z]{1,3})(\d+)$/.exec(cierre ?? a)
   if (!pa || !pb) throw new Error(`evaluar-formula-sheet: rango sin límite (${ref})`)
   const [c0, f0, c1, f1] = [columna(pa[1]), Number(pa[2]), columna(pb[1]), Number(pb[2])]
   if (c0 !== c1 && f0 !== f1) throw new Error(`evaluar-formula-sheet: rango rectangular no soportado (${ref})`)
@@ -276,6 +288,27 @@ function llamar(n, args, ev) {
       const nums = sel.map((i) => num(base[i]))
       return n === 'MINIFS' ? Math.min(...nums) : Math.max(...nums)
     }
+    // SUMIFS(rangoSuma; r1;c1; r2;c2…) — TODOS los pares tienen que cumplirse. Es la función con la
+    // que este repo escribe casi todos sus importes, así que un modelo suyo que "haga lo que pueda"
+    // haría pasar cualquier cosa: los rangos de distinto largo son error, como en Sheets.
+    case 'SUMIFS': {
+      const base = plano([v[0]])
+      let sel = base.map((_, i) => i)
+      for (let k = 1; k + 1 < v.length; k += 2) {
+        const rango = plano([v[k]])
+        if (rango.length !== base.length) throw new ErrorHoja('#N/A — rangos de distinto largo')
+        sel = sel.filter((i) => cumpleCriterio(rango[i], v[k + 1]))
+      }
+      return sel.reduce((s, i) => s + num(base[i]), 0)
+    }
+    // SUMIF(rango; criterio; [rangoSuma]) — sin el tercero suma el propio rango filtrado.
+    case 'SUMIF': {
+      const rango = plano([v[0]])
+      const suma = v[2] === undefined ? rango : plano([v[2]])
+      if (suma.length !== rango.length) throw new ErrorHoja('#N/A — rangos de distinto largo')
+      return rango.reduce((s, x, i) => (cumpleCriterio(x, v[1]) ? s + num(suma[i]) : s), 0)
+    }
+    case 'LEFT': return String(v[0] ?? '').slice(0, v[1] === undefined ? 1 : num(v[1]))
     case 'COUNTIF': {
       const m = /^([<>]=?|<>)?(-?\d+(?:\.\d+)?)$/.exec(String(v[1]))
       // El criterio de texto se delega en `cumpleCriterio`, que ya lo sabe hacer (exacto, <> y
@@ -304,7 +337,9 @@ function llamar(n, args, ev) {
  * Evalúa una fórmula contra una pestaña MODELADA A MANO.
  *
  * @param {string} formula con o sin el '=' — en es-AR (separador ';')
- * @param {{hoja:Object<string,any>, hoy:Date}} ctx `hoja` mapea 'B4' → número, Date o fórmula
+ * @param {{hoja:Object<string,any>, hojas:Object<string,Object<string,any>>, hoy:Date}} ctx
+ *   `hoja` mapea 'B4' → número, Date o fórmula. `hojas` mapea nombre de pestaña → otro mapa igual,
+ *   para las fórmulas que citan otra pestaña; la que no esté ahí sigue comportándose como #REF!.
  * @returns {number|string|Array} el valor, o tira ErrorHoja si la hoja da error
  */
 export function evaluarFormula(formula, { hoja = {}, hojas = {}, hoy = new Date() } = {}) {
@@ -327,7 +362,9 @@ export function evaluarFormula(formula, { hoja = {}, hojas = {}, hoy = new Date(
       // LA CELDA VACÍA VALE '' Y NO 0. Las dos cosas dan cero en aritmética —`num('')` es 0—, pero
       // en una COMPARACIÓN son opuestas: con 0, la prueba `(M27:M400="")` que separa "el OS todavía
       // no miró esta fila" de "ya la miró" daba FALSO en todas las filas vacías, y `(M<>"")` daba
-      // verdadero en las 374 — o sea, el total contaba filas que no existen.
+      // verdadero en las 374 — o sea, el total contaba filas que no existen. Lo mismo decide plata en
+      // el costo de materiales: `SUMIFS(…;M:M;"")` tiene que ver SÓLO las vacías, que es la mitad de
+      // la regla "Importe si está; si no, Total − IVA".
       if (v === undefined || v === null || v === '') return ''
       if (v instanceof Date) return aSerial(v)
       if (typeof v === 'string' && v.startsWith('=')) {
@@ -340,9 +377,12 @@ export function evaluarFormula(formula, { hoja = {}, hojas = {}, hoy = new Date(
       }
       return v
     }
+    // La última fila con contenido cierra los rangos ABIERTOS (`$M$4:$M`), que es como este repo cita
+    // Compras: una fila final tipeada dejaría de ver lo nuevo, así que ninguna fórmula la lleva.
+    const ultima = Object.keys(mapa).reduce((n, k) => Math.max(n, Number(/\d+$/.exec(k)?.[0] ?? 0)), 0)
     return (ref) => {
       const limpio = ref.replace(/\$/g, '')
-      return limpio.includes(':') ? celdasDelRango(limpio).map(celda) : celda(limpio)
+      return limpio.includes(':') ? celdasDelRango(limpio, ultima).map(celda) : celda(limpio)
     }
   }
   const propia = lector(hoja)
@@ -352,8 +392,9 @@ export function evaluarFormula(formula, { hoja = {}, hojas = {}, hoy = new Date(
     // OTRA PESTAÑA SE PUEDE MODELAR, Y SI NO SE MODELÓ SIGUE SIENDO #REF!. La segunda mitad es la
     // que estaba desde el principio y no cambia: el IFERROR del generador la absorbe y el factor de
     // Parámetros cae en su valor por defecto sin que el test tenga que reproducir esa tabla. La
-    // primera existe porque hay fórmulas —el bloque de cheques del cash flow— cuyo dato ENTERO vive
-    // en otra pestaña: ahí un #REF! no prueba nada, sólo esconde el número que se quería verificar.
+    // primera existe porque hay fórmulas —el bloque de cheques del cash flow, la columna de
+    // materiales de OBRAS— cuyo dato ENTERO vive en otra pestaña: ahí un #REF! no prueba nada, sólo
+    // esconde el número que se quería verificar.
     const nombre = m[1] ?? m[2]
     if (!hojas[nombre]) throw new ErrorHoja(`#REF! — ${ref} vive en una pestaña que el test no modeló`)
     return lector(hojas[nombre], nombre)(m[3])

@@ -606,6 +606,32 @@ test('con la grilla partida en dos pestañas, el marcador de ARCA cae en el BLOQ
   assert.equal(t.anchoObras, 7)
 })
 
+// ═══ EL COSTO DE MATERIALES SALE DE LA FUENTE ÚNICA, NO DE UNA FÓRMULA TIPEADA ACÁ ═══
+//
+// El dueño (13/08/2026): *"el mismo concepto de materiales sea familia o individual no pueden diferir
+// de ninguna manera"*. La igualdad entre esta pestaña y OBRAS la prueba `lib/costo-materiales.test.mjs`
+// evaluando las dos fórmulas; lo que este test cuida es que ESTE generador siga siendo el que las
+// emite. Si alguien vuelve a escribir el SUMIFS a mano acá, aquel test seguiría verde sobre un módulo
+// que la pestaña ya no usa — el agujero exacto por el que la divergencia entró la primera vez.
+test('las secciones de COSTO de materiales emiten el criterio único, y ninguna suma "Total" a mano', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  assert.match(src, /import \{ sumaNetaSheet \} from '\.\.\/lib\/costo-materiales\.mjs'/)
+  assert.match(src, /import \{ bloqueMaterialesPorObra \} from '\.\.\/lib\/materiales-por-obra\.mjs'/)
+  assert.match(src, /const porObra = bloqueMaterialesPorObra\(\{/, 'la sección POR OBRA la arma el módulo')
+  assert.match(src, /push\(porObra\.total\)/, 'incluida la fila TOTAL POR OBRA que OBRAS cita')
+  // Las formas viejas, exactas. Cada una medía el costo con IVA en una sección distinta.
+  for (const viejo of [
+    'SUMIFS(${COL_TOTAL};${COL_FAMILIA}',   // familia × mes y familia × obra
+    'SUMIF(${COL_FAMILIA};${clave};${COL_TOTAL})', // el total del año por familia
+    'SUMIF(${COL_RUBRO};"${RUBROS_CON_FAMILIA[0]}";${COL_TOTAL})', // el control de partición
+  ]) assert.ok(!src.includes(viejo), `volvió el criterio con IVA: ${viejo}`)
+  // Y el neto/IVA se ubican por rótulo, como todo lo que esta pestaña lee de Compras.
+  assert.match(src, /COL_NETO = fijar\('neto', COL_NETO, 'Importe'\)/)
+  assert.match(src, /COL_IVA = fijar\('iva', COL_IVA, 'IVA'\)/)
+  // La DEUDA sigue midiéndose con IVA: al proveedor se le debe el total de la factura, no su neto.
+  assert.match(src, /const neta = \(conds\) => `SUMIFS\(\$\{COL_TOTAL\}/)
+})
+
 test('los marcadores de "Materiales" —el tramo sin `desdeFila`— son filas REALES, no NaN', () => {
   // El tramo de Materiales no declara su fila de arranque: la hereda de las opciones de `partir`.
   // La copia inline que traducía los marcadores no tenía ese respaldo y devolvía NaN para los ~20

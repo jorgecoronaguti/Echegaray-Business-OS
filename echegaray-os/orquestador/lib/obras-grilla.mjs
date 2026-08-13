@@ -117,6 +117,7 @@
 import { VACIO } from './preservar-anotaciones.mjs'
 import { conColaLimpiable as colaDeclarada } from './cola-de-rango.mjs'
 import { esProyectable } from './obras-datos.mjs'
+import { sumaNetaSheet, esMaterialSheet } from './costo-materiales.mjs'
 
 export const PESTANA_OBRAS = 'OBRAS'
 
@@ -412,26 +413,26 @@ export const ANO = 2026
 const enElAno = (c, campo) => `;${abierto(c, campo)};">="&${serialISO(`${ANO}-01-01`)};${abierto(c, campo)};"<="&${serialISO(`${ANO}-12-31`)}`
 
 /**
- * EL COSTO NETO DE COMPRAS PARA UN CLIENTE — con la regla que sirve para CUALQUIER fila.
+ * EL COSTO NETO DE MATERIALES DE UN CLIENTE.
  *
- * La columna "Importe" (M) es el neto, pero está VACÍA en 185 de 829 filas: son obligaciones sin IVA
- * —Sueldos, ARCA, SINDICATOS, FCL, Banco— donde el importe se tipea en "Total" (O) y M/N quedan
- * vacías a propósito. Verificado: NINGUNA de esas 185 tiene IVA cargado, así que para ellas O ES el
- * neto. Por eso la regla no es "M o O" sino: **M si está; si no, O − N**.
+ * ANTES ESTA COLUMNA LEÍA `TOTAL POR OBRA` DE LA PESTAÑA MATERIALES, que la armaba con "Total" (O,
+ * con IVA): publicaba $251.440.609 donde el criterio declarado por esta misma pestaña da
+ * $165.196.937 — $86.243.672 de más en la fila de al lado de "Venta (neto)". Se pasó a calcularla
+ * desde la FUENTE, y ahí quedó el defecto de fondo: las dos pestañas seguían midiendo distinto.
  *
- * ANTES ESTA COLUMNA LEÍA `TOTAL POR OBRA` DE LA PESTAÑA MATERIALES, que la arma con "Total" (O, con
- * IVA): publicaba $251.440.609 donde el criterio declarado por esta misma pestaña da $165.196.937,
- * o sea $86.243.672 de más en la fila de al lado de "Venta (neto)". Ahora se calcula desde la FUENTE
- * con el criterio de esta pestaña, en vez de heredar el criterio de otra.
+ * EL CRITERIO YA NO VIVE ACÁ (13/08/2026). Está en `lib/costo-materiales.mjs`, y la pestaña
+ * Materiales emite la MISMA función. El dueño: *"el mismo concepto de materiales sea familia o
+ * individual no pueden diferir de ninguna manera"* — con la regla escrita dos veces eso no se puede
+ * garantizar, sólo prometer.
  */
 function costoNeto(cmp, cliente) {
   // SÓLO MATERIALES, no todo el costo del cliente. La columna era "Materiales (real)" y al calcularla
   // desde Compras la había convertido en el costo entero —$155,0M donde había $147,8M para LA
-  // ESTRELLA—: un cambio que el dueño no pidió. Se filtra por "Familia de material" no vacía, que es
-  // lo que clasifica una compra como material; lo que no está clasificado no se cuenta como tal.
-  const porCliente = `${abierto(cmp, 'cliente')};"${nombreEnCostos(cliente)}";${abierto(cmp, 'familia')};"<>"`
-  const sinImporte = `${porCliente};${abierto(cmp, 'neto')};""`
-  return `=SUMIFS(${abierto(cmp, 'neto')};${porCliente})+SUMIFS(${abierto(cmp, 'total')};${sinImporte})-SUMIFS(${abierto(cmp, 'iva')};${sinImporte})`
+  // ESTRELLA—: un cambio que el dueño no pidió. El universo lo define `esMaterialSheet`.
+  const porCliente = `${abierto(cmp, 'cliente')};"${nombreEnCostos(cliente)}";${esMaterialSheet(abierto(cmp, 'familia'))}`
+  return `=${sumaNetaSheet({
+    neto: abierto(cmp, 'neto'), iva: abierto(cmp, 'iva'), total: abierto(cmp, 'total'), criterios: porCliente,
+  })}`
 }
 
 /** El estado de una fila ya cobrada. Todo lo demás que no sea CANCELAR es lo que resta cobrar. */
