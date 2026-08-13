@@ -46,6 +46,7 @@ import { coberturaPorRubro, huecosDeCobertura, problemasDeRol, verificarCobertur
 import { fechaDeSerial } from '../lib/libro-extractores-fechas.mjs'
 import { celdaEstado, celdaImporte, columnaEstadoDeCompras, columnasVivasDeCompras, exigirColumnasNeteo, estadosDecorados } from '../lib/libro-estado-vivo.mjs'
 import { total } from '../lib/patron-pestana.mjs'
+import { leerTipoCambio, RANGO_TC } from '../lib/tipo-cambio.mjs'
 import { ubicarRegistro } from './cheques-emitidos-tablero.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -174,6 +175,18 @@ async function extraerDeLasFuentes(google, corte) {
   const endosos = endososDeCartera(carteraRaw)
   const excluidos = []
 
+  // ═══ EL TIPO DE CAMBIO, PARA LOS COBROS EN DÓLARES (13/08/2026) ═══
+  //
+  // Cobranzas tiene filas en U$S y hasta hoy entraban al libro como pesos (los 15.400 de Quattropani,
+  // $22.969.470 de menos). Se lee acá —el extractor es puro, no toca la red— del mismo rango con
+  // nombre que citan las fórmulas del archivo. La lectura NO rompe la corrida: `deCobranzas` aborta
+  // sólo si además hay filas en dólares que valuar. Sin USD, un TC ausente no le hace falta a nadie.
+  const { tc: tipoCambio } = await leerTipoCambio(google, ID)
+  if (tipoCambio === null) {
+    console.warn(`  ⚠ no pude leer ${RANGO_TC}. Si Cobranzas tiene alguna fila en dólares, la extracción `
+      + 'va a abortar nombrándola: sin tipo de cambio no se puede valuar y el monto nativo sería falso.')
+  }
+
   // ═══ LA PRECEDENCIA DE LAS CARGAS SE RESUELVE ACÁ, UNA VEZ, Y LOS DOS EXTRACTORES LA RECIBEN ═══
   //
   // Es la misma forma que el cruce cheque↔factura: la decisión de qué puerta le toca a cada peso no se
@@ -274,7 +287,7 @@ async function extraerDeLasFuentes(google, corte) {
       // calcula. Netos de lo facturado: la factura real entra por Compras, la provisión se apaga sola.
       Estructura: gastosEstructura.movimientos,
       'Cargas Sociales': cargas,
-      Cobranzas: deCobranzas(cobranzas, corte, { endosos, excluidos }),
+      Cobranzas: deCobranzas(cobranzas, corte, { endosos, excluidos, tipoCambio }),
       'Cheques Emitidos': deChequesEmitidos(cheques, { fila0: reg.primera, cruce }),
       'Tarjeta de Credito': deTarjetaSinFactura(tarjeta, { pagos: pagosTarjeta }),
       _BANCO_RAW: deBancoCargos(banco, { fila0: 4 }),
