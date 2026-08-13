@@ -384,6 +384,27 @@ export const ALIAS_CLIENTE = Object.freeze({
   'San Francisco': ['IMOTOR/San Francisco/JAVI SANCHEZ'],
 })
 
+/**
+ * EL MISMO CLIENTE SE ESCRIBE DISTINTO EN CADA FUENTE. ACÁ SE DECLARA LA TRADUCCIÓN.
+ *
+ * Cobranzas dice "LA ESTRELLA /ALIMENTOS DEL SUR SAS"; Compras y Materiales dicen "LA ESTRELLA" a
+ * secas (verificado: 295 comprobantes por $103.854.407 bajo ese nombre). Como el rótulo de la fila se
+ * DERIVA de Cobranzas, buscarlo tal cual en Materiales no encontraba nada y la celda quedaba en "—":
+ * $147.827.124 del cliente más grande del año desaparecieron del cuadro sin un solo error.
+ *
+ * Es el mismo problema que `ALIAS_CLIENTE`, del otro lado, y por eso NO se mezclan en el mismo mapa:
+ * `ALIAS_CLIENTE` dice qué variantes DENTRO de Cobranzas son el mismo cliente; éste dice cómo se
+ * llama ese cliente EN OTRA FUENTE. Confundirlos haría que agrupar por un lado cambie la búsqueda
+ * por el otro. Lo que no está acá se busca con su propio nombre, que es lo correcto para los siete
+ * clientes restantes — verificado uno por uno contra `costos_obra`.
+ */
+export const NOMBRE_EN_COSTOS = Object.freeze({
+  'LA ESTRELLA /ALIMENTOS DEL SUR SAS': 'LA ESTRELLA',
+})
+
+/** Cómo se llama este cliente en Compras / Materiales. */
+export const nombreEnCostos = (cliente) => NOMBRE_EN_COSTOS[cliente] ?? cliente
+
 /** El canónico y sus variantes declaradas. Cada una se ancla al prefijo por separado. */
 export const variantesDe = (cliente) => [cliente, ...(ALIAS_CLIENTE[cliente] ?? [])]
 
@@ -499,13 +520,24 @@ function hoja() {
 function seccionObrasDelAno(h, refs, clientes) {
   const { cob, mat } = refs
   h.push(['1 · OBRAS DEL AÑO'])
-  h.push(['Cliente', '', 'Venta (neto)', 'Cobrado', 'Resta cobrar', 'Vencido', 'Materiales (real)', ''])
+  h.push(['Cliente', '', 'Venta (neto)', 'Cobrado (total)', 'Resta (total)', 'Vencido', 'Materiales (real)', ''])
   const f0 = h.n + 1
   for (const cli of clientes) {
     const f = h.n + 1
     h.push([cli, '', venta(cob, cli), cobrado(cob, cli), restaCobrar(cob, cli), vencido(cob, cli),
+      // El nombre con el que este cliente figura en Materiales, no el rótulo de la fila: son fuentes
+      // distintas y lo escriben distinto.
+      //
+      // Y CUANDO NO LO ENCUENTRA, LO DICE: "sin match" ≠ "—". El guion se lee como "no compró nada" y
+      // así se perdieron $147,8M del cliente más grande sin un solo error. "sin match" dice otra cosa
+      // —ese nombre no está en Materiales— que al lado de un cliente grande es una pregunta inmediata.
+      //
+      // NO LLEVA ⚠ A PROPÓSITO. Tres de los ocho clientes (ADDATO, LIRIO, MACRO) no tienen ninguna
+      // compra asignada: para ellos "sin match" es la verdad, no un defecto. Un símbolo de alarma que
+      // suena en 3 de 8 filas correctas enseña a ignorarlo, y se lleva puestas a las que sí avisan.
       `=IFERROR(INDEX('${mat.hoja}'!$A:$Z;MATCH("${mat.filaTotal}";'${mat.hoja}'!$A:$A;0);`
-        + `MATCH($A${f};INDEX('${mat.hoja}'!$A:$Z;MATCH("${mat.filaCabecera}";'${mat.hoja}'!$A:$A;0)+1;0);0));"—")`,
+        + `MATCH("${nombreEnCostos(cli)}";INDEX('${mat.hoja}'!$A:$Z;MATCH("${mat.filaCabecera}";'${mat.hoja}'!$A:$A;0)+1;0);0));`
+        + `IF(C${f}>0;"sin match";"—"))`,
       ''])
   }
   const f1 = h.n
@@ -540,7 +572,7 @@ function seccionObrasDelAno(h, refs, clientes) {
  *  publica la próxima fecha de COBRO. */
 function realEgreso(cmp, proveedor, cliente, inicio) {
   return `SUMIFS(${abierto(cmp, 'neto')};${abierto(cmp, 'proveedor')};"${proveedor}";`
-    + `${abierto(cmp, 'cliente')};"${cliente}";${abierto(cmp, 'fecha')};">="&${serialISO(inicio)})`
+    + `${abierto(cmp, 'cliente')};"${nombreEnCostos(cliente)}";${abierto(cmp, 'fecha')};">="&${serialISO(inicio)})`
 }
 
 /**
@@ -634,7 +666,7 @@ export function grillaObras(ctx = {}) {
   const s1 = seccionObrasDelAno(h, refs, clientes)
 
   h.push(['2 · OBRAS EN CURSO Y FUTURAS'])
-  h.push(['Obra', '', 'Venta (neto)', 'Cobrado', 'Resta cobrar', 'Vencido', '', 'Próx. cobro'])
+  h.push(['Obra', '', 'Venta (neto)', 'Cobrado (total)', 'Resta (total)', 'Vencido', '', 'Próx. cobro'])
   // Cuántas obras declaradas tiene cada cliente: es lo que habilita la regla del dueño de arriba.
   const porCliente = obras.reduce((m, o) => m.set(o.cliente, (m.get(o.cliente) ?? 0) + 1), new Map())
   const bloques = obras.map((o, i) => bloqueObra(h, refs, o, i + 1, porCliente.get(o.cliente) === 1))
