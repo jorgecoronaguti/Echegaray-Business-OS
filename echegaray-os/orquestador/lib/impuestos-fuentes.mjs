@@ -10,6 +10,7 @@ import { parsearDDJJ, alicuotaDeclarada } from './iibb-ddjj.mjs'
 import { parsearDJIVA } from './iva-ddjj.mjs'
 import { parseMonto } from './cash-briefing.mjs'
 import { escribirPreservando } from './preservar-anotaciones.mjs'
+import { conColaMedidaLeida, avisoDeCola } from './cola-de-rango.mjs'
 import { clasificar, mes as mesDe, COLUMNAS } from './retenciones-sufridas.mjs'
 
 // ═══ LA RÉPLICA DE LAS DDJJ DE IIBB ═══
@@ -228,9 +229,13 @@ export async function escribirIIBBRaw(google, fileId, iibb) {
     IIBB_COLS.map(([n]) => n),
     ...datos,
   ]
+  // LA COLA DE UNA CORRIDA ANTERIOR (13/08): si un PDF de Rentas deja de leerse, su DDJJ vieja
+  // sobrevive en la pestaña y el cuadro de IIBB sigue sumando un período sin respaldo.
+  const cola = await conColaMedidaLeida(google, fileId, IIBB_RAW, gridRaw, { ancho: IIBB_COLS.length, tope: filasNecesarias })
+  if (avisoDeCola(cola, IIBB_RAW)) console.log(avisoDeCola(cola, IIBB_RAW))
   // Espejo de una fuente externa (Rentas): copia byte a byte, sin candado ni Regla 0 —no hay nada del
   // dueño que proteger y "respetar" congelaría un campo si la DDJJ cambiara.
-  await escribirPreservando(google, fileId, IIBB_RAW, gridRaw, { respetar: false, espejo: true, anchoHoja: Math.max(IIBB_COLS.length, hoja.cols ?? IIBB_COLS.length) })
+  await escribirPreservando(google, fileId, IIBB_RAW, cola.filas, { respetar: false, espejo: true, anchoHoja: Math.max(IIBB_COLS.length, hoja.cols ?? IIBB_COLS.length) })
 
   const rg = (r0, r1, c0, c1) => ({ sheetId: hoja.sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
   const reqs = [

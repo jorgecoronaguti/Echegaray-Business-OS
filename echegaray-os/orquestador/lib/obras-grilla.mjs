@@ -115,6 +115,7 @@
 // el generador escribe y los tests verifican. No encontré nada que la pivot resuelva y la fórmula no.
 
 import { VACIO } from './preservar-anotaciones.mjs'
+import { conColaLimpiable as colaDeclarada } from './cola-de-rango.mjs'
 import { esProyectable } from './obras-datos.mjs'
 
 export const PESTANA_OBRAS = 'OBRAS'
@@ -162,16 +163,12 @@ export const ALTO_HISTORICO = 62
 /**
  * LAS FILAS CON SU COLA LIMPIABLE: cada una llega hasta `hasta` con el centinela VACIO, que significa
  * "esta celda es mía y va vacía" — así la fusión la limpia en vez de conservar lo de la corrida vieja.
+ *
+ * El mecanismo vive en `cola-de-rango.mjs` desde el 13/08: era el mismo bucle en cinco generadores con
+ * cinco variantes, y otros ocho sin él. Acá quedan sólo los DOS NÚMEROS de esta pestaña.
  */
 export function conColaLimpiable(filas = [], hasta = ANCHO_HISTORICO, alto = ALTO_HISTORICO) {
-  if (filas.length > alto) {
-    throw new Error(`obras-grilla: la grilla creció a ${filas.length} filas y el alto histórico declarado es ${alto}. `
-      + `Subí ALTO_HISTORICO a ${filas.length} — si no, el día que se achique va a dejar filas viejas publicadas.`)
-  }
-  const anchas = filas.map((f) => { const r = [...f]; while (r.length < hasta) r.push(VACIO); return r })
-  // Las filas que sobran del alto anterior se escriben ENTERAS con el centinela: se limpian.
-  while (anchas.length < alto) anchas.push(Array.from({ length: hasta }, () => VACIO))
-  return anchas
+  return colaDeclarada(filas, { ancho: hasta, alto, quien: 'obras-grilla' })
 }
 
 /** Anchos en píxeles — los importes con aire, la prosa angosta y al final (estándar del dueño). La
