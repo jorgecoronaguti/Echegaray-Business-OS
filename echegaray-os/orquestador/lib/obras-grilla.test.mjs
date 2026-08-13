@@ -16,7 +16,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   grillaObras, serialISO, criterioCliente, variantesDe, anchoColumnaA, pxDeTexto, clientesDeCobranzas,
-  celdasEnError, problemaDeSintaxis, ERRORES_SHEET,
+  celdasEnError, problemaDeSintaxis, ERRORES_SHEET, nombreEnCostos,
   ANCHO_OBRAS, ANCHOS_OBRAS, REFS_OBRAS, CLIENTES_MUESTRA,
 } from './obras-grilla.mjs'
 import { OBRAS_FUTURAS, CLIENTES_CANONICOS, esProyectable, totalEgresos } from './obras-datos.mjs'
@@ -96,6 +96,25 @@ test('el ⇒ TOTAL 2026 sale de Cobranzas ENTERA, no de la suma de los clientes 
   assert.match(cel(g, `C${g.totales[0]}`), /^=SUMIFS\(/, 'el total sale del archivo, no de las filas')
   assert.ok(!cel(g, `C${g.totales[0]}`).includes('SUM(C'), 'no es la suma de los renglones')
   assert.match(cel(g, `D${g.totales[0]}`), /^=SUMIFS\(/)
+})
+
+test('el cliente se busca en Materiales con el nombre que USA Materiales, y si no está lo DICE', () => {
+  // EL DEFECTO (13/08, visto en el PDF): al derivar el rótulo de Cobranzas, la Sección 1 buscaba
+  // "LA ESTRELLA /ALIMENTOS DEL SUR SAS" en Materiales, donde el cliente se llama "LA ESTRELLA" a
+  // secas. El match fallaba, IFERROR devolvía "—" y $147.827.124 del cliente más grande del año
+  // desaparecieron del cuadro. Un "—" se lee como "no compró nada".
+  assert.equal(nombreEnCostos('LA ESTRELLA /ALIMENTOS DEL SUR SAS'), 'LA ESTRELLA')
+  assert.equal(nombreEnCostos('MESSINA'), 'MESSINA', 'lo que no está en el mapa se busca con su propio nombre')
+  const [f0, f1] = g.fClientes
+  for (let f = f0; f <= f1; f++) {
+    const cli = String(cel(g, `A${f}`))
+    const mat = cel(g, `G${f}`)
+    assert.ok(mat.includes(`MATCH("${nombreEnCostos(cli)}"`), `G${f}: busca el nombre de Materiales`)
+    assert.ok(!mat.includes(`MATCH($A${f}`), `G${f}: no busca el rótulo de la fila, que viene de otra fuente`)
+    // "sin match" ≠ "—": el que no aparece lo dice, en vez de simular un cero.
+    assert.ok(mat.includes('"sin match"'), `G${f}: si el nombre no está en Materiales, lo declara`)
+    assert.ok(!mat.includes('⚠'), `G${f}: sin alarma — 3 de 8 clientes no tienen compras y sería gritar sobre lo correcto`)
+  }
 })
 
 test('el residuo NO se borra por dar cero: se queda como control y grita si deja de serlo', () => {
