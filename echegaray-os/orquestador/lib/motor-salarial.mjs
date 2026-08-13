@@ -78,7 +78,8 @@ import { ROTULO_SIGMA } from './proyeccion-convenio.mjs'
 // alcance del supuesto —qué quincenas se valúan al convenio y cuáles al pactado—, que es de lo que
 // ese archivo es dueño. Se re-exporta para que el generador siga entrando por una sola puerta.
 export {
-  formulaSigmaConvenio, formulaSigmaDelMes, lineaSupuestoConvenio, sigmaConvenioDelPlantel,
+  formulaSigmaConvenio, formulaSigmaDelMes, expresionSigmaDelMes,
+  lineaSupuestoConvenio, sigmaConvenioDelPlantel,
 } from './proyeccion-convenio.mjs'
 export { ROTULO_SIGMA }
 export { factorUocraEntre, tramoDe, convenioDe }

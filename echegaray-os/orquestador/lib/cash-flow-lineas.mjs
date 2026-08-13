@@ -145,12 +145,35 @@ export function formulasInstrumento(inst, marcas) {
     cantidad: `=COUNTIF(${M};"${m}")`,
     monto: `=SUMPRODUCT((${M}="${m}")*${importe})`,
   })
+  // ¿ESTA CELDA TIENE ALGO QUE NO ES NINGUNA DE MIS MARCAS? Las cuatro son excluyentes, así que
+  // restarlas de 1 da 1 exactamente cuando el texto no es ninguna de ellas.
+  const ajena = `(${M}<>"")*(1${Object.values(marcas).map((m) => `-(${M}="${m}")`).join('')})`
   return {
     total: { cantidad: `=SUMPRODUCT(--(${M}<>""))`, monto: `=SUMPRODUCT((${M}<>"")*${importe})` },
     contemplados: conMarca(marcas.ok),
     inferidos: conMarca(marcas.inferido),
     falta: conMarca(marcas.falta),
     sinNumero: conMarca(marcas.sinNumero),
+    /**
+     * LA CELDA QUE TIENE TEXTO PERO NO ES UNA MARCA MÍA — EL AGUJERO POR DONDE SE CAÍA UN CHEQUE.
+     *
+     * ═══ POR QUÉ HACE FALTA (13/08) ═══
+     *
+     * Desde que el marcado saltea la fila cuya celda de marcas tiene contenido ajeno (una nota
+     * tipeada, ver lib/marcado-columna.mjs), esa fila quedaba en tierra de nadie: `total` la cuenta
+     * —mide `M<>""` y la nota es texto—, ninguna de las cuatro categorías la agarra, y `sinMarca`
+     * tampoco, porque mide la celda VACÍA. Resultado medido sobre el caso real: las cuatro
+     * categorías dejaban de sumar el total por un cheque de $469.564,70 y la planilla no lo decía.
+     * La señal existía sólo en el log de la corrida, y un log que nadie lee no es un control.
+     *
+     * Con este renglón las CINCO cajas son una partición exacta de `M<>""`: total = las cuatro + ésta.
+     * Es la identidad que fija `cash-flow-lineas.test.mjs`, evaluando las fórmulas de verdad.
+     *
+     * NO LLEVA EL FILTRO DE "no debitados" NI EL DE IMPORTE NUMÉRICO, a diferencia de `sinMarca`. No
+     * es un olvido: `total` no los lleva, y un término de la partición con un filtro que el total no
+     * tiene rompe la identidad justo en las filas que más importan.
+     */
+    noReconocida: { cantidad: `=SUMPRODUCT(${ajena})`, monto: `=SUMPRODUCT(${ajena}*${importe})` },
     /**
      * LO QUE EL OS TODAVÍA NO MIRÓ. La marca es una foto que escribe el agente; una fila cargada
      * después de la última corrida no tiene ninguna, y entonces NO la cuenta ni "contemplados" ni
@@ -160,6 +183,11 @@ export function formulasInstrumento(inst, marcas) {
      *
      * Se parte en dos porque las dos mitades se arreglan distinto: la que YA tiene N° de comprobante
      * se resuelve corriendo el agente, y la que no, cargando el dato.
+     *
+     * MIDE LA CELDA VACÍA, Y ESO ES TODO LO QUE MIDE. La fila cuya celda tiene texto que no es una
+     * marca mía es otra cosa y va en `noReconocida`: se arregla vaciando esa celda, no corriendo el
+     * agente —el agente ya corrió y la salteó a propósito—. Meter las dos en este renglón daría un
+     * número que no se puede accionar sin abrir la pestaña a ver cuál es cuál.
      */
     sinMarca: (conNumero = null) => {
       const cond = conNumero === null ? '' : `*(${conNumero ? '' : '1-'}${expresionTieneNumero(R(inst.colComprobante))})`

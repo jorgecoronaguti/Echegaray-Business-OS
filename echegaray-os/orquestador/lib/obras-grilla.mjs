@@ -115,6 +115,7 @@
 // el generador escribe y los tests verifican. No encontré nada que la pivot resuelva y la fórmula no.
 
 import { VACIO } from './preservar-anotaciones.mjs'
+import { conColaLimpiable as colaDeclarada } from './cola-de-rango.mjs'
 import { esProyectable } from './obras-datos.mjs'
 import { sumaNetaSheet, esMaterialSheet } from './costo-materiales.mjs'
 
@@ -148,14 +149,28 @@ export const ANCHO_OBRAS = 8
 export const ANCHO_HISTORICO = 9
 
 /**
+ * EL ALTO MÁS GRANDE QUE ESTA GRILLA TUVO. El mismo razonamiento que el ancho, en el otro eje.
+ *
+ * POR QUÉ (13/08). Arreglé la cola de columnas y no la de filas: la grilla bajó de 62 a 61 y la vieja
+ * fila 62 quedó escrita, así que el PDF mostró DOS VECES "Otros trabajos…", con valores distintos y
+ * corridos de columna. El generador es dueño de todo su RANGO, y un rango tiene dos ejes.
+ *
+ * Se limpia hasta acá y no hasta el fondo de la hoja, por lo mismo que el ancho: más abajo nunca
+ * escribió este generador. Y si la grilla lo supera, `conColaLimpiable` ROMPE en vez de dejar cola
+ * silenciosa — la constante se sube a mano, que es la única forma de que siga significando algo.
+ */
+export const ALTO_HISTORICO = 62
+
+/**
  * LAS FILAS CON SU COLA LIMPIABLE: cada una llega hasta `hasta` con el centinela VACIO, que significa
  * "esta celda es mía y va vacía" — así la fusión la limpia en vez de conservar lo de la corrida vieja.
+ *
+ * El mecanismo vive en `cola-de-rango.mjs` desde el 13/08: era el mismo bucle en cinco generadores con
+ * cinco variantes, y otros ocho sin él. Acá quedan sólo los DOS NÚMEROS de esta pestaña.
  */
-export const conColaLimpiable = (filas = [], hasta = ANCHO_HISTORICO) => filas.map((f) => {
-  const r = [...f]
-  while (r.length < hasta) r.push(VACIO)
-  return r
-})
+export function conColaLimpiable(filas = [], hasta = ANCHO_HISTORICO, alto = ALTO_HISTORICO) {
+  return colaDeclarada(filas, { ancho: hasta, alto, quien: 'obras-grilla' })
+}
 
 /** Anchos en píxeles — los importes con aire, la prosa angosta y al final (estándar del dueño). La
  *  columna A NO se declara acá: la calcula `anchoColumnaA` a partir de los rótulos que se emiten. */
@@ -741,8 +756,11 @@ export function grillaObras(ctx = {}) {
   // de la Sección 1—: es venta legítima que simplemente no pertenece a una obra proyectada.
   const clientesConObra = [...new Set(obras.map((o) => o.cliente))]
   if (bloques.length) h.push([`Otros trabajos de ${clientesConObra.length} cliente(s) con obra — fuera de las ${bloques.length}`, '',
-    `=${clientesConObra.map((c) => venta(refs.cob, c).slice(1)).join('+')}-${suma('C').slice(1)}`,
-    `=${clientesConObra.map((c) => cobrado(refs.cob, c).slice(1)).join('+')}-${suma('D').slice(1)}`,
+    // LOS PARÉNTESIS NO SON ESTILO. Sin ellos, `X - C18+C24+C28` resta la PRIMERA obra y SUMA las
+    // otras seis: la fila publicó $692.395.550 donde van $125.680.764. La resta de una suma se
+    // encierra, siempre — es la misma precedencia que en cualquier lenguaje, y acá no da error.
+    `=${clientesConObra.map((c) => venta(refs.cob, c).slice(1)).join('+')}-(${suma('C').slice(1)})`,
+    `=${clientesConObra.map((c) => cobrado(refs.cob, c).slice(1)).join('+')}-(${suma('D').slice(1)})`,
     '', '', '', ''])
 
   const totales = [s1.fTot, fTot2].filter(Boolean)

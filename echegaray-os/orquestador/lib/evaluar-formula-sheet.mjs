@@ -28,13 +28,6 @@
 // —las dos citan `Compras`— sobre EL MISMO Compras y comparar los dos números. Sin eso, "las dos
 // usan la misma función" es una afirmación sobre el código, no sobre lo que el dueño lee.
 
-// UNA CELDA VACÍA NO ES UN CERO, Y LA DIFERENCIA DECIDE PLATA. En Sheets, `B1=0` con B1 vacía da
-// TRUE (vale cero en la cuenta) pero SUMIFS(…;B:B;"") selecciona SÓLO las vacías, no las que tienen
-// un 0 tipeado. Ese criterio es el corazón de la regla del costo de materiales —"Importe si está; si
-// no, Total − IVA"—, así que un modelo que colapse vacío en 0 haría pasar en verde una fórmula que
-// en el archivo real deja $56.000.000 afuera. Por eso la celda vacía se modela como '' y las dos
-// reglas conviven: vale cero al sumar, y sigue siendo vacía al filtrar.
-
 /** Un error DE LA HOJA (#REF!, #DIV/0!): es lo único que IFERROR absorbe. */
 export class ErrorHoja extends Error {}
 
@@ -47,8 +40,9 @@ const aFecha = (s) => new Date(EPOCH + Math.round(s) * DIA)
 const TOKEN = new RegExp('^(?:'
   + '(\\d+(?:\\.\\d+)?)'                                                       // 1 número
   + '|("(?:[^"])*")'                                                           // 2 texto
-  // 3 ref/rango. El nombre de hoja puede venir entre comillas simples ('Cheques Emitidos'!A1), que es
-  // como lo escribe todo generador que cite una pestaña con espacios — y como lo escribe OBRAS.
+  // 3 ref/rango — el prefijo de pestaña va entre comillas simples cuando el nombre tiene espacios,
+  // que es como lo escribe todo generador de este repo ('Cheques Emitidos'!$M$27:$M$400) y como cita
+  // OBRAS a Compras. La fila final es opcional: los rangos de este repo son ABIERTOS.
   + '|((?:\'[^\']+\'!|[A-Za-zÀ-ÿ_][A-Za-zÀ-ÿ0-9_ ]*!)?\\$?[A-Z]{1,3}\\$?\\d+(?::\\$?[A-Z]{1,3}\\$?\\d*)?)'
   + '|([A-Za-zÀ-ÿ_][A-Za-zÀ-ÿ0-9_.]*)\\s*\\('                                  // 4 función
   + '|(<=|>=|<>|[-+*/<>=;()&])'                                                // 5 operador
@@ -243,10 +237,23 @@ export function cumpleCriterio(valor, criterio) {
   return coincide
 }
 
+const elemento = (v, k) => (Array.isArray(v) ? v[k] : v)
+
 function llamar(n, args, ev) {
   // IF e IFERROR reciben el árbol SIN evaluar: si IFERROR evaluara su primer argumento por
   // adelantado, el #REF! que viene a absorber explotaría antes de que pudiera atajarlo.
-  if (n === 'IF') return num(ev(args[0])) !== 0 ? ev(args[1]) : ev(args[2] ?? { k: 'num', v: 0 })
+  if (n === 'IF') {
+    const c = ev(args[0])
+    // IF SOBRE UN RANGO DEVUELVE UN RANGO. Adentro de un SUMPRODUCT, Sheets resuelve el IF elemento
+    // a elemento — así está escrito `IF(ISNUMBER(F27:F400);F27:F400;0)`, el término de importe que
+    // usa TODO el bloque de cheques para no sumar un texto. Colapsarlo a un solo valor daría un
+    // número plausible y equivocado, que es lo único que este instrumento no puede hacer.
+    if (Array.isArray(c)) {
+      const a = ev(args[1]); const b = args[2] ? ev(args[2]) : 0
+      return c.map((x, k) => (num(x) !== 0 ? elemento(a, k) : elemento(b, k)))
+    }
+    return num(c) !== 0 ? ev(args[1]) : ev(args[2] ?? { k: 'num', v: 0 })
+  }
   if (n === 'IFERROR') { try { return ev(args[0]) } catch (e) { if (e instanceof ErrorHoja) return ev(args[1] ?? { k: 'num', v: 0 }) ; throw e } }
   const v = args.map(ev)
   switch (n) {
@@ -304,8 +311,22 @@ function llamar(n, args, ev) {
     case 'LEFT': return String(v[0] ?? '').slice(0, v[1] === undefined ? 1 : num(v[1]))
     case 'COUNTIF': {
       const m = /^([<>]=?|<>)?(-?\d+(?:\.\d+)?)$/.exec(String(v[1]))
-      if (!m) throw new Error(`evaluar-formula-sheet: criterio "${v[1]}" no soportado`)
+      // El criterio de texto se delega en `cumpleCriterio`, que ya lo sabe hacer (exacto, <> y
+      // comodines). Contar por TEXTO no es un caso raro: es como el bloque de cheques mide sus cuatro
+      // categorías —`COUNTIF(M27:M400;"✓ su factura está en Compras")`— y sin esto reventaba.
+      if (!m) return plano([v[0]]).filter((x) => cumpleCriterio(x, v[1])).length
       return plano([v[0]]).filter((x) => binario(m[1] === '<>' ? '<>' : (m[1] ?? '='), x, Number(m[2])) === 1).length
+    }
+    // ¿Es un número? Sobre un rango contesta rango, por el mismo motivo que el IF de arriba.
+    case 'ISNUMBER': {
+      const esNum = (x) => (typeof x === 'number' ? 1 : 0)
+      return Array.isArray(v[0]) ? v[0].map(esNum) : esNum(v[0])
+    }
+    // UPPER sobre un rango también contesta rango: así compara el filtro `UPPER(K27:K400)<>"SI"`,
+    // que es el que deja afuera los cheques ya debitados.
+    case 'UPPER': {
+      const may = (x) => String(x ?? '').toUpperCase()
+      return Array.isArray(v[0]) ? v[0].map(may) : may(v[0])
     }
     // Deliberadamente RUIDOSO: un test que pasa porque el evaluador adivinó no probó nada.
     default: throw new Error(`evaluar-formula-sheet: la función ${n}() no está soportada`)
@@ -334,34 +355,49 @@ export function evaluarFormula(formula, { hoja = {}, hojas = {}, hoy = new Date(
     }
   }
   ev.hoy = hoy
-  const celda = (mapa, nombre, ref) => {
-    const v = mapa[ref]
-    if (v === undefined || v === null || v === '') return '' // vacía: vale cero al sumar, vacía al filtrar
-    if (v instanceof Date) return aSerial(v)
-    if (typeof v === 'string' && v.startsWith('=')) {
-      // Una fórmula que se lee a sí misma es #REF! circular en Sheets; acá tiene que gritar, porque
-      // en un generador siempre es un error de diseño (por eso Recurrentes tiene columnas auxiliares).
-      const clave = `${nombre}!${ref}`
-      if (enCurso.has(clave)) throw new Error(`evaluar-formula-sheet: referencia circular en ${clave}`)
-      enCurso.add(clave)
-      try { return ev(parsear(tokenizar(v))) } finally { enCurso.delete(clave) }
+  /** El lector de UNA pestaña modelada. `tab` sólo nombra las celdas en el detector de circulares. */
+  const lector = (mapa, tab = '') => {
+    const celda = (ref) => {
+      const v = mapa[ref]
+      // LA CELDA VACÍA VALE '' Y NO 0. Las dos cosas dan cero en aritmética —`num('')` es 0—, pero
+      // en una COMPARACIÓN son opuestas: con 0, la prueba `(M27:M400="")` que separa "el OS todavía
+      // no miró esta fila" de "ya la miró" daba FALSO en todas las filas vacías, y `(M<>"")` daba
+      // verdadero en las 374 — o sea, el total contaba filas que no existen. Lo mismo decide plata en
+      // el costo de materiales: `SUMIFS(…;M:M;"")` tiene que ver SÓLO las vacías, que es la mitad de
+      // la regla "Importe si está; si no, Total − IVA".
+      if (v === undefined || v === null || v === '') return ''
+      if (v instanceof Date) return aSerial(v)
+      if (typeof v === 'string' && v.startsWith('=')) {
+        // Una fórmula que se lee a sí misma es #REF! circular en Sheets; acá tiene que gritar, porque
+        // en un generador siempre es un error de diseño (por eso Recurrentes tiene columnas auxiliares).
+        const clave = `${tab}!${ref}`
+        if (enCurso.has(clave)) throw new Error(`evaluar-formula-sheet: referencia circular en ${clave}`)
+        enCurso.add(clave)
+        try { return ev(parsear(tokenizar(v))) } finally { enCurso.delete(clave) }
+      }
+      return v
     }
-    return v
+    // La última fila con contenido cierra los rangos ABIERTOS (`$M$4:$M`), que es como este repo cita
+    // Compras: una fila final tipeada dejaría de ver lo nuevo, así que ninguna fórmula la lleva.
+    const ultima = Object.keys(mapa).reduce((n, k) => Math.max(n, Number(/\d+$/.exec(k)?.[0] ?? 0)), 0)
+    return (ref) => {
+      const limpio = ref.replace(/\$/g, '')
+      return limpio.includes(':') ? celdasDelRango(limpio, ultima).map(celda) : celda(limpio)
+    }
   }
-  /** La última fila con contenido de un mapa: es lo que cierra un rango abierto (`M4:M`). */
-  const ultimaFila = (mapa) => Object.keys(mapa)
-    .reduce((n, k) => Math.max(n, Number(/\d+$/.exec(k)?.[0] ?? 0)), 0)
+  const propia = lector(hoja)
   const referencia = (ref) => {
     const m = /^(?:'([^']+)'|([A-Za-zÀ-ÿ_][A-Za-zÀ-ÿ0-9_ ]*))!(.+)$/.exec(ref)
-    // Otra pestaña que el test NO modeló se comporta como #REF!, que es lo que el IFERROR del
-    // generador espera. Una que sí modeló resuelve contra ella.
-    const nombre = m ? (m[1] ?? m[2]) : ''
-    if (m && !hojas[nombre]) throw new ErrorHoja(`#REF! — ${ref} vive en otra pestaña`)
-    const mapa = m ? hojas[nombre] : hoja
-    const limpio = (m ? m[3] : ref).replace(/\$/g, '')
-    return limpio.includes(':')
-      ? celdasDelRango(limpio, ultimaFila(mapa)).map((c) => celda(mapa, nombre, c))
-      : celda(mapa, nombre, limpio)
+    if (!m) return propia(ref)
+    // OTRA PESTAÑA SE PUEDE MODELAR, Y SI NO SE MODELÓ SIGUE SIENDO #REF!. La segunda mitad es la
+    // que estaba desde el principio y no cambia: el IFERROR del generador la absorbe y el factor de
+    // Parámetros cae en su valor por defecto sin que el test tenga que reproducir esa tabla. La
+    // primera existe porque hay fórmulas —el bloque de cheques del cash flow, la columna de
+    // materiales de OBRAS— cuyo dato ENTERO vive en otra pestaña: ahí un #REF! no prueba nada, sólo
+    // esconde el número que se quería verificar.
+    const nombre = m[1] ?? m[2]
+    if (!hojas[nombre]) throw new ErrorHoja(`#REF! — ${ref} vive en una pestaña que el test no modeló`)
+    return lector(hojas[nombre], nombre)(m[3])
   }
   return ev(parsear(tokenizar(formula)))
 }

@@ -337,15 +337,29 @@ export function sigmaConvenioDelPlantel(grid = [], bloque = null, escalon = null
  * @param {string|null} celdaPago celda "Se paga el" de ESA fila
  */
 export function formulaSigmaDelMes(celdaDesde, esc, celdaPago = null) {
+  return `=IFERROR(${expresionSigmaDelMes(celdaDesde, esc, celdaPago)};"")`
+}
+
+/**
+ * LA MISMA Σ, COMO EXPRESIÓN Y SIN EL `IFERROR` DE AFUERA.
+ *
+ * POR QUÉ SE PARTIÓ EN DOS (13/08). El calendario de pago multiplica esta Σ por las horas y los días
+ * dentro de UNA sola celda; con la fórmula completa había que quitarle el `=` a mano al concatenarla,
+ * y eso es exactamente el modo en que se cuela una fórmula mal armada que no da error. La expresión
+ * viaja desnuda y cada llamador la envuelve una vez, en su propio IFERROR.
+ *
+ * Misma firma, mismo criterio, una sola definición de la frontera del mes en curso.
+ */
+export function expresionSigmaDelMes(celdaDesde, esc, celdaPago = null) {
   const { f0, f1, alConvenio = false, celdaSigmaBase = null, rAnclaBase = null } = esc
   const mes = `MATCH(EOMONTH(${celdaDesde};0);$A$${f0}:$A$${f1};0)`
   const delCuadro = `INDEX($F$${f0}:$F$${f1};${mes})`
   // Sin convenio el cuadro YA publica la Σ pactada: no hay dos bases entre las cuales elegir.
-  if (!alConvenio || !celdaPago || !celdaSigmaBase || !rAnclaBase) return `=IFERROR(${delCuadro};"")`
+  if (!alConvenio || !celdaPago || !celdaSigmaBase || !rAnclaBase) return delCuadro
   // La Σ pactada del mes no está en ninguna columna del cuadro cuando éste va al convenio, así que se
   // arma con las piezas que el cuadro SÍ publica: la Σ pactada del plantel (1.1) escalada por el mismo
   // factor acumulado de la columna E, dividido por el factor de SU mes ancla —el de la última quincena
   // cerrada de obra—. Es la misma expresión que usa la columna F cuando la base es la pactada.
   const pactada = `${celdaSigmaBase}*INDEX($E$${f0}:$E$${f1};${mes})/$E$${rAnclaBase}`
-  return `=IFERROR(IF(AND(N(${celdaPago})>0;${celdaPago}<=EOMONTH(TODAY();0));${pactada};${delCuadro});"")`
+  return `IF(AND(N(${celdaPago})>0;${celdaPago}<=EOMONTH(TODAY();0));${pactada};${delCuadro})`
 }

@@ -19,6 +19,7 @@ import * as E from '../lib/estilo-pestana.mjs'
 import { MONEDA_CUERPO, MONEDA_TOTAL } from '../lib/formato-statement.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
+import { conColaMedida, avisoDeCola, rotulosPropios } from '../lib/cola-de-rango.mjs'
 import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 import { publicar } from '../lib/rangos-nombrados.mjs'
 import { requestsTextoPorContenido } from '../lib/formato-texto-por-contenido.mjs'
@@ -146,6 +147,16 @@ async function main() {
   const actual = await google.readSheetValues(ID, `${PESTANA_ANEXO}!A1:${letra(ANCHO_ANEXO - 1)}`).catch((e) => {
     throw new Error(`no pude leer "${PESTANA_ANEXO}" (${e.message}). NO escribo: sin esa lectura la Regla 0 decide a ciegas.`)
   })
+  // LA COLA DE UNA CORRIDA ANTERIOR (13/08). El anexo es una LISTA: un cheque por fila, un endoso por
+  // fila, una conciliación por fila. Cuando un cheque se cobra sale de la cartera y la grilla se
+  // acorta — sin esto, la fila vieja queda publicada debajo del cuadro nuevo y el anexo muestra un
+  // cheque en cartera que ya no existe, que es justo lo que este anexo existe para desmentir.
+  // `conPrueba` porque es una pestaña de contenido: sólo se limpia la fila que se puede probar mía.
+  const cola = conColaMedida(g.filas, actual, {
+    ancho: ANCHO_ANEXO, conPrueba: true, mios: await rotulosPropios(ID, PESTANA_ANEXO),
+  })
+  if (avisoDeCola(cola, PESTANA_ANEXO)) console.log(avisoDeCola(cola, PESTANA_ANEXO))
+  g.filas = cola.filas
   const { grid, respetadas, ediciones, candidatos } = await conEdicionesRespetadas(ID, PESTANA_ANEXO, g.filas, actual)
   g.filas = grid
   for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${r.suyo.slice(0, 44)}")`)

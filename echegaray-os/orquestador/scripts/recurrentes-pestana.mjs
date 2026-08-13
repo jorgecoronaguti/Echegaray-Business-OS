@@ -40,6 +40,7 @@ import { loadConfig } from '../lib/config.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { MIN_MESES, MES_EN_CURSO, COL_RUBRO, COL_FECHA, COL_TOTAL } from '../lib/cash-flow-lineas.mjs'
 import { escribirPreservando, limpiarCentinela, VACIO } from '../lib/preservar-anotaciones.mjs'
+import { conColaMedidaLeida, avisoDeCola } from '../lib/cola-de-rango.mjs'
 import { skinRequests } from '../lib/estilo-statement.mjs'
 import { MONEDA_CUERPO, MONEDA_TOTAL, MONEDA_CONTROL, CONTADOR, PORCENTAJE } from '../lib/formato-statement.mjs'
 import { bloqueControlArca } from '../lib/control-arca-bloque.mjs'
@@ -290,7 +291,14 @@ async function main() {
   }])
   // NO se borra nada escrito por una persona: se lee, se fusiona y se escribe. Ver lib/preservar-anotaciones.mjs.
   const gridRec = g.filas.map((f) => f.map((c) => (c instanceof Date ? `${c.getUTCDate()}/${c.getUTCMonth() + 1}/${c.getUTCFullYear()}` : c)))
-  const escritura = await escribirPreservando(google, ID, hoja.title, gridRec, { anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
+  // LA COLA DE UNA CORRIDA ANTERIOR (13/08). La lista de proveedores SALE DE LA PLANILLA, así que la
+  // grilla se acorta sola: el día que un servicio deja de facturar, su fila deja de emitirse y la
+  // vieja queda publicada —con los doce meses del año pasado— debajo del cuadro nuevo, sumando en
+  // ningún total y engañando a la vista. `conPrueba` porque ésta NO es una pestaña espejo: sólo se
+  // limpia la fila donde todo lo que hay es forma de dato generado o un rótulo que ya escribí antes.
+  const cola = await conColaMedidaLeida(google, ID, hoja.title, gridRec, { ancho: ANCHO, conPrueba: true, pestana: hoja.title })
+  if (avisoDeCola(cola, hoja.title)) console.log(avisoDeCola(cola, hoja.title))
+  const escritura = await escribirPreservando(google, ID, hoja.title, cola.filas, { anchoHoja: Math.max(ANCHO, hoja.cols ?? ANCHO) })
   // ═══ SI LA ESCRITURA SE SALTEÓ, NO SE TOCA LA GEOMETRÍA (31/07) ═══
   //
   // El defecto que arruinó CAJA, buscado en todos los generadores y encontrado en seis. La guarda hace
