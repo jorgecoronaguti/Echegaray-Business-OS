@@ -163,7 +163,15 @@ export function marcarEnCompras(items = [], indice = null) {
     // produce, y la evidencia es el dato leído en su DESTINO. Así que cuando la pestaña SÍ se pudo
     // leer, ella manda: si no está, no está, y el registro se da por vencido. Cuando no se pudo leer
     // no se toca nada — no poder mirar no es haber mirado.
-    if (it.yaCargado && it.yaCargado.fuente !== 'Compras' && r?.que !== HALLAZGO.CARGADO) {
+    //
+    // ═══ UN "PROBABLE" TAMPOCO ES HABER MIRADO (13/08) ═══
+    //
+    // La condición era `r?.que !== CARGADO`, y con eso un hallazgo PROBABLE —"puede que sea esta
+    // fila"— alcanzaba para dar el registro por vencido y BORRAR la clave de idempotencia. Es la
+    // combinación exacta que duplica un gasto: el bot duda de si ya está, y por dudar se saca el
+    // único freno que tenía para no cargarlo dos veces. Un desmentido tiene que ser un NO, no un
+    // "no sé": sólo se olvida la clave cuando la pestaña no devolvió NINGUNA candidata.
+    if (it.yaCargado && it.yaCargado.fuente !== 'Compras' && !r) {
       it.registroObsoleto = { fila: it.yaCargado.fila ?? null, clave: it.clave ?? null }
       delete it.yaCargado
     }

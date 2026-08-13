@@ -14,7 +14,7 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { detectar, resumen } from '../lib/defectos-pantalla.mjs'
-import { PESTANAS } from './formato-pestanas.mjs'
+import { PESTANAS, avisarSinCobertura } from './formato-pestanas.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const SOLO = process.argv[2]
@@ -25,7 +25,9 @@ async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const lista = SOLO ? PESTANAS.filter((p) => p.titulo.toLowerCase().includes(SOLO.toLowerCase())) : PESTANAS
   // La grilla real acota: pedir más allá de las filas asignadas hace fallar la API. El hastaFila es piso.
-  const alto = new Map((await google.getSheetMeta(ID)).map((h) => [h.title, h.rows ?? 0]))
+  const meta = await google.getSheetMeta(ID)
+  const alto = new Map(meta.map((h) => [h.title, h.rows ?? 0]))
+  avisarSinCobertura(meta.map((h) => h.title))
   let total = 0
 
   for (const p of lista) {

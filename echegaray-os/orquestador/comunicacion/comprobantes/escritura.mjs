@@ -47,6 +47,20 @@ const MARCA_JSON = '##ORQ-JSON##'
 export const TIMEOUT_MS = Number(process.env.ORQ_COMPROBANTES_TIMEOUT_MS || 180_000)
 
 /**
+ * ENSAYO: el cargador corre con `--dry` y NO escribe una celda.
+ *
+ * Existe por una sola razón, y es la única forma de tenerla: para poder recorrer el camino entero
+ * —Mattermost, WebSocket, Work Fabric, especialista, visión, fajo, cargador— contra el sistema vivo
+ * sin agregarle una fila a `Compras`. Sin esta costura la prueba de punta a punta o no se hace o se
+ * hace escribiendo en la pestaña de carga manual del dueño, y las dos opciones son malas.
+ *
+ * SE APAGA SOLA: es una variable de entorno que no está en producción, así que el default es escribir.
+ * Y no miente sobre lo que hizo — `escribirFajo` marca el resultado como ENSAYO y el mensaje lo dice,
+ * porque un modo que no escribe y contesta "cargado" es peor que no tener el modo.
+ */
+export const ENSAYO = () => process.env.ORQ_COMPROBANTES_ENSAYO === '1'
+
+/**
  * Ítems del fajo → el array que el cargador espera en `--file`.
  *
  * NÚCLEO PURO. No se manda `neto`: `valoresInput` DERIVA M = Total − IVA cuando hay total, y ese es
@@ -101,7 +115,7 @@ export function itemsQueEntran(items = []) {
 }
 
 /** Corre el cargador y devuelve su línea JSON. Inyectable para poder probar sin Google ni Postgres. */
-export async function correrCargador({ fajo, dry = false, actor = null, spawnImpl = spawn, cwd = resolve(AQUI, '../../..'), env = process.env } = {}) {
+export async function correrCargador({ fajo, dry = ENSAYO(), actor = null, spawnImpl = spawn, cwd = resolve(AQUI, '../../..'), env = process.env } = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'orq-fajo-'))
   const ruta = join(dir, 'fajo.json')
   await writeFile(ruta, JSON.stringify(fajo, null, 2), 'utf8')
@@ -335,13 +349,22 @@ export async function escribirFajo(d, fajo) {
   // Hasta acá el mensaje decía lo que el cargador REPORTÓ. Ahora se releen las filas escritas del
   // archivo y se muestra lo que quedó, con los dos controles. Si releer falla, no se inventa nada:
   // se dice que no se pudo verificar y el resto del mensaje sale igual — la carga ya ocurrió.
+  //
+  // EN MODO ENSAYO NO SE RELEE NADA. El cargador corrió con `--dry`, así que esas filas todavía
+  // tienen lo que había antes: releerlas y mostrarlas como "lo que quedó" sería el defecto que este
+  // repo ya nombró —un log que felicita sin haber escrito—. Se dice que fue un ensayo y se termina.
+  const ensayo = r.datos?.dry === true
   let prueba = ''
-  try {
-    const leidas = await releerLoEscrito(d, filas)
-    prueba = [tablaDeLoEscrito(leidas), ...avisosDeVerificacion(leidas), cierre(leidas)].filter(Boolean).join('\n')
-  } catch (e) {
-    log?.warn?.('comprobantes: no pude releer lo escrito', { detalle: recorte(e?.message) })
-    prueba = '⚠ Cargué, pero no pude releer las filas para mostrarte lo que quedó. Revisalas en Compras.'
+  if (ensayo) {
+    prueba = '🧪 **ENSAYO (`ORQ_COMPROBANTES_ENSAYO=1`): el cargador corrió con `--dry` y NO escribió una sola celda en Compras.**'
+  } else {
+    try {
+      const leidas = await releerLoEscrito(d, filas)
+      prueba = [tablaDeLoEscrito(leidas), ...avisosDeVerificacion(leidas), cierre(leidas)].filter(Boolean).join('\n')
+    } catch (e) {
+      log?.warn?.('comprobantes: no pude releer lo escrito', { detalle: recorte(e?.message) })
+      prueba = '⚠ Cargué, pero no pude releer las filas para mostrarte lo que quedó. Revisalas en Compras.'
+    }
   }
 
   const texto = [textoCargado(filas, yaEstaban, r.datos, { pendientes, suma, varios }), prueba].filter(Boolean).join('\n')

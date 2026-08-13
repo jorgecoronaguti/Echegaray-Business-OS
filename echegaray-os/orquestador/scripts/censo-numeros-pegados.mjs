@@ -38,7 +38,7 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { PESTANAS } from './formato-pestanas.mjs'
+import { PESTANAS, avisarSinCobertura } from './formato-pestanas.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const SOLO = process.argv[2]
@@ -116,6 +116,7 @@ async function main() {
   // pregunta, no se declara.
   const meta = await google.getSheetMeta(ID)
   const alto = new Map(meta.map((h) => [h.title, h.rows ?? 0]))
+  avisarSinCobertura(meta.map((h) => h.title))
 
   console.log('PESTAÑA'.padEnd(26) + 'FÓRMULAS'.padStart(10) + 'DERRAM.'.padStart(9) + 'FECHAS'.padStart(8) + 'PEGADOS'.padStart(9) + '   QUÉ SIGNIFICA')
   let malos = 0

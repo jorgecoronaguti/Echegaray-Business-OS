@@ -84,7 +84,58 @@ export const PESTANAS = [
   { titulo: 'CAJA', congeladas: 0, hastaFila: 120, cols: 12, origen: [{ col: 'C', que: 'extracto del banco, arqueo de caja o réplica de la tarjeta — cada fila declara el suyo en la columna "Origen del dato"' }] },
   { titulo: 'Cash Flow Semanal', congeladas: 3, hastaFila: 90, cols: 60 },
   { titulo: 'Cash Flow Mensual', congeladas: 3, hastaFila: 90, cols: 20 },
+  // LAS DOS QUE FALTABAN (13/08). Nacieron con piel propia y nunca se anotaron acá, así que el censo
+  // de números pegados y el auditor de pantalla —que recorren ESTA lista— nunca las miraron. El censo
+  // sobre "OBRAS" informaba "0 pegados": no porque no los tuviera, sino porque no la conocía. Un
+  // control que no sabe que algo existe devuelve el mismo verde que uno que lo revisó.
+  //
+  // NO SE LES DECLARA `origen`. OBRAS tiene ~40 números pegados en el detalle (columna C, el costo por
+  // ítem que viene de `costos_obra`, y la H con su fecha de pago): son insumos de otro sistema
+  // fosilizados dentro de la grilla, y declararlos "dato de origen" sería usar la excepción para
+  // apagar el aviso. Que el censo los cuente es exactamente lo que se quiere.
+  { titulo: 'OBRAS', congeladas: 2, hastaFila: 98, cols: 9, propio: true },
+  { titulo: 'Calendario de Cobros', congeladas: 4, hastaFila: 110, cols: 17, propio: true },
 ]
+
+/**
+ * LAS PESTAÑAS QUE NO SON PANTALLA — y por qué cada una.
+ *
+ * No alcanza con "no está en PESTANAS": esa es justamente la falla que dejó OBRAS fuera durante un
+ * mes. Una pestaña sólo puede quedar fuera del estándar si alguien lo DECLARÓ y dijo el motivo; lo
+ * que no está en ninguna de las dos listas es un descuido, y `pestanasSinCobertura` lo nombra.
+ */
+export const SIN_PANTALLA = Object.freeze({
+  '01_Valores Iniciales': 'carga histórica del dueño, anterior al OS',
+  'Parámetros': 'parámetros y rangos con nombre: se lee, no se mira',
+  'Deuda viva (OS)': 'salida intermedia del OS que consume el cash flow',
+  '_RAW': 'toda pestaña con guion bajo adelante es INSUMO (extracto, ARCA, F931, réplicas): existe para que las de pantalla la citen, y su formato no importa',
+})
+
+/**
+ * NÚCLEO PURO: qué pestañas del archivo no las mira nadie.
+ *
+ * @param {string[]} titulos los títulos VIVOS del archivo (de `getSheetMeta`)
+ * @returns {string[]} las que no están ni en `PESTANAS` ni declaradas en `SIN_PANTALLA`
+ */
+export function pestanasSinCobertura(titulos = [], pestanas = PESTANAS, excluidas = SIN_PANTALLA) {
+  const cubiertas = new Set(pestanas.map((p) => p.titulo))
+  return titulos.filter((t) => !cubiertas.has(t) && !Object.hasOwn(excluidas, t) && !String(t).startsWith('_'))
+}
+
+/**
+ * EL AVISO QUE VA ARRIBA DE TODO EN CADA AUDITOR: qué pestaña no está mirando nadie.
+ *
+ * Va al principio y no al final a propósito: es la advertencia de que el verde de abajo puede estar
+ * contando de menos. Un auditor que recorre una lista incompleta no da un resultado incompleto — da
+ * el mismo resultado que si todo estuviera bien.
+ */
+export function avisarSinCobertura(titulos = []) {
+  const fuera = pestanasSinCobertura(titulos)
+  if (!fuera.length) return fuera
+  console.log(`▲ ${fuera.length} pestaña(s) del archivo NO están en PESTANAS ni declaradas en SIN_PANTALLA, `
+    + `así que este control no las mira: ${fuera.join(' · ')}\n`)
+  return fuera
+}
 
 /** Los formatos de número que delatan una celda NUMÉRICA. Un hecho de la celda, no una suposición. */
 const NUMERICO = new Set(['CURRENCY', 'NUMBER', 'PERCENT', 'DATE', 'TIME', 'DATE_TIME', 'SCIENTIFIC'])

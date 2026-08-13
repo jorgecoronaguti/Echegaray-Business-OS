@@ -85,8 +85,26 @@
 //
 // Y UNA OBRA PUEDE ESTAR PARTIDA: Playón es blanco $65.000.000 + negro $37.500.000. Por eso su resta
 // a cobrar ($116.150.000) es mayor que su venta neta ($102.500.000) — la diferencia es el IVA de la
-// parte blanca, y nada más. Esa composición se publica en la glosa SÓLO cuando la obra es mixta,
-// porque es justo la pregunta que dispara ese número; en las otras seis sería ruido.
+// parte blanca, y nada más.
+//
+// ═══ NO ES UN DEFECTO, Y NO SE LE PONE UN CONTROL ENCIMA (13/08, verificado fila por fila) ═══
+//
+// Un auditor mirando la pantalla lo marcó como imposible: "si no cobró nada, la Resta tendría que ser
+// igual a la Venta". Se midieron las seis filas de Playón en Cobranzas: los netos (col J) suman
+// $102.500.000 y los totales pendientes (col M) $116.150.000; la diferencia son exactamente los
+// $13.650.000 de IVA de las tres filas blancas (col K). Las dos columnas están bien y sus encabezados
+// ya lo declaran — "Venta (neto)" y "Resta (total)".
+//
+// LA IDENTIDAD `Resta ≤ Venta cuando Cobrado = 0` ES FALSA acá, y por eso el control que parece obvio
+// no se agrega: marcaría en rojo dos obras correctas (Playón y BSA, las dos mixtas). Tampoco sirve
+// `Resta ≤ Venta × 1,21`, porque las dos columnas usan VENTANAS distintas —la venta se acota por
+// fecha de venta y la resta por fecha de cobro—, así que una obra vendida en diciembre y cobrada en
+// enero daría alarma sin tener nada malo. Un control que grita sobre lo que está bien se ignora y
+// arrastra a los que sirven; es la misma decisión que ya se tomó para la identidad de M sobre J y K.
+//
+// LA GLOSA QUE EXPLICABA ESTO YA NO EXISTE: la columna I de prosa salió el 13/08 por pedido del dueño
+// ("ensucia con esa información"). Quien lea la pantalla ve dos números que no cierran entre sí y no
+// tiene dónde leer por qué. Es un límite CONOCIDO de la pestaña, no un error de cálculo.
 //
 // ═══ QUÉ ES CADA COLUMNA DE COBRANZAS, MEDIDO CONTRA LAS 91 FILAS (13/08) ═══
 //
@@ -123,6 +141,9 @@ import { sumaConUSD } from './cobranzas-contrato.mjs'
 // pestaña lo referencia por su nombre: un segundo tipo de cambio sería una segunda verdad para el
 // mismo concepto, que es justo lo que la REALIDAD ÚNICA prohíbe.
 import { RANGO_TC } from './caja-disponibilidades.mjs'
+// LA SEÑAL DE ALERTA VIVE EN UN SOLO LUGAR. Acá estaba tipeado el ⚠, que el PDF no dibuja: la marca
+// estaba en la celda y no en la pantalla. Ver `glifos.mjs`.
+import { ALERTA } from './glifos.mjs'
 
 export const PESTANA_OBRAS = 'OBRAS'
 
@@ -905,7 +926,7 @@ function bloqueObra(h, refs, o, idx, unica = false) {
     // EL PROVEEDOR IDENTIFICA LA FILA: va en el rótulo, no en una glosa. Las cuotas se reducen a
     // "×3" —cuántas son cambia el desembolso, sus fechas exactas no— y sin proveedor el ⚠ dice que
     // el real no se puede medir. Todo eso ocupaba antes una columna entera de prosa.
-    h.push([`      ${e.concepto}${e.proveedor ? ` · ${e.proveedor}` : ' · ⚠ sin proveedor'}`
+    h.push([`      ${e.concepto}${e.proveedor ? ` · ${e.proveedor}` : ` · ${ALERTA} sin proveedor`}`
       + `${e.cuotas?.length ? ` ×${e.cuotas.length}` : ''}`, '', e.monto, '', '',
       '', medible ? `=MAX(0;C${f}-${realEgreso(cmp, e.proveedor, o.cliente, o.inicio)})` : `=MAX(0;C${f})`,
       fecha ? serialISO(fecha) : ''])
@@ -1056,10 +1077,10 @@ export function rotuloDeObra(o, idx) {
   const base = `2.${idx} · ${o.cliente} — ${o.obra}`
   // SIN FECHAS NO SE INVENTA NINGUNA. El aviso es el que ya existía y sigue siendo texto plano: no
   // hay ninguna fecha con la que armar un TODAY() y una fórmula que no puede fallar no debe existir.
-  if (!esProyectable(o)) return { texto: `${base}   ⚠ sin fechas — no se proyecta`, celda: `${base}   ⚠ sin fechas — no se proyecta` }
+  if (!esProyectable(o)) return { texto: `${base}   ${ALERTA} sin fechas — no se proyecta`, celda: `${base}   ${ALERTA} sin fechas — no se proyecta` }
   const dm = (iso) => { const [, m, d] = String(iso).split('-'); return `${d}/${m}` }
   const texto = `${base} · ${dm(o.inicio)} → ${dm(o.fin)}`
-  return { texto: `${texto} ⚠`, celda: `=${quote(texto)}&IF(TODAY()>${serialISO(o.fin)};" ⚠";"")` }
+  return { texto: `${texto} ${ALERTA}`, celda: `=${quote(texto)}&IF(TODAY()>${serialISO(o.fin)};" ${ALERTA}";"")` }
 }
 
 /**

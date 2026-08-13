@@ -24,8 +24,9 @@ import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-edicion
 import { celdasEnError, problemaDeSintaxis, clientesDeCobranzas, anchoColumnaA, ANO } from '../lib/obras-grilla.mjs'
 import {
   grillaCalendario, ventanaDeMeses, inicioDeVentana, conColaLimpiable, columnasProyectadas,
-  ANCHO_HISTORICO, ALTO_HISTORICO, PESTANA_CALENDARIO, REFS_CALENDARIO,
+  formatoDeEncabezado, ANCHO_HISTORICO, ALTO_HISTORICO, PESTANA_CALENDARIO, REFS_CALENDARIO,
 } from '../lib/calendario-cobros.mjs'
+import { ALERTA } from '../lib/glifos.mjs'
 import { hitosPendientes, finDeObraPorFila } from '../lib/calendario-hitos.mjs'
 import { monedasDesconocidas } from '../lib/cobranzas-contrato.mjs'
 import { leerTipoCambio, RANGO_TC } from '../lib/tipo-cambio.mjs'
@@ -59,6 +60,10 @@ export function render(g, valores = null) {
   L.push(`protagonistas (clientes): ${g.protagonistas.join(', ')} · detalles (hitos): ${g.detalles.length} · total: fila ${g.fTotal}`)
   L.push('')
   const visible = new Map(g.rotulos.map((r) => [r.fila, r.texto]))
+  // EL ENSAYO MUESTRA EL MES, NO SU SERIAL. El encabezado se escribe como fecha (ver
+  // `formatoDeEncabezado`); imprimir "46235" obligaría a hacer la cuenta a mano para saber qué mes es
+  // esa columna — y el ensayo existe justamente para poder juzgar sin abrir la pestaña.
+  const rotuloDeMes = new Map((g.meses ?? []).map((m) => [m.desde, m.rotulo]))
   const formulas = []
   for (const [i, fila] of g.filas.entries()) {
     const n = i + 1
@@ -69,6 +74,7 @@ export function render(g, valores = null) {
         if (c === 0) return visible.get(n) ?? 'ƒ'
         return (valores ? $(valores[n - 1]?.[c]) : 'ƒ').padStart(anchoCol)
       }
+      if (rotuloDeMes.has(v)) return String(rotuloDeMes.get(v)).padStart(anchoCol)
       return c === 0 ? String(v) : String(v).padStart(anchoCol)
     })
     L.push(`${String(n).padStart(3)} │ ${celdas[0].padEnd(56)}│${celdas.slice(1).join('│')}`)
@@ -217,7 +223,7 @@ async function main() {
   }
   if (!hitos.length) throw new Error('no hay una sola cobranza pendiente: NO escribo un calendario sin nada que anunciar.')
 
-  const marcadas = hitos.filter((h) => h.finObra && h.textoVisible.includes('⚠ fin'))
+  const marcadas = hitos.filter((h) => h.finObra && h.textoVisible.includes(`${ALERTA} fin`))
   console.log(`${hitos.length} hitos pendientes · ${clientes.length} clientes · ventana ${meses[0].rotulo}…${meses.at(-1).rotulo}`
     + ` · ${hitos.filter((h) => h.vencido).length} vencido(s) · ${marcadas.length} con cobro posterior al fin de su obra`)
   for (const h of marcadas) console.log(`  ⚠ fila ${h.fila} · ${h.cliente} · ${h.concepto} — cobro después del fin de obra (${h.finObra})`)
@@ -327,9 +333,13 @@ async function formatear(google, sheetId, g) {
   fmt(r(0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: E.TAM.titulo } })
   fmt(r(1, 2), 'userEnteredFormat.textFormat,userEnteredFormat.wrapStrategy',
     { textFormat: { italic: true, fontSize: E.TAM.nota, foregroundColor: E.COLOR.nota }, wrapStrategy: 'WRAP' })
-  // El encabezado: texto, nunca plata, y alineado del lado de sus cifras.
+  // EL ENCABEZADO: nunca plata, alineado del lado de sus cifras, y CADA CELDA CON SU FORMATO.
+  //
+  // Antes iba un solo `TEXT` para la fila entera y ahí estaba el defecto: los meses son un serial, y
+  // un serial con formato de texto se dibuja como el número pelado (46260 en vez de ago-26). El plan
+  // sale de `formatoDeEncabezado` —la misma función que el test verifica— y no de esta línea.
   const fe = g.fEncabezado
-  fmt(r(fe - 1, fe), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'TEXT' } })
+  formatoDeEncabezado(g).forEach((f, c) => fmt(r(fe - 1, fe, c, c + 1), 'userEnteredFormat.numberFormat', f))
   fmt(r(fe - 1, fe), 'userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment',
     { textFormat: { bold: true, foregroundColor: MUTED, fontSize: E.TAM.nota }, horizontalAlignment: 'RIGHT' })
   fmt(r(fe - 1, fe, 0, 1), 'userEnteredFormat.horizontalAlignment', { horizontalAlignment: 'LEFT' })

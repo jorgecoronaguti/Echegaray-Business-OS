@@ -22,7 +22,10 @@ import assert from 'node:assert/strict'
 import {
   grillaCalendario, ventanaDeMeses, inicioDeVentana, conColaLimpiable, columnasReales, columnasProyectadas,
   rotuloDeHito, ANCHO_HISTORICO, ALTO_HISTORICO, PESTANA_CALENDARIO, REFS_CALENDARIO, COLS_FIJAS, MARCA_ENDOSO,
+  formatoDeEncabezado,
 } from './calendario-cobros.mjs'
+import { ALERTA, glifosInvisibles } from './glifos.mjs'
+import { esSerialCrudo } from './defectos-pantalla.mjs'
 import { hitosPendientes, finDeObraPorFila, canonicoDeCliente, mesDeSerial, textoDeHito } from './calendario-hitos.mjs'
 import { evaluarFormula, hojaDeGrilla } from './evaluar-formula-sheet.mjs'
 import { comoHoja, comoFilas, DESDE } from './cobranzas-fixture.mjs'
@@ -58,7 +61,66 @@ const letra = (i) => (i < 26 ? '' : String.fromCharCode(64 + Math.floor(i / 26))
 test('la foto real no tiene ni un cobro sin lugar: si lo tuviera, el escritor NO publicaría', () => {
   assert.deepEqual(problemas, [], 'un problema acá significa que hay plata que el calendario no puede ubicar')
   assert.equal(hitos.length, 44, 'las 44 filas pendientes de la foto del 13/08')
-  assert.equal(meses.map((m) => m.rotulo).join(' '), 'ago-26 sep-26 oct-26 nov-26 dic-26')
+  assert.equal(meses.map((m) => m.rotulo).join(' '), 'ago-26 sept-26 oct-26 nov-26 dic-26')
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL ENCABEZADO DE PERÍODO — el defecto que dibujó "46260" donde iba "ago-26"
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('cada encabezado de mes es un SERIAL, no un texto que Sheets vaya a parsear por su cuenta', () => {
+  // EL DEFECTO QUE ESTE TEST ATRAPA (13/08). El encabezado se escribía con su rótulo ("ago-26") y la
+  // escritura va con USER_ENTERED: Sheets lo leyó como "26 de agosto", lo guardó como número y la
+  // celda —pintada de TEXT— dibujó el serial pelado. Cuatro de las cinco columnas quedaron con
+  // 46260 / 46321 / 46352 / 46382 a la vista. La única que zafó fue septiembre, y de casualidad:
+  // "sept" no parsea.
+  //
+  // Si alguien vuelve a poner el rótulo, acá el tipo pasa a ser string y este test se pone rojo.
+  const enc = g.filas[g.fEncabezado - 1]
+  for (const [i, m] of meses.entries()) {
+    const v = enc[COLS_FIJAS.length + i]
+    assert.equal(typeof v, 'number', `el encabezado de ${m.rotulo} es un ${typeof v}: Sheets lo va a parsear él`)
+    assert.equal(v, m.desde, `${m.rotulo} tiene que ser el primero de su mes — el mismo serial con el que la columna filtra`)
+  }
+  // Y las fijas siguen siendo rótulos de verdad.
+  for (let c = 0; c < COLS_FIJAS.length; c++) assert.equal(typeof enc[c], 'string')
+  assert.equal(enc.at(-1), 'Por cobrar')
+})
+
+test('NINGUNA celda del encabezado queda con un número y formato TEXT a la vez: eso es un serial a la vista', () => {
+  const enc = g.filas[g.fEncabezado - 1]
+  const plan = formatoDeEncabezado(g)
+  assert.equal(plan.length, g.ancho, 'el plan de formato tiene que cubrir el ancho entero, no sólo los meses')
+  for (const [c, f] of plan.entries()) {
+    const v = enc[c]
+    const tipo = f.numberFormat?.type
+    if (typeof v === 'number') {
+      assert.notEqual(tipo, 'TEXT', `la columna ${c} tiene un serial (${v}) y formato TEXT: se dibuja el número crudo`)
+      assert.equal(tipo, 'DATE', `un encabezado numérico es una fecha y se declara como tal (columna ${c})`)
+      assert.match(f.numberFormat.pattern, /mmm/, 'el patrón tiene que dibujar el mes')
+    } else {
+      assert.equal(tipo, 'TEXT', `la columna ${c} es un rótulo y su formato tiene que decirlo`)
+    }
+  }
+  // Y es exactamente lo que el auditor de pantalla busca en el archivo publicado: la misma definición
+  // del defecto, del lado del que escribe y del lado del que mira.
+  assert.equal(esSerialCrudo('46260', 'TEXT'), true)
+  assert.equal(esSerialCrudo(String(meses[0].desde), plan[COLS_FIJAS.length].numberFormat.type), false)
+})
+
+test('ni un texto de esta pestaña lleva un glifo que el PDF no dibuja', () => {
+  // EL DEFECTO (13/08): "⚠ Vencido" tenía el ⚠ en la celda y la pantalla mostraba "Vencido". El ⚠ es
+  // emoji y el exportador no lo embebe — igual que el 🟢 de Cobranzas. Se verificó mirando el PDF.
+  const sospechosos = []
+  for (const [i, fila] of g.filas.entries()) {
+    for (const [c, v] of fila.entries()) {
+      if (typeof v !== 'string') continue
+      const ciegos = glifosInvisibles(v)
+      if (ciegos.length) sospechosos.push(`fila ${i + 1} col ${c}: ${ciegos.join('')} en "${v.slice(0, 40)}"`)
+    }
+  }
+  assert.deepEqual(sospechosos, [], 'un glifo emoji en una celda es una marca que nadie va a ver')
+  assert.ok(COLS_FIJAS[3].startsWith(ALERTA), 'la columna de lo vencido tiene que llevar la señal de alerta')
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -224,7 +286,7 @@ test('lo REAL son Cobrado y el endosado; TODO lo demás es proyección', () => {
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
-// EL ⚠ DE FIN DE OBRA (pedido del dueño): un cobro después de que la obra terminó
+// LA ALERTA DE FIN DE OBRA (pedido del dueño): un cobro después de que la obra terminó
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
 test('un cobro POSTERIOR al fin de su obra se marca, y la comparación la hace Sheets', () => {
@@ -232,15 +294,15 @@ test('un cobro POSTERIOR al fin de su obra se marca, y la comparación la hace S
   const bsa = hitos.filter((h) => h.finObra === '2026-08-21' && h.concepto.includes('BSA'))
   assert.equal(bsa.length, 2, `esperaba los dos cobros de BSA y encontré ${bsa.length}`)
   for (const h of bsa) {
-    assert.match(h.textoVisible, /⚠ fin 21\/08/, `${h.concepto} cobra el ${h.serial} y no quedó marcado`)
+    assert.match(h.textoVisible, new RegExp(`${ALERTA} fin 21/08`), `${h.concepto} cobra el ${h.serial} y no quedó marcado`)
     const f = rotuloDeHito(REFS_CALENDARIO, h)
-    assert.match(f, /IF\('Cobranzas'!Q\d+>\d+;" ⚠ fin 21\/08";""\)/, 'la comparación tiene que vivir en la fórmula')
+    assert.match(f, new RegExp(`IF\\('Cobranzas'!Q\\d+>\\d+;" ${ALERTA} fin 21/08";""\\)`), 'la comparación tiene que vivir en la fórmula')
     assert.equal(problemaDeSintaxis(f), null)
   }
 })
 
-test('un cobro DENTRO del plazo de su obra no se marca: el ⚠ sólo grita cuando hay algo que mirar', () => {
-  const dentro = hitos.filter((h) => h.finObra && !h.textoVisible.includes('⚠'))
+test('un cobro DENTRO del plazo de su obra no se marca: la alerta sólo grita cuando hay algo que mirar', () => {
+  const dentro = hitos.filter((h) => h.finObra && !h.textoVisible.includes(ALERTA))
   assert.ok(dentro.length > 10, 'la mayoría de los hitos de obra cobran dentro del plazo y no llevan marca')
   // EL BORDE, Y ES UN CASO REAL DE LA FOTO: "Entrepiso y Escaleras - Certificación 1/1" cobra el
   // 21/08/2026 y su obra termina EXACTAMENTE ese día. Cobrar el último día del plazo no es cobrar
@@ -248,10 +310,10 @@ test('un cobro DENTRO del plazo de su obra no se marca: el ⚠ sólo grita cuand
   // obra, y una marca que se enciende cuando todo salió bien deja de significar algo.
   const justo = hitos.find((h) => h.concepto.startsWith('Entrepiso y Escaleras - Certificación'))
   assert.equal(justo.finObra, '2026-08-21')
-  assert.ok(!justo.textoVisible.includes('⚠'), `cobra el último día del plazo y no debe marcarse: "${justo.textoVisible}"`)
+  assert.ok(!justo.textoVisible.includes(ALERTA), `cobra el último día del plazo y no debe marcarse: "${justo.textoVisible}"`)
   // La marca la decide la FECHA, no la existencia de fin de obra.
-  assert.equal(textoDeHito({ serial: 46_235, concepto: 'X', forma: 'Efectivo', estado: 'Pendiente', finObra: '2026-12-31' }).includes('⚠'), false)
-  assert.equal(textoDeHito({ serial: 46_387, concepto: 'X', forma: 'Efectivo', estado: 'Pendiente', finObra: '2026-08-21' }).includes('⚠'), true)
+  assert.equal(textoDeHito({ serial: 46_235, concepto: 'X', forma: 'Efectivo', estado: 'Pendiente', finObra: '2026-12-31' }).includes(ALERTA), false)
+  assert.equal(textoDeHito({ serial: 46_387, concepto: 'X', forma: 'Efectivo', estado: 'Pendiente', finObra: '2026-08-21' }).includes(ALERTA), true)
 })
 
 test('un hito que no pertenece a ninguna obra declarada NO inventa una fecha de fin', () => {

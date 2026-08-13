@@ -838,3 +838,35 @@ test('si no se pudo leer Compras, el registro se respeta', async () => {
   assert.equal(llamadas.length, 0)
   assert.equal(repo._cargados.has(clave), true)
 })
+
+// ═══ UN "PROBABLE" NO DESMIENTE AL REGISTRO (13/08) ═══
+//
+// La condición para dar el registro por vencido era «Compras no lo devolvió como CARGADO», y un
+// hallazgo PROBABLE cumple eso. O sea: el bot dudaba de si el comprobante ya estaba y, POR DUDAR,
+// borraba la clave de idempotencia — el único freno que tenía para no escribirlo dos veces.
+//
+// No es hipotético. Medido contra el registro real y la pestaña viva el 13/08, tres comprobantes
+// caían justo ahí porque el punto de venta se había leído distinto y el importe también:
+//
+//   Alumetal        `0036-00025942` contra la fila 797 `0038-00025942`   $2.014.940,07
+//   VILLA DEL PINO  `0001-00015177` contra la fila 812 `00015-00015177`  $105.000,67
+//   Hormiserv N C   `0005-00000386` contra la fila 815 `00005-00000386`  −$686.070
+//
+// Reenviar cualquiera de esos tres los habría cargado por segunda vez, sin un solo aviso.
+test('un duplicado PROBABLE no borra la clave de idempotencia: dudar no es haber mirado', async () => {
+  const repo = repoMemoria()
+  const { d } = armar({ repo })
+  const clave = 'c:30712345678|0113-00010489'
+  repo._cargados.set(clave, { clave, fila: 810, hoja: 'Compras' })
+  // La misma factura en Compras con el número a UN DÍGITO de distancia: `…10489` contra `…10480`.
+  // Es el hallazgo PROBABLE, no el CARGADO.
+  const enCompras = { ok: true, ...indexarCompras([
+    ...Array.from({ length: 808 }, () => []),
+    filaCompras('5/1/2026', 'Combustibles Barcelo', 'F A', '0113-00010480', 'Estrella', '', 'Gasoil', '$ 99.999,99'),
+  ]) }
+  const { escribir, llamadas } = conEscritor()
+  await procesarPost({ ...d, escribir, comprasDe: async () => enCompras }, post())
+
+  assert.equal(llamadas.length, 0, 'con un duplicado probable no se escribe solo')
+  assert.equal(repo._cargados.has(clave), true, 'y sobre todo: la clave sigue puesta')
+})

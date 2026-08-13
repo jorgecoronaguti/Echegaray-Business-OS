@@ -180,6 +180,52 @@ El duplicado se busca en `Compras` y en el registro, nunca en el padrón.
 **Corralón Progreso factura como `PEREZ GARCIA MARISOL BIBIANA`**: el nombre del desplegable no es la
 razón social del padrón. Matchear proveedores por nombre contra ARCA no funciona y no se intenta.
 
+## La prueba viva — el camino entero, sin tocar `Compras` (13/08)
+
+```
+node orquestador/comunicacion/comprobantes/prueba-viva.mjs
+```
+
+Levanta un Postgres **efímero** en Docker, clona al canal `OS Pruebas` los **HEIC reales** que el
+dueño mandó desde su iPhone, los mete por el borde de ingesta —`parsearPosted` → `esRelevante` →
+`mapearAPayload` → `conector.recibir`— y corre el **mismo tick que `worker-comunicacion.mjs`**
+(incluidos los dos `recuperarLeases`, que son el reaper). Visión real, Sheet real, cargador real con
+`--dry` (`ORQ_COMPROBANTES_ENSAYO=1`). Al terminar destruye la base y deja los mensajes publicados
+en `OS Pruebas` para poder mirarlos.
+
+Por qué una base efímera y no la de producción: **dos workers sobre la misma cola se roban las
+tareas**. Con la base productiva, el worker real podría reclamar la tarea de la prueba y escribirla
+en `Compras` de verdad. Y por qué se copia `public.comprobantes_arca` de producción: sin el libro
+fiscal la conciliación no corrige el número ni los importes, y la prueba saldría peor que la
+realidad — medido: con la tabla vacía, uno de los ocho quedó marcado como duplicado que no era.
+
+Resultado medido el 13/08 (tres corridas):
+
+| Qué | Resultado |
+|---|---|
+| 8 adjuntos (7 HEIC + 1 PDF) en 3 posts → cuántos mensajes publica el bot | **1**, editado, **0 tarjetas** |
+| HEIC del iPhone → conversión | 4.384 KB `image/heic` → 462 KB `image/jpeg` |
+| HEIC → fila | `Corralon Progreso · F A 0004-00003695 · 10/08/2026 · IVA $6.747,85 · Total $38.880,45 · CAE 86327713045308 · categoría **B** derivada · obra **LA ESTRELLA** desde lo manuscrito («Estrella galpón 9 · c/c») · condición Cuenta Corriente`. Coincide al centavo con la fila 843 que ya está en Compras |
+| El mismo comprobante otra vez | «ya estaba cargado: no lo volví a cargar» · 0 claves duplicadas |
+| Adjunto ilegible entre buenos | se lo NOMBRA (`ILEGIBLE-ruido.png`) y los demás siguen su camino |
+| Lease: trabajo de 60 s con lease de **25 s** | 4 intentos duraron más que su propio lease · **0** tareas en `retrying`/`dead_letter` · todas en 1 intento |
+| `comunicacion.outbox` con `dead` | 0 |
+
+El lease se baja a 25 s **a propósito**: con los 180 s de producción una tarea de 40 s pasaría igual
+aunque el latido no existiera, y la prueba no probaría nada.
+
+Lo que esta prueba NO cubre, y hay que decirlo: el frame llega por función y no por socket (el bot no
+es admin y no puede publicar en nombre de una persona), y la base no es la de producción.
+
+### Lo que NO se lee solo, medido sobre los 7 HEIC reales
+
+Cuatro de siete salieron incompletos y el bot los nombró en vez de inventar: dos con el total fuera
+de escala, uno sin proveedor reconocible y uno con un IVA imposible (38% del neto — es un ticket de
+combustible donde el renglón que el modelo tomó incluye el impuesto interno). **No es la conversión
+HEIC**: leídos los mismos siete papeles en HEIC y en JPG, los importes, el IVA y la fecha salen
+IDÉNTICOS en los dos formatos; lo que varía entre corridas es el nombre del proveedor y el número
+sobre las fotos más borrosas. La guarda de plausibilidad hace lo que tiene que hacer.
+
 ## Estado de verificación al 03/08/2026
 
 Probado contra el **Mattermost vivo** (subida real de un archivo al canal real, descarga real por el
