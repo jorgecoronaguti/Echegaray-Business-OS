@@ -384,7 +384,10 @@ export function grilla({
   fHero.real = push([sub('REAL — ya salió de la caja')])
   fHero.comprometido = push([sub('COMPROMETIDO — hecho, sin pagar')])
   fHero.falta = push([sub('PROYECTADO — a diciembre, motor salarial')])
-  fHero.proximo = push([sub('Próximo pago')])
+  // "DE OBRA" NO SOBRA (13/08). Desde que el calendario de 1.3 muestra las tres nóminas, un "Próximo
+  // pago" a secas se lee como el total que sale ese día — y no lo es: el mes de oficina y el retiro de
+  // dirección tienen su propia fecha de caja. Ver el bloque que resuelve esta celda, más abajo.
+  fHero.proximo = push([sub('Próximo pago de obra')])
   // QUÉ NO ESTÁ ACÁ ADENTRO, DICHO EN LA PESTAÑA. El dueño: "¿está considerando lo que se le debe
   // pagar a la nómina en SAC y vacaciones? ¿eso está en cargas sociales?". No y sí: este cuadro es
   // jornal y sueldo puros, y el aguinaldo vive en Cargas Sociales §6 (pagado real de Compras y

@@ -850,3 +850,16 @@ test('UN MES DE OFICINA A MEDIO CARGAR NO PUEDE SER LA BASE DE LOS QUE SIGUEN', 
   assert.match(String(filaDe(8)[6]), /MATCH\(EOMONTH\(DATE\(2026;8;1\);0\)/)
   assert.match(String(filaDe(8)[6]), /EOMONTH\(DATE\(2026;7;1\);0\)/)
 })
+
+test('el "Próximo pago" del hero dice DE OBRA y suma sólo obra', () => {
+  // Con el calendario mostrando las tres nóminas, un "Próximo pago" a secas se lee como el total que
+  // sale ese día. No lo es: oficina y dirección tienen su propia fecha de caja y elegir cuál de las
+  // tres manda sería inventar una respuesta a una pregunta que tiene tres. El rótulo y la fórmula
+  // tienen que decir lo mismo.
+  const fila = gm.filas.find((f) => /Próximo pago/.test(String(f[0])))
+  assert.match(String(fila[0]), /Próximo pago de obra/)
+  const cObra = 'D'
+  assert.ok(String(fila[1]).includes(`$${cObra}$${gm.p0}:$${cObra}$${gm.p0 + gm.nProy - 1}`),
+    `el próximo pago dejó de sumar la columna de obra del calendario: ${fila[1]}`)
+  assert.ok(!String(fila[1]).includes(`$G$${gm.p0}`), 'el próximo pago se llevó el TOTAL de las tres nóminas')
+})
