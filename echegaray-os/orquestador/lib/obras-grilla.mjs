@@ -147,14 +147,32 @@ export const ANCHO_OBRAS = 8
 export const ANCHO_HISTORICO = 9
 
 /**
+ * EL ALTO MÁS GRANDE QUE ESTA GRILLA TUVO. El mismo razonamiento que el ancho, en el otro eje.
+ *
+ * POR QUÉ (13/08). Arreglé la cola de columnas y no la de filas: la grilla bajó de 62 a 61 y la vieja
+ * fila 62 quedó escrita, así que el PDF mostró DOS VECES "Otros trabajos…", con valores distintos y
+ * corridos de columna. El generador es dueño de todo su RANGO, y un rango tiene dos ejes.
+ *
+ * Se limpia hasta acá y no hasta el fondo de la hoja, por lo mismo que el ancho: más abajo nunca
+ * escribió este generador. Y si la grilla lo supera, `conColaLimpiable` ROMPE en vez de dejar cola
+ * silenciosa — la constante se sube a mano, que es la única forma de que siga significando algo.
+ */
+export const ALTO_HISTORICO = 62
+
+/**
  * LAS FILAS CON SU COLA LIMPIABLE: cada una llega hasta `hasta` con el centinela VACIO, que significa
  * "esta celda es mía y va vacía" — así la fusión la limpia en vez de conservar lo de la corrida vieja.
  */
-export const conColaLimpiable = (filas = [], hasta = ANCHO_HISTORICO) => filas.map((f) => {
-  const r = [...f]
-  while (r.length < hasta) r.push(VACIO)
-  return r
-})
+export function conColaLimpiable(filas = [], hasta = ANCHO_HISTORICO, alto = ALTO_HISTORICO) {
+  if (filas.length > alto) {
+    throw new Error(`obras-grilla: la grilla creció a ${filas.length} filas y el alto histórico declarado es ${alto}. `
+      + `Subí ALTO_HISTORICO a ${filas.length} — si no, el día que se achique va a dejar filas viejas publicadas.`)
+  }
+  const anchas = filas.map((f) => { const r = [...f]; while (r.length < hasta) r.push(VACIO); return r })
+  // Las filas que sobran del alto anterior se escriben ENTERAS con el centinela: se limpian.
+  while (anchas.length < alto) anchas.push(Array.from({ length: hasta }, () => VACIO))
+  return anchas
+}
 
 /** Anchos en píxeles — los importes con aire, la prosa angosta y al final (estándar del dueño). La
  *  columna A NO se declara acá: la calcula `anchoColumnaA` a partir de los rótulos que se emiten. */
@@ -740,8 +758,11 @@ export function grillaObras(ctx = {}) {
   // de la Sección 1—: es venta legítima que simplemente no pertenece a una obra proyectada.
   const clientesConObra = [...new Set(obras.map((o) => o.cliente))]
   if (bloques.length) h.push([`Otros trabajos de ${clientesConObra.length} cliente(s) con obra — fuera de las ${bloques.length}`, '',
-    `=${clientesConObra.map((c) => venta(refs.cob, c).slice(1)).join('+')}-${suma('C').slice(1)}`,
-    `=${clientesConObra.map((c) => cobrado(refs.cob, c).slice(1)).join('+')}-${suma('D').slice(1)}`,
+    // LOS PARÉNTESIS NO SON ESTILO. Sin ellos, `X - C18+C24+C28` resta la PRIMERA obra y SUMA las
+    // otras seis: la fila publicó $692.395.550 donde van $125.680.764. La resta de una suma se
+    // encierra, siempre — es la misma precedencia que en cualquier lenguaje, y acá no da error.
+    `=${clientesConObra.map((c) => venta(refs.cob, c).slice(1)).join('+')}-(${suma('C').slice(1)})`,
+    `=${clientesConObra.map((c) => cobrado(refs.cob, c).slice(1)).join('+')}-(${suma('D').slice(1)})`,
     '', '', '', ''])
 
   const totales = [s1.fTot, fTot2].filter(Boolean)
