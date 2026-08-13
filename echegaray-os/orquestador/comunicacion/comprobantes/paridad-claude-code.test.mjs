@@ -26,7 +26,7 @@ import { valoresInput, COL } from '../../lib/carga-comprobantes.mjs'
 import { indexarCompras } from '../../lib/comprobantes/compras-vivas.mjs'
 import { prepararPlan } from '../../scripts/cargar-comprobantes-compras.mjs'
 import { aFajoJson } from './escritura.mjs'
-import { lecturaBarcelo, LISTAS, filaCompras } from './dobles.mjs'
+import { lecturaBarcelo, LISTAS, LISTAS_COMPRAS, filaCompras } from './dobles.mjs'
 
 /** Las cinco columnas que NO se escriben nunca: son ARRAYFORMULA y derraman desde la fila 4. */
 const PROHIBIDAS = ['AC', 'AD', 'AE', 'AF', 'AJ']
@@ -48,6 +48,9 @@ function itemDelBot(over = {}) {
  * la comparación no probaría nada.
  */
 const FAJO_A_MANO = [{
+  // La columna B del ejemplo de la skill dice `"categoria": "B"`. NO es un rubro: el desplegable vivo
+  // de Compras (`Compras!B4:B12`, leído el 13/08) son dos valores, `B` y `N` — blanco y negro.
+  categoria: 'B',
   fecha: '05/01/2026',
   proveedor: 'Combustibles Barcelo',
   tipo: 'A',
@@ -65,7 +68,7 @@ test('el adjunto de Mattermost produce el MISMO fajo que arma una persona por Cl
   const [aMano] = FAJO_A_MANO
 
   // Los campos que deciden la fila tienen que ser IDÉNTICOS, no equivalentes.
-  for (const k of ['fecha', 'proveedor', 'tipo', 'numero', 'iva', 'total', 'condicion', 'formaPago', 'obra', 'concepto']) {
+  for (const k of ['categoria', 'fecha', 'proveedor', 'tipo', 'numero', 'iva', 'total', 'condicion', 'formaPago', 'obra', 'concepto']) {
     assert.deepEqual(delBot[k], aMano[k], `el campo "${k}" difiere entre las dos vías`)
   }
   // EL NETO NO VIAJA POR NINGUNA DE LAS DOS. `valoresInput` deriva M = Total − IVA, que es lo que
@@ -107,6 +110,106 @@ test('el planificador del cargador tampoco toca las prohibidas con el fajo del b
   assert.equal(rechazos.length, 0, `el fajo del bot lo rechazó el cargador: ${JSON.stringify(rechazos)}`)
   assert.equal(plan.length, 1)
   for (const L of PROHIBIDAS) assert.equal(Object.hasOwn(plan[0].valores, L), false)
+})
+
+// ── COLUMNA POR COLUMNA, SOBRE COMPROBANTES DE DISTINTA FORMA (13/08) ───────
+//
+// Pedido textual del dueño: «revisar bien como se hace por via de claude del os de la carga de
+// comprobantes y hacer exactamente eso en mattermost». El test de arriba compara UNA foto; esto
+// compara las columnas que se derivan, sobre las formas que de verdad llegan al canal.
+//
+// Las reglas NO salen de un criterio propio: salen de las filas 826-842 de Compras, del mismo día,
+// unas cargadas por Claude Code y otras por el bot. Están escritas en `lib/comprobantes/categoria.mjs`.
+
+/** Las cuatro formas reales, con lo que cada columna TIENE que dar. */
+const FORMAS = [
+  {
+    que: 'factura A con número (fila 841, VILLA DEL PINO)',
+    lectura: { emisor: 'Combustibles Barcelo', total: '36.460,30', iva_21: '5.981,00', fecha: '05/01/2026', letra: 'FACTURA A', numero: '0001-00015751' },
+    espera: { categoria: 'B', tipo: 'A' },
+  },
+  {
+    que: 'factura C (fila 842, Ruviño Matias) — sin IVA discriminado, sigue siendo fiscal',
+    lectura: { emisor: 'Combustibles Barcelo', total: '10.000,00', fecha: '05/01/2026', letra: 'FACTURA C', numero: '0002-00004725' },
+    espera: { categoria: 'B', tipo: 'C' },
+  },
+  {
+    que: 'tique fiscal sin CAE legible — la letra viene pegada a TIQUE FACTURA',
+    lectura: { emisor: 'Combustibles Barcelo', total: '60.000,02', fecha: '03/08/2026', letra: 'TIQUE FACTURA A', numero: '0113-00010489', cae: null },
+    // El CAE NO entra en la regla: un tique térmico borroso quedaría mal clasificado por un problema
+    // de foto, que es exactamente el defecto que se está arreglando.
+    espera: { categoria: 'B', tipo: 'A' },
+  },
+  {
+    que: 'nota de crédito — es fiscal (B) y sus importes van en NEGATIVO',
+    lectura: { emisor: 'Combustibles Barcelo', total: '5.000,00', iva_21: '868,00', fecha: '07/08/2026', letra: 'NOTA DE CREDITO A', numero: '0113-00010490', es_nota_credito: true },
+    espera: { categoria: 'B', tipo: 'NC', total: -5000 },
+  },
+  {
+    que: 'un gasto SIN comprobante fiscal (filas 828/829/834: Sueldos, PEDRO TELLO, tipo N/A) ⇒ N',
+    lectura: { emisor: 'Combustibles Barcelo', total: '80.000,00', fecha: '05/01/2026', letra: null, numero: null },
+    espera: { categoria: 'N', tipo: null },
+  },
+]
+
+for (const f of FORMAS) {
+  test(`paridad de columnas — ${f.que}`, () => {
+    const it = armarItem({ lectura: f.lectura, adjunto: { fileId: 'f', nombre: 'x.jpg' }, listas: LISTAS })
+    const c = it.comprobante
+    for (const [k, v] of Object.entries(f.espera)) {
+      assert.equal(c[k], v, `la columna "${k}" no da lo que da Claude Code`)
+    }
+    // Y la fila que sale de ahí nunca toca las ARRAYFORMULA, cualquiera sea la forma.
+    // Un comprobante SIN número no llega a fajo —`aFajoJson` sólo pasa lo que se puede cargar— y eso
+    // también es paridad: por Claude Code un gasto sin comprobante lo carga una persona, no una foto.
+    const fajo = aFajoJson([it])
+    assert.equal(fajo.length, f.espera.categoria === 'N' ? 0 : 1, 'lo cargable no coincide con la vía manual')
+    if (!fajo.length) return
+    const valores = valoresInput(fajo[0])
+    for (const L of PROHIBIDAS) assert.equal(Object.hasOwn(valores, L), false, `se iba a escribir en ${L}`)
+    // La columna O es fórmula en las dos vías, siempre.
+    assert.equal(valores[COL.total], undefined, 'O es FÓRMULA: no se escribe desde ninguna vía')
+  })
+}
+
+test('M = Total − IVA en TODAS las formas cargables, que es lo que absorbe la percepción', () => {
+  for (const f of FORMAS) {
+    const it = armarItem({ lectura: f.lectura, listas: LISTAS })
+    const fajo = aFajoJson([it])
+    if (!fajo.length) continue
+    const v = valoresInput(fajo[0])
+    const total = it.comprobante.total
+    const iva = it.comprobante.iva ?? 0
+    assert.equal(v[COL.neto], Math.round((total - iva) * 100) / 100, `M ≠ Total − IVA en: ${f.que}`)
+  }
+})
+
+test('el manuscrito «Taller» imputa la obra: dos grafías del mismo rótulo no son una ambigüedad', () => {
+  // La fila 840 del 13/08. El desplegable vivo de la columna J trae «Taller» Y «TALLER»: el matcheo
+  // llamaba empate a eso y devolvía null, así que J y K quedaban vacías con el manuscrito leído.
+  const it = armarItem({
+    lectura: {
+      emisor: 'Corralon Progreso', total: '100', fecha: '13/08/2026', letra: 'FACTURA A',
+      numero: '0012-00050057', anotacion_manuscrita: 'Taller',
+    },
+    listas: LISTAS_COMPRAS,
+  })
+  assert.equal(it.comprobante.obra, 'Taller', 'la anotación identifica UNA obra, escrita dos veces')
+  assert.equal(it.comprobante.categoria, 'B', 'y con factura A va en blanco, no en negro')
+})
+
+test('el Detalle (K) se COMPONE cuando ninguna lista lo tiene — como lo escribe Claude Code', () => {
+  // Fila 833 de Claude Code: `retira Rodrigo · vto 04/08`. No está en ninguna lista y el dueño la dio
+  // por buena. El bot dejaba K vacía en casi toda fila que cargó.
+  const it = armarItem({
+    lectura: {
+      emisor: 'Combustibles Barcelo', total: '100', fecha: '05/01/2026', letra: 'FACTURA A',
+      numero: '0113-00010489', detalle_libre: 'retira Rodrigo · vto 04/08',
+    },
+    listas: LISTAS,
+  })
+  assert.equal(it.comprobante.detalleObra, 'retira Rodrigo · vto 04/08')
+  assert.equal(aFajoJson([it])[0].detalle, 'retira Rodrigo · vto 04/08', 'y llega al fajo, no se queda en el ítem')
 })
 
 // ── IDEMPOTENCIA: la misma foto dos veces no puede ser dos gastos ────────────

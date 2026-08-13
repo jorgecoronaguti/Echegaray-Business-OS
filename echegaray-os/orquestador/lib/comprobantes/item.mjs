@@ -14,6 +14,8 @@ import { matchProveedor } from '../carga-comprobantes.mjs'
 import { normalizarLectura, claveComprobante } from './lectura.mjs'
 import { imputacionDeAnotacion, condicionDeAnotacion } from './imputacion.mjs'
 import { imputacionDelModelo, valorDeLista } from './desplegables.mjs'
+import { categoriaDelComprobante } from './categoria.mjs'
+import { detalleCompuesto } from './detalle.mjs'
 import { palabrasInventadas, ecoDelOcr } from './plausibilidad.mjs'
 import { MAX_OPCIONES } from './fajo.mjs'
 
@@ -101,16 +103,15 @@ export function armarItem({ lectura, adjunto, listas, textoPost = null, ahora = 
     comprobante.porQueEsaObra = String(crudo?.por_que_esa_obra ?? '').slice(0, 120) || null
   }
   if (delModelo.unidad && !comprobante.unidad) comprobante.unidad = delModelo.unidad
-  // La categoría (columna B) la ELIGE el modelo de una lista cerrada, y por eso el mismo error de
-  // lectura la envenena igual que al concepto: con «COMESTIBLES BARCELO» delante, «Comestibles y
-  // bebidas» es la opción obvia del desplegable para lo que fue una carga de combustible. Si la
-  // elección repite una palabra que el OCR inventó, no se aplica y se pregunta con el menú — que es
-  // exactamente lo que hace `imputacionPendiente` con toda categoría vacía.
-  if (delModelo.categoria && !comprobante.categoria) {
-    const eco = ecoDelOcr(delModelo.categoria, inventadas)
-    if (eco.contaminado) comprobante.categoriaDescartada = delModelo.categoria
-    else comprobante.categoria = delModelo.categoria
-  }
+  // ═══ LA CATEGORÍA (COLUMNA B) NO ES UNA OPINIÓN: ES BLANCO O NEGRO (13/08) ═══
+  //
+  // Acá se aplicaba lo que el modelo eligiera del desplegable de la columna B. Pero ese desplegable
+  // son dos valores —`B` y `N`, blanco y negro— y al modelo se le preguntaba "qué se compró": eligió
+  // `N` para una FACTURA A (fila 840, Rodamientos Cuyo). Un gasto documentado registrado como negro.
+  //
+  // Se deriva de lo que ya se leyó —hay comprobante fiscal o no lo hay— y se valida contra el
+  // desplegable vivo. Cero modelo. El porqué completo y las filas que lo prueban: `categoria.mjs`.
+  comprobante.categoria = categoriaDelComprobante(comprobante, listas?.categorias ?? null)
   // LA FORMA DE PAGO YA VIENE FILTRADA CONTRA SU DESPLEGABLE. Lo que la visión leyó en `forma_pago`
   // es texto libre del papel —ahí decía "Importe" y "30 DIAS FECHA FACTURA"— y sólo sobrevive si es
   // uno de los seis valores de la columna P. Si no lo es, la celda queda vacía a propósito.
@@ -147,6 +148,15 @@ export function armarItem({ lectura, adjunto, listas, textoPost = null, ahora = 
   if (!imp.detalle && comprobante.obra) {
     const det = valorDeLista(crudo?.detalle_obra, listas?.detallesFirmes?.[comprobante.obra])
     if (det) { imp = { ...imp, detalle: det, detalleVia: 'manuscrita' } }
+  }
+  // ═══ Y SI NINGUNA LISTA LO TIENE, LA NOTA COMPUESTA — QUE ES LO QUE HACE CLAUDE CODE (13/08) ═══
+  //
+  // K no tiene desplegable: es texto libre. Exigirle que estuviera en el vocabulario ya usado la
+  // dejaba VACÍA en casi toda fila del bot, mientras Claude Code escribía «retira Rodrigo · vto
+  // 04/08» sobre el mismo papel. El porqué y el límite, en `detalle.mjs`. Nunca decide la obra.
+  if (!imp.detalle) {
+    const libre = detalleCompuesto(crudo?.detalle_libre, { inventadas, yaElegido: imp.detalle })
+    if (libre) imp = { ...imp, detalle: libre.valor, detalleVia: libre.via }
   }
   comprobante.detalleObra = imp.detalle ?? null
   comprobante.detalleVia = imp.detalleVia ?? null

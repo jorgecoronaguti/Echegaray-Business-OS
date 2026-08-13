@@ -243,6 +243,10 @@ export const LISTAS = Object.freeze({
   ok: true,
   proveedores: ['Combustibles Barcelo', 'ACEROLATINA', 'Cemento SA'],
   obras: ['Estrella', 'San Francisco', 'Messina'],
+  // LOS VALORES REALES DE LA COLUMNA B, leídos del Sheet vivo el 13/08 (`Compras!B4:B12`). No es un
+  // rubro: es BLANCO o NEGRO. El doble decía `['Materiales', 'Varios']` y por eso los tests dejaban
+  // pasar un prompt que le preguntaba al modelo «qué se compró» ofreciéndole `B` y `N`.
+  categorias: ['B', 'N'],
 })
 
 // ═══ EL CASO REAL DEL 03/08 — no es un ejemplo inventado ═══
@@ -303,7 +307,10 @@ export const ARCA_CORRALON = Object.freeze([
 export const LISTAS_COMPRAS = Object.freeze({
   ok: true,
   proveedores: ['Corralon Progreso', 'Ductos San Juan SRL', 'Combustibles Barcelo'],
-  obras: ['Administracion', 'ARCOR', 'LA ESTRELLA', 'MESSINA', 'San Francisco', 'Taller'],
+  // «Taller» y «TALLER» están LAS DOS en el desplegable vivo de la columna J. Es la repetición que
+  // dejaba sin imputar la anotación «Taller» (fila 840); el doble tiene que traerla.
+  obras: ['Administracion', 'ARCOR', 'LA ESTRELLA', 'MESSINA', 'San Francisco', 'Taller', 'TALLER'],
+  categorias: ['B', 'N'],
 })
 
 /** Una fila de Compras en el rango C4:O. */

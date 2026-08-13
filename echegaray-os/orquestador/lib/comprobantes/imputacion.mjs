@@ -97,6 +97,34 @@ export function puntaje(rotulo, tokensAnotacion) {
 }
 
 /**
+ * La lista sin las opciones que son EL MISMO VALOR escrito distinto. Gana la primera.
+ *
+ * ═══ DOS GRAFÍAS DE LO MISMO NO SON UNA AMBIGÜEDAD (13/08) ═══
+ *
+ * El desplegable vivo de la columna J trae **«Taller» y «TALLER»**: el mismo rótulo cargado dos veces
+ * con distinta caja. Como `matchUnico` devuelve null ante cualquier empate, la anotación manuscrita
+ * «Taller» —de las más frecuentes de la empresa— no matcheaba NADA, y el comprobante entraba sin obra
+ * y, por lo tanto, sin detalle. Es la fila 840 del 13/08: el bot transcribió «Taller» en el concepto y
+ * dejó J y K vacías. El defecto no estaba en el matcheo: estaba en llamar empate a lo que no lo es.
+ *
+ * La regla dura no se toca — **empate = null, se pregunta**. Lo que cambia es qué cuenta como empate:
+ * dos cosas DISTINTAS que la anotación no separa. Dos formas de escribir la misma cosa imputan el
+ * gasto exactamente al mismo lugar, así que elegir cualquiera de las dos no decide nada. Se toma la
+ * primera, que es el orden en que el dueño cargó el desplegable.
+ */
+export function sinGrafiasRepetidas(lista = []) {
+  const vistas = new Set()
+  const out = []
+  for (const o of lista ?? []) {
+    const n = normalizar(o)
+    if (!n || vistas.has(n)) continue
+    vistas.add(n)
+    out.push(o)
+  }
+  return out
+}
+
+/**
  * La ÚNICA opción de `lista` que la anotación identifica, o null.
  *
  * Tres pasadas, de la más fuerte a la más tolerante; la primera que devuelva **exactamente una**
@@ -110,7 +138,7 @@ export function puntaje(rotulo, tokensAnotacion) {
 export function matchUnico(texto, lista = []) {
   const a = normalizar(texto)
   if (!a || !Array.isArray(lista) || !lista.length) return null
-  const opciones = lista.filter((o) => normalizar(o))
+  const opciones = sinGrafiasRepetidas(lista)
 
   const exactas = opciones.filter((o) => normalizar(o) === a)
   if (exactas.length === 1) return { valor: exactas[0], via: 'exacta' }

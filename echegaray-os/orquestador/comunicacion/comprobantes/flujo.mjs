@@ -21,7 +21,8 @@
 // NO SABE ESCRIBIR EN EL SHEET. La escritura vive entera en `escritura.mjs` y entra por `escribir`,
 // inyectada como todo lo demás: acá se decide CUÁNDO, nunca CÓMO.
 
-import { claveComprobante, MEDIA_SOPORTADOS, MAX_BYTES_ADJUNTO } from '../../lib/comprobantes/lectura.mjs'
+import { claveComprobante, MEDIA_ACEPTADOS, MAX_BYTES_ADJUNTO, tipoPorExtension } from '../../lib/comprobantes/lectura.mjs'
+import { prepararParaVision } from '../../lib/comprobantes/imagen.mjs'
 import { conciliarConArca, aplicarArca, ESTADO_ARCA } from '../../lib/comprobantes/arca.mjs'
 import { buscarEnCompras, HALLAZGO, escalaDelProveedor, detallesFirmes, obrasFirmes } from '../../lib/comprobantes/compras-vivas.mjs'
 import { colapsarRepetidos, entraEnElFajo, estaCompleto, imputacionPendiente, ESTADO } from '../../lib/comprobantes/fajo.mjs'
@@ -57,20 +58,33 @@ export const TEXTO = Object.freeze({
  * Baja un adjunto de Mattermost y lo deja listo para el modelo de visión.
  * Devuelve `{error}` en vez de lanzar: un archivo que no se puede bajar no tumba los otros tres.
  */
-export async function bajarAdjunto(mattermost, fileId) {
+export async function bajarAdjunto(mattermost, fileId, { preparar = prepararParaVision } = {}) {
   try {
     const info = await mattermost.archivoInfo(fileId)
     const mediaType = String(info?.mime_type ?? '').split(';')[0].trim().toLowerCase()
     const nombre = info?.name ?? fileId
-    if (!MEDIA_SOPORTADOS.includes(mediaType)) {
-      return { ok: false, fileId, nombre, error: `no puedo mirar un archivo ${mediaType || 'de tipo desconocido'}` }
+    // ═══ EL TIPO NO SE DEDUCE SÓLO DEL MIME (13/08) ═══
+    //
+    // Mattermost devuelve el `mime_type` que le declaró el cliente, y para un `.HEIC` mandado desde
+    // el iPhone eso a veces llega vacío o como `application/octet-stream`. La extensión del nombre es
+    // la otra evidencia y es la que el dueño ve: si el archivo se llama IMG_7572.HEIC, es un HEIC.
+    const tipo = MEDIA_ACEPTADOS.includes(mediaType) ? mediaType : (tipoPorExtension(nombre) ?? mediaType)
+    if (!MEDIA_ACEPTADOS.includes(tipo)) {
+      return { ok: false, fileId, nombre, error: `no puedo mirar un archivo ${tipo || 'de tipo desconocido'}` }
     }
     if (Number(info?.size ?? 0) > MAX_BYTES_ADJUNTO) {
       return { ok: false, fileId, nombre, error: 'la imagen pesa demasiado; mandala más liviana' }
     }
     const buf = await mattermost.archivo(fileId)
-    const data = Buffer.isBuffer(buf) ? buf.toString('base64') : Buffer.from(buf).toString('base64')
-    return { ok: true, fileId, nombre, mediaType, data }
+    const crudo = Buffer.isBuffer(buf) ? buf.toString('base64') : Buffer.from(buf).toString('base64')
+    // Lo que un modelo NO puede mirar —el HEIC del iPhone— se convierte acá, y si no se puede se dice
+    // con su motivo y su nombre de archivo. Ver `lib/comprobantes/imagen.mjs`.
+    const listo = await preparar({ data: crudo, mediaType: tipo, nombre, fileId })
+    if (!listo.ok) return { ok: false, fileId, nombre, error: listo.error }
+    return {
+      ok: true, fileId, nombre, mediaType: listo.mediaType, data: listo.data,
+      ...(listo.convertidoDe ? { convertidoDe: listo.convertidoDe } : {}),
+    }
   } catch (e) {
     // EL `fileId` VIAJA TAMBIÉN EN EL FALLO (05/08). Sin él, un adjunto que no se pudo bajar no se
     // puede aparear con el adjunto que entró, y la rendición no puede cerrar la cuenta: es la mitad
