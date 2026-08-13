@@ -37,6 +37,7 @@ import {
   MEDIDAS, esMedidaReal, formulaMedida, formulaRubro,
 } from './cash-flow-medidas.mjs'
 import { nombresDeClientes, ROTULO_SIN_CLIENTE } from './libro-clientes.mjs'
+import { CASHFLOW_ID } from './cash-briefing.mjs'
 
 /** Un día en milisegundos. Todas las fechas se manejan en UTC: el huso del proceso no decide un mes. */
 export const DIA_MS = 86400000
@@ -160,8 +161,21 @@ export const medidasDeLaMatriz = () => CONCEPTOS.filter((c) => c.medida !== unde
  * abre una y después la otra no tiene que volver a buscar dónde está cada cosa.
  */
 export const FILA = Object.freeze({
-  titulo: 1, subtitulo: 2, heroRotulo: 4, heroValor: 5, cabecera: 7, concepto: 8,
+  titulo: 1, subtitulo: 2, botonHoy: 3, heroRotulo: 4, heroValor: 5, cabecera: 7, concepto: 8,
 })
+
+/**
+ * EL RÓTULO DEL ATAJO, DECLARADO ACÁ PORQUE LO NECESITAN TRES: las dos grillas que lo escriben y el
+ * control del pipeline que lo verifica.
+ *
+ * MEDIDO EL 13/08/2026: el control de `flujo-caja-rehacer-todo.mjs` seguía buscando el atajo en `A2` y
+ * partiendo la fórmula por el texto `;"📅` del diseño anterior. La matriz lo había movido a `A3` y le
+ * había cambiado el rótulo, así que el control leía el SUBTÍTULO, no encontraba `#gid=` ni `&range=` y
+ * escribía en cada corrida —en las DOS pestañas— *"el atajo IR A HOY apunta a un destino inválido (gid
+ * undefined, range null)"*. Un control que mira la celda equivocada no es un control flojo: es un
+ * control que grita siempre, y un aviso que suena siempre deja de significar algo.
+ */
+export const ROTULO_HOY = Object.freeze({ semana: '⏵  IR A LA SEMANA ACTUAL', mes: '⏵  IR AL MES ACTUAL' })
 /** La columna del concepto y la primera de tiempo, contadas desde 0. */
 export const COL = Object.freeze({ concepto: 0, tiempo0: 1 })
 
@@ -475,6 +489,20 @@ export function letra(i) {
   for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s
   return s
 }
+
+/**
+ * ═══ UN HIPERVÍNCULO INTERNO LLEVA LA URL ENTERA, NUNCA EL FRAGMENTO SUELTO ═══
+ *
+ * `HYPERLINK("#gid=123&range=AH7";…)` no navega: Google contesta *"no se puede abrir el vínculo porque
+ * se borró el rango vinculado"*. Ya está medido y escrito en `scripts/cash-flow-rehacer.mjs`, que por
+ * eso arma la URL completa — y la matriz que lo reemplazó volvió al fragmento suelto, así que el atajo
+ * "IR A LA SEMANA ACTUAL" quedó de adorno: la fórmula calcula bien el destino y el clic no hace nada.
+ *
+ * La URL sale del MISMO id que usan los scripts (con su override por entorno), no de una constante
+ * repetida: un id copiado a mano es un vínculo que apunta a otro archivo el día que el id cambia.
+ */
+export const URL_ARCHIVO = () =>
+  `https://docs.google.com/spreadsheets/d/${process.env.ORQ_CASHFLOW_ID || CASHFLOW_ID}/edit`
 
 /** La celda A1 de una fila/columna del cuadro, en absoluto. */
 export const celda = (col, fila) => `$${letra(col)}$${fila}`

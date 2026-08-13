@@ -10,7 +10,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   pielMatriz, reglasCondicionales, borrarCondicionales, achicarHoja, DEFICIT, AVISO, ANCHOS,
-  ALTO_FILA, tandasDeGrupos, desocultarFootprint, NIVELES_DE_GRUPO,
+  ALTO_FILA, tandasDeGrupos, desocultarFootprint, NIVELES_DE_GRUPO, reglaPeriodoEnCurso, EN_CURSO,
 } from './cash-flow-piel-matriz.mjs'
 import {
   planDeGraficosMatriz, requestsDeGraficosMatriz, graficoLiquidezSemanal,
@@ -88,10 +88,11 @@ test('la regla del déficit ancla la FILA y deja correr la columna: una regla po
 
 test('el rojo es sólo del déficit, y el aviso del piso no pinta celdas vacías', () => {
   const req = reglasCondicionales({ sheetId: 7, meta: mensual(), refMinima: 'CAJA_MINIMA' })
-  const rojas = req.filter((r) => r.addConditionalFormatRule.rule.booleanRule.format.textFormat.foregroundColor === DEFICIT)
+  // `?.`: la regla del período en curso pinta FONDO, no tinta — no tiene textFormat y no compite acá.
+  const rojas = req.filter((r) => r.addConditionalFormatRule.rule.booleanRule.format.textFormat?.foregroundColor === DEFICIT)
   assert.equal(rojas.length, 1)
   assert.ok(rojas[0].addConditionalFormatRule.rule.booleanRule.condition.values[0].userEnteredValue.includes('<0'))
-  const ambar = req.find((r) => r.addConditionalFormatRule.rule.booleanRule.format.textFormat.foregroundColor === AVISO)
+  const ambar = req.find((r) => r.addConditionalFormatRule.rule.booleanRule.format.textFormat?.foregroundColor === AVISO)
   const f = ambar.addConditionalFormatRule.rule.booleanRule.condition.values[0].userEnteredValue
   // Un mes anterior al corte va VACÍO y N("") vale 0: sin la guarda, el aviso pintaría todo lo vacío.
   assert.ok(f.includes('<>""'), f)
@@ -101,10 +102,68 @@ test('el rojo es sólo del déficit, y el aviso del piso no pinta celdas vacías
 })
 
 test('sin caja mínima definida se marca el déficit igual: el piso es opcional, el cero no', () => {
-  const req = reglasCondicionales({ sheetId: 7, meta: semanal(), refMinima: null })
-  assert.equal(req.length, 2, 'saldo final bajo cero y resultado negativo')
-  const mes = reglasCondicionales({ sheetId: 7, meta: mensual(), refMinima: null })
-  assert.equal(mes.length, 4, 'y en el mensual, las dos variaciones')
+  // Sólo las reglas de TINTA: la del período en curso pinta fondo y va siempre, con caja mínima o sin ella.
+  const deTinta = (req) => req.filter((r) => r.addConditionalFormatRule.rule.booleanRule.format.textFormat)
+  assert.equal(deTinta(reglasCondicionales({ sheetId: 7, meta: semanal(), refMinima: null })).length, 2,
+    'saldo final bajo cero y resultado negativo')
+  assert.equal(deTinta(reglasCondicionales({ sheetId: 7, meta: mensual(), refMinima: null })).length, 4,
+    'y en el mensual, las dos variaciones')
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL DEFECTO QUE SEÑALÓ EL DUEÑO: "están marcando mal la semana actual"
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Medido en el archivo vivo el 13/08/2026: las 53 columnas de semana salían idénticas. No había marca
+// del período en curso NI regla que la produjera. Si se saca `reglaPeriodoEnCurso`, estos tres se ponen
+// rojos.
+
+test('la columna del período en curso se marca, y la ventana es la MISMA que suma la columna', () => {
+  const sem = reglaPeriodoEnCurso({ sheetId: 7, meta: semanal() })
+  assert.equal(sem.length, 1, 'una sola regla: la marca es un tono, no un juego de reglas')
+  const fSem = sem[0].addConditionalFormatRule.rule.booleanRule.condition.values[0].userEnteredValue
+  // Semi-abierta [lunes, lunes+7): con `<=` del lado derecho el lunes siguiente caería en dos semanas.
+  assert.ok(fSem.includes('+7>TODAY()'), fSem)
+  assert.ok(fSem.includes('<=TODAY()'), fSem)
+
+  const mes = reglaPeriodoEnCurso({ sheetId: 7, meta: mensual() })
+  const fMes = mes[0].addConditionalFormatRule.rule.booleanRule.condition.values[0].userEnteredValue
+  // El mes NO usa +7: usa su propio fin de mes. Un mes marcado con la ventana de la semana marcaría
+  // los primeros siete días de cada mes y nada más.
+  assert.ok(fMes.includes('EOMONTH'), fMes)
+  assert.ok(!fMes.includes('+7'), fMes)
+})
+
+test('la marca es de FONDO y sale de una FÓRMULA: no compite con el rojo y no envejece', () => {
+  const [r] = reglaPeriodoEnCurso({ sheetId: 7, meta: semanal() })
+  const regla = r.addConditionalFormatRule.rule
+  assert.equal(regla.booleanRule.condition.type, 'CUSTOM_FORMULA',
+    'pintar por coordenada deja la marca en la semana equivocada el día que el pipeline no corre')
+  assert.deepEqual(regla.booleanRule.format.backgroundColor, EN_CURSO)
+  assert.equal(regla.booleanRule.format.textFormat, undefined, 'la tinta es del déficit, no de la marca')
+})
+
+test('la marca ESTÁ en el juego de reglas que se escribe: una regla que nadie manda no pinta nada', () => {
+  // Sin esto, alguien puede sacar la llamada de `reglasCondicionales` y la función seguiría probada
+  // sola — el defecto que el dueño vio (53 columnas idénticas) volvería con todos los tests en verde.
+  for (const meta of [semanal(), mensual()]) {
+    const req = reglasCondicionales({ sheetId: 7, meta, refMinima: 'CAJA_MINIMA' })
+    const marca = req.filter((r) => {
+      const c = r.addConditionalFormatRule.rule.booleanRule.format.backgroundColor
+      return c && c.red === EN_CURSO.red && c.green === EN_CURSO.green && c.blue === EN_CURSO.blue
+    })
+    assert.equal(marca.length, 1, `${meta.tipo}: la columna del período en curso no se marca`)
+  }
+})
+
+test('la marca no alcanza la columna TOTAL: un total no es un período y no puede ser "hoy"', () => {
+  const meta = semanal()
+  const [r] = reglaPeriodoEnCurso({ sheetId: 7, meta })
+  const rango = r.addConditionalFormatRule.rule.ranges[0]
+  assert.equal(rango.startColumnIndex, meta.cab.col0)
+  assert.equal(rango.endColumnIndex, meta.cab.colTotal, 'la columna TOTAL queda fuera de la marca')
+  assert.equal(rango.startRowIndex, meta.cab.fila - 1, 'arranca en el encabezado: la fecha también se marca')
+  assert.equal(rango.endRowIndex, meta.fila.saldoFinal, 'termina en el saldo final, la fila que decide')
 })
 
 test('borrar las reglas viejas va de atrás para adelante: al revés se corren los índices', () => {

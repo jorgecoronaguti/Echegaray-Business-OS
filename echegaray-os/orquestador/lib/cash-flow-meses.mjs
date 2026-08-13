@@ -29,7 +29,7 @@ import {
   COL, FILA,
   conceptosDe, filaDeConcepto, colTotal, columnasDeTiempo, filaGraficos, footprintDe,
   medidasDeLaMatriz, bloquesDeMedida, formulasDeMedida,
-  expresionVentana, ventanas, celda, rangoFila, serialDeFecha, rotuloMes,
+  expresionVentana, ventanas, celda, rangoFila, serialDeFecha, rotuloMes, URL_ARCHIVO, ROTULO_HOY,
 } from './cash-flow-matriz.mjs'
 import { MEDIDAS, formulaMedida } from './cash-flow-medidas.mjs'
 import { terminoLibro } from './libro-sumas.mjs'
@@ -66,7 +66,7 @@ const refPresupuesto = (rango, mes) => `INDEX(${rango};MATCH(${mes};${PRESUPUEST
  * @param {Date} [p.hoy]
  * @returns {{filas:any[][], meta:object}}
  */
-export function grillaMeses({ anio = 2026, refs = {} } = {}) {
+export function grillaMeses({ anio = 2026, refs = {}, gid = null } = {}) {
   const { saldo: refSaldo = null, fecha: refFecha = null } = refs
   const filas = []
   const poner = (f, col, valor) => {
@@ -91,6 +91,12 @@ export function grillaMeses({ anio = 2026, refs = {} } = {}) {
   poner(FILA.titulo, 0, `Cash Flow Mensual ${anio}`)
   poner(FILA.subtitulo, 0,
     '="Cuánto entra, cuánto sale y cómo cierra cada mes · criterio percibido · del libro de movimientos · al "&TEXT(TODAY();"d/mm/yyyy")')
+  // EL MENSUAL TAMBIÉN MARCA DÓNDE ESTAMOS (13/08/2026). Tenía el atajo el semanal y no éste, y el
+  // control del pipeline lo reclamaba igual en las dos pestañas — reclamaba un atajo que en el Mensual
+  // no existía. Doce columnas se recorren de un vistazo, pero saber cuál es el mes en curso no es un
+  // atajo de navegación: es la línea entre lo que ya ocurrió y lo que todavía es proyección.
+  const vinculo = vinculoHoy(gid, meta)
+  if (vinculo) { poner(FILA.botonHoy, 0, vinculo); meta.botonHoy = { fila: FILA.botonHoy, col: 0 } }
 
   bloqueHero(poner, meta)
 
@@ -106,6 +112,21 @@ export function grillaMeses({ anio = 2026, refs = {} } = {}) {
 
   meta.filaFin = filas.length
   return { filas, meta }
+}
+
+/**
+ * EL ATAJO AL MES EN CURSO. Mismo contrato que el del semanal (`cash-flow-semanas.vinculoHoy`): busca
+ * el primero del mes de hoy en la fila de encabezados y arma la dirección con ADDRESS.
+ *
+ * `EOMONTH(TODAY();-1)+1` ES el primero del mes corriente — la misma expresión con la que se generaron
+ * los encabezados, así que el MATCH es exacto y no aproximado. Si el cuadro quedó viejo (otro año) la
+ * celda muestra #N/A, y está bien: taparlo con IFERROR cambiaría un aviso por un vínculo a cualquier lado.
+ */
+export function vinculoHoy(gid, meta) {
+  if (gid === null || gid === undefined) return null
+  const rangoCab = rangoFila(meta.cab.fila, meta.cab.col0, meta.cab.col0 + meta.cab.n - 1)
+  const dir = `ADDRESS(${meta.cab.fila};MATCH(EOMONTH(TODAY();-1)+1;${rangoCab};0)+${meta.cab.col0};4)`
+  return `=HYPERLINK("${URL_ARCHIVO()}#gid=${gid}&range="&${dir};"${ROTULO_HOY.mes}")`
 }
 
 /**

@@ -243,7 +243,14 @@ test('el vínculo "hoy" apunta a la columna de la semana corriente, y sin gid no
   const { meta } = armar()
   assert.equal(vinculoHoy(null, meta), null, 'sin el gid de la pestaña no hay vínculo, no un vínculo a ningún lado')
   const v = vinculoHoy(1234, meta)
-  assert.ok(v.startsWith('=HYPERLINK("#gid=1234&range="&ADDRESS('))
+  // ═══ LA URL ENTERA, NO EL FRAGMENTO SUELTO (13/08/2026) ═══
+  //
+  // Acá se exigía `=HYPERLINK("#gid=1234…` — el fragmento a secas. Google no navega con eso: contesta
+  // "no se puede abrir el vínculo porque se borró el rango vinculado". El test fijaba el defecto, así
+  // que el atajo que el dueño usa para llegar a la semana actual no hacía nada al hacer clic y ningún
+  // control lo veía. Sale de `URL_ARCHIVO()`, que es donde vive el id del archivo.
+  assert.ok(v.startsWith('=HYPERLINK("https://docs.google.com/spreadsheets/d/'), v)
+  assert.ok(v.includes('/edit#gid=1234&range="&ADDRESS('), v)
   assert.ok(v.includes('TODAY()-WEEKDAY(TODAY();3)'), 'el lunes de hoy se calcula igual que los encabezados')
   // El rótulo es el BOTÓN de A3 (06/08, pedido del dueño): visible sin scrollear, dice qué hace.
   assert.ok(v.endsWith(';"⏵  IR A LA SEMANA ACTUAL")'))

@@ -183,3 +183,62 @@ export function deObras(obras = [], colsCompras = null, corte = 0, aviso = () =>
     resumen: { obras: obrasConMovimientos, movimientos: movimientos.length, totalProyectado },
   }
 }
+
+/**
+ * ═══ LA CONCILIACIÓN OBRAS ↔ LIBRO, PARA QUE LA DESCONEXIÓN NO PUEDA VOLVER EN SILENCIO ═══
+ *
+ * El dueño, 13/08/2026: *"hay desconexión con la pestaña obras que marca costos estipulados, cobros y
+ * demás… no pueden no ser fiables"*. La causa medida fue que el generador del libro no estaba en el
+ * pipeline, así que los $18.880.836 de egresos proyectados que publica OBRAS no llegaban a ningún cash
+ * flow. Eso ya está arreglado — pero el arreglo no se ve: si mañana un egreso se cae por cualquier otro
+ * motivo (una obra sin fechas, un monto en cero, un cambio de shape), el cuadro vuelve a quedar corto y
+ * TAMPOCO da error. Un cuadro corto y coherente consigo mismo es el modo de falla más caro que tiene
+ * este archivo.
+ *
+ * Esta función contesta la única pregunta que importa, y la contesta en las dos direcciones:
+ * **de lo que OBRAS dice que va a salir, ¿cuánto está en el libro y cuánto se cayó?**
+ *
+ * LAS TRES PLATAS DE UNA OBRA NO SON LA MISMA, y por eso se devuelven separadas — sumarlas sería el
+ * doble conteo que todo este módulo evita:
+ *   · `caja`     — materiales, alquileres, combustible. Es lo que TIENE que estar en el libro.
+ *   · `porJornales` — MO + cargas. Entra al libro por la puerta de Jornales; acá se cuenta para poder
+ *                     explicar la diferencia contra el "Pendiente pago" de la pestaña, no para sumarla.
+ *   · `noCaja`   — máquina propia. No es plata que sale: no está en ningún flujo y no tiene que estar.
+ *
+ * PURA. No lee el archivo: recibe las obras y los movimientos que el extractor emitió.
+ *
+ * @param {Array} obras el shape de lib/obras-datos.mjs
+ * @param {Array} movimientos lo que devolvió `deObras`
+ * @returns {{caja:number, porJornales:number, noCaja:number, enElLibro:number, faltan:Array<{obra:string, proveedor:string, concepto:string, monto:number}>}}
+ */
+export function conciliarConObras(obras = [], movimientos = []) {
+  // La clave es (obra, proveedor, monto): es lo que identifica un punto de egreso planificado. El
+  // concepto no entra —el extractor lo reescribe con el prefijo de la obra y el sufijo de cuota— y la
+  // fecha tampoco, porque una fecha vencida se corre a corte+1 a propósito.
+  const emitidos = new Map()
+  for (const m of movimientos) {
+    const k = `${txt(m?.obra)} ${txt(m?.contraparte)} ${r2(Number(m?.importe) || 0)}`
+    emitidos.set(k, (emitidos.get(k) ?? 0) + 1)
+  }
+  let caja = 0; let porJornales = 0; let noCaja = 0
+  const faltan = []
+  for (const o of obras ?? []) {
+    porJornales = r2(porJornales + (Number(o?.moCargasPesos) || 0))
+    noCaja = r2(noCaja + (Number(o?.noCaja?.maquinaPropia) || 0))
+    for (const e of o?.egresos ?? []) {
+      const puntos = Array.isArray(e?.cuotas) && e.cuotas.length
+        ? e.cuotas.map((c) => Number(c?.monto) || 0)
+        : [Number(e?.monto) || 0]
+      for (const monto of puntos) {
+        if (monto <= 0) continue
+        caja = r2(caja + monto)
+        const k = `${txt(o?.obra)} ${txt(e?.proveedor) || '(sin proveedor)'} ${r2(monto)}`
+        const quedan = emitidos.get(k) ?? 0
+        if (quedan > 0) emitidos.set(k, quedan - 1)
+        else faltan.push({ obra: txt(o?.obra), proveedor: txt(e?.proveedor) || '(sin proveedor)', concepto: txt(e?.concepto), monto })
+      }
+    }
+  }
+  const enElLibro = r2(caja - faltan.reduce((s, x) => r2(s + x.monto), 0))
+  return { caja, porJornales, noCaja, enElLibro, faltan }
+}

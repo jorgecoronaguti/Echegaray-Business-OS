@@ -9,9 +9,9 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { grillaMeses, mesesDelAnio, destinosNombrados, PESTANA_MENSUAL } from './cash-flow-meses.mjs'
+import { grillaMeses, mesesDelAnio, destinosNombrados, PESTANA_MENSUAL, vinculoHoy } from './cash-flow-meses.mjs'
 import { NOMBRE_MESES } from './cash-flow-lineas.mjs'
-import { footprintDe, conceptosDe, colTotal, letra } from './cash-flow-matriz.mjs'
+import { footprintDe, conceptosDe, colTotal, letra, FILA } from './cash-flow-matriz.mjs'
 import { RUBROS_EGRESO } from './cash-flow-rubros.mjs'
 import { auditarPatron } from './patron-pestana.mjs'
 
@@ -200,4 +200,30 @@ test('después de la sección POR CLIENTE no hay NADA: el costo financiero vive 
   assert.ok(meta.clientes.titulo > meta.fila.variacionMesAnterior, 'la sección va DESPUÉS del tronco entero')
   const texto = filas.flat().map((c) => String(c ?? '')).join(' ')
   assert.ok(!/descubierto|impuesto al cheque|comisiones/i.test(texto), 'un costo modelado no puede vivir adentro del cuadro')
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL ATAJO AL MES ACTUAL — el Mensual no lo tenía y el control del pipeline lo reclamaba igual
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('el vínculo "hoy" del Mensual apunta al mes corriente, con la URL entera y sin gid no se inventa uno', () => {
+  const { meta } = armar()
+  assert.equal(vinculoHoy(null, meta), null, 'sin el gid de la pestaña no hay vínculo, no un vínculo a ningún lado')
+  const v = vinculoHoy(99, meta)
+  // El fragmento "#gid=" suelto no navega: Google contesta "se borró el rango vinculado".
+  assert.ok(v.startsWith('=HYPERLINK("https://docs.google.com/spreadsheets/d/'), v)
+  assert.ok(v.includes('/edit#gid=99&range="&ADDRESS('), v)
+  // El primero del mes corriente, con la MISMA expresión con la que se escribieron los encabezados.
+  assert.ok(v.includes('EOMONTH(TODAY();-1)+1'), v)
+  assert.ok(!v.includes('WEEKDAY'), 'el mes no se ubica por el lunes de la semana')
+  assert.ok(v.endsWith(';"⏵  IR AL MES ACTUAL")'), v)
+  assert.ok(!v.includes('IFERROR'), 'un cuadro vencido tiene que gritar #N/A, no llevar a una celda cualquiera')
+})
+
+test('con gid, el botón queda en A3 — la misma celda que en el Semanal', () => {
+  const { filas, meta } = armar({ gid: 99 })
+  assert.deepEqual(meta.botonHoy, { fila: FILA.botonHoy, col: 0 })
+  assert.match(en(filas, FILA.botonHoy, 0), /^=HYPERLINK\(/)
+  // Sin gid no se escribe nada: una celda con un vínculo roto es peor que una celda vacía.
+  assert.equal(en(armar().filas, FILA.botonHoy, 0), '')
 })

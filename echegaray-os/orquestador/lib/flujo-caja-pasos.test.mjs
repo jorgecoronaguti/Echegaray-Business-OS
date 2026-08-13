@@ -1,10 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PASOS, REPORTES, esReporte } from './flujo-caja-pasos.mjs'
 import { DUENOS_DE_PROVEEDORES } from './proveedores-frontera.mjs'
+
+const AQUI = dirname(fileURLToPath(import.meta.url))
 
 test('esReporte: los auditores/formateadores son reportes de presentación, no fallos de datos', () => {
   assert.equal(esReporte('auditar-pantalla.mjs'), true)
@@ -100,6 +102,58 @@ test('OBRAS corre DESPUÉS de lo que lee: el rubro de Compras y la pestaña Mate
   const pos = (s) => PASOS.findIndex(([x]) => x === s)
   assert.ok(pos('obras-pestana.mjs') > pos('rubro-caja-sheet.mjs'), 'OBRAS corre antes del rubro de caja')
   assert.ok(pos('obras-pestana.mjs') > pos('proveedores-materiales-pestana.mjs'), 'OBRAS corre antes de Materiales')
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL LIBRO — LA FUENTE DE LOS TRES CUADROS QUE MÁS SE MIRAN
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// El 13/08/2026 `_MOVIMIENTOS` era la única pestaña generada del archivo SIN dueño en el pipeline:
+// CAJA y los dos cash flow se recalculaban cada 2 horas sobre un libro que nadie refrescaba desde el
+// 07/08. Medido en el archivo vivo: cero filas con origen "Obras" (los $18.880.836 de egresos
+// proyectados de las 7 obras no llegaban a ningún cuadro) y $8.758.810 de cobros de menos.
+//
+// Estos tres tests son el defecto, no el arreglo: si alguien saca el paso, o lo mueve antes de sus
+// fuentes, o después de sus consumidores, se ponen rojos.
+
+test('el LIBRO (_MOVIMIENTOS) tiene dueño en el pipeline: es la fuente de CAJA y de los dos cash flow', () => {
+  const dueños = PASOS.filter(([, , t = []]) => t.includes('_MOVIMIENTOS')).map(([s]) => s)
+  assert.deepEqual(dueños, ['libro-movimientos-pestana.mjs'],
+    'sin dueño, _MOVIMIENTOS sólo se refresca si alguien lo tipea a mano y los tres cuadros calculan sobre una foto vieja')
+})
+
+test('el LIBRO corre DESPUÉS de todas las pestañas que lee', () => {
+  // Las fuentes NO se listan a mano: se leen del propio script. Una fuente nueva que alguien agregue
+  // al libro y no ubique en el pipeline hace fallar este test sola.
+  const fuente = readFileSync(join(AQUI, '../scripts/libro-movimientos-pestana.mjs'), 'utf8')
+  const leidas = new Set([...fuente.matchAll(/leer\(\s*[`'"]'?([^'"`!]+?)'?!/g)].map((m) => m[1]))
+  assert.ok(leidas.size >= 7, `esperaba varias pestañas leídas por el libro y encontré ${leidas.size}`)
+
+  const pos = (s) => PASOS.findIndex(([x]) => x === s)
+  const posLibro = pos('libro-movimientos-pestana.mjs')
+  for (const pestaña of leidas) {
+    const dueño = PASOS.find(([, , t = []]) => t.includes(pestaña))
+    if (!dueño) continue // Compras y Cobranzas las carga una persona: no tienen generador
+    assert.ok(pos(dueño[0]) < posLibro,
+      `el libro lee "${pestaña}" pero ${dueño[0]} la reescribe DESPUÉS: el libro leería la corrida anterior`)
+  }
+})
+
+test('el LIBRO corre ANTES de CAJA y de los dos cash flow, que son sus consumidores', () => {
+  const pos = (s) => PASOS.findIndex(([x]) => x === s)
+  const posLibro = pos('libro-movimientos-pestana.mjs')
+  for (const consumidor of ['caja-anexo-pestana.mjs', 'caja-pestana.mjs', 'cash-flow-vistas.mjs']) {
+    assert.ok(pos(consumidor) > posLibro,
+      `${consumidor} lee _MOVIMIENTOS y corre ANTES del libro: muestra el libro de la corrida anterior`)
+  }
+})
+
+test('las dos vistas de cash flow corren DESPUÉS de CAJA: el saldo inicial sale de sus rangos con nombre', () => {
+  // El ancla del saldo (CAJA_TOTAL_DISPONIBLE / CAJA_FECHA_SALDO) la publica caja-pestana. Antes de
+  // ella, las 53 columnas del semanal se encadenan desde el saldo de la corrida anterior — sin error.
+  const pos = (s) => PASOS.findIndex(([x]) => x === s)
+  assert.ok(pos('cash-flow-vistas.mjs') > pos('caja-pestana.mjs'),
+    'las vistas se calculan antes de que CAJA publique el saldo: el ancla queda un ciclo atrasada')
 })
 
 test('sólo el generador de texto declara "Proveedores" como pestaña suya', () => {
