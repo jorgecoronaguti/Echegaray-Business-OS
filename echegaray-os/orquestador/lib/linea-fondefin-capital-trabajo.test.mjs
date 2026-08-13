@@ -26,7 +26,9 @@ test('la tasa es una FÓRMULA viva: cambia la Badlar, cambia la ficha', () => {
   assert.equal(CONDICION_FONDEFIN_CAPITAL_TRABAJO.tna, tnaFondefin(BADLAR_REFERENCIA.valor))
   // ESTA es la aserción que un literal pegado NO puede pasar: con la Badlar del piso de las últimas
   // tres semanas la ficha tiene que dar otra tasa, y el texto de observaciones tiene que decirlo.
-  const piso = condicionConBadlar(BADLAR_REFERENCIA.rango_3_semanas.min)
+  // `rango_3_semanas` se renombró a `rango_observado` cuando la serie de Badlar pasó de tres números
+  // tipeados a la respuesta cruda del BCRA: el rótulo viejo decía "3 semanas" sobre 16 días.
+  const piso = condicionConBadlar(BADLAR_REFERENCIA.rango_observado.min)
   assert.equal(piso.tna, 0.12525)
   assert.match(piso.observaciones, /12,525%/)
   assert.notEqual(piso.tna, CONDICION_FONDEFIN_CAPITAL_TRABAJO.tna)
