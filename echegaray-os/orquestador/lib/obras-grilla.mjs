@@ -119,13 +119,23 @@ import { esProyectable } from './obras-datos.mjs'
 
 export const PESTANA_OBRAS = 'OBRAS'
 
-/** A obra/concepto · B semáforo · C venta/proyectado · D cobrado · E real · F pendiente · G margen ·
- *  H fecha · I prosa. */
-export const ANCHO_OBRAS = 9
+/**
+ * A rótulo · B semáforo · C venta · D cobrado · E resta · F vencido · G materiales · H próx. cobro.
+ *
+ * ERAN NUEVE. LA NOVENA ERA LA GLOSA Y EL DUEÑO LA MANDÓ SACAR (13/08): *"la columna i en obras
+ * ensucia con esa informacion, sacala"*. En Playón y Quattropani ocupaba siete y ocho renglones de
+ * prosa que competían con los importes por la atención — lo contrario del estándar que pide:
+ * *"minimalismo = less is more, world class = como se usaría en JP Morgan"*. El dato ES el diseño.
+ *
+ * NO SE MUDÓ A OTRA COLUMNA —eso sería mover la basura de lugar—. El proveedor pasó al rótulo de su
+ * fila, que es donde se identifica una fila; las cuotas quedaron en una marca (`×3`); el resto no
+ * está. El criterio para cada elemento fue uno: ¿esto cambia una decisión?
+ */
+export const ANCHO_OBRAS = 8
 
 /** Anchos en píxeles — los importes con aire, la prosa angosta y al final (estándar del dueño). La
  *  columna A NO se declara acá: la calcula `anchoColumnaA` a partir de los rótulos que se emiten. */
-export const ANCHOS_OBRAS = [300, 44, 138, 138, 138, 138, 138, 92, 300]
+export const ANCHOS_OBRAS = [300, 44, 138, 138, 138, 138, 138, 92]
 
 /** Lo que Sheets muestra cuando una fórmula no evalúa. Publicar uno es peor que no escribir. */
 export const ERRORES_SHEET = Object.freeze(['#ERROR!', '#REF!', '#VALUE!', '#NAME?', '#N/A', '#DIV/0!', '#NUM!', '#NULL!'])
@@ -305,8 +315,6 @@ export const serialISO = (iso) => {
   const [y, m, d] = String(iso).split('-').map(Number)
   return Math.round((Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 86400000)
 }
-const ddmm = (iso) => { const [y, m, d] = String(iso).split('-'); return `${d}/${m}/${y.slice(2)}` }
-const ars = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-AR')}`
 
 const abierto = (c, campo) => `'${c.hoja}'!$${c[campo]}$${c.desde}:$${c[campo]}`
 
@@ -316,21 +324,6 @@ const NO_VENTA = 'CANCELAR'
 /** El estado de una fila ya cobrada. Todo lo demás que no sea CANCELAR es lo que resta cobrar. */
 const COBRADO = 'Cobrado'
 
-/**
- * EL PATRÓN DE IMPORTE PARA `TEXT()` — Y LA TRAMPA QUE ESTÁ AL LADO DE LA OTRA TRAMPA.
- *
- * ⚠ NO "CORREGIR" ESTA COMA POR UN PUNTO. Parece un error en es-AR y no lo es:
- *
- *   · el SEPARADOR DE ARGUMENTOS de una fórmula por API va en LOCALE  → `;`, nunca `,`
- *   · el PATRÓN DE NÚMERO de esa misma fórmula va en NOTACIÓN US      → `,` miles, `.` decimales
- *
- * Dos reglas opuestas en la misma línea. Sheets recibe `#,##0` y lo DIBUJA `65.000.000` porque el
- * archivo es es-AR. Ya se escribió al revés —`#.##0`, "porque acá los miles van con punto"— y ese
- * punto se leyó como el decimal: se publicó `$ 23795136,0` donde iba `$ 23.795.136`.
- *
- * Lo verifica `evaluar-formula-sheet.mjs`, que corre el TEXT en frío y devuelve el texto renderizado.
- */
-const MILES = '"$ #,##0"'
 
 /**
  * EL CRITERIO DE UN CLIENTE: SU TEXTO EXACTO.
@@ -435,40 +428,6 @@ const proximoCobro = (cob, cliente, extra = '') => {
   return `=IF(${min}>=${LEJOS};"";${min})`
 }
 
-/**
- * EL DETALLE DE COBRANZAS DE UNA OBRA, EN UNA SOLA CELDA.
- *
- * El dueño pidió poder leer cada cobranza por obra —Playón tiene 6 eventos— sin que la pestaña se
- * llene de filas. TEXTJOIN sobre un ARRAYFORMULA devuelve UNA celda: no derrama sobre las columnas
- * del generador, que es la trampa que este repo ya pagó con los derrames de ARRAYFORMULA.
- */
-/**
- * BLANCO Y NEGRO, SÓLO SI LA OBRA ESTÁ PARTIDA.
- *
- * Es lo que explica que la resta a cobrar supere a la venta neta: el IVA de la parte blanca. Se
- * calcula vivo sobre la categoría de cada FILA (col B) y el `IF` lo hace desaparecer cuando la obra
- * es toda blanca o toda negra — hoy sólo Playón lo muestra. Poner el dato siempre sería ruido en seis
- * obras para explicar una.
- */
-function composicionBlancoNegro(cob, cliente, extra) {
-  const porCategoria = (cat) => `(${sumaCobranzas(cob, 'neto', cliente, { ...extra, cat }, `"<>${NO_VENTA}"`)})`
-  const b = porCategoria('B')
-  const n = porCategoria('N')
-  return `IF(${b}*${n}>0;"blanco "&TEXT(${b};${MILES})&" · negro "&TEXT(${n};${MILES})&" ‖ ";"")`
-}
-
-function detalleCobranzas(cob, cliente, needle) {
-  const cond = variantesDe(cliente)
-    .map((v) => `(${abierto(cob, 'cliente')}="${v}")`).join('+')
-  // EL IMPORTE SE FORMATEA ADENTRO DE LA FÓRMULA: TEXTJOIN concatena TEXTO y el formato de número de
-  // la celda no lo toca. El separador entre eventos es " | ": con seis cobranzas seguidas, el " · "
-  // se leía como párrafo. El patrón va en `MILES`, y ese detalle tiene su propia advertencia.
-  const extra = { needle }
-  return `=IFERROR(${composicionBlancoNegro(cob, cliente, extra)}&TEXTJOIN(" | ";1;ARRAYFORMULA(IF((${cond})*(ISNUMBER(SEARCH("${needle}";${abierto(cob, 'concepto')})))`
-    + `*(${abierto(cob, 'estado')}<>"${COBRADO}")*(${abierto(cob, 'estado')}<>"${NO_VENTA}")*(${abierto(cob, 'fechaCobro')}>0);`
-    + `TEXT(${abierto(cob, 'fechaCobro')};"dd/mm")&" · "&TEXT(${abierto(cob, 'total')};${MILES})&" · "&${abierto(cob, 'forma')};"")));"")`
-}
-
 /** Mismo constructor de grilla que el anexo de CAJA: push devuelve la fila 1-based, y toda celda
  *  vacía sale con el centinela VACIO ("es mía y va vacía") para que la fusión la limpie. */
 function hoja() {
@@ -504,14 +463,14 @@ function hoja() {
 function seccionObrasDelAno(h, refs, clientes) {
   const { cob, mat } = refs
   h.push(['1 · OBRAS DEL AÑO'])
-  h.push(['Cliente', '', 'Venta (neto)', 'Cobrado', 'Resta cobrar', 'Vencido', 'Materiales (real)', '', ''])
+  h.push(['Cliente', '', 'Venta (neto)', 'Cobrado', 'Resta cobrar', 'Vencido', 'Materiales (real)', ''])
   const f0 = h.n + 1
   for (const cli of clientes) {
     const f = h.n + 1
     h.push([cli, '', venta(cob, cli), cobrado(cob, cli), restaCobrar(cob, cli), vencido(cob, cli),
       `=IFERROR(INDEX('${mat.hoja}'!$A:$Z;MATCH("${mat.filaTotal}";'${mat.hoja}'!$A:$A;0);`
         + `MATCH($A${f};INDEX('${mat.hoja}'!$A:$Z;MATCH("${mat.filaCabecera}";'${mat.hoja}'!$A:$A;0)+1;0);0));"—")`,
-      '', ''])
+      ''])
   }
   const f1 = h.n
   // COBRANZAS ENTERA, sin filtrar por cliente. El único criterio es el estado, así que una fila con la
@@ -527,16 +486,14 @@ function seccionObrasDelAno(h, refs, clientes) {
     `=${todo('neto', `<>${NO_VENTA}`)}-SUM(C${f0}:C${f1})`,
     `=${todo('total', COBRADO)}-SUM(D${f0}:D${f1})`,
     `=${todo('total', `<>${NO_VENTA}`)}-${todo('total', COBRADO)}-SUM(E${f0}:E${f1})`,
-    '', '', '',
-    'si deja de ser cero, hay un cliente en Cobranzas que no entró en ninguna fila'])
+    '', '', ''])
   // EL TOTAL SALE DE LA FUENTE, NO DE LA SUMA DE ARRIBA. Antes era `SUM(C6:C12)` con el residuo
   // adentro, y como el residuo es "archivo − las filas", el total daba el archivo POR CONSTRUCCIÓN:
   // una identidad que no puede fallar, o sea que no controlaba nada. El control falsificable es el
   // residuo: puede dar distinto de cero, y entonces falta un cliente.
   const fTot = h.push(['⇒ TOTAL 2026', '', `=${todo('neto', `<>${NO_VENTA}`)}`, `=${todo('total', COBRADO)}`,
     `=${todo('total', `<>${NO_VENTA}`)}-${todo('total', COBRADO)}`,
-    `=SUM(F${f0}:F${fOtros})`, `=SUM(G${f0}:G${f1})`, '',
-    'IVA sólo en las filas blancas (B)'])
+    `=SUM(F${f0}:F${fOtros})`, `=SUM(G${f0}:G${f1})`, ''])
   h.push([])
   return { fClientes: [f0, f1], fOtros, fTot }
 }
@@ -548,45 +505,6 @@ function seccionObrasDelAno(h, refs, clientes) {
 function realEgreso(cmp, proveedor, cliente, inicio) {
   return `SUMIFS(${abierto(cmp, 'neto')};${abierto(cmp, 'proveedor')};"${proveedor}";`
     + `${abierto(cmp, 'cliente')};"${cliente}";${abierto(cmp, 'fecha')};">="&${serialISO(inicio)})`
-}
-
-/**
- * LA PROSA DE LA OBRA, CORTA. Fechas, plantel, horas y la nota del dueño si la hay.
- *
- * El estándar es "muy poco texto", y en el PDF del 13/08 había filas donde la glosa ocupaba más que
- * el dato: el desglose de horas por categoría entraba entero en cada obra. Las horas se publican
- * SUMADAS —el detalle por categoría vive en Jornales, que es su dueño— y el plantel en dos palabras.
- */
-function prosaDeObra(o, proyectable) {
-  const p = []
-  // El año va en el título de la pestaña: repetirlo en cada obra sumaba seis caracteres por fila y
-  // empujaba la glosa a un segundo renglón. Todas las obras son del mismo año.
-  p.push(proyectable ? `${ddmm(o.inicio).slice(0, 5)}→${ddmm(o.fin).slice(0, 5)}` : '⚠ sin fechas')
-  if (o.plantelFullTime != null) p.push(`${o.plantelFullTime + (o.plantelTemporales ?? 0)} personas`)
-  const horas = Object.values(o.horas ?? {}).reduce((s, h) => s + (Number(h) || 0), 0)
-  if (horas) p.push(`${Math.round(horas).toLocaleString('es-AR')} h`)
-  if (o.pctEjecutado) p.push(`al ${Math.round((1 - o.pctEjecutado) * 100)}% restante`)
-  if (o.notas) p.push(o.notas)
-  return p.join(' · ')
-}
-
-/**
- * LA PROSA DE UN EGRESO: proveedor y, si se reparte, en cuántas cuotas.
- *
- * La nota del insumo se descarta cuando lo único que hace es repetir las cuotas ("3 cuotas mensuales
- * iguales" al lado de las 3 cuotas ya listadas). Decir dos veces lo mismo no es más claro: es más
- * texto tapando el importe, que es lo que se vino a leer.
- */
-function prosaDeEgreso(e) {
-  const p = []
-  if (e.cuotas?.length) {
-    const iguales = new Set(e.cuotas.map((c) => c.monto)).size === 1
-    p.push(iguales
-      ? `${e.cuotas.length}× ${ars(e.cuotas[0].monto)} desde ${ddmm(e.cuotas[0].fecha).slice(0, 5)}`
-      : e.cuotas.map((c) => `${ddmm(c.fecha).slice(0, 5)} ${ars(c.monto)}`).join(' | '))
-  }
-  if (e.nota && !(e.cuotas?.length && /cuota/i.test(e.nota))) p.push(e.nota)
-  return p.join(' · ')
 }
 
 /**
@@ -624,8 +542,7 @@ function bloqueObra(h, refs, o, idx, unica = false) {
     // PARA QUE EL MARGEN POR OBRA EXISTA hace falta que cada compra diga a QUÉ OBRA va, no sólo a qué
     // cliente. Mientras eso no esté, la columna no vuelve.
     '',
-    proximoCobro(cob, o.cliente, dela),
-    detalleCobranzas(cob, o.cliente, o.ventaTexto)])
+    proximoCobro(cob, o.cliente, dela)])
 
   for (const e of o.egresos ?? []) {
     const f = h.n + 1
@@ -634,23 +551,25 @@ function bloqueObra(h, refs, o, idx, unica = false) {
     // EL NETEO VIVO VA EMBEBIDO EN "PENDIENTE": cuando entra la factura real a Compras, el pendiente
     // baja solo. La columna del real dejó su lugar a "Resta cobrar" — el dueño la declaró inútil acá
     // (13/08: *"esa columna real no sirve"*) y el dato que sí decide es cuánto FALTA desembolsar.
-    h.push([`      ${e.concepto}`, '', e.monto, '', '',
+    // EL PROVEEDOR IDENTIFICA LA FILA: va en el rótulo, no en una glosa. Las cuotas se reducen a
+    // "×3" —cuántas son cambia el desembolso, sus fechas exactas no— y sin proveedor el ⚠ dice que
+    // el real no se puede medir. Todo eso ocupaba antes una columna entera de prosa.
+    h.push([`      ${e.concepto}${e.proveedor ? ` · ${e.proveedor}` : ' · ⚠ sin proveedor'}`
+      + `${e.cuotas?.length ? ` ×${e.cuotas.length}` : ''}`, '', e.monto, '', '',
       medible ? `=MAX(0;C${f}-${realEgreso(cmp, e.proveedor, o.cliente, o.inicio)})` : `=MAX(0;C${f})`,
-      '', fecha ? serialISO(fecha) : '',
-      [e.proveedor ?? '⚠ sin proveedor: el real no se puede medir', prosaDeEgreso(e)].filter(Boolean).join(' · ')])
+      '', fecha ? serialISO(fecha) : ''])
     h.tipeadas.push({ fila: f, col: 2 })
     if (fecha) h.tipeadas.push({ fila: f, col: 7 })
   }
 
   const fMO = h.n + 1
-  h.push(['      Mano de obra + cargas sociales', '', o.moCargasPesos, '', '', `=C${fMO}`, '', '',
-    `Jornales · ${prosaDeObra(o, proyectable)}`])
+  h.push(['      Mano de obra + cargas sociales · Jornales', '', o.moCargasPesos, '', '', `=C${fMO}`, '', ''])
   h.tipeadas.push({ fila: fMO, col: 2 })
 
   let fNoCaja = null
   if (o.noCaja?.maquinaPropia) {
-    fNoCaja = h.push(['      ⊘ Máquina propia — no es plata que sale', '', o.noCaja.maquinaPropia,
-      '', '', '', '', '', 'equipo propio · no entra al flujo'])
+    // El ⊘ ES la marca: equipo propio, no es plata que sale. Repetirlo en prosa no agrega nada.
+    fNoCaja = h.push(['      ⊘ Máquina propia', '', o.noCaja.maquinaPropia, '', '', '', '', ''])
     h.tipeadas.push({ fila: fNoCaja, col: 2 })
   }
   h.push([])
@@ -678,17 +597,15 @@ export function grillaObras(ctx = {}) {
 
   const s1 = seccionObrasDelAno(h, refs, clientes)
 
-  h.push(['2 · OBRAS EN CURSO Y FUTURAS', '', '', '', '', '', '', '',
-    'tipeado = proyección del dueño (07/08)'])
-  h.push(['Obra', '', 'Venta (neto)', 'Cobrado', 'Resta cobrar', 'Vencido', '', 'Próx. cobro',
-    'Cobranzas pendientes'])
+  h.push(['2 · OBRAS EN CURSO Y FUTURAS'])
+  h.push(['Obra', '', 'Venta (neto)', 'Cobrado', 'Resta cobrar', 'Vencido', '', 'Próx. cobro'])
   // Cuántas obras declaradas tiene cada cliente: es lo que habilita la regla del dueño de arriba.
   const porCliente = obras.reduce((m, o) => m.set(o.cliente, (m.get(o.cliente) ?? 0) + 1), new Map())
   const bloques = obras.map((o, i) => bloqueObra(h, refs, o, i + 1, porCliente.get(o.cliente) === 1))
   const suma = (col) => `=${bloques.map((b) => `${col}${b.fProt}`).join('+')}`
   const fTot2 = bloques.length
     ? h.push(['⇒ TOTAL — OBRAS EN CURSO Y FUTURAS', '', suma('C'), suma('D'), suma('E'), suma('F'), '', '',
-      'sin margen por obra: Compras no dice a qué obra va cada compra, sólo a qué cliente'])
+      ''])
     : null
 
   const totales = [s1.fTot, fTot2].filter(Boolean)

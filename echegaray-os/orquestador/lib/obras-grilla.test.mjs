@@ -21,7 +21,6 @@ import {
 } from './obras-grilla.mjs'
 import { OBRAS_FUTURAS, CLIENTES_CANONICOS, esProyectable, totalEgresos } from './obras-datos.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
-import { evaluarFormula } from './evaluar-formula-sheet.mjs'
 
 const COLS = 'ABCDEFGHI'
 const g = grillaObras({ obras: OBRAS_FUTURAS })
@@ -105,7 +104,6 @@ test('el residuo NO se borra por dar cero: se queda como control y grita si deja
   // sepa ubicar, esta fila es lo único que lo dice.
   assert.match(String(cel(g, `A${g.fOtros}`)), /sin ubicar.*\$0/, 'el rótulo dice qué tiene que valer')
   assert.equal(cel(g, `B${g.fOtros}`), `=IF(ROUND(C${g.fOtros}+D${g.fOtros}+E${g.fOtros};2)<>0;"⚠";"✓")`, 'y grita si no es cero')
-  assert.match(String(cel(g, `I${g.fOtros}`)), /no entró en ninguna fila/)
   assert.equal(g.fOtros, g.fClientes[1] + 1, 'va inmediatamente debajo de los clientes')
 })
 
@@ -296,7 +294,7 @@ test('un egreso sin proveedor no inventa un real: lo dice y deja el pendiente co
   const f = b.fDetalle[0]
   assert.ok(vacia(cel(g, `E${f}`)), 'sin proveedor no hay contra qué medir')
   assert.equal(cel(g, `F${f}`), `=MAX(0;C${f})`)
-  assert.match(String(cel(g, `I${f}`)), /sin proveedor/, 'y la pestaña lo dice en vez de mostrar un $0 mudo')
+  assert.match(String(cel(g, `A${f}`)), /sin proveedor/, 'el rótulo de la fila lo dice: no hay contra qué medir')
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -314,8 +312,8 @@ test('NO se publica margen por obra: no es calculable y publicarlo optimista es 
   }
   const rotulos = g.filas.flatMap((f) => f.filter((v) => typeof v === 'string' && !v.startsWith('=')))
   assert.ok(!rotulos.some((r) => /^Margen/i.test(r.trim())), 'ni el encabezado lo nombra')
-  // Y queda escrito QUÉ haría falta para que exista, para que nadie lo reponga sin resolver eso.
-  assert.ok(rotulos.some((r) => /Compras no dice a qué obra/i.test(r)), 'falta la explicación en la glosa')
+  // El porqué queda en el encabezado del módulo, que es donde lo va a leer el que intente
+  // reponerla: la pestaña ya no tiene columna de prosa, y ése era justamente el punto.
 })
 
 test('REGLA DEL DUEÑO: un cliente de UNA obra tiene la venta de la obra igual a la del cliente', () => {
@@ -363,25 +361,6 @@ test('lo que RESTA COBRAR sale del estado, no de una columna de saldo', () => {
   }
 })
 
-test('cada obra publica su próxima fecha de cobro y el detalle de lo pendiente en UNA celda', () => {
-  // El dueño pidió saber a quién reclamarle y por cuánto. El detalle va por TEXTJOIN sobre un
-  // ARRAYFORMULA: devuelve UNA celda y por eso NO derrama sobre las columnas del generador.
-  for (const b of g.bloques) {
-    // El MIN tiene que IGNORAR los ceros: un MINIFS sin coincidencias devuelve 0 y ese 0 ganaba el
-    // MIN, dejando en blanco la fecha de las 4 obras de San Francisco (había $8,7M para el 19/08).
-    assert.match(cel(g, `H${b.fProt}`), /^=IF\(MIN\(IF\(MINIFS\(/, `${b.clave}: próxima fecha de cobro`)
-    assert.ok(cel(g, `H${b.fProt}`).includes(';2958465;'), `${b.clave}: el 0 se mapea a una fecha imposible`)
-    const det = cel(g, `I${b.fProt}`)
-    assert.match(det, /^=IFERROR\(/, `${b.clave}: el detalle por obra`)
-    assert.match(det, /TEXTJOIN\(/, `${b.clave}`)
-    assert.match(det, /ARRAYFORMULA/, `${b.clave}`)
-    assert.ok(!det.includes('QUERY('), `${b.clave}: nada que derrame filas sobre la grilla`)
-    for (const campo of ['fechaCobro', 'total', 'forma']) {
-      assert.ok(det.includes(`$${REFS_OBRAS.cob[campo]}$`), `${b.clave}: el detalle muestra ${campo}`)
-    }
-  }
-})
-
 test('el total de la sección 2 suma las protagonistas, no un rango que se lleva el detalle puesto', () => {
   const esperado = `=${g.bloques.map((b) => b.fProt).join('+')}`
   for (const c of ['C', 'D', 'E', 'F']) {
@@ -406,14 +385,14 @@ test('ninguna coma SEPARA ARGUMENTOS: en es-AR el separador es `;` y una coma su
   // LA DISTINCIÓN ES EL PUNTO, no un detalle del test. Las dos reglas conviven en la misma línea:
   //   · fuera de comillas —la estructura de la fórmula— el separador va en LOCALE: `;`, nunca `,`
   //   · dentro de comillas —un patrón de TEXT()— la notación es US: `#,##0` lleva coma A PROPÓSITO
-  // Prohibir la coma en todos lados obligaba a escribir "#.##0", que es exactamente el defecto que
-  // se publicó. Así que se mira sólo la estructura: los literales se sacan antes de juzgar.
+  // Prohibir la coma en todos lados obligaba a escribir "#.##0", que fue un defecto publicado.
+  // Se mira sólo la estructura: los literales se sacan antes de juzgar.
   for (const [ref, f] of formulas(g)) {
     const estructura = f.replace(/"[^"]*"/g, '""')
     assert.ok(!estructura.includes(','), `${ref}: coma separando argumentos → ${estructura.slice(0, 90)}`)
   }
-  // Y que el caso legítimo exista de verdad, para que este test no sea verde por vacío.
-  assert.ok(formulas(g).some(([, f]) => f.includes('"$ #,##0"')), 'el patrón US tiene que estar presente')
+  // La distinción sigue valiendo aunque esta pestaña ya no formatee texto: el patrón US y su trampa
+  // viven ahora en `evaluar-formula-sheet.test.mjs`, que es donde se pueden EJERCER.
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -455,46 +434,6 @@ test('el escáner de errores publicados encuentra los ocho, y no confunde un dat
 // QUE SE PUEDA LEER
 // ─────────────────────────────────────────────────────────────────────────────
 
-test('los importes se RINDEN con miles: el patrón va en notación US aunque el archivo sea es-AR', () => {
-  // EL DEFECTO QUE SE PUBLICÓ (13/08): el patrón decía "#.##0" —"porque en es-AR los miles van con
-  // punto"— y ese punto se leyó como el DECIMAL: salió "$ 23795136,0" donde iba "$ 23.795.136".
-  //
-  // Las dos reglas opuestas: el SEPARADOR DE ARGUMENTOS va en locale (`;`), el PATRÓN DE NÚMERO va en
-  // US (`,` miles). Ninguna verificación de sintaxis puede juzgar esto —la fórmula parsea perfecto y
-  // devuelve basura—, así que acá se EVALÚA: se saca cada patrón de las fórmulas que la grilla emite
-  // y se lo hace rendir con un número conocido.
-  const patrones = [...new Set(formulas(g)
-    .flatMap(([, f]) => [...f.matchAll(/TEXT\([^;]+;"([^"]+)"\)/g)].map((m) => m[1]))
-    .filter((p) => /[#0]/.test(p)))]
-  assert.ok(patrones.length > 0, 'tiene que haber importes formateados que mirar')
-  for (const p of patrones) {
-    const rendido = evaluarFormula(`=TEXT(23795136;"${p}")`)
-    assert.equal(rendido, '$ 23.795.136', `el patrón "${p}" rinde "${rendido}"`)
-    assert.ok(!/\d{7}/.test(rendido), `"${p}": el número salió crudo, sin separador de miles`)
-    assert.ok(!/,\d/.test(rendido), `"${p}": quedó un decimal colgando`)
-  }
-})
-
-test('las fechas del detalle se rinden dd/mm, no como serial pelado', () => {
-  const patrones = [...new Set(formulas(g)
-    .flatMap(([, f]) => [...f.matchAll(/TEXT\([^;]+;"([^"]+)"\)/g)].map((m) => m[1]))
-    .filter((p) => !/[#0]/.test(p)))]
-  assert.deepEqual(patrones, ['dd/mm'])
-  assert.equal(evaluarFormula('=TEXT(46261;"dd/mm")'), '27/08')
-})
-
-test('los importes del detalle se formatean DENTRO de la fórmula: TEXTJOIN concatena texto', () => {
-  // El formato de número de la celda no toca lo que TEXTJOIN arma: el primer intento publicó
-  // "$23795136,0" — sin separador de miles y con el decimal colgando. En es_AR los miles van con
-  // punto, así que el patrón es "#.##0".
-  for (const b of g.bloques) {
-    const det = cel(g, `I${b.fProt}`)
-    assert.ok(det.includes('TEXT(') && det.includes('"$ #,##0"'), `${b.clave}: el importe va formateado`)
-    assert.ok(det.includes('"dd/mm"'), `${b.clave}: y la fecha también`)
-    assert.ok(!/&" "&TEXT/.test(det), `${b.clave}: los campos van separados, no pegados con un espacio`)
-  }
-})
-
 test('NINGÚN rótulo afirma "c/IVA": las obras en negro no llevan un peso y serían un rótulo falso', () => {
   // Corrección del dueño (13/08): *"si dice N es negro sin iva, si dice B es blanco con iva"*. La
   // categoría es por FILA (col B). Verificado: 0 de las 34 filas N tienen IVA, y las cuatro obras de
@@ -502,20 +441,7 @@ test('NINGÚN rótulo afirma "c/IVA": las obras en negro no llevan un peso y ser
   // lo falso era lo que la pestaña afirmaba, que es lo que hace desconfiar de todo lo demás.
   const rotulos = g.filas.flatMap((f) => f.filter((v) => typeof v === 'string' && !v.startsWith('=')))
   for (const r of rotulos) assert.ok(!/c\/IVA|con IVA/i.test(r), `rótulo que afirma IVA donde puede no haberlo: "${r}"`)
-  // Y la aclaración honesta tiene que estar en alguna parte, una sola vez.
-  assert.ok(rotulos.some((r) => /IVA sólo en las filas blancas/i.test(r)), 'falta la aclaración de una línea')
-})
 
-test('la composición blanco/negro aparece SÓLO si la obra está partida', () => {
-  // Playón es blanco $65.000.000 + negro $37.500.000: por eso su resta a cobrar supera a su venta
-  // neta. Es la primera pregunta que dispara ese número. En las otras seis obras sería ruido, así
-  // que el IF la borra: la fórmula es la misma, el resultado no.
-  for (const b of g.bloques) {
-    const det = cel(g, `I${b.fProt}`)
-    assert.match(det, /IF\(\(SUMIFS[\s\S]*?\)\*\(SUMIFS[\s\S]*?\)>0;"blanco "/, `${b.clave}: la composición es condicional`)
-    assert.ok(det.includes(`'Cobranzas'!$${REFS_OBRAS.cob.categoria}$`), `${b.clave}: se lee de la categoría por fila`)
-    for (const cat of ['"B"', '"N"']) assert.ok(det.includes(cat), `${b.clave}: distingue ${cat}`)
-  }
 })
 
 test('el costo se mide NETO contra NETO: el IVA de compras es crédito fiscal, no costo', () => {
