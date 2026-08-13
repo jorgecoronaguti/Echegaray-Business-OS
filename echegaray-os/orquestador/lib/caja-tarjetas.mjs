@@ -66,12 +66,13 @@ const plata = (e) => `TEXT(${e};"$#,##0")`
 const dia = (e) => `TEXT(${e};"dd/mm")`
 
 /**
- * LAS CUATRO TARJETAS, EN ORDEN. Puras: devuelven fórmulas, no tocan nada.
+ * LAS CINCO TARJETAS, EN ORDEN. Puras: devuelven fórmulas, no tocan nada.
  *
- * El orden es el del tesorero de JPM, y no se negocia: cuánto puedo pagar HOY (operativo) → cuánto
- * tengo colocado (invertido, con su naturaleza) → cuánto ya está comprometido → con cuánto termino el
- * mes. Leído de izquierda a derecha cuenta una historia; en cualquier otro orden son cuatro números
- * sueltos.
+ * El orden es el del tesorero de JPM y no se negocia, porque leído de izquierda a derecha cuenta una
+ * historia y en cualquier otro orden son cinco números sueltos: cuánto puedo pagar HOY (operativo) →
+ * cuánto FALTA PAGAR del mes → con cuánto termino SI NO COBRO NADA MÁS → cuánto tengo colocado, con
+ * su naturaleza → con cuánto termino COBRANDO TODO. Las tarjetas 3 y 5 son la misma cuenta en sus dos
+ * extremos, y por eso van rotuladas por su supuesto y no por un nombre de saldo.
  *
  * @param {object} ref las celdas ya resueltas de la propia pestaña (referencias A1 absolutas)
  * @param {string} ref.total celda del total de disponibilidades (operativo: bancos y efectivo)
@@ -147,7 +148,22 @@ export function tarjetas(ref) {
     },
     {
       clave: 'comprometida',
-      rotulo: 'CAJA COMPROMETIDA',
+      // ═══ EL RÓTULO CONTESTA LA PREGUNTA, NO NOMBRA EL CONCEPTO (13/08, textual) ═══
+      //
+      // El dueño: *"la tarjeta 'caja comprometida' no sé si es algo q tengo q cubrir o ya está
+      // cubierto"*. El número era correcto y el rótulo lo desmentía: "CAJA …" nombra plata que se
+      // TIENE, y "comprometida" se lee igual de bien como "reservada" que como "pendiente". Las dos
+      // palabras juntas dicen "una parte de tu caja ya está apartada" — lo contrario de lo que la
+      // celda mide, que es plata que TODAVÍA TIENE QUE SALIR y que hoy no está en ningún lado.
+      //
+      // Y "COMPROMETIDO" a secas tampoco servía: es el nombre de UNO de los tres estados del libro
+      // ($15,2M de los $62,4M). Un rótulo que nombra un estado sobre un número que suma tres estados
+      // es peor que uno vago: es falso, y verificable como falso.
+      //
+      // "FALTA PAGAR ESTE MES" es la definición del propio dueño (06/08: *"lo comprometido es todo
+      // lo q hay q pagar en el mes − lo q ya se pagó"*) escrita como respuesta. La palabra
+      // "comprometido" sigue viva donde es un dato y no un rótulo: el estado del libro, el anexo.
+      rotulo: 'FALTA PAGAR ESTE MES',
       // "TODO LO QUE HAY QUE PAGAR EN EL MES − LO QUE YA SE PAGÓ": egresos no-REAL hasta fin de mes
       // (lo REAL ya salió del saldo del banco — restarlo otra vez lo contaría dos veces), más lo
       // vencido impago (sin `desde`). MAGNITUD y no neto: "cuánto debo" es positivo. La urgencia no
@@ -161,26 +177,54 @@ export function tarjetas(ref) {
       // los $44M del titular. El total crece cuando entra un compromiso nuevo y el pagado crece al
       // pagar: el titular es la diferencia, siempre derivable a ojo. Corto a propósito: la versión
       // larga se TRUNCABA en la celda ("próx. 7 dí") y una frase cortada es peor que ninguna.
-      contexto: `="de "&TEXT((${pagadoMes}+N($C$3))/1000000;"$#,##0")&"M del mes pagaste "&TEXT(${pagadoMes}/1000000;"$#,##0")&"M · 7 días: "&TEXT(${venceEn7}/1000000;"$#,##0.0")&"M"`,
+      //
+      // ═══ Y SEGUÍA SIN ENTRAR (13/08) ═══
+      //
+      // La frase medía 45 caracteres y la tarjeta son 216px (C+D) ≈ 37: se cortaba igual. No se veía
+      // porque el dueño ensanchó la C a mano hasta 252px para poder leerla — y la próxima corrida del
+      // generador se la devuelve a 130. "Del mes" salió de la frase porque ahora vive en el RÓTULO, y
+      // "7 días" quedó abreviado: el mismo dato, con su fecha y su saldo después, está tres columnas
+      // a la derecha en el tramo "Esta semana" de la escalera.
+      contexto: `="de "&TEXT((${pagadoMes}+N($C$3))/1000000;"$#,##0")&"M pagaste "&TEXT(${pagadoMes}/1000000;"$#,##0")&"M · 7d "&TEXT(${venceEn7}/1000000;"$#,##0.0")&"M"`,
       especie: 'plata',
     },
     {
       clave: 'libre',
-      rotulo: 'LIBRE DISPONIBILIDAD',
-      // ═══ LA DEFINICIÓN ES DEL DUEÑO, TEXTUAL (06/08, la que cerró todas las iteraciones) ═══
+      // ═══ EL NÚMERO ESTABA BIEN; EL RÓTULO NO DECÍA QUÉ PREGUNTA CONTESTA (13/08) ═══
       //
-      // "disponible es toda la plata q hay, comprometida es lo q hay q pagar el resto de
-      // compromisos del mes, POR ENDE surge libre disponibilidad". La resta de las dos tarjetas de
-      // al lado, por referencia — el lector la verifica con los ojos, que fue la regla que ninguna
-      // versión anterior cumplía del todo.
+      // El dueño: *"la 'libre disponibilidad' es negativo lo cual me confunde"*. Y con razón: la
+      // celda compara UNA FOTO DE HOY (la caja que hay) contra EL ACUMULADO DE LO QUE FALTA DEL MES,
+      // sin netear lo que se cobra en esos mismos días. Eso es un test de estrés —legítimo, y lo
+      // definió él el 06/08: *"disponible es toda la plata q hay, comprometida es lo q hay q pagar
+      // el resto de compromisos del mes, POR ENDE surge libre disponibilidad"*— pero "LIBRE
+      // DISPONIBILIDAD" promete un saldo utilizable, y un saldo utilizable negativo se lee como
+      // quiebra. El panel de al lado, que SÍ netea los cobros tramo por tramo, no perfora cero en
+      // ningún día del mes.
       //
-      // PUEDE DAR NEGATIVO y no es un defecto: significa que el resto del mes no se cubre con la
-      // caja de hoy sino con las cobranzas que entran en el mes — y el contexto lo dice en ese
-      // caso, para que el paréntesis rojo no se lea como quiebra. La historia la termina SALDO AL
-      // CIERRE, que suma esas cobranzas. El mínimo día-a-día del recorrido (el piso) sigue vivo en
-      // la fila de cierre de la escalera y su alerta.
+      // Y ADEMÁS EL NOMBRE YA ESTABA OCUPADO: "saldo de libre disponibilidad" es el término de ARCA
+      // para el saldo de IVA a favor, y este mismo sistema lo usa con ese significado
+      // (lib/iva-libre-disponibilidad.mjs, lib/iva-ddjj.mjs). Dos cosas distintas con el mismo
+      // nombre adentro del mismo OS es exactamente lo que la realidad única prohíbe.
+      //
+      // EL RÓTULO NUEVO ES LA HIPÓTESIS QUE EL NÚMERO MIDE, y por eso el negativo deja de asustar:
+      // "si no cobrás más este mes" ya avisa que es un supuesto y no un pronóstico. Se descartó
+      // "BRECHA DEL MES SIN COBRAR": "sin cobrar" se puede leer pegado a "mes" o a "brecha", y una
+      // brecha sigue sonando a agujero real. Éste nombra la condición, no el agujero — y su
+      // contexto la desmiente con el monto.
+      //
+      // ES LA MISMA CIFRA QUE SALDO AL CIERRE EN EL ESCENARIO DE CERO COBRANZAS: las dos tarjetas
+      // son el fin de mes bajo dos supuestos, y la de al lado publica el otro. Entre las dos, el
+      // contexto de ésta es el puente exacto: −$40,7M + $160,8M = $120,1M.
+      rotulo: 'SI NO COBRÁS MÁS ESTE MES',
       valor: '=N($A$3)-N($C$3)',
-      contexto: '=IF(N($A$3)-N($C$3)>=0;"disponible − comprometida del mes";"se cubre con lo cobrado en el mes")',
+      // ═══ EL DATO QUE TRANQUILIZA, AL LADO DEL NÚMERO QUE ASUSTA — Y CON SU MONTO ═══
+      //
+      // Decía "se cubre con lo cobrado en el mes": cierto, genérico e inverificable. ¿Con cuánto?
+      // El monto es el MISMO `mesCobro` que usa SALDO AL CIERRE —una sola definición de "lo que se
+      // cobra en el mes" en toda la pestaña— así que no puede existir el día en que una tarjeta diga
+      // que alcanza y la otra que no. Es fórmula viva sobre el libro: se mueve sola con cada
+      // cobranza cargada, y no hay ningún número tipeado que se pueda quedar viejo.
+      contexto: `="hay "&TEXT(${mesCobro}/1000000;"$#,##0.0")&"M a cobrar al "&${dia('EOMONTH(TODAY();0)')}`,
       especie: 'plata',
     },
     {
@@ -204,13 +248,18 @@ export function tarjetas(ref) {
       // LA CONSECUENCIA: disponible (A3) − comprometida (C3) + lo que se cobra en el mes. Los dos
       // primeros por referencia a sus tarjetas; los cobros con la misma suma del libro que usa todo
       // el archivo — y el contexto los publica, para que la identidad se lea entera.
-      // ═══ EL CIERRE ES LA LIBRE DE FIN DE MES, Y LO DICE (pregunta del dueño, 06/08) ═══
+      // ═══ EL CIERRE Y LA TARJETA DEL MEDIO SON EL MISMO NÚMERO EN DOS ESCENARIOS ═══
       //
-      // "¿esto significa q la libre disponibilidad iría en aumento?" — SÍ, exactamente: LIBRE hoy y
-      // SALDO AL CIERRE son el mismo concepto en dos momentos. El contexto deja el vínculo escrito
-      // (y la cláusula "cobrando lo proyectado" sigue: una proyección no es plata garantizada).
+      // Decía "la libre al 31/08 cobrando lo proyectado", y dos cosas quedaron mal el 13/08: "la
+      // libre" pasó a nombrar una tarjeta que ya no se llama así, y la frase medía 40 caracteres
+      // contra los 162px de la tarjeta más angosta (I+J) ≈ 28 — se cortaba en "cobrando lo pro".
+      //
+      // Ahora las dos se leen como el par que son: la del medio dice con cuánto termina el mes SI NO
+      // COBRA NADA MÁS, y ésta con cuánto termina COBRANDO TODO. Misma cuenta, los dos extremos. La
+      // cláusula condicional se conserva porque sin ella el número se lee como plata garantizada, y
+      // no lo es: la fecha sigue siendo calculada, así que la frase no envejece.
       valor: `=N($A$3)-N($C$3)+${mesCobro}`,
-      contexto: `="la libre al "&${dia('EOMONTH(TODAY();0)')}&" cobrando lo proyectado"`,
+      contexto: `="al "&${dia('EOMONTH(TODAY();0)')}&" cobrando todo"`,
       especie: 'plata',
     },
   ]
