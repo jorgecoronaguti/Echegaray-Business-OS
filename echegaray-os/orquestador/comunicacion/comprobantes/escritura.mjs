@@ -32,7 +32,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { congelado } from '../../lib/congelador-sheets.mjs'
-import { estaCompleto, ESTADO } from '../../lib/comprobantes/fajo.mjs'
+import { estaCompleto, imputacionVacia, ESTADO } from '../../lib/comprobantes/fajo.mjs'
 import { numeroCanonico, claveComprobante, conceptoConAnotacion } from '../../lib/comprobantes/lectura.mjs'
 import * as repoReal from './repositorio.mjs'
 import { avisosDeVerificacion, cierre, COL as VCOL, tablaDeLoEscrito } from '../../lib/comprobantes/verificacion.mjs'
@@ -295,12 +295,35 @@ export async function escribirFajo(d, fajo) {
     filas: filas.map((f) => ({ clave: f.clave, fila: f.fila, proveedor: f.proveedor, numero: f.numero })),
   })
 
-  // Los que entraron SIN obra, con su fila, para poder decirlo por su nombre en el mensaje.
+  // ═══ LO QUE ENTRÓ CON LA IMPUTACIÓN EN BLANCO, FILA POR FILA Y COLUMNA POR COLUMNA (13/08) ═══
+  //
+  // Desde que la imputación no bloquea (ver `PREGUNTAR_IMPUTACION` en `flujo.mjs`) este renglón es la
+  // ÚNICA forma de que el dueño se entere de qué le quedó por completar. Antes decía sólo "sin obra";
+  // ahora dice las cuatro columnas con desplegable, porque una fila sin Unidad de Negocio entra al
+  // Cash Flow con el rubro sin clasificar exactamente igual que una sin obra.
+  //
   // `entran` y `filas` están en el mismo orden por construcción (los dos salen del mismo filtro).
-  const sinObra = entran
+  const pendientes = entran
+    .map((it, k) => ({ it, fila: filas[k], campos: imputacionVacia(it) }))
+    .filter(({ campos }) => campos.length)
+    .map(({ it, fila, campos }) => ({
+      proveedor: it.comprobante?.proveedor ?? null,
+      fila: fila.fila ?? null,
+      campos,
+    }))
+  // Lo que cargó de verdad, en plata. Es el número contra el que el dueño compara el fajo de papeles
+  // que tiene en la mano: contar filas no le dice si se le perdió una factura de dos millones.
+  const suma = entran.reduce((a, it) => a + (Number(it.comprobante?.total) || 0), 0)
+  // Las fotos/PDF donde la visión vio MÁS DE UN comprobante. De cada archivo entró uno solo: hay que
+  // decirlo o el resto del papel se da por cargado y nunca se carga. Ver `lectura.mjs`.
+  const varios = entran
     .map((it, k) => ({ it, fila: filas[k] }))
-    .filter(({ it }) => !it.comprobante?.obra)
-    .map(({ it, fila }) => ({ proveedor: it.comprobante?.proveedor ?? null, fila: fila.fila ?? null }))
+    .filter(({ it }) => it.comprobante?.variosComprobantes === true)
+    .map(({ it, fila }) => ({
+      fila: fila.fila ?? null,
+      nombre: it.origen?.nombre ?? null,
+      cuantos: it.comprobante?.cuantosComprobantes ?? null,
+    }))
   // ═══ LA PRUEBA DEL EFECTO ═══
   //
   // Hasta acá el mensaje decía lo que el cargador REPORTÓ. Ahora se releen las filas escritas del
@@ -315,7 +338,7 @@ export async function escribirFajo(d, fajo) {
     prueba = '⚠ Cargué, pero no pude releer las filas para mostrarte lo que quedó. Revisalas en Compras.'
   }
 
-  const texto = [textoCargado(filas, yaEstaban, r.datos, { sinObra }), prueba].filter(Boolean).join('\n')
+  const texto = [textoCargado(filas, yaEstaban, r.datos, { pendientes, suma, varios }), prueba].filter(Boolean).join('\n')
   return { estado: ESTADO.CARGADO, texto, filas }
 }
 
@@ -405,12 +428,24 @@ async function releerLoEscrito(d, filas) {
   })
 }
 
-function textoCargado(filas, yaEstaban, datos, { sinObra = [] } = {}) {
+/** Cómo se llama cada columna de imputación en el aviso. Son los rótulos REALES de Compras. */
+const ROTULO_COLUMNA = Object.freeze({
+  categoria: 'Categoría (B)',
+  unidad: 'Unidad de Negocio (I)',
+  obra: 'Obra (J)',
+  detalle: 'Detalle (K)',
+})
+
+/** $ en es-AR, sin decimales: es un total de control, no un asiento. */
+const enPesos = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-AR')}`
+
+export function textoCargado(filas, yaEstaban, datos, { pendientes = [], suma = null, varios = [] } = {}) {
   const l = []
   const conFila = filas.filter((f) => f.fila != null)
+  const plata = Number.isFinite(Number(suma)) && Number(suma) !== 0 ? ` — total ${enPesos(suma)}` : ''
   l.push(conFila.length === 1
-    ? `✔ Cargado en **Compras, fila ${conFila[0].fila}**.`
-    : `✔ Cargué ${filas.length} comprobante(s) en **Compras**.`)
+    ? `✔ Cargado en **Compras, fila ${conFila[0].fila}**${plata}.`
+    : `✔ Cargué ${filas.length} comprobante(s) en **Compras**${plata}.`)
   if (filas.length > 1) for (const f of filas) l.push(`· ${f.proveedor ?? '?'} ${f.numero ?? ''} → fila ${f.fila ?? '?'}`)
   if (yaEstaban.length) l.push(`_${yaEstaban.length} ya estaba(n) cargado(s); no los dupliqué._`)
   if (datos?.errores) l.push(`⚠ ${datos.errores} fila(s) quedaron con #ERROR — revisalas.`)
@@ -424,14 +459,27 @@ function textoCargado(filas, yaEstaban, datos, { sinObra = [] } = {}) {
   // Estar en ARCA no es un duplicado: es el libro fiscal confirmando el comprobante. Lo que importa
   // avisar es cuando el número que se leyó de la foto NO era el verdadero.
   if (datos?.arca?.corregidos) l.push(`ℹ ${datos.arca.corregidos} número(s) de comprobante corregido(s) contra ARCA.`)
-  // CARGADO SIN OBRA, DICHO CON TODAS LAS LETRAS (03/08/2026). El dueño decidió que la obra no
-  // bloquee, no que se cargue en silencio: una fila sin imputar entra al Flujo de Caja con el rubro
-  // sin clasificar y la única forma de que alguien la complete es que sepa que existe. Va con la fila
-  // para que completarla sea abrir Compras e ir a esa línea, no buscarla.
-  if (sinObra.length) {
-    l.push(sinObra.length === 1
-      ? `⚠️ Cargado **SIN obra** — completala en Compras${sinObra[0].fila ? `, fila ${sinObra[0].fila}` : ''}.`
-      : `⚠️ ${sinObra.length} quedaron **SIN obra** — completalas en Compras: ${sinObra.map((s) => `fila ${s.fila ?? '?'}${s.proveedor ? ` (${s.proveedor})` : ''}`).join(' · ')}.`)
+  // CARGADO CON LA IMPUTACIÓN EN BLANCO, DICHO CON TODAS LAS LETRAS (03/08 · ampliado el 13/08).
+  //
+  // El dueño decidió que la imputación no bloquee, no que se cargue en silencio: una fila sin imputar
+  // entra al Flujo de Caja con el rubro sin clasificar y la única forma de que alguien la complete es
+  // que sepa que existe. Va con la FILA y con las COLUMNAS, para que completarla sea abrir Compras e
+  // ir a esa línea, no buscarla y después adivinar qué le falta.
+  if (pendientes.length) {
+    l.push(pendientes.length === 1
+      ? '⚠️ Quedó **con la imputación por completar** en Compras:'
+      : `⚠️ ${pendientes.length} quedaron **con la imputación por completar** en Compras:`)
+    for (const p of pendientes) {
+      const cols = p.campos.map((c) => ROTULO_COLUMNA[c] ?? c).join(', ')
+      l.push(`· fila ${p.fila ?? '?'}${p.proveedor ? ` (${p.proveedor})` : ''} → falta ${cols}`)
+    }
+    l.push('_No la inventé: el comprobante no la dice y el historial no alcanzó para afirmarla._')
+  }
+  // UN ARCHIVO CON VARIOS COMPROBANTES: entró UNO. Decirlo es lo único que evita que el resto se dé
+  // por cargado. Se pide el reenvío por separado, que es lo que el flujo sí sabe hacer bien.
+  for (const v of varios) {
+    const cuantos = Number.isFinite(v.cuantos) && v.cuantos > 1 ? `${v.cuantos} comprobantes` : 'más de un comprobante'
+    l.push(`⚠️ ${v.nombre ? `**${v.nombre}**` : 'Uno de los archivos'} tenía ${cuantos}: cargué sólo el de la fila ${v.fila ?? '?'}. **Mandá los otros en fotos separadas.**`)
   }
   l.push('_Completá vos la Unidad de Negocio y el Tipo de Costo: ahí clasifica el rubro de caja._')
   return l.join('\n')
