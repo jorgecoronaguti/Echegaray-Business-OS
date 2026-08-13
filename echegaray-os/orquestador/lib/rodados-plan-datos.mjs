@@ -17,7 +17,7 @@
 // unidades al costo de la más apurada.
 
 import { PRESUPUESTOS_RODADOS } from './rodados-datos.mjs'
-import { CONDICION_FONDEFIN, GASTOS_OTORGAMIENTO, DEMORA_TRAMITE_DIAS } from './linea-fondefin.mjs'
+import { CONDICION_FONDEFIN, GASTOS_OTORGAMIENTO, DEMORA_TRAMITE_DIAS, IVA_SOBRE_INTERESES, ORIGEN_DEL_IVA } from './linea-fondefin.mjs'
 import { ACUERDO } from './banco-santander.mjs'
 import { TASAS } from './costo-descubierto.mjs'
 import { IPC } from './ipc-publicado.mjs'
@@ -66,15 +66,24 @@ export const FONDEFIN = {
   coberturaPrenda: 2.0, // la prenda debe cubrir el 200% del financiamiento
   tope: 150_000_000,
   /**
-   * IVA SOBRE INTERESES — NO ES UN DATO, ES UN SUPUESTO DEL PEOR CASO.
+   * IVA SOBRE INTERESES — YA NO ES UN SUPUESTO DEL OS: LO DECLARA EL DUEÑO.
    *
-   * `CONDICION_FONDEFIN.iva_sobre_intereses` es `null` a propósito: el ROP no lo trata y Fiduciaria
-   * San Juan SAPEM no es entidad de la Ley 21.526, así que NO se puede asumir el 10,5% bancario. Se
-   * calcula con 21% porque es el techo (la alícuota general) y porque un costo subestimado es el
-   * error caro. Que sea supuesto y no dato viaja pegado al número en `esPiso`.
+   * Hasta el 13/08/2026 acá vivía un literal `0.21` rotulado "supuesto del peor caso", porque el ROP
+   * no trata el IVA y Fiduciaria San Juan SAPEM no figura como entidad de la Ley 21.526 — sin ese
+   * encuadre no se podía asumir la alícuota reducida. Ese día el dueño lo declaró: primero 21% y
+   * después, específicamente para el informe de rodados, 10,5%. Manda lo último y lo más específico.
+   *
+   * SE IMPORTA, NO SE TIPEA. El valor vive UNA sola vez en `linea-fondefin.mjs` y de ahí sale también
+   * la fila de Postgres. Cuando esto eran dos literales —uno acá y otro en la condición— el informe y
+   * la base podían decir cosas distintas del mismo crédito sin que nada gritara.
+   *
+   * SIGUE SIN VERIFICARSE CONTRA LA NORMA: ver `ORIGEN_DEL_IVA.a_confirmar`. Que el número tenga
+   * padre no lo convierte en verificado, y el costo calculado con él sigue siendo un PISO por el CFT.
    */
-  ivaSobreInteresesSupuesto: 0.21,
-  ivaSobreInteresesDeclarado: CONDICION_FONDEFIN.iva_sobre_intereses, // null = desconocido
+  ivaSobreIntereses: IVA_SOBRE_INTERESES,
+  origenIva: ORIGEN_DEL_IVA,
+  /** Lo que el REGLAMENTO publica sobre el IVA: nada. No confundir con lo que declaró el dueño. */
+  ivaPublicadoPorElRop: null,
   bandaIva: [0, 0.105, 0.21],
   fuente: CONDICION_FONDEFIN.fuente,
 }
@@ -187,7 +196,11 @@ export const EGRESOS_REALES = {
 export const FUENTES_DE_FONDOS = [
   {
     clave: 'fondefin', entidad: 'Fiduciaria San Juan SAPEM', producto: 'FONDEFIN Bienes de Capital',
-    tna: CONDICION_FONDEFIN.tna, iva: FONDEFIN.ivaSobreInteresesSupuesto, ivaEsSupuesto: true,
+    // El IVA NO es supuesto: lo declaró el dueño el 13/08/2026. Pero tampoco está verificado contra
+    // la norma, y esa diferencia tiene que llegar impresa a la tabla — de ahí `ivaNota`. `esPiso`
+    // sigue siendo true por el CFT ausente, que es lo que de verdad falta para afirmar un total.
+    tna: CONDICION_FONDEFIN.tna, iva: FONDEFIN.ivaSobreIntereses, ivaEsSupuesto: false,
+    ivaNota: 'dato del dueño 13/08 · no verificado',
     tea: null, cft: null, sirveParaRodados: true,
     nota: 'sólo pick-up CABINA SIMPLE 0km · trámite ~120 días · desembolso directo al proveedor · prenda al 200%',
   },

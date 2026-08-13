@@ -69,7 +69,7 @@ function tasas() {
     compararFuentes(inf.anual).map((f) => [
       `**${f.producto}**<br>${f.entidad}`,
       f.indexado ? '0% *(nominal)*' : pct(f.tna),
-      f.iva == null ? 'DESCONOCIDO' : pct(f.iva) + (f.ivaEsSupuesto ? ' *(supuesto)*' : ''),
+      f.iva == null ? 'DESCONOCIDO' : pct(f.iva) + (f.ivaEsSupuesto ? ' *(supuesto)*' : f.ivaNota ? ` *(${f.ivaNota})*` : ''),
       f.tnaConIva == null ? 'DESCONOCIDO' : pct(f.tnaConIva),
       `${pct(f.efectivoAnual)}<br><sub>${f.origenEfectivo}</sub>`,
       `**${pct(f.tasaReal)}**`,
@@ -192,7 +192,7 @@ if (!pedidas.length) {
   console.log(`\n### SUPUESTOS Y DESCONOCIDOS\n`)
   console.log([
     `- **Inflación**: ${pct(inf.mensual)} mensual · ${pct(inf.anual)} anual — IPC INDEC ${inf.meses.join(', ')} encadenado y anualizado. Alternativa REM ${pct(inf.remMensual)}/mes = ${pct(inf.remAnual)} anual.`,
-    `- **IVA sobre intereses de FONDEFIN**: ${pct(FONDEFIN.ivaSobreInteresesSupuesto)} SUPUESTO (peor caso). El ROP no lo publica y la Fiduciaria no es entidad de la Ley 21.526.`,
+    `- **IVA sobre intereses de FONDEFIN**: ${pct(FONDEFIN.ivaSobreIntereses)} — DATO DEL DUEÑO del ${FONDEFIN.origenIva.fecha.split('-').reverse().join('/')}, textual: "${FONDEFIN.origenIva.textual}". CORRIGE su propia declaración del mismo día que fijaba ${pct(FONDEFIN.origenIva.corregido_desde.valor)} ("${FONDEFIN.origenIva.corregido_desde.textual}"). El ROP no publica el IVA. **NO verificado contra la norma**: la alícuota reducida es la de las entidades de la Ley 21.526 y Fiduciaria San Juan SAPEM no figura como una de ellas. PENDIENTE — lo confirma el estudio contable, no el OS: si el mutuo encuadra bajo esa ley a efectos de la alícuota reducida de IVA sobre intereses. Si no encuadra, vuelve al 21% general y el costo de FONDEFIN sube ~1,44 puntos de TNA.`,
     `- **CFT de FONDEFIN**: DESCONOCIDO. Faltan sellos, seguro de vida sobre saldo deudor y tasación del perito. Todo número de FONDEFIN es un PISO.`,
     `- **Gastos de retiro del C31**: ${$(plan.gastosRetiroC31.importe)} por unidad, ESTIMACIÓN por analogía (${pct(plan.gastosRetiroC31.proporcion)} del precio, la proporción real del C32). No hay presupuesto cerrado.`,
     `- **Monto a solicitar por unidad**: ${$(plan.unidades[1].montoSolicitado)} para que al proveedor le lleguen ${$(C31.precioLista)} después del ${pct(FONDEFIN.gastosOtorgamiento)} de otorgamiento.`,
