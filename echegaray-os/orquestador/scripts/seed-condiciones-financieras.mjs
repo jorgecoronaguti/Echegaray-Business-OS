@@ -12,6 +12,7 @@ import { query, closePool } from '../lib/db.mjs'
 import { ACUERDO, TARJETA, CORTE, ORIGEN } from '../lib/banco-santander.mjs'
 import { TASAS } from '../lib/costo-descubierto.mjs'
 import { filaParaLaTabla as fondefin } from '../lib/linea-fondefin.mjs'
+import { filaParaLaTabla as fondefinCapitalTrabajo } from '../lib/linea-fondefin-capital-trabajo.mjs'
 
 // upsert por la clave única (entidad, producto, tipo, moneda, vigencia_desde): re-correrlo actualiza,
 // no duplica. Sólo se tocan las filas de esta semilla; las cargadas a mano quedan intactas.
@@ -94,6 +95,13 @@ const SEED = [
   // entera, con su fórmula de tasa, sus huecos y sus preguntas, vive en lib/linea-fondefin.mjs: acá
   // sólo se siembra. Es la más barata de las que hay cargadas y la única que NO es capital de trabajo.
   fondefin(),
+  // FONDEFIN CAPITAL DE TRABAJO — la SEGUNDA línea del mismo organismo (13/08). Misma fórmula de tasa
+  // (60% de la Badlar), $30M a 18 meses, y financia insumos. Parecía la más valiosa de todas hasta que
+  // se leyó el reglamento: el punto 2.2.3 excluye "Obras Civiles de Ningún tipo", que es la actividad
+  // de esta empresa. Entra a la tabla igual —una alternativa que existe y no se ve, no se puede
+  // descartar— pero SIN limite_disponible: el comparador no la ofrece. La ficha, sus citas y la
+  // pregunta que decide todo viven en lib/linea-fondefin-capital-trabajo.mjs.
+  fondefinCapitalTrabajo(),
 ]
 
 async function main() {
