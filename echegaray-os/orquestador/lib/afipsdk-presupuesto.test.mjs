@@ -23,16 +23,40 @@ const respuesta = (status, cuerpo = '') => ({
   json: async () => (typeof cuerpo === 'string' ? JSON.parse(cuerpo) : cuerpo),
 })
 
-/** El proyecto tal como lo devolvió el panel el 13/08 (forma, no valores). */
+/**
+ * EL PROYECTO, con los nombres de campo EXACTOS que devolvió producción el 13/08. Los valores son
+ * inventados; los nombres no, y son lo único que este fixture tiene que proteger.
+ */
 const PROYECTO = {
   id: 'proyecto-de-prueba',
   name: 'Echegaray OS',
+  status: 'active',
   subscription_status: 'active',
+  subscription_current_period_start: '2026-08-10T20:19:23+00:00',
+  subscription_current_period_end: '2026-09-10T20:19:23+00:00',
+  automation_billing_plan: 'free',
   automation_limit: 10,
   current_period_automation_usage: 0,
-  current_period_start: '2026-08-10T00:00:00.000Z',
-  current_period_end: '2026-09-10T00:00:00.000Z',
+  pdf_limit: 100,
+  current_period_pdf_usage: 0,
+  request_limit: 1000,
+  current_period_request_usage: 0,
+  access_token: 'token-de-prueba',
+  features: { pdf: true, automation: true },
 }
+
+/**
+ * LA FORMA REAL: `GET /api/v1/projects` devuelve MEMBRESÍAS, no proyectos. El `id` de afuera es el de
+ * la membresía —otro UUID de 36 caracteres— y el proyecto va anidado. Comparar contra el de afuera no
+ * matchea nunca y no falla ruidosamente: el sync se cae al contador local diciendo "¿varios
+ * proyectos?" con uno solo. Es lo que pasó, y por eso este fixture existe.
+ */
+const MEMBRESIAS = [{
+  id: 'membresia-de-prueba-no-es-el-proyecto',
+  role: 'owner',
+  created_at: '2026-07-10T17:19:00+00:00',
+  project: PROYECTO,
+}]
 
 // ── EL CONTEO ────────────────────────────────────────────────────────────────────────────────────
 
@@ -219,39 +243,68 @@ test('el archivo de credenciales da las TRES claves, y los comentarios no son cl
 
 // ── LA CUOTA REAL DEL PROVEEDOR ──────────────────────────────────────────────────────────────────
 
-test('la cuota sale de AFIPSDK, no del contador local: usadas y límite reales', async () => {
+test('LA FORMA DE PRODUCCIÓN: array de MEMBRESÍAS con el proyecto anidado, y el id que manda es el de adentro', async () => {
+  // El defecto que este test cierra: se comparaba el PROJECT_ID contra `entrada.id`, que es el id de la
+  // MEMBRESÍA. Los dos son UUID de 36 caracteres, así que no matcheaba nunca y el sync se caía al
+  // contador local informando "¿varios proyectos y sin PROJECT_ID?" — con un solo proyecto.
   let visto = null
   const p = await presupuesto({
     pedido: 2,
     accountToken: 'account-de-prueba',
     projectId: 'proyecto-de-prueba',
-    fetchImpl: async (url, opts) => { visto = { url, opts }; return respuesta(200, { data: [PROYECTO] }) },
+    fetchImpl: async (url, opts) => { visto = { url, opts }; return respuesta(200, MEMBRESIAS) },
     archivo: await tmp('no-se-usa.json'),
   })
-  assert.equal(p.fuente, 'proveedor')
+  assert.equal(p.fuente, 'proveedor', 'con la forma real NO puede caer al contador local')
   assert.equal(p.ok, true)
   assert.equal(p.usadas, 0)
   assert.equal(p.disponible, 8, '10 del proveedor − 2 de reserva − 0 usadas')
-  assert.equal(p.ventana, '2026-08-10→2026-09-10', 'el período del proveedor NO es el mes calendario')
+  assert.equal(p.ventana, '2026-08-10→2026-09-10', 'el período del proveedor va del 10 al 10, NO es el mes calendario')
   assert.match(p.motivo, /cuota REAL de AfipSDK/)
   assert.match(p.motivo, /suscripción active/)
+  assert.match(p.motivo, /plan free/)
+  assert.doesNotMatch(p.motivo, /token-de-prueba/, 'el proyecto trae access_token: no puede salir en ningún mensaje')
   // Y se le pregunta al PANEL con el ACCOUNT_TOKEN, no a automations con el ACCESS_TOKEN.
   assert.equal(visto.url, 'https://app.afipsdk.com/api/v1/projects')
   assert.equal(visto.opts.method, 'GET')
   assert.equal(visto.opts.headers.Authorization, 'Bearer account-de-prueba')
 })
 
+test('el id de la MEMBRESÍA nunca puede hacerse pasar por el del proyecto', () => {
+  // Si alguien vuelve a comparar contra `entrada.id`, esto se pone rojo.
+  assert.equal(proyectoDeRespuesta(MEMBRESIAS, { projectId: 'proyecto-de-prueba' })?.id, 'proyecto-de-prueba')
+  const conOtro = [MEMBRESIAS[0], { id: 'otra-membresia', role: 'owner', project: { ...PROYECTO, id: 'otro-proyecto' } }]
+  assert.equal(proyectoDeRespuesta(conOtro, { projectId: 'membresia-de-prueba-no-es-el-proyecto' }), null,
+    'buscar por el id de la membresía no puede devolver un proyecto')
+  assert.equal(proyectoDeRespuesta(conOtro, { projectId: 'otro-proyecto' })?.name, PROYECTO.name)
+})
+
 test('con la cuota del proveedor agotada NO se descarga, aunque el contador local diga que sobra', async () => {
   // Es el caso que el contador local no puede ver: cuota gastada desde la web de AfipSDK u otra máquina.
+  const agotado = [{ ...MEMBRESIAS[0], project: { ...PROYECTO, current_period_automation_usage: 9 } }]
   const p = await presupuesto({
     pedido: 2,
     accountToken: 'account-de-prueba',
-    fetchImpl: async () => respuesta(200, { ...PROYECTO, current_period_automation_usage: 9 }),
+    projectId: 'proyecto-de-prueba',
+    fetchImpl: async () => respuesta(200, agotado),
     archivo: await tmp('local-vacio.json'),
   })
   assert.equal(p.fuente, 'proveedor')
   assert.equal(p.ok, false)
   assert.match(p.motivo, /necesito 2 automatización\(es\) y quedan 0/)
+})
+
+test('un PROJECT_ID viejo con un solo proyecto NO tira la corrida abajo, pero avisa', async () => {
+  // El único proyecto de la cuenta es el que factura: su cuota manda igual. Lo que no se puede es
+  // callarlo, porque casi siempre significa que la credencial guardada quedó vieja.
+  const r = await cuotaDelProveedor({
+    accountToken: 'account-de-prueba',
+    projectId: 'un-project-id-viejo',
+    fetchImpl: async () => respuesta(200, MEMBRESIAS),
+  })
+  assert.equal(r.ok, true)
+  assert.equal(r.limite, 10)
+  assert.match(r.motivo, /el PROJECT_ID guardado no coincide/)
 })
 
 test('si el panel no contesta se CAE al contador local Y SE DECLARA que es aproximado', async () => {
@@ -283,8 +336,10 @@ test('un ACCOUNT_TOKEN rechazado se distingue del ACCESS_TOKEN: son credenciales
 })
 
 test('la respuesta del panel se lee tolerante a la forma, pero NO se adivina el proyecto', () => {
-  // El contrato del panel no está documentado en ningún lado: array, {data:[…]} u objeto suelto.
-  for (const json of [[PROYECTO], { data: [PROYECTO] }, { projects: [PROYECTO] }, PROYECTO, { data: PROYECTO }]) {
+  // La forma real es MEMBRESIAS. Las otras no las devuelve hoy el panel, pero tolerarlas no cuesta y
+  // el contrato no está documentado en ningún lado: docs.afipsdk.com no tiene una página del panel.
+  const formas = [MEMBRESIAS, { data: MEMBRESIAS }, [PROYECTO], { data: [PROYECTO] }, { projects: [PROYECTO] }, PROYECTO, { data: PROYECTO }]
+  for (const json of formas) {
     assert.equal(proyectoDeRespuesta(json)?.id, PROYECTO.id, `forma no soportada: ${JSON.stringify(json).slice(0, 40)}`)
   }
   // Con varios proyectos y sin PROJECT_ID no se elige uno: adivinar el proyecto es adivinar la cuota.
@@ -295,4 +350,7 @@ test('la respuesta del panel se lee tolerante a la forma, pero NO se adivina el 
   assert.equal(cuotaDeProyecto({ automation_limit: 10 }), null)
   assert.equal(cuotaDeProyecto({ automation_limit: 10, current_period_automation_usage: 'muchas' }), null)
   assert.equal(cuotaDeProyecto(PROYECTO).limite, 10)
+  // El período sale del nombre LARGO, que es el real. Sin él, etiqueta genérica en vez de fecha falsa.
+  assert.equal(cuotaDeProyecto(PROYECTO).ventana, '2026-08-10→2026-09-10')
+  assert.equal(cuotaDeProyecto({ automation_limit: 10, current_period_automation_usage: 0 }).ventana, 'período del proveedor')
 })

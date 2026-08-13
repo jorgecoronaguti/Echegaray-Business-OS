@@ -199,22 +199,51 @@ export async function leerCredenciales(archivo = ARCHIVO_CREDENCIALES) {
 export const URL_PROYECTOS = 'https://app.afipsdk.com/api/v1/projects'
 
 /**
- * NÚCLEO PURO: saca el proyecto de la respuesta, tolerando la forma.
+ * ═══ EL `id` DE PRIMER NIVEL NO ES EL DEL PROYECTO. ES LA TRAMPA (13/08) ═══
  *
- * El panel puede devolver un array, `{data:[…]}` o un objeto suelto: el contrato no está documentado
- * en ningún lado (docs.afipsdk.com no tiene una sola página del panel), así que se lee defensivo. Si
- * hay `projectId`, se busca ése; si no, el único; si hay varios y no se sabe cuál, NO se elige uno —
- * adivinar el proyecto es adivinar la cuota.
+ * `GET /api/v1/projects` NO devuelve proyectos: devuelve un array de MEMBRESÍAS. Cada entrada tiene su
+ * propio `id` (el de la membresía) y `role`, y el proyecto va ANIDADO en `entrada.project`. Los dos
+ * `id` son UUID de 36 caracteres, así que comparar contra el de afuera no falla ruidosamente: no
+ * matchea nunca y el sync se cae al contador local diciendo "¿varios proyectos?" con uno solo.
+ *
+ * Forma real medida en producción el 13/08:
+ *
+ *   [ { id: <MEMBRESÍA>, role: 'owner', created_at: …,
+ *       project: { id: <EL PROYECTO>, name, status, subscription_status,
+ *                  subscription_current_period_start, subscription_current_period_end,
+ *                  automation_billing_plan, automation_limit, current_period_automation_usage,
+ *                  pdf_limit, request_limit, access_token, features: {…} } } ]
+ *
+ * NÚCLEO PURO: normaliza cualquiera de esas formas a una lista de PROYECTOS.
  */
-export function proyectoDeRespuesta(json, { projectId } = {}) {
+export function proyectosDeRespuesta(json) {
   const lista = Array.isArray(json) ? json
     : Array.isArray(json?.data) ? json.data
       : Array.isArray(json?.projects) ? json.projects
         : json && typeof json === 'object' ? [json.data ?? json] : []
-  const proyectos = lista.filter((p) => p && typeof p === 'object')
+  return lista
+    .filter((e) => e && typeof e === 'object')
+    // Si viene envuelto en una membresía, el proyecto es lo de adentro. Si no, la entrada YA es el
+    // proyecto (formas que el panel no usa hoy, pero que no cuesta nada seguir tolerando).
+    .map((e) => (e.project && typeof e.project === 'object' ? e.project : e))
+    .filter((p) => p && typeof p === 'object')
+}
+
+/**
+ * NÚCLEO PURO: cuál de esos proyectos es el nuestro.
+ *
+ * Se busca por el `id` DEL PROYECTO, nunca por el de la membresía. Si hay varios y ninguno coincide,
+ * NO se elige uno: adivinar el proyecto es adivinar la cuota. Con uno solo se usa ése aunque el
+ * PROJECT_ID guardado no coincida —es el único proyecto de la cuenta, su cuota es la que manda—, y
+ * quien llama lo declara.
+ */
+export function proyectoDeRespuesta(json, { projectId } = {}) {
+  const proyectos = proyectosDeRespuesta(json)
   if (!proyectos.length) return null
-  if (projectId) return proyectos.find((p) => String(p.id ?? p.project_id ?? '') === String(projectId)) ?? null
-  return proyectos.length === 1 ? proyectos[0] : null
+  const porId = projectId
+    ? proyectos.find((p) => String(p.id ?? p.project_id ?? '') === String(projectId))
+    : null
+  return porId ?? (proyectos.length === 1 ? proyectos[0] : null)
 }
 
 /**
@@ -222,18 +251,24 @@ export function proyectoDeRespuesta(json, { projectId } = {}) {
  *
  * Un campo ausente o no numérico NO se completa con un default: un límite inventado es exactamente el
  * problema que este cambio viene a sacar.
+ *
+ * El período se llama `subscription_current_period_start` / `_end` (medido el 13/08). Se aceptan
+ * además los nombres cortos por si el panel los usara en otra forma, pero el nombre real es el largo:
+ * inferirlo mal degradaba la ventana a una etiqueta genérica y borraba justo el dato que importa —que
+ * AfipSDK factura del 10 al 10 y el contador local mide mes calendario.
  */
 export function cuotaDeProyecto(proyecto) {
   const num = (v) => (Number.isFinite(Number(v)) && v !== null && v !== '' ? Number(v) : null)
   const limite = num(proyecto?.automation_limit)
   const usadas = num(proyecto?.current_period_automation_usage)
   if (limite === null || usadas === null) return null
-  const desde = proyecto?.current_period_start ?? proyecto?.period_start ?? null
-  const hasta = proyecto?.current_period_end ?? proyecto?.period_end ?? null
+  const desde = proyecto?.subscription_current_period_start ?? proyecto?.current_period_start ?? null
+  const hasta = proyecto?.subscription_current_period_end ?? proyecto?.current_period_end ?? null
   return {
     limite,
     usadas,
     estado: proyecto?.subscription_status ?? null,
+    plan: proyecto?.automation_billing_plan ?? null,
     ventana: desde && hasta ? `${String(desde).slice(0, 10)}→${String(hasta).slice(0, 10)}` : 'período del proveedor',
   }
 }
@@ -263,11 +298,25 @@ export async function cuotaDelProveedor({ accountToken, projectId, fetchImpl = f
   } catch (e) {
     return fallo(`el panel respondió ${res.status} pero el cuerpo no es JSON (${e.message})`)
   }
+  const proyectos = proyectosDeRespuesta(json)
   const proyecto = proyectoDeRespuesta(json, { projectId })
-  if (!proyecto) return fallo('el panel contestó pero no pude identificar el proyecto (¿varios proyectos y sin PROJECT_ID?)')
+  if (!proyecto) {
+    return fallo(proyectos.length
+      ? `el panel devolvió ${proyectos.length} proyectos y ninguno tiene el PROJECT_ID guardado: no elijo uno, sería adivinar la cuota`
+      : 'el panel contestó pero no encontré ningún proyecto en la respuesta (¿cambió la forma?)')
+  }
   const cuota = cuotaDeProyecto(proyecto)
   if (!cuota) return fallo('el panel contestó pero el proyecto no trae automation_limit / current_period_automation_usage')
-  return { ok: true, ...cuota, motivo: `cuota REAL de AfipSDK: ${cuota.usadas} usadas de ${cuota.limite} en ${cuota.ventana}` }
+  // Un solo proyecto que NO coincide con el PROJECT_ID guardado se usa igual —es el único de la
+  // cuenta— pero no en silencio: casi siempre significa que la credencial quedó vieja.
+  const desalineado = projectId && String(proyecto.id ?? '') !== String(projectId)
+  return {
+    ok: true,
+    ...cuota,
+    motivo: `cuota REAL de AfipSDK: ${cuota.usadas} usadas de ${cuota.limite} en ${cuota.ventana}`
+      + `${cuota.plan ? ` (plan ${cuota.plan})` : ''}`
+      + `${desalineado ? '. OJO: el PROJECT_ID guardado no coincide con el único proyecto de la cuenta — conviene actualizarlo' : ''}`,
+  }
 }
 
 /**
