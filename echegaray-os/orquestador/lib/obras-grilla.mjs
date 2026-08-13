@@ -41,16 +41,27 @@
 // LA REGLA HOY: venta = TODAS las filas del cliente/obra, sin descartar por concepto. Lo único que se
 // excluye es el estado CANCELAR, que es una venta que dejó de existir, no una fila repetida.
 //
-// ═══ EL CLIENTE SE ANCLA AL PRINCIPIO DEL TEXTO, NO SE BUSCA ADENTRO ═══
+// ═══ LOS CLIENTES SE DERIVAN DE COBRANZAS Y SE MATCHEAN EXACTO (13/08) ═══
 //
-// El archivo escribe "LA ESTRELLA /ALIMENTOS DEL SUR SAS", así que el match no puede ser exacto. Pero
-// buscar "*San Francisco*" adentro capturaba también "IMOTOR/San Francisco/JAVI SANCHEZ" —otro
-// cliente, con sus propias 9 filas y $104.765.646— y lo sumaba a San Francisco. Anclar al PREFIJO
-// resuelve los dos casos a la vez, y está verificado contra los 9 clientes reales del archivo.
+// La lista de clientes estuvo TIPEADA acá, y el dueño lo cazó mirando la pestaña: *"la fila 'otros
+// clientes' no puede ser, estan todos los clientes y obras declarados"*. Con la lista escrita a mano,
+// todo cliente que no estuviera en ella caía en un cajón anónimo — eran tres reales y cobrados: LIRIO
+// DANIEL RAMIRO $17.303.000, ADDATO $2.500.000, MACRO CONSTRUCCIONES SRL $135.520. Una lista tipeada
+// garantiza que el cuadro quede incompleto cada vez que la empresa factura a alguien nuevo.
 //
-// Y cuando una variante SÍ es el mismo cliente, se declara en `ALIAS_CLIENTE` — no se afloja el
-// comodín. Ampliar el match para que entre un caso vuelve a meter los que no queremos; el mapa deja
-// la decisión escrita, con nombre y fecha, y se puede auditar fila por fila.
+// Ahora el escritor los LEE de Cobranzas (`clientesDeCobranzas`) y el rótulo ES el texto del archivo.
+// Eso permitió pasar de match por prefijo a match EXACTO: el prefijo existía sólo para salvar el
+// desfase entre la lista tipeada ("LA ESTRELLA") y el archivo ("LA ESTRELLA /ALIMENTOS DEL SUR SAS"),
+// y traía un riesgo propio —"MESSINA" se llevaría las filas de un futuro "MESSINA SRL" sin dar error—.
+// Con match exacto eso no puede pasar nunca.
+//
+// LO QUE SE DERIVA ES QUÉ CLIENTES EXISTEN; CÓMO SE AGRUPAN SIGUE SIENDO DECISIÓN DECLARADA. Las
+// variantes de `ALIAS_CLIENTE` colapsan en su canónico: si no, "IMOTOR/San Francisco/JAVI SANCHEZ"
+// volvería a abrir fila propia, que es exactamente lo que el dueño mandó unificar.
+//
+// Y LA FILA DE RESIDUO NO SE BORRA: queda, y tiene que dar $0. Es el control que prueba que no falta
+// nadie. Si algún día vuelve a tener monto, apareció un cliente que el mecanismo no supo ubicar.
+// Borrar un control porque hoy da cero es como se pierde la capacidad de detectar el problema.
 //
 // ═══ QUÉ COLUMNA SE USA PARA QUÉ: EL IVA NO ES VENTA (13/08) ═══
 //
@@ -79,11 +90,17 @@
 //
 // ═══ QUÉ ES CADA COLUMNA DE COBRANZAS, MEDIDO CONTRA LAS 91 FILAS (13/08) ═══
 //
-// El "TOTAL a cobrar" (col M) NO es un saldo pendiente: es `neto + IVA − retenciones`, o sea el
-// importe que el cliente efectivamente transfiere. Se verificó por descarte: si fuera saldo, las 46
-// filas en estado Cobrado tendrían ~0, y suman $451.507.276 — el mismo número que `sync-cobranzas`
-// reporta como cobrado por su cuenta. Y la col L es RETENCIONES (2%, 21,3%, 22,3% del neto: tasas de
-// retención, no cobros parciales, que serían ~100%).
+// El "TOTAL a cobrar" (col M) NO es un saldo pendiente: es el importe que el cliente efectivamente
+// transfiere. Se verificó por descarte: si fuera saldo, las 46 filas en estado Cobrado tendrían ~0, y
+// suman $451.507.276 — el mismo número que `sync-cobranzas` reporta por su cuenta.
+//
+// ⚠ Y **M NO SE DERIVA DE J y K**. La identidad `total = neto + IVA − retenciones` se cumple en 90 de
+// las 91 filas, y por eso parece una regla — pero no lo es. MESSINA "PILON - Anticipo" tiene neto
+// $2.330.000 sin IVA y total $9.030.000, y el dueño lo declaró textual el 13/08: *"no hay nada mal
+// tipeado"*. Son COLUMNAS INDEPENDIENTES de la fuente. Nunca se calcula una a partir de la otra, y no
+// se agrega un control que valide esa identidad: marcaría en rojo una fila correcta, y un control que
+// grita sobre lo que está bien se ignora y arrastra a los que sirven. Se LEE la columna que
+// corresponde: J para venta y margen, M para cobrado y resta.
 //
 // POR ESO "LO QUE RESTA COBRAR" NO SE LEE DE UNA COLUMNA: sale del ESTADO. Resta = todo lo que no
 // está Cobrado ni CANCELAR. Leerlo de M daría el contrato entero como pendiente.
@@ -193,10 +210,50 @@ export function anchoColumnaA(g, { minimo = 300, padding = 18 } = {}) {
   return px + padding
 }
 
-/** Los clientes del año, con el texto CANÓNICO del desplegable (Compras col J / Materiales). */
-export const OBRAS_DEL_ANO = [
-  'LA ESTRELLA', 'San Francisco', 'MESSINA', 'ARCOR', 'Quattropani - Melisa García SAS', 'SAINT GOBAIN',
+/**
+ * CLIENTES DE MUESTRA — SÓLO PARA EL ENSAYO EN SECO. NO es la lista del año.
+ *
+ * La lista real se DERIVA de Cobranzas en cada corrida (`clientesDeCobranzas`). Esta constante existe
+ * únicamente para que `--dry` pueda dibujar la forma de la pestaña sin red, y está declarada como
+ * muestra justamente para que nadie la vuelva a tratar como la verdad.
+ */
+export const CLIENTES_MUESTRA = [
+  'LA ESTRELLA /ALIMENTOS DEL SUR SAS', 'San Francisco', 'MESSINA', 'ARCOR',
+  'Quattropani - Melisa García SAS', 'LIRIO DANIEL RAMIRO', 'ADDATO', 'MACRO CONSTRUCCIONES SRL',
 ]
+
+/**
+ * LOS CLIENTES DEL AÑO, DERIVADOS DE COBRANZAS. La lista no se tipea: se lee.
+ *
+ * POR QUÉ (13/08, pedido del dueño): *"la fila 'otros clientes' en pestaña 'obras' no puede ser,
+ * estan todos los clientes y obras declarados, busca y empareja"*. Tenía razón, y el defecto era de
+ * mecanismo: la lista estaba escrita en el código, así que TODO cliente que no estuviera en ella caía
+ * en un cajón anónimo —LIRIO DANIEL RAMIRO $17.303.000, ADDATO $2.500.000, MACRO $135.520, todos
+ * reales y todos cobrados—. Una lista tipeada garantiza que el cuadro quede incompleto cada vez que
+ * la empresa factura a alguien nuevo, y que nadie se entere.
+ *
+ * LO QUE SE DERIVA ES QUÉ CLIENTES EXISTEN; CÓMO SE AGRUPAN SIGUE SIENDO DECISIÓN DECLARADA. Las
+ * variantes de `ALIAS_CLIENTE` colapsan en su canónico —si no, "IMOTOR/San Francisco/JAVI SANCHEZ"
+ * volvería a abrir fila propia, que es justo lo que el dueño mandó unificar.
+ *
+ * @param {Array} valores la columna "Obra / Cliente" tal como se leyó, de la primera fila de datos.
+ * @returns {string[]} los canónicos, sin repetir, en el orden en que aparecen en el archivo.
+ */
+export function clientesDeCobranzas(valores = [], alias = ALIAS_CLIENTE) {
+  const canonDe = new Map()
+  for (const [canon, variantes] of Object.entries(alias)) for (const v of variantes) canonDe.set(v, canon)
+  const vistos = new Set()
+  const orden = []
+  for (const crudo of valores) {
+    const t = String(Array.isArray(crudo) ? crudo[0] : crudo ?? '').trim()
+    if (!t) continue
+    const canon = canonDe.get(t) ?? t
+    if (vistos.has(canon)) continue
+    vistos.add(canon)
+    orden.push(canon)
+  }
+  return orden
+}
 
 /**
  * Las columnas de Cobranzas / Compras / Materiales que la grilla cita. Son el DEFECTO para construir
@@ -204,7 +261,7 @@ export const OBRAS_DEL_ANO = [
  * rótulo — nunca por letra fija — y falla cerrado si un rótulo no está.
  */
 export const REFS_OBRAS = {
-  cob: { hoja: 'Cobranzas', cliente: 'G', concepto: 'I', neto: 'J', total: 'M', estado: 'O', forma: 'N', fechaCobro: 'Q', categoria: 'B', desde: 5 },
+  cob: { hoja: 'Cobranzas', cliente: 'G', concepto: 'I', neto: 'J', total: 'M', estado: 'O', forma: 'N', fechaCobro: 'Q', categoria: 'B', oc: 'H', desde: 5 },
   // `neto` es la columna "Importe" (M = Total − IVA). El costo se mide ahí, no en "Total" (O): la
   // venta ya se mide al neto, y comparar venta neta contra costo con IVA castigaba el margen ~21% en
   // todo lo que se compra en blanco. Neto contra neto. El IVA de compras es crédito fiscal, no costo.
@@ -244,9 +301,16 @@ const COBRADO = 'Cobrado'
  */
 const MILES = '"$ #,##0"'
 
-/** El criterio que ancla un cliente al PRINCIPIO de "Obra / Cliente": "San Francisco" toma
- *  "San Francisco" pero no "IMOTOR/San Francisco/JAVI SANCHEZ", que es otro cliente. */
-export const anclaCliente = (texto) => `${texto}*`
+/**
+ * EL CRITERIO DE UN CLIENTE: SU TEXTO EXACTO.
+ *
+ * Antes era un prefijo (`"San Francisco*"`), porque la lista tipeada decía "LA ESTRELLA" y el archivo
+ * "LA ESTRELLA /ALIMENTOS DEL SUR SAS". Al derivar los nombres de Cobranzas ese desfase desaparece
+ * —el rótulo ES el texto del archivo— y el prefijo pasa a ser un riesgo puro: bastaría que existiera
+ * "MESSINA" y "MESSINA SRL" para que la primera se llevara las filas de la segunda, sin dar error.
+ * Hoy no hay ninguna colisión de prefijo en el archivo; con match exacto no puede haberla nunca.
+ */
+export const criterioCliente = (texto) => `${texto}`
 
 /**
  * LAS VARIANTES CON QUE UN CLIENTE APARECE EN COBRANZAS. Decisión del DUEÑO, no inferencia.
@@ -274,26 +338,37 @@ export const variantesDe = (cliente) => [cliente, ...(ALIAS_CLIENTE[cliente] ?? 
  * @param {string} estado el criterio de estado, entre comillas.
  */
 function sumaCobranzas(cob, campo, cliente, extra, estado) {
-  return variantesDe(cliente)
-    .map((v) => `SUMIFS(${abierto(cob, campo)};${abierto(cob, 'cliente')};"${anclaCliente(v)}"${extra};${abierto(cob, 'estado')};${estado})`)
+  // UNA OBRA SE RECONOCE POR EL CONCEPTO **O** POR LA ORDEN DE COMPRA (ver `tramos`): el anticipo
+  // puede no nombrarla en el Concepto, y mirar sólo ahí dejaba media obra afuera.
+  return tramos(cob, cliente, extra)
+    .map(([v, c]) => `SUMIFS(${abierto(cob, campo)};${abierto(cob, 'cliente')};"${criterioCliente(v)}"${c};${abierto(cob, 'estado')};${estado})`)
     .join('+')
 }
 
 /** VENTA: el NETO de todo lo que no está cancelado. El IVA no es venta. */
-const venta = (cob, cliente, extra = '') => `=${sumaCobranzas(cob, 'neto', cliente, extra, `"<>${NO_VENTA}"`)}`
+const venta = (cob, cliente, extra = {}) => `=${sumaCobranzas(cob, 'neto', cliente, extra, `"<>${NO_VENTA}"`)}`
 
 /** COBRADO: el importe que entró, con IVA. */
-const cobrado = (cob, cliente, extra = '') => `=${sumaCobranzas(cob, 'total', cliente, extra, `"${COBRADO}"`)}`
+const cobrado = (cob, cliente, extra = {}) => `=${sumaCobranzas(cob, 'total', cliente, extra, `"${COBRADO}"`)}`
 
 /** RESTA COBRAR: lo facturado/proyectado que todavía no entró, con IVA. Sale del ESTADO, no de una
  *  columna de saldo — la col M no es un saldo (ver el encabezado). */
-const restaCobrar = (cob, cliente, extra = '') =>
+const restaCobrar = (cob, cliente, extra = {}) =>
   `=${sumaCobranzas(cob, 'total', cliente, extra, `"<>${NO_VENTA}"`)}-(${sumaCobranzas(cob, 'total', cliente, extra, `"${COBRADO}"`)})`
 
 /** LO VENCIDO: fecha de cobro pasada y todavía sin cobrar. Es la plata que había que cobrar y no
  *  entró — el único número de esta pestaña que tiene que gritar. */
-const vencido = (cob, cliente, extra = '') =>
-  `=${variantesDe(cliente).map((v) => `SUMIFS(${abierto(cob, 'total')};${abierto(cob, 'cliente')};"${anclaCliente(v)}"${extra}`
+/** Los pares (variante de cliente, criterio de obra) que forman UNA obra. Sin needle, el cliente entero. */
+const tramos = (cob, cliente, extra = {}) => {
+  const cat = extra.cat ? `;${abierto(cob, 'categoria')};"${extra.cat}"` : ''
+  return variantesDe(cliente).flatMap((v) => (extra.needle
+    ? [[v, `;${abierto(cob, 'concepto')};"*${extra.needle}*"${cat}`],
+      [v, `;${abierto(cob, 'oc')};"*${extra.needle}*";${abierto(cob, 'concepto')};"<>*${extra.needle}*"${cat}`]]
+    : [[v, cat]]))
+}
+
+const vencido = (cob, cliente, extra = {}) =>
+  `=${tramos(cob, cliente, extra).map(([v, c]) => `SUMIFS(${abierto(cob, 'total')};${abierto(cob, 'cliente')};"${criterioCliente(v)}"${c}`
     + `;${abierto(cob, 'estado')};"<>${COBRADO}";${abierto(cob, 'estado')};"<>${NO_VENTA}";${abierto(cob, 'fechaCobro')};"<"&TODAY())`).join('+')}`
 
 /**
@@ -308,9 +383,18 @@ const vencido = (cob, cliente, extra = '') =>
  * veían porque comparaban el texto que yo emitía contra el texto que yo esperaba. Ahora `todas las
  * fórmulas están balanceadas` es un test, y el escritor relee la pestaña y aborta si publicó un error.
  */
-const proximoCobro = (cob, cliente, extra = '') =>
-  `=IFERROR(1/(1/MIN(${variantesDe(cliente).map((v) => `MINIFS(${abierto(cob, 'fechaCobro')};${abierto(cob, 'cliente')};"${anclaCliente(v)}"${extra}`
-    + `;${abierto(cob, 'estado')};"<>${COBRADO}";${abierto(cob, 'estado')};"<>${NO_VENTA}";${abierto(cob, 'fechaCobro')};">0")`).join(';')}));"")`
+const LEJOS = 2958465
+
+const proximoCobro = (cob, cliente, extra = '') => {
+  const ms = tramos(cob, cliente, extra).map(([v, c]) => `MINIFS(${abierto(cob, 'fechaCobro')};${abierto(cob, 'cliente')};"${criterioCliente(v)}"${c}`
+    + `;${abierto(cob, 'estado')};"<>${COBRADO}";${abierto(cob, 'estado')};"<>${NO_VENTA}";${abierto(cob, 'fechaCobro')};">0")`)
+  // CADA MINIFS SIN COINCIDENCIAS DEVUELVE 0, Y UN 0 GANA CUALQUIER `MIN`. Ese fue el defecto: las 4
+  // obras de San Francisco salieron con la fecha EN BLANCO porque su alias IMOTOR no tiene filas
+  // pendientes de esa obra, su MINIFS daba 0 y el MIN lo tomaba como el mínimo. Blanco se lee como
+  // "no hay nada que cobrar", y había $8,7M para el 19/08. El 0 se mapea a una fecha imposible.
+  const min = `MIN(${ms.map((m) => `IF(${m}=0;${LEJOS};${m})`).join(';')})`
+  return `=IF(${min}>=${LEJOS};"";${min})`
+}
 
 /**
  * EL DETALLE DE COBRANZAS DE UNA OBRA, EN UNA SOLA CELDA.
@@ -328,7 +412,7 @@ const proximoCobro = (cob, cliente, extra = '') =>
  * obras para explicar una.
  */
 function composicionBlancoNegro(cob, cliente, extra) {
-  const porCategoria = (cat) => `(${sumaCobranzas(cob, 'neto', cliente, `${extra};${abierto(cob, 'categoria')};"${cat}"`, `"<>${NO_VENTA}"`)})`
+  const porCategoria = (cat) => `(${sumaCobranzas(cob, 'neto', cliente, { ...extra, cat }, `"<>${NO_VENTA}"`)})`
   const b = porCategoria('B')
   const n = porCategoria('N')
   return `IF(${b}*${n}>0;"blanco "&TEXT(${b};${MILES})&" · negro "&TEXT(${n};${MILES})&" ‖ ";"")`
@@ -336,11 +420,11 @@ function composicionBlancoNegro(cob, cliente, extra) {
 
 function detalleCobranzas(cob, cliente, needle) {
   const cond = variantesDe(cliente)
-    .map((v) => `(LEFT(${abierto(cob, 'cliente')};${v.length})="${v}")`).join('+')
+    .map((v) => `(${abierto(cob, 'cliente')}="${v}")`).join('+')
   // EL IMPORTE SE FORMATEA ADENTRO DE LA FÓRMULA: TEXTJOIN concatena TEXTO y el formato de número de
   // la celda no lo toca. El separador entre eventos es " | ": con seis cobranzas seguidas, el " · "
   // se leía como párrafo. El patrón va en `MILES`, y ese detalle tiene su propia advertencia.
-  const extra = `;${abierto(cob, 'concepto')};"*${needle}*"`
+  const extra = { needle }
   return `=IFERROR(${composicionBlancoNegro(cob, cliente, extra)}&TEXTJOIN(" | ";1;ARRAYFORMULA(IF((${cond})*(ISNUMBER(SEARCH("${needle}";${abierto(cob, 'concepto')})))`
     + `*(${abierto(cob, 'estado')}<>"${COBRADO}")*(${abierto(cob, 'estado')}<>"${NO_VENTA}")*(${abierto(cob, 'fechaCobro')}>0);`
     + `TEXT(${abierto(cob, 'fechaCobro')};"dd/mm")&" · "&TEXT(${abierto(cob, 'total')};${MILES})&" · "&${abierto(cob, 'forma')};"")));"")`
@@ -394,15 +478,25 @@ function seccionObrasDelAno(h, refs, clientes) {
   // COBRANZAS ENTERA, sin filtrar por cliente. El único criterio es el estado, así que una fila con la
   // columna de cliente vacía entra igual: si dependiera del cliente, el residuo podría esconder plata.
   const todo = (campo, estado) => `SUMIFS(${abierto(cob, campo)};${abierto(cob, 'estado')};"${estado}")`
+  // EL CONTROL SE QUEDA AUNQUE DÉ CERO — sobre todo si da cero. Con los clientes derivados de
+  // Cobranzas esta fila tiene que valer $0: si algún día no vale, apareció un cliente que el
+  // mecanismo no supo ubicar, y ése es justo el aviso que se perdería si la fila se borrara.
   const fOtros = h.n + 1
-  h.push(['Otros clientes — no listados arriba', '',
+  // ROUND a 2 decimales: el residuo es una resta entre agrupaciones distintas de los mismos números y
+  // el punto flotante deja restos de 1e-9. Un control que grita por eso enseña a ignorarlo.
+  h.push(['⇒ sin ubicar — tiene que dar $0', `=IF(ROUND(C${fOtros}+D${fOtros}+E${fOtros};2)<>0;"⚠";"✓")`,
     `=${todo('neto', `<>${NO_VENTA}`)}-SUM(C${f0}:C${f1})`,
     `=${todo('total', COBRADO)}-SUM(D${f0}:D${f1})`,
     `=${todo('total', `<>${NO_VENTA}`)}-${todo('total', COBRADO)}-SUM(E${f0}:E${f1})`,
     '', '', '',
-    'sin fila propia arriba · falta un cliente'])
-  const fTot = h.push(['⇒ TOTAL 2026', '', `=SUM(C${f0}:C${fOtros})`, `=SUM(D${f0}:D${fOtros})`,
-    `=SUM(E${f0}:E${fOtros})`, `=SUM(F${f0}:F${f1})`, `=SUM(G${f0}:G${f1})`, '',
+    'si deja de ser cero, hay un cliente en Cobranzas que no entró en ninguna fila'])
+  // EL TOTAL SALE DE LA FUENTE, NO DE LA SUMA DE ARRIBA. Antes era `SUM(C6:C12)` con el residuo
+  // adentro, y como el residuo es "archivo − las filas", el total daba el archivo POR CONSTRUCCIÓN:
+  // una identidad que no puede fallar, o sea que no controlaba nada. El control falsificable es el
+  // residuo: puede dar distinto de cero, y entonces falta un cliente.
+  const fTot = h.push(['⇒ TOTAL 2026', '', `=${todo('neto', `<>${NO_VENTA}`)}`, `=${todo('total', COBRADO)}`,
+    `=${todo('total', `<>${NO_VENTA}`)}-${todo('total', COBRADO)}`,
+    `=SUM(F${f0}:F${fOtros})`, `=SUM(G${f0}:G${f1})`, '',
     'IVA sólo en las filas blancas (B)'])
   h.push([])
   return { fClientes: [f0, f1], fOtros, fTot }
@@ -473,7 +567,7 @@ function bloqueObra(h, refs, o, idx) {
   const nDetalle = (o.egresos?.length ?? 0) + 1 // egresos + la fila de MO
   const [f0, f1] = [fProt + 1, fProt + nDetalle]
 
-  const dela = `;${abierto(cob, 'concepto')};"*${o.ventaTexto}*"`
+  const dela = { needle: o.ventaTexto }
   h.push([`2.${idx} · ${o.cliente} — ${o.obra}${proyectable ? '' : '   ⚠ sin fechas — no se proyecta'}`,
     // EL SEMÁFORO MIRA LA COBRANZA VENCIDA, no el margen. Un margen negativo se lee en su columna; la
     // plata que había que cobrar y no entró es lo único que exige llamar a alguien hoy.
@@ -528,18 +622,18 @@ function bloqueObra(h, refs, o, idx) {
 export function grillaObras(ctx = {}) {
   const refs = { ...REFS_OBRAS, ...ctx.refs }
   const obras = ctx.obras ?? []
-  const clientes = ctx.clientes ?? OBRAS_DEL_ANO
+  const clientes = ctx.clientes ?? CLIENTES_MUESTRA
   const h = hoja()
 
   h.push([`${PESTANA_OBRAS} — EL AÑO ENTERO, OBRA POR OBRA`])
-  h.push(['Venta al NETO · cobrado y resta al total facturado · todo vivo desde Cobranzas.'])
+  h.push(['Venta al NETO · cobrado y resta al total a cobrar · todo vivo desde Cobranzas.'])
   h.push([])
 
   const s1 = seccionObrasDelAno(h, refs, clientes)
 
   h.push(['2 · OBRAS EN CURSO Y FUTURAS', '', '', '', '', '', '', '',
     'tipeado = proyección del dueño (07/08)'])
-  h.push(['Obra', '', 'Venta (neto)', 'Cobrado', 'Resta cobrar', 'Vencido', 'Margen', 'Próx. cobro',
+  h.push(['Obra', '', 'Venta (neto)', 'Cobrado', 'Resta cobrar', 'Vencido', 'Margen proy.', 'Próx. cobro',
     'Cobranzas pendientes'])
   const bloques = obras.map((o, i) => bloqueObra(h, refs, o, i + 1))
   const suma = (col) => `=${bloques.map((b) => `${col}${b.fProt}`).join('+')}`

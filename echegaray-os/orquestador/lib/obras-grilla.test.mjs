@@ -15,9 +15,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  grillaObras, serialISO, anclaCliente, variantesDe, anchoColumnaA, pxDeTexto,
+  grillaObras, serialISO, criterioCliente, variantesDe, anchoColumnaA, pxDeTexto, clientesDeCobranzas,
   celdasEnError, problemaDeSintaxis, ERRORES_SHEET,
-  ANCHO_OBRAS, ANCHOS_OBRAS, REFS_OBRAS, OBRAS_DEL_ANO,
+  ANCHO_OBRAS, ANCHOS_OBRAS, REFS_OBRAS, CLIENTES_MUESTRA,
 } from './obras-grilla.mjs'
 import { OBRAS_FUTURAS, CLIENTES_CANONICOS, esProyectable, totalEgresos } from './obras-datos.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
@@ -81,44 +81,6 @@ test('venta se define UNA vez: la fila del cliente y la de la obra usan la misma
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// EL CLIENTE SE ANCLA AL PREFIJO
-// ─────────────────────────────────────────────────────────────────────────────
-
-test('el cliente se ancla al PRINCIPIO: "San Francisco" no puede tragarse a "IMOTOR/San Francisco/…"', () => {
-  // Medido en el archivo vivo: San Francisco salía $161.183.719 = sus $104.077.336 más los
-  // $104.765.646 de IMOTOR… menos lo que el filtro de certificaciones ya había borrado. IMOTOR es
-  // otro cliente, con sus 9 filas propias. El comodín va SÓLO al final.
-  const [f0, f1] = g.fClientes
-  for (let f = f0; f <= f1; f++) {
-    const cli = String(cel(g, `A${f}`))
-    assert.ok(cel(g, `C${f}`).includes(`"${cli}*"`), `C${f}: el cliente tiene que anclarse al prefijo`)
-    assert.ok(!cel(g, `C${f}`).includes(`"*${cli}*"`), `C${f}: buscar el cliente ADENTRO mezcla clientes distintos`)
-  }
-  for (const b of g.bloques) {
-    const v = cel(g, `C${b.fProt}`)
-    const o = OBRAS_FUTURAS.find((x) => x.clave === b.clave)
-    assert.ok(v.includes(`"${o.cliente}*"`), `${b.clave}: cliente anclado al prefijo`)
-    assert.ok(!v.includes(`"*${o.cliente}*"`), `${b.clave}: sin comodín a la izquierda del cliente`)
-  }
-})
-
-test('el prefijo sigue tomando al cliente escrito con cola: "LA ESTRELLA /ALIMENTOS DEL SUR SAS"', () => {
-  // El match no puede ser exacto: el archivo escribe el cliente con una cola. Anclar al prefijo es el
-  // punto medio, y es el que resuelve los dos casos reales a la vez.
-  assert.equal(anclaCliente('LA ESTRELLA'), 'LA ESTRELLA*')
-  const casos = [
-    ['LA ESTRELLA', 'LA ESTRELLA /ALIMENTOS DEL SUR SAS', true],
-    ['San Francisco', 'San Francisco', true],
-    ['San Francisco', 'IMOTOR/San Francisco/JAVI SANCHEZ', false],
-    ['MESSINA', 'MESSINA', true],
-    ['Quattropani - Melisa García SAS', 'Quattropani - Melisa García SAS', true],
-  ]
-  for (const [canon, enElArchivo, esperado] of casos) {
-    assert.equal(enElArchivo.startsWith(canon), esperado, `"${canon}" vs "${enElArchivo}"`)
-  }
-})
-
-// ─────────────────────────────────────────────────────────────────────────────
 // EL TOTAL SE CONCILIA CONTRA LA FUENTE
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -129,14 +91,74 @@ test('el ⇒ TOTAL 2026 sale de Cobranzas ENTERA, no de la suma de los clientes 
   const otros = cel(g, `C${g.fOtros}`)
   assert.match(otros, /^=SUMIFS\([^)]*\)-SUM\(C\d+:C\d+\)$/, 'residuo = todo el archivo − los listados')
   assert.ok(!otros.includes(`'Cobranzas'!$G`), 'el total del archivo no filtra por cliente: una fila sin cliente entra igual')
-  assert.equal(cel(g, `C${g.totales[0]}`), `=SUM(C${g.fClientes[0]}:C${g.fOtros})`, 'el total incluye el residuo')
-  assert.equal(cel(g, `D${g.totales[0]}`), `=SUM(D${g.fClientes[0]}:D${g.fOtros})`)
+  // EL TOTAL NO PUEDE SER LA SUMA DE LAS FILAS DE ARRIBA. Con el residuo = "archivo − las filas", el
+  // total daba el archivo POR CONSTRUCCIÓN: una identidad que no puede fallar no controla nada. El
+  // total sale de la fuente y el control falsificable es el residuo, que SÍ puede dar ≠ 0.
+  assert.match(cel(g, `C${g.totales[0]}`), /^=SUMIFS\(/, 'el total sale del archivo, no de las filas')
+  assert.ok(!cel(g, `C${g.totales[0]}`).includes('SUM(C'), 'no es la suma de los renglones')
+  assert.match(cel(g, `D${g.totales[0]}`), /^=SUMIFS\(/)
 })
 
-test('la fila de residuo existe, está rotulada y dice para qué sirve', () => {
-  assert.match(String(cel(g, `A${g.fOtros}`)), /Otros clientes/)
-  assert.match(String(cel(g, `I${g.fOtros}`)), /falta un cliente/)
+test('el residuo NO se borra por dar cero: se queda como control y grita si deja de serlo', () => {
+  // Con los clientes derivados esta fila vale $0. Borrarla "porque ya no hace falta" es como se
+  // pierde la capacidad de detectar el problema: el día que aparezca un cliente que el mecanismo no
+  // sepa ubicar, esta fila es lo único que lo dice.
+  assert.match(String(cel(g, `A${g.fOtros}`)), /sin ubicar.*\$0/, 'el rótulo dice qué tiene que valer')
+  assert.equal(cel(g, `B${g.fOtros}`), `=IF(ROUND(C${g.fOtros}+D${g.fOtros}+E${g.fOtros};2)<>0;"⚠";"✓")`, 'y grita si no es cero')
+  assert.match(String(cel(g, `I${g.fOtros}`)), /no entró en ninguna fila/)
   assert.equal(g.fOtros, g.fClientes[1] + 1, 'va inmediatamente debajo de los clientes')
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LOS CLIENTES SE DERIVAN, NO SE TIPEAN
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('la lista de clientes sale de Cobranzas: un cliente nuevo aparece solo', () => {
+  // EL DEFECTO (13/08, lo cazó el dueño mirando la pestaña): la lista estaba TIPEADA, así que
+  // LIRIO DANIEL RAMIRO ($17.303.000), ADDATO ($2.500.000) y MACRO ($135.520) —clientes reales y
+  // cobrados— caían en un cajón anónimo. Una lista escrita a mano garantiza que el cuadro quede
+  // incompleto cada vez que la empresa factura a alguien nuevo, y que nadie se entere.
+  const crudo = [
+    ['MESSINA'], ['San Francisco'], ['IMOTOR/San Francisco/JAVI SANCHEZ'], ['MESSINA'],
+    ['LIRIO DANIEL RAMIRO'], [''], ['  ADDATO  '], ['UN CLIENTE QUE NADIE DECLARÓ'],
+  ]
+  assert.deepEqual(clientesDeCobranzas(crudo), [
+    'MESSINA', 'San Francisco', 'LIRIO DANIEL RAMIRO', 'ADDATO', 'UN CLIENTE QUE NADIE DECLARÓ',
+  ])
+})
+
+test('las variantes declaradas COLAPSAN: derivar en crudo reabriría la fila de IMOTOR', () => {
+  // Lo que se deriva es QUÉ clientes existen; cómo se agrupan sigue siendo decisión del dueño.
+  assert.deepEqual(clientesDeCobranzas([['IMOTOR/San Francisco/JAVI SANCHEZ']]), ['San Francisco'],
+    'la variante entra como su canónico, aunque el canónico no haya aparecido todavía')
+  assert.deepEqual(clientesDeCobranzas([['San Francisco'], ['IMOTOR/San Francisco/JAVI SANCHEZ']]), ['San Francisco'],
+    'y no abre una segunda fila')
+  // Sin el mapa, IMOTOR sería un cliente más: eso es exactamente lo que el dueño mandó unificar.
+  assert.deepEqual(clientesDeCobranzas([['San Francisco'], ['IMOTOR/San Francisco/JAVI SANCHEZ']], {}),
+    ['San Francisco', 'IMOTOR/San Francisco/JAVI SANCHEZ'])
+})
+
+test('el cliente se matchea EXACTO: ningún nombre puede llevarse las filas de otro que lo contenga', () => {
+  // Al derivar los nombres del archivo, el rótulo ES el texto de Cobranzas y el prefijo deja de ser
+  // necesario. Y con prefijo, un futuro "MESSINA SRL" quedaría absorbido por "MESSINA" sin dar error.
+  assert.equal(criterioCliente('MESSINA'), 'MESSINA', 'sin comodines')
+  const [f0, f1] = g.fClientes
+  for (let f = f0; f <= f1; f++) {
+    const cli = String(cel(g, `A${f}`))
+    assert.ok(cel(g, `C${f}`).includes(`;"${cli}"`), `C${f}: el cliente va exacto`)
+    assert.ok(!cel(g, `C${f}`).includes(`"${cli}*"`), `C${f}: sin prefijo`)
+  }
+  for (const [ref, f] of formulas(g)) {
+    assert.ok(!/\$G\$\d+:\$G;"[^"]*\*"/.test(f), `${ref}: quedó un comodín en el criterio de cliente`)
+  }
+})
+
+test('los clientes derivados se dibujan tal como los escribe el archivo, sin recortes míos', () => {
+  const derivados = clientesDeCobranzas(CLIENTES_MUESTRA.map((c) => [c]))
+  const otra = grillaObras({ obras: OBRAS_FUTURAS, clientes: derivados })
+  const [f0, f1] = otra.fClientes
+  assert.deepEqual(otra.filas.slice(f0 - 1, f1).map((f) => f[0]), derivados)
+  assert.ok(derivados.includes('LA ESTRELLA /ALIMENTOS DEL SUR SAS'), 'el nombre entero, no "LA ESTRELLA"')
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -221,11 +243,11 @@ test('IMOTOR es San Francisco: la decisión del dueño vive en un mapa, no en un
   // caso habría vuelto a mezclar los clientes que acabábamos de separar.
   assert.deepEqual(variantesDe('San Francisco'), ['San Francisco', 'IMOTOR/San Francisco/JAVI SANCHEZ'])
   assert.deepEqual(variantesDe('MESSINA'), ['MESSINA'], 'un cliente sin alias no inventa variantes')
-  const f = g.fClientes[0] + OBRAS_DEL_ANO.indexOf('San Francisco')
+  const f = g.fClientes[0] + CLIENTES_MUESTRA.indexOf('San Francisco')
   assert.equal(cel(g, `A${f}`), 'San Francisco')
   const v = cel(g, `C${f}`)
-  assert.ok(v.includes('"San Francisco*"'), 'el canónico')
-  assert.ok(v.includes('"IMOTOR/San Francisco/JAVI SANCHEZ*"'), 'y su variante declarada')
+  assert.ok(v.includes('"San Francisco"'), 'el canónico')
+  assert.ok(v.includes('"IMOTOR/San Francisco/JAVI SANCHEZ"'), 'y su variante declarada')
   assert.equal(v.split('SUMIFS(').length - 1, 2, 'un SUMIFS por variante: SUMIFS no sabe hacer OR')
   // Ningún OTRO cliente puede arrastrar a IMOTOR.
   for (let x = g.fClientes[0]; x <= g.fClientes[1]; x++) {
@@ -314,7 +336,10 @@ test('cada obra publica su próxima fecha de cobro y el detalle de lo pendiente 
   // El dueño pidió saber a quién reclamarle y por cuánto. El detalle va por TEXTJOIN sobre un
   // ARRAYFORMULA: devuelve UNA celda y por eso NO derrama sobre las columnas del generador.
   for (const b of g.bloques) {
-    assert.match(cel(g, `H${b.fProt}`), /^=IFERROR\(1\/\(1\/MIN\(MINIFS\(/, `${b.clave}: próxima fecha de cobro`)
+    // El MIN tiene que IGNORAR los ceros: un MINIFS sin coincidencias devuelve 0 y ese 0 ganaba el
+    // MIN, dejando en blanco la fecha de las 4 obras de San Francisco (había $8,7M para el 19/08).
+    assert.match(cel(g, `H${b.fProt}`), /^=IF\(MIN\(IF\(MINIFS\(/, `${b.clave}: próxima fecha de cobro`)
+    assert.ok(cel(g, `H${b.fProt}`).includes(';2958465;'), `${b.clave}: el 0 se mapea a una fecha imposible`)
     const det = cel(g, `I${b.fProt}`)
     assert.match(det, /^=IFERROR\(/, `${b.clave}: el detalle por obra`)
     assert.match(det, /TEXTJOIN\(/, `${b.clave}`)
@@ -488,13 +513,13 @@ test('la glosa no tapa al dato: el estándar del dueño es muy poco texto', () =
 
 test('los seis clientes del año salen en la sección 1, en orden y sin repetir', () => {
   const [f0, f1] = g.fClientes
-  assert.equal(f1 - f0 + 1, OBRAS_DEL_ANO.length)
-  assert.deepEqual(g.filas.slice(f0 - 1, f1).map((f) => f[0]), OBRAS_DEL_ANO)
-  assert.equal(new Set(OBRAS_DEL_ANO).size, OBRAS_DEL_ANO.length)
+  assert.equal(f1 - f0 + 1, CLIENTES_MUESTRA.length)
+  assert.deepEqual(g.filas.slice(f0 - 1, f1).map((f) => f[0]), CLIENTES_MUESTRA)
+  assert.equal(new Set(CLIENTES_MUESTRA).size, CLIENTES_MUESTRA.length)
 })
 
 test('cada cliente de una obra futura es uno de los clientes del año: la sección 2 no cuelga de nadie', () => {
-  for (const o of OBRAS_FUTURAS) assert.ok(OBRAS_DEL_ANO.includes(o.cliente), `${o.clave}: "${o.cliente}" no está en la sección 1`)
+  for (const o of OBRAS_FUTURAS) assert.ok(CLIENTES_MUESTRA.includes(o.cliente), `${o.clave}: "${o.cliente}" no está en la sección 1`)
 })
 
 // ─────────────────────────────────────────────────────────────────────────────

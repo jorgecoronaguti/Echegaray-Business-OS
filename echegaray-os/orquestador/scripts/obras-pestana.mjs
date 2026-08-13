@@ -43,7 +43,7 @@ import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 import { requestsTextoPorContenido } from '../lib/formato-texto-por-contenido.mjs'
 import {
-  grillaObras, anchoColumnaA, celdasEnError, problemaDeSintaxis,
+  grillaObras, anchoColumnaA, celdasEnError, problemaDeSintaxis, clientesDeCobranzas,
   ANCHO_OBRAS, ANCHOS_OBRAS, PESTANA_OBRAS, REFS_OBRAS,
 } from '../lib/obras-grilla.mjs'
 import { OBRAS_FUTURAS, totalEgresos } from '../lib/obras-datos.mjs'
@@ -202,7 +202,15 @@ async function main() {
   console.log(`columnas resueltas por rótulo · Cobranzas: cliente=${refs.cob.cliente} concepto=${refs.cob.concepto} total=${refs.cob.total} estado=${refs.cob.estado} (desde ${refs.cob.desde})`)
   console.log(`                              · Compras: proveedor=${refs.cmp.proveedor} cliente=${refs.cmp.cliente} fecha=${refs.cmp.fecha} total=${refs.cmp.total} (desde ${refs.cmp.desde})`)
 
-  const g = grillaObras({ obras: OBRAS_FUTURAS, refs })
+  // LOS CLIENTES SE LEEN DEL ARCHIVO, NO SE TIPEAN. Una lista escrita en el código deja fuera del
+  // cuadro a todo cliente nuevo —y nadie se entera—: es el defecto que el dueño cazó mirando la
+  // pestaña. Rango abierto: el que se factura mañana entra solo en la próxima corrida.
+  const colCli = await google.readSheetValues(ID, `${refs.cob.hoja}!${refs.cob.cliente}${refs.cob.desde}:${refs.cob.cliente}`)
+  const clientes = clientesDeCobranzas(colCli ?? [])
+  if (!clientes.length) throw new Error(`no leí un solo cliente en ${refs.cob.hoja}!${refs.cob.cliente}: NO escribo una Sección 1 vacía.`)
+  console.log(`clientes derivados de ${refs.cob.hoja}: ${clientes.length} · ${clientes.join(' · ')}`)
+
+  const g = grillaObras({ obras: OBRAS_FUTURAS, refs, clientes })
   // GUARDA FAIL-CLOSED. Una grilla sin obras no es "una pestaña con poco": es el insumo que no cargó.
   // Escribirla dejaría la pestaña en blanco, que es la forma que tomaron las pérdidas de este repo.
   if (!g.bloques.length) throw new Error('la grilla no trajo ni una obra: NO escribo una pestaña vacía.')
