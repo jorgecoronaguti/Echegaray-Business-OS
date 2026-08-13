@@ -95,13 +95,16 @@ test('fechas, montos con símbolo, guiones y fórmulas no sirven de testigo', as
 test('el testigo es el primer TEXTO plano: los números de adelante no lo tapan', async () => {
   // La fila real mezcla números, fecha y texto. El número vuelve distinto (localizado) y NO tiene
   // que gritar; el texto es el que decide — presente, todo bien; ausente, se señala el rango.
+  // El testigo está en la 3ª columna del lote, que arranca en B7: se relee D7 (13/08). Antes se
+  // releía el rango mandado y el mock devolvía la fila entera — algo que la API real no hace con un
+  // rango de una celda.
   const fila = [[313, '05/08/2026', 'Acreditación fondo desempleo']]
-  const llego = armarCliente({ [RANGO]: [['313,00', 'otra cosa', 'Acreditación fondo desempleo']] })
+  const llego = armarCliente({ "'Cheques Emitidos'!D7": [['Acreditación fondo desempleo']] })
   try {
     const r = await llego.g.batchUpdateValues('FILE', [{ range: RANGO, values: fila }])
     assert.equal(r.noAterrizo, undefined, 'el número localizado no puede tapar al testigo que sí llegó')
   } finally { llego.soltar() }
-  const perdio = armarCliente({ [RANGO]: [['313,00', 'contenido viejo']] })
+  const perdio = armarCliente({ "'Cheques Emitidos'!D7": [['contenido viejo']] })
   try {
     const r = await perdio.g.batchUpdateValues('FILE', [{ range: RANGO, values: fila }])
     assert.deepEqual(r.noAterrizo, [RANGO], 'sin el texto en el destino, la escritura se perdió')
@@ -120,6 +123,39 @@ test('dos rangos, uno perdido: se señala SOLO el perdido', async () => {
       { range: OTRO, values: [['saldo declarado x extracto']] },
     ])
     assert.deepEqual(r.noAterrizo, [RANGO])
+  } finally { soltar() }
+})
+
+test('EL FALSO POSITIVO DEL 13/08: un lote anclado se verifica donde quedó el dato, no en el ancla', async () => {
+  // `escribirPreservando` manda el ANCLA con la matriz entera: range '_J_OBREROS!A201' + 200 filas.
+  // La guarda leía A201 —una celda vacía— y buscaba ahí el testigo "UOCRA", que quedó en B202.
+  // El espejo estaba perfecto y la corrida salía "NO ATERRIZÓ". Verificado contra el Sheet real:
+  // las filas 201-206 de _J_OBREROS son idénticas a las de 'Obreros 26'.
+  const values = [
+    ['', '', '', '', '', 15, 17, 17],
+    ['', 'UOCRA', 'enero'],
+    ['', 'Oficial Especializado', '$5.470,00'],
+  ]
+  const { g, avisos, soltar } = armarCliente({
+    '_J_OBREROS!A201': [],            // el ancla está vacía: leerla no prueba nada
+    '_J_OBREROS!B202': [['UOCRA']],   // el testigo SÍ aterrizó, dos filas más abajo
+  })
+  try {
+    const r = await g.batchUpdateValues('FILE', [{ range: '_J_OBREROS!A201', values }])
+    assert.equal(r.noAterrizo, undefined, 'el bloque aterrizó: la guarda no puede acusar una pérdida')
+    assert.deepEqual(avisos, [], 'una alarma que grita en falso se termina ignorando')
+  } finally { soltar() }
+})
+
+test('el mismo lote anclado, cuando el bloque de verdad se perdió, se señala con la celda que se miró', async () => {
+  // La contracara: si la guarda dejara de verificar los lotes anclados, este caso pasaría en verde.
+  const values = [['', '', ''], ['', 'UOCRA', 'enero']]
+  const { g, avisos, soltar } = armarCliente({ '_J_OBREROS!B202': [['contenido viejo']] })
+  try {
+    const r = await g.batchUpdateValues('FILE', [{ range: '_J_OBREROS!A201', values }])
+    assert.deepEqual(r.noAterrizo, ['_J_OBREROS!A201'])
+    assert.ok(avisos.some((a) => a.includes('miré _J_OBREROS!B202') && a.includes('UOCRA')),
+      'el aviso tiene que decir dónde miró y qué esperaba, no sólo el rango')
   } finally { soltar() }
 })
 
