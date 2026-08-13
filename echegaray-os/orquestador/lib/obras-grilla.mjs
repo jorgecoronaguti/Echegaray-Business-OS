@@ -661,6 +661,49 @@ const pctContrato = (f, contrato) => (contrato ? `=C${f}/${contrato}` : SIN_CONT
  */
 const saldoContrato = (f, contrato) => (contrato ? `=${contrato}-C${f}` : SIN_CONTRATO)
 
+/**
+ * EL CONTROL DE LA COLUMNA I, Y POR QUÉ MIRA LA FÓRMULA Y NO LO QUE SE VE.
+ *
+ * ═══ EL DEFECTO QUE ESTA FUNCIÓN VIENE A ARREGLAR (13/08) ═══
+ *
+ * La verificación anterior leía el valor FORMATEADO de la I y exigía que una obra con contrato
+ * publicara algo con un dígito. Abortó la publicación de cinco obras sanas.
+ *
+ * No había ningún defecto: `MONEDA_CUERPO` es `'#,##0;(#,##0);"—"'`, y esa tercera sección es la
+ * del CERO. Una obra 100% facturada tiene saldo cero, y el cero se dibuja **exactamente igual** que
+ * `SIN_CONTRATO`. Leyendo lo que se ve, "esta obra ya no debe nada" y "esta obra no declara
+ * contrato" son el mismo carácter — dos hechos opuestos con el mismo glifo.
+ *
+ * Es la trampa del repo que dice que un control nunca se valida contra la misma información que
+ * produce: el formato lo elige este mismo generador, así que preguntarle a la pantalla qué escribió
+ * es preguntarle al propio trabajo si salió bien.
+ *
+ * LA FÓRMULA NO ES AMBIGUA: con contrato hay `=47590272-C18`; sin contrato hay el texto `—`. Por eso
+ * el control relee con `render: 'FORMULA'`, que además prueba lo que importa —que la celda quedó
+ * VIVA, atada a su C— y no sólo que hoy muestra un número. Una celda pegada a mano con el valor
+ * correcto pasaba el control viejo; con éste, no.
+ *
+ * @param {{clave:string, fProt:number, contrato:number|null}[]} bloques
+ * @param {string[][]} publicadoFormula la relectura de la pestaña con render FORMULA
+ * @returns {string[]} un motivo por obra mal publicada; vacío si están todas bien
+ */
+export function saldoContratoMalPublicado(bloques = [], publicadoFormula = []) {
+  const malas = []
+  for (const b of bloques) {
+    const pub = String(publicadoFormula[b.fProt - 1]?.[8] ?? '').trim()
+    if (b.contrato) {
+      // La fórmula viva del contrato de ESTA obra: ni otra, ni un número pegado, ni vacío.
+      if (pub !== `=${b.contrato}-C${b.fProt}`) {
+        malas.push(`${b.clave}: contrato $${b.contrato.toLocaleString('es-AR')} y la I quedó "${pub}" `
+          + `en vez de la fórmula viva "=${b.contrato}-C${b.fProt}"`)
+      }
+    } else if (pub !== SIN_CONTRATO) {
+      malas.push(`${b.clave}: sin contrato declarado y la I quedó "${pub}" en vez de "${SIN_CONTRATO}"`)
+    }
+  }
+  return malas
+}
+
 /** LO VENCIDO: fecha de cobro pasada y todavía sin cobrar. Es la plata que había que cobrar y no
  *  entró — el único número de esta pestaña que tiene que gritar. */
 /** Los pares (variante de cliente, criterio de obra) que forman UNA obra. Sin needle, el cliente entero. */
