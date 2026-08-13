@@ -16,6 +16,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   grillaObras, serialISO, anclaCliente, variantesDe, anchoColumnaA, pxDeTexto,
+  celdasEnError, problemaDeSintaxis, ERRORES_SHEET,
   ANCHO_OBRAS, ANCHOS_OBRAS, REFS_OBRAS, OBRAS_DEL_ANO,
 } from './obras-grilla.mjs'
 import { OBRAS_FUTURAS, CLIENTES_CANONICOS, esProyectable, totalEgresos } from './obras-datos.mjs'
@@ -35,6 +36,11 @@ const formulas = (grid) => grid.filas.flatMap((f, i) => f
   .map((v, c) => [`${COLS[c]}${i + 1}`, v])
   .filter(([, v]) => typeof v === 'string' && v.startsWith('=')))
 const bloque = (clave) => g.bloques.find((b) => b.clave === clave)
+/** ¿La glosa de esta fila arrastra una nota escrita por el DUEÑO? Su texto no se recorta acá. */
+const esDelDueño = (n) => OBRAS_FUTURAS.some((o) => {
+  const t = String(g.filas[n - 1]?.[8] ?? '')
+  return (o.notas && t.includes(o.notas)) || (o.egresos ?? []).some((e) => e.nota && t.includes(e.nota))
+})
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LA VENTA SON TODAS LAS FILAS — EL DEFECTO QUE LLEGÓ AL ARCHIVO REAL
@@ -128,7 +134,7 @@ test('el ⇒ TOTAL 2026 sale de Cobranzas ENTERA, no de la suma de los clientes 
 
 test('la fila de residuo existe, está rotulada y dice para qué sirve', () => {
   assert.match(String(cel(g, `A${g.fOtros}`)), /Otros clientes/)
-  assert.match(String(cel(g, `I${g.fOtros}`)), /falta un cliente en la lista/)
+  assert.match(String(cel(g, `I${g.fOtros}`)), /falta un cliente/)
   assert.equal(g.fOtros, g.fClientes[1] + 1, 'va inmediatamente debajo de los clientes')
 })
 
@@ -168,7 +174,7 @@ test('el neteo vivo va EMBEBIDO en el pendiente del egreso: la factura real de C
   const b = bloque('sf-pisos-industriales')
   const f = b.fDetalle[0]
   assert.equal(cel(g, `F${f}`),
-    `=MAX(0;C${f}-SUMIFS('Compras'!$O$4:$O;'Compras'!$E$4:$E;"ACA";'Compras'!$J$4:$J;"San Francisco";'Compras'!$C$4:$C;">="&${serialISO('2026-08-05')}))`)
+    `=MAX(0;C${f}-SUMIFS('Compras'!$M$4:$M;'Compras'!$E$4:$E;"ACA";'Compras'!$J$4:$J;"San Francisco";'Compras'!$C$4:$C;">="&${serialISO('2026-08-05')}))`)
   assert.ok(vacia(cel(g, `E${f}`)), 'la columna E ya no es el real: es la resta a cobrar de la obra')
 })
 
@@ -177,13 +183,13 @@ test('las columnas salen de las refs INYECTADAS: ninguna letra queda pegada en l
   // fórmula sumaría otra columna el día que el archivo se reordene, y sin dar error.
   const refs = {
     cob: { hoja: 'Cobranzas', cliente: 'Z', concepto: 'Y', neto: 'V', total: 'X', estado: 'W', forma: 'U', fechaCobro: 'T', desde: 9 },
-    cmp: { hoja: 'Compras', fecha: 'V', proveedor: 'U', cliente: 'T', total: 'S', desde: 7 },
+    cmp: { hoja: 'Compras', fecha: 'V', proveedor: 'U', cliente: 'T', neto: 'R', total: 'S', desde: 7 },
     mat: REFS_OBRAS.mat,
   }
   const otra = grillaObras({ obras: OBRAS_FUTURAS, refs })
   const b = otra.bloques.find((x) => x.clave === 'sf-pisos-industriales')
   const pend = cel(otra, `F${b.fDetalle[0]}`)
-  assert.match(pend, /'Compras'!\$S\$7:\$S/, 'el total de Compras')
+  assert.match(pend, /'Compras'!\$R\$7:\$R/, 'el NETO de Compras ("Importe"), no el total con IVA')
   assert.match(pend, /'Compras'!\$T\$7:\$T;"San Francisco"/, 'el cliente de Compras')
   assert.match(cel(otra, `C${b.fProt}`), /'Cobranzas'!\$V\$9:\$V/, 'la venta sale del NETO de Cobranzas')
   assert.match(cel(otra, `D${b.fProt}`), /'Cobranzas'!\$X\$9:\$X/, 'el cobrado sale del TOTAL de Cobranzas')
@@ -231,8 +237,8 @@ test('las fuentes se citan con rango ABIERTO desde su primera fila de datos', ()
   // Cerrarlo en la última fila conocida deja de ver lo nuevo — sin error. Es el único lugar donde el
   // rango abierto se acepta: el número que decide sale de la fuente, no de una ventana.
   const real = cel(g, `F${bloque('sf-pisos-industriales').fDetalle[0]}`)
-  assert.match(real, /\$O\$4:\$O/, 'arranca en la fila de datos y no termina')
-  assert.ok(!real.includes(':$O$'), 'y no se cierra en una fila fija')
+  assert.match(real, /\$M\$4:\$M/, 'arranca en la fila de datos y no termina')
+  assert.ok(!real.includes(':$M$'), 'y no se cierra en una fila fija')
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -309,7 +315,8 @@ test('cada obra publica su próxima fecha de cobro y el detalle de lo pendiente 
   for (const b of g.bloques) {
     assert.match(cel(g, `H${b.fProt}`), /^=IFERROR\(1\/\(1\/MIN\(MINIFS\(/, `${b.clave}: próxima fecha de cobro`)
     const det = cel(g, `I${b.fProt}`)
-    assert.match(det, /^=IFERROR\(TEXTJOIN\(/, `${b.clave}: el detalle por obra`)
+    assert.match(det, /^=IFERROR\(/, `${b.clave}: el detalle por obra`)
+    assert.match(det, /TEXTJOIN\(/, `${b.clave}`)
     assert.match(det, /ARRAYFORMULA/, `${b.clave}`)
     assert.ok(!det.includes('QUERY('), `${b.clave}: nada que derrame filas sobre la grilla`)
     for (const campo of ['fechaCobro', 'total', 'forma']) {
@@ -339,6 +346,105 @@ test('toda fila mide exactamente ANCHO_OBRAS y las vacías llevan el centinela',
 
 test('en locale es_AR ninguna fórmula lleva una coma: ahí una coma es un decimal', () => {
   for (const [ref, f] of formulas(g)) assert.ok(!f.includes(','), `${ref}: ${f.slice(0, 80)}`)
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// QUE PARSEE — EL DEFECTO QUE SE PUBLICÓ EN EL ARCHIVO DEL DUEÑO
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('TODA fórmula parsea: un paréntesis de más se publica como #ERROR! en la cara del dueño', () => {
+  // EL DEFECTO REAL (13/08): `Próx. cobro` cerraba un paréntesis de más y las 7 obras salieron con
+  // #ERROR! en el archivo. Ningún test lo vio porque todos comparaban el texto que el generador
+  // emite contra el texto que el generador espera — las dos puntas del mismo lado. Éste no compara
+  // con una expectativa: CUENTA. Es el mismo chequeo que ahora corre el escritor antes de escribir.
+  for (const [ref, f] of formulas(g)) {
+    assert.equal(problemaDeSintaxis(f), null, `${ref}: ${problemaDeSintaxis(f)} → ${f.slice(0, 110)}`)
+  }
+})
+
+test('el contador de sintaxis detecta de verdad: si no atrapa el caso real, no sirve de nada', () => {
+  // Un verificador que siempre dice "está bien" es peor que ninguno. Se lo prueba con el defecto
+  // exacto que se escapó, escrito a mano.
+  assert.match(String(problemaDeSintaxis('=IFERROR(1/(1/MIN(MINIFS(A;B;"x"))));"")')), /cierra un paréntesis/)
+  assert.equal(problemaDeSintaxis('=IFERROR(1/(1/MIN(MINIFS(A;B;"x")));"")'), null, 'el mismo, ya corregido')
+  assert.match(String(problemaDeSintaxis('=SUM(A1:A2')), /sin cerrar/)
+  assert.match(String(problemaDeSintaxis('=IF(A="x;1;2)')), /comilla/)
+  // Un paréntesis DENTRO de un texto no cuenta: es contenido, no estructura.
+  assert.equal(problemaDeSintaxis('=IF(A1="cerró )";1;2)'), null)
+})
+
+test('el escáner de errores publicados encuentra los ocho, y no confunde un dato con un error', () => {
+  const leido = [['ok', '#ERROR!', 123], ['', '#REF!', '#N/A'], ['#DIV/0! del mes', '#NAME?', null]]
+  const malas = celdasEnError(leido)
+  assert.deepEqual(malas.map((x) => x.ref), ['B1', 'B2', 'C2', 'B3'])
+  assert.equal(celdasEnError([]).length, 0)
+  // "#DIV/0! del mes" es texto que CONTIENE un error, no una celda en error: no se cuenta.
+  assert.ok(!malas.some((x) => x.ref === 'A3'), 'un texto que menciona un error no es un error')
+  for (const e of ERRORES_SHEET) assert.equal(celdasEnError([[e]]).length, 1, `${e} tiene que gritar`)
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// QUE SE PUEDA LEER
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('los importes del detalle se formatean DENTRO de la fórmula: TEXTJOIN concatena texto', () => {
+  // El formato de número de la celda no toca lo que TEXTJOIN arma: el primer intento publicó
+  // "$23795136,0" — sin separador de miles y con el decimal colgando. En es_AR los miles van con
+  // punto, así que el patrón es "#.##0".
+  for (const b of g.bloques) {
+    const det = cel(g, `I${b.fProt}`)
+    assert.ok(det.includes('TEXT(') && det.includes('"$ #.##0"'), `${b.clave}: el importe va formateado`)
+    assert.ok(det.includes('"dd/mm"'), `${b.clave}: y la fecha también`)
+    assert.ok(!/&" "&TEXT/.test(det), `${b.clave}: los campos van separados, no pegados con un espacio`)
+  }
+})
+
+test('NINGÚN rótulo afirma "c/IVA": las obras en negro no llevan un peso y serían un rótulo falso', () => {
+  // Corrección del dueño (13/08): *"si dice N es negro sin iva, si dice B es blanco con iva"*. La
+  // categoría es por FILA (col B). Verificado: 0 de las 34 filas N tienen IVA, y las cuatro obras de
+  // San Francisco son todas N — salían rotuladas "c/IVA" sin llevar nada. Los números estaban bien;
+  // lo falso era lo que la pestaña afirmaba, que es lo que hace desconfiar de todo lo demás.
+  const rotulos = g.filas.flatMap((f) => f.filter((v) => typeof v === 'string' && !v.startsWith('=')))
+  for (const r of rotulos) assert.ok(!/c\/IVA|con IVA/i.test(r), `rótulo que afirma IVA donde puede no haberlo: "${r}"`)
+  // Y la aclaración honesta tiene que estar en alguna parte, una sola vez.
+  assert.ok(rotulos.some((r) => /IVA sólo en las filas blancas/i.test(r)), 'falta la aclaración de una línea')
+})
+
+test('la composición blanco/negro aparece SÓLO si la obra está partida', () => {
+  // Playón es blanco $65.000.000 + negro $37.500.000: por eso su resta a cobrar supera a su venta
+  // neta. Es la primera pregunta que dispara ese número. En las otras seis obras sería ruido, así
+  // que el IF la borra: la fórmula es la misma, el resultado no.
+  for (const b of g.bloques) {
+    const det = cel(g, `I${b.fProt}`)
+    assert.match(det, /IF\(\(SUMIFS[\s\S]*?\)\*\(SUMIFS[\s\S]*?\)>0;"blanco "/, `${b.clave}: la composición es condicional`)
+    assert.ok(det.includes(`'Cobranzas'!$${REFS_OBRAS.cob.categoria}$`), `${b.clave}: se lee de la categoría por fila`)
+    for (const cat of ['"B"', '"N"']) assert.ok(det.includes(cat), `${b.clave}: distingue ${cat}`)
+  }
+})
+
+test('el costo se mide NETO contra NETO: el IVA de compras es crédito fiscal, no costo', () => {
+  // Cerrar esto era la limitación declarada ayer: con la venta al neto y el costo con IVA, el margen
+  // quedaba castigado ~21% en todo lo comprado en blanco. "Importe" (M) es el neto de Compras.
+  const neto = new RegExp(`'Compras'!\\$${REFS_OBRAS.cmp.neto}\\$`)
+  const conIva = new RegExp(`'Compras'!\\$${REFS_OBRAS.cmp.total}\\$`)
+  const conNeteo = g.filas.flatMap((f, i) => (typeof f[5] === 'string' && f[5].includes('Compras') ? [[i + 1, f[5]]] : []))
+  assert.ok(conNeteo.length >= 15, `tiene que haber egresos con neteo vivo, hay ${conNeteo.length}`)
+  for (const [n, f] of conNeteo) {
+    assert.match(f, neto, `F${n}: el costo real se mide en el neto de Compras`)
+    assert.ok(!conIva.test(f), `F${n}: el costo NO puede medirse en el total con IVA`)
+  }
+})
+
+test('la glosa no tapa al dato: el estándar del dueño es muy poco texto', () => {
+  // En el PDF del 13/08 había filas donde la glosa ocupaba más que el importe. Las que quedan largas
+  // son notas del DUEÑO en obras-datos.mjs — su texto no se recorta acá; lo que se recortó es lo que
+  // escribía el generador (el desglose de horas por categoría y las notas que repetían las cuotas).
+  const propias = g.filas
+    .map((f, i) => [i + 1, f[8] === VACIO ? '' : String(f[8] ?? '')])
+    .filter(([n, t]) => t && !t.startsWith('=') && !esDelDueño(n))
+  for (const [n, t] of propias) {
+    assert.ok(t.length <= 110, `fila ${n}: la glosa del generador mide ${t.length} caracteres — "${t}"`)
+  }
 })
 
 test('los seis clientes del año salen en la sección 1, en orden y sin repetir', () => {

@@ -42,7 +42,10 @@ import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 import { requestsTextoPorContenido } from '../lib/formato-texto-por-contenido.mjs'
-import { grillaObras, anchoColumnaA, ANCHO_OBRAS, ANCHOS_OBRAS, PESTANA_OBRAS, REFS_OBRAS } from '../lib/obras-grilla.mjs'
+import {
+  grillaObras, anchoColumnaA, celdasEnError, problemaDeSintaxis,
+  ANCHO_OBRAS, ANCHOS_OBRAS, PESTANA_OBRAS, REFS_OBRAS,
+} from '../lib/obras-grilla.mjs'
 import { OBRAS_FUTURAS, totalEgresos } from '../lib/obras-datos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -158,13 +161,18 @@ async function refsReales(google) {
       // `neto` es la columna del IVA hacia abajo: la venta y el margen se miden ahí, no en el total.
       // `forma` y `fechaCobro` son lo que el dueño pidió ver por obra (a quién reclamarle y cuándo).
       ...resolverColumnas(cob, {
-        cliente: 'Obra / Cliente', concepto: 'Concepto', neto: /^Monto neto/i,
+        cliente: 'Obra / Cliente', concepto: 'Concepto', neto: /^Monto neto/i, categoria: /^Categor/i,
         total: /^TOTAL a cobrar/, forma: /^Forma de [Cc]obro/, estado: 'Estado', fechaCobro: /^Fecha de cobro|^Fecha cobro/i,
       }),
     },
     cmp: {
       hoja: REFS_OBRAS.cmp.hoja,
-      ...resolverColumnas(cmp, { proveedor: 'Proveedor', cliente: 'Cliente / Asignación', fecha: 'Fecha factura', total: 'Total' }),
+      // "Importe" es el NETO de Compras (M = Total − IVA); "Total" (O) lleva el IVA. El costo se mide
+      // en el neto porque la venta también: el IVA de compras es crédito fiscal, no costo.
+      ...resolverColumnas(cmp, {
+        proveedor: 'Proveedor', cliente: 'Cliente / Asignación', fecha: 'Fecha factura',
+        neto: 'Importe', total: 'Total',
+      }),
     },
     mat: REFS_OBRAS.mat,
   }
@@ -198,6 +206,13 @@ async function main() {
   // GUARDA FAIL-CLOSED. Una grilla sin obras no es "una pestaña con poco": es el insumo que no cargó.
   // Escribirla dejaría la pestaña en blanco, que es la forma que tomaron las pérdidas de este repo.
   if (!g.bloques.length) throw new Error('la grilla no trajo ni una obra: NO escribo una pestaña vacía.')
+  // UNA FÓRMULA QUE NO PARSEA NO SE ESCRIBE. Sheets la publica como #ERROR! —ya pasó, en las 7 obras—
+  // y esto se puede saber ANTES de tocar el archivo: es texto, y el texto se cuenta.
+  const rotas = g.filas.flatMap((fila, i) => fila
+    .map((v, c) => (typeof v === 'string' && v.startsWith('=') ? [`${letra(c)}${i + 1}`, problemaDeSintaxis(v)] : null))
+    .filter((x) => x && x[1]))
+  if (rotas.length) throw new Error(`${rotas.length} fórmula(s) no parsean y Sheets las publicaría como #ERROR!: `
+    + `${rotas.slice(0, 5).map(([ref, why]) => `${ref} (${why})`).join(' · ')}. NO escribo.`)
   const proyectado = OBRAS_FUTURAS.reduce((s, o) => s + totalEgresos(o), 0)
   console.log(`${PESTANA_OBRAS}: ${g.filas.length} filas · ${OBRAS_FUTURAS.length} obras · ${g.tipeadas.length} celdas tipeadas (los proyectados del dueño) · $${Math.round(proyectado).toLocaleString('es-AR')} proyectados`)
   if (!ESCRIBIR) return console.log('ENSAYO (sin --escribir): no escribí nada.')
@@ -238,10 +253,26 @@ async function main() {
   }
 
   await formatear(google, hoja.sheetId, g)
-  const quedo = await google.readSheetValues(ID, `${PESTANA_OBRAS}!A1:${letra(ANCHO_OBRAS - 1)}${g.filas.length}`).catch(() => [])
+  const quedo = await google.readSheetValues(ID, `${PESTANA_OBRAS}!A1:${letra(ANCHO_OBRAS - 1)}${g.filas.length}`,
+    { render: 'FORMATTED_VALUE' }).catch(() => [])
   await guardarRegistro(ID, PESTANA_OBRAS, g.filas, ediciones, quedo, candidatos)
     .catch((e) => console.warn(`  ⚠ no pude guardar el registro de rótulos: ${e.message}`))
-  console.log('QUEDÓ ESCRITO.')
+
+  // ═══ LO QUE SHEETS EVALUÓ, NO LO QUE YO ESCRIBÍ ═══
+  //
+  // Este es el único paso que puede desmentirme. Los tests comparan el texto que emito contra el
+  // texto que espero —las dos puntas del mismo lado— y por eso dejaron pasar un #ERROR! a las 7
+  // obras del archivo del dueño. Acá se relee lo PUBLICADO, ya evaluado por Sheets, y si hay un solo
+  // error la corrida termina en rojo diciendo en qué celda. Una pestaña que publica #ERROR! es peor
+  // que una que no se escribió: la primera se lee como un dato.
+  if (!quedo.length) throw new Error('escribí pero no pude releer la pestaña: no puedo afirmar que quedó sana.')
+  const enError = celdasEnError(quedo)
+  if (enError.length) {
+    throw new Error(`QUEDÓ PUBLICADO CON ${enError.length} CELDA(S) EN ERROR: `
+      + `${enError.slice(0, 8).map((x) => `${x.ref}=${x.valor}`).join(' · ')}`
+      + `${enError.length > 8 ? ` … y ${enError.length - 8} más` : ''}. Hay que corregir la fórmula y volver a correr.`)
+  }
+  console.log(`QUEDÓ ESCRITO — releí ${quedo.length} filas y no hay una sola celda en error.`)
 }
 
 /**

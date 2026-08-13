@@ -65,6 +65,18 @@
 //
 // Las dos son ciertas y miden cosas distintas; por eso los rótulos lo dicen y no hay que adivinarlo.
 //
+// PERO EL RÓTULO NO PUEDE DECIR "c/IVA" (13/08, corrección del dueño): *"no todas las obras llevan
+// iva en su totalidad, si dice N es negro sin iva, si dice B es blanco con iva"*. La categoría es por
+// FILA (col B), no por obra: las 34 filas N no tienen un peso de IVA —verificado: 0 de 34— así que
+// las cuatro obras de San Francisco salían rotuladas "c/IVA" sin llevar nada. Los números estaban
+// bien (la col M ya trae el total real de cada fila); lo falso era lo que la pestaña AFIRMABA. Un
+// rótulo que miente en la mitad de las filas hace desconfiar de la pestaña entera.
+//
+// Y UNA OBRA PUEDE ESTAR PARTIDA: Playón es blanco $65.000.000 + negro $37.500.000. Por eso su resta
+// a cobrar ($116.150.000) es mayor que su venta neta ($102.500.000) — la diferencia es el IVA de la
+// parte blanca, y nada más. Esa composición se publica en la glosa SÓLO cuando la obra es mixta,
+// porque es justo la pregunta que dispara ese número; en las otras seis sería ruido.
+//
 // ═══ QUÉ ES CADA COLUMNA DE COBRANZAS, MEDIDO CONTRA LAS 91 FILAS (13/08) ═══
 //
 // El "TOTAL a cobrar" (col M) NO es un saldo pendiente: es `neto + IVA − retenciones`, o sea el
@@ -97,6 +109,54 @@ export const ANCHO_OBRAS = 9
 /** Anchos en píxeles — los importes con aire, la prosa angosta y al final (estándar del dueño). La
  *  columna A NO se declara acá: la calcula `anchoColumnaA` a partir de los rótulos que se emiten. */
 export const ANCHOS_OBRAS = [300, 44, 138, 138, 138, 138, 138, 92, 300]
+
+/** Lo que Sheets muestra cuando una fórmula no evalúa. Publicar uno es peor que no escribir. */
+export const ERRORES_SHEET = Object.freeze(['#ERROR!', '#REF!', '#VALUE!', '#NAME?', '#N/A', '#DIV/0!', '#NUM!', '#NULL!'])
+
+/**
+ * LAS CELDAS QUE QUEDARON EN ERROR EN LO YA PUBLICADO.
+ *
+ * POR QUÉ EXISTE (13/08). La pestaña publicó `#ERROR!` en las 7 obras y ningún test lo vio: los tests
+ * comparaban el texto que el generador emite contra el texto que el generador espera — las dos puntas
+ * del mismo lado. Lo que Sheets EVALÚA sólo lo dice Sheets. Por eso el escritor relee lo que dejó y
+ * aborta declarando: la evidencia es del efecto, no del intento.
+ *
+ * @param {Array<Array>} filas lo leído del destino, con los valores ya renderizados.
+ * @returns {Array<{ref:string, valor:string}>} referencia A1 y el error, para poder ir a mirarlo.
+ */
+export function celdasEnError(filas = []) {
+  const malas = []
+  for (const [i, fila] of (filas ?? []).entries()) {
+    for (const [c, v] of (fila ?? []).entries()) {
+      const t = String(v ?? '').trim()
+      if (ERRORES_SHEET.includes(t)) malas.push({ ref: `${letraDe(c)}${i + 1}`, valor: t })
+    }
+  }
+  return malas
+}
+const letraDe = (i) => (i < 26 ? '' : String.fromCharCode(64 + Math.floor(i / 26))) + String.fromCharCode(65 + (i % 26))
+
+/**
+ * ¿ESTA FÓRMULA PARSEA? Paréntesis balanceados y comillas cerradas.
+ *
+ * Sheets no evalúa una fórmula que no parsea: la muestra como `#ERROR!`. Es exactamente lo que pasó
+ * con la próxima fecha de cobro, que cerraba un paréntesis de más — y se publicó en las 7 obras.
+ *
+ * @returns {string|null} el motivo, o null si está sana.
+ */
+export function problemaDeSintaxis(formula) {
+  let nivel = 0
+  let comilla = false
+  for (const ch of String(formula)) {
+    if (ch === '"') { comilla = !comilla; continue }
+    if (comilla) continue
+    if (ch === '(') nivel++
+    if (ch === ')' && --nivel < 0) return 'cierra un paréntesis que nunca abrió'
+  }
+  if (comilla) return 'una comilla quedó sin cerrar'
+  if (nivel > 0) return `quedan ${nivel} paréntesis sin cerrar`
+  return null
+}
 
 /**
  * PÍXELES QUE OCUPA UN TEXTO EN LA COLUMNA A.
@@ -144,8 +204,11 @@ export const OBRAS_DEL_ANO = [
  * rótulo — nunca por letra fija — y falla cerrado si un rótulo no está.
  */
 export const REFS_OBRAS = {
-  cob: { hoja: 'Cobranzas', cliente: 'G', concepto: 'I', neto: 'J', total: 'M', estado: 'O', forma: 'N', fechaCobro: 'Q', desde: 5 },
-  cmp: { hoja: 'Compras', fecha: 'C', proveedor: 'E', cliente: 'J', total: 'O', desde: 4 },
+  cob: { hoja: 'Cobranzas', cliente: 'G', concepto: 'I', neto: 'J', total: 'M', estado: 'O', forma: 'N', fechaCobro: 'Q', categoria: 'B', desde: 5 },
+  // `neto` es la columna "Importe" (M = Total − IVA). El costo se mide ahí, no en "Total" (O): la
+  // venta ya se mide al neto, y comparar venta neta contra costo con IVA castigaba el margen ~21% en
+  // todo lo que se compra en blanco. Neto contra neto. El IVA de compras es crédito fiscal, no costo.
+  cmp: { hoja: 'Compras', fecha: 'C', proveedor: 'E', cliente: 'J', neto: 'M', total: 'O', desde: 4 },
   mat: { hoja: 'Materiales', filaTotal: 'TOTAL POR OBRA', filaCabecera: '2 · POR OBRA' },
 }
 
@@ -217,10 +280,21 @@ const vencido = (cob, cliente, extra = '') =>
   `=${variantesDe(cliente).map((v) => `SUMIFS(${abierto(cob, 'total')};${abierto(cob, 'cliente')};"${anclaCliente(v)}"${extra}`
     + `;${abierto(cob, 'estado')};"<>${COBRADO}";${abierto(cob, 'estado')};"<>${NO_VENTA}";${abierto(cob, 'fechaCobro')};"<"&TODAY())`).join('+')}`
 
-/** LA PRÓXIMA FECHA DE COBRO pendiente. MINIFS ignora los vacíos con el ">0". */
+/**
+ * LA PRÓXIMA FECHA DE COBRO pendiente.
+ *
+ * `MINIFS` devuelve 0 cuando no hay ninguna pendiente, y un 0 en una celda con formato de fecha se
+ * dibuja "30/12/1899". El `1/(1/x)` convierte ese 0 en un error que el IFERROR transforma en blanco:
+ * una obra sin cobranzas pendientes no tiene próxima fecha, y eso es un guion, no un error.
+ *
+ * ACÁ VIVIÓ EL `#ERROR!` QUE SE PUBLICÓ EN LAS 7 OBRAS (13/08): esta fórmula cerraba un paréntesis de
+ * más. Sheets no evalúa una fórmula que no parsea — la muestra como `#ERROR!` — y los tests no lo
+ * veían porque comparaban el texto que yo emitía contra el texto que yo esperaba. Ahora `todas las
+ * fórmulas están balanceadas` es un test, y el escritor relee la pestaña y aborta si publicó un error.
+ */
 const proximoCobro = (cob, cliente, extra = '') =>
   `=IFERROR(1/(1/MIN(${variantesDe(cliente).map((v) => `MINIFS(${abierto(cob, 'fechaCobro')};${abierto(cob, 'cliente')};"${anclaCliente(v)}"${extra}`
-    + `;${abierto(cob, 'estado')};"<>${COBRADO}";${abierto(cob, 'estado')};"<>${NO_VENTA}";${abierto(cob, 'fechaCobro')};">0")`).join(';')})));"")`
+    + `;${abierto(cob, 'estado')};"<>${COBRADO}";${abierto(cob, 'estado')};"<>${NO_VENTA}";${abierto(cob, 'fechaCobro')};">0")`).join(';')}));"")`
 
 /**
  * EL DETALLE DE COBRANZAS DE UNA OBRA, EN UNA SOLA CELDA.
@@ -229,12 +303,32 @@ const proximoCobro = (cob, cliente, extra = '') =>
  * llene de filas. TEXTJOIN sobre un ARRAYFORMULA devuelve UNA celda: no derrama sobre las columnas
  * del generador, que es la trampa que este repo ya pagó con los derrames de ARRAYFORMULA.
  */
+/**
+ * BLANCO Y NEGRO, SÓLO SI LA OBRA ESTÁ PARTIDA.
+ *
+ * Es lo que explica que la resta a cobrar supere a la venta neta: el IVA de la parte blanca. Se
+ * calcula vivo sobre la categoría de cada FILA (col B) y el `IF` lo hace desaparecer cuando la obra
+ * es toda blanca o toda negra — hoy sólo Playón lo muestra. Poner el dato siempre sería ruido en seis
+ * obras para explicar una.
+ */
+function composicionBlancoNegro(cob, cliente, extra) {
+  const porCategoria = (cat) => `(${sumaCobranzas(cob, 'neto', cliente, `${extra};${abierto(cob, 'categoria')};"${cat}"`, `"<>${NO_VENTA}"`)})`
+  const b = porCategoria('B')
+  const n = porCategoria('N')
+  return `IF(${b}*${n}>0;"blanco "&TEXT(${b};"$ #.##0")&" · negro "&TEXT(${n};"$ #.##0")&" ‖ ";"")`
+}
+
 function detalleCobranzas(cob, cliente, needle) {
   const cond = variantesDe(cliente)
     .map((v) => `(LEFT(${abierto(cob, 'cliente')};${v.length})="${v}")`).join('+')
-  return `=IFERROR(TEXTJOIN(" · ";1;ARRAYFORMULA(IF((${cond})*(ISNUMBER(SEARCH("${needle}";${abierto(cob, 'concepto')})))`
+  // EL IMPORTE SE FORMATEA ADENTRO DE LA FÓRMULA. TEXTJOIN concatena TEXTO: el formato de número de
+  // la celda no lo toca, y el primer intento publicó "$23795136,0" — sin separador de miles y con el
+  // decimal colgando. En es_AR el separador de miles es el punto, así que el patrón es "#.##0".
+  // El separador entre eventos es " | ": con seis cobranzas seguidas, el " · " se leía como párrafo.
+  const extra = `;${abierto(cob, 'concepto')};"*${needle}*"`
+  return `=IFERROR(${composicionBlancoNegro(cob, cliente, extra)}&TEXTJOIN(" | ";1;ARRAYFORMULA(IF((${cond})*(ISNUMBER(SEARCH("${needle}";${abierto(cob, 'concepto')})))`
     + `*(${abierto(cob, 'estado')}<>"${COBRADO}")*(${abierto(cob, 'estado')}<>"${NO_VENTA}")*(${abierto(cob, 'fechaCobro')}>0);`
-    + `TEXT(${abierto(cob, 'fechaCobro')};"dd/mm")&" "&TEXT(${abierto(cob, 'total')};"$#.##0")&" "&${abierto(cob, 'forma')};"")));"")`
+    + `TEXT(${abierto(cob, 'fechaCobro')};"dd/mm")&" · "&TEXT(${abierto(cob, 'total')};"$ #.##0")&" · "&${abierto(cob, 'forma')};"")));"")`
 }
 
 /** Mismo constructor de grilla que el anexo de CAJA: push devuelve la fila 1-based, y toda celda
@@ -272,7 +366,7 @@ function hoja() {
 function seccionObrasDelAno(h, refs, clientes) {
   const { cob, mat } = refs
   h.push(['1 · OBRAS DEL AÑO'])
-  h.push(['Cliente', '', 'Venta (neto)', 'Cobrado (c/IVA)', 'Resta cobrar (c/IVA)', 'Vencido', 'Materiales (real)', '', ''])
+  h.push(['Cliente', '', 'Venta (neto)', 'Cobrado', 'Resta cobrar', 'Vencido', 'Materiales (real)', '', ''])
   const f0 = h.n + 1
   for (const cli of clientes) {
     const f = h.n + 1
@@ -291,10 +385,10 @@ function seccionObrasDelAno(h, refs, clientes) {
     `=${todo('total', COBRADO)}-SUM(D${f0}:D${f1})`,
     `=${todo('total', `<>${NO_VENTA}`)}-${todo('total', COBRADO)}-SUM(E${f0}:E${f1})`,
     '', '', '',
-    'lo que hay en Cobranzas y no tiene fila propia acá — si crece, falta un cliente en la lista'])
+    'sin fila propia arriba · si crece, falta un cliente'])
   const fTot = h.push(['⇒ TOTAL 2026', '', `=SUM(C${f0}:C${fOtros})`, `=SUM(D${f0}:D${fOtros})`,
     `=SUM(E${f0}:E${fOtros})`, `=SUM(F${f0}:F${f1})`, `=SUM(G${f0}:G${f1})`, '',
-    'venta neta y cobrado = Cobranzas completa · Materiales, fila "TOTAL POR OBRA"'])
+    'cobrado y resta = total facturado · lleva IVA sólo en las filas blancas (B)'])
   h.push([])
   return { fClientes: [f0, f1], fOtros, fTot }
 }
@@ -304,29 +398,44 @@ function seccionObrasDelAno(h, refs, clientes) {
  *  (obras-datos.mjs) y ya no hay una celda de la fila protagonista donde leerlo — esa columna ahora
  *  publica la próxima fecha de COBRO. */
 function realEgreso(cmp, proveedor, cliente, inicio) {
-  return `SUMIFS(${abierto(cmp, 'total')};${abierto(cmp, 'proveedor')};"${proveedor}";`
+  return `SUMIFS(${abierto(cmp, 'neto')};${abierto(cmp, 'proveedor')};"${proveedor}";`
     + `${abierto(cmp, 'cliente')};"${cliente}";${abierto(cmp, 'fecha')};">="&${serialISO(inicio)})`
 }
 
-/** La prosa consolidada de la obra: fechas · plantel · % ejecutado · notas del dueño. UNA celda. */
+/**
+ * LA PROSA DE LA OBRA, CORTA. Fechas, plantel, horas y la nota del dueño si la hay.
+ *
+ * El estándar es "muy poco texto", y en el PDF del 13/08 había filas donde la glosa ocupaba más que
+ * el dato: el desglose de horas por categoría entraba entero en cada obra. Las horas se publican
+ * SUMADAS —el detalle por categoría vive en Jornales, que es su dueño— y el plantel en dos palabras.
+ */
 function prosaDeObra(o, proyectable) {
   const p = []
-  if (proyectable) p.push(`del ${ddmm(o.inicio)} al ${ddmm(o.fin)}`)
-  else p.push('⚠ sin fechas — no se proyecta')
-  if (o.plantelFullTime != null) {
-    p.push(`${o.plantelFullTime} full time${o.plantelTemporales ? ` + ${o.plantelTemporales} temporales` : ''}`)
-  }
-  if (o.pctEjecutado) p.push(`${Math.round(o.pctEjecutado * 100)}% ejecutado — montos al ${Math.round((1 - o.pctEjecutado) * 100)}% restante`)
+  p.push(proyectable ? `${ddmm(o.inicio)}→${ddmm(o.fin)}` : '⚠ sin fechas')
+  if (o.plantelFullTime != null) p.push(`${o.plantelFullTime + (o.plantelTemporales ?? 0)} personas`)
+  const horas = Object.values(o.horas ?? {}).reduce((s, h) => s + (Number(h) || 0), 0)
+  if (horas) p.push(`${Math.round(horas).toLocaleString('es-AR')} h`)
+  if (o.pctEjecutado) p.push(`al ${Math.round((1 - o.pctEjecutado) * 100)}% restante`)
   if (o.notas) p.push(o.notas)
   return p.join(' · ')
 }
 
-/** La prosa corta de un egreso: cuotas y nota. El origen (explosión del dueño) se declara UNA vez,
- *  en el subtítulo de la sección — no repetido en cada renglón. */
+/**
+ * LA PROSA DE UN EGRESO: proveedor y, si se reparte, en cuántas cuotas.
+ *
+ * La nota del insumo se descarta cuando lo único que hace es repetir las cuotas ("3 cuotas mensuales
+ * iguales" al lado de las 3 cuotas ya listadas). Decir dos veces lo mismo no es más claro: es más
+ * texto tapando el importe, que es lo que se vino a leer.
+ */
 function prosaDeEgreso(e) {
   const p = []
-  if (e.cuotas?.length) p.push(`${e.cuotas.length} cuotas: ${e.cuotas.map((c) => `${ddmm(c.fecha).slice(0, 5)} ${ars(c.monto)}`).join(' · ')}`)
-  if (e.nota) p.push(e.nota)
+  if (e.cuotas?.length) {
+    const iguales = new Set(e.cuotas.map((c) => c.monto)).size === 1
+    p.push(iguales
+      ? `${e.cuotas.length}× ${ars(e.cuotas[0].monto)} desde ${ddmm(e.cuotas[0].fecha).slice(0, 5)}`
+      : e.cuotas.map((c) => `${ddmm(c.fecha).slice(0, 5)} ${ars(c.monto)}`).join(' | '))
+  }
+  if (e.nota && !(e.cuotas?.length && /cuota/i.test(e.nota))) p.push(e.nota)
   return p.join(' · ')
 }
 
@@ -377,13 +486,13 @@ function bloqueObra(h, refs, o, idx) {
 
   const fMO = h.n + 1
   h.push(['      Mano de obra + cargas sociales', '', o.moCargasPesos, '', '', `=C${fMO}`, '', '',
-    `${prosaDeObra(o, proyectable)} · MO por Jornales · horas: ${o.horas.oficialEspecializado} esp / ${o.horas.oficial} of / ${o.horas.ayudante} ay`])
+    `por Jornales · ${prosaDeObra(o, proyectable)}`])
   h.tipeadas.push({ fila: fMO, col: 2 })
 
   let fNoCaja = null
   if (o.noCaja?.maquinaPropia) {
     fNoCaja = h.push(['      ⊘ Máquina propia — no es plata que sale', '', o.noCaja.maquinaPropia,
-      '', '', '', '', '', 'uso de equipo propio: NUNCA entra al flujo de caja ni a los totales'])
+      '', '', '', '', '', 'equipo propio · no entra al flujo'])
     h.tipeadas.push({ fila: fNoCaja, col: 2 })
   }
   h.push([])
@@ -406,20 +515,20 @@ export function grillaObras(ctx = {}) {
   const h = hoja()
 
   h.push([`${PESTANA_OBRAS} — EL AÑO ENTERO, OBRA POR OBRA`])
-  h.push(['Venta al NETO · cobrado y resta con IVA · todo vivo desde Cobranzas.'])
+  h.push(['Venta al NETO · cobrado y resta al total facturado · todo vivo desde Cobranzas.'])
   h.push([])
 
   const s1 = seccionObrasDelAno(h, refs, clientes)
 
   h.push(['2 · OBRAS EN CURSO Y FUTURAS', '', '', '', '', '', '', '',
-    'los importes tipeados son los PROYECTADOS del dueño (explosión de gastos en PDF, 07/08) — todo lo demás es fórmula viva'])
-  h.push(['Obra', '', 'Venta (neto)', 'Cobrado (c/IVA)', 'Resta cobrar (c/IVA)', 'Vencido', 'Margen', 'Próx. cobro',
-    'cobranzas pendientes: fecha · importe · forma'])
+    'importes tipeados = proyección del dueño (07/08)'])
+  h.push(['Obra', '', 'Venta (neto)', 'Cobrado', 'Resta cobrar', 'Vencido', 'Margen', 'Próx. cobro',
+    'Cobranzas pendientes'])
   const bloques = obras.map((o, i) => bloqueObra(h, refs, o, i + 1))
   const suma = (col) => `=${bloques.map((b) => `${col}${b.fProt}`).join('+')}`
   const fTot2 = bloques.length
     ? h.push(['⇒ TOTAL — OBRAS EN CURSO Y FUTURAS', '', suma('C'), suma('D'), suma('E'), suma('F'), suma('G'), '',
-      'margen = venta neta − costo proyectado · el detalle de abajo es el egreso a desembolsar, con neteo vivo contra Compras'])
+      'margen = venta neta − costo proyectado'])
     : null
 
   const totales = [s1.fTot, fTot2].filter(Boolean)
