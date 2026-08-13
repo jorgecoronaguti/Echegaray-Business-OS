@@ -7,9 +7,11 @@
 // detectarlo: que la clasificación deje pasar algo, o que ni siquiera mire.
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import {
   escribeSheets, veredicto, hayEvidencia, frenaElPipeline, nadieLoMiro, resumir, revisarArchivo,
-  escritoresDeSheets, ramasSinMergear, MARCAS_DE_ESCRITURA, leerRegistro,
+  escritoresDeSheets, ramasSinMergear, MARCAS_DE_ESCRITURA, leerRegistro, estadoDeLaRama,
+  blobsEnLaHistoria,
 } from './generadores-atrasados.mjs'
 
 // ── Qué cuenta como "escribe Sheets" ───────────────────────────────────────────────────────────
@@ -103,11 +105,58 @@ test('EL CASO REAL: si jornales-pestana vuelve a la versión sin Dirección, est
   const f = 'echegaray-os/orquestador/scripts/jornales-pestana.mjs'
   const R = leerRegistro()
   const antes = revisarArchivo(f, ['feat/pr2-mattermost-publico'], 'f4702bf', R)
-  assert.ok(antes.length, 'el detector no vio la rama: no está midiendo nada')
-  assert.equal(antes[0].veredicto, 'REVERTIDO')
+  assert.ok(antes.hallazgos.length, 'el detector no vio la rama: no está midiendo nada')
+  assert.equal(antes.hallazgos[0].veredicto, 'REVERTIDO')
 
   const ahora = revisarArchivo(f, ['feat/pr2-mattermost-publico'], 'HEAD', R)
-  assert.equal(ahora[0]?.veredicto, 'incorporado', 'con el trabajo puesto tiene que dar verde')
+  assert.equal(ahora.hallazgos[0]?.veredicto, 'incorporado', 'con el trabajo puesto tiene que dar verde')
+})
+
+test('la señal puede vivir en OTRO archivo: un refactor no es un revert', () => {
+  // El falso positivo del 13/08. `impuestos-pestana.mjs` se partió en lib/impuestos-*.mjs y el import
+  // de la DDJJ oficial se mudó de carpeta: la señal atada a la ruta gritó REVERTIDO sin que se
+  // hubiera perdido nada. Si esto no distingue refactor de revert, el aviso queda rojo para siempre
+  // y se ignora — que es como muere un control.
+  const base = { blobAntes: 'aaa', blobBase: 'bbb', senal: 'leerIVA', fuenteBase: "import { leerIVA } from '../lib/impuestos-fuentes.mjs'" }
+  assert.equal(hayEvidencia({ ...base, senalesRelocalizadas: [{ texto: 'parsearDJIVA', fuente: 'const d = parsearDJIVA(pdf.text)' }] }), true)
+  // Pero si la capacidad DESAPARECE del archivo al que se mudó, sigue siendo un revert.
+  assert.equal(hayEvidencia({ ...base, senalesRelocalizadas: [{ texto: 'parsearDJIVA', fuente: 'const d = 0' }] }), false)
+  // Y si el archivo declarado no se pudo leer, no se afirma nada: falla cerrado.
+  assert.equal(hayEvidencia({ ...base, senalesRelocalizadas: [{ texto: 'parsearDJIVA', fuente: null }] }), false)
+})
+
+// ── Qué es trabajo de rama y qué es ruido ──────────────────────────────────────────────────────
+
+test('si la base YA TUVO ese contenido, la rama está atrás y no hay nada que traer', () => {
+  // `deploy/comunicacion-protegido` —el checkout desde el que corre el bot— tiene 42 commits que main
+  // no tiene y 41 son merges DE main. Con `--full-history` esos merges "tocan" el archivo, así que el
+  // filtro por commits los dejaba pasar: seis generadores pedían una decisión que no existe.
+  const historicos = new Set(['viejo', 'anterior'])
+  assert.equal(estadoDeLaRama({ blob: 'viejo', blobBase: 'nuevo', tieneCommits: true, historicosDeLaBase: historicos }), 'rama vieja')
+  assert.equal(estadoDeLaRama({ blob: 'inedito', blobBase: 'nuevo', tieneCommits: true, historicosDeLaBase: historicos }), 'hallazgo')
+})
+
+test('lo que la base ya tiene idéntico no es hallazgo, y lo que la rama no tocó tampoco', () => {
+  assert.equal(estadoDeLaRama({ blob: 'x', blobBase: 'x', tieneCommits: true, historicosDeLaBase: new Set() }), 'al día')
+  assert.equal(estadoDeLaRama({ blob: null, blobBase: 'x', tieneCommits: true, historicosDeLaBase: new Set() }), 'al día')
+  assert.equal(estadoDeLaRama({ blob: 'y', blobBase: 'x', tieneCommits: false, historicosDeLaBase: new Set() }), 'rama vieja')
+})
+
+test('una declaración de "quedó atrás" NO puede tapar un contenido distinto del declarado', () => {
+  // Es el riesgo del mecanismo: que declarar algo lo silencie para siempre. Por eso se ata al BLOB.
+  // Si la rama vuelve a moverse, su blob nuevo no coincide y el hallazgo reaparece.
+  const c = { blobBase: 'nuevo', tieneCommits: true, historicosDeLaBase: new Set() }
+  assert.equal(estadoDeLaRama({ ...c, blob: 'declarado', declaradaAtrasada: true }), 'rama vieja')
+  assert.equal(estadoDeLaRama({ ...c, blob: 'otro', declaradaAtrasada: false }), 'hallazgo')
+})
+
+test('la historia de un archivo se lee entera, y sólo devuelve blobs', () => {
+  // El recorrido se reescribió para hacer UN solo proceso de git en vez de uno por commit. Si el
+  // parseo de `cat-file --batch-check` fallara, el set quedaría vacío y TODO parecería trabajo nuevo:
+  // la falla sería silenciosa y hacia el lado ruidoso, que es el que después se desactiva.
+  const blobs = blobsEnLaHistoria('HEAD', 'echegaray-os/orquestador/scripts/generadores-atrasados.mjs')
+  assert.ok(blobs.size > 0, 'no encontró una sola versión de un archivo que sí tiene historia')
+  for (const b of blobs) assert.match(b, /^[0-9a-f]{40}$/, `"${b}" no es un blob`)
 })
 
 // ── El resumen ─────────────────────────────────────────────────────────────────────────────────
@@ -143,9 +192,17 @@ test('el inventario encuentra generadores de verdad en este repo', () => {
 })
 
 test('las ramas sin mergear se listan, y nunca la propia', () => {
-  const ramas = ramasSinMergear('HEAD')
+  // LA BASE ES `main`, NO `HEAD`. Con `HEAD` este test afirmaba que main no aparece como rama sin
+  // mergear, y eso sólo es cierto mientras main no se mueva: en este repo se mueve mientras uno
+  // trabaja en su worktree, así que el test se ponía rojo por algo que no tiene nada que ver con lo
+  // que mide. Un test que falla por el reloj enseña a ignorar los rojos.
+  const ramas = ramasSinMergear('main')
   assert.ok(Array.isArray(ramas))
   assert.equal(ramas.includes('main'), false, 'la base no puede contarse como rama sin mergear')
+  // Y lo que no es tautológico: nadie está atrasado respecto de sí mismo. Quien corre esto desde su
+  // worktree está justamente produciendo ese trabajo; verse listado le tapa lo que sí tiene que mirar.
+  const propia = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8' }).trim()
+  assert.equal(ramas.includes(propia), false, `la rama actual (${propia}) no puede listarse como atrasada`)
   assert.ok(ramas.every((b) => !b.startsWith('worktree-agent-')), 'los worktrees de agentes son ruido')
 })
 
@@ -155,7 +212,14 @@ test('el registro es legible y todo lo que no se incorporó tiene motivo escrito
   const registro = leerRegistro()
   assert.ok(Object.keys(registro).length > 0, 'el registro no se pudo leer o está vacío')
   for (const [archivo, e] of Object.entries(registro)) {
-    assert.ok(e.revisadoHasta, `${archivo}: sin revisadoHasta no se puede verificar nada`)
+    // O hay un punto de revisión contra el que comparar, o la entrada declara blobs concretos: en
+    // `atrasadas` el ancla ES la clave, y por eso la declaración caduca sola cuando el blob cambia.
+    assert.ok(e.revisadoHasta || Object.keys(e.atrasadas ?? {}).length,
+      `${archivo}: sin revisadoHasta ni atrasadas no se puede verificar nada`)
+    for (const [blob, motivo] of Object.entries(e.atrasadas ?? {})) {
+      assert.match(blob, /^[0-9a-f]{40}$/, `${archivo}: "${blob}" no es un blob completo — un prefijo se puede acertar de casualidad`)
+      assert.ok(motivo && motivo.length > 40, `${archivo} · ${blob}: declarado atrasado sin motivo escrito`)
+    }
     if (e.decision && e.decision !== 'incorporado') {
       assert.ok(e.motivo && e.motivo.length > 40, `${archivo}: "${e.decision}" sin motivo escrito`)
     }

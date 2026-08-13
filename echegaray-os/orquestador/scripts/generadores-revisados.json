@@ -6,6 +6,8 @@
     "decision = incorporado (se trajo) | descartado (se miró y NO se trae, con motivo) | pendiente (declarado, sin resolver).",
     "blobAntes = la versión que tenía main ANTES de incorporar. Si main vuelve a ese blob, la incorporación se perdió y el detector grita REVERTIDO: una declaración no puede ser su propia evidencia.",
     "senal = algo que la incorporación TUVO que dejar en el archivo (un import, un identificador). Más fuerte que blobAntes porque sobrevive a cambios cosméticos. Se declara cuando hay una señal inequívoca.",
+    "senalEn = la misma idea cuando la capacidad se MUDÓ de archivo: { ruta desde la app: texto que tiene que estar ahí }. Se exigen todas. Existe porque un centinela atado a la posición grita REVERTIDO en cada refactor, y un aviso siempre rojo se ignora.",
+    "atrasadas = { blob de la rama: motivo }. La rama tiene ESE contenido y se verificó, leyendo el diff, que main ya lo contiene y siguió. No frena el pipeline porque no hay nada que traer. Va atado al BLOB —nunca a la rama— para que caduque solo si esa rama se vuelve a mover.",
     "pendientes = motivo por RAMA, para una rama viva que se conoce y no se toca. Nunca pone el hallazgo en verde.",
     "El motivo es obligatorio para todo lo que no sea incorporado: lo que se descarta, se descarta por escrito."
   ],
@@ -18,7 +20,10 @@
     "orquestador/lib/google.mjs": {
       "revisadoHasta": "7c7cc105349d9fe02f34806c249ee80ce87bb7d0",
       "decision": "incorporado",
-      "blobAntes": "467905502e2665dddee5103c35ed70da9855c40d"
+      "blobAntes": "467905502e2665dddee5103c35ed70da9855c40d",
+      "atrasadas": {
+        "2f7f903937daf5ebea803a471ae1ee3e3a168270": "feat/firma-formato-y-historial, 01/08. Su google.mjs es ANTERIOR a todo lo que main le puso después: no tiene el freno de mano (congelador-sheets), no tiene no-borrar, no tiene soloUsuario —la puerta que impedía que un cliente de PERSONA degrade a la cuenta de servicio—, no tiene soloFilasVacias y su backoff es la escalera vieja de 11 segundos contra una ventana de cuota de 60. Leído el diff entero: no agrega una sola línea que main no tenga. Traerlo apagaría cinco protecciones que existen porque ya se perdió trabajo del dueño."
+      }
     },
     "orquestador/lib/preservar-anotaciones.mjs": {
       "revisadoHasta": "7c7cc105349d9fe02f34806c249ee80ce87bb7d0",
@@ -120,13 +125,36 @@
       "revisadoHasta": "7c7cc105349d9fe02f34806c249ee80ce87bb7d0",
       "decision": "incorporado",
       "blobAntes": "5e2d9bea2b3d461ea03f458d56ee728070a7c4f3",
-      "senal": "../lib/iva-ddjj.mjs"
+      "senal": "leerIVA",
+      "senalEn": {
+        "orquestador/lib/impuestos-fuentes.mjs": "parsearDJIVA"
+      },
+      "motivo": "gritó REVERTIDO el 13/08 sin que se hubiera revertido nada. La señal era el import '../lib/iva-ddjj.mjs', y el 06/08 (1ac6ae9) el generador se partió: de 1.400 líneas quedaron 200 y las fuentes se mudaron a lib/impuestos-fuentes.mjs, donde el mismo import se escribe './iva-ddjj.mjs'. Verificado que la incorporación entera sigue viva: leerIVA (F.2051 oficial) se importa en el generador, parsearDJIVA vive en impuestos-fuentes, CALENDARIO_IMPUESTOS.rotulos gobierna los dos rótulos que busca el cash flow, libre_disp está en impuestos-bloques, y el impuesto al cheque de _BANCO_RAW sigue restando con '-IF(...)' y no con ABS() —el signo que hacía contar una devolución del banco como impuesto pagado—. La señal pasa a la CAPACIDAD: leerIVA acá, parsearDJIVA donde hoy vive."
     },
     "orquestador/scripts/jornales-pestana.mjs": {
       "revisadoHasta": "7c7cc105349d9fe02f34806c249ee80ce87bb7d0",
       "decision": "incorporado",
       "blobAntes": "99972e52367caf0467113e94baf62fdb4d0a8eca",
       "senal": "../lib/direccion-retiros.mjs"
+    },
+    "orquestador/scripts/cheques-raw-pestana.mjs": {
+      "atrasadas": {
+        "59ac1faad6b93ef7cdd49d72b653b2e1ee62aa66": "feat/cheques-emitidos-raw y fix/prov-anclaje-notas, 30/07: la réplica ANTES de sus dos arreglos. Escribe String(fecha).slice(0,10) sobre el Date del driver —o sea 'Fri Jul 31', sin año y con el día corrido— y pide fecha_pago sin ::text. main tiene fechaISO() y el ::text. Traerlo devuelve el defecto que dejó a los nueve cheques con una fecha de texto que no daba un solo error y hacía que toda fórmula de fechas devolviera cero.",
+        "5a4cd00c7644c8c0adb1db040e798fe542d88a21": "feat/caja-viva, feat/cheques-cruce-banco y feat/propiedad-celdas, 30/07: ya tiene fechaISO() pero todavía no la columna L 'CUIT del librador'. main la agregó al FINAL —nunca en el medio, porque las letras de columna son el contrato de las fórmulas de CAJA y Cheques Recibidos— y con eso hereda los CUIT que el dueño había tipeado a mano. Traerlo se los borra."
+      }
+    },
+    "orquestador/scripts/cheques-recibidos-tablero.mjs": {
+      "revisadoHasta": "cc2c3ac01761f94f0f8bb0183112c8f6c269ce84",
+      "decision": "descartado",
+      "motivo": "la rama (30/07) rehace la pestaña entera con el cheque como unidad, y ese diagnóstico era correcto: el registro por OPERACIÓN contaba el mismo eCHEQ como Aceptación y como Depósito, y el endoso de $20.000.000 dos veces. Main llegó al mismo lugar el 06/08 (0d55896) y una capa más adentro: hoy el registro NO lo escribe nadie, es el derrame de una sola QUERY puesta en A28 sobre _CHEQUES_RAW, así que el script sólo es dueño de las filas 1 a 26, comprueba antes de escribir que el encabezado siga en la 27 y la QUERY en la 28, aborta si se corrieron, y re-lee la fila 28 después. La versión de la rama escribe una grilla completa: correrla hoy pisa el derrame y deja la pestaña en #REF! sin registro. Se descarta por eso, no por vieja.",
+      "blobAntes": "a57e948880232b3fe3a6f73964465bf3cb5f83d1"
+    },
+    "orquestador/scripts/tarjeta-pestana.mjs": {
+      "revisadoHasta": "63697c3d08087f152f8bc5b7fe2c17e331ac52a5",
+      "decision": "incorporado",
+      "blobAntes": "fa6484b93a648c399eebeae7c7e82ed15cfc1ed5",
+      "senal": "\"U$S\" #,##0.00",
+      "motivo": "de fix/tarjeta-dolares se trajo SÓLO el formato de la fila de dólares (bandaFilas devuelve fUsd y el formateador la pinta en U$S): con el formato de pesos de la columna, U$S 193,25 se leía '$193' e invitaba a sumarla con el resto. NO se trajo el otro cambio del mismo commit, que pone el patrón de porcentaje en '0,0%': main lo corrigió a '0.0%' el 05/08 (c5730f6) justo porque la coma en un patrón hacía que la cobertura mostrara '003 ×'. Traer el archivo entero revertía ese arreglo."
     },
     "orquestador/lib/guarda-escritura.mjs": {
       "revisadoHasta": "7c7cc105349d9fe02f34806c249ee80ce87bb7d0",

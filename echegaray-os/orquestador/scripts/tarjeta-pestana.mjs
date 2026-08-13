@@ -173,8 +173,14 @@ export function bandaFilas(hdr = BANDA + 1, banco = { TARJETA, CORTE }) {
   // cierre— y con su PROPIA fecha: el resumen del 29/07 no reportó línea en dólares, así que el
   // último dato del banco es el del 22/07 y así se declara. Dos cifras del mismo cuadro pueden ser
   // de días distintos; lo que no se puede es no decirlo.
+  //
+  // Y SE MUESTRA EN DÓLARES. Con el formato de pesos del resto de la columna, U$S 193,25 se leía
+  // "$193": el mismo símbolo para dos monedas es peor que no mostrar el dato, porque invita a sumarlo
+  // con la columna, que está en pesos. Por eso la fila se devuelve (`fUsd`) — el formateador necesita
+  // saber CUÁL es, y con `consumidoDolares` en cero esta fila no existe y `fUsd` queda en 0.
+  let fUsd = 0
   if (T.consumidoDolares > 0) {
-    push(sub('consumido en dólares — se paga del mismo cupo'), `=${T.consumidoDolares}`,
+    fUsd = push(sub('consumido en dólares — se paga del mismo cupo'), `=${T.consumidoDolares}`,
       frescura(ymd(T.consumidoDolaresAl || T.al || banco.CORTE), dmyDe(T.consumidoDolaresAl || T.al || banco.CORTE)))
   }
   push()
@@ -234,7 +240,7 @@ export function bandaFilas(hdr = BANDA + 1, banco = { TARJETA, CORTE }) {
 
   push(seccion(4, 'El detalle — cada compra y cada cuota'))
 
-  return { filas, fLim, fDisp, fComp, fRatio, fBanco, fDif }
+  return { filas, fLim, fDisp, fComp, fRatio, fBanco, fDif, fUsd }
 }
 
 /**
@@ -414,6 +420,10 @@ async function formatear(google, sheetId, grid, hdr) {
     { repeatCell: { range: rg(4, BANDA, 1, 2), cell: { userEnteredFormat: { numberFormat: money, horizontalAlignment: 'RIGHT' } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment)' } },
     // La única celda que no es plata en la columna B: el ratio de financiamiento.
     { repeatCell: { range: rg(g.fRatio - 1, g.fRatio, 1, 2), cell: { userEnteredFormat: { numberFormat: { type: 'PERCENT', pattern: '0.0%' }, horizontalAlignment: 'RIGHT' } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment)' } },
+    // LA OTRA CELDA QUE NO ES PESOS: el consumido en dólares. Con el formato de la columna se leía
+    // "$193" siendo U$S 193,25 — el mismo símbolo para dos monedas invita a sumarla con el resto.
+    // Va DESPUÉS del bloque de la columna B para pisarlo, y sólo si la fila existe.
+    ...(g.fUsd ? [{ repeatCell: { range: rg(g.fUsd - 1, g.fUsd, 1, 2), cell: { userEnteredFormat: { numberFormat: { type: 'CURRENCY', pattern: '"U$S" #,##0.00' }, horizontalAlignment: 'RIGHT' } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment)' } }] : []),
     // La columna C es contexto corto (una fecha, una fuente, un veredicto): TEXTO, gris y chica.
     // Si quedara en formato de número, "resumen al 22/07/2026" se convertiría en una fecha.
     { repeatCell: { range: rg(4, BANDA, 2, 3), cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', textFormat: txt(MUTED, { size: 9 }), wrapStrategy: 'OVERFLOW_CELL' } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment,textFormat,wrapStrategy)' } },
