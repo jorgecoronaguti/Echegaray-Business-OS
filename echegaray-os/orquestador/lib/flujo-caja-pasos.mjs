@@ -8,6 +8,10 @@
 //
 // EL ORDEN NO ES COSMÉTICO: cada paso lee lo que escribió el anterior.
 
+// El nombre de la pestaña se IMPORTA de su generador: escrito a mano acá, el día que cambie queda
+// una entrada que no corresponde a ninguna pestaña y el censo de dueños la reporta como huérfana.
+import { PESTANA_CALENDARIO } from './calendario-cobros.mjs'
+
 export const PASOS = [
   // PRIMERO DE TODOS: los jornales entran al archivo desde OTRO Sheet (JORNALES). Si el espejo no
   // se refresca, todo lo que sigue calcula sobre una foto vieja y ningún control lo ve — pasó el
@@ -111,6 +115,9 @@ export const PASOS = [
   // —dirección segura para equivocarse a mano— pero en el pipeline esa seguridad se vuelve una
   // pestaña congelada que informa éxito.
   ['obras-pestana.mjs', 'OBRAS — el año entero obra por obra: venta/cobrado/pendiente por cliente y las obras del año', ['OBRAS'], ['--escribir']],
+  // VA DESPUÉS DE OBRAS Y NO ES INDIFERENTE: su control de cierre LEE la Resta que OBRAS acaba de
+  // publicar y aborta si no cuadra. Corriendo antes, se compararía contra la Resta de ayer.
+  ['calendario-cobros-pestana.mjs', 'Calendario de Cobros — cuándo entra cada peso: cliente × mes y cada hito en su fecha', [PESTANA_CALENDARIO], ['--escribir']],
   ['estructura-pestana.mjs', 'pestaña Estructura con su proyección', ['Estructura']],
   // Escribe DOS pestañas: primero la réplica _IIBB_RAW (las DDJJ de Ingresos Brutos leídas del PDF de
   // Rentas, el insumo) y después el cuadro que la referencia. Declarar la réplica evita que el censo
