@@ -8,7 +8,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   contratoDeclarado, contratoDeObra, filasDeObra, normalizarMoneda, monedasDesconocidas,
-  sumaConUSD, MARCADOR_CONTRATO,
+  sumaConUSD, valuarEnPesos, MARCADOR_CONTRATO,
 } from './cobranzas-contrato.mjs'
 import { FILAS, comoFilas, DESDE } from './cobranzas-fixture.mjs'
 
@@ -139,4 +139,41 @@ test('la suma con dólares no usa `<>USD` ni el atajo `×(TC−1)`: sólo criter
   // `×(TC−1)` da el mismo número con un SUMIFS menos y RESTA el importe si el TC queda en blanco.
   assert.ok(!f.includes('-1)'), 'ningún atajo que cambie el signo cuando falta el tipo de cambio')
   assert.equal(f.split('SUMIFS(').length - 1, 3, 'todo, menos los dólares mal contados, más los valuados')
+})
+
+// ══ LA VALUACIÓN EN JAVASCRIPT: el otro lado de `sumaConUSD` ══════════════════════════════════════
+
+/** El `TIPO_CAMBIO_USD` leído del archivo vivo el 13/08/2026. */
+const TC = 1492.524
+
+test('valuarEnPesos es la MISMA decisión que la fórmula: la fila real de Quattropani', () => {
+  // La fila 62 del fixture: U$S 15.400. La fórmula de la pestaña la valúa multiplicando por
+  // TIPO_CAMBIO_USD; acá se hace lo mismo, sobre la misma columna y con el mismo normalizador.
+  const enUSD = FILAS.find(([f]) => f === 62)
+  const v = valuarEnPesos(enUSD[5], enUSD[12], TC)
+  assert.equal(v.moneda, 'USD')
+  assert.equal(v.tipoCambio, TC)
+  assert.equal(Math.round(v.pesos), 22_984_870)
+})
+
+test('los pesos no se tocan, y el cero de formato de las filas 39/40 tampoco', () => {
+  for (const celda of ['', undefined, 0, 'ARS']) {
+    assert.deepEqual(valuarEnPesos(500000, celda, TC), { moneda: 'ARS', tipoCambio: 1, pesos: 500000 })
+  }
+  // Un importe negativo (el cobro devuelto) conserva su signo: el signo lo decide el llamador.
+  assert.equal(valuarEnPesos(-96800, '', TC).pesos, -96800)
+})
+
+test('sin conversión posible NO hay importe: ni el nativo ni cero', () => {
+  // Es la regla dura. Devolver el monto nativo sería repetir el defecto con otro código de moneda, y
+  // devolver 0 borraría la venta del cuadro. El llamador tiene que abortar nombrando la fila.
+  const rara = valuarEnPesos(8000, 'EUR', TC)
+  assert.equal(rara.pesos, undefined)
+  assert.equal(rara.moneda, null)
+  assert.match(rara.motivo, /"EUR"/)
+  for (const tc of [null, undefined, 0, -1, NaN, '1492,524']) {
+    const sinTC = valuarEnPesos(15400, 'USD', tc)
+    assert.equal(sinTC.pesos, undefined, `tc=${JSON.stringify(tc)}`)
+    assert.match(sinTC.motivo, /tipo de cambio/)
+  }
 })

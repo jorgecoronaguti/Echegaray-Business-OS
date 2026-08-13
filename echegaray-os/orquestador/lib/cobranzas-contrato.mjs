@@ -90,6 +90,47 @@ export function normalizarMoneda(valor) {
 }
 
 /**
+ * LA COLUMNA "Moneda" DE COBRANZAS, DECLARADA COMO RESPALDO POSICIONAL.
+ *
+ * Se resuelve SIEMPRE por rótulo primero —una columna insertada mueve la letra y no el nombre—; esto
+ * es lo que se usa cuando el rótulo no aparece en el encabezado leído. Mismo patrón que
+ * `COL_VALOR_BANCO` para la BB. Verificado contra el archivo vivo el 13/08/2026.
+ */
+export const COL_MONEDA_COBRANZAS = 'AA'
+
+/**
+ * UN IMPORTE DE COBRANZAS, VALUADO EN LA MONEDA DEL LIBRO (PESOS).
+ *
+ * ES LA MISMA DECISIÓN QUE `sumaConUSD`, DEL OTRO LADO. Aquella compone el texto de la fórmula para
+ * que Sheets valúe dentro del archivo; ésta valúa en JavaScript para el Libro. Las dos leen la MISMA
+ * columna con el MISMO `normalizarMoneda` y multiplican por el MISMO `TIPO_CAMBIO_USD`: si el criterio
+ * cambiara en un solo lado, la pestaña OBRAS y el Cash Flow contarían la misma venta distinto — que es
+ * exactamente lo que pasaba el 13/08 (Obras!D14 valuaba los U$S 15.400 de Quattropani en $22.984.870 y
+ * el Cash Flow los sumaba como $15.400).
+ *
+ * NO CONVIERTE "POR LAS DUDAS", Y ESO ES EL PUNTO. Cuando no se puede valuar devuelve `motivo` y NINGÚN
+ * importe: el llamador tiene que abortar nombrando la fila. Grabar el monto nativo cuando la moneda no
+ * se entiende, o cuando falta el tipo de cambio, es volver a producir el defecto que este módulo
+ * arregla — un número en la moneda equivocada con cara de número sano.
+ *
+ * @param {number} importe el monto tal como lo escribe la fila, en SU moneda
+ * @param {any} celdaMoneda la celda de la columna "Moneda"
+ * @param {number|null} tc el tipo de cambio en uso (`TIPO_CAMBIO_USD`), o null si no se pudo leer
+ * @returns {{moneda:string|null, pesos?:number, tipoCambio?:number, motivo?:string}}
+ */
+export function valuarEnPesos(importe, celdaMoneda, tc = null) {
+  const moneda = normalizarMoneda(celdaMoneda)
+  if (moneda === null) {
+    return { moneda: null, motivo: `declara la moneda "${String(celdaMoneda ?? '').trim()}", que no sé convertir` }
+  }
+  if (moneda === 'ARS') return { moneda, tipoCambio: 1, pesos: importe }
+  if (!Number.isFinite(tc) || tc <= 0) {
+    return { moneda, motivo: `está en ${MONEDA_USD} y no tengo tipo de cambio (leí ${JSON.stringify(tc)})` }
+  }
+  return { moneda, tipoCambio: tc, pesos: importe * tc }
+}
+
+/**
  * LAS FILAS CUYA MONEDA NO SE ENTIENDE.
  *
  * POR QUÉ ES UN CONTROL Y NO UNA CONVERSIÓN MÁS. La fórmula de la pestaña reparte en dos baldes: lo

@@ -48,7 +48,7 @@ import {
   ANCHO_OBRAS, ANCHOS_OBRAS, PESTANA_OBRAS, REFS_OBRAS, SIN_CONTRATO, saldoContratoMalPublicado,
 } from '../lib/obras-grilla.mjs'
 import { contratoDeObra, monedasDesconocidas, normalizarMoneda } from '../lib/cobranzas-contrato.mjs'
-import { RANGO_TC } from '../lib/caja-disponibilidades.mjs'
+import { leerTipoCambio, RANGO_TC } from '../lib/tipo-cambio.mjs'
 import { OBRAS_FUTURAS, totalEgresos } from '../lib/obras-datos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -246,9 +246,10 @@ export async function verificarMoneda(google, { monedasRaras, hayUSD }) {
       + `${monedasRaras.slice(0, 6).map((m) => `fila ${m.fila}="${m.valor}"`).join(' · ')}. `
       + 'Se sumarían como PESOS sin dar error. NO escribo hasta que la columna diga USD o quede vacía.')
   }
-  const leido = await google.readSheetValues(ID, RANGO_TC, { render: 'UNFORMATTED_VALUE' }).catch(() => null)
-  const tc = Number(leido?.[0]?.[0])
-  if (!Number.isFinite(tc) || tc <= 0) {
+  // La lectura vive en `lib/tipo-cambio.mjs` desde el 13/08: el extractor de Cobranzas del Libro
+  // necesita el MISMO tipo de cambio y qué cuenta como válido no puede decidirse en dos lados.
+  const { tc, crudo: leido } = await leerTipoCambio(google, ID)
+  if (tc === null) {
     throw new Error(`el rango con nombre ${RANGO_TC} no trae un tipo de cambio (leí ${JSON.stringify(leido)}). `
       + 'Lo publica el bloque de CAJA y TODA suma de esta pestaña lo cita: sin él las celdas de plata '
       + `quedarían en #NAME?/#VALUE!${hayUSD ? ', y además hay filas en USD que no se podrían valuar' : ''}. NO escribo.`)
