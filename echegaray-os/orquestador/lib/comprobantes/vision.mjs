@@ -205,10 +205,9 @@ const vacio = (v) => v == null || String(v).trim() === '' || /^(null|n\/a|-|—)
 export function bloqueImputacion(v = {}) {
   const obras = (v.obras ?? []).filter(Boolean)
   const unidades = (v.unidades ?? []).filter(Boolean)
-  const categorias = (v.categorias ?? []).filter(Boolean)
   const tiposPago = (v.tiposPago ?? []).filter(Boolean)
   const detalles = Object.entries(v.detalles ?? {}).filter(([, l]) => (l ?? []).length)
-  if (!obras.length && !unidades.length && !categorias.length) return null
+  if (!obras.length && !unidades.length) return null
 
   const l = ['', 'AHORA IMPUTÁ EL GASTO. Esto es lo que hace una persona cuando mira el papel: decide',
     'a qué obra va y de qué tipo de costo es. Lo escrito a mano es la pista principal, y muchas veces',
@@ -221,17 +220,36 @@ export function bloqueImputacion(v = {}) {
 
   if (obras.length) l.push('', `OBRA / CLIENTE (columna J) — valores válidos:\n${obras.map((o) => `  · ${o}`).join('\n')}`)
   if (unidades.length) l.push('', `UNIDAD DE NEGOCIO (columna I) — qué clase de costo es:\n${unidades.map((o) => `  · ${o}`).join('\n')}`)
-  if (categorias.length) {
-    l.push('', `CATEGORÍA (columna B) — qué se compró, en el vocabulario de la empresa:\n${categorias.map((o) => `  · ${o}`).join('\n')}`,
-      'Sale de LOS RENGLONES del comprobante, no del nombre del proveedor: un proveedor que se llama',
-      '"Combustibles X" puede facturar un service, y uno que se llama "Corralón Y" puede facturar nafta.')
-  }
+  // ═══ LA CATEGORÍA (COLUMNA B) YA NO SE PREGUNTA (13/08) ═══
+  //
+  // Acá se le pasaba el desplegable de la columna B con el rótulo «qué se compró, en el vocabulario de
+  // la empresa». Ese desplegable son DOS valores —`B` y `N`, blanco y negro— y preguntarle a un modelo
+  // qué se compró ofreciéndole esas dos opciones no puede terminar bien: contestó `N` para una FACTURA
+  // A (fila 840, Rodamientos Cuyo), o sea marcó como en negro un gasto documentado. Se deriva sin
+  // modelo en `categoria.mjs`: hay comprobante fiscal ⇒ B, no lo hay ⇒ N.
   if (detalles.length) {
     l.push('', 'DETALLE / OBRA (columna K) — el frente, vehículo o rubro DENTRO de la obra. Estos son los',
       'que ya se usaron en cada una; elegí uno sólo si la obra que elegiste es la suya. NUNCA un nombre',
       'de persona ni un texto de las observaciones de la factura:')
     for (const [obra, vals] of detalles.slice(0, 30)) l.push(`  ${obra}: ${vals.slice(0, 15).join(' | ')}`)
   }
+  // ═══ Y SI NINGUNO SIRVE, ESCRIBILA VOS: K ES TEXTO LIBRE (13/08) ═══
+  //
+  // La columna K no tiene desplegable. Cuando la carga la hace una persona por Claude Code escribe ahí
+  // una NOTA COMPUESTA mirando el papel —«Diesel 500 (26,5135 l) + Nafta Super», «retira Rodrigo · vto
+  // 04/08», «Pagada 07/08 MP tarjeta de débito»—, y ninguna de esas frases está en ninguna lista. El
+  // bot no la componía nunca y la columna quedaba vacía en casi toda fila que cargó. Es el reclamo
+  // central del dueño: «no carga igual q si lo hiciera por esta via».
+  l.push('', 'DETALLE LIBRE (también columna K) — si ninguno de los de arriba sirve, ESCRIBILA VOS en una',
+    'línea corta, con lo que el papel dice de esta compra en concreto: qué y cuánto (litros, kilos,',
+    'unidades), el vencimiento si lo trae, con qué se pagó si lo dice, quién retira si figura. Separá',
+    'las partes con " · ". Ejemplos del formato que se usa en esta empresa:',
+    '  "Diesel 500 (26,5135 l) + Nafta Super (9,17 l)"',
+    '  "retira Rodrigo · vto 04/08"',
+    '  "Pagada 07/08 MP tarjeta de débito · op. 4471"',
+    'Sale de los RENGLONES y de los datos del comprobante, nunca del nombre del proveedor ni del rubro',
+    'que ese nombre sugiere. Si el papel no da para una línea útil, poné null: una nota inventada es',
+    'peor que una celda vacía.')
   // EL TIPO DE PAGO ES EL QUE MÁS BASURA METIÓ. Es la única de estas columnas cuyo valor SÍ está
   // impreso en el papel, y por eso el modelo copiaba lo que veía cerca ("Importe", "30 DIAS FECHA
   // FACTURA") en vez de elegir de la lista. Se le dice explícitamente que es una lista cerrada y que
@@ -242,7 +260,8 @@ export function bloqueImputacion(v = {}) {
       '("Importe") NO son formas de pago: ahí va null. Si el papel no dice con qué se pagó, va null.')
   }
   l.push('', 'Agregá al JSON: "obra":"<exacto de la lista o null>","unidad_negocio":"<exacto o null>",',
-    '"categoria":"<exacto o null>","detalle_obra":"<exacto o null>",',
+    '"detalle_obra":"<exacto de la lista de la obra elegida, o null>",',
+    '"detalle_libre":"<la línea corta que compusiste, o null>",',
     '"forma_pago":"<exacto de la lista de tipo de pago, o null>",',
     '"por_que_esa_obra":"<en qué te basaste, en 10 palabras>"')
   return l.join('\n')

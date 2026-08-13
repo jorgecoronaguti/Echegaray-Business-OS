@@ -31,7 +31,10 @@ const LISTAS = Object.freeze({
   proveedores: ['ALUMETAL', 'Villa del Pino', 'HORMISERV', 'Corralon Progreso'],
   obras: ['LA ESTRELLA', 'MESSINA', 'Vehiculos / Maquinas'],
   unidades: ['Materiales', 'Servicios', 'Estructura'],
-  categorias: ['Materiales', 'Combustible', 'Servicios'],
+  // LOS VALORES REALES DE LA COLUMNA B, leídos del Sheet vivo el 13/08 (`Compras!B4:B12`): **B y N**,
+  // blanco y negro. Acá decía `['Materiales','Combustible','Servicios']` —una lista inventada— y por
+  // eso ningún test vio que al modelo se le preguntaba «qué se compró» ofreciéndole `B` y `N`.
+  categorias: ['B', 'N'],
   tiposPago: ['Efectivo', 'Transferencia', 'Débito', 'Tarjeta Crédito', 'Echeq', 'Cheque'],
 })
 
@@ -254,32 +257,45 @@ test('la columna K NO recibe lo que el modelo eligió si esa obra lo usó UNA so
 
 test('un valor que NO está en el desplegable no llega a una celda, aunque el modelo lo proponga', () => {
   const it = armarItem({
-    lectura: { emisor: 'ALUMETAL', total: '100', obra: 'OBRA QUE NO EXISTE', unidad_negocio: 'civil', categoria: 'Varios' },
+    lectura: { emisor: 'ALUMETAL', total: '100', obra: 'OBRA QUE NO EXISTE', unidad_negocio: 'civil' },
     listas: LISTAS,
   })
   assert.equal(it.comprobante.obra, null)
   assert.equal(it.comprobante.unidad, undefined)
-  assert.equal(it.comprobante.categoria, undefined)
 })
 
-// ═══ 5 · LA CATEGORÍA (B) QUEDA CARGADA ═════════════════════════════════════
+// ═══ 5 · LA CATEGORÍA (B) QUEDA CARGADA — Y ES BLANCO O NEGRO, NO UN RUBRO ══
+//
+// El 04/08 el defecto era que quedaba VACÍA. El 13/08 el defecto fue peor: quedaba MAL. Se le pasaba
+// al modelo el desplegable `['B','N']` con el rótulo «qué se compró» y contestaba lo que podía —`N`
+// para una FACTURA A, o sea un gasto documentado marcado como en negro (fila 840, Rodamientos Cuyo)—.
+// Ahora se deriva sin modelo: hay comprobante fiscal ⇒ B.
 
-test('la CATEGORÍA sale del desplegable y viaja al cargador', () => {
+test('la CATEGORÍA se DERIVA del comprobante y viaja al cargador: factura A ⇒ B', () => {
   const it = armarItem({
-    lectura: { emisor: 'ALUMETAL', total: '100', categoria: 'Materiales' },
+    lectura: { emisor: 'ALUMETAL', total: '100', letra: 'FACTURA A', numero: '0038-00025942' },
     listas: LISTAS,
   })
-  assert.equal(it.comprobante.categoria, 'Materiales')
-  assert.equal(valoresInput(it.comprobante)[COL.categoria], 'Materiales')
+  assert.equal(it.comprobante.categoria, 'B')
+  assert.equal(valoresInput(it.comprobante)[COL.categoria], 'B')
 })
 
-test('sin categoría, el comprobante NO se carga solo: se pregunta con el menú de la columna B', async () => {
+test('el modelo YA NO decide la columna B: lo que proponga se ignora', () => {
+  // Éste es el defecto exacto de la fila 840: el modelo dijo `N` sobre una factura A con número.
+  const it = armarItem({
+    lectura: { emisor: 'Rodamientos Cuyo', total: '100', letra: 'FACTURA A', numero: '0012-00050057', categoria: 'N' },
+    listas: LISTAS,
+  })
+  assert.equal(it.comprobante.categoria, 'B', 'hay comprobante fiscal: va en blanco, lo diga el modelo o no')
+})
+
+test('la columna B ya no se pregunta con un menú: no hay nada que preguntar', async () => {
   const { d, repo } = armar({ lecturas: [alumetalMalLeida({ numero: '0038-00025942', total: '2.014.940,07' })] })
   const r = await procesarPost(d, post())
   const it = itemDe(repo, r)
-  assert.equal(it.comprobante.categoria, undefined, 'el papel no la dice')
+  assert.equal(it.comprobante.categoria, 'B', 'factura con número: en blanco')
   const menus = (r.attachments ?? []).flatMap((b) => b.actions ?? []).filter((a) => a.type === 'select')
-  assert.ok(menus.some((m) => m.id === 'categoria'), 'la columna B se pregunta como las otras')
+  assert.equal(menus.some((m) => m.id === 'categoria'), false, 'una columna derivable no se pregunta')
 })
 
 // ═══ 6 · LO ESCRITO A MANO VIAJA AL CONCEPTO, LITERAL ═══════════════════════
