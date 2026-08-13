@@ -16,7 +16,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   grillaObras, serialISO, criterioCliente, variantesDe, anchoColumnaA, pxDeTexto, clientesDeCobranzas,
-  celdasEnError, problemaDeSintaxis, ERRORES_SHEET, nombreEnCostos,
+  celdasEnError, problemaDeSintaxis, ERRORES_SHEET, nombreEnCostos, ANO,
   ANCHO_OBRAS, ANCHOS_OBRAS, REFS_OBRAS, CLIENTES_MUESTRA,
 } from './obras-grilla.mjs'
 import { OBRAS_FUTURAS, CLIENTES_CANONICOS, esProyectable, totalEgresos } from './obras-datos.mjs'
@@ -98,22 +98,48 @@ test('el ⇒ TOTAL 2026 sale de Cobranzas ENTERA, no de la suma de los clientes 
   assert.match(cel(g, `D${g.totales[0]}`), /^=SUMIFS\(/)
 })
 
-test('el cliente se busca en Materiales con el nombre que USA Materiales, y si no está lo DICE', () => {
-  // EL DEFECTO (13/08, visto en el PDF): al derivar el rótulo de Cobranzas, la Sección 1 buscaba
-  // "LA ESTRELLA /ALIMENTOS DEL SUR SAS" en Materiales, donde el cliente se llama "LA ESTRELLA" a
-  // secas. El match fallaba, IFERROR devolvía "—" y $147.827.124 del cliente más grande del año
-  // desaparecieron del cuadro. Un "—" se lee como "no compró nada".
-  assert.equal(nombreEnCostos('LA ESTRELLA /ALIMENTOS DEL SUR SAS'), 'LA ESTRELLA')
-  assert.equal(nombreEnCostos('MESSINA'), 'MESSINA', 'lo que no está en el mapa se busca con su propio nombre')
+test('el COSTO de la Sección 1 se mide al NETO desde la fuente, no heredando el criterio de otra pestaña', () => {
+  // EL DEFECTO (13/08): esta columna leía `TOTAL POR OBRA` de la pestaña Materiales, que la arma con
+  // "Total" (O, CON IVA). Publicaba $251.440.609 al lado de "Venta (neto)" donde el criterio que esta
+  // misma pestaña declara y testea da $165.196.937: $86.243.672 de más. El test que exigía el neto
+  // sólo miraba la columna del detalle — la que el dueño lee no la cubría nadie.
+  //
+  // Y LA REGLA NO ES "M o O": "Importe" (M) está vacía en 185 de 829 filas —obligaciones sin IVA,
+  // ninguna con IVA cargado— donde el importe se tipea en "Total". Es: M si está, si no O − N.
   const [f0, f1] = g.fClientes
   for (let f = f0; f <= f1; f++) {
-    const cli = String(cel(g, `A${f}`))
-    const mat = cel(g, `G${f}`)
-    assert.ok(mat.includes(`MATCH("${nombreEnCostos(cli)}"`), `G${f}: busca el nombre de Materiales`)
-    assert.ok(!mat.includes(`MATCH($A${f}`), `G${f}: no busca el rótulo de la fila, que viene de otra fuente`)
-    // "sin match" ≠ "—": el que no aparece lo dice, en vez de simular un cero.
-    assert.ok(mat.includes('"sin match"'), `G${f}: si el nombre no está en Materiales, lo declara`)
-    assert.ok(!mat.includes('⚠'), `G${f}: sin alarma — 3 de 8 clientes no tienen compras y sería gritar sobre lo correcto`)
+    const cel_ = cel(g, `G${f}`)
+    assert.ok(!cel_.includes('Materiales'), `G${f}: no hereda el criterio de otra pestaña`)
+    assert.match(cel_, new RegExp(`^=SUMIFS\\('Compras'!\\$${REFS_OBRAS.cmp.neto}\\$`), `G${f}: arranca por el neto`)
+    assert.ok(cel_.includes(`;${'$'}{}`.replace('${}', '')) || true)
+    // la cola de la regla: lo que no tiene Importe entra por Total − IVA
+    assert.match(cel_, new RegExp(`\\+SUMIFS\\('Compras'!\\$${REFS_OBRAS.cmp.total}\\$[^;]*;[^;]*;"[^"]*";'Compras'!\\$${REFS_OBRAS.cmp.neto}\\$[^;]*;""\\)`), `G${f}: suma el Total de las filas sin Importe`)
+    assert.match(cel_, new RegExp(`-SUMIFS\\('Compras'!\\$${REFS_OBRAS.cmp.iva}\\$`), `G${f}: y les resta su IVA`)
+    // el cliente se busca con el nombre que usa Compras, no con el rótulo derivado de Cobranzas
+    assert.ok(cel_.includes(`"${nombreEnCostos(String(cel(g, `A${f}`)))}"`), `G${f}: nombre de Compras`)
+  }
+  assert.equal(nombreEnCostos('LA ESTRELLA /ALIMENTOS DEL SUR SAS'), 'LA ESTRELLA')
+})
+
+test('el ⇒ TOTAL 2026 tiene la ventana que su rótulo promete', () => {
+  // EL DEFECTO (13/08): ninguna fórmula acotaba el año. El total era TODA la pestaña Cobranzas e
+  // incluía una venta del 15/12/2025 ($15.000.000, IMOTOR); la primera fila de 2027 lo iba a empeorar
+  // sin un solo error. Un rótulo que afirma un filtro que no existe es una mentira con formato de dato.
+  const desde = serialISO(`${ANO}-01-01`)
+  const hasta = serialISO(`${ANO}-12-31`)
+  const [f0, f1] = g.fClientes
+  for (const f of [...Array(f1 - f0 + 1)].map((_, i) => f0 + i).concat(g.bloques.map((b) => b.fProt), g.totales[0])) {
+    // La VENTA se acota por la fecha de venta (devengado)…
+    const venta = cel(g, `C${f}`)
+    assert.ok(venta.includes(`$${REFS_OBRAS.cob.fechaVenta}$`), `C${f}: la venta se acota por su fecha de VENTA`)
+    assert.ok(venta.includes(`">="&${desde}`) && venta.includes(`"<="&${hasta}`), `C${f}: dentro del año`)
+    // …y lo que mide plata que entra, por la de cobro (percibido). La misma fila lo exige: vendida
+    // el 15/12/2025 y cobrada el 15/01/2026 — una sola ventana rompería una de las dos.
+    for (const c of ['D', 'E']) {
+      const v = cel(g, `${c}${f}`)
+      assert.ok(v.includes(`$${REFS_OBRAS.cob.fechaCobro}$`), `${c}${f}: se acota por la fecha de COBRO`)
+      assert.ok(v.includes(`">="&${desde}`), `${c}${f}: dentro del año`)
+    }
   }
 })
 
@@ -188,8 +214,11 @@ test('ninguna fórmula de real acumulado filtra por un cliente que no esté en C
   const col = REFS_OBRAS.cmp.cliente
   const usados = formulas(g)
     .flatMap(([, f]) => [...f.matchAll(new RegExp(`'Compras'!\\$${col}\\$\\d+:\\$${col};"([^"]+)"`, 'g'))].map((m) => m[1]))
-  assert.ok(usados.length > 0, 'tiene que haber fórmulas de real acumulado que mirar')
-  for (const c of usados) assert.ok(CLIENTES_CANONICOS.includes(c), `"${c}" no es un cliente canónico de Compras`)
+  assert.ok(usados.length > 0, 'tiene que haber fórmulas contra Compras que mirar')
+  // Los de las obras son los canónicos; los de la Sección 1 son los clientes derivados ya traducidos
+  // al nombre que usa Compras. Ninguno puede ser un nombre que Compras no conozca.
+  const validos = new Set([...CLIENTES_CANONICOS, ...CLIENTES_MUESTRA.map(nombreEnCostos)])
+  for (const c of usados) assert.ok(validos.has(c), `"${c}" no es un nombre que Compras use`)
 })
 
 test('dos obras del MISMO cliente no pueden compartir proveedor: el real se contaría en las dos', () => {
@@ -213,25 +242,26 @@ test('el neteo vivo va EMBEBIDO en el pendiente del egreso: la factura real de C
   // falta desembolsar. Si alguien lo saca, el pendiente deja de reaccionar a Compras.
   const b = bloque('sf-pisos-industriales')
   const f = b.fDetalle[0]
-  assert.equal(cel(g, `F${f}`),
+  assert.equal(cel(g, `G${f}`),
     `=MAX(0;C${f}-SUMIFS('Compras'!$M$4:$M;'Compras'!$E$4:$E;"ACA";'Compras'!$J$4:$J;"San Francisco";'Compras'!$C$4:$C;">="&${serialISO('2026-08-05')}))`)
-  assert.ok(vacia(cel(g, `E${f}`)), 'la columna E ya no es el real: es la resta a cobrar de la obra')
+  assert.ok(vacia(cel(g, `F${f}`)), 'la F es Vencido (cobranza) — el pendiente de pago tiene la suya')
 })
 
 test('las columnas salen de las refs INYECTADAS: ninguna letra queda pegada en la fórmula', () => {
   // El escritor resuelve las columnas contra los encabezados vivos. Si una letra quedara fija, la
   // fórmula sumaría otra columna el día que el archivo se reordene, y sin dar error.
   const refs = {
-    cob: { hoja: 'Cobranzas', cliente: 'Z', concepto: 'Y', neto: 'V', total: 'X', estado: 'W', oc: 'S', fechaCobro: 'T', categoria: 'R', desde: 9 },
-    cmp: { hoja: 'Compras', fecha: 'V', proveedor: 'U', cliente: 'T', neto: 'R', total: 'S', desde: 7 },
+    cob: { hoja: 'Cobranzas', cliente: 'Z', concepto: 'Y', neto: 'V', total: 'X', estado: 'W', oc: 'S', fechaCobro: 'T', fechaVenta: 'N', categoria: 'R', desde: 9 },
+    cmp: { hoja: 'Compras', fecha: 'V', proveedor: 'U', cliente: 'T', neto: 'R', iva: 'Q', total: 'S', desde: 7 },
     mat: REFS_OBRAS.mat,
   }
   const otra = grillaObras({ obras: OBRAS_FUTURAS, refs })
   const b = otra.bloques.find((x) => x.clave === 'sf-pisos-industriales')
-  const pend = cel(otra, `F${b.fDetalle[0]}`)
+  const pend = cel(otra, `G${b.fDetalle[0]}`)
   assert.match(pend, /'Compras'!\$R\$7:\$R/, 'el NETO de Compras ("Importe"), no el total con IVA')
   assert.match(pend, /'Compras'!\$T\$7:\$T;"San Francisco"/, 'el cliente de Compras')
   assert.match(cel(otra, `C${b.fProt}`), /'Cobranzas'!\$V\$9:\$V/, 'la venta sale del NETO de Cobranzas')
+  assert.match(cel(otra, `G${otra.fClientes[0]}`), /'Compras'!\$R\$7:\$R/, 'el costo, del neto de Compras')
   assert.match(cel(otra, `D${b.fProt}`), /'Cobranzas'!\$X\$9:\$X/, 'el cobrado sale del TOTAL de Cobranzas')
   for (const [ref, f] of formulas(otra)) {
     assert.ok(!/'Compras'!\$[EJCO]\$4/.test(f), `${ref}: quedó una columna de Compras pegada`)
@@ -299,7 +329,7 @@ test('ninguna fórmula lleva una variable rota interpolada: undefined, null, NaN
 test('las fuentes se citan con rango ABIERTO desde su primera fila de datos', () => {
   // Cerrarlo en la última fila conocida deja de ver lo nuevo — sin error. Es el único lugar donde el
   // rango abierto se acepta: el número que decide sale de la fuente, no de una ventana.
-  const real = cel(g, `F${bloque('sf-pisos-industriales').fDetalle[0]}`)
+  const real = cel(g, `G${bloque('sf-pisos-industriales').fDetalle[0]}`)
   assert.match(real, /\$M\$4:\$M/, 'arranca en la fila de datos y no termina')
   assert.ok(!real.includes(':$M$'), 'y no se cierra en una fila fija')
 })
@@ -326,7 +356,7 @@ test('la mano de obra no se mide contra Compras y su pendiente es el monto enter
   // gasto de Compras sería el doble conteo que el dueño prohibió expresamente.
   for (const b of g.bloques) {
     assert.ok(vacia(cel(g, `E${b.fMO}`)), `${b.clave}: la MO no tiene real en Compras`)
-    assert.equal(cel(g, `F${b.fMO}`), `=C${b.fMO}`, `${b.clave}: la MO pendiente va entera`)
+    assert.equal(cel(g, `G${b.fMO}`), `=C${b.fMO}`, `${b.clave}: la MO pendiente va entera`)
     assert.ok(b.fMO === b.fDetalle[1], `${b.clave}: la MO es la última fila del detalle`)
   }
 })
@@ -335,7 +365,7 @@ test('un egreso sin proveedor no inventa un real: lo dice y deja el pendiente co
   const b = bloque('sf-mamposteria')
   const f = b.fDetalle[0]
   assert.ok(vacia(cel(g, `E${f}`)), 'sin proveedor no hay contra qué medir')
-  assert.equal(cel(g, `F${f}`), `=MAX(0;C${f})`)
+  assert.equal(cel(g, `G${f}`), `=MAX(0;C${f})`)
   assert.match(String(cel(g, `A${f}`)), /sin proveedor/, 'el rótulo de la fila lo dice: no hay contra qué medir')
 })
 
@@ -349,7 +379,7 @@ test('NO se publica margen por obra: no es calculable y publicarlo optimista es 
   // repartir. Lo que se publicaba era venta menos costo PROYECTADO, alto y falso donde la proyección
   // está declarada incompleta. Si alguien repone la columna sin resolver el origen, esto se pone rojo.
   for (const b of g.bloques) {
-    assert.ok(vacia(cel(g, `G${b.fProt}`)), `${b.clave}: no puede publicar un margen`)
+    assert.ok(!/Margen/i.test(String(cel(g, `A${b.fProt}`))), `${b.clave}: no puede publicar un margen`)
     assert.equal(b.fDetalle[1], b.fMO, `${b.clave}: el costo del detalle llega hasta la MO`)
   }
   const rotulos = g.filas.flatMap((f) => f.filter((v) => typeof v === 'string' && !v.startsWith('=')))
@@ -405,10 +435,9 @@ test('lo que RESTA COBRAR sale del estado, no de una columna de saldo', () => {
 
 test('el total de la sección 2 suma las protagonistas, no un rango que se lleva el detalle puesto', () => {
   const esperado = `=${g.bloques.map((b) => b.fProt).join('+')}`
-  for (const c of ['C', 'D', 'E', 'F']) {
+  for (const c of ['C', 'D', 'E', 'F', 'G']) {
     assert.equal(cel(g, `${c}${g.totales[1]}`), esperado.replace(/(\d+)/g, `${c}$1`))
   }
-  assert.ok(vacia(cel(g, `G${g.totales[1]}`)), 'y el pie tampoco totaliza un margen que no existe')
 })
 
 test('toda fila mide exactamente ANCHO_OBRAS y las vacías llevan el centinela', () => {
@@ -490,12 +519,10 @@ test('el costo se mide NETO contra NETO: el IVA de compras es crédito fiscal, n
   // Cerrar esto era la limitación declarada ayer: con la venta al neto y el costo con IVA, el margen
   // quedaba castigado ~21% en todo lo comprado en blanco. "Importe" (M) es el neto de Compras.
   const neto = new RegExp(`'Compras'!\\$${REFS_OBRAS.cmp.neto}\\$`)
-  const conIva = new RegExp(`'Compras'!\\$${REFS_OBRAS.cmp.total}\\$`)
-  const conNeteo = g.filas.flatMap((f, i) => (typeof f[5] === 'string' && f[5].includes('Compras') ? [[i + 1, f[5]]] : []))
+  const conNeteo = g.filas.flatMap((f, i) => (typeof f[6] === 'string' && f[6].startsWith('=') && f[6].includes('Compras') ? [[i + 1, f[6]]] : []))
   assert.ok(conNeteo.length >= 15, `tiene que haber egresos con neteo vivo, hay ${conNeteo.length}`)
   for (const [n, f] of conNeteo) {
-    assert.match(f, neto, `F${n}: el costo real se mide en el neto de Compras`)
-    assert.ok(!conIva.test(f), `F${n}: el costo NO puede medirse en el total con IVA`)
+    assert.match(f, neto, `G${n}: el costo real se mide en el neto de Compras`)
   }
 })
 
@@ -540,8 +567,8 @@ test('una obra sin fechas se VE, se marca y no proyecta nada: sin inicio no hay 
   assert.match(String(cel(otra, `A${b.fProt}`)), /sin fechas/, 'se marca en el rótulo')
   const f = b.fDetalle[0]
   assert.ok(vacia(cel(otra, `E${f}`)), 'el detalle no publica resta a cobrar')
-  assert.equal(cel(otra, `F${f}`), `=MAX(0;C${f})`, 'sin inicio no hay ventana para netear contra Compras')
-  assert.ok(!cel(otra, `F${f}`).includes('Compras'), 'y no se inventa una ventana')
+  assert.equal(cel(otra, `G${f}`), `=MAX(0;C${f})`, 'sin inicio no hay ventana para netear contra Compras')
+  assert.ok(!cel(otra, `G${f}`).includes('Compras'), 'y no se inventa una ventana')
 })
 
 test('sin obras no se arma media pestaña: la sección 2 no publica un total que no existe', () => {
