@@ -44,7 +44,7 @@ import { debitosDelExtracto, corteDelExtracto, pagosDeResumen, chequesCubiertosP
 import { ROTULOS_CALENDARIO, CALENDARIO_IMPUESTOS } from '../lib/cash-flow-lineas.mjs'
 import { coberturaPorRubro, huecosDeCobertura, problemasDeRol, verificarCobertura } from '../lib/cash-flow-cobertura.mjs'
 import { fechaDeSerial } from '../lib/libro-extractores-fechas.mjs'
-import { celdaEstado, celdaImporte, columnaEstadoDeCompras, columnasVivasDeCompras, columnasNeteoDeCompras, estadosDecorados, ROTULO_FECHA_COMPRAS } from '../lib/libro-estado-vivo.mjs'
+import { celdaEstado, celdaImporte, columnaEstadoDeCompras, columnasVivasDeCompras, exigirColumnasNeteo, estadosDecorados } from '../lib/libro-estado-vivo.mjs'
 import { total } from '../lib/patron-pestana.mjs'
 import { ubicarRegistro } from './cheques-emitidos-tablero.mjs'
 
@@ -206,20 +206,13 @@ async function extraerDeLasFuentes(google, corte) {
   if (!OBRAS_FUTURAS.length) {
     console.warn('  ⚠ obras futuras: lib/obras-datos.mjs no existe todavía o no publica OBRAS_FUTURAS — la fuente Obras sale vacía.')
   }
-  // ═══ SIN NETEO NO SE PUBLICA: ABORTA (13/08/2026) ═══
+  // ═══ SIN NETEO NO SE PUBLICA: ABORTA, Y EL MENSAJE DICE QUÉ COLUMNA FALTÓ (13/08/2026) ═══
   //
-  // Acá había un `console.warn` y la corrida seguía con los importes PEGADOS. Eso no es "falla
-  // cerrado": un egreso de obra pegado se cuenta DOS VECES desde el momento en que su factura entra a
-  // Compras, y el aviso se pierde entre setenta líneas de log. El libro es la fuente de los tres
-  // cuadros que se miran para decidir: publicar uno con doble conteo conocido es peor que no
-  // publicarlo. El mensaje nombra el rótulo que hay que buscar, que es lo que hace falta para
-  // arreglarlo en un minuto.
-  const colsNeteo = columnasNeteoDeCompras(compras)
-  if (OBRAS_FUTURAS.length && !colsNeteo) {
-    throw new Error('obras futuras: no pude resolver las columnas de Compras para el neteo '
-      + `(proveedor · "Cliente / Asignación" · "${ROTULO_FECHA_COMPRAS}" · Total, sobre el encabezado de la fila 3). `
-      + 'Sin el neteo vivo los egresos proyectados se cuentan dos veces cuando la factura real entra: no escribo el libro.')
-  }
+  // `exigirColumnasNeteo` tira con el rótulo adentro ("Fecha factura") en lugar de degradar a importes
+  // pegados. El criterio, y por qué un dato muerto en silencio es peor que una corrida caída, viven
+  // con la función en lib/libro-estado-vivo.mjs. Sin obras futuras no hay nada que netear y no hay
+  // nada que exigir: la corrida no depende de un encabezado que no va a usar.
+  const colsNeteo = OBRAS_FUTURAS.length ? exigirColumnasNeteo(compras) : null
   const obrasFuturas = deObras(OBRAS_FUTURAS, colsNeteo, corte, (m) => console.warn(`  · ${m}`))
   if (obrasFuturas.resumen.movimientos) {
     console.log(`  obras futuras: ${obrasFuturas.resumen.obras} obra(s) · ${obrasFuturas.resumen.movimientos} egreso(s) `

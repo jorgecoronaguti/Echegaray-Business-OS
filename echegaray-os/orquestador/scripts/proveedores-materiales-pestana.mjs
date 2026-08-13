@@ -77,7 +77,7 @@ import { normNombre } from '../lib/razon-social.mjs'
 import { NOMBRES } from '../lib/sheet-pestanas.mjs'
 import { partir, mapaDeFilas, filasHuerfanas, referenciasFuera, ref as refPestana } from '../lib/partir-pestana.mjs'
 import { anchosSegunContenido } from '../lib/nota-celda.mjs'
-import { fusionar, sobrantes, VACIO, rellenoDeCola, estructural } from '../lib/preservar-anotaciones.mjs'
+import { fusionar, sobrantes, VACIO, estructural } from '../lib/preservar-anotaciones.mjs'
 import { obrasConMateriales } from '../lib/obras-con-materiales.mjs'
 import { sumaNetaSheet } from '../lib/costo-materiales.mjs'
 import { bloqueMaterialesPorObra } from '../lib/materiales-por-obra.mjs'
@@ -1624,10 +1624,10 @@ async function main() {
     // En la pestaña con frontera NO hay título ni subtítulo propios: están arriba de la frontera y
     // son de otro. El bloque arranca directo en su primer título de sección.
     const filasP = t.enFrontera ? [...partes[i].filas] : [[t.titulo], [t.subtitulo], [], ...partes[i].filas]
-    // EL ALTO NO SE RELLENA ACÁ. La cola de un diseño anterior más largo ya la resuelve
-    // `rellenoDeCola`, más abajo, y mejor: distingue lo que el generador puede PROBAR que es suyo de
-    // una frase del dueño, que se saltea y se reporta. Emitir filas vacías hasta el footprint viejo
-    // sería un segundo mecanismo, más romo, borrando encima del primero.
+    // EL ALTO NO SE RELLENA ACÁ. La cola de un diseño anterior más largo la resuelve el barrido de
+    // cola, más abajo, y mejor: manda la cola entera y deja que `no-borrar` verifique celda por celda
+    // qué se puede probar del generador. Emitir filas vacías hasta el footprint viejo sería un segundo
+    // mecanismo, más romo, borrando encima del primero.
     // EL BLOQUE ES DUEÑO DE TODO SU ANCHO: lo que no llena, lo LIMPIA. El ancho no lo decide la fila
     // más larga del día —si hoy hay menos columnas que ayer, las de ayer quedarían clavadas— sino el
     // declarado del bloque. Ver lib/proveedores-frontera.mjs: es el defecto de las columnas "Anula la
@@ -1732,32 +1732,39 @@ async function main() {
     //
     // No se limpia con clearValues (eso ya borró su trabajo varias veces): se borra SÓLO lo que se
     // puede PROBAR que es del generador — un rótulo del registro, o una forma que sólo produce él (un
-    // importe, una fecha, un CUIT, un rótulo de sección). Una fila con una frase suya se SALTEA y se
-    // reporta con su texto, para que no se vaya sin dejar rastro.
+    // importe, una fecha, un CUIT, un rótulo de sección). Lo que no se puede probar se conserva y se
+    // dice, para que no se vaya sin dejar rastro.
+    //
+    // ═══ POR QUÉ ESTE BARRIDO NO LIMPIABA NADA (13/08) ═══
+    //
+    // Escribía cadenas vacías sobre la cola… y `no-borrar.mjs` —la guarda sin bypass que corre al
+    // final de TODA escritura— las revertía celda por celda: "si el valor nuevo está vacío y el
+    // destino tiene algo, gana el destino". El generador imprimía "🧹 limpié N filas" y no limpiaba
+    // ninguna. Así sobrevivió el fragmento de las filas 229-230 de "Proveedores", que decía 456
+    // comprobantes / $179.091.614 donde el bloque vivo dice 380 / $126.944.008: $52,1M de
+    // contradicción publicados en la pestaña que el dueño lee.
+    //
+    // Ahora el pedido de vaciar viaja con el registro de rótulos (`vaciarPropio`) y lo VERIFICA la
+    // guarda, sobre el destino que ella misma relee. Por eso ya no hace falta elegir filas acá: se
+    // manda la cola entera y la decisión se toma celda por celda, que es la granularidad correcta —la
+    // fila 229 real tiene tres celdas probadamente mías y una nota que no lo es, y con la decisión por
+    // fila esa nota congelaba a las otras tres para siempre.
+    //
+    // CON TECHO. La cola se mira hasta MAX_COLA filas más abajo del bloque, no hasta el final de la
+    // hoja: rellenar a ciegas hasta el borde ya borró 14 fechas del dueño, y una copia huérfana vive
+    // pegada al bloque (las que se midieron están a ±50 filas, el alto de la dinámica de la sección 2).
+    const MAX_COLA = 120
     const colaCruda = await google.readSheetValues(
-      ID, `${refPestana(t.titulo)}!A${filaFin + 1}:${letra(anchoLeer - 1)}`,
+      ID, `${refPestana(t.titulo)}!A${filaFin + 1}:${letra(anchoLeer - 1)}${filaFin + MAX_COLA}`,
     ).catch(() => [])
     if (colaCruda.length) {
       const { mios } = await leerRegistro(ID, t.titulo).catch(() => ({ mios: [] }))
-      const { filas: relleno, limpiar, preservar } = rellenoDeCola(colaCruda, new Set(mios), anchoP)
-      if (limpiar.length) {
-        // Sólo las filas limpiables, cada una en su rango: escribir el bloque entero pisaría las que
-        // hay que preservar. Se agrupan en tramos contiguos para no hacer una llamada por fila.
-        const data = []
-        let tramo = null
-        relleno.forEach((f, i) => {
-          if (f) { if (!tramo) tramo = { desde: i, filas: [] }; tramo.filas.push(f) }
-          else if (tramo) { data.push(tramo); tramo = null }
-        })
-        if (tramo) data.push(tramo)
-        await google.batchUpdateValues(ID, data.map((x) => ({
-          range: `${refPestana(t.titulo)}!A${filaFin + 1 + x.desde}`, values: x.filas,
-        })), { yaGuardado: FORCE })
-        console.log(`  🧹 ${t.titulo}: limpié ${limpiar.length} fila(s) de cola de un diseño anterior (filas ${filaFin + 1}–${filaFin + colaCruda.length})`)
-      }
-      for (const p of preservar) {
-        console.log(`  ✋ ${t.titulo}: fila ${filaFin + 1 + p.i} de la cola es TUYA, la dejo: "${p.celdas.join(' · ').slice(0, 90)}"`)
-      }
+      const vacias = colaCruda.map(() => Array.from({ length: anchoP }, () => ''))
+      await google.batchUpdateValues(
+        ID, [{ range: `${refPestana(t.titulo)}!A${filaFin + 1}`, values: vacias }],
+        { yaGuardado: FORCE, vaciarPropio: { mios } },
+      )
+      console.log(`  🧹 ${t.titulo}: reviso la cola (filas ${filaFin + 1}–${filaFin + colaCruda.length}) — se vacía sólo lo que se prueba mío`)
     }
     await sellarFirma(google, ID, t.titulo, refPestana(t.titulo))
     await guardarRegistro(ID, t.titulo, cuadroFinal, ediciones, visible, candidatos)
