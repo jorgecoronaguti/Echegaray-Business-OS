@@ -74,6 +74,34 @@ test('un bloque, un dueño: ningún script escribe dos bloques ni un bloque tien
   for (const s of scripts) assert.ok(existsSync(join(dir, s)), `${s} no existe en orquestador/scripts`)
 })
 
+// ═══ OBRAS: EL PASO QUE NO ESTABA, Y EL FLAG SIN EL CUAL NO ESCRIBE (13/08) ═══
+//
+// La pestaña existe desde el 07/08 y su generador sólo corría a mano. El segundo test es el que
+// importa: `obras-pestana.mjs` sin `--escribir` hace un ENSAYO —lee, resuelve columnas, no toca el
+// archivo— y termina con código 0. O sea que el paso figuraría como ✓ en cada corrida mientras la
+// pestaña envejece. Un éxito que no publica una celda es la peor forma de fallar que hay acá.
+
+test('OBRAS corre en el pipeline y declara su pestaña', () => {
+  const paso = PASOS.find(([s]) => s === 'obras-pestana.mjs')
+  assert.ok(paso, 'obras-pestana.mjs no está en PASOS: la pestaña sólo se actualiza si alguien la corre a mano')
+  assert.deepEqual(paso[2], ['OBRAS'], 'OBRAS sin declarar: el censo de dueños la va a dar por huérfana')
+})
+
+test('OBRAS corre con --escribir: sin el flag el paso da ✓ sin publicar una celda', () => {
+  const paso = PASOS.find(([s]) => s === 'obras-pestana.mjs')
+  assert.ok((paso?.[3] ?? []).includes('--escribir'),
+    'obras-pestana.mjs corre sin --escribir: hace un ensayo, sale 0 y la pestaña queda vieja en silencio')
+})
+
+test('OBRAS corre DESPUÉS de lo que lee: el rubro de Compras y la pestaña Materiales', () => {
+  // La Sección 1 es fórmula viva sobre Cobranzas y sobre la fila "TOTAL POR OBRA" de Materiales, y
+  // cita Compras por columna. Antes de sus fuentes, ubicaría por rótulo una grilla de la corrida
+  // anterior — y eso no da error, da un número viejo.
+  const pos = (s) => PASOS.findIndex(([x]) => x === s)
+  assert.ok(pos('obras-pestana.mjs') > pos('rubro-caja-sheet.mjs'), 'OBRAS corre antes del rubro de caja')
+  assert.ok(pos('obras-pestana.mjs') > pos('proveedores-materiales-pestana.mjs'), 'OBRAS corre antes de Materiales')
+})
+
 test('sólo el generador de texto declara "Proveedores" como pestaña suya', () => {
   // El registro de PASOS es de PESTAÑAS: el que declara una figura como su dueño en el censo. Los
   // dueños de un BLOQUE declaran [] — mismo criterio que cheques-emitidos-sync-banco.mjs.

@@ -27,11 +27,18 @@
 // Al final informa qué se rehizo y qué no, y sale con código != 0 si algo falló — así el timer lo
 // registra y no se pierde en silencio.
 //
+// ANTES DE TODO, LA GUARDIA. Si algún generador de Sheets está atrasado respecto de una rama sin
+// resolver, esto no arranca: sale con 2 y no ejecuta un solo paso (ver lib/guardia-generadores.mjs).
+//
 //   node orquestador/scripts/flujo-caja-rehacer-todo.mjs [--dry]
+//   ORQ_PIPELINE_SIN_GUARDIA="motivo con sustancia" node …   ← saltea la guardia y lo deja en el log
+//
+// Códigos de salida: 0 todo bien · 1 algún paso falló (los demás corrieron) · 2 la guardia abortó.
 
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { PASOS, esReporte } from '../lib/flujo-caja-pasos.mjs'
+import { guardiaDeGeneradores } from '../lib/guardia-generadores.mjs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
@@ -137,6 +144,22 @@ async function main() {
   const fallaron = []
   const reportes = []
   const saltados = []
+
+  // ── LA GUARDIA DE GENERADORES ATRASADOS, ANTES QUE TODO LO DEMÁS (13/08) ──
+  //
+  // `generadores-atrasados.mjs` existía desde el 03/08 y NADIE lo ejecutaba: un guardián escrito y
+  // nunca puesto en la puerta. Va ARRIBA del candado, de la firma, del snapshot y del bucle a
+  // propósito: esos tres LEEN y ESCRIBEN el archivo (la firma resella, el snapshot copia). Si un
+  // generador de esta corrida está atrasado, la corrida no empieza — ni con una celda.
+  //
+  // Sale con 2, no con 1: un 1 es "algún paso falló y el resto corrió". Un 2 es "no corrió nada".
+  // El timer tiene que poder distinguirlos sin leer el log. El detalle, en lib/guardia-generadores.mjs.
+  const guardia = await guardiaDeGeneradores({ dry: DRY })
+  for (const l of guardia.lineas) console.log(l)
+  if (guardia.abortar) {
+    console.error('\nNo ejecuté un solo generador. El Sheet quedó como estaba.')
+    process.exit(2)
+  }
 
   // ── EL CANDADO DEL DUEÑO, ANTES DE CORRER NADA (24/07) ──
   // Se lee UNA vez qué pestañas tomó el dueño. Un paso cuyas pestañas están TODAS bloqueadas ni se
