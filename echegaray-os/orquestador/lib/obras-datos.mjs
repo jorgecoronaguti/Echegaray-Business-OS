@@ -113,9 +113,13 @@ export const OBRAS_FUTURAS = [
     notas: null,
   },
   {
-    // ACTUALIZACIÓN DEL DUEÑO (07/08, en vivo): ya tiene fechas y venta propia declarada. La venta
-    // TODAVÍA no está cargada en Cobranzas — la fórmula viva va a dar $0 hasta que se cargue, y la
-    // grilla lo dice al lado, no lo esconde. `ventaDeclarada` es dato del dueño, no una fila viva.
+    // ACTUALIZACIÓN DEL DUEÑO (07/08, en vivo): ya tiene fechas y venta propia declarada.
+    // 13/08: LA VENTA YA ESTÁ EN COBRANZAS ($8.758.810, cobro 19/08, una sola fila por decisión del
+    // dueño: "Venta propia s/ total 8.758.810 — cobro íntegro", sin anticipo ni certificación). Se
+    // saca el aviso de "venta aún no cargada", que a partir de hoy era falso — un aviso que quedó
+    // viejo miente con más autoridad que un dato que falta, porque parece verificado.
+    // `ventaDeclarada` se conserva como el número que declaró el dueño, para contrastar contra la
+    // fila viva; NO se muestra como venta.
     clave: 'sf-mamposteria',
     cliente: 'San Francisco',
     obra: 'MAMPOSTERÍA',
@@ -132,7 +136,7 @@ export const OBRAS_FUTURAS = [
       { concepto: 'Materiales sin itemizar', proveedor: null, familia: 'Materiales', monto: 2_847_439, fechaEstimada: '2026-08-08' },
     ],
     noCaja: { maquinaPropia: 0 },
-    notas: '⚠ venta aún no cargada en Cobranzas: $8.758.810 declarados',
+    notas: null,
   },
   {
     clave: 'messina-playon-azufre',
