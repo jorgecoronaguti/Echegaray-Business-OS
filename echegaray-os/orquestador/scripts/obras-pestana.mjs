@@ -43,7 +43,7 @@ import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 import { requestsTextoPorContenido } from '../lib/formato-texto-por-contenido.mjs'
 import {
-  grillaObras, anchoColumnaA, celdasEnError, problemaDeSintaxis, clientesDeCobranzas,
+  grillaObras, anchoColumnaA, celdasEnError, columnasDesparejas, problemaDeSintaxis, clientesDeCobranzas,
   ANCHO_OBRAS, ANCHOS_OBRAS, PESTANA_OBRAS, REFS_OBRAS,
 } from '../lib/obras-grilla.mjs'
 import { OBRAS_FUTURAS, totalEgresos } from '../lib/obras-datos.mjs'
@@ -280,7 +280,15 @@ async function main() {
       + `${enError.slice(0, 8).map((x) => `${x.ref}=${x.valor}`).join(' · ')}`
       + `${enError.length > 8 ? ` … y ${enError.length - 8} más` : ''}. Hay que corregir la fórmula y volver a correr.`)
   }
-  console.log(`QUEDÓ ESCRITO — releí ${quedo.length} filas y no hay una sola celda en error.`)
+  // UN VACÍO NO ES UN #ERROR!, Y MIENTE MÁS: se lee como un dato. Si una columna salió llena en unas
+  // obras y vacía en otras, alguna fórmula se rompió en silencio — pasó con `Próx. cobro`, 4 de 7.
+  const desparejas = columnasDesparejas(g.filas, quedo, g.protagonistas ?? [])
+  if (desparejas.length) {
+    throw new Error(`QUEDÓ PUBLICADO CON COLUMNA(S) DESPAREJA(S): `
+      + desparejas.map((d) => `${d.columna} vacía en ${d.filas.length} de ${d.de} obras (filas ${d.filas.join(', ')})`).join(' · ')
+      + '. Una fórmula devolvió vacío donde las demás dieron valor: revisala antes de creerle a la pestaña.')
+  }
+  console.log(`QUEDÓ ESCRITO — releí ${quedo.length} filas: sin celdas en error y sin columnas desparejas.`)
 }
 
 /**

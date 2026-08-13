@@ -303,14 +303,45 @@ test('un egreso sin proveedor no inventa un real: lo dice y deja el pendiente co
 // LA ESTRUCTURA
 // ─────────────────────────────────────────────────────────────────────────────
 
-test('el margen resta EXACTAMENTE el costo proyectado de la obra: ni una fila de más ni de menos', () => {
-  // Un off-by-one acá deja un egreso afuera del costo y el margen sale más lindo de lo que es. El
-  // rango llega hasta la MO inclusive y NO alcanza a la máquina propia, que no es plata que sale.
+test('NO se publica margen por obra: no es calculable y publicarlo optimista es inventar', () => {
+  // Decisión del dueño (13/08) sobre la evidencia: Compras tiene "Cliente / Asignación" y NO tiene
+  // columna de obra, así que las 4 obras de San Francisco comparten un costo real que nadie puede
+  // repartir. Lo que se publicaba era venta menos costo PROYECTADO, alto y falso donde la proyección
+  // está declarada incompleta. Si alguien repone la columna sin resolver el origen, esto se pone rojo.
   for (const b of g.bloques) {
-    const [f0, f1] = b.fDetalle
-    assert.equal(cel(g, `G${b.fProt}`), `=C${b.fProt}-SUM(C${f0}:C${f1})`, `${b.clave}: margen`)
-    assert.equal(f1, b.fMO, `${b.clave}: el costo llega hasta la MO`)
-    if (b.fNoCaja) assert.ok(b.fNoCaja > f1, `${b.clave}: la máquina propia queda afuera del margen`)
+    assert.ok(vacia(cel(g, `G${b.fProt}`)), `${b.clave}: no puede publicar un margen`)
+    assert.equal(b.fDetalle[1], b.fMO, `${b.clave}: el costo del detalle llega hasta la MO`)
+  }
+  const rotulos = g.filas.flatMap((f) => f.filter((v) => typeof v === 'string' && !v.startsWith('=')))
+  assert.ok(!rotulos.some((r) => /^Margen/i.test(r.trim())), 'ni el encabezado lo nombra')
+  // Y queda escrito QUÉ haría falta para que exista, para que nadie lo reponga sin resolver eso.
+  assert.ok(rotulos.some((r) => /Compras no dice a qué obra/i.test(r)), 'falta la explicación en la glosa')
+})
+
+test('REGLA DEL DUEÑO: un cliente de UNA obra tiene la venta de la obra igual a la del cliente', () => {
+  // El invariante NO es "la suma de las obras = la venta del cliente" — eso se pondría rojo por
+  // MESSINA, que factura trabajos fuera de las 7 obras y su gap de $43.265.118 es legítimo. El que
+  // vale es el CONDICIONAL: si el cliente tiene una sola obra declarada, esa obra ES todo el cliente.
+  const cuenta = OBRAS_FUTURAS.reduce((m, o) => m.set(o.cliente, (m.get(o.cliente) ?? 0) + 1), new Map())
+  const unicos = [...cuenta].filter(([, n]) => n === 1).map(([c]) => c)
+  assert.deepEqual(unicos, ['Quattropani - Melisa García SAS'], 'hoy hay exactamente un cliente así')
+  for (const cli of unicos) {
+    const b = g.bloques.find((x) => OBRAS_FUTURAS.find((o) => o.clave === x.clave).cliente === cli)
+    const fCli = g.fClientes[0] + CLIENTES_MUESTRA.indexOf(cli)
+    for (const c of ['C', 'D', 'E', 'F']) {
+      assert.equal(cel(g, `${c}${b.fProt}`), cel(g, `${c}${fCli}`), `${c}: la obra y el cliente miden lo mismo`)
+    }
+    assert.ok(!cel(g, `C${b.fProt}`).includes('Salón Comercial'), 'sin filtrar por el texto de la obra')
+  }
+})
+
+test('un cliente con DOS obras sigue con el match por texto: forzarlo sería inventar', () => {
+  // MESSINA tiene Playón y BSA, y además factura otras cosas. Aplicarle la regla del cliente único
+  // le metería $43.265.118 de trabajos ajenos adentro de una obra.
+  for (const clave of ['messina-playon-azufre', 'messina-bsa']) {
+    const b = g.bloques.find((x) => x.clave === clave)
+    assert.match(cel(g, `C${b.fProt}`), /'Cobranzas'!\$I\$5:\$I;"\*/, `${clave}: filtra por el concepto`)
+    assert.match(cel(g, `C${b.fProt}`), /'Cobranzas'!\$H\$5:\$H;"\*/, `${clave}: y también por la orden de compra`)
   }
 })
 
@@ -353,9 +384,10 @@ test('cada obra publica su próxima fecha de cobro y el detalle de lo pendiente 
 
 test('el total de la sección 2 suma las protagonistas, no un rango que se lleva el detalle puesto', () => {
   const esperado = `=${g.bloques.map((b) => b.fProt).join('+')}`
-  for (const c of ['C', 'D', 'E', 'F', 'G']) {
+  for (const c of ['C', 'D', 'E', 'F']) {
     assert.equal(cel(g, `${c}${g.totales[1]}`), esperado.replace(/(\d+)/g, `${c}$1`))
   }
+  assert.ok(vacia(cel(g, `G${g.totales[1]}`)), 'y el pie tampoco totaliza un margen que no existe')
 })
 
 test('toda fila mide exactamente ANCHO_OBRAS y las vacías llevan el centinela', () => {

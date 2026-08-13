@@ -154,6 +154,37 @@ export function celdasEnError(filas = []) {
 const letraDe = (i) => (i < 26 ? '' : String.fromCharCode(64 + Math.floor(i / 26))) + String.fromCharCode(65 + (i % 26))
 
 /**
+ * COLUMNAS QUE SALIERON DESPAREJAS: el generador puso fórmula en TODAS las obras y el archivo
+ * devolvió valor en algunas y VACÍO en otras.
+ *
+ * POR QUÉ EXISTE (13/08). `Próx. cobro` se publicó en blanco en 4 de las 7 obras y nada gritó: un
+ * vacío no es `#ERROR!`, así que la relectura lo dejaba pasar. Y un vacío MIENTE más que un error —
+ * se lee como "no hay nada que cobrar" cuando había $8,7M para el 19/08.
+ *
+ * El criterio es la DESPAREJA, no el vacío: si la columna sale vacía en todas, puede ser legítimo
+ * (nadie tiene nada pendiente); si sale llena en unas y vacía en otras, alguna fórmula se rompió en
+ * silencio. Puede haber un falso positivo real —una obra íntegramente cobrada no tiene próxima
+ * fecha—; cuesta una corrida y un vistazo, y la alternativa ya costó cuatro obras publicadas en
+ * blanco.
+ *
+ * @param {Array<Array>} grid lo que el generador escribió · @param {Array<Array>} publicado lo releído
+ * @param {number[]} filas las filas 1-based que tienen que comportarse igual (las protagonistas)
+ */
+export function columnasDesparejas(grid = [], publicado = [], filas = []) {
+  const vacio = (v) => String(v ?? '').trim() === ''
+  const fuera = []
+  for (let c = 0; c < ANCHO_OBRAS; c++) {
+    const conFormula = filas.filter((f) => typeof grid[f - 1]?.[c] === 'string' && String(grid[f - 1][c]).startsWith('='))
+    if (conFormula.length !== filas.length || !filas.length) continue
+    const vacias = conFormula.filter((f) => vacio(publicado[f - 1]?.[c]))
+    if (vacias.length && vacias.length < conFormula.length) {
+      fuera.push({ columna: letraDe(c), filas: vacias, de: conFormula.length })
+    }
+  }
+  return fuera
+}
+
+/**
  * ¿ESTA FÓRMULA PARSEA? Paréntesis balanceados y comillas cerradas.
  *
  * Sheets no evalúa una fórmula que no parsea: la muestra como `#ERROR!`. Es exactamente lo que pasó
@@ -361,6 +392,14 @@ const restaCobrar = (cob, cliente, extra = {}) =>
 /** Los pares (variante de cliente, criterio de obra) que forman UNA obra. Sin needle, el cliente entero. */
 const tramos = (cob, cliente, extra = {}) => {
   const cat = extra.cat ? `;${abierto(cob, 'categoria')};"${extra.cat}"` : ''
+  // ═══ REGLA DEL DUEÑO (13/08): UN CLIENTE CON UNA SOLA OBRA ES ESA OBRA ═══
+  //
+  // No es una inferencia mía: es criterio de negocio, decidido cuando se le mostró que el anticipo de
+  // Quattropani (ids 57/58/59, $61.425.085) no nombra la obra ni en el Concepto ni en la Orden de
+  // Compra, y que por eso Salón Comercial publicaba la mitad de su venta. Eligió la regla general
+  // antes que retocar Cobranzas. Si el cliente tiene DOS O MÁS obras declaradas, sigue mandando el
+  // match por texto: MESSINA factura trabajos fuera de las 7 obras y forzarlos sería inventar.
+  if (extra.unica) return variantesDe(cliente).map((v) => [v, cat])
   return variantesDe(cliente).flatMap((v) => (extra.needle
     ? [[v, `;${abierto(cob, 'concepto')};"*${extra.needle}*"${cat}`],
       [v, `;${abierto(cob, 'oc')};"*${extra.needle}*";${abierto(cob, 'concepto')};"<>*${extra.needle}*"${cat}`]]
@@ -558,7 +597,7 @@ function prosaDeEgreso(e) {
  * proveedor declarado, contra Compras. La MO no se mide acá — va por Jornales — y su pendiente es el
  * monto entero, declarado en prosa.
  */
-function bloqueObra(h, refs, o, idx) {
+function bloqueObra(h, refs, o, idx, unica = false) {
   const { cob, cmp } = refs
   // La definición de "se puede proyectar" vive en obras-datos.mjs, no acá: repetirla como
   // `o.inicio && o.fin` es la segunda versión del mismo concepto esperando a divergir.
@@ -567,16 +606,24 @@ function bloqueObra(h, refs, o, idx) {
   const nDetalle = (o.egresos?.length ?? 0) + 1 // egresos + la fila de MO
   const [f0, f1] = [fProt + 1, fProt + nDetalle]
 
-  const dela = { needle: o.ventaTexto }
+  const dela = { needle: o.ventaTexto, unica }
   h.push([`2.${idx} · ${o.cliente} — ${o.obra}${proyectable ? '' : '   ⚠ sin fechas — no se proyecta'}`,
     // EL SEMÁFORO MIRA LA COBRANZA VENCIDA, no el margen. Un margen negativo se lee en su columna; la
     // plata que había que cobrar y no entró es lo único que exige llamar a alguien hoy.
     `=IF(F${fProt}>0;"⚠";"✓")`,
     venta(cob, o.cliente, dela), cobrado(cob, o.cliente, dela), restaCobrar(cob, o.cliente, dela),
     vencido(cob, o.cliente, dela),
-    // Margen = venta neta − costo proyectado de la obra. El neteo vivo contra Compras confirma ese
-    // costo egreso por egreso (columna Pendiente del detalle); no se resta dos veces.
-    `=C${fProt}-SUM(C${f0}:C${f1})`,
+    // ═══ ACÁ IBA EL MARGEN. EL DUEÑO LO MANDÓ SACAR (13/08) Y ESTA NOTA ES PARA QUE NADIE LO REPONGA ═══
+    //
+    // No es calculable por obra: Compras tiene "Cliente / Asignación" pero NO tiene columna de obra,
+    // así que las 4 obras de San Francisco comparten un único costo real y no hay forma de repartirlo.
+    // Lo que se publicaba era venta del contrato menos el costo PROYECTADO, y donde la proyección está
+    // declarada incompleta —BSA y Quattropani, con materiales ya facturados— daba un margen alto y
+    // falso. Publicar eso es presentar una estimación como un hecho.
+    //
+    // PARA QUE EL MARGEN POR OBRA EXISTA hace falta que cada compra diga a QUÉ OBRA va, no sólo a qué
+    // cliente. Mientras eso no esté, la columna no vuelve.
+    '',
     proximoCobro(cob, o.cliente, dela),
     detalleCobranzas(cob, o.cliente, o.ventaTexto)])
 
@@ -633,13 +680,15 @@ export function grillaObras(ctx = {}) {
 
   h.push(['2 · OBRAS EN CURSO Y FUTURAS', '', '', '', '', '', '', '',
     'tipeado = proyección del dueño (07/08)'])
-  h.push(['Obra', '', 'Venta (neto)', 'Cobrado', 'Resta cobrar', 'Vencido', 'Margen proy.', 'Próx. cobro',
+  h.push(['Obra', '', 'Venta (neto)', 'Cobrado', 'Resta cobrar', 'Vencido', '', 'Próx. cobro',
     'Cobranzas pendientes'])
-  const bloques = obras.map((o, i) => bloqueObra(h, refs, o, i + 1))
+  // Cuántas obras declaradas tiene cada cliente: es lo que habilita la regla del dueño de arriba.
+  const porCliente = obras.reduce((m, o) => m.set(o.cliente, (m.get(o.cliente) ?? 0) + 1), new Map())
+  const bloques = obras.map((o, i) => bloqueObra(h, refs, o, i + 1, porCliente.get(o.cliente) === 1))
   const suma = (col) => `=${bloques.map((b) => `${col}${b.fProt}`).join('+')}`
   const fTot2 = bloques.length
-    ? h.push(['⇒ TOTAL — OBRAS EN CURSO Y FUTURAS', '', suma('C'), suma('D'), suma('E'), suma('F'), suma('G'), '',
-      'margen = venta neta − costo proyectado'])
+    ? h.push(['⇒ TOTAL — OBRAS EN CURSO Y FUTURAS', '', suma('C'), suma('D'), suma('E'), suma('F'), '', '',
+      'sin margen por obra: Compras no dice a qué obra va cada compra, sólo a qué cliente'])
     : null
 
   const totales = [s1.fTot, fTot2].filter(Boolean)
