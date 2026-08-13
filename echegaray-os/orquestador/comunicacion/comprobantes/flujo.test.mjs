@@ -4,6 +4,18 @@
 // Un test que sólo comprobara que la función devuelve algo pasaría con el proveedor equivocado, con
 // la obra inventada y con el comprobante duplicado.
 
+// ═══ ESTE ARCHIVO CORRE CON LAS TARJETAS ENCENDIDAS (13/08) ═══
+//
+// El dueño las apagó: «no quiero mensajes del bot en la carga de comprobantes… solo quiero q
+// confirme q termino todo». `botonesFajo` devuelve [] salvo que se pida lo contrario, y ningún
+// camino de producción lo pide (ver `lib/comprobantes/parte.mjs` y `comunicacion/comprobantes/
+// tanda.mjs`, que son los que hoy arman el único mensaje).
+//
+// Lo de acá abajo sigue probando la MECÁNICA que quedó detrás del interruptor, porque un interruptor
+// con la vuelta atrás sin probar no es una vuelta atrás. Que las tarjetas NO se publican por defecto
+// se prueba aparte, en `sin-tarjetas.test.mjs`.
+process.env.ORQ_COMPROBANTES_BOTONES = '1'
+
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { procesarPost, armarItem, bajarAdjunto, TEXTO } from './flujo.mjs'

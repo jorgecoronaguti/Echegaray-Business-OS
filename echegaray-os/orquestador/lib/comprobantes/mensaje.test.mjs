@@ -5,6 +5,18 @@
 // destacado, si la percepción se mete entre los importes que el dueño decide, o si el aviso de "ya
 // está cargado" deja de leerse en la primera línea.
 
+// ═══ ESTE ARCHIVO CORRE CON LAS TARJETAS ENCENDIDAS (13/08) ═══
+//
+// El dueño las apagó: «no quiero mensajes del bot en la carga de comprobantes… solo quiero q
+// confirme q termino todo». `botonesFajo` devuelve [] salvo que se pida lo contrario, y ningún
+// camino de producción lo pide (ver `lib/comprobantes/parte.mjs` y `comunicacion/comprobantes/
+// tanda.mjs`, que son los que hoy arman el único mensaje).
+//
+// Lo de acá abajo sigue probando la MECÁNICA que quedó detrás del interruptor, porque un interruptor
+// con la vuelta atrás sin probar no es una vuelta atrás. Que las tarjetas NO se publican por defecto
+// se prueba aparte, en `sin-tarjetas.test.mjs`.
+process.env.ORQ_COMPROBANTES_BOTONES = '1'
+
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { resumenFajo, titular, tablaComprobante, notasDe, estadoDeItem, ESTADO_ITEM, bloqueObra, ofertasDe, lineaRubro, ofreceObra } from './mensaje.mjs'
