@@ -115,6 +115,7 @@
 // el generador escribe y los tests verifican. No encontré nada que la pivot resuelva y la fórmula no.
 
 import { VACIO } from './preservar-anotaciones.mjs'
+import { conColaLimpiable as colaDeclarada } from './cola-de-rango.mjs'
 import { esProyectable } from './obras-datos.mjs'
 
 export const PESTANA_OBRAS = 'OBRAS'
@@ -133,9 +134,46 @@ export const PESTANA_OBRAS = 'OBRAS'
  */
 export const ANCHO_OBRAS = 8
 
+/**
+ * EL ANCHO MÁS GRANDE QUE ESTE GENERADOR TUVO ALGUNA VEZ.
+ *
+ * POR QUÉ EXISTE (13/08). Al pasar de 9 a 8 columnas, la novena quedó EN EL ARCHIVO con el contenido
+ * de la corrida anterior: 40 celdas de glosa a la derecha de H, y encima corridas de fila porque la
+ * grilla creció de 61 a 62 — el detalle de cobranzas de una obra terminó pegado al encabezado de la
+ * Sección 2. Sacar una columna del código no la saca de la pestaña: hay que BORRARLA.
+ *
+ * La cola se limpia hasta acá y NO hasta el ancho de la hoja: más allá de la 9 nunca escribió este
+ * generador, y rellenar a ciegas hasta el borde ya borró 14 fechas del dueño una vez.
+ */
+export const ANCHO_HISTORICO = 9
+
+/**
+ * EL ALTO MÁS GRANDE QUE ESTA GRILLA TUVO. El mismo razonamiento que el ancho, en el otro eje.
+ *
+ * POR QUÉ (13/08). Arreglé la cola de columnas y no la de filas: la grilla bajó de 62 a 61 y la vieja
+ * fila 62 quedó escrita, así que el PDF mostró DOS VECES "Otros trabajos…", con valores distintos y
+ * corridos de columna. El generador es dueño de todo su RANGO, y un rango tiene dos ejes.
+ *
+ * Se limpia hasta acá y no hasta el fondo de la hoja, por lo mismo que el ancho: más abajo nunca
+ * escribió este generador. Y si la grilla lo supera, `conColaLimpiable` ROMPE en vez de dejar cola
+ * silenciosa — la constante se sube a mano, que es la única forma de que siga significando algo.
+ */
+export const ALTO_HISTORICO = 62
+
+/**
+ * LAS FILAS CON SU COLA LIMPIABLE: cada una llega hasta `hasta` con el centinela VACIO, que significa
+ * "esta celda es mía y va vacía" — así la fusión la limpia en vez de conservar lo de la corrida vieja.
+ *
+ * El mecanismo vive en `cola-de-rango.mjs` desde el 13/08: era el mismo bucle en cinco generadores con
+ * cinco variantes, y otros ocho sin él. Acá quedan sólo los DOS NÚMEROS de esta pestaña.
+ */
+export function conColaLimpiable(filas = [], hasta = ANCHO_HISTORICO, alto = ALTO_HISTORICO) {
+  return colaDeclarada(filas, { ancho: hasta, alto, quien: 'obras-grilla' })
+}
+
 /** Anchos en píxeles — los importes con aire, la prosa angosta y al final (estándar del dueño). La
  *  columna A NO se declara acá: la calcula `anchoColumnaA` a partir de los rótulos que se emiten. */
-export const ANCHOS_OBRAS = [300, 44, 138, 138, 138, 138, 138, 92]
+export const ANCHOS_OBRAS = [300, 44, 138, 138, 138, 138, 138, 150]
 
 /** Lo que Sheets muestra cuando una fórmula no evalúa. Publicar uno es peor que no escribir. */
 export const ERRORES_SHEET = Object.freeze(['#ERROR!', '#REF!', '#VALUE!', '#NAME?', '#N/A', '#DIV/0!', '#NUM!', '#NULL!'])
@@ -314,11 +352,11 @@ export function clientesDeCobranzas(valores = [], alias = ALIAS_CLIENTE) {
  * rótulo — nunca por letra fija — y falla cerrado si un rótulo no está.
  */
 export const REFS_OBRAS = {
-  cob: { hoja: 'Cobranzas', cliente: 'G', concepto: 'I', neto: 'J', total: 'M', estado: 'O', fechaCobro: 'Q', fechaVenta: 'P', categoria: 'B', oc: 'H', desde: 5 },
+  cob: { hoja: 'Cobranzas', cliente: 'G', concepto: 'I', neto: 'J', total: 'M', estado: 'O', fechaCobro: 'Q', fechaVenta: 'P', forma: 'N', categoria: 'B', oc: 'H', desde: 5 },
   // `neto` es la columna "Importe" (M = Total − IVA). El costo se mide ahí, no en "Total" (O): la
   // venta ya se mide al neto, y comparar venta neta contra costo con IVA castigaba el margen ~21% en
   // todo lo que se compra en blanco. Neto contra neto. El IVA de compras es crédito fiscal, no costo.
-  cmp: { hoja: 'Compras', fecha: 'C', proveedor: 'E', cliente: 'J', neto: 'M', iva: 'N', total: 'O', desde: 4 },
+  cmp: { hoja: 'Compras', fecha: 'C', proveedor: 'E', cliente: 'J', neto: 'M', iva: 'N', total: 'O', familia: 'AE', desde: 4 },
   mat: { hoja: 'Materiales', filaTotal: 'TOTAL POR OBRA', filaCabecera: '2 · POR OBRA' },
 }
 
@@ -387,7 +425,11 @@ const enElAno = (c, campo) => `;${abierto(c, campo)};">="&${serialISO(`${ANO}-01
  * con el criterio de esta pestaña, en vez de heredar el criterio de otra.
  */
 function costoNeto(cmp, cliente) {
-  const porCliente = `${abierto(cmp, 'cliente')};"${nombreEnCostos(cliente)}"`
+  // SÓLO MATERIALES, no todo el costo del cliente. La columna era "Materiales (real)" y al calcularla
+  // desde Compras la había convertido en el costo entero —$155,0M donde había $147,8M para LA
+  // ESTRELLA—: un cambio que el dueño no pidió. Se filtra por "Familia de material" no vacía, que es
+  // lo que clasifica una compra como material; lo que no está clasificado no se cuenta como tal.
+  const porCliente = `${abierto(cmp, 'cliente')};"${nombreEnCostos(cliente)}";${abierto(cmp, 'familia')};"<>"`
   const sinImporte = `${porCliente};${abierto(cmp, 'neto')};""`
   return `=SUMIFS(${abierto(cmp, 'neto')};${porCliente})+SUMIFS(${abierto(cmp, 'total')};${sinImporte})-SUMIFS(${abierto(cmp, 'iva')};${sinImporte})`
 }
@@ -512,6 +554,12 @@ const vencido = (cob, cliente, extra = {}) =>
 const LEJOS = 2958465
 
 const proximoCobro = (cob, cliente, extra = '') => {
+  // EL DUEÑO PIDIÓ LA FORMA DE COBRO con todas las letras —*"de ahi me tiene q ser facil ver cuanto
+  // resta, qué forma de cobro"*— y se perdió cuando salió la columna de glosa. Vuelve pegada a la
+  // fecha que ya existía, no en una columna nueva: es UNA palabra ("Efectivo", "Transferencia") y
+  // abrirle una columna sería reponer por la ventana lo que él mandó sacar por la puerta.
+  // La celda pasa a ser TEXTO: nada la referencia como fecha —el neteo usa el serial del inicio de
+  // obra, no esta celda— así que no rompe ningún cálculo.
   const ms = tramos(cob, cliente, extra).map(([v, c]) => `MINIFS(${abierto(cob, 'fechaCobro')};${abierto(cob, 'cliente')};"${criterioCliente(v)}"${c}`
     + `;${abierto(cob, 'estado')};"<>${COBRADO}";${abierto(cob, 'estado')};"<>${NO_VENTA}";${abierto(cob, 'fechaCobro')};">0")`)
   // CADA MINIFS SIN COINCIDENCIAS DEVUELVE 0, Y UN 0 GANA CUALQUIER `MIN`. Ese fue el defecto: las 4
@@ -519,7 +567,11 @@ const proximoCobro = (cob, cliente, extra = '') => {
   // pendientes de esa obra, su MINIFS daba 0 y el MIN lo tomaba como el mínimo. Blanco se lee como
   // "no hay nada que cobrar", y había $8,7M para el 19/08. El 0 se mapea a una fecha imposible.
   const min = `MIN(${ms.map((m) => `IF(${m}=0;${LEJOS};${m})`).join(';')})`
-  return `=IF(${min}>=${LEJOS};"";${min})`
+  // La forma sale de la fila cuya fecha de cobro ES esa próxima fecha, del mismo cliente y sin cobrar.
+  const forma = `IFERROR(INDEX(${abierto(cob, 'forma')};MATCH(1;ARRAYFORMULA(`
+    + `(${variantesDe(cliente).map((v) => `(${abierto(cob, 'cliente')}="${v}")`).join('+')})`
+    + `*(${abierto(cob, 'fechaCobro')}=${min})*(${abierto(cob, 'estado')}<>"${COBRADO}"));0));"")`
+  return `=IF(${min}>=${LEJOS};"";TEXT(${min};"dd/mm")&" · "&${forma})`
 }
 
 /** Mismo constructor de grilla que el anexo de CAJA: push devuelve la fila 1-based, y toda celda
@@ -557,7 +609,7 @@ function hoja() {
 function seccionObrasDelAno(h, refs, clientes) {
   const { cob, cmp } = refs
   h.push(['1 · OBRAS DEL AÑO'])
-  h.push(['Cliente', '', 'Venta (neto)', 'Cobrado (total)', 'Resta (total)', 'Vencido', 'Costo Compras (neto)', ''])
+  h.push(['Cliente', '', 'Venta (neto)', 'Cobrado (total)', 'Resta (total)', 'Vencido', 'Materiales (neto)', ''])
   const f0 = h.n + 1
   for (const cli of clientes) {
     h.push([cli, '', venta(cob, cli), cobrado(cob, cli), restaCobrar(cob, cli), vencido(cob, cli),
@@ -569,26 +621,19 @@ costoNeto(cmp, cli),
   // columna de cliente vacía entra igual: si dependiera del cliente, el residuo podría esconder plata.
   const todo = (campo, estado) => `SUMIFS(${abierto(cob, campo)};${abierto(cob, 'estado')};"${estado}"`
     + `${enElAno(cob, campo === 'neto' ? 'fechaVenta' : 'fechaCobro')})`
-  // EL CONTROL SE QUEDA AUNQUE DÉ CERO — sobre todo si da cero. Con los clientes derivados de
-  // Cobranzas esta fila tiene que valer $0: si algún día no vale, apareció un cliente que el
-  // mecanismo no supo ubicar, y ése es justo el aviso que se perdería si la fila se borrara.
-  const fOtros = h.n + 1
-  // ROUND a 2 decimales: el residuo es una resta entre agrupaciones distintas de los mismos números y
-  // el punto flotante deja restos de 1e-9. Un control que grita por eso enseña a ignorarlo.
-  h.push(['⇒ sin ubicar — tiene que dar $0', `=IF(ROUND(C${fOtros}+D${fOtros}+E${fOtros};2)<>0;"⚠";"✓")`,
-    `=${todo('neto', `<>${NO_VENTA}`)}-SUM(C${f0}:C${f1})`,
-    `=${todo('total', COBRADO)}-SUM(D${f0}:D${f1})`,
-    `=${todo('total', `<>${NO_VENTA}`)}-${todo('total', COBRADO)}-SUM(E${f0}:E${f1})`,
-    '', '', ''])
-  // EL TOTAL SALE DE LA FUENTE, NO DE LA SUMA DE ARRIBA. Antes era `SUM(C6:C12)` con el residuo
-  // adentro, y como el residuo es "archivo − las filas", el total daba el archivo POR CONSTRUCCIÓN:
-  // una identidad que no puede fallar, o sea que no controlaba nada. El control falsificable es el
-  // residuo: puede dar distinto de cero, y entonces falta un cliente.
+  // ═══ ACÁ IBA "⇒ sin ubicar". EL DUEÑO LA SACÓ DOS VECES Y TIENE RAZÓN ═══
+  //
+  // *"la fila 'otros clientes' no puede ser, estan todos los clientes y obras declarados"*. Un control
+  // que da $0 todos los días no es información: es una fila que ocupa lugar en la portada para
+  // decirle que no pasa nada. La CAPACIDAD de detectar el problema no se perdió — se mudó a donde
+  // molesta menos y grita más fuerte: el escritor compara la suma de los clientes contra el total de
+  // la fuente y ABORTA SIN PUBLICAR si difieren. Un generador que no escribe es mejor control que una
+  // fila que el dueño ya dijo dos veces que no quiere ver.
   const fTot = h.push(['⇒ TOTAL 2026', '', `=${todo('neto', `<>${NO_VENTA}`)}`, `=${todo('total', COBRADO)}`,
     `=${todo('total', `<>${NO_VENTA}`)}-${todo('total', COBRADO)}`,
-    `=SUM(F${f0}:F${fOtros})`, `=SUM(G${f0}:G${f1})`, ''])
+    `=SUM(F${f0}:F${f1})`, `=SUM(G${f0}:G${f1})`, ''])
   h.push([])
-  return { fClientes: [f0, f1], fOtros, fTot }
+  return { fClientes: [f0, f1], fTot }
 }
 
 /** Lo REALMENTE facturado en Compras para un egreso: mismo proveedor (nombre canónico), mismo cliente
@@ -710,8 +755,11 @@ export function grillaObras(ctx = {}) {
   // de la Sección 1—: es venta legítima que simplemente no pertenece a una obra proyectada.
   const clientesConObra = [...new Set(obras.map((o) => o.cliente))]
   if (bloques.length) h.push([`Otros trabajos de ${clientesConObra.length} cliente(s) con obra — fuera de las ${bloques.length}`, '',
-    `=${clientesConObra.map((c) => venta(refs.cob, c).slice(1)).join('+')}-${suma('C').slice(1)}`,
-    `=${clientesConObra.map((c) => cobrado(refs.cob, c).slice(1)).join('+')}-${suma('D').slice(1)}`,
+    // LOS PARÉNTESIS NO SON ESTILO. Sin ellos, `X - C18+C24+C28` resta la PRIMERA obra y SUMA las
+    // otras seis: la fila publicó $692.395.550 donde van $125.680.764. La resta de una suma se
+    // encierra, siempre — es la misma precedencia que en cualquier lenguaje, y acá no da error.
+    `=${clientesConObra.map((c) => venta(refs.cob, c).slice(1)).join('+')}-(${suma('C').slice(1)})`,
+    `=${clientesConObra.map((c) => cobrado(refs.cob, c).slice(1)).join('+')}-(${suma('D').slice(1)})`,
     '', '', '', ''])
 
   const totales = [s1.fTot, fTot2].filter(Boolean)
@@ -723,6 +771,5 @@ export function grillaObras(ctx = {}) {
     totales,
     bloques,
     fClientes: s1.fClientes,
-    fOtros: s1.fOtros,
   }
 }

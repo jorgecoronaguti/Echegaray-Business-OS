@@ -26,6 +26,7 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
+import { conColaMedida, avisoDeCola } from '../lib/cola-de-rango.mjs'
 import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 import { resolverColumnas, rango } from '../lib/compras-columnas.mjs'
 import { sub, total as rotuloTotal, auditarPatron } from '../lib/patron-pestana.mjs'
@@ -283,7 +284,8 @@ async function main() {
   const ps = await planesDePago(AÑO)
   console.log(`${periodos.length} período(s) F931 · ${conceptos.length} concepto(s) · ${ps.length} plan(es) de pago`)
 
-  const { filas, cantidades, ratios, fechas, titular, prosaFormula, pies, controles, rangos } = grilla({ periodos, conceptos, ps, C, bloqueBase, baseJornales })
+  // `filas` es `let` porque la cola de la pestaña vieja se le agrega abajo, después de leerla.
+  let { filas, cantidades, ratios, fechas, titular, prosaFormula, pies, controles, rangos } = grilla({ periodos, conceptos, ps, C, bloqueBase, baseJornales })
   console.log(`grilla: ${filas.length} filas × ${ANCHO} columnas — un solo ancho para toda la pestaña`)
   if (DRY) return
 
@@ -309,14 +311,12 @@ async function main() {
   // Se extiende la grilla con filas marcadas VACIO hasta la última fila con contenido: VACIO
   // significa "es mi celda y va vacía", así que se limpia lo que este generador (o sus antecesores)
   // dejaron, y CUALQUIER anotación de una persona en una columna que el generador no ocupa se
-  // conserva igual, porque la fusión sólo limpia donde hay centinela.
+  // conserva igual, porque la fusión sólo limpia donde hay centinela. El mecanismo vive en
+  // lib/cola-de-rango.mjs: era este mismo bucle copiado en cinco generadores, con cinco variantes.
   const previo = await google.readSheetValues(ID, `'${PESTAÑA}'!A1:${COL_ORIGEN}400`)
-  let ultima = 0
-  previo.forEach((f, i) => { if ((f || []).some((c) => String(c ?? '').trim())) ultima = i + 1 })
-  if (ultima > filas.length) {
-    console.log(`cola de la pestaña vieja: limpio las filas ${filas.length + 1}–${ultima} (${ultima - filas.length} filas de los generadores anteriores)`)
-    for (let i = filas.length; i < ultima; i++) filas.push(Array(ANCHO).fill(VACIO))
-  }
+  const cola = conColaMedida(filas, previo, { ancho: ANCHO })
+  if (avisoDeCola(cola, PESTAÑA)) console.log(avisoDeCola(cola, PESTAÑA))
+  filas = cola.filas
 
   // Las celdas combinadas de la pestaña vieja se tragan la escritura EN SILENCIO: ni error ni valor.
   await google.spreadsheetBatchUpdate(ID, [

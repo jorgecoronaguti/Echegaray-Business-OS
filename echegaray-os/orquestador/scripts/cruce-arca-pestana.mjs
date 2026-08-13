@@ -34,6 +34,7 @@ import { conciliar, verificarIdentidad, veredicto } from '../lib/cruce-arca-comp
 import { CC, CFILA0, DIR } from '../lib/control-arca-bloque.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
 import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
+import { conColaMedidaLeida, avisoDeCola } from '../lib/cola-de-rango.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 export const PESTAÑA = '_CRUCE_ARCA'
@@ -187,9 +188,16 @@ async function main() {
     COLUMNAS.map(([n]) => n),
     ...datos,
   ]
+  // LA COLA DE UNA CORRIDA ANTERIOR (13/08). Esta lista SE ACHICA POR DISEÑO: cada discrepancia que se
+  // resuelve —se carga la compra que faltaba, se corrige el comprobante— es una fila menos. Sin esto,
+  // la pestaña muestra para siempre las discrepancias ya resueltas y el cuadro de "cuántas quedan"
+  // deja de significar algo. Es el generador con más motivo para achicarse de todos.
+  const cola = await conColaMedidaLeida(google, ID, PESTAÑA, grid, { ancho: COLUMNAS.length, tope: filasNecesarias })
+  if (avisoDeCola(cola, PESTAÑA)) console.log(avisoDeCola(cola, PESTAÑA))
+
   // `espejo: true` como _ARCA_RAW: es la copia de un cruce contra una fuente externa, no hay nada del
   // dueño que preservar acá, y congelar un campo de ARCA sería congelar la fuente.
-  const escritura = await escribirPreservando(google, ID, PESTAÑA, grid, {
+  const escritura = await escribirPreservando(google, ID, PESTAÑA, cola.filas, {
     respetar: false, espejo: true, anchoHoja: Math.max(COLUMNAS.length, hoja.cols ?? COLUMNAS.length),
   })
 

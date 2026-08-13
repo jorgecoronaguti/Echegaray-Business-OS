@@ -39,6 +39,7 @@ import { query } from '../lib/db.mjs'
 import { signo, NOMBRE } from '../lib/comprobante-arca.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
 import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
+import { conColaMedidaLeida, avisoDeCola } from '../lib/cola-de-rango.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 export const PESTAÑA = '_ARCA_RAW'
@@ -137,7 +138,14 @@ async function main() {
     COLUMNAS.map(([n]) => n),
     ...datos,
   ]
-  const { conservadas } = await escribirPreservando(google, ID, PESTAÑA, gridRaw, { respetar: false, espejo: true /* espejo de una fuente externa (ARCA): copia byte a byte, sin candado ni firma ni Regla 0 — no hay nada del dueño que proteger, y respetar congelaría el nombre de un campo de ARCA si cambiara */, anchoHoja: Math.max(COLUMNAS.length, hoja.cols ?? COLUMNAS.length) })
+  // LA COLA DE UNA CORRIDA ANTERIOR (13/08). Esta réplica se ACORTA sola: una nota de crédito que se
+  // corrige de signo, un período que se vuelve a bajar de ARCA con menos comprobantes, un duplicado
+  // que se borra de la base. Sin esto las filas de más abajo sobreviven y el libro de IVA del Sheet
+  // sigue mostrando un comprobante que ARCA ya no tiene — y de este espejo cuelgan las fórmulas de
+  // "Impuestos y financiero". Un espejo con cola miente igual que un cuadro con cola.
+  const cola = await conColaMedidaLeida(google, ID, PESTAÑA, gridRaw, { ancho: COLUMNAS.length, tope: filasNecesarias })
+  if (avisoDeCola(cola, PESTAÑA)) console.log(avisoDeCola(cola, PESTAÑA))
+  const { conservadas } = await escribirPreservando(google, ID, PESTAÑA, cola.filas, { respetar: false, espejo: true /* espejo de una fuente externa (ARCA): copia byte a byte, sin candado ni firma ni Regla 0 — no hay nada del dueño que proteger, y respetar congelaría el nombre de un campo de ARCA si cambiara */, anchoHoja: Math.max(COLUMNAS.length, hoja.cols ?? COLUMNAS.length) })
   if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
 
   const rg = (r0, r1, c0, c1) => ({ sheetId: hoja.sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
