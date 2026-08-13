@@ -119,14 +119,23 @@ test('la suma de la demanda ≈ Σ moCargasPesos revaluado quincena a quincena (
   assert.ok(Math.abs(demandaTotal - esperado) / esperado < 0.01, `demanda ${demandaTotal} vs esperado ${esperado}`)
 })
 
-test('la fórmula de Proyectado sin demanda es EXACTAMENTE la de siempre — diff cero', () => {
-  assert.equal(formulaProyectadoQuincena(40, null), '=IFERROR(G40*F40*D40;"")')
-  assert.equal(formulaProyectadoQuincena(40, { jornales: 0 }), '=IFERROR(G40*F40*D40;"")')
+test('sin demanda, la fórmula es el piso de convenio tal cual lo pasó el llamador — nada más', () => {
+  const piso = { convenio: 'SIG*$B$28*DIAS', celdaPago: 'C40' }
+  assert.equal(formulaProyectadoQuincena(piso, null), '=IFERROR(SIG*$B$28*DIAS;"")')
+  assert.equal(formulaProyectadoQuincena(piso, { jornales: 0 }), '=IFERROR(SIG*$B$28*DIAS;"")')
+})
+
+test('LA LIB NO ESCRIBE NINGUNA LETRA DE COLUMNA: el layout es del llamador', () => {
+  // Decía `G${r}*F${r}*D${r}` con las letras del layout de agosto. El rediseño del calendario (13/08)
+  // sacó tres de esas columnas y movió las otras: la misma fórmula habría seguido multiplicando tres
+  // celdas —ahora "Oficina", "Dirección" y "TOTAL"— y devolviendo un número plausible sin dar error.
+  const f = formulaProyectadoQuincena({ convenio: 'X', celdaPago: 'C7' }, { jornales: 10 })
+  assert.doesNotMatch(f.replace(/C7/g, ''), /\b[A-Z]\d+\b/, `la lib volvió a escribir una letra de columna: ${f}`)
 })
 
 test('con demanda, la fórmula es MAX(convenio; constante entera) gateada por la frontera de caja comprometida, en es-AR', () => {
-  const f = formulaProyectadoQuincena(41, { jornales: 1234567.89 })
-  assert.ok(f.includes('MAX(IFERROR(G41*F41*D41;0);1234568)'), f)
+  const f = formulaProyectadoQuincena({ convenio: 'SIG*HS*DIAS', celdaPago: 'C41' }, { jornales: 1234567.89 })
+  assert.ok(f.includes('MAX(IFERROR(SIG*HS*DIAS;0);1234568)'), f)
   assert.ok(f.includes('EOMONTH(TODAY();0)'), 'la frontera es la misma de formulaSigmaDelMes y se reclasifica sola')
   assert.ok(f.includes('N(C41)>0'), 'sin fecha de pago no hay frontera que aplicar: va al MAX de planificación')
   assert.ok(!f.includes(','), 'separador es-AR: punto y coma, nunca coma')
