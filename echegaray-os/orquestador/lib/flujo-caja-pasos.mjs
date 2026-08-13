@@ -44,16 +44,17 @@ export const PASOS = [
   // `cash-flow-rehacer.mjs` escribía las mismas dos pestañas como una matriz de 51 columnas. Pasaron
   // por un diseño de bloques verticales que el dueño rechazó —98 filas para catorce días— y volvieron
   // a la forma de siempre: una fila por concepto, el tiempo a la derecha. Lo escribe
-  // `cash-flow-vistas.mjs` (13 semanas y 12 meses, con su presupuesto). El viejo
-  // SALE de esta lista, no se comenta "por las dudas": dos escritores sobre una misma pestaña es lo que
-  // produce el candado falso —el que escribe último sella la firma y el otro se auto-canda—, y encima
-  // cada uno impondría una estructura distinta cada dos horas.
+  // `cash-flow-vistas.mjs`. El viejo SALE de esta lista, no se comenta "por las dudas": dos escritores
+  // sobre una misma pestaña es lo que produce el candado falso —el que escribe último sella la firma y
+  // el otro se auto-canda—, y encima cada uno impondría una estructura distinta cada dos horas.
+  //
+  // EL PASO NO ESTÁ ACÁ: vive abajo, después del libro y de CAJA, que son sus dos fuentes. El motivo
+  // está escrito en su lugar nuevo.
   //
   // El presupuesto va PRIMERO porque el Mensual cita sus rangos con nombre, igual que _CAJA_ANEXO antes
   // de CAJA: un nombre que todavía no existe deja #NAME? en la pestaña que el dueño abre todos los días.
   // (Lo publica el mismo script `cash-flow-vistas.mjs`, en su primer paso.)
-  ['cash-flow-vistas.mjs', 'Cash Flow Semanal (13 semanas), Cash Flow Mensual (12 meses) y _PRESUPUESTO_MENSUAL',
-    ['Cash Flow Semanal', 'Cash Flow Mensual', '_PRESUPUESTO_MENSUAL']],
+  //
   // LOS NOMBRES SON LOS DE HOY. Declaraba las cuatro pestañas del diseño viejo —"Proveedores —
   // Deuda", "Proveedores — Cuenta Corriente"…— que dejaron de existir cuando el bloque se unificó en
   // una sola pestaña "Proveedores". Con nombres que no existen, el control de "todo se actualiza
@@ -208,8 +209,43 @@ export const PASOS = [
   // once cifras de ese anexo POR RANGO CON NOMBRE (`ANEXO_*`), así que el anexo tiene que escribirse y
   // publicar sus nombres PRIMERO. Al revés, en un arranque en frío la pestaña que el dueño abre todos
   // los días se llena de #NAME? — y si algo tiene que mostrar un error una corrida, que sea el auxiliar.
+  // ═══ EL LIBRO NUNCA ESTUVO EN ESTA LISTA, Y ES DE DONDE SALEN LOS TRES CUADROS QUE MÁS SE MIRAN ═══
+  //
+  // `_MOVIMIENTOS` es la fuente única de CAJA, del Cash Flow Semanal y del Cash Flow Mensual — los dos
+  // cuadros lo dicen en su propio subtítulo: *"del libro de movimientos"*. Su generador
+  // (`libro-movimientos-pestana.mjs`) sólo corría si alguien lo tipeaba a mano. Es el mismo modo de
+  // falla que ya se pagó con Proveedores más arriba, pero sobre la pestaña de la que cuelga todo lo
+  // demás, y la regla de oro 3 del dueño lo prohíbe explícitamente: *"un agente de IA por cada cosa, y
+  // un MACRO AGENTE que activa a todos los demás"*.
+  //
+  // MEDIDO EL 13/08/2026 CONTRA EL ARCHIVO VIVO, antes de agregarlo:
+  //   · `_MOVIMIENTOS` no tenía NI UNA fila con origen "Obras": los $18.880.836 de egresos proyectados
+  //     de las 7 obras en curso (materiales, alquileres y combustible, con proveedor y fecha) que
+  //     publica la pestaña OBRAS no llegaban a ningún cash flow. El extractor se cableó el 07/08 y el
+  //     libro nunca se volvió a generar.
+  //   · Los cobros proyectados del libro sumaban $348.728.268 contra los $357.487.078 que OBRAS declara
+  //     pendientes de cobrar: exactamente $8.758.810 de diferencia — la venta de MAMPOSTERÍA, cargada
+  //     en Cobranzas el 13/08, que el libro del 07/08 no podía conocer.
+  //   · Los egresos proyectados de materiales se terminaban el 31/08: de septiembre en adelante el
+  //     cuadro afirmaba que la empresa no compra nada.
+  //
+  // VA ACÁ Y NO ANTES: lee TODAS sus fuentes ya rehechas —Compras (con su rubro de caja), Recurrentes,
+  // Jornales, Cargas Sociales, Impuestos y Financieros, Cobranzas, Cheques Emitidos, Tarjeta,
+  // _BANCO_RAW y _CHEQUES_RAW— y las tres pestañas que lo consumen van inmediatamente después.
+  // Escribe UNA sola pestaña (`_MOVIMIENTOS`, réplica generada y oculta) y verifica su propia
+  // escritura releyéndola: si el archivo y la memoria no dicen lo mismo, sale con código ≠0.
+  ['libro-movimientos-pestana.mjs', '_MOVIMIENTOS — el libro: todo movimiento de todas las fuentes, con su estado y su origen', ['_MOVIMIENTOS']],
   ['caja-anexo-pestana.mjs', '_CAJA_ANEXO — el detalle y las conciliaciones que sostienen los veredictos de CAJA', ['_CAJA_ANEXO']],
   ['caja-pestana.mjs', 'CAJA — la portada ejecutiva de tesorería: cinco tarjetas y una pantalla', ['CAJA']],
+  // ═══ LAS DOS VISTAS VAN DESPUÉS DEL LIBRO Y DESPUÉS DE CAJA (13/08/2026) ═══
+  //
+  // Estaban en el noveno lugar, antes de Impuestos, Cargas Sociales, Cheques, Tarjeta, OBRAS y CAJA.
+  // No daba error porque no leen esas pestañas directamente: leen `_MOVIMIENTOS` y los rangos con
+  // nombre de CAJA. Pero leerlos ANTES de que se reescriban significa mostrar la corrida anterior —
+  // el ancla del saldo y el libro entero, siempre un ciclo atrasados. Acá cada cuadro se calcula
+  // sobre el libro que se acaba de escribir y sobre el saldo que CAJA acaba de publicar.
+  ['cash-flow-vistas.mjs', 'Cash Flow Semanal (53 semanas), Cash Flow Mensual (12 meses) y _PRESUPUESTO_MENSUAL',
+    ['Cash Flow Semanal', 'Cash Flow Mensual', '_PRESUPUESTO_MENSUAL']],
   // El núcleo Postgres, para que la web y el chat vean lo mismo que la planilla y no un mes atrás.
   // ÚLTIMO ANTES DEL NÚCLEO: unificar el formato de las catorce pestañas. Va al final porque cada
   // script anterior acaba de reescribir la suya, y una pasada de formato hecha antes se pierde.

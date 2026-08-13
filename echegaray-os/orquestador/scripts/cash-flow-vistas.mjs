@@ -256,7 +256,7 @@ async function main() {
   const mensual = grillaMeses({ anio: AÑO, refs })
   // Los nombres los publica escribirVista ANTES de achicar la hoja: publicarlos después dejó
   // CF_SALDO_INICIO/CIERRE quemados el 06/08 (ver el comentario adentro).
-  await escribirVista(google, () => grillaMeses({ anio: AÑO, refs }), mensual.meta.footprint, refs, destinosNombrados)
+  await escribirVista(google, (gid) => grillaMeses({ anio: AÑO, refs, gid }), mensual.meta.footprint, refs, destinosNombrados)
   // Y EL SEMANAL VA CON EL MISMO AÑO QUE EL MENSUAL, no con el rodante de hoy: las dos vistas cubren
   // el mismo ejercicio o la conciliación entre ellas deja de significar algo.
   const semanal = grillaSemanal({ hoy, anio: AÑO, refs })

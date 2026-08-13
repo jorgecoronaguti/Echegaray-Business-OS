@@ -39,6 +39,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { PASOS, esReporte } from '../lib/flujo-caja-pasos.mjs'
 import { guardiaDeGeneradores } from '../lib/guardia-generadores.mjs'
+import { FILA, ROTULO_HOY } from '../lib/cash-flow-matriz.mjs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
@@ -105,10 +106,20 @@ async function verificarPresentacion(bloqueadas = new Set()) {
     // bloque entero va en try/catch: si el apunte falla por lo que sea, se reporta como "no verificado"
     // y el resto de la corrida sigue. Nunca más una comprobación puede voltear el pipeline.
     const apunte = `A${Math.max(1, hoja?.rows ?? 1000)}`
-    const f = (await google.readSheetGrid(ID, `${pestaña}!A2`)).filas?.[0]?.[0]?.formula ?? ''
+    // ═══ LA CELDA Y EL RÓTULO SALEN DE LA GRILLA, NO DE ESTE ARCHIVO (13/08/2026) ═══
+    //
+    // Acá decía `A2` y `;"📅` a mano. La matriz del 06/08 movió el atajo a `A3` y le cambió el rótulo a
+    // "⏵ IR A LA SEMANA ACTUAL", así que este control quedó leyendo el SUBTÍTULO: no encontraba `#gid=`
+    // ni `&range=`, y escribía en CADA corrida y en las DOS pestañas "el atajo IR A HOY apunta a un
+    // destino inválido (gid undefined, range null)". Nunca miró el atajo de verdad. Ahora la fila y el
+    // texto vienen de `cash-flow-matriz.mjs`, que es quien los define para las dos grillas: si mañana
+    // el atajo se muda de fila, el control se muda con él.
+    const celdaAtajo = `A${FILA.botonHoy}`
+    const rotulo = pestaña === 'Cash Flow Semanal' ? ROTULO_HOY.semana : ROTULO_HOY.mes
+    const f = (await google.readSheetGrid(ID, `${pestaña}!${celdaAtajo}`)).filas?.[0]?.[0]?.formula ?? ''
     const gid = /#gid=(\d+)/.exec(f)?.[1]
     const i = f.indexOf('&range="&')
-    const j = f.lastIndexOf(';"📅')
+    const j = f.lastIndexOf(`;"${rotulo}`)
     let rango = null
     if (i > 0 && j > i) {
       // A200 se usa como celda de apunte. Se GUARDA lo que hubiera y se RESTAURA: si el dueño escribió
@@ -128,11 +139,18 @@ async function verificarPresentacion(bloqueadas = new Set()) {
         continue
       }
     }
-    if (/^[A-Z]+\d+$/.test(String(rango)) && String(gid) === String(gidReal)) {
+    // LA URL ENTERA TAMBIÉN SE VERIFICA. Un `HYPERLINK("#gid=…")` con el fragmento suelto calcula bien
+    // el destino y NO navega: Google contesta "se borró el rango vinculado". Es el defecto que tenía la
+    // matriz, y es invisible salvo haciendo clic — salvo que el control lo mire, que es lo que hace acá.
+    const urlEntera = f.includes('https://docs.google.com/spreadsheets/d/')
+    if (/^[A-Z]+\d+$/.test(String(rango)) && String(gid) === String(gidReal) && urlEntera) {
       console.log(`   ✓ atajo de ${pestaña}: lleva a ${rango}`)
     } else {
       hubo = true
-      console.log(`   ⚠ ${pestaña}: el atajo "IR A HOY" apunta a un destino inválido (gid ${gid}, range ${rango})`)
+      const porQue = !urlEntera && gid
+        ? 'el vínculo lleva el fragmento "#gid=" suelto en vez de la URL entera: no navega'
+        : `gid ${gid}, range ${rango}`
+      console.log(`   ⚠ ${pestaña}: el atajo "IR A HOY" (${celdaAtajo}) apunta a un destino inválido — ${porQue}`)
     }
   }
   if (!hubo) console.log('   ✓ geometría: las columnas de período miden todas 96px en las dos pestañas')

@@ -36,7 +36,7 @@ import {
   deCargasSociales, mesesCubiertos, cargasEnCompras, reemplazadasPorLaCadena, NOMBRES_CARGAS,
 } from '../lib/libro-extractores.mjs'
 import { deRecurrentes } from '../lib/libro-extractores-recurrentes.mjs'
-import { deObras } from '../lib/libro-extractores-obras.mjs'
+import { deObras, conciliarConObras } from '../lib/libro-extractores-obras.mjs'
 import { cruzar, chequesDelRegistro } from '../lib/cruce-cheque-factura.mjs'
 import { endososDeCartera } from '../lib/libro-endosos.mjs'
 import { debitosDelExtracto, corteDelExtracto, pagosDeResumen, chequesCubiertosPorBanco } from '../lib/libro-respaldo-banco.mjs'
@@ -195,6 +195,18 @@ async function extraerDeLasFuentes(google, corte) {
   if (obrasFuturas.resumen.movimientos) {
     console.log(`  obras futuras: ${obrasFuturas.resumen.obras} obra(s) · ${obrasFuturas.resumen.movimientos} egreso(s) `
       + `proyectado(s) · ${pesos(obrasFuturas.resumen.totalProyectado)} planificado (con neteo vivo contra Compras)`)
+  }
+  // LA CONCILIACIÓN CONTRA LA PESTAÑA OBRAS, IMPRESA EN CADA CORRIDA. Sin esto, un egreso que se cae
+  // —una obra a la que le sacaron las fechas, un monto que quedó en cero— deja el cash flow corto y
+  // coherente consigo mismo: nadie se entera hasta que el dueño lo nota. Ver `conciliarConObras`.
+  {
+    const c = conciliarConObras(OBRAS_FUTURAS, obrasFuturas.movimientos)
+    console.log(`  OBRAS → libro: ${pesos(c.enElLibro)} de ${pesos(c.caja)} de egresos de caja proyectados`
+      + ` · ${pesos(c.porJornales)} de MO va por Jornales · ${pesos(c.noCaja)} de máquina propia no es caja`)
+    for (const x of c.faltan) {
+      console.warn(`  ⚠ OBRAS declara "${x.obra} · ${x.concepto} · ${x.proveedor}" por ${pesos(x.monto)} `
+        + 'y NO llegó al libro: el cash flow lo va a mostrar de menos.')
+    }
   }
   const decorados = estadosDecorados(compras)
   if (decorados.length) {

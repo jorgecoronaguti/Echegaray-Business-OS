@@ -53,7 +53,7 @@ import {
   conceptosDe, filaDeConcepto, colTotal, columnasDeTiempo, filaGraficos, footprintDe,
   medidasDeLaMatriz, bloquesDeMedida, formulasDeMedida,
   expresionVentana, formulaMayorImporte, formulaMayorContraparte,
-  ventanas, celda, rangoFila, serialDeFecha,
+  ventanas, celda, rangoFila, serialDeFecha, URL_ARCHIVO, ROTULO_HOY,
 } from './cash-flow-matriz.mjs'
 import { terminoLibro } from './libro-sumas.mjs'
 import { bloquesDeCliente, filaTituloPorCliente, formulasPorCliente } from './cash-flow-por-cliente.mjs'
@@ -113,7 +113,7 @@ export function grillaSemanal({ hoy = new Date(), anio = null, refs = {}, gid = 
   // EL BOTÓN VA EN A3, NO EN LA COLUMNA TOTAL (06/08, pedido del dueño): en la columna 55 el atajo
   // existía y nadie lo veía — un vínculo que hay que scrollear para encontrar no ahorra el scroll.
   const vinculo = vinculoHoy(gid, meta)
-  if (vinculo) { poner(FILA.subtitulo + 1, 0, vinculo); meta.botonHoy = { fila: FILA.subtitulo + 1, col: 0 } }
+  if (vinculo) { poner(FILA.botonHoy, 0, vinculo); meta.botonHoy = { fila: FILA.botonHoy, col: 0 } }
 
   bloqueHero(poner, meta, refs)
 
@@ -262,5 +262,6 @@ export function vinculoHoy(gid, meta) {
   // la misma definición con la que se generaron los encabezados.
   const lunes = 'TODAY()-WEEKDAY(TODAY();3)'
   const dir = `ADDRESS(${meta.cab.fila};MATCH(${lunes};${rangoCab};0)+${meta.cab.col0};4)`
-  return `=HYPERLINK("#gid=${gid}&range="&${dir};"⏵  IR A LA SEMANA ACTUAL")`
+  // LA URL ENTERA, NO EL FRAGMENTO "#gid=…": con el fragmento suelto el clic no navega. Ver URL_ARCHIVO.
+  return `=HYPERLINK("${URL_ARCHIVO()}#gid=${gid}&range="&${dir};"${ROTULO_HOY.semana}")`
 }

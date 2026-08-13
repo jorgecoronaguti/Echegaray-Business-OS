@@ -5,7 +5,8 @@
 // exclusiones que evitan doble conteo o datos inventados (moCargasPesos, noCaja, obra sin fechas).
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { deObras, formulaRealDeCompras, serialDeFecha, RUBRO_OBRAS, PESTANA_OBRAS } from './libro-extractores-obras.mjs'
+import { deObras, conciliarConObras, formulaRealDeCompras, serialDeFecha, RUBRO_OBRAS, PESTANA_OBRAS } from './libro-extractores-obras.mjs'
+import { OBRAS_FUTURAS, totalEgresos } from './obras-datos.mjs'
 import { serialDe } from './libro-extractores-fechas.mjs'
 import { deduplicar } from './libro-movimientos.mjs'
 
@@ -176,4 +177,46 @@ test('serialDeFecha: ISO al serial, un serial pasa igual, la basura es null', ()
   assert.equal(serialDeFecha(46000), 46000)
   assert.equal(serialDeFecha(null), null)
   assert.equal(serialDeFecha('septiembre'), null)
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LA CONCILIACIÓN OBRAS ↔ LIBRO — el defecto que el dueño señaló el 13/08/2026
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// *"Hay desconexión con la pestaña obras que marca costos estipulados, cobros y demás."* Medido ese
+// día en el archivo vivo: `_MOVIMIENTOS` tenía CERO filas con origen "Obras", así que los egresos
+// proyectados de las 7 obras no aparecían en ningún cash flow. La causa era que el generador del libro
+// no estaba en el pipeline. Estos tests corren sobre los datos REALES de `obras-datos.mjs`, no sobre
+// fixtures: si un egreso se cae del libro por cualquier motivo, se ponen rojos acá y no en la pestaña.
+
+test('CONCILIACIÓN: todo egreso de caja que OBRAS declara llega al libro — ninguno se cae', () => {
+  const { movimientos } = deObras(OBRAS_FUTURAS, COLS, 0)
+  const c = conciliarConObras(OBRAS_FUTURAS, movimientos)
+  assert.deepEqual(c.faltan, [], 'OBRAS declara egresos que el libro no emite: el cash flow los muestra de menos')
+  assert.equal(c.enElLibro, c.caja)
+  assert.ok(c.caja > 0, 'sin egresos de caja la conciliación no prueba nada')
+})
+
+test('CONCILIACIÓN: las tres platas de una obra se devuelven SEPARADAS — sumarlas sería el doble conteo', () => {
+  const { movimientos } = deObras(OBRAS_FUTURAS, COLS, 0)
+  const c = conciliarConObras(OBRAS_FUTURAS, movimientos)
+  // `totalEgresos` de obras-datos es (egresos de caja + MO): la conciliación tiene que partirlo igual.
+  const declarado = OBRAS_FUTURAS.reduce((s, o) => s + totalEgresos(o), 0)
+  assert.equal(Math.round(c.caja + c.porJornales), Math.round(declarado),
+    'caja + MO tiene que dar el "Pendiente pago" que muestra la pestaña OBRAS')
+  // Y la máquina propia queda AFUERA de las dos: no es plata que sale.
+  const maquina = OBRAS_FUTURAS.reduce((s, o) => s + (o?.noCaja?.maquinaPropia || 0), 0)
+  assert.equal(c.noCaja, maquina)
+  assert.ok(maquina > 0 && c.caja + c.porJornales !== declarado + maquina)
+})
+
+test('CONCILIACIÓN: un egreso que el extractor NO emite se REPORTA, no desaparece', () => {
+  // El caso real que dispara esto: una obra a la que le sacan las fechas se saltea entera y el cuadro
+  // queda corto sin dar un solo error. La conciliación es lo único que lo ve.
+  const sinFechas = OBRAS_FUTURAS.map((o, i) => (i === 0 ? { ...o, inicio: null } : o))
+  const { movimientos } = deObras(sinFechas, COLS, 0)
+  const c = conciliarConObras(sinFechas, movimientos)
+  assert.ok(c.faltan.length > 0, 'una obra salteada tiene que aparecer en faltan')
+  assert.equal(c.faltan[0].obra, OBRAS_FUTURAS[0].obra)
+  assert.ok(c.enElLibro < c.caja, 'lo que llegó al libro es menos que lo declarado, y la conciliación lo dice')
 })
