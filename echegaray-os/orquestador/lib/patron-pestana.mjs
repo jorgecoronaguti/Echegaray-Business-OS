@@ -49,8 +49,15 @@ export const ES_SECCION_NUM = /^\s*(\d+)(?:\.(\d+))?\s*·\s+(\S.*)$/
  * aclaración en minúscula después de un guion ("CONTROLES Y CONCILIACIONES — el detalle …").
  */
 export const ES_BLOQUE_SIN_NUMERO = /^[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ0-9 ,.·/:()%$]{9,}(?:\s*[—–-]|\s*$)/
-/** Encabezado de tabla: la primera palabra nombra la dimensión. */
-export const ES_ENCABEZADO = /^(per[ií]odo|concepto|plan|proveedor|obra|rubro|familia|cuenta|tipo|n[°º]|fecha|mes|semana|quincena|categor[ií]a|l[ií]nea|r[ée]gimen|qu[ée] pasa)\b/i
+/**
+ * Encabezado de tabla: la primera palabra nombra la dimensión.
+ *
+ * "Nómina" entró el 13/08 con el rediseño de Jornales: el cuadro que abre esa pestaña tiene una fila
+ * por POBLACIÓN de empleados (obreros, oficina, dirección), y esa es su dimensión. Sin la palabra acá,
+ * la fila de encabezado no recibía ni la versalita apagada ni su regla —se dibujaba igual que un
+ * renglón de importes— porque la piel lee esta misma lista (`estilo-statement` la importa).
+ */
+export const ES_ENCABEZADO = /^(per[ií]odo|concepto|plan|proveedor|obra|rubro|familia|cuenta|tipo|n[°º]|fecha|mes|semana|quincena|categor[ií]a|n[óo]mina|l[ií]nea|r[ée]gimen|qu[ée] pasa)\b/i
 /** Un sub-ítem indentado. */
 export const ES_SUBITEM = /^\s{2,}·\s/
 /** Errores de fórmula que nunca deberían quedar vivos en una pestaña. */
