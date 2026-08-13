@@ -251,17 +251,20 @@ export function mesesDelMotor(base, pendientes = [], anclas = []) {
  * @param {Array<[string, string|null]>} equivalencias [código de la planilla, categoría del convenio]
  */
 export const formulaConvenioPendiente = (f0, f1, equivalencias = []) => {
-  const total = `COUNTA($A$${f0}:$A$${f1})`
   const faltan = equivalencias.filter(([, c]) => !c).map(([k]) => k)
-  if (faltan.length) {
-    return `="   · faltan "&COUNTBLANK($E$${f0}:$E$${f1})&" de "&${total}&": ${faltan.join(', ')} no tiene(n) equivalente en la escala — escribilo en «Convenio» y el control se enciende solo"`
-  }
+  if (faltan.length) return sub(`⚠ Sin equivalente en la escala: ${faltan.join(', ')}`)
   // Agrupado por categoría del convenio: "OF, OF M→Oficial · A, A M→Ayudante". Cuatro flechas sueltas
   // ocupan el doble y dicen lo mismo.
+  //
+  // DE 180 CARACTERES A UN RÓTULO (13/08, rechazo del diseño). Se cayeron "las N categorías" —el cuadro
+  // las tiene una por fila— y "si escribís otra en «Convenio», manda la tuya", que es una instrucción
+  // sobre una COLUMNA y por eso ahora vive en su encabezado («Convenio (tuya)»): la lee el que va a
+  // editarla. El comportamiento no cambió — `IF($E="";equivalencia;$E)` sigue dándole la última palabra
+  // a la celda del dueño.
   const porConvenio = new Map()
   for (const [cod, conv] of equivalencias) porConvenio.set(conv, [...(porConvenio.get(conv) ?? []), cod])
   const mapa = [...porConvenio].map(([conv, cods]) => `${cods.join(', ')}→${conv}`).join(' · ')
-  return `="   · las "&${total}&" categorías comparan contra la escala del convenio: ${mapa} (equivalencia declarada por el dueño). Si escribís otra en «Convenio», manda la tuya."`
+  return sub(`Convenio: ${mapa}`)
 }
 
 /**
@@ -273,7 +276,9 @@ export function filasPlantel({ hoja, bloque, categorias, personas, filaInicio, e
   const R = (c) => `'${hoja}'!$${c}$${bloque.inicio}:$${c}$${bloque.fin}`
   const D = R('D'); const W = R('W')
   const filas = []
-  filas.push(['Categoría', 'Personas', 'Σ $/hora', '$/hora mínimo', 'Convenio', 'Básico convenio', 'Margen', 'Estado'])
+  // «Convenio (tuya)»: el paréntesis reemplaza la frase "si escribís otra en «Convenio», manda la
+  // tuya" que colgaba arriba del cuadro. La instrucción sobre una columna se lee en su encabezado.
+  filas.push(['Categoría', 'Personas', 'Σ $/hora', '$/hora mínimo', 'Convenio (tuya)', 'Básico convenio', 'Margen', 'Estado'])
   const fPrimera = filaInicio + 1
   const equivalencias = categorias.map((c) => [c, convenioDe(c, tabla)])
   // El grupo del mes vigente en la réplica, resuelto por el parser: sin esto el MATCH por nombre de mes
@@ -332,7 +337,12 @@ export function filasPlantel({ hoja, bloque, categorias, personas, filaInicio, e
     // EL CANARIO DEL ESPEJO. Las filas del bloque las resuelve el generador en cada corrida; si la
     // corrida se saltea (candado, firma, freno de mano) y mientras tanto entra una quincena nueva, el
     // rango queda apuntando al bloque de antes y NO da error: da el plantel viejo. Esto lo dice.
-    `=IF(COUNTA('${hoja}'!$B$${bloque.inicio}:$B$${bloque.fin})=${personas};"✓ el bloque del espejo sigue en su lugar";"⚠ el bloque del espejo se movió: estas filas ya no tienen ${personas} obreros. Corré espejar-jornales.mjs y después este generador — mientras tanto el plantel base está mal.")`])
+    //
+    // VA EN LA COLUMNA 8, QUE ES DEL MEDIO: medía 164 caracteres y desparramaba la fila sobre las seis
+    // siguientes (el defecto `nota-en-el-medio`, que el auditor no cazaba porque vive adentro de una
+    // fórmula y el auditor lee valores). Qué correr para arreglarlo —`espejar-jornales.mjs` y después
+    // este generador— es de quien mantiene el OS y está acá; en la celda queda el HECHO.
+    `=IF(COUNTA('${hoja}'!$B$${bloque.inicio}:$B$${bloque.fin})=${personas};"✓ espejo en su lugar";"⚠ el espejo se movió — plantel desactualizado")`])
   return { filas, fPrimera, fUltima, fTotal, equivalencias, canario: `${hoja}!${bloque.inicio}:${bloque.fin}` }
 }
 

@@ -103,8 +103,11 @@ export const expresionDias = (celdaDesde, celdaHasta) =>
  * volver a convertir una observación en un supuesto de cálculo, que es el error que se acaba de
  * corregir. Se declara, y el que quiera el número lo saca de la planilla.
  */
-export const LINEA_SABADOS = 'la proyección cuenta días de LUNES A VIERNES: los sábados que se trabajan '
-  + 'como horas extra salen de la caja y no están acá. Aparecen en el registro cuando se cargan.'
+// EL SÍMBOLO ⊘ ES "NO ENTRA ACÁ", Y SE USA SIEMPRE IGUAL EN ESTA PESTAÑA (13/08). El párrafo de 167
+// caracteres decía tres cosas; sólo una era información que el cuadro no tiene: que los sábados
+// quedan afuera de la proyección. Que "aparecen en el registro cuando se cargan" ya lo dice la
+// sección 5 con su nombre, y "salen de la caja" es lo que hace todo lo demás de la pestaña.
+export const LINEA_SABADOS = '⊘ No incluye sábados ni horas extra'
 
 /**
  * El MISMO criterio que `expresionDias` escribe en la pestaña, en JavaScript: sirve para decidir
@@ -225,11 +228,15 @@ export function formulaControlCalendario({ oficina, direccion, totalOficina, tot
 export function formulaBajaNoRegistrada({ personasBase, sigmaBase, personasCurso, sigmaCurso, totalObra }) {
   const menos = `N(${personasBase})-N(${personasCurso})`
   const exceso = `(1-N(${sigmaCurso})/N(${sigmaBase}))*N(${totalObra})`
+  // EL AVISO DICE EL NÚMERO, NO EL MANUAL (13/08). Medía 240 caracteres y terminaba explicando por qué
+  // el OS no da de baja a nadie — que es lo que está escrito arriba, en este mismo archivo, para quien
+  // mantiene el generador. Al que abre la pestaña le sirven las dos cifras: cuántos y cuánto. Qué
+  // hacer con eso ("sacalas de la planilla JORNALES") es la única acción posible y el dueño la conoce.
   return `=IF(OR(N(${sigmaBase})=0;${menos}<=0);"";`
     // EL PREFIJO DEL SUB-ÍTEM VA ADENTRO DE LA FÓRMULA: la fila es un sub-ítem de 1.1 cuando habla y
     // una fila vacía cuando no, y la gramática de la pestaña se respeta en los dos casos.
-    + `"   · ⚠ la quincena en curso tiene "&(${menos})&" persona(s) menos que el plantel base: la proyección de 1.3 las sigue pagando por hasta $"`
-    + `&TEXT(${exceso};"#,##0")&" hasta diciembre. Si son bajas, sacalas de la planilla JORNALES — el OS no puede distinguir una baja de una ausencia.")`
+    + `"   · ⚠ "&(${menos})&" persona(s) menos que el plantel base — hasta $"`
+    + `&TEXT(${exceso};"#,##0")&" de más a diciembre")`
 }
 
 // ═══ LO QUE EL BANCO PAGÓ Y NINGUNA NÓMINA EXPLICA: NO VIVE ACÁ (13/08) ═══
@@ -243,6 +250,6 @@ export function formulaBajaNoRegistrada({ personasBase, sigmaBase, personasCurso
 // La pestaña no lo recalcula: lo NOMBRA, para que quien vea un pago de haberes que el registro no
 // explica —una liquidación final, un SAC— sepa dónde está la respuesta. Un concepto vive en un solo
 // lugar y se referencia.
-export const LINEA_HABERES_SIN_QUINCENA = 'un pago de haberes que ninguna quincena explica '
-  + '—una liquidación final, un SAC— no entra en este registro: lo concilia pago por pago '
-  + 'conciliar-haberes, contra el extracto.'
+// MISMO ⊘ QUE LOS SÁBADOS: lo que la pestaña NO cubre se marca siempre con el mismo símbolo, y el
+// nombre de la capacidad que sí lo contesta alcanza para ir a buscarla.
+export const LINEA_HABERES_SIN_QUINCENA = '⊘ Liquidación final o SAC — ver conciliar-haberes'

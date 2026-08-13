@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { auditarPatron, seccion, sub, total, ES_SECCION_NUM } from './patron-pestana.mjs'
+import { auditarPatron, seccion, sub, total, ES_SECCION_NUM, glosasLargas, textoVisible } from './patron-pestana.mjs'
 
 /** Una pestaña que cumple la gramática entera, para usar de base en cada caso. */
 const buena = () => [
@@ -172,4 +172,43 @@ test('las sub-secciones cuelgan de su sección y corren de a una', () => {
   // …y colgar de una sección que no está abierta, también.
   f[f.length - 1][0] = '9.1 · SEGUNDO DETALLE'
   assert.ok(auditarPatron(f).some((x) => x.regla === 'subseccion-huerfana'))
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// MINIMALISMO (13/08). El dueño rechazó "Jornales por Quincena" sin que tuviera un solo defecto de
+// los que `auditarPatron` mide: *"tiene muchas palabras y frases y explicación que nadie lee"*. Lo
+// que faltaba era una medida del LARGO de la columna de concepto — la única que el auditor exceptúa.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('glosasLargas marca el párrafo de la columna A y deja pasar el rótulo', () => {
+  const f = [['t'], ['sub'], [sub('Proyectado al convenio')], [sub('x'.repeat(80))]]
+  const d = glosasLargas(f)
+  assert.equal(d.length, 1, 'un rótulo corto no puede marcarse y un párrafo de 82 no puede pasar')
+  assert.equal(d[0].fila, 4)
+  // 82 y no 85: se mide el texto TRIMEADO, así que la sangría del sub-ítem ("   · ") no gasta tope.
+  // Es deliberado — el tope mide palabras, no indentación, y el prefijo lo pone la gramática, no quien
+  // escribe la glosa.
+  assert.equal(d[0].largo, 82)
+})
+
+test('el texto que RINDE una fórmula también se mide: es donde se escondían las glosas largas', () => {
+  // El caso real: el supuesto del convenio de Jornales medía 374 caracteres adentro de un IF, y todos
+  // los auditores lo salteaban porque leen valores — y el valor de una fórmula, en frío, es "=IF(…".
+  assert.equal(textoVisible('=IF(A1=0;"corto";"otro corto")'), 'otro corto')
+  assert.equal(glosasLargas([['t'], ['s'], [`=IF(A1=0;"${'z'.repeat(90)} y algo";"ok")`]]).length, 1)
+  // Se devuelve el literal MÁS LARGO: es el que ocupa la fila cuando la condición cae de ese lado.
+  const largo = `la proyección ${'de más '.repeat(9)}fin`   // 70 caracteres de prosa con espacios
+  assert.equal(textoVisible(`=IF(A1;"${largo}";"ok listo")`), largo)
+})
+
+test('una máscara de formato no es una glosa — si no, TEXT(x;"#,##0") daría falso rojo', () => {
+  assert.equal(textoVisible('=TEXT(A1;"#,##0")&" · "&TEXT(B1;"d/m/yyyy")'), '')
+  assert.deepEqual(glosasLargas([['t'], ['s'], [`=TEXT(A1;"${'#,##0 '.repeat(15)}")`]]), [])
+})
+
+test('las filas 1 y 2 quedan afuera: la 2 es, POR GRAMÁTICA, la línea de prosa de la pestaña', () => {
+  // "qué contesta · fuente · fecha de corte" no entra en 60 y no tiene que entrar: es el único lugar
+  // donde la gramática de este repo PIDE una oración. Medirla ahí sería obligar a mentir el subtítulo.
+  const f = [['x'.repeat(90)], ['y'.repeat(90)], [sub('z'.repeat(90))]]
+  assert.deepEqual(glosasLargas(f).map((d) => d.fila), [3])
 })

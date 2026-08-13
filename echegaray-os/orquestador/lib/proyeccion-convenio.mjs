@@ -233,24 +233,33 @@ export function lineaSupuestoConvenio({ sigma = null, celdaPersonas = null } = {
   // SIN ESCALA NO SE INVENTA UN CRITERIO. Si la réplica no trajo el mes, la proyección vuelve al jornal
   // pactado — y eso se DICE. Cambiar de base en silencio sería publicar otro número con el mismo
   // rótulo, que es exactamente lo que este archivo existe para impedir.
-  if (!sigma) {
-    return sub('la réplica _UOCRA_RAW no trae ninguna escala aplicable —ni la del mes en curso ni una '
-      + 'anterior que siga rigiendo—: la proyección de abajo vuelve al jornal PACTADO, no al convenio. El '
-      + 'supuesto del 100% se reactiva solo cuando la réplica se actualice.')
-  }
-  const cuantos = celdaPersonas ? `"&${celdaPersonas}&"` : 'las'
+  // NOMBRA LA FUENTE QUE FALTA. Al acortar esta línea le saqué "_UOCRA_RAW" y su test lo cazó: sin el
+  // nombre de la réplica, el aviso dice que algo se rompió pero no qué se arregla. Un aviso que no se
+  // puede accionar es tinta.
+  if (!sigma) return sub('⚠ Sin escala en _UOCRA_RAW — base: jornal pactado')
   // `IFERROR(...;0)` y no `N(...)` a secas: si una celda de «Básico convenio» devolviera algo que el
   // producto escalar no sabe multiplicar, la línea que avisa del problema sería ella misma un #VALUE! —
   // el aviso se perdería justo cuando hace falta. Un error acá se lee como "no hay escala", que es lo
   // que efectivamente pasa.
+  //
+  // ═══ EL PÁRRAFO SE FUE; EL SUPUESTO SIGUE DECLARADO (13/08) ═══
+  //
+  // Decía 460 caracteres —"SUPUESTO DEL DUEÑO — la proyección paga el 100% DEL CONVENIO: las 16
+  // personas del plantel valuadas a la hora de escala de SU categoría, no al jornal pactado…"— y el
+  // dueño lo rechazó entero: *"tiene muchas palabras y frases y explicación que nadie lee"*.
+  //
+  // No se borró un criterio, se dejó de repetirlo TRES veces. Lo que el párrafo decía ya está escrito
+  // como DATO en el cuadro que encabeza:
+  //   · la BASE la declara el encabezado de la columna F (`ROTULO_SIGMA.convenio` = "Σ $/hora
+  //     convenio" vs "Σ $/hora pactada"). Es la misma celda que lee `baseQuePublico` para Cargas.
+  //   · que hoy se paga POR DEBAJO lo mide el bloque 4 (margen sobre el piso, en rojo si es negativo).
+  //   · que las quincenas del mes en curso van al pactado lo decide `formulaSigmaDelMes` fila por
+  //     fila, y se ve en la Σ de cada mes del cuadro.
+  // Queda el rótulo, que es lo único que el párrafo agregaba: que es un SUPUESTO y no lo que se paga.
+  const cuantos = celdaPersonas ? `"&${celdaPersonas}&"` : 'las'
   return `=IF(IFERROR(N(${sigma});0)=0;`
-    + `"   · ⚠ el convenio no devolvió escala para al menos una categoría del plantel: la proyección de `
-    + `abajo queda VACÍA a propósito. Un 0 acá diría que no hay jornales que pagar, y sería mentira.";`
-    + `"   · SUPUESTO DEL DUEÑO — la proyección paga el 100% DEL CONVENIO: las ${cuantos} personas del `
-    + `plantel valuadas a la hora de escala de SU categoría, no al jornal pactado. Hoy pagamos POR `
-    + `DEBAJO (ver 1.1): esto proyecta lo que costaría cumplir la escala, no lo que se viene pagando. `
-    + `Las quincenas que se PAGAN dentro del mes en curso quedan al jornal pactado —ésa es la plata que `
-    + `va a salir de la caja—; el supuesto empieza a correr desde el mes siguiente.")`
+    + `"   · ⚠ El convenio no devolvió escala — proyección vacía";`
+    + `"   · Supuesto: proyectado al 100% del convenio · ${cuantos} personas")`
 }
 
 /**

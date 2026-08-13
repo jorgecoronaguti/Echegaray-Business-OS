@@ -91,7 +91,10 @@ import {
   parsearAcuerdos, escalonDe, escalonVigenteEn, estadoReplica, ultimoEscalon,
 } from '../lib/uocra-acuerdos.mjs'
 import {
-  PARAMETROS_MOTOR, PARAMETRO_MESES_BASE, RANGO_MESES_BASE,
+  // `PARAMETRO_MESES_BASE` dejó de importarse el 13/08: su rótulo completo ("Meses hacia atrás para
+  // medir el ritmo real de horas") se escribía dentro del aviso de "sin quincenas cerradas" y eran 114
+  // caracteres en una celda del medio. El parámetro sigue creándose por `PARAMETROS_MOTOR`.
+  PARAMETROS_MOTOR, RANGO_MESES_BASE,
   ultimaQuincenaCerrada, categoriasDelBloque, personasDelBloque,
   mesesDelMotor, filasPlantel, filasEscalon, expresionSigmaDelMes, formulaFactorDelMes,
   formulaHorasPorPersona, lineaEstadoReplica, formulaConvenioPendiente, factorUocraEntre,
@@ -411,27 +414,39 @@ export function grilla({
   // al lado, y recién después las quincenas.
   // EL TÍTULO DEJÓ DE DECIR "OBRA" (13/08). La sección abre con el motor salarial de obra (1.1 y 1.2)
   // pero cierra con el calendario de las TRES nóminas: un título que promete sólo obra hace que el
-  // dueño no busque ahí lo que sí está.
-  push([seccion(1, 'Lo que falta pagar — el motor de obra y el calendario de las tres nóminas')])
+  // dueño no busque ahí lo que sí está. Y dejó de decir el resto (13/08, rechazo del dueño): "el
+  // motor de obra y el calendario de las tres nóminas" describe el ÍNDICE de la sección, que se ve
+  // solo mirando los tres títulos de abajo. El título de un bloque nombra la pregunta, no su sumario.
+  push([seccion(1, 'Lo que falta pagar')])
   push([lineaEstadoReplica(escalones, hoy)])
   // EL SUPUESTO, DICHO CON EL DATO QUE LO RESPALDA Y SIN UN SOLO MES ESCRITO A MANO. El rótulo del
   // acuerdo sale de la réplica ya parseada: el día que se pegue un acuerdo nuevo, esta línea cambia
   // sola. Un mes escrito en el código envejece el día siguiente y nadie se entera.
-  // ═══ UNA GLOSA QUE NO ENTRA ES UNA GLOSA A MEDIAS (13/08) ═══
+  // ═══ DE 186 CARACTERES A UN RÓTULO (13/08) ═══
   //
-  // Medía 450 caracteres y en el PDF se cortaba en «se repite el último t». La fila derrama sobre la
-  // grilla entera —330px de la A más trece de 112— que son ~290 caracteres: más que eso no se lee, se
-  // adivina. Se parte en dos renglones que entran, en vez de un párrafo que no.
+  // Decía "obra, oficina y dirección suben por la PARITARIA UOCRA, no por el IPC (…). Después se
+  // repite el último tramo firmado: es PROYECCIÓN, no acuerdo." Dos afirmaciones, las dos ya escritas
+  // como dato quince filas más abajo: el cuadro 1.2 tiene una columna «Estado» que dice, MES POR MES,
+  // "✓ acuerdo firmado" o "⚠ proyección · últ: …", y una columna «De dónde sale» con el acuerdo. La
+  // glosa era el resumen en prosa de una columna que el lector ya tiene delante.
+  //
+  // Queda lo único que el cuadro no dice: cuál es el índice y hasta cuándo hay acuerdo. Que los TRES
+  // grupos usan el mismo lo prueba la columna «Ajuste escalón», que es idéntica en 2 y en 3.
+  // EL RÓTULO DEL ACUERDO SIGUE SALIENDO DE LA RÉPLICA, y no es un detalle de redacción: `VIGENCIA_HASTA`
+  // es una constante escrita a mano y `ultAc.rotulo` es lo que el parser leyó del acuerdo publicado. Al
+  // acortar esta línea la saqué, y quedó una fecha estampada sin nada vivo al lado — el test "ningún mes
+  // queda estampado en el código" lo cazó en la primera corrida. Corto es corto; ciego no.
   const ultAc = ultimoEscalon(escalones)
-  push([sub('obra, oficina y dirección suben por la PARITARIA UOCRA, no por el IPC'
-    + (ultAc ? ` (${ultAc.rotulo}, acuerdo hasta el ${VIGENCIA_HASTA})` : '')
-    + '. Después se repite el último tramo firmado: es PROYECCIÓN, no acuerdo.')])
+  push([sub(`Paritaria UOCRA${ultAc ? ` · ${ultAc.rotulo} hasta ${VIGENCIA_HASTA}` : ''}`)])
   // La glosa de la demanda tiene su renglón: apilada a la de arriba, las dos quedaban cortadas.
   const gd = glosaDemanda(demanda)
-  if (gd) push([sub(gd.trim())])
+  if (gd) push([sub(gd.replace(/^\s*·\s*/, '').trim())])
 
   // ── 1.1 · EL PLANTEL BASE ──
-  push([seccion('1.1', 'El plantel base — la última quincena CERRADA, abierta por categoría')])
+  // "abierta por categoría" era el índice del cuadro: sus filas SON las categorías. "La última
+  // quincena CERRADA" se queda porque es el criterio de qué dato se está mirando, y no está en
+  // ninguna celda.
+  push([seccion('1.1', 'Plantel base — última quincena cerrada')])
   // LO QUE FALTA PARA QUE EL CONTROL HABLE, UNA SOLA VEZ Y CONTADO. Estaba una vez por fila, adentro
   // de la columna "Estado": cuatro renglones idénticos pidiendo lo mismo. Se resuelve más abajo,
   // cuando se conocen las filas de las categorías.
@@ -453,7 +468,9 @@ export function grilla({
   blanco()
 
   // ── 1.2 · EL ESCALÓN, MES POR MES ──
-  push([seccion('1.2', 'El escalón del convenio, mes por mes — de dónde sale cada aumento')])
+  // "de dónde sale cada aumento" es literalmente el nombre de una de las columnas del cuadro
+  // («De dónde sale»): el título anunciaba una columna que está a dos filas de distancia.
+  push([seccion('1.2', 'El escalón del convenio, mes por mes')])
   // LA BASE DE LA PROYECCIÓN ES EL CONVENIO, NO EL JORNAL PACTADO (07/08, orden del dueño). Sale de las
   // DOS columnas del bloque de arriba —personas por categoría × básico del convenio—, las dos fórmulas
   // vivas: un alta o un cambio de categoría la mueven sin tocar una celda. Por qué y quién lo hereda,
@@ -497,7 +514,9 @@ export function grilla({
   // cuatro columnas de andamiaje que ocupaban el lugar de las tres cifras que el dueño necesita leer.
   // El cuadro sigue midiendo ocho columnas: nueve dejarían la pestaña con tres anchos de grilla, que
   // es el defecto que el auditor de patrón caza y el dueño llama "descuadrado".
-  push([seccion('1.3', 'El calendario de pago — lo que falta, quincena por quincena, las tres nóminas')])
+  // El cuadro tiene una columna por nómina (Obreros · Oficina · Dirección) y una fila por período:
+  // "lo que falta, quincena por quincena, las tres nóminas" era el encabezado leído en voz alta.
+  push([seccion('1.3', 'El calendario de pago')])
   // ═══ LA FILA QUE PARECÍA UNA QUINCENA DE UN DÍA (13/08) ═══
   //
   // El dueño: *"dice quincena y hasta en la primera fila q sale aparecen la misma fecha"*. Y era
@@ -508,9 +527,11 @@ export function grilla({
   // Se arregla por los dos lados. La columna ya no se llama "Quincena" sino "Período", porque eso es
   // lo que la fila mide; y cuando la primera es un resto se dice acá, una sola vez y sólo cuando pasa.
   // Una glosa fija que se lee todos los días termina siendo invisible el día que importa.
-  if (pendientes[0]?.resto) {
-    push([sub('la primera fila es lo que QUEDA de la quincena en curso: los días que la planilla todavía no cargó. Lo ya cargado de esa misma quincena está arriba, en COMPROMETIDO.')])
-  }
+  //
+  // Y de 167 caracteres a 45 (13/08). La segunda mitad —"lo ya cargado de esa misma quincena está
+  // arriba, en COMPROMETIDO"— nombraba una cifra del hero que ya se llama COMPROMETIDO y está cuatro
+  // filas más arriba. La palabra RESTO en mayúscula hace el trabajo entero.
+  if (pendientes[0]?.resto) push([sub('La 1ª fila es el RESTO de la quincena en curso')])
   // LO QUE LA PROYECCIÓN NO VE, DICHO DONDE SE LA LEE. Ver LINEA_SABADOS: es una declaración, no un
   // supuesto de cálculo — no entra en ninguna celda de importe.
   push([sub(LINEA_SABADOS)])
@@ -527,7 +548,8 @@ export function grilla({
   // que se paga EN BLANCO POR RECIBO DE SUELDO, y adelantos + el resto salen en efectivo. Es la misma
   // partición con la que CAJA baja el saldo bancario y el cajón — una sola definición para las dos
   // pestañas, y en el vocabulario con el que el dueño la piensa.
-  const fShare = push([sub('De la quincena de obra, en efectivo (el resto va en blanco por recibo)')])
+  // El rótulo nombra la columna que mide («Efectivo (obra)») y su complemento en cuatro palabras.
+  const fShare = push([sub('En efectivo — el resto, por recibo')])
   push(COLS_CALENDARIO)
   const p0 = filas.length + 1
   const pFin = p0 + pendientes.length - 1
@@ -590,7 +612,7 @@ export function grilla({
   // ESTA PLANILLA VA ATRASADA, Y ESO SE MUESTRA. Al 23/07 su último bloque cargado es el del
   // 16/06–30/06, un mes detrás del de obra. No se rellena el hueco con una estimación disfrazada de
   // dato: las quincenas sin cargar entran en la proyección, rotuladas como lo que son.
-  push([seccion(2, 'Oficina — sueldos, mes por mes hasta fin de año')])
+  push([seccion(2, 'Oficina — sueldos por mes')])
   // ═══ EL HUECO SE DECLARA, NO SE DEJA EN BLANCO (31/07) ═══
   //
   // El dueño: "esta sin atender el cuadro de jornales de oficina, dato q se obtiene del sheet jornales".
@@ -625,9 +647,17 @@ export function grilla({
   // quedaría sin proyectar ni mostrar un peso — un agujero mudo en el medio del año.
   const cerradoOfi = (i) => conBloque(i) && completoOfi(i)
   const iBaseOfi = MESES.map((_, i) => i).filter(cerradoOfi).pop() ?? null
-  push([ultimoDiaOfi
-    ? `   · la planilla de Oficina llega al ${fecha(ultimoDiaOfi)}. Un mes se toma como base sólo si está COMPLETO: el mes a medio cargar muestra lo pagado y proyecta el resto. De ahí en adelante es PROYECCIÓN sobre el último mes cerrado, ajustada por la paritaria.`
-    : '   · la planilla de Oficina no tiene ningún mes cargado: todo lo de abajo es proyección.'])
+  // ═══ LA GLOSA MÁS LARGA DE LA PESTAÑA (243) ERA LA LEYENDA DE UNA COLUMNA (13/08) ═══
+  //
+  // Explicaba en prosa las tres reglas de completitud, y el cuadro de abajo ya las publica MES POR MES
+  // en su columna «Estado»: `pagado` · `parcial` · `proyección`. Esa columna se agregó el 06/08
+  // justamente para eso ("ninguna columna muda") y la glosa se quedó repitiéndola en párrafo.
+  //
+  // Queda la fecha de corte de la fuente, que ninguna celda tiene: sin ella no se distingue un mes en
+  // `proyección` porque no se trabajó de uno en `proyección` porque la planilla va atrasada.
+  push([sub(ultimoDiaOfi
+    ? `Planilla Oficina al ${fecha(ultimoDiaOfi)} — ver «Estado» por mes`
+    : 'Planilla Oficina sin meses cargados — todo proyección')])
   // "Proyectado" va en la MISMA columna que el "Proyectado" de la proyección de obra (H): dos totales
   // del mismo concepto en columnas distintas se leen como dos conceptos distintos.
   // ═══ "SE PAGA EL": LA FECHA DE CAJA DE LA OFICINA (31/07) ═══
@@ -720,9 +750,10 @@ export function grilla({
   const oFin = o0 + MESES.length - 1
   const fTotalOfi = push([rotuloTotal('Oficina — pagado y por pagar en el año'), VACIO,
     `=SUM(C$${o0}:C$${oFin})`, VACIO, VACIO, VACIO, VACIO, `=SUM(H$${o0}:H$${oFin})`])
-  // La línea del cash flow lee ESTAS celdas por rango con nombre. Se declara acá, al lado del total,
-  // para que quien mire la pestaña sepa que este bloque ya no es decorativo: es la fuente.
-  push([sub('el cash flow lee este bloque por rango con nombre: OFICINA_PAGO · OFICINA_PAGADO · OFICINA_PROYECTADO')])
+  // LA GLOSA "el cash flow lee este bloque por rango con nombre: OFICINA_PAGO · OFICINA_PAGADO ·
+  // OFICINA_PROYECTADO" SE FUE DE LA CELDA (13/08). Es fontanería: le importa a quien mantiene el
+  // generador, no a quien mira cuánto se paga en octubre. Y el contrato no se sostenía por esa
+  // oración — lo sostiene el test "EL CONTRATO: los 22 rangos con nombre siguen publicados".
   // ═══ LA BASE ES UNA CELDA CONCRETA, NO "LA ÚLTIMA CON DATO" (13/08) ═══
   //
   // Era `INDEX(C;MAX(IF(C<>"";ROW…)))` — la última celda no vacía de la columna. Esa búsqueda no puede
@@ -758,8 +789,13 @@ export function grilla({
   // importa acá: son $6.500.000 por mes que sólo estaban cargados UNA vez en Compras, así que de
   // septiembre a diciembre el cash flow proyectaba $3.000.000 donde el compromiso es $9.800.000.
   push([seccion(3, 'Dirección — retiros mensuales de los socios')])
-  push(['   · no están en la planilla JORNALES: el importe de cada uno es su última carga en Compras, y desde cuándo corre lo dice la fecha de caja de esa carga.'])
-  push(['   · "Pagado" son las filas de Compras ya marcadas como pagadas. Mientras no lo estén, el mes va en "Proyectado" y pesa en el calendario de caja.'])
+  // ═══ DOS GLOSAS DE 149 Y 142 CARACTERES, UNA SOLA DE 42 (13/08) ═══
+  //
+  // La primera decía la fuente y después describía la columna «Desde», que está una fila más abajo con
+  // su fecha adentro. La segunda —"«Pagado» son las filas de Compras ya marcadas como pagadas…"— se
+  // fue entera: era la definición en prosa de las columnas «Pagado», «Proyectado» y «Estado», que
+  // están dos filas más abajo y ya dicen `pagado` o `proyección` en cada fila.
+  push([sub('Fuente: Compras — última carga de cada socio')])
   push(['Persona', 'Retiro mensual', VACIO, VACIO, 'Desde'])
   const dp0 = filas.length + 1
   // "Desde" CORONABA TRES CELDAS VACÍAS (06/08). El dato existía sólo en la fila de total —la fecha
@@ -811,7 +847,8 @@ export function grilla({
   const dFin = d0 + MESES.length - 1
   const fTotalDir = push([rotuloTotal('Dirección — pagado y por pagar en el año'), VACIO,
     `=SUM(C$${d0}:C$${dFin})`, VACIO, VACIO, VACIO, VACIO, `=SUM(H$${d0}:H$${dFin})`])
-  push([sub('el cash flow lee este bloque por rango con nombre: DIRECCION_PAGO · DIRECCION_PAGADO · DIRECCION_PROYECTADO')])
+  // Los rangos DIRECCION_PAGO · DIRECCION_PAGADO · DIRECCION_PROYECTADO ya no se anuncian en la
+  // pestaña, por lo mismo que los de Oficina (ver el comentario del total de la sección 2).
   blanco()
 
   // ── 4 · CONTROL DE CONVENIO ──
@@ -828,13 +865,18 @@ export function grilla({
   // deducido del orden descendente de la tabla. La fórmula que va a la celda ya no busca nada: apunta
   // a una fila concreta. Y si esa fila se movió, el canario de al lado lo dice — no hay forma de que
   // muestre un número del año equivocado.
-  push([seccion(4, 'Control de convenio — ningún jornal por debajo de la escala UOCRA')])
+  // "ningún jornal por debajo de la escala UOCRA" es lo que MIDEN las dos filas de abajo ("El jornal
+  // por hora más bajo que pagamos" contra "Básico de Ayudante — el piso del convenio", y el margen
+  // entre las dos). El título nombra el control; el resultado lo da el número.
+  push([seccion(4, 'Control de convenio — piso UOCRA')])
   const estado = estadoReplica(escalones, hoy)
   // EL CONVENIO VA CON SU VIGENCIA, NO FLOTANDO SEIS COLUMNAS A LA DERECHA. "CCT 76/75, Zona A (San
   // Juan)" vivía en la columna G, sin nada alrededor: un rótulo suelto en el medio de la grilla que
   // el ojo no puede asociar a nada. Es la ficha de la escala que esta línea está declarando vigente,
   // así que va en la misma línea. La A derrama sobre las celdas vacías de su derecha.
-  const fVig = push([`${estado.mensaje} · CCT 76/75, Zona A (San Juan)`])
+  // "(San Juan)" se cayó del rótulo: Zona A ES San Juan en el CCT 76/75, y la empresa no opera en otra
+  // zona. La ficha completa vive en lib/uocra-paritaria.mjs, que es quien la verifica.
+  const fVig = push([`${estado.mensaje} · CCT 76/75 Zona A`])
   // ═══ EL CONTROL DE LA RÉPLICA CONTRA LA ESCALA VERIFICADA (07/08) ═══
   //
   // Un control nunca se valida contra la misma información que produce. Todo lo de este bloque sale de
@@ -842,8 +884,18 @@ export function grilla({
   // vieja —o la de otra zona— y se ve exactamente igual de sana. La escala verificada a mano contra dos
   // fuentes es lo único que puede notarlo. Habla SÓLO cuando discrepa: un control que repite "todo
   // bien" en cada corrida se vuelve invisible al mes.
+  // ═══ UN AVISO QUE CRECE CON LA LISTA NO TIENE TOPE (13/08) ═══
+  //
+  // Era el prefijo + TODOS los desvíos concatenados, y cada desvío mide medio renglón ("Oficial
+  // Especializado: réplica 6800 ≠ verificado 7420"): con las cinco categorías pasaba de 300 caracteres,
+  // justo en el único caso en que el aviso importa. La celda dice que el control se encendió y CUÁNTO
+  // ABARCA; el detalle va al log. La acción es la misma con uno o con cinco —abrir la réplica— y lo
+  // que el número cambia es la gravedad. `contrastarEscala` sigue midiendo el desvío completo.
   const desvios = contrastarEscala(escalones)
-  if (desvios.length) push([sub(`⚠ la réplica no coincide con la escala verificada el ${VERIFICADA_EL}: ${desvios.join(' · ')}`)])
+  if (desvios.length) {
+    push([sub(`⚠ Réplica ≠ escala verificada en ${desvios.length} categoría(s)`)])
+    for (const d of desvios) console.warn(`  ⚠ escala verificada el ${VERIFICADA_EL}: ${d}`)
+  }
   // El jornal más bajo sale del bloque BASE (la última quincena cerrada), no del último bloque del
   // espejo: una quincena a medio cargar puede no tener todavía a toda la cuadrilla.
   const rangoW = bloqueBase ? `'${ESPEJO}'!$W$${bloqueBase.inicio}:$W$${bloqueBase.fin}` : null
@@ -867,9 +919,13 @@ export function grilla({
   // EL TEXTO VA EN LA COLUMNA A, NO EN UNA DEL MEDIO. La última columna de esta pestaña es "Pagado
   // el" —la del dueño— así que la salida habitual del patrón (mandar la glosa al final) acá está
   // cerrada. La A es ancha, derrama sobre celdas vacías y el auditor la exceptúa a propósito.
+  // LA RAMA SIN ACUERDO PASÓ DE 190 CARACTERES A 45 (13/08). Cuál es el último acuerdo lo dice la
+  // línea de vigencia dos filas arriba (`fVig`), y que los meses siguientes son proyección lo dice el
+  // cuadro 1.2 en su columna «Estado». Lo único propio de esta línea es que NO HAY escalón que
+  // mostrar — y el ⚠ ya avisa que hay que mirarla.
   push([sub(proximo
     ? `El escalón que viene — ${proximo.rotulo}${proximo.acuerdo ? ` · ${proximo.acuerdo}` : ''}`
-    : `El escalón que viene — SIN ACUERDO PUBLICADO. El último es ${ultimoEscalon(escalones)?.rotulo ?? '—'}: los meses siguientes se proyectan con el aumento esperado de Parámetros y este control no puede opinar sobre ellos.`)])
+    : '⚠ El escalón que viene — sin acuerdo publicado')])
   // ═══ SIN ACUERDO PUBLICADO NO SE EMITEN LAS DOS FILAS (06/08) ═══
   //
   // Se emitían siempre, y sin acuerdo quedaban las dos vacías: "Básico de Ayudante desde ese mes" y
@@ -898,15 +954,18 @@ export function grilla({
   push([seccion(5, 'Obra — el registro, quincena por quincena')])
   // LA GLOSA DE LA COLUMNA NUEVA, EN LA PESTAÑA Y NO SÓLO EN EL CÓDIGO. Quien abre la planilla tiene
   // que poder saber de dónde salió esa fecha y que puede cambiarla, sin preguntarle a nadie.
-  push([sub('"Se paga el" = el lote de haberes del banco; si todavía no salió, Hasta + Parámetros'),
-    VACIO, VACIO, 'escribí una fecha a mano y manda la tuya'])
-  // ═══ LA INSTRUCCIÓN BAJÓ DEL HERO A LA COLUMNA DE LA QUE HABLA (06/08) ═══
+  // ═══ DOS RENGLONES DE MANUAL (86 Y 149), UNO SOLO Y CORTO (13/08) ═══
   //
-  // Vivía en la última columna de la fila "Próximo pago" del hero: doscientos caracteres de manual en
-  // el bloque que tiene que leerse en tres segundos, y encima en la columna "Pagado el", que es la del
-  // dueño. Su lugar es acá, al lado de la columna que explica y junto a la glosa de "Se paga el" —
-  // igual que el resto de las glosas de esta pestaña. Y dice lo mismo en la mitad de palabras.
-  push([sub('"Pagado el" es tuya: marcá ahí la fecha y la quincena pasa de COMPROMETIDO a REAL, sale del calendario de CAJA y el cash flow la imputa a ESA fecha')])
+  // El de «Se paga el» se fue entero: de dónde sale la fecha prevista es mecánica del generador, y que
+  // se puede pisar a mano lo prueba el comportamiento —`esFechaAMano` respeta lo escrito—. Del de
+  // «Pagado el» queda el EFECTO, lo único que ningún encabezado puede decir.
+  //
+  // NO SE RENOMBRARON LOS ENCABEZADOS PARA ABSORBER LA INSTRUCCIÓN («Pagado el (tuya)» era la salida
+  // elegante). `copiarPagadoEl` ancla la copia de las fechas del dueño buscando el TEXTO LITERAL
+  // "Pagado el" en la pestaña viva: con el rótulo cambiado el ancla falla en la primera corrida y cae
+  // al reparto por número de fila, que es como se desalinean las fechas de una columna que el
+  // generador no escribe. Menos texto no vale una fecha de pago movida de lugar.
+  push([sub('«Pagado el»: la fecha pasa la quincena a REAL')])
   // ═══ POR QUÉ CANAL SALIÓ CADA PESO — BAJÓ ACÁ, QUE ES DONDE VIVEN SUS COLUMNAS (06/08) ═══
   //
   // Estaban en el hero, tres líneas de detalle entre las cifras que se leen de un vistazo. Son tres
@@ -978,7 +1037,10 @@ export function grilla({
     { total: colDe('TOTAL'), sigma: colDe('Σ $/hora'), dias: colDe('Días hábiles'), hasta: colDe('Hasta') },
     f0, fLast,
   )
-  filas[fHpd - 1][2] = `=IF(N(B${fHpd})=0;"⚠ ninguna quincena cerrada en la ventana: subí «${PARAMETRO_MESES_BASE.rotulo}» en Parámetros";"medido s/ cerradas · "&${RANGO_MESES_BASE}&" meses")`
+  // El rótulo COMPLETO del parámetro ("Meses hacia atrás para medir el ritmo real de horas") dentro de
+  // una celda de la columna C dejaba 114 caracteres desparramados en el medio del cuadro. El nombre
+  // del parámetro está en Parámetros, que es adonde hay que ir igual: acá alcanza con nombrar la hoja.
+  filas[fHpd - 1][2] = `=IF(N(B${fHpd})=0;"⚠ sin quincenas cerradas — subí la ventana en Parámetros";"medido s/ cerradas · "&${RANGO_MESES_BASE}&" meses")`
   // ═══ EL CANAL DE PAGO, MEDIDO SOBRE EL REGISTRO Y NO SUPUESTO (13/08) ═══
   //
   // "Banco" es la transferencia del lote de haberes —la parte que va por recibo de sueldo— y el resto
@@ -1023,8 +1085,11 @@ export function grilla({
     `$${colDe('Hasta')}$${f0}:$${colDe('Hasta')}$${fLast}`,
     `$${colDe('TOTAL')}$${f0}:$${colDe('TOTAL')}$${fLast}`,
   )
+  // LA FILA 2 ES EL ÚNICO LUGAR DONDE LA GRAMÁTICA PIDE PROSA: qué contesta · fuente · fecha de corte.
+  // Decía "Jornales de obra y sueldos de oficina" y desde el 13/08 la pestaña tiene TRES nóminas —
+  // dirección incluida—, así que además de más corto ahora es cierto.
   filas[fSubtitulo - 1][0] = rotuloAlDia(
-    'Jornales de obra y sueldos de oficina · fuente: planilla JORNALES y escala UOCRA',
+    'Obra, oficina y dirección · fuente: planilla JORNALES y escala UOCRA',
     hastaCargado,
   )
   const K = `IF(ISNUMBER($K$${f0}:$K$${fLast});$K$${f0}:$K$${fLast};0)`

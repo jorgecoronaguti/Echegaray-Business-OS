@@ -135,21 +135,33 @@ test('LA FRONTERA DEL MES EN CURSO: lo que se paga este mes va al PACTADO, no al
 test('LA PESTAÑA DECLARA QUE ES UN SUPUESTO, NO EL JORNAL VIGENTE', () => {
   const l = lineaSupuestoConvenio({ sigma: formulaSigmaConvenio(18, 21), celdaPersonas: '$B$22' })
   assert.match(l, /^=IF\(/, 'la línea tiene que evaluar la Σ real: es además el canario de la réplica')
-  assert.match(l, /SUPUESTO DEL DUEÑO/)
-  assert.match(l, /100% DEL CONVENIO/)
-  assert.match(l, /POR DEBAJO/, 'sin esto se lee como que hoy pagamos la escala, y no la pagamos')
+  // ═══ EL PÁRRAFO DE 374 CARACTERES SE FUE; LAS TRES COSAS QUE DECIDÍA, NO (13/08) ═══
+  //
+  // El dueño rechazó el diseño de la pestaña: *"tiene muchas palabras y frases y explicación que nadie
+  // lee"*. Este test se reescribió sobre el rótulo nuevo y sigue exigiendo lo mismo:
+  //   · que diga que es un SUPUESTO —sin eso, una hipótesis se lee como el jornal vigente—;
+  //   · contra qué base —el 100% del convenio—;
+  //   · y que las personas salgan de la celda, no del código.
+  //
+  // Lo que YA NO se exige acá es la frase "hoy pagamos POR DEBAJO", y no porque deje de importar: es
+  // una MEDICIÓN, y su lugar es la celda que la calcula. La hace el bloque 4 de la pestaña ("Margen
+  // sobre el piso — negativo = deuda laboral") y la fija su propio test. Afirmarlo además en prosa
+  // acá era la tercera copia del mismo hecho, y la única que puede quedar desactualizada respecto del
+  // número — que es exactamente cómo una glosa empieza a mentir.
+  assert.match(l, /Supuesto/i)
+  assert.match(l, /100% del convenio/i)
   assert.match(l, /&\$B\$22&/, 'la cantidad de personas tiene que salir de la celda, no del código')
   // NINGÚN MES NI IMPORTE ESTAMPADO: un número escrito acá envejece el día que entra un obrero.
   assert.doesNotMatch(l, /97\.?772|85\.?900/)
   assert.doesNotMatch(l, /agosto|Agosto|2026/)
   // Y si la Σ da 0 —réplica caída— la línea lo dice en vez de dejar publicar $0 de jornales.
-  assert.match(l, /queda VACÍA/)
+  assert.match(l, /vac[íi]a/i, 'la réplica caída tiene que dejar la proyección vacía y decirlo')
 })
 
 test('SIN ESCALA LA LÍNEA AVISA QUE LA BASE VOLVIÓ AL PACTADO: el criterio no cambia en silencio', () => {
   const l = lineaSupuestoConvenio({ sigma: null, celdaPersonas: '$B$22' })
   assert.match(l, /^ {3}· /, 'sin Σ es prosa, no fórmula: no hay nada que evaluar')
-  assert.match(l, /PACTADO/)
+  assert.match(l, /pactado/i)
   assert.match(l, /_UOCRA_RAW/, 'tiene que decir QUÉ fuente falta, o nadie sabe qué arreglar')
 })
 
