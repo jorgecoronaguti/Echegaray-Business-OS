@@ -29,8 +29,12 @@ import { publicar } from '../lib/rangos-nombrados.mjs'
 import { CAJA as N_CAJA } from '../lib/rangos-nombrados.mjs'
 import { DESDE_CAJA } from '../lib/caja-anexo-nombres.mjs'
 import { rectangulo, letra } from '../lib/cash-flow-matriz.mjs'
-import { grillaSemanal, PESTANA_SEMANAL } from '../lib/cash-flow-semanas.mjs'
-import { grillaMeses, destinosNombrados, PESTANA_MENSUAL } from '../lib/cash-flow-meses.mjs'
+import { requestsDePliegue, rangoEnLetras } from '../lib/cash-flow-hoy.mjs'
+import { cuadre, guardaDeCobertura, linea, totalesDeVista } from '../lib/cash-flow-cuadre.mjs'
+// El nombre de cada pestaña ya viene en su `meta`: importarlo suelto era una segunda forma de decir lo
+// mismo, y la que se olvida de cambiar el día que una pestaña se renombra.
+import { grillaSemanal } from '../lib/cash-flow-semanas.mjs'
+import { grillaMeses, destinosNombrados } from '../lib/cash-flow-meses.mjs'
 import {
   grillaPresupuesto, rescatarPresupuesto, formatoPresupuesto,
   PESTANA_PRESUPUESTO, ANCHO_PRESUPUESTO,
@@ -238,7 +242,85 @@ async function escribirVista(google, construir, footprint, refs, nombresDe = nul
     await google.spreadsheetBatchUpdate(ID, graficos.dibujar)
       .catch((e) => console.warn(`  ⚠ ${meta.pestana}: los gráficos fallaron (${e.message}); la tabla quedó bien`))
   }
+
+  await plegarElPasado(google, hoja.sheetId, meta)
   return { hoja, escrito: true, meta }
+}
+
+/**
+ * EL PASADO, PLEGADO — Y VA ÚLTIMO, QUE NO ES INDISTINTO.
+ *
+ * `pielMatriz` desoculta el footprint entero (`hiddenByUser:false`) y colapsar un grupo es justamente
+ * poner `hiddenByUser:true`: plegar antes del formato dejaría el margen mostrando un grupo colapsado
+ * con las columnas a la vista. Y va después de los gráficos porque un `addChart` que falla no puede
+ * llevarse puesto el pliegue, que es lo que hace que la pestaña abra en la semana actual.
+ *
+ * SI FALLA, LA PESTAÑA QUEDA ENTERA. Incómoda —hay que scrollear— pero nunca tapada. Ver el porqué del
+ * borrar-y-rehacer en cada corrida en `requestsDePliegue` (cash-flow-hoy.mjs).
+ */
+async function plegarElPasado(google, sheetId, meta) {
+  const req = requestsDePliegue(sheetId, meta.plegar)
+  if (!req.length) {
+    console.log(`  ⌄ ${meta.pestana}: no hay pasado que plegar (hoy no cae adentro del ejercicio ${meta.anio}, o es el primer período)`)
+    return false
+  }
+  try {
+    await google.spreadsheetBatchUpdate(ID, req)
+    console.log(`  ⌄ ${meta.pestana}: ${meta.plegar.fin - meta.plegar.inicio} columna(s) del pasado plegadas (${rangoEnLetras(meta.plegar)}) — la pestaña abre en el período en curso`)
+    return true
+  } catch (e) {
+    console.warn(`  ⚠ ${meta.pestana}: no pude plegar el pasado (${e.message}); el cuadro quedó entero y hay que scrollear`)
+    return false
+  }
+}
+
+/**
+ * VERIFICAR CONTRA EL SHEET — LO ÚNICO QUE PRUEBA UNA ESCRITURA, Y AHORA TAMBIÉN QUE LAS DOS VISTAS
+ * DIGAN LO MISMO.
+ *
+ * ═══ POR QUÉ EL CUADRE VA ACÁ Y NO EN UN REPORTE APARTE (13/08/2026) ═══
+ *
+ * El Semanal decía ($57.164.937) de resultado del año y el Mensual ($44.091.619). Estuvo así hasta que
+ * el dueño abrió las dos pestañas y restó a mano: no existía nada que lo mirara. Son DOS CÁLCULOS
+ * INDEPENDIENTES DEL MISMO HECHO —53 ventanas semanales y 12 mensuales sobre el mismo libro—, así que
+ * compararlos fila por fila es evidencia real y no un control validándose contra sí mismo.
+ *
+ * SE LEE UNA VEZ Y SE USA DOS. El mismo rectángulo sirve para buscar celdas en error y para leer la
+ * columna TOTAL. Con `UNFORMATTED_VALUE`, que devuelve números: leer "$ 364.126.253" y adivinar cuál
+ * es el separador decimal es la forma más cara de equivocarse (los errores siguen llegando como texto
+ * "#REF!", así que el barrido de errores no pierde nada).
+ *
+ * SI NO CUADRA, EL PASO FALLA (salida ≠ 0). El pipeline lo lista en FALLARON y, por su propia regla,
+ * no registra la corrida como una ingesta exitosa del Cash Flow. Las pestañas ya están escritas —esto
+ * corre después, porque antes los números no existen— pero nadie va a decidir sobre ellas creyendo que
+ * la corrida salió bien.
+ */
+async function cuadrarLasVistas(google, metas) {
+  const lecturas = []
+  for (const meta of metas) {
+    const fp = meta.footprint
+    const v = await google.readSheetValues(ID, `${refPestana(meta.pestana)}!A1:${letra(fp.cols - 1)}${fp.filas}`,
+      { render: 'UNFORMATTED_VALUE' }).catch((e) => { console.warn(`  ⚠ no pude releer ${meta.pestana}: ${e.message}`); return [] })
+    const err = []
+    v.forEach((f, i) => (f || []).forEach((c, j) => {
+      if (/^#(REF|ERROR|N\/A|VALUE|¡|¿|DIV|NAME|NUM|NULL)/.test(String(c ?? ''))) err.push(`${letra(j)}${i + 1}=${c}`)
+    }))
+    console.log(`\n${meta.pestana}: ${err.length ? `⚠ ${err.length} celda(s) en error: ${err.slice(0, 6).join(' ')}` : '✓ sin errores'}`)
+    lecturas.push(totalesDeVista(v, meta))
+  }
+  const r = cuadre(lecturas[0], lecturas[1])
+  if (r.ok) {
+    console.log(`✓ cuadre: las ${r.comparadas} filas totalizables coinciden entre ${metas[0].pestana} y ${metas[1].pestana} (± $1)`)
+    return true
+  }
+  console.error(`\n⛔ LAS DOS VISTAS NO CUADRAN — ${r.fuera.length} de ${r.comparadas} fila(s) difieren en más de $1.`)
+  console.error('   Son dos cálculos del MISMO hecho sobre el MISMO libro: si no dan igual, uno de los dos miente.')
+  for (const l of r.fuera.slice(0, 12)) console.error(`   · ${linea(l, metas[0].pestana, metas[1].pestana)}`)
+  // Los problemas van acotados: si la relectura falló, TODAS las filas quedan sin comparar y volcar 76
+  // renglones iguales al log del pipeline esconde el desvío real entre el ruido.
+  for (const p of r.problemas.slice(0, 6)) console.error(`   ⚠ ${p}`)
+  if (r.problemas.length > 6) console.error(`   ⚠ …y ${r.problemas.length - 6} fila(s) más que no se pudieron leer`)
+  return false
 }
 
 async function main() {
@@ -246,32 +328,34 @@ async function main() {
   const refs = await refsDeCaja(google)
   console.log(`Ancla de saldo: ${refs.saldo ?? '⚠ sin rango con nombre'} · piso: ${refs.minima ?? '(sin caja mínima)'}`)
 
+  const hoy = new Date()
+  // LAS DOS GRILLAS SE ARMAN ANTES DE ESCRIBIR NADA —son puras— PORQUE LA GUARDA MIRA SU GEOMETRÍA.
+  // Si las columnas de una vista no cubren exactamente el mismo intervalo que las de la otra, sus
+  // totales no son comparables y la conciliación entre pestañas deja de significar algo. Eso se sabe
+  // sin tocar la red y cuesta un milisegundo: abortar acá es gratis, abortar después ya escribió.
+  const mensual = grillaMeses({ anio: AÑO, refs, hoy })
+  const semanal = grillaSemanal({ hoy, anio: AÑO, refs })
+  const guarda = guardaDeCobertura([semanal.meta, mensual.meta])
+  if (!guarda.ok) {
+    for (const m of guarda.motivos) console.error(`  ⛔ ${m}`)
+    throw new Error('las dos vistas no cubren el mismo período: no escribo ninguna de las dos')
+  }
+
   // El presupuesto VA PRIMERO: el Mensual cita sus rangos con nombre, y un nombre que todavía no
   // existe deja #NAME? en la pestaña que el dueño abre todos los días.
   await rehacerPresupuesto(google)
 
-  const hoy = new Date()
   // EL MENSUAL VA PRIMERO, y no es indistinto: publica CF_MESES —los doce meses del ejercicio— y la
   // proyección de comisiones del SEMANAL cuenta sobre ese rango.
-  const mensual = grillaMeses({ anio: AÑO, refs })
   // Los nombres los publica escribirVista ANTES de achicar la hoja: publicarlos después dejó
   // CF_SALDO_INICIO/CIERRE quemados el 06/08 (ver el comentario adentro).
-  await escribirVista(google, (gid) => grillaMeses({ anio: AÑO, refs, gid }), mensual.meta.footprint, refs, destinosNombrados)
+  await escribirVista(google, (gid) => grillaMeses({ anio: AÑO, refs, gid, hoy }), mensual.meta.footprint, refs, destinosNombrados)
   // Y EL SEMANAL VA CON EL MISMO AÑO QUE EL MENSUAL, no con el rodante de hoy: las dos vistas cubren
   // el mismo ejercicio o la conciliación entre ellas deja de significar algo.
-  const semanal = grillaSemanal({ hoy, anio: AÑO, refs })
   await escribirVista(google, (gid) => grillaSemanal({ hoy, anio: AÑO, refs, gid }), semanal.meta.footprint, refs)
   if (DRY) return console.log('\n--dry: no escribí nada.')
 
-  // ── VERIFICAR CONTRA EL SHEET, que es lo único que prueba una escritura ──
-  for (const [p, fp] of [[PESTANA_SEMANAL, semanal.meta.footprint], [PESTANA_MENSUAL, mensual.meta.footprint]]) {
-    const v = await google.readSheetValues(ID, `${p}!A1:${letra(fp.cols - 1)}${fp.filas}`).catch(() => [])
-    const err = []
-    v.forEach((f, i) => (f || []).forEach((c, j) => {
-      if (/^#(REF|ERROR|N\/A|VALUE|¡|¿|DIV|NAME|NUM|NULL)/.test(String(c ?? ''))) err.push(`${letra(j)}${i + 1}=${c}`)
-    }))
-    console.log(`\n${p}: ${err.length ? `⚠ ${err.length} celda(s) en error: ${err.slice(0, 6).join(' ')}` : '✓ sin errores'}`)
-  }
+  if (!await cuadrarLasVistas(google, [semanal.meta, mensual.meta])) process.exitCode = 1
 }
 
 // Importarlo para testear las grillas —que son puras— NO dispara main(): así el test no escribe nada.

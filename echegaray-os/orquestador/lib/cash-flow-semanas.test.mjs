@@ -252,8 +252,15 @@ test('el vínculo "hoy" apunta a la columna de la semana corriente, y sin gid no
   assert.ok(v.startsWith('=HYPERLINK("https://docs.google.com/spreadsheets/d/'), v)
   assert.ok(v.includes('/edit#gid=1234&range="&ADDRESS('), v)
   assert.ok(v.includes('TODAY()-WEEKDAY(TODAY();3)'), 'el lunes de hoy se calcula igual que los encabezados')
-  // El rótulo es el BOTÓN de A3 (06/08, pedido del dueño): visible sin scrollear, dice qué hace.
-  assert.ok(v.endsWith(';"⏵  IR A LA SEMANA ACTUAL")'))
+  // ═══ EL RÓTULO DEJÓ DE PROMETER UN BOTÓN (13/08/2026) ═══
+  //
+  // Acá se exigía `;"⏵  IR A LA SEMANA ACTUAL")`. El dueño lo reportó roto y un navegador real lo
+  // midió: el destino estaba BIEN (AH7) y el gesto no existía —hacen falta tres clics, y el doble clic
+  // abre el modo edición—. El rótulo ahora DICE dónde está la semana actual, calculado en la hoja, y
+  // sirve aunque nadie haga clic. El prefijo va literal: por ahí parte la fórmula el control.
+  assert.ok(v.includes(';"Semana actual: "&'), v)
+  assert.ok(v.endsWith('"d/mm"))'), v)
+  assert.ok(!v.includes('⏵'), 'el ícono de botón se fue con la promesa que no se podía cumplir')
   assert.ok(!v.includes('IFERROR'), 'un cuadro vencido tiene que gritar #N/A, no llevar a una celda cualquiera')
 })
 
