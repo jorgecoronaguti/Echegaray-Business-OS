@@ -1,0 +1,165 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { CABECERA_ARCA, LINEAS_ARCA, NOMBRES_ARCA, destinosDeArca, dondeViveCadaNombre } from './bloque-arca-nombres.mjs'
+import { ARCA, ESPECIE, desalineados } from './rangos-nombrados.mjs'
+
+const SRC = readFileSync(new URL('../scripts/proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+
+/** La grilla tal como la arma el generador: cabecera y debajo las seis líneas, en orden. */
+const bloque = () => [
+  [CABECERA_ARCA, 'Comprobantes', 'Monto'],
+  ...LINEAS_ARCA.map((l, i) => [l.texto, 100 + i, 1000 + i]),
+]
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL DEFECTO MEDIDO EN EL ARCHIVO VIVO (13/08/2026)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// La pestaña "Proveedores" tiene TRES copias del bloque de cobertura: una fósil en la 126, la buena
+// en la 177-182 y un fragmento huérfano en la 229-230. El reapuntado leía la columna A entera y se
+// quedaba con LA ÚLTIMA fila cuyo texto empezaba con el rótulo, así que:
+//
+//   · ARCA_COMPRAS_TOTAL  → C126 = "2470-01545411"   (un número de comprobante donde promete plata)
+//   · ARCA_EN_COMPRAS_N   → B229 = 456               (el fragmento huérfano; el bloque bueno dice 380)
+//   · ARCA_SIN_NUMERO_*   → se quedaron en la 129, sobre un CUIT
+//
+// "El último" es anclar en la posición. Lo único que el generador puede afirmar es qué escribió él.
+
+test('el destino sale de la grilla escrita: una copia MÁS ABAJO no se lo lleva', () => {
+  // La pestaña arranca en la fila 52 (la frontera: arriba viven las tablas dinámicas).
+  const FILA0 = 52
+  const grid = [
+    ['2 · CUENTA CORRIENTE POR PROVEEDOR'],
+    [],
+    ...bloque(),
+    [],
+    ['Proveedor según ARCA', 'CUIT', 'Comprobante'],
+    ['TELEFONICA MOVILES ARGENTINA SOCIEDAD ANONIMA', '30-67881435-7', '2470-01545411'],
+  ]
+  // El fragmento huérfano de la 229-230, veinte filas más abajo, con OTRAS cifras del mismo concepto.
+  while (grid.length < 40) grid.push([])
+  grid.push([LINEAS_ARCA[2].texto, 456, 179091614.15])
+
+  const { destinos, faltan } = destinosDeArca(grid, FILA0)
+  assert.deepEqual(faltan, [], 'las seis líneas están en la grilla')
+  assert.equal(destinos.length, 12)
+
+  const donde = (n) => destinos.find((d) => d.name === n)
+  // La cabecera está en el índice 2 de la grilla ⇒ fila 54; las seis líneas, de la 55 a la 60.
+  assert.deepEqual(donde(ARCA.comprobantes), { name: ARCA.comprobantes, fila: 55, col: 2 })
+  assert.deepEqual(donde(ARCA.total), { name: ARCA.total, fila: 55, col: 3 })
+  // EL QUE DELATA EL DEFECTO: con "la última aparición" éste caía en la fila 92 (el huérfano).
+  assert.deepEqual(donde(ARCA.enComprasN), { name: ARCA.enComprasN, fila: 57, col: 2 })
+  assert.deepEqual(donde(ARCA.ventasMonto), { name: ARCA.ventasMonto, fila: 60, col: 3 })
+})
+
+test('un rótulo lejos de la cabecera NO se toma: ahí abajo vive la lista de faltantes', () => {
+  const grid = [[CABECERA_ARCA], ...LINEAS_ARCA.slice(0, 5).map((l) => [l.texto])]
+  // La sexta línea, veinte filas por debajo de la ventana del bloque: no puede ser parte de él.
+  while (grid.length < 26) grid.push([])
+  grid.push([LINEAS_ARCA[5].texto, 21, 317175420])
+
+  const { destinos, faltan } = destinosDeArca(grid, 1)
+  assert.deepEqual(faltan, [LINEAS_ARCA[5].texto.trim()], 'la línea lejana se declara ausente, no se adopta')
+  assert.ok(!destinos.some((d) => d.name === ARCA.ventasN), 'ARCA_VENTAS_N no puede apuntar fuera del bloque')
+})
+
+test('sin cabecera no se publica NADA: las seis líneas se declaran ausentes', () => {
+  const { destinos, faltan, cabecera } = destinosDeArca([['otra cosa'], ['y otra']], 1)
+  assert.equal(cabecera, null)
+  assert.equal(destinos.length, 0)
+  assert.equal(faltan.length, LINEAS_ARCA.length)
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL RÓTULO ES UN CONTRATO: UNA SOLA COPIA
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// El generador escribía "  · cargados SIN su N° de comprobante" y el reapuntado buscaba
+// "· cargados sin su N° de comprobante". `startsWith` distingue mayúsculas: esa línea "no aparecía
+// en la pestaña escrita" y sus dos nombres se quedaron sobre un CUIT. Dos literales del mismo texto
+// en el mismo archivo divergen; la única cura es que haya uno.
+
+test('el generador NO tiene ninguna copia de los rótulos: los toma de LINEAS_ARCA', () => {
+  for (const l of LINEAS_ARCA) {
+    assert.ok(!SRC.includes(`'${l.texto}'`), `el rótulo ${JSON.stringify(l.texto)} volvió a escribirse a mano en el generador`)
+  }
+  assert.ok(!SRC.includes(`'${CABECERA_ARCA}'`), 'la cabecera del bloque volvió a ser un literal del generador')
+  assert.match(SRC, /const rotuloArca = \(nombre\) => LINEAS_ARCA\.find/)
+  assert.match(SRC, /destinosDeArca\(hojaArca\.grid \|\| \[\], hojaArca\.filaArranque\)/,
+    'la fila tiene que salir de la grilla escrita, no de releer la columna A de la pestaña')
+})
+
+test('una redacción distinta se declara AUSENTE — no engancha con la línea de al lado', () => {
+  const grid = bloque()
+  grid[4][0] = '  · cargados SIN su N° de comprobante'   // el "SIN" real del archivo vivo
+  const { destinos, faltan } = destinosDeArca(grid, 1)
+  assert.deepEqual(faltan, [LINEAS_ARCA[3].texto.trim()])
+  assert.ok(!destinos.some((d) => d.name === ARCA.sinNumeroN), 'no se publica sobre una fila que no es la suya')
+  assert.equal(destinos.length, 10, 'las otras cinco líneas sí se publican: el bloque no se cae entero')
+})
+
+test('la sangría no es parte del contrato: se compara sin los espacios de los bordes', () => {
+  const grid = bloque().map((f) => [String(f[0]).trim(), ...f.slice(1)])
+  assert.deepEqual(destinosDeArca(grid, 1).faltan, [])
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL CONTROL: DÓNDE QUEDÓ CADA NOMBRE, LEÍDO DEL ARCHIVO
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// `publicar` verifica el destino que se le PIDIÓ y, si no convence, no publica — y el nombre se
+// queda donde estaba. Eso no lo miraba nadie: el 13/08 ARCA_COMPRAS_TOTAL siguió apuntando a C126
+// con "2470-01545411" adentro y la corrida cerró con un aviso.
+
+test('un nombre que quedó sobre un número de comprobante se detecta releyendo el archivo', () => {
+  const SHEET = 864283094
+  // Lo que devolvió `getNamedRanges` del archivo vivo el 13/08: fila 126 col 3 y fila 129 col 2/3.
+  const rangos = [
+    { name: ARCA.total, range: { sheetId: SHEET, startRowIndex: 125, startColumnIndex: 2 } },
+    { name: ARCA.sinNumeroN, range: { sheetId: SHEET, startRowIndex: 128, startColumnIndex: 1 } },
+    { name: ARCA.faltanMonto, range: { sheetId: SHEET, startRowIndex: 180, startColumnIndex: 2 } },
+  ]
+  const { destinos, ausentes, enOtraPestana } = dondeViveCadaNombre(
+    [ARCA.total, ARCA.sinNumeroN, ARCA.faltanMonto, ARCA.ventasN], rangos, SHEET,
+  )
+  assert.deepEqual(ausentes, [ARCA.ventasN], 'un nombre que el archivo no tiene se dice, no se saltea')
+  assert.deepEqual(enOtraPestana, [])
+  assert.deepEqual(destinos.map((d) => [d.name, d.fila, d.col]), [
+    [ARCA.total, 126, 3], [ARCA.sinNumeroN, 129, 2], [ARCA.faltanMonto, 181, 3],
+  ])
+
+  // Y lo que hay HOY en esas celdas, tal cual salió del archivo con UNFORMATTED_VALUE.
+  const celda = { [ARCA.total]: '2470-01545411', [ARCA.sinNumeroN]: '23-36911157-4', [ARCA.faltanMonto]: 970225.76 }
+  const malos = desalineados(destinos, (d) => celda[d.name])
+  assert.deepEqual(malos.map((m) => m.name).sort(), [ARCA.sinNumeroN, ARCA.total].sort())
+  assert.equal(malos.find((m) => m.name === ARCA.total).espera, 'importe')
+  assert.equal(malos.find((m) => m.name === ARCA.total).encontro, 'texto')
+})
+
+test('un nombre que emigró a otra pestaña se reporta: ya no significa lo que promete', () => {
+  const rangos = [{ name: ARCA.total, range: { sheetId: 999, startRowIndex: 3, startColumnIndex: 2 } }]
+  const { destinos, enOtraPestana } = dondeViveCadaNombre([ARCA.total], rangos, 864283094)
+  assert.deepEqual(enOtraPestana, [ARCA.total])
+  assert.equal(destinos.length, 0, 'no se lo verifica como si viviera acá')
+})
+
+test('los doce nombres del bloque declaran su especie: sin eso el control no controla nada', () => {
+  assert.equal(NOMBRES_ARCA.length, 12)
+  for (const n of NOMBRES_ARCA) assert.ok(ESPECIE[n], `${n} no declara qué especie promete`)
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// UNA LÍNEA QUE NO SE EMITE NO DEJA SU NOMBRE DONDE ESTABA, Y LA CORRIDA NO SALE EN VERDE
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('el generador cuenta como ERROR la línea que no encuentra, y verifica dónde quedó cada nombre', () => {
+  assert.match(SRC, /err \+= sinRotulo\.length/,
+    'una línea sin rótulo tiene que frenar el retiro de las pestañas viejas, no sólo avisar')
+  assert.ok(!/Sus rangos con nombre NO se reapuntan — se quedan donde estaban/.test(SRC),
+    '"se quedan donde estaban" sin verificar es exactamente el defecto que se está arreglando')
+  assert.match(SRC, /err \+= await verificarNombresVivos\(google, hojaArca\.sheetId\)/)
+  assert.match(SRC, /if \(err\) process\.exitCode = 1/,
+    'un rango mal apuntado es plata equivocada en otra pestaña: el paso se reporta FALLADO, no con un aviso')
+})
