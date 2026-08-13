@@ -38,6 +38,16 @@ const avisoConservadas = (nb) => `  🛟 conservo ${nb.preservadas} celda(s) que
 /** La contracara: acá SÍ hay prueba —la huella por celda la emitió con evidencia positiva— y se dice. */
 const avisoLimpiadas = (nb) => `  🧹 limpio ${nb.limpiadas} celda(s) que la huella probó mías: ${nb.detalleLimpiadas.join(' · ')}`
 
+/**
+ * La SEGUNDA vía de prueba, y se nombra distinto a propósito. La huella dice "la sellé yo"; esto dice
+ * "tiene forma de dato que sólo produzco yo, o es un rótulo de mi registro". Es más débil, cubre lo
+ * que la huella no puede —una región que se corrió ±50 filas, donde el mapa ya no alinea— y por eso
+ * el log tiene que dejar ver CUÁL de las dos decidió: si mañana algo se borró de más, la diferencia
+ * entre los dos mensajes es lo que dice dónde mirar.
+ */
+const avisoVaciadas = (nb) => `  🧹 vacío ${nb.vaciadas} celda(s) que probé residuo MÍO de un layout anterior `
+  + `(por forma y registro, la huella no alineaba): ${nb.detalleVaciadas.join(' · ')}`
+
 const READONLY_SCOPES = [
   'https://www.googleapis.com/auth/drive.readonly',
   'https://www.googleapis.com/auth/spreadsheets.readonly',
@@ -1179,7 +1189,7 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     // persona identificada apretando "Registrar" sobre lo que ya vio—. Las otras cuatro mantienen el
     // freno duro aunque se les pase la opción: ampliar la superficie sería volver a la defensa por
     // enumeración que este archivo ya pagó. Ver `congelador-sheets.mjs`.
-    async batchUpdateValues(fileId, data, { espejo = false, yaGuardado = false, compartida = false, soloFilasVacias = false, confirmacion = null } = {}) {
+    async batchUpdateValues(fileId, data, { espejo = false, yaGuardado = false, compartida = false, soloFilasVacias = false, confirmacion = null, vaciarPropio = null } = {}) {
       const hielo = frenar(fileId, (data || []).map((d) => d?.range).filter(Boolean).join(', '), { confirmacion }); if (hielo) return hielo
       // ── GUARDA CENTRAL (25/07): el choke point que hace que NINGÚN escritor —crudo o no— pueda pisar
       // una pestaña candada o que el dueño editó (firma). Se saltea sólo con bandera explícita: `espejo`
@@ -1201,10 +1211,11 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       }
       // NO-BORRAR: el mismo trato para el batch. Ver no-borrar.mjs.
       {
-        const nb = await protegerBorrado(cliente, fileId, data)
+        const nb = await protegerBorrado(cliente, fileId, data, { vaciarPropio })
         if (nb.descartados.length) console.log(`  🛟 descarto ${nb.descartados.length} rango(s): no pude releer el destino y no arriesgo borrarte algo — ${nb.descartados.slice(0, 3).join(', ')}`)
         if (nb.preservadas) console.log(avisoConservadas(nb))
         if (nb.limpiadas) console.log(avisoLimpiadas(nb))
+        if (nb.vaciadas) console.log(avisoVaciadas(nb))
         data = nb.data
         if (!data.length) return { protegido: true, noBorrar: true, bloqueadas: nb.descartados }
       }
