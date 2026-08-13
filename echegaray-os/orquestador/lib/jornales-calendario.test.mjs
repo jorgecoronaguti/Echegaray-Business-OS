@@ -8,8 +8,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   COLS_CALENDARIO, colCalendario, diasLaborables, expresionDias, MASCARA_FIN_DE_SEMANA,
-  formulaVentana, formulaShareEfectivo, formulaControlCalendario,
-  formulaBajaNoRegistrada, LINEA_SABADOS,
+  formulaVentana, formulaShareEfectivo, formulaGlosaShareEfectivo, formulaControlCalendario,
+  formulaBajaNoRegistrada, LINEA_SABADOS, shareEfectivoAnual, MIN_QUINCENAS_SHARE,
 } from './jornales-calendario.mjs'
 import { diasHabilesObra } from './jornales-demanda-obras.mjs'
 
@@ -112,17 +112,106 @@ test('LAS VENTANAS SON CONTIGUAS Y DISJUNTAS: ni un mes afuera, ni un mes dos ve
   assert.doesNotMatch(arg('$C$32', '$C$33'), /<=/, 'el techo inclusivo hace que un mes entre en dos ventanas')
 })
 
-test('la fracción de efectivo se MIDE sobre el registro, en la ventana del parámetro', () => {
-  const f = formulaShareEfectivo({ banco: 'H', total: 'K', hasta: 'B' }, 107, 120)
+// ═══ EL CANAL DE PAGO — LAS QUINCENAS REALES DE 2026, LEÍDAS DEL REGISTRO VIVO EL 13/08 ═══
+//
+// [hasta, banco, total, pagado el]. Las catorce primeras están pagadas; la última (03/08–15/08) está
+// EN CURSO: tiene $4.473.400 cargados, cero por banco y ninguna fecha de pago. Es el caso del dueño.
+const CANALES = [
+  ['2026-01-15', 1380275, 4888075, '2026-01-16'], ['2026-01-31', 0, 8161000, '2026-02-02'],
+  ['2026-02-14', 0, 8337250, '2026-02-16'], ['2026-02-28', 0, 9038100, '2026-03-02'],
+  ['2026-03-14', 0, 7948200, '2026-03-16'], ['2026-03-31', 0, 6796619, '2026-04-01'],
+  ['2026-04-15', 0, 6772479, '2026-04-16'], ['2026-04-30', 4150650, 9939650, '2026-05-01'],
+  ['2026-05-16', 489600, 10105210, '2026-05-18'], ['2026-05-30', 0, 8593590, '2026-06-03'],
+  ['2026-06-15', 5060000, 9393250, '2026-06-16'], ['2026-06-30', 0, 9384100, '2026-07-01'],
+  ['2026-07-15', 3775150, 7227250, '2026-07-17'], ['2026-07-31', 3336233, 8469500, '2026-08-03'],
+  ['2026-08-15', 0, 4473400, null],
+].map(([hasta, banco, total, pagado]) => ({
+  hasta: new Date(`${hasta}T00:00:00`), banco, total,
+  pagado: pagado ? new Date(`${pagado}T00:00:00`) : null,
+}))
+const HOY = new Date('2026-08-13T00:00:00')
+
+test('EL % DE EFECTIVO ES EL PROMEDIO DEL AÑO, NO EL DE LA VENTANA DE HORAS', () => {
+  // El dueño: "el adelanto es algo q no se puede proyectar asi como está, se tiene q hacer un calculo
+  // promedio del año". Medido sobre las quincenas reales: 14 pagadas, $18.191.908 por banco sobre
+  // $115.054.273 pagados ⇒ 84,19% en billetes. La ventana vieja de 3 meses (las últimas seis) daba
+  // 76,19%: ocho puntos, y ninguna de las dos daba error.
+  const r = shareEfectivoAnual(CANALES, HOY)
+  assert.equal(r.quincenas, 14, 'entraron las quincenas que no están pagadas, o se perdió alguna')
+  assert.equal(r.banco, 18191908)
+  assert.equal(r.total, 115054273)
+  assert.equal(Number((r.share * 100).toFixed(2)), 84.19)
+  // Las últimas SEIS quincenas —la muestra que la pestaña usaba— dan otro número. Si algún día esta
+  // igualdad se rompe es porque alguien volvió a la ventana corta.
+  const tresMeses = shareEfectivoAnual(CANALES.slice(8, 14), HOY)
+  assert.equal(Number((tresMeses.share * 100).toFixed(2)), 76.19)
+})
+
+test('LA QUINCENA EN CURSO NO PUEDE MOVER EL PORCENTAJE PROYECTADO', () => {
+  // EL DEFECTO QUE MOTIVA TODO. La quincena que está corriendo tiene TOTAL cargado y BANCO en cero
+  // —el lote de haberes sale recién el día de pago—, así que contarla la hace ver 100% en billetes y
+  // empuja el promedio hacia arriba un poco más cada día que se carga una jornada.
+  const base = shareEfectivoAnual(CANALES, HOY).share
+  // Se cargan tres jornadas más en la quincena en curso: $4,47M → $7,5M. NADA puede moverse.
+  const conMasHoras = CANALES.map((f) => (f.pagado ? f : { ...f, total: 7500000 }))
+  assert.equal(shareEfectivoAnual(conMasHoras, HOY).share, base,
+    'cargar horas de la quincena en curso movió el % que proyecta el efectivo')
+  // Y el mismo día 15/08, cuando la quincena YA CERRÓ pero todavía no se pagó (se paga el 17/08), el
+  // criterio viejo `hasta<=TODAY()` la habría dejado entrar: 84,19% → 84,78%.
+  const alCierre = shareEfectivoAnual(CANALES, new Date('2026-08-15T00:00:00')).share
+  assert.equal(alCierre, base, 'una quincena cerrada y NO pagada entró: el canal todavía no es un hecho')
+  const siEntrara = 1 - 18191908 / (115054273 + 4473400)
+  assert.notEqual(Number((siEntrara * 100).toFixed(2)), Number((base * 100).toFixed(2)))
+})
+
+test('ES UNA RAZÓN DE IMPORTES, NO UN PROMEDIO DE PORCENTAJES', () => {
+  // Cinco quincenas chicas 100% efectivo y una grande 100% banco. El promedio de porcentajes diría
+  // 83%; la razón de importes dice 5%, que es la plata que realmente hay que tener en billetes.
+  const chicas = Array.from({ length: 5 }, (_, i) => ({
+    hasta: new Date(2026, 0, 15 + i), pagado: new Date(2026, 0, 16 + i), banco: 0, total: 100000,
+  }))
+  const grande = { hasta: new Date(2026, 5, 30), pagado: new Date(2026, 6, 1), banco: 9500000, total: 9500000 }
+  const r = shareEfectivoAnual([...chicas, grande], HOY)
+  assert.equal(Number(r.share.toFixed(4)), 0.05, 'promedió porcentajes: una quincena chica pesa igual que una grande')
+  assert.notEqual(Number(r.share.toFixed(4)), Number((5 / 6).toFixed(4)), 'esto es AVERAGE de los share por quincena')
+})
+
+test('SIN HISTORIA SUFICIENTE NO SE PROYECTA — SE DECLARA', () => {
+  const pocas = CANALES.filter((f) => f.pagado).slice(0, MIN_QUINCENAS_SHARE - 1)
+  assert.equal(shareEfectivoAnual(pocas, HOY).share, null,
+    `con menos de ${MIN_QUINCENAS_SHARE} quincenas pagadas se inventó un porcentaje`)
+  assert.notEqual(shareEfectivoAnual(CANALES.filter((f) => f.pagado).slice(0, MIN_QUINCENAS_SHARE), HOY).share, null)
+  // El 02/01, con el registro del año nuevo vacío: cero quincenas, ningún número plausible.
+  assert.equal(shareEfectivoAnual(CANALES, new Date('2027-01-02T00:00:00')).share, null,
+    'el año nuevo arrancó proyectando con las quincenas del año pasado')
+})
+
+test('la fórmula del Sheet transcribe el MISMO criterio: año, pagadas y piso de quincenas', () => {
+  const f = formulaShareEfectivo({ banco: 'H', total: 'K', hasta: 'B', pagado: 'N' }, 113, 127)
   // Es 1 − banco/total, no (adelanto+recibo)/total: lo que el registro no prueba que salió por
   // transferencia se cuenta como efectivo. Con la otra forma, las quincenas donde los canales no
   // cierran dejan plata sin clasificar y los dos porcentajes no suman 100%.
-  assert.match(f, /^=IFERROR\(1-SUMPRODUCT\(/)
-  assert.match(f, /N\(\$H\$107:\$H\$120\)/, 'la fracción dejó de medirse contra la columna Banco')
-  assert.match(f, /EDATE\(TODAY\(\);-JORNALES_MESES_BASE\)/, 'la ventana tiene que ser el parámetro, no un número')
-  assert.match(f, /\$B\$107:\$B\$120<=TODAY\(\)/, 'entran quincenas que todavía no cerraron')
+  assert.match(f, /1-SUMPRODUCT\(/)
+  assert.match(f, /N\(\$H\$113:\$H\$127\)/, 'la fracción dejó de medirse contra la columna Banco')
+  assert.match(f, /\$B\$113:\$B\$127>=DATE\(YEAR\(TODAY\(\)\);1;1\)/, 'la ventana dejó de ser el año en curso')
+  assert.match(f, /N\(\$N\$113:\$N\$127\)>0/, 'entran quincenas sin fecha de pago: el canal todavía no es un hecho')
+  assert.doesNotMatch(f, /EDATE\(TODAY\(\);-JORNALES_MESES_BASE\)/,
+    'volvió la ventana de las HORAS: el canal de pago no es un ritmo de trabajo')
+  assert.match(f, new RegExp(`<${MIN_QUINCENAS_SHARE};""`), 'sin base suficiente la celda tiene que quedar VACÍA')
+  assert.doesNotMatch(f, /IFERROR/, 'un IFERROR devuelve un número plausible donde no hay base')
   assert.doesNotMatch(f, /0[.,]\d/, 'apareció un porcentaje escrito a mano: el canal de pago se mide, no se supone')
   assert.doesNotMatch(f, /,/, 'separador es-AR')
+})
+
+test('el rótulo declara el criterio en dos datos, sin una sola explicación', () => {
+  const g = formulaGlosaShareEfectivo({ total: 'K', hasta: 'B', pagado: 'N' }, 113, 127)
+  assert.match(g, /quincenas pagadas del año/)
+  assert.match(g, /⊘ sin base/, 'sin base suficiente el rótulo no dice por qué la columna está vacía')
+  // "Muchas palabras y frases y explicaciones que nadie lee" fue el rechazo del dueño a esta pestaña.
+  // El texto más largo que esta celda puede mostrar son 28 caracteres.
+  const textos = [...g.matchAll(/"([^"]*)"/g)].map((m) => m[1])
+  assert.ok(Math.max(...textos.map((t) => t.length)) <= 28, `rótulo largo: ${textos.join('|')}`)
+  assert.doesNotMatch(g.replace(/"[^"]*"/g, ''), /,/, 'separador es-AR')
 })
 
 test('el control del calendario grita con el importe cuando el reparto no cierra', () => {

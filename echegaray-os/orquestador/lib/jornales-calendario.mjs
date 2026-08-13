@@ -45,7 +45,6 @@
 // LO QUE ESTE MÓDULO NO DECIDE: de dónde sale cada importe. La proyección de obra la arma el motor
 // salarial, la de oficina y dirección sus propios bloques. Acá sólo vive la GRILLA del calendario.
 
-import { RANGO_MESES_BASE } from './motor-salarial.mjs'
 // UNA SOLA DEFINICIÓN DE "DÍA DE OBRA". `diasHabilesObra` ya existía —la usa el reparto de la demanda
 // de las obras vendidas— y dice lunes a sábado con su razonamiento escrito. Escribir acá una segunda
 // función idéntica es exactamente cómo aparecen dos calendarios que se separan seis meses después.
@@ -141,6 +140,17 @@ export function formulaVentana({ rangoImporte, rangoFecha, celdaDesde, celdaHast
 }
 
 /**
+ * QUÉ CUENTA COMO HISTORIA SUFICIENTE PARA PROYECTAR EL CANAL DE PAGO.
+ *
+ * Seis quincenas pagadas ≈ tres meses: exactamente la muestra que ANTES era toda la ventana. Bajar
+ * de ahí no es "un promedio del año con pocos datos", es el promedio de otra cosa — y el 02/01, con
+ * el registro del año nuevo vacío, es justamente cuando una división plausible haría más daño.
+ * Debajo del piso la pestaña no proyecta el efectivo y lo dice: mismo trato que `MIN_MESES` en
+ * Estructura y Recurrentes.
+ */
+export const MIN_QUINCENAS_SHARE = 6
+
+/**
  * NÚCLEO PURO: qué proporción de la quincena de obra sale en EFECTIVO, medida sobre el registro.
  *
  * ═══ POR QUÉ SE MIDE Y NO SE SUPONE ═══
@@ -158,23 +168,105 @@ export function formulaVentana({ rangoImporte, rangoFecha, celdaDesde, celdaHast
  * tres canales no cierran contra el TOTAL (hoy faltan $1.259.700 sin canal declarado): tomar
  * `(adelanto+recibo)/total` haría que banco% + efectivo% < 100% y la pestaña dejaría plata sin
  * clasificar. Para planificar billetes el lado seguro es el otro: lo que el registro NO prueba que
- * salió por transferencia se cuenta como efectivo. Queda dicho en la prosa del cuadro.
+ * salió por transferencia se cuenta como efectivo.
  *
- * LA VENTANA ES LA MISMA QUE LA DE LAS HORAS. `JORNALES_MESES_BASE`, el parámetro que el dueño puede
- * mover: "reciente" se define una sola vez en la pestaña, no una por cuadro.
+ * ═══ LA VENTANA ES EL AÑO, Y SÓLO LAS QUINCENAS PAGADAS (13/08) ═══
  *
- * @param {{banco:string, total:string, hasta:string}} col letras del registro
+ * El dueño: *"el adelanto es algo q no se puede proyectar asi como está, se tiene q hacer un calculo
+ * promedio del año y con ese % armarlo proyectado"*. Tenía razón por dos motivos distintos:
+ *
+ * 1. **Tres meses no son el año.** La ventana era `EDATE(TODAY();-JORNALES_MESES_BASE)` = las últimas
+ *    seis quincenas, prestada del cuadro de HORAS. Para las horas eso está bien —el ritmo de trabajo
+ *    de enero no dice nada del de agosto— pero el CANAL DE PAGO no es un ritmo: es una política de
+ *    tesorería que se decide quincena a quincena según haya o no saldo en el banco. Medido sobre el
+ *    registro vivo: 76,19% en la ventana de 3 meses contra 84,19% en el año. Ocho puntos, $8,7M sobre
+ *    la proyección a diciembre, que se movían solos según qué seis quincenas cayeran adentro.
+ *
+ * 2. **Una quincena a medio pagar arrastraba el porcentaje.** El filtro era `hasta<=TODAY()`, o sea
+ *    "la quincena ya terminó de trabajarse". Pero entre que termina y que se paga pasan dos o tres
+ *    días, y en esos días la fila tiene TOTAL cargado y BANCO en cero: entra a la cuenta como si
+ *    hubiera salido 100% en billetes. Con el registro de hoy eso mueve el share de 84,19% a 84,78%
+ *    según el día en que se mire la pestaña — sin un solo error y sin que nadie toque nada.
+ *
+ *    Por eso la condición es `Pagado el` con fecha, no `hasta<=TODAY()`: el canal de pago recién es
+ *    un HECHO cuando la plata salió. Es la misma columna con la que el registro pasa una quincena a
+ *    REAL y con la que CAJA descarga la obligación.
+ *
+ * ES UNA RAZÓN DE IMPORTES, NO UN PROMEDIO DE PORCENTAJES. `Σefectivo/Σtotal`, no `AVERAGE(share)`:
+ * promediar porcentajes le da el mismo peso a una quincena de $4,8M que a una de $10,1M, y en este
+ * registro las chicas son las de enero —las que salieron casi enteras en billetes—. El sesgo sería
+ * de más de dos puntos hacia arriba.
+ *
+ * @param {{banco:string, total:string, hasta:string, pagado:string}} col letras del registro
  * @param {number} f0 primera fila del registro
  * @param {number} f1 última fila del registro
- * @returns {string} la fórmula de la fracción que sale en efectivo (0..1)
+ * @returns {string} la fórmula de la fracción que sale en efectivo (0..1), vacía sin base suficiente
  */
-export function formulaShareEfectivo({ banco, total, hasta }, f0, f1) {
+export function formulaShareEfectivo({ banco, total, hasta, pagado }, f0, f1) {
+  const v = ventanaAnualPagada({ total, hasta, pagado }, f0, f1)
+  const rg = `$${banco}$${f0}:$${banco}$${f1}`
+  // SIN IFERROR A PROPÓSITO. El anterior devolvía 1 = "todo en efectivo" ante un 0/0, que es un
+  // número plausible fabricado por una guarda. Acá, o hay ≥ MIN quincenas pagadas —y entonces
+  // ΣTOTAL>0 por construcción, porque `total>0` es una de las condiciones— o no se proyecta nada.
+  return `=IF(SUMPRODUCT(${v})<${MIN_QUINCENAS_SHARE};"";`
+    + `1-SUMPRODUCT(${v}*N(${rg}))/SUMPRODUCT(${v}*N($${total}$${f0}:$${total}$${f1})))`
+}
+
+/**
+ * NÚCLEO PURO: el rótulo que declara sobre qué se midió el share — o por qué no se pudo.
+ *
+ * DOS DATOS Y NINGUNA EXPLICACIÓN. El dueño rechazó esta pestaña por "muchas palabras y frases y
+ * explicaciones que nadie lee". Lo único que la celda de al lado no dice es CUÁNTAS quincenas
+ * entraron y de qué período: eso cabe en cuatro palabras y un número.
+ */
+export function formulaGlosaShareEfectivo({ total, hasta, pagado }, f0, f1) {
+  const n = `SUMPRODUCT(${ventanaAnualPagada({ total, hasta, pagado }, f0, f1)})`
+  return `=IF(${n}<${MIN_QUINCENAS_SHARE};"⊘ sin base — "&${n}&" de ${MIN_QUINCENAS_SHARE} quincenas";`
+    + `${n}&" quincenas pagadas del año")`
+}
+
+/**
+ * La condición "quincena PAGADA del año en curso, con plata", como producto de factores 0/1.
+ *
+ * Se arma una sola vez y se repite dentro de la fórmula en vez de nombrarla con LET: un rango dentro
+ * de un LET pierde la expansión y devuelve #NAME? o un escalar — ya pasó en este libro.
+ *
+ * QUÉ ES "EL AÑO": el año calendario en curso, `DATE(YEAR(TODAY());1;1)`, y no doce meses móviles.
+ * El registro de esta pestaña ES el del año (su total se llama "Total pagado en el año"): una
+ * ventana móvil de doce meses prometería una historia que el rango no contiene, y en enero daría
+ * exactamente el mismo resultado que el año calendario con un criterio más difícil de auditar.
+ */
+function ventanaAnualPagada({ total, hasta, pagado }, f0, f1) {
   const rg = (c) => `$${c}$${f0}:$${c}$${f1}`
-  const ventana = `(${rg(hasta)}<=TODAY())*(${rg(hasta)}>=EDATE(TODAY();-${RANGO_MESES_BASE}))*(N(${rg(total)})>0)`
-  // Sin una sola quincena cerrada en la ventana el cociente es 0/0: el IFERROR devuelve 1 = "todo en
-  // efectivo". Es el default conservador y NO es silencioso — la misma ventana vacía ya hace gritar a
-  // la celda de horas por persona, tres filas más arriba.
-  return `=IFERROR(1-SUMPRODUCT(${ventana}*N(${rg(banco)}))/SUMPRODUCT(${ventana}*N(${rg(total)}));1)`
+  return `(${rg(hasta)}>=DATE(YEAR(TODAY());1;1))*(${rg(hasta)}<=TODAY())`
+    + `*(N(${rg(pagado)})>0)*(N(${rg(total)})>0)`
+}
+
+/**
+ * EL MISMO CRITERIO, EN JAVASCRIPT: lo que la fórmula de arriba escribe en el Sheet, calculable.
+ *
+ * No es un duplicado decorativo. La fórmula es un string: un test sobre ella prueba que dice lo que
+ * quisimos escribir, nunca que el número sale bien. Esta función se corre contra las quincenas
+ * reales del registro y es lo que permite afirmar "84,19%" con evidencia, no con una lectura de la
+ * pestaña que se calculó sola. Si las dos se separan, el defecto es de la transcripción.
+ *
+ * @param {Array<{hasta:Date, pagado:Date|null, banco:number, total:number}>} filas
+ * @param {Date} hoy
+ * @returns {{quincenas:number, banco:number, total:number, share:number|null}} share null = sin base
+ */
+export function shareEfectivoAnual(filas, hoy = new Date()) {
+  const enero = new Date(hoy.getFullYear(), 0, 1)
+  const base = (filas ?? []).filter((f) => f.hasta >= enero && f.hasta <= hoy
+    // LA CONDICIÓN QUE HACE ESTABLE AL PORCENTAJE: sin fecha de pago el canal todavía no es un hecho.
+    && f.pagado instanceof Date && Number(f.total) > 0)
+  const banco = base.reduce((a, f) => a + Number(f.banco || 0), 0)
+  const total = base.reduce((a, f) => a + Number(f.total || 0), 0)
+  return {
+    quincenas: base.length,
+    banco,
+    total,
+    share: base.length < MIN_QUINCENAS_SHARE ? null : 1 - banco / total,
+  }
 }
 
 /**
