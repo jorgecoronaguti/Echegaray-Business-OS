@@ -53,7 +53,7 @@
 // fórmula sin un solo error a la vista. La letra se DERIVA del mismo mapa por rótulo.
 
 import { letra, resolverColumnas } from './compras-columnas.mjs'
-import { columnasDeCompras, estaPagada } from './libro-extractores-compras.mjs'
+import { columnasDeCompras, estaPagada, NOMBRES_COMPRAS } from './libro-extractores-compras.mjs'
 
 /** La pestaña de la que sale el estado vivo. Es la única fuente con un estado editable a mano. */
 export const PESTANA_COMPRAS = 'Compras'
@@ -127,24 +127,74 @@ export function columnasVivasDeCompras(filas = []) {
 export const ROTULO_FECHA_COMPRAS = 'Fecha factura'
 
 /**
- * NÚCLEO PURO: las letras que el NETEO de obras futuras necesita de Compras — proveedor, cliente,
- * fecha del comprobante y total — resueltas por rótulo, igual que `columnasVivasDeCompras`.
+ * LOS CINCO RÓTULOS QUE EL NETEO NECESITA DE COMPRAS, y ninguno más.
  *
- * La fecha del comprobante no está en `NOMBRES_COMPRAS` porque ningún extractor la lee en JS:
- * agregarla ahí la volvería OBLIGATORIA para todos los lectores de Compras por una fórmula que sólo
- * el neteo emite. Se resuelve aparte, y con cualquiera sin resolver devuelve null — pero el llamador
- * ABORTA con ese null, no publica importes pegados (ver libro-movimientos-pestana.mjs).
+ * Los cuatro que ya viven en `NOMBRES_COMPRAS` se importan de ahí —una sola definición: el día que la
+ * planilla renombre "Monto Pagado" se renombra en un lugar y los dos lectores se enteran—. La fecha
+ * del comprobante se declara acá porque ningún extractor la lee en JS: meterla en `NOMBRES_COMPRAS` la
+ * volvería obligatoria para TODOS los lectores de Compras por una fórmula que sólo el neteo emite.
  */
-export function columnasNeteoDeCompras(filas = []) {
-  try {
-    const c = columnasDeCompras(filas)
-    const { idx, faltan } = resolverColumnas(filas[2] ?? [], { fecha: ROTULO_FECHA_COMPRAS })
-    if (faltan.length) return null
-    return {
-      proveedor: letra(c.proveedor), cliente: letra(c.cliente), fecha: letra(idx.fecha),
-      total: letra(c.importe), pagado: letra(c.montoPagado),
-    }
-  } catch { return null }
+export const ROTULOS_NETEO = Object.freeze({
+  proveedor: NOMBRES_COMPRAS.proveedor,
+  cliente: NOMBRES_COMPRAS.cliente,
+  fecha: ROTULO_FECHA_COMPRAS,
+  total: NOMBRES_COMPRAS.importe,
+  pagado: NOMBRES_COMPRAS.montoPagado,
+})
+
+/**
+ * NÚCLEO PURO: las letras del neteo Y LOS RÓTULOS QUE NO APARECIERON, juntos.
+ *
+ * ═══ POR QUÉ DEVUELVE `faltan` Y NO SÓLO `null` (13/08/2026) ═══
+ *
+ * El llamador aborta la corrida entera cuando no resuelve, y un aborto que dice *"no pude resolver las
+ * columnas"* obliga a abrir la planilla y comparar cinco rótulos a ojo. Con el nombre exacto adentro
+ * del mensaje —"Fecha factura"— el arreglo es de un minuto: se mira ESA celda del encabezado. El
+ * diagnóstico sale del MISMO cómputo que la resolución, no de una lista paralela que se desincroniza.
+ *
+ * Se resuelven los cinco rótulos derecho, sin pasar por `columnasDeCompras`: esa exige el mapa
+ * COMPLETO de Compras y hacía que un "CUIT (OS)" ausente —que el neteo no usa— apagara el neteo y
+ * ahora abortaría el libro por una columna que no le importa.
+ *
+ * @param {Array<Array>} filas Compras entera (el encabezado real vive en la fila 3)
+ * @returns {{cols:{proveedor:string,cliente:string,fecha:string,total:string,pagado:string}|null, faltan:string[]}}
+ */
+export function neteoDeCompras(filas = []) {
+  const { col, faltan } = resolverColumnas(filas?.[2] ?? [], ROTULOS_NETEO)
+  return { cols: faltan.length ? null : col, faltan }
+}
+
+/**
+ * NÚCLEO PURO: las letras que el NETEO de obras futuras necesita de Compras — proveedor, cliente,
+ * fecha del comprobante, total y monto pagado — resueltas por rótulo. `null` si falta alguna.
+ *
+ * Es la forma corta para quien sólo quiere las letras (`deObras` las recibe por parámetro y falla
+ * cerrado con null). Quien vaya a PUBLICAR usa `exigirColumnasNeteo`, que aborta con el nombre.
+ */
+export const columnasNeteoDeCompras = (filas = []) => neteoDeCompras(filas).cols
+
+/**
+ * LAS LETRAS DEL NETEO O UN ABORTO CON NOMBRE Y APELLIDO.
+ *
+ * ═══ DEGRADAR A UN DATO MUERTO ES PEOR QUE FALLAR (13/08/2026) ═══
+ *
+ * Acá abajo hubo un `console.warn` y la corrida seguía con los importes de obra PEGADOS. Eso no es
+ * fallar cerrado: un egreso de obra pegado se cuenta DOS VECES desde el instante en que su factura
+ * entra a Compras —la fila real entra al libro por su propia puerta y la proyección sigue entera— y el
+ * aviso se pierde entre setenta líneas de log. El libro es la fuente de los tres cuadros con los que
+ * se decide: publicar uno con doble conteo conocido es peor que no publicarlo.
+ *
+ * El mensaje NOMBRA el rótulo que no encontró, que es exactamente lo que hace falta para arreglarlo.
+ *
+ * @param {Array<Array>} filas Compras entera
+ * @returns {{proveedor:string,cliente:string,fecha:string,total:string,pagado:string}}
+ */
+export function exigirColumnasNeteo(filas = []) {
+  const { cols, faltan } = neteoDeCompras(filas)
+  if (cols) return cols
+  throw new Error('obras futuras: no encontré en el encabezado de Compras (fila 3) '
+    + `${faltan.map((n) => `"${n}"`).join(' · ')}. Sin el neteo vivo los egresos proyectados se cuentan `
+    + 'dos veces cuando la factura real entra: no escribo el libro.')
 }
 
 /**

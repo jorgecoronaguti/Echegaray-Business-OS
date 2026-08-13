@@ -17,9 +17,11 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   celdaEstado, celdaImporte, columnaEstadoDeCompras, columnasVivasDeCompras, columnasNeteoDeCompras,
-  estadosDecorados, ESTADOS_VIVOS, MARCA_PAGADO,
+  exigirColumnasNeteo, estadosDecorados, ESTADOS_VIVOS, MARCA_PAGADO, ROTULO_FECHA_COMPRAS,
 } from './libro-estado-vivo.mjs'
 import { estaPagada, NOMBRES_COMPRAS } from './libro-extractores-compras.mjs'
+import { deObras } from './libro-extractores-obras.mjs'
+import { serialDe } from './libro-extractores-fechas.mjs'
 import { terminoLibro, LIBRO } from './libro-sumas.mjs'
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url))
@@ -261,12 +263,51 @@ test('el neteo NO se cuelga de "Fecha de caja": lo que descuenta es que la factu
   assert.equal(columnasNeteoDeCompras([[], [], ['nada']]), null, 'encabezado irreconocible → falla cerrado')
 })
 
-test('SIN NETEO, EL LIBRO NO SE PUBLICA: el script aborta en vez de pegar importes', () => {
+test('CON EL ENCABEZADO REAL, EL EGRESO DE OBRA SALE COMO FÓRMULA VIVA — no como número pegado', () => {
+  // LA CADENA ENTERA, DE PUNTA A PUNTA: encabezado real → letras por rótulo → movimiento del libro.
+  // Los dos tests de arriba miran las letras; éste mira lo que se ESCRIBE en la celda, que es el
+  // defecto de verdad. Si el rótulo del neteo vuelve a no resolver, `cols` es null, `importeVivo` no
+  // existe y el escritor pega `m.importe`: el egreso se cuenta dos veces el día que entra la factura.
+  const cols = columnasNeteoDeCompras([[], [], CAB_COMPRAS_REAL])
+  const { movimientos } = deObras([{
+    clave: 'EMICAR-NAVE', cliente: 'EMICAR', obra: 'Nave EMICAR', inicio: '2026-09-01', fin: '2026-12-15',
+    egresos: [{ concepto: 'Estructura metálica', proveedor: 'Aceros Cuyo', monto: 2_500_000, fechaEstimada: '2026-09-10' }],
+  }], cols, serialDe(2026, 8, 13))
+  assert.equal(movimientos.length, 1)
+  const f = movimientos[0].importeVivo
+  assert.ok(typeof f === 'string' && f.startsWith('='), `el importe salió PEGADO (${JSON.stringify(f)})`)
+  // Netea contra el TOTAL (O) filtrando por proveedor (E), cliente (J) y fecha del comprobante (C).
+  assert.ok(f.includes('N(Compras!$O$4:$O)'), `no netea contra el Total de Compras: ${f}`)
+  assert.ok(f.includes('Compras!$C$4:$C'), `no filtra por "${ROTULO_FECHA_COMPRAS}": ${f}`)
+})
+
+test('SIN NETEO, EL LIBRO NO SE PUBLICA: el aborto NOMBRA la columna que no encontró', () => {
+  // Degradar a un número pegado en silencio es peor que caerse: el pegado se lee como bueno. Y un
+  // aborto que dice "no pude resolver las columnas" obliga a comparar cinco rótulos a ojo contra la
+  // planilla; con el nombre adentro, el arreglo es mirar ESA celda.
+  const sinFactura = CAB_COMPRAS_REAL.map((n) => (n === 'Fecha factura' ? 'x' : n))
+  assert.throws(() => exigirColumnasNeteo([[], [], sinFactura]), (e) => {
+    assert.match(e.message, /"Fecha factura"/, 'el mensaje no nombra la columna que faltó')
+    assert.doesNotMatch(e.message, /"Total"/, 'nombra columnas que SÍ estaban: el que lo lea busca donde no es')
+    return true
+  })
+  // Con dos faltantes, los nombra a los dos: media lista manda a una segunda corrida fallida.
+  const pelado = CAB_COMPRAS_REAL.map((n) => (n === 'Fecha factura' || n === 'Monto Pagado' ? 'x' : n))
+  assert.throws(() => exigirColumnasNeteo([[], [], pelado]), /"Fecha factura".*"Monto Pagado"/s)
+  // Y con el encabezado real devuelve las letras sin chistar.
+  assert.deepEqual(exigirColumnasNeteo([[], [], CAB_COMPRAS_REAL]),
+    { proveedor: 'E', cliente: 'J', fecha: 'C', total: 'O', pagado: 'T' })
+})
+
+test('EL SCRIPT EXIGE EL NETEO: no queda ningún camino que degrade a importes pegados', () => {
   const fuente = fs.readFileSync(path.join(AQUI, '../scripts/libro-movimientos-pestana.mjs'), 'utf8')
-  const bloque = /OBRAS_FUTURAS\.length && !colsNeteo\) \{\s*(throw new Error|console\.warn)/.exec(fuente)
-  assert.ok(bloque, 'no encontré la guarda del neteo en libro-movimientos-pestana.mjs')
-  assert.equal(bloque[1], 'throw new Error',
-    'volvió a ser un console.warn: la corrida publicaría egresos de obra PEGADOS, que se cuentan dos veces')
+  assert.match(fuente, /OBRAS_FUTURAS\.length \? exigirColumnasNeteo\(compras\)/,
+    'la guarda del neteo dejó de exigir las columnas: revisá libro-movimientos-pestana.mjs')
+  // El degradado silencioso vuelve como un aviso —`console.warn`/`console.log`— que anuncia importes
+  // pegados o columnas sin resolver y una corrida que sigue igual. Ése es el patrón prohibido.
+  const blando = fuente.split('\n').filter((l) => /console\.(warn|log)/.test(l)
+    && /pegad|no pude resolver|columnas de Compras/i.test(l))
+  assert.deepEqual(blando, [], 'volvió el aviso blando: la corrida publicaría egresos de obra PEGADOS')
 })
 
 test('EL ESCRITOR USA LA CELDA VIVA DEL IMPORTE, no `m.importe` pegado', () => {

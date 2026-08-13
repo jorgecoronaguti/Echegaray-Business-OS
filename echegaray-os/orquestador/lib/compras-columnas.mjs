@@ -15,6 +15,26 @@
 export const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
 
 /**
+ * NÚCLEO PURO: el rótulo listo para comparar.
+ *
+ * ═══ LOS ESPACIOS DE MÁS NO SON PARTE DEL NOMBRE (13/08/2026) ═══
+ *
+ * `scripts/obras-pestana.mjs` ya aprendió esto y lo tenía en su propio resolvedor: el encabezado real
+ * de una pestaña dice "ORDEN DE  COMPRA" —con DOS espacios— y un criterio escrito con uno solo no
+ * matcheaba, así que la columna quedaba sin resolver. Acá faltaba, y este archivo es el resolvedor que
+ * usa TODO el repo: la lección vive ahora en un solo lugar. Se normaliza cualquier corrida de espacios
+ * (incluido el NBSP que deja un copiar/pegar desde el navegador) a uno solo, de los dos lados.
+ *
+ * LOS ACENTOS SIGUEN SIENDO SIGNIFICATIVOS, y es una decisión, no un olvido: ningún encabezado real de
+ * este archivo se distingue de otro sólo por un espacio, pero sí hay rótulos parecidos entre sí
+ * ("Fecha factura" · "Fecha factura (mes)" · "Fecha de caja"), y cada relajación de la comparación
+ * acerca un match plausible y equivocado. Un rótulo que no matchea hoy ABORTA la corrida con su nombre
+ * adentro del mensaje —es ruidoso y se arregla en un minuto—; un match equivocado netea contra la
+ * columna de al lado y no dice nada nunca.
+ */
+export const normalizarRotulo = (s) => String(s ?? '').replace(/[\s\u00a0]+/g, ' ').trim().toLowerCase()
+
+/**
  * NÚCLEO PURO: resuelve nombres de encabezado a índices y letras.
  *
  * @param {any[]} encabezado  la fila de encabezados tal como se leyó (Compras!A3:BZ3)
@@ -24,10 +44,9 @@ export const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor
  *          nombres que no aparecieron — que es lo que hay que gritar, no completar con un default.
  */
 export function resolverColumnas(encabezado = [], nombres = {}) {
-  const norm = (s) => String(s ?? '').trim().toLowerCase()
   const col = {}; const idx = {}; const faltan = []
   for (const [clave, nombre] of Object.entries(nombres)) {
-    const i = encabezado.findIndex((c) => norm(c) === norm(nombre))
+    const i = encabezado.findIndex((c) => normalizarRotulo(c) === normalizarRotulo(nombre))
     if (i < 0) { faltan.push(nombre); continue }
     idx[clave] = i
     col[clave] = letra(i)
