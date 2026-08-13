@@ -4,6 +4,7 @@ import {
   FACTOR_BADLAR, BADLAR_REFERENCIA, tnaFondefin, DEMORA_TRAMITE_DIAS, llegaATiempo,
   GASTOS_OTORGAMIENTO, CONDICION_FONDEFIN, NO_SON_COLUMNAS, filaParaLaTabla,
   VALIDEZ_FOTO_DIAS, vigenciaHastaDeLaFoto, estadoDeLaFoto,
+  IVA_SOBRE_INTERESES, ORIGEN_DEL_IVA,
 } from './linea-fondefin.mjs'
 import { SERIE_BADLAR, ultimaObservacion, rangoDeLaSerie } from './badlar-bcra.mjs'
 import { costoEfectivo, paramsParaMotor } from './condiciones-financieras.mjs'
@@ -64,12 +65,36 @@ test('la demora del trámite decide si la línea sirve para ESTA compra o para l
   assert.equal(llegaATiempo(undefined).llega, null)
 })
 
-test('lo que no se sabe entra en NULL: CFT, TEA e IVA sobre intereses', () => {
+test('lo que sigue sin saberse entra en NULL: CFT y TEA', () => {
   assert.equal(CONDICION_FONDEFIN.cft, null)
   assert.equal(CONDICION_FONDEFIN.tea, null)
-  assert.equal(CONDICION_FONDEFIN.iva_sobre_intereses, null)
   assert.ok(CONDICION_FONDEFIN.desconocido.some((d) => /CFT/.test(d)))
-  assert.ok(CONDICION_FONDEFIN.desconocido.some((d) => /IVA/.test(d)))
+})
+
+// ═══ EL DATO CONTESTADO DEJA DE SER PREGUNTA (13/08/2026) ═══
+// El defecto: el dueño contestó "iva 21" y la ficha seguía publicando `iva_sobre_intereses: null`,
+// preguntándolo en `preguntar` y declarándolo en `desconocido`. Dos consecuencias, no una: el costo
+// salía 2,87 puntos barato, y el que miraba la fila creía que había una pregunta abierta que ya
+// estaba cerrada. Revertir el valor a null pone rojo este test y el del piso.
+test('el IVA sobre intereses es 21% y la fuente es EL DUEÑO, no el reglamento', () => {
+  assert.equal(IVA_SOBRE_INTERESES, 0.21)
+  assert.equal(CONDICION_FONDEFIN.iva_sobre_intereses, IVA_SOBRE_INTERESES)
+  // El origen viaja con el número: un 21 sin padre en una tabla de decisión no se puede auditar.
+  assert.equal(ORIGEN_DEL_IVA.fecha, '2026-08-13')
+  assert.equal(ORIGEN_DEL_IVA.textual, 'iva 21')
+  assert.match(ORIGEN_DEL_IVA.origen, /dueño/)
+  // Y NO se declara verificado contra la norma: nadie miró ARCA en la sesión que lo cargó.
+  assert.equal(ORIGEN_DEL_IVA.verificado_contra_la_norma, false)
+})
+
+test('la alícuota ya no figura como pregunta abierta — pero la PERCEPCIÓN sí, y son cosas distintas', () => {
+  const todo = [...CONDICION_FONDEFIN.desconocido, ...CONDICION_FONDEFIN.preguntar].join(' ── ')
+  // Nadie vuelve a preguntar "¿21% o 10,5%?": está contestado.
+  assert.equal(/10,5/.test(todo), false, `la alícuota sigue preguntándose: ${todo}`)
+  assert.equal(/¿Los intereses llevan IVA\?/.test(todo), false)
+  assert.equal(CONDICION_FONDEFIN.preguntar.length, 7) // era 8: se fue la del IVA
+  // Lo que NO se sabe y no se inventa en ninguna dirección: si además hay percepción de IVA.
+  assert.equal(CONDICION_FONDEFIN.desconocido.filter((d) => /PERCEPCIÓN/.test(d)).length, 1)
 })
 
 test('el 2% de otorgamiento NO va en comisiones: esa columna es un monto en pesos', () => {
@@ -130,27 +155,36 @@ test('vigencia anclada al reglamento: re-correr la semilla ACTUALIZA, no duplica
 // Decía `assert.deepEqual(c.falta, [])` y `assert.equal(c.iva, 0)` sobre una línea SIN IVA conocido,
 // SIN CFT, sin el 2% de otorgamiento, sin sellos, seguro ni tasación. Era un control validándose
 // contra la misma información que producía. Ahora exige lo contrario.
-test('el costo de FONDEFIN es un PISO y lo declara: falta el IVA y falta el CFT', () => {
+//
+// 13/08/2026: el IVA salió de `falta` porque el dueño lo contestó. EL PISO NO SE CONVIRTIÓ EN TOTAL —
+// el campo que afirma un total es el CFT y sigue sin publicarse. El dato nuevo achica el hueco, no lo
+// cierra, y este test es el que impide que alguien lo dé por cerrado.
+test('con el IVA cargado el costo SIGUE SIENDO UN PISO: lo que falta ahora es el CFT', () => {
   const c = costoEfectivo(CONDICION_FONDEFIN, { monto: 30_000_000, dias: 365 })
   assert.equal(c.completitud, 'piso')
   assert.equal(c.es_piso, true)
-  assert.ok(c.falta.includes('iva_sobre_intereses'), `falta debería incluir el IVA: ${c.falta}`)
-  assert.ok(c.falta.includes('cft'), `falta debería incluir el CFT: ${c.falta}`)
-  assert.equal(c.falta.includes('tna'), false, 'la TNA sí se conoce')
-  // El IVA DESCONOCIDO no es cero: es null. Un 0 acá afirmaba una exención que nadie declaró.
-  assert.equal(c.iva, null)
-  assert.equal(c.intereses, Math.round(30_000_000 * (CONDICION_FONDEFIN.tna / 365) * 365))
-  // El piso sigue siendo un número usable, pero el que lo consume sabe qué le falta y dónde buscarlo.
-  assert.equal(c.costo_total, c.intereses)
+  assert.deepEqual(c.falta, ['cft'], `lo único que falta debería ser el CFT: ${c.falta}`)
+  // El IVA ya no es un hueco: es 21% sobre los intereses, y entra a la suma.
+  assert.equal(c.intereses, 4_106_250)
+  assert.equal(c.iva, 862_313) // 4.106.250 × 21%
+  assert.equal(c.costo_total, 4_968_563)
+  // 13,6875% → 16,5619%: 2,87 puntos que antes no se cobraban en ninguna comparación.
+  assert.equal(Number((c.costo_efectivo_anual * 100).toFixed(4)), 16.5619)
+  assert.ok(c.costo_total > c.intereses, 'el IVA tiene que sumar: si vuelve a null, esto se cae')
   assert.match(c.para_conseguirlo, /gastos de otorgamiento/)
 })
 
-test('los 9 huecos y las 8 preguntas VIAJAN a la base: no se borran en el camino', () => {
+test('los 9 huecos y las 7 preguntas VIAJAN a la base: no se borran en el camino', () => {
   // Antes se descartaban con `clave` y morían en el repositorio. Varios deciden la operación:
   // aporte propio, si el crédito cubre el IVA del rodado, el sellado, si aceptan aval de SGR.
   const fila = filaParaLaTabla()
   assert.match(fila.observaciones, /LO QUE LA FUENTE NO PUBLICA \(9\)/)
-  assert.match(fila.observaciones, /PREGUNTAS AL FIDUCIARIO \(8\)/)
+  assert.match(fila.observaciones, /PREGUNTAS AL FIDUCIARIO \(7\)/)
+  // Y el ORIGEN del 21% viaja con la fila, no se queda en un comentario del código: quien mire la
+  // condición en Postgres o en la Web tiene que ver de dónde salió antes de decidir con ella.
+  assert.match(fila.observaciones, /FUENTE ES EL DUEÑO/)
+  assert.match(fila.observaciones, /"iva 21" el 13\/08\/2026/)
+  assert.match(fila.observaciones, /NO está verificada contra la norma vigente/)
   for (const d of CONDICION_FONDEFIN.desconocido) assert.ok(fila.observaciones.includes(d), `se perdió: ${d}`)
   for (const p of CONDICION_FONDEFIN.preguntar) assert.ok(fila.observaciones.includes(p), `se perdió: ${p}`)
   assert.ok(fila.observaciones.includes('aporte propio'))
