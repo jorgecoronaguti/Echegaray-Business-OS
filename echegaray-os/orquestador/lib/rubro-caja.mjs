@@ -50,7 +50,13 @@ export const COL_FECHA_CAJA = 'AD' // 0-based 29 — la escribe rubro-caja-sheet
 export const colIndex = (letras) => [...String(letras).toUpperCase()].reduce((n, c) => n * 26 + (c.charCodeAt(0) - 64), 0) - 1
 
 // Los proveedores que facturan TODOS los meses el mismo servicio. Sale de la pestaña Recurrentes.
-const RECURRENTES = ['robles jose maria', 'movistar', 'meglioli facundo fabian', 'sanitarios od s.a.s.', 'ruviño matias esteban', 'rsv']
+export const RECURRENTES = ['robles jose maria', 'movistar', 'meglioli facundo fabian', 'sanitarios od s.a.s.', 'ruviño matias esteban', 'rsv', 'mass consultora']
+// Los que son recurrentes AUNQUE la fila diga una unidad de obra. La exclusión por unidad existe
+// para servicios que una obra consume y se terminan con ella (baños químicos); estos dos no son
+// eso: el GPS de RSV es de la flota (un mes vino tipeado "Civil" y julio desapareció del cuadro), y
+// MASS CONSULTORA la declaró el dueño (07/08/2026: "agregar a mass consultora que se pagó acá") —
+// factura todos los meses aunque el servicio se preste en obras.
+export const RECURRENTES_SIEMPRE = ['rsv', 'mass consultora']
 // Los clientes/obras que identifican una obra real: "Sueldos" contra uno de estos son JORNALES.
 const OBRAS = ['obras', 'san francisco', 'la estrella', 'messinas', 'arcor', 'javier sanchez', 'imotor']
 const GREMIALES = ['sindicatos', 'uocra', 'fcl', 'ieric', 'fodeco']
@@ -165,9 +171,14 @@ export const REGLAS = [
     // termina cuando termina la obra, y proyectarlo como recurrente inventa caja que no se va a usar.
     // Un servicio recurrente lo es cuando lo paga la estructura, no cuando lo consume una obra.
     rubro: 'Servicios recurrentes', detalle: 'Recurrentes', paga: 'compras',
-    js: (r) => RECURRENTES.includes(norm(r.proveedor)) && !['civil', 'mantenimiento'].includes(norm(r.unidad)),
-    sheet: `(REGEXMATCH(LOWER($E$4:$E&"");"^(${RECURRENTES.join('|').replace(/\./g, '\\.')})$")*(LOWER($I$4:$I)<>"civil")*(LOWER($I$4:$I)<>"mantenimiento")>0)`,
-    sql: `(${UNO_DE('proveedor', RECURRENTES.map((r) => r.replace(/\./g, '\\.')))} and ${L(P.unidad)} not in ('civil', 'mantenimiento'))`,
+    // La exclusión por unidad NO aplica a los SIEMPRE: la fórmula es (proveedor en la lista) Y
+    // (unidad no es de obra O el proveedor es recurrente declarado por el dueño).
+    js: (r) => RECURRENTES.includes(norm(r.proveedor))
+      && (!['civil', 'mantenimiento'].includes(norm(r.unidad)) || RECURRENTES_SIEMPRE.includes(norm(r.proveedor))),
+    sheet: `(REGEXMATCH(LOWER($E$4:$E&"");"^(${RECURRENTES.join('|').replace(/\./g, '\\.')})$")`
+      + `*(((LOWER($I$4:$I)<>"civil")*(LOWER($I$4:$I)<>"mantenimiento"))`
+      + `+REGEXMATCH(LOWER($E$4:$E&"");"^(${RECURRENTES_SIEMPRE.join('|')})$")>0)>0)`,
+    sql: `(${UNO_DE('proveedor', RECURRENTES.map((r) => r.replace(/\./g, '\\.')))} and (${L(P.unidad)} not in ('civil', 'mantenimiento') or ${UNO_DE('proveedor', RECURRENTES_SIEMPRE)}))`,
   },
   {
     rubro: 'Materiales Civil', detalle: NOMBRES.proveedoresMateriales, paga: 'compras',
