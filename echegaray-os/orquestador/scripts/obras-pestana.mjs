@@ -44,7 +44,7 @@ import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-edicion
 import { requestsTextoPorContenido } from '../lib/formato-texto-por-contenido.mjs'
 import {
   grillaObras, anchoColumnaA, celdasEnError, columnasDesparejas, problemaDeSintaxis, clientesDeCobranzas,
-  conColaLimpiable, ANCHO_HISTORICO,
+  conColaLimpiable, ANCHO_HISTORICO, ALTO_HISTORICO,
   ANCHO_OBRAS, ANCHOS_OBRAS, PESTANA_OBRAS, REFS_OBRAS,
 } from '../lib/obras-grilla.mjs'
 import { OBRAS_FUTURAS, totalEgresos } from '../lib/obras-datos.mjs'
@@ -251,7 +251,7 @@ async function main() {
     hoja = hallarPestana(await google.getSheetMeta(ID), PESTANA_OBRAS)
     console.log(`  ✚ creé la pestaña ${PESTANA_OBRAS}`)
   }
-  const alto = Math.max(g.filas.length + 20, hoja.rows ?? 0)
+  const alto = Math.max(ALTO_HISTORICO + 20, hoja.rows ?? 0)
   if ((hoja.rows ?? 0) < alto) {
     await google.spreadsheetBatchUpdate(ID, [{
       updateSheetProperties: { properties: { sheetId: hoja.sheetId, gridProperties: { rowCount: alto } }, fields: 'gridProperties.rowCount' },
@@ -269,9 +269,11 @@ async function main() {
   const { grid, respetadas, ediciones, candidatos } = await conEdicionesRespetadas(ID, PESTANA_OBRAS, g.filas, actual)
   g.filas = grid
   for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${r.suyo.slice(0, 44)}")`)
-  // SE ESCRIBE CON LA COLA: las columnas que este generador dejó de usar van con el centinela VACIO
-  // para que la fusión las LIMPIE. Sacar una columna del código no la saca de la pestaña.
-  g.filas = conColaLimpiable(g.filas, ANCHO_HISTORICO)
+  // SE ESCRIBE CON LA COLA, EN LOS DOS EJES: las columnas que este generador dejó de usar y las filas
+  // que dejó de emitir van con el centinela VACIO para que la fusión las LIMPIE. Sacar algo del
+  // código no lo saca de la pestaña — la columna I quedó publicada una vez y la fila 62, otra.
+  const filasEmitidas = g.filas.length
+  g.filas = conColaLimpiable(g.filas, ANCHO_HISTORICO, ALTO_HISTORICO)
   const escritura = await escribirPreservando(google, ID, PESTANA_OBRAS, g.filas, { respetar: false, anchoHoja: Math.max(ANCHO_HISTORICO, hoja.cols ?? ANCHO_HISTORICO) })
   // UNA PESTAÑA QUE NO SE ESCRIBIÓ NO CAMBIÓ DE FORMA: si el candado la retuvo, tampoco se formatea.
   if (escritura?.bloqueada || escritura?.editadaPorHumano) {
@@ -329,7 +331,7 @@ async function main() {
       + 'Hay un cliente que el mecanismo no supo ubicar — revisar ALIAS_CLIENTE y la lista derivada.')
   }
   console.log(`  ✓ sin ubicar: $0 — la suma de los ${cli1 - cli0 + 1} clientes da el total de Cobranzas`)
-  console.log(`QUEDÓ ESCRITO — releí ${quedo.length} filas: sin celdas en error y sin columnas desparejas.`)
+  console.log(`QUEDÓ ESCRITO — releí ${quedo.length} filas (${filasEmitidas} con contenido): sin celdas en error y sin columnas desparejas.`)
 }
 
 /**

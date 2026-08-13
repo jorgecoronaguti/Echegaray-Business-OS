@@ -17,7 +17,7 @@ import assert from 'node:assert/strict'
 import {
   grillaObras, serialISO, criterioCliente, variantesDe, anchoColumnaA, pxDeTexto, clientesDeCobranzas,
   celdasEnError, problemaDeSintaxis, ERRORES_SHEET, nombreEnCostos, ANO,
-  ANCHO_OBRAS, ANCHOS_OBRAS, ANCHO_HISTORICO, conColaLimpiable, REFS_OBRAS, CLIENTES_MUESTRA,
+  ANCHO_OBRAS, ANCHOS_OBRAS, ANCHO_HISTORICO, ALTO_HISTORICO, conColaLimpiable, REFS_OBRAS, CLIENTES_MUESTRA,
 } from './obras-grilla.mjs'
 import { OBRAS_FUTURAS, CLIENTES_CANONICOS, esProyectable, totalEgresos } from './obras-datos.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
@@ -416,6 +416,29 @@ test('un cliente con DOS obras sigue con el match por texto: forzarlo sería inv
   }
 })
 
+test('IDENTIDAD: venta de los clientes con obra = suma de sus obras + otros trabajos', () => {
+  // EL DEFECTO (13/08): la fila publicó $692.395.550 donde iban $125.680.764. La causa no era el
+  // dato sino la PRECEDENCIA: `X - C18+C24+C28…` resta la primera obra y SUMA las otras seis. Sheets
+  // no da error — devuelve un número plausible, que es lo peor que puede pasar.
+  const fFuera = g.filas.findIndex((f) => String(f[0]).startsWith('Otros trabajos')) + 1
+  assert.ok(fFuera > 0, 'la fila existe')
+  for (const c of ['C', 'D']) {
+    const v = cel(g, `${c}${fFuera}`)
+    // La resta de la suma de obras va ENTRE PARÉNTESIS: es lo único que hace válida la identidad.
+    const resta = new RegExp(`-\\((${c}\\d+\\+)+${c}\\d+\\)$`)
+    assert.match(v, resta, `${c}${fFuera}: la suma de las obras se resta ENTERA, entre paréntesis`)
+    // Y resta exactamente las 7 protagonistas, ni una más ni una menos.
+    const filas = [...v.matchAll(new RegExp(`${c}(\\d+)`, 'g'))].map((m) => Number(m[1]))
+    assert.deepEqual(filas, g.bloques.map((b) => b.fProt), `${c}${fFuera}: resta las 7 obras`)
+  }
+  // Y suma exactamente los clientes que TIENEN obra, no todos.
+  const conObra = [...new Set(OBRAS_FUTURAS.map((o) => o.cliente))]
+  for (const cli of conObra) assert.ok(cel(g, `C${fFuera}`).includes(`"${cli}"`), `suma a ${cli}`)
+  for (const cli of CLIENTES_MUESTRA.filter((c) => !conObra.includes(c))) {
+    assert.ok(!cel(g, `C${fFuera}`).includes(`"${cli}"`), `${cli} no tiene obra: no va en esta fila`)
+  }
+})
+
 test('el semáforo mira lo VENCIDO, no el margen: es lo único que exige llamar a alguien hoy', () => {
   for (const b of g.bloques) {
     assert.equal(cel(g, `B${b.fProt}`), `=IF(F${b.fProt}>0;"⚠";"✓")`, `${b.clave}`)
@@ -616,14 +639,25 @@ test('la cola de la columna que se dejó de usar se limpia: sacarla del código 
   // corrida anterior —40 celdas— y encima corrida de fila, porque la grilla creció de 61 a 62: el
   // detalle de una obra terminó pegado al encabezado de la Sección 2.
   const conCola = conColaLimpiable(g.filas)
-  assert.ok(ANCHO_HISTORICO > ANCHO_OBRAS, 'hay una cola que limpiar')
+  assert.ok(ANCHO_HISTORICO > ANCHO_OBRAS, 'hay una cola de columnas que limpiar')
+  assert.equal(conCola.length, ALTO_HISTORICO, 'y llega hasta el alto histórico')
   for (const [i, f] of conCola.entries()) {
     assert.equal(f.length, ANCHO_HISTORICO, `fila ${i + 1}: llega hasta el ancho histórico`)
     for (let c = ANCHO_OBRAS; c < ANCHO_HISTORICO; c++) {
       assert.equal(f[c], VACIO, `fila ${i + 1} col ${c + 1}: la cola va con el centinela, para que se LIMPIE`)
     }
-    assert.deepEqual(f.slice(0, ANCHO_OBRAS), g.filas[i], 'y no toca lo que sí se escribe')
+    if (i < g.filas.length) assert.deepEqual(f.slice(0, ANCHO_OBRAS), g.filas[i], 'y no toca lo que sí se escribe')
+    // LA COLA DE FILAS: la grilla bajó de 62 a 61 y la vieja 62 quedó publicada — el PDF mostró
+    // "Otros trabajos…" DOS VECES, con valores distintos. El generador es dueño de su RANGO, no de
+    // su ancho: un rango tiene dos ejes.
+    else assert.ok(f.every((c) => c === VACIO), `fila ${i + 1}: la cola de abajo va entera con centinela`)
   }
+})
+
+test('si la grilla supera el alto declarado, ROMPE: una cola silenciosa es peor que un aborto', () => {
+  const g2 = grillaObras({ obras: OBRAS_FUTURAS })
+  assert.throws(() => conColaLimpiable(g2.filas, ANCHO_HISTORICO, g2.filas.length - 1),
+    /Subí ALTO_HISTORICO a \d+/)
 })
 
 test('ningún rótulo excede el ancho declarado de la columna A: con CLIP, lo que no entra DESAPARECE', () => {
