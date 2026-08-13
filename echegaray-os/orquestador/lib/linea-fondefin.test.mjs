@@ -94,6 +94,10 @@ test('NO es capital de trabajo: sin límite, el comparador no la ofrece para tap
 test('la ficha declara sus límites y las preguntas concretas que faltan', () => {
   assert.ok(CONDICION_FONDEFIN.desconocido.length >= 8)
   assert.ok(CONDICION_FONDEFIN.preguntar.length >= 6)
+  // El ROP dice "6 o 12 DDJJ según la actividad" y sólo fija el 150% hipotecario cuando la hipoteca
+  // es la ÚNICA garantía. Afirmar menos de eso es afirmar más de lo que dice la fuente.
+  assert.match(CONDICION_FONDEFIN.observaciones, /6 o 12 declaraciones juradas de IVA/)
+  assert.match(CONDICION_FONDEFIN.garantias, /cuando la única garantía ofrecida sea la hipotecaria/)
   const o = CONDICION_FONDEFIN.observaciones
   assert.match(o, /DEMORA DEL TRÁMITE: ~120 días/)
   assert.match(o, /2% de gastos de otorgamiento/)
@@ -145,12 +149,14 @@ test('el costo de FONDEFIN es un PISO y lo declara: falta el IVA y falta el CFT'
   assert.match(c.para_conseguirlo, /gastos de otorgamiento/)
 })
 
-test('los 9 huecos y las 8 preguntas VIAJAN a la base: no se borran en el camino', () => {
+test('los huecos y las preguntas VIAJAN a la base: no se borran en el camino', () => {
   // Antes se descartaban con `clave` y morían en el repositorio. Varios deciden la operación:
   // aporte propio, si el crédito cubre el IVA del rodado, el sellado, si aceptan aval de SGR.
+  // El recuento se DERIVA de las listas: fijarlo a mano hace fallar el test al agregar una pregunta
+  // legítima, que es justo lo que no queremos desalentar.
   const fila = filaParaLaTabla()
-  assert.match(fila.observaciones, /LO QUE LA FUENTE NO PUBLICA \(9\)/)
-  assert.match(fila.observaciones, /PREGUNTAS AL FIDUCIARIO \(8\)/)
+  assert.match(fila.observaciones, new RegExp(`LO QUE LA FUENTE NO PUBLICA \\(${CONDICION_FONDEFIN.desconocido.length}\\)`))
+  assert.match(fila.observaciones, new RegExp(`PREGUNTAS AL FIDUCIARIO \\(${CONDICION_FONDEFIN.preguntar.length}\\)`))
   for (const d of CONDICION_FONDEFIN.desconocido) assert.ok(fila.observaciones.includes(d), `se perdió: ${d}`)
   for (const p of CONDICION_FONDEFIN.preguntar) assert.ok(fila.observaciones.includes(p), `se perdió: ${p}`)
   assert.ok(fila.observaciones.includes('aporte propio'))
