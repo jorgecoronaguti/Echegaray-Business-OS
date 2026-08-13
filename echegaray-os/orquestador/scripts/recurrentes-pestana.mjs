@@ -38,7 +38,7 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
-import { MIN_MESES, COL_RUBRO, COL_FECHA, COL_TOTAL } from '../lib/cash-flow-lineas.mjs'
+import { MIN_MESES, MES_EN_CURSO, COL_RUBRO, COL_FECHA, COL_TOTAL } from '../lib/cash-flow-lineas.mjs'
 import { escribirPreservando, limpiarCentinela, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { skinRequests } from '../lib/estilo-statement.mjs'
 import { MONEDA_CUERPO, MONEDA_TOTAL, MONEDA_CONTROL, CONTADOR, PORCENTAJE } from '../lib/formato-statement.mjs'
@@ -54,23 +54,34 @@ export const RANGO_COMPRAS = 'Compras!A4:AC'
 
 // ═══ EL PRIMER DÍA DEL MES EN CURSO, ESCRITO UNA SOLA VEZ ═══
 //
-// Lo usan la celda de cada mes y el control de "meses cerrados en $0". Estaban escritos por
-// separado y decían cosas distintas del MISMO mes: la celda mostraba agosto como proyección y el
-// control lo contaba entre los meses cerrados sin gasto — la pestaña discutiendo consigo misma.
+// Lo usan la celda de cada mes, el promedio que alimenta la proyección y el control de "meses
+// cerrados en $0". Estaban escritos por separado y decían cosas distintas del MISMO mes: la celda
+// mostraba agosto como proyección y el control lo contaba entre los meses cerrados sin gasto — la
+// pestaña discutiendo consigo misma.
+//
+// Y AHORA VIENE DE cash-flow-lineas.mjs (13/08/2026). Era la MISMA constante tipeada acá y allá: la
+// ventana de tres meses del cash flow corta en el mismo instante que el promedio de esta pestaña.
+// Dos copias del mismo corte es la forma en que dos cuadros terminan diciendo cosas distintas de la
+// misma plata el día que alguien mueve una sola.
 //
 // El encabezado de cada columna ES el primero de su mes, así que la comparación es exacta y no
 // necesita EOMONTH; dentro del SUMPRODUCT del control eso ahorra además envolver en ARRAYFORMULA.
-const MES_EN_CURSO = 'EOMONTH(TODAY();-1)+1'
 
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
 
-// A + 12 meses + Total real + Meses con gasto + Promedio. Después, ocultas, las 12 del real puro.
+// A + 12 meses + Total real + Meses cerrados + Promedio. Después, ocultas, las 12 del real puro.
 const C_MES0 = 1, C_TOTREAL = 13, C_NMESES = 14, C_PROM = 15, ANCHO_VIS = 16
 const C_AUX0 = 17
 const ANCHO = C_AUX0 + 12
 // La fila del encabezado con los doce primeros-de-mes. NO SE MUEVE: las fórmulas de cada mes la
 // referencian en absoluto, y el Cash Flow Mensual la recibe para leer esta tabla.
 const FILA_CAB = 4
+// LA VENTANA DE MESES CERRADOS, COMO MÁSCARA DE DOCE CELDAS. Vale 1 en cada mes que ya terminó y 0
+// en el que corre y en los que faltan; multiplicada por la fila de importes reales, deja adentro
+// del promedio sólo las observaciones completas. Se escribe una vez y la usan el contador de meses,
+// el promedio y el control de "meses cerrados en $0": si alguna vez discreparan, la pestaña volvería
+// a decir dos cosas distintas del mismo mes.
+const CERRADOS = `(${letra(C_MES0)}$${FILA_CAB}:${letra(C_MES0 + 11)}$${FILA_CAB}<${MES_EN_CURSO})`
 
 export function grilla(proveedores) {
   const filas = []
@@ -102,8 +113,12 @@ export function grilla(proveedores) {
   cab[0] = 'Proveedor'
   for (let m = 0; m < 12; m++) cab[C_MES0 + m] = new Date(Date.UTC(AÑO, m, 1))
   cab[C_TOTREAL] = 'Total real'
-  cab[C_NMESES] = 'Meses con gasto'
-  cab[C_PROM] = 'Promedio mensual'
+  // LOS RÓTULOS DICEN "CERRADO" PORQUE LOS NÚMEROS MIDEN MESES CERRADOS. Decían "Meses con gasto" y
+  // "Promedio mensual" contando también el mes en curso; si el número cambia de significado y el
+  // rótulo no, el cuadro miente sin un solo error. "Total real" sí es el año entero —incluido lo que
+  // ya se cargó del mes en curso— porque es el hecho que el control de abajo compara contra Compras.
+  cab[C_NMESES] = 'Meses cerrados con gasto'
+  cab[C_PROM] = 'Promedio de meses cerrados'
   cab[C_AUX0] = 'AUXILIAR — el real de cada mes. De acá sale la proyección: sin separarlo, la fórmula de un mes se leería a sí misma (#REF!). No borrar.'
   push(cab)
 
@@ -127,9 +142,24 @@ export function grilla(proveedores) {
       fila[C_MES0 + m] = `=IF(${cMes}<${MES_EN_CURSO};${ca}${f};IF(${cMes}=${MES_EN_CURSO};MAX(${ca}${f};${proy});${proy}))`
     }
     const a0 = letra(C_AUX0), a1 = letra(C_AUX0 + 11)
-    fila[C_TOTREAL] = `=SUM(${a0}${f}:${a1}${f})`
-    fila[C_NMESES] = `=COUNTIF(${a0}${f}:${a1}${f};">0")`
-    fila[C_PROM] = `=IFERROR($${letra(C_TOTREAL)}${f}/$${letra(C_NMESES)}${f};0)`
+    const real = `${a0}${f}:${a1}${f}`
+    fila[C_TOTREAL] = `=SUM(${real})`
+    // ═══ EL PROMEDIO SE SACA SOBRE MESES CERRADOS, NO SOBRE EL AÑO (13/08/2026) ═══
+    //
+    // Antes era Total real / Meses con gasto, y los dos contaban el mes EN CURSO — un mes a medio
+    // transcurrir. Medido sobre Movistar: con agosto todavía vacío el esperado es 2.162.055/6 =
+    // $360.342,50, y en cuanto entra la primera factura parcial de agosto pasa a 2.212.055/7 =
+    // $316.007,86. El cuadro EMPEORABA su pronóstico justo cuando llegaba más información, que es
+    // exactamente al revés de lo que tiene que hacer. Es el mismo defecto que cash-flow-lineas.mjs
+    // ya había corregido para su ventana de tres meses, y ahora las dos cortan en MES_EN_CURSO.
+    //
+    // SUMPRODUCT Y NO COUNTIF/SUMIFS: la condición cruza el importe de cada mes con la FECHA de su
+    // encabezado, que vive en otra fila. Es la misma excepción declarada que usa el control de abajo.
+    fila[C_NMESES] = `=SUMPRODUCT((${real}>0)*${CERRADOS})`
+    // El divisor es la cantidad de meses cerrados QUE FACTURARON: un mes cerrado en $0 ya pasó (por
+    // eso entra a la ventana y el control lo grita), pero repartir el total entre él bajaría el
+    // ritmo de un proveedor por una factura que nunca existió.
+    fila[C_PROM] = `=IFERROR(SUMPRODUCT(${real}*${CERRADOS})/$${letra(C_NMESES)}${f};0)`
     push(fila)
   }
   const f1 = filas.length
@@ -182,7 +212,7 @@ export function grilla(proveedores) {
   // día 1: el 13/08 el control gritaba por agosto —que todavía no facturó nadie— junto a mayo, que
   // sí es una anomalía real. Un control que mezcla lo que falta con lo que todavía no pasó se deja
   // de mirar.
-  c6[1] = `=SUMPRODUCT((${letra(C_AUX0)}${f0}:${letra(C_AUX0 + 11)}${f1}=0)*(${letra(C_MES0)}$${FILA_CAB}:${letra(C_MES0 + 11)}$${FILA_CAB}<${MES_EN_CURSO}))`
+  c6[1] = `=SUMPRODUCT((${letra(C_AUX0)}${f0}:${letra(C_AUX0 + 11)}${f1}=0)*${CERRADOS})`
   push(c6)
 
   // ── 3 · EL CONTROL QUE NO SE VALIDA CONTRA SÍ MISMO ─────────────────────────────────────────────

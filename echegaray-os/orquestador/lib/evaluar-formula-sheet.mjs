@@ -1,0 +1,237 @@
+// EVALUADOR MÍNIMO DE FÓRMULAS — UN INSTRUMENTO DE PRUEBA, NO UN MOTOR DE CÁLCULO.
+//
+// POR QUÉ EXISTE (13/08/2026). Los generadores de este repo no escriben números: escriben FÓRMULAS.
+// Lo que el dueño lee no lo calculó el código, lo calculó Google con lo que el código dejó escrito.
+// Un test de cadena prueba que la fórmula TIENE LA FORMA esperada —y así se atrapa una coma donde va
+// un punto y coma— pero no puede ver que un promedio divide por el número equivocado. El defecto que
+// motivó este archivo era justamente ése: el promedio de Recurrentes metía el mes EN CURSO, todavía
+// incompleto, en el divisor, y el "esperado" de los meses futuros BAJABA cuando entraba una factura.
+// Ninguna aserción de texto lo ve; una evaluación con datos sí.
+//
+// Y NO SE PUEDE MEDIR CONTRA EL ARCHIVO VIVO: correr un generador contra el Sheet real para
+// verificarlo ya borró trabajo del dueño tres veces, y desde un worktree la guarda falla cerrada y
+// borra la pestaña entera. Así que la fórmula se evalúa acá, en frío, con los datos que pone el test.
+//
+// LO QUE NO ES. No lo usa ningún generador, ninguna capacidad y ninguna pantalla: no hay ningún
+// número de la empresa que salga de acá. Cubre EXACTAMENTE el subconjunto que las pestañas escriben
+// —comparaciones, aritmética elemento a elemento, SUM/SUMPRODUCT/MAX/IF/IFERROR/EOMONTH— y cualquier
+// otra función revienta RUIDOSA en vez de devolver un número inventado. Un evaluador que "hace lo
+// que puede" con lo que no entiende sería peor que no tenerlo: haría pasar tests que no probaron nada.
+//
+// UNA REFERENCIA A OTRA PESTAÑA ES UN ERROR DE HOJA, NO UNA EXCEPCIÓN. El test modela una pestaña
+// sola; lo que apunta afuera (Compras, Parámetros) se comporta como #REF!, que es lo que un IFERROR
+// del generador ya está preparado para absorber. Así el factor de inflación de Parámetros cae en su
+// propio valor por defecto —1— sin que el test tenga que reproducir esa tabla.
+
+/** Un error DE LA HOJA (#REF!, #DIV/0!): es lo único que IFERROR absorbe. */
+export class ErrorHoja extends Error {}
+
+// El serial de Sheets: días desde el 30/12/1899. Las fechas del encabezado se comparan como números.
+const EPOCH = Date.UTC(1899, 11, 30)
+const DIA = 86400000
+export const aSerial = (d) => Math.round((d.getTime() - EPOCH) / DIA)
+const aFecha = (s) => new Date(EPOCH + Math.round(s) * DIA)
+
+const TOKEN = new RegExp('^(?:'
+  + '(\\d+(?:\\.\\d+)?)'                                                       // 1 número
+  + '|("(?:[^"])*")'                                                           // 2 texto
+  + '|((?:[A-Za-zÀ-ÿ_][A-Za-zÀ-ÿ0-9_ ]*!)?\\$?[A-Z]{1,3}\\$?\\d+(?::\\$?[A-Z]{1,3}\\$?\\d*)?)' // 3 ref/rango
+  + '|([A-Za-zÀ-ÿ_][A-Za-zÀ-ÿ0-9_.]*)\\s*\\('                                  // 4 función
+  + '|(<=|>=|<>|[-+*/<>=;()&])'                                                // 5 operador
+  + ')')
+
+/** NÚCLEO PURO: la fórmula partida en piezas. Lo que no reconoce, revienta. */
+export function tokenizar(formula) {
+  let s = String(formula).replace(/^=/, '')
+  const out = []
+  while (s.trim()) {
+    s = s.trimStart()
+    const m = TOKEN.exec(s)
+    if (!m) throw new Error(`evaluar-formula-sheet: no entiendo "${s.slice(0, 24)}…"`)
+    if (m[1]) out.push({ t: 'num', v: Number(m[1]) })
+    else if (m[2]) out.push({ t: 'str', v: m[2].slice(1, -1) })
+    else if (m[3]) out.push({ t: 'ref', v: m[3] })
+    else if (m[4]) out.push({ t: 'fn', v: m[4].toUpperCase() })
+    else out.push({ t: 'op', v: m[5] })
+    s = s.slice(m[0].length)
+  }
+  return out
+}
+
+/** NÚCLEO PURO: los tokens en un árbol, con la precedencia de Sheets (la comparación es la más floja). */
+export function parsear(tokens) {
+  let i = 0
+  const ver = () => tokens[i]
+  const comer = (v) => {
+    const t = tokens[i]
+    if (!t || t.v !== v) throw new Error(`evaluar-formula-sheet: esperaba "${v}" y vino "${t?.v ?? 'el final'}"`)
+    i++
+  }
+  const nivel = (ops, siguiente) => () => {
+    let a = siguiente()
+    while (ver()?.t === 'op' && ops.includes(ver().v)) { const op = tokens[i++].v; a = { k: 'bin', op, a, b: siguiente() } }
+    return a
+  }
+  const primario = () => {
+    const t = tokens[i]
+    if (!t) throw new Error('evaluar-formula-sheet: la fórmula se corta')
+    if (t.t === 'num' || t.t === 'str') { i++; return { k: t.t, v: t.v } }
+    if (t.t === 'ref') { i++; return { k: 'ref', v: t.v } }
+    if (t.t === 'fn') {
+      i++ // el token de función YA se comió su paréntesis de apertura: viene pegado al nombre
+      const args = []
+      if (ver()?.v !== ')') { args.push(expr()); while (ver()?.v === ';') { i++; args.push(expr()) } }
+      comer(')')
+      return { k: 'fn', n: t.v, args }
+    }
+    if (t.v === '(') { i++; const e = expr(); comer(')'); return e }
+    throw new Error(`evaluar-formula-sheet: token inesperado "${t.v}"`)
+  }
+  const unario = () => {
+    if (ver()?.t === 'op' && (ver().v === '-' || ver().v === '+')) { const op = tokens[i++].v; const a = unario(); return op === '-' ? { k: 'neg', a } : a }
+    return primario()
+  }
+  const mul = nivel(['*', '/'], unario)
+  const suma = nivel(['+', '-'], mul)
+  const concat = nivel(['&'], suma)
+  const expr = nivel(['<', '>', '=', '<=', '>=', '<>'], concat)
+  const arbol = expr()
+  if (i < tokens.length) throw new Error(`evaluar-formula-sheet: sobra "${tokens[i].v}"`)
+  return arbol
+}
+
+const num = (v) => {
+  if (typeof v === 'number') return v
+  if (typeof v === 'boolean') return v ? 1 : 0
+  if (v === '' || v === null || v === undefined) return 0
+  throw new ErrorHoja(`#VALUE! — "${v}" no es un número`)
+}
+const plano = (vs) => vs.flatMap((v) => (Array.isArray(v) ? v : [v]))
+
+/** Elemento a elemento, como Sheets: escalar × rango se difunde, rango × rango exige el mismo largo. */
+function binario(op, a, b) {
+  if (Array.isArray(a) || Array.isArray(b)) {
+    const n = Math.max(Array.isArray(a) ? a.length : 0, Array.isArray(b) ? b.length : 0)
+    if (Array.isArray(a) && Array.isArray(b) && a.length !== b.length) throw new ErrorHoja('#N/A — rangos de distinto largo')
+    return Array.from({ length: n }, (_, k) => binario(op, Array.isArray(a) ? a[k] : a, Array.isArray(b) ? b[k] : b))
+  }
+  if (op === '&') return `${a ?? ''}${b ?? ''}`
+  if (op === '=') return a === b ? 1 : 0
+  if (op === '<>') return a === b ? 0 : 1
+  const [x, y] = [num(a), num(b)]
+  switch (op) {
+    case '+': return x + y
+    case '-': return x - y
+    case '*': return x * y
+    case '/': { if (y === 0) throw new ErrorHoja('#DIV/0!'); return x / y }
+    case '<': return x < y ? 1 : 0
+    case '>': return x > y ? 1 : 0
+    case '<=': return x <= y ? 1 : 0
+    case '>=': return x >= y ? 1 : 0
+    default: throw new Error(`evaluar-formula-sheet: operador "${op}" no soportado`)
+  }
+}
+
+const columna = (letras) => [...letras].reduce((n, c) => n * 26 + (c.charCodeAt(0) - 64), 0)
+const letras = (n) => { let s = ''; for (let x = n; x > 0; x = Math.floor((x - 1) / 26)) s = String.fromCharCode(65 + ((x - 1) % 26)) + s; return s }
+
+/**
+ * NÚCLEO PURO: las celdas que cubre "R5:AC5" o "B4:B9". Sólo rangos de una fila o una columna.
+ *
+ * LO QUE EL INSTRUMENTO NO SABE HACER REVIENTA FUERTE, no como #REF!. Si un rango rectangular se
+ * comportara como error de hoja, el IFERROR de la fórmula lo absorbería y el test daría verde sobre
+ * el valor por defecto — probando exactamente nada.
+ */
+export function celdasDelRango(ref) {
+  const [a, b] = ref.replace(/\$/g, '').split(':')
+  const pa = /^([A-Z]{1,3})(\d+)$/.exec(a); const pb = /^([A-Z]{1,3})(\d+)$/.exec(b ?? a)
+  if (!pa || !pb) throw new Error(`evaluar-formula-sheet: rango sin límite (${ref})`)
+  const [c0, f0, c1, f1] = [columna(pa[1]), Number(pa[2]), columna(pb[1]), Number(pb[2])]
+  if (c0 !== c1 && f0 !== f1) throw new Error(`evaluar-formula-sheet: rango rectangular no soportado (${ref})`)
+  const out = []
+  for (let c = c0; c <= c1; c++) for (let f = f0; f <= f1; f++) out.push(`${letras(c)}${f}`)
+  return out
+}
+
+function llamar(n, args, ev) {
+  // IF e IFERROR reciben el árbol SIN evaluar: si IFERROR evaluara su primer argumento por
+  // adelantado, el #REF! que viene a absorber explotaría antes de que pudiera atajarlo.
+  if (n === 'IF') return num(ev(args[0])) !== 0 ? ev(args[1]) : ev(args[2] ?? { k: 'num', v: 0 })
+  if (n === 'IFERROR') { try { return ev(args[0]) } catch (e) { if (e instanceof ErrorHoja) return ev(args[1] ?? { k: 'num', v: 0 }) ; throw e } }
+  const v = args.map(ev)
+  switch (n) {
+    case 'SUM': return plano(v).reduce((s, x) => s + num(x), 0)
+    case 'SUMPRODUCT': {
+      const largo = Math.max(...v.map((x) => (Array.isArray(x) ? x.length : 1)))
+      if (v.some((x) => Array.isArray(x) && x.length !== largo)) throw new ErrorHoja('#N/A — rangos de distinto largo')
+      let t = 0
+      for (let k = 0; k < largo; k++) t += v.reduce((p, x) => p * num(Array.isArray(x) ? x[k] : x), 1)
+      return t
+    }
+    case 'MAX': return Math.max(...plano(v).map(num))
+    case 'MIN': return Math.min(...plano(v).map(num))
+    case 'ROUND': { const d = 10 ** num(v[1] ?? 0); return Math.round(num(v[0]) * d) / d }
+    case 'N': return typeof v[0] === 'number' ? v[0] : 0
+    case 'TODAY': return aSerial(ev.hoy)
+    case 'EOMONTH': { const d = aFecha(num(v[0])); return aSerial(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + num(v[1]) + 1, 0))) }
+    case 'COUNTIF': {
+      const m = /^([<>]=?|<>)?(-?\d+(?:\.\d+)?)$/.exec(String(v[1]))
+      if (!m) throw new Error(`evaluar-formula-sheet: criterio "${v[1]}" no soportado`)
+      return plano([v[0]]).filter((x) => binario(m[1] === '<>' ? '<>' : (m[1] ?? '='), x, Number(m[2])) === 1).length
+    }
+    // Deliberadamente RUIDOSO: un test que pasa porque el evaluador adivinó no probó nada.
+    default: throw new Error(`evaluar-formula-sheet: la función ${n}() no está soportada`)
+  }
+}
+
+/**
+ * Evalúa una fórmula contra una pestaña MODELADA A MANO.
+ *
+ * @param {string} formula con o sin el '=' — en es-AR (separador ';')
+ * @param {{hoja:Object<string,any>, hoy:Date}} ctx `hoja` mapea 'B4' → número, Date o fórmula
+ * @returns {number|string|Array} el valor, o tira ErrorHoja si la hoja da error
+ */
+export function evaluarFormula(formula, { hoja = {}, hoy = new Date() } = {}) {
+  const enCurso = new Set()
+  const ev = (nodo) => {
+    switch (nodo.k) {
+      case 'num': case 'str': return nodo.v
+      case 'neg': return binario('*', ev(nodo.a), -1)
+      case 'bin': return binario(nodo.op, ev(nodo.a), ev(nodo.b))
+      case 'fn': return llamar(nodo.n, nodo.args, ev)
+      case 'ref': return referencia(nodo.v)
+      default: throw new Error(`evaluar-formula-sheet: nodo ${nodo.k}`)
+    }
+  }
+  ev.hoy = hoy
+  const celda = (ref) => {
+    const v = hoja[ref]
+    if (v === undefined || v === null || v === '') return 0 // una celda vacía vale cero, como en Sheets
+    if (v instanceof Date) return aSerial(v)
+    if (typeof v === 'string' && v.startsWith('=')) {
+      // Una fórmula que se lee a sí misma es #REF! circular en Sheets; acá tiene que gritar, porque
+      // en un generador siempre es un error de diseño (por eso Recurrentes tiene columnas auxiliares).
+      if (enCurso.has(ref)) throw new Error(`evaluar-formula-sheet: referencia circular en ${ref}`)
+      enCurso.add(ref)
+      try { return ev(parsear(tokenizar(v))) } finally { enCurso.delete(ref) }
+    }
+    return v
+  }
+  const referencia = (ref) => {
+    // Otra pestaña no está modelada: se comporta como #REF!, que es lo que el IFERROR del generador espera.
+    if (ref.includes('!')) throw new ErrorHoja(`#REF! — ${ref} vive en otra pestaña`)
+    const limpio = ref.replace(/\$/g, '')
+    return limpio.includes(':') ? celdasDelRango(limpio).map(celda) : celda(limpio)
+  }
+  return ev(parsear(tokenizar(formula)))
+}
+
+/**
+ * NÚCLEO PURO: una grilla de generador (filas × columnas, 0-based) como mapa 'A1' → valor.
+ * Es el puente entre lo que devuelve `grilla()` y lo que este evaluador sabe leer.
+ */
+export function hojaDeGrilla(filas) {
+  const hoja = {}
+  filas.forEach((fila, f) => fila.forEach((v, c) => { hoja[`${letras(c + 1)}${f + 1}`] = v }))
+  return hoja
+}
