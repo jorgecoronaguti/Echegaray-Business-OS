@@ -37,6 +37,8 @@ import { bloquesDeCliente, filaTituloPorCliente, formulasPorCliente } from './ca
 import { expresionInicio } from './cash-flow-ancla-saldo.mjs'
 import { NOMBRE_MESES } from './cash-flow-lineas.mjs'
 import { NOMBRES as PRESUPUESTO } from './cash-flow-presupuesto.mjs'
+import { columnasDelPasado, expresionRotulo } from './cash-flow-hoy.mjs'
+import { acotarAlEjercicio, bordeDelEjercicio } from './cash-flow-borde-anio.mjs'
 
 /** El nombre de la pestaña. Único lugar donde se escribe. */
 export const PESTANA_MENSUAL = 'Cash Flow Mensual'
@@ -63,10 +65,10 @@ const refPresupuesto = (rango, mes) => `INDEX(${rango};MATCH(${mes};${PRESUPUEST
  * @param {object} p
  * @param {number} p.anio
  * @param {{saldo:string|null, fecha:string|null, minima:string|null}} p.refs rangos con nombre de CAJA
- * @param {Date} [p.hoy]
+ * @param {Date} [p.hoy] sólo decide qué meses ya cerraron (el pliegue). Las columnas son las del ejercicio.
  * @returns {{filas:any[][], meta:object}}
  */
-export function grillaMeses({ anio = 2026, refs = {}, gid = null } = {}) {
+export function grillaMeses({ anio = 2026, refs = {}, gid = null, hoy = new Date() } = {}) {
   const { saldo: refSaldo = null, fecha: refFecha = null } = refs
   const filas = []
   const poner = (f, col, valor) => {
@@ -86,6 +88,13 @@ export function grillaMeses({ anio = 2026, refs = {}, gid = null } = {}) {
     clientes: { titulo: filaTituloPorCliente(TIPO), bloques: bloquesDeCliente(TIPO) },
     grafico: { fila: filaGraficos(TIPO), col: COL.tiempo0 },
     ventanas: meses, rotulos: meses.map((v) => rotuloMes(v.desde)),
+    // LOS DOCE MESES YA CUBREN EL EJERCICIO EXACTO: `efectivas` es idéntico a `ventanas` y ningún mes
+    // se recorta. Se publica igual porque el control de cuadre compara la COBERTURA de las dos vistas
+    // antes de escribir una celda, y una vista que no declara qué cubre no se puede comparar con nada.
+    efectivas: acotarAlEjercicio(meses, anio), cubre: bordeDelEjercicio(anio),
+    // Los meses YA CERRADOS se pliegan igual que las semanas terminadas: doce columnas se recorren de
+    // un vistazo, pero la pestaña sigue abriendo en enero y lo que se decide está de agosto en adelante.
+    plegar: columnasDelPasado(meses, hoy, { col0: COL.tiempo0 }),
   }
 
   poner(FILA.titulo, 0, `Cash Flow Mensual ${anio}`)
@@ -115,8 +124,9 @@ export function grillaMeses({ anio = 2026, refs = {}, gid = null } = {}) {
 }
 
 /**
- * EL ATAJO AL MES EN CURSO. Mismo contrato que el del semanal (`cash-flow-semanas.vinculoHoy`): busca
- * el primero del mes de hoy en la fila de encabezados y arma la dirección con ADDRESS.
+ * DÓNDE ESTÁ EL MES EN CURSO. Mismo contrato que el del semanal (`cash-flow-semanas.vinculoHoy`), y el
+ * mismo criterio del 13/08: el rótulo DICE ("Mes actual: I  ·  ago 26") en vez de prometer un botón que
+ * `HYPERLINK` no puede ser. El vínculo queda porque a tres gestos funciona y no cuesta nada.
  *
  * `EOMONTH(TODAY();-1)+1` ES el primero del mes corriente — la misma expresión con la que se generaron
  * los encabezados, así que el MATCH es exacto y no aproximado. Si el cuadro quedó viejo (otro año) la
@@ -125,8 +135,11 @@ export function grillaMeses({ anio = 2026, refs = {}, gid = null } = {}) {
 export function vinculoHoy(gid, meta) {
   if (gid === null || gid === undefined) return null
   const rangoCab = rangoFila(meta.cab.fila, meta.cab.col0, meta.cab.col0 + meta.cab.n - 1)
-  const dir = `ADDRESS(${meta.cab.fila};MATCH(EOMONTH(TODAY();-1)+1;${rangoCab};0)+${meta.cab.col0};4)`
-  return `=HYPERLINK("${URL_ARCHIVO()}#gid=${gid}&range="&${dir};"${ROTULO_HOY.mes}")`
+  const primero = 'EOMONTH(TODAY();-1)+1'
+  const dir = `ADDRESS(${meta.cab.fila};MATCH(${primero};${rangoCab};0)+${meta.cab.col0};4)`
+  // `mmm yy` va en US como todo patrón de formato del repo, aunque los argumentos vayan en es-AR (`;`).
+  const rotulo = expresionRotulo(ROTULO_HOY.mes, dir, primero, 'mmm yy')
+  return `=HYPERLINK("${URL_ARCHIVO()}#gid=${gid}&range="&${dir};${rotulo})`
 }
 
 /**
