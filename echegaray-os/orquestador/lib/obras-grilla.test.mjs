@@ -16,7 +16,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   grillaObras, serialISO, criterioCliente, variantesDe, anchoColumnaA, pxDeTexto, clientesDeCobranzas,
-  celdasEnError, problemaDeSintaxis, ERRORES_SHEET, nombreEnCostos, ANO,
+  celdasEnError, problemaDeSintaxis, ERRORES_SHEET, nombreEnCostos, ANO, trabajosFueraDeObra,
   ANCHO_OBRAS, ANCHOS_OBRAS, ANCHO_HISTORICO, ALTO_HISTORICO, conColaLimpiable, REFS_OBRAS, CLIENTES_MUESTRA,
 } from './obras-grilla.mjs'
 import { OBRAS_FUTURAS, CLIENTES_CANONICOS, esProyectable, totalEgresos } from './obras-datos.mjs'
@@ -31,6 +31,8 @@ const cel = (grid, ref) => {
   return grid.filas[Number(fila) - 1][COLS.indexOf(col)]
 }
 const vacia = (v) => v === VACIO || v === '' || v === undefined
+/** Las filas 1-based de `a` a `b`, inclusive — para recorrer un rango que la grilla devuelve. */
+const rangoFilas = (a, b) => [...Array(b - a + 1)].map((_, i) => a + i)
 /** Todas las fórmulas de la grilla, con su referencia A1 — el material de casi todos los tests. */
 const formulas = (grid) => grid.filas.flatMap((f, i) => f
   .map((v, c) => [`${COLS[c]}${i + 1}`, v])
@@ -120,6 +122,47 @@ test('el COSTO de la Sección 1 se mide al NETO desde la fuente, no heredando el
     assert.ok(cel_.includes(`"${nombreEnCostos(String(cel(g, `A${f}`)))}"`), `G${f}: nombre de Compras`)
   }
   assert.equal(nombreEnCostos('LA ESTRELLA /ALIMENTOS DEL SUR SAS'), 'LA ESTRELLA')
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RETENIDO — LA COLUMNA QUE ENTRÓ POR EL MODELO DEL DUEÑO
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('el RETENIDO sale de la columna de retenciones, sólo de lo COBRADO y por fecha de COBRO', () => {
+  // QUÉ MIDE: los $7.671.680 que los clientes retuvieron en 2026 y depositaron a nombre de la
+  // empresa. Es la traducción de las tres columnas de retención del modelo (Ganancias · IIBB · LH).
+  //
+  // LOS TRES DEFECTOS QUE ESTE TEST ATRAPA, Y NINGUNO DA ERROR EN SHEETS:
+  //  · leer otra columna — el archivo tiene además tres de DESGLOSE que empiezan con "Retención";
+  //    citar una daría una parte del total, con formato de dato correcto;
+  //  · no filtrar por Cobrado — publicaría como sufrida una retención tipeada sobre una fila
+  //    pendiente, que es una estimación presentada como hecho;
+  //  · acotar por fecha de VENTA — mezclaría devengado y percibido en la misma columna.
+  const desde = serialISO(`${ANO}-01-01`)
+  for (const f of [...rangoFilas(...g.fClientes), g.totales[0]]) {
+    const v = cel(g, `H${f}`)
+    assert.match(v, new RegExp(`^=SUMIFS\\('Cobranzas'!\\$${REFS_OBRAS.cob.retenciones}\\$`), `H${f}: suma la col de retenciones`)
+    assert.ok(v.includes(`;"${'Cobrado'}"`), `H${f}: sólo lo efectivamente cobrado`)
+    assert.ok(v.includes(`'Cobranzas'!$${REFS_OBRAS.cob.fechaCobro}$`), `H${f}: ventana por fecha de COBRO`)
+    assert.ok(!v.includes(`'Cobranzas'!$${REFS_OBRAS.cob.fechaVenta}$`), `H${f}: NUNCA por fecha de venta`)
+    assert.ok(v.includes(`">="&${desde}`), `H${f}: dentro del año`)
+  }
+  // El total del año sale de la FUENTE ENTERA, no de la suma de los clientes listados: si un cliente
+  // quedara fuera de la lista derivada, su retención tiene que seguir estando en el total.
+  assert.ok(!cel(g, `H${g.totales[0]}`).includes(`'Cobranzas'!$${REFS_OBRAS.cob.cliente}$`), 'el total no filtra por cliente')
+  assert.ok(!cel(g, `H${g.totales[0]}`).includes('SUM(H'), 'ni es la suma de los renglones')
+})
+
+test('la H lleva IMPORTE sólo en la Sección 1: en la 2 es una fecha, y un importe ahí se dibuja como año 2110', () => {
+  // La columna entera está declarada como fecha por el detalle de egresos. `importeEnH` es lo que el
+  // escritor usa para devolverle el formato de plata a las filas que sí llevan plata; si la lista
+  // quedara corta, $7.671.680 se publicarían como un día del calendario sin dar un solo error.
+  assert.deepEqual(g.importeEnH, [...rangoFilas(...g.fClientes), g.totales[0]])
+  for (const f of g.importeEnH) assert.match(String(cel(g, `H${f}`)), /^=SUMIFS\(/, `H${f}: es un importe`)
+  for (const b of g.bloques) {
+    assert.ok(!g.importeEnH.includes(b.fProt), `${b.clave}: en la Sección 2 la H es la próxima fecha de cobro`)
+  }
+  assert.ok(!g.importeEnH.includes(g.totales[1]), 'ni el total de la Sección 2, que no publica retenido')
 })
 
 test('el ⇒ TOTAL 2026 tiene la ventana que su rótulo promete', () => {
@@ -252,7 +295,7 @@ test('las columnas salen de las refs INYECTADAS: ninguna letra queda pegada en l
   // El escritor resuelve las columnas contra los encabezados vivos. Si una letra quedara fija, la
   // fórmula sumaría otra columna el día que el archivo se reordene, y sin dar error.
   const refs = {
-    cob: { hoja: 'Cobranzas', cliente: 'Z', concepto: 'Y', neto: 'V', total: 'X', estado: 'W', oc: 'S', fechaCobro: 'T', fechaVenta: 'N', forma: 'M', categoria: 'R', desde: 9 },
+    cob: { hoja: 'Cobranzas', cliente: 'Z', concepto: 'Y', neto: 'V', total: 'X', retenciones: 'AB', estado: 'W', oc: 'S', fechaCobro: 'T', fechaVenta: 'N', forma: 'M', categoria: 'R', desde: 9 },
     cmp: { hoja: 'Compras', fecha: 'V', proveedor: 'U', cliente: 'T', neto: 'R', iva: 'Q', total: 'S', familia: 'P', desde: 7 },
     mat: REFS_OBRAS.mat,
   }
@@ -264,9 +307,10 @@ test('las columnas salen de las refs INYECTADAS: ninguna letra queda pegada en l
   assert.match(cel(otra, `C${b.fProt}`), /'Cobranzas'!\$V\$9:\$V/, 'la venta sale del NETO de Cobranzas')
   assert.match(cel(otra, `G${otra.fClientes[0]}`), /'Compras'!\$R\$7:\$R/, 'el costo, del neto de Compras')
   assert.match(cel(otra, `D${b.fProt}`), /'Cobranzas'!\$X\$9:\$X/, 'el cobrado sale del TOTAL de Cobranzas')
+  assert.match(cel(otra, `H${otra.fClientes[0]}`), /'Cobranzas'!\$AB\$9:\$AB/, 'el retenido, de la col de retenciones')
   for (const [ref, f] of formulas(otra)) {
     assert.ok(!/'Compras'!\$[EJCO]\$4/.test(f), `${ref}: quedó una columna de Compras pegada`)
-    assert.ok(!/'Cobranzas'!\$[GIJMNOQ]\$5/.test(f), `${ref}: quedó una columna de Cobranzas pegada`)
+    assert.ok(!/'Cobranzas'!\$[GIJLMNOQ]\$5/.test(f), `${ref}: quedó una columna de Cobranzas pegada`)
   }
 })
 
@@ -416,34 +460,57 @@ test('un cliente con DOS obras sigue con el match por texto: forzarlo sería inv
   }
 })
 
-test('IDENTIDAD: venta de los clientes con obra = suma de sus obras + otros trabajos', () => {
-  // EL DEFECTO (13/08): la fila publicó $692.395.550 donde iban $125.680.764. La causa no era el
-  // dato sino la PRECEDENCIA: `X - C18+C24+C28…` resta la primera obra y SUMA las otras seis. Sheets
-  // no da error — devuelve un número plausible, que es lo peor que puede pasar.
-  const fFuera = g.filas.findIndex((f) => String(f[0]).startsWith('Otros trabajos')) + 1
-  assert.ok(fFuera > 0, 'la fila existe')
-  for (const c of ['C', 'D']) {
-    const v = cel(g, `${c}${fFuera}`)
-    // La resta de la suma de obras va ENTRE PARÉNTESIS: es lo único que hace válida la identidad.
-    const resta = new RegExp(`-\\((${c}\\d+\\+)+${c}\\d+\\)$`)
-    assert.match(v, resta, `${c}${fFuera}: la suma de las obras se resta ENTERA, entre paréntesis`)
-    // Y resta exactamente las 7 protagonistas, ni una más ni una menos.
-    const filas = [...v.matchAll(new RegExp(`${c}(\\d+)`, 'g'))].map((m) => Number(m[1]))
-    assert.deepEqual(filas, g.bloques.map((b) => b.fProt), `${c}${fFuera}: resta las 7 obras`)
-  }
-  // Y suma exactamente los clientes que TIENEN obra, no todos.
-  const conObra = [...new Set(OBRAS_FUTURAS.map((o) => o.cliente))]
-  for (const cli of conObra) assert.ok(cel(g, `C${fFuera}`).includes(`"${cli}"`), `suma a ${cli}`)
-  for (const cli of CLIENTES_MUESTRA.filter((c) => !conObra.includes(c))) {
-    assert.ok(!cel(g, `C${fFuera}`).includes(`"${cli}"`), `${cli} no tiene obra: no va en esta fila`)
-  }
+test('NINGUNA fila de residuo en la Sección 2: el dueño sacó "Otros trabajos" como sacó "sin ubicar"', () => {
+  // Es la tercera fila de sobrante que manda sacar. La CAPACIDAD de detectar el problema no se
+  // perdió: la identidad que esa fila publicaba vive en `trabajosFueraDeObra` y la corre el escritor
+  // contra lo ya publicado.
+  const rotulos = g.filas.map((f) => String(f[0] ?? ''))
+  assert.ok(!rotulos.some((r) => /^Otros trabajos|fuera de las/i.test(r)), 'no puede quedar la fila de sobrante')
+  // Y el total de la Sección 2 sigue siendo la suma de las protagonistas, que es el número que el
+  // control compara: si dejara de serlo, el control estaría midiendo otra cosa.
+  assert.equal(cel(g, `C${g.totales[1]}`), `=${g.bloques.map((b) => `C${b.fProt}`).join('+')}`)
 })
 
-test('el semáforo mira lo VENCIDO, no el margen: es lo único que exige llamar a alguien hoy', () => {
-  for (const b of g.bloques) {
-    assert.equal(cel(g, `B${b.fProt}`), `=IF(F${b.fProt}>0;"⚠";"✓")`, `${b.clave}`)
-    assert.match(cel(g, `F${b.fProt}`), /TODAY\(\)/, `${b.clave}: vencido = fecha de cobro pasada y sin cobrar`)
+test('el sobrante NEGATIVO delata el doble conteo, y el positivo no es un problema', () => {
+  // EL DEFECTO QUE ESTE CONTROL PERSIGUE (13/08): la fila de residuo publicó $692.395.550 donde
+  // iban $125.680.764 porque `X - C18+C24+C28…` resta la PRIMERA obra y SUMA las otras seis. Sheets
+  // no da error: devuelve un número plausible. La única señal falsificable es que las obras sumen
+  // MÁS que la venta entera de sus propios clientes, y eso es aritméticamente imposible sin duplicar.
+  assert.equal(trabajosFueraDeObra(800, 675).problema, null, 'el sobrante normal no es un problema')
+  assert.equal(trabajosFueraDeObra(800, 675).fuera, 125)
+  assert.equal(trabajosFueraDeObra(800, 800).problema, null, 'ni el caso en que las obras son todo')
+  assert.equal(trabajosFueraDeObra(800, 800.4).problema, null, 'ni el redondeo de un peso')
+  const roto = trabajosFueraDeObra(125_680_764, 692_395_550)
+  assert.ok(roto.problema, 'las obras no pueden sumar más que sus clientes')
+  assert.match(roto.problema, /DOS VECES/)
+  assert.match(roto.problema, /566\.714\.786/, 'y dice cuánto sobra, para poder ir a buscarlo')
+})
+
+test('el % COBRADO divide magnitudes del MISMO criterio: con la venta daría más de 100%', () => {
+  // La venta se mide al NETO y el cobrado al TOTAL. `cobrado/venta` da 113% en una obra blanca
+  // íntegramente cobrada —Playón: venta neta $102.500.000, resta al total $116.150.000— y un avance
+  // imposible se lee como un error de la pestaña. El denominador es la cartera: cobrado + resta.
+  for (const f of [...g.bloques.map((b) => b.fProt), ...rangoFilas(...g.fClientes), ...g.totales]) {
+    const v = cel(g, `B${f}`)
+    assert.equal(v, `=IF(D${f}+E${f}=0;0;D${f}/(D${f}+E${f}))`, `B${f}`)
+    assert.ok(!v.includes(`C${f}`), `B${f}: la VENTA no puede entrar al porcentaje — es otro criterio`)
+    // Sin IFERROR: un vacío haría abortar al escritor por `columnasDesparejas` en una obra recién
+    // declarada sin cobranzas, que es un caso legítimo y no un defecto.
+    assert.ok(!v.includes('IFERROR'), `B${f}: la fila sin cartera devuelve 0, no vacío`)
   }
+  // Y ninguna fila de detalle lo lleva: el avance es de la obra, no de un egreso proyectado.
+  for (const f of g.detalles) assert.ok(vacia(cel(g, `B${f}`)), `B${f}: el detalle no tiene % cobrado`)
+})
+
+test('el semáforo ✓/⚠ ya NO está: daba lo mismo en las 7 obras y la columna F dice cuánto', () => {
+  // Una columna donde todas las celdas dicen ✓ no informa. Su única señal —hay vencido— la publica
+  // la F con el importe, que es más específica que un glifo. Y el modelo que el dueño señaló como
+  // estándar no usa un solo símbolo: usa números.
+  for (const [ref, v] of g.filas.flatMap((f, i) => f.map((x, c) => [`${COLS[c]}${i + 1}`, x]))) {
+    assert.ok(!/["=](⚠|✓)/.test(String(v ?? '')), `${ref}: quedó un semáforo`)
+  }
+  // Lo VENCIDO sigue midiéndose igual: fecha de cobro pasada y sin cobrar.
+  for (const b of g.bloques) assert.match(cel(g, `F${b.fProt}`), /TODAY\(\)/, `${b.clave}`)
 })
 
 test('lo que RESTA COBRAR sale del estado, no de una columna de saldo', () => {

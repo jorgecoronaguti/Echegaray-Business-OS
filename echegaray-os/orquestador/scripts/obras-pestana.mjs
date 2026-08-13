@@ -37,14 +37,14 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
-import { MONEDA_CUERPO, MONEDA_TOTAL } from '../lib/formato-statement.mjs'
+import { MONEDA_CUERPO, MONEDA_TOTAL, PORCENTAJE } from '../lib/formato-statement.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 import { requestsTextoPorContenido } from '../lib/formato-texto-por-contenido.mjs'
 import {
   grillaObras, anchoColumnaA, celdasEnError, columnasDesparejas, problemaDeSintaxis, clientesDeCobranzas,
-  conColaLimpiable, ANCHO_HISTORICO, ALTO_HISTORICO,
+  conColaLimpiable, trabajosFueraDeObra, ANCHO_HISTORICO, ALTO_HISTORICO,
   ANCHO_OBRAS, ANCHOS_OBRAS, PESTANA_OBRAS, REFS_OBRAS,
 } from '../lib/obras-grilla.mjs'
 import { OBRAS_FUTURAS, totalEgresos } from '../lib/obras-datos.mjs'
@@ -135,7 +135,10 @@ export function render(g, obras = []) {
   }
   L.push('')
   L.push('GRILLA  (ƒ = fórmula, texto completo abajo)')
-  const anchos = [52, 3, 13, 13, 13, 13, 13, 8]
+  // Los anchos dan para el RÓTULO COMPLETO de cada columna: "Cobrado (total)" son 15 caracteres y
+  // con 13 el ensayo mostraba "Cobrado (tot…". Una evidencia que recorta el nombre de la columna que
+  // se está juzgando no sirve para juzgarla — es el mismo criterio que la lista de obras de arriba.
+  const anchos = [52, 6, 15, 15, 15, 15, 15, 10]
   L.push(`fila │ ${anchos.map((n, i) => izq(COLS[i], n)).join(' │ ')}`)
   const formulas = []
   g.filas.forEach((fila, i) => {
@@ -154,6 +157,30 @@ export function render(g, obras = []) {
   return L.join('\n')
 }
 
+/**
+ * LOS RÓTULOS DE COBRANZAS QUE ESTA PESTAÑA CITA. Están EXPORTADOS a propósito: el test los importa
+ * y los prueba contra el encabezado real, en vez de escribir su propia copia del criterio. Un test
+ * que repite el patrón que juzga compara las dos puntas del mismo lado — así ya pasó un `#ERROR!` a
+ * las 7 obras del archivo del dueño.
+ *
+ * `neto` es la columna del IVA hacia abajo: la venta se mide ahí, no en el total. `forma` y
+ * `fechaCobro` son lo que el dueño pidió ver por obra (a quién reclamarle y cuándo).
+ */
+export const ROTULOS_COBRANZAS = {
+  cliente: 'Obra / Cliente', concepto: 'Concepto', neto: /^Monto neto/i, categoria: /^Categor/i,
+  // La ORDEN DE COMPRA reconoce la obra cuando el Concepto no la nombra. Faltaba acá, y por eso
+  // se publicaron 40 celdas con #ERROR!: la grilla la usaba y el escritor no la resolvía.
+  oc: /^(OC|ORDEN DE COMPRA)$/i,
+  total: /^TOTAL a cobrar/, estado: 'Estado', fechaCobro: /^Fecha de cobro|^Fecha cobro/i,
+  // LAS RETENCIONES SUFRIDAS ($7.671.680 en 2026). El criterio es el plural con "s": el archivo
+  // tiene además TRES columnas de desglose que empiezan con "Retención" en singular ("Retención
+  // 16,8%…", "Ret Ganancias", "Retención 2,5%/3,5%…"), y elegir una de ésas publicaría una parte
+  // del retenido sin dar un solo error. Si el rótulo cambia, el escritor ROMPE antes de escribir.
+  retenciones: /^Retenciones\b/i,
+  // La FECHA DE VENTA acota el año de la venta (devengado); la de cobro, el de la plata.
+  fechaVenta: /^Fecha\s*(de\s*)?venta/i, forma: /^Forma de [Cc]obro/,
+}
+
 /** Las referencias REALES del archivo, resueltas por rótulo contra los encabezados vivos. */
 async function refsReales(google) {
   const [cob, cmp, matColA] = await Promise.all([
@@ -164,17 +191,7 @@ async function refsReales(google) {
   const refs = {
     cob: {
       hoja: REFS_OBRAS.cob.hoja,
-      // `neto` es la columna del IVA hacia abajo: la venta y el margen se miden ahí, no en el total.
-      // `forma` y `fechaCobro` son lo que el dueño pidió ver por obra (a quién reclamarle y cuándo).
-      ...resolverColumnas(cob, {
-        cliente: 'Obra / Cliente', concepto: 'Concepto', neto: /^Monto neto/i, categoria: /^Categor/i,
-        // La ORDEN DE COMPRA reconoce la obra cuando el Concepto no la nombra. Faltaba acá, y por eso
-        // se publicaron 40 celdas con #ERROR!: la grilla la usaba y el escritor no la resolvía.
-        oc: /^(OC|ORDEN DE COMPRA)$/i,
-        total: /^TOTAL a cobrar/, estado: 'Estado', fechaCobro: /^Fecha de cobro|^Fecha cobro/i,
-        // La FECHA DE VENTA acota el año de la venta (devengado); la de cobro, el de la plata.
-        fechaVenta: /^Fecha\s*(de\s*)?venta/i, forma: /^Forma de [Cc]obro/,
-      }),
+      ...resolverColumnas(cob, ROTULOS_COBRANZAS),
     },
     cmp: {
       hoja: REFS_OBRAS.cmp.hoja,
@@ -331,6 +348,26 @@ async function main() {
       + 'Hay un cliente que el mecanismo no supo ubicar — revisar ALIAS_CLIENTE y la lista derivada.')
   }
   console.log(`  ✓ sin ubicar: $0 — la suma de los ${cli1 - cli0 + 1} clientes da el total de Cobranzas`)
+
+  // ═══ EL CONTROL QUE ANTES ERA LA FILA "Otros trabajos…" DE LA SECCIÓN 2 ═══
+  //
+  // El dueño sacó la fila; la identidad que verificaba sigue viva acá y contra lo YA PUBLICADO. Las
+  // obras declaradas son un subconjunto de lo que se le factura a sus clientes, así que el sobrante
+  // es normal — lo IMPOSIBLE es que sea negativo, y eso ya se publicó una vez ($692.395.550 donde
+  // iban $125.680.764) sin que Sheets diera un solo error.
+  if (g.totales[1]) {
+    const conObra = [...new Set(OBRAS_FUTURAS.map((o) => o.cliente))]
+    const sinFila = conObra.filter((c) => !g.filaDeCliente?.[c])
+    if (sinFila.length) throw new Error(`no puedo controlar el doble conteo: ${sinFila.join(' · ')} tiene obra `
+      + 'declarada y no salió como fila de cliente en la Sección 1. NO afirmo que la pestaña cierre.')
+    const ventaClientes = conObra.reduce((s, c) => s + num(quedo[g.filaDeCliente[c] - 1]?.[2]), 0)
+    const ventaObras = num(quedo[g.totales[1] - 1]?.[2])
+    const { fuera, problema } = trabajosFueraDeObra(ventaClientes, ventaObras)
+    if (problema) throw new Error(`DOBLE CONTEO EN LA SECCIÓN 2: ${problema}.`)
+    console.log(`  ✓ las ${g.bloques.length} obras suman $${Math.round(ventaObras).toLocaleString('es-AR')} dentro de los `
+      + `$${Math.round(ventaClientes).toLocaleString('es-AR')} de sus ${conObra.length} clientes `
+      + `— $${Math.round(fuera).toLocaleString('es-AR')} son trabajos fuera de obra`)
+  }
   console.log(`QUEDÓ ESCRITO — releí ${quedo.length} filas (${filasEmitidas} con contenido): sin celdas en error y sin columnas desparejas.`)
 }
 
@@ -361,10 +398,18 @@ async function formatear(google, sheetId, g) {
   for (const f of [...(g.totales ?? []), ...(g.protagonistas ?? [])]) {
     for (const c of [2, 3, 4, 5, 6]) fmt(r(f - 1, f, c, c + 1), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_TOTAL })
   }
+  // La B dejó de ser un glifo y pasó a ser el % cobrado: se dibuja como porcentaje, no como texto.
   fmt(r(0, n, 1, 2), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
-    { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'CENTER' })
+    { numberFormat: PORCENTAJE, horizontalAlignment: 'RIGHT' })
   fmt(r(0, n, 7, 8), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'CENTER' })
+  // …salvo en la Sección 1, donde la H lleva el RETENIDO. La columna está declarada como fecha por
+  // el detalle de egresos de la Sección 2, y $7.671.680 con formato de fecha se dibuja como un día
+  // del año 2110 — un dato correcto que se lee como basura hace desconfiar de la pestaña entera.
+  for (const f of g.importeEnH ?? []) {
+    fmt(r(f - 1, f, 7, 8), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+      { numberFormat: (g.totales ?? []).includes(f) ? MONEDA_TOTAL : MONEDA_CUERPO, horizontalAlignment: 'RIGHT' })
+  }
   fmt(r(0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: E.TAM.titulo } })
   fmt(r(1, 2), 'userEnteredFormat.textFormat,userEnteredFormat.wrapStrategy',
     { textFormat: { italic: true, fontSize: E.TAM.nota, foregroundColor: E.COLOR.nota }, wrapStrategy: 'WRAP' })
@@ -415,6 +460,17 @@ async function formatear(google, sheetId, g) {
   anchos.forEach((px, i) => req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: i, endIndex: i + 1 }, properties: { pixelSize: px }, fields: 'pixelSize' } }))
   const { requests: rTxt } = requestsTextoPorContenido(sheetId, g.filas || [])
   req.push(...rTxt)
+  // ═══ EL ENCABEZADO SE ALINEA CON SU COLUMNA, Y VA ÚLTIMO A PROPÓSITO ═══
+  //
+  // `requestsTextoPorContenido` manda a la IZQUIERDA toda celda de texto, y los rótulos de columna
+  // lo son: "Venta (neto)" quedaba pegado al borde izquierdo sobre importes alineados a la derecha,
+  // así que el ojo tenía que buscar a qué columna pertenecía cada número. En un estado financiero el
+  // rótulo de una columna de cifras va del mismo lado que las cifras. Va DESPUÉS del pase de texto
+  // porque el último request gana: adelantarlo lo dejaría sin efecto.
+  for (const [i, fila] of (g.filas ?? []).entries()) {
+    if (!/^(Cliente|Obra)$/.test(String(fila?.[0] ?? '').trim())) continue
+    fmt(r(i, i + 1, 1, ANCHO_OBRAS), 'userEnteredFormat.horizontalAlignment', { horizontalAlignment: 'RIGHT' })
+  }
   await google.spreadsheetBatchUpdate(ID, req)
 }
 
