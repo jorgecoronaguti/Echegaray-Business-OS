@@ -155,10 +155,13 @@ test('escritura OK: se contesta la FILA y se anota la trazabilidad del post', as
   assert.equal(c.post_id, 'p1', 'queda de qué post de Mattermost salió la fila')
 })
 
-test('CARGADO SIN OBRA: se dice con todas las letras y con su fila (03/08/2026)', async () => {
+test('CARGADO SIN OBRA: se dice con todas las letras, con su fila y con la columna (03/08 · 13/08)', async () => {
   // La obra dejó de bloquear, y eso no puede pasar en silencio: una fila sin imputar entra al Flujo
   // de Caja con el rubro sin clasificar, y la única forma de que alguien la complete es enterarse de
   // que existe. La fila va en el mensaje para que completarla sea ir a esa línea, no buscarla.
+  //
+  // 13/08: el aviso nombra la COLUMNA además de la fila. Desde que la imputación no pregunta, este
+  // renglón es lo único que queda entre una celda en blanco y nadie que la complete.
   const { repo, fajo } = await conFajo({ items: [item({ comprobante: { obra: null } })] })
   const correr = async ({ fajo: json }) => {
     assert.equal(json.length, 1, 'el que no tiene obra igual se manda al cargador')
@@ -166,14 +169,40 @@ test('CARGADO SIN OBRA: se dice con todas las letras y con su fila (03/08/2026)'
   }
   const r = await escribirFajo({ port: null, repo, correr, congelado: SIN_HIELO }, fajo)
   assert.equal(r.estado, ESTADO.CARGADO)
-  assert.match(r.texto, /⚠️ Cargado \*\*SIN obra\*\* — completala en Compras, fila 413\./)
+  assert.match(r.texto, /imputación por completar/)
+  assert.match(r.texto, /fila 413 \(Combustibles Barcelo\) → falta .*Obra \(J\)/)
+  assert.doesNotMatch(r.texto, /Estrella/, 'no se inventa una obra que el comprobante no dice')
 })
 
-test('CON OBRA no aparece la advertencia: sólo se avisa lo que quedó incompleto', async () => {
+test('EL RESUMEN LLEVA LA PLATA: cuántas filas y cuánto suman', async () => {
+  // Contar filas no le dice al dueño si se le perdió una factura de dos millones. El total es el
+  // número contra el que compara el fajo de papeles que tiene en la mano.
+  const { repo, fajo } = await conFajo({
+    items: [
+      item({ comprobante: { total: 36460.30 } }),
+      item({ clave: 'c:30712345678|0113-00010490', comprobante: { numero: '0113-00010490', total: 121000, iva: 21000 } }),
+    ],
+  })
+  const correr = async () => ({ ok: true, datos: { ok: true, escritas: 2, filas: [{ i: 0, fila: 412 }, { i: 1, fila: 413 }] } })
+  const r = await escribirFajo({ port: null, repo, correr, congelado: SIN_HIELO }, fajo)
+  assert.match(r.texto, /2 comprobante\(s\) en \*\*Compras\*\* — total \$157\.460/)
+})
+
+test('UN ARCHIVO CON VARIOS COMPROBANTES: entró uno y se dice cuál, para que el resto no se dé por cargado', async () => {
+  const uno = item({ comprobante: { variosComprobantes: true, cuantosComprobantes: 3 } })
+  uno.origen = { fileId: 'f1', nombre: 'IMG_7530.jpg' }
+  const { repo, fajo } = await conFajo({ items: [uno] })
+  const correr = async () => ({ ok: true, datos: { ok: true, escritas: 1, filas: [{ i: 0, fila: 412 }] } })
+  const r = await escribirFajo({ port: null, repo, correr, congelado: SIN_HIELO }, fajo)
+  assert.match(r.texto, /IMG_7530\.jpg\*\* tenía 3 comprobantes: cargué sólo el de la fila 412/)
+  assert.match(r.texto, /fotos separadas/)
+})
+
+test('CON OBRA no aparece la advertencia de obra: sólo se avisa lo que quedó incompleto', async () => {
   const { repo, fajo } = await conFajo()
   const correr = async () => ({ ok: true, datos: { ok: true, escritas: 1, filas: [{ i: 0, fila: 412 }] } })
   const r = await escribirFajo({ port: null, repo, correr, congelado: SIN_HIELO }, fajo)
-  assert.doesNotMatch(r.texto, /SIN obra/)
+  assert.doesNotMatch(r.texto, /Obra \(J\)/)
 })
 
 test('un comprobante que YA estaba cargado no se manda al cargador', async () => {

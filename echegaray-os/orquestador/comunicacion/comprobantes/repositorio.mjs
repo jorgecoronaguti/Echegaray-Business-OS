@@ -218,6 +218,41 @@ export async function olvidarCargados(port, claves = []) {
   return rowCount ?? 0
 }
 
+/**
+ * EL ACUMULADO DE LA TANDA — cuántos comprobantes y cuánta plata lleva cargada esta persona en este
+ * canal en la última hora.
+ *
+ * ═══ POR QUÉ (13/08) ═══
+ *
+ * El dueño va a subir treinta fotos y Mattermost sólo deja adjuntar diez por post: son tres o cuatro
+ * posts, y desde que la carga es automática cada post contesta con su propio resumen. Contar a mano
+ * cuatro mensajes para saber si entró todo es exactamente la fricción que este flujo existe para
+ * sacar. Esto le da UN número contra el que comparar el fajo de papeles que tiene en la mano.
+ *
+ * SALE DEL REGISTRO DE LO CARGADO, no de los fajos: `comprobantes_cargados` es la tabla que anota una
+ * fila por comprobante que EFECTIVAMENTE entró a Compras (con `fila` puesta), así que contar ahí es
+ * contar el efecto. Contar fajos contaría intentos.
+ *
+ * Falla devolviendo null y nunca lanza: es un renglón informativo, y perderlo no puede tumbar el
+ * mensaje que dice dónde quedó el gasto.
+ *
+ * @returns {Promise<{cuantos:number, suma:number}|null>}
+ */
+export async function acumuladoDeLaTanda(port, { plataforma = 'mattermost', userId, channelId, minutos = 60 } = {}) {
+  if (typeof port?.query !== 'function' || !userId || !channelId) return null
+  try {
+    const { rows } = await port.query(
+      `select count(*)::int as cuantos, coalesce(sum(total), 0)::float8 as suma
+         from comunicacion.comprobantes_cargados
+        where plataforma = $1 and plataforma_user_id = $2 and channel_id = $3
+          and fila is not null
+          and creado_at >= now() - ($4 || ' minutes')::interval`,
+      [plataforma, userId, channelId, String(Math.max(1, Number(minutos) || 60))])
+    const r = rows?.[0]
+    return r ? { cuantos: r.cuantos ?? 0, suma: Number(r.suma) || 0 } : null
+  } catch { return null }
+}
+
 /** Suelta las claves reservadas cuando la escritura NO llegó a ocurrir. Sólo las que siguen sin fila. */
 export async function soltarReservas(port, claves = []) {
   const lista = [...new Set(claves.filter(Boolean))]

@@ -151,6 +151,11 @@ export const PROMPT_LECTURA = [
   '  leen, poné null: qué se compró no se deduce de quién lo vendió.',
   '· Si es NOTA DE CRÉDITO poné es_nota_credito=true. No cambies el signo de los importes: copialos',
   '  positivos tal como figuran.',
+  '· UN ARCHIVO, UN COMPROBANTE. Si en esta imagen o en este PDF hay MÁS DE UN comprobante DISTINTO',
+  '  (dos tickets sobre la mesa, un PDF con varias facturas), contestá SÓLO por el primero y poné',
+  '  varios_comprobantes=true y cuantos_comprobantes=<cuántos contás>. No los mezcles en un solo JSON:',
+  '  sumar dos facturas en una fila es plata mal cargada. Las páginas de UN MISMO comprobante (el',
+  '  frente y el dorso, una factura de dos hojas con el mismo número) NO cuentan como varios.',
   '',
   'Respondé SÓLO este JSON, sin texto alrededor:',
   '{"emisor":"<razón social del que VENDE>","cuit":"<11 dígitos del emisor, o null>",',
@@ -163,6 +168,7 @@ export const PROMPT_LECTURA = [
   '"forma_pago":"<lo que diga, o null>",',
   '"concepto":"<QUÉ SE COMPRÓ: los artículos, en pocas palabras. Nunca la dirección ni el rubro',
   'del proveedor>","anotacion_manuscrita":"<tal cual, o null>",',
+  '"varios_comprobantes":<true|false>,"cuantos_comprobantes":<número o null>,',
   '"legible":<true|false>,"dudas":["<qué no pudiste leer>"]}',
 ].join('\n')
 
@@ -274,10 +280,14 @@ export function necesitaRevision(crudo = {}) {
 export function fusionar(primera = {}, revision = {}) {
   const out = { ...primera }
   for (const [k, v] of Object.entries(revision)) {
-    if (k === 'dudas' || k === 'legible') continue
+    if (k === 'dudas' || k === 'legible' || k === 'varios_comprobantes') continue
     if (!vacio(v)) out[k] = v
   }
   out.legible = primera?.legible !== false && revision?.legible !== false
+  // ALCANZA CON QUE UNA PASADA HAYA VISTO DOS. Si se fusionara como el resto de los campos, un `false`
+  // de la revisión borraría el aviso de la primera y el segundo comprobante volvería a perderse en
+  // silencio — que es justo lo que este campo existe para impedir. Se acumula, como `legible`.
+  out.varios_comprobantes = primera?.varios_comprobantes === true || revision?.varios_comprobantes === true
   out.dudas = [...new Set([...(primera?.dudas ?? []), ...(revision?.dudas ?? [])].map((d) => String(d)))].slice(0, 6)
   const alt = [primera?.emisor, revision?.emisor].filter((e) => !vacio(e)).map((e) => String(e).trim())
   if (alt.length === 2 && alt[0] !== alt[1]) out.emisor_alt = alt.find((e) => e !== out.emisor) ?? null

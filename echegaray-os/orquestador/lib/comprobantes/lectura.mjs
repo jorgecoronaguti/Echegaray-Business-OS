@@ -255,6 +255,16 @@ export function normalizar_lectura(crudo = {}) {
       formaPago: textoODefault(crudo.forma_pago),
       concepto: textoODefault(crudo.concepto),
       anotacion: textoODefault(crudo.anotacion_manuscrita),
+      // ═══ EL ARCHIVO TRAÍA MÁS DE UN COMPROBANTE (13/08) ═══
+      //
+      // Un adjunto produce UN ítem: dos tickets sobre la mesa en la misma foto, o un PDF con cinco
+      // facturas, se leían como uno solo y los otros desaparecían sin que nada lo dijera. No se
+      // resuelve leyendo varios de un archivo —eso cambia el contrato de la visión y de la
+      // idempotencia—: se resuelve DECLARÁNDOLO, para que el dueño mande los otros por separado en vez
+      // de darlos por cargados. Un gasto perdido en silencio es el peor resultado de este flujo.
+      variosComprobantes: crudo.varios_comprobantes === true,
+      cuantosComprobantes: Number.isFinite(Number(crudo.cuantos_comprobantes))
+        ? Number(crudo.cuantos_comprobantes) : null,
       detalle: { iva21: iva21 || null, iva105: iva105 || null },
     },
     faltantes,
