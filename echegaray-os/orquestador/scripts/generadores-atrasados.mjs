@@ -374,7 +374,7 @@ function main() {
   if (!archivos.length) { console.error('✖ no encontré ningún generador: el prefijo o la rama base están mal. No afirmo nada.'); return 1 }
   if (viejas.length) {
     const ramasViejas = [...new Set(viejas.map((v) => v.rama))]
-    console.log(`\n· ${viejas.length} versión(es) de rama que main YA TUVO y superó — nada que traer`)
+    console.log(`\n· ${viejas.length} versión(es) de rama que ${base} YA TUVO y superó — nada que traer`)
     console.log(`   ${ramasViejas.slice(0, 6).join(', ')}${ramasViejas.length > 6 ? ` (+${ramasViejas.length - 6})` : ''}`)
     // Las DECLARADAS se muestran enteras: son un juicio de una persona, no una comparación de blobs,
     // y esconderlas entre 740 automáticas sería exactamente el silenciador que este registro no puede ser.

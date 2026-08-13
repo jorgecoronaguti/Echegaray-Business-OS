@@ -7,6 +7,7 @@
 // detectarlo: que la clasificación deje pasar algo, o que ni siquiera mire.
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import {
   escribeSheets, veredicto, hayEvidencia, frenaElPipeline, nadieLoMiro, resumir, revisarArchivo,
   escritoresDeSheets, ramasSinMergear, MARCAS_DE_ESCRITURA, leerRegistro, estadoDeLaRama,
@@ -191,9 +192,17 @@ test('el inventario encuentra generadores de verdad en este repo', () => {
 })
 
 test('las ramas sin mergear se listan, y nunca la propia', () => {
-  const ramas = ramasSinMergear('HEAD')
+  // LA BASE ES `main`, NO `HEAD`. Con `HEAD` este test afirmaba que main no aparece como rama sin
+  // mergear, y eso sólo es cierto mientras main no se mueva: en este repo se mueve mientras uno
+  // trabaja en su worktree, así que el test se ponía rojo por algo que no tiene nada que ver con lo
+  // que mide. Un test que falla por el reloj enseña a ignorar los rojos.
+  const ramas = ramasSinMergear('main')
   assert.ok(Array.isArray(ramas))
   assert.equal(ramas.includes('main'), false, 'la base no puede contarse como rama sin mergear')
+  // Y lo que no es tautológico: nadie está atrasado respecto de sí mismo. Quien corre esto desde su
+  // worktree está justamente produciendo ese trabajo; verse listado le tapa lo que sí tiene que mirar.
+  const propia = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8' }).trim()
+  assert.equal(ramas.includes(propia), false, `la rama actual (${propia}) no puede listarse como atrasada`)
   assert.ok(ramas.every((b) => !b.startsWith('worktree-agent-')), 'los worktrees de agentes son ruido')
 })
 
