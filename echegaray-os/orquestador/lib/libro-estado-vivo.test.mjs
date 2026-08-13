@@ -223,16 +223,50 @@ test('LAS TRES LETRAS SE RESUELVEN POR RÓTULO, o nada va vivo', () => {
   assert.equal(columnasVivasDeCompras([[], [], ['nada']]), null, 'encabezado irreconocible → null → valores pegados')
 })
 
-test('EL NETEO DE OBRAS RESUELVE SUS LETRAS POR RÓTULO — con la "Fecha" aparte, o nada va vivo', () => {
-  const CAB = ['id', 'x', 'Fecha', 'x', 'Proveedor', 'CUIT (OS)', 'x', 'N° Comprobante', 'x', 'Cliente / Asignación',
-    'Detalles / Obra', 'x', 'x', 'x', 'Total', 'Tipo pago', 'x', 'x', 'x', 'Monto Pagado', 'x', 'x', 'x', 'Estado',
-    'x', 'x', 'x', 'x', 'Rubro de caja', 'Fecha de caja']
-  const cols = columnasNeteoDeCompras([[], [], CAB])
+// ═══ EL NETEO, CONTRA EL ENCABEZADO REAL DE COMPRAS — NO CONTRA UNO INVENTADO ═════════════════════
+//
+// Este test existía y PASABA mientras el neteo estaba roto en producción, porque su encabezado de
+// mentira tenía una columna llamada "Fecha" que el archivo real nunca tuvo. Probaba que el código
+// hacía lo que el código decía, no que resolviera la planilla del dueño. Ahora usa el encabezado
+// REAL —el mismo de `compras-columnas.test.mjs`, verificado contra el archivo— y por eso el rótulo
+// equivocado se pone rojo acá en vez de aparecer como un `⚠` en el log de la corrida nocturna.
+const CAB_COMPRAS_REAL = []
+;[['A', 'ID'], ['B', 'Categoría'], ['C', 'Fecha factura'], ['D', 'Fecha factura (mes)'], ['E', 'Proveedor'],
+  ['F', 'Modalidad'], ['G', 'Tipo'], ['H', 'N° Comprobante'], ['I', 'Unidad de Negocio'],
+  ['J', 'Cliente / Asignación'], ['K', 'Detalles / Obra'], ['L', 'Concepto'], ['M', 'Importe'], ['N', 'IVA'],
+  ['O', 'Total'], ['P', 'Tipo pago'], ['Q', 'Fecha prevista de pago (día)'], ['R', 'Fecha prevista de pago (mes)'],
+  ['S', 'Total o Parcial'], ['T', 'Monto Pagado'], ['U', 'Monto Parcial 1'], ['V', 'Fecha prevista de pago 2'],
+  ['W', 'Monto Parcial 2'], ['X', 'Estado'], ['Y', 'Tipo de Costo'], ['Z', 'Estado pago'], ['AA', 'Estado Carga'],
+  ['AB', 'Rubro de caja'], ['AC', 'Rubro de caja'], ['AD', 'Fecha de caja'], ['AE', 'Familia de material'],
+  ['AF', 'Sub-rubro de estructura'], ['AM', 'CUIT (OS)'],
+].forEach(([col, rotulo]) => {
+  const i = [...col].reduce((n, ch) => n * 26 + (ch.charCodeAt(0) - 64), 0) - 1
+  CAB_COMPRAS_REAL[i] = rotulo
+})
+
+test('EL NETEO DE OBRAS RESUELVE SUS LETRAS SOBRE EL ENCABEZADO REAL DE COMPRAS', () => {
+  const cols = columnasNeteoDeCompras([[], [], CAB_COMPRAS_REAL])
+  assert.ok(cols, 'con el encabezado REAL de Compras el neteo TIENE que resolver: si da null, los '
+    + 'egresos de obra se publican pegados y se cuentan dos veces cuando la factura entra')
+  // C es "Fecha factura" —la fecha del comprobante—, la MISMA que usa obras-pestana.mjs para su real
+  // acumulado. E proveedor, J cliente, O total, T monto pagado.
   assert.deepEqual(cols, { proveedor: 'E', cliente: 'J', fecha: 'C', total: 'O', pagado: 'T' })
-  // Sin la col "Fecha" ("Fecha de caja" NO es "Fecha": el match es exacto) → null → importes pegados.
-  const sinFecha = CAB.map((n) => (n === 'Fecha' ? 'x' : n))
-  assert.equal(columnasNeteoDeCompras([[], [], sinFecha]), null)
+})
+
+test('el neteo NO se cuelga de "Fecha de caja": lo que descuenta es que la factura ENTRÓ', () => {
+  // Sacando "Fecha factura" queda "Fecha de caja" y "Fecha prevista de pago": ninguna sirve, y el
+  // match es exacto. Falla cerrado en vez de netear contra la fecha equivocada.
+  const sinFactura = CAB_COMPRAS_REAL.map((n) => (n === 'Fecha factura' ? 'x' : n))
+  assert.equal(columnasNeteoDeCompras([[], [], sinFactura]), null)
   assert.equal(columnasNeteoDeCompras([[], [], ['nada']]), null, 'encabezado irreconocible → falla cerrado')
+})
+
+test('SIN NETEO, EL LIBRO NO SE PUBLICA: el script aborta en vez de pegar importes', () => {
+  const fuente = fs.readFileSync(path.join(AQUI, '../scripts/libro-movimientos-pestana.mjs'), 'utf8')
+  const bloque = /OBRAS_FUTURAS\.length && !colsNeteo\) \{\s*(throw new Error|console\.warn)/.exec(fuente)
+  assert.ok(bloque, 'no encontré la guarda del neteo en libro-movimientos-pestana.mjs')
+  assert.equal(bloque[1], 'throw new Error',
+    'volvió a ser un console.warn: la corrida publicaría egresos de obra PEGADOS, que se cuentan dos veces')
 })
 
 test('EL ESCRITOR USA LA CELDA VIVA DEL IMPORTE, no `m.importe` pegado', () => {

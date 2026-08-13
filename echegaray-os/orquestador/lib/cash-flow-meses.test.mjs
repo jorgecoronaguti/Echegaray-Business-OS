@@ -12,7 +12,7 @@ import assert from 'node:assert/strict'
 import { grillaMeses, mesesDelAnio, destinosNombrados, PESTANA_MENSUAL, vinculoHoy } from './cash-flow-meses.mjs'
 import { NOMBRE_MESES } from './cash-flow-lineas.mjs'
 import { footprintDe, conceptosDe, colTotal, letra, FILA } from './cash-flow-matriz.mjs'
-import { RUBROS_EGRESO } from './cash-flow-rubros.mjs'
+import { RUBROS_EGRESO, RUBROS_SOLO_PROYECTADO } from './cash-flow-rubros.mjs'
 import { auditarPatron } from './patron-pestana.mjs'
 
 const REFS = { saldo: 'CAJA_TOTAL_DISPONIBLE', fecha: 'CAJA_FECHA_SALDO', minima: 'CAJA_MINIMA' }
@@ -30,10 +30,12 @@ test('doce columnas de mes más TOTAL, y las filas de concepto en orden', () => 
   assert.deepEqual(
     conceptosDe('mes').map((c) => en(filas, meta.fila[c.clave], 0)),
     conceptosDe('mes').map((c) => c.rotulo))
-  // 80 filas: los 9 conceptos del tronco, la apertura por rubro de las cuatro medidas (35) y la
+  // 81 filas: los 9 conceptos del tronco, la apertura por rubro de las cuatro medidas (36) y la
   // sección POR CLIENTE (1 título + 7 bloques de 5 = 36). Eran 36 de apertura hasta el 06/08: se fue
-  // "Ingresos reales · Valores en cartera", que era cero en los doce meses por construcción.
-  assert.equal(conceptosDe('mes').length, 80)
+  // "Ingresos reales · Valores en cartera", que era cero en los doce meses por construcción. El 13/08
+  // entró "Materiales de obra proyectados" —los egresos de las obras en curso, que caían en "Otros"—
+  // sólo bajo lo proyectado, por el mismo criterio: bajo lo real sería otra fila condenada a cero.
+  assert.equal(conceptosDe('mes').length, 81)
   assert.deepEqual(meta.footprint, footprintDe('mes', 2026))
 })
 
@@ -110,9 +112,17 @@ test('LA APERTURA POR RUBRO también en el mensual: subtotal del libro, rubros e
     }
     assert.equal(en(filas, b.otros, c), `=N($B$${b.subtotal})-SUM($B$${b.primeraSub}:$B$${b.otros - 1})`)
   }
-  // Y los rubros de egreso son los catorce que emite el libro: si mañana cambia uno, la sub-línea
-  // sumaría cero para siempre sin dar un solo error.
-  assert.deepEqual(meta.bloques[2].rubros.map((r) => r.rubro), [...RUBROS_EGRESO])
+  // Y los rubros de egreso son los que emite el libro: si mañana cambia uno, la sub-línea sumaría
+  // cero para siempre sin dar un solo error.
+  assert.deepEqual(meta.bloques[3].rubros.map((r) => r.rubro), [...RUBROS_EGRESO])
+  // BAJO LO REAL NO VAN LOS RUBROS QUE SÓLO PUEDEN SER PROYECCIÓN: una fila condenada a cero en los
+  // doce meses ocupa lugar y enseña a saltear el bloque. "Materiales de obra proyectados" es el
+  // segundo caso (13/08): la factura, cuando llega, entra por Compras con SU rubro.
+  assert.deepEqual(
+    meta.bloques[2].rubros.map((r) => r.rubro),
+    RUBROS_EGRESO.filter((r) => !RUBROS_SOLO_PROYECTADO.includes(r)))
+  assert.ok(RUBROS_SOLO_PROYECTADO.some((r) => RUBROS_EGRESO.includes(r)),
+    'el mecanismo de "sólo proyectado" tiene que seguir aplicando del lado del egreso')
   // "Valores en cartera" SÓLO bajo proyectados: bajo reales estaba en cero los doce meses, porque el
   // día que el valor se acredita entra al libro por el banco con rubro "Cobranzas".
   assert.deepEqual(meta.bloques[0].rubros.map((r) => r.rubro), ['Cobranzas'])
