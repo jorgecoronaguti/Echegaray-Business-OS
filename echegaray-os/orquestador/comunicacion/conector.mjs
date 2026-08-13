@@ -20,7 +20,8 @@ import {
 } from '../../../communication-service/src/index.mjs'
 import { query, withTx } from '../lib/db.mjs'
 import { crearRazonadorDeRuteo } from './razonar-ruteo.mjs'
-import { claimTask, transition, failTask, reapExpiredLeases } from '../lib/ledger.mjs'
+import { claimTask, transition, failTask, heartbeat, reapExpiredLeases } from '../lib/ledger.mjs'
+import { correrConLease, CIERRE, LEASE_SEGUNDOS } from './lease-tarea.mjs'
 import { resolveHandler } from '../handlers/index.mjs'
 import { crearEmitEventOS } from './ingesta-os.mjs'
 
@@ -103,9 +104,17 @@ export function crearConector(opts = {}) {
   // (PR-4.1) → handler registrado → transición. Reclama SÓLO tareas de la lane de
   // comunicación; nunca roba tareas del worker general (aislamiento atómico en el
   // claim). Reproduce el núcleo de worker.mjs (sin IA).
+  //
+  // ═══ EL LEASE ERA DE 30 SEGUNDOS Y EL HANDLER TARDA MINUTOS (13/08) ═══
+  //
+  // Un post con ocho fotos de comprobantes son ocho descargas y ocho lecturas de visión: 150 s
+  // medidos en producción. Con el lease de 30 s el reap daba la tarea por abandonada, la mandaba a
+  // `retrying` y el mismo trabajo se volvía a ejecutar —publicando de nuevo— hasta agotar los
+  // intentos. La explicación completa y los dos arreglos viven en `lease-tarea.mjs`; acá sólo se
+  // cablean: se late mientras el handler corre y no se reintenta un efecto que ya ocurrió.
   const LANE = 'comunicacion'
-  async function procesarWorkFabric({ lote = 10, leaseSeconds = 30 } = {}) {
-    const resumen = { intentados: 0, ok: 0, fallidos: 0 }
+  async function procesarWorkFabric({ lote = 10, leaseSeconds = LEASE_SEGUNDOS } = {}) {
+    const resumen = { intentados: 0, ok: 0, fallidos: 0, huerfanas: 0 }
     for (let i = 0; i < lote; i++) {
       const task = await claimTask(process.env.WORKER_ID ?? 'comm-wf-1', leaseSeconds, LANE)
       if (!task) break
@@ -132,17 +141,26 @@ export function crearConector(opts = {}) {
         // no tocan Google, que son justo las que menos pueden romperse.
         ...(opts.google ? { google: opts.google } : {}),
       }
-      try {
-        if (!handler) throw new Error(`sin handler para ${task.type}`)
-        await transition(task.id, ctx.config.WORKER_ID, 'running')
-        const out = await handler(task, ctx)
-        await transition(task.id, ctx.config.WORKER_ID, 'reviewing')
-        await transition(task.id, ctx.config.WORKER_ID, 'succeeded', { result: out?.result ?? {}, evidence: out?.evidence ?? {} })
-        resumen.ok++
-      } catch (e) {
-        await failTask(task.id, ctx.config.WORKER_ID, String(e?.message ?? e).slice(0, 400), 1000)
+      const workerId = ctx.config.WORKER_ID
+      const r = await correrConLease({
+        task,
+        workerId,
+        leaseSeconds,
+        log,
+        heartbeat,
+        transition,
+        failTask,
+        correr: async () => {
+          if (!handler) throw new Error(`sin handler para ${task.type}`)
+          await transition(task.id, workerId, 'running')
+          return handler(task, ctx)
+        },
+      })
+      if (r.cierre === CIERRE.OK) resumen.ok++
+      else if (r.cierre === CIERRE.LEASE_PERDIDO) resumen.huerfanas++
+      else {
         resumen.fallidos++
-        log.error?.('work-fabric comm falló', { task_id: task.id, error: String(e?.message ?? e) })
+        log.error?.('work-fabric comm falló', { task_id: task.id, error: r.error })
       }
     }
     return resumen
