@@ -14,7 +14,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { grillaObras, serialISO, ANCHO_OBRAS, ANCHOS_OBRAS, REFS_OBRAS, OBRAS_DEL_ANO } from './obras-grilla.mjs'
+import { grillaObras, serialISO, anclaCliente, ANCHO_OBRAS, ANCHOS_OBRAS, REFS_OBRAS, OBRAS_DEL_ANO } from './obras-grilla.mjs'
 import { OBRAS_FUTURAS, CLIENTES_CANONICOS, esProyectable, totalEgresos } from './obras-datos.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 
@@ -34,38 +34,98 @@ const formulas = (grid) => grid.filas.flatMap((f, i) => f
 const bloque = (clave) => g.bloques.find((b) => b.clave === clave)
 
 // ─────────────────────────────────────────────────────────────────────────────
-// LA VENTA, UNA SOLA VEZ
+// LA VENTA SON TODAS LAS FILAS — EL DEFECTO QUE LLEGÓ AL ARCHIVO REAL
 // ─────────────────────────────────────────────────────────────────────────────
 
-test('la venta POR CLIENTE no suma la fila madre Y su cronograma: el "⇒ TOTAL 2026" era el número más inflado', () => {
-  // El defecto real (corregido el 13/08): la Sección 1 sumaba TODO lo que matcheaba el cliente. Con
-  // la madre ("Playon Azufre", $58M) y sus certificaciones (los mismos $58M) cargadas, la venta del
-  // año salía al doble. Si alguien vuelve a la SUMIFS pelada, este test se pone rojo.
-  const [f0, f1] = g.fClientes
-  for (let f = f0; f <= f1; f++) {
-    const v = cel(g, `C${f}`)
-    assert.match(v, /^=IF\(SUMIFS\(/, `C${f}: la venta del cliente tiene que preferir las filas fuera del cronograma`)
-    assert.match(v, /"<>\*Certificaci\*"/, `C${f}: sin el filtro de certificaciones, la venta se cuenta dos veces`)
+test('NINGUNA fórmula descarta filas por decir "Certificación": eso borraba la mitad de la venta', () => {
+  // EL DEFECTO, MEDIDO EN EL ARCHIVO VIVO (13/08). Dos versiones de este archivo creyeron que las
+  // filas sin "Certificación" eran una "fila madre" que duplicaba al cronograma, y las prefirieron.
+  // Son los ANTICIPOS del 50%: su orden de compra dice "Anticipo inicio obra 50% $ 47.590.272" y la
+  // certificación dice "Resto 50% s/ total 47.590.272". Descartarlas publicó $624.243.320 de venta
+  // 2026 sobre una fuente de $808.994.353, y puso Instalación Eléctrica en margen NEGATIVO con
+  // semáforo ⚠ por comparar el costo entero contra media venta.
+  for (const [ref, f] of formulas(g)) {
+    assert.ok(!/Certificaci/i.test(f), `${ref}: filtra por certificación — anticipo y certificaciones son el MISMO contrato`)
   }
 })
 
-test('el anti-duplicado es a prueba de acento: "Certificacion" sin tilde también es cronograma', () => {
-  // Un needle "*Certificación*" perdona a la fila escrita sin tilde — y perdonarla es volver a duplicar.
-  for (const [ref, f] of formulas(g)) {
-    assert.ok(!f.includes('Certificación'), `${ref}: el needle no puede llevar el acento (deja pasar "Certificacion")`)
+test('la venta es una SUMIFS directa, sin el IF que elegía qué filas mirar', () => {
+  const objetivo = [...g.fClientes.slice(0, 1), ...g.bloques.map((b) => b.fProt)]
+  for (const f of objetivo) {
+    const v = cel(g, `C${f}`)
+    assert.match(v, /^=SUMIFS\(/, `C${f}: la venta no elige filas, las suma`)
+    assert.ok(!v.includes('IF('), `C${f}: sin rama que descarte nada`)
+    assert.ok(v.includes('"<>CANCELAR"'), `C${f}: lo único que se excluye es la venta cancelada`)
   }
-  assert.ok(formulas(g).some(([, f]) => f.includes('"<>*Certificaci*"')), 'y el needle cortado tiene que existir')
 })
 
 test('venta se define UNA vez: la fila del cliente y la de la obra usan la misma anatomía', () => {
-  // Realidad única. Si la Sección 1 y la Sección 2 divergen, el total del año deja de ser la suma de
-  // las obras y nadie se entera hasta que los dos números se miran juntos.
-  const anatomia = (v) => [/^=IF\(SUMIFS\(/.test(v), v.includes('"<>*Certificaci*"'), v.includes('"<>CANCELAR"')]
+  // Realidad única. Si la Sección 1 y la Sección 2 divergen, el total del año deja de ser comparable
+  // con las obras y nadie se entera hasta que los dos números se miran juntos.
+  const anatomia = (v) => [/^=SUMIFS\(/.test(v), v.includes('IF('), v.includes('"<>CANCELAR"')]
   const cliente = anatomia(cel(g, `C${g.fClientes[0]}`))
   for (const b of g.bloques) {
     assert.deepEqual(anatomia(cel(g, `C${b.fProt}`)), cliente, `${b.clave}: la venta de la obra no se calcula como la del cliente`)
   }
-  assert.deepEqual(cliente, [true, true, true], 'las dos excluyen el cronograma y el estado CANCELAR')
+  assert.deepEqual(cliente, [true, false, true])
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EL CLIENTE SE ANCLA AL PREFIJO
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('el cliente se ancla al PRINCIPIO: "San Francisco" no puede tragarse a "IMOTOR/San Francisco/…"', () => {
+  // Medido en el archivo vivo: San Francisco salía $161.183.719 = sus $104.077.336 más los
+  // $104.765.646 de IMOTOR… menos lo que el filtro de certificaciones ya había borrado. IMOTOR es
+  // otro cliente, con sus 9 filas propias. El comodín va SÓLO al final.
+  const [f0, f1] = g.fClientes
+  for (let f = f0; f <= f1; f++) {
+    assert.ok(cel(g, `C${f}`).includes(`$A${f}&"*"`), `C${f}: el cliente tiene que anclarse al prefijo`)
+    assert.ok(!cel(g, `C${f}`).includes(`"*"&$A${f}`), `C${f}: buscar el cliente ADENTRO mezcla clientes distintos`)
+  }
+  for (const b of g.bloques) {
+    const v = cel(g, `C${b.fProt}`)
+    const o = OBRAS_FUTURAS.find((x) => x.clave === b.clave)
+    assert.ok(v.includes(`"${o.cliente}*"`), `${b.clave}: cliente anclado al prefijo`)
+    assert.ok(!v.includes(`"*${o.cliente}*"`), `${b.clave}: sin comodín a la izquierda del cliente`)
+  }
+})
+
+test('el prefijo sigue tomando al cliente escrito con cola: "LA ESTRELLA /ALIMENTOS DEL SUR SAS"', () => {
+  // El match no puede ser exacto: el archivo escribe el cliente con una cola. Anclar al prefijo es el
+  // punto medio, y es el que resuelve los dos casos reales a la vez.
+  assert.equal(anclaCliente('LA ESTRELLA'), 'LA ESTRELLA*')
+  const casos = [
+    ['LA ESTRELLA', 'LA ESTRELLA /ALIMENTOS DEL SUR SAS', true],
+    ['San Francisco', 'San Francisco', true],
+    ['San Francisco', 'IMOTOR/San Francisco/JAVI SANCHEZ', false],
+    ['MESSINA', 'MESSINA', true],
+    ['Quattropani - Melisa García SAS', 'Quattropani - Melisa García SAS', true],
+  ]
+  for (const [canon, enElArchivo, esperado] of casos) {
+    assert.equal(enElArchivo.startsWith(canon), esperado, `"${canon}" vs "${enElArchivo}"`)
+  }
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EL TOTAL SE CONCILIA CONTRA LA FUENTE
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('el ⇒ TOTAL 2026 sale de Cobranzas ENTERA, no de la suma de los clientes listados', () => {
+  // Un total que es la suma de las filas de arriba no puede detectar que falta un cliente: da
+  // "correcto" por construcción. El residuo se publica con nombre y el total los incluye, así que la
+  // pestaña se concilia sola contra su fuente.
+  const otros = cel(g, `C${g.fOtros}`)
+  assert.match(otros, /^=SUMIFS\([^)]*\)-SUM\(C\d+:C\d+\)$/, 'residuo = todo el archivo − los listados')
+  assert.ok(!otros.includes(`'Cobranzas'!$G`), 'el total del archivo no filtra por cliente: una fila sin cliente entra igual')
+  assert.equal(cel(g, `C${g.totales[0]}`), `=SUM(C${g.fClientes[0]}:C${g.fOtros})`, 'el total incluye el residuo')
+  assert.equal(cel(g, `D${g.totales[0]}`), `=SUM(D${g.fClientes[0]}:D${g.fOtros})`)
+})
+
+test('la fila de residuo existe, está rotulada y dice para qué sirve', () => {
+  assert.match(String(cel(g, `A${g.fOtros}`)), /Otros clientes/)
+  assert.match(String(cel(g, `I${g.fOtros}`)), /falta un cliente en la lista/)
+  assert.equal(g.fOtros, g.fClientes[1] + 1, 'va inmediatamente debajo de los clientes')
 })
 
 // ─────────────────────────────────────────────────────────────────────────────

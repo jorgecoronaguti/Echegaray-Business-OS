@@ -78,15 +78,26 @@ test('las cuotas suman EXACTAMENTE el monto del egreso: repartir no puede cambia
   }
 })
 
-test('MAMPOSTERÍA (actualización 07/08): tiene fechas, es proyectable y la venta declarada viaja con su nota', () => {
+test('MAMPOSTERÍA: tiene fechas, y el aviso de "venta no cargada" ya NO está — se cargó el 13/08', () => {
   const m = porClave('sf-mamposteria')
   assert.ok(m, 'la obra está')
   assert.ok(esProyectable(m), 'ya no está marcada sin fechas: el dueño las dio (07 al 19/08)')
   assert.equal(m.inicio, '2026-08-07')
   assert.equal(m.fin, '2026-08-19')
-  assert.equal(m.ventaDeclarada, 8_758_810, 'la venta propia declarada por el dueño')
-  assert.match(String(m.notas), /venta aún no cargada en Cobranzas/, 'la nota que explica el $0 de la fórmula viva')
-  assert.match(String(m.notas), /8\.758\.810/, 'con el monto declarado a la vista')
+  assert.equal(m.ventaDeclarada, 8_758_810, 'la venta propia declarada por el dueño, para contrastar')
+  // El aviso decía "⚠ venta aún no cargada en Cobranzas". La fila existe desde el 13/08 ($8.758.810,
+  // cobro 19/08). Un aviso que quedó viejo miente con más autoridad que un dato que falta: parece
+  // verificado. Si alguien lo repone como texto fijo, este test se pone rojo.
+  assert.equal(m.notas, null, 'sin aviso: la venta viva la trae la fórmula')
+  assert.ok(!/no cargada/i.test(String(m.notas)), 'y nunca vuelve a afirmarse que no está cargada')
+})
+
+test('ninguna nota del insumo afirma algo que la fórmula viva ya sabe: los avisos se pudren', () => {
+  for (const o of OBRAS_FUTURAS) {
+    if (!o.notas) continue
+    assert.ok(!/no cargada|sin cargar|todavía no está en Cobranzas/i.test(o.notas),
+      `${o.clave}: "${o.notas}" es una afirmación sobre Cobranzas tipeada a mano`)
+  }
 })
 
 test('BSA (actualización 07/08): sin egresos proyectados — los materiales ya están facturados en Compras', () => {

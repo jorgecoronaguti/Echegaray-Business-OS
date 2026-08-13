@@ -19,17 +19,34 @@
 // · Rangos ABIERTOS ($M$5:$M): una fila final tipeada deja de ver lo nuevo sin dar error.
 // · Una obra sin fechas se VE pero no se proyecta: sin inicio no hay ventana para medir el real.
 //
-// LA VENTA DE UNA OBRA NO SE CUENTA DOS VECES. En Cobranzas conviven la fila madre ("Playon Azufre",
-// $58M) y su cronograma de certificaciones ("Playon Azufre - Certificación 1/2…", los mismos $58M).
-// Sumar todo lo que matchea duplica la venta. La fórmula prefiere las filas SIN "Certificación" y,
-// sólo si no existen (Salón Comercial se cargó únicamente como cronograma), suma las certificaciones.
+// ═══ LA VENTA DE UNA OBRA SON TODAS SUS FILAS. NO SE DESCARTA NINGUNA (13/08) ═══
 //
-// LA REGLA VALE EN LAS DOS SECCIONES, Y ESO ES UNA CORRECCIÓN (13/08). La versión anterior la aplicaba
-// sólo por obra: la Sección 1 sumaba TODO lo que matcheaba el cliente, o sea la madre Y su cronograma.
-// El número más grande de la pestaña —"⇒ TOTAL 2026"— era el más inflado, y sin un solo #ERROR. Venta
-// se define UNA vez (`ventaSinDuplicar`) y las dos secciones la citan; si mañana cambia el criterio,
-// cambia en un lugar. Por lo mismo, las dos excluyen el estado CANCELAR: una venta cancelada no es
-// venta en la fila del cliente ni en la de la obra.
+// ACÁ VIVIÓ UN DEFECTO Y VALE LA PENA DEJARLO ESCRITO, PORQUE ERA CONVINCENTE. Dos versiones de este
+// archivo afirmaron que en Cobranzas convivían "la fila madre" de la obra y su cronograma de
+// certificaciones por el mismo importe, y que sumar todo duplicaba la venta. La fórmula descartaba
+// entonces las filas que dijeran "Certificaci". Era falso, y lo pagó el archivo real: la pestaña
+// publicó $624.243.320 de venta 2026 cuando Cobranzas suma $808.994.353, y mostró Instalación
+// Eléctrica con margen NEGATIVO y semáforo ⚠ por comparar el costo entero contra media venta.
+//
+// LO QUE DICEN LOS DATOS (91 filas de public.cobranzas, verificadas una por una). No existe ninguna
+// fila madre: las filas SIN "Certificación" son los ANTICIPOS y su propia columna de orden de compra
+// lo dice —"Anticipo inicio obra 50% $ 47.590.272"—, mientras las certificaciones dicen "Resto 50%
+// s/ total 47.590.272". Anticipo + certificaciones = 100% del contrato, y ninguna repite a otra.
+//
+// POR QUÉ ENGAÑABA: como el reparto es 50/50, la suma de los anticipos da EXACTAMENTE igual que la de
+// las certificaciones. Dos números idénticos parecen un duplicado. Lo son sólo si uno mira los
+// importes y no el concepto — que es justo lo que pasó, y encima quedó escrito como premisa para el
+// que viniera después. Un comentario del código no es evidencia de nada: la evidencia es el dato.
+//
+// LA REGLA HOY: venta = TODAS las filas del cliente/obra, sin descartar por concepto. Lo único que se
+// excluye es el estado CANCELAR, que es una venta que dejó de existir, no una fila repetida.
+//
+// ═══ EL CLIENTE SE ANCLA AL PRINCIPIO DEL TEXTO, NO SE BUSCA ADENTRO ═══
+//
+// El archivo escribe "LA ESTRELLA /ALIMENTOS DEL SUR SAS", así que el match no puede ser exacto. Pero
+// buscar "*San Francisco*" adentro capturaba también "IMOTOR/San Francisco/JAVI SANCHEZ" —otro
+// cliente, con sus propias 9 filas y $104.765.646— y lo sumaba a San Francisco. Anclar al PREFIJO
+// resuelve los dos casos a la vez, y está verificado contra los 9 clientes reales del archivo.
 
 import { VACIO } from './preservar-anotaciones.mjs'
 import { esProyectable } from './obras-datos.mjs'
@@ -69,26 +86,27 @@ const ars = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-AR')}`
 
 const abierto = (c, campo) => `'${c.hoja}'!$${c[campo]}$${c.desde}:$${c[campo]}`
 
-/** El texto que delata una fila del cronograma. Va CORTADO a propósito: "Certificación" y
- *  "Certificacion" existen los dos en el archivo y un needle con acento perdonaría al sin acento —
- *  y perdonarlo es volver a duplicar la venta. */
-const CERT = 'Certificaci'
-
-/** El estado que saca una fila de la venta: cancelada, no vendida. */
+/** El estado que saca una fila de la venta: cancelada, no vendida. Es lo ÚNICO que se descarta. */
 const NO_VENTA = 'CANCELAR'
 
+/** El criterio que ancla un cliente al PRINCIPIO de "Obra / Cliente": "San Francisco" toma
+ *  "San Francisco" pero no "IMOTOR/San Francisco/JAVI SANCHEZ", que es otro cliente. */
+export const anclaCliente = (texto) => `${texto}*`
+
 /**
- * LA VENTA VIVA, CONTADA UNA SOLA VEZ — la única definición de "venta" de esta pestaña.
+ * LA VENTA VIVA — la única definición de "venta" de esta pestaña.
  *
  * `criterios` son los pares campo/criterio que acotan QUÉ se está vendiendo (un cliente entero en la
- * Sección 1, una obra en la Sección 2). El anti-duplicado es el mismo para los dos: si existen filas
- * fuera del cronograma, ésas son la venta; si la obra se cargó SÓLO como cronograma (Salón Comercial),
- * recién ahí suman las certificaciones.
+ * Sección 1, una obra en la Sección 2). SUMA TODAS LAS FILAS que caen adentro: anticipo y
+ * certificaciones son partes distintas del mismo contrato, no la misma plata dos veces.
  */
-function ventaSinDuplicar(cob, criterios) {
-  const base = `${abierto(cob, 'total')};${criterios};${abierto(cob, 'estado')};"<>${NO_VENTA}"`
-  const sinCert = `SUMIFS(${base};${abierto(cob, 'concepto')};"<>*${CERT}*")`
-  return `=IF(${sinCert}>0;${sinCert};SUMIFS(${base}))`
+function venta(cob, criterios) {
+  return `=SUMIFS(${abierto(cob, 'total')};${criterios};${abierto(cob, 'estado')};"<>${NO_VENTA}")`
+}
+
+/** Lo cobrado bajo los mismos criterios: mismas filas, filtradas por estado. */
+function cobrado(cob, criterios) {
+  return `=SUMIFS(${abierto(cob, 'total')};${criterios};${abierto(cob, 'estado')};"Cobrado")`
 }
 
 /** Mismo constructor de grilla que el anexo de CAJA: push devuelve la fila 1-based, y toda celda
@@ -113,10 +131,15 @@ function hoja() {
 /**
  * SECCIÓN 1 — LAS OBRAS DEL AÑO, POR CLIENTE. Todo fórmula viva.
  *
- * La venta sale de Cobranzas por el TEXTO del cliente (col "Obra / Cliente") con comodines, porque el
- * archivo real escribe "LA ESTRELLA /ALIMENTOS DEL SUR SAS" o "IMOTOR/San Francisco/JAVI SANCHEZ": un
- * match exacto daría $0 sin error. El gasto real en materiales lo declara la pestaña Materiales en su
- * fila "TOTAL POR OBRA", citada por rótulo con INDEX/MATCH — nunca por número de fila.
+ * El cliente se ancla al PREFIJO de "Obra / Cliente": el archivo escribe "LA ESTRELLA /ALIMENTOS DEL
+ * SUR SAS", así que un match exacto daría $0, pero buscarlo adentro le sumaba a San Francisco las 9
+ * filas de "IMOTOR/San Francisco/JAVI SANCHEZ", que es otro cliente. El gasto real en materiales lo
+ * declara la pestaña Materiales en su fila "TOTAL POR OBRA", citada por rótulo con INDEX/MATCH.
+ *
+ * EL TOTAL NO ES LA SUMA DE LAS FILAS DE ARRIBA: sale de Cobranzas entera. Y la diferencia contra los
+ * clientes listados se publica en su propia fila, con nombre. Así la pestaña se concilia sola contra
+ * su fuente y ningún cliente puede desaparecer del número grande sin que se vea dónde fue — que es
+ * exactamente lo que pasó cuando el total decía $624M sobre una fuente de $809M.
  */
 function seccionObrasDelAno(h, refs, clientes) {
   const { cob, mat } = refs
@@ -125,26 +148,33 @@ function seccionObrasDelAno(h, refs, clientes) {
   const f0 = h.n + 1
   for (const cli of clientes) {
     const f = h.n + 1
-    h.push([cli, '',
-      ventaSinDuplicar(cob, `${abierto(cob, 'cliente')};"*"&$A${f}&"*"`),
-      `=SUMIFS(${abierto(cob, 'total')};${abierto(cob, 'cliente')};"*"&$A${f}&"*";${abierto(cob, 'estado')};"Cobrado")`,
-      `=C${f}-D${f}`,
+    const porCliente = `${abierto(cob, 'cliente')};$A${f}&"*"`
+    h.push([cli, '', venta(cob, porCliente), cobrado(cob, porCliente), `=C${f}-D${f}`,
       `=IFERROR(INDEX('${mat.hoja}'!$A:$Z;MATCH("${mat.filaTotal}";'${mat.hoja}'!$A:$A;0);`
         + `MATCH($A${f};INDEX('${mat.hoja}'!$A:$Z;MATCH("${mat.filaCabecera}";'${mat.hoja}'!$A:$A;0)+1;0);0));"—")`,
       '', '', ''])
   }
   const f1 = h.n
-  const fTot = h.push(['⇒ TOTAL 2026', '', `=SUM(C${f0}:C${f1})`, `=SUM(D${f0}:D${f1})`,
-    `=SUM(E${f0}:E${f1})`, `=SUM(F${f0}:F${f1})`, '', '',
-    'Cobranzas, por el texto del cliente · Materiales, fila "TOTAL POR OBRA"'])
+  // COBRANZAS ENTERA, sin filtrar por cliente. El único criterio es el estado, así que una fila con la
+  // columna de cliente vacía entra igual: si dependiera del cliente, el residuo podría esconder plata.
+  const todoElArchivo = `SUMIFS(${abierto(cob, 'total')};${abierto(cob, 'estado')};"<>${NO_VENTA}")`
+  const todoCobrado = `SUMIFS(${abierto(cob, 'total')};${abierto(cob, 'estado')};"Cobrado")`
+  const fOtros = h.n + 1
+  h.push(['Otros clientes — no listados arriba', '',
+    `=${todoElArchivo}-SUM(C${f0}:C${f1})`, `=${todoCobrado}-SUM(D${f0}:D${f1})`,
+    `=C${fOtros}-D${fOtros}`, '', '', '',
+    'lo que hay en Cobranzas y no tiene fila propia acá — si crece, falta un cliente en la lista'])
+  const fTot = h.push(['⇒ TOTAL 2026', '', `=SUM(C${f0}:C${fOtros})`, `=SUM(D${f0}:D${fOtros})`,
+    `=SUM(E${f0}:E${fOtros})`, `=SUM(F${f0}:F${f1})`, '', '',
+    'venta y cobrado = Cobranzas completa · Materiales, fila "TOTAL POR OBRA"'])
   h.push([])
-  return { fClientes: [f0, f1], fTot }
+  return { fClientes: [f0, f1], fOtros, fTot }
 }
 
-/** La venta viva de UNA obra: el cliente y, dentro de él, el texto con el que la obra aparece en el
- *  Concepto. El anti-duplicado lo pone `ventaSinDuplicar`, igual que en la Sección 1. */
-const formulaVentaObra = (cob, cliente, needle) =>
-  ventaSinDuplicar(cob, `${abierto(cob, 'cliente')};"*${cliente}*";${abierto(cob, 'concepto')};"*${needle}*"`)
+/** La venta viva de UNA obra: el cliente anclado al prefijo y, dentro de él, el texto con el que la
+ *  obra aparece en el Concepto. Suma anticipo Y certificaciones: son partes del mismo contrato. */
+const criteriosObra = (cob, cliente, needle) =>
+  `${abierto(cob, 'cliente')};"${anclaCliente(cliente)}";${abierto(cob, 'concepto')};"*${needle}*"`
 
 /** Lo REALMENTE facturado en Compras para un egreso: mismo proveedor (col E, nombre canónico), mismo
  *  cliente (col J) y fecha de factura desde el inicio de la obra — que se lee de la celda H de la
@@ -195,8 +225,8 @@ function bloqueObra(h, refs, o, idx) {
 
   h.push([`2.${idx} · ${o.cliente} — ${o.obra}${proyectable ? '' : '   ⚠ sin fechas — no se proyecta'}`,
     `=IF(G${fProt}>=0;"✓";"⚠")`,
-    formulaVentaObra(cob, o.cliente, o.ventaTexto),
-    `=SUMIFS(${abierto(cob, 'total')};${abierto(cob, 'cliente')};"*${o.cliente}*";${abierto(cob, 'concepto')};"*${o.ventaTexto}*";${abierto(cob, 'estado')};"Cobrado")`,
+    venta(cob, criteriosObra(cob, o.cliente, o.ventaTexto)),
+    cobrado(cob, criteriosObra(cob, o.cliente, o.ventaTexto)),
     `=SUM(E${f0}:E${f1})`, `=SUM(F${f0}:F${f1})`, `=C${fProt}-E${fProt}-F${fProt}`,
     proyectable ? serialISO(o.inicio) : '',
     prosaDeObra(o, proyectable)])
@@ -269,5 +299,6 @@ export function grillaObras(ctx = {}) {
     totales,
     bloques,
     fClientes: s1.fClientes,
+    fOtros: s1.fOtros,
   }
 }
