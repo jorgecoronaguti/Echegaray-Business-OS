@@ -203,7 +203,7 @@ test('las columnas salen de las refs INYECTADAS: ninguna letra queda pegada en l
   // El escritor resuelve las columnas contra los encabezados vivos. Si una letra quedara fija, la
   // fórmula sumaría otra columna el día que el archivo se reordene, y sin dar error.
   const refs = {
-    cob: { hoja: 'Cobranzas', cliente: 'Z', concepto: 'Y', neto: 'V', total: 'X', estado: 'W', forma: 'U', fechaCobro: 'T', desde: 9 },
+    cob: { hoja: 'Cobranzas', cliente: 'Z', concepto: 'Y', neto: 'V', total: 'X', estado: 'W', oc: 'S', fechaCobro: 'T', categoria: 'R', desde: 9 },
     cmp: { hoja: 'Compras', fecha: 'V', proveedor: 'U', cliente: 'T', neto: 'R', total: 'S', desde: 7 },
     mat: REFS_OBRAS.mat,
   }
@@ -252,6 +252,29 @@ test('IMOTOR es San Francisco: la decisión del dueño vive en un mapa, no en un
     if (x === f) continue
     assert.ok(!cel(g, `C${x}`).includes('IMOTOR'), `C${x}: IMOTOR es de San Francisco y de nadie más`)
   }
+})
+
+test('una columna sin resolver NO construye la grilla: el `undefined` ya se publicó una vez', () => {
+  // EL DEFECTO, EN EL ARCHIVO DEL DUEÑO (13/08): la grilla empezó a usar la Orden de Compra y el
+  // escritor nunca agregó ese rótulo, así que `refs.cob.oc` llegaba undefined y la fórmula salía
+  // `'Cobranzas'!$undefined$5:$undefined`. Parsea perfecto — sólo revienta cuando Sheets busca la
+  // columna. Fueron 40 celdas con #ERROR!. La guarda vive en `abierto`, por donde pasa TODA
+  // referencia: así el desajuste entre lo que la grilla usa y lo que el escritor resuelve es imposible.
+  const sinOc = { ...REFS_OBRAS, cob: { ...REFS_OBRAS.cob, oc: undefined } }
+  assert.throws(() => grillaObras({ obras: OBRAS_FUTURAS, refs: sinOc }), /la columna "oc" .* no está resuelta/)
+  const sinHoja = { ...REFS_OBRAS, cmp: { ...REFS_OBRAS.cmp, hoja: undefined } }
+  assert.throws(() => grillaObras({ obras: OBRAS_FUTURAS, refs: sinHoja }), /no está resuelta/)
+})
+
+test('ninguna fórmula lleva una variable rota interpolada: undefined, null, NaN o $$', () => {
+  // El chequeo es barato y ataca toda la familia: cualquier `${x}` vacío deja su firma en el texto.
+  for (const [ref, f] of formulas(g)) {
+    assert.ok(!/undefined|null|NaN|\$\$/.test(f), `${ref}: ${f.slice(0, 100)}`)
+    assert.equal(problemaDeSintaxis(f), null, ref)
+  }
+  assert.match(String(problemaDeSintaxis("=SUMIFS('Cobranzas'!$undefined$5:$undefined;A1;1)")), /interpoló "undefined"/)
+  assert.match(String(problemaDeSintaxis('=SUM($$5:$$9)')), /interpoló/)
+  assert.equal(problemaDeSintaxis('=SUM(A1:A9)'), null, 'y no marca una fórmula sana')
 })
 
 test('las fuentes se citan con rango ABIERTO desde su primera fila de datos', () => {
