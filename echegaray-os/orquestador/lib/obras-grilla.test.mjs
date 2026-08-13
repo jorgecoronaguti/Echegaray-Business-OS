@@ -22,6 +22,7 @@ import {
 } from './obras-grilla.mjs'
 import { OBRAS_FUTURAS, CLIENTES_CANONICOS, esProyectable, totalEgresos } from './obras-datos.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
+import { ALERTA, glifosInvisibles } from './glifos.mjs'
 
 const COLS = 'ABCDEFGHI'
 const g = grillaObras({ obras: OBRAS_FUTURAS })
@@ -524,6 +525,15 @@ test('el semáforo ✓/⚠ ya NO está: daba lo mismo en las 7 obras y la column
   for (const b of g.bloques) assert.match(cel(g, `F${b.fProt}`), /TODAY\(\)/, `${b.clave}`)
 })
 
+test('NI UNA CELDA DE OBRAS LLEVA UN GLIFO QUE EL PDF NO DIBUJA', () => {
+  // EL DEFECTO (13/08): "⚠ sin proveedor" se leía "sin proveedor" y el ⚠ de obra vencida no se iba a
+  // ver NUNCA cuando se encendiera — la fórmula estaba bien escrita y el glifo no se dibuja. Se
+  // verificó exportando la pestaña a PDF: el ⚠ y el 🟢 desaparecen, el ⊘ y el ⇒ salen enteros.
+  const ciegos = g.filas.flatMap((f, i) => f.map((x, c) => [`${COLS[c]}${i + 1}`, glifosInvisibles(x)]))
+    .filter(([, x]) => x.length)
+  assert.deepEqual(ciegos, [], 'una marca que no se dibuja es una marca que no avisa')
+})
+
 test('lo que RESTA COBRAR sale del estado, no de una columna de saldo', () => {
   // La col "TOTAL a cobrar" NO es un saldo: las 46 filas en estado Cobrado suman $451.507.276 ahí.
   // Leerla como saldo daría el contrato entero como pendiente.
@@ -812,7 +822,10 @@ test('la marca de "ya pasó el fin" es una FÓRMULA con TODAY(), no un texto tip
   assert.ok(celda.startsWith('='), 'el rótulo con fechas tiene que ser una fórmula viva')
   assert.match(celda, /TODAY\(\)>\d+/, 'la comparación contra hoy la tiene que hacer Sheets, no este proceso')
   assert.ok(celda.includes(String(serialISO(o.fin))), 'se compara contra el SERIAL de la fecha de fin declarada')
-  assert.ok(celda.includes('⚠'), 'la marca tiene que estar en la fórmula')
+  assert.ok(celda.includes(ALERTA), 'la marca tiene que estar en la fórmula')
+  // Y TIENE QUE SER UNA MARCA QUE SE DIBUJE. Acá vivía un ⚠ que el PDF no embebe: la fórmula era
+  // correcta, la celda tenía el glifo y la pantalla no mostraba nada — la obra vencida no avisaba.
+  assert.deepEqual(glifosInvisibles(celda), [], 'la fórmula lleva un glifo que el archivo no dibuja')
   assert.ok(!celda.includes(','), 'locale es-AR: el separador de argumentos es `;`, una coma es un decimal')
   assert.equal(problemaDeSintaxis(celda), null)
 })
@@ -826,7 +839,7 @@ test('una obra SIN fechas no inventa ninguna: sigue avisando que falta y no llev
   assert.ok(!/\d{2}\/\d{2}/.test(texto), `no puede aparecer ninguna fecha inventada: "${texto}"`)
 })
 
-test('el ⚠ del rótulo NO se dispara por una obra cuyo fin todavía no llegó', () => {
+test('la alerta del rótulo NO se dispara por una obra cuyo fin todavía no llegó', () => {
   // El glifo dice algo verificable —la fecha ya pasó— y nada más. Si el umbral fuera otra cosa
   // (avance físico, "atrasada"), estaría afirmando algo que ninguna fuente de esta pestaña mide.
   const lejos = { ...OBRAS_FUTURAS[0], inicio: '2026-08-05', fin: '2099-12-31' }
