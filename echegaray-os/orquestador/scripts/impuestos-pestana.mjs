@@ -32,7 +32,7 @@ import {
 } from '../lib/iva-libre-disponibilidad.mjs'
 import { publicar as publicarNombres } from '../lib/rangos-nombrados.mjs'
 import { query } from '../lib/db.mjs'
-import { VACIO } from '../lib/preservar-anotaciones.mjs'
+import { conColaMedida, avisoDeCola } from '../lib/cola-de-rango.mjs'
 import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
 import { vaciarColumnaDeProsa } from '../lib/nota-celda.mjs'
 import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
@@ -422,15 +422,13 @@ async function main() {
   // NO se borra nada escrito por una persona: se lee, se fusiona y se escribe. Las NOTAS viejas del
   // generador se limpian SÓLO en su propia grilla (antes barría 200x26 y se llevaba los comentarios).
   await google.spreadsheetBatchUpdate(ID, [{ updateCells: { range: { sheetId: hoja.sheetId, startRowIndex: 0, endRowIndex: g.filas.length, startColumnIndex: 0, endColumnIndex: ANCHO }, fields: 'note' } }]).catch(() => {})
-  // LA COLA DE LA VERSIÓN ANTERIOR. VACIO significa "es mi celda y va vacía": limpia lo que dejó el
-  // generador y conserva igual cualquier anotación de una persona.
+  // LA COLA DE LA VERSIÓN ANTERIOR. La grilla se ACORTA sola: cuando un plan de pago termina, su fila
+  // deja de emitirse y la vieja quedaría publicada con la cuota de un plan que ya no existe. El
+  // mecanismo vive en lib/cola-de-rango.mjs; acá se declara sólo el ancho que ocupa este generador.
   const previoTab = await google.readSheetValues(ID, `${PESTAÑA}!A1:${letra(ANCHO - 1)}400`)
-  let ultimaFila = 0
-  previoTab.forEach((f, i) => { if ((f || []).some((c) => String(c ?? '').trim())) ultimaFila = i + 1 })
-  if (ultimaFila > g.filas.length) {
-    console.log(`  cola de la versión anterior: limpio las filas ${g.filas.length + 1}–${ultimaFila}`)
-    for (let i = g.filas.length; i < ultimaFila; i++) g.filas.push(Array(ANCHO).fill(VACIO))
-  }
+  const cola = conColaMedida(g.filas, previoTab, { ancho: ANCHO })
+  if (avisoDeCola(cola, PESTAÑA)) console.log(avisoDeCola(cola, PESTAÑA))
+  g.filas = cola.filas
 
   // REGLA 0 — si el dueño reescribió un rótulo, lo reencuadró o lo borró, gana lo suyo.
   const { grid: gridFinal, respetadas, ediciones, candidatos } = await conEdicionesRespetadas(ID, PESTAÑA, g.filas, previoTab)

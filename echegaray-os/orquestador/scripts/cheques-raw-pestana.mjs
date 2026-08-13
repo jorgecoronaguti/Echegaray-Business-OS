@@ -25,7 +25,8 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
-import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
+import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
+import { conColaMedidaLeida, avisoDeCola } from '../lib/cola-de-rango.mjs'
 import { query, closePool } from '../lib/db.mjs'
 import { formatear as formatearCuit } from '../lib/cuit.mjs'
 
@@ -166,17 +167,12 @@ async function main() {
   // borra de la base), y las filas de más abajo SOBREVIVIRÍAN en silencio: la cartera mostraría un
   // cheque que ya no existe. Se extiende con el centinela VACIO —"es mi celda y va vacía"— que limpia
   // lo que dejó este generador y CONSERVA cualquier anotación de una persona en una columna que no ocupa.
-  const previo = await google.readSheetValues(ID, `${PESTAÑA}!A1:${COL.obra}1000`).catch(() => [])
-  let ultimaConDato = 0
-  previo.forEach((f, i) => { if ((f || []).some((c) => String(c ?? '').trim())) ultimaConDato = i + 1 })
-  if (ultimaConDato > gridRaw.length) {
-    console.log(`  cola de una corrida anterior: limpio las filas ${gridRaw.length + 1}–${ultimaConDato}`)
-    for (let i = gridRaw.length; i < ultimaConDato; i++) gridRaw.push(Array(COLUMNAS.length).fill(VACIO))
-  }
+  const cola = await conColaMedidaLeida(google, ID, PESTAÑA, gridRaw, { ancho: COLUMNAS.length, tope: 1000 })
+  if (avisoDeCola(cola, PESTAÑA)) console.log(avisoDeCola(cola, PESTAÑA))
 
   // espejo: true — es la copia de una fuente externa (las pantallas del banco). No hay nada del dueño
   // que proteger acá, y `respetar` congelaría el nombre de un estado si el banco lo cambiara.
-  const { conservadas } = await escribirPreservando(google, ID, PESTAÑA, gridRaw, {
+  const { conservadas } = await escribirPreservando(google, ID, PESTAÑA, cola.filas, {
     respetar: false, espejo: true, anchoHoja: Math.max(COLUMNAS.length, hoja.cols ?? COLUMNAS.length),
   })
   if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
