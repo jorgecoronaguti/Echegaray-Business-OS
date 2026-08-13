@@ -15,7 +15,7 @@
 //   node orquestador/scripts/auditar-comprobantes-cargados.mjs --json    # para consumirlo
 //   node orquestador/scripts/auditar-comprobantes-cargados.mjs --todas   # sin filtrar por el bot
 
-import { auditarCompras, informe, RANGO } from '../lib/comprobantes/auditoria.mjs'
+import { auditarCompras, informe, RANGO, correlativo } from '../lib/comprobantes/auditoria.mjs'
 
 export const ID_CASHFLOW = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 
@@ -39,6 +39,35 @@ export async function registroDelBot(port) {
 }
 
 /**
+ * EL LIBRO FISCAL, que es el único árbitro válido de "¿esto es un duplicado o un reparto?".
+ *
+ * Devuelve `correlativo → totales`. Se agrupa por correlativo y no por (proveedor, punto de venta)
+ * a propósito: ARCA guarda la RAZÓN SOCIAL del emisor —Corralón Progreso factura como PEREZ GARCIA
+ * MARISOL BIBIANA— y el punto de venta es justo lo que se tipea distinto de un lado y del otro. El
+ * correlativo sí discrimina, y cuando trae más de un total el auditor no afirma nada.
+ *
+ * Devuelve null si no se puede consultar: sin libro no se declara ningún duplicado, se declara "a
+ * revisar". Confundir "no pude mirar" con "no está" es lo que produce una lista que nadie cree.
+ */
+export async function librofiscalPorCorrelativo(port) {
+  if (typeof port?.query !== 'function') return null
+  try {
+    const { rows } = await port.query(
+      `select numero, imp_total from public.comprobantes_arca
+        where tipo_libro = 'R' and imp_total is not null and imp_total <> 0`)
+    const m = new Map()
+    for (const r of rows) {
+      const c = correlativo(r.numero)
+      if (!c) continue
+      const t = Math.round(Number(r.imp_total) * 100) / 100
+      if (!m.has(c)) m.set(c, [])
+      if (!m.get(c).includes(t)) m.get(c).push(t)
+    }
+    return m
+  } catch { return null }
+}
+
+/**
  * La auditoría entera. `google` y `port` entran inyectados: es lo que permite probarla con un doble
  * que EXPLOTA ante cualquier escritura, que es la única forma de demostrar que no escribe.
  */
@@ -48,8 +77,10 @@ export async function auditar({ google, port, todas = false } = {}) {
   // decimal del número crudo se lee como separador de miles y $6.693,39 pasa a ser 6.693.389.999.
   const filas = await google.readSheetValues(ID_CASHFLOW, RANGO)
   const registro = todas ? null : await registroDelBot(port)
+  const totalesFiscales = await librofiscalPorCorrelativo(port)
   return auditarCompras(filas ?? [], {
     registro,
+    totalesFiscales,
     motivoTodas: todas ? 'pedido con --todas' : 'no se pudo leer el registro del bot',
   })
 }
