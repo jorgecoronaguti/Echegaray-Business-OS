@@ -733,3 +733,56 @@ test('si releer falla, se dice — no se afirma un éxito que no se verificó', 
   assert.match(r.texto, /no pude releer las filas/)
   assert.match(r.texto, /fila 412/, 'igual se dice dónde quedó')
 })
+
+// ── EL MODO ENSAYO: existe para poder probar el camino entero sin tocar `Compras` ────────────────
+//
+// Y tiene dos obligaciones, porque un modo que no escribe es peligroso justamente por eso:
+//   1. estar APAGADO por defecto — la variable no está en producción, y si algún día apareciera,
+//      el default no puede ser "no escribas";
+//   2. no MENTIR. Con `--dry` el cargador devuelve `ok:true` y `escritas:0`, y sin el aviso el
+//      mensaje diría "cargué" sobre filas que nadie escribió. Es el defecto que este repo ya nombró:
+//      un log que felicita sin haber escrito.
+
+test('ENSAYO apagado por defecto: sin la variable, el cargador NO lleva --dry', async () => {
+  const antes = process.env.ORQ_COMPROBANTES_ENSAYO
+  delete process.env.ORQ_COMPROBANTES_ENSAYO
+  try {
+    let visto = null
+    await correrCargador({ fajo: [{ proveedor: 'X' }], spawnImpl: (_e, a) => { visto = a; return procesoFalso('') } })
+    assert.ok(!visto.includes('--dry'))
+  } finally { if (antes != null) process.env.ORQ_COMPROBANTES_ENSAYO = antes }
+})
+
+test('ENSAYO=1: el cargador lleva --dry', async () => {
+  const antes = process.env.ORQ_COMPROBANTES_ENSAYO
+  process.env.ORQ_COMPROBANTES_ENSAYO = '1'
+  try {
+    let visto = null
+    await correrCargador({ fajo: [{ proveedor: 'X' }], spawnImpl: (_e, a) => { visto = a; return procesoFalso('') } })
+    assert.ok(visto.includes('--dry'), 'con ENSAYO=1 tiene que correr en seco')
+  } finally {
+    if (antes == null) delete process.env.ORQ_COMPROBANTES_ENSAYO
+    else process.env.ORQ_COMPROBANTES_ENSAYO = antes
+  }
+})
+
+test('un ensayo NO se puede confundir con una carga: el mensaje lo dice y no relee nada', async () => {
+  const repo = repoMemoria()
+  const fajo = {
+    id: 'f-ensayo', plataforma_username: 'rodrigo',
+    items: [{
+      comprobante: {
+        proveedor: 'DUPEC', cuit: '30712345678', tipo: 'A', numero: '0113-00010489',
+        fecha: '05/01/2026', total: 121, iva: 21, obra: 'MESSINA', categoria: 'B',
+      },
+    }],
+  }
+  repo._fajos.set(fajo.id, { ...fajo, estado: ESTADO.CONFIRMADO })
+  // El cargador contesta lo que contesta `--dry`: ok, pero CERO escritas.
+  const correr = async () => ({ ok: true, datos: { ok: true, dry: true, desde: 844, escritas: 0, filas: [{ i: 0, fila: 844 }] } })
+  // Releer EXPLOTA: si el código intentara mostrar "lo que quedó", este test se pone rojo.
+  const google = { readSheetValues: () => { throw new Error('un ensayo no puede releer filas que no escribió') } }
+  const r = await escribirFajo({ port: portGuarda(), repo, correr, congelado: () => false, google }, repo._fajos.get(fajo.id))
+  assert.match(r.texto, /ENSAYO/)
+  assert.match(r.texto, /NO escribió/)
+})

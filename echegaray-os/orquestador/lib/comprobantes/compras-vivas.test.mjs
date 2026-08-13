@@ -174,3 +174,39 @@ test('un número crudo se respeta tal cual: el parser es-AR no lo multiplica por
   assert.equal(importeDeCompras('(1.234,50)'), -1234.5)
   assert.equal(importeDeCompras(''), null)
 })
+
+// ── EL PUNTO DE VENTA ES LA PARTE DEL NÚMERO QUE MÁS SE LEE MAL (13/08) ──────
+//
+// Medido contra el registro real del bot y la pestaña viva el 13/08, cuatro comprobantes que YA
+// estaban en Compras tenían el punto de venta leído distinto: `0011-00014305` contra
+// `00113-00014305`, `0001-00015177` contra `00015-00015177`, `0005-00000386` contra
+// `00005-00000386`, `0036-00025942` contra `0038-00025942`. Los cuatro se encuentran igual —por
+// fecha+importe o por "un dígito"— y ninguno queda en null. Estos tests fijan eso, porque de ese
+// null depende que `flujo.mjs` NO borre la clave de idempotencia (ver `marcarEnCompras`).
+
+test('el punto de venta leído distinto no deja el comprobante en null: lo caza fecha+importe', () => {
+  const filas = [
+    ...Array.from({ length: 822 }, () => []),
+    fila('5/8/2026', 'Combustibles Barcelo', 'F A', '00113-00014305', 'Taller', 'combustible', '$ 100.000,00'),
+  ]
+  const r = buscarEnCompras(
+    { proveedor: 'Combustibles Barcelo', tipo: 'A', numero: '0011-00014305', fecha: '05/08/2026', total: 100000 },
+    { ok: true, ...indexarCompras(filas) })
+  assert.equal(r?.que, HALLAZGO.PROBABLE, 'null acá significa borrar la clave y cargarlo dos veces')
+  assert.equal(r.fila, 826)
+})
+
+test('el punto de venta con un cero de más lo caza la pasada de "un dígito"', () => {
+  // VILLA DEL PINO: el registro guardó `0001-00015177` y la celda dice `00015-00015177`. Encima el
+  // total se leyó ×100 ($10.500.067 contra $105.000,67), así que fecha+importe tampoco alcanza.
+  const filas = [
+    ...Array.from({ length: 808 }, () => []),
+    fila('1/8/2026', 'VILLA DEL PINO', 'F A', '00015-00015177', 'Administracion', 'Combustible', '$ 105.000,67'),
+  ]
+  const r = buscarEnCompras(
+    { proveedor: 'VILLA DEL PINO', tipo: 'A', numero: '0001-00015177', fecha: '01/08/2026', total: 10500067 },
+    { ok: true, ...indexarCompras(filas) })
+  assert.equal(r?.que, HALLAZGO.PROBABLE)
+  assert.equal(r.fila, 812)
+  assert.match(r.via, /un digito/)
+})
