@@ -4,6 +4,7 @@
     "Cuando generadores-atrasados.mjs marca un archivo SIN REVISAR: mirá qué trae la rama, decidí, y anotalo acá.",
     "revisadoHasta = el commit cuya versión se evaluó. Vale una lista si se revisó contra más de un linaje.",
     "decision = incorporado (se trajo) | descartado (se miró y NO se trae, con motivo) | pendiente (declarado, sin resolver).",
+    "Desde el 13/08 un descartado NO frena el pipeline, pero lo que libera es el MOTIVO, no la palabra: tiene que pasar motivoQueLibera (la vara de motivoValido del freno de Sheets, con más de 40 caracteres). Un descarte sin razón escrita da 'DESCARTE SIN MOTIVO' y frena igual que SIN REVISAR — porque es lo mismo: no consta que nadie lo haya mirado. El motivo se sigue imprimiendo en cada corrida: liberar no es callar.",
     "blobAntes = la versión que tenía main ANTES de incorporar. Si main vuelve a ese blob, la incorporación se perdió y el detector grita REVERTIDO: una declaración no puede ser su propia evidencia.",
     "senal = algo que la incorporación TUVO que dejar en el archivo (un import, un identificador). Más fuerte que blobAntes porque sobrevive a cambios cosméticos. Se declara cuando hay una señal inequívoca.",
     "senalEn = la misma idea cuando la capacidad se MUDÓ de archivo: { ruta desde la app: texto que tiene que estar ahí }. Se exigen todas. Existe porque un centinela atado a la posición grita REVERTIDO en cada refactor, y un aviso siempre rojo se ignora.",

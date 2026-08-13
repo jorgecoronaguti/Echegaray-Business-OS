@@ -11,8 +11,12 @@ import { execFileSync } from 'node:child_process'
 import {
   escribeSheets, veredicto, hayEvidencia, frenaElPipeline, nadieLoMiro, resumir, revisarArchivo,
   escritoresDeSheets, ramasSinMergear, MARCAS_DE_ESCRITURA, leerRegistro, estadoDeLaRama,
-  blobsEnLaHistoria,
+  blobsEnLaHistoria, motivoQueLibera, lineasDelInforme, MOTIVO_MINIMO,
 } from './generadores-atrasados.mjs'
+
+/** Un motivo como los tres reales del registro: dice qué trae la rama y por qué main ya lo superó. */
+const MOTIVO_REAL = 'la rama destraba el candado de "Compras" y lo vuelve a poner; main resolvió lo mismo '
+  + 'después y mejor, releyendo el destino y escribiendo sólo si está vacío. Traerla revierte ese arreglo.'
 
 // ── Qué cuenta como "escribe Sheets" ───────────────────────────────────────────────────────────
 
@@ -54,15 +58,69 @@ test('un motivo por rama le pone nombre al hallazgo, pero NO lo pone en verde', 
   assert.ok(frenaElPipeline(v), 'un motivo no puede habilitar la corrida')
 })
 
-test('"descartado" tampoco es verde: se miró y se decidió no traerlo', () => {
-  const v = veredicto({ cubierto: true, decision: 'descartado' })
+// ── Lo que libera es la DECLARACIÓN, no la palabra "descartado" (13/08) ────────────────────────
+
+test('un descarte CON motivo escrito no frena: la decisión ya se tomó', () => {
+  // El freno quedaba rojo para siempre por tres archivos ya resueltos, y un aviso siempre rojo se
+  // ignora. Si alguien vuelve a hacer que `descartado` frene, esto se pone rojo.
+  const v = veredicto({ cubierto: true, decision: 'descartado', motivo: MOTIVO_REAL })
   assert.equal(v, 'descartado')
+  assert.equal(frenaElPipeline(v), false, 'un descarte con motivo escrito no puede frenar el pipeline')
+  assert.equal(nadieLoMiro(v), false)
+})
+
+test('un descarte SIN motivo, o con un "ok", frena igual que lo que nadie miró', () => {
+  // El agujero que abre liberar el descarte: que `descartado` se convierta en el campo con el que se
+  // apaga el control escribiendo cinco letras. De un descarte sin razón escrita no consta que nadie
+  // lo haya mirado — y ahí es donde un generador viejo le borra la grilla al dueño.
+  for (const motivo of [undefined, null, '', '   ', 'ok', 'sí', 'x', 'descartado', 'no va porque no']) {
+    const v = veredicto({ cubierto: true, decision: 'descartado', motivo })
+    assert.equal(v, 'DESCARTE SIN MOTIVO', `"${motivo}" no puede alcanzar para liberar el freno`)
+    assert.ok(frenaElPipeline(v), `"${motivo}" tiene que seguir frenando`)
+    assert.ok(nadieLoMiro(v), 'un descarte sin razón escrita no es una decisión declarada')
+  }
+  assert.equal(motivoQueLibera(MOTIVO_REAL), true)
+  assert.ok(MOTIVO_MINIMO >= 40, 'bajar el piso del motivo vacía el control sin tocar una línea de lógica')
+})
+
+test('el motivo por RAMA no puede liberar el freno de un archivo', () => {
+  // `pendientes` describe una rama viva que se conoce y no se toca. Si sirviera para liberar, el
+  // camino más corto para apagar el control sería declarar la rama en vez de resolver el archivo.
+  const v = veredicto({ cubierto: false, decision: 'descartado', motivoRama: MOTIVO_REAL })
+  assert.equal(v, 'pendiente')
   assert.ok(frenaElPipeline(v))
 })
 
-test('sólo "incorporado" deja correr el pipeline', () => {
+test('sólo "incorporado" y el descarte declarado dejan correr el pipeline', () => {
   assert.equal(veredicto({ cubierto: true, decision: 'incorporado' }), 'incorporado')
   assert.equal(frenaElPipeline('incorporado'), false)
+  for (const v of ['SIN REVISAR', 'REVERTIDO', 'pendiente', 'DESCARTE SIN MOTIVO']) {
+    assert.ok(frenaElPipeline(v), `${v} tiene que frenar`)
+  }
+})
+
+test('liberar el freno no es dejar de contarlo: el descartado se sigue imprimiendo con su motivo', () => {
+  // Un control que deja de nombrar lo que perdonó es un silenciador. El dueño tiene que poder leer
+  // en CADA corrida qué se decidió y por qué es eso lo que está dejando pasar el pipeline.
+  const texto = lineasDelInforme(resumir([
+    { archivo: 'guarda-escritura.mjs', rama: 'feat/vieja', veredicto: 'descartado', motivo: MOTIVO_REAL },
+    { archivo: 'caja-pestana.mjs', rama: 'feat/otra', veredicto: 'incorporado', motivo: null },
+  ])).join('\n')
+  assert.match(texto, /guarda-escritura\.mjs/)
+  assert.match(texto, /no frena/)
+  assert.ok(texto.includes(MOTIVO_REAL), 'el motivo tiene que estar a la vista, no resumido a un contador')
+  assert.match(texto, /descartados con motivo \(no frenan\): 1/)
+})
+
+test('un descartado no queda tapado por una rama incorporada del mismo archivo', () => {
+  // Al dejar de frenar, el descartado perdió el escalón que lo hacía ganarle al incorporado en el
+  // resumen: sin el escalón de "declarados" desaparecía del informe y la liberación se volvía silencio.
+  const r = resumir([
+    { archivo: 'a.mjs', rama: 'incorporada', veredicto: 'incorporado', motivo: null },
+    { archivo: 'a.mjs', rama: 'descartada', veredicto: 'descartado', motivo: MOTIVO_REAL },
+  ])
+  assert.equal(r[0].veredicto, 'descartado')
+  assert.deepEqual(r[0].ramas, ['descartada'])
 })
 
 test('un registro sin decisión declarada NO se asume incorporado por omisión', () => {
@@ -221,7 +279,9 @@ test('el registro es legible y todo lo que no se incorporó tiene motivo escrito
       assert.ok(motivo && motivo.length > 40, `${archivo} · ${blob}: declarado atrasado sin motivo escrito`)
     }
     if (e.decision && e.decision !== 'incorporado') {
-      assert.ok(e.motivo && e.motivo.length > 40, `${archivo}: "${e.decision}" sin motivo escrito`)
+      // La MISMA vara que decide si frena. Si el registro pudiera pasar su test y frenar igual, o al
+      // revés, habría dos criterios de "motivo escrito" y ninguno sería el que manda.
+      assert.ok(motivoQueLibera(e.motivo), `${archivo}: "${e.decision}" sin motivo escrito`)
     }
     if (e.decision === 'incorporado') {
       assert.ok(e.blobAntes || e.senal, `${archivo}: declarado incorporado sin una sola evidencia verificable`)
