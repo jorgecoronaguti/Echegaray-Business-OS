@@ -11,16 +11,17 @@
 // Esa regla ya vive en la columna "Rubro de caja" de Compras. Acá ahora sólo se sub-clasifica lo
 // que Compras ya marcó como Estructura — una definición, no dos que se pueden desincronizar.
 //
-// LA REGLA DE PROYECCIÓN, y por qué es ésa. Sólo se proyecta un rubro que apareció en 4 meses o
-// más. Sin ese filtro, la compra de una moto ($4.352.000, una vez en enero) se proyectaba todos los
-// meses y la estructura del año daba $120,8M contra $33M reales. Un gasto que pasó una vez no es
-// una tendencia. El monto proyectado es el promedio de los meses en que SÍ hubo gasto, ajustado por
-// la inflación de Parámetros (REM del BCRA, que el OS actualiza solo).
+// LA REGLA DE PROYECCIÓN, y por qué es ésa. Sólo se proyecta un rubro que apareció en 4 meses
+// CERRADOS o más. Sin ese filtro, la compra de una moto ($4.352.000, una vez en enero) se proyectaba
+// todos los meses y la estructura del año daba $120,8M contra $33M reales. Un gasto que pasó una vez
+// no es una tendencia. El monto proyectado es el promedio de los meses CERRADOS en que SÍ hubo
+// gasto, ajustado por la inflación de Parámetros (REM del BCRA, que el OS actualiza solo).
 //
 //   node orquestador/scripts/estructura-pestana.mjs [--dry]
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
+import { MIN_MESES, MES_EN_CURSO } from '../lib/cash-flow-lineas.mjs'
 import { SUBRUBROS, OTROS } from '../lib/sub-rubro-estructura.mjs'
 import { escribirPreservando, limpiarCentinela, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { fila as filaConNombre, aRangoApi, verificarRangos, explicarProblemas } from '../lib/rangos-con-nombre.mjs'
@@ -32,7 +33,11 @@ const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1
 const PESTAÑA = 'Estructura'
 const DRY = process.argv.includes('--dry')
 const AÑO = 2026
-const MIN_MESES = 4 // menos que esto no es una tendencia, es un gasto suelto
+// MIN_MESES viene de cash-flow-lineas.mjs (13/08/2026). Estaba tipeado acá también, con el mismo
+// valor y el mismo significado —"menos que esto no es una tendencia, es un gasto suelto"—, y allá el
+// comentario dice literalmente "misma regla que Estructura". Dos copias del mismo umbral es la forma
+// en que dos cuadros terminan proyectando cosas distintas de la misma plata el día que alguien mueve
+// una sola.
 
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
 
@@ -44,10 +49,20 @@ const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26
 // donde sale la proyección — sin separarlo, la fórmula de un mes se leería a sí misma (#REF!).
 const C_MES0 = 1, C_TOTREAL = 13, C_PROY = 14, C_TOTAL = 15, C_PCT = 16
 const C_AUX0 = 18            // S..AD: el real de los 12 meses
-const C_NMESES = 30          // AE: en cuántos meses hubo gasto
+const C_NMESES = 30          // AE: en cuántos meses CERRADOS hubo gasto
+const C_REALCERRADO = 31     // AF: lo real de esos meses cerrados — el numerador del promedio
 const ANCHO = 32
 
 const FILA_CAB = 6
+// ═══ LA VENTANA DE MESES CERRADOS, COMO MÁSCARA DE DOCE CELDAS (13/08/2026) ═══
+//
+// Vale 1 en cada mes que YA TERMINÓ y 0 en el que corre y en los que faltan. La usan el contador de
+// meses y el total que alimenta el promedio: una sola definición de "hasta dónde se puede observar",
+// para que las dos no puedan discrepar sobre el mismo mes.
+//
+// El encabezado de cada columna ES el primero de su mes, así que la comparación con MES_EN_CURSO es
+// exacta y no necesita EOMONTH.
+const CERRADOS = `(${letra(C_MES0)}$${FILA_CAB}:${letra(C_MES0 + 11)}$${FILA_CAB}<${MES_EN_CURSO})`
 // El sub-rubro vive en COMPRAS (columna AF), no acá. SUMIFS devuelve #VALUE! cuando el rango a
 // sumar está en una pestaña y los criterios en otra — ya me pasó dos veces en esta planilla. Con
 // todos los rangos en Compras funciona, y encima es la misma disciplina que el rubro y la familia:
@@ -76,7 +91,9 @@ export function grilla() {
   const s = vacia()
   // UNA LÍNEA. El párrafo anterior se envolvía sobre la columna de enero y quedaba cortado; lo que
   // explicaba —qué es proyección— lo dice ahora la itálica del propio cuadro.
-  s[0] = `Rubro "Estructura" de Compras. Desde agosto, proyección (itálica): sólo lo que apareció en ${MIN_MESES} meses o más.`
+  // "MESES CERRADOS" Y NO "MESES", PORQUE ES LO QUE MIDE. Si el número cambia de significado y el
+  // rótulo no, el cuadro miente sin un solo error.
+  s[0] = `Rubro "Estructura" de Compras. Desde agosto, proyección (itálica): sólo lo que apareció en ${MIN_MESES} meses cerrados o más.`
   push(s)
   push(vacia()); push(vacia())
   // EL TÍTULO DE SECCIÓN VA JUSTO ARRIBA DE SU ENCABEZADO. Aprovecha una de las filas en blanco que
@@ -92,6 +109,10 @@ export function grilla() {
   cab[C_TOTAL] = `Total ${AÑO}`
   cab[C_PCT] = '% del total'
   cab[C_AUX0] = 'AUXILIAR — el real de cada mes. De acá sale la proyección. No borrar ni mostrar.'
+  // Las dos auxiliares que forman el promedio llevan nombre aunque estén ocultas: un divisor sin
+  // rótulo es exactamente cómo alguien vuelve a leerlo como "meses del año" dentro de seis meses.
+  cab[C_NMESES] = 'AUXILIAR — meses CERRADOS con gasto (el divisor del promedio)'
+  cab[C_REALCERRADO] = 'AUXILIAR — lo real de esos meses cerrados (el numerador)'
   push(cab)
 
   const f0 = filas.length + 1
@@ -104,10 +125,28 @@ export function grilla() {
       // El real del mes, contra Compras.
       fila[C_AUX0 + m] = `=SUMIFS(Compras!$O$4:$O;${rangoSub};$A${f};${rangoFecha};">="&${cm}$${FILA_CAB};${rangoFecha};"<"&EOMONTH(${cm}$${FILA_CAB};0)+1)`
       // Lo que se ve: el real si lo hay; si no, la proyección (o nada si el rubro no es recurrente).
-      fila[C_MES0 + m] = `=IF(${ca}${f}<>0;${ca}${f};IF($${letra(C_NMESES)}${f}<${MIN_MESES};0;$${letra(C_TOTREAL)}${f}/$${letra(C_NMESES)}${f}*IFERROR(INDEX(Parámetros!$C$74:$C$90;MATCH(EOMONTH(${cm}$${FILA_CAB};0);ARRAYFORMULA(EOMONTH(Parámetros!$A$74:$A$90;0));0));1)))`
+      fila[C_MES0 + m] = `=IF(${ca}${f}<>0;${ca}${f};IF($${letra(C_NMESES)}${f}<${MIN_MESES};0;$${letra(C_REALCERRADO)}${f}/$${letra(C_NMESES)}${f}*IFERROR(INDEX(Parámetros!$C$74:$C$90;MATCH(EOMONTH(${cm}$${FILA_CAB};0);ARRAYFORMULA(EOMONTH(Parámetros!$A$74:$A$90;0));0));1)))`
     }
-    fila[C_NMESES] = `=COUNTIF($${letra(C_AUX0)}${f}:$${letra(C_AUX0 + 11)}${f};"<>0")`
-    fila[C_TOTREAL] = `=SUM($${letra(C_AUX0)}${f}:$${letra(C_AUX0 + 11)}${f})`
+    const real = `$${letra(C_AUX0)}${f}:$${letra(C_AUX0 + 11)}${f}`
+    // ═══ EL PROMEDIO SE SACA SOBRE MESES CERRADOS, NO SOBRE EL AÑO (13/08/2026) ═══
+    //
+    // Antes era `Total real / COUNTIF(real;"<>0")`, y los dos lados contaban el mes EN CURSO — un mes
+    // a medio transcurrir. Consecuencia: cargar una factura de este mes BAJABA la proyección de los
+    // meses futuros. El cuadro empeoraba su pronóstico justo cuando llegaba más información, que es
+    // exactamente al revés de lo que tiene que hacer. Es el mismo defecto que `cash-flow-lineas.mjs`
+    // ya había corregido para su ventana de tres meses y que Recurrentes corrigió para su promedio
+    // del año; ahora los tres cortan en la MISMA constante, `MES_EN_CURSO`.
+    //
+    // SUMPRODUCT Y NO COUNTIF/SUMIFS: la condición cruza el importe de cada mes con la FECHA de su
+    // encabezado, que vive en otra fila. Ni COUNTIF ni SUMIFS saben cruzar dos rangos de forma.
+    fila[C_NMESES] = `=SUMPRODUCT((${real}<>0)*${CERRADOS})`
+    // El numerador es lo real DE ESOS MESES: si sumara el año entero incluiría lo poco que va del mes
+    // en curso repartido entre meses que no lo contienen, que es el defecto por la otra punta.
+    fila[C_REALCERRADO] = `=SUMPRODUCT(${real}*${CERRADOS})`
+    // "Total real" NO cambia: es el año entero, incluido lo que ya se cargó del mes en curso, porque
+    // es el hecho que el bloque de control de abajo compara contra Compras. Recortarlo haría fallar
+    // ese control por algo que no es un error de carga.
+    fila[C_TOTREAL] = `=SUM(${real})`
     fila[C_TOTAL] = `=SUM($${letra(C_MES0)}${f}:$${letra(C_MES0 + 11)}${f})`
     fila[C_PROY] = `=$${letra(C_TOTAL)}${f}-$${letra(C_TOTREAL)}${f}`
     fila[C_PCT] = `=IFERROR($${letra(C_TOTAL)}${f}/$${letra(C_TOTAL)}$TOT;0)`
@@ -140,7 +179,7 @@ export function grilla() {
   // rojo del control con los datos perfectos. Un control que grita por nada se deja de mirar.
   c3[1] = `=ROUND($B${fc}-$${letra(C_TOTREAL)}${fTot};0)`
   push(c3)
-  const c4 = vacia(); c4[0] = `Rubros no proyectados — pasaron menos de ${MIN_MESES} meses, no son tendencia`
+  const c4 = vacia(); c4[0] = `Rubros no proyectados — pasaron menos de ${MIN_MESES} meses cerrados, no son tendencia`
   c4[1] = `=COUNTIFS($${letra(C_NMESES)}${f0}:$${letra(C_NMESES)}${f1};"<${MIN_MESES}";$${letra(C_TOTREAL)}${f0}:$${letra(C_TOTREAL)}${f1};">0")`
   push(c4)
 
