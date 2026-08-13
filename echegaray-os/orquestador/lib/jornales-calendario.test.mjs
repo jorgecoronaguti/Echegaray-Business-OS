@@ -7,9 +7,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  COLS_CALENDARIO, colCalendario, diasLaborables, expresionDias, MASCARA_DOMINGO,
+  COLS_CALENDARIO, colCalendario, diasLaborables, expresionDias, MASCARA_FIN_DE_SEMANA,
   formulaVentana, formulaShareEfectivo, formulaControlCalendario,
-  formulaBajaNoRegistrada, formulaHaberesDelBanco,
+  formulaBajaNoRegistrada, LINEA_SABADOS,
 } from './jornales-calendario.mjs'
 import { diasHabilesObra } from './jornales-demanda-obras.mjs'
 
@@ -37,34 +37,41 @@ const lunVie = (a, b) => {
   return n
 }
 
-test('EL CALENDARIO DE LA OBRA ES LUNES A SÁBADO — medido contra los días que la planilla cargó', () => {
-  // ═══ EL DEFECTO, CON SU NÚMERO ═══
-  // La proyección usaba `NETWORKDAYS(desde;hasta)` = lunes a viernes. Sobre estas doce quincenas eso
-  // da 125 días contra los 148 que la planilla cargó: **la proyección de obra venía 15,5% por debajo**
-  // sin dar un solo error. Y las horas por persona se MIDEN dividiendo por los días del registro
-  // (lun-sáb), así que el producto además mezclaba dos calendarios distintos.
-  let real = 0; let sab = 0; let vie = 0
-  for (const [a, b, dias] of REGISTRO) {
-    real += dias; sab += diasLaborables(d(a), d(b)); vie += lunVie(d(a), d(b))
-    assert.equal(diasLaborables(d(a), d(b)), dias, `${a}→${b}: lun-sáb no reproduce los días cargados`)
+test('LA SEMANA DE OBRA ES LUNES A VIERNES — y lo que queda afuera se declara, no se calcula', () => {
+  // ═══ EL ERROR QUE ESTE TEST FIJA, Y NO ES EL QUE PARECE ═══
+  //
+  // Medí que la planilla carga 148 días donde lunes-viernes cuenta 125 y concluí que la obra trabaja
+  // los sábados. El dueño: "las obras trabajan hasta el viernes". La medición era buena y la
+  // conclusión estaba mal: esos ~23 días son sábados de HORAS EXTRA, no la semana normal. Convertir
+  // un dato observado en supuesto de cálculo movía $9,6M de proyección sin que nadie lo decidiera.
+  //
+  // Lo que se fija acá es el criterio del dueño, no la medición.
+  assert.equal(diasLaborables(d('2026-08-16'), d('2026-08-31')), 11, 'agosto 16-31: 11 días lunes a viernes')
+  assert.equal(diasLaborables(d('2026-07-16'), d('2026-07-31')), 12)
+  for (const [a, b] of REGISTRO.map((x) => [x[0], x[1]])) {
+    assert.equal(diasLaborables(d(a), d(b)), lunVie(d(a), d(b)), `${a}→${b}: dejó de contar lunes a viernes`)
   }
-  assert.equal(sab, real, 'lun-sábado tiene que reproducir EXACTAMENTE los días que cargó la planilla')
-  assert.ok(vie < real * 0.98, `lun-viernes (${vie}) tiene que quedar claramente por debajo de los ${real} reales`)
+  // Y el sábado no desaparece del relato: la pestaña declara que la proyección no lo ve.
+  assert.match(LINEA_SABADOS, /LUNES A VIERNES/)
+  assert.match(LINEA_SABADOS, /horas extra/)
+  assert.doesNotMatch(LINEA_SABADOS, /\d/, 'la línea DECLARA; si trae un número volvió a ser un cálculo')
 })
 
 test('la fórmula que va al Sheet usa la MISMA máscara: sólo el domingo no es laborable', () => {
   // La mitad del defecto que no se ve en JavaScript: la celda podría seguir contando lun-vie aunque
   // la lib de acá contara bien. La máscara es lunes→domingo con 1 = no laborable.
-  assert.equal(MASCARA_DOMINGO, '"0000001"')
+  // La máscara es lunes→domingo con 1 = no laborable: "0000011" = sábado y domingo. Se escribe
+  // explícita —y no `NETWORKDAYS` a secas— para que el criterio viva en UN lugar: el día que la
+  // semana de obra cambie, se mueven juntas la fórmula del Sheet y el reparto de la demanda.
+  assert.equal(MASCARA_FIN_DE_SEMANA, '"0000011"')
   const f = expresionDias('A30', 'B30')
-  assert.equal(f, 'NETWORKDAYS.INTL(A30;B30;"0000001")')
-  assert.doesNotMatch(f, /NETWORKDAYS\(/, 'volvió el NETWORKDAYS de lunes a viernes')
+  assert.equal(f, 'NETWORKDAYS.INTL(A30;B30;"0000011")')
   assert.doesNotMatch(f, /,/, 'separador es-AR: punto y coma')
 })
 
 test('UNA SOLA DEFINICIÓN DE "DÍA DE OBRA": no hay dos funciones que cuenten días', () => {
-  // El defecto original era justamente tener dos calendarios: la demanda de obras repartía por
-  // lun-sáb y el convenio proyectaba por lun-vie, y el MAX comparaba peras con manzanas.
+  // El defecto era el DESACUERDO, no el día: la demanda repartía por lun-sáb y el convenio proyectaba
+  // por lun-vie, y el MAX comparaba peras con manzanas. Ahora las dos salen de la misma función.
   assert.equal(diasLaborables, diasHabilesObra)
 })
 
@@ -144,20 +151,3 @@ test('LA BAJA NO REGISTRADA: la pestaña dice cuánto cuesta seguir proyectando 
   assert.doesNotMatch(sinTextos(f), /,/, 'separador es-AR')
 })
 
-test('LO QUE EL BANCO PAGÓ POR HABERES Y NINGUNA NÓMINA EXPLICA — control contra OTRA fuente', () => {
-  // Una liquidación final no es una quincena y no cabe en el registro: sin esta línea, la caja paga
-  // $239.790,94 que la pestaña no explica en ningún lado. Y el lote del 31/07 fue $6.067.921,10
-  // contra $3.336.233,42 declarados por banco en el registro.
-  const { importe, glosa } = formulaHaberesDelBanco({
-    bancoObra: '$H$110:$H$120', pagoObra: '$C$110:$C$120',
-    bancoOfi: '$F$50:$F$61', pagoOfi: '$E$50:$E$61',
-  })
-  // Los egresos vienen negativos en la réplica: sin el menos, el control compara contra el opuesto.
-  assert.match(importe, /^=IFERROR\(-SUMIFS\('_BANCO_RAW'!\$C\$4:\$C;'_BANCO_RAW'!\$F\$4:\$F;"Sueldos"\)/)
-  // LA VENTANA ES LA DEL EXTRACTO, tomada de la propia réplica: comparar contra el registro entero
-  // marcaría como "sin explicar" los meses que el banco simplemente no tiene.
-  assert.match(glosa, /">="&MIN\('_BANCO_RAW'!\$A\$4:\$A\)/)
-  assert.match(glosa, /\$F\$50:\$F\$61/, 'el banco de OFICINA también explica parte del lote')
-  assert.match(glosa, /liquidaciones finales, SAC o sueldos fuera de la planilla/)
-  assert.doesNotMatch(sinTextos(glosa), /,/, 'separador es-AR')
-})

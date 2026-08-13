@@ -425,8 +425,8 @@ test('LA CADENA COMPLETA: el plantel del espejo llega valuado AL CONVENIO hasta 
   // 5 · cada quincena proyectada busca SU mes en ese cuadro y multiplica por horas × días…
   const q = gm.filas[gm.p0 - 1]
   assert.match(String(q[3]), new RegExp(`INDEX\\(\\$F\\$${gm.esc.f0}:\\$F\\$${gm.esc.f1};MATCH\\(EOMONTH\\(`))
-  assert.match(String(q[3]), new RegExp(`\\*\\$B\\$${gm.fShare - 1}\\*NETWORKDAYS\\.INTL\\(A${gm.p0};B${gm.p0};"0000001"\\)`),
-    `la celda de obra dejó de multiplicar horas medidas × días lun-sábado: ${q[3]}`)
+  assert.match(String(q[3]), new RegExp(`\\*\\$B\\$${gm.fShare - 1}\\*NETWORKDAYS\\.INTL\\(A${gm.p0};B${gm.p0};"0000011"\\)`),
+    `la celda de obra dejó de multiplicar horas medidas × días lunes a viernes: ${q[3]}`)
   // 6 · …y esa columna es la que publica el rango que consumen Cargas Sociales, el Libro, CAJA y los
   //     cash flows. APUNTA A "Obreros", NO AL "TOTAL" del calendario: el TOTAL ya trae oficina y
   //     dirección, que viajan por sus propios rangos, y sumarlas de nuevo las contaría dos veces.
@@ -862,4 +862,50 @@ test('el "Próximo pago" del hero dice DE OBRA y suma sólo obra', () => {
   assert.ok(String(fila[1]).includes(`$${cObra}$${gm.p0}:$${cObra}$${gm.p0 + gm.nProy - 1}`),
     `el próximo pago dejó de sumar la columna de obra del calendario: ${fila[1]}`)
   assert.ok(!String(fila[1]).includes(`$G$${gm.p0}`), 'el próximo pago se llevó el TOTAL de las tres nóminas')
+})
+
+test('NINGUNA COLUMNA DE TEXTO ALINEADA A LA DERECHA — el texto se derramaba sobre el número de al lado', () => {
+  // ═══ VISTO EN EL PDF PUBLICADO (13/08) ═══
+  // «-16,7%» encima de «ebajo del convenio» en 1.1, y «mes base: factor 1,» cortado en 1.2. No era el
+  // ancho: el barrido de moneda alinea a la DERECHA toda la grilla de la B en adelante, y una celda de
+  // texto alineada a la derecha con OVERFLOW_CELL se derrama hacia la izquierda, sobre el número que
+  // sí tiene contenido. A la derecha de estas columnas no hay nada hasta la N.
+  const reqs = requestsDeFormato(1, gm.filas, gm)
+  const alineacionDe = (fila, col) => {
+    let v = null
+    for (const r of reqs) {
+      const g2 = r.repeatCell
+      if (!g2 || !g2.range) continue
+      const { startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 } = g2.range
+      if (fila - 1 < r0 || fila - 1 >= r1 || col < c0 || col >= c1) continue
+      const a = g2.cell?.userEnteredFormat?.horizontalAlignment
+      if (a) v = a
+    }
+    return v
+  }
+  // 1.1 · «Convenio» (columna del dueño) y «Estado».
+  for (const col of [4, 7]) {
+    assert.equal(alineacionDe(gm.plantel.fPrimera, col), 'LEFT', `1.1 col ${col}: el texto vuelve a taparle el número a la izquierda`)
+    assert.equal(alineacionDe(gm.plantel.fTotal, col), 'LEFT', `1.1 total col ${col}`)
+  }
+  // 1.2 · «Escalón publicado», «De dónde sale» y «Estado».
+  for (const col of [1, 6, 7]) {
+    assert.equal(alineacionDe(gm.esc.f0, col), 'LEFT', `1.2 col ${col}: el texto vuelve a taparle el número a la izquierda`)
+    assert.equal(alineacionDe(gm.esc.f1, col), 'LEFT', `1.2 última fila col ${col}`)
+  }
+  // Y la plata sigue a la derecha: la corrección no puede desalinear la columna de importes.
+  assert.equal(alineacionDe(gm.esc.f0, 5), 'RIGHT', 'la Σ $/hora de 1.2 se fue a la izquierda')
+})
+
+test('NINGUNA GLOSA MÁS LARGA DE LO QUE LA FILA PUEDE MOSTRAR', () => {
+  // La fila derrama sobre la grilla entera: 330px de la columna A más trece columnas de 112px. A ~6px
+  // por carácter eso son ~290 caracteres. Una glosa más larga no se lee: se adivina — y en el PDF se
+  // cortaba en «se repite el último t».
+  const TOPE = 290
+  for (const [i, f] of gm.filas.entries()) {
+    const a = String(f[0] ?? '')
+    if (a.startsWith('=') || a === VACIO) continue     // las fórmulas rinden en la pestaña, no acá
+    if (String(f[1] ?? '').replace(VACIO, '')) continue // con un importe al lado no derrama: se recorta
+    assert.ok(a.length <= TOPE, `fila ${i + 1}: ${a.length} caracteres, se corta en pantalla — "${a.slice(0, 60)}…"`)
+  }
 })

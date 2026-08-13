@@ -25,10 +25,14 @@ const obra = (extra = {}) => ({
 
 const q = (quincenas, clave) => quincenas.find((x) => x.clave === clave)
 
-test('días hábiles de obra son lun-sáb: agosto 16-31 de 2026 tiene 13 (los domingos 16, 23 y 30 no cuentan)', () => {
-  assert.equal(diasHabilesObra(new Date(2026, 7, 16), new Date(2026, 7, 31)), 13)
-  // Y la mitad de arranque de la obra del fixture: 18-31/08 son 14 días con 2 domingos adentro.
-  assert.equal(diasHabilesObra(new Date(2026, 7, 18), new Date(2026, 7, 31)), 12)
+test('días hábiles de obra son lun-VIERNES: agosto 16-31 de 2026 tiene 11', () => {
+  // CAMBIÓ EL 13/08 POR CRITERIO DEL DUEÑO ("las obras trabajan hasta el viernes"). Antes contaba
+  // lunes a sábado sobre la observación de que la planilla carga días de sábado — que son horas
+  // extra, no la semana normal. El reparto de la demanda pesa cada quincena por estos días, así que
+  // el criterio tiene que ser UNO solo en toda la cadena.
+  assert.equal(diasHabilesObra(new Date(2026, 7, 16), new Date(2026, 7, 31)), 11)
+  // Y la mitad de arranque de la obra del fixture: 18-31/08.
+  assert.equal(diasHabilesObra(new Date(2026, 7, 18), new Date(2026, 7, 31)), 10)
 })
 
 test('la clave de quincena parte el mes en el 15, y una fila que arranca a mitad de tramo cae en la misma clave', () => {
@@ -37,18 +41,19 @@ test('la clave de quincena parte el mes en el 15, y una fila que arranca a mitad
   assert.equal(claveQuincena(new Date(2026, 7, 18)), '2026-08-2')
 })
 
-test('reparto por días hábiles: la obra que empieza un 18 le deja a la 2ª quincena de agosto SU parte (12/38), no una quincena entera', () => {
-  // La obra 18/08→30/09 tiene 38 días hábiles lun-sáb: 12 en ago-2, 13 en sep-1 y 13 en sep-2.
+test('reparto por días hábiles: la obra que empieza un 18 le deja a la 2ª quincena de agosto SU parte (10/32), no una quincena entera', () => {
+  // La obra 18/08→30/09 tiene 32 días hábiles lun-VIERNES: 10 en ago-2, 11 en sep-1 y 11 en sep-2.
+  // Eran 38 (12/13/13) mientras el criterio era lun-sáb; lo cambió el dueño el 13/08.
   const { quincenas, sinFechas } = demandaPorQuincena([obra()], { desde: new Date(2026, 7, 1), hastaMeses: 3 })
   assert.equal(sinFechas.length, 0)
   assert.equal(q(quincenas, '2026-08-1').nObras, 0, 'la obra no empezó: la 1ª quincena de agosto no la ve')
   const ago2 = q(quincenas, '2026-08-2')
   assert.equal(ago2.nObras, 1)
-  assert.ok(Math.abs(ago2.obras[0].fraccion - 12 / 38) < 1e-12)
-  assert.ok(Math.abs(ago2.horas.oficial - 200 * (12 / 38)) < 1e-9)
+  assert.ok(Math.abs(ago2.obras[0].fraccion - 10 / 32) < 1e-12)
+  assert.ok(Math.abs(ago2.horas.oficial - 200 * (10 / 32)) < 1e-9)
   assert.equal(ago2.plantel, 8, 'plantel requerido = fullTime + temporales de las obras activas')
-  assert.ok(Math.abs(q(quincenas, '2026-09-1').obras[0].fraccion - 13 / 38) < 1e-12)
-  assert.ok(Math.abs(q(quincenas, '2026-09-2').obras[0].fraccion - 13 / 38) < 1e-12)
+  assert.ok(Math.abs(q(quincenas, '2026-09-1').obras[0].fraccion - 11 / 32) < 1e-12)
+  assert.ok(Math.abs(q(quincenas, '2026-09-2').obras[0].fraccion - 11 / 32) < 1e-12)
   assert.equal(q(quincenas, '2026-10-1').nObras, 0, 'la obra terminó el 30/09')
   // Las fracciones de la obra suman 1: no se pierde ni se duplica una sola hora en el reparto.
   const suma = quincenas.flatMap((x) => x.obras).reduce((s, o) => s + o.fraccion, 0)
