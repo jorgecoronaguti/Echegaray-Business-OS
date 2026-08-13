@@ -401,6 +401,10 @@ test('el residuo de un layout anterior se limpia de punta a punta (grilla → hu
   // La prueba del EFECTO: no que la grilla mande VACIO, sino que la celda quede vacía en la pestaña.
   const { aplicarHuella, huellasDeEscritura, claveCelda } = await import('../lib/huella-celda.mjs')
   const { fusionar } = await import('../lib/preservar-anotaciones.mjs')
+  // SE RECORRE HASTA LA PESTAÑA, NO HASTA LA FUSIÓN (13/08). Detenerse en `fusionar()` daba verde
+  // sobre una limpieza que en producción no ocurría: después corre `no-borrar.mjs`, que reponía toda
+  // celda que la escritura dejaba vacía. El residuo de I20:M20 seguía visible con este test en verde.
+  const { preservarNoVacias } = await import('../lib/no-borrar.mjs')
   const g = armar()
   const idxCal = g.filas.findIndex((f) => /^\d{2}\/\d{2} · Planes de pago F931/.test(String(f[0] ?? '')))
   assert.ok(idxCal > 0, 'tiene que haber una fila de calendario de planes')
@@ -411,11 +415,11 @@ test('el residuo de un layout anterior se limpia de punta a punta (grilla → hu
     : f.map((c) => (c === VACIO ? '' : c))))
   const { grid, alineacion } = aplicarHuella(g.filas, hoy, huellas)
   assert.equal(alineacion.alineada, true, alineacion.motivo)
-  const fusionada = fusionar(grid, hoy)
+  const enPestana = preservarNoVacias(hoy, fusionar(grid, hoy)).values
   for (let j = 8; j <= 12; j++) {
-    assert.equal(fusionada[idxCal][j], '', `la columna ${j + 1} de la fila del calendario tiene que quedar vacía`)
+    assert.equal(enPestana[idxCal][j], '', `la columna ${j + 1} de la fila del calendario tiene que quedar vacía`)
   }
   // Y el texto sigue vivo donde SÍ va: la fila de la DDJJ presentada.
   const idxDDJJ = g.filas.findIndex((f) => String(f[0] ?? '').trim() === 'DDJJ presentada')
-  assert.equal(fusionada[idxDDJJ][8], '⚠ PROYECCIÓN')
+  assert.equal(enPestana[idxDDJJ][8], '⚠ PROYECCIÓN')
 })

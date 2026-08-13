@@ -23,6 +23,21 @@ import { permiteBorradoExplicito, protegerBorrado } from './no-borrar.mjs'
 // el ancla del rango. Puro, sin red ni base. Ver aterrizaje-escritura.mjs.
 import { testigoDeLote } from './aterrizaje-escritura.mjs'
 
+/**
+ * EL LOG DE LA GUARDA CIEGA NO AFIRMA PROPIEDAD (13/08).
+ *
+ * `protegerBorrado` sabe que una celda tenía contenido y que la escritura lo dejaría vacío. NO sabe
+ * de quién es: no tiene con qué. Decía "conservo N celda(s) TUYA(S)" igual, y esa palabra fue lo que
+ * hizo que `Cash Flow Semanal!A106="AH7"` —un artefacto del propio OS— pasara días sin que nadie la
+ * mirara. Lo que se conserva sin prueba se dice sin prueba, y se manda al reporte que lo lista.
+ */
+const avisoConservadas = (nb) => `  🛟 conservo ${nb.preservadas} celda(s) que esta escritura dejaba vacías `
+  + `(no puedo probar de quién son): ${nb.detalle.join(' · ')}`
+  + `\n     → node orquestador/scripts/conservadas-sin-prueba.mjs las lista para que decidas.`
+
+/** La contracara: acá SÍ hay prueba —la huella por celda la emitió con evidencia positiva— y se dice. */
+const avisoLimpiadas = (nb) => `  🧹 limpio ${nb.limpiadas} celda(s) que la huella probó mías: ${nb.detalleLimpiadas.join(' · ')}`
+
 const READONLY_SCOPES = [
   'https://www.googleapis.com/auth/drive.readonly',
   'https://www.googleapis.com/auth/spreadsheets.readonly',
@@ -1073,7 +1088,8 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       {
         const nb = await protegerBorrado(cliente, fileId, [{ range, values }])
         if (!nb.data.length) return { protegido: true, noBorrar: true, motivo: 'no pude releer el destino para garantizar que no se borra nada (falla cerrado)' }
-        if (nb.preservadas) console.log(`  🛟 conservo ${nb.preservadas} celda(s) tuya(s) que esta escritura dejaba vacías: ${nb.detalle.join(' · ')}`)
+        if (nb.preservadas) console.log(avisoConservadas(nb))
+        if (nb.limpiadas) console.log(avisoLimpiadas(nb))
         values = nb.data[0].values
       }
       values = await localizeValues(fileId, values)
@@ -1187,7 +1203,8 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       {
         const nb = await protegerBorrado(cliente, fileId, data)
         if (nb.descartados.length) console.log(`  🛟 descarto ${nb.descartados.length} rango(s): no pude releer el destino y no arriesgo borrarte algo — ${nb.descartados.slice(0, 3).join(', ')}`)
-        if (nb.preservadas) console.log(`  🛟 conservo ${nb.preservadas} celda(s) tuya(s) que esta escritura dejaba vacías: ${nb.detalle.join(' · ')}`)
+        if (nb.preservadas) console.log(avisoConservadas(nb))
+        if (nb.limpiadas) console.log(avisoLimpiadas(nb))
         data = nb.data
         if (!data.length) return { protegido: true, noBorrar: true, bloqueadas: nb.descartados }
       }
