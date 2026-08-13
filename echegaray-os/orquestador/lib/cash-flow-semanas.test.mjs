@@ -273,9 +273,10 @@ test('después de la sección POR CLIENTE no hay NADA: nada se cuela sin que el 
   assert.equal(meta.filaFin, ultima)
   assert.equal(filas.length, ultima)
   assert.ok(meta.clientes.titulo > meta.fila.saldoFinal, 'la sección va DESPUÉS del saldo final')
-  // 78 filas de cuadro: 7 del tronco + 35 de la apertura por rubro + 36 de la sección POR CLIENTE
+  // 79 filas de cuadro: 7 del tronco + 36 de la apertura por rubro + 36 de la sección POR CLIENTE
   // (1 título + 7 bloques de 5). La zona de gráficos está en el footprint pero no lleva contenido.
   // Eran 36 de apertura: el 06/08 se dejó de emitir "Ingresos reales · Valores en cartera", que valía
-  // cero en las 53 columnas porque el valor acreditado entra al libro como "Cobranzas".
-  assert.equal(conceptosDe('semana').length, 78)
+  // cero en las 53 columnas porque el valor acreditado entra al libro como "Cobranzas"; el 13/08 entró
+  // "Egresos proyectados · Materiales de obra proyectados", que hasta ese día caía en "· Otros".
+  assert.equal(conceptosDe('semana').length, 79)
 })

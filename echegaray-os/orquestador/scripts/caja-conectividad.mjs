@@ -132,9 +132,18 @@ async function main() {
   const ciegos = conceptosFueraDelCalendario(
     egresos.map(({ linea }) => linea.nombre).filter((n) => !nombresSinFuente.includes(n)))
 
+  // ═══ LAS FUENTES SE MIDEN SOBRE EL LIBRO, NO SOBRE UNA LISTA DE FÓRMULAS (13/08/2026) ═══
+  //
+  // Antes salían de recorrer el `CUADRO` de `cash-flow-lineas.mjs` — el diseño de bloques que se
+  // retiró el 06/08 —, así que este veredicto describía un cuadro que el archivo ya no escribe. Ahora
+  // se leen los ORÍGENES declarados en `_MOVIMIENTOS`, que es de donde las tres vistas cuelgan de
+  // verdad: una pestaña "conectada" es una que puso movimientos en el libro de esta corrida.
+  const origenes = await g.readSheetValues(ID, '_MOVIMIENTOS!N2:N').catch(() => [])
+  const sumadas = fuentesSumadas((origenes ?? []).map((f) => ({ origen: { pestana: String(f?.[0] ?? '').trim() } })))
+
   console.log('\n¿QUÉ PESTAÑAS VE CAJA, Y CUÁNTA PLATA DE CADA UNA LLEGA AL PISO?')
   console.log('─'.repeat(96))
-  for (const v of veredictoConectividad(fuentesSumadas(), ciegos)) {
+  for (const v of veredictoConectividad(sumadas, ciegos)) {
     const marca = v.estado === 'DESCONECTADA' ? '✗' : v.estado === 'conectada' ? '✓' : '·'
     console.log(`  ${marca} ${v.pestania.padEnd(24)} ${v.rol.padEnd(12)} ${v.estado.padEnd(14)} ${v.porque.slice(0, 40)}`)
   }

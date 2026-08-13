@@ -106,18 +106,39 @@ export function columnasVivasDeCompras(filas = []) {
 }
 
 /**
+ * EL RÓTULO REAL DE LA FECHA DEL COMPROBANTE EN COMPRAS. Es "Fecha factura" (col C hoy), NO "Fecha".
+ *
+ * ═══ EL DEFECTO QUE ESTA CONSTANTE CIERRA (13/08/2026) ═══
+ *
+ * Acá decía `{ fecha: 'Fecha' }`, y en el encabezado de Compras NO existe ninguna columna con ese
+ * nombre exacto: hay "Fecha factura", "Fecha factura (mes)", "Fecha prevista de pago (día)" y "Fecha
+ * de caja". `resolverColumnas` devolvía `faltan` y esta función `null` — SIEMPRE, desde el primer
+ * día—, así que el neteo vivo de las obras futuras nunca se armó: cada corrida del libro imprimía
+ * *"no pude resolver las columnas de Compras para el neteo — los importes van PEGADOS"* y seguía. Un
+ * importe pegado se cuenta DOS VECES en el instante en que la factura real entra a Compras.
+ *
+ * Se usa el MISMO rótulo que `scripts/obras-pestana.mjs` para su columna de real acumulado, y eso no
+ * es una coincidencia de estilo: si la pestaña OBRAS absorbe una factura y el libro netea contra otra
+ * fecha, las dos vistas de la misma obra dejan de coincidir sin que ninguna dé error.
+ *
+ * NO se usa "Fecha de caja": lo que descuenta la proyección es que la factura ENTRÓ, no que se pagó
+ * (la impaga ya proyecta su propia salida por su fila real).
+ */
+export const ROTULO_FECHA_COMPRAS = 'Fecha factura'
+
+/**
  * NÚCLEO PURO: las letras que el NETEO de obras futuras necesita de Compras — proveedor, cliente,
  * fecha del comprobante y total — resueltas por rótulo, igual que `columnasVivasDeCompras`.
  *
- * La "Fecha" (col C hoy) no está en `NOMBRES_COMPRAS` porque ningún extractor la lee en JS: agregarla
- * ahí la volvería OBLIGATORIA para todos los lectores de Compras por una fórmula que sólo el neteo
- * emite. Se resuelve aparte, y con cualquiera sin resolver devuelve null: los importes de Obras caen
- * al valor pegado (falla cerrado, nunca una referencia adivinada).
+ * La fecha del comprobante no está en `NOMBRES_COMPRAS` porque ningún extractor la lee en JS:
+ * agregarla ahí la volvería OBLIGATORIA para todos los lectores de Compras por una fórmula que sólo
+ * el neteo emite. Se resuelve aparte, y con cualquiera sin resolver devuelve null — pero el llamador
+ * ABORTA con ese null, no publica importes pegados (ver libro-movimientos-pestana.mjs).
  */
 export function columnasNeteoDeCompras(filas = []) {
   try {
     const c = columnasDeCompras(filas)
-    const { idx, faltan } = resolverColumnas(filas[2] ?? [], { fecha: 'Fecha' })
+    const { idx, faltan } = resolverColumnas(filas[2] ?? [], { fecha: ROTULO_FECHA_COMPRAS })
     if (faltan.length) return null
     return {
       proveedor: letra(c.proveedor), cliente: letra(c.cliente), fecha: letra(idx.fecha),
