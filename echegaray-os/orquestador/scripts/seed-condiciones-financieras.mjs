@@ -11,6 +11,7 @@
 import { query, closePool } from '../lib/db.mjs'
 import { ACUERDO, TARJETA, CORTE, ORIGEN } from '../lib/banco-santander.mjs'
 import { TASAS } from '../lib/costo-descubierto.mjs'
+import { filaParaLaTabla as fondefin } from '../lib/linea-fondefin.mjs'
 
 // upsert por la clave única (entidad, producto, tipo, moneda, vigencia_desde): re-correrlo actualiza,
 // no duplica. Sólo se tocan las filas de esta semilla; las cargadas a mano quedan intactas.
@@ -89,6 +90,10 @@ const SEED = [
     fuente: 'Ley 25.413 — alícuota general 0,6% por lado', nivel_confianza: 'informado',
     observaciones: 'Alícuota general 0,6% sobre débitos y sobre créditos (1,2% ida y vuelta). Verificar vigencia y si hay cómputo como pago a cuenta de Ganancias antes de tratarla como costo neto.',
   },
+  // FONDEFIN — la línea de Fiduciaria San Juan que el dueño señaló como faltante (13/08). La ficha
+  // entera, con su fórmula de tasa, sus huecos y sus preguntas, vive en lib/linea-fondefin.mjs: acá
+  // sólo se siembra. Es la más barata de las que hay cargadas y la única que NO es capital de trabajo.
+  fondefin(),
 ]
 
 async function main() {
