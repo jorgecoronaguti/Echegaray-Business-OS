@@ -34,6 +34,7 @@
 //
 //   node orquestador/scripts/generadores-atrasados.mjs                   inventario completo
 //   node orquestador/scripts/generadores-atrasados.mjs --archivo <ruta>  un solo generador
+//   node orquestador/scripts/generadores-atrasados.mjs --base HEAD       desde un worktree, antes de integrar
 //
 // Sale con código 1 mientras quede trabajo de rama sin incorporar. Es el chequeo previo a correr el
 // pipeline: si esto está rojo, un generador puede borrarle datos al dueño.
@@ -47,6 +48,13 @@ import path from 'node:path'
 const git = (args) => {
   try {
     return execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024, timeout: 120000 }).trim()
+  } catch { return null }
+}
+
+/** Igual que `git`, pero le pasa una lista por stdin. Para `cat-file --batch-check`. */
+const gitConEntrada = (args, entrada) => {
+  try {
+    return execFileSync('git', args, { encoding: 'utf8', input: entrada, stdio: ['pipe', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024, timeout: 120000 })
   } catch { return null }
 }
 
@@ -139,12 +147,60 @@ export const nadieLoMiro = (v) => v === 'SIN REVISAR' || v === 'REVERTIDO'
  *
  * Sin ninguna de las dos declaradas no se puede afirmar nada, y no afirmar nada es `false`: la falta
  * de evidencia no es evidencia de que esté.
+ *
+ * ═══ LA SEÑAL SE ATA A LA CAPACIDAD, NO AL ARCHIVO (13/08) ═══
+ *
+ * `impuestos-pestana.mjs` gritó REVERTIDO sin que se hubiera revertido nada: la señal declarada era
+ * `'../lib/iva-ddjj.mjs'`, y el 06/08 el generador se partió en `lib/impuestos-*.mjs`, así que ese
+ * import se mudó una carpeta más adentro. La DDJJ oficial F.2051 se seguía leyendo — cambió DÓNDE.
+ *
+ * Un centinela atado a la posición se cae con cada refactor, y un aviso que siempre está rojo se
+ * ignora: así muere un control. Por eso `senalesRelocalizadas` deja seguir la capacidad hasta el
+ * archivo donde hoy vive. Se exigen TODAS: la cadena entera o nada.
+ *
+ * @param {{blobBase?:string, fuenteBase?:string|null, blobAntes?:string, senal?:string,
+ *          senalesRelocalizadas?:Array<{texto:string, fuente:string|null}>}} _
  */
-export function hayEvidencia({ blobBase, fuenteBase, blobAntes, senal }) {
-  if (!blobAntes && !senal) return false
+export function hayEvidencia({ blobBase, fuenteBase, blobAntes, senal, senalesRelocalizadas = [] }) {
+  if (!blobAntes && !senal && !senalesRelocalizadas.length) return false
   if (blobAntes && blobBase === blobAntes) return false
+  for (const { texto, fuente } of senalesRelocalizadas) {
+    if (typeof fuente !== 'string' || !fuente.includes(texto)) return false
+  }
   if (senal) return typeof fuenteBase === 'string' && fuenteBase.includes(senal)
   return true
+}
+
+/**
+ * QUÉ ES LA VERSIÓN DE UNA RAMA FRENTE A LA BASE. Puro, y es lo que separa el trabajo del ruido.
+ *
+ * ═══ POR QUÉ NO ALCANZA "TIENE COMMITS QUE LA BASE NO TIENE" (13/08) ═══
+ *
+ * `deploy/comunicacion-protegido` —el checkout desde el que corre el bot— tiene 42 commits que main
+ * no tiene, y 41 son merges DE main HACIA la rama. Con `--full-history` esos merges "tocan" el
+ * archivo, así que el filtro por commits los dejaba pasar y seis generadores aparecían SIN REVISAR
+ * teniendo la rama una versión de main del 06/08 y main una posterior. Seis falsos positivos que
+ * exigían una decisión que no existe: no hay nada que traer.
+ *
+ * La prueba exacta es de CONTENIDO, igual que el resto de este script: si la base YA TUVO ese blob
+ * alguna vez, todo lo que la rama tiene de este archivo estuvo en la base y la base siguió. La rama
+ * está atrás, no adelante.
+ *
+ * LÍMITE, y hay que decirlo: esto responde "¿la rama está adelante?", no "¿la base perdió algo?".
+ * Si la base tuvo ese contenido y después lo revirtió, acá igual da 'rama vieja' — el control de esa
+ * otra pregunta es `hayEvidencia`, que se declara por archivo en el registro.
+ *
+ * `declaradaAtrasada` es la misma conclusión cuando la aritmética no puede llegar sola: main incorporó
+ * el trabajo de la rama por 3-way POR ARCHIVO, así que su blob nunca existió literalmente en main
+ * aunque su contenido esté adentro. Eso se resuelve leyendo el diff, y la declaración se ata AL BLOB
+ * —no a la rama— justamente para que caduque sola si esa rama vuelve a moverse.
+ */
+export function estadoDeLaRama({ blob, blobBase, tieneCommits, historicosDeLaBase, declaradaAtrasada = false }) {
+  if (!blob || blob === blobBase) return 'al día'
+  if (historicosDeLaBase?.has(blob)) return 'rama vieja'
+  if (declaradaAtrasada) return 'rama vieja'
+  if (!tieneCommits) return 'rama vieja'
+  return 'hallazgo'
 }
 
 /**
@@ -176,8 +232,19 @@ export function escritoresDeSheets(base = 'main', prefijo = PREFIJO_ORQ) {
  */
 export function blobsEnLaHistoria(rev, archivo) {
   const commits = (git(['rev-list', '--full-history', rev, '--', `:(top)${archivo}`]) ?? '').split('\n').filter(Boolean)
+  if (!commits.length) return new Set()
+  // UN SOLO proceso de git, no uno por commit. `caja-pestana.mjs` tiene 80 versiones en main y acá se
+  // recorre la historia de CADA generador: con un `rev-parse` por commit esto pasaba de segundos a
+  // minutos, y un control que tarda minutos se saltea justo el día que hay apuro por correr.
+  const salida = gitConEntrada(['cat-file', '--batch-check=%(objectname) %(objecttype)'],
+    `${commits.map((c) => `${c}:${archivo}`).join('\n')}\n`)
   const blobs = new Set()
-  for (const c of commits) { const b = git(['rev-parse', `${c}:${archivo}`]); if (b) blobs.add(b) }
+  for (const linea of (salida ?? '').split('\n')) {
+    const [oid, tipo] = linea.split(' ')
+    // Sólo `blob`: una ruta que en ese commit todavía no existía contesta "missing", y un directorio
+    // contestaría `tree`. Guardar cualquiera de los dos ensuciaría la comparación de contenido.
+    if (tipo === 'blob') blobs.add(oid)
+  }
   return blobs
 }
 
@@ -198,11 +265,34 @@ export function ramaTieneTrabajo(base, rama, archivo) {
  */
 export function revisarArchivo(archivo, ramas, base = 'main', registro = leerRegistro()) {
   const enBase = git(['rev-parse', `${base}:${archivo}`])
-  const distintas = ramas
+  const candidatas = ramas
     .map((rama) => ({ rama, blob: git(['rev-parse', `${rama}:${archivo}`]) }))
-    .filter((x) => x.blob && x.blob !== enBase && ramaTieneTrabajo(base, x.rama, archivo))
-  if (!distintas.length) return []
+    .filter((x) => x.blob && x.blob !== enBase)
+  if (!candidatas.length) return { hallazgos: [], viejas: [] }
   const entrada = registro[corto(archivo)] ?? {}
+  // Las declaraciones de "esta versión quedó atrás" se guardan POR BLOB, no por rama: 25 ramas de la
+  // misma tanda comparten el mismo contenido, y atarlo al contenido hace que la declaración caduque
+  // sola el día que alguien vuelve a tocar ese archivo en esa rama.
+  const atrasadas = entrada.atrasadas ?? {}
+  const motivoAtraso = (blob) => atrasadas[blob] ?? atrasadas[blob.slice(0, 7)] ?? null
+  // La historia de la base se recorre UNA vez por archivo, y sólo si hay alguna rama que difiere.
+  const historicosDeLaBase = blobsEnLaHistoria(base, archivo)
+  const viejas = []
+  const distintas = []
+  for (const x of candidatas) {
+    // El orden importa por costo: `ramaTieneTrabajo` es un `git log` por rama y no se paga si el
+    // contenido ya está resuelto por la historia de la base o por una declaración.
+    const estado = estadoDeLaRama({
+      blob: x.blob,
+      blobBase: enBase,
+      historicosDeLaBase,
+      declaradaAtrasada: Boolean(motivoAtraso(x.blob)),
+      tieneCommits: historicosDeLaBase.has(x.blob) || motivoAtraso(x.blob) ? false : ramaTieneTrabajo(base, x.rama, archivo),
+    })
+    if (estado === 'hallazgo') distintas.push(x)
+    else if (estado === 'rama vieja') viejas.push({ archivo: corto(archivo), rama: x.rama, motivo: motivoAtraso(x.blob) })
+  }
+  if (!distintas.length) return { hallazgos: [], viejas }
   // `revisadoHasta` admite varios puntos: un archivo puede haberse revisado contra más de un linaje.
   const puntos = [entrada.revisadoHasta].flat().filter(Boolean)
   const revisados = new Set(puntos.flatMap((p) => [...blobsEnLaHistoria(p, archivo)]))
@@ -212,12 +302,15 @@ export function revisarArchivo(archivo, ramas, base = 'main', registro = leerReg
     fuenteBase: entrada.senal ? git(['show', `${base}:${archivo}`]) : null,
     blobAntes: entrada.blobAntes,
     senal: entrada.senal,
+    senalesRelocalizadas: Object.entries(entrada.senalEn ?? {})
+      .map(([donde, texto]) => ({ texto, fuente: git(['show', `${base}:${RAIZ_APP}${donde}`]) })),
   })
-  return distintas.map(({ rama, blob }) => {
+  const hallazgos = distintas.map(({ rama, blob }) => {
     const motivoRama = entrada.pendientes?.[rama] ?? null
     const v = veredicto({ cubierto: revisados.has(blob), decision: entrada.decision, motivoRama, evidencia })
     return { archivo: corto(archivo), rama, blob: blob.slice(0, 7), veredicto: v, motivo: motivoRama ?? entrada.motivo ?? null }
   })
+  return { hallazgos, viejas }
 }
 
 /** El inventario completo. `soloArchivo` limita a un generador (chequeo previo a correrlo). */
@@ -228,7 +321,15 @@ export function revisar({ base = 'main', soloArchivo = null, registro = leerRegi
     const buscado = soloArchivo.replace(/^\.?\//, '')
     archivos = archivos.filter((f) => f.endsWith(buscado))
   }
-  return { ramas, archivos, hallazgos: archivos.flatMap((f) => revisarArchivo(f, ramas, base, registro)) }
+  const porArchivo = archivos.map((f) => revisarArchivo(f, ramas, base, registro))
+  // `viejas` NO se esconde: se cuenta y se informa. Lo que un control filtra en silencio es lo
+  // primero que alguien acusa de estar tapando algo, y con razón.
+  return {
+    ramas,
+    archivos,
+    hallazgos: porArchivo.flatMap((r) => r.hallazgos ?? r),
+    viejas: porArchivo.flatMap((r) => r.viejas ?? []),
+  }
 }
 
 /** Agrupa por archivo. Manda el peor veredicto de sus ramas: lo que nadie miró tapa a lo declarado. */
@@ -263,9 +364,27 @@ function informar(resumen) {
 function main() {
   const argv = process.argv.slice(2)
   const i = argv.indexOf('--archivo')
-  const { ramas, archivos, hallazgos } = revisar({ soloArchivo: i >= 0 ? argv[i + 1] : null })
-  console.log(`generadores de Sheets revisados: ${archivos.length} · ramas sin mergear: ${ramas.length}`)
+  // `--base` porque el trabajo se hace en un worktree y main todavía no lo tiene: preguntar por main
+  // desde la rama que acaba de traer un generador informa un REVERTIDO que es cierto para main y
+  // falso para lo que se está por integrar. La base se declara, y así se sabe qué se midió.
+  const b = argv.indexOf('--base')
+  const base = b >= 0 ? argv[b + 1] : 'main'
+  const { ramas, archivos, hallazgos, viejas } = revisar({ base, soloArchivo: i >= 0 ? argv[i + 1] : null })
+  console.log(`base: ${base} · generadores de Sheets revisados: ${archivos.length} · ramas sin mergear: ${ramas.length}`)
   if (!archivos.length) { console.error('✖ no encontré ningún generador: el prefijo o la rama base están mal. No afirmo nada.'); return 1 }
+  if (viejas.length) {
+    const ramasViejas = [...new Set(viejas.map((v) => v.rama))]
+    console.log(`\n· ${viejas.length} versión(es) de rama que main YA TUVO y superó — nada que traer`)
+    console.log(`   ${ramasViejas.slice(0, 6).join(', ')}${ramasViejas.length > 6 ? ` (+${ramasViejas.length - 6})` : ''}`)
+    // Las DECLARADAS se muestran enteras: son un juicio de una persona, no una comparación de blobs,
+    // y esconderlas entre 740 automáticas sería exactamente el silenciador que este registro no puede ser.
+    // Se deduplica por archivo+motivo, no por archivo: un mismo generador puede tener dos versiones
+    // de rama atrasadas por razones distintas, y quedarse con una sola escondería la otra.
+    for (const [, v] of new Map(viejas.filter((x) => x.motivo).map((x) => [`${x.archivo}·${x.motivo}`, x]))) {
+      console.log(`\n· rama vieja (declarada)  ${v.archivo}`)
+      console.log(`   ${v.motivo}`)
+    }
+  }
   if (!hallazgos.length) { console.log('\n✔ ninguna rama sin mergear difiere de main en un generador de Sheets.'); return 0 }
 
   if (!informar(resumir(hallazgos))) { console.log('\n✔ todo el trabajo de rama está incorporado. El pipeline puede correr.'); return 0 }
