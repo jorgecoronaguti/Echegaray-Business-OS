@@ -228,6 +228,22 @@ const NO_VENTA = 'CANCELAR'
 /** El estado de una fila ya cobrada. Todo lo demás que no sea CANCELAR es lo que resta cobrar. */
 const COBRADO = 'Cobrado'
 
+/**
+ * EL PATRÓN DE IMPORTE PARA `TEXT()` — Y LA TRAMPA QUE ESTÁ AL LADO DE LA OTRA TRAMPA.
+ *
+ * ⚠ NO "CORREGIR" ESTA COMA POR UN PUNTO. Parece un error en es-AR y no lo es:
+ *
+ *   · el SEPARADOR DE ARGUMENTOS de una fórmula por API va en LOCALE  → `;`, nunca `,`
+ *   · el PATRÓN DE NÚMERO de esa misma fórmula va en NOTACIÓN US      → `,` miles, `.` decimales
+ *
+ * Dos reglas opuestas en la misma línea. Sheets recibe `#,##0` y lo DIBUJA `65.000.000` porque el
+ * archivo es es-AR. Ya se escribió al revés —`#.##0`, "porque acá los miles van con punto"— y ese
+ * punto se leyó como el decimal: se publicó `$ 23795136,0` donde iba `$ 23.795.136`.
+ *
+ * Lo verifica `evaluar-formula-sheet.mjs`, que corre el TEXT en frío y devuelve el texto renderizado.
+ */
+const MILES = '"$ #,##0"'
+
 /** El criterio que ancla un cliente al PRINCIPIO de "Obra / Cliente": "San Francisco" toma
  *  "San Francisco" pero no "IMOTOR/San Francisco/JAVI SANCHEZ", que es otro cliente. */
 export const anclaCliente = (texto) => `${texto}*`
@@ -315,20 +331,19 @@ function composicionBlancoNegro(cob, cliente, extra) {
   const porCategoria = (cat) => `(${sumaCobranzas(cob, 'neto', cliente, `${extra};${abierto(cob, 'categoria')};"${cat}"`, `"<>${NO_VENTA}"`)})`
   const b = porCategoria('B')
   const n = porCategoria('N')
-  return `IF(${b}*${n}>0;"blanco "&TEXT(${b};"$ #.##0")&" · negro "&TEXT(${n};"$ #.##0")&" ‖ ";"")`
+  return `IF(${b}*${n}>0;"blanco "&TEXT(${b};${MILES})&" · negro "&TEXT(${n};${MILES})&" ‖ ";"")`
 }
 
 function detalleCobranzas(cob, cliente, needle) {
   const cond = variantesDe(cliente)
     .map((v) => `(LEFT(${abierto(cob, 'cliente')};${v.length})="${v}")`).join('+')
-  // EL IMPORTE SE FORMATEA ADENTRO DE LA FÓRMULA. TEXTJOIN concatena TEXTO: el formato de número de
-  // la celda no lo toca, y el primer intento publicó "$23795136,0" — sin separador de miles y con el
-  // decimal colgando. En es_AR el separador de miles es el punto, así que el patrón es "#.##0".
-  // El separador entre eventos es " | ": con seis cobranzas seguidas, el " · " se leía como párrafo.
+  // EL IMPORTE SE FORMATEA ADENTRO DE LA FÓRMULA: TEXTJOIN concatena TEXTO y el formato de número de
+  // la celda no lo toca. El separador entre eventos es " | ": con seis cobranzas seguidas, el " · "
+  // se leía como párrafo. El patrón va en `MILES`, y ese detalle tiene su propia advertencia.
   const extra = `;${abierto(cob, 'concepto')};"*${needle}*"`
   return `=IFERROR(${composicionBlancoNegro(cob, cliente, extra)}&TEXTJOIN(" | ";1;ARRAYFORMULA(IF((${cond})*(ISNUMBER(SEARCH("${needle}";${abierto(cob, 'concepto')})))`
     + `*(${abierto(cob, 'estado')}<>"${COBRADO}")*(${abierto(cob, 'estado')}<>"${NO_VENTA}")*(${abierto(cob, 'fechaCobro')}>0);`
-    + `TEXT(${abierto(cob, 'fechaCobro')};"dd/mm")&" · "&TEXT(${abierto(cob, 'total')};"$ #.##0")&" · "&${abierto(cob, 'forma')};"")));"")`
+    + `TEXT(${abierto(cob, 'fechaCobro')};"dd/mm")&" · "&TEXT(${abierto(cob, 'total')};${MILES})&" · "&${abierto(cob, 'forma')};"")));"")`
 }
 
 /** Mismo constructor de grilla que el anexo de CAJA: push devuelve la fila 1-based, y toda celda
@@ -385,10 +400,10 @@ function seccionObrasDelAno(h, refs, clientes) {
     `=${todo('total', COBRADO)}-SUM(D${f0}:D${f1})`,
     `=${todo('total', `<>${NO_VENTA}`)}-${todo('total', COBRADO)}-SUM(E${f0}:E${f1})`,
     '', '', '',
-    'sin fila propia arriba · si crece, falta un cliente'])
+    'sin fila propia arriba · falta un cliente'])
   const fTot = h.push(['⇒ TOTAL 2026', '', `=SUM(C${f0}:C${fOtros})`, `=SUM(D${f0}:D${fOtros})`,
     `=SUM(E${f0}:E${fOtros})`, `=SUM(F${f0}:F${f1})`, `=SUM(G${f0}:G${f1})`, '',
-    'cobrado y resta = total facturado · lleva IVA sólo en las filas blancas (B)'])
+    'IVA sólo en las filas blancas (B)'])
   h.push([])
   return { fClientes: [f0, f1], fOtros, fTot }
 }
@@ -411,7 +426,9 @@ function realEgreso(cmp, proveedor, cliente, inicio) {
  */
 function prosaDeObra(o, proyectable) {
   const p = []
-  p.push(proyectable ? `${ddmm(o.inicio)}→${ddmm(o.fin)}` : '⚠ sin fechas')
+  // El año va en el título de la pestaña: repetirlo en cada obra sumaba seis caracteres por fila y
+  // empujaba la glosa a un segundo renglón. Todas las obras son del mismo año.
+  p.push(proyectable ? `${ddmm(o.inicio).slice(0, 5)}→${ddmm(o.fin).slice(0, 5)}` : '⚠ sin fechas')
   if (o.plantelFullTime != null) p.push(`${o.plantelFullTime + (o.plantelTemporales ?? 0)} personas`)
   const horas = Object.values(o.horas ?? {}).reduce((s, h) => s + (Number(h) || 0), 0)
   if (horas) p.push(`${Math.round(horas).toLocaleString('es-AR')} h`)
@@ -486,7 +503,7 @@ function bloqueObra(h, refs, o, idx) {
 
   const fMO = h.n + 1
   h.push(['      Mano de obra + cargas sociales', '', o.moCargasPesos, '', '', `=C${fMO}`, '', '',
-    `por Jornales · ${prosaDeObra(o, proyectable)}`])
+    `Jornales · ${prosaDeObra(o, proyectable)}`])
   h.tipeadas.push({ fila: fMO, col: 2 })
 
   let fNoCaja = null
@@ -521,7 +538,7 @@ export function grillaObras(ctx = {}) {
   const s1 = seccionObrasDelAno(h, refs, clientes)
 
   h.push(['2 · OBRAS EN CURSO Y FUTURAS', '', '', '', '', '', '', '',
-    'importes tipeados = proyección del dueño (07/08)'])
+    'tipeado = proyección del dueño (07/08)'])
   h.push(['Obra', '', 'Venta (neto)', 'Cobrado', 'Resta cobrar', 'Vencido', 'Margen', 'Próx. cobro',
     'Cobranzas pendientes'])
   const bloques = obras.map((o, i) => bloqueObra(h, refs, o, i + 1))

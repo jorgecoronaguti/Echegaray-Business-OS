@@ -21,6 +21,7 @@ import {
 } from './obras-grilla.mjs'
 import { OBRAS_FUTURAS, CLIENTES_CANONICOS, esProyectable, totalEgresos } from './obras-datos.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
+import { evaluarFormula } from './evaluar-formula-sheet.mjs'
 
 const COLS = 'ABCDEFGHI'
 const g = grillaObras({ obras: OBRAS_FUTURAS })
@@ -344,8 +345,18 @@ test('toda fila mide exactamente ANCHO_OBRAS y las vacías llevan el centinela',
   }
 })
 
-test('en locale es_AR ninguna fórmula lleva una coma: ahí una coma es un decimal', () => {
-  for (const [ref, f] of formulas(g)) assert.ok(!f.includes(','), `${ref}: ${f.slice(0, 80)}`)
+test('ninguna coma SEPARA ARGUMENTOS: en es-AR el separador es `;` y una coma suelta es un decimal', () => {
+  // LA DISTINCIÓN ES EL PUNTO, no un detalle del test. Las dos reglas conviven en la misma línea:
+  //   · fuera de comillas —la estructura de la fórmula— el separador va en LOCALE: `;`, nunca `,`
+  //   · dentro de comillas —un patrón de TEXT()— la notación es US: `#,##0` lleva coma A PROPÓSITO
+  // Prohibir la coma en todos lados obligaba a escribir "#.##0", que es exactamente el defecto que
+  // se publicó. Así que se mira sólo la estructura: los literales se sacan antes de juzgar.
+  for (const [ref, f] of formulas(g)) {
+    const estructura = f.replace(/"[^"]*"/g, '""')
+    assert.ok(!estructura.includes(','), `${ref}: coma separando argumentos → ${estructura.slice(0, 90)}`)
+  }
+  // Y que el caso legítimo exista de verdad, para que este test no sea verde por vacío.
+  assert.ok(formulas(g).some(([, f]) => f.includes('"$ #,##0"')), 'el patrón US tiene que estar presente')
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -387,13 +398,41 @@ test('el escáner de errores publicados encuentra los ocho, y no confunde un dat
 // QUE SE PUEDA LEER
 // ─────────────────────────────────────────────────────────────────────────────
 
+test('los importes se RINDEN con miles: el patrón va en notación US aunque el archivo sea es-AR', () => {
+  // EL DEFECTO QUE SE PUBLICÓ (13/08): el patrón decía "#.##0" —"porque en es-AR los miles van con
+  // punto"— y ese punto se leyó como el DECIMAL: salió "$ 23795136,0" donde iba "$ 23.795.136".
+  //
+  // Las dos reglas opuestas: el SEPARADOR DE ARGUMENTOS va en locale (`;`), el PATRÓN DE NÚMERO va en
+  // US (`,` miles). Ninguna verificación de sintaxis puede juzgar esto —la fórmula parsea perfecto y
+  // devuelve basura—, así que acá se EVALÚA: se saca cada patrón de las fórmulas que la grilla emite
+  // y se lo hace rendir con un número conocido.
+  const patrones = [...new Set(formulas(g)
+    .flatMap(([, f]) => [...f.matchAll(/TEXT\([^;]+;"([^"]+)"\)/g)].map((m) => m[1]))
+    .filter((p) => /[#0]/.test(p)))]
+  assert.ok(patrones.length > 0, 'tiene que haber importes formateados que mirar')
+  for (const p of patrones) {
+    const rendido = evaluarFormula(`=TEXT(23795136;"${p}")`)
+    assert.equal(rendido, '$ 23.795.136', `el patrón "${p}" rinde "${rendido}"`)
+    assert.ok(!/\d{7}/.test(rendido), `"${p}": el número salió crudo, sin separador de miles`)
+    assert.ok(!/,\d/.test(rendido), `"${p}": quedó un decimal colgando`)
+  }
+})
+
+test('las fechas del detalle se rinden dd/mm, no como serial pelado', () => {
+  const patrones = [...new Set(formulas(g)
+    .flatMap(([, f]) => [...f.matchAll(/TEXT\([^;]+;"([^"]+)"\)/g)].map((m) => m[1]))
+    .filter((p) => !/[#0]/.test(p)))]
+  assert.deepEqual(patrones, ['dd/mm'])
+  assert.equal(evaluarFormula('=TEXT(46261;"dd/mm")'), '27/08')
+})
+
 test('los importes del detalle se formatean DENTRO de la fórmula: TEXTJOIN concatena texto', () => {
   // El formato de número de la celda no toca lo que TEXTJOIN arma: el primer intento publicó
   // "$23795136,0" — sin separador de miles y con el decimal colgando. En es_AR los miles van con
   // punto, así que el patrón es "#.##0".
   for (const b of g.bloques) {
     const det = cel(g, `I${b.fProt}`)
-    assert.ok(det.includes('TEXT(') && det.includes('"$ #.##0"'), `${b.clave}: el importe va formateado`)
+    assert.ok(det.includes('TEXT(') && det.includes('"$ #,##0"'), `${b.clave}: el importe va formateado`)
     assert.ok(det.includes('"dd/mm"'), `${b.clave}: y la fecha también`)
     assert.ok(!/&" "&TEXT/.test(det), `${b.clave}: los campos van separados, no pegados con un espacio`)
   }

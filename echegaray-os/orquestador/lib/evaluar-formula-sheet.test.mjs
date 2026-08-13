@@ -81,3 +81,31 @@ test('el rango se expande en las celdas reales, y la grilla del generador se map
   assert.equal(hoja.A1, 'x')
   assert.equal(hoja.B2, 2)
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TEXT() — LAS DOS REGLAS OPUESTAS DE LA MISMA LÍNEA
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('el patrón de TEXT va en notación US y se RINDE en es-AR: la coma agrupa, no separa decimales', () => {
+  // EL DEFECTO QUE MOTIVÓ ESTE SOPORTE (13/08): la pestaña OBRAS publicó "$ 23795136,0" donde iba
+  // "$ 23.795.136". El patrón se había escrito "#.##0" razonando que en es-AR los miles van con
+  // punto — pero el patrón que viaja por la API es US, y ese punto se leyó como el DECIMAL.
+  // El separador de ARGUMENTOS sí va en locale (`;`): dos reglas opuestas en la misma línea.
+  assert.equal(ev('=TEXT(23795136;"$ #,##0")'), '$ 23.795.136')
+  assert.equal(ev('=TEXT(65000000;"$ #,##0")'), '$ 65.000.000')
+  assert.equal(ev('=TEXT(0;"$ #,##0")'), '$ 0')
+  assert.equal(ev('=TEXT(-1234567;"$ #,##0")'), '-$ 1.234.567')
+  // Y el patrón equivocado devuelve el número CRUDO: es lo que hace fallar al test que lo usa.
+  assert.equal(ev('=TEXT(65000000;"$ #.##0")'), '$ 65000000,000')
+})
+
+test('TEXT también rinde fechas desde el serial', () => {
+  assert.equal(ev('=TEXT(46261;"dd/mm")'), '27/08')
+  assert.equal(ev('=TEXT(46261;"dd/mm/yyyy")'), '27/08/2026')
+  assert.equal(ev('=TEXT(46261;"dd/mm/yy")'), '27/08/26')
+})
+
+test('un patrón que el modelo no sabe rendir REVIENTA: un texto inventado haría pasar un test vacío', () => {
+  assert.throws(() => ev('=TEXT(1;"0.0%")'), /patrón de número no soportado/)
+  assert.throws(() => ev('=TEXT(1;"#,##0;(#,##0)")'), /patrón de número no soportado/)
+})
