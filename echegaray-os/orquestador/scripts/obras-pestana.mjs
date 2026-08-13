@@ -65,9 +65,14 @@ export const letra = (i) => (i < 26 ? '' : String.fromCharCode(64 + Math.floor(i
  */
 export function resolverColumnas(filas, rotulos) {
   const entradas = Object.entries(rotulos)
+  // LOS ESPACIOS DE MÁS NO SON PARTE DEL NOMBRE. El encabezado real dice "ORDEN DE  COMPRA" —con DOS
+  // espacios— y por eso un criterio escrito con uno solo no matcheaba: la columna quedaba sin
+  // resolver y su `undefined` se interpolaba en la fórmula. Se normaliza cualquier corrida de
+  // espacios a uno antes de comparar, de los dos lados.
+  const norm = (x) => String(x ?? '').replace(/\s+/g, ' ').trim()
   const matchea = (celda, crit) => {
-    const t = String(celda ?? '').trim()
-    return crit instanceof RegExp ? crit.test(t) : t === crit
+    const t = norm(celda)
+    return crit instanceof RegExp ? crit.test(t) : t === norm(crit)
   }
   const [, ancla] = entradas[0]
   const iFila = (filas ?? []).findIndex((f) => (f ?? []).some((c) => matchea(c, ancla)))
@@ -162,7 +167,10 @@ async function refsReales(google) {
       // `forma` y `fechaCobro` son lo que el dueño pidió ver por obra (a quién reclamarle y cuándo).
       ...resolverColumnas(cob, {
         cliente: 'Obra / Cliente', concepto: 'Concepto', neto: /^Monto neto/i, categoria: /^Categor/i,
-        total: /^TOTAL a cobrar/, forma: /^Forma de [Cc]obro/, estado: 'Estado', fechaCobro: /^Fecha de cobro|^Fecha cobro/i,
+        // La ORDEN DE COMPRA reconoce la obra cuando el Concepto no la nombra. Faltaba acá, y por eso
+        // se publicaron 40 celdas con #ERROR!: la grilla la usaba y el escritor no la resolvía.
+        oc: /^(OC|ORDEN DE COMPRA)$/i,
+        total: /^TOTAL a cobrar/, estado: 'Estado', fechaCobro: /^Fecha de cobro|^Fecha cobro/i,
       }),
     },
     cmp: {
@@ -199,8 +207,12 @@ async function main() {
     ? makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
     : makeGoogleClient({})
   const refs = await refsReales(google)
-  console.log(`columnas resueltas por rótulo · Cobranzas: cliente=${refs.cob.cliente} concepto=${refs.cob.concepto} total=${refs.cob.total} estado=${refs.cob.estado} (desde ${refs.cob.desde})`)
-  console.log(`                              · Compras: proveedor=${refs.cmp.proveedor} cliente=${refs.cmp.cliente} fecha=${refs.cmp.fecha} total=${refs.cmp.total} (desde ${refs.cmp.desde})`)
+  // SE LISTAN TODAS. El log anterior nombraba cuatro columnas elegidas a mano y la que faltaba —la
+  // Orden de Compra— no aparecía: la pista estaba en pantalla y pasó de largo por no estar listada.
+  for (const [hoja, r] of [['Cobranzas', refs.cob], ['Compras', refs.cmp]]) {
+    const cols = Object.entries(r).filter(([k]) => !['hoja', 'desde'].includes(k)).map(([k, v]) => `${k}=${v}`)
+    console.log(`columnas resueltas por rótulo · ${hoja}: ${cols.join(' ')} (desde ${r.desde})`)
+  }
 
   // LOS CLIENTES SE LEEN DEL ARCHIVO, NO SE TIPEAN. Una lista escrita en el código deja fuera del
   // cuadro a todo cliente nuevo —y nadie se entera—: es el defecto que el dueño cazó mirando la
@@ -278,7 +290,12 @@ async function main() {
   if (enError.length) {
     throw new Error(`QUEDÓ PUBLICADO CON ${enError.length} CELDA(S) EN ERROR: `
       + `${enError.slice(0, 8).map((x) => `${x.ref}=${x.valor}`).join(' · ')}`
-      + `${enError.length > 8 ? ` … y ${enError.length - 8} más` : ''}. Hay que corregir la fórmula y volver a correr.`)
+      + `${enError.length > 8 ? ` … y ${enError.length - 8} más` : ''}.\n`
+      + `LA PESTAÑA "${PESTANA_OBRAS}" QUEDÓ ROTA EN EL ARCHIVO Y HAY QUE VOLVER ATRÁS A MANO: no existe\n`
+      + 'un rollback automático — este escritor no guarda la versión previa. En el Sheet:\n'
+      + '  Archivo → Historial de versiones → Ver historial de versiones → restaurar la anterior a esta corrida.\n'
+      + 'Después corregir la fórmula y correr primero SIN --escribir (el ensayo resuelve las columnas\n'
+      + 'contra el archivo vivo y aborta si alguna no resuelve, que es donde se caza esta clase de defecto).')
   }
   // UN VACÍO NO ES UN #ERROR!, Y MIENTE MÁS: se lee como un dato. Si una columna salió llena en unas
   // obras y vacía en otras, alguna fórmula se rompió en silencio — pasó con `Próx. cobro`, 4 de 7.

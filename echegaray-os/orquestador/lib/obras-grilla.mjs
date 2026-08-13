@@ -203,6 +203,18 @@ export function columnasDesparejas(grid = [], publicado = [], filas = []) {
  * @returns {string|null} el motivo, o null si está sana.
  */
 export function problemaDeSintaxis(formula) {
+  // ═══ UNA VARIABLE ROTA INTERPOLADA EN EL STRING (13/08) ═══
+  //
+  // Esto se publicó: `'Cobranzas'!$undefined$5:$undefined`. Parsea PERFECTO —paréntesis balanceados,
+  // comillas cerradas— y sólo revienta cuando Sheets busca una columna que no existe: 40 celdas con
+  // #ERROR! en el archivo del dueño. Contar paréntesis no podía verlo.
+  //
+  // Va PRIMERO y es una línea, pero ataca toda la familia: cualquier `${x}` que llegue vacío deja su
+  // firma en el texto. Ninguna fórmula legítima de esta pestaña dice "undefined", "null" ni "NaN", y
+  // un `$$` sólo aparece si una letra de columna llegó vacía entre los dos anclajes.
+  const roto = /undefined|null|NaN|\$\$/.exec(String(formula))
+  if (roto) return `interpoló "${roto[0]}": una variable llegó vacía al armar la fórmula`
+
   let nivel = 0
   let comilla = false
   for (const ch of String(formula)) {
@@ -302,7 +314,7 @@ export function clientesDeCobranzas(valores = [], alias = ALIAS_CLIENTE) {
  * rótulo — nunca por letra fija — y falla cerrado si un rótulo no está.
  */
 export const REFS_OBRAS = {
-  cob: { hoja: 'Cobranzas', cliente: 'G', concepto: 'I', neto: 'J', total: 'M', estado: 'O', forma: 'N', fechaCobro: 'Q', categoria: 'B', oc: 'H', desde: 5 },
+  cob: { hoja: 'Cobranzas', cliente: 'G', concepto: 'I', neto: 'J', total: 'M', estado: 'O', fechaCobro: 'Q', categoria: 'B', oc: 'H', desde: 5 },
   // `neto` es la columna "Importe" (M = Total − IVA). El costo se mide ahí, no en "Total" (O): la
   // venta ya se mide al neto, y comparar venta neta contra costo con IVA castigaba el margen ~21% en
   // todo lo que se compra en blanco. Neto contra neto. El IVA de compras es crédito fiscal, no costo.
@@ -316,7 +328,31 @@ export const serialISO = (iso) => {
   return Math.round((Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 86400000)
 }
 
-const abierto = (c, campo) => `'${c.hoja}'!$${c[campo]}$${c.desde}:$${c[campo]}`
+/**
+ * UN RANGO ABIERTO DE UNA FUENTE — Y LA GUARDA QUE HACE IMPOSIBLE LA CLASE DE DEFECTO QUE ROMPIÓ LA
+ * PESTAÑA PUBLICADA (13/08).
+ *
+ * QUÉ PASÓ. La grilla empezó a usar la Orden de Compra (`oc`) para reconocer una obra, pero el
+ * escritor nunca agregó ese rótulo a su `resolverColumnas`. En frío no se notaba —`--dry` usa las
+ * columnas por DEFECTO de REFS_OBRAS, que sí la tienen—, pero contra el archivo vivo `refs.cob.oc`
+ * llegaba `undefined` y cada fórmula salía como `'Cobranzas'!$undefined$5:$undefined`. Eso no es un
+ * paréntesis mal cerrado: PARSEA distinto y Sheets lo rechaza al evaluar. 40 celdas con `#ERROR!` en
+ * la cara del dueño, y el contador de paréntesis no podía verlo.
+ *
+ * POR QUÉ LA GUARDA VA ACÁ Y NO EN EL ESCRITOR. Acá pasa TODA referencia a una fuente, de cualquier
+ * campo y de cualquier hoja. Una lista de campos obligatorios en el escritor habría que acordarse de
+ * actualizarla cada vez que la grilla usa una columna nueva — o sea, el mismo olvido otra vez. Así el
+ * desajuste entre lo que la grilla CONSUME y lo que el escritor RESUELVE es imposible: la grilla ni
+ * siquiera se construye, y el escritor aborta ANTES de tocar el archivo.
+ */
+const abierto = (c, campo) => {
+  const col = c?.[campo]
+  if (!col || !c?.hoja || !c?.desde) {
+    throw new Error(`obras-grilla: la columna "${campo}" de ${c?.hoja ?? '(hoja sin nombre)'} no está resuelta`
+      + ' — el escritor tiene que buscarla por su rótulo. NO se construye la grilla con una referencia rota.')
+  }
+  return `'${c.hoja}'!$${col}$${c.desde}:$${col}`
+}
 
 /** El estado que saca una fila de la venta: cancelada, no vendida. Es lo ÚNICO que se descarta. */
 const NO_VENTA = 'CANCELAR'
