@@ -12,6 +12,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { tarjetas, NO_REAL, FIN_DE_MES } from './caja-tarjetas.mjs'
 import { terminoLibro } from './libro-sumas.mjs'
+import { ANCHOS, COLS_TARJETA } from './caja-grilla.mjs'
 
 const REF = {
   total: '$C$15', fecha: '$D$15', invArs: '$C$11', invUsd: '$C$12', invFecha: '$D$11',
@@ -50,23 +51,39 @@ test('CAJA DISPONIBLE es EL TOTAL del panel de cuentas — banco y caja, sin Bal
 
 test('COMPROMETIDA = todo lo que hay que pagar en el mes − lo ya pagado, con la urgencia en contexto', () => {
   // La definición textual del dueño. Lo REAL (pagado) queda afuera porque ya salió del saldo del
-  // banco; lo vencido impago entra (sin `desde`). El "próx. 7 días" del contexto conserva la
-  // urgencia que antes era el titular.
+  // banco; lo vencido impago entra (sin `desde`). Los "7d" del contexto conservan la urgencia que
+  // antes era el titular.
   const c = de('comprometida')
   assert.equal(c.valor, `=${terminoLibro({ signo: -1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })}`)
-  assert.match(c.contexto, /7 días:/)
+  assert.match(c.contexto, /7d/)
   assert.ok(c.contexto.includes(terminoLibro({ signo: -1, estados: NO_REAL, hasta: 'TODAY()+7', medida: 'magnitud' })))
   assert.ok(!c.valor.includes('"REAL"'), 'lo REAL ya salió de la cuenta: no es obligación')
+})
+
+test('EL RÓTULO DE COMPROMETIDA DICE QUE FALTA PAGAR: era la pregunta literal del dueño', () => {
+  // 13/08, textual: *"la tarjeta 'caja comprometida' no sé si es algo q tengo q cubrir o ya está
+  // cubierto"*. Un rótulo que empieza con "CAJA" nombra plata que se TIENE; ésta es plata que TIENE
+  // QUE SALIR. Y "COMPROMETIDO" a secas es el nombre de UNO de los tres estados que el número suma
+  // (COMPROMETIDO $15,2M de $62,4M): rotular con él sería falso, no vago.
+  const c = de('comprometida')
+  assert.equal(c.rotulo, 'FALTA PAGAR ESTE MES')
+  assert.doesNotMatch(c.rotulo, /^CAJA /, 'no es un cajón de plata que se tiene: es plata que falta pagar')
+  assert.match(c.rotulo, /FALTA PAGAR/, 'el rótulo tiene que contestar "¿lo tengo que cubrir?"')
+  // El estado del libro NO se usa como rótulo de un número que suma los tres estados.
+  assert.ok(!/^COMPROMETID[OA]\b/.test(c.rotulo),
+    'el titular suma COMPROMETIDO + PROYECTADO + VENCIDO: nombrarlo con un solo estado lo vuelve falso')
 })
 
 test('EL CONTEXTO DE COMPROMETIDA cuenta la historia entera: total del mes → pagado → falta', () => {
   // "es comprometida y cuando se pagan los compromisos deben salir de ahí" (dueño, 07/08). Salen —
   // pero sin el TOTAL a la vista, $60M pagados junto a $44M comprometidos no cierran ninguna
-  // historia. La frase es: de $X del mes pagaste $Y (el titular es la resta, a ojo). Y CORTA: la
-  // versión larga se truncaba en la celda, y una frase cortada es peor que ninguna.
+  // historia. La frase es: de $X pagaste $Y (el titular es la resta, a ojo). Y CORTA: la versión
+  // larga se truncaba en la celda, y una frase cortada es peor que ninguna. "Del mes" salió de la
+  // frase el 13/08 porque pasó al rótulo, que es donde se lee primero.
   const c = de('comprometida')
   const pagado = terminoLibro({ signo: -1, estados: ['REAL'], desde: 'EOMONTH(TODAY();-1)+1', hasta: FIN_DE_MES, medida: 'magnitud' })
-  assert.match(c.contexto, /del mes pagaste/)
+  assert.match(c.contexto, /pagaste/)
+  assert.match(de('comprometida').rotulo, /ESTE MES/, 'la ventana la declara el rótulo')
   assert.ok(c.contexto.includes(pagado))
   // El TOTAL del mes = lo pagado + lo que falta (el titular C3): derivable a ojo, nunca una 3ª suma.
   assert.ok(c.contexto.includes(`(${pagado}+N($C$3))`), 'el total del mes se arma con el titular, no con otra suma del libro')
@@ -97,14 +114,42 @@ test('SIN FRONTERA, la tarjeta queda como era: falla hacia el comportamiento ant
 
 test('LIBRE es la resta de sus dos vecinas — la definición textual del dueño', () => {
   // "disponible es toda la plata q hay, comprometida es lo q hay q pagar el resto del mes, POR
-  // ENDE surge libre disponibilidad". Por referencia a A3 y C3: se verifica con los ojos. Y cuando
-  // da negativo, el contexto explica la cobertura (cobranzas del mes) en vez de dejar un paréntesis
-  // rojo sin historia.
+  // ENDE surge libre disponibilidad". Por referencia a A3 y C3: se verifica con los ojos. La
+  // fórmula NO cambió el 13/08 — el número estaba bien y lo definió él; lo que cambió es el rótulo.
   const l = de('libre')
-  assert.equal(l.rotulo, 'LIBRE DISPONIBILIDAD')
   assert.equal(l.valor, '=N($A$3)-N($C$3)')
-  assert.match(l.contexto, /disponible − comprometida del mes/)
-  assert.match(l.contexto, /se cubre con lo cobrado en el mes/, 'el caso negativo lleva su explicación')
+})
+
+test('EL RÓTULO DE LA LIBRE NOMBRA LA HIPÓTESIS QUE MIDE, no promete un saldo utilizable', () => {
+  // 13/08, textual: *"la 'libre disponibilidad' es negativo lo cual me confunde"*. La celda compara
+  // una foto de HOY contra el acumulado de lo que falta del mes sin netear los cobros de esos
+  // mismos días: es un test de estrés, y un test de estrés rotulado como saldo disponible se lee
+  // como quiebra. El nombre viejo además ya estaba ocupado adentro del OS: "saldo de libre
+  // disponibilidad" es el término de ARCA para el IVA a favor (lib/iva-libre-disponibilidad.mjs).
+  const l = de('libre')
+  assert.equal(l.rotulo, 'SI NO COBRÁS MÁS ESTE MES')
+  assert.doesNotMatch(l.rotulo, /LIBRE DISPONIBILIDAD/,
+    'ese nombre significa otra cosa en este mismo sistema: el saldo de IVA a favor de ARCA')
+})
+
+test('EL CONTEXTO DE LA LIBRE PUBLICA EL MONTO A COBRAR, y sale de la MISMA fuente que el cierre', () => {
+  // "se cubre con lo cobrado en el mes" era cierto, genérico e inverificable: no decía CON CUÁNTO.
+  // El monto tiene que ser fórmula viva (se mueve con cada cobranza cargada) y tiene que ser
+  // EXACTAMENTE el término que usa SALDO AL CIERRE, o dos tarjetas de la misma fila podrían decir
+  // una que alcanza y la otra que no.
+  const l = de('libre')
+  const mesCobro = terminoLibro({ signo: 1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })
+  assert.match(l.contexto, /^=/, 'el contexto es fórmula, nunca texto pegado')
+  assert.ok(l.contexto.includes(mesCobro), 'el monto a cobrar sale del libro, con la definición del cierre')
+  assert.ok(de('cierre').valor.includes(mesCobro), 'y es el MISMO término que suma SALDO AL CIERRE')
+  assert.match(l.contexto, /a cobrar al /, 'el monto va fechado: sin fecha no se sabe hasta cuándo vale')
+  assert.ok(l.contexto.includes('EOMONTH(TODAY();0)'), 'la fecha es el cierre del mes, calculado, no tipeado')
+  // NINGÚN NÚMERO PEGADO (regla de oro 5), medido donde importa: adentro del TEXTO QUE SE DIBUJA. Un
+  // "$160,8M" tipeado en la frase se ve idéntico al calculado y envejece sin avisar. Los patrones de
+  // formato que viven dentro de TEXT() no cuentan: no se dibujan.
+  for (const trozo of trozosDeSalida(l.contexto).filter((t) => /^".*"$/.test(t))) {
+    assert.doesNotMatch(trozo, /\d/, `el contexto lleva un número escrito a mano: ${trozo}`)
+  }
 })
 
 test('INVERTIDO cita las filas Balanz de la grilla — una sola fuente, nunca una segunda posición', () => {
@@ -120,10 +165,74 @@ test('SALDO AL CIERRE es la CONSECUENCIA: disponible − comprometida + cobros d
   assert.equal(t.rotulo, 'SALDO AL CIERRE')
   assert.equal(t.valor, `=N($A$3)-N($C$3)+${terminoLibro({ signo: 1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })}`,
     'disponible y comprometida por referencia; los cobros con la suma única del libro')
-  assert.match(t.contexto, /la libre al /, 'el cierre declara que ES la libre de fin de mes')
-  assert.match(t.contexto, /cobrando lo proyectado/, 'sin la cláusula, se leería como plata garantizada')
+  // EL PAR DE ESCENARIOS: la tarjeta del medio es el mismo número sin cobrar nada, ésta cobrando
+  // todo. La cláusula condicional no se negocia — sin ella el número se lee como plata garantizada.
+  assert.match(t.contexto, /cobrando todo/, 'sin la cláusula, se leería como plata garantizada')
+  assert.ok(t.contexto.includes('EOMONTH(TODAY();0)'), 'la fecha del cierre es calculada, no tipeada')
+  assert.match(de('libre').rotulo, /SI NO COBRÁS/, 'el otro extremo del par: el mismo número sin cobrar nada')
   assert.ok(!t.valor.includes(REF.invArs) && !t.valor.includes(REF.invUsd),
     'lo invertido no entra: una comitente no paga un cheque, y el dueño lo quiso aparte')
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LO QUE NO ENTRA EN LA CELDA NO SE LEE — Y NADIE SE ENTERA
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// La fila de contexto va con wrapStrategy CLIP, así que una frase larga NO desborda: se corta, y una
+// frase cortada es peor que ninguna. El contexto de COMPROMETIDA medía 45 caracteres contra los 216px
+// (C+D) que le da el diseño ≈ 37: llevaba semanas truncándose. No se vio porque el dueño ensanchó la
+// columna C a mano hasta 252px — y `formatear` se la devuelve a 130 en la próxima corrida, así que el
+// arreglo de él dura hasta que corra el generador. La medida se hace acá, en frío, y no en la pestaña.
+//
+// EL MODELO, DECLARADO: 5,75px por carácter (el mismo que usa caja-pestana.test.mjs, medido sobre
+// textos ya cortados) y cada `TEXT(...)` se dibuja como un token de 5 caracteres ("$126", "$34,6",
+// "31/08"). Es una aproximación, no una medición — por eso el presupuesto se usa entero y no al
+// límite. Sólo se miden las tarjetas cuyo contexto NO tiene ramas: de un IF habría que elegir la más
+// larga, y eso pide un parser que no vale lo que cuesta.
+const PX_POR_CARACTER = 5.75
+const ANCHO_DE_TOKEN = 5
+const anchoDeTarjeta = (i) => ANCHOS[COLS_TARJETA[i]] + ANCHOS[COLS_TARJETA[i] + 1]
+
+/**
+ * Los pedazos que la celda DIBUJA: la concatenación de nivel cero. No alcanza con juntar todas las
+ * comillas de la fórmula — adentro de un SUMPRODUCT hay "COMPROMETIDO", "PROYECTADO", "$#,##0.0" y
+ * ninguno de esos se ve. Sin esta distinción el modelo medía 420px donde se dibujan 207.
+ */
+const trozosDeSalida = (formula) => {
+  const s = String(formula).replace(/^=/, '')
+  const out = []
+  let buf = ''
+  let nivel = 0
+  let enTexto = false
+  for (const ch of s) {
+    if (ch === '"') enTexto = !enTexto
+    else if (!enTexto && ch === '(') nivel++
+    else if (!enTexto && ch === ')') nivel--
+    else if (!enTexto && ch === '&' && nivel === 0) { out.push(buf.trim()); buf = ''; continue }
+    buf += ch
+  }
+  return [...out, buf.trim()].filter(Boolean)
+}
+const largoDibujado = (formula) => trozosDeSalida(formula)
+  .reduce((n, t) => n + (/^".*"$/s.test(t) ? t.length - 2 : ANCHO_DE_TOKEN), 0)
+
+test('EL CONTEXTO DE CADA TARJETA ENTRA EN SU ANCHO: con CLIP, lo que sobra no se ve', () => {
+  T().forEach((t, i) => {
+    if (t.contexto.includes('IF(')) return
+    const px = largoDibujado(t.contexto) * PX_POR_CARACTER
+    assert.ok(px <= anchoDeTarjeta(i),
+      `"${t.rotulo}": el contexto mide ≈${Math.round(px)}px y la tarjeta ${anchoDeTarjeta(i)}px — se va a cortar`)
+  })
+})
+
+test('EL RÓTULO DE CADA TARJETA ENTRA EN SU ANCHO — en versales y en negrita, que es más ancho', () => {
+  // Un rótulo cortado es peor que un contexto cortado: es lo primero que se lee y define qué es el
+  // número. 6,5px por carácter para versales en negrita a 9pt.
+  T().forEach((t, i) => {
+    const px = t.rotulo.length * 6.5
+    assert.ok(px <= anchoDeTarjeta(i),
+      `"${t.rotulo}": el rótulo mide ≈${Math.round(px)}px y la tarjeta ${anchoDeTarjeta(i)}px`)
+  })
 })
 
 test('NINGUNA fórmula usa la coma como separador de argumentos (es-AR)', () => {
