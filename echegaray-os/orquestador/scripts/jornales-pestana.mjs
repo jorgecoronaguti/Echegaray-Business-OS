@@ -79,7 +79,10 @@ import { conColaMedida, avisoDeCola } from '../lib/cola-de-rango.mjs'
 import { columna, aRangoApi, verificarRangos, explicarProblemas } from '../lib/rangos-con-nombre.mjs'
 import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 import { seccion, sub, total as rotuloTotal, auditarPatron } from '../lib/patron-pestana.mjs'
-import { skinRequests } from '../lib/estilo-statement.mjs'
+// INK/MUTED/ACENTO: la MISMA paleta que usa la piel. Importarla —y no copiar tres tripletes RGB acá—
+// es lo que hace que la notación del escenario (pagado en tinta plena, proyectado apagado) sea el
+// mismo gris que el resto del libro y no un segundo gris parecido.
+import { skinRequests, INK, MUTED, ACENTO } from '../lib/estilo-statement.mjs'
 import { requestsTextoPorContenido } from '../lib/formato-texto-por-contenido.mjs'
 // SIN `vaciarColumnaDeProsa` (06/08): esta pestaña NO TIENE columna de prosa — su última columna es
 // "Pagado el", la del dueño. Importarla era la invitación a volver a llamarla, que es exactamente la
@@ -149,6 +152,21 @@ const ANCHO = 14
 // once columnas que produce nomina-sync, y ya rompió el registro una vez (la columna "Se paga el" se
 // emitió dos veces y desplazó todo). En este layout el TOTAL es la K, no la J.
 const REGISTRO_COLS = ['Quincena', 'Hasta', 'Se paga el', 'Días hábiles', 'Personas', 'Hs previstas', 'Hs reales', 'Banco', 'Adelanto', 'Total recibo', 'TOTAL', 'Σ $/hora', 'Estado', 'Pagado el']
+
+/**
+ * EL CUADRO QUE ABRE LA PESTAÑA: UNA FILA POR GRUPO DE EMPLEADOS, UNA COLUMNA POR ESTADO.
+ *
+ * Es el contrato del hero y vive acá arriba —no adentro de `grilla`— porque lo necesitan las dos
+ * puntas: la grilla para escribirlo y `requestsDeFormato` para saber qué columna es «Proyectado» y
+ * cuál «Ya pagado». Buscar la columna por su RÓTULO y no por su letra es la misma disciplina que
+ * `colDe`: el día que entre una columna nueva, nada apunta a la de al lado.
+ *
+ * LAS SUMAS SON PARTE DEL CONTRATO:  Falta pagar = Comprometido + Proyectado
+ *                                    Total año   = Falta pagar + Ya pagado
+ */
+export const COLS_HERO = ['Nómina', 'Falta pagar', 'Comprometido', 'Proyectado', 'Ya pagado', 'Total año', 'Próximo pago', 'Cuándo']
+/** El ancho del hero: ocho columnas, el mismo que el calendario y los dos bloques mensuales. */
+const ANCHO_HERO = COLS_HERO.length
 
 /**
  * NÚCLEO PURO: la letra de una columna del registro, buscada por su rótulo.
@@ -363,36 +381,38 @@ export function grilla({
   const fSubtitulo = push([VACIO])
   blanco()
 
-  // ── HERO: la posición, en cuatro números ──
-  // Las fórmulas apuntan a filas que todavía no existen. Se resuelven al final, cuando se conocen.
+  // ══ EL HERO: UNA FILA POR GRUPO DE EMPLEADOS, UNA COLUMNA POR ESTADO ══
   //
-  // LO CERRADO Y LO EN CURSO NO SE SUMAN EN LA MISMA LÍNEA. Antes decía "Pagado hasta hoy" e incluía
-  // la quincena en curso como si estuviera pagada. No lo está: al 23/07 la del 16/07–31/07 tiene
-  // horas cargadas hasta el 21 y le faltan nueve días. Presentar una quincena a mitad de camino
-  // junto a las cerradas es mezclar un hecho con algo que todavía se está formando.
-  // ═══ CINCO CIFRAS, NO CATORCE (06/08) ═══
+  // ═══ EL RECLAMO QUE LO TRAJO (13/08, segundo rechazo del diseño) ═══
   //
-  // El dueño: "separar real / comprometido / proyectado". El hero anterior tenía catorce líneas —tres
-  // formas de pago, dos de registro, obra, oficina y dirección por separado— y ninguna contestaba la
-  // pregunta de arriba de todo. Peor: dos de ellas daban cero y quedaban mudas.
+  // *"no logro entender cuanto tengo q pagar en cada grupo de empleados si ya esta el monto proyectado
+  // o es lo real"*. Las dos preguntas de esa frase son DOS DIMENSIONES, y el hero anterior sólo tenía
+  // una: cinco filas que partían REAL / COMPROMETIDO / PROYECTADO **sumando los tres grupos**. Para
+  // saber cuánto se le paga a la oficina había que bajar sesenta filas hasta la sección 2, y para
+  // saber si ese número era un hecho o una estimación, leer la columna «Estado» mes por mes.
   //
-  // Las tres particiones NO SE SOLAPAN y suman el titular exactamente:
-  //   REAL         — tiene fecha en "Pagado el": la plata salió y el banco lo prueba.
-  //   COMPROMETIDO — trabajo hecho y no pagado. Incluye la parte YA CARGADA de la quincena en curso:
-  //                  esas horas se trabajaron y se deben, aunque la quincena no haya cerrado.
-  //   PROYECTADO   — lo que el motor estima de acá a diciembre, en los tres grupos.
-  // El detalle de por qué canal salió cada peso bajó al registro (sección 5), que es donde viven sus
-  // columnas; acá arriba sólo va lo que se lee de un vistazo.
-  const fHero = { costo: 0, real: 0, comprometido: 0, falta: 0, proximo: 0 }
-  push(['JORNALES Y SUELDOS — la posición'])
-  fHero.costo = push([rotuloTotal('Costo de la nómina en el año')])
-  fHero.real = push([sub('REAL — ya salió de la caja')])
-  fHero.comprometido = push([sub('COMPROMETIDO — hecho, sin pagar')])
-  fHero.falta = push([sub('PROYECTADO — a diciembre, motor salarial')])
-  // "DE OBRA" NO SOBRA (13/08). Desde que el calendario de 1.3 muestra las tres nóminas, un "Próximo
-  // pago" a secas se lee como el total que sale ese día — y no lo es: el mes de oficina y el retiro de
-  // dirección tienen su propia fecha de caja. Ver el bloque que resuelve esta celda, más abajo.
-  fHero.proximo = push([sub('Próximo pago de obra')])
+  // Un cuadro de dos dimensiones contesta las dos de un vistazo, y es la forma canónica: una fila por
+  // POBLACIÓN, una columna por ESCENARIO. Que el escenario tenga columna propia —y no una nota al
+  // pie— es la regla UNIFY de IBCS, hoy ISO 24896 «Notation for business reporting» (publicada el
+  // 11/06/2026): un mismo significado se muestra siempre con la misma notación, en todo el reporte.
+  // Acá esa notación es doble: la COLUMNA dice qué escenario es, y el FORMATO lo repite —lo pagado en
+  // negrita, lo proyectado en itálica apagada (ver `requestsDeFormato`)—. Un número no puede leerse
+  // como un hecho por accidente.
+  //
+  // LAS COLUMNAS SUMAN, Y ESO ES LO QUE LAS HACE AUDITABLES:
+  //   Falta pagar = Comprometido + Proyectado        Total año = Falta pagar + Ya pagado
+  // Es la disciplina de subtotales definidos de IFRS 18 (agregar arriba, desagregar abajo): el número
+  // que se decide va primero, sus partes al lado, y ninguna parte queda fuera de la suma.
+  //
+  // COMPROMETIDO ES SÓLO DE OBRA, Y NO SE INVENTA PARA LOS OTROS DOS. En obra hay una marca que
+  // distingue el trabajo hecho y no pagado (la columna «Pagado el» del registro, que carga el dueño).
+  // Oficina y Dirección no la tienen: lo que sus bloques llaman «Pagado» es lo que la planilla y
+  // Compras registran como salido. Fabricarles un comprometido sería un número sin fuente.
+  push(['CUÁNTO HAY QUE PAGAR — por grupo de empleados'])
+  const fHeroCols = push(COLS_HERO)
+  // Las cuatro filas: sus celdas se resuelven al final, cuando existen los bloques que las alimentan.
+  const fHero = { obra: push(['Obreros · UOCRA']), oficina: push(['Oficina']), direccion: push(['Dirección']) }
+  const fHeroTotal = push([rotuloTotal('TOTAL — las tres nóminas')])
   // QUÉ NO ESTÁ ACÁ ADENTRO, DICHO EN LA PESTAÑA. El dueño: "¿está considerando lo que se le debe
   // pagar a la nómina en SAC y vacaciones? ¿eso está en cargas sociales?". No y sí: este cuadro es
   // jornal y sueldo puros, y el aguinaldo vive en Cargas Sociales §6 (pagado real de Compras y
@@ -400,102 +420,26 @@ export function grilla({
   // antigüedad por legajo y una provisión inventada es peor que una ausente, porque se usa.
   //
   // NO SE COPIA EL NÚMERO ACÁ. Un concepto vive en un solo lugar y se referencia — duplicarlo es lo
-  // que hace que el mismo dato tenga dos versiones distintas en dos pestañas. Lo que sí corresponde
-  // es que el titular no se lea como si fuera el costo total de la nómina, porque no lo es.
-  push([sub('No incluye SAC, vacaciones ni cargas sociales'), VACIO, 'ver Cargas Sociales'])
+  // que hace que el mismo dato tenga dos versiones distintas en dos pestañas.
+  push([sub('No incluye SAC, vacaciones ni cargas sociales')])
   blanco()
 
-  // ══ 1 · LO QUE FALTA PAGAR — EL MOTOR ══
+  // ══ 1 · EL CALENDARIO DE PAGO ══
   //
-  // La proyección anterior era una extrapolación lineal con maquillaje: Σ$/hora de la quincena EN
-  // CURSO × 6,7 horas (el promedio del año entero) × factor IPC. El razonamiento completo —y las
-  // cuatro formas en que eso mentía sin dar error— está en lib/motor-salarial.mjs. Acá se ve el
-  // resultado: el plantel abierto por categoría, el escalón del convenio mes por mes con su acuerdo
-  // al lado, y recién después las quincenas.
-  // EL TÍTULO DEJÓ DE DECIR "OBRA" (13/08). La sección abre con el motor salarial de obra (1.1 y 1.2)
-  // pero cierra con el calendario de las TRES nóminas: un título que promete sólo obra hace que el
-  // dueño no busque ahí lo que sí está. Y dejó de decir el resto (13/08, rechazo del dueño): "el
-  // motor de obra y el calendario de las tres nóminas" describe el ÍNDICE de la sección, que se ve
-  // solo mirando los tres títulos de abajo. El título de un bloque nombra la pregunta, no su sumario.
-  push([seccion(1, 'Lo que falta pagar')])
-  push([lineaEstadoReplica(escalones, hoy)])
-  // EL SUPUESTO, DICHO CON EL DATO QUE LO RESPALDA Y SIN UN SOLO MES ESCRITO A MANO. El rótulo del
-  // acuerdo sale de la réplica ya parseada: el día que se pegue un acuerdo nuevo, esta línea cambia
-  // sola. Un mes escrito en el código envejece el día siguiente y nadie se entera.
-  // ═══ DE 186 CARACTERES A UN RÓTULO (13/08) ═══
+  // ═══ LO GREMIAL SE FUE DE ACÁ, Y ÉSE ERA EL RECLAMO (13/08) ═══
   //
-  // Decía "obra, oficina y dirección suben por la PARITARIA UOCRA, no por el IPC (…). Después se
-  // repite el último tramo firmado: es PROYECCIÓN, no acuerdo." Dos afirmaciones, las dos ya escritas
-  // como dato quince filas más abajo: el cuadro 1.2 tiene una columna «Estado» que dice, MES POR MES,
-  // "✓ acuerdo firmado" o "⚠ proyección · últ: …", y una columna «De dónde sale» con el acuerdo. La
-  // glosa era el resumen en prosa de una columna que el lector ya tiene delante.
+  // El dueño: *"en el medio hay cuestiones gremiales q confunden"*. Y estaban justo en el medio: entre
+  // el hero y este calendario había DIECIOCHO filas de convenio —el estado de la réplica, el tramo de
+  // paritaria vigente, el plantel abierto por categoría con su básico, y el escalón mes por mes—. Todo
+  // eso es de dónde SALE el número, no cuánto hay que pagar: es el respaldo del cálculo y su lugar es
+  // debajo del resultado, no delante. Bajó entero a la sección 4, sin perder una celda.
   //
-  // Queda lo único que el cuadro no dice: cuál es el índice y hasta cuándo hay acuerdo. Que los TRES
-  // grupos usan el mismo lo prueba la columna «Ajuste escalón», que es idéntica en 2 y en 3.
-  // EL RÓTULO DEL ACUERDO SIGUE SALIENDO DE LA RÉPLICA, y no es un detalle de redacción: `VIGENCIA_HASTA`
-  // es una constante escrita a mano y `ultAc.rotulo` es lo que el parser leyó del acuerdo publicado. Al
-  // acortar esta línea la saqué, y quedó una fecha estampada sin nada vivo al lado — el test "ningún mes
-  // queda estampado en el código" lo cazó en la primera corrida. Corto es corto; ciego no.
-  const ultAc = ultimoEscalon(escalones)
-  push([sub(`Paritaria UOCRA${ultAc ? ` · ${ultAc.rotulo} hasta ${VIGENCIA_HASTA}` : ''}`)])
-  // La glosa de la demanda tiene su renglón: apilada a la de arriba, las dos quedaban cortadas.
+  // Lo que queda acá arriba son las tres poblaciones y sus fechas de caja, que es la pregunta.
+  push([seccion(1, 'El calendario de pago')])
+  // La glosa de la demanda: cuándo el proyectado de una quincena no sale del convenio sino del MAX
+  // contra la demanda de las obras vendidas. Es del calendario, no del convenio: se queda.
   const gd = glosaDemanda(demanda)
   if (gd) push([sub(gd.replace(/^\s*·\s*/, '').trim())])
-
-  // ── 1.1 · EL PLANTEL BASE ──
-  // "abierta por categoría" era el índice del cuadro: sus filas SON las categorías. "La última
-  // quincena CERRADA" se queda porque es el criterio de qué dato se está mirando, y no está en
-  // ninguna celda.
-  push([seccion('1.1', 'Plantel base — última quincena cerrada')])
-  // LO QUE FALTA PARA QUE EL CONTROL HABLE, UNA SOLA VEZ Y CONTADO. Estaba una vez por fila, adentro
-  // de la columna "Estado": cuatro renglones idénticos pidiendo lo mismo. Se resuelve más abajo,
-  // cuando se conocen las filas de las categorías.
-  const fConvenio = push([VACIO])
-  const plantel = filasPlantel({
-    hoja: ESPEJO, bloque: bloqueBase, categorias, personas: personasBase,
-    filaInicio: filas.length + 1, escalonVigente,
-  })
-  for (const f of plantel.filas) push(f)
-  filas[fConvenio - 1][0] = formulaConvenioPendiente(plantel.fPrimera, plantel.fUltima, plantel.equivalencias)
-  const fPlantel = plantel.fTotal
-  // ═══ LA BAJA QUE LA PLANILLA TODAVÍA NO REGISTRÓ (13/08) ═══
-  //
-  // El plantel base es la última quincena CERRADA —y tiene que serlo: la en curso está a medio
-  // cargar—. El costo de eso es que una persona que se fue DESPUÉS de esa quincena se sigue
-  // proyectando hasta diciembre. Pasó con la liquidación final de Navarro. La fila se llena abajo,
-  // cuando existen el registro y el total del calendario.
-  const fBaja = push([VACIO])
-  blanco()
-
-  // ── 1.2 · EL ESCALÓN, MES POR MES ──
-  // "de dónde sale cada aumento" es literalmente el nombre de una de las columnas del cuadro
-  // («De dónde sale»): el título anunciaba una columna que está a dos filas de distancia.
-  push([seccion('1.2', 'El escalón del convenio, mes por mes')])
-  // LA BASE DE LA PROYECCIÓN ES EL CONVENIO, NO EL JORNAL PACTADO (07/08, orden del dueño). Sale de las
-  // DOS columnas del bloque de arriba —personas por categoría × básico del convenio—, las dos fórmulas
-  // vivas: un alta o un cambio de categoría la mueven sin tocar una celda. Por qué y quién lo hereda,
-  // en lib/proyeccion-convenio.mjs.
-  const sigmaConvenio = escalonVigente ? formulaSigmaConvenio(plantel.fPrimera, plantel.fUltima) : null
-  // LA LÍNEA LA DECIDE EL CUADRO, NO LA INTENCIÓN. Se reserva la fila y se llena DESPUÉS de armar el
-  // escalón, cuando `esc.alConvenio` dice qué base quedó de verdad: tener la escala a mano no alcanza
-  // —si el mes del escalón no está en el cuadro no hay dónde anclar y el motor cae al pactado—. Una
-  // línea que anuncia el convenio arriba de un cuadro que usa el pactado es peor que no tenerla.
-  const fSupuesto = push([VACIO])
-  // La celda de la Σ $/hora PACTADA del plantel base es la COLUMNA C de la fila de total de 1.1 — no la
-  // B, que es la cantidad de personas. Se pasa la celda entera y no el número de fila justamente para
-  // que la letra no se pueda perder por el camino. Viaja igual: es el respaldo para cuando la réplica
-  // del convenio no traiga escala, y en ese caso la línea de arriba lo declara en la pestaña.
-  const esc = filasEscalon({
-    meses, escalones, filaInicio: filas.length + 1, celdaSigmaBase: `$C$${fPlantel}`, periodoBase,
-    celdaSigmaConvenio: sigmaConvenio, periodoConvenio: escalonVigente?.periodo ?? null,
-  })
-  filas[fSupuesto - 1][0] = lineaSupuestoConvenio({
-    sigma: esc.alConvenio ? sigmaConvenio : null, celdaPersonas: `$B$${fPlantel}`,
-  })
-  for (const f of esc.filas) push(f)
-  blanco()
-
-  // ── 1.3 · EL CALENDARIO DE PAGO ──
   //
   // ═══ LAS TRES NÓMINAS EN UNA SOLA GRILLA (13/08, orden del dueño) ═══
   //
@@ -516,7 +460,9 @@ export function grilla({
   // es el defecto que el auditor de patrón caza y el dueño llama "descuadrado".
   // El cuadro tiene una columna por nómina (Obreros · Oficina · Dirección) y una fila por período:
   // "lo que falta, quincena por quincena, las tres nóminas" era el encabezado leído en voz alta.
-  push([seccion('1.3', 'El calendario de pago')])
+  //
+  // DEJÓ DE SER LA SUB-SECCIÓN 1.3 (13/08): con el motor salarial mudado a la sección 4, este cuadro
+  // ES la sección 1. Un "1.3" sin 1.1 ni 1.2 arriba es una jerarquía que no cuelga de nada.
   // ═══ LA FILA QUE PARECÍA UNA QUINCENA DE UN DÍA (13/08) ═══
   //
   // El dueño: *"dice quincena y hasta en la primera fila q sale aparecen la misma fecha"*. Y era
@@ -560,14 +506,6 @@ export function grilla({
   const cObra = colCalendario('Obreros')
   pendientes.forEach((q, i) => {
     const r = p0 + i
-    // La Σ $/hora del plantel YA AJUSTADA al escalón del mes de esta quincena, por su fecha de fin de
-    // mes en el cuadro 1.2. La base la decide la FECHA DE PAGO de esta fila: lo que sale de la caja
-    // este mes va al pactado y lo de después al 100% del convenio (ver `expresionSigmaDelMes`).
-    const sigma = expresionSigmaDelMes(`A${r}`, esc, `C${r}`)
-    // Σ $/hora × horas por persona y día × días laborables de LUNES A SÁBADO. El calendario lo decide
-    // `expresionDias`, no `NETWORKDAYS` a secas: la obra trabaja los sábados y contarlos de menos
-    // dejaba la proyección 15% baja contra las quincenas reales (la medición, en jornales-calendario).
-    const convenio = `${sigma}*$B$${fHpd}*${expresionDias(`A${r}`, `B${r}`)}`
     push([
       // La primera arranca el día siguiente al último con HORAS CARGADAS; las demás encadenan. Así la
       // quincena en curso queda partida en su parte real y su parte proyectada, y el mes de transición
@@ -578,12 +516,10 @@ export function grilla({
       // parámetro — pero la fórmula es la MISMA que en el registro, para que el día que el pago
       // aparezca en el extracto la fila se corrija sola sin que nadie la toque.
       pago(r),
-      // Sin demanda para esta quincena es el piso de convenio solo; con demanda, MAX(convenio;
-      // constante del insumo del dueño), gateado por la MISMA frontera de caja comprometida.
-      formulaProyectadoQuincena({ convenio, celdaPago: `C${r}` }, demanda?.porQuincena?.get(claveQuincena(q.desde)) ?? null),
-      // Oficina y Dirección: se resuelven abajo, cuando se conocen las filas de sus bloques. Las
-      // ventanas necesitan la fecha de pago de la fila SIGUIENTE, así que tampoco se pueden escribir acá.
-      VACIO, VACIO,
+      // Obreros, Oficina y Dirección se resuelven ABAJO. Las tres por la misma razón: sus fórmulas
+      // citan filas que todavía no existen —el cuadro del escalón (sección 4) para la de obra, los
+      // bloques mensuales (secciones 2 y 3) para las otras dos—. Ninguna se puede escribir acá.
+      VACIO, VACIO, VACIO,
       `=SUM(${cObra}${r}:${cD}${r})`,
       // La parte de la quincena de obra que sale en billetes. El resto —la columna BANCO del
       // registro— es la transferencia del lote de haberes. Oficina y Dirección NO entran: de esos dos
@@ -708,7 +644,6 @@ export function grilla({
   push(['Mes', 'Personas', 'Pagado', 'Estado', 'Se paga el', 'Banco', 'Ajuste escalón', 'Proyectado'])
   const o0 = filas.length + 1
   MESES.forEach((nombre, i) => {
-    const r = filas.length + 1
     const bs = bloquesOfi.filter((b) => b.mes === i + 1)
     const pagado = bs.length
       // Un mes puede venir partido en dos bloques en la planilla (un pago a mitad de mes y otro a
@@ -730,9 +665,8 @@ export function grilla({
     // EL FACTOR SE MIDE DESDE EL MES BASE, QUE AHORA ES EL ÚLTIMO **COMPLETO**. Antes se medía desde
     // el mes del último día cargado —que es justamente el mes a medias— y así el mes parcial recibía
     // factor 1 sobre una base que ya no era la suya.
-    const ajuste = cerradoOfi(i) ? VACIO
-      : formulaFactorDelMes(`EOMONTH(DATE(${AÑO};${i + 1};1);0)`, esc,
-        iBaseOfi === null ? null : `EOMONTH(DATE(${AÑO};${iBaseOfi + 1};1);0)`)
+    // EL AJUSTE SE RESUELVE ABAJO: cita el cuadro del escalón, que desde el 13/08 vive en la sección 4
+    // —debajo de este bloque—. Una fórmula no puede nombrar filas que todavía no se emitieron.
     // La palabra en la fila: cada mes sin cargar dice que es proyección, ahí donde se lo lee.
     // La fecha de caja del mes: fin de mes + el desfase de pago de la obra. Por fórmula, para que se
     // mueva sola si se corrige el parámetro — y visible, para que el criterio se pueda discutir.
@@ -748,8 +682,7 @@ export function grilla({
     // lo que muestra en "Pagado" es un hecho y lo que falta va en "Proyectado". Llamarlo "pagado"
     // —como hacía este cuadro— es lo que dejó a la oficina proyectada cuatro veces por debajo.
     const estado = cerradoOfi(i) ? 'pagado' : (bs.length ? 'parcial' : 'proyección')
-    push([nombre, personas, pagado, estado, pago, '', ajuste,
-      cerradoOfi(i) ? VACIO : `=$B$${0}*G${r}`]) // la base se completa abajo, cuando se sabe su fila
+    push([nombre, personas, pagado, estado, pago, '', VACIO, VACIO]) // G y H se completan abajo
   })
   const oFin = o0 + MESES.length - 1
   const fTotalOfi = push([rotuloTotal('Oficina — pagado y por pagar en el año'), VACIO,
@@ -766,19 +699,9 @@ export function grilla({
   // JavaScript, contra la fecha hasta la que llega la planilla — que es el único dato que lo sabe.
   // Sigue siendo una REFERENCIA viva: si mañana se corrige el importe de ese mes, la proyección se
   // mueve sola.
+  // El ajuste y el proyectado de cada mes se escriben al final, en un solo lugar: los dos citan el
+  // cuadro del escalón, que vive en la sección 4.
   const rBaseOfi = iBaseOfi === null ? null : o0 + iBaseOfi
-  MESES.forEach((_, i) => {
-    const r = o0 + i
-    if (cerradoOfi(i)) return
-    // Sin un solo mes cerrado no hay de dónde proyectar: la celda queda vacía y la línea de arriba
-    // dice por qué. Un número inventado acá viaja por rango con nombre hasta el cash flow.
-    if (rBaseOfi === null) { filas[r - 1][7] = VACIO; return }
-    // El mes PARCIAL proyecta sólo lo que falta: base ajustada MENOS lo que ya se pagó. `MAX(0;…)`
-    // porque un mes cargado por encima de la base no genera un negativo — eso sería un reintegro.
-    filas[r - 1][7] = conBloque(i)
-      ? `=MAX(0;$C$${rBaseOfi}*G${r}-N(C${r}))`
-      : `=$C$${rBaseOfi}*G${r}`
-  })
   blanco()
 
   // ══ 3 · LOS RETIROS DE DIRECCIÓN ══
@@ -842,10 +765,10 @@ export function grilla({
     // en Compras, o sea que es el valor de HOY: el mes en curso entra con factor 1 y los que siguen
     // acumulan la paritaria. `EOMONTH(TODAY();0)` y no un mes escrito acá — un mes estampado se
     // congela el día que se escribe y sigue ajustando desde una base vieja sin dar error.
-    const ajusteDir = formulaFactorDelMes(`EOMONTH(DATE(${AÑO};${i + 1};1);0)`, esc, 'EOMONTH(TODAY();0)')
+    // El ajuste (G) se escribe al final, por lo mismo que el de Oficina: cita el cuadro del escalón.
     push([MESES[i], `=COUNTIF($B$${dp0}:$B$${dpFin};">0")`, formulaPagadoMes(i + 1, AÑO),
       `=IF(N(C${r})>0;"pagado";IF(N(H${r})>0;"proyección";""))`,
-      formulaSePagaElDireccion(i + 1, AÑO), '', ajusteDir,
+      formulaSePagaElDireccion(i + 1, AÑO), '', VACIO,
       formulaProyectadoMes(`E${r}`, `C${r}`, `$B$${fTotalMensual}`, `$E$${fTotalMensual}`, `G${r}`)])
   })
   const dFin = d0 + MESES.length - 1
@@ -855,7 +778,85 @@ export function grilla({
   // pestaña, por lo mismo que los de Oficina (ver el comentario del total de la sección 2).
   blanco()
 
-  // ── 4 · CONTROL DE CONVENIO ──
+  // ══ 4 · CONVENIO UOCRA — DE DÓNDE SALE EL AUMENTO ══
+  //
+  // ═══ TODO LO GREMIAL, JUNTO Y ABAJO (13/08, segundo rechazo del dueño) ═══
+  //
+  // *"en el medio hay cuestiones gremiales q confunden"*. Estaba desparramado en tres lugares: el
+  // plantel por categoría y el escalón mes por mes abrían la pestaña (1.1 y 1.2), el control de piso
+  // vivía acá, y la vigencia de la paritaria se anunciaba arriba de todo. Tres bloques del mismo tema,
+  // separados por sesenta filas de otra cosa.
+  //
+  // Ahora es UNA sección con tres sub-bloques, y va DESPUÉS de las tres nóminas: primero cuánto se
+  // paga, después de dónde sale el número. No se sacó una sola celda —el dueño pidió explícitamente
+  // mantener la información entera—: cambió dónde y en qué orden se lee.
+  push([seccion(4, 'Convenio UOCRA — de dónde sale el aumento')])
+  push([lineaEstadoReplica(escalones, hoy)])
+  // EL SUPUESTO, DICHO CON EL DATO QUE LO RESPALDA Y SIN UN SOLO MES ESCRITO A MANO. El rótulo del
+  // acuerdo sale de la réplica ya parseada: el día que se pegue un acuerdo nuevo, esta línea cambia
+  // sola. Un mes escrito en el código envejece el día siguiente y nadie se entera.
+  //
+  // Queda lo único que el cuadro no dice: cuál es el índice y hasta cuándo hay acuerdo. Que los TRES
+  // grupos usan el mismo lo prueba la columna «Ajuste escalón», que es idéntica en 2 y en 3.
+  // `VIGENCIA_HASTA` es una constante escrita a mano y `ultAc.rotulo` es lo que el parser leyó del
+  // acuerdo publicado: las dos van juntas para que la fecha nunca quede estampada sin nada vivo al lado.
+  const ultAc = ultimoEscalon(escalones)
+  push([sub(`Paritaria UOCRA${ultAc ? ` · ${ultAc.rotulo} hasta ${VIGENCIA_HASTA}` : ''}`)])
+
+  // ── 4.1 · EL PLANTEL BASE ──
+  // "abierta por categoría" era el índice del cuadro: sus filas SON las categorías. "La última
+  // quincena CERRADA" se queda porque es el criterio de qué dato se está mirando, y no está en
+  // ninguna celda.
+  push([seccion('4.1', 'Plantel base — última quincena cerrada')])
+  // LO QUE FALTA PARA QUE EL CONTROL HABLE, UNA SOLA VEZ Y CONTADO. Estaba una vez por fila, adentro
+  // de la columna "Estado": cuatro renglones idénticos pidiendo lo mismo. Se resuelve más abajo,
+  // cuando se conocen las filas de las categorías.
+  const fConvenio = push([VACIO])
+  const plantel = filasPlantel({
+    hoja: ESPEJO, bloque: bloqueBase, categorias, personas: personasBase,
+    filaInicio: filas.length + 1, escalonVigente,
+  })
+  for (const f of plantel.filas) push(f)
+  filas[fConvenio - 1][0] = formulaConvenioPendiente(plantel.fPrimera, plantel.fUltima, plantel.equivalencias)
+  const fPlantel = plantel.fTotal
+  // ═══ LA BAJA QUE LA PLANILLA TODAVÍA NO REGISTRÓ (13/08) ═══
+  //
+  // El plantel base es la última quincena CERRADA —y tiene que serlo: la en curso está a medio
+  // cargar—. El costo de eso es que una persona que se fue DESPUÉS de esa quincena se sigue
+  // proyectando hasta diciembre. Pasó con la liquidación final de Navarro. La fila se llena abajo,
+  // cuando existen el registro y el total del calendario.
+  const fBaja = push([VACIO])
+  blanco()
+
+  // ── 4.2 · EL ESCALÓN, MES POR MES ──
+  // "de dónde sale cada aumento" es literalmente el nombre de una de las columnas del cuadro
+  // («De dónde sale»): el título anunciaba una columna que está a dos filas de distancia.
+  push([seccion('4.2', 'El escalón del convenio, mes por mes')])
+  // LA BASE DE LA PROYECCIÓN ES EL CONVENIO, NO EL JORNAL PACTADO (07/08, orden del dueño). Sale de las
+  // DOS columnas del bloque de arriba —personas por categoría × básico del convenio—, las dos fórmulas
+  // vivas: un alta o un cambio de categoría la mueven sin tocar una celda. Por qué y quién lo hereda,
+  // en lib/proyeccion-convenio.mjs.
+  const sigmaConvenio = escalonVigente ? formulaSigmaConvenio(plantel.fPrimera, plantel.fUltima) : null
+  // LA LÍNEA LA DECIDE EL CUADRO, NO LA INTENCIÓN. Se reserva la fila y se llena DESPUÉS de armar el
+  // escalón, cuando `esc.alConvenio` dice qué base quedó de verdad: tener la escala a mano no alcanza
+  // —si el mes del escalón no está en el cuadro no hay dónde anclar y el motor cae al pactado—. Una
+  // línea que anuncia el convenio arriba de un cuadro que usa el pactado es peor que no tenerla.
+  const fSupuesto = push([VACIO])
+  // La celda de la Σ $/hora PACTADA del plantel base es la COLUMNA C de la fila de total de 4.1 — no la
+  // B, que es la cantidad de personas. Se pasa la celda entera y no el número de fila justamente para
+  // que la letra no se pueda perder por el camino. Viaja igual: es el respaldo para cuando la réplica
+  // del convenio no traiga escala, y en ese caso la línea de arriba lo declara en la pestaña.
+  const esc = filasEscalon({
+    meses, escalones, filaInicio: filas.length + 1, celdaSigmaBase: `$C$${fPlantel}`, periodoBase,
+    celdaSigmaConvenio: sigmaConvenio, periodoConvenio: escalonVigente?.periodo ?? null,
+  })
+  filas[fSupuesto - 1][0] = lineaSupuestoConvenio({
+    sigma: esc.alConvenio ? sigmaConvenio : null, celdaPersonas: `$B$${fPlantel}`,
+  })
+  for (const f of esc.filas) push(f)
+  blanco()
+
+  // ── 4.3 · EL CONTROL DE PISO ──
   //
   // ═══ EL DEFECTO B3, MUERTO DE RAÍZ (06/08) ═══
   //
@@ -872,7 +873,7 @@ export function grilla({
   // "ningún jornal por debajo de la escala UOCRA" es lo que MIDEN las dos filas de abajo ("El jornal
   // por hora más bajo que pagamos" contra "Básico de Ayudante — el piso del convenio", y el margen
   // entre las dos). El título nombra el control; el resultado lo da el número.
-  push([seccion(4, 'Control de convenio — piso UOCRA')])
+  push([seccion('4.3', 'Control de piso — ningún jornal por debajo')])
   const estado = estadoReplica(escalones, hoy)
   // EL CONVENIO VA CON SU VIGENCIA, NO FLOTANDO SEIS COLUMNAS A LA DERECHA. "CCT 76/75, Zona A (San
   // Juan)" vivía en la columna G, sin nada alrededor: un rótulo suelto en el medio de la grilla que
@@ -925,7 +926,7 @@ export function grilla({
   // cerrada. La A es ancha, derrama sobre celdas vacías y el auditor la exceptúa a propósito.
   // LA RAMA SIN ACUERDO PASÓ DE 190 CARACTERES A 45 (13/08). Cuál es el último acuerdo lo dice la
   // línea de vigencia dos filas arriba (`fVig`), y que los meses siguientes son proyección lo dice el
-  // cuadro 1.2 en su columna «Estado». Lo único propio de esta línea es que NO HAY escalón que
+  // cuadro 4.2 en su columna «Estado». Lo único propio de esta línea es que NO HAY escalón que
   // mostrar — y el ⚠ ya avisa que hay que mirarla.
   push([sub(proximo
     ? `El escalón que viene — ${proximo.rotulo}${proximo.acuerdo ? ` · ${proximo.acuerdo}` : ''}`
@@ -1065,7 +1066,7 @@ export function grilla({
   filas[fShare - 1][1] = formulaShareEfectivo(colShare, f0, fLast)
   filas[fShare - 1][2] = formulaGlosaShareEfectivo(colShare, f0, fLast)
   // LA BAJA NO REGISTRADA. Las dos Σ $/hora salen de bloques distintos del espejo —el plantel base
-  // (1.1) y la última fila del registro— así que la diferencia es un hecho medido, no una hipótesis.
+  // (4.1) y la última fila del registro— así que la diferencia es un hecho medido, no una hipótesis.
   filas[fBaja - 1][0] = formulaBajaNoRegistrada({
     personasBase: `$B$${fPlantel}`, sigmaBase: `$C$${fPlantel}`,
     personasCurso: `$${colDe('Personas')}$${fLast}`, sigmaCurso: `$${colDe('Σ $/hora')}$${fLast}`,
@@ -1079,8 +1080,8 @@ export function grilla({
   // del registro (ver el push de arriba): se recalcula solo cada vez que alguien abre la planilla.
   //
   // OJO: "cerrada" mide la QUINCENA (¿ya terminó de trabajarse?), no el PAGO. El hero de esta pestaña
-  // no lo usa —parte por REAL / COMPROMETIDO / PROYECTADO, que es otra pregunta— pero el registro sí,
-  // y el cash flow imputa por la fecha de caja. Son tres cortes distintos y los tres importan.
+  // no lo usa —parte por Comprometido / Proyectado / Ya pagado, que es otra pregunta— pero el registro
+  // sí, y el cash flow imputa por la fecha de caja. Son tres cortes distintos y los tres importan.
   // HASTA DÓNDE LLEGAN LOS JORNALES: el "Hasta" más nuevo que YA PASÓ **DE UNA QUINCENA CON PLATA
   // CARGADA**. El rango va cerrado a propósito —y no abierto como en las demás pestañas—: abajo del
   // registro están la proyección y la nómina de oficina, que también tienen fechas en la columna B y
@@ -1113,63 +1114,56 @@ export function grilla({
   filas[fCanal.adelanto - 1][1] = porCol(colDe('Adelanto'))
   filas[fCanal.recibo - 1][1] = porCol(colDe('Total recibo'))
   filas[fCanal.recibo - 1][2] = `=IF(ROUND(B${fCanal.banco}+B${fCanal.adelanto}+B${fCanal.recibo}-SUMPRODUCT(${pagada}*${K});0)=0;"✓ los tres canales suman lo pagado";"⚠ faltan $"&TEXT(SUMPRODUCT(${pagada}*${K})-B${fCanal.banco}-B${fCanal.adelanto}-B${fCanal.recibo};"#,##0")&" sin canal de pago registrado")`
-  // ── LAS TRES PARTICIONES ──
-  // REAL de obra = las quincenas con "Pagado el" cargado. Es un HECHO: el dueño marcó la fecha.
-  const realObra = `SUMPRODUCT(${pagada}*${K})`
-  // COMPROMETIDO = todo lo que el registro tiene cargado MENOS lo ya pagado. Sale por diferencia a
-  // propósito: así las dos líneas no pueden dejar un hueco ni contarse dos veces, pase lo que pase
-  // con las fechas. Incluye la parte cargada de la quincena en curso, que es trabajo hecho y debido.
-  filas[fHero.real - 1][1] = `=${realObra}+${cel(fTotalOfi, 'C')}+${cel(fTotalDir, 'C')}`
-  filas[fHero.comprometido - 1][1] = `=SUMPRODUCT(ISNUMBER($B$${f0}:$B$${fLast})*${K})-${realObra}`
-  // PROYECTADO = el TOTAL del calendario, que YA trae las tres nóminas. Antes sumaba tres celdas de
-  // tres bloques distintos; ahora hay un solo lugar donde ese número se arma, y el control de 1.3
-  // prueba que el reparto por ventanas no perdió ni duplicó un mes.
-  filas[fHero.falta - 1][1] = `=${cel(fTotalProy, cT)}`
-  filas[fHero.costo - 1][1] = `=B${fHero.real}+B${fHero.comprometido}+B${fHero.falta}`
-  // ═══ EL TITULAR PINTABA ENCIMA DE SU PROPIA GLOSA (06/08) ═══
+  // ── LOS DOS BLOQUES MENSUALES: EL AJUSTE Y EL PROYECTADO ──
   //
-  // Acá iba "registro de obra cargado al 31/07". El titular se dibuja en cuerpo 13 y su columna mide
-  // 112px: "$290.986.621" no entra, derrama a la derecha y tapaba las primeras quince letras de esta
-  // celda. En pantalla se leía "$290.986.621 a cargado al 31/07" — el archivo ya había bajado de 18 a
-  // 13 puntos por este mismo motivo, y con doce dígitos volvió a pasar.
+  // Se escriben acá y no arriba porque los dos citan el cuadro del escalón (4.2), que desde el 13/08
+  // vive DEBAJO de ellos. Una fórmula puede apuntar hacia abajo sin problema; el generador no puede
+  // escribir un número de fila que todavía no existe.
   //
-  // No se ensancha la columna ni se achica el titular: la celda SOBRABA. La fecha de corte del
-  // registro ya está en el subtítulo de la fila 2 ("· al 31/07/2026"), puesta por la misma fórmula.
-  // Era el mismo dato dos veces, y la copia estaba tapada. Menos, no más.
-  filas[fHero.comprometido - 1][2] = 'incluye la parte ya cargada de la quincena en curso'
-  // ── EL PRÓXIMO PAGO: cuánto, y al lado cuándo ──
-  //
-  // ═══ LA B ES LA COLUMNA DEL IMPORTE, EN TODA LA PESTAÑA (06/08) ═══
-  //
-  // La fecha iba en la B y el importe en la C: la única fila del hero donde la columna de los pesos no
-  // tenía pesos. Cuatro renglones con plata alineada y el quinto con un 17/08/2026 en su lugar — el
-  // ojo baja por la columna de importes y tropieza. Es la regla de columna del patrón, que existe
-  // justamente para esto: misma columna, mismo significado.
-  //
-  // Sale de las dos fuentes de fecha de caja de la pestaña —el registro sin marcar y el calendario—
-  // y se queda con la más cercana que no haya pasado. `MINIFS` devuelve 0 cuando no encuentra nada,
-  // así que un `MIN` crudo de las dos daría 0 = 30/12/1899: hay que descartar los ceros a mano.
-  //
-  // ES EL PRÓXIMO PAGO DE **OBRA**, y el rótulo lo dice desde el 13/08. Con el calendario mostrando
-  // las tres nóminas, un "Próximo pago" a secas se lee como el total que sale ese día — y no lo es:
-  // el mes de oficina y el retiro de dirección tienen su propia fecha de caja. Sumarlos acá obligaría
-  // a elegir cuál de las tres fechas manda, que es inventar una respuesta a una pregunta que tiene
-  // tres. El calendario de 1.3 las muestra las tres, en su quincena.
-  const minReg = `MINIFS($C$${f0}:$C$${fLast};$N$${f0}:$N$${fLast};"";$C$${f0}:$C$${fLast};">="&TODAY();$K$${f0}:$K$${fLast};">0")`
-  const minProy = `MINIFS($C$${p0}:$C$${pFin};$C$${p0}:$C$${pFin};">="&TODAY();$${cObra}$${p0}:$${cObra}$${pFin};">0")`
-  const cuando = `C${fHero.proximo}`
-  filas[fHero.proximo - 1][2] = `=IF(MAX(${minReg};${minProy})=0;"";IF(${minReg}=0;${minProy};IF(${minProy}=0;${minReg};MIN(${minReg};${minProy}))))`
-  filas[fHero.proximo - 1][1] = `=IF(N(${cuando})=0;"";SUMIFS($K$${f0}:$K$${fLast};$C$${f0}:$C$${fLast};${cuando};$N$${f0}:$N$${fLast};"")+SUMIFS($${cObra}$${p0}:$${cObra}$${pFin};$C$${p0}:$C$${pFin};${cuando}))`
+  // OFICINA. El factor se mide desde SU mes base —el último COMPLETO— y no desde el mes en curso: la
+  // planilla de oficina va atrasada y medir desde otro mes le aplicaría un aumento que no es el suyo.
+  MESES.forEach((_, i) => {
+    const r = o0 + i
+    if (cerradoOfi(i)) return
+    filas[r - 1][6] = formulaFactorDelMes(`EOMONTH(DATE(${AÑO};${i + 1};1);0)`, esc,
+      iBaseOfi === null ? null : `EOMONTH(DATE(${AÑO};${iBaseOfi + 1};1);0)`)
+    // Sin un solo mes cerrado no hay de dónde proyectar: la celda queda vacía y la línea de arriba
+    // dice por qué. Un número inventado acá viaja por rango con nombre hasta el cash flow.
+    if (rBaseOfi === null) { filas[r - 1][7] = VACIO; return }
+    // El mes PARCIAL proyecta sólo lo que falta: base ajustada MENOS lo que ya se pagó. `MAX(0;…)`
+    // porque un mes cargado por encima de la base no genera un negativo — eso sería un reintegro.
+    filas[r - 1][7] = conBloque(i)
+      ? `=MAX(0;$C$${rBaseOfi}*G${r}-N(C${r}))`
+      : `=$C$${rBaseOfi}*G${r}`
+  })
+  // DIRECCIÓN. La base del ajuste es el MES EN CURSO por fórmula: el importe del retiro sale de la
+  // última carga en Compras, o sea que es el valor de hoy. `EOMONTH(TODAY();0)` y no un mes escrito
+  // acá — un mes estampado se congela el día que se escribe y sigue ajustando desde una base vieja.
+  MESES.forEach((_, i) => {
+    filas[d0 + i - 1][6] = formulaFactorDelMes(`EOMONTH(DATE(${AÑO};${i + 1};1);0)`, esc, 'EOMONTH(TODAY();0)')
+  })
 
-  // ── EL CALENDARIO: LAS DOS COLUMNAS QUE NECESITABAN LOS BLOQUES DE ABAJO ──
+  // ── EL CALENDARIO: LAS TRES COLUMNAS DE POBLACIÓN ──
   //
-  // Cada mes de oficina y de dirección cae en la quincena que lo PAGA. La ventana de una fila va de su
-  // fecha de caja (inclusive) a la de la fila siguiente (exclusive); la primera no tiene piso y la
-  // última no tiene techo, así que el reparto es completo y disjunto por construcción — ningún mes
-  // puede quedar afuera ni entrar dos veces. El control de abajo lo prueba contra el total del bloque,
-  // que se calcula por el otro camino.
-  pendientes.forEach((_, i) => {
+  // OBREROS sale del motor: la Σ $/hora del plantel ajustada al escalón del mes de esta quincena
+  // (cuadro 4.2), por horas medidas y días laborables. La base la decide la FECHA DE PAGO de la fila:
+  // lo que sale de la caja este mes va al pactado y lo de después al 100% del convenio.
+  //
+  // OFICINA y DIRECCIÓN caen en la quincena que las PAGA. La ventana de una fila va de su fecha de
+  // caja (inclusive) a la de la fila siguiente (exclusive); la primera no tiene piso y la última no
+  // tiene techo, así que el reparto es completo y disjunto por construcción — ningún mes puede quedar
+  // afuera ni entrar dos veces. El control de abajo lo prueba contra el total del bloque, que se
+  // calcula por el otro camino.
+  pendientes.forEach((q, i) => {
     const r = p0 + i
+    const sigma = expresionSigmaDelMes(`A${r}`, esc, `C${r}`)
+    // Σ $/hora × horas por persona y día × días laborables de LUNES A VIERNES. El calendario lo decide
+    // `expresionDias`, no `NETWORKDAYS` a secas: el criterio de la semana de obra vive en un solo lugar.
+    const convenio = `${sigma}*$B$${fHpd}*${expresionDias(`A${r}`, `B${r}`)}`
+    // Sin demanda para esta quincena es el piso de convenio solo; con demanda, MAX(convenio;
+    // constante del insumo del dueño), gateado por la MISMA frontera de caja comprometida.
+    filas[r - 1][3] = formulaProyectadoQuincena({ convenio, celdaPago: `C${r}` },
+      demanda?.porQuincena?.get(claveQuincena(q.desde)) ?? null)
     const desde = i === 0 ? null : `$C$${r}`
     const hasta = i === pendientes.length - 1 ? null : `$C$${r + 1}`
     filas[r - 1][4] = formulaVentana({ rangoImporte: `$H$${o0}:$H$${oFin}`, rangoFecha: `$E$${o0}:$E$${oFin}`, celdaDesde: desde, celdaHasta: hasta })
@@ -1180,9 +1174,81 @@ export function grilla({
     totalOficina: cel(fTotalOfi, 'H'), totalDireccion: cel(fTotalDir, 'H'),
   })
 
+  // ══ EL HERO: UNA FILA POR GRUPO ══
+  //
+  // Cada celda sale del bloque que la produce y de ningún otro lado: si una nómina se recalculara acá
+  // arriba por su cuenta, el hero podría decir un número y su sección otro, y nadie se enteraría.
+  // Ésa es la razón de que TODAS las celdas sean referencias a filas de abajo.
+  //
+  // COMPROMETIDO de obra sale POR DIFERENCIA (todo lo cargado en el registro menos lo ya pagado): así
+  // las dos particiones no pueden dejar un hueco ni contarse dos veces, pase lo que pase con las
+  // fechas. Incluye la parte cargada de la quincena en curso, que es trabajo hecho y debido.
+  const realObra = `SUMPRODUCT(${pagada}*${K})`
+  /** Una fila del hero: comprometido, proyectado, ya pagado — y las tres sumas que las cierran. */
+  const filaHero = (fila, { comprometido, proyectado, pagado }) => {
+    filas[fila - 1][1] = `=C${fila}+D${fila}`
+    filas[fila - 1][2] = comprometido
+    filas[fila - 1][3] = proyectado
+    filas[fila - 1][4] = pagado
+    filas[fila - 1][5] = `=B${fila}+E${fila}`
+  }
+  filaHero(fHero.obra, {
+    comprometido: `=SUMPRODUCT(ISNUMBER($B$${f0}:$B$${fLast})*${K})-${realObra}`,
+    proyectado: `=${cel(fTotalProy, cObra)}`,
+    pagado: `=${realObra}`,
+  })
+  // OFICINA y DIRECCIÓN no tienen una marca que distinga el trabajo hecho y no pagado del ya pagado:
+  // lo que sus bloques llaman «Pagado» es lo que la planilla y Compras registran como salido. El
+  // comprometido va VACÍO —no cero— porque el dato no existe; inventarlo sería un número sin fuente.
+  filaHero(fHero.oficina, { comprometido: VACIO, proyectado: `=${cel(fTotalOfi, 'H')}`, pagado: `=${cel(fTotalOfi, 'C')}` })
+  filaHero(fHero.direccion, { comprometido: VACIO, proyectado: `=${cel(fTotalDir, 'H')}`, pagado: `=${cel(fTotalDir, 'C')}` })
+  // EL TOTAL SUMA LAS TRES FILAS DE ARRIBA, no vuelve a las fuentes. Si volviera, podría no cerrar
+  // contra sus propias filas y la fila que remata el cuadro sería la única que nadie puede verificar.
+  for (const c of ['B', 'C', 'D', 'E', 'F']) {
+    filas[fHeroTotal - 1][c.charCodeAt(0) - 65] = `=SUM(${c}${fHero.obra}:${c}${fHero.direccion})`
+  }
+  // ── EL PRÓXIMO PAGO DE CADA GRUPO: cuánto, y al lado cuándo ──
+  //
+  // ═══ POR QUÉ AHORA HAY TRES Y NO UNO (13/08) ═══
+  //
+  // El hero anterior mostraba "Próximo pago de obra" y nada más, con este razonamiento escrito: elegir
+  // cuál de las tres fechas manda sería inventar una respuesta a una pregunta que tiene tres. Era
+  // cierto mientras el hero tenía UNA fila. Con una fila por grupo la pregunta ya no tiene tres
+  // respuestas: tiene una por fila, que es exactamente donde va cada una.
+  //
+  // `MINIFS` devuelve 0 cuando no encuentra nada, y 0 es el 30/12/1899: los ceros se descartan a mano
+  // en las tres, o la columna «Cuándo» mostraría una fecha del siglo XIX como si fuera un vencimiento.
+  //
+  // OBRA sale de sus DOS fuentes de fecha de caja —el registro sin marcar como pagado y el calendario—
+  // y se queda con la más cercana que no haya pasado.
+  const minReg = `MINIFS($C$${f0}:$C$${fLast};$N$${f0}:$N$${fLast};"";$C$${f0}:$C$${fLast};">="&TODAY();$K$${f0}:$K$${fLast};">0")`
+  const minProy = `MINIFS($C$${p0}:$C$${pFin};$C$${p0}:$C$${pFin};">="&TODAY();$${cObra}$${p0}:$${cObra}$${pFin};">0")`
+  filas[fHero.obra - 1][7] = `=IF(MAX(${minReg};${minProy})=0;"";IF(${minReg}=0;${minProy};IF(${minProy}=0;${minReg};MIN(${minReg};${minProy}))))`
+  filas[fHero.obra - 1][6] = `=IF(N(H${fHero.obra})=0;"";SUMIFS($K$${f0}:$K$${fLast};$C$${f0}:$C$${fLast};H${fHero.obra};$N$${f0}:$N$${fLast};"")`
+    + `+SUMIFS($${cObra}$${p0}:$${cObra}$${pFin};$C$${p0}:$C$${pFin};H${fHero.obra}))`
+  // OFICINA y DIRECCIÓN: la próxima fecha de caja con algo PROYECTADO todavía por pagar. Se mira la
+  // columna «Proyectado» y no la «Pagado» a propósito — un mes ya pagado no es un pago que viene.
+  const proximoMensual = (fila, r0, r1) => {
+    const min = `MINIFS($E$${r0}:$E$${r1};$E$${r0}:$E$${r1};">="&TODAY();$H$${r0}:$H$${r1};">0")`
+    filas[fila - 1][7] = `=IF(${min}=0;"";${min})`
+    filas[fila - 1][6] = `=IF(N(H${fila})=0;"";SUMIFS($H$${r0}:$H$${r1};$E$${r0}:$E$${r1};H${fila}))`
+  }
+  proximoMensual(fHero.oficina, o0, oFin)
+  proximoMensual(fHero.direccion, d0, dFin)
+
   return {
     filas,
-    titular: fHero.costo,
+    // ═══ EL TITULAR YA NO ES UNA CELDA SUELTA EN 13 pt (13/08) ═══
+    //
+    // `skinRequests` dibuja el titular a 13 puntos en las columnas A y B, y eso servía cuando el hero
+    // era una lista de cinco líneas. En un cuadro de ocho columnas rompe dos veces: el importe de doce
+    // dígitos a 13 pt mide ~110 px contra los 112 de la columna —al borde de cortarse— y las otras
+    // cuatro cifras del mismo renglón quedarían en 10 pt, con la fila de total dibujada a dos tamaños.
+    //
+    // La jerarquía la da el bloque entero (ver `requestsDeFormato`): las tres filas de grupo con su
+    // «Falta pagar» en negrita, y la fila de total en acento sobre su regla. `titular` se sigue
+    // publicando porque lo consume el log de la corrida, pero la piel ya no lo pinta.
+    titular: fHeroTotal,
     fechas: [
       ...pendientes.map((_, i) => p0 + i), ...bloques.map((_, i) => f0 + i),
     ],
@@ -1190,7 +1256,7 @@ export function grilla({
     cantidades: [fHpd],
     // Prosa que RINDE una fórmula: el pase por contenido la saltea (empieza con '='). Se declara acá
     // y el formato la pinta TEXTO. col 0-based.
-    // …y el CANARIO del plantel (última fila del bloque 1.1, col H): rinde "✓ el bloque del
+    // …y el CANARIO del plantel (última fila del bloque 4.1, col H): rinde "✓ el bloque del
     // espejo…" por fórmula y sin declararlo la piel lo pintaba de plata (auditor, 06/08).
     celdasDeProsaFormula: [
       { fila: fHpd, col: 2 }, { fila: fShare, col: 2 }, { fila: fCanal.recibo, col: 2 },
@@ -1200,9 +1266,10 @@ export function grilla({
       { fila: fControlCal, col: 0 }, { fila: fBaja, col: 0 },
     ],
     enteros: [plantel.fTotal],
-    // La única celda del hero que es una FECHA y no plata: la C del próximo pago (la B, como en toda
-    // la pestaña, es el importe). Sin esto sale "$46.242".
-    fechasHero: [fHero.proximo],
+    // ── EL HERO, PARA EL FORMATO ──
+    // La columna «Cuándo» (H) es la única fecha del cuadro; las otras seis columnas son plata.
+    hero: { cols: COLS_HERO, fCols: fHeroCols, obra: fHero.obra, oficina: fHero.oficina, direccion: fHero.direccion, total: fHeroTotal },
+    fechasHero: [fHero.obra, fHero.oficina, fHero.direccion],
     // El bloque del motor, para el formato: personas enteras, factores con cuatro decimales.
     plantel, esc,
     // POR NOMBRE, NO POR OFFSET. Decía `[fMin + 2]`: al agregar el escalón del mes que viene, el margen
@@ -1232,7 +1299,7 @@ export function grilla({
     // toda la grilla de la B a la L, y donde el hero deja un número más arriba en la misma columna, el
     // detector deja de leer "Hasta"/"Personas"/"Banco" como encabezado y los marca como texto en una
     // celda de moneda (12 casos). Se les devuelve el formato de texto DESPUÉS de la moneda.
-    encabezados: [p0 - 1, o0 - 1, f0 - 1, dp0 - 1, d0 - 1, plantel.fPrimera - 1, esc.f0 - 1],
+    encabezados: [fHeroCols, p0 - 1, o0 - 1, f0 - 1, dp0 - 1, d0 - 1, plantel.fPrimera - 1, esc.f0 - 1],
     fVig,
   }
 }
@@ -1485,7 +1552,17 @@ async function main() {
   const defectos = auditarPatron(v)
   console.log(defectos.length ? `⚠ ${defectos.length} defecto(s) de patrón:` : '✓ la pestaña cumple el patrón de diseño')
   for (const d of defectos.slice(0, 8)) console.log(`   fila ${d.fila} · ${d.regla} · ${d.detalle.slice(0, 110)}`)
-  for (const f of v) if (/^(⇒|COSTO DE LA)/.test(String(f?.[0] ?? ''))) console.log(`  ${String(f[0]).slice(0, 46).padEnd(48)}${String(f[1] ?? '').padStart(16)}${String(f[6] ?? '').padStart(16)}${String(f[9] ?? '').padStart(16)}`)
+  // ═══ EL LOG IMPRIME LAS CELDAS QUE LA FILA TIENE, NO TRES LETRAS ESCRITAS ACÁ (13/08) ═══
+  //
+  // Decía `f[1] · f[6] · f[9]`, elegidas cuando el hero era una lista y el registro el único cuadro
+  // ancho. Con cuatro cuadros de ocho columnas, la J casi siempre viene vacía y la fila de total del
+  // hero mostraba dos columnas de las cinco que tiene. Un log que elige columnas a mano envejece igual
+  // que una fórmula con la letra escrita: se imprime lo que hay.
+  for (const f of v) {
+    if (!/^⇒/.test(String(f?.[0] ?? ''))) continue
+    const cifras = f.slice(1, ANCHO).map((c) => String(c ?? '').trim()).filter(Boolean)
+    console.log(`  ${String(f[0]).slice(0, 44).padEnd(46)}${cifras.map((c) => c.slice(0, 15).padStart(16)).join('')}`)
+  }
 
   await guardarRegistro(ID, PESTAÑA, grid, ediciones, v, candidatos).catch((e) => console.warn(`  ⚠ no pude guardar el registro de rótulos: ${e.message}`))
 
@@ -1800,7 +1877,11 @@ export function requestsDeFormato(sheetId, filas, g) {
     ...notas,
     // La piel entiende el centinela por su cuenta (`conContenido`, en estilo-statement): no hay que
     // limpiárselo acá. Filtrarlo dos veces en dos lugares es la duplicación que este repo evita.
-    ...skinRequests({ sheetId, filas, cols: ANCHO, congeladas: 2, titular: g.titular, filasHoja: filas.length }),
+    // `titular: 0` DESDE EL 13/08 — y no es un descuido. La piel dibuja el titular a 13 pt sobre las
+    // columnas A y B, y el hero dejó de ser una lista de cinco líneas para ser un cuadro de ocho
+    // columnas: eso partía la fila de total en dos tamaños y dejaba un importe de doce dígitos al
+    // borde de cortarse. La jerarquía del bloque la pone `escenario`, más abajo.
+    ...skinRequests({ sheetId, filas, cols: ANCHO, congeladas: 2, titular: 0, filasHoja: filas.length }),
     // Todo lo que es plata, a la derecha y con cifras tabulares.
     { repeatCell: { range: rg(3, filas.length, 1, ANCHO), cell: { userEnteredFormat: { numberFormat: moneda, horizontalAlignment: 'RIGHT' } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment)' } },
     // La prosa se pinta como TEXTO decidida por contenido, DESPUÉS del barrido de moneda — antes de
@@ -1976,17 +2057,86 @@ export function requestsDeFormato(sheetId, filas, g) {
     fmt(g.esc.f0 - 1, g.esc.f1, 3, 4, { type: 'PERCENT', pattern: '0.0%;[Red]-0.0%;"—"' })
     fmt(g.esc.f0 - 1, g.esc.f1, 4, 5, { type: 'NUMBER', pattern: '0.0000;-0.0000;"—"' })
   }
-  // La única celda del hero que es una fecha: la C del próximo pago. La B lleva su importe y se la
-  // formatea con la moneda del barrido general, como a las otras cuatro cifras del bloque.
+  // La única columna del hero que NO es plata: «Cuándo» (la H), la fecha del próximo pago de cada
+  // grupo. Las otras seis son importes y las cubre el barrido general de moneda. Sin esto sale
+  // "$46.242" — el serial de la fecha con formato de moneda encima, el mismo defecto que este bloque
+  // ya arregló tres veces en otras columnas.
   for (const f of g.fechasHero ?? []) {
     reqs.push({
       repeatCell: {
-        range: rg(f - 1, f, 2, 3),
-        cell: { userEnteredFormat: { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'LEFT' } },
+        range: rg(f - 1, f, ANCHO_HERO - 1, ANCHO_HERO),
+        cell: { userEnteredFormat: { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'RIGHT' } },
         fields: 'userEnteredFormat(numberFormat,horizontalAlignment)',
       },
     })
   }
+  // ═══ LA NOTACIÓN DEL ESCENARIO: LO PAGADO SE VE DISTINTO DE LO PROYECTADO ═══
+  //
+  // El dueño, segundo rechazo (13/08): *"no logro entender … si ya esta el monto proyectado o es lo
+  // real"*. Que el escenario tenga columna propia no alcanza si las dos columnas se dibujan igual: el
+  // ojo baja por una fila de números idénticos y no tiene ninguna señal de cuál es un hecho.
+  //
+  // La regla es la de UNIFY (IBCS, hoy ISO 24896 «Notation for business reporting»): un mismo
+  // significado, la misma notación, EN TODA la pestaña. Acá son dos marcas y valen para los cuatro
+  // cuadros —el hero, el calendario, oficina y dirección—:
+  //   · LO PAGADO      → negrita, tinta plena. Es un hecho: la plata salió.
+  //   · LO PROYECTADO  → itálica y tinta apagada. Es una estimación del motor salarial.
+  // El comprometido queda en redonda: es un hecho (el trabajo está hecho) que todavía no salió.
+  //
+  // NO HAY LEYENDA, Y ES A PROPÓSITO. Los encabezados ya dicen «Ya pagado» y «Proyectado»; una fila
+  // que explique la itálica sería la prosa que el dueño rechazó dos veces. El formato refuerza el
+  // rótulo, no lo reemplaza.
+  const escenario = (r0, r1, c0, c1, { italic = false, bold = false, color = null, size = 10 } = {}) => {
+    const a = Math.max(0, Math.min(r0, filas.length))
+    const b = Math.max(a, Math.min(r1, filas.length))
+    if (b <= a) return
+    reqs.push({
+      repeatCell: {
+        range: rg(a, b, c0, c1),
+        cell: { userEnteredFormat: { textFormat: { foregroundColor: color ?? (italic ? MUTED : INK), bold, italic, fontSize: size, fontFamily: 'Arial' } } },
+        fields: 'userEnteredFormat.textFormat',
+      },
+    })
+  }
+  if (g.hero) {
+    const cProy = g.hero.cols.indexOf('Proyectado')
+    const cPag = g.hero.cols.indexOf('Ya pagado')
+    const cFalta = g.hero.cols.indexOf('Falta pagar')
+    // Las tres filas de grupo: su «Falta pagar» es LA cifra que el dueño busca — un cuerpo más que el
+    // resto del cuadro y en negrita, para que se lea sin buscarla. Ni 13 pt ni acento: eso queda para
+    // la fila de total, que es la que remata el bloque.
+    escenario(g.hero.obra - 1, g.hero.direccion, cProy, cProy + 1, { italic: true })
+    escenario(g.hero.obra - 1, g.hero.direccion, cPag, cPag + 1, { bold: true })
+    reqs.push({
+      repeatCell: {
+        range: rg(g.hero.obra - 1, g.hero.direccion, cFalta, cFalta + 1),
+        cell: { userEnteredFormat: { textFormat: { foregroundColor: INK, bold: true, fontSize: 11, fontFamily: 'Arial' } } },
+        fields: 'userEnteredFormat.textFormat',
+      },
+    })
+    // LA FILA DE TOTAL, ENTERA EN ACENTO. Es el único renglón de la pestaña que contesta "cuánto falta
+    // pagar en total" y se lee de un vistazo por su color, no por su tamaño: a 13 pt el importe de
+    // doce dígitos queda al borde de cortarse contra los 112 px de la columna.
+    escenario(g.hero.total - 1, g.hero.total, 0, ANCHO_HERO, { bold: true, color: ACENTO, size: 11 })
+    // ═══ Y LA MARCA DEL ESCENARIO SOBREVIVE AL TOTAL (13/08, visto en el render) ═══
+    //
+    // Con la fila entera en acento, el $173,6M proyectado se dibujaba idéntico al $148,4M ya pagado
+    // JUSTO en el renglón más leído del cuadro. El acento dice "esto es el total"; la itálica sigue
+    // diciendo "esto es una estimación". Las dos cosas a la vez, porque las dos son ciertas.
+    escenario(g.hero.total - 1, g.hero.total, cProy, cProy + 1, { bold: true, italic: true, color: ACENTO, size: 11 })
+  }
+  // El calendario es proyección de punta a punta —son las quincenas que FALTAN—: sus cinco columnas de
+  // importe van en itálica apagada, Y SU FILA DE TOTAL TAMBIÉN (en negrita, que es lo que la hace
+  // total). Lo mismo la columna «Proyectado» de los dos bloques mensuales, y en negrita su columna
+  // «Pagado», que es lo que ya salió.
+  escenario(g.p0 - 1, g.p0 + g.nProy - 1, 3, 8, { italic: true })
+  escenario(g.fTotalProy - 1, g.fTotalProy, 3, 8, { italic: true, bold: true, color: INK })
+  for (const [r0, r1] of [[g.o0, g.oFin], [g.d0, g.dFin]]) {
+    escenario(r0 - 1, r1, 7, 8, { italic: true })
+    escenario(r0 - 1, r1, 2, 3, { bold: true })
+  }
+  // Y en el registro, la columna TOTAL de cada quincena: todo lo que está ahí ya se trabajó.
+  escenario(g.f0 - 1, g.fTotalReal - 1, 10, 11, { bold: true })
   for (const f of g.ratios) fmt(f - 1, f, 1, 2, { type: 'PERCENT', pattern: '0.0%;[Red]-0.0%;"—"' })
   // LOS ENCABEZADOS DE TABLA Y LA NOTA DE VIGENCIA VAN COMO TEXTO. La moneda de arriba pinta toda la
   // grilla; sobre estas cuatro filas —"Hasta", "Personas", "Banco"…, y "CCT 76/75, Zona A"— eso deja

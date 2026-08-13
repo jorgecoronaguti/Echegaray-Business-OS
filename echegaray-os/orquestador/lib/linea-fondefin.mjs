@@ -154,6 +154,77 @@ const pct = (f, dec = 2) => `${(Number(f) * 100).toFixed(dec).replace('.', ',')}
 const enAr = (iso) => String(iso).slice(0, 10).split('-').reverse().join('/')
 
 /**
+ * EL IVA SOBRE LOS INTERESES — 10,5%, y la fuente es EL DUEÑO, no el Reglamento.
+ *
+ * ═══ null → 21% → 10,5%: LAS TRES ETAPAS, PORQUE NINGUNA SE BORRA ═══
+ *
+ * Entró en `null` a propósito y no por descuido: el ROP no menciona el IVA, y `costoEfectivo` trata un
+ * IVA desconocido como DATO FALTANTE, no como exención — un 0 ahí afirmaba una exención que nadie
+ * había declarado. La pregunta quedó abierta en las dos líneas del organismo.
+ *
+ * El 13/08/2026 el dueño la contestó por primera vez, textual: "iva 21". Se cargó 0,21 con ese origen.
+ * MÁS TARDE EL MISMO DÍA la corrigió, textual: "el iva es del 10,5% en el informe de compra de
+ * rodados". Manda lo último y lo más específico: 0,105. La declaración del 21% no se borra —vive en
+ * `ORIGEN_DEL_IVA.corregido_desde` y en el historial de la rama fix/iva-fondefin-21— porque si mañana
+ * aparece un papel que dice 21% hay que poder ver que esto SE DECIDIÓ, no que se perdió.
+ *
+ * ═══ LO QUE ESTE NÚMERO NO ES ═══
+ *
+ * NO es una alícuota verificada contra la norma. Al revés: el encuadre que la habilitaría está en duda
+ * y así quedó anotado antes de esta corrección. La alícuota reducida del 10,5% sobre intereses es el
+ * beneficio de los préstamos otorgados por entidades regidas por la LEY 21.526 (entidades
+ * financieras), y Fiduciaria San Juan SAPEM no figura como una de ellas — por eso el 10,5% no se
+ * había asumido solo. El dueño lo declara igual y su declaración manda sobre el criterio del OS, pero
+ * el hueco queda abierto y con nombre: CONFIRMAR CON EL ESTUDIO CONTABLE si el mutuo de Fiduciaria
+ * SAPEM encuadra bajo la Ley 21.526 a efectos del art. 28 de la Ley de IVA. Si no encuadra, el número
+ * vuelve a 21% y el costo sube ~1,44 puntos de TNA.
+ *
+ * Por eso `verificado_contra_la_norma: false`, la fila sigue en `informado`, y el origen viaja escrito
+ * en `observaciones` hasta Postgres y la Web: el que la mire tiene que poder ver de dónde salió el
+ * 10,5 antes de usarlo para una decisión fiscal.
+ *
+ * VIVE ACÁ Y SE IMPORTA: las dos líneas del organismo (Bienes de Capital y Capital de Trabajo) y el
+ * informe de rodados usan el MISMO valor. Escribirlo dos veces habilita que dentro de un mes una diga
+ * 21 y la otra 10,5 — que es exactamente lo que casi pasa hoy.
+ */
+export const IVA_SOBRE_INTERESES = 0.105
+
+/**
+ * De dónde salió el 10,5%. Un número sin padre en una tabla de decisión no se puede auditar, y una
+ * corrección sin rastro es indistinguible de un dedazo.
+ */
+export const ORIGEN_DEL_IVA = {
+  valor: IVA_SOBRE_INTERESES,
+  origen: 'el dueño de Echegaray Construcciones',
+  fecha: '2026-08-13',
+  textual: 'el iva es del 10,5% en el informe de compra de rodados',
+  verificado_contra_la_norma: false,
+  /** La declaración anterior, del mismo día. No es historia de color: es lo que hace auditable el 10,5. */
+  corregido_desde: {
+    valor: 0.21,
+    fecha: '2026-08-13',
+    textual: 'iva 21',
+  },
+  /** El hueco que este número deja abierto. Se pregunta, no se estima. */
+  a_confirmar:
+    'si el mutuo de Fiduciaria San Juan SAPEM encuadra bajo la Ley 21.526 a efectos de la alícuota reducida de IVA sobre intereses — consultar al estudio contable. Si no encuadra, la alícuota vuelve al 21% general.',
+}
+
+/**
+ * El texto que lleva el origen del IVA hasta Postgres y la Web. Se ARMA con el valor que la fila
+ * publica —no se tipea aparte— porque un texto suelto envejece por su cuenta y termina citado como si
+ * fuera el dato. Lo comparten las dos líneas: una sola redacción, un solo origen.
+ */
+export const OBSERVACION_IVA = [
+  `IVA SOBRE INTERESES: ${pct(IVA_SOBRE_INTERESES, 1)}, y la FUENTE ES EL DUEÑO, no el reglamento —`,
+  `dijo textual "${ORIGEN_DEL_IVA.textual}" el ${enAr(ORIGEN_DEL_IVA.fecha)}.`,
+  `CORRIGE una declaración anterior del mismo ${enAr(ORIGEN_DEL_IVA.corregido_desde.fecha)} que fijaba ${pct(ORIGEN_DEL_IVA.corregido_desde.valor, 0)} ("${ORIGEN_DEL_IVA.corregido_desde.textual}"): manda lo último y lo más específico, y la anterior se deja escrita para que la corrección sea auditable.`,
+  'El ROP no trata el IVA en ninguno de sus puntos.',
+  `NO está verificada contra la norma y el criterio fiscal apunta en contra: la alícuota reducida de ${pct(IVA_SOBRE_INTERESES, 1)} sobre intereses es la de los préstamos de entidades regidas por la Ley 21.526 y Fiduciaria San Juan SAPEM no figura como una de ellas. PENDIENTE: ${ORIGEN_DEL_IVA.a_confirmar}`,
+  'LO QUE SIGUE SIN SABERSE es si la Fiduciaria factura además alguna PERCEPCIÓN de IVA sobre esos intereses: el descubierto del Santander lleva 10,5% + 1,5% de percepción = 12%, y acá se cargó el IVA solo.',
+].join(' ')
+
+/**
  * LA CONDICIÓN, tal como entra a `public.condiciones_financieras` vía `registrarCondicion`.
  * `clave`, `desconocido` y `preguntar` NO son columnas: se sacan antes de escribir.
  *
@@ -163,9 +234,11 @@ const enAr = (iso) => String(iso).slice(0, 10).split('-').reverse().join('/')
  * de garantías. El CFT real es MAYOR que la TNA y NO se puede calcular con lo publicado. Poner la TNA
  * en la casilla del CFT sería exactamente la mentira que esta tabla existe para evitar.
  *
- * `iva_sobre_intereses: null` A PROPÓSITO y es la pregunta más cara de la lista: Fiduciaria San Juan
- * SAPEM no es una entidad de la Ley 21.526, así que el IVA sobre los intereses NO es el 10,5% de
- * banco. El ROP no dice nada. Si son 21%, el costo efectivo sube ~2,9 puntos sobre la TNA.
+ * `iva_sobre_intereses` YA NO ES null: es 10,5% desde el 13/08/2026 por declaración del dueño (que ese
+ * mismo día corrigió su propio 21%). Ver `IVA_SOBRE_INTERESES` para el origen, para el rastro de la
+ * corrección y para lo que ese número todavía no es. El costo efectivo pasa de la TNA pelada a la
+ * TNA × 1,105 — y sigue siendo un PISO, porque el campo que convierte un piso en un total es el CFT,
+ * y el CFT sigue sin publicarse.
  */
 export const CONDICION_FONDEFIN = {
   clave: 'fondefin-bienes-de-capital',
@@ -186,7 +259,7 @@ export const CONDICION_FONDEFIN = {
   tna: tnaFondefin(BADLAR_REFERENCIA.valor),
   tea: null, // no publicada; derivarla exigiría fijar la convención de capitalización, que el ROP no da
   cft: null, // ver arriba: no publicado y NO derivable con lo que hay
-  iva_sobre_intereses: null, // ver arriba: el ROP no lo trata y no es una entidad financiera
+  iva_sobre_intereses: IVA_SOBRE_INTERESES, // 10,5% — dato del dueño 13/08/2026, no del ROP
   // Las columnas `comisiones` y `gastos` son MONTOS FIJOS en pesos, no porcentajes (así las usa
   // costoEfectivo). El 2% de otorgamiento es una fracción del desembolso: meterlo acá se leería como
   // "$0,02 de comisión". Va en observaciones y en GASTOS_OTORGAMIENTO, no en una columna que miente.
@@ -206,6 +279,7 @@ export const CONDICION_FONDEFIN = {
     'Reglamento de Condiciones Generales FONDEFIN 05-2026 — "ROP-MIPYME-BIENES-DE-CAPITAL-FONDEFIN-mayo-2026.pdf", publicado en fiduciariasanjuan.com/linea/bienes-de-capital, descargado y leído el 13/08/2026 · Badlar: BCRA API estadísticas monetarias v4.0 idVariable 7, valor 22,8125% del 11/08/2026, consultada 13/08/2026',
   observaciones: [
     `TASA: el ROP no fija un número, fija una FÓRMULA — "60% de la Tasa Badlar en Pesos para Bancos Privados publicada por el BCRA vigente a la fecha del acta de Comité Ejecutivo que apruebe la solicitud". La TNA cargada (${pct(tnaFondefin(BADLAR_REFERENCIA.valor), 4)}) es 60% × Badlar ${pct(BADLAR_REFERENCIA.valor, 4)} del ${enAr(BADLAR_REFERENCIA.fecha)}: es una FOTO, no la tasa del crédito. En las ${RANGO.ruedas} ruedas del ${enAr(RANGO.desde)} al ${enAr(RANGO.hasta)} la Badlar osciló entre ${pct(RANGO.min, 4)} (${enAr(RANGO.min_el)}) y ${pct(RANGO.max, 4)} (${enAr(RANGO.max_el)}) → la misma línea sale entre ${pct(tnaFondefin(RANGO.min), 2)} y ${pct(tnaFondefin(RANGO.max), 2)} según el día en que el Comité firme el acta. Recalcular con tnaFondefin(badlar) antes de usar este número para decidir.`,
+    OBSERVACION_IVA,
     `CADUCIDAD DE ESTA FILA: la vigencia termina el ${enAr(vigenciaHastaDeLaFoto())} — ${VALIDEZ_FOTO_DIAS} días corridos después de la Badlar que la sostiene. NO es una fecha del reglamento: es hasta cuándo el OS se hace cargo de esta foto. Pasada esa fecha la línea deja de estar vigente y no se ofrece en ninguna comparación, hasta que alguien refresque la Badlar y re-corra la semilla. Es deliberado: una línea ausente se nota; una TNA de tres meses atrás con cara de dato oficial, no. El contraste contra el BCRA vivo lo corre scripts/canario-badlar-fondefin.mjs.`,
     'VIGENCIA_DESDE ES UNA CONVENCIÓN, NO UN DATO: el 01/05/2026 sale del código "05-2026" del nombre del reglamento ("ROP-MIPYME-BIENES-DE-CAPITAL-FONDEFIN-mayo-2026.pdf"). El ROP no publica fecha de entrada en vigencia. Se eligió el 1° del mes para que la clave única de la tabla sea estable y re-correr la semilla actualice la fila en vez de duplicarla por día.',
     'DEMORA DEL TRÁMITE: ~120 días (4 meses, dato del dueño 07/08/2026 — "al no ser organismo bancario"). El ROP NO publica ningún plazo de resolución; sólo fija 10 días corridos para que el postulante conteste un requerimiento de información. CONSECUENCIA OPERATIVA: esta línea NO sirve para una unidad que se necesita en menos de un trimestre; sí para la segunda y la tercera. Ver llegaATiempo().',
@@ -221,7 +295,8 @@ export const CONDICION_FONDEFIN = {
   /** Lo que la fuente NO publica. No se estima: se pregunta. */
   desconocido: [
     'CFT — no publicado y no derivable: faltan el monto del seguro de vida sobre saldo deudor y el de la tasación',
-    'IVA sobre intereses — el ROP no lo trata; Fiduciaria SAPEM no es entidad de la Ley 21.526, así que no se puede asumir el 10,5% bancario',
+    'si el mutuo de Fiduciaria San Juan SAPEM encuadra bajo la Ley 21.526 — de eso depende que la alícuota declarada por el dueño (10,5%) sea la correcta o vuelva a ser la general del 21%: lo confirma el estudio contable, no el OS',
+    'si además del IVA (10,5%, declaración del dueño del 13/08/2026 que corrigió su propio 21% del mismo día) la Fiduciaria factura alguna PERCEPCIÓN de IVA sobre los intereses — el ROP no lo trata y no se asume ni que la haya ni que no: son 1,5 puntos sobre intereses en el caso del banco',
     'si la tasa queda FIJA al acta de aprobación o se reajusta con la Badlar durante los 48 meses',
     'porcentaje financiable del bien / aporte propio exigido — el ROP no fija ninguno',
     'si el crédito cubre el precio del rodado con IVA o sólo el neto (el Anexo IX pide los presupuestos abiertos en neto e IVA)',
@@ -233,7 +308,6 @@ export const CONDICION_FONDEFIN = {
   /** Las preguntas concretas, en el orden en que conviene hacerlas. Cada una cambia una decisión. */
   preguntar: [
     '¿La tasa (60% de Badlar) queda FIJA a la fecha del acta de aprobación o se reajusta durante los 48 meses? — es la diferencia entre un costo cerrado y uno abierto a 4 años',
-    '¿Los intereses llevan IVA? ¿Al 21% o al 10,5%? — si son 21%, el costo efectivo sube ~2,9 puntos',
     '¿Cuánto tarda hoy, en la práctica, desde que se presenta la carpeta completa hasta el desembolso? — el dueño maneja 4 meses; el reglamento no dice nada',
     '¿Financia el 100% del valor del rodado o exige aporte propio? ¿Sobre el precio con IVA o el neto?',
     '¿Con qué garantía conviene presentarse? Con prenda sobre el rodado se exige cubrir el 200% del crédito; con cheques sólo hasta $30M; ¿aceptan aval de SGR y les sirve más?',

@@ -6,7 +6,7 @@ import {
   ahorroVsDescubierto, condicionConBadlar, CONDICION_FONDEFIN_CAPITAL_TRABAJO,
   NO_SON_COLUMNAS, filaParaLaTabla,
 } from './linea-fondefin-capital-trabajo.mjs'
-import { CONDICION_FONDEFIN } from './linea-fondefin.mjs'
+import { CONDICION_FONDEFIN, IVA_SOBRE_INTERESES } from './linea-fondefin.mjs'
 import { costoEfectivo, paramsParaMotor } from './condiciones-financieras.mjs'
 import { ACUERDO } from './banco-santander.mjs'
 import { TASAS } from './costo-descubierto.mjs'
@@ -74,16 +74,48 @@ test('el 2% de otorgamiento NO va en comisiones: esa columna es un monto en peso
   assert.equal(costoEfectivo(conError, { monto: 30_000_000, dias: 365 }).comisiones, 0.02)
 })
 
-test('lo que el ROP no publica entra en NULL: CFT, TEA e IVA sobre intereses', () => {
+test('lo que el ROP no publica entra en NULL: CFT y TEA', () => {
   assert.equal(CONDICION_FONDEFIN_CAPITAL_TRABAJO.cft, null)
   assert.equal(CONDICION_FONDEFIN_CAPITAL_TRABAJO.tea, null)
-  assert.equal(CONDICION_FONDEFIN_CAPITAL_TRABAJO.iva_sobre_intereses, null)
   const d = CONDICION_FONDEFIN_CAPITAL_TRABAJO.desconocido
   assert.ok(d.some((x) => /CFT/.test(x)))
-  assert.ok(d.some((x) => /IVA/.test(x)))
   // El hueco que decide la línea entera va PRIMERO en la lista y primero en las preguntas.
   assert.match(d[0], /excepción/)
   assert.match(CONDICION_FONDEFIN_CAPITAL_TRABAJO.preguntar[0], /DECISIVA/)
+})
+
+// ═══ EL MISMO ORGANISMO NO PUEDE TENER DOS IVAs (13/08/2026) ═══
+// El dato del dueño vale para las DOS líneas de Fiduciaria San Juan. Si cada archivo escribiera su
+// propio literal, dentro de un mes una podría decir 21 y la otra 10,5 sin que nada grite. Por eso el
+// valor se importa de linea-fondefin.mjs y esta aserción custodia que sea el MISMO.
+//
+// CONTRATO CAMBIADO EL 13/08: fijaba 0.21 por la primera respuesta del dueño ("iva 21"). Ese mismo
+// día la corrigió a 10,5% para el informe de rodados, y la corrección arrastra a las DOS líneas —
+// justamente porque comparten origen. Que arrastre es lo que este test prueba.
+test('el IVA es 10,5% y es el MISMO que el de Bienes de Capital: un solo origen', () => {
+  assert.equal(CONDICION_FONDEFIN_CAPITAL_TRABAJO.iva_sobre_intereses, 0.105)
+  assert.equal(CONDICION_FONDEFIN_CAPITAL_TRABAJO.iva_sobre_intereses, IVA_SOBRE_INTERESES)
+  assert.equal(CONDICION_FONDEFIN_CAPITAL_TRABAJO.iva_sobre_intereses, CONDICION_FONDEFIN.iva_sobre_intereses)
+  // El origen y la corrección viajan a la base, igual que en la otra línea.
+  assert.match(CONDICION_FONDEFIN_CAPITAL_TRABAJO.observaciones, /"el iva es del 10,5% en el informe de compra de rodados" el 13\/08\/2026/)
+  assert.match(CONDICION_FONDEFIN_CAPITAL_TRABAJO.observaciones, /CORRIGE una declaración anterior/)
+  // La alícuota dejó de ser pregunta abierta; la PERCEPCIÓN, que es otra cosa, sigue declarada.
+  assert.equal(CONDICION_FONDEFIN_CAPITAL_TRABAJO.preguntar.some((p) => /¿Los intereses llevan IVA\?/.test(p)), false)
+  assert.equal(CONDICION_FONDEFIN_CAPITAL_TRABAJO.preguntar.length, 9) // era 10: se fue la del IVA
+  assert.equal(CONDICION_FONDEFIN_CAPITAL_TRABAJO.desconocido.filter((d) => /PERCEPCIÓN/.test(d)).length, 1)
+  // Y el encuadre que habilitaría la alícuota reducida queda declarado como hueco, no como hecho.
+  assert.ok(CONDICION_FONDEFIN_CAPITAL_TRABAJO.desconocido.some((d) => /Ley 21\.526/.test(d)))
+})
+
+test('con el IVA cargado el costo sigue siendo PISO: falta el CFT y sólo el CFT', () => {
+  const c = costoEfectivo(CONDICION_FONDEFIN_CAPITAL_TRABAJO, { monto: 30_000_000, dias: 365 })
+  assert.equal(c.completitud, 'piso')
+  assert.deepEqual(c.falta, ['cft'])
+  assert.equal(c.intereses, 4_106_250)
+  // Con el 21% eran $862.313 de IVA, $4.968.563 de costo y 16,5619% efectivo.
+  assert.equal(c.iva, 431_156)
+  assert.equal(c.costo_total, 4_537_406)
+  assert.equal(Number((c.costo_efectivo_anual * 100).toFixed(4)), 15.1247)
 })
 
 test('monto y plazo son los del reglamento, no los de la otra línea', () => {
@@ -109,16 +141,23 @@ test('el uso real del descubierto sale del cargo del banco, no del límite del a
 
 test('el ahorro se calcula con el motor y se declara TECHO, no promesa', () => {
   const r = ahorroVsDescubierto(CONDICION_FONDEFIN_CAPITAL_TRABAJO, DESCUBIERTO, { monto: 10_000_000, dias: 365 })
-  // El costo del descubierto lleva su IVA (12%); el de FONDEFIN no lleva ninguno porque no se publica.
+  // El descubierto lleva 10,5% + 1,5% de percepción = 12%; FONDEFIN lleva 21% desde el 13/08/2026.
+  // Antes iba SIN IVA y el ahorro salía inflado en $287.438 sobre estos $10M: eso prueba esta línea.
   assert.equal(r.costo_descubierto, Math.round(10_000_000 * ACUERDO.tna * (1 + TASAS.iva + TASAS.percepcion)))
-  assert.equal(r.costo_fondefin_piso, Math.round(10_000_000 * CONDICION_FONDEFIN_CAPITAL_TRABAJO.tna))
+  assert.equal(r.costo_fondefin_piso, Math.round(10_000_000 * CONDICION_FONDEFIN_CAPITAL_TRABAJO.tna * (1 + IVA_SOBRE_INTERESES)))
+  assert.equal(r.costo_fondefin_piso, 1_512_469) // era 1.656.188 con el IVA al 21%
   // El 2% de entrada SÍ se suma, y fuera de la columna `comisiones`.
   assert.equal(r.gastos_otorgamiento, 200_000)
   assert.equal(r.costo_fondefin_con_entrada, r.costo_fondefin_piso + 200_000)
   assert.equal(r.ahorro, r.costo_descubierto - r.costo_fondefin_con_entrada)
   assert.ok(r.ahorro > 0)
   assert.equal(r.es_techo, true)
-  assert.match(r.advertencia, /IVA sobre intereses/)
+  // Sigue siendo TECHO, pero la advertencia ya no puede decir que le falta el IVA: le falta el resto.
+  assert.equal(/le falta el IVA/.test(r.advertencia), false)
+  assert.match(r.advertencia, /ya incluye el IVA del 10,5%/)
+  // Y la advertencia dice qué pasa si el encuadre no se confirma: el ahorro calculado baja.
+  assert.match(r.advertencia, /Ley 21\.526/)
+  assert.match(r.advertencia, /seguro de vida sobre saldo deudor/)
   // Sin tasa no hay ahorro inventado.
   const sinTasa = ahorroVsDescubierto({ ...CONDICION_FONDEFIN_CAPITAL_TRABAJO, tna: null }, DESCUBIERTO, { monto: 1e6, dias: 30 })
   assert.equal(sinTasa.ahorro, null)

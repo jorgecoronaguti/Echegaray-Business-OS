@@ -83,7 +83,10 @@ test('LAS CINCO TARJETAS ESTÁN, EN ORDEN, Y CADA UNA OCUPA SUS TRES RENGLONES',
   // RIESGO y CUELLO no aparecen: los borró el dueño (huellas selladas en sheet_huella_celda) y la
   // quinta columna de tarjetas (I) queda vacía. El piso sigue en el cierre de la escalera.
   const g = construir()
-  const esperados = ['CAJA DISPONIBLE', 'CAJA COMPROMETIDA', 'LIBRE DISPONIBILIDAD', 'CAJA INVERTIDA', 'SALDO AL CIERRE']
+  // 13/08: las dos del medio se renombraron. El dueño no entendía la suya —*"no sé si es algo q
+  // tengo q cubrir o ya está cubierto"*, *"la 'libre disponibilidad' es negativo lo cual me
+  // confunde"*— y el defecto era del RÓTULO: los números están bien y no se tocó ninguna fórmula.
+  const esperados = ['CAJA DISPONIBLE', 'FALTA PAGAR ESTE MES', 'SI NO COBRÁS MÁS ESTE MES', 'CAJA INVERTIDA', 'SALDO AL CIERRE']
   esperados.forEach((rot, i) => {
     const col = COLS_TARJETA[i]
     assert.equal(celda(g, g.fRotulos, col), rot, `la tarjeta ${i + 1} tiene que ser "${rot}" en la columna ${col}`)

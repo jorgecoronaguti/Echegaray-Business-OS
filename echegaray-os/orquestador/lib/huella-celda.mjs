@@ -55,6 +55,16 @@ import { createHash } from 'node:crypto'
 import { query } from './db.mjs'
 import { VACIO, letraCol, limpiarCentinela } from './preservar-anotaciones.mjs'
 import { MIA_PROBADA } from './no-borrar.mjs'
+import {
+  claveCelda, formaComparable, formaDe, hayContenido, LARGO_FORMA, noReponerAusentes, quiereEscribir,
+} from './huella-forma.mjs'
+
+// EL VOCABULARIO DE LA FORMA SE MUDÓ a `huella-forma.mjs` y se re-exporta desde acá para no romper a
+// quien ya lo importaba. Tuvo que mudarse porque ahora hay DOS veredictos que necesitan la misma
+// noción de "la misma celda": el de acá —posición Y forma, el más fuerte— y el que decide cuando la
+// posición ya no se puede usar. Dos definiciones de "forma" en el archivo que decide qué se puede
+// reescribir del trabajo del dueño es exactamente la duplicación que hay que evitar.
+export { claveCelda, formaComparable, formaDe, hayContenido, quiereEscribir }
 
 /** Cuántas celdas comparables hacen falta para que la alineación sea un juicio y no una casualidad. */
 export const MIN_COMPARABLES = 8
@@ -63,82 +73,11 @@ export const UMBRAL_ALINEACION = 0.6
 /** Desplazamientos de fila que se prueban, del más probable al menos. Una pestaña se corre en bloque. */
 export const DESPLAZAMIENTOS = [0, -1, 1, -2, 2, -3, 3, -5, 5]
 
-/**
- * LA FORMA DE UNA CELDA: su contenido con cada parte variable enmascarada.
- *
- * Es el corazón de la inmunidad al contenido variable. Una fecha, un importe, un porcentaje y un
- * contador se reemplazan por su marca; el resto se normaliza (sin apóstrofo inicial, espacios
- * colapsados, minúsculas). Dos textos "iguales salvo el día" dan la misma forma.
- *
- * Una celda vacía —o el centinela VACIO, que significa "es mía y va vacía"— no tiene forma: devuelve
- * cadena vacía. Ese es el estado que distingue "borrada" de todo lo demás.
- */
-export function formaDe(v) {
-  if (v === undefined || v === null) return ''
-  let s = String(v).replace(/^'/, '').trim()
-  // Los DOS centinelas no tienen forma: ninguno es contenido. `MIA_PROBADA` además nunca puede dejar
-  // huella — si la dejara, la corrida siguiente encontraría "huella propia sobre celda vacía" y
-  // marcaría como borrada por el dueño una celda que limpié yo.
-  if (!s || s === VACIO.trim() || s === VACIO || s === MIA_PROBADA) return ''
-  // Una fórmula se enmascara por sus números: así `=SUMA(B4:B9)` y `=SUMA(B5:B10)` —la misma fórmula
-  // después de insertar una fila— comparten forma y el corrimiento no se lee como una edición.
-  // Y SIN APÓSTROFOS: ver `formaComparable`, la razón por la que la huella no decidía en los dos
-  // Cash Flow. Se saca acá además de en la comparación para que las huellas nuevas nazcan limpias.
-  if (s.startsWith('=')) return formaComparable(`=${s.slice(1).replace(/\d+/g, '#').toLowerCase()}`)
-  s = s
-    .replace(/\d{4}-\d{2}(-\d{2})?/g, '<F>')                       // 2026-08-04 · 2026-08
-    .replace(/\d{1,2}[/-]\d{1,2}([/-]\d{2,4})?/g, '<F>')           // 4/8/2026 · 4-8
-    .replace(/\b(ene|feb|mar|abr|may|jun|jul|ago|sep|set|oct|nov|dic)[a-z]*[-/ ]\d{2,4}\b/gi, '<F>')
-    .replace(/-?\$\s?[\d.]+(,\d+)?/g, '<$>')                       // -$1.234,56
-    .replace(/-?[\d.]+(,\d+)?\s?%/g, '<%>')                        // 12,5%
-    .replace(/-?\b\d[\d.]*(,\d+)?\b/g, '<N>')                      // 1.234,56 · 7
-  return s.replace(/\s+/g, ' ').trim().toLowerCase()
-}
-
-/**
- * LA FORMA, COMO SE COMPARA — sin los apóstrofos que Google agrega por su cuenta.
- *
- * ═══ POR QUÉ EXISTE, Y POR QUÉ ERA EL AGUJERO MÁS GRANDE (13/08) ═══
- *
- * La huella se sella con lo que el generador MANDÓ. Google guarda otra cosa: al nombre de una pestaña
- * que arranca con `_` le pone comillas. El generador escribe `_MOVIMIENTOS!$A$2:$A` y la pestaña
- * devuelve `'_MOVIMIENTOS'!$A$2:$A`. Misma fórmula, forma distinta.
- *
- * Medido hoy contra el Sheet vivo, fracción de huellas que caen donde el mapa dice:
- *
- *     Cash Flow Semanal   0,25   →  0,99 sin apóstrofos
- *     Cash Flow Mensual   0,35   →  0,99
- *     Estructura          0,62   →  0,96
- *     CAJA                0,80   →  0,94
- *
- * `UMBRAL_ALINEACION` es 0,60: en los dos Cash Flow la huella **no decidía nunca**. Todo lo que el
- * dueño borraba ahí volvía en la corrida siguiente, y el motivo quedaba en un `ℹ` que nadie leía. Es
- * exactamente su reclamo —"me las estás volviendo a poner"— y no era falta de huella: era una huella
- * sellada desde la INTENCIÓN y comparada contra el EFECTO.
- *
- * SE NORMALIZAN LOS DOS LADOS AL COMPARAR, no sólo el nuevo: las miles de huellas ya guardadas se
- * escribieron sin apóstrofo, y exigir una migración para que la regla vuelva a funcionar sería dejar
- * el agujero abierto hasta que alguien corra un script.
- *
- * El costo: dos fórmulas que sólo difieren en un apóstrofo comparten forma. Son la misma fórmula.
- */
-export const formaComparable = (f) => String(f ?? '').replace(/'/g, '')
-
 /** Hash corto de la forma. Es la clave que se compara; la forma se guarda al lado como evidencia. */
 export function huellaDe(v) {
   const f = formaComparable(formaDe(v))
   return f ? createHash('sha1').update(f).digest('hex').slice(0, 16) : null
 }
-
-/** ¿El generador quiere ESCRIBIR esta celda? El centinela VACIO cuenta: es una orden de limpiar. */
-export function quiereEscribir(v) {
-  return v === VACIO || formaDe(v) !== ''
-}
-
-/** ¿La celda TIENE algo? Es la única pregunta que decide "borrada": la contesta la lectura FORMULA. */
-export const hayContenido = (v) => formaDe(v) !== ''
-
-export const claveCelda = (fila, col) => `${fila}:${col}`
 
 /**
  * LAS FORMAS DE TEXTO QUE EL GENERADOR ESCRIBE HOY, EN CUALQUIER PARTE DE SU GRILLA.
@@ -252,6 +191,18 @@ export function mejorDesplazamiento(actual = [], huellas = new Map(), opts = {})
  * va a `editadas` y se preserva. Es el caso que separa "limpio lo mío" de "borro lo que escribiste
  * arriba de lo mío", y es la única razón por la que este tercer estado no es un bypass.
  *
+ * ═══ SIN MAPA NO SE ESCRIBE A CIEGAS: SE DECIDE POR FORMA (13/08) ═══
+ *
+ * Hasta hoy, cuando la alineación no alcanzaba el umbral esta función devolvía la grilla INTACTA y el
+ * generador reponía todo — incluido lo que el dueño había vaciado. Falla ABIERTO, y no era un caso de
+ * borde: medido contra el archivo vivo, cuatro pestañas viven por debajo del umbral (Cash Flow
+ * Semanal 0,47, Mensual 0,52, Recurrentes 0,59, _PRESUPUESTO_MENSUAL 0,37) y entre las cuatro tienen
+ * CERO marcas de borrado sobre 5.858 huellas. No es que el dueño no borrara ahí: es que este camino
+ * no podía registrarlo, y por eso su reclamo se repite.
+ *
+ * El veredicto de reemplazo no usa la posición —que es justo lo que no se puede creer— sino la
+ * ausencia de la forma en TODA la pestaña. Vive en `huella-forma.mjs` con sus tres frenos.
+ *
  * @returns {{grid:any[][], suprimidas:Array, ajenas:Array, residuos:Array, limpiadas:Array, editadas:Array, alineacion:object}}
  */
 export function aplicarHuella(generado = [], actual = [], huellas = new Map(), opts = {}) {
@@ -259,7 +210,11 @@ export function aplicarHuella(generado = [], actual = [], huellas = new Map(), o
   const alineacion = mejorDesplazamiento(actual, huellas, opts)
   const suprimidas = []; const ajenas = []; const residuos = []; const limpiadas = []; const editadas = []
   const vacio = { grid: generado, suprimidas, ajenas, residuos, limpiadas, editadas, alineacion }
-  if (!alineacion.alineada) return vacio
+  if (!alineacion.alineada) {
+    const porForma = noReponerAusentes(generado, actual, huellas, { fila0, col0 })
+    suprimidas.push(...porForma.suprimidas)
+    return { ...vacio, grid: porForma.grid, alineacion: { ...alineacion, porForma: porForma.motivo } }
+  }
   const mias = formasDeTextoPropio(generado)
   const grid = generado.map((f, i) => (f || []).map((c, j) => {
     if (!quiereEscribir(c)) return c
@@ -279,7 +234,10 @@ export function aplicarHuella(generado = [], actual = [], huellas = new Map(), o
     // PIDO LIMPIAR MI PROPIA CELDA Y TODAVÍA TIENE LO QUE YO ESCRIBÍ. La forma se compara truncada a
     // 300 porque así se guardó: comparar contra la entera daría falso negativo en un texto largo.
     if (mia && ocupada && c === VACIO) {
-      if (formaComparable(formaDe(hoy).slice(0, 300)) === formaComparable(mia.forma)) {
+      // El truncado ya vive en `formaComparable` —era la causa raíz de que las fórmulas largas no
+      // coincidieran ni consigo mismas— así que acá no se vuelve a cortar a mano. Este camino era el
+      // ÚNICO de los tres que lo tenía; los otros dos comparaban la forma entera contra la sellada.
+      if (formaComparable(formaDe(hoy)) === formaComparable(mia.forma)) {
         limpiadas.push({ fila: fila0 + i, col, mio: String(hoy).slice(0, 60) })
         return MIA_PROBADA
       }
@@ -312,7 +270,10 @@ export function huellasDeEscritura(grid = [], { fila0 = 1, col0 = 0 } = {}) {
   grid.forEach((f, i) => (f || []).forEach((c, j) => {
     const forma = formaDe(c)
     if (!forma) return
-    out.push({ fila: fila0 + i, col: col0 + j, forma: forma.slice(0, 300), huella: huellaDe(c) })
+    // El largo del guardado es una CONSTANTE compartida con la comparación, no un 300 suelto. Cuando
+    // el sellado corta en un largo y la comparación en otro, una fórmula larga deja de coincidir
+    // consigo misma y la huella no decide nunca — es lo que pasó en los dos Cash Flow.
+    out.push({ fila: fila0 + i, col: col0 + j, forma: forma.slice(0, LARGO_FORMA), huella: huellaDe(c) })
   }))
   return out
 }
@@ -460,7 +421,13 @@ export function explicarHuella(pestana, h, log = console.log) {
   if ((h.residuos?.length ?? 0) > 6) log(`      … y ${h.residuos.length - 6} residuos más`)
   for (const l of (h.limpiadas ?? []).slice(0, 6)) log(`  🧹 ${letraCol(l.col)}${l.fila} la escribí yo y ya no va ("${l.mio}"): la limpio`)
   if ((h.limpiadas?.length ?? 0) > 6) log(`      … y ${h.limpiadas.length - 6} celdas mías más que limpio`)
-  if (!h.alineacion.alineada) log(`  ℹ huella por celda sin veredicto en "${pestana}": ${h.alineacion.motivo}`)
+  // SIN MAPA DE POSICIÓN YA NO SE ESCRIBE A CIEGAS, y el mensaje tiene que decir qué se hizo en su
+  // lugar. El `ℹ` a secas se leyó durante meses como "no pasa nada" cuando significaba lo contrario:
+  // que en esa pestaña ningún borrado del dueño se estaba respetando.
+  if (!h.alineacion.alineada) {
+    log(`  ℹ sin mapa de posición en "${pestana}": ${h.alineacion.motivo}`)
+    if (h.alineacion.porForma) log(`     decido por forma (lo que ya no está en ninguna parte): ${h.alineacion.porForma}`)
+  }
 }
 
 /**

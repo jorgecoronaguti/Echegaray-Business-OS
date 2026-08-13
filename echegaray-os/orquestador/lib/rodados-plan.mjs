@@ -116,8 +116,20 @@ export function cuotaFrancesa(capital, tasaMensual, n) {
  * EL IVA DESCONOCIDO NO ES IVA CERO — misma regla que `costoEfectivo`: con `iva: null` el cuadro
  * devuelve `iva: null` por cuota, `esPiso: true` y la cuota es la de capital+interés sin impuesto.
  * Un IVA tratado como cero subestima el egreso hasta 21 puntos sobre los intereses sin decir nada.
+ *
+ * ═══ POR QUÉ `cftPublicado` ES UN PARÁMETRO Y NO UNA CONSTANTE (13/08/2026) ═══
+ *
+ * `esPiso` se resolvía mirando `FONDEFIN.ivaSobreInteresesDeclarado`: una función GENÉRICA leyendo una
+ * constante de UNA fuente puntual. Mientras ese campo fue `null` el defecto quedó tapado, porque
+ * devolvía `true` para todo el mundo y "piso" es el rótulo conservador. Cuando el dueño declaró el
+ * IVA, el mismo renglón empezó a devolver `false` para el cuadro de FONDEFIN — o sea, a afirmar TOTAL
+ * sobre un crédito al que le faltan el CFT, el sellado, el seguro de vida sobre saldo deudor y la
+ * tasación. Un dato que llega convertía un piso en un total sin que nadie lo decidiera.
+ *
+ * Lo que separa un piso de un total NO es el IVA: es el CFT. Así que se pregunta por él, y quien llama
+ * dice si su fuente lo publica. Sin CFT, piso — aunque el IVA esté declarado.
  */
-export function cuadroFrances(capital, tnaAnual, { cuotas, gracia = 0, iva = null } = {}) {
+export function cuadroFrances(capital, tnaAnual, { cuotas, gracia = 0, iva = null, cftPublicado = null } = {}) {
   const c = Number(capital)
   const i = Number(tnaAnual) / MESES_ANIO
   const n = Math.trunc(Number(cuotas))
@@ -139,7 +151,7 @@ export function cuadroFrances(capital, tnaAnual, { cuotas, gracia = 0, iva = nul
     totalPagado: filas.reduce((s, f) => s + f.cuota, 0),
     totalIntereses: filas.reduce((s, f) => s + f.interes, 0),
     totalIva: iva == null ? null : filas.reduce((s, f) => s + f.iva, 0),
-    esPiso: iva == null || FONDEFIN.ivaSobreInteresesDeclarado == null,
+    esPiso: iva == null || cftPublicado == null,
   }
 }
 
@@ -215,9 +227,11 @@ export function gastosRetiroC31(c31 = C31, c32 = C32) {
 }
 
 /** El plan armado: las tres unidades con su cuadro de cuotas y su calendario. */
-export function planDeTresUnidades({ inflacionMensual, ivaFondefin = FONDEFIN.ivaSobreInteresesSupuesto } = {}) {
+export function planDeTresUnidades({ inflacionMensual, ivaFondefin = FONDEFIN.ivaSobreIntereses } = {}) {
   const inf = inflacionMensual ?? inflacionDeTrabajo().mensual
   const solicitado = montoASolicitar(C31.precioLista)
+  // Sin `cftPublicado`: el ROP no publica CFT y le faltan sellos, seguro de vida y tasación. El cuadro
+  // de FONDEFIN es un PISO aunque el IVA ya tenga dueño y fecha.
   const cuadroF = cuadroFrances(solicitado, FONDEFIN.tna, {
     cuotas: FONDEFIN.cuotasTotales, gracia: FONDEFIN.cuotasDeGracia, iva: ivaFondefin,
   })

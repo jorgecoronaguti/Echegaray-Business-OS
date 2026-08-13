@@ -56,13 +56,15 @@
 // el hecho. Ahí se le pone límite, se declara la fuente de la aprobación y el test de abajo se
 // actualiza con esa evidencia. Hasta entonces, límite null.
 
-import { FACTOR_BADLAR, BADLAR_REFERENCIA, tnaFondefin } from './linea-fondefin.mjs'
+import { FACTOR_BADLAR, BADLAR_REFERENCIA, tnaFondefin, IVA_SOBRE_INTERESES, OBSERVACION_IVA } from './linea-fondefin.mjs'
 import { costoEfectivo } from './condiciones-financieras.mjs'
 import { TASAS } from './costo-descubierto.mjs'
 
 // La fórmula de la tasa NO se redefine acá: es la misma del organismo y vive en linea-fondefin.mjs.
-// Re-exportada para que quien use esta línea no tenga que saber en qué archivo nació.
-export { FACTOR_BADLAR, BADLAR_REFERENCIA, tnaFondefin }
+// Re-exportada para que quien use esta línea no tenga que saber en qué archivo nació. Lo mismo vale
+// para el IVA sobre intereses: es el mismo organismo, es el mismo dato del dueño, y escribirlo dos
+// veces habilita que dentro de un mes una línea diga 21 y la otra 10,5.
+export { FACTOR_BADLAR, BADLAR_REFERENCIA, tnaFondefin, IVA_SOBRE_INTERESES }
 
 /** El costo de ENTRADA que la línea cobra una vez y no está en la TNA (fracción del desembolso). */
 export const GASTOS_OTORGAMIENTO = 0.02
@@ -137,9 +139,11 @@ export const USO_REAL_DESCUBIERTO = {
  * NÚCLEO PURO: cuánto se ahorraría financiando lo mismo con FONDEFIN en vez del descubierto.
  *
  * Usa el motor del OS (`costoEfectivo`) sobre las dos condiciones vivas — no reimplementa la
- * aritmética de tasas. Devuelve el ahorro CON SU SIGNO DE HONESTIDAD: el costo de FONDEFIN es un
- * PISO (no tiene cargado el IVA sobre intereses, que el ROP no publica, ni el 2% de otorgamiento,
- * que es un cargo de entrada y no una tasa), así que el ahorro calculado es un TECHO.
+ * aritmética de tasas. Devuelve el ahorro CON SU SIGNO DE HONESTIDAD: el costo de FONDEFIN sigue
+ * siendo un PISO, así que el ahorro calculado sigue siendo un TECHO — pero un techo MÁS BAJO desde
+ * el 13/08/2026, porque el IVA del 10,5% que declaró el dueño ya entra por `costoEfectivo` y el 2% de
+ * otorgamiento se suma acá. Lo que todavía falta del lado de FONDEFIN: el sellado, el seguro de vida
+ * sobre saldo deudor, la tasación y una eventual percepción de IVA. Nada de eso está publicado.
  *
  * @param {object} fondefin fila de condiciones_financieras de la línea FONDEFIN
  * @param {object} descubierto fila de condiciones_financieras del acuerdo de descubierto
@@ -165,7 +169,7 @@ export function ahorroVsDescubierto(fondefin, descubierto, { monto = 0, dias = 0
     ahorro: Math.round(d.costo_total - costoFondefinConEntrada),
     es_techo: true,
     advertencia:
-      'TECHO, no promesa: al costo de FONDEFIN le falta el IVA sobre intereses (el ROP no lo trata y la Fiduciaria no es entidad de la Ley 21.526, así que no se puede asumir el 10,5% bancario), el sellado, el seguro de vida sobre saldo deudor y la tasación. Y sólo se materializa si el Comité admite por excepción un destino que el punto 2.2.3 excluye.',
+      'TECHO, no promesa: el costo de FONDEFIN ya incluye el IVA del 10,5% sobre intereses (declaración del dueño del 13/08/2026, no del ROP, y sin verificar contra la norma) y el 2% de gastos de otorgamiento, pero todavía le faltan el sellado, el seguro de vida sobre saldo deudor, la tasación y una eventual percepción de IVA. Si el encuadre bajo la Ley 21.526 no se confirma, el IVA vuelve al 21% y este ahorro baja. Y sólo se materializa si el Comité admite por excepción un destino que el punto 2.2.3 excluye.',
     fondefin: f,
     descubierto: d,
   }
@@ -213,7 +217,7 @@ const FICHA = {
   // La TNA la pone `condicionConBadlar`: no vive acá para que no se pueda pegar a mano.
   tea: null, // no publicada; derivarla exigiría fijar la capitalización, que el ROP no da
   cft: null, // no publicado y NO derivable: faltan seguro de vida, sellado y tasación
-  iva_sobre_intereses: null, // el ROP no lo trata y la Fiduciaria no es entidad de la Ley 21.526
+  iva_sobre_intereses: IVA_SOBRE_INTERESES, // 10,5% — dato del dueño 13/08/2026, no del ROP
   // `comisiones` y `gastos` son MONTOS EN PESOS, no porcentajes (así los usa costoEfectivo). El 2%
   // de otorgamiento es una fracción del desembolso: va en GASTOS_OTORGAMIENTO y en observaciones.
   comisiones: null,
@@ -234,6 +238,7 @@ const FICHA = {
     'EL DESTINO EXCLUYE LA ACTIVIDAD DE LA EMPRESA — es lo primero que hay que saber de esta línea. El punto 2.2.3 financia "Mercadería", "insumos necesarios para brindar servicio" e "insumos o materia prima necesarios para producción", pero en la misma página excluye "Obras Civiles de Ningún tipo", definidas "sin carácter limitativo" como toda construcción, reparación, ampliación, modificación, mantenimiento o demolición de infraestructura, incluidos los "trabajos de ingeniería o arquitectura que impliquen la ejecución material de proyectos constructivos", y también "Construcción, refacción y/o compra-venta de inmuebles". Los materiales de obra de Echegaray caen del lado excluido. LECTURA DEL OS, no confirmación de la Fiduciaria: el punto 4.4 faculta al Comité a admitir excepciones justificadas, y eso se pregunta.',
     'TAMPOCO FINANCIA, por nombre expreso (2.2.3): combustibles; cargas sociales, aportes, sueldos y jornales; impuestos, servicios y FLETES; pasivos anteriores a la solicitud; deudas financieras, impositivas, laborales o previsionales; indemnizaciones; moneda extranjera, acciones y títulos; terrenos e inmuebles. Es decir: los cuatro usos típicos de un bache de caja de esta empresa están cerrados.',
     'TASA: el ROP no fija un número, fija una FÓRMULA — "60% de la Tasa Badlar en Pesos para Bancos Privados publicada por el BCRA vigente a la fecha del acta de Comité Ejecutivo que apruebe la solicitud" (2.2.4.1). {TASA} del 11/08/2026: es una FOTO, no la tasa del crédito. La Badlar osciló entre 20,875% y 22,8125% en las últimas 3 semanas → la misma línea sale entre 12,53% y 13,69% según el día del acta. Recalcular con tnaFondefin(badlar) antes de decidir con este número.',
+    OBSERVACION_IVA,
     'MONTO: hasta $30.000.000 (2.2.2), que es el TECHO del reglamento y no una línea aprobada. Para responsable inscripto el monto sale de una cuenta: promedio de ventas netas de las últimas 6 DDJJ de IVA ante ARCA → margen estimado de utilidad del 40% sobre ese promedio → la CUOTA mensual (capital + intereses) no puede superar el 35% de ese margen, restando los compromisos financieros ya informados en el sistema crediticio.',
     'PLAZO: hasta 18 meses TOTALES (2.2.6), con hasta 3 cuotas de gracia de capital y hasta 15 de capital. Es un plazo corto para el tamaño del crédito: con $30.000.000 a 15 cuotas la amortización de capital sola es ~$2.000.000 por mes.',
     'COSTOS QUE NO ESTÁN EN LA TNA y hacen que el CFT real sea mayor: 2% de gastos de otorgamiento detraído del total desembolsado (DDJJ de conocimiento de condiciones, punto 8: "del total desembolsado se detraerá un dos por ciento (2%) en concepto de gastos de otorgamiento"); impuesto de sellos a cargo del tomador (4.7); todo impuesto, tasa o gravamen sobre el crédito, más los gastos de análisis —informes técnicos, tasaciones, verificaciones, auditorías— y los costos de inscripción de las garantías, TODOS deducidos del primer desembolso (4.8); y un seguro de vida sobre saldo deudor que la Fiduciaria PODRÁ contratar por cuenta y orden del tomador, a su exclusivo cargo (4.9). El ROP no publica CFT y con esto no se puede calcular: faltan los montos del seguro y de la tasación.',
@@ -247,7 +252,8 @@ const FICHA = {
   desconocido: [
     'si el Comité admite por excepción (4.4) financiar materiales destinados a obra civil — ES LA PREGUNTA QUE DECIDE SI LA LÍNEA SIRVE',
     'CFT — no publicado y no derivable: faltan el monto del seguro de vida sobre saldo deudor, el sellado y la tasación',
-    'IVA sobre intereses — el ROP no lo trata; Fiduciaria SAPEM no es entidad de la Ley 21.526, así que no se puede asumir el 10,5% bancario',
+    'si el mutuo de Fiduciaria San Juan SAPEM encuadra bajo la Ley 21.526 — de eso depende que la alícuota declarada por el dueño (10,5%) sea la correcta o vuelva a ser la general del 21%: lo confirma el estudio contable, no el OS',
+    'si además del IVA (10,5%, declaración del dueño del 13/08/2026 que corrigió su propio 21% del mismo día) la Fiduciaria factura alguna PERCEPCIÓN de IVA sobre los intereses — el ROP no lo trata y no se asume ni que la haya ni que no: son 1,5 puntos sobre intereses en el caso del banco',
     'si la tasa queda FIJA al acta de aprobación o se reajusta con la Badlar durante los 18 meses',
     'sistema de amortización de las cuotas (francés, alemán u otro)',
     'si el crédito cubre el presupuesto del proveedor con IVA o sólo el neto',
@@ -261,7 +267,6 @@ const FICHA = {
   preguntar: [
     'PRIMERO Y DECISIVA: una constructora que compra cemento, hierro y hormigón para ejecutar sus obras, ¿puede tomar Capital de Trabajo? El 2.2.3 financia "insumos o materia prima para producción" pero excluye "Obras Civiles de Ningún tipo". Si la respuesta es no, ¿el Comité admite la excepción del 4.4 y con qué justificación? — TODO lo demás depende de esto',
     '¿La tasa (60% de Badlar) queda FIJA a la fecha del acta de aprobación o se reajusta durante los 18 meses?',
-    '¿Los intereses llevan IVA? ¿Al 21% o al 10,5%? — si son 21%, el costo efectivo sube ~2,9 puntos',
     '¿Cuánto tarda hoy, en la práctica, desde que se presenta la carpeta completa hasta el desembolso? — el dueño maneja 4 meses para la otra línea y el reglamento no publica plazo',
     '¿Se puede tomar Capital de Trabajo y Bienes de Capital a la vez, o una traba a la otra? (2.1.2 lo deja a criterio del Comité)',
     '¿Se puede cancelar anticipadamente y con qué costo? — con plazo de 18 meses y tasa fija, importa',

@@ -7,7 +7,7 @@ import {
 } from './rodados-plan.mjs'
 import { C31, C32, CAJA, CORRECCION_USD, FONDEFIN, PRENDARIO_FORD, UVA } from './rodados-plan-datos.mjs'
 import { IPC } from './ipc-publicado.mjs'
-import { CONDICION_FONDEFIN } from './linea-fondefin.mjs'
+import { CONDICION_FONDEFIN, IVA_SOBRE_INTERESES } from './linea-fondefin.mjs'
 
 const CENTAVO = 0.01
 
@@ -92,16 +92,35 @@ test('la GRACIA no es gratis: no amortiza y encarece el total', () => {
 })
 
 test('el IVA DESCONOCIDO no es IVA cero: el cuadro devuelve null y se declara PISO', () => {
-  // Misma regla que costoEfectivo en condiciones-financieras.mjs. El ROP de FONDEFIN no publica el
-  // IVA sobre intereses: tratarlo como 0 subestimaría el egreso 21 puntos sin decir una palabra.
-  assert.equal(CONDICION_FONDEFIN.iva_sobre_intereses, null)
+  // Misma regla que costoEfectivo en condiciones-financieras.mjs. Tratar un IVA desconocido como 0
+  // subestimaría el egreso hasta 21 puntos de los intereses sin decir una palabra.
   const c = cuadroFrances(30_000_000, 0.136875, { cuotas: 48, gracia: 6, iva: null })
   assert.equal(c.filas[0].iva, null)
   assert.equal(c.totalIva, null)
   assert.equal(c.esPiso, true)
   assert.equal(c.filas[0].cuota, c.filas[0].interes, 'sin IVA declarado la cuota de gracia es sólo interés')
-  // Y aunque se le PASE un IVA, sigue siendo piso: el declarado en la fuente sigue en null.
+})
+
+// ═══ EL DEFECTO QUE DESTAPÓ LA CORRECCIÓN DEL IVA (13/08/2026) ═══
+//
+// `esPiso` se resolvía leyendo `FONDEFIN.ivaSobreInteresesDeclarado` desde una función genérica.
+// Mientras ese campo fue null devolvía `true` para todos y el defecto no se veía. En cuanto el dueño
+// declaró el IVA, el MISMO renglón empezó a devolver `false` para el cuadro de FONDEFIN — o sea, a
+// afirmar TOTAL sobre un crédito sin CFT, sin sellos, sin seguro de vida y sin tasación. Un dato que
+// llega no puede convertir un piso en un total.
+//
+// Si alguien vuelve a atar `esPiso` al IVA en vez de al CFT, este test se pone rojo.
+test('lo que separa un PISO de un TOTAL es el CFT, no el IVA', () => {
+  const conIvaSinCft = cuadroFrances(30_000_000, 0.136875, { cuotas: 48, gracia: 6, iva: 0.105 })
+  assert.equal(conIvaSinCft.esPiso, true, 'con IVA declarado pero sin CFT sigue siendo un PISO')
   assert.equal(cuadroFrances(30_000_000, 0.136875, { cuotas: 48, gracia: 6, iva: 0.21 }).esPiso, true)
+  // Con CFT publicado sí es un total — y ése es el caso del prendario de mercado.
+  assert.equal(cuadroFrances(30_000_000, 0.389, { cuotas: 48, iva: 0, cftPublicado: 0.651 }).esPiso, false)
+  // Pero un CFT publicado NO tapa un IVA desconocido: siguen siendo dos huecos distintos.
+  assert.equal(cuadroFrances(30_000_000, 0.389, { cuotas: 48, iva: null, cftPublicado: 0.651 }).esPiso, true)
+  // Y el cuadro real de FONDEFIN, que no tiene CFT, se declara PISO aunque el IVA tenga dueño y fecha.
+  assert.equal(CONDICION_FONDEFIN.cft, null)
+  assert.equal(planDeTresUnidades().unidades[1].cuadro.esPiso, true)
 })
 
 test('la UVA 0% cuesta CERO EN TÉRMINOS REALES: el valor presente es el capital exacto', () => {
@@ -194,9 +213,13 @@ test('las fuentes se ordenan por TASA REAL y FONDEFIN queda primera', () => {
   const desc = f.find((x) => x.clave === 'descubierto')
   assert.equal(desc.esPiso, false, 'el descubierto es la única con CFT publicado e IVA verificado')
   assert.equal(f.find((x) => x.clave === 'fondefin').esPiso, true, 'FONDEFIN sin CFT: es un PISO')
-  // La TNA con IVA de FONDEFIN: 13,6875% × 1,21. El IVA es SUPUESTO, y por eso viaja marcado.
-  assert.ok(Math.abs(f[0].tnaConIva - 0.16561875) < 1e-9)
-  assert.equal(f[0].ivaEsSupuesto, true)
+  // La TNA con IVA de FONDEFIN: 13,6875% × 1,105 = 15,1247%. Con el 21% del contrato anterior era
+  // 16,5619%. El IVA ya NO es un supuesto del OS —lo declaró el dueño el 13/08— pero tampoco está
+  // verificado contra la norma, y eso tiene que llegar impreso a la tabla.
+  assert.ok(Math.abs(f[0].tnaConIva - 0.151246875) < 1e-9, `tnaConIva=${f[0].tnaConIva}`)
+  assert.equal(f[0].ivaEsSupuesto, false)
+  assert.match(f[0].ivaNota, /dueño/)
+  assert.match(f[0].ivaNota, /no verificado/)
 })
 
 test('el calendario de cuotas ubica la gracia y avisa qué cuotas del Ford no están en el Sheet', () => {
@@ -221,8 +244,14 @@ test('el calendario de cuotas ubica la gracia y avisa qué cuotas del Ford no es
 test('lo que no se sabe viaja como DESCONOCIDO, nunca como cero', () => {
   assert.equal(C31.gastosRetiro, null)
   assert.ok(C31.desconocido.length >= 3)
-  assert.equal(FONDEFIN.ivaSobreInteresesDeclarado, null, 'el ROP no publica el IVA sobre intereses')
-  assert.equal(FONDEFIN.ivaSobreInteresesSupuesto, 0.21, 'se calcula con el techo: el error caro es subestimar')
+  assert.equal(FONDEFIN.ivaPublicadoPorElRop, null, 'el ROP no publica el IVA sobre intereses')
+  // El IVA con el que se calcula NO es un supuesto del OS ni sale de un literal de este archivo: lo
+  // declaró el dueño y vive UNA sola vez, en linea-fondefin.mjs. Dos literales fue el defecto que
+  // casi deja la tabla 3 y la tabla 7 del mismo informe con dos costos distintos del mismo crédito.
+  assert.equal(FONDEFIN.ivaSobreIntereses, IVA_SOBRE_INTERESES)
+  assert.equal(FONDEFIN.ivaSobreIntereses, CONDICION_FONDEFIN.iva_sobre_intereses)
+  assert.equal(FONDEFIN.ivaSobreIntereses, 0.105, 'dato del dueño 13/08/2026, corrige su propio 21%')
+  assert.equal(FONDEFIN.origenIva.verificado_contra_la_norma, false, 'tener padre no es estar verificado')
   assert.equal(CONDICION_FONDEFIN.cft, null, 'sin CFT, todo número de FONDEFIN es un PISO')
   assert.ok(CORRECCION_USD.estado.includes('todavía no aplicada'))
   assert.ok(CAJA.acuerdoDescubierto > 0 && CAJA.semanaMasAjustada.cierre > 0)

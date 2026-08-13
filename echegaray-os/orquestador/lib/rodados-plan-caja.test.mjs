@@ -138,6 +138,28 @@ test('el prendario de mercado cuesta MUCHO más que FONDEFIN, en nominal y en pe
   assert.ok(Math.abs(a.vpDelBien * (1 + planDeTresUnidades().inflacionMensual) ** 4 - a.precioDeLasDos) < 1)
 })
 
+// ═══ DOS TABLAS DEL MISMO INFORME NO PUEDEN COBRAR DOS IVAs (13/08/2026) ═══
+//
+// El defecto: `alternativasParaLasDos` tenía un `iva: 0.21` TIPEADO A MANO, mientras la tabla 3 usaba
+// `FONDEFIN.ivaSobreIntereses`. Mientras los dos literales dijeron 21 nadie lo vio. El día que el
+// dueño corrigió la alícuota a 10,5%, la tabla 3 y la tabla 7 del MISMO informe habrían mostrado dos
+// costos distintos del mismo crédito, y el que decide no tiene forma de saber cuál mirar.
+//
+// El cuadro de las dos unidades es lineal en el capital: con el mismo IVA tiene que dar exactamente
+// el doble de una. Si alguien vuelve a tipear una alícuota acá, este test se pone rojo.
+test('la tabla 7 y la tabla 3 cobran el MISMO IVA: una sola fuente, no dos literales', () => {
+  const plan = planDeTresUnidades()
+  const unaUnidad = plan.unidades[1].cuadro
+  const dos = alternativasParaLasDos({ plan }).alternativas.find((x) => x.clave === 'fondefin')
+  assert.ok(Math.abs(dos.totalPagado - unaUnidad.totalPagado * 2) < PESO,
+    `dos unidades ${dos.totalPagado} vs 2 × una ${unaUnidad.totalPagado * 2}: hay dos IVAs distintos`)
+  assert.equal(dos.capital, unaUnidad.capital * 2)
+  // Y sigue siendo un PISO: sin CFT no hay total, por mucho que el IVA ya tenga dueño y fecha.
+  assert.equal(dos.esPiso, true)
+  // El prendario, que SÍ publica CFT, es el único de los tres que no lo es.
+  assert.equal(alternativasParaLasDos({ plan }).alternativas.find((x) => x.clave === 'prendario-mercado').esPiso, false)
+})
+
 test('cada mes de demora tiene un precio, y es distinto del costo de cambiar de fuente', () => {
   const d = costoDeLaDemora()
   const unMes = d.porMesDeEsperaEnElPrecio[0]
