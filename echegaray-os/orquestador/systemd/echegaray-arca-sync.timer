@@ -15,10 +15,19 @@ Description=Echegaray OS - Sync ARCA semanal (lunes 03:00) — el plan free da 1
 # gastar, el script consulta orquestador/lib/afipsdk-presupuesto.mjs y se niega si no alcanza,
 # reservando 2 automatizaciones para una corrida manual del dueño.
 #
-# ESE GUARDIÁN NO EXISTÍA HASTA EL 07/08, aunque este comentario lo prometía desde el 31/07. Ahora
-# existe, y con un límite importante declarado en su encabezado: AfipSDK NO expone endpoint de cuota
-# (se buscó), así que el contador es LOCAL y cuenta lo que gastó esta máquina. La reserva es el margen
-# para lo que el contador no ve.
+# ESE GUARDIÁN NO EXISTÍA HASTA EL 07/08, aunque este comentario lo prometía desde el 31/07.
+#
+# Y desde el 13/08 la cuota YA NO SE ESTIMA: se le pregunta al proveedor. `GET /api/v1/projects` con el
+# ACCOUNT_TOKEN devuelve `automation_limit` y `current_period_automation_usage` reales, y el período de
+# facturación (del 10 al 10, NO el mes calendario). El contador local quedó como plan B declarado.
+#
+# El 07/08 se había concluido que ese endpoint no existía: se lo buscó con el ACCESS_TOKEN, que es la
+# llave de las automatizaciones y no la del panel. Dos tokens, dos puertas.
+#
+# Del 03/08 al 13/08 este timer corrió y no bajó NADA: la sonda de credencial probaba `GET
+# /api/v1/automations`, un verbo que ese endpoint contesta 401 siempre, y el sync leía ese 401 como
+# token vencido. El token estaba sano. Ahora la sonda usa el mismo verbo y el mismo endpoint que la
+# descarga real (POST con cuerpo vacío, que no crea nada y no consume cuota).
 OnCalendar=Mon 03:00:00
 Persistent=true
 

@@ -11,9 +11,28 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   ventanaDe, contarEnVentana, decidir, presupuesto, registrarConsumo, leerUso, credencialAceptada,
+  leerSonda, parsearCredenciales, leerCredenciales, proyectoDeRespuesta, cuotaDeProyecto, cuotaDelProveedor,
 } from './afipsdk-presupuesto.mjs'
 
 const tmp = async (nombre) => join(await mkdtemp(join(tmpdir(), 'afipsdk-')), nombre)
+
+/** Una respuesta de fetch de mentira. Los tokens de los tests son inventados, nunca los reales. */
+const respuesta = (status, cuerpo = '') => ({
+  status,
+  text: async () => (typeof cuerpo === 'string' ? cuerpo : JSON.stringify(cuerpo)),
+  json: async () => (typeof cuerpo === 'string' ? JSON.parse(cuerpo) : cuerpo),
+})
+
+/** El proyecto tal como lo devolvió el panel el 13/08 (forma, no valores). */
+const PROYECTO = {
+  id: 'proyecto-de-prueba',
+  name: 'Echegaray OS',
+  subscription_status: 'active',
+  automation_limit: 10,
+  current_period_automation_usage: 0,
+  current_period_start: '2026-08-10T00:00:00.000Z',
+  current_period_end: '2026-09-10T00:00:00.000Z',
+}
 
 // ── EL CONTEO ────────────────────────────────────────────────────────────────────────────────────
 
@@ -91,27 +110,71 @@ test('la bitácora se poda: no crece para siempre', async () => {
 })
 
 // ── LA CREDENCIAL ────────────────────────────────────────────────────────────────────────────────
+//
+// EL DEFECTO QUE ESTOS TESTS CIERRAN (03–13/08): la sonda probaba `GET /api/v1/automations` con el
+// ACCESS_TOKEN. Ese verbo sobre ese endpoint devuelve 401 SIEMPRE —con token sano o podrido— y el
+// sync lo leyó como "la credencial no sirve" durante diez días. Medido el 13/08 con las credenciales
+// reales: GET → 401, POST con cuerpo vacío → 400 de validación de campos. El token estaba perfecto.
 
-test('un 401 BLOQUEA la corrida antes de gastar cuota — es lo que pasó el 03/08', () => {
-  // Verificado el 07/08 contra la API real: GET /api/v1/automations con el token del OS devuelve
-  // 401 {"message":"El token proporcionado es invalido."}. Sin este preflight, el sync quema la
-  // corrida semanal contra un token muerto y el journal se queda sin el motivo.
-  const fetchImpl = async () => ({ status: 401, text: async () => '{"message":"El token proporcionado es invalido."}' })
-  return credencialAceptada({ token: 'x', fetchImpl }).then((r) => {
-    assert.equal(r.ok, false)
-    assert.equal(r.status, 401)
-    assert.match(r.motivo, /token proporcionado es invalido/)
-    assert.match(r.motivo, /REFRESH_TOKEN/, 'tiene que decir cómo se arregla')
+test('LA SONDA USA LA MISMA CERRADURA QUE LA DESCARGA: POST, no GET, y con cuerpo que no crea nada', async () => {
+  // Un GET acá es el bug entero. Y el cuerpo tiene que ser inválido a propósito: sin `automation`,
+  // el servidor rechaza en validación y NO crea automatización, así que la sonda no gasta cuota.
+  let visto = null
+  await credencialAceptada({
+    token: 'token-de-prueba',
+    fetchImpl: async (url, opts) => { visto = { url, opts }; return respuesta(400, '{}') },
   })
+  assert.equal(visto.opts.method, 'POST')
+  assert.equal(visto.url, 'https://app.afipsdk.com/api/v1/automations')
+  assert.deepEqual(JSON.parse(visto.opts.body), {}, 'el cuerpo no puede nombrar ninguna automatización')
+  assert.equal(visto.opts.headers.Authorization, 'Bearer token-de-prueba')
 })
 
-test('la sonda NO bloquea por un error que no habla del token', async () => {
-  // Un 500 de AfipSDK o un timeout no prueban que la credencial esté mal. Negarse ahí dejaría el sync
-  // muerto por una causa que no es.
-  const cae = await credencialAceptada({ token: 'x', fetchImpl: async () => { throw new Error('ETIMEDOUT') } })
+test('400 de validación = LA CREDENCIAL SIRVE: pasó autenticación y murió en el cuerpo', async () => {
+  // La respuesta real del 13/08 con el token bueno.
+  const cuerpo = '{"statusCode":400,"data_errors":{"automation":"El campo Automatización es obligatorio"}}'
+  const r = await credencialAceptada({ token: 'token-de-prueba', fetchImpl: async () => respuesta(400, cuerpo) })
+  assert.equal(r.ok, true)
+  assert.equal(r.verificada, true)
+  assert.match(r.motivo, /PASÓ autenticación/)
+  assert.match(r.motivo, /El campo Automatización es obligatorio/, 'tiene que citar lo que contestó el servidor')
+})
+
+test('401 BLOQUEA — y el mensaje dice qué se probó, contra qué endpoint y qué respondió', async () => {
+  // El mensaje viejo decía "hay que renovar el ACCESS_TOKEN" ante CUALQUIER 401 y mandó al dueño tres
+  // veces a renovar un token sano. Ahora el 401 llega por la misma llamada que hace la descarga, así
+  // que sí prueba algo — y el texto tiene que mostrar la prueba, no la conclusión sola.
+  const r = await credencialAceptada({
+    token: 'token-de-prueba',
+    fetchImpl: async () => respuesta(401, '{"message":"El token proporcionado es invalido."}'),
+  })
+  assert.equal(r.ok, false)
+  assert.equal(r.status, 401)
+  assert.equal(r.verificada, true)
+  assert.match(r.motivo, /POST https:\/\/app\.afipsdk\.com\/api\/v1\/automations/, 'tiene que decir qué probó')
+  assert.match(r.motivo, /token proporcionado es invalido/, 'tiene que decir qué respondió')
+  assert.match(r.motivo, /misma llamada que hace la descarga real/, 'tiene que decir por qué este 401 sí prueba')
+})
+
+test('un 500 es NO SÉ, no ES MALA: no aborta y queda declarado como no verificado', async () => {
+  const err500 = await credencialAceptada({ token: 'token-de-prueba', fetchImpl: async () => respuesta(500, 'Internal Server Error') })
+  assert.equal(err500.ok, true, 'un 500 no puede abortar el sync como si fuera credencial inválida')
+  assert.equal(err500.verificada, false, 'y tampoco puede pasar por credencial verificada')
+  assert.match(err500.motivo, /NO SÉ/)
+
+  const cae = await credencialAceptada({ token: 'token-de-prueba', fetchImpl: async () => { throw new Error('ETIMEDOUT') } })
   assert.equal(cae.ok, true)
-  const err500 = await credencialAceptada({ token: 'x', fetchImpl: async () => ({ status: 500, text: async () => '' }) })
-  assert.equal(err500.ok, true)
+  assert.equal(cae.verificada, false)
+})
+
+test('un 401 sigue bloqueando aunque el cuerpo no se pueda leer', async () => {
+  // No poder leer el eco no cambia el status: la lectura sale del 401, no de la prosa.
+  const r = await credencialAceptada({
+    token: 'token-de-prueba',
+    fetchImpl: async () => ({ status: 401, text: async () => { throw new Error('stream roto') } }),
+  })
+  assert.equal(r.ok, false)
+  assert.equal(r.status, 401)
 })
 
 test('sin token no se sondea nada: se dice que falta', async () => {
@@ -120,10 +183,116 @@ test('sin token no se sondea nada: se dice que falta', async () => {
   assert.match(r.motivo, /no hay ACCESS_TOKEN/)
 })
 
-test('la sonda es READ-ONLY: método GET y ninguna creación de automatización', async () => {
-  // Una sonda que creara una automatización para averiguar si queda cuota sería el chiste completo.
+test('la lectura de la sonda es pura y cubre los cuatro casos', () => {
+  assert.deepEqual(
+    [401, 400, 200, 503].map((s) => leerSonda({ status: s }).ok),
+    [false, true, true, true],
+  )
+  assert.deepEqual(
+    [401, 400, 200, 503].map((s) => leerSonda({ status: s }).verificada),
+    [true, true, true, false],
+  )
+  // Un 2xx autentica pero rompe el contrato esperado: se sigue, y se avisa.
+  assert.match(leerSonda({ status: 201 }).motivo, /el contrato cambió/)
+})
+
+// ── LOS DOS TOKENS SON DE PUERTAS DISTINTAS ──────────────────────────────────────────────────────
+
+test('el archivo de credenciales da las TRES claves, y los comentarios no son claves', async () => {
+  const archivo = await tmp('cred.txt')
+  await writeFile(archivo, [
+    '# ACCESS_TOKEN = token del PROYECTO (lo usan las automations).',
+    'ACCESS_TOKEN=aaa',
+    '# Token de CUENTA (dashboard) y refresh.',
+    'ACCOUNT_TOKEN=bbb',
+    'REFRESH_TOKEN=ccc',
+    'PROJECT_ID=ddd',
+    '',
+  ].join('\n'), 'utf8')
+  assert.deepEqual(await leerCredenciales(archivo), { accessToken: 'aaa', accountToken: 'bbb', projectId: 'ddd' })
+  // Un archivo que no está no explota: devuelve las tres en null y quien llama decide.
+  assert.deepEqual(await leerCredenciales(await tmp('no-existe.txt')), { accessToken: null, accountToken: null, projectId: null })
+  // Una línea comentada NUNCA se toma como valor: el archivo real tiene un comentario que empieza
+  // con "# ACCESS_TOKEN =" y leerlo como clave devolvería la descripción en vez del token.
+  assert.equal(parsearCredenciales('# ACCESS_TOKEN = esto es prosa\n').accessToken, null)
+})
+
+// ── LA CUOTA REAL DEL PROVEEDOR ──────────────────────────────────────────────────────────────────
+
+test('la cuota sale de AFIPSDK, no del contador local: usadas y límite reales', async () => {
   let visto = null
-  await credencialAceptada({ token: 'x', fetchImpl: async (url, opts) => { visto = { url, opts }; return { status: 200, text: async () => '' } } })
+  const p = await presupuesto({
+    pedido: 2,
+    accountToken: 'account-de-prueba',
+    projectId: 'proyecto-de-prueba',
+    fetchImpl: async (url, opts) => { visto = { url, opts }; return respuesta(200, { data: [PROYECTO] }) },
+    archivo: await tmp('no-se-usa.json'),
+  })
+  assert.equal(p.fuente, 'proveedor')
+  assert.equal(p.ok, true)
+  assert.equal(p.usadas, 0)
+  assert.equal(p.disponible, 8, '10 del proveedor − 2 de reserva − 0 usadas')
+  assert.equal(p.ventana, '2026-08-10→2026-09-10', 'el período del proveedor NO es el mes calendario')
+  assert.match(p.motivo, /cuota REAL de AfipSDK/)
+  assert.match(p.motivo, /suscripción active/)
+  // Y se le pregunta al PANEL con el ACCOUNT_TOKEN, no a automations con el ACCESS_TOKEN.
+  assert.equal(visto.url, 'https://app.afipsdk.com/api/v1/projects')
   assert.equal(visto.opts.method, 'GET')
-  assert.equal(visto.opts.body, undefined)
+  assert.equal(visto.opts.headers.Authorization, 'Bearer account-de-prueba')
+})
+
+test('con la cuota del proveedor agotada NO se descarga, aunque el contador local diga que sobra', async () => {
+  // Es el caso que el contador local no puede ver: cuota gastada desde la web de AfipSDK u otra máquina.
+  const p = await presupuesto({
+    pedido: 2,
+    accountToken: 'account-de-prueba',
+    fetchImpl: async () => respuesta(200, { ...PROYECTO, current_period_automation_usage: 9 }),
+    archivo: await tmp('local-vacio.json'),
+  })
+  assert.equal(p.fuente, 'proveedor')
+  assert.equal(p.ok, false)
+  assert.match(p.motivo, /necesito 2 automatización\(es\) y quedan 0/)
+})
+
+test('si el panel no contesta se CAE al contador local Y SE DECLARA que es aproximado', async () => {
+  const archivo = await tmp('uso-local.json')
+  await registrarConsumo({ cantidad: 1, fecha: '2026-08-11', archivo })
+  const p = await presupuesto({
+    pedido: 2,
+    hoy: '2026-08-13',
+    accountToken: 'account-de-prueba',
+    fetchImpl: async () => respuesta(503, 'Service Unavailable'),
+    archivo,
+    limite: 10,
+    reserva: 2,
+  })
+  assert.equal(p.fuente, 'local')
+  assert.equal(p.usadas, 1)
+  assert.equal(p.ok, true)
+  assert.match(p.motivo, /CONTADOR LOCAL APROXIMADO/, 'una estimación no se puede presentar como el dato real')
+  assert.match(p.motivo, /el panel respondió 503/, 'tiene que decir por qué cayó al plan B')
+})
+
+test('un ACCOUNT_TOKEN rechazado se distingue del ACCESS_TOKEN: son credenciales distintas', async () => {
+  const r = await cuotaDelProveedor({ accountToken: 'account-de-prueba', fetchImpl: async () => respuesta(401, '') })
+  assert.equal(r.ok, false)
+  assert.match(r.motivo, /ACCOUNT_TOKEN/)
+  assert.doesNotMatch(r.motivo, /ACCESS_TOKEN/, 'confundir las dos credenciales es el bug original')
+  // Sin ACCOUNT_TOKEN no se inventa una consulta.
+  assert.equal((await cuotaDelProveedor({ accountToken: null })).ok, false)
+})
+
+test('la respuesta del panel se lee tolerante a la forma, pero NO se adivina el proyecto', () => {
+  // El contrato del panel no está documentado en ningún lado: array, {data:[…]} u objeto suelto.
+  for (const json of [[PROYECTO], { data: [PROYECTO] }, { projects: [PROYECTO] }, PROYECTO, { data: PROYECTO }]) {
+    assert.equal(proyectoDeRespuesta(json)?.id, PROYECTO.id, `forma no soportada: ${JSON.stringify(json).slice(0, 40)}`)
+  }
+  // Con varios proyectos y sin PROJECT_ID no se elige uno: adivinar el proyecto es adivinar la cuota.
+  const otro = { ...PROYECTO, id: 'otro', automation_limit: 999 }
+  assert.equal(proyectoDeRespuesta([PROYECTO, otro]), null)
+  assert.equal(proyectoDeRespuesta([PROYECTO, otro], { projectId: 'otro' }).automation_limit, 999)
+  // Y un proyecto sin las cifras no se completa con defaults.
+  assert.equal(cuotaDeProyecto({ automation_limit: 10 }), null)
+  assert.equal(cuotaDeProyecto({ automation_limit: 10, current_period_automation_usage: 'muchas' }), null)
+  assert.equal(cuotaDeProyecto(PROYECTO).limite, 10)
 })
