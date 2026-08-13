@@ -73,9 +73,22 @@ export const COL_REGISTRO = {
   desde: 0, hasta: 1, pago: 2, dias: 3, personas: 4, hs_previstas: 5, hs_reales: 6,
   banco: 7, adelanto: 8, total_recibo: 9, total: 10, sigma_hora: 11, estado: 12,
 }
-/** Ídem para el bloque de proyección (§1), que tiene menos columnas y otro orden. */
+/**
+ * Ídem para el CALENDARIO DE PAGO (§1.3), que tiene menos columnas y otro orden.
+ *
+ * ═══ `total` ES LA COLUMNA DE OBRA, Y ESO NO ES UN DESCUIDO (13/08) ═══
+ *
+ * El calendario muestra las tres nóminas y una columna "TOTAL" que las suma. Quien sincroniza la caja
+ * NO puede leer esa columna: oficina y dirección ya entran por `OFICINA_PROYECTADO` y
+ * `DIRECCION_PROYECTADO`, así que tomar el TOTAL las contaría DOS VECES —$50M de más en el calendario
+ * de caja, sin un solo error, porque el número sería perfectamente plausible—.
+ *
+ * `total` apunta a "Obreros" a propósito: es el total DE ESTE BLOQUE para quien lo consume. El nombre
+ * se conserva porque `JORNALES_PROY_TOTAL` ya está publicado y citado por fórmulas del Sheet; el
+ * contrato es que ese nombre significa "los jornales de obra proyectados", no "la nómina entera".
+ */
 export const COL_PROYECCION = {
-  desde: 0, hasta: 1, pago: 2, dias: 3, personas: 4, valores_hoy: 5, ajuste: 6, total: 7,
+  desde: 0, hasta: 1, pago: 2, total: 3, oficina: 4, direccion: 5, consolidado: 6, efectivo: 7,
 }
 
 export function filasQuincenas(bloques, filaInicio = 6, hoja = '_J_OBREROS') {

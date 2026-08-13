@@ -286,15 +286,26 @@ export function proyeccionQuincena(piso, demanda) {
  *   · si el convenio rinde vacío (réplica caída), el MAX publica la demanda igual: acá SÍ hay un
  *     número real que decir —el piso de las obras vendidas— y callarlo no protege nada.
  *
- * @param {number} r fila 1-based de la quincena en la pestaña
+ * ═══ LAS LETRAS YA NO SE ESCRIBEN ACÁ (13/08) ═══
+ *
+ * Decía `G${r}*F${r}*D${r}` — la Σ $/hora, las horas por persona y los días hábiles, cada una en la
+ * columna que tenían en el layout de agosto. El rediseño del calendario sacó tres de esas columnas de
+ * la vista y las dos que quedaron cambiaron de letra: la misma fórmula habría seguido multiplicando
+ * tres celdas y devolviendo un número plausible contra "Oficina" y "Dirección". Es el defecto del
+ * mapa de columnas escrito en prosa, del lado de la lib. Ahora el llamador —que es el dueño del
+ * layout— arma la expresión y acá sólo vive la REGLA: el MAX contra la demanda y su gate por fecha
+ * de caja.
+ *
+ * @param {{convenio:string, celdaPago:string}} celdas la expresión del piso de convenio (sin `=` ni
+ *   IFERROR) y la celda "Se paga el" de esa fila
  * @param {{jornales?: number}|null} demanda la entrada de esa quincena, o null
  * @returns {string} la fórmula, separador es-AR
  */
-export function formulaProyectadoQuincena(r, demanda = null) {
-  const convenio = `G${r}*F${r}*D${r}`
+export function formulaProyectadoQuincena({ convenio, celdaPago }, demanda = null) {
+  const C = celdaPago
   const jornales = Math.round(Number(demanda?.jornales) || 0)
   if (!(jornales > 0)) return `=IFERROR(${convenio};"")`
-  return `=IF(AND(N(C${r})>0;C${r}<=EOMONTH(TODAY();0));`
+  return `=IF(AND(N(${C})>0;${C}<=EOMONTH(TODAY();0));`
     + `IFERROR(${convenio};"");`
     + `MAX(IFERROR(${convenio};0);${jornales}))`
 }
