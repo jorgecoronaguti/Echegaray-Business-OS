@@ -13,7 +13,7 @@
 // cómoda" mirando el cierre puede perforar el acuerdo de descubierto una semana antes. Por eso todo
 // escenario se mide DOS veces: contra el cierre y contra el mínimo semanal conocido.
 
-import { CAJA, CORRECCION_USD, EGRESOS_REALES, FUENTES_DE_FONDOS, PRENDARIO_FORD, UVA, C31 } from './rodados-plan-datos.mjs'
+import { CAJA, CORRECCION_USD, EGRESOS_REALES, FONDEFIN, FUENTES_DE_FONDOS, PRENDARIO_FORD, UVA, C31 } from './rodados-plan-datos.mjs'
 import { calendarioDeCuotas, cuadroFrances, diffMeses, inflacionDeTrabajo, planDeTresUnidades, rangoDeMeses, valorPresente } from './rodados-plan.mjs'
 import { compararFormasDePago } from './rodados-financiacion.mjs'
 
@@ -188,12 +188,16 @@ export function alternativasParaLasDos({ plan = planDeTresUnidades() } = {}) {
   // La vara: lo que costaría pagar las dos unidades al contado el mes en que se entregan.
   const vpDelBien = precioDeLasDos / (1 + inf) ** mesesHastaDesembolso
 
+  // El IVA sale de FONDEFIN, no de un literal. Acá había un `0.21` tipeado a mano: mientras el otro
+  // literal también decía 21 nadie lo notaba, y el día que el dueño corrigió la alícuota la tabla 3 y
+  // la tabla 7 del mismo informe habrían mostrado dos costos distintos del mismo crédito.
   const fondefin = cuadroFrances(u.financiado * 2, u.cuadro.tasaMensual * MESES_ANIO, {
-    cuotas: u.cuadro.cuotas, gracia: u.cuadro.gracia, iva: 0.21,
+    cuotas: u.cuadro.cuotas, gracia: u.cuadro.gracia, iva: FONDEFIN.ivaSobreIntereses,
   })
-  // El prendario no detrae gastos del desembolso: financia el precio. Su CFT ya los incluye.
+  // El prendario no detrae gastos del desembolso: financia el precio. Su CFT ya los incluye — y por
+  // eso es el único de los tres cuadros que NO es un piso: se lo pasa para que lo diga.
   const prendarioCft = FUENTES_DE_FONDOS.find((f) => f.clave === 'prendario-mercado').cft
-  const prendario = cuadroFrances(precioDeLasDos, tnaEquivalenteACft(prendarioCft), { cuotas: 48, gracia: 0, iva: 0 })
+  const prendario = cuadroFrances(precioDeLasDos, tnaEquivalenteACft(prendarioCft), { cuotas: 48, gracia: 0, iva: 0, cftPublicado: prendarioCft })
   // El UVA a 24 meses no financia el 100%: el presupuesto real exige el mismo anticipo proporcional.
   const anticipoUva = precioDeLasDos * (UVA.anticipoEfectivo / UVA.precioTotal)
   const capitalUva = precioDeLasDos - anticipoUva

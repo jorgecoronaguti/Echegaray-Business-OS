@@ -141,7 +141,7 @@ export const USO_REAL_DESCUBIERTO = {
  * Usa el motor del OS (`costoEfectivo`) sobre las dos condiciones vivas — no reimplementa la
  * aritmética de tasas. Devuelve el ahorro CON SU SIGNO DE HONESTIDAD: el costo de FONDEFIN sigue
  * siendo un PISO, así que el ahorro calculado sigue siendo un TECHO — pero un techo MÁS BAJO desde
- * el 13/08/2026, porque el IVA del 21% que contestó el dueño ya entra por `costoEfectivo` y el 2% de
+ * el 13/08/2026, porque el IVA del 10,5% que declaró el dueño ya entra por `costoEfectivo` y el 2% de
  * otorgamiento se suma acá. Lo que todavía falta del lado de FONDEFIN: el sellado, el seguro de vida
  * sobre saldo deudor, la tasación y una eventual percepción de IVA. Nada de eso está publicado.
  *
@@ -169,7 +169,7 @@ export function ahorroVsDescubierto(fondefin, descubierto, { monto = 0, dias = 0
     ahorro: Math.round(d.costo_total - costoFondefinConEntrada),
     es_techo: true,
     advertencia:
-      'TECHO, no promesa: el costo de FONDEFIN ya incluye el IVA del 21% sobre intereses (respuesta del dueño del 13/08/2026, no del ROP) y el 2% de gastos de otorgamiento, pero todavía le faltan el sellado, el seguro de vida sobre saldo deudor, la tasación y una eventual percepción de IVA. Y sólo se materializa si el Comité admite por excepción un destino que el punto 2.2.3 excluye.',
+      'TECHO, no promesa: el costo de FONDEFIN ya incluye el IVA del 10,5% sobre intereses (declaración del dueño del 13/08/2026, no del ROP, y sin verificar contra la norma) y el 2% de gastos de otorgamiento, pero todavía le faltan el sellado, el seguro de vida sobre saldo deudor, la tasación y una eventual percepción de IVA. Si el encuadre bajo la Ley 21.526 no se confirma, el IVA vuelve al 21% y este ahorro baja. Y sólo se materializa si el Comité admite por excepción un destino que el punto 2.2.3 excluye.',
     fondefin: f,
     descubierto: d,
   }
@@ -217,7 +217,7 @@ const FICHA = {
   // La TNA la pone `condicionConBadlar`: no vive acá para que no se pueda pegar a mano.
   tea: null, // no publicada; derivarla exigiría fijar la capitalización, que el ROP no da
   cft: null, // no publicado y NO derivable: faltan seguro de vida, sellado y tasación
-  iva_sobre_intereses: IVA_SOBRE_INTERESES, // 21% — dato del dueño 13/08/2026, no del ROP
+  iva_sobre_intereses: IVA_SOBRE_INTERESES, // 10,5% — dato del dueño 13/08/2026, no del ROP
   // `comisiones` y `gastos` son MONTOS EN PESOS, no porcentajes (así los usa costoEfectivo). El 2%
   // de otorgamiento es una fracción del desembolso: va en GASTOS_OTORGAMIENTO y en observaciones.
   comisiones: null,
@@ -252,7 +252,8 @@ const FICHA = {
   desconocido: [
     'si el Comité admite por excepción (4.4) financiar materiales destinados a obra civil — ES LA PREGUNTA QUE DECIDE SI LA LÍNEA SIRVE',
     'CFT — no publicado y no derivable: faltan el monto del seguro de vida sobre saldo deudor, el sellado y la tasación',
-    'si además del IVA (21%, respuesta del dueño del 13/08/2026) la Fiduciaria factura alguna PERCEPCIÓN de IVA sobre los intereses — el ROP no lo trata y no se asume ni que la haya ni que no: son 1,5 puntos sobre intereses en el caso del banco',
+    'si el mutuo de Fiduciaria San Juan SAPEM encuadra bajo la Ley 21.526 — de eso depende que la alícuota declarada por el dueño (10,5%) sea la correcta o vuelva a ser la general del 21%: lo confirma el estudio contable, no el OS',
+    'si además del IVA (10,5%, declaración del dueño del 13/08/2026 que corrigió su propio 21% del mismo día) la Fiduciaria factura alguna PERCEPCIÓN de IVA sobre los intereses — el ROP no lo trata y no se asume ni que la haya ni que no: son 1,5 puntos sobre intereses en el caso del banco',
     'si la tasa queda FIJA al acta de aprobación o se reajusta con la Badlar durante los 18 meses',
     'sistema de amortización de las cuotas (francés, alemán u otro)',
     'si el crédito cubre el presupuesto del proveedor con IVA o sólo el neto',

@@ -99,10 +99,11 @@ const SEED = [
   // INFERENCIA, no hecho: es MUY probablemente la más barata de las cargadas. Base — su TNA (13,69%)
   // está tan lejos del CFTEA del prendario (65,10%) y del CFT del descubierto (62,78%) que ningún
   // costo razonable de los que le faltan cierra una brecha de 48 puntos. Desde el 13/08/2026 falta
-  // menos: el dueño contestó el IVA sobre intereses (21%) y ya está cargado, así que el piso pasó de
-  // 13,69% a 16,56% efectivo anual. Siguen afuera el 2% de otorgamiento (que no es una tasa: es un
-  // cargo de entrada), los sellos, el seguro de vida sobre saldo deudor y la tasación. Lo que NO se
-  // puede decir es "cuesta 16,56% contra 62,78%": eso compara un piso contra dos CFT, que es
+  // menos: el dueño declaró el IVA sobre intereses (10,5% — corrigiendo su propio 21% del mismo día,
+  // ver IVA_SOBRE_INTERESES) y ya está cargado, así que el piso pasó de 13,69% de TNA pelada a 15,12%
+  // de TNA con IVA, o 16,22% de efectivo anual capitalizando. Siguen afuera el 2% de otorgamiento
+  // (que no es una tasa: es un cargo de entrada), los sellos, el seguro de vida sobre saldo deudor y
+  // la tasación. Lo que NO se puede decir es "cuesta 16,22% contra 62,78%": eso compara un piso contra dos CFT, que es
   // justamente la mezcla que esta tabla existe para impedir. El costo comparable de FONDEFIN no se
   // conoce hasta que el Fiduciario conteste los gastos — ver `desconocido` y `preguntar`.
   fondefin(),

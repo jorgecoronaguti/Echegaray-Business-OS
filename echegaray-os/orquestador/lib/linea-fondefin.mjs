@@ -154,37 +154,60 @@ const pct = (f, dec = 2) => `${(Number(f) * 100).toFixed(dec).replace('.', ',')}
 const enAr = (iso) => String(iso).slice(0, 10).split('-').reverse().join('/')
 
 /**
- * EL IVA SOBRE LOS INTERESES — 21%, y la fuente es EL DUEÑO, no el Reglamento.
+ * EL IVA SOBRE LOS INTERESES — 10,5%, y la fuente es EL DUEÑO, no el Reglamento.
  *
- * ═══ POR QUÉ ERA null Y AHORA ES 0,21 (13/08/2026) ═══
+ * ═══ null → 21% → 10,5%: LAS TRES ETAPAS, PORQUE NINGUNA SE BORRA ═══
  *
  * Entró en `null` a propósito y no por descuido: el ROP no menciona el IVA, y `costoEfectivo` trata un
  * IVA desconocido como DATO FALTANTE, no como exención — un 0 ahí afirmaba una exención que nadie
- * había declarado. La pregunta estaba abierta en las dos líneas del organismo. El dueño la contestó,
- * textual: "iva 21".
+ * había declarado. La pregunta quedó abierta en las dos líneas del organismo.
  *
- * El criterio fiscal apunta al mismo lado y por eso el dato se toma sin fricción: la alícuota reducida
- * del 10,5% sobre intereses es el beneficio de los préstamos otorgados por entidades regidas por la
- * Ley 21.526, y Fiduciaria San Juan SAPEM no es una de ellas. Pero eso es CONFIRMACIÓN, no la fuente.
- * La fuente es el dueño, con fecha, y así viaja a la base.
+ * El 13/08/2026 el dueño la contestó por primera vez, textual: "iva 21". Se cargó 0,21 con ese origen.
+ * MÁS TARDE EL MISMO DÍA la corrigió, textual: "el iva es del 10,5% en el informe de compra de
+ * rodados". Manda lo último y lo más específico: 0,105. La declaración del 21% no se borra —vive en
+ * `ORIGEN_DEL_IVA.corregido_desde` y en el historial de la rama fix/iva-fondefin-21— porque si mañana
+ * aparece un papel que dice 21% hay que poder ver que esto SE DECIDIÓ, no que se perdió.
  *
- * LO QUE ESTE NÚMERO NO ES: una alícuota verificada contra la norma vigente en la sesión que la cargó
- * — no hubo acceso a ARCA ni al texto legal. Por eso la fila sigue en `informado` y el origen viaja
- * escrito en `observaciones`: el que la mire tiene que poder ver de dónde salió el 21 antes de usarlo
- * para una decisión fiscal.
+ * ═══ LO QUE ESTE NÚMERO NO ES ═══
  *
- * VIVE ACÁ Y SE IMPORTA: las dos líneas del organismo (Bienes de Capital y Capital de Trabajo) usan el
- * MISMO valor. Escribirlo dos veces habilita que dentro de un mes una diga 21 y la otra 10,5.
+ * NO es una alícuota verificada contra la norma. Al revés: el encuadre que la habilitaría está en duda
+ * y así quedó anotado antes de esta corrección. La alícuota reducida del 10,5% sobre intereses es el
+ * beneficio de los préstamos otorgados por entidades regidas por la LEY 21.526 (entidades
+ * financieras), y Fiduciaria San Juan SAPEM no figura como una de ellas — por eso el 10,5% no se
+ * había asumido solo. El dueño lo declara igual y su declaración manda sobre el criterio del OS, pero
+ * el hueco queda abierto y con nombre: CONFIRMAR CON EL ESTUDIO CONTABLE si el mutuo de Fiduciaria
+ * SAPEM encuadra bajo la Ley 21.526 a efectos del art. 28 de la Ley de IVA. Si no encuadra, el número
+ * vuelve a 21% y el costo sube ~1,44 puntos de TNA.
+ *
+ * Por eso `verificado_contra_la_norma: false`, la fila sigue en `informado`, y el origen viaja escrito
+ * en `observaciones` hasta Postgres y la Web: el que la mire tiene que poder ver de dónde salió el
+ * 10,5 antes de usarlo para una decisión fiscal.
+ *
+ * VIVE ACÁ Y SE IMPORTA: las dos líneas del organismo (Bienes de Capital y Capital de Trabajo) y el
+ * informe de rodados usan el MISMO valor. Escribirlo dos veces habilita que dentro de un mes una diga
+ * 21 y la otra 10,5 — que es exactamente lo que casi pasa hoy.
  */
-export const IVA_SOBRE_INTERESES = 0.21
+export const IVA_SOBRE_INTERESES = 0.105
 
-/** De dónde salió el 21%. Un número sin padre en una tabla de decisión no se puede auditar. */
+/**
+ * De dónde salió el 10,5%. Un número sin padre en una tabla de decisión no se puede auditar, y una
+ * corrección sin rastro es indistinguible de un dedazo.
+ */
 export const ORIGEN_DEL_IVA = {
   valor: IVA_SOBRE_INTERESES,
   origen: 'el dueño de Echegaray Construcciones',
   fecha: '2026-08-13',
-  textual: 'iva 21',
+  textual: 'el iva es del 10,5% en el informe de compra de rodados',
   verificado_contra_la_norma: false,
+  /** La declaración anterior, del mismo día. No es historia de color: es lo que hace auditable el 10,5. */
+  corregido_desde: {
+    valor: 0.21,
+    fecha: '2026-08-13',
+    textual: 'iva 21',
+  },
+  /** El hueco que este número deja abierto. Se pregunta, no se estima. */
+  a_confirmar:
+    'si el mutuo de Fiduciaria San Juan SAPEM encuadra bajo la Ley 21.526 a efectos de la alícuota reducida de IVA sobre intereses — consultar al estudio contable. Si no encuadra, la alícuota vuelve al 21% general.',
 }
 
 /**
@@ -193,11 +216,11 @@ export const ORIGEN_DEL_IVA = {
  * fuera el dato. Lo comparten las dos líneas: una sola redacción, un solo origen.
  */
 export const OBSERVACION_IVA = [
-  `IVA SOBRE INTERESES: ${pct(IVA_SOBRE_INTERESES, 0)}, y la FUENTE ES EL DUEÑO, no el reglamento —`,
+  `IVA SOBRE INTERESES: ${pct(IVA_SOBRE_INTERESES, 1)}, y la FUENTE ES EL DUEÑO, no el reglamento —`,
   `dijo textual "${ORIGEN_DEL_IVA.textual}" el ${enAr(ORIGEN_DEL_IVA.fecha)}.`,
+  `CORRIGE una declaración anterior del mismo ${enAr(ORIGEN_DEL_IVA.corregido_desde.fecha)} que fijaba ${pct(ORIGEN_DEL_IVA.corregido_desde.valor, 0)} ("${ORIGEN_DEL_IVA.corregido_desde.textual}"): manda lo último y lo más específico, y la anterior se deja escrita para que la corrección sea auditable.`,
   'El ROP no trata el IVA en ninguno de sus puntos.',
-  'Coincide con el criterio fiscal —la alícuota reducida del 10,5% sobre intereses es la de los préstamos de entidades regidas por la Ley 21.526 y Fiduciaria San Juan SAPEM no es una de ellas—, pero eso es CONFIRMACIÓN, no la fuente.',
-  'NO está verificada contra la norma vigente: quien la use para una decisión fiscal la verifica antes.',
+  `NO está verificada contra la norma y el criterio fiscal apunta en contra: la alícuota reducida de ${pct(IVA_SOBRE_INTERESES, 1)} sobre intereses es la de los préstamos de entidades regidas por la Ley 21.526 y Fiduciaria San Juan SAPEM no figura como una de ellas. PENDIENTE: ${ORIGEN_DEL_IVA.a_confirmar}`,
   'LO QUE SIGUE SIN SABERSE es si la Fiduciaria factura además alguna PERCEPCIÓN de IVA sobre esos intereses: el descubierto del Santander lleva 10,5% + 1,5% de percepción = 12%, y acá se cargó el IVA solo.',
 ].join(' ')
 
@@ -211,10 +234,11 @@ export const OBSERVACION_IVA = [
  * de garantías. El CFT real es MAYOR que la TNA y NO se puede calcular con lo publicado. Poner la TNA
  * en la casilla del CFT sería exactamente la mentira que esta tabla existe para evitar.
  *
- * `iva_sobre_intereses` YA NO ES null: es 21% desde el 13/08/2026 por respuesta del dueño. Ver
- * `IVA_SOBRE_INTERESES` para el origen y para lo que ese número todavía no es. El costo efectivo pasa
- * de la TNA pelada a la TNA × 1,21 — y sigue siendo un PISO, porque el campo que convierte un piso en
- * un total es el CFT, y el CFT sigue sin publicarse.
+ * `iva_sobre_intereses` YA NO ES null: es 10,5% desde el 13/08/2026 por declaración del dueño (que ese
+ * mismo día corrigió su propio 21%). Ver `IVA_SOBRE_INTERESES` para el origen, para el rastro de la
+ * corrección y para lo que ese número todavía no es. El costo efectivo pasa de la TNA pelada a la
+ * TNA × 1,105 — y sigue siendo un PISO, porque el campo que convierte un piso en un total es el CFT,
+ * y el CFT sigue sin publicarse.
  */
 export const CONDICION_FONDEFIN = {
   clave: 'fondefin-bienes-de-capital',
@@ -235,7 +259,7 @@ export const CONDICION_FONDEFIN = {
   tna: tnaFondefin(BADLAR_REFERENCIA.valor),
   tea: null, // no publicada; derivarla exigiría fijar la convención de capitalización, que el ROP no da
   cft: null, // ver arriba: no publicado y NO derivable con lo que hay
-  iva_sobre_intereses: IVA_SOBRE_INTERESES, // 21% — dato del dueño 13/08/2026, no del ROP
+  iva_sobre_intereses: IVA_SOBRE_INTERESES, // 10,5% — dato del dueño 13/08/2026, no del ROP
   // Las columnas `comisiones` y `gastos` son MONTOS FIJOS en pesos, no porcentajes (así las usa
   // costoEfectivo). El 2% de otorgamiento es una fracción del desembolso: meterlo acá se leería como
   // "$0,02 de comisión". Va en observaciones y en GASTOS_OTORGAMIENTO, no en una columna que miente.
@@ -271,7 +295,8 @@ export const CONDICION_FONDEFIN = {
   /** Lo que la fuente NO publica. No se estima: se pregunta. */
   desconocido: [
     'CFT — no publicado y no derivable: faltan el monto del seguro de vida sobre saldo deudor y el de la tasación',
-    'si además del IVA (21%, respuesta del dueño del 13/08/2026) la Fiduciaria factura alguna PERCEPCIÓN de IVA sobre los intereses — el ROP no lo trata y no se asume ni que la haya ni que no: son 1,5 puntos sobre intereses en el caso del banco',
+    'si el mutuo de Fiduciaria San Juan SAPEM encuadra bajo la Ley 21.526 — de eso depende que la alícuota declarada por el dueño (10,5%) sea la correcta o vuelva a ser la general del 21%: lo confirma el estudio contable, no el OS',
+    'si además del IVA (10,5%, declaración del dueño del 13/08/2026 que corrigió su propio 21% del mismo día) la Fiduciaria factura alguna PERCEPCIÓN de IVA sobre los intereses — el ROP no lo trata y no se asume ni que la haya ni que no: son 1,5 puntos sobre intereses en el caso del banco',
     'si la tasa queda FIJA al acta de aprobación o se reajusta con la Badlar durante los 48 meses',
     'porcentaje financiable del bien / aporte propio exigido — el ROP no fija ninguno',
     'si el crédito cubre el precio del rodado con IVA o sólo el neto (el Anexo IX pide los presupuestos abiertos en neto e IVA)',
