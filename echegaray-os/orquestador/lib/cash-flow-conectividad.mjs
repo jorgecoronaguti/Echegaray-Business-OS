@@ -50,13 +50,22 @@ import {
   COL, ventanas, conceptosDe, filaDeConcepto, letra, serialDeFecha,
 } from './cash-flow-matriz.mjs'
 import { OTROS, claveSub, rubrosDeApertura, ladoDe } from './cash-flow-rubros.mjs'
+import { acotarAlEjercicio } from './cash-flow-borde-anio.mjs'
 
 /** Los estados que van a la línea "proyectado". Espejo de ESTADOS_PENDIENTES, en forma de test. */
 const PENDIENTE = new Set(['PROYECTADO', 'VENCIDO', 'COMPROMETIDO'])
 
-/** La rejilla de una vista, ya en SERIALES: es la unidad en la que el libro guarda las fechas. */
+/**
+ * La rejilla de una vista, ya en SERIALES: es la unidad en la que el libro guarda las fechas.
+ *
+ * VA ACOTADA AL EJERCICIO desde el 13/08/2026, porque la ventana de las columnas de borde lo está
+ * (`cash-flow-borde-anio.mjs`). Con la rejilla sin recortar, `plataSinColumna` daría ✓ sobre el
+ * semanal para un movimiento del 01/01/2027 que ninguna columna suma — un diagnóstico que dice que
+ * la plata está en el cuadro cuando no está es peor que no tenerlo, y encima contradiría al mismo
+ * diagnóstico corrido sobre el mensual, que sí lo reporta.
+ */
 export function rejilla(tipo, anio) {
-  return ventanas(tipo, { anio }).map((v, i) => ({
+  return acotarAlEjercicio(ventanas(tipo, { anio }), anio).map((v, i) => ({
     i, desde: serialDeFecha(v.desde), hasta: serialDeFecha(v.hasta), col: COL.tiempo0 + i,
   }))
 }
@@ -242,23 +251,33 @@ export function rubrosEnOtros(movimientos = []) {
 }
 
 /**
- * NÚCLEO PURO: ¿las dos vistas cubren el MISMO período?
+ * NÚCLEO PURO: QUÉ MOVIMIENTOS DEL AÑO VECINO TOCAN LAS SEMANAS ISO DEL CUADRO.
  *
- * NO LO HACEN, Y NO ES UN DEFECTO ARREGLABLE: el mensual es el año calendario y el semanal son las
- * semanas ISO que lo contienen, así que el semanal se derrama sobre los últimos días de diciembre
- * anterior y los primeros de enero siguiente. Lo que sí es un defecto es AFIRMAR que cubren lo
- * mismo —el comentario de `cash-flow-semanas.mjs` lo decía— porque entonces la columna TOTAL de las
- * dos pestañas se lee como si tuviera que coincidir, y no tiene por qué.
+ * Las columnas del semanal son las semanas ISO que contienen al año calendario, así que la primera
+ * arranca en diciembre del anterior y la última termina en enero del siguiente. Esta función lista los
+ * movimientos que caen en ese derrame.
  *
- * Medido el 06/08: $11.259.575 de nómina proyectada de enero de 2027 aparecen en el TOTAL del
- * semanal y no en el del mensual.
+ * ═══ QUÉ SIGNIFICABA ANTES Y QUÉ SIGNIFICA AHORA (13/08/2026) ═══
+ *
+ * Nació el 06/08 para probar que las dos columnas TOTAL "no tenían por qué coincidir" — medía
+ * $11.259.575 de nómina proyectada de enero de 2027 que estaban en el TOTAL del semanal y no en el del
+ * mensual, y eso se dio por inevitable. NO ERA INEVITABLE: la semana cae en algún lado, pero lo que la
+ * columna SUMA se recorta en el borde del año (`cash-flow-borde-anio.mjs`). Desde entonces ninguna
+ * columna suma esos movimientos y las dos vistas tienen que dar igual — lo verifica `cash-flow-cuadre`.
+ *
+ * LO QUE ESTO MIDE HOY: cuánta plata del año vecino queda a la vista en el rango de fechas del cuadro
+ * pero fuera de sus totales. No es un error —pertenece al otro ejercicio— pero es lo primero que hay
+ * que mirar si alguien pregunta "¿por qué la última columna suma menos de lo que dice su semana?".
  *
  * @returns {{soloSemanal:Array, neto:number, semanal:{desde:number,hasta:number}, mensual:{desde:number,hasta:number}}}
  */
 export function bordesEntreVistas(movimientos = [], anio) {
-  const s = rejilla('semana', anio)
+  // LAS SEMANAS SIN RECORTAR, A PROPÓSITO: acá se mide justamente el derrame que la columna ya NO
+  // suma. Si esto usara la rejilla acotada, los dos extremos serían idénticos y la función daría cero
+  // siempre — que es como un diagnóstico se muere sin que nadie lo note.
+  const iso = ventanas('semana', { anio })
   const m = rejilla('mes', anio)
-  const S = { desde: s[0].desde, hasta: s[s.length - 1].hasta }
+  const S = { desde: serialDeFecha(iso[0].desde), hasta: serialDeFecha(iso[iso.length - 1].hasta) }
   const M = { desde: m[0].desde, hasta: m[m.length - 1].hasta }
   const soloSemanal = movimientos.filter((x) => Number.isFinite(x.fecha)
     && x.fecha >= S.desde && x.fecha < S.hasta && (x.fecha < M.desde || x.fecha >= M.hasta))

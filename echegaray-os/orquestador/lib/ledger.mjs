@@ -53,6 +53,33 @@ export async function failTask(taskId, workerId, error, backoffMs) {
   return rows[0].state
 }
 
+/** ¿El intento ANTERIOR de esta tarea se cortó por lease vencido? Un intento en 'timeout' no dice
+ *  que el trabajo falló: dice que NO SABEMOS si llegó a completarse (el worker dejó de latir a mitad).
+ *  Para un tipo con efecto externo eso NO habilita un reintento a ciegas — ver ciclo-tarea.mjs. */
+export async function intentoPrevioInterrumpido(taskId, attempt) {
+  const { rows } = await query(
+    `select state from orq.task_attempts
+      where task_id = $1 and attempt_no < $2 order by attempt_no desc limit 1`,
+    [taskId, attempt],
+  )
+  return rows[0]?.state === 'timeout'
+}
+
+/** Tareas que TERMINARON EN FALLO con su motivo — el registro consultable de lo que murió.
+ *  `cancelled` sin error es una cancelación de política (replanificación) y no cuenta como fallo. */
+export async function tareasEnFallo({ horas = 24, limite = 50 } = {}) {
+  const { rows } = await query(
+    `select id, type, title, state, attempt, max_attempts, error, correlation_id, updated_at,
+            inputs->>'channel_id' as channel_id
+       from orq.tasks
+      where state in ('dead_letter','cancelled') and error is not null
+        and updated_at > now() - make_interval(hours => $1)
+      order by updated_at desc limit $2`,
+    [horas, limite],
+  )
+  return rows
+}
+
 /** Recupera trabajo abandonado (leases vencidos). Devuelve las tareas recuperadas. */
 export async function reapExpiredLeases() {
   const { rows } = await query('select id, state from orq.reap_expired_leases()')

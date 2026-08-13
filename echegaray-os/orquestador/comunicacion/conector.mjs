@@ -20,10 +20,19 @@ import {
 } from '../../../communication-service/src/index.mjs'
 import { query, withTx } from '../lib/db.mjs'
 import { crearRazonadorDeRuteo } from './razonar-ruteo.mjs'
-import { claimTask, transition, failTask, heartbeat, reapExpiredLeases } from '../lib/ledger.mjs'
-import { correrConLease, CIERRE, LEASE_SEGUNDOS } from './lease-tarea.mjs'
+import {
+  claimTask, transition, heartbeat, failTask, reapExpiredLeases, intentoPrevioInterrumpido,
+} from '../lib/ledger.mjs'
+import { crearCicloTarea, RESULTADO, latidoPara } from '../lib/ciclo-tarea.mjs'
 import { resolveHandler } from '../handlers/index.mjs'
 import { crearEmitEventOS } from './ingesta-os.mjs'
+
+// El trabajo de un especialista tarda MINUTOS (baja adjuntos, razona, escribe). El lease de 30 s
+// que había acá vencía a los 35 s con el handler todavía corriendo: el reaper devolvía la tarea a
+// la cola y el especialista se re-ejecutaba entero. El lease es el TECHO, no la duración esperada;
+// lo que lo mantiene vivo es el latido, y por eso sale del mismo lease (nunca se desincronizan).
+const LEASE_SEGUNDOS = Number(process.env.ORQ_COMM_LEASE_SECONDS || 180)
+const LATIDO_MS = latidoPara(LEASE_SEGUNDOS)
 
 /**
  * Construye el conector cableado.
@@ -73,7 +82,10 @@ export function crearConector(opts = {}) {
   async function responderComunicacion(r) {
     return svc.emitir({
       type: TIPOS.MENSAJE_RESPONDER,
-      intent_id: `respuesta:${r.comm_event_id}`,
+      // `intent_id` propio para las respuestas que NO son la respuesta al mensaje: un aviso de fallo
+      // comparte el comm_event_id con la respuesta que nunca llegó, y con el mismo intent el outbox
+      // lo descartaría por idempotencia. El dueño se quedaría sin enterarse, que es justo el defecto.
+      intent_id: r.intent_id ?? `respuesta:${r.comm_event_id}`,
       correlation_id: r.correlation_id,
       causation_id: r.causation_id,
       actor: { tipo: 'os', id: 'work-fabric', display: 'Business OS' },
@@ -103,18 +115,53 @@ export function crearConector(opts = {}) {
   // Paso REAL del Work Fabric: claim oficial FILTRADO POR LANE 'comunicacion'
   // (PR-4.1) → handler registrado → transición. Reclama SÓLO tareas de la lane de
   // comunicación; nunca roba tareas del worker general (aislamiento atómico en el
-  // claim). Reproduce el núcleo de worker.mjs (sin IA).
+  // claim).
   //
   // ═══ EL LEASE ERA DE 30 SEGUNDOS Y EL HANDLER TARDA MINUTOS (13/08) ═══
   //
   // Un post con ocho fotos de comprobantes son ocho descargas y ocho lecturas de visión: 150 s
   // medidos en producción. Con el lease de 30 s el reap daba la tarea por abandonada, la mandaba a
   // `retrying` y el mismo trabajo se volvía a ejecutar —publicando de nuevo— hasta agotar los
-  // intentos. La explicación completa y los dos arreglos viven en `lease-tarea.mjs`; acá sólo se
-  // cablean: se late mientras el handler corre y no se reintenta un efecto que ya ocurrió.
+  // intentos. La explicación completa y las guardas viven en `../lib/ciclo-tarea.mjs`, que es el
+  // MISMO ciclo que corre worker.mjs: tenerlo copiado acá —y sin latido— es lo que lo rompió.
   const LANE = 'comunicacion'
+  // AVISO DE FALLO AL CANAL: cuando una tarea de comunicación termina muerta, el dueño ve "cargué 3"
+  // y nada más. El fallo tiene que llegarle por donde pidió el trabajo, y tiene que decir que el
+  // resultado puede ser PARCIAL — reintentarlo a ciegas es lo que duplica cargas.
+  async function avisarFalloEnCanal(task, { estado, motivo }) {
+    const inp = task.inputs ?? {}
+    if (!inp.channel_id) return false
+    const texto = [
+      `⚠️ No pude terminar **${task.title ?? 'el pedido'}**.`,
+      `Motivo: ${motivo}`,
+      `Estado: \`${estado}\` · intento ${task.attempt}/${task.max_attempts} · tarea \`${task.id}\``,
+      'Puede haber quedado hecho **a medias**: revisá antes de volver a mandarlo.',
+    ].join('\n')
+    try {
+      await responderComunicacion({
+        intent_id: `fallo:${task.id}:${task.attempt}`,
+        comm_event_id: inp.comm_event_id, correlation_id: inp.correlation_id ?? task.correlation_id,
+        causation_id: inp.comm_event_id, channel_id: inp.channel_id, root_post_id: inp.root_post_id ?? null,
+        texto,
+      })
+      return true
+    } catch (e) {
+      // Que el aviso no salga no puede tapar el fallo original: queda en el log y en orq.tasks.error.
+      log.error?.('no se pudo avisar el fallo en el canal', { task_id: task.id, error: String(e?.message ?? e) })
+      return false
+    }
+  }
+
+  const ejecutarCiclo = crearCicloTarea({
+    ledger: { transition, heartbeat, failTask, intentoPrevioInterrumpido },
+    workerId: process.env.WORKER_ID ?? 'comm-wf-1',
+    leaseSeconds: LEASE_SEGUNDOS, heartbeatMs: LATIDO_MS, backoffMs: 1000, log,
+  })
+
   async function procesarWorkFabric({ lote = 10, leaseSeconds = LEASE_SEGUNDOS } = {}) {
-    const resumen = { intentados: 0, ok: 0, fallidos: 0, huerfanas: 0 }
+    // `huerfanas`: corrió pero el lease ya no era nuestro (no se cierra ni se reintenta).
+    // `terminales`: murió con motivo y ya se avisó — no vuelve sola.
+    const resumen = { intentados: 0, ok: 0, fallidos: 0, huerfanas: 0, terminales: 0 }
     for (let i = 0; i < lote; i++) {
       const task = await claimTask(process.env.WORKER_ID ?? 'comm-wf-1', leaseSeconds, LANE)
       if (!task) break
@@ -141,27 +188,19 @@ export function crearConector(opts = {}) {
         // no tocan Google, que son justo las que menos pueden romperse.
         ...(opts.google ? { google: opts.google } : {}),
       }
-      const workerId = ctx.config.WORKER_ID
-      const r = await correrConLease({
-        task,
-        workerId,
-        leaseSeconds,
-        log,
-        heartbeat,
-        transition,
-        failTask,
-        correr: async () => {
-          if (!handler) throw new Error(`sin handler para ${task.type}`)
-          await transition(task.id, workerId, 'running')
-          return handler(task, ctx)
+      // El ciclo (latido de lease, guarda de lease perdido, guarda de no-repetible, transiciones,
+      // fallo) vive en lib/ciclo-tarea.mjs: una sola definición para este runner y para worker.mjs.
+      const r = await ejecutarCiclo(task, {
+        correr: async (t) => {
+          if (!handler) throw new Error(`sin handler para ${t.type}`)
+          return handler(t, ctx)
         },
+        alTerminarEnFallo: (t, info) => avisarFalloEnCanal(t, info),
       })
-      if (r.cierre === CIERRE.OK) resumen.ok++
-      else if (r.cierre === CIERRE.LEASE_PERDIDO) resumen.huerfanas++
-      else {
-        resumen.fallidos++
-        log.error?.('work-fabric comm falló', { task_id: task.id, error: r.error })
-      }
+      if (r.resultado === RESULTADO.OK) resumen.ok++
+      else if (r.resultado === RESULTADO.LEASE_PERDIDO) resumen.huerfanas++
+      else if (r.resultado === RESULTADO.TERMINAL) { resumen.terminales++; resumen.fallidos++ }
+      else if (r.resultado === RESULTADO.REINTENTA) resumen.fallidos++
     }
     return resumen
   }

@@ -19,15 +19,21 @@ const mov = (o) => ({ signo: -1, importe: 0, estado: 'REAL', rubro: 'Materiales 
 
 // ══ LA GEOMETRÍA: DÓNDE CAE CADA MÉTODO DE PAGO ═══════════════════════════════════════════════════
 
-test('la rejilla de 2026 son 53 semanas y 12 meses, y NO cubren el mismo período', () => {
+test('la rejilla de 2026 son 53 semanas y 12 meses, y las dos CUBREN EL MISMO PERÍODO', () => {
   const s = rejilla('semana', ANIO)
   const m = rejilla('mes', ANIO)
   assert.equal(s.length, 53)
   assert.equal(m.length, 12)
-  // La primera semana de 2026 es la del lunes 29/12/2025: contiene el 1° de enero.
-  assert.equal(s[0].desde, 46020)
+  // ═══ ESTO CAMBIÓ EL 13/08/2026 Y NO ES UN AJUSTE PARA QUE PASE ═══
+  //
+  // Acá se exigía `s[0].desde === 46020` (el lunes 29/12/2025) y que el semanal se derramara sobre
+  // enero de 2027. Era cierto de la SEMANA y falso de la COLUMNA: lo que la columna suma se recorta en
+  // el borde del ejercicio desde que el derrame se llevó $13,07M de egresos de 2027 al año 2026. La
+  // rejilla de este diagnóstico tiene que ser la de la columna, no la del calendario, o diría que un
+  // movimiento del 01/01/2027 "está en el cuadro" cuando ninguna celda lo suma.
+  assert.equal(s[0].desde, 46023, 'la primera columna arranca el 1/1/2026, aunque su semana arranque el 29/12')
   assert.equal(m[0].desde, 46023)
-  assert.ok(s[s.length - 1].hasta > m[m.length - 1].hasta, 'el semanal se derrama sobre enero de 2027')
+  assert.equal(s[s.length - 1].hasta, m[m.length - 1].hasta, 'las dos vistas terminan en el mismo instante')
 })
 
 test('cada método de pago de Compras cae en la fila que le corresponde, con su rubro', () => {
@@ -75,10 +81,14 @@ test('EL DEFECTO: un proyectado de 2027 no cae en NINGUNA columna del cuadro 202
   assert.ok(!v.movimientos.some((m) => m.fecha === 46237))
 })
 
-test('EL DEFECTO: el TOTAL del semanal y el del mensual NO son el mismo período', () => {
-  // $11.259.575 de nómina proyectada de enero de 2027 caen en la semana 53 del cuadro semanal (que
-  // llega hasta el 3/01/2027) y en ninguna columna del mensual. Los dos TOTAL difieren, y está bien:
-  // lo que estaba mal era el comentario que prometía que cubrían lo mismo.
+test('las semanas ISO del cuadro TOCAN el año vecino: cuánto hay ahí se mide', () => {
+  // $11.259.575 de nómina proyectada de enero de 2027 caen en el rango de fechas de la semana 53 del
+  // cuadro semanal (que llega hasta el 3/01/2027) y en ninguna columna del mensual.
+  //
+  // ESTO YA NO EXPLICA UNA DIFERENCIA ENTRE LOS DOS TOTAL (13/08/2026): la ventana de la columna de
+  // borde se recorta en el 1° de enero (`cash-flow-borde-anio.mjs`), así que esa plata no está en el
+  // TOTAL del semanal tampoco. Lo que la función mide sigue siendo cierto y sigue sirviendo — es la
+  // plata del año vecino que el rango del cuadro roza — pero dejó de ser la excusa de un desvío.
   const libro = [mov({ fecha: 46389, importe: 11259575, estado: 'PROYECTADO', origen: 'Jornales por Quincena' })]
   const b = bordesEntreVistas(libro, ANIO)
   assert.equal(b.soloSemanal.length, 1)

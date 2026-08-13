@@ -174,8 +174,17 @@ export const FILA = Object.freeze({
  * escribía en cada corrida —en las DOS pestañas— *"el atajo IR A HOY apunta a un destino inválido (gid
  * undefined, range null)"*. Un control que mira la celda equivocada no es un control flojo: es un
  * control que grita siempre, y un aviso que suena siempre deja de significar algo.
+ *
+ * ═══ Y AHORA ES UN PREFIJO, NO EL RÓTULO ENTERO (13/08/2026, segunda corrección) ═══
+ *
+ * Decía "⏵  IR A LA SEMANA ACTUAL". Con el ícono y las mayúsculas prometía un botón, y `HYPERLINK` no
+ * puede ser un botón: hacen falta tres gestos para que navegue y el doble clic —el reflejo cuando no
+ * pasa nada— abre el modo edición. El rótulo pasa a DECIR dónde está la semana actual en vez de
+ * prometer que te lleva: "Semana actual: AH  ·  10/08", calculado en la hoja (ver `expresionRotulo` en
+ * cash-flow-hoy.mjs), útil aunque nadie haga clic. Lo que queda acá es el PREFIJO literal, porque es
+ * por donde el control parte la fórmula: si se calculara entero, el control volvería a gritar.
  */
-export const ROTULO_HOY = Object.freeze({ semana: '⏵  IR A LA SEMANA ACTUAL', mes: '⏵  IR AL MES ACTUAL' })
+export const ROTULO_HOY = Object.freeze({ semana: 'Semana actual: ', mes: 'Mes actual: ' })
 /** La columna del concepto y la primera de tiempo, contadas desde 0. */
 export const COL = Object.freeze({ concepto: 0, tiempo0: 1 })
 

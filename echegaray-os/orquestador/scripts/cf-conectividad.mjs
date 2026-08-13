@@ -180,11 +180,11 @@ async function main() {
     }
   }
   const b = bordesEntreVistas(libro, anio)
-  console.log(`\n  las dos vistas NO cubren el mismo período — semanal [${fechaAR(b.semanal.desde)}, ${fechaAR(b.semanal.hasta)})`
+  console.log(`\n  las semanas ISO del cuadro tocan el año vecino — semanal [${fechaAR(b.semanal.desde)}, ${fechaAR(b.semanal.hasta)})`
     + ` vs mensual [${fechaAR(b.mensual.desde)}, ${fechaAR(b.mensual.hasta)})`)
-  console.log(`  en el TOTAL del semanal y NO en el del mensual: ${b.soloSemanal.length} mov · ${pesos(b.neto)}`)
-  console.log('  (no es un defecto: una semana ISO que cruza el 1° de enero cae de un solo lado. Es el')
-  console.log('   motivo por el que las dos columnas TOTAL no tienen por qué coincidir.)')
+  console.log(`  del año vecino, a la vista en el rango pero FUERA de los totales: ${b.soloSemanal.length} mov · ${pesos(b.neto)}`)
+  console.log('  (desde el 13/08 la ventana de las columnas de borde se recorta en el 1° de enero, así que')
+  console.log('   esa plata no está en ningún TOTAL: las dos vistas tienen que coincidir, y se controla.)')
 
   // ── 2. EL IMPACTO EN SALDOS: lo que el ancla ya contiene y la columna vuelve a contar ────────────
   console.log(`\n2 · IMPACTO EN SALDOS — ¿el saldo declarado ya contiene lo que la columna vuelve a sumar?`)
