@@ -28,6 +28,7 @@ import { buscarEnCompras, HALLAZGO, escalaDelProveedor, detallesFirmes, obrasFir
 import { colapsarRepetidos, entraEnElFajo, estaCompleto, imputacionPendiente, ESTADO } from '../../lib/comprobantes/fajo.mjs'
 import { mensajeFajo } from '../../lib/comprobantes/mensaje.mjs'
 import { rendicionDeAdjuntos, textoRendicion } from '../../lib/comprobantes/rendicion.mjs'
+import { parteVacia, parteDeRendicion, parteDeEscritura, sumarPartes } from '../../lib/comprobantes/parte.mjs'
 import { matchUnico } from '../../lib/comprobantes/imputacion.mjs'
 import { perfilesDeImputacion, sugerirImputacion } from '../../lib/imputacion-aprendida.mjs'
 import { puedeCargarComprobantes } from './guarda.mjs'
@@ -276,12 +277,16 @@ export async function procesarPost(d, m = {}) {
   // entero —puerta, lectura, agrupado, idempotencia, mensaje— con un doble en memoria, sin Postgres.
   const repo = d.repo ?? repoReal
   const fileIds = (m.fileIds ?? []).filter(Boolean)
-  if (!fileIds.length) return { texto: TEXTO.SIN_ADJUNTOS, estado: 'sin_adjuntos' }
-  if (fileIds.length > MAX_ADJUNTOS) return { texto: TEXTO.DEMASIADOS, estado: 'demasiados' }
+  // EL RECUENTO ACOMPAÑA A TODAS LAS SALIDAS, incluidas las que fallan antes de leer un byte. La
+  // tanda publica UN mensaje sumando lo de varios posts: un post que se va sin `parte` desaparece de
+  // ese total, que es el defecto de la rendición otra vez pero un nivel más arriba.
+  const conParte = (salida, parte) => ({ ...salida, parte: { ...parteVacia(), recibidos: fileIds.length, ...(parte ?? {}) } })
+  if (!fileIds.length) return conParte({ texto: TEXTO.SIN_ADJUNTOS, estado: 'sin_adjuntos' })
+  if (fileIds.length > MAX_ADJUNTOS) return conParte({ texto: TEXTO.DEMASIADOS, estado: 'demasiados' }, { avisos: [TEXTO.DEMASIADOS] })
 
   // 1) ¿Existe el esquema? Antes que nada: sin las tablas no hay idempotencia, y sin idempotencia
   //    esto no se enciende. Cargar sin barrera de duplicados es peor que no cargar.
-  if (!await repo.tablasListas(port)) return { texto: TEXTO.SIN_ESQUEMA, estado: 'sin_esquema' }
+  if (!await repo.tablasListas(port)) return conParte({ texto: TEXTO.SIN_ESQUEMA, estado: 'sin_esquema' }, { avisos: [TEXTO.SIN_ESQUEMA] })
 
   // 2) LA PUERTA. Antes de bajar un byte y antes de gastar un token de visión.
   const permitido = await puedeCargarComprobantes({
@@ -290,7 +295,7 @@ export async function procesarPost(d, m = {}) {
   })
   if (!permitido.ok) {
     log?.info?.('comprobantes: rechazado en la puerta', { motivo: permitido.motivo, detalle: permitido.detalle })
-    return { texto: permitido.texto, estado: `rechazado_${permitido.motivo}` }
+    return conParte({ texto: permitido.texto, estado: `rechazado_${permitido.motivo}` }, { avisos: [permitido.texto] })
   }
 
   // 3) Bajar. En serie: son pocos archivos y Mattermost es local; el paralelo acá sólo compra
@@ -336,7 +341,11 @@ export async function procesarPost(d, m = {}) {
   }
   if (!items.length) {
     const rend = rendicionDeAdjuntos({ fileIds, items: [], problemas })
-    return { texto: [TEXTO.NADA_LEGIBLE, '', textoRendicion(rend)].join('\n'), estado: 'ilegible' }
+    return {
+      texto: [TEXTO.NADA_LEGIBLE, '', textoRendicion(rend)].join('\n'),
+      estado: 'ilegible',
+      parte: parteDeRendicion(rend, { seCargaron: false }),
+    }
   }
 
   // 5) ARCA, ANTES de colapsar: corrige el número mal leído, que es justo con lo que se deduplica.
@@ -411,7 +420,7 @@ export async function procesarPost(d, m = {}) {
     }
     fajo = await repo.abrirFajo(port, nuevoFajo(m, unicos))
   }
-  if (!fajo) return { texto: 'No pude abrir la carga. Probá de nuevo en un minuto.', estado: 'error' }
+  if (!fajo) return conParte({ texto: 'No pude abrir la carga. Probá de nuevo en un minuto.', estado: 'error' }, { avisos: ['No pude abrir la carga. Mandalos de nuevo en un minuto.'] })
 
   // ═══ 9) LA RENDICIÓN DE CUENTAS DE ESTE POST (05/08) ═══
   //
@@ -431,7 +440,15 @@ export async function procesarPost(d, m = {}) {
   if (solo) return solo
 
   const msg = mensajeFajo(fajo, { url })
-  return { texto: msg.texto + ['', textoRendicion(rendicion)].join('\n'), attachments: msg.attachments, estado: 'confirmar', fajoId: fajo.id }
+  return {
+    texto: msg.texto + ['', textoRendicion(rendicion)].join('\n'),
+    attachments: msg.attachments,
+    estado: 'confirmar',
+    fajoId: fajo.id,
+    // Nada se escribió: lo que estaba listo queda trabado y se NOMBRA. Sin `seCargaron` la rendición
+    // diría «listo» sobre un gasto que no entró a ningún lado.
+    parte: parteDeRendicion(rendicion, { seCargaron: false }),
+  }
 }
 
 /** ¿Este ítem entró con alguna de las fotos de ESTE post? Por `origen` o por cualquiera de sus copias. */
@@ -557,7 +574,14 @@ async function cargarSolo(d, fajo, repo, rendicion = null) {
     // La escritura no puede tumbar el post. Se reabre el fajo para poder reintentar y se dice.
     await repo.reabrirFajo(port, { id: fajo.id, error: String(e?.message ?? e).slice(0, 200) }).catch(() => {})
     d.log?.error?.('comprobantes: la carga automática falló', { fajo: fajo.id, error: String(e?.message ?? e) })
-    return { texto: `No pude cargarlo: ${String(e?.message ?? e).slice(0, 200)}.`, estado: 'error', fajoId: fajo.id }
+    return {
+      texto: `No pude cargarlo: ${String(e?.message ?? e).slice(0, 200)}.`,
+      estado: 'error',
+      fajoId: fajo.id,
+      parte: sumarPartes(parteDeRendicion(rendicion, { seCargaron: false }), {
+        avisos: [`No pude cargar: ${String(e?.message ?? e).slice(0, 160)}.`],
+      }),
+    }
   }
 
   // LA RENDICIÓN VIAJA TAMBIÉN EN EL CAMINO QUE CARGA SOLO. Es justo donde más falta hace: acá no
@@ -570,6 +594,12 @@ async function cargarSolo(d, fajo, repo, rendicion = null) {
   const estado = r?.estado ?? ESTADO.CARGADO
   const cola = rendicion ? `\n\n${textoRendicion(rendicion, { seCargaron: estado === ESTADO.CARGADO })}` : ''
   const tanda = estado === ESTADO.CARGADO ? await textoAcumulado(port, repo, fajo, (r?.filas ?? []).length) : ''
+  // EL RECUENTO. La rendición cuenta los adjuntos (lo que ya estaba, lo ilegible, las copias) y la
+  // escritura cuenta las filas y la plata. Se suman una sola vez y con `seCargaron` puesto en lo que
+  // de verdad pasó: si la escritura no ocurrió, lo que estaba «listo» pasa a trabado y se nombra.
+  const parte = sumarPartes(
+    parteDeRendicion(rendicion, { seCargaron: estado === ESTADO.CARGADO }),
+    parteDeEscritura(estado === ESTADO.CARGADO ? r : { ...r, filas: [], suma: 0 }))
 
   // ═══ LO QUE QUEDÓ TRABADO SE MUDA A UN FAJO NUEVO, CON SUS BOTONES ═══
   //
@@ -596,10 +626,11 @@ async function cargarSolo(d, fajo, repo, rendicion = null) {
         attachments: msg.attachments,
         estado,
         fajoId: nuevo.id,
+        parte,
       }
     }
   }
-  return { texto: (r?.texto ?? '✔ Cargado.') + tanda + cola, estado, fajoId: fajo.id }
+  return { texto: (r?.texto ?? '✔ Cargado.') + tanda + cola, estado, fajoId: fajo.id, parte }
 }
 
 /**

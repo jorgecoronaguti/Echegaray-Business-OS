@@ -336,9 +336,12 @@ export const pxDeTexto = (texto, { tam, bold }) => Math.ceil(String(texto).lengt
  */
 export function anchoColumnaA(g, { minimo = 300, padding = 18 } = {}) {
   const grandes = new Set([...(g.protagonistas ?? []), ...(g.totales ?? [])])
+  // EL RÓTULO DE UNA OBRA ES UNA FÓRMULA DESDE QUE LLEVA EL ⚠ VIVO. Medir la fórmula daría una
+  // columna A de ~900px por un rótulo de 60 caracteres: se mide lo que la celda MUESTRA.
+  const visible = new Map((g.rotulos ?? []).map((r) => [r.fila, r.texto]))
   let px = minimo - padding
   ;(g.filas ?? []).forEach((fila, i) => {
-    const t = fila?.[0] === VACIO ? '' : String(fila?.[0] ?? '')
+    const t = visible.get(i + 1) ?? (fila?.[0] === VACIO ? '' : String(fila?.[0] ?? ''))
     const n = i + 1
     if (!t || n === 2) return
     const estilo = n === 1 ? { tam: 13, bold: true }
@@ -769,6 +772,10 @@ function hoja() {
   const h = {
     filas,
     tipeadas: [],
+    /** Fila → el texto que la celda MUESTRA, cuando la celda es una fórmula que arma un rótulo.
+     *  `anchoColumnaA` mide píxeles de texto: sin esto mediría la fórmula y daría una columna de
+     *  900px por un rótulo de 60 caracteres. */
+    rotulos: [],
     get n() { return filas.length },
     push(c = []) {
       const r = [...c].map((x) => (x === '' || x === undefined || x === null ? VACIO : x))
@@ -862,7 +869,11 @@ function bloqueObra(h, refs, o, idx, unica = false) {
   const [f0, f1] = [fProt + 1, fProt + nDetalle]
 
   const dela = { needle: o.ventaTexto, unica }
-  h.push([`2.${idx} · ${o.cliente} — ${o.obra}${proyectable ? '' : '   ⚠ sin fechas — no se proyecta'}`,
+  // EL RÓTULO YA NO SE ARMA ACÁ: lleva las fechas del dueño y un ⚠ vivo, y las dos cosas se pueden
+  // probar sin construir una grilla entera. Ver `rotuloDeObra`.
+  const rot = rotuloDeObra(o, idx)
+  h.rotulos.push({ fila: fProt, texto: rot.texto })
+  h.push([rot.celda,
     // ACÁ VIVÍA EL SEMÁFORO `✓/⚠`, que miraba la cobranza vencida. Sale por el estándar del dueño
     // (13/08, el modelo que señaló no usa un solo glifo) y porque no informaba: daba ✓ en las siete
     // obras, y su única señal —hay vencido— la publica la columna F con el importe, que dice cuánto.
@@ -991,6 +1002,8 @@ export function grillaObras(ctx = {}) {
   return {
     filas: h.filas,
     tipeadas: h.tipeadas,
+    /** Fila → texto visible, para las celdas cuyo contenido es una fórmula que arma un rótulo. */
+    rotulos: h.rotulos,
     protagonistas: bloques.map((b) => b.fProt),
     detalles: bloques.flatMap((b) => { const r = []; for (let f = b.fDetalle[0]; f <= b.fDetalle[1]; f++) r.push(f); return b.fNoCaja ? [...r, b.fNoCaja] : r }),
     totales,
@@ -1006,6 +1019,48 @@ export function grillaObras(ctx = {}) {
 
 /** Los enteros de `a` a `b`, inclusive. */
 const rango = (a, b) => { const r = []; for (let i = a; i <= b; i++) r.push(i); return r }
+
+/**
+ * EL RÓTULO DE UNA OBRA, CON SUS FECHAS DE INICIO Y FIN.
+ *
+ * ═══ POR QUÉ (13/08, pedido del dueño) ═══
+ *
+ * *"necesito q la pestaña obras me marque bien claro los datos q habian sido enviados respecto a las
+ * fechas de inicio y fin de obra"*. Tenía razón y el defecto era grande: las siete obras TIENEN sus
+ * fechas declaradas desde el 07/08 en `obras-datos.mjs` —él mismo las mandó con las explosiones de
+ * gastos— y la pestaña **no publicaba ninguna**. La única vez que las nombraba era en negativo, para
+ * avisar que faltaban. Un dato que el dueño entregó y que el cuadro no muestra es peor que un dato
+ * que falta: él cree que ya está a la vista.
+ *
+ * VA EN EL RÓTULO Y NO EN DOS COLUMNAS NUEVAS. Es la misma decisión que ya se tomó con el proveedor
+ * del egreso cuando el dueño mandó sacar la glosa: la celda que IDENTIFICA la fila es donde se
+ * identifica la fila. Dos columnas de fecha para un dato que no se suma ni se compara entre obras
+ * costarían 276px y volverían a empujar los importes fuera de pantalla — que es exactamente por lo
+ * que la columna I salió.
+ *
+ * ═══ EL ⚠ ES UNA FÓRMULA VIVA, NO UN TEXTO TIPEADO ═══
+ *
+ * La marca de "esta obra ya pasó su fecha de fin" se calcula con `TODAY()` DENTRO del Sheet. Si se
+ * tipeara acá, la obra que vence mañana quedaría sin marcar hasta que alguien se acuerde de correr el
+ * generador — o sea, justo el día que la marca sirve para algo. Con `TODAY()` la pestaña se entera
+ * sola. Es el mismo criterio con que `vencido` mide la cobranza atrasada.
+ *
+ * NO SE MARCA "ATRASADA": se marca que PASÓ EL FIN. La grilla no sabe si la obra terminó — el avance
+ * físico no está en ninguna fuente que esta pestaña lea, y afirmar un atraso sin medirlo sería
+ * presentar una inferencia como un hecho. Lo que el glifo dice es verificable: la fecha ya pasó.
+ *
+ * @returns {{texto:string, celda:string}} `texto` es lo que se VE (lo necesita `anchoColumnaA`, que
+ *   mide píxeles: midiendo la fórmula daría una columna de 900px); `celda` es lo que se escribe.
+ */
+export function rotuloDeObra(o, idx) {
+  const base = `2.${idx} · ${o.cliente} — ${o.obra}`
+  // SIN FECHAS NO SE INVENTA NINGUNA. El aviso es el que ya existía y sigue siendo texto plano: no
+  // hay ninguna fecha con la que armar un TODAY() y una fórmula que no puede fallar no debe existir.
+  if (!esProyectable(o)) return { texto: `${base}   ⚠ sin fechas — no se proyecta`, celda: `${base}   ⚠ sin fechas — no se proyecta` }
+  const dm = (iso) => { const [, m, d] = String(iso).split('-'); return `${d}/${m}` }
+  const texto = `${base} · ${dm(o.inicio)} → ${dm(o.fin)}`
+  return { texto: `${texto} ⚠`, celda: `=${quote(texto)}&IF(TODAY()>${serialISO(o.fin)};" ⚠";"")` }
+}
 
 /**
  * LO QUE SE LE FACTURA A LOS CLIENTES CON OBRA, FUERA DE SUS OBRAS DECLARADAS — Y EL DEFECTO QUE

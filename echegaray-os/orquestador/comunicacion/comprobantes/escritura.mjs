@@ -199,6 +199,7 @@ export async function escribirFajo(d, fajo) {
     await repo.cerrarFajo(port, { id: fajo.id, estado: ESTADO.ENCOLADO, error: 'sheets congelados' })
     return {
       estado: ESTADO.ENCOLADO,
+      avisos: ['🧊 La escritura de Sheets está congelada: no cargué nada. Los comprobantes quedan guardados.'],
       texto: [
         '🧊 **La escritura de Sheets está congelada.** No toqué nada.',
         items.length === 1
@@ -231,6 +232,7 @@ export async function escribirFajo(d, fajo) {
     log?.error?.('comprobantes: ítem sin clave, no se escribió nada', { fajo: fajo.id, motivo })
     return {
       estado: ESTADO.ERROR,
+      avisos: [`No cargué nada: falta lo que necesito para no cargarlo dos veces — ${motivo}.`],
       texto: [
         `**No cargué nada.** ${sinClave.length === 1 ? 'A un comprobante' : `A ${sinClave.length} comprobantes`} le falta lo que necesito para no cargarlo dos veces: ${motivo}.`,
         'Tocá **Corregir** y completalo. No se escribió una sola fila en Compras.',
@@ -251,6 +253,7 @@ export async function escribirFajo(d, fajo) {
     const donde = [...ya.values()].map((r) => r?.fila).filter((f) => f != null)
     return {
       estado: ESTADO.CARGADO,
+      yaEstaban: yaEstaban.length,
       texto: donde.length
         ? `Estos comprobantes ya estaban cargados (fila${donde.length > 1 ? 's' : ''} ${donde.join(', ')} de Compras). No los dupliqué.`
         : 'Estos comprobantes ya estaban cargados. No los dupliqué.',
@@ -276,6 +279,9 @@ export async function escribirFajo(d, fajo) {
     const congeladoAhora = r.datos?.congelado === true
     return {
       estado: ESTADO.ERROR,
+      avisos: [congeladoAhora
+        ? '🧊 La escritura de Sheets está congelada: no cargué nada.'
+        : `No pude cargarlos: ${r.error ?? r.datos?.detalle ?? 'el cargador falló'}.${seguroQueNo ? ' No se escribió nada.' : ' **Revisá Compras antes de reintentar.**'}`],
       texto: congeladoAhora
         ? '🧊 La escritura de Sheets está congelada. No cargué nada; los comprobantes quedan guardados.'
         : `No pude cargarlos: ${r.error ?? r.datos?.detalle ?? 'el cargador falló'}.${seguroQueNo ? ' No se escribió nada.' : ' **Revisá Compras antes de reintentar.**'}`,
@@ -339,7 +345,39 @@ export async function escribirFajo(d, fajo) {
   }
 
   const texto = [textoCargado(filas, yaEstaban, r.datos, { pendientes, suma, varios }), prueba].filter(Boolean).join('\n')
-  return { estado: ESTADO.CARGADO, texto, filas }
+  // EL RECUENTO VIAJA APARTE DEL TEXTO. Desde que la tanda publica UN mensaje para varios posts, el
+  // texto de acá ya no se publica tal cual: hay que poder SUMAR lo de tres posts antes de escribir un
+  // renglón, y un string no se suma. Se devuelven los mismos números que arma el texto —no otros—
+  // para que las dos caras no puedan discrepar. Ver `lib/comprobantes/parte.mjs`.
+  return {
+    estado: ESTADO.CARGADO,
+    texto,
+    filas,
+    yaEstaban: yaEstaban.length,
+    suma,
+    sinImputar: pendientes,
+    avisos: avisosDuros(r.datos, varios),
+  }
+}
+
+/**
+ * Lo que hay que decir sí o sí aunque el mensaje sea corto: filas con #ERROR, proveedores fuera del
+ * desplegable, comprobantes que el cargador NO escribió, y los archivos que traían más de un
+ * comprobante. No entra acá nada informativo: el mensaje único es de tres renglones y todo lo que
+ * sobra hace que no se lea el que importa.
+ */
+function avisosDuros(datos, varios = []) {
+  const l = []
+  if (datos?.errores) l.push(`${datos.errores} fila(s) quedaron con #ERROR en Compras — revisalas.`)
+  if (datos?.nuevos?.length) l.push(`Proveedor(es) fuera del desplegable: ${datos.nuevos.join(' · ')}.`)
+  if (datos?.duplicados?.length) {
+    l.push(`${datos.duplicados.length} NO lo(s) cargué: ya estaban en Compras (${datos.duplicados.map((d) => `fila ${d.fila}`).join(', ')}).`)
+  }
+  for (const v of varios) {
+    const cuantos = Number.isFinite(v.cuantos) && v.cuantos > 1 ? `${v.cuantos} comprobantes` : 'más de un comprobante'
+    l.push(`${v.nombre ? `**${v.nombre}**` : 'Uno de los archivos'} tenía ${cuantos}: cargué sólo el de la fila ${v.fila ?? '?'}. **Mandá los otros en fotos separadas.**`)
+  }
+  return l
 }
 
 /**

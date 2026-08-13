@@ -81,6 +81,14 @@ export const HALLAZGO = Object.freeze({
  * compra es el error de $41,9M que este repo ya pagó: acá el signo se respeta.
  */
 export function importeDeCompras(v) {
+  // ═══ UN NÚMERO YA ES UN NÚMERO (13/08) ═══
+  //
+  // Sin esta línea, `String(6000.02)` da "6000.02" y el parser es-AR se come el punto como separador
+  // de miles: 6.000,02 se convierte en 600.002, cien veces más. No pasaba porque este rango se lee
+  // FORMATEADO; se descubrió al leerlo con `UNFORMATTED_VALUE` desde el auditor, donde $6.693,39
+  // apareció como $6.693.389.999.999.999. Un parser que multiplica por cien según cómo lo llamaron es
+  // una bomba con temporizador: la fuente no puede depender del render que eligió el llamador.
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null
   const s = String(v ?? '')
   const n = aNumero(s)
   if (n == null) return null

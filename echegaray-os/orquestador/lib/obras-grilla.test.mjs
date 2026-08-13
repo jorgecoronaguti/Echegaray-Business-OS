@@ -18,6 +18,7 @@ import {
   grillaObras, serialISO, criterioCliente, variantesDe, anchoColumnaA, pxDeTexto, clientesDeCobranzas,
   celdasEnError, problemaDeSintaxis, ERRORES_SHEET, nombreEnCostos, ANO, trabajosFueraDeObra,
   ANCHO_OBRAS, ANCHOS_OBRAS, ANCHO_HISTORICO, ALTO_HISTORICO, conColaLimpiable, REFS_OBRAS, CLIENTES_MUESTRA,
+  rotuloDeObra,
 } from './obras-grilla.mjs'
 import { OBRAS_FUTURAS, CLIENTES_CANONICOS, esProyectable, totalEgresos } from './obras-datos.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
@@ -745,10 +746,15 @@ test('ningún rótulo excede el ancho declarado de la columna A: con CLIP, lo qu
   // se leía "…OBRA P" y "2.7 · Quattropani - Melisa García SAS — SALÓN" perdía "COMERCIAL". El
   // estilo de la casa pone wrapStrategy CLIP en toda la hoja: un rótulo más largo que su columna no
   // se derrama sobre la vecina, se corta. Ningún test unitario lo miraba — éste sí.
+  // SE MIDE LO QUE LA CELDA MUESTRA, NO LO QUE TIENE ADENTRO. Desde que el rótulo de una obra lleva
+  // el ⚠ vivo, su celda es una fórmula: medir el texto de la fórmula pedía 680px para dibujar 60
+  // caracteres, y ensanchar la columna por eso sería empujar los importes fuera de pantalla por un
+  // texto que nadie ve. `g.rotulos` es la misma traducción que usa `anchoColumnaA`.
   const ancho = anchoColumnaA(g)
   const grandes = new Set([...g.protagonistas, ...g.totales])
+  const visible = new Map(g.rotulos.map((r) => [r.fila, r.texto]))
   g.filas.forEach((fila, i) => {
-    const t = fila[0] === VACIO ? '' : String(fila[0] ?? '')
+    const t = visible.get(i + 1) ?? (fila[0] === VACIO ? '' : String(fila[0] ?? ''))
     const n = i + 1
     if (!t || n === 2) return // la 2 es el subtítulo: va con WRAP y no ensancha nada
     const estilo = n === 1 ? { tam: 13, bold: true }
@@ -770,4 +776,77 @@ test('el ancho SALE de los datos: una obra con nombre más largo ensancha la col
 test('el subtítulo NO ensancha la columna: va con WRAP, no clipeado', () => {
   const conSubtituloLargo = { ...g, filas: g.filas.map((f, i) => (i === 1 ? [`${'x'.repeat(400)}`, ...f.slice(1)] : f)) }
   assert.equal(anchoColumnaA(conSubtituloLargo), anchoColumnaA(g))
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LAS FECHAS DE INICIO Y FIN DE OBRA (13/08 — pedido del dueño)
+//
+// *"necesito q la pestaña obras me marque bien claro los datos q habian sido enviados respecto a las
+// fechas de inicio y fin de obra"*. El defecto que estos tests atrapan: las siete obras tienen sus
+// fechas declaradas desde el 07/08 en obras-datos.mjs —las mandó él— y la pestaña no publicaba
+// NINGUNA. Un dato entregado que el cuadro no muestra es peor que uno que falta: el dueño cree que
+// ya está a la vista y decide sin él.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('el rótulo de cada obra PUBLICA su inicio y su fin: son datos del dueño y no se pueden perder', () => {
+  const conFechas = OBRAS_FUTURAS.filter(esProyectable)
+  assert.ok(conFechas.length >= 7, 'el fixture tiene que traer las obras con fechas declaradas')
+  for (const [i, o] of OBRAS_FUTURAS.entries()) {
+    if (!esProyectable(o)) continue
+    const { texto } = rotuloDeObra(o, i + 1)
+    const dm = (iso) => { const [, m, d] = iso.split('-'); return `${d}/${m}` }
+    // REVERTIR EL ARREGLO PONE ESTO EN ROJO: sin las fechas en el rótulo, la pestaña vuelve a
+    // publicar el nombre de la obra a secas y estas dos aserciones fallan en las siete obras.
+    assert.ok(texto.includes(dm(o.inicio)), `${o.clave}: el rótulo no publica el inicio ${o.inicio} — "${texto}"`)
+    assert.ok(texto.includes(dm(o.fin)), `${o.clave}: el rótulo no publica el fin ${o.fin} — "${texto}"`)
+    assert.ok(texto.includes('→'), `${o.clave}: inicio y fin sin la flecha no se leen como un tramo`)
+  }
+})
+
+test('la marca de "ya pasó el fin" es una FÓRMULA con TODAY(), no un texto tipeado en la corrida', () => {
+  // POR QUÉ IMPORTA: tipeada, la obra que vence mañana queda sin marcar hasta que alguien se acuerde
+  // de correr el generador — o sea, justo el día en que la marca sirve. Con TODAY() la pestaña se
+  // entera sola. Es el mismo criterio con el que `vencido` mide la cobranza atrasada.
+  const o = OBRAS_FUTURAS.find(esProyectable)
+  const { celda } = rotuloDeObra(o, 1)
+  assert.ok(celda.startsWith('='), 'el rótulo con fechas tiene que ser una fórmula viva')
+  assert.match(celda, /TODAY\(\)>\d+/, 'la comparación contra hoy la tiene que hacer Sheets, no este proceso')
+  assert.ok(celda.includes(String(serialISO(o.fin))), 'se compara contra el SERIAL de la fecha de fin declarada')
+  assert.ok(celda.includes('⚠'), 'la marca tiene que estar en la fórmula')
+  assert.ok(!celda.includes(','), 'locale es-AR: el separador de argumentos es `;`, una coma es un decimal')
+  assert.equal(problemaDeSintaxis(celda), null)
+})
+
+test('una obra SIN fechas no inventa ninguna: sigue avisando que falta y no lleva fórmula', () => {
+  // La regla de oro 1. Una fecha estimada dentro de un rótulo se lee como una fecha declarada.
+  const sinFechas = { ...OBRAS_FUTURAS[0], inicio: null, fin: null }
+  const { texto, celda } = rotuloDeObra(sinFechas, 1)
+  assert.ok(texto.includes('sin fechas'), 'tiene que declarar que no tiene fechas')
+  assert.ok(!celda.startsWith('='), 'sin fecha de fin no hay TODAY() contra qué comparar: es texto plano')
+  assert.ok(!/\d{2}\/\d{2}/.test(texto), `no puede aparecer ninguna fecha inventada: "${texto}"`)
+})
+
+test('el ⚠ del rótulo NO se dispara por una obra cuyo fin todavía no llegó', () => {
+  // El glifo dice algo verificable —la fecha ya pasó— y nada más. Si el umbral fuera otra cosa
+  // (avance físico, "atrasada"), estaría afirmando algo que ninguna fuente de esta pestaña mide.
+  const lejos = { ...OBRAS_FUTURAS[0], inicio: '2026-08-05', fin: '2099-12-31' }
+  const { celda } = rotuloDeObra(lejos, 1)
+  assert.ok(celda.includes(String(serialISO('2099-12-31'))))
+  const ayer = { ...OBRAS_FUTURAS[0], inicio: '2026-01-05', fin: '2026-01-31' }
+  assert.notEqual(rotuloDeObra(ayer, 1).celda, celda, 'cada obra compara contra SU fin, no contra uno fijo')
+})
+
+test('la grilla expone el texto VISIBLE de cada rótulo: sin eso la columna A se dimensiona con la fórmula', () => {
+  const g2 = grillaObras({ obras: OBRAS_FUTURAS })
+  assert.equal(g2.rotulos.length, OBRAS_FUTURAS.length, 'un rótulo visible por obra')
+  for (const r of g2.rotulos) {
+    assert.ok(!r.texto.startsWith('='), 'el texto visible no puede ser la fórmula')
+    // Y tiene que corresponder a la fila protagonista de una obra: si apuntara a otra fila, el
+    // ancho se calcularía sobre un rótulo que no está ahí.
+    assert.ok(g2.protagonistas.includes(r.fila), `la fila ${r.fila} no es la protagonista de ninguna obra`)
+  }
+  // El ancho medido sobre la FÓRMULA sería absurdo — es el defecto que este mecanismo evita.
+  const anchoReal = anchoColumnaA(g2)
+  const anchoSinRotulos = anchoColumnaA({ ...g2, rotulos: [] })
+  assert.ok(anchoReal < anchoSinRotulos, `medir la fórmula pedía ${anchoSinRotulos}px y el texto pide ${anchoReal}px`)
 })
