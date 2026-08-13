@@ -1073,6 +1073,24 @@ export function expresionReal(l, desde, hasta) {
  */
 export const mesCerrado = (M) => `EOMONTH(${M};0)<=EOMONTH(TODAY();0)`
 
+/**
+ * EL PRIMER DÍA DEL MES EN CURSO — el borde de la ventana de OBSERVACIONES COMPLETAS.
+ *
+ * Un promedio se saca sobre meses que ya terminaron. El mes que corre está a medio transcurrir, así
+ * que meterlo en el numerador Y en el divisor hace que el ritmo baje cuanto más temprano se mira, y
+ * —peor— que BAJE cuando entra una factura nueva: el cuadro empeora su pronóstico justo cuando llega
+ * más información. La ventana de tres meses de `expresionProyeccionMes` corta acá, y la pestaña
+ * Recurrentes corta acá para su promedio del año: es UN corte, escrito UNA vez. Estaba tipeado por
+ * separado en los dos archivos, que es la forma en que dos cuadros terminan diciendo cosas distintas
+ * de la misma plata.
+ *
+ * NO ES `mesCerrado()`, Y LA DIFERENCIA ES A PROPÓSITO. Aquella dice si un mes YA NO SE PROYECTA
+ * —e incluye el mes en curso, porque proyectar el mes corriente sobre el saldo de caja ya costó
+ * $177M de contradicción entre el mensual y el semanal—. Ésta dice si un mes YA SE PUEDE OBSERVAR.
+ * El mes en curso no se proyecta y tampoco se observa: es el único que cae fuera de las dos.
+ */
+export const MES_EN_CURSO = 'EOMONTH(TODAY();-1)+1'
+
 export function formulaLineaMes(l, colMes, colTabla, filaCab, filasTabla = {}, anio = 2026) {
   if (l.cheques || l.calendarioImpuestos) return null
   const mes = `${colMes}$${filaCab}`
@@ -1127,8 +1145,9 @@ export function expresionProyeccionMes(l, mes, filasTabla = {}, anio = 2026) {
   // mes corriente y dividía por 3: metía un mes a medio transcurrir en el promedio, así que el
   // ritmo salía más bajo cuanto más temprano se miraba. Un mes que todavía no terminó no es una
   // observación completa. Además ahora coincide exactamente con la ventana del núcleo Postgres,
-  // que es la condición para que la web y la planilla digan lo mismo.
-  const ventana = `${expresionReal(l, 'EOMONTH(TODAY();-4)+1', 'EOMONTH(TODAY();-1)+1')}/3`
+  // que es la condición para que la web y la planilla digan lo mismo. El borde superior es
+  // MES_EN_CURSO, el mismo que usa Recurrentes: una sola definición de "hasta dónde se puede mirar".
+  const ventana = `${expresionReal(l, 'EOMONTH(TODAY();-4)+1', MES_EN_CURSO)}/3`
   const factor = `IFERROR(INDEX(Parámetros!$C$74:$C$90;MATCH(EOMONTH(${mes};0);ARRAYFORMULA(EOMONTH(Parámetros!$A$74:$A$90;0));0));1)`
   const mesesConGasto = `SUMPRODUCT(--(COUNTIFS(${COL_RUBRO};"${l.rubro}";${COL_FECHA};">="&${MESES_CAB};${COL_FECHA};"<"&EOMONTH(${MESES_CAB};0)+1)>0))`
   // FUERA DEL AÑO DEL CUADRO NO SE PROYECTA — la regla ya estaba escrita en el docstring de arriba y

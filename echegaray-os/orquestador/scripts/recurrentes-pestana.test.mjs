@@ -12,7 +12,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { grilla, formatosPropios, declaradosSinFila, RANGO_COMPRAS } from './recurrentes-pestana.mjs'
-import { mesCerrado } from '../lib/cash-flow-lineas.mjs'
+import { mesCerrado, MES_EN_CURSO, MIN_MESES } from '../lib/cash-flow-lineas.mjs'
+import { evaluarFormula, hojaDeGrilla } from '../lib/evaluar-formula-sheet.mjs'
 import { fusionar, tiene, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { CONTADOR, MONEDA_CUERPO, MONEDA_TOTAL, MONEDA_CONTROL } from '../lib/formato-statement.mjs'
 
@@ -68,7 +69,7 @@ test('el subtítulo entra en una línea: el muro de texto se cortaba contra ener
   assert.ok(String(g.filas[1][0]).length <= 130, `el subtítulo mide ${String(g.filas[1][0]).length} caracteres`)
 })
 
-test('EL CONTADOR NO ES PLATA: "Meses con gasto" declara su propio formato', () => {
+test('EL CONTADOR NO ES PLATA: "Meses cerrados con gasto" declara su propio formato', () => {
   const reqs = formatosPropios({ sheetId: 1, rows: 60 }, g)
   const patrones = reqs
     .filter((r) => r.repeatCell?.cell?.userEnteredFormat?.numberFormat)
@@ -199,6 +200,114 @@ test('el Cash Flow Mensual NO toma de esta pestaña el mes en curso', () => {
   // y el mismo mes se cuenta como real y como proyección: este test se pone rojo primero.
   assert.match(mesCerrado('B$3'), /<=/,
     'el cash flow dejó de tratar el mes en curso como cerrado — revisar la interacción con el MAX de esta pestaña')
+})
+
+// ═══ EL PROMEDIO SE MIDE SOBRE MESES CERRADOS — LOS TESTS DEL 13/08/2026 (TARDE) ═══
+//
+// EL DEFECTO. El promedio que alimenta la proyección de septiembre a diciembre dividía el total del
+// AÑO por los meses con gasto del AÑO, y en los dos lados entraba el mes EN CURSO, que por
+// definición está a medio transcurrir. Consecuencia medida sobre los datos reales de Movistar
+// (Compras, espejados en public.costos_obra): con agosto todavía en $0 el esperado es
+// 2.162.055/6 = $360.342,50, y en cuanto entra una factura parcial de $50.000 pasa a
+// 2.212.055/7 = $316.007,86. El cuadro EMPEORA su pronóstico justo cuando llegan más datos, que es
+// exactamente al revés de lo que tiene que pasar. Es el mismo defecto que `cash-flow-lineas.mjs` ya
+// había corregido para su ventana de tres meses, y ahora las dos usan la MISMA constante.
+//
+// POR QUÉ SE EVALÚAN LAS FÓRMULAS Y NO SE MIRA SU TEXTO. Una aserción de cadena no puede ver por qué
+// número divide un promedio. El evaluador de `lib/evaluar-formula-sheet.mjs` corre la fórmula que el
+// generador escribe, con los datos que pone el test, sin tocar el archivo real — correr el generador
+// contra el Sheet vivo para verificar ya borró trabajo del dueño tres veces.
+const HOY = new Date(Date.UTC(2026, 7, 13)) // 13/08/2026: agosto EN CURSO, julio el último cerrado
+const AUX = ['R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'AA', 'AB', 'AC']
+const COL_MES = ['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M']
+const [ENE, MAY, AGO, SEP] = [0, 4, 7, 8]
+
+// Movistar 2026 tal como está hoy en Compras (mayo en $0 de verdad; agosto sin factura todavía).
+const MOVISTAR = [393970, 359155, 377932, 341554, 0, 398690, 290754, 0, 0, 0, 0, 0]
+
+/** Arma el cuadro de UN proveedor, le mete el real mes a mes y evalúa lo que el dueño va a leer. */
+function cuadroDe(realPorMes, hoy = HOY) {
+  const uno = grilla(['Movistar'])
+  const hoja = hojaDeGrilla(uno.filas)
+  const f = uno.f0 // con un solo proveedor, f0 = f1: los rangos del control quedan de una fila
+  AUX.forEach((c, m) => { hoja[`${c}${f}`] = realPorMes[m] ?? 0 })
+  const leer = (ref) => evaluarFormula(`=${ref}`, { hoja, hoy })
+  return {
+    totalReal: leer(`N${f}`),
+    mesesCerrados: leer(`O${f}`),
+    promedio: leer(`P${f}`),
+    mes: (m) => leer(`${COL_MES[m]}${f}`),
+    // El control de abajo, sobre el mismo dato: cuántos meses YA CERRADOS quedaron en $0.
+    cerradosEnCero: leer(`B${uno.ctrl + 5}`),
+  }
+}
+
+test('EL PROMEDIO IGNORA EL MES EN CURSO: es una observación incompleta, no un mes flojo', () => {
+  const hoy = cuadroDe(MOVISTAR)
+  assert.equal(hoy.promedio, 2162055 / 6, 'el promedio de Movistar con los datos reales de agosto')
+  assert.equal(hoy.mesesCerrados, 6)
+  // Y ahora entra la primera factura de agosto, parcial. El promedio NO SE MUEVE: agosto no terminó.
+  const conParcial = cuadroDe(MOVISTAR.map((v, m) => (m === AGO ? 50000 : v)))
+  assert.equal(conParcial.promedio, 2162055 / 6,
+    'el mes en curso se metió en el promedio: 2.212.055/7 = 316.007,86 en vez de 360.342,50')
+  assert.equal(conParcial.mesesCerrados, 6, 'agosto no es un mes cerrado hasta que termine')
+  // El "Total real" sí lo incluye — es un hecho del año y es lo que el control compara contra Compras.
+  assert.equal(conParcial.totalReal, 2212055)
+})
+
+test('EL DEFECTO QUE MOTIVA TODO: una factura parcial del mes en curso NO baja lo esperado', () => {
+  // Si este test se pone verde con el arreglo revertido, es que dejó de medir: la propiedad es que
+  // MÁS INFORMACIÓN NUNCA EMPEORE EL PRONÓSTICO. El factor de inflación de Parámetros no está
+  // modelado y cae en 1 por su propio IFERROR: lo que se mide es la BASE, que es lo que se arregló.
+  const antes = cuadroDe(MOVISTAR)
+  const despues = cuadroDe(MOVISTAR.map((v, m) => (m === AGO ? 50000 : v)))
+  assert.equal(antes.mes(SEP), 2162055 / 6)
+  assert.ok(despues.mes(SEP) >= antes.mes(SEP),
+    `septiembre cayó de ${antes.mes(SEP)} a ${despues.mes(SEP)} porque entró una factura`)
+  assert.equal(despues.mes(SEP), antes.mes(SEP), 'y no sólo no baja: no se mueve')
+  // El mes en curso muestra MAX(real; esperado) y tampoco puede empeorar por cargar su propia factura.
+  assert.equal(despues.mes(AGO), 2162055 / 6)
+})
+
+test('UN MES CERRADO EN $0 CUENTA COMO CERRADO: "no facturó" no es "todavía no facturó"', () => {
+  // Mayo de Movistar está en $0 y ya pasó: no divide el promedio (no facturó) pero el control lo
+  // grita, porque un mes que terminó sin factura es una anomalía a mirar. Agosto también está en $0
+  // y NO se grita: todavía no pasó. Los dos ceros valen $0 y significan cosas distintas.
+  const c = cuadroDe(MOVISTAR)
+  assert.equal(c.mesesCerrados, 6, 'mayo cerró sin facturar: no entra al divisor')
+  assert.equal(c.promedio, 2162055 / 6, 'y tampoco baja el promedio repartiendo entre 7')
+  assert.equal(c.cerradosEnCero, 1, 'el control marca mayo, y sólo mayo: agosto no cerró')
+  // La celda de mayo muestra el cero real; la de agosto, la expectativa.
+  assert.equal(c.mes(MAY), 0)
+  assert.equal(c.mes(AGO), 2162055 / 6)
+  assert.equal(c.mes(ENE), 393970)
+})
+
+test('MIN_MESES SE MIDE SOBRE MESES CERRADOS: tres meses y una factura de agosto no son tendencia', () => {
+  // Sin esto, sacar el mes en curso del promedio y dejarlo en el contador sería peor que el defecto:
+  // un proveedor con 3 meses cerrados pasaría el mínimo por una factura del mes que corre y se
+  // proyectaría el resto del año sobre un promedio de tres meses.
+  const flaco = [100000, 100000, 100000, 0, 0, 0, 0, 50000, 0, 0, 0, 0]
+  const c = cuadroDe(flaco)
+  assert.equal(c.mesesCerrados, 3, `MIN_MESES es ${MIN_MESES}: agosto no cuenta`)
+  assert.equal(c.mes(SEP), 0, 'con menos meses cerrados que el mínimo no se proyecta: se muestra $0')
+  // Y con el cuarto mes cerrado ya sí, sobre el promedio de esos cuatro.
+  const cuarto = cuadroDe([100000, 100000, 100000, 200000, 0, 0, 0, 50000, 0, 0, 0, 0])
+  assert.equal(cuarto.mesesCerrados, 4)
+  assert.equal(cuarto.mes(SEP), 500000 / 4)
+})
+
+test('LA VENTANA DE MESES CERRADOS ES LA MISMA QUE LA DEL CASH FLOW: una sola definición', () => {
+  // El promedio de esta pestaña y la ventana de 3 meses de cash-flow-lineas cortan en el MISMO
+  // instante. Estaban escritas por separado —el mismo literal tipeado dos veces— y ésa es la forma
+  // en que dos cuadros terminan diciendo cosas distintas de la misma plata.
+  assert.equal(MES_EN_CURSO, 'EOMONTH(TODAY();-1)+1')
+  const prom = String(g.filas[g.f0 - 1][15])
+  assert.ok(prom.includes(`<${MES_EN_CURSO}`), `el promedio no acota a meses cerrados: ${prom}`)
+  assert.ok(!prom.includes('COUNTIF'), 'el divisor dejó de ser el contador del año entero')
+  // El rótulo dice qué mide: si el número cambia de significado y el rótulo no, el cuadro miente.
+  assert.match(String(g.filas[3][14]), /cerrado/i)
+  assert.match(String(g.filas[3][15]), /cerrado/i)
 })
 
 test('TODA fórmula de la grilla cierra paréntesis y está en es-AR', () => {
