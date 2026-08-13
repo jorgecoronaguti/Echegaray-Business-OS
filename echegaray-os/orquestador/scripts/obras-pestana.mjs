@@ -171,6 +171,8 @@ async function refsReales(google) {
         // se publicaron 40 celdas con #ERROR!: la grilla la usaba y el escritor no la resolvía.
         oc: /^(OC|ORDEN DE COMPRA)$/i,
         total: /^TOTAL a cobrar/, estado: 'Estado', fechaCobro: /^Fecha de cobro|^Fecha cobro/i,
+        // La FECHA DE VENTA acota el año de la venta (devengado); la de cobro, el de la plata.
+        fechaVenta: /^Fecha\s*(de\s*)?venta/i,
       }),
     },
     cmp: {
@@ -179,7 +181,8 @@ async function refsReales(google) {
       // en el neto porque la venta también: el IVA de compras es crédito fiscal, no costo.
       ...resolverColumnas(cmp, {
         proveedor: 'Proveedor', cliente: 'Cliente / Asignación', fecha: 'Fecha factura',
-        neto: 'Importe', total: 'Total',
+        // El neto es "Importe"; el IVA hace falta para la regla "M si está, si no O − N".
+        neto: 'Importe', iva: 'IVA', total: 'Total',
       }),
     },
     mat: REFS_OBRAS.mat,

@@ -105,7 +105,12 @@ export const OBRAS_FUTURAS = [
       {
         concepto: 'Materiales', proveedor: 'Alumetal', familia: 'Materiales', monto: 580_365,
         fechaEstimada: '2026-08-10',
-        nota: 'electrodos ya facturados —fila real en Compras—: el neteo vivo (real acumulado) lo absorbe',
+        // 13/08 — LA AFIRMACIÓN ANTERIOR ERA FALSA y la desmiente el propio filtro de la pestaña:
+        // decía que estos electrodos ya estaban facturados y que el neteo vivo los absorbía, pero
+        // Alumetal NO tiene ni una fila con cliente "San Francisco" en Compras (sí 17 con LA ESTRELLA
+        // y 2 con MESSINA). O se cargaron bajo otro cliente, o no se cargaron. Hasta que eso se
+        // resuelva en Compras, este egreso se proyecta entero, que es lo prudente.
+        nota: '⚠ Alumetal no tiene filas con cliente San Francisco en Compras: el neteo no puede verlas',
       },
       { concepto: 'Pintura', proveedor: 'Pintureria Cordoba', familia: 'Pintura', monto: 71_598, fechaEstimada: '2026-08-14' },
     ],
