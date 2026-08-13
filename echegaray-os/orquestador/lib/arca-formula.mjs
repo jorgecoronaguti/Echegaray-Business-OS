@@ -44,6 +44,70 @@ export const arcaPorComprobante = (cuit, comp, signo) =>
 /** El total de un libro entero, con los signos aplicados. */
 export const totalLibro = (libro) => `=SUMPRODUCT((${R}!$B$4:$B="${libro}")*${IMPORTE})`
 
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL IVA DE UN PERÍODO — el insumo del cuadro 4 de "Impuestos y Financieros"
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// POR QUÉ (07/08). El cuadro de IVA tenía dos estados por mes: la DDJJ F.2051 presentada (dato
+// oficial) o una PROYECCIÓN sobre el Libro. Entre los dos faltaba un tercero que ya existía en la
+// base y no llegaba a ninguna celda: los COMPROBANTES REALES de ARCA del período — el mes vencido que
+// todavía no se presentó, y el mes en curso a medida que se carga.
+//
+// Y va por FÓRMULA, no por número: si el débito de agosto se pega, envejece el día que el sync trae
+// una factura más. Con la fórmula, la columna se actualiza sola cada vez que _ARCA_RAW se refresca,
+// sin regenerar la pestaña. Es la misma regla que ya rige el resto del archivo.
+
+/**
+ * El IVA de un comprobante, CON SU SIGNO. Una nota de crédito resta acá igual que en el total: si el
+ * IVA no restara, el crédito fiscal quedaría inflado y el OS declararía menos impuesto del que hay
+ * que pagar — el error de $7,2M que lib/libro-iva.mjs documenta del lado de Postgres.
+ */
+export const IVA = `IF(ISNUMBER(${R}!$L$4:$L);${R}!$L$4:$L;0)*IF(ISNUMBER(${R}!$F$4:$F);${R}!$F$4:$F;0)`
+
+/**
+ * El IVA de un período y un libro, sumado sobre la réplica.
+ * El período se compara como TEXTO: la réplica lo escribe con apóstrofo justamente para que no se
+ * convierta en fecha, y comparar un texto contra un serial da CERO sin dar error (ver arca-raw-pestana).
+ * @param {string} periodo 'YYYY-MM'
+ * @param {'Ventas'|'Compras'} libro
+ */
+export const ivaDelPeriodo = (periodo, libro) =>
+  `SUMPRODUCT((${R}!$A$4:$A="${periodo}")*(${R}!$B$4:$B="${libro}")*${IVA})`
+
+/** DÉBITO fiscal del período según los comprobantes EMITIDOS que ARCA tiene. */
+export const formulaDebitoArca = (periodo) => `=${ivaDelPeriodo(periodo, 'Ventas')}`
+
+/**
+ * CRÉDITO fiscal del período según los comprobantes RECIBIDOS que ARCA tiene.
+ *
+ * EL TÉRMINO COMPUTABLE ES EL IVA FACTURADO ÍNTEGRO, y es una decisión declarada, no un descuido: es
+ * el MISMO criterio que ya usa `posicionIvaCompleta()` en lib/posicion-iva.mjs (crédito = `total_iva`
+ * del libro R con signo). No se prorratea por alícuota ni se descuentan compras no computables porque
+ * el OS no tiene con qué distinguirlas: "Mis Comprobantes" no dice si un gasto pertenece a la
+ * actividad gravada. Un prorrateo inventado acá sería una segunda versión del mismo número, peor que
+ * la primera y sin nadie que pueda firmarla.
+ *
+ * LO QUE ESTO NO ES: la DDJJ. No lleva percepciones sufridas, ni ajustes, ni prorrateo por actividad
+ * exenta. Por eso pierde SIEMPRE contra la F.2051 presentada, y la celda declara su procedencia.
+ */
+export const formulaCreditoArca = (periodo) => `=${ivaDelPeriodo(periodo, 'Compras')}`
+
+/**
+ * EL MES EN CURSO: ni el hecho parcial solo, ni la proyección sola — el mayor de los dos.
+ *
+ * Un mes que todavía no terminó tiene en ARCA una PORCIÓN de sus comprobantes. Usarla como posición
+ * del mes subestima el débito, infla la libre disponibilidad que se arrastra a los meses siguientes y
+ * el cash flow termina reservando de menos para un impuesto que sí va a ocurrir.
+ *
+ * La salida no se inventa acá: es la que este mismo cuadro ya usa para el impuesto al cheque —
+ * MAX(lo que el banco YA debitó; lo que el Libro proyecta), "nunca subestima". Se aplica a los DOS
+ * términos por igual (débito y crédito), porque tratar un lado con el hecho y el otro con la
+ * proyección inclina la resta por una razón que no existe. A medida que ARCA se carga, el hecho
+ * supera a la proyección y la celda converge sola al número real, sin regenerar nada.
+ */
+export const nuncaMenosQue = (formulaHecho, formulaProyeccion) =>
+  `=MAX(${String(formulaHecho).replace(/^=/, '')};${String(formulaProyeccion).replace(/^=/, '')})`
+
 /**
  * Un comprobante EMITIDO por la empresa, identificado sólo por su número.
  *

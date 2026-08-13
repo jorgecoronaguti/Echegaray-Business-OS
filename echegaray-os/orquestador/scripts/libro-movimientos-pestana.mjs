@@ -10,6 +10,13 @@
 // La LÓGICA vive en lib/libro-movimientos.mjs y lib/libro-extractores.mjs (núcleo puro, probado en
 // frío). Este script sólo hace lo que exige red: leer las fuentes, correr los extractores, y escribir.
 //
+// ═══ UNA COLUMNA NO ES UNA FOTO: EL ESTADO DE COMPRAS SE ESCRIBE VIVO (07/08) ═══
+//
+// Todas las columnas son valores pegados salvo la H de las filas que salen de Compras sin pagar: esa
+// va como FÓRMULA contra la columna Estado de Compras. Un estado pegado convertía cada pago del dueño
+// en plata comprometida hasta la regeneración siguiente (medido: 5 pagos, $3.553.544). El criterio,
+// lo que queda afuera y por qué, en lib/libro-estado-vivo.mjs.
+//
 // ═══ EL CONTROL VIAJA CON LA ESCRITURA ═══
 //
 // Después de escribir se RELEE el total del libro desde la pestaña y se compara contra el total
@@ -28,11 +35,18 @@ import {
   deJornalesQuincenas, deOficina, deDireccion, comprasPagadasConCheque,
   deCargasSociales, mesesCubiertos, cargasEnCompras, reemplazadasPorLaCadena, NOMBRES_CARGAS,
 } from '../lib/libro-extractores.mjs'
+import { deRecurrentes } from '../lib/libro-extractores-recurrentes.mjs'
+import { deEstructura, diaTipicoDeEstructura, PESTANA_ESTRUCTURA } from '../lib/libro-extractores-estructura.mjs'
+import { deObras, conciliarConObras } from '../lib/libro-extractores-obras.mjs'
 import { cruzar, chequesDelRegistro } from '../lib/cruce-cheque-factura.mjs'
 import { endososDeCartera } from '../lib/libro-endosos.mjs'
 import { debitosDelExtracto, corteDelExtracto, pagosDeResumen, chequesCubiertosPorBanco } from '../lib/libro-respaldo-banco.mjs'
 import { ROTULOS_CALENDARIO, CALENDARIO_IMPUESTOS } from '../lib/cash-flow-lineas.mjs'
+import { coberturaPorRubro, huecosDeCobertura, problemasDeRol, verificarCobertura } from '../lib/cash-flow-cobertura.mjs'
+import { fechaDeSerial } from '../lib/libro-extractores-fechas.mjs'
+import { celdaEstado, celdaImporte, columnaEstadoDeCompras, columnasVivasDeCompras, exigirColumnasNeteo, estadosDecorados } from '../lib/libro-estado-vivo.mjs'
 import { total } from '../lib/patron-pestana.mjs'
+import { leerTipoCambio, RANGO_TC } from '../lib/tipo-cambio.mjs'
 import { ubicarRegistro } from './cheques-emitidos-tablero.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -82,6 +96,22 @@ async function extraerDeLasFuentes(google, corte) {
     // tope 60 dejó el IIBB afuera — la bomba que este mismo comentario describe, en la línea de abajo.
     leer(`'${CALENDARIO_IMPUESTOS.pestaña}'!A1:N`),
   ])
+  // ═══ ESTRUCTURA SE LEE HASTA AD, Y SU FALTA NO ROMPE EL LIBRO ═══
+  //
+  // Hasta la AD porque los doce meses visibles llegan a la M y el bloque AUXILIAR con el real de cada
+  // mes —contra el que se netea la provisión— vive de la S a la AD. Leyendo menos, el real llegaría
+  // vacío y la proyección se emitiría ENCIMA de las facturas ya cargadas.
+  //
+  // Y es lectura blanda, al revés que el neteo de obras que aborta dos bloques más abajo. La asimetría
+  // es deliberada: sin neteo el libro sale con plata CONTADA DOS VECES —un número equivocado que se
+  // lee como bueno—; sin Estructura sale INCOMPLETO en una línea que el control de cobertura nombra en
+  // esta misma corrida. Incompleto y gritado se puede decidir; equivocado y silencioso, no.
+  const estructura = await google.readSheetValues(ID, `'${PESTANA_ESTRUCTURA}'!A1:AD`,
+    { render: 'UNFORMATTED_VALUE' }).catch((e) => {
+    console.warn(`  ⚠ no pude leer ${PESTANA_ESTRUCTURA} (${e.message}): la línea Estructura queda sin `
+      + 'proyección de meses futuros. El control de cobertura de abajo lo va a gritar.')
+    return null
+  })
   // LA NÓMINA VIVE EN RANGOS CON NOMBRE, y por eso se lee por nombre: el rediseño del 23/07 movió las
   // quincenas de la fila 3 a la 41 y toda suma anclada a la fila habría seguido devolviendo un número
   // —el de las filas equivocadas— sin marcar un solo error.
@@ -145,6 +175,18 @@ async function extraerDeLasFuentes(google, corte) {
   const endosos = endososDeCartera(carteraRaw)
   const excluidos = []
 
+  // ═══ EL TIPO DE CAMBIO, PARA LOS COBROS EN DÓLARES (13/08/2026) ═══
+  //
+  // Cobranzas tiene filas en U$S y hasta hoy entraban al libro como pesos (los 15.400 de Quattropani,
+  // $22.969.470 de menos). Se lee acá —el extractor es puro, no toca la red— del mismo rango con
+  // nombre que citan las fórmulas del archivo. La lectura NO rompe la corrida: `deCobranzas` aborta
+  // sólo si además hay filas en dólares que valuar. Sin USD, un TC ausente no le hace falta a nadie.
+  const { tc: tipoCambio } = await leerTipoCambio(google, ID)
+  if (tipoCambio === null) {
+    console.warn(`  ⚠ no pude leer ${RANGO_TC}. Si Cobranzas tiene alguna fila en dólares, la extracción `
+      + 'va a abortar nombrándola: sin tipo de cambio no se puede valuar y el monto nativo sería falso.')
+  }
+
   // ═══ LA PRECEDENCIA DE LAS CARGAS SE RESUELVE ACÁ, UNA VEZ, Y LOS DOS EXTRACTORES LA RECIBEN ═══
   //
   // Es la misma forma que el cruce cheque↔factura: la decisión de qué puerta le toca a cada peso no se
@@ -161,11 +203,91 @@ async function extraerDeLasFuentes(google, corte) {
   console.log(`  cargas sociales: la cadena publica ${cargas.length} movimiento(s) en ${cargasCubiertas.size} mes(es) `
     + `y reemplaza ${swap.length} fila(s) previstas de Compras por ${pesos(swap.reduce((a, x) => a + x.total, 0))}`)
 
+  // ═══ EL ESTADO DE LAS FILAS DE COMPRAS SE ESCRIBE VIVO (07/08) ═══
+  //
+  // La letra viaja desde acá porque se RESUELVE POR RÓTULO sobre la misma fuente que leen los
+  // extractores: escribir "X" en la fórmula la dejaría apuntando a la columna vieja el día que la
+  // planilla mueva una columna, mientras el extractor se adapta solo. Ver lib/libro-estado-vivo.mjs.
+  const colEstadoCompras = columnaEstadoDeCompras(compras)
+  const colsVivas = columnasVivasDeCompras(compras)
+  // ═══ LAS OBRAS FUTURAS ENTRAN CON IMPORTE VIVO: MAX(0; planificado − real de Compras) ═══
+  //
+  // El módulo de datos (lib/obras-datos.mjs) se está construyendo en paralelo: el import es dinámico
+  // y con guarda para que este script corra igual sin él — la fuente sale vacía y el aviso lo dice.
+  // Al mergear la rama que lo trae, se activa solo, sin tocar una línea de acá.
+  const OBRAS_FUTURAS = await import('../lib/obras-datos.mjs').then((m) => m.OBRAS_FUTURAS ?? []).catch(() => [])
+  if (!OBRAS_FUTURAS.length) {
+    console.warn('  ⚠ obras futuras: lib/obras-datos.mjs no existe todavía o no publica OBRAS_FUTURAS — la fuente Obras sale vacía.')
+  }
+  // ═══ SIN NETEO NO SE PUBLICA: ABORTA, Y EL MENSAJE DICE QUÉ COLUMNA FALTÓ (13/08/2026) ═══
+  //
+  // `exigirColumnasNeteo` tira con el rótulo adentro ("Fecha factura") en lugar de degradar a importes
+  // pegados. El criterio, y por qué un dato muerto en silencio es peor que una corrida caída, viven
+  // con la función en lib/libro-estado-vivo.mjs. Sin obras futuras no hay nada que netear y no hay
+  // nada que exigir: la corrida no depende de un encabezado que no va a usar.
+  const colsNeteo = OBRAS_FUTURAS.length ? exigirColumnasNeteo(compras) : null
+  const obrasFuturas = deObras(OBRAS_FUTURAS, colsNeteo, corte, (m) => console.warn(`  · ${m}`))
+  if (obrasFuturas.resumen.movimientos) {
+    console.log(`  obras futuras: ${obrasFuturas.resumen.obras} obra(s) · ${obrasFuturas.resumen.movimientos} egreso(s) `
+      + `proyectado(s) · ${pesos(obrasFuturas.resumen.totalProyectado)} planificado (con neteo vivo contra Compras)`)
+  }
+  // LA CONCILIACIÓN CONTRA LA PESTAÑA OBRAS, IMPRESA EN CADA CORRIDA. Sin esto, un egreso que se cae
+  // —una obra a la que le sacaron las fechas, un monto que quedó en cero— deja el cash flow corto y
+  // coherente consigo mismo: nadie se entera hasta que el dueño lo nota. Ver `conciliarConObras`.
+  {
+    const c = conciliarConObras(OBRAS_FUTURAS, obrasFuturas.movimientos)
+    console.log(`  OBRAS → libro: ${pesos(c.enElLibro)} de ${pesos(c.caja)} de egresos de caja proyectados`
+      + ` · ${pesos(c.porJornales)} de MO va por Jornales · ${pesos(c.noCaja)} de máquina propia no es caja`)
+    for (const x of c.faltan) {
+      console.warn(`  ⚠ OBRAS declara "${x.obra} · ${x.concepto} · ${x.proveedor}" por ${pesos(x.monto)} `
+        + 'y NO llegó al libro: el cash flow lo va a mostrar de menos.')
+    }
+  }
+  // ═══ LA ESTRUCTURA DE SEPTIEMBRE A DICIEMBRE, QUE EL CUADRO NO MOSTRABA (13/08/2026) ═══
+  //
+  // La proyección la calcula la pestaña `Estructura` (que corre antes que este script en el pipeline);
+  // acá sólo se lee y se netea contra el real que la propia pestaña publica en su bloque auxiliar. El
+  // día típico sale de las filas reales del rubro en Compras: sin él no se proyecta, porque una fecha
+  // inventada pone plata en una semana donde no está y el cuadro semanal la muestra ahí.
+  const gastosEstructura = deEstructura(estructura ?? [], corte, {
+    diaTipico: diaTipicoDeEstructura(compras),
+    aviso: (m) => console.warn(`  ⚠ ${m}`),
+  })
+  if (gastosEstructura.resumen.meses) {
+    console.log(`  estructura: ${gastosEstructura.resumen.subrubros} sub-rubro(s) · ${gastosEstructura.resumen.meses} `
+      + `mes(es) proyectado(s) · ${pesos(gastosEstructura.resumen.total)} (neto de lo ya facturado)`)
+  }
+  if (gastosEstructura.resumen.excluido) {
+    console.log(`  · estructura: ${pesos(gastosEstructura.resumen.excluido)} de "Equipos y rodados (inversión)" `
+      + 'quedan FUERA del flujo — una compra de equipo es una decisión, no una necesidad de caja que se repite.')
+  }
+
+  const decorados = estadosDecorados(compras)
+  if (decorados.length) {
+    console.warn(`  ⚠ ${decorados.length} fila(s) de Compras dicen "Pagado" con decoración `
+      + `(${decorados.slice(0, 3).map((d) => `f${d.fila} "${d.valor}"`).join(', ')}). El generador las lee bien; `
+      + 'la fórmula viva de la columna H no las va a autopromover hasta la corrida siguiente.')
+  }
+
   return {
+    colEstadoCompras,
+    colsVivas,
     fuentes: {
       Compras: deCompras(compras, corte, { cruce, cargasCubiertas }),
+      // La provisión de los servicios recurrentes (Movistar, seguros, honorarios): lo esperado del
+      // mes menos lo ya materializado en Compras. Sin esto, el mes en curso no debía ningún
+      // recurrente y el pago real le pegaba a LIBRE (07/08). Ver libro-extractores-recurrentes.mjs.
+      Recurrentes: deRecurrentes(compras, corte, (m) => console.log(`  · ${m}`)),
+      // Los egresos de caja de las obras futuras (materiales/alquileres/combustible). La MO va por
+      // Jornales y la máquina propia no es caja: el extractor no los emite NUNCA — ver
+      // lib/libro-extractores-obras.mjs. El importe es fórmula: se descuenta solo cuando la factura
+      // real entra a Compras.
+      Obras: obrasFuturas.movimientos,
+      // Los gastos de estructura de los meses que todavía no llegaron, leídos de la pestaña que ya los
+      // calcula. Netos de lo facturado: la factura real entra por Compras, la provisión se apaga sola.
+      Estructura: gastosEstructura.movimientos,
       'Cargas Sociales': cargas,
-      Cobranzas: deCobranzas(cobranzas, corte, { endosos, excluidos }),
+      Cobranzas: deCobranzas(cobranzas, corte, { endosos, excluidos, tipoCambio }),
       'Cheques Emitidos': deChequesEmitidos(cheques, { fila0: reg.primera, cruce }),
       'Tarjeta de Credito': deTarjetaSinFactura(tarjeta, { pagos: pagosTarjeta }),
       _BANCO_RAW: deBancoCargos(banco, { fila0: 4 }),
@@ -192,7 +314,7 @@ async function extraerDeLasFuentes(google, corte) {
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const corte = hoySerial()
-  const { fuentes: porFuente, excluidos, corteBanco, debitosBanco } = await extraerDeLasFuentes(google, corte)
+  const { fuentes: porFuente, excluidos, corteBanco, debitosBanco, colEstadoCompras, colsVivas } = await extraerDeLasFuentes(google, corte)
   const todos = Object.values(porFuente).flat()
   // ═══ EL EXTRACTO CORRIGE LOS CHEQUES QUE LAS PESTAÑAS TODAVÍA DAN POR VIVOS (06/08) ═══
   //
@@ -237,21 +359,73 @@ async function main() {
     console.log(`  ${e.padEnd(14)} ${String(porEstado[e].filas).padStart(4)} fila(s) · neto ${pesos(porEstado[e].total)}`)
   }
 
+  imprimirCobertura(consolidado, corte)
+
+  // LO QUE SE AUTOPROMUEVE SE CUENTA. Es la mitad del COMPROMETIDO que ya no espera a la próxima
+  // corrida para desaparecer cuando el dueño marca el pago: sin el número, el cambio es invisible.
+  const vivas = consolidado.filter((m) => String(celdaEstado(m, colEstadoCompras)).startsWith('='))
+  console.log(`  ${'— estado vivo'.padEnd(14)} ${String(vivas.length).padStart(4)} fila(s) de Compras escriben su estado `
+    + `como fórmula contra Compras!${colEstadoCompras} · ${pesos(sumar(vivas, {}).total)} `
+    + '— pasan solas a REAL cuando la fila dice "Pagado"')
+
   if (DRY) { console.log('\n--dry: no escribí nada.'); return }
-  await escribirYVerificar(google, consolidado)
+  await escribirYVerificar(google, consolidado, colEstadoCompras, colsVivas)
+}
+
+/**
+ * ═══ LA COBERTURA DEL CUADRO, IMPRESA EN CADA CORRIDA (13/08/2026) ═══
+ *
+ * Es el instrumento de la regla de oro 8 —*"nada queda suelto y sin considerar"*— sobre la única
+ * pregunta que un cash flow incompleto no contesta solo: **¿cada línea tiene dueño y llega hasta
+ * diciembre?** El 13/08 Materiales y Estructura se cortaban en agosto, el cuadro cerraba consigo mismo
+ * y sobre él se decidió una compra de rodados. Sin este bloque, la única forma de enterarse era que el
+ * dueño mirara la pestaña columna por columna.
+ *
+ * Se imprime la tabla ENTERA, no sólo lo que falla: una línea que se llenó también es información, y
+ * la lista completa es lo que permite comparar contra la corrida de ayer.
+ */
+function imprimirCobertura(consolidado, corte) {
+  const hoy = fechaDeSerial(corte)
+  const ctx = { anio: hoy.getUTCFullYear(), mesDesde: hoy.getUTCMonth() + 1, fechaDe: fechaDeSerial }
+  console.log(`\nCOBERTURA DEL CUADRO — de ${ctx.mesDesde}/${ctx.anio} a 12/${ctx.anio}, sobre lo PENDIENTE`)
+  for (const c of coberturaPorRubro(consolidado, ctx)) {
+    const meses = [...Array(12 - ctx.mesDesde + 1)].map((_, i) => (c.meses.has(ctx.mesDesde + i) ? '█' : '·')).join('')
+    console.log(`  ${c.rubro.padEnd(38)} ${meses}  ${pesos(c.monto).padStart(16)}  ${c.horizonte} · ${c.dueno}`)
+  }
+  for (const a of huecosDeCobertura(consolidado, ctx)) {
+    console.log(`  ${a.nivel === 'HUECO' ? '⚠ HUECO' : '· declarado'}: ${a.texto}`)
+  }
+  for (const p of problemasDeRol(consolidado)) console.log(`  ⚠ ROL: ${p}`)
+  // Los problemas ESTÁTICOS (una línea sin dueño) no dependen del dato: si aparecen, alguien agregó
+  // una línea al cuadro sin decir de dónde sale, y eso se arregla en el código, no en la planilla.
+  for (const p of verificarCobertura()) console.log(`  ⚠ SIN DUEÑO: ${p}`)
 }
 
 /**
  * LA ESCRITURA Y SU EVIDENCIA. Van juntas a propósito: la API contestando 200 no prueba que el dato
  * aterrizó —ya se encontró una pestaña donde la escritura por valores reporta éxito y no llega—, así
  * que quien escribe es quien relee y compara contra lo que tenía en memoria.
+ *
+ * LA COMPARACIÓN SIGUE SIENDO VÁLIDA CON LA COLUMNA H VIVA (07/08): se releen A:C —fecha, signo,
+ * importe—, que se escriben como valores y no cambiaron de naturaleza. La H es la única celda que
+ * ahora puede ser fórmula, y no entra en el total que se compara. Si algún día la evidencia se
+ * extendiera al estado, hay que releer con `UNFORMATTED_VALUE` (que trae el RESULTADO de la fórmula)
+ * y compararlo contra `celdaEstado`, no contra `m.estado`: para una fila autopromovida el archivo
+ * dice REAL y la memoria del generador dice PROYECTADO, y las dos tienen razón.
  */
-async function escribirYVerificar(google, consolidado) {
+async function escribirYVerificar(google, consolidado, colEstadoCompras = null, colsVivas = null) {
   // ── ESPEJO, ordenada por fecha, con encabezado ──────────────────────────────────────────────────
-  const filas = [ENCABEZADO, ...consolidado
-    .slice()
-    .sort((a, b) => a.fecha - b.fecha)
-    .map((m) => [m.fecha, m.signo, m.importe, m.moneda, m.concepto, m.rubro, m.actividad, m.estado,
+  const ordenados = consolidado.slice().sort((a, b) => a.fecha - b.fecha)
+  const filas = [ENCABEZADO, ...ordenados
+    // LA COLUMNA H NO ES `m.estado` NI LA C ES `m.importe`: son lo que las celdas vivas deciden
+    // escribir. Para las filas de Compras todavía impagas, H es una FÓRMULA que se pregunta sola si
+    // el dueño ya marcó el pago, y C es el SALDO VIVO Total−Pagado — un pago PARCIAL descuenta la
+    // COMPROMETIDA en el acto, sin esperar regeneración (07/08, "cuando se pagan los compromisos
+    // deben salir de ahí"). Criterio y exclusiones en lib/libro-estado-vivo.mjs. Las filas de Obras
+    // traen su propia fórmula (`importeVivo`, el neteo contra Compras): tiene precedencia porque su
+    // origen no es Compras y `celdaImporte` la dejaría pegada.
+    .map((m) => [m.fecha, m.signo, m.importeVivo ?? celdaImporte(m, colsVivas), m.moneda, m.concepto, m.rubro, m.actividad,
+      celdaEstado(m, colEstadoCompras),
       m.instrumento, m.contraparte, m.cuit, m.comprobante, m.obra, m.origen.pestana, m.origen.fila ?? '', m.clave,
       m.cliente])]
 
@@ -287,8 +461,31 @@ async function escribirYVerificar(google, consolidado) {
     const signo = Number(f?.[1]); const imp = Number(f?.[2])
     if (Number.isFinite(signo) && Number.isFinite(imp)) { totalArchivo += signo * imp; filasArchivo++ }
   }
-  const totalMemoria = sumar(consolidado, {}).total
-  const cierra = Math.abs(totalArchivo - totalMemoria) < 1
+  // ═══ EL NETEO DE OBRAS PUEDE HABER ABSORBIDO PLATA ANTES DE LA RELECTURA ═══
+  //
+  // La C de una fila de Obras es MAX(0; planificado − real de Compras): si la factura real ya entró,
+  // el archivo rinde MENOS que el planificado en memoria — y eso es lo CORRECTO, no un descuadre. La
+  // evidencia lo tolera ACOTADO: el valor releído tiene que caer en [0, planificado]; la diferencia
+  // se declara como neteo absorbido y se ajusta el total en memoria, así la comparación sigue siendo
+  // exacta al peso para todas las demás filas. Un valor fuera del rango sí es una escritura rota.
+  let ajusteNeteo = 0
+  let neteoFuera = 0
+  ordenados.forEach((m, i) => {
+    if (!m.importeVivo) return
+    const val = Number(releido?.[i]?.[2])
+    if (!Number.isFinite(val) || val < -0.01 || val > m.importe + 0.01) {
+      neteoFuera++
+      console.log(`  ✗ Obras f${i + 2}: la fórmula de neteo rindió ${JSON.stringify(releido?.[i]?.[2])} `
+        + `y el planificado es ${pesos(m.importe)} — fuera de [0, planificado], la escritura no sirve.`)
+      return
+    }
+    ajusteNeteo += m.signo * (val - m.importe)
+  })
+  if (ajusteNeteo !== 0) {
+    console.log(`  · neteo de Obras ya absorbido por Compras al releer: ${pesos(ajusteNeteo)} (facturas reales que ya entraron)`)
+  }
+  const totalMemoria = sumar(consolidado, {}).total + ajusteNeteo
+  const cierra = Math.abs(totalArchivo - totalMemoria) < 1 && neteoFuera === 0
   console.log(`\nQUEDÓ ESCRITO: ${filasArchivo} movimiento(s) en ${PESTAÑA}`)
   console.log(`  total releído del archivo : ${pesos(totalArchivo)}`)
   console.log(`  total calculado en memoria: ${pesos(totalMemoria)}`)

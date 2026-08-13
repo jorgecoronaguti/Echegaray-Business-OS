@@ -59,6 +59,63 @@ export const ES_ERROR = /^#(REF|VALUE|VALOR|N\/A|NAME|¿NOMBRE\?|DIV\/0|NUM|NULL
 /** Largo a partir del cual un texto deja de ser un rótulo y pasa a ser una nota. */
 export const LARGO_NOTA = 60
 
+/**
+ * NÚCLEO PURO: EL TEXTO QUE EL LECTOR VE EN UNA CELDA.
+ *
+ * Una celda de texto se ve entera. Una FÓRMULA se ve como el literal que devuelve, y ahí es donde se
+ * escondían las glosas más largas de Jornales: el supuesto del convenio medía 374 caracteres adentro
+ * de un `=IF(...;"…";"…")` y ningún auditor lo veía, porque todos leen valores y el valor de una
+ * fórmula, en frío, es la fórmula. Se devuelve el literal MÁS LARGO: es el que ocupa la fila.
+ *
+ * Se descartan los pedazos que no son prosa —máscaras de formato, separadores, el string vacío—
+ * exigiendo DOS cosas: tres letras seguidas y un espacio. Con la primera sola se colaba `"d/m/yyyy"`
+ * (la "yyyy" son cuatro letras), que es una máscara de fecha y no algo que alguien lea. Una glosa
+ * tiene más de una palabra; una máscara, nunca.
+ */
+export function textoVisible(celda) {
+  const s = String(celda ?? '').trim()
+  if (!s.startsWith('=')) return s
+  return [...s.matchAll(/"((?:[^"]|"")*)"/g)]
+    .map((m) => m[1])
+    .filter((x) => /\p{L}{3}/u.test(x) && /\s/.test(x))
+    .sort((a, b) => b.length - a.length)[0] ?? ''
+}
+
+/**
+ * NÚCLEO PURO: LAS GLOSAS DE LA COLUMNA DE CONCEPTO QUE SE PASARON DE LARGO.
+ *
+ * ═══ POR QUÉ EXISTE (13/08) ═══
+ *
+ * El dueño rechazó el diseño de "Jornales por Quincena": *"tiene muchas palabras y frases y
+ * explicación que nadie lee … cada pestaña tiene que quedar minimalista y de clase mundial"*. La
+ * pestaña no tenía un solo defecto de los que el auditor ya mide —ni un error, ni un ancho mezclado,
+ * ni un bloque sin número— y aun así estaba mal: eran 3.118 caracteres de párrafo en la columna A.
+ *
+ * `auditarPatron` YA tenía el umbral (`LARGO_NOTA`) y la regla `nota-en-el-medio`, pero saltea la
+ * columna A por diseño (`if (j === 0 …) return`) porque es la columna ancha, la que derrama. Ese
+ * permiso, pensado para que un rótulo pudiera respirar, es exactamente por donde entró el párrafo.
+ *
+ * ESTO NO SE METIÓ ADENTRO DE `auditarPatron` A PROPÓSITO. Ese auditor lo consumen las siete pestañas
+ * del libro y todas tienen glosas largas hoy: subir la regla ahí pondría en rojo trabajo ajeno que
+ * nadie pidió tocar. Se ofrece como medida aparte, y cada generador la adopta en su propio test
+ * cuando su pestaña se rediseña. La regla se gana pestaña por pestaña, no por decreto.
+ *
+ * @param {any[][]} filas                                   la grilla que arma el generador
+ * @param {{tope?:number, columna?:number, desde?:number}} o tope de caracteres · columna de concepto ·
+ *   primera fila medida (por defecto la 3: la 1 es el título y la 2 es, POR GRAMÁTICA, la única línea
+ *   de prosa de la pestaña — qué contesta · fuente · fecha de corte)
+ * @returns {{fila:number, largo:number, texto:string}[]}
+ */
+export function glosasLargas(filas = [], { tope = LARGO_NOTA, columna = 0, desde = 3 } = {}) {
+  const largas = []
+  filas.forEach((f, i) => {
+    if (i + 1 < desde) return
+    const t = textoVisible((f || [])[columna])
+    if (t.length > tope) largas.push({ fila: i + 1, largo: t.length, texto: t })
+  })
+  return largas
+}
+
 /** Indenta un sub-ítem con el mismo prefijo en toda la pestaña. */
 export const sub = (texto) => `   · ${texto}`
 /** Rotula un total con el mismo prefijo en toda la pestaña. */

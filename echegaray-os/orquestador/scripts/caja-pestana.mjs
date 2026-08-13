@@ -155,6 +155,23 @@ async function main() {
   const cargado = rescatar(previo.filas ?? [])
   const refs = await refsDelArchivo(google, ID, hojas)
 
+  // LA FRONTERA DEL LIBRO EN COMPRAS: la última fila que la foto incorporó. Detrás de ella, la
+  // tarjeta COMPROMETIDA suma en vivo las pendientes nuevas — así pagar y cargar entre
+  // regeneraciones no le pega a LIBRE (orden del dueño, 07/08). Si la lectura falla, se sigue sin
+  // frontera y la tarjeta queda con su comportamiento anterior: nunca un número inventado.
+  refs.fronteraCompras = await (async () => {
+    const filas = await google.readSheetValues(ID, `'_MOVIMIENTOS'!N2:O2100`).catch(() => null)
+    if (!filas) return undefined
+    let max = null
+    for (const f of filas) {
+      if (!/compras/i.test(String(f?.[0] ?? ''))) continue
+      const n = String(f?.[1] ?? '').match(/^\d+/)
+      if (n) max = Math.max(max ?? 0, Number(n[0]))
+    }
+    if (max === null) console.warn('  ⚠ el libro no tiene filas de Compras: la tarjeta COMPROMETIDA va sin el término vivo de pendientes nuevas')
+    return max ?? undefined
+  })()
+
   const g = grilla(cargado, refs)
   console.log(`${tab}: ${g.filas.length} filas (tope ${FILAS_MAXIMAS}) · ${cargado.size} celda(s) con dato ya cargado`)
   if (g.filas.length > FILAS_MAXIMAS) {

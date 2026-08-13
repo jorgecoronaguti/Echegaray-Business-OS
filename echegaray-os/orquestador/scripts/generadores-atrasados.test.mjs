@@ -7,10 +7,16 @@
 // detectarlo: que la clasificación deje pasar algo, o que ni siquiera mire.
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import {
   escribeSheets, veredicto, hayEvidencia, frenaElPipeline, nadieLoMiro, resumir, revisarArchivo,
-  escritoresDeSheets, ramasSinMergear, MARCAS_DE_ESCRITURA, leerRegistro,
+  escritoresDeSheets, ramasSinMergear, MARCAS_DE_ESCRITURA, leerRegistro, estadoDeLaRama,
+  blobsEnLaHistoria, motivoQueLibera, lineasDelInforme, MOTIVO_MINIMO,
 } from './generadores-atrasados.mjs'
+
+/** Un motivo como los tres reales del registro: dice qué trae la rama y por qué main ya lo superó. */
+const MOTIVO_REAL = 'la rama destraba el candado de "Compras" y lo vuelve a poner; main resolvió lo mismo '
+  + 'después y mejor, releyendo el destino y escribiendo sólo si está vacío. Traerla revierte ese arreglo.'
 
 // ── Qué cuenta como "escribe Sheets" ───────────────────────────────────────────────────────────
 
@@ -52,15 +58,69 @@ test('un motivo por rama le pone nombre al hallazgo, pero NO lo pone en verde', 
   assert.ok(frenaElPipeline(v), 'un motivo no puede habilitar la corrida')
 })
 
-test('"descartado" tampoco es verde: se miró y se decidió no traerlo', () => {
-  const v = veredicto({ cubierto: true, decision: 'descartado' })
+// ── Lo que libera es la DECLARACIÓN, no la palabra "descartado" (13/08) ────────────────────────
+
+test('un descarte CON motivo escrito no frena: la decisión ya se tomó', () => {
+  // El freno quedaba rojo para siempre por tres archivos ya resueltos, y un aviso siempre rojo se
+  // ignora. Si alguien vuelve a hacer que `descartado` frene, esto se pone rojo.
+  const v = veredicto({ cubierto: true, decision: 'descartado', motivo: MOTIVO_REAL })
   assert.equal(v, 'descartado')
+  assert.equal(frenaElPipeline(v), false, 'un descarte con motivo escrito no puede frenar el pipeline')
+  assert.equal(nadieLoMiro(v), false)
+})
+
+test('un descarte SIN motivo, o con un "ok", frena igual que lo que nadie miró', () => {
+  // El agujero que abre liberar el descarte: que `descartado` se convierta en el campo con el que se
+  // apaga el control escribiendo cinco letras. De un descarte sin razón escrita no consta que nadie
+  // lo haya mirado — y ahí es donde un generador viejo le borra la grilla al dueño.
+  for (const motivo of [undefined, null, '', '   ', 'ok', 'sí', 'x', 'descartado', 'no va porque no']) {
+    const v = veredicto({ cubierto: true, decision: 'descartado', motivo })
+    assert.equal(v, 'DESCARTE SIN MOTIVO', `"${motivo}" no puede alcanzar para liberar el freno`)
+    assert.ok(frenaElPipeline(v), `"${motivo}" tiene que seguir frenando`)
+    assert.ok(nadieLoMiro(v), 'un descarte sin razón escrita no es una decisión declarada')
+  }
+  assert.equal(motivoQueLibera(MOTIVO_REAL), true)
+  assert.ok(MOTIVO_MINIMO >= 40, 'bajar el piso del motivo vacía el control sin tocar una línea de lógica')
+})
+
+test('el motivo por RAMA no puede liberar el freno de un archivo', () => {
+  // `pendientes` describe una rama viva que se conoce y no se toca. Si sirviera para liberar, el
+  // camino más corto para apagar el control sería declarar la rama en vez de resolver el archivo.
+  const v = veredicto({ cubierto: false, decision: 'descartado', motivoRama: MOTIVO_REAL })
+  assert.equal(v, 'pendiente')
   assert.ok(frenaElPipeline(v))
 })
 
-test('sólo "incorporado" deja correr el pipeline', () => {
+test('sólo "incorporado" y el descarte declarado dejan correr el pipeline', () => {
   assert.equal(veredicto({ cubierto: true, decision: 'incorporado' }), 'incorporado')
   assert.equal(frenaElPipeline('incorporado'), false)
+  for (const v of ['SIN REVISAR', 'REVERTIDO', 'pendiente', 'DESCARTE SIN MOTIVO']) {
+    assert.ok(frenaElPipeline(v), `${v} tiene que frenar`)
+  }
+})
+
+test('liberar el freno no es dejar de contarlo: el descartado se sigue imprimiendo con su motivo', () => {
+  // Un control que deja de nombrar lo que perdonó es un silenciador. El dueño tiene que poder leer
+  // en CADA corrida qué se decidió y por qué es eso lo que está dejando pasar el pipeline.
+  const texto = lineasDelInforme(resumir([
+    { archivo: 'guarda-escritura.mjs', rama: 'feat/vieja', veredicto: 'descartado', motivo: MOTIVO_REAL },
+    { archivo: 'caja-pestana.mjs', rama: 'feat/otra', veredicto: 'incorporado', motivo: null },
+  ])).join('\n')
+  assert.match(texto, /guarda-escritura\.mjs/)
+  assert.match(texto, /no frena/)
+  assert.ok(texto.includes(MOTIVO_REAL), 'el motivo tiene que estar a la vista, no resumido a un contador')
+  assert.match(texto, /descartados con motivo \(no frenan\): 1/)
+})
+
+test('un descartado no queda tapado por una rama incorporada del mismo archivo', () => {
+  // Al dejar de frenar, el descartado perdió el escalón que lo hacía ganarle al incorporado en el
+  // resumen: sin el escalón de "declarados" desaparecía del informe y la liberación se volvía silencio.
+  const r = resumir([
+    { archivo: 'a.mjs', rama: 'incorporada', veredicto: 'incorporado', motivo: null },
+    { archivo: 'a.mjs', rama: 'descartada', veredicto: 'descartado', motivo: MOTIVO_REAL },
+  ])
+  assert.equal(r[0].veredicto, 'descartado')
+  assert.deepEqual(r[0].ramas, ['descartada'])
 })
 
 test('un registro sin decisión declarada NO se asume incorporado por omisión', () => {
@@ -103,11 +163,58 @@ test('EL CASO REAL: si jornales-pestana vuelve a la versión sin Dirección, est
   const f = 'echegaray-os/orquestador/scripts/jornales-pestana.mjs'
   const R = leerRegistro()
   const antes = revisarArchivo(f, ['feat/pr2-mattermost-publico'], 'f4702bf', R)
-  assert.ok(antes.length, 'el detector no vio la rama: no está midiendo nada')
-  assert.equal(antes[0].veredicto, 'REVERTIDO')
+  assert.ok(antes.hallazgos.length, 'el detector no vio la rama: no está midiendo nada')
+  assert.equal(antes.hallazgos[0].veredicto, 'REVERTIDO')
 
   const ahora = revisarArchivo(f, ['feat/pr2-mattermost-publico'], 'HEAD', R)
-  assert.equal(ahora[0]?.veredicto, 'incorporado', 'con el trabajo puesto tiene que dar verde')
+  assert.equal(ahora.hallazgos[0]?.veredicto, 'incorporado', 'con el trabajo puesto tiene que dar verde')
+})
+
+test('la señal puede vivir en OTRO archivo: un refactor no es un revert', () => {
+  // El falso positivo del 13/08. `impuestos-pestana.mjs` se partió en lib/impuestos-*.mjs y el import
+  // de la DDJJ oficial se mudó de carpeta: la señal atada a la ruta gritó REVERTIDO sin que se
+  // hubiera perdido nada. Si esto no distingue refactor de revert, el aviso queda rojo para siempre
+  // y se ignora — que es como muere un control.
+  const base = { blobAntes: 'aaa', blobBase: 'bbb', senal: 'leerIVA', fuenteBase: "import { leerIVA } from '../lib/impuestos-fuentes.mjs'" }
+  assert.equal(hayEvidencia({ ...base, senalesRelocalizadas: [{ texto: 'parsearDJIVA', fuente: 'const d = parsearDJIVA(pdf.text)' }] }), true)
+  // Pero si la capacidad DESAPARECE del archivo al que se mudó, sigue siendo un revert.
+  assert.equal(hayEvidencia({ ...base, senalesRelocalizadas: [{ texto: 'parsearDJIVA', fuente: 'const d = 0' }] }), false)
+  // Y si el archivo declarado no se pudo leer, no se afirma nada: falla cerrado.
+  assert.equal(hayEvidencia({ ...base, senalesRelocalizadas: [{ texto: 'parsearDJIVA', fuente: null }] }), false)
+})
+
+// ── Qué es trabajo de rama y qué es ruido ──────────────────────────────────────────────────────
+
+test('si la base YA TUVO ese contenido, la rama está atrás y no hay nada que traer', () => {
+  // `deploy/comunicacion-protegido` —el checkout desde el que corre el bot— tiene 42 commits que main
+  // no tiene y 41 son merges DE main. Con `--full-history` esos merges "tocan" el archivo, así que el
+  // filtro por commits los dejaba pasar: seis generadores pedían una decisión que no existe.
+  const historicos = new Set(['viejo', 'anterior'])
+  assert.equal(estadoDeLaRama({ blob: 'viejo', blobBase: 'nuevo', tieneCommits: true, historicosDeLaBase: historicos }), 'rama vieja')
+  assert.equal(estadoDeLaRama({ blob: 'inedito', blobBase: 'nuevo', tieneCommits: true, historicosDeLaBase: historicos }), 'hallazgo')
+})
+
+test('lo que la base ya tiene idéntico no es hallazgo, y lo que la rama no tocó tampoco', () => {
+  assert.equal(estadoDeLaRama({ blob: 'x', blobBase: 'x', tieneCommits: true, historicosDeLaBase: new Set() }), 'al día')
+  assert.equal(estadoDeLaRama({ blob: null, blobBase: 'x', tieneCommits: true, historicosDeLaBase: new Set() }), 'al día')
+  assert.equal(estadoDeLaRama({ blob: 'y', blobBase: 'x', tieneCommits: false, historicosDeLaBase: new Set() }), 'rama vieja')
+})
+
+test('una declaración de "quedó atrás" NO puede tapar un contenido distinto del declarado', () => {
+  // Es el riesgo del mecanismo: que declarar algo lo silencie para siempre. Por eso se ata al BLOB.
+  // Si la rama vuelve a moverse, su blob nuevo no coincide y el hallazgo reaparece.
+  const c = { blobBase: 'nuevo', tieneCommits: true, historicosDeLaBase: new Set() }
+  assert.equal(estadoDeLaRama({ ...c, blob: 'declarado', declaradaAtrasada: true }), 'rama vieja')
+  assert.equal(estadoDeLaRama({ ...c, blob: 'otro', declaradaAtrasada: false }), 'hallazgo')
+})
+
+test('la historia de un archivo se lee entera, y sólo devuelve blobs', () => {
+  // El recorrido se reescribió para hacer UN solo proceso de git en vez de uno por commit. Si el
+  // parseo de `cat-file --batch-check` fallara, el set quedaría vacío y TODO parecería trabajo nuevo:
+  // la falla sería silenciosa y hacia el lado ruidoso, que es el que después se desactiva.
+  const blobs = blobsEnLaHistoria('HEAD', 'echegaray-os/orquestador/scripts/generadores-atrasados.mjs')
+  assert.ok(blobs.size > 0, 'no encontró una sola versión de un archivo que sí tiene historia')
+  for (const b of blobs) assert.match(b, /^[0-9a-f]{40}$/, `"${b}" no es un blob`)
 })
 
 // ── El resumen ─────────────────────────────────────────────────────────────────────────────────
@@ -143,9 +250,17 @@ test('el inventario encuentra generadores de verdad en este repo', () => {
 })
 
 test('las ramas sin mergear se listan, y nunca la propia', () => {
-  const ramas = ramasSinMergear('HEAD')
+  // LA BASE ES `main`, NO `HEAD`. Con `HEAD` este test afirmaba que main no aparece como rama sin
+  // mergear, y eso sólo es cierto mientras main no se mueva: en este repo se mueve mientras uno
+  // trabaja en su worktree, así que el test se ponía rojo por algo que no tiene nada que ver con lo
+  // que mide. Un test que falla por el reloj enseña a ignorar los rojos.
+  const ramas = ramasSinMergear('main')
   assert.ok(Array.isArray(ramas))
   assert.equal(ramas.includes('main'), false, 'la base no puede contarse como rama sin mergear')
+  // Y lo que no es tautológico: nadie está atrasado respecto de sí mismo. Quien corre esto desde su
+  // worktree está justamente produciendo ese trabajo; verse listado le tapa lo que sí tiene que mirar.
+  const propia = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8' }).trim()
+  assert.equal(ramas.includes(propia), false, `la rama actual (${propia}) no puede listarse como atrasada`)
   assert.ok(ramas.every((b) => !b.startsWith('worktree-agent-')), 'los worktrees de agentes son ruido')
 })
 
@@ -155,9 +270,18 @@ test('el registro es legible y todo lo que no se incorporó tiene motivo escrito
   const registro = leerRegistro()
   assert.ok(Object.keys(registro).length > 0, 'el registro no se pudo leer o está vacío')
   for (const [archivo, e] of Object.entries(registro)) {
-    assert.ok(e.revisadoHasta, `${archivo}: sin revisadoHasta no se puede verificar nada`)
+    // O hay un punto de revisión contra el que comparar, o la entrada declara blobs concretos: en
+    // `atrasadas` el ancla ES la clave, y por eso la declaración caduca sola cuando el blob cambia.
+    assert.ok(e.revisadoHasta || Object.keys(e.atrasadas ?? {}).length,
+      `${archivo}: sin revisadoHasta ni atrasadas no se puede verificar nada`)
+    for (const [blob, motivo] of Object.entries(e.atrasadas ?? {})) {
+      assert.match(blob, /^[0-9a-f]{40}$/, `${archivo}: "${blob}" no es un blob completo — un prefijo se puede acertar de casualidad`)
+      assert.ok(motivo && motivo.length > 40, `${archivo} · ${blob}: declarado atrasado sin motivo escrito`)
+    }
     if (e.decision && e.decision !== 'incorporado') {
-      assert.ok(e.motivo && e.motivo.length > 40, `${archivo}: "${e.decision}" sin motivo escrito`)
+      // La MISMA vara que decide si frena. Si el registro pudiera pasar su test y frenar igual, o al
+      // revés, habría dos criterios de "motivo escrito" y ninguno sería el que manda.
+      assert.ok(motivoQueLibera(e.motivo), `${archivo}: "${e.decision}" sin motivo escrito`)
     }
     if (e.decision === 'incorporado') {
       assert.ok(e.blobAntes || e.senal, `${archivo}: declarado incorporado sin una sola evidencia verificable`)

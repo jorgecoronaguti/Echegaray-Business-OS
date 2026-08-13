@@ -224,17 +224,23 @@ export function bloqueSeries(h) {
  * @returns {{equilibrio:{f0:number,f1:number}|null, historia:…, proyeccion:…, pagos:…, cobranzas:…}}
  */
 export function ubicarSeries(colA = []) {
-  const buscar = (rotulo, largo) => {
+  const buscar = (rotulo, largo, { conDatos = false } = {}) => {
     const i = colA.findIndex((f) => String(f?.[0] ?? '').trim() === rotulo)
     // El encabezado tiene que existir Y tener sus filas debajo: media serie dibuja media verdad.
     if (i < 0 || colA.length < i + 1 + largo) return null
+    // Y en los rankings, las filas tienen que tener ALGO. Las fórmulas de top-contraparte devuelven
+    // "" cuando no hay contrapartes en la ventana: la fila existe, el dato no, y el gráfico salía
+    // dibujado vacío ("el gráfico que no tiene nada" — el dueño lo mandó borrar el 07/08). Sólo
+    // aplica a los rankings, cuyo dominio ES la columna A; en historia/proyección/equilibrio la
+    // columna A viene vacía por diseño y este control las mataría.
+    if (conDatos && !colA.slice(i + 1, i + 1 + largo).some((f) => String(f?.[0] ?? '').trim() !== '')) return null
     return { f0: i + 2, f1: i + 1 + largo }
   }
   return {
     equilibrio: buscar(ROTULOS.equilibrio, LARGO.equilibrio),
     historia: buscar(ROTULOS.historia, LARGO.historia),
     proyeccion: buscar(ROTULOS.proyeccion, LARGO.proyeccion),
-    pagos: buscar(ROTULOS.pagos, LARGO.pagos),
-    cobranzas: buscar(ROTULOS.cobranzas, LARGO.cobranzas),
+    pagos: buscar(ROTULOS.pagos, LARGO.pagos, { conDatos: true }),
+    cobranzas: buscar(ROTULOS.cobranzas, LARGO.cobranzas, { conDatos: true }),
   }
 }

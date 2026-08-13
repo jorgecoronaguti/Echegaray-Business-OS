@@ -278,6 +278,33 @@ test('la pestaña cumple su propia gramática — cero defectos de patrón', () 
   assert.deepEqual(auditarPatron(comoSeVe(armar())), [])
 })
 
+test('con meses de ARCA la pestaña sigue cumpliendo su gramática y su contrato', () => {
+  // El tercer estado del cuadro 4 (comprobantes de ARCA) no puede desacomodar la pestaña: mismas
+  // filas, mismos rótulos, mismo hero. Si agregara o corriera una fila, `contratoDeRotulos` y el
+  // patrón se pondrían rojos acá antes de que ninguna escritura toque el archivo real.
+  const g = armar({ arca: { meses: [1, 2, 3, 4, 5, 6, 7, 8] } })
+  assert.deepEqual(auditarPatron(comoSeVe(g)), [])
+  assert.ok(contratoDeRotulos(g.filas, CALENDARIO_IMPUESTOS.rotulos).ok)
+  assert.equal(g.filas.length, armar().filas.length, 'el estado nuevo no agrega ni corre filas')
+  assert.equal(g.filasCalendario.iva, armar().filasCalendario.iva)
+})
+
+test('el mes EN CURSO queda vinculado a ARCA y se declara como parcial', () => {
+  // La pregunta del dueño: "la columna del mes en curso se debe actualizar sola". Se actualiza porque
+  // es una fórmula contra _ARCA_RAW, no un número que quedó pegado el día que corrió el generador.
+  // HOY es 06/08/2026, así que agosto es el mes en curso.
+  const g = armar({ arca: { meses: [7, 8] } })
+  const fDDJJ = filaDe(g, /^DDJJ presentada$/)
+  assert.equal(g.filas[fDDJJ - 1][8], '⚠ ARCA parcial')
+  const debito = String(g.filas[filaDe(g, /^Débito fiscal del período$/) - 1][8])
+  assert.match(debito, /_ARCA_RAW/, 'agosto sale de la réplica de comprobantes')
+  assert.match(debito, /^=MAX\(/, 'y nunca por debajo de la proyección del Libro')
+  // Julio, en cambio, es del dueño (ancla = 7): cadena vacía, que es lo que `fusionar()` preserva.
+  assert.equal(g.filas[fDDJJ - 1][7], '')
+  // Y los meses de ARCA quedan en ÁMBAR igual que la proyección: no son la DDJJ oficial.
+  assert.ok(g.ambar.some((x) => x.mes === 8 && x.fila === fDDJJ))
+})
+
 test('el parámetro de alícuota queda ABAJO DE TODO: ninguna fila nueva lo corre', () => {
   // El rango con nombre ALICUOTA_IVA apunta a esa celda. Una fila insertada arriba lo reapunta a
   // otra cosa, y toda la proyección de IVA se calcularía con alícuota cero.
@@ -374,6 +401,10 @@ test('el residuo de un layout anterior se limpia de punta a punta (grilla → hu
   // La prueba del EFECTO: no que la grilla mande VACIO, sino que la celda quede vacía en la pestaña.
   const { aplicarHuella, huellasDeEscritura, claveCelda } = await import('../lib/huella-celda.mjs')
   const { fusionar } = await import('../lib/preservar-anotaciones.mjs')
+  // SE RECORRE HASTA LA PESTAÑA, NO HASTA LA FUSIÓN (13/08). Detenerse en `fusionar()` daba verde
+  // sobre una limpieza que en producción no ocurría: después corre `no-borrar.mjs`, que reponía toda
+  // celda que la escritura dejaba vacía. El residuo de I20:M20 seguía visible con este test en verde.
+  const { preservarNoVacias } = await import('../lib/no-borrar.mjs')
   const g = armar()
   const idxCal = g.filas.findIndex((f) => /^\d{2}\/\d{2} · Planes de pago F931/.test(String(f[0] ?? '')))
   assert.ok(idxCal > 0, 'tiene que haber una fila de calendario de planes')
@@ -384,11 +415,11 @@ test('el residuo de un layout anterior se limpia de punta a punta (grilla → hu
     : f.map((c) => (c === VACIO ? '' : c))))
   const { grid, alineacion } = aplicarHuella(g.filas, hoy, huellas)
   assert.equal(alineacion.alineada, true, alineacion.motivo)
-  const fusionada = fusionar(grid, hoy)
+  const enPestana = preservarNoVacias(hoy, fusionar(grid, hoy)).values
   for (let j = 8; j <= 12; j++) {
-    assert.equal(fusionada[idxCal][j], '', `la columna ${j + 1} de la fila del calendario tiene que quedar vacía`)
+    assert.equal(enPestana[idxCal][j], '', `la columna ${j + 1} de la fila del calendario tiene que quedar vacía`)
   }
   // Y el texto sigue vivo donde SÍ va: la fila de la DDJJ presentada.
   const idxDDJJ = g.filas.findIndex((f) => String(f[0] ?? '').trim() === 'DDJJ presentada')
-  assert.equal(fusionada[idxDDJJ][8], '⚠ PROYECCIÓN')
+  assert.equal(enPestana[idxDDJJ][8], '⚠ PROYECCIÓN')
 })

@@ -26,11 +26,18 @@
 // que ya usa el cuadro: si a esa asignación no se le imputó MATERIAL, no genera columna. Una
 // asignación administrativa nunca tiene materiales; una obra nueva los tiene desde su primera compra.
 
+import { netoDeFilaCruda } from './costo-materiales.mjs'
+
 /**
  * NÚCLEO PURO: las obras que tienen materiales imputados, de mayor a menor monto.
  *
  * El orden por monto no es cosmético: la sección crece hacia la derecha y las obras que mueven la
  * plata tienen que quedar donde el ojo llega primero, sin scroll horizontal.
+ *
+ * EL MONTO QUE ORDENA ES EL MISMO QUE EL CUADRO MUESTRA (13/08/2026): el costo NETO de
+ * `costo-materiales.mjs`. Ordenar por el total con IVA mientras las celdas muestran el neto es una
+ * tercera medición del mismo concepto escondida en el orden de las columnas — la misma clase de
+ * divergencia que este arreglo cierra, sólo que invisible.
  *
  * @param {any[][]} filas filas crudas de Compras (sin encabezado)
  * @param {object} opts
@@ -38,10 +45,12 @@
  * @param {(v:any)=>number} opts.monto parser de importe (es-AR)
  * @param {number} [opts.colObra] índice 0-based de "Cliente / Asignación" (J = 9)
  * @param {number} [opts.colRubro] índice 0-based de "Rubro de caja" (AC = 28)
- * @param {number} [opts.colTotal] índice 0-based del importe (O = 14)
+ * @param {number} [opts.colNeto] índice 0-based de "Importe" (M = 12)
+ * @param {number} [opts.colIva] índice 0-based de "IVA" (N = 13)
+ * @param {number} [opts.colTotal] índice 0-based de "Total" (O = 14)
  * @returns {string[]} nombres EXACTOS como están en Compras
  */
-export function obrasConMateriales(filas = [], { rubros = [], monto, colObra = 9, colRubro = 28, colTotal = 14 } = {}) {
+export function obrasConMateriales(filas = [], { rubros = [], monto, colObra = 9, colRubro = 28, colNeto = 12, colIva = 13, colTotal = 14 } = {}) {
   const conjunto = new Set(rubros.map((r) => String(r).trim().toLowerCase()))
   const acumulado = new Map()
   for (const f of filas) {
@@ -53,7 +62,7 @@ export function obrasConMateriales(filas = [], { rubros = [], monto, colObra = 9
     if (!crudo) continue
     const k = crudo.toLowerCase()
     const ya = acumulado.get(k) ?? { nombre: crudo, total: 0 }
-    ya.total += monto(f?.[colTotal]) || 0
+    ya.total += netoDeFilaCruda(f, { monto, colNeto, colIva, colTotal }) || 0
     acumulado.set(k, ya)
   }
   return [...acumulado.values()]

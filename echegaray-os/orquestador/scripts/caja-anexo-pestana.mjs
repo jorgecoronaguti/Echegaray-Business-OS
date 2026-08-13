@@ -19,10 +19,12 @@ import * as E from '../lib/estilo-pestana.mjs'
 import { MONEDA_CUERPO, MONEDA_TOTAL } from '../lib/formato-statement.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
+import { conColaMedida, avisoDeCola, rotulosPropios } from '../lib/cola-de-rango.mjs'
 import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 import { publicar } from '../lib/rangos-nombrados.mjs'
 import { requestsTextoPorContenido } from '../lib/formato-texto-por-contenido.mjs'
-import { grillaAnexo, ANCHO_ANEXO, ANCHOS_ANEXO, PESTANA_ANEXO } from '../lib/caja-anexo.mjs'
+import { grillaAnexo, ANCHO_ANEXO, ANCHOS_ANEXO, PESTANA_ANEXO, SELLO_EFECTIVO } from '../lib/caja-anexo.mjs'
+import { necesitaSello } from '../lib/caja-efectivo-fisico.mjs'
 import { DESDE_CAJA, CELDA_CAJA_MINIMA, ESPECIE_ANEXO } from '../lib/caja-anexo-nombres.mjs'
 import { TIPO_CAMBIO } from '../lib/caja-disponibilidades.mjs'
 import { conceptosFueraDelCalendario, lineasDeCaja, marcaDeLinea } from '../lib/calendario-egresos.mjs'
@@ -44,11 +46,51 @@ export function rescatarAnexo(filas = []) {
   const cargado = new Map()
   for (const fila of filas) {
     const a = String(fila?.[0]?.valor ?? '').trim()
-    if (a !== TIPO_CAMBIO.declarado.nombre) continue
     const leer = (i) => { const c = fila?.[i]; return c?.formula ?? (c?.numero ?? c?.valor ?? '') }
+    // El sello del conteo lo escribió una CORRIDA, no una persona, pero se rescata igual: si cada
+    // regeneración lo perdiera, cada regeneración desharía el sello y el neto volvería a 0. Sólo se
+    // acepta el NÚMERO — un texto ahí no es un sello, es basura que forzaría un resello (lado sano).
+    const num = (i) => { const c = fila?.[i]; return typeof c?.numero === 'number' ? c.numero : '' }
+    if (a === SELLO_EFECTIVO.sello) { cargado.set(a, { selloNeto: num(3), selloFecha: num(5) }); continue }
+    if (a === SELLO_EFECTIVO.estado) { cargado.set(a, { selloValor: num(3) }); continue }
+    if (a !== TIPO_CAMBIO.declarado.nombre) continue
     cargado.set(a, { saldo: leer(2), fecha: leer(5), origen: leer(6) })
   }
   return cargado
+}
+
+/**
+ * Sella el conteo si el arqueo tipeado es más nuevo que la copia sellada.
+ *
+ * El sello NO se calcula en JS desde las fuentes —eso duplicaría la lógica de las fórmulas y las
+ * dos versiones divergirían sin aviso—: se lee el histórico RECIÉN ESCRITO y ya evaluado por
+ * Sheets, que es exactamente lo que el renglón del sello va a restar.
+ */
+async function sellarConteo(google, g) {
+  const uno = async (rango) => {
+    const v = await google.readSheetValues(ID, rango, { render: 'UNFORMATTED_VALUE' })
+    return Number(v?.[0]?.[0]) || 0
+  }
+  const arqueo = { valor: await uno(DESDE_CAJA.arqueoArs), fecha: await uno(DESDE_CAJA.arqueoArsFecha) }
+  const sellado = {
+    valor: Number(g.filas[g.fEstado - 1]?.[3]) || 0,
+    fecha: Number(g.filas[g.fSello - 1]?.[5]) || 0,
+  }
+  if (!necesitaSello(arqueo, sellado)) return console.log('  🧷 sello vigente: el conteo no cambió')
+  const [f0, f1] = g.filasHistorico
+  const hist = await google.readSheetValues(ID, `${PESTANA_ANEXO}!C${f0}:C${f1}`, { render: 'UNFORMATTED_VALUE' })
+  const filas = (f1 - f0 + 1)
+  const leidas = (hist ?? []).length
+  if (leidas < filas) throw new Error(`leí ${leidas} de ${filas} renglones del histórico: sin el histórico completo el sello mentiría`)
+  const rotos = hist.map((fila, i) => (typeof fila?.[0] === 'number' ? 0 : f0 + i)).filter(Boolean)
+  if (rotos.length) throw new Error(`el histórico tiene celdas que no evalúan a número (fila(s) C${rotos.join(', C')}): un sello sobre un #ERROR congela basura`)
+  const neto = Math.round(hist.reduce((s, fila) => s + fila[0], 0) * 100) / 100
+  await google.batchUpdateValues(ID, [
+    { range: `${PESTANA_ANEXO}!D${g.fSello}`, values: [[neto]] },
+    { range: `${PESTANA_ANEXO}!F${g.fSello}`, values: [[arqueo.fecha]] },
+    { range: `${PESTANA_ANEXO}!D${g.fEstado}`, values: [[arqueo.valor]] },
+  ])
+  console.log(`  🧷 conteo SELLADO: arqueo $${Math.round(arqueo.valor).toLocaleString('es-AR')} (serial ${arqueo.fecha}) · histórico al conteo $${Math.round(neto).toLocaleString('es-AR')}`)
 }
 
 async function main() {
@@ -62,8 +104,10 @@ async function main() {
   const egresos = lineasDeCaja().filter(({ signo }) => signo === -1)
   const sinFuente = egresos.filter(({ linea }) => SIN_FUENTE_EN_VENTANA.includes(marcaDeLinea(linea)))
     .map(({ linea }) => linea.nombre)
-  const conceptosCiegos = conceptosFueraDelCalendario(
-    egresos.map(({ linea }) => linea.nombre).filter((n) => !sinFuente.includes(n))).concat(sinFuente)
+  // Set y no concat pelado: conceptosFueraDelCalendario ya puede devolver los sin-fuente, y el
+  // concat los listaba DOS VECES ("6 concepto(s)" donde hay 3 — dictamen 07/08).
+  const conceptosCiegos = [...new Set(conceptosFueraDelCalendario(
+    egresos.map(({ linea }) => linea.nombre).filter((n) => !sinFuente.includes(n))).concat(sinFuente))]
 
   let hoja = hojas.find((h) => h.title === PESTANA_ANEXO)
   const refs = await refsDelArchivo(google, ID, hojas)
@@ -103,6 +147,16 @@ async function main() {
   const actual = await google.readSheetValues(ID, `${PESTANA_ANEXO}!A1:${letra(ANCHO_ANEXO - 1)}`).catch((e) => {
     throw new Error(`no pude leer "${PESTANA_ANEXO}" (${e.message}). NO escribo: sin esa lectura la Regla 0 decide a ciegas.`)
   })
+  // LA COLA DE UNA CORRIDA ANTERIOR (13/08). El anexo es una LISTA: un cheque por fila, un endoso por
+  // fila, una conciliación por fila. Cuando un cheque se cobra sale de la cartera y la grilla se
+  // acorta — sin esto, la fila vieja queda publicada debajo del cuadro nuevo y el anexo muestra un
+  // cheque en cartera que ya no existe, que es justo lo que este anexo existe para desmentir.
+  // `conPrueba` porque es una pestaña de contenido: sólo se limpia la fila que se puede probar mía.
+  const cola = conColaMedida(g.filas, actual, {
+    ancho: ANCHO_ANEXO, conPrueba: true, mios: await rotulosPropios(ID, PESTANA_ANEXO),
+  })
+  if (avisoDeCola(cola, PESTANA_ANEXO)) console.log(avisoDeCola(cola, PESTANA_ANEXO))
+  g.filas = cola.filas
   const { grid, respetadas, ediciones, candidatos } = await conEdicionesRespetadas(ID, PESTANA_ANEXO, g.filas, actual)
   g.filas = grid
   for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${r.suyo.slice(0, 44)}")`)
@@ -124,6 +178,14 @@ async function main() {
   for (const m of malApuntados) {
     console.warn(`  ⚠ ${m.name} promete ${m.espera} y en ${letra(m.col - 1)}${m.fila} hay ${m.encontro} (${String(m.valor).slice(0, 30)})`)
   }
+
+  // ═══ EL SELLO DEL CONTEO ═══
+  //
+  // Si el arqueo tipeado es más nuevo que el sello, esta corrida sella: lee el histórico recién
+  // escrito YA EVALUADO y lo estampa como "lo que el conteo tiene adentro". Desde ese instante los
+  // movimientos de efectivo corren desde el conteo, y hasta ese instante la fórmula muestra el
+  // conteo tal cual (el sello viejo se autocancela). Ver el bloque en lib/caja-anexo.mjs.
+  await sellarConteo(google, g).catch((e) => console.warn(`  ⚠ no pude sellar el conteo: ${e.message} — la pestaña muestra el conteo tal cual hasta la próxima corrida`))
 
   // LA CAJA MÍNIMA NO VIVE EN NINGUNA DE LAS DOS PESTAÑAS: el nombre apunta a su FUENTE. Así CAJA y el
   // anexo la leen sin que ninguno la copie — un parámetro tiene una sola dirección en el archivo.

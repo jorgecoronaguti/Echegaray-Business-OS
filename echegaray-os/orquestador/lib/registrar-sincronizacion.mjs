@@ -187,4 +187,27 @@ export const FUENTES_INGESTA = {
     capability_dependiente: 'situacion_fiscal',
     notas: 'Baja por AfipSDK (clave fiscal), tipo_libro=R. Sync mensual (echegaray-arca-sync.timer).',
   },
+  // BADLAR — la tasa de la que cuelga la TNA de FONDEFIN (60% de la Badlar, por reglamento). Se
+  // cataloga para que el ATRASO GRITE SOLO: si el canario deja de correr, `recalcular_frescura_fuentes()`
+  // la marca 'atrasado' y la alerta la levanta sin que nadie se acuerde de mirar. Es la contraparte
+  // del `vigencia_hasta` de la fila: la vigencia hace que el número muera, la fuente hace que se avise.
+  badlarBcra: {
+    nombre: 'Badlar bancos privados — BCRA (estadísticas monetarias, idVariable 7)',
+    // 'externo_no_conectado' es lo que admite el CHECK de la tabla para una fuente de afuera; que se
+    // lea por API lo dice `mecanismo_integracion`. Misma convención que el feed de ARCA de acá arriba.
+    tipo_archivo: 'externo_no_conectado',
+    proceso_negocio: 'Finanzas — tasa de referencia de las líneas indexadas a Badlar (FONDEFIN)',
+    area: 'Finanzas',
+    // SEMANAL y no diaria aunque el BCRA publique todos los hábiles: con 'diaria' el umbral es de 2
+    // días y un fin de semana largo prendería el ⚠ sin que falte nada. Un aviso que nunca se apaga
+    // deja de leerse — es el fracaso del trinquete de frescura que ya hubo que arreglar una vez. Los
+    // 9 días de 'semanal' siguen gritando ANTES de que caduque la foto (15 días), que es lo que importa.
+    frecuencia_actualizacion: 'semanal',
+    naturaleza_dato: 'confirmado',
+    criticidad: 'media',
+    mecanismo_integracion: 'api',
+    destino_supabase: null,
+    capability_dependiente: 'comparar_financiamiento',
+    notas: 'API pública del BCRA, sin credenciales. La lee scripts/canario-badlar-fondefin.mjs, que además contrasta la Badlar guardada en lib/badlar-bcra.mjs contra la publicada.',
+  },
 }

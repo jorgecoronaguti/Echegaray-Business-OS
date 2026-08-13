@@ -40,6 +40,12 @@ const GRIS_SUAVE = { red: 0.95, green: 0.95, blue: 0.94 }
  * TOTAL es el único ancla visual del extremo derecho y sin un fondo se pierde entre las semanas.
  */
 const GRIS_TOTAL = { red: 0.97, green: 0.97, blue: 0.96 }
+/**
+ * El fondo de la columna del período EN CURSO. Es el mismo azul frío del botón "IR A LA SEMANA ACTUAL"
+ * pero más claro: la marca y el atajo que lleva a ella se leen como la misma cosa, y ninguno de los dos
+ * compite con el rojo del déficit — el único color de este cuadro que tiene que interrumpir la lectura.
+ */
+export const EN_CURSO = { red: 0.937, green: 0.957, blue: 0.984 }
 /** El único rojo del archivo: saldo bajo cero. */
 export const DEFICIT = { red: 0.70, green: 0.20, blue: 0.20 }
 /** Ámbar: por encima de cero pero por debajo del piso. Avisa sin gritar. */
@@ -337,7 +343,61 @@ export function reglasCondicionales({ sheetId, meta, refMinima = null }) {
   for (const clave of ['variacionPresupuesto', 'variacionMesAnterior']) {
     if (f[clave]) regla(f[clave], `=N(${ref(f[clave])})<0`, TINTE, false)
   }
+  req.push(...reglaPeriodoEnCurso({ sheetId, meta }))
   return req
+}
+
+/**
+ * ═══ LA COLUMNA DE HOY, MARCADA (13/08/2026) ═══
+ *
+ * El dueño, sobre el Cash Flow Semanal: *"están marcando mal la semana actual"*. Medido en el archivo
+ * vivo ese día: **no la marcaban de ninguna forma**. Las 53 columnas de semana salían con exactamente
+ * el mismo fondo, la misma tinta y el mismo peso, y la única señal de "acá estamos" era el botón de la
+ * esquina — que apuntaba con el fragmento "#gid=" suelto y por lo tanto no navegaba. Sobre 53 columnas
+ * angostas eso significa buscar la fecha a ojo cada vez que se abre la pestaña.
+ *
+ * ES FORMATO CONDICIONAL, NO UN PINTADO POR COORDENADA, y ésa es la decisión que importa: la pestaña se
+ * regenera cada 2 horas pero la semana cambia sola el lunes a la madrugada. Una columna pintada por
+ * índice queda correcta hasta la primera vez que el pipeline no corre, y entonces señala con confianza
+ * la semana equivocada — que es peor que no señalar nada. La fórmula se evalúa cuando la hoja calcula:
+ * el día que el generador no corra, la marca sigue estando bien.
+ *
+ * LA VENTANA ES LA MISMA QUE SUMA LA COLUMNA — semi-abierta [encabezado, encabezado+7) en el semanal y
+ * [1° del mes, 1° del siguiente) en el mensual. No se reescribe acá: si fuera otra, la marca señalaría
+ * una columna y los números serían de otra.
+ *
+ * UN SOLO TONO Y NADA MÁS. La regla 5 de esta piel prohíbe cajas y bordes; el estándar del dueño pide
+ * "menos, no más". Un fondo apenas más frío que el blanco alcanza para que el ojo la encuentre sin que
+ * compita con el rojo del déficit, que es el único color que tiene que gritar en este cuadro.
+ *
+ * VA ÚLTIMA en el orden de reglas —índice 0 se apila al frente, así que la última empujada gana— pero
+ * no compite con las de tinta: aquéllas pintan el TEXTO y ésta el FONDO. Se ven juntas.
+ */
+export function reglaPeriodoEnCurso({ sheetId, meta }) {
+  const primera = `${letra(meta.cab.col0)}$${meta.cab.fila}`
+  const dentro = meta.tipo === 'mes'
+    ? `AND(${primera}<=TODAY();EOMONTH(${primera};0)>=TODAY())`
+    : `AND(${primera}<=TODAY();${primera}+7>TODAY())`
+  return [{
+    addConditionalFormatRule: {
+      rule: {
+        // Del encabezado hasta el saldo final: la columna entera que se lee, sin la columna TOTAL
+        // (que no es un período y no puede ser "hoy") ni el bloque por cliente de más abajo.
+        ranges: [{
+          sheetId,
+          startRowIndex: meta.cab.fila - 1,
+          endRowIndex: meta.fila.saldoFinal,
+          startColumnIndex: meta.cab.col0,
+          endColumnIndex: meta.cab.colTotal,
+        }],
+        booleanRule: {
+          condition: { type: 'CUSTOM_FORMULA', values: [{ userEnteredValue: `=${dentro}` }] },
+          format: { backgroundColor: EN_CURSO },
+        },
+      },
+      index: 0,
+    },
+  }]
 }
 
 /** Los requests para borrar TODAS las reglas condicionales de una pestaña, de atrás para adelante. */

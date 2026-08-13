@@ -198,15 +198,22 @@ export function deCompras(filas = [], corte = null, { aviso = (m) => console.war
     }
     const yaSalio = Math.round((debe - enVuelo) * 100) / 100
     if (yaSalio > 0) {
-      out.push(movimiento({
-        ...base,
-        fecha,
-        importe: yaSalio,
-        cuit: txt(f[c.cuit]),
-        comprobante: txt(f[c.comprobante]),
-        estado: estadoContraCorte(estadoBase, fecha, corte),
-        origen: { pestana: 'Compras', fila: i + 1 },
-      }))
+      out.push({
+        ...movimiento({
+          ...base,
+          fecha,
+          importe: yaSalio,
+          cuit: txt(f[c.cuit]),
+          comprobante: txt(f[c.comprobante]),
+          estado: estadoContraCorte(estadoBase, fecha, corte),
+          origen: { pestana: 'Compras', fila: i + 1 },
+        }),
+        // El importe de esta fila ¿ES el saldo puro Total−Pagado? Sólo entonces la celda C puede ir
+        // como fórmula viva (un parcial cargado por el dueño descuenta la COMPROMETIDA en el acto).
+        // Una fila partida por cheques en vuelo lleva debe−enVuelo y NO puede ir viva: pisaría lo
+        // que ya viaja en las cuotas. Ver libro-estado-vivo.mjs · celdaImporte.
+        saldoVivo: enVuelo === 0,
+      })
     }
   }
   return out

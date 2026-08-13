@@ -9,6 +9,17 @@ import {
   coincidencias, MIN_COMPARABLES,
 } from './huella-celda.mjs'
 import { VACIO, fusionar } from './preservar-anotaciones.mjs'
+import { preservarNoVacias } from './no-borrar.mjs'
+
+/**
+ * LO QUE QUEDA EN LA PESTAÑA — la cadena entera, no el paso del medio.
+ *
+ * Un test que se detenía en `fusionar()` daba verde sobre una limpieza que en producción NUNCA
+ * ocurría: después de la fusión corre `no-borrar.mjs`, que reponía toda celda que la escritura
+ * dejaba vacía. Ésa es la diferencia entre la pantalla que contesta que sí y el dato leído en su
+ * destino, y por eso acá se recorre hasta el final.
+ */
+const enLaPestana = (grid, hoy) => preservarNoVacias(hoy, fusionar(grid, hoy)).values
 
 /** Arma el mapa de huellas como lo devuelve `leerHuellas`, a partir de la grilla que el OS escribió. */
 const huellasDe = (grid, opts = {}) =>
@@ -35,8 +46,8 @@ test('(a) el dueño borra un rótulo que el generador escribió: NO vuelve', () 
   assert.equal(suprimidas[0].mio, 'ACTIVIDADES OPERATIVAS')
   // Y lo que el dueño no tocó se sigue escribiendo: la huella no congela la pestaña entera.
   assert.equal(grid.at(-1)[0], 'Cobranzas de obra civil')
-  // La prueba del efecto: al fusionar, la celda queda VACÍA, no reescrita.
-  assert.equal(fusionar(grid, hoy)[ayer.length - 2][0], '')
+  // La prueba del efecto: en la pestaña la celda queda VACÍA, no reescrita.
+  assert.equal(enLaPestana(grid, hoy)[ayer.length - 2][0], '')
 })
 
 test('(b) el generador cambia un importe de su propia celda: SÍ se actualiza', () => {
@@ -186,12 +197,86 @@ test('(d) mi propio texto de un layout anterior SÍ se limpia cuando pido limpia
   assert.equal(alineacion.alineada, true, alineacion.motivo)
   assert.equal(residuos.length, 2, 'las dos celdas de residuo se reconocen como propias')
   assert.deepEqual(ajenas, [], 'no son del dueño: es texto que yo mismo escribo hoy en otra fila')
-  // LA PRUEBA DEL EFECTO: después de fusionar, la celda queda vacía en la pestaña.
-  const fusionada = fusionar(grid, hoy)
-  assert.equal(fusionada[quiere.length - 2][2], '', 'el residuo se limpia')
-  assert.equal(fusionada[quiere.length - 2][3], '')
+  // LA PRUEBA DEL EFECTO: la celda queda vacía EN LA PESTAÑA, con `no-borrar` incluido en el camino.
+  // Antes del 13/08 esta misma comprobación se hacía sólo hasta `fusionar()` y daba verde mientras el
+  // residuo seguía visible en el Sheet: la guarda ciega lo reponía porque no podía probar de quién era.
+  const enPestana = enLaPestana(grid, hoy)
+  assert.equal(enPestana[quiere.length - 2][2], '', 'el residuo se limpia')
+  assert.equal(enPestana[quiere.length - 2][3], '')
   // Y la celda donde el texto SÍ va se sigue escribiendo.
-  assert.equal(fusionada.at(-1)[2], PROY)
+  assert.equal(enPestana.at(-1)[2], PROY)
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL PEDIDO DEL DUEÑO, ENTERO, EN UNA SOLA PASADA (13/08)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// "estoy eliminando cosas de las pestañas que no me interesan q se vean y me las estas volviendo a
+// poner, no hacer eso". Son tres exigencias distintas sobre la misma pestaña y las tres tienen que
+// valer a la vez — cumplir dos de tres es no cumplir ninguna, porque el que falla es el que borra.
+// Se recorre hasta la PESTAÑA (con `no-borrar` incluido): parar en `fusionar()` daba verde sobre
+// limpiezas que en producción no ocurrían nunca.
+
+test('(g) lo mío se saca · lo tuyo se conserva · lo que vaciaste no vuelve', () => {
+  const ayer = [...lastre(),
+    ['Nota al pie que el cuadro ya no lleva'],
+    ['Rótulo que el dueño va a borrar'],
+    ['Total del bloque', '⇒ cierra contra Compras'],
+  ]
+  const huellas = huellasDe(ayer)
+  // LA PESTAÑA HOY: el dueño vació el rótulo y anotó algo suyo en la columna C, donde el generador
+  // nunca escribió nada.
+  const hoy = ayer.map((f) => [...f])
+  hoy[ayer.length - 2] = ['']
+  hoy[ayer.length - 1] = ['Total del bloque', '⇒ cierra contra Compras', 'revisar con el contador']
+  // LO QUE EL GENERADOR QUIERE ESCRIBIR: ya no produce la nota al pie (pide limpiar SU celda), vuelve
+  // a escribir el rótulo que el dueño borró, y ahora también quiere ocupar la columna C.
+  const quiere = [...lastre(), [VACIO], ['Rótulo que el dueño va a borrar'],
+    ['Total del bloque', '⇒ cierra contra Compras', '⇒ control de la columna nueva']]
+
+  const r = aplicarHuella(quiere, hoy, huellas)
+  assert.equal(r.alineacion.alineada, true, r.alineacion.motivo)
+  const enPestana = enLaPestana(r.grid, hoy)
+
+  // 1 · LO MÍO SE SACA. La escribí yo, sigue teniendo la forma con la que la dejé, y ya no la produzco.
+  assert.equal(r.limpiadas.length, 1, 'la nota al pie se reconoce propia')
+  assert.equal(enPestana[ayer.length - 3][0], '', 'la celda que el generador ya no produce queda VACÍA en la pestaña')
+
+  // 2 · LO TUYO SE CONSERVA. Nunca escribí en esa columna: no la piso ni con un control mío.
+  assert.equal(r.ajenas.length, 1)
+  assert.equal(enPestana.at(-1)[2], 'revisar con el contador', 'la anotación del dueño sobrevive a la escritura')
+
+  // 3 · LO QUE VACIASTE NO VUELVE. Tengo huella propia y hoy no hay nada: no lo resucito.
+  assert.equal(r.suprimidas.length, 1)
+  assert.equal(enPestana[ayer.length - 2][0], '', 'el rótulo borrado NO se vuelve a escribir')
+
+  // Y lo que sí es mío y sigue vigente se actualiza: la huella no congela la pestaña.
+  assert.equal(enPestana.at(-1)[0], 'Total del bloque')
+})
+
+test('(h) si editaste MI celda encima, pedir limpiarla NO la borra', () => {
+  // El seguro del caso (f). La propiedad se prueba con posición Y FORMA: si la forma de hoy no es la
+  // que dejé escrita, alguien escribió arriba de lo mío y limpiar sería borrar su trabajo. Sin este
+  // control, el tercer estado sería un permiso general de borrado disfrazado de huella.
+  const ayer = [...lastre(), ['Cobranzas proyectadas del mes']]
+  const huellas = huellasDe(ayer)
+  const hoy = [...ayer.slice(0, -1), ['OJO: esto lo confirma Jorge']]
+  const quiere = [...lastre(), [VACIO]]
+  const { grid, limpiadas, editadas } = aplicarHuella(quiere, hoy, huellas)
+  assert.deepEqual(limpiadas, [], 'no se limpia lo que ya no tiene mi forma')
+  assert.equal(editadas.length, 1)
+  assert.equal(enLaPestana(grid, hoy).at(-1)[0], 'OJO: esto lo confirma Jorge')
+})
+
+test('(i) sin veredicto de alineación no se limpia NADA: el lado tímido sigue siendo el defecto', () => {
+  // Una pestaña que cambió de forma, o una primera corrida, no habilitan ninguna limpieza. La grilla
+  // sale con el centinela `VACIO` —"conservá lo que haya"— y no con el centinela probado.
+  const quiere = [...lastre(), [VACIO]]
+  const hoy = [...lastre(), ['algo que había ahí']]
+  const { grid, limpiadas, alineacion } = aplicarHuella(quiere, hoy, new Map())
+  assert.equal(alineacion.alineada, false)
+  assert.deepEqual(limpiadas, [])
+  assert.equal(enLaPestana(grid, hoy).at(-1)[0], 'algo que había ahí')
 })
 
 test('(e) un IMPORTE sin huella no se toca aunque yo escriba importes en otras celdas', () => {
@@ -221,4 +306,46 @@ test('(f) UNA PALABRA COMÚN DEL DUEÑO NO SE BORRA aunque el generador también
   const fusionada = fusionar(grid, hoy)
   assert.equal(fusionada[quiere.length - 2][2], 'Total', 'la anotación del dueño sobrevive')
   assert.equal(fusionada[quiere.length - 2][3], 'IVA')
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL APÓSTROFO QUE APAGABA LA HUELLA EN LOS DOS CASH FLOW (13/08)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// La huella se sella con lo que el generador MANDÓ y se compara contra lo que la pestaña DEVUELVE.
+// Google le pone comillas al nombre de una pestaña que arranca con `_`, así que cada fórmula que
+// toca `_MOVIMIENTOS` cambiaba de forma sola. Medido contra el Sheet vivo: la fracción de huellas
+// que caían donde el mapa dice era 0,25 en "Cash Flow Semanal" y 0,35 en "Cash Flow Mensual", contra
+// un umbral de 0,60 — la huella NO decidía nunca, y todo lo que el dueño borraba ahí volvía.
+
+test('(j) Google le pone comillas a la pestaña y eso NO es una edición del dueño', () => {
+  const MANDE = '=SUMPRODUCT(ISNUMBER(_MOVIMIENTOS!$A$2:$A)*(_MOVIMIENTOS!$A$2:$A>=$B$7))'
+  const DEVUELVE = "=SUMPRODUCT(ISNUMBER('_MOVIMIENTOS'!$A$2:$A)*('_MOVIMIENTOS'!$A$2:$A>=$B$7))"
+  assert.equal(formaDe(MANDE), formaDe(DEVUELVE), 'la misma fórmula tiene que tener la misma forma')
+  assert.equal(huellaDe(MANDE), huellaDe(DEVUELVE))
+})
+
+test('(k) una pestaña de fórmulas vuelve a alinear — el caso de los dos Cash Flow', () => {
+  // La proporción importa y por eso se reproduce: 3 rótulos y 10 fórmulas, como una matriz de cash
+  // flow donde casi todo el cuadro son fórmulas contra `_MOVIMIENTOS`. Con la comparación vieja
+  // coincidían 3 de 13 (0,23 contra un umbral de 0,60) y la huella no decidía NUNCA.
+  const mande = [...lastre(3), ...Array.from({ length: 10 }, (_, k) => [`=N(_MOVIMIENTOS!$A$${k + 2})`])]
+  const huellas = huellasDe(mande)                              // sellada con lo que mandé
+  const hoy = mande.map((f) => f.map((c) => String(c).replace(/_MOVIMIENTOS/g, "'_MOVIMIENTOS'")))
+  const { alineacion, suprimidas, ajenas } = aplicarHuella(mande, hoy, huellas)
+  assert.equal(alineacion.fraccion, 1, 'las 13 celdas caen donde el mapa dice')
+  assert.equal(alineacion.alineada, true, alineacion.motivo)
+  assert.deepEqual(suprimidas, [], 'la pestaña no cambió: nadie borró nada')
+  assert.deepEqual(ajenas, [], 'y ninguna celda propia se lee como ajena')
+})
+
+test('(l) el apóstrofo no tapa un borrado de verdad: la fórmula que vaciaste sigue sin volver', () => {
+  // El seguro de (j) y (k). Normalizar comillas no puede convertirse en "todo coincide": una celda
+  // que el dueño vació tiene que seguir dando `suprimida`.
+  const mande = [...lastre(), ['Saldo proyectado', '=N(_MOVIMIENTOS!$A$2)']]
+  const huellas = huellasDe(mande)
+  const hoy = mande.map((f, i) => (i === mande.length - 1 ? ["'_MOVIMIENTOS' ya no va", ''] : f))
+  const { suprimidas } = aplicarHuella(mande, hoy, huellas)
+  assert.equal(suprimidas.length, 1)
+  assert.equal(suprimidas[0].col, 1, 'la celda vaciada es la de la fórmula')
 })

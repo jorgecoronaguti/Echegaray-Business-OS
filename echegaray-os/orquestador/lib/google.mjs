@@ -19,6 +19,34 @@ import { frenar } from './congelador-sheets.mjs'
 // La regla que no se puede apagar: ninguna escritura deja vacía una celda que tenía algo. No la
 // levanta ORQ_SHEETS_DESCONGELAR, ni yaGuardado, ni espejo, ni respetar:false, ni --force.
 import { permiteBorradoExplicito, protegerBorrado } from './no-borrar.mjs'
+// Dónde hay que mirar para saber si una escritura aterrizó: la celda del testigo, calculada desde
+// el ancla del rango. Puro, sin red ni base. Ver aterrizaje-escritura.mjs.
+import { testigoDeLote } from './aterrizaje-escritura.mjs'
+
+/**
+ * EL LOG DE LA GUARDA CIEGA NO AFIRMA PROPIEDAD (13/08).
+ *
+ * `protegerBorrado` sabe que una celda tenía contenido y que la escritura lo dejaría vacío. NO sabe
+ * de quién es: no tiene con qué. Decía "conservo N celda(s) TUYA(S)" igual, y esa palabra fue lo que
+ * hizo que `Cash Flow Semanal!A106="AH7"` —un artefacto del propio OS— pasara días sin que nadie la
+ * mirara. Lo que se conserva sin prueba se dice sin prueba, y se manda al reporte que lo lista.
+ */
+const avisoConservadas = (nb) => `  🛟 conservo ${nb.preservadas} celda(s) que esta escritura dejaba vacías `
+  + `(no puedo probar de quién son): ${nb.detalle.join(' · ')}`
+  + `\n     → node orquestador/scripts/conservadas-sin-prueba.mjs las lista para que decidas.`
+
+/** La contracara: acá SÍ hay prueba —la huella por celda la emitió con evidencia positiva— y se dice. */
+const avisoLimpiadas = (nb) => `  🧹 limpio ${nb.limpiadas} celda(s) que la huella probó mías: ${nb.detalleLimpiadas.join(' · ')}`
+
+/**
+ * La SEGUNDA vía de prueba, y se nombra distinto a propósito. La huella dice "la sellé yo"; esto dice
+ * "tiene forma de dato que sólo produzco yo, o es un rótulo de mi registro". Es más débil, cubre lo
+ * que la huella no puede —una región que se corrió ±50 filas, donde el mapa ya no alinea— y por eso
+ * el log tiene que dejar ver CUÁL de las dos decidió: si mañana algo se borró de más, la diferencia
+ * entre los dos mensajes es lo que dice dónde mirar.
+ */
+const avisoVaciadas = (nb) => `  🧹 vacío ${nb.vaciadas} celda(s) que probé residuo MÍO de un layout anterior `
+  + `(por forma y registro, la huella no alineaba): ${nb.detalleVaciadas.join(' · ')}`
 
 const READONLY_SCOPES = [
   'https://www.googleapis.com/auth/drive.readonly',
@@ -1070,7 +1098,8 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       {
         const nb = await protegerBorrado(cliente, fileId, [{ range, values }])
         if (!nb.data.length) return { protegido: true, noBorrar: true, motivo: 'no pude releer el destino para garantizar que no se borra nada (falla cerrado)' }
-        if (nb.preservadas) console.log(`  🛟 conservo ${nb.preservadas} celda(s) tuya(s) que esta escritura dejaba vacías: ${nb.detalle.join(' · ')}`)
+        if (nb.preservadas) console.log(avisoConservadas(nb))
+        if (nb.limpiadas) console.log(avisoLimpiadas(nb))
         values = nb.data[0].values
       }
       values = await localizeValues(fileId, values)
@@ -1160,7 +1189,7 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
     // persona identificada apretando "Registrar" sobre lo que ya vio—. Las otras cuatro mantienen el
     // freno duro aunque se les pase la opción: ampliar la superficie sería volver a la defensa por
     // enumeración que este archivo ya pagó. Ver `congelador-sheets.mjs`.
-    async batchUpdateValues(fileId, data, { espejo = false, yaGuardado = false, compartida = false, soloFilasVacias = false, confirmacion = null } = {}) {
+    async batchUpdateValues(fileId, data, { espejo = false, yaGuardado = false, compartida = false, soloFilasVacias = false, confirmacion = null, vaciarPropio = null } = {}) {
       const hielo = frenar(fileId, (data || []).map((d) => d?.range).filter(Boolean).join(', '), { confirmacion }); if (hielo) return hielo
       // ── GUARDA CENTRAL (25/07): el choke point que hace que NINGÚN escritor —crudo o no— pueda pisar
       // una pestaña candada o que el dueño editó (firma). Se saltea sólo con bandera explícita: `espejo`
@@ -1182,9 +1211,11 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       }
       // NO-BORRAR: el mismo trato para el batch. Ver no-borrar.mjs.
       {
-        const nb = await protegerBorrado(cliente, fileId, data)
+        const nb = await protegerBorrado(cliente, fileId, data, { vaciarPropio })
         if (nb.descartados.length) console.log(`  🛟 descarto ${nb.descartados.length} rango(s): no pude releer el destino y no arriesgo borrarte algo — ${nb.descartados.slice(0, 3).join(', ')}`)
-        if (nb.preservadas) console.log(`  🛟 conservo ${nb.preservadas} celda(s) tuya(s) que esta escritura dejaba vacías: ${nb.detalle.join(' · ')}`)
+        if (nb.preservadas) console.log(avisoConservadas(nb))
+        if (nb.limpiadas) console.log(avisoLimpiadas(nb))
+        if (nb.vaciadas) console.log(avisoVaciadas(nb))
         data = nb.data
         if (!data.length) return { protegido: true, noBorrar: true, bloqueadas: nb.descartados }
       }
@@ -1218,18 +1249,25 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
         // Una guarda que grita en falso se termina ignorando — y ésta existe para un caso real. Se
         // elige como testigo el primer TEXTO plano (sin dígitos ni separadores), que hace el viaje de
         // ida y vuelta sin transformarse; si el lote no tiene ninguno, no se verifica y no se miente.
-        const testigo = (d.values || []).flat().find((c) => typeof c === 'string' && c.trim() !== ''
-          && c[0] !== '=' && !/^[\d.,/\-$\s%]+$/.test(c))
-        if (testigo === undefined) continue
-        const leido = await cliente.readSheetValues(fileId, d.range).catch(() => null)
+        //
+        // ═══ Y SE RELEE LA CELDA DEL TESTIGO, NO EL RANGO MANDADO (13/08) ═══
+        // El rango que llega acá suele ser el ANCLA ("_J_OBREROS!A201") de una matriz de 200 filas:
+        // releerlo devolvía UNA celda y el testigo vivía en otra. Ver aterrizaje-escritura.mjs.
+        const testigo = testigoDeLote(d.range, d.values || [])
+        if (!testigo) continue
+        const leido = await cliente.readSheetValues(fileId, testigo.celda).catch(() => null)
         if (!leido) continue
-        if (!(leido.flat() || []).some((c) => String(c) === String(testigo))) perdidos.push(d.range)
+        if (!(leido.flat() || []).some((c) => String(c) === String(testigo.texto))) perdidos.push({ ...testigo, range: d.range })
       }
       if (perdidos.length) {
-        console.warn(`  ⚠ LA ESCRITURA NO ATERRIZÓ en ${perdidos.length} rango(s): ${perdidos.slice(0, 4).join(', ')}. `
+        // El aviso dice DÓNDE se miró y QUÉ se esperaba: sin eso, el que lo lee tiene que reconstruir
+        // a mano cuál de las 200 filas del lote se perdió, y termina buscando el defecto al lado
+        // equivocado — que es exactamente lo que pasó con el falso positivo del 13/08.
+        const detalle = perdidos.slice(0, 4).map((p) => `${p.range} (miré ${p.celda}, esperaba "${String(p.texto).slice(0, 40)}")`)
+        console.warn(`  ⚠ LA ESCRITURA NO ATERRIZÓ en ${perdidos.length} rango(s): ${detalle.join(', ')}. `
           + 'La API contestó que sí y el dato leído en su destino dice que no. NO des por buena esta corrida.')
       }
-      return perdidos.length ? { ...res, noAterrizo: perdidos } : res
+      return perdidos.length ? { ...res, noAterrizo: perdidos.map((p) => p.range), noAterrizoDetalle: perdidos } : res
     },
     /**
      * ESCRIBIR VALORES POR `updateCells`, direccionando por `sheetId` en vez de por nombre.

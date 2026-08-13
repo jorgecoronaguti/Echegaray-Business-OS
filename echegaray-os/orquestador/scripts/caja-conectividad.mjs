@@ -28,6 +28,7 @@ import { MAPA, ROLES_SUMADOS, fuentesSumadas } from '../lib/cash-flow-cobertura.
 import { lineasDeCaja, conceptosFueraDelCalendario, marcaDeLinea } from '../lib/calendario-egresos.mjs'
 import { RAW } from '../lib/conciliacion-por-naturaleza.mjs'
 import { deCompras, deCobranzas } from '../lib/libro-extractores.mjs'
+import { leerTipoCambio } from '../lib/tipo-cambio.mjs'
 import { veredictoPorMetodo, faltanteEnCartera } from '../lib/caja-canales.mjs'
 import { EN_CARTERA } from '../lib/cartera-cheques.mjs'
 import { COL as COL_RAW, FILA0 as FILA0_RAW, PESTAÑA as PESTANA_RAW } from './cheques-raw-pestana.mjs'
@@ -94,11 +95,14 @@ export function veredictoConectividad(sumadas, ciegos = []) {
 async function porMetodo(g, corte) {
   // Compras hasta BZ: el extractor resuelve por encabezado y "CUIT (OS)" vive después de la AL — con
   // una lectura corta falla cerrado nombrando la columna, que es lo correcto pero no es el veredicto.
-  const [compras, cobranzas] = await Promise.all([
+  // El tipo de cambio viaja con la lectura: Cobranzas tiene filas en dólares y sin él `deCobranzas`
+  // aborta. El veredicto por método se mide en pesos, como todo el resto del cuadro.
+  const [compras, cobranzas, { tc: tipoCambio }] = await Promise.all([
     g.readSheetValues(ID, 'Compras!A1:BZ', { render: 'UNFORMATTED_VALUE' }),
     g.readSheetValues(ID, 'Cobranzas!A1:BB', { render: 'UNFORMATTED_VALUE' }),
+    leerTipoCambio(g, ID),
   ])
-  const movimientos = [...deCompras(compras ?? [], corte), ...deCobranzas(cobranzas ?? [], corte)]
+  const movimientos = [...deCompras(compras ?? [], corte), ...deCobranzas(cobranzas ?? [], corte, { tipoCambio })]
   return { movimientos, veredicto: veredictoPorMetodo(movimientos, { corte }) }
 }
 
@@ -132,9 +136,18 @@ async function main() {
   const ciegos = conceptosFueraDelCalendario(
     egresos.map(({ linea }) => linea.nombre).filter((n) => !nombresSinFuente.includes(n)))
 
+  // ═══ LAS FUENTES SE MIDEN SOBRE EL LIBRO, NO SOBRE UNA LISTA DE FÓRMULAS (13/08/2026) ═══
+  //
+  // Antes salían de recorrer el `CUADRO` de `cash-flow-lineas.mjs` — el diseño de bloques que se
+  // retiró el 06/08 —, así que este veredicto describía un cuadro que el archivo ya no escribe. Ahora
+  // se leen los ORÍGENES declarados en `_MOVIMIENTOS`, que es de donde las tres vistas cuelgan de
+  // verdad: una pestaña "conectada" es una que puso movimientos en el libro de esta corrida.
+  const origenes = await g.readSheetValues(ID, '_MOVIMIENTOS!N2:N').catch(() => [])
+  const sumadas = fuentesSumadas((origenes ?? []).map((f) => ({ origen: { pestana: String(f?.[0] ?? '').trim() } })))
+
   console.log('\n¿QUÉ PESTAÑAS VE CAJA, Y CUÁNTA PLATA DE CADA UNA LLEGA AL PISO?')
   console.log('─'.repeat(96))
-  for (const v of veredictoConectividad(fuentesSumadas(), ciegos)) {
+  for (const v of veredictoConectividad(sumadas, ciegos)) {
     const marca = v.estado === 'DESCONECTADA' ? '✗' : v.estado === 'conectada' ? '✓' : '·'
     console.log(`  ${marca} ${v.pestania.padEnd(24)} ${v.rol.padEnd(12)} ${v.estado.padEnd(14)} ${v.porque.slice(0, 40)}`)
   }

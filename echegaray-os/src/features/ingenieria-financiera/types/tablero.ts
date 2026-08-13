@@ -138,6 +138,16 @@ export interface DetalleCondicionCosto {
   costo_efectivo_anual: number | null
   falta: string[]
   para_conseguirlo: string | null
+  // 'piso' = el costo NO incluye todo (falta IVA, CFT o gastos). No es comparable contra un 'total'.
+  completitud?: 'total' | 'piso' | 'sin_dato'
+  es_piso?: boolean
+}
+
+// Por qué los costos de arriba pueden no ser comparables entre sí. `null` cuando todos son totales.
+export interface ComparabilidadCondiciones {
+  comparables: number
+  incompletas: { entidad: string; producto: string; falta: string[] }[]
+  advertencia: string
 }
 
 export interface CompararDoc {
@@ -151,6 +161,7 @@ export interface CompararDoc {
   justificacion?: string
   condiciones?: DetalleCondicionCosto[]
   faltan_datos?: FaltanDatosCondicion[]
+  comparabilidad?: ComparabilidadCondiciones | null
   generado_en?: string
 }
 

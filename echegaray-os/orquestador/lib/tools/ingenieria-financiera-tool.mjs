@@ -5,7 +5,7 @@ import {
   modeloLiquidez, recomendaciones, compararFinanciamiento, priorizarPagos, fmt,
 } from '../ingenieria-financiera.mjs'
 import { calendarioDiario } from '../calendario-financiero.mjs'
-import { condicionesVigentes, paramsParaMotor, costoEfectivo } from '../condiciones-financieras.mjs'
+import { condicionesVigentes, paramsParaMotor, costoEfectivo, advertenciaDeComparabilidad } from '../condiciones-financieras.mjs'
 import { planTesoreria } from '../plan-tesoreria.mjs'
 import { estrategiaFinanciera } from '../estrategia-financiera.mjs'
 import { sincronizarEjecucion } from '../plan-ejecucion.mjs'
@@ -240,7 +240,9 @@ export function ingenieriaFinancieraTools(google) {
           const detalle = condiciones
             .filter((c) => ['descubierto', 'prestamo', 'descuento_cheque', 'tarjeta'].includes(c.tipo_financiacion))
             .map((c) => costoEfectivo(c, { monto: a.monto, dias: a.dias }))
-          return { ...resultado, condiciones: detalle, faltan_datos: faltan }
+          // EL PAYLOAD DECLARA SI LOS NÚMEROS SON COMPARABLES. Sin esto el modelo recibía costos de
+          // distinta completitud en un mismo array y ordenaba por el más bajo, que es el peor documentado.
+          return { ...resultado, condiciones: detalle, faltan_datos: faltan, comparabilidad: advertenciaDeComparabilidad(detalle) }
         } catch (e) { return { error: String(e?.message ?? e).slice(0, 180) } }
       },
     },

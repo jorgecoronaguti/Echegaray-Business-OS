@@ -15,10 +15,15 @@
 // Puede hacerlo —hay motivos legítimos, ver abajo— pero tiene que DECIDIRLO explícitamente, no
 // heredarlo por descuido.
 //
-// LAS DOS SALIDAS VÁLIDAS, Y NINGUNA ES "no hice nada":
+// LAS SALIDAS VÁLIDAS, Y NINGUNA ES "no hice nada":
 //   · llamar a `conEdicionesRespetadas(...)` antes de escribir  → respeta los textos del dueño
 //   · pasar `respetar: false` con el motivo escrito al lado     → declara que esa pestaña no lleva
 //     texto de nadie (los espejos _RAW: cada rótulo es el nombre de un campo del banco o de ARCA)
+//   · escribir SÓLO vacíos con `vaciarPropio` (13/08)           → la escritura no lleva un solo
+//     rótulo, así que no hay texto del dueño que pisar; lo único que hace es vaciar, y qué se vacía
+//     lo decide `no-borrar.mjs` celda por celda sobre el destino que ella misma relee. Es una guarda
+//     MÁS fuerte que la Regla 0, no un permiso para saltearla: por eso se exige que TODAS las
+//     escrituras del archivo la lleven. Una sola llamada sin ella y el script vuelve a ser culpable.
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -52,10 +57,16 @@ test('todo generador que escribe una pestaña decide explícitamente qué hace c
     const usaElPorton = /\bescribirPreservando\s*\(/.test(src)
     // Salida 2: la apagó a propósito. Se exige que esté escrito, no que se deduzca.
     const laApago = /respetar:\s*false/.test(src)
+    // Salida 3: no escribe rótulos, sólo vacía, y el vaciado lo verifica `no-borrar`. Vale sólo si
+    // TODAS las escrituras del archivo llevan el pedido: una sola sin él y podría estar escribiendo
+    // texto por atrás sin haber decidido nada.
+    const escrituras = (src.match(/\b(batchUpdateValues|updateSheetValues|appendSheetValues)\s*\(/g) || []).length
+    const conPedido = (src.match(/vaciarPropio:/g) || []).length
+    const soloVacia = escrituras > 0 && conPedido >= escrituras
     // Escribir en crudo SIN pasar por el portón y SIN respetar a mano es el defecto que se persigue.
     const escribeEnCrudo = /\b(batchUpdateValues|updateSheetValues|appendSheetValues)\s*\(/.test(src)
 
-    if (respetaAMano || laApago) continue
+    if (respetaAMano || laApago || soloVacia) continue
     if (usaElPorton && !escribeEnCrudo) continue   // sólo el portón: ya respeta por defecto
     if (!usaElPorton && escribeEnCrudo) culpables.push(f)
   }

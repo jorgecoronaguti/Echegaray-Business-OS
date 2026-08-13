@@ -13,7 +13,7 @@
 // del propio generador (la col I de los cruces ARCA, que es no-vacía y por eso se conserva).
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { estructural, predicadoConDeuda, soloConDeuda, layoutDeuda, notasAncladas, anchoBloque, traducirMarcadores } from './proveedores-materiales-pestana.mjs'
+import { estructural, predicadoConDeuda, soloConDeuda, layoutDeuda, notasAncladas, anchoBloque, traducirMarcadores, reportarVentasSinCobranza } from './proveedores-materiales-pestana.mjs'
 import { fusionar, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { readFileSync } from 'node:fs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
@@ -606,6 +606,32 @@ test('con la grilla partida en dos pestañas, el marcador de ARCA cae en el BLOQ
   assert.equal(t.anchoObras, 7)
 })
 
+// ═══ EL COSTO DE MATERIALES SALE DE LA FUENTE ÚNICA, NO DE UNA FÓRMULA TIPEADA ACÁ ═══
+//
+// El dueño (13/08/2026): *"el mismo concepto de materiales sea familia o individual no pueden diferir
+// de ninguna manera"*. La igualdad entre esta pestaña y OBRAS la prueba `lib/costo-materiales.test.mjs`
+// evaluando las dos fórmulas; lo que este test cuida es que ESTE generador siga siendo el que las
+// emite. Si alguien vuelve a escribir el SUMIFS a mano acá, aquel test seguiría verde sobre un módulo
+// que la pestaña ya no usa — el agujero exacto por el que la divergencia entró la primera vez.
+test('las secciones de COSTO de materiales emiten el criterio único, y ninguna suma "Total" a mano', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  assert.match(src, /import \{ sumaNetaSheet \} from '\.\.\/lib\/costo-materiales\.mjs'/)
+  assert.match(src, /import \{ bloqueMaterialesPorObra \} from '\.\.\/lib\/materiales-por-obra\.mjs'/)
+  assert.match(src, /const porObra = bloqueMaterialesPorObra\(\{/, 'la sección POR OBRA la arma el módulo')
+  assert.match(src, /push\(porObra\.total\)/, 'incluida la fila TOTAL POR OBRA que OBRAS cita')
+  // Las formas viejas, exactas. Cada una medía el costo con IVA en una sección distinta.
+  for (const viejo of [
+    'SUMIFS(${COL_TOTAL};${COL_FAMILIA}',   // familia × mes y familia × obra
+    'SUMIF(${COL_FAMILIA};${clave};${COL_TOTAL})', // el total del año por familia
+    'SUMIF(${COL_RUBRO};"${RUBROS_CON_FAMILIA[0]}";${COL_TOTAL})', // el control de partición
+  ]) assert.ok(!src.includes(viejo), `volvió el criterio con IVA: ${viejo}`)
+  // Y el neto/IVA se ubican por rótulo, como todo lo que esta pestaña lee de Compras.
+  assert.match(src, /COL_NETO = fijar\('neto', COL_NETO, 'Importe'\)/)
+  assert.match(src, /COL_IVA = fijar\('iva', COL_IVA, 'IVA'\)/)
+  // La DEUDA sigue midiéndose con IVA: al proveedor se le debe el total de la factura, no su neto.
+  assert.match(src, /const neta = \(conds\) => `SUMIFS\(\$\{COL_TOTAL\}/)
+})
+
 test('los marcadores de "Materiales" —el tramo sin `desdeFila`— son filas REALES, no NaN', () => {
   // El tramo de Materiales no declara su fila de arranque: la hereda de las opciones de `partir`.
   // La copia inline que traducía los marcadores no tenía ese respaldo y devolvía NaN para los ~20
@@ -622,4 +648,59 @@ test('los marcadores de "Materiales" —el tramo sin `desdeFila`— son filas RE
     assert.ok(Number.isFinite(t[k]), `${k} tradujo a ${t[k]}`)
   }
   assert.equal(t.fam0, 6, 'la fila 200 de la grilla es la 4 de Materiales, así que la 202 es la 6')
+})
+
+// ══ EL CRUCE CONTRA COBRANZAS, CON LO QUE EL DUEÑO YA DECIDIÓ (13/08) ════════════════════════════
+//
+// El aviso "6 factura(s) emitidas que Cobranzas no tiene, $129.499.724" volvía en cada corrida —cada
+// dos horas— después de que el dueño contestara "no considerarlas" sobre las dos mayores. Un aviso
+// siempre rojo se ignora, y con él se ignora la factura nueva del mes que viene.
+
+const FACTURA = (comprobante, importe, cuit = '30716490498') => ({
+  comprobante, importe, cuit, fecha: '11/3/2026',
+})
+const capturar = (emitidas) => {
+  const salida = []
+  const dec = reportarVentasSinCobranza(emitidas, { log: (t) => salida.push(String(t)) })
+  return { dec, texto: salida.join('\n') }
+}
+
+test('las dos facturas que el dueño decidió NO ocupan la línea de aviso', () => {
+  const { dec, texto } = capturar([FACTURA('0001-00000208', 75000000), FACTURA('0001-00000213', 40000000)])
+  assert.equal(dec.vivos.length, 0)
+  assert.ok(!texto.includes('⚠'), `con las dos decisiones cargadas no queda un solo ⚠:\n${texto}`)
+  assert.match(texto, /2 hallazgo\(s\) con decisión del dueño/)
+  assert.match(texto, /"no considerarlas" \(dueño, 13\/08\/2026\)/)
+  assert.match(texto, /0001-00000208/, 'se sigue listando: liberar no es callar')
+})
+
+test('una factura SIN decisión sigue avisando, y el importe del aviso ya no la incluye a ella sola', () => {
+  const { dec, texto } = capturar([
+    FACTURA('0001-00000208', 75000000),
+    FACTURA('0001-00000213', 40000000),
+    FACTURA('0001-00000777', 14499724),
+  ])
+  assert.deepEqual(dec.vivos.map((f) => f.comprobante), ['0001-00000777'])
+  assert.match(texto, /⚠ VENTAS .*: 1 factura\(s\)/)
+  assert.match(texto, /\$\s?14\.499\.724/, 'la plata del aviso es la de lo NO decidido')
+  assert.ok(!/129\.499\.724/.test(texto), 'ya no se reporta el total viejo')
+})
+
+test('si el importe de la factura decidida cambia, el aviso vuelve con ⚠', () => {
+  const { dec, texto } = capturar([FACTURA('0001-00000208', 90000000)])
+  assert.equal(dec.vivos.length, 1, 'el dueño decidió sobre $75.000.000')
+  assert.equal(dec.caducadas.length, 1)
+  assert.match(texto, /⚠ VENTAS/)
+  assert.match(texto, /YA NO APLICA/)
+})
+
+test('si cambia el CUIT del receptor, tampoco aplica: no es la misma factura', () => {
+  const { dec } = capturar([FACTURA('0001-00000208', 75000000, '30999999999')])
+  assert.equal(dec.vivos.length, 1)
+})
+
+test('sin ninguna factura pendiente no se imprime nada', () => {
+  const { dec, texto } = capturar([])
+  assert.equal(dec.vivos.length, 0)
+  assert.equal(texto, '')
 })

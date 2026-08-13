@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { VACIO, esEspejo, esVacio, permiteBorradoExplicito, preservarNoVacias, protegerBorrado, refA1, tabDe } from './no-borrar.mjs'
+import { MIA_PROBADA, VACIO, esEspejo, esVacio, permiteBorradoExplicito, preservarNoVacias, protegerBorrado, refA1, sinCentinela, tabDe } from './no-borrar.mjs'
 
 test('una celda vacía NUNCA reemplaza una que tenía algo', () => {
   const { values, preservadas } = preservarNoVacias([['dato del dueño', 'x']], [['', 'y']])
@@ -87,4 +87,53 @@ test('un espejo no paga la lectura de más: pasa derecho', async () => {
   const r = await protegerBorrado(cliente, 'F', [{ range: "'_BANCO_RAW'!A4:F9", values: [['']] }])
   assert.equal(leyo, false)
   assert.deepEqual(r.data[0].values, [['']])
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL TERCER ESTADO (13/08): "ESTA CELDA ES MÍA, ESTÁ PROBADO, Y VA VACÍA"
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// El dueño: "estoy eliminando cosas de las pestañas que no me interesan q se vean y me las estas
+// volviendo a poner". Esta guarda tenía dos estados y le faltaba el que distingue. Sin el tercero,
+// una celda que el OS mismo escribió queda blindada para siempre con el mismo blindaje que protege
+// el trabajo del dueño — y eso es lo que le pasó a `Cash Flow Semanal!A106="AH7"`.
+
+test('lo que la huella probó MÍO se limpia de verdad (antes se reponía en cada corrida)', () => {
+  const { values, limpiadas, preservadas } = preservarNoVacias([['residuo de mi layout viejo', 'nota del dueño']], [[MIA_PROBADA, '']])
+  assert.deepEqual(values, [['', 'nota del dueño']], 'la mía queda VACÍA; la del dueño se conserva')
+  assert.equal(limpiadas.length, 1, 'se cuenta aparte: el log tiene que poder decir "limpio LO MÍO"')
+  assert.equal(preservadas.length, 1, 'y "conservo esto otro", que es lo que no puede probar')
+})
+
+test('el centinela probado NUNCA llega al Sheet, ni siquiera donde no hay nada que preservar', () => {
+  // Escribirlo literal ya pasó: 61 celdas de CAJA quedaron mostrando "::VACIO::". Que la celda de
+  // destino esté vacía no puede ser la diferencia entre traducirlo y mandarlo crudo.
+  const { values } = preservarNoVacias([['']], [[MIA_PROBADA]])
+  assert.deepEqual(values, [['']])
+  assert.deepEqual(sinCentinela([[MIA_PROBADA, 'x']]), [['', 'x']])
+})
+
+test('un espejo tampoco recibe el centinela crudo', async () => {
+  const cliente = { readSheetValues: async () => [] }
+  const r = await protegerBorrado(cliente, 'F', [{ range: "'_BANCO_RAW'!A4:F9", values: [[MIA_PROBADA, 'dato']] }])
+  assert.deepEqual(r.data[0].values, [['', 'dato']])
+})
+
+test('el tercer estado NO afloja el segundo: sin centinela, se conserva igual que siempre', () => {
+  // El seguro de todo esto. Si `MIA_PROBADA` se colara como "cualquier vacío", la guarda dejaría de
+  // proteger y volveríamos a la forma exacta de las siete pérdidas.
+  const { values, limpiadas } = preservarNoVacias([['lo del dueño']], [['']])
+  assert.deepEqual(values, [['lo del dueño']])
+  assert.deepEqual(limpiadas, [])
+  assert.equal(esVacio(MIA_PROBADA), true, 'es un vacío, pero uno que viene con prueba adjunta')
+})
+
+test('protegerBorrado informa las dos cosas por separado: lo que limpia y lo que conserva a ciegas', async () => {
+  const cliente = { readSheetValues: async () => [['mi residuo', 'nota del dueño']] }
+  const r = await protegerBorrado(cliente, 'F', [{ range: "'CAJA'!A1:B1", values: [[MIA_PROBADA, '']] }])
+  assert.deepEqual(r.data[0].values, [['', 'nota del dueño']])
+  assert.equal(r.limpiadas, 1)
+  assert.equal(r.preservadas, 1)
+  assert.ok(r.detalleLimpiadas[0].includes('A1'), r.detalleLimpiadas.join(' '))
+  assert.ok(r.detalle[0].includes('B1'), r.detalle.join(' '))
 })

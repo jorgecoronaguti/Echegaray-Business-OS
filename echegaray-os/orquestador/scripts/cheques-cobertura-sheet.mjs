@@ -23,6 +23,7 @@ import { INSTRUMENTOS, formulasInstrumento } from '../lib/cash-flow-lineas.mjs'
 import { FILA_DATO0, FILA_FIN } from '../lib/cheques-emitidos-geometria.mjs'
 import { ARCA as N_ARCA } from '../lib/rangos-nombrados.mjs'
 import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
+import { planDeMarcado, motivoDeAborto } from '../lib/marcado-columna.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Cash Flow Mensual'
@@ -148,6 +149,12 @@ export function grilla({ enCompras, cheques, tarjeta }, resp) {
   const F = { cheques: formulasInstrumento(INSTRUMENTOS.cheques, MARCAS), tarjeta: formulasInstrumento(INSTRUMENTOS.tarjeta, MARCAS) }
   const NOTA_INFERIDO = 'INFERENCIA, no hecho: no tienen N°, pero hay una factura del mismo proveedor por exactamente el mismo importe y con fecha cercana. Se los cuenta aparte de los verificados y NO bajan el piso de caja: el piso se calcula con las dos puntas, arriba en CAJA.'
   const NOTA_SIN_MARCA = '⚠ Filas que el OS todavía no miró: se cargaron después de la última corrida de "cheques-cobertura". Mientras la marca esté vacía, el término de cheques del calendario NO las ve. Tiene que dar cero.'
+  // POR QUÉ ESTE RENGLÓN ES UN CONTROL Y NO UNA CURIOSIDAD (13/08). Es el único término de la
+  // partición que la planilla no publicaba: la fila cuya celda de marcas tiene texto ajeno la cuenta
+  // el TOTAL —mide "hay algo escrito"— y no la cuenta ninguna de las cuatro categorías. Sin este
+  // renglón, las cuatro dejan de sumar el total y el cuadro no dice nada. Con él, el descuadre tiene
+  // nombre, importe y una instrucción de una línea.
+  const NOTA_NO_RECONOCIDA = '⚠ Su celda de la columna de marcas tiene texto que NO escribió el OS (una nota tipeada a mano o por una carga puntual), así que el agente saltea esa fila para no pisarla y el pago queda fuera de las cuatro categorías de arriba y del calendario de CAJA. Tiene que dar cero: se arregla vaciando esa celda —o moviendo la nota a otra columna— y volviendo a correr "cheques-cobertura". Cuál es la fila lo dice el log de la corrida.'
   // LAS FILAS DE LOS TOTALES SE GUARDAN AL EMPUJARLAS, NO SE CUENTAN HACIA ATRÁS (05/08).
   // Acá había `fFalta - 8` y `fFalta - 3`: desplazamientos escritos a mano desde la fila del total.
   // Agregar dos renglones a cada instrumento —los inferidos y los todavía sin marcar— los habría
@@ -159,6 +166,7 @@ export function grilla({ enCompras, cheques, tarjeta }, resp) {
   push(['  · ≈ atribuidos por proveedor + importe (inferencia)', F.cheques.inferidos.cantidad, F.cheques.inferidos.monto, '', '', NOTA_INFERIDO])
   fil.faltaCh = push(['  · FALTA la factura en Compras (confirmado)', F.cheques.falta.cantidad, F.cheques.falta.monto, '', '', '⚠ Tienen número de comprobante y ese número NO está en Compras. Plata que sale y que ninguna línea del cash flow ve.'])
   fil.sinNumCh = push(['  · sin N° de comprobante — no se puede saber', F.cheques.sinNumero.cantidad, F.cheques.sinNumero.monto, '', '', 'Su factura puede estar en Compras perfectamente. Cargando el N° de comprobante en la pestaña Cheques se resuelve solo.'])
+  fil.ajenaCh = push(['  · ⚠ marcadas con algo que el OS no reconoce', F.cheques.noReconocida.cantidad, F.cheques.noReconocida.monto, '', '', NOTA_NO_RECONOCIDA])
   fil.sinMarcaCh = push(['  · ⚠ todavía SIN MARCAR por el OS (no debitados)', F.cheques.sinMarca().cantidad, F.cheques.sinMarca().monto, '', '', NOTA_SIN_MARCA])
   push()
   push(['TARJETA DE CRÉDITO — total', F.tarjeta.total.cantidad, F.tarjeta.total.monto, '', '', ''])
@@ -166,6 +174,7 @@ export function grilla({ enCompras, cheques, tarjeta }, resp) {
   push(['  · ≈ atribuidos por proveedor + importe (inferencia)', F.tarjeta.inferidos.cantidad, F.tarjeta.inferidos.monto, '', '', NOTA_INFERIDO])
   fil.faltaTj = push(['  · FALTA la factura (confirmado)', F.tarjeta.falta.cantidad, F.tarjeta.falta.monto, '', '', ''])
   fil.sinNumTj = push(['  · sin N° de comprobante', F.tarjeta.sinNumero.cantidad, F.tarjeta.sinNumero.monto, '', '', ''])
+  fil.ajenaTj = push(['  · ⚠ marcadas con algo que el OS no reconoce', F.tarjeta.noReconocida.cantidad, F.tarjeta.noReconocida.monto, '', '', NOTA_NO_RECONOCIDA])
   fil.sinMarcaTj = push(['  · ⚠ todavía SIN MARCAR por el OS (no debitados)', F.tarjeta.sinMarca().cantidad, F.tarjeta.sinMarca().monto, '', '', NOTA_SIN_MARCA])
   push()
   const fFalta = filas.length + 1
@@ -350,7 +359,7 @@ async function main() {
  * escrito fila por fila y el total lo hace el Sheet. Por eso ahora también se marca la TARJETA:
  * antes sólo se marcaban los cheques y la mitad del número no tenía dónde apoyarse.
  */
-async function marcarInstrumentos(google, datos, resp) {
+export async function marcarInstrumentos(google, datos, resp) {
   const hojas = await google.getSheetMeta(ID)
   const objetivo = [
     { ...INSTRUMENTOS.cheques, pestaña: datos.pestanaCheques, items: datos.cheques, hasta: datos.filasCh, inferidos: resp.cheques.inferidos },
@@ -361,17 +370,11 @@ async function marcarInstrumentos(google, datos, resp) {
     if (!hoja) { console.log(`⚠ no encontré la pestaña ${o.pestaña}: no marco nada`); continue }
     const COL = o.colMarca // índice 0-based de la columna de marcas
     // Escribir en una columna sin mirar TODA su altura ya me costó pisar el desglose de retenciones
-    // de Cobranzas. Se verifica que lo que hay ahí sea mío antes de tocarla.
+    // de Cobranzas. Se lee entera antes de tocarla — pero lo que se decide con esa lectura es FILA
+    // POR FILA (ver lib/marcado-columna.mjs), no todo-o-nada.
+    let zona = []
     if (hoja.cols > COL) {
-      const letraCol = letra(COL)
-      const zona = await google.readSheetValues(ID, `${o.pestaña}!${letraCol}1:${letraCol}${hoja.rows}`)
-      // QUÉ ES "MÍO" SALE DE LAS MARCAS, NO DE UNA LISTA DE GLIFOS A MANO (05/08). Decía
-      // `✓ | ⚠ | Estado en el OS`, y al agregar la marca de inferencia —que abre con ≈— la guarda
-      // habría visto contenido ajeno en su propia columna y abortado el marcado entero. Una guarda
-      // que no conoce lo que el propio script escribe se convierte en un freno permanente.
-      const mio = (t) => Object.values(MARCAS).includes(t) || t.startsWith('Estado en el OS')
-      const ocupada = zona.some((f) => { const t = String(f?.[0] ?? '').trim(); return t && !mio(t) })
-      if (ocupada) throw new Error(`me niego a escribir: la columna ${letraCol} de ${o.pestaña} tiene contenido que no reconozco.`)
+      zona = await google.readSheetValues(ID, `${o.pestaña}!${letra(COL)}1:${letra(COL)}${hoja.rows}`)
     } else {
       await google.spreadsheetBatchUpdate(ID, [{ appendDimension: { sheetId: hoja.sheetId, dimension: 'COLUMNS', length: COL + 1 - hoja.cols } }])
     }
@@ -381,27 +384,90 @@ async function marcarInstrumentos(google, datos, resp) {
     const porFila = new Map(o.items.map((i) => [i.fila, marcaDe(i.comprobante, datos.enCompras, o.inferidos.has(i.fila))]))
     const marcas = []
     for (let f = o.filaCab + 1; f <= o.hasta; f++) marcas.push([porFila.get(f) ?? ''])
-    // ACÁ LA FECHA DE LA CORRIDA ES LA CORRECTA, Y ES LA EXCEPCIÓN A LA REGLA (03/08).
-    // Los subtítulos del Flujo de Fondos pasaron a calcular su corte con una fórmula sobre el dato
-    // (ver lib/fecha-de-frescura.mjs), porque rotulan rangos VIVOS que se mueven solos. Este rótulo
-    // no: encabeza una columna de marcas ✓/⚠ que el OS congeló EN ESA CORRIDA y que no se recalculan
-    // nunca. Una fórmula acá diría "al 03/08" sobre marcas del 24/07 — frescura FALSA, que es peor
-    // que el texto honesto. El estampado es el dato correcto: cuándo miró el OS.
-    const hoy = new Date().toLocaleDateString('es-AR')
-    const letraCol = letra(COL)
-    await google.batchUpdateValues(ID, [
-      { range: `${o.pestaña}!${letraCol}${o.filaCab}`, values: [[`Estado en el OS · al ${hoy}`]] },
-      { range: `${o.pestaña}!${letraCol}${o.filaCab + 1}:${letraCol}${o.filaCab + marcas.length}`, values: marcas },
-    ])
-    await google.spreadsheetBatchUpdate(ID, [
-      { repeatCell: { range: { sheetId: hoja.sheetId, startRowIndex: o.filaCab - 1, endRowIndex: o.filaCab, startColumnIndex: COL, endColumnIndex: COL + 1 }, cell: { userEnteredFormat: { backgroundColor: { red: 0.17, green: 0.25, blue: 0.37 }, textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 }, fontSize: 9 }, wrapStrategy: 'WRAP' } }, fields: 'userEnteredFormat' } },
-      { repeatCell: { range: { sheetId: hoja.sheetId, startRowIndex: o.filaCab, endRowIndex: o.filaCab + marcas.length, startColumnIndex: COL, endColumnIndex: COL + 1 }, cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' }, textFormat: { fontSize: 9 } } }, fields: 'userEnteredFormat.numberFormat,userEnteredFormat.textFormat' } },
-      { updateDimensionProperties: { range: { sheetId: hoja.sheetId, dimension: 'COLUMNS', startIndex: COL, endIndex: COL + 1 }, properties: { pixelSize: 380 }, fields: 'pixelSize' } },
-      { setBasicFilter: { filter: { range: { sheetId: hoja.sheetId, startRowIndex: o.filaCab - 1, endRowIndex: o.filaCab + marcas.length, startColumnIndex: 0, endColumnIndex: COL + 1 } } } },
-    ])
-    const faltan = marcas.filter((m) => m[0] === MARCAS.falta).length
-    console.log(`${o.pestaña}: ${o.items.length} marcados en la columna ${letraCol} · ${faltan} necesitan que se cargue la factura`)
+
+    // QUÉ ES "MÍO" SALE DE LAS MARCAS, NO DE UNA LISTA DE GLIFOS A MANO (05/08). Decía
+    // `✓ | ⚠ | Estado en el OS`, y al agregar la marca de inferencia —que abre con ≈— la guarda
+    // habría visto contenido ajeno en su propia columna y abortado el marcado entero. Una guarda
+    // que no conoce lo que el propio script escribe se convierte en un freno permanente.
+    const mio = (t) => Object.values(MARCAS).includes(t) || t.startsWith('Estado en el OS')
+    const plan = planDeMarcado({ columna: zona, marcas, fila0: o.filaCab + 1, esMio: mio })
+    if (plan.aborto) throw new Error(motivoDeAborto(plan, { columna: letra(COL), pestaña: o.pestaña }))
+    avisarSalteadas(o, plan, letra(COL))
+    if (!plan.tramos.length) { console.log(`${o.pestaña}: no quedó ninguna fila propia para marcar en ${letra(COL)}`); continue }
+    await estampar(google, hoja, o, plan, marcas.length)
+    // Se cuenta lo ESCRITO, no lo que se quiso escribir: con filas salteadas los dos números difieren
+    // y el que importa es el que quedó en la pestaña.
+    const puestas = plan.tramos.flatMap((t) => t.valores).filter((m) => m[0])
+    const faltan = puestas.filter((m) => m[0] === MARCAS.falta).length
+    console.log(`${o.pestaña}: ${puestas.length}/${o.items.length} marcados en la columna ${letra(COL)} · ${faltan} necesitan que se cargue la factura` + (plan.salteadas.length ? ` · ${plan.salteadas.length} SALTEADA(S)` : ''))
   }
+}
+
+/**
+ * Escribe y formatea la columna de marcas POR TRAMOS.
+ *
+ * Un rango contiguo no puede saltear una fila: le escribiría la marca encima a la celda ajena. Y el
+ * formato va por los mismos tramos —no por la ventana entera— porque una fila que no se escribió no
+ * cambió de forma: repintarla es el defecto de "escritura salteada que sigue formateando", el que
+ * dejó CAJA con una fila de pagos formateada como fecha.
+ */
+async function estampar(google, hoja, o, plan, alto) {
+  const COL = o.colMarca
+  const letraCol = letra(COL)
+  // ACÁ LA FECHA DE LA CORRIDA ES LA CORRECTA, Y ES LA EXCEPCIÓN A LA REGLA (03/08).
+  // Los subtítulos del Flujo de Fondos pasaron a calcular su corte con una fórmula sobre el dato
+  // (ver lib/fecha-de-frescura.mjs), porque rotulan rangos VIVOS que se mueven solos. Este rótulo
+  // no: encabeza una columna de marcas ✓/⚠ que el OS congeló EN ESA CORRIDA y que no se recalculan
+  // nunca. Una fórmula acá diría "al 03/08" sobre marcas del 24/07 — frescura FALSA, que es peor
+  // que el texto honesto. El estampado es el dato correcto: cuándo miró el OS.
+  const hoy = new Date().toLocaleDateString('es-AR')
+  await google.batchUpdateValues(ID, [
+    { range: `${o.pestaña}!${letraCol}${o.filaCab}`, values: [[`Estado en el OS · al ${hoy}`]] },
+    ...plan.tramos.map((t) => ({
+      range: `${o.pestaña}!${letraCol}${t.fila}:${letraCol}${t.fila + t.valores.length - 1}`,
+      values: t.valores,
+    })),
+  ])
+  const rg = (r0, r1, c0 = COL, c1 = COL + 1) => ({ sheetId: hoja.sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
+  await google.spreadsheetBatchUpdate(ID, [
+    { repeatCell: { range: rg(o.filaCab - 1, o.filaCab), cell: { userEnteredFormat: { backgroundColor: { red: 0.17, green: 0.25, blue: 0.37 }, textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 }, fontSize: 9 }, wrapStrategy: 'WRAP' } }, fields: 'userEnteredFormat' } },
+    ...plan.tramos.map((t) => ({ repeatCell: { range: rg(t.fila - 1, t.fila - 1 + t.valores.length), cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' }, textFormat: { fontSize: 9 } } }, fields: 'userEnteredFormat.numberFormat,userEnteredFormat.textFormat' } })),
+    { updateDimensionProperties: { range: { sheetId: hoja.sheetId, dimension: 'COLUMNS', startIndex: COL, endIndex: COL + 1 }, properties: { pixelSize: 380 }, fields: 'pixelSize' } },
+    // El filtro SÍ cubre la ventana entera: es la herramienta con la que se filtra la pestaña, y
+    // dejar la fila salteada fuera del filtro la escondería justo cuando hay que ir a mirarla.
+    { setBasicFilter: { filter: { range: rg(o.filaCab - 1, o.filaCab + alto, 0, COL + 1) } } },
+  ])
+}
+
+/**
+ * LO QUE QUEDÓ SIN MARCAR, CON NOMBRE Y CONSECUENCIA.
+ *
+ * Saltear una fila en silencio sería peor que el aborto que este cambio reemplaza: el aborto al menos
+ * gritaba. Y la consecuencia no es cosmética — la celda ajena NO es una marca, así que ese cheque no
+ * cae en ninguno de los cuatro renglones de la descomposición del cash flow y TAMPOCO en el de
+ * "todavía sin marcar" (que cuenta celdas VACÍAS). Desaparece del cuadro sin dejar rastro, y el
+ * término de cheques del calendario de CAJA —que suma por marca— tampoco lo ve.
+ *
+ * @param {{pestaña:string, items:{fila:number, proveedor?:string, monto:number}[]}} o
+ * @param {{salteadas:{fila:number,texto:string,marca:any}[], fuera:{fila:number,texto:string}[]}} plan
+ * @param {string} letraCol
+ */
+function avisarSalteadas(o, plan, letraCol) {
+  for (const f of plan.fuera) {
+    console.warn(`  ✋ ${o.pestaña}!${letraCol}${f.fila} tiene algo que no es mío ("${String(f.texto).slice(0, 50)}") y está fuera del registro: no la toco.`)
+  }
+  if (!plan.salteadas.length) return
+  const $ = (n) => `$${Math.round(n).toLocaleString('es-AR')}`
+  console.warn(`  ⚠ ${o.pestaña}: ${plan.salteadas.length} fila(s) SIN MARCAR porque la columna ${letraCol} tiene ahí contenido que no escribí yo.`)
+  for (const s of plan.salteadas) {
+    const it = o.items.find((i) => i.fila === s.fila)
+    const quien = it ? `${String(it.proveedor ?? '').slice(0, 26)} ${$(it.monto)}` : '(fila sin importe)'
+    console.warn(`      fila ${String(s.fila).padStart(4)}  ${quien}  ·  encontré "${String(s.texto).slice(0, 50)}"`)
+    if (s.marca) console.warn(`                  la marca que NO escribí: ${s.marca}`)
+  }
+  console.warn('      Esos pagos quedan FUERA de la descomposición del cash flow y del calendario de CAJA: no los cuenta')
+  console.warn('      ninguna categoría ni el renglón "todavía sin marcar", que mide celdas vacías. Se arregla vaciando')
+  console.warn(`      esas celdas de ${letraCol} (o moviendo la nota a otra columna) y volviendo a correr.`)
 }
 
 // SÓLO CORRE SI SE LO INVOCA. Sin esta guarda, importar el archivo para testear `grilla` en frío

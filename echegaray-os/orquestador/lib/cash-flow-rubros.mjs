@@ -21,12 +21,27 @@
 // nuevo aparece ahí y se ve. Si en cambio el subtotal fuera la suma de las sub-líneas, el rubro nuevo
 // se caería del cuadro y el total seguiría cerrando consigo mismo — un cuadro coherente y falso.
 
+import { RUBRO_OBRAS } from './libro-extractores-obras.mjs'
+
 /** Los rubros de INGRESO del libro, en orden de peso. */
 export const RUBROS_INGRESO = Object.freeze(['Cobranzas', 'Valores en cartera'])
 
 /** Los rubros de EGRESO del libro, en orden de peso. */
 export const RUBROS_EGRESO = Object.freeze([
   'Materiales Civil',
+  // ═══ LOS EGRESOS DE LAS OBRAS EN CURSO, CON LÍNEA PROPIA (13/08/2026) ═══
+  //
+  // El rubro lo emite `libro-extractores-obras.mjs` desde el 07/08 y esta lista no lo nombraba, así
+  // que caía entero en "· Otros": $18,9M de materiales, alquileres y combustible de siete obras,
+  // visibles en el total pero sin una fila que dijera qué eran. Se importa la constante en vez de
+  // repetir la cadena — el filtro del cuadro es por igualdad exacta y un renombre de un solo lado
+  // dejaría la fila en cero para siempre sin dar un error.
+  //
+  // NO SE FUNDE CON "Materiales Civil", que sería la fila donde después aparece su factura. Dos
+  // motivos: la mitad de estos egresos no son materiales (alquiler de plataforma, gasoil, nafta), y
+  // el que decide necesita ver separado lo que sale de una factura cargada de lo que sale de la
+  // explosión de costos que él mismo declaró. El neteo vivo contra Compras impide que se sumen las dos.
+  RUBRO_OBRAS,
   'Nómina · Jornales de obra',
   'Nómina · Sueldos administración',
   'Nómina · Cargas sociales',
@@ -59,7 +74,11 @@ export const OTROS = 'Otros'
  * "Valores en cartera" con estado REAL, cae en "Ingresos reales · Otros" y SE VE. Sacarlo de la lista
  * de ingresos entera lo habría mandado a netear contra un egreso, que sería mucho peor.
  */
-export const RUBROS_SOLO_PROYECTADO = Object.freeze(['Valores en cartera'])
+// `Materiales de obra proyectados` entra por la MISMA razón y con el mismo mecanismo: el extractor de
+// obras emite sólo PROYECTADO —la factura, cuando llega, entra por Compras con SU rubro— así que su
+// fila bajo lo REAL estaría condenada a cero en las 53 columnas. Si mañana el libro emitiera uno REAL
+// con este rubro, cae en "Egresos reales · Otros" y SE VE: no se pierde, se hace visible donde molesta.
+export const RUBROS_SOLO_PROYECTADO = Object.freeze(['Valores en cartera', RUBRO_OBRAS])
 
 /** Los rubros que abren una medida, según su signo. PURA. */
 export const rubrosDeSigno = (signo) => (signo === 1 ? RUBROS_INGRESO : RUBROS_EGRESO)

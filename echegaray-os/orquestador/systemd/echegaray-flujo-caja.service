@@ -8,6 +8,17 @@ Type=oneshot
 WorkingDirectory=/home/jorge/echegaray-os/app/echegaray-os
 EnvironmentFile=/home/jorge/.config/echegaray-orq/worker.env
 ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/flujo-caja-rehacer-todo.mjs
-# Las pestañas se calculan desde Compras/Cobranzas/ARCA. Si el Sheet está pesado puede tardar;
-# 10 minutos es holgado (una corrida real tarda 24 segundos).
-TimeoutStartSec=600
+# CUÁNTO TARDA DE VERDAD (medido el 13/08/2026, corrida completa contra el Sheet real): 906 s —
+# 15 minutos, no 24 segundos. El comentario anterior decía "10 minutos es holgado (una corrida real
+# tarda 24 segundos)" y era de cuando el agente rehacía 8 pestañas; hoy rehace 46 y además corre la
+# guardia de generadores atrasados (+36 s) antes del primer paso.
+#
+# POR QUÉ IMPORTA MÁS QUE UN NÚMERO. Con 600 s, systemd mataba el proceso A MITAD DE ESCRITURA:
+# media pestaña escrita, la otra media con la forma vieja, y ningún error en el log de la app porque
+# el que corta es el supervisor. Este repo ya lo pagó una vez (ver el episodio del timeout que mata
+# al escritor). Un timeout no es una preferencia: es la promesa de que nadie interrumpe una
+# escritura por la mitad.
+#
+# 2400 s = 40 minutos: 2,6× la corrida medida. Si alguna vez se acerca a eso, el problema no es el
+# techo — es que el pipeline creció y hay que dividirlo, no seguir subiendo el número.
+TimeoutStartSec=2400

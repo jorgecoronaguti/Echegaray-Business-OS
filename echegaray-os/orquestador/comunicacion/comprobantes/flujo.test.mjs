@@ -649,6 +649,97 @@ test('el que SÍ tiene algo que preguntar sigue parando en los botones', async (
   assert.ok(r.attachments?.length, 'y los botones siguen ahí')
 })
 
+// ═══ NO PREGUNTA NADA — EL PEDIDO DEL DUEÑO DEL 13/08 ════════════════════════
+//
+// Textual: "no quiero q pregunte nada, quiero q el mismo mecanismo de carga por esta via sea el q se
+// usa por la via de mattermost". El cargador que corre Claude Code escribe la fila con la imputación
+// vacía y el dueño la completa en el Sheet; el bot frenaba en un menú apenas alguna de las cuatro
+// columnas con desplegable quedara sin resolver — o sea casi siempre. Ésa era la falencia.
+//
+// EL LÍMITE QUE NO SE CRUZA: no se inventa la obra. Se carga con la celda VACÍA y se dice cuál es.
+
+test('un comprobante SIN OBRA deducible se carga solo, con la celda vacía y declarándolo', async () => {
+  // Sin anotación manuscrita y sin nada en el texto del post: no hay de dónde sacar la obra.
+  const { d } = armar({ lecturas: [lecturaBarcelo({ anotacion_manuscrita: null })] })
+  const { escribir, llamadas } = conEscritor()
+  const r = await procesarPost({ ...d, escribir }, post({ texto: null }))
+
+  assert.equal(llamadas.length, 1, 'se carga igual: una foto que no llega a Compras es un gasto perdido')
+  assert.equal(r.attachments, undefined, 'y NO se le pregunta nada')
+  assert.equal(llamadas[0].items[0].comprobante.obra, null, 'la obra queda VACÍA, no inventada')
+  assert.notEqual(llamadas[0].items[0].comprobante.obra, 'Estrella')
+})
+
+test('la obra que SÍ se puede deducir se sigue deduciendo: no preguntar no es no mirar', async () => {
+  const { d } = armar()
+  const { escribir, llamadas } = conEscritor()
+  await procesarPost({ ...d, escribir }, post())
+  assert.equal(llamadas[0].items[0].comprobante.obra, 'Estrella', 'la anotación manuscrita manda')
+})
+
+// ═══ UNA FOTO MALA NO PUEDE FRENAR A LAS OTRAS ONCE (13/08) ══════════════════
+//
+// `items.every(estaCompleto)` hacía que un solo comprobante trabado dejara toda la tanda esperando un
+// click. En una carga fuerte eso es la diferencia entre cargar todo y no cargar nada.
+test('en una tanda mixta entran los buenos y sólo el trabado queda preguntando', async () => {
+  const { d, repo } = armar({
+    lecturas: [
+      lecturaBarcelo(),                                                   // carga solo
+      lecturaBarcelo({ numero: '0113-00010490', emisor: 'FERRETERIA EL TORNILLO SRL' }), // proveedor nuevo
+    ],
+  })
+  const { escribir, llamadas } = conEscritor()
+  const r = await procesarPost({ ...d, escribir }, post({ fileIds: ['f1', 'f2'] }))
+
+  assert.equal(llamadas.length, 1, 'se escribió')
+  assert.equal(llamadas[0].items.length, 2, 'al escritor le llega el fajo entero; él filtra por estaCompleto')
+  assert.match(r.texto, /Cargado/)
+  assert.ok(r.attachments?.length, 'y el trabado queda con sus botones')
+  assert.match(r.texto, /no los pude cargar solos|no lo pude cargar solo/)
+  // El fajo nuevo tiene SÓLO el trabado: si arrastrara el cargado, un Confirmar lo cargaría dos veces.
+  const nuevo = repo._fajos.get(r.fajoId)
+  assert.equal(nuevo.estado, ESTADO.ABIERTO)
+  assert.equal(nuevo.items.length, 1)
+  assert.equal(nuevo.items[0].comprobante.numero, '0113-00010490')
+})
+
+// ═══ UN NÚMERO PARA TODA LA TANDA (13/08) ═══
+//
+// Mattermost limita los adjuntos por post, así que treinta fotos son tres o cuatro posts y tres o
+// cuatro resúmenes. Sumar cuatro mensajes a mano para saber si entró todo es la fricción que este
+// flujo existe para sacar.
+test('el acumulado de la tanda se informa cuando hay más cargado que en este post', async () => {
+  const { d, repo } = armar()
+  const { escribir } = conEscritor()
+  const repoConTanda = { ...repo, acumuladoDeLaTanda: async () => ({ cuantos: 23, suma: 4128900 }) }
+  const r = await procesarPost({ ...d, repo: repoConTanda, escribir }, post())
+  assert.match(r.texto, /En esta tanda llevás 23 comprobantes por \*\*\$4\.128\.900\*\*/)
+})
+
+test('si la tanda es este post y nada más, el acumulado no se repite', async () => {
+  const { d, repo } = armar()
+  const { escribir } = conEscritor()
+  const repoConTanda = { ...repo, acumuladoDeLaTanda: async () => ({ cuantos: 1, suma: 36460.30 }) }
+  const r = await procesarPost({ ...d, repo: repoConTanda, escribir }, post())
+  assert.doesNotMatch(r.texto, /En esta tanda/, 'el mismo dato dos veces se deja de leer')
+})
+
+test('si el acumulado no se puede consultar, el mensaje sale igual: es informativo', async () => {
+  const { d, repo } = armar()
+  const { escribir } = conEscritor()
+  const repoRoto = { ...repo, acumuladoDeLaTanda: async () => { throw new Error('base caída') } }
+  const r = await procesarPost({ ...d, repo: repoRoto, escribir }, post())
+  assert.match(r.texto, /Cargado/, 'saber dónde quedó el gasto no depende de un renglón de color')
+})
+
+test('si NINGUNO se puede cargar solo, no se toma el fajo ni se escribe: se pregunta como siempre', async () => {
+  const { d } = armar({ lecturas: [lecturaBarcelo({ emisor: 'FERRETERIA EL TORNILLO SRL' })] })
+  const { escribir, llamadas } = conEscritor()
+  const r = await procesarPost({ ...d, escribir }, post())
+  assert.equal(llamadas.length, 0)
+  assert.equal(r.estado, 'confirmar')
+})
+
 test('sin escritor inyectado NO se carga solo: el flujo viejo queda intacto', async () => {
   const { d } = armar()
   const r = await procesarPost(d, post())

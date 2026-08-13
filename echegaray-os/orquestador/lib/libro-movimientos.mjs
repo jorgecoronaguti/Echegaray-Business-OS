@@ -106,6 +106,12 @@ export function movimiento(m = {}) {
     fecha: m.fecha,
     signo: m.signo,
     importe,
+    // ═══ `importe` SIEMPRE EN PESOS; `moneda` DESCRIBE EL ORIGEN (13/08/2026) ═══
+    //
+    // Estos tres campos existían y ningún productor los llenaba. La invariante que fija el primero que
+    // los usa —`deCobranzas`, con los cobros en dólares— es: `importe = importeOrigen × tipoCambio`,
+    // donde `importeOrigen` está en `moneda` e `importe` en la moneda del libro, que es el peso. Leerlo
+    // al revés (creer que `moneda` califica a `importe`) haría que una vista valuara dos veces.
     moneda: norm(m.moneda) || 'ARS',
     importeOrigen: Number.isFinite(m.importeOrigen) ? Math.abs(m.importeOrigen) : importe,
     tipoCambio: Number.isFinite(m.tipoCambio) ? m.tipoCambio : 1,

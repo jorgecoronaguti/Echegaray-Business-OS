@@ -67,6 +67,9 @@ import { skinRequests, MUTED, HAIR, ACENTO, INK } from '../lib/estilo-statement.
 import { seccion, total, sub } from '../lib/patron-pestana.mjs'
 import { conEdicionesRespetadas, guardarRegistro, autoRespetarReescritura } from '../lib/respetar-ediciones.mjs'
 import { firmaGuardia, sellarFirma } from '../lib/firma-tab.mjs'
+// La huella por celda. Este generador escribe con `batchUpdateValues` y no pasa por el portón de
+// lib/preservar-anotaciones.mjs, así que la engancha él mismo: lo que el dueño vacía no vuelve.
+import { conHuellaFueraDelPorton } from '../lib/huella-celda.mjs'
 import { TARJETA, CORTE } from '../lib/banco-santander.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -173,8 +176,14 @@ export function bandaFilas(hdr = BANDA + 1, banco = { TARJETA, CORTE }) {
   // cierre— y con su PROPIA fecha: el resumen del 29/07 no reportó línea en dólares, así que el
   // último dato del banco es el del 22/07 y así se declara. Dos cifras del mismo cuadro pueden ser
   // de días distintos; lo que no se puede es no decirlo.
+  //
+  // Y SE MUESTRA EN DÓLARES. Con el formato de pesos del resto de la columna, U$S 193,25 se leía
+  // "$193": el mismo símbolo para dos monedas es peor que no mostrar el dato, porque invita a sumarlo
+  // con la columna, que está en pesos. Por eso la fila se devuelve (`fUsd`) — el formateador necesita
+  // saber CUÁL es, y con `consumidoDolares` en cero esta fila no existe y `fUsd` queda en 0.
+  let fUsd = 0
   if (T.consumidoDolares > 0) {
-    push(sub('consumido en dólares — se paga del mismo cupo'), `=${T.consumidoDolares}`,
+    fUsd = push(sub('consumido en dólares — se paga del mismo cupo'), `=${T.consumidoDolares}`,
       frescura(ymd(T.consumidoDolaresAl || T.al || banco.CORTE), dmyDe(T.consumidoDolaresAl || T.al || banco.CORTE)))
   }
   push()
@@ -234,7 +243,7 @@ export function bandaFilas(hdr = BANDA + 1, banco = { TARJETA, CORTE }) {
 
   push(seccion(4, 'El detalle — cada compra y cada cuota'))
 
-  return { filas, fLim, fDisp, fComp, fRatio, fBanco, fDif }
+  return { filas, fLim, fDisp, fComp, fRatio, fBanco, fDif, fUsd }
 }
 
 /**
@@ -356,9 +365,31 @@ async function main() {
 
   const { grid, respetadas, ediciones, candidatos } = await conEdicionesRespetadas(ID, PESTANA, g.filas, previo)
   for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${String(r.suyo).slice(0, 44)}")`)
-  await google.batchUpdateValues(ID, [{ range: `${PESTANA}!A1`, values: grid }])
+
+  // ── LA HUELLA POR CELDA: LO QUE VOS BORRASTE EN LA BANDA NO VUELVE (13/08) ──────────────────────
+  //
+  // SE RELEE ACÁ Y NO SE REUSA `previo`. `previo` se leyó antes de ajustar el alto de la banda: si se
+  // insertaron o quitaron filas, cada celda se movió y comparar contra esa foto haría que la huella
+  // juzgue la fila equivocada. Y se lee la FÓRMULA, no el texto visible: la pregunta es "¿hay ALGO en
+  // esta celda?", y una `=SI(...;"";...)` se ve vacía y tiene contenido.
+  //
+  // Si la relectura falla, la huella no decide y se escribe como siempre: una corrida sin veredicto
+  // es un borrado que puede volver; una corrida que decide sobre una lectura mutilada apaga el
+  // generador entero (todas las celdas parecerían vacías → todas "borradas por vos").
+  const enFormula = await google.readSheetValues(ID, `'${PESTANA}'!A1:L${grid.length}`, { render: 'FORMULA' }).catch(() => null)
+  let aEscribir = grid
+  let huella = null
+  if (enFormula) {
+    huella = await conHuellaFueraDelPorton(ID, PESTANA, grid, enFormula, { fila0: 1, col0: 0 })
+    aEscribir = huella.grid
+  } else {
+    console.warn(`  ⚠ no pude releer las fórmulas de "${PESTANA}": la huella no decide en esta corrida y un borrado tuyo podría volver.`)
+  }
+  await google.batchUpdateValues(ID, [{ range: `${PESTANA}!A1`, values: aEscribir }])
+  // Después de escribir, nunca antes: la huella es evidencia del efecto, no de la intención.
+  await huella?.guardar?.(aEscribir)
   await sellarFirma(google, ID, PESTANA, `'${PESTANA}'`)
-  await guardarRegistro(ID, PESTANA, grid, ediciones, previo, candidatos)
+  await guardarRegistro(ID, PESTANA, aEscribir, ediciones, previo, candidatos)
     .catch((e) => console.warn(`  ⚠ no pude guardar el registro de rótulos: ${e.message}`))
 
   await limpiarBloqueViejo(google, sheetId, BANDA - bandaActual)
@@ -414,6 +445,10 @@ async function formatear(google, sheetId, grid, hdr) {
     { repeatCell: { range: rg(4, BANDA, 1, 2), cell: { userEnteredFormat: { numberFormat: money, horizontalAlignment: 'RIGHT' } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment)' } },
     // La única celda que no es plata en la columna B: el ratio de financiamiento.
     { repeatCell: { range: rg(g.fRatio - 1, g.fRatio, 1, 2), cell: { userEnteredFormat: { numberFormat: { type: 'PERCENT', pattern: '0.0%' }, horizontalAlignment: 'RIGHT' } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment)' } },
+    // LA OTRA CELDA QUE NO ES PESOS: el consumido en dólares. Con el formato de la columna se leía
+    // "$193" siendo U$S 193,25 — el mismo símbolo para dos monedas invita a sumarla con el resto.
+    // Va DESPUÉS del bloque de la columna B para pisarlo, y sólo si la fila existe.
+    ...(g.fUsd ? [{ repeatCell: { range: rg(g.fUsd - 1, g.fUsd, 1, 2), cell: { userEnteredFormat: { numberFormat: { type: 'CURRENCY', pattern: '"U$S" #,##0.00' }, horizontalAlignment: 'RIGHT' } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment)' } }] : []),
     // La columna C es contexto corto (una fecha, una fuente, un veredicto): TEXTO, gris y chica.
     // Si quedara en formato de número, "resumen al 22/07/2026" se convertiría en una fecha.
     { repeatCell: { range: rg(4, BANDA, 2, 3), cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', textFormat: txt(MUTED, { size: 9 }), wrapStrategy: 'OVERFLOW_CELL' } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment,textFormat,wrapStrategy)' } },

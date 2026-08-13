@@ -27,7 +27,8 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import * as BANCO from '../lib/banco-santander.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
-import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
+import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
+import { conColaMedidaLeida, avisoDeCola } from '../lib/cola-de-rango.mjs'
 import { query } from '../lib/db.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -154,16 +155,12 @@ async function main() {
   // de no borrar nunca. Y sobreviven en silencio: el extracto muestra un movimiento que ya no
   // existe, la cadena de saldos no cierra, y de acá cuelga la disponibilidad de CAJA.
   //
-  // Se extiende con el centinela VACIO, que significa "es mi celda y va vacía": limpia lo que dejó
-  // este generador y CONSERVA cualquier anotación de una persona en una columna que no ocupa.
-  const previo = await google.readSheetValues(ID, `${PESTAÑA}!A1:${String.fromCharCode(64 + COLUMNAS.length)}1000`).catch(() => [])
-  let ultimaConDato = 0
-  previo.forEach((f, i) => { if ((f || []).some((c) => String(c ?? '').trim())) ultimaConDato = i + 1 })
-  if (ultimaConDato > gridRaw.length) {
-    console.log(`  cola de una corrida anterior: limpio las filas ${gridRaw.length + 1}–${ultimaConDato}`)
-    for (let i = gridRaw.length; i < ultimaConDato; i++) gridRaw.push(Array(COLUMNAS.length).fill(VACIO))
-  }
-  const { conservadas } = await escribirPreservando(google, ID, PESTAÑA, gridRaw, { respetar: false, espejo: true /* espejo de una fuente externa (Santander): copia byte a byte, sin candado ni firma ni Regla 0 — no hay nada del dueño que proteger, y respetar congelaría el nombre de un campo del banco si cambiara */, anchoHoja: Math.max(COLUMNAS.length, hoja.cols ?? COLUMNAS.length) })
+  // Se extiende con el centinela VACIO, que significa "es mi celda y va vacía". Sin prueba de
+  // propiedad porque es un ESPEJO: no hay nada del dueño adentro, y pedir "forma de generador" dejaría
+  // inmortal cualquier concepto del banco que sea texto libre.
+  const cola = await conColaMedidaLeida(google, ID, PESTAÑA, gridRaw, { ancho: COLUMNAS.length, tope: 1000 })
+  if (avisoDeCola(cola, PESTAÑA)) console.log(avisoDeCola(cola, PESTAÑA))
+  const { conservadas } = await escribirPreservando(google, ID, PESTAÑA, cola.filas, { respetar: false, espejo: true /* espejo de una fuente externa (Santander): copia byte a byte, sin candado ni firma ni Regla 0 — no hay nada del dueño que proteger, y respetar congelaría el nombre de un campo del banco si cambiara */, anchoHoja: Math.max(COLUMNAS.length, hoja.cols ?? COLUMNAS.length) })
   if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
 
   const rg = (r0, r1, c0, c1) => ({ sheetId: hoja.sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })

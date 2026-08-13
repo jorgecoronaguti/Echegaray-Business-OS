@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { resolverColumnas, letra, rango } from './compras-columnas.mjs'
+import { resolverColumnas, letra, rango, normalizarRotulo } from './compras-columnas.mjs'
 
 const CAB = ['ID', 'Categoría', 'Fecha factura', 'Fecha factura (mes)', 'Proveedor', 'Modalidad', 'Tipo',
   'N° Comprobante', 'Unidad de Negocio', 'Cliente / Asignación', 'Detalles / Obra', 'Concepto', 'Importe',
@@ -38,6 +38,37 @@ test('una columna que no está se DENUNCIA, no se completa con un default', () =
   const { col, faltan } = resolverColumnas(CAB, { inventada: 'Columna que no existe' })
   assert.deepEqual(faltan, ['Columna que no existe'])
   assert.equal(col.inventada, undefined)
+})
+
+// ── EL RÓTULO CON ESPACIOS DE MÁS — la trampa que ya costó "ORDEN DE  COMPRA" ──────────────────────
+// El dueño edita los encabezados a mano: un doble espacio o un NBSP pegado desde el navegador no se
+// ven en la planilla y hacían que la columna quedara SIN RESOLVER. Si `normalizarRotulo` vuelve a ser
+// `trim().toLowerCase()`, estos dos tests se ponen rojos.
+test('un rótulo con espacios de más resuelve igual: los espacios no son parte del nombre', () => {
+  const conRuido = CAB.map((n) => (n === 'Monto Pagado' ? '  Monto   Pagado ' : n))
+  const { col, faltan } = resolverColumnas(conRuido, { pagado: 'Monto Pagado' })
+  assert.deepEqual(faltan, [])
+  assert.equal(col.pagado, 'T')
+})
+
+test('el NBSP de un copiar/pegar cuenta como espacio, y el salto de línea también', () => {
+  assert.equal(normalizarRotulo('Fecha\u00a0factura'), 'fecha factura')
+  assert.equal(normalizarRotulo('Cliente /\nAsignación'), 'cliente / asignación')
+  const conNbsp = CAB.map((n) => (n === 'Fecha factura' ? 'Fecha\u00a0\u00a0factura' : n))
+  assert.equal(resolverColumnas(conNbsp, { fecha: 'Fecha factura' }).col.fecha, 'C')
+})
+
+test('normalizar espacios NO afloja el match: los rótulos parecidos siguen siendo distintos', () => {
+  // La garantía que sostiene todo lo anterior. "Fecha factura" convive con "Fecha factura (mes)" y
+  // "Fecha de caja": si la comparación dejara de ser por el texto COMPLETO, el neteo de obras se
+  // colgaría de la columna de al lado sin un solo error a la vista.
+  const { col, faltan } = resolverColumnas(CAB, { f: 'Fecha factura', mes: 'Fecha factura (mes)', caja: 'Fecha de caja' })
+  assert.deepEqual(faltan, [])
+  assert.deepEqual([col.f, col.mes, col.caja], ['C', 'D', 'AD'])
+  assert.deepEqual(resolverColumnas(CAB, { x: 'Fecha' }).faltan, ['Fecha'],
+    'un rótulo que es PREFIJO de otro no matchea: el match es por el texto entero')
+  assert.deepEqual(resolverColumnas(CAB, { x: 'Cliente / Asignacion' }).faltan, ['Cliente / Asignacion'],
+    'los acentos SÍ cuentan — decisión declarada: relajar la comparación acerca un match equivocado')
 })
 
 test('el rango arranca en la fila 4: arriba hay título, agrupador y encabezado', () => {

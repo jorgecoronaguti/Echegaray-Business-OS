@@ -9,10 +9,10 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { grillaMeses, mesesDelAnio, destinosNombrados, PESTANA_MENSUAL } from './cash-flow-meses.mjs'
+import { grillaMeses, mesesDelAnio, destinosNombrados, PESTANA_MENSUAL, vinculoHoy } from './cash-flow-meses.mjs'
 import { NOMBRE_MESES } from './cash-flow-lineas.mjs'
-import { footprintDe, conceptosDe, colTotal, letra } from './cash-flow-matriz.mjs'
-import { RUBROS_EGRESO } from './cash-flow-rubros.mjs'
+import { footprintDe, conceptosDe, colTotal, letra, FILA } from './cash-flow-matriz.mjs'
+import { RUBROS_EGRESO, RUBROS_SOLO_PROYECTADO } from './cash-flow-rubros.mjs'
 import { auditarPatron } from './patron-pestana.mjs'
 
 const REFS = { saldo: 'CAJA_TOTAL_DISPONIBLE', fecha: 'CAJA_FECHA_SALDO', minima: 'CAJA_MINIMA' }
@@ -30,10 +30,12 @@ test('doce columnas de mes más TOTAL, y las filas de concepto en orden', () => 
   assert.deepEqual(
     conceptosDe('mes').map((c) => en(filas, meta.fila[c.clave], 0)),
     conceptosDe('mes').map((c) => c.rotulo))
-  // 80 filas: los 9 conceptos del tronco, la apertura por rubro de las cuatro medidas (35) y la
+  // 81 filas: los 9 conceptos del tronco, la apertura por rubro de las cuatro medidas (36) y la
   // sección POR CLIENTE (1 título + 7 bloques de 5 = 36). Eran 36 de apertura hasta el 06/08: se fue
-  // "Ingresos reales · Valores en cartera", que era cero en los doce meses por construcción.
-  assert.equal(conceptosDe('mes').length, 80)
+  // "Ingresos reales · Valores en cartera", que era cero en los doce meses por construcción. El 13/08
+  // entró "Materiales de obra proyectados" —los egresos de las obras en curso, que caían en "Otros"—
+  // sólo bajo lo proyectado, por el mismo criterio: bajo lo real sería otra fila condenada a cero.
+  assert.equal(conceptosDe('mes').length, 81)
   assert.deepEqual(meta.footprint, footprintDe('mes', 2026))
 })
 
@@ -110,9 +112,17 @@ test('LA APERTURA POR RUBRO también en el mensual: subtotal del libro, rubros e
     }
     assert.equal(en(filas, b.otros, c), `=N($B$${b.subtotal})-SUM($B$${b.primeraSub}:$B$${b.otros - 1})`)
   }
-  // Y los rubros de egreso son los catorce que emite el libro: si mañana cambia uno, la sub-línea
-  // sumaría cero para siempre sin dar un solo error.
-  assert.deepEqual(meta.bloques[2].rubros.map((r) => r.rubro), [...RUBROS_EGRESO])
+  // Y los rubros de egreso son los que emite el libro: si mañana cambia uno, la sub-línea sumaría
+  // cero para siempre sin dar un solo error.
+  assert.deepEqual(meta.bloques[3].rubros.map((r) => r.rubro), [...RUBROS_EGRESO])
+  // BAJO LO REAL NO VAN LOS RUBROS QUE SÓLO PUEDEN SER PROYECCIÓN: una fila condenada a cero en los
+  // doce meses ocupa lugar y enseña a saltear el bloque. "Materiales de obra proyectados" es el
+  // segundo caso (13/08): la factura, cuando llega, entra por Compras con SU rubro.
+  assert.deepEqual(
+    meta.bloques[2].rubros.map((r) => r.rubro),
+    RUBROS_EGRESO.filter((r) => !RUBROS_SOLO_PROYECTADO.includes(r)))
+  assert.ok(RUBROS_SOLO_PROYECTADO.some((r) => RUBROS_EGRESO.includes(r)),
+    'el mecanismo de "sólo proyectado" tiene que seguir aplicando del lado del egreso')
   // "Valores en cartera" SÓLO bajo proyectados: bajo reales estaba en cero los doce meses, porque el
   // día que el valor se acredita entra al libro por el banco con rubro "Cobranzas".
   assert.deepEqual(meta.bloques[0].rubros.map((r) => r.rubro), ['Cobranzas'])
@@ -200,4 +210,30 @@ test('después de la sección POR CLIENTE no hay NADA: el costo financiero vive 
   assert.ok(meta.clientes.titulo > meta.fila.variacionMesAnterior, 'la sección va DESPUÉS del tronco entero')
   const texto = filas.flat().map((c) => String(c ?? '')).join(' ')
   assert.ok(!/descubierto|impuesto al cheque|comisiones/i.test(texto), 'un costo modelado no puede vivir adentro del cuadro')
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL ATAJO AL MES ACTUAL — el Mensual no lo tenía y el control del pipeline lo reclamaba igual
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('el vínculo "hoy" del Mensual apunta al mes corriente, con la URL entera y sin gid no se inventa uno', () => {
+  const { meta } = armar()
+  assert.equal(vinculoHoy(null, meta), null, 'sin el gid de la pestaña no hay vínculo, no un vínculo a ningún lado')
+  const v = vinculoHoy(99, meta)
+  // El fragmento "#gid=" suelto no navega: Google contesta "se borró el rango vinculado".
+  assert.ok(v.startsWith('=HYPERLINK("https://docs.google.com/spreadsheets/d/'), v)
+  assert.ok(v.includes('/edit#gid=99&range="&ADDRESS('), v)
+  // El primero del mes corriente, con la MISMA expresión con la que se escribieron los encabezados.
+  assert.ok(v.includes('EOMONTH(TODAY();-1)+1'), v)
+  assert.ok(!v.includes('WEEKDAY'), 'el mes no se ubica por el lunes de la semana')
+  assert.ok(v.endsWith(';"⏵  IR AL MES ACTUAL")'), v)
+  assert.ok(!v.includes('IFERROR'), 'un cuadro vencido tiene que gritar #N/A, no llevar a una celda cualquiera')
+})
+
+test('con gid, el botón queda en A3 — la misma celda que en el Semanal', () => {
+  const { filas, meta } = armar({ gid: 99 })
+  assert.deepEqual(meta.botonHoy, { fila: FILA.botonHoy, col: 0 })
+  assert.match(en(filas, FILA.botonHoy, 0), /^=HYPERLINK\(/)
+  // Sin gid no se escribe nada: una celda con un vínculo roto es peor que una celda vacía.
+  assert.equal(en(armar().filas, FILA.botonHoy, 0), '')
 })

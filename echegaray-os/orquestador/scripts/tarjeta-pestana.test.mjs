@@ -253,6 +253,31 @@ test('la banda fecha la foto con TARJETA.al, no con el corte del extracto', () =
   assert.match(texto, /DATE\(2026;7;29\)/, 'el semáforo de antigüedad cuenta desde la foto de la tarjeta')
 })
 
+// ═══ LA CELDA DE DÓLARES SE MUESTRA EN DÓLARES (04/08, traído de fix/tarjeta-dolares el 13/08) ═══
+//
+// La columna B entera se pinta como pesos, así que U$S 193,25 se leía "$193". El mismo símbolo para
+// dos monedas es peor que no mostrar el dato: invita a sumar esa celda con el resto de la columna,
+// que está en pesos, y la única línea con riesgo de tipo de cambio queda disfrazada de pesos.
+//
+// El formateador necesita saber CUÁL fila es. Si `bandaFilas` deja de devolverla, el formato de
+// dólares desaparece sin que se rompa una sola fórmula — por eso el contrato se fija acá.
+
+test('la banda declara la fila de dólares para que el formateador no la pinte como pesos', () => {
+  const r = bandaFilas(31, { TARJETA, CORTE: '2026-07-22' })
+  assert.ok(r.fUsd > 0, 'sin fUsd el formato de dólares no se puede aplicar: la celda vuelve a decir "$193"')
+  // Y apunta a la fila del consumo en dólares, no a cualquiera: una fila corrida pintaría de dólares
+  // un importe en pesos, que es el mismo defecto al revés.
+  assert.match(String(r.filas[r.fUsd - 1][0]), /dólares/)
+  assert.equal(String(r.filas[r.fUsd - 1][1]), `=${TARJETA.consumidoDolares}`)
+})
+
+test('sin consumo en dólares no hay fila, y el formateador no pinta una celda ajena', () => {
+  // `fUsd` en 0 no es "la fila 0": es "no existe". Si devolviera un número igual, el formato de
+  // dólares caería sobre la fila de arriba — un importe en pesos rotulado U$S.
+  const sinUsd = { ...TARJETA, consumidoDolares: 0 }
+  assert.equal(bandaFilas(31, { TARJETA: sinUsd, CORTE: '2026-07-22' }).fUsd, 0)
+})
+
 test('sin fecha propia, la tarjeta cae al corte del extracto — no se queda sin fechar', () => {
   const sinAl = { ...TARJETA }
   delete sinAl.al

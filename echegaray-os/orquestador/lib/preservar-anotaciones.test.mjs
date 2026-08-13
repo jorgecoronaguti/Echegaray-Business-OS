@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { fusionar, sobrantes, tiene, letraCol, escribirPreservando, limpiarCentinela, VACIO, colaLimpiable, rellenoDeCola, formaDeGenerador } from './preservar-anotaciones.mjs'
+import { vaciadas } from './no-borrar.mjs'
 
 // ═══ POR QUÉ ESTOS DOBLES (test hermético) ═══
 // `escribirPreservando`, para toda pestaña de contenido, consulta el candado (sheet_pestanas_bloqueadas)
@@ -132,6 +133,94 @@ test('espejo:true salta candado y firma (no lee A1:BZ): un espejo _RAW se escrib
   await escribirPreservando(google, 'ID', '_ARCA_RAW', [['nuevo']], { respetar: false, espejo: true })
   assert.ok(!leidos.some((r) => /A1:BZ/.test(r)), 'un espejo NO consulta la firma (A1:BZ)')
   assert.equal(escritos.length, 1, 'el espejo se escribe directo')
+})
+
+// ═══ UN ESPEJO NO FUSIONA (13/08) ═══
+// Medido en el Sheet real: 'Obreros 26'!Z519:AA519 ("acumulado 26" · $10.432) dejó de existir en el
+// archivo JORNALES y sobrevivió en _J_OBREROS porque la fusión conserva lo viejo donde lo nuevo
+// viene vacío. La columna de plata del espejo quedó $10.432 POR ENCIMA del original y
+// `espejar-jornales` terminaba en rojo todas las corridas sin que hubiera nada roto en la escritura.
+
+test('EL FANTASMA DEL ESPEJO: la celda que la fuente vació se vacía en la réplica', async () => {
+  const escritos = []
+  const google = {
+    // El espejo tiene hoy lo que la fuente ya no tiene: "acumulado 26" y su importe.
+    async readSheetValues() { return [['', 'ARCOR', '', 1402900, 'acumulado 26', 10432]] },
+    async batchUpdateValues(_id, p) { escritos.push(p[0]) },
+  }
+  await escribirPreservando(google, 'ID', '_J_OBREROS', [['', 'ARCOR', '', 1402900, '', '']], {
+    respetar: false, espejo: true,
+  })
+  assert.deepEqual(escritos[0].values, [['', 'ARCOR', '', 1402900, '', '']],
+    'una réplica byte a byte no puede conservar un valor que la fuente borró')
+})
+
+test('la misma celda vacía en una pestaña de CONTENIDO se sigue preservando', async () => {
+  // El contraveneno: la regla absoluta del dueño no se toca. Sólo los espejos `_*` quedan afuera.
+  const escritos = []
+  const google = {
+    async readSheetValues() { return [['', 'ARCOR', '', 1402900, 'acumulado 26', 10432]] },
+    async batchUpdateValues(_id, p) { escritos.push(p[0]) },
+  }
+  await escribirPreservando(google, 'ID', 'Jornales por Quincena', [['', 'ARCOR', '', 1402900, '', '']], {
+    respetar: false, guardas: guardasStub(),
+  })
+  assert.deepEqual(escritos[0].values, [['', 'ARCOR', '', 1402900, 'acumulado 26', 10432]],
+    'en una pestaña de contenido lo que el generador deja vacío se conserva')
+})
+
+test('vaciadas cuenta sólo lo que la escritura alcanza, no todo el destino', () => {
+  // Lo que queda fuera de la grilla que se manda —filas de más abajo, columnas de más a la derecha—
+  // no se escribe, así que tampoco se vacía. Contarlo dispararía el freno por algo que no pasa.
+  const nuevo = [['a', '']]
+  const previo = [['a', 'se va', 'ni se toca'], ['fila que no se escribe']]
+  const v = vaciadas(nuevo, previo, { fila0: 5, col0: 0, ref: (f, c) => `${letraCol(c)}${f}` })
+  assert.equal(v.total, 1)
+  assert.equal(v.llenasPrevio, 2, 'sólo las llenas dentro del ancho que se escribe')
+  assert.deepEqual(v.detalle, ['B5="se va"'], 'la referencia A1 sale del arranque real del bloque')
+})
+
+test('EL FRENO DE LA RÉPLICA: un bloque que vacía la mayoría del espejo no se escribe', async () => {
+  // Un espejo que se achica de a poco es normal (el dueño edita su archivo). Uno que se vacía entero
+  // es la firma de una lectura mutilada de la fuente — y vaciar es la operación que ya destruyó seis
+  // veces acá. Con el freno, esa corrida no escribe y grita; sin freno, borra en silencio.
+  const escritos = []
+  const previo = [Array.from({ length: 60 }, (_, i) => `dato ${i}`)]
+  const google = {
+    async readSheetValues() { return previo },
+    async batchUpdateValues(_id, p) { escritos.push(p[0]) },
+  }
+  const r = await escribirPreservando(google, 'ID', '_J_OBREROS', [Array(60).fill('')], { respetar: false, espejo: true })
+  assert.equal(r.replicaFrenada, true)
+  assert.equal(r.vaciaria, 60)
+  assert.equal(escritos.length, 0, 'no se manda NADA cuando el freno actúa')
+})
+
+test('el achique real del espejo (88 de 1845) sí se escribe: el freno no es un candado', async () => {
+  // Medido en el Sheet real el 13/08. Si el freno lo bloqueara, el espejo dejaría de refrescar y
+  // volveríamos al defecto de origen: una copia vieja que se ve plausible.
+  const escritos = []
+  const previo = [Array.from({ length: 100 }, (_, i) => `dato ${i}`)]
+  const nuevo = [previo[0].map((v, i) => (i < 5 ? '' : v))]
+  const google = {
+    async readSheetValues() { return previo },
+    async batchUpdateValues(_id, p) { escritos.push(p[0]) },
+  }
+  const r = await escribirPreservando(google, 'ID', '_J_OBREROS', nuevo, { respetar: false, espejo: true })
+  assert.equal(r.replicaFrenada, undefined)
+  assert.deepEqual(escritos[0].values, nuevo)
+})
+
+test('espejo:true sobre una pestaña que NO es `_*` sigue fusionando', async () => {
+  // La bandera sola no alcanza para vaciar: hace falta que la pestaña sea un espejo de verdad. Es la
+  // misma definición que usa no-borrar.mjs, para que "esto es un espejo" se decida en un solo lugar.
+  const escritos = []
+  const google = {
+    async readSheetValues() { return [['viejo', 'MI NOTA']] },
+    async batchUpdateValues(_id, p) { escritos.push(p[0]) },
+  }
+  await escribirPreservando(google, 'ID', 'Compras', [['nuevo', '']], { respetar: false, espejo: true })
+  assert.deepEqual(escritos[0].values, [['nuevo', 'MI NOTA']])
 })
 
 // ═══ LA HUELLA POR CELDA EN EL PORTÓN (05/08) ═══

@@ -71,6 +71,7 @@ export function formatEspejo(r) {
     L.push(`  ${h.tab}: ${h.filas} filas${plata}${h.aviso ? ` · ⚠ ${h.aviso}` : ''}`)
   }
   if (r.desfasado) L.push('', '  ⚠ El espejo NO coincide con el original: lo que lea el cash flow está mal.')
+  if (r.perdidas) L.push('', '  ⚠ Un bloque no aterrizó en el destino: el espejo está incompleto aunque los totales den.')
   return L.join('\n')
 }
 
@@ -86,12 +87,18 @@ export async function refrescarEspejo(google, { destino = DESTINO, origen = ORIG
     if (!filas?.length) { hojas.push({ tab: m.tab, filas: 0, aviso: 'el origen vino vacío, no toqué el espejo' }); continue }
     const ancho = Math.max(...filas.map((f) => f.length))
     const norm = filas.map((f) => { const r = f.slice(); while (r.length < ancho) r.push(''); return r })
-    // El espejo se FUSIONA, no se limpia: si alguien anotó algo en la pestaña destino, no se borra.
     // ESPEJO:TRUE — los _J_* son copias byte a byte de JORNALES, no pestañas que el dueño edite. Sin
     // esto, la firma auto-candaba _J_OBREROS y el espejo dejaba de refrescar (verify $4,78M desfasado);
     // el candado y la firma son para el contenido del dueño, no para un mirror de una fuente externa.
+    // RESPETAR:FALSE por la misma razón, y como ya lo hacen _ARCA_RAW, _BANCO_RAW e _IIBB_RAW: la
+    // Regla 0 congelaría un rótulo que la fuente cambió, que en un espejo es el defecto, no la cura.
+    // Los bloques que la guarda de aterrizaje vio perdidos NO se quedan en el log: un espejo al que
+    // le faltó un bloque no puede pasar por bueno aunque la columna de plata dé (un bloque de texto
+    // perdido no mueve un peso y sin embargo rompe todo lo que lee nombres).
+    const perdidos = []
     for (let i = 0; i < norm.length; i += 200) {
-      await escribirPreservando(google, destino, m.tab, norm.slice(i, i + 200), { fila0: i + 1, espejo: true })
+      const r = await escribirPreservando(google, destino, m.tab, norm.slice(i, i + 200), { fila0: i + 1, espejo: true, respetar: false })
+      perdidos.push(...(r?.noAterrizo ?? []))
     }
     // VERIFICAR, no confiar. Se relee el DESTINO —no la matriz que acabamos de mandar— porque lo
     // que importa es qué quedó escrito, no qué quisimos escribir. Una copia que se cree hecha y no
@@ -104,12 +111,19 @@ export async function refrescarEspejo(google, { destino = DESTINO, origen = ORIG
       hojas.push({ tab: m.tab, filas: norm.length, aviso: `no pude verificar el espejo: ${String(e?.message ?? e).slice(0, 90)}` })
       continue
     }
+    const avisoPlata = verificacion.ok ? null : `el espejo quedó ${ars(Math.abs(verificacion.diferencia))} ${verificacion.diferencia > 0 ? 'por debajo' : 'por encima'} del original`
+    const avisoPerdido = perdidos.length ? `no aterrizaron ${perdidos.length} bloque(s): ${perdidos.join(', ')}` : null
     hojas.push({
       tab: m.tab,
       filas: norm.filter((f) => f.some((c) => String(c ?? '').trim())).length,
       verificacion,
-      aviso: verificacion.ok ? undefined : `el espejo quedó ${ars(Math.abs(verificacion.diferencia))} ${verificacion.diferencia > 0 ? 'por debajo' : 'por encima'} del original`,
+      perdidos,
+      aviso: [avisoPlata, avisoPerdido].filter(Boolean).join(' · ') || undefined,
     })
   }
-  return { hojas, desfasado: hojas.some((h) => h.verificacion && !h.verificacion.ok) }
+  return {
+    hojas,
+    desfasado: hojas.some((h) => h.verificacion && !h.verificacion.ok),
+    perdidas: hojas.some((h) => h.perdidos?.length),
+  }
 }

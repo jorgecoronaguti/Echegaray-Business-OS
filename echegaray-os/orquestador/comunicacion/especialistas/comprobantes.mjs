@@ -19,11 +19,18 @@
 // `compras`, y un área con especialistas tiene que resolver a exactamente uno o su canal se queda
 // sin dueño—, pero llegar por área no dispara ningún trabajo: se contesta qué se sabe hacer.
 //
-// ═══ NO CARGA A CIEGAS ═══
+// ═══ NO PREGUNTA, PERO TAMPOCO INVENTA (13/08) ═══
 //
-// Nunca escribe en el Sheet desde acá. Lee, muestra lo que entendió y espera un **Confirmar**. Un
-// gasto mal cargado se propaga solo a Cash Flow, Proveedores, CAJA y Cheques, porque esos cruces son
-// fórmulas abiertas sobre Compras: el error se multiplica por cuatro antes de que nadie lo note.
+// Nunca escribe en el Sheet desde acá: la escritura entera vive en `comprobantes/escritura.mjs`, que
+// corre el MISMO cargador que Claude Code. Y desde el 13/08 no hay ningún click en el medio — el
+// dueño lo pidió textual: «no quiero q pregunte nada». Un comprobante al que no le falta nada para
+// escribirse se escribe, y lo que la foto no dice (la obra, la unidad, la categoría) queda VACÍO en
+// la fila y se informa con su número de línea. Lo único que sigue preguntando es lo que no se puede
+// resolver después: un proveedor fuera del desplegable, un duplicado probable, un dato ilegible.
+//
+// Por qué ese límite: un gasto mal cargado se propaga solo a Cash Flow, Proveedores, CAJA y Cheques,
+// porque esos cruces son fórmulas abiertas sobre Compras — el error se multiplica por cuatro antes de
+// que nadie lo note. Una celda vacía, en cambio, se completa en dos segundos.
 
 import { procesarPost, TEXTO as TEXTO_FLUJO } from '../comprobantes/flujo.mjs'
 import { escribirFajo } from '../comprobantes/escritura.mjs'
@@ -259,11 +266,14 @@ function ayuda() {
       'Soy **Compras IA**. Para cargar un gasto:',
       '',
       '1. Sacá la foto del comprobante (o mandá el PDF) **al canal de comprobantes**. No hace falta que me menciones.',
-      '2. Te muestro lo que leí: proveedor, comprobante, fecha, IVA y total.',
-      '3. Si está bien, apretás **Confirmar** y lo escribo en la pestaña **Compras** del Flujo de Fondos.',
+      '2. Lo leo y lo escribo solo en la pestaña **Compras** del Flujo de Fondos. No te pregunto nada.',
+      '3. Te contesto en qué fila quedó, cuánto sumó la tanda y qué te quedó por completar.',
       '',
-      'Podés mandar varias fotos juntas: las agrupo y las confirmás de una vez.',
-      'Si el comprobante no dice a qué obra va, escribila a mano en el papel antes de la foto o corregila desde **Corregir**.',
+      'Podés mandar varias fotos juntas, o varios posts seguidos: entra todo.',
+      'Si el comprobante no dice a qué obra va, escribila a mano en el papel antes de la foto — o dejala así: '
+      + 'cargo igual con la celda vacía y te digo la fila para que la completes. **Nunca invento una obra.**',
+      'Sólo te pregunto cuando no puedo resolverlo solo: un proveedor que no está en la lista, un posible '
+      + 'duplicado, o un dato que no se lee en la foto.',
       '',
       `_${TEXTO_FLUJO.SIN_ADJUNTOS}_`,
     ].join('\n'),

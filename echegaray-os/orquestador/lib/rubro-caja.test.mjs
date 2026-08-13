@@ -21,6 +21,14 @@ test('un proveedor recurrente gana sobre su unidad de negocio', () => {
   // RSV factura GPS todos los meses con unidad "Estructura": es un servicio recurrente, y si cae en
   // Estructura se cuenta dos veces (ya está en la pestaña Recurrentes).
   assert.equal(rubroDeCaja({ proveedor: 'RSV', unidad: 'Estructura' }), 'Servicios recurrentes')
+  // Y GANA TAMBIÉN SOBRE UNA UNIDAD DE OBRA, para los dos declarados (07/08/2026). La exclusión por
+  // unidad existe para el baño químico que se termina con la obra; el GPS de la flota y la higiene y
+  // seguridad de MASS no son eso. Un mes de RSV vino tipeado "Civil" y julio desapareció del cuadro.
+  assert.equal(rubroDeCaja({ proveedor: 'RSV', unidad: 'Civil' }), 'Servicios recurrentes')
+  assert.equal(rubroDeCaja({ proveedor: 'MASS CONSULTORA', unidad: 'Civil', cliente: 'Administracion' }), 'Servicios recurrentes')
+  assert.equal(rubroDeCaja({ proveedor: 'MASS CONSULTORA', unidad: 'Civil', cliente: 'LA ESTRELLA' }), 'Servicios recurrentes')
+  // La contracara sigue en pie: el resto de la lista, contra una obra, es costo de esa obra.
+  assert.equal(rubroDeCaja({ proveedor: 'Sanitarios OD S.A.S.', unidad: 'Civil', cliente: 'LA ESTRELLA' }), 'Materiales Civil')
 })
 
 test('materiales civil y mantenimiento salen de la unidad de negocio', () => {

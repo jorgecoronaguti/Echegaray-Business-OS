@@ -243,7 +243,14 @@ test('el vínculo "hoy" apunta a la columna de la semana corriente, y sin gid no
   const { meta } = armar()
   assert.equal(vinculoHoy(null, meta), null, 'sin el gid de la pestaña no hay vínculo, no un vínculo a ningún lado')
   const v = vinculoHoy(1234, meta)
-  assert.ok(v.startsWith('=HYPERLINK("#gid=1234&range="&ADDRESS('))
+  // ═══ LA URL ENTERA, NO EL FRAGMENTO SUELTO (13/08/2026) ═══
+  //
+  // Acá se exigía `=HYPERLINK("#gid=1234…` — el fragmento a secas. Google no navega con eso: contesta
+  // "no se puede abrir el vínculo porque se borró el rango vinculado". El test fijaba el defecto, así
+  // que el atajo que el dueño usa para llegar a la semana actual no hacía nada al hacer clic y ningún
+  // control lo veía. Sale de `URL_ARCHIVO()`, que es donde vive el id del archivo.
+  assert.ok(v.startsWith('=HYPERLINK("https://docs.google.com/spreadsheets/d/'), v)
+  assert.ok(v.includes('/edit#gid=1234&range="&ADDRESS('), v)
   assert.ok(v.includes('TODAY()-WEEKDAY(TODAY();3)'), 'el lunes de hoy se calcula igual que los encabezados')
   // El rótulo es el BOTÓN de A3 (06/08, pedido del dueño): visible sin scrollear, dice qué hace.
   assert.ok(v.endsWith(';"⏵  IR A LA SEMANA ACTUAL")'))
@@ -266,9 +273,10 @@ test('después de la sección POR CLIENTE no hay NADA: nada se cuela sin que el 
   assert.equal(meta.filaFin, ultima)
   assert.equal(filas.length, ultima)
   assert.ok(meta.clientes.titulo > meta.fila.saldoFinal, 'la sección va DESPUÉS del saldo final')
-  // 78 filas de cuadro: 7 del tronco + 35 de la apertura por rubro + 36 de la sección POR CLIENTE
+  // 79 filas de cuadro: 7 del tronco + 36 de la apertura por rubro + 36 de la sección POR CLIENTE
   // (1 título + 7 bloques de 5). La zona de gráficos está en el footprint pero no lleva contenido.
   // Eran 36 de apertura: el 06/08 se dejó de emitir "Ingresos reales · Valores en cartera", que valía
-  // cero en las 53 columnas porque el valor acreditado entra al libro como "Cobranzas".
-  assert.equal(conceptosDe('semana').length, 78)
+  // cero en las 53 columnas porque el valor acreditado entra al libro como "Cobranzas"; el 13/08 entró
+  // "Egresos proyectados · Materiales de obra proyectados", que hasta ese día caía en "· Otros".
+  assert.equal(conceptosDe('semana').length, 79)
 })

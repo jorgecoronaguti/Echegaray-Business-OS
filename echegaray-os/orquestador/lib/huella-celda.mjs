@@ -53,7 +53,8 @@
 
 import { createHash } from 'node:crypto'
 import { query } from './db.mjs'
-import { VACIO } from './preservar-anotaciones.mjs'
+import { VACIO, letraCol, limpiarCentinela } from './preservar-anotaciones.mjs'
+import { MIA_PROBADA } from './no-borrar.mjs'
 
 /** Cuántas celdas comparables hacen falta para que la alineación sea un juicio y no una casualidad. */
 export const MIN_COMPARABLES = 8
@@ -75,10 +76,15 @@ export const DESPLAZAMIENTOS = [0, -1, 1, -2, 2, -3, 3, -5, 5]
 export function formaDe(v) {
   if (v === undefined || v === null) return ''
   let s = String(v).replace(/^'/, '').trim()
-  if (!s || s === VACIO.trim() || s === VACIO) return ''
+  // Los DOS centinelas no tienen forma: ninguno es contenido. `MIA_PROBADA` además nunca puede dejar
+  // huella — si la dejara, la corrida siguiente encontraría "huella propia sobre celda vacía" y
+  // marcaría como borrada por el dueño una celda que limpié yo.
+  if (!s || s === VACIO.trim() || s === VACIO || s === MIA_PROBADA) return ''
   // Una fórmula se enmascara por sus números: así `=SUMA(B4:B9)` y `=SUMA(B5:B10)` —la misma fórmula
   // después de insertar una fila— comparten forma y el corrimiento no se lee como una edición.
-  if (s.startsWith('=')) return `=${s.slice(1).replace(/\d+/g, '#').toLowerCase()}`
+  // Y SIN APÓSTROFOS: ver `formaComparable`, la razón por la que la huella no decidía en los dos
+  // Cash Flow. Se saca acá además de en la comparación para que las huellas nuevas nazcan limpias.
+  if (s.startsWith('=')) return formaComparable(`=${s.slice(1).replace(/\d+/g, '#').toLowerCase()}`)
   s = s
     .replace(/\d{4}-\d{2}(-\d{2})?/g, '<F>')                       // 2026-08-04 · 2026-08
     .replace(/\d{1,2}[/-]\d{1,2}([/-]\d{2,4})?/g, '<F>')           // 4/8/2026 · 4-8
@@ -89,9 +95,38 @@ export function formaDe(v) {
   return s.replace(/\s+/g, ' ').trim().toLowerCase()
 }
 
+/**
+ * LA FORMA, COMO SE COMPARA — sin los apóstrofos que Google agrega por su cuenta.
+ *
+ * ═══ POR QUÉ EXISTE, Y POR QUÉ ERA EL AGUJERO MÁS GRANDE (13/08) ═══
+ *
+ * La huella se sella con lo que el generador MANDÓ. Google guarda otra cosa: al nombre de una pestaña
+ * que arranca con `_` le pone comillas. El generador escribe `_MOVIMIENTOS!$A$2:$A` y la pestaña
+ * devuelve `'_MOVIMIENTOS'!$A$2:$A`. Misma fórmula, forma distinta.
+ *
+ * Medido hoy contra el Sheet vivo, fracción de huellas que caen donde el mapa dice:
+ *
+ *     Cash Flow Semanal   0,25   →  0,99 sin apóstrofos
+ *     Cash Flow Mensual   0,35   →  0,99
+ *     Estructura          0,62   →  0,96
+ *     CAJA                0,80   →  0,94
+ *
+ * `UMBRAL_ALINEACION` es 0,60: en los dos Cash Flow la huella **no decidía nunca**. Todo lo que el
+ * dueño borraba ahí volvía en la corrida siguiente, y el motivo quedaba en un `ℹ` que nadie leía. Es
+ * exactamente su reclamo —"me las estás volviendo a poner"— y no era falta de huella: era una huella
+ * sellada desde la INTENCIÓN y comparada contra el EFECTO.
+ *
+ * SE NORMALIZAN LOS DOS LADOS AL COMPARAR, no sólo el nuevo: las miles de huellas ya guardadas se
+ * escribieron sin apóstrofo, y exigir una migración para que la regla vuelva a funcionar sería dejar
+ * el agujero abierto hasta que alguien corra un script.
+ *
+ * El costo: dos fórmulas que sólo difieren en un apóstrofo comparten forma. Son la misma fórmula.
+ */
+export const formaComparable = (f) => String(f ?? '').replace(/'/g, '')
+
 /** Hash corto de la forma. Es la clave que se compara; la forma se guarda al lado como evidencia. */
 export function huellaDe(v) {
-  const f = formaDe(v)
+  const f = formaComparable(formaDe(v))
   return f ? createHash('sha1').update(f).digest('hex').slice(0, 16) : null
 }
 
@@ -164,7 +199,8 @@ export function coincidencias(actual = [], huellas = new Map(), off = 0, { fila0
     const f = formaDe((actual[i] || [])[j])
     if (!f) continue
     comparables++
-    if (f === h.forma) coinciden++
+    // Los DOS lados normalizados: la huella guardada puede ser anterior a `formaComparable`.
+    if (formaComparable(f) === formaComparable(h.forma)) coinciden++
   }
   return { comparables, coinciden }
 }
@@ -202,20 +238,36 @@ export function mejorDesplazamiento(actual = [], huellas = new Map(), opts = {})
  * preservá lo que hay". Por eso suprimir es exactamente escribir `''` — la celda queda como el dueño
  * la dejó, vacía si él la vació, con su contenido si es suya.
  *
- * @returns {{grid:any[][], suprimidas:Array, ajenas:Array, residuos:Array, alineacion:object}}
+ * ═══ Y DEVOLVER `MIA_PROBADA` SÍ LA BORRA — ES EL TERCER ESTADO (13/08) ═══
+ *
+ * Hasta hoy, cuando el generador pedía limpiar SU celda (centinela `VACIO`) y la celda tenía algo, la
+ * grilla salía con `''` o con el centinela, y `no-borrar.mjs` —que no puede saber de quién es— la
+ * reponía. El log decía "🧹 la limpio" y la celda seguía ahí en cada corrida: el mensaje mentía. La
+ * limpieza ahora ocurre de verdad, y **sólo con evidencia positiva**:
+ *
+ *   · huella propia en la coordenada Y la forma de hoy IGUAL a la que dejé escrita  → `limpiadas`
+ *   · sin huella, pero el texto de hoy es uno que sigo escribiendo en esta grilla   → `residuos`
+ *
+ * Si la forma cambió, la celda es mía por posición y el contenido NO: alguien la editó encima. Eso
+ * va a `editadas` y se preserva. Es el caso que separa "limpio lo mío" de "borro lo que escribiste
+ * arriba de lo mío", y es la única razón por la que este tercer estado no es un bypass.
+ *
+ * @returns {{grid:any[][], suprimidas:Array, ajenas:Array, residuos:Array, limpiadas:Array, editadas:Array, alineacion:object}}
  */
 export function aplicarHuella(generado = [], actual = [], huellas = new Map(), opts = {}) {
   const { fila0 = 1, col0 = 0 } = opts
   const alineacion = mejorDesplazamiento(actual, huellas, opts)
-  const suprimidas = []; const ajenas = []; const residuos = []
-  if (!alineacion.alineada) return { grid: generado, suprimidas, ajenas, residuos, alineacion }
+  const suprimidas = []; const ajenas = []; const residuos = []; const limpiadas = []; const editadas = []
+  const vacio = { grid: generado, suprimidas, ajenas, residuos, limpiadas, editadas, alineacion }
+  if (!alineacion.alineada) return vacio
   const mias = formasDeTextoPropio(generado)
   const grid = generado.map((f, i) => (f || []).map((c, j) => {
     if (!quiereEscribir(c)) return c
     const fila = fila0 + i - alineacion.off
     const col = col0 + j
     const mia = huellas.get(claveCelda(fila, col))
-    const ocupada = hayContenido((actual[i] || [])[j])
+    const hoy = (actual[i] || [])[j]
+    const ocupada = hayContenido(hoy)
     // LA VACIASTE VOS. Tengo huella propia de esta celda y hoy no hay nada: no la resucito.
     // La marca viaja con DOS coordenadas: dónde estaba la huella (`fila`) y dónde vive la celda hoy
     // (`filaHoy`). Si la pestaña se corrió, la marca tiene que quedar donde la celda está AHORA — si
@@ -224,20 +276,30 @@ export function aplicarHuella(generado = [], actual = [], huellas = new Map(), o
       suprimidas.push({ fila, col, filaHoy: fila0 + i, colHoy: col, forma: mia.forma, huella: mia.huella, mio: String(c).slice(0, 60) })
       return ''
     }
+    // PIDO LIMPIAR MI PROPIA CELDA Y TODAVÍA TIENE LO QUE YO ESCRIBÍ. La forma se compara truncada a
+    // 300 porque así se guardó: comparar contra la entera daría falso negativo en un texto largo.
+    if (mia && ocupada && c === VACIO) {
+      if (formaComparable(formaDe(hoy).slice(0, 300)) === formaComparable(mia.forma)) {
+        limpiadas.push({ fila: fila0 + i, col, mio: String(hoy).slice(0, 60) })
+        return MIA_PROBADA
+      }
+      editadas.push({ fila: fila0 + i, col, suyo: String(hoy).slice(0, 60), forma: mia.forma })
+      return ''
+    }
     if (!mia && ocupada) {
       // MI RESIDUO DE UN LAYOUT ANTERIOR. Pedí limpiar esta celda y lo que hay es un texto que yo
       // mismo sigo escribiendo en otra parte de la grilla: la escribí yo cuando esa fila era otra
       // cosa. Sin esto el residuo es inmortal — no dejé huella (era VACIO) y por eso parece tuyo.
-      if (c === VACIO && mias.has(formaDe((actual[i] || [])[j]))) {
-        residuos.push({ fila: fila0 + i, col, suyo: String((actual[i] || [])[j]).slice(0, 60) })
-        return c
+      if (c === VACIO && mias.has(formaDe(hoy))) {
+        residuos.push({ fila: fila0 + i, col, suyo: String(hoy).slice(0, 60) })
+        return MIA_PROBADA
       }
       // NUNCA FUE MÍA Y TIENE ALGO TUYO. Sin evidencia de que la escribí yo, no se pisa.
-      ajenas.push({ fila, col, suyo: String((actual[i] || [])[j]).slice(0, 60) }); return ''
+      ajenas.push({ fila, col, suyo: String(hoy).slice(0, 60) }); return ''
     }
     return c
   }))
-  return { grid, suprimidas, ajenas, residuos, alineacion }
+  return { ...vacio, grid }
 }
 
 /**
@@ -377,5 +439,65 @@ export async function conHuellaDeCelda(fileId, pestana, generado, actual, opts =
     ...r,
     guardar: (escrito) => guardarHuellas(fileId, pestana, escrito, { ...opts, suprimidas: r.suprimidas })
       .catch((e) => console.warn(`  ⚠ no pude guardar la huella por celda: ${e.message}`)),
+  }
+}
+
+/**
+ * EL VOCABULARIO DE LA HUELLA, EN UN SOLO LUGAR.
+ *
+ *   🚫 no repongo lo que vaciaste · ✋ conservo lo tuyo · 🧹 limpio lo mío · ℹ no puedo decidir
+ *
+ * Vive acá y no en el portón porque ahora lo usan los dos: el portón y los generadores que escriben
+ * fuera de él. Dos copias del mismo mensaje se desincronizan, y el mensaje ES la única forma que
+ * tiene el dueño de enterarse de qué decidió el OS sobre una celda suya.
+ */
+export function explicarHuella(pestana, h, log = console.log) {
+  for (const s of h.suprimidas.slice(0, 12)) log(`  🚫 vos vaciaste la celda ${letraCol(s.col)}${s.filaHoy ?? s.fila}: no vuelvo a escribir "${s.mio}"`)
+  if (h.suprimidas.length > 12) log(`      … y ${h.suprimidas.length - 12} celdas más que vaciaste`)
+  for (const a of h.ajenas.slice(0, 6)) log(`  ✋ ${letraCol(a.col)}${a.fila} nunca fue mía y tiene algo tuyo ("${a.suyo}"): no la piso`)
+  for (const e of (h.editadas ?? []).slice(0, 6)) log(`  ✋ ${letraCol(e.col)}${e.fila} la escribí yo y hoy dice otra cosa ("${e.suyo}"): la editaste vos, la respeto`)
+  for (const r of (h.residuos ?? []).slice(0, 6)) log(`  🧹 ${letraCol(r.col)}${r.fila} es un residuo mío de un layout anterior ("${r.suyo}"): la limpio`)
+  if ((h.residuos?.length ?? 0) > 6) log(`      … y ${h.residuos.length - 6} residuos más`)
+  for (const l of (h.limpiadas ?? []).slice(0, 6)) log(`  🧹 ${letraCol(l.col)}${l.fila} la escribí yo y ya no va ("${l.mio}"): la limpio`)
+  if ((h.limpiadas?.length ?? 0) > 6) log(`      … y ${h.limpiadas.length - 6} celdas mías más que limpio`)
+  if (!h.alineacion.alineada) log(`  ℹ huella por celda sin veredicto en "${pestana}": ${h.alineacion.motivo}`)
+}
+
+/**
+ * LA HUELLA PARA UN GENERADOR QUE NO PASA POR `escribirPreservando`.
+ *
+ * ═══ POR QUÉ EXISTE (13/08) ═══
+ *
+ * Seis generadores escriben fuera del portón, cada uno por una razón propia y documentada (rangos
+ * sueltos, `updateCells` por `sheetId`, fusión propia). Para ellos la única defensa era la guarda
+ * CIEGA de `no-borrar.mjs`, que conserva todo lo que tiene contenido sin poder saber de quién es. El
+ * resultado medido: un borrado del dueño en esas pestañas volvía en la corrida siguiente, y un
+ * artefacto del propio OS quedaba blindado para siempre. Las dos caras del mismo agujero.
+ *
+ * No se los obliga a entrar al portón —varios no pueden— sino a hacer las dos cosas que la huella
+ * necesita: pasarle lo que quieren escribir contra una lectura FORMULA del mismo rectángulo, y
+ * sellar después de escribir. Todo lo demás (leer el mapa, medir la alineación, decidir celda por
+ * celda, explicar en voz alta) pasa acá adentro.
+ *
+ * DEVUELVE LA GRILLA SIN CENTINELA `VACIO`. Fuera del portón no hay `fusionar()` que lo traduzca, y
+ * un centinela que llega crudo a la API se escribe LITERAL — así aparecieron 61 celdas "::VACIO::"
+ * en CAJA. `MIA_PROBADA` sí sobrevive: lo traduce `no-borrar.mjs`, que es su único lector.
+ *
+ * @param {string} fileId
+ * @param {string} pestana
+ * @param {any[][]} generado  lo que el generador quiere escribir (con centinelas `VACIO`)
+ * @param {any[][]} actual    el MISMO rectángulo leído con render FORMULA
+ * @param {{fila0?:number, col0?:number}} opts
+ */
+export async function conHuellaFueraDelPorton(fileId, pestana, generado, actual, opts = {}) {
+  try {
+    const h = await conHuellaDeCelda(fileId, pestana, generado, actual, opts)
+    explicarHuella(pestana, h)
+    return { ...h, grid: limpiarCentinela(h.grid) }
+  } catch (e) {
+    // Ni la base ni la huella pueden tumbar una escritura: sin veredicto, se escribe como siempre.
+    // Se dice fuerte porque el costo de esta corrida es real — un borrado del dueño puede volver.
+    console.warn(`  ⚠ huella por celda inactiva en "${pestana}" (${e.message}) — un borrado tuyo podría volver`)
+    return { grid: limpiarCentinela(generado), suprimidas: [], ajenas: [], residuos: [], limpiadas: [], editadas: [], alineacion: { alineada: false, motivo: e.message }, guardar: async () => {} }
   }
 }

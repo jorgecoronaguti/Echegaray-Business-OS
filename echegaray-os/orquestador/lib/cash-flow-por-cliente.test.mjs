@@ -140,11 +140,12 @@ test('EL FOOTPRINT SE RECALCULA con las filas nuevas: el gráfico sigue cayendo 
   // cae el lote entero y la pestaña queda a medio escribir. El alto es una FUNCIÓN de las filas.
   const clientes = nombresDeClientes().length + 1 // + el residuo
   const seccion = 1 + clientes * (1 + MEDIDAS_POR_CLIENTE.length)
-  // 42 y 44: una fila MENOS que antes del 06/08 — "Ingresos reales · Valores en cartera" se dejó de
+  // 43 y 45: una fila MENOS que antes del 06/08 —"Ingresos reales · Valores en cartera" se dejó de
   // emitir porque la cartera nunca es real (cuando el valor se acredita, entra por el banco como
-  // "Cobranzas"). Era una fila en cero en las 53 columnas.
-  assert.equal(conceptosDe('semana').length, 42 + seccion)
-  assert.equal(conceptosDe('mes').length, 44 + seccion)
+  // "Cobranzas")— y una MÁS desde el 13/08: "Egresos proyectados · Materiales de obra proyectados",
+  // los egresos de las siete obras en curso, que hasta ese día caían enteros en "· Otros".
+  assert.equal(conceptosDe('semana').length, 43 + seccion)
+  assert.equal(conceptosDe('mes').length, 45 + seccion)
   for (const tipo of ['semana', 'mes']) {
     const fp = footprintDe(tipo, 2026)
     assert.equal(filaGraficos(tipo), FILA.concepto + conceptosDe(tipo).length + 1)

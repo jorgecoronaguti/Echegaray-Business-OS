@@ -22,7 +22,7 @@ create or replace function public.rubro_caja(
       when lower(coalesce(proveedor, '')) = 'sueldos' then 'Nómina · Sueldos administración'
       when (lower(coalesce(unidad_negocio, '')) = 'impuestos' or lower(coalesce(proveedor, '')) = 'arca' or lower(coalesce(obra_texto, '')) = 'plan de pago') then 'Impuestos'
       when (lower(coalesce(unidad_negocio, '')) = 'financiero' or lower(coalesce(obra_texto, '')) = 'credito prendario' or lower(coalesce(proveedor, '')) = 'banco') then 'Financiero'
-      when (lower(coalesce(proveedor, '')) ~ '^(robles jose maria|movistar|meglioli facundo fabian|sanitarios od s\.a\.s\.|ruviño matias esteban|rsv)$' and lower(coalesce(unidad_negocio, '')) not in ('civil', 'mantenimiento')) then 'Servicios recurrentes'
+      when (lower(coalesce(proveedor, '')) ~ '^(robles jose maria|movistar|meglioli facundo fabian|sanitarios od s\.a\.s\.|ruviño matias esteban|rsv|mass consultora)$' and (lower(coalesce(unidad_negocio, '')) not in ('civil', 'mantenimiento') or lower(coalesce(proveedor, '')) ~ '^(rsv|mass consultora)$')) then 'Servicios recurrentes'
       when lower(coalesce(unidad_negocio, '')) = 'civil' then 'Materiales Civil'
       when lower(coalesce(unidad_negocio, '')) = 'mantenimiento' then 'Materiales Mantenimiento'
       when lower(coalesce(unidad_negocio, '')) = 'estructura' then 'Estructura'

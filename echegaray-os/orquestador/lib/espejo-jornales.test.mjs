@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { importe, total, comparar, formatEspejo } from './espejo-jornales.mjs'
+import { importe, total, comparar, formatEspejo, refrescarEspejo } from './espejo-jornales.mjs'
 
 test('lee importes escritos a la argentina', () => {
   // El espejo copia el valor FORMATEADO. Sin esto la comparación mide texto contra texto y un
@@ -35,6 +35,34 @@ test('comparar acepta el espejo cuando coincide', () => {
 
 test('total suma sólo la columna de plata', () => {
   assert.equal(total([['999', 100], ['888', 250]], 1), 350)
+})
+
+// ═══ UN BLOQUE PERDIDO NO PUEDE SALIR EN VERDE (13/08) ═══
+// La guarda de aterrizaje avisaba por `console.warn` y nadie recogía la señal: `refrescarEspejo`
+// descartaba el resultado de la escritura, así que el script podía terminar en 0 con un bloque de
+// 200 filas sin escribir. La comparación de plata no lo tapa: un bloque de nombres y fechas perdido
+// no mueve un peso.
+
+/** Un Google de mentira: el origen tiene filas, el destino contesta lo que se le diga. */
+function googleFalso({ noAterrizo = [] } = {}) {
+  const filas = [['1', 'Aguero Cristian', ...Array(24).fill(''), 399000]]
+  return {
+    async readSheetValues(_id, rango) { return /_J_/.test(rango) ? filas : filas },
+    async batchUpdateValues() { return noAterrizo.length ? { noAterrizo } : {} },
+  }
+}
+
+test('un bloque que no aterrizó llega al resultado, no se queda en el log', async () => {
+  const r = await refrescarEspejo(googleFalso({ noAterrizo: ['_J_OBREROS!A201'] }))
+  assert.equal(r.perdidas, true, 'el espejo tiene que declarar la pérdida para que el script corte')
+  assert.match(r.hojas[0].aviso, /no aterrizaron 1 bloque\(s\).*_J_OBREROS!A201/)
+  assert.match(formatEspejo(r), /no aterrizó/)
+})
+
+test('sin bloques perdidos el espejo no inventa una pérdida', async () => {
+  const r = await refrescarEspejo(googleFalso())
+  assert.equal(r.perdidas, false)
+  assert.equal(r.hojas[0].aviso, undefined)
 })
 
 test('el aviso de desfasaje aparece en el texto', () => {

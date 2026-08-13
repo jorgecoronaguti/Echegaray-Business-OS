@@ -3,8 +3,13 @@ import assert from 'node:assert/strict'
 import {
   VENTANA, obligacionesDelCalendario, altoDeLaPosicion, filasDeLaPosicion,
   formulaOtrosSinFecha, diasAlProximo, ALTO_HERO, OFFSET_TITULAR, conceptoCorto, verificarAnclajes,
+  hallazgoDeVencimiento, conDecisionesDelDueno, marcaDeVencimiento,
 } from './impuestos-posicion.mjs'
 import { ACUERDO, TARJETA } from './banco-santander.mjs'
+import { CONTROLES, decisionesDe, aplicarDecisiones } from './decisiones-hallazgos.mjs'
+import { vencimientoIva, vencimientoIibb } from './vencimientos-fiscales.mjs'
+
+const REFS = { saldoIva: '$H$56', saldoIibb: '$G$66', prendPend: '$B$92', planesPend: '$B$93', otrosSinFecha: '=0' }
 
 const HOY = '2026-08-06'
 // Las filas del detalle tal como quedan en la pestaña reconstruida.
@@ -254,4 +259,78 @@ test('el disponible de la TARJETA sigue siendo el que declara el banco, al centa
   const f = filas.find((x) => /^Tarjeta de crédito/.test(String(x[0] ?? '')))
   assert.ok(f)
   assert.equal(Math.round((f[1] - f[2]) * 100) / 100, TARJETA.disponible)
+})
+
+// ══ LO QUE EL DUEÑO YA MIRÓ NO VUELVE A GRITAR (13/08) ═══════════════════════════════════════════
+//
+// El IIBB del 16/07 y el IVA del 21/07 salían "⚠ VENCIDO" cada dos horas después de que él dijera
+// "no afectan". Estos tests atrapan los tres defectos del registro de decisiones sobre esta pestaña:
+// que un vencimiento decidido siga gritando, que uno SIN decisión deje de gritar, y que una decisión
+// vieja siga aplicando después de que la fecha de vencimiento cambió.
+
+const DECISION_IIBB = { decision: 'no afectan', quien: 'dueño', cuando: '2026-08-13' }
+const vencidos = () => cal().filter((o) => o.vencido)
+
+test('la clave de un vencimiento es el impuesto y su período, NUNCA su posición en el calendario', () => {
+  const claves = vencidos().map((o) => hallazgoDeVencimiento(o).clave)
+  assert.ok(claves.length > 0, 'el calendario del 06/08 tiene vencimientos hacia atrás')
+  for (const k of claves) assert.match(k, /^(iva|iibb)·\d{4}-\d{2}$/)
+  // La forma es la fecha: si ARCA la mueve, la decisión del dueño fue sobre otra cosa.
+  for (const o of vencidos()) assert.deepEqual(hallazgoDeVencimiento(o).forma, { fecha: o.fecha })
+})
+
+test('un vencimiento decidido cambia de MARCA, no de hecho: sigue vencido y sigue en el calendario', () => {
+  const uno = vencidos()[0]
+  const clave = hallazgoDeVencimiento(uno).clave
+  const c = conDecisionesDelDueno(cal(), new Map([[clave, DECISION_IIBB]]))
+  const liberado = c.find((o) => hallazgoDeVencimiento(o).clave === clave)
+  assert.equal(liberado.vencido, true, 'el hecho no se borra')
+  assert.equal(c.length, cal().length, 'la fila no desaparece del calendario')
+  const marca = marcaDeVencimiento(liberado)
+  assert.ok(!marca.includes('⚠'), `un vencimiento revisado no lleva ⚠: "${marca}"`)
+  assert.match(marca, /13\/08 lo revisó el dueño: "no afectan"/)
+})
+
+test('un vencimiento SIN decisión sigue marcado ⚠ VENCIDO — se libera uno, no el control', () => {
+  const todos = vencidos()
+  const clave = hallazgoDeVencimiento(todos[0]).clave
+  const c = conDecisionesDelDueno(cal(), new Map([[clave, DECISION_IIBB]]))
+  const otros = c.filter((o) => o.vencido && hallazgoDeVencimiento(o).clave !== clave)
+  for (const o of otros) assert.equal(marcaDeVencimiento(o), '  ⚠ VENCIDO', o.concepto)
+})
+
+test('la marca liberada llega a la fila que se escribe en la pestaña', () => {
+  const clave = hallazgoDeVencimiento(vencidos()[0]).clave
+  const c = conDecisionesDelDueno(cal(), new Map([[clave, DECISION_IIBB]]))
+  const F = filasDeLaPosicion({ cal: c, base: 10, hoy: HOY, refs: REFS, acuerdo: ACUERDO, tarjeta: TARJETA })
+  const textos = F.map((f) => String(f?.[0] ?? ''))
+  assert.ok(textos.some((t) => /lo revisó el dueño: "no afectan"/.test(t)), 'la decisión se ve en la pestaña')
+  const conMarcaVieja = textos.filter((t) => t.includes('⚠ VENCIDO')).length
+  const sinDecision = filasDeLaPosicion({ cal: cal(), base: 10, hoy: HOY, refs: REFS, acuerdo: ACUERDO, tarjeta: TARJETA })
+    .map((f) => String(f?.[0] ?? '')).filter((t) => t.includes('⚠ VENCIDO')).length
+  assert.equal(conMarcaVieja, sinDecision - 1, 'exactamente UN ⚠ VENCIDO menos, no todos')
+})
+
+test('un vencimiento que NO está vencido nunca toma la marca de revisado', () => {
+  const futuro = cal().find((o) => !o.vencido)
+  const c = conDecisionesDelDueno([futuro], new Map([[hallazgoDeVencimiento(futuro).clave, DECISION_IIBB]]))
+  assert.equal(c[0].decisionDelDueno, undefined, 'no hay nada que liberar donde no hay hallazgo')
+})
+
+test('las dos decisiones reales del 13/08 apuntan a los vencimientos de junio, con su fecha', () => {
+  const ds = decisionesDe(CONTROLES.vencimientoVencido)
+  assert.deepEqual(ds.map((d) => `${d.clave} ${d.forma.fecha}`).sort(),
+    ['iibb·2026-06 2026-07-16', 'iva·2026-06 2026-07-21'])
+  // La fecha declarada tiene que ser la que el calendario calcula hoy: si no, la decisión no aplica
+  // nunca y el aviso vuelve sin que nadie entienda por qué.
+  assert.equal(vencimientoIibb('2026-06').fecha, '2026-07-16')
+  assert.equal(vencimientoIva('2026-06').fecha, '2026-07-21')
+})
+
+test('si la fecha de vencimiento cambia, la decisión vieja NO libera nada', () => {
+  const r = aplicarDecisiones(CONTROLES.vencimientoVencido,
+    [{ clave: 'iva·2026-06', forma: { fecha: '2026-07-28' } }],
+    { decisiones: decisionesDe(CONTROLES.vencimientoVencido) })
+  assert.equal(r.silenciados.length, 0, 'el dueño decidió sobre el 21/07, no sobre el 28/07')
+  assert.equal(r.caducadas.length, 1)
 })

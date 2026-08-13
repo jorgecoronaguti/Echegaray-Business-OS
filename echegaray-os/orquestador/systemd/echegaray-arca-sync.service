@@ -1,0 +1,13 @@
+[Unit]
+Description=Echegaray OS - Sync mensual comprobantes ARCA -> Supabase
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/jorge/echegaray-os/app/echegaray-os
+EnvironmentFile=%h/.config/echegaray-orq/worker.env
+ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node scripts/arca/sync-arca.mjs
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=15min

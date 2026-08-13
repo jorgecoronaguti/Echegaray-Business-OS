@@ -34,6 +34,12 @@ if (r.desfasado) {
   console.error('✗ el espejo NO reproduce el archivo JORNALES — el cash flow leería jornales equivocados')
   process.exit(1)
 }
+// La comparación de arriba mira la columna de plata. Un bloque perdido puede no mover un peso —y
+// dejar sin nombres, sin fechas o sin obra a las filas que le tocaban—, así que se corta igual.
+if (r.perdidas) {
+  console.error('✗ un bloque de la copia no aterrizó en el destino: el espejo quedó incompleto')
+  process.exit(1)
+}
 // El espejo reproduce el original: el OS acaba de leer JORNALES con éxito. Se registra para que la
 // frescura no lo dé por atrasado cuando lo espeja en cada corrida del pipeline.
 const fr = await registrarSincronizacion({}, { driveFileId: JORNALES_FILE_ID })

@@ -40,6 +40,29 @@
 export const CATEGORIAS = ['Oficial Especializado', 'Oficial', 'Medio Oficial', 'Ayudante', 'Sereno']
 /** La categoría que ancla el escalón: es el piso del convenio y la que el control ya compara. */
 export const CATEGORIA_ANCLA = 'Ayudante'
+/**
+ * LAS QUE COBRAN POR MES Y NO POR HORA. El Sereno cobra $980.858 AL MES y las otras cuatro por hora:
+ * meter ese número en una columna de $/hora fue lo que hizo que un Sereno pareciera cobrar $980.858 la
+ * hora (ver `mapearEscala` en lib/nomina-replica.mjs, que ya lo separa). La lista vive UNA vez.
+ */
+export const CATEGORIAS_POR_MES = ['Sereno']
+
+/**
+ * NÚCLEO PURO: EL TRAMO DE FILAS DE UN ESCALÓN QUE SE COTIZA POR HORA — sin el Sereno.
+ *
+ * Lo usa el INDEX/MATCH de «Básico convenio»: buscar dentro del grupo COMPLETO deja que un "Sereno"
+ * tipeado en la columna «Convenio» del dueño devuelva un importe MENSUAL a una columna de $/hora, que
+ * después se multiplica por horas y días. No da error: da una masa salarial absurda con cara de dato.
+ *
+ * Las filas salen del parser —cada categoría trae la suya—, no de contar cinco desde el rótulo: anclar
+ * en la posición es lo que ya rompió tres cosas en este repositorio.
+ */
+export function filasPorHora(escalon) {
+  const fs = CATEGORIAS.filter((c) => !CATEGORIAS_POR_MES.includes(c))
+    .map((c) => escalon?.categorias?.[c]?.fila)
+    .filter((f) => Number.isInteger(f) && f > 0)
+  return fs.length ? { r0: Math.min(...fs), r1: Math.max(...fs) } : null
+}
 export const HOJA = '_UOCRA_RAW'
 /** Dónde vive cada dato en la réplica. San Juan es Zona A, y ahí Zona A == Básico. */
 export const COL = { mes: 'A', categoria: 'B', unidad: 'C', basico: 'D', zonaA: 'H' }
@@ -158,6 +181,32 @@ export function ultimoEscalon(escalones = []) {
 }
 
 /**
+ * NÚCLEO PURO: EL ESCALÓN QUE RIGE UN MES — el suyo si está publicado, y si no el último anterior.
+ *
+ * ═══ EL DEFECTO QUE ESTO MATA (07/08) ═══
+ *
+ * Una escala de convenio NO deja de regir el día que se termina su acuerdo: rige hasta que otra la
+ * reemplaza. El motor usaba `escalonDe(escalones, mes en curso)` —igualdad exacta de período— para
+ * decidir la BASE de la proyección. El acuerdo vigente cierra el 31/08 y la réplica no tiene fila de
+ * septiembre: el 01/09, sin que nadie tocara nada, `escalonVigente` pasaba a null, la base volvía sola
+ * del convenio al jornal PACTADO (−12,14% sobre la masa) y la nota de Cargas seguía declarando lo
+ * contrario. Nada da error: la pestaña se dibuja entera con otro criterio adentro.
+ *
+ * HACIA ATRÁS NO SE EXTRAPOLA. Si el período pedido es ANTERIOR a todo lo publicado, devuelve null:
+ * aplicarle a un mes viejo una escala que se firmó después sería inventarle un aumento que no tuvo.
+ *
+ * @param {Array} escalones salida de parsearAcuerdos
+ * @param {Date|string} cuando una fecha o un período 'YYYY-MM'
+ */
+export function escalonVigenteEn(escalones = [], cuando = new Date()) {
+  const periodo = cuando instanceof Date
+    ? periodoDe(cuando.getFullYear(), cuando.getMonth() + 1)
+    : String(cuando ?? '')
+  if (!/^\d{4}-\d{2}$/.test(periodo)) return null
+  return escalonDe(escalones, periodo) ?? ultimoEscalon(escalones.filter((e) => e.periodo < periodo))
+}
+
+/**
  * NÚCLEO PURO: el escalón MEDIDO entre dos períodos publicados, para una categoría.
  * Es el cociente de básicos — el hecho— y no el % del rótulo, que subestima (ver cabecera).
  * @returns {number|null} el factor (1,0911 = +9,11%)
@@ -229,13 +278,25 @@ export function estadoReplica(escalones = [], hoy = new Date()) {
   if (!ult) {
     return {
       estado: 'vacía', ultimoPeriodo: null,
-      mensaje: `⚠ ${HOJA} no trae ninguna escala: el IMPORTHTML al sitio del acuerdo se cayó. NO hay piso de convenio contra el cual comparar — y no se muestra uno viejo haciéndolo pasar por vigente.`,
+      // EL CANARIO GRITA EN UN RENGLÓN. El párrafo explicaba además que no se muestra una escala vieja
+      // — pero eso es lo que el canario HACE, no algo que el lector necesite leer para actuar. Queda
+      // qué falta y qué hacer; que no hay piso de convenio se VE, en las celdas del piso vacías.
+      //
+      // EL LARGO ES UN CONTRATO: este mensaje se concatena con " · CCT 76/75 Zona A" (19 caracteres)
+      // en la línea de vigencia de la sección 4, así que tiene que entrar en 41 para que esa fila no
+      // pase de 60. Ver el test del tope en jornales-pestana.test.mjs.
+      mensaje: `⚠ Sin escala UOCRA — revisá el IMPORTHTML`,
     }
   }
   if (ult.periodo < enCurso) {
     return {
       estado: 'vencida', ultimoPeriodo: ult.periodo,
-      mensaje: `⚠ el último acuerdo publicado en ${HOJA} es ${ult.rotulo} (${ult.periodo}) y el mes en curso es ${enCurso}: la escala quedó vencida. Los meses siguientes se proyectan con el % esperado de Parámetros, no con un acuerdo.`,
+      // "Los meses siguientes se proyectan con el % esperado de Parámetros" se cayó de acá porque el
+      // cuadro 1.2 lo dice fila por fila en su columna Estado: "⚠ proyección" en cada mes sin acuerdo.
+      // Repetirlo arriba en prosa es la tercera vez que se afirma lo mismo.
+      // El período del último acuerdo y el mes en curso se cayeron: el rótulo YA trae el mes ("Agosto
+      // +1,9%") y cuál es el mes en curso lo sabe el que mira. Mismo contrato de 41 caracteres.
+      mensaje: `⚠ Escala vencida — último: ${ult.rotulo}`,
     }
   }
   return {

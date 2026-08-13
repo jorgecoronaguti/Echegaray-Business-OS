@@ -145,12 +145,35 @@ export function formulasInstrumento(inst, marcas) {
     cantidad: `=COUNTIF(${M};"${m}")`,
     monto: `=SUMPRODUCT((${M}="${m}")*${importe})`,
   })
+  // ¿ESTA CELDA TIENE ALGO QUE NO ES NINGUNA DE MIS MARCAS? Las cuatro son excluyentes, así que
+  // restarlas de 1 da 1 exactamente cuando el texto no es ninguna de ellas.
+  const ajena = `(${M}<>"")*(1${Object.values(marcas).map((m) => `-(${M}="${m}")`).join('')})`
   return {
     total: { cantidad: `=SUMPRODUCT(--(${M}<>""))`, monto: `=SUMPRODUCT((${M}<>"")*${importe})` },
     contemplados: conMarca(marcas.ok),
     inferidos: conMarca(marcas.inferido),
     falta: conMarca(marcas.falta),
     sinNumero: conMarca(marcas.sinNumero),
+    /**
+     * LA CELDA QUE TIENE TEXTO PERO NO ES UNA MARCA MÍA — EL AGUJERO POR DONDE SE CAÍA UN CHEQUE.
+     *
+     * ═══ POR QUÉ HACE FALTA (13/08) ═══
+     *
+     * Desde que el marcado saltea la fila cuya celda de marcas tiene contenido ajeno (una nota
+     * tipeada, ver lib/marcado-columna.mjs), esa fila quedaba en tierra de nadie: `total` la cuenta
+     * —mide `M<>""` y la nota es texto—, ninguna de las cuatro categorías la agarra, y `sinMarca`
+     * tampoco, porque mide la celda VACÍA. Resultado medido sobre el caso real: las cuatro
+     * categorías dejaban de sumar el total por un cheque de $469.564,70 y la planilla no lo decía.
+     * La señal existía sólo en el log de la corrida, y un log que nadie lee no es un control.
+     *
+     * Con este renglón las CINCO cajas son una partición exacta de `M<>""`: total = las cuatro + ésta.
+     * Es la identidad que fija `cash-flow-lineas.test.mjs`, evaluando las fórmulas de verdad.
+     *
+     * NO LLEVA EL FILTRO DE "no debitados" NI EL DE IMPORTE NUMÉRICO, a diferencia de `sinMarca`. No
+     * es un olvido: `total` no los lleva, y un término de la partición con un filtro que el total no
+     * tiene rompe la identidad justo en las filas que más importan.
+     */
+    noReconocida: { cantidad: `=SUMPRODUCT(${ajena})`, monto: `=SUMPRODUCT(${ajena}*${importe})` },
     /**
      * LO QUE EL OS TODAVÍA NO MIRÓ. La marca es una foto que escribe el agente; una fila cargada
      * después de la última corrida no tiene ninguna, y entonces NO la cuenta ni "contemplados" ni
@@ -160,6 +183,11 @@ export function formulasInstrumento(inst, marcas) {
      *
      * Se parte en dos porque las dos mitades se arreglan distinto: la que YA tiene N° de comprobante
      * se resuelve corriendo el agente, y la que no, cargando el dato.
+     *
+     * MIDE LA CELDA VACÍA, Y ESO ES TODO LO QUE MIDE. La fila cuya celda tiene texto que no es una
+     * marca mía es otra cosa y va en `noReconocida`: se arregla vaciando esa celda, no corriendo el
+     * agente —el agente ya corrió y la salteó a propósito—. Meter las dos en este renglón daría un
+     * número que no se puede accionar sin abrir la pestaña a ver cuál es cuál.
      */
     sinMarca: (conNumero = null) => {
       const cond = conNumero === null ? '' : `*(${conNumero ? '' : '1-'}${expresionTieneNumero(R(inst.colComprobante))})`
@@ -1073,6 +1101,24 @@ export function expresionReal(l, desde, hasta) {
  */
 export const mesCerrado = (M) => `EOMONTH(${M};0)<=EOMONTH(TODAY();0)`
 
+/**
+ * EL PRIMER DÍA DEL MES EN CURSO — el borde de la ventana de OBSERVACIONES COMPLETAS.
+ *
+ * Un promedio se saca sobre meses que ya terminaron. El mes que corre está a medio transcurrir, así
+ * que meterlo en el numerador Y en el divisor hace que el ritmo baje cuanto más temprano se mira, y
+ * —peor— que BAJE cuando entra una factura nueva: el cuadro empeora su pronóstico justo cuando llega
+ * más información. La ventana de tres meses de `expresionProyeccionMes` corta acá, y la pestaña
+ * Recurrentes corta acá para su promedio del año: es UN corte, escrito UNA vez. Estaba tipeado por
+ * separado en los dos archivos, que es la forma en que dos cuadros terminan diciendo cosas distintas
+ * de la misma plata.
+ *
+ * NO ES `mesCerrado()`, Y LA DIFERENCIA ES A PROPÓSITO. Aquella dice si un mes YA NO SE PROYECTA
+ * —e incluye el mes en curso, porque proyectar el mes corriente sobre el saldo de caja ya costó
+ * $177M de contradicción entre el mensual y el semanal—. Ésta dice si un mes YA SE PUEDE OBSERVAR.
+ * El mes en curso no se proyecta y tampoco se observa: es el único que cae fuera de las dos.
+ */
+export const MES_EN_CURSO = 'EOMONTH(TODAY();-1)+1'
+
 export function formulaLineaMes(l, colMes, colTabla, filaCab, filasTabla = {}, anio = 2026) {
   if (l.cheques || l.calendarioImpuestos) return null
   const mes = `${colMes}$${filaCab}`
@@ -1127,8 +1173,9 @@ export function expresionProyeccionMes(l, mes, filasTabla = {}, anio = 2026) {
   // mes corriente y dividía por 3: metía un mes a medio transcurrir en el promedio, así que el
   // ritmo salía más bajo cuanto más temprano se miraba. Un mes que todavía no terminó no es una
   // observación completa. Además ahora coincide exactamente con la ventana del núcleo Postgres,
-  // que es la condición para que la web y la planilla digan lo mismo.
-  const ventana = `${expresionReal(l, 'EOMONTH(TODAY();-4)+1', 'EOMONTH(TODAY();-1)+1')}/3`
+  // que es la condición para que la web y la planilla digan lo mismo. El borde superior es
+  // MES_EN_CURSO, el mismo que usa Recurrentes: una sola definición de "hasta dónde se puede mirar".
+  const ventana = `${expresionReal(l, 'EOMONTH(TODAY();-4)+1', MES_EN_CURSO)}/3`
   const factor = `IFERROR(INDEX(Parámetros!$C$74:$C$90;MATCH(EOMONTH(${mes};0);ARRAYFORMULA(EOMONTH(Parámetros!$A$74:$A$90;0));0));1)`
   const mesesConGasto = `SUMPRODUCT(--(COUNTIFS(${COL_RUBRO};"${l.rubro}";${COL_FECHA};">="&${MESES_CAB};${COL_FECHA};"<"&EOMONTH(${MESES_CAB};0)+1)>0))`
   // FUERA DEL AÑO DEL CUADRO NO SE PROYECTA — la regla ya estaba escrita en el docstring de arriba y

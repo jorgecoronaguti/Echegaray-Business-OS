@@ -16,6 +16,7 @@ import {
   formulaAlicuotaIibbVigente, formulaBaseIibbProyectada, formulaIibbDeterminado,
   formulaImpuestoCheque, rangoIibb,
 } from './impuestos-cuadro.mjs'
+import { formulaDebitoArca, formulaCreditoArca, nuncaMenosQue } from './arca-formula.mjs'
 import { IIBB_RAW, IIBB_COL, IIBB_FILA0, BANCO_RAW } from './impuestos-fuentes.mjs'
 import { M12, MES, cmes, AJENO } from './impuestos-grilla.mjs'
 
@@ -27,14 +28,65 @@ import { M12, MES, cmes, AJENO } from './impuestos-grilla.mjs'
 // comprobantes. El dato oficial corrige dos cosas que el cálculo no mostraba: (1) la empresa NO paga
 // IVA en efectivo, tiene crédito de LIBRE DISPONIBILIDAD que absorbe la posición a favor de ARCA;
 // (2) esa libre disponibilidad es la plata realmente inmovilizada en el fisco, no el saldo técnico.
+//
+// ═══ LA CASCADA DE TRES ESTADOS (07/08) ═══
+//
+// El dueño: "en impuestos y financieros el cuadro 4 debería estar vinculado a AfipSDK e irse
+// calculando; la columna del mes en curso se debe actualizar sola".
+//
+// Faltaba un estado. El cuadro sabía decir "DDJJ presentada" o "PROYECCIÓN del Libro", y entre los
+// dos hay un mes que no es ninguno: el VENCIDO QUE TODAVÍA NO SE PRESENTÓ. De ese mes ARCA ya tiene
+// los comprobantes reales —están en `public.comprobantes_arca` y replicados en `_ARCA_RAW`— y el
+// cuadro lo trataba como si no existiera, proyectándolo con un promedio del Libro cuando el hecho
+// estaba adentro del mismo archivo.
+//
+//   1. DDJJ F.2051 presentada          → el dato oficial, valor. Gana siempre.
+//   2. mes con dato de una persona      → AJENO: no se toca. Ver `anclaDeProyeccion`.
+//   3. comprobantes de ARCA del período → FÓRMULA contra _ARCA_RAW. El mes en curso, con piso en la
+//                                         proyección (ver `nuncaMenosQue`).
+//   4. proyección del Libro             → como antes.
+//
+// POR QUÉ EL MES AJENO LE GANA A ARCA, que es mejor dato. Porque un mes que una persona calculó a
+// mano es una afirmación firmada, y `respetar-ediciones` no protege importes: pisarlo con una fórmula
+// sería la séptima pérdida de trabajo del dueño de esta lista. Si el dueño quiere que ARCA mande en
+// ese mes, borra la celda y el generador la llena solo en la corrida siguiente.
 
-export function bloqueIva(G, { anio, ivaOficial, proy }) {
+/** Los estados posibles de un mes del cuadro. El texto es el que va a la fila de procedencia. */
+export const ORIGEN = {
+  ddjj: 'ddjj', ajeno: 'ajeno', arca: 'arca', arcaParcial: 'arca-parcial', proyeccion: 'proyeccion', vacio: 'vacio',
+}
+
+/**
+ * NÚCLEO PURO: de dónde sale el mes `m` del cuadro de IVA. Es la cascada entera, aislada para poder
+ * probarla sin armar una grilla.
+ *
+ * @param {number} m 1..12
+ * @param {object} ctx
+ * @param {number[]} ctx.mesesDDJJ   meses con F.2051 presentada
+ * @param {number} ctx.ancla         último mes con dato en la hoja (de la DDJJ o de una persona)
+ * @param {number[]} ctx.mesesArca   meses con comprobantes en `comprobantes_arca`
+ * @param {number[]} ctx.mesesProy   meses que la proyección del Libro cubre
+ * @param {number} ctx.mesEnCurso    el mes de HOY si el cuadro es del año corriente; 0 si el año ya pasó
+ */
+export function origenDelMes(m, { mesesDDJJ = [], ancla = 0, mesesArca = [], mesesProy = [], mesEnCurso = 0 } = {}) {
+  if (mesesDDJJ.includes(m)) return ORIGEN.ddjj
+  if (m <= ancla) return ORIGEN.ajeno
+  // UN MES POSTERIOR AL CORRIENTE NO USA ARCA aunque tenga comprobantes. Una factura con fecha futura
+  // existe (se emiten adelantadas) y no convierte un mes que no ocurrió en un hecho: sigue siendo
+  // proyección, o el cuadro daría por cerrado un mes con una sola factura adentro.
+  if (mesesArca.includes(m) && !(mesEnCurso && m > mesEnCurso)) {
+    return m === mesEnCurso ? ORIGEN.arcaParcial : ORIGEN.arca
+  }
+  if (mesesProy.includes(m)) return ORIGEN.proyeccion
+  return ORIGEN.vacio
+}
+
+export function bloqueIva(G, { anio, ivaOficial, proy, arca, hoy }) {
   G.push([seccion(4, 'IVA — la DDJJ oficial (F.2051): qué se debe o se tiene a favor')])
   G.cabecera()
   const porMesOf = new Map((ivaOficial ?? []).filter((d) => d.periodo).map((d) => [Number(String(d.periodo).slice(5, 7)), d]))
   const mesesOf = M12.filter((m) => porMesOf.has(m))
   const proyIva = proy?.meses ?? []
-  const esProy = (m) => proyIva.includes(m)
   // LOS MESES QUE YA TIENEN DATO EN LA HOJA PERO NO TIENEN DDJJ SE PRESERVAN, NO SE VACÍAN. Es el
   // caso de julio: alguien lo calculó a mano. Entran a la lista de meses escribibles para que
   // `mensual` los recorra, y la función de celda les devuelve AJENO — "no la toques".
@@ -44,38 +96,74 @@ export function bloqueIva(G, { anio, ivaOficial, proy }) {
   /** El valor de un mes NO proyectado: el de la DDJJ si la hay, y si no se preserva lo que haya. */
   const ofOAjeno = (m, campo) => (porMesOf.has(m) ? porMesOf.get(m)[campo] : (m <= ancla ? AJENO : VACIO))
 
+  // EL MES EN CURSO SALE DE `hoy`, NO DE new Date(): el generador tiene que dar la misma grilla
+  // corrido dos veces el mismo día, y un test tiene que poder fijar el día. Si el cuadro es de un año
+  // que ya pasó no hay mes en curso y todos los meses con comprobantes están cerrados.
+  const mesEnCurso = String(hoy ?? '').slice(0, 4) === String(anio) ? Number(String(hoy).slice(5, 7)) : 0
+  const mesesArca = arca?.meses ?? []
+  const ctx = { mesesDDJJ: mesesOf, ancla, mesesArca, mesesProy: proyIva, mesEnCurso }
+  const origen = (m) => origenDelMes(m, ctx)
+  const periodo = (m) => `${anio}-${String(m).padStart(2, '0')}`
+  /** ¿El mes lo calcula la planilla (ARCA o proyección), o es un valor que se preserva? */
+  const calculado = (m) => [ORIGEN.arca, ORIGEN.arcaParcial, ORIGEN.proyeccion].includes(origen(m))
+
   const fDeb = G.n() + 1
   const fCred = fDeb + 1
   const fLibre = fDeb + 3
   const colAnt = (m) => `${cmes(m - 1)}${fLibre}`
 
+  /** El término del mes: ARCA si el período ya tiene comprobantes, y si no la proyección del Libro. */
+  const termino = (m, { deArca, proyectado }) => {
+    const o = origen(m)
+    if (o === ORIGEN.arca) return deArca(periodo(m))
+    if (o === ORIGEN.arcaParcial) return nuncaMenosQue(deArca(periodo(m)), proyectado(m))
+    return proyectado(m)
+  }
+
   G.mensual('Débito fiscal del período',
-    (m) => (esProy(m) ? formulaDebitoProyectado(proy.brutoDebito(m)) : ofOAjeno(m, 'debito')),
-    'F.2051 · IVA generado por las ventas del mes. Los meses futuros son PROYECCIÓN: el IVA contenido en las cobranzas que el Libro ya da por cobradas y esperadas.', { meses })
+    (m) => (calculado(m)
+      ? termino(m, { deArca: formulaDebitoArca, proyectado: (x) => formulaDebitoProyectado(proy.brutoDebito(x)) })
+      : ofOAjeno(m, 'debito')),
+    'F.2051 · IVA generado por las ventas del mes. Los meses sin DDJJ pero CON comprobantes salen de _ARCA_RAW —las ventas reales que ARCA registró para ese período— y los que no tienen ni eso son PROYECCIÓN: el IVA contenido en las cobranzas que el Libro ya da por cobradas y esperadas.', { meses })
   G.mensual('Crédito fiscal del período',
-    (m) => (esProy(m) ? formulaCreditoProyectado(proy.brutoCredito(m)) : ofOAjeno(m, 'credito')),
-    'F.2051 · IVA de las compras computable del mes. Los meses futuros son PROYECCIÓN: el IVA contenido en las compras CON FACTURA que el Libro ya trae (los cheques y la tarjeta sin factura quedan afuera: sin comprobante no hay crédito computable).', { meses })
+    (m) => (calculado(m)
+      ? termino(m, { deArca: formulaCreditoArca, proyectado: (x) => formulaCreditoProyectado(proy.brutoCredito(x)) })
+      : ofOAjeno(m, 'credito')),
+    'F.2051 · IVA de las compras computable del mes. Los meses sin DDJJ pero CON comprobantes salen de _ARCA_RAW: el IVA facturado íntegro del libro de compras, notas de crédito restadas — mismo criterio que la posición técnica del OS. Los que no tienen comprobantes son PROYECCIÓN: el IVA de las compras CON FACTURA que el Libro trae (los cheques y la tarjeta sin factura quedan afuera: sin comprobante no hay crédito computable).', { meses })
   // EL RÓTULO NO SE ESCRIBE ACÁ: sale de CALENDARIO_IMPUESTOS, que es lo que cinco consumidores
   // BUSCAN por texto en la columna A. El texto es el contrato y tiene una sola definición.
+  //
+  // LA ARITMÉTICA DE ARRASTRE ES UNA SOLA para ARCA y para la proyección: el mes toma el saldo de
+  // libre disponibilidad del anterior y le resta su posición. Lo único que cambia entre los dos
+  // estados es DE DÓNDE salen el débito y el crédito, y eso ya se resolvió dos filas más arriba.
   const fAPagar = G.mensual(CALENDARIO_IMPUESTOS.rotulos.iva,
-    (m) => (esProy(m)
+    (m) => (calculado(m)
       ? formulaAPagarProyectado(`${cmes(m)}${fDeb}`, `${cmes(m)}${fCred}`, colAnt(m))
       : ofOAjeno(m, 'a_pagar_efectivo')),
-    'Hasta el último período presentado lo absorbió el crédito de libre disponibilidad. Después es PROYECCIÓN: lo que el saldo a favor del mes anterior ya no alcanza a absorber. ESTA es la fila que leen el Libro y el cash flow.', { meses })
+    'Hasta el último período presentado lo absorbió el crédito de libre disponibilidad. Después es lo que el saldo a favor del mes anterior ya no alcanza a absorber, con el débito y el crédito reales de ARCA si el período los tiene. ESTA es la fila que leen el Libro y el cash flow.', { meses })
   G.mensual('Saldo de libre disponibilidad (acumulado)',
-    (m) => (esProy(m)
+    (m) => (calculado(m)
       ? formulaLibreDispProyectada(colAnt(m), `${cmes(m)}${fDeb}`, `${cmes(m)}${fCred}`)
       : ofOAjeno(m, 'libre_disp')),
     'F.2051 · crédito de la empresa inmovilizado en ARCA. Se arrastra; el total no aplica.', { meses, totaliza: false })
+  // LA PROCEDENCIA DISTINGUE ARCA DE UNA PROYECCIÓN, y no es cosmético: un mes de ARCA es un HECHO
+  // parcial o completo sobre comprobantes reales, y una proyección es un supuesto sobre el Libro.
+  // Verlos con la misma leyenda hacía que el dueño discutiera un número que no había que discutir.
+  const procedencia = {
+    [ORIGEN.arca]: '⚠ ARCA (sin DDJJ)',
+    [ORIGEN.arcaParcial]: '⚠ ARCA parcial',
+    [ORIGEN.proyeccion]: '⚠ PROYECCIÓN',
+  }
   const fDDJJ = G.mensual('DDJJ presentada',
-    (m) => (esProy(m) ? '⚠ PROYECCIÓN' : (porMesOf.has(m)
+    (m) => (calculado(m) ? procedencia[origen(m)] : (porMesOf.has(m)
       // Corto para la columna de mes (108px ≈ 18 caracteres): fecha dd/mm + últimas 4 del N° de
       // transacción — alcanza para verificar contra ARCA sin desbordar la celda.
       ? `${String(porMesOf.get(m).fecha_presentacion).slice(0, 5)}·N…${String(porMesOf.get(m).nro_transaccion).slice(-4)}`
       : (m <= ancla ? AJENO : VACIO))),
-    'F.2051 presentada ante ARCA. Fuente primaria, verificable por N° de transacción. Los meses con "⚠ PROYECCIÓN" no tienen DDJJ: son un cálculo, no un hecho.', { meses, totaliza: false })
+    'F.2051 presentada ante ARCA. Fuente primaria, verificable por N° de transacción. "⚠ ARCA (sin DDJJ)" es el período cerrado calculado sobre los comprobantes reales que todavía no se presentaron; "⚠ ARCA parcial" es el mes en curso, que se completa solo a medida que ARCA se carga; "⚠ PROYECCIÓN" no tiene ni comprobantes: es un cálculo, no un hecho.', { meses, totaliza: false })
   G.blanco()
-  return { fDeb, fCred, fAPagar, fLibre, fDDJJ, meses, mesesOf, ancla, anio }
+  const porOrigen = Object.fromEntries(Object.values(ORIGEN).map((o) => [o, meses.filter((m) => origen(m) === o)]))
+  return { fDeb, fCred, fAPagar, fLibre, fDDJJ, meses, mesesOf, ancla, anio, porOrigen }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════

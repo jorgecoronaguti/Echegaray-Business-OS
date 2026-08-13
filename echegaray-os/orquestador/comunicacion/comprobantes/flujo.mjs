@@ -462,6 +462,33 @@ export function obrasCanonicas(delDesplegable = [], indice = null) {
 }
 
 /**
+ * ¿La imputación que no se pudo deducir se PREGUNTA, o se carga con la celda vacía y se declara?
+ *
+ * ═══ LA DECISIÓN DEL DUEÑO (13/08) ═══
+ *
+ * Textual: «no quiero q pregunte nada, quiero q el mismo mecanismo de carga por esta via sea el q se
+ * usa por la via de mattermost». El cargador que corre Claude Code nunca preguntó nada: escribe la
+ * fila con Categoría, Unidad, Obra y Detalle vacías y el dueño las completa en el Sheet. El bot, en
+ * cambio, frenaba en un menú apenas alguna de esas cuatro columnas quedara sin resolver — y como las
+ * cuatro tienen desplegable, eso era CASI SIEMPRE. Ésa era la falencia: dos caras del mismo motor con
+ * dos umbrales distintos para escribir la misma fila.
+ *
+ * ═══ Y POR QUÉ ESTO NO REVIVE LO QUE ÉL YA RECHAZÓ EL 04/08 ═══
+ *
+ * El 04/08 rechazó cargar con la imputación vacía **y avisar en genérico**: «completalas vos en
+ * Compras» no le dice cuáles ni dónde, así que no las completa nadie. Lo que cambia ahora no es que
+ * se cargue: es que el aviso nombra CADA fila y CADA columna que quedó en blanco (ver
+ * `imputacionVacia` y `textoCargado`). Cargar y declarar es distinto de cargar en silencio.
+ *
+ * Lo que NO afloja: el proveedor fuera del desplegable, el duplicado PROBABLE y cualquier dato que la
+ * visión no pudo leer siguen preguntando, porque ahí no hay celda vacía que completar después — hay
+ * un gasto que entraría mal o dos veces. Eso lo decide `estaCompleto`, que no se toca.
+ *
+ * Se puede volver atrás sin desplegar: `ORQ_COMPROBANTES_PREGUNTAR_IMPUTACION=1`.
+ */
+export const PREGUNTAR_IMPUTACION = String(process.env.ORQ_COMPROBANTES_PREGUNTAR_IMPUTACION ?? '') === '1'
+
+/**
  * MANDAR LA FOTO ES EL PEDIDO — no hay que confirmar nada. (04/08, decisión del dueño)
  *
  * Antes toda foto paraba en un mensaje con botones esperando un Confirmar. Con un fajo de veinte
@@ -490,19 +517,19 @@ async function cargarSolo(d, fajo, repo, rendicion = null) {
   const { port, escribir } = d
   if (typeof escribir !== 'function') return null      // sin escritor inyectado: el flujo viejo
   const items = fajo?.items ?? []
-  if (!items.length || !items.every(estaCompleto)) return null
 
-  // ═══ NO SE CARGA CIEGO (04/08) ═══
+  // ═══ UN COMPROBANTE QUE NO SE PUEDE CARGAR NO PUEDE FRENAR A LOS OTROS ONCE (13/08) ═══
   //
-  // La primera versión de esto cargaba igual con la Unidad de Negocio, la obra y el Detalle vacíos y
-  // avisaba "completalas vos en Compras". El dueño lo rechazó con razón: ese es exactamente el
-  // trabajo que este flujo existe para no hacer, y una fila sin unidad entra al Flujo de Caja con el
-  // rubro sin clasificar. Si hay algo que preguntar Y hay con qué contestarlo, se pregunta.
-  //
-  // "Con qué contestarlo" es la condición que importa: si no se pudieron leer los desplegables ni
-  // hay historia, preguntar sería mostrar un menú vacío. Ahí se carga igual y se dice — un
-  // comprobante que no llegó nunca a Compras es peor que uno con una celda por completar.
-  if (items.some((it) => imputacionPendiente(it).length)) return null
+  // Acá decía `items.every(estaCompleto)`: con una sola foto ilegible en una tanda de doce, las once
+  // buenas se quedaban esperando un click. En una carga fuerte —que es lo que el dueño va a hacer—
+  // esa es la diferencia entre cargar todo y no cargar nada. Se cargan las que están listas y las que
+  // de verdad necesitan una respuesta se mudan a un fajo nuevo con sus botones.
+  const listos = items.filter((it) => estaCompleto(it))
+  const trabados = items.filter((it) => !estaCompleto(it))
+  if (!listos.length) return null
+
+  // La política vieja, apagada por defecto desde el 13/08. Ver `PREGUNTAR_IMPUTACION`.
+  if (PREGUNTAR_IMPUTACION && listos.some((it) => imputacionPendiente(it).length)) return null
 
   // COMPARE-AND-SET igual que el botón. No es ceremonia: dos posts casi simultáneos de la misma
   // persona pueden llegar acá con el mismo fajo, y el que pierde tiene que no escribir nada.
@@ -528,7 +555,60 @@ async function cargarSolo(d, fajo, repo, rendicion = null) {
   // el mensaje contradiciéndose a sí mismo en dos renglones seguidos.
   const estado = r?.estado ?? ESTADO.CARGADO
   const cola = rendicion ? `\n\n${textoRendicion(rendicion, { seCargaron: estado === ESTADO.CARGADO })}` : ''
-  return { texto: (r?.texto ?? '✔ Cargado.') + cola, estado, fajoId: fajo.id }
+  const tanda = estado === ESTADO.CARGADO ? await textoAcumulado(port, repo, fajo, (r?.filas ?? []).length) : ''
+
+  // ═══ LO QUE QUEDÓ TRABADO SE MUDA A UN FAJO NUEVO, CON SUS BOTONES ═══
+  //
+  // Sólo cuando la escritura CERRÓ el fajo. Si falló, `escribirFajo` ya lo reabrió con su error: abrir
+  // otro chocaría contra el índice único parcial (un solo fajo abierto por persona y canal) y
+  // devolvería el mismo, duplicando los ítems trabados dentro de él.
+  if (trabados.length && (estado === ESTADO.CARGADO || estado === ESTADO.ENCOLADO)) {
+    const nuevo = await repo.abrirFajo(port, {
+      plataforma: fajo.plataforma ?? 'mattermost',
+      userId: fajo.plataforma_user_id,
+      username: fajo.plataforma_username ?? null,
+      channelId: fajo.channel_id,
+      rootPostId: fajo.root_post_id ?? null,
+      postId: (fajo.post_ids ?? [])[0] ?? null,
+      items: trabados,
+    }).catch(() => null)
+    if (nuevo) {
+      const msg = mensajeFajo(nuevo, { url: d.url })
+      const encabezado = trabados.length === 1
+        ? '\n\n⚠ Uno no lo pude cargar solo — necesito que me contestes esto:'
+        : `\n\n⚠ ${trabados.length} no los pude cargar solos — necesito que me contestes esto:`
+      return {
+        texto: (r?.texto ?? '✔ Cargado.') + tanda + cola + encabezado + '\n' + msg.texto,
+        attachments: msg.attachments,
+        estado,
+        fajoId: nuevo.id,
+      }
+    }
+  }
+  return { texto: (r?.texto ?? '✔ Cargado.') + tanda + cola, estado, fajoId: fajo.id }
+}
+
+/**
+ * EL RENGLÓN DEL ACUMULADO — «llevás 23 comprobantes por $4.128.900 en esta tanda».
+ *
+ * Sólo aparece cuando la tanda es MÁS GRANDE que este post: si el número fuera igual al que acaba de
+ * decir el renglón de arriba, sería el mismo dato dos veces, y un mensaje que se repite se deja de
+ * leer. Con treinta fotos —que son tres o cuatro posts, porque Mattermost limita los adjuntos— es el
+ * único número contra el que el dueño puede comparar el fajo de papeles que tiene en la mano.
+ *
+ * Nunca lanza y nunca bloquea: es informativo. Si el repositorio no sabe contestarlo (el doble en
+ * memoria de los tests, una base que no responde) devuelve cadena vacía y el mensaje sale igual.
+ */
+async function textoAcumulado(port, repo, fajo, cuantasAhora = 0) {
+  if (typeof repo?.acumuladoDeLaTanda !== 'function') return ''
+  const t = await repo.acumuladoDeLaTanda(port, {
+    plataforma: fajo?.plataforma ?? 'mattermost',
+    userId: fajo?.plataforma_user_id,
+    channelId: fajo?.channel_id,
+  }).catch(() => null)
+  if (!t || !(t.cuantos > Math.max(1, cuantasAhora))) return ''
+  const plata = t.suma ? ` por **$${Math.round(t.suma).toLocaleString('es-AR')}**` : ''
+  return `\n\n📊 **En esta tanda llevás ${t.cuantos} comprobantes${plata}.** (última hora, este canal)`
 }
 
 /**

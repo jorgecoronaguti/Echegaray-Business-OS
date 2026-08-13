@@ -26,6 +26,7 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
+import { conColaMedida, avisoDeCola } from '../lib/cola-de-rango.mjs'
 import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 import { resolverColumnas, rango } from '../lib/compras-columnas.mjs'
 import { sub, total as rotuloTotal, auditarPatron } from '../lib/patron-pestana.mjs'
@@ -40,7 +41,8 @@ import { rangosDeCargas, RUBRO_PLANES } from '../lib/libro-extractores-cargas.mj
 import { aRangoApi, verificarRangos, explicarProblemas } from '../lib/rangos-con-nombre.mjs'
 import { detectarQuincenas } from '../lib/nomina-sync.mjs'
 import { ultimaQuincenaCerrada } from '../lib/motor-salarial.mjs'
-import { asegurarParametros, ultimoDiaCargado } from './jornales-pestana.mjs'
+import { asegurarParametros, ultimoDiaCargado, PESTAÑA as PESTAÑA_JORNALES } from './jornales-pestana.mjs'
+import { baseDeJornales } from '../lib/proyeccion-convenio.mjs'
 import { ANCHO, COL_ORIGEN, cm, crearGrilla } from '../lib/cargas-grilla.mjs'
 import {
   bloqueDeclarado, bloquePagado, bloqueDiferencia, bloqueProyeccion, bloqueCaja, bloqueSac, bloquePlanes,
@@ -84,7 +86,7 @@ export const CONCEPTOS_PROY = CONCEPTOS_CADENA
 export { jornalesDelMes } from '../lib/cargas-cadena.mjs'
 
 /** NÚCLEO PURO: arma la grilla entera de la pestaña. Devuelve las filas y las marcas que usa el formato. */
-export function grilla({ periodos, conceptos, ps, C, bloqueBase = null }) {
+export function grilla({ periodos, conceptos, ps, C, bloqueBase = null, baseJornales = null }) {
   const desdeProy = desdeQueMesSeProyecta(periodos)
   const G = crearGrilla(AÑO)
 
@@ -151,7 +153,8 @@ export function grilla({ periodos, conceptos, ps, C, bloqueBase = null }) {
   const pag = bloquePagado(G, { anio: AÑO, C, fArtDecl: decl.filaDecl['312'], fDeclTot: decl.fDeclTot })
   bloqueDiferencia(G, { fPagF931: pag.filaPag.F931, fDeclTot: decl.fDeclTot })
   const proy = bloqueProyeccion(G, {
-    anio: AÑO, desdeProy, filaDecl: decl.filaDecl, filaPag: pag.filaPag, fRem: decl.fRem, fEmp: decl.fEmp, bloqueBase,
+    anio: AÑO, desdeProy, filaDecl: decl.filaDecl, filaPag: pag.filaPag, fRem: decl.fRem, fEmp: decl.fEmp,
+    bloqueBase, baseJornales,
   })
   const caja = bloqueCaja(G, {
     anio: AÑO, desdeProy, proyMeses: proy.proyMeses, fDeclTot: decl.fDeclTot, fProyTot: proy.fProyTot, C,
@@ -266,10 +269,23 @@ async function main() {
   const bloqueBase = cerrada?.bloque ?? bloquesJ[bloquesJ.length - 1] ?? null
   if (!bloqueBase) console.warn('  ⚠ no pude ubicar la última quincena cerrada en _J_OBREROS: la alícuota de FCL queda sin ponderar por antigüedad')
 
+  // ── CON QUÉ BASE VIENE LA MASA QUE ESTA PESTAÑA MULTIPLICA ──
+  //
+  // La proyección de esta pestaña es jornales × relación declarado/neto, y los jornales llegan por el
+  // rango JORNALES_PROY_TOTAL: la base con que fueron valuados —pactado o 100% del convenio— la decide
+  // Jornales y acá NO se vuelve a decidir. Se lee del encabezado que ese cuadro dejó escrito, que es
+  // el EFECTO de la decisión, no la intención: si la réplica del convenio estaba caída cuando corrió
+  // Jornales, el encabezado dice "pactada" y la glosa de acá dice lo mismo. Sin lectura, la nota
+  // declara que no sabe — nunca afirma un supuesto que no puede probar.
+  const jorn = await google.readSheetValues(ID, `'${PESTAÑA_JORNALES}'!A1:N400`).catch(() => [])
+  const baseJornales = baseDeJornales(jorn ?? [])
+  console.log(`base de los jornales proyectados: ${baseJornales ?? '⚠ no la pude leer de la pestaña de Jornales'}`)
+
   const ps = await planesDePago(AÑO)
   console.log(`${periodos.length} período(s) F931 · ${conceptos.length} concepto(s) · ${ps.length} plan(es) de pago`)
 
-  const { filas, cantidades, ratios, fechas, titular, prosaFormula, pies, controles, rangos } = grilla({ periodos, conceptos, ps, C, bloqueBase })
+  // `filas` es `let` porque la cola de la pestaña vieja se le agrega abajo, después de leerla.
+  let { filas, cantidades, ratios, fechas, titular, prosaFormula, pies, controles, rangos } = grilla({ periodos, conceptos, ps, C, bloqueBase, baseJornales })
   console.log(`grilla: ${filas.length} filas × ${ANCHO} columnas — un solo ancho para toda la pestaña`)
   if (DRY) return
 
@@ -295,14 +311,12 @@ async function main() {
   // Se extiende la grilla con filas marcadas VACIO hasta la última fila con contenido: VACIO
   // significa "es mi celda y va vacía", así que se limpia lo que este generador (o sus antecesores)
   // dejaron, y CUALQUIER anotación de una persona en una columna que el generador no ocupa se
-  // conserva igual, porque la fusión sólo limpia donde hay centinela.
+  // conserva igual, porque la fusión sólo limpia donde hay centinela. El mecanismo vive en
+  // lib/cola-de-rango.mjs: era este mismo bucle copiado en cinco generadores, con cinco variantes.
   const previo = await google.readSheetValues(ID, `'${PESTAÑA}'!A1:${COL_ORIGEN}400`)
-  let ultima = 0
-  previo.forEach((f, i) => { if ((f || []).some((c) => String(c ?? '').trim())) ultima = i + 1 })
-  if (ultima > filas.length) {
-    console.log(`cola de la pestaña vieja: limpio las filas ${filas.length + 1}–${ultima} (${ultima - filas.length} filas de los generadores anteriores)`)
-    for (let i = filas.length; i < ultima; i++) filas.push(Array(ANCHO).fill(VACIO))
-  }
+  const cola = conColaMedida(filas, previo, { ancho: ANCHO })
+  if (avisoDeCola(cola, PESTAÑA)) console.log(avisoDeCola(cola, PESTAÑA))
+  filas = cola.filas
 
   // Las celdas combinadas de la pestaña vieja se tragan la escritura EN SILENCIO: ni error ni valor.
   await google.spreadsheetBatchUpdate(ID, [

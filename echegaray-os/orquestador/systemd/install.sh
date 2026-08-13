@@ -58,6 +58,10 @@ cp "$SRC_DIR"/echegaray-tesorero.service "$SRC_DIR"/echegaray-tesorero.timer "$U
 # prefijo con nada, y si el glob no los nombra el agente arranca sin navegador y avisa "no hay
 # sesión" para siempre.
 cp "$SRC_DIR"/echegaray-balanz-*.service "$SRC_DIR"/echegaray-balanz-*.timer "$UNIT_DIR/"
+# Sync semanal de comprobantes de ARCA. Vivía SÓLO en ~/.config/systemd/user/ desde el 16/07: fuera
+# de git, sin historia y sin forma de reinstalarlo en otra máquina. Se versiona el 07/08 con el texto
+# exacto que estaba corriendo en la VM — versionar una unidad es capturar lo que hay, no rediseñarla.
+cp "$SRC_DIR"/echegaray-arca-sync.service "$SRC_DIR"/echegaray-arca-sync.timer "$UNIT_DIR/"
 echo "units copiadas a $UNIT_DIR"
 
 systemctl --user daemon-reload
@@ -68,6 +72,10 @@ systemctl --user enable --now echegaray-orq-vigilancia.timer
 systemctl --user enable --now echegaray-orq-interactive.service
 systemctl --user enable --now echegaray-os-tunnel.service      # túnel HTTPS saliente (canal extensión)
 systemctl --user enable --now echegaray-os-schedules.timer     # disparador de recurrencias (agenda)
+# El sync de ARCA se habilita porque es como está HOY en la VM (enabled + active desde el 16/07), y
+# porque un timer copiado y no habilitado es el defecto más silencioso: no falla nada, simplemente no
+# pasa. Gasta cuota de AfipSDK, no de Anthropic, y desde el 07/08 se niega solo si no le alcanza.
+systemctl --user enable --now echegaray-arca-sync.timer        # comprobantes ARCA (lunes 03:00)
 
 # El Tesorero se COPIA pero NO se habilita, a propósito. Antes de que corra solo hacen
 # falta tres cosas que no puede darse a sí mismo: la migración aplicada, la reserva

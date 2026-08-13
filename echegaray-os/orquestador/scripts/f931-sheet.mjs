@@ -29,6 +29,7 @@ import { query } from '../lib/db.mjs'
 import { parseF931, CONCEPTOS_F931 } from '../lib/cargas-sociales.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
 import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
+import { conColaMedidaLeida, avisoDeCola } from '../lib/cola-de-rango.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 export const PESTAÑA = '_F931_RAW'
@@ -127,7 +128,12 @@ async function main() {
     COLUMNAS.map(([n]) => n),
     ...filas,
   ]
-  const { conservadas } = await escribirPreservando(google, ID, PESTAÑA, gridRaw, { espejo: true /* _F931_RAW es un espejo de los PDF F931 del data room, no una pestaña que el dueño edite: sin candado ni firma, para que refresque siempre (misma razón que _J_*, _BANCO_RAW, _ARCA_RAW) */, anchoHoja: Math.max(COLUMNAS.length, hoja.cols ?? COLUMNAS.length) })
+  // LA COLA DE UNA CORRIDA ANTERIOR (13/08). Esta réplica se acorta cuando un PDF deja de leerse o se
+  // saca del data room: la DDJJ vieja sobreviviría en la pestaña y el cuadro "DECLARADO EN LA DDJJ"
+  // sumaría un período que ya no tiene respaldo. Un espejo con cola miente igual que un cuadro.
+  const cola = await conColaMedidaLeida(google, ID, PESTAÑA, gridRaw, { ancho: COLUMNAS.length, tope: alto })
+  if (avisoDeCola(cola, PESTAÑA)) console.log(avisoDeCola(cola, PESTAÑA))
+  const { conservadas } = await escribirPreservando(google, ID, PESTAÑA, cola.filas, { espejo: true /* _F931_RAW es un espejo de los PDF F931 del data room, no una pestaña que el dueño edite: sin candado ni firma, para que refresque siempre (misma razón que _J_*, _BANCO_RAW, _ARCA_RAW) */, anchoHoja: Math.max(COLUMNAS.length, hoja.cols ?? COLUMNAS.length) })
   if (conservadas.length) console.log(`  ✋ ${conservadas.length} celda(s) de una persona — CONSERVADAS`)
 
   const rg = (r0, r1, c0, c1) => ({ sheetId: hoja.sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })

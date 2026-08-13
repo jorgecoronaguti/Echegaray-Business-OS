@@ -236,8 +236,23 @@ export function opcionesDelDesplegable(item = {}, campo) {
   return obra && o.detalle && Array.isArray(o.detalle[obra]) ? o.detalle[obra] : []
 }
 
-/** Lo que le falta a este ítem de la imputación, en el orden en que se pregunta. */
-export function imputacionPendiente(item = {}) {
+/**
+ * Las columnas de imputación que quedaron VACÍAS en este ítem, se pueda ofrecer un menú o no.
+ *
+ * ═══ POR QUÉ ES DISTINTA DE `imputacionPendiente` (13/08) ═══
+ *
+ * `imputacionPendiente` contesta «¿de qué puedo ofrecer un menú?» — filtra por si hay opciones que
+ * mostrar, porque un menú vacío no es una pregunta. Ésta contesta «¿qué celda va a quedar en blanco
+ * en Compras?», que es otra cosa y es la que hace falta para RENDIR CUENTA después de escribir: una
+ * columna sin opciones para ofrecer queda igual de vacía en la fila, y si el aviso la filtrara, el
+ * dueño no se enteraría nunca de la única que nadie le puede completar.
+ *
+ * No hay marca posible DENTRO de la celda: B, I y J son desplegables ESTRICTOS y escribir ahí la
+ * palabra "pendiente" dejaría la celda en rojo y rompería los cruces del Cash Flow. La marca es la
+ * celda vacía —que es exactamente lo que las ARRAYFORMULA AC/AE leen como "sin clasificar"— más este
+ * aviso con el número de fila.
+ */
+export function imputacionVacia(item = {}) {
   if (!item || item.yaCargado) return []
   const c = item.comprobante ?? {}
   const falta = []
@@ -245,7 +260,13 @@ export function imputacionPendiente(item = {}) {
   if (!c.obra) falta.push('obra')
   if (!c.unidad) falta.push('unidad')
   if (!c.detalleObra) falta.push('detalle')
-  return falta.filter((campo) => opcionesDe(item.sugerencia?.[campo]).length || opcionesDelDesplegable(item, campo).length)
+  return falta
+}
+
+/** Lo que le falta a este ítem de la imputación Y se puede ofrecer con un menú. */
+export function imputacionPendiente(item = {}) {
+  return imputacionVacia(item)
+    .filter((campo) => opcionesDe(item.sugerencia?.[campo]).length || opcionesDelDesplegable(item, campo).length)
 }
 
 /** El primer ítem con imputación pendiente. -1 si no hay ninguno. */

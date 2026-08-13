@@ -182,6 +182,26 @@ test('MEDIA SERIE NO SE DIBUJA: si faltan filas, devuelve null y el que llama ti
   assert.equal(ubicarSeries([]).pagos, null)
 })
 
+test('UN RANKING SIN CONTRAPARTES NO SE DIBUJA: rótulo presente y filas vacías devuelven null', () => {
+  // "El gráfico que no tiene nada" (el dueño lo mandó borrar el 07/08): las fórmulas de
+  // top-contraparte devuelven "" cuando no hay contrapartes en la ventana — la fila existe, el dato
+  // no, y el gráfico salía dibujado vacío. El rótulo solo no alcanza: tiene que haber dato.
+  const h = hojaFalsa()
+  bloqueSeries(h)
+  // Lo que VE ubicarSeries en la corrida real es el VALOR leído, no la fórmula: un ranking sin
+  // contrapartes rinde "". Acá se simula esa lectura vaciando toda celda que era fórmula.
+  const colA = h.filas.map((f) => {
+    const celda = String(f?.[0] ?? '')
+    return [celda.startsWith('=') ? '' : celda]
+  })
+  const u = ubicarSeries(colA)
+  assert.equal(u.pagos, null, 'un ranking de pagos sin datos se dibujaba vacío')
+  assert.equal(u.cobranzas, null, 'un ranking de cobranzas sin datos se dibujaba vacío')
+  // Y las series cuya columna A viene vacía POR DISEÑO siguen ubicándose: el control no las mata.
+  assert.ok(u.proyeccion, 'proyección tiene la columna A vacía por diseño y se dibuja igual')
+  assert.ok(u.historia, 'historia tiene la columna A vacía por diseño y se dibuja igual')
+})
+
 test('NINGUNA fórmula usa la coma como separador de argumentos fuera de un literal (es-AR)', () => {
   // El texto del QUERY lleva comas de su propia sintaxis ("select J, sum(C)") y está bien: vive dentro
   // de un literal. La regla que importa es la otra — una coma entre ARGUMENTOS deja #ERROR! en la celda.
