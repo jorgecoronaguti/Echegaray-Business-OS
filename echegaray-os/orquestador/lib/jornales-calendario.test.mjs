@@ -7,8 +7,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  COLS_CALENDARIO, colCalendario, diasLaborables, expresionDias, MASCARA_DOMINGO,
+  COLS_CALENDARIO, colCalendario, diasLaborables, expresionDias, MASCARA_FIN_DE_SEMANA,
   formulaVentana, formulaShareEfectivo, formulaControlCalendario,
+  formulaBajaNoRegistrada, LINEA_SABADOS,
 } from './jornales-calendario.mjs'
 import { diasHabilesObra } from './jornales-demanda-obras.mjs'
 
@@ -28,40 +29,49 @@ const REGISTRO = [
   ['2026-07-01', '2026-07-15', 13], ['2026-07-16', '2026-07-31', 14], ['2026-08-03', '2026-08-15', 12],
 ]
 const d = (iso) => { const [y, m, x] = iso.split('-').map(Number); return new Date(y, m - 1, x) }
+/** La fórmula SIN sus literales de texto: una coma en una frase es prosa, no un separador es-AR. */
+const sinTextos = (f) => String(f).replace(/"[^"]*"/g, '""')
 const lunVie = (a, b) => {
   let n = 0
   for (const x = new Date(a); x <= b; x.setDate(x.getDate() + 1)) if (x.getDay() >= 1 && x.getDay() <= 5) n++
   return n
 }
 
-test('EL CALENDARIO DE LA OBRA ES LUNES A SÁBADO — medido contra los días que la planilla cargó', () => {
-  // ═══ EL DEFECTO, CON SU NÚMERO ═══
-  // La proyección usaba `NETWORKDAYS(desde;hasta)` = lunes a viernes. Sobre estas doce quincenas eso
-  // da 125 días contra los 148 que la planilla cargó: **la proyección de obra venía 15,5% por debajo**
-  // sin dar un solo error. Y las horas por persona se MIDEN dividiendo por los días del registro
-  // (lun-sáb), así que el producto además mezclaba dos calendarios distintos.
-  let real = 0; let sab = 0; let vie = 0
-  for (const [a, b, dias] of REGISTRO) {
-    real += dias; sab += diasLaborables(d(a), d(b)); vie += lunVie(d(a), d(b))
-    assert.equal(diasLaborables(d(a), d(b)), dias, `${a}→${b}: lun-sáb no reproduce los días cargados`)
+test('LA SEMANA DE OBRA ES LUNES A VIERNES — y lo que queda afuera se declara, no se calcula', () => {
+  // ═══ EL ERROR QUE ESTE TEST FIJA, Y NO ES EL QUE PARECE ═══
+  //
+  // Medí que la planilla carga 148 días donde lunes-viernes cuenta 125 y concluí que la obra trabaja
+  // los sábados. El dueño: "las obras trabajan hasta el viernes". La medición era buena y la
+  // conclusión estaba mal: esos ~23 días son sábados de HORAS EXTRA, no la semana normal. Convertir
+  // un dato observado en supuesto de cálculo movía $9,6M de proyección sin que nadie lo decidiera.
+  //
+  // Lo que se fija acá es el criterio del dueño, no la medición.
+  assert.equal(diasLaborables(d('2026-08-16'), d('2026-08-31')), 11, 'agosto 16-31: 11 días lunes a viernes')
+  assert.equal(diasLaborables(d('2026-07-16'), d('2026-07-31')), 12)
+  for (const [a, b] of REGISTRO.map((x) => [x[0], x[1]])) {
+    assert.equal(diasLaborables(d(a), d(b)), lunVie(d(a), d(b)), `${a}→${b}: dejó de contar lunes a viernes`)
   }
-  assert.equal(sab, real, 'lun-sábado tiene que reproducir EXACTAMENTE los días que cargó la planilla')
-  assert.ok(vie < real * 0.98, `lun-viernes (${vie}) tiene que quedar claramente por debajo de los ${real} reales`)
+  // Y el sábado no desaparece del relato: la pestaña declara que la proyección no lo ve.
+  assert.match(LINEA_SABADOS, /LUNES A VIERNES/)
+  assert.match(LINEA_SABADOS, /horas extra/)
+  assert.doesNotMatch(LINEA_SABADOS, /\d/, 'la línea DECLARA; si trae un número volvió a ser un cálculo')
 })
 
 test('la fórmula que va al Sheet usa la MISMA máscara: sólo el domingo no es laborable', () => {
   // La mitad del defecto que no se ve en JavaScript: la celda podría seguir contando lun-vie aunque
   // la lib de acá contara bien. La máscara es lunes→domingo con 1 = no laborable.
-  assert.equal(MASCARA_DOMINGO, '"0000001"')
+  // La máscara es lunes→domingo con 1 = no laborable: "0000011" = sábado y domingo. Se escribe
+  // explícita —y no `NETWORKDAYS` a secas— para que el criterio viva en UN lugar: el día que la
+  // semana de obra cambie, se mueven juntas la fórmula del Sheet y el reparto de la demanda.
+  assert.equal(MASCARA_FIN_DE_SEMANA, '"0000011"')
   const f = expresionDias('A30', 'B30')
-  assert.equal(f, 'NETWORKDAYS.INTL(A30;B30;"0000001")')
-  assert.doesNotMatch(f, /NETWORKDAYS\(/, 'volvió el NETWORKDAYS de lunes a viernes')
+  assert.equal(f, 'NETWORKDAYS.INTL(A30;B30;"0000011")')
   assert.doesNotMatch(f, /,/, 'separador es-AR: punto y coma')
 })
 
 test('UNA SOLA DEFINICIÓN DE "DÍA DE OBRA": no hay dos funciones que cuenten días', () => {
-  // El defecto original era justamente tener dos calendarios: la demanda de obras repartía por
-  // lun-sáb y el convenio proyectaba por lun-vie, y el MAX comparaba peras con manzanas.
+  // El defecto era el DESACUERDO, no el día: la demanda repartía por lun-sáb y el convenio proyectaba
+  // por lun-vie, y el MAX comparaba peras con manzanas. Ahora las dos salen de la misma función.
   assert.equal(diasLaborables, diasHabilesObra)
 })
 
@@ -120,5 +130,24 @@ test('el control del calendario grita con el importe cuando el reparto no cierra
   assert.match(f, /✓ oficina y dirección cierran/)
   // La única coma admitida es la del patrón de miles de TEXT("#,##0"), que no es un separador de
   // argumentos: fuera de ella, es-AR manda punto y coma.
-  assert.doesNotMatch(f.replace(/"#,##0"/g, ''), /,/, 'separador es-AR')
+  assert.doesNotMatch(sinTextos(f), /,/, 'separador es-AR')
 })
+
+test('LA BAJA NO REGISTRADA: la pestaña dice cuánto cuesta seguir proyectando a alguien que se fue', () => {
+  // ═══ EL CASO MEDIDO (13/08) ═══
+  // Navarro cobró su liquidación final. El plantel base es la última quincena CERRADA, donde todavía
+  // figura: Σ $/hora base $85.900 contra $80.400 de la quincena en curso — los $5.500 de su jornal, al
+  // peso. La proyección lo sigue pagando hasta diciembre y NADA en la pestaña lo decía.
+  const f = formulaBajaNoRegistrada({
+    personasBase: '$B$19', sigmaBase: '$C$19', personasCurso: '$E$111', sigmaCurso: '$L$111',
+    totalObra: '$D$41',
+  })
+  // Calla cuando no falta nadie: un control que habla siempre se vuelve invisible al mes.
+  assert.match(f, /IF\(OR\(N\(\$C\$19\)=0;N\(\$B\$19\)-N\(\$E\$111\)<=0\);""/)
+  // Y el importe sale de la RELACIÓN de las dos Σ, no de un jornal escrito a mano.
+  assert.match(f, /\(1-N\(\$L\$111\)\/N\(\$C\$19\)\)\*N\(\$D\$41\)/)
+  assert.match(f, /hasta \$/, 'con el MAX de la demanda el exceso es un techo, y el rótulo tiene que decirlo')
+  assert.match(f, /sacalas de la planilla JORNALES/, 'sin decir dónde se arregla, el control no es accionable')
+  assert.doesNotMatch(sinTextos(f), /,/, 'separador es-AR')
+})
+

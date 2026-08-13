@@ -49,8 +49,9 @@ import { RANGO_MESES_BASE } from './motor-salarial.mjs'
 // UNA SOLA DEFINICIÓN DE "DÍA DE OBRA". `diasHabilesObra` ya existía —la usa el reparto de la demanda
 // de las obras vendidas— y dice lunes a sábado con su razonamiento escrito. Escribir acá una segunda
 // función idéntica es exactamente cómo aparecen dos calendarios que se separan seis meses después.
-// De hecho el defecto que este archivo arregla ERA eso: la demanda repartía por lun-sáb y el convenio
-// proyectaba por lun-vie, y el `MAX(convenio; demanda)` comparaba dos cosas medidas distinto.
+// Las dos apuntan a lunes–viernes desde el 13/08, por criterio del dueño: antes la demanda repartía
+// por lun-sáb y el convenio proyectaba por lun-vie, y el `MAX(convenio; demanda)` comparaba dos cosas
+// medidas distinto. El defecto era el desacuerdo, no el día.
 import { diasHabilesObra } from './jornales-demanda-obras.mjs'
 
 /**
@@ -78,21 +79,32 @@ export function colCalendario(rotulo, cols = COLS_CALENDARIO) {
 }
 
 /**
- * LA JORNADA DE OBRA VA DE LUNES A SÁBADO. Domingo es el único día no laborable del calendario.
+ * LA JORNADA DE OBRA VA DE LUNES A VIERNES — criterio del dueño (13/08), no del dato observado.
  *
  * `NETWORKDAYS.INTL` toma una máscara de siete caracteres, lunes a domingo, con 1 = no laborable.
- * "0000001" = sólo el domingo. Ver la cabecera: con la máscara de lunes a viernes la proyección
- * quedaba 15% baja contra las quincenas reales.
+ * "0000011" = sábado y domingo. Se escribe con la máscara explícita, y no `NETWORKDAYS` a secas, para
+ * que el criterio quede DECLARADO en un lugar: el día que la semana de obra cambie se cambia acá y se
+ * mueven las dos puntas —la fórmula del Sheet y el reparto de la demanda— juntas.
  *
  * NO CONTEMPLA FERIADOS. El Sheet no tiene calendario de feriados y ninguna otra pestaña lo tiene:
- * inventarlo acá sería una fuente nueva sin dueño. El sesgo es conocido y va hacia arriba (proyecta
- * de más), que para planificar caja es el lado seguro.
+ * inventarlo acá sería una fuente nueva sin dueño. El sesgo va hacia arriba (proyecta de más).
  */
-export const MASCARA_DOMINGO = '"0000001"'
+export const MASCARA_FIN_DE_SEMANA = '"0000011"'
 
 /** La expresión de días laborables entre dos celdas de fecha, en el mismo criterio que la obra. */
 export const expresionDias = (celdaDesde, celdaHasta) =>
-  `NETWORKDAYS.INTL(${celdaDesde};${celdaHasta};${MASCARA_DOMINGO})`
+  `NETWORKDAYS.INTL(${celdaDesde};${celdaHasta};${MASCARA_FIN_DE_SEMANA})`
+
+/**
+ * LA LÍNEA QUE DECLARA LO QUE LA PROYECCIÓN NO VE.
+ *
+ * El dueño ordenó proyectar lunes a viernes. Las quincenas cerradas TIENEN días cargados que no son
+ * lunes a viernes —sábados de horas extra— y esa plata sale igual. No se estima acá: estimarla sería
+ * volver a convertir una observación en un supuesto de cálculo, que es el error que se acaba de
+ * corregir. Se declara, y el que quiera el número lo saca de la planilla.
+ */
+export const LINEA_SABADOS = 'la proyección cuenta días de LUNES A VIERNES: los sábados que se trabajan '
+  + 'como horas extra salen de la caja y no están acá. Aparecen en el registro cuando se cargan.'
 
 /**
  * El MISMO criterio que `expresionDias` escribe en la pestaña, en JavaScript: sirve para decidir
@@ -181,3 +193,56 @@ export function formulaControlCalendario({ oficina, direccion, totalOficina, tot
     + `"⚠ el calendario no cierra: oficina $"&TEXT(${dif};"#,##0")&" · dirección $"&TEXT(${difD};"#,##0")`
     + `&" — alguna fecha de caja quedó fuera de las ventanas")`
 }
+
+/**
+ * NÚCLEO PURO: la baja que la planilla todavía no registró.
+ *
+ * ═══ EL CASO QUE LO TRAJO (13/08) ═══
+ *
+ * A NAVARRO MATIAS JESUS se le pagó su LIQUIDACIÓN FINAL el 13/08 ($239.790,94, confirmado por el
+ * dueño). Se fue. Pero el plantel base de la proyección es la última quincena CERRADA —16/07–31/07,
+ * donde Navarro todavía figura con $5.500/hora— así que **todas las quincenas de acá a diciembre lo
+ * siguen pagando**.
+ *
+ * La evidencia de que es exactamente él, medida en el registro: Σ $/hora del plantel base $85.900,
+ * Σ $/hora de la quincena en curso $80.400. La diferencia son $5.500 — el jornal de Navarro, al peso.
+ * Sobre la proyección de obra eso es un 6,4% de más.
+ *
+ * ═══ POR QUÉ ESTO ES UN CONTROL Y NO UNA CORRECCIÓN AUTOMÁTICA ═══
+ *
+ * El OS **no puede distinguir una baja de una ausencia**. Una persona que no aparece en el bloque de
+ * la quincena en curso puede haberse ido, estar de licencia o no haber sido cargada todavía. Sacarla
+ * sola de la proyección sería inventar una baja — y la baja de verdad se registra en IERIC y en ARCA,
+ * que el OS no lee. La fuente es la planilla del dueño: mientras él no la saque de ahí, la proyección
+ * la cuenta, y esta línea le dice cuánto le está costando no haberlo hecho.
+ *
+ * El importe es exacto donde la proyección es lineal en la Σ $/hora, y es un TECHO donde la demanda
+ * de obras manda por el MAX. Por eso dice "hasta".
+ *
+ * @param {{personasBase:string, sigmaBase:string, personasCurso:string, sigmaCurso:string, totalObra:string}} c
+ * @returns {string}
+ */
+export function formulaBajaNoRegistrada({ personasBase, sigmaBase, personasCurso, sigmaCurso, totalObra }) {
+  const menos = `N(${personasBase})-N(${personasCurso})`
+  const exceso = `(1-N(${sigmaCurso})/N(${sigmaBase}))*N(${totalObra})`
+  return `=IF(OR(N(${sigmaBase})=0;${menos}<=0);"";`
+    // EL PREFIJO DEL SUB-ÍTEM VA ADENTRO DE LA FÓRMULA: la fila es un sub-ítem de 1.1 cuando habla y
+    // una fila vacía cuando no, y la gramática de la pestaña se respeta en los dos casos.
+    + `"   · ⚠ la quincena en curso tiene "&(${menos})&" persona(s) menos que el plantel base: la proyección de 1.3 las sigue pagando por hasta $"`
+    + `&TEXT(${exceso};"#,##0")&" hasta diciembre. Si son bajas, sacalas de la planilla JORNALES — el OS no puede distinguir una baja de una ausencia.")`
+}
+
+// ═══ LO QUE EL BANCO PAGÓ Y NINGUNA NÓMINA EXPLICA: NO VIVE ACÁ (13/08) ═══
+//
+// Escribí una `formulaHaberesDelBanco` que comparaba, en una celda, el total de "Sueldos" del extracto
+// contra el banco declarado por el registro y por Oficina. La retiré el mismo día: `lib/haberes-
+// conciliacion.mjs` ya contesta esa pregunta, empareja PAGO POR PAGO —no en agregado— y declara la
+// misma limitación (el lote no dice a quién le paga). Dos definiciones del mismo concepto dan dos
+// números para una sola pregunta, y el mío era el más grueso.
+//
+// La pestaña no lo recalcula: lo NOMBRA, para que quien vea un pago de haberes que el registro no
+// explica —una liquidación final, un SAC— sepa dónde está la respuesta. Un concepto vive en un solo
+// lugar y se referencia.
+export const LINEA_HABERES_SIN_QUINCENA = 'un pago de haberes que ninguna quincena explica '
+  + '—una liquidación final, un SAC— no entra en este registro: lo concilia pago por pago '
+  + 'conciliar-haberes, contra el extracto.'

@@ -100,6 +100,7 @@ import {
 import {
   COLS_CALENDARIO, colCalendario, diasLaborables, expresionDias,
   formulaVentana, formulaShareEfectivo, formulaControlCalendario,
+  formulaBajaNoRegistrada, LINEA_SABADOS, LINEA_HABERES_SIN_QUINCENA,
 } from '../lib/jornales-calendario.mjs'
 import { VERIFICADA_EL, VIGENCIA_HASTA, contrastarEscala, tramoDe } from '../lib/uocra-paritaria.mjs'
 // El otro lado del MAX de 1.3: la demanda de las obras vendidas. Toda la lógica vive en la lib.
@@ -416,12 +417,18 @@ export function grilla({
   // EL SUPUESTO, DICHO CON EL DATO QUE LO RESPALDA Y SIN UN SOLO MES ESCRITO A MANO. El rótulo del
   // acuerdo sale de la réplica ya parseada: el día que se pegue un acuerdo nuevo, esta línea cambia
   // sola. Un mes escrito en el código envejece el día siguiente y nadie se entera.
+  // ═══ UNA GLOSA QUE NO ENTRA ES UNA GLOSA A MEDIAS (13/08) ═══
+  //
+  // Medía 450 caracteres y en el PDF se cortaba en «se repite el último t». La fila derrama sobre la
+  // grilla entera —330px de la A más trece de 112— que son ~290 caracteres: más que eso no se lee, se
+  // adivina. Se parte en dos renglones que entran, en vez de un párrafo que no.
   const ultAc = ultimoEscalon(escalones)
-  push([sub('las tres proyecciones —obra, oficina y dirección— suben por la PARITARIA UOCRA, no por el IPC'
-    + (ultAc ? `: ${ultAc.rotulo}, con acuerdo hasta el ${VIGENCIA_HASTA}` : '')
-    + '. Después de esa fecha se repite el último tramo firmado, y eso es PROYECCIÓN, no acuerdo.'
-    // La glosa de la demanda va ACÁ, en la prosa que ya existe: cero filas y cero columnas nuevas.
-    + glosaDemanda(demanda))])
+  push([sub('obra, oficina y dirección suben por la PARITARIA UOCRA, no por el IPC'
+    + (ultAc ? ` (${ultAc.rotulo}, acuerdo hasta el ${VIGENCIA_HASTA})` : '')
+    + '. Después se repite el último tramo firmado: es PROYECCIÓN, no acuerdo.')])
+  // La glosa de la demanda tiene su renglón: apilada a la de arriba, las dos quedaban cortadas.
+  const gd = glosaDemanda(demanda)
+  if (gd) push([sub(gd.trim())])
 
   // ── 1.1 · EL PLANTEL BASE ──
   push([seccion('1.1', 'El plantel base — la última quincena CERRADA, abierta por categoría')])
@@ -436,6 +443,13 @@ export function grilla({
   for (const f of plantel.filas) push(f)
   filas[fConvenio - 1][0] = formulaConvenioPendiente(plantel.fPrimera, plantel.fUltima, plantel.equivalencias)
   const fPlantel = plantel.fTotal
+  // ═══ LA BAJA QUE LA PLANILLA TODAVÍA NO REGISTRÓ (13/08) ═══
+  //
+  // El plantel base es la última quincena CERRADA —y tiene que serlo: la en curso está a medio
+  // cargar—. El costo de eso es que una persona que se fue DESPUÉS de esa quincena se sigue
+  // proyectando hasta diciembre. Pasó con la liquidación final de Navarro. La fila se llena abajo,
+  // cuando existen el registro y el total del calendario.
+  const fBaja = push([VACIO])
   blanco()
 
   // ── 1.2 · EL ESCALÓN, MES POR MES ──
@@ -497,6 +511,9 @@ export function grilla({
   if (pendientes[0]?.resto) {
     push([sub('la primera fila es lo que QUEDA de la quincena en curso: los días que la planilla todavía no cargó. Lo ya cargado de esa misma quincena está arriba, en COMPROMETIDO.')])
   }
+  // LO QUE LA PROYECCIÓN NO VE, DICHO DONDE SE LA LEE. Ver LINEA_SABADOS: es una declaración, no un
+  // supuesto de cálculo — no entra en ninguna celda de importe.
+  push([sub(LINEA_SABADOS)])
   const fHpd = push([sub('Horas por persona y día — medidas')])
   // ═══ LA PARTICIÓN RECIBO / EFECTIVO SE MIDE, NO SE SUPONE (13/08) ═══
   //
@@ -505,10 +522,12 @@ export function grilla({
   // registro de abajo las replica: la fracción sale de ahí, viva, sobre las quincenas cerradas de la
   // misma ventana que las horas. Nunca de un porcentaje escrito en el código — un supuesto de canal
   // de pago envejece en un mes y nadie se entera.
-  // EL RÓTULO NOMBRA LAS DOS PARTES CON LAS PALABRAS DE LA PLANILLA. "Adelantos + contra recibo" son
-  // las dos columnas de JORNALES que salen en billetes; la tercera, BANCO, es la transferencia del
-  // lote de haberes. Sin los nombres, "efectivo" obliga a preguntar qué queda del otro lado.
-  const fShare = push([sub('De la quincena de obra, en efectivo (adelantos + contra recibo)')])
+  // EL RÓTULO USA LAS PALABRAS DEL DUEÑO, CONFIRMADAS EL 13/08: *"banco es en blanco por recibo,
+  // adelanto y en efectivo es el restante en efectivo"*. O sea: la columna BANCO del registro es lo
+  // que se paga EN BLANCO POR RECIBO DE SUELDO, y adelantos + el resto salen en efectivo. Es la misma
+  // partición con la que CAJA baja el saldo bancario y el cajón — una sola definición para las dos
+  // pestañas, y en el vocabulario con el que el dueño la piensa.
+  const fShare = push([sub('De la quincena de obra, en efectivo (el resto va en blanco por recibo)')])
   push(COLS_CALENDARIO)
   const p0 = filas.length + 1
   const pFin = p0 + pendientes.length - 1
@@ -900,6 +919,13 @@ export function grilla({
     adelanto: push([sub('De lo pagado — en adelantos')]),
     recibo: push([sub('De lo pagado — contra recibo')]),
   }
+  // ═══ EL PAGO QUE NO ES UNA QUINCENA TIENE DÓNDE CAER — PERO NO ACÁ (13/08) ═══
+  //
+  // La liquidación final de Navarro ($239.790,94, 13/08) no es una quincena y no entra en el registro.
+  // Sin decir nada, la caja paga algo que esta pestaña no explica. Se nombra la capacidad que sí lo
+  // contesta en vez de recalcularlo en una celda: `haberes-conciliacion` empareja pago por pago contra
+  // el extracto, y dos definiciones del mismo concepto darían dos números para una sola pregunta.
+  push([sub(LINEA_HABERES_SIN_QUINCENA)])
   // "Pagado el" VA AL FINAL, no intercalada. Insertarla al lado de "Se paga el" correría los índices de
   // las once columnas que produce nomina-sync, y eso ya rompió el registro una vez hoy (la columna "Se
   // paga el" se emitió dos veces y desplazó todo). Al final es segura; si el dueño la quiere en otro
@@ -963,7 +989,14 @@ export function grilla({
   filas[fShare - 1][1] = formulaShareEfectivo(
     { banco: colDe('Banco'), total: colDe('TOTAL'), hasta: colDe('Hasta') }, f0, fLast,
   )
-  filas[fShare - 1][2] = `="el resto, por transferencia · medido s/ cerradas de "&${RANGO_MESES_BASE}&" meses"`
+  filas[fShare - 1][2] = `="medido s/ cerradas de "&${RANGO_MESES_BASE}&" meses"`
+  // LA BAJA NO REGISTRADA. Las dos Σ $/hora salen de bloques distintos del espejo —el plantel base
+  // (1.1) y la última fila del registro— así que la diferencia es un hecho medido, no una hipótesis.
+  filas[fBaja - 1][0] = formulaBajaNoRegistrada({
+    personasBase: `$B$${fPlantel}`, sigmaBase: `$C$${fPlantel}`,
+    personasCurso: `$${colDe('Personas')}$${fLast}`, sigmaCurso: `$${colDe('Σ $/hora')}$${fLast}`,
+    totalObra: `$${cObra}$${fTotalProy}`,
+  })
   // ═══ CERRADA vs EN CURSO: LO DECIDE UNA FÓRMULA, NO UNA CORRIDA DEL AGENTE ═══
   //
   // El dueño: "la última fila de este cuadro está mal porque considera que la quincena que está en
@@ -1087,7 +1120,7 @@ export function grilla({
       { fila: plantel.fTotal, col: 7 },
       // El control del calendario vive en la columna A y rinde texto por fórmula: sin declararlo, el
       // barrido de moneda no lo toca (empieza en la B) pero el pase por contenido tampoco lo clasifica.
-      { fila: fControlCal, col: 0 },
+      { fila: fControlCal, col: 0 }, { fila: fBaja, col: 0 },
     ],
     enteros: [plantel.fTotal],
     // La única celda del hero que es una FECHA y no plata: la C del próximo pago (la B, como en toda
@@ -1813,6 +1846,42 @@ export function requestsDeFormato(sheetId, filas, g) {
   const FACTOR = { type: 'NUMBER', pattern: '0.0000;-0.0000;"—"' }
   fmt(g.o0 - 1, g.oFin, 6, 7, FACTOR)
   fmt(g.d0 - 1, g.dFin, 6, 7, FACTOR)
+  // ═══ EL TEXTO SE DERRAMABA SOBRE EL NÚMERO DE LA IZQUIERDA (13/08, visto en el PDF) ═══
+  //
+  // En el PDF publicado, la columna "Estado" de 1.1 mostraba «-16,7%» encima de «ebajo del convenio»:
+  // se comía "por d". Y en 1.2, «mes base: factor 1,» y «proyección · últ:» cortados.
+  //
+  // La causa NO era el ancho. El barrido de moneda pinta TODA la grilla de la B en adelante con
+  // `horizontalAlignment: RIGHT`, y una celda de TEXTO alineada a la derecha con OVERFLOW_CELL se
+  // derrama hacia la IZQUIERDA — encima del número de al lado, que sí tiene contenido. A la derecha de
+  // estas columnas no hay nada hasta la N: alineadas a la izquierda, el texto se lee entero sin tocar
+  // el ancho de una sola columna.
+  //
+  // NO SE DELEGA EN `reparar-textos.mjs`. Ese script existe para lo que ningún generador previó; un
+  // generador que deja texto cortado a propósito y espera que otro paso lo arregle es un generador que
+  // no es dueño de su pestaña.
+  const textoIzq = (r0, r1, c0, c1) => {
+    const a = Math.max(0, Math.min(r0, filas.length))
+    const b = Math.max(a, Math.min(r1, filas.length))
+    if (b <= a) return
+    reqs.push({
+      repeatCell: {
+        range: rg(a, b, c0, c1),
+        cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT' } },
+        fields: 'userEnteredFormat(numberFormat,horizontalAlignment)',
+      },
+    })
+  }
+  // 1.1 · «Convenio» (la columna del dueño) y «Estado».
+  if (g.plantel) {
+    textoIzq(g.plantel.fPrimera - 1, g.plantel.fTotal, 4, 5)
+    textoIzq(g.plantel.fPrimera - 1, g.plantel.fTotal, 7, 8)
+  }
+  // 1.2 · «Escalón publicado», «De dónde sale» y «Estado».
+  if (g.esc) {
+    textoIzq(g.esc.f0 - 1, g.esc.f1, 1, 2)
+    textoIzq(g.esc.f0 - 1, g.esc.f1, 6, 8)
+  }
   // `cantidades` es la fila de horas por persona y día: el mismo patrón fino que sus diez referencias.
   for (const f of g.cantidades) fmt(f - 1, f, 1, 2, HORAS_FINAS)
   for (const f of g.enteros) fmt(f - 1, f, 1, 2, ENTERO)

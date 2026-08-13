@@ -94,12 +94,26 @@ export function aFechaLocal(v) {
 }
 
 /**
- * NÚCLEO PURO: días hábiles DE OBRA entre dos fechas, inclusive ambos extremos — lunes a SÁBADO.
+ * NÚCLEO PURO: días hábiles DE OBRA entre dos fechas, inclusive ambos extremos — lunes a VIERNES.
  *
- * No se reusa `diasHabilesEntre` de jornales-fecha-pago a propósito: aquélla es lun–vie porque mide
- * días BANCARIOS (cuándo sale un pago); la obra trabaja los sábados, y repartir horas de obra por
- * días lun–vie le sacaría un sexto del peso a cada quincena con sábados. Son dos conceptos, no dos
- * versiones del mismo.
+ * ═══ ERA LUNES A SÁBADO Y LO CORRIGIÓ EL DUEÑO (13/08) ═══
+ *
+ * Yo había MEDIDO que la planilla carga 148 días donde el calendario lun–vie cuenta 125, y saqué la
+ * conclusión de que la obra trabaja los sábados. El dueño, textual: **"las obras trabajan hasta el
+ * viernes"**.
+ *
+ * La medición era buena y la conclusión estaba mal. El dato observado no dice qué días trabaja la
+ * obra: dice qué días tienen HORAS CARGADAS, y los ~23 días de diferencia son sábados trabajados
+ * puntualmente —horas extra—, no la semana normal. Un dato observado no reemplaza al criterio de
+ * quien decide: la semana de obra la define el dueño.
+ *
+ * LO QUE QUEDA AFUERA, DECLARADO: proyectar lun–vie deja fuera esas horas extra de sábado. Es plata
+ * que sale y que la proyección no ve. Se dice en la pestaña, en una línea, y NO se convierte en un
+ * supuesto de cálculo — que es exactamente el error que se acaba de corregir.
+ *
+ * Coincide hoy con `diasHabilesEntre` de jornales-fecha-pago, que mide días BANCARIOS. Siguen siendo
+ * dos conceptos distintos —uno es cuándo se trabaja y el otro cuándo se acredita un pago— y pueden
+ * separarse el día que uno de los dos incorpore feriados. No se fusionan.
  */
 export function diasHabilesObra(desde, hasta) {
   if (!(desde instanceof Date) || !(hasta instanceof Date) || hasta < desde) return 0
@@ -107,7 +121,7 @@ export function diasHabilesObra(desde, hasta) {
   const d = new Date(desde.getFullYear(), desde.getMonth(), desde.getDate())
   const fin = new Date(hasta.getFullYear(), hasta.getMonth(), hasta.getDate())
   while (d <= fin) {
-    if (d.getDay() !== 0) n++
+    if (d.getDay() !== 0 && d.getDay() !== 6) n++
     d.setDate(d.getDate() + 1)
   }
   return n
