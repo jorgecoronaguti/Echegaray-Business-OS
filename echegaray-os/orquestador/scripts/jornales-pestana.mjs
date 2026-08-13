@@ -97,6 +97,9 @@ import {
   formulaSigmaConvenio, lineaSupuestoConvenio, sigmaConvenioDelPlantel, ROTULO_SIGMA,
 } from '../lib/motor-salarial.mjs'
 import { VERIFICADA_EL, VIGENCIA_HASTA, contrastarEscala, tramoDe } from '../lib/uocra-paritaria.mjs'
+// El otro lado del MAX de 1.3: la demanda de las obras vendidas. Toda la lógica vive en la lib.
+import { claveQuincena, formulaProyectadoQuincena, glosaDemanda } from '../lib/jornales-demanda-obras.mjs'
+import { demandaParaJornales } from '../lib/jornales-demanda-fuente.mjs'
 import { registrarSincronizacion } from '../lib/registrar-sincronizacion.mjs'
 import { JORNALES_FILE_ID } from '../lib/espejo-jornales.mjs'
 import { formulaUltimaFechaConImporte, rotuloAlDia } from '../lib/fecha-de-frescura.mjs'
@@ -289,6 +292,9 @@ export function grilla({
   // EL MES DE LA ÚLTIMA QUINCENA CERRADA DE OBRA. No siempre es el primero del cuadro 1.2: cuando la
   // planilla de Oficina va atrasada, su mes entra antes y ancla la tabla. Ver `filasEscalon`.
   periodoBase = null,
+  // La demanda de las obras vendidas, ya valuada por quincena (jornales-demanda-fuente). Con null la
+  // grilla es EXACTAMENTE la de siempre: el MAX sólo entra donde hay demanda.
+  demanda = null,
 }) {
   // El bloque base por defecto es el último del espejo: mantiene el comportamiento anterior cuando
   // el llamador no resolvió la última quincena cerrada (sólo pasa en tests viejos).
@@ -390,7 +396,9 @@ export function grilla({
   const ultAc = ultimoEscalon(escalones)
   push([sub('las tres proyecciones —obra, oficina y dirección— suben por la PARITARIA UOCRA, no por el IPC'
     + (ultAc ? `: ${ultAc.rotulo}, con acuerdo hasta el ${VIGENCIA_HASTA}` : '')
-    + '. Después de esa fecha se repite el último tramo firmado, y eso es PROYECCIÓN, no acuerdo.')])
+    + '. Después de esa fecha se repite el último tramo firmado, y eso es PROYECCIÓN, no acuerdo.'
+    // La glosa de la demanda va ACÁ, en la prosa que ya existe: cero filas y cero columnas nuevas.
+    + glosaDemanda(demanda))])
 
   // ── 1.1 · EL PLANTEL BASE ──
   push([seccion('1.1', 'El plantel base — la última quincena CERRADA, abierta por categoría')])
@@ -468,7 +476,9 @@ export function grilla({
       // pactado y lo de después al convenio. El porqué —y el efecto sobre la caja comprometida— en
       // `formulaSigmaDelMes`.
       formulaSigmaDelMes(`A${r}`, esc, `C${r}`),
-      `=IFERROR(G${r}*F${r}*D${r};"")`,
+      // Sin demanda para esta quincena es la fórmula de siempre; con demanda, MAX(convenio; constante
+      // del insumo del dueño), gateado por la MISMA frontera de caja comprometida que la columna G.
+      formulaProyectadoQuincena(r, demanda?.porQuincena?.get(claveQuincena(q.desde)) ?? null),
     ])
   })
   // Los huecos internos también son MÍOS: con `''` el generador preservaría la fórmula que el
@@ -1023,6 +1033,12 @@ async function main() {
   console.log('  ℹ el contraste de arriba vale con la columna «Convenio» de 1.1 VACÍA: si el dueño escribe'
     + ' una categoría ahí, manda la suya y la pestaña puede dar otro número a propósito')
 
+  // ── LA DEMANDA DE LAS OBRAS VENDIDAS: el otro lado del MAX de 1.3 (07/08) ──
+  // Si lib/obras-datos.mjs no está en esta rama, la fuente avisa y devuelve 0: la pestaña queda igual.
+  const demanda = await demandaParaJornales({ hoy, escalon: escalonVigente, escalones })
+  if (demanda.nObras) console.log(`demanda de obras: ${demanda.nObras} obra(s) · ${demanda.porQuincena.size} quincena(s) con demanda valuada`
+    + (demanda.sinFechas.length ? ` · ⚠ SIN FECHAS (quedan afuera): ${demanda.sinFechas.map((x) => x.clave).join(', ')}` : ''))
+
   // ── LA OTRA MITAD DE LA NÓMINA ──
   const espejoOfi = await google.readSheetValues(ID, `${ESPEJO_OFI}!A1:AA990`)
   // OFICINA SE COBRA POR MES, NO POR QUINCENA. La planilla la lleva en bloques con forma de quincena
@@ -1064,7 +1080,7 @@ async function main() {
   if (acum) console.log(`paritaria: de ${periodoBase} a ${meses[meses.length - 1].periodo} acumula ×${acum.factor.toFixed(4)} · ${acum.mesesProyectados} mes(es) proyectado(s) sin acuerdo`)
   const g = grilla({
     bloques, pendientes, bloquesOfi, pagoPrevio, ultimoDiaOfi,
-    escalones, bloqueBase, categorias, personasBase, escalonVigente, meses, hoy, periodoBase,
+    escalones, bloqueBase, categorias, personasBase, escalonVigente, meses, hoy, periodoBase, demanda,
   })
   console.log(`grilla: ${g.filas.length} filas × ${ANCHO} columnas · motor sobre ${meses.length} mes(es) (${meses[0]?.periodo} → ${meses[meses.length - 1]?.periodo})`)
   const aMano = g.filas.filter((f) => f[2] === '').length
