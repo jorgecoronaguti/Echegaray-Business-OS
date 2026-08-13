@@ -149,6 +149,12 @@ export function grilla({ enCompras, cheques, tarjeta }, resp) {
   const F = { cheques: formulasInstrumento(INSTRUMENTOS.cheques, MARCAS), tarjeta: formulasInstrumento(INSTRUMENTOS.tarjeta, MARCAS) }
   const NOTA_INFERIDO = 'INFERENCIA, no hecho: no tienen N°, pero hay una factura del mismo proveedor por exactamente el mismo importe y con fecha cercana. Se los cuenta aparte de los verificados y NO bajan el piso de caja: el piso se calcula con las dos puntas, arriba en CAJA.'
   const NOTA_SIN_MARCA = '⚠ Filas que el OS todavía no miró: se cargaron después de la última corrida de "cheques-cobertura". Mientras la marca esté vacía, el término de cheques del calendario NO las ve. Tiene que dar cero.'
+  // POR QUÉ ESTE RENGLÓN ES UN CONTROL Y NO UNA CURIOSIDAD (13/08). Es el único término de la
+  // partición que la planilla no publicaba: la fila cuya celda de marcas tiene texto ajeno la cuenta
+  // el TOTAL —mide "hay algo escrito"— y no la cuenta ninguna de las cuatro categorías. Sin este
+  // renglón, las cuatro dejan de sumar el total y el cuadro no dice nada. Con él, el descuadre tiene
+  // nombre, importe y una instrucción de una línea.
+  const NOTA_NO_RECONOCIDA = '⚠ Su celda de la columna de marcas tiene texto que NO escribió el OS (una nota tipeada a mano o por una carga puntual), así que el agente saltea esa fila para no pisarla y el pago queda fuera de las cuatro categorías de arriba y del calendario de CAJA. Tiene que dar cero: se arregla vaciando esa celda —o moviendo la nota a otra columna— y volviendo a correr "cheques-cobertura". Cuál es la fila lo dice el log de la corrida.'
   // LAS FILAS DE LOS TOTALES SE GUARDAN AL EMPUJARLAS, NO SE CUENTAN HACIA ATRÁS (05/08).
   // Acá había `fFalta - 8` y `fFalta - 3`: desplazamientos escritos a mano desde la fila del total.
   // Agregar dos renglones a cada instrumento —los inferidos y los todavía sin marcar— los habría
@@ -160,6 +166,7 @@ export function grilla({ enCompras, cheques, tarjeta }, resp) {
   push(['  · ≈ atribuidos por proveedor + importe (inferencia)', F.cheques.inferidos.cantidad, F.cheques.inferidos.monto, '', '', NOTA_INFERIDO])
   fil.faltaCh = push(['  · FALTA la factura en Compras (confirmado)', F.cheques.falta.cantidad, F.cheques.falta.monto, '', '', '⚠ Tienen número de comprobante y ese número NO está en Compras. Plata que sale y que ninguna línea del cash flow ve.'])
   fil.sinNumCh = push(['  · sin N° de comprobante — no se puede saber', F.cheques.sinNumero.cantidad, F.cheques.sinNumero.monto, '', '', 'Su factura puede estar en Compras perfectamente. Cargando el N° de comprobante en la pestaña Cheques se resuelve solo.'])
+  fil.ajenaCh = push(['  · ⚠ marcadas con algo que el OS no reconoce', F.cheques.noReconocida.cantidad, F.cheques.noReconocida.monto, '', '', NOTA_NO_RECONOCIDA])
   fil.sinMarcaCh = push(['  · ⚠ todavía SIN MARCAR por el OS (no debitados)', F.cheques.sinMarca().cantidad, F.cheques.sinMarca().monto, '', '', NOTA_SIN_MARCA])
   push()
   push(['TARJETA DE CRÉDITO — total', F.tarjeta.total.cantidad, F.tarjeta.total.monto, '', '', ''])
@@ -167,6 +174,7 @@ export function grilla({ enCompras, cheques, tarjeta }, resp) {
   push(['  · ≈ atribuidos por proveedor + importe (inferencia)', F.tarjeta.inferidos.cantidad, F.tarjeta.inferidos.monto, '', '', NOTA_INFERIDO])
   fil.faltaTj = push(['  · FALTA la factura (confirmado)', F.tarjeta.falta.cantidad, F.tarjeta.falta.monto, '', '', ''])
   fil.sinNumTj = push(['  · sin N° de comprobante', F.tarjeta.sinNumero.cantidad, F.tarjeta.sinNumero.monto, '', '', ''])
+  fil.ajenaTj = push(['  · ⚠ marcadas con algo que el OS no reconoce', F.tarjeta.noReconocida.cantidad, F.tarjeta.noReconocida.monto, '', '', NOTA_NO_RECONOCIDA])
   fil.sinMarcaTj = push(['  · ⚠ todavía SIN MARCAR por el OS (no debitados)', F.tarjeta.sinMarca().cantidad, F.tarjeta.sinMarca().monto, '', '', NOTA_SIN_MARCA])
   push()
   const fFalta = filas.length + 1

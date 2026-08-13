@@ -63,6 +63,26 @@ test('el bloque publica los inferidos aparte y lo que el OS no miró todavía', 
   assert.match(celda(g, sm, 2), new RegExp(`UPPER\\('Cheques Emitidos'!\\$K\\$${FILA_DATO0}:\\$K\\$400\\)<>"SI"`))
 })
 
+test('el cuadro publica la fila que el agente salteó, en su propio renglón y con qué hacer', () => {
+  const g = construir()
+  // LOS DOS INSTRUMENTOS. La tarjeta tiene la misma columna de marcas y el mismo modo de fallar; si
+  // el renglón sólo estuviera en cheques, un consumo salteado seguiría descuadrando el cuadro en
+  // silencio. La identidad "las cinco cajas suman el total" se verifica evaluando las fórmulas en
+  // lib/cash-flow-cheques-particion.test.mjs.
+  const filas = g.filas.map((f, i) => [i + 1, String(f?.[0] ?? '')]).filter(([, t]) => /marcadas con algo que el OS no reconoce/.test(t))
+  assert.equal(filas.length, 2, 'un renglón para cheques y otro para tarjeta')
+  for (const [fila] of filas) {
+    // Cuenta lo que tiene texto y NO es ninguna de las cuatro marcas: ése es el hueco por donde se
+    // caía el cheque salteado.
+    const f = celda(g, fila, 1)
+    assert.match(f, /<>""/)
+    for (const m of Object.values(MARCAS)) assert.ok(f.includes(`="${m}"`), `no descuenta la marca "${m.slice(0, 20)}"`)
+    // El rótulo no puede decir "sin marcar": esa celda TIENE algo escrito, y el remedio es otro.
+    assert.doesNotMatch(String(g.filas[fila - 1][0]), /SIN MARCAR/)
+    assert.match(String(g.filas[fila - 1][5]), /Tiene que dar cero/)
+  }
+})
+
 test('cada renglón del reparto suma una vez: los cuatro estados son una partición', () => {
   const d = datos()
   const r = respaldos(d)
