@@ -102,7 +102,7 @@ import {
 } from '../lib/motor-salarial.mjs'
 import {
   COLS_CALENDARIO, colCalendario, diasLaborables, expresionDias,
-  formulaVentana, formulaShareEfectivo, formulaControlCalendario,
+  formulaVentana, formulaShareEfectivo, formulaGlosaShareEfectivo, formulaControlCalendario,
   formulaBajaNoRegistrada, LINEA_SABADOS, LINEA_HABERES_SIN_QUINCENA,
 } from '../lib/jornales-calendario.mjs'
 import { VERIFICADA_EL, VIGENCIA_HASTA, contrastarEscala, tramoDe } from '../lib/uocra-paritaria.mjs'
@@ -588,7 +588,11 @@ export function grilla({
       // La parte de la quincena de obra que sale en billetes. El resto —la columna BANCO del
       // registro— es la transferencia del lote de haberes. Oficina y Dirección NO entran: de esos dos
       // el canal no está registrado, y repartirlos con la proporción de la obra sería inventarlo.
-      `=${cObra}${r}*$B$${fShare}`,
+      // SIN BASE NO HAY COLUMNA. Cuando el año todavía no junta MIN_QUINCENAS_SHARE quincenas pagadas
+      // la celda del share va VACÍA (ver formulaShareEfectivo), y `número*""` es #VALUE! repetido diez
+      // veces. La columna queda en blanco y el rótulo de arriba dice por qué: no se proyecta y se
+      // declara, que es lo contrario de rellenar con el default de "todo en efectivo".
+      `=IF($B$${fShare}="";"";${cObra}${r}*$B$${fShare})`,
     ])
   })
   // Los huecos internos también son MÍOS: con `''` el generador preservaría la fórmula que el
@@ -1048,10 +1052,18 @@ export function grilla({
   // lib/caja-posterior-al-corte.mjs baja el saldo bancario y el cajón: una sola definición para las
   // dos pestañas. Lo que el registro no clasifica se cuenta como efectivo — el lado seguro para
   // planificar billetes, dicho acá al lado del número.
-  filas[fShare - 1][1] = formulaShareEfectivo(
-    { banco: colDe('Banco'), total: colDe('TOTAL'), hasta: colDe('Hasta') }, f0, fLast,
-  )
-  filas[fShare - 1][2] = `="medido s/ cerradas de "&${RANGO_MESES_BASE}&" meses"`
+  //
+  // ═══ EL PROMEDIO ES DEL AÑO Y SÓLO DE LO PAGADO (13/08) ═══
+  //
+  // El dueño: *"el adelanto es algo q no se puede proyectar asi como está, se tiene q hacer un calculo
+  // promedio del año"*. La ventana era la de las HORAS —tres meses, prestada de `JORNALES_MESES_BASE`—
+  // y el canal de pago no es un ritmo de trabajo: es una decisión de tesorería. Y entraba la quincena
+  // que ya cerró pero todavía no se pagó, con TOTAL cargado y BANCO en cero, así que el porcentaje se
+  // movía solo entre el día que la quincena termina y el día que sale la plata. El porqué completo y
+  // las dos mediciones, en `formulaShareEfectivo`.
+  const colShare = { banco: colDe('Banco'), total: colDe('TOTAL'), hasta: colDe('Hasta'), pagado: colDe('Pagado el') }
+  filas[fShare - 1][1] = formulaShareEfectivo(colShare, f0, fLast)
+  filas[fShare - 1][2] = formulaGlosaShareEfectivo(colShare, f0, fLast)
   // LA BAJA NO REGISTRADA. Las dos Σ $/hora salen de bloques distintos del espejo —el plantel base
   // (1.1) y la última fila del registro— así que la diferencia es un hecho medido, no una hipótesis.
   filas[fBaja - 1][0] = formulaBajaNoRegistrada({

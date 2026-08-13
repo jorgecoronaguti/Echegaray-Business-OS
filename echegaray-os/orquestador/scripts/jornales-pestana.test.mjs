@@ -450,6 +450,24 @@ test('LA CADENA COMPLETA: el plantel del espejo llega valuado AL CONVENIO hasta 
   assert.equal(proy.r0, gm.p0)
 })
 
+test('EL EFECTIVO PROYECTADO SE APAGA ENTERO CUANDO NO HAY BASE — nunca un #VALUE! por fila', () => {
+  // El dueño: "el adelanto es algo q no se puede proyectar asi como está". Desde el 13/08 el % sale
+  // del promedio del AÑO sobre quincenas PAGADAS, y cuando el año todavía no junta suficientes la
+  // celda del share queda VACÍA. `número*""` es #VALUE!: sin esta guarda, "no se proyecta" se vería
+  // como diez errores en la columna que la caja mira para saber cuántos billetes hacen falta.
+  const efectivo = String(gm.filas[gm.p0 - 1][7])
+  assert.match(efectivo, new RegExp(`^=IF\\(\\$B\\$${gm.fShare}="";"";`),
+    `la columna Efectivo multiplica sin preguntar si hay base: ${efectivo}`)
+  assert.match(efectivo, new RegExp(`\\$B\\$${gm.fShare}\\)$`), 'el efectivo dejó de salir del share medido')
+  // Y multiplica la columna de OBRA, no el TOTAL: oficina y dirección no declaran canal de pago y
+  // repartirlas con la proporción de la obra sería inventarlo.
+  assert.match(efectivo, new RegExp(`D${gm.p0}\\*`), 'el efectivo se calcula sobre una columna que no es la de obra')
+  // El rótulo de al lado declara sobre qué se midió, con un número y sin una explicación.
+  const glosa = String(gm.filas[gm.fShare - 1][2])
+  assert.match(glosa, /quincenas pagadas del año/, 'el rótulo dejó de declarar que la ventana es el año')
+  assert.doesNotMatch(glosa, /JORNALES_MESES_BASE/, 'el rótulo volvió a la ventana de las horas')
+})
+
 test('EL SUPUESTO SE LEE EN LA PESTAÑA, ARRIBA DEL CUADRO QUE LO USA', () => {
   // Un número que se lee como un hecho y es una hipótesis es peor que no tenerlo: acá abajo hay diez
   // quincenas valuadas a una escala que hoy NO se paga.
