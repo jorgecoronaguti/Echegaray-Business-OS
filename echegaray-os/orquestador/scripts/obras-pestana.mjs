@@ -42,7 +42,7 @@ import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 import { requestsTextoPorContenido } from '../lib/formato-texto-por-contenido.mjs'
-import { grillaObras, ANCHO_OBRAS, ANCHOS_OBRAS, PESTANA_OBRAS, REFS_OBRAS } from '../lib/obras-grilla.mjs'
+import { grillaObras, anchoColumnaA, ANCHO_OBRAS, ANCHOS_OBRAS, PESTANA_OBRAS, REFS_OBRAS } from '../lib/obras-grilla.mjs'
 import { OBRAS_FUTURAS, totalEgresos } from '../lib/obras-datos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -155,7 +155,12 @@ async function refsReales(google) {
   const refs = {
     cob: {
       hoja: REFS_OBRAS.cob.hoja,
-      ...resolverColumnas(cob, { cliente: 'Obra / Cliente', concepto: 'Concepto', total: /^TOTAL a cobrar/, estado: 'Estado' }),
+      // `neto` es la columna del IVA hacia abajo: la venta y el margen se miden ahí, no en el total.
+      // `forma` y `fechaCobro` son lo que el dueño pidió ver por obra (a quién reclamarle y cuándo).
+      ...resolverColumnas(cob, {
+        cliente: 'Obra / Cliente', concepto: 'Concepto', neto: /^Monto neto/i,
+        total: /^TOTAL a cobrar/, forma: /^Forma de [Cc]obro/, estado: 'Estado', fechaCobro: /^Fecha de cobro|^Fecha cobro/i,
+      }),
     },
     cmp: {
       hoja: REFS_OBRAS.cmp.hoja,
@@ -311,7 +316,10 @@ async function formatear(google, sheetId, g) {
       fields: 'note',
     },
   })
-  ANCHOS_OBRAS.forEach((px, i) => req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: i, endIndex: i + 1 }, properties: { pixelSize: px }, fields: 'pixelSize' } }))
+  // La columna A se dimensiona con los rótulos REALES de esta corrida: el estilo de la casa pone CLIP
+  // en toda la hoja, así que un rótulo más largo que su columna no se derrama — desaparece.
+  const anchos = ANCHOS_OBRAS.map((px, i) => (i === 0 ? anchoColumnaA(g) : px))
+  anchos.forEach((px, i) => req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: i, endIndex: i + 1 }, properties: { pixelSize: px }, fields: 'pixelSize' } }))
   const { requests: rTxt } = requestsTextoPorContenido(sheetId, g.filas || [])
   req.push(...rTxt)
   await google.spreadsheetBatchUpdate(ID, req)
