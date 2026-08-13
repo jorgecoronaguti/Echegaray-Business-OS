@@ -181,8 +181,12 @@ test('la columna "Equivale a (convenio)" es DEL DUEÑO: nunca lleva el centinela
     assert.equal(p.filas[i][4], '', `fila ${i}: con el centinela, la corrida siguiente le borra la categoría que cargó`)
   }
   // Y el canario del bloque del espejo, que es lo que avisa si la corrida se salteó.
-  assert.match(String(p.filas[p.filas.length - 1][7]), /el bloque del espejo/)
-  assert.match(String(p.filas[p.filas.length - 1][7]), /16 obreros/)
+  // El mensaje se acortó el 13/08 (rechazo del diseño de la pestaña): 164 caracteres en una columna
+  // del MEDIO desparramaban la fila sobre las seis siguientes. Lo que este test cuida no cambió —que
+  // el canario exista y que compare contra la dotación real— sólo que las 16 personas ahora se leen
+  // donde se MIDEN, en la condición del IF, y no repetidas en el texto de alarma.
+  assert.match(String(p.filas[p.filas.length - 1][7]), /el espejo se movió/)
+  assert.match(String(p.filas[p.filas.length - 1][7]), /=16;/, 'el canario dejó de contrastar la dotación')
 })
 
 test('EL PARÁMETRO ES EL TRAMO DE PARITARIA, NO EL 5,21% MEDIDO SOBRE BÁSICOS', () => {
@@ -234,12 +238,16 @@ test('EL CONTROL CONTRA EL CONVENIO YA NO ESPERA UNA CARGA MANUAL', () => {
   })
   assert.deepEqual(raro.equivalencias, [['ZZ', null]])
   assert.match(String(raro.filas[1][7]), /"—"/)
-  assert.match(formulaConvenioPendiente(11, 11, raro.equivalencias), /ZZ no tiene\(n\) equivalente/)
+  // La línea pasó de 180 caracteres a un rótulo (13/08). Sigue diciendo LAS DOS COSAS que decide:
+  // cuál categoría no tiene equivalente —marcada con ⚠, porque el control queda ciego para ella— y
+  // contra qué escala compara cada una. Lo que se fue es "si escribís otra en «Convenio», manda la
+  // tuya", que ahora vive en el encabezado de esa columna.
+  assert.match(formulaConvenioPendiente(11, 11, raro.equivalencias), /⚠.*ZZ/)
   assert.match(formulaConvenioPendiente(11, 12, p.equivalencias), /OF→Oficial · A M→Ayudante/)
 })
 
 test('el estado de la réplica llega a la pestaña como un sub-ítem, no como una nota escondida', () => {
   const l = lineaEstadoReplica(escalones, new Date(2026, 9, 1))
   assert.match(l, /^ {3}· /)
-  assert.match(l, /quedó vencida/)
+  assert.match(l, /vencida/i)
 })

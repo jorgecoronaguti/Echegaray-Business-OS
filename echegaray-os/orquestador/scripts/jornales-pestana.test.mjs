@@ -174,7 +174,8 @@ test('LA COLUMNA 14 DE LA GRILLA JAMÁS LLEVA EL CENTINELA — es la del dueño,
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 import { parsearAcuerdos, escalonDe, escalonVigenteEn } from '../lib/uocra-acuerdos.mjs'
 import { mesesDelMotor, formulaSigmaDelMes } from '../lib/motor-salarial.mjs'
-import { auditarPatron } from '../lib/patron-pestana.mjs'
+import { auditarPatron, glosasLargas } from '../lib/patron-pestana.mjs'
+import { contrastarEscala } from '../lib/uocra-paritaria.mjs'
 
 const cinco = (rotulo, [oe, of, mo, ay, se]) => [
   [rotulo, 'Oficial Especializado', 'Hora', String(oe), '', '', String(oe), String(oe)],
@@ -281,7 +282,10 @@ test('el próximo pago: el IMPORTE en la B y la FECHA en la C, como toda la pest
 test('B3 · el "escalón que viene" NO puede mostrar un número de otro año', () => {
   // La fixture tiene septiembre de 2025 y NO tiene septiembre de 2026 — el caso exacto del defecto.
   const fila = gm.filas.find((f) => /El escalón que viene/.test(String(f[0])))
-  assert.match(String(fila[0]), /SIN ACUERDO PUBLICADO/)
+  // Sin versalita desde el rediseño del 13/08 — lo que importa es que LO DIGA, no cómo lo grite. El ⚠
+  // hace el trabajo que hacían las mayúsculas y ocupa un carácter.
+  assert.match(String(fila[0]), /⚠/, 'la ausencia de acuerdo tiene que estar marcada')
+  assert.match(String(fila[0]), /sin acuerdo publicado/i)
   // Y las dos filas de abajo NO SE EMITEN. Antes se emitían vacías: dos rótulos sin cifra debajo de
   // una oración que ya explicaba la ausencia. Traer el básico de 2025 sigue prohibido, y ahora además
   // no queda el hueco — la ausencia se declara una vez, en palabras.
@@ -336,10 +340,20 @@ test('UN SOLO DRIVER: obra, OFICINA y DIRECCIÓN se proyectan con el factor de p
 test('el supuesto de la proyección se declara CON EL DATO, y ningún mes queda estampado en el código', () => {
   // La línea que explica el driver sale de la réplica ya parseada: si mañana se pega un acuerdo nuevo,
   // cambia sola. Un mes escrito en el código envejece al día siguiente y nadie se entera.
-  const glosa = gm.filas.map((f) => String(f[0] ?? '')).find((c) => /PARITARIA UOCRA/.test(c))
+  const glosa = gm.filas.map((f) => String(f[0] ?? '')).find((c) => /Paritaria UOCRA/i.test(c))
   assert.ok(glosa, 'desapareció la línea que declara con qué sube la proyección')
   assert.match(glosa, /Agosto \+1,9%/, 'el rótulo tiene que salir de la réplica de la fixture')
-  assert.match(glosa, /PROYECCIÓN, no acuerdo/, 'no se puede presentar lo proyectado como acuerdo')
+  // ═══ "PROYECCIÓN, no acuerdo" YA NO SE AFIRMA EN PROSA: SE PUBLICA COMO DATO (13/08) ═══
+  //
+  // La glosa lo decía en palabras y el cuadro 1.2 lo dice mes por mes en su columna «Estado». Al
+  // rediseñar la pestaña se sacó la frase; lo que NO se puede perder es la distinción, así que el
+  // control se mudó a donde ahora vive: si ninguna fila del escalón declara que es proyección, un mes
+  // sin acuerdo firmado se estaría publicando como si lo tuviera — que es el defecto original.
+  const estados = gm.filas.map((f) => String(f[7] ?? ''))
+  assert.ok(estados.some((s) => /proyección/.test(s)),
+    'ningún mes del escalón se declara PROYECCIÓN: lo estimado se está publicando como acuerdo')
+  assert.ok(estados.some((s) => /acuerdo firmado/.test(s)),
+    'ningún mes se declara ACUERDO FIRMADO: el cuadro ya no distingue lo firmado de lo proyectado')
   // LA PRUEBA DE QUE NO ESTÁ ESTAMPADO: con otra réplica, la línea dice otro mes.
   const otra = parsearAcuerdos([['Acuerdo Abril 2026'], ...cinco('Mayo\n+2,4%', [6100, 5200, 4800, 4420, 806000])]).escalones
   const g2 = grilla({
@@ -348,7 +362,7 @@ test('el supuesto de la proyección se declara CON EL DATO, y ningún mes queda 
     categorias: ['OF'], personasBase: 16, escalonVigente: null,
     meses: mesesDelMotor(new Date(2026, 6, 31), PEND, [new Date(2026, 6, 31)]), hoy: HOY,
   })
-  const glosa2 = g2.filas.map((f) => String(f[0] ?? '')).find((c) => /PARITARIA UOCRA/.test(c))
+  const glosa2 = g2.filas.map((f) => String(f[0] ?? '')).find((c) => /Paritaria UOCRA/i.test(c))
   assert.match(glosa2, /Mayo \+2,4%/, 'la línea trae un mes escrito a mano: no siguió a la réplica')
 })
 
@@ -439,12 +453,18 @@ test('LA CADENA COMPLETA: el plantel del espejo llega valuado AL CONVENIO hasta 
 test('EL SUPUESTO SE LEE EN LA PESTAÑA, ARRIBA DEL CUADRO QUE LO USA', () => {
   // Un número que se lee como un hecho y es una hipótesis es peor que no tenerlo: acá abajo hay diez
   // quincenas valuadas a una escala que hoy NO se paga.
-  const linea = gm.filas.map((f) => String(f[0] ?? '')).find((c) => /SUPUESTO DEL DUEÑO/.test(c))
+  // ═══ EL PÁRRAFO SE FUE, LA DECLARACIÓN NO (13/08) ═══
+  //
+  // El rótulo pasó de 460 caracteres a "Supuesto: proyectado al 100% del convenio · N personas". Lo que
+  // este test cuida sigue siendo lo mismo: que la palabra SUPUESTO esté, que diga contra qué base, y
+  // que esté ARRIBA del cuadro que la aplica. Lo que ya no exige es la frase "hoy pagamos POR DEBAJO",
+  // porque eso es una MEDICIÓN y se controla dos assertions más abajo, contra la celda que la calcula
+  // —donde no puede quedar desactualizada respecto del número, que es lo que pasa con una glosa—.
+  const esSupuesto = (c) => /Supuesto: proyectado al 100% del convenio/.test(c)
+  const linea = gm.filas.map((f) => String(f[0] ?? '')).find(esSupuesto)
   assert.ok(linea, 'desapareció la línea que declara que la proyección asume el 100% del convenio')
-  assert.match(linea, /100% DEL CONVENIO/)
-  assert.match(linea, /POR DEBAJO/, 'sin esto se lee como que hoy pagamos la escala')
   // Va ANTES del cuadro 1.2, que es el que la aplica — no al final de la pestaña.
-  assert.ok(gm.filas.findIndex((f) => /SUPUESTO DEL DUEÑO/.test(String(f[0] ?? ''))) < gm.esc.f0 - 1)
+  assert.ok(gm.filas.findIndex((f) => esSupuesto(String(f[0] ?? ''))) < gm.esc.f0 - 1)
   // Y el bloque 1.1 —pactado contra convenio— NO se toca: esa comparación sigue siendo un hecho, y es
   // la que prueba que el supuesto no es gratis.
   const estado = String(gm.filas[gm.plantel.fPrimera - 1][7])
@@ -471,9 +491,9 @@ test('LA LÍNEA LA DECIDE EL CUADRO: tener la escala a mano no es haberla podido
     meses: mesesSinAgosto, hoy: HOY, periodoBase: '2026-06',
   })
   assert.equal(g2.esc.alConvenio, false, 'sin el mes del escalón en el cuadro no hay dónde anclar la Σ')
-  const linea = g2.filas.map((f) => String(f[0] ?? '')).find((c) => /PACTADO|SUPUESTO DEL DUEÑO/.test(c))
-  assert.match(linea, /PACTADO/, 'la pestaña anuncia el convenio y el cuadro está usando el pactado')
-  assert.doesNotMatch(linea, /SUPUESTO DEL DUEÑO/)
+  const linea = g2.filas.map((f) => String(f[0] ?? '')).find((c) => /pactado|100% del convenio/i.test(c))
+  assert.match(linea, /pactado/i, 'la pestaña anuncia el convenio y el cuadro está usando el pactado')
+  assert.doesNotMatch(linea, /100% del convenio/i)
   // El encabezado del calendario ya no nombra la base (13/08): la Σ vive dentro de la celda de obra.
   // Lo que se controla es que esa celda NO traiga la rama del convenio cuando el cuadro no puede usarla.
   assert.doesNotMatch(String(g2.filas[g2.p0 - 1][3]), /EOMONTH\(TODAY\(\);0\)\);\$C\$/,
@@ -513,8 +533,8 @@ test('EL 01/09 LA PROYECCIÓN NO VUELVE SOLA AL PACTADO: la escala rige hasta qu
     assert.match(String(g.filas[r - 1][5]), new RegExp(`SUMPRODUCT\\(\\$B\\$${g.plantel.fPrimera}:`),
       'la Σ del cuadro 1.2 dejó de valuar al convenio en septiembre')
   }
-  const linea = g.filas.map((f) => String(f[0] ?? '')).find((c) => /SUPUESTO DEL DUEÑO|PACTADO/.test(c))
-  assert.match(linea, /SUPUESTO DEL DUEÑO/, 'la pestaña anuncia el pactado con el cuadro al convenio')
+  const linea = g.filas.map((f) => String(f[0] ?? '')).find((c) => /100% del convenio|pactado/i.test(c))
+  assert.match(linea, /100% del convenio/i, 'la pestaña anuncia el pactado con el cuadro al convenio')
 })
 
 test('LA FRONTERA DEL MES EN CURSO VIVE EN LA CELDA: lo que se paga este mes va al PACTADO', () => {
@@ -574,11 +594,22 @@ test('LA ESCALA VERIFICADA A MANO CONTROLA A LA RÉPLICA — y calla cuando coin
   })
   const aviso = g2.filas.map((f) => String(f[0] ?? '')).find((c) => /escala verificada/.test(c))
   assert.ok(aviso, 'la réplica trae la escala del mes pasado y la pestaña no lo dice')
-  assert.match(aviso, /Ayudante: réplica 4948 ≠ verificado 5399/)
+  // ═══ EL DETALLE SALIÓ DE LA CELDA Y LA MEDICIÓN NO (13/08) ═══
+  //
+  // La celda decía las cinco categorías con sus dos importes cada una: 300+ caracteres cortados en
+  // pantalla justo cuando el control importa. Ahora publica el ALCANCE y el detalle va al log de la
+  // corrida. Lo que este test sigue exigiendo es lo mismo de antes por dos vías:
+  //   · que la pestaña avise, y diga CUÁNTAS categorías desviaron (si dijera "hay un desvío" a secas,
+  //     una réplica entera podrida se leería igual que una celda mal tipeada);
+  //   · que la MEDICIÓN sea la de siempre, con el importe exacto — contra `contrastarEscala`, que es
+  //     quien la produce. Si el contraste dejara de comparar, esto se pone rojo aunque la celda hable.
+  assert.match(aviso, /en 5 categoría/, 'el aviso dejó de decir cuánto abarca el desvío')
+  assert.ok(contrastarEscala(vieja).includes('Ayudante: réplica 4948 ≠ verificado 5399'),
+    'el contraste contra la escala verificada dejó de medir el desvío por categoría')
 })
 
 test('el canario del espejo está en la pestaña: si el bloque se movió, lo dice', () => {
-  const canario = gm.filas.flat().map(String).find((c) => /el bloque del espejo se movió/.test(c))
+  const canario = gm.filas.flat().map(String).find((c) => /el espejo se movió/.test(c))
   assert.ok(canario, 'sin canario, un rango de filas absoluto que quedó viejo devuelve el plantel de antes en silencio')
 })
 
@@ -616,14 +647,21 @@ test('LA INSTRUCCIÓN DEL CONVENIO SE DICE UNA VEZ Y CONTADA, no una por categor
   const texto = comoSeVe(gm).flat().map(String)
   assert.equal(texto.filter((c) => /columna de al lado/.test(c)).length, 0,
     'volvió la instrucción repetida fila por fila')
-  const linea = gm.filas.map((f) => String(f[0] ?? '')).filter((c) => /COUNTA\(\$A\$/.test(c))
+  const linea = gm.filas.map((f) => String(f[0] ?? '')).filter((c) => /→Oficial|→Ayudante/.test(c))
   assert.equal(linea.length, 1, 'la línea del convenio tiene que existir UNA sola vez')
   // ═══ Y DESDE EL 07/08 YA NO PIDE: DECLARA (equivalencia del dueño) ═══
   // Las cuatro categorías del plantel tienen equivalente, así que la línea dice contra qué compara el
   // bloque en vez de pedir una carga manual que ya no hace falta.
   assert.match(linea[0], /OF, OF M→Oficial/)
   assert.match(linea[0], /A, A M→Ayudante/)
-  assert.match(linea[0], /manda la tuya/, 'la columna «Convenio» sigue siendo del dueño y su valor gana')
+  // ═══ "manda la tuya" SE MUDÓ AL ENCABEZADO DE LA COLUMNA (13/08) ═══
+  //
+  // La frase colgaba de la glosa de arriba del cuadro. Una instrucción sobre una columna se lee en su
+  // encabezado, que es donde mira el que va a escribir en ella: ahora la columna se llama «Convenio
+  // (tuya)». Lo que este test cuida no cambió — que la pestaña siga diciendo, en alguna parte, que esa
+  // celda es del dueño. Si el "(tuya)" se cae, el dueño no tiene forma de saber que puede escribir ahí.
+  assert.match(String(gm.filas[gm.plantel.fPrimera - 2][4]), /\(tuya\)/,
+    'el encabezado dejó de declarar que la columna «Convenio» es del dueño y su valor gana')
   // Y el estado por fila sigue siendo corto y contestando lo único que el bloque contesta.
   const estados = gm.filas.slice(gm.plantel.fPrimera - 1, gm.plantel.fUltima).map((f) => String(f[7]))
   for (const e of estados) {
@@ -745,12 +783,15 @@ test('el RESTO de la quincena en curso se marca como tal, y se dice en la pesta�
   assert.equal(q[0].resto, true, 'el resto de la quincena en curso dejó de marcarse')
   assert.equal(q[1].resto, false, 'una quincena que arranca el 16 no es un resto')
   const g2 = grilla({ bloques: BLOQUES, pendientes: q, bloquesOfi: [{ mes: 6, inicio: 5, fin: 8 }] })
-  const aviso = g2.filas.map((f) => String(f[0] ?? '')).find((c) => /lo que QUEDA de la quincena en curso/.test(c))
+  // El aviso pasó de 167 caracteres a 45 el 13/08: "La 1ª fila es el RESTO de la quincena en curso".
+  // Se busca la palabra RESTO, que es la que hace el trabajo.
+  const esAviso = (c) => /1ª fila es el RESTO/.test(c)
+  const aviso = g2.filas.map((f) => String(f[0] ?? '')).find(esAviso)
   assert.ok(aviso, 'sin acuerdo visible, la primera fila del calendario vuelve a leerse como una quincena entera')
   // Y NO aparece cuando la carga cierra justo en el borde del tramo: una glosa fija que se lee todos
   // los días es invisible el día que importa.
   const g3 = grilla({ bloques: BLOQUES, pendientes: quincenasPendientes(new Date(2026, 7, 16)), bloquesOfi: [] })
-  assert.ok(!g3.filas.map((f) => String(f[0] ?? '')).some((c) => /lo que QUEDA de la quincena/.test(c)))
+  assert.ok(!g3.filas.map((f) => String(f[0] ?? '')).some(esAviso))
 })
 
 test('EL CALENDARIO CONTESTA LA PREGUNTA: obreros, oficina y dirección, y su total, en una fila', () => {
@@ -897,15 +938,48 @@ test('NINGUNA COLUMNA DE TEXTO ALINEADA A LA DERECHA — el texto se derramaba s
   assert.equal(alineacionDe(gm.esc.f0, 5), 'RIGHT', 'la Σ $/hora de 1.2 se fue a la izquierda')
 })
 
-test('NINGUNA GLOSA MÁS LARGA DE LO QUE LA FILA PUEDE MOSTRAR', () => {
-  // La fila derrama sobre la grilla entera: 330px de la columna A más trece columnas de 112px. A ~6px
-  // por carácter eso son ~290 caracteres. Una glosa más larga no se lee: se adivina — y en el PDF se
-  // cortaba en «se repite el último t».
-  const TOPE = 290
-  for (const [i, f] of gm.filas.entries()) {
-    const a = String(f[0] ?? '')
-    if (a.startsWith('=') || a === VACIO) continue     // las fórmulas rinden en la pestaña, no acá
-    if (String(f[1] ?? '').replace(VACIO, '')) continue // con un importe al lado no derrama: se recorta
-    assert.ok(a.length <= TOPE, `fila ${i + 1}: ${a.length} caracteres, se corta en pantalla — "${a.slice(0, 60)}…"`)
+test('MINIMALISMO: NINGÚN RÓTULO DE LA COLUMNA A PASA DE 60 CARACTERES', () => {
+  // ═══ EL TEST QUE HABÍA MEDÍA SI LA GLOSA ENTRABA; EL DUEÑO SE QUEJÓ DE QUE EXISTIERA (13/08) ═══
+  //
+  // Acá vivía un tope de 290 caracteres —el ancho físico de la fila, 330px de la A más trece de 112—.
+  // Con ese tope la pestaña pasaba en verde con 3.118 caracteres de párrafo en la columna A, que es
+  // exactamente lo que el dueño rechazó: *"tiene muchas palabras y frases y explicación que nadie
+  // lee"*. "Entra en la fila" nunca fue el estándar; el estándar es que no haya nada que leer.
+  //
+  // 60 es `LARGO_NOTA`, el umbral que este repo ya usaba para decir que un texto DEJÓ DE SER UN RÓTULO
+  // y pasó a ser una nota. No es un número nuevo: es el mismo, aplicado a la columna que lo tenía
+  // exceptuado.
+  //
+  // Y SE MIDE ADENTRO DE LAS FÓRMULAS. Las dos glosas más largas que rechazó el dueño —el supuesto del
+  // convenio (374) y la equivalencia de categorías (172)— eran literales dentro de un `=IF(…)`: el
+  // test viejo las salteaba con `if (a.startsWith('='))` y por eso nunca las vio.
+  const largas = glosasLargas(gm.filas)
+  assert.deepEqual(largas, [],
+    largas.map((x) => `fila ${x.fila}: ${x.largo} caracteres — "${x.texto.slice(0, 80)}…"`).join('\n'))
+})
+
+test('el rediseño no se puede deshacer por una glosa: el tope vale para las TRES fixtures', () => {
+  // La misma medida sobre las variantes que disparan las ramas de error —sin escala, sin acuerdo, sin
+  // meses de oficina—: son justamente las que traían los párrafos más largos, porque un mensaje de
+  // alarma es donde más tienta explicarse. Si una rama vuelve a la prosa, esto se pone rojo.
+  const sinEscala = grilla({
+    bloques: BLOQUES, pendientes: PEND, bloquesOfi: [],
+    escalones: [], bloqueBase: BLOQUES[1], categorias: ['OF'], personasBase: 16,
+    escalonVigente: null, meses: mesesDelMotor(new Date(2026, 6, 31), PEND, [new Date(2026, 6, 31)]), hoy: HOY,
+  })
+  for (const [nombre, g] of [['sin escala', sinEscala], ['con motor', gm]]) {
+    const largas = glosasLargas(g.filas)
+    assert.deepEqual(largas, [], `${nombre} · ${largas.map((x) => `fila ${x.fila}: ${x.largo} — "${x.texto.slice(0, 80)}…"`).join('\n')}`)
   }
+})
+
+test('la medida ve el texto ADENTRO de la fórmula — si no, el párrafo vuelve por esa puerta', () => {
+  // El control del control: sin esto, `glosasLargas` daría cero sobre una pestaña llena de párrafos
+  // escondidos en literales, que es exactamente el estado del que se partió.
+  const conParrafo = [['t'], ['sub'], [`=IF(A1=0;"${'x'.repeat(120)} palabras";"corto")`]]
+  const d = glosasLargas(conParrafo)
+  assert.equal(d.length, 1, 'una glosa de 128 caracteres adentro de un IF pasó como si no existiera')
+  assert.equal(d[0].fila, 3)
+  // Y una máscara de formato larga NO es una glosa: sin el filtro, `TEXT(x;"#,##0")` daría falso rojo.
+  assert.deepEqual(glosasLargas([['t'], ['sub'], [`=TEXT(A1;"${'#,##0'.repeat(20)}")`]]), [])
 })

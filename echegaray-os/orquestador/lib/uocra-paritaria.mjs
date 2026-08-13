@@ -199,7 +199,9 @@ export function factorUocraEntre(desde, hasta, escalones = []) {
  */
 export function contrastarEscala(escalones = []) {
   const e = escalones.find((x) => x.periodo === PERIODO_VERIFICADO)
-  if (!e) return [`la réplica no trae el escalón ${PERIODO_VERIFICADO}, que es el verificado el ${VERIFICADA_EL}`]
+  // El desvío entra en un renglón de la pestaña (tope de 60 con su prefijo): el período dice todo, y
+  // que ese es el escalón verificado lo declara `PERIODO_VERIFICADO`, acá al lado.
+  if (!e) return [`la réplica no trae el escalón ${PERIODO_VERIFICADO}`]
   const dif = []
   for (const [cat, esperado] of Object.entries({ ...ESCALA_VERIFICADA, ...MENSUAL_VERIFICADO })) {
     const leido = e.categorias?.[cat]?.basico

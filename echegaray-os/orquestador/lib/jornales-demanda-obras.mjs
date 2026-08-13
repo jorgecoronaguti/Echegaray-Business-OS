@@ -341,6 +341,8 @@ export function glosaDemanda(demanda = null) {
   const nQ = demanda?.porQuincena?.size ?? 0
   if (!nQ) return ''
   const n = Number(demanda?.nObras) || 0
-  return ` Donde la demanda de las ${n} obra${n === 1 ? '' : 's'} vendida${n === 1 ? '' : 's'} `
-    + '(insumo del dueño) supera el convenio, Proyectado es MAX(convenio; demanda).'
+  // LA FÓRMULA DICE MÁS QUE LA FRASE Y OCUPA UN CUARTO. "Donde la demanda de las N obras vendidas
+  // (insumo del dueño) supera el convenio, Proyectado es MAX(convenio; demanda)" son 110 caracteres
+  // para expresar en palabras exactamente el MAX que la celda ya calcula.
+  return ` · Proyectado = MAX(convenio; demanda de ${n} obra${n === 1 ? '' : 's'})`
 }

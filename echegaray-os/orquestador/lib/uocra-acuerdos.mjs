@@ -278,13 +278,25 @@ export function estadoReplica(escalones = [], hoy = new Date()) {
   if (!ult) {
     return {
       estado: 'vacía', ultimoPeriodo: null,
-      mensaje: `⚠ ${HOJA} no trae ninguna escala: el IMPORTHTML al sitio del acuerdo se cayó. NO hay piso de convenio contra el cual comparar — y no se muestra uno viejo haciéndolo pasar por vigente.`,
+      // EL CANARIO GRITA EN UN RENGLÓN. El párrafo explicaba además que no se muestra una escala vieja
+      // — pero eso es lo que el canario HACE, no algo que el lector necesite leer para actuar. Queda
+      // qué falta y qué hacer; que no hay piso de convenio se VE, en las celdas del piso vacías.
+      //
+      // EL LARGO ES UN CONTRATO: este mensaje se concatena con " · CCT 76/75 Zona A" (19 caracteres)
+      // en la línea de vigencia de la sección 4, así que tiene que entrar en 41 para que esa fila no
+      // pase de 60. Ver el test del tope en jornales-pestana.test.mjs.
+      mensaje: `⚠ Sin escala UOCRA — revisá el IMPORTHTML`,
     }
   }
   if (ult.periodo < enCurso) {
     return {
       estado: 'vencida', ultimoPeriodo: ult.periodo,
-      mensaje: `⚠ el último acuerdo publicado en ${HOJA} es ${ult.rotulo} (${ult.periodo}) y el mes en curso es ${enCurso}: la escala quedó vencida. Los meses siguientes se proyectan con el % esperado de Parámetros, no con un acuerdo.`,
+      // "Los meses siguientes se proyectan con el % esperado de Parámetros" se cayó de acá porque el
+      // cuadro 1.2 lo dice fila por fila en su columna Estado: "⚠ proyección" en cada mes sin acuerdo.
+      // Repetirlo arriba en prosa es la tercera vez que se afirma lo mismo.
+      // El período del último acuerdo y el mes en curso se cayeron: el rótulo YA trae el mes ("Agosto
+      // +1,9%") y cuál es el mes en curso lo sabe el que mira. Mismo contrato de 41 caracteres.
+      mensaje: `⚠ Escala vencida — último: ${ult.rotulo}`,
     }
   }
   return {

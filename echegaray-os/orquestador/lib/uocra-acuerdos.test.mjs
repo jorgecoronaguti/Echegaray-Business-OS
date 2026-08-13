@@ -73,8 +73,10 @@ test('el canario dice VENCIDA cuando el mes en curso no tiene acuerdo, y no mues
   assert.match(alDia.mensaje, /Agosto \+1,9%/)
   const vencida = estadoReplica(escalones, new Date(2026, 9, 15))
   assert.equal(vencida.estado, 'vencida')
-  assert.match(vencida.mensaje, /quedó vencida/)
-  assert.match(vencida.mensaje, /2026-08/)
+  // El mensaje se acortó el 13/08 (rechazo del diseño): dice VENCIDA y cuál es el último acuerdo. El
+  // período crudo "2026-08" salió — el rótulo "Agosto +1,9%" ya nombra el mes y lo hace legible.
+  assert.match(vencida.mensaje, /vencida/i)
+  assert.match(vencida.mensaje, /Agosto \+1,9%/, 'el canario dejó de decir cuál es el último acuerdo')
 })
 
 test('el canario dice VACÍA si el IMPORTHTML se cayó — no un cero silencioso', () => {

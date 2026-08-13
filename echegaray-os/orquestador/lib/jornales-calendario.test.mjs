@@ -52,7 +52,14 @@ test('LA SEMANA DE OBRA ES LUNES A VIERNES — y lo que queda afuera se declara,
     assert.equal(diasLaborables(d(a), d(b)), lunVie(d(a), d(b)), `${a}→${b}: dejó de contar lunes a viernes`)
   }
   // Y el sábado no desaparece del relato: la pestaña declara que la proyección no lo ve.
-  assert.match(LINEA_SABADOS, /LUNES A VIERNES/)
+  //
+  // LA DECLARACIÓN PASÓ DE 167 CARACTERES A 35 (13/08). "la proyección cuenta días de LUNES A VIERNES"
+  // decía por qué falta el sábado; el rótulo nuevo dice QUÉ falta, que es lo que el lector necesita
+  // para no sumar mal. Lo que este test protege es lo mismo de siempre: que los sábados y las horas
+  // extra queden NOMBRADOS —si el rótulo se cae, la proyección se lee como si los incluyera— y que la
+  // línea siga siendo una declaración y no un número estimado.
+  assert.match(LINEA_SABADOS, /⊘/, 'el símbolo de "no entra acá" es lo que marca la exclusión')
+  assert.match(LINEA_SABADOS, /sábados/i)
   assert.match(LINEA_SABADOS, /horas extra/)
   assert.doesNotMatch(LINEA_SABADOS, /\d/, 'la línea DECLARA; si trae un número volvió a ser un cálculo')
 })
@@ -147,7 +154,11 @@ test('LA BAJA NO REGISTRADA: la pestaña dice cuánto cuesta seguir proyectando 
   // Y el importe sale de la RELACIÓN de las dos Σ, no de un jornal escrito a mano.
   assert.match(f, /\(1-N\(\$L\$111\)\/N\(\$C\$19\)\)\*N\(\$D\$41\)/)
   assert.match(f, /hasta \$/, 'con el MAX de la demanda el exceso es un techo, y el rótulo tiene que decirlo')
-  assert.match(f, /sacalas de la planilla JORNALES/, 'sin decir dónde se arregla, el control no es accionable')
+  // "Si son bajas, sacalas de la planilla JORNALES — el OS no puede distinguir una baja de una
+  // ausencia" salió de la celda el 13/08 y quedó como comentario en `formulaBajaNoRegistrada`. El
+  // control sigue siendo accionable porque nombra las dos cifras que deciden: CUÁNTAS personas de más
+  // y CUÁNTA plata cuesta hasta diciembre. Sin la cantidad, el aviso no se puede contrastar con nada.
+  assert.match(f, /persona\(s\) menos que el plantel base/, 'el aviso dejó de decir cuántas personas sobran')
   assert.doesNotMatch(sinTextos(f), /,/, 'separador es-AR')
 })
 
