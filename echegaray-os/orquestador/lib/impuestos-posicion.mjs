@@ -83,6 +83,49 @@ export function obligacionesDelCalendario({ hoy, anio, meses, filas }) {
   })
 }
 
+/**
+ * NÚCLEO PURO: cómo se identifica un vencimiento ante el registro de decisiones del dueño.
+ *
+ * La CLAVE es el impuesto y su período —`iva·2026-06`—, no la fila ni el orden del calendario: el
+ * calendario se rearma en cada corrida y anclar en la posición ya se rompió en silencio otras veces.
+ * La FORMA es la fecha de vencimiento: si ARCA o la DGR la mueven, el dueño decidió sobre otra cosa.
+ */
+export const hallazgoDeVencimiento = (o) => ({ clave: `${o.tipo}·${o.periodo}`, forma: { fecha: o.fecha } })
+
+/**
+ * NÚCLEO PURO: el calendario con la decisión del dueño pegada a cada vencimiento que la tenga.
+ *
+ * ═══ POR QUÉ (13/08) ═══
+ *
+ * El IIBB del 16/07 y el IVA del 21/07 salían "⚠ VENCIDO" en cada corrida —cada dos horas— después de
+ * que el dueño los mirara y dijera "no afectan". `vencido` sigue siendo `true`: el hecho no cambia, y
+ * la fila sigue en el calendario con su importe. Lo que cambia es la MARCA, que pasa a decir quién lo
+ * revisó y cuándo, sin `⚠`. Liberar no es callar.
+ *
+ * LO QUE ESTO NO TOCA, Y ES DELIBERADO: la fila "⚠ vencido s/verificar" sigue sumando estos importes.
+ * Sacarlos de ahí movería plata en la pantalla que el dueño usa para decidir, y una decisión sobre el
+ * ruido de un aviso no autoriza a cambiar un número. Eso lo decide él mirándolo.
+ *
+ * @param {Array} cal el calendario de `obligacionesDelCalendario`
+ * @param {Map<string,object>} liberados clave del hallazgo → la decisión del dueño
+ */
+export function conDecisionesDelDueno(cal = [], liberados = new Map()) {
+  return cal.map((o) => {
+    const d = o.vencido ? liberados.get(hallazgoDeVencimiento(o).clave) : undefined
+    return d ? { ...o, decisionDelDueno: d } : o
+  })
+}
+
+/** NÚCLEO PURO: la marca que lleva un vencimiento en la columna A. Nunca dos fuentes para el mismo texto. */
+export function marcaDeVencimiento(o) {
+  if (o.decisionDelDueno) {
+    const d = o.decisionDelDueno
+    return `  ✓ ${String(d.cuando).slice(8, 10)}/${String(d.cuando).slice(5, 7)} lo revisó el ${d.quien}: "${d.decision}"`
+  }
+  if (o.vencido) return '  ⚠ VENCIDO'
+  return o.confianza === 'supuesto' ? '  ⚠ fecha supuesta' : ''
+}
+
 // ═══ LAS ALTURAS DE LOS BLOQUES DE ARRIBA, EN UN SOLO LUGAR ═══
 //
 // El hero y el riesgo miden lo mismo pase lo que pase (son filas de código, no de datos); el
@@ -211,8 +254,7 @@ export function filasDeLaPosicion({ cal, base, hoy, refs, acuerdo, tarjeta }) {
   F.push([seccion(2, 'Calendario de vencimientos — qué vence, cuándo y cuánto')])
   F.push(['Fecha y concepto', 'Importe'])
   for (const o of conCelda) {
-    const marca = o.vencido ? '  ⚠ VENCIDO' : (o.confianza === 'supuesto' ? '  ⚠ fecha supuesta' : '')
-    F.push([`${ddmm(o.fecha)} · ${o.concepto} · ${MESES_LARGO[o.mes - 1]}${marca}`, `=${o.celda}`])
+    F.push([`${ddmm(o.fecha)} · ${o.concepto} · ${MESES_LARGO[o.mes - 1]}${marcaDeVencimiento(o)}`, `=${o.celda}`])
   }
   F.push([rotuloTotal(`Total de los próximos ${VENTANA.adelante} días`), formulaVentana(conCelda, VENTANA.adelante)])
   F.push([])

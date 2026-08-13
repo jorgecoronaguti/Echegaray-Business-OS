@@ -59,7 +59,13 @@ export function informarCalendario(g, hoy) {
   const d = diasAlProximo(g.cal, hoy)
   console.log(`  próximo vencimiento: ${d === null ? 'ninguno en la ventana' : `en ${d} día(s)`}`)
   for (const o of g.cal) {
-    console.log(`   ${o.fecha}  ${o.vencido ? '⚠ VENCIDO' : `en ${String(o.dias).padStart(3)}d`}  ${o.concepto.padEnd(34)} ${o.celda.padEnd(8)} ${o.confianza}`)
+    // El estado del log es el MISMO que el de la pestaña: un vencimiento que el dueño ya revisó no
+    // puede salir "⚠ VENCIDO" acá y "✓ lo revisó el dueño" allá. Dos textos para el mismo hecho es
+    // como se pierde la confianza en los dos.
+    const estado = o.decisionDelDueno
+      ? `✓ revisado: "${o.decisionDelDueno.decision}"`
+      : (o.vencido ? '⚠ VENCIDO' : `en ${String(o.dias).padStart(3)}d`)
+    console.log(`   ${o.fecha}  ${estado.padEnd(9)}  ${o.concepto.padEnd(34)} ${o.celda.padEnd(8)} ${o.confianza}`)
   }
 }
 

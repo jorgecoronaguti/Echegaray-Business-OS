@@ -53,8 +53,10 @@ import {
 } from '../lib/impuestos-bloques.mjs'
 import {
   obligacionesDelCalendario, altoDeLaPosicion, filasDeLaPosicion, formulaOtrosSinFecha,
-  OFFSET_TITULAR, ALTO_HERO,
+  OFFSET_TITULAR, ALTO_HERO, hallazgoDeVencimiento, conDecisionesDelDueno,
 } from '../lib/impuestos-posicion.mjs'
+// Lo que el dueño ya decidió sobre un vencimiento puntual. Ver lib/decisiones-hallazgos.mjs.
+import { CONTROLES, decidir, explicarDecisiones } from '../lib/decisiones-hallazgos.mjs'
 import { IIBB_SUPUESTO } from '../lib/vencimientos-fiscales.mjs'
 import { informarProyeccion, informarCalendario } from '../lib/impuestos-informe.mjs'
 import { formatear } from '../lib/impuestos-piel.mjs'
@@ -218,10 +220,20 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy }) {
   })
 
   // ── LA POSICIÓN, RECIÉN AHORA ──────────────────────────────────────────────────────────────────
-  const cal = obligacionesDelCalendario({
+  const calCrudo = obligacionesDelCalendario({
     hoy, anio, meses: mesesDelCalendario,
     filas: { iva: iva.fAPagar, iibb: ibb.fAPagar, plan: pln.fTotal, prendario: deuda.fCuota },
   })
+  // ═══ LO QUE EL DUEÑO YA MIRÓ NO VUELVE A GRITAR (13/08) ═══
+  //
+  // El IIBB del 16/07 y el IVA del 21/07 salían "⚠ VENCIDO" cada dos horas después de que él dijera
+  // "no afectan". El hecho no se borra —siguen vencidos, siguen en el calendario con su importe— pero
+  // la marca pasa a decir quién los revisó y cuándo. Se libera ESE impuesto de ESE período con ESA
+  // fecha de vencimiento: si ARCA o la DGR mueven la fecha, la decisión caduca sola y el ⚠ vuelve.
+  const decVenc = decidir(CONTROLES.vencimientoVencido,
+    calCrudo.filter((o) => o.vencido).map(hallazgoDeVencimiento), { hoy })
+  explicarDecisiones(decVenc, console.log, { detalle: (h) => `el vencimiento ${h.clave} (${h.forma.fecha})` })
+  const cal = conDecisionesDelDueno(calCrudo, new Map(decVenc.silenciados.map((s) => [s.clave, s.decision])))
   // El saldo a favor es el del ÚLTIMO MES CON DATO REAL, no el del último mes del cuadro: de agosto
   // en adelante es proyección, y el hero dice cuál es la posición HOY.
   const mesSaldoIva = proy?.ultimoMesConDato ?? mesesOf[mesesOf.length - 1] ?? 0

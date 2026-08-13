@@ -1,0 +1,61 @@
+{
+  "queEs": "Lo que el DUEÑO ya decidió sobre un hallazgo puntual de un control. Lo lee lib/decisiones-hallazgos.mjs y lo consultan los generadores antes de emitir su aviso. Un hallazgo con decisión se sigue contando y listando, pero deja de ocupar la línea de aviso (el ⚠ que el pipeline levanta de la salida) y deja de hacer fallar el paso.",
+  "comoSeMantiene": [
+    "SE SILENCIA UN HALLAZGO, NUNCA UN CONTROL. Apagar 'el control de ventas sin cobranza' taparía el próximo hallazgo real; lo que se apaga es ESE comprobante con ESE importe.",
+    "clave = QUÉ hallazgo es. Para una factura, su comprobante; para un cobro duplicado, su fila; para un vencimiento, el impuesto y su período. El generador la arma igual en cada corrida.",
+    "forma = con QUÉ DATOS estaba el hallazgo cuando el dueño lo miró. Si mañana el importe cambia, la decisión NO se aplica: él decidió sobre otra cosa y el aviso vuelve. Es el mismo criterio de la huella por celda — una decisión vale para ESA forma del dato.",
+    "El conjunto de claves de 'forma' también cuenta. Si el control empieza a mirar un campo más, las decisiones viejas caducan solas en vez de seguir aplicando sobre una identidad que ya no es la misma.",
+    "decision = el texto TEXTUAL del dueño. Dentro de tres meses nadie va a recordar por qué esos $115M no se consideran, y una paráfrasis no es su palabra.",
+    "quien = 'dueño', y no hay otra autoridad. Un agente que pudiera cargar una decisión tendría la llave para apagar su propio control.",
+    "cuando = YYYY-MM-DD, la fecha en que lo dijo. 'hasta' es opcional: una decisión con plazo caduca sola.",
+    "porque = el contexto que el dueño NO dijo pero hace falta para releer esto dentro de un año. Es del OS, no de él; nunca reemplaza a 'decision'.",
+    "Para cargar una nueva: node orquestador/scripts/decisiones-hallazgos.mjs --listar muestra las vigentes y valida el archivo; la entrada se agrega a mano acá, con la forma que el control imprime en su propio log."
+  ],
+  "decisiones": [
+    {
+      "control": "proveedores-materiales-pestana · factura emitida que Cobranzas no tiene",
+      "clave": "0001-00000208",
+      "forma": { "importe": 75000000, "cuit": "30716490498" },
+      "decision": "no considerarlas",
+      "quien": "dueño",
+      "cuando": "2026-08-13",
+      "porque": "El control cruza las facturas emitidas de ARCA contra la pestaña Cobranzas y avisaba de 6 comprobantes por $129.499.724. Le pregunté por las dos mayores —ésta, del 11/03, y la 0001-00000213 del 11/06, las dos al CUIT 30716490498 por $115.000.000 entre las dos— y contestó textual 'no considerarlas'. NO se sabe por qué: puede ser una factura anulada, refacturada o cobrada por fuera de la pestaña. Lo que sí queda cerrado es que el aviso no es información nueva para él. Si el importe de este comprobante cambia, esta decisión deja de aplicar y el aviso vuelve."
+    },
+    {
+      "control": "proveedores-materiales-pestana · factura emitida que Cobranzas no tiene",
+      "clave": "0001-00000213",
+      "forma": { "importe": 40000000, "cuit": "30716490498" },
+      "decision": "no considerarlas",
+      "quien": "dueño",
+      "cuando": "2026-08-13",
+      "porque": "La segunda de las dos por las que se le preguntó, del 11/06, mismo CUIT que la 0001-00000208. Misma respuesta y el mismo alcance: se libera ESTE comprobante con ESTE importe, no el control."
+    },
+    {
+      "control": "cobranzas-control · posible cobro duplicado",
+      "clave": "fila 39",
+      "forma": { "fila": 39, "cliente": "LA ESTRELLA /ALIMENTOS DEL SUR SAS", "importe": 10000000 },
+      "decision": "no es duplicado",
+      "quien": "dueño",
+      "cuando": "2026-08-13",
+      "porque": "El detector marca la fila 39 porque hay otro cobro con el mismo cliente, monto, forma, estado y día. Ya había pasado el 20/07 con las filas 39 y 40 —dos cobros de $10.000.000 a LA ESTRELLA el mismo día— y el dueño avisó entonces que son DOS CONCEPTOS DISTINTOS; por eso el detector pasó a mirar también comprobante, orden de compra y concepto. Volvió a marcarla y volvió a decir que no. La clave incluye la FILA además del cliente y el importe: si la pestaña se corre, la fila 39 ya no será este cobro, no coincidirá la forma y la marca vuelve — que es el lado seguro para equivocarse. LÍMITE DECLARADO: el hallazgo es un PAR (filas 39 y 40, las dos LA ESTRELLA /ALIMENTOS DEL SUR SAS por $10.000.000 el 13/6/2026) y el dueño nombró la 39. La 40 sigue marcada a propósito: extender su decisión a una fila que no nombró sería ponerle palabras en la boca. Si también es cobro distinto, se agrega una entrada igual con clave 'fila 40'."
+    },
+    {
+      "control": "impuestos-pestana · vencimiento fiscal vencido",
+      "clave": "iibb·2026-06",
+      "forma": { "fecha": "2026-07-16" },
+      "decision": "no afectan",
+      "quien": "dueño",
+      "cuando": "2026-08-13",
+      "porque": "El calendario mira 45 días hacia atrás para IVA e IIBB y marca '⚠ VENCIDO' lo que ya venció, porque la pestaña no tiene campo 'pagado': un vencimiento cumplido con importe es una PREGUNTA, no una deuda confirmada. Ésta es la DDJJ de Ingresos Brutos San Juan del período junio, con vencimiento SUPUESTO el 16/07 (día 16 = moda de las 6 presentaciones reales de _IIBB_RAW; la DGR no se pudo verificar). El dueño la miró y dijo 'no afectan'. Si ARCA/DGR mueve la fecha de vencimiento de este período, la decisión deja de aplicar."
+    },
+    {
+      "control": "impuestos-pestana · vencimiento fiscal vencido",
+      "clave": "iva·2026-06",
+      "forma": { "fecha": "2026-07-21" },
+      "decision": "no afectan",
+      "quien": "dueño",
+      "cuando": "2026-08-13",
+      "porque": "La DDJJ F.2051 del período junio, vencimiento 21/07 verificado contra la agenda de ARCA para terminación de CUIT 3. Misma respuesta del dueño y mismo alcance: se libera ESTE período de ESTE impuesto, no el control ni los meses que sigan."
+    }
+  ]
+}
