@@ -15,7 +15,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { letra, resolverColumnas, render, celdaTexto } from './obras-pestana.mjs'
+import { letra, resolverColumnas, render, celdaTexto, ROTULOS_COBRANZAS } from './obras-pestana.mjs'
 import { grillaObras, ANCHO_OBRAS } from '../lib/obras-grilla.mjs'
 import { OBRAS_FUTURAS, totalEgresos } from '../lib/obras-datos.mjs'
 import { VACIO } from '../lib/preservar-anotaciones.mjs'
@@ -61,6 +61,36 @@ test('el rótulo se compara con trim: un espacio de más en el archivo no rompe 
   const conEspacios = [['Fecha', '  Obra / Cliente ', 'Concepto', 'TOTAL a cobrar (IVA inc.)', ' Estado']]
   assert.deepEqual(resolverColumnas(conEspacios, ROTULOS),
     { desde: 2, cliente: 'B', concepto: 'C', total: 'D', estado: 'E' })
+})
+
+test('"Retenciones" NO puede resolver a una de las tres columnas de "Retención": daría una parte', () => {
+  // EL ENCABEZADO REAL DE COBRANZAS, transcrito de las columnas que importan (13/08). Conviven el
+  // TOTAL retenido de la fila (col L) y TRES columnas de desglose más a la derecha. Todas empiezan
+  // parecido, ninguna da error si se elige la equivocada: la pestaña publicaría una fracción del
+  // retenido con formato de dato correcto, y la única forma de notarlo sería sumar a mano.
+  //
+  // SE PRUEBA EL CRITERIO QUE USA EL ESCRITOR (`ROTULOS_COBRANZAS`), no una copia escrita acá: un
+  // test con su propio patrón daría verde aunque alguien aflojara el del escritor a /^Retenci/.
+  const real = [[
+    'ID', 'Categoría', 'Fecha emisión', 'Factura', 'N° Comprobante', 'Unidad', 'Obra / Cliente',
+    'ORDEN DE  COMPRA', 'Concepto', 'Monto neto', 'IVA', 'Retenciones / descuentos',
+    'TOTAL a cobrar (neto de retenciones)', 'Forma de Cobro', 'Estado', 'Fecha de Venta', 'Fecha cobro',
+    'Mes cobro (auto)', 'Probabilidad %', 'Monto ponderado', 'Días hasta vto.', 'Estado cobro', 'Notas',
+    'Retención 16,8% del neto ⚠ rótulo original perdido', 'Ret Ganancias',
+    'Retención 2,5%/3,5% del neto ⚠ rótulo original perdido', 'Moneda',
+  ]]
+  const cols = resolverColumnas(real, ROTULOS_COBRANZAS)
+  assert.equal(cols.retenciones, 'L', 'el TOTAL retenido de la fila, no un desglose')
+  for (const desglose of ['X', 'Y', 'Z']) assert.notEqual(cols.retenciones, desglose)
+  // Y de paso queda fijado el resto del contrato contra el encabezado REAL: si el archivo se
+  // reordena, las letras cambian solas; si un rótulo desaparece, el escritor rompe.
+  assert.equal(cols.total, 'M', '"TOTAL a cobrar" es neto de retenciones: la plata que entra')
+  assert.equal(cols.neto, 'J')
+  assert.equal(cols.fechaVenta, 'P')
+  assert.equal(cols.fechaCobro, 'Q')
+  // Si mañana el rótulo del total retenido cambia, el escritor ROMPE — no elige el parecido.
+  const sinTotal = [real[0].map((r) => (r === 'Retenciones / descuentos' ? 'Descuentos' : r))]
+  assert.throws(() => resolverColumnas(sinTotal, ROTULOS_COBRANZAS), /campo "retenciones"/)
 })
 
 test('el centinela VACIO se dibuja VACÍO: no es un dato, es "esta celda es mía y va vacía"', () => {
