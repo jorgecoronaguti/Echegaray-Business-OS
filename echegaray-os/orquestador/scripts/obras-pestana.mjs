@@ -44,6 +44,7 @@ import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-edicion
 import { requestsTextoPorContenido } from '../lib/formato-texto-por-contenido.mjs'
 import {
   grillaObras, anchoColumnaA, celdasEnError, columnasDesparejas, problemaDeSintaxis, clientesDeCobranzas,
+  conColaLimpiable, ANCHO_HISTORICO,
   ANCHO_OBRAS, ANCHOS_OBRAS, PESTANA_OBRAS, REFS_OBRAS,
 } from '../lib/obras-grilla.mjs'
 import { OBRAS_FUTURAS, totalEgresos } from '../lib/obras-datos.mjs'
@@ -172,7 +173,7 @@ async function refsReales(google) {
         oc: /^(OC|ORDEN DE COMPRA)$/i,
         total: /^TOTAL a cobrar/, estado: 'Estado', fechaCobro: /^Fecha de cobro|^Fecha cobro/i,
         // La FECHA DE VENTA acota el año de la venta (devengado); la de cobro, el de la plata.
-        fechaVenta: /^Fecha\s*(de\s*)?venta/i,
+        fechaVenta: /^Fecha\s*(de\s*)?venta/i, forma: /^Forma de [Cc]obro/,
       }),
     },
     cmp: {
@@ -182,7 +183,7 @@ async function refsReales(google) {
       ...resolverColumnas(cmp, {
         proveedor: 'Proveedor', cliente: 'Cliente / Asignación', fecha: 'Fecha factura',
         // El neto es "Importe"; el IVA hace falta para la regla "M si está, si no O − N".
-        neto: 'Importe', iva: 'IVA', total: 'Total',
+        neto: 'Importe', iva: 'IVA', total: 'Total', familia: 'Familia de material',
       }),
     },
     mat: REFS_OBRAS.mat,
@@ -268,7 +269,10 @@ async function main() {
   const { grid, respetadas, ediciones, candidatos } = await conEdicionesRespetadas(ID, PESTANA_OBRAS, g.filas, actual)
   g.filas = grid
   for (const r of respetadas) console.log(`  ✋ respeto tu texto ("${r.suyo.slice(0, 44)}")`)
-  const escritura = await escribirPreservando(google, ID, PESTANA_OBRAS, g.filas, { respetar: false, anchoHoja: Math.max(ANCHO_OBRAS, hoja.cols ?? ANCHO_OBRAS) })
+  // SE ESCRIBE CON LA COLA: las columnas que este generador dejó de usar van con el centinela VACIO
+  // para que la fusión las LIMPIE. Sacar una columna del código no la saca de la pestaña.
+  g.filas = conColaLimpiable(g.filas, ANCHO_HISTORICO)
+  const escritura = await escribirPreservando(google, ID, PESTANA_OBRAS, g.filas, { respetar: false, anchoHoja: Math.max(ANCHO_HISTORICO, hoja.cols ?? ANCHO_HISTORICO) })
   // UNA PESTAÑA QUE NO SE ESCRIBIÓ NO CAMBIÓ DE FORMA: si el candado la retuvo, tampoco se formatea.
   if (escritura?.bloqueada || escritura?.editadaPorHumano) {
     console.log(`  🔒 "${PESTANA_OBRAS}" bajo tu control: no escribí, NO le toco el formato.`)
@@ -308,6 +312,23 @@ async function main() {
       + desparejas.map((d) => `${d.columna} vacía en ${d.filas.length} de ${d.de} obras (filas ${d.filas.join(', ')})`).join(' · ')
       + '. Una fórmula devolvió vacío donde las demás dieron valor: revisala antes de creerle a la pestaña.')
   }
+  // ═══ EL CONTROL QUE ANTES ERA UNA FILA DE LA PESTAÑA ═══
+  //
+  // El dueño sacó "⇒ sin ubicar" dos veces: un renglón que dice $0 todos los días no es información.
+  // La verificación no se perdió, se mudó acá: si la suma de los clientes no da el total de la
+  // fuente, hay plata facturada que no entró en ninguna fila y el generador lo dice. Vive en el log
+  // y no en la portada, que es donde el dueño quería que no estuviera.
+  const num = (v) => Number(String(v ?? '').replace(/[^\d,-]/g, '').replace(/\./g, '').replace(',', '.')) || 0
+  const [cli0, cli1] = g.fClientes
+  const sumaClientes = quedo.slice(cli0 - 1, cli1).reduce((s, f) => s + num(f?.[2]), 0)
+  const totalFuente = num(quedo[g.totales[0] - 1]?.[2])
+  const sinUbicar = Math.round((totalFuente - sumaClientes) * 100) / 100
+  if (Math.abs(sinUbicar) > 1) {
+    throw new Error(`SIN UBICAR $${sinUbicar.toLocaleString('es-AR')}: la venta de los ${cli1 - cli0 + 1} clientes `
+      + `($${sumaClientes.toLocaleString('es-AR')}) no da el total de Cobranzas ($${totalFuente.toLocaleString('es-AR')}). `
+      + 'Hay un cliente que el mecanismo no supo ubicar — revisar ALIAS_CLIENTE y la lista derivada.')
+  }
+  console.log(`  ✓ sin ubicar: $0 — la suma de los ${cli1 - cli0 + 1} clientes da el total de Cobranzas`)
   console.log(`QUEDÓ ESCRITO — releí ${quedo.length} filas: sin celdas en error y sin columnas desparejas.`)
 }
 
