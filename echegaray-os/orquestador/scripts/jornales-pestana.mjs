@@ -99,6 +99,7 @@ import {
 import {
   COLS_CALENDARIO, colCalendario, diasLaborables, expresionDias,
   formulaVentana, formulaShareEfectivo, formulaControlCalendario,
+  formulaBajaNoRegistrada, formulaHaberesDelBanco,
 } from '../lib/jornales-calendario.mjs'
 import { VERIFICADA_EL, VIGENCIA_HASTA, contrastarEscala, tramoDe } from '../lib/uocra-paritaria.mjs'
 // El otro lado del MAX de 1.3: la demanda de las obras vendidas. Toda la lógica vive en la lib.
@@ -435,6 +436,13 @@ export function grilla({
   for (const f of plantel.filas) push(f)
   filas[fConvenio - 1][0] = formulaConvenioPendiente(plantel.fPrimera, plantel.fUltima, plantel.equivalencias)
   const fPlantel = plantel.fTotal
+  // ═══ LA BAJA QUE LA PLANILLA TODAVÍA NO REGISTRÓ (13/08) ═══
+  //
+  // El plantel base es la última quincena CERRADA —y tiene que serlo: la en curso está a medio
+  // cargar—. El costo de eso es que una persona que se fue DESPUÉS de esa quincena se sigue
+  // proyectando hasta diciembre. Pasó con la liquidación final de Navarro. La fila se llena abajo,
+  // cuando existen el registro y el total del calendario.
+  const fBaja = push([VACIO])
   blanco()
 
   // ── 1.2 · EL ESCALÓN, MES POR MES ──
@@ -898,6 +906,11 @@ export function grilla({
     banco: push([sub('De lo pagado — por banco')]),
     adelanto: push([sub('De lo pagado — en adelantos')]),
     recibo: push([sub('De lo pagado — contra recibo')]),
+    // ═══ Y LO QUE EL BANCO PAGÓ Y NINGUNA NÓMINA EXPLICA (13/08) ═══
+    // Las tres líneas de arriba se controlan contra el TOTAL del propio registro: cierran o no
+    // cierran consigo mismas. Ésta compara contra el EXTRACTO, que es otra fuente — y es la única
+    // que puede mostrar una liquidación final, un SAC o un sueldo que la planilla no tiene.
+    haberes: push([sub('Lo que el banco pagó por haberes — desde que arranca el extracto')]),
   }
   // "Pagado el" VA AL FINAL, no intercalada. Insertarla al lado de "Se paga el" correría los índices de
   // las once columnas que produce nomina-sync, y eso ya rompió el registro una vez hoy (la columna "Se
@@ -963,6 +976,21 @@ export function grilla({
     { banco: colDe('Banco'), total: colDe('TOTAL'), hasta: colDe('Hasta') }, f0, fLast,
   )
   filas[fShare - 1][2] = `="el resto, por transferencia · medido s/ cerradas de "&${RANGO_MESES_BASE}&" meses"`
+  // LA BAJA NO REGISTRADA. Las dos Σ $/hora salen de bloques distintos del espejo —el plantel base
+  // (1.1) y la última fila del registro— así que la diferencia es un hecho medido, no una hipótesis.
+  filas[fBaja - 1][0] = formulaBajaNoRegistrada({
+    personasBase: `$B$${fPlantel}`, sigmaBase: `$C$${fPlantel}`,
+    personasCurso: `$${colDe('Personas')}$${fLast}`, sigmaCurso: `$${colDe('Σ $/hora')}$${fLast}`,
+    totalObra: `$${cObra}$${fTotalProy}`,
+  })
+  // LO QUE EL BANCO PAGÓ POR HABERES, CONTRA LO QUE LAS NÓMINAS DE LA PESTAÑA EXPLICAN.
+  const haberes = formulaHaberesDelBanco({
+    bancoObra: `$${colDe('Banco')}$${f0}:$${colDe('Banco')}$${fLast}`,
+    pagoObra: `$${colDe('Se paga el')}$${f0}:$${colDe('Se paga el')}$${fLast}`,
+    bancoOfi: `$F$${o0}:$F$${oFin}`, pagoOfi: `$E$${o0}:$E$${oFin}`,
+  })
+  filas[fCanal.haberes - 1][1] = haberes.importe
+  filas[fCanal.haberes - 1][2] = haberes.glosa
   // ═══ CERRADA vs EN CURSO: LO DECIDE UNA FÓRMULA, NO UNA CORRIDA DEL AGENTE ═══
   //
   // El dueño: "la última fila de este cuadro está mal porque considera que la quincena que está en
@@ -1086,7 +1114,7 @@ export function grilla({
       { fila: plantel.fTotal, col: 7 },
       // El control del calendario vive en la columna A y rinde texto por fórmula: sin declararlo, el
       // barrido de moneda no lo toca (empieza en la B) pero el pase por contenido tampoco lo clasifica.
-      { fila: fControlCal, col: 0 },
+      { fila: fControlCal, col: 0 }, { fila: fBaja, col: 0 }, { fila: fCanal.haberes, col: 2 },
     ],
     enteros: [plantel.fTotal],
     // La única celda del hero que es una FECHA y no plata: la C del próximo pago (la B, como en toda

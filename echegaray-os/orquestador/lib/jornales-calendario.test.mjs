@@ -9,6 +9,7 @@ import assert from 'node:assert/strict'
 import {
   COLS_CALENDARIO, colCalendario, diasLaborables, expresionDias, MASCARA_DOMINGO,
   formulaVentana, formulaShareEfectivo, formulaControlCalendario,
+  formulaBajaNoRegistrada, formulaHaberesDelBanco,
 } from './jornales-calendario.mjs'
 import { diasHabilesObra } from './jornales-demanda-obras.mjs'
 
@@ -28,6 +29,8 @@ const REGISTRO = [
   ['2026-07-01', '2026-07-15', 13], ['2026-07-16', '2026-07-31', 14], ['2026-08-03', '2026-08-15', 12],
 ]
 const d = (iso) => { const [y, m, x] = iso.split('-').map(Number); return new Date(y, m - 1, x) }
+/** La fórmula SIN sus literales de texto: una coma en una frase es prosa, no un separador es-AR. */
+const sinTextos = (f) => String(f).replace(/"[^"]*"/g, '""')
 const lunVie = (a, b) => {
   let n = 0
   for (const x = new Date(a); x <= b; x.setDate(x.getDate() + 1)) if (x.getDay() >= 1 && x.getDay() <= 5) n++
@@ -120,5 +123,41 @@ test('el control del calendario grita con el importe cuando el reparto no cierra
   assert.match(f, /✓ oficina y dirección cierran/)
   // La única coma admitida es la del patrón de miles de TEXT("#,##0"), que no es un separador de
   // argumentos: fuera de ella, es-AR manda punto y coma.
-  assert.doesNotMatch(f.replace(/"#,##0"/g, ''), /,/, 'separador es-AR')
+  assert.doesNotMatch(sinTextos(f), /,/, 'separador es-AR')
+})
+
+test('LA BAJA NO REGISTRADA: la pestaña dice cuánto cuesta seguir proyectando a alguien que se fue', () => {
+  // ═══ EL CASO MEDIDO (13/08) ═══
+  // Navarro cobró su liquidación final. El plantel base es la última quincena CERRADA, donde todavía
+  // figura: Σ $/hora base $85.900 contra $80.400 de la quincena en curso — los $5.500 de su jornal, al
+  // peso. La proyección lo sigue pagando hasta diciembre y NADA en la pestaña lo decía.
+  const f = formulaBajaNoRegistrada({
+    personasBase: '$B$19', sigmaBase: '$C$19', personasCurso: '$E$111', sigmaCurso: '$L$111',
+    totalObra: '$D$41',
+  })
+  // Calla cuando no falta nadie: un control que habla siempre se vuelve invisible al mes.
+  assert.match(f, /IF\(OR\(N\(\$C\$19\)=0;N\(\$B\$19\)-N\(\$E\$111\)<=0\);""/)
+  // Y el importe sale de la RELACIÓN de las dos Σ, no de un jornal escrito a mano.
+  assert.match(f, /\(1-N\(\$L\$111\)\/N\(\$C\$19\)\)\*N\(\$D\$41\)/)
+  assert.match(f, /hasta \$/, 'con el MAX de la demanda el exceso es un techo, y el rótulo tiene que decirlo')
+  assert.match(f, /sacalas de la planilla JORNALES/, 'sin decir dónde se arregla, el control no es accionable')
+  assert.doesNotMatch(sinTextos(f), /,/, 'separador es-AR')
+})
+
+test('LO QUE EL BANCO PAGÓ POR HABERES Y NINGUNA NÓMINA EXPLICA — control contra OTRA fuente', () => {
+  // Una liquidación final no es una quincena y no cabe en el registro: sin esta línea, la caja paga
+  // $239.790,94 que la pestaña no explica en ningún lado. Y el lote del 31/07 fue $6.067.921,10
+  // contra $3.336.233,42 declarados por banco en el registro.
+  const { importe, glosa } = formulaHaberesDelBanco({
+    bancoObra: '$H$110:$H$120', pagoObra: '$C$110:$C$120',
+    bancoOfi: '$F$50:$F$61', pagoOfi: '$E$50:$E$61',
+  })
+  // Los egresos vienen negativos en la réplica: sin el menos, el control compara contra el opuesto.
+  assert.match(importe, /^=IFERROR\(-SUMIFS\('_BANCO_RAW'!\$C\$4:\$C;'_BANCO_RAW'!\$F\$4:\$F;"Sueldos"\)/)
+  // LA VENTANA ES LA DEL EXTRACTO, tomada de la propia réplica: comparar contra el registro entero
+  // marcaría como "sin explicar" los meses que el banco simplemente no tiene.
+  assert.match(glosa, /">="&MIN\('_BANCO_RAW'!\$A\$4:\$A\)/)
+  assert.match(glosa, /\$F\$50:\$F\$61/, 'el banco de OFICINA también explica parte del lote')
+  assert.match(glosa, /liquidaciones finales, SAC o sueldos fuera de la planilla/)
+  assert.doesNotMatch(sinTextos(glosa), /,/, 'separador es-AR')
 })

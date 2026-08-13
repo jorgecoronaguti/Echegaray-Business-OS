@@ -181,3 +181,86 @@ export function formulaControlCalendario({ oficina, direccion, totalOficina, tot
     + `"⚠ el calendario no cierra: oficina $"&TEXT(${dif};"#,##0")&" · dirección $"&TEXT(${difD};"#,##0")`
     + `&" — alguna fecha de caja quedó fuera de las ventanas")`
 }
+
+/**
+ * NÚCLEO PURO: la baja que la planilla todavía no registró.
+ *
+ * ═══ EL CASO QUE LO TRAJO (13/08) ═══
+ *
+ * A NAVARRO MATIAS JESUS se le pagó su LIQUIDACIÓN FINAL el 13/08 ($239.790,94, confirmado por el
+ * dueño). Se fue. Pero el plantel base de la proyección es la última quincena CERRADA —16/07–31/07,
+ * donde Navarro todavía figura con $5.500/hora— así que **todas las quincenas de acá a diciembre lo
+ * siguen pagando**.
+ *
+ * La evidencia de que es exactamente él, medida en el registro: Σ $/hora del plantel base $85.900,
+ * Σ $/hora de la quincena en curso $80.400. La diferencia son $5.500 — el jornal de Navarro, al peso.
+ * Sobre la proyección de obra eso es un 6,4% de más.
+ *
+ * ═══ POR QUÉ ESTO ES UN CONTROL Y NO UNA CORRECCIÓN AUTOMÁTICA ═══
+ *
+ * El OS **no puede distinguir una baja de una ausencia**. Una persona que no aparece en el bloque de
+ * la quincena en curso puede haberse ido, estar de licencia o no haber sido cargada todavía. Sacarla
+ * sola de la proyección sería inventar una baja — y la baja de verdad se registra en IERIC y en ARCA,
+ * que el OS no lee. La fuente es la planilla del dueño: mientras él no la saque de ahí, la proyección
+ * la cuenta, y esta línea le dice cuánto le está costando no haberlo hecho.
+ *
+ * El importe es exacto donde la proyección es lineal en la Σ $/hora, y es un TECHO donde la demanda
+ * de obras manda por el MAX. Por eso dice "hasta".
+ *
+ * @param {{personasBase:string, sigmaBase:string, personasCurso:string, sigmaCurso:string, totalObra:string}} c
+ * @returns {string}
+ */
+export function formulaBajaNoRegistrada({ personasBase, sigmaBase, personasCurso, sigmaCurso, totalObra }) {
+  const menos = `N(${personasBase})-N(${personasCurso})`
+  const exceso = `(1-N(${sigmaCurso})/N(${sigmaBase}))*N(${totalObra})`
+  return `=IF(OR(N(${sigmaBase})=0;${menos}<=0);"";`
+    // EL PREFIJO DEL SUB-ÍTEM VA ADENTRO DE LA FÓRMULA: la fila es un sub-ítem de 1.1 cuando habla y
+    // una fila vacía cuando no, y la gramática de la pestaña se respeta en los dos casos.
+    + `"   · ⚠ la quincena en curso tiene "&(${menos})&" persona(s) menos que el plantel base: la proyección de 1.3 las sigue pagando por hasta $"`
+    + `&TEXT(${exceso};"#,##0")&" hasta diciembre. Si son bajas, sacalas de la planilla JORNALES — el OS no puede distinguir una baja de una ausencia.")`
+}
+
+/**
+ * NÚCLEO PURO: lo que el banco pagó por haberes y ninguna nómina de la pestaña explica.
+ *
+ * ═══ POR QUÉ HACE FALTA (13/08) ═══
+ *
+ * El dueño quiere ver **cuánto va liquidado**, y hoy hay pagos de haberes que la pestaña no puede
+ * mostrar en ningún lado. Dos clases:
+ *
+ *   · una LIQUIDACIÓN FINAL no es una quincena. La de Navarro ($239.790,94, 13/08) no cabe en el
+ *     registro —no está en la quincena en curso— ni en la proyección. Sin esta línea, la caja paga
+ *     algo que la pestaña no explica y el dueño no tiene dónde buscarlo;
+ *   · lotes de haberes más grandes que lo que el registro declara: el del 31/07 fue de $6.067.921,10
+ *     y el registro explica $3.336.233,42 por banco.
+ *
+ * ES UN CONTROL CONTRA OTRA FUENTE, que es el único que vale: el registro sale de la planilla del
+ * dueño y esto sale del extracto del Santander. Los dos pueden estar bien y diferir —el lote incluye
+ * oficina, SAC, liquidaciones finales— pero la diferencia deja de ser invisible y pasa a ser un
+ * número con nombre.
+ *
+ * LA VENTANA ES LA DEL EXTRACTO, NO EL AÑO. La réplica arranca donde arranca el extracto (hoy el
+ * 28/05): comparar contra el registro entero mostraría como "sin explicar" cinco meses que el banco
+ * simplemente no tiene. El piso sale de la propia réplica, así que se mueve sola cuando se importa
+ * más historia.
+ *
+ * @param {{hoja?:string, bancoObra:string, pagoObra:string, bancoOfi:string, pagoOfi:string}} c
+ * @returns {{importe:string, glosa:string}} la celda del importe y la del diagnóstico
+ */
+export function formulaHaberesDelBanco({ hoja = '_BANCO_RAW', bancoObra, pagoObra, bancoOfi, pagoOfi }) {
+  const F = `'${hoja}'!$A$4:$A`
+  const C = `'${hoja}'!$C$4:$C`
+  const NAT = `'${hoja}'!$F$4:$F`
+  // Los egresos vienen NEGATIVOS en la réplica (es el signo del extracto): el menos de adelante los
+  // devuelve a positivo, igual que en caja-anexo-controles. Sin él, la línea daría un negativo y el
+  // control compararía contra el opuesto de lo que quiere medir.
+  const lotes = `-SUMIFS(${C};${NAT};"Sueldos")`
+  const desde = `MIN(${F})`
+  const explicado = `SUMIFS(${bancoObra};${pagoObra};">="&${desde})+SUMIFS(${bancoOfi};${pagoOfi};">="&${desde})`
+  return {
+    importe: `=IFERROR(${lotes};"")`,
+    glosa: `=IFERROR(IF(ROUND(${lotes}-(${explicado});0)<=0;`
+      + `"✓ el registro y Oficina explican todo lo que el banco pagó por haberes";`
+      + `"⚠ $"&TEXT(${lotes}-(${explicado});"#,##0")&" que el banco pagó por haberes no lo explica ninguna nómina de esta pestaña — liquidaciones finales, SAC o sueldos fuera de la planilla");"")`,
+  }
+}
