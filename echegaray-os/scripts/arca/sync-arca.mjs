@@ -14,12 +14,19 @@
 // Ahora: se pregunta por la cuota ANTES de gastarla, se prueba la credencial con una sonda que no
 // consume, se ingiere SÓLO lo que esta corrida descargó, la frescura sale del resultado de la
 // descarga y el proceso termina distinto de 0 si algo se rompió.
+//
+// ═══ Y FALLÓ FUERTE CONTRA NADA, DEL 03/08 AL 13/08 ═══
+//
+// Diez días sin bajar un comprobante. No era el token: era la sonda. Probaba `GET /api/v1/automations`
+// con el ACCESS_TOKEN, y ese endpoint contesta 401 a un GET siempre —token sano o podrido—, así que el
+// preflight declaraba muerta una credencial que funcionaba y el mensaje mandaba al dueño a renovarla.
+// Tres veces. Un control no se valida contra información distinta de la que produce el efecto: ahora
+// la sonda usa el MISMO verbo y el MISMO endpoint que la descarga. Detalle en afipsdk-presupuesto.mjs.
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { readFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { presupuesto, registrarConsumo, credencialAceptada } from '../../orquestador/lib/afipsdk-presupuesto.mjs'
+import { presupuesto, registrarConsumo, credencialAceptada, leerCredenciales } from '../../orquestador/lib/afipsdk-presupuesto.mjs'
 import {
   motivoDeFalla, archivoDescargado, decidirFrescura, codigoDeSalida, resumenDeCorrida, consumioCuota,
 } from '../../orquestador/lib/arca-sync-resultado.mjs'
@@ -33,15 +40,6 @@ const anio = hoy.getFullYear()
 const desde = `01/01/${anio}`
 const hasta = `${dd(hoy.getDate())}/${dd(hoy.getMonth() + 1)}/${anio}`
 const LIBROS = ['R', 'E']
-
-/** El token, sólo para la sonda de credencial. NUNCA se imprime. */
-function leerToken() {
-  try {
-    const txt = readFileSync(join(DIR, 'credentials', 'afipsdk-token.txt'), 'utf8')
-    const linea = txt.split('\n').find((l) => /^\s*ACCESS_TOKEN\s*=/.test(l))
-    return linea ? linea.slice(linea.indexOf('=') + 1).trim() : null
-  } catch { return null }
-}
 
 /**
  * Una descarga. Devuelve SIEMPRE un resultado —nunca lanza— con el motivo entero cuando falla: el
@@ -58,15 +56,26 @@ async function descargar(tipo) {
 }
 
 async function main() {
-  // ── 1. ¿ALCANZA LA CUOTA? Se pregunta antes de gastar, no después ─────────────────────────────
-  const cuota = await presupuesto({ pedido: LIBROS.length, hoy: hoy.toISOString().slice(0, 10) })
-  console.log(`[arca-sync] cuota ${cuota.ventana}: ${cuota.motivo}`)
+  // Dos tokens, dos puertas: ACCESS_TOKEN abre las automatizaciones, ACCOUNT_TOKEN abre el panel
+  // (donde vive la cuota real). Confundirlos fue el defecto del 03–13/08. Ninguno se imprime.
+  const credenciales = await leerCredenciales()
+
+  // ── 1. ¿ALCANZA LA CUOTA? Se le pregunta AL PROVEEDOR antes de gastar, no al contador propio ──
+  const cuota = await presupuesto({
+    pedido: LIBROS.length,
+    hoy: hoy.toISOString().slice(0, 10),
+    accountToken: credenciales.accountToken,
+    projectId: credenciales.projectId,
+  })
+  console.log(`[arca-sync] cuota ${cuota.ventana} [fuente: ${cuota.fuente}]: ${cuota.motivo}`)
   if (!cuota.ok) { console.error('[arca-sync] NO descargo: no hay cuota suficiente.'); process.exit(1) }
 
-  // ── 2. ¿SIRVE LA CREDENCIAL? Sonda read-only: no crea automatización ni consume cuota ─────────
-  const cred = await credencialAceptada({ token: leerToken() })
+  // ── 2. ¿SIRVE LA CREDENCIAL? Mismo verbo y mismo endpoint que la descarga; cuerpo vacío ───────
+  // No consume cuota: sin `automation` el servidor rechaza en validación y no crea nada.
+  const cred = await credencialAceptada({ token: credenciales.accessToken })
   console.log(`[arca-sync] credencial: ${cred.motivo}`)
   if (!cred.ok) { console.error('[arca-sync] NO descargo: la credencial no sirve.'); process.exit(1) }
+  if (!cred.verificada) console.warn('[arca-sync] AVISO: la credencial no quedó verificada; sigo igual (no poder mirar ≠ está mal).')
 
   // ── 3. LAS DESCARGAS ──────────────────────────────────────────────────────────────────────────
   const resultados = []
