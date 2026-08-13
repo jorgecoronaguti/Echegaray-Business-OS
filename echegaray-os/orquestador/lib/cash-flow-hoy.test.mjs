@@ -82,15 +82,25 @@ test('el Mensual pliega los meses YA CERRADOS, no el que corre', () => {
   assert.equal(letra(r.fin), 'I')
 })
 
-test('el pliegue es UN grupo colapsado, no columnas ocultas a mano', () => {
-  const req = requestsDePliegue(7, { inicio: 1, fin: 33 })
-  assert.equal(req.length, 2)
-  const range = { sheetId: 7, dimension: 'COLUMNS', startIndex: 1, endIndex: 33 }
-  assert.deepEqual(req[0].addDimensionGroup.range, range)
-  // `collapsed: true` es lo que hace que la pestaña ABRA plegada. Sin esto el grupo existe y no sirve.
-  assert.equal(req[1].updateDimensionGroup.dimensionGroup.collapsed, true)
-  assert.equal(req[1].updateDimensionGroup.fields, 'collapsed')
-  assert.equal(req[1].updateDimensionGroup.dimensionGroup.depth, 1, 'los heredados ya se borraron: es el único')
+// ═══ CAMBIO DE CONTRATO, NO TEST ROTO (13/08) ═══
+//
+// El dueño sacó el pliegue, textual: "sacame la mierda esa de agrupar q has hecho en los cash flows,
+// mantenme el boton de ir al dia en los dos pero sin esa cosa de mierda q has hecho".
+//
+// El test anterior exigía `addDimensionGroup` + `collapsed:true` y era correcto para el contrato de
+// entonces. Ahora el contrato es el opuesto: NINGUNA corrida vuelve a crear un grupo. Se da vuelta,
+// no se borra — un test que desaparece deja de custodiar nada, y lo que hay que custodiar ahora es
+// que el "+" no vuelva en la próxima corrida.
+test('NINGUNA corrida vuelve a crear el grupo plegado: el dueño lo sacó', () => {
+  assert.deepEqual(requestsDePliegue(7, { inicio: 1, fin: 33 }), [],
+    'si esto devuelve requests, el "+" del margen vuelve a aparecer en la próxima corrida')
+  // Con cualquier rango, incluidos los que antes sí plegaban: no hay caso que lo reviva.
+  for (const r of [{ inicio: 1, fin: 8 }, { inicio: 1, fin: 53 }, { inicio: 0, fin: 1 }]) {
+    assert.deepEqual(requestsDePliegue(7, r), [])
+  }
+  // Y el borrado de los heredados NO se toca: es lo que saca los grupos que ya están en el archivo.
+  // Vive en cash-flow-vistas.mjs, antes de esta llamada; si se fuera con el pliegue, el "+" quedaría
+  // para siempre en las pestañas que ya lo tienen.
 })
 
 test('las dos grillas PUBLICAN el pliegue en su meta: si no llega, no se pliega nada', () => {
