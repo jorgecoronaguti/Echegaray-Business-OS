@@ -52,7 +52,7 @@
 // fórmula seguiría leyendo la columna vieja: dos lecturas distintas de la misma fila, y la de la
 // fórmula sin un solo error a la vista. La letra se DERIVA del mismo mapa por rótulo.
 
-import { letra } from './compras-columnas.mjs'
+import { letra, resolverColumnas } from './compras-columnas.mjs'
 import { columnasDeCompras, estaPagada } from './libro-extractores-compras.mjs'
 
 /** La pestaña de la que sale el estado vivo. Es la única fuente con un estado editable a mano. */
@@ -102,6 +102,27 @@ export function columnasVivasDeCompras(filas = []) {
   try {
     const c = columnasDeCompras(filas)
     return { estado: letra(c.estado), total: letra(c.importe), montoPagado: letra(c.montoPagado) }
+  } catch { return null }
+}
+
+/**
+ * NÚCLEO PURO: las letras que el NETEO de obras futuras necesita de Compras — proveedor, cliente,
+ * fecha del comprobante y total — resueltas por rótulo, igual que `columnasVivasDeCompras`.
+ *
+ * La "Fecha" (col C hoy) no está en `NOMBRES_COMPRAS` porque ningún extractor la lee en JS: agregarla
+ * ahí la volvería OBLIGATORIA para todos los lectores de Compras por una fórmula que sólo el neteo
+ * emite. Se resuelve aparte, y con cualquiera sin resolver devuelve null: los importes de Obras caen
+ * al valor pegado (falla cerrado, nunca una referencia adivinada).
+ */
+export function columnasNeteoDeCompras(filas = []) {
+  try {
+    const c = columnasDeCompras(filas)
+    const { idx, faltan } = resolverColumnas(filas[2] ?? [], { fecha: 'Fecha' })
+    if (faltan.length) return null
+    return {
+      proveedor: letra(c.proveedor), cliente: letra(c.cliente), fecha: letra(idx.fecha),
+      total: letra(c.importe), pagado: letra(c.montoPagado),
+    }
   } catch { return null }
 }
 
