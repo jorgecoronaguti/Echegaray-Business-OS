@@ -19,15 +19,21 @@ const mov = (o) => ({ signo: -1, importe: 0, estado: 'REAL', rubro: 'Materiales 
 
 // ══ LA GEOMETRÍA: DÓNDE CAE CADA MÉTODO DE PAGO ═══════════════════════════════════════════════════
 
-test('la rejilla de 2026 son 53 semanas y 12 meses, y NO cubren el mismo período', () => {
+test('la rejilla de 2026 son 53 semanas y 12 meses, y las dos CUBREN EL MISMO PERÍODO', () => {
   const s = rejilla('semana', ANIO)
   const m = rejilla('mes', ANIO)
   assert.equal(s.length, 53)
   assert.equal(m.length, 12)
-  // La primera semana de 2026 es la del lunes 29/12/2025: contiene el 1° de enero.
-  assert.equal(s[0].desde, 46020)
+  // ═══ ESTO CAMBIÓ EL 13/08/2026 Y NO ES UN AJUSTE PARA QUE PASE ═══
+  //
+  // Acá se exigía `s[0].desde === 46020` (el lunes 29/12/2025) y que el semanal se derramara sobre
+  // enero de 2027. Era cierto de la SEMANA y falso de la COLUMNA: lo que la columna suma se recorta en
+  // el borde del ejercicio desde que el derrame se llevó $13,07M de egresos de 2027 al año 2026. La
+  // rejilla de este diagnóstico tiene que ser la de la columna, no la del calendario, o diría que un
+  // movimiento del 01/01/2027 "está en el cuadro" cuando ninguna celda lo suma.
+  assert.equal(s[0].desde, 46023, 'la primera columna arranca el 1/1/2026, aunque su semana arranque el 29/12')
   assert.equal(m[0].desde, 46023)
-  assert.ok(s[s.length - 1].hasta > m[m.length - 1].hasta, 'el semanal se derrama sobre enero de 2027')
+  assert.equal(s[s.length - 1].hasta, m[m.length - 1].hasta, 'las dos vistas terminan en el mismo instante')
 })
 
 test('cada método de pago de Compras cae en la fila que le corresponde, con su rubro', () => {

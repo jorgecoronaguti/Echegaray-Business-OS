@@ -50,13 +50,22 @@ import {
   COL, ventanas, conceptosDe, filaDeConcepto, letra, serialDeFecha,
 } from './cash-flow-matriz.mjs'
 import { OTROS, claveSub, rubrosDeApertura, ladoDe } from './cash-flow-rubros.mjs'
+import { acotarAlEjercicio } from './cash-flow-borde-anio.mjs'
 
 /** Los estados que van a la línea "proyectado". Espejo de ESTADOS_PENDIENTES, en forma de test. */
 const PENDIENTE = new Set(['PROYECTADO', 'VENCIDO', 'COMPROMETIDO'])
 
-/** La rejilla de una vista, ya en SERIALES: es la unidad en la que el libro guarda las fechas. */
+/**
+ * La rejilla de una vista, ya en SERIALES: es la unidad en la que el libro guarda las fechas.
+ *
+ * VA ACOTADA AL EJERCICIO desde el 13/08/2026, porque la ventana de las columnas de borde lo está
+ * (`cash-flow-borde-anio.mjs`). Con la rejilla sin recortar, `plataSinColumna` daría ✓ sobre el
+ * semanal para un movimiento del 01/01/2027 que ninguna columna suma — un diagnóstico que dice que
+ * la plata está en el cuadro cuando no está es peor que no tenerlo, y encima contradiría al mismo
+ * diagnóstico corrido sobre el mensual, que sí lo reporta.
+ */
 export function rejilla(tipo, anio) {
-  return ventanas(tipo, { anio }).map((v, i) => ({
+  return acotarAlEjercicio(ventanas(tipo, { anio }), anio).map((v, i) => ({
     i, desde: serialDeFecha(v.desde), hasta: serialDeFecha(v.hasta), col: COL.tiempo0 + i,
   }))
 }
@@ -263,9 +272,12 @@ export function rubrosEnOtros(movimientos = []) {
  * @returns {{soloSemanal:Array, neto:number, semanal:{desde:number,hasta:number}, mensual:{desde:number,hasta:number}}}
  */
 export function bordesEntreVistas(movimientos = [], anio) {
-  const s = rejilla('semana', anio)
+  // LAS SEMANAS SIN RECORTAR, A PROPÓSITO: acá se mide justamente el derrame que la columna ya NO
+  // suma. Si esto usara la rejilla acotada, los dos extremos serían idénticos y la función daría cero
+  // siempre — que es como un diagnóstico se muere sin que nadie lo note.
+  const iso = ventanas('semana', { anio })
   const m = rejilla('mes', anio)
-  const S = { desde: s[0].desde, hasta: s[s.length - 1].hasta }
+  const S = { desde: serialDeFecha(iso[0].desde), hasta: serialDeFecha(iso[iso.length - 1].hasta) }
   const M = { desde: m[0].desde, hasta: m[m.length - 1].hasta }
   const soloSemanal = movimientos.filter((x) => Number.isFinite(x.fecha)
     && x.fecha >= S.desde && x.fecha < S.hasta && (x.fecha < M.desde || x.fecha >= M.hasta))
