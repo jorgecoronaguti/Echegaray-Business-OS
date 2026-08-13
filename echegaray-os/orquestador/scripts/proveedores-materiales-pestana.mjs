@@ -79,6 +79,8 @@ import { partir, mapaDeFilas, filasHuerfanas, referenciasFuera, ref as refPestan
 import { anchosSegunContenido } from '../lib/nota-celda.mjs'
 import { fusionar, sobrantes, VACIO, rellenoDeCola, estructural } from '../lib/preservar-anotaciones.mjs'
 import { obrasConMateriales } from '../lib/obras-con-materiales.mjs'
+import { sumaNetaSheet } from '../lib/costo-materiales.mjs'
+import { bloqueMaterialesPorObra } from '../lib/materiales-por-obra.mjs'
 import { conEdicionesRespetadas, guardarRegistro, detectarArranqueEnFrio, autoRespetarReescritura, leerRegistro, esRotulo } from '../lib/respetar-ediciones.mjs'
 // El respaldo de las notas por proveedor: sobrevive a que la lista de deuda cambie. Ver lib/proveedor-notas.mjs.
 import { claveProv, conciliarNotas, leerNotas, guardarNotas, borrarNotas, marcarEscritas, yaEscritas } from '../lib/proveedor-notas.mjs'
@@ -195,12 +197,21 @@ let COL_TIPOPAGO = 'Compras!$P$4:$P'
 const COL_OBRA = 'Compras!$J$4:$J'
 const COL_FACTURA = 'Compras!$C$4:$C'
 const COL_TOTAL = 'Compras!$O$4:$O'
+// EL NETO Y EL IVA — LAS DOS COLUMNAS QUE EL **COSTO** DE MATERIALES NECESITA Y LA DEUDA NO.
+//
+// Esta pestaña mide dos cosas distintas con la misma palabra y por eso convivían dos criterios:
+//   · lo que se DEBE a un proveedor → "Total" (O), con IVA: es la plata que va a salir.
+//   · lo que COSTÓ el material (por familia, por mes, por obra) → NETO, porque el IVA es crédito
+//     fiscal y la venta contra la que se compara también se mide neta.
+// La regla del neto vive UNA sola vez, en lib/costo-materiales.mjs, y OBRAS emite la misma.
+let COL_NETO = 'Compras!$M$4:$M'
+let COL_IVA = 'Compras!$N$4:$N'
 const COL_PROV = 'Compras!$E$4:$E'
 const COL_ESTADO = 'Compras!$X$4:$X'
 const CH = "'Cheques Emitidos'"
 
 /** Índices (0-based) de las columnas de Compras que el JS lee de cada fila. Se recalculan por nombre. */
-const IDX = { rubro: 28, fechaCaja: 29, familia: 30, comercial: 35, pagado: 19, parcial1: 20, parcial2: 22, tipoPago: 15, obra: 9, prov: 4, total: 14, estado: 23, concepto: 11, detalle: 10 }
+const IDX = { rubro: 28, fechaCaja: 29, familia: 30, comercial: 35, pagado: 19, parcial1: 20, parcial2: 22, tipoPago: 15, obra: 9, prov: 4, neto: 12, iva: 13, total: 14, estado: 23, concepto: 11, detalle: 10 }
 
 
 /** Los rubros que hacen que un proveedor sea COMERCIAL. Sueldos, ARCA o el banco no son proveedores
@@ -220,6 +231,11 @@ const RUBROS_COMERCIALES = [...RUBROS_CON_FAMILIA, 'Estructura', 'Servicios recu
 // (el import est\u00e1 arriba, con los dem\u00e1s)
 
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
+
+/** El costo NETO de los materiales que cumplen `criterios`, como sub-expresión (sin '='). */
+const netoExpr = (criterios) => sumaNetaSheet({ neto: COL_NETO, iva: COL_IVA, total: COL_TOTAL, criterios })
+/** Lo mismo, como celda. */
+const netoMateriales = (criterios) => `=${netoExpr(criterios)}`
 
 /**
  * LAS COLUMNAS DEL BLOQUE DE DEUDA LAS DECIDE EL DUEÑO, NO EL GENERADOR.
@@ -823,8 +839,12 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, not
   // tenerlo, porque da tranquilidad gratis.
   // La deuda con ARCA/impuestos/nómina NO se controla acá: es de la pestaña Impuestos y Financieros
   // (regla 9). Esta pestaña sólo mira proveedores comerciales.
+  // LAS DOS PATAS DE LA RESTA MIDEN CON EL MISMO CRITERIO. Se comparan el total por RUBRO y el total
+  // por FAMILIA, que son dos agregaciones del mismo conjunto: si una fuera en neto y la otra con IVA,
+  // este control mostraría permanentemente el IVA de todos los materiales y se leería como un error
+  // de carga que nadie puede corregir.
   const fDif = push(estructural(['⇒ Materiales sin familia (tiene que dar —)', '',
-    `=SUMIF(${COL_RUBRO};"${RUBROS_CON_FAMILIA[0]}";${COL_TOTAL})+SUMIF(${COL_RUBRO};"${RUBROS_CON_FAMILIA[1]}";${COL_TOTAL})-${letra(13)}$TOTFAM`, '', '', '', '', '', '']))
+    `=${RUBROS_CON_FAMILIA.map((r) => netoExpr(`${COL_RUBRO};"${r}"`)).join('+')}-${letra(13)}$TOTFAM`, '', '', '', '', '', '']))
   const ctrl1 = filas.length
   push([])
   // EL PLAZO NO ES UN DEFECTO DE CARGA: es la métrica de la sección, y va sola, con su unidad propia.
@@ -851,18 +871,18 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, not
   // ── 3 · FAMILIA × MES ───────────────────────────────────────────────────────────────────────────
   // "Materiales" es una pestaña propia y entera del generador: sus secciones arrancan en 1.
   const b3 = push([`${nSeccion('familiaMes', SECCIONES_MATERIALES)} · POR FAMILIA Y POR MES`])
-  const cabFam = push(['Familia', ...meses, `Total ${AÑO}`, '% del total', 'Civil', 'Mantenimiento'])
+  const cabFam = push(['Familia', ...meses, `Total neto ${AÑO}`, '% del total', 'Civil', 'Mantenimiento'])
   const fam0 = filas.length + 1
   for (const n of [...nombres, SIN_FAMILIA]) {
     const f = filas.length + 1
     const clave = n === SIN_FAMILIA ? `"${SIN_FAMILIA}"` : `$A${f}`
+    const deLaFamilia = `${COL_FAMILIA};${clave}`
     push([
       n === SIN_FAMILIA ? `${SIN_FAMILIA} — falta describir qué se compró` : n,
-      ...meses.map((_, i) => `=SUMIFS(${COL_TOTAL};${COL_FAMILIA};${clave};${COL_FECHA};">="&${letra(i + 1)}$${cabFam};${COL_FECHA};"<"&EOMONTH(${letra(i + 1)}$${cabFam};0)+1)`),
-      `=SUMIF(${COL_FAMILIA};${clave};${COL_TOTAL})`,
+      ...meses.map((_, i) => netoMateriales(`${deLaFamilia};${COL_FECHA};">="&${letra(i + 1)}$${cabFam};${COL_FECHA};"<"&EOMONTH(${letra(i + 1)}$${cabFam};0)+1`)),
+      netoMateriales(deLaFamilia),
       `=IFERROR(${letra(13)}${f}/${letra(13)}$TOTFAM;0)`,
-      `=SUMIFS(${COL_TOTAL};${COL_FAMILIA};${clave};${COL_RUBRO};"${RUBROS_CON_FAMILIA[0]}")`,
-      `=SUMIFS(${COL_TOTAL};${COL_FAMILIA};${clave};${COL_RUBRO};"${RUBROS_CON_FAMILIA[1]}")`,
+      ...RUBROS_CON_FAMILIA.map((r) => netoMateriales(`${deLaFamilia};${COL_RUBRO};"${r}"`)),
     ])
   }
   const fam1 = filas.length
@@ -880,25 +900,19 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, not
   // cortado a la mitad ("Control (tiene que "), y encima decía CÓMO se calcula en vez de QUÉ es. Lo
   // que la columna mide es la plata de esa familia que no tiene obra imputada. Que tenga que dar cero
   // lo dice el formato, que la pinta en rojo apenas deja de darlo.
-  const cabObra = push(['Familia', ...obras, 'Total', 'Sin obra'])
+  // LAS FILAS SALEN DE `lib/materiales-por-obra.mjs`, que emite el criterio ÚNICO de costo de
+  // material. Acá sólo se las empuja a la grilla: la fila "TOTAL POR OBRA" es el número que OBRAS
+  // cita por rótulo, y tenerlo escrito en dos lugares es lo que hacía que las dos pestañas difirieran.
+  const porObra = bloqueMaterialesPorObra({
+    obras, familias: [...nombres, SIN_FAMILIA], sinFamilia: SIN_FAMILIA,
+    rangos: { neto: COL_NETO, iva: COL_IVA, total: COL_TOTAL, familia: COL_FAMILIA, obra: COL_OBRA },
+    filaCabecera: filas.length + 1,
+  })
+  const cabObra = push(porObra.cabecera)
   const obra0 = filas.length + 1
-  for (const n of [...nombres, SIN_FAMILIA]) {
-    const f = filas.length + 1
-    push([
-      n === SIN_FAMILIA ? `${SIN_FAMILIA} — falta describir qué se compró` : n,
-      ...obras.map((_, i) => `=SUMIFS(${COL_TOTAL};${COL_FAMILIA};LEFT($A${f};${n.length});${COL_OBRA};${letra(i + 1)}$${cabObra})`),
-      `=SUM(${letra(1)}${f}:${letra(obras.length)}${f})`,
-      // ROUND A PESO. Sin él la misma columna mostraba "$0", "-$0" y "—" para tres ceros idénticos —y
-      // uno de los tres en rojo—, porque el SUMIF y la suma por obra difieren en fracciones de centavo.
-      `=ROUND(SUMIF(${COL_FAMILIA};LEFT($A${f};${n.length});${COL_TOTAL})-${letra(obras.length + 1)}${f};0)`,
-    ])
-  }
+  for (const fila of porObra.detalle) push(fila)
   const obra1 = filas.length
-  push(['TOTAL POR OBRA',
-    ...obras.map((_, i) => `=SUM(${letra(i + 1)}${obra0}:${letra(i + 1)}${obra1})`),
-    `=SUM(${letra(obras.length + 1)}${obra0}:${letra(obras.length + 1)}${obra1})`,
-    `=SUM(${letra(obras.length + 2)}${obra0}:${letra(obras.length + 2)}${obra1})`,
-  ])
+  push(porObra.total)
   push([])
 
   // ── 5 · EL CONTROL QUE NO SE VALIDA CONTRA SÍ MISMO ─────────────────────────────────────────────
@@ -1040,7 +1054,11 @@ async function main() {
   COL_PARCIAL1 = fijar('parcial1', COL_PARCIAL1, 'Monto Parcial 1')
   COL_PARCIAL2 = fijar('parcial2', COL_PARCIAL2, 'Monto Parcial 2')
   COL_TIPOPAGO = fijar('tipoPago', COL_TIPOPAGO, 'Tipo pago')
-  console.log(`  Compras por encabezado: Rubro=${letra(IDX.rubro)} · Fecha de caja=${letra(IDX.fechaCaja)} · Familia=${letra(IDX.familia)} · ¿Comercial?=${letra(IDX.comercial)} · Pagado=${letra(IDX.pagado)} · Parcial1=${letra(IDX.parcial1)} · Parcial2=${letra(IDX.parcial2)}`)
+  // El neto y el IVA del COSTO de materiales. Se ubican por rótulo como todo lo demás: si "Importe"
+  // se corriera y esto leyera la columna de al lado, el cuadro por obra saldría plausible y falso.
+  COL_NETO = fijar('neto', COL_NETO, 'Importe')
+  COL_IVA = fijar('iva', COL_IVA, 'IVA')
+  console.log(`  Compras por encabezado: Rubro=${letra(IDX.rubro)} · Fecha de caja=${letra(IDX.fechaCaja)} · Familia=${letra(IDX.familia)} · ¿Comercial?=${letra(IDX.comercial)} · Pagado=${letra(IDX.pagado)} · Parcial1=${letra(IDX.parcial1)} · Parcial2=${letra(IDX.parcial2)} · Importe=${letra(IDX.neto)} · IVA=${letra(IDX.iva)}`)
 
   // ═══ UN SOLO NOMBRE POR PROVEEDOR EN TODA LA PESTAÑA ═══════════════════════════════════════════
   //
@@ -1362,7 +1380,7 @@ async function main() {
   // se deriva de "Cliente / Asignación" filtrando por rubro de material — ver lib/obras-con-materiales.
   // Los nombres van EXACTOS a como están en Compras ("MESSINA", no "MESSINAS"): son el criterio
   // literal del SUMIFS.
-  const obras = obrasConMateriales(compras, { rubros: RUBROS_CON_FAMILIA, monto: parseMonto, colObra: IDX.obra, colRubro: IDX.rubro, colTotal: IDX.total })
+  const obras = obrasConMateriales(compras, { rubros: RUBROS_CON_FAMILIA, monto: parseMonto, colObra: IDX.obra, colRubro: IDX.rubro, colNeto: IDX.neto, colIva: IDX.iva, colTotal: IDX.total })
   console.log(`  obras con materiales imputados (de los datos, por monto): ${obras.join(' · ')}`)
   // LO QUE EDITÓ LA PERSONA MANDA: se leen los encabezados reales del bloque de deuda para escribir
   // cada dato en la columna que el dueño rotuló, y para no pisar las que él agregó (Comentarios).
