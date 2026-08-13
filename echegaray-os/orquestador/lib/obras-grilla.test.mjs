@@ -17,7 +17,7 @@ import assert from 'node:assert/strict'
 import {
   grillaObras, serialISO, criterioCliente, variantesDe, anchoColumnaA, pxDeTexto, clientesDeCobranzas,
   celdasEnError, problemaDeSintaxis, ERRORES_SHEET, nombreEnCostos, ANO,
-  ANCHO_OBRAS, ANCHOS_OBRAS, REFS_OBRAS, CLIENTES_MUESTRA,
+  ANCHO_OBRAS, ANCHOS_OBRAS, ANCHO_HISTORICO, conColaLimpiable, REFS_OBRAS, CLIENTES_MUESTRA,
 } from './obras-grilla.mjs'
 import { OBRAS_FUTURAS, CLIENTES_CANONICOS, esProyectable, totalEgresos } from './obras-datos.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
@@ -87,9 +87,7 @@ test('el ⇒ TOTAL 2026 sale de Cobranzas ENTERA, no de la suma de los clientes 
   // Un total que es la suma de las filas de arriba no puede detectar que falta un cliente: da
   // "correcto" por construcción. El residuo se publica con nombre y el total los incluye, así que la
   // pestaña se concilia sola contra su fuente.
-  const otros = cel(g, `C${g.fOtros}`)
-  assert.match(otros, /^=SUMIFS\([^)]*\)-SUM\(C\d+:C\d+\)$/, 'residuo = todo el archivo − los listados')
-  assert.ok(!otros.includes(`'Cobranzas'!$G`), 'el total del archivo no filtra por cliente: una fila sin cliente entra igual')
+  assert.ok(!cel(g, `C${g.totales[0]}`).includes(`'Cobranzas'!$G`), 'el total no filtra por cliente: una fila sin cliente entra igual')
   // EL TOTAL NO PUEDE SER LA SUMA DE LAS FILAS DE ARRIBA. Con el residuo = "archivo − las filas", el
   // total daba el archivo POR CONSTRUCCIÓN: una identidad que no puede fallar no controla nada. El
   // total sale de la fuente y el control falsificable es el residuo, que SÍ puede dar ≠ 0.
@@ -111,9 +109,12 @@ test('el COSTO de la Sección 1 se mide al NETO desde la fuente, no heredando el
     const cel_ = cel(g, `G${f}`)
     assert.ok(!cel_.includes('Materiales'), `G${f}: no hereda el criterio de otra pestaña`)
     assert.match(cel_, new RegExp(`^=SUMIFS\\('Compras'!\\$${REFS_OBRAS.cmp.neto}\\$`), `G${f}: arranca por el neto`)
-    assert.ok(cel_.includes(`;${'$'}{}`.replace('${}', '')) || true)
+    // Y SÓLO MATERIALES: filtra por "Familia de material" no vacía. Sin ese filtro la columna medía
+    // el costo entero del cliente, que es un cambio que el dueño no pidió.
+    assert.ok(cel_.includes(`'Compras'!$${REFS_OBRAS.cmp.familia}$`), `G${f}: filtra por familia de material`)
     // la cola de la regla: lo que no tiene Importe entra por Total − IVA
-    assert.match(cel_, new RegExp(`\\+SUMIFS\\('Compras'!\\$${REFS_OBRAS.cmp.total}\\$[^;]*;[^;]*;"[^"]*";'Compras'!\\$${REFS_OBRAS.cmp.neto}\\$[^;]*;""\\)`), `G${f}: suma el Total de las filas sin Importe`)
+    assert.ok(cel_.includes(`+SUMIFS('Compras'!$${REFS_OBRAS.cmp.total}$`), `G${f}: suma el Total de las filas sin Importe`)
+    assert.ok(cel_.includes(`'Compras'!$${REFS_OBRAS.cmp.neto}$4:$${REFS_OBRAS.cmp.neto};""`), `G${f}: acotado a las que no tienen Importe`)
     assert.match(cel_, new RegExp(`-SUMIFS\\('Compras'!\\$${REFS_OBRAS.cmp.iva}\\$`), `G${f}: y les resta su IVA`)
     // el cliente se busca con el nombre que usa Compras, no con el rótulo derivado de Cobranzas
     assert.ok(cel_.includes(`"${nombreEnCostos(String(cel(g, `A${f}`)))}"`), `G${f}: nombre de Compras`)
@@ -143,18 +144,18 @@ test('el ⇒ TOTAL 2026 tiene la ventana que su rótulo promete', () => {
   }
 })
 
-test('el residuo NO se borra por dar cero: se queda como control y grita si deja de serlo', () => {
-  // Con los clientes derivados esta fila vale $0. Borrarla "porque ya no hace falta" es como se
-  // pierde la capacidad de detectar el problema: el día que aparezca un cliente que el mecanismo no
-  // sepa ubicar, esta fila es lo único que lo dice.
-  assert.match(String(cel(g, `A${g.fOtros}`)), /sin ubicar.*\$0/, 'el rótulo dice qué tiene que valer')
-  assert.equal(cel(g, `B${g.fOtros}`), `=IF(ROUND(C${g.fOtros}+D${g.fOtros}+E${g.fOtros};2)<>0;"⚠";"✓")`, 'y grita si no es cero')
-  assert.equal(g.fOtros, g.fClientes[1] + 1, 'va inmediatamente debajo de los clientes')
+test('la fila "sin ubicar" NO está en la pestaña: el dueño la sacó dos veces', () => {
+  // *"la fila 'otros clientes' no puede ser, estan todos los clientes y obras declarados"*. Un
+  // renglón que dice $0 todos los días no es información. La CAPACIDAD de detectar el problema no se
+  // perdió: el escritor compara la suma de los clientes contra el total de la fuente y ABORTA SIN
+  // PUBLICAR si difieren — un generador que no escribe controla más que una fila que nadie quiere ver.
+  const rotulos = g.filas.map((f) => String(f[0] ?? ''))
+  assert.ok(!rotulos.some((r) => /sin ubicar|Otros clientes/i.test(r)), 'no puede haber fila de residuo')
+  assert.equal(g.fOtros, undefined, 'ni la grilla la expone')
+  // Y el total sigue saliendo de la fuente, que es lo que hace posible el control de afuera.
+  assert.match(cel(g, `C${g.totales[0]}`), /^=SUMIFS\(/)
+  assert.equal(g.totales[0], g.fClientes[1] + 1, 'el total va inmediatamente debajo de los clientes')
 })
-
-// ─────────────────────────────────────────────────────────────────────────────
-// LOS CLIENTES SE DERIVAN, NO SE TIPEAN
-// ─────────────────────────────────────────────────────────────────────────────
 
 test('la lista de clientes sale de Cobranzas: un cliente nuevo aparece solo', () => {
   // EL DEFECTO (13/08, lo cazó el dueño mirando la pestaña): la lista estaba TIPEADA, así que
@@ -251,8 +252,8 @@ test('las columnas salen de las refs INYECTADAS: ninguna letra queda pegada en l
   // El escritor resuelve las columnas contra los encabezados vivos. Si una letra quedara fija, la
   // fórmula sumaría otra columna el día que el archivo se reordene, y sin dar error.
   const refs = {
-    cob: { hoja: 'Cobranzas', cliente: 'Z', concepto: 'Y', neto: 'V', total: 'X', estado: 'W', oc: 'S', fechaCobro: 'T', fechaVenta: 'N', categoria: 'R', desde: 9 },
-    cmp: { hoja: 'Compras', fecha: 'V', proveedor: 'U', cliente: 'T', neto: 'R', iva: 'Q', total: 'S', desde: 7 },
+    cob: { hoja: 'Cobranzas', cliente: 'Z', concepto: 'Y', neto: 'V', total: 'X', estado: 'W', oc: 'S', fechaCobro: 'T', fechaVenta: 'N', forma: 'M', categoria: 'R', desde: 9 },
+    cmp: { hoja: 'Compras', fecha: 'V', proveedor: 'U', cliente: 'T', neto: 'R', iva: 'Q', total: 'S', familia: 'P', desde: 7 },
     mat: REFS_OBRAS.mat,
   }
   const otra = grillaObras({ obras: OBRAS_FUTURAS, refs })
@@ -609,6 +610,21 @@ test('serialISO da el serial que Sheets entiende, no un número parecido', () =>
 // ─────────────────────────────────────────────────────────────────────────────
 // EL ANCHO DE LA COLUMNA A — EL DEFECTO QUE NINGÚN TEST MIRABA
 // ─────────────────────────────────────────────────────────────────────────────
+
+test('la cola de la columna que se dejó de usar se limpia: sacarla del código no la saca del archivo', () => {
+  // EL DEFECTO (13/08): al pasar de 9 a 8 columnas, la novena quedó EN EL ARCHIVO con la glosa de la
+  // corrida anterior —40 celdas— y encima corrida de fila, porque la grilla creció de 61 a 62: el
+  // detalle de una obra terminó pegado al encabezado de la Sección 2.
+  const conCola = conColaLimpiable(g.filas)
+  assert.ok(ANCHO_HISTORICO > ANCHO_OBRAS, 'hay una cola que limpiar')
+  for (const [i, f] of conCola.entries()) {
+    assert.equal(f.length, ANCHO_HISTORICO, `fila ${i + 1}: llega hasta el ancho histórico`)
+    for (let c = ANCHO_OBRAS; c < ANCHO_HISTORICO; c++) {
+      assert.equal(f[c], VACIO, `fila ${i + 1} col ${c + 1}: la cola va con el centinela, para que se LIMPIE`)
+    }
+    assert.deepEqual(f.slice(0, ANCHO_OBRAS), g.filas[i], 'y no toca lo que sí se escribe')
+  }
+})
 
 test('ningún rótulo excede el ancho declarado de la columna A: con CLIP, lo que no entra DESAPARECE', () => {
   // EL DEFECTO, VISTO EN EL PDF DEL 13/08: con 300px fijos, "OBRAS — EL AÑO ENTERO, OBRA POR OBRA"
