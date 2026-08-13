@@ -43,12 +43,24 @@ import { escribirPreservando, limpiarCentinela, VACIO } from '../lib/preservar-a
 import { skinRequests } from '../lib/estilo-statement.mjs'
 import { MONEDA_CUERPO, MONEDA_TOTAL, MONEDA_CONTROL, CONTADOR, PORCENTAJE } from '../lib/formato-statement.mjs'
 import { bloqueControlArca } from '../lib/control-arca-bloque.mjs'
+import { RECURRENTES, norm } from '../lib/rubro-caja.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Recurrentes'
 const DRY = process.argv.includes('--dry')
 const AÑO = 2026
 const RUBRO = 'Servicios recurrentes'
+export const RANGO_COMPRAS = 'Compras!A4:AC'
+
+// ═══ EL PRIMER DÍA DEL MES EN CURSO, ESCRITO UNA SOLA VEZ ═══
+//
+// Lo usan la celda de cada mes y el control de "meses cerrados en $0". Estaban escritos por
+// separado y decían cosas distintas del MISMO mes: la celda mostraba agosto como proyección y el
+// control lo contaba entre los meses cerrados sin gasto — la pestaña discutiendo consigo misma.
+//
+// El encabezado de cada columna ES el primero de su mes, así que la comparación es exacta y no
+// necesita EOMONTH; dentro del SUMPRODUCT del control eso ahorra además envolver en ARRAYFORMULA.
+const MES_EN_CURSO = 'EOMONTH(TODAY();-1)+1'
 
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
 
@@ -73,7 +85,13 @@ export function grilla(proveedores) {
   // dueño viene señalando. Lo que el párrafo explicaba (por qué un cero se muestra, qué es una
   // proyección) lo dicen ahora el propio cuadro —la itálica marca lo proyectado— y los controles.
   const n = vacia()
-  n[0] = `Rubro "${RUBRO}" de Compras. Meses cerrados: lo que se pagó. Desde agosto: proyección (itálica).`
+  // DICE POR QUÉ FECHA ENTRA CADA GASTO, Y NO ES UN DETALLE (13/08/2026). Decía "lo que se pagó" y
+  // "desde agosto" —un mes tipeado a mano, que en septiembre miente sola—. El cuadro imputa por
+  // FECHA DE CAJA (columna AD de Compras, la que sale de la fecha prevista de pago), no por la
+  // fecha de la factura: el dueño leyó agosto vacío porque pagó Movistar el 07/08 con facturas
+  // fechadas en julio. Mezclar las dos ventanas es la regla de oro 3, y el rótulo es el único lugar
+  // donde se puede declarar cuál se está usando.
+  n[0] = `Rubro "${RUBRO}" por FECHA DE CAJA, no de factura. Cerrados: lo real. En curso y futuros: lo esperado (itálica).`
   push(n)
   // EL TÍTULO DE SECCIÓN VA JUSTO ARRIBA DE SU ENCABEZADO, y ocupa la fila en blanco que ya había:
   // así no corre ninguna fila. Las fórmulas de abajo referencian filas absolutas y un desplazamiento
@@ -99,8 +117,14 @@ export function grilla(proveedores) {
       const cm = letra(C_MES0 + m)
       // El REAL, en la columna auxiliar.
       fila[C_AUX0 + m] = `=SUMIFS(${COL_TOTAL};${COL_RUBRO};"${RUBRO}";Compras!$E$4:$E;$A${f};${COL_FECHA};">="&${cm}$${FILA_CAB};${COL_FECHA};"<"&EOMONTH(${cm}$${FILA_CAB};0)+1)`
-      // Lo que se ve: en un mes CERRADO, el real y nada más. En un mes futuro, la proyección.
-      fila[C_MES0 + m] = `=IF(EOMONTH(${cm}$${FILA_CAB};0)<=EOMONTH(TODAY();0);${ca}${f};IF($${letra(C_NMESES)}${f}<${MIN_MESES};0;$${letra(C_PROM)}${f}*IFERROR(INDEX(Parámetros!$C$74:$C$90;MATCH(EOMONTH(${cm}$${FILA_CAB};0);ARRAYFORMULA(EOMONTH(Parámetros!$A$74:$A$90;0));0));1)))`
+      // Lo que se ve: en un mes CERRADO, el real y nada más. En un mes futuro, la proyección. En el
+      // MES EN CURSO, MAX(real; proyección) — el mismo criterio que el cuadro de IVA: Movistar
+      // factura el 25, y hasta ese día la celda decía "—" como si agosto no fuera a pagar nada. El
+      // dueño lo leyó como "no se actualizó", y tenía razón: un mes que va a salir ~$360k no puede
+      // mostrarse vacío 25 días por mes.
+      const proy = `IF($${letra(C_NMESES)}${f}<${MIN_MESES};0;$${letra(C_PROM)}${f}*IFERROR(INDEX(Parámetros!$C$74:$C$90;MATCH(EOMONTH(${cm}$${FILA_CAB};0);ARRAYFORMULA(EOMONTH(Parámetros!$A$74:$A$90;0));0));1))`
+      const cMes = `${cm}$${FILA_CAB}`
+      fila[C_MES0 + m] = `=IF(${cMes}<${MES_EN_CURSO};${ca}${f};IF(${cMes}=${MES_EN_CURSO};MAX(${ca}${f};${proy});${proy}))`
     }
     const a0 = letra(C_AUX0), a1 = letra(C_AUX0 + 11)
     fila[C_TOTREAL] = `=SUM(${a0}${f}:${a1}${f})`
@@ -154,7 +178,11 @@ export function grilla(proveedores) {
   // SUMPRODUCT y no COUNTIFS: la condición cruza DOS dimensiones (la celda del mes vale cero Y ese
   // mes ya cerró), y el rango de meses es una fila mientras el de importes es un rectángulo. COUNTIFS
   // no sabe hacer eso. Es la excepción declarada a "SUMIFS antes que SUMPRODUCT".
-  c6[1] = `=SUMPRODUCT((${letra(C_AUX0)}${f0}:${letra(C_AUX0 + 11)}${f1}=0)*(${letra(C_MES0)}$${FILA_CAB}:${letra(C_MES0 + 11)}$${FILA_CAB}<=EOMONTH(TODAY();0)))`
+  // EL MES EN CURSO NO ES UN MES CERRADO. Con "<=" el mes corriente entraba en la cuenta desde el
+  // día 1: el 13/08 el control gritaba por agosto —que todavía no facturó nadie— junto a mayo, que
+  // sí es una anomalía real. Un control que mezcla lo que falta con lo que todavía no pasó se deja
+  // de mirar.
+  c6[1] = `=SUMPRODUCT((${letra(C_AUX0)}${f0}:${letra(C_AUX0 + 11)}${f1}=0)*(${letra(C_MES0)}$${FILA_CAB}:${letra(C_MES0 + 11)}$${FILA_CAB}<${MES_EN_CURSO}))`
   push(c6)
 
   // ── 3 · EL CONTROL QUE NO SE VALIDA CONTRA SÍ MISMO ─────────────────────────────────────────────
@@ -172,6 +200,27 @@ export function grilla(proveedores) {
   return { filas, f0, f1, fTot, ctrl, fDif, arca0 }
 }
 
+/**
+ * NÚCLEO PURO: los proveedores DECLARADOS recurrentes que el cuadro no lista.
+ *
+ * POR QUÉ NO SE INVENTA LA FILA (13/08/2026). El cuadro sale de la columna AC de Compras: si un
+ * proveedor no tiene ninguna fila clasificada en el rubro, no tiene fila acá — y es indistinguible
+ * de uno que no facturó. Emitirle una fila de ceros tampoco alcanza: el control de "meses cerrados
+ * en $0" contaría siete ceros por proveedor y taparía las anomalías de verdad.
+ *
+ * Tampoco puede ser un control del Sheet: para varios de los declarados —los baños químicos que se
+ * facturan a una obra— NO tener fila es lo correcto, y un control que grita por algo que está bien
+ * se deja de mirar. Así que se informa al correr, que es cuando alguien puede hacer algo: si falta
+ * uno que sí factura a la estructura, lo que hay que revisar es la columna AC, no este cuadro.
+ *
+ * @param {string[]} proveedores los que el cuadro sí lista
+ * @returns {string[]} los declarados en rubro-caja.mjs que no aparecen
+ */
+export function declaradosSinFila(proveedores = []) {
+  const hay = new Set(proveedores.map(norm))
+  return RECURRENTES.filter((r) => !hay.has(r))
+}
+
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const hojas = await google.getSheetMeta(ID)
@@ -180,7 +229,10 @@ async function main() {
   // Los proveedores salen de la PLANILLA, no de una lista tipeada acá: si mañana entra un servicio
   // recurrente nuevo, aparece solo. La lista de rubro-caja decide QUIÉN es recurrente; ésta decide
   // quién efectivamente facturó.
-  const compras = await google.readSheetValues(ID, 'Compras!A4:AC940')
+  // SIN TECHO. Decía 'Compras!A4:AC940' y la planilla ya va por la fila 818: el día que pase de 940,
+  // un proveedor recurrente nuevo deja de aparecer en el cuadro y nada lo dice — el rango fosilizado
+  // que este repositorio ya pagó. Los SUMIFS de la grilla son abiertos; la lectura tenía que serlo.
+  const compras = await google.readSheetValues(ID, RANGO_COMPRAS)
   const provs = [...new Set(compras.filter((f) => String(f?.[28] ?? '').trim() === RUBRO)
     .map((f) => String(f?.[4] ?? '').trim()).filter(Boolean))].sort()
   if (!provs.length) throw new Error(`no encontré ninguna fila con rubro "${RUBRO}" en Compras`)
@@ -188,6 +240,11 @@ async function main() {
   const g = grilla(provs)
   console.log(`${hoja.title}: ${g.filas.length} filas · ${provs.length} proveedores · TOTAL en la fila ${g.fTot}`)
   console.log(`  ${provs.join(' · ')}`)
+  const sinFila = declaradosSinFila(provs)
+  if (sinFila.length) {
+    console.log(`  ℹ declarados recurrentes SIN fila (nada clasificado en el rubro): ${sinFila.join(' · ')}`)
+    console.log('    si alguno factura a la estructura, el problema está en la columna AC de Compras, no acá.')
+  }
   if (DRY) return console.log('--dry: no escribí nada.')
 
   // EL FORMATO SE LIMPIA ANTES DE ESCRIBIR, no después. Con USER_ENTERED, Google interpreta el valor
@@ -264,7 +321,12 @@ export function formatosPropios(hoja, g) {
   // LO PROYECTADO EN ITÁLICA, NO EN ÁMBAR. Un estimado no se puede confundir con un hecho, y la
   // convención de un estado financiero para eso es la itálica — no un rectángulo pintado, que es
   // justo lo que hace que la pestaña se lea como planilla.
-  const primeraProy = new Date().getUTCMonth() + 1 // 0-based mes actual +1 = primer mes futuro
+  // ARRANCA EN EL MES EN CURSO, NO EN EL SIGUIENTE (13/08/2026). Desde que la celda del mes
+  // corriente muestra MAX(real; esperado), ese número PUEDE ser una estimación — y con la itálica
+  // empezando en septiembre se dibujaba en redonda, o sea presentado como un hecho. Es la regla de
+  // oro 2, y la convención de la pestaña ya estaba escrita: un estimado no se puede confundir con
+  // un hecho.
+  const primeraProy = new Date().getUTCMonth() // 0-based: el mes en curso es la primera columna estimable
   fmt({ ...r(g.f0 - 1, g.f1), startColumnIndex: C_MES0 + primeraProy, endColumnIndex: C_MES0 + 12 },
     'userEnteredFormat.textFormat', { textFormat: { italic: true } })
   // LA FILA DEL TOTAL ES LA ÚNICA QUE LLEVA "$".
