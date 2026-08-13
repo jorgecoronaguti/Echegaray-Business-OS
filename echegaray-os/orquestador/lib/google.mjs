@@ -19,6 +19,9 @@ import { frenar } from './congelador-sheets.mjs'
 // La regla que no se puede apagar: ninguna escritura deja vacía una celda que tenía algo. No la
 // levanta ORQ_SHEETS_DESCONGELAR, ni yaGuardado, ni espejo, ni respetar:false, ni --force.
 import { permiteBorradoExplicito, protegerBorrado } from './no-borrar.mjs'
+// Y su inversa, con la misma disciplina: lo que el dueño vació no vuelve por ningún camino. Se
+// engancha sobre la relectura que ya hace la guarda de borrado. Ver no-reponer.mjs.
+import { noReponerEnRango, noReponerPorCeldas } from './no-reponer.mjs'
 // Dónde hay que mirar para saber si una escritura aterrizó: la celda del testigo, calculada desde
 // el ancla del rango. Puro, sin red ni base. Ver aterrizaje-escritura.mjs.
 import { testigoDeLote } from './aterrizaje-escritura.mjs'
@@ -47,6 +50,9 @@ const avisoLimpiadas = (nb) => `  🧹 limpio ${nb.limpiadas} celda(s) que la hu
  */
 const avisoVaciadas = (nb) => `  🧹 vacío ${nb.vaciadas} celda(s) que probé residuo MÍO de un layout anterior `
   + `(por forma y registro, la huella no alineaba): ${nb.detalleVaciadas.join(' · ')}`
+
+/** El gancho de la guarda inversa, atado a este archivo: lo que el dueño vació no se repone. */
+const noReponer = (fileId) => (range, actual, values) => noReponerEnRango(fileId, range, actual, values)
 
 const READONLY_SCOPES = [
   'https://www.googleapis.com/auth/drive.readonly',
@@ -1096,7 +1102,7 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       // NO-BORRAR: después de toda guarda y de todo bypass. Si acá una celda quedara vacía sobre
       // contenido, se conserva el contenido. Ver no-borrar.mjs.
       {
-        const nb = await protegerBorrado(cliente, fileId, [{ range, values }])
+        const nb = await protegerBorrado(cliente, fileId, [{ range, values }], { antesDePreservar: noReponer(fileId) })
         if (!nb.data.length) return { protegido: true, noBorrar: true, motivo: 'no pude releer el destino para garantizar que no se borra nada (falla cerrado)' }
         if (nb.preservadas) console.log(avisoConservadas(nb))
         if (nb.limpiadas) console.log(avisoLimpiadas(nb))
@@ -1211,7 +1217,7 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       }
       // NO-BORRAR: el mismo trato para el batch. Ver no-borrar.mjs.
       {
-        const nb = await protegerBorrado(cliente, fileId, data, { vaciarPropio })
+        const nb = await protegerBorrado(cliente, fileId, data, { vaciarPropio, antesDePreservar: noReponer(fileId) })
         if (nb.descartados.length) console.log(`  🛟 descarto ${nb.descartados.length} rango(s): no pude releer el destino y no arriesgo borrarte algo — ${nb.descartados.slice(0, 3).join(', ')}`)
         if (nb.preservadas) console.log(avisoConservadas(nb))
         if (nb.limpiadas) console.log(avisoLimpiadas(nb))
@@ -1278,8 +1284,20 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
      *
      * Un `''` se escribe como celda VACÍA (no como el texto vacío) para que la fila no quede con
      * cadenas fantasma que después se leen como contenido.
+     *
+     * ═══ ERA EL CAMINO SIN NINGUNA GUARDA DE CONTENIDO (13/08) ═══
+     *
+     * Lo usan los dos tableros de cheques, el libro de movimientos y el relleno de cola de CAJA. Al
+     * ir por `updateCells` no pasa por `batchUpdateValues`, así que se saltea `no-borrar` y —lo que
+     * el dueño reclama— la huella: una celda que él vaciaba en "Cheques Emitidos" volvía en la
+     * corrida siguiente sin que nada lo mirara. Acá abajo entra la guarda inversa, que es la que
+     * corresponde a este camino: NO repone lo que él vació. La de borrado NO se agrega a propósito
+     * —este método escribe `''` deliberadamente para limpiar la cola de un layout anterior, y
+     * `preservarNoVacias` revertiría esa limpieza, que es el defecto que `residuo-propio.mjs` vino a
+     * cerrar—.
      */
     async escribirValoresPorCeldas(fileId, sheetId, values, { fila0 = 0, col0 = 0 } = {}) {
+      values = await noReponerPorCeldas(cliente, fileId, sheetId, values, { fila0, col0 })
       const loc = await localizeValues(fileId, values)
       const celda = (c) => {
         if (c === '' || c === null || c === undefined) return {}
