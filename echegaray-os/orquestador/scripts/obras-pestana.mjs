@@ -45,7 +45,7 @@ import { requestsTextoPorContenido } from '../lib/formato-texto-por-contenido.mj
 import {
   grillaObras, anchoColumnaA, celdasEnError, columnasDesparejas, problemaDeSintaxis, clientesDeCobranzas,
   conColaLimpiable, trabajosFueraDeObra, variantesDe, ANCHO_HISTORICO, ALTO_HISTORICO,
-  ANCHO_OBRAS, ANCHOS_OBRAS, PESTANA_OBRAS, REFS_OBRAS, SIN_CONTRATO,
+  ANCHO_OBRAS, ANCHOS_OBRAS, PESTANA_OBRAS, REFS_OBRAS, SIN_CONTRATO, saldoContratoMalPublicado,
 } from '../lib/obras-grilla.mjs'
 import { contratoDeObra, monedasDesconocidas, normalizarMoneda } from '../lib/cobranzas-contrato.mjs'
 import { RANGO_TC } from '../lib/caja-disponibilidades.mjs'
@@ -429,13 +429,16 @@ async function main() {
   // mixtas: la obra sin contrato declarado publica el guion. Perder la verificación no es una opción
   // —la pestaña ya publicó una columna en blanco en 4 de 7 obras sin que nada gritara— así que se
   // reemplaza por una más específica: cada obra tiene que haber publicado EXACTAMENTE lo que su
-  // contrato permite. Con contrato, un número; sin contrato, el guion. Nada intermedio.
-  const malCont = g.bloques.map((b) => {
-    const pub = String(quedo[b.fProt - 1]?.[8] ?? '').trim()
-    if (b.contrato && !/\d/.test(pub)) return `${b.clave}: contrato $${b.contrato.toLocaleString('es-AR')} y la I quedó "${pub}"`
-    if (!b.contrato && pub !== SIN_CONTRATO) return `${b.clave}: sin contrato declarado y la I quedó "${pub}" en vez de "${SIN_CONTRATO}"`
-    return null
-  }).filter(Boolean)
+  // contrato permite. Con contrato, su fórmula viva; sin contrato, el guion. Nada intermedio.
+  //
+  // SE RELEE LA FÓRMULA, NO LO QUE SE VE. El formato de moneda dibuja el CERO como "—", el mismo
+  // glifo que `SIN_CONTRATO`: mirando la pantalla, una obra 100% facturada (saldo cero) es
+  // indistinguible de una que no declara contrato. Este control abortó cinco obras sanas por eso.
+  // El motivo entero está en `saldoContratoMalPublicado`.
+  const formulas = await google.readSheetValues(ID, `${PESTANA_OBRAS}!A1:${letra(ANCHO_OBRAS - 1)}${g.filas.length}`,
+    { render: 'FORMULA' }).catch(() => [])
+  if (!formulas.length) throw new Error('escribí pero no pude releer las FÓRMULAS: no puedo verificar la columna del contrato.')
+  const malCont = saldoContratoMalPublicado(g.bloques, formulas)
   if (malCont.length) throw new Error(`LA COLUMNA "Saldo contrato" NO QUEDÓ COMO CORRESPONDE: ${malCont.join(' · ')}.`)
   const conContrato = g.bloques.filter((b) => b.contrato).length
   console.log(`  ✓ saldo de contrato publicado en ${conContrato} de ${g.bloques.length} obras `
