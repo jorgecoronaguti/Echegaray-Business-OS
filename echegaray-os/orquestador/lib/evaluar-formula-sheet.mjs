@@ -46,6 +46,11 @@ const TOKEN = new RegExp('^(?:'
   + '|((?:\'[^\']+\'!|[A-Za-zÀ-ÿ_][A-Za-zÀ-ÿ0-9_ ]*!)?\\$?[A-Z]{1,3}\\$?\\d+(?::\\$?[A-Z]{1,3}\\$?\\d*)?)'
   + '|([A-Za-zÀ-ÿ_][A-Za-zÀ-ÿ0-9_.]*)\\s*\\('                                  // 4 función
   + '|(<=|>=|<>|[-+*/<>=;()&])'                                                // 5 operador
+  // 6 RANGO CON NOMBRE. Va ÚLTIMO a propósito: la referencia (3) y la función (4) se prueban antes,
+  // así que sólo llega acá un identificador sin dígitos finales y sin paréntesis — `TIPO_CAMBIO_USD`,
+  // que es como la pestaña OBRAS cita el tipo de cambio que publica CAJA. Sin esto el tokenizador
+  // reventaba y la única fórmula que valúa dólares no se podía evaluar en frío.
+  + '|([A-Z][A-Z0-9_]*)'                                                       // 6 nombre
   + ')')
 
 /** NÚCLEO PURO: la fórmula partida en piezas. Lo que no reconoce, revienta. */
@@ -60,7 +65,8 @@ export function tokenizar(formula) {
     else if (m[2]) out.push({ t: 'str', v: m[2].slice(1, -1) })
     else if (m[3]) out.push({ t: 'ref', v: m[3] })
     else if (m[4]) out.push({ t: 'fn', v: m[4].toUpperCase() })
-    else out.push({ t: 'op', v: m[5] })
+    else if (m[5]) out.push({ t: 'op', v: m[5] })
+    else out.push({ t: 'nombre', v: m[6] })
     s = s.slice(m[0].length)
   }
   return out
@@ -85,6 +91,7 @@ export function parsear(tokens) {
     if (!t) throw new Error('evaluar-formula-sheet: la fórmula se corta')
     if (t.t === 'num' || t.t === 'str') { i++; return { k: t.t, v: t.v } }
     if (t.t === 'ref') { i++; return { k: 'ref', v: t.v } }
+    if (t.t === 'nombre') { i++; return { k: 'nombre', v: t.v } }
     if (t.t === 'fn') {
       i++ // el token de función YA se comió su paréntesis de apertura: viene pegado al nombre
       const args = []
@@ -342,7 +349,7 @@ function llamar(n, args, ev) {
  *   para las fórmulas que citan otra pestaña; la que no esté ahí sigue comportándose como #REF!.
  * @returns {number|string|Array} el valor, o tira ErrorHoja si la hoja da error
  */
-export function evaluarFormula(formula, { hoja = {}, hojas = {}, hoy = new Date() } = {}) {
+export function evaluarFormula(formula, { hoja = {}, hojas = {}, nombres = {}, hoy = new Date() } = {}) {
   const enCurso = new Set()
   const ev = (nodo) => {
     switch (nodo.k) {
@@ -351,6 +358,13 @@ export function evaluarFormula(formula, { hoja = {}, hojas = {}, hoy = new Date(
       case 'bin': return binario(nodo.op, ev(nodo.a), ev(nodo.b))
       case 'fn': return llamar(nodo.n, nodo.args, ev)
       case 'ref': return referencia(nodo.v)
+      // UN NOMBRE QUE EL TEST NO DECLARÓ ES `#NAME?`, NO UN CERO. Sheets hace exactamente eso, y un
+      // cero silencioso convertiría "el test se olvidó de declarar el tipo de cambio" en "los
+      // dólares valen nada" — el mismo defecto que esta fórmula vino a arreglar, pero en el test.
+      case 'nombre': {
+        if (!(nodo.v in nombres)) throw new ErrorHoja(`#NAME? — el rango con nombre ${nodo.v} no está declarado en el test`)
+        return nombres[nodo.v]
+      }
       default: throw new Error(`evaluar-formula-sheet: nodo ${nodo.k}`)
     }
   }

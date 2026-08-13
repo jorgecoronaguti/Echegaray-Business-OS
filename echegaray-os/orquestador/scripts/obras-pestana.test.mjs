@@ -15,9 +15,13 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { letra, resolverColumnas, render, celdaTexto, ROTULOS_COBRANZAS } from './obras-pestana.mjs'
-import { grillaObras, ANCHO_OBRAS } from '../lib/obras-grilla.mjs'
+import {
+  letra, indiceDeLetra, resolverColumnas, render, celdaTexto, leerContratos, verificarMoneda,
+  ROTULOS_COBRANZAS,
+} from './obras-pestana.mjs'
+import { grillaObras, ANCHO_OBRAS, REFS_OBRAS } from '../lib/obras-grilla.mjs'
 import { OBRAS_FUTURAS, totalEgresos } from '../lib/obras-datos.mjs'
+import { comoFilas } from '../lib/cobranzas-fixture.mjs'
 import { VACIO } from '../lib/preservar-anotaciones.mjs'
 
 /** Un encabezado como los de verdad: filas de título arriba y los rótulos recién en la 3ª. */
@@ -126,4 +130,55 @@ test('el --dry dice qué fila queda AFUERA de las sumas por ser máquina propia'
   const txt = render(grillaObras({ obras: OBRAS_FUTURAS }), OBRAS_FUTURAS)
   assert.equal((txt.match(/FUERA de las sumas/g) ?? []).length, 4, 'las cuatro obras con equipo propio')
   assert.match(txt, new RegExp(`\\$${Math.round(OBRAS_FUTURAS.reduce((s, o) => s + totalEgresos(o), 0)).toLocaleString('es-AR').replace(/\./g, '\\.')} proyectados`))
+})
+
+// ═══ LA MONEDA Y EL CONTRATO: LO QUE EL ESCRITOR LEE Y VERIFICA ANTES DE PUBLICAR (13/08) ═══
+
+test('el rótulo "Moneda" se resuelve como los demás — y si no está, el escritor ROMPE', () => {
+  // Sin esta columna la pestaña no puede distinguir U$S 15.400 de $15.400. Resolver "casi" no sirve:
+  // una letra equivocada haría que el criterio ;"USD" no matchee nunca y los dólares vuelvan a
+  // sumarse como pesos, sin un solo error a la vista.
+  const cab = [['ID', 'Obra / Cliente', 'Concepto', 'Monto neto', 'Categoría', 'OC', 'TOTAL a cobrar (x)',
+    'Estado', 'Fecha cobro', 'Retenciones / descuentos', 'Fecha de Venta', 'Forma de Cobro', 'Moneda']]
+  assert.equal(resolverColumnas(cab, ROTULOS_COBRANZAS).moneda, 'M')
+  assert.throws(() => resolverColumnas([cab[0].slice(0, -1)], ROTULOS_COBRANZAS), /Moneda/)
+})
+
+test('indiceDeLetra es el inverso exacto de letra, también pasando la Z', () => {
+  // La columna de moneda vive en la AA del archivo real: un inverso que se rompa ahí haría leer la
+  // moneda de OTRA columna y el control de monedas raras miraría cualquier cosa.
+  for (let i = 0; i < 60; i++) assert.equal(indiceDeLetra(letra(i)), i, `columna ${i}`)
+  assert.equal(indiceDeLetra('AA'), 26)
+})
+
+test('el contrato se DERIVA de lo leído, obra por obra, con las mismas reglas que la venta', () => {
+  const refs = { cob: { ...REFS_OBRAS.cob, desde: 5 } }
+  const { contratos, hayUSD, monedasRaras } = leerContratos(comoFilas(), refs, OBRAS_FUTURAS)
+  assert.equal(contratos.get('sf-pisos-industriales').contrato, 47_590_272)
+  assert.equal(contratos.get('messina-playon-azufre').contrato, 102_500_000)
+  assert.equal(contratos.get('messina-bsa').contrato, null, 'BSA no lo declara: null, no cero')
+  assert.equal(hayUSD, true, 'el archivo tiene la fila de Quattropani en dólares')
+  assert.deepEqual(monedasRaras, [])
+  // La fila de la que salió cada contrato viaja con él: un hallazgo tiene que poder ir a mirarse.
+  assert.deepEqual(contratos.get('sf-mamposteria').valores.map((v) => v.fila), [95])
+})
+
+test('SIN TIPO DE CAMBIO NO SE PUBLICA, haya dólares o no: toda suma de la pestaña lo cita', async () => {
+  // TODAS las celdas de plata multiplican por TIPO_CAMBIO_USD, aunque el importe en dólares sea 0.
+  // Con el rango vacío quedarían en #VALUE!; sin el rango, en #NAME?. Y el escritor sólo se entera
+  // AL RELEER, o sea con la pestaña ya rota: por eso la guarda va antes y no depende de que haya USD.
+  const conTC = { readSheetValues: async () => [[1491.97]] }
+  assert.equal(await verificarMoneda(conTC, { monedasRaras: [], hayUSD: true }), 1491.97)
+  for (const hayUSD of [true, false]) {
+    await assert.rejects(() => verificarMoneda({ readSheetValues: async () => [['']] },
+      { monedasRaras: [], hayUSD }), /TIPO_CAMBIO_USD/, `vacío con hayUSD=${hayUSD}`)
+    // El rango que NO EXISTE hace que la lectura falle: tiene que abortar igual, no seguir con null.
+    await assert.rejects(() => verificarMoneda({ readSheetValues: async () => { throw new Error('Unable to parse range') } },
+      { monedasRaras: [], hayUSD }), /TIPO_CAMBIO_USD/, `inexistente con hayUSD=${hayUSD}`)
+  }
+})
+
+test('una moneda que no se entiende detiene la publicación: se sumaría como pesos', () => {
+  assert.rejects(() => verificarMoneda({ readSheetValues: async () => [[1]] },
+    { monedasRaras: [{ fila: 40, valor: 'EUR' }], hayUSD: false }), /fila 40="EUR"/)
 })
