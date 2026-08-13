@@ -30,19 +30,38 @@
 // historia de ese commit. Es a la vez legible ("revisado hasta 7c7cc10") y exacto (comparación de
 // contenido), y se puede auditar: `git cat-file -p <blob>` muestra qué se miró.
 //
+// ═══ POR QUÉ UN `descartado` YA NO FRENA (13/08) ═══
+//
+// Hasta hoy CUALQUIER diferencia con main frenaba, incluso la que ya se había mirado y resuelto:
+// "la diferencia sigue existiendo". Quedaron tres archivos —`guarda-escritura.mjs`,
+// `cargar-comprobantes-compras.mjs`, `cheques-recibidos-tablero.mjs`— cuyo motivo escrito dice que
+// main resolvió el mismo problema igual o mejor y que traer la rama sería un retroceso. Con ese
+// criterio el control quedaba rojo PARA SIEMPRE, y un aviso permanentemente rojo se ignora: es la
+// misma muerte de control que ya se documentó dos veces más arriba en este archivo.
+//
+// La liberación la decidió el dueño el 13/08 ("liberado, termina todo el trabajo") y tiene un
+// límite duro: lo que libera NO es la palabra `descartado`, es la DECLARACIÓN ESCRITA. Un descarte
+// sin motivo con sustancia frena igual que lo que nadie miró — porque es lo mismo: no consta que
+// alguien lo haya mirado. La vara es la de la casa (`motivoValido` del freno de Sheets) subida al
+// piso que este registro ya exigía.
+//
+// Y liberar no es callar: los descartados se siguen imprimiendo, con su motivo, en CADA corrida.
+// Un control que deja de nombrar lo que perdonó es un silenciador.
+//
 // ═══ CÓMO SE USA ═══
 //
 //   node orquestador/scripts/generadores-atrasados.mjs                   inventario completo
 //   node orquestador/scripts/generadores-atrasados.mjs --archivo <ruta>  un solo generador
 //   node orquestador/scripts/generadores-atrasados.mjs --base HEAD       desde un worktree, antes de integrar
 //
-// Sale con código 1 mientras quede trabajo de rama sin incorporar. Es el chequeo previo a correr el
+// Sale con código 1 mientras quede trabajo de rama sin resolver. Es el chequeo previo a correr el
 // pipeline: si esto está rojo, un generador puede borrarle datos al dueño.
 
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { motivoValido } from '../lib/congelador-sheets.mjs'
 
 /** Corre git. `null` cuando falló — la diferencia con `''` es la que evita dar por bueno lo que no se pudo mirar. */
 const git = (args) => {
@@ -101,11 +120,27 @@ export function leerRegistro(ruta = RUTA_REGISTRO) {
 }
 
 /**
+ * EL PISO DE UN MOTIVO ESCRITO. `motivoValido` (≥8 caracteres, nada trivial) es la vara de la casa
+ * para levantar el freno de Sheets; acá se le suma el largo que este registro YA exigía en su test,
+ * porque lo que un descarte tiene que dejar no es una etiqueta sino la razón: qué trae la rama, qué
+ * hizo main en su lugar y por qué traerlo sería un retroceso. Eso no entra en diez caracteres.
+ *
+ * El número vive UNA vez y lo usan las dos puntas —el veredicto y la validación del registro— para
+ * que no puedan discrepar: un registro que pasa su propio test y aun así frena sería un misterio.
+ */
+export const MOTIVO_MINIMO = 40
+
+/** ¿Esta declaración alcanza para dejar de frenar? Puro. Un "ok" no es una decisión. */
+export const motivoQueLibera = (m) => motivoValido(m) && String(m).trim().length > MOTIVO_MINIMO
+
+/**
  * EL VEREDICTO. Es la única decisión del script, y por eso es pura y se prueba sola.
  *
- * `descartado` NO es "está bien": es "se miró y se decidió no traerlo, por este motivo". Sigue
- * contando como pendiente para el pipeline, porque la diferencia con main sigue existiendo. Lo que
- * cambia es que el informe dice POR QUÉ en vez de "nadie lo miró".
+ * `descartado` es "se miró y se decidió no traerlo, por ESTE motivo": no frena, porque la decisión
+ * ya está tomada y escrita. Pero el que libera es el motivo, no la palabra: sin una declaración con
+ * sustancia el veredicto es `DESCARTE SIN MOTIVO` y frena igual que lo que nadie miró — que es
+ * exactamente lo que es. Si esto no fuera así, `descartado` sería el campo con el que se apaga el
+ * control entero escribiendo cinco letras.
  *
  * `motivoRama` es la declaración por RAMA: sirve para una rama viva de otra tanda, que se conoce y no
  * se toca. Nunca convierte el hallazgo en verde — sólo le pone nombre.
@@ -120,21 +155,33 @@ export function leerRegistro(ruta = RUTA_REGISTRO) {
  * Ahora la incorporación tiene que dejar EVIDENCIA en el archivo de la base: que su contenido ya no
  * sea el de antes, y —cuando hay una señal declarada— que la señal esté. Si no, `REVERTIDO`.
  *
- * @param {{cubierto:boolean, decision?:string, motivoRama?:string|null, evidencia?:boolean}} h
- * @returns {'incorporado'|'REVERTIDO'|'descartado'|'pendiente'|'SIN REVISAR'}
+ * @param {{cubierto:boolean, decision?:string, motivo?:string|null, motivoRama?:string|null,
+ *          evidencia?:boolean}} h
+ * @returns {'incorporado'|'REVERTIDO'|'descartado'|'DESCARTE SIN MOTIVO'|'pendiente'|'SIN REVISAR'}
  */
-export function veredicto({ cubierto, decision, motivoRama, evidencia = true }) {
+export function veredicto({ cubierto, decision, motivo, motivoRama, evidencia = true }) {
   if (!cubierto) return motivoRama ? 'pendiente' : 'SIN REVISAR'
-  if (decision === 'descartado') return 'descartado'
+  if (decision === 'descartado') return motivoQueLibera(motivo) ? 'descartado' : 'DESCARTE SIN MOTIVO'
   if (decision === 'pendiente') return 'pendiente'
   return evidencia ? 'incorporado' : 'REVERTIDO'
 }
 
-/** ¿El veredicto frena el pipeline? Puro. Todo lo que no se incorporó, con o sin motivo. */
-export const frenaElPipeline = (v) => v !== 'incorporado'
+/**
+ * ¿EL VEREDICTO FRENA EL PIPELINE? Puro, y es el único lugar donde se decide eso.
+ *
+ * Pasan dos: el trabajo que main ya tiene (`incorporado`) y el que se miró y se decidió no traer con
+ * el motivo escrito (`descartado`). Todo lo demás frena, incluido el descarte sin motivo: la
+ * diferencia entre "lo miré y no va" y "no lo miré" es la declaración, no la intención.
+ */
+export const frenaElPipeline = (v) => v !== 'incorporado' && v !== 'descartado'
 
-/** ¿Y además nadie lo miró —o se perdió lo que ya se había traído? Ésos no pueden quedar así. Puro. */
-export const nadieLoMiro = (v) => v === 'SIN REVISAR' || v === 'REVERTIDO'
+/**
+ * ¿Y además nadie lo miró —o se perdió lo que ya se había traído? Ésos no pueden quedar así. Puro.
+ *
+ * `DESCARTE SIN MOTIVO` entra acá y no en "declarado": de un descarte sin razón escrita no consta
+ * que nadie lo haya mirado, y tratarlo como declarado sería creerle al registro sobre sí mismo.
+ */
+export const nadieLoMiro = (v) => v === 'SIN REVISAR' || v === 'REVERTIDO' || v === 'DESCARTE SIN MOTIVO'
 
 /**
  * ¿La incorporación dejó rastro en el archivo de `base`? Puro respecto de sus entradas.
@@ -307,7 +354,9 @@ export function revisarArchivo(archivo, ramas, base = 'main', registro = leerReg
   })
   const hallazgos = distintas.map(({ rama, blob }) => {
     const motivoRama = entrada.pendientes?.[rama] ?? null
-    const v = veredicto({ cubierto: revisados.has(blob), decision: entrada.decision, motivoRama, evidencia })
+    // El motivo que puede liberar es el de la DECISIÓN del archivo (`entrada.motivo`), no el de la
+    // rama: `pendientes` describe una rama viva que se conoce, y eso nunca puso nada en verde.
+    const v = veredicto({ cubierto: revisados.has(blob), decision: entrada.decision, motivo: entrada.motivo, motivoRama, evidencia })
     return { archivo: corto(archivo), rama, blob: blob.slice(0, 7), veredicto: v, motivo: motivoRama ?? entrada.motivo ?? null }
   })
   return { hallazgos, viejas }
@@ -332,7 +381,14 @@ export function revisar({ base = 'main', soloArchivo = null, registro = leerRegi
   }
 }
 
-/** Agrupa por archivo. Manda el peor veredicto de sus ramas: lo que nadie miró tapa a lo declarado. */
+/**
+ * Agrupa por archivo. Manda el peor veredicto de sus ramas: lo que nadie miró tapa a lo declarado, y
+ * lo declarado tapa a lo incorporado.
+ *
+ * El último escalón —`declarados` antes que `hs`— existe desde que el descarte dejó de frenar: sin
+ * él, un archivo con una rama incorporada y otra descartada se resumía por la primera y el descarte
+ * desaparecía del informe. Liberar el freno no puede significar dejar de nombrar lo que se perdonó.
+ */
 export function resumir(hallazgos) {
   const porArchivo = new Map()
   for (const h of hallazgos) {
@@ -342,23 +398,41 @@ export function resumir(hallazgos) {
   return [...porArchivo.entries()].map(([archivo, hs]) => {
     const crudos = hs.filter((h) => nadieLoMiro(h.veredicto))
     const frenan = hs.filter((h) => frenaElPipeline(h.veredicto))
-    const elegidos = crudos.length ? crudos : (frenan.length ? frenan : hs)
+    const declarados = hs.filter((h) => h.veredicto !== 'incorporado')
+    const elegidos = crudos.length ? crudos : (frenan.length ? frenan : (declarados.length ? declarados : hs))
     return { archivo, veredicto: elegidos[0].veredicto, ramas: elegidos.map((h) => h.rama), motivo: elegidos[0].motivo }
   }).sort((a, b) => a.archivo.localeCompare(b.archivo))
 }
 
-const MARCA = { 'SIN REVISAR': '✖', REVERTIDO: '🚨', descartado: '📝', pendiente: '⏳' }
+const MARCA = { 'SIN REVISAR': '✖', 'DESCARTE SIN MOTIVO': '✖', REVERTIDO: '🚨', descartado: '📝', pendiente: '⏳' }
+
+/**
+ * Las líneas del informe. Puro a propósito: es la parte que garantiza que liberar no sea callar, y
+ * eso hay que poder probarlo sin correr git ni mirar una consola.
+ *
+ * Se imprime TODO lo que no está incorporado, frene o no, con su motivo. El descartado lleva escrito
+ * que no frena: el dueño tiene que poder leer en cada corrida qué se decidió, por qué, y que esa
+ * decisión es la que está dejando pasar el pipeline.
+ */
+export function lineasDelInforme(resumen) {
+  const lineas = []
+  for (const r of resumen.filter((x) => x.veredicto !== 'incorporado')) {
+    const frena = frenaElPipeline(r.veredicto) ? '' : '  — no frena: decisión escrita'
+    lineas.push(`\n${MARCA[r.veredicto] ?? '·'} ${r.veredicto}  ${r.archivo}${frena}`)
+    lineas.push(`   ramas: ${r.ramas.slice(0, 6).join(', ')}${r.ramas.length > 6 ? ` (+${r.ramas.length - 6})` : ''}`)
+    if (r.motivo && r.veredicto !== 'SIN REVISAR') lineas.push(`   ${r.motivo}`)
+  }
+  const frenan = resumen.filter((r) => frenaElPipeline(r.veredicto))
+  const descartados = resumen.filter((r) => r.veredicto === 'descartado').length
+  const crudos = frenan.filter((r) => nadieLoMiro(r.veredicto)).length
+  lineas.push(`\nincorporados: ${resumen.length - frenan.length - descartados} · descartados con motivo (no frenan): ${descartados}`
+    + ` · declarados que frenan: ${frenan.length - crudos} · sin decisión escrita: ${crudos}`)
+  return lineas
+}
 
 function informar(resumen) {
-  const frenan = resumen.filter((r) => frenaElPipeline(r.veredicto))
-  for (const r of frenan) {
-    console.log(`\n${MARCA[r.veredicto] ?? '·'} ${r.veredicto}  ${r.archivo}`)
-    console.log(`   ramas: ${r.ramas.slice(0, 6).join(', ')}${r.ramas.length > 6 ? ` (+${r.ramas.length - 6})` : ''}`)
-    if (r.motivo && r.veredicto !== 'SIN REVISAR') console.log(`   ${r.motivo}`)
-  }
-  const crudos = frenan.filter((r) => nadieLoMiro(r.veredicto)).length
-  console.log(`\nincorporados: ${resumen.length - frenan.length} · declarados con motivo: ${frenan.length - crudos} · SIN REVISAR: ${crudos}`)
-  return frenan.length
+  for (const l of lineasDelInforme(resumen)) console.log(l)
+  return resumen.filter((r) => frenaElPipeline(r.veredicto)).length
 }
 
 function main() {
@@ -387,7 +461,11 @@ function main() {
   }
   if (!hallazgos.length) { console.log('\n✔ ninguna rama sin mergear difiere de main en un generador de Sheets.'); return 0 }
 
-  if (!informar(resumir(hallazgos))) { console.log('\n✔ todo el trabajo de rama está incorporado. El pipeline puede correr.'); return 0 }
+  if (!informar(resumir(hallazgos))) {
+    console.log('\n✔ no queda trabajo de rama sin resolver: lo que no se incorporó está descartado por escrito arriba.')
+    console.log('  El pipeline PUEDE correr — lo que sigue siendo distinto de main es lo que se decidió no traer.')
+    return 0
+  }
   console.log('\n  NO corras el pipeline contra el Sheet real hasta resolverlo: un generador viejo reescribe')
   console.log('  la grilla que él conoce y borra lo que se agregó después, sin fallar y sin avisar.')
   console.log('  Cuando lo resuelvas —lo traigas o decidas no traerlo— anotalo en orquestador/scripts/generadores-revisados.json.')
