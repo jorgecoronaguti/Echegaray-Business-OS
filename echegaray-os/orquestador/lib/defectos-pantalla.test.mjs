@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { detectar, resumen, FECHA_CERO } from './defectos-pantalla.mjs'
+import { detectar, resumen, FECHA_CERO, esSerialCrudo } from './defectos-pantalla.mjs'
 
 const cel = (valor, type) => ({ valor, formato: type ? { numberFormat: { type } } : null })
 const hoja = (filas) => ({ filas, anchos: [] })
@@ -167,4 +167,34 @@ test('una fila de encabezado de meses no vuelve sospechosa a toda la tabla', () 
 test('pero una sola fecha suelta en la columna sí cuenta', () => {
   const filas = [[cel('x'), cel('25/06/2026', 'DATE')], [cel('y'), cel('$46.198', 'CURRENCY')]]
   assert.equal(detectar(hoja(filas))[0].tipo, 'fecha_como_moneda')
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LOS DOS DEFECTOS QUE DESTAPÓ "Calendario de Cobros" (13/08)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('UN SERIAL CON FORMATO TEXT ES UNA FECHA DIBUJADA COMO NÚMERO: los "46260" del encabezado', () => {
+  // El caso real, celda por celda: E4/G4/H4/I4 mostraban el serial y F4 ("sept-26") estaba bien.
+  const filas = [[cel('Cliente / cobro', 'TEXT'), cel('46260', 'TEXT'), cel('sept-26', 'TEXT'), cel('46321', 'TEXT')]]
+  const d = detectar(hoja(filas)).filter((x) => x.tipo === 'serial_crudo')
+  assert.equal(d.length, 2, 'los dos seriales, y sólo ellos')
+  assert.deepEqual(d.map((x) => x.col), ['B', 'D'])
+})
+
+test('el detector de serial crudo no muerde lo que está bien: hace falta el número Y el formato', () => {
+  // MISMO VALOR, FORMATO DE FECHA → es exactamente la corrección, y no puede reportarse como defecto.
+  assert.equal(esSerialCrudo('46260', 'DATE'), false)
+  // Un número de comprobante de cinco dígitos fuera del rango de seriales no es una fecha.
+  assert.equal(esSerialCrudo('12345', 'TEXT'), false)
+  // Y un importe con formato de moneda ya lo mira otro detector, con su propia evidencia.
+  assert.equal(esSerialCrudo('46.260', 'CURRENCY'), false)
+})
+
+test('un glifo emoji en una celda se reporta: está escrito y no se va a ver', () => {
+  const d = detectar(hoja([[cel('⚠ Vencido'), cel('🟢 Vigente')]])).filter((x) => x.tipo === 'glifo_invisible')
+  assert.equal(d.length, 2)
+  assert.match(d[0].que, /no se dibuja/)
+  // Los símbolos que el archivo usa a propósito no se reportan: si el detector gritara por "⇒ TOTAL"
+  // o "↳ endosado" nadie volvería a mirar su lista.
+  assert.deepEqual(detectar(hoja([[cel('⇒ TOTAL POR COBRAR'), cel('↳ endosado')]])), [])
 })

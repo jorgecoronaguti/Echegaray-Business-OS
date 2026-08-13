@@ -18,6 +18,7 @@
 // Lo VENCIDO no aborta: tiene columna propia. Ver `columnaVencido` en calendario-cobros.mjs.
 
 import { filasDeObra } from './cobranzas-contrato.mjs'
+import { ALERTA } from './glifos.mjs'
 import { variantesDe, ALIAS_CLIENTE, ANO } from './obras-grilla.mjs'
 
 /** El canónico de un cliente tal como lo escribe Cobranzas. Misma decisión declarada que en OBRAS:
@@ -126,7 +127,7 @@ export function textoDeHito({ serial, concepto, forma, estado, finObra }) {
   if (finObra) {
     const [, mm, ddf] = String(finObra).split('-')
     const finSerial = Math.round((Date.UTC(...String(finObra).split('-').map((x, k) => (k === 1 ? Number(x) - 1 : Number(x)))) - Date.UTC(1899, 11, 30)) / 86400000)
-    if (Number(serial) > finSerial) t += ` ⚠ fin ${ddf}/${mm}`
+    if (Number(serial) > finSerial) t += ` ${ALERTA} fin ${ddf}/${mm}`
   }
   return t
 }

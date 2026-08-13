@@ -21,8 +21,36 @@
 // FORMATO. Este archivo es eso — núcleo puro, para poder correrlo sobre cualquier pestaña del
 // archivo y no sólo sobre la que el dueño acaba de rechazar.
 
+import { glifosInvisibles } from './glifos.mjs'
+
 /** El serial 0 de una fecha en Sheets: 30/12/1899. Un MINIFS sin coincidencias devuelve 0. */
 export const FECHA_CERO = /^30\/12\/(1899|99)$/
+
+/**
+ * NÚCLEO PURO: ¿esta celda es una FECHA dibujada como el número crudo?
+ *
+ * POR QUÉ (13/08). "Calendario de Cobros" publicó cuatro de sus cinco encabezados de mes como
+ * `46260`, `46321`, `46352` y `46382`. La causa es una combinación, no un valor: el contenido es un
+ * SERIAL de fecha y el formato de la celda es `TEXT`. Sheets no lo dibuja como fecha —el formato no
+ * es de fecha— ni como texto —el contenido no lo es—, así que dibuja el número pelado.
+ *
+ * Pasa siempre que se escribe con `USER_ENTERED` un texto que Sheets sabe parsear ("ago-26" es el 26
+ * de agosto en es_AR) sobre una celda que alguien pintó de `TEXT`. Ninguna de las dos decisiones da
+ * error por separado, y juntas producen un encabezado ilegible sin una sola celda en rojo.
+ *
+ * EL RANGO 40.000–60.000 son los seriales de 2009 a 2064: es donde caen las fechas de este archivo.
+ * Un `TEXT` con cinco dígitos fuera de ese rango puede ser un número de comprobante y no se marca.
+ *
+ * @param {string} valor lo que se VE en la celda
+ * @param {string|null} nf el tipo de formato de número de la celda
+ */
+export function esSerialCrudo(valor, nf) {
+  if (nf !== 'TEXT') return false
+  const s = String(valor ?? '').trim()
+  if (!/^\d{5}$/.test(s)) return false
+  const n = Number(s)
+  return n >= 40000 && n <= 60000
+}
 
 /** Los tipos de formato que dicen "esta celda es un número". */
 const NUMERICO = new Set(['CURRENCY', 'NUMBER', 'PERCENT'])
@@ -253,6 +281,21 @@ export function detectar(f, { desdeFila = 1, huecoMax = 3 } = {}) {
             out.push({ tipo: 'texto_cortado', fila: nFila, col, valor: v.slice(0, 40), que: `${v.length} caracteres en una columna de ${anchoCol}px: entran ${Math.floor(anchoCol / (tam * 0.57))}` })
           }
         }
+      }
+
+      // ── UNA FECHA DIBUJADA COMO EL SERIAL PELADO ────────────────────────────────────────────
+      // Ver `esSerialCrudo`: contenido de fecha con formato de texto. Es el defecto que dejó cuatro
+      // encabezados de mes como "46260" en el Calendario de Cobros.
+      if (esSerialCrudo(v, nf)) {
+        out.push({ tipo: 'serial_crudo', fila: nFila, col, valor: v, que: 'un serial de fecha en una celda con formato TEXT: se dibuja el número, no el mes' })
+      }
+
+      // ── UN GLIFO QUE NO SE VA A VER ─────────────────────────────────────────────────────────
+      // El ⚠ estaba EN la celda y no en la pantalla: el PDF no dibuja los caracteres emoji. Es el
+      // peor lugar donde puede pasar, porque el glifo que se pierde es siempre el de la alerta.
+      const ciegos = glifosInvisibles(v)
+      if (ciegos.length) {
+        out.push({ tipo: 'glifo_invisible', fila: nFila, col, valor: v.slice(0, 40), que: `${ciegos.join(' ')} no se dibuja al exportar: usá ALERTA de lib/glifos.mjs` })
       }
 
       // ── UN CUIT SIN FORMATEAR ───────────────────────────────────────────────────────────────

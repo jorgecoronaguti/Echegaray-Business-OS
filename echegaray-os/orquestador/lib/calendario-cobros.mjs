@@ -79,6 +79,8 @@ import { conColaLimpiable as colaDeclarada } from './cola-de-rango.mjs'
 import { sumaConUSD } from './cobranzas-contrato.mjs'
 import { RANGO_TC } from './caja-disponibilidades.mjs'
 import { ANO, serialISO, variantesDe, criterioCliente, REFS_OBRAS } from './obras-grilla.mjs'
+import { ALERTA } from './glifos.mjs'
+import { NUM } from './estilo-pestana.mjs'
 
 export const PESTANA_CALENDARIO = 'Calendario de Cobros'
 
@@ -102,7 +104,7 @@ export const NO_VENTA = 'CANCELAR'
 export const ESTADO_NORMAL = 'Pendiente'
 
 /** Las cuatro columnas fijas, antes de los meses. La quinta zona son los meses y la última el total. */
-export const COLS_FIJAS = ['Cliente / cobro', 'Cobrado', '↳ endosado', '⚠ Vencido']
+export const COLS_FIJAS = ['Cliente / cobro', 'Cobrado', '↳ endosado', `${ALERTA} Vencido`]
 
 /**
  * EL ANCHO MÁS GRANDE QUE ESTA PESTAÑA PUEDE TENER: 4 fijas + 12 meses + el total.
@@ -122,9 +124,14 @@ export function conColaLimpiable(filas = [], hasta = ANCHO_HISTORICO, alto = ALT
   return colaDeclarada(filas, { ancho: hasta, alto, quien: 'calendario-cobros' })
 }
 
-/** Los meses en es-AR, para el encabezado. Se escriben: `TEXT` con un patrón de mes daría el idioma
- *  de la hoja y el rótulo de una columna no puede depender de una configuración que no controlamos. */
-const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+/**
+ * Los meses abreviados como los escribe la hoja (es_AR) — para el LOG y el ensayo, no para la celda.
+ *
+ * "sept" y no "sep": es la abreviatura que usa este archivo, verificable sin adivinar en `Cobranzas!R`
+ * ("Mes cobro (auto)", que es un TEXT sobre la fecha de cobro). Que el ensayo diga un rótulo y la
+ * pestaña dibuje otro es la clase de desfase que hace desconfiar de las dos.
+ */
+const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sept', 'oct', 'nov', 'dic']
 
 /** El último día de un mes (1-based), sin depender de la zona horaria del proceso. */
 const ultimoDia = (ano, mes) => new Date(Date.UTC(ano, mes, 0)).getUTCDate()
@@ -275,7 +282,7 @@ export function rotuloDeHito(cob, h) {
   partes.push(`IF(${celdaDe(cob, 'estado', h.fila)}="${ESTADO_NORMAL}";"";" · "&${celdaDe(cob, 'estado', h.fila)})`)
   if (h.finObra) {
     const [, mm, dd] = String(h.finObra).split('-')
-    partes.push(`IF(${f}>${serialISO(h.finObra)};" ⚠ fin ${dd}/${mm}";"")`)
+    partes.push(`IF(${f}>${serialISO(h.finObra)};" ${ALERTA} fin ${dd}/${mm}";"")`)
   }
   return `=${partes.join('&')}`
 }
@@ -297,6 +304,34 @@ export const columnasProyectadas = (ancho) => {
   const c = []
   for (let i = 3; i < ancho; i++) c.push(i)
   return c
+}
+
+/** Las columnas que son un MES: entre las fijas y la del total. Una sola definición para la grilla
+ *  (dónde cae cada hito) y para la piel (qué formato lleva el encabezado). */
+export const columnasDeMes = (meses = []) => meses.map((_, i) => COLS_FIJAS.length + i)
+
+/**
+ * EL FORMATO DE CADA CELDA DEL ENCABEZADO — y el defecto que existe para que no vuelva.
+ *
+ * QUÉ PASÓ (13/08). La fila 4 se pintaba entera con formato `TEXT` y los meses se escribían con su
+ * rótulo ("ago-26"). Pero la escritura va con `USER_ENTERED`, así que Sheets PARSEÓ ese rótulo como
+ * fecha —"ago-26" es el 26 de agosto en es_AR— y lo guardó como número. Un número con formato de
+ * texto no se formatea de ninguna de las dos maneras: la pestaña dibujó `46260`, `46321`, `46352` y
+ * `46382` donde iban ago, oct, nov y dic. `sep-26` se salvó de casualidad, porque la hoja abrevia
+ * septiembre "sept" y ese texto no parsea.
+ *
+ * LA CORRECCIÓN NO ES ESCRIBIR TEXTO MÁS FUERTE, ES ACEPTAR LO QUE EL ENCABEZADO ES. Un encabezado de
+ * período es una FECHA: con el serial el orden de las columnas es un hecho aritmético, un `MATCH` de
+ * cualquier consumidor futuro encuentra el mes, y la ventana que cada columna suma se puede leer sin
+ * formato (la lección de "el encabezado de período es el contrato"). Lo que estaba mal era el
+ * FORMATO DE CELDA, no el valor. Las fijas siguen en `TEXT` porque son rótulos de verdad.
+ *
+ * @param {{ancho:number, meses:Array}} g la grilla
+ * @returns {Array<{numberFormat:object}>} un formato por columna del encabezado
+ */
+export function formatoDeEncabezado(g = {}) {
+  const meses = new Set(columnasDeMes(g.meses ?? []))
+  return Array.from({ length: g.ancho ?? 0 }, (_, c) => ({ numberFormat: meses.has(c) ? { ...NUM.mes } : { type: 'TEXT' } }))
 }
 
 /**
@@ -329,7 +364,10 @@ export function grillaCalendario(ctx = {}) {
   h.push([])
   // UN SOLO BLOQUE, ASÍ QUE NO LLEVA RÓTULO DE BLOQUE NI NUMERACIÓN. Numerar "1 · …" cuando no hay un
   // 2 es prometer un cuadro que no existe.
-  const fEnc = h.push([...COLS_FIJAS, ...meses.map((m) => m.rotulo), 'Por cobrar'])
+  // EL MES VA COMO SERIAL, NO COMO RÓTULO: ver `formatoDeEncabezado`. Es el primero de su mes, que es
+  // el mismo número con el que la columna filtra (`enMes`) — el encabezado y la ventana que suma
+  // debajo no pueden salir de dos lugares distintos.
+  const fEnc = h.push([...COLS_FIJAS, ...meses.map((m) => m.desde), 'Por cobrar'])
 
   const filaDeCliente = {}
   const protagonistas = []
