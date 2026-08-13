@@ -38,10 +38,41 @@
 import { aNumero, redondear2, normalizar } from '../carga-comprobantes.mjs'
 import { matchUnico } from './imputacion.mjs'
 
-/** Formatos que un modelo de visión puede mirar. Cualquier otro se rechaza ANTES de gastar nada. */
+/** Formatos que un modelo de visión puede mirar TAL CUAL. La API no acepta ningún otro. */
 export const MEDIA_SOPORTADOS = Object.freeze([
   'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf',
 ])
+
+/**
+ * Lo que se ACEPTA en el canal: lo mirable más lo convertible.
+ *
+ * ═══ EL IPHONE MANDA HEIC Y SE DESCARTABA EN SILENCIO (13/08) ═══
+ *
+ * De ocho archivos que mandó el dueño, siete eran `.HEIC` y el bot cargó tres sin decir nada de los
+ * otros cinco. HEIC es el formato POR DEFECTO de la cámara del iPhone: no es un caso borde, es el
+ * caso normal. Se convierte a JPEG antes de mirarlo (`imagen.mjs`) —la API tampoco lo acepta— y si no
+ * se puede convertir, el archivo se NOMBRA en el resumen con su motivo. Nunca desaparece.
+ */
+export const MEDIA_ACEPTADOS = Object.freeze([
+  ...MEDIA_SOPORTADOS, 'image/heic', 'image/heif', 'image/heic-sequence', 'image/heif-sequence',
+])
+
+/**
+ * El tipo por la EXTENSIÓN del nombre, o null.
+ *
+ * Mattermost devuelve el `mime_type` que declaró el cliente que subió el archivo, y para un `.HEIC`
+ * del iPhone eso llega vacío o como `application/octet-stream` según por dónde entre. La extensión es
+ * la otra evidencia y es la que el dueño ve escrita en su pantalla.
+ */
+export function tipoPorExtension(nombre) {
+  const ext = String(nombre ?? '').toLowerCase().match(/\.([a-z0-9]+)$/)?.[1]
+  if (!ext) return null
+  return {
+    heic: 'image/heic', heif: 'image/heif',
+    jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif',
+    pdf: 'application/pdf',
+  }[ext] ?? null
+}
 
 /** Techo de tamaño por adjunto. Arriba de esto la API rechaza y no vale la pena intentarlo. */
 export const MAX_BYTES_ADJUNTO = 5 * 1024 * 1024

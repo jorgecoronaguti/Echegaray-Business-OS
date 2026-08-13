@@ -9,7 +9,9 @@ import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { crearCicloTarea, RESULTADO, TIPOS_NO_REPETIBLES } from './ciclo-tarea.mjs'
+import {
+  crearCicloTarea, RESULTADO, TIPOS_NO_REPETIBLES, esTransicionInvalida, latidoPara,
+} from './ciclo-tarea.mjs'
 
 const MIGRACIONES = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'supabase', 'migrations')
 
@@ -243,4 +245,87 @@ test('antesDeCorrer con omitir:true no arranca el trabajo', async () => {
   assert.equal(r.resultado, RESULTADO.OMITIDA)
   assert.equal(corridas, 0)
   assert.equal(ledger.tarea.state, 'claimed')
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4 · EL LATIDO Y LA RED (venían de comunicacion/lease-tarea.test.mjs, que este módulo reemplaza)
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('la transición rechazada NO dispara reintento aunque el latido no se haya enterado', async () => {
+  // El caso real: el heartbeat falla por RED (perdido queda en false) justo cuando el reap actúa.
+  // Sin el reconocedor del texto de plpgsql, acá se llamaba a failTask sobre una tarea ajena.
+  const ledger = crearLedgerFalso({ type: 'noop' })
+  const { ciclo } = armar(ledger)
+  const task = ledger.claim(WORKER)
+  let fallos = 0
+  const original = ledger.failTask
+  ledger.failTask = async (...a) => { fallos++; return original(...a) }
+  const r = await ciclo(task, {
+    correr: async () => { ledger.reap(); return { result: {} } }, // sin latir: perdido = false
+  })
+  assert.equal(r.resultado, RESULTADO.LEASE_PERDIDO)
+  assert.equal(fallos, 0, 'no se reencola una tarea cuyo efecto externo ya salió')
+})
+
+test('esTransicionInvalida reconoce el texto exacto que produce plpgsql', () => {
+  assert.equal(esTransicionInvalida('transición inválida retrying -> reviewing (tarea fcb3a2eb)'), true)
+  assert.equal(esTransicionInvalida('transicion invalida running -> succeeded'), true, 'sin acentos también')
+  assert.equal(esTransicionInvalida('worker comm-wf-1 no es dueño del lease de la tarea x'), true)
+  assert.equal(esTransicionInvalida('no es dueno del lease'), true)
+  assert.equal(esTransicionInvalida('timeout tras 600000ms'), false, 'un timeout SÍ se reintenta')
+  assert.equal(esTransicionInvalida(null), false)
+})
+
+test('un latido que revienta por red no mata la tarea ni la reintenta', async () => {
+  const ledger = crearLedgerFalso({ type: 'noop' })
+  ledger.heartbeat = async () => { throw new Error('ECONNREFUSED') }
+  const { ciclo, latir } = armar(ledger)
+  const r = await ciclo(ledger.claim(WORKER), {
+    correr: async () => { await latir(); return { result: {} } },
+  })
+  assert.equal(r.resultado, RESULTADO.OK, 'no poder latir no es haber perdido el lease')
+  assert.equal(ledger.tarea.state, 'succeeded')
+})
+
+test('el latido se cancela siempre, aunque el handler falle: un timer vivo es un worker que no muere', async () => {
+  const ledger = crearLedgerFalso({ type: 'noop' })
+  let cancelados = 0
+  const ciclo = crearCicloTarea({
+    ledger, workerId: WORKER, leaseSeconds: 300, heartbeatMs: latidoPara(300), backoffMs: 1,
+    programar: () => 'timer', cancelar: () => { cancelados++ },
+  })
+  await ciclo(ledger.claim(WORKER), { correr: async () => { throw new Error('boom') } })
+  assert.equal(cancelados, 1)
+})
+
+test('con la base caída el ciclo NO lanza: el runner sigue con la tarea siguiente', async () => {
+  const ledger = crearLedgerFalso({ type: 'noop' })
+  ledger.transition = async () => { throw new Error('la base no contesta') }
+  ledger.failTask = async () => { throw new Error('la base no contesta') } // tampoco se puede fallar
+  const { ciclo } = armar(ledger)
+  const r = await ciclo(ledger.claim(WORKER), { correr: async () => ({}) })
+  assert.equal(r.resultado, RESULTADO.FALLO_CICLO, 'devuelve el fallo en vez de propagarlo')
+  assert.match(r.motivo, /la base no contesta/)
+})
+
+test('una base que contesta el fallo pero no la transición sí reintenta (no es fallo del ciclo)', async () => {
+  const ledger = crearLedgerFalso({ type: 'noop' })
+  ledger.transition = async () => { throw new Error('la base no contesta') }
+  const { ciclo } = armar(ledger)
+  const r = await ciclo(ledger.claim(WORKER), { correr: async () => ({}) })
+  assert.equal(r.resultado, RESULTADO.REINTENTA)
+  assert.equal(ledger.tarea.state, 'retrying')
+})
+
+test('latidoPara programa TRES latidos por lease: perder uno no cuesta la tarea', () => {
+  assert.equal(latidoPara(300), 100_000)
+  assert.equal(latidoPara(180), 60_000)
+  assert.ok(latidoPara(1) >= 1000, 'nunca late más rápido que una vez por segundo')
+})
+
+test('el camino de reintento sigue existiendo entero en la máquina de estados', () => {
+  const p = transicionesReales()
+  for (const paso of ['running->failed', 'failed->retrying', 'retrying->ready', 'retrying->claimed', 'claimed->cancelled']) {
+    assert.equal(p.has(paso), true, `falta ${paso}: sin él la tarea no puede reintentar ni cerrarse`)
+  }
 })

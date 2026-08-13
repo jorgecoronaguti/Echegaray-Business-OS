@@ -224,6 +224,11 @@ export function identidadProveedor(comprobante = {}, reg = {}) {
   return 'distinto'
 }
 
+/** ¿Este tipo es una nota de crédito? Es el SIGNO de la operación, y parte la identidad en dos. */
+function esNota(tipo) {
+  return String(tipo ?? '').toUpperCase().replace(/[^A-Z]/g, '') === 'NC'
+}
+
 /** ¿Los dos importes son el mismo? null = alguno no se sabe (no se puede afirmar ni negar). */
 function importeCierra(a, b) {
   if (a == null || b == null) return null
@@ -252,6 +257,19 @@ export function buscarEnCompras(comprobante = {}, indice = {}) {
     const cands = (indice.porNumero?.get(numero) ?? [])
       .map((r) => ({ r, quien: identidadProveedor(comprobante, r), cierra: importeCierra(total, r.total) }))
       .filter((c) => c.quien !== 'distinto')
+      // ═══ EL SIGNO PARTE LA CLAVE (13/08) ═══
+      //
+      // Una NOTA DE CRÉDITO comparte numeración con las facturas: el mismo proveedor puede emitir la
+      // factura A 0113-00010490 y la nota de crédito A 0113-00010490. Sin esta línea, la nota de
+      // crédito se daba por "ya cargada" contra la factura y NO entraba nunca — o al revés. Este repo
+      // ya pagó dos veces la misma lección: «el número no identifica un cheque» (FISICO 313 ≠ ECHEQ
+      // 313, la clave era (instrumento, número)) y «CUIT + número no identifica sin el signo», que
+      // costó $41,9M contando notas de crédito como compras.
+      //
+      // Sólo excluye cuando las DOS puntas saben qué son. Si la fila de Compras no trae el tipo
+      // legible —muchas viejas no lo traen— no se afirma nada y la candidata sigue viva, igual que
+      // antes: no saber no es saber que son distintas.
+      .filter((c) => !(tipo && c.r.tipo && esNota(tipo) !== esNota(c.r.tipo)))
     // (proveedor|CUIT, número) con el importe que cierra, o (número, total) cuando no se sabe quién
     // es: en los dos casos es ÉSTE. Es la clave que cazaba el ticket de Barcelo y no se disparaba.
     const seguras = cands.filter((c) => c.cierra === true || (c.cierra == null && c.quien === 'igual'))

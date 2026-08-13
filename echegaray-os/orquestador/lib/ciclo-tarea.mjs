@@ -20,8 +20,9 @@
 //
 //  1. LATIDO: mientras el handler corre, se extiende el lease. Sin esto un trabajo largo se
 //     autodeclara abandonado.
-//  2. LEASE PERDIDO: si el latido dice que ya no somos dueños, NO se transiciona NI se falla la
-//     tarea. Otro worker la tiene; pisarla duplica el cierre y borra su resultado.
+//  2. LEASE PERDIDO: si el latido dice que ya no somos dueños —o si la base RECHAZA la transición,
+//     que significa lo mismo aunque el latido no se haya enterado—, NO se transiciona NI se falla
+//     la tarea. Otro worker la tiene; pisarla duplica el cierre y borra su resultado.
 //  3. NO REPETIBLE: una tarea cuyo intento anterior se cortó por lease vencido no se sabe si
 //     completó su trabajo. Si su tipo tiene efecto externo (publica en el canal, mueve plata),
 //     re-ejecutarla a ciegas duplica el efecto. Va a terminal con motivo y decide una persona.
@@ -32,17 +33,41 @@
  *  como siempre — la guarda es opt-in, no cambia el comportamiento del resto. */
 export const TIPOS_NO_REPETIBLES = new Set(['comunicacion.responder', 'operation_execute'])
 
-/** Resultados posibles del ciclo. `lease_perdido` no es un fallo: es "no era nuestra". */
+/** Resultados posibles del ciclo. `lease_perdido` no es un fallo: es "no era nuestra".
+ *  El ciclo NUNCA lanza: el runner tiene que poder seguir con la tarea siguiente. */
 export const RESULTADO = {
   OK: 'ok',
   OMITIDA: 'omitida',
   LEASE_PERDIDO: 'lease_perdido',
   REINTENTA: 'reintenta',
   TERMINAL: 'terminal',
+  FALLO_CICLO: 'fallo_ciclo', // ni siquiera se pudo administrar la tarea; el reap decidirá
 }
 
 const MOTIVO_INTERRUMPIDA = 'el intento anterior se cortó a mitad (lease vencido) y este trabajo no '
   + 'se puede repetir sin duplicar lo que ya hizo afuera; no se reintenta solo'
+
+/** Cada cuánto late, como fracción del lease: tres latidos por lease, así uno perdido no cuesta nada. */
+export const FRACCION_LATIDO = 1 / 3
+
+/** El latido que le corresponde a un lease. Nunca más rápido que 1 s ni más lento que el lease. */
+export function latidoPara(leaseSeconds) {
+  return Math.max(1000, Math.round(leaseSeconds * FRACCION_LATIDO * 1000))
+}
+
+/**
+ * ¿Este error es la máquina de estados rechazando la transición?
+ *
+ * Se reconoce por el TEXTO porque es lo único que devuelve `raise exception` de plpgsql, y el texto
+ * es contrato: sale de `orq.transition_task` (`transición inválida % -> %`) y de su control de dueño
+ * (`worker % no es dueño del lease`). Los dos significan lo mismo para quien llama: la tarea ya no
+ * es suya. Importa incluso con latido: si el heartbeat falla por red justo cuando el reap actúa,
+ * `perdido` sigue en false y sin esto llamaríamos a `failTask` sobre una tarea ajena.
+ */
+export function esTransicionInvalida(mensaje) {
+  const s = String(mensaje ?? '')
+  return /transici[oó]n\s+inv[aá]lida/i.test(s) || /no es due[ñn]o del lease/i.test(s)
+}
 
 /**
  * Construye el ejecutor del ciclo. Todo lo externo se inyecta: se testea sin base ni relojes reales.
@@ -78,11 +103,23 @@ export function crearCicloTarea(dep = {}) {
    * @returns {Promise<{resultado:string, motivo?:string, estado?:string, salida?:object}>}
    */
   return async function ejecutarCiclo(task, ganchos = {}) {
-    const previo = await antesDeArrancar(task, ganchos)
-    if (previo) return previo
+    try {
+      const previo = await antesDeArrancar(task, ganchos)
+      return previo ?? await correrYCerrar(task, ganchos)
+    } catch (e) {
+      // Última red: administrar la tarea falló (la base no contesta, el gancho reventó). No se
+      // inventa un cierre — la tarea queda como esté y su lease vencido la devuelve a la cola.
+      const motivo = String(e?.message ?? e).slice(0, 400)
+      log?.error?.('ciclo-tarea: no se pudo administrar la tarea', { task_id: task?.id, error: motivo })
+      return { resultado: RESULTADO.FALLO_CICLO, motivo }
+    }
+  }
 
+  async function correrYCerrar(task, ganchos) {
     const estadoLease = { perdido: false }
     const latido = programar(() => latir(task, estadoLease), heartbeatMs)
+    // Un timer vivo mantiene el proceso arriba: `--once` no terminaría nunca.
+    if (typeof latido?.unref === 'function') latido.unref()
     try {
       await ledger.transition(task.id, workerId, 'running')
       const salida = await ganchos.correr(task)
@@ -95,7 +132,9 @@ export function crearCicloTarea(dep = {}) {
       })
       return { resultado: RESULTADO.OK, salida }
     } catch (err) {
-      if (estadoLease.perdido) return avisarPerdido(task, err)
+      // La transición rechazada significa que otro dueño movió el estado, y eso sólo pasa cuando el
+      // reap ya dio la tarea por abandonada. El handler ya corrió: reencolarla repetiría su efecto.
+      if (estadoLease.perdido || esTransicionInvalida(err?.message)) return avisarPerdido(task, err)
       return await manejarFallo(task, err, ganchos)
     } finally {
       cancelar(latido)

@@ -23,16 +23,16 @@ import { crearRazonadorDeRuteo } from './razonar-ruteo.mjs'
 import {
   claimTask, transition, heartbeat, failTask, reapExpiredLeases, intentoPrevioInterrumpido,
 } from '../lib/ledger.mjs'
-import { crearCicloTarea, RESULTADO } from '../lib/ciclo-tarea.mjs'
+import { crearCicloTarea, RESULTADO, latidoPara } from '../lib/ciclo-tarea.mjs'
 import { resolveHandler } from '../handlers/index.mjs'
 import { crearEmitEventOS } from './ingesta-os.mjs'
 
 // El trabajo de un especialista tarda MINUTOS (baja adjuntos, razona, escribe). El lease de 30 s
 // que había acá vencía a los 35 s con el handler todavía corriendo: el reaper devolvía la tarea a
-// la cola y el especialista se re-ejecutaba entero. Vive el lease lo que dura el trabajo y se
-// renueva con latido; estos números son el techo, no la duración esperada.
-const LEASE_SEGUNDOS = Number(process.env.COMM_LEASE_SECONDS ?? 300)
-const LATIDO_MS = Number(process.env.COMM_HEARTBEAT_MS ?? 15_000)
+// la cola y el especialista se re-ejecutaba entero. El lease es el TECHO, no la duración esperada;
+// lo que lo mantiene vivo es el latido, y por eso sale del mismo lease (nunca se desincronizan).
+const LEASE_SEGUNDOS = Number(process.env.ORQ_COMM_LEASE_SECONDS || 180)
+const LATIDO_MS = latidoPara(LEASE_SEGUNDOS)
 
 /**
  * Construye el conector cableado.
@@ -115,8 +115,15 @@ export function crearConector(opts = {}) {
   // Paso REAL del Work Fabric: claim oficial FILTRADO POR LANE 'comunicacion'
   // (PR-4.1) → handler registrado → transición. Reclama SÓLO tareas de la lane de
   // comunicación; nunca roba tareas del worker general (aislamiento atómico en el
-  // claim). El ciclo en sí NO se reescribe acá: es el de lib/ciclo-tarea.mjs, el mismo
-  // que corre worker.mjs. Tenerlo copiado —y sin latido de lease— es lo que rompió el 13/08.
+  // claim).
+  //
+  // ═══ EL LEASE ERA DE 30 SEGUNDOS Y EL HANDLER TARDA MINUTOS (13/08) ═══
+  //
+  // Un post con ocho fotos de comprobantes son ocho descargas y ocho lecturas de visión: 150 s
+  // medidos en producción. Con el lease de 30 s el reap daba la tarea por abandonada, la mandaba a
+  // `retrying` y el mismo trabajo se volvía a ejecutar —publicando de nuevo— hasta agotar los
+  // intentos. La explicación completa y las guardas viven en `../lib/ciclo-tarea.mjs`, que es el
+  // MISMO ciclo que corre worker.mjs: tenerlo copiado acá —y sin latido— es lo que lo rompió.
   const LANE = 'comunicacion'
   // AVISO DE FALLO AL CANAL: cuando una tarea de comunicación termina muerta, el dueño ve "cargué 3"
   // y nada más. El fallo tiene que llegarle por donde pidió el trabajo, y tiene que decir que el
@@ -152,7 +159,9 @@ export function crearConector(opts = {}) {
   })
 
   async function procesarWorkFabric({ lote = 10, leaseSeconds = LEASE_SEGUNDOS } = {}) {
-    const resumen = { intentados: 0, ok: 0, fallidos: 0, abandonados: 0, terminales: 0 }
+    // `huerfanas`: corrió pero el lease ya no era nuestro (no se cierra ni se reintenta).
+    // `terminales`: murió con motivo y ya se avisó — no vuelve sola.
+    const resumen = { intentados: 0, ok: 0, fallidos: 0, huerfanas: 0, terminales: 0 }
     for (let i = 0; i < lote; i++) {
       const task = await claimTask(process.env.WORKER_ID ?? 'comm-wf-1', leaseSeconds, LANE)
       if (!task) break
@@ -189,7 +198,7 @@ export function crearConector(opts = {}) {
         alTerminarEnFallo: (t, info) => avisarFalloEnCanal(t, info),
       })
       if (r.resultado === RESULTADO.OK) resumen.ok++
-      else if (r.resultado === RESULTADO.LEASE_PERDIDO) resumen.abandonados++
+      else if (r.resultado === RESULTADO.LEASE_PERDIDO) resumen.huerfanas++
       else if (r.resultado === RESULTADO.TERMINAL) { resumen.terminales++; resumen.fallidos++ }
       else if (r.resultado === RESULTADO.REINTENTA) resumen.fallidos++
     }
