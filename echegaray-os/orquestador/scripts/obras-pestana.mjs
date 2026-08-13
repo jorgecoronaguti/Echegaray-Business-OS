@@ -43,7 +43,7 @@ import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 import { requestsTextoPorContenido } from '../lib/formato-texto-por-contenido.mjs'
 import {
-  grillaObras, anchoColumnaA, celdasEnError, problemaDeSintaxis,
+  grillaObras, anchoColumnaA, celdasEnError, columnasDesparejas, problemaDeSintaxis, clientesDeCobranzas,
   ANCHO_OBRAS, ANCHOS_OBRAS, PESTANA_OBRAS, REFS_OBRAS,
 } from '../lib/obras-grilla.mjs'
 import { OBRAS_FUTURAS, totalEgresos } from '../lib/obras-datos.mjs'
@@ -82,7 +82,7 @@ export function resolverColumnas(filas, rotulos) {
   return res
 }
 
-const COLS = 'ABCDEFGHI'
+const COLS = 'ABCDEFGH'
 const cortar = (s, n) => (s.length <= n ? s : `${s.slice(0, n - 1)}…`)
 const izq = (s, n) => cortar(s, n).padEnd(n)
 const der = (s, n) => cortar(s, n).padStart(n)
@@ -129,8 +129,8 @@ export function render(g, obras = []) {
   }
   L.push('')
   L.push('GRILLA  (ƒ = fórmula, texto completo abajo)')
-  const anchos = [44, 3, 11, 11, 11, 11, 11, 7]
-  L.push(`fila │ ${anchos.map((n, i) => izq(COLS[i], n)).join(' │ ')} │ I (prosa)`)
+  const anchos = [52, 3, 13, 13, 13, 13, 13, 8]
+  L.push(`fila │ ${anchos.map((n, i) => izq(COLS[i], n)).join(' │ ')}`)
   const formulas = []
   g.filas.forEach((fila, i) => {
     const celdas = fila.map((v, c) => {
@@ -140,7 +140,7 @@ export function render(g, obras = []) {
       return 'ƒ'
     })
     const cuerpo = anchos.map((n, c) => (c === 0 || c === 1 ? izq(celdas[c], n) : der(celdas[c], n))).join(' │ ')
-    L.push(`${String(i + 1).padStart(4)} │ ${cuerpo} │ ${cortar(celdas[8] ?? '', 78)}`)
+    L.push(`${String(i + 1).padStart(4)} │ ${cuerpo}`)
   })
   L.push('')
   L.push(`FÓRMULAS (${formulas.length})`)
@@ -202,7 +202,15 @@ async function main() {
   console.log(`columnas resueltas por rótulo · Cobranzas: cliente=${refs.cob.cliente} concepto=${refs.cob.concepto} total=${refs.cob.total} estado=${refs.cob.estado} (desde ${refs.cob.desde})`)
   console.log(`                              · Compras: proveedor=${refs.cmp.proveedor} cliente=${refs.cmp.cliente} fecha=${refs.cmp.fecha} total=${refs.cmp.total} (desde ${refs.cmp.desde})`)
 
-  const g = grillaObras({ obras: OBRAS_FUTURAS, refs })
+  // LOS CLIENTES SE LEEN DEL ARCHIVO, NO SE TIPEAN. Una lista escrita en el código deja fuera del
+  // cuadro a todo cliente nuevo —y nadie se entera—: es el defecto que el dueño cazó mirando la
+  // pestaña. Rango abierto: el que se factura mañana entra solo en la próxima corrida.
+  const colCli = await google.readSheetValues(ID, `${refs.cob.hoja}!${refs.cob.cliente}${refs.cob.desde}:${refs.cob.cliente}`)
+  const clientes = clientesDeCobranzas(colCli ?? [])
+  if (!clientes.length) throw new Error(`no leí un solo cliente en ${refs.cob.hoja}!${refs.cob.cliente}: NO escribo una Sección 1 vacía.`)
+  console.log(`clientes derivados de ${refs.cob.hoja}: ${clientes.length} · ${clientes.join(' · ')}`)
+
+  const g = grillaObras({ obras: OBRAS_FUTURAS, refs, clientes })
   // GUARDA FAIL-CLOSED. Una grilla sin obras no es "una pestaña con poco": es el insumo que no cargó.
   // Escribirla dejaría la pestaña en blanco, que es la forma que tomaron las pérdidas de este repo.
   if (!g.bloques.length) throw new Error('la grilla no trajo ni una obra: NO escribo una pestaña vacía.')
@@ -272,7 +280,15 @@ async function main() {
       + `${enError.slice(0, 8).map((x) => `${x.ref}=${x.valor}`).join(' · ')}`
       + `${enError.length > 8 ? ` … y ${enError.length - 8} más` : ''}. Hay que corregir la fórmula y volver a correr.`)
   }
-  console.log(`QUEDÓ ESCRITO — releí ${quedo.length} filas y no hay una sola celda en error.`)
+  // UN VACÍO NO ES UN #ERROR!, Y MIENTE MÁS: se lee como un dato. Si una columna salió llena en unas
+  // obras y vacía en otras, alguna fórmula se rompió en silencio — pasó con `Próx. cobro`, 4 de 7.
+  const desparejas = columnasDesparejas(g.filas, quedo, g.protagonistas ?? [])
+  if (desparejas.length) {
+    throw new Error(`QUEDÓ PUBLICADO CON COLUMNA(S) DESPAREJA(S): `
+      + desparejas.map((d) => `${d.columna} vacía en ${d.filas.length} de ${d.de} obras (filas ${d.filas.join(', ')})`).join(' · ')
+      + '. Una fórmula devolvió vacío donde las demás dieron valor: revisala antes de creerle a la pestaña.')
+  }
+  console.log(`QUEDÓ ESCRITO — releí ${quedo.length} filas: sin celdas en error y sin columnas desparejas.`)
 }
 
 /**
@@ -306,19 +322,14 @@ async function formatear(google, sheetId, g) {
     { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'CENTER' })
   fmt(r(0, n, 7, 8), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'CENTER' })
-  // La última columna es PROSA: texto, gris, con ajuste. Nunca plata.
-  fmt(r(0, n, ANCHO_OBRAS - 1, ANCHO_OBRAS), 'userEnteredFormat',
-    { ...E.nota(), numberFormat: { type: 'TEXT' }, wrapStrategy: 'WRAP', verticalAlignment: 'MIDDLE' })
-
   fmt(r(0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: E.TAM.titulo } })
   fmt(r(1, 2), 'userEnteredFormat.textFormat,userEnteredFormat.wrapStrategy',
     { textFormat: { italic: true, fontSize: E.TAM.nota, foregroundColor: E.COLOR.nota }, wrapStrategy: 'WRAP' })
 
   g.filas.forEach((fila, i) => {
     const t = String(fila[0] ?? '')
-    if (/^\d · /.test(t)) { // '1 · OBRAS DEL AÑO'
+    if (/^\d · /.test(t)) { // '1 · OBRAS DEL AÑO' — el título del bloque no necesita línea propia
       fmt(r(i, i + 1), 'userEnteredFormat', { textFormat: { bold: true, fontFamily: E.FUENTE, fontSize: E.TAM.cuerpo, foregroundColor: INK }, horizontalAlignment: 'LEFT' })
-      borde(r(i, i + 1))
     }
     if (/^(Cliente|Obra)$/.test(t.trim())) { // los encabezados de sección: texto, nunca plata
       fmt(r(i, i + 1), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'TEXT' } })
@@ -328,10 +339,18 @@ async function formatear(google, sheetId, g) {
     }
     if (/^⇒/.test(t)) fmt(r(i, i + 1, 0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontFamily: E.FUENTE, fontSize: E.TAM.cuerpo } })
   })
-  // La fila protagonista de cada obra, en negrita; su detalle, chico y gris — jerarquía, no ruido.
+  // ═══ MÁXIMO DATA-INK (Tufte): la línea que no estructura, no va ═══
+  //
+  // La protagonista se distingue por TIPOGRAFÍA Y AIRE, no por una línea debajo. Antes cada obra
+  // llevaba su propio borde: siete líneas horizontales que dibujaban una reja y competían con los
+  // importes. Quedan sólo las que separan una idea de otra —bajo cada encabezado y sobre los dos
+  // cierres—, que son las que el ojo necesita para no perderse.
   for (const f of g.protagonistas ?? []) {
     fmt(r(f - 1, f, 0, 2), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontFamily: E.FUENTE, fontSize: E.TAM.cuerpo, foregroundColor: INK } })
-    borde(r(f - 1, f))
+  }
+  // La línea va ARRIBA del total: cierra el bloque que se venía leyendo.
+  for (const f of g.totales ?? []) {
+    req.push({ updateBorders: { range: r(f - 1, f), top: { style: 'SOLID', color: HAIR } } })
   }
   for (const f of g.detalles ?? []) {
     fmt(r(f - 1, f, 0, 1), 'userEnteredFormat.textFormat', { textFormat: { fontFamily: E.FUENTE, fontSize: E.TAM.nota, foregroundColor: MUTED } })

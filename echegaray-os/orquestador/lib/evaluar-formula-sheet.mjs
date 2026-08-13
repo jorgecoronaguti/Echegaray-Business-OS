@@ -195,6 +195,34 @@ export function textoConPatron(valor, patron) {
   return `${n < 0 ? '-' : ''}${pre}${ent}${frac ? `,${frac}` : ''}${post}`
 }
 
+/**
+ * ¿ESTE VALOR CUMPLE EL CRITERIO DE UN *IFS? Soporta `>0`, `<`&fecha, texto exacto, `<>texto` y los
+ * comodines `*texto*`. Lo que no reconoce revienta: un criterio mal entendido filtra de más o de
+ * menos y devuelve un número plausible, que es el peor resultado posible en un instrumento de prueba.
+ */
+export function cumpleCriterio(valor, criterio) {
+  const c = String(criterio ?? '')
+  const cmp = /^(<=|>=|<>|<|>|=)?(.*)$/.exec(c)
+  const op = cmp[1] ?? '='
+  const arg = cmp[2]
+  const nArg = Number(arg)
+  if (arg !== '' && !Number.isNaN(nArg) && !/^\*|\*$/.test(arg)) {
+    const x = typeof valor === 'number' ? valor : Number(valor)
+    if (Number.isNaN(x)) return op === '<>'
+    if (op === '=') return x === nArg
+    if (op === '<>') return x !== nArg
+    return binario(op, x, nArg) === 1
+  }
+  const txt = String(valor ?? '').toUpperCase()
+  const patron = arg.toUpperCase()
+  const pre = patron.startsWith('*'); const suf = patron.endsWith('*')
+  const nucleo = patron.replace(/^\*/, '').replace(/\*$/, '')
+  const coincide = pre && suf ? txt.includes(nucleo) : suf ? txt.startsWith(nucleo) : pre ? txt.endsWith(nucleo) : txt === nucleo
+  if (op === '<>') return !coincide
+  if (op !== '=') throw new Error(`evaluar-formula-sheet: criterio "${c}" no soportado`)
+  return coincide
+}
+
 function llamar(n, args, ev) {
   // IF e IFERROR reciben el árbol SIN evaluar: si IFERROR evaluara su primer argumento por
   // adelantado, el #REF! que viene a absorber explotaría antes de que pudiera atajarlo.
@@ -217,6 +245,22 @@ function llamar(n, args, ev) {
     case 'TEXT': return textoConPatron(v[0], v[1])
     case 'TODAY': return aSerial(ev.hoy)
     case 'EOMONTH': { const d = aFecha(num(v[0])); return aSerial(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + num(v[1]) + 1, 0))) }
+    // MINIFS: el mínimo de lo que cumple TODOS los pares (rango; criterio). Devuelve 0 cuando no hay
+    // ninguna coincidencia — igual que Sheets, y ése es justo el comportamiento que hay que poder
+    // ejercer en frío: un 0 gana cualquier MIN y deja una fecha en blanco que se lee como "no hay
+    // nada que cobrar". Se publicó así en 4 obras.
+    case 'MINIFS': case 'MAXIFS': {
+      const base = plano([v[0]])
+      let sel = base.map((_, i) => i)
+      for (let k = 1; k + 1 < v.length; k += 2) {
+        const rango = plano([v[k]])
+        if (rango.length !== base.length) throw new ErrorHoja('#N/A — rangos de distinto largo')
+        sel = sel.filter((i) => cumpleCriterio(rango[i], v[k + 1]))
+      }
+      if (!sel.length) return 0
+      const nums = sel.map((i) => num(base[i]))
+      return n === 'MINIFS' ? Math.min(...nums) : Math.max(...nums)
+    }
     case 'COUNTIF': {
       const m = /^([<>]=?|<>)?(-?\d+(?:\.\d+)?)$/.exec(String(v[1]))
       if (!m) throw new Error(`evaluar-formula-sheet: criterio "${v[1]}" no soportado`)

@@ -109,3 +109,25 @@ test('un patrón que el modelo no sabe rendir REVIENTA: un texto inventado harí
   assert.throws(() => ev('=TEXT(1;"0.0%")'), /patrón de número no soportado/)
   assert.throws(() => ev('=TEXT(1;"#,##0;(#,##0)")'), /patrón de número no soportado/)
 })
+
+test('MINIFS filtra por sus pares y devuelve 0 cuando no hay ninguna coincidencia, como Sheets', () => {
+  const hoja = { A1: 100, A2: 200, A3: 300, B1: 'Cobrado', B2: 'Pendiente', B3: 'Pendiente' }
+  assert.equal(ev('=MINIFS(A1:A3;B1:B3;"Pendiente")', hoja), 200)
+  assert.equal(ev('=MINIFS(A1:A3;B1:B3;"<>Cobrado")', hoja), 200)
+  assert.equal(ev('=MINIFS(A1:A3;B1:B3;"Facturado")', hoja), 0, 'sin coincidencias: 0, no un error')
+  assert.equal(ev('=MINIFS(A1:A3;A1:A3;">150";B1:B3;"Pendiente")', hoja), 200, 'varios pares')
+})
+
+test('EL DEFECTO EN FRÍO: un MINIFS vacío daba 0 y el 0 ganaba el MIN, dejando la fecha en blanco', () => {
+  // Las 4 obras de San Francisco salieron con `Próx. cobro` VACÍA teniendo cobranzas pendientes: su
+  // alias IMOTOR no tiene filas de esa obra, su MINIFS devolvía 0 y el MIN lo tomaba como mínimo.
+  const hoja = { A1: 46261, A2: 46270, B1: 'San Francisco', B2: 'San Francisco' }
+  const cli = '=MINIFS(A1:A2;B1:B2;"San Francisco")'
+  const alias = '=MINIFS(A1:A2;B1:B2;"IMOTOR/San Francisco/JAVI SANCHEZ")'
+  assert.equal(ev(alias, hoja), 0, 'el alias sin filas devuelve 0')
+  assert.equal(ev(`=MIN(${cli.slice(1)};${alias.slice(1)})`, hoja), 0, 'y ese 0 gana el MIN — el defecto')
+  // El arreglo: mapear el 0 a una fecha imposible ANTES del MIN.
+  const sano = `=MIN(IF(${cli.slice(1)}=0;2958465;${cli.slice(1)});IF(${alias.slice(1)}=0;2958465;${alias.slice(1)}))`
+  assert.equal(ev(sano, hoja), 46261, 'con el arreglo gana la fecha real más próxima')
+  assert.equal(ev(`=IF(${sano.slice(1)}>=2958465;"";${sano.slice(1)})`, hoja), 46261)
+})
