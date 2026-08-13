@@ -18,6 +18,7 @@ import { registrarCondicion } from '../lib/condiciones-financieras.mjs'
 import {
   presupuestosAlDia, loQueFalta, CONDICION_CREDITO_RODADO, FECHA_ADJUNTOS, ORIGEN_ADJUNTOS,
 } from '../lib/rodados-datos.mjs'
+import { compararFormasDePago } from '../lib/rodados-financiacion.mjs'
 
 /** El documento que va al singleton. `clave` y `desconocido` no son columnas: no viajan a la tasa. */
 function armarDoc(hoy = new Date()) {
@@ -33,6 +34,9 @@ function armarDoc(hoy = new Date()) {
       // que decidir cuál de las dos copias está bien cuando alguna se actualice.
       donde_vive_la_tasa: 'public.condiciones_financieras',
     },
+    // La comparación viaja CALCULADA, no como insumo para que la recalcule quien la lea: si la Web
+    // reprodujera la fórmula, habría dos versiones del costo del plazo y un día dirían distinto.
+    comparacion_formas_de_pago: compararFormasDePago(),
     falta: loQueFalta(),
     resumen: {
       total_presupuestos: presupuestos.length,
