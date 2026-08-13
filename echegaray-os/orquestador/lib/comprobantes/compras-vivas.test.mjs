@@ -159,3 +159,18 @@ test('la columna K no tiene desplegable: su lista es lo que el dueño ya usó en
   assert.deepEqual(v.MESSINA, ['Planta de BSA'])
   assert.deepEqual(v['LA ESTRELLA'].sort(), ['NC Devolucion', 'Sanitarios'])
 })
+
+// ── EL PARSER NO PUEDE DEPENDER DEL RENDER QUE ELIGIÓ EL LLAMADOR (13/08) ────
+//
+// `Compras!B4:O` se lee FORMATEADO, pero nada impide que alguien lo lea con `UNFORMATTED_VALUE`: el
+// auditor de lo ya cargado lo hizo y $6.693,39 salió como $6.693.389.999.999.999, porque el punto
+// decimal del número crudo se leía como separador de miles. Cien veces más, en silencio.
+test('un número crudo se respeta tal cual: el parser es-AR no lo multiplica por cien', () => {
+  assert.equal(importeDeCompras(6000.02), 6000.02)
+  assert.equal(importeDeCompras(-1234.5), -1234.5)
+  assert.equal(importeDeCompras(0), 0)
+  // Y lo formateado sigue igual, con el negativo entre paréntesis del dueño.
+  assert.equal(importeDeCompras('6.000,02'), 6000.02)
+  assert.equal(importeDeCompras('(1.234,50)'), -1234.5)
+  assert.equal(importeDeCompras(''), null)
+})

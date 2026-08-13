@@ -31,6 +31,14 @@
 // Por qué ese límite: un gasto mal cargado se propaga solo a Cash Flow, Proveedores, CAJA y Cheques,
 // porque esos cruces son fórmulas abiertas sobre Compras — el error se multiplica por cuatro antes de
 // que nadie lo note. Una celda vacía, en cambio, se completa en dos segundos.
+//
+// ═══ Y HABLA UNA SOLA VEZ (13/08) ═══
+//
+// «no quiero mensajes del bot en la carga de comprobantes… solo quiero q confirme q termino todo».
+// Cada post con fotos es una tarea propia y cada tarea publicaba: doce fotos en tres posts eran tres
+// mensajes largos más tres tarjetas con botones. Ahora todo el trabajo corre adentro de `conLaTanda`
+// (`comprobantes/tanda.mjs`), que publica UN post al recibir el primer adjunto y lo reescribe hasta
+// «✔ listo: 8 cargados, 2 ya estaban». Las tarjetas se apagaron en `botonesFajo`.
 
 import { procesarPost, TEXTO as TEXTO_FLUJO } from '../comprobantes/flujo.mjs'
 import { escribirFajo } from '../comprobantes/escritura.mjs'
@@ -42,6 +50,7 @@ import { indiceDeCompras } from '../../lib/comprobantes/compras-vivas.mjs'
 import { perfilesDeImputacionDesdeDB } from '../../lib/imputacion-aprendida.mjs'
 import { urlConSecreto } from '../secreto-compartido.mjs'
 import { puedeCargarComprobantes } from '../comprobantes/guarda.mjs'
+import { conLaTanda } from '../comprobantes/tanda.mjs'
 import * as repo from '../comprobantes/repositorio.mjs'
 
 /** URL de callback de los botones. Distinta de la de asistencia: son dos dominios distintos. */
@@ -181,66 +190,23 @@ export const especialista = {
     if (!fileIds.length || ruta?.destino === 'ayuda') return ayuda()
 
     const url = urlAccion(config?.env ?? process.env)
-    const r = await procesarPost({
-      port,
-      mattermost,
-      leer: (adjunto, vocabulario) => leerAdjunto(adjunto, { vocabulario }),
-      // LAS LISTAS VIAJAN CON EL MAPA DE CUIT. Sin él, «DUBOS UGARTE PEDRO LUIS RAUL» se declara
-      // proveedor nuevo y la carga frena, aunque DUPEC esté en el desplegable con ese mismo CUIT.
-      listas: async () => {
-        const [l, porCuit] = await Promise.all([listasDeCompras(google), proveedoresPorCuit(google)])
-        return { ...l, porCuit }
-      },
-      // EL PADRÓN DE ARCA es la fuente de verdad del número de comprobante: contra él se corrige el
-      // dígito que la visión leyó de más. Se consulta por comprobante, con lo poco que se leyó; qué
-      // claves se usan lo decide `arca.mjs`, que es también el que las va a conciliar.
-      arcaDe: (c) => repo.candidatasArca(port, c ?? {}),
-      // LA PESTAÑA VIVA es la única que sabe lo que entró por Claude Code o a mano. También trae el
-      // vocabulario de la columna K con el que se resuelve la obra escrita a mano, y la historia de
-      // imputación con la que aprende `imputacion-aprendida.mjs`.
-      comprasDe: () => indiceDeCompras(google),
-      // EL FEEDER DE RESERVA de esa misma lib: el espejo en Postgres. Se usa sólo si no se pudo leer
-      // la pestaña. Es el que ya consume el cargador de Claude Code — la misma lib, otra lectura.
-      perfilesDesdeDB: () => perfilesDeImputacionDesdeDB({ query: (...a) => port.query(...a) }),
-      // EL ESCRITOR. Es el mismo `escribirFajo` que dispara el botón Confirmar —el que corre el
-      // cargador de Claude Code como proceso hijo—: no hay dos caminos de escritura, hay uno solo
-      // al que ahora también se llega sin apretar nada.
-      escribir: (f) => escribirFajo({ port, log }, f),
-      url,
-      log,
-    }, {
-      fileIds,
-      // Lo que la persona escribió al mandar la foto. Es de donde sale la obra cuando el papel no
-      // la dice, que es el caso normal: una factura de proveedor no sabe a qué obra se imputa.
-      texto,
-      actor,
+    // ═══ UN SOLO MENSAJE PARA TODA LA TANDA (13/08) ═══
+    //
+    // Textual: «solo quiero q confirme q termino todo». Cada post con fotos es una tarea distinta y
+    // cada tarea publicaba: doce fotos en tres posts eran tres mensajes. `conLaTanda` publica UNO al
+    // recibir el primer adjunto y lo REESCRIBE hasta que no queda nada en curso. El trabajo de abajo
+    // no cambió una línea; lo que cambió es quién habla y cuántas veces.
+    //
+    // Sin la migración de tandas aplicada esto no hace nada y se responde como siempre: el deploy y
+    // la migración no siempre caen juntos.
+    return await conLaTanda({ port, mattermost, log }, {
+      plataforma: actor?.plataforma ?? 'mattermost',
+      userId: actor?.plataforma_user_id,
       channelId: actor?.channel_id,
+      postId: postId ?? actor?.root_post_id ?? null,
       rootPostId: actor?.root_post_id ?? postId ?? null,
-      postId: actor?.root_post_id ?? postId ?? null,
-      ahora: new Date(),
-    })
-
-    // Sin botones no hay nada que reescribir: se responde por el camino normal (el outbox).
-    if (!r.attachments?.length || !r.fajoId) {
-      return { texto: r.texto, estado: r.estado, privado: false }
-    }
-
-    // CON BOTONES: se publica ACÁ para quedarse con el id del post. Ese id es lo que después
-    // permite reescribir el mismo mensaje —"⏳ cargando" → "✔ fila 412"— en vez de dejar una
-    // cascada de mensajes que crece hacia abajo. El outbox devuelve un evento, no un post.
-    const publicado = await publicar(mattermost, {
-      channelId: actor?.channel_id,
-      rootId: actor?.root_post_id ?? postId ?? null,
-      texto: r.texto,
-      attachments: r.attachments,
-    })
-    if (!publicado) {
-      // Degradación honesta: si no se pudo publicar directo, sale por el camino normal. Los botones
-      // siguen funcionando; lo único que se pierde es que el mensaje se refresque solo.
-      return { texto: r.texto, attachments: r.attachments, estado: r.estado, privado: false }
-    }
-    await repo.guardarAvisoPost(port, { id: r.fajoId, avisoPostId: publicado.id }).catch(() => {})
-    return { texto: r.texto, estado: r.estado, privado: false, silencioso: true, datos: { fajo: r.fajoId, post: publicado.id } }
+      recibidos: fileIds.length,
+    }, () => cargar({ texto, port, actor, google, fileIds, postId, mattermost, log, url }))
   },
 
   skillDe(intencion) {
@@ -248,16 +214,52 @@ export const especialista = {
   },
 }
 
-async function publicar(mattermost, { channelId, rootId, texto, attachments }) {
-  if (typeof mattermost?.crearPost !== 'function' || !channelId) return null
-  try {
-    return await mattermost.crearPost({
-      channel_id: channelId,
-      message: texto,
-      root_id: rootId ?? undefined,
-      props: { attachments },
-    })
-  } catch { return null }
+/** El trabajo de verdad: bajar, leer, imputar y escribir. Devuelve `{texto, estado, fajoId, parte}`. */
+async function cargar({ texto, port, actor, google, fileIds, postId, mattermost, log, url }) {
+  const r = await procesarPost({
+    port,
+    mattermost,
+    leer: (adjunto, vocabulario) => leerAdjunto(adjunto, { vocabulario }),
+    // LAS LISTAS VIAJAN CON EL MAPA DE CUIT. Sin él, «DUBOS UGARTE PEDRO LUIS RAUL» se declara
+    // proveedor nuevo y la carga frena, aunque DUPEC esté en el desplegable con ese mismo CUIT.
+    listas: async () => {
+      const [l, porCuit] = await Promise.all([listasDeCompras(google), proveedoresPorCuit(google)])
+      return { ...l, porCuit }
+    },
+    // EL PADRÓN DE ARCA es la fuente de verdad del número de comprobante: contra él se corrige el
+    // dígito que la visión leyó de más. Se consulta por comprobante, con lo poco que se leyó; qué
+    // claves se usan lo decide `arca.mjs`, que es también el que las va a conciliar.
+    arcaDe: (c) => repo.candidatasArca(port, c ?? {}),
+    // LA PESTAÑA VIVA es la única que sabe lo que entró por Claude Code o a mano. También trae el
+    // vocabulario de la columna K con el que se resuelve la obra escrita a mano, y la historia de
+    // imputación con la que aprende `imputacion-aprendida.mjs`.
+    comprasDe: () => indiceDeCompras(google),
+    // EL FEEDER DE RESERVA de esa misma lib: el espejo en Postgres. Se usa sólo si no se pudo leer
+    // la pestaña. Es el que ya consume el cargador de Claude Code — la misma lib, otra lectura.
+    perfilesDesdeDB: () => perfilesDeImputacionDesdeDB({ query: (...a) => port.query(...a) }),
+    // EL ESCRITOR. Es el mismo `escribirFajo` que dispara el botón Confirmar —el que corre el
+    // cargador de Claude Code como proceso hijo—: no hay dos caminos de escritura, hay uno solo
+    // al que ahora también se llega sin apretar nada.
+    escribir: (f) => escribirFajo({ port, log }, f),
+    url,
+    log,
+  }, {
+    fileIds,
+    // Lo que la persona escribió al mandar la foto. Es de donde sale la obra cuando el papel no
+    // la dice, que es el caso normal: una factura de proveedor no sabe a qué obra se imputa.
+    texto,
+    actor,
+    channelId: actor?.channel_id,
+    rootPostId: actor?.root_post_id ?? postId ?? null,
+    postId: actor?.root_post_id ?? postId ?? null,
+    ahora: new Date(),
+  })
+
+  // ATTACHMENTS NUNCA MÁS. `botonesFajo` los apagó en la fuente (ver `lib/comprobantes/fajo.mjs`),
+  // así que `r.attachments` viene vacío por construcción; se descarta acá también para que, si
+  // alguien vuelve a encender el interruptor, ese cambio no se cuele por este camino sin querer. El
+  // mensaje lo publica la tanda, uno solo y sin tarjeta.
+  return { texto: r.texto, estado: r.estado, fajoId: r.fajoId, parte: r.parte, privado: false }
 }
 
 function ayuda() {

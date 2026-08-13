@@ -317,6 +317,35 @@ export function aplicarOpcion(item = {}, { campo, valor } = {}) {
 }
 
 /**
+ * ═══ LAS TARJETAS SE FUERON (13/08, decisión del dueño) ═══
+ *
+ * Textual, dos veces: «no quiero mensajes del bot en la carga de comprobantes, necesito q la
+ * experiencia sea sin fisuras. solo quiero q confirme q termino todo» · «me envie solo mensaje de
+ * confirmacion de q fue cargado ok, cuantos fueron cargados».
+ *
+ * Los botones y los desplegables eran el resto del ruido: encima de tres mensajes por tanda venían
+ * tres tarjetas con Confirmar / Corregir / Descartar y los menús de imputación. Y desde el 13/08 ya
+ * no hacían falta para lo importante — la carga es automática y la imputación que no se puede
+ * deducir entra vacía y se nombra con su fila. Lo único que las tarjetas seguían haciendo era pedirle
+ * que conteste algo, que es exactamente lo que dijo que no quiere.
+ *
+ * ESTE ES EL ÚNICO INTERRUPTOR, y por eso se apaga acá y no en cada llamador: `mensajeFajo` arma sus
+ * `attachments` con esta función, y el manejador de acciones y el de respuestas rearman el mensaje
+ * con `mensajeFajo`. Apagándola acá, ningún camino puede publicar una tarjeta ni por accidente.
+ *
+ * El servidor de callbacks NO se toca: los posts viejos que quedaron con botones en el canal siguen
+ * contestando lo que corresponda. Lo que no vuelve a ocurrir es que se publique uno nuevo.
+ *
+ * Se puede volver atrás sin desplegar: `ORQ_COMPROBANTES_BOTONES=1`. Se lee EN CADA LLAMADA y no al
+ * importar el módulo, porque una constante fijada al importar no se puede ejercitar desde un test:
+ * quedaría el interruptor probado en una sola de sus dos posiciones, que es como se descubre en
+ * producción que la vuelta atrás no funcionaba.
+ */
+export function botonesActivos() {
+  return String(process.env.ORQ_COMPROBANTES_BOTONES ?? '') === '1'
+}
+
+/**
  * Los botones. `integration.url` lleva el SECRETO en la query: Mattermost guarda esa URL en su base
  * y no se la manda al cliente, así que es el único lugar donde un callback puede probar que viene de
  * Mattermost. El callback NO trae token de identidad — verificado contra el servidor real.
@@ -337,7 +366,7 @@ export function aplicarOpcion(item = {}, { campo, valor } = {}) {
  * que ve Mattermost y puede ser corto. El alfabeto de este campo lo decide Mattermost, no nosotros.
  */
 export function botonesFajo(fajo = {}, { url } = {}) {
-  if (!url) return []
+  if (!botonesActivos() || !url) return []
   const items = fajo.items ?? []
   const contexto = (accion, extra = {}) => ({ accion, fajo_id: fajo.id, dominio: 'comprobantes', ...extra })
   const hayQueCargar = items.some(estaCompleto)
