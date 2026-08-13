@@ -93,6 +93,23 @@ export const PASOS = [
   ['proveedores-seccion2-pivot.mjs', 'Proveedores · sección 2 — la dinámica de concentración con su resto y su total', [], ['--aplicar']],
   ['proveedores-notas-visibles.mjs', 'Proveedores · la columna "Qué hacer" del dueño, anclada a su proveedor', [], ['--aplicar']],
   ['proveedores-encabezado-aplicar.mjs', 'Proveedores · el encabezado (la posición) y LOS ANCHOS de toda la pestaña', [], ['--aplicar']],
+  // ═══ OBRAS ENTRA AL PIPELINE (13/08) ═══
+  //
+  // La pestaña existía desde el 07/08 con su generador y su fuente, y NO estaba acá: sólo se
+  // actualizaba si alguien tipeaba el comando. Es el modo de falla más silencioso que tiene este
+  // archivo —el mismo de `_CHEQUES_RAW` y del espejo de JORNALES—: la pestaña no da error, envejece.
+  //
+  // VA ACÁ POR DEPENDENCIA, NO POR ORDEN ALFABÉTICO. Toda la Sección 1 es fórmula viva sobre
+  // Cobranzas y sobre la fila "TOTAL POR OBRA" de Materiales, y cita Compras por columna:
+  //   · después de `rubro-caja-sheet.mjs`, que define qué es cada gasto de Compras;
+  //   · después de `proveedores-materiales-pestana.mjs`, que es quien escribe Materiales — si OBRAS
+  //     corriera antes, buscaría por rótulo una fila "TOTAL POR OBRA" de la corrida anterior.
+  //
+  // `--escribir` NO ES OPCIONAL ACÁ: sin el flag el generador hace un ensayo y no toca el archivo, o
+  // sea que el paso "correría bien" todos los días sin publicar una celda. El defecto es no escribir
+  // —dirección segura para equivocarse a mano— pero en el pipeline esa seguridad se vuelve una
+  // pestaña congelada que informa éxito.
+  ['obras-pestana.mjs', 'OBRAS — el año entero obra por obra: venta/cobrado/pendiente por cliente y las obras del año', ['OBRAS'], ['--escribir']],
   ['estructura-pestana.mjs', 'pestaña Estructura con su proyección', ['Estructura']],
   // Escribe DOS pestañas: primero la réplica _IIBB_RAW (las DDJJ de Ingresos Brutos leídas del PDF de
   // Rentas, el insumo) y después el cuadro que la referencia. Declarar la réplica evita que el censo
