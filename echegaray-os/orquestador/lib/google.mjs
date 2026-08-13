@@ -19,6 +19,9 @@ import { frenar } from './congelador-sheets.mjs'
 // La regla que no se puede apagar: ninguna escritura deja vacía una celda que tenía algo. No la
 // levanta ORQ_SHEETS_DESCONGELAR, ni yaGuardado, ni espejo, ni respetar:false, ni --force.
 import { permiteBorradoExplicito, protegerBorrado } from './no-borrar.mjs'
+// Dónde hay que mirar para saber si una escritura aterrizó: la celda del testigo, calculada desde
+// el ancla del rango. Puro, sin red ni base. Ver aterrizaje-escritura.mjs.
+import { testigoDeLote } from './aterrizaje-escritura.mjs'
 
 const READONLY_SCOPES = [
   'https://www.googleapis.com/auth/drive.readonly',
@@ -1218,18 +1221,25 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
         // Una guarda que grita en falso se termina ignorando — y ésta existe para un caso real. Se
         // elige como testigo el primer TEXTO plano (sin dígitos ni separadores), que hace el viaje de
         // ida y vuelta sin transformarse; si el lote no tiene ninguno, no se verifica y no se miente.
-        const testigo = (d.values || []).flat().find((c) => typeof c === 'string' && c.trim() !== ''
-          && c[0] !== '=' && !/^[\d.,/\-$\s%]+$/.test(c))
-        if (testigo === undefined) continue
-        const leido = await cliente.readSheetValues(fileId, d.range).catch(() => null)
+        //
+        // ═══ Y SE RELEE LA CELDA DEL TESTIGO, NO EL RANGO MANDADO (13/08) ═══
+        // El rango que llega acá suele ser el ANCLA ("_J_OBREROS!A201") de una matriz de 200 filas:
+        // releerlo devolvía UNA celda y el testigo vivía en otra. Ver aterrizaje-escritura.mjs.
+        const testigo = testigoDeLote(d.range, d.values || [])
+        if (!testigo) continue
+        const leido = await cliente.readSheetValues(fileId, testigo.celda).catch(() => null)
         if (!leido) continue
-        if (!(leido.flat() || []).some((c) => String(c) === String(testigo))) perdidos.push(d.range)
+        if (!(leido.flat() || []).some((c) => String(c) === String(testigo.texto))) perdidos.push({ ...testigo, range: d.range })
       }
       if (perdidos.length) {
-        console.warn(`  ⚠ LA ESCRITURA NO ATERRIZÓ en ${perdidos.length} rango(s): ${perdidos.slice(0, 4).join(', ')}. `
+        // El aviso dice DÓNDE se miró y QUÉ se esperaba: sin eso, el que lo lee tiene que reconstruir
+        // a mano cuál de las 200 filas del lote se perdió, y termina buscando el defecto al lado
+        // equivocado — que es exactamente lo que pasó con el falso positivo del 13/08.
+        const detalle = perdidos.slice(0, 4).map((p) => `${p.range} (miré ${p.celda}, esperaba "${String(p.texto).slice(0, 40)}")`)
+        console.warn(`  ⚠ LA ESCRITURA NO ATERRIZÓ en ${perdidos.length} rango(s): ${detalle.join(', ')}. `
           + 'La API contestó que sí y el dato leído en su destino dice que no. NO des por buena esta corrida.')
       }
-      return perdidos.length ? { ...res, noAterrizo: perdidos } : res
+      return perdidos.length ? { ...res, noAterrizo: perdidos.map((p) => p.range), noAterrizoDetalle: perdidos } : res
     },
     /**
      * ESCRIBIR VALORES POR `updateCells`, direccionando por `sheetId` en vez de por nombre.
