@@ -153,6 +153,48 @@ export function celdasDelRango(ref) {
   return out
 }
 
+/**
+ * `TEXT(valor; patrón)` — LAS DOS REGLAS OPUESTAS QUE CONVIVEN EN LA MISMA LÍNEA.
+ *
+ * ═══ EL PATRÓN SE ESCRIBE EN NOTACIÓN US; EL RESULTADO SALE EN LOCALE ═══
+ *
+ * En una fórmula mandada por API, el SEPARADOR DE ARGUMENTOS va en el locale del archivo (`;` en
+ * es-AR, nunca `,`) pero el PATRÓN DE NÚMERO va SIEMPRE en notación US: `,` agrupa los miles y `.`
+ * separa los decimales. Es Sheets el que después lo dibuja con punto de miles y coma decimal.
+ *
+ * Dos reglas contrarias en la misma línea, y por eso se equivoca sola: escribir `"#.##0"` "porque en
+ * es-AR los miles van con punto" hace que ese punto se lea como el DECIMAL. Pasó, y se publicó:
+ * `$ 23795136,0` donde iba `$ 23.795.136`. Si alguien lo "corrige" de nuevo al revés, este modelo lo
+ * devuelve crudo y el test se pone rojo.
+ *
+ * ES UN MODELO, NO SHEETS. Cubre el subconjunto que las pestañas escriben —prefijo/sufijo literal,
+ * agrupación de miles, decimales fijos y las fechas dd/mm/yyyy—; cualquier otra cosa (secciones con
+ * `;`, `%`, notación científica) revienta ruidosa en vez de devolver un texto inventado.
+ */
+export function textoConPatron(valor, patron) {
+  const p = String(patron)
+  if (/^[dmy][dmy/\-. :]*$/i.test(p)) {
+    const d = aFecha(num(valor))
+    const yyyy = String(d.getUTCFullYear())
+    return p.replace(/yyyy/gi, yyyy).replace(/yy/gi, yyyy.slice(2))
+      .replace(/dd/gi, String(d.getUTCDate()).padStart(2, '0'))
+      .replace(/mm/g, String(d.getUTCMonth() + 1).padStart(2, '0'))
+  }
+  // Lo que CAMBIA el valor y este modelo no aplica: el `%` multiplica por 100, el `;` abre secciones
+  // por signo, `E+` es notación científica. Rendirlos "como si nada" devolvería 1,0% donde Sheets
+  // pone 100,0% — un test verde sobre un número inventado, que es lo único que no puede pasar acá.
+  if (/[%;]|E[+-]/.test(p)) throw new Error(`evaluar-formula-sheet: patrón de número no soportado ("${p}")`)
+  const m = /^([^#0]*)([#0,]+)(?:\.([#0]+))?([^#0]*)$/.exec(p)
+  if (!m) throw new Error(`evaluar-formula-sheet: patrón de número no soportado ("${p}")`)
+  const [, pre, entero, dec = '', post = ''] = m
+  const n = num(valor)
+  const fijo = Math.abs(n).toFixed(dec.length)
+  const [crudo, frac = ''] = fijo.split('.')
+  // El `,` del patrón (US) es lo ÚNICO que pide agrupar; se dibuja con punto porque el archivo es es-AR.
+  const ent = entero.includes(',') ? crudo.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : crudo
+  return `${n < 0 ? '-' : ''}${pre}${ent}${frac ? `,${frac}` : ''}${post}`
+}
+
 function llamar(n, args, ev) {
   // IF e IFERROR reciben el árbol SIN evaluar: si IFERROR evaluara su primer argumento por
   // adelantado, el #REF! que viene a absorber explotaría antes de que pudiera atajarlo.
@@ -172,6 +214,7 @@ function llamar(n, args, ev) {
     case 'MIN': return Math.min(...plano(v).map(num))
     case 'ROUND': { const d = 10 ** num(v[1] ?? 0); return Math.round(num(v[0]) * d) / d }
     case 'N': return typeof v[0] === 'number' ? v[0] : 0
+    case 'TEXT': return textoConPatron(v[0], v[1])
     case 'TODAY': return aSerial(ev.hoy)
     case 'EOMONTH': { const d = aFecha(num(v[0])); return aSerial(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + num(v[1]) + 1, 0))) }
     case 'COUNTIF': {
