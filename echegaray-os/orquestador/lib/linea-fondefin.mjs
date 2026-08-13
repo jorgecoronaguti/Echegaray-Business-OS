@@ -31,19 +31,76 @@
 // pero por otro motivo: allá era una TNA 0% nominal que habría ganado todas las comparaciones; acá es
 // que el comparador ofrecería $150M para pagar sueldos, y esa plata no se puede usar para sueldos.
 
+import { SERIE_BADLAR, SERIE_LEIDA_EL, BCRA_ID_VARIABLE, ultimaObservacion, rangoDeLaSerie } from './badlar-bcra.mjs'
+
 /** El factor del Reglamento: 60% de la Badlar. No es una estimación, es la letra del ROP. */
 export const FACTOR_BADLAR = 0.6
 
 /**
  * La Badlar tomada como referencia, CON SU FECHA. Es un dato con fecha de vencimiento: se mueve todos
  * los días hábiles. Fuente oficial (no un portal que la republica).
+ *
+ * SE DERIVA DE LA SERIE, NO SE TIPEA. Antes eran tres números escritos a mano (valor, fecha, rango) y
+ * un auditor encontró que ninguno tenía control: una Badlar mal cargada pero plausible dejaba los once
+ * tests en verde. Ahora salen todos de `SERIE_BADLAR`, que es la respuesta cruda del BCRA. Lo que
+ * queda sin cubrir —un dedazo dentro de la serie misma— sólo lo caza el canario contra la API viva.
  */
 export const BADLAR_REFERENCIA = {
-  valor: 0.228125, // 22,8125% TNA
-  fecha: '2026-08-11',
-  fuente: 'BCRA — API de estadísticas monetarias v4.0, idVariable 7 "Tasa de interés BADLAR de bancos privados", consultada 13/08/2026',
-  // El rango de las últimas tres semanas, para que nadie confunda la foto con la película.
-  rango_3_semanas: { min: 0.20875, max: 0.228125, desde: '2026-07-27', hasta: '2026-08-11' },
+  valor: ultimaObservacion(SERIE_BADLAR).valor,
+  fecha: ultimaObservacion(SERIE_BADLAR).fecha,
+  fuente: `BCRA — API de estadísticas monetarias v4.0, idVariable ${BCRA_ID_VARIABLE} "Tasa de interés BADLAR de bancos privados", serie de ${SERIE_BADLAR.length} ruedas leída el ${SERIE_LEIDA_EL}`,
+  // El rango OBSERVADO, con sus fechas y sus ruedas: para que nadie confunda la foto con la película
+  // ni le ponga a una ventana de 16 días corridos el rótulo "3 semanas".
+  rango_observado: rangoDeLaSerie(SERIE_BADLAR),
+}
+
+/**
+ * CUÁNTO VALE LA FOTO — la ventana después de la cual la TNA calculada deja de ser una referencia.
+ *
+ * ═══ EL DEFECTO QUE ESTO CIERRA (13/08, auditoría) ═══
+ *
+ * La fila entró con `vigencia_hasta: null` y sin ningún mecanismo de frescura. Dentro de tres meses la
+ * Web iba a seguir mostrando "Fiduciaria San Juan SAPEM · TNA 13,69% · informado" y nada iba a decir
+ * que ese número estaba muerto. El descubierto y la tarjeta caducan solos —de hecho ya caducaron—;
+ * ésta no.
+ *
+ * 15 días corridos NO es un número redondo elegido por comodidad: en las 17 ruedas observadas
+ * (20/07→11/08) la Badlar se movió entre 20,875% y 22,8125%, casi 2 puntos, o sea 1,16 puntos de TNA
+ * FONDEFIN. Una foto más vieja que esa ventana no es una estimación peor: es una afirmación que la
+ * propia serie desmiente. Pasado el plazo la línea DEJA DE ESTAR VIGENTE y `condicionesVigentes()` no
+ * la devuelve — se prefiere que el comparador no la vea antes que la vea con un número inventado.
+ *
+ * Y se deriva de la fecha de la Badlar, no de la fecha de carga: refrescar la Badlar y re-correr la
+ * semilla extiende la vigencia sola. Nadie tiene que acordarse de dos cosas.
+ */
+export const VALIDEZ_FOTO_DIAS = 15
+
+const DIA_MS = 86400000
+const aDate = (iso) => new Date(`${String(iso).slice(0, 10)}T00:00:00Z`)
+const aIso = (d) => d.toISOString().slice(0, 10)
+
+/**
+ * NÚCLEO PURO: hasta qué día vale la fila, dada la fecha de la Badlar que la sostiene.
+ * @param {string} fechaBadlar 'AAAA-MM-DD'
+ * @returns {string|null} 'AAAA-MM-DD'
+ */
+export function vigenciaHastaDeLaFoto(fechaBadlar = BADLAR_REFERENCIA.fecha, dias = VALIDEZ_FOTO_DIAS) {
+  const d = aDate(fechaBadlar)
+  if (Number.isNaN(d.getTime())) return null
+  return aIso(new Date(d.getTime() + dias * DIA_MS))
+}
+
+/**
+ * NÚCLEO PURO: el estado de la foto a una fecha. Es lo que el canario informa y lo que un consumidor
+ * puede mirar sin ir a la base.
+ * @param {string|Date} hoy
+ */
+export function estadoDeLaFoto(hoy = new Date(), ref = BADLAR_REFERENCIA) {
+  const h = aDate(typeof hoy === 'string' ? hoy : aIso(hoy))
+  const f = aDate(ref.fecha)
+  const vence = vigenciaHastaDeLaFoto(ref.fecha)
+  const dias = Math.round((h.getTime() - f.getTime()) / DIA_MS)
+  return { fecha_badlar: ref.fecha, dias_de_la_foto: dias, vence_el: vence, vencida: aIso(h) > vence }
 }
 
 /**
@@ -88,6 +145,14 @@ export function llegaATiempo(diasHastaLaNecesidad) {
 /** El costo de ENTRADA que la línea cobra una vez y no está en la TNA (fracción del desembolso). */
 export const GASTOS_OTORGAMIENTO = 0.02
 
+// El rango observado y los formatos es-AR de los textos de la ficha. Los porcentajes y las fechas de
+// `observaciones` se ARMAN con los mismos valores que la fila publica: un texto tipeado aparte
+// envejece por su cuenta y termina citado como si fuera el dato (ya pasó con "las últimas 3 semanas"
+// sobre una ventana de 16 días).
+const RANGO = BADLAR_REFERENCIA.rango_observado
+const pct = (f, dec = 2) => `${(Number(f) * 100).toFixed(dec).replace('.', ',')}%`
+const enAr = (iso) => String(iso).slice(0, 10).split('-').reverse().join('/')
+
 /**
  * LA CONDICIÓN, tal como entra a `public.condiciones_financieras` vía `registrarCondicion`.
  * `clave`, `desconocido` y `preguntar` NO son columnas: se sacan antes de escribir.
@@ -110,9 +175,12 @@ export const CONDICION_FONDEFIN = {
   moneda: 'ARS',
   // El Reglamento es el de mayo 2026 ("ROP ... FONDEFIN 05-2026"), sin fecha de caducidad publicada.
   // La vigencia arranca ahí y no en la fecha de carga: así re-correr la semilla ACTUALIZA esta fila
-  // (la Badlar cambia) en vez de crear una fila nueva por día.
+  // (la Badlar cambia) en vez de crear una fila nueva por día. El 1° del mes es una CONVENCIÓN nuestra
+  // —el ROP no publica fecha de entrada en vigencia— y por eso también está dicho en `observaciones`:
+  // un supuesto que sólo vive en un comentario del código no viaja a la base ni a la Web.
   vigencia_desde: '2026-05-01',
-  vigencia_hasta: null,
+  // NO es null: la fila caduca sola con la foto de la Badlar. Ver VALIDEZ_FOTO_DIAS.
+  vigencia_hasta: vigenciaHastaDeLaFoto(),
   // 60% × Badlar 22,8125% del 11/08/2026 = 13,6875% TNA. El ROP la llama "tasa de interés
   // compensatorio" sobre saldos y la Badlar del BCRA se publica como nominal anual: es TNA, no TEA.
   tna: tnaFondefin(BADLAR_REFERENCIA.valor),
@@ -137,7 +205,9 @@ export const CONDICION_FONDEFIN = {
   fuente:
     'Reglamento de Condiciones Generales FONDEFIN 05-2026 — "ROP-MIPYME-BIENES-DE-CAPITAL-FONDEFIN-mayo-2026.pdf", publicado en fiduciariasanjuan.com/linea/bienes-de-capital, descargado y leído el 13/08/2026 · Badlar: BCRA API estadísticas monetarias v4.0 idVariable 7, valor 22,8125% del 11/08/2026, consultada 13/08/2026',
   observaciones: [
-    'TASA: el ROP no fija un número, fija una FÓRMULA — "60% de la Tasa Badlar en Pesos para Bancos Privados publicada por el BCRA vigente a la fecha del acta de Comité Ejecutivo que apruebe la solicitud". La TNA cargada (13,6875%) es 60% × Badlar 22,8125% del 11/08/2026: es una FOTO, no la tasa del crédito. La Badlar osciló entre 20,875% y 22,8125% en las últimas 3 semanas → la misma línea sale entre 12,53% y 13,69% según el día en que el Comité firme el acta. Recalcular con tnaFondefin(badlar) antes de usar este número para decidir.',
+    `TASA: el ROP no fija un número, fija una FÓRMULA — "60% de la Tasa Badlar en Pesos para Bancos Privados publicada por el BCRA vigente a la fecha del acta de Comité Ejecutivo que apruebe la solicitud". La TNA cargada (${pct(tnaFondefin(BADLAR_REFERENCIA.valor), 4)}) es 60% × Badlar ${pct(BADLAR_REFERENCIA.valor, 4)} del ${enAr(BADLAR_REFERENCIA.fecha)}: es una FOTO, no la tasa del crédito. En las ${RANGO.ruedas} ruedas del ${enAr(RANGO.desde)} al ${enAr(RANGO.hasta)} la Badlar osciló entre ${pct(RANGO.min, 4)} (${enAr(RANGO.min_el)}) y ${pct(RANGO.max, 4)} (${enAr(RANGO.max_el)}) → la misma línea sale entre ${pct(tnaFondefin(RANGO.min), 2)} y ${pct(tnaFondefin(RANGO.max), 2)} según el día en que el Comité firme el acta. Recalcular con tnaFondefin(badlar) antes de usar este número para decidir.`,
+    `CADUCIDAD DE ESTA FILA: la vigencia termina el ${enAr(vigenciaHastaDeLaFoto())} — ${VALIDEZ_FOTO_DIAS} días corridos después de la Badlar que la sostiene. NO es una fecha del reglamento: es hasta cuándo el OS se hace cargo de esta foto. Pasada esa fecha la línea deja de estar vigente y no se ofrece en ninguna comparación, hasta que alguien refresque la Badlar y re-corra la semilla. Es deliberado: una línea ausente se nota; una TNA de tres meses atrás con cara de dato oficial, no. El contraste contra el BCRA vivo lo corre scripts/canario-badlar-fondefin.mjs.`,
+    'VIGENCIA_DESDE ES UNA CONVENCIÓN, NO UN DATO: el 01/05/2026 sale del código "05-2026" del nombre del reglamento ("ROP-MIPYME-BIENES-DE-CAPITAL-FONDEFIN-mayo-2026.pdf"). El ROP no publica fecha de entrada en vigencia. Se eligió el 1° del mes para que la clave única de la tabla sea estable y re-correr la semilla actualice la fila en vez de duplicarla por día.',
     'DEMORA DEL TRÁMITE: ~120 días (4 meses, dato del dueño 07/08/2026 — "al no ser organismo bancario"). El ROP NO publica ningún plazo de resolución; sólo fija 10 días corridos para que el postulante conteste un requerimiento de información. CONSECUENCIA OPERATIVA: esta línea NO sirve para una unidad que se necesita en menos de un trimestre; sí para la segunda y la tercera. Ver llegaATiempo().',
     'COSTOS QUE NO ESTÁN EN LA TNA y hacen que el CFT real sea mayor: 2% de gastos de otorgamiento detraído del total desembolsado; impuesto de sellos a cargo del tomador; seguro de vida sobre saldo deudor contratado por la Fiduciaria por cuenta del tomador; honorarios del perito tasador; costos de inscripción de las garantías; y todo impuesto o tasa sobre el crédito, deducidos del primer desembolso. El ROP no publica CFT y con esto no se puede calcular: falta el monto del seguro y de la tasación.',
     'DESEMBOLSO: va DIRECTO al proveedor por transferencia al CBU que el tomador declare, nunca a la cuenta de la empresa, y recién después de firmar el mutuo y constituir las garantías. El Fiduciario puede auditar el destino antes o después; si se aplicó a otro fin, puede exigir el reintegro inmediato del total con intereses de mora y punitorios.',
@@ -176,9 +246,30 @@ export const CONDICION_FONDEFIN = {
 /** Las columnas que NO existen en la tabla: se sacan antes de escribir. */
 export const NO_SON_COLUMNAS = ['clave', 'desconocido', 'preguntar']
 
-/** La fila lista para `registrarCondicion`, sin los campos que no son columnas. */
+/**
+ * La fila lista para `registrarCondicion`, sin los campos que no son columnas.
+ *
+ * ═══ LO QUE NO SE SABE VIAJA CON LA FILA (13/08, auditoría) ═══
+ *
+ * `desconocido` y `preguntar` se borraban acá y morían en el repositorio: no llegaban ni a Postgres ni
+ * a la Web. Varios de esos huecos DECIDEN la operación —si exigen aporte propio, si el crédito cubre
+ * el IVA del rodado, cuánto suma el sellado, si aceptan aval de SGR—, y el que mira la fila en la
+ * pantalla no tenía forma de enterarse. Un límite que sólo existe en el código fuente es un límite no
+ * declarado.
+ *
+ * Se pliegan dentro de `observaciones` porque son texto y la tabla no tiene columna para ellos.
+ * Agregar dos columnas sería una migración sobre una tabla productiva para guardar prosa: no lo vale.
+ */
 export function filaParaLaTabla(cond = CONDICION_FONDEFIN) {
   const fila = { ...cond }
+  const bloques = [fila.observaciones]
+  if (cond.desconocido?.length) {
+    bloques.push(`LO QUE LA FUENTE NO PUBLICA (${cond.desconocido.length}) — no se estima, se pregunta: ${cond.desconocido.join(' · ')}`)
+  }
+  if (cond.preguntar?.length) {
+    bloques.push(`PREGUNTAS AL FIDUCIARIO (${cond.preguntar.length}), en el orden en que conviene hacerlas — cada una cambia una decisión: ${cond.preguntar.join(' · ')}`)
+  }
+  fila.observaciones = bloques.filter(Boolean).join(' ── ')
   for (const k of NO_SON_COLUMNAS) delete fila[k]
   return fila
 }

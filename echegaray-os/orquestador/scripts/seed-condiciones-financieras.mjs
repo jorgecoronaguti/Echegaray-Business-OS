@@ -93,7 +93,16 @@ const SEED = [
   },
   // FONDEFIN — la línea de Fiduciaria San Juan que el dueño señaló como faltante (13/08). La ficha
   // entera, con su fórmula de tasa, sus huecos y sus preguntas, vive en lib/linea-fondefin.mjs: acá
-  // sólo se siembra. Es la más barata de las que hay cargadas y la única que NO es capital de trabajo.
+  // sólo se siembra. Es la única de la tabla que NO es capital de trabajo (financia la compra de un
+  // bien de capital, con desembolso directo al proveedor).
+  //
+  // INFERENCIA, no hecho: es MUY probablemente la más barata de las cargadas. Base — su TNA (13,69%)
+  // está tan lejos del CFTEA del prendario (65,10%) y del CFT del descubierto (62,78%) que ningún
+  // costo razonable de los que le faltan (IVA sobre intereses, 2% de otorgamiento, sellos, seguro de
+  // vida sobre saldo deudor, tasación) cierra una brecha de 48 puntos. Lo que NO se puede decir es
+  // "cuesta 13,69% contra 62,78%": eso compara una TNA sin IVA ni gastos contra dos CFT, que es
+  // justamente la mezcla que esta tabla existe para impedir. El costo comparable de FONDEFIN no se
+  // conoce hasta que el Fiduciario conteste el IVA y los gastos — ver `desconocido` y `preguntar`.
   fondefin(),
   // FONDEFIN CAPITAL DE TRABAJO — la SEGUNDA línea del mismo organismo (13/08). Misma fórmula de tasa
   // (60% de la Badlar), $30M a 18 meses, y financia insumos. Parecía la más valiosa de todas hasta que

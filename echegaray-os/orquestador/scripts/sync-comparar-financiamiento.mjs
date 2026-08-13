@@ -17,7 +17,7 @@
 //   node orquestador/scripts/sync-comparar-financiamiento.mjs
 import { query, closePool } from '../lib/db.mjs'
 import { compararFinanciamiento } from '../lib/ingenieria-financiera.mjs'
-import { condicionesVigentes, paramsParaMotor, costoEfectivo } from '../lib/condiciones-financieras.mjs'
+import { condicionesVigentes, paramsParaMotor, costoEfectivo, advertenciaDeComparabilidad } from '../lib/condiciones-financieras.mjs'
 
 const round = (n) => Math.round(Number(n) || 0)
 
@@ -96,6 +96,8 @@ async function main() {
       ...resultado,
       condiciones: detalle,
       faltan_datos: faltan,
+      // Igual que el tool: la Web tiene que poder decir cuáles de esos costos son un PISO.
+      comparabilidad: advertenciaDeComparabilidad(detalle),
       generado_en: new Date().toISOString(),
     }
   }

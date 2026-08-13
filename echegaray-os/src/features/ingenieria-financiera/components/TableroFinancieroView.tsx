@@ -227,6 +227,17 @@ export function CompararSection({ doc }: { doc: CompararDoc }) {
       {(doc.faltan_datos?.length ?? 0) > 0 && (
         <p className="mt-2 text-[11px] text-warn">Sin tasa cargada (excluidas del ranking): {doc.faltan_datos!.map((f) => f.producto).join(', ')}.</p>
       )}
+      {/* Un costo PISO al lado de uno TOTAL se lee como si fueran lo mismo, y el piso siempre gana. */}
+      {doc.comparabilidad && (
+        <Callout tono="warn" className="mt-3">
+          <span className="font-semibold">Ojo con comparar:</span> {doc.comparabilidad.advertencia}
+          <ul className="mt-1 list-disc pl-5">
+            {doc.comparabilidad.incompletas.map((c, i) => (
+              <li key={i}>{c.producto} ({c.entidad}) — es un PISO: falta {c.falta.join(', ')}</li>
+            ))}
+          </ul>
+        </Callout>
+      )}
     </Seccion>
   )
 }
