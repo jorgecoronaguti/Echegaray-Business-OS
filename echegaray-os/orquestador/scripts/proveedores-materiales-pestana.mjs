@@ -102,6 +102,9 @@ import { ARCA as N_ARCA, publicar, desalineados } from '../lib/rangos-nombrados.
 // escribe la fila y el que la busca leen la misma constante. Ver el lib — la copia doble ya dejó
 // dos nombres apuntando a un CUIT.
 import { CABECERA_ARCA, LINEAS_ARCA, NOMBRES_ARCA, destinosDeArca, dondeViveCadaNombre } from '../lib/bloque-arca-nombres.mjs'
+// Lo que el dueño YA decidió sobre un hallazgo puntual: se cuenta y se lista, pero no vuelve a
+// ocupar la línea de aviso. Ver lib/decisiones-hallazgos.mjs.
+import { CONTROLES, decidir, explicarDecisiones } from '../lib/decisiones-hallazgos.mjs'
 import { query } from '../lib/db.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
 import { INK, MUTED, HAIR } from '../lib/estilo-statement.mjs'
@@ -1020,6 +1023,42 @@ export async function abortarSiHayDinamica(google, { frontera = null, visible = 
   return dinamicas
 }
 
+const money = (n) => Number(n).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })
+
+/**
+ * EL CRUCE CONTRA COBRANZAS, CON LO QUE EL DUEÑO YA DECIDIÓ DESCONTADO DE LA LÍNEA DE AVISO.
+ *
+ * ═══ POR QUÉ (13/08) ═══
+ *
+ * Este aviso reaparecía con los mismos $129.499.724 en cada corrida —cada dos horas— después de que
+ * el dueño contestara "no considerarlas" sobre las dos facturas mayores (0001-00000208 por $75M y
+ * 0001-00000213 por $40M, las dos al CUIT 30716490498). Un aviso siempre rojo se ignora, y con él se
+ * ignora el día que aparezca una factura nueva de verdad. Ese es todo el costo de no tener registro.
+ *
+ * SE LIBERA EL COMPROBANTE, NO EL CONTROL. La clave es el número de factura; la forma, su importe y
+ * su CUIT. Si mañana el importe de esa factura cambia, el dueño decidió sobre otra cosa y el aviso
+ * vuelve solo — sin eso, el registro sería una alfombra. Ver lib/decisiones-hallazgos.mjs.
+ *
+ * LO LIBERADO SE SIGUE CONTANDO Y LISTANDO, con quién decidió, cuándo y su palabra textual. Lo único
+ * que pierde es el `⚠`, que es lo que hace figurar al paso entre los que "no cierran".
+ *
+ * @param {Array<{comprobante:string, cuit:any, fecha:string, importe:number}>} emitidas
+ * @returns el veredicto completo: vivos, silenciados, caducadas y rotas
+ */
+export function reportarVentasSinCobranza(emitidas = [], { log = console.warn, ...opts } = {}) {
+  const dec = decidir(CONTROLES.ventasSinCobranza, emitidas.map((r) => ({
+    ...r, clave: r.comprobante, forma: { importe: r.importe, cuit: r.cuit ?? '' },
+  })), opts)
+  if (dec.vivos.length) {
+    const plata = dec.vivos.reduce((a, r) => a + r.importe, 0)
+    log(`  ⚠ VENTAS (no es de esta pestaña): ${dec.vivos.length} factura(s) emitidas que Cobranzas no tiene, `
+      + `${money(plata)}. Su lugar es la pestaña Cobranzas; acá sólo se avisa.`)
+    for (const r of dec.vivos) log(`     ${r.comprobante}  ${String(r.fecha).padStart(10)}  CUIT ${r.cuit ?? '—'}  ${money(r.importe)}`)
+  }
+  explicarDecisiones(dec, log, { detalle: (h) => `${h.comprobante}  ${String(h.fecha).padStart(10)}  ${money(h.importe)}` })
+  return dec
+}
+
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
 
@@ -1281,16 +1320,7 @@ async function main() {
       cuit: r.receptor_cuit, fecha: fecha(r.fecha_emision), importe: Number(r.imp_total),
     }))
     .filter((r) => !cobranzasPorComp.has(normComprobante(r.comprobante)))
-  if (emitidasSinCobranza.length) {
-    const plata = emitidasSinCobranza.reduce((a, r) => a + r.importe, 0)
-    console.warn(`  ⚠ VENTAS (no es de esta pestaña): ${emitidasSinCobranza.length} factura(s) emitidas que Cobranzas no tiene, `
-      + `${plata.toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })}. `
-      + 'Su lugar es la pestaña Cobranzas; acá sólo se avisa.')
-    for (const r of emitidasSinCobranza) {
-      console.warn(`     ${r.comprobante}  ${r.fecha.padStart(10)}  CUIT ${r.cuit ?? '—'}  `
-        + r.importe.toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }))
-    }
-  }
+  reportarVentasSinCobranza(emitidasSinCobranza)
 
   // ── QUÉ HACE CADA NOTA DE CRÉDITO ──────────────────────────────────────────────────────────────
   // Saber que RESTA arregla la aritmética; esto contesta la pregunta de negocio. Ver

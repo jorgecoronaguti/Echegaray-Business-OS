@@ -71,6 +71,30 @@ export function plataEnJuego(pestana = 'Cobranzas', f0 = 5, f1 = 400) {
 }
 
 /**
+ * NÚCLEO PURO: la condición "esta fila es exactamente el cobro que el dueño ya revisó".
+ *
+ * ═══ POR QUÉ LA LIBERACIÓN VIAJA DENTRO DE LA FÓRMULA (13/08) ═══
+ *
+ * Este control no enumera sus hallazgos en JavaScript: vive como una ARRAYFORMULA adentro de la
+ * pestaña y se recalcula solo. Para que la fila 39 —LA ESTRELLA, $10.000.000, que el dueño ya dijo
+ * dos veces que NO es un duplicado— deje de mostrar el `⚠`, la decisión tiene que ser una condición
+ * más de esa misma fórmula. Cualquier otra cosa sería un valor pegado encima de una celda calculada,
+ * que es justo lo que la regla de oro del Sheet prohíbe.
+ *
+ * VAN LAS TRES COSAS: la fila, el cliente y el importe. La fila sola es una trampa conocida —anclar
+ * en la posición se rompe en silencio cuando alguien inserta un renglón arriba—, así que la fila 39
+ * sólo queda liberada si además sigue siendo LA ESTRELLA por $10.000.000. Si la pestaña se corre o el
+ * importe cambia, la condición deja de darse y la marca vuelve sola. El lado seguro para equivocarse
+ * es el ruido, nunca el silencio.
+ */
+export function esCobroYaRevisado(forma = {}, pestana = 'Cobranzas', f0 = 5, f1 = 400) {
+  const r = (col) => `${pestana}!$${col}$${f0}:$${col}$${f1}`
+  return `(ROW(${r(CLAVE.cliente)})=${Number(forma.fila)})`
+    + `*(${r(CLAVE.cliente)}="${String(forma.cliente ?? '').replace(/"/g, '""')}")`
+    + `*(${r(CLAVE.monto)}=${Number(forma.importe)})`
+}
+
+/**
  * NÚCLEO PURO: los grupos indistinguibles de una lista de filas ya leídas.
  * La versión en JavaScript de la misma definición, para los scripts y los tests.
  *

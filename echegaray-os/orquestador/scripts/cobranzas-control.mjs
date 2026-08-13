@@ -29,7 +29,9 @@ import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-edicion
 import { ECHEQS_TERCEROS, CORTE as BANCO_CORTE } from '../lib/banco-santander.mjs'
 import { MARCA_ENDOSADO } from '../lib/cash-flow-lineas.mjs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
-import { esIndistinguible, plataEnJuego } from '../lib/cobranzas-duplicado.mjs'
+import { esIndistinguible, plataEnJuego, esCobroYaRevisado } from '../lib/cobranzas-duplicado.mjs'
+// Lo que el dueño ya revisó no vuelve a marcarse con ⚠. Ver lib/decisiones-hallazgos.mjs.
+import { CONTROLES, decisionesDe, rotuloDecision } from '../lib/decisiones-hallazgos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Cobranzas'
@@ -77,12 +79,39 @@ const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26
 // forma, estado y fecha), definida una sola vez en lib/cobranzas-duplicado.mjs.
 //
 // Una cuota legítima NO cae acá: comparte cliente y monto pero cobra en fechas distintas.
-const flagPorFila = `=ARRAYFORMULA(IF(${M}=0;"";
-  IF(${INDIST};"⚠ Otro cobro con el MISMO cliente, monto, forma, estado y día. Si son dos cobros distintos, escribí conceptos distintos; si es el mismo cargado dos veces, dá de baja uno.";
-  IF(COUNTIFS(${G};${G};${M};${M};${Q};${Q};${E};${E};${H};${H};${I};${I})>1;"⚠ Igual en TODO: cliente, monto, fecha, comprobante, orden de compra y concepto. Acá sí hay que revisar si se cargó dos veces.";
-  IF((COUNTIFS(${G};${G};${M};${M};${Q};${Q})>1)*(${E}="")*(${H}="")*(${I}="")>0;"Otro cobro del mismo cliente, monto y día. No se puede distinguir de su par porque los dos están SIN concepto — completalo y esta marca se va sola.";
-  IF((${O}="Proyectado")*(COUNTIFS(${G};${G};${M};${M})>1)>0;"⚠ Proyección con gemela ya facturada por el mismo monto — dar de baja o queda contada dos veces";
-  ""))))))`.replace(/\s*\n\s*/g, '')
+
+/** Un texto, listo para entrar en una fórmula: las comillas de adentro se duplican. */
+const txt = (s) => `"${String(s).replace(/"/g, '""')}"`
+/** NÚCLEO PURO: una cascada de IF a partir de pares [condición, texto]. La primera que se cumple gana. */
+const anidar = (pares, ultimo = '""') => pares.reduceRight((acc, [c, t]) => `IF(${c};${t};${acc})`, ultimo)
+
+/**
+ * LA MARCA DE CADA FILA, CON LO QUE EL DUEÑO YA REVISÓ ADELANTE DE TODO.
+ *
+ * ═══ POR QUÉ LAS DECISIONES VAN PRIMERAS (13/08) ═══
+ *
+ * El dueño ya dijo dos veces —el 20/07 y el 13/08— que la fila 39 (LA ESTRELLA, $10.000.000) NO es un
+ * duplicado, y la marca volvía en cada corrida. Un aviso siempre rojo se ignora, y el que se ignora
+ * después es el duplicado real de San Francisco que sigue vivo en la misma columna.
+ *
+ * La liberación es una condición MÁS de esta misma fórmula y va antes que las demás para ganarles.
+ * No se libera "el control": se libera esa fila con ese cliente y ese importe (ver
+ * `esCobroYaRevisado`). Y no desaparece: la celda pasa a decir quién lo revisó, cuándo y su palabra
+ * textual, sin `⚠`.
+ *
+ * @param {Array} liberadas las decisiones vigentes del dueño para este control
+ */
+export function marcaPorFila(liberadas = []) {
+  return `=ARRAYFORMULA(IF(${M}=0;"";${anidar([
+    ...liberadas.map((d) => [esCobroYaRevisado(d.forma, PESTAÑA, F0, F1), txt(rotuloDecision(d))]),
+    [INDIST, txt('⚠ Otro cobro con el MISMO cliente, monto, forma, estado y día. Si son dos cobros distintos, escribí conceptos distintos; si es el mismo cargado dos veces, dá de baja uno.')],
+    [`COUNTIFS(${G};${G};${M};${M};${Q};${Q};${E};${E};${H};${H};${I};${I})>1`, txt('⚠ Igual en TODO: cliente, monto, fecha, comprobante, orden de compra y concepto. Acá sí hay que revisar si se cargó dos veces.')],
+    [`(COUNTIFS(${G};${G};${M};${M};${Q};${Q})>1)*(${E}="")*(${H}="")*(${I}="")>0`, txt('Otro cobro del mismo cliente, monto y día. No se puede distinguir de su par porque los dos están SIN concepto — completalo y esta marca se va sola.')],
+    [`(${O}="Proyectado")*(COUNTIFS(${G};${G};${M};${M})>1)>0`, txt('⚠ Proyección con gemela ya facturada por el mismo monto — dar de baja o queda contada dos veces')],
+  ])}))`
+}
+
+const flagPorFila = marcaPorFila(decisionesDe(CONTROLES.cobroDuplicado))
 
 /** La firma que identifica el bloque como escrito por el OS. Permite rehacerlo sin pisar nada ajeno. */
 const FIRMA = 'CONTROL DE COBRANZAS'
@@ -311,4 +340,17 @@ async function main() {
   marcas.forEach((f, i) => { if (f?.[C_FLAG]) console.log(`  fila ${i + F0} | ${String(f[6] ?? '').slice(0, 26).padEnd(28)} ${String(f[12] ?? '').padStart(14)}  ${f[C_FLAG]}`) })
 }
 
-main().catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
+// ═══ SÓLO CUANDO SE LO INVOCA COMO COMANDO (13/08) ═══
+//
+// Sin esta guarda bastaba un `import` para que este archivo escribiera el Sheet REAL. Lo pagué hoy:
+// al probar desde el nodo la función pura `marcaPorFila` —que este mismo archivo exporta— el módulo
+// corrió `main()` entero contra la planilla viva, desde un worktree, sin que nadie lo pidiera. La
+// escritura cayó en la zona propia del control (BA/BB y BC:BE, con su firma y su guard), así que no
+// tocó dato del dueño; pero el modo de falla es el que el repo ya tiene documentado en
+// `impuestos-pestana.mjs`, y este archivo era el único de los tres controles que no lo tenía.
+//
+// Un módulo se importa; un comando se ejecuta. Desde que este archivo exporta algo, la diferencia
+// dejó de ser teórica.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
+}

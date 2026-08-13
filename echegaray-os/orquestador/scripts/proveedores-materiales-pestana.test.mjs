@@ -13,7 +13,7 @@
 // del propio generador (la col I de los cruces ARCA, que es no-vacía y por eso se conserva).
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { estructural, predicadoConDeuda, soloConDeuda, layoutDeuda, notasAncladas, anchoBloque, traducirMarcadores } from './proveedores-materiales-pestana.mjs'
+import { estructural, predicadoConDeuda, soloConDeuda, layoutDeuda, notasAncladas, anchoBloque, traducirMarcadores, reportarVentasSinCobranza } from './proveedores-materiales-pestana.mjs'
 import { fusionar, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { readFileSync } from 'node:fs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
@@ -648,4 +648,59 @@ test('los marcadores de "Materiales" —el tramo sin `desdeFila`— son filas RE
     assert.ok(Number.isFinite(t[k]), `${k} tradujo a ${t[k]}`)
   }
   assert.equal(t.fam0, 6, 'la fila 200 de la grilla es la 4 de Materiales, así que la 202 es la 6')
+})
+
+// ══ EL CRUCE CONTRA COBRANZAS, CON LO QUE EL DUEÑO YA DECIDIÓ (13/08) ════════════════════════════
+//
+// El aviso "6 factura(s) emitidas que Cobranzas no tiene, $129.499.724" volvía en cada corrida —cada
+// dos horas— después de que el dueño contestara "no considerarlas" sobre las dos mayores. Un aviso
+// siempre rojo se ignora, y con él se ignora la factura nueva del mes que viene.
+
+const FACTURA = (comprobante, importe, cuit = '30716490498') => ({
+  comprobante, importe, cuit, fecha: '11/3/2026',
+})
+const capturar = (emitidas) => {
+  const salida = []
+  const dec = reportarVentasSinCobranza(emitidas, { log: (t) => salida.push(String(t)) })
+  return { dec, texto: salida.join('\n') }
+}
+
+test('las dos facturas que el dueño decidió NO ocupan la línea de aviso', () => {
+  const { dec, texto } = capturar([FACTURA('0001-00000208', 75000000), FACTURA('0001-00000213', 40000000)])
+  assert.equal(dec.vivos.length, 0)
+  assert.ok(!texto.includes('⚠'), `con las dos decisiones cargadas no queda un solo ⚠:\n${texto}`)
+  assert.match(texto, /2 hallazgo\(s\) con decisión del dueño/)
+  assert.match(texto, /"no considerarlas" \(dueño, 13\/08\/2026\)/)
+  assert.match(texto, /0001-00000208/, 'se sigue listando: liberar no es callar')
+})
+
+test('una factura SIN decisión sigue avisando, y el importe del aviso ya no la incluye a ella sola', () => {
+  const { dec, texto } = capturar([
+    FACTURA('0001-00000208', 75000000),
+    FACTURA('0001-00000213', 40000000),
+    FACTURA('0001-00000777', 14499724),
+  ])
+  assert.deepEqual(dec.vivos.map((f) => f.comprobante), ['0001-00000777'])
+  assert.match(texto, /⚠ VENTAS .*: 1 factura\(s\)/)
+  assert.match(texto, /\$\s?14\.499\.724/, 'la plata del aviso es la de lo NO decidido')
+  assert.ok(!/129\.499\.724/.test(texto), 'ya no se reporta el total viejo')
+})
+
+test('si el importe de la factura decidida cambia, el aviso vuelve con ⚠', () => {
+  const { dec, texto } = capturar([FACTURA('0001-00000208', 90000000)])
+  assert.equal(dec.vivos.length, 1, 'el dueño decidió sobre $75.000.000')
+  assert.equal(dec.caducadas.length, 1)
+  assert.match(texto, /⚠ VENTAS/)
+  assert.match(texto, /YA NO APLICA/)
+})
+
+test('si cambia el CUIT del receptor, tampoco aplica: no es la misma factura', () => {
+  const { dec } = capturar([FACTURA('0001-00000208', 75000000, '30999999999')])
+  assert.equal(dec.vivos.length, 1)
+})
+
+test('sin ninguna factura pendiente no se imprime nada', () => {
+  const { dec, texto } = capturar([])
+  assert.equal(dec.vivos.length, 0)
+  assert.equal(texto, '')
 })
