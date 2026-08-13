@@ -44,9 +44,11 @@ import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-edicion
 import { requestsTextoPorContenido } from '../lib/formato-texto-por-contenido.mjs'
 import {
   grillaObras, anchoColumnaA, celdasEnError, columnasDesparejas, problemaDeSintaxis, clientesDeCobranzas,
-  conColaLimpiable, trabajosFueraDeObra, ANCHO_HISTORICO, ALTO_HISTORICO,
-  ANCHO_OBRAS, ANCHOS_OBRAS, PESTANA_OBRAS, REFS_OBRAS,
+  conColaLimpiable, trabajosFueraDeObra, variantesDe, ANCHO_HISTORICO, ALTO_HISTORICO,
+  ANCHO_OBRAS, ANCHOS_OBRAS, PESTANA_OBRAS, REFS_OBRAS, SIN_CONTRATO,
 } from '../lib/obras-grilla.mjs'
+import { contratoDeObra, monedasDesconocidas, normalizarMoneda } from '../lib/cobranzas-contrato.mjs'
+import { RANGO_TC } from '../lib/caja-disponibilidades.mjs'
 import { OBRAS_FUTURAS, totalEgresos } from '../lib/obras-datos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -88,7 +90,7 @@ export function resolverColumnas(filas, rotulos) {
   return res
 }
 
-const COLS = 'ABCDEFGH'
+const COLS = 'ABCDEFGHI'
 const cortar = (s, n) => (s.length <= n ? s : `${s.slice(0, n - 1)}…`)
 const izq = (s, n) => cortar(s, n).padEnd(n)
 const der = (s, n) => cortar(s, n).padStart(n)
@@ -138,7 +140,7 @@ export function render(g, obras = []) {
   // Los anchos dan para el RÓTULO COMPLETO de cada columna: "Cobrado (total)" son 15 caracteres y
   // con 13 el ensayo mostraba "Cobrado (tot…". Una evidencia que recorta el nombre de la columna que
   // se está juzgando no sirve para juzgarla — es el mismo criterio que la lista de obras de arriba.
-  const anchos = [52, 6, 15, 15, 15, 15, 15, 10]
+  const anchos = [52, 8, 15, 15, 15, 15, 15, 10, 15]
   L.push(`fila │ ${anchos.map((n, i) => izq(COLS[i], n)).join(' │ ')}`)
   const formulas = []
   g.filas.forEach((fila, i) => {
@@ -179,6 +181,81 @@ export const ROTULOS_COBRANZAS = {
   retenciones: /^Retenciones\b/i,
   // La FECHA DE VENTA acota el año de la venta (devengado); la de cobro, el de la plata.
   fechaVenta: /^Fecha\s*(de\s*)?venta/i, forma: /^Forma de [Cc]obro/,
+  // LA MONEDA (13/08). Sin esta columna la pestaña sumaba U$S 15.400 como $15.400 — dólares y pesos
+  // en el mismo total. Va con el mismo criterio que las demás: si el rótulo no está, el escritor
+  // ROMPE. Publicar la pestaña sin poder distinguir la moneda es peor que no publicarla.
+  moneda: /^Moneda$/i,
+}
+
+/** El índice 0-based de una letra de columna ('A'→0, 'AA'→26). El inverso de `letra`. */
+export const indiceDeLetra = (s) => String(s).toUpperCase().split('')
+  .reduce((n, ch) => n * 26 + (ch.charCodeAt(0) - 64), 0) - 1
+
+/**
+ * EL CONTRATO DE CADA OBRA, LEÍDO DE COBRANZAS EN ESTA MISMA CORRIDA.
+ *
+ * POR QUÉ SE LEE Y NO SE DECLARA (13/08). Se le preguntó al dueño si quería declarar el monto
+ * contratado por obra y contestó: *"ya tenes todo lo necesario en pestaña cobranzas"*. La columna
+ * ORDEN DE COMPRA lo dice fila por fila. Leerlo acá —en vez de tipearlo en `obras-datos.mjs`— es lo
+ * que impide que el número se fosilice: el día que el dueño corrija esa celda, la pestaña lo toma en
+ * la corrida siguiente sin que nadie toque el código.
+ *
+ * @returns {{filas:Array<Array>, contratos:Map<string,object>, monedasRaras:Array, hayUSD:boolean}}
+ */
+export function leerContratos(filas, refs, obras) {
+  const cols = {
+    cliente: indiceDeLetra(refs.cob.cliente), concepto: indiceDeLetra(refs.cob.concepto),
+    oc: indiceDeLetra(refs.cob.oc), moneda: indiceDeLetra(refs.cob.moneda),
+  }
+  const porCliente = obras.reduce((m, o) => m.set(o.cliente, (m.get(o.cliente) ?? 0) + 1), new Map())
+  const contratos = new Map()
+  for (const o of obras) {
+    contratos.set(o.clave, contratoDeObra(filas, cols, {
+      variantes: variantesDe(o.cliente), needle: o.ventaTexto, unica: porCliente.get(o.cliente) === 1,
+    }, refs.cob.desde))
+  }
+  return {
+    contratos,
+    monedasRaras: monedasDesconocidas(filas, cols.moneda, refs.cob.desde),
+    hayUSD: filas.some((f) => normalizarMoneda(f?.[cols.moneda]) === 'USD'),
+  }
+}
+
+/**
+ * LAS DOS GUARDAS DE MONEDA. Las dos fallan CERRADAS, y por el mismo motivo: la pestaña suma pesos.
+ *
+ * 1 · UNA MONEDA QUE NO SE ENTIENDE. La fórmula reparte en dos baldes —lo que dice "USD" se valúa y
+ *   todo lo demás se suma como pesos—, así que un "EUR" tipeado mañana entraría al total como pesos
+ *   sin un solo error a la vista. Es el mismo defecto que este trabajo vino a arreglar, con otro
+ *   código. El `0` de las filas ID 35/36 NO cae acá: está declarado como basura de formato y se lee
+ *   como pesos, que es lo que esas dos filas son.
+ *
+ * 2 · EL TIPO DE CAMBIO TIENE QUE ESTAR, HAYA DÓLARES O NO. No es exceso de celo: TODAS las sumas de
+ *   la pestaña citan `TIPO_CAMBIO_USD`, aunque el importe en dólares sea cero. Si el rango con nombre
+ *   no existe, las celdas de plata publican `#NAME?`; si existe y está vacío, `#VALUE!` (en Sheets un
+ *   número por "" no es cero, es un error). El escritor releería el desastre y abortaría DESPUÉS de
+ *   haberlo escrito — o sea, con la pestaña ya rota en la cara del dueño.
+ *
+ *   La fórmula NO se blinda con un `N()` que convierta el vacío en cero, a propósito: eso publicaría
+ *   una venta $22,9M corta con cara de número sano. Que grite es la conducta correcta; lo que hay que
+ *   evitar es que llegue a gritar en el archivo del dueño, y para eso está esta guarda.
+ */
+export async function verificarMoneda(google, { monedasRaras, hayUSD }) {
+  if (monedasRaras.length) {
+    throw new Error(`${monedasRaras.length} fila(s) de ${REFS_OBRAS.cob.hoja} declaran una moneda que no entiendo: `
+      + `${monedasRaras.slice(0, 6).map((m) => `fila ${m.fila}="${m.valor}"`).join(' · ')}. `
+      + 'Se sumarían como PESOS sin dar error. NO escribo hasta que la columna diga USD o quede vacía.')
+  }
+  const leido = await google.readSheetValues(ID, RANGO_TC, { render: 'UNFORMATTED_VALUE' }).catch(() => null)
+  const tc = Number(leido?.[0]?.[0])
+  if (!Number.isFinite(tc) || tc <= 0) {
+    throw new Error(`el rango con nombre ${RANGO_TC} no trae un tipo de cambio (leí ${JSON.stringify(leido)}). `
+      + 'Lo publica el bloque de CAJA y TODA suma de esta pestaña lo cita: sin él las celdas de plata '
+      + `quedarían en #NAME?/#VALUE!${hayUSD ? ', y además hay filas en USD que no se podrían valuar' : ''}. NO escribo.`)
+  }
+  console.log(`  ✓ ${RANGO_TC} = ${tc.toLocaleString('es-AR')}`
+    + `${hayUSD ? ' — hay filas en USD y se valúan a ese tipo de cambio' : ' — sin filas en USD, pero toda suma lo cita'}`)
+  return tc
 }
 
 /** Las referencias REALES del archivo, resueltas por rótulo contra los encabezados vivos. */
@@ -238,12 +315,27 @@ async function main() {
   // LOS CLIENTES SE LEEN DEL ARCHIVO, NO SE TIPEAN. Una lista escrita en el código deja fuera del
   // cuadro a todo cliente nuevo —y nadie se entera—: es el defecto que el dueño cazó mirando la
   // pestaña. Rango abierto: el que se factura mañana entra solo en la próxima corrida.
-  const colCli = await google.readSheetValues(ID, `${refs.cob.hoja}!${refs.cob.cliente}${refs.cob.desde}:${refs.cob.cliente}`)
-  const clientes = clientesDeCobranzas(colCli ?? [])
+  // SE LEE LA PESTAÑA ENTERA, NO SÓLO LA COLUMNA DE CLIENTE: el contrato de cada obra vive en la
+  // Orden de Compra y la moneda en la col AA, y las tres cosas salen de la MISMA lectura — así no
+  // puede pasar que el contrato se derive de un estado del archivo y la lista de clientes de otro.
+  const datos = await google.readSheetValues(ID, `${refs.cob.hoja}!A${refs.cob.desde}:${refs.cob.moneda}`,
+    { render: 'UNFORMATTED_VALUE' }) ?? []
+  const iCli = indiceDeLetra(refs.cob.cliente)
+  const clientes = clientesDeCobranzas(datos.map((f) => f?.[iCli]))
   if (!clientes.length) throw new Error(`no leí un solo cliente en ${refs.cob.hoja}!${refs.cob.cliente}: NO escribo una Sección 1 vacía.`)
   console.log(`clientes derivados de ${refs.cob.hoja}: ${clientes.length} · ${clientes.join(' · ')}`)
 
-  const g = grillaObras({ obras: OBRAS_FUTURAS, refs, clientes })
+  const { contratos, monedasRaras, hayUSD } = leerContratos(datos, refs, OBRAS_FUTURAS)
+  await verificarMoneda(google, { monedasRaras, hayUSD })
+  const obras = OBRAS_FUTURAS.map((o) => ({ ...o, contrato: contratos.get(o.clave)?.contrato ?? null }))
+  for (const o of obras) {
+    const c = contratos.get(o.clave)
+    console.log(`  contrato · ${o.clave}: ${o.contrato === null ? 'NO DECLARADO en ninguna fila — publico "—"'
+      : `$${o.contrato.toLocaleString('es-AR')}${c.partido ? ` (PARTIDO: ${c.distintos.map((d) => `$${d.toLocaleString('es-AR')}`).join(' + ')})` : ''}`
+        + ` · declarado en ${c.valores.length} fila(s): ${c.valores.map((v) => v.fila).join(', ')}`}`)
+  }
+
+  const g = grillaObras({ obras, refs, clientes })
   // GUARDA FAIL-CLOSED. Una grilla sin obras no es "una pestaña con poco": es el insumo que no cargó.
   // Escribirla dejaría la pestaña en blanco, que es la forma que tomaron las pérdidas de este repo.
   if (!g.bloques.length) throw new Error('la grilla no trajo ni una obra: NO escribo una pestaña vacía.')
@@ -331,6 +423,24 @@ async function main() {
       + desparejas.map((d) => `${d.columna} vacía en ${d.filas.length} de ${d.de} obras (filas ${d.filas.join(', ')})`).join(' · ')
       + '. Una fórmula devolvió vacío donde las demás dieron valor: revisala antes de creerle a la pestaña.')
   }
+  // ═══ EL CONTROL DE LAS COLUMNAS DEL CONTRATO, QUE `columnasDesparejas` YA NO PUEDE HACER ═══
+  //
+  // Ese control sólo mira columnas donde TODAS las obras llevan fórmula, y desde hoy la B y la I son
+  // mixtas: la obra sin contrato declarado publica el guion. Perder la verificación no es una opción
+  // —la pestaña ya publicó una columna en blanco en 4 de 7 obras sin que nada gritara— así que se
+  // reemplaza por una más específica: cada obra tiene que haber publicado EXACTAMENTE lo que su
+  // contrato permite. Con contrato, un número; sin contrato, el guion. Nada intermedio.
+  const malCont = g.bloques.map((b) => {
+    const pub = String(quedo[b.fProt - 1]?.[8] ?? '').trim()
+    if (b.contrato && !/\d/.test(pub)) return `${b.clave}: contrato $${b.contrato.toLocaleString('es-AR')} y la I quedó "${pub}"`
+    if (!b.contrato && pub !== SIN_CONTRATO) return `${b.clave}: sin contrato declarado y la I quedó "${pub}" en vez de "${SIN_CONTRATO}"`
+    return null
+  }).filter(Boolean)
+  if (malCont.length) throw new Error(`LA COLUMNA "Saldo contrato" NO QUEDÓ COMO CORRESPONDE: ${malCont.join(' · ')}.`)
+  const conContrato = g.bloques.filter((b) => b.contrato).length
+  console.log(`  ✓ saldo de contrato publicado en ${conContrato} de ${g.bloques.length} obras `
+    + `(las otras no declaran contrato en ninguna fila de ${REFS_OBRAS.cob.hoja} y publican "${SIN_CONTRATO}")`)
+
   // ═══ EL CONTROL QUE ANTES ERA UNA FILA DE LA PESTAÑA ═══
   //
   // El dueño sacó "⇒ sin ubicar" dos veces: un renglón que dice $0 todos los días no es información.
@@ -390,13 +500,15 @@ async function formatear(google, sheetId, g) {
   const fmt = (rg, fields, format) => req.push({ repeatCell: { range: rg, cell: { userEnteredFormat: E.conFuente(format) }, fields } })
   const borde = (rg) => req.push({ updateBorders: { range: rg, bottom: { style: 'SOLID', color: HAIR } } })
 
-  // Los importes: C..G, a la derecha, sin "$" en el cuerpo. El "$" es del cierre, no de cada celda.
-  for (const c of [2, 3, 4, 5, 6]) {
+  // Los importes: C..G y la I (Saldo contrato), a la derecha, sin "$" en el cuerpo. El "$" es del
+  // cierre, no de cada celda. La I entra a la lista y no a un caso aparte: es plata como las otras.
+  const PLATA = [2, 3, 4, 5, 6, 8]
+  for (const c of PLATA) {
     fmt(r(0, n, c, c + 1), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
       { numberFormat: MONEDA_CUERPO, horizontalAlignment: 'RIGHT' })
   }
   for (const f of [...(g.totales ?? []), ...(g.protagonistas ?? [])]) {
-    for (const c of [2, 3, 4, 5, 6]) fmt(r(f - 1, f, c, c + 1), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_TOTAL })
+    for (const c of PLATA) fmt(r(f - 1, f, c, c + 1), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_TOTAL })
   }
   // La B dejó de ser un glifo y pasó a ser el % cobrado: se dibuja como porcentaje, no como texto.
   fmt(r(0, n, 1, 2), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',

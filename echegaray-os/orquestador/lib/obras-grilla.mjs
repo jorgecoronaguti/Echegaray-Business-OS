@@ -118,12 +118,17 @@ import { VACIO } from './preservar-anotaciones.mjs'
 import { conColaLimpiable as colaDeclarada } from './cola-de-rango.mjs'
 import { esProyectable } from './obras-datos.mjs'
 import { sumaNetaSheet, esMaterialSheet } from './costo-materiales.mjs'
+import { sumaConUSD } from './cobranzas-contrato.mjs'
+// EL TIPO DE CAMBIO SE IMPORTA, NO SE ESCRIBE DE NUEVO. Vive UNA vez, en el bloque de CAJA, y esta
+// pestaña lo referencia por su nombre: un segundo tipo de cambio sería una segunda verdad para el
+// mismo concepto, que es justo lo que la REALIDAD ÚNICA prohíbe.
+import { RANGO_TC } from './caja-disponibilidades.mjs'
 
 export const PESTANA_OBRAS = 'OBRAS'
 
 /**
- * A rótulo · B % cobrado · C venta · D cobrado · E resta · F vencido · G materiales|pendiente ·
- * H retenido (Sección 1) | próx. cobro (Sección 2).
+ * A rótulo · B % cobrado (S1) | % contrato (S2) · C venta · D cobrado · E resta · F vencido ·
+ * G materiales|pendiente · H retenido (S1) | próx. cobro (S2) · I saldo de contrato (S2).
  *
  * ERAN NUEVE. LA NOVENA ERA LA GLOSA Y EL DUEÑO LA MANDÓ SACAR (13/08): *"la columna i en obras
  * ensucia con esa informacion, sacala"*. En Playón y Quattropani ocupaba siete y ocho renglones de
@@ -148,11 +153,32 @@ export const PESTANA_OBRAS = 'OBRAS'
  *                              DE RETENCIONES, o sea la plata que entra a la cuenta.
  *   · `ESTADO` / `Fecha de COBRO` / forma → ya vivían repartidos en Resta, Vencido y Próx. cobro.
  *
- * Lo que NO se pudo traducir está declarado como límite en el informe: el modelo tiene el CONTRATO
- * como dato propio y acá no existe —la venta es la suma de sus hitos cargados— así que el `SALDO
- * PENDIENTE` del modelo (contrato − facturado) no se puede calcular sin inventarlo.
+ * ═══ EL `SALDO PENDIENTE` YA SE PUEDE CALCULAR: EL CONTRATO ESTABA EN COBRANZAS (13/08) ═══
+ *
+ * Esta misma nota declaraba, hasta hoy, que el `SALDO PENDIENTE` del modelo *"no se puede calcular
+ * sin inventarlo"* porque el contrato no existía como dato. Se le preguntó al dueño si quería
+ * declararlo y contestó: *"ya tenes todo lo necesario en pestaña cobranzas"*. La columna ORDEN DE
+ * COMPRA lo dice fila por fila ("Resto 50% s/ total 47.590.272"), y `cobranzas-contrato.mjs` lo lee.
+ *
+ * ENTRÓ UNA SOLA COLUMNA, LA `I` — que es además la que este generador ya había tenido y borrado, así
+ * que no ensancha su huella:
+ *
+ *   · `SALDO PENDIENTE` del modelo → `I · Saldo contrato` = contrato − venta cargada. Es el número
+ *     que el dueño no podía ver: si da POSITIVO hay hitos del contrato que todavía no son fila en
+ *     Cobranzas, o sea plata vendida que no está en ninguna proyección de cobro. Si da NEGATIVO se
+ *     facturó por encima del contrato (adicionales, materiales con margen) — se publica con su signo
+ *     y no se recorta con un MAX(0): recortarlo escondería justo el caso que hay que mirar.
+ *   · `% FACTURADO` del modelo → la `B` de la Sección 2 pasa de cartera a CONTRATO (venta/contrato).
+ *     Es lo que el dueño pidió ("el % como avance de contrato, no de cartera") y las dos magnitudes
+ *     son del mismo criterio: el contrato se declara al NETO —verificado, los hitos de las 6 obras
+ *     suman exactamente su contrato— y la venta también.
+ *
+ * LA `B` DE LA SECCIÓN 1 NO CAMBIA: un cliente no tiene contrato (tiene obras, y además trabajos
+ * fuera de ellas), así que ahí sigue midiendo la cartera cobrada. Es la misma gramática que ya usan
+ * la `G` y la `H`, que también significan cosas distintas en cada sección y lo declaran en su
+ * encabezado.
  */
-export const ANCHO_OBRAS = 8
+export const ANCHO_OBRAS = 9
 
 /**
  * EL ANCHO MÁS GRANDE QUE ESTE GENERADOR TUVO ALGUNA VEZ.
@@ -195,7 +221,7 @@ export function conColaLimpiable(filas = [], hasta = ANCHO_HISTORICO, alto = ALT
  *  columna A NO se declara acá: la calcula `anchoColumnaA` a partir de los rótulos que se emiten.
  *  La B pasó de 44 a 60 px cuando dejó de tener un glifo (✓/⚠) y pasó a tener un número: "100,0%"
  *  son seis caracteres y con CLIP en toda la hoja lo que no entra no se derrama, DESAPARECE. */
-export const ANCHOS_OBRAS = [300, 60, 138, 138, 138, 138, 138, 150]
+export const ANCHOS_OBRAS = [300, 60, 138, 138, 138, 138, 138, 150, 138]
 
 /** Lo que Sheets muestra cuando una fórmula no evalúa. Publicar uno es peor que no escribir. */
 export const ERRORES_SHEET = Object.freeze(['#ERROR!', '#REF!', '#VALUE!', '#NAME?', '#N/A', '#DIV/0!', '#NUM!', '#NULL!'])
@@ -378,7 +404,9 @@ export const REFS_OBRAS = {
   // fila. El archivo también trae el desglose (Ganancias, IIBB, el 16,8%) en tres columnas propias
   // más a la derecha; acá se cita el total porque la pestaña publica un solo número por cliente y
   // sumar tres columnas para llegar al mismo importe sería una segunda definición del concepto.
-  cob: { hoja: 'Cobranzas', cliente: 'G', concepto: 'I', neto: 'J', total: 'M', retenciones: 'L', estado: 'O', fechaCobro: 'Q', fechaVenta: 'P', forma: 'N', categoria: 'B', oc: 'H', desde: 5 },
+  // `moneda` es la col AA: casi siempre vacía (pesos) y "USD" en la fila del anticipo en dólares de
+  // Quattropani. Toda suma de esta pestaña la cita — ver `sumaConUSD`.
+  cob: { hoja: 'Cobranzas', cliente: 'G', concepto: 'I', neto: 'J', total: 'M', retenciones: 'L', estado: 'O', fechaCobro: 'Q', fechaVenta: 'P', forma: 'N', categoria: 'B', oc: 'H', moneda: 'AA', desde: 5 },
   // `neto` es la columna "Importe" (M = Total − IVA). El costo se mide ahí, no en "Total" (O): la
   // venta ya se mide al neto, y comparar venta neta contra costo con IVA castigaba el margen ~21% en
   // todo lo que se compra en blanco. Neto contra neto. El IVA de compras es crédito fiscal, no costo.
@@ -417,6 +445,10 @@ const abierto = (c, campo) => {
   }
   return `'${c.hoja}'!$${col}$${c.desde}:$${col}`
 }
+
+/** Un literal de texto para una fórmula. Ninguno de los textos de esta pestaña lleva comillas
+ *  adentro; si algún día llevara, `problemaDeSintaxis` lo caza antes de escribir. */
+const quote = (t) => `"${t}"`
 
 /** El estado que saca una fila de la venta: cancelada, no vendida. Es lo ÚNICO que se descarta. */
 const NO_VENTA = 'CANCELAR'
@@ -527,9 +559,19 @@ function sumaCobranzas(cob, campo, cliente, extra, estado) {
   // La venta se acota por su fecha de VENTA; lo que mide plata que entra, por la de COBRO.
   const ventana = enElAno(cob, campo === 'neto' ? 'fechaVenta' : 'fechaCobro')
   return tramos(cob, cliente, extra)
-    .map(([v, c]) => `SUMIFS(${abierto(cob, campo)};${abierto(cob, 'cliente')};"${criterioCliente(v)}"${c};${abierto(cob, 'estado')};${estado}${ventana})`)
+    .map(([v, c]) => enPesos(cob, campo, `${abierto(cob, 'cliente')};"${criterioCliente(v)}"${c};${abierto(cob, 'estado')};${estado}${ventana}`))
     .join('+')
 }
+
+/**
+ * UNA SUMA DE COBRANZAS EN PESOS DE VERDAD: los importes en dólares valuados al tipo de cambio.
+ *
+ * Toda suma de esta pestaña pasa por acá. La forma y el porqué viven en `sumaConUSD`
+ * (`cobranzas-contrato.mjs`), que es donde se puede probar sin armar una grilla entera.
+ */
+const enPesos = (cob, campo, criterios) => sumaConUSD({
+  rango: abierto(cob, campo), criterios, moneda: abierto(cob, 'moneda'), tc: RANGO_TC,
+})
 
 /** VENTA: el NETO de todo lo que no está cancelado. El IVA no es venta. */
 const venta = (cob, cliente, extra = {}) => `=${sumaCobranzas(cob, 'neto', cliente, extra, `"<>${NO_VENTA}"`)}`
@@ -580,6 +622,45 @@ const retenido = (cob, cliente, extra = {}) => `=${sumaCobranzas(cob, 'retencion
  */
 const pctCobrado = (f) => `=IF(D${f}+E${f}=0;0;D${f}/(D${f}+E${f}))`
 
+/**
+ * LO QUE SE PUBLICA CUANDO NO HAY DATO. No es un cero y no es una celda en blanco.
+ *
+ * Un 0 afirmaría que el contrato vale cero; un blanco es indistinguible de una fórmula que se rompió
+ * en silencio, que es el defecto que `columnasDesparejas` existe para cazar. El guion dice lo único
+ * cierto: esta obra no declara contrato en ninguna de sus filas de Cobranzas.
+ */
+export const SIN_CONTRATO = '—'
+
+/**
+ * `% CONTRATO` — el `% FACTURADO` del modelo del dueño, contra el contrato y no contra la cartera.
+ *
+ * El dueño lo pidió así: *"el % como avance de contrato, no de cartera"*. Numerador y denominador
+ * son del mismo criterio —los dos al NETO— porque el contrato que declara la Orden de Compra es
+ * neto: verificado fila por fila, los hitos de las seis obras con contrato suman EXACTAMENTE su
+ * contrato al neto (Pisos: 23.795.136 + 5.950.000×3 + 5.945.136 = 47.590.272).
+ *
+ * PUEDE PASAR DE 100% Y ESO NO ES UN ERROR: Quattropani tiene $133.211.023 cargados sobre un
+ * contrato de $97.650.000 porque el anticipo incluye materiales que se facturan con margen fuera del
+ * contrato ("(paga el 33% del 50%) + Materiales"). Recortarlo a 100% escondería justo ese hecho.
+ */
+const pctContrato = (f, contrato) => (contrato ? `=C${f}/${contrato}` : SIN_CONTRATO)
+
+/**
+ * `SALDO CONTRATO` — el `SALDO PENDIENTE` del modelo del dueño.
+ *
+ * QUÉ CONTESTA, Y ES LA PREGUNTA QUE HABILITA TODO ESTO: si da POSITIVO, hay hitos del contrato que
+ * todavía no son fila en Cobranzas — plata ya vendida que no está en ninguna proyección de cobro y
+ * que hoy el dueño no puede ver en ningún lado. Si da NEGATIVO, se facturó por encima del contrato.
+ *
+ * EL CONTRATO VA COMO NÚMERO DENTRO DE LA FÓRMULA, no como una celda aparte, y eso es una decisión:
+ * no hay forma razonable de que Sheets extraiga por sí solo "47.590.272" de adentro del texto "Resto
+ * 50% s/ total 47.590.272 — certificación quincenal 1/4" sin una expresión regular monstruosa que
+ * este worktree no puede evaluar contra el archivo real. Lo que sí se garantiza es que el número no
+ * se fosiliza: `obras-pestana.mjs` lo vuelve a leer de Cobranzas en CADA corrida, y si esa lectura
+ * no trae contrato la celda pasa a "—" sola. El origen se declara en el subtítulo de la pestaña.
+ */
+const saldoContrato = (f, contrato) => (contrato ? `=${contrato}-C${f}` : SIN_CONTRATO)
+
 /** LO VENCIDO: fecha de cobro pasada y todavía sin cobrar. Es la plata que había que cobrar y no
  *  entró — el único número de esta pestaña que tiene que gritar. */
 /** Los pares (variante de cliente, criterio de obra) que forman UNA obra. Sin needle, el cliente entero. */
@@ -600,8 +681,8 @@ const tramos = (cob, cliente, extra = {}) => {
 }
 
 const vencido = (cob, cliente, extra = {}) =>
-  `=${tramos(cob, cliente, extra).map(([v, c]) => `SUMIFS(${abierto(cob, 'total')};${abierto(cob, 'cliente')};"${criterioCliente(v)}"${c}`
-    + `;${abierto(cob, 'estado')};"<>${COBRADO}";${abierto(cob, 'estado')};"<>${NO_VENTA}";${abierto(cob, 'fechaCobro')};"<"&TODAY()${enElAno(cob, 'fechaCobro')})`).join('+')}`
+  `=${tramos(cob, cliente, extra).map(([v, c]) => enPesos(cob, 'total', `${abierto(cob, 'cliente')};"${criterioCliente(v)}"${c}`
+    + `;${abierto(cob, 'estado')};"<>${COBRADO}";${abierto(cob, 'estado')};"<>${NO_VENTA}";${abierto(cob, 'fechaCobro')};"<"&TODAY()${enElAno(cob, 'fechaCobro')}`)).join('+')}`
 
 /**
  * LA PRÓXIMA FECHA DE COBRO pendiente.
@@ -688,8 +769,8 @@ costoNeto(cmp, cli),
   const f1 = h.n
   // COBRANZAS ENTERA, sin filtrar por cliente. El único criterio es el estado, así que una fila con la
   // columna de cliente vacía entra igual: si dependiera del cliente, el residuo podría esconder plata.
-  const todo = (campo, estado) => `SUMIFS(${abierto(cob, campo)};${abierto(cob, 'estado')};"${estado}"`
-    + `${enElAno(cob, campo === 'neto' ? 'fechaVenta' : 'fechaCobro')})`
+  const todo = (campo, estado) => enPesos(cob, campo, `${abierto(cob, 'estado')};"${estado}"`
+    + `${enElAno(cob, campo === 'neto' ? 'fechaVenta' : 'fechaCobro')}`)
   // ═══ ACÁ IBA "⇒ sin ubicar". EL DUEÑO LA SACÓ DOS VECES Y TIENE RAZÓN ═══
   //
   // *"la fila 'otros clientes' no puede ser, estan todos los clientes y obras declarados"*. Un control
@@ -700,7 +781,9 @@ costoNeto(cmp, cli),
   // fila que el dueño ya dijo dos veces que no quiere ver.
   const fTot = h.n + 1
   h.push(['⇒ TOTAL 2026', pctCobrado(fTot), `=${todo('neto', `<>${NO_VENTA}`)}`, `=${todo('total', COBRADO)}`,
-    `=${todo('total', `<>${NO_VENTA}`)}-${todo('total', COBRADO)}`,
+    // LOS PARÉNTESIS NO SON DE ESTILO: desde que la suma vale `todo − dólares + dólares×TC`, un
+    // `A-B` sin agrupar restaría sólo el primer término de B y sumaría los otros dos.
+    `=(${todo('total', `<>${NO_VENTA}`)})-(${todo('total', COBRADO)})`,
     `=SUM(F${f0}:F${f1})`, `=SUM(G${f0}:G${f1})`,
     // El retenido del año sale de la FUENTE ENTERA, igual que la venta y el cobrado: si un cliente
     // quedara fuera de la lista derivada, su retención tiene que seguir estando en el total.
@@ -740,7 +823,8 @@ function bloqueObra(h, refs, o, idx, unica = false) {
     // ACÁ VIVÍA EL SEMÁFORO `✓/⚠`, que miraba la cobranza vencida. Sale por el estándar del dueño
     // (13/08, el modelo que señaló no usa un solo glifo) y porque no informaba: daba ✓ en las siete
     // obras, y su única señal —hay vencido— la publica la columna F con el importe, que dice cuánto.
-    pctCobrado(fProt),
+    // Y DESDE EL 13/08 NO ES EL % DE CARTERA SINO EL DE CONTRATO, que es lo que el dueño pidió ver.
+    pctContrato(fProt, o.contrato),
     venta(cob, o.cliente, dela), cobrado(cob, o.cliente, dela), restaCobrar(cob, o.cliente, dela),
     vencido(cob, o.cliente, dela),
     `=SUM(G${f0}:G${f1})`,
@@ -754,7 +838,8 @@ function bloqueObra(h, refs, o, idx, unica = false) {
     //
     // PARA QUE EL MARGEN POR OBRA EXISTA hace falta que cada compra diga a QUÉ OBRA va, no sólo a qué
     // cliente. Mientras eso no esté, la columna no vuelve.
-    proximoCobro(cob, o.cliente, dela)])
+    proximoCobro(cob, o.cliente, dela),
+    saldoContrato(fProt, o.contrato)])
 
   for (const e of o.egresos ?? []) {
     const f = h.n + 1
@@ -785,7 +870,7 @@ function bloqueObra(h, refs, o, idx, unica = false) {
     h.tipeadas.push({ fila: fNoCaja, col: 2 })
   }
   h.push([])
-  return { clave: o.clave, fProt, fDetalle: [f0, f1], fMO, fNoCaja, proyectable }
+  return { clave: o.clave, fProt, fDetalle: [f0, f1], fMO, fNoCaja, proyectable, contrato: o.contrato ?? null }
 }
 
 /**
@@ -807,20 +892,42 @@ export function grillaObras(ctx = {}) {
   // UNA LÍNEA, Y SÓLO PARA DECLARAR EL CRITERIO. El dueño rechazó hoy otra pestaña por *"muchas
   // palabras y frases y explicaciones que nadie lee"*. Lo único que no se puede deducir mirando la
   // tabla es con qué criterio está medida cada columna, y eso la regla de oro 3 obliga a declararlo.
-  h.push([`${ANO} · venta al NETO (devengado) · cobranzas al TOTAL neto de retenciones (percibido)`])
+  // EL SUBTÍTULO ES DONDE ESTA PESTAÑA DECLARA SUS CRITERIOS, y ahora tiene dos que declarar más: de
+  // dónde sale el contrato (para que "Saldo contrato" no sea un número mágico) y a qué tipo de cambio
+  // se valúan los dólares. El TC va como FÓRMULA sobre el rango con nombre de CAJA: escribirlo como
+  // texto lo dejaría viejo al día siguiente y nadie se enteraría.
+  h.push([`=${quote(`${ANO} · venta al NETO (devengado) · cobranzas al TOTAL neto de retenciones (percibido)`
+    + ' · contrato leído de la ORDEN DE COMPRA de Cobranzas · USD valuado a ')}&`
+    + `IFERROR(TEXT(${RANGO_TC};"$ #.##0,00");"(sin tipo de cambio)")`])
   h.push([])
 
   const s1 = seccionObrasDelAno(h, refs, clientes)
 
   h.push(['2 · OBRAS EN CURSO Y FUTURAS'])
-  h.push(['Obra', '% cob.', 'Venta (neto)', 'Cobrado (total)', 'Resta (total)', 'Vencido', 'Pendiente pago', 'Próx. cobro'])
+  h.push(['Obra', '% contr.', 'Venta (neto)', 'Cobrado (total)', 'Resta (total)', 'Vencido', 'Pendiente pago', 'Próx. cobro', 'Saldo contrato'])
   // Cuántas obras declaradas tiene cada cliente: es lo que habilita la regla del dueño de arriba.
   const porCliente = obras.reduce((m, o) => m.set(o.cliente, (m.get(o.cliente) ?? 0) + 1), new Map())
   const bloques = obras.map((o, i) => bloqueObra(h, refs, o, i + 1, porCliente.get(o.cliente) === 1))
   const suma = (col) => `=${bloques.map((b) => `${col}${b.fProt}`).join('+')}`
   const fTot2 = bloques.length ? h.n + 1 : null
+  // LOS CONTRATOS DEL AÑO: sólo los DECLARADOS. Una obra sin contrato (BSA no lo declara en ninguna
+  // fila) no suma cero al denominador — queda afuera de los dos lados del cociente, que es la única
+  // forma de que el porcentaje siga significando lo mismo que en cada fila.
+  const contratos = bloques.reduce((s, b) => s + (Number(b.contrato) || 0), 0)
   if (fTot2) {
-    h.push(['⇒ TOTAL — OBRAS EN CURSO Y FUTURAS', pctCobrado(fTot2), suma('C'), suma('D'), suma('E'), suma('F'), suma('G'), ''])
+    // EL TOTAL DE `Saldo contrato` CITA SÓLO LAS OBRAS QUE DECLARAN CONTRATO, y no es un detalle de
+    // implementación: las otras publican el guion "—", y una fila que suma texto depende de que
+    // Sheets lo ignore. Puede que lo ignore; no lo puedo VERIFICAR desde acá sin escribir en el
+    // archivo, y una pestaña que descansa en una conducta que nadie probó es la definición de un
+    // número que miente despacio. Citando sólo las filas con número, el resultado es el mismo en
+    // Sheets y en el evaluador en frío — y el test puede afirmarlo.
+    const conContrato = bloques.filter((b) => b.contrato)
+    const saldo = conContrato.length ? `=${conContrato.map((b) => `I${b.fProt}`).join('+')}` : SIN_CONTRATO
+    // El % del cierre se arma con los MISMOS dos lados que las filas: venta de las obras CON contrato
+    // (= contratos − saldo) sobre esos contratos. Tomar la C del total metería la venta de BSA en el
+    // numerador y no en el denominador, y el cierre diría un avance que ninguna fila respalda.
+    const pct = contratos ? `=(${contratos}-I${fTot2})/${contratos}` : SIN_CONTRATO
+    h.push(['⇒ TOTAL — OBRAS EN CURSO Y FUTURAS', pct, suma('C'), suma('D'), suma('E'), suma('F'), suma('G'), '', saldo])
   }
 
   // ═══ ACÁ IBA "Otros trabajos de N cliente(s) con obra". EL DUEÑO SACÓ LA FILA DE RESIDUO ═══

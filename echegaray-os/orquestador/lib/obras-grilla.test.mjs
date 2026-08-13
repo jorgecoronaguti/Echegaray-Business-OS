@@ -295,7 +295,7 @@ test('las columnas salen de las refs INYECTADAS: ninguna letra queda pegada en l
   // El escritor resuelve las columnas contra los encabezados vivos. Si una letra quedara fija, la
   // fórmula sumaría otra columna el día que el archivo se reordene, y sin dar error.
   const refs = {
-    cob: { hoja: 'Cobranzas', cliente: 'Z', concepto: 'Y', neto: 'V', total: 'X', retenciones: 'AB', estado: 'W', oc: 'S', fechaCobro: 'T', fechaVenta: 'N', forma: 'M', categoria: 'R', desde: 9 },
+    cob: { hoja: 'Cobranzas', cliente: 'Z', concepto: 'Y', neto: 'V', total: 'X', retenciones: 'AB', estado: 'W', oc: 'S', fechaCobro: 'T', fechaVenta: 'N', forma: 'M', categoria: 'R', moneda: 'AC', desde: 9 },
     cmp: { hoja: 'Compras', fecha: 'V', proveedor: 'U', cliente: 'T', neto: 'R', iva: 'Q', total: 'S', familia: 'P', desde: 7 },
     mat: REFS_OBRAS.mat,
   }
@@ -308,9 +308,14 @@ test('las columnas salen de las refs INYECTADAS: ninguna letra queda pegada en l
   assert.match(cel(otra, `G${otra.fClientes[0]}`), /'Compras'!\$R\$7:\$R/, 'el costo, del neto de Compras')
   assert.match(cel(otra, `D${b.fProt}`), /'Cobranzas'!\$X\$9:\$X/, 'el cobrado sale del TOTAL de Cobranzas')
   assert.match(cel(otra, `H${otra.fClientes[0]}`), /'Cobranzas'!\$AB\$9:\$AB/, 'el retenido, de la col de retenciones')
+  // LA MONEDA TAMBIÉN SE INYECTA. Es la columna más nueva y la que decide si un importe se valúa: si
+  // quedara pegada en la AA, el día que Cobranzas sume una columna la fórmula miraría otra cosa y los
+  // dólares volverían a sumarse como pesos — sin dar error, que es como pasó la primera vez.
+  assert.match(cel(otra, `C${b.fProt}`), /'Cobranzas'!\$AC\$9:\$AC;"USD"/, 'la moneda sale de las refs inyectadas')
   for (const [ref, f] of formulas(otra)) {
     assert.ok(!/'Compras'!\$[EJCO]\$4/.test(f), `${ref}: quedó una columna de Compras pegada`)
     assert.ok(!/'Cobranzas'!\$[GIJLMNOQ]\$5/.test(f), `${ref}: quedó una columna de Cobranzas pegada`)
+    assert.ok(!/'Cobranzas'!\$AA\$5/.test(f), `${ref}: quedó la columna de MONEDA pegada`)
   }
 })
 
@@ -340,7 +345,10 @@ test('IMOTOR es San Francisco: la decisión del dueño vive en un mapa, no en un
   const v = cel(g, `C${f}`)
   assert.ok(v.includes('"San Francisco"'), 'el canónico')
   assert.ok(v.includes('"IMOTOR/San Francisco/JAVI SANCHEZ"'), 'y su variante declarada')
-  assert.equal(v.split('SUMIFS(').length - 1, 2, 'un SUMIFS por variante: SUMIFS no sabe hacer OR')
+  // TRES SUMIFS POR VARIANTE, y las dos razones son distintas: uno POR VARIANTE porque SUMIFS no sabe
+  // hacer OR, y tres POR VARIANTE porque cada suma vale "todo − los dólares mal contados + los
+  // dólares valuados" (ver `sumaConUSD`). Dos variantes × tres términos = seis.
+  assert.equal(v.split('SUMIFS(').length - 1, 6, 'un SUMIFS por variante (SUMIFS no hace OR) × tres términos de moneda')
   // Ningún OTRO cliente puede arrastrar a IMOTOR.
   for (let x = g.fClientes[0]; x <= g.fClientes[1]; x++) {
     if (x === f) continue
@@ -490,7 +498,9 @@ test('el % COBRADO divide magnitudes del MISMO criterio: con la venta daría má
   // La venta se mide al NETO y el cobrado al TOTAL. `cobrado/venta` da 113% en una obra blanca
   // íntegramente cobrada —Playón: venta neta $102.500.000, resta al total $116.150.000— y un avance
   // imposible se lee como un error de la pestaña. El denominador es la cartera: cobrado + resta.
-  for (const f of [...g.bloques.map((b) => b.fProt), ...rangoFilas(...g.fClientes), ...g.totales]) {
+  // SÓLO LA SECCIÓN 1. La B de la Sección 2 dejó de medir cartera y mide avance de CONTRATO (pedido
+  // del dueño: *"el % como avance de contrato, no de cartera"*), y tiene su propio test.
+  for (const f of [...rangoFilas(...g.fClientes), g.totales[0]]) {
     const v = cel(g, `B${f}`)
     assert.equal(v, `=IF(D${f}+E${f}=0;0;D${f}/(D${f}+E${f}))`, `B${f}`)
     assert.ok(!v.includes(`C${f}`), `B${f}: la VENTA no puede entrar al porcentaje — es otro criterio`)
@@ -706,7 +716,10 @@ test('la cola de la columna que se dejó de usar se limpia: sacarla del código 
   // corrida anterior —40 celdas— y encima corrida de fila, porque la grilla creció de 61 a 62: el
   // detalle de una obra terminó pegado al encabezado de la Sección 2.
   const conCola = conColaLimpiable(g.filas)
-  assert.ok(ANCHO_HISTORICO > ANCHO_OBRAS, 'hay una cola de columnas que limpiar')
+  // 13/08, SEGUNDA VUELTA: al volver a usar la novena columna (Saldo contrato) la cola de COLUMNAS
+  // quedó en cero — y eso está bien, no rota. Lo que no puede pasar nunca es que la grilla escriba
+  // MÁS ancho del que la cola limpia: ahí quedarían celdas de una corrida vieja fuera de todo control.
+  assert.ok(ANCHO_HISTORICO >= ANCHO_OBRAS, 'la cola tiene que cubrir todo lo que el generador escribe')
   assert.equal(conCola.length, ALTO_HISTORICO, 'y llega hasta el alto histórico')
   for (const [i, f] of conCola.entries()) {
     assert.equal(f.length, ANCHO_HISTORICO, `fila ${i + 1}: llega hasta el ancho histórico`)
