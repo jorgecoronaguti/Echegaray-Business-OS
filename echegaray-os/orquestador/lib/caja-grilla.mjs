@@ -329,9 +329,27 @@ export function grilla(cargado, refs) {
   // INVERTIDO cita las celdas C de las filas Balanz del panel — la MISMA fuente que se ve tres filas
   // abajo, no una segunda copia de la posición. El día que llegue el extracto de Balanz y la grilla
   // cambie el saldo, la tarjeta cambia con ella.
+  // ═══ LA FECHA MÁS VIEJA DE LAS FILAS QUE DE VERDAD SUMAN AL TOTAL (14/08/2026) ═══
+  //
+  // La fila de cierre publica `MAX` de TODAS las fechas del panel: es la del dato más nuevo, y la
+  // tarjeta la copiaba como si fuera la del total entero. El 14/08 decía "al 14/08" con $1.463.926 de
+  // la cuenta en dólares fechados el 05/08 — el atraso desaparecía adentro del MAX.
+  //
+  // EL MIN VA SOBRE LAS FILAS QUE SUMAN, ENUMERADAS, NO SOBRE EL RANGO. Un `MIN($D$d0:$D$d1)` incluiría
+  // las tres filas ‖ que el total RESTA (las dos de Balanz y los valores a depositar): la tarjeta
+  // avisaría por el atraso de plata que no está adentro del número que rotula. Las filas se enumeran
+  // porque el generador ya sabe cuáles son —`noSuman` es la misma declaración que usa el total—, así
+  // que agregar una cuarta fila que no suma sigue siendo declararla y nada más.
+  const filasQueSuman = []
+  for (let f = d0; f <= d1; f++) if (!noSuman.includes(f)) filasQueSuman.push(f)
+  // MIN sobre celdas vacías o con "" devuelve 0 y `avisoDeAtraso` lo descarta con su ISNUMBER: un
+  // panel sin una sola fecha cargada no dispara un aviso de atraso de 126 años.
+  const fechaVieja = filasQueSuman.length ? `MIN(${filasQueSuman.map((f) => `$D$${f}`).join(';')})` : ''
+
   const T = tarjetas({
     total: `$C$${fCierre}`,
     fecha: `$D$${fCierre}`,
+    fechaVieja,
     // Si la fila desaparece de CUENTAS, la referencia sale vacía y `tarjetas` FALLA CERRADO: mejor
     // romper acá que publicar una tarjeta que apunta a `$C$0`.
     invArs: fBalanzArs ? `$C$${fBalanzArs}` : '',

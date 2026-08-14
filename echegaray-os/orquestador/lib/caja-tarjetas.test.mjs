@@ -250,3 +250,101 @@ test('FALLA CERRADO: sin una referencia, rompe antes de escribir una celda en er
   assert.throws(() => tarjetas({ ...REF, pisoSimple: '' }), /faltan las referencias/)
   assert.throws(() => tarjetas(), /faltan las referencias/)
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LA FRESCURA QUE EL `MAX` TAPABA (14/08/2026)
+//
+// La fila del total publica el MAX de las fechas de todas las cuentas y la tarjeta la copiaba: el
+// 14/08 decía "al 14/08 · bancos y efectivo" con $1.463.926 de la cuenta en dólares fechados el 05/08,
+// y $44.905.290 de Balanz también al 05/08 rotulados "liquidez T+1" sin un día encima. Es lo que
+// `rotuloPorFuente` tiene prohibido en su propia cabecera: una fuente viva no le presta su frescura a
+// una congelada. Si alguien saca `fechaVieja` o el aviso del invertido, estos tests se ponen rojos.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('DISPONIBLE avisa cuando la fecha MÁS VIEJA de las filas que suman quedó atrás', () => {
+  const t = tarjetas({ ...REF, fechaVieja: 'MIN($D$7;$D$10)' }).find((x) => x.clave === 'disponible')
+  assert.match(t.contexto, /MIN\(\$D\$7;\$D\$10\)/, 'la tarjeta tiene que mirar la más vieja, no sólo el MAX del total')
+  assert.match(t.contexto, /parte al/, 'el aviso dice que una PARTE del total viene de otra fecha')
+  assert.match(t.contexto, /▲/, 'la marca es ALERTA (▲): el ⚠ no se dibuja al exportar a PDF')
+  assert.match(t.contexto, /TODAY\(\)-MIN\(\$D\$7;\$D\$10\)>7/, 'el umbral es el mismo DIAS_AVISO del resto del OS')
+})
+
+test('DISPONIBLE no avisa de nada cuando no hay atraso: la frase del día bueno es la de siempre', () => {
+  const t = tarjetas({ ...REF, fechaVieja: 'MIN($D$7)' }).find((x) => x.clave === 'disponible')
+  // El aviso vive adentro de un IF: existe la rama que devuelve "" y no agrega una sola letra.
+  assert.match(t.contexto, /;""\)/, 'sin atraso el término tiene que ser vacío — un aviso permanente deja de leerse')
+  assert.match(t.contexto, /"al "&TEXT\(\$D\$15;"dd\/mm"\)&" · bancos y efectivo"/, 'la frase base no cambia')
+})
+
+test('DISPONIBLE sin `fechaVieja` queda EXACTAMENTE como antes: falla hacia atrás, no hacia una fecha inventada', () => {
+  const t = tarjetas(REF).find((x) => x.clave === 'disponible')
+  assert.doesNotMatch(t.contexto, /parte al/)
+  assert.match(t.contexto, /"al "&TEXT\(\$D\$15;"dd\/mm"\)&" · bancos y efectivo"/)
+})
+
+test('INVERTIDO publica los días encima en vez de "liquidez T+1" cuando la posición está vieja', () => {
+  const t = tarjetas(REF).find((x) => x.clave === 'invertido')
+  assert.match(t.contexto, /TODAY\(\)-\$D\$11>7/, 'compara contra el mismo umbral que la columna de fechas')
+  assert.match(t.contexto, /▲ "&TEXT\(TODAY\(\)-\$D\$11;"0"\)&" días"/, 'dice cuántos días, no sólo que está vieja')
+  assert.doesNotMatch(t.contexto, /hace/, 'el patrón del archivo es `▲ N días` (formulaAntiguedad), no "hace N días"')
+  assert.match(t.contexto, /liquidez T\+1/, 'y sigue diciendo su naturaleza los días en que está al día')
+})
+
+test('INVERTIDO no inventa una antigüedad cuando la fecha no es un número', () => {
+  const t = tarjetas(REF).find((x) => x.clave === 'invertido')
+  assert.match(t.contexto, /IF\(NOT\(ISNUMBER\(\$D\$11\)\);"Balanz · liquidez T\+1"/,
+    'sin fecha, TODAY()-"" daría un número enorme y el aviso quedaría prendido para siempre')
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL ANCHO DE LAS TARJETAS CON RAMAS — EL AGUJERO DEL TEST DE ARRIBA (14/08/2026)
+//
+// "EL CONTEXTO DE CADA TARJETA ENTRA EN SU ANCHO" se SALTEA toda tarjeta cuyo contexto tenga un `IF`,
+// y las cinco lo tienen: el control que mide el corte no medía ninguna. Por eso "SI NO COBRÁS MÁS" y
+// "SALDO AL CIERRE" llegaron a producción cortadas dos veces distintas.
+//
+// Acá se mide LA RAMA MÁS LARGA de las dos tarjetas que declaran frescura, que es donde el aviso nuevo
+// puede empujar el texto por encima del ancho. Verificado al escribirlo: la versión con "hace" mide
+// ≈213px contra los 202px de la tarjeta INVERTIDA — se cortaba en "▲ hace 9 dí".
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+/** Parte una expresión por un separador de NIVEL CERO, respetando paréntesis y comillas. */
+const partir = (s, sep) => {
+  const out = []; let buf = ''; let nivel = 0; let enTexto = false
+  for (const ch of String(s)) {
+    if (ch === '"') enTexto = !enTexto
+    else if (!enTexto && ch === '(') nivel++
+    else if (!enTexto && ch === ')') nivel--
+    else if (!enTexto && ch === sep && nivel === 0) { out.push(buf); buf = ''; continue }
+    buf += ch
+  }
+  return [...out, buf].map((x) => x.trim()).filter(Boolean)
+}
+
+/**
+ * Cuántos caracteres DIBUJA la rama más larga de una fórmula con `IF`.
+ *
+ * El test de arriba se saltea toda fórmula con `IF` —o sea, las cinco tarjetas— porque "de un IF
+ * habría que elegir la más larga, y eso pide un parser". El parser son veinte líneas y el agujero ya
+ * costó dos textos cortados en producción: se escribe. Las ramas de un IF son EXCLUYENTES, así que se
+ * toma el MÁXIMO; la condición no se dibuja y no se cuenta.
+ */
+const largoDeRama = (expr) => {
+  const s = String(expr).trim().replace(/^=/, '')
+  const partes = partir(s, '&')
+  if (partes.length > 1) return partes.reduce((n, p) => n + largoDeRama(p), 0)
+  const t = partes[0] ?? ''
+  if (/^".*"$/s.test(t)) return t.length - 2
+  const m = /^IF\((.*)\)$/s.exec(t)
+  if (m) return Math.max(0, ...partir(m[1], ';').slice(1).map(largoDeRama))
+  return ANCHO_DE_TOKEN
+}
+test('las tarjetas que declaran FRESCURA entran en su ancho aun en su rama más larga', () => {
+  const t = T()
+  for (const clave of ['disponible', 'invertido']) {
+    const i = t.findIndex((x) => x.clave === clave)
+    const px = largoDeRama(t[i].contexto) * PX_POR_CARACTER
+    assert.ok(px <= anchoDeTarjeta(i),
+      `"${t[i].rotulo}": su rama más larga mide ≈${Math.round(px)}px y la tarjeta ${anchoDeTarjeta(i)}px — el aviso la corta`)
+  }
+})

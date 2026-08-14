@@ -91,6 +91,7 @@ const ESTADO_PROYECTADO = 'Proyectado'
 import { formulaComercial } from '../lib/orden-deuda.mjs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
 import { normComprobante, esLlaveUtil } from '../lib/cheques-cobertura.mjs'
+import { clasificarVentasSinCobranza } from '../lib/ventas-sin-cobranza.mjs'
 import { signo, esNotaDeCredito } from '../lib/comprobante-arca.mjs'
 import { analizar as analizarNC, facturasAnuladasCargadas, clave as claveNC } from '../lib/notas-credito.mjs'
 import { cruzar, verificar } from '../lib/cobertura-arca.mjs'
@@ -1043,18 +1044,40 @@ const money = (n) => Number(n).toLocaleString('es-AR', { style: 'currency', curr
  * LO LIBERADO SE SIGUE CONTANDO Y LISTANDO, con quién decidió, cuándo y su palabra textual. Lo único
  * que pierde es el `⚠`, que es lo que hace figurar al paso entre los que "no cierran".
  *
- * @param {Array<{comprobante:string, cuit:any, fecha:string, importe:number}>} emitidas
+ * ═══ Y LO QUE ENTRA ACÁ YA VIENE SEPARADO POR MOTIVO (14/08/2026) ═══
+ *
+ * El `⚠` es SÓLO para las que no tienen rastro en Cobranzas. Las que están con el número tipeado sin
+ * su punto de venta ("219") o con el mismo importe bajo otro número se siguen listando —son trabajo
+ * pendiente— pero no llevan la marca ni entran en la cifra del titular: mezcladas, el aviso decía
+ * $129.499.724 donde el agujero era $54.625.304,80, y un aviso inflado se descarta entero.
+ * Ver lib/ventas-sin-cobranza.mjs.
+ *
+ * @param {Array<{comprobante:string, cuit:any, fecha:string, importe:number}>} emitidas las que NO
+ *   tienen rastro en Cobranzas (`sinRastro`)
+ * @param {{porNumeroSuelto?:Array, porImporte?:Array}} [opts] las que sí están, para listarlas sin ⚠
  * @returns el veredicto completo: vivos, silenciados, caducadas y rotas
  */
-export function reportarVentasSinCobranza(emitidas = [], { log = console.warn, ...opts } = {}) {
+export function reportarVentasSinCobranza(emitidas = [], { log = console.warn, porNumeroSuelto = [], porImporte = [], ...opts } = {}) {
   const dec = decidir(CONTROLES.ventasSinCobranza, emitidas.map((r) => ({
     ...r, clave: r.comprobante, forma: { importe: r.importe, cuit: r.cuit ?? '' },
   })), opts)
   if (dec.vivos.length) {
     const plata = dec.vivos.reduce((a, r) => a + r.importe, 0)
-    log(`  ⚠ VENTAS (no es de esta pestaña): ${dec.vivos.length} factura(s) emitidas que Cobranzas no tiene, `
+    log(`  ⚠ VENTAS (no es de esta pestaña): ${dec.vivos.length} factura(s) emitidas SIN RASTRO en Cobranzas, `
       + `${money(plata)}. Su lugar es la pestaña Cobranzas; acá sólo se avisa.`)
     for (const r of dec.vivos) log(`     ${r.comprobante}  ${String(r.fecha).padStart(10)}  CUIT ${r.cuit ?? '—'}  ${money(r.importe)}`)
+  }
+  // SIN `⚠`: son de CARGA, no de plata que falta. Con la marca, el paso figuraba entre los que no
+  // cierran por una factura que está cargada y bien cobrada, sólo que numerada como en el talonario.
+  if (porNumeroSuelto.length) {
+    log(`  ○ ${porNumeroSuelto.length} factura(s) SÍ están en Cobranzas con el N° tipeado sin su punto de venta `
+      + `(${money(porNumeroSuelto.reduce((a, r) => a + r.importe, 0))}): completarlo en Cobranzas y el cruce las toma por la llave buena.`)
+    for (const r of porNumeroSuelto) log(`     ${r.comprobante}  →  Cobranzas fila ${r.fila}`)
+  }
+  if (porImporte.length) {
+    log(`  ○ ${porImporte.length} factura(s) con el MISMO importe exacto en Cobranzas bajo OTRO número `
+      + `(${money(porImporte.reduce((a, r) => a + r.importe, 0))}): o está mal numerada, o son dos comprobantes distintos. Lo decide el dueño.`)
+    for (const r of porImporte) log(`     ${r.comprobante}  ${money(r.importe)}  ↔  Cobranzas fila ${r.fila} (N° "${r.llaveEnCobranzas}")`)
   }
   explicarDecisiones(dec, log, { detalle: (h) => `${h.comprobante}  ${String(h.fecha).padStart(10)}  ${money(h.importe)}` })
   return dec
@@ -1308,12 +1331,22 @@ async function main() {
   // nadie sigue— y su lugar es la pestaña de Cobranzas. Mientras esa pestaña no exista rehecha, el
   // cruce NO se tira: se sigue calculando y se REPORTA por el log de la corrida, que es donde el OS
   // deja lo que todavía no tiene pestaña. Escribir una versión peor en el lugar equivocado, no.
-  const cobranzas = await google.readSheetValues(ID, 'Cobranzas!A5:G400')
+  // ═══ HASTA LA COLUMNA M, NO HASTA LA G (14/08/2026) ═══
+  //
+  // La segunda y la tercera pasada necesitan el importe, y "TOTAL a cobrar (neto de retenciones)" es
+  // la M. Leyendo hasta la G, el cruce sólo podía preguntar por el número — y el número es justamente
+  // lo que la planilla escribe distinto.
+  const cobranzas = await google.readSheetValues(ID, 'Cobranzas!A5:M400')
   const cobranzasPorComp = new Set()
   for (const c of cobranzas) {
     const k = normComprobante(c?.[4])
     if (esLlaveUtil(k)) cobranzasPorComp.add(k)
   }
+  // Para las pasadas 2 y 3 entran TODAS las filas con algo cargado, incluidas las que `esLlaveUtil`
+  // descarta por corta: ese descarte es precisamente el que dejaba afuera al "219" tipeado a mano.
+  const filasCobranzas = cobranzas
+    .map((c, i) => ({ fila: i + 5, llave: normComprobante(c?.[4]), importe: parseMonto(c?.[12]) || 0 }))
+    .filter((c) => c.llave || c.importe)
   const emitidasSinCobranza = eArca
     .filter((r) => !esNotaDeCredito(r.tipo_comprobante))
     .map((r) => ({
@@ -1321,7 +1354,9 @@ async function main() {
       cuit: r.receptor_cuit, fecha: fecha(r.fecha_emision), importe: Number(r.imp_total),
     }))
     .filter((r) => !cobranzasPorComp.has(normComprobante(r.comprobante)))
-  reportarVentasSinCobranza(emitidasSinCobranza)
+    .map((r) => ({ ...r, llave: normComprobante(r.comprobante) }))
+  const ventas = clasificarVentasSinCobranza(emitidasSinCobranza, filasCobranzas)
+  reportarVentasSinCobranza(ventas.sinRastro, { porNumeroSuelto: ventas.porNumeroSuelto, porImporte: ventas.porImporte })
 
   // ── QUÉ HACE CADA NOTA DE CRÉDITO ──────────────────────────────────────────────────────────────
   // Saber que RESTA arregla la aritmética; esto contesta la pregunta de negocio. Ver
