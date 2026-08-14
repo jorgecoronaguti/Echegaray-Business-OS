@@ -51,6 +51,67 @@ export function elegirTestigo(values = []) {
 }
 
 /**
+ * NÚCLEO PURO: HASTA `max` TESTIGOS REPARTIDOS POR TODA LA MATRIZ, con su posición.
+ *
+ * ═══ POR QUÉ NO ALCANZA CON UNO (14/08/2026) ═══
+ *
+ * `elegirTestigo` devuelve el PRIMERO. Para un lote de 106 filas x 16 columnas eso significa que se
+ * verifica UNA celda —casi siempre A1 del bloque, el título— y las otras 1.695 se dan por buenas.
+ *
+ * Medido en "Proveedores": el bloque se escribe entero cada dos horas, la firma se sella, la guarda
+ * de aterrizaje dice que sí, y en la pestaña conviven filas de la corrida nueva con filas de una de
+ * hace diez días —rótulos que el generador dejó de producir el 04/08 y columnas de prosa que ya no
+ * existen—. El título aterrizaba; el resto, no siempre. La guarda no podía verlo: miraba la celda que
+ * sí llegaba. Un control que sólo mira donde nunca falla no controla nada.
+ *
+ * Los testigos se reparten por la matriz a paso regular en vez de tomar los primeros N: un lote que
+ * aterriza la cabecera y descarta el cuerpo es exactamente el caso que hay que atrapar, y los
+ * primeros N caen todos en la cabecera.
+ *
+ * @param {any[][]} values
+ * @param {number} [max]
+ * @returns {{texto:string, fila:number, col:number}[]}
+ */
+export function elegirTestigos(values = [], max = 8) {
+  const todos = []
+  for (let f = 0; f < values.length; f++) {
+    const fila = values[f] || []
+    for (let c = 0; c < fila.length; c++) if (sirveDeTestigo(fila[c])) { todos.push({ texto: fila[c], fila: f, col: c }); break }
+  }
+  if (todos.length <= max) return todos
+  // Repartidos: primero, último y los intermedios a paso regular.
+  const paso = (todos.length - 1) / (max - 1)
+  const out = []
+  for (let i = 0; i < max; i++) out.push(todos[Math.round(i * paso)])
+  return [...new Map(out.map((t) => [`${t.fila}:${t.col}`, t])).values()]
+}
+
+/**
+ * Los testigos de un lote, ya resueltos a celdas A1 de la pestaña.
+ *
+ * @returns {{celdas:{celda:string, texto:string, fila:number, col:number}[], rango:string|null}}
+ *   `rango` es el rectángulo que los cubre a todos: se relee UNA vez y se comparan todos contra él,
+ *   que sale más barato que una lectura por testigo y no gasta cuota extra del pipeline.
+ */
+export function testigosDeLote(range, values, { max = 8 } = {}) {
+  const ts = elegirTestigos(values, max)
+  const a = anclaDelRango(range)
+  if (!ts.length || !a) return { celdas: [], rango: null }
+  const celdas = ts.map((t) => ({
+    celda: `${a.hoja}!${colLetra(a.col0 + t.col)}${a.fila0 + t.fila + 1}`,
+    texto: t.texto, fila: a.fila0 + t.fila + 1, col: a.col0 + t.col,
+  }))
+  const f0 = Math.min(...celdas.map((c) => c.fila)); const f1 = Math.max(...celdas.map((c) => c.fila))
+  const c0 = Math.min(...celdas.map((c) => c.col)); const c1 = Math.max(...celdas.map((c) => c.col))
+  // Un solo testigo se relee como CELDA, no como rango de una celda: `B7` y `B7:B7` designan lo mismo
+  // pero no son el mismo string, y el rango que se pide es lo que se compara contra el destino.
+  const rango = (f0 === f1 && c0 === c1)
+    ? `${a.hoja}!${colLetra(c0)}${f0}`
+    : `${a.hoja}!${colLetra(c0)}${f0}:${colLetra(c1)}${f1}`
+  return { celdas, rango, f0, c0 }
+}
+
+/**
  * NÚCLEO PURO: la esquina superior izquierda de un rango A1, separada de su pestaña.
  * "'Cheques Emitidos'!B7:D9" → { hoja: "'Cheques Emitidos'", fila0: 6, col0: 1 }
  * Devuelve null cuando no hay una celda de arranque que calcular (rangos de columnas enteras,

@@ -18,13 +18,13 @@ import { fileURLToPath } from 'node:url'
 import { frenar } from './congelador-sheets.mjs'
 // La regla que no se puede apagar: ninguna escritura deja vacía una celda que tenía algo. No la
 // levanta ORQ_SHEETS_DESCONGELAR, ni yaGuardado, ni espejo, ni respetar:false, ni --force.
-import { permiteBorradoExplicito, protegerBorrado } from './no-borrar.mjs'
+import { permiteBorradoExplicito, protegerBorrado, TOPE_VACIADO } from './no-borrar.mjs'
 // Y su inversa, con la misma disciplina: lo que el dueño vació no vuelve por ningún camino. Se
 // engancha sobre la relectura que ya hace la guarda de borrado. Ver no-reponer.mjs.
 import { noReponerEnRango, noReponerPorCeldas } from './no-reponer.mjs'
 // Dónde hay que mirar para saber si una escritura aterrizó: la celda del testigo, calculada desde
 // el ancla del rango. Puro, sin red ni base. Ver aterrizaje-escritura.mjs.
-import { testigoDeLote } from './aterrizaje-escritura.mjs'
+import { testigosDeLote } from './aterrizaje-escritura.mjs'
 
 /**
  * EL LOG DE LA GUARDA CIEGA NO AFIRMA PROPIEDAD (13/08).
@@ -1219,6 +1219,18 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
       {
         const nb = await protegerBorrado(cliente, fileId, data, { vaciarPropio, antesDePreservar: noReponer(fileId) })
         if (nb.descartados.length) console.log(`  🛟 descarto ${nb.descartados.length} rango(s): no pude releer el destino y no arriesgo borrarte algo — ${nb.descartados.slice(0, 3).join(', ')}`)
+        // ═══ UN BARRIDO QUE NO LIMPIA TIENE QUE DECIR POR QUÉ (14/08/2026) ═══
+        //
+        // Con `vaciarPropio` puesto y el sedimento intacto, el log no decía NADA: ni cuántas celdas se
+        // quisieron vaciar, ni cuántas se pudieron, ni si se topó con el tope. Un barrido que se frena
+        // en silencio es el mismo defecto que el generador que se felicita sobre datos viejos — y
+        // mandó a buscar la causa al lado equivocado dos veces. Con `vaciarPropio` pedido, el
+        // resultado se declara SIEMPRE, incluso (sobre todo) cuando es cero.
+        if (vaciarPropio) {
+          console.log(`  🧹 barrido de residuo propio: ${nb.vaciadas} vaciada(s) · ${nb.preservadas} conservada(s) `
+            + `(no se pueden probar mías) · ${nb.limpiadas} limpiada(s) por huella · tope ${TOPE_VACIADO}`
+            + (nb.descartados.length ? ` · ⛔ ${nb.descartados.length} rango(s) DESCARTADO(S) por pasar el tope` : ''))
+        }
         if (nb.preservadas) console.log(avisoConservadas(nb))
         if (nb.limpiadas) console.log(avisoLimpiadas(nb))
         if (nb.vaciadas) console.log(avisoVaciadas(nb))
@@ -1259,11 +1271,24 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
         // ═══ Y SE RELEE LA CELDA DEL TESTIGO, NO EL RANGO MANDADO (13/08) ═══
         // El rango que llega acá suele ser el ANCLA ("_J_OBREROS!A201") de una matriz de 200 filas:
         // releerlo devolvía UNA celda y el testigo vivía en otra. Ver aterrizaje-escritura.mjs.
-        const testigo = testigoDeLote(d.range, d.values || [])
-        if (!testigo) continue
-        const leido = await cliente.readSheetValues(fileId, testigo.celda).catch(() => null)
+        // ═══ VARIOS TESTIGOS, REPARTIDOS — UNO NO ALCANZA (14/08/2026) ═══
+        //
+        // Esto miraba UNA celda por lote: la primera de texto plano, que en un bloque es el título.
+        // Para "Proveedores" son 106 filas x 16 columnas ⇒ se verificaba 1 celda y se daban por
+        // buenas 1.695. Medido: el título aterrizaba, el cuerpo no siempre, y en la pestaña convivían
+        // filas de la corrida nueva con rótulos que el generador dejó de producir el 04/08. La guarda
+        // decía que sí porque miraba justo donde nunca fallaba.
+        //
+        // Sigue siendo UNA lectura por lote —el rectángulo que cubre a todos los testigos— así que no
+        // cuesta cuota extra; lo que cambia es dónde se mira.
+        const { celdas: testigos, rango, f0, c0 } = testigosDeLote(d.range, d.values || [])
+        if (!testigos.length || !rango) continue
+        const leido = await cliente.readSheetValues(fileId, rango).catch(() => null)
         if (!leido) continue
-        if (!(leido.flat() || []).some((c) => String(c) === String(testigo.texto))) perdidos.push({ ...testigo, range: d.range })
+        for (const t of testigos) {
+          const hay = (leido[t.fila - f0] || [])[t.col - c0]
+          if (String(hay ?? '') !== String(t.texto)) perdidos.push({ ...t, range: d.range })
+        }
       }
       if (perdidos.length) {
         // El aviso dice DÓNDE se miró y QUÉ se esperaba: sin eso, el que lo lee tiene que reconstruir
