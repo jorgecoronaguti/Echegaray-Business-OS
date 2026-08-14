@@ -98,11 +98,13 @@ import { cruzar, verificar } from '../lib/cobertura-arca.mjs'
 // El libro de ARCA se limpia de repetidos EN EL ORIGEN, antes de derivar nada. Ver el lib: filtrar
 // una derivación arregló la sección 4 y dejó Trielec repetido cuatro veces en la 3.
 import { sinComprobantesRepetidos } from '../lib/arca-duplicados.mjs'
-import { ARCA as N_ARCA, publicar, desalineados } from '../lib/rangos-nombrados.mjs'
+import { ARCA as N_ARCA, publicar, desalineados, retirar } from '../lib/rangos-nombrados.mjs'
 // Los rótulos del bloque de cobertura y a qué nombre cuelga cada línea, en UN solo lugar: el que
 // escribe la fila y el que la busca leen la misma constante. Ver el lib — la copia doble ya dejó
 // dos nombres apuntando a un CUIT.
-import { CABECERA_ARCA, LINEAS_ARCA, NOMBRES_ARCA, destinosDeArca, dondeViveCadaNombre } from '../lib/bloque-arca-nombres.mjs'
+import {
+  CABECERA_ARCA, LINEAS_ARCA, NOMBRES_ARCA, NOMBRES_ARCA_RETIRADOS, destinosDeArca, dondeViveCadaNombre,
+} from '../lib/bloque-arca-nombres.mjs'
 // Lo que el dueño YA decidió sobre un hallazgo puntual: se cuenta y se lista, pero no vuelve a
 // ocupar la línea de aviso. Ver lib/decisiones-hallazgos.mjs.
 import { CONTROLES, decidir, explicarDecisiones } from '../lib/decisiones-hallazgos.mjs'
@@ -1972,7 +1974,7 @@ async function main() {
     // fila `i` de la grilla es la fila `filaArranque + i` de la pestaña, la misma aritmética con la
     // que se acaban de clasificar los grupos de deuda acá arriba. Los rótulos vienen de
     // `LINEAS_ARCA`, la misma constante con la que se escribieron. Ver lib/bloque-arca-nombres.mjs.
-    const { destinos: destinosArca, faltan: sinRotulo, cabecera, cabeceras } =
+    const { destinos: destinosArca, faltan: sinRotulo, faltanSinNombre, cabecera, cabeceras } =
       destinosDeArca(hojaArca.grid || [], hojaArca.filaArranque)
     if (cabecera) console.log(`  bloque de cobertura de ARCA en la fila ${cabecera} de "${NOMBRES.proveedores}" (de la grilla escrita, no de releer la pestaña)`)
     if (cabeceras > 1) { err++; console.log(`  ⚠ ${cabeceras} cabeceras "${CABECERA_ARCA}" en la grilla que escribo: el bloque está duplicado en mi propio cuadro y no sé cuál es el bueno`) }
@@ -1991,6 +1993,24 @@ async function main() {
       err += sinRotulo.length
       console.log(`  ⚠ ${sinRotulo.length} línea(s) del bloque ARCA no están en la grilla que escribí: `
         + `${sinRotulo.join(' · ')}. Sus rangos con nombre quedan donde estaban y eso NO es seguro — se verifica abajo.`)
+    }
+    // Sin nombre colgando, la línea ausente es un defecto del cuadro, no una fuente de números
+    // equivocados en otra pestaña: se dice y no frena la corrida. Ver `destinosDeArca`.
+    if (faltanSinNombre.length) {
+      console.log(`  ○ ${faltanSinNombre.length} línea(s) del bloque ARCA no están en la grilla que escribí `
+        + `(ninguna publica un rango con nombre): ${faltanSinNombre.join(' · ')}`)
+    }
+    // ═══ LOS QUE SE RETIRAN, ANTES DE PUBLICAR LOS QUE QUEDAN ═══
+    //
+    // Se borran PRIMERO por una razón de orden: `publicar` relee `getNamedRanges` para decidir entre
+    // crear y actualizar, y un nombre que se va no tiene por qué figurar en esa foto. Y se hace en
+    // cada corrida, no una vez a mano: el que ya no existe se descarta solo, así que repetirlo no
+    // cuesta nada y garantiza que un archivo restaurado de una copia vieja se limpie solo.
+    const bajas = retirar([...NOMBRES_ARCA_RETIRADOS], await google.getNamedRanges(ID).catch(() => []))
+    if (bajas.length) {
+      await google.spreadsheetBatchUpdate(ID, bajas)
+      console.log(`  🗑 ${bajas.length} rango(s) con nombre de ARCA retirados: ninguna fórmula del libro los citaba `
+        + 'y vivían sobre la tabla de comprobantes faltantes. El cuadro los sigue mostrando en la pestaña.')
     }
     const nombres = await publicar(google, ID, hojaArca.sheetId, destinosArca, { titulo: NOMBRES.proveedores })
     console.log(`  ${nombres.nombres} rangos con nombre publicados: el Cash Flow los referencia en vez de copiarlos`
@@ -2032,10 +2052,14 @@ async function main() {
   // error — nunca se borra nada sobre un resultado que no se verificó.
   const OBSOLETAS = [PESTAÑA, 'Proveedores — Deuda', 'Proveedores — Cuenta Corriente', 'Proveedores — Control y ARCA']
   const meta2 = await google.getSheetMeta(ID)
-  const retirar = OBSOLETAS.map((t) => meta2.find((h) => h.title === t)).filter(Boolean)
-  if (!err && retirar.length) {
-    await google.spreadsheetBatchUpdate(ID, retirar.map((h) => ({ deleteSheet: { sheetId: h.sheetId } })))
-    console.log(`  retiradas: ${retirar.map((h) => `"${h.title}"`).join(', ')} — su contenido está en las dos de arriba`)
+  // NO SE LLAMA `retirar`: ese nombre es el de la función que da de baja RANGOS CON NOMBRE, importada
+  // arriba. Un `const` acá sombrea el import en TODA la función —zona muerta temporal incluida—, así
+  // que la llamada de doscientas líneas más arriba moriría con un ReferenceError en plena corrida.
+  // Dos cosas distintas no comparten nombre aunque el verbo sea el mismo: acá se retiran PESTAÑAS.
+  const pestanasARetirar = OBSOLETAS.map((t) => meta2.find((h) => h.title === t)).filter(Boolean)
+  if (!err && pestanasARetirar.length) {
+    await google.spreadsheetBatchUpdate(ID, pestanasARetirar.map((h) => ({ deleteSheet: { sheetId: h.sheetId } })))
+    console.log(`  retiradas: ${pestanasARetirar.map((h) => `"${h.title}"`).join(', ')} — su contenido está en las dos de arriba`)
   }
 
   console.log(`  ARCA: ${g.afip1 - g.afip0 + 1} comprobantes facturados que Compras no tiene`)

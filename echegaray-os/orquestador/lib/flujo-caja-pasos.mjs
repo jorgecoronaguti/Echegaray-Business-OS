@@ -306,6 +306,23 @@ export const PASOS = [
   // como fallo, el servicio quedaría siempre en rojo y —peor— la frescura del Cash Flow, que sólo se
   // registra si nadie falló, dejaría de registrarse. Es el motivo por el que existe esa lista.
   ['auditar-duenos-pestanas.mjs', 'censo de dueños: qué pestaña del archivo no la mantiene ningún paso de esta lista', []],
+  // ═══ EL AUDITOR QUE HABRÍA CAZADO LOS DOCE `ARCA_*` TAMPOCO LO CORRÍA NADIE (14/08/2026) ═══
+  //
+  // Exactamente la misma historia que `_CRUCE_ARCA` cuatro entradas más arriba, sobre otro objeto.
+  // `auditar-rangos-fosilizados.mjs` existe desde el 21/07, mira los rangos A1 que se quedaron cortos
+  // y —desde el 03/08— los 80 rangos con nombre del libro, y sólo corría si alguien lo tipeaba.
+  //
+  // Medido el 14/08 contra el archivo vivo: los doce `ARCA_*` vivían sobre `Proveedores!B124:C129`,
+  // que hoy es la tabla de comprobantes faltantes. Once de los doce publicaban un CUIT o un número de
+  // comprobante bajo un nombre que promete un contador o un importe, y `ARCA_FALTAN_MONTO` —el único
+  // de los doce con lectores reales— le pasaba "0038-00025483" a `Materiales!B53`. El generador de
+  // Proveedores lo gritaba cada dos horas en su propio log y salía con código ≠0; el archivo entero
+  // no tenía quién hiciera esa pregunta sobre los otros 68 nombres.
+  //
+  // VA EN `REPORTES`: su ≠0 significa "encontré rangos cortos o nombres que mienten", no "no pude
+  // generar los datos". Contado como fallo dejaría el servicio siempre en rojo y —peor— la frescura
+  // del Cash Flow, que sólo se registra si nadie falló, dejaría de registrarse.
+  ['auditar-rangos-fosilizados.mjs', 'rangos que se quedaron cortos y rangos con nombre ciegos, huérfanos o que mienten su especie', []],
   // EL SALDO DEL BANCO CONTRA SUS PROPIOS MOVIMIENTOS (31/07). El dueño: "está mal el saldo de caja en
   // todos lados". De ese saldo cuelgan CAJA_TOTAL_DISPONIBLE, el efectivo inicial de los dos cash flow y
   // el piso proyectado: un agujero en el extracto cargado se propaga a todas las pantallas en silencio,
@@ -376,7 +393,7 @@ export const PASOS = [
 export const REPORTES = new Set([
   'formato-pestanas.mjs', 'reparar-pantalla.mjs', 'censo-numeros-pegados.mjs', 'auditar-saldo-banco.mjs',
   'reparar-textos.mjs', 'formato-condicional.mjs', 'auditar-pantalla.mjs', 'auditar-duenos-pestanas.mjs',
-  'auditar-doble-conteo-compras.mjs',
+  'auditar-doble-conteo-compras.mjs', 'auditar-rangos-fosilizados.mjs',
 ])
 
 /** NÚCLEO PURO: ¿este paso es de presentación/auditoría (su ≠0 es un reporte, no un fallo de datos)? */

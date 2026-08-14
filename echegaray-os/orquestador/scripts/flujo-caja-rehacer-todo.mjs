@@ -76,13 +76,46 @@ const DRY = process.argv.includes('--dry')
  * imprimió avisos" es una descripción honesta que manda a leer el log entero; una advertencia
  * ajena presentada como causa manda a arreglar lo que no está roto.
  *
+ * ═══ LA CAUSA NO SIEMPRE ESTÁ EN stderr, Y ÉSTE ES EL CASO (14/08/2026) ═══
+ *
+ * Con la regla de arriba puesta, `proveedores-materiales-pestana.mjs` siguió figurando FALLADO con
+ * otra causa falsa —
+ *
+ *     0001-00000214  →  Cobranzas fila 38
+ *
+ * — que es una línea de DETALLE de un aviso informativo sobre facturas emitidas numeradas sin su
+ * punto de venta. Ni siquiera es un problema: es trabajo de carga de OTRA pestaña. Sobrevivió al
+ * filtro porque su titular lleva `○` y no `⚠`, así que la línea no está marcada… y porque el motivo
+ * REAL —`⚠ 22 celdas en error: NO retiro la pestaña vieja`— se imprime por `console.log`, o sea por
+ * STDOUT, que esta función no miraba.
+ *
+ * Un paso decide su código de salida donde imprime su veredicto, y en este repo los veredictos van a
+ * stdout: `⚠ N celdas en error`, `⛔ no escribo`, `⏭ salteada`. Buscar la causa sólo en stderr es
+ * buscarla donde no está. Se miran los dos, en orden de cercanía a la muerte: primero lo último de
+ * stderr que no sea un aviso ni el detalle de un aviso, y si eso no aparece, lo último de stdout que
+ * traiga una marca de veredicto. Y si tampoco, se dice que no se sabe — que es la respuesta honesta y
+ * la que manda a leer el log entero, en vez de mandar a arreglar lo que no está roto.
+ *
  * @param {{stderr?:string, stdout?:string, message?:string, code?:number}} e el error de execFile
  * @returns {string} una línea, ya recortada
  */
+/**
+ * Las marcas con las que un paso de este repo dice "acá está por qué salgo distinto de cero".
+ * `⛔` no escribí · `⏭` me saltearon · `✗` un control dio rojo. `⚠` NO está: es la marca de aviso que
+ * el pipeline recolecta aparte, y confundirla con un veredicto es el defecto original.
+ */
+const MARCA_VEREDICTO = /[⛔⏭✗]/
+/** Una línea de DETALLE cuelga de su titular: empieza con un glifo de viñeta o viene sangrada. */
+const ES_DETALLE = (cruda) => /^\s{4,}/.test(cruda) || /^\s*[○·•]/.test(cruda)
+
 export function motivoDeFalla(e = {}) {
-  const lineas = String(e?.stderr ?? '').split('\n').map((l) => l.trim()).filter(Boolean)
-  const causa = [...lineas].reverse().find((l) => !MARCA_ALERTA.test(l))
-  if (causa) return causa.slice(0, 220)
+  const crudas = String(e?.stderr ?? '').split('\n').filter((l) => l.trim())
+  const lineas = crudas.map((l) => l.trim())
+  const causa = [...crudas].reverse().find((l) => !MARCA_ALERTA.test(l) && !ES_DETALLE(l))
+  if (causa) return causa.trim().slice(0, 220)
+  const veredicto = String(e?.stdout ?? '').split('\n').map((l) => l.trim()).filter(Boolean)
+    .reverse().find((l) => MARCA_VEREDICTO.test(l) || MARCA_ALERTA.test(l))
+  if (veredicto) return veredicto.slice(0, 220)
   if (lineas.length) return `salió con código ${e?.code ?? '?'} y en stderr sólo hay avisos (${lineas.length}): la causa está en el log del paso`.slice(0, 220)
   return String(e?.message ?? 'sin stderr').split('\n')[0].slice(0, 220)
 }
