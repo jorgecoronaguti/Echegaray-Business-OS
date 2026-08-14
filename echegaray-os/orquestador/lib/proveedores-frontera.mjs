@@ -120,10 +120,15 @@ const PREFIJO_NUMERO = /^\s*\d+\s*·\s*/
  */
 export const SECCIONES_PROVEEDORES = [
   'deuda',              // 1 · QUÉ SE DEBE Y CUÁNDO            (tabla dinámica, no la escribe este OS)
-  'cuentaCorriente',    // 2 · CUENTA CORRIENTE POR PROVEEDOR   (tabla dinámica, ídem)
-  'notasCredito',       // 3 · NOTAS DE CRÉDITO                 ← LA FRONTERA
-  'faltanEnCompras',    // 4 · LO QUE ARCA FACTURÓ Y COMPRAS NO TIENE
-  'control',            // 5 · LO QUE HAY QUE CORREGIR EN COMPRAS
+  // 2 · QUÉ SALE CADA DÍA — el cuadro que contesta "a quiénes y cómo pago un determinado día".
+  // Va INMEDIATAMENTE debajo de la deuda porque es su consecuencia: primero a quién se le debe,
+  // después qué sale cada día. Es de fórmulas vivas, no una dinámica: la API no emite el subtotal de
+  // un nivel externo de un pivot y sin total por día el cuadro no decide nada.
+  'salePorDia',         // 2 · QUÉ SALE CADA DÍA               (proveedores-que-sale-cada-dia.mjs)
+  'cuentaCorriente',    // 3 · CUENTA CORRIENTE POR PROVEEDOR   (tabla dinámica, ídem)
+  'notasCredito',       // 4 · NOTAS DE CRÉDITO                 ← LA FRONTERA
+  'faltanEnCompras',    // 5 · LO QUE ARCA FACTURÓ Y COMPRAS NO TIENE
+  'control',            // 6 · LO QUE HAY QUE CORREGIR EN COMPRAS
 ]
 
 // ═══ DOS SECCIONES QUE SE FUERON, Y POR QUÉ (04/08) ═══
@@ -175,7 +180,11 @@ export const DUENOS_DE_PROVEEDORES = Object.freeze([
   Object.freeze({ bloque: 'de la frontera para abajo (3, 4, 5) + Materiales', script: 'proveedores-materiales-pestana.mjs' }),
   Object.freeze({ bloque: 'los títulos de las secciones 1 y 2', script: 'proveedores-titulos-sembrar.mjs' }),
   Object.freeze({ bloque: '1 · qué se debe y cuándo', script: 'proveedores-dos-cuadros.mjs' }),
-  Object.freeze({ bloque: '2 · cuenta corriente por proveedor', script: 'proveedores-seccion2-pivot.mjs' }),
+  // DESPUÉS de la sección 1 y ANTES de la cuenta corriente, y las dos razones son de posición: este
+  // bloque se ubica entre el final de la sección 1 y el título de la que sigue, así que necesita que
+  // la 1 ya esté escrita; y cuando cambia de alto corre todo lo de abajo, que se reancla por título.
+  Object.freeze({ bloque: '2 · qué sale cada día', script: 'proveedores-que-sale-cada-dia.mjs' }),
+  Object.freeze({ bloque: '3 · cuenta corriente por proveedor', script: 'proveedores-seccion2-pivot.mjs' }),
   Object.freeze({ bloque: 'la columna "Qué hacer" del dueño', script: 'proveedores-notas-visibles.mjs' }),
   Object.freeze({ bloque: 'el encabezado (la posición) y los anchos', script: 'proveedores-encabezado-aplicar.mjs' }),
 ])
