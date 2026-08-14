@@ -315,7 +315,7 @@ async function main() {
  * 3. SIN CUADRÍCULA, SIN BARRAS DE COLOR, SIN BORDES DE CAJA. La jerarquía la dan la tipografía y una
  *    hairline. Lo que se resta se distingue por el signo y por la palabra.
  */
-async function formatear(google, sheetId, g, anexo) {
+export async function formatear(google, sheetId, g, anexo) {
   const AMARILLO = { red: 1, green: 0.98, blue: 0.86 }
   const INK = { red: 0.10, green: 0.13, blue: 0.20 }
   const MUTED = { red: 0.53, green: 0.52, blue: 0.49 }

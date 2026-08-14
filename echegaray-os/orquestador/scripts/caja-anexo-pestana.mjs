@@ -295,7 +295,7 @@ async function main() {
  * APLICA deja cada corrida encima de la anterior, y así llegó CAJA a tener dos tipografías, seis
  * tamaños y nueve fondos.
  */
-async function formatear(google, sheetId, g) {
+export async function formatear(google, sheetId, g) {
   const n = g.filas.length
   const r = (r0, r1, c0 = 0, c1 = ANCHO_ANEXO) => ({ sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
   const req = [
@@ -328,6 +328,19 @@ async function formatear(google, sheetId, g) {
   // La última columna es PROSA: texto, gris, con ajuste. Nunca plata.
   fmt(r(0, n, ANCHO_ANEXO - 1, ANCHO_ANEXO), 'userEnteredFormat',
     { ...E.nota(), numberFormat: { type: 'TEXT' }, wrapStrategy: 'WRAP', verticalAlignment: 'MIDDLE' })
+  // …SALVO LAS CUATRO CELDAS QUE CUENTAN, que el bloque declara (`fCuantos`). Un contador dibujado
+  // como prosa sale crudo y pegado a la izquierda: "1234" en vez de "1.234", y el cero se lee como un
+  // dato en vez de como "no hay nada". Va DESPUÉS de la prosa, o la prosa se lo lleva puesto — los
+  // `repeatCell` se aplican en orden y gana el último. Ver scripts/pestanas-formato-final.test.mjs.
+  //
+  // SÓLO EL FORMATO DE NÚMERO, NO LA ALINEACIÓN: el encabezado "Cuántos" lo pinta a la izquierda la
+  // regla de encabezados de más abajo, y cuatro números a la derecha debajo de un título a la
+  // izquierda se leen como dos columnas distintas. La corrección es que el número sea un número.
+  if (g.fCuantos) {
+    const [q0, q1] = g.fCuantos
+    fmt(r(q0 - 1, q1, ANCHO_ANEXO - 1, ANCHO_ANEXO), 'userEnteredFormat.numberFormat',
+      { numberFormat: { type: 'NUMBER', pattern: '#,##0;-#,##0;"—"' } })
+  }
   // UNA TASA NO ES PLATA: con formato de moneda, el 55% anual se dibuja "$1".
   if (g.fTasa) fmt(r(g.fTasa - 1, g.fTasa, 2, 3), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'PERCENT', pattern: '0.00%' } })
   // LOS DÍAS SON DÍAS: "2 días" con formato moneda se dibuja "$2".
