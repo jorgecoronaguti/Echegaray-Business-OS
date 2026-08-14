@@ -8,7 +8,9 @@
 // ciega. Estos tests son los mismos, apuntando a donde ahora vive el código.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { grillaAnexo, ANCHO_ANEXO } from './caja-anexo.mjs'
+import { readFileSync } from 'node:fs'
+import { grillaAnexo, ANCHO_ANEXO, SELLO_EFECTIVO, HISTORICO_EFECTIVO, claveDeRotulo } from './caja-anexo.mjs'
+import { rescatarAnexo } from '../scripts/caja-anexo-pestana.mjs'
 import { ANEXO, DESDE_CAJA } from './caja-anexo-nombres.mjs'
 import { ESPECIE_ANEXO } from './caja-anexo-nombres.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
@@ -24,6 +26,14 @@ const construir = () => grillaAnexo({ refs: REFS, cartera: CARTERA, conceptosCie
 
 const filaDe = (g, re) => g.filas.findIndex((f) => re.test(String(f?.[0] ?? '').trim())) + 1
 const celda = (g, fila, col) => String(g.filas[fila - 1]?.[col] ?? '')
+/**
+ * Una fila COMO LA DEVUELVE LA API, para probar el rescate contra su entrada real: `readSheetGrid`
+ * entrega una celda por columna con `valor` (el texto tal cual, con su sangría) y `numero`.
+ */
+const celdas = (rotulo, numeros = {}) => Array.from({ length: ANCHO_ANEXO }, (_, i) => ({
+  valor: i === 0 ? rotulo : null,
+  numero: Object.hasOwn(numeros, i) ? numeros[i] : null,
+}))
 
 test('el anexo se construye sin red, sin base y sin escribir una celda', () => {
   const g = construir()
@@ -77,9 +87,11 @@ test('EL SELLO: con conteo nuevo se autocancela (neto 0 = "lo contado, tal cual"
   assert.match(sello, /<>N\(CAJA_ARQUEO_ARS\)/, 'la vigencia compara el VALOR del arqueo contra la copia sellada')
   assert.match(sello, /<>N\(CAJA_ARQUEO_ARS_FECHA\)/, 'y también la FECHA: recontar el mismo monto otro día resella')
   assert.ok(!sello.includes(','), 'es-AR: separador ; — una coma acá es un decimal, no un argumento')
-  // El neto es la suma de TODO lo visible: los seis históricos y el sello. Nada por fuera.
+  // El neto es la suma de TODO lo visible: los seis históricos y el sello. Nada por fuera. Y desde el
+  // 14/08 lleva además la guarda de lo imposible (su propio test, más abajo).
   const neto = celda(g, g.fNeto, 2)
-  assert.match(neto, new RegExp(`^=IF\\(NOT\\(ISNUMBER\\(CAJA_ARQUEO_ARS_FECHA\\)\\);0;SUM\\(C${f0}:C${g.fSello}\\)\\)$`))
+  assert.match(neto, new RegExp(`^=IF\\(NOT\\(ISNUMBER\\(CAJA_ARQUEO_ARS_FECHA\\)\\);0;`))
+  assert.ok(neto.includes(`SUM(C${f0}:C${g.fSello})`), 'el neto suma exactamente el bloque visible')
   // Sin sellos previos, D del sello y D del estado salen en 0: fuerzan "conteo sin sellar" — el lado
   // que muestra lo contado tal cual, nunca un descuento fantasma.
   assert.equal(g.filas[g.fSello - 1][3], 0)
@@ -87,14 +99,110 @@ test('EL SELLO: con conteo nuevo se autocancela (neto 0 = "lo contado, tal cual"
 })
 
 test('el sello RESCATADO viaja a su celda: regenerar el anexo no puede deshacer el sello', () => {
-  const cargado = new Map([
-    ['      · (−) lo que ya estaba adentro del conteo — SELLO', { selloNeto: -2000000, selloFecha: 46240 }],
-    ['      ¿el sello está al día?', { selloValor: 5920000 }],
+  // EL RESCATE SE ARMA CON EL PRODUCTOR REAL (`rescatarAnexo` sobre filas como las devuelve la API), no
+  // con un Map tipeado a mano. Escrito a mano, este test pasaba en verde mientras el rescate vivo no
+  // encontraba NUNCA el sello: comparaba el rótulo del Sheet recortado contra una constante con seis
+  // espacios de sangría. Ver el test del rescate, abajo.
+  const cargado = rescatarAnexo([
+    celdas(SELLO_EFECTIVO.sello, { 3: -2000000, 5: 46240 }),
+    celdas(SELLO_EFECTIVO.estado, { 3: 5920000 }),
   ])
   const g = grillaAnexo({ refs: REFS, cartera: CARTERA, conceptosCiegos: [], cargado })
   assert.equal(g.filas[g.fSello - 1][3], -2000000, 'el número sellado se re-emite donde estaba')
   assert.equal(g.filas[g.fSello - 1][5], 46240, 'con la fecha del conteo al que pertenece')
   assert.equal(g.filas[g.fEstado - 1][3], 5920000, 'y la copia del valor del arqueo, para detectar el próximo conteo')
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL RESCATE POR RÓTULO Y EL EFECTIVO IMPOSIBLE — LOS DOS DEFECTOS DEL 14/08/2026
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('EL SELLO SE RESCATA DE VERDAD: el rótulo del Sheet viene con su sangría', () => {
+  // EL DEFECTO, medido contra la pestaña viva el 14/08: la API devuelve
+  // `"      · (−) lo que ya estaba adentro del conteo — SELLO"` con los seis espacios, y el rescate lo
+  // recortaba antes de comparar contra la constante. No coincidía nunca: el mapa salía VACÍO, cada
+  // regeneración escribía 0 en el sello, `necesitaSello` daba verdadero siempre y el anexo RESELLABA
+  // EN CADA CORRIDA contra el histórico de ese instante. El efectivo publicado volvía al arqueo cada
+  // dos horas y un pago en billetes desaparecía adentro del sello: la caja física mintiendo hacia
+  // arriba, en silencio. Revertir la normalización de la clave pone esto en rojo.
+  const cargado = rescatarAnexo([
+    celdas(SELLO_EFECTIVO.sello, { 3: -138242851.2, 5: 46241 }),
+    celdas(SELLO_EFECTIVO.estado, { 3: 4320000 }),
+    celdas(HISTORICO_EFECTIVO[3].rotulo, { 3: -18773559.7 }),
+  ])
+  assert.equal(cargado.get(claveDeRotulo(SELLO_EFECTIVO.sello))?.selloNeto, -138242851.2)
+  assert.equal(cargado.get(claveDeRotulo(SELLO_EFECTIVO.estado))?.selloValor, 4320000)
+  assert.equal(cargado.get(claveDeRotulo(HISTORICO_EFECTIVO[3].rotulo))?.selloLinea, -18773559.7,
+    'y el sello DE CADA RENGLÓN, que es lo que dice quién se movió')
+})
+
+test('EL SELLO POR RENGLÓN vuelve a su celda D, y el desglose sigue sin aportar pesos', () => {
+  const cargado = rescatarAnexo(HISTORICO_EFECTIVO.map((l, i) => celdas(l.rotulo, { 3: -1000 * (i + 1) })))
+  const g = grillaAnexo({ refs: REFS, cartera: CARTERA, conceptosCiegos: [], cargado })
+  const [f0, f1] = g.filasHistorico
+  for (let f = f0; f <= f1; f++) {
+    assert.equal(g.filas[f - 1][3], -1000 * (f - f0 + 1), 'cada renglón re-emite SU sello')
+    assert.ok(vacia(String(g.filas[f - 1][4] ?? '')), 'y la columna de pesos sigue vacía: el desglose no suma')
+  }
+})
+
+test('EL EFECTIVO NO PUEDE PUBLICARSE NEGATIVO: la guarda está en el neto, y el neto es lo que CAJA lee', () => {
+  // El 14/08 el neto publicó −$19.371.781,38 sobre un conteo de $4.320.000 y CAJA DISPONIBLE se fue a
+  // −$194.181. La fórmula tiene que degradar al conteo (neto 0) cuando el cajón daría negativo — nunca
+  // publicar el imposible, que viaja a los dos cash flow, a Postgres y al Director.
+  const g = construir()
+  const neto = celda(g, g.fNeto, 2)
+  const [f0] = g.filasHistorico
+  assert.ok(neto.includes(`IF(N(CAJA_ARQUEO_ARS)+SUM(C${f0}:C${g.fSello})<0;0;`),
+    `el neto tiene que degradar a 0 cuando el cajón daría negativo. Es: ${neto}`)
+  assert.ok(!neto.includes(','), 'es-AR: separador ; — una coma acá es un decimal, no un argumento')
+})
+
+test('EL CONTROL SE PUBLICA CON NOMBRE Y FUERA DEL BLOQUE QUE MIDE', () => {
+  const g = construir()
+  const f = g.fImposible
+  assert.ok(f > g.fSello, 'un control que cae adentro del rango del neto se sumaría a lo que mide')
+  assert.ok(vacia(celda(g, f, 2)), 'por eso su columna C va vacía: C entre el histórico y el sello ES el neto')
+  const control = celda(g, f, 4)
+  assert.match(control, /^=IF\(NOT\(ISNUMBER\(CAJA_ARQUEO_ARS_FECHA\)\);0;MAX\(0;-\(/, 'vale 0 cuando el efectivo es posible')
+  const destino = g.destinos.find((d) => d.name === ANEXO.efectivoImposible)
+  assert.deepEqual({ fila: destino?.fila, col: destino?.col }, { fila: f, col: 5 },
+    'CAJA lo lee por nombre: sin publicarlo, la alerta de la portada mira una celda que no existe')
+  assert.equal(ESPECIE_ANEXO[ANEXO.efectivoImposible], 'importe')
+})
+
+test('EL CONTROL CORRE SIEMPRE Y GRITA POR STDOUT, aunque el sellado se caiga', () => {
+  // "Pase lo que pase con el sello": el sellado está envuelto en un `.catch` que lo degrada a aviso, y
+  // un control encadenado adentro de ese catch no correría justo el día en que el sello falla. Y el
+  // grito tiene que salir por STDOUT: el runner del pipeline escanea la salida estándar buscando la
+  // marca de alerta, así que un `console.warn` (stderr) no llega al resumen de la corrida — que es
+  // cómo se venían perdiendo estos avisos.
+  const src = readFileSync(new URL('../scripts/caja-anexo-pestana.mjs', import.meta.url), 'utf8')
+  const sellar = src.indexOf('await sellarConteo(google, g)')
+  const controlar = src.indexOf('await controlarEfectivo(google, g)')
+  assert.ok(sellar > 0 && controlar > sellar, 'el control va DESPUÉS de sellar, y como sentencia propia')
+  const linea = src.slice(controlar).split('\n')[0]
+  assert.ok(linea.includes('console.log('), `si ni siquiera se puede controlar, eso también se grita por stdout: ${linea}`)
+  assert.ok(!/console\.(warn|error)\(/.test(linea), 'stderr no entra al resumen del pipeline')
+})
+
+test('EL ESTADO DEL SELLO DICE CUÁNTO SE MOVIÓ EL HISTÓRICO, no sólo que está vigente', () => {
+  // El 14/08 esta fila decía "✓ sellado al conteo del 07/08". Era verdad y el número estaba roto igual:
+  // un sello vigente no dice nada del histórico del que depende. Sin el monto movido al lado, la línea
+  // es una decoración.
+  const g = construir()
+  const estado = celda(g, g.fEstado, 2)
+  const [f0] = g.filasHistorico
+  const movido = `TEXT(SUM(C${f0}:C${g.fSello});"$#,##0")`
+  assert.ok(estado.includes(movido), 'el movimiento desde el sello, dibujado')
+  // Y —lo que importa— EN EL BRAZO SANO. El 14/08 el sello estaba vigente: si el monto movido sólo
+  // apareciera en el brazo de la alerta, la línea que el dueño lee todos los días seguiría siendo un ✓
+  // mudo hasta que fuera demasiado tarde.
+  assert.ok(estado.includes(`"✓ sellado al conteo del "&TEXT(N($F$${g.fSello});"dd/mm")&" · el histórico se movió "&${movido}`),
+    `el estado SELLADO tiene que decir cuánto se movió el histórico. Es: ${estado}`)
+  assert.match(estado, /IMPOSIBLE/, 'y el estado imposible se nombra con todas las letras')
+  assert.match(estado, /✓ sellado al conteo del/, 'sin perder el estado sano')
+  assert.ok(!estado.replace(/"[^"]*"/g, '""').includes(','), 'es-AR: separador ; fuera de los textos')
 })
 
 test('la nómina en efectivo DESCARGA la caja física y la de banco NO: son canales distintos', () => {

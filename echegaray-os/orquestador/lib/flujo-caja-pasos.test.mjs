@@ -183,6 +183,22 @@ test('el censo es un REPORTE: su ≠0 no puede contar como fallo de datos ni blo
   assert.equal(esReporte('auditar-duenos-pestanas.mjs'), true)
 })
 
+test('EL DOBLE CONTEO DE COMPRAS SE MIDE SOLO: era el auditor que había que acordarse de tipear', () => {
+  // El 14/08 la caja física se fue a −$15.051.781 y parte de ese agujero eran siete filas de Compras
+  // marcadas "Efectivo" que el banco había debitado por tarjeta ($3.263.770,37 entre las siete). El
+  // control que las encuentra existía ese mismo día y sólo corría a mano — la misma historia que
+  // `_CRUCE_ARCA`. Sin este test, sacarlo del pipeline no rompe nada y no lo nota nadie.
+  assert.ok(PASOS.some(([s]) => s === 'auditar-doble-conteo-compras.mjs'),
+    'sin este paso, una compra que resta dos veces sólo se descubre si alguien tipea el comando')
+  // ES UN REPORTE: su ≠0 significa "encontré filas para mirar", no "no pude generar los datos".
+  // Contado como fallo apagaría la frescura del Cash Flow justo los días que encuentra algo.
+  assert.equal(esReporte('auditar-doble-conteo-compras.mjs'), true)
+  // Y NO DECLARA NINGUNA PESTAÑA: sólo lee. Las celdas de Compras son del dueño y el cruce es por
+  // importe —probable, no cierto—: corregirlas automáticamente ya duplicó $2,1M en este repo.
+  const [, , pestanas] = PASOS.find(([s]) => s === 'auditar-doble-conteo-compras.mjs')
+  assert.deepEqual(pestanas, [])
+})
+
 test('el censo corre AL FINAL: corriendo primero reportaría como FANTASMA la pestaña que la corrida crea', () => {
   const pos = (s) => PASOS.findIndex(([x]) => x === s)
   const censo = pos('auditar-duenos-pestanas.mjs')

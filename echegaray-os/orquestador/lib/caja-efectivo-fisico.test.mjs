@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs'
 import {
   IDENTIDAD, efectivoEnCaja, formulaCajaEnPesos, NETO_NO_SUMA_EN_PESOS,
   celdaCobrosEfectivo, celdaPagosEfectivo, celdaDepositosEfectivo, origenCajaEnPesos,
+  dictamenEfectivo, avisoEfectivoImposible, selloPorRenglonSembrable,
 } from './caja-efectivo-fisico.mjs'
 import {
   formulaNetaEfectivoPosterior, formulaCobrosEfectivoPosteriores,
@@ -223,6 +224,84 @@ test('sin fecha de arqueo, NINGÚN renglón del desglose muestra el histórico',
   for (const celda of [celdaCobrosEfectivo(a), celdaPagosEfectivo(a), celdaDepositosEfectivo(a)]) {
     assert.match(celda, /^=IF\(NOT\(ISNUMBER\(\$F\$7\)\);0;/, 'la guarda del total tiene que estar también acá')
   }
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// 5 · EL EFECTIVO IMPOSIBLE — EL CONTROL QUE NO EXISTÍA EL 14/08/2026
+//
+// Estos tests SON el defecto. El 14/08 `CAJA DISPONIBLE` amaneció en −$194.181 (venía de $18.751.100)
+// porque el efectivo en pesos calculó −$15.051.781 contra un conteo del dueño de $4.320.000, y ningún
+// control lo miró: la pestaña decía "✓ sellado al conteo del 07/08" y era verdad. Si alguien saca la
+// guarda, estos cuatro se ponen rojos.
+
+test('EL 14/08 AL CENTAVO: el cajón da negativo, el dictamen lo declara imposible y publica el conteo', () => {
+  // Los números reconstruidos contra la copia de la pestaña de las 10:04, antes del incidente:
+  // OFICINA pasó de $0 a −$18.773.559,70 (siete meses que ya estaban adentro del arqueo del 07/08)
+  // más dos filas nuevas de Compras por −$598.221,68.
+  const movido = -18773559.70 - 598221.68
+  const d = dictamenEfectivo({ arqueo: 4320000, neto: movido })
+  assert.equal(d.movido, -19371781.38, 'el neto crudo es exactamente lo que quedó publicado ese día')
+  assert.equal(d.efectivo, -15051781.38, 'y el cajón, exactamente lo que se vio')
+  assert.equal(d.imposible, true, 'un cajón con menos de cero pesos NO puede publicarse')
+  assert.equal(d.faltante, 15051781.38, 'el faltante es el error MÍNIMO que hay en los datos')
+  // LO QUE SE PUBLICA ES EL ANCLA: el conteo del dueño, que es verdad definitiva. Nunca el negativo,
+  // que viaja a los dos cash flow, a Postgres y al Director y baja $19M la plata con la que se decide.
+  assert.equal(d.netoPublicado, 0)
+  assert.equal(d.publicado, 4320000)
+})
+
+test('el dictamen NO toca un efectivo posible: sólo actúa sobre lo estrictamente imposible', () => {
+  // El caso sano del mismo día: el arqueo menos el único efectivo genuinamente posterior al 07/08
+  // (Axion, $172.002,26). Un guardarrail que redondea números plausibles es peor que no tenerlo.
+  const d = dictamenEfectivo({ arqueo: 4320000, neto: -172002.26 })
+  assert.equal(d.imposible, false)
+  assert.equal(d.efectivo, 4147997.74, 'el efectivo correcto del 14/08')
+  assert.equal(d.netoPublicado, -172002.26, 'el movimiento posterior se publica tal cual')
+  assert.equal(d.faltante, 0)
+  // El borde exacto: cero es posible (un cajón vacío existe), −1 centavo no.
+  assert.equal(dictamenEfectivo({ arqueo: 1000, neto: -1000 }).imposible, false)
+  assert.equal(dictamenEfectivo({ arqueo: 1000, neto: -1000.01 }).imposible, true)
+  // Y el decimal fantasma de la API no puede declarar imposible una caja cerrada.
+  assert.equal(dictamenEfectivo({ arqueo: 4320000, neto: -4320000.000000001 }).imposible, false)
+})
+
+test('el grito nombra al renglón culpable: "algo por $15M" manda a buscar a seis lados', () => {
+  const d = dictamenEfectivo({ arqueo: 4320000, neto: -19371781.38 })
+  const aviso = avisoEfectivoImposible(d, {
+    por: [
+      { rotulo: '      · (−) pagado en efectivo — histórico completo', delta: -598221.68 },
+      { rotulo: '      · (−) sueldos de OFICINA en efectivo — histórico completo', delta: -18773559.70 },
+    ],
+  })
+  assert.match(aviso, /^▲ EFECTIVO IMPOSIBLE/, 'sale con la marca que el runner escanea en stdout')
+  assert.match(aviso, /sueldos de OFICINA/, 'manda el renglón que más se movió, no el primero de la lista')
+  assert.match(aviso, /\$-18\.773\.560/, 'con su monto')
+  assert.match(aviso, /\$4\.320\.000/, 'y dice qué publica: el conteo')
+  // SIN SELLO POR RENGLÓN TODAVÍA no se inventa un culpable: el aviso sale igual, sin señalar a nadie.
+  assert.doesNotMatch(avisoEfectivoImposible(d, { por: [] }), /manda/)
+})
+
+test('un efectivo posible NO emite aviso: un grito que suena siempre no avisa nada', () => {
+  assert.equal(avisoEfectivoImposible(dictamenEfectivo({ arqueo: 4320000, neto: -172002.26 })), null)
+  assert.equal(avisoEfectivoImposible({}), null)
+  assert.equal(avisoEfectivoImposible(), null)
+})
+
+test('el sello por renglón sólo se siembra si se puede PROBAR que es exacto', () => {
+  // Las pestañas ya selladas tienen el total y no el desglose. Sembrarlo con el histórico de hoy es
+  // correcto SÓLO si nada se movió desde el sello — y eso se prueba: la suma tiene que dar el total
+  // sellado. Con un centavo de diferencia ya no se sabe cuánto le tocó a cada renglón, y repartirlo
+  // sería fabricar el dato.
+  const hist = [145065305.73, -147935932.23, -95602665, -18773559.7, 0, -20996000]
+  const total = hist.reduce((s, v) => s + v, 0)
+  assert.equal(selloPorRenglonSembrable(hist, total), true)
+  assert.equal(selloPorRenglonSembrable(hist, total - 0.01), false, 'un centavo de diferencia ya es movimiento')
+  assert.equal(selloPorRenglonSembrable(hist, total + 18773559.7), false, 'el caso del 14/08: OFICINA apareció después')
+  // El flotante de la API no puede bloquear una siembra exacta.
+  assert.equal(selloPorRenglonSembrable(hist, total + 0.000000001), true)
+  // Sin datos, o con una celda que no evalúa a número, no se siembra nada.
+  assert.equal(selloPorRenglonSembrable([], 0), false)
+  assert.equal(selloPorRenglonSembrable([1, NaN], 1), false)
 })
 
 test('necesitaSello: sella ante conteo nuevo, no resella por decimales fantasma, y sin conteo no hay nada que sellar', async () => {

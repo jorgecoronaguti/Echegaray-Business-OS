@@ -311,6 +311,20 @@ export const PASOS = [
   // el piso proyectado: un agujero en el extracto cargado se propaga a todas las pantallas en silencio,
   // y no había ningún control que lo mirara. Medido la primera vez que corrió: faltaba $113.314,76.
   ['auditar-saldo-banco.mjs', 'el saldo del banco contra la suma de sus movimientos (el número del que cuelga todo)', []],
+  // ═══ QUÉ COMPRA RESTA DOS VECES, MEDIDO EN CADA CORRIDA (14/08/2026) ═══
+  //
+  // Este control existía desde el 14/08 y sólo corría si alguien lo tipeaba. Encuentra las dos formas
+  // en que una fila de Compras baja la caja por plata que no salió: la Fecha de caja posterior al corte
+  // sobre un débito que el banco ya hizo (fila 844, Trielec, $2.205.400,34) y el "Efectivo" que en
+  // realidad salió por tarjeta o débito (fila 845 más seis de junio, $3.263.770,37 entre todas). Las
+  // segundas son las que hunden el cajón físico y ponen el efectivo en camino de dar negativo, que es
+  // el defecto que el bloque del sello acaba de tener que degradar.
+  //
+  // VA EN `REPORTES` Y NO ESCRIBE NADA: su ≠0 significa "encontré filas para mirar", no "no pude
+  // generar los datos". Las celdas son del dueño y el cruce es por importe —probable, no cierto—, así
+  // que corregir automáticamente está prohibido: sobre una coincidencia PROBABLE ya se duplicaron
+  // $2,1M en este repo. Lo único que cambia es que ahora el hallazgo aparece solo, todos los días.
+  ['auditar-doble-conteo-compras.mjs', 'qué compra resta dos veces de la caja (banco ya debitado / "Efectivo" que salió del banco)', []],
   // ÚLTIMO ENTRE LOS QUE ESCRIBEN: cada script pone los anchos que declara, así que ensanchar antes
   // de que corran no sirve de nada. Lo que este paso arregla es lo que ningún script dueño puede
   // saber solo: si el texto que le tocó a esta corrida entra o no.
@@ -362,6 +376,7 @@ export const PASOS = [
 export const REPORTES = new Set([
   'formato-pestanas.mjs', 'reparar-pantalla.mjs', 'censo-numeros-pegados.mjs', 'auditar-saldo-banco.mjs',
   'reparar-textos.mjs', 'formato-condicional.mjs', 'auditar-pantalla.mjs', 'auditar-duenos-pestanas.mjs',
+  'auditar-doble-conteo-compras.mjs',
 ])
 
 /** NÚCLEO PURO: ¿este paso es de presentación/auditoría (su ≠0 es un reporte, no un fallo de datos)? */
