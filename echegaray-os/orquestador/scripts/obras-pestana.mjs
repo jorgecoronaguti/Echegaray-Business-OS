@@ -305,6 +305,11 @@ async function refsReales(google) {
       // en el neto porque la venta también: el IVA de compras es crédito fiscal, no costo.
       ...resolverColumnas(cmp, {
         proveedor: 'Proveedor', cliente: 'Cliente / Asignación', fecha: 'Fecha factura',
+        // "Detalles / Obra" es la ÚNICA columna de Compras donde consta a qué obra va un gasto, y
+        // desde el 14/08 es de la que sale la columna "Comprado (real)" del cuadro 4. Si el rótulo
+        // cambiara, `abierto()` rompe la construcción de la grilla y el escritor aborta ANTES de
+        // tocar el archivo — que es lo que corresponde: sin ella el cuadro vuelve a publicar $0.
+        obra: 'Detalles / Obra',
         // El neto es "Importe"; el IVA hace falta para la regla "M si está, si no O − N".
         neto: 'Importe', iva: 'IVA', total: 'Total', familia: 'Familia de material',
       }),
@@ -537,6 +542,26 @@ async function main() {
       + `$${Math.round(ventaClientes).toLocaleString('es-AR')} de sus ${conObra.length} clientes `
       + `— $${Math.round(fuera).toLocaleString('es-AR')} son trabajos fuera de obra`)
   }
+  // ═══ EL MISMO CONTROL, DEL LADO DEL COSTO (14/08) ═══
+  //
+  // El cuadro 4 empareja por el TEXTO de "Detalles / Obra", y los patrones son COMODINES: si alguien
+  // declarara "Pisos" en una obra y "Pisos Industriales" en otra del mismo cliente, la misma factura
+  // entraría a las dos. El cuadro seguiría prolijo —dos números creíbles— y la única huella sería que
+  // el residuo se va a NEGATIVO, porque las obras se habrían llevado más de lo que el cliente tiene
+  // en Compras. Los tests ya prohíben esa forma en el dato; esto lo verifica sobre lo PUBLICADO, que
+  // es la única evidencia que vale, y con el número que Sheets calculó y no el que yo esperaba.
+  if (g.fSinImputar) {
+    const residuo = num(quedo[g.fSinImputar - 1]?.[3])
+    const enObras = num(quedo[g.fTotCosto - 1]?.[3])
+    if (residuo < -1) {
+      throw new Error(`DOBLE CONTEO EN EL CUADRO 4: las obras se llevaron $${Math.round(enObras).toLocaleString('es-AR')} `
+        + `y el residuo quedó en $${Math.round(residuo).toLocaleString('es-AR')} — negativo. Dos obras del mismo `
+        + 'cliente están emparejando la misma compra: revisar los `comprasObra` de obras-datos.mjs, '
+        + 'que uno no puede contener a otro.')
+    }
+    console.log(`  ✓ costo real: $${Math.round(enObras).toLocaleString('es-AR')} imputado a las ${g.bloques.length} obras `
+      + `+ $${Math.round(residuo).toLocaleString('es-AR')} de compras de esos clientes que todavía no dicen a qué obra van`)
+  }
   console.log(`QUEDÓ ESCRITO — releí ${quedo.length} filas (${filasEmitidas} con contenido): sin celdas en error y sin columnas desparejas.`)
 }
 
@@ -584,6 +609,23 @@ async function formatear(google, sheetId, g) {
     // celda de esa fila sería la misma señal cuatro veces, que es como una señal deja de verse.
     if (f === g.fCartera) continue
     fmt(r(f - 1, f, F_VENCIDO, F_VENCIDO + 1), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_ALERTA_TOTAL })
+  }
+  // …Y EN EL CUADRO 4 LA F NO ES UN IMPORTE SINO EL TEXTO QUE DECLARA POR DÓNDE EMPAREJÓ CADA OBRA.
+  // Va DESPUÉS de los dos bloques de arriba a propósito: los pisa. Con el patrón de moneda heredado
+  // el texto queda pegado al margen derecho, contra el número de la columna de al lado, y el rótulo
+  // "Imputado por" del encabezado sale alineado como si fuera plata. Es la misma razón por la que la
+  // H lleva su excepción: una columna que cambia de significado entre bloques cambia de formato.
+  //
+  // Y DERRAMA. La F mide 138 px y `Compras: "Salones Comerciales"` mide 189: con el CLIP que rige en
+  // toda la hoja, el texto no se recorta — DESAPARECE, y la columna que existe para poder auditar el
+  // número quedaría en blanco justo en las obras que sí emparejaron. En el cuadro 4 la G, la H y la I
+  // están vacías (son Contratado / Falta certificar / Próx. cobro, que son del cuadro 3), así que
+  // derramar sobre ellas usa un espacio que ya está y no pisa nada. Se limita a ESTAS filas: en el
+  // cuadro 3 la G tiene el contratado y un derrame taparía plata.
+  for (const f of g.textoEnF ?? []) {
+    fmt(r(f - 1, f, F_VENCIDO, F_VENCIDO + 1),
+      'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.wrapStrategy',
+      { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', wrapStrategy: 'OVERFLOW_CELL' })
   }
   if (g.fCartera) {
     for (const c of PLATA) fmt(r(g.fCartera - 1, g.fCartera, c, c + 1), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_TOTAL })
