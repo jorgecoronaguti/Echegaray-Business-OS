@@ -79,6 +79,28 @@ test('el redondeo por renglón no dispara nada: la tolerancia existe para eso', 
   assert.equal(ivaPlausible({ neto: 28479.30, iva: 5981.00, total: 34460.30 }).plausible, true)
 })
 
+// ── EL TICKET DE COMBUSTIBLE QUE LA GUARDA FRENABA SIN MOTIVO (14/08) ────────
+
+test('el impuesto interno está DENTRO de la base del IVA: un 38% del neto puede ser un 21% real', () => {
+  // Ticket de combustible: el ITC/IDC se factura dentro de la base sobre la que se calcula el IVA.
+  //   neto 10.000 · ITC 8.095 · IVA 3.799,95 (= 21% de 18.095) · total 21.894,95
+  const c = { neto: 10000, iva: 3799.95, otrosTributos: 8095, total: 21894.95 }
+  assert.equal(round2(c.neto + c.iva + c.otrosTributos), c.total, 'el caso tiene que CERRAR: si no, lo caza la aritmética y no esta guarda')
+  assert.equal(round2((c.iva / c.neto) * 100), 38, 'medido contra el neto solo da 38%, que es lo que frenaba')
+  const r = ivaPlausible(c)
+  assert.equal(r.plausible, true, 'un ticket de combustible correcto no puede frenarse por el impuesto interno')
+  assert.equal(r.motivo, null)
+})
+
+test('pero sin otros tributos la guarda no se afloja ni un punto: el caso Barcelo sigue rojo', () => {
+  // La segunda base sólo EXISTE cuando el papel declaró otros tributos. Con `otrosTributos: 0` las
+  // dos bases son la misma y el IVA de $0,01 del 04/08 se sigue rechazando igual que antes.
+  assert.equal(ivaPlausible({ neto: 5223.35, iva: 0.01, otrosTributos: 0, total: 5223.36 }).plausible, false)
+  assert.equal(ivaPlausible({ neto: 100000, iva: 38000, otrosTributos: 0, total: 138000 }).plausible, false, '38% sin internos sigue siendo imposible')
+})
+
+const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100
+
 test('un dígito de más o de menos en el IVA dispara — salvo el que cae sobre otra alícuota', () => {
   assert.equal(ivaPlausible({ neto: 100000, iva: 210000, total: 310000 }).plausible, false, '210%')
   assert.equal(ivaPlausible({ neto: 100000, iva: 100, total: 100100 }).plausible, false, '0,1%')

@@ -98,12 +98,20 @@ export function columnasDelPasado(ventanas = [], hoy = new Date(), { col0 = COL.
  * `depth: 1` porque es el ÚNICO grupo: los heredados ya se borraron.
  */
 export function requestsDePliegue(sheetId, rango) {
-  if (!rango || rango.fin <= rango.inicio) return []
-  const range = { sheetId, dimension: 'COLUMNS', startIndex: rango.inicio, endIndex: rango.fin }
-  return [
-    { addDimensionGroup: { range } },
-    { updateDimensionGroup: { dimensionGroup: { range, depth: 1, collapsed: true }, fields: 'collapsed' } },
-  ]
+  // ═══ EL DUEÑO LO SACÓ (13/08, textual): "sacame la mierda esa de agrupar q has hecho en los cash
+  // flows, mantenme el boton de ir al dia en los dos pero sin esa cosa de mierda q has hecho" ═══
+  //
+  // El pliegue existía para que la pestaña abriera en el período en curso sin depender del atajo.
+  // Resolvía un problema real —53 columnas y el cuadro abre en enero— pero con un costo que él no
+  // acepta: el "+" en el margen y las columnas tapadas. El atajo de A3 SIGUE, que es lo que pidió
+  // mantener, y el resaltado vivo de la columna de hoy también.
+  //
+  // NO SE BORRA LA FUNCIÓN, SE DEVUELVE VACÍO. `cash-flow-vistas.mjs` ya borra los grupos heredados
+  // ANTES de llamar acá, así que con esto la pestaña queda desplegada y sin grupos: si sólo se
+  // sacara la llamada, los grupos que ya están en el archivo sobrevivirían y el "+" quedaría para
+  // siempre. Devolver vacío mantiene el borrado y no vuelve a crear nada.
+  void sheetId; void rango
+  return []
 }
 
 /**

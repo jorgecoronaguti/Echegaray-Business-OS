@@ -151,6 +151,19 @@ export const PROMPT_LECTURA = [
   '  leen, poné null: qué se compró no se deduce de quién lo vendió.',
   '· Si es NOTA DE CRÉDITO poné es_nota_credito=true. No cambies el signo de los importes: copialos',
   '  positivos tal como figuran.',
+  '· LA NOTA DE LA COMPRA ("detalle_libre") — una línea corta con lo que el papel dice de ESTA compra',
+  '  en concreto, que es lo que en esta empresa se escribe en la columna "Detalles / Obra". Poné lo',
+  '  que el comprobante traiga, en este orden y separado con " · ":',
+  '    · QUÉ y CUÁNTO, con su unidad: litros, kilos, metros, bolsas, unidades. Si son varios',
+  '      artículos, unilos con " + ". Ej.: "Diesel 500 (26,5135 l) + Nafta Super (9,17 l)".',
+  '    · EL VENCIMIENTO, si lo trae. Ej.: "vto 04/08".',
+  '    · QUIÉN RETIRA, si figura. Ej.: "retira Rodrigo".',
+  '    · SI YA ESTÁ PAGADA: con qué se pagó, EN QUÉ FECHA y con qué NÚMERO DE OPERACIÓN, cuando el',
+  '      papel los diga. Ej.: "Pagada 07/08 MP tarjeta de débito · op. 4471".',
+  '  Sale de los RENGLONES y de los datos impresos del comprobante, NUNCA del nombre del proveedor ni',
+  '  del rubro que ese nombre sugiere. No repitas acá la anotación manuscrita: ésa ya viaja entera en',
+  '  "anotacion_manuscrita". Si el papel no da para una línea útil, poné null: una nota inventada es',
+  '  peor que una celda vacía.',
   '· UN ARCHIVO, UN COMPROBANTE. Si en esta imagen o en este PDF hay MÁS DE UN comprobante DISTINTO',
   '  (dos tickets sobre la mesa, un PDF con varias facturas), contestá SÓLO por el primero y poné',
   '  varios_comprobantes=true y cuantos_comprobantes=<cuántos contás>. No los mezcles en un solo JSON:',
@@ -167,7 +180,8 @@ export const PROMPT_LECTURA = [
   '"condicion_manuscrita":"<Contado|Cuenta Corriente|null — la ESCRITA A MANO>",',
   '"forma_pago":"<lo que diga, o null>",',
   '"concepto":"<QUÉ SE COMPRÓ: los artículos, en pocas palabras. Nunca la dirección ni el rubro',
-  'del proveedor>","anotacion_manuscrita":"<tal cual, o null>",',
+  'del proveedor>","detalle_libre":"<la nota de la compra, o null>",',
+  '"anotacion_manuscrita":"<tal cual, o null>",',
   '"varios_comprobantes":<true|false>,"cuantos_comprobantes":<número o null>,',
   '"legible":<true|false>,"dudas":["<qué no pudiste leer>"]}',
 ].join('\n')
@@ -233,23 +247,20 @@ export function bloqueImputacion(v = {}) {
       'de persona ni un texto de las observaciones de la factura:')
     for (const [obra, vals] of detalles.slice(0, 30)) l.push(`  ${obra}: ${vals.slice(0, 15).join(' | ')}`)
   }
-  // ═══ Y SI NINGUNO SIRVE, ESCRIBILA VOS: K ES TEXTO LIBRE (13/08) ═══
+  // ═══ LA NOTA COMPUESTA DE K SE PIDE SIEMPRE, Y POR ESO NO ESTÁ ACÁ (14/08) ═══
   //
-  // La columna K no tiene desplegable. Cuando la carga la hace una persona por Claude Code escribe ahí
-  // una NOTA COMPUESTA mirando el papel —«Diesel 500 (26,5135 l) + Nafta Super», «retira Rodrigo · vto
-  // 04/08», «Pagada 07/08 MP tarjeta de débito»—, y ninguna de esas frases está en ninguna lista. El
-  // bot no la componía nunca y la columna quedaba vacía en casi toda fila que cargó. Es el reclamo
-  // central del dueño: «no carga igual q si lo hiciera por esta via».
-  l.push('', 'DETALLE LIBRE (también columna K) — si ninguno de los de arriba sirve, ESCRIBILA VOS en una',
-    'línea corta, con lo que el papel dice de esta compra en concreto: qué y cuánto (litros, kilos,',
-    'unidades), el vencimiento si lo trae, con qué se pagó si lo dice, quién retira si figura. Separá',
-    'las partes con " · ". Ejemplos del formato que se usa en esta empresa:',
-    '  "Diesel 500 (26,5135 l) + Nafta Super (9,17 l)"',
-    '  "retira Rodrigo · vto 04/08"',
-    '  "Pagada 07/08 MP tarjeta de débito · op. 4471"',
-    'Sale de los RENGLONES y de los datos del comprobante, nunca del nombre del proveedor ni del rubro',
-    'que ese nombre sugiere. Si el papel no da para una línea útil, poné null: una nota inventada es',
-    'peor que una celda vacía.')
+  // Estaba en este bloque, y este bloque tiene dos condiciones que no tienen NADA que ver con ella:
+  // sólo se arma si `vocabulario` llegó, y sólo se agrega si hay obras o unidades (ver el `return
+  // null` de arriba). O sea: un fallo leyendo los desplegables del Sheet apagaba también la única
+  // instrucción que llena la columna K —que es texto libre y no depende de ninguna lista—.
+  //
+  // Y había un segundo defecto, más silencioso: `PROMPT_LECTURA` termina diciendo «Respondé SÓLO este
+  // JSON» con un esquema CERRADO, y recién después venía «Agregá al JSON: ...detalle_libre...». Dos
+  // instrucciones que se contradicen, y la primera es la que cierra la lista de campos.
+  //
+  // Ahora la nota vive en `PROMPT_LECTURA`, con su clave en el esquema base: se pide en toda lectura,
+  // haya o no desplegables, y no compite con nada. Acá queda sólo lo que de verdad es elegir de una
+  // lista cerrada.
   // EL TIPO DE PAGO ES EL QUE MÁS BASURA METIÓ. Es la única de estas columnas cuyo valor SÍ está
   // impreso en el papel, y por eso el modelo copiaba lo que veía cerca ("Importe", "30 DIAS FECHA
   // FACTURA") en vez de elegir de la lista. Se le dice explícitamente que es una lista cerrada y que
@@ -261,7 +272,6 @@ export function bloqueImputacion(v = {}) {
   }
   l.push('', 'Agregá al JSON: "obra":"<exacto de la lista o null>","unidad_negocio":"<exacto o null>",',
     '"detalle_obra":"<exacto de la lista de la obra elegida, o null>",',
-    '"detalle_libre":"<la línea corta que compusiste, o null>",',
     '"forma_pago":"<exacto de la lista de tipo de pago, o null>",',
     '"por_que_esa_obra":"<en qué te basaste, en 10 palabras>"')
   return l.join('\n')
@@ -313,25 +323,92 @@ export function fusionar(primera = {}, revision = {}) {
   return out
 }
 
+// ═══ EL PARÁMETRO QUE MATÓ LA LECTURA ENTERA (13/08) ═══
+//
+// El dueño cambió `ORQ_COMPROBANTES_MODELO` a `claude-opus-5` —el modelo grande, el mismo que mira
+// la foto cuando la carga se hace por Claude Code— y a partir de ese momento el bot dejó de leer
+// TODOS los comprobantes. Ni uno. Medido contra la API real, con los 8 comprobantes del 13/08:
+//
+//   400 · {"type":"invalid_request_error","message":"`temperature` is deprecated for this model."}
+//
+// `temperature: 0` viajaba fijo en el cuerpo. En los modelos de la generación actual (opus-5,
+// sonnet-5, opus-4-7 y posteriores) los parámetros de muestreo NO se aceptan: la request se rechaza
+// entera. El síntoma del lado del dueño no dice nada de esto —«no pude leer el comprobante»—, así
+// que un cambio de una palabra en un `.env` apaga la capacidad sin un solo error visible.
+//
+// LA REGLA: el cuerpo lleva SÓLO lo que hace falta, y lo opcional se manda únicamente a los modelos
+// que se sabe que lo aceptan. Un modelo nuevo, desconocido, recibe el cuerpo pelado y ANDA. Al revés
+// —mandar de más y confiar en que el modelo lo tolere— es lo que rompió esto.
+
+/**
+ * Modelos que todavía aceptan `temperature`. Es una lista CERRADA a propósito: lo que no está acá
+ * recibe el cuerpo pelado. Preferimos perder el determinismo del `temperature: 0` en un modelo
+ * desconocido antes que perder la lectura entera.
+ */
+const ACEPTAN_TEMPERATURE = /(haiku|claude-3|sonnet-4-5|sonnet-4-6|opus-4-5|opus-4-6)/i
+
+/** El cuerpo de la request. `pelado` deja sólo lo obligatorio: es el reintento tras un 400. */
+export function cuerpoDeLectura({ modelo, maxTokens, bloque, prompt, pelado = false } = {}) {
+  const cuerpo = {
+    model: modelo,
+    max_tokens: maxTokens,
+    messages: [{ role: 'user', content: [bloque, { type: 'text', text: prompt }] }],
+  }
+  if (!pelado && ACEPTAN_TEMPERATURE.test(String(modelo ?? ''))) cuerpo.temperature = 0
+  return cuerpo
+}
+
+/**
+ * El mensaje del 400 de la API, para que el motivo llegue al log en vez de morir en el status.
+ *
+ * LEER EL CUERPO NUNCA PUEDE TUMBAR EL DIAGNÓSTICO. `res.text` es opcional en la Response mínima que
+ * devuelve cualquier doble de test y en algún runtime viejo; si no está, se informa igual con el
+ * status. Que la lectura del motivo del error se convierta a su vez en un error —«res.text is not a
+ * function» donde debía decir «falló (429)»— manda a buscar el problema al lugar equivocado.
+ */
+async function motivoDeLaApi(res) {
+  if (typeof res?.text !== 'function') return null
+  const texto = await res.text().catch(() => '')
+  try {
+    const j = JSON.parse(texto)
+    return String(j?.error?.message ?? '').slice(0, 160) || null
+  } catch { return String(texto ?? '').slice(0, 160) || null }
+}
+
 /** Una sola llamada al modelo. Devuelve el JSON crudo o `{error}`; nunca lanza. */
 async function unaLectura(bloque, { apiKey, fetchImpl, modelo, maxTokens, prompt = PROMPT_LECTURA }) {
+  const pedir = async (pelado) => fetchImpl('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify(cuerpoDeLectura({ modelo, maxTokens, bloque, prompt, pelado })),
+  })
   try {
-    const res = await fetchImpl('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({
-        model: modelo,
-        max_tokens: maxTokens,
-        temperature: 0,
-        messages: [{ role: 'user', content: [bloque, { type: 'text', text: prompt }] }],
-      }),
-    })
-    if (!res.ok) return { ok: false, error: `la lectura del comprobante falló (${res.status})` }
+    let res = await pedir(false)
+    // ═══ Y SI IGUAL LO RECHAZA, SE INSISTE UNA VEZ CON EL CUERPO PELADO ═══
+    //
+    // La lista de arriba envejece: mañana sale un modelo que deja de aceptar otra cosa. Un 400 es
+    // siempre un problema del CUERPO —no de la foto ni del crédito—, así que se reintenta una sola
+    // vez sin nada opcional. Si eso anda, el comprobante se leyó igual y el dueño no se enteró.
+    if (res.status === 400) res = await pedir(true)
+    if (!res.ok) {
+      const motivo = await motivoDeLaApi(res)
+      return { ok: false, error: `la lectura del comprobante falló (${res.status})${motivo ? `: ${motivo}` : ''}` }
+    }
     const j = await res.json()
     const texto = (j?.content ?? []).filter((b) => b?.type === 'text').map((b) => b.text).join('\n')
     const m = String(texto ?? '').match(/\{[\s\S]*\}/)
-    if (!m) return { ok: false, error: 'no pude interpretar el comprobante' }
-    return { ok: true, crudo: JSON.parse(m[0]) }
+    // UN JSON CORTADO NO ES UN JSON. Con los modelos que razonan, `max_tokens` es el techo de
+    // pensamiento + respuesta: si queda corto, la llave abre y nunca cierra. Se dice cuál fue el
+    // motivo en vez de "no pude interpretar", que manda a buscar el problema a la foto.
+    if (!m) {
+      const cortado = j?.stop_reason === 'max_tokens'
+      return { ok: false, error: cortado ? 'la lectura quedó cortada por el límite de tokens' : 'no pude interpretar el comprobante' }
+    }
+    try {
+      return { ok: true, crudo: JSON.parse(m[0]) }
+    } catch {
+      return { ok: false, error: j?.stop_reason === 'max_tokens' ? 'la lectura quedó cortada por el límite de tokens' : 'no pude interpretar el comprobante' }
+    }
   } catch (e) {
     return { ok: false, error: `no pude leer el comprobante: ${String(e?.message ?? e).slice(0, 120)}` }
   }
@@ -360,7 +437,11 @@ export async function leerAdjunto(adjunto, ctx = {}) {
     fetchImpl = globalThis.fetch,
     modelo = MODELO_LECTURA,
     modeloRevision = MODELO_REVISION,
-    maxTokens = 1600,
+    // EL TECHO ES DE PENSAMIENTO + RESPUESTA. Con los modelos que razonan por defecto (opus-5), los
+    // 1.600 de antes se los podía comer el pensamiento y devolver un JSON cortado a la mitad, que
+    // acá se ve igual que un comprobante ilegible. El JSON completo son ~600 tokens; el resto es
+    // aire para que el modelo mire la foto con calma.
+    maxTokens = 6000,
     vocabulario = null,
   } = ctx
   const bloque = bloqueAdjunto(adjunto)
