@@ -167,7 +167,39 @@ export function ivaPlausible(c = {}) {
   const ratio = red2((Math.abs(iva) / Math.abs(neto)) * 100)
   // El IVA y el neto con signos opuestos no es una alícuota: es un signo mal puesto.
   const mismoSigno = (iva < 0) === (neto < 0)
-  const plausible = mismoSigno && BANDAS_IVA.some(([lo, hi]) => ratio >= lo && ratio <= hi)
+
+  // ═══ EL IMPUESTO INTERNO ESTÁ DENTRO DE LA BASE DEL IVA (14/08) ═══
+  //
+  // Un ticket de combustible frenaba con «IVA imposible: es el 38% del neto». No era imposible: era
+  // un ticket CORRECTO. En un comprobante con impuesto interno (ITC/IDC en combustibles, y los
+  // internos en general) el tributo se factura DENTRO de la base sobre la que se calcula el IVA, así
+  // que el IVA es el 21% de (neto + interno) y no el 21% del neto. Medido contra el neto solo, el
+  // cociente sube y se sale de todas las bandas — cuanto más pesa el impuesto, más se va:
+  //
+  //   neto 10.000 · ITC 8.095 · IVA 3.799,95 (21% de 18.095) · total 21.894,95
+  //     IVA/neto        = 38,00%  ← lo que se medía: fuera de toda banda ⇒ frenado
+  //     IVA/(neto+ITC)  = 21,00%  ← la alícuota de verdad
+  //
+  // Y no había ningún otro control que lo delatara como falso positivo, porque la identidad
+  // aritmética CIERRA (neto + IVA + otros = total): `aritmetica.mjs` no tiene nada que decir. Era
+  // esta guarda, sola, frenando un comprobante bien leído.
+  //
+  // POR ESO SE MIDE CONTRA LAS DOS BASES y alcanza con que UNA caiga en banda. No es aflojar el
+  // control en general: la segunda base sólo EXISTE cuando el papel declaró otros tributos. Sin
+  // ellos —el caso de Barcelo del 04/08, IVA de $0,01 sobre $5.223,35— las dos bases son la misma y
+  // la guarda frena exactamente igual que antes.
+  //
+  // LO QUE SE PAGA A CAMBIO, declarado: con otros tributos presentes el control es más permisivo, y
+  // un IVA mal leído podría caer en banda contra la base ampliada. Se elige eso antes que frenar
+  // tickets de combustible correctos, que es la mitad de lo que entra por este canal.
+  const bases = [neto]
+  if (Math.abs(otros) >= 0.01) bases.push(red2(neto + otros))
+  const enBanda = (base) => {
+    if (Math.abs(base) < 0.01) return false
+    const r = red2((Math.abs(iva) / Math.abs(base)) * 100)
+    return BANDAS_IVA.some(([lo, hi]) => r >= lo && r <= hi)
+  }
+  const plausible = mismoSigno && bases.some(enBanda)
   // "es el 0% del neto" sería justo lo contrario de lo que se quiere decir —el IVA cero es
   // legítimo—, así que un ratio que redondea a cero se dice como lo que es: no llega ni al mínimo.
   const cuanto = ratio < 0.01
