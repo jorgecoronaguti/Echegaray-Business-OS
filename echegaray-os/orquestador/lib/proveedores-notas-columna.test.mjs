@@ -107,3 +107,35 @@ test('una nota más larga que su columna se avisa, no se trunca — es texto del
   assert.equal(largas[0].proveedor, 'Hormiserv')
   assert.equal(largas[0].nota.length, largas[0].caracteres, 'el texto entero, sin cortar')
 })
+
+// ═══ UNA NOTA LARGA NO DESARMA LA GRILLA (14/08/2026) ═══
+//
+// En la captura que mandó el dueño, `Proveedores!D20` (Hormiserv) tiene ~200 caracteres —"Esperar a q
+// escriba el cobrador… pedir bonificacion de 5m3, cerrar para pagar"— en una columna de 300px, y se
+// derramaba sobre E, F y G tapando el cuadro de al lado. Es una de las cosas que él ve como "el diseño
+// está roto".
+//
+// El texto es SUYO: no se recorta ni se edita. Lo que se decide es cómo se muestra, y eso es formato.
+// Sin `wrapStrategy` declarada la celda hereda lo que haya, y el default para texto es derramar.
+test('EL DEFECTO · la columna de notas declara CLIP: sin eso una nota larga tapa el cuadro de al lado', () => {
+  const r = requestsDeNotas({ sheetId: 1, filaRotulos: 18, desde: 19, hasta: 30, columna: 3, letraProveedor: 'A' })
+  const fmt = r.find((x) => x.repeatCell)
+  assert.ok(fmt, 'el bloque tiene que traer su pedido de formato')
+  assert.equal(fmt.repeatCell.cell.userEnteredFormat.wrapStrategy, 'CLIP',
+    'sin CLIP la nota derrama sobre las columnas de la derecha')
+  assert.match(fmt.repeatCell.fields, /wrapStrategy/,
+    'declarar el valor sin pedirlo en `fields` no cambia nada en el archivo')
+})
+
+test('el texto de la nota no se toca: lo que cambia es el formato, nunca el contenido', () => {
+  const r = requestsDeNotas({ sheetId: 1, filaRotulos: 18, desde: 19, hasta: 21, columna: 3, letraProveedor: 'A' })
+  const valores = r.filter((x) => x.updateCells).flatMap((x) => x.updateCells.rows)
+  for (const fila of valores) {
+    for (const v of fila.values) {
+      const f = v.userEnteredValue.formulaValue
+      if (!f) continue
+      assert.doesNotMatch(f, /LEFT\(|MID\(|TRUNC|SUBSTITUTE\(/,
+        'la fórmula recorta el texto del dueño: el contenido es suyo, sólo se decide cómo se ve')
+    }
+  }
+})

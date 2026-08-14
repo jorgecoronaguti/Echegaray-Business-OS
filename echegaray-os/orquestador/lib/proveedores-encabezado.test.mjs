@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { grillaEncabezado, FILAS_AGING, MEDIOS, F } from './proveedores-encabezado.mjs'
+import { grillaEncabezado, celdasEncabezado, encabezadoSinFormato, FILAS_AGING, MEDIOS, F } from './proveedores-encabezado.mjs'
 import { ALERTA } from './glifos.mjs'
 
 const G = grillaEncabezado()
@@ -129,4 +129,60 @@ test('es-AR en las tres celdas nuevas: separador `;` y ni una coma', () => {
     const v = celda(F.noMostrada, c)
     assert.ok(!/,/.test(v), `la celda ${c} tiene una coma: en es-AR es un separador decimal`)
   }
+})
+
+// ═══ TODA CELDA QUE ESCRIBE UN NÚMERO DECLARA SU ESPECIE (14/08/2026) ═══
+//
+// EL DEFECTO QUE ESTOS TRES TESTS ATRAPAN. `Proveedores!B12` publicaba `11919062,68` —coma decimal,
+// sin miles, sin símbolo— al lado de columnas que muestran "$15.097.040". La celda existía desde el
+// mismo día, la fórmula estaba bien y el número era correcto: lo que faltaba era el FORMATO, porque
+// el aplicador lo daba por una lista de rangos escrita a mano en otro archivo y `F.noMostrada` no
+// estaba en esa lista. Sin formato propio hereda el reset base, que es TEXTO, y un número con
+// formato de texto se dibuja crudo.
+//
+// El primero prueba el caso concreto; el segundo, la clase entera: cualquier fila futura que sume o
+// cuente sin declarar especie pone la suite en rojo el día que se escribe, no seis semanas después.
+test('la fila que cuelga del total declara sus dos números: sin especie salen crudos', () => {
+  const C = celdasEncabezado()
+  assert.equal(C[F.noMostrada - 1][1].t, 'monto', 'B12 es plata: sin esto se ve "11919062,68"')
+  assert.equal(C[F.noMostrada - 1][3].t, 'entero', 'D12 es un contador de facturas')
+  assert.equal(C[F.noMostrada - 1][0].t, 'texto', 'el rótulo con el triángulo no es un número')
+})
+
+test('ninguna fórmula que suma o cuenta quedó sin especie declarada', () => {
+  assert.deepEqual(encabezadoSinFormato(), [],
+    'esa celda escribe un número y no dice de qué especie: se va a dibujar con el formato de ayer')
+})
+
+test('grillaEncabezado es la proyección de celdasEncabezado: una sola fuente', () => {
+  const C = celdasEncabezado()
+  const G2 = grillaEncabezado()
+  assert.equal(G2.length, C.length)
+  for (const [i, fila] of C.entries()) {
+    for (const [j, c] of fila.entries()) {
+      assert.equal(G2[i][j], c === null ? null : c.v, `fila ${i + 1} col ${j}: las dos vistas discrepan`)
+    }
+  }
+})
+
+// ═══ UNA CELDA QUE PROMETE PLATA NO PUEDE PUBLICAR UN COMPROBANTE (14/08/2026) ═══
+//
+// `ARCA_FALTAN_MONTO` vive hoy en `Materiales!B53`, que publica `0038-00025483`. Estas dos celdas son
+// sus únicos lectores, así que la posición mostraba ese comprobante bajo el rótulo "Saldo" y un CUIT
+// bajo "%". El rango se cura en `rangos-nombrados.mjs`; acá se cura el lector, que hace falta igual:
+// mientras el nombre exista apuntando a cualquier lado, el que lo cita a ciegas publica lo que haya.
+test('las dos celdas de ARCA no publican lo que no sea un número', () => {
+  for (const [col, nombre] of [[6, 'ARCA_FALTAN_MONTO'], [7, 'ARCA_FALTAN_N']]) {
+    const v = celda(F.arca, col)
+    assert.ok(v.includes(`ISNUMBER(${nombre})`),
+      `${nombre} se publica sin preguntar si es un número: un comprobante se dibujaría como plata`)
+    assert.ok(v.includes('IFERROR('), `${nombre}: si el rango se retira, la celda tiene que dar "—", no #REF!`)
+    assert.ok(v.includes('"—"'), `${nombre}: cuando el número no está, la celda muestra "—"`)
+  }
+})
+
+test('cuando no hay número, el rótulo de ARCA lo dice: un "—" solo se lee como "no hay deuda"', () => {
+  const rotulo = celda(F.arca, 5)
+  assert.ok(rotulo.includes(`ISNUMBER($G$${F.arca})`), 'el rótulo tiene que mirar la celda que acompaña')
+  assert.ok(rotulo.includes(ALERTA), 'y avisar con el mismo triángulo que el resto del cuadro')
 })

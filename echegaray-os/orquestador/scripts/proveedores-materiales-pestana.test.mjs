@@ -704,3 +704,51 @@ test('sin ninguna factura pendiente no se imprime nada', () => {
   assert.equal(dec.vivos.length, 0)
   assert.equal(texto, '')
 })
+
+// ═══ EL CUERPO TIENE QUE PODER LIMPIAR SU PROPIO FOOTPRINT (14/08/2026) ═══
+//
+// EL DEFECTO, leído del archivo vivo. La fila 112 de "Proveedores" tenía el título del cuadro 4 en la
+// A y, en la MISMA fila, una nota de crédito —otro cuadro— en B·C·D y su clasificación en F·G. La
+// 114, el encabezado del cuadro 4 en A..E y "▲ revisar (parcial o descuento)" en la F. La 134, un
+// proveedor en A..D y la palabra "Importe" en la F. Dos corridas del mismo bloque, con dos layouts de
+// columna distintos, conviviendo fila por fila durante 22 horas y ~14 corridas del pipeline.
+//
+// LA CAUSA. El generador rellena con el centinela VACIO todo lo que no llena, para que la fusión BORRE
+// el resto viejo. Después mandaba esa grilla en una escritura SIN `vaciarPropio`, y `no-borrar.mjs`
+// —la guarda sin bypass que corre al final de toda escritura— revierte celda por celda cualquier
+// vaciado que no venga probado. El centinela no limpiaba nada. La otra vía de prueba, la huella,
+// tampoco alcanza acá: tolera ±5 filas y este bloque arranca donde termina una tabla dinámica, así que
+// se corre tantas filas como esa dinámica crezca (medido: ±50). Está escrito en `lib/no-borrar.mjs`.
+//
+// El remedio ya existía aplicado a la MITAD: el barrido de cola manda `vaciarPropio` desde el 13/08.
+// El cuerpo —donde vive el cuadro que el dueño mira— no lo mandaba.
+test('EL DEFECTO · la escritura del cuerpo viaja con vaciarPropio, o el residuo viejo es indestructible', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  const write = src.match(/await google\.batchUpdateValues\(\s*\n?\s*ID, \[\{ range: `\$\{refPestana\(t\.titulo\)\}!A\$\{filaArranque\}`[\s\S]{0,200}?\)\n/)
+  assert.ok(write, 'no encontré la escritura del cuerpo: si cambió de forma, este control hay que rehacerlo')
+  assert.match(write[0], /vaciarPropio/,
+    'la escritura del cuerpo no lleva vaciarPropio: no-borrar revierte cada vaciado y el sedimento de la corrida anterior sobrevive para siempre')
+})
+
+test('el registro de rótulos se lee UNA vez y lo comparten los dos barridos', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  const lecturas = src.match(/leerRegistro\(ID, t\.titulo\)/g) ?? []
+  assert.equal(lecturas.length, 1,
+    'dos lecturas del registro son dos listas que pueden discrepar sobre la misma pestaña')
+  // Y tiene que leerse ANTES de la escritura del cuerpo: después no sirve para probar nada.
+  assert.ok(src.indexOf('leerRegistro(ID, t.titulo)') < src.indexOf('values: fusion'),
+    'el registro se lee después de escribir: llega tarde para probar qué es del generador')
+})
+
+// ═══ UN CONTADOR QUE NO DICE DE QUÉ ES, MIENTE ═══
+//
+// La corrida decía "⚠ 4 celdas en error" con CERO celdas en error en las cuatro pestañas: los cuatro
+// eran rangos con nombre mal apuntados. Un aviso que nombra mal su causa manda a buscar un #REF! que
+// no existe — costó una hora.
+test('EL DEFECTO · el aviso final separa las celdas en error de los rangos con nombre', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  assert.doesNotMatch(src, /\$\{err\} celdas en error/,
+    '"N celdas en error" cuenta también rangos con nombre: nombra mal su causa')
+  assert.match(src, /porCausa\.celdas/, 'las celdas en error se cuentan aparte')
+  assert.match(src, /porCausa\.rangosVivos/, 'los rangos que quedaron apuntando mal se cuentan aparte')
+})
