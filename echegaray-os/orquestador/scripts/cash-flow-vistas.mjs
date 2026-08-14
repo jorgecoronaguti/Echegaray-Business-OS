@@ -31,6 +31,7 @@ import { DESDE_CAJA } from '../lib/caja-anexo-nombres.mjs'
 import { rectangulo, letra } from '../lib/cash-flow-matriz.mjs'
 import { requestsDePliegue, rangoEnLetras } from '../lib/cash-flow-hoy.mjs'
 import { cuadre, guardaDeCobertura, linea, totalesDeVista } from '../lib/cash-flow-cuadre.mjs'
+import { auditarCuadreCobranzas, informe } from '../lib/cobranzas-cuadre-vivo.mjs'
 // El nombre de cada pestaña ya viene en su `meta`: importarlo suelto era una segunda forma de decir lo
 // mismo, y la que se olvida de cambiar el día que una pestaña se renombra.
 import { grillaSemanal } from '../lib/cash-flow-semanas.mjs'
@@ -323,6 +324,39 @@ async function cuadrarLasVistas(google, metas) {
   return false
 }
 
+/**
+ * LA FUENTE CONTRA EL CUADRO, EN CADA PUBLICACIÓN.
+ *
+ * ═══ POR QUÉ NO ALCANZABA CON EL CUADRE ENTRE LAS DOS VISTAS (14/08/2026) ═══
+ *
+ * `cuadrarLasVistas` compara Semanal contra Mensual: dos ventanas sobre EL MISMO libro. Si el libro
+ * cuenta un cobro distinto de como lo cuenta Cobranzas, las dos vistas se equivocan igual y el cuadre
+ * da ✓. Eso pasó: julio mostraba $22.957.196 de más y agosto $19.903.200 de menos, los dos totales
+ * casi se compensaban ($3.054.320 de neto sobre $809M) y las dos vistas cuadraban perfecto entre sí.
+ * La única forma de verlo era comparar contra la FUENTE, y eso lo hacía un auditor a mano.
+ *
+ * LA DIFERENCIA ESPERADA NO ES CERO Y EL CONTROL LO EXIGE ASÍ. Un valor endosado y una devolución son
+ * diferencias legítimas entre la pestaña y el cuadro; lo que se exige es que la diferencia de cada mes
+ * sea EXACTAMENTE ésas (la aritmética, en `auditar`). Un umbral "±$20M porque hay endosos" habría
+ * dejado pasar los dos desvíos que originaron esto.
+ *
+ * VA DESPUÉS DE ESCRIBIR, como el otro cuadre: antes de escribir el cuadro no existe. Si no cierra, el
+ * paso falla (salida ≠ 0) y el pipeline no registra la corrida como ingesta exitosa del Cash Flow.
+ */
+async function cuadrarContraCobranzas(google, pestana) {
+  const r = await auditarCuadreCobranzas(google, ID, { pestana })
+    .catch((e) => ({ noPudoUbicar: `no pude leer las fuentes del cuadre (${e.message})` }))
+  if (r.ok) {
+    console.log(`✓ cuadre Cobranzas ↔ ${pestana}: los ${r.porMes.length} meses cierran contra la pestaña`
+      + ' (endosos y devoluciones descontados uno por uno)')
+    return true
+  }
+  console.error(`\n⛔ COBRANZAS Y ${pestana.toUpperCase()} NO CUADRAN.`)
+  console.error('   La pestaña es la FUENTE del cuadro: si no dan igual, el cuadro afirma un cobro que Cobranzas no dice.')
+  for (const l of informe(r, { soloFallas: true })) console.error(`   ${l}`)
+  return false
+}
+
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const refs = await refsDeCaja(google)
@@ -355,7 +389,11 @@ async function main() {
   await escribirVista(google, (gid) => grillaSemanal({ hoy, anio: AÑO, refs, gid }), semanal.meta.footprint, refs)
   if (DRY) return console.log('\n--dry: no escribí nada.')
 
-  if (!await cuadrarLasVistas(google, [semanal.meta, mensual.meta])) process.exitCode = 1
+  // LOS DOS CUADRES CORREN SIEMPRE, aunque el primero falle: son independientes y saber los DOS
+  // resultados es lo que distingue "el libro está mal" de "una de las dos vistas está mal".
+  const vistas = await cuadrarLasVistas(google, [semanal.meta, mensual.meta])
+  const fuente = await cuadrarContraCobranzas(google, mensual.meta.pestana)
+  if (!vistas || !fuente) process.exitCode = 1
 }
 
 // Importarlo para testear las grillas —que son puras— NO dispara main(): así el test no escribe nada.
