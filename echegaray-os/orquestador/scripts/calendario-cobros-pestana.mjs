@@ -21,7 +21,10 @@ import { MONEDA_CUERPO, MONEDA_TOTAL } from '../lib/formato-statement.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
-import { celdasEnError, problemaDeSintaxis, clientesDeCobranzas, anchoColumnaA, ANO } from '../lib/obras-grilla.mjs'
+import {
+  celdasEnError, problemaDeSintaxis, clientesDeCobranzas, anchoColumnaA, ANO,
+  ROTULO_TOTAL_ANO, ROTULO_RESTA,
+} from '../lib/obras-grilla.mjs'
 import {
   grillaCalendario, ventanaDeMeses, inicioDeVentana, conColaLimpiable, columnasProyectadas,
   formatoDeEncabezado, ANCHO_HISTORICO, ALTO_HISTORICO, PESTANA_CALENDARIO, REFS_CALENDARIO,
@@ -125,14 +128,66 @@ export function valoresEnFrio(g, filasCobranzas, refs, tc, hoy) {
  * Sección 2 sólo suma las 7 obras declaradas y deja afuera $54,6M de trabajos que no son obra. Ese
  * es, justamente, uno de los motivos por los que este calendario existe.
  *
+ * @param {{fila:number, columna:string, rotulo:string}} [origen] de dónde salió `restaObras`. Sin
+ *   esto el mensaje decía sólo "OBRAS publica $3.488.735 de Resta" y mandaba a buscar el error en el
+ *   calendario, cuando el 14/08 el defecto estaba en la CELDA LEÍDA: la fila equivocada. Un control
+ *   que acusa sin decir de dónde sacó su número obliga a reconstruirlo a mano.
  * @returns {string|null} el motivo, o null si cierra.
  */
-export function cuadraContraResta(totalCalendario, restaObras, tolerancia = 1) {
+export function cuadraContraResta(totalCalendario, restaObras, tolerancia = 1, origen = null) {
   const dif = Math.round((Number(totalCalendario) - Number(restaObras)) * 100) / 100
   if (Math.abs(dif) <= tolerancia) return null
   const $ = (n) => `$${Math.round(n).toLocaleString('es-AR')}`
-  return `el calendario suma ${$(totalCalendario)} por cobrar y OBRAS publica ${$(restaObras)} de Resta: `
+  const de = origen
+    ? ` (leído en OBRAS!${origen.columna}${origen.fila}, fila "${origen.rotulo}", columna "${ROTULO_RESTA}")`
+    : ''
+  return `el calendario suma ${$(totalCalendario)} por cobrar y OBRAS publica ${$(restaObras)} de Resta${de}: `
     + `difieren ${$(dif)}. O un cobro quedó fuera de la ventana de meses, o se está contando dos veces. NO publico un calendario que no cierra.`
+}
+
+/**
+ * DÓNDE ESTÁ LA RESTA DEL AÑO EN LA PESTAÑA OBRAS YA PUBLICADA.
+ *
+ * ═══ EL DEFECTO DEL 14/08, QUE ES LA RAZÓN DE QUE ESTA FUNCIÓN EXISTA ═══
+ *
+ * Esto era `findIndex(f => f[0].startsWith('⇒ TOTAL'))` y leía la columna E fija. Ese mismo día
+ * OBRAS estrenó arriba el bloque "1 · COBRANZAS PENDIENTES", cuyo cierre —fila 6— es
+ * "⇒ TOTAL POR COBRAR": también empieza con "⇒ TOTAL", así que el buscador se quedó con ÉSA y nunca
+ * llegó a la fila 18. En ese cuadro la columna E no es la Resta sino el tramo "▲ 31–60", $3.488.735,
+ * y el control abortó por $353.998.343 de diferencia con las dos pestañas perfectamente sanas.
+ *
+ * Por eso acá no se busca por prefijo ni se elige una letra: el rótulo se compara COMPLETO contra el
+ * que exporta el generador de OBRAS (`ROTULO_TOTAL_ANO`, construido desde `ANO`), y la columna se
+ * resuelve por su ENCABEZADO —el mismo criterio que ya usa `resolverColumnas` con Cobranzas—
+ * buscando hacia arriba la fila de títulos de la sección. Un cuadro nuevo arriba, abajo, o una
+ * columna corrida no pueden volver a apuntar este control a otra celda: si el rótulo o el
+ * encabezado no están, devuelve el motivo y nadie lee una celda al azar.
+ *
+ * @param {Array<Array<any>>} obras valores de OBRAS desde A1
+ * @returns {{fila:number, columna:string, iColumna:number, rotulo:string, valor:any, motivo?:undefined}
+ *          |{motivo:string}}
+ */
+export function ubicarRestaDeObras(obras = []) {
+  const txt = (v) => String(v ?? '').trim()
+  const i = obras.findIndex((f) => txt(f?.[0]) === ROTULO_TOTAL_ANO)
+  if (i < 0) {
+    const candidatas = obras.map((f, k) => [k + 1, txt(f?.[0])]).filter(([, t]) => t.startsWith('⇒ TOTAL'))
+    return {
+      motivo: `no encontré en OBRAS la fila "${ROTULO_TOTAL_ANO}"`
+        + (candidatas.length ? ` (sí vi ${candidatas.map(([f, t]) => `fila ${f}="${t}"`).join(' · ')})` : '')
+        + '.',
+    }
+  }
+  for (let k = i - 1; k >= 0; k--) {
+    const j = (obras[k] ?? []).findIndex((v) => txt(v) === ROTULO_RESTA)
+    if (j >= 0) {
+      return { fila: i + 1, columna: letra(j), iColumna: j, rotulo: txt(obras[i]?.[0]), valor: obras[i]?.[j] }
+    }
+  }
+  return {
+    motivo: `encontré "${ROTULO_TOTAL_ANO}" en la fila ${i + 1} de OBRAS, pero ninguna fila de encabezado `
+      + `por encima declara la columna "${ROTULO_RESTA}": no sé cuál de sus celdas es la Resta.`,
+  }
 }
 
 /**
@@ -297,13 +352,14 @@ async function publicar(google, g) {
   const num = (v) => Number(String(v ?? '').replace(/[^\d,-]/g, '').replace(/\./g, '').replace(',', '.')) || 0
   const totalCal = num(quedo[g.fTotal - 1]?.[g.iTotal])
   const obras = await google.readSheetValues(ID, 'OBRAS!A1:I70').catch(() => [])
-  const filaTot = obras.findIndex((f) => String(f?.[0] ?? '').startsWith('⇒ TOTAL'))
-  if (filaTot < 0) {
-    console.warn('  ⚠ no encontré la fila "⇒ TOTAL" de OBRAS: publiqué el calendario pero NO pude cuadrarlo contra su Resta.')
+  const ubic = ubicarRestaDeObras(obras)
+  if (ubic.motivo) {
+    console.warn(`  ⚠ ${ubic.motivo} Publiqué el calendario pero NO pude cuadrarlo contra su Resta.`)
   } else {
-    const problema = cuadraContraResta(totalCal, num(obras[filaTot]?.[4]))
+    const problema = cuadraContraResta(totalCal, num(ubic.valor), 1, ubic)
     if (problema) throw new Error(`EL CALENDARIO NO CUADRA: ${problema}`)
-    console.log(`  ✓ cuadra: $${Math.round(totalCal).toLocaleString('es-AR')} por cobrar, el mismo número que la Resta de OBRAS`)
+    console.log(`  ✓ cuadra: $${Math.round(totalCal).toLocaleString('es-AR')} por cobrar, el mismo número que la Resta`
+      + ` de OBRAS (${ubic.columna}${ubic.fila}, fila "${ubic.rotulo}")`)
   }
   console.log(`QUEDÓ ESCRITO — releí ${quedo.length} filas (${filasEmitidas} con contenido): sin celdas en error y cuadrado.`)
 }
