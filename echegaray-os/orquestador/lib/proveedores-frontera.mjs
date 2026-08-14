@@ -292,15 +292,37 @@ export function fronteraSegura({ visible = [], titulo, dinamicas = [] } = {}) {
  * mientras la fila tenga algo. Se corta también en el título de la sección siguiente, para que una
  * dinámica pegada al título de abajo (sin fila en blanco entre medio) no se lo trague.
  *
+ * ═══ "ALGO" ES ALGO EN SUS COLUMNAS, NO EN CUALQUIER COLUMNA (14/08/2026) ═══
+ *
+ * EL DEFECTO. Este fin alimenta el ancla de respaldo de la frontera (`fronteraSegura`: fin + 2), o
+ * sea que decide EN QUÉ FILA arranca a escribir el generador de texto cuando el título no está. Y se
+ * medía mirando la fila ENTERA (A..BZ). El generador de texto escribe A..P: cualquier resto suyo en
+ * una fila pegada al pie de la dinámica —una capa anterior— contaba como "la dinámica sigue", el fin
+ * bajaba, la frontera bajaba con él, el bloque se escribía más abajo y dejaba una capa nueva justo en
+ * la fila que la próxima corrida vuelve a leer. Un ancla que depende de la basura que ella misma
+ * produce no converge nunca: baja una tanda de filas por corrida, para siempre.
+ *
+ * En el archivo real hay filas exactamente de esa forma —vacías en la A y con dato en la C y la D
+ * (restos del cuadro de notas de crédito de una corrida vieja)—, así que no es un caso de laboratorio.
+ *
+ * EL ANCHO DE UNA DINÁMICA ES UN HECHO DE LA API, no una estimación: los campos de fila más los de
+ * valor (`anclasDeDinamicas` lo saca del spec). Acotando el barrido a SUS columnas, el resto del
+ * generador de texto deja de poder estirarla. Con campos de COLUMNA el ancho depende de los datos y
+ * no se puede afirmar: ahí `ancho: 0` y se vuelve al criterio de siempre, que peca de largo — el lado
+ * seguro, porque un fin más largo sólo puede FRENAR la escritura (`verificarFronteraBajoDinamicas`),
+ * nunca autorizarla más arriba.
+ *
  * @param {any[][]} visible
  * @param {number} ancla fila 1-indexada del ancla
+ * @param {{col?:number, ancho?:number}} [suyo] la columna del ancla y cuántas columnas ocupa
  * @returns {number} la última fila 1-indexada que ocupa la dinámica
  */
-export function finDeDinamica(visible = [], ancla) {
+export function finDeDinamica(visible = [], ancla, { col = 0, ancho = 0 } = {}) {
+  const suya = (fila) => (ancho > 0 ? tieneAlgo((fila || []).slice(col, col + ancho)) : tieneAlgo(fila))
   let fin = ancla
   for (let f = ancla + 1; f <= visible.length; f++) {
     const fila = visible[f - 1]
-    if (!tieneAlgo(fila) || esTituloDeSeccion(fila?.[0])) break
+    if (!suya(fila) || esTituloDeSeccion(fila?.[0])) break
     fin = f
   }
   return fin
@@ -311,8 +333,14 @@ export function finDeDinamica(visible = [], ancla) {
  * tiene valor ni fórmula propios: el campo `pivotTable` en su celda ancla es la ÚNICA señal de que
  * ahí hay una, y por eso esta detección no se puede hacer con `readSheetValues`.
  *
+ * CUÁNTAS COLUMNAS OCUPA sale del mismo spec y es un hecho, no una estimación: un campo de fila por
+ * columna más un campo de valor por columna (`valueLayout: HORIZONTAL`, el único que usa esta
+ * pestaña). Hace falta para medir dónde TERMINA sin contar como suyo el resto de otro generador —ver
+ * `finDeDinamica`—. Con campos de COLUMNA el ancho lo deciden los datos y no se puede afirmar desde el
+ * spec: se devuelve 0, que significa "no sé" y no "cero columnas".
+ *
  * @param {object} grid respuesta de google.getGridData(id, 'Proveedores!A1:Z999')
- * @returns {{fila:number, col:number}[]} filas 1-indexadas
+ * @returns {{fila:number, col:number, ancho:number}[]} filas 1-indexadas
  */
 export function anclasDeDinamicas(grid) {
   const data = grid?.sheets?.[0]?.data?.[0]
@@ -320,7 +348,11 @@ export function anclasDeDinamicas(grid) {
   const out = []
   ;(data?.rowData ?? []).forEach((fila, i) => {
     (fila?.values ?? []).forEach((celda, j) => {
-      if (celda?.pivotTable) out.push({ fila: base + i, col: j })
+      const p = celda?.pivotTable
+      if (!p) return
+      const conColumnas = (p.columns ?? []).length > 0
+      const ancho = conColumnas ? 0 : (p.rows ?? []).length + (p.values ?? []).length
+      out.push({ fila: base + i, col: j, ancho })
     })
   })
   return out

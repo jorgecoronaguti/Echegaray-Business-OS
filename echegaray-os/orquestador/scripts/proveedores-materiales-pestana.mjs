@@ -138,6 +138,13 @@ const PESTAÑA = NOMBRES.proveedoresMateriales
 // en la pestaña. Si fueran dos textos, el día que cambie uno la frontera dejaría de aparecer y —bien—
 // no se escribiría nada, pero por el motivo equivocado.
 const TITULO_FRONTERA = 'NOTAS DE CRÉDITO'
+// CUÁNTAS CELDAS PUEDE BARRER ESTE GENERADOR EN UNA CORRIDA. El tope global de `no-borrar.mjs` son
+// 200 y está medido para un residuo chico: una fila suelta, un fragmento. Acá el residuo son N capas
+// superpuestas —una simulación sobre el archivo real contó 350 celdas vaciables, 17 dudosas—, y con
+// 200 el rango se DESCARTA entero: el tope pasa de freno a garantía de que el sedimento no se limpia
+// nunca. Se declara por rango, para este bloque, y `topeDelPedido` no lo deja pasar de 400. El tope
+// sigue existiendo: lo que cambia es contra qué tamaño de residuo se mide.
+const TOPE_RESIDUO = 400
 const DRY = process.argv.includes('--dry')
 // REGENERACIÓN INTENCIONAL (opt-in, apagado por defecto). Cuando el dueño pide explícitamente
 // "regenerá esta pestaña", este flag saltea las dos guardas de SKIP (firma editada / auto-respeto de
@@ -762,8 +769,17 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, not
   // Se pegan, y se declaran AL PIE DE LA SECCIÓN, una sola vez. Antes cada una llevaba su declaración
   // en la columna I: dos párrafos sueltos derramados a la derecha de la tabla, que en el PDF se leen
   // como basura. Una explicación que se repite fila por fila es una explicación mal ubicada.
-  const fArcaEn = push(estructural([rotuloArca(N_ARCA.enComprasN), cruce.porNumero.length, cruce.totales.porNumero, '', '', '', '', '', '']))
-  const fArcaSinNum = push(estructural([rotuloArca(N_ARCA.sinNumeroN), cruce.porImporte.length, cruce.totales.porImporte, '', '', '', '', '', '']))
+  // ═══ UN FLOAT CRUDO ATERRIZA COMO TEXTO EN UN SHEET es-AR (14/08/2026) ═══
+  //
+  // Medido en el archivo real: `C179 = "126944007.80000003"` — TEXTO, con punto decimal inglés, en la
+  // celda que publica cuánto de ARCA está cargado en Compras. No es un formato mal puesto: la suma de
+  // floats de JS trae 17 dígitos significativos, la API los manda como los recibe y el Sheet los
+  // parsea EN SU LOCALE, donde el punto es separador de miles. Un número que no parsea no da error:
+  // queda de texto, y una celda de texto no suma en ninguna fórmula que la referencie.
+  // Los dos son PLATA, así que la precisión que corresponde son los centavos.
+  const centavos = (n) => Math.round((Number(n) || 0) * 100) / 100
+  const fArcaEn = push(estructural([rotuloArca(N_ARCA.enComprasN), cruce.porNumero.length, centavos(cruce.totales.porNumero), '', '', '', '', '', '']))
+  const fArcaSinNum = push(estructural([rotuloArca(N_ARCA.sinNumeroN), cruce.porImporte.length, centavos(cruce.totales.porImporte), '', '', '', '', '', '']))
   // Los que faltan sí tienen fórmula: son exactamente las filas de la tabla de abajo.
   const fArcaFaltan = push(estructural([rotuloArca(N_ARCA.faltanN), '', '', '', '', '', '', '', '']))
   // LA CIFRA DE VENTAS SE QUEDA, EL DETALLE NO. Alimenta ARCA_VENTAS_N/MONTO, que consume el Cash
@@ -1011,7 +1027,11 @@ export async function abortarSiHayDinamica(google, { frontera = null, visible = 
     throw new Error(`no pude verificar si hay tablas dinámicas en "${pestana}" (${e.message}). `
       + 'No escribo: no poder verificar nunca es permiso para pisar.')
   }
-  const dinamicas = anclasDeDinamicas(grid).map((a) => ({ ancla: a.fila, col: a.col, fin: finDeDinamica(visible, a.fila) }))
+  // EL FIN SE MIDE EN LAS COLUMNAS DE LA DINÁMICA, no en la fila entera: un resto de este mismo
+  // generador pegado a su pie la estiraba, y con ella bajaba la frontera. Ver lib/proveedores-frontera.
+  const dinamicas = anclasDeDinamicas(grid).map((a) => ({
+    ancla: a.fila, col: a.col, ancho: a.ancho, fin: finDeDinamica(visible, a.fila, { col: a.col, ancho: a.ancho }),
+  }))
   if (process.env.ORQ_PISAR_DINAMICA_PROVEEDORES === 'si') {
     console.warn('  ⚠ ORQ_PISAR_DINAMICA_PROVEEDORES=si: no verifico la frontera contra las dinámicas, a pedido explícito')
     return dinamicas
@@ -1521,7 +1541,12 @@ async function main() {
   const g = grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, notasCredito, anuladasCargadas, cruce, deudaCols, deudaPrevio, notasBase })
   const ancho = Math.max(...g.filas.map((f) => f.length))
   const cuadro = g.filas.map((f) => { const r = [...f]; while (r.length < ancho) r.push(''); return r })
-  console.log(`${PESTAÑA}: ${cuadro.length} filas x ${ancho} columnas`)
+  // LA GRILLA ENTERA, ANTES DE PARTIRLA — y por eso NO lleva el nombre de una pestaña. Decía
+  // `${PESTAÑA}` ('Proveedores y Materiales'), que es la pestaña PREVIA a la partición y hoy no
+  // existe: un auditor leyó ese log y concluyó que el script escribía a una pestaña inexistente.
+  // Un rótulo que nombra un destino que no se usa manda a buscar la causa al lado equivocado.
+  console.log(`grilla completa (antes de partir en "${NOMBRES.proveedores}" y "${NOMBRES.materiales}"): `
+    + `${cuadro.length} filas x ${ancho} columnas`)
   // UN PÁRRAFO QUE NO ENTRA SE VE CORTADO, y en una fila que derrama sobre toda la pestaña no hay
   // ancho que lo arregle: hay que escribir menos. Se avisa acá, con el número, para que no sea una
   // discusión de gustos — es el defecto `texto_cortado` que el auditor reportaba como A261 y A283.
@@ -1793,7 +1818,7 @@ async function main() {
     // generador, y quien la verifica es la guarda sobre el destino que ella misma relee.
     await google.batchUpdateValues(
       ID, [{ range: `${refPestana(t.titulo)}!A${filaArranque}`, values: fusion }],
-      { yaGuardado: FORCE, vaciarPropio: { mios } },
+      { yaGuardado: FORCE, vaciarPropio: { mios, tope: TOPE_RESIDUO } },
     )
     if (conservadas.length) console.log(`  ✋ ${t.titulo}: ${conservadas.length} celda(s) escritas por el dueño — CONSERVADAS, no se borra nada`)
 
@@ -1836,7 +1861,7 @@ async function main() {
       const vacias = colaCruda.map(() => Array.from({ length: anchoP }, () => ''))
       await google.batchUpdateValues(
         ID, [{ range: `${refPestana(t.titulo)}!A${filaFin + 1}`, values: vacias }],
-        { yaGuardado: FORCE, vaciarPropio: { mios } },
+        { yaGuardado: FORCE, vaciarPropio: { mios, tope: TOPE_RESIDUO } },
       )
       console.log(`  🧹 ${t.titulo}: reviso la cola (filas ${filaFin + 1}–${filaFin + colaCruda.length}) — se vacía sólo lo que se prueba mío`)
     }

@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url'
 import { frenar } from './congelador-sheets.mjs'
 // La regla que no se puede apagar: ninguna escritura deja vacía una celda que tenía algo. No la
 // levanta ORQ_SHEETS_DESCONGELAR, ni yaGuardado, ni espejo, ni respetar:false, ni --force.
-import { permiteBorradoExplicito, protegerBorrado, TOPE_VACIADO } from './no-borrar.mjs'
+import { permiteBorradoExplicito, protegerBorrado, topeDelPedido } from './no-borrar.mjs'
 // Y su inversa, con la misma disciplina: lo que el dueño vació no vuelve por ningún camino. Se
 // engancha sobre la relectura que ya hace la guarda de borrado. Ver no-reponer.mjs.
 import { noReponerEnRango, noReponerPorCeldas } from './no-reponer.mjs'
@@ -1228,7 +1228,7 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
         // resultado se declara SIEMPRE, incluso (sobre todo) cuando es cero.
         if (vaciarPropio) {
           console.log(`  🧹 barrido de residuo propio: ${nb.vaciadas} vaciada(s) · ${nb.preservadas} conservada(s) `
-            + `(no se pueden probar mías) · ${nb.limpiadas} limpiada(s) por huella · tope ${TOPE_VACIADO}`
+            + `(no se pueden probar mías) · ${nb.limpiadas} limpiada(s) por huella · tope ${topeDelPedido(vaciarPropio)}`
             + (nb.descartados.length ? ` · ⛔ ${nb.descartados.length} rango(s) DESCARTADO(S) por pasar el tope` : ''))
         }
         if (nb.preservadas) console.log(avisoConservadas(nb))

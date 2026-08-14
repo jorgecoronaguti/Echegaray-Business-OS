@@ -130,10 +130,12 @@ test('las anclas salen del campo pivotTable, que es la única señal de que ahí
       { values: [{ pivotTable: { rows: [] } }] },
     ] }] }],
   }
-  assert.deepEqual(anclasDeDinamicas(grid), [{ fila: 2, col: 0 }, { fila: 4, col: 0 }])
+  // `ancho` sale del mismo spec y es lo que le permite a `finDeDinamica` no contar como cuerpo de la
+  // dinámica un resto de otro generador. Sin campos declarados es 0 = "no sé", y se mira la fila entera.
+  assert.deepEqual(anclasDeDinamicas(grid), [{ fila: 2, col: 0, ancho: 0 }, { fila: 4, col: 0, ancho: 0 }])
   // Un rango que no arranca en la fila 1: la fila absoluta sale de startRow.
   const conOffset = { sheets: [{ data: [{ startRow: 10, rowData: [{ values: [{ pivotTable: {} }] }] }] }] }
-  assert.deepEqual(anclasDeDinamicas(conOffset), [{ fila: 11, col: 0 }])
+  assert.deepEqual(anclasDeDinamicas(conOffset), [{ fila: 11, col: 0, ancho: 0 }])
   // Sin dinámicas —o con una respuesta vacía— la lista es vacía, no un error.
   assert.deepEqual(anclasDeDinamicas({}), [])
 })
