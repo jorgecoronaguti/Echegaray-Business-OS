@@ -76,14 +76,72 @@ export function copiaHuerfana(grid = [], { fila, col, tabla }) {
   const valor = (grid[fila - 1] || [])[col]
   const base = { fila, col, valor: String(valor ?? '').slice(0, 80), gemelo: null }
   if (!formaDe(valor)) return { ...base, motivo: 'la celda está vacía: no hay nada que limpiar' }
-  const [f0, f1] = tabla
-  if (fila >= f0 && fila <= f1) return { ...base, motivo: 'la celda está ADENTRO de la tabla viva: no es huérfana' }
-  for (let f = f0; f <= f1; f++) {
-    if (igual(valor, (grid[f - 1] || [])[col])) {
-      return { ...base, gemelo: f, motivo: `la misma cosa está viva en la fila ${f}, adentro de la tabla` }
+  // UNA CANDIDATA PUEDE TENER MÁS DE UNA TABLA DONDE BUSCAR SU GEMELO. La columna «Banco» de Oficina
+  // recibió residuo de DOS cuadros distintos —las ventanas del calendario y la propia fila de total—
+  // y exigir una sola tabla obligaría a declarar la misma celda dos veces, que es como se termina
+  // borrando de más. Se acepta `[f0,f1]` o una lista de rangos.
+  const tablas = Array.isArray(tabla?.[0]) ? tabla : [tabla]
+  for (const [f0, f1] of tablas) {
+    if (fila >= f0 && fila <= f1) return { ...base, motivo: 'la celda está ADENTRO de la tabla viva: no es huérfana' }
+  }
+  for (const [f0, f1] of tablas) {
+    for (let f = f0; f <= f1; f++) {
+      if (igual(valor, (grid[f - 1] || [])[col])) {
+        return { ...base, gemelo: f, motivo: `la misma cosa está viva en la fila ${f}, adentro de la tabla` }
+      }
     }
   }
   return { ...base, motivo: 'NO tiene gemelo vivo adentro de la tabla: puede ser tuyo, se conserva' }
+}
+
+/**
+ * NÚCLEO PURO: LAS CANDIDATAS DE LA COLUMNA «Banco» DE OFICINA, UBICADAS POR SU ENCABEZADO.
+ *
+ * ═══ QUÉ ENCONTRÓ ESTO, Y CUÁNTO COSTABA (14/08) ═══
+ *
+ * Leída la pestaña viva con render FORMULA, la columna «Banco» del cuadro de Oficina tenía:
+ *
+ *   mayo–agosto  `=SUMIFS($H$79:$H$90;$E$79:$E$90;…)`  ← la ventana de la columna «Dirección» del
+ *                                                        calendario, que vive en ESA misma columna F
+ *   diciembre    `=SUM(F$36:F$47)`                     ← un TOTAL adentro del cuerpo de la tabla
+ *
+ * La fila de total volvía a sumar el total de diciembre: el canal publicaba $5.238.607 contra
+ * $2.619.303 reales —exactamente el doble— y cinco de doce meses medían el banco de otro cuadro. Con
+ * ese denominador, cualquier porcentaje contra el acuerdo 50/50 es un artefacto.
+ *
+ * ═══ POR QUÉ NO ALCANZA CON QUE EL GENERADOR MANDE EL CENTINELA ═══
+ *
+ * Porque una fórmula ajena sin huella NO SE PISA, nunca, y está bien que no se pise (`huella-celda`).
+ * El centinela evita que el residuo VUELVA; sacar el que ya está adentro es esta vía declarada.
+ *
+ * ═══ POR QUÉ POR ANCLA Y NO POR NÚMERO DE FILA ═══
+ *
+ * Porque el propio arreglo mueve el bloque: la línea del acuerdo 50/50 entra arriba y corre las doce
+ * filas un renglón. Una lista de coordenadas escrita a mano sería correcta hasta la corrida siguiente
+ * —y después borraría la celda de al lado, que es como se pierde el trabajo del dueño—. El ancla es
+ * el ENCABEZADO: la primera fila cuya A dice «Mes» y que tiene «Banco» y «Proyectado» en su renglón.
+ *
+ * FALLA CERRADO: sin encabezado, sin calendario o sin fila de total, devuelve lista vacía y no se
+ * toca una sola celda.
+ *
+ * @param {any[][]} grid la pestaña leída con render FORMULA
+ * @param {number} meses cuántas filas de mes tiene el bloque
+ * @returns {{fila:number, col:number, tabla:number[][]}[]}
+ */
+export function candidatasDeBancoOficina(grid = [], meses = 12) {
+  const celda = (f, c) => String((grid[f] || [])[c] ?? '').trim()
+  const enc = grid.findIndex((f) => String(f?.[0] ?? '').trim() === 'Mes'
+    && (f || []).includes('Banco') && (f || []).includes('Proyectado'))
+  if (enc < 0) return []
+  const col = grid[enc].indexOf('Banco')
+  const total = enc + 1 + meses + 1 // 1-based: encabezado, doce meses, total
+  // El calendario es el otro cuadro que escribe en esta columna. Se lo ubica por su encabezado y por
+  // el rótulo de su fila de total, que es donde termina: sin las dos referencias no se busca ahí.
+  const cal = grid.findIndex((f) => String(f?.[0] ?? '').trim() === 'Período' && (f || []).includes('TOTAL'))
+  const tablas = [[total, total]]
+  if (cal >= 0 && cal < enc) tablas.push([cal + 2, enc])
+  if (!celda(total - 1, 0)) return []
+  return Array.from({ length: meses }, (_, i) => ({ fila: enc + 2 + i, col, tabla: tablas }))
 }
 
 /**
