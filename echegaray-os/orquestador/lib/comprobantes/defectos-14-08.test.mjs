@@ -43,9 +43,11 @@ test('cuando la última fila SÍ tiene todas las fórmulas, se usa esa', () => {
 })
 
 test('sin ninguna fila con fórmulas NO se degrada a copiar un literal: se declara cuál falta', () => {
-  const r = filaModeloDeFormulas([filaConFormulas(['O']), filaConFormulas(['O', 'Y'])], { desde: 10 })
+  // `Z` («Estado pago») en lugar de `Y`: ver GRUPOS_FORMULA. `Y` pasó a ser «Tipo de Costo», que es
+  // texto en las 47 filas medidas — pedirle fórmula era lo que tenía la carga rota al 100%.
+  const r = filaModeloDeFormulas([filaConFormulas(['O']), filaConFormulas(['O', 'Z'])], { desde: 10 })
   assert.equal(r.fila, null, 'eligió una fila sin fórmula: bajaría un número falso')
-  assert.deepEqual(r.faltan.sort(), ['O', 'Y'], 'no dice qué columna falta y nadie sabe qué arreglar')
+  assert.deepEqual(r.faltan.sort(), ['O', 'Z'], 'no dice qué columna falta y nadie sabe qué arreglar')
 })
 
 test('una fila más corta que el ancho de las fórmulas no cuenta como modelo', () => {
