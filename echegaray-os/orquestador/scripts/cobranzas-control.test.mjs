@@ -22,19 +22,19 @@ const LA_ESTRELLA = {
 
 const balanceada = (f) => (f.match(/\(/g) || []).length === (f.match(/\)/g) || []).length
 
-test('sin decisiones, la marca es la de siempre: el ⚠ del indistinguible sigue primero', () => {
+test('sin decisiones, la marca es la de siempre: el ▲ del indistinguible sigue primero', () => {
   const f = marcaPorFila([])
   assert.ok(balanceada(f), f)
-  assert.match(f, /⚠ Otro cobro con el MISMO cliente/)
+  assert.match(f, /▲ Otro cobro con el MISMO cliente/)
   assert.ok(!f.includes('lo revisó el'), 'sin decisión no hay nada que liberar')
 })
 
-test('con la decisión del dueño, la fila 39 deja de llevar ⚠ y dice quién la revisó', () => {
+test('con la decisión del dueño, la fila 39 deja de llevar ▲ y dice quién la revisó', () => {
   const f = marcaPorFila([LA_ESTRELLA])
   assert.ok(balanceada(f), f)
   // La condición liberadora va ANTES que la del indistinguible: si fuera después, nunca ganaría.
   const iLibera = f.indexOf('lo revisó el dueño')
-  const iAviso = f.indexOf('⚠ Otro cobro con el MISMO cliente')
+  const iAviso = f.indexOf('▲ Otro cobro con el MISMO cliente')
   assert.ok(iLibera > 0 && iLibera < iAviso, 'la liberación tiene que ganarle al aviso')
   assert.match(f, /13\/08\/2026/)
   assert.match(f, /""no es duplicado""/, 'el texto textual del dueño, con las comillas escapadas para el Sheet')
@@ -55,12 +55,12 @@ test('si el importe de esa fila cambia, la condición ya no se cumple y la marca
   assert.notEqual(c, otro)
 })
 
-test('el texto liberador nunca lleva ⚠, ni siquiera si el dueño lo escribiera con comillas', () => {
+test('el texto liberador nunca lleva ▲, ni siquiera si el dueño lo escribiera con comillas', () => {
   const f = marcaPorFila([{ ...LA_ESTRELLA, decision: 'es el "adelanto", no un duplicado' }])
   assert.ok(balanceada(f), f)
   assert.match(f, /es el ""adelanto"", no un duplicado/)
   const liberador = f.slice(f.indexOf('lo revisó el dueño') - 40, f.indexOf('lo revisó el dueño') + 80)
-  assert.ok(!liberador.includes('⚠'))
+  assert.ok(!liberador.includes('▲'))
 })
 
 test('la fórmula que va al Sheet sale del registro REAL: hoy libera la fila 39 y ninguna otra', () => {

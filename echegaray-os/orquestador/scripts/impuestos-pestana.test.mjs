@@ -295,7 +295,7 @@ test('el mes EN CURSO queda vinculado a ARCA y se declara como parcial', () => {
   // HOY es 06/08/2026, así que agosto es el mes en curso.
   const g = armar({ arca: { meses: [7, 8] } })
   const fDDJJ = filaDe(g, /^DDJJ presentada$/)
-  assert.equal(g.filas[fDDJJ - 1][8], '⚠ ARCA parcial')
+  assert.equal(g.filas[fDDJJ - 1][8], '▲ ARCA parcial')
   const debito = String(g.filas[filaDe(g, /^Débito fiscal del período$/) - 1][8])
   assert.match(debito, /_ARCA_RAW/, 'agosto sale de la réplica de comprobantes')
   assert.match(debito, /^=MAX\(/, 'y nunca por debajo de la proyección del Libro')
@@ -411,7 +411,7 @@ test('el residuo de un layout anterior se limpia de punta a punta (grilla → hu
   // La pestaña de hoy: lo que el generador escribió, más el residuo del layout viejo en I:M.
   const huellas = new Map(huellasDeEscritura(g.filas).map((h) => [claveCelda(h.fila, h.col), { forma: h.forma, huella: h.huella, borrada: false }]))
   const hoy = g.filas.map((f, i) => (i === idxCal
-    ? f.map((c, j) => (j >= 8 && j <= 12 ? '⚠ PROYECCIÓN' : (c === VACIO ? '' : c)))
+    ? f.map((c, j) => (j >= 8 && j <= 12 ? '▲ PROYECCIÓN' : (c === VACIO ? '' : c)))
     : f.map((c) => (c === VACIO ? '' : c))))
   const { grid, alineacion } = aplicarHuella(g.filas, hoy, huellas)
   assert.equal(alineacion.alineada, true, alineacion.motivo)
@@ -421,5 +421,5 @@ test('el residuo de un layout anterior se limpia de punta a punta (grilla → hu
   }
   // Y el texto sigue vivo donde SÍ va: la fila de la DDJJ presentada.
   const idxDDJJ = g.filas.findIndex((f) => String(f[0] ?? '').trim() === 'DDJJ presentada')
-  assert.equal(enPestana[idxDDJJ][8], '⚠ PROYECCIÓN')
+  assert.equal(enPestana[idxDDJJ][8], '▲ PROYECCIÓN')
 })

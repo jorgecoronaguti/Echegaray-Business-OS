@@ -15,6 +15,7 @@ import {
   conciliarBanco, conciliarJornales, conciliarSueldos, impuestoAlCheque, serialDeFecha,
 } from './cash-flow-conciliacion.mjs'
 import { CALENDARIO_IMPUESTOS } from './cash-flow-lineas.mjs'
+import { ALERTA } from './glifos.mjs'
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
 
@@ -113,8 +114,8 @@ export const LINEAS = [
   { fila: 23, concepto: '(–) Pagos a proveedores de obra', tipo: 'subtotal', hijos: [24, 25, 26, 27] },
   { fila: 24, rubro: "Materiales Civil", concepto: 'Materiales e insumos de obra civil', tipo: 'fuente', fuente: 'Compras', criterio: 'AC="Materiales Civil" · fecha de caja AD', calc: (F, v) => conciliarCompras(F.compras, { rubro: 'Materiales Civil', ...v }) },
   { fila: 25, rubro: "Materiales Mantenimiento", concepto: 'Materiales de mantenimiento', tipo: 'fuente', fuente: 'Compras', criterio: 'AC="Materiales Mantenimiento" · fecha de caja AD', calc: (F, v) => conciliarCompras(F.compras, { rubro: 'Materiales Mantenimiento', ...v }) },
-  { fila: 26, concepto: 'Cheques sin factura cargada', tipo: 'fuente', fuente: 'Cheques Emitidos', criterio: 'M = "⚠ FALTA cargar la factura…" · fecha de pago I · monto F', calc: (F, v) => conciliarSinFactura(F.cheques, { tipo: 'cheque', ...v }) },
-  { fila: 27, concepto: 'Cuotas de tarjeta sin factura cargada', tipo: 'fuente', fuente: 'Tarjeta de Credito', criterio: 'L = "⚠ FALTA cargar la factura…" · fecha de pago H · monto E', calc: (F, v) => conciliarSinFactura(F.tarjeta, { tipo: 'tarjeta', ...v }) },
+  { fila: 26, concepto: 'Cheques sin factura cargada', tipo: 'fuente', fuente: 'Cheques Emitidos', criterio: `M = "${ALERTA} FALTA cargar la factura…" · fecha de pago I · monto F`, calc: (F, v) => conciliarSinFactura(F.cheques, { tipo: 'cheque', ...v }) },
+  { fila: 27, concepto: 'Cuotas de tarjeta sin factura cargada', tipo: 'fuente', fuente: 'Tarjeta de Credito', criterio: `L = "${ALERTA} FALTA cargar la factura…" · fecha de pago H · monto E`, calc: (F, v) => conciliarSinFactura(F.tarjeta, { tipo: 'tarjeta', ...v }) },
   { fila: 28, concepto: '(–) Gastos de estructura y servicios', tipo: 'subtotal', hijos: [29, 30] },
   { fila: 29, rubro: "Estructura", concepto: 'Gastos de estructura y administración', tipo: 'fuente', fuente: 'Compras', criterio: 'AC="Estructura" MENOS AF="Equipos y rodados (inversión)" · fecha de caja AD', calc: (F, v) => conciliarEstructuraNeta(F.compras, v) },
   { fila: 30, rubro: "Servicios recurrentes", concepto: 'Servicios recurrentes', tipo: 'fuente', fuente: 'Compras', criterio: 'AC="Servicios recurrentes" · fecha de caja AD', calc: (F, v) => conciliarCompras(F.compras, { rubro: 'Servicios recurrentes', ...v }) },

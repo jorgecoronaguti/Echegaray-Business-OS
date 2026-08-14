@@ -4,6 +4,7 @@ import { hallarPestana } from './sheet-pestanas.mjs'
 // lib/cobertura-arca.mjs vino a cerrar.
 import { candidatasPorImporte } from './cobertura-arca.mjs'
 import { normNombre } from './razon-social.mjs'
+import { ALERTA } from './glifos.mjs'
 
 // ¿LOS CHEQUES Y LA TARJETA ESTÁN CONTEMPLADOS EN EL CASH FLOW, O SON PLATA INVISIBLE?
 //
@@ -275,8 +276,12 @@ export const MARCAS = {
   // sobre algo que se dedujo del importe: la regla de oro nº 2 —nunca presentar una estimación como
   // un hecho— se rompe en el glifo, no en el texto que nadie lee.
   inferido: '≈ INFERIDO — sin N°, pero hay una factura del mismo proveedor por el mismo importe',
-  falta: '⚠ FALTA cargar la factura en Compras — este pago no lo ve el cash flow',
-  sinNumero: '⚠ sin N° de comprobante — no se puede cruzar',
+  // LA ALERTA SALE DE `glifos.mjs` Y NO SE TIPEA ACÁ. El `⚠` con el que se publicaron estas dos
+  // marcas no lo dibuja el exportador a PDF: en el papel decían "FALTA cargar la factura…" sin la
+  // señal que hace que alguien mire. Quién las reconoce ya publicadas —el cash flow, la piel, la
+  // huella— tolera los dos glifos mientras la columna M no se regenere; ver `comparaMarca`.
+  falta: `${ALERTA} FALTA cargar la factura en Compras — este pago no lo ve el cash flow`,
+  sinNumero: `${ALERTA} sin N° de comprobante — no se puede cruzar`,
 }
 
 /**

@@ -62,6 +62,7 @@
 
 import { sub } from './patron-pestana.mjs'
 import { convenioDe, CONVENIO_POR_CODIGO } from './uocra-paritaria.mjs'
+import { ALERTA } from './glifos.mjs'
 
 /**
  * EL SUPUESTO VIAJA CON EL NÚMERO A LA PESTAÑA QUE LO MULTIPLICA.
@@ -236,7 +237,7 @@ export function lineaSupuestoConvenio({ sigma = null, celdaPersonas = null } = {
   // NOMBRA LA FUENTE QUE FALTA. Al acortar esta línea le saqué "_UOCRA_RAW" y su test lo cazó: sin el
   // nombre de la réplica, el aviso dice que algo se rompió pero no qué se arregla. Un aviso que no se
   // puede accionar es tinta.
-  if (!sigma) return sub('⚠ Sin escala en _UOCRA_RAW — base: jornal pactado')
+  if (!sigma) return sub(`${ALERTA} Sin escala en _UOCRA_RAW — base: jornal pactado`)
   // `IFERROR(...;0)` y no `N(...)` a secas: si una celda de «Básico convenio» devolviera algo que el
   // producto escalar no sabe multiplicar, la línea que avisa del problema sería ella misma un #VALUE! —
   // el aviso se perdería justo cuando hace falta. Un error acá se lee como "no hay escala", que es lo
@@ -258,7 +259,7 @@ export function lineaSupuestoConvenio({ sigma = null, celdaPersonas = null } = {
   // Queda el rótulo, que es lo único que el párrafo agregaba: que es un SUPUESTO y no lo que se paga.
   const cuantos = celdaPersonas ? `"&${celdaPersonas}&"` : 'las'
   return `=IF(IFERROR(N(${sigma});0)=0;`
-    + `"   · ⚠ El convenio no devolvió escala — proyección vacía";`
+    + `"   · ${ALERTA} El convenio no devolvió escala — proyección vacía";`
     + `"   · Supuesto: proyectado al 100% del convenio · ${cuantos} personas")`
 }
 

@@ -44,6 +44,7 @@
 // curar (ver lib/libro-sumas.mjs). Si mañana el libro suma una columna, cambia un archivo.
 
 import { terminoLibro } from './libro-sumas.mjs'
+import { ALERTA } from './glifos.mjs'
 
 /**
  * LOS ESTADOS QUE TODAVÍA NO PASARON POR EL BANCO.
@@ -143,7 +144,7 @@ export function tarjetas(ref) {
       // su detalle a la vista. Una segunda suma acá sería un número que puede diferir del de abajo.
       // Excluye Balanz: es la liquidez OPERATIVA — "lo q tenemos en banco y caja".
       valor: `=${ref.total}`,
-      contexto: `=IF(ISNUMBER(${ref.fecha});"al "&${dia(ref.fecha)}&" · bancos y efectivo";"⚠ el bloque de cuentas todavía no publicó su fecha")`,
+      contexto: `=IF(ISNUMBER(${ref.fecha});"al "&${dia(ref.fecha)}&" · bancos y efectivo";"${ALERTA} el bloque de cuentas todavía no publicó su fecha")`,
       especie: 'plata',
     },
     {

@@ -28,6 +28,8 @@
 // una celda es honesto; una alícuota citada de memoria adentro de una fórmula es una invención con
 // aspecto de dato.
 
+import { ALERTA } from './glifos.mjs'
+
 /** Los parámetros normativos que esta cadena necesita y que el repositorio no puede verificar solo. */
 export const RANGO_FCL_PRIMER_ANIO = 'FCL_ALICUOTA_PRIMER_ANIO'
 export const RANGO_FCL_POSTERIOR = 'FCL_ALICUOTA_POSTERIOR'
@@ -37,7 +39,7 @@ export const RANGO_FODECO = 'FODECO_POR_TRABAJADOR'
 export const RANGO_DIA_PAGO_F931 = 'F931_DIA_DE_PAGO'
 
 /** La marca que el auditor busca para saber que un valor está declarado como no verificado. */
-export const A_VERIFICAR = '⚠ A VERIFICAR POR EL DUEÑO'
+export const A_VERIFICAR = `${ALERTA} A VERIFICAR POR EL DUEÑO`
 
 export const PARAMETROS_CARGAS = [
   {

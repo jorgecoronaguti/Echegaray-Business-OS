@@ -32,6 +32,7 @@ import { parseMonto } from '../lib/cash-briefing.mjs'
 import { esIndistinguible, plataEnJuego, esCobroYaRevisado } from '../lib/cobranzas-duplicado.mjs'
 // Lo que el dueño ya revisó no vuelve a marcarse con ⚠. Ver lib/decisiones-hallazgos.mjs.
 import { CONTROLES, decisionesDe, rotuloDecision } from '../lib/decisiones-hallazgos.mjs'
+import { ALERTA, ALERTA_HEREDADA, variantesDeMarca } from '../lib/glifos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Cobranzas'
@@ -104,10 +105,10 @@ const anidar = (pares, ultimo = '""') => pares.reduceRight((acc, [c, t]) => `IF(
 export function marcaPorFila(liberadas = []) {
   return `=ARRAYFORMULA(IF(${M}=0;"";${anidar([
     ...liberadas.map((d) => [esCobroYaRevisado(d.forma, PESTAÑA, F0, F1), txt(rotuloDecision(d))]),
-    [INDIST, txt('⚠ Otro cobro con el MISMO cliente, monto, forma, estado y día. Si son dos cobros distintos, escribí conceptos distintos; si es el mismo cargado dos veces, dá de baja uno.')],
-    [`COUNTIFS(${G};${G};${M};${M};${Q};${Q};${E};${E};${H};${H};${I};${I})>1`, txt('⚠ Igual en TODO: cliente, monto, fecha, comprobante, orden de compra y concepto. Acá sí hay que revisar si se cargó dos veces.')],
+    [INDIST, txt(`${ALERTA} Otro cobro con el MISMO cliente, monto, forma, estado y día. Si son dos cobros distintos, escribí conceptos distintos; si es el mismo cargado dos veces, dá de baja uno.`)],
+    [`COUNTIFS(${G};${G};${M};${M};${Q};${Q};${E};${E};${H};${H};${I};${I})>1`, txt(`${ALERTA} Igual en TODO: cliente, monto, fecha, comprobante, orden de compra y concepto. Acá sí hay que revisar si se cargó dos veces.`)],
     [`(COUNTIFS(${G};${G};${M};${M};${Q};${Q})>1)*(${E}="")*(${H}="")*(${I}="")>0`, txt('Otro cobro del mismo cliente, monto y día. No se puede distinguir de su par porque los dos están SIN concepto — completalo y esta marca se va sola.')],
-    [`(${O}="Proyectado")*(COUNTIFS(${G};${G};${M};${M})>1)>0`, txt('⚠ Proyección con gemela ya facturada por el mismo monto — dar de baja o queda contada dos veces')],
+    [`(${O}="Proyectado")*(COUNTIFS(${G};${G};${M};${M})>1)>0`, txt(`${ALERTA} Proyección con gemela ya facturada por el mismo monto — dar de baja o queda contada dos veces`)],
   ])}))`
 }
 
@@ -133,7 +134,7 @@ function bloque() {
     L('Cobros sin fecha de cobro', `=SUMPRODUCT((${G}<>"")*(${Q}="")*IF(ISNUMBER(${M});${M};0))`, 'Están cargados pero no caen en ninguna semana del cash flow.'),
     L('Cobros sin cliente', `=SUMPRODUCT((${G}="")*IF(ISNUMBER(${M});${M};0))`, 'El cash flow los clasifica por unidad de negocio; sin cliente no se sabe de qué obra son.'),
     L(''),
-    L('⚠ POSIBLES DUPLICADOS'),
+    L(`${ALERTA} POSIBLES DUPLICADOS`),
     L('Cobros indistinguibles entre sí (mismo cliente, monto, forma, estado y día)', `=SUMPRODUCT((${INDIST})*(${M}<>0))`, 'La señal ya NO es el ID: la columna A se autonumera sola y no puede repetirse. Ver la marca en la columna X.', 'cantidad'),
     L('Proyecciones con gemela ya facturada', `=SUMPRODUCT((${O}="Proyectado")*(COUNTIFS(${G};${G};${M};${M})>1)*(${M}<>0))`, 'La proyección quedó viva después de emitir la factura. Es el caso de MESSINAS filas 55/56.', 'cantidad'),
     L('Filas idénticas en TODO (cliente, monto, fecha, comprobante, OC y concepto)', `=SUMPRODUCT((COUNTIFS(${G};${G};${M};${M};${Q};${Q};${E};${E};${H};${H};${I};${I})>1)*(${M}<>0))`, 'Esto sí amerita revisar si se cargó dos veces. Una cuota legítima NO cae acá: cobra en otra fecha.', 'cantidad'),
@@ -177,7 +178,7 @@ async function marcarValoresSegunBanco(google) {
     const monto = parseMonto(f?.[12])
     if (!/eche?q/i.test(forma) || !fecha || !monto) { marcas.push(['']); continue }
     const e = banco.get(clave(fecha, monto))
-    if (!e) { marcas.push(['⚠ el banco no tiene un echeq con esta fecha e importe']); continue }
+    if (!e) { marcas.push([`${ALERTA} el banco no tiene un echeq con esta fecha e importe`]); continue }
     if (e.estado === 'endosado') {
       endosados++
       marcas.push([`${MARCA_ENDOSADO} a ${e.beneficiario} · echeq ${e.numero} — se entregó, NO va a entrar a la cuenta`])
@@ -267,9 +268,13 @@ async function main() {
   // LA LISTA SE DERIVA DEL PROPIO BLOQUE, no se escribe a mano: una lista de rótulos copiados se
   // desincroniza el día que se mejora una redacción, y en silencio. Es el mismo defecto que hizo
   // que los conteos se mostraran como "$4" — el formato se decidía leyendo el rótulo con una regex.
+  //
+  // Y LLEVA LAS DOS ALERTAS. Esta lista decide si la zona es del OS o del dueño: con sólo el glifo
+  // nuevo, las nueve celdas ya publicadas con `⚠` pasaban a contarse como texto ajeno, `esMio` daba
+  // falso y el control dejaba de escribirse — sin un solo error, que es como se rompen estas cosas.
   const MIAS = [
-    FIRMA, '⚠ Control automático', 'Qué dice el banco de este valor',
-    '⚠', 'COBRADO ·', 'EN CUSTODIA ·', MARCA_ENDOSADO,
+    FIRMA, ...variantesDeMarca(`${ALERTA} Control automático`), 'Qué dice el banco de este valor',
+    ALERTA, ALERTA_HEREDADA, 'COBRADO ·', 'EN CUSTODIA ·', MARCA_ENDOSADO,
     ...b.flatMap(([rot, , nota]) => [rot, nota]).filter((t) => String(t ?? '').trim()),
   ]
   const ajeno = []
@@ -296,7 +301,7 @@ async function main() {
   // script ABORTA más arriba si encuentra ahí contenido que no reconoce. Esa negativa protege
   // mejor que respetar: no se discute qué texto gana, directamente no se escribe sobre lo ajeno.
   await google.batchUpdateValues(ID, [
-    { range: `${PESTAÑA}!${letra(C_FLAG)}4:${letra(C_FLAG)}4`, values: [['⚠ Control automático']] },
+    { range: `${PESTAÑA}!${letra(C_FLAG)}4:${letra(C_FLAG)}4`, values: [[`${ALERTA} Control automático`]] },
     { range: `${PESTAÑA}!${letra(C_FLAG)}${F0}`, values: [[flagPorFila]] },
     // SÓLO las tres primeras columnas: la cuarta es la UNIDAD, que gobierna el formato y no se
     // escribe. Mandar cuatro contra un rango de tres hace fallar el batch ENTERO — y como el

@@ -61,7 +61,7 @@ test('LA FECHA DE LECTURA VA EN LA CELDA: un REM de hace 40 días no puede leers
   assert.match(String(b[0][3]), /leído hace 0 día\(s\)/)
   assert.doesNotMatch(String(b[0][3]), /CONVIENE REFRESCARLO/)
   const viejo = filasBloque([{ ...INDICES[0], leido_en: new Date(Date.now() - 40 * 86400000) }], 74)
-  assert.match(String(viejo[0][3]), /⚠ CONVIENE REFRESCARLO/)
+  assert.match(String(viejo[0][3]), /▲ CONVIENE REFRESCARLO/)
 })
 
 test('un DATO publicado y una PROYECCIÓN no se leen igual', () => {

@@ -27,6 +27,7 @@
 // pasar es que nadie la mire.
 
 import { rangoEn } from './cheques-emitidos-geometria.mjs'
+import { ALERTA } from './glifos.mjs'
 
 /** La columna de la réplica donde vive cada dato. Es contrato con banco-raw-pestana.mjs. */
 export const RAW = { hoja: '_BANCO_RAW', fecha: 'A', concepto: 'B', importe: 'C', signo: 'E', naturaleza: 'F', desde: 4 }
@@ -64,13 +65,13 @@ export const GRUPOS = [
     naturaleza: 'Transferencias a proveedores',
     pestana: 'Compras',
     formula: (d, h) => `SUMIFS(Compras!$O$4:$O;Compras!$AD$4:$AD;">="&${d};Compras!$AD$4:$AD;"<="&${h})`,
-    nota: '⚠ Compara contra TODAS las compras con fecha de caja en la ventana, no sólo las pagadas por transferencia: la pestaña no distingue el medio de pago. Sirve como orden de magnitud, no como cuadre exacto.',
+    nota: `${ALERTA} Compara contra TODAS las compras con fecha de caja en la ventana, no sólo las pagadas por transferencia: la pestaña no distingue el medio de pago. Sirve como orden de magnitud, no como cuadre exacto.`,
   },
   {
     naturaleza: 'Compras con tarjeta de débito',
     pestana: 'Compras',
     formula: null,
-    nota: '⚠ Compras de mostrador pagadas con débito. No hay forma de aislarlas en Compras: la pestaña no registra el medio de pago. Si no están cargadas, son costo que no aparece en ningún rubro.',
+    nota: `${ALERTA} Compras de mostrador pagadas con débito. No hay forma de aislarlas en Compras: la pestaña no registra el medio de pago. Si no están cargadas, son costo que no aparece en ningún rubro.`,
   },
   {
     naturaleza: 'AFIP',
@@ -162,7 +163,7 @@ export const GRUPOS = [
     // el banco cobró $282.621, más $252.340 del período anterior: la cuenta estuvo en descubierto
     // DURANTE el mes aunque cierre en positivo. Un interés que se cobra por día no se puede
     // proyectar mirando una sola foto del último día.
-    nota: '⚠ Tiene línea en el Cash Flow Mensual, pero proyecta $0 para julio: su fórmula mira el saldo de CIERRE del mes y la cuenta estuvo en rojo durante el mes aunque cierre en positivo. El interés corre por día, no por cierre.',
+    nota: `${ALERTA} Tiene línea en el Cash Flow Mensual, pero proyecta $0 para julio: su fórmula mira el saldo de CIERRE del mes y la cuenta estuvo en rojo durante el mes aunque cierre en positivo. El interés corre por día, no por cierre.`,
   },
 ]
 

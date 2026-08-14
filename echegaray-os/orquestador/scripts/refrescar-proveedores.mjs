@@ -16,6 +16,7 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { tomarSnapshot } from '../lib/sheet-snapshot.mjs'
 import { closePool } from '../lib/db.mjs'
+import { ALERTA, ALERTA_HEREDADA } from '../lib/glifos.mjs'
 
 const ejecutar = promisify(execFile)
 const AQUI = path.dirname(fileURLToPath(import.meta.url))
@@ -68,7 +69,9 @@ async function main() {
   const preserv = (String(stdout).match(/Proveedores: (\d+) celda/) || [])[1]
   const errores = /sin una sola celda en error/.test(stdout)
   // Y el propio aviso del cuadro: si el listado no muestra toda la deuda, no está refrescada.
-  const faltan = /⚠ Faltan/.test(stdout)
+  // Con las dos alertas: el generador imprime su grilla, y ahí la fórmula del aviso puede venir con
+  // el glifo nuevo o —de una corrida vieja releída— con el publicado.
+  const faltan = new RegExp(`[${ALERTA}${ALERTA_HEREDADA}] Faltan`).test(stdout)
   console.log(`Proveedores refrescada - ${preserv || '?'} celdas del dueno conservadas - ${errores ? 'sin errores' : 'REVISAR errores'}${faltan ? ' - ⚠ el cuadro dice que le faltan facturas' : ''}`)
 }
 

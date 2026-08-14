@@ -19,6 +19,7 @@ import {
   formulaVentana, formulaVencidoImpago, formulaDeudaPendiente, proximoVencimiento,
   filasFinanciamiento,
 } from './impuestos-cuadro.mjs'
+import { ALERTA } from './glifos.mjs'
 
 /**
  * Cuánto hacia atrás y hacia adelante mira el calendario.
@@ -122,8 +123,8 @@ export function marcaDeVencimiento(o) {
     const d = o.decisionDelDueno
     return `  ✓ ${String(d.cuando).slice(8, 10)}/${String(d.cuando).slice(5, 7)} lo revisó el ${d.quien}: "${d.decision}"`
   }
-  if (o.vencido) return '  ⚠ VENCIDO'
-  return o.confianza === 'supuesto' ? '  ⚠ fecha supuesta' : ''
+  if (o.vencido) return `  ${ALERTA} VENCIDO`
+  return o.confianza === 'supuesto' ? `  ${ALERTA} fecha supuesta` : ''
 }
 
 // ═══ LAS ALTURAS DE LOS BLOQUES DE ARRIBA, EN UN SOLO LUGAR ═══
@@ -232,7 +233,7 @@ export function filasDeLaPosicion({ cal, base, hoy, refs, acuerdo, tarjeta }) {
   const filaVentanas = (rotulo, filas) => F.push([rotulo,
     formulaVentana(filas, 30), formulaVentana(filas, 60), formulaVentana(filas, 90)])
   filaVentanas('IVA · DDJJ F.2051 (ARCA)', porTipo('iva'))
-  filaVentanas('Ingresos Brutos San Juan (DGR)  ⚠ fecha supuesta', porTipo('iibb'))
+  filaVentanas(`Ingresos Brutos San Juan (DGR)  ${ALERTA} fecha supuesta`, porTipo('iibb'))
   filaVentanas('Planes de pago F931 (ARCA)', porTipo('plan'))
   filaVentanas('Prendario Ford XLS (Santander)', porTipo('prendario'))
   filaVentanas(rotuloTotal('A PAGAR EN LA VENTANA'), conCelda)
@@ -240,12 +241,12 @@ export function filasDeLaPosicion({ cal, base, hoy, refs, acuerdo, tarjeta }) {
   // de IVA o IIBB ya cumplido con importe en el cuadro es algo para ir a mirar al extracto, no una
   // deuda confirmada. El rótulo lo dice, porque un número de riesgo que se lee como certeza es peor
   // que no tenerlo.
-  F.push([`⚠ vencido s/verificar al ${ddmm(hoy)} · ver extracto`,
+  F.push([`${ALERTA} vencido s/verificar al ${ddmm(hoy)} · ver extracto`,
     formulaVencidoImpago(conCelda)])
   // SIN FECHA CIERTA: el impuesto al cheque lo debita el banco todos los días (no vence, se va), y el
   // Anticipo de Ganancias no tiene registro desde mayo. Los dos se pagan y ninguno entra al
   // calendario, así que aparecen como riesgo declarado y no como proyección con fecha.
-  F.push(['⚠ sin fecha cierta · 25.413 + Ant. Ganancias (90d)',
+  F.push([`${ALERTA} sin fecha cierta · 25.413 + Ant. Ganancias (90d)`,
     refs.otrosSinFecha ?? '=0'])
   F.push([])
 

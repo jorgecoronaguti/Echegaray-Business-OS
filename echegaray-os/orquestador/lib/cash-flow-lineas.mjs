@@ -29,6 +29,7 @@ import { total } from './patron-pestana.mjs'
 // La traducción a fórmula de "¿este N° de comprobante sirve para cruzar?" vive pegada a su gemela de
 // código, en lib/cheques-cobertura.mjs. Importarla es lo que impide que se escriban dos reglas.
 import { expresionTieneNumero } from './cheques-cobertura.mjs'
+import { comparaMarca, variantesDeMarca } from './glifos.mjs'
 // La fila del encabezado de "Cheques Emitidos" vive en UN solo archivo. Ver la nota de INSTRUMENTOS.
 import { FILA_HDR as FILA_HDR_CHEQUES } from './cheques-emitidos-geometria.mjs'
 
@@ -141,13 +142,18 @@ export function formulasInstrumento(inst, marcas) {
   const R = (c) => rangoInstrumento(inst, c)
   const M = R(letraDe(inst.colMarca))
   const importe = `IF(ISNUMBER(${R(inst.colMonto)});${R(inst.colMonto)};0)`
+  // CADA MARCA SE CUENTA CON SUS DOS GLIFOS mientras el archivo tenga publicado el `⚠` viejo. Si acá
+  // se comparara sólo contra el texto nuevo, las filas ya marcadas caerían en `ajena` —"marcadas con
+  // algo que el OS no reconoce"— y el tablero acusaría de ajeno lo que escribió él mismo.
   const conMarca = (m) => ({
-    cantidad: `=COUNTIF(${M};"${m}")`,
-    monto: `=SUMPRODUCT((${M}="${m}")*${importe})`,
+    cantidad: `=${variantesDeMarca(m).map((v) => `COUNTIF(${M};"${v}")`).join('+')}`,
+    monto: `=SUMPRODUCT(${comparaMarca(M, m)}*${importe})`,
   })
   // ¿ESTA CELDA TIENE ALGO QUE NO ES NINGUNA DE MIS MARCAS? Las cuatro son excluyentes, así que
-  // restarlas de 1 da 1 exactamente cuando el texto no es ninguna de ellas.
-  const ajena = `(${M}<>"")*(1${Object.values(marcas).map((m) => `-(${M}="${m}")`).join('')})`
+  // restarlas de 1 da 1 exactamente cuando el texto no es ninguna de ellas. Se restan también las
+  // heredadas: son las MISMAS cuatro marcas, no una quinta cosa, y la partición tiene que cerrar.
+  const ajena = `(${M}<>"")*(1${Object.values(marcas)
+    .flatMap((m) => variantesDeMarca(m)).map((v) => `-(${M}="${v}")`).join('')})`
   return {
     total: { cantidad: `=SUMPRODUCT(--(${M}<>""))`, monto: `=SUMPRODUCT((${M}<>"")*${importe})` },
     contemplados: conMarca(marcas.ok),
@@ -254,7 +260,9 @@ export function formulaChequesSinFactura(desde, hasta, marcaFalta, instrumentos 
     const r = (c) => `'${pestaña}'!$${c}$${filaCab + 1}:$${c}$${FILA_FIN}`
     // UPPER, igual que el resto del archivo: la columna la tipea una persona y escribe "Si" y "si".
     const pendiente = soloNoDebitados ? `*(UPPER(${r(colDebitado)})<>"SI")` : ''
-    return `SUMPRODUCT((${r(col(colMarca))}="${marcaFalta}")*(${r(colFecha)}>=${desde})*(${r(colFecha)}<${hasta})${pendiente}*IF(ISNUMBER(${r(colMonto)});${r(colMonto)};0))`
+    // LA MARCA SE COMPARA CON LOS DOS GLIFOS mientras la columna M/L no se regenere: un texto que no
+    // coincide no da error acá, da $0 — y $0 en esta línea es plata que el cash flow deja de ver.
+    return `SUMPRODUCT(${comparaMarca(r(col(colMarca)), marcaFalta)}*(${r(colFecha)}>=${desde})*(${r(colFecha)}<${hasta})${pendiente}*IF(ISNUMBER(${r(colMonto)});${r(colMonto)};0))`
   }
   return `=${instrumentos.map(trozo).join('+')}`
 }

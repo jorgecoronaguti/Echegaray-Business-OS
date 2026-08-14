@@ -19,6 +19,7 @@ import {
 import { formulaDebitoArca, formulaCreditoArca, nuncaMenosQue } from './arca-formula.mjs'
 import { IIBB_RAW, IIBB_COL, IIBB_FILA0, BANCO_RAW } from './impuestos-fuentes.mjs'
 import { M12, MES, cmes, AJENO } from './impuestos-grilla.mjs'
+import { ALERTA } from './glifos.mjs'
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 // 4 · IVA — LA DDJJ OFICIAL (F.2051)
@@ -150,9 +151,9 @@ export function bloqueIva(G, { anio, ivaOficial, proy, arca, hoy }) {
   // parcial o completo sobre comprobantes reales, y una proyección es un supuesto sobre el Libro.
   // Verlos con la misma leyenda hacía que el dueño discutiera un número que no había que discutir.
   const procedencia = {
-    [ORIGEN.arca]: '⚠ ARCA (sin DDJJ)',
-    [ORIGEN.arcaParcial]: '⚠ ARCA parcial',
-    [ORIGEN.proyeccion]: '⚠ PROYECCIÓN',
+    [ORIGEN.arca]: `${ALERTA} ARCA (sin DDJJ)`,
+    [ORIGEN.arcaParcial]: `${ALERTA} ARCA parcial`,
+    [ORIGEN.proyeccion]: `${ALERTA} PROYECCIÓN`,
   }
   const fDDJJ = G.mensual('DDJJ presentada',
     (m) => (calculado(m) ? procedencia[origen(m)] : (porMesOf.has(m)
@@ -160,7 +161,7 @@ export function bloqueIva(G, { anio, ivaOficial, proy, arca, hoy }) {
       // transacción — alcanza para verificar contra ARCA sin desbordar la celda.
       ? `${String(porMesOf.get(m).fecha_presentacion).slice(0, 5)}·N…${String(porMesOf.get(m).nro_transaccion).slice(-4)}`
       : (m <= ancla ? AJENO : VACIO))),
-    'F.2051 presentada ante ARCA. Fuente primaria, verificable por N° de transacción. "⚠ ARCA (sin DDJJ)" es el período cerrado calculado sobre los comprobantes reales que todavía no se presentaron; "⚠ ARCA parcial" es el mes en curso, que se completa solo a medida que ARCA se carga; "⚠ PROYECCIÓN" no tiene ni comprobantes: es un cálculo, no un hecho.', { meses, totaliza: false })
+    `F.2051 presentada ante ARCA. Fuente primaria, verificable por N° de transacción. "${ALERTA} ARCA (sin DDJJ)" es el período cerrado calculado sobre los comprobantes reales que todavía no se presentaron; "${ALERTA} ARCA parcial" es el mes en curso, que se completa solo a medida que ARCA se carga; "${ALERTA} PROYECCIÓN" no tiene ni comprobantes: es un cálculo, no un hecho.`, { meses, totaliza: false })
   G.blanco()
   const porOrigen = Object.fromEntries(Object.values(ORIGEN).map((o) => [o, meses.filter((m) => origen(m) === o)]))
   return { fDeb, fCred, fAPagar, fLibre, fDDJJ, meses, mesesOf, ancla, anio, porOrigen }
@@ -303,10 +304,10 @@ export function bloquePlanes(G, { anio, C, planes }) {
   for (const p of planes) {
     const sinFechas = !p.porMes.some((x) => x)
     const meses = M12.filter((m) => p.porMes[m])
-    G.mensual(sinFechas || !p.patron ? `${p.nombre}  ⚠ sin fechas de vencimiento cargadas` : p.nombre,
+    G.mensual(sinFechas || !p.patron ? `${p.nombre}  ${ALERTA} sin fechas de vencimiento cargadas` : p.nombre,
       p.patron ? cuota(p) : () => VACIO,
       `${p.cuotas} cuota(s) de ${p.monto_cuota.toLocaleString('es-AR')} · total ${Math.round(p.total).toLocaleString('es-AR')} · Compras, "${p.patron ?? p.nombre}", por su fecha prevista de pago`
-      + (sinFechas ? ' · ⚠ SIN FECHAS DE VENCIMIENTO cargadas: por eso la fila está vacía y su plata no aparece en ningún mes.' : ''),
+      + (sinFechas ? ` · ${ALERTA} SIN FECHAS DE VENCIMIENTO cargadas: por eso la fila está vacía y su plata no aparece en ningún mes.` : ''),
       { meses })
   }
   const q1 = G.n()
@@ -361,18 +362,18 @@ export function bloqueCierre(G, { proy, vencimientos }) {
   // hoy se ven igual". "s/d" es TEXTO a propósito: SUM() lo ignora, así que el hueco queda a la vista
   // sin ensuciar un solo total y sin que aparezca un cero que después alguien sume de buena fe.
   const SD = 's/d'
-  G.push(['⚠ Tasa municipal de seguridad e higiene', ...Array(12).fill(SD), 'sin cuantificar',
+  G.push([`${ALERTA} Tasa municipal de seguridad e higiene`, ...Array(12).fill(SD), 'sin cuantificar',
     'HUECO DECLARADO · no hay una sola fila en Compras ni en el banco. Si la obra tributa tasa municipal, ese costo hoy no está en ningún cuadro. Para cerrarlo hace falta el municipio de cada obra y su ordenanza vigente.'])
-  G.push(['⚠ Impuesto de sellos', ...Array(12).fill(SD), 'sin cuantificar',
+  G.push([`${ALERTA} Impuesto de sellos`, ...Array(12).fill(SD), 'sin cuantificar',
     'HUECO DECLARADO · sin dato. Aplica sobre contratos: si se firmó alguno con sellado, no está registrado. Para cerrarlo hace falta la lista de contratos firmados en el año.'])
   // LA PROSA VA EN LA COLUMNA DE PROCEDENCIA (la última), NO EN LA DE IMPORTES. En la columna B se
   // dibuja con formato de moneda y queda cortada a 108 píxeles: un texto de trescientos caracteres
   // sentado donde el ojo busca plata.
-  G.lista('⚠ Anticipo de Ganancias — sin registro desde mayo', [],
+  G.lista(`${ALERTA} Anticipo de Ganancias — sin registro desde mayo`, [],
     'HUECO DECLARADO · último anticipo cargado: abril. De mayo en adelante Compras no tiene ninguna fila. ¿Se dio de baja el anticipo, o no se cargó el comprobante? Si sigue vigente son ~$144.427 por mes que el cash flow no está proyectando. Lo confirma el estudio contable.')
-  G.push([`⚠ El vencimiento de IIBB de San Juan es un SUPUESTO: ${vencimientos.iibb}`])
-  G.push(['⚠ Los pagos de IVA e IIBB no están cargados en Compras: el cash flow los ve por esta pestaña, no por Compras.'])
-  if (proy?.meses?.length) G.push([`⚠ IVA de ${MES[proy.meses[0] - 1]} a diciembre: ${proy.supuesto}`])
+  G.push([`${ALERTA} El vencimiento de IIBB de San Juan es un SUPUESTO: ${vencimientos.iibb}`])
+  G.push([`${ALERTA} Los pagos de IVA e IIBB no están cargados en Compras: el cash flow los ve por esta pestaña, no por Compras.`])
+  if (proy?.meses?.length) G.push([`${ALERTA} IVA de ${MES[proy.meses[0] - 1]} a diciembre: ${proy.supuesto}`])
   G.blanco()
 
   // LA ALÍCUOTA VIVE EN UNA CELDA CON NOMBRE, NO ADENTRO DE UNA FÓRMULA. La skill de impuestos

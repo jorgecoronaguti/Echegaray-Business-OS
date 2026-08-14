@@ -65,6 +65,7 @@ import { alertas, acciones } from './caja-avisos.mjs'
 // LA ESCALERA DE VENCIMIENTOS VIVE EN SU PROPIO ARCHIVO: la consumen el panel de acá y el conciliador
 // que compara tramo por tramo contra la planilla.
 import { BORDES, DESDE_SIEMPRE, desdeTramo, hastaTramo } from './caja-calendario.mjs'
+import { ALERTA } from './glifos.mjs'
 
 // `conciliar-caja-vs-cashflow.mjs` compara tramo por tramo contra lo que muestra la planilla y toma
 // los rótulos de acá. Un conciliador con su propia copia deja de comparar el día que uno de los dos
@@ -380,7 +381,7 @@ export function grilla(cargado, refs) {
     : '"sin réplica del extracto"'
   const fBloques12 = banda(
     [`="1 · DISTRIBUCIÓN POR CUENTAS   "&${frescuraExtracto}`],
-    [`="2 · PRÓXIMOS VENCIMIENTOS   "&IF(ISNUMBER(${DESDE_CAJA.fecha});"desde el corte del "&TEXT(${DESDE_CAJA.fecha};"dd/mm");"⚠ sin fecha de corte")`])
+    [`="2 · PRÓXIMOS VENCIMIENTOS   "&IF(ISNUMBER(${DESDE_CAJA.fecha});"desde el corte del "&TEXT(${DESDE_CAJA.fecha};"dd/mm");"${ALERTA} sin fecha de corte")`])
   const fCab = banda(
     ['Cuenta', 'Importe en origen', 'Saldo en pesos', 'Fecha del saldo'],
     ['Tramo', 'Hasta', 'Neto', 'Saldo después'])

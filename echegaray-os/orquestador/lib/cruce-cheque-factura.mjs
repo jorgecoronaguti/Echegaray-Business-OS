@@ -40,6 +40,7 @@
 
 import { normNombre } from './razon-social.mjs'
 import { normComprobante, esLlaveUtil, inferirRespaldo, VENTANA_DIAS_CHEQUE } from './cheques-cobertura.mjs'
+import { mismaMarca } from './glifos.mjs'
 
 /** Con qué clave se emparejó cada cheque. Viaja con el cruce: un consumidor puede exigir la fuerte. */
 export const CONFIANZA = Object.freeze({
@@ -320,7 +321,7 @@ export function puertaDeCheque(cheque = {}, cruce = { porCheque: new Map() }, { 
   if (cruce.porCheque?.has(cheque.fila)) return PUERTA.compras
   // Sin cruce pero con la certeza de que su factura NO está cargada: no puede duplicar nada, y es la
   // puerta que `deChequesEmitidos` ya usaba antes de que este cruce existiera.
-  if (marcaFalta && String(cheque.marca ?? '').trim() === marcaFalta) return PUERTA.cheques
+  if (marcaFalta && mismaMarca(String(cheque.marca ?? '').trim(), marcaFalta)) return PUERTA.cheques
   return PUERTA.ninguna
 }
 

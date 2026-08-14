@@ -19,7 +19,11 @@
 // ═══ LO QUE ESTA BANDA NO PUEDE HACER NUNCA (contrato con CAJA, que está CONGELADA) ═══
 //
 //   CAJA!B14 = SUMIFS('Cheques Emitidos'!$F$2:$F ; $K$2:$K;"SI" ; $I$2:$I;">"&fecha)
-//   CAJA!H15 = SUMPRODUCT(($M$2:$M$400="⚠ sin N° de comprobante — no se puede cruzar") * … * F…)
+//   CAJA!H15 = SUMPRODUCT(($M$2:$M$400="▲ sin N° de comprobante — no se puede cruzar") * … * F…)
+//
+//   (13/08 — la marca cambió de `⚠` a `▲` porque el `⚠` no se dibuja al exportar a PDF. CAJA sigue
+//    congelada y su fórmula la arma `formulaChequesSinFactura`, que hoy compara contra LOS DOS
+//    textos: la prohibición de abajo vale para cualquiera de los dos, no sólo para el nuevo.)
 //
 // Las dos leen DESDE LA FILA 2, o sea DESDE ADENTRO DE ESTA BANDA. De ahí salen tres prohibiciones:
 //
@@ -41,6 +45,7 @@
 import { BANDA, rangoAbierto } from './cheques-emitidos-geometria.mjs'
 import { formulaUltimaFecha, formulaFrescuraDe } from './fecha-de-frescura.mjs'
 import { total } from './patron-pestana.mjs'
+import { ALERTA } from './glifos.mjs'
 
 /** Ancho de la grilla: A..M, el ancho real de la pestaña. */
 export const COLS = 13
@@ -207,7 +212,7 @@ export function bandaFilas({ selector = SELECTOR_DEFECTO } = {}) {
   const vivos = `SUMPRODUCT(${NO_DEB}*ISNUMBER(${F})*1)`
   // Un MAX vacío formateado como fecha da 30/12/1899: una fecha plausible y falsa, que es lo peor que
   // puede publicar esta celda. Se ataja el cero ANTES del TEXT.
-  set(FILAS.corte, 0, `=LET(cor_;${corte};IF(cor_=0;"⚠ sin cheques cargados";"al "&TEXT(cor_;"dd/mm/yyyy"))`
+  set(FILAS.corte, 0, `=LET(cor_;${corte};IF(cor_=0;"${ALERTA} sin cheques cargados";"al "&TEXT(cor_;"dd/mm/yyyy"))`
     + `&" · "&TEXT(${vivos};"0")&" cheques vivos")`)
 
   // ── LOS SIETE INDICADORES ─────────────────────────────────────────────────────────────────────

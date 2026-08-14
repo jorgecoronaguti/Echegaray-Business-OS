@@ -71,6 +71,7 @@ import { firmaGuardia, sellarFirma } from '../lib/firma-tab.mjs'
 // lib/preservar-anotaciones.mjs, así que la engancha él mismo: lo que el dueño vacía no vuelve.
 import { conHuellaFueraDelPorton } from '../lib/huella-celda.mjs'
 import { TARJETA, CORTE } from '../lib/banco-santander.mjs'
+import { ALERTA } from '../lib/glifos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTANA = 'Tarjeta de Credito'
@@ -238,7 +239,7 @@ export function bandaFilas(hdr = BANDA + 1, banco = { TARJETA, CORTE }) {
   const fPest = push('Pendiente según esta pestaña', `=B${fComp}`)
   const fBanco = push('Pendiente según el resumen del banco', T.cuotasPendientes.proximoPeriodo + T.cuotasPendientes.restante, frescura(corte, dmy))
   const fDif = push(total('Diferencia'), `=B${fPest}-B${fBanco}`)
-  filas[fDif - 1][2] = `=IF(B${fPest}=0;"sin cuotas cargadas";IF(ABS(B${fDif})<=${TOLERANCIA};"✓ concilia";"⚠ revisar la carga"))`
+  filas[fDif - 1][2] = `=IF(B${fPest}=0;"sin cuotas cargadas";IF(ABS(B${fDif})<=${TOLERANCIA};"✓ concilia";"${ALERTA} revisar la carga"))`
   push()
 
   push(seccion(4, 'El detalle — cada compra y cada cuota'))
@@ -253,7 +254,7 @@ export function bandaFilas(hdr = BANDA + 1, banco = { TARJETA, CORTE }) {
  * es, y cuando el corte pasa de tres semanas deja de decir la fecha y pasa a pedir una foto nueva.
  */
 export function frescura({ a, m, d }, dmy, dias = DIAS_FRESCURA) {
-  return `=LET(dd_;TODAY()-DATE(${a};${m};${d});IF(dd_>${dias};"⚠ foto de hace "&dd_&" días";"resumen al ${dmy}"))`
+  return `=LET(dd_;TODAY()-DATE(${a};${m};${d});IF(dd_>${dias};"${ALERTA} foto de hace "&dd_&" días";"resumen al ${dmy}"))`
 }
 
 /** Una fecha dd/m/aaaa como la muestra el Sheet en es-AR. */

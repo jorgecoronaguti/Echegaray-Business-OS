@@ -33,6 +33,7 @@ import {
   bloqueLiquidez, bloqueConciliacion, bloqueVencido, bloqueTrazabilidad, bloqueCalendarioCiego,
 } from './caja-anexo-controles.mjs'
 import { bloqueSeries } from './caja-anexo-series.mjs'
+import { ALERTA } from './glifos.mjs'
 
 export { PESTANA_ANEXO }
 
@@ -117,7 +118,7 @@ function bloqueMovimientos(h) {
   // EL CANAL NO DECLARADO SE NOMBRA, NO SE ADIVINA. No se resta de ninguna disponibilidad —no se sabe
   // de cuál— así que tiene que verse con nombre y monto. Se apaga sola en cuanto el mes tenga Banco o
   // Efectivo cargado. Y NO se reparte mitad y mitad porque suele ser así: eso sería fabricar el dato.
-  const fSinCanal = push(['   ⚠ sueldos de OFICINA pagados sin declarar por qué canal salieron', 'ARS',
+  const fSinCanal = push([`   ${ALERTA} sueldos de OFICINA pagados sin declarar por qué canal salieron`, 'ARS',
     `=${formulaOficinaSinCanal(corte)}`, '', '', '',
     'OFICINA_PAGADO de los meses sin OFICINA_BANCO cargado'])
 
@@ -183,7 +184,7 @@ function bloqueMovimientos(h) {
     sello('selloNeto'), '', sello('selloFecha', ''),
     'lo que el histórico sumaba cuando se cargó el conteo; lo sella la corrida del anexo'])
   push([SELLO_EFECTIVO.estado, '',
-    `=IF(NOT(ISNUMBER(${arqueo}));"— sin conteo cargado";IF(${selloViejo};"⚠ conteo nuevo sin sellar: se muestra tal cual lo contaste; la próxima corrida sella y los movimientos corren desde ahí";"✓ sellado al conteo del "&TEXT(N($F$${fSello});"dd/mm")))`,
+    `=IF(NOT(ISNUMBER(${arqueo}));"— sin conteo cargado";IF(${selloViejo};"${ALERTA} conteo nuevo sin sellar: se muestra tal cual lo contaste; la próxima corrida sella y los movimientos corren desde ahí";"✓ sellado al conteo del "&TEXT(N($F$${fSello});"dd/mm")))`,
     selloEstado(), '', '', 'compara el conteo cargado contra la copia sellada (D de esta fila y F del sello)'])
   return { fNeto, fSinCanal, fSello, fEstado, filasHistorico: [f0, fSello - 1] }
 }
@@ -217,7 +218,7 @@ function bloqueCartera(h) {
   // EL CANARIO DEL DETALLE. Las filas de arriba las escribe el generador; el total es una fórmula
   // viva. Si entra un cheque y esta pestaña no se regenera, el detalle listaría uno menos y NADIE lo
   // vería: el total seguiría estando bien.
-  push(['⇒ ¿el detalle está al día? — si dice ⚠, corré la réplica y regenerá el anexo', '', '', '', '', '',
+  push([`⇒ ¿el detalle está al día? — si dice ${ALERTA}, corré la réplica y regenerá el anexo`, '', '', '', '', '',
     // CON CARTERA VACÍA EL RANGO SE INVIERTE ($C$20:$C$19) y el canario apuntaba a las filas de los
     // ENDOSADOS que se escriben justo después (dictamen 07/08: daba "✓" de casualidad porque todo era
     // cero — con un cheque en custodia hubiera sumado el renglón equivocado). Sin detalle, el rango

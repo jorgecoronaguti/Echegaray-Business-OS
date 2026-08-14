@@ -127,7 +127,7 @@ test('una fecha SUPUESTA se marca en la columna A, no en una nota que nadie ve',
   const filas = posicion()
   const iibb = filas.filter((f) => /Ingresos Brutos San Juan/.test(String(f[0] ?? '')))
   assert.ok(iibb.length >= 2)
-  for (const f of iibb) assert.match(String(f[0]), /⚠ (fecha supuesta|VENCIDO)/)
+  for (const f of iibb) assert.match(String(f[0]), /▲ (fecha supuesta|VENCIDO)/)
   // El IVA está verificado contra ARCA: no lleva la marca.
   const ivaFuturo = filas.filter((f) => /IVA · DDJJ F\.2051/.test(String(f[0] ?? '')) && !/VENCIDO/.test(String(f[0])))
   assert.ok(ivaFuturo.length >= 1)
@@ -158,7 +158,7 @@ test('el financiamiento declara que NO mide el descubierto tomado', () => {
   // decide no salir a pedir un adelanto.
   const filas = posicion()
   const desc = filas.find((x) => /Descubierto Santander/.test(String(x[0] ?? '')))
-  assert.match(String(desc[0]), /⚠ uso: lo mide CAJA/, 'la duda queda escrita en el rótulo corto')
+  assert.match(String(desc[0]), /▲ uso: lo mide CAJA/, 'la duda queda escrita en el rótulo corto')
   const techo = filas.find((x) => /FINANCIAMIENTO SIN USAR/.test(String(x[0] ?? '')))
   assert.match(String(techo[0]), /TECHO/)
 })
@@ -287,16 +287,16 @@ test('un vencimiento decidido cambia de MARCA, no de hecho: sigue vencido y sigu
   assert.equal(liberado.vencido, true, 'el hecho no se borra')
   assert.equal(c.length, cal().length, 'la fila no desaparece del calendario')
   const marca = marcaDeVencimiento(liberado)
-  assert.ok(!marca.includes('⚠'), `un vencimiento revisado no lleva ⚠: "${marca}"`)
+  assert.ok(!marca.includes('▲'), `un vencimiento revisado no lleva ▲: "${marca}"`)
   assert.match(marca, /13\/08 lo revisó el dueño: "no afectan"/)
 })
 
-test('un vencimiento SIN decisión sigue marcado ⚠ VENCIDO — se libera uno, no el control', () => {
+test('un vencimiento SIN decisión sigue marcado ▲ VENCIDO — se libera uno, no el control', () => {
   const todos = vencidos()
   const clave = hallazgoDeVencimiento(todos[0]).clave
   const c = conDecisionesDelDueno(cal(), new Map([[clave, DECISION_IIBB]]))
   const otros = c.filter((o) => o.vencido && hallazgoDeVencimiento(o).clave !== clave)
-  for (const o of otros) assert.equal(marcaDeVencimiento(o), '  ⚠ VENCIDO', o.concepto)
+  for (const o of otros) assert.equal(marcaDeVencimiento(o), '  ▲ VENCIDO', o.concepto)
 })
 
 test('la marca liberada llega a la fila que se escribe en la pestaña', () => {
@@ -305,10 +305,10 @@ test('la marca liberada llega a la fila que se escribe en la pestaña', () => {
   const F = filasDeLaPosicion({ cal: c, base: 10, hoy: HOY, refs: REFS, acuerdo: ACUERDO, tarjeta: TARJETA })
   const textos = F.map((f) => String(f?.[0] ?? ''))
   assert.ok(textos.some((t) => /lo revisó el dueño: "no afectan"/.test(t)), 'la decisión se ve en la pestaña')
-  const conMarcaVieja = textos.filter((t) => t.includes('⚠ VENCIDO')).length
+  const conMarcaVieja = textos.filter((t) => t.includes('▲ VENCIDO')).length
   const sinDecision = filasDeLaPosicion({ cal: cal(), base: 10, hoy: HOY, refs: REFS, acuerdo: ACUERDO, tarjeta: TARJETA })
-    .map((f) => String(f?.[0] ?? '')).filter((t) => t.includes('⚠ VENCIDO')).length
-  assert.equal(conMarcaVieja, sinDecision - 1, 'exactamente UN ⚠ VENCIDO menos, no todos')
+    .map((f) => String(f?.[0] ?? '')).filter((t) => t.includes('▲ VENCIDO')).length
+  assert.equal(conMarcaVieja, sinDecision - 1, 'exactamente UN ▲ VENCIDO menos, no todos')
 })
 
 test('un vencimiento que NO está vencido nunca toma la marca de revisado', () => {

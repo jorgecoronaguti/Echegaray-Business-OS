@@ -24,6 +24,7 @@ import { FILA_DATO0, FILA_FIN } from '../lib/cheques-emitidos-geometria.mjs'
 import { ARCA as N_ARCA } from '../lib/rangos-nombrados.mjs'
 import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
 import { planDeMarcado, motivoDeAborto } from '../lib/marcado-columna.mjs'
+import { ALERTA, mismaMarca } from '../lib/glifos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Cash Flow Mensual'
@@ -131,15 +132,15 @@ export function grilla({ enCompras, cheques, tarjeta }, resp) {
   push(['  · con su comprobante cargado en Compras', ref(N_ARCA.enComprasN), ref(N_ARCA.enComprasMonto), '', '', 'Ya viajó al cash flow por el rubro de esa factura.'])
   push(['  · cargados SIN su N° de comprobante', ref(N_ARCA.sinNumeroN), ref(N_ARCA.sinNumeroMonto), '', '',
     'Están en Compras: se los reconoce por proveedor + importe. Poner el N° de comprobante es lo que permite imputar un pago a su factura y reclamar un saldo.'])
-  push(['  · ⚠ SIN cargar en Compras', ref(N_ARCA.faltanN), ref(N_ARCA.faltanMonto), '', '',
-    '⚠ Facturado a la empresa con CAE y ausente de TODO el archivo. El detalle, proveedor por proveedor, está en Proveedores y Materiales.'])
+  push([`  · ${ALERTA} SIN cargar en Compras`, ref(N_ARCA.faltanN), ref(N_ARCA.faltanMonto), '', '',
+    `${ALERTA} Facturado a la empresa con CAE y ausente de TODO el archivo. El detalle, proveedor por proveedor, está en Proveedores y Materiales.`])
   push([])
   push(['AFIP — libro de IVA ventas', ref(N_ARCA.ventasN), ref(N_ARCA.ventasMonto), '', '', 'Lo que la empresa facturó. Su detalle con número de comprobante está en Proveedores y Materiales.'])
   push([])
   push(['Compras sin fecha de caja', '', `=SUMIFS(Compras!$O$4:$O;Compras!$AC$4:$AC;"<>";Compras!$AD$4:$AD;"")`, '', '',
-    '⚠ Están clasificadas y suman en el total del año, pero sin fecha no caen en ningún mes ni semana: el cuadro no las puede ubicar en el tiempo.'])
+    `${ALERTA} Están clasificadas y suman en el total del año, pero sin fecha no caen en ningún mes ni semana: el cuadro no las puede ubicar en el tiempo.`])
   push(['Compras con rubro pero sin importe numérico', '', `=SUMPRODUCT((Compras!$AC$4:$AC<>"")*(NOT(ISNUMBER(Compras!$O$4:$O))))`, '', '',
-    '⚠ Cantidad de filas, no pesos: su Total no es un número (moneda extranjera o texto), así que no suman en ningún lado.'])
+    `${ALERTA} Cantidad de filas, no pesos: su Total no es un número (moneda extranjera o texto), así que no suman en ningún lado.`])
   push([])
   const fHdr2 = push(['', 'Cantidad', 'Monto', '', '', 'Qué significa'])
   // TODO ESTE BLOQUE ES FÓRMULA. Antes eran veinte números calculados acá y pegados: el día que se
@@ -148,13 +149,13 @@ export function grilla({ enCompras, cheques, tarjeta }, resp) {
   // solo y cualquiera puede verificarlo filtrando la pestaña.
   const F = { cheques: formulasInstrumento(INSTRUMENTOS.cheques, MARCAS), tarjeta: formulasInstrumento(INSTRUMENTOS.tarjeta, MARCAS) }
   const NOTA_INFERIDO = 'INFERENCIA, no hecho: no tienen N°, pero hay una factura del mismo proveedor por exactamente el mismo importe y con fecha cercana. Se los cuenta aparte de los verificados y NO bajan el piso de caja: el piso se calcula con las dos puntas, arriba en CAJA.'
-  const NOTA_SIN_MARCA = '⚠ Filas que el OS todavía no miró: se cargaron después de la última corrida de "cheques-cobertura". Mientras la marca esté vacía, el término de cheques del calendario NO las ve. Tiene que dar cero.'
+  const NOTA_SIN_MARCA = `${ALERTA} Filas que el OS todavía no miró: se cargaron después de la última corrida de "cheques-cobertura". Mientras la marca esté vacía, el término de cheques del calendario NO las ve. Tiene que dar cero.`
   // POR QUÉ ESTE RENGLÓN ES UN CONTROL Y NO UNA CURIOSIDAD (13/08). Es el único término de la
   // partición que la planilla no publicaba: la fila cuya celda de marcas tiene texto ajeno la cuenta
   // el TOTAL —mide "hay algo escrito"— y no la cuenta ninguna de las cuatro categorías. Sin este
   // renglón, las cuatro dejan de sumar el total y el cuadro no dice nada. Con él, el descuadre tiene
   // nombre, importe y una instrucción de una línea.
-  const NOTA_NO_RECONOCIDA = '⚠ Su celda de la columna de marcas tiene texto que NO escribió el OS (una nota tipeada a mano o por una carga puntual), así que el agente saltea esa fila para no pisarla y el pago queda fuera de las cuatro categorías de arriba y del calendario de CAJA. Tiene que dar cero: se arregla vaciando esa celda —o moviendo la nota a otra columna— y volviendo a correr "cheques-cobertura". Cuál es la fila lo dice el log de la corrida.'
+  const NOTA_NO_RECONOCIDA = `${ALERTA} Su celda de la columna de marcas tiene texto que NO escribió el OS (una nota tipeada a mano o por una carga puntual), así que el agente saltea esa fila para no pisarla y el pago queda fuera de las cuatro categorías de arriba y del calendario de CAJA. Tiene que dar cero: se arregla vaciando esa celda —o moviendo la nota a otra columna— y volviendo a correr "cheques-cobertura". Cuál es la fila lo dice el log de la corrida.`
   // LAS FILAS DE LOS TOTALES SE GUARDAN AL EMPUJARLAS, NO SE CUENTAN HACIA ATRÁS (05/08).
   // Acá había `fFalta - 8` y `fFalta - 3`: desplazamientos escritos a mano desde la fila del total.
   // Agregar dos renglones a cada instrumento —los inferidos y los todavía sin marcar— los habría
@@ -164,18 +165,18 @@ export function grilla({ enCompras, cheques, tarjeta }, resp) {
   push(['CHEQUES — total emitido', F.cheques.total.cantidad, F.cheques.total.monto, '', '', ''])
   push(['  · ya contemplados (su factura está en Compras)', F.cheques.contemplados.cantidad, F.cheques.contemplados.monto, '', '', 'Ya están en el cash flow, en el rubro de esa factura. Sumarlos de nuevo sería duplicar.'])
   push(['  · ≈ atribuidos por proveedor + importe (inferencia)', F.cheques.inferidos.cantidad, F.cheques.inferidos.monto, '', '', NOTA_INFERIDO])
-  fil.faltaCh = push(['  · FALTA la factura en Compras (confirmado)', F.cheques.falta.cantidad, F.cheques.falta.monto, '', '', '⚠ Tienen número de comprobante y ese número NO está en Compras. Plata que sale y que ninguna línea del cash flow ve.'])
+  fil.faltaCh = push(['  · FALTA la factura en Compras (confirmado)', F.cheques.falta.cantidad, F.cheques.falta.monto, '', '', `${ALERTA} Tienen número de comprobante y ese número NO está en Compras. Plata que sale y que ninguna línea del cash flow ve.`])
   fil.sinNumCh = push(['  · sin N° de comprobante — no se puede saber', F.cheques.sinNumero.cantidad, F.cheques.sinNumero.monto, '', '', 'Su factura puede estar en Compras perfectamente. Cargando el N° de comprobante en la pestaña Cheques se resuelve solo.'])
-  fil.ajenaCh = push(['  · ⚠ marcadas con algo que el OS no reconoce', F.cheques.noReconocida.cantidad, F.cheques.noReconocida.monto, '', '', NOTA_NO_RECONOCIDA])
-  fil.sinMarcaCh = push(['  · ⚠ todavía SIN MARCAR por el OS (no debitados)', F.cheques.sinMarca().cantidad, F.cheques.sinMarca().monto, '', '', NOTA_SIN_MARCA])
+  fil.ajenaCh = push([`  · ${ALERTA} marcadas con algo que el OS no reconoce`, F.cheques.noReconocida.cantidad, F.cheques.noReconocida.monto, '', '', NOTA_NO_RECONOCIDA])
+  fil.sinMarcaCh = push([`  · ${ALERTA} todavía SIN MARCAR por el OS (no debitados)`, F.cheques.sinMarca().cantidad, F.cheques.sinMarca().monto, '', '', NOTA_SIN_MARCA])
   push()
   push(['TARJETA DE CRÉDITO — total', F.tarjeta.total.cantidad, F.tarjeta.total.monto, '', '', ''])
   push(['  · ya contemplados', F.tarjeta.contemplados.cantidad, F.tarjeta.contemplados.monto, '', '', ''])
   push(['  · ≈ atribuidos por proveedor + importe (inferencia)', F.tarjeta.inferidos.cantidad, F.tarjeta.inferidos.monto, '', '', NOTA_INFERIDO])
   fil.faltaTj = push(['  · FALTA la factura (confirmado)', F.tarjeta.falta.cantidad, F.tarjeta.falta.monto, '', '', ''])
   fil.sinNumTj = push(['  · sin N° de comprobante', F.tarjeta.sinNumero.cantidad, F.tarjeta.sinNumero.monto, '', '', ''])
-  fil.ajenaTj = push(['  · ⚠ marcadas con algo que el OS no reconoce', F.tarjeta.noReconocida.cantidad, F.tarjeta.noReconocida.monto, '', '', NOTA_NO_RECONOCIDA])
-  fil.sinMarcaTj = push(['  · ⚠ todavía SIN MARCAR por el OS (no debitados)', F.tarjeta.sinMarca().cantidad, F.tarjeta.sinMarca().monto, '', '', NOTA_SIN_MARCA])
+  fil.ajenaTj = push([`  · ${ALERTA} marcadas con algo que el OS no reconoce`, F.tarjeta.noReconocida.cantidad, F.tarjeta.noReconocida.monto, '', '', NOTA_NO_RECONOCIDA])
+  fil.sinMarcaTj = push([`  · ${ALERTA} todavía SIN MARCAR por el OS (no debitados)`, F.tarjeta.sinMarca().cantidad, F.tarjeta.sinMarca().monto, '', '', NOTA_SIN_MARCA])
   push()
   const fFalta = filas.length + 1
   // Los #{n} son números de fila RELATIVOS al bloque: el bloque no sabe todavía en qué fila del
@@ -193,7 +194,7 @@ export function grilla({ enCompras, cheques, tarjeta }, resp) {
   const c0 = filas.length + 1
   // El mes es el que escribe la propia pestaña en su columna de mes: no se recalcula acá.
   for (const m of cubrir.por_mes) {
-    if (!m.anio) { push([`${m.mes}  ⚠ sin fecha de pago cargada`, m.cantidad, '']); continue }
+    if (!m.anio) { push([`${m.mes}  ${ALERTA} sin fecha de pago cargada`, m.cantidad, '']); continue }
     const f = F.cheques.aCubrir(m.anio, m.num)
     // EL MES ES UNA FECHA Y SE QUEDA COMO FECHA. Se ve "julio 26" gracias al formato de la columna,
     // que se aplica más abajo — sin él, la celda muestra el serial crudo (46229) y parece un número
@@ -389,7 +390,11 @@ export async function marcarInstrumentos(google, datos, resp) {
     // `✓ | ⚠ | Estado en el OS`, y al agregar la marca de inferencia —que abre con ≈— la guarda
     // habría visto contenido ajeno en su propia columna y abortado el marcado entero. Una guarda
     // que no conoce lo que el propio script escribe se convierte en un freno permanente.
-    const mio = (t) => Object.values(MARCAS).includes(t) || t.startsWith('Estado en el OS')
+    // Y RECONOCE LAS DOS ALERTAS: las 60 filas ya marcadas con `⚠` las escribió este mismo script.
+    // Sin `mismaMarca`, la guarda las vería como texto ajeno y abortaría el marcado de la pestaña
+    // entera — el freno permanente que este comentario ya describe, causado esta vez por el glifo.
+    const marcasVigentes = Object.values(MARCAS)
+    const mio = (t) => marcasVigentes.some((m) => mismaMarca(t, m)) || t.startsWith('Estado en el OS')
     const plan = planDeMarcado({ columna: zona, marcas, fila0: o.filaCab + 1, esMio: mio })
     if (plan.aborto) throw new Error(motivoDeAborto(plan, { columna: letra(COL), pestaña: o.pestaña }))
     avisarSalteadas(o, plan, letra(COL))
