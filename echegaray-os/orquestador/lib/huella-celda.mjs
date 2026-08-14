@@ -56,8 +56,8 @@ import { query } from './db.mjs'
 import { VACIO, letraCol, limpiarCentinela } from './preservar-anotaciones.mjs'
 import { MIA_PROBADA } from './no-borrar.mjs'
 import {
-  claveCelda, formaComparable, formaDe, hayContenido, LARGO_FORMA, MARCAS_TIPOGRAFICAS,
-  noReponerAusentes, quiereEscribir,
+  claveCelda, formaComparable, formaDe, formulasPropiasPorColumna, hayContenido, LARGO_FORMA,
+  MARCAS_TIPOGRAFICAS, noReponerAusentes, normalizarFormula, quiereEscribir,
 } from './huella-forma.mjs'
 import { marcarAbandonadas, partirPorFootprint, veredictoDeFootprint } from './huella-footprint.mjs'
 
@@ -66,7 +66,7 @@ import { marcarAbandonadas, partirPorFootprint, veredictoDeFootprint } from './h
 // noción de "la misma celda": el de acá —posición Y forma, el más fuerte— y el que decide cuando la
 // posición ya no se puede usar. Dos definiciones de "forma" en el archivo que decide qué se puede
 // reescribir del trabajo del dueño es exactamente la duplicación que hay que evitar.
-export { claveCelda, formaComparable, formaDe, hayContenido, quiereEscribir }
+export { claveCelda, formaComparable, formaDe, formulasPropiasPorColumna, hayContenido, normalizarFormula, quiereEscribir }
 
 /** Cuántas celdas comparables hacen falta para que la alineación sea un juicio y no una casualidad. */
 export const MIN_COMPARABLES = 8
@@ -145,8 +145,10 @@ export function formasDeTextoPropio(generado = []) {
  * la coincidencia que este par de condiciones descarta.
  *
  * Sólo texto con letras: un serial o un importe residual se parece a cualquier número del cuadro y
- * eso ya alcanzó una vez para borrar un dato del dueño. Los residuos numéricos se limpian por la vía
- * declarada (scripts/limpiar-residuo-*.mjs), donde una persona nombra la celda.
+ * eso ya alcanzó una vez para borrar un dato del dueño. Los residuos numéricos siguen saliendo por la
+ * vía declarada (scripts/limpiar-residuo-*.mjs), donde una persona nombra la celda. La FÓRMULA fósil
+ * —que tampoco es texto— sí tiene su propio camino desde el 14/08: ver `formulasPropiasPorColumna`,
+ * que la reclama por el contenido exacto y por la columna, nunca por el parecido de un número.
  */
 export function textosPropiosDeLaGrilla(generado = []) {
   const out = new Set()
@@ -252,6 +254,7 @@ export function mejorDesplazamiento(actual = [], huellas = new Map(), opts = {})
  *
  *   · huella propia en la coordenada Y la forma de hoy IGUAL a la que dejé escrita  → `limpiadas`
  *   · sin huella, pero el texto de hoy es uno que sigo escribiendo en esta grilla   → `residuos`
+ *   · sin huella, pero la FÓRMULA de hoy es la que escribo en esta misma columna    → `residuos`
  *
  * Si la forma cambió, la celda es mía por posición y el contenido NO: alguien la editó encima. Eso
  * va a `editadas` y se preserva. Es el caso que separa "limpio lo mío" de "borro lo que escribiste
@@ -302,6 +305,8 @@ export function aplicarHuella(generado = [], actual = [], huellas = new Map(), o
   const mias = formasDeTextoPropio(generado)
   // El segundo testigo, para los residuos que un rediseño deja en celdas donde HOY escribo contenido.
   const textosMios = textosPropiosDeLaGrilla(generado)
+  // El tercero, para el residuo que no es texto: la fórmula fósil, indexada por columna.
+  const formulasMias = formulasPropiasPorColumna(generado, { col0 })
   const norm = (v) => String(v ?? '').replace(/^'/, '').trim().toLowerCase()
   const grid = generado.map((f, i) => (f || []).map((c, j) => {
     if (!quiereEscribir(c)) return c
@@ -356,8 +361,28 @@ export function aplicarHuella(generado = [], actual = [], huellas = new Map(), o
       // mismo sigo escribiendo en otra parte de la grilla: la escribí yo cuando esa fila era otra
       // cosa. Sin esto el residuo es inmortal — no dejé huella (era VACIO) y por eso parece tuyo.
       if (c === VACIO && mias.has(formaDe(hoy))) {
-        residuos.push({ fila: fila0 + i, col, suyo: String(hoy).slice(0, 60) })
+        residuos.push({ fila: fila0 + i, col, suyo: String(hoy).slice(0, 60), por: 'un texto que sigo escribiendo' })
         return MIA_PROBADA
+      }
+      // ═══ Y EL RESIDUO QUE NO ES TEXTO: LA FÓRMULA FÓSIL (14/08) ═══
+      //
+      // El porqué entero, con las cuatro celdas reales medidas, está en `formulasPropiasPorColumna`.
+      // Acá sólo se cobra: pido limpiar esta celda, no tengo huella ni registro de abandono, y lo que
+      // hay adentro es —carácter por carácter— una fórmula que YO escribo HOY en ESTA MISMA COLUMNA.
+      //
+      // Va DESPUÉS del footprint y del texto a propósito: aquéllas prueban la propiedad por un
+      // registro que yo sellé; ésta la prueba por coincidencia, que es más débil, y entre dos pruebas
+      // manda siempre la más fuerte. Un veredicto de footprint que dice "editada" ya cortó arriba.
+      //
+      // NO SE REGISTRA COMO FOOTPRINT, por la misma razón por la que no se registran `residuos` ni
+      // `reescritos`: convertir una prueba por coincidencia en un registro permanente sería ensanchar
+      // en silencio la evidencia más fuerte que tiene el mecanismo.
+      if (c === VACIO) {
+        const formula = normalizarFormula(hoy)
+        if (formula && formulasMias.get(col)?.has(formula)) {
+          residuos.push({ fila: fila0 + i, col, suyo: String(hoy).slice(0, 60), por: 'una fórmula que sigo escribiendo en esta columna' })
+          return MIA_PROBADA
+        }
       }
       // ═══ EL RESIDUO DE REDISEÑO, QUE ERA INMORTAL POR CONSTRUCCIÓN (14/08) ═══
       //
@@ -383,7 +408,9 @@ export function aplicarHuella(generado = [], actual = [], huellas = new Map(), o
       //
       // Lo que este camino NO toca, y es deliberado: un residuo NUMÉRICO (un serial, un importe).
       // Comparte apariencia con cualquier dato del dueño y ninguna de las dos evidencias lo separa —
-      // ésos se limpian por la vía declarada, celda por celda, con una persona nombrándolas.
+      // ésos se limpian por la vía declarada, celda por celda, con una persona nombrándolas. (La
+      // fórmula fósil salió de esta bolsa el 14/08 y tiene camino propio abajo: una fórmula no se
+      // parece a un dato, se compara carácter por carácter.)
       if (c !== VACIO && textosMios.has(norm(hoy)) && filaProbadaMia(actual, activas, i, col, { fila0, col0, off: alineacion.off })) {
         reescritos.push({ fila: fila0 + i, col, suyo: String(hoy).slice(0, 60), mio: String(c).slice(0, 60) })
         return c
@@ -579,7 +606,10 @@ export function explicarHuella(pestana, h, log = console.log) {
   if (h.suprimidas.length > 12) log(`      … y ${h.suprimidas.length - 12} celdas más que vaciaste`)
   for (const a of h.ajenas.slice(0, 6)) log(`  ✋ ${letraCol(a.col)}${a.fila} nunca fue mía y tiene algo tuyo ("${a.suyo}"): no la piso`)
   for (const e of (h.editadas ?? []).slice(0, 6)) log(`  ✋ ${letraCol(e.col)}${e.fila} la escribí yo y hoy dice otra cosa ("${e.suyo}"): la editaste vos, la respeto`)
-  for (const r of (h.residuos ?? []).slice(0, 6)) log(`  🧹 ${letraCol(r.col)}${r.fila} es un residuo mío de un layout anterior ("${r.suyo}"): la limpio`)
+  // El residuo se limpia por DOS pruebas distintas (un texto mío, o una fórmula mía en la misma
+  // columna) y el log tiene que decir por cuál: es la única forma que tiene el dueño de auditar con
+  // qué evidencia el OS decidió vaciarle una celda.
+  for (const r of (h.residuos ?? []).slice(0, 6)) log(`  🧹 ${letraCol(r.col)}${r.fila} es un residuo mío de un layout anterior — ${r.por ?? 'algo que sigo escribiendo'} ("${r.suyo}"): la limpio`)
   if ((h.residuos?.length ?? 0) > 6) log(`      … y ${h.residuos.length - 6} residuos más`)
   for (const r of (h.reescritos ?? []).slice(0, 6)) log(`  🧹 ${letraCol(r.col)}${r.fila} tenía mi rótulo "${r.suyo}" de un layout anterior en una fila mía: escribo lo que va ("${r.mio}")`)
   if ((h.reescritos?.length ?? 0) > 6) log(`      … y ${h.reescritos.length - 6} residuos de rediseño más`)

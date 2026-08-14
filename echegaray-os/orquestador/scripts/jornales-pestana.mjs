@@ -78,7 +78,7 @@ import { escribirPreservando, VACIO, letraCol } from '../lib/preservar-anotacion
 import { conColaMedida, avisoDeCola } from '../lib/cola-de-rango.mjs'
 import { columna, aRangoApi, verificarRangos, explicarProblemas } from '../lib/rangos-con-nombre.mjs'
 import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
-import { seccion, sub, total as rotuloTotal, auditarPatron } from '../lib/patron-pestana.mjs'
+import { seccion, sub, total as rotuloTotal, auditarPatron, clasificarDefectos } from '../lib/patron-pestana.mjs'
 // INK/MUTED/ACENTO: la MISMA paleta que usa la piel. Importarla —y no copiar tres tripletes RGB acá—
 // es lo que hace que la notación del escenario (pagado en tinta plena, proyectado apagado) sea el
 // mismo gris que el resto del libro y no un segundo gris parecido.
@@ -1957,9 +1957,23 @@ async function main() {
   const v = await google.readSheetValues(ID, `'${PESTAÑA}'!A1:${String.fromCharCode(64 + ANCHO)}${grid.length}`)
   const errores = v.flat().filter((c) => /^#(REF|ERROR|N\/A|VALUE|VALOR|¿|¡|DIV|NAME|NUM|NULL)/i.test(String(c ?? '')))
   console.log(errores.length ? `⚠ ${errores.length} celda(s) en error: ${errores.slice(0, 3).join(' · ')}` : '✓ ninguna celda en error')
-  const defectos = auditarPatron(v)
-  console.log(defectos.length ? `⚠ ${defectos.length} defecto(s) de patrón:` : '✓ la pestaña cumple el patrón de diseño')
-  for (const d of defectos.slice(0, 8)) console.log(`   fila ${d.fila} · ${d.regla} · ${d.detalle.slice(0, 110)}`)
+  // ═══ EL DEFECTO DE PATRÓN ES UN REPORTE, NO UN FALLO DE DATOS (14/08) ═══
+  //
+  // El porqué entero está en `clasificarDefectos`. Acá se cobra en dos cosas: el exitCode deja de
+  // mezclar "la pestaña está rota" con "la pestaña se lee mal", y el reporte pasa a NOMBRAR la fila
+  // con lo que tiene adentro. Sin eso, `⚠ 1 defecto de patrón · fila-sin-concepto` obligaba a abrir el
+  // archivo para saber de qué celda hablaba, y una celda que no se puede nombrar no se puede limpiar.
+  const { rotos, reporte } = clasificarDefectos(auditarPatron(v))
+  if (rotos.length) console.log(`⚠ ${rotos.length} defecto(s) que ROMPEN el dato:`)
+  for (const d of rotos.slice(0, 8)) console.log(`   fila ${d.fila} · ${d.regla} · ${d.detalle.slice(0, 110)}`)
+  if (reporte.length) console.log(`📋 ${reporte.length} defecto(s) de patrón (REPORTE — los números están publicados, el cuadro se lee mal):`)
+  for (const d of reporte.slice(0, 8)) {
+    const contenido = (v[d.fila - 1] ?? []).map((c, j) => [letraCol(j) + d.fila, String(c ?? '').trim()])
+      .filter(([, c]) => c).map(([ref, c]) => `${ref}="${c.slice(0, 28)}"`).join(' · ')
+    console.log(`   fila ${d.fila} · ${d.regla} · ${d.detalle.slice(0, 110)}`)
+    if (contenido) console.log(`      lo que tiene: ${contenido.slice(0, 200)}`)
+  }
+  if (!rotos.length && !reporte.length) console.log('✓ la pestaña cumple el patrón de diseño')
   // ═══ EL LOG IMPRIME LAS CELDAS QUE LA FILA TIENE, NO TRES LETRAS ESCRITAS ACÁ (13/08) ═══
   //
   // Decía `f[1] · f[6] · f[9]`, elegidas cuando el hero era una lista y el registro el único cuadro
@@ -1987,7 +2001,9 @@ async function main() {
     console.log(fr.ok ? `frescura JORNALES: cobertura hasta ${iso} → ${fr.estado}` : `frescura no registrada: ${fr.motivo}`)
   }
 
-  if (errores.length || defectos.length) process.exitCode = 1
+  // Rojo SÓLO cuando el dato está roto: una celda en error, o un defecto de los que invalidan el dato.
+  // Un defecto de patrón ya se dijo arriba con su fila y su contenido, y no vuelve a decirse acá.
+  if (errores.length || rotos.length) process.exitCode = 1
 }
 
 /**

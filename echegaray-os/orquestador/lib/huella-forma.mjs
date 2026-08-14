@@ -142,6 +142,84 @@ export function formaDe(v) {
  */
 export const formaComparable = (f) => String(f ?? '').replace(/'/g, '').slice(0, LARGO_CLAVE)
 
+/**
+ * LA FÓRMULA EXACTA, LIMPIA DE LO QUE LE AGREGA GOOGLE — no la forma enmascarada.
+ *
+ * ═══ POR QUÉ NO ALCANZA `formaDe` ACÁ (14/08) ═══
+ *
+ * `formaDe` enmascara TODOS los números de una fórmula (`=sum(f$#:f$#)`), y con razón: una fila que
+ * se inserta no puede leerse como una edición. Pero esa misma máscara vuelve indistinguibles a
+ * `=SUM(F$46:F$57)` y a `=SUM(F$5:F$9)` — dos fórmulas que suman cosas distintas. Para RECLAMAR una
+ * celda ocupada hace falta la comparación estricta, la misma que `textosPropiosDeLaGrilla` usa para
+ * el texto: el contenido EXACTO, no su parecido.
+ *
+ * Lo único que se saca es lo que pone Google y no puso nadie: el apóstrofo de escape inicial, las
+ * comillas con las que envuelve el nombre de una pestaña que arranca con `_`, y el espaciado. Dos
+ * fórmulas que sólo difieren en eso son la misma fórmula (ver `formaComparable`).
+ *
+ * Devuelve `''` para todo lo que no sea una fórmula: un número o un rótulo no entran por acá.
+ */
+export function normalizarFormula(v) {
+  const s = String(v ?? '').replace(/^'/, '').trim()
+  if (!s.startsWith('=')) return ''
+  return s.replace(/'/g, '').replace(/\s+/g, ' ').toLowerCase()
+}
+
+/**
+ * LAS FÓRMULAS QUE EL GENERADOR ESCRIBE HOY, COLUMNA POR COLUMNA — el testigo del residuo que no es
+ * texto ni se puede probar por registro.
+ *
+ * ═══ EL AGUJERO QUE QUEDÓ ABIERTO A PROPÓSITO, Y POR QUÉ SE CIERRA (14/08) ═══
+ *
+ * `textosPropiosDeLaGrilla` deja afuera las fórmulas ("el dueño copia fórmulas") y `aplicarHuella`
+ * deja afuera el residuo numérico ("comparte apariencia con cualquier dato del dueño"). Entre las dos
+ * exclusiones cabía exactamente el defecto que el dueño reclamó tres veces, medido con render FORMULA
+ * en "Jornales por Quincena" el 14/08:
+ *
+ *     F41  =SUM('_J_OFICINA'!W56:W57)+SUM('_J_OFICINA'!W62:W63)   ← idéntica a F49 (Abril)
+ *     F42  =SUM('_J_OFICINA'!W72:W73)+SUM('_J_OFICINA'!W78:W79)   ← idéntica a F50 (Mayo)
+ *     F43  =SUM('_J_OFICINA'!W89:W90)+SUM('_J_OFICINA'!W95:W96)   ← idéntica a F51 (Junio)
+ *     F44  =SUM('_J_OFICINA'!W107:W108)+SUM('_J_OFICINA'!W113:W114) ← idéntica a F52 (Julio)
+ *
+ * El cuadro de Oficina bajó ocho filas y dejó cuatro celdas suyas arriba del título de su propia
+ * sección. La F41 no tiene rótulo en A ni en B —el auditor de patrón la rechaza con
+ * `fila-sin-concepto`— y la F44 publica $2.730.000 al lado de un subtítulo. Con las cuatro llenas de
+ * `—`, ningún #ERROR y ningún aviso.
+ *
+ * NO LO PODÍA ARREGLAR NINGUNA DE LAS CUATRO EVIDENCIAS. Verificado contra `sheet_huella_celda`: esas
+ * cuatro coordenadas no tienen huella VIVA ni marca de ABANDONO (la pestaña tiene 685 huellas y cero
+ * abandonadas — la marca nació hoy y el residuo es anterior). Sin registro, la cuarta evidencia no
+ * tiene nada que decir, y ése es su diseño: no borra por rectángulo.
+ *
+ * ═══ LA COMPARACIÓN ES ESTRICTA, NO POR PARECIDO ═══
+ *
+ * Se compara la fórmula EXACTA (`normalizarFormula`), no su forma enmascarada. Con la máscara,
+ * `=SUM(F$46:F$57)` y un `=SUM(F$5:F$9)` del dueño son la misma cosa, y esto BORRA: el precedente que
+ * se sigue es `textosPropiosDeLaGrilla`, que también reclama por el texto exacto y no por la forma.
+ *
+ * Y SE INDEXA POR COLUMNA, que es la segunda evidencia. Un cuadro que se corre se corre en VERTICAL:
+ * el fósil queda en la misma columna donde el generador sigue escribiendo esa fórmula. Exigirlo
+ * descarta el caso que sí es del dueño —una fórmula mía copiada de costado para revisar algo— y deja
+ * pasar el único que es mío por construcción.
+ *
+ * @param {any[][]} generado lo que el generador quiere escribir
+ * @param {{col0?:number}} opts
+ * @returns {Map<number, Set<string>>} columna absoluta (0-based) → fórmulas normalizadas
+ */
+export function formulasPropiasPorColumna(generado = [], { col0 = 0 } = {}) {
+  const out = new Map()
+  for (const f of generado || []) {
+    ;(f || []).forEach((c, j) => {
+      const formula = normalizarFormula(c)
+      if (!formula) return
+      const col = col0 + j
+      if (!out.has(col)) out.set(col, new Set())
+      out.get(col).add(formula)
+    })
+  }
+  return out
+}
+
 /** ¿El generador quiere ESCRIBIR esta celda? El centinela VACIO cuenta: es una orden de limpiar. */
 export function quiereEscribir(v) {
   return v === VACIO || formaDe(v) !== ''
