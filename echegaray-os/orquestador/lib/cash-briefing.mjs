@@ -6,6 +6,11 @@ export const CASHFLOW_ID = '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
 
 export function parseMonto(s) {
+  // UNA CELDA LEÍDA CON `UNFORMATTED_VALUE` YA VIENE COMO NÚMERO, Y ENTONCES EL PUNTO ES DECIMAL.
+  // Sin esta rama, 429048.5 se convertía en 4290485: el parser lo trata como separador de miles y
+  // devuelve una magnitud diez veces mayor sin dar error. Es el mismo defecto que ya obligó a leer las
+  // fechas con UNFORMATTED — sólo que acá el que se rompe es el importe.
+  if (typeof s === 'number') return Number.isFinite(s) ? s : 0
   const t = String(s ?? '').trim()
   // NOTACIÓN CONTABLE: "($ 531.000,00)" son PARÉNTESIS, y en contabilidad los paréntesis son el
   // signo menos. Sin esto, las notas de crédito entraban como cargos POSITIVOS.

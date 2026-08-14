@@ -521,3 +521,31 @@ test('LA CUENTA USD DEL BANCO QUEDÓ AL 05/08: depósito 15.400 − 15.000 a Bal
   assert.equal(g.filas[f - 1][1], 981.39)
   assert.equal(celda(g, f, 3), '2026-08-05')
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LA FECHA MÁS VIEJA DE LAS FILAS QUE SUMAN (14/08/2026)
+//
+// La tarjeta CAJA DISPONIBLE decía "al 14/08" copiando la fecha del total, que es un MAX. Adentro de
+// ese total había $1.463.926 de "Santander · cta cte USD" fechados el 05/08. El MAX es correcto para
+// el total —es hasta cuándo llega el dato más nuevo— y es una mentira como frescura del conjunto.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('la tarjeta DISPONIBLE mira la fecha MÁS VIEJA de las filas que suman, no sólo el MAX del total', () => {
+  const g = construir()
+  const contexto = g.tarjetas.find((t) => t.clave === 'disponible').contexto
+  assert.match(contexto, /MIN\(/, 'sin el MIN, un corte de nueve días desaparece adentro del MAX del total')
+  assert.match(contexto, /▲ parte al/, 'y tiene que decirlo con la marca que sí se dibuja en el PDF')
+})
+
+test('el MIN de la tarjeta EXCLUYE las filas ‖ que el total resta: avisaría por plata que no está adentro', () => {
+  const g = construir()
+  const contexto = g.tarjetas.find((t) => t.clave === 'disponible').contexto
+  const enElMin = new Set((contexto.match(/MIN\(([^)]*)\)/)?.[1] ?? '').split(';').map((s) => s.trim()))
+  assert.ok(enElMin.size > 0, 'el MIN quedó vacío: el test estaría felicitando sin mirar nada')
+  for (const f of g.noSuman) {
+    assert.ok(!enElMin.has(`$D$${f}`),
+      `la fila ${f} NO suma al total (‖) y su fecha entró al MIN: la tarjeta avisaría por plata que no rotula`)
+  }
+  // Y la prueba de vida por el otro lado: la cuenta del banco en pesos SÍ suma y SÍ tiene que estar.
+  assert.ok(enElMin.has(`$D$${g.fBancoPesos}`), 'la cuenta en pesos suma al total y su fecha quedó fuera del MIN')
+})

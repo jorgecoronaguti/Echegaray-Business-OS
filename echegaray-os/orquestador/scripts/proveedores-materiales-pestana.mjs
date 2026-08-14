@@ -91,17 +91,20 @@ const ESTADO_PROYECTADO = 'Proyectado'
 import { formulaComercial } from '../lib/orden-deuda.mjs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
 import { normComprobante, esLlaveUtil } from '../lib/cheques-cobertura.mjs'
+import { clasificarVentasSinCobranza } from '../lib/ventas-sin-cobranza.mjs'
 import { signo, esNotaDeCredito } from '../lib/comprobante-arca.mjs'
 import { analizar as analizarNC, facturasAnuladasCargadas, clave as claveNC } from '../lib/notas-credito.mjs'
 import { cruzar, verificar } from '../lib/cobertura-arca.mjs'
 // El libro de ARCA se limpia de repetidos EN EL ORIGEN, antes de derivar nada. Ver el lib: filtrar
 // una derivación arregló la sección 4 y dejó Trielec repetido cuatro veces en la 3.
 import { sinComprobantesRepetidos } from '../lib/arca-duplicados.mjs'
-import { ARCA as N_ARCA, publicar, desalineados } from '../lib/rangos-nombrados.mjs'
+import { ARCA as N_ARCA, publicar, desalineados, retirar } from '../lib/rangos-nombrados.mjs'
 // Los rótulos del bloque de cobertura y a qué nombre cuelga cada línea, en UN solo lugar: el que
 // escribe la fila y el que la busca leen la misma constante. Ver el lib — la copia doble ya dejó
 // dos nombres apuntando a un CUIT.
-import { CABECERA_ARCA, LINEAS_ARCA, NOMBRES_ARCA, destinosDeArca, dondeViveCadaNombre } from '../lib/bloque-arca-nombres.mjs'
+import {
+  CABECERA_ARCA, LINEAS_ARCA, NOMBRES_ARCA, NOMBRES_ARCA_RETIRADOS, destinosDeArca, dondeViveCadaNombre,
+} from '../lib/bloque-arca-nombres.mjs'
 // Lo que el dueño YA decidió sobre un hallazgo puntual: se cuenta y se lista, pero no vuelve a
 // ocupar la línea de aviso. Ver lib/decisiones-hallazgos.mjs.
 import { CONTROLES, decidir, explicarDecisiones } from '../lib/decisiones-hallazgos.mjs'
@@ -1043,18 +1046,40 @@ const money = (n) => Number(n).toLocaleString('es-AR', { style: 'currency', curr
  * LO LIBERADO SE SIGUE CONTANDO Y LISTANDO, con quién decidió, cuándo y su palabra textual. Lo único
  * que pierde es el `⚠`, que es lo que hace figurar al paso entre los que "no cierran".
  *
- * @param {Array<{comprobante:string, cuit:any, fecha:string, importe:number}>} emitidas
+ * ═══ Y LO QUE ENTRA ACÁ YA VIENE SEPARADO POR MOTIVO (14/08/2026) ═══
+ *
+ * El `⚠` es SÓLO para las que no tienen rastro en Cobranzas. Las que están con el número tipeado sin
+ * su punto de venta ("219") o con el mismo importe bajo otro número se siguen listando —son trabajo
+ * pendiente— pero no llevan la marca ni entran en la cifra del titular: mezcladas, el aviso decía
+ * $129.499.724 donde el agujero era $54.625.304,80, y un aviso inflado se descarta entero.
+ * Ver lib/ventas-sin-cobranza.mjs.
+ *
+ * @param {Array<{comprobante:string, cuit:any, fecha:string, importe:number}>} emitidas las que NO
+ *   tienen rastro en Cobranzas (`sinRastro`)
+ * @param {{porNumeroSuelto?:Array, porImporte?:Array}} [opts] las que sí están, para listarlas sin ⚠
  * @returns el veredicto completo: vivos, silenciados, caducadas y rotas
  */
-export function reportarVentasSinCobranza(emitidas = [], { log = console.warn, ...opts } = {}) {
+export function reportarVentasSinCobranza(emitidas = [], { log = console.warn, porNumeroSuelto = [], porImporte = [], ...opts } = {}) {
   const dec = decidir(CONTROLES.ventasSinCobranza, emitidas.map((r) => ({
     ...r, clave: r.comprobante, forma: { importe: r.importe, cuit: r.cuit ?? '' },
   })), opts)
   if (dec.vivos.length) {
     const plata = dec.vivos.reduce((a, r) => a + r.importe, 0)
-    log(`  ⚠ VENTAS (no es de esta pestaña): ${dec.vivos.length} factura(s) emitidas que Cobranzas no tiene, `
+    log(`  ⚠ VENTAS (no es de esta pestaña): ${dec.vivos.length} factura(s) emitidas SIN RASTRO en Cobranzas, `
       + `${money(plata)}. Su lugar es la pestaña Cobranzas; acá sólo se avisa.`)
     for (const r of dec.vivos) log(`     ${r.comprobante}  ${String(r.fecha).padStart(10)}  CUIT ${r.cuit ?? '—'}  ${money(r.importe)}`)
+  }
+  // SIN `⚠`: son de CARGA, no de plata que falta. Con la marca, el paso figuraba entre los que no
+  // cierran por una factura que está cargada y bien cobrada, sólo que numerada como en el talonario.
+  if (porNumeroSuelto.length) {
+    log(`  ○ ${porNumeroSuelto.length} factura(s) SÍ están en Cobranzas con el N° tipeado sin su punto de venta `
+      + `(${money(porNumeroSuelto.reduce((a, r) => a + r.importe, 0))}): completarlo en Cobranzas y el cruce las toma por la llave buena.`)
+    for (const r of porNumeroSuelto) log(`     ${r.comprobante}  →  Cobranzas fila ${r.fila}`)
+  }
+  if (porImporte.length) {
+    log(`  ○ ${porImporte.length} factura(s) con el MISMO importe exacto en Cobranzas bajo OTRO número `
+      + `(${money(porImporte.reduce((a, r) => a + r.importe, 0))}): o está mal numerada, o son dos comprobantes distintos. Lo decide el dueño.`)
+    for (const r of porImporte) log(`     ${r.comprobante}  ${money(r.importe)}  ↔  Cobranzas fila ${r.fila} (N° "${r.llaveEnCobranzas}")`)
   }
   explicarDecisiones(dec, log, { detalle: (h) => `${h.comprobante}  ${String(h.fecha).padStart(10)}  ${money(h.importe)}` })
   return dec
@@ -1308,12 +1333,22 @@ async function main() {
   // nadie sigue— y su lugar es la pestaña de Cobranzas. Mientras esa pestaña no exista rehecha, el
   // cruce NO se tira: se sigue calculando y se REPORTA por el log de la corrida, que es donde el OS
   // deja lo que todavía no tiene pestaña. Escribir una versión peor en el lugar equivocado, no.
-  const cobranzas = await google.readSheetValues(ID, 'Cobranzas!A5:G400')
+  // ═══ HASTA LA COLUMNA M, NO HASTA LA G (14/08/2026) ═══
+  //
+  // La segunda y la tercera pasada necesitan el importe, y "TOTAL a cobrar (neto de retenciones)" es
+  // la M. Leyendo hasta la G, el cruce sólo podía preguntar por el número — y el número es justamente
+  // lo que la planilla escribe distinto.
+  const cobranzas = await google.readSheetValues(ID, 'Cobranzas!A5:M400')
   const cobranzasPorComp = new Set()
   for (const c of cobranzas) {
     const k = normComprobante(c?.[4])
     if (esLlaveUtil(k)) cobranzasPorComp.add(k)
   }
+  // Para las pasadas 2 y 3 entran TODAS las filas con algo cargado, incluidas las que `esLlaveUtil`
+  // descarta por corta: ese descarte es precisamente el que dejaba afuera al "219" tipeado a mano.
+  const filasCobranzas = cobranzas
+    .map((c, i) => ({ fila: i + 5, llave: normComprobante(c?.[4]), importe: parseMonto(c?.[12]) || 0 }))
+    .filter((c) => c.llave || c.importe)
   const emitidasSinCobranza = eArca
     .filter((r) => !esNotaDeCredito(r.tipo_comprobante))
     .map((r) => ({
@@ -1321,7 +1356,9 @@ async function main() {
       cuit: r.receptor_cuit, fecha: fecha(r.fecha_emision), importe: Number(r.imp_total),
     }))
     .filter((r) => !cobranzasPorComp.has(normComprobante(r.comprobante)))
-  reportarVentasSinCobranza(emitidasSinCobranza)
+    .map((r) => ({ ...r, llave: normComprobante(r.comprobante) }))
+  const ventas = clasificarVentasSinCobranza(emitidasSinCobranza, filasCobranzas)
+  reportarVentasSinCobranza(ventas.sinRastro, { porNumeroSuelto: ventas.porNumeroSuelto, porImporte: ventas.porImporte })
 
   // ── QUÉ HACE CADA NOTA DE CRÉDITO ──────────────────────────────────────────────────────────────
   // Saber que RESTA arregla la aritmética; esto contesta la pregunta de negocio. Ver
@@ -1864,6 +1901,23 @@ async function main() {
   // un rango con nombre apuntando a basura cuenta como defecto igual que una celda en `#REF!`: las
   // dos hacen que otra pestaña muestre un número equivocado sin dar error.
   let err = 0
+
+  // ═══ EL RETIRO NO DEPENDE DE HABER ESCRITO LA PESTAÑA, Y POR ESO VA ANTES DEL SKIP ═══
+  //
+  // Que estos diez nombres no los cite ninguna fórmula del libro es un hecho del ARCHIVO, no de esta
+  // corrida: vale igual si "Proveedores" se salteó por un candado, por la firma o por --solo. Adentro
+  // del `else` el arreglo tendría exactamente la disponibilidad del defecto que viene a cerrar —
+  // ninguna, si la pestaña se saltea todos los días, que es justo lo que venía pasando.
+  //
+  // Y es lo ÚNICO seguro de hacer con la pestaña salteada: borrar un nombre no escribe una celda. Lo
+  // que sí depende de la escritura —reapuntar los que quedan— sigue adentro, contra la grilla escrita.
+  const bajas = retirar([...NOMBRES_ARCA_RETIRADOS], await google.getNamedRanges(ID).catch(() => []))
+  if (bajas.length) {
+    await google.spreadsheetBatchUpdate(ID, bajas)
+    console.log(`  🗑 ${bajas.length} rango(s) con nombre de ARCA retirados: ninguna fórmula del libro los citaba `
+      + 'y vivían sobre la tabla de comprobantes faltantes. El cuadro los sigue mostrando en la pestaña.')
+  }
+
   const hojaArca = escritas.find((e) => e.titulo === NOMBRES.proveedores)
   if (!hojaArca) {
     console.log(`  ⏭ "${NOMBRES.proveedores}" no se escribió en esta corrida: no toco sus grupos +/- ni sus rangos con nombre. La geometría de la pestaña sigue siendo la de su última escritura, que es lo correcto.`)
@@ -1937,7 +1991,7 @@ async function main() {
     // fila `i` de la grilla es la fila `filaArranque + i` de la pestaña, la misma aritmética con la
     // que se acaban de clasificar los grupos de deuda acá arriba. Los rótulos vienen de
     // `LINEAS_ARCA`, la misma constante con la que se escribieron. Ver lib/bloque-arca-nombres.mjs.
-    const { destinos: destinosArca, faltan: sinRotulo, cabecera, cabeceras } =
+    const { destinos: destinosArca, faltan: sinRotulo, faltanSinNombre, cabecera, cabeceras } =
       destinosDeArca(hojaArca.grid || [], hojaArca.filaArranque)
     if (cabecera) console.log(`  bloque de cobertura de ARCA en la fila ${cabecera} de "${NOMBRES.proveedores}" (de la grilla escrita, no de releer la pestaña)`)
     if (cabeceras > 1) { err++; console.log(`  ⚠ ${cabeceras} cabeceras "${CABECERA_ARCA}" en la grilla que escribo: el bloque está duplicado en mi propio cuadro y no sé cuál es el bueno`) }
@@ -1956,6 +2010,12 @@ async function main() {
       err += sinRotulo.length
       console.log(`  ⚠ ${sinRotulo.length} línea(s) del bloque ARCA no están en la grilla que escribí: `
         + `${sinRotulo.join(' · ')}. Sus rangos con nombre quedan donde estaban y eso NO es seguro — se verifica abajo.`)
+    }
+    // Sin nombre colgando, la línea ausente es un defecto del cuadro, no una fuente de números
+    // equivocados en otra pestaña: se dice y no frena la corrida. Ver `destinosDeArca`.
+    if (faltanSinNombre.length) {
+      console.log(`  ○ ${faltanSinNombre.length} línea(s) del bloque ARCA no están en la grilla que escribí `
+        + `(ninguna publica un rango con nombre): ${faltanSinNombre.join(' · ')}`)
     }
     const nombres = await publicar(google, ID, hojaArca.sheetId, destinosArca, { titulo: NOMBRES.proveedores })
     console.log(`  ${nombres.nombres} rangos con nombre publicados: el Cash Flow los referencia en vez de copiarlos`
@@ -1997,10 +2057,14 @@ async function main() {
   // error — nunca se borra nada sobre un resultado que no se verificó.
   const OBSOLETAS = [PESTAÑA, 'Proveedores — Deuda', 'Proveedores — Cuenta Corriente', 'Proveedores — Control y ARCA']
   const meta2 = await google.getSheetMeta(ID)
-  const retirar = OBSOLETAS.map((t) => meta2.find((h) => h.title === t)).filter(Boolean)
-  if (!err && retirar.length) {
-    await google.spreadsheetBatchUpdate(ID, retirar.map((h) => ({ deleteSheet: { sheetId: h.sheetId } })))
-    console.log(`  retiradas: ${retirar.map((h) => `"${h.title}"`).join(', ')} — su contenido está en las dos de arriba`)
+  // NO SE LLAMA `retirar`: ese nombre es el de la función que da de baja RANGOS CON NOMBRE, importada
+  // arriba. Un `const` acá sombrea el import en TODA la función —zona muerta temporal incluida—, así
+  // que la llamada de doscientas líneas más arriba moriría con un ReferenceError en plena corrida.
+  // Dos cosas distintas no comparten nombre aunque el verbo sea el mismo: acá se retiran PESTAÑAS.
+  const pestanasARetirar = OBSOLETAS.map((t) => meta2.find((h) => h.title === t)).filter(Boolean)
+  if (!err && pestanasARetirar.length) {
+    await google.spreadsheetBatchUpdate(ID, pestanasARetirar.map((h) => ({ deleteSheet: { sheetId: h.sheetId } })))
+    console.log(`  retiradas: ${pestanasARetirar.map((h) => `"${h.title}"`).join(', ')} — su contenido está en las dos de arriba`)
   }
 
   console.log(`  ARCA: ${g.afip1 - g.afip0 + 1} comprobantes facturados que Compras no tiene`)

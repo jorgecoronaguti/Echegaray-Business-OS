@@ -98,7 +98,8 @@ test('el CONTRATO de cada obra sale de Cobranzas, y seis de siete cierran EXACTO
   for (const [clave, c] of Object.entries(esperado)) {
     if (c === null || clave === 'quattropani-salon-comercial') continue
     const f = bloque(clave).fProt
-    assert.equal(redondo(val(`I${f}`)), 0, `${clave}: contrato − venta cargada = 0, no falta cargar nada`)
+    assert.equal(redondo(val(`H${f}`)), 0, `${clave}: contrato − certificado = 0, no falta cargar nada`)
+    assert.equal(val(`G${f}`), c, `${clave}: el contrato se publica en su propia celda`)
     assert.equal(redondo(val(`B${f}`)), 1, `${clave}: 100% del contrato cargado`)
   }
 })
@@ -108,30 +109,31 @@ test('QUATTROPANI TIENE $35.561.023 CARGADOS POR ENCIMA DE SU CONTRATO, y se pub
   // se facturan con margen fuera del contrato. Recortar el saldo con un MAX(0;…) escondería el único
   // caso de las siete obras donde el contrato NO explica lo facturado.
   const f = bloque('quattropani-salon-comercial').fProt
-  assert.equal(redondo(val(`I${f}`)), -35_561_023.38)
-  assert.ok(val(`I${f}`) < 0, 'sale negativo y así se publica')
+  assert.equal(redondo(val(`H${f}`)), -35_561_023.38)
+  assert.ok(val(`H${f}`) < 0, 'sale negativo y así se publica')
   assert.ok(val(`B${f}`) > 1, 'el % de contrato pasa de 100 y eso ES la señal')
   // Y sin la conversión de dólares el hallazgo se veía $22,9M más chico: los dos arreglos se tocan.
-  assert.equal(redondo(val(`I${f}`, 1)), -12_600_085.38)
+  assert.equal(redondo(val(`H${f}`, 1)), -12_600_085.38)
 })
 
 test('la obra SIN contrato declarado publica el guion, no un cero ni un blanco', () => {
   const f = bloque('messina-bsa').fProt
-  assert.equal(cel(`I${f}`), SIN_CONTRATO)
+  assert.equal(cel(`G${f}`), SIN_CONTRATO, 'el contrato')
+  assert.equal(cel(`H${f}`), SIN_CONTRATO, 'y lo que falta certificar contra él')
   assert.equal(cel(`B${f}`), SIN_CONTRATO)
   // Un 0 habría afirmado que el contrato vale cero, y el saldo sería −$14.120.243 de una obra que
   // simplemente no declara contrato en ninguna fila.
-  assert.notEqual(cel(`I${f}`), 0)
+  assert.notEqual(cel(`H${f}`), 0)
 })
 
 test('el cierre de la Sección 2 no mezcla las obras con contrato y las que no lo declaran', () => {
-  const fTot = g.totales[1]
+  const fTot = g.fTotObras
   const conContrato = g.bloques.filter((b) => b.contrato)
   // El saldo del cierre es la suma de los saldos de las obras CON contrato: la de BSA no entra por
   // construcción, no porque Sheets ignore un texto (conducta que este worktree no puede verificar).
-  assert.equal(cel(`I${fTot}`), `=${conContrato.map((b) => `I${b.fProt}`).join('+')}`)
-  assert.ok(!cel(`I${fTot}`).includes(`I${bloque('messina-bsa').fProt}`), 'BSA no se cita')
-  assert.equal(redondo(val(`I${fTot}`)), -35_561_023.38, 'y da el saldo de Quattropani, que es el único que no cierra')
+  assert.equal(cel(`H${fTot}`), `=${conContrato.map((b) => `H${b.fProt}`).join('+')}`)
+  assert.ok(!cel(`H${fTot}`).includes(`H${bloque('messina-bsa').fProt}`), 'BSA no se cita')
+  assert.equal(redondo(val(`H${fTot}`)), -35_561_023.38, 'y da el saldo de Quattropani, que es el único que no cierra')
   // El % del cierre usa los mismos dos lados que las filas: no puede meter la venta de BSA arriba y
   // dejarla afuera abajo. Con los 6 contratos que cierran + Quattropani por encima, pasa de 100%.
   const contratosTot = conContrato.reduce((s, b) => s + b.contrato, 0)
@@ -143,7 +145,7 @@ test('el TOTAL 2026 de la Sección 1 también valúa los dólares: la venta del 
   // Si la corrección viviera sólo en las filas por obra, el cierre del año y la suma de sus clientes
   // dejarían de dar lo mismo — y el escritor abortaría con "SIN UBICAR". Peor: si abortara por esto,
   // se buscaría el problema en la lista de clientes.
-  const fTot = g.totales[0]
+  const fTot = g.fTotClientes
   assert.equal(redondo(val(`C${fTot}`) - val(`C${fTot}`, 1)), redondo(15_400 * (TC - 1)))
   const fQ = g.filaDeCliente['Quattropani - Melisa García SAS']
   assert.equal(redondo(val(`C${fQ}`)), redondo(val(`C${bloque('quattropani-salon-comercial').fProt}`)),
@@ -153,7 +155,7 @@ test('el TOTAL 2026 de la Sección 1 también valúa los dólares: la venta del 
 test('la resta de la fila de cierre va entre paréntesis: sin ellos restaría un tercio de lo que debe', () => {
   // Desde que cada suma vale `todo − dólares + dólares×TC`, un `A-B` sin agrupar restaría sólo el
   // primer término de B y SUMARÍA los otros dos. No da error: da un número creíble.
-  const fTot = g.totales[0]
+  const fTot = g.fTotClientes
   const resta = cel(`E${fTot}`)
   assert.ok(resta.startsWith('=(') && resta.includes(')-('), 'los dos lados agrupados')
   assert.equal(redondo(val(`E${fTot}`)), redondo(val(`C${fTot}`) - val(`C${fTot}`) + val(`E${fTot}`)))
@@ -175,7 +177,7 @@ test('la resta de la fila de cierre va entre paréntesis: sin ellos restaría un
 test('saldo CERO no es "sin contrato": la obra 100% facturada pasa el control', () => {
   const bloques = [{ clave: 'sf-pisos-industriales', fProt: 18, contrato: 47590272 }]
   const formulas = []
-  formulas[17] = ['2.1 · San Francisco — PISOS', '=C18/47590272', 47590272, '', '', '', '', '', '=47590272-C18']
+  formulas[17] = ['3.1 · San Francisco — PISOS', '=IF(G18=0;0;C18/G18)', 47590272, '', '', '', 47590272, '=G18-C18', '']
   assert.deepEqual(saldoContratoMalPublicado(bloques, formulas), [])
   // Y ÉSTA es la aserción que el control viejo no podía hacer: leyendo lo que se VE, el saldo cero
   // y el sin-contrato son el mismo carácter. Por eso este control no puede mirar la pantalla.
@@ -185,36 +187,38 @@ test('saldo CERO no es "sin contrato": la obra 100% facturada pasa el control', 
 test('la I pegada a mano NO pasa, aunque muestre el número correcto', () => {
   const bloques = [{ clave: 'sf-pisos-industriales', fProt: 18, contrato: 47590272 }]
   const pegada = []
-  pegada[17] = ['2.1', '=C18/47590272', 47590272, '', '', '', '', '', 0] // el valor correcto, muerto
+  pegada[17] = ['3.1', '', 47590272, '', '', '', 47590272, 0, ''] // el valor correcto, muerto
   const malas = saldoContratoMalPublicado(bloques, pegada)
   assert.equal(malas.length, 1)
-  assert.match(malas[0], /en vez de la fórmula viva "=47590272-C18"/)
+  assert.match(malas[0], /en vez de la fórmula viva "=G18-C18"/)
 })
 
 test('la I con la fórmula de OTRA obra no pasa: el número tiene que ser el de ESTA', () => {
   const bloques = [{ clave: 'sf-instalacion-electrica', fProt: 24, contrato: 40000000 }]
   const cruzada = []
-  cruzada[23] = ['2.2', '', '', '', '', '', '', '', '=47590272-C24'] // el contrato del vecino
+  cruzada[23] = ['3.2', '', '', '', '', '', 47590272, '=G24-C24', ''] // el contrato del vecino
   assert.equal(saldoContratoMalPublicado(bloques, cruzada).length, 1)
-  // Y la fila equivocada tampoco: si la fórmula apunta a otra C, la resta no es de esta obra.
+  // Y la fila equivocada tampoco: si la fórmula apunta a otra fila, la resta no es de esta obra.
   const otraFila = []
-  otraFila[23] = ['2.2', '', '', '', '', '', '', '', '=40000000-C18']
+  otraFila[23] = ['3.2', '', '', '', '', '', 40000000, '=G18-C18', '']
   assert.equal(saldoContratoMalPublicado(bloques, otraFila).length, 1)
 })
 
 test('sin contrato declarado, la I lleva el guion y NADA más', () => {
   const bloques = [{ clave: 'bsa', fProt: 40, contrato: null }]
-  const guion = []; guion[39] = ['2.7 · BSA', '—', '', '', '', '', '', '', '—']
+  const guion = []; guion[39] = ['3.6 · BSA', '—', '', '', '', '', '—', '—', '']
   assert.deepEqual(saldoContratoMalPublicado(bloques, guion), [])
   // Un cero publicado ahí afirmaría que el contrato vale cero: eso sí es un defecto.
-  const cero = []; cero[39] = ['2.7 · BSA', '—', '', '', '', '', '', '', 0]
+  const cero = []; cero[39] = ['3.6 · BSA', '—', '', '', '', '', 0, 0, '']
   assert.equal(saldoContratoMalPublicado(bloques, cero).length, 1)
   // Y una celda vacía tampoco: es indistinguible de una fórmula que se rompió en silencio.
-  const vacia = []; vacia[39] = ['2.7 · BSA', '—', '', '', '', '', '', '', '']
+  const vacia = []; vacia[39] = ['3.6 · BSA', '—', '', '', '', '', '', '', '']
   assert.equal(saldoContratoMalPublicado(bloques, vacia).length, 1)
 })
 
 test('la fila que no se pudo releer se denuncia, no se da por buena', () => {
   const bloques = [{ clave: 'messina-playon-azufre', fProt: 44, contrato: 102500000 }]
-  assert.equal(saldoContratoMalPublicado(bloques, []).length, 1, 'sin relectura no hay verificación')
+  const malas = saldoContratoMalPublicado(bloques, [])
+  assert.ok(malas.length >= 1, 'sin relectura no hay verificación: tiene que denunciar')
+  assert.ok(malas.every((m) => m.startsWith('messina-playon-azufre:')), 'y decir de qué obra habla')
 })

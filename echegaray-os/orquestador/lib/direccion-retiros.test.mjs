@@ -6,6 +6,7 @@ import {
   formulaProyectadoMes, formulaDireccion, condicionesPagoDelMes,
 } from './direccion-retiros.mjs'
 import { formulaAdministracion, formulaOficina } from './cash-flow-lineas.mjs'
+import { sumarDiasHabiles, DESFASE_HABILES_DEFAULT } from './jornales-fecha-pago.mjs'
 import { REGLAS } from './rubro-caja.mjs'
 
 const balanceado = (f) => [...f].reduce((n, c) => n + (c === '(' ? 1 : c === ')' ? -1 : 0), 0) === 0
@@ -56,15 +57,26 @@ const predicado = (cond) => {
   throw new Error(`el evaluador del test no reconoce esta condición: ${cond}`)
 }
 
-/** Lo que rinde la celda "Se paga el" del bloque Dirección sobre unas filas de Compras. */
-const evaluarSePagaEl = (formula, filas, diaPago = DIA_PAGO_DEFAULT) => {
-  const m = formula.match(/^=IFERROR\(MAX\(FILTER\((.+)\)\);DATE\((\d+);(\d+);DIRECCION_DIA_PAGO\)\)$/)
-  assert.ok(m, `la celda ya no es "el máximo de las fechas que pagaron el mes; si no hay, la prevista": ${formula}`)
+/**
+ * Lo que rinde la celda "Se paga el" del bloque Dirección sobre unas filas de Compras.
+ *
+ * LA PREVISTA CAMBIÓ EL 14/08 y este evaluador con ella: ya no es `DATE(a;m+1;DIRECCION_DIA_PAGO)`
+ * sino la fecha de la NÓMINA del mes —el lote de haberes del cierre, o `WORKDAY(cierre; desfase)`—,
+ * que es la misma que cobran obra y oficina. Sin lotes en el fixture, la rama que aplica es la del
+ * WORKDAY, y se calcula con la MISMA función que la fórmula imita (`sumarDiasHabiles`).
+ */
+const evaluarSePagaEl = (formula, filas) => {
+  const m = formula.match(
+    /^=IFERROR\(MAX\(FILTER\((.+?)\)\);IFERROR\(MIN\(FILTER\('_BANCO_RAW'.+?\)\);WORKDAY\(EOMONTH\(DATE\((\d+);(\d+);1\);0\);JORNALES_DESFASE_PAGO\)\)\)$/)
+  assert.ok(m, `la celda ya no es "el máximo de las fechas que pagaron el mes; si no hay, la de la nómina": ${formula}`)
   const [rango, ...conds] = args(m[1])
   assert.equal(rango, COL_AD, 'la fecha de un hecho sale de la fecha de caja de Compras')
   const preds = conds.map(predicado)
   const fechas = filas.filter((f) => preds.every((p) => p(f))).map((f) => f.caja)
-  return fechas.length ? Math.max(...fechas) : serial(Number(m[2]), Number(m[3]), diaPago)
+  if (fechas.length) return Math.max(...fechas)
+  const cierre = new Date(Number(m[2]), Number(m[3]), 0)
+  const prevista = sumarDiasHabiles(cierre, DESFASE_HABILES_DEFAULT)
+  return serial(prevista.getUTCFullYear(), prevista.getUTCMonth() + 1, prevista.getUTCDate())
 }
 
 /** Lo que rinde la celda "Pagado" del mismo mes, sobre las mismas filas. */
@@ -178,7 +190,9 @@ test('el retiro de diciembre se paga en ENERO del año siguiente, y el mes 13 no
   // desborde no la va a salvar. Un test que exige la forma equivocada la vuelve intocable.
   // Sin ninguna fila de Compras que lo pague, diciembre cae en su fecha PREVISTA — y esa fecha es de
   // enero, no de un mes 13.
-  assert.equal(evaluarSePagaEl(formulaSePagaElDireccion(12, 2026), []), serial(2027, 1, DIA_PAGO_DEFAULT))
+  // La prevista de diciembre es la de la nómina: WORKDAY(31/12/2026;1) = vie 01/01/2027. Sigue siendo
+  // caja del año que viene, que es lo que este test cuida — lo que cambió es de qué criterio sale.
+  assert.equal(evaluarSePagaEl(formulaSePagaElDireccion(12, 2026), []), serial(2027, 1, 1))
   assert.doesNotMatch(formulaSePagaElDireccion(12, 2026), /DATE\(\d{4};1[3-9];/)
   // Y la ventana de "pagado" del mes de diciembre tampoco puede tener meses 13 ni 14.
   const dic = formulaPagadoMes(12, 2026)
@@ -214,9 +228,11 @@ test('un mes que todavía se debe conserva su fecha PREVISTA', () => {
   // previsto que NO salió. Ni suma en "Pagado" ni le puede dar la fecha a "Se paga el" — si lo hiciera,
   // el cuadro daría por saldado un mes que se sigue debiendo, que es el error caro.
   assert.equal(evaluarPagado(formulaPagadoMes(8, 2026), COMPRAS_JULIO), 0)
+  // La prevista de agosto es la de la nómina: WORKDAY(31/08/2026;1) = mar 01/09/2026 — el mismo día
+  // que cobran obreros y oficina. Antes decía 10/09, tres fechas distintas para un solo evento.
   assert.equal(
     evaluarSePagaEl(formulaSePagaElDireccion(8, 2026), COMPRAS_JULIO),
-    serial(2026, 9, DIA_PAGO_DEFAULT),
+    serial(2026, 9, 1),
   )
 })
 
@@ -225,9 +241,10 @@ test('la compra de materiales con la palabra "Corona" no le mueve la fecha a nin
   // además fecharía meses que nadie pagó.
   const soloTrampa = COMPRAS_JULIO.filter((f) => f.persona.startsWith('Corona de'))
   assert.equal(evaluarPagado(formulaPagadoMes(7, 2026), soloTrampa), 0)
+  // WORKDAY(31/07/2026;1) = lun 03/08/2026, que es el día en que el banco pagó los honorarios.
   assert.equal(
     evaluarSePagaEl(formulaSePagaElDireccion(7, 2026), soloTrampa),
-    serial(2026, 8, DIA_PAGO_DEFAULT),
+    serial(2026, 8, 3),
   )
 })
 
@@ -242,11 +259,17 @@ test('"Pagado" y "Se paga el" salen de UNA sola definición de las filas que pag
     assert.ok(cuando.includes(c), `"Se paga el" no usa la condición compartida: ${c}`)
   }
   // Y ninguna de las dos agrega condiciones propias: mismo conteo de condiciones en las dos.
-  assert.equal(args(cuando.match(/FILTER\((.+)\)\);DATE/)[1]).length - 1, conds.length)
+  assert.equal(args(cuando.match(/FILTER\((.+?)\)\);IFERROR/)[1]).length - 1, conds.length)
   assert.equal(args(pagado.match(/^=SUMPRODUCT\((.+)\)$/)[1], '*').length - 1, conds.length)
 })
 
-test('el día de pago es un PARÁMETRO de la pestaña, no una constante en el código', () => {
+test('EL DÍA 10 QUEDÓ RETIRADO: ninguna fórmula lo cita, y el parámetro lo declara', () => {
+  // El día 10 salía de una fecha de caja PREVISTA en Compras, no de un pago: los retiros reales
+  // salieron el 01/06, el 02/07 y el 03/08. Con los tres grupos cobrando el mismo día, este parámetro
+  // dejó de tener consumidores — y un parámetro que parece vivo y no gobierna nada es una trampa.
+  for (const f of TODAS()) assert.doesNotMatch(f, /DIRECCION_DIA_PAGO/, `todavía cita el día 10: ${f}`)
+  assert.equal(PARAMETRO_DIA_PAGO.retirado, true)
+  assert.match(PARAMETRO_DIA_PAGO.rotulo, /RETIRADO/)
   assert.equal(PARAMETRO_DIA_PAGO.rango, 'DIRECCION_DIA_PAGO')
   assert.equal(PARAMETRO_DIA_PAGO.valor, DIA_PAGO_DEFAULT)
   // MEDIDO: las cinco filas de sueldos de administración de julio tienen fecha de caja 10/08.

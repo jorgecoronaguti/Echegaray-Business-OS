@@ -31,12 +31,50 @@ export const LINEAS_ARCA = Object.freeze([
   { texto: '  · notas de crédito (restan)', n: ARCA.notasN, monto: ARCA.notasMonto },
   { texto: '  · cargados en Compras, por N° de comprobante', n: ARCA.enComprasN, monto: ARCA.enComprasMonto },
   { texto: '  · cargados sin su N° de comprobante', n: ARCA.sinNumeroN, monto: ARCA.sinNumeroMonto },
-  { texto: `  · ${ALERTA} sin cargar en Compras`, n: ARCA.faltanN, monto: ARCA.faltanMonto },
+  { texto: `  · ${ALERTA} sin cargar en Compras`, n: ARCA.faltanN, monto: ARCA.faltanMonto, publica: true },
   { texto: 'Comprobantes emitidos (ventas)', n: ARCA.ventasN, monto: ARCA.ventasMonto },
 ].map(Object.freeze))
 
-/** Todos los nombres que este bloque publica. El generador es responsable de los doce. */
-export const NOMBRES_ARCA = Object.freeze(LINEAS_ARCA.flatMap((l) => [l.n, l.monto]))
+// ═══ DIEZ DE LOS DOCE NOMBRES NO LOS LEÍA NADIE (14/08/2026) ═══
+//
+// MEDIDO SOBRE EL ARCHIVO VIVO, recorriendo TODAS las fórmulas de las 30 pestañas y preguntando por
+// cada nombre con límites de palabra propios (`usaNombre`, lib/rangos-con-nombre.mjs):
+//
+//   ARCA_FALTAN_MONTO   → 2 citas: Materiales!B53 · Proveedores!G11
+//   ARCA_FALTAN_N       → 1 cita:  Proveedores!H11
+//   los otros DIEZ      → NINGUNA
+//
+// El comentario de `lib/rangos-nombrados.mjs` sigue diciendo que existen porque "el Cash Flow los
+// referencia en vez de copiarlos", y el de la línea de ventas que ARCA_VENTAS_* "consume el Cash Flow
+// Mensual por rango con nombre". Era cierto y dejó de serlo: el Mensual se rehizo como matriz el
+// 06/08 y no cita ni uno. Un comentario que sobrevive a su motivo es la misma clase de fósil que el
+// rango que describe — por eso la lista de arriba se mide contra el archivo, no se recuerda.
+//
+// LO QUE SE PIERDE Y LO QUE NO. Las seis líneas se siguen ESCRIBIENDO en la pestaña: el dueño las lee
+// ahí, con sus cifras, igual que ayer. Lo único que se retira es el nombre — la puerta por la que
+// otra pestaña podía leer esa celda sin decir de dónde la saca. Si mañana hace falta publicar una,
+// se le vuelve a poner `publica: true` a su línea y el generador la reapunta en la corrida siguiente.
+//
+// POR QUÉ RETIRARLOS Y NO SIMPLEMENTE REAPUNTARLOS. Los doce vivían sobre `Proveedores!B124:C129`,
+// que hoy son la tabla de comprobantes faltantes: once de los doce publicaban un CUIT o un número de
+// comprobante bajo un nombre que promete un contador o un importe. Diez anclas que hay que volver a
+// clavar cada dos horas, que ninguna fórmula usa y que en cada rediseño de la pestaña vuelven a caer
+// sobre lo que quede en esa fila. El auditor de este repo ya lo tiene escrito: un huérfano "no hace
+// daño todavía; es exactamente cómo nace un ciego".
+
+/** Los nombres que este bloque publica y mantiene apuntados. Sale de `publica`, una sola fuente. */
+export const NOMBRES_ARCA = Object.freeze(LINEAS_ARCA.filter((l) => l.publica).flatMap((l) => [l.n, l.monto]))
+
+/**
+ * Los que el bloque DEJÓ de publicar y hay que borrar del archivo.
+ *
+ * No alcanza con no reapuntarlos: el que ya está publicado se queda donde esté —hoy, sobre un CUIT—
+ * hasta que alguien lo borre. Se emite el `deleteNamedRange` en cada corrida; los que ya no existen
+ * se descartan solos (ver `retirar` en lib/rangos-nombrados.mjs), así que es idempotente.
+ */
+export const NOMBRES_ARCA_RETIRADOS = Object.freeze(
+  LINEAS_ARCA.filter((l) => !l.publica).flatMap((l) => [l.n, l.monto]),
+)
 
 /** B es SIEMPRE cuántos y C es SIEMPRE plata. Lo declara el formato del bloque; acá se lo respeta. */
 const COL_N = 2
@@ -68,26 +106,43 @@ const rotulo = (fila) => String(fila?.[0] ?? '').trim()
  * pestaña. Si lo que quedó ahí no es lo que se escribió, `publicar` lo ve al releer la especie y
  * falla cerrado — pero ya no puede engancharse a una copia vieja creyendo que acertó.
  *
+ * ═══ QUÉ CUENTA COMO ERROR Y QUÉ COMO AVISO (14/08/2026) ═══
+ *
+ * `faltan` son los rótulos AUSENTES DE LOS QUE CUELGA UN NOMBRE: sin ellos el nombre se queda donde
+ * estaba, que es el defecto que este archivo persigue, y por eso la corrida sale con código ≠0 y no
+ * se retira ninguna pestaña. `faltanSinNombre` son los otros: una línea del cuadro que no se emitió
+ * es un defecto del generador y hay que decirlo, pero no puede dejar en rojo un pipeline que publica
+ * al Sheet cada dos horas — no hay ningún nombre en juego. Un aviso que frena lo que no le
+ * corresponde termina siendo el aviso que nadie mira.
+ *
  * @param {Array<Array<unknown>>} grid la grilla escrita, fila 0 = fila `filaArranque` de la pestaña
  * @param {number} filaArranque fila REAL (1-indexada) donde aterrizó la primera fila de la grilla
- * @returns {{destinos:Array<{name:string,fila:number,col:number}>, faltan:string[], cabecera:number|null, cabeceras:number}}
+ * @returns {{destinos:Array<{name:string,fila:number,col:number}>, faltan:string[],
+ *            faltanSinNombre:string[], cabecera:number|null, cabeceras:number}}
  */
 export function destinosDeArca(grid = [], filaArranque = 1) {
   const cabeceras = grid.reduce((n, f) => n + (rotulo(f) === CABECERA_ARCA ? 1 : 0), 0)
   const i0 = grid.findIndex((f) => rotulo(f) === CABECERA_ARCA)
-  if (i0 < 0) return { destinos: [], faltan: LINEAS_ARCA.map((l) => l.texto.trim()), cabecera: null, cabeceras }
+  const clasificar = (lineas) => ({
+    faltan: lineas.filter((l) => l.publica).map((l) => l.texto.trim()),
+    faltanSinNombre: lineas.filter((l) => !l.publica).map((l) => l.texto.trim()),
+  })
+  if (i0 < 0) return { destinos: [], ...clasificar(LINEAS_ARCA), cabecera: null, cabeceras }
 
   const destinos = []
-  const faltan = []
+  const ausentes = []
   const hasta = Math.min(grid.length, i0 + 1 + VENTANA)
   for (const l of LINEAS_ARCA) {
     const buscado = l.texto.trim()
     let fila = null
     for (let k = i0 + 1; k < hasta; k++) if (rotulo(grid[k]) === buscado) { fila = filaArranque + k; break }
-    if (fila == null) { faltan.push(buscado); continue }
-    destinos.push({ name: l.n, fila, col: COL_N }, { name: l.monto, fila, col: COL_MONTO })
+    if (fila == null) { ausentes.push(l); continue }
+    // La línea que ya no publica se busca igual —su ausencia sigue siendo un defecto que hay que
+    // decir— pero no genera destino: reapuntar un nombre que se está retirando sería trabajo para
+    // dejarlo mejor clavado.
+    if (l.publica) destinos.push({ name: l.n, fila, col: COL_N }, { name: l.monto, fila, col: COL_MONTO })
   }
-  return { destinos, faltan, cabecera: filaArranque + i0, cabeceras }
+  return { destinos, ...clasificar(ausentes), cabecera: filaArranque + i0, cabeceras }
 }
 
 /**

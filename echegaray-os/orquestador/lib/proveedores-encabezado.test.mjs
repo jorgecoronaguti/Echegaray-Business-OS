@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { grillaEncabezado, FILAS_AGING, MEDIOS, F } from './proveedores-encabezado.mjs'
+import { ALERTA } from './glifos.mjs'
 
 const G = grillaEncabezado()
 const celda = (fila, col) => G[fila - 1][col]
@@ -93,4 +94,39 @@ test('el bloque declara su última fila: nadie escribe por debajo sin saberlo', 
 
 test('todas las filas tienen el mismo ancho: el generador es dueño de su ancho entero', () => {
   for (const f of G) assert.equal(f.length, 8)
+})
+
+// ═══ LA DEUDA QUE EL TOTAL NO CUENTA — el defecto del 14/08 ═══
+//
+// Ocho facturas comerciales dicen "Pagado" con el monto pagado en cero y el paréntesis de "Monto
+// Parcial 1" declarando que falta la plata entera: $11.919.063 que el titular, el aging y las dos
+// dinámicas cuentan como cero, porque las cuatro cuelgan de `Compras!AL`, que arranca con
+// IF(Estado="Pendiente"; …; 0). Si alguien saca esta línea, la contradicción vuelve a ser invisible.
+test('EL DEFECTO · la deuda que el cuadro no muestra sale AL LADO del total, no al pie', () => {
+  assert.equal(F.noMostrada, F.totalAging + 1, 'una línea despegada del total no se lee junto a él')
+  const monto = celda(F.noMostrada, 1)
+  const cuenta = celda(F.noMostrada, 3)
+  assert.ok(monto.startsWith('=SUMPRODUCT('), 'un número pegado seguiría gritando después de corregido (regla 5)')
+  // Mide lo contrario que el aging: filas cuyo ESTADO dice que ya no se deben.
+  assert.ok(monto.includes('$X$4:$X<>"Pendiente"'), 'sin esto vuelve a contar lo mismo que el TOTAL')
+  assert.ok(monto.includes('$AJ$4:$AJ=1'), 'la deuda no comercial vive en Impuestos y Financieros')
+  assert.ok(monto.includes('$T$4:$T') && monto.includes('$U$4:$U') && monto.includes('$W$4:$W'),
+    'sin los tres tramos de pago el saldo de la fila está mal')
+  assert.ok(!monto.includes('*(') === false && monto.length > cuenta.length,
+    'el monto pondera por el saldo; el conteo no')
+})
+
+test('el aviso se APAGA solo cuando no hay nada: un triángulo permanente deja de leerse', () => {
+  const rotulo = celda(F.noMostrada, 0)
+  assert.ok(rotulo.includes(`IF(ROUND($B$${F.noMostrada};0)<=0;""`), 'el glifo tiene que depender del importe')
+  assert.ok(rotulo.includes(ALERTA), 'la marca es ALERTA de glifos.mjs')
+  // `⚠` no se dibuja al exportar a PDF, y el PDF es con lo que el dueño verifica.
+  assert.ok(!rotulo.includes('⚠'), 'el ⚠ no sale en el PDF: la marca vigente es ▲')
+})
+
+test('es-AR en las tres celdas nuevas: separador `;` y ni una coma', () => {
+  for (const c of [0, 1, 3]) {
+    const v = celda(F.noMostrada, c)
+    assert.ok(!/,/.test(v), `la celda ${c} tiene una coma: en es-AR es un separador decimal`)
+  }
 })

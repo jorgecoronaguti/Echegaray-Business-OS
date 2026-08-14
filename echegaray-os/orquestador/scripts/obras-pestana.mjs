@@ -37,7 +37,9 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
-import { MONEDA_CUERPO, MONEDA_TOTAL, PORCENTAJE } from '../lib/formato-statement.mjs'
+import {
+  MONEDA_CUERPO, MONEDA_TOTAL, MONEDA_ALERTA, MONEDA_ALERTA_TOTAL, PORCENTAJE,
+} from '../lib/formato-statement.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
@@ -48,6 +50,10 @@ import {
   ANCHO_OBRAS, ANCHOS_OBRAS, PESTANA_OBRAS, REFS_OBRAS, SIN_CONTRATO, saldoContratoMalPublicado,
 } from '../lib/obras-grilla.mjs'
 import { contratoDeObra, monedasDesconocidas, normalizarMoneda } from '../lib/cobranzas-contrato.mjs'
+import { certificadoDeObra } from '../lib/obras-certificado.mjs'
+// El ⚠ del log sale de su única fuente, no tipeado: el guardián de `glifos-generadores.test.mjs`
+// existe porque un glifo tipeado ya se coló en una celda y el PDF no lo dibujaba.
+import { ALERTA } from '../lib/glifos.mjs'
 import { leerTipoCambio, RANGO_TC } from '../lib/tipo-cambio.mjs'
 import { OBRAS_FUTURAS, totalEgresos } from '../lib/obras-datos.mjs'
 
@@ -91,6 +97,24 @@ export function resolverColumnas(filas, rotulos) {
 }
 
 const COLS = 'ABCDEFGHI'
+
+/**
+ * EL RÓTULO DE LA COLUMNA A EN UNA FILA DE ENCABEZADO. Es cómo el formateador reconoce las tres filas
+ * de encabezado sin anclarse a un número de fila — la misma regla que el resto de la pestaña.
+ *
+ * `Cartera` entró el 14/08 con el titular de antigüedad. Sin agregarlo, esa fila no se dibujaba como
+ * encabezado: sus rótulos quedaban alineados a la izquierda sobre importes alineados a la derecha, y
+ * el "Total pendiente" se leía sobre otra columna.
+ */
+export const ENCABEZADO_SECCION = /^(Cliente|Obra|Cartera)$/
+
+/** Los enteros de un par [a, b] inclusive; vacío si el par no existe. */
+const rangoDe = (par) => {
+  if (!Array.isArray(par) || par.length !== 2) return []
+  const out = []
+  for (let i = par[0]; i <= par[1]; i++) out.push(i)
+  return out
+}
 const cortar = (s, n) => (s.length <= n ? s : `${s.slice(0, n - 1)}…`)
 const izq = (s, n) => cortar(s, n).padEnd(n)
 const der = (s, n) => cortar(s, n).padStart(n)
@@ -129,11 +153,14 @@ export function render(g, obras = []) {
   // García SAS — SALÓN COMERCIAL" se cortaba, y ésta es justo la lista que existe para decir QUÉ obras
   // salen. Una evidencia que recorta el nombre de la obra no es evidencia de esa obra.
   const anchoRotulo = Math.max(0, ...(g.bloques ?? []).map((b) => String(g.filas[b.fProt - 1]?.[0] ?? '').length))
-  for (const b of g.bloques ?? []) {
+  for (const [i, b] of (g.bloques ?? []).entries()) {
+    // Ya no hay filas de detalle que listar: cada obra es UNA fila en el cuadro de contrato y UNA en
+    // el de costo. Lo que sigue importando para juzgar la corrida es si la obra declara contrato
+    // —sin él las dos celdas del contrato salen en "—"— y si es proyectable.
     L.push(`  fila ${String(b.fProt).padStart(3)}  ${izq(String(g.filas[b.fProt - 1]?.[0] ?? ''), anchoRotulo)}`
-      + `  detalle ${b.fDetalle[0]}–${b.fDetalle[1]} · MO ${b.fMO}`
-      + `${b.fNoCaja ? ` · no-caja ${b.fNoCaja} (FUERA de las sumas)` : ''}`
-      + `${b.proyectable ? '' : ' · ⚠ sin fechas, no se proyecta'}`)
+      + `  costo ${g.filasCosto?.[i] ?? '—'}`
+      + `  contrato ${b.contrato ? `$${b.contrato.toLocaleString('es-AR')}` : 'NO DECLARADO'}`
+      + `${b.proyectable ? '' : ' · ▲ sin fechas, no se proyecta'}`)
   }
   L.push('')
   L.push('GRILLA  (ƒ = fórmula, texto completo abajo)')
@@ -174,6 +201,11 @@ export const ROTULOS_COBRANZAS = {
   // se publicaron 40 celdas con #ERROR!: la grilla la usaba y el escritor no la resolvía.
   oc: /^(OC|ORDEN DE COMPRA)$/i,
   total: /^TOTAL a cobrar/, estado: 'Estado', fechaCobro: /^Fecha de cobro|^Fecha cobro/i,
+  // LA FECHA DE EMISIÓN ES EL RELOJ DE LO VENCIDO (14/08). Es la única de las tres fechas de una fila
+  // que no se re-escribe cuando el cobro se posterga: la fila ID 41 de MESSINA la conserva en
+  // 31/12/2024 mientras su "Fecha de Venta" y su "Fecha cobro" ya se movieron a agosto y septiembre
+  // de 2026. Si el rótulo cambia, el escritor ROMPE antes de publicar una columna de alarma en cero.
+  fechaEmision: /^Fecha\s*(de\s*)?emisi/i,
   // LAS RETENCIONES SUFRIDAS ($7.671.680 en 2026). El criterio es el plural con "s": el archivo
   // tiene además TRES columnas de desglose que empiezan con "Retención" en singular ("Retención
   // 16,8%…", "Ret Ganancias", "Retención 2,5%/3,5%…"), y elegir una de ésas publicaría una parte
@@ -209,13 +241,22 @@ export function leerContratos(filas, refs, obras) {
   }
   const porCliente = obras.reduce((m, o) => m.set(o.cliente, (m.get(o.cliente) ?? 0) + 1), new Map())
   const contratos = new Map()
+  // LO CERTIFICADO SALE DE LA MISMA LECTURA Y DEL MISMO SELECTOR QUE EL CONTRATO, y eso no es
+  // comodidad: si el contrato se midiera sobre un universo de filas y lo certificado sobre otro, el
+  // saldo saldría mal sin dar error. Es la misma razón por la que el contrato se lee acá y no se
+  // tipea. El porqué del cálculo está en `obras-certificado.mjs`.
+  const certificados = new Map()
   for (const o of obras) {
-    contratos.set(o.clave, contratoDeObra(filas, cols, {
+    const selector = {
       variantes: variantesDe(o.cliente), needle: o.ventaTexto, unica: porCliente.get(o.cliente) === 1,
-    }, refs.cob.desde))
+    }
+    const c = contratoDeObra(filas, cols, selector, refs.cob.desde)
+    contratos.set(o.clave, c)
+    certificados.set(o.clave, certificadoDeObra(filas, cols, selector, c.contrato, refs.cob.desde))
   }
   return {
     contratos,
+    certificados,
     monedasRaras: monedasDesconocidas(filas, cols.moneda, refs.cob.desde),
     hayUSD: filas.some((f) => normalizarMoneda(f?.[cols.moneda]) === 'USD'),
   }
@@ -277,6 +318,11 @@ async function refsReales(google) {
       // en el neto porque la venta también: el IVA de compras es crédito fiscal, no costo.
       ...resolverColumnas(cmp, {
         proveedor: 'Proveedor', cliente: 'Cliente / Asignación', fecha: 'Fecha factura',
+        // "Detalles / Obra" es la ÚNICA columna de Compras donde consta a qué obra va un gasto, y
+        // desde el 14/08 es de la que sale la columna "Comprado (real)" del cuadro 4. Si el rótulo
+        // cambiara, `abierto()` rompe la construcción de la grilla y el escritor aborta ANTES de
+        // tocar el archivo — que es lo que corresponde: sin ella el cuadro vuelve a publicar $0.
+        obra: 'Detalles / Obra',
         // El neto es "Importe"; el IVA hace falta para la regla "M si está, si no O − N".
         neto: 'Importe', iva: 'IVA', total: 'Total', familia: 'Familia de material',
       }),
@@ -326,14 +372,31 @@ async function main() {
   if (!clientes.length) throw new Error(`no leí un solo cliente en ${refs.cob.hoja}!${refs.cob.cliente}: NO escribo una Sección 1 vacía.`)
   console.log(`clientes derivados de ${refs.cob.hoja}: ${clientes.length} · ${clientes.join(' · ')}`)
 
-  const { contratos, monedasRaras, hayUSD } = leerContratos(datos, refs, OBRAS_FUTURAS)
+  const { contratos, certificados, monedasRaras, hayUSD } = leerContratos(datos, refs, OBRAS_FUTURAS)
   await verificarMoneda(google, { monedasRaras, hayUSD })
-  const obras = OBRAS_FUTURAS.map((o) => ({ ...o, contrato: contratos.get(o.clave)?.contrato ?? null }))
+  const obras = OBRAS_FUTURAS.map((o) => ({
+    ...o, contrato: contratos.get(o.clave)?.contrato ?? null, cert: certificados.get(o.clave) ?? null,
+  }))
   for (const o of obras) {
     const c = contratos.get(o.clave)
     console.log(`  contrato · ${o.clave}: ${o.contrato === null ? 'NO DECLARADO en ninguna fila — publico "—"'
       : `$${o.contrato.toLocaleString('es-AR')}${c.partido ? ` (PARTIDO: ${c.distintos.map((d) => `$${d.toLocaleString('es-AR')}`).join(' + ')})` : ''}`
         + ` · declarado en ${c.valores.length} fila(s): ${c.valores.map((v) => v.fila).join(', ')}`}`)
+    // LOS HITOS SE LOGUEAN UNO POR UNO. La `C` publica un total; el que audita necesita ver de qué
+    // filas salió y qué filas quedaron AFUERA del contrato, porque ahí es donde vivía el defecto:
+    // una fila puede facturar el hito Y algo que el contrato no incluye (Quattropani, materiales).
+    if (o.cert?.certificado !== null && o.cert) {
+      console.log(`  certificado · ${o.clave}: $${Math.round(o.cert.certificado).toLocaleString('es-AR')}`
+        + ` = ${(o.cert.fraccion * 100).toFixed(1)}% del contrato · ${o.cert.hitos.length} hito(s)`
+        + `${o.cert.cubreElContrato ? '' : ` ${ALERTA} LOS HITOS NO CUBREN EL CONTRATO`}`)
+      for (const h of o.cert.hitos) {
+        console.log(`      ${h.num}/${h.den} de ${h.base ? `$${h.base.toLocaleString('es-AR')}` : 'el contrato'}`
+          + ` · fila(s) ${h.filas.join(', ')} · "${h.clave}"`)
+      }
+      if (o.cert.sinHito.length) {
+        console.log(`      fuera del contrato (no certifican): fila(s) ${o.cert.sinHito.map((s) => s.fila).join(', ')}`)
+      }
+    }
   }
 
   const g = grillaObras({ obras, refs, clientes })
@@ -418,7 +481,7 @@ async function main() {
   }
   // UN VACÍO NO ES UN #ERROR!, Y MIENTE MÁS: se lee como un dato. Si una columna salió llena en unas
   // obras y vacía en otras, alguna fórmula se rompió en silencio — pasó con `Próx. cobro`, 4 de 7.
-  const desparejas = columnasDesparejas(g.filas, quedo, g.protagonistas ?? [])
+  const desparejas = columnasDesparejas(g.filas, quedo, (g.bloques ?? []).map((b) => b.fProt))
   if (desparejas.length) {
     throw new Error(`QUEDÓ PUBLICADO CON COLUMNA(S) DESPAREJA(S): `
       + desparejas.map((d) => `${d.columna} vacía en ${d.filas.length} de ${d.de} obras (filas ${d.filas.join(', ')})`).join(' · ')
@@ -454,7 +517,7 @@ async function main() {
   const num = (v) => Number(String(v ?? '').replace(/[^\d,-]/g, '').replace(/\./g, '').replace(',', '.')) || 0
   const [cli0, cli1] = g.fClientes
   const sumaClientes = quedo.slice(cli0 - 1, cli1).reduce((s, f) => s + num(f?.[2]), 0)
-  const totalFuente = num(quedo[g.totales[0] - 1]?.[2])
+  const totalFuente = num(quedo[g.fTotClientes - 1]?.[2])
   const sinUbicar = Math.round((totalFuente - sumaClientes) * 100) / 100
   if (Math.abs(sinUbicar) > 1) {
     throw new Error(`SIN UBICAR $${sinUbicar.toLocaleString('es-AR')}: la venta de los ${cli1 - cli0 + 1} clientes `
@@ -463,24 +526,71 @@ async function main() {
   }
   console.log(`  ✓ sin ubicar: $0 — la suma de los ${cli1 - cli0 + 1} clientes da el total de Cobranzas`)
 
+  // ═══ EL TITULAR DE CARTERA TIENE QUE CERRAR CONTRA EL CUADRO DE ABAJO ═══
+  //
+  // Los cinco tramos reparten la MISMA cartera que publica la columna "Resta (total)" del cierre de
+  // clientes, pero llegan por otro camino: los tramos filtran por fecha de emisión y la resta se
+  // calcula como "todo lo no cancelado menos lo cobrado". Dos rutas independientes al mismo número,
+  // que es la única forma de probar un total sin preguntárselo a quien lo produjo.
+  //
+  // SI NO CIERRA, HAY UNA FILA QUE NO CAYÓ EN NINGÚN TRAMO. El caso concreto es una cobranza
+  // pendiente sin fecha de emisión: las fórmulas la excluyen a propósito (con la celda vacía valdría
+  // 0 y entraría como vencida desde 1899), así que desaparece del titular y el cuadro de abajo la
+  // sigue contando. El generador tiene que decirlo, no publicar dos cifras de cartera distintas.
+  if (g.fCartera) {
+    const enCartera = num(quedo[g.fCartera - 1]?.[8])
+    const enResta = num(quedo[g.fTotClientes - 1]?.[4])
+    const dif = Math.round((enCartera - enResta) * 100) / 100
+    if (Math.abs(dif) > 1) {
+      throw new Error(`EL TITULAR DE CARTERA NO CIERRA: los tramos suman $${enCartera.toLocaleString('es-AR')} `
+        + `y la "Resta (total)" del cierre de clientes da $${enResta.toLocaleString('es-AR')} `
+        + `(diferencia $${dif.toLocaleString('es-AR')}). Hay cobranza pendiente que no cayó en ningún tramo `
+        + `— lo más probable es una fila de ${REFS_OBRAS.cob.hoja} sin "Fecha emisión", que las fórmulas `
+        + 'excluyen a propósito. Corregir esa fecha en la fuente antes de creerle a la pestaña.')
+    }
+    const vencidoTotal = [3, 4, 5, 6].reduce((s, c) => s + num(quedo[g.fCartera - 1]?.[c]), 0)
+    console.log(`  ✓ cartera $${enCartera.toLocaleString('es-AR')} repartida en sus tramos — vencido `
+      + `$${vencidoTotal.toLocaleString('es-AR')} (${enCartera ? Math.round((vencidoTotal / enCartera) * 1000) / 10 : 0}%)`)
+  }
+
   // ═══ EL CONTROL QUE ANTES ERA LA FILA "Otros trabajos…" DE LA SECCIÓN 2 ═══
   //
   // El dueño sacó la fila; la identidad que verificaba sigue viva acá y contra lo YA PUBLICADO. Las
   // obras declaradas son un subconjunto de lo que se le factura a sus clientes, así que el sobrante
   // es normal — lo IMPOSIBLE es que sea negativo, y eso ya se publicó una vez ($692.395.550 donde
   // iban $125.680.764) sin que Sheets diera un solo error.
-  if (g.totales[1]) {
+  if (g.fTotObras) {
     const conObra = [...new Set(OBRAS_FUTURAS.map((o) => o.cliente))]
     const sinFila = conObra.filter((c) => !g.filaDeCliente?.[c])
     if (sinFila.length) throw new Error(`no puedo controlar el doble conteo: ${sinFila.join(' · ')} tiene obra `
       + 'declarada y no salió como fila de cliente en la Sección 1. NO afirmo que la pestaña cierre.')
     const ventaClientes = conObra.reduce((s, c) => s + num(quedo[g.filaDeCliente[c] - 1]?.[2]), 0)
-    const ventaObras = num(quedo[g.totales[1] - 1]?.[2])
+    const ventaObras = num(quedo[g.fTotObras - 1]?.[2])
     const { fuera, problema } = trabajosFueraDeObra(ventaClientes, ventaObras)
     if (problema) throw new Error(`DOBLE CONTEO EN LA SECCIÓN 2: ${problema}.`)
     console.log(`  ✓ las ${g.bloques.length} obras suman $${Math.round(ventaObras).toLocaleString('es-AR')} dentro de los `
       + `$${Math.round(ventaClientes).toLocaleString('es-AR')} de sus ${conObra.length} clientes `
       + `— $${Math.round(fuera).toLocaleString('es-AR')} son trabajos fuera de obra`)
+  }
+  // ═══ EL MISMO CONTROL, DEL LADO DEL COSTO (14/08) ═══
+  //
+  // El cuadro 4 empareja por el TEXTO de "Detalles / Obra", y los patrones son COMODINES: si alguien
+  // declarara "Pisos" en una obra y "Pisos Industriales" en otra del mismo cliente, la misma factura
+  // entraría a las dos. El cuadro seguiría prolijo —dos números creíbles— y la única huella sería que
+  // el residuo se va a NEGATIVO, porque las obras se habrían llevado más de lo que el cliente tiene
+  // en Compras. Los tests ya prohíben esa forma en el dato; esto lo verifica sobre lo PUBLICADO, que
+  // es la única evidencia que vale, y con el número que Sheets calculó y no el que yo esperaba.
+  if (g.fSinImputar) {
+    const residuo = num(quedo[g.fSinImputar - 1]?.[3])
+    const enObras = num(quedo[g.fTotCosto - 1]?.[3])
+    if (residuo < -1) {
+      throw new Error(`DOBLE CONTEO EN EL CUADRO 4: las obras se llevaron $${Math.round(enObras).toLocaleString('es-AR')} `
+        + `y el residuo quedó en $${Math.round(residuo).toLocaleString('es-AR')} — negativo. Dos obras del mismo `
+        + 'cliente están emparejando la misma compra: revisar los `comprasObra` de obras-datos.mjs, '
+        + 'que uno no puede contener a otro.')
+    }
+    console.log(`  ✓ costo real: $${Math.round(enObras).toLocaleString('es-AR')} imputado a las ${g.bloques.length} obras `
+      + `+ $${Math.round(residuo).toLocaleString('es-AR')} de compras de esos clientes que todavía no dicen a qué obra van`)
   }
   console.log(`QUEDÓ ESCRITO — releí ${quedo.length} filas (${filasEmitidas} con contenido): sin celdas en error y sin columnas desparejas.`)
 }
@@ -514,6 +624,42 @@ async function formatear(google, sheetId, g) {
   for (const f of [...(g.totales ?? []), ...(g.protagonistas ?? [])]) {
     for (const c of PLATA) fmt(r(f - 1, f, c, c + 1), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_TOTAL })
   }
+  // ═══ LA COLUMNA DE ALARMA SE DIBUJA CON SU PROPIO PATRÓN (14/08) ═══
+  //
+  // `Vencido` es el único número de esta pestaña que tiene que hacer levantar el teléfono, y hasta
+  // hoy se dibujaba igual que los otros seis importes de su fila. El ▲ va en el PATRÓN y no tipeado
+  // en la celda: tipeado la convertiría en texto —dejaría de sumar y el total de la columna sería
+  // $0— y con formato condicional habría que borrar las reglas viejas en cada corrida o se apilan.
+  // El tercer tramo del patrón sigue siendo "—": una fila sin nada vencido no lleva marca.
+  const F_VENCIDO = 5
+  fmt(r(0, n, F_VENCIDO, F_VENCIDO + 1), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_ALERTA })
+  for (const f of [...(g.totales ?? []), ...(g.protagonistas ?? [])]) {
+    // LA LÍNEA DE CARTERA ES LA EXCEPCIÓN: ahí la F no es "lo vencido" sino el tramo de 61–90 días, y
+    // sus cuatro columnas de alarma ya están marcadas UNA vez en el encabezado. Repetir el ▲ en cada
+    // celda de esa fila sería la misma señal cuatro veces, que es como una señal deja de verse.
+    if (f === g.fCartera) continue
+    fmt(r(f - 1, f, F_VENCIDO, F_VENCIDO + 1), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_ALERTA_TOTAL })
+  }
+  // …Y EN EL CUADRO 4 LA F NO ES UN IMPORTE SINO EL TEXTO QUE DECLARA POR DÓNDE EMPAREJÓ CADA OBRA.
+  // Va DESPUÉS de los dos bloques de arriba a propósito: los pisa. Con el patrón de moneda heredado
+  // el texto queda pegado al margen derecho, contra el número de la columna de al lado, y el rótulo
+  // "Imputado por" del encabezado sale alineado como si fuera plata. Es la misma razón por la que la
+  // H lleva su excepción: una columna que cambia de significado entre bloques cambia de formato.
+  //
+  // Y DERRAMA. La F mide 138 px y `Compras: "Salones Comerciales"` mide 189: con el CLIP que rige en
+  // toda la hoja, el texto no se recorta — DESAPARECE, y la columna que existe para poder auditar el
+  // número quedaría en blanco justo en las obras que sí emparejaron. En el cuadro 4 la G, la H y la I
+  // están vacías (son Contratado / Falta certificar / Próx. cobro, que son del cuadro 3), así que
+  // derramar sobre ellas usa un espacio que ya está y no pisa nada. Se limita a ESTAS filas: en el
+  // cuadro 3 la G tiene el contratado y un derrame taparía plata.
+  for (const f of g.textoEnF ?? []) {
+    fmt(r(f - 1, f, F_VENCIDO, F_VENCIDO + 1),
+      'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.wrapStrategy',
+      { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', wrapStrategy: 'OVERFLOW_CELL' })
+  }
+  if (g.fCartera) {
+    for (const c of PLATA) fmt(r(g.fCartera - 1, g.fCartera, c, c + 1), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_TOTAL })
+  }
   // La B dejó de ser un glifo y pasó a ser el % cobrado: se dibuja como porcentaje, no como texto.
   fmt(r(0, n, 1, 2), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: PORCENTAJE, horizontalAlignment: 'RIGHT' })
@@ -535,7 +681,7 @@ async function formatear(google, sheetId, g) {
     if (/^\d · /.test(t)) { // '1 · OBRAS DEL AÑO' — el título del bloque no necesita línea propia
       fmt(r(i, i + 1), 'userEnteredFormat', { textFormat: { bold: true, fontFamily: E.FUENTE, fontSize: E.TAM.cuerpo, foregroundColor: INK }, horizontalAlignment: 'LEFT' })
     }
-    if (/^(Cliente|Obra)$/.test(t.trim())) { // los encabezados de sección: texto, nunca plata
+    if (ENCABEZADO_SECCION.test(t.trim())) { // los encabezados de sección: texto, nunca plata
       fmt(r(i, i + 1), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'TEXT' } })
       fmt(r(i, i + 1), 'userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment',
         { textFormat: { bold: true, foregroundColor: MUTED, fontSize: E.TAM.nota }, horizontalAlignment: 'LEFT' })
@@ -556,9 +702,41 @@ async function formatear(google, sheetId, g) {
   for (const f of g.totales ?? []) {
     req.push({ updateBorders: { range: r(f - 1, f), top: { style: 'SOLID', color: HAIR } } })
   }
-  for (const f of g.detalles ?? []) {
-    fmt(r(f - 1, f, 0, 1), 'userEnteredFormat.textFormat', { textFormat: { fontFamily: E.FUENTE, fontSize: E.TAM.nota, foregroundColor: MUTED } })
+
+  // ═══ LA NOTACIÓN DEL ESCENARIO: UN HECHO NO SE DIBUJA COMO UNA ESTIMACIÓN (14/08) ═══
+  //
+  // Es la regla UNIFY de IBCS, hoy ISO 24896 «Notation for business reporting» (publicada el
+  // 11/06/2026): el escenario es una DIMENSIÓN del dato, con notación propia y la MISMA en todos los
+  // cuadros — no una nota al pie. Acá se usan las dos marcas que "Jornales por Quincena" ya publica,
+  // porque una notación que cambia de pestaña en pestaña no es una notación:
+  //
+  //   · LO REAL         → negrita, tinta plena. `Cobrado` es plata que entró: es un hecho.
+  //   · LO PROYECTADO   → itálica, tinta apagada. `Pendiente pago` y el monto tipeado de cada egreso
+  //                       son la explosión de gastos que el dueño estimó, no una factura.
+  //   · LO COMPROMETIDO → redonda. `Venta`, `Resta` y `Vencido` son hechos (se vendió, se certificó,
+  //                       se venció) cuya plata todavía no se movió. Ni negrita ni itálica.
+  //
+  // NO LLEVA LEYENDA, A PROPÓSITO: los encabezados ya dicen "Cobrado" y "Pendiente pago". Una fila
+  // que explique la itálica sería la prosa que el dueño mandó sacar de esta misma pestaña.
+  const escenario = (f0, f1, c, { bold = false, italic = false }) => {
+    if (!(f1 >= f0)) return
+    fmt(r(f0 - 1, f1, c, c + 1), 'userEnteredFormat.textFormat',
+      { textFormat: { bold, italic, fontFamily: E.FUENTE, foregroundColor: italic ? MUTED : INK } })
   }
+  const [C_TOTAL, D_MOVIDO, E_FALTA] = [2, 3, 4]
+  const deCosto = new Set(g.filasCosto ?? [])
+  for (const f of [...(g.protagonistas ?? []), ...(g.totales ?? []), ...rangoDe(g.fClientes)]) {
+    // La cartera queda afuera: sus columnas son tramos de tiempo, no un par real/proyección.
+    if (f === g.fCartera) continue
+    // `D` es siempre lo que YA se movió —cobrado arriba, pagado abajo— y siempre es un HECHO.
+    escenario(f, f, D_MOVIDO, { bold: true })
+    // `E` es siempre lo que FALTA moverse. Arriba es un compromiso (se certificó y no entró): va en
+    // redonda. Abajo es la estimación del dueño menos lo pagado: proyección, y se dibuja como tal.
+    if (deCosto.has(f) || f === g.fTotCosto) escenario(f, f, E_FALTA, { italic: true })
+  }
+  // El `Costo proyectado` es la explosión de gastos que el dueño estimó: la única `C` que no es un
+  // hecho en toda la pestaña, y por eso la única que va en itálica apagada.
+  for (const f of [...(g.filasCosto ?? []), ...(g.fTotCosto ? [g.fTotCosto] : [])]) escenario(f, f, C_TOTAL, { italic: true })
 
   // NINGUNA FILA OCULTA Y NI UNA NOTA: lo que existe se ve, y una nota sobrevive a la reescritura
   // salvo que se borre explícitamente.
@@ -584,7 +762,7 @@ async function formatear(google, sheetId, g) {
   // rótulo de una columna de cifras va del mismo lado que las cifras. Va DESPUÉS del pase de texto
   // porque el último request gana: adelantarlo lo dejaría sin efecto.
   for (const [i, fila] of (g.filas ?? []).entries()) {
-    if (!/^(Cliente|Obra)$/.test(String(fila?.[0] ?? '').trim())) continue
+    if (!ENCABEZADO_SECCION.test(String(fila?.[0] ?? '').trim())) continue
     fmt(r(i, i + 1, 1, ANCHO_OBRAS), 'userEnteredFormat.horizontalAlignment', { horizontalAlignment: 'RIGHT' })
   }
   await google.spreadsheetBatchUpdate(ID, req)

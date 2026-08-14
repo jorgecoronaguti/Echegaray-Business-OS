@@ -24,11 +24,68 @@
 // · `noCaja.maquinaPesos` NUNCA entra al flujo: es uso de equipo propio, no plata que sale.
 // · `ventaTexto`: el texto con el que la obra aparece en el Concepto de Cobranzas — la grilla lo usa
 //   para la fórmula viva de venta.
+// · `comprasObra`: ver el bloque de abajo. Es el ÚNICO camino por el que una compra llega a una obra.
 
 import { ALERTA } from './glifos.mjs'
 
 /** Los clientes canónicos del desplegable de Compras col J que usan estas obras. */
 export const CLIENTES_CANONICOS = ['San Francisco', 'MESSINA', 'Quattropani - Melisa García SAS']
+
+/**
+ * ═══ `comprasObra`: CÓMO UNA COMPRA LLEGA A UNA OBRA — Y POR QUÉ NO ES POR PROVEEDOR (14/08/2026) ═══
+ *
+ * EL DEFECTO. El cuadro 4 de la pestaña OBRAS publicó `Pagado (real) = $0` en las siete obras. El
+ * dueño, textual: *"el cuadro 4 en obras costo esta mal, hay gastos en pestaña compras q si se han
+ * hecho para las obras señaladas"*. Tenía razón: Compras tiene $74.774.766 imputados a los tres
+ * clientes de estas obras (San Francisco $27.355.552 · MESSINA $20.060.254 · Quattropani
+ * $27.358.960, medidos sobre "Importe" el 14/08). Ni un peso llegaba al cuadro.
+ *
+ * POR QUÉ DABA CERO. El camino anterior era `proveedor + cliente + fecha ≥ inicio de obra`, y los
+ * tres filtros fallan a la vez:
+ *   · PROVEEDOR — cuatro de los diez de la explosión no existen en Compras (ACA, Bedini, Sika,
+ *     Mercado Libre: 0 filas). Y los que existen facturan a OTRO cliente: VILLA DEL PINO tiene 19
+ *     filas, casi todas "Administracion"; Gruas San Blas, 2, las dos "Taller".
+ *   · FECHA — el corte `≥ inicio` es directamente incorrecto en construcción: se compra ANTES de
+ *     arrancar. Los $27.358.960 de Quattropani se facturaron el 29/07 y la obra empieza el 18/08;
+ *     Playón empieza el 24/08, o sea que el filtro pedía facturas de un futuro que no existe.
+ *   · Y AUNQUE LOS DOS ANDUVIERAN, el techo del universo medible eran los egresos declarados
+ *     ($18,9M de $145,9M): el otro 87% del costo proyectado es MANO DE OBRA, que no está en Compras
+ *     ni puede estarlo — va por Jornales. Ese límite no lo arregla ningún emparejamiento.
+ *
+ * EL CAMINO QUE SÍ EXISTE es la columna K de Compras, "Detalles / Obra": el texto que el dueño
+ * escribe a mano cuando carga el comprobante. Verificado contra el archivo vivo el 14/08:
+ *
+ *   | obra                        | patrón en K          | filas | importe neto  |
+ *   |-----------------------------|----------------------|-------|---------------|
+ *   | sf-pisos-industriales       | "Pisos Industriales" |     1 |  $ 4.200.000  |
+ *   | messina-bsa                 | "BSA"                |     8 |  $ 7.955.772  |
+ *   | quattropani-salon-comercial | "Salones Comerciales"|     3 | $27.358.960   |
+ *
+ * LAS OTRAS CUATRO OBRAS DECLARAN `null`, Y ESO NO ES UN OLVIDO. Ninguna fila de Compras las nombra:
+ * "mamposteria", "entrepiso", "escalera", "playon" y "azufre" dan CERO coincidencias en K. Las dos
+ * de MESSINA que no empezaron todavía es lo esperable; las de San Francisco quieren decir que el
+ * gasto está cargado sin decir a qué obra va.
+ *
+ * ═══ POR QUÉ UN TEXTO DECLARADO A MANO Y NO UN PARECIDO AUTOMÁTICO ═══
+ *
+ * Porque un emparejamiento por similitud que acierta el 60% es PEOR que un cero honesto: mete el
+ * gasto de una obra en otra y nadie se entera. Este repo ya pagó esa factura (corregir sobre una
+ * coincidencia PROBABLE duplicó $2,1M). Y la similitud tampoco alcanzaría acá: la obra se llama
+ * "SALÓN COMERCIAL" y Compras dice "Salones Comerciales" — plural y sin tilde—, así que cualquier
+ * normalizador que las una une también cosas que no van juntas.
+ *
+ * LA DIRECCIÓN DEL ERROR ES LA QUE IMPORTA. Si el dueño escribe mañana un texto nuevo en K, ese
+ * dinero NO cae en la obra equivocada: cae en la fila "SIN IMPUTAR" del cuadro 4, que es visible y
+ * hoy vale $35.260.034. Un patrón que falta se ve; un patrón que sobra-empareja, no.
+ *
+ * CÓMO SE AGREGA UNO. Se mira qué dice Compras col K para ese cliente, se copia el texto LITERAL
+ * (un tramo que aparezca en todas las filas de esa obra y en ninguna otra) y se anota acá con las
+ * filas y el importe que empareja el día que se declaró. No se inventa un texto que "debería" estar.
+ */
+
+/** El tramo de "Detalles / Obra" (Compras col K) que identifica esta obra, o `null` si todavía
+ *  ninguna compra la nombra. El emparejamiento es SIEMPRE cliente + este texto: nunca por proveedor. */
+export const comprasObraDe = (o) => (o?.comprasObra ? String(o.comprasObra) : null)
 
 /** ¿La obra tiene fechas y por lo tanto se puede proyectar al flujo? */
 export const esProyectable = (o) => Boolean(o?.inicio && o?.fin)
@@ -43,6 +100,9 @@ export const OBRAS_FUTURAS = [
     cliente: 'San Francisco',
     obra: 'PISOS INDUSTRIALES',
     ventaTexto: 'Pisos Industriales',
+    // 14/08: 1 fila en Compras, PEDRO TELLO 08/08, $4.200.000 neto. Es la única de San Francisco que
+    // nombra una obra del cuadro; ninguna otra fila del cliente contiene "pisos industriales".
+    comprasObra: 'Pisos Industriales',
     inicio: '2026-08-05',
     fin: '2026-09-30',
     plantelFullTime: 3,
@@ -69,6 +129,10 @@ export const OBRAS_FUTURAS = [
     cliente: 'San Francisco',
     obra: 'INSTALACIÓN ELÉCTRICA',
     ventaTexto: 'Instalaciones Eléctricas',
+    // 14/08: NINGUNA fila de San Francisco dice esta obra en K. La más cercana —"Planos de
+    // Electricidad Galpones", $62.600 del 13/07— habla del galpón, no del contrato de instalación, y
+    // asignarla sería adivinar. Queda en SIN IMPUTAR hasta que Compras lo diga.
+    comprasObra: null,
     inicio: '2026-08-10',
     fin: '2026-10-16',
     plantelFullTime: 5,
@@ -96,6 +160,8 @@ export const OBRAS_FUTURAS = [
     cliente: 'San Francisco',
     obra: 'ENTREPISO Y ESCALERA',
     ventaTexto: 'Entrepiso',
+    // 14/08: "entrepiso" y "escalera" dan 0 filas en K para San Francisco.
+    comprasObra: null,
     inicio: '2026-08-10',
     fin: '2026-08-21',
     plantelFullTime: 4,
@@ -131,6 +197,9 @@ export const OBRAS_FUTURAS = [
     cliente: 'San Francisco',
     obra: 'MAMPOSTERÍA',
     ventaTexto: 'Mampostería',
+    // 14/08: "mamposter" da 0 filas en K para San Francisco. Hay "Revoques" ($284.145) y "revoques"
+    // ($136.121), que es OTRO rubro del mismo frente: no es mampostería y no se fuerza.
+    comprasObra: null,
     ventaDeclarada: 8_758_810,
     inicio: '2026-08-07',
     fin: '2026-08-19',
@@ -150,6 +219,9 @@ export const OBRAS_FUTURAS = [
     cliente: 'MESSINA',
     obra: 'PLAYÓN DE AZUFRE',
     ventaTexto: 'Playon Azufre',
+    // 14/08: "playon" y "azufre" dan 0 filas en K. Coherente con que la obra arranca el 24/08 — pero
+    // el cuadro no lo AFIRMA por la fecha, lo afirma porque Compras no la nombra.
+    comprasObra: null,
     inicio: '2026-08-24',
     fin: '2026-09-25',
     plantelFullTime: 4,
@@ -185,6 +257,12 @@ export const OBRAS_FUTURAS = [
     cliente: 'MESSINA',
     obra: 'BSA',
     ventaTexto: 'BSA',
+    // 14/08: 8 filas de MESSINA, $7.955.772 neto — "Planta de BSA" ×6, "Camion - BSA", "Excavadora -
+    // BSA". "BSA" no aparece en ninguna otra fila de la pestaña entera (verificado sobre las 1.136),
+    // así que el tramo corto no puede arrastrar plata de otra obra.
+    // ESTO CONFIRMA LA NOTA DE ABAJO CON UN NÚMERO: los materiales YA están facturados. Y explica por
+    // qué el cuadro va a mostrar comprado > proyectado — la proyección es sólo la MO del 60% restante.
+    comprasObra: 'BSA',
     inicio: '2026-07-29',
     fin: '2026-08-21',
     plantelFullTime: 4,
@@ -201,6 +279,10 @@ export const OBRAS_FUTURAS = [
     cliente: 'Quattropani - Melisa García SAS',
     obra: 'SALÓN COMERCIAL',
     ventaTexto: 'Salón Comercial',
+    // 14/08: las 3 filas que tiene el cliente Quattropani en Compras, todas Alumetal del 29/07, por
+    // $27.358.960 neto. EL TEXTO NO ES EL DE LA OBRA: la obra se llama "SALÓN COMERCIAL" y Compras
+    // dice "Salones Comerciales". Por eso se copia LITERAL de la fuente y no se deriva del nombre.
+    comprasObra: 'Salones Comerciales',
     inicio: '2026-08-18',
     fin: '2026-12-30',
     plantelFullTime: 5,

@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
-import { MOVIMIENTOS, MOVIMIENTOS_DIA, CUENTA, TARJETA, ACUERDO, verificarCadena, porTipo, ingresosPorNaturaleza, naturalezaIngreso, enCartera, endosados, totalEcheqs, antiguedadDias, clasificarMovimiento, verificarTripletesBancarios, NAT } from './banco-santander.mjs'
+import { MOVIMIENTOS, MOVIMIENTOS_DIA, CUENTA, TARJETA, ACUERDO, verificarCadena, porTipo, ingresosPorNaturaleza, naturalezaIngreso, enCartera, endosados, totalEcheqs, antiguedadDias, clasificarMovimiento, verificarTripletesBancarios, NAT, compromisosPorBeneficiario } from './banco-santander.mjs'
 import { DESTINOS } from './impacto-bancario.mjs'
 import { GRUPOS } from './conciliacion-por-naturaleza.mjs'
 
@@ -251,4 +251,38 @@ test('toda naturaleza que clasificarMovimiento puede devolver está en NAT, en D
   for (const n of literales.filter((x) => !soloIngresos.has(x))) {
     assert.ok(enGrupos.has(n), `"${n}" es un egreso sin grupo en conciliacion-por-naturaleza.GRUPOS: el control del bloque 4.7 de CAJA va a descuadrar`)
   }
+})
+
+// ── LA LISTA DE ECHEQ QUE MENTÍA (14/08) ─────────────────────────────────────────────────────────
+// `ECHEQS_EMITIDOS` era la transcripción a mano de la captura del 22/07 y se quedó ahí: al 14/08
+// afirmaba que el 307 seguía "Aceptado" —el banco lo pagó el 03/08— y que había 3 echeq vivos cuando
+// la captura de ese día muestra 7 por $6.114.994,80. El estado de un cheque vive en `public.cheques`.
+// Este test se pone rojo si alguien vuelve a poner un ESTADO VIVO adentro de esta foto del extracto.
+test('el estado de los echeq NO vive en este archivo: no hay lista a mano ni default que la resucite', async () => {
+  const mod = await import('./banco-santander.mjs')
+  assert.equal('ECHEQS_EMITIDOS' in mod, false, 'volvió la lista a mano: la fuente es public.cheques')
+
+  const src = fs.readFileSync(new URL('./banco-santander.mjs', import.meta.url), 'utf8')
+  assert.equal(/estado:\s*'(Aceptado|Pagado|Repudiado|Anulado)'/i.test(src), false,
+    'hay un estado de cheque escrito a mano en el archivo: eso envejece sin gritar')
+
+  // Sin argumento no inventa una cartera: quien pregunta trae la lista viva.
+  assert.deepEqual(mod.compromisosPorBeneficiario(), [])
+})
+
+test('compromisosPorBeneficiario suma lo vivo y descarta lo que ya salió', () => {
+  // "Por aceptar" también es un compromiso: la plata está firmada aunque el beneficiario no lo aceptó
+  // todavía. Es el mismo criterio que usa `debitadoDe` para marcar el DEBITADO en "No".
+  const echeqs = [
+    { beneficiario: 'NEUMAGOM SAS', cuit: '30691853825', importe: 317000, pago: '2026-10-03', estado: 'Aceptado' },
+    { beneficiario: 'NEUMAGOM SAS', cuit: '30691853825', importe: 317000, pago: '2026-09-03', estado: 'Aceptado' },
+    { beneficiario: 'NEUMAGOM SAS', cuit: '30691853825', importe: 317000, pago: '2026-08-03', estado: 'Pagado' },
+    { beneficiario: 'DUBOS', cuit: '20287737824', importe: 469564.70, pago: '2026-08-25', estado: 'Por aceptar' },
+  ]
+  const c = compromisosPorBeneficiario(echeqs)
+  assert.equal(c.length, 2)
+  assert.equal(c[0].beneficiario, 'NEUMAGOM SAS')
+  assert.equal(c[0].monto, 634000)          // el Pagado NO suma: ya salió de la cuenta
+  assert.equal(c[0].proximo, '2026-09-03')  // el más cercano de los que quedan vivos
+  assert.equal(c[1].monto, 469564.70)
 })

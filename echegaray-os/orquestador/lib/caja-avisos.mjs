@@ -54,6 +54,10 @@ const NO_CIERRA = [
   [ANEXO.difEcheq, 'echeqs entregados'],
   [ANEXO.difConciliacion, 'CAJA vs Cash Flow'],
   [ANEXO.efectivoSinExplicar, 'efectivo sin depositar'],
+  // EL CAJÓN QUE DA NEGATIVO (14/08). Entra acá y no como quinta alerta —el tope de cuatro es del
+  // dueño— porque es exactamente eso: plata que no cierra. Mientras no sea 0, el efectivo que se
+  // publica es el conteo del dueño y no el calculado; el detalle está en `_CAJA_ANEXO`, bloque A1.
+  [ANEXO.efectivoImposible, 'efectivo imposible'],
 ]
 /** Los cuatro controles donde falta INFORMACIÓN: hay que cargarla. */
 const FALTA = [

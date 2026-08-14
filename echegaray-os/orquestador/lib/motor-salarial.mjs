@@ -55,9 +55,9 @@
 // abrirlo por categoría multiplicaría filas sin cambiar un peso del resultado.
 //
 // Lo que SÍ se abre por categoría es el CONTROL. El plantel se lee por la columna D del espejo y la
-// equivalencia con el convenio ya no la tiene que cargar nadie a mano: la declaró el dueño el 07/08 y
-// vive en `CONVENIO_POR_CODIGO`. La columna «Convenio» sigue siendo suya y su valor gana — lo que
-// cambió es que el control ya no espera a que la escriba para poder hablar.
+// equivalencia con el convenio la declaró el dueño el 07/08 (`CONVENIO_POR_CODIGO`). La columna
+// «Convenio» sigue siendo suya y su valor gana SI LA ESCALA LO RECONOCE: desde el 14/08, un texto que
+// la escala no conoce no puede gobernar la masa salarial (lib/jornales-piso-uocra.mjs).
 
 import { VACIO } from './preservar-anotaciones.mjs'
 import { sub, total as rotuloTotal } from './patron-pestana.mjs'
@@ -70,13 +70,13 @@ import {
   convenioDe, factorUocraEntre, tramoDe,
 } from './uocra-paritaria.mjs'
 import { ROTULO_SIGMA } from './proyeccion-convenio.mjs'
+import { expresionClaveConvenio } from './jornales-piso-uocra.mjs'
 
 // LA BASE AL 100% DEL CONVENIO ENTRA POR ACÁ Y NO POR LA PESTAÑA. El dueño avisó que "esto puede
 // impactar en varias pestañas a la vez": si la definición viviera en el generador de Jornales, el
 // segundo consumidor tendría que copiarla. Vive en el motor y se re-exporta, así hay UNA sola puerta.
-// `formulaSigmaDelMes` vive allá y no acá porque lo que decide NO es la mecánica del cuadro sino el
-// alcance del supuesto —qué quincenas se valúan al convenio y cuáles al pactado—, que es de lo que
-// ese archivo es dueño. Se re-exporta para que el generador siga entrando por una sola puerta.
+// `formulaSigmaDelMes` vive allá porque lo que decide no es la mecánica del cuadro sino el alcance
+// del supuesto —qué quincenas van al convenio y cuáles al pactado—, de lo que ese archivo es dueño.
 export {
   formulaSigmaConvenio, formulaSigmaDelMes, expresionSigmaDelMes,
   lineaSupuestoConvenio, sigmaConvenioDelPlantel,
@@ -84,7 +84,6 @@ export {
 import { ALERTA } from './glifos.mjs'
 export { ROTULO_SIGMA }
 export { factorUocraEntre, tramoDe, convenioDe }
-
 /**
  * EL NOMBRE CAMBIÓ A PROPÓSITO, Y NO ES COSMÉTICA (07/08).
  *
@@ -291,14 +290,18 @@ export function filasPlantel({ hoja, bloque, categorias, personas, filaInicio, e
   // `mapearEscala` (lib/nomina-replica.mjs) y esta fórmula no lo había heredado. Buscando sólo en las
   // filas por hora, un "Sereno" no matchea, la celda queda vacía y el Estado de la fila lo dice.
   const g = filasPorHora(escalonVigente)
+  const rangoCats = g ? `'${UOCRA_HOJA}'!$${UOCRA_COL.categoria}$${g.r0}:$${UOCRA_COL.categoria}$${g.r1}` : null
   categorias.forEach((cat, i) => {
     const r = fPrimera + i
     const q = `"${cat}"`
-    // LA CLAVE DE BÚSQUEDA: lo que escribió el dueño, y si no escribió nada, la equivalencia declarada
-    // (07/08). Antes acá iba `$E{r}` a secas y con la columna vacía el MATCH no encontraba nada: el
-    // control quedaba mudo esperando una carga manual que nunca llegó.
+    // LA CLAVE DE BÚSQUEDA: lo que escribió el dueño SI LA ESCALA LO RECONOCE, y si no, la equivalencia
+    // declarada (14/08). Era `IF($E="";equivalencia;$E)` —ganaba cualquier cosa distinta de vacío— y eso
+    // dejó la proyección de obra sin piso de convenio durante todo el rediseño. La regla, su porqué
+    // medido y la versión JS viven juntos en lib/jornales-piso-uocra.mjs.
     const equiv = equivalencias[i][1]
-    const clave = equiv ? `IF($E${r}="";"${equiv}";$E${r})` : `$E${r}`
+    const clave = rangoCats
+      ? expresionClaveConvenio({ celda: `$E${r}`, equivalencia: equiv, rangoCategorias: rangoCats })
+      : (equiv ? `IF($E${r}="";"${equiv}";$E${r})` : `$E${r}`)
     filas.push([
       cat,
       `=COUNTIFS(${D};${q})`,
@@ -313,21 +316,20 @@ export function filasPlantel({ hoja, bloque, categorias, personas, filaInicio, e
       `=IF(N($F${r})=0;"";$D${r}/$F${r}-1)`,
       // ═══ UN ESTADO, NO UNA INSTRUCCIÓN — Y MENOS REPETIDA UNA VEZ POR FILA (06/08) ═══
       //
-      // Acá decía "escribí la categoría del convenio en la columna de al lado", y como ninguna de las
-      // cuatro categorías tiene su equivalente cargado, la frase aparecía CUATRO VECES en el cuadro
-      // que abre la pestaña. Un pedido no es un estado: se dice una vez, arriba del bloque, con la
-      // cuenta de lo que falta (ver `formulaConvenioPendiente`). Acá va lo que la fila puede decir,
-      // que sin convenio asignado es nada — y el "—" es el mismo vocabulario que usan los importes
-      // vacíos de toda la pestaña.
-      //
-      // De paso: la frase medía 58 caracteres en una columna del MEDIO de una grilla de catorce. El
-      // auditor de patrón marca las notas en el medio a partir de 60. Pasaba por dos caracteres.
-      //
-      // SIN EQUIVALENCIA la fila sigue diciendo "—": es la única forma honesta de responder cuando no
-      // se sabe contra qué comparar. CON equivalencia el "—" desaparece, porque ya hay respuesta.
-      equiv
-        ? `=IF(N($F${r})=0;"sin escala para esa categoría";IF($G${r}<0;"${ALERTA} por debajo del convenio";"✓ sobre el convenio"))`
-        : `=IF($E${r}="";"—";IF(N($F${r})=0;"esa categoría no está en la escala del mes";IF($G${r}<0;"${ALERTA} por debajo del convenio";"✓ sobre el convenio")))`,
+      // Acá decía "escribí la categoría del convenio en la columna de al lado" y la frase aparecía
+      // CUATRO VECES en el cuadro que abre la pestaña. Un pedido no es un estado: se dice una vez,
+      // arriba del bloque, con la cuenta de lo que falta (`formulaConvenioPendiente`). SIN
+      // EQUIVALENCIA la fila dice "—", que es la única respuesta honesta cuando no se sabe contra qué
+      // comparar; con equivalencia el "—" desaparece porque ya hay respuesta.
+      // SI LA CELDA DEL DUEÑO SE IGNORÓ, LA FILA LO DICE. Su valor se PRESERVA pero no gobierna: sin
+      // este aviso, la corrección arreglaría el número y lo dejaría creyendo que su categoría manda.
+      equiv && rangoCats
+        ? `=IF(AND($E${r}<>"";NOT(ISNUMBER(MATCH($E${r};${rangoCats};0))));`
+          + `"${ALERTA} «Convenio» no está en la escala — uso ${equiv}";`
+          + `IF(N($F${r})=0;"sin escala para esa categoría";IF($G${r}<0;"${ALERTA} por debajo del convenio";"✓ sobre el convenio")))`
+        : (equiv
+          ? `=IF(N($F${r})=0;"sin escala para esa categoría";IF($G${r}<0;"${ALERTA} por debajo del convenio";"✓ sobre el convenio"))`
+          : `=IF($E${r}="";"—";IF(N($F${r})=0;"esa categoría no está en la escala del mes";IF($G${r}<0;"${ALERTA} por debajo del convenio";"✓ sobre el convenio")))`),
     ])
   })
   const fUltima = fPrimera + categorias.length - 1

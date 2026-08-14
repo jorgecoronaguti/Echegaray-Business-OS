@@ -32,6 +32,7 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { diagnosticarRango } from '../lib/cobranzas-por-cliente.mjs'
 import { clasificarNombrados } from '../lib/rangos-con-nombre.mjs'
+import { mientenPorEspecie } from '../lib/rangos-nombrados.mjs'
 import { PESTANAS } from './formato-pestanas.mjs'
 
 // ═══ SÓLO SE AUDITAN LAS PESTAÑAS DONDE LAS FILAS CRECEN ═══
@@ -206,12 +207,18 @@ async function auditarNombrados(google, meta, grillas, formulas) {
   const porId = new Map(meta.map((h) => [h.sheetId, h.title]))
   const nombrados = []
   const noVerificables = []
+  // La PRIMERA celda de cada nombre, sin formatear: es la que promete la especie. Sale de la grilla
+  // que ya se leyó —no hay una llamada más— y `valor` viene crudo por `readSheetGrid`, que es lo que
+  // hace falta: "$209.231.271" formateado es un string igual que un número de comprobante.
+  const conValor = []
   for (const nr of await google.getNamedRanges(ID)) {
     const hoja = porId.get(nr.range?.sheetId) ?? null
     const gr = hoja ? grillas.get(hoja) : null
     const cuenta = gr ? contarConDato(gr, nr.range ?? {}) : null
     if (!cuenta) { noVerificables.push({ nombre: nr.name, hoja }); continue }
     nombrados.push({ nombre: nr.name, hoja, conDato: cuenta.con, celdas: cuenta.total })
+    const c = gr.filas[nr.range?.startRowIndex ?? 0]?.[nr.range?.startColumnIndex ?? 0]
+    conValor.push({ nombre: nr.name, hoja, valor: c?.valor ?? null })
   }
 
   const clasificados = clasificarNombrados(nombrados, formulas)
@@ -228,8 +235,28 @@ async function auditarNombrados(google, meta, grillas, formulas) {
     for (const n of huerfanos) console.log(`   ${n.nombre} → ${n.hoja}, ${n.conDato}/${n.celdas} celda(s) con dato`)
   }
   for (const n of noVerificables) console.log(`   ? ${n.nombre} → ${n.hoja ?? 'sin pestaña'}: fuera del tramo leído, NO se puede afirmar que esté vacío`)
-  if (!ciegos.length && !huerfanos.length) console.log('✓ ningún rango con nombre apunta a celdas vacías')
-  if (ciegos.length) process.exitCode = 1
+
+  // ═══ LA OTRA MITAD DE LA PREGUNTA: NO SI HAY ALGO, SINO SI ES LO QUE PROMETE (14/08/2026) ═══
+  //
+  // "Ciego" caza el nombre que apunta a celdas VACÍAS. El defecto que costó los diez días de agosto es
+  // el gemelo que este auditor no veía: el nombre que apunta a celdas LLENAS DE OTRA COSA. Los doce
+  // `ARCA_*` vivían sobre `Proveedores!B124:C129` —CUITs y números de comprobante— y para este auditor
+  // estaban impecables: tenían dato. `ARCA_FALTAN_MONTO`, que sí lee Materiales!B53, publicaba
+  // "0038-00025483" donde promete plata.
+  //
+  // No hace falta adivinar la especie: `ESPECIE` (lib/rangos-nombrados.mjs) ya la declara para los
+  // nombres que la tienen declarada, y ése es todo el alcance — un nombre sin especie declarada no se
+  // juzga. Un auditor que inventa el criterio con el que audita no audita nada.
+  const mienten = mientenPorEspecie(conValor)
+  if (mienten.length) {
+    console.log('⚠ RANGOS QUE MIENTEN — la celda tiene otra cosa que la que el nombre promete:')
+    for (const m of mienten) {
+      console.log(`   ${m.nombre} → ${m.hoja}: ${JSON.stringify(m.valor)} (${m.encontro}, promete ${m.espera}). Toda pestaña que lo cite muestra eso HOY.`)
+    }
+  }
+
+  if (!ciegos.length && !huerfanos.length && !mienten.length) console.log('✓ ningún rango con nombre apunta a celdas vacías ni a otra especie')
+  if (ciegos.length || mienten.length) process.exitCode = 1
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

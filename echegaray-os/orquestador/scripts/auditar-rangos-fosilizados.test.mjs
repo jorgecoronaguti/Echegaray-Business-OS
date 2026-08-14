@@ -1,6 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { rangosDe, ultimaFilaDeTabla, contarConDato } from './auditar-rangos-fosilizados.mjs'
+import { clasificarNombrados } from '../lib/rangos-con-nombre.mjs'
+import { mientenPorEspecie } from '../lib/rangos-nombrados.mjs'
+import { PASOS, esReporte } from '../lib/flujo-caja-pasos.mjs'
 
 const fila = (...celdas) => celdas
 const anchas = (n, desde = 1) => Array.from({ length: n }, (_, i) => (i + 1 >= desde ? fila('a', 'b', 'c', 'd') : []))
@@ -54,4 +58,41 @@ test('UN RANGO FUERA DEL TRAMO LEÍDO NO SE DECLARA VACÍO: devuelve null', () =
   const grilla = { filas: [[{ valor: 'x' }]] }
   assert.equal(contarConDato(grilla, { startRowIndex: 0, endRowIndex: 500, startColumnIndex: 0, endColumnIndex: 1 }), null)
   assert.equal(contarConDato(grilla, { startRowIndex: 0, endRowIndex: 1, startColumnIndex: 90, endColumnIndex: 95 }), null)
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LA MITAD DE LA PREGUNTA QUE ESTE AUDITOR NO HACÍA (14/08/2026)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// "Ciego" caza el nombre que apunta a celdas VACÍAS. El defecto de agosto es el gemelo: el nombre que
+// apunta a celdas LLENAS DE OTRA COSA. Los doce `ARCA_*` vivían sobre `Proveedores!B124:C129` —la
+// tabla de comprobantes faltantes— y para `contarConDato` estaban impecables: 1 de 1 celda con dato.
+
+test('una celda CON dato de otra especie pasa el control de "ciego": por eso hace falta el de especie', () => {
+  const grilla = { filas: [[], [], [], [{ valor: '30-56736337-2' }]] }
+  const cuenta = contarConDato(grilla, { startRowIndex: 3, endRowIndex: 4, startColumnIndex: 0, endColumnIndex: 1 })
+  assert.deepEqual(cuenta, { con: 1, total: 1 }, 'un CUIT es "dato": el auditor viejo lo daba por bueno')
+  assert.deepEqual(
+    clasificarNombrados([{ nombre: 'ARCA_FALTAN_N', hoja: 'Proveedores', conDato: 1, celdas: 1 }], ['=ARCA_FALTAN_N&" comprobantes"'])
+      .map((n) => n.estado),
+    ['ok'], 'y lo clasificaba OK aunque la fórmula que lo lee muestre un CUIT')
+
+  // La pregunta que faltaba, sobre el MISMO dato.
+  const mienten = mientenPorEspecie([{ nombre: 'ARCA_FALTAN_N', hoja: 'Proveedores', valor: '30-56736337-2' }])
+  assert.deepEqual(mienten.map((m) => m.nombre), ['ARCA_FALTAN_N'])
+  assert.equal(mienten[0].espera, 'entero')
+})
+
+test('el auditor sale con código ≠0 cuando un nombre miente, no sólo cuando está ciego', () => {
+  const SRC = readFileSync(new URL('./auditar-rangos-fosilizados.mjs', import.meta.url), 'utf8')
+  assert.match(SRC, /if \(ciegos\.length \|\| mienten\.length\) process\.exitCode = 1/,
+    'un nombre que publica un CUIT donde promete plata tiene que poner el auditor en rojo')
+  assert.match(SRC, /mientenPorEspecie\(conValor\)/)
+})
+
+test('el auditor CORRE en el pipeline y es un REPORTE: si hay que tipearlo, no existe', () => {
+  assert.ok(PASOS.some(([s]) => s === 'auditar-rangos-fosilizados.mjs'),
+    'un control que hay que acordarse de correr tiene la misma disponibilidad que el defecto que persigue')
+  assert.equal(esReporte('auditar-rangos-fosilizados.mjs'), true,
+    'su ≠0 es "encontré rangos que mienten", no "no pude generar los datos": no puede dejar el servicio en rojo ni frenar la frescura')
 })

@@ -47,6 +47,62 @@ export const SIN_GENERADOR = {
   // paritaria y hoy la réplica se carga a mano. Mientras siga así, el bloque de escala de Jornales
   // envejece en silencio cuando se firma un acuerdo nuevo.
   _UOCRA_RAW: '⚠ DEUDA: réplica del acuerdo UOCRA cargada a mano. Falta el script que la traiga del boletín de la paritaria.',
+  // ═══ NO TIENE GENERADOR PORQUE NO LO NECESITA — Y ESO NO LA DEJA FUERA DE CONTROL (14/08/2026) ═══
+  //
+  // MEDIDO SOBRE EL ARCHIVO VIVO, no deducido: son DOS tablas dinámicas NATIVAS ancladas en A4 y E4
+  // sobre `Compras!A3:AL932`. Sheets las recalcula sola en cuanto se carga una compra, así que un
+  // script que las "refresque" no existe y no debería existir. Ésa es la diferencia con `_CRUCE_ARCA`,
+  // que parecía el mismo caso y no lo era: aquella tiene generador y no corría.
+  //
+  // NADIE LA LEE, Y ESO CAMBIA LA GRAVEDAD DE TODO LO DEMÁS. Escaneadas las 33 pestañas del archivo el
+  // 14/08: CERO fórmulas la referencian, CERO rangos con nombre apuntan a ella, cero código la
+  // consume. La lee una persona que abre la pestaña. Un dato viejo acá no se propaga a ningún total.
+  //
+  // LO QUE SÍ PUEDE PASAR, Y POR ESO LA EXCEPCIÓN NO ES UN PERMISO: el origen de la dinámica termina
+  // en una FILA FIJA (932) y Compras iba por la 846 ese día — 86 filas de aire. Cuando Compras pase la
+  // 932, la dinámica deja de ver las compras nuevas: la deuda viva baja, no aparece un solo error y
+  // ningún control lo mira. Es el "cuadro que miente despacio" de siempre. Por eso la pestaña está en
+  // `MANTENIDAS_POR_DINAMICA` y `auditar-duenos-pestanas.mjs` VERIFICA ese aire en cada corrida en vez
+  // de creerle a este párrafo.
+  'Deuda viva (OS)': 'dos tablas dinámicas nativas sobre Compras: las recalcula Sheets, no un script. Su rango de origen lo verifica el censo (MANTENIDAS_POR_DINAMICA).',
+}
+
+/**
+ * LAS PESTAÑAS QUE MANTIENE UNA TABLA DINÁMICA NATIVA, CON LA PESTAÑA DE LA QUE SE ALIMENTAN.
+ *
+ * Una excepción de `SIN_GENERADOR` es una afirmación sobre el archivo real ("a ésta la mantiene otra
+ * cosa"), y una afirmación sin control es una promesa. Estas se pueden verificar: el rango de origen
+ * de una dinámica es un HECHO de la API, y que siga cubriendo su fuente es una comparación de dos
+ * números. Lo que no se puede verificar —que una persona cargue Compras— sigue siendo prosa.
+ */
+export const MANTENIDAS_POR_DINAMICA = Object.freeze({
+  'Deuda viva (OS)': 'Compras',
+})
+
+/**
+ * Cuántas filas de aire quedan antes de que una dinámica deje de ver su fuente.
+ *
+ * El margen no es cosmético: si el aviso saltara recién cuando el rango YA se quedó corto, el cuadro
+ * habría estado mintiendo desde la carga anterior. 50 filas son más de una semana de Compras al ritmo
+ * medido, que es el tiempo que hace falta para agrandar el rango sin apuro.
+ */
+export const MARGEN_DINAMICA = 50
+
+/**
+ * NÚCLEO PURO: ¿el rango de origen de una dinámica todavía cubre su pestaña fuente?
+ *
+ * `finOrigen` es la última fila que el rango incluye (1-indexada, ya convertida desde el
+ * `endRowIndex` de la API, que es exclusivo y 0-indexado). `filasFuente` es la última fila con dato
+ * de la pestaña de origen.
+ *
+ * @param {{finOrigen?:number, filasFuente?:number, margen?:number}} [o]
+ * @returns {{aire:number, cubre:boolean, avisa:boolean}}
+ */
+export function coberturaDeDinamica({ finOrigen = 0, filasFuente = 0, margen = MARGEN_DINAMICA } = {}) {
+  const aire = Number(finOrigen) - Number(filasFuente)
+  // `cubre` es el hecho (¿ya se quedó corta?) y `avisa` la decisión (¿falta poco?). Separados a
+  // propósito: el día que se quede corta el mensaje tiene que ser otro, no "queda poco aire".
+  return { aire, cubre: aire >= 0, avisa: aire < margen }
 }
 
 /** ¿Este nombre es el de una pestaña auxiliar? Las del OS son `_MAYÚSCULAS_CON_GUIONES`. */

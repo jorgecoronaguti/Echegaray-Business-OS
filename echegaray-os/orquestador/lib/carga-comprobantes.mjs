@@ -26,8 +26,12 @@ export const COL = {
   id: 'A', categoria: 'B', fecha: 'C', mes: 'D', proveedor: 'E', modalidad: 'F', tipo: 'G',
   numero: 'H', unidad: 'I', obra: 'J', detalle: 'K', concepto: 'L', neto: 'M', iva: 'N', total: 'O',
   formaPago: 'P', prevDia: 'Q', prevMes: 'R', totalParcial: 'S', pagado: 'T', parcial1: 'U',
-  prevFecha2: 'V', parcial2: 'W', estado: 'X', devengado: 'Y', tipoCosto: 'Z', estadoVisual: 'AA',
-  estadoCarga: 'AB', rubroCaja: 'AC', fechaCaja: 'AD', familia: 'AE', subRubro: 'AF',
+  // ═══ EL CORRIMIENTO DEL 14/08 ═══
+  // La columna «devengado» dejó de existir en Compras y todo lo que venía detrás se corrió un lugar
+  // a la izquierda, hasta que una «Rubro de caja» duplicada (AB y AC) vuelve a alinear el resto. Los
+  // rótulos vivos son: Y «Tipo de Costo» · Z «Estado pago» · AA «Estado Carga» · AB/AC «Rubro de caja».
+  prevFecha2: 'V', parcial2: 'W', estado: 'X', tipoCosto: 'Y', estadoPago: 'Z', estadoCarga: 'AA',
+  rubroCaja: 'AC', fechaCaja: 'AD', familia: 'AE', subRubro: 'AF',
   ordenPago: 'AH', ordenSinFecha: 'AI', comercial: 'AJ',
 }
 
@@ -35,8 +39,20 @@ export const COL = {
 export const COL_INPUT = ['categoria', 'fecha', 'proveedor', 'modalidad', 'tipo', 'numero', 'concepto', 'neto', 'iva', 'formaPago', 'totalParcial', 'pagado', 'estado']
 
 /** Grupos contiguos de columnas con fórmula POR FILA, para copiarlas con PASTE_FORMULA de la última
- *  fila a las nuevas. Las ARRAYFORMULA (AC/AD/AE/AF/AJ) NO están: bajan solas desde la fila 4. */
-export const GRUPOS_FORMULA = [['A', 'A'], ['D', 'D'], ['O', 'O'], ['Q', 'R'], ['Y', 'Y'], ['AA', 'AA'], ['AH', 'AI']]
+ *  fila a las nuevas. Las ARRAYFORMULA (AC/AD/AE/AF/AJ) NO están: bajan solas desde la fila 4.
+ *
+ * ═══ POR QUÉ CAMBIÓ (14/08): LA CARGA ESTABA ROTA AL 100% ═══
+ *
+ * Esta lista pedía fórmula en `Y` y `AA`. Con el corrimiento de arriba esas letras pasaron a ser
+ * «Tipo de Costo» y «Estado Carga», que son TEXTO: medido sobre las últimas 47 filas, **0 de 47** las
+ * tienen calculadas. Como `filaModeloDeFormulas` exige que UNA fila las tenga TODAS, ninguna fila
+ * podía ser modelo nunca, y el cargador abortaba con `sin_fila_modelo` en cada corrida. El bot
+ * contestaba "no pude cargarlos: el cargador falló" y el dueño lo leía como que fallaba la lectura de
+ * la foto — cuando ninguna foto había llegado siquiera a esa etapa.
+ *
+ * `Z` («Estado pago») sí está calculada en 47 de 47 y no figuraba. Es la que entra en lugar de las dos.
+ */
+export const GRUPOS_FORMULA = [['A', 'A'], ['D', 'D'], ['O', 'O'], ['Q', 'R'], ['Z', 'Z'], ['AH', 'AI']]
 
 const TIPOS = { A: 'F A', B: 'F B', C: 'F C', NC: 'N C', 'N/A': 'N/A' }
 

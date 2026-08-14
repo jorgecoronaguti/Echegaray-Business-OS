@@ -62,6 +62,7 @@
 
 import { sub } from './patron-pestana.mjs'
 import { convenioDe, CONVENIO_POR_CODIGO } from './uocra-paritaria.mjs'
+import { categoriaDelConvenio, expresionSinEscala } from './jornales-piso-uocra.mjs'
 import { ALERTA } from './glifos.mjs'
 
 /**
@@ -209,9 +210,14 @@ export function formulaSigmaConvenio(fPrimera, fUltima) {
   const B = `$B$${fPrimera}:$B$${fUltima}`
   const F = `$F$${fPrimera}:$F$${fUltima}`
   const sigma = `SUMPRODUCT(${B};${F})`
-  // `--(F="")` es 1 en las categorías sin básico: multiplicado por las personas de esa fila, da >0
-  // en cuanto haya UNA persona sin escala. Separador es-AR: punto y coma.
-  return `IF(OR(${sigma}=0;SUMPRODUCT(${B};--(${F}=""))>0);"";${sigma})`
+  // ═══ EL GUARD PREGUNTABA POR EL VACÍO Y EL AGUJERO ERA UN TEXTO (14/08) ═══
+  //
+  // Decía `--(F="")`. En el archivo vivo `F80` («OF M», 8 de 16 personas) traía el texto "Banco"
+  // —residuo del layout anterior— que NO es vacío: el guard no disparó, `SUMPRODUCT` trató el texto
+  // como 0 y la Σ publicó $46.988 en vez de $97.772. Un total corto y plausible, que es justo lo que
+  // este guard existe para impedir. La pregunta correcta —¿es un NÚMERO mayor que cero?— vive en una
+  // sola definición compartida con el control del piso, en lib/jornales-piso-uocra.mjs.
+  return `IF(OR(${sigma}=0;${expresionSinEscala(B, F)}>0);"";${sigma})`
 }
 
 /**
@@ -258,8 +264,18 @@ export function lineaSupuestoConvenio({ sigma = null, celdaPersonas = null } = {
   //     fila, y se ve en la Σ de cada mes del cuadro.
   // Queda el rótulo, que es lo único que el párrafo agregaba: que es un SUPUESTO y no lo que se paga.
   const cuantos = celdaPersonas ? `"&${celdaPersonas}&"` : 'las'
+  // ═══ EL AVISO DECÍA "PROYECCIÓN VACÍA" Y LA PROYECCIÓN NO ESTABA VACÍA (14/08) ═══
+  //
+  // Estuvo encendido y nadie lo leyó como lo que era, porque describía mal el síntoma: la proyección
+  // publicaba $79.753.312 — salidos enteros de la demanda de obras, por el `MAX(convenio; demanda)` de
+  // la sección 1, que resuelve por el otro lado cuando el término convenio se apaga. Quien leyera la
+  // línea buscaba una columna en blanco y encontraba números; quien mirara los números no tenía forma
+  // de saber que ya no llevaban piso de convenio adentro.
+  //
+  // El aviso dice ahora lo que efectivamente pasa: la proyección SIGUE, sin piso. Es peor noticia que
+  // "vacía" y por eso hay que decirla — un cuadro vacío se ve; uno con el piso apagado, no.
   return `=IF(IFERROR(N(${sigma});0)=0;`
-    + `"   · ${ALERTA} El convenio no devolvió escala — proyección vacía";`
+    + `"   · ${ALERTA} Sin escala: la proyección va SIN piso de convenio";`
     + `"   · Supuesto: proyectado al 100% del convenio · ${cuantos} personas")`
 }
 
@@ -274,31 +290,43 @@ export function lineaSupuestoConvenio({ sigma = null, celdaPersonas = null } = {
  * Recorre PERSONA POR PERSONA, no categoría por categoría: así una fila con categoría desconocida se
  * cuenta como lo que es —una persona sin escala— en vez de desaparecer del total.
  *
- * ═══ LÍMITE DECLARADO: ESTE CONTROL NO LEE LA COLUMNA «CONVENIO» DEL DUEÑO ═══
+ * ═══ EL LÍMITE QUE ESTE CONTROL TENÍA, Y QUE LO DEJÓ CIEGO JUSTO CUANDO IMPORTABA (14/08) ═══
  *
- * La pestaña resuelve la categoría del convenio con `IF($E="";equivalencia declarada;$E)`: si el dueño
- * escribe algo en «Convenio», MANDA lo suyo. Este cálculo sólo conoce la equivalencia declarada
- * (`CONVENIO_POR_CODIGO`). O sea que vale como control del producto escalar mientras esa columna esté
- * vacía; en cuanto el dueño la use, los dos números pueden separarse legítimamente y el que gobierna
- * es el de la pestaña. Quien imprime este número tiene que decirlo al lado, o el control miente.
+ * Hasta hoy este cálculo IGNORABA la columna «Convenio» del dueño y lo declaraba como límite. Con eso,
+ * el día que esa columna quedó con basura de un layout viejo —"46237", "Se paga el"— la pestaña publicó
+ * una Σ vacía y el log de la corrida siguió imprimiendo $97.772 tan campante: el control decía que
+ * estaba todo bien mientras la proyección se quedaba sin piso de convenio. Un control que no mira la
+ * misma entrada que el sistema que controla no controla nada.
+ *
+ * Ahora recibe lo que hay escrito en esa columna (`escritoPorCodigo`) y aplica LA MISMA regla que la
+ * fórmula, definida una sola vez en `lib/jornales-piso-uocra.mjs`. Sin ese argumento se comporta como
+ * antes —la columna vacía— que es lo correcto para un llamador que no la tiene.
  *
  * @param {any[][]} grid el espejo completo
  * @param {{inicio:number, fin:number}} bloque
  * @param {{categorias:Object}|null} escalon el escalón vigente ya parseado
- * @returns {{total:number, personas:number, porCategoria:Array, sinEscala:string[]}}
+ * @param {Object} tabla la equivalencia declarada
+ * @param {Object<string,string>} escritoPorCodigo lo que el dueño escribió en «Convenio», por código
+ * @returns {{total:number, personas:number, porCategoria:Array, sinEscala:string[], descartados:Array}}
  */
-export function sigmaConvenioDelPlantel(grid = [], bloque = null, escalon = null, tabla = CONVENIO_POR_CODIGO) {
-  const vacio = { total: 0, personas: 0, porCategoria: [], sinEscala: [] }
+export function sigmaConvenioDelPlantel(grid = [], bloque = null, escalon = null,
+  tabla = CONVENIO_POR_CODIGO, escritoPorCodigo = {}) {
+  const vacio = { total: 0, personas: 0, porCategoria: [], sinEscala: [], descartados: [] }
   if (!bloque) return vacio
   const acum = new Map()
   const sinEscala = []
+  const descartados = []
   let personas = 0
   for (let r = bloque.inicio; r <= bloque.fin; r++) {
     const fila = grid[r - 1] ?? []
     if (!String(fila[COL_NOMBRE] ?? '').trim()) continue
     personas++
     const codigo = String(fila[COL_CATEGORIA] ?? '').trim()
-    const convenio = convenioDe(codigo, tabla)
+    const res = categoriaDelConvenio(escritoPorCodigo?.[codigo], convenioDe(codigo, tabla))
+    if (res.descartado && !descartados.some((d) => d.codigo === codigo)) {
+      descartados.push({ codigo, escrito: res.descartado, usada: res.categoria })
+    }
+    const convenio = res.categoria
     const basico = convenio ? escalon?.categorias?.[convenio]?.basico : null
     if (typeof basico !== 'number') {
       if (codigo && !sinEscala.includes(codigo)) sinEscala.push(codigo || '(sin categoría)')
@@ -314,6 +342,7 @@ export function sigmaConvenioDelPlantel(grid = [], bloque = null, escalon = null
     personas,
     porCategoria,
     sinEscala,
+    descartados,
   }
 }
 

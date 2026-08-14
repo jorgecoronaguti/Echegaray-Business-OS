@@ -243,11 +243,60 @@ export const RANGO_VENTANA = 'JORNALES_VENTANA_BANCO'
  * @returns {string} fórmula es-AR (separador `;`, nunca `,`)
  */
 export function formulaSePagaEl(celdaHasta) {
+  return `=IF(N(${celdaHasta})=0;"";${expresionSePagaEl(celdaHasta)})`
+}
+
+/**
+ * LA MISMA FECHA, COMO EXPRESIÓN: LOS TRES GRUPOS COBRAN EL MISMO DÍA (14/08 — orden del dueño).
+ *
+ * ═══ LA ORDEN ═══
+ *
+ * *"en la pestaña 'jornales por quincena' las tres grupos de empleados, quiero q cobren el mismo dia"*.
+ * Y no cobraban: obreros salía del lote del banco (o `WORKDAY(cierre;desfase)`), oficina de
+ * `EOMONTH(mes)+desfase` —días CORRIDOS, sumando un parámetro que está expresado en días HÁBILES— y
+ * dirección del día 10 del mes siguiente. Tres criterios para un solo evento de caja.
+ *
+ * ═══ CUÁL DE LAS TRES FECHAS MANDA — DERIVADA, NO ELEGIDA ═══
+ *
+ * El extracto contesta con dos lotes que cierran al peso contra la planilla:
+ *
+ *   · lote 260717507 del vie 17/07 → 14 movimientos + 1 "por cci" = $3.775.150, que es EXACTAMENTE la
+ *     columna Banco de la quincena 01/07–15/07 del registro.
+ *   · lote 260731507 del vie 31/07 → 14 movimientos + 1 "por cci" = $3.336.233, que es EXACTAMENTE la
+ *     columna Banco de la quincena 16/07–31/07. Y EN EL MISMO LOTE, dos movimientos idénticos de
+ *     $1.365.843,84: dos personas, importes iguales, cadencia mensual — la nómina de OFICINA sale en
+ *     el mismo lote de haberes que la de obra, el mismo día. (El 03/06 se repite el patrón: dos de
+ *     $1.360.865,60 junto al lote de obreros.)
+ *
+ * Y dirección: "Pago de honorarios" el 01/06 ($3.000.000), el 02/07 ($2.000.000) y el 03/08
+ * ($3.000.000), más la transferencia a Ana Laura Echegaray del 03/08 ($3.000.000, que es el retiro de
+ * Jorge Corona). Primeros días del mes siguiente — nunca un día 10.
+ *
+ * O sea: la fecha que manda es la del LOTE DE HABERES del cierre de mes, que es la que obra ya usa. Es
+ * además la única de las tres que sale de un HECHO (el extracto) y no de una constante. Oficina y
+ * dirección la referencian; ninguno de los tres tiene criterio propio.
+ *
+ * LO QUE ESTA UNIFICACIÓN NO BORRA: un pago YA REGISTRADO gana sobre cualquier previsión. La fecha de
+ * dirección sigue saliendo de las filas de Compras cuando el mes está pagado, y la de obra de la
+ * columna «Pagado el». Esto unifica la PREVISIÓN, que es lo que estaba en tres versiones.
+ *
+ * @param {string} exprHasta expresión de la fecha de cierre (celda o `EOMONTH(...)`)
+ */
+export function expresionSePagaEl(exprHasta) {
   const F = `'_BANCO_RAW'!$A$4:$A`
   const NAT = `'_BANCO_RAW'!$F$4:$F`
-  const lote = `MIN(FILTER(${F};${NAT}="${NATURALEZA_SUELDOS}";${F}>${celdaHasta};${F}<=${celdaHasta}+${RANGO_VENTANA}))`
-  return `=IF(N(${celdaHasta})=0;"";IFERROR(${lote};WORKDAY(${celdaHasta};${RANGO_DESFASE})))`
+  const lote = `MIN(FILTER(${F};${NAT}="${NATURALEZA_SUELDOS}";${F}>${exprHasta};${F}<=${exprHasta}+${RANGO_VENTANA}))`
+  return `IFERROR(${lote};WORKDAY(${exprHasta};${RANGO_DESFASE}))`
 }
+
+/**
+ * NÚCLEO PURO: la fecha de pago de la nómina del MES `mes` — la que comparten los tres grupos.
+ *
+ * El cierre del mes es el de la segunda quincena, así que la fecha es la misma que la de esa quincena.
+ * Se arma acá y no en cada bloque para que no puedan volver a separarse.
+ */
+export const expresionPagoDelMes = (anio, mes) =>
+  expresionSePagaEl(`EOMONTH(DATE(${anio};${mes};1);0)`)
 
 /**
  * NÚCLEO PURO: la fecha que decide en qué período cae la quincena, con FALLBACK a `hasta`.

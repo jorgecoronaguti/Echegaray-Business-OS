@@ -30,9 +30,12 @@ test('todas son fórmulas condicionales: un aviso de texto vale hasta la corrida
   for (const f of [...A(), ...AC()]) assert.match(f, /^=IF\(/)
 })
 
-test('LOS SIETE CONTROLES DEL ANEXO ESTÁN CITADOS: la mudanza fue de lugar, no de cobertura', () => {
+test('LOS OCHO CONTROLES DEL ANEXO ESTÁN CITADOS: la mudanza fue de lugar, no de cobertura', () => {
   const todo = A().join(' ')
-  for (const n of [ANEXO.difEcheq, ANEXO.difConciliacion, ANEXO.efectivoSinExplicar,
+  // `efectivoImposible` entró el 14/08: mientras no sea 0, el efectivo que publica CAJA es el conteo
+  // del dueño y NO el calculado. Que la portada calle esa degradación es exactamente el defecto del
+  // día —la pestaña decía "✓ sellado" con el número roto—, así que tiene que estar en una alerta.
+  for (const n of [ANEXO.difEcheq, ANEXO.difConciliacion, ANEXO.efectivoSinExplicar, ANEXO.efectivoImposible,
     ANEXO.vencidoSinConciliar, ANEXO.oficinaSinCanal, ANEXO.chequesSinMarca, ANEXO.chequesSinFecha]) {
     assert.ok(todo.includes(n), `${n} no está en ninguna alerta: se perdió al mudarse al anexo`)
   }

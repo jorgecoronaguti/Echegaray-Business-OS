@@ -5,7 +5,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   SIN_GENERADOR, constantesDeModulo, escribeEnElSheet, esPestanaAuxiliar,
-  importaciones, pestanasAuxiliaresDe,
+  importaciones, pestanasAuxiliaresDe, MANTENIDAS_POR_DINAMICA, coberturaDeDinamica, MARGEN_DINAMICA,
 } from './pestanas-auxiliares.mjs'
 import { PASOS } from './flujo-caja-pasos.mjs'
 
@@ -144,4 +144,46 @@ test('el censo estático ve de verdad los generadores auxiliares que ya existía
   for (const p of ['_ARCA_RAW', '_BANCO_RAW', '_CHEQUES_RAW', '_CRUCE_ARCA', '_MOVIMIENTOS', '_F931_RAW']) {
     assert.ok(vistas.has(p), `el detector ya no encuentra a nadie declarando ${p}: está mirando mal`)
   }
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// "Deuda viva (OS)": LA HUÉRFANA QUE NO LO ERA, Y LA EXCEPCIÓN QUE SÍ SE PUEDE VERIFICAR (14/08/2026)
+//
+// El censo la reportaba sin dueño. Medido contra el archivo vivo: son dos tablas dinámicas NATIVAS
+// sobre Compras — Sheets las recalcula sola, no necesita generador — y no la lee NADIE (0 fórmulas,
+// 0 rangos con nombre, 0 código). Lo que sí puede pasar es que el rango de origen se quede corto: iba
+// hasta la fila 932 con Compras en la 846. Ahí el cuadro BAJA sin un solo error a la vista.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('toda excepción de SIN_GENERADOR trae su motivo escrito: una excepción muda es una huérfana disfrazada', () => {
+  for (const [pestana, motivo] of Object.entries(SIN_GENERADOR)) {
+    assert.ok(String(motivo || '').trim().length > 20, `la excepción de "${pestana}" no explica por qué`)
+  }
+})
+
+test('"Deuda viva (OS)" está eximida Y declarada como mantenida por una dinámica: la exención se verifica', () => {
+  assert.ok(SIN_GENERADOR['Deuda viva (OS)'], 'sin la excepción, el censo la reporta huérfana en cada corrida')
+  assert.equal(MANTENIDAS_POR_DINAMICA['Deuda viva (OS)'], 'Compras',
+    'una exención que nadie comprueba es el escondite perfecto: tiene que declarar contra qué se verifica')
+})
+
+test('toda pestaña mantenida por una dinámica está eximida del censo, y no al revés', () => {
+  for (const p of Object.keys(MANTENIDAS_POR_DINAMICA)) {
+    assert.ok(SIN_GENERADOR[p], `${p} se declara mantenida por una dinámica y el censo la daría por huérfana igual`)
+  }
+})
+
+test('coberturaDeDinamica: el rango que YA se quedó corto se distingue del que está por quedarse', () => {
+  // El caso real medido el 14/08: origen hasta la 932, Compras en la 846 → 86 filas de aire.
+  assert.deepEqual(coberturaDeDinamica({ finOrigen: 932, filasFuente: 846 }), { aire: 86, cubre: true, avisa: false })
+  // Ya se quedó corto: 4 compras dejaron de contarse y el cuadro no da un solo error.
+  assert.deepEqual(coberturaDeDinamica({ finOrigen: 932, filasFuente: 936 }), { aire: -4, cubre: false, avisa: true })
+  // Falta poco: avisa ANTES, porque cuando se acabe el cuadro ya habrá mentido una carga entera.
+  const justo = coberturaDeDinamica({ finOrigen: 932, filasFuente: 932 - MARGEN_DINAMICA + 1 })
+  assert.equal(justo.cubre, true)
+  assert.equal(justo.avisa, true)
+})
+
+test('coberturaDeDinamica sin datos no felicita: un rango en 0 no puede dar por cubierta la fuente', () => {
+  assert.equal(coberturaDeDinamica({ finOrigen: 0, filasFuente: 846 }).cubre, false)
 })

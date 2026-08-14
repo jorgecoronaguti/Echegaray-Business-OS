@@ -160,6 +160,100 @@ export function necesitaSello(arqueo = {}, sello = {}) {
   return cent(arqueo.valor) !== cent(sello.valor) || cent(arqueo.fecha) !== cent(sello.fecha)
 }
 
+/**
+ * NÚCLEO PURO: ¿el efectivo que sale de la cuenta se puede publicar? — el control que manda.
+ *
+ * ═══ EL INCIDENTE DEL 14/08/2026 ═══
+ *
+ * `CAJA DISPONIBLE` amaneció en −$194.181 (venía de $18.751.100) porque el efectivo en pesos calculó
+ * −$15.051.781 con un conteo del dueño que dice $4.320.000. La causa fue el SELLO: se toma cuando el
+ * arqueo cambia y nunca cuando cambian los datos históricos de los que depende. Ese día la línea de
+ * OFICINA empezó a leer su canal (un cambio correcto, pedido por el dueño) y pasó de $0 a
+ * −$18.773.559,70 — siete meses que YA ESTABAN adentro del arqueo físico y que el sello, tomado el
+ * 07/08 cuando esa línea valía $0, no descontaba.
+ *
+ * ═══ POR QUÉ ESTE CONTROL Y NO UN RESELLADO AUTOMÁTICO ═══
+ *
+ * Resellar cada vez que el histórico se mueve no arregla nada: ROMPE el modelo. El histórico se mueve
+ * justamente cuando se paga en efectivo, y absorber ese movimiento dentro del sello dejaría la caja
+ * clavada en el arqueo para siempre. Y en el caso contrario —una fila duplicada— resellar TAPA el
+ * error. Sin fechas confiables no hay forma de distinguir "movimiento nuevo" de "corrección de un dato
+ * viejo", y por eso la máquina no re-ancla sola: re-anclar es contar los billetes, y eso lo hace una
+ * persona.
+ *
+ * LO QUE SÍ SE PUEDE AFIRMAR SIN NINGUNA FECHA: un cajón no puede tener menos de cero pesos. Cuando el
+ * arqueo más los movimientos da negativo, hay un dato mal cargado o el sello quedó desfasado, y lo
+ * único honesto es publicar el ancla —el conteo del dueño, que es verdad definitiva— y GRITAR cuánto
+ * no se explica. Publicar el negativo tampoco es neutral: baja $19M la disponibilidad con la que se
+ * decide qué se paga, y ese número viaja a los dos cash flow, a Postgres y al Director.
+ *
+ * @param {{arqueo?:number, neto?:number}} m el conteo tipeado y el neto CRUDO (histórico − sello)
+ * @returns {{movido:number, efectivo:number, imposible:boolean, faltante:number, netoPublicado:number, publicado:number}}
+ */
+export function dictamenEfectivo({ arqueo = 0, neto = 0 } = {}) {
+  // A CENTAVOS: los tres números vienen de la API como flotantes y una comparación contra 0 con
+  // −0,000000001 declararía imposible una caja perfectamente cerrada.
+  const cent = (x) => Math.round((Number(x) || 0) * 100) / 100
+  const efectivo = cent(cent(arqueo) + cent(neto))
+  const imposible = efectivo < 0
+  return {
+    movido: cent(neto),
+    efectivo,
+    imposible,
+    faltante: imposible ? -efectivo : 0,
+    netoPublicado: imposible ? 0 : cent(neto),
+    publicado: imposible ? cent(arqueo) : efectivo,
+  }
+}
+
+/**
+ * NÚCLEO PURO: ¿se puede repartir un sello total entre sus renglones sin inventar nada?
+ *
+ * Sólo cuando el histórico de hoy suma EXACTAMENTE el total sellado: ahí nada se movió desde el sello
+ * y el valor de hoy de cada renglón ES su valor al sellar. Si difiere aunque sea un centavo, algo se
+ * movió y no se sabe cuánto le tocó a cada uno — repartirlo sería fabricar el dato, que es la primera
+ * regla de la casa. El desglose se queda vacío y el aviso avisa sin nombrar culpable.
+ *
+ * @param {number[]} hoy el valor actual de cada renglón del histórico
+ * @param {number} total el número sellado
+ */
+export function selloPorRenglonSembrable(hoy = [], total = 0) {
+  if (!hoy.length || !hoy.every((v) => Number.isFinite(v))) return false
+  const cent = (x) => Math.round((Number(x) || 0) * 100)
+  return cent(hoy.reduce((s, v) => s + v, 0)) === cent(total)
+}
+
+const pesos = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-AR')}`
+
+/**
+ * EL GRITO, EN UNA LÍNEA — y con el renglón culpable adentro.
+ *
+ * Devuelve `null` cuando el efectivo es posible: un aviso que se emite siempre no avisa nada. Sale por
+ * stdout a propósito (el runner del pipeline escanea stdout buscando la marca de alerta; lo que va a
+ * stderr no entra al resumen de la corrida y por eso ningún `console.warn` de este archivo se lee).
+ *
+ * `por` son los renglones del histórico con lo que CADA UNO se movió desde el sello. Nombrar al que
+ * manda es la diferencia entre "algo no cierra por $15M" —que manda a buscar a seis lados— y "manda
+ * OFICINA por $18,7M", que se resuelve en dos minutos. Ese desglose sólo existe porque desde este
+ * cambio el sello se guarda TAMBIÉN renglón por renglón.
+ *
+ * @param {ReturnType<typeof dictamenEfectivo>} d
+ * @param {{por?:Array<{rotulo:string, delta:number}>, marca?:string}} ctx
+ * @returns {string|null}
+ */
+export function avisoEfectivoImposible(d = {}, { por = [], marca = '▲' } = {}) {
+  if (!d?.imposible) return null
+  const culpable = [...por].sort((a, b) => Math.abs(b.delta ?? 0) - Math.abs(a.delta ?? 0))[0]
+  const quien = culpable && Math.abs(culpable.delta ?? 0) > 0
+    ? ` · manda "${String(culpable.rotulo).trim()}" con ${pesos(culpable.delta)}`
+    : ''
+  // `publicado` ES el conteo cuando el dictamen es imposible: no hace falta pasarlo por separado.
+  return `${marca} EFECTIVO IMPOSIBLE: el conteo dice ${pesos(d.publicado)} y el histórico se movió `
+    + `${pesos(d.movido)} desde el sello, lo que deja el cajón en ${pesos(d.efectivo)}. `
+    + `Publico el conteo tal cual; faltan ${pesos(d.faltante)} por explicar${quien}. `
+    + 'Un cajón no puede tener menos de cero: hay un dato viejo mal cargado o el sello quedó desfasado.'
+}
+
 /** Los cobros en efectivo posteriores al arqueo (CARGA la caja). Con `=` adelante, para una celda. */
 export function celdaCobrosEfectivo(arqueo, c = COB) {
   return guardado(arqueo, formulaCobrosEfectivoPosteriores(arqueo, c))

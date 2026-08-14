@@ -282,11 +282,66 @@ export const PASOS = [
   // PEGADOS en vez de ser fórmula o celda derramada. Sin este censo, la única forma de enterarse era
   // que el dueño abriera una celda y mirara la barra de fórmulas — que es exactamente lo que pasó.
   ['censo-numeros-pegados.mjs', 'regla de oro: cuántos números están pegados en vez de calculados', []],
+  // ═══ EL CONTROL QUE HABRÍA CAZADO `_CRUCE_ARCA` NO LO CORRÍA NADIE (14/08/2026) ═══
+  //
+  // El censo de dueños existe desde el 23/07 y contesta la única pregunta que este archivo no puede
+  // contestar solo: qué pestaña del archivo real NO figura en esta lista. `_CRUCE_ARCA` tenía
+  // generador desde el 04/08, no estaba acá y no se refrescó en diez días — el censo lo habría dicho
+  // la primera mañana. No lo dijo porque el censo tampoco estaba acá: un control que hay que acordarse
+  // de tipear tiene exactamente la misma disponibilidad que el defecto que persigue.
+  //
+  // VA AL FINAL, CON LOS DEMÁS AUDITORES, Y NO AL PRINCIPIO. Poner un aviso ANTES de escribir suena
+  // mejor de lo que es, y acá está medido contra su propia definición:
+  //
+  //   · el censo NO puede frenar nada — el runner sigue con los demás pasos pase lo que pase, así que
+  //     adelantarlo no evita una sola escritura;
+  //   · corriendo primero, una pestaña que ESTA MISMA corrida crea todavía no existe en el archivo, y
+  //     el censo la reportaría como FANTASMA ("declarada por un paso pero NO EXISTE"). Un falso
+  //     positivo por corrida en el control que vino a detectar huérfanas lo vuelve ruido, que es cómo
+  //     murió el trinquete de frescura;
+  //   · corriendo último, el archivo ya tiene todas las pestañas de la corrida: cero fantasmas falsos,
+  //     y una huérfana nueva se ve el MISMO día.
+  //
+  // Y VA EN `REPORTES`: su ≠0 significa "encontré huérfanas", no "no pude generar los datos". Contado
+  // como fallo, el servicio quedaría siempre en rojo y —peor— la frescura del Cash Flow, que sólo se
+  // registra si nadie falló, dejaría de registrarse. Es el motivo por el que existe esa lista.
+  ['auditar-duenos-pestanas.mjs', 'censo de dueños: qué pestaña del archivo no la mantiene ningún paso de esta lista', []],
+  // ═══ EL AUDITOR QUE HABRÍA CAZADO LOS DOCE `ARCA_*` TAMPOCO LO CORRÍA NADIE (14/08/2026) ═══
+  //
+  // Exactamente la misma historia que `_CRUCE_ARCA` cuatro entradas más arriba, sobre otro objeto.
+  // `auditar-rangos-fosilizados.mjs` existe desde el 21/07, mira los rangos A1 que se quedaron cortos
+  // y —desde el 03/08— los 80 rangos con nombre del libro, y sólo corría si alguien lo tipeaba.
+  //
+  // Medido el 14/08 contra el archivo vivo: los doce `ARCA_*` vivían sobre `Proveedores!B124:C129`,
+  // que hoy es la tabla de comprobantes faltantes. Once de los doce publicaban un CUIT o un número de
+  // comprobante bajo un nombre que promete un contador o un importe, y `ARCA_FALTAN_MONTO` —el único
+  // de los doce con lectores reales— le pasaba "0038-00025483" a `Materiales!B53`. El generador de
+  // Proveedores lo gritaba cada dos horas en su propio log y salía con código ≠0; el archivo entero
+  // no tenía quién hiciera esa pregunta sobre los otros 68 nombres.
+  //
+  // VA EN `REPORTES`: su ≠0 significa "encontré rangos cortos o nombres que mienten", no "no pude
+  // generar los datos". Contado como fallo dejaría el servicio siempre en rojo y —peor— la frescura
+  // del Cash Flow, que sólo se registra si nadie falló, dejaría de registrarse.
+  ['auditar-rangos-fosilizados.mjs', 'rangos que se quedaron cortos y rangos con nombre ciegos, huérfanos o que mienten su especie', []],
   // EL SALDO DEL BANCO CONTRA SUS PROPIOS MOVIMIENTOS (31/07). El dueño: "está mal el saldo de caja en
   // todos lados". De ese saldo cuelgan CAJA_TOTAL_DISPONIBLE, el efectivo inicial de los dos cash flow y
   // el piso proyectado: un agujero en el extracto cargado se propaga a todas las pantallas en silencio,
   // y no había ningún control que lo mirara. Medido la primera vez que corrió: faltaba $113.314,76.
   ['auditar-saldo-banco.mjs', 'el saldo del banco contra la suma de sus movimientos (el número del que cuelga todo)', []],
+  // ═══ QUÉ COMPRA RESTA DOS VECES, MEDIDO EN CADA CORRIDA (14/08/2026) ═══
+  //
+  // Este control existía desde el 14/08 y sólo corría si alguien lo tipeaba. Encuentra las dos formas
+  // en que una fila de Compras baja la caja por plata que no salió: la Fecha de caja posterior al corte
+  // sobre un débito que el banco ya hizo (fila 844, Trielec, $2.205.400,34) y el "Efectivo" que en
+  // realidad salió por tarjeta o débito (fila 845 más seis de junio, $3.263.770,37 entre todas). Las
+  // segundas son las que hunden el cajón físico y ponen el efectivo en camino de dar negativo, que es
+  // el defecto que el bloque del sello acaba de tener que degradar.
+  //
+  // VA EN `REPORTES` Y NO ESCRIBE NADA: su ≠0 significa "encontré filas para mirar", no "no pude
+  // generar los datos". Las celdas son del dueño y el cruce es por importe —probable, no cierto—, así
+  // que corregir automáticamente está prohibido: sobre una coincidencia PROBABLE ya se duplicaron
+  // $2,1M en este repo. Lo único que cambia es que ahora el hallazgo aparece solo, todos los días.
+  ['auditar-doble-conteo-compras.mjs', 'qué compra resta dos veces de la caja (banco ya debitado / "Efectivo" que salió del banco)', []],
   // ÚLTIMO ENTRE LOS QUE ESCRIBEN: cada script pone los anchos que declara, así que ensanchar antes
   // de que corran no sirve de nada. Lo que este paso arregla es lo que ningún script dueño puede
   // saber solo: si el texto que le tocó a esta corrida entra o no.
@@ -337,7 +392,8 @@ export const PASOS = [
 // pantalla o de auditoría es un REPORTE visible que no bloquea ni la frescura ni el estado del servicio.
 export const REPORTES = new Set([
   'formato-pestanas.mjs', 'reparar-pantalla.mjs', 'censo-numeros-pegados.mjs', 'auditar-saldo-banco.mjs',
-  'reparar-textos.mjs', 'formato-condicional.mjs', 'auditar-pantalla.mjs',
+  'reparar-textos.mjs', 'formato-condicional.mjs', 'auditar-pantalla.mjs', 'auditar-duenos-pestanas.mjs',
+  'auditar-doble-conteo-compras.mjs', 'auditar-rangos-fosilizados.mjs',
 ])
 
 /** NÚCLEO PURO: ¿este paso es de presentación/auditoría (su ≠0 es un reporte, no un fallo de datos)? */

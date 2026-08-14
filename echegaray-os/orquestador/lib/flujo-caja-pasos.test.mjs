@@ -163,3 +163,50 @@ test('sólo el generador de texto declara "Proveedores" como pestaña suya', () 
   assert.deepEqual(dueñosDeLaPestaña, ['proveedores-materiales-pestana.mjs'],
     'dos pasos declaran "Proveedores": el censo va a reportar dos dueños de la misma pestaña')
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL CONTROL QUE NADIE CORRÍA (14/08/2026)
+//
+// `_CRUCE_ARCA` estuvo diez días sin refrescarse con `Materiales` leyendo $88.078.801 de ahí. El censo
+// de dueños lo habría dicho la primera mañana — existía desde el 23/07 y no estaba en PASOS. Un
+// control que hay que acordarse de tipear tiene la misma disponibilidad que el defecto que persigue.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('el censo de dueños CORRE en el pipeline: es el único que ve una pestaña sin dueño', () => {
+  assert.ok(PASOS.some(([s]) => s === 'auditar-duenos-pestanas.mjs'),
+    'sin este paso, una pestaña huérfana nueva sólo se descubre si alguien tipea el comando')
+})
+
+test('el censo es un REPORTE: su ≠0 no puede contar como fallo de datos ni bloquear la frescura', () => {
+  // La frescura del Cash Flow SÓLO se registra si `fallaron.length === 0`. Contado como fallo, el
+  // censo la apagaría todos los días que encuentre una huérfana — que son justo los días que importa.
+  assert.equal(esReporte('auditar-duenos-pestanas.mjs'), true)
+})
+
+test('EL DOBLE CONTEO DE COMPRAS SE MIDE SOLO: era el auditor que había que acordarse de tipear', () => {
+  // El 14/08 la caja física se fue a −$15.051.781 y parte de ese agujero eran siete filas de Compras
+  // marcadas "Efectivo" que el banco había debitado por tarjeta ($3.263.770,37 entre las siete). El
+  // control que las encuentra existía ese mismo día y sólo corría a mano — la misma historia que
+  // `_CRUCE_ARCA`. Sin este test, sacarlo del pipeline no rompe nada y no lo nota nadie.
+  assert.ok(PASOS.some(([s]) => s === 'auditar-doble-conteo-compras.mjs'),
+    'sin este paso, una compra que resta dos veces sólo se descubre si alguien tipea el comando')
+  // ES UN REPORTE: su ≠0 significa "encontré filas para mirar", no "no pude generar los datos".
+  // Contado como fallo apagaría la frescura del Cash Flow justo los días que encuentra algo.
+  assert.equal(esReporte('auditar-doble-conteo-compras.mjs'), true)
+  // Y NO DECLARA NINGUNA PESTAÑA: sólo lee. Las celdas de Compras son del dueño y el cruce es por
+  // importe —probable, no cierto—: corregirlas automáticamente ya duplicó $2,1M en este repo.
+  const [, , pestanas] = PASOS.find(([s]) => s === 'auditar-doble-conteo-compras.mjs')
+  assert.deepEqual(pestanas, [])
+})
+
+test('el censo corre AL FINAL: corriendo primero reportaría como FANTASMA la pestaña que la corrida crea', () => {
+  const pos = (s) => PASOS.findIndex(([x]) => x === s)
+  const censo = pos('auditar-duenos-pestanas.mjs')
+  // Cualquier paso que DECLARE una pestaña propia tiene que haber corrido antes: si no, esa pestaña
+  // puede no existir todavía en el archivo y el censo la contaría como "declarada y NO EXISTE".
+  for (const [script, , pestanas] of PASOS) {
+    if (!(pestanas || []).length) continue
+    assert.ok(pos(script) < censo,
+      `${script} declara ${pestanas.join(', ')} y corre DESPUÉS del censo: un falso fantasma por corrida vuelve ruido al control`)
+  }
+})

@@ -184,6 +184,114 @@ export function desalineados(destinos = [], leer = () => undefined) {
 const a1 = (fila, col) => `${String.fromCharCode(64 + col)}${fila}`
 
 /**
+ * NÚCLEO PURO: los pedidos para BORRAR nombres del archivo.
+ *
+ * ═══ UN NOMBRE SIN LECTOR NO ES INOCUO: ES UN CIEGO QUE TODAVÍA NO NACIÓ (14/08/2026) ═══
+ *
+ * Medido en el archivo vivo: de los doce `ARCA_*`, DIEZ no los cita ninguna fórmula del libro y los
+ * doce vivían sobre `Proveedores!B124:C129`, que hoy son la tabla de comprobantes faltantes — CUITs
+ * y números de comprobante bajo nombres que prometen contadores e importes. Un nombre huérfano no
+ * hace daño el día que se fosiliza; lo hace el día que alguien escribe la primera fórmula que lo usa,
+ * y para entonces ya nadie recuerda que estaba anclado a un layout que se fue.
+ *
+ * Retirarlo tiene el modo de falla correcto: la fórmula que lo cite mañana da `#NAME?`, que se VE.
+ * Dejarlo apuntando a un CUIT da un número creíble en otra pestaña, que no se ve. Entre un error
+ * visible y una mentira silenciosa, este archivo elige siempre el error visible.
+ *
+ * El que no existe no se borra: pedir `deleteNamedRange` de un id inventado hace fallar el batch
+ * entero y con él la escritura de la que cuelga.
+ *
+ * @param {string[]} nombres
+ * @param {Array<{name:string, namedRangeId:string}>} existentes lo que ya hay en el archivo
+ */
+export function retirar(nombres = [], existentes = []) {
+  const porNombre = new Map(existentes.map((r) => [r.name, r]))
+  return nombres
+    .map((n) => porNombre.get(n))
+    .filter(Boolean)
+    .map((r) => ({ deleteNamedRange: { namedRangeId: r.namedRangeId } }))
+}
+
+/**
+ * NÚCLEO PURO: qué nombres del ARCHIVO ENTERO tienen debajo algo que no es lo que prometen.
+ *
+ * ═══ POR QUÉ NO ALCANZA CON LA VERIFICACIÓN DEL GENERADOR (14/08/2026) ═══
+ *
+ * `publicar` y `verificarNombresVivos` miran los doce nombres de ARCA porque su generador se declara
+ * responsable de ellos. El archivo tiene OCHENTA. Un nombre que sobrevive a un rediseño no es un
+ * problema de ARCA: es lo que le puede pasar a cualquiera de los ochenta el día que su bloque se
+ * mueva, y el único control que los mira a todos —`auditar-rangos-fosilizados.mjs`— pregunta si la
+ * celda está vacía, que es la mitad de la pregunta. `CAJA_FECHA_SALDO` apuntando al total de caja no
+ * está vacío: tiene $68M donde va una fecha, y así vació todos los tramos futuros de la escalera.
+ *
+ * Acá se hace la otra mitad, sobre el archivo real y para todos: la especie que el nombre promete
+ * contra la que la celda tiene. Los que no declaran especie no se juzgan — inventar un criterio para
+ * poder opinar es peor que no opinar.
+ *
+ * @param {Array<{nombre:string, hoja:string|null, valor:unknown, especie?:string}>} nombrados
+ * @returns {Array<{nombre:string, hoja:string|null, espera:string, encontro:string, valor:unknown}>}
+ */
+export function mientenPorEspecie(nombrados = []) {
+  const destinos = nombrados.map((n) => ({ name: n.nombre, fila: 0, col: 0, especie: n.especie }))
+  const porNombre = new Map(nombrados.map((n) => [n.nombre, n]))
+  return desalineados(destinos, (d) => porNombre.get(d.name)?.valor)
+    .map((m) => ({ nombre: m.name, hoja: porNombre.get(m.name)?.hoja ?? null, espera: m.espera, encontro: m.encontro, valor: m.valor }))
+}
+
+/**
+ * NÚCLEO PURO: de los nombres cuyo destino nuevo no convence, cuáles se mueven IGUAL.
+ *
+ * ═══ SI EL DESTINO NUEVO NO CONVENCE PERO EL VIEJO ESTÁ PEOR, SE MUEVE IGUAL (dictamen 07/08) ═══
+ *
+ * El fail-closed dejó dos nombres (ANEXO_DIAS_CAJA, ANEXO_DIF_CONCILIACION) apuntando a celdas VACÍAS
+ * cuando el anexo se compactó dos filas: el destino nuevo se descartó porque su valor todavía no
+ * había recalculado, y el nombre quedó clavado en una celda muerta — el control "CAJA vs Cash Flow"
+ * leyó $0 para siempre sin un solo error. Quedarse quieto sólo protege si lo que hay es mejor que lo
+ * que viene.
+ *
+ * ═══ Y "MEJOR" NO ES "NO ESTÁ VACÍO" (14/08/2026) ═══
+ *
+ * Esa era la regla hasta hoy, y produjo un empate permanente. Medido en el archivo vivo: los doce
+ * `ARCA_*` vivían sobre `Proveedores!B124:C129` —CUITs y números de comprobante— bajo nombres que
+ * prometen contadores e importes. Como esas celdas NO estaban vacías, el rescate no los tomaba; como
+ * el destino calculado tampoco convencía, `publicar` no los movía. Diez días clavados sobre basura,
+ * gritando el mismo aviso cada dos horas y sin ninguna corrida capaz de sanarlos: el fail-closed se
+ * había convertido en un candado sobre el error.
+ *
+ * Una celda VACÍA bajo un nombre publicado y una celda con un CUIT bajo un nombre que promete plata
+ * son EL MISMO defecto con distinta cara —las dos hacen que otra pestaña muestre un número que no es—
+ * y la segunda es la peor, porque la vacía al menos da 0 y la otra da un número creíble. Así que la
+ * pregunta no es "¿está vacía?" sino la misma que se le hace al destino nuevo: ¿tiene la especie que
+ * el nombre promete? Si el rango ACTUAL tampoco la tiene, moverlo no puede empeorar nada.
+ *
+ * Lo que NO cambia: un nombre que no existe no se CREA sobre contenido dudoso (el caso ARCA del
+ * 05/08) y uno anclado en otra pestaña puede estar bien donde está.
+ *
+ * @param {Array<{name:string, especie?:string}>} malApuntados lo que devolvió `desalineados`
+ * @param {Array<{name:string, namedRangeId:string, range?:object}>} existentes
+ * @param {number} sheetId la pestaña donde tienen que vivir
+ * @param {(r:object) => unknown} leerActual el valor de la celda a la que apunta HOY el nombre;
+ *        `undefined` cuando cae fuera de lo que se leyó (no se pudo mirar ⇒ se rescata)
+ * @returns {string[]} los nombres que se mueven igual
+ */
+export function aRescatar(malApuntados = [], existentes = [], sheetId = null, leerActual = () => undefined) {
+  const porNombre = new Map(existentes.map((r) => [r.name, r]))
+  return malApuntados.filter((m) => {
+    const actual = porNombre.get(m.name)?.range
+    if (!actual || actual.sheetId !== sheetId) return false
+    const vAct = leerActual(actual)
+    // Fuera del rectángulo leído — que es exactamente cómo queda un nombre tras una compactación—:
+    // no se pudo mirar, y "no sé" del lado del rescate es lo correcto porque el destino calculado
+    // SÍ se miró. Con `undefined` el desalineado da 'vacio' y cae igual acá; se deja explícito.
+    if (vAct === undefined) return true
+    // `desalineados` devuelve la especie prometida en `espera`; un destino puede además traerla en
+    // `especie`. Se pregunta con la MISMA especie con la que se juzgó el destino nuevo: comparar el
+    // rango viejo contra otra vara sería el "control validado contra su propia información".
+    return desalineados([{ name: m.name, fila: 0, col: 0, especie: m.espera ?? m.especie }], () => vAct).length > 0
+  }).map((m) => m.name)
+}
+
+/**
  * Publica los nombres Y COMPRUEBA QUE APUNTEN A ALGO DE LA ESPECIE PROMETIDA.
  *
  * La relectura es UNA sola llamada: el rectángulo que cubre todos los destinos. Doce lecturas
@@ -240,21 +348,14 @@ export async function publicar(google, fileId, sheetId, destinos = [], { titulo 
       // "CAJA vs Cash Flow" leyó $0 para siempre sin un solo error. Quedarse quieto sólo protege si
       // lo que hay es mejor que lo que viene: si el rango ACTUAL apunta fuera de la pestaña o a una
       // celda vacía, moverlo al destino calculado no puede empeorar nada, y el recálculo lo sana.
-      const porNombre = new Map(existentes.map((r) => [r.name, r]))
-      const rescatar = malApuntados.filter((m) => {
-        const actual = porNombre.get(m.name)?.range
-        // Un nombre que NO existe no se crea sobre contenido dudoso (el caso ARCA del 05/08), y uno
-        // anclado en OTRA pestaña puede estar bien donde está: sólo se rescata el que ya vive en esta
-        // pestaña con su celda actual muerta (vacía dentro del rectángulo leído, o corrida fuera de
-        // él — que es exactamente cómo quedan tras una compactación).
-        if (!actual || actual.sheetId !== sheetId) return false
-        const df = actual.startRowIndex + 1 - f0, dc = actual.startColumnIndex + 1 - c0
-        if (df < 0 || dc < 0 || df >= leido.length) return true
-        const vAct = (leido[df] || [])[dc]
-        return vAct === undefined || vAct === null || vAct === ''
-      }).map((m) => m.name)
+      const rescatar = aRescatar(malApuntados, existentes, sheetId,
+        (r) => {
+          const df = r.startRowIndex + 1 - f0, dc = r.startColumnIndex + 1 - c0
+          if (df < 0 || dc < 0 || df >= leido.length) return undefined
+          return (leido[df] || [])[dc]
+        })
       if (rescatar.length) {
-        console.warn(`  ⚠ ${rescatar.length} nombre(s) con destino dudoso pero rango actual MUERTO — se mueven igual: ${rescatar.join(', ')}`)
+        console.warn(`  ⚠ ${rescatar.length} nombre(s) con destino dudoso pero rango actual MUERTO O MENTIROSO — se mueven igual: ${rescatar.join(', ')}`)
         const set = new Set(rescatar)
         aPublicar = aPublicar.concat(destinos.filter((d) => set.has(d.name)))
       }

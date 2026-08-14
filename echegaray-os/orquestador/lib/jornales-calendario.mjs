@@ -68,7 +68,12 @@ export const COLS_CALENDARIO = [
   // "Período" y no "Quincena": la primera fila puede ser LO QUE QUEDA de la quincena en curso, y
   // rotularla "Quincena" es lo que hacía que el dueño leyera una quincena de un día. El rótulo dice
   // lo que la fila es.
-  'Período', 'Hasta', 'Se paga el', 'Obreros', 'Oficina', 'Dirección', 'TOTAL', 'Efectivo (obra)',
+  // «Efectivo» y no «Efectivo (obra)» desde el 14/08: la columna dejó de ser sólo de obra. El dueño
+  // ordenó que oficina se abra por canal igual que obreros, y su fuente (`_J_OFICINA`) trae las mismas
+  // tres columnas BANCO/ADELANTO/TOTAL RECIBO que la de obra. Dirección sigue afuera: de esos tres
+  // retiros el canal no está registrado en ninguna parte, y repartirlos con la proporción de otro
+  // grupo sería inventarlo.
+  'Período', 'Hasta', 'Se paga el', 'Obreros', 'Oficina', 'Dirección', 'TOTAL', 'Efectivo',
 ]
 
 /** La letra A1 de una columna del calendario, buscada por su rótulo. Falla RUIDOSA. */
@@ -152,6 +157,19 @@ export function formulaVentana({ rangoImporte, rangoFecha, celdaDesde, celdaHast
 export const MIN_QUINCENAS_SHARE = 6
 
 /**
+ * ⚠ SIN CONSUMIDOR DESDE EL 14/08 — NO LA USES SIN LEER ESTO PRIMERO.
+ *
+ * Esta función y las cuatro que la acompañan (`formulaGlosaShareEfectivo`, `shareEfectivoAnual`,
+ * `formulaAcuerdoDeclarado`, `formulaAcuerdoMensual`, `acuerdoDeclarado`, `acuerdoMensual`) medían el
+ * canal de pago REAL sobre el histórico y publicaban la brecha contra el acuerdo. El dueño las sacó de
+ * la pestaña: *"te he dicho q el acuerdo es 50 y 50 todas las quincenas y asi y todo no se entiende
+ * nada"*. El 50/50 es la REGLA de pago (ver `lib/jornales-reparto-pago.mjs`), no una métrica a auditar,
+ * y publicar el porcentaje medido al lado del acuerdo daba dos números para el mismo canal.
+ *
+ * Se conservan con sus tests porque la MEDICIÓN sigue siendo verdadera y sirve para contestar "¿cuánto
+ * de lo que pagamos pasó de verdad por el banco?" — una pregunta de control interno, de otra pestaña y
+ * de otro día. Volver a enchufarlas al cuadro que decide el pago es reponer el defecto.
+ *
  * NÚCLEO PURO: qué proporción de la quincena de obra sale en EFECTIVO, medida sobre el registro.
  *
  * ═══ POR QUÉ SE MIDE Y NO SE SUPONE ═══
@@ -214,6 +232,59 @@ export function formulaShareEfectivo({ banco, total, hasta, pagado }, f0, f1) {
 }
 
 /**
+ * NÚCLEO PURO: QUÉ PROPORCIÓN DE LA QUINCENA SALE COMO ADELANTO — PONDERADA, NO PROMEDIADA.
+ *
+ * ═══ LA ORDEN, REPETIDA DOS VECES (14/08) ═══
+ *
+ * *"te pedi q los 'adelantos' de los obreros se proyectaran en base a un porcentaje ponderado"*. Y
+ * antes: *"el adelanto es algo q no se puede proyectar asi como está, se tiene q hacer un calculo
+ * promedio del año y con ese % armarlo proyectado"*.
+ *
+ * Lo que había era el share de EFECTIVO —adelanto + resto contra recibo, juntos— y el adelanto no
+ * tenía proyección propia en ninguna parte. Son dos cosas distintas para tesorería: el efectivo es
+ * cuánto billete hay que juntar para el día de pago; el ADELANTO es plata que sale ANTES, a lo largo
+ * de la quincena, y por eso tiene su propio ritmo de caja.
+ *
+ * ES UNA RAZÓN DE IMPORTES: `Σadelanto / Σtotal`, nunca `AVERAGE(adelanto_i/total_i)`. Medido sobre las
+ * 14 quincenas pagadas de 2026: el ponderado da 13,73% ($15.794.784 sobre $115.054.273) y el promedio
+ * simple de porcentajes da bastante más, porque las quincenas chicas —enero, las que salieron casi
+ * enteras en billetes— pesan lo mismo que las de $10M. Sobre la proyección a diciembre esa diferencia
+ * es plata que se junta o no se junta.
+ *
+ * MISMA VENTANA Y MISMO PISO QUE EL SHARE DE EFECTIVO: el año calendario, sólo quincenas PAGADAS, y sin
+ * `MIN_QUINCENAS_SHARE` no se proyecta. Dos definiciones de "la base sobre la que se mide un canal de
+ * pago" en la misma pestaña es cómo aparecen dos porcentajes que no suman con el total.
+ *
+ * @param {{adelanto:string, total:string, hasta:string, pagado:string}} col letras del registro
+ */
+export function formulaShareAdelanto({ adelanto, total, hasta, pagado }, f0, f1) {
+  const v = ventanaAnualPagada({ total, hasta, pagado }, f0, f1)
+  const rg = (c) => `$${c}$${f0}:$${c}$${f1}`
+  // SIN IFERROR, por lo mismo que el share de efectivo: o hay base suficiente —y entonces ΣTOTAL>0 por
+  // construcción— o no se proyecta. Un 0/0 atrapado devolvería un número plausible fabricado.
+  return `=IF(SUMPRODUCT(${v})<${MIN_QUINCENAS_SHARE};"";`
+    + `SUMPRODUCT(${v}*N(${rg(adelanto)}))/SUMPRODUCT(${v}*N(${rg(total)})))`
+}
+
+/**
+ * EL MISMO CRITERIO EN JAVASCRIPT — para poder AFIRMAR el porcentaje sin leer la celda que lo calcula.
+ * @param {Array<{hasta:Date, pagado:Date|null, adelanto:number, total:number}>} filas
+ */
+export function shareAdelantoAnual(filas = [], hoy = new Date()) {
+  const enero = new Date(hoy.getFullYear(), 0, 1)
+  const base = (filas ?? []).filter((f) => f.hasta >= enero && f.hasta <= hoy
+    && f.pagado instanceof Date && Number(f.total) > 0)
+  const adelanto = base.reduce((a, f) => a + Number(f.adelanto || 0), 0)
+  const total = base.reduce((a, f) => a + Number(f.total || 0), 0)
+  return {
+    quincenas: base.length,
+    adelanto,
+    total,
+    share: base.length < MIN_QUINCENAS_SHARE ? null : adelanto / total,
+  }
+}
+
+/**
  * NÚCLEO PURO: el rótulo que declara sobre qué se midió el share — o por qué no se pudo.
  *
  * DOS DATOS Y NINGUNA EXPLICACIÓN. El dueño rechazó esta pestaña por "muchas palabras y frases y
@@ -267,6 +338,146 @@ export function shareEfectivoAnual(filas, hoy = new Date()) {
     banco,
     total,
     share: base.length < MIN_QUINCENAS_SHARE ? null : 1 - banco / total,
+  }
+}
+
+/**
+ * NÚCLEO PURO: LO QUE EL ACUERDO DICE CONTRA LO QUE LA PLANILLA REGISTRA — la contradicción, medida.
+ *
+ * ═══ POR QUÉ ESTA LÍNEA (14/08) ═══
+ *
+ * El dueño: *"el acuerdo es el mismo 50% por banco (recibo de sueldo), 50% efectivo"*. Medido sobre
+ * las quincenas pagadas de 2026: **15,8% por banco**, $18.191.908 de $115.054.273, y **9 de 15
+ * quincenas con la columna Banco en cero**.
+ *
+ * O el acuerdo no se está cumpliendo, o la columna Banco está sub-cargada. Las dos cosas son
+ * información que él necesita para decidir, y ninguna se arregla escribiendo un 50% en la pestaña:
+ * fabricar el número que el acuerdo promete convertiría el control en decoración. La pestaña sigue
+ * midiendo LO REAL —el share de arriba no se toca— y esta línea pone al lado la distancia contra lo
+ * declarado, en pesos y en quincenas.
+ *
+ * `ΣTOTAL/2` y no `0,5*ΣTOTAL`: un literal decimal escrito por API viaja en el locale del archivo
+ * (es_AR, coma decimal) y es una fuente de #ERROR que no hace falta correr. El patrón de `TEXT` sí va
+ * en US (`#,##0`), que es la otra mitad de la misma regla.
+ *
+ * ═══ LA GLOSA MIDE 43 CARACTERES Y NO 78 (14/08, defecto visto en el PDF) ═══
+ *
+ * La primera versión decía «acuerdo 50% · faltan $39.335.228 por banco · 8 de 14 quincenas con banco
+ * en $0»: 78 caracteres en la columna C, y `auditarPatron` lo cazó en vivo como `nota-en-el-medio`
+ * (el tope es `LARGO_NOTA` = 60). No es cosmético — en el PDF el texto se derramaba sobre las
+ * columnas de la derecha y corría los encabezados «Dirección» y «TOTAL» del calendario.
+ *
+ * Lo que se fue es lo que YA dice el rótulo de la columna A («Por banco — contra el acuerdo 50/50
+ * declarado») y la palabra «quincenas», que la fila entera está contando. Queda el dato accionable:
+ * cuántos pesos faltan y cuántos períodos no tienen un peso por banco.
+ *
+ * @param {{banco:string, total:string, hasta:string, pagado:string}} cols letras del registro
+ * @param {number} f0 primera fila del registro · @param {number} f1 última
+ * @param {number} fShare fila del share de efectivo, del que esta línea deriva la fracción por banco
+ */
+export function formulaAcuerdoDeclarado({ banco, total, hasta, pagado }, f0, f1, fShare) {
+  const rg = (c) => `$${c}$${f0}:$${c}$${f1}`
+  return brechaContraElAcuerdo({
+    v: ventanaAnualPagada({ total, hasta, pagado }, f0, f1),
+    rgBanco: rg(banco), rgTotal: rg(total), fShare, sinBase: 'sin quincenas pagadas',
+  })
+}
+
+/**
+ * NÚCLEO PURO: LA MISMA BRECHA, PARA UN BLOQUE MENSUAL (Oficina).
+ *
+ * ═══ POR QUÉ NO SE COPIA LA DE ARRIBA (14/08) ═══
+ *
+ * El dueño: *"quiero q la tabla de 'oficina' sea igual que la de 'obreros' dado q el acuerdo es el
+ * mismo 50% por banco (recibo de sueldo), 50% efectivo"*. El acuerdo es el mismo, así que el CONTROL
+ * tiene que ser el mismo — no uno parecido escrito al lado. Las dos líneas comparten el cuerpo
+ * (`brechaContraElAcuerdo`) y difieren sólo en la ventana, que es lo único que de verdad cambia:
+ *
+ *   · obra    → quincenas del año con fecha en «Pagado el» (el canal recién es un hecho cuando salió);
+ *   · oficina → meses con «Pagado» cargado, que es la MISMA ventana con la que se mide su share de
+ *     efectivo dos filas más arriba. Dos ventanas distintas para el mismo canal darían dos porcentajes
+ *     que no cierran entre sí en la misma pestaña.
+ *
+ * Oficina no tiene columna «Pagado el»: su bloque es mensual y lo que la planilla registra como salido
+ * es su «Pagado». Exigirle una marca de pago que no existe dejaría la ventana vacía y el control mudo.
+ *
+ * @param {{banco:string, pagado:string}} cols letras del bloque mensual
+ * @param {number} r0 primer mes · @param {number} r1 último mes
+ * @param {number} fShare fila del share de efectivo del bloque
+ */
+export function formulaAcuerdoMensual({ banco, pagado }, r0, r1, fShare) {
+  const rg = (c) => `$${c}$${r0}:$${c}$${r1}`
+  return brechaContraElAcuerdo({
+    v: `--(N(${rg(pagado)})>0)`, rgBanco: rg(banco), rgTotal: rg(pagado), fShare, sinBase: 'sin meses pagados',
+  })
+}
+
+/**
+ * El cuerpo compartido: la fracción por banco y la distancia contra el 50% declarado.
+ *
+ * NO SE FABRICA EL 50%. La celda de la izquierda publica LO REAL —derivado del share de efectivo, para
+ * que la pestaña no tenga dos números para el mismo canal— y la glosa publica la distancia. Escribir
+ * el 50% que el acuerdo promete convertiría el control en decoración.
+ *
+ * Los períodos SIN un peso por banco van al lado del importe: es lo que distingue "se paga poco por
+ * banco" de "hay períodos enteros sin registrar el canal", que son dos problemas distintos y se
+ * arreglan distinto. Sin ese número el porcentaje no se puede accionar.
+ */
+function brechaContraElAcuerdo({ v, rgBanco, rgTotal, fShare, sinBase }) {
+  const sBanco = `SUMPRODUCT(${v}*N(${rgBanco}))`
+  const sTotal = `SUMPRODUCT(${v}*N(${rgTotal}))`
+  const enCero = `SUMPRODUCT(${v}*(N(${rgBanco})=0))`
+  const n = `SUMPRODUCT(${v})`
+  return {
+    valor: `=IF($B$${fShare}="";"";1-$B$${fShare})`,
+    glosa: `=IF($B$${fShare}="";"⊘ sin base para medir el canal";`
+      + `IF(${sTotal}=0;"⊘ ${sinBase}";`
+      + `"faltan $"&TEXT(MAX(0;${sTotal}/2-${sBanco});"#,##0")&" por banco · "`
+      + `&${enCero}&" de "&${n}&" en $0"))`,
+  }
+}
+
+/**
+ * EL MISMO CRITERIO EN JAVASCRIPT, para poder afirmar el número sin leer la celda que él produce.
+ *
+ * @param {Array<{hasta:Date, pagado:Date|null, banco:number, total:number}>} filas
+ * @returns {{porBanco:number|null, faltaParaElAcuerdo:number, enCero:number, quincenas:number}}
+ */
+export function acuerdoDeclarado(filas, hoy = new Date(), acuerdo = 0.5) {
+  const { quincenas, banco, total, share } = shareEfectivoAnual(filas, hoy)
+  const enero = new Date(hoy.getFullYear(), 0, 1)
+  const base = (filas ?? []).filter((f) => f.hasta >= enero && f.hasta <= hoy
+    && f.pagado instanceof Date && Number(f.total) > 0)
+  return {
+    porBanco: share === null ? null : 1 - share,
+    faltaParaElAcuerdo: Math.max(0, total * acuerdo - banco),
+    enCero: base.filter((f) => !(Number(f.banco) > 0)).length,
+    quincenas,
+  }
+}
+
+/**
+ * EL MISMO CRITERIO PARA EL BLOQUE MENSUAL, EN JAVASCRIPT.
+ *
+ * Existe por la misma razón que su gemelo de arriba: la fórmula es un string y un test sobre ella
+ * prueba que dice lo que quisimos escribir, nunca que el número sale bien. Con esto la aritmética del
+ * control se prueba con números, sin leer la celda que ella misma produce.
+ *
+ * SIN PISO DE PERÍODOS. El de obra exige `MIN_QUINCENAS_SHARE` porque proyecta caja con ese
+ * porcentaje; éste sólo publica una brecha ya ocurrida, y un mes pagado ya es una brecha real.
+ *
+ * @param {Array<{pagado:number, banco:number}>} meses los meses del bloque, en cualquier orden
+ * @returns {{porBanco:number|null, faltaParaElAcuerdo:number, enCero:number, meses:number}}
+ */
+export function acuerdoMensual(meses = [], acuerdo = 0.5) {
+  const base = (meses ?? []).filter((m) => Number(m.pagado) > 0)
+  const banco = base.reduce((a, m) => a + Number(m.banco || 0), 0)
+  const total = base.reduce((a, m) => a + Number(m.pagado || 0), 0)
+  return {
+    porBanco: total > 0 ? banco / total : null,
+    faltaParaElAcuerdo: Math.max(0, total * acuerdo - banco),
+    enCero: base.filter((m) => !(Number(m.banco) > 0)).length,
+    meses: base.length,
   }
 }
 

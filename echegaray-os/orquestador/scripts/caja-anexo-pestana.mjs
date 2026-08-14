@@ -23,8 +23,13 @@ import { conColaMedida, avisoDeCola, rotulosPropios } from '../lib/cola-de-rango
 import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
 import { publicar } from '../lib/rangos-nombrados.mjs'
 import { requestsTextoPorContenido } from '../lib/formato-texto-por-contenido.mjs'
-import { grillaAnexo, ANCHO_ANEXO, ANCHOS_ANEXO, PESTANA_ANEXO, SELLO_EFECTIVO } from '../lib/caja-anexo.mjs'
-import { necesitaSello } from '../lib/caja-efectivo-fisico.mjs'
+import {
+  grillaAnexo, ANCHO_ANEXO, ANCHOS_ANEXO, PESTANA_ANEXO, SELLO_EFECTIVO, HISTORICO_EFECTIVO, claveDeRotulo,
+} from '../lib/caja-anexo.mjs'
+import {
+  necesitaSello, dictamenEfectivo, avisoEfectivoImposible, selloPorRenglonSembrable,
+} from '../lib/caja-efectivo-fisico.mjs'
+import { ALERTA } from '../lib/glifos.mjs'
 import { DESDE_CAJA, CELDA_CAJA_MINIMA, ESPECIE_ANEXO } from '../lib/caja-anexo-nombres.mjs'
 import { TIPO_CAMBIO } from '../lib/caja-disponibilidades.mjs'
 import { conceptosFueraDelCalendario, lineasDeCaja, marcaDeLinea } from '../lib/calendario-egresos.mjs'
@@ -41,19 +46,28 @@ const letra = (i) => String.fromCharCode(65 + i)
  * Hoy es UNA sola fila —el "Dólar declarado por la empresa", opcional— y se busca POR SU RÓTULO, no
  * por número de fila: si mañana el bloque se mueve, el dato viaja con él. Es exactamente el defecto
  * que en CAJA dejó la caja física en $0 cuando el bloque del arqueo bajó cuatro filas.
+ *
+ * LA CLAVE SE NORMALIZA DE LOS DOS LADOS (`claveDeRotulo`). Acá vivía el defecto que dejó el sello sin
+ * rescatar desde que existe: el rótulo del Sheet se recortaba y se comparaba contra una constante con
+ * seis espacios de sangría, así que ninguna de las dos filas del sello coincidió nunca.
  */
 export function rescatarAnexo(filas = []) {
   const cargado = new Map()
+  // Los seis renglones del histórico llevan en D lo que valían al sellarse. Se rescatan por RÓTULO
+  // igual que el sello total: sin esto, cada regeneración perdería el diagnóstico de quién se movió —
+  // que es lo único que el 14/08 habría señalado a OFICINA en vez de a "algo por $15M".
+  const historico = new Set(HISTORICO_EFECTIVO.map((l) => claveDeRotulo(l.rotulo)))
   for (const fila of filas) {
-    const a = String(fila?.[0]?.valor ?? '').trim()
+    const a = claveDeRotulo(fila?.[0]?.valor)
     const leer = (i) => { const c = fila?.[i]; return c?.formula ?? (c?.numero ?? c?.valor ?? '') }
     // El sello del conteo lo escribió una CORRIDA, no una persona, pero se rescata igual: si cada
     // regeneración lo perdiera, cada regeneración desharía el sello y el neto volvería a 0. Sólo se
     // acepta el NÚMERO — un texto ahí no es un sello, es basura que forzaría un resello (lado sano).
     const num = (i) => { const c = fila?.[i]; return typeof c?.numero === 'number' ? c.numero : '' }
-    if (a === SELLO_EFECTIVO.sello) { cargado.set(a, { selloNeto: num(3), selloFecha: num(5) }); continue }
-    if (a === SELLO_EFECTIVO.estado) { cargado.set(a, { selloValor: num(3) }); continue }
-    if (a !== TIPO_CAMBIO.declarado.nombre) continue
+    if (a === claveDeRotulo(SELLO_EFECTIVO.sello)) { cargado.set(a, { selloNeto: num(3), selloFecha: num(5) }); continue }
+    if (a === claveDeRotulo(SELLO_EFECTIVO.estado)) { cargado.set(a, { selloValor: num(3) }); continue }
+    if (historico.has(a)) { cargado.set(a, { selloLinea: num(3) }); continue }
+    if (a !== claveDeRotulo(TIPO_CAMBIO.declarado.nombre)) continue
     cargado.set(a, { saldo: leer(2), fecha: leer(5), origen: leer(6) })
   }
   return cargado
@@ -76,8 +90,11 @@ async function sellarConteo(google, g) {
     valor: Number(g.filas[g.fEstado - 1]?.[3]) || 0,
     fecha: Number(g.filas[g.fSello - 1]?.[5]) || 0,
   }
-  if (!necesitaSello(arqueo, sellado)) return console.log('  🧷 sello vigente: el conteo no cambió')
   const [f0, f1] = g.filasHistorico
+  if (!necesitaSello(arqueo, sellado)) {
+    console.log('  🧷 sello vigente: el conteo no cambió')
+    return sembrarSelloPorRenglon(google, g, sellado)
+  }
   const hist = await google.readSheetValues(ID, `${PESTANA_ANEXO}!C${f0}:C${f1}`, { render: 'UNFORMATTED_VALUE' })
   const filas = (f1 - f0 + 1)
   const leidas = (hist ?? []).length
@@ -89,8 +106,71 @@ async function sellarConteo(google, g) {
     { range: `${PESTANA_ANEXO}!D${g.fSello}`, values: [[neto]] },
     { range: `${PESTANA_ANEXO}!F${g.fSello}`, values: [[arqueo.fecha]] },
     { range: `${PESTANA_ANEXO}!D${g.fEstado}`, values: [[arqueo.valor]] },
+    // EL SELLO DE CADA RENGLÓN, DE LA MISMA LECTURA Y EN EL MISMO BATCH. El total de arriba es el que
+    // resta; éstos son el diagnóstico —C menos D dice QUÉ canal se movió— y por venir del mismo `hist`
+    // no pueden discrepar del total. Escritos en dos batches, una falla parcial dejaría un desglose
+    // que no suma su propio sello, que es peor que no tenerlo.
+    { range: `${PESTANA_ANEXO}!D${f0}:D${f1}`, values: hist.map((fila) => [fila[0]]) },
   ])
   console.log(`  🧷 conteo SELLADO: arqueo $${Math.round(arqueo.valor).toLocaleString('es-AR')} (serial ${arqueo.fecha}) · histórico al conteo $${Math.round(neto).toLocaleString('es-AR')}`)
+}
+
+/**
+ * EL SELLO DE CADA RENGLÓN, CUANDO EL TOTAL YA ESTABA SELLADO Y ELLOS NO.
+ *
+ * El sello por renglón nace con este cambio, así que las pestañas ya selladas tienen el total y no
+ * tienen el desglose — y sin desglose el aviso no puede nombrar al canal culpable hasta el próximo
+ * conteo, que puede tardar semanas.
+ *
+ * SÓLO SE SIEMBRA CUANDO SE PUEDE PROBAR QUE ES EXACTO: si el histórico de hoy suma EXACTAMENTE el
+ * total sellado, entonces no se movió nada desde el sello y el valor de hoy de cada renglón ES su
+ * valor al sellar. Si difiere aunque sea un centavo, algo se movió, no se sabe cuánto le tocó a cada
+ * uno, y repartirlo sería fabricar el dato: se deja vacío y el aviso lo dirá sin culpable.
+ */
+async function sembrarSelloPorRenglon(google, g) {
+  const [f0, f1] = g.filasHistorico
+  const total = Number(g.filas[g.fSello - 1]?.[3])
+  if (!Number.isFinite(total) || total === 0) return
+  const bloque = await google.readSheetValues(ID, `${PESTANA_ANEXO}!C${f0}:D${f1}`, { render: 'UNFORMATTED_VALUE' })
+  if ((bloque ?? []).length < f1 - f0 + 1) return
+  if (bloque.every((fila) => typeof fila?.[1] === 'number')) return
+  const hoy = bloque.map((fila) => (typeof fila?.[0] === 'number' ? fila[0] : NaN))
+  if (!selloPorRenglonSembrable(hoy, total)) {
+    return console.log('  🧷 sin sello por renglón: el histórico ya se movió desde el sello y repartirlo sería inventarlo')
+  }
+  await google.batchUpdateValues(ID, [{ range: `${PESTANA_ANEXO}!D${f0}:D${f1}`, values: hoy.map((v) => [v]) }])
+  console.log('  🧷 sello por renglón sembrado: el histórico suma exactamente el total sellado')
+}
+
+/**
+ * EL CONTROL QUE MANDA, PASE LO QUE PASE CON EL SELLO: un cajón no puede tener menos de cero pesos.
+ *
+ * Corre SIEMPRE y DESPUÉS de sellar, sobre los números que quedaron escritos y ya evaluados por
+ * Sheets — no sobre lo que este proceso cree haber escrito. El 14/08 la pestaña decía "✓ sellado al
+ * conteo del 07/08", era verdad, y el efectivo daba −$15.051.781 igual: ningún control miraba el
+ * resultado, sólo la vigencia del sello.
+ *
+ * NO TIRA: la fórmula ya degrada sola al conteo, así que la pestaña nunca publica el imposible. Lo que
+ * falta es que se ENTERE alguien, y por eso el aviso sale por STDOUT — el runner del pipeline escanea
+ * la salida estándar buscando la marca de alerta y la sube al resumen de la corrida. Un `console.warn`
+ * va a stderr y no lo lee nadie, que es cómo estos avisos se venían perdiendo.
+ */
+async function controlarEfectivo(google, g) {
+  const [f0] = g.filasHistorico
+  const arq = await google.readSheetValues(ID, DESDE_CAJA.arqueoArs, { render: 'UNFORMATTED_VALUE' })
+  const bloque = await google.readSheetValues(ID, `${PESTANA_ANEXO}!C${f0}:D${g.fSello}`, { render: 'UNFORMATTED_VALUE' })
+  const num = (x) => (typeof x === 'number' ? x : Number(x) || 0)
+  const neto = (bloque ?? []).reduce((s, fila) => s + num(fila?.[0]), 0)
+  const d = dictamenEfectivo({ arqueo: num(arq?.[0]?.[0]), neto })
+  // EL DELTA POR RENGLÓN: C (hoy) menos D (al sellar). Sin sello de renglón todavía cargado el delta
+  // es el renglón entero, así que sólo se nombra al culpable cuando su D es un número de verdad.
+  const por = HISTORICO_EFECTIVO.map((l, i) => {
+    const fila = bloque?.[i] ?? []
+    return typeof fila?.[1] === 'number' ? { rotulo: l.rotulo, delta: num(fila[0]) - num(fila[1]) } : null
+  }).filter(Boolean)
+  const aviso = avisoEfectivoImposible(d, { por, marca: ALERTA })
+  if (aviso) console.log(`  ${aviso}`)
+  else console.log(`  💵 efectivo en el cajón: $${Math.round(d.efectivo).toLocaleString('es-AR')} (el histórico se movió $${Math.round(d.movido).toLocaleString('es-AR')} desde el sello)`)
 }
 
 async function main() {
@@ -186,6 +266,10 @@ async function main() {
   // movimientos de efectivo corren desde el conteo, y hasta ese instante la fórmula muestra el
   // conteo tal cual (el sello viejo se autocancela). Ver el bloque en lib/caja-anexo.mjs.
   await sellarConteo(google, g).catch((e) => console.warn(`  ⚠ no pude sellar el conteo: ${e.message} — la pestaña muestra el conteo tal cual hasta la próxima corrida`))
+  // Y DESPUÉS, EL CONTROL DE LO IMPOSIBLE — haya sellado o no, haya fallado el sello o no. Si ni
+  // siquiera se puede leer para controlar, eso también se grita: un control mudo se lee como un
+  // control en verde, y ése es el modo de falla que este bloque entero vino a cerrar.
+  await controlarEfectivo(google, g).catch((e) => console.log(`  ${ALERTA} NO PUDE CONTROLAR EL EFECTIVO (${e.message}): nadie verificó que el cajón no dé negativo`))
 
   // LA CAJA MÍNIMA NO VIVE EN NINGUNA DE LAS DOS PESTAÑAS: el nombre apunta a su FUENTE. Así CAJA y el
   // anexo la leen sin que ninguno la copie — un parámetro tiene una sola dirección en el archivo.

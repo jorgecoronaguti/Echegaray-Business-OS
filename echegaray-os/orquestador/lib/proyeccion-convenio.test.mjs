@@ -11,6 +11,7 @@ import {
   formulaSigmaConvenio, lineaSupuestoConvenio, sigmaConvenioDelPlantel,
   baseDeJornales, quincenaAlConvenio, ROTULO_SIGMA,
 } from './proyeccion-convenio.mjs'
+import { expresionSinEscala } from './jornales-piso-uocra.mjs'
 import { parsearAcuerdos } from './uocra-acuerdos.mjs'
 import { crearGrilla } from './cargas-grilla.mjs'
 import { bloqueDeclarado, bloquePagado, bloqueProyeccion } from './cargas-bloques.mjs'
@@ -107,9 +108,19 @@ test('EL GUARD DE LA Σ: sin básicos rinde VACÍO, no cero — que es lo que la
   assert.match(f, /^IF\(OR\(/, 'la Σ volvió a ser un SUMPRODUCT pelado: con la réplica caída publica 0')
   assert.match(f, /SUMPRODUCT\(\$B\$18:\$B\$21;\$F\$18:\$F\$21\)=0/, 'falta el caso "no hay un solo peso valuado"')
   // Y EL AGUJERO CHICO: una categoría CON PERSONAS y sin básico se valuaba $0 adentro del total. El
-  // total seguía siendo plausible y nadie podía verlo. `--(F="")` × personas lo detecta.
-  assert.match(f, /SUMPRODUCT\(\$B\$18:\$B\$21;--\(\$F\$18:\$F\$21=""\)\)>0/,
+  // total seguía siendo plausible y nadie podía verlo.
+  //
+  // ═══ EL GUARD PREGUNTABA POR EL VACÍO Y SE COMIÓ MEDIO PLANTEL (14/08) ═══
+  //
+  // Era `--(F="")`. Medido en el archivo vivo: `F80` («OF M», 8 de 16 personas) traía el texto
+  // "Banco" —residuo del rediseño del 13/08— que no es vacío. El guard no disparó, SUMPRODUCT trató
+  // el texto como 0 y la Σ publicó $46.988 donde el plantel completo vale $97.772. La pregunta
+  // correcta es si la celda es un NÚMERO mayor que cero, y vive en UNA definición compartida con el
+  // control del piso (`expresionSinEscala`), porque dos copias de un control se separan.
+  assert.ok(f.includes(`${expresionSinEscala('$B$18:$B$21', '$F$18:$F$21')}>0`),
     'una categoría sin escala vuelve a entrar al total valuada en cero')
+  assert.doesNotMatch(f, /--\(\$F\$18:\$F\$21=""\)/,
+    'el guard volvió a preguntar por el vacío: un texto residual lo esquiva')
   assert.match(f, /;"";/, 'el guard tiene que rendir vacío: un 0 acá dice "no hay jornales que pagar"')
   assert.doesNotMatch(f, /,/, 'separador es-AR')
   // La línea del canario evalúa ESTA MISMA expresión —no una copia—, así que hereda el guard.
@@ -154,8 +165,15 @@ test('LA PESTAÑA DECLARA QUE ES UN SUPUESTO, NO EL JORNAL VIGENTE', () => {
   // NINGÚN MES NI IMPORTE ESTAMPADO: un número escrito acá envejece el día que entra un obrero.
   assert.doesNotMatch(l, /97\.?772|85\.?900/)
   assert.doesNotMatch(l, /agosto|Agosto|2026/)
-  // Y si la Σ da 0 —réplica caída— la línea lo dice en vez de dejar publicar $0 de jornales.
-  assert.match(l, /vac[íi]a/i, 'la réplica caída tiene que dejar la proyección vacía y decirlo')
+  // ═══ Y SI LA Σ DA 0, EL AVISO TIENE QUE DECIR LO QUE PASA DE VERDAD (14/08) ═══
+  //
+  // Decía "proyección vacía" y la proyección NO quedaba vacía: el `MAX(convenio; demanda)` de la
+  // sección 1 resuelve por la demanda de obras y publica $79.753.312 SIN piso de convenio adentro. El
+  // aviso estuvo encendido y nadie lo leyó como lo que era, porque mandaba a buscar una columna en
+  // blanco que no existía. Un cuadro vacío se ve; uno con el piso apagado, no.
+  assert.match(l, /SIN piso de convenio/, 'el aviso volvió a describir mal el síntoma')
+  assert.doesNotMatch(l, /proyecci[óo]n vac[íi]a/i,
+    'la proyección no queda vacía: sigue, sin piso — decirlo mal manda a buscar al lugar equivocado')
 })
 
 test('SIN ESCALA LA LÍNEA AVISA QUE LA BASE VOLVIÓ AL PACTADO: el criterio no cambia en silencio', () => {

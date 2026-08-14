@@ -54,6 +54,10 @@ const google = { async readSheetValues(id, range) { return data[range] || [] } }
 
 async function main() {
   check('parseMonto es-AR', parseMonto('$17.691.359') === 17691359 && parseMonto('$470.945,00') === 470945)
+  // UNFORMATTED_VALUE devuelve NÚMERO y ahí el punto es DECIMAL: sin la rama numérica, 429048.5 salía
+  // 4290485 —diez veces el importe, sin error— y el registro de cheques se lee así desde el 14/08.
+  check('parseMonto de un número no rompe los decimales', parseMonto(429048.5) === 429048.5 && parseMonto(500000) === 500000)
+  check('parseMonto de un número inválido → 0', parseMonto(NaN) === 0 && parseMonto(Infinity) === 0)
   check('parseFecha DD/MM/YYYY', parseFecha('18/7/2026')?.getMonth() === 6 && parseFecha('18/7/2026')?.getDate() === 18)
   check('parseFecha inválida → null', parseFecha('') === null && parseFecha('julio') === null)
 

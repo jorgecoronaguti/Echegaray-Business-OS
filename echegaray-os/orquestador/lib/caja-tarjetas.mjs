@@ -45,6 +45,7 @@
 
 import { terminoLibro } from './libro-sumas.mjs'
 import { ALERTA } from './glifos.mjs'
+import { DIAS_AVISO } from './fecha-de-frescura.mjs'
 
 /**
  * LOS ESTADOS QUE TODAVÍA NO PASARON POR EL BANCO.
@@ -65,6 +66,36 @@ export const FIN_DE_MES = 'EOMONTH(TODAY();0)+1'
 const plata = (e) => `TEXT(${e};"$#,##0")`
 /** Una fecha dentro de una frase. dd/mm y no dd/mm/yyyy: el año se sobreentiende y ocupa lugar. */
 const dia = (e) => `TEXT(${e};"dd/mm")`
+
+/**
+ * NÚCLEO PURO: el pedacito de frase que avisa que una fecha ya tiene días encima.
+ *
+ * ═══ EL DEFECTO QUE CIERRA (14/08/2026) ═══
+ *
+ * La fila del total publica `MAX` de las fechas de todas las cuentas, y la tarjeta CAJA DISPONIBLE
+ * copia esa celda: decía *"al 14/08 · bancos y efectivo"* mientras $1.463.926 de la cuenta en dólares
+ * venían de un corte del 05/08 cargado a mano — nueve días antes. Es exactamente lo que
+ * `rotuloPorFuente` tiene escrito en su cabecera y prohíbe: **una fuente viva no le presta su frescura
+ * a una congelada**. La columna D marca cada fila vieja en ámbar y eso sigue estando bien, pero la
+ * tarjeta es lo que se lee en cinco segundos y ahí el promedio tapaba el atraso.
+ *
+ * NO SE ARREGLA CAMBIANDO EL `MAX` POR UN `MIN`: esa celda es también el "Efectivo al inicio" de los
+ * dos cash flow y el ancla de `ubicarCaja`; moverla arrastraría todo el archivo a la fecha de la
+ * cuenta más atrasada, que es el error simétrico. La fecha del total se queda; lo que se agrega es la
+ * confesión al lado.
+ *
+ * SE AGREGA SÓLO CUANDO HAY ATRASO. Un día en que todas las cuentas están al día, la frase es
+ * LITERALMENTE la de siempre — un aviso que aparece todos los días deja de leerse.
+ *
+ * @param {string} expr la celda o expresión con la fecha más vieja
+ * @param {number} [avisoDias] el mismo umbral que la columna D de esta pestaña y que el resto del OS
+ * @returns {string} expresión sin `=`, vacía ("") cuando no hay nada que avisar
+ */
+export function avisoDeAtraso(expr, avisoDias = DIAS_AVISO) {
+  // ISNUMBER primero: una celda vacía o con "" haría `TODAY()-""` = un número enorme y el aviso
+  // quedaría prendido para siempre sobre un dato que ni siquiera existe.
+  return `IF(AND(ISNUMBER(${expr});TODAY()-${expr}>${avisoDias});" · ${ALERTA} parte al "&${dia(expr)};"")`
+}
 
 /**
  * LAS CINCO TARJETAS, EN ORDEN. Puras: devuelven fórmulas, no tocan nada.
@@ -144,7 +175,12 @@ export function tarjetas(ref) {
       // su detalle a la vista. Una segunda suma acá sería un número que puede diferir del de abajo.
       // Excluye Balanz: es la liquidez OPERATIVA — "lo q tenemos en banco y caja".
       valor: `=${ref.total}`,
-      contexto: `=IF(ISNUMBER(${ref.fecha});"al "&${dia(ref.fecha)}&" · bancos y efectivo";"${ALERTA} el bloque de cuentas todavía no publicó su fecha")`,
+      // LA FECHA QUE SE PUBLICA ES LA DEL TOTAL (un MAX) Y LA QUE AVISA ES LA MÁS VIEJA DE LAS FILAS
+      // QUE SUMAN. Sin `fechaVieja` —una corrida vieja, una fila que desapareció— el término se OMITE
+      // y la tarjeta queda como era: falla hacia el comportamiento anterior, nunca hacia una fecha
+      // inventada. Es el mismo criterio que `fronteraCompras` en la tarjeta de al lado.
+      contexto: `=IF(ISNUMBER(${ref.fecha});"al "&${dia(ref.fecha)}&" · bancos y efectivo"`
+        + `${ref.fechaVieja ? `&${avisoDeAtraso(ref.fechaVieja)}` : ''};"${ALERTA} el bloque de cuentas todavía no publicó su fecha")`,
       especie: 'plata',
     },
     {
@@ -236,7 +272,24 @@ export function tarjetas(ref) {
       valor: `=${invertido}`,
       // "liquidez T+1": la naturaleza de lo invertido, como en el panel de invested balances de JPM —
       // está colocado en una comitente y rescatarlo tarda un día hábil, no es plata de HOY.
-      contexto: `=IF(ISNUMBER(${ref.invFecha});"Balanz · al "&${dia(ref.invFecha)}&" · liquidez T+1";"Balanz · liquidez T+1")`,
+      //
+      // ═══ Y CUÁNDO ESTÁ VIEJA, LA ANTIGÜEDAD LE GANA EL LUGAR A LA NATURALEZA (14/08/2026) ═══
+      //
+      // Estos $44.905.290 son el aporte del 05/08 probado por extracto del Santander: la posición real
+      // de la comitente nunca llegó (gap declarado en banco-santander.mjs). Nueve días después el
+      // cuadro los sigue publicando como si fueran de hoy. "liquidez T+1" es cierto todos los días y
+      // por eso no informa nada un día como éste; los días que llevan encima cambian la decisión —con
+      // el dólar movido, un aporte en USD valuado a nueve días no es el número con el que se decide.
+      //
+      // REEMPLAZA, NO SE SUMA: la tarjeta mide 202px (G+H) y la frase completa ya rozaba el corte. Un
+      // texto truncado es peor que ninguno, y esto ya se pagó dos veces en esta misma fila de tarjetas.
+      // Medido con el modelo del test: con "hace" son ≈213px y se corta; sin él, ≈184px.
+      //
+      // Y SIN "hace" NO ES SÓLO POR EL ANCHO: `formulaAntiguedad` —la columna "Antigüedad" que el
+      // dueño ya reconoce, y que él mismo señaló como el patrón bueno— escribe exactamente
+      // `▲ N días`. Dos formas de decir la misma antigüedad en el mismo archivo se leen como dos cosas.
+      contexto: `=IF(NOT(ISNUMBER(${ref.invFecha}));"Balanz · liquidez T+1";"Balanz · al "&${dia(ref.invFecha)}`
+        + `&IF(TODAY()-${ref.invFecha}>${DIAS_AVISO};" · ${ALERTA} "&TEXT(TODAY()-${ref.invFecha};"0")&" días";" · liquidez T+1"))`,
       especie: 'plata',
     },
     {

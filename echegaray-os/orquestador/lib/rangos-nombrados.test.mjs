@@ -1,6 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { pedidos, ARCA, CAJA, ESPECIE, especieDe, desalineados, esSerialDeFecha, publicar } from './rangos-nombrados.mjs'
+import {
+  pedidos, ARCA, CAJA, ESPECIE, especieDe, desalineados, esSerialDeFecha, publicar,
+  aRescatar, retirar, mientenPorEspecie,
+} from './rangos-nombrados.mjs'
 
 test('crea el nombre cuando no existe', () => {
   const [p] = pedidos(7, [{ name: 'ARCA_COMPRAS_N', fila: 10, col: 4 }], [])
@@ -191,4 +194,94 @@ test('EL DEFECTO DEL 06/08: la fecha del saldo apuntando a la celda de plata se 
   assert.equal(esSerialDeFecha(36525), false)
   assert.equal(esSerialDeFecha(73051), false)
   assert.deepEqual(desalineados([{ name: CAJA.fecha, fila: 1, col: 1 }], () => '46240'), [])
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL EMPATE PERMANENTE: NI EL DESTINO NUEVO CONVENCE NI EL VIEJO SE MUEVE (14/08/2026)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Medido en el archivo vivo: los doce `ARCA_*` sobre `Proveedores!B124:C129`, la tabla de
+// comprobantes faltantes. `desalineados` los denunciaba a los doce cada dos horas; `publicar` no los
+// movía porque el destino calculado tampoco daba; y el rescate no los tomaba porque preguntaba
+// "¿está VACÍA la celda actual?" y un CUIT no está vacío. Diez días clavados sobre basura, sin
+// ninguna corrida capaz de sanarlos: el fail-closed convertido en candado sobre el error.
+
+test('el rescate toma el nombre cuya celda ACTUAL miente, no sólo el que apunta a una celda vacía', () => {
+  const SHEET = 7
+  const existentes = [
+    // Lo que devolvió getNamedRanges del archivo vivo: B128 con un CUIT adentro.
+    { name: ARCA.faltanN, namedRangeId: 'r1', range: { sheetId: SHEET, startRowIndex: 127, startColumnIndex: 1 } },
+    // Y uno cuya celda actual sí tiene lo que promete: ése NO se toca aunque el destino nuevo falle.
+    { name: ARCA.faltanMonto, namedRangeId: 'r2', range: { sheetId: SHEET, startRowIndex: 180, startColumnIndex: 2 } },
+  ]
+  const celda = { '128|2': '30-56736337-2', '181|3': 13837030.5 }
+  const leer = (r) => celda[`${r.startRowIndex + 1}|${r.startColumnIndex + 1}`]
+  const malApuntados = [
+    { name: ARCA.faltanN, espera: 'entero' },
+    { name: ARCA.faltanMonto, espera: 'importe' },
+  ]
+  assert.deepEqual(aRescatar(malApuntados, existentes, SHEET, leer), [ARCA.faltanN],
+    'el que hoy publica un CUIT se mueve igual; el que hoy publica plata se queda donde está')
+})
+
+test('el rescate sigue tomando la celda VACÍA y la que quedó FUERA del rectángulo leído', () => {
+  const SHEET = 7
+  const existentes = [
+    { name: ARCA.faltanN, namedRangeId: 'r1', range: { sheetId: SHEET, startRowIndex: 9, startColumnIndex: 1 } },
+    { name: ARCA.faltanMonto, namedRangeId: 'r2', range: { sheetId: SHEET, startRowIndex: 900, startColumnIndex: 2 } },
+  ]
+  // La vacía (el caso ANEXO_* del 07/08) y la que cayó fuera de lo leído tras una compactación.
+  const leer = (r) => (r.startRowIndex === 9 ? '' : undefined)
+  const mal = [{ name: ARCA.faltanN, espera: 'entero' }, { name: ARCA.faltanMonto, espera: 'importe' }]
+  assert.deepEqual(aRescatar(mal, existentes, SHEET, leer), [ARCA.faltanN, ARCA.faltanMonto])
+})
+
+test('un nombre que NO existe no se CREA sobre contenido dudoso, ni se mueve el de otra pestaña', () => {
+  const existentes = [{ name: ARCA.faltanMonto, namedRangeId: 'r2', range: { sheetId: 999, startRowIndex: 3, startColumnIndex: 2 } }]
+  const mal = [{ name: ARCA.faltanN, espera: 'entero' }, { name: ARCA.faltanMonto, espera: 'importe' }]
+  assert.deepEqual(aRescatar(mal, existentes, 7, () => ''), [],
+    'el ausente no se crea (caso ARCA 05/08) y el que vive en otra pestaña puede estar bien ahí')
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// RETIRAR: UN NOMBRE QUE DEJA DE PUBLICARSE NO SE BORRA SOLO
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('retirar borra sólo los que existen: un id inventado hace fallar el batch entero', () => {
+  const existentes = [
+    { name: ARCA.ventasN, namedRangeId: 'a' },
+    { name: ARCA.ventasMonto, namedRangeId: 'b' },
+  ]
+  assert.deepEqual(retirar([ARCA.ventasN, ARCA.ventasMonto, ARCA.notasN], existentes), [
+    { deleteNamedRange: { namedRangeId: 'a' } },
+    { deleteNamedRange: { namedRangeId: 'b' } },
+  ])
+  assert.deepEqual(retirar([ARCA.notasN], existentes), [], 'el que ya no está no se pide borrar de nuevo')
+  assert.deepEqual(retirar([], existentes), [])
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL BARRIDO DEL LIBRO ENTERO: NO SI HAY ALGO, SINO SI ES LO QUE PROMETE
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// `auditar-rangos-fosilizados.mjs` preguntaba si la celda estaba vacía. Los doce `ARCA_*` sobre la
+// tabla de faltantes tenían dato en todas, así que para ese auditor estaban impecables — y
+// ARCA_FALTAN_MONTO le pasaba "0038-00025483" a Materiales!B53.
+
+test('mientenPorEspecie caza el CUIT bajo un contador y el comprobante bajo un importe', () => {
+  const mienten = mientenPorEspecie([
+    { nombre: ARCA.faltanN, hoja: 'Proveedores', valor: '30-56736337-2' },
+    { nombre: ARCA.faltanMonto, hoja: 'Proveedores', valor: '0038-00025483' },
+    { nombre: CAJA.total, hoja: 'CAJA', valor: 18676946 },
+    { nombre: CAJA.fecha, hoja: 'CAJA', valor: 46248 },
+  ])
+  assert.deepEqual(mienten.map((m) => m.nombre), [ARCA.faltanN, ARCA.faltanMonto])
+  assert.equal(mienten[0].hoja, 'Proveedores')
+  assert.equal(mienten[1].espera, 'importe')
+  assert.equal(mienten[1].encontro, 'texto')
+})
+
+test('un nombre SIN especie declarada no se juzga: inventar el criterio no es auditar', () => {
+  assert.equal(ESPECIE.PROV_LIBRETA, undefined)
+  assert.deepEqual(mientenPorEspecie([{ nombre: 'PROV_LIBRETA', hoja: 'Proveedores', valor: 'una nota del dueño' }]), [])
 })
