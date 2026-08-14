@@ -154,8 +154,15 @@ test('LA PESTAÑA DECLARA QUE ES UN SUPUESTO, NO EL JORNAL VIGENTE', () => {
   // NINGÚN MES NI IMPORTE ESTAMPADO: un número escrito acá envejece el día que entra un obrero.
   assert.doesNotMatch(l, /97\.?772|85\.?900/)
   assert.doesNotMatch(l, /agosto|Agosto|2026/)
-  // Y si la Σ da 0 —réplica caída— la línea lo dice en vez de dejar publicar $0 de jornales.
-  assert.match(l, /vac[íi]a/i, 'la réplica caída tiene que dejar la proyección vacía y decirlo')
+  // ═══ Y SI LA Σ DA 0, EL AVISO TIENE QUE DECIR LO QUE PASA DE VERDAD (14/08) ═══
+  //
+  // Decía "proyección vacía" y la proyección NO quedaba vacía: el `MAX(convenio; demanda)` de la
+  // sección 1 resuelve por la demanda de obras y publica $79.753.312 SIN piso de convenio adentro. El
+  // aviso estuvo encendido y nadie lo leyó como lo que era, porque mandaba a buscar una columna en
+  // blanco que no existía. Un cuadro vacío se ve; uno con el piso apagado, no.
+  assert.match(l, /SIN piso de convenio/, 'el aviso volvió a describir mal el síntoma')
+  assert.doesNotMatch(l, /proyecci[óo]n vac[íi]a/i,
+    'la proyección no queda vacía: sigue, sin piso — decirlo mal manda a buscar al lugar equivocado')
 })
 
 test('SIN ESCALA LA LÍNEA AVISA QUE LA BASE VOLVIÓ AL PACTADO: el criterio no cambia en silencio', () => {

@@ -106,8 +106,11 @@ import {
 import {
   COLS_CALENDARIO, colCalendario, diasLaborables, expresionDias,
   formulaVentana, formulaShareEfectivo, formulaGlosaShareEfectivo, formulaControlCalendario,
+  formulaShareAdelanto, MIN_QUINCENAS_SHARE,
   formulaBajaNoRegistrada, LINEA_SABADOS, LINEA_HABERES_SIN_QUINCENA,
 } from '../lib/jornales-calendario.mjs'
+// EL PISO DEL CONVENIO: contra qué categoría se mide cada persona y si la proyección lo cubre.
+import { formulaControlPiso } from '../lib/jornales-piso-uocra.mjs'
 import { VERIFICADA_EL, VIGENCIA_HASTA, contrastarEscala, tramoDe } from '../lib/uocra-paritaria.mjs'
 // El otro lado del MAX de 1.3: la demanda de las obras vendidas. Toda la lógica vive en la lib.
 import { claveQuincena, formulaProyectadoQuincena, glosaDemanda } from '../lib/jornales-demanda-obras.mjs'
@@ -115,9 +118,9 @@ import { demandaParaJornales } from '../lib/jornales-demanda-fuente.mjs'
 import { registrarSincronizacion } from '../lib/registrar-sincronizacion.mjs'
 import { JORNALES_FILE_ID } from '../lib/espejo-jornales.mjs'
 import { formulaUltimaFechaConImporte, rotuloAlDia } from '../lib/fecha-de-frescura.mjs'
-import { formulaSePagaEl, PARAMETROS } from '../lib/jornales-fecha-pago.mjs'
+import { formulaSePagaEl, expresionPagoDelMes, PARAMETROS } from '../lib/jornales-fecha-pago.mjs'
 import {
-  NOMBRES_DIRECCION, PARAMETRO_DIA_PAGO, formulaRetiroMensual, formulaPrimerRetiro,
+  NOMBRES_DIRECCION, formulaRetiroMensual, formulaPrimerRetiro, expresionMesBaseRetiro,
   formulaPrimerRetiroDe, formulaPagadoMes, formulaSePagaElDireccion, formulaProyectadoMes,
 } from '../lib/direccion-retiros.mjs'
 import { ALERTA } from '../lib/glifos.mjs'
@@ -188,7 +191,12 @@ const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', '
 // sin tocar código: cuándo se paga una quincena y qué día del mes salen los retiros de Dirección.
 // LOS PARÁMETROS DEL MOTOR SE AGREGAN A LA MISMA LISTA. `parametroParitaria` necesita los acuerdos
 // parseados para PROPONER su valor; si todavía no se leyeron, cae al último tramo verificado a mano.
-const TODOS_LOS_PARAMETROS = (escalones = []) => [...PARAMETROS, PARAMETRO_DIA_PAGO, ...PARAMETROS_MOTOR(escalones)]
+// `PARAMETRO_DIA_PAGO` se fue de esta lista el 14/08: con los tres grupos cobrando el mismo día, la
+// fecha de dirección sale de la nómina y ese parámetro dejó de tener consumidores. La fila
+// `DIRECCION_DIA_PAGO` ya existe en Parámetros y queda huérfana —`asegurarParametros` nunca pisa una
+// fila que existe, así que borrarla es una escritura del Sheet y se hace desde el árbol principal—.
+// Mismo trato que tuvo `AUMENTO_SALARIAL_ESPERADO` cuando el driver pasó a ser la paritaria.
+const TODOS_LOS_PARAMETROS = (escalones = []) => [...PARAMETROS, ...PARAMETROS_MOTOR(escalones)]
 /** Sereno se paga por MES: no entra en la comparación por hora. */
 const ES_MENSUAL = (cat) => cat === 'Sereno'
 
@@ -495,15 +503,23 @@ export function grilla({
   // que se paga EN BLANCO POR RECIBO DE SUELDO, y adelantos + el resto salen en efectivo. Es la misma
   // partición con la que CAJA baja el saldo bancario y el cajón — una sola definición para las dos
   // pestañas, y en el vocabulario con el que el dueño la piensa.
-  // El rótulo nombra la columna que mide («Efectivo (obra)») y su complemento en cuatro palabras.
+  // El rótulo nombra la columna que mide («Efectivo») y su complemento en cuatro palabras.
   const fShare = push([sub('En efectivo — el resto, por recibo')])
+  // ═══ EL ADELANTO, CON SU PROPIO PORCENTAJE PONDERADO (14/08) ═══
+  //
+  // El dueño, por segunda vez: *"te pedi q los 'adelantos' de los obreros se proyectaran en base a un
+  // porcentaje ponderado"*. El share de arriba mide EFECTIVO —adelanto + resto contra recibo, juntos—
+  // y el adelanto no tenía proyección propia en ninguna parte. Para tesorería no es lo mismo: el
+  // adelanto sale ANTES del día de pago, a lo largo de la quincena. Se mide con la misma ventana y la
+  // misma razón de importes (ver `formulaShareAdelanto`), y al lado va lo que eso proyecta a diciembre.
+  const fAdel = push([sub('En adelantos — ponderado sobre el total')])
   push(COLS_CALENDARIO)
   const p0 = filas.length + 1
   const pFin = p0 + pendientes.length - 1
   const cO = colCalendario('Oficina')
   const cD = colCalendario('Dirección')
   const cT = colCalendario('TOTAL')
-  const cE = colCalendario('Efectivo (obra)')
+  const cE = colCalendario('Efectivo')
   const cObra = colCalendario('Obreros')
   pendientes.forEach((q, i) => {
     const r = p0 + i
@@ -522,14 +538,19 @@ export function grilla({
       // bloques mensuales (secciones 2 y 3) para las otras dos—. Ninguna se puede escribir acá.
       VACIO, VACIO, VACIO,
       `=SUM(${cObra}${r}:${cD}${r})`,
-      // La parte de la quincena de obra que sale en billetes. El resto —la columna BANCO del
-      // registro— es la transferencia del lote de haberes. Oficina y Dirección NO entran: de esos dos
-      // el canal no está registrado, y repartirlos con la proporción de la obra sería inventarlo.
+      // Lo que sale en billetes de las DOS nóminas que registran su canal: obra y —desde el 14/08—
+      // oficina, cada una con SU propia fracción medida. El resto es la transferencia del lote de
+      // haberes. Dirección NO entra: de esos tres retiros el canal no está registrado en ninguna
+      // parte, y repartirlos con la proporción de otro grupo sería inventarlo.
       // SIN BASE NO HAY COLUMNA. Cuando el año todavía no junta MIN_QUINCENAS_SHARE quincenas pagadas
       // la celda del share va VACÍA (ver formulaShareEfectivo), y `número*""` es #VALUE! repetido diez
       // veces. La columna queda en blanco y el rótulo de arriba dice por qué: no se proyecta y se
       // declara, que es lo contrario de rellenar con el default de "todo en efectivo".
-      `=IF($B$${fShare}="";"";${cObra}${r}*$B$${fShare})`,
+      // Que oficina no tenga base no puede borrar el efectivo de obra, que es el número con el que se
+      // junta la plata: el sumando de oficina se apaga solo, en 0.
+      // SE RESUELVE ABAJO, como las tres columnas de población: la fracción de oficina vive en una
+      // fila de la sección 2, que todavía no se emitió.
+      VACIO,
     ])
   })
   // Los huecos internos también son MÍOS: con `''` el generador preservaría la fórmula que el
@@ -540,6 +561,17 @@ export function grilla({
   // EL CONTROL VA DEBAJO DEL MENSAJE, NO ENCIMA. Se completa abajo, cuando existen los dos totales
   // contra los que compara.
   const fControlCal = push([VACIO])
+  // ═══ EL CONTROL QUE EL DUEÑO PIDIÓ Y NO EXISTÍA (14/08) ═══
+  //
+  // *"me aseguras que las proyecciones de aqui a fin de año de obreros se calcularon llegando a cubrir
+  // el 100% de lo q pide uocra en cada parte de la escala…?"*. No se podía asegurar: nada en la pestaña
+  // miraba esa pregunta. Y la respuesta era que NO —las nueve quincenas salían de la demanda de obras,
+  // sin piso de convenio, seis de ellas $28.864.019 por debajo— porque el término convenio del
+  // `MAX(convenio; demanda)` estaba apagado y el MAX resolvía siempre por el otro lado, en silencio.
+  //
+  // VA ACÁ Y NO EN LA SECCIÓN 4: es un control de ESTE cuadro. El respaldo gremial vive abajo, pero el
+  // aviso de que la columna «Obreros» perdió su piso tiene que estar donde se lee la columna.
+  const fControlPiso = push([VACIO])
   blanco()
 
   // ══ 2 · SUELDOS DE OFICINA ══
@@ -599,6 +631,9 @@ export function grilla({
   push([sub(ultimoDiaOfi
     ? `Planilla Oficina al ${fecha(ultimoDiaOfi)} — ver «Estado» por mes`
     : 'Planilla Oficina sin meses cargados — todo proyección')])
+  // LA MISMA LÍNEA QUE OBRA, CON EL MISMO CRITERIO: lo que no se probó que salió por transferencia se
+  // cuenta como efectivo. Se resuelve abajo, cuando existen las filas del bloque.
+  const fShareOfi = push([sub('En efectivo — el resto, por recibo')])
   // "Proyectado" va en la MISMA columna que el "Proyectado" de la proyección de obra (H): dos totales
   // del mismo concepto en columnas distintas se leen como dos conceptos distintos.
   // ═══ "SE PAGA EL": LA FECHA DE CAJA DE LA OFICINA (31/07) ═══
@@ -671,7 +706,33 @@ export function grilla({
     // La palabra en la fila: cada mes sin cargar dice que es proyección, ahí donde se lo lee.
     // La fecha de caja del mes: fin de mes + el desfase de pago de la obra. Por fórmula, para que se
     // mueva sola si se corrige el parámetro — y visible, para que el criterio se pueda discutir.
-    const pago = `=EOMONTH(DATE(${AÑO};${i + 1};1);0)+JORNALES_DESFASE_PAGO`
+    // ═══ LA MISMA FECHA QUE OBRA Y DIRECCIÓN (14/08, orden del dueño) ═══
+    //
+    // Decía `EOMONTH(mes)+JORNALES_DESFASE_PAGO`: sumaba en días CORRIDOS un parámetro que está
+    // expresado en días HÁBILES. Cuando el fin de mes cae viernes o sábado los dos criterios se
+    // separan y la misma nómina aterriza en dos filas distintas del calendario — medido en la pestaña
+    // viva: octubre de oficina caía en la fila 01/10–15/10 (paga 01/11) y la quincena que cierra el
+    // 31/10 paga el 02/11, así que oficina, obra y dirección del mismo mes quedaban en tres renglones.
+    // Ahora las tres salen de `expresionSePagaEl`, con el lote del banco cuando existe.
+    const pago = `=${expresionPagoDelMes(AÑO, i + 1)}`
+    // ═══ EL CANAL DE OFICINA SE MIDE, IGUAL QUE EL DE OBRA (14/08) ═══
+    //
+    // El dueño: *"quiero q la tabla de 'oficina' sea igual que la de 'obreros' dado q el acuerdo es el
+    // mismo 50% por banco (recibo de sueldo), 50% efectivo"*. La columna «Banco» existía desde el
+    // 01/08 esperando que alguien la cargara a mano y nunca tuvo un dato — de ahí el rango ciego
+    // `OFICINA_BANCO` y las dos líneas de sueldos de administración de CAJA en $0.
+    //
+    // No hacía falta cargarla: el dato YA ESTABA en la fuente. `_J_OFICINA` tiene exactamente las
+    // mismas tres columnas de canal que `_J_OBREROS` —W BANCO, X ADELANTO, Y TOTAL RECIBO— y el
+    // generador leía sólo la Z (el total). Se lee la W, con la MISMA regla que obra: banco es lo que
+    // salió por transferencia y el efectivo es el resto, por definición.
+    //
+    // SÓLO DONDE HAY FUENTE. Un mes sin bloque en el espejo no lleva fórmula: la celda queda con `''`
+    // —"no es mía, preservá lo que haya"— y sigue siendo del dueño. Publicar un 0 ahí diría "no salió
+    // nada por banco", que es una afirmación que la planilla no hizo.
+    const banco = bs.length
+      ? `=${bs.map((b) => `SUM('${ESPEJO_OFI}'!W${b.inicio}:W${b.fin})`).join('+')}`
+      : ''
     // LA COLUMNA "Banco" VA CON CADENA VACÍA, NO CON EL CENTINELA (03/08). Es la causa raíz de que
     // `OFICINA_BANCO` tuviera 0 celdas con dato desde el día que se publicó, y con él las dos líneas
     // de sueldos de administración de CAJA en $0 sin un solo error. El comentario de arriba decía
@@ -683,11 +744,11 @@ export function grilla({
     // lo que muestra en "Pagado" es un hecho y lo que falta va en "Proyectado". Llamarlo "pagado"
     // —como hacía este cuadro— es lo que dejó a la oficina proyectada cuatro veces por debajo.
     const estado = cerradoOfi(i) ? 'pagado' : (bs.length ? 'parcial' : 'proyección')
-    push([nombre, personas, pagado, estado, pago, '', VACIO, VACIO]) // G y H se completan abajo
+    push([nombre, personas, pagado, estado, pago, banco, VACIO, VACIO]) // G y H se completan abajo
   })
   const oFin = o0 + MESES.length - 1
   const fTotalOfi = push([rotuloTotal('Oficina — pagado y por pagar en el año'), VACIO,
-    `=SUM(C$${o0}:C$${oFin})`, VACIO, VACIO, VACIO, VACIO, `=SUM(H$${o0}:H$${oFin})`])
+    `=SUM(C$${o0}:C$${oFin})`, VACIO, VACIO, `=SUM(F$${o0}:F$${oFin})`, VACIO, `=SUM(H$${o0}:H$${oFin})`])
   // LA GLOSA "el cash flow lee este bloque por rango con nombre: OFICINA_PAGO · OFICINA_PAGADO ·
   // OFICINA_PROYECTADO" SE FUE DE LA CELDA (13/08). Es fontanería: le importa a quien mantiene el
   // generador, no a quien mira cuánto se paga en octubre. Y el contrato no se sostenía por esa
@@ -1066,6 +1127,16 @@ export function grilla({
   const colShare = { banco: colDe('Banco'), total: colDe('TOTAL'), hasta: colDe('Hasta'), pagado: colDe('Pagado el') }
   filas[fShare - 1][1] = formulaShareEfectivo(colShare, f0, fLast)
   filas[fShare - 1][2] = formulaGlosaShareEfectivo(colShare, f0, fLast)
+  // EL ADELANTO, CON SU PROPIO % PONDERADO Y CON LO QUE ESO PROYECTA A DICIEMBRE (14/08). El % solo no
+  // se puede usar: la pregunta del dueño es cuántos billetes hay que adelantar de acá a fin de año, y
+  // ese número es el % por el total proyectado de obra. Va en la celda de al lado, que es donde el
+  // resto de las glosas de esta sección pone su dato.
+  filas[fAdel - 1][1] = formulaShareAdelanto(
+    { adelanto: colDe('Adelanto'), total: colDe('TOTAL'), hasta: colDe('Hasta'), pagado: colDe('Pagado el') },
+    f0, fLast,
+  )
+  filas[fAdel - 1][2] = `=IF(B${fAdel}="";"⊘ sin base — menos de ${MIN_QUINCENAS_SHARE} quincenas pagadas";`
+    + `"$"&TEXT($${cObra}$${fTotalProy}*B${fAdel};"#,##0")&" proyectados a diciembre")`
   // LA BAJA NO REGISTRADA. Las dos Σ $/hora salen de bloques distintos del espejo —el plantel base
   // (4.1) y la última fila del registro— así que la diferencia es un hecho medido, no una hipótesis.
   filas[fBaja - 1][0] = formulaBajaNoRegistrada({
@@ -1137,11 +1208,17 @@ export function grilla({
       ? `=MAX(0;$C$${rBaseOfi}*G${r}-N(C${r}))`
       : `=$C$${rBaseOfi}*G${r}`
   })
-  // DIRECCIÓN. La base del ajuste es el MES EN CURSO por fórmula: el importe del retiro sale de la
-  // última carga en Compras, o sea que es el valor de hoy. `EOMONTH(TODAY();0)` y no un mes escrito
-  // acá — un mes estampado se congela el día que se escribe y sigue ajustando desde una base vieja.
+  // ═══ DIRECCIÓN: EL ANCLA ES EL MES DEL IMPORTE, NO EL MES DEL CALENDARIO (14/08) ═══
+  //
+  // El dueño: *"está mal hecha la proyección de aumentos en el grupo de 'dirección' porque no habría
+  // aumento reflejado en el mes siguiente"*. El ancla era `EOMONTH(TODAY();0)` —el mes en curso— y el
+  // importe base sale de la última carga de Compras, que es el retiro de JULIO pagado el 03–04/08.
+  // Anclar en agosto le da factor 1 a agosto: el retiro del mes siguiente al último pagado quedaba sin
+  // un solo peso de aumento, y los cuatro meses de atrás arrastraban ese tramo perdido ($888.113 a
+  // diciembre). Peor: el ancla CAMINABA con el reloj —el 1° de septiembre se perdía otro tramo— sin
+  // que nadie tocara nada. El porqué completo y el ancla nueva, en `expresionMesBaseRetiro`.
   MESES.forEach((_, i) => {
-    filas[d0 + i - 1][6] = formulaFactorDelMes(`EOMONTH(DATE(${AÑO};${i + 1};1);0)`, esc, 'EOMONTH(TODAY();0)')
+    filas[d0 + i - 1][6] = formulaFactorDelMes(`EOMONTH(DATE(${AÑO};${i + 1};1);0)`, esc, expresionMesBaseRetiro())
   })
 
   // ── EL CALENDARIO: LAS TRES COLUMNAS DE POBLACIÓN ──
@@ -1169,10 +1246,33 @@ export function grilla({
     const hasta = i === pendientes.length - 1 ? null : `$C$${r + 1}`
     filas[r - 1][4] = formulaVentana({ rangoImporte: `$H$${o0}:$H$${oFin}`, rangoFecha: `$E$${o0}:$E$${oFin}`, celdaDesde: desde, celdaHasta: hasta })
     filas[r - 1][5] = formulaVentana({ rangoImporte: `$H$${d0}:$H$${dFin}`, rangoFecha: `$E$${d0}:$E$${dFin}`, celdaDesde: desde, celdaHasta: hasta })
+    // EL EFECTIVO DE LAS DOS NÓMINAS CON CANAL REGISTRADO, cada una con SU fracción medida.
+    filas[r - 1][7] = `=IF($B$${fShare}="";"";${cObra}${r}*$B$${fShare}`
+      + `+IF($B$${fShareOfi}="";0;${cO}${r}*$B$${fShareOfi}))`
   })
+  // ═══ LA FRACCIÓN EN EFECTIVO DE OFICINA — MISMA REGLA QUE OBRA, OTRA FUENTE ═══
+  //
+  // `1 − ΣBanco/ΣPagado` sobre los meses CON dato: lo que la planilla no probó que salió por
+  // transferencia se cuenta como billetes, exactamente como en obra. Los meses sin bloque no entran
+  // (su «Pagado» está vacío), así que un mes que la planilla todavía no cargó no arrastra el
+  // porcentaje hacia "todo en efectivo" — que es el sesgo que ya movió ocho puntos el share de obra.
+  filas[fShareOfi - 1][1] = `=IF(SUMPRODUCT(--(N($C$${o0}:$C$${oFin})>0))=0;"";`
+    + `1-SUMPRODUCT(--(N($C$${o0}:$C$${oFin})>0)*N($F$${o0}:$F$${oFin}))`
+    + `/SUMPRODUCT(--(N($C$${o0}:$C$${oFin})>0)*N($C$${o0}:$C$${oFin})))`
+  filas[fShareOfi - 1][2] = `=IF(B${fShareOfi}="";"⊘ sin canal cargado en la planilla";`
+    + `SUMPRODUCT(--(N($C$${o0}:$C$${oFin})>0))&" mes(es) con pago registrado")`
   filas[fControlCal - 1][0] = formulaControlCalendario({
     oficina: `${cO}${fTotalProy}`, direccion: `${cD}${fTotalProy}`,
     totalOficina: cel(fTotalOfi, 'H'), totalDireccion: cel(fTotalDir, 'H'),
+  })
+  // ¿EL PISO DEL CONVENIO SE ESTÁ APLICANDO? Se mide sobre las MISMAS dos columnas del bloque 4.1 que
+  // arman la Σ al convenio —personas y básico—, que es donde el piso se enciende o se apaga. Un
+  // control que preguntara "¿el total es alto?" no puede distinguir una proyección con piso de una
+  // que quedó colgada de la demanda de obras.
+  filas[fControlPiso - 1][0] = formulaControlPiso({
+    celdasPersonas: `$B$${plantel.fPrimera}:$B$${plantel.fUltima}`,
+    celdasBasico: `$F$${plantel.fPrimera}:$F$${plantel.fUltima}`,
+    nQuincenas: pendientes.length,
   })
 
   // ══ EL HERO: UNA FILA POR GRUPO ══
@@ -1261,10 +1361,14 @@ export function grilla({
     // espejo…" por fórmula y sin declararlo la piel lo pintaba de plata (auditor, 06/08).
     celdasDeProsaFormula: [
       { fila: fHpd, col: 2 }, { fila: fShare, col: 2 }, { fila: fCanal.recibo, col: 2 },
+      // Las dos glosas nuevas del 14/08 también RINDEN texto por fórmula (el adelanto proyectado a
+      // diciembre y los meses con canal cargado de oficina): sin declararlas, el pase por contenido no
+      // las clasifica y el barrido de moneda las dibuja como pesos.
+      { fila: fAdel, col: 2 }, { fila: fShareOfi, col: 2 },
       { fila: plantel.fTotal, col: 7 },
       // El control del calendario vive en la columna A y rinde texto por fórmula: sin declararlo, el
       // barrido de moneda no lo toca (empieza en la B) pero el pase por contenido tampoco lo clasifica.
-      { fila: fControlCal, col: 0 }, { fila: fBaja, col: 0 },
+      { fila: fControlCal, col: 0 }, { fila: fControlPiso, col: 0 }, { fila: fBaja, col: 0 },
     ],
     enteros: [plantel.fTotal],
     // ── EL HERO, PARA EL FORMATO ──
@@ -1280,10 +1384,15 @@ export function grilla({
     // fila. Un 0 acá pediría formato para la fila 0 y el lote entero de formato se cae.
     // `fShare` es una FRACCIÓN (0,73), no plata: sin el formato de porcentaje el barrido de moneda la
     // dibuja "$1" y el cuadro parece decir que la quincena entera sale en billetes por un peso.
-    ratios: [fMargen, fMargenProx, fShare].filter(Boolean),
+    ratios: [fMargen, fMargenProx, fShare, fAdel, fShareOfi].filter(Boolean),
     nProy: pendientes.length,
     fShare,
+    // Las dos fracciones nuevas del 14/08: el adelanto ponderado (obra) y el canal de oficina. Las dos
+    // son FRACCIONES, no plata: sin declararlas acá el barrido de moneda las dibuja "$1".
+    fAdel,
+    fShareOfi,
     fControlCal,
+    fControlPiso,
     // Las filas de oficina (cargadas + proyectadas) para que reciban el mismo formato que las de
     // obra: sin esto la columna "Hasta" mostraba $46.037 —el número de serie de la fecha con formato
     // de moneda— y el ajuste por inflación salía como "$1".
@@ -1366,18 +1475,29 @@ async function main() {
   // lo calcula por fórmula viva—: es el mismo cálculo por otro camino. Un producto escalar de
   // referencias de celdas se puede escribir mal de mil maneras y ninguna da error; tener el número
   // esperado en el log es lo único que permite notarlo antes de que llegue al Sheet.
-  const sigmaConv = sigmaConvenioDelPlantel(espejo, bloqueBase, escalonVigente)
+  // ═══ EL CONTROL MIRA LA MISMA ENTRADA QUE LA PESTAÑA (14/08) ═══
+  //
+  // Hasta hoy este cálculo ignoraba la columna «Convenio» del bloque 4.1 y lo declaraba como límite.
+  // Con eso, el día que esa columna quedó con basura de un layout viejo —"46237", "Se paga el"— la
+  // pestaña publicó una Σ vacía y esta línea siguió imprimiendo $97.772: el control decía que estaba
+  // todo bien mientras la proyección se quedaba sin piso de convenio. Ahora se lee esa columna y se
+  // aplica LA MISMA regla que la fórmula (lib/jornales-piso-uocra.mjs).
+  // POR RÓTULO, NO POR OFFSET: la fila de cada categoría se busca por su código en la columna A, que es
+  // lo que el bloque escribe. Contar filas desde el título es lo que ya rompió tres enlaces acá.
+  const colAE = await google.readSheetValues(ID, `'${PESTAÑA}'!A1:E400`).catch(() => [])
+  const escritoPorCodigo = Object.fromEntries(categorias.map((cat) => {
+    const f = (colAE ?? []).find((x) => String(x?.[0] ?? '').trim() === cat)
+    return [cat, f ? String(f[4] ?? '').trim() : '']
+  }))
+  const sigmaConv = sigmaConvenioDelPlantel(espejo, bloqueBase, escalonVigente, undefined, escritoPorCodigo)
+  for (const d of sigmaConv.descartados) {
+    console.warn(`  ${ALERTA} «Convenio» de ${d.codigo} dice "${d.escrito}" y la escala no lo reconoce:`
+      + ` uso ${d.usada ?? 'ninguna equivalencia'} — es basura de un layout viejo, no una categoría`)
+  }
   const pesos = (n) => `$${Math.round(n).toLocaleString('es-AR')}`
   console.log(`convenio 100%: Σ $/hora del plantel al convenio ${pesos(sigmaConv.total)} sobre ${sigmaConv.personas} persona(s)`
     + ` · ${sigmaConv.porCategoria.map((c) => `${c.personas}×${c.convenio} ${pesos(c.basico)}`).join(' · ') || 'sin escala'}`
     + (sigmaConv.sinEscala.length ? ` · ${ALERTA} SIN ESCALA: ${sigmaConv.sinEscala.join(', ')}` : ''))
-  // EL LÍMITE DEL CONTROL, AL LADO DEL CONTROL. Este número usa sólo la equivalencia declarada en el
-  // código; la pestaña deja ganar lo que el dueño escriba en la columna «Convenio». Mientras esa
-  // columna esté vacía los dos caminos tienen que dar lo mismo —para eso sirve—, pero en cuanto se use
-  // pueden separarse con razón, y el que manda es el de la pestaña. Un control que no dice contra qué
-  // no compara es un control que engaña.
-  console.log('  ℹ el contraste de arriba vale con la columna «Convenio» de 1.1 VACÍA: si el dueño escribe'
-    + ' una categoría ahí, manda la suya y la pestaña puede dar otro número a propósito')
 
   // ── LA DEMANDA DE LAS OBRAS VENDIDAS: el otro lado del MAX de 1.3 (07/08) ──
   // Si lib/obras-datos.mjs no está en esta rama, la fuente avisa y devuelve 0: la pestaña queda igual.
@@ -1417,7 +1537,13 @@ async function main() {
   // CURSO —que es el ancla de Dirección, cuyo importe sale de la última carga en Compras—: si alguno no
   // está, el MATCH no lo encuentra, el IFERROR devuelve 1 y ese bloque se proyecta SIN un solo aumento,
   // en silencio. Es el mismo defecto que ya dejó ciega la proyección de administración.
-  const meses = mesesDelMotor(cerradaBase?.hasta ?? ultimoDia, pendientes, [ultimoDiaOfi, hoy])
+  // Y EL MES ANTERIOR AL EN CURSO (14/08): el ancla de Dirección dejó de ser el mes del calendario y
+  // pasó a ser el mes al que pertenece el importe base —el retiro de M se paga a principios de M+1, así
+  // que casi siempre es el mes pasado—. Si ese mes no está en el cuadro, el MATCH no lo encuentra, el
+  // IFERROR devuelve 1 y los retiros se proyectan sin un solo aumento, en silencio: exactamente el
+  // defecto que se acaba de corregir, entrando por la otra puerta.
+  const mesAnterior = new Date(hoy.getFullYear(), hoy.getMonth(), 0)
+  const meses = mesesDelMotor(cerradaBase?.hasta ?? ultimoDia, pendientes, [ultimoDiaOfi, mesAnterior, hoy])
   const baseObra = cerradaBase?.hasta ?? ultimoDia
   const periodoBase = baseObra ? `${baseObra.getFullYear()}-${String(baseObra.getMonth() + 1).padStart(2, '0')}` : null
   // LO QUE ACUMULA LA PROYECCIÓN, EN LA CORRIDA. Es el efecto de todo lo de arriba en un número: si un

@@ -228,8 +228,20 @@ test('EL CONTROL CONTRA EL CONVENIO YA NO ESPERA UNA CARGA MANUAL', () => {
   })
   assert.deepEqual(p.equivalencias, [['OF', 'Oficial'], ['A M', 'Ayudante']])
   const r = p.fPrimera
-  assert.match(String(p.filas[1][5]), new RegExp(`MATCH\\(IF\\(\\$E${r}="";"Oficial";\\$E${r}\\)`),
-    'el básico del convenio volvió a depender de que el dueño escriba la celda')
+  // ═══ EL VALOR DEL DUEÑO GANA SÓLO SI LA ESCALA LO RECONOCE (14/08) ═══
+  //
+  // Era `IF($E="";equivalencia;$E)`: cualquier cosa distinta de vacío ganaba. Y al rediseñarse la
+  // pestaña esa columna quedó con lo que el layout anterior tenía en esas celdas ("46237", "Se paga
+  // el"), así que tres de las cuatro categorías dejaron de encontrar su básico y la proyección de obra
+  // se quedó SIN piso de convenio. Ahora la condición es que la escala conozca el texto.
+  assert.match(String(p.filas[1][5]),
+    new RegExp(`MATCH\\(IF\\(ISNUMBER\\(MATCH\\(\\$E${r};'_UOCRA_RAW'!\\$B\\$\\d+:\\$B\\$\\d+;0\\)\\);\\$E${r};"Oficial"\\)`),
+    'el básico del convenio volvió a obedecer cualquier cosa escrita en la celda del dueño')
+  assert.doesNotMatch(String(p.filas[1][5]), new RegExp(`IF\\(\\$E${r}=""`),
+    'un "vacío o no vacío" deja entrar la basura de un layout viejo')
+  // Y LA FILA DICE QUE SE IGNORÓ SU CELDA. Corregir el número y dejar al dueño creyendo que su
+  // categoría manda es media corrección.
+  assert.match(String(p.filas[1][7]), /«Convenio» no está en la escala/)
   assert.doesNotMatch(String(p.filas[1][7]), /"—"/, 'con equivalencia declarada la fila ya tiene respuesta')
   // Una categoría desconocida NO se adivina: vuelve al "—" y la línea de arriba la nombra.
   const raro = filasPlantel({
