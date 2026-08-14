@@ -23,6 +23,10 @@ export const ANEXO = {
   // El neto de efectivo posterior al arqueo. "Caja en pesos" de CAJA lo suma: es la mitad viva de la
   // identidad `efectivo = arqueo + movimientos posteriores`. El desglose (seis renglones) queda abajo.
   efectivoNeto: 'ANEXO_EFECTIVO_NETO',
+  // Cuánto falta para que el cajón cierre en cero. Vale 0 cuando el efectivo es posible; cuando no,
+  // mide el error MÍNIMO que hay en los datos del efectivo — y mientras no sea 0, el neto de arriba
+  // está degradado al conteo del dueño a propósito. Nació del 14/08: CAJA DISPONIBLE en −$194.181.
+  efectivoImposible: 'ANEXO_EFECTIVO_IMPOSIBLE',
   // Los tres del bloque de crédito. CAJA los muestra en una línea; el cupo, los consumos, las cuotas
   // y lo que cuesta el descubierto viven en el anexo.
   tarjetaDisponible: 'ANEXO_TARJETA_DISPONIBLE',
@@ -78,6 +82,7 @@ export const CELDA_CAJA_MINIMA = { pestana: '01_Valores Iniciales', fila: 3, col
  */
 export const ESPECIE_ANEXO = {
   [ANEXO.efectivoNeto]: 'importe',
+  [ANEXO.efectivoImposible]: 'importe',
   [ANEXO.tarjetaDisponible]: 'importe',
   [ANEXO.acuerdo]: 'importe',
   [ANEXO.aire]: 'importe',

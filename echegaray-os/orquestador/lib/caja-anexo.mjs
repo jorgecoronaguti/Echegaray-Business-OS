@@ -46,7 +46,66 @@ export const ANCHO_ANEXO = 7
 export const SELLO_EFECTIVO = {
   sello: '      · (−) lo que ya estaba adentro del conteo — SELLO',
   estado: '      ¿el sello está al día?',
+  imposible: `      ${ALERTA} imposible: cuánto falta para que el cajón cierre en cero`,
 }
+
+/**
+ * LOS SEIS RENGLONES DEL HISTÓRICO DE EFECTIVO, declarados como datos y no como seis `push` sueltos.
+ *
+ * POR QUÉ SE DECLARAN ACÁ (14/08/2026). Sus rótulos dejaron de ser decoración: son el ancla con la que
+ * el rescate encuentra el SELLO DE CADA RENGLÓN al regenerar la pestaña, igual que `SELLO_EFECTIVO`.
+ * Escritos dos veces —uno en el generador y otro en el rescate— la primera corrección de estilo en uno
+ * de los dos habría perdido el sello de esa línea sin dar un solo error.
+ *
+ * Todos van con arqueo `'0'` a propósito: SIN VENTANA DE FECHA. El día no puede ordenar dos hechos del
+ * mismo día y un parcial que crece sobre una fila vieja es invisible para cualquier ventana; la única
+ * ancla que funciona es un saldo sellado. Ver el bloque de abajo.
+ */
+export const HISTORICO_EFECTIVO = [
+  { rotulo: '      · (+) cobrado en efectivo — histórico completo',
+    formula: `=${formulaCobrosEfectivoPosteriores('0')}`,
+    origen: 'Cobranzas: forma "Efectivo" Y estado "Cobrado"' },
+  { rotulo: '      · (−) pagado en efectivo — histórico completo',
+    formula: `=-(${formulaComprasEfectivoPosteriores('0')})`,
+    origen: 'Compras en efectivo: el MONTO PAGADO, parcial o total' },
+  { rotulo: '      · (−) jornales pagados en efectivo — histórico completo',
+    formula: `=-(${formulaJornalesEfectivoPosteriores('0')})`,
+    origen: 'Jornales por Quincena, columnas Adelanto y Total recibo' },
+  { rotulo: '      · (−) sueldos de OFICINA en efectivo — histórico completo',
+    formula: `=-(${formulaOficinaEfectivoPosteriores('0')})`,
+    origen: 'Oficina: lo pagado menos lo que salió por banco' },
+  // EL ESPEJO DEL DEPÓSITO: el billete deja la cuenta y entra al cajón, así que acá SUMA. La caja
+  // física sólo sabía BAJAR hacia el banco y nunca subir desde él — una asimetría que sólo puede dar
+  // de menos.
+  { rotulo: '      · (+) extraído del banco — histórico completo',
+    formula: `=${formulaExtraccionesEfectivoPosteriores('0')}`,
+    origen: 'Réplica del extracto: débitos con concepto "extracción"' },
+  { rotulo: '      · (−) depositado en el banco — histórico completo',
+    formula: `=-(${formulaDepositosEfectivoPosteriores('0')})`,
+    origen: 'Réplica del extracto: créditos con concepto "depósito de efectivo"' },
+]
+/**
+ * LA CLAVE CON LA QUE UNA FILA SE RESCATA POR SU RÓTULO — la misma de los dos lados.
+ *
+ * ═══ EL SELLO NUNCA SE RESCATÓ, Y NADIE SE ENTERÓ (14/08/2026) ═══
+ *
+ * `rescatarAnexo` compara el rótulo leído del Sheet YA RECORTADO (`.trim()`) contra estas constantes,
+ * que llevan seis espacios de sangría. Nunca coincidieron: medido contra la pestaña viva, los rótulos
+ * conservan la sangría (`"      · (−) lo que ya estaba adentro del conteo — SELLO"`), así que el
+ * rescate devolvía un mapa VACÍO y cada regeneración escribía 0 en el sello. Con el sello en 0
+ * `necesitaSello` da verdadero siempre, y el anexo RESELLABA EN CADA CORRIDA contra el histórico de
+ * ese instante: un sello rodante de dos horas, no un ancla en el conteo.
+ *
+ * QUÉ SIGNIFICABA ESO PARA LA PLATA: el efectivo publicado volvía al arqueo cada dos horas. Un pago de
+ * $3.000.000 en billetes bajaba la caja hasta la corrida siguiente y después desaparecía adentro del
+ * sello — la caja física mintiendo HACIA ARRIBA, en silencio, que es el modo de falla exacto que el
+ * modelo del arqueo existe para evitar. Y es también la razón por la que el salto de OFICINA del 14/08
+ * entró entero al neto: fue el movimiento de una sola ventana entre corridas.
+ *
+ * El test vive en `caja-anexo.test.mjs` y prueba el defecto: normaliza los dos lados, no uno.
+ */
+export const claveDeRotulo = (r) => String(r ?? '').trim()
+
 /** Los anchos de columna, en píxeles. Los mismos que CAJA para que las dos se lean igual. */
 export const ANCHOS_ANEXO = [420, 56, 140, 140, 140, 104, 260]
 
@@ -170,37 +229,52 @@ function bloqueMovimientos(h) {
   const selloViejo = `((N($D$${fEstado})<>N(${DESDE_CAJA.arqueoArs}))+(N($F$${fSello})<>N(${arqueo}))>0)`
   const sello = (campo, def = 0) => { const v = h.previo(SELLO_EFECTIVO.sello, campo); return v === '' ? def : v }
   const selloEstado = () => { const v = h.previo(SELLO_EFECTIVO.estado, 'selloValor'); return v === '' ? 0 : v }
+  // ═══ EL NETO NO PUEDE PUBLICAR UN CAJÓN NEGATIVO (14/08/2026) ═══
+  //
+  // `crudo` es lo que se movió desde el sello; `cajon`, lo que quedaría en la caja física. El 14/08
+  // ese cajón dio −$15.051.781 contra un conteo de $4.320.000 y CAJA DISPONIBLE se fue a −$194.181:
+  // la línea de OFICINA empezó a leer su canal —cambio correcto— y trajo siete meses que ya estaban
+  // adentro del arqueo, que el sello del 07/08 no descontaba porque esa línea valía $0 al sellarse.
+  //
+  // La guarda es la única afirmación que no necesita ninguna fecha: un cajón no puede tener menos de
+  // cero. Cuando el resultado es imposible, el neto se degrada a 0 y la pestaña muestra EL CONTEO TAL
+  // CUAL —el mismo estado seguro que ya tenía el "conteo nuevo sin sellar"—, y las dos líneas de abajo
+  // gritan cuánto no se explica. Ver lib/caja-efectivo-fisico.mjs para por qué no se resella solo.
+  const crudo = `SUM(C${f0}:C${fSello})`
+  const cajon = `N(${DESDE_CAJA.arqueoArs})+${crudo}`
   push(['   ⇒ NETO de efectivo posterior al arqueo', 'ARS',
-    `=IF(NOT(ISNUMBER(${arqueo}));0;SUM(C${f0}:C${fSello}))`, '', '', '',
+    `=IF(NOT(ISNUMBER(${arqueo}));0;IF(${cajon}<0;0;${crudo}))`, '', '', '',
     'Es la mitad viva de: efectivo en caja = arqueo + movimientos posteriores'])
   // LOS SUMANDOS, UNO POR UNO — HISTÓRICO COMPLETO, sin ventana. El neto es la suma de lo que se ve,
-  // así que el desglose no puede decir otra cosa que el total.
-  push(['      · (+) cobrado en efectivo — histórico completo', 'ARS',
-    `=${formulaCobrosEfectivoPosteriores('0')}`, '', '', '', 'Cobranzas: forma "Efectivo" Y estado "Cobrado"'])
-  push(['      · (−) pagado en efectivo — histórico completo', 'ARS',
-    `=-(${formulaComprasEfectivoPosteriores('0')})`, '', '', '', 'Compras en efectivo: el MONTO PAGADO, parcial o total'])
-  push(['      · (−) jornales pagados en efectivo — histórico completo', 'ARS',
-    `=-(${formulaJornalesEfectivoPosteriores('0')})`, '', '', '', 'Jornales por Quincena, columnas Adelanto y Total recibo'])
-  push(['      · (−) sueldos de OFICINA en efectivo — histórico completo', 'ARS',
-    `=-(${formulaOficinaEfectivoPosteriores('0')})`, '', '', '', 'Oficina: lo pagado menos lo que salió por banco'])
-  // EL ESPEJO DEL DEPÓSITO: el billete deja la cuenta y entra al cajón, así que acá SUMA. La caja
-  // física sólo sabía BAJAR hacia el banco y nunca subir desde él — una asimetría que sólo puede dar
-  // de menos.
-  push(['      · (+) extraído del banco — histórico completo', 'ARS',
-    `=${formulaExtraccionesEfectivoPosteriores('0')}`, '', '', '', 'Réplica del extracto: débitos con concepto "extracción"'])
-  push(['      · (−) depositado en el banco — histórico completo', 'ARS',
-    `=-(${formulaDepositosEfectivoPosteriores('0')})`, '', '', '', 'Réplica del extracto: créditos con concepto "depósito de efectivo"'])
+  // así que el desglose no puede decir otra cosa que el total. En D, lo que ESE renglón valía cuando
+  // se selló el conteo: la resta contra su C dice quién se movió, que es lo que el 14/08 no se podía
+  // ver con un solo número sellado para los seis.
+  for (const l of HISTORICO_EFECTIVO) push([l.rotulo, 'ARS', l.formula, h.previo(l.rotulo, 'selloLinea'), '', '', l.origen])
   // EL SELLO. D lleva el número sellado (lo escribe el generador, no una persona); F, la fecha del
   // conteo al que pertenece. Con el sello viejo se autocancela: resta el histórico entero y el neto
   // queda en 0 — la pestaña muestra el conteo tal cual, nunca un descuento que ya está adentro.
+  // EL TOTAL MANDA sobre los seis sellos de arriba: los escribe la misma lectura, en el mismo batch, y
+  // los de renglón son el diagnóstico. Si alguna vez discreparan, el que resta es éste.
   push([SELLO_EFECTIVO.sello, 'ARS',
     `=-IF((NOT(ISNUMBER(${arqueo}))+${selloViejo}>0);SUM(C${f0}:C${fSello - 1});N($D$${fSello}))`,
     sello('selloNeto'), '', sello('selloFecha', ''),
     'lo que el histórico sumaba cuando se cargó el conteo; lo sella la corrida del anexo'])
+  // EL ESTADO DICE TAMBIÉN CUÁNTO SE MOVIÓ. El 14/08 esta fila decía "✓ sellado al conteo del 07/08",
+  // era verdad, y el número estaba roto igual: un sello vigente no dice nada sobre el histórico del
+  // que depende. El monto movido al lado del ✓ es lo que convierte esa línea en un control.
+  const movido = `TEXT(${crudo};"$#,##0")`
   push([SELLO_EFECTIVO.estado, '',
-    `=IF(NOT(ISNUMBER(${arqueo}));"— sin conteo cargado";IF(${selloViejo};"${ALERTA} conteo nuevo sin sellar: se muestra tal cual lo contaste; la próxima corrida sella y los movimientos corren desde ahí";"✓ sellado al conteo del "&TEXT(N($F$${fSello});"dd/mm")))`,
+    `=IF(NOT(ISNUMBER(${arqueo}));"— sin conteo cargado";IF(${selloViejo};"${ALERTA} conteo nuevo sin sellar: se muestra tal cual lo contaste; la próxima corrida sella y los movimientos corren desde ahí";`
+    + `IF(${cajon}<0;"${ALERTA} IMPOSIBLE: el histórico se movió "&${movido}&" desde el sello y deja el cajón en "&TEXT(${cajon};"$#,##0")&": muestro el conteo tal cual. Hay un dato viejo mal cargado o el sello quedó desfasado";`
+    + `"✓ sellado al conteo del "&TEXT(N($F$${fSello});"dd/mm")&" · el histórico se movió "&${movido}&" desde entonces")))`,
     selloEstado(), '', '', 'compara el conteo cargado contra la copia sellada (D de esta fila y F del sello)'])
-  return { fNeto, fSinCanal, fSello, fEstado, filasHistorico: [f0, fSello - 1] }
+  // EL CONTROL, CON NOMBRE PROPIO Y EN LA COLUMNA DE PESOS: CAJA lo suma a sus alertas de "no cierra".
+  // VA DEBAJO DEL SELLO Y NO ADENTRO DEL BLOQUE: todo lo que esté en la columna C entre el primer
+  // histórico y el sello ENTRA AL NETO, y un control que se suma a lo que mide no es un control.
+  const fImposible = push([SELLO_EFECTIVO.imposible, 'ARS', '', '',
+    `=IF(NOT(ISNUMBER(${arqueo}));0;MAX(0;-(${cajon})))`, '',
+    'Un cajón no puede tener menos de cero pesos. Mientras esto no sea 0, el efectivo publicado es el conteo y NO el calculado.'])
+  return { fNeto, fSinCanal, fSello, fEstado, fImposible, filasHistorico: [f0, fSello - 1] }
 }
 
 /**
@@ -356,7 +430,10 @@ export function grillaAnexo(ctx = {}) {
     cartera: ctx.cartera ?? { origen: '—', enCartera: [], endosados: [] },
     conceptosCiegos: ctx.conceptosCiegos ?? [],
     ch: ctx.refs?.cheques ?? 'Cheques Emitidos',
-    previo: (rot, campo) => ctx.cargado?.get(rot)?.[campo] ?? '',
+    // POR CLAVE NORMALIZADA: el rescate lee del Sheet y acá se pide con la constante del código. Los
+    // dos lados tienen que normalizar igual, o un rótulo con sangría no se encuentra nunca — ver
+    // `claveDeRotulo`, que es el defecto que dejó el sello sin rescatar desde que existe.
+    previo: (rot, campo) => ctx.cargado?.get(claveDeRotulo(rot))?.[campo] ?? '',
   })
   h.push([`${PESTANA_ANEXO} — EL DETALLE Y LAS CONCILIACIONES DE CAJA`])
   // LA PESTAÑA DICE PARA QUÉ ES Y A QUIÉN SIRVE. Un auxiliar sin encabezado se lee como un resto.
@@ -381,6 +458,7 @@ export function grillaAnexo(ctx = {}) {
   // pueda crecer sin romper CAJA — y la especie de cada uno se verifica DESPUÉS de publicar.
   const destinos = [
     { name: ANEXO.efectivoNeto, fila: mov.fNeto, col: 3 },
+    { name: ANEXO.efectivoImposible, fila: mov.fImposible, col: 5 },
     { name: ANEXO.oficinaSinCanal, fila: mov.fSinCanal, col: 3 },
     { name: ANEXO.difEcheq, fila: car.fDifCartera, col: 3 },
     { name: ANEXO.tarjetaDisponible, fila: cre.fDisp, col: 5 },
