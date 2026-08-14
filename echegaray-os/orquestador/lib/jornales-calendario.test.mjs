@@ -91,7 +91,12 @@ test('el encabezado del calendario tiene OCHO columnas y la letra sale de él, n
   // es el defecto que el dueño llama "descuadrado".
   assert.equal(COLS_CALENDARIO.length, 8)
   assert.equal(colCalendario('Obreros'), 'D')
-  assert.equal(colCalendario('TOTAL'), 'G')
+  // CAMBIO DE CONTRATO (14/08): «TOTAL» salió y entró «Por banco». El dueño pidió cuatro veces las
+  // DOS mitades del acuerdo 50/50 en la proyección, y el calendario publicaba sólo el efectivo. El
+  // TOTAL era la suma de las tres columnas que tenía al lado: se recompone de un vistazo y no
+  // decidía nada por sí solo. El ancho de 8 no se movió, que es lo que este test protege.
+  assert.equal(colCalendario('Por banco'), 'G')
+  assert.throws(() => colCalendario('TOTAL'), /no tiene la columna/)
   assert.throws(() => colCalendario('Días hábiles'), /no tiene la columna/)
   // "Quincena" NO: la primera fila puede ser el RESTO de la quincena en curso, y ése era el rótulo
   // que hacía leer una quincena de un día.

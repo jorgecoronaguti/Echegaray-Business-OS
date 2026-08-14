@@ -73,7 +73,22 @@ export const COLS_CALENDARIO = [
   // tres columnas BANCO/ADELANTO/TOTAL RECIBO que la de obra. Dirección sigue afuera: de esos tres
   // retiros el canal no está registrado en ninguna parte, y repartirlos con la proporción de otro
   // grupo sería inventarlo.
-  'Período', 'Hasta', 'Se paga el', 'Obreros', 'Oficina', 'Dirección', 'TOTAL', 'Efectivo',
+  // ═══ ENTRA «Por banco» Y SALE «TOTAL» (14/08) ═══
+  //
+  // El dueño, cuatro veces: *"la proyeccion de los restantes meses se basara en el 100% del convenio
+  // considerando el 50 y 50 acuerdo interno, lo dije mil veces"*. El calendario publicaba UNA sola
+  // mitad —«Efectivo»— así que veía cuánto sale en billetes y no cuánto por transferencia, que son
+  // los dos números con los que opera cada quincena.
+  //
+  // El ancho de la grilla es 8 y no se toca (dos anchos en el mismo tab es defecto de patrón), así
+  // que algo tenía que salir. Sale «TOTAL»: era la suma de las tres columnas que tiene a la
+  // izquierda, y con las dos mitades publicadas se recompone de un vistazo. Criterio del dueño para
+  // cada columna: ¿qué decisión cambia si este número cambia? El TOTAL no cambiaba ninguna.
+  //
+  // Las dos mitades cubren OBREROS + OFICINA. Dirección queda afuera de las dos y por eso su columna
+  // sigue existiendo: de esos tres retiros el canal no está registrado en ninguna fuente, y
+  // repartirlos con la proporción de otro grupo sería inventarlo.
+  'Período', 'Hasta', 'Se paga el', 'Obreros', 'Oficina', 'Dirección', 'Por banco', 'Efectivo',
 ]
 
 /** La letra A1 de una columna del calendario, buscada por su rótulo. Falla RUIDOSA. */

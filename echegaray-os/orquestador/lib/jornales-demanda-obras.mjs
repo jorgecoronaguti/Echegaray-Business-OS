@@ -316,12 +316,22 @@ export function proyeccionQuincena(piso, demanda) {
  * @returns {string} la fórmula, separador es-AR
  */
 export function formulaProyectadoQuincena({ convenio, celdaPago }, demanda = null) {
-  const C = celdaPago
-  const jornales = Math.round(Number(demanda?.jornales) || 0)
-  if (!(jornales > 0)) return `=IFERROR(${convenio};"")`
-  return `=IF(AND(N(${C})>0;${C}<=EOMONTH(TODAY();0));`
-    + `IFERROR(${convenio};"");`
-    + `MAX(IFERROR(${convenio};0);${jornales}))`
+  void celdaPago; void demanda
+  // ═══ EL MAX CONTRA LA DEMANDA SE FUE (14/08) ═══
+  //
+  // Decía `MAX(convenio; demanda de las obras)`. Con eso la columna cambiaba de NATURALEZA fila por
+  // fila: de agosto a septiembre publicaba lo que piden las obras vendidas ($18,7M–$21,5M) y de
+  // octubre en adelante lo que obliga el convenio ($7,2M–$8,8M). El dueño lo vio en la cara:
+  // *"esas proyecciones no pueden ser asi, no dan confianza"* · *"q mierda estas haciendo con las
+  // proyecciones de obreros"* · *"hace lo solicitado CON EL PLANTEL ACTUAL"*.
+  //
+  // Y tenía razón por aritmética, no por gusto: esos $18,7M equivalen a ~38 personas con la Σ $/hora
+  // del convenio, contra las 16 del plantel. El número no describía ni a su gente ni a su escala.
+  //
+  // La regla es una sola y vale para las nueve quincenas: **el 100% del convenio sobre el plantel
+  // actual**. La demanda de obra sigue viva y sigue siendo información valiosa —dice si las obras
+  // vendidas piden más gente de la que hay— pero es OTRA pregunta y no puede pisar ésta.
+  return `=IFERROR(${convenio};"")`
 }
 
 /**

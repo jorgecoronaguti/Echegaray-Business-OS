@@ -639,7 +639,7 @@ export function grilla({
   const pFin = p0 + pendientes.length - 1
   const cO = colCalendario('Oficina')
   const cD = colCalendario('Dirección')
-  const cT = colCalendario('TOTAL')
+  const cB = colCalendario('Por banco')
   const cE = colCalendario('Efectivo')
   const cObra = colCalendario('Obreros')
   pendientes.forEach((q, i) => {
@@ -658,7 +658,9 @@ export function grilla({
       // citan filas que todavía no existen —el cuadro del escalón (sección 4) para la de obra, los
       // bloques mensuales (secciones 2 y 3) para las otras dos—. Ninguna se puede escribir acá.
       VACIO, VACIO, VACIO,
-      `=SUM(${cObra}${r}:${cD}${r})`,
+      // LA OTRA MITAD DEL ACUERDO. Salía sólo el efectivo y el dueño lo reclamó cuatro veces: con una
+      // sola mitad publicada no sabe cuánto transferir. Misma regla, mismo par de columnas, mismo `/2`.
+      `=(${cObra}${r}+${cO}${r})/2`,
       // ═══ LOS BILLETES SALEN DEL ACUERDO, NO DE UNA MEDICIÓN (14/08) ═══
       //
       // Era `obra × share_medido + oficina × share_oficina`, con dos porcentajes calculados sobre el
@@ -680,7 +682,7 @@ export function grilla({
   // layout anterior tenía en esa misma celda, y quedaría un #VALUE! al lado del total bueno.
   const sumaCol = (c) => `=SUM(${c}${p0}:${c}${pFin})`
   const fTotalProy = push([rotuloTotal('Total a pagar hasta diciembre'), VACIO, VACIO,
-    sumaCol(cObra), sumaCol(cO), sumaCol(cD), sumaCol(cT), sumaCol(cE)])
+    sumaCol(cObra), sumaCol(cO), sumaCol(cD), sumaCol(cB), sumaCol(cE)])
   // EL CONTROL VA DEBAJO DEL MENSAJE, NO ENCIMA. Se completa abajo, cuando existen los dos totales
   // contra los que compara.
   const fControlCal = push([VACIO])
@@ -1514,8 +1516,18 @@ export function grilla({
   const proximoMensual = (f, r0, r1, banco) => {
     const min = `MINIFS($E$${r0}:$E$${r1};$E$${r0}:$E$${r1};">="&TODAY();$H$${r0}:$H$${r1};">0")`
     filaPago(f, {
-      // La gente del mes que se está por pagar, del propio bloque: no un plantel estampado acá.
-      personas: `=IF(N(C${f})=0;"";IFERROR(INDEX($B$${r0}:$B$${r1};MATCH(C${f};$E$${r0}:$E$${r1};0));""))`,
+      // ═══ POR QUÉ ACÁ NO VA UN NÚMERO (14/08) ═══
+      //
+      // Esto leía la columna B del bloque mensual dando por sentado que era «Personas». La proyección
+      // de Oficina movió «Ajuste escalón» a esa columna, y el cuadro publicó **1,019 personas de
+      // oficina y 1,0384 de dirección** — los factores de escalón disfrazados de gente, sumando un
+      // plantel de "17,06". Anclar en la POSICIÓN de una columna de otro bloque es el defecto que este
+      // libro ya pagó tres veces.
+      //
+      // Los bloques mensuales no publican su plantel: no hay de dónde leerlo sin inventarlo. Va el
+      // glifo de "no hay dato", que es lo único cierto. El día que el bloque tenga su columna, se lee
+      // POR RÓTULO — nunca por letra.
+      personas: SIN_CANAL,
       cuando: `=IF(${min}=0;"";${min})`,
       total: `=IF(N(C${f})=0;"";SUMIFS($H$${r0}:$H$${r1};$E$${r0}:$E$${r1};C${f}))`,
       adelanto: VACIO,

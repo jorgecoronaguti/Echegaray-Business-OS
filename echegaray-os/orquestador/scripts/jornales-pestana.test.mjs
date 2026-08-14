@@ -1194,10 +1194,19 @@ test('EL CALENDARIO CONTESTA LA PREGUNTA: obreros, oficina y dirección, y su to
   for (const [i, letra] of [[3, 'D'], [4, 'E'], [5, 'F'], [6, 'G'], [7, 'H']]) {
     assert.equal(String(tot[i]), `=SUM(${letra}${gm.p0}:${letra}${fin})`, `la columna ${letra} del total no suma su cuadro`)
   }
-  // El TOTAL de cada fila suma EXACTAMENTE las tres columnas de población: ni una de más (doble
-  // conteo) ni una de menos (una nómina que desaparece del calendario).
+  // ═══ CAMBIO DE CONTRATO (14/08): LAS DOS MITADES, NO EL TOTAL ═══
+  //
+  // Esto exigía `=SUM(D:F)` en la séptima columna. El dueño reclamó cuatro veces que la proyección
+  // publicara *"el 50 y 50 acuerdo interno"* y el calendario traía una sola mitad. El TOTAL salió —era
+  // la suma de las tres columnas que tenía al lado— y entró «Por banco».
+  //
+  // Las dos mitades cubren OBREROS + OFICINA y NO Dirección: su canal no está registrado en ninguna
+  // fuente. Por eso `banco + efectivo` no da el total de la fila, y está bien que no lo dé.
   for (let r = gm.p0; r <= fin; r++) {
-    assert.equal(String(gm.filas[r - 1][6]), `=SUM(D${r}:F${r})`, `la fila ${r} no totaliza las tres nóminas`)
+    assert.equal(String(gm.filas[r - 1][6]), `=(D${r}+E${r})/2`, `la fila ${r} perdió la mitad por banco`)
+    assert.equal(String(gm.filas[r - 1][7]), `=(D${r}+E${r})/2`, `la fila ${r} perdió la mitad en efectivo`)
+    // `/2` y NUNCA `*0,5`: el literal decimal viaja en locale es_AR y la celda queda en #ERROR.
+    assert.doesNotMatch(String(gm.filas[r - 1][6]), /0[,.]5/, 'el 50% se escribió como literal decimal')
   }
 })
 
@@ -1237,12 +1246,12 @@ test('EL TOTAL DEL CALENDARIO NO SE CUENTA DOS VECES EN CAJA: el rango publicado
   // perfectamente plausible y ninguna celda en rojo.
   const proy = rangosDeJornales(gm).find((x) => x.nombre === 'JORNALES_PROY_TOTAL')
   assert.equal(proy.ancla.texto, 'Obreros')
-  assert.notEqual(proy.c0, COLS_CALENDARIO.indexOf('TOTAL'))
+  assert.notEqual(proy.c0, COLS_CALENDARIO.indexOf('Por banco'))
   // Y el lector de la caja tiene que leer la MISMA columna: su declaración vive en nomina-sync, que
   // es el módulo que escribe el cuadro. Dos definiciones de dónde está el total es cómo se
   // desincronizó este mismo cuadro en julio.
   assert.equal(COL_PROYECCION.total, proy.c0, 'el lector de la caja y el rango publicado apuntan a columnas distintas')
-  assert.equal(COL_PROYECCION.consolidado, COLS_CALENDARIO.indexOf('TOTAL'))
+  assert.equal(COL_PROYECCION.banco, COLS_CALENDARIO.indexOf('Por banco'))
 })
 
 test('cada PROYECTADO del cuadro del año sale del bloque de SU grupo, no de una suma propia', () => {

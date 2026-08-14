@@ -87,8 +87,12 @@ export const COL_REGISTRO = {
  * se conserva porque `JORNALES_PROY_TOTAL` ya está publicado y citado por fórmulas del Sheet; el
  * contrato es que ese nombre significa "los jornales de obra proyectados", no "la nómina entera".
  */
+// `banco` ocupa el lugar que tenía `consolidado` (el TOTAL de la fila) desde el 14/08: el dueño pidió
+// cuatro veces las DOS mitades del acuerdo 50/50 en la proyección y el calendario publicaba sólo el
+// efectivo. El TOTAL salió porque era la suma de las tres columnas que tenía al lado y no decidía
+// nada; y `consolidado` estaba declarado acá sin un solo lector, así que nada aguas abajo lo pierde.
 export const COL_PROYECCION = {
-  desde: 0, hasta: 1, pago: 2, total: 3, oficina: 4, direccion: 5, consolidado: 6, efectivo: 7,
+  desde: 0, hasta: 1, pago: 2, total: 3, oficina: 4, direccion: 5, banco: 6, efectivo: 7,
 }
 
 export function filasQuincenas(bloques, filaInicio = 6, hoja = '_J_OBREROS') {
