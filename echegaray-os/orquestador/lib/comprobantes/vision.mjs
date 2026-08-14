@@ -26,6 +26,8 @@
 
 import { aNumero } from '../carga-comprobantes.mjs'
 import { identidadDelComprobante } from './aritmetica.mjs'
+import { ivaPlausible, fechaPlausible } from './plausibilidad.mjs'
+import { fechaDeLectura } from './lectura.mjs'
 
 /** Modelo de lectura. Barato a propósito: leer un ticket es extracción, no razonamiento. */
 export const MODELO_LECTURA = process.env.ORQ_COMPROBANTES_MODELO || 'claude-haiku-4-5-20251001'
@@ -151,6 +153,9 @@ export const PROMPT_LECTURA = [
   '  leen, poné null: qué se compró no se deduce de quién lo vendió.',
   '· Si es NOTA DE CRÉDITO poné es_nota_credito=true. No cambies el signo de los importes: copialos',
   '  positivos tal como figuran.',
+  '· Si es NOTA DE DÉBITO (intereses, recargos, diferencia de cambio) poné es_nota_debito=true. NO es',
+  '  lo mismo que una nota de crédito: la de débito SUMA. Y no es una factura: lleva su propia',
+  '  numeración, así que un proveedor puede emitir la factura y la nota de débito con el mismo número.',
   '· LA NOTA DE LA COMPRA ("detalle_libre") — una línea corta con lo que el papel dice de ESTA compra',
   '  en concreto, que es lo que en esta empresa se escribe en la columna "Detalles / Obra". Poné lo',
   '  que el comprobante traiga, en este orden y separado con " · ":',
@@ -172,7 +177,8 @@ export const PROMPT_LECTURA = [
   '',
   'Respondé SÓLO este JSON, sin texto alrededor:',
   '{"emisor":"<razón social del que VENDE>","cuit":"<11 dígitos del emisor, o null>",',
-  '"letra":"<A|B|C|null>","es_nota_credito":<true|false>,"numero":"<0000-00000000 o null>",',
+  '"letra":"<A|B|C|null>","es_nota_credito":<true|false>,"es_nota_debito":<true|false>,',
+  '"numero":"<0000-00000000 o null>",',
   '"cae":"<14 dígitos o null>","fecha":"<DD/MM/AAAA o null>",',
   '"neto_gravado":"<importe o null>","iva_21":"<importe o null>","iva_105":"<importe o null>",',
   '"otros_tributos":"<importe o null>","total":"<importe o null>",',
@@ -277,12 +283,32 @@ export function bloqueImputacion(v = {}) {
   return l.join('\n')
 }
 
-export function necesitaRevision(crudo = {}) {
+export function necesitaRevision(crudo = {}, { ahora } = {}) {
   const motivos = []
   if (crudo?.legible === false) motivos.push('la lectura se declaró ilegible')
   if (vacio(crudo?.total)) motivos.push('no leyó el total')
   if (vacio(crudo?.numero)) motivos.push('no leyó el número')
   if (vacio(crudo?.fecha)) motivos.push('no leyó la fecha')
+  // ═══ UN DATO IMPOSIBLE MERECE EL SEGUNDO PAR DE OJOS ANTES QUE UNA PREGUNTA (14/08) ═══
+  //
+  // `faltantes.mjs` ya sabe que una fecha de 2003 o un IVA del 0,0002% no pueden ser ciertos, pero se
+  // enteraba TARDE: cuando lo sabía, la lectura ya había terminado y la única salida era frenar el
+  // comprobante y pedirle al dueño que lo corrija a mano. Es exactamente el trabajo que él no quiere
+  // hacer, y es evitable: el mismo control es calculable acá, sobre el JSON crudo, cuando todavía se
+  // puede pedir otra lectura. Las dos caras usan LA MISMA función (`plausibilidad.mjs`), así que no
+  // pueden discrepar sobre el mismo papel: acá la consecuencia es releer y allá, no cargar.
+  //
+  // Cuesta una llamada al modelo grande, y sólo sobre el comprobante que ya se sabe mal leído.
+  const c = {
+    iva: (aNumero(crudo?.iva_21) ?? 0) + (aNumero(crudo?.iva_105) ?? 0),
+    neto: aNumero(crudo?.neto_gravado),
+    otrosTributos: aNumero(crudo?.otros_tributos),
+    total: aNumero(crudo?.total),
+  }
+  const v = ivaPlausible(c)
+  if (v.verificable && !v.plausible) motivos.push(`el IVA leído no puede ser cierto (${v.motivo})`)
+  const f = fechaPlausible(fechaDeLectura(crudo?.fecha), ahora ? { ahora } : {})
+  if (f.verificable && !f.plausible) motivos.push(`la fecha leída no puede ser cierta (${f.motivo})`)
   // LA MISMA IDENTIDAD QUE DESPUÉS DECIDE SI SE ESCRIBE (`faltantes.mjs`), calculada por la MISMA
   // función. Acá su consecuencia es pedir el modelo grande; allá, no cargar. Dos consecuencias, una
   // sola cuenta: si cada una tuviera la suya, el que avisa y el que bloquea podrían discrepar sobre
@@ -443,6 +469,9 @@ export async function leerAdjunto(adjunto, ctx = {}) {
     // aire para que el modelo mire la foto con calma.
     maxTokens = 6000,
     vocabulario = null,
+    // El reloj contra el que se juzga si la fecha leída puede ser cierta. Inyectable para que el test
+    // no dependa del día en que corre.
+    ahora = null,
   } = ctx
   const bloque = bloqueAdjunto(adjunto)
   if (!bloque) return { ok: false, error: `no puedo mirar un archivo ${adjunto?.mediaType ?? 'sin tipo'}` }
@@ -453,7 +482,7 @@ export async function leerAdjunto(adjunto, ctx = {}) {
   const primera = await unaLectura(bloque, opciones)
   if (!primera.ok) return primera
 
-  const motivos = necesitaRevision(primera.crudo)
+  const motivos = necesitaRevision(primera.crudo, ahora ? { ahora } : {})
   if (!motivos.length || !modeloRevision || modeloRevision === modelo) {
     return { ok: true, crudo: primera.crudo, revision: { hubo: false, motivos } }
   }

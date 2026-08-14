@@ -19,7 +19,7 @@ process.env.ORQ_COMPROBANTES_BOTONES = '1'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  entraEnElFajo, colapsarRepetidos, botonesFajo, preguntasDe, estaCompleto,
+  entraEnElFajo, colapsarRepetidos, botonesFajo, preguntasDe, estaCompleto, imputacionVacia,
   ESTADO, VENTANA_FAJO_MIN,
 } from './fajo.mjs'
 
@@ -107,8 +107,24 @@ test('un comprobante sin obra SE CARGA IGUAL: la obra se ofrece, no se exige (03
   assert.deepEqual(preguntasDe(sinObra), [], 'no queda nada por contestar para poder cargarlo')
 })
 
-test('un PROVEEDOR DESCONOCIDO frena la carga y se pregunta por su nombre', () => {
+// ═══ CAMBIO DE CONTRATO (14/08): el proveedor desconocido dejó de frenar la fila ═══
+//
+// Decisión del dueño: «me tiene q poder cargar todas las filas porque no puedo estar revisando cada
+// comprobante». Con CUIT y número el comprobante se identifica solo, así que la fila entra con la
+// celda E vacía y el mensaje la nombra. Sin CUIT sigue frenando: sin identidad fuerte la clave se
+// degrada al nombre —que es justo el que no se pudo resolver— y cargar sin clave es cargar sin
+// barrera de duplicados. Ver `EXIGIR_PROVEEDOR` en `faltantes.mjs`.
+
+test('un PROVEEDOR DESCONOCIDO con CUIT y número NO frena: entra con la celda vacía', () => {
   const nuevo = { ...item(), proveedorNuevo: true }
+  assert.equal(estaCompleto(nuevo), true)
+  assert.deepEqual(preguntasDe(nuevo), [])
+  assert.ok(imputacionVacia(nuevo).includes('proveedor'),
+    'no se carga en silencio: la columna E figura entre las que quedaron por completar')
+})
+
+test('un PROVEEDOR DESCONOCIDO SIN CUIT sí frena, y se pregunta por su nombre', () => {
+  const nuevo = { ...item({ comprobante: { cuit: null } }), proveedorNuevo: true }
   assert.equal(estaCompleto(nuevo), false)
   const p = preguntasDe(nuevo).join(' ')
   assert.match(p, /no está en el desplegable de Compras/)

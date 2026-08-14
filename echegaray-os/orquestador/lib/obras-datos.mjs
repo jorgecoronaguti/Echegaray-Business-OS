@@ -25,6 +25,8 @@
 // · `ventaTexto`: el texto con el que la obra aparece en el Concepto de Cobranzas — la grilla lo usa
 //   para la fórmula viva de venta.
 
+import { ALERTA } from './glifos.mjs'
+
 /** Los clientes canónicos del desplegable de Compras col J que usan estas obras. */
 export const CLIENTES_CANONICOS = ['San Francisco', 'MESSINA', 'Quattropani - Melisa García SAS']
 
@@ -110,7 +112,7 @@ export const OBRAS_FUTURAS = [
         // Alumetal NO tiene ni una fila con cliente "San Francisco" en Compras (sí 17 con LA ESTRELLA
         // y 2 con MESSINA). O se cargaron bajo otro cliente, o no se cargaron. Hasta que eso se
         // resuelva en Compras, este egreso se proyecta entero, que es lo prudente.
-        nota: '⚠ Alumetal no tiene filas con cliente San Francisco en Compras: el neteo no puede verlas',
+        nota: `${ALERTA} Alumetal no tiene filas con cliente San Francisco en Compras: el neteo no puede verlas`,
       },
       { concepto: 'Pintura', proveedor: 'Pintureria Cordoba', familia: 'Pintura', monto: 71_598, fechaEstimada: '2026-08-14' },
     ],

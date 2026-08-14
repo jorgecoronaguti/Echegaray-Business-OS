@@ -431,7 +431,7 @@ test('B3 · el "escalón que viene" NO puede mostrar un número de otro año', (
   const fila = gm.filas.find((f) => /El escalón que viene/.test(String(f[0])))
   // Sin versalita desde el rediseño del 13/08 — lo que importa es que LO DIGA, no cómo lo grite. El ⚠
   // hace el trabajo que hacían las mayúsculas y ocupa un carácter.
-  assert.match(String(fila[0]), /⚠/, 'la ausencia de acuerdo tiene que estar marcada')
+  assert.match(String(fila[0]), /▲/, 'la ausencia de acuerdo tiene que estar marcada')
   assert.match(String(fila[0]), /sin acuerdo publicado/i)
   // Y las dos filas de abajo NO SE EMITEN. Antes se emitían vacías: dos rótulos sin cifra debajo de
   // una oración que ya explicaba la ausencia. Traer el básico de 2025 sigue prohibido, y ahora además

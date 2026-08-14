@@ -100,6 +100,48 @@ export const PREGUNTA_OBRA = 'no dice a qué obra va — ¿cuál es?'
  * puede preguntar y esperar, la línea de comandos no tiene a quién preguntarle en el medio de una
  * corrida. `exigirObra` era la única de negocio y ya está decidida: no se exige en ninguna de las dos.
  */
+/**
+ * ¿UNA FILA SIN PROVEEDOR ENTRA IGUAL? — la decisión del 14/08, y dónde está la línea.
+ *
+ * ═══ EL PEDIDO DEL DUEÑO, TEXTUAL ═══
+ *
+ * «me tiene q poder cargar todas las filas porque no puedo estar revisando cada comprobante». Y:
+ * «no se q comprobante quedo afuera porque no estoy revisando todo el tiempo, son muchos». Una fila
+ * que falta le cuesta MÁS que una fila incompleta: la incompleta se ve en Compras y se completa en
+ * diez segundos; la que falta no la ve nadie y el gasto no existe para el Flujo de Fondos.
+ *
+ * ═══ DÓNDE ESTÁ LA LÍNEA, Y POR QUÉ AHÍ ═══
+ *
+ * **Una celda VACÍA se completa; un número EQUIVOCADO se propaga.** Por eso esta puerta se abre sólo
+ * para lo que deja una celda en blanco —el proveedor que no está en el desplegable, la obra, el
+ * detalle— y NO para nada que escriba un dato dudoso: un total fuera de escala, una aritmética que
+ * no cierra, una fecha o un IVA imposibles y un duplicado probable siguen frenando exactamente igual.
+ * Ahí no hay una celda para completar después: hay plata mal cargada que se propaga por fórmula a
+ * cuatro pestañas y nadie la revisa.
+ *
+ * ═══ Y POR QUÉ HACE FALTA UNA IDENTIDAD FUERTE ═══
+ *
+ * Sin proveedor, la clave de idempotencia se degrada a `p:<nombre>` — y sin nombre no hay clave
+ * ninguna. Cargar sin clave es cargar sin barrera de duplicados, que es peor que no cargar. Así que
+ * la fila entra sin proveedor SÓLO si el CUIT (once dígitos) y el número la identifican solos. Con
+ * eso la clave sigue siendo `c:` y fuerte.
+ *
+ * EL NOMBRE LEÍDO NO SE PIERDE: viaja transcripto al concepto (`aFajoJson`), y el mensaje nombra la
+ * FILA y lo que le falta. Cargar y declarar es distinto de cargar en silencio, que es lo que el dueño
+ * rechazó el 04/08.
+ *
+ * Se puede volver atrás sin desplegar: `ORQ_COMPROBANTES_EXIGIR_PROVEEDOR=1`.
+ */
+export const EXIGIR_PROVEEDOR = String(process.env.ORQ_COMPROBANTES_EXIGIR_PROVEEDOR ?? '') === '1'
+
+/**
+ * ¿Este comprobante se identifica solo, sin depender del nombre del proveedor?
+ * CUIT completo + número: es exactamente lo que hace que `claveComprobante` devuelva una clave `c:`.
+ */
+export function identidadFuerte(c = {}) {
+  return String(c?.cuit ?? '').replace(/\D/g, '').length === 11 && Boolean(String(c?.numero ?? '').trim())
+}
+
 export const POLITICA = Object.freeze({
   // Claude Code: escribe la fila y el dueño completa la imputación en el Sheet.
   CARGADOR: Object.freeze({
@@ -176,7 +218,10 @@ export function faltantesDe(item = {}, politica = POLITICA.CARGADOR, { ahora } =
   const out = []
   const falta = (codigo, texto, pregunta) => out.push({ codigo, texto, pregunta: pregunta ?? texto })
 
-  if (p.exigirProveedorConocido && item.proveedorNuevo) {
+  // UN PROVEEDOR QUE NO ESTÁ EN EL DESPLEGABLE YA NO FRENA LA FILA cuando el CUIT y el número la
+  // identifican solos: entra con la celda E vacía, con el nombre leído transcripto en el concepto, y
+  // el mensaje dice la fila y qué le falta. Ver `EXIGIR_PROVEEDOR` arriba.
+  if (p.exigirProveedorConocido && item.proveedorNuevo && (EXIGIR_PROVEEDOR || !identidadFuerte(c))) {
     const quien = c.proveedor ?? '(ilegible)'
     // ═══ UNA PREGUNTA QUE NO SE PUEDE CONTESTAR NO ES UNA PREGUNTA (04/08) ═══
     //
@@ -198,7 +243,12 @@ export function faltantesDe(item = {}, politica = POLITICA.CARGADOR, { ahora } =
       `puede que ya esté cargado en la **fila ${fila}** — ¿es el mismo?`)
   }
   if (p.exigirObra && !c.obra) falta(MOTIVO.OBRA, 'sin obra imputada', PREGUNTA_OBRA)
-  if (!normalizar(c.proveedor)) falta(MOTIVO.PROVEEDOR, 'sin proveedor', 'no pude leer el proveedor')
+  // SIN NOMBRE PERO CON CUIT Y NÚMERO, LA FILA ENTRA. El proveedor se completa en Compras eligiéndolo
+  // del desplegable; el gasto, en cambio, o entra ahora o no entra nunca. Sin identidad fuerte sí
+  // frena: sin nombre y sin CUIT no hay clave, y sin clave no hay barrera de duplicados.
+  if (!normalizar(c.proveedor) && (EXIGIR_PROVEEDOR || !identidadFuerte(c))) {
+    falta(MOTIVO.PROVEEDOR, 'sin proveedor', 'no pude leer el proveedor')
+  }
   if (aNumero(c.neto) == null && aNumero(c.total) == null) {
     falta(MOTIVO.IMPORTE, 'sin importe numérico', 'no pude leer el total')
   } else if (p.exigirTotal && aNumero(c.total) == null) {
@@ -232,7 +282,9 @@ export function faltantesDe(item = {}, politica = POLITICA.CARGADOR, { ahora } =
   // Un total TIPEADO POR UNA PERSONA no se cuestiona: `totalTipeado` lo pone el formulario de
   // Corregir. Alguien miró el papel y escribió el número; seguir preguntando sería un callejón sin
   // salida para toda compra grande de verdad.
-  if (!c.totalTipeado) {
+  // Un total que salió del LIBRO FISCAL no se compara contra la historia del proveedor: la escala
+  // existe para agarrar una coma mal leída, y ahí no hay nada leído. Misma salida que `totalTipeado`.
+  if (!c.totalTipeado && c.importesVia !== 'arca') {
     const esc = fueraDeEscala(c.total, item.escala)
     if (esc.sospechoso) {
       falta(MOTIVO.ESCALA,

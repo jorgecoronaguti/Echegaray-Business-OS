@@ -13,6 +13,8 @@
 // que se rompe cuando alguien inserta una columna en la pestaña fuente — y cuando eso pasa, un
 // SUMIFS no da error: da otro número.
 
+import { ALERTA, mismaMarca } from './glifos.mjs'
+
 /** Columnas de cada pestaña fuente, 0-indexadas. La letra es la que se ve en el Sheet. */
 export const COL = {
   compras: { total: 14, rubro: 28, fechaCaja: 29, subrubro: 31 }, // O · AC · AD · AF
@@ -22,8 +24,15 @@ export const COL = {
   banco: { fecha: 0, importe: 2, sentido: 4, naturaleza: 5 }, // A · C · E · F
 }
 
-/** El rótulo exacto que el OS escribe cuando un pago no tiene su factura en Compras. */
-export const SIN_FACTURA = '⚠ FALTA cargar la factura en Compras — este pago no lo ve el cash flow'
+/**
+ * El rótulo exacto que el OS escribe cuando un pago no tiene su factura en Compras.
+ *
+ * SE DECLARA ACÁ Y NO SE IMPORTA DE `cheques-cobertura`, a propósito: este módulo existe para rehacer
+ * cada línea del cash flow CON OTRO CÓDIGO, y un control que comparte constantes con lo que audita
+ * confirma el error en vez de encontrarlo. Lo que sí se comparte es el GLIFO, que no es criterio sino
+ * tipografía — y que las dos copias siguen diciendo lo mismo lo prueba un test, no la buena memoria.
+ */
+export const SIN_FACTURA = `${ALERTA} FALTA cargar la factura en Compras — este pago no lo ve el cash flow`
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
 const esNum = (v) => typeof v === 'number' && Number.isFinite(v)
@@ -134,7 +143,9 @@ export function conciliarSinFactura(filas = [], { tipo, desde, hasta, desdeFila 
     monto: c.monto,
     desde,
     hasta,
-    filtro: (f) => String(f[c.estadoOS] ?? '') === SIN_FACTURA,
+    // Con `mismaMarca` la fila que todavía tiene el `⚠` publicado sigue contando: si no, esta línea
+    // del cuadro daría $0 y el conciliador reportaría una diferencia que no existe.
+    filtro: (f) => mismaMarca(f[c.estadoOS], SIN_FACTURA),
   })
 }
 

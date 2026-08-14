@@ -22,25 +22,16 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { PASOS } from '../lib/flujo-caja-pasos.mjs'
+// EL REGISTRO DE EXCEPCIONES SE MUDÓ A `lib/` (14/08/2026) y se re-exporta acá para no romper a quien
+// lo importaba de este script. El motivo es de fuente única: ahora lo consultan DOS controles —este
+// censo, que necesita el archivo vivo, y el test estático de `pestanas-auxiliares`, que corre sin
+// red—. Con la lista en el script, el test tendría que declarar sus propias excepciones y las dos
+// listas empezarían a divergir el día que se agregue una.
+import { SIN_GENERADOR } from '../lib/pestanas-auxiliares.mjs'
+
+export { SIN_GENERADOR }
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
-
-/**
- * Pestañas que NO tienen que tener un generador, con el motivo escrito.
- *
- * Una excepción sin motivo declarado es una huérfana disfrazada: por eso el motivo es obligatorio y
- * se imprime. Son las pestañas de CAPTURA —las carga una persona— y el OS las lee, no las escribe.
- */
-export const SIN_GENERADOR = {
-  Compras: 'la carga una persona: es el libro de gastos. El OS le calcula columnas (rubro-caja-sheet) pero no la reescribe.',
-  Cobranzas: 'la carga una persona: es el libro de ventas y cobros.',
-  Parámetros: 'los parámetros los decide una persona (alícuotas, jornada, clientes).',
-  '01_Valores Iniciales': 'saldos de arranque del ejercicio: se cargan una vez.',
-  // NO ES UNA EXCEPCIÓN CÓMODA, ES UNA DEUDA DECLARADA: la escala del convenio cambia con cada
-  // paritaria y hoy la réplica se carga a mano. Mientras siga así, el bloque de escala de Jornales
-  // envejece en silencio cuando se firma un acuerdo nuevo.
-  _UOCRA_RAW: '⚠ DEUDA: réplica del acuerdo UOCRA cargada a mano. Falta el script que la traiga del boletín de la paritaria.',
-}
 
 /** NÚCLEO PURO: cruza las pestañas reales contra el registro de pasos. */
 export function censar(titulos = [], pasos = PASOS, sinGenerador = SIN_GENERADOR) {

@@ -206,7 +206,7 @@ test('el canario compara el detalle escrito contra la fuente viva', () => {
   assert.ok(f > 0)
   const v = celda(g, f, 6)
   assert.match(v, /COUNTIFS/, 'cuenta cuántos hay de verdad')
-  assert.match(v, /⚠/, 'y avisa cuando no coinciden')
+  assert.match(v, /▲/, 'y avisa cuando no coinciden')
 })
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════

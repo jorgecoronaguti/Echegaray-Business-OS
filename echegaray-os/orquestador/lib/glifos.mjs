@@ -37,6 +37,82 @@
 export const ALERTA = '▲'
 
 /**
+ * EL GLIFO QUE YA ESTÁ PUBLICADO, y por qué sigue vivo en el código.
+ *
+ * El cambio de `⚠` a `▲` no reescribe el archivo: cada pestaña se corrige cuando corre SU generador,
+ * y hasta entonces conviven las dos marcas en las celdas. Eso importa porque hay tres mecanismos que
+ * reconocen lo publicado POR SU TEXTO y no por su coordenada:
+ *
+ *   · la huella de celda (`huella-celda`, `huella-forma`), que decide "esta celda la escribí yo" para
+ *     poder sellar que el dueño la borró — si deja de reconocer una marca, el borrado no se sella y a
+ *     la corrida siguiente la celda VUELVE, que es el reclamo del dueño palabra por palabra;
+ *   · el cash flow, que suma cheques y tarjeta contando las filas cuya marca dice "FALTA la factura":
+ *     ahí un texto que no coincide no da error, da $0;
+ *   · la piel de las pestañas (`impuestos-piel`, `estilo-statement`), que pinta la alarma en rojo por
+ *     cómo empieza el texto de la columna A.
+ *
+ * Reconocer las dos es lo que hace que el cambio sea gradual en vez de un corte. Cuando ninguna celda
+ * del archivo tenga `⚠` —lo mide `auditar-pantalla` con `glifo_invisible`— esta constante se saca y
+ * con ella los dos brazos de cada comparación.
+ */
+export const ALERTA_HEREDADA = '⚠'
+
+/** Cualquiera de las dos marcas de alerta: la vigente y la que quedó publicada. Para RECONOCER. */
+export const MARCA_ALERTA = /[▲⚠]/
+
+/**
+ * UN TEXTO PUBLICADO, LLEVADO A LA MARCA VIGENTE.
+ *
+ * Sirve para comparar contra lo que hay hoy en una celda sin que el glifo decida el resultado. Saca
+ * también el selector de variación (U+FE0F), que es invisible y hace fallar una igualdad exacta entre
+ * dos textos que se ven idénticos.
+ *
+ * @param {unknown} texto
+ * @returns {string}
+ */
+export function normalizarAlerta(texto) {
+  return String(texto ?? '').replaceAll(ALERTA_HEREDADA, ALERTA).replaceAll('\uFE0F', '')
+}
+
+/** ¿Estos dos textos son la misma marca, más allá de con qué glifo se publicó cada uno? */
+export function mismaMarca(a, b) {
+  return normalizarAlerta(a) === normalizarAlerta(b)
+}
+
+/**
+ * LOS TEXTOS CON LOS QUE UNA MARCA PUEDE ESTAR PUBLICADA HOY: el vigente y, si lleva alerta, el viejo.
+ *
+ * Lo usa quien no puede escribir una comparación booleana —un `COUNTIF` por texto, una lista de
+ * "rótulos míos"— y necesita las dos formas enumeradas.
+ *
+ * @param {string} marca
+ * @returns {string[]}
+ */
+export function variantesDeMarca(marca) {
+  const heredada = String(marca).replaceAll(ALERTA, ALERTA_HEREDADA)
+  return heredada === marca ? [String(marca)] : [String(marca), heredada]
+}
+
+/**
+ * EL PREDICADO DE FÓRMULA QUE RECONOCE LA MARCA CON CUALQUIERA DE LOS DOS GLIFOS.
+ *
+ * Un `SUMPRODUCT` que compara contra el texto exacto deja de sumar las filas que todavía tienen el
+ * glifo viejo, y no da error: da $0. Los dos brazos se suman porque una celda no puede tener las dos
+ * marcas a la vez, así que la suma es un OR y no un doble conteo.
+ *
+ * Se saca junto con `ALERTA_HEREDADA` cuando el archivo no tenga más `⚠`.
+ *
+ * @param {string} rango la referencia ya armada, tal cual va en la fórmula
+ * @param {string} marca el texto exacto que escribe el generador HOY
+ * @returns {string} una expresión booleana lista para multiplicar dentro de un SUMPRODUCT
+ */
+export function comparaMarca(rango, marca) {
+  const heredada = String(marca).replaceAll(ALERTA, ALERTA_HEREDADA)
+  if (heredada === marca) return `(${rango}="${marca}")`
+  return `((${rango}="${marca}")+(${rango}="${heredada}"))`
+}
+
+/**
  * LOS RANGOS QUE EL PDF NO DIBUJA: los pictográficos y los símbolos con presentación emoji.
  *
  * Es una lista CONSERVADORA y explícita, no "todo lo que no sea ASCII": el archivo usa a propósito

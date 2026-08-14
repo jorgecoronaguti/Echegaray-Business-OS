@@ -1,6 +1,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { bloqueControlArca, ALTO_BLOQUE, comprasDevengado, DIR, C, DESDE, HASTA } from './control-arca-bloque.mjs'
+import { readdirSync, readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import {
+  bloqueControlArca, ALTO_BLOQUE, comprasDevengado, DIR, C, DESDE, HASTA, FILA_BLOQUE, MONTOS_BLOQUE,
+} from './control-arca-bloque.mjs'
 
 const armar = (rubros = ['Materiales Civil']) => bloqueControlArca({ titulo: '9 · RESPALDO FISCAL', rubros, fila0: 50 })
 
@@ -120,4 +125,52 @@ test('el detalle accionable se remite a la pestaña que lo tiene', () => {
 
 test('la bajada avisa que NO compara totales — es lo que confundió al lector', () => {
   assert.match(String(armar()[1][0]), /No compara totales/)
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL "$1" DE Materiales!B52 — UNA FRACCIÓN DIBUJADA COMO PLATA
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// La cobertura fiscal es una FRACCIÓN (0,6614). Con el formato moneda que hereda la columna B, se
+// redondea a pesos y se dibuja "$1": el número correcto, ilegible. Estructura y Recurrentes lo
+// formateaban bien, cada una con el desplazamiento tipeado a mano — tres copias del mismo número.
+// Estos tests atan los desplazamientos a los RÓTULOS que emite el bloque: reordenar una fila los
+// pone en rojo antes de que nadie vea un "$1" en la pantalla.
+
+test('FILA_BLOQUE apunta a la fila que dice: la cobertura, los montos y el veredicto', () => {
+  const filas = armar()
+  assert.match(filas[FILA_BLOQUE.cobertura][0], /^⇒ Cobertura fiscal/)
+  assert.match(filas[FILA_BLOQUE.universo][0], /^Lo que esta pestaña lista/)
+  assert.match(filas[FILA_BLOQUE.conRespaldo][0], /con su comprobante/)
+  assert.match(filas[FILA_BLOQUE.sinRespaldo][0], /sin comprobante/)
+  assert.match(filas[FILA_BLOQUE.global][0], /ARCA facturó y Compras NO lo tiene/)
+  assert.equal(filas[FILA_BLOQUE.veredicto].length, 1, 'el veredicto es una sola celda de texto')
+  assert.equal(Object.keys(FILA_BLOQUE).length, ALTO_BLOQUE, 'hay una fila del bloque sin nombre')
+})
+
+test('la cobertura NO es un importe: es la razón entre dos, y va fuera del rango de montos', () => {
+  // Si algún día entra en el rango de montos, se vuelve a dibujar "$1".
+  assert.ok(FILA_BLOQUE.cobertura >= MONTOS_BLOQUE.hasta,
+    'la fila de cobertura cae dentro del rango que se pinta como moneda: ese es el defecto de Materiales!B52')
+  for (let i = MONTOS_BLOQUE.desde; i < MONTOS_BLOQUE.hasta; i++) {
+    assert.match(armar()[i][1], /^=/, 'toda fila del rango de montos tiene que ser una fórmula de importe')
+  }
+})
+
+test('toda pestaña que inserta el bloque declara el formato de su cobertura', () => {
+  // EL DEFECTO, TAL CUAL PASÓ: `Materiales` insertaba el bloque y NO lo formateaba. Las otras dos sí,
+  // así que el "$1" apareció en una sola de las tres y nadie lo relacionó con el bloque compartido.
+  // Un consumidor nuevo que se olvide del formato hereda la moneda de la columna y repite el defecto.
+  const dir = join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts')
+  const consumidores = readdirSync(dir)
+    .filter((f) => f.endsWith('.mjs') && !f.endsWith('.test.mjs'))
+    .filter((f) => /\bbloqueControlArca\b/.test(readFileSync(join(dir, f), 'utf8')))
+  assert.ok(consumidores.length >= 3, `esperaba las tres pestañas del bloque y encontré ${consumidores.length}`)
+  for (const f of consumidores) {
+    const fuente = readFileSync(join(dir, f), 'utf8')
+    assert.match(fuente, /FILA_BLOQUE\.cobertura/,
+      `${f} inserta el bloque de ARCA y no declara el formato de la fila de cobertura: se va a dibujar "$1"`)
+    assert.doesNotMatch(fuente, /g\.arca0 \+ \d/,
+      `${f} todavía tipea a mano un desplazamiento del bloque: reordenar una fila lo desincroniza en silencio`)
+  }
 })

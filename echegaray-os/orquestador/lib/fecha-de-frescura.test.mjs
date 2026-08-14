@@ -81,13 +81,13 @@ test('la fecha se muestra dd/mm/yyyy, no el número de serie ni el formato ingl�
 
 test('sin datos NO muestra una fecha de 1899: un MAX vacío formateado es un dato falso', () => {
   const r = rotuloAlDia('x', 'F')
-  assert.match(r, /IF\(F=0;"⚠ sin datos cargados"/)
+  assert.match(r, /IF\(F=0;"▲ sin datos cargados"/)
 })
 
 test('pasados los días de aviso el rótulo lo GRITA, en vez de envejecer callado', () => {
   const r = rotuloAlDia('x', 'F')
   assert.equal(DIAS_AVISO, 7, 'el mismo umbral que la columna Antigüedad de CAJA')
-  assert.match(r, /IF\(TODAY\(\)-F>7;" · ⚠ hace "&TEXT\(TODAY\(\)-F;"0"\)&" días";""\)/)
+  assert.match(r, /IF\(TODAY\(\)-F>7;" · ▲ hace "&TEXT\(TODAY\(\)-F;"0"\)&" días";""\)/)
 })
 
 test('la cola queda DESPUÉS de la fecha: el subtítulo termina en la unidad', () => {
@@ -126,7 +126,7 @@ test('sin ninguna fuente NO devuelve 0: eso diría "sin datos" culpando al dato'
 test('la antigüedad se mide contra la fecha del saldo, no contra la corrida', () => {
   assert.equal(
     formulaAntiguedad('F19'),
-    '=IF(F19="";"⚠ sin cargar";IF(TODAY()-F19>7;"⚠ "&TEXT(TODAY()-F19;"0")&" días";TEXT(TODAY()-F19;"0")&" días"))',
+    '=IF(F19="";"▲ sin cargar";IF(TODAY()-F19>7;"▲ "&TEXT(TODAY()-F19;"0")&" días";TEXT(TODAY()-F19;"0")&" días"))',
     'este texto es EXACTAMENTE el que CAJA ya tenía: si cambia, cambió el patrón bueno',
   )
 })
@@ -184,7 +184,7 @@ test('con fuentes mixtas NO hay un MAX que las resuma: eso presta frescura viva 
   assert.match(r, /"F931 al "/)
 })
 
-test('cada fuente lleva SU umbral: con uno solo, el ⚠ de una DDJJ estaría prendido siempre', () => {
+test('cada fuente lleva SU umbral: con uno solo, el ▲ de una DDJJ estaría prendido siempre', () => {
   const r = rotuloPorFuente('x', [
     { nombre: 'banco', expr: 'A' },
     { nombre: 'F931', expr: 'B', avisoDias: 45 },

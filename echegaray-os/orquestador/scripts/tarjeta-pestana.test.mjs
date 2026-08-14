@@ -141,7 +141,7 @@ test('los únicos números pegados son los tres del resumen del banco, y llevan 
 test('la foto del banco no puede envejecer en silencio', () => {
   const f = frescura({ a: 2026, m: 7, d: 22 }, '22/07/2026', 21)
   assert.match(f, /TODAY\(\)-DATE\(2026;7;22\)/)
-  assert.match(f, /IF\(dd_>21;"⚠ foto de hace "/)
+  assert.match(f, /IF\(dd_>21;"▲ foto de hace "/)
   // La fecha que se muestra es la declarada en el núcleo, no una tipeada en el script — y es la de
   // la FOTO DE LA TARJETA (`TARJETA.al`), no la del corte del extracto de la cuenta: son dos
   // documentos distintos que cierran días distintos.
@@ -151,7 +151,7 @@ test('la foto del banco no puede envejecer en silencio', () => {
 
 test('el control cierra contra el banco y dice su veredicto, sin una línea de prosa', () => {
   assert.match(String(banda[fDif - 1][2]), /✓ concilia/)
-  assert.match(String(banda[fDif - 1][2]), /⚠ revisar la carga/)
+  assert.match(String(banda[fDif - 1][2]), /▲ revisar la carga/)
   assert.ok(ES_TOTAL.test(colA[fDif - 1]))
 })
 

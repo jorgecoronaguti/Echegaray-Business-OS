@@ -70,7 +70,7 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { FAMILIAS, SIN_FAMILIA, formulaFamilia, familiaDeMaterial, RUBROS_CON_FAMILIA } from '../lib/familia-material.mjs'
-import { bloqueControlArca } from '../lib/control-arca-bloque.mjs'
+import { bloqueControlArca, FILA_BLOQUE, MONTOS_BLOQUE } from '../lib/control-arca-bloque.mjs'
 // "El mismo proveedor" se define UNA vez, en lib/: ver el comentario junto a RUBROS_COMERCIALES.
 import { tituloDeSeccion } from '../lib/proveedores-titulos.mjs'
 import { normNombre } from '../lib/razon-social.mjs'
@@ -126,6 +126,7 @@ import {
   ANCHOS_PROVEEDORES,
 } from '../lib/proveedores-frontera.mjs'
 import { parrafosQueNoEntran } from '../lib/proveedores-rotulos.mjs'
+import { ALERTA } from '../lib/glifos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = NOMBRES.proveedoresMateriales
@@ -495,8 +496,8 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, not
   const condTarjeta = `${condComercial};${COL_TIPOPAGO};"Tarjeta Crédito"`
   const posTotal = push(['DEUDA CON PROVEEDORES COMERCIALES', `=${neta(condComercial)}`, 'El total. Abajo, cuánto es deuda directa y cuánto ya tiene instrumento asignado (cheque/tarjeta), que se paga por esa vía, no al proveedor. La deuda con ARCA/impuestos/nómina vive en Impuestos y Financieros.'])
   push(['  · directa — efectivo/transferencia sin pagar', `=${neta(condDirecta)}`, 'Lo único que todavía se le paga DIRECTO al proveedor. Es la deuda real de esta pestaña.'])
-  push(['  · comprometido vía cheque', `=${neta(condCheque)}`, '⚠ Factura con cheque asignado: al proveedor ya le diste el cheque. Registrar ese cheque en Cheques Emitidos cierra el circuito (la caja baja por ahí).'])
-  push(['  · comprometido vía tarjeta', `=${neta(condTarjeta)}`, '⚠ Factura cargada a la tarjeta. Debería estar en Tarjeta de Credito.'])
+  push(['  · comprometido vía cheque', `=${neta(condCheque)}`, `${ALERTA} Factura con cheque asignado: al proveedor ya le diste el cheque. Registrar ese cheque en Cheques Emitidos cierra el circuito (la caja baja por ahí).`])
+  push(['  · comprometido vía tarjeta', `=${neta(condTarjeta)}`, `${ALERTA} Factura cargada a la tarjeta. Debería estar en Tarjeta de Credito.`])
   push([])
   // Estado "Proyectado" de Compras, sólo comerciales: pactado pero todavía no es deuda firme, así que
   // va aparte del titular para no inflar la deuda. Las proyecciones no comerciales ($137,9M) no entran.
@@ -646,7 +647,7 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, not
       .join('+') || '0'
     const totalN = `COUNTIFS(${COL_ESTADO};"${ESTADO_DEUDA}";${COL_COMERCIAL};1;${COL_TOTAL};"<>")`
     const avisoFila = L.cols.map(() => VACIO)
-    avisoFila[0] = `=IF(ROUND(${falta};0)=0;"";"⚠ Faltan "&TEXT((${totalN})-(${listadasN});"0")&" factura(s) por "&TEXT(${falta};"$#,##0")&" que este listado todavía no muestra — aparecen cuando corre el agente. El total de arriba ya las cuenta.")`
+    avisoFila[0] = `=IF(ROUND(${falta};0)=0;"";"${ALERTA} Faltan "&TEXT((${totalN})-(${listadasN});"0")&" factura(s) por "&TEXT(${falta};"$#,##0")&" que este listado todavía no muestra — aparecen cuando corre el agente. El total de arriba ya las cuenta.")`
     filas[fAviso - 1] = avisoFila
   }
   push([])
@@ -1327,7 +1328,7 @@ async function main() {
   // lib/notas-credito.mjs: una refacturación NO es un ahorro, y si Compras tiene cargada la factura
   // anulada, el importe cierra pero el comprobante ya no existe y el mes está mal.
   const analisisNC = analizarNC(rArca)
-  const QUE = { refacturacion: 'REFACTURACIÓN — el costo sigue', devolucion: 'Devolución — el costo baja', revisar: '⚠ revisar (parcial o descuento)' }
+  const QUE = { refacturacion: 'REFACTURACIÓN — el costo sigue', devolucion: 'Devolución — el costo baja', revisar: `${ALERTA} revisar (parcial o descuento)` }
   const comp = (c) => `${String(c.punto_venta).padStart(4, '0')}-${String(c.numero).padStart(8, '0')}`
   const notasCredito = analisisNC.map((a) => ({
     proveedor: canon(a.nota.emisor_nombre),
@@ -1958,7 +1959,7 @@ async function main() {
     }
     const nombres = await publicar(google, ID, hojaArca.sheetId, destinosArca, { titulo: NOMBRES.proveedores })
     console.log(`  ${nombres.nombres} rangos con nombre publicados: el Cash Flow los referencia en vez de copiarlos`
-      + (nombres.verificado ? '' : ' — ⚠ NO pude releerlos: no sé a qué apuntan'))
+      + (nombres.verificado ? '' : ` — ${ALERTA} NO pude releerlos: no sé a qué apuntan`))
     // ═══ LO QUE PRUEBA LA PUBLICACIÓN ES EL DATO LEÍDO EN SU DESTINO ═══
     // Un 200 de la API sólo dice que el nombre existe. Que apunte a un importe donde promete un
     // importe se sabe releyendo. Cuando no da, el daño no se ve acá: se ve en Recurrentes, en
@@ -2353,6 +2354,32 @@ async function formatear(google, sheetId, g, ancho, filas, { filaArranque = 1 } 
   // "Importe" y "Qué es" como si fueran importes.
   for (const c of [g.cabNC, g.cabAnu, g.cabArca]) {
     if (c) encabezadoStmt(c, 0, 8)
+  }
+  // ═══ EL BLOQUE "RESPALDO FISCAL" NO DECLARABA SU FORMATO — Y B52 MOSTRABA "$1" (14/08/2026) ═══
+  //
+  // Es la única de las tres pestañas que comparten `bloqueControlArca` que no formateaba el bloque:
+  // heredaba la moneda de la columna B entera. La fórmula de la cobertura estaba perfecta (0,6614 =
+  // 66,1%) y la celda la dibujaba como "$1". El valor NO se toca —sigue siendo la fracción— y lo que
+  // se corrige es la celda, igual que con las fechas-serial del Calendario.
+  //
+  // Los desplazamientos los declara el bloque, que es quien decide el orden de sus filas: escritos a
+  // mano acá serían la cuarta copia del mismo número (ver control-arca-bloque.mjs · FILA_BLOQUE).
+  if (g.arca0) {
+    const fArca = (i) => g.arca0 - 1 + i
+    fmt({ ...r(fArca(MONTOS_BLOQUE.desde), fArca(MONTOS_BLOQUE.hasta), 1, 2) },
+      'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+      { numberFormat: E.NUM.moneda, horizontalAlignment: 'RIGHT' })
+    fmt({ ...r(fArca(FILA_BLOQUE.cobertura), fArca(FILA_BLOQUE.cobertura + 1), 1, 2) },
+      'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+      { numberFormat: E.NUM.porcentaje, horizontalAlignment: 'RIGHT' })
+    fmt({ ...r(fArca(FILA_BLOQUE.global), fArca(FILA_BLOQUE.global + 1), 1, 2) },
+      'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+      { numberFormat: E.NUM.moneda, horizontalAlignment: 'RIGHT' })
+    // El veredicto es una frase que derrama sobre el ancho del bloque: con formato de moneda, un
+    // texto no se rompe, pero la celda queda alineada a la derecha y se lee como si fuera una cifra.
+    fmt({ ...r(fArca(FILA_BLOQUE.veredicto), fArca(FILA_BLOQUE.veredicto + 1), 1, 2) },
+      'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+      { numberFormat: E.NUM.texto, horizontalAlignment: 'LEFT' })
   }
   // UNA CANTIDAD DE COMPROBANTES NO ES PLATA. La columna B del bloque de ARCA mostraba "$16" donde
   // dice cuántas facturas emitidas hay: el formato moneda de la columna entera se lo comía.

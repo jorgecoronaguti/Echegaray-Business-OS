@@ -21,6 +21,8 @@
 // lado del que consulta: se ubica la fila del mes por su nombre y se baja por un desplazamiento
 // fijo, que es el orden de categorías del convenio y no cambia entre acuerdos.
 
+import { ALERTA } from './glifos.mjs'
+
 /** El orden de las categorías dentro de cada mes de la escala. Es la estructura del convenio. */
 export const CATEGORIAS = ['Oficial Especializado', 'Oficial', 'Medio Oficial', 'Ayudante', 'Sereno']
 
@@ -86,7 +88,7 @@ export function formulaValor(categoria, col = COL.zonaA, fecha = 'TODAY()') {
  */
 export function formulaVigencia(fecha = 'TODAY()') {
   return `=IFERROR(INDEX(${HOJA}!$${COL.mes}$1:$${COL.mes};${expresionFilaDelMes(fecha)})&"";`
-    + `"⚠ el mes en curso NO está en "&"${HOJA}"&": la escala que se muestra quedó vencida. Cargar el acuerdo nuevo.")`
+    + `"${ALERTA} el mes en curso NO está en "&"${HOJA}"&": la escala que se muestra quedó vencida. Cargar el acuerdo nuevo.")`
 }
 
 /**

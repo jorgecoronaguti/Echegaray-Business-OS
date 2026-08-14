@@ -182,7 +182,9 @@ test('CARGADO SIN OBRA: se dice con todas las letras, con su fila y con la colum
   const r = await escribirFajo({ port: null, repo, correr, congelado: SIN_HIELO }, fajo)
   assert.equal(r.estado, ESTADO.CARGADO)
   assert.match(r.texto, /imputación por completar/)
-  assert.match(r.texto, /fila 413 \(Combustibles Barcelo\) → falta .*Obra \(J\)/)
+  // 14/08: el renglón identifica el comprobante por su CONTENIDO —proveedor, importe y fecha— y no
+  // sólo por la fila. El dueño reconoce «$36.460 del 05/01»; el número de fila todavía no lo vio.
+  assert.match(r.texto, /fila 413 \(Combustibles Barcelo \$36\.460 del 05\/01\) → falta .*Obra \(J\)/)
   assert.doesNotMatch(r.texto, /Estrella/, 'no se inventa una obra que el comprobante no dice')
 })
 

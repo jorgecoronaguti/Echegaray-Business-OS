@@ -103,7 +103,7 @@ test('los meses SIN acuerdo firmado repiten el último tramo, y la fila dice que
   assert.equal(String(sep[3]), `=${RANGO_PARITARIA}`, 'el mes sin acuerdo tiene que tomar el parámetro, no un número')
   assert.match(String(sep[2]), /\*\(1\+\$D\d+\)/, 'el piso estimado se encadena con el MISMO tramo que el factor')
   assert.match(String(sep[6]), /proyección/)
-  assert.match(String(sep[7]), /⚠ proyección/, 'el estado dice que no hay acuerdo, al ancho de la columna')
+  assert.match(String(sep[7]), /▲ proyección/, 'el estado dice que no hay acuerdo, al ancho de la columna')
   // Y NINGUNA celda del cuadro puede citar el bloque de inflación de Parámetros: son series distintas.
   const todo = esc.filas.flat().map(String).join(' ')
   assert.doesNotMatch(todo, /Par[áa]metros'!\$[AC]\$7[0-9]/, 'el motor está leyendo el bloque de IPC')
@@ -242,7 +242,7 @@ test('EL CONTROL CONTRA EL CONVENIO YA NO ESPERA UNA CARGA MANUAL', () => {
   // cuál categoría no tiene equivalente —marcada con ⚠, porque el control queda ciego para ella— y
   // contra qué escala compara cada una. Lo que se fue es "si escribís otra en «Convenio», manda la
   // tuya", que ahora vive en el encabezado de esa columna.
-  assert.match(formulaConvenioPendiente(11, 11, raro.equivalencias), /⚠.*ZZ/)
+  assert.match(formulaConvenioPendiente(11, 11, raro.equivalencias), /▲.*ZZ/)
   assert.match(formulaConvenioPendiente(11, 12, p.equivalencias), /OF→Oficial · A M→Ayudante/)
 })
 

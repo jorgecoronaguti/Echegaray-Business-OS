@@ -41,6 +41,20 @@ export const PASOS = [
   ['banco-raw-pestana.mjs', '_BANCO_RAW — el extracto del Santander dentro del Sheet', ['_BANCO_RAW']],
   ['arca-raw-pestana.mjs', '_ARCA_RAW — los comprobantes de ARCA dentro del Sheet', ['_ARCA_RAW']],
   ['rubro-caja-sheet.mjs', 'la columna "Rubro de caja" de Compras — de acá cuelga todo lo demás', []],
+  // ═══ EL CRUCE CONTRA ARCA NUNCA ESTUVO EN ESTA LISTA (14/08/2026) ═══
+  //
+  // `_CRUCE_ARCA` tenía generador desde el 04/08, tenía dueño y NO corría: última escritura el 04/08.
+  // No es una réplica dormida — de ella cuelga el bloque "3 · RESPALDO FISCAL" que comparten
+  // Materiales, Estructura y Recurrentes, y que es el ÚNICO control del archivo que no se valida
+  // contra Compras. Medido en Materiales el 14/08: 290 celdas leyendo la pestaña, $88.078.801 en la
+  // línea "sin comprobante en el libro". Un control que mide contra una foto de hace diez días afirma
+  // una cobertura fiscal que ya no es la de hoy, y no da un solo error.
+  //
+  // VA ACÁ POR DEPENDENCIA: DESPUÉS de `rubro-caja-sheet.mjs`, porque clasifica cada discrepancia por
+  // el rubro de caja de Compras (columna AC) y sin esa columna escrita el cruce reparte los montos por
+  // una columna vieja; y ANTES de sus tres lectoras —Recurrentes, Materiales y Estructura—, que la
+  // suman con SUMIFS en la misma corrida.
+  ['cruce-arca-pestana.mjs', '_CRUCE_ARCA — una fila por discrepancia entre Compras y el libro de IVA de ARCA', ['_CRUCE_ARCA']],
   // Recurrentes va ANTES del cash flow: el cuadro lee de ella su proyección y necesita que exista.
   ['recurrentes-pestana.mjs', 'Recurrentes — servicios fijos, sin proyectar meses ya cerrados', ['Recurrentes']],
   // ═══ LAS DOS VISTAS DE CASH FLOW SON UNA MATRIZ: CONCEPTO × TIEMPO (06/08) ═══

@@ -16,6 +16,7 @@ import {
 import { ROTULOS_CARGAS, RUBRO_PLANES } from './libro-extractores-cargas.mjs'
 import { MES, cm, REALES } from './cargas-grilla.mjs'
 import { notaSupuesto } from './proyeccion-convenio.mjs'
+import { ALERTA } from './glifos.mjs'
 
 const ar = (d) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}` : '')
 
@@ -177,7 +178,7 @@ export function bloqueProyeccion(G, {
   const fPlantel = G.n() + 1
   G.push([sub('   control: plantel de la última quincena'),
     '=IFERROR(INDEX(JORNALES_REAL_PERSONAS;COUNT(JORNALES_REAL_PERSONAS));"")',
-    `=IF(N($B$${fPlantel})=0;"";IF(N($${cm(desdeProy)}$${fDot})=0;"";IF(ABS($${cm(desdeProy)}$${fDot}-$B$${fPlantel})/$${cm(desdeProy)}$${fDot}>0,3;"⚠ la DDJJ y la planilla no coinciden";"✓ coherente con la planilla")))`,
+    `=IF(N($B$${fPlantel})=0;"";IF(N($${cm(desdeProy)}$${fDot})=0;"";IF(ABS($${cm(desdeProy)}$${fDot}-$B$${fPlantel})/$${cm(desdeProy)}$${fDot}>0,3;"${ALERTA} la DDJJ y la planilla no coinciden";"✓ coherente con la planilla")))`,
     ...Array(11).fill(VACIO),
     'Dos fuentes distintas: la cabecera de la DDJJ y el registro de quincenas de Jornales. La DDJJ incluye oficina; la planilla de obra, no — una diferencia chica es esperable, una grande es un dato mal cargado.'])
   // La proporción del plantel en su primer año: la base de la alícuota legal de FCL. La antigüedad ya
@@ -239,7 +240,7 @@ export function bloqueProyeccion(G, {
     `El devengado de ESTE mes sale al siguiente, el día que dice ${RANGO_DIA_PAGO_F931} en Parámetros. El de diciembre cae en enero del año que viene: por eso la última celda dice ${anio + 1}.`,
     { meses: proyMeses, totaliza: false })
   if (sinBase.length) {
-    G.push([`⚠ ${sinBase.length} concepto(s) sin base para proyectar`, ...Array(13).fill(VACIO),
+    G.push([`${ALERTA} ${sinBase.length} concepto(s) sin base para proyectar`, ...Array(13).fill(VACIO),
       `${sinBase.join(', ')} — no aparecen en las secciones 1 ni 2, así que no se proyectan. El total de arriba está incompleto en esa medida.`])
   }
   G.push()
@@ -282,7 +283,7 @@ export function bloqueCaja(G, { anio, desdeProy, proyMeses, fDeclTot, fProyTot, 
   // avisos con el ⚠ puesto y sin una palabra al lado. Un aviso mudo es peor que ninguno: ocupa el
   // lugar de la explicación y hace creer que se dijo algo. El texto entero va a la columna A, que es
   // ancha, derrama a la derecha sobre celdas vacías y no la vacía nadie.
-  const pie = G.push(['⚠ No contempla SAC ni vacaciones (sección 6), ni altas de personal que no estén en los jornales cargados.'])
+  const pie = G.push([`${ALERTA} No contempla SAC ni vacaciones (sección 6), ni altas de personal que no estén en los jornales cargados.`])
   G.push()
   return { fCuotasVencen, pies: [pie] }
 }
@@ -335,7 +336,7 @@ export function bloqueSac(G, { anio, C, fRem, fRemProy }) {
   // entera al mismo peso tipográfico que los importes: cuatro muros de letra chica que le ganan el ojo
   // a los números. Se condensan sin perder ni una limitación —una limitación borrada es una mentira
   // por omisión— y la piel las dibuja como nota al pie: apagadas, 9 puntos, sin regla.
-  const pieVac = G.push(['⚠ Vacaciones — devengan mes a mes y no están provisionadas: falta la escala de días por antigüedad, que confirma el contador. No se inventa.'])
+  const pieVac = G.push([`${ALERTA} Vacaciones — devengan mes a mes y no están provisionadas: falta la escala de días por antigüedad, que confirma el contador. No se inventa.`])
   // ═══ FONDO DE CESE LABORAL: ESTÁ, PERO NO POR DONDE UNO LO BUSCA ═══
   //
   // En la construcción NO existe la indemnización por antigüedad de la LCT: rige la Ley 22.250 y el
@@ -350,7 +351,7 @@ export function bloqueSac(G, { anio, C, fRem, fRemProy }) {
   //
   // LA PREGUNTA QUE IMPORTA NO ES CUÁNTO, ES SI ESTÁ AL DÍA. Un Fondo de Cese atrasado es
   // incumplimiento y habilita reclamos, y este cuadro no lo puede contestar solo.
-  const pieFcl = G.push([`⚠ Fondo de Cese (Ley 22.250) — no lo declara la DDJJ: su devengado no se controla contra nada, sólo se sabe lo que salió de la caja. ${A_VERIFICAR}: la alícuota, y que los aportes estén al día.`])
+  const pieFcl = G.push([`${ALERTA} Fondo de Cese (Ley 22.250) — no lo declara la DDJJ: su devengado no se controla contra nada, sólo se sabe lo que salió de la caja. ${A_VERIFICAR}: la alícuota, y que los aportes estén al día.`])
   G.push()
   return { pies: [pieVac, pieFcl] }
 }
@@ -400,6 +401,6 @@ export function bloquePlanes(G, { ps, C }) {
   // pone su propio formato: verde "✓ $0" cuando cierra, el número en rojo cuando no.
   const fControl = G.push([rotuloTotal('Diferencia — tiene que ser $0'), `=$B$${fCtrl}-$N$${fCuotasTot}`,
     ...Array(11).fill(VACIO), VACIO, `Las dos celdas vivas: el total del rubro en Compras menos el total de esta tabla (${ps.reduce((s, p) => s + p.n, 0)} cuota(s) de ${ps.length} plan(es)). Si no da cero, hay cuotas del rubro que esta tabla no ve — por ejemplo, de otro año.`])
-  const pie = G.push(['⚠ Falta el plan original de ARCA: en Compras están las cuotas cargadas, no de cuántas es cada plan, así que el saldo es lo previsto en la planilla.'])
+  const pie = G.push([`${ALERTA} Falta el plan original de ARCA: en Compras están las cuotas cargadas, no de cuántas es cada plan, así que el saldo es lo previsto en la planilla.`])
   return { fCuotasTot, fControl, pies: [pie] }
 }

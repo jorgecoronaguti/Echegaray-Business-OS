@@ -28,11 +28,13 @@ import {
   formulaCobrosEfectivoPosteriores, formulaComprasEfectivoPosteriores, formulaDepositosEfectivoPosteriores,
   formulaJornalesEfectivoPosteriores, formulaOficinaEfectivoPosteriores, formulaExtraccionesEfectivoPosteriores,
 } from './caja-posterior-al-corte.mjs'
+import { filaHuecoDelExtracto } from './banco-detalle-declarado.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 import {
   bloqueLiquidez, bloqueConciliacion, bloqueVencido, bloqueTrazabilidad, bloqueCalendarioCiego,
 } from './caja-anexo-controles.mjs'
 import { bloqueSeries } from './caja-anexo-series.mjs'
+import { ALERTA } from './glifos.mjs'
 
 export { PESTANA_ANEXO }
 
@@ -95,6 +97,19 @@ function bloqueMovimientos(h) {
   push(['A1 · MOVIMIENTOS POSTERIORES — DE QUÉ SE COMPONEN LOS DOS NETOS DE CAJA'])
   push(['Concepto', 'Moneda', 'Importe', '', '', 'Fecha', 'De dónde sale'])
 
+  // ═══ HASTA DÓNDE LLEGA EL DETALLE, ANTES DE EMPEZAR A SUMARLE COSAS (14/08/2026) ═══
+  //
+  // Todo este bloque parte del saldo del extracto y le suma lo que pasó después. Ese saldo es el
+  // DECLARADO por el banco —correcto— pero los movimientos cargados no llegan a él: faltan $45.080,
+  // anteriores al primer movimiento del extracto cargado. El auditor lo dice en el log del pipeline
+  // desde hace semanas y nadie abre ese log. Va como PRIMERA línea del bloque, no al final: quien
+  // reconcilie el detalle contra el saldo tiene que enterarse antes de empezar, no después de perder
+  // una tarde buscando un error de carga que no existe.
+  //
+  // NO SE RESTA DE NADA. CAJA sigue mostrando el saldo del banco: un hueco declarado es información;
+  // uno "corregido" por el OS sería un dato inventado. Ver lib/banco-detalle-declarado.mjs.
+  push(filaHuecoDelExtracto())
+
   // LA FECHA VA GUARDADA CON ISNUMBER: `=CAJA_BANCO_CORTE` sobre una celda vacía devuelve 0, y el 0 con
   // formato de fecha se dibuja "30/12/1899". Es el defecto `fecha_cero` que el auditor de pantalla
   // reportaba en CAJA, y la causa es siempre la misma: una referencia cruda en una columna de fecha.
@@ -117,7 +132,7 @@ function bloqueMovimientos(h) {
   // EL CANAL NO DECLARADO SE NOMBRA, NO SE ADIVINA. No se resta de ninguna disponibilidad —no se sabe
   // de cuál— así que tiene que verse con nombre y monto. Se apaga sola en cuanto el mes tenga Banco o
   // Efectivo cargado. Y NO se reparte mitad y mitad porque suele ser así: eso sería fabricar el dato.
-  const fSinCanal = push(['   ⚠ sueldos de OFICINA pagados sin declarar por qué canal salieron', 'ARS',
+  const fSinCanal = push([`   ${ALERTA} sueldos de OFICINA pagados sin declarar por qué canal salieron`, 'ARS',
     `=${formulaOficinaSinCanal(corte)}`, '', '', '',
     'OFICINA_PAGADO de los meses sin OFICINA_BANCO cargado'])
 
@@ -183,7 +198,7 @@ function bloqueMovimientos(h) {
     sello('selloNeto'), '', sello('selloFecha', ''),
     'lo que el histórico sumaba cuando se cargó el conteo; lo sella la corrida del anexo'])
   push([SELLO_EFECTIVO.estado, '',
-    `=IF(NOT(ISNUMBER(${arqueo}));"— sin conteo cargado";IF(${selloViejo};"⚠ conteo nuevo sin sellar: se muestra tal cual lo contaste; la próxima corrida sella y los movimientos corren desde ahí";"✓ sellado al conteo del "&TEXT(N($F$${fSello});"dd/mm")))`,
+    `=IF(NOT(ISNUMBER(${arqueo}));"— sin conteo cargado";IF(${selloViejo};"${ALERTA} conteo nuevo sin sellar: se muestra tal cual lo contaste; la próxima corrida sella y los movimientos corren desde ahí";"✓ sellado al conteo del "&TEXT(N($F$${fSello});"dd/mm")))`,
     selloEstado(), '', '', 'compara el conteo cargado contra la copia sellada (D de esta fila y F del sello)'])
   return { fNeto, fSinCanal, fSello, fEstado, filasHistorico: [f0, fSello - 1] }
 }
@@ -217,7 +232,7 @@ function bloqueCartera(h) {
   // EL CANARIO DEL DETALLE. Las filas de arriba las escribe el generador; el total es una fórmula
   // viva. Si entra un cheque y esta pestaña no se regenera, el detalle listaría uno menos y NADIE lo
   // vería: el total seguiría estando bien.
-  push(['⇒ ¿el detalle está al día? — si dice ⚠, corré la réplica y regenerá el anexo', '', '', '', '', '',
+  push([`⇒ ¿el detalle está al día? — si dice ${ALERTA}, corré la réplica y regenerá el anexo`, '', '', '', '', '',
     // CON CARTERA VACÍA EL RANGO SE INVIERTE ($C$20:$C$19) y el canario apuntaba a las filas de los
     // ENDOSADOS que se escriben justo después (dictamen 07/08: daba "✓" de casualidad porque todo era
     // cero — con un cheque en custodia hubiera sumado el renglón equivocado). Sin detalle, el rango

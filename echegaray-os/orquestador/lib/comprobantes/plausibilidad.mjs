@@ -290,11 +290,18 @@ export function dudasDeLectura(item = {}, { ahora } = {}) {
   const c = item?.comprobante ?? {}
   const cuando = ahora ?? item?.leidoEn ?? undefined
   const out = {}
-  if (!c.fechaTipeada) {
+  // ═══ LO VERIFICADO POR ARCA TAMPOCO SE CUESTIONA (14/08) ═══
+  //
+  // Misma regla que `totalTipeado`, por el mismo motivo y con más razón: este control existe para
+  // dudar de lo que leyó un modelo. Un importe o una fecha que vienen del libro fiscal —la fila que
+  // el organismo tiene de ESTE comprobante, identificada por CAE— no son una lectura: son el dato.
+  // Sin esta salida, el IVA que `aplicarArca` acaba de corregir volvería a evaluarse contra las
+  // bandas y el comprobante seguiría frenado por un control que ya no tiene sobre qué opinar.
+  if (!c.fechaTipeada && !c.fechaVerificadaArca) {
     const f = fechaPlausible(c.fecha, cuando ? { ahora: cuando } : {})
     if (f.verificable && !f.plausible) out.fecha = f
   }
-  if (!c.ivaTipeado) {
+  if (!c.ivaTipeado && !c.ivaVerificadoArca) {
     const v = ivaPlausible(c)
     if (v.verificable && !v.plausible) out.iva = v
   }

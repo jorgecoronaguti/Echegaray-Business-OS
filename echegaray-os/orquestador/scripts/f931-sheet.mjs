@@ -30,6 +30,7 @@ import { parseF931, CONCEPTOS_F931 } from '../lib/cargas-sociales.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
 import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
 import { conColaMedidaLeida, avisoDeCola } from '../lib/cola-de-rango.mjs'
+import { ALERTA } from '../lib/glifos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 export const PESTAÑA = '_F931_RAW'
@@ -124,7 +125,7 @@ async function main() {
   // —título, nota, encabezados y datos— y se FUSIONA con lo que hay. Ver lib/preservar-anotaciones.mjs.
   const gridRaw = [
     [`_F931_RAW — las DDJJ F931 leídas de los PDF del data room · corte ${corte}`],
-    [`${datos.length} declaración(es) de ${AÑO}, leídas directamente del PDF presentado ante ARCA. NO se carga a mano: la reescribe el agente. Existe para que el cuadro "DECLARADO EN LA DDJJ F931" sea una fórmula y no una transcripción — hasta hoy esos números estaban tipeados y ningún script los actualizaba.${fallidos.length ? ` ⚠ ${fallidos.length} archivo(s) que no pude leer: ${fallidos.join(', ')}.` : ''}`],
+    [`${datos.length} declaración(es) de ${AÑO}, leídas directamente del PDF presentado ante ARCA. NO se carga a mano: la reescribe el agente. Existe para que el cuadro "DECLARADO EN LA DDJJ F931" sea una fórmula y no una transcripción — hasta hoy esos números estaban tipeados y ningún script los actualizaba.${fallidos.length ? ` ${ALERTA} ${fallidos.length} archivo(s) que no pude leer: ${fallidos.join(', ')}.` : ''}`],
     COLUMNAS.map(([n]) => n),
     ...filas,
   ]

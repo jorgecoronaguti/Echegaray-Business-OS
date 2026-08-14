@@ -36,6 +36,7 @@ import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query } from '../lib/db.mjs'
 import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
+import { ALERTA } from '../lib/glifos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const TAB = 'Parámetros'
@@ -106,7 +107,7 @@ export function filasBloque(indices = [], fila0 = FILA_DATOS) {
       Number(x.variacion),
       i === 0 ? 1 : `=$C$${r - 1}*(1+$B${r})`,
       `${x.tipo === 'dato' ? 'DATO publicado' : 'proyección'} · ${x.fuente ?? 'sin fuente declarada'}`
-        + (dias === null ? '' : ` · leído hace ${dias} día(s)${viejo ? ' ⚠ CONVIENE REFRESCARLO ANTES DE DECIDIR' : ''}`),
+        + (dias === null ? '' : ` · leído hace ${dias} día(s)${viejo ? ` ${ALERTA} CONVIENE REFRESCARLO ANTES DE DECIDIR` : ''}`),
     ]
   })
 }
@@ -169,7 +170,7 @@ async function main() {
   // vacías, así que sumarlas daría un ⚠ cada vez que se limpia bien.
   console.log(escritas === rows.length
     ? `✓ ${escritas} fila(s) de índice en la pestaña, con su fecha de lectura a la vista`
-    : `⚠ escribí ${rows.length} fila(s) de índice y la pestaña devuelve ${escritas}: algo se tragó la escritura o quedó una cola vieja`)
+    : `${ALERTA} escribí ${rows.length} fila(s) de índice y la pestaña devuelve ${escritas}: algo se tragó la escritura o quedó una cola vieja`)
   if (escritas !== rows.length) process.exitCode = 1
 }
 

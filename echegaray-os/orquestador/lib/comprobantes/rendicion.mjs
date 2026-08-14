@@ -36,6 +36,7 @@
 // alguien agregue un camino nuevo por el que un adjunto pueda desaparecer, el mensaje lo diga solo.
 
 import { rotulosDe, estaCompleto } from './fajo.mjs'
+import { renglonDeAdjunto, plataCorta } from './identidad.mjs'
 
 export const DESTINO = Object.freeze({
   CARGADO: 'cargado',
@@ -75,9 +76,14 @@ export function rendicionDeAdjuntos({ fileIds = [], items = [], problemas = [] }
     if (hit) return deItem(k, hit)
     const p = porProblema.get(k)
     if (p) {
-      return { fileId: k, nombre: p.nombre ?? k, destino: DESTINO.ILEGIBLE, detalle: p.error ?? 'no pude leerlo' }
+      // NO SE PUDO LEER: no hay ítem, así que no hay con qué nombrarlo. `sinLectura` hace que el
+      // renglón lo DIGA («no pude leer ni el importe») en vez de fingir una identificación.
+      return {
+        fileId: k, nombre: p.nombre ?? k, destino: DESTINO.ILEGIBLE, detalle: p.error ?? 'no pude leerlo',
+        sinLectura: true,
+      }
     }
-    return { fileId: k, nombre: k, destino: DESTINO.SIN_RASTRO, detalle: 'entró al post y no aparece en ningún comprobante ni en ningún error' }
+    return { fileId: k, nombre: k, destino: DESTINO.SIN_RASTRO, detalle: 'entró al post y no aparece en ningún comprobante ni en ningún error', sinLectura: true }
   })
 
   const cuenta = {}
@@ -94,19 +100,41 @@ function deItem(fileId, { item, esCopia, copia }) {
   const nombre = (esCopia ? copia?.nombre : item?.origen?.nombre) ?? fileId
   const c = item?.comprobante ?? {}
   const quien = c.proveedor ? `${c.proveedor} ${c.numero ?? ''}`.trim() : (c.numero ?? 'el comprobante')
-  if (esCopia) return { fileId, nombre, destino: DESTINO.COPIA, detalle: `otra foto de ${quien}` }
+  // EL ÍTEM VIAJA CON SU ADJUNTO. Es lo que le permite al renglón nombrar el comprobante por lo que
+  // dice el papel en vez de por el nombre que le puso el iPhone al archivo (ver `identidad.mjs`).
+  const base = { fileId, nombre, item }
+  if (esCopia) return { ...base, destino: DESTINO.COPIA, detalle: `otra foto de ${quien}` }
   if (item?.yaCargado) {
     const fila = item.yaCargado.fila
-    return { fileId, nombre, destino: DESTINO.CARGADO, detalle: fila ? `ya estaba en Compras, fila ${fila}` : 'ya estaba en Compras' }
+    return { ...base, destino: DESTINO.CARGADO, detalle: fila ? `ya estaba en Compras, fila ${fila}` : 'ya estaba en Compras' }
   }
-  if (item?.duplicadoResuelto === 'mismo') return { fileId, nombre, destino: DESTINO.CARGADO, detalle: 'marcado como ya cargado' }
+  if (item?.duplicadoResuelto === 'mismo') return { ...base, destino: DESTINO.CARGADO, detalle: 'marcado como ya cargado' }
   if (item?.posibleDuplicado && !item.duplicadoResuelto) {
     const fila = item.posibleDuplicado.fila
-    return { fileId, nombre, destino: DESTINO.DUPLICADO, detalle: `puede ser la fila ${fila ?? '?'} de Compras` }
+    return { ...base, destino: DESTINO.DUPLICADO, detalle: `puede ser la fila ${fila ?? '?'} de Compras` }
   }
-  if (estaCompleto(item)) return { fileId, nombre, destino: DESTINO.LISTO, detalle: 'listo para cargar' }
+  if (estaCompleto(item)) return { ...base, destino: DESTINO.LISTO, detalle: 'listo para cargar' }
   const falta = rotulosDe(item)
-  return { fileId, nombre, destino: DESTINO.PENDIENTE, detalle: falta.length ? `falta ${falta.join(' y ')}` : 'falta un dato' }
+  const motivo = falta.length ? `falta ${falta.join(' y ')}` : 'falta un dato'
+  return { ...base, destino: DESTINO.PENDIENTE, detalle: motivo + gemelo(item) }
+}
+
+/**
+ * «— y es la misma foto que X, que sí cargué.»
+ *
+ * Cuando dos lecturas vinieron del mismo archivo y NO se pudieron fusionar —porque la fecha, el
+ * importe y el correlativo diferían los tres, y fusionarlas podría perder un gasto (ver el veto en
+ * `mejor-lectura.mjs`)— la pista sigue siendo valiosa y se declara. Caso real: `IMG_7576` produjo
+ * «Pintureria Cordoba $426.219» (la verdadera, la confirma ARCA) y «Pintureria Cordoba $42.621.942».
+ * El segundo queda afuera, y con este renglón el dueño lo descarta de un vistazo en lugar de ir a
+ * buscar la foto. No se decide por él: se le dice lo que se sabe.
+ */
+function gemelo(item) {
+  const otros = (item?.mismaFotoQue ?? []).filter((g) => g && (g.proveedor || g.total != null))
+  if (!otros.length) return ''
+  const g = otros[0]
+  const quien = [g.proveedor, g.total != null ? plataCorta(g.total) : null].filter(Boolean).join(' ')
+  return ` — salió de la misma foto que ${quien}, que sí entró`
 }
 
 /**
@@ -141,7 +169,15 @@ export function textoRendicion(r, { seCargaron = false } = {}) {
   // El detalle SÓLO de lo que no terminó cargado ni listo: nombrar por archivo las diez fotos que
   // salieron bien es ruido, y no nombrar la que se perdió es el defecto.
   const aExplicar = (r.porAdjunto ?? []).filter((a) => a.destino !== DESTINO.LISTO && a.destino !== DESTINO.CARGADO)
-  for (const a of aExplicar) l.push(`· \`${a.nombre}\` — ${a.detalle}`)
+  // ═══ EL COMPROBANTE SE NOMBRA POR LO QUE DICE, NO POR EL ARCHIVO (14/08) ═══
+  //
+  // Decía `· \`IMG_7574.HEIC\` — falta saber quién es el proveedor`. El dueño, textual: «no se q
+  // comprobante quedo afuera porque no estoy revisando todo el tiempo, son muchos». El nombre del
+  // archivo lo pone la cámara y él nunca lo vio; lo que reconoce es «$172.002 del 09/08». El archivo
+  // queda igual, al final, para poder volver a la foto. Ver `identidad.mjs`.
+  for (const a of aExplicar) {
+    l.push(renglonDeAdjunto({ item: a.item, nombre: a.nombre, motivo: a.detalle, sinLectura: a.sinLectura === true }))
+  }
   if (!r.cuadra) {
     l.push('⚠️ **No sé qué pasó con esos adjuntos.** Volvé a mandarlos: prefiero pedírtelos de nuevo antes que darlos por cargados.')
   }

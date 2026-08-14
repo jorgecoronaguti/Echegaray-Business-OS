@@ -52,6 +52,7 @@
 // por lun-sáb y el convenio proyectaba por lun-vie, y el `MAX(convenio; demanda)` comparaba dos cosas
 // medidas distinto. El defecto era el desacuerdo, no el día.
 import { diasHabilesObra } from './jornales-demanda-obras.mjs'
+import { ALERTA } from './glifos.mjs'
 
 /**
  * EL ENCABEZADO DEL CALENDARIO ES EL CONTRATO — la letra de cada columna sale de acá, nunca a mano.
@@ -285,7 +286,7 @@ export function formulaControlCalendario({ oficina, direccion, totalOficina, tot
   const dif = `ROUND(${oficina}-${totalOficina};0)`
   const difD = `ROUND(${direccion}-${totalDireccion};0)`
   return `=IF(AND(${dif}=0;${difD}=0);"✓ oficina y dirección cierran contra sus bloques (2 y 3)";`
-    + `"⚠ el calendario no cierra: oficina $"&TEXT(${dif};"#,##0")&" · dirección $"&TEXT(${difD};"#,##0")`
+    + `"${ALERTA} el calendario no cierra: oficina $"&TEXT(${dif};"#,##0")&" · dirección $"&TEXT(${difD};"#,##0")`
     + `&" — alguna fecha de caja quedó fuera de las ventanas")`
 }
 
@@ -327,7 +328,7 @@ export function formulaBajaNoRegistrada({ personasBase, sigmaBase, personasCurso
   return `=IF(OR(N(${sigmaBase})=0;${menos}<=0);"";`
     // EL PREFIJO DEL SUB-ÍTEM VA ADENTRO DE LA FÓRMULA: la fila es un sub-ítem de 1.1 cuando habla y
     // una fila vacía cuando no, y la gramática de la pestaña se respeta en los dos casos.
-    + `"   · ⚠ "&(${menos})&" persona(s) menos que el plantel base — hasta $"`
+    + `"   · ${ALERTA} "&(${menos})&" persona(s) menos que el plantel base — hasta $"`
     + `&TEXT(${exceso};"#,##0")&" de más a diciembre")`
 }
 

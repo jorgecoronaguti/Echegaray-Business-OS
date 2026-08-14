@@ -29,7 +29,7 @@
 // Son dos preguntas, y las dos tienen que dar que sí:
 //
 //   1. ¿La FILA es del generador?   → tiene un rótulo del registro, o una marca tipográfica que un
-//                                     humano no escribe al anotar (⚠ ⇒ ‖ § · ✓ 🟡 ✅).
+//                                     humano no escribe al anotar (▲ ⚠ ⇒ ‖ § · ✓ 🟡 ✅).
 //   2. ¿La CELDA es del generador?  → es un rótulo del registro, o tiene forma de dato generado
 //                                     (importe, fecha, CUIT, comprobante, fórmula, marca).
 //
@@ -41,8 +41,23 @@
 //
 // EL LADO PARA EQUIVOCARSE ES CONSERVAR. Sin registro, sin ancla o ante la duda, la celda se queda.
 
-/** Las marcas que produce un generador y que nadie tipea al anotar al margen. */
-const MARCAS_DE_GENERADOR = /[⚠⇒‖§·✓🟡✅]/
+import { ALERTA, ALERTA_HEREDADA } from './glifos.mjs'
+
+// LAS MARCAS QUE PRODUCE UN GENERADOR Y QUE NADIE TIPEA AL ANOTAR AL MARGEN.
+//
+// Están las dos alertas —la vigente `▲` y la `⚠` que quedó publicada— y siguen los emoji de estado
+// (🟡 ✅), que este módulo NO escribe: los lee. Son de la columna Z de "Compras", que llena AppSheet;
+// sacarlos de acá haría que una fila de ese origen dejara de reconocerse como generada.
+const MARCAS_DE_GENERADOR = new RegExp(`[${ALERTA}${ALERTA_HEREDADA}⇒‖§·✓🟡✅]`)
+
+/**
+ * LA MARCA CON LA QUE ARRANCA UNA CELDA PROPIA — deliberadamente MÁS ANGOSTA que la de arriba.
+ *
+ * `‖` y `§` no están: separan columnas y numeran adentro de un rótulo, no lo abren. Ensancharla acá
+ * sería ampliar en silencio qué celda puede borrar el generador, y eso no es lo que este cambio viene
+ * a hacer — lo único que se agrega es la alerta nueva al lado de la publicada.
+ */
+const INICIA_MARCA = new RegExp(`^(?:✓|${ALERTA}|${ALERTA_HEREDADA}|🟡|✅|⇒|·)`)
 
 /**
  * NÚCLEO PURO: ¿la celda tiene una forma que sólo produce un generador? Un importe, una fecha, un
@@ -70,7 +85,7 @@ export function formaDeGenerador(v) {
   if (/^\d+([.,]\d+)?\s*(d|días|%)$/i.test(t)) return true        // plazo / porcentaje
   if (/^\d+\s*(fac\.|comprobantes?)$/i.test(t)) return true       // "1 fac."
   if (/^\d+\s·\s/.test(t)) return true                           // "6 · LO QUE ARCA REGISTRÓ"
-  if (/^(✓|⚠|🟡|✅|⇒|·)/.test(t)) return true                      // marcas y viñetas del generador
+  if (INICIA_MARCA.test(t)) return true                           // marcas y viñetas del generador
   return false
 }
 

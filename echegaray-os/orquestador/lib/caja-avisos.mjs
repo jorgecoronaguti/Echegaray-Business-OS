@@ -25,11 +25,22 @@
 // "esto todavía no se calculó", que es exactamente la duda que este rediseño existe para eliminar.
 
 import { ANEXO, DESDE_CAJA } from './caja-anexo-nombres.mjs'
+import { ALERTA } from './glifos.mjs'
 import { terminoLibro } from './libro-sumas.mjs'
 
-/** El prefijo de una alerta que pide acción. Se usa para pintarla: el rojo sale del TEXTO, no de una
- *  regla que hay que mantener sincronizada con la lógica de la fórmula. */
-export const MARCA_ALERTA = '⚠'
+/**
+ * El prefijo de una alerta que pide acción. Se usa para pintarla: el rojo sale del TEXTO, no de una
+ * regla que hay que mantener sincronizada con la lógica de la fórmula.
+ *
+ * ES UN ALIAS DE `ALERTA`, no una segunda decisión: acá vivía tipeado el `⚠` que el PDF no dibuja, y
+ * dos constantes para el mismo glifo es exactamente cómo una queda atrás. El nombre local se conserva
+ * porque `caja-pestana` arma con él la regla de color y ahí el par ALERTA/OK se lee de a dos.
+ *
+ * LA REGLA DE COLOR Y EL TEXTO SE PUBLICAN JUNTOS: las celdas de aviso son FÓRMULAS, así que en
+ * cuanto CAJA se regenera las dos puntas hablan del mismo glifo. Por eso acá no hace falta el brazo
+ * heredado que sí llevan las marcas que se comparan contra lo ya publicado.
+ */
+export const MARCA_ALERTA = ALERTA
 /** El prefijo de una línea tranquila. Verde. */
 export const MARCA_OK = '·'
 

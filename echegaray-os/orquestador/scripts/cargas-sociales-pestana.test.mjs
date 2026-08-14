@@ -47,7 +47,7 @@ test('el F931 declara su PERÍODO, no el día en que se leyó el PDF', () => {
   assert.match(tramoF931, /DATE\(VALUE\(LEFT\(/)
 })
 
-test('la fuente mensual avisa con su propio umbral, o el ⚠ estaría prendido siempre', () => {
+test('la fuente mensual avisa con su propio umbral, o el ▲ estaría prendido siempre', () => {
   assert.match(subtitulo, />45;/, 'el F931 tiene que usar el umbral mensual')
   assert.match(subtitulo, />7;/, 'y Compras el diario')
 })
@@ -135,7 +135,7 @@ test('A7 · LA DOTACIÓN ES LA ÚLTIMA REAL, NO UN AVERAGE — y se controla con
   const ctrl = filaCS(/plantel de la última quincena/)
   assert.ok(ctrl, 'sin el contraste, la dotación se valida contra sí misma')
   assert.match(String(ctrl[1]), /JORNALES_REAL_PERSONAS/)
-  assert.match(String(ctrl[2]), /⚠ la DDJJ y la planilla no coinciden/)
+  assert.match(String(ctrl[2]), /▲ la DDJJ y la planilla no coinciden/)
 })
 
 test('B13 · IERIC y FODECO multiplican la DOTACIÓN, no la remuneración', () => {
@@ -190,12 +190,12 @@ test('B8 · "POR PAGAR" INCLUYE EL MES EN CURSO — el criterio de posición per
   assert.match(v, new RegExp(`Compras!\\$${COLS.estado}\\$4`), 'la columna de estado tiene que ser la resuelta por rótulo')
 })
 
-test('B11 · los avisos ⚠ tienen su texto EN la celda, no en la columna que el generador vacía', () => {
-  const avisos = gCS.filas.filter((f) => /^[⚠]/.test(String(f[0] ?? '')) || /^(Vacaciones|Fondo de Cese)/.test(String(f[0] ?? '')))
+test('B11 · los avisos ▲ tienen su texto EN la celda, no en la columna que el generador vacía', () => {
+  const avisos = gCS.filas.filter((f) => /^[▲]/.test(String(f[0] ?? '')) || /^(Vacaciones|Fondo de Cese)/.test(String(f[0] ?? '')))
   assert.ok(avisos.length >= 4, `esperaba los cuatro avisos y encontré ${avisos.length}`)
   for (const a of avisos) {
     assert.ok(String(a[0]).length > 70,
-      `"${String(a[0]).slice(0, 40)}…" quedó como un ⚠ mudo: su explicación vive en la columna de prosa que este mismo generador borra`)
+      `"${String(a[0]).slice(0, 40)}…" quedó como un ▲ mudo: su explicación vive en la columna de prosa que este mismo generador borra`)
     assert.equal(a[ANCHO_CS - 1], VACIO_CS, 'la explicación no puede volver a la columna O')
   }
 })
@@ -261,7 +261,7 @@ test('las notas al pie y el control se declaran para que la piel los dibuje dist
   // encima, porque empiezan con ⚠ y la piel compartida lee eso como un total). Y el control de
   // integridad, cuyo cero ES la respuesta, salía como el mismo "—" que significa "no hay dato".
   assert.equal(gCS.pies.length, 4, `esperaba las cuatro notas al pie y llegaron ${gCS.pies.length}`)
-  for (const f of gCS.pies) assert.match(String(gCS.filas[f - 1][0]), /^⚠ /, 'una nota al pie declarada que no es una nota')
+  for (const f of gCS.pies) assert.match(String(gCS.filas[f - 1][0]), /^▲ /, 'una nota al pie declarada que no es una nota')
   assert.deepEqual(gCS.controles, [heroCS(/^⇒ Diferencia — tiene que ser \$0/)])
 })
 

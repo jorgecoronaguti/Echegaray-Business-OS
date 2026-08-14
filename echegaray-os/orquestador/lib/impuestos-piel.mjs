@@ -8,6 +8,10 @@ import { skinRequests, conContenido, MUTED, ACENTO } from './estilo-statement.mj
 import { borrarNotas } from './nota-celda.mjs'
 import { requestsTextoPorContenido } from './formato-texto-por-contenido.mjs'
 import { ANCHO } from './impuestos-grilla.mjs'
+import { ALERTA, ALERTA_HEREDADA } from './glifos.mjs'
+
+/** La columna A de una alarma ARRANCA con la marca. Anclada: "…⚠…" en el medio no es una alarma. */
+const MARCA_ALERTA_INICIAL = new RegExp(`^[${ALERTA}${ALERTA_HEREDADA}]`)
 
 const AMBAR = { red: 1, green: 0.97, blue: 0.88 }
 const ALARMA = { red: 0.7, green: 0.2, blue: 0.1 }
@@ -46,7 +50,8 @@ export function tratamientoDeFilas(filas = [], hero = null) {
     const fila = i + 1
     const a = conContenido(f?.[0]) ? String(f[0]) : ''
     if (!a && !(f || []).some(conContenido)) { t.separadores.push(fila); return }
-    if (/^⚠/.test(a)) { (conPlata(f) ? t.alarmas : t.notas).push(fila); return }
+    // Las DOS alertas: la vigente y la que quedó publicada en las celdas. Ver `ALERTA_HEREDADA`.
+    if (MARCA_ALERTA_INICIAL.test(a)) { (conPlata(f) ? t.alarmas : t.notas).push(fila); return }
     if (/^\s{2,}·\s/.test(a)) { t.subitems.push(fila); return }
     if (hero && fila >= hero.desde && fila <= hero.hasta && fila !== hero.titular && /^⇒/.test(a)) {
       t.totalesHero.push(fila)

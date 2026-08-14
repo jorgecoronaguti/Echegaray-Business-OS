@@ -20,6 +20,7 @@ import { terminoLibro } from './libro-sumas.mjs'
 import { ALICUOTA as ALICUOTA_25413 } from './impuesto-cheque.mjs'
 import { TASAS } from './costo-descubierto.mjs'
 import { RANGO_ALICUOTA_IVA } from './iva-libre-disponibilidad.mjs'
+import { ALERTA } from './glifos.mjs'
 
 /** El rubro de Compras donde vive el cuadro de amortización del prendario. Contrato con Compras. */
 export const RUBRO_PRENDARIO = 'Financiero'
@@ -210,7 +211,7 @@ export function filasFinanciamiento({ acuerdo, tarjeta, celdaPrendario, celdaPla
       // ⚠ EN EL RÓTULO: esta pestaña no mide cuánto del acuerdo está tomado hoy. Sin la marca, el
       // "disponible" se lee como plata que está y puede no estar — y es la línea con la que se
       // decide no salir a pedir un adelanto.
-      rotulo: `Descubierto Santander ${acuerdo.numero} ⚠ uso: lo mide CAJA`,
+      rotulo: `Descubierto Santander ${acuerdo.numero} ${ALERTA} uso: lo mide CAJA`,
       limite: acuerdo.importe,
       usado: celdaUsoDescubierto ? `=MIN(${acuerdo.importe};MAX(0;-${celdaUsoDescubierto}))` : '',
       disponible: null, // lo calcula el generador como límite − usado, en la propia grilla

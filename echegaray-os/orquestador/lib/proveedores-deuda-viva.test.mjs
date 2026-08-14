@@ -198,7 +198,7 @@ test('el control compara el titular contra lo que el bloque muestra y puede dar 
   assert.ok(f.includes('SUM($D$21:$D$60)'), 'suma la columna de saldo del bloque')
   assert.ok(f.includes('SUMIFS('), 'y la compara contra el titular calculado sobre Compras')
   assert.ok(/IF\(dif=0/.test(f), 'el control se pronuncia: cierra o no cierra')
-  assert.ok(/⚠/.test(f), 'y cuando no cierra, avisa')
+  assert.ok(/▲/.test(f), 'y cuando no cierra, avisa')
   // Un control que no puede fallar no controla nada (ya pasó en esta pestaña: =X-Y-(X-Y)).
   assert.ok(!/-\(.*\)\s*\)\s*;0\)\s*;IF\(dif=0/.test(f.replace(/\s/g, '')), 'no puede ser una identidad que dé siempre 0')
 })

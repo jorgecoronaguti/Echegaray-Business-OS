@@ -63,6 +63,8 @@
 // suya, que ningún generador reescribe, y que la tabla viva lee por nombre de proveedor. Así la nota
 // viaja con la entidad de la que habla, por construcción y no por reconstrucción.
 
+import { ALERTA } from './glifos.mjs'
+
 /** El separador de argumentos del archivo (locale es_AR). La coma es el decimal: nunca va acá. */
 export const SEP = ';'
 
@@ -298,7 +300,7 @@ export function formulaPorFactura({ rangos, reserva }) {
 export function formulaControl({ rangos, rangoSaldo, que }) {
   const total = deudaComercialTotal(rangos)
   const sinProv = `SUMIFS(${rangos.total}${SEP}${rangos.estado}${SEP}"${PENDIENTE}"${SEP}${rangos.comercial}${SEP}1${SEP}${rangos.prov}${SEP}"")`
-  const msg = `"⚠ ${lit(que)} no cierra con el titular: falta "&TEXT(dif${SEP}"$#,##0")&". "`
+  const msg = `"${ALERTA} ${lit(que)} no cierra con el titular: falta "&TEXT(dif${SEP}"$#,##0")&". "`
     + `&IF(ROUND(huerfana${SEP}0)<>0${SEP}"De eso, "&TEXT(huerfana${SEP}"$#,##0")&" es deuda comercial pendiente SIN nombre de proveedor en Compras: ningún bloque organizado por proveedor la puede mostrar, y hay que completarla allá. "${SEP}"")`
     + `&"El resto es deuda que no entra en las filas reservadas del bloque — pedime que lo agrande."`
   return `=LET(dif${SEP}ROUND((${total})-SUM(${rangoSaldo})${SEP}0)${SEP}huerfana${SEP}${sinProv}${SEP}`

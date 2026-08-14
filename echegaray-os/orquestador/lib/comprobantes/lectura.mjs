@@ -101,23 +101,83 @@ export function numeroCanonico(v) {
   const s = String(v ?? '').trim()
   if (!s) return null
   const m = s.match(/(\d{1,5})\s*[-–/ ]\s*(\d{1,10})/)
-  if (m) return `${m[1].padStart(4, '0')}-${m[2].padStart(8, '0')}`
+  if (m) return `${puntoDeVenta(m[1])}-${m[2].padStart(8, '0')}`
   const d = soloDigitos(s)
   if (!d) return null
   // Sin separador: los últimos 8 dígitos son el correlativo y lo de adelante, el punto de venta.
-  if (d.length > 8) return `${d.slice(0, d.length - 8).padStart(4, '0')}-${d.slice(-8)}`
+  if (d.length > 8) return `${puntoDeVenta(d.slice(0, d.length - 8))}-${d.slice(-8)}`
   return `0000-${d.padStart(8, '0')}`
+}
+
+/**
+ * EL PUNTO DE VENTA, A CUATRO DÍGITOS. Los ceros de más NO son parte de la identidad.
+ *
+ * ═══ EL DEFECTO (medido el 14/08 sobre los fajos reales) ═══
+ *
+ * `padStart(4)` sobre lo que devuelve el OCR conserva los ceros que el papel imprime de más: un
+ * ticket que dice `00016-00029784` daba la clave `c:30549581710|00016-00029784` y el mismo ticket
+ * leído `0016-00029784` daba `c:30549581710|0016-00029784`. **Dos claves para un solo comprobante**:
+ *
+ *   · `colapsarRepetidos` no unía las dos fotos del mismo papel — el dueño veía dos líneas;
+ *   · `yaCargados` no encontraba el que ya estaba — y ahí se duplica un gasto en el Flujo de Fondos;
+ *   · el chequeo contra `comprobantes_arca` fallaba, porque ARCA guarda `punto_venta` SIN ceros a la
+ *     izquierda y `numeroDeArca` lo devuelve a cuatro dígitos (`0016`). O sea: las dos mitades del
+ *     mismo control estaban escribiendo el número distinto.
+ *
+ * Casos reales en los fajos del 13 y 14/08: `00113-00014352` (Combustibles Barcelo) y
+ * `00016-00029784` (Clavero/Axion, tres fotos del mismo ticket que no colapsaron).
+ *
+ * Un punto de venta con más de cuatro dígitos SIGNIFICATIVOS se respeta tal cual —la numeración
+ * electrónica nueva los admite—; lo que se saca son los ceros de relleno, exactamente como los saca
+ * ARCA. La regla es: la identidad es el NÚMERO, no cómo lo imprimió la impresora fiscal.
+ */
+export function puntoDeVenta(v) {
+  const d = soloDigitos(v).replace(/^0+/, '')
+  return (d || '0').padStart(4, '0')
+}
+
+/**
+ * Las OTRAS formas en que esta misma clave se pudo haber guardado antes de que el punto de venta se
+ * normalizara. Vacío si no hay ninguna.
+ *
+ * NO ES COSMÉTICA: el registro `comunicacion.comprobantes_cargados` tiene claves escritas con la
+ * forma vieja (dos, al 14/08: `c:33708332599|00113-00014352` y `c:27326890397|00001-00000052`). Si
+ * la búsqueda preguntara sólo por la forma nueva, esos dos comprobantes se podrían volver a cargar
+ * —un gasto duplicado— justo por haber arreglado la clave. Se pregunta por las dos y no hace falta
+ * ninguna migración: el código anda antes y después de que la base se limpie, si es que se limpia.
+ */
+export function clavesEquivalentes(clave) {
+  const s = String(clave ?? '')
+  const m = s.match(/^(.*\|)(\d{4})-(\d{8})$/)
+  if (!m) return []
+  const [, prefijo, pv, correlativo] = m
+  const sinCeros = pv.replace(/^0+/, '') || '0'
+  const out = new Set()
+  // Las formas que producía el `padStart(4)` viejo: el punto de venta con 5 y 6 dígitos de relleno.
+  for (const largo of [5, 6]) out.add(`${prefijo}${sinCeros.padStart(largo, '0')}-${correlativo}`)
+  out.delete(s)
+  return [...out]
 }
 
 /**
  * Letra del comprobante → el valor que espera el desplegable G, vía `tipoComprobante`.
  * Una nota de crédito es 'NC' cualquiera sea su letra: el desplegable tiene un solo "N C".
  */
-export function tipoDesdeLectura({ letra, esNotaCredito } = {}) {
+export function tipoDesdeLectura({ letra, esNotaCredito, esNotaDebito } = {}) {
   if (esNotaCredito) return 'NC'
+  if (esNotaDebito) return 'ND'
   const s = String(letra ?? '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim()
   if (!s) return null
   if (/NOTA\s*(DE\s*)?CREDITO|^N\s*\/?\s*C$|^NC/.test(s)) return 'NC'
+  // ═══ LA NOTA DE DÉBITO NO ES UNA FACTURA, Y COMPARTE SU NUMERACIÓN (14/08) ═══
+  //
+  // Es el instrumento con el que llegan los intereses, las diferencias de cambio y los recargos. La
+  // numeración corre por (tipo, punto de venta): un proveedor puede emitir la `FA 0038-00002807` y la
+  // `ND A 0038-00002807`, y son dos gastos distintos. Sin distinguirla, la ND choca contra la clave de
+  // la factura y el bot contesta «ya estaba cargado» sobre un gasto que nunca entró — un mensaje de
+  // éxito tapando plata perdida. Es la tercera vez que este repo paga la misma lección: la identidad
+  // es (INSTRUMENTO, número), nunca el número solo.
+  if (/NOTA\s*(DE\s*)?DEBITO|^N\s*\/?\s*D$|^ND\b/.test(s)) return 'ND'
   // Se saca la palabra del comprobante y queda la letra. Filtrar por caracteres ("quedate con las
   // A, B y C") parece equivalente y no lo es: sobre "FACTURA B" deja "ACAB" y devuelve una A. El
   // test lo agarró antes de que un gasto quedara con el tipo de comprobante equivocado.
@@ -172,7 +232,32 @@ export function caeCanonico(v) {
  *
  * @returns {{clave:string, fuerte:boolean}|null}  null = no hay con qué deduplicar
  */
-export function claveComprobante({ cuit, tipo, numero, proveedor, esNotaCredito } = {}) {
+/**
+ * EL INSTRUMENTO del comprobante: `NC`, `ND` o `F` (factura, tique, boleta — todo lo que SUMA).
+ *
+ * ═══ POR QUÉ ES UNA CLASE Y NO UN BOOLEANO, Y POR QUÉ LA LETRA NO ENTRA ═══
+ *
+ * La numeración corre por (tipo, punto de venta). Con un booleano `esNotaCredito` sólo hay dos
+ * bolsas, y la NOTA DE DÉBITO cae en la misma que la factura: `ND A 0038-00002807` y
+ * `FA 0038-00002807` del mismo proveedor daban la MISMA clave, así que la segunda que llegaba se
+ * rechazaba como "ya cargada". Tres instrumentos, tres bolsas.
+ *
+ * La LETRA (A/B/C) sigue afuera, y eso no es una omisión: es la decisión del 04/08. Es el dato menos
+ * confiable del papel —una sola letra, en un tique térmico— y hacerla parte de la identidad convirtió
+ * un problema de OCR en un gasto perdido (el tique de Barcelo del 03/08). Un comprobante cuya letra
+ * no se leyó cae en la MISMA bolsa que uno cuya letra sí se leyó, que es lo que impide que el mismo
+ * papel entre dos veces por haberse leído distinto.
+ */
+export function claseDeComprobante({ tipo, esNotaCredito, esNotaDebito } = {}) {
+  if (esNotaCredito === true) return 'NC'
+  if (esNotaDebito === true) return 'ND'
+  const t = String(tipo ?? '').toUpperCase().replace(/[^A-Z]/g, '')
+  if (t === 'NC') return 'NC'
+  if (t === 'ND') return 'ND'
+  return 'F'
+}
+
+export function claveComprobante({ cuit, tipo, numero, proveedor, esNotaCredito, esNotaDebito } = {}) {
   const n = numeroCanonico(numero)
   if (!n) return null
   // ═══ LA LETRA NO PUEDE ANULAR LA CLAVE (04/08) ═══
@@ -191,8 +276,12 @@ export function claveComprobante({ cuit, tipo, numero, proveedor, esNotaCredito 
   // Lo que SÍ se mantiene separado es la NOTA DE CRÉDITO: comparte numeración con las facturas y
   // confundir una con otra ya costó $41,9M. Va en la clave por su propio flag, que no depende de que
   // se lea ninguna letra.
-  const nc = esNotaCredito === true || String(tipo ?? '').toUpperCase().replace(/[^A-Z]/g, '') === 'NC'
-  const marca = nc ? 'NC|' : ''
+  // La FACTURA no lleva marca, y eso es a propósito: es la bolsa que ya tenían todas las claves
+  // escritas en `comunicacion.comprobantes_cargados`. Agregarle una marca habría invalidado el
+  // registro entero y todo lo ya cargado se habría podido cargar de nuevo. Las notas —que antes
+  // colisionaban— sí la llevan.
+  const clase = claseDeComprobante({ tipo, esNotaCredito, esNotaDebito })
+  const marca = clase === 'F' ? '' : `${clase}|`
   const c = soloDigitos(cuit)
   if (c.length === 11) return { clave: `c:${c}|${marca}${n}`, fuerte: true }
   const p = normalizar(proveedor)
@@ -231,8 +320,16 @@ export function normalizar_lectura(crudo = {}) {
   // El signo se decide con las DOS señales: alcanza con que una diga nota de crédito. Que sobre-marque
   // una factura como NC es un error visible al instante (un gasto en negativo salta); que sub-marque
   // una nota de crédito es invisible hasta que no cierra el IVA del ejercicio.
-  const tipo = tipoDesdeLectura({ letra: crudo.letra, esNotaCredito: crudo.es_nota_credito === true })
+  const tipo = tipoDesdeLectura({
+    letra: crudo.letra,
+    esNotaCredito: crudo.es_nota_credito === true,
+    esNotaDebito: crudo.es_nota_debito === true,
+  })
   const esNC = crudo.es_nota_credito === true || tipo === 'NC'
+  // LA NOTA DE DÉBITO NO CAMBIA EL SIGNO: suma, igual que una factura. Lo único que cambia es la
+  // IDENTIDAD —comparte numeración con la factura— y por eso viaja hasta la clave. Confundir las dos
+  // cosas sería el error de $41,9M al revés: restar un gasto que suma.
+  const esND = !esNC && (crudo.es_nota_debito === true || tipo === 'ND')
   const signo = esNC ? -1 : 1
   const con = (v) => { const n = aNumero(v); return n == null ? null : redondear2(Math.abs(n) * signo) }
 
@@ -267,6 +364,7 @@ export function normalizar_lectura(crudo = {}) {
       cuit: cuit.length === 11 && cuit !== CUIT_EMPRESA ? cuit : null,
       tipo,
       esNotaCredito: esNC,
+      esNotaDebito: esND,
       numero,
       // El CAE viaja aunque hoy no se escriba en ninguna celda: es la clave con la que se concilia
       // contra ARCA, y es la que permite decir "el número que leí estaba mal, el bueno es éste".
@@ -334,6 +432,32 @@ export function conceptoConAnotacion({ concepto, anotacion } = {}) {
   if (c.includes(MARCA_A_MANO)) return c
   const marca = `${MARCA_A_MANO} "${a.slice(0, 120)}"`
   return (c ? `${c} ${marca}` : marca).slice(0, 300)
+}
+
+/** Cómo se marca en la columna L el proveedor que el desplegable no tiene. Es contrato, no formato. */
+export const MARCA_PROVEEDOR = '· proveedor s/lista:'
+
+/**
+ * EL NOMBRE QUE EL DESPLEGABLE NO TIENE, TRANSCRIPTO EN EL CONCEPTO.
+ *
+ * Cuando el proveedor no está en la lista estricta, la celda E queda VACÍA a propósito: un valor
+ * fuera del desplegable deja la celda en rojo y parte en dos la cuenta corriente del proveedor en
+ * todos los cruces. Pero el nombre está impreso en el papel y es el dato con el que el dueño va a
+ * completar esa celda, así que no se puede tirar: se transcribe, literal y con su CUIT.
+ *
+ * NO ES INVENTAR NADA: es copiar lo que dice el membrete a una celda de texto libre. Lo que sería
+ * inventar es elegirle un nombre parecido de la lista.
+ *
+ * IDEMPOTENTE, igual que `conceptoConAnotacion`: el fajo se reescribe en cada pasada y un concepto
+ * que se agranda solo es un dato que se degrada.
+ */
+export function conceptoConProveedorLeido(concepto, { proveedor, cuit } = {}) {
+  const nombre = String(proveedor ?? '').trim()
+  const base = String(concepto ?? '').trim()
+  if (!nombre || base.includes(MARCA_PROVEEDOR)) return base || null
+  const c = soloDigitos(cuit)
+  const marca = `${MARCA_PROVEEDOR} "${nombre.slice(0, 80)}"${c.length === 11 ? ` CUIT ${c}` : ''}`
+  return (base ? `${base} ${marca}` : marca).slice(0, 300)
 }
 
 function textoODefault(v) {

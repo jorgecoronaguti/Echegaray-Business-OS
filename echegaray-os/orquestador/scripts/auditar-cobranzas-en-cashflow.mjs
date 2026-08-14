@@ -18,7 +18,8 @@
 //
 //   node orquestador/scripts/auditar-cobranzas-en-cashflow.mjs
 
-import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
+// SIN `scopes`: un auditor no tiene con qué escribir. Pedía los de escritura sin usarlos nunca.
+import { makeGoogleClient } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { auditar } from '../lib/cobranzas-en-cashflow.mjs'
 
@@ -26,16 +27,25 @@ const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1
 const ars = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-AR')}`
 
 async function main() {
-  const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
+  const google = makeGoogleClient({ config: loadConfig() })
   const [cob, cf] = await Promise.all([
     google.readSheetGrid(ID, 'Cobranzas!A5:BC400'),
-    google.readSheetGrid(ID, 'Cash Flow Mensual!A3:N9'),
+    // DESDE LA FILA 1 Y CON MARGEN: el cuadro se lee entero y `ubicarCuadro` busca sus anclas de
+    // texto adentro. El rango viejo (`A3:N9`) era el layout de antes de la matriz y ya no existía.
+    google.readSheetGrid(ID, 'Cash Flow Mensual!A1:N40'),
   ])
 
   const r = auditar(cob.filas, cf.filas)
+  if (r.noPudoUbicar) {
+    console.error(`✖ NO PUDE UBICAR EL CUADRO: ${r.noPudoUbicar}`)
+    console.error('  No audito contra una ventana que no encontré: un "todo fuera del cuadro" sería inventado.')
+    process.exitCode = 1
+    return
+  }
 
   console.log(`${r.cobros.length} cobros cargados por ${ars(r.totalCobranzas)}`)
-  console.log(`el cash flow muestra ${ars(r.totalCashFlow)} en sus ${r.meses.length} columnas\n`)
+  console.log(`el cash flow muestra ${ars(r.totalCashFlow)} en sus ${r.meses.length} columnas`)
+  console.log(`(líneas de ingreso leídas: ${r.ingreso.map((i) => `${i.de} → fila ${i.fila + 1}`).join(' · ')})\n`)
 
   const bloques = [
     ['⚠ NO LLEGAN AL CUADRO — fuera de la ventana de meses', r.fueraDeVentana],

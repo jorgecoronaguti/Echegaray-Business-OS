@@ -24,6 +24,10 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { reparacionesDeColumna, residuosEnTotales } from '../lib/formato-por-vecinos.mjs'
+import { ALERTA, ALERTA_HEREDADA } from '../lib/glifos.mjs'
+
+/** Un título de cuadro puede abrir con la alerta. Las DOS: la pestaña tiene publicada la vieja. */
+const ABRE_CON_ALERTA = new RegExp(`^[${ALERTA}${ALERTA_HEREDADA}]\\s`)
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Proveedores'
@@ -45,7 +49,7 @@ export function cuadrosPorTitulo(valores = []) {
   const marcas = []
   for (let r = 0; r < valores.length; r++) {
     const t = String(valores[r]?.[0] ?? '').trim()
-    if (/^\d+\s*[·.\-]\s*\S/.test(t) || /^⚠\s/.test(t)) marcas.push({ titulo: t.slice(0, 55), desde: r + 1 })
+    if (/^\d+\s*[·.\-]\s*\S/.test(t) || ABRE_CON_ALERTA.test(t)) marcas.push({ titulo: t.slice(0, 55), desde: r + 1 })
   }
   if (!marcas.length) throw new Error('no encontré ningún título de cuadro: la pestaña cambió de forma')
   return marcas.map((m, k) => ({ ...m, hasta: marcas[k + 1]?.desde ?? valores.length + 1 }))

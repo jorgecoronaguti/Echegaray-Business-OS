@@ -24,6 +24,7 @@
 
 import { claveComprobante } from './lectura.mjs'
 import { faltantesDe, puedeCargarse, POLITICA, PREGUNTA_OBRA, ROTULO } from './faltantes.mjs'
+import { mismoPapel, mejorDe, basesDe } from './mejor-lectura.mjs'
 
 /** Ventana de agrupación, en minutos. Corta a propósito: agrupa una tanda, no una jornada. */
 export const VENTANA_FAJO_MIN = Number(process.env.ORQ_COMPROBANTES_VENTANA_MIN || 5)
@@ -87,24 +88,92 @@ export function entraEnElFajo(abierto, post, { ventanaMin = VENTANA_FAJO_MIN } =
  *
  * @returns {{items:Array, repetidos:Array}}
  */
-export function colapsarRepetidos(items = []) {
-  const vistos = new Map()
-  const out = []
-  const repetidos = []
+export function colapsarRepetidos(items = [], { ahora } = {}) {
+  // ── 1) POR CLAVE: la misma lectura del mismo comprobante ─────────────────────
+  const porClave = new Map()
+  const grupos = []
   for (const it of items) {
     const k = claveComprobante(it?.comprobante ?? {})
-    if (!k) { out.push(it); continue }
-    const ya = vistos.get(k.clave)
-    if (ya) {
-      repetidos.push({ item: it, clave: k.clave })
-      ya.copias = [...(ya.copias ?? []), ...(it?.copias ?? []), origenDe(it)].filter(Boolean)
-      continue
+    // Sin clave no se colapsa con nadie: no se puede afirmar que sean el mismo, y unir dos gastos
+    // distintos es peor que mostrar dos veces el mismo.
+    if (!k) { grupos.push({ miembros: [it], votos: 1, colapsable: false }); continue }
+    const ya = porClave.get(k.clave)
+    if (ya) { ya.miembros.push(it); ya.votos++; continue }
+    const g = { clave: k.clave, miembros: [it], votos: 1, colapsable: true }
+    porClave.set(k.clave, g)
+    grupos.push(g)
+  }
+
+  // ── 2) POR PAPEL: el mismo comprobante leído DISTINTO ────────────────────────
+  //
+  // Ver `mejor-lectura.mjs`. Dos fotos del mismo papel que el modelo leyó distinto producían dos
+  // ítems, uno se cargaba y el otro quedaba trabado para siempre — con el agravante de que el trabado
+  // podía ser el de $220.540.034 mientras el bueno ($2.205.400,34) ya estaba en la fila 844.
+  const finales = []
+  const sinUnir = []
+  for (const g of grupos) {
+    const par = g.colapsable === false ? null : finales.find((f) => f.colapsable !== false && mismoPapel(f.miembros[0], g.miembros[0]).si)
+    if (par) { par.subgrupos.push(g); continue }
+    finales.push({ ...g, subgrupos: [g] })
+  }
+
+  // ── 3) DE CADA GRUPO, GANA LA MEJOR LECTURA ──────────────────────────────────
+  const out = []
+  const repetidos = []
+  for (const f of finales) {
+    const candidatos = f.subgrupos.map((s) => ({ item: s.miembros[0], votos: s.votos }))
+    const { ganador } = mejorDe(candidatos, { ahora })
+    const todos = f.subgrupos.flatMap((s) => s.miembros)
+    const copia = { ...ganador }
+    const copias = [...(ganador?.copias ?? [])]
+    for (const it of todos) {
+      if (it === ganador) continue
+      repetidos.push({ item: it, clave: f.clave ?? null })
+      copias.push(...(it?.copias ?? []), origenDe(it))
     }
-    const copia = { ...it }
-    vistos.set(k.clave, copia)
+    copia.copias = copias.filter(Boolean)
+    // LO QUE SE DESCARTÓ, DECLARADO. Cuando las dos lecturas del mismo papel no decían lo mismo, el
+    // dueño tiene derecho a saber cuál se usó y qué decía la otra: es la única forma de desmentir la
+    // elección sin ir a buscar la foto.
+    const descartadas = todos.filter((it) => it !== ganador && distintoDe(it, ganador))
+    if (descartadas.length) {
+      copia.lecturasDescartadas = descartadas.map((it) => ({
+        numero: it?.comprobante?.numero ?? null,
+        total: it?.comprobante?.total ?? null,
+        proveedor: it?.comprobante?.proveedor ?? null,
+        archivo: it?.origen?.nombre ?? null,
+      }))
+    }
     out.push(copia)
+    sinUnir.push({ item: copia, bases: basesDe(copia) })
+  }
+
+  // ── 4) LO QUE VINO DEL MISMO ARCHIVO Y NO SE PUDO UNIR, SE DICE ──────────────
+  //
+  // El veto de `sonPapelesDistintos` impide fusionar dos lecturas cuyos tres datos duros difieren —es
+  // lo que evita perder un gasto— pero la pista sigue siendo valiosa: si `IMG_7576.HEIC` produjo
+  // «Pintureria Cordoba $426.219» y `IMG_7576.jpg` «Pintureria Cordoba $42.621.942», el segundo es
+  // casi seguro la misma foto mal leída. No se decide: se declara, y el dueño lo descarta de un
+  // vistazo en vez de ir a buscar la foto.
+  for (const a of sinUnir) {
+    for (const b of sinUnir) {
+      if (a === b) continue
+      if (![...b.bases].some((n) => a.bases.has(n))) continue
+      a.item.mismaFotoQue = [...(a.item.mismaFotoQue ?? []), {
+        proveedor: b.item?.comprobante?.proveedor ?? null,
+        total: b.item?.comprobante?.total ?? null,
+        numero: b.item?.comprobante?.numero ?? null,
+      }]
+    }
   }
   return { items: out, repetidos }
+}
+
+/** ¿Estas dos lecturas dicen algo distinto del papel? Si dicen lo mismo, no hay nada que declarar. */
+function distintoDe(a, b) {
+  const x = a?.comprobante ?? {}
+  const y = b?.comprobante ?? {}
+  return x.numero !== y.numero || x.total !== y.total
 }
 
 /** La identidad de archivo de un ítem: con qué foto entró. Sin fileId no se puede rendir cuenta. */
@@ -256,6 +325,11 @@ export function imputacionVacia(item = {}) {
   if (!item || item.yaCargado) return []
   const c = item.comprobante ?? {}
   const falta = []
+  // EL PROVEEDOR FUERA DEL DESPLEGABLE ES UNA CELDA VACÍA MÁS. La fila entra igual (ver
+  // `EXIGIR_PROVEEDOR` en `faltantes.mjs`) y la columna E queda en blanco, así que tiene que aparecer
+  // en la lista de lo que hay que completar — con su fila. Si no, se carga en silencio, que es
+  // exactamente lo que el dueño rechazó el 04/08.
+  if (item.proveedorNuevo || !c.proveedor) falta.push('proveedor')
   if (!c.categoria) falta.push('categoria')
   if (!c.obra) falta.push('obra')
   if (!c.unidad) falta.push('unidad')

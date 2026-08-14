@@ -25,9 +25,10 @@ import { claveComprobante, MEDIA_ACEPTADOS, MAX_BYTES_ADJUNTO, tipoPorExtension 
 import { prepararParaVision } from '../../lib/comprobantes/imagen.mjs'
 import { conciliarConArca, aplicarArca, ESTADO_ARCA } from '../../lib/comprobantes/arca.mjs'
 import { buscarEnCompras, HALLAZGO, escalaDelProveedor, detallesFirmes, obrasFirmes } from '../../lib/comprobantes/compras-vivas.mjs'
-import { colapsarRepetidos, entraEnElFajo, estaCompleto, imputacionPendiente, ESTADO } from '../../lib/comprobantes/fajo.mjs'
+import { colapsarRepetidos, entraEnElFajo, estaCompleto, imputacionPendiente, rotulosDe, ESTADO } from '../../lib/comprobantes/fajo.mjs'
 import { mensajeFajo } from '../../lib/comprobantes/mensaje.mjs'
 import { rendicionDeAdjuntos, textoRendicion } from '../../lib/comprobantes/rendicion.mjs'
+import { identificar } from '../../lib/comprobantes/identidad.mjs'
 import { parteVacia, parteDeRendicion, parteDeEscritura, sumarPartes } from '../../lib/comprobantes/parte.mjs'
 import { matchUnico } from '../../lib/comprobantes/imputacion.mjs'
 import { perfilesDeImputacion, sugerirImputacion } from '../../lib/imputacion-aprendida.mjs'
@@ -138,7 +139,15 @@ export function marcarEnCompras(items = [], indice = null) {
   if (!indice?.ok) {
     // NO PODER MIRAR COMPRAS NO ES "NO ESTÁ CARGADO". Callarlo hace que las dos cosas se vean igual
     // en el mensaje, y el dueño confirma creyendo que se revisó. Se declara por ítem.
-    for (const it of items) it.comprasNoRevisadas = { error: indice?.error ?? 'no pude leer la pestaña Compras' }
+    for (const it of items) {
+      it.comprasNoRevisadas = { error: indice?.error ?? 'no pude leer la pestaña Compras' }
+      // FAIL-CLOSED: la duda del registro (mismo número, otro importe) la iba a resolver la pestaña.
+      // Sin pestaña no hay quién la resuelva, y entre preguntar de más y duplicar un gasto, se
+      // pregunta. Ver `marcarYaCargados`.
+      if (it.registroOtroImporte && !it.yaCargado) {
+        it.yaCargado = { fila: it.registroOtroImporte.fila, hoja: 'Compras', fuente: 'registro', total: it.registroOtroImporte.total }
+      }
+    }
     return items
   }
   for (const it of items) {
@@ -359,15 +368,24 @@ export async function procesarPost(d, m = {}) {
   // 5) ARCA, ANTES de colapsar: corrige el número mal leído, que es justo con lo que se deduplica.
   await conciliarItems(items, arcaDe)
 
-  // 6) Colapsar los repetidos del propio envío (la misma factura fotografiada dos veces).
-  let { items: unicos } = colapsarRepetidos(items)
-
-  // 7) ¿Ya estaban cargados? En el registro del chat Y en la pestaña Compras VIVA: el comprobante
+  // 6) ¿Ya estaban cargados? En el registro del chat Y en la pestaña Compras VIVA: el comprobante
   //    pudo haber entrado por Claude Code o a mano, que es exactamente lo que pasó.
   //    ESTO CORRE SIEMPRE, con ARCA o sin ARCA. Que un tique no esté en el Libro IVA no dice nada
   //    sobre si ya está cargado; es justo cuando más falta hace mirar el destino.
-  await marcarYaCargados(port, unicos, repo)
-  marcarEnCompras(unicos, indiceCompras)
+  //
+  // ═══ VA ANTES DEL COLAPSO, Y ESE ORDEN ES EL ARREGLO (14/08) ═══
+  //
+  // Cuando dos fotos del mismo papel se leen distinto, hay que elegir CUÁL de las dos lecturas se
+  // queda, y esa elección se toma con la evidencia sobre la mesa: cuál de las dos ya está en Compras,
+  // y cuál tiene un total cien veces más grande que todo lo que ese proveedor facturó nunca
+  // (`escala`). Colapsando primero, esa evidencia todavía no existía y se quedaba la que llegó
+  // primero — que en la tanda real del 13/08 fue la que decía $220.540.034.
+  await marcarYaCargados(port, items, repo)
+  marcarEnCompras(items, indiceCompras)
+
+  // 7) Colapsar los repetidos del propio envío (la misma factura fotografiada dos veces) y quedarse
+  //    con la MEJOR lectura de cada papel. Ver `mejor-lectura.mjs`.
+  let { items: unicos } = colapsarRepetidos(items, { ahora: m.ahora ?? undefined })
   // Lo que la pestaña desmintió se BORRA del registro, no se ignora una vez: si quedara, la próxima
   // foto del mismo comprobante volvería a chocar contra el mismo fantasma.
   await olvidarObsoletos(port, unicos, repo)
@@ -630,7 +648,7 @@ async function cargarSolo(d, fajo, repo, rendicion = null) {
         ? '\n\n⚠ Uno no lo pude cargar solo — necesito que me contestes esto:'
         : `\n\n⚠ ${trabados.length} no los pude cargar solos — necesito que me contestes esto:`
       return {
-        texto: (r?.texto ?? '✔ Cargado.') + tanda + cola + encabezado + '\n' + msg.texto,
+        texto: (r?.texto ?? '✔ Cargado.') + tanda + cola + encabezado + '\n' + msg.texto + arrastrados(trabados, rendicion),
         attachments: msg.attachments,
         estado,
         fajoId: nuevo.id,
@@ -639,6 +657,36 @@ async function cargarSolo(d, fajo, repo, rendicion = null) {
     }
   }
   return { texto: (r?.texto ?? '✔ Cargado.') + tanda + cola, estado, fajoId: fajo.id, parte }
+}
+
+/**
+ * LOS QUE VIENEN ARRASTRADOS DE ANTES — «2 de estos vienen de tandas anteriores».
+ *
+ * ═══ POR QUÉ (14/08) ═══
+ *
+ * Un comprobante que queda pendiente se MUDA al fajo siguiente y sigue esperando. La rendición de
+ * cada post cuenta sólo los adjuntos de ESE post, así que un pendiente que viene de hace tres tandas
+ * no aparece en ningún renglón que lo nombre: existe, ocupa lugar y es invisible. Es lo que pasó con
+ * los siete del 05/08, que estuvieron una semana dando vueltas, y con los nueve del fajo abierto del
+ * 14/08 — el dueño no tenía forma de saber que estaban ahí.
+ *
+ * Se nombran POR SU CONTENIDO, igual que todo lo demás (ver `identidad.mjs`).
+ */
+function arrastrados(trabados = [], rendicion = null) {
+  const deEsteEnvio = new Set((rendicion?.porAdjunto ?? []).map((a) => String(a.fileId)))
+  const viejos = trabados.filter((it) => {
+    const ids = [it?.origen?.fileId, ...(it?.copias ?? []).map((c) => c?.fileId)].filter(Boolean).map(String)
+    return ids.length > 0 && !ids.some((id) => deEsteEnvio.has(id))
+  })
+  if (!viejos.length) return ''
+  const l = [viejos.length === 1
+    ? '\n_Uno de éstos viene de una tanda anterior:_'
+    : `\n_${viejos.length} de éstos vienen de tandas anteriores:_`]
+  for (const it of viejos.slice(0, 8)) {
+    const falta = rotulosDe(it)
+    l.push(`· ${identificar(it).texto ?? 'un comprobante que no pude leer'} — falta ${falta.join(' y ') || 'un dato'}`)
+  }
+  return `\n${l.join('\n')}`
 }
 
 /**
@@ -731,12 +779,45 @@ export async function olvidarObsoletos(port, items = [], repo = repoReal) {
   try { return await repo.olvidarCargados(port, claves) } catch { return 0 }
 }
 
-/** Le cuelga a cada ítem el `yaCargado` que corresponda. Muta los ítems a propósito: son de acá. */
+/** Cuánto pueden diferir dos importes y seguir siendo el mismo comprobante. Arriba de esto, no lo son. */
+export const TOLERANCIA_IMPORTE = 0.5
+
+/**
+ * Le cuelga a cada ítem el `yaCargado` que corresponda. Muta los ítems a propósito: son de acá.
+ *
+ * ═══ EL MISMO NÚMERO CON OTRO IMPORTE NO ES EL MISMO COMPROBANTE (14/08) ═══
+ *
+ * Medido en la pestaña viva: `Con-Sec 00003-00004295` aparece TRES veces, con fechas e importes
+ * distintos ($1.191.294,61 · $436.294,54 · $72.410,03); `MASS CONSULTORA 0001-00000025`, dos veces.
+ * Con la clave sola, el segundo y el tercero se rechazaban con un mensaje de ÉXITO —«ya estaban
+ * cargados, no los dupliqué»— y el gasto no entraba a ningún lado. Es el peor resultado posible: el
+ * dueño no tiene forma de enterarse de que le falta plata en Compras.
+ *
+ * El registro guarda el importe con el que se cargó. Cuando el que se está leyendo difiere, la clave
+ * no alcanza para afirmar que es el mismo papel, y la afirmación se suspende: el ítem sigue vivo y
+ * **decide la pestaña Compras**, que es el destino y la única evidencia real (`marcarEnCompras`
+ * contesta CARGADO si el importe cierra, y PROBABLE —o sea, pregunta— si no).
+ *
+ * FAIL-CLOSED: si Compras NO se pudo leer, no hay quién decida y el registro vuelve a mandar. Se
+ * repone en `marcarEnCompras`. Levantar el freno sin nadie mirando el destino es como se duplica un
+ * gasto, y eso cuesta más que preguntar de más.
+ */
 export async function marcarYaCargados(port, items = [], repo = repoReal) {
   const mapa = await repo.yaCargados(port, items.map((i) => i.clave))
   for (const it of items) {
     const y = it.clave ? mapa.get(it.clave) : null
-    if (y) it.yaCargado = { fila: y.fila, hoja: y.hoja, post_id: y.post_id, creado_at: y.creado_at }
+    if (!y) continue
+    const marca = { fila: y.fila, hoja: y.hoja, post_id: y.post_id, creado_at: y.creado_at, fuente: 'registro', total: y.total ?? null }
+    const leido = it.comprobante?.total
+    const difiere = y.total != null && typeof leido === 'number' && Number.isFinite(leido)
+      && Math.abs(Math.abs(y.total) - Math.abs(leido)) > TOLERANCIA_IMPORTE
+    if (difiere) {
+      // No se marca como cargado: se DECLARA la discrepancia, con los dos importes, para que el
+      // mensaje pueda decir contra qué fila coincidió y con qué dato no.
+      it.registroOtroImporte = { fila: y.fila ?? null, clave: it.clave, total: y.total, leido, numero: y.numero ?? null }
+      continue
+    }
+    it.yaCargado = marca
   }
   return items
 }

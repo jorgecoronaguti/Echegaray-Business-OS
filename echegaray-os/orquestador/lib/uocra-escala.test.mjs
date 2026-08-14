@@ -35,7 +35,7 @@ test('formulaValor NO devuelve cero si falta el mes: un cero diría "el convenio
 
 test('la vigencia grita si el mes en curso no está en la réplica', () => {
   const v = formulaVigencia('TODAY()')
-  assert.match(v, /⚠ el mes en curso NO está/)
+  assert.match(v, /▲ el mes en curso NO está/)
   assert.match(v, /_UOCRA_RAW/)
 })
 
@@ -63,6 +63,6 @@ test('el escalón que viene se puede consultar con la MISMA fórmula, cambiando 
 
 test('la vigencia del mes próximo grita si ese mes NO está cargado en la réplica', () => {
   const v = formulaVigencia(MES_SIGUIENTE)
-  assert.match(v, /⚠ el mes en curso NO está/)
+  assert.match(v, /▲ el mes en curso NO está/)
   assert.match(v, /EOMONTH\(TODAY\(\);0\)\+1/)
 })

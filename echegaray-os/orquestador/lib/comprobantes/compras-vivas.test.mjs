@@ -184,7 +184,17 @@ test('un número crudo se respeta tal cual: el parser es-AR no lo multiplica por
 // fecha+importe o por "un dígito"— y ninguno queda en null. Estos tests fijan eso, porque de ese
 // null depende que `flujo.mjs` NO borre la clave de idempotencia (ver `marcarEnCompras`).
 
-test('el punto de venta leído distinto no deja el comprobante en null: lo caza fecha+importe', () => {
+test('el punto de venta leído distinto no deja el comprobante en null: es ÉSE', () => {
+  // ═══ CAMBIO DE CONTRATO (14/08): de PROBABLE a CARGADO ═══
+  //
+  // Antes esto devolvía un PROBABLE y el dueño tenía que contestar una pregunta. Pero acá coinciden
+  // el proveedor, la fecha, el importe AL CENTAVO y los ocho dígitos del correlativo, y lo único que
+  // difiere es el punto de venta —el grupo que el OCR más equivoca—. Eso no es «puede que sea»: es
+  // ése. Preguntarlo es hacerle revisar un comprobante que el sistema ya sabe cuál es, que es
+  // exactamente el trabajo que pidió no hacer.
+  //
+  // Lo que este test protegía sigue protegido, y más fuerte: no devuelve null, así que la clave de
+  // idempotencia no se borra (ver `marcarEnCompras`).
   const filas = [
     ...Array.from({ length: 822 }, () => []),
     fila('5/8/2026', 'Combustibles Barcelo', 'F A', '00113-00014305', 'Taller', 'combustible', '$ 100.000,00'),
@@ -192,13 +202,26 @@ test('el punto de venta leído distinto no deja el comprobante en null: lo caza 
   const r = buscarEnCompras(
     { proveedor: 'Combustibles Barcelo', tipo: 'A', numero: '0011-00014305', fecha: '05/08/2026', total: 100000 },
     { ok: true, ...indexarCompras(filas) })
-  assert.equal(r?.que, HALLAZGO.PROBABLE, 'null acá significa borrar la clave y cargarlo dos veces')
+  assert.equal(r?.que, HALLAZGO.CARGADO, 'null acá significa borrar la clave y cargarlo dos veces')
   assert.equal(r.fila, 826)
+  assert.match(r.via, /correlativo/)
 })
 
-test('el punto de venta con un cero de más lo caza la pasada de "un dígito"', () => {
+test('el punto de venta mal leído lo caza la pasada del CORRELATIVO', () => {
   // VILLA DEL PINO: el registro guardó `0001-00015177` y la celda dice `00015-00015177`. Encima el
   // total se leyó ×100 ($10.500.067 contra $105.000,67), así que fecha+importe tampoco alcanza.
+  //
+  // ═══ CAMBIO DE CONTRATO (14/08): la misma fila, por una vía mejor ═══
+  //
+  // Antes lo cazaba la pasada de "un dígito", y lo hacía por accidente: `00015-…` y `0001-…` tenían
+  // largos distintos porque el punto de venta conservaba el cero de relleno. Desde que el punto de
+  // venta se normaliza a cuatro dígitos (`puntoDeVenta`, que es lo que impide que el mismo
+  // comprobante tenga DOS claves de idempotencia), los dos números miden lo mismo y difieren en DOS
+  // caracteres — la pasada de "un dígito" ya no puede verlo.
+  //
+  // Lo ve la pasada del CORRELATIVO, que es la que corresponde: los ocho dígitos coinciden enteros y
+  // lo único que cambia es el punto de venta, que es justo el grupo que el OCR más equivoca. El
+  // hallazgo es el mismo (PROBABLE, fila 812) y el motivo es más preciso.
   const filas = [
     ...Array.from({ length: 808 }, () => []),
     fila('1/8/2026', 'VILLA DEL PINO', 'F A', '00015-00015177', 'Administracion', 'Combustible', '$ 105.000,67'),
@@ -208,5 +231,5 @@ test('el punto de venta con un cero de más lo caza la pasada de "un dígito"', 
     { ok: true, ...indexarCompras(filas) })
   assert.equal(r?.que, HALLAZGO.PROBABLE)
   assert.equal(r.fila, 812)
-  assert.match(r.via, /un digito/)
+  assert.match(r.via, /correlativo/)
 })

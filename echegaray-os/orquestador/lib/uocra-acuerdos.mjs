@@ -36,6 +36,8 @@
 // el COCIENTE DE BÁSICOS PUBLICADOS entre dos meses, que es un hecho medible. El % del rótulo se
 // conserva sólo como ETIQUETA de la fila, para que se lea de dónde viene el escalón.
 
+import { ALERTA } from './glifos.mjs'
+
 /** El orden de las categorías dentro de cada grupo mensual. Es la estructura del convenio. */
 export const CATEGORIAS = ['Oficial Especializado', 'Oficial', 'Medio Oficial', 'Ayudante', 'Sereno']
 /** La categoría que ancla el escalón: es el piso del convenio y la que el control ya compara. */
@@ -285,7 +287,7 @@ export function estadoReplica(escalones = [], hoy = new Date()) {
       // EL LARGO ES UN CONTRATO: este mensaje se concatena con " · CCT 76/75 Zona A" (19 caracteres)
       // en la línea de vigencia de la sección 4, así que tiene que entrar en 41 para que esa fila no
       // pase de 60. Ver el test del tope en jornales-pestana.test.mjs.
-      mensaje: `⚠ Sin escala UOCRA — revisá el IMPORTHTML`,
+      mensaje: `${ALERTA} Sin escala UOCRA — revisá el IMPORTHTML`,
     }
   }
   if (ult.periodo < enCurso) {
@@ -296,7 +298,7 @@ export function estadoReplica(escalones = [], hoy = new Date()) {
       // Repetirlo arriba en prosa es la tercera vez que se afirma lo mismo.
       // El período del último acuerdo y el mes en curso se cayeron: el rótulo YA trae el mes ("Agosto
       // +1,9%") y cuál es el mes en curso lo sabe el que mira. Mismo contrato de 41 caracteres.
-      mensaje: `⚠ Escala vencida — último: ${ult.rotulo}`,
+      mensaje: `${ALERTA} Escala vencida — último: ${ult.rotulo}`,
     }
   }
   return {

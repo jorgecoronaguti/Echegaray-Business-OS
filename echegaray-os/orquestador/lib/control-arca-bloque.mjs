@@ -23,6 +23,7 @@
 // por naturaleza" (jornales, cargas sociales) tampoco: en una vista de un solo rubro sería el mismo
 // número global repetido tres veces. Pertenece al control global, no a la vista.
 import { R } from './arca-formula.mjs'
+import { ALERTA } from './glifos.mjs'
 
 /** La pestaña de discrepancias. La escribe scripts/cruce-arca-pestana.mjs. */
 export const C = '_CRUCE_ARCA'
@@ -107,7 +108,7 @@ export function bloqueControlArca({ titulo, rubros, fila0 }) {
   // vistas: es de Compras entera. Ese número ya existe y ya tiene nombre — `ARCA_FALTAN_MONTO`, que
   // publica Proveedores. Calcularlo de nuevo acá creaba una segunda cifra parecida con otro nombre
   // ($13.090.051 contra $13,8M), que es fuente garantizada de desconfianza. Una definición, una fuente.
-  filas.push(['⚠ ARCA facturó y Compras NO lo tiene — de Compras ENTERA, no de esta pestaña', '=ARCA_FALTAN_MONTO'])
+  filas.push([`${ALERTA} ARCA facturó y Compras NO lo tiene — de Compras ENTERA, no de esta pestaña`, '=ARCA_FALTAN_MONTO'])
 
   // ═══ EL VEREDICTO ═══
   //
@@ -117,9 +118,35 @@ export function bloqueControlArca({ titulo, rubros, fila0 }) {
   // que se sabe inflada entrena al que la mira a ignorar el control, y ya pasó con los −$212M.
   //
   // Sin fuente NO hay ✓: afirmar que está todo bien justo cuando no se puede saber es el peor estado.
-  filas.push([`=IF(NOT(${HAY_FUENTE});"⚠ NO PUEDO VERIFICAR — ARCA no replicó comprobantes: este control no afirma nada";IF(ROUND(B${f(5)};0)=0;"✓ todo lo que esta pestaña lista en la ventana tiene su comprobante en el libro de ARCA";"ⓘ "&TEXT(B${f(5)};"$#,##0")&" en "&${sinRespaldoN(rubros)}&" fila(s) sin comprobante en el libro ("&TEXT(1-B${f(6)};"0,0%")&" de esta pestaña) — cada una con su fila y su monto en ${C}. Falta distinguir en Compras qué proveedor no factura: hasta entonces esta cifra está inflada y no es una lista de errores."))`])
+  filas.push([`=IF(NOT(${HAY_FUENTE});"${ALERTA} NO PUEDO VERIFICAR — ARCA no replicó comprobantes: este control no afirma nada";IF(ROUND(B${f(5)};0)=0;"✓ todo lo que esta pestaña lista en la ventana tiene su comprobante en el libro de ARCA";"ⓘ "&TEXT(B${f(5)};"$#,##0")&" en "&${sinRespaldoN(rubros)}&" fila(s) sin comprobante en el libro ("&TEXT(1-B${f(6)};"0,0%")&" de esta pestaña) — cada una con su fila y su monto en ${C}. Falta distinguir en Compras qué proveedor no factura: hasta entonces esta cifra está inflada y no es una lista de errores."))`])
   return filas
 }
 
 /** Cuántas filas ocupa el bloque. Quien lo inserta necesita saberlo ANTES de armar la grilla. */
 export const ALTO_BLOQUE = 9
+
+/**
+ * QUÉ UNIDAD TIENE CADA FILA DEL BLOQUE — declarado acá, aplicado por las tres pestañas.
+ *
+ * ═══ EL DEFECTO (14/08/2026) ═══
+ *
+ * `Materiales!B52` mostraba **"$1"**. La fórmula estaba perfecta —0,6614, el 66,1% de cobertura
+ * fiscal— y la celda tenía formato MONEDA, heredado de la pasada que pinta la columna B entera.
+ * Redondeado a pesos, un 0,66 se dibuja como "$1": el número correcto, ilegible. Estructura y
+ * Recurrentes ya lo aplicaban bien, pero con los desplazamientos escritos a mano (`arca0 + 5`,
+ * `arca0 + 6`, `arca0 + 7`) en cada script. Tres copias de un número que depende del ORDEN de las
+ * filas de este archivo: mover una línea del bloque las desincroniza a las tres y ninguna grita.
+ *
+ * Acá vive el orden, y `control-arca-bloque.test.mjs` lo compara contra los rótulos que emite
+ * `bloqueControlArca`: si alguien reordena el bloque, el test se pone rojo antes que la pantalla.
+ *
+ * El valor NUNCA se toca — la cobertura sigue siendo la fracción que devuelve la división. Lo que se
+ * corrige es cómo se dibuja, igual que con las fechas-serial del Calendario.
+ */
+export const FILA_BLOQUE = Object.freeze({
+  titulo: 0, nota: 1, ventana: 2, universo: 3, conRespaldo: 4, sinRespaldo: 5,
+  cobertura: 6, global: 7, veredicto: 8,
+})
+
+/** Las filas del bloque que llevan un importe en la columna B, como rango [desde, hasta). */
+export const MONTOS_BLOQUE = Object.freeze({ desde: FILA_BLOQUE.universo, hasta: FILA_BLOQUE.cobertura })

@@ -223,8 +223,15 @@ async function cargar({ texto, port, actor, google, fileIds, postId, mattermost,
     // LAS LISTAS VIAJAN CON EL MAPA DE CUIT. Sin él, «DUBOS UGARTE PEDRO LUIS RAUL» se declara
     // proveedor nuevo y la carga frena, aunque DUPEC esté en el desplegable con ese mismo CUIT.
     listas: async () => {
-      const [l, porCuit] = await Promise.all([listasDeCompras(google), proveedoresPorCuit(google)])
-      return { ...l, porCuit }
+      // Y el mapa CUIT → nombres de las OTRAS dos fuentes (`public.proveedores` y el libro fiscal),
+      // que es lo que resuelve al proveedor cuyo CUIT no está cargado a mano en la pestaña. Ver
+      // `nombresPorCuit`: si la base no contesta, viene vacío y todo se comporta como antes.
+      const [l, porCuit, nombresPorCuit] = await Promise.all([
+        listasDeCompras(google),
+        proveedoresPorCuit(google),
+        repo.nombresPorCuit(port).catch(() => new Map()),
+      ])
+      return { ...l, porCuit, nombresPorCuit }
     },
     // EL PADRÓN DE ARCA es la fuente de verdad del número de comprobante: contra él se corrige el
     // dígito que la visión leyó de más. Se consulta por comprobante, con lo poco que se leyó; qué

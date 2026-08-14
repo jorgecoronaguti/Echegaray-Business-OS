@@ -42,6 +42,7 @@ import { guardiaDeGeneradores } from '../lib/guardia-generadores.mjs'
 import { FILA, ROTULO_HOY } from '../lib/cash-flow-matriz.mjs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { MARCA_ALERTA } from '../lib/glifos.mjs'
 
 const ejecutar = promisify(execFile)
 const AQUI = path.dirname(fileURLToPath(import.meta.url))
@@ -291,7 +292,10 @@ async function main() {
       })
       // Se mira la salida, no sólo el código de salida: varios scripts avisan de celdas en error o de
       // un control que no cierra SIN fallar. Eso también hay que reportarlo.
-      const alerta = /⚠/.test(stdout) ? stdout.split('\n').filter((l) => l.includes('⚠')).join(' · ') : null
+      // LAS DOS MARCAS: la corrida imprime la vigente (`▲`) y todavía quedan logs con la publicada.
+      // Buscar sólo una dejaría fuera del resumen del pipeline la mitad de los avisos, en silencio.
+      const conAlerta = stdout.split('\n').filter((l) => MARCA_ALERTA.test(l))
+      const alerta = conAlerta.length ? conAlerta.join(' · ') : null
       ok.push({ script, que, seg: ((Date.now() - inicio) / 1000).toFixed(1), alerta })
       console.log(`✓ ${script.padEnd(26)} ${((Date.now() - inicio) / 1000).toFixed(1)}s  ${que}`)
       if (alerta) console.log(`   ⚠ ${alerta.slice(0, 220)}`)

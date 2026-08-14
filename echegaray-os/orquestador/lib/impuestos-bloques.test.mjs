@@ -146,9 +146,9 @@ test('la fila de procedencia distingue ARCA de una PROYECCIÓN, y el parcial del
   // Verlos con la misma leyenda hacía discutir un número que no había que discutir: un mes de ARCA es
   // un hecho sobre comprobantes reales; una proyección es un supuesto sobre el Libro.
   const { G, iva } = armarBloque({ arca: { meses: [7, 8] } })
-  assert.equal(celda(G, iva.fDDJJ, 7), '⚠ ARCA (sin DDJJ)')
-  assert.equal(celda(G, iva.fDDJJ, 8), '⚠ ARCA parcial')
-  assert.equal(celda(G, iva.fDDJJ, 9), '⚠ PROYECCIÓN')
+  assert.equal(celda(G, iva.fDDJJ, 7), '▲ ARCA (sin DDJJ)')
+  assert.equal(celda(G, iva.fDDJJ, 8), '▲ ARCA parcial')
+  assert.equal(celda(G, iva.fDDJJ, 9), '▲ PROYECCIÓN')
   // Y el mes con DDJJ sigue mostrando su comprobante de presentación.
   assert.match(String(celda(G, iva.fDDJJ, 3)), /^19\/02·N…1234$/)
 })
@@ -178,6 +178,6 @@ test('sin comprobantes en ARCA el cuadro queda IDÉNTICO al de antes', () => {
   const conArca = armarBloque({ arca: { meses: [] } })
   for (const m of [7, 8, 9]) {
     assert.match(String(celda(conArca.G, conArca.iva.fDeb, m)), /BRUTO_DEB_/)
-    assert.equal(celda(conArca.G, conArca.iva.fDDJJ, m), '⚠ PROYECCIÓN')
+    assert.equal(celda(conArca.G, conArca.iva.fDDJJ, m), '▲ PROYECCIÓN')
   }
 })

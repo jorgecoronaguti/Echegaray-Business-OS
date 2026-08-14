@@ -22,6 +22,7 @@ import { procesarPost, armarItem, bajarAdjunto, TEXTO } from './flujo.mjs'
 import { repoMemoria, portGuarda, mmFalso, lecturaBarcelo, LISTAS, lecturaCorralonReal, ARCA_CORRALON, LISTAS_COMPRAS, filasCompras, filaCompras, lecturaTiqueBarcelo, filasBarcelo } from './dobles.mjs'
 import { ESTADO } from '../../lib/comprobantes/fajo.mjs'
 import { indexarCompras } from '../../lib/comprobantes/compras-vivas.mjs'
+import { aFajoJson } from './escritura.mjs'
 
 const URL = 'https://chat.ecsas.com.ar/comprobantes/accion?t=SECRETO'
 const ACTOR = { plataforma_user_id: 'u_rodrigo', plataforma_username: 'rodrigo', channel_type: 'P', channel_id: 'c_comprobantes' }
@@ -168,13 +169,38 @@ test('lo que YA está cargado no se muda: mudar un cargado lo pondría de nuevo 
 
 // ── Proveedor desconocido ────────────────────────────────────────────────────
 
-test('PROVEEDOR DESCONOCIDO: se pregunta, no se inventa, y no se ofrece Confirmar', async () => {
+// ═══ EL PROVEEDOR FUERA DEL DESPLEGABLE YA NO FRENA LA FILA (14/08) ══════════
+//
+// Decisión del dueño, textual: «me tiene q poder cargar todas las filas porque no puedo estar
+// revisando cada comprobante». Una fila incompleta se completa en Compras en diez segundos; una fila
+// que falta no la ve nadie y el gasto no existe para el Flujo de Fondos. Es la misma decisión que se
+// tomó con la obra el 03/08 y por el mismo motivo.
+//
+// LO QUE NO CAMBIA: la celda E queda VACÍA (un valor fuera del desplegable la deja en rojo y parte la
+// cuenta corriente del proveedor), el nombre leído se transcribe al concepto, y el mensaje nombra la
+// FILA y la columna que quedó en blanco. Cargar y declarar, nunca cargar en silencio.
+
+test('PROVEEDOR DESCONOCIDO con CUIT y número: entra igual, con la celda vacía y declarado', async () => {
   const { d } = armar({ lecturas: [lecturaBarcelo({ emisor: 'FERRETERIA EL TORNILLO SRL' })] })
-  const r = await procesarPost(d, post())
+  const { escribir, llamadas } = conEscritor()
+  const r = await procesarPost({ ...d, escribir }, post())
+  assert.equal(llamadas.length, 1, 'se escribe: el CUIT y el número lo identifican solos')
+  const fajo = aFajoJson(llamadas[0].items)
+  assert.equal(fajo[0].proveedor, undefined, 'la celda E queda VACÍA, nunca en rojo')
+  assert.match(fajo[0].concepto, /proveedor s\/lista: "FERRETERIA EL TORNILLO SRL" CUIT 30712345678/,
+    'el nombre del papel no se pierde: se transcribe al concepto')
+  assert.doesNotMatch(r.texto, /no está en el desplegable de Compras/)
+})
+
+test('PROVEEDOR DESCONOCIDO y SIN CUIT: eso sí frena, porque sin clave fuerte no hay barrera', async () => {
+  // Sin CUIT la clave se degrada a `p:<nombre>` y el nombre es justamente el que no se pudo resolver:
+  // cargar ahí es cargar sin barrera de duplicados, que es peor que no cargar.
+  const { d } = armar({ lecturas: [lecturaBarcelo({ emisor: 'FERRETERIA EL TORNILLO SRL', cuit: null })] })
+  const { escribir, llamadas } = conEscritor()
+  const r = await procesarPost({ ...d, escribir }, post())
+  assert.equal(llamadas.length, 0)
   assert.match(r.texto, /no está en el desplegable de Compras/)
-  assert.match(r.texto, /Corregir/, 'una pregunta sin la acción que la contesta deja el comprobante trabado')
   assert.match(r.texto, /FERRETERIA EL TORNILLO SRL/, 'se nombra al proveedor, no un "hubo un problema"')
-  assert.deepEqual(r.attachments[0].actions.map((a) => a.id), ['corregir', 'descartar'])
 })
 
 test('un proveedor con otra grafía SÍ matchea contra el desplegable estricto', () => {
@@ -651,8 +677,12 @@ test('un comprobante al que no le falta nada SE CARGA SOLO, sin botones y sin cl
 })
 
 test('el que SÍ tiene algo que preguntar sigue parando en los botones', async () => {
-  // Proveedor fuera del desplegable: agregarlo a la lista de Compras es una decisión de una persona.
-  const { d } = armar({ listas: { ok: true, proveedores: ['ACEROLATINA'], obras: LISTAS.obras } })
+  // Proveedor fuera del desplegable Y SIN CUIT: sin identidad fuerte no hay clave, y agregarlo a la
+  // lista de Compras es una decisión de una persona. (Con CUIT ya no frena — ver el test de arriba.)
+  const { d } = armar({
+    lecturas: [lecturaBarcelo({ cuit: null })],
+    listas: { ok: true, proveedores: ['ACEROLATINA'], obras: LISTAS.obras },
+  })
   const { escribir, llamadas } = conEscritor()
   const r = await procesarPost({ ...d, escribir }, post())
 
@@ -697,7 +727,8 @@ test('en una tanda mixta entran los buenos y sólo el trabado queda preguntando'
   const { d, repo } = armar({
     lecturas: [
       lecturaBarcelo(),                                                   // carga solo
-      lecturaBarcelo({ numero: '0113-00010490', emisor: 'FERRETERIA EL TORNILLO SRL' }), // proveedor nuevo
+      // proveedor nuevo Y sin CUIT: sin identidad fuerte sigue trabando (con CUIT entraría solo)
+      lecturaBarcelo({ numero: '0113-00010490', emisor: 'FERRETERIA EL TORNILLO SRL', cuit: null }),
     ],
   })
   const { escribir, llamadas } = conEscritor()
@@ -745,7 +776,7 @@ test('si el acumulado no se puede consultar, el mensaje sale igual: es informati
 })
 
 test('si NINGUNO se puede cargar solo, no se toma el fajo ni se escribe: se pregunta como siempre', async () => {
-  const { d } = armar({ lecturas: [lecturaBarcelo({ emisor: 'FERRETERIA EL TORNILLO SRL' })] })
+  const { d } = armar({ lecturas: [lecturaBarcelo({ emisor: 'FERRETERIA EL TORNILLO SRL', cuit: null })] })
   const { escribir, llamadas } = conEscritor()
   const r = await procesarPost({ ...d, escribir }, post())
   assert.equal(llamadas.length, 0)

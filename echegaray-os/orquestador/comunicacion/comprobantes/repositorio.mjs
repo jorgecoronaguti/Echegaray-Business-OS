@@ -10,6 +10,7 @@
 // caen juntos, y este repo ya perdió medio día por suponer que sí.
 
 import { ESTADO } from '../../lib/comprobantes/fajo.mjs'
+import { clavesEquivalentes } from '../../lib/comprobantes/lectura.mjs'
 
 /** ¿Está aplicada la migración? Una sola consulta barata, sin tocar datos. */
 export async function tablasListas(port) {
@@ -138,10 +139,24 @@ export async function reabrirFajo(port, { id, error = null } = {}) {
 export async function yaCargados(port, claves = []) {
   const lista = [...new Set(claves.filter(Boolean))]
   if (!lista.length) return new Map()
+  // ═══ TAMBIÉN SE PREGUNTA POR LA FORMA VIEJA DE LA CLAVE (14/08) ═══
+  //
+  // El punto de venta se normalizó a cuatro dígitos (`00113-…` → `0113-…`, ver `puntoDeVenta`), y en
+  // el registro quedaron claves escritas con la forma anterior. Preguntar sólo por la nueva haría que
+  // un comprobante YA CARGADO se vuelva a cargar — el arreglo produciendo justo el gasto duplicado
+  // que la clave existe para impedir. Se consulta por las dos y se devuelve indexado por la clave que
+  // preguntó quien llama, que es la única que él sabe mirar.
+  const alternativas = new Map()
+  for (const c of lista) for (const eq of clavesEquivalentes(c)) alternativas.set(eq, c)
+  const aBuscar = [...new Set([...lista, ...alternativas.keys()])]
+  // EL IMPORTE Y LA FECHA VIAJAN. Sin ellos, «esta clave ya está» es un veredicto que no se puede
+  // desmentir: el mismo número del mismo proveedor con OTRO importe no es el mismo comprobante, y hay
+  // que poder verlo. Ver `marcarYaCargados`.
   const { rows } = await port.query(
-    'select clave, fila, hoja, post_id, creado_at from comunicacion.comprobantes_cargados where clave = any($1)',
-    [lista])
-  return new Map(rows.map((r) => [r.clave, r]))
+    `select clave, fila, hoja, post_id, creado_at, total::float8 as total, fecha, numero, proveedor
+       from comunicacion.comprobantes_cargados where clave = any($1)`,
+    [aBuscar])
+  return new Map(rows.map((r) => [alternativas.get(r.clave) ?? r.clave, r]))
 }
 
 /**
@@ -168,6 +183,54 @@ export async function registrarCargados(port, filas = []) {
     if (rows.length) out.push(rows[0].clave)
   }
   return out
+}
+
+/**
+ * CUIT → todos los nombres con los que la empresa conoce a ese proveedor.
+ *
+ * ═══ POR QUÉ HACEN FALTA MÁS FUENTES QUE LA PESTAÑA `Proveedores` (14/08) ═══
+ *
+ * El mapa que se usaba salía de `Proveedores!A:B` del Sheet, y ahí el CUIT lo carga alguien a mano:
+ * está cuando está. Cuando no está, un proveedor que la empresa conoce perfectamente se declara
+ * NUEVO y el comprobante frena — el caso DUPEC («DUBOS UGARTE PEDRO LUIS RAUL») y el caso Corralón
+ * Progreso («PEREZ GARCIA MARISOL BIBIANA») son exactamente eso: la factura trae la razón social del
+ * padrón y el desplegable el nombre de fantasía, y sin el CUIT no hay forma de unirlos.
+ *
+ * Hay dos fuentes más que ya existen y nadie estaba usando: `public.proveedores` (22 CUIT cargados)
+ * y el libro fiscal `comprobantes_arca` (83 emisores, con la razón social EXACTA del organismo).
+ *
+ * EL DESPLEGABLE SIGUE DECIDIENDO. Esto no propone qué escribir: propone CANDIDATOS que después
+ * `matchProveedor` valida contra la lista estricta. Un nombre que el desplegable no tiene no llega a
+ * ninguna celda, venga de donde venga.
+ *
+ * Nunca lanza: sin base, mapa vacío y todo se comporta como antes.
+ *
+ * @returns {Promise<Map<string, string[]>>}
+ */
+export async function nombresPorCuit(port) {
+  if (typeof port?.query !== 'function') return new Map()
+  const mapa = new Map()
+  const sumar = (cuit, nombre) => {
+    const c = String(cuit ?? '').replace(/\D/g, '')
+    const n = String(nombre ?? '').trim()
+    if (c.length !== 11 || !n) return
+    const l = mapa.get(c) ?? []
+    if (!l.includes(n)) l.push(n)
+    mapa.set(c, l)
+  }
+  try {
+    const { rows } = await port.query(
+      `select regexp_replace(coalesce(cuit,''), '\\D', '', 'g') as cuit, nombre
+         from public.proveedores where cuit is not null limit 2000`)
+    for (const r of rows ?? []) sumar(r.cuit, r.nombre)
+  } catch { /* sin espejo de proveedores: quedan las otras fuentes */ }
+  try {
+    const { rows } = await port.query(
+      `select distinct emisor_cuit as cuit, emisor_nombre as nombre
+         from public.comprobantes_arca where tipo_libro = 'R' and emisor_nombre is not null limit 2000`)
+    for (const r of rows ?? []) sumar(r.cuit, r.nombre)
+  } catch { /* sin libro fiscal: idem */ }
+  return mapa
 }
 
 /**

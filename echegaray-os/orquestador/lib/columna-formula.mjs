@@ -32,6 +32,8 @@
 //
 // Este archivo es núcleo puro. Quién lee y quién escribe es el script.
 
+import { ALERTA } from './glifos.mjs'
+
 /** El comodín con que se compara una fórmula contra otra de la misma columna. */
 const patron = (f) => String(f ?? '').replace(/\d+/g, '#')
 
@@ -97,5 +99,5 @@ export function resumen(d, rotulo = 'la columna') {
   if (!d?.canonica) return `${rotulo}: no es una columna calculada, no aplica`
   if (d.ambigua) return `${rotulo}: ${d.patrones.length} fórmulas distintas conviviendo — NO la reparo sola, mirala`
   if (!d.pisadas.length) return `${rotulo}: ✓ las ${d.canonica.n} celdas calculadas conservan su fórmula`
-  return `${rotulo}: ⚠ ${d.pisadas.length} celda(s) con un valor pegado encima de la fórmula (fila ${d.pisadas.map((p) => p.fila).join(', ')})`
+  return `${rotulo}: ${ALERTA} ${d.pisadas.length} celda(s) con un valor pegado encima de la fórmula (fila ${d.pisadas.map((p) => p.fila).join(', ')})`
 }

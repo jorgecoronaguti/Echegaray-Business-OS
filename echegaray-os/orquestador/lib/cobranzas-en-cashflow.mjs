@@ -12,6 +12,19 @@
 // clasificación que hace la fórmula del Sheet, y se compara mes contra mes. Si el cuadro y esta
 // cuenta dicen lo mismo, la fórmula está haciendo lo que promete.
 
+// LOS RÓTULOS DEL CUADRO SE IMPORTAN DE QUIEN LOS ESCRIBE. Transcriptos acá, el día que cambie uno
+// este control seguiría buscando el texto viejo y volvería a no encontrar nada — que es la forma en
+// que ya falló, sólo que con números de fila en vez de con textos.
+import { CONCEPTOS, ROTULO_CONCEPTO } from './cash-flow-matriz.mjs'
+import { rotuloSub } from './cash-flow-rubros.mjs'
+
+/** Los dos conceptos que contienen cobranzas: lo ya cobrado y lo esperado. */
+export const ROTULOS_INGRESO = ['ingresoReal', 'ingresoProyectado']
+  .map((clave) => CONCEPTOS.find((c) => c.clave === clave).rotulo)
+
+/** La sub-línea del rubro Cobranzas, tal como la escribe la matriz ("· Cobranzas"). */
+export const SUB_COBRANZAS = rotuloSub('Cobranzas').trim()
+
 /** Las columnas de Cobranzas, por índice desde A=0. Verificadas contra el encabezado del 21/07;
  *  comprobante/emisión agregados el 04/08 y reverificados contra la fila 4 real. */
 export const C = {
@@ -168,20 +181,74 @@ export function mesesDelCuadro(filaEncabezado = []) {
 }
 
 /**
+ * NÚCLEO PURO: DÓNDE ESTÁ CADA COSA EN EL CUADRO — buscando su RÓTULO, nunca contando filas.
+ *
+ * ═══ EL DEFECTO QUE ESTO CIERRA (14/08/2026) ═══
+ *
+ * El auditor leía `'Cash Flow Mensual'!A3:N9` y daba por hecho dos cosas: que la fila 3 era el
+ * encabezado de meses y que las tres últimas del rango eran las líneas de ingreso. Las dos dejaron de
+ * ser ciertas el 06/08, cuando las vistas pasaron a matriz: el encabezado se fue a la fila 7 y las
+ * tres líneas (civil / mantenimiento / otras) se unificaron en "· Cobranzas" bajo ingresos reales y
+ * bajo proyectados. No hubo error: leyó el subtítulo como encabezado, no reconoció NINGÚN mes, y
+ * entonces TODO cobro cayó en "su mes no es una columna del cuadro" — $808.990.000 de falso positivo
+ * contra un residuo real de $771. Un control que grita mal enseña a ignorarlo.
+ *
+ * Acá no se cuenta ni una fila: la cabecera es la que dice `Concepto` en su columna A, y las líneas
+ * de ingreso son las sub-líneas `· Cobranzas` que cuelgan de los dos conceptos de ingreso. Los tres
+ * rótulos se IMPORTAN del vocabulario que usa el generador — no se transcriben.
+ *
+ * @param {Array<Array<object>>} filas grilla del cash flow LEÍDA DESDE LA FILA 1
+ * @returns {{cabecera:number|null, meses:{col:number,mes:string}[], ingreso:{fila:number,de:string}[]}}
+ */
+export function ubicarCuadro(filas = []) {
+  const crudo = (i) => String(filas[i]?.[0]?.valor ?? '')
+  const cabecera = filas.findIndex((f) => String(f?.[0]?.valor ?? '').trim() === ROTULO_CONCEPTO)
+  if (cabecera < 0) return { cabecera: null, meses: [], ingreso: [] }
+
+  const ingreso = []
+  let concepto = null
+  for (let i = cabecera + 1; i < filas.length; i++) {
+    const t = crudo(i)
+    if (!t.trim()) continue
+    // Una sub-línea se reconoce por su viñeta (`rotuloSub`), no por la sangría: el ancho de la
+    // sangría es decoración y cambiarla no debería mover un control.
+    if (/^\s*·/.test(t)) {
+      if (concepto && ROTULOS_INGRESO.includes(concepto) && t.trim() === SUB_COBRANZAS) {
+        ingreso.push({ fila: i, de: concepto })
+      }
+    } else concepto = t.trim()
+  }
+  return { cabecera, meses: mesesDelCuadro(filas[cabecera] ?? []), ingreso }
+}
+
+/**
  * NÚCLEO PURO: la auditoría completa.
  *
  * @param {Array<Array<object>>} filasCob grilla de Cobranzas desde la fila 5
- * @param {Array<Array<object>>} filasCf grilla del cash flow desde la fila 3 (encabezado + líneas)
+ * @param {Array<Array<object>>} filasCf grilla del cash flow DESDE LA FILA 1 (ver ubicarCuadro)
  */
 export function auditar(filasCob = [], filasCf = []) {
   const cobros = []
   filasCob.forEach((f, i) => { const c = leerCobro(f, i + 5); if (c) cobros.push(c) })
 
-  const meses = mesesDelCuadro(filasCf[0] ?? [])
+  const { cabecera, meses, ingreso } = ubicarCuadro(filasCf)
+  // FALLA CERRADA. Sin cabecera no hay ventana de meses, y sin ventana este auditor declara que TODO
+  // está fuera del cuadro — que es exactamente el falso positivo de $808,99M. Un control que no pudo
+  // ubicar lo que audita tiene que decir que no pudo, no producir un hallazgo fabricado.
+  if (cabecera === null || !meses.length || !ingreso.length) {
+    return {
+      cobros, meses, ingreso, noPudoUbicar: cabecera === null
+        ? `no encontré la fila "${ROTULO_CONCEPTO}" en la columna A del cuadro`
+        : (!meses.length ? 'la fila de cabecera no tiene ninguna columna con fecha de mes'
+          : `no encontré ninguna línea "${SUB_COBRANZAS}" bajo ${ROTULOS_INGRESO.join(' / ')}`),
+      totalCobranzas: cobros.reduce((s, c) => s + c.monto, 0), totalCashFlow: 0,
+      fueraDeVentana: [], endosados: [], sinUnidad: [], sinFecha: [], porMes: [],
+    }
+  }
+
   const enCuadro = new Map(meses.map((m) => [m.mes, 0]))
-  // Las tres líneas de ingreso son las últimas del rango leído (civil, mantenimiento, otras).
-  for (const fila of filasCf.slice(-3)) {
-    for (const m of meses) enCuadro.set(m.mes, (enCuadro.get(m.mes) ?? 0) + (fila[m.col]?.numero ?? 0))
+  for (const { fila } of ingreso) {
+    for (const m of meses) enCuadro.set(m.mes, (enCuadro.get(m.mes) ?? 0) + (filasCf[fila]?.[m.col]?.numero ?? 0))
   }
 
   const fueraDeVentana = [], endosados = [], sinUnidad = [], sinFecha = []
@@ -198,6 +265,8 @@ export function auditar(filasCob = [], filasCf = []) {
   return {
     cobros,
     meses,
+    ingreso,
+    noPudoUbicar: null,
     totalCobranzas: cobros.reduce((s, c) => s + c.monto, 0),
     totalCashFlow: [...enCuadro.values()].reduce((s, v) => s + v, 0),
     fueraDeVentana, endosados, sinUnidad, sinFecha,

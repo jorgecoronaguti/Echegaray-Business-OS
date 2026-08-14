@@ -185,6 +185,21 @@ export const FILA = Object.freeze({
  * por donde el control parte la fórmula: si se calculara entero, el control volvería a gritar.
  */
 export const ROTULO_HOY = Object.freeze({ semana: 'Semana actual: ', mes: 'Mes actual: ' })
+
+/**
+ * EL RÓTULO DE LA ESQUINA — el ancla de texto de la fila de cabecera.
+ *
+ * POR QUÉ ES UNA CONSTANTE Y NO UN LITERAL EN CADA VISTA (14/08/2026). `FILA.cabecera` dice dónde
+ * está la fila para QUIEN ESCRIBE. Quien la LEE de afuera no puede usar ese número: el 06/08 la
+ * cabecera pasó de la fila 3 a la 7 y `auditar-cobranzas-en-cashflow.mjs` siguió leyendo `A3:N9`.
+ * No dio error —encontró celdas— pero tomó el subtítulo por encabezado, no reconoció un solo mes y
+ * declaró que $808.990.000 de cobranzas quedaban "fuera de la ventana del cuadro". El residuo real
+ * era $771. Un control que grita mal deja de significar algo, y éste gritó durante ocho días.
+ *
+ * Anclar en la posición es anclar en lo que se mueve: quien lee de afuera busca ESTE texto en la
+ * columna A y la fila que lo tenga es la cabecera, esté donde esté.
+ */
+export const ROTULO_CONCEPTO = 'Concepto'
 /** La columna del concepto y la primera de tiempo, contadas desde 0. */
 export const COL = Object.freeze({ concepto: 0, tiempo0: 1 })
 
