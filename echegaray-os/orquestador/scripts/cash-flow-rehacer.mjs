@@ -39,6 +39,7 @@ import {
   normComprobante, esLlaveUtil, faltaFacturaConFecha, montoEnVentana, MARCAS,
 } from '../lib/cheques-cobertura.mjs'
 import { parseMonto, parseFecha } from '../lib/cash-briefing.mjs'
+import { ALERTA } from '../lib/glifos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 // Base de la URL para hipervínculos internos: el fragmento suelto "#gid=…" da "El rango no es válido"
@@ -120,9 +121,12 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
   // Apuntar a la fila del encabezado además deja la semana a la vista con su fecha arriba. En una grilla de 53 semanas, sin esto hay que buscar a mano
   // dónde estamos cada vez que se abre la pestaña. El dueño lo pidió de vuelta después de que se lo
   // borré al rehacer el cuadro. HYPERLINK a la celda de la columna cuya semana contiene HOY.
+  // EL ÍCONO DEL ATAJO SE DIBUJA. Acá había un 📅 y el exportador a PDF no lo embebe: en el papel el
+  // atajo abría con un espacio en blanco. `→` está en la lista verificada de glifos que SÍ salen
+  // dibujados (ver lib/glifos.mjs) y dice lo mismo: "andá para allá".
   const irASemana = periodo === 'semanal'
-    ? `=HYPERLINK("${URL_BASE}#gid=SEMGID&range="&ADDRESS(${FILA_CAB};MATCH(1;ARRAYFORMULA((${letra(1)}$${FILA_CAB}:${letra(n)}$${FILA_CAB}<=TODAY())*(${letra(1)}$${FILA_CAB}:${letra(n)}$${FILA_CAB}+7>TODAY()));0)+1;4);"📅 IR A LA SEMANA DE HOY — "&TEXT(TODAY();"dd/mm/yyyy"))`
-    : `=HYPERLINK("${URL_BASE}#gid=SEMGID&range="&ADDRESS(${FILA_CAB};MONTH(TODAY())+1;4);"📅 IR AL MES DE HOY — "&TEXT(TODAY();"mmmm yyyy"))`
+    ? `=HYPERLINK("${URL_BASE}#gid=SEMGID&range="&ADDRESS(${FILA_CAB};MATCH(1;ARRAYFORMULA((${letra(1)}$${FILA_CAB}:${letra(n)}$${FILA_CAB}<=TODAY())*(${letra(1)}$${FILA_CAB}:${letra(n)}$${FILA_CAB}+7>TODAY()));0)+1;4);"→ IR A LA SEMANA DE HOY — "&TEXT(TODAY();"dd/mm/yyyy"))`
+    : `=HYPERLINK("${URL_BASE}#gid=SEMGID&range="&ADDRESS(${FILA_CAB};MONTH(TODAY())+1;4);"→ IR AL MES DE HOY — "&TEXT(TODAY();"mmmm yyyy"))`
   // ═══ EL SUBTÍTULO ES UNA LÍNEA, NO UN PÁRRAFO (04/08) ═══
   //
   // Acá vivían 380 caracteres de prosa. Como la fila 2 no tiene más columnas que la A y la B, el texto
@@ -300,8 +304,8 @@ export function grilla(periodo, faltantes = [], refCaja = null, refCajaFecha = n
   // días; en la mensual, a un mes. Es de orden menor frente a la alternativa, que era mentir en siete
   // meses, pero es real y por eso se dice.
   meta.inicio = push([refCaja
-    ? `=IF(N(${refCaja})=0;"${rotuloInicio}  ⚠ sin saldo cargado en CAJA — el cuadro no puede decir cuándo se queda sin plata";"${rotuloInicio}")`
-    : `${rotuloInicio}  ⚠ no encontré la pestaña CAJA`,
+    ? `=IF(N(${refCaja})=0;"${rotuloInicio}  ${ALERTA} sin saldo cargado en CAJA — el cuadro no puede decir cuándo se queda sin plata";"${rotuloInicio}")`
+    : `${rotuloInicio}  ${ALERTA} no encontré la pestaña CAJA`,
     ...cols.map((_, i) => {
       if (!refCaja || !refCajaFecha) return i === 0 ? '=0' : `=${letra(i)}${filas.length + 2}`
       return expresionInicio({

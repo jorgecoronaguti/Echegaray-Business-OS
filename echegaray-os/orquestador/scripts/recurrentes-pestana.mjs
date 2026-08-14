@@ -45,6 +45,7 @@ import { skinRequests } from '../lib/estilo-statement.mjs'
 import { MONEDA_CUERPO, MONEDA_TOTAL, MONEDA_CONTROL, CONTADOR, PORCENTAJE } from '../lib/formato-statement.mjs'
 import { bloqueControlArca } from '../lib/control-arca-bloque.mjs'
 import { RECURRENTES, norm } from '../lib/rubro-caja.mjs'
+import { ALERTA } from '../lib/glifos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Recurrentes'
@@ -201,11 +202,11 @@ export function grilla(proveedores) {
   c4[1] = `=ROUND(B${ctrl + 1}-B${ctrl + 2};0)`
   const fDif = push(c4)
   const cSF = vacia()
-  cSF[0] = '⚠ Del rubro, sin fecha de caja — clasificado pero sin saber cuándo sale'
+  cSF[0] = `${ALERTA} Del rubro, sin fecha de caja — clasificado pero sin saber cuándo sale`
   cSF[1] = `=ROUND(SUMIF(${COL_RUBRO};"${RUBRO}";${COL_TOTAL})-B${ctrl + 1};0)`
   push(cSF)
   const c6 = vacia()
-  c6[0] = '⚠ Meses cerrados en $0 — o dejó de facturar, o falta cargar la factura'
+  c6[0] = `${ALERTA} Meses cerrados en $0 — o dejó de facturar, o falta cargar la factura`
   // SUMPRODUCT y no COUNTIFS: la condición cruza DOS dimensiones (la celda del mes vale cero Y ese
   // mes ya cerró), y el rango de meses es una fila mientras el de importes es un rectángulo. COUNTIFS
   // no sabe hacer eso. Es la excepción declarada a "SUMIFS antes que SUMPRODUCT".

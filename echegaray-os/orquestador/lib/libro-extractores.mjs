@@ -65,6 +65,7 @@ import { cubiertaPorResumen } from './libro-respaldo-banco.mjs'
 // llamador real (libro-movimientos-pestana) pasa el ancla viva; el default es para todos los demás.
 import { FILA_DATO0 as FILA_DATO0_CHEQUES } from './cheques-emitidos-geometria.mjs'
 import { MARCAS } from './cheques-cobertura.mjs'
+import { mismaMarca } from './glifos.mjs'
 import { EN_CARTERA } from './cartera-cheques.mjs'
 import { vencimientoIva, vencimientoIibb, serialDe } from './vencimientos-fiscales.mjs'
 import { COL as COL_RAW, FILA0 as FILA0_RAW, PESTAÑA as PESTANA_RAW } from '../scripts/cheques-raw-pestana.mjs'
@@ -264,7 +265,9 @@ export function deChequesEmitidos(filas = [], { fila0 = FILA_DATO0_CHEQUES, colM
     const importe = num(f[c.importe])
     if (importe === null || importe === 0) continue
     if (/^si$/i.test(txt(f[c.debitado]))) continue // ya está en el saldo del banco
-    if (txt(f[colMarca]) !== MARCAS.falta) continue // con factura, ya entró por Compras
+    // `mismaMarca` y no `!==`: la fila publicada con el glifo viejo es la MISMA marca, y descartarla
+    // acá saca un compromiso real del libro sin que nada dé error. Ver `ALERTA_HEREDADA`.
+    if (!mismaMarca(txt(f[colMarca]), MARCAS.falta)) continue // con factura, ya entró por Compras
     if (cruce?.porCheque?.has(i + 1)) continue // cruzado: su plata sale por la puerta de Compras
     const esEcheq = /echeq/i.test(txt(f[c.tipo]))
     out.push(movimiento({
@@ -355,7 +358,7 @@ export function deTarjetaSinFactura(filas = [], { filaCab = INSTRUMENTOS.tarjeta
     const importe = num(f[iMonto])
     if (!importe) continue
     if (/^si$/i.test(txt(f[iDeb]))) continue
-    if (txt(f[T.colMarca]) !== MARCAS.falta) continue
+    if (!mismaMarca(txt(f[T.colMarca]), MARCAS.falta)) continue
     // Sin fecha cargada la cuota cae al serial 0 y pesa YA, igual que el cheque sin fecha: un
     // compromiso sin fecha no es uno que no vence, es uno que puede vencer mañana. Y sin fecha
     // tampoco hay vencimiento contra el que medir el resumen: `cubiertaPorResumen` devuelve null.

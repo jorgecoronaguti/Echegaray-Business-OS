@@ -22,6 +22,7 @@ import { esIndistinguible } from './cobranzas-duplicado.mjs'
 import * as CONC from './conciliacion-por-naturaleza.mjs'
 import { MARCAS, expresionTieneNumero } from './cheques-cobertura.mjs'
 import { formulaChequesSinFactura } from './cash-flow-lineas.mjs'
+import { ALERTA, comparaMarca } from './glifos.mjs'
 // Los rangos de "Cheques Emitidos" se armaban acá a mano —`'…'!$K$2:$K$400`— y arrancaban en la 2,
 // o sea adentro de la banda de rótulos. La fila de arranque vive en un solo archivo.
 import { rangoEn } from './cheques-emitidos-geometria.mjs'
@@ -68,8 +69,8 @@ export function bloqueLiquidez(h) {
   // presente que ya estaba abajo del mínimo. Esta fila responde con una FRASE (va a la columna G, que
   // es de texto: una frase en una columna de plata es el defecto `texto_en_numero`).
   push(['⇒ ¿HOY estamos por debajo de la caja mínima?', '', '', '', '', '',
-    `=IF(N(${DESDE_CAJA.minima})=0;"⚠ falta cargar la caja mínima";`
-    + `IF(${DESDE_CAJA.total}<${DESDE_CAJA.minima};"⚠ SÍ — faltan "&TEXT(${DESDE_CAJA.minima}-${DESDE_CAJA.total};"$#,##0");`
+    `=IF(N(${DESDE_CAJA.minima})=0;"${ALERTA} falta cargar la caja mínima";`
+    + `IF(${DESDE_CAJA.total}<${DESDE_CAJA.minima};"${ALERTA} SÍ — faltan "&TEXT(${DESDE_CAJA.minima}-${DESDE_CAJA.total};"$#,##0");`
     + `"no — hay "&TEXT(${DESDE_CAJA.total}-${DESDE_CAJA.minima};"$#,##0")&" de sobra"))`])
 
   // POR RANGO CON NOMBRE, NO POR FILA (05/08): el Mensual rediseñado ya no tiene la fila B..M de
@@ -87,7 +88,7 @@ export function bloqueLiquidez(h) {
   // MATCH no cambia: da la posición lo mismo sobre una fila que sobre una columna.
   const primerMes = (cond) => (rangoCierre
     ? `=IFERROR(TEXT(INDEX(${rangoMes};1;MATCH(1;ARRAYFORMULA((${rangoCierre}<>"")*(${rangoCierre}${cond}));0));"mmmm yyyy");"ningún mes del año")`
-    : '⚠ falta la línea de cierre en el Cash Flow Mensual')
+    : `${ALERTA} falta la línea de cierre en el Cash Flow Mensual`)
   push(['Primer mes por debajo de la caja mínima (proyección del Cash Flow)', '', '', '', '', '',
     primerMes(`<${DESDE_CAJA.minima}`)])
   push(['Primer mes con caja negativa (proyección del Cash Flow)', '', '', '', '', '', primerMes('<0')])
@@ -121,8 +122,8 @@ export function bloqueConciliacion(h) {
   const fDecl = push(['Disponibilidad declarada en CAJA', '', '', '', `=${DESDE_CAJA.total}`, '', ''])
   const fProy = push(['Efectivo al inicio del mes según el Cash Flow Mensual', '', '', '',
     refs.inicio && refs.cab
-      ? `=IFERROR(INDEX(${refs.inicio};1;MATCH(EOMONTH(${DESDE_CAJA.fecha};0);ARRAYFORMULA(EOMONTH(${refs.cab};0));0));"⚠ sin saldo cargado")`
-      : '⚠ no encontré la línea de inicio en el Cash Flow Mensual',
+      ? `=IFERROR(INDEX(${refs.inicio};1;MATCH(EOMONTH(${DESDE_CAJA.fecha};0);ARRAYFORMULA(EOMONTH(${refs.cab};0));0));"${ALERTA} sin saldo cargado")`
+      : `${ALERTA} no encontré la línea de inicio en el Cash Flow Mensual`,
     '', ''])
   const fReal = push(['REAL del mes hasta el corte (el ancla lo descuenta del inicio)', '', '', '',
     `=${terminoLibro({ desde: `EOMONTH(${DESDE_CAJA.fecha};-1)+1`, estados: ['REAL'] })}`,
@@ -171,8 +172,8 @@ export function bloqueVencido(h) {
     formulaUltimoCobroRegistrado(), ''])
   push(['⇒ ¿el cero es real?', '', '', '', '', '',
     `=IF($C$${fTot}>0;"hay "&TEXT($C$${fTot};"$#,##0")&" para conciliar";`
-    + `IF(NOT(ISNUMBER($F$${fUlt}));"⚠ no puedo saberlo: Cobranzas no tiene ningún cobro con fecha";`
-    + `IF(TODAY()-$F$${fUlt}>${DIAS_SIN_CARGA};"⚠ NO — hace "&TEXT(TODAY()-$F$${fUlt};"0")&" días que no se registra un cobro";`
+    + `IF(NOT(ISNUMBER($F$${fUlt}));"${ALERTA} no puedo saberlo: Cobranzas no tiene ningún cobro con fecha";`
+    + `IF(TODAY()-$F$${fUlt}>${DIAS_SIN_CARGA};"${ALERTA} NO — hace "&TEXT(TODAY()-$F$${fUlt};"0")&" días que no se registra un cobro";`
     + '"sí — no hay nada vencido y la carga está al día")))'])
   // EL PRECIO DE LA LISTA BLANCA, PAGADO A LA VISTA: los cuadros eligen estados POR NOMBRE, así que un
   // sexto estado dejaría plata afuera en silencio. Tiene que dar cero.
@@ -299,8 +300,8 @@ export function bloqueCalendarioCiego(h) {
 
   push(['A8 · LO QUE EL CALENDARIO NO VE — los cuatro controles del piso de caja'])
   const fSinFecha = push(['Cheques sin factura Y sin fecha de pago: no caen en ningún tramo', '', '',
-    `=SUMPRODUCT((${M_CH}="${MARCAS.falta}")*(${K400})*(1-ISNUMBER(${I400}))*${F400})`, '', '', ''])
-  const fSinMarca = push(['⚠ riesgo: cheques no debitados SIN marca de cobertura', '', '',
+    `=SUMPRODUCT(${comparaMarca(M_CH, MARCAS.falta)}*(${K400})*(1-ISNUMBER(${I400}))*${F400})`, '', '', ''])
+  const fSinMarca = push([`${ALERTA} riesgo: cheques no debitados SIN marca de cobertura`, '', '',
     `=SUMPRODUCT((${K400})*(${M_CH}="")*${F400})`, '', '', ''])
   push(['        de los cuales, con N° de comprobante ya cargado (lo resuelve el OS)', '', '',
     sinMarca(TIENE_NUM), '', '', ''])
@@ -310,7 +311,7 @@ export function bloqueCalendarioCiego(h) {
   // debitado ya salió de la cuenta y el saldo del que arranca el calendario lo tiene descontado;
   // restarlo otra vez hundía el piso $12.188.441 y por eso CAJA y el conciliador no cerraban.
   push(['   declarado: ya debitados y sin factura — el saldo del banco ya los tiene descontados', '', '',
-    `=SUMPRODUCT((UPPER(${rangoEn(ch, 'K')})="SI")*(${M_CH}="${MARCAS.falta}")*${F400})`, '', '', ''])
+    `=SUMPRODUCT((UPPER(${rangoEn(ch, 'K')})="SI")*${comparaMarca(M_CH, MARCAS.falta)}*${F400})`, '', '', ''])
   // UN CERO CON NOMBRE ES UNA LIMITACIÓN CONOCIDA; UN CERO MUDO ES UN BUG. Los tres conceptos valen
   // cero en todos los tramos porque el banco los debita solo, sin factura, y su único registro es el
   // extracto — que por definición sólo cubre el pasado.

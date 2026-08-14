@@ -126,6 +126,7 @@ import {
   ANCHOS_PROVEEDORES,
 } from '../lib/proveedores-frontera.mjs'
 import { parrafosQueNoEntran } from '../lib/proveedores-rotulos.mjs'
+import { ALERTA } from '../lib/glifos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = NOMBRES.proveedoresMateriales
@@ -495,8 +496,8 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, not
   const condTarjeta = `${condComercial};${COL_TIPOPAGO};"Tarjeta Crédito"`
   const posTotal = push(['DEUDA CON PROVEEDORES COMERCIALES', `=${neta(condComercial)}`, 'El total. Abajo, cuánto es deuda directa y cuánto ya tiene instrumento asignado (cheque/tarjeta), que se paga por esa vía, no al proveedor. La deuda con ARCA/impuestos/nómina vive en Impuestos y Financieros.'])
   push(['  · directa — efectivo/transferencia sin pagar', `=${neta(condDirecta)}`, 'Lo único que todavía se le paga DIRECTO al proveedor. Es la deuda real de esta pestaña.'])
-  push(['  · comprometido vía cheque', `=${neta(condCheque)}`, '⚠ Factura con cheque asignado: al proveedor ya le diste el cheque. Registrar ese cheque en Cheques Emitidos cierra el circuito (la caja baja por ahí).'])
-  push(['  · comprometido vía tarjeta', `=${neta(condTarjeta)}`, '⚠ Factura cargada a la tarjeta. Debería estar en Tarjeta de Credito.'])
+  push(['  · comprometido vía cheque', `=${neta(condCheque)}`, `${ALERTA} Factura con cheque asignado: al proveedor ya le diste el cheque. Registrar ese cheque en Cheques Emitidos cierra el circuito (la caja baja por ahí).`])
+  push(['  · comprometido vía tarjeta', `=${neta(condTarjeta)}`, `${ALERTA} Factura cargada a la tarjeta. Debería estar en Tarjeta de Credito.`])
   push([])
   // Estado "Proyectado" de Compras, sólo comerciales: pactado pero todavía no es deuda firme, así que
   // va aparte del titular para no inflar la deuda. Las proyecciones no comerciales ($137,9M) no entran.
@@ -646,7 +647,7 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, not
       .join('+') || '0'
     const totalN = `COUNTIFS(${COL_ESTADO};"${ESTADO_DEUDA}";${COL_COMERCIAL};1;${COL_TOTAL};"<>")`
     const avisoFila = L.cols.map(() => VACIO)
-    avisoFila[0] = `=IF(ROUND(${falta};0)=0;"";"⚠ Faltan "&TEXT((${totalN})-(${listadasN});"0")&" factura(s) por "&TEXT(${falta};"$#,##0")&" que este listado todavía no muestra — aparecen cuando corre el agente. El total de arriba ya las cuenta.")`
+    avisoFila[0] = `=IF(ROUND(${falta};0)=0;"";"${ALERTA} Faltan "&TEXT((${totalN})-(${listadasN});"0")&" factura(s) por "&TEXT(${falta};"$#,##0")&" que este listado todavía no muestra — aparecen cuando corre el agente. El total de arriba ya las cuenta.")`
     filas[fAviso - 1] = avisoFila
   }
   push([])
@@ -1327,7 +1328,7 @@ async function main() {
   // lib/notas-credito.mjs: una refacturación NO es un ahorro, y si Compras tiene cargada la factura
   // anulada, el importe cierra pero el comprobante ya no existe y el mes está mal.
   const analisisNC = analizarNC(rArca)
-  const QUE = { refacturacion: 'REFACTURACIÓN — el costo sigue', devolucion: 'Devolución — el costo baja', revisar: '⚠ revisar (parcial o descuento)' }
+  const QUE = { refacturacion: 'REFACTURACIÓN — el costo sigue', devolucion: 'Devolución — el costo baja', revisar: `${ALERTA} revisar (parcial o descuento)` }
   const comp = (c) => `${String(c.punto_venta).padStart(4, '0')}-${String(c.numero).padStart(8, '0')}`
   const notasCredito = analisisNC.map((a) => ({
     proveedor: canon(a.nota.emisor_nombre),
@@ -1958,7 +1959,7 @@ async function main() {
     }
     const nombres = await publicar(google, ID, hojaArca.sheetId, destinosArca, { titulo: NOMBRES.proveedores })
     console.log(`  ${nombres.nombres} rangos con nombre publicados: el Cash Flow los referencia en vez de copiarlos`
-      + (nombres.verificado ? '' : ' — ⚠ NO pude releerlos: no sé a qué apuntan'))
+      + (nombres.verificado ? '' : ` — ${ALERTA} NO pude releerlos: no sé a qué apuntan`))
     // ═══ LO QUE PRUEBA LA PUBLICACIÓN ES EL DATO LEÍDO EN SU DESTINO ═══
     // Un 200 de la API sólo dice que el nombre existe. Que apunte a un importe donde promete un
     // importe se sabe releyendo. Cuando no da, el daño no se ve acá: se ve en Recurrentes, en

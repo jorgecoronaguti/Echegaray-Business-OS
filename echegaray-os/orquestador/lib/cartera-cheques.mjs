@@ -40,6 +40,7 @@
 // SEPARADOR `;`: el archivo es es-AR. Ver memoria formula-por-api-va-en-locale.
 
 import { PESTAÑA as RAW, COL as R, FILA0 } from '../scripts/cheques-raw-pestana.mjs'
+import { ALERTA } from './glifos.mjs'
 
 /** El estado que significa "todavía es un valor mío y todavía NO es caja". Lo escribe el banco. */
 export const EN_CARTERA = 'En custodia'
@@ -236,9 +237,9 @@ export function formulaCanarioDetalle(listadas, celdaTotal, rangoDetalle, celdaC
   // caracteres— y en el render se veía "✓ el detalle coin": la columna siguiente lo cortaba. Un aviso
   // cortado no avisa. Cada rama entra en ~55 caracteres, y la instrucción de qué hacer vive en el
   // rótulo de la fila (columna A), que es ancha. Se vio mirando la pestaña, no leyendo sus celdas.
-  const viejo = `"⚠ la cartera son "&TEXT(${cuenta};"0")&" cheque(s) y acá hay ${n}"`
-  const pisado = `"⚠ el detalle suma "&TEXT(SUM(${rangoDetalle});"$#,##0")&", no "&TEXT(${celdaTotal};"$#,##0")`
-  const sinFecha = '"⚠ hay un valor en cartera sin fecha de pago"'
+  const viejo = `"${ALERTA} la cartera son "&TEXT(${cuenta};"0")&" cheque(s) y acá hay ${n}"`
+  const pisado = `"${ALERTA} el detalle suma "&TEXT(SUM(${rangoDetalle});"$#,##0")&", no "&TEXT(${celdaTotal};"$#,##0")`
+  const sinFecha = `"${ALERTA} hay un valor en cartera sin fecha de pago"`
   const bien = `"✓ al día: "&TEXT(${cuenta};"0")&" cheque(s) por "&TEXT(${celdaTotal};"$#,##0")`
   const tercero = celdaCalendario
     ? `IF(ROUND(${celdaTotal}-${celdaCalendario};2)<>0;${sinFecha};${bien})`

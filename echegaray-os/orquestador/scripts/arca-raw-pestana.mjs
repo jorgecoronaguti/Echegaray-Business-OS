@@ -40,6 +40,7 @@ import { signo, NOMBRE } from '../lib/comprobante-arca.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
 import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
 import { conColaMedidaLeida, avisoDeCola } from '../lib/cola-de-rango.mjs'
+import { ALERTA } from '../lib/glifos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 export const PESTAÑA = '_ARCA_RAW'
@@ -134,7 +135,7 @@ async function main() {
   // —título, nota, encabezados y datos— y se FUSIONA con lo que hay. Ver lib/preservar-anotaciones.mjs.
   const gridRaw = [
     [`_ARCA_RAW — réplica de los comprobantes de ARCA · corte ${corte}`],
-    [`${datos.length} comprobantes. NO se carga a mano: la reescribe el agente en cada corrida desde la base del OS, que a su vez los trae de ARCA. Existe para que el cuadro de IVA de "Impuestos y Financieros" sea una fórmula sobre datos que están en el archivo, y no un número calculado afuera y pegado.${sinSigno ? ` ⚠ ${sinSigno} comprobante(s) con un código que no sé si suma o resta: su columna Signo está vacía y las fórmulas NO los cuentan.` : ''}`],
+    [`${datos.length} comprobantes. NO se carga a mano: la reescribe el agente en cada corrida desde la base del OS, que a su vez los trae de ARCA. Existe para que el cuadro de IVA de "Impuestos y Financieros" sea una fórmula sobre datos que están en el archivo, y no un número calculado afuera y pegado.${sinSigno ? ` ${ALERTA} ${sinSigno} comprobante(s) con un código que no sé si suma o resta: su columna Signo está vacía y las fórmulas NO los cuentan.` : ''}`],
     COLUMNAS.map(([n]) => n),
     ...datos,
   ]

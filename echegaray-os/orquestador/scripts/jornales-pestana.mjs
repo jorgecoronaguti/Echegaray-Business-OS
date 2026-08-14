@@ -120,6 +120,7 @@ import {
   NOMBRES_DIRECCION, PARAMETRO_DIA_PAGO, formulaRetiroMensual, formulaPrimerRetiro,
   formulaPrimerRetiroDe, formulaPagadoMes, formulaSePagaElDireccion, formulaProyectadoMes,
 } from '../lib/direccion-retiros.mjs'
+import { ALERTA } from '../lib/glifos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 // EL NOMBRE DE LA PESTAÑA SE EXPORTA: Cargas Sociales la lee para saber con qué base quedó valuada la
@@ -898,7 +899,7 @@ export function grilla({
   // que el número cambia es la gravedad. `contrastarEscala` sigue midiendo el desvío completo.
   const desvios = contrastarEscala(escalones)
   if (desvios.length) {
-    push([sub(`⚠ Réplica ≠ escala verificada en ${desvios.length} categoría(s)`)])
+    push([sub(`${ALERTA} Réplica ≠ escala verificada en ${desvios.length} categoría(s)`)])
     for (const d of desvios) console.warn(`  ⚠ escala verificada el ${VERIFICADA_EL}: ${d}`)
   }
   // El jornal más bajo sale del bloque BASE (la última quincena cerrada), no del último bloque del
@@ -930,7 +931,7 @@ export function grilla({
   // mostrar — y el ⚠ ya avisa que hay que mirarla.
   push([sub(proximo
     ? `El escalón que viene — ${proximo.rotulo}${proximo.acuerdo ? ` · ${proximo.acuerdo}` : ''}`
-    : '⚠ El escalón que viene — sin acuerdo publicado')])
+    : `${ALERTA} El escalón que viene — sin acuerdo publicado`)])
   // ═══ SIN ACUERDO PUBLICADO NO SE EMITEN LAS DOS FILAS (06/08) ═══
   //
   // Se emitían siempre, y sin acuerdo quedaban las dos vacías: "Básico de Ayudante desde ese mes" y
@@ -1045,7 +1046,7 @@ export function grilla({
   // El rótulo COMPLETO del parámetro ("Meses hacia atrás para medir el ritmo real de horas") dentro de
   // una celda de la columna C dejaba 114 caracteres desparramados en el medio del cuadro. El nombre
   // del parámetro está en Parámetros, que es adonde hay que ir igual: acá alcanza con nombrar la hoja.
-  filas[fHpd - 1][2] = `=IF(N(B${fHpd})=0;"⚠ sin quincenas cerradas — subí la ventana en Parámetros";"medido s/ cerradas · "&${RANGO_MESES_BASE}&" meses")`
+  filas[fHpd - 1][2] = `=IF(N(B${fHpd})=0;"${ALERTA} sin quincenas cerradas — subí la ventana en Parámetros";"medido s/ cerradas · "&${RANGO_MESES_BASE}&" meses")`
   // ═══ EL CANAL DE PAGO, MEDIDO SOBRE EL REGISTRO Y NO SUPUESTO (13/08) ═══
   //
   // "Banco" es la transferencia del lote de haberes —la parte que va por recibo de sueldo— y el resto
@@ -1113,7 +1114,7 @@ export function grilla({
   filas[fCanal.banco - 1][1] = porCol(colDe('Banco'))
   filas[fCanal.adelanto - 1][1] = porCol(colDe('Adelanto'))
   filas[fCanal.recibo - 1][1] = porCol(colDe('Total recibo'))
-  filas[fCanal.recibo - 1][2] = `=IF(ROUND(B${fCanal.banco}+B${fCanal.adelanto}+B${fCanal.recibo}-SUMPRODUCT(${pagada}*${K});0)=0;"✓ los tres canales suman lo pagado";"⚠ faltan $"&TEXT(SUMPRODUCT(${pagada}*${K})-B${fCanal.banco}-B${fCanal.adelanto}-B${fCanal.recibo};"#,##0")&" sin canal de pago registrado")`
+  filas[fCanal.recibo - 1][2] = `=IF(ROUND(B${fCanal.banco}+B${fCanal.adelanto}+B${fCanal.recibo}-SUMPRODUCT(${pagada}*${K});0)=0;"✓ los tres canales suman lo pagado";"${ALERTA} faltan $"&TEXT(SUMPRODUCT(${pagada}*${K})-B${fCanal.banco}-B${fCanal.adelanto}-B${fCanal.recibo};"#,##0")&" sin canal de pago registrado")`
   // ── LOS DOS BLOQUES MENSUALES: EL AJUSTE Y EL PROYECTADO ──
   //
   // Se escriben acá y no arriba porque los dos citan el cuadro del escalón (4.2), que desde el 13/08
@@ -1369,7 +1370,7 @@ async function main() {
   const pesos = (n) => `$${Math.round(n).toLocaleString('es-AR')}`
   console.log(`convenio 100%: Σ $/hora del plantel al convenio ${pesos(sigmaConv.total)} sobre ${sigmaConv.personas} persona(s)`
     + ` · ${sigmaConv.porCategoria.map((c) => `${c.personas}×${c.convenio} ${pesos(c.basico)}`).join(' · ') || 'sin escala'}`
-    + (sigmaConv.sinEscala.length ? ` · ⚠ SIN ESCALA: ${sigmaConv.sinEscala.join(', ')}` : ''))
+    + (sigmaConv.sinEscala.length ? ` · ${ALERTA} SIN ESCALA: ${sigmaConv.sinEscala.join(', ')}` : ''))
   // EL LÍMITE DEL CONTROL, AL LADO DEL CONTROL. Este número usa sólo la equivalencia declarada en el
   // código; la pestaña deja ganar lo que el dueño escriba en la columna «Convenio». Mientras esa
   // columna esté vacía los dos caminos tienen que dar lo mismo —para eso sirve—, pero en cuanto se use
@@ -1382,7 +1383,7 @@ async function main() {
   // Si lib/obras-datos.mjs no está en esta rama, la fuente avisa y devuelve 0: la pestaña queda igual.
   const demanda = await demandaParaJornales({ hoy, escalon: escalonVigente, escalones })
   if (demanda.nObras) console.log(`demanda de obras: ${demanda.nObras} obra(s) · ${demanda.porQuincena.size} quincena(s) con demanda valuada`
-    + (demanda.sinFechas.length ? ` · ⚠ SIN FECHAS (quedan afuera): ${demanda.sinFechas.map((x) => x.clave).join(', ')}` : ''))
+    + (demanda.sinFechas.length ? ` · ${ALERTA} SIN FECHAS (quedan afuera): ${demanda.sinFechas.map((x) => x.clave).join(', ')}` : ''))
 
   // ── LA OTRA MITAD DE LA NÓMINA ──
   const espejoOfi = await google.readSheetValues(ID, `${ESPEJO_OFI}!A1:AA990`)

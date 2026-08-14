@@ -222,7 +222,7 @@ test('el control del calendario grita con el importe cuando el reparto no cierra
   // control que se validara contra la misma suma no probaría nada.
   assert.match(f, /ROUND\(E40-\$H\$59;0\)=0/)
   assert.match(f, /ROUND\(F40-\$H\$84;0\)=0/)
-  assert.match(f, /⚠ el calendario no cierra/)
+  assert.match(f, /▲ el calendario no cierra/)
   assert.match(f, /✓ oficina y dirección cierran/)
   // La única coma admitida es la del patrón de miles de TEXT("#,##0"), que no es un separador de
   // argumentos: fuera de ella, es-AR manda punto y coma.

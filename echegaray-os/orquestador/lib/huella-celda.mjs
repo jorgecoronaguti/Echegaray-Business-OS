@@ -56,7 +56,8 @@ import { query } from './db.mjs'
 import { VACIO, letraCol, limpiarCentinela } from './preservar-anotaciones.mjs'
 import { MIA_PROBADA } from './no-borrar.mjs'
 import {
-  claveCelda, formaComparable, formaDe, hayContenido, LARGO_FORMA, noReponerAusentes, quiereEscribir,
+  claveCelda, formaComparable, formaDe, hayContenido, LARGO_FORMA, MARCAS_TIPOGRAFICAS,
+  noReponerAusentes, quiereEscribir,
 } from './huella-forma.mjs'
 
 // EL VOCABULARIO DE LA FORMA SE MUDÓ a `huella-forma.mjs` y se re-exporta desde acá para no romper a
@@ -115,8 +116,10 @@ export function formasDeTextoPropio(generado = []) {
       // frío): la versión anterior reclamaba TODA palabra de la grilla — 129 formas en Impuestos,
       // entre ellas "total", "iva", "importe", "disponible" — y una nota del dueño que coincidiera
       // se borraba. La propiedad exige una marca tipográfica que ningún humano tipea al anotar
-      // (⚠ ⇒ ‖ § · —) o un rótulo largo: "Total" nunca vuelve a ser evidencia de que lo escribí yo.
-      if (!/[⚠⇒‖§·—]/.test(forma) && forma.length < 23) continue
+      // (▲ ⚠ ⇒ ‖ § · —) o un rótulo largo: "Total" nunca vuelve a ser evidencia de que lo escribí yo.
+      // La lista es UNA (`MARCAS_TIPOGRAFICAS`, en huella-forma): era una copia, y una copia de un
+      // criterio de propiedad se queda atrás el día que cambia un glifo — que es hoy.
+      if (!MARCAS_TIPOGRAFICAS.test(forma) && forma.length < 23) continue
       out.add(forma)
     }
   }

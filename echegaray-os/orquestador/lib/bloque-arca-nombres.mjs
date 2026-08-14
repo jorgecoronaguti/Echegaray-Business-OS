@@ -1,4 +1,5 @@
 import { ARCA } from './rangos-nombrados.mjs'
+import { ALERTA } from './glifos.mjs'
 
 // EL BLOQUE DE COBERTURA DE ARCA: SUS RÓTULOS Y LOS NOMBRES QUE CUELGAN DE CADA LÍNEA.
 //
@@ -30,7 +31,7 @@ export const LINEAS_ARCA = Object.freeze([
   { texto: '  · notas de crédito (restan)', n: ARCA.notasN, monto: ARCA.notasMonto },
   { texto: '  · cargados en Compras, por N° de comprobante', n: ARCA.enComprasN, monto: ARCA.enComprasMonto },
   { texto: '  · cargados sin su N° de comprobante', n: ARCA.sinNumeroN, monto: ARCA.sinNumeroMonto },
-  { texto: '  · ⚠ sin cargar en Compras', n: ARCA.faltanN, monto: ARCA.faltanMonto },
+  { texto: `  · ${ALERTA} sin cargar en Compras`, n: ARCA.faltanN, monto: ARCA.faltanMonto },
   { texto: 'Comprobantes emitidos (ventas)', n: ARCA.ventasN, monto: ARCA.ventasMonto },
 ].map(Object.freeze))
 

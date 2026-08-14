@@ -55,6 +55,8 @@
 //
 // LOCALE es-AR: separador de argumentos `;` — la coma es el decimal. Formato de fecha dd/mm/yyyy.
 
+import { ALERTA } from './glifos.mjs'
+
 /** Cuántos días sin datos nuevos hacen que el rótulo avise. El mismo umbral que la columna
  *  "Antigüedad" de CAJA, para que la pestaña hable con una sola voz. */
 export const DIAS_AVISO = 7
@@ -204,8 +206,8 @@ export function formulaFrescuraDe(expresiones = []) {
  *        la fecha ("en pesos"): en la gramática del repo el subtítulo termina en la unidad.
  * @returns {string} fórmula con `=`
  */
-export function rotuloAlDia(texto, expr, { sinDato = '⚠ sin datos cargados', avisoDias = DIAS_AVISO, cola = '' } = {}) {
-  const aviso = `IF(TODAY()-${expr}>${avisoDias};" · ⚠ hace "&TEXT(TODAY()-${expr};"0")&" días";"")`
+export function rotuloAlDia(texto, expr, { sinDato = `${ALERTA} sin datos cargados`, avisoDias = DIAS_AVISO, cola = '' } = {}) {
+  const aviso = `IF(TODAY()-${expr}>${avisoDias};" · ${ALERTA} hace "&TEXT(TODAY()-${expr};"0")&" días";"")`
   const conFecha = `"al "&TEXT(${expr};"dd/mm/yyyy")&${aviso}`
   const fin = cola ? `&" · "&${literal(cola)}` : ''
   return `=${literal(`${texto} · `)}&IF(${expr}=0;${literal(sinDato)};${conFecha})${fin}`
@@ -268,7 +270,7 @@ export function rotuloPorFuente(texto, fuentes = [], { avisoDias = DIAS_AVISO, c
   if (!compacto) {
     const trozo = ({ nombre, expr, avisoDias: dias = avisoDias }) => {
       const atraso = `TODAY()-${expr}`
-      const aviso = `IF(${atraso}>${dias};" ⚠ hace "&TEXT(${atraso};"0")&" días";"")`
+      const aviso = `IF(${atraso}>${dias};" ${ALERTA} hace "&TEXT(${atraso};"0")&" días";"")`
       return `IF(${expr}=0;${literal(`${nombre} sin datos`)};${literal(`${nombre} al `)}&TEXT(${expr};"dd/mm")&${aviso})`
     }
     return `=${literal(`${texto} · `)}&${xs.map(trozo).join('&" · "&')}${fin}`
@@ -277,7 +279,7 @@ export function rotuloPorFuente(texto, fuentes = [], { avisoDias = DIAS_AVISO, c
   const declaraciones = xs.map((f, i) => `${nombreDe(i)};${f.expr}`).join(';')
   const trozo = ({ nombre, avisoDias: dias = avisoDias }, i) => {
     const v = nombreDe(i)
-    const aviso = `IF(TODAY()-${v}>${dias};" ⚠ hace "&TEXT(TODAY()-${v};"0")&" días";"")`
+    const aviso = `IF(TODAY()-${v}>${dias};" ${ALERTA} hace "&TEXT(TODAY()-${v};"0")&" días";"")`
     return `IF(${v}=0;${literal(`${nombre} sin datos`)};${literal(`${nombre} al `)}&TEXT(${v};"dd/mm")&${aviso})`
   }
   return `=LET(${declaraciones};${literal(`${texto} · `)}&${xs.map(trozo).join('&" · "&')}${fin})`
@@ -294,7 +296,7 @@ export function rotuloPorFuente(texto, fuentes = [], { avisoDias = DIAS_AVISO, c
  * @param {{avisoDias?:number, sinFecha?:string}} [opts]
  * @returns {string} fórmula con `=`
  */
-export function formulaAntiguedad(celda, { avisoDias = DIAS_AVISO, sinFecha = '⚠ sin cargar' } = {}) {
+export function formulaAntiguedad(celda, { avisoDias = DIAS_AVISO, sinFecha = `${ALERTA} sin cargar` } = {}) {
   const dias = `TEXT(TODAY()-${celda};"0")&" días"`
-  return `=IF(${celda}="";${literal(sinFecha)};IF(TODAY()-${celda}>${avisoDias};"⚠ "&${dias};${dias}))`
+  return `=IF(${celda}="";${literal(sinFecha)};IF(TODAY()-${celda}>${avisoDias};"${ALERTA} "&${dias};${dias}))`
 }

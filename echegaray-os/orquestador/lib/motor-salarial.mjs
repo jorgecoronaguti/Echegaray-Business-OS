@@ -81,6 +81,7 @@ export {
   formulaSigmaConvenio, formulaSigmaDelMes, expresionSigmaDelMes,
   lineaSupuestoConvenio, sigmaConvenioDelPlantel,
 } from './proyeccion-convenio.mjs'
+import { ALERTA } from './glifos.mjs'
 export { ROTULO_SIGMA }
 export { factorUocraEntre, tramoDe, convenioDe }
 
@@ -252,7 +253,7 @@ export function mesesDelMotor(base, pendientes = [], anclas = []) {
  */
 export const formulaConvenioPendiente = (f0, f1, equivalencias = []) => {
   const faltan = equivalencias.filter(([, c]) => !c).map(([k]) => k)
-  if (faltan.length) return sub(`⚠ Sin equivalente en la escala: ${faltan.join(', ')}`)
+  if (faltan.length) return sub(`${ALERTA} Sin equivalente en la escala: ${faltan.join(', ')}`)
   // Agrupado por categoría del convenio: "OF, OF M→Oficial · A, A M→Ayudante". Cuatro flechas sueltas
   // ocupan el doble y dicen lo mismo.
   //
@@ -325,8 +326,8 @@ export function filasPlantel({ hoja, bloque, categorias, personas, filaInicio, e
       // SIN EQUIVALENCIA la fila sigue diciendo "—": es la única forma honesta de responder cuando no
       // se sabe contra qué comparar. CON equivalencia el "—" desaparece, porque ya hay respuesta.
       equiv
-        ? `=IF(N($F${r})=0;"sin escala para esa categoría";IF($G${r}<0;"⚠ por debajo del convenio";"✓ sobre el convenio"))`
-        : `=IF($E${r}="";"—";IF(N($F${r})=0;"esa categoría no está en la escala del mes";IF($G${r}<0;"⚠ por debajo del convenio";"✓ sobre el convenio")))`,
+        ? `=IF(N($F${r})=0;"sin escala para esa categoría";IF($G${r}<0;"${ALERTA} por debajo del convenio";"✓ sobre el convenio"))`
+        : `=IF($E${r}="";"—";IF(N($F${r})=0;"esa categoría no está en la escala del mes";IF($G${r}<0;"${ALERTA} por debajo del convenio";"✓ sobre el convenio")))`,
     ])
   })
   const fUltima = fPrimera + categorias.length - 1
@@ -342,7 +343,7 @@ export function filasPlantel({ hoja, bloque, categorias, personas, filaInicio, e
     // siguientes (el defecto `nota-en-el-medio`, que el auditor no cazaba porque vive adentro de una
     // fórmula y el auditor lee valores). Qué correr para arreglarlo —`espejar-jornales.mjs` y después
     // este generador— es de quien mantiene el OS y está acá; en la celda queda el HECHO.
-    `=IF(COUNTA('${hoja}'!$B$${bloque.inicio}:$B$${bloque.fin})=${personas};"✓ espejo en su lugar";"⚠ el espejo se movió — plantel desactualizado")`])
+    `=IF(COUNTA('${hoja}'!$B$${bloque.inicio}:$B$${bloque.fin})=${personas};"✓ espejo en su lugar";"${ALERTA} el espejo se movió — plantel desactualizado")`])
   return { filas, fPrimera, fUltima, fTotal, equivalencias, canario: `${hoja}!${bloque.inicio}:${bloque.fin}` }
 }
 
@@ -442,7 +443,7 @@ export function filasEscalon({
       firmado && e ? `${String(e.acuerdo ?? 'acuerdo').replace(/^Acuerdo\s+/, 'Ac.')}`.slice(0, 19) : 'proyección',
       i === 0
         ? 'mes base: factor 1,0000, sin aumento'
-        : (firmado ? '✓ acuerdo firmado' : `⚠ proyección · últ: ${(ult?.rotulo ?? '—').slice(0, 12)}`),
+        : (firmado ? '✓ acuerdo firmado' : `${ALERTA} proyección · últ: ${(ult?.rotulo ?? '—').slice(0, 12)}`),
     ])
   })
   const f1 = f0 + meses.length - 1

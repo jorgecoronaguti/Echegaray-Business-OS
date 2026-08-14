@@ -51,6 +51,7 @@
 
 import { VACIO } from './preservar-anotaciones.mjs'
 import { MIA_PROBADA } from './no-borrar.mjs'
+import { ALERTA, ALERTA_HEREDADA } from './glifos.mjs'
 
 /** Cuántas formas tiene que haber HOY en la pestaña para creerle a la lectura. */
 export const MIN_FORMAS_PRESENTES = 8
@@ -149,6 +150,19 @@ export function quiereEscribir(v) {
 /** ¿La celda TIENE algo? Es la única pregunta que decide "borrada": la contesta la lectura FORMULA. */
 export const hayContenido = (v) => formaDe(v) !== ''
 
+/**
+ * LAS MARCAS QUE NADIE TIPEA AL ANOTAR AL MARGEN — la prueba de que una celda la escribió el OS.
+ *
+ * Están LAS DOS alertas: la vigente (`▲`) y la que quedó publicada en ~1.060 celdas (`⚠`). Si esta
+ * lista se quedara sólo con la nueva, cada rótulo ya publicado dejaría de ser "mío", su borrado no se
+ * sellaría, y la corrida siguiente lo repondría — el reclamo del dueño, causado por el arreglo. Y si
+ * se quedara sólo con la vieja, lo mismo pero al revés y para siempre. Ver `ALERTA_HEREDADA`.
+ *
+ * Vive acá y `huella-celda` la importa: eran dos copias del mismo criterio de propiedad y una sola
+ * puede quedarse atrás.
+ */
+export const MARCAS_TIPOGRAFICAS = new RegExp(`[${ALERTA}${ALERTA_HEREDADA}⇒‖§·—]`)
+
 export const claveCelda = (fila, col) => `${fila}:${col}`
 
 /**
@@ -173,7 +187,7 @@ export function esDistintiva(forma) {
   if (!f) return false
   if (f.startsWith('=')) return true
   if ((f.match(/[a-záéíóúüñ]/g) || []).length < 3) return false
-  return /[⚠⇒‖§·—]/.test(f) || f.length >= 23
+  return MARCAS_TIPOGRAFICAS.test(f) || f.length >= 23
 }
 
 /** Las formas que hay HOY en la pestaña, en cualquier posición. Es el conjunto contra el que se juzga. */
