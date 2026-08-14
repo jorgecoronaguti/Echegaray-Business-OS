@@ -30,8 +30,21 @@
 import { camposDeFila, COL, valoresDelPivot, VISTA } from './proveedores-pivot-seccion1.mjs'
 import { requestsDeNotas, ROTULO_NOTA } from './proveedores-notas-columna.mjs'
 
-/** El rótulo de la columna del vencimiento. Corto a propósito: la columna mide 125px. */
-export const ROTULO_VENCE = 'Vence'
+/**
+ * EL RÓTULO DE LA COLUMNA DEL VENCIMIENTO — y por qué dejó de decir "Vence" (14/08).
+ *
+ * La fórmula siempre calculó bien: la fecha de pago MÁS PRÓXIMA de lo que se le debe. El rótulo era
+ * el que mentía, porque se lee contra el total de la columna de al lado. Medido en el archivo real:
+ *
+ *   Alumetal · Se le debe $5.567.190 · "Vence 21/08"   ⇒ el 21/08 vencen $392.905.
+ *                                                         El resto es 29/08 ($3.159.345) y 31/08.
+ *   Corralon Progreso · $232.324 · "Vence 21/08"       ⇒ el 21/08 vencen $200.867.
+ *
+ * Quien mira ese cuadro para juntar la plata del 21 se prepara para $5.799.514 y salen $593.772. La
+ * fecha es del PRIMER vencimiento, no del saldo entero, y el rótulo tiene que decir eso. El "cuánto
+ * sale ese día" no se contesta acá: lo contesta el cuadro "QUÉ SALE CADA DÍA", que es su lugar.
+ */
+export const ROTULO_VENCE = 'Primer vencimiento'
 
 /** La columna donde el pivot escribe el nombre. Es el ancla de las dos fórmulas. */
 export const COL_PROVEEDOR = 0
