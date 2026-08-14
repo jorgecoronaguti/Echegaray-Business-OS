@@ -141,7 +141,7 @@ test('EL CALENDARIO CUADRA CONTRA LA "Resta" DE OBRAS, PESO POR PESO', () => {
     }, DESDE).contrato,
   }))
   const gObras = grillaObras({ obras, clientes })
-  const fTotObras = gObras.totales[0]
+  const fTotObras = gObras.fTotClientes
   const restaObras = evaluarFormula(cel(gObras.filas, `E${fTotObras}`), {
     hoja: hojaDeGrilla(gObras.filas), hojas: { Cobranzas: comoHoja() }, nombres: { TIPO_CAMBIO_USD: TC }, hoy: HOY,
   })

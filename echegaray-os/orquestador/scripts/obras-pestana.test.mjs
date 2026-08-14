@@ -126,9 +126,15 @@ test('el --dry declara que las columnas son las de DEFECTO: no se lo puede confu
   assert.match(txt, /no las del archivo vivo/)
 })
 
-test('el --dry dice qué fila queda AFUERA de las sumas por ser máquina propia', () => {
-  const txt = render(grillaObras({ obras: OBRAS_FUTURAS }), OBRAS_FUTURAS)
-  assert.equal((txt.match(/FUERA de las sumas/g) ?? []).length, 4, 'las cuatro obras con equipo propio')
+test('el --dry dice, obra por obra, dónde cae su costo y si declara contrato', () => {
+  // El ensayo en seco es lo único que se puede mirar sin abrir el Sheet, así que tiene que decir lo
+  // que decide una corrida. Con el detalle afuera (14/08) ya no hay filas que listar: lo que importa
+  // es que cada obra tenga su fila en el cuadro de costo y si su contrato se pudo leer — sin
+  // contrato, dos celdas de la obra salen en "—" y conviene enterarse antes de publicar.
+  const g = grillaObras({ obras: OBRAS_FUTURAS })
+  const txt = render(g, OBRAS_FUTURAS)
+  assert.equal((txt.match(/ costo \d+ /g) ?? []).length, OBRAS_FUTURAS.length, 'una fila de costo por obra')
+  for (const f of g.filasCosto) assert.ok(txt.includes(` costo ${f} `), `la fila de costo ${f} no se declara`)
   assert.match(txt, new RegExp(`\\$${Math.round(OBRAS_FUTURAS.reduce((s, o) => s + totalEgresos(o), 0)).toLocaleString('es-AR').replace(/\./g, '\\.')} proyectados`))
 })
 
@@ -139,8 +145,8 @@ test('el rótulo "Moneda" se resuelve como los demás — y si no está, el escr
   // una letra equivocada haría que el criterio ;"USD" no matchee nunca y los dólares vuelvan a
   // sumarse como pesos, sin un solo error a la vista.
   const cab = [['ID', 'Obra / Cliente', 'Concepto', 'Monto neto', 'Categoría', 'OC', 'TOTAL a cobrar (x)',
-    'Estado', 'Fecha cobro', 'Retenciones / descuentos', 'Fecha de Venta', 'Forma de Cobro', 'Moneda']]
-  assert.equal(resolverColumnas(cab, ROTULOS_COBRANZAS).moneda, 'M')
+    'Estado', 'Fecha cobro', 'Retenciones / descuentos', 'Fecha de Venta', 'Fecha emisión', 'Forma de Cobro', 'Moneda']]
+  assert.equal(resolverColumnas(cab, ROTULOS_COBRANZAS).moneda, 'N')
   assert.throws(() => resolverColumnas([cab[0].slice(0, -1)], ROTULOS_COBRANZAS), /Moneda/)
 })
 
