@@ -170,6 +170,13 @@ export function bloqueVencido(h) {
     `=SUM($C$${f0}:$C$${f1})+SUM($D$${f0}:$D$${f1})`, '', '', '', ''])
   const fUlt = push(['Último cobro efectivamente registrado en Cobranzas', '', '', '', '',
     formulaUltimoCobroRegistrado(), ''])
+  // LA ÚLTIMA COLUMNA DE ESTE BLOQUE NO ES PROSA: ES UN CONTEO — y quien lo escribe lo declara acá.
+  //
+  // El contrato de la pestaña dice "la última columna es PROSA: texto, gris, con ajuste. Nunca plata",
+  // y es verdad para sus 240 celdas menos estas cuatro. Medido en el archivo el 14/08: G60:G63 con
+  // `numberFormat: TEXT` y un SUMPRODUCT adentro. Tres valían 0 y el cuarto 3, así que se veían bien —
+  // el mismo accidente que escondió `OBRAS!F` hasta que apareció el primer importe grande. Se declara
+  // el RANGO y no una lista de filas: si mañana entra un quinto control vencido, entra formateado.
   push(['⇒ ¿el cero es real?', '', '', '', '', '',
     `=IF($C$${fTot}>0;"hay "&TEXT($C$${fTot};"$#,##0")&" para conciliar";`
     + `IF(NOT(ISNUMBER($F$${fUlt}));"${ALERTA} no puedo saberlo: Cobranzas no tiene ningún cobro con fecha";`
@@ -179,7 +186,7 @@ export function bloqueVencido(h) {
   // sexto estado dejaría plata afuera en silencio. Tiene que dar cero.
   push(['   · riesgo: filas de Cobranzas con un estado que el OS no conoce', '',
     formulaEstadoDesconocido(), '', '', '', ''])
-  return { fTot }
+  return { fTot, fCuantos: [f0, f1] }
 }
 
 /**
