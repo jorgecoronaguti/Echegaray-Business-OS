@@ -44,6 +44,63 @@ test('si en stderr SÓLO hay avisos, se dice eso — no se cae a la primera y se
   assert.doesNotMatch(m, /VENTAS/)
 })
 
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL SEGUNDO MOTIVO FALSO, CON EL FILTRO YA PUESTO (14/08/2026)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// El resumen del servicio decía, literal:
+//
+//     1 FALLARON:
+//       · proveedores-materiales-pestana.mjs: 0001-00000214  →  Cobranzas fila 38
+//
+// Eso es la línea de DETALLE de un aviso informativo (`○`) sobre facturas emitidas numeradas sin su
+// punto de venta — trabajo de carga de OTRA pestaña, y ni siquiera un problema. Pasó el filtro porque
+// su titular lleva `○` y no `⚠`. Y el motivo REAL —"⚠ 22 celdas en error"— salía por STDOUT, que esta
+// función no miraba: el paso imprime su veredicto con console.log y su código de salida sale de ahí.
+
+const STDERR_DETALLES = [
+  '  ⚠ VENTAS (no es de esta pestaña): 6 factura(s) emitidas SIN RASTRO en Cobranzas, $ 54.625.304.',
+  '     0001-00000220  30/07/2026  CUIT 30716699648  $ 37.510.000',
+  '  ○ 1 factura(s) SÍ están en Cobranzas con el N° tipeado sin su punto de venta ($ 4.900.000):',
+  '     0001-00000214  →  Cobranzas fila 38',
+].join('\n')
+
+test('una línea de DETALLE de un aviso no es la causa: cuelga de su titular, no explica nada', () => {
+  const m = motivoDeFalla({ stderr: STDERR_DETALLES, stdout: '', code: 1 })
+  assert.doesNotMatch(m, /0001-00000214/, 'el detalle de un aviso informativo no puede figurar como la causa')
+  assert.match(m, /sólo hay avisos/)
+})
+
+test('cuando el veredicto salió por STDOUT, la causa se busca ahí — que es donde el paso decidió su código', () => {
+  const stdout = [
+    '  Proveedores                       199 filas x 16 columnas (filas 110–308 de la pestaña)',
+    '  ⚠ RANGO CON NOMBRE QUE QUEDÓ MAL: ARCA_FALTAN_N vive en Proveedores!B128 = "30-56736337-2"',
+    '',
+    '⚠ 22 celdas en error: NO retiro la pestaña vieja',
+  ].join('\n')
+  const m = motivoDeFalla({ stderr: STDERR_DETALLES, stdout, code: 1 })
+  assert.match(m, /22 celdas en error/)
+  assert.doesNotMatch(m, /0001-00000214/)
+})
+
+test('un ⛔ o un ⏭ de stdout también explican: son los otros dos veredictos de este repo', () => {
+  for (const v of ['⛔ Proveedores: no pude ubicar la frontera — no escribo una sola celda',
+    '⏭ "Proveedores" no se escribió en esta corrida']) {
+    assert.match(motivoDeFalla({ stderr: '  ○ un detalle', stdout: `algo\n${v}`, code: 1 }), /Proveedores/)
+  }
+})
+
+test('stdout SIN veredicto no inventa una causa: una línea cualquiera del log no explica el fallo', () => {
+  const m = motivoDeFalla({ stderr: STDERR_DETALLES, stdout: 'Compras por encabezado: Rubro=AC\n  ✓ todo bien', code: 1 })
+  assert.match(m, /sólo hay avisos/)
+  assert.doesNotMatch(m, /Rubro=AC/)
+})
+
+test('stderr con una causa REAL sigue ganándole a stdout: lo más cercano a la muerte manda', () => {
+  const m = motivoDeFalla({ stderr: `${STDERR_DETALLES}\nERROR: no pude leer el texto visible de "Proveedores"`, stdout: '⚠ 22 celdas en error', code: 1 })
+  assert.match(m, /no pude leer el texto visible/)
+})
+
 test('sin stderr queda el mensaje del error: un ENOENT o un timeout siguen siendo legibles', () => {
   assert.match(motivoDeFalla({ message: 'spawn ENOENT' }), /ENOENT/)
   assert.match(motivoDeFalla({ stderr: '', message: 'Command failed: timeout' }), /timeout/)
