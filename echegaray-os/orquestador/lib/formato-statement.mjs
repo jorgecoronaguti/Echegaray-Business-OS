@@ -35,6 +35,27 @@ export const MONEDA_TOTAL = { type: 'CURRENCY', pattern: '"$"#,##0;("$"#,##0);"�
 /** Un contador es un contador: ni "$", ni miles, ni decimales. */
 export const CONTADOR = { type: 'NUMBER', pattern: '0;(0);"—"' }
 
+// ═══ LA COLUMNA QUE TIENE QUE GRITAR: LA MARCA VIVE EN EL FORMATO (14/08/2026) ═══
+//
+// Una columna de alarma —cobranza vencida, deuda atrasada— necesita que el ojo la encuentre sin
+// leerla. Las dos formas obvias tienen su defecto y por eso no se usan ninguna de las dos:
+//
+//   · EL GLIFO TIPEADO EN LA CELDA convierte el importe en TEXTO: deja de sumar, deja de alinearse a
+//     la derecha, y el total de la columna pasa a ser $0 sin dar un solo error.
+//   · EL FORMATO CONDICIONAL apila. `addConditionalFormatRule` siempre AGREGA, así que cada corrida
+//     del generador deja un juego más de reglas salvo que se borren las anteriores primero — y para
+//     borrarlas hay que leer cuántas hay, o sea una lectura más y un estado que nadie audita.
+//
+// La marca va en el PATRÓN: el número sigue siendo número, el tercer tramo dibuja el cero como "—"
+// (una fila sin nada vencido no lleva marca) y el ▲ aparece solo cuando hay importe. Es `ALERTA` de
+// `glifos.mjs` — el ⚠ no se dibuja al exportar a PDF, y el PDF es con lo que el dueño verifica.
+
+/** Cuerpo de una columna de ALARMA: el ▲ aparece solo si hay importe; el cero sigue siendo raya. */
+export const MONEDA_ALERTA = { type: 'CURRENCY', pattern: '"▲ "#,##0;("▲ "#,##0);"—"' }
+
+/** El cierre de una columna de alarma: mismo criterio, con la unidad declarada como todo total. */
+export const MONEDA_ALERTA_TOTAL = { type: 'CURRENCY', pattern: '"▲ $"#,##0;("▲ $"#,##0);"—"' }
+
 // ═══ EL PATRÓN SE ESCRIBE EN CONVENCIÓN US, AUNQUE EL ARCHIVO SEA es_AR (05/08/2026) ═══
 //
 // EL DEFECTO, MEDIDO EN PANTALLA. La cobertura de obligaciones de CAJA salía `003 ×` donde tenía que

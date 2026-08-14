@@ -10,7 +10,7 @@ import {
   contratoDeclarado, contratoDeObra, filasDeObra, normalizarMoneda, monedasDesconocidas,
   sumaConUSD, valuarEnPesos, MARCADOR_CONTRATO,
 } from './cobranzas-contrato.mjs'
-import { FILAS, comoFilas, DESDE } from './cobranzas-fixture.mjs'
+import { FILAS, COLUMNAS, comoFilas, DESDE } from './cobranzas-fixture.mjs'
 
 const COLS = { cliente: 6, concepto: 8, oc: 7, moneda: 26 }
 const filas = comoFilas()
@@ -35,7 +35,8 @@ test('UN NÚMERO DE ORDEN DE COMPRA NO ES UN CONTRATO: sin marcador, no hay cont
     assert.equal(contratoDeclarado(t), null, `"${t}" no declara contrato`)
   }
   // Y contra el archivo entero: las 91 filas, sin excepción declarada a mano.
-  const conNumeroSuelto = FILAS.filter(([, , , oc]) => /\d/.test(String(oc)) && !MARCADOR_CONTRATO.test(String(oc)))
+  const col = (f, L) => f[1 + COLUMNAS.indexOf(L)]
+  const conNumeroSuelto = FILAS.filter((f) => /\d/.test(String(col(f, 'H'))) && !MARCADOR_CONTRATO.test(String(col(f, 'H'))))
   assert.ok(conNumeroSuelto.length >= 25, 'el archivo tiene números de OC de sobra para que esto signifique algo')
   for (const [n, , , oc] of conNumeroSuelto) assert.equal(contratoDeclarado(oc), null, `fila ${n}: "${oc}"`)
 })
@@ -124,10 +125,13 @@ test('una moneda que no se entiende NO se trata como pesos en silencio: se denun
 })
 
 test('el archivo real tiene UNA sola fila en dólares, y es la que el dueño señaló', () => {
-  const enUSD = FILAS.filter(([, , , , , , , , , , , , m]) => normalizarMoneda(m) === 'USD')
+  // La tupla se indexa por NOMBRE de columna, no contando comas: el 14/08 entró la `C` (Fecha
+  // emisión) y un destructuring posicional pasó a leer la columna de al lado sin dar error.
+  const col = (f, L) => f[1 + COLUMNAS.indexOf(L)]
+  const enUSD = FILAS.filter((f) => normalizarMoneda(col(f, 'AA')) === 'USD')
   assert.equal(enUSD.length, 1)
   assert.equal(enUSD[0][0], 62, 'la fila 62 del archivo (ID 58): el anticipo de Quattropani')
-  assert.equal(enUSD[0][5], 15_400, 'U$S 15.400 — "Son 15.400 dólares", textual del dueño')
+  assert.equal(col(enUSD[0], 'J'), 15_400, 'U$S 15.400 — "Son 15.400 dólares", textual del dueño')
 })
 
 test('la suma con dólares no usa `<>USD` ni el atajo `×(TC−1)`: sólo criterios positivos', () => {
@@ -149,8 +153,9 @@ const TC = 1492.524
 test('valuarEnPesos es la MISMA decisión que la fórmula: la fila real de Quattropani', () => {
   // La fila 62 del fixture: U$S 15.400. La fórmula de la pestaña la valúa multiplicando por
   // TIPO_CAMBIO_USD; acá se hace lo mismo, sobre la misma columna y con el mismo normalizador.
+  const col = (f, L) => f[1 + COLUMNAS.indexOf(L)]
   const enUSD = FILAS.find(([f]) => f === 62)
-  const v = valuarEnPesos(enUSD[5], enUSD[12], TC)
+  const v = valuarEnPesos(col(enUSD, 'J'), col(enUSD, 'AA'), TC)
   assert.equal(v.moneda, 'USD')
   assert.equal(v.tipoCambio, TC)
   assert.equal(Math.round(v.pesos), 22_984_870)

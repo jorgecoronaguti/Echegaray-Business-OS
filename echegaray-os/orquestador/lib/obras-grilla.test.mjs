@@ -18,7 +18,7 @@ import {
   grillaObras, serialISO, criterioCliente, variantesDe, anchoColumnaA, pxDeTexto, clientesDeCobranzas,
   celdasEnError, problemaDeSintaxis, ERRORES_SHEET, nombreEnCostos, ANO, trabajosFueraDeObra,
   ANCHO_OBRAS, ANCHOS_OBRAS, ANCHO_HISTORICO, ALTO_HISTORICO, conColaLimpiable, REFS_OBRAS, CLIENTES_MUESTRA,
-  rotuloDeObra,
+  rotuloDeObra, SIN_CONTRATO, SECCION_OBRAS, SECCION_COSTO,
 } from './obras-grilla.mjs'
 import { OBRAS_FUTURAS, CLIENTES_CANONICOS, esProyectable, totalEgresos } from './obras-datos.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
@@ -32,14 +32,12 @@ const cel = (grid, ref) => {
   const [, col, fila] = ref.match(/^([A-I])(\d+)$/)
   return grid.filas[Number(fila) - 1][COLS.indexOf(col)]
 }
-const vacia = (v) => v === VACIO || v === '' || v === undefined
 /** Las filas 1-based de `a` a `b`, inclusive — para recorrer un rango que la grilla devuelve. */
 const rangoFilas = (a, b) => [...Array(b - a + 1)].map((_, i) => a + i)
 /** Todas las fórmulas de la grilla, con su referencia A1 — el material de casi todos los tests. */
 const formulas = (grid) => grid.filas.flatMap((f, i) => f
   .map((v, c) => [`${COLS[c]}${i + 1}`, v])
   .filter(([, v]) => typeof v === 'string' && v.startsWith('=')))
-const bloque = (clave) => g.bloques.find((b) => b.clave === clave)
 /** ¿La glosa de esta fila arrastra una nota escrita por el DUEÑO? Su texto no se recorta acá. */
 const esDelDueño = (n) => OBRAS_FUTURAS.some((o) => {
   const t = String(g.filas[n - 1]?.[8] ?? '')
@@ -91,13 +89,13 @@ test('el ⇒ TOTAL 2026 sale de Cobranzas ENTERA, no de la suma de los clientes 
   // Un total que es la suma de las filas de arriba no puede detectar que falta un cliente: da
   // "correcto" por construcción. El residuo se publica con nombre y el total los incluye, así que la
   // pestaña se concilia sola contra su fuente.
-  assert.ok(!cel(g, `C${g.totales[0]}`).includes(`'Cobranzas'!$G`), 'el total no filtra por cliente: una fila sin cliente entra igual')
+  assert.ok(!cel(g, `C${g.fTotClientes}`).includes(`'Cobranzas'!$G`), 'el total no filtra por cliente: una fila sin cliente entra igual')
   // EL TOTAL NO PUEDE SER LA SUMA DE LAS FILAS DE ARRIBA. Con el residuo = "archivo − las filas", el
   // total daba el archivo POR CONSTRUCCIÓN: una identidad que no puede fallar no controla nada. El
   // total sale de la fuente y el control falsificable es el residuo, que SÍ puede dar ≠ 0.
-  assert.match(cel(g, `C${g.totales[0]}`), /^=SUMIFS\(/, 'el total sale del archivo, no de las filas')
-  assert.ok(!cel(g, `C${g.totales[0]}`).includes('SUM(C'), 'no es la suma de los renglones')
-  assert.match(cel(g, `D${g.totales[0]}`), /^=SUMIFS\(/)
+  assert.match(cel(g, `C${g.fTotClientes}`), /^=SUMIFS\(/, 'el total sale del archivo, no de las filas')
+  assert.ok(!cel(g, `C${g.fTotClientes}`).includes('SUM(C'), 'no es la suma de los renglones')
+  assert.match(cel(g, `D${g.fTotClientes}`), /^=SUMIFS\(/)
 })
 
 test('el COSTO de la Sección 1 se mide al NETO desde la fuente, no heredando el criterio de otra pestaña', () => {
@@ -141,7 +139,7 @@ test('el RETENIDO sale de la columna de retenciones, sólo de lo COBRADO y por f
   //    pendiente, que es una estimación presentada como hecho;
   //  · acotar por fecha de VENTA — mezclaría devengado y percibido en la misma columna.
   const desde = serialISO(`${ANO}-01-01`)
-  for (const f of [...rangoFilas(...g.fClientes), g.totales[0]]) {
+  for (const f of [...rangoFilas(...g.fClientes), g.fTotClientes]) {
     const v = cel(g, `H${f}`)
     assert.match(v, new RegExp(`^=SUMIFS\\('Cobranzas'!\\$${REFS_OBRAS.cob.retenciones}\\$`), `H${f}: suma la col de retenciones`)
     assert.ok(v.includes(`;"${'Cobrado'}"`), `H${f}: sólo lo efectivamente cobrado`)
@@ -151,20 +149,22 @@ test('el RETENIDO sale de la columna de retenciones, sólo de lo COBRADO y por f
   }
   // El total del año sale de la FUENTE ENTERA, no de la suma de los clientes listados: si un cliente
   // quedara fuera de la lista derivada, su retención tiene que seguir estando en el total.
-  assert.ok(!cel(g, `H${g.totales[0]}`).includes(`'Cobranzas'!$${REFS_OBRAS.cob.cliente}$`), 'el total no filtra por cliente')
-  assert.ok(!cel(g, `H${g.totales[0]}`).includes('SUM(H'), 'ni es la suma de los renglones')
+  assert.ok(!cel(g, `H${g.fTotClientes}`).includes(`'Cobranzas'!$${REFS_OBRAS.cob.cliente}$`), 'el total no filtra por cliente')
+  assert.ok(!cel(g, `H${g.fTotClientes}`).includes('SUM(H'), 'ni es la suma de los renglones')
 })
 
-test('la H lleva IMPORTE sólo en la Sección 1: en la 2 es una fecha, y un importe ahí se dibuja como año 2110', () => {
-  // La columna entera está declarada como fecha por el detalle de egresos. `importeEnH` es lo que el
-  // escritor usa para devolverle el formato de plata a las filas que sí llevan plata; si la lista
-  // quedara corta, $7.671.680 se publicarían como un día del calendario sin dar un solo error.
-  assert.deepEqual(g.importeEnH, [...rangoFilas(...g.fClientes), g.totales[0]])
-  for (const f of g.importeEnH) assert.match(String(cel(g, `H${f}`)), /^=SUMIFS\(/, `H${f}: es un importe`)
-  for (const b of g.bloques) {
-    assert.ok(!g.importeEnH.includes(b.fProt), `${b.clave}: en la Sección 2 la H es la próxima fecha de cobro`)
+test('la H lleva IMPORTE en los dos cuadros que la usan, y el escritor lo sabe fila por fila', () => {
+  // La H es `Retenido` por cliente y `Falta certificar` por obra: plata en los dos casos. Pero la
+  // columna no se puede declarar plata de arriba a abajo, porque el resto de las filas la deja
+  // vacía. `importeEnH` es la lista que el escritor usa; si quedara corta, $7.671.680 se publicarían
+  // con el formato de la celda de al lado y nadie daría un error.
+  assert.deepEqual(g.importeEnH,
+    [...rangoFilas(...g.fClientes), g.fTotClientes, ...g.bloques.map((b) => b.fProt), g.fTotObras])
+  for (const f of [...rangoFilas(...g.fClientes), g.fTotClientes]) {
+    assert.match(String(cel(g, `H${f}`)), /^=SUMIFS\(/, `H${f}: el retenido del cliente`)
   }
-  assert.ok(!g.importeEnH.includes(g.totales[1]), 'ni el total de la Sección 2, que no publica retenido')
+  // Las filas del cuadro de COSTO no llevan nada en la H: su cuadro termina en la E.
+  for (const f of g.filasCosto) assert.ok(!g.importeEnH.includes(f), `${f}: el cuadro de costo no usa la H`)
 })
 
 test('el ⇒ TOTAL 2026 tiene la ventana que su rótulo promete', () => {
@@ -174,7 +174,7 @@ test('el ⇒ TOTAL 2026 tiene la ventana que su rótulo promete', () => {
   const desde = serialISO(`${ANO}-01-01`)
   const hasta = serialISO(`${ANO}-12-31`)
   const [f0, f1] = g.fClientes
-  for (const f of [...Array(f1 - f0 + 1)].map((_, i) => f0 + i).concat(g.bloques.map((b) => b.fProt), g.totales[0])) {
+  for (const f of [...Array(f1 - f0 + 1)].map((_, i) => f0 + i).concat(g.bloques.map((b) => b.fProt), g.fTotClientes)) {
     // La VENTA se acota por la fecha de venta (devengado)…
     const venta = cel(g, `C${f}`)
     assert.ok(venta.includes(`$${REFS_OBRAS.cob.fechaVenta}$`), `C${f}: la venta se acota por su fecha de VENTA`)
@@ -198,8 +198,8 @@ test('la fila "sin ubicar" NO está en la pestaña: el dueño la sacó dos veces
   assert.ok(!rotulos.some((r) => /sin ubicar|Otros clientes/i.test(r)), 'no puede haber fila de residuo')
   assert.equal(g.fOtros, undefined, 'ni la grilla la expone')
   // Y el total sigue saliendo de la fuente, que es lo que hace posible el control de afuera.
-  assert.match(cel(g, `C${g.totales[0]}`), /^=SUMIFS\(/)
-  assert.equal(g.totales[0], g.fClientes[1] + 1, 'el total va inmediatamente debajo de los clientes')
+  assert.match(cel(g, `C${g.fTotClientes}`), /^=SUMIFS\(/)
+  assert.equal(g.fTotClientes, g.fClientes[1] + 1, 'el total va inmediatamente debajo de los clientes')
 })
 
 test('la lista de clientes sale de Cobranzas: un cliente nuevo aparece solo', () => {
@@ -282,30 +282,34 @@ test('dos obras del MISMO cliente no pueden compartir proveedor: el real se cont
   }
 })
 
-test('el neteo vivo va EMBEBIDO en el pendiente del egreso: la factura real de Compras lo baja sola', () => {
-  // La columna del real acumulado dejó su lugar a "Resta cobrar" (el dueño la declaró inútil acá el
-  // 13/08). El neteo NO se perdió: vive adentro del pendiente, que es el número que decide cuánto
-  // falta desembolsar. Si alguien lo saca, el pendiente deja de reaccionar a Compras.
-  const b = bloque('sf-pisos-industriales')
-  const f = b.fDetalle[0]
-  assert.equal(cel(g, `G${f}`),
-    `=MAX(0;C${f}-SUMIFS('Compras'!$M$4:$M;'Compras'!$E$4:$E;"ACA";'Compras'!$J$4:$J;"San Francisco";'Compras'!$C$4:$C;">="&${serialISO('2026-08-05')}))`)
-  assert.ok(vacia(cel(g, `F${f}`)), 'la F es Vencido (cobranza) — el pendiente de pago tiene la suya')
+test('el neteo contra Compras SOBREVIVIÓ a la salida del detalle: vive en la columna "Pagado"', () => {
+  // Al sacar las 40 filas de detalle (pedido del dueño, 14/08) el riesgo real era perder con ellas el
+  // neteo vivo: la propiedad de que cuando entra la factura a Compras, lo que falta pagar BAJA SOLO.
+  // No se perdió — se condensó en una celda por obra. Si alguien la reemplaza por el monto tipeado,
+  // esto se pone rojo y la pestaña vuelve a ser una foto congelada del 07/08.
+  const c = g.filasCosto[0] // 4.1 = San Francisco PISOS INDUSTRIALES
+  const pagado = cel(g, `D${c}`)
+  const real = (prov) => `SUMIFS('Compras'!$M$4:$M;'Compras'!$E$4:$E;"${prov}";'Compras'!$J$4:$J;"San Francisco"`
+    + `;'Compras'!$C$4:$C;">="&${serialISO('2026-08-05')})`
+  assert.equal(pagado, `=MIN(377740;${real('ACA')})+MIN(977760;${real('VILLA DEL PINO')})`)
+  // Y lo que falta pagar sale de las dos celdas de SU fila, no de un número tipeado aparte.
+  assert.equal(cel(g, `E${c}`), `=C${c}-D${c}`)
 })
 
 test('las columnas salen de las refs INYECTADAS: ninguna letra queda pegada en la fórmula', () => {
   // El escritor resuelve las columnas contra los encabezados vivos. Si una letra quedara fija, la
   // fórmula sumaría otra columna el día que el archivo se reordene, y sin dar error.
   const refs = {
-    cob: { hoja: 'Cobranzas', cliente: 'Z', concepto: 'Y', neto: 'V', total: 'X', retenciones: 'AB', estado: 'W', oc: 'S', fechaCobro: 'T', fechaVenta: 'N', forma: 'M', categoria: 'R', moneda: 'AC', desde: 9 },
+    cob: { hoja: 'Cobranzas', cliente: 'Z', concepto: 'Y', neto: 'V', total: 'X', retenciones: 'AB', estado: 'W', oc: 'S', fechaCobro: 'T', fechaVenta: 'N', fechaEmision: 'L', forma: 'M', categoria: 'R', moneda: 'AC', desde: 9 },
     cmp: { hoja: 'Compras', fecha: 'V', proveedor: 'U', cliente: 'T', neto: 'R', iva: 'Q', total: 'S', familia: 'P', desde: 7 },
     mat: REFS_OBRAS.mat,
   }
   const otra = grillaObras({ obras: OBRAS_FUTURAS, refs })
   const b = otra.bloques.find((x) => x.clave === 'sf-pisos-industriales')
-  const pend = cel(otra, `G${b.fDetalle[0]}`)
-  assert.match(pend, /'Compras'!\$R\$7:\$R/, 'el NETO de Compras ("Importe"), no el total con IVA')
-  assert.match(pend, /'Compras'!\$T\$7:\$T;"San Francisco"/, 'el cliente de Compras')
+  const pagado = cel(otra, `D${otra.filasCosto[0]}`)
+  assert.match(pagado, /'Compras'!\$R\$7:\$R/, 'el NETO de Compras ("Importe"), no el total con IVA')
+  assert.match(pagado, /'Compras'!\$T\$7:\$T;"San Francisco"/, 'el cliente de Compras')
+  assert.match(pagado, /'Compras'!\$V\$7:\$V/, 'la fecha de factura de Compras')
   assert.match(cel(otra, `C${b.fProt}`), /'Cobranzas'!\$V\$9:\$V/, 'la venta sale del NETO de Cobranzas')
   assert.match(cel(otra, `G${otra.fClientes[0]}`), /'Compras'!\$R\$7:\$R/, 'el costo, del neto de Compras')
   assert.match(cel(otra, `D${b.fProt}`), /'Cobranzas'!\$X\$9:\$X/, 'el cobrado sale del TOTAL de Cobranzas')
@@ -314,6 +318,10 @@ test('las columnas salen de las refs INYECTADAS: ninguna letra queda pegada en l
   // quedara pegada en la AA, el día que Cobranzas sume una columna la fórmula miraría otra cosa y los
   // dólares volverían a sumarse como pesos — sin dar error, que es como pasó la primera vez.
   assert.match(cel(otra, `C${b.fProt}`), /'Cobranzas'!\$AC\$9:\$AC;"USD"/, 'la moneda sale de las refs inyectadas')
+  // LA FECHA DE EMISIÓN ES EL RELOJ DE LO VENCIDO y entró el 14/08: si quedara pegada en la C, el
+  // día que Cobranzas mueva una columna la alarma mediría otra cosa — que es el defecto que se acaba
+  // de arreglar, con otro origen.
+  assert.match(cel(otra, `F${b.fProt}`), /'Cobranzas'!\$L\$9:\$L;"<"&\(TODAY\(\)-30\)/, 'la emisión sale de las refs')
   for (const [ref, f] of formulas(otra)) {
     assert.ok(!/'Compras'!\$[EJCO]\$4/.test(f), `${ref}: quedó una columna de Compras pegada`)
     assert.ok(!/'Cobranzas'!\$[GIJLMNOQ]\$5/.test(f), `${ref}: quedó una columna de Cobranzas pegada`)
@@ -384,7 +392,7 @@ test('ninguna fórmula lleva una variable rota interpolada: undefined, null, NaN
 test('las fuentes se citan con rango ABIERTO desde su primera fila de datos', () => {
   // Cerrarlo en la última fila conocida deja de ver lo nuevo — sin error. Es el único lugar donde el
   // rango abierto se acepta: el número que decide sale de la fuente, no de una ventana.
-  const real = cel(g, `G${bloque('sf-pisos-industriales').fDetalle[0]}`)
+  const real = cel(g, `D${g.filasCosto[0]}`)
   assert.match(real, /\$M\$4:\$M/, 'arranca en la fila de datos y no termina')
   assert.ok(!real.includes(':$M$'), 'y no se cierra en una fila fija')
 })
@@ -393,35 +401,43 @@ test('las fuentes se citan con rango ABIERTO desde su primera fila de datos', ()
 // LO QUE NO ES CAJA
 // ─────────────────────────────────────────────────────────────────────────────
 
-test('la máquina propia queda FUERA del rango que suma el bloque, y no declara real ni pendiente', () => {
-  // Regla del dueño: el equipo propio no es plata que sale. Si su fila entrara al rango de detalle,
-  // el pendiente de la obra subiría por un desembolso que no existe.
-  const conMaquina = g.bloques.filter((b) => b.fNoCaja)
-  assert.equal(conMaquina.length, 4, 'las cuatro obras con máquina propia declarada')
-  for (const b of conMaquina) {
-    assert.ok(b.fNoCaja > b.fDetalle[1], `${b.clave}: la máquina propia cae dentro del rango sumado (${b.fDetalle})`)
-    for (const c of ['D', 'E', 'F', 'G']) {
-      assert.ok(vacia(cel(g, `${c}${b.fNoCaja}`)), `${b.clave}: la máquina propia no puede declarar ${c}`)
-    }
+test('la máquina propia NO entra al costo proyectado: es equipo propio, no plata que sale', () => {
+  // Regla del dueño. Antes se veía porque su fila quedaba fuera del rango sumado; ahora el cuadro no
+  // tiene filas, así que la prueba es sobre el número: los $13.100.982 de las cuatro obras con
+  // máquina declarada no pueden estar adentro de ninguna celda de `Costo proyectado`.
+  const proyectados = g.filasCosto.map((f) => cel(g, `C${f}`))
+  assert.deepEqual(proyectados, OBRAS_FUTURAS.map((o) => totalEgresos(o)))
+  for (const [i, o] of OBRAS_FUTURAS.entries()) {
+    const conMaquina = totalEgresos(o) + (o.noCaja?.maquinaPropia ?? 0)
+    if (!o.noCaja?.maquinaPropia) continue
+    assert.notEqual(proyectados[i], conMaquina, `${o.clave}: la máquina propia entró al costo`)
   }
 })
 
-test('la mano de obra no se mide contra Compras y su pendiente es el monto entero', () => {
-  // La MO se paga por Jornales. Buscarla en Compras la dejaría siempre en $0 real; y contarla como
-  // gasto de Compras sería el doble conteo que el dueño prohibió expresamente.
-  for (const b of g.bloques) {
-    assert.ok(vacia(cel(g, `E${b.fMO}`)), `${b.clave}: la MO no tiene real en Compras`)
-    assert.equal(cel(g, `G${b.fMO}`), `=C${b.fMO}`, `${b.clave}: la MO pendiente va entera`)
-    assert.ok(b.fMO === b.fDetalle[1], `${b.clave}: la MO es la última fila del detalle`)
+test('la mano de obra no se mide contra Compras: buscarla ahí la dejaría siempre en cero', () => {
+  // La MO se paga por Jornales. Está DENTRO del costo proyectado (es plata que sale) pero FUERA de
+  // lo pagado que mide esta pestaña, y por eso queda entera del lado de lo que falta. Si alguien la
+  // metiera en el neteo contra Compras, el "pagado" no cambiaría y el "falta" bajaría por nada.
+  for (const [i, o] of OBRAS_FUTURAS.entries()) {
+    const pagado = String(cel(g, `D${g.filasCosto[i]}`))
+    assert.ok(!/Jornales|Mano de obra/i.test(pagado), `${o.clave}: la MO no se busca en Compras`)
+    const sumandos = pagado.startsWith('=0') ? 0 : pagado.split('+MIN(').length
+    const conProveedor = (o.egresos ?? []).filter((e) => e.proveedor).length
+    assert.equal(sumandos, conProveedor, `${o.clave}: un sumando por egreso CON proveedor, ni uno más`)
   }
 })
 
-test('un egreso sin proveedor no inventa un real: lo dice y deja el pendiente completo', () => {
-  const b = bloque('sf-mamposteria')
-  const f = b.fDetalle[0]
-  assert.ok(vacia(cel(g, `E${f}`)), 'sin proveedor no hay contra qué medir')
-  assert.equal(cel(g, `G${f}`), `=MAX(0;C${f})`)
-  assert.match(String(cel(g, `A${f}`)), /sin proveedor/, 'el rótulo de la fila lo dice: no hay contra qué medir')
+test('un egreso sin proveedor no inventa un real: no suma a lo pagado y queda del lado del falta', () => {
+  // MAMPOSTERÍA tiene "Materiales sin itemizar" sin proveedor declarado. No hay contra qué medirlo en
+  // Compras, así que no puede aparecer en `Pagado` — inventarle un real bajaría lo que falta pagar.
+  const i = OBRAS_FUTURAS.findIndex((o) => o.clave === 'sf-mamposteria')
+  const o = OBRAS_FUTURAS[i]
+  const sinProv = (o.egresos ?? []).filter((e) => !e.proveedor)
+  assert.ok(sinProv.length >= 1, 'la obra de prueba tiene que tener un egreso sin proveedor')
+  const pagado = String(cel(g, `D${g.filasCosto[i]}`))
+  for (const e of sinProv) assert.ok(!pagado.includes(String(e.monto)), `${e.concepto}: no puede sumar a lo pagado`)
+  // Pero SÍ está en el costo proyectado: es plata que va a salir, sólo que todavía no se puede medir.
+  assert.equal(cel(g, `C${g.filasCosto[i]}`), totalEgresos(o))
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -435,7 +451,6 @@ test('NO se publica margen por obra: no es calculable y publicarlo optimista es 
   // está declarada incompleta. Si alguien repone la columna sin resolver el origen, esto se pone rojo.
   for (const b of g.bloques) {
     assert.ok(!/Margen/i.test(String(cel(g, `A${b.fProt}`))), `${b.clave}: no puede publicar un margen`)
-    assert.equal(b.fDetalle[1], b.fMO, `${b.clave}: el costo del detalle llega hasta la MO`)
   }
   const rotulos = g.filas.flatMap((f) => f.filter((v) => typeof v === 'string' && !v.startsWith('=')))
   assert.ok(!rotulos.some((r) => /^Margen/i.test(r.trim())), 'ni el encabezado lo nombra')
@@ -478,7 +493,9 @@ test('NINGUNA fila de residuo en la Sección 2: el dueño sacó "Otros trabajos"
   assert.ok(!rotulos.some((r) => /^Otros trabajos|fuera de las/i.test(r)), 'no puede quedar la fila de sobrante')
   // Y el total de la Sección 2 sigue siendo la suma de las protagonistas, que es el número que el
   // control compara: si dejara de serlo, el control estaría midiendo otra cosa.
-  assert.equal(cel(g, `C${g.totales[1]}`), `=${g.bloques.map((b) => `C${b.fProt}`).join('+')}`)
+  assert.equal(cel(g, `C${g.fTotObras}`), `=${g.bloques.map((b) => `C${b.fProt}`).join('+')}`)
+  assert.ok(!rotulos.some((r) => /^Presupuesto/i.test(r.trim())),
+    'ni un presupuesto por obra: la tabla `presupuestos` del OS sólo tiene dos filas, de obras pausadas')
 })
 
 test('el sobrante NEGATIVO delata el doble conteo, y el positivo no es un problema', () => {
@@ -502,7 +519,7 @@ test('el % COBRADO divide magnitudes del MISMO criterio: con la venta daría má
   // imposible se lee como un error de la pestaña. El denominador es la cartera: cobrado + resta.
   // SÓLO LA SECCIÓN 1. La B de la Sección 2 dejó de medir cartera y mide avance de CONTRATO (pedido
   // del dueño: *"el % como avance de contrato, no de cartera"*), y tiene su propio test.
-  for (const f of [...rangoFilas(...g.fClientes), g.totales[0]]) {
+  for (const f of [...rangoFilas(...g.fClientes), g.fTotClientes]) {
     const v = cel(g, `B${f}`)
     assert.equal(v, `=IF(D${f}+E${f}=0;0;D${f}/(D${f}+E${f}))`, `B${f}`)
     assert.ok(!v.includes(`C${f}`), `B${f}: la VENTA no puede entrar al porcentaje — es otro criterio`)
@@ -510,8 +527,8 @@ test('el % COBRADO divide magnitudes del MISMO criterio: con la venta daría má
     // declarada sin cobranzas, que es un caso legítimo y no un defecto.
     assert.ok(!v.includes('IFERROR'), `B${f}: la fila sin cartera devuelve 0, no vacío`)
   }
-  // Y ninguna fila de detalle lo lleva: el avance es de la obra, no de un egreso proyectado.
-  for (const f of g.detalles) assert.ok(vacia(cel(g, `B${f}`)), `B${f}: el detalle no tiene % cobrado`)
+  // Y el cuadro de costo tiene su propio porcentaje, con otro significado declarado en su encabezado.
+  for (const f of g.filasCosto) assert.equal(cel(g, `B${f}`), `=IF(C${f}=0;0;D${f}/C${f})`, `B${f}: % pagado`)
 })
 
 test('el semáforo ✓/⚠ ya NO está: daba lo mismo en las 7 obras y la columna F dice cuánto', () => {
@@ -545,10 +562,35 @@ test('lo que RESTA COBRAR sale del estado, no de una columna de saldo', () => {
   }
 })
 
-test('el total de la sección 2 suma las protagonistas, no un rango que se lleva el detalle puesto', () => {
-  const esperado = `=${g.bloques.map((b) => b.fProt).join('+')}`
-  for (const c of ['C', 'D', 'E', 'F', 'G']) {
-    assert.equal(cel(g, `${c}${g.totales[1]}`), esperado.replace(/(\d+)/g, `${c}$1`))
+test('los cierres suman las filas UNA POR UNA, no un rango que se lleve puesto lo que venga', () => {
+  const filas = (ff) => `=${ff.join('+')}`
+  for (const c of ['C', 'D', 'E', 'F']) {
+    assert.equal(cel(g, `${c}${g.fTotObras}`), filas(g.bloques.map((b) => `${c}${b.fProt}`)), `${c}${g.fTotObras}`)
+  }
+  // El contrato cierra sólo sobre las obras que LO DECLARAN: las otras publican el guion, y una suma
+  // que incluye texto depende de que Sheets lo ignore — una conducta que este worktree no puede probar.
+  const conContrato = g.bloques.filter((b) => b.contrato).map((b) => b.fProt)
+  for (const c of ['G', 'H']) {
+    const v = cel(g, `${c}${g.fTotObras}`)
+    assert.equal(v, conContrato.length ? filas(conContrato.map((f) => `${c}${f}`)) : SIN_CONTRATO, `${c}${g.fTotObras}`)
+  }
+  for (const c of ['C', 'D', 'E']) {
+    assert.equal(cel(g, `${c}${g.fTotCosto}`), filas(g.filasCosto.map((f) => `${c}${f}`)), `${c}${g.fTotCosto}`)
+  }
+})
+
+test('LA NUMERACIÓN DE BLOQUES ES CONSECUTIVA Y SIN HUECOS, y el rótulo de cada obra la sigue', () => {
+  // Un cuadro que va "1, 3, 4" hace creer que falta un bloque. Al entrar el titular de cartera como
+  // bloque 1 las obras pasaron de 2.x a 3.x, y ese número aparece en DOS lugares —el título del
+  // bloque y el rótulo de cada fila—: si se mueve uno solo, la pestaña queda medio renumerada.
+  const titulos = g.filas.map((f) => String(f[0] ?? '')).filter((t) => /^\d+ · /.test(t))
+    .concat(g.rotulos.filter((r) => /^\d+ · /.test(r.texto)).map((r) => r.texto))
+  const numeros = [...new Set(titulos.map((t) => Number(t.split(' · ')[0])))].sort((a, b) => a - b)
+  assert.deepEqual(numeros, [1, 2, SECCION_OBRAS, SECCION_COSTO], 'los cuatro bloques, sin huecos')
+  // Y cada obra lleva el número de SU cuadro, en los dos: 3.n arriba y 4.n abajo, en el mismo orden.
+  for (const [i, b] of g.bloques.entries()) {
+    assert.match(g.rotulos.find((r) => r.fila === b.fProt).texto, new RegExp(`^${SECCION_OBRAS}\\.${i + 1} · `))
+    assert.match(g.rotulos.find((r) => r.fila === g.filasCosto[i]).texto, new RegExp(`^${SECCION_COSTO}\\.${i + 1} · `))
   }
 })
 
@@ -631,10 +673,10 @@ test('el costo se mide NETO contra NETO: el IVA de compras es crédito fiscal, n
   // Cerrar esto era la limitación declarada ayer: con la venta al neto y el costo con IVA, el margen
   // quedaba castigado ~21% en todo lo comprado en blanco. "Importe" (M) es el neto de Compras.
   const neto = new RegExp(`'Compras'!\\$${REFS_OBRAS.cmp.neto}\\$`)
-  const conNeteo = g.filas.flatMap((f, i) => (typeof f[6] === 'string' && f[6].startsWith('=') && f[6].includes('Compras') ? [[i + 1, f[6]]] : []))
-  assert.ok(conNeteo.length >= 15, `tiene que haber egresos con neteo vivo, hay ${conNeteo.length}`)
-  for (const [n, f] of conNeteo) {
-    assert.match(f, neto, `G${n}: el costo real se mide en el neto de Compras`)
+  const conNeteo = g.filas.flatMap((f, i) => f.flatMap((v, c) => (typeof v === 'string' && v.includes("'Compras'!") ? [[`${COLS[c]}${i + 1}`, v]] : [])))
+  assert.ok(conNeteo.length >= 8, `tiene que haber celdas que midan contra Compras, hay ${conNeteo.length}`)
+  for (const [ref, f] of conNeteo) {
+    assert.match(f, neto, `${ref}: el costo real se mide en el neto de Compras`)
   }
 })
 
@@ -677,16 +719,21 @@ test('una obra sin fechas se VE, se marca y no proyecta nada: sin inicio no hay 
   const b = otra.bloques[0]
   assert.equal(b.proyectable, false)
   assert.match(String(cel(otra, `A${b.fProt}`)), /sin fechas/, 'se marca en el rótulo')
-  const f = b.fDetalle[0]
-  assert.ok(vacia(cel(otra, `E${f}`)), 'el detalle no publica resta a cobrar')
-  assert.equal(cel(otra, `G${f}`), `=MAX(0;C${f})`, 'sin inicio no hay ventana para netear contra Compras')
-  assert.ok(!cel(otra, `G${f}`).includes('Compras'), 'y no se inventa una ventana')
+  // Sin inicio no hay ventana para netear contra Compras: lo pagado no se puede medir y vale 0. No
+  // se inventa una ventana ni se toma el gasto entero del cliente, que sería de las otras obras.
+  const c = otra.filasCosto[0]
+  assert.equal(cel(otra, `D${c}`), '=0', 'sin fechas no se puede medir lo pagado')
+  assert.ok(!String(cel(otra, `D${c}`)).includes('Compras'), 'y no se inventa una ventana')
+  assert.equal(cel(otra, `C${c}`), totalEgresos(sinFecha), 'pero el costo proyectado se sigue viendo')
 })
 
 test('sin obras no se arma media pestaña: la sección 2 no publica un total que no existe', () => {
   const vacio = grillaObras({ obras: [] })
   assert.equal(vacio.bloques.length, 0)
-  assert.equal(vacio.totales.length, 1, 'sólo queda el total de la sección 1')
+  assert.equal(vacio.filasCosto.length, 0)
+  assert.equal(vacio.fTotObras, null)
+  assert.equal(vacio.fTotCosto, null)
+  assert.deepEqual(vacio.totales, [vacio.fCartera, vacio.fTotClientes], 'quedan la cartera y el cierre de clientes')
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -696,13 +743,10 @@ test('sin obras no se arma media pestaña: la sección 2 no publica un total que
 test('los ÚNICOS números tipeados son los proyectados del dueño, y son los suyos sin retocar', () => {
   const numeros = g.filas.flatMap((f, i) => f.map((v, c) => [`${COLS[c]}${i + 1}`, v]).filter(([, v]) => typeof v === 'number'))
   const montos = numeros.filter(([ref]) => ref.startsWith('C')).map(([, v]) => v)
-  const esperados = OBRAS_FUTURAS.flatMap((o) => [
-    ...(o.egresos ?? []).map((e) => e.monto), o.moCargasPesos,
-    ...(o.noCaja?.maquinaPropia ? [o.noCaja.maquinaPropia] : []),
-  ])
-  assert.deepEqual(montos, esperados, 'ni escalados ni redondeados: los del PDF del dueño')
-  // Lo demás que sea número tiene que ser una fecha (columna H), nunca plata suelta.
-  for (const [ref] of numeros) assert.ok(/^[CH]/.test(ref), `${ref}: un número tipeado fuera de C y H`)
+  assert.deepEqual(montos, OBRAS_FUTURAS.map((o) => totalEgresos(o)), 'el costo proyectado, sin retocar')
+  // Lo único que puede ser un número tipeado fuera de la C es el CONTRATO de la G, y ése no lo elige
+  // el código: `obras-pestana.mjs` lo vuelve a leer de la ORDEN DE COMPRA de Cobranzas en cada corrida.
+  for (const [ref] of numeros) assert.ok(/^[CG]/.test(ref), `${ref}: un número tipeado fuera de C y G`)
 })
 
 test('el total proyectado de caja es egresos + MO, y la máquina propia NO está adentro', () => {
@@ -715,7 +759,9 @@ test('el total proyectado de caja es egresos + MO, y la máquina propia NO está
 test('serialISO da el serial que Sheets entiende, no un número parecido', () => {
   assert.equal(serialISO('1899-12-30'), 0, 'el origen del calendario de Sheets')
   assert.equal(serialISO('2026-08-05'), 46239)
-  assert.equal(cel(g, `H${bloque('sf-pisos-industriales').fDetalle[0]}`), serialISO('2026-08-10'), 'la fecha del egreso')
+  // El serial ya no se publica en ninguna celda —las fechas de egreso salieron con el detalle— pero
+  // sigue siendo el que acota TODA ventana de esta pestaña, así que el error se paga igual.
+  assert.ok(cel(g, `C${g.fTotClientes}`).includes(String(serialISO(`${ANO}-01-01`))), 'acota el año')
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -851,12 +897,16 @@ test('la alerta del rótulo NO se dispara por una obra cuyo fin todavía no lleg
 
 test('la grilla expone el texto VISIBLE de cada rótulo: sin eso la columna A se dimensiona con la fórmula', () => {
   const g2 = grillaObras({ obras: OBRAS_FUTURAS })
-  assert.equal(g2.rotulos.length, OBRAS_FUTURAS.length, 'un rótulo visible por obra')
+  // Uno por obra en CADA cuadro (el de contrato y el de costo) más el titular de cartera, que
+  // también es una fórmula (lleva la fecha viva) y también hay que medir por lo que MUESTRA.
+  assert.equal(g2.rotulos.length, OBRAS_FUTURAS.length * 2 + 1, 'un rótulo visible por cada celda-fórmula de la columna A')
+  // La fila 2 es el subtítulo y queda afuera a propósito: va con WRAP, así que su largo no ensancha
+  // nada y `anchoColumnaA` ya la saltea por número de fila.
+  const conFormulaEnA = g2.filas.flatMap((f, i) => (i + 1 !== 2 && typeof f[0] === 'string' && f[0].startsWith('=') ? [i + 1] : []))
+  assert.deepEqual(g2.rotulos.map((r) => r.fila).sort((a, b) => a - b), conFormulaEnA,
+    'TODA celda de la columna A que sea fórmula necesita su texto visible, o se mide la fórmula')
   for (const r of g2.rotulos) {
     assert.ok(!r.texto.startsWith('='), 'el texto visible no puede ser la fórmula')
-    // Y tiene que corresponder a la fila protagonista de una obra: si apuntara a otra fila, el
-    // ancho se calcularía sobre un rótulo que no está ahí.
-    assert.ok(g2.protagonistas.includes(r.fila), `la fila ${r.fila} no es la protagonista de ninguna obra`)
   }
   // El ancho medido sobre la FÓRMULA sería absurdo — es el defecto que este mecanismo evita.
   const anchoReal = anchoColumnaA(g2)
