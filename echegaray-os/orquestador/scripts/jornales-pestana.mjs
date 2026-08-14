@@ -109,11 +109,14 @@ import {
   formulaShareAdelanto, MIN_QUINCENAS_SHARE,
   formulaBajaNoRegistrada, LINEA_SABADOS, LINEA_HABERES_SIN_QUINCENA,
 } from '../lib/jornales-calendario.mjs'
-// CÓMO SE PAGA LA QUINCENA: el acuerdo 50/50 del dueño, persona por persona, y los tres avisos que
+// CÓMO SE PAGA LA QUINCENA: el acuerdo 50/50 del dueño, por grupo de empleados, y los tres avisos que
 // condicionan su lectura. Toda la aritmética vive en la lib y se prueba con números, no con strings.
 import {
-  filaPagoPersona, filasDePersonas, avisoBancoCalculado, avisoHorasIncompletas, avisoEfectivoNegativo,
+  filasDePersonas, avisoBancoCalculado, avisoHorasIncompletas, avisoEfectivoNegativo,
 } from '../lib/jornales-reparto-pago.mjs'
+// Lo que se dibuja donde el reparto no se puede afirmar. Mismo glifo que el resto de la pestaña usa
+// para "no hay dato": un cero ahí se leería como "no sale nada por banco", que es otra cosa.
+const SIN_CANAL = '—'
 // EL PISO DEL CONVENIO: contra qué categoría se mide cada persona y si la proyección lo cubre.
 import { formulaControlPiso } from '../lib/jornales-piso-uocra.mjs'
 import { VERIFICADA_EL, VIGENCIA_HASTA, contrastarEscala, tramoDe } from '../lib/uocra-paritaria.mjs'
@@ -198,7 +201,15 @@ const REGISTRO_COLS = ['Quincena', 'Hasta', 'Se paga el', 'Días hábiles', 'Per
  *     TOTAL − Adelanto entregado = Neto a pagar
  *     Por banco  + En efectivo   = Neto a pagar
  */
-export const COLS_PAGO = ['Persona', 'Horas', '$/hora', 'TOTAL', 'Adelanto entregado', 'Neto a pagar', 'Por banco', 'En efectivo']
+// POR GRUPO DE EMPLEADOS, NO POR PERSONA. El 14/08 se publicó una fila por obrero y el dueño lo
+// rechazó en el acto: "no quiero eso q hiciste de traer los obreros en jornales por quincena, te pedi
+// exactamente lo q necesitaba". Lo que necesita son DOS NÚMEROS —cuánto sale por banco y cuánto en
+// billetes— por nómina. La lista de quince personas no cambia ninguna decisión que esos dos totales
+// no resuelvan, y arriba de todo tapaba el cuadro que sí decide.
+// OCHO COLUMNAS, como el resto de la pestaña: dos grillas de ancho distinto en el mismo tab es el
+// defecto de patrón que el auditor ya rechazó una vez. «Personas» es la que completa el ancho y no
+// es relleno — dice sobre cuánta gente se reparte cada total.
+export const COLS_PAGO = ['Nómina', 'Personas', 'Cuándo', 'TOTAL', 'Adelanto entregado', 'Neto a pagar', 'Por banco', 'En efectivo']
 /**
  * EL SEGUNDO CUADRO: EL AÑO. Un solo escenario por columna y nada más.
  *
@@ -470,15 +481,18 @@ export function grilla({
   // distingue el trabajo hecho y no pagado (la columna «Pagado el» del registro, que carga el dueño).
   // Oficina y Dirección no la tienen: lo que sus bloques llaman «Pagado» es lo que la planilla y
   // Compras registran como salido. Fabricarles un comprometido sería un número sin fuente.
-  push(['La quincena que se paga — persona por persona'])
+  push(['Cuánto hay que pagar — por grupo de empleados'])
   // EL PERÍODO Y LA FECHA DE CAJA, EN UN RENGLÓN Y POR FÓRMULA: "Obreros · quincena 3/8→15/8 · se paga
   // el 17/8". Sale del registro de abajo (que sale del espejo), nunca de una fecha estampada en la
   // corrida: la pestaña se lee días después de escribirse y una fecha de JavaScript envejece muda.
   const fSubPago = push([VACIO])
   const fPagoCols = push(COLS_PAGO)
-  const fPago0 = filas.length + 1
-  personasPago.forEach((filaEspejo, i) => push(filaPagoPersona({ hoja: ESPEJO, filaEspejo, fila: fPago0 + i })))
-  const fPagoFin = fPago0 + personasPago.length - 1
+  // Las tres nóminas, en el orden en que pesan. La columna «Cuándo» resuelve que no cobren el mismo
+  // día: obra cierra por quincena y los otros dos por mes, y esa diferencia se lee en su celda en vez
+  // de partir el cuadro en dos.
+  const fPago = { obra: push(['Obreros · UOCRA']), oficina: push(['Oficina']), direccion: push(['Dirección']) }
+  const fPago0 = fPago.obra
+  const fPagoFin = fPago.direccion
   // ═══ LOS DOS NÚMEROS QUE DECIDEN, EN LA FILA QUE REMATA EL CUADRO ═══
   //
   // «Por banco» es cuánto se transfiere y «En efectivo» cuánto hay que sacar en billetes. Son LO
@@ -490,10 +504,10 @@ export function grilla({
   // proyección usa) pero en ESTA fila se lee como "la empresa paga $X la hora", que no es una cifra
   // que alguien pueda operar. Las horas SÍ se suman: son las de la quincena y es contra ellas que se
   // mide si falta cargar días.
-  const fPagoTotal = personasPago.length
-    ? push([rotuloTotal('LA QUINCENA'), `=SUM(B${fPago0}:B${fPagoFin})`, VACIO,
-      ...['D', 'E', 'F', 'G', 'H'].map((c) => `=SUM(${c}${fPago0}:${c}${fPagoFin})`)])
-    : push([rotuloTotal('LA QUINCENA')])
+  // La columna «Cuándo» (C) NO se totaliza: es la única fecha del cuadro y sumar fechas no da nada.
+  const fPagoTotal = push([rotuloTotal('LO QUE HAY QUE PAGAR'),
+    `=SUM(B${fPago0}:B${fPagoFin})`, VACIO,
+    ...['D', 'E', 'F', 'G', 'H'].map((c) => `=SUM(${c}${fPago0}:${c}${fPagoFin})`)])
   // ── LAS TRES COSAS QUE CONDICIONAN LA LECTURA DEL CUADRO, CADA UNA EN UNA LÍNEA Y POR FÓRMULA ──
   //
   // Ninguna es una alerta de incumplimiento: eso es exactamente lo que el dueño rechazó ("no se
@@ -1431,6 +1445,51 @@ export function grilla({
   const fReg = fLast
   filas[fSubPago - 1][0] = `="Obreros · quincena "&TEXT($A$${fReg};"d/m")&"→"&TEXT($B$${fReg};"d/m")`
     + `&" · se paga el "&TEXT($C$${fReg};"d/m")`
+  // ═══ LAS TRES NÓMINAS DEL CUADRO QUE DECIDE ═══
+  //
+  // Cada una cita a SU bloque de abajo; ningún importe se copia. Las dos identidades que hacen
+  // auditable la fila sin hacer cuentas: TOTAL − Adelanto = Neto, y Por banco + En efectivo = Neto.
+  const cTot = colDe('TOTAL'); const cAdel = colDe('Adelanto'); const cBco = colDe('Banco')
+  const filaPago = (f, { personas, cuando, total, adelanto, banco }) => {
+    filas[f - 1][1] = personas
+    filas[f - 1][2] = cuando
+    filas[f - 1][3] = total
+    filas[f - 1][4] = adelanto
+    filas[f - 1][5] = `=IF(N(D${f})=0;"";D${f}-N(E${f}))`
+    filas[f - 1][6] = banco
+    // El efectivo es el RESTO del neto, nunca otro 50% calculado aparte: así la identidad cierra
+    // aunque el banco venga de un dato cargado y no del acuerdo.
+    filas[f - 1][7] = `=IF(OR(N(D${f})=0;NOT(ISNUMBER(G${f})));"";F${f}-G${f})`
+  }
+  // OBRA: la quincena que se está pagando, leída del registro. Si la columna «Banco» del espejo ya
+  // trae el reparto cargado, ése manda; mientras esté en cero, el 50/50 del acuerdo lo calcula.
+  filaPago(fPago.obra, {
+    personas: `=$${colDe('Personas')}$${fReg}`,
+    cuando: `=$C$${fReg}`,
+    total: `=$${cTot}$${fReg}`,
+    adelanto: `=$${cAdel}$${fReg}`,
+    // `/2` y NUNCA `*0,5`: un literal decimal escrito por API viaja en el locale es_AR del archivo y
+    // ahí la coma es el separador de argumentos — el 0,5 se parte en dos y la celda queda en #ERROR.
+    banco: `=IF(N($${cBco}$${fReg})>0;$${cBco}$${fReg};D${fPago.obra}/2)`,
+  })
+  // OFICINA y DIRECCIÓN: la próxima fecha de caja con algo PROYECTADO todavía por pagar. Se mira la
+  // columna «Proyectado» y no la «Pagado» — un mes ya pagado no es un pago que viene.
+  const proximoMensual = (f, r0, r1, banco) => {
+    const min = `MINIFS($E$${r0}:$E$${r1};$E$${r0}:$E$${r1};">="&TODAY();$H$${r0}:$H$${r1};">0")`
+    filaPago(f, {
+      // La gente del mes que se está por pagar, del propio bloque: no un plantel estampado acá.
+      personas: `=IF(N(C${f})=0;"";IFERROR(INDEX($B$${r0}:$B$${r1};MATCH(C${f};$E$${r0}:$E$${r1};0));""))`,
+      cuando: `=IF(${min}=0;"";${min})`,
+      total: `=IF(N(C${f})=0;"";SUMIFS($H$${r0}:$H$${r1};$E$${r0}:$E$${r1};C${f}))`,
+      adelanto: VACIO,
+      banco,
+    })
+  }
+  proximoMensual(fPago.oficina, o0, oFin, `=IF(N(D${fPago.oficina})=0;"";D${fPago.oficina}/2)`)
+  // DIRECCIÓN NO SE REPARTE, Y ESO NO ES UN OLVIDO. Los retiros de los socios no tienen canal
+  // registrado en ninguna fuente: ni la planilla ni Compras dicen si salen por banco o en billetes.
+  // Aplicarles el 50/50 sería fabricar el dato, así que van en "—" y el total de la fila queda entero.
+  proximoMensual(fPago.direccion, d0, dFin, SIN_CANAL)
   // EL 50/50 ES UN CÁLCULO MIENTRAS LA COLUMNA BANCO ESTÉ EN CERO, Y SE DICE. No es una alerta de
   // incumplimiento —eso es lo que el dueño rechazó— sino de dónde sale el número que está leyendo.
   filas[fAvisoBanco - 1][0] = personasPago.length
@@ -1445,7 +1504,7 @@ export function grilla({
   // Y EL EFECTIVO NEGATIVO. Tello Juan adelantó $240.000 contra un 50% de $236.500: su sobre da −$3.500
   // y tiene que verse. El aviso cuenta las filas de la columna «En efectivo» que quedaron abajo de cero.
   filas[fAvisoNeg - 1][0] = personasPago.length
-    ? avisoEfectivoNegativo({ col: 'H', f0: fPago0, f1: fPagoFin })
+    ? avisoEfectivoNegativo({ hoja: ESPEJO, r0: personasPago[0], r1: personasPago[personasPago.length - 1] })
     : VACIO
 
   // ══ EL CUADRO DEL AÑO: DOS COLUMNAS, UNA POR VENTANA DE TIEMPO ══
@@ -2353,9 +2412,12 @@ export function requestsDeFormato(sheetId, filas, g) {
   // Lo que sí necesita trato propio es la columna «Horas»: es una CANTIDAD en un cuadro de plata, y el
   // barrido general de moneda la dibuja "$1.223" — el mismo defecto que este bloque ya arregló tres
   // veces en otras columnas, ahora del otro lado.
-  if (g.hero?.personas) {
-    fmt(g.hero.f0 - 1, g.hero.total, g.hero.cols.indexOf('Horas'), g.hero.cols.indexOf('Horas') + 1, HORAS)
-  }
+  // «Personas» es una CANTIDAD y «Cuándo» una FECHA, las dos adentro de un cuadro de plata. Sin este
+  // trato el barrido general las dibuja "$16" y "$46.251".
+  const cPersonas = g.hero?.cols?.indexOf('Personas') ?? -1
+  if (cPersonas >= 0) fmt(g.hero.f0 - 1, g.hero.total, cPersonas, cPersonas + 1, ENTERO)
+  const cCuando = g.hero?.cols?.indexOf('Cuándo') ?? -1
+  if (cCuando >= 0) fmt(g.hero.f0 - 1, g.hero.fFin, cCuando, cCuando + 1, { type: 'DATE', pattern: 'dd/mm/yyyy' })
   // ═══ LA NOTACIÓN DEL ESCENARIO: LO PAGADO SE VE DISTINTO DE LO PROYECTADO ═══
   //
   // El dueño, segundo rechazo (13/08): *"no logro entender … si ya esta el monto proyectado o es lo

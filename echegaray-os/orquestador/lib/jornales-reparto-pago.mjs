@@ -176,8 +176,21 @@ export function avisoHorasIncompletas({ fila, previstas, reales, estado }) {
     + `"▲ Horas "&TEXT($${reales}$${fila};"#,##0")&" de "&TEXT($${previstas}$${fila};"#,##0")&" — el total sube"))`
 }
 
-/** NÚCLEO PURO: el aviso de que alguien adelantó más que su mitad y quedó en negativo. */
-export function avisoEfectivoNegativo({ col = 'H', f0, f1 }) {
-  const n = `SUMPRODUCT(--(N($${col}$${f0}:$${col}$${f1})<0))`
+/**
+ * NÚCLEO PURO: el aviso de que alguien adelantó más que su mitad y quedó en negativo.
+ *
+ * SE MIDE SOBRE EL ESPEJO, NO SOBRE LA PESTAÑA. El cuadro de pago publica tres filas —una por
+ * nómina— y ahí el negativo de una persona se compensa con el positivo de otra y desaparece. La
+ * pregunta es por persona aunque el cuadro no las liste, así que la cuenta va contra la planilla.
+ */
+export function avisoEfectivoNegativo({ hoja = '_J_OBREROS', r0, r1 } = {}) {
+  if (!r0 || !r1) return ''
+  const rango = (c) => `N('${hoja}'!$${c}$${r0}:$${c}$${r1})`
+  const total = rango(COL_ESPEJO.total)
+  // Con banco cargado el reparto es el dato, no el acuerdo: ahí el negativo no puede existir por esta
+  // vía. Por eso la condición sólo cuenta a quien todavía se reparte por el 50%.
+  // `/2`, no `*0,5`: el literal decimal viaja en locale es_AR y ahí la coma separa argumentos.
+  const n = `SUMPRODUCT((${rango(COL_ESPEJO.adelanto)}>${total}/2)`
+    + `*(${total}>0)*(${rango(COL_ESPEJO.banco)}=0))`
   return `=IF(${n}=0;"";"▲ "&${n}&" con adelanto mayor a su 50% — efectivo negativo")`
 }

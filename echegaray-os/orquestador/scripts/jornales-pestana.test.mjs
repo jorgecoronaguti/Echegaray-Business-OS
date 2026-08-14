@@ -347,12 +347,16 @@ test('PAGO 1 · el cuadro que abre la pestaña contesta CUÁNTO POR BANCO Y CUÁ
   for (const rotulo of ['Por banco', 'En efectivo']) {
     const c = colPago(rotulo)
     assert.match(String(gm.filas[gm.hero.total - 1][c]), /^=SUM\(/, `el total de «${rotulo}» no suma la columna`)
-    for (const f of [gm.hero.f0, gm.hero.fFin]) {
-      assert.match(String(gm.filas[f - 1][c]), /^=/, `fila ${f}: «${rotulo}» quedó vacío`)
-    }
+    // La fila de OBRA es la que decide el pago de hoy y no puede quedar vacía por ningún camino.
+    assert.match(String(gm.filas[gm.hero.f0 - 1][c]), /^=/, `obra: «${rotulo}» quedó vacío`)
   }
-  // UNA FILA POR PERSONA, para armar la transferencia y los sobres.
-  assert.equal(gm.hero.fFin - gm.hero.f0 + 1, PERSONAS.length, 'el cuadro no tiene una fila por persona')
+  // UNA FILA POR GRUPO DE EMPLEADOS — CAMBIO DE CONTRATO DEL 14/08.
+  //
+  // Este test exigía una fila por PERSONA. El dueño rechazó esa versión en el acto: *"no quiero eso q
+  // hiciste de traer los obreros en jornales por quincena, te pedi exactamente lo q necesitaba"*. Lo
+  // que pidió son dos números por nómina —cuánto por banco y cuánto en billetes—, no el padrón. El
+  // cuadro se llama "por grupo de empleados" y son tres: obra, oficina y dirección.
+  assert.equal(gm.hero.fFin - gm.hero.f0 + 1, 3, 'el cuadro no tiene una fila por grupo de empleados')
   // Y ESTÁ ARRIBA DE TODO: antes de la primera sección numerada. Un cuadro que contesta la pregunta y
   // aparece en la mitad de la pestaña no la contesta "de un golpe de vista".
   const primeraSeccion = gm.filas.findIndex((f) => /^\d+ · /.test(String(f[0] ?? ''))) + 1
@@ -365,9 +369,12 @@ test('PAGO 2 · LAS DOS IDENTIDADES CIERRAN: total − adelanto = neto, y banco 
   // entre sí y ninguna celda daría error.
   const [cTot, cAdel, cNeto, cBanco, cEfec] = ['TOTAL', 'Adelanto entregado', 'Neto a pagar', 'Por banco', 'En efectivo'].map(colPago)
   for (let f = gm.hero.f0; f <= gm.hero.fFin; f++) {
-    assert.equal(String(gm.filas[f - 1][cNeto]), `=${L(cTot)}${f}-${L(cAdel)}${f}`,
+    // La forma exacta ya no se puede fijar: las tres filas van envueltas en un IF que deja la celda en
+    // blanco cuando no hay pago que venga (oficina y dirección lo tienen la mitad del mes). Lo que sí
+    // se fija es la ARITMÉTICA, que es lo que hace auditable el cuadro.
+    assert.match(String(gm.filas[f - 1][cNeto]), new RegExp(`${L(cTot)}${f}-N?\\(?${L(cAdel)}${f}`),
       `fila ${f}: «Neto a pagar» dejó de ser TOTAL − adelanto`)
-    assert.equal(String(gm.filas[f - 1][cEfec]), `=${L(cNeto)}${f}-${L(cBanco)}${f}`,
+    assert.match(String(gm.filas[f - 1][cEfec]), new RegExp(`${L(cNeto)}${f}-${L(cBanco)}${f}`),
       `fila ${f}: «En efectivo» dejó de cerrar contra el neto`)
   }
   // El total suma cada columna y no vuelve a las fuentes: si volviera, podría no cerrar contra sus
@@ -382,8 +389,12 @@ test('PAGO 3 · EL 50/50 SE CALCULA CUANDO BANCO ESTÁ EN CERO, Y EL DATO CARGAD
   // La regla de pago del dueño, repetida cuatro veces: *"el acuerdo es 50 y 50 todas las quincenas"*.
   // Mientras la columna X del espejo esté en $0 el reparto lo calcula la pestaña; en cuanto alguien
   // cargue la transferencia real, ese hecho manda. Las dos cosas en la misma celda y en ese orden.
+  // CITA AL REGISTRO, NO AL ESPEJO. Con el cuadro por grupo la fila de obra es UNA, y su banco es el
+  // de la quincena entera: la columna «Banco» del registro de abajo, que ya suma el espejo. Ir al
+  // espejo desde acá sería una segunda cuenta del mismo dato, que es como se llega a dos versiones.
   const banco = String(gm.filas[gm.hero.f0 - 1][colPago('Por banco')])
-  assert.match(banco, /^=IF\(N\('_J_OBREROS'!X\d+\)>0;'_J_OBREROS'!X\d+;D\d+\/2\)$/, `el reparto no es 50/50 con el dato cargado ganando: ${banco}`)
+  assert.match(banco, new RegExp(`^=IF\\(N\\(\\$${colDe('Banco')}\\$\\d+\\)>0;\\$${colDe('Banco')}\\$\\d+;[A-Z]\\d+/2\\)$`),
+    `el reparto no es 50/50 con el dato cargado ganando: ${banco}`)
   // `/2` y NUNCA `*0,5`: un literal decimal escrito por API viaja en el locale es_AR del archivo y se
   // convierte en un #ERROR que no hace falta correr para producir.
   assert.doesNotMatch(banco, /0[,.]5/, 'el 50% se escribió como literal decimal: en es_AR eso es un #ERROR')
@@ -409,8 +420,12 @@ test('PAGO 5 · UN EFECTIVO NEGATIVO SE VE: no se clava en cero en silencio', ()
   // empresa le adelantó de más. Un MAX(0;…) la haría desaparecer del cuadro Y del total de billetes.
   const efec = String(gm.filas[gm.hero.f0 - 1][colPago('En efectivo')])
   assert.doesNotMatch(efec, /MAX\(0/, 'el efectivo negativo se está clavando en cero')
+  // SE MIDE SOBRE EL ESPEJO, no sobre el cuadro. El cuadro publica tres filas —una por nómina— y ahí
+  // el negativo de una persona se compensa con el positivo de otra y desaparece. La pregunta sigue
+  // siendo por persona aunque el cuadro ya no las liste.
   const aviso = String(gm.filas[gm.hero.avisos[2] - 1][0])
-  assert.match(aviso, /<0/, 'nada cuenta las personas que quedaron con efectivo negativo')
+  assert.match(aviso, /SUMPRODUCT/, 'el aviso está tipeado: tiene que contarse solo')
+  assert.match(aviso, /'_J_OBREROS'/, 'el aviso no mira el espejo: sobre el cuadro por grupo el negativo se compensa y desaparece')
   assert.match(aviso, /efectivo negativo/, 'el aviso no nombra lo que pasó')
 })
 
@@ -451,10 +466,13 @@ test('PAGO 7 · las filas del cuadro son PERSONAS, no filas numeradas del espejo
   espejo[11] = ['3', '']              // fila numerada SIN nombre: no es una persona
   espejo[12] = ['4', '   ']           // ni ésta, que sólo tiene espacios
   assert.deepEqual(filasDePersonas(espejo, { inicio: 10, fin: 13 }), [10, 11])
-  // Sin personas el cuadro no inventa renglones: sale sin cuerpo y la corrida lo avisa.
+  // EL CUADRO YA NO LISTA PERSONAS (14/08), pero esto sigue haciendo falta: es de donde sale el rango
+  // del espejo que cuenta los efectivos negativos. Sin personas el cuadro conserva sus tres filas de
+  // nómina —son fijas— y lo que se apaga es el aviso, que no tendría sobre qué contar.
   const vacio = conMotor({ personasPago: [] })
   assert.equal(vacio.hero.personas, 0)
-  assert.equal(vacio.hero.total, vacio.hero.fCols + 1, 'con cero personas el total no quedó pegado al encabezado')
+  assert.equal(vacio.hero.fFin - vacio.hero.f0 + 1, 3, 'las tres filas de nómina no son fijas')
+  assert.equal(String(vacio.filas[vacio.hero.avisos[2] - 1][0]), VACIO, 'sin personas el aviso de negativos no se apagó')
 })
 
 test('EL AÑO · va SEPARADO del cuadro de pago y no repite ninguna de sus columnas', () => {
@@ -572,20 +590,26 @@ test('RESPUESTA 3 · LO GREMIAL NO ESTÁ EN EL MEDIO: entero, junto, y debajo de
   assert.ok(gm.plantel.fPrimera > gremial && gm.esc.f0 > gremial, 'los cuadros del motor no bajaron con sus títulos')
 })
 
-test('LA FECHA DE CAJA VIVE EN EL SUBTÍTULO DEL CUADRO, no en una columna al lado de un importe', () => {
-  // El cuadro anterior tenía una columna «Cuándo» por grupo. Con el cuadro de pago armado alrededor de
-  // UNA quincena, la fecha es una sola y se lee mejor en la línea que la nombra ("Obreros · quincena
-  // 3/8→15/8 · se paga el 17/8") que como un número más en una fila de plata.
+test('CADA NÓMINA DICE CUÁNDO COBRA, y esa columna se dibuja como fecha y no como plata', () => {
+  // ═══ CAMBIO DE CONTRATO (14/08) ═══
+  //
+  // Este test exigía lo contrario: la fecha en el subtítulo y NINGUNA columna «Cuándo». Valía cuando
+  // el cuadro era de UNA quincena. Con las tres nóminas de vuelta —obra cierra por quincena, oficina y
+  // dirección por mes— hay tres fechas distintas y un subtítulo no puede llevarlas: la columna es la
+  // única forma de que se lea "obreros el 17/8, los otros dos el 1/9" sin partir el cuadro en tres.
+  const cCuando = colPago('Cuándo')
+  for (let f = gm.hero.f0; f <= gm.hero.fFin; f++) {
+    assert.match(String(gm.filas[f - 1][cCuando]), /^=/, `fila ${f}: «Cuándo» quedó estampada en la corrida`)
+  }
+  // El subtítulo sigue nombrando el período de obra, que es el que se está pagando.
   const sub = String(gm.filas[gm.hero.sub - 1][0])
-  assert.match(sub, /^=/, 'el subtítulo del cuadro de pago quedó estampado en la corrida')
   assert.match(sub, new RegExp(`TEXT\\(\\$${colDe('Se paga el')}\\$\\d+;"d/m"\\)`), 'el subtítulo no lee la fecha de caja del registro')
   assert.doesNotMatch(sub.replace(/"d\/m"/g, ''), /\d{1,2}\/\d{1,2}/, 'hay una fecha estampada en el subtítulo del cuadro de pago')
-  // Y NINGUNA CELDA DEL CUADRO DE PAGO PIDE FORMATO DE FECHA: son ocho columnas de plata y una de
-  // horas. Una fecha con formato de moneda se dibuja "$46.242", que es el defecto que este bloque ya
-  // arregló tres veces del otro lado.
+  // Y EL FORMATO ACOMPAÑA: la «Cuándo» es fecha y el resto plata. Una fecha con formato de moneda se
+  // dibuja "$46.242" — el defecto que este libro ya arregló tres veces del otro lado.
   const reqs = requestsDeFormato(1, gm.filas, gm)
   assert.equal(formatoDe(reqs, gm.hero.f0, colPago('TOTAL')).type, 'CURRENCY', '«TOTAL» dejó de ser plata')
-  assert.equal(formatoDe(reqs, gm.hero.f0, colPago('Horas')).type, 'NUMBER', '«Horas» se dibuja como plata')
+  assert.equal(formatoDe(reqs, gm.hero.f0, cCuando).type, 'DATE', '«Cuándo» se dibuja como plata')
 })
 
 test('B3 · el "escalón que viene" NO puede mostrar un número de otro año', () => {
