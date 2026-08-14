@@ -939,3 +939,37 @@ test('la grilla expone el texto VISIBLE de cada rótulo: sin eso la columna A se
   const anchoSinRotulos = anchoColumnaA({ ...g2, rotulos: [] })
   assert.ok(anchoReal < anchoSinRotulos, `medir la fórmula pedía ${anchoSinRotulos}px y el texto pide ${anchoReal}px`)
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// LA `C` DEL CUADRO 3 ES EL CERTIFICADO, NO LA VENTA
+//
+// Hasta el 14/08/2026 las dos eran LA MISMA FÓRMULA. Certificar es reconocer avance contra un
+// contrato; facturar es cualquier cosa que se le cobre al cliente. Mientras coincidan el error no se
+// ve —y coinciden en seis de las siete obras—; la séptima factura materiales en la misma factura que
+// el anticipo, sobre un contrato de sólo mano de obra, y publicaba 136,4% con el saldo en negativo.
+// Si alguien vuelve a poner `venta(...)` en esa celda, estos dos tests se ponen rojos.
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+
+/** Una obra con sus hitos ya leídos, como se la pasa `obras-pestana.mjs` después de leer Cobranzas. */
+const conHitos = (o, terminos) => ({ ...o, cert: { terminos } })
+
+test('con hitos leídos, la C publica la suma de hitos y NO el SUMIFS de lo facturado', () => {
+  const [o] = OBRAS_FUTURAS
+  const g2 = grillaObras({ obras: [conHitos(o, [{ base: 0, literal: false, num: 50, den: 100 },
+    { base: 47590272, literal: true, num: 200, den: 400 }])] })
+  const fila = g2.bloques[0].fProt
+  const c = cel(g2, `C${fila}`)
+  assert.ok(!c.includes('SUMIFS'), `la C quedó como venta facturada: ${c}`)
+  assert.equal(c, `=G${fila}*50/100+47590272*200/400`)
+  // Y CITA LA CELDA DEL CONTRATO: el día que el dueño corrija el contrato, la C lo sigue sola en vez
+  // de arrastrar una copia fosilizada del número.
+  assert.ok(c.includes(`G${fila}`), 'el hito sin base propia tiene que referenciar el contrato vivo')
+})
+
+test('sin hitos declarados, la C sigue siendo lo facturado — BSA no se queda sin número', () => {
+  // BSA no declara contrato ni hitos: sus Órdenes de Compra son números de factura sueltos. Publicar
+  // un vacío ahí para arreglar otra obra sería perder el dato que hoy sí informa.
+  const g2 = grillaObras({ obras: [{ ...OBRAS_FUTURAS[0], contrato: null, cert: null }] })
+  const c = cel(g2, `C${g2.bloques[0].fProt}`)
+  assert.ok(c.startsWith('=') && c.includes('SUMIFS'), `sin hitos la C tiene que seguir sumando lo facturado: ${c}`)
+})
