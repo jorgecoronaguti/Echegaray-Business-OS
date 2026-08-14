@@ -78,13 +78,13 @@ export const ANCHOS_PROVEEDORES = Object.freeze([
   330, // A · el rótulo más largo que se escribe ("TELEFONICA MOVILES ARGENTINA SOCIEDAD ANONIMA")
   130, // B · CUIT con guiones, N° de comprobante, "Se le debe"
   125, // C · "Comprado 2026" y los montos del control ($209.231.271), fechas
-  300, // D · las notas del dueño ("Qué hacer"). Era el valor que ya ganaba en la práctica.
+  // D · las notas del dueño ("Qué hacer"), al lado de la deuda de cada proveedor. Se mudaron a la G
+  // el 14/08 con el cambio de eje y volvieron acá el mismo día, cuando el dueño lo rechazó: es la
+  // columna en la que él las escribió y este ancho es el que ya tenían.
+  300, // D
   90,  // E · el tipo de pago del cuadro de detalle ("Tarjeta Crédito"), y el aire del encabezado
   210, // F · "REFACTURACIÓN — el costo sigue", "Tarjeta de crédito", los importes de la sección 4
-  // G · "0006-00003002 → 0004-00003445" en la sección 3, y desde el 14/08 "Qué hacer" —la nota del
-  // dueño— en el cuadro de detalle. Pasa de 220 a 300 porque ése era el ancho que la nota ya tenía
-  // en la D: mudarla de columna no puede costarle diez caracteres de su propio texto.
-  300, // G
+  220, // G · "0006-00003002 → 0004-00003445" en la sección 3
   60,  // H · el % de la posición
 ])
 

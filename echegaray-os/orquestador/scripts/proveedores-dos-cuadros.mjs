@@ -1,23 +1,35 @@
 #!/usr/bin/env node
-// LA SECCIÓN 1 DE PROVEEDORES, EN DOS TABLAS DINÁMICAS NATIVAS — CON EL DÍA COMO EJE.
+// LA SECCIÓN 1 DE PROVEEDORES, EN DOS TABLAS DINÁMICAS NATIVAS — CON EL PROVEEDOR COMO EJE.
 //
 // El pedido original (04/08): "necesito ver los totales de lo que le debo a cada proveedor y luego
 // ver dentro cada operación". Una sola dinámica no puede: la API de Sheets NO emite el subtotal de
 // un nivel externo —sólo el gran total del pie—, y está medido contra el archivo real con dos y con
 // seis niveles. `showTotals: true` en el nivel de arriba no produce la fila "Alumetal · total".
 //
-// EL PEDIDO QUE MANDA HOY (14/08), textual: *"el cuadro de pestaña proveedores esta incompleto aun
-// tengo q seguir usando algunos filtros en pestaña compras por ejemplo para saber exactamente a
-// quienes y como debo pagar un determinado dia"*.
+// ═══ EL EJE SE MOVIÓ A LA FECHA Y EL DUEÑO LO RECHAZÓ EL MISMO DÍA (14/08) ═══
 //
-// Que siga abriendo Compras ES la medida de que esta sección no cumple su función. La pregunta que
-// tiene todos los días son tres cosas —a QUIÉN, CUÁNTO y CÓMO, un DÍA determinado— y las tres ya
-// están en Compras: proveedor, comprobante, importe y "Tipo pago" (transferencia · echeq · cheque ·
-// efectivo · tarjeta). Lo que faltaba no era el dato: era el EJE. Ahora los dos cuadros abren por la
-// fecha de pago, en orden cronológico.
+// A la mañana: *"aun tengo q seguir usando algunos filtros en pestaña compras para saber exactamente
+// a quienes y como debo pagar un determinado dia"*. Los dos cuadros pasaron a abrir por la fecha.
+// A la tarde: *"roto proveedores, esta verga asi no sirve para nada, LA BASE SIEMPRE ES EL NOMBRE
+// DEL PROVEEDOR, ademas de q tomaba mal columnas de compras … rehacer"*.
 //
-//   A · CUÁNDO SALE     — una línea por día de pago: cuánto sale ese día y en cuántas facturas.
-//   B · CADA OPERACIÓN  — ese día abierto: proveedor, comprobante, con qué se paga, categoría, obra.
+// Los dos pedidos no son excluyentes y tratarlos así costó tres cosas: el ranking "a quién le debo
+// más", las doce notas del dueño (perdieron su ancla al irse los nombres de la columna A) y
+// `proveedores-plan-vivo.mjs`, que exige "Proveedor" en la A. La forma que respeta los dos:
+//
+//   A · A QUIÉN SE LE DEBE — una línea POR PROVEEDOR, ordenada por lo que se le debe. Su vencimiento
+//                            más próximo y su nota "Qué hacer" al lado, ancladas a SU NOMBRE.
+//   B · CADA OPERACIÓN     — el detalle agrupado POR DÍA DE PAGO: qué sale cada día, a quién, por
+//                            qué comprobante, para qué obra y con qué medio. El corte por día vive
+//                            acá, que es donde se ejecuta un pago, no donde se mide una deuda.
+//
+// ═══ Y LO SEGUNDO QUE DIJO: "TOMABA MAL COLUMNAS DE COMPRAS" ═══
+//
+// Los dos cuadros suman `Compras!AL · Saldo pendiente (OS)`, que hasta hoy no la escribía ningún
+// script: vivía tipeada en una celda, sin dueño, sin test y sin paso en el pipeline. Ahora la escribe
+// `compras-saldo-pendiente.mjs` desde `lib/deuda-por-tramos.mjs` —la aritmética de los tres tramos de
+// pago, donde un `Monto Parcial` NEGATIVO es lo que FALTA y no un pago— y corre ANTES que esto en
+// `PASOS`. Esta sección no vuelve a hacer su propia cuenta: consume la única que hay.
 //
 // LO QUE ESTA SECCIÓN NO PUEDE CONTESTAR SOLA, y hay que decirlo: sale de Compras en estado
 // "Pendiente", así que muestra lo que TODAVÍA SE DEBE. Un cheque o un echeq YA LIBRADO con fecha de
@@ -40,10 +52,12 @@ import { leerParaDecidirBorrado } from '../lib/proveedores-lectura-dinamica.mjs'
 import { SECCIONES_DINAMICAS, VALORES_DETALLE } from '../lib/proveedores-titulos.mjs'
 import {
   altoEmitido, bandasDeFormato, COL, formatoDeTodo, fuenteCompras, geometriaDeLaSeccion,
-  diasDePago, PENDIENTE, pivotSeccion1, rotulosDelCuadro, VISTA,
+  diasDePago, letraDeLaDeuda, PENDIENTE, pivotSeccion1, reapuntarControl, rotulosDelCuadro, VISTA,
 } from '../lib/proveedores-pivot-seccion1.mjs'
-import { requestsDeNotas, rangoDeNotasDelDetalle } from '../lib/proveedores-notas-columna.mjs'
-import { colNotaDetalle, colProveedorDetalle } from '../lib/proveedores-pivot-seccion1.mjs'
+import {
+  colNota, colVence, rangoDelCuadroA, requestsDelCuadroA, reservaDelCuadroA, rotulosDelCuadroA,
+  ROTULOS_A_LA_DERECHA,
+} from '../lib/proveedores-cuadro-a.mjs'
 import { requestsDeRotulos, rotulosQueNoEntran } from '../lib/proveedores-rotulos.mjs'
 import { ALERTA } from '../lib/glifos.mjs'
 
@@ -73,12 +87,10 @@ const plata = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR')
 // CALCULAN la posición de cada columna desde la lib, así que dos declaraciones distintas del mismo
 // pivot significan formato apuntado a la columna de al lado. Ya pasó con la fecha saliendo `46238`.
 //
-// A · CUÁNDO SALE   — una línea por día de pago: cuánto sale ese día y en cuántas facturas.
-// B · CADA OPERACIÓN — ese mismo día, abierto: a quién, por qué comprobante, con qué medio, qué obra.
-//
-// COUNTA va sobre el PROVEEDOR —no sobre el comprobante—: hay una factura sin número y contando
-// comprobantes mostraba "0 facturas" donde se deben $100.000.
-const cuadroTotales = (fuente) => pivotSeccion1(fuente, { vista: VISTA.POR_DIA, nombres: [...VALORES] })
+// A · A QUIÉN SE LE DEBE — una línea por proveedor, ordenada por lo que se le debe (el ranking).
+// B · CADA OPERACIÓN     — el detalle, agrupado por día de pago: a quién, por qué comprobante, con
+//                          qué medio, para qué obra.
+const cuadroTotales = (fuente) => pivotSeccion1(fuente, { vista: VISTA.POR_PROVEEDOR, nombres: [...VALORES] })
 
 const cuadroDetalle = (fuente) => pivotSeccion1(fuente, { vista: VISTA.DETALLE })
 
@@ -97,12 +109,18 @@ async function main() {
   const compras = await google.readSheetValues(ID, 'Compras!A4:AL', { render: 'UNFORMATTED_VALUE' })
   const pendientes = (compras ?? []).filter((f) => String(f?.[COL.estado] ?? '').trim() === PENDIENTE
     && String(f?.[COL.comercial] ?? '').trim() === '1')
+  // LA RESERVA SE CUENTA COMO AGRUPA EL PIVOT —por el valor CRUDO— y con una fila de colchón: el
+  // porqué, con su modo de falla, en `lib/proveedores-cuadro-a.mjs`.
   const proveedores = new Set(pendientes.map((f) => String(f?.[COL.proveedor] ?? '').trim())).size
+  const reservaA = reservaDelCuadroA(pendientes)
+  const anonimos = pendientes.filter((f) => String(f?.[COL.proveedor] ?? '').trim() === '')
   const total = pendientes.reduce((a, f) => a + (Number(f?.[COL.saldo]) || 0), 0)
-  // EL CUADRO A ES UNA LÍNEA POR DÍA: el alto que hay que reservar sale de los días, no de los
-  // proveedores. Contarlo con el criterio equivocado deja la última fila con el formato de la
-  // corrida anterior — que es exactamente el `67797,51 | 31/12/1899` del 04/08.
-  const { dias, sinFecha } = diasDePago(pendientes)
+  // EL CUADRO A ES UNA LÍNEA POR PROVEEDOR: el alto que hay que reservar sale de los proveedores
+  // distintos, no de los días ni de las facturas. Contarlo con el criterio equivocado deja la última
+  // fila con el formato de la corrida anterior — el `67797,51 | 31/12/1899` del 04/08.
+  // Los días se siguen contando para AVISAR de las filas cuya fecha de pago no es una fecha: ésas
+  // arman su propio grupo en el cuadro de detalle y son un pago que nadie ve venir.
+  const { sinFecha } = diasDePago(pendientes)
 
   const visible = await google.readSheetValues(ID, `${PESTAÑA}!A1:R220`, { render: 'FORMATTED_VALUE' })
   const antes = await google.readSheetValues(ID, `${PESTAÑA}!A1:R220`, { render: 'FORMULA' })
@@ -110,16 +128,28 @@ async function main() {
 
   // Dónde va cada cuadro y qué franja se formatea. El alto de un pivot es una ESTIMACIÓN y el
   // formato NO se mide con ella: las bandas cubren el footprint entero — ver `bandasDeFormato`.
-  let plan = bandasDeFormato({ ...geo, gruposA: dias, facturas: pendientes.length })
+  let plan = bandasDeFormato({ ...geo, gruposA: reservaA, facturas: pendientes.length })
 
-  console.log(`DÍAS DE PAGO ${dias} · PROVEEDORES ${proveedores} · FACTURAS ${pendientes.length} · TOTAL ${plata(total)}`)
+  console.log(`PROVEEDORES ${proveedores} · FACTURAS ${pendientes.length} · TOTAL ${plata(total)}`
+    + `   (se reservan ${reservaA} filas para el cuadro del eje)`)
   // Una deuda cuya fecha no es una fecha entra igual y arma su propio grupo: se dice ANTES de
   // escribir, con la plata que representa, porque es un pago que nadie va a ver venir en el calendario.
   for (const g of sinFecha) {
     console.log(`  ${ALERTA} ${g.filas} factura(s) por ${plata(g.saldo)} con "${g.valor}" donde va la fecha de pago`
       + ' — salen agrupadas bajo ese texto, no bajo un día. Se corrige en Compras.')
   }
-  console.log(`A (cuándo sale) ${plan.altoA} filas · B (cada operación) ${plan.altoB} filas`
+  // ═══ UNA DEUDA SIN NOMBRE ES UN RÓTULO EN BLANCO EN LA COLUMNA A ═══
+  //
+  // Con el proveedor como eje vuelve a importar: el filtro del pivot es estado y comercial, NO exige
+  // nombre, así que esa deuda entra igual —y tiene que entrar, la plata no se esconde— pero arma un
+  // grupo sin rótulo, que es el agujero que el dueño reportó tres veces. No aborta: dejar la sección
+  // congelada por una fila mal cargada es peor. Se grita antes de escribir.
+  for (const f of anonimos) {
+    console.log(`  ${ALERTA} deuda SIN NOMBRE de proveedor por ${plata(f?.[COL.saldo])}`
+      + ` (comprobante ${String(f?.[COL.comprobante] ?? '').trim() || 'sin número'}) — va a salir como una fila`
+      + ' en blanco en la columna A, y su nota y su vencimiento van a salir vacíos. Se completa en Compras.')
+  }
+  console.log(`A (a quién se le debe) ${plan.altoA} filas · B (cada operación) ${plan.altoB} filas`
     + ` · necesita ${plan.necesita}, hay ${plan.disponibles}`)
   const faltan = plan.necesita > plan.disponibles ? plan.necesita - plan.disponibles + COLCHON : 0
   if (faltan) console.log(`⚠ se insertan ${faltan} fila(s) antes de la sección 2 (fila ${geo.filaLimite})`)
@@ -151,7 +181,7 @@ async function main() {
     geo.filaLimite += faltan
     // El colchón recién insertado forma parte del footprint: la banda de formato se recalcula para
     // llegar hasta el final, o las filas nuevas quedan crudas la primera vez que se usen.
-    plan = bandasDeFormato({ ...geo, gruposA: dias, facturas: pendientes.length })
+    plan = bandasDeFormato({ ...geo, gruposA: reservaA, facturas: pendientes.length })
   }
 
   // La huella se toma DESPUÉS de insertar: si no, compara filas corridas y grita diferencias falsas.
@@ -166,7 +196,10 @@ async function main() {
   // LOS RÓTULOS DE CADA CUADRO, CALCULADOS ANTES DE ESCRIBIR. Si alguno no entra ni partido en dos
   // líneas se avisa: la regla de la pestaña es acortar el rótulo antes que ensanchar la columna, y
   // los de los campos de fila no se pueden acortar sin tocar Compras — así que hay que saberlo.
-  const rotulosA = rotulosDelCuadro({ vista: VISTA.POR_DIA, cabecera, nombresDeValores: [...VALORES] })
+  // Los del cuadro A son CUATRO aunque el pivot escriba dos: las columnas "Vence" y "Qué hacer" son
+  // fórmulas a su derecha, y si no entran al cálculo del alto, "Qué hacer" sale cortado y nadie se
+  // entera hasta que el auditor de pantalla lo reporta.
+  const rotulosA = rotulosDelCuadroA(cabecera, [...VALORES])
   const rotulosB = rotulosDelCuadro({ vista: VISTA.DETALLE, cabecera, nombresDeValores: [...VALORES_DETALLE] })
   for (const [nombre, rots] of [['A', rotulosA], ['B', rotulosB]]) {
     for (const r of rotulosQueNoEntran(rots, ANCHOS_PROVEEDORES)) {
@@ -210,10 +243,13 @@ async function main() {
     // y la C en FECHA, que es lo que el cuadro B había dejado ahí.
     // EL CUERPO ARRANCA DEBAJO DEL RÓTULO: con la banda entera, "Se le debe" y "Facturas" quedaban
     // declaradas moneda y contador, y el auditor las reportaba como B17/C17/G32 en cada corrida.
-    ...formatoDeTodo({ sheetId, filaAncla: plan.cuerpoA.desde, alto: plan.cuerpoA.alto, vista: VISTA.POR_DIA }),
+    ...formatoDeTodo({ sheetId, filaAncla: plan.cuerpoA.desde, alto: plan.cuerpoA.alto, vista: VISTA.POR_PROVEEDOR }),
     ...formatoDeTodo({ sheetId, filaAncla: plan.cuerpoB.desde, alto: plan.cuerpoB.alto, vista: VISTA.DETALLE }),
-    ...requestsDeRotulos({ sheetId, fila: plan.rotuloA, textos: rotulosA, anchos: ANCHOS_PROVEEDORES, derecha: [1, 2] }),
-    ...requestsDeRotulos({ sheetId, fila: plan.rotuloB, textos: rotulosB, anchos: ANCHOS_PROVEEDORES, derecha: [2, 6] }),
+    ...requestsDeRotulos({ sheetId, fila: plan.rotuloA, textos: rotulosA, anchos: ANCHOS_PROVEEDORES, derecha: ROTULOS_A_LA_DERECHA }),
+    // En el detalle van a la derecha la fecha (0) y el importe (5), que son las dos columnas de
+    // números. Decía `[2, 6]`: la 2 es el comprobante —texto— y la 6 era la columna de la nota, que
+    // desde hoy no existe en este cuadro. Un rótulo alineado sobre una columna vacía es tinta.
+    ...requestsDeRotulos({ sheetId, fila: plan.rotuloB, textos: rotulosB, anchos: ANCHOS_PROVEEDORES, derecha: [0, 5] }),
     // Ninguna fila del cuadro puede quedar oculta: siete lo estuvieron y el total cerraba igual.
     { updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: iA, endIndex: finIdx },
       properties: { hiddenByUser: false }, fields: 'hiddenByUser' } },
@@ -234,13 +270,17 @@ async function main() {
   // La banda de formato ya tolera que la dinámica emita de más; la POSICIÓN del cuadro B todavía
   // sale de la estimación. Si la deriva se come el aire, el subtítulo cae adentro del cuadro A y
   // Google se niega a renderizar. Se cuenta releyendo, no se supone.
+  // Con la fila de colchón deliberada, lo NORMAL es emitir una menos de las reservadas: eso deja dos
+  // filas de aire antes del subtítulo en vez de una. Lo que no puede pasar nunca es que `libres` dé
+  // negativo — ahí el subtítulo está adentro del cuadro y la dinámica de abajo no se renderiza.
   const emitidoA = altoEmitido(leido ?? [])
-  if (emitidoA !== plan.altoA) {
-    const libres = plan.iSub - plan.iA - emitidoA
-    const aviso = `el cuadro A emitió ${emitidoA} filas y se habían estimado ${plan.altoA}`
-      + ` · ${libres} fila(s) de aire antes del subtítulo (formateadas igual: la banda cubre el footprint)`
-    if (libres < 0) { console.error(`✗ ${aviso}`); process.exitCode = 1 } else console.log(aviso)
-  }
+  const libres = plan.iSub - plan.iA - emitidoA
+  const aviso = `el cuadro A emitió ${emitidoA} filas · se reservaron ${plan.altoA}`
+    + ` · ${libres} fila(s) de aire antes del subtítulo (formateadas igual: la banda cubre el footprint)`
+  if (libres < 0) {
+    console.error(`✗ ${aviso} — el subtítulo cayó DENTRO del cuadro: la dinámica de abajo no se renderiza`)
+    process.exitCode = 1
+  } else if (emitidoA !== plan.altoA) console.log(aviso)
 
   // LA EVIDENCIA DE QUE QUEDARON DOS Y NO TRES. Un #REF! en el cuadro de arriba no se ve leyendo
   // valores —la celda dice "#REF!" y listo—; lo que lo delata es contar los anclajes.
@@ -257,7 +297,7 @@ async function main() {
   if (rotos.length) { console.error(`✗✗ ${rotos.length} celda(s) con error: ${[...new Set(rotos)].join(' · ')}`); process.exitCode = 1 }
 
   await recortarElAire({ google, sheetId, geo })
-  await reponerLasNotasQueEstaCorridaBorro({ google, sheetId, geo })
+  await reponerLasColumnasQueEstaCorridaBorro({ google, sheetId, geo })
 
   console.log('\nLEÍDO DEL ARCHIVO:')
   for (const f of leido ?? []) {
@@ -318,77 +358,121 @@ async function recortarElAire({ google, sheetId, geo }) {
 }
 
 /**
- * REPONER LA COLUMNA "QUÉ HACER" — LA QUE ESTA MISMA CORRIDA ACABA DE BORRAR.
+ * REPONER "VENCE" Y "QUÉ HACER" — LAS DOS COLUMNAS QUE ESTA MISMA CORRIDA ACABA DE BORRAR.
  *
  * ═══ EL DEFECTO, CON SU FECHA (14/08) ═══
  *
  * La limpieza de arriba vacía el rectángulo A:G de la sección para que ninguna dinámica vieja
- * sobreviva. La columna "Qué hacer" —las catorce notas del dueño— vive DENTRO de ese rectángulo, y
- * quien la repone es otro script, `proveedores-notas-visibles.mjs`, que sólo corre después dentro
- * del pipeline. Correr este generador solo, que es exactamente lo que su cabecera documenta, borró
- * las catorce notas y no avisó: la sección quedó completa a la vista, sin una celda en rojo, sin un
+ * sobreviva. La columna "Qué hacer" —las notas del dueño— vive DENTRO de ese rectángulo, y quien la
+ * reponía era otro script, `proveedores-notas-visibles.mjs`, que sólo corre después dentro del
+ * pipeline. Correr este generador solo, que es exactamente lo que su cabecera documenta, borró las
+ * catorce notas y no avisó: la sección quedó completa a la vista, sin una celda en rojo, sin un
  * error en el log y sin una línea distinta en la salida.
  *
  * El dueño, ese día: *"rompiste todo proveedores y lo q yo te pedia era arreglar y mejorar todo lo
- * q habia, no romperlo y hacerlo desaparecer"*.
+ * q habia, no romperlo y hacerlo desaparecer"*. Y ese mismo día se perdieron doce notas más (D17:D28)
+ * al mudar el eje del cuadro: la búsqueda seguía viva, pero apuntada a una columna donde ya no había
+ * nombres de proveedor, así que devolvía vacío en las doce. En silencio.
  *
  * ═══ LA REGLA QUE ESTO INSTALA: EL QUE BORRA REPONE, EN LA MISMA CORRIDA ═══
  *
- * No alcanza con documentar el orden de los pasos — el orden es una convención y las convenciones
- * se rompen corriendo un script suelto, que es lo que pasó. La única forma de que no dependa de
- * quién corre qué es que el script que vacía la columna la deje puesta antes de terminar. Los
- * requests son los MISMOS que usa `proveedores-notas-visibles.mjs`: viven en
+ * No alcanza con documentar el orden de los pasos — el orden es una convención y las convenciones se
+ * rompen corriendo un script suelto, que es lo que pasó. La única forma de que no dependa de quién
+ * corre qué es que el script que vacía las columnas las deje puestas antes de terminar. Los requests
+ * son los MISMOS que usa `proveedores-notas-visibles.mjs`: viven en `lib/proveedores-cuadro-a.mjs` y
  * `lib/proveedores-notas-columna.mjs` para que no puedan separarse.
  *
  * ═══ VA DESPUÉS DE `recortarElAire`, Y NO ES UN DETALLE ═══
  *
- * Una fórmula que devuelve "" se lee como fórmula, no como celda vacía. Escrita antes del recorte,
- * la columna de notas taparía todo el aire del bloque y el colchón quedaría congelado — el agujero
+ * Una fórmula que devuelve "" se lee como fórmula, no como celda vacía. Escritas antes del recorte,
+ * estas dos columnas taparían todo el aire del bloque y el colchón quedaría congelado — el agujero
  * entre secciones que el dueño ya reportó, esta vez sin forma de cerrarlo.
  *
- * NO consulta la base: la fórmula busca contra la pestaña auxiliar. Si Postgres está caído, las
- * notas vuelven igual.
+ * NO consulta la base: la nota busca contra la pestaña auxiliar. Si Postgres está caído, vuelve igual.
  */
-async function reponerLasNotasQueEstaCorridaBorro({ google, sheetId, geo }) {
-  const colNota = colNotaDetalle()
-  const colProv = colProveedorDetalle()
+async function reponerLasColumnasQueEstaCorridaBorro({ google, sheetId, geo }) {
   const visible = await google.readSheetValues(ID, `${PESTAÑA}!A1:R220`, { render: 'FORMATTED_VALUE' })
-  // El ancla es el SUBTÍTULO, no la salida de la corrida anterior: un cuadro en #REF! deja de
-  // reconocerse a sí mismo, y ahí es donde un generador se engancha en la fila equivocada.
+  // Los dos anclajes son TEXTO de otro dueño, no la salida de la corrida anterior: un cuadro en #REF!
+  // deja de reconocerse a sí mismo, y ahí es donde un generador se engancha en la fila equivocada.
+  // Arriba, la fila de rótulos del cuadro A (que sale del contrato de la sección, ver `geo`); abajo,
+  // el subtítulo del cuadro de detalle, que es el TOPE que estas dos columnas no pueden pasar.
   const iSub = (visible ?? []).findIndex((f, i) => i >= geo.filaEncabezado
     && /^cada operaci[oó]n/i.test(String(f?.[0] ?? '').trim()))
   if (iSub < 0) {
-    console.error('  ✗ no encontré el subtítulo "Cada operación": NO repongo la columna "Qué hacer".'
+    console.error('  ✗ no encontré el subtítulo "Cada operación": NO repongo "Vence" ni "Qué hacer".'
       + '\n    → node orquestador/scripts/proveedores-notas-visibles.mjs --aplicar')
     process.exitCode = 1
     return
   }
-  const r = rangoDeNotasDelDetalle({
-    visible, filaSubtitulo: iSub + 1, filaLimite: geo.filaLimite, colNota,
-  })
-  const reqs = requestsDeNotas({
-    sheetId, ...r, columna: colNota, letraProveedor: String.fromCharCode(65 + colProv),
-  })
+  const r = rangoDelCuadroA({ visible, filaRotulos: geo.filaEncabezado, filaTope: iSub + 1 })
+  const reqs = requestsDelCuadroA({ sheetId, filaRotulos: geo.filaEncabezado, ...r })
   if (!reqs.length) {
-    console.error('  ✗ el cuadro de detalle no tiene ni una fila entre sus rótulos y la sección 2:'
-      + ' NO repongo la columna "Qué hacer".')
+    console.error('  ✗ el cuadro "a quién se le debe" no tiene ni una fila entre sus rótulos y el'
+      + ' detalle: NO repongo "Vence" ni "Qué hacer".')
     process.exitCode = 1
     return
   }
-  await google.spreadsheetBatchUpdate(ID, reqs, { espejo: true })
+  await google.spreadsheetBatchUpdate(ID, [
+    ...reqs,
+    ...await requestsDelControl({ google, sheetId, geo, rango: r }),
+  ], { espejo: true })
 
   // LA EVIDENCIA ES DEL EFECTO: se relee y se cuenta cuántas notas quedaron A LA VISTA. Que el batch
   // haya respondido 200 no prueba que una sola nota se vea.
-  const L = String.fromCharCode(65 + colNota)
+  const cVence = colVence()
+  const cNota = colNota()
+  const L = String.fromCharCode(65 + cNota)
   const leido = await google.readSheetValues(ID, `${PESTAÑA}!A${r.desde}:${L}${r.hasta - 1}`)
-  const conNota = (leido ?? []).filter((f) => String(f?.[colNota] ?? '').trim() !== '').length
-  console.log(`✓ columna "Qué hacer" repuesta en ${L}${r.desde}:${L}${r.hasta - 1}`
-    + ` · ${conNota} nota(s) del dueño a la vista, releídas del archivo`)
+  const conProveedor = (leido ?? []).filter((f) => String(f?.[0] ?? '').trim() !== '')
+  const conNota = conProveedor.filter((f) => String(f?.[cNota] ?? '').trim() !== '').length
+  const conVence = conProveedor.filter((f) => String(f?.[cVence] ?? '').trim() !== '').length
+  console.log(`✓ "Vence" y "Qué hacer" repuestas en ${String.fromCharCode(65 + cVence)}${r.desde}:${L}${r.hasta - 1}`
+    + ` · ${conProveedor.length} proveedor(es) · ${conVence} con vencimiento · ${conNota} con nota,`
+    + ' releídos del archivo')
   if (conNota === 0) {
     console.error('  ✗✗ ni una sola nota quedó visible. O la auxiliar _PROVEEDORES_OS está vacía'
       + ' (la escribe proveedores-cuenta-corriente.mjs) o el cuadro no emitió proveedores.')
     process.exitCode = 1
   }
+}
+
+/**
+ * EL CONTROL DE LA SECCIÓN, APUNTADO A LA COLUMNA DONDE QUEDÓ LA DEUDA.
+ *
+ * Arriba de los rótulos vive una celda que compara lo que muestra el cuadro contra el titular del
+ * encabezado. Sumaba la columna del cuadro de fórmulas viejo; cada vez que el cuadro cambió de forma
+ * quedó apuntando una columna más allá — y un control que mira la columna equivocada no avisa de
+ * menos: avisa cualquier cosa. Ya pasó: gritó "falta $15.716.930" (el total entero) porque sumaba
+ * una columna de texto.
+ *
+ * Se reapunta a la columna de la deuda del cuadro que ABRE la sección (la B), sobre el rango REAL
+ * medido releyendo —colchón incluido, para que un proveedor nuevo entre solo—. Se toca únicamente el
+ * `SUM($X$n:$X$m)`: el resto de la fórmula del dueño queda intacto.
+ *
+ * Si la celda no está, se avisa y se sigue: sin control la sección se lee igual, sin cuadro no.
+ *
+ * @param {{google:object, sheetId:number, geo:object, rango:{desde:number, hasta:number}}} o
+ * @returns {Promise<object[]>}
+ */
+async function requestsDelControl({ google, sheetId, geo, rango }) {
+  const filaControl = geo.filaEncabezado - 1
+  if (filaControl < 1) return []
+  const celda = `${PESTAÑA}!A${filaControl}`
+  const vieja = String((await google.readSheetValues(ID, celda, { render: 'FORMULA' }))?.[0]?.[0] ?? '')
+  if (!/^=/.test(vieja) || !/SUM\(/.test(vieja)) {
+    console.log(`  ⚠ A${filaControl} no tiene el control de la sección (${vieja.slice(0, 40) || 'vacía'}): no lo toco`)
+    return []
+  }
+  const columna = letraDeLaDeuda()
+  const nueva = reapuntarControl(vieja, columna, { filaEncabezado: rango.desde - 1, filaLimite: rango.hasta })
+  if (nueva === vieja) {
+    console.log(`  ○ el control de A${filaControl} ya sumaba ${columna}${rango.desde}:${columna}${rango.hasta - 1}`)
+    return []
+  }
+  console.log(`  CONTROL A${filaControl} → SUM(${columna}${rango.desde}:${columna}${rango.hasta - 1})`)
+  return [{ updateCells: {
+    range: { sheetId, startRowIndex: filaControl - 1, endRowIndex: filaControl, startColumnIndex: 0, endColumnIndex: 1 },
+    rows: [{ values: [{ userEnteredValue: { formulaValue: nueva } }] }], fields: 'userEnteredValue' } }]
 }
 
 main().catch((e) => { console.error(e); process.exit(1) })

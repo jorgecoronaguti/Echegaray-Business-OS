@@ -49,10 +49,15 @@ export const SECCIONES_DINAMICAS = Object.freeze([
   Object.freeze({
     clave: 'deuda',
     texto: 'QUÉ SE DEBE Y CUÁNDO',
-    // "Sale ese día" y no "Se le debe" desde el 14/08: el cuadro A pasó a tener una línea POR DÍA de
-    // pago, no por proveedor, y el rótulo tiene que decir de qué habla la fila. Es el `name` del
-    // valor del pivot, así que se cambia acá y llega solo al pivot y a la fila de rótulos.
-    valores: Object.freeze(['Sale ese día', 'Facturas']),
+    // "Se le debe": el cuadro que abre la sección tiene una línea por PROVEEDOR y el rótulo dice de
+    // qué habla la fila. Fue "Sale ese día" durante las doce horas en que el eje fue la fecha de
+    // pago, y el dueño lo rechazó. Es el `name` del valor del pivot, así que se cambia acá y llega
+    // solo al pivot y a la fila de rótulos.
+    //
+    // UN SOLO VALOR: "Facturas" (el conteo) se fue porque no cambia ninguna decisión —el cuadro de
+    // detalle las lista una por una— y cada valor de más empuja una columna al vencimiento y a la
+    // nota, que son las que sí deciden. Ver `lib/proveedores-cuadro-a.mjs`.
+    valores: Object.freeze(['Se le debe']),
     aRotulos: AVISO + 1,
   }),
   Object.freeze({

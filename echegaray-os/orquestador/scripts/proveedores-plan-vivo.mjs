@@ -12,6 +12,19 @@
 //   2. el plan: ancla, rango, reserva, y las columnas que NO se tocan;
 //   3. las dos fórmulas enteras, para leerlas antes de que existan.
 //
+// ═══ QUÉ DE ESTO SIGUE SIRVIENDO, DICHO SIN VUELTAS (14/08) ═══
+//
+// La sección 1 pasó a ser DOS TABLAS DINÁMICAS: no tiene fórmulas propias que auditar ni un derrame
+// que planificar. De los tres puntos de arriba, hoy sólo informa el 1 (contra un bloque que ya no
+// existe, así que sale limpio) y el 2 dice "faltan rótulos del contrato": es correcto y no es una
+// falla — el contrato de siete columnas era el del bloque de fórmulas que la dinámica reemplazó.
+//
+// Se mantiene porque es el único lector READ-ONLY de la geometría de la sección, y ése es su valor:
+// si `geometriaSeccion1` no encuentra su ancla, algo se movió. El 14/08 el eje del cuadro pasó del
+// proveedor a la fecha y este script murió con "no encontré la fila de rótulos de la sección 1" —
+// `geometriaSeccion1` exige la palabra "Proveedor" EN LA COLUMNA A. Volvió a ubicarse cuando el
+// proveedor volvió al eje. Ver `lib/proveedores-cuadro-a.test.mjs`, "EL DEFECTO 4".
+//
 //   node orquestador/scripts/proveedores-plan-vivo.mjs
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'

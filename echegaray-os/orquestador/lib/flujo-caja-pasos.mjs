@@ -102,6 +102,19 @@ export const PASOS = [
   // pestaña, y el registro es de pestañas: declararla los volvería "segundos dueños" en el censo, que
   // es exactamente el defecto que se está persiguiendo. Mismo criterio que
   // `cheques-emitidos-sync-banco.mjs`, que sincroniza una columna y declara [].
+  // ═══ LAS DOS COLUMNAS DERIVADAS DE COMPRAS VAN PRIMERO, Y NO ES UN ORDEN CUALQUIERA (14/08) ═══
+  //
+  // Todo lo que muestra "Proveedores" —el titular, el aging, el cuadro por proveedor y el detalle—
+  // suma `Compras!AL · Saldo pendiente (OS)`. Esa fórmula NO LA ESCRIBÍA NADIE: vivía tipeada a mano
+  // en una celda, sin dueño, sin test y sin paso acá. El dueño: *"tomaba mal columnas de compras"*.
+  // Y `AN · Tramo de vencimiento (OS)`, que alimenta el aging del encabezado, tenía script desde el
+  // 05/08 y tampoco estaba en esta lista: se actualizaba sólo si alguien tipeaba el comando.
+  //
+  // AN se calcula CONTRA AL, así que el orden entre las dos no es negociable: primero el saldo,
+  // después el tramo. Las dos son ARRAYFORMULA vivas, así que una vez ancladas Google las recalcula
+  // sola; el paso existe para que la definición sea del repositorio y no de una celda.
+  ['compras-saldo-pendiente.mjs', 'Compras!AL "Saldo pendiente (OS)" — la aritmética de los tres tramos de pago', [], ['--aplicar']],
+  ['proveedores-aging-columna.mjs', 'Compras!AN "Tramo de vencimiento (OS)" — el aging que lee el encabezado', [], ['--aplicar']],
   ['proveedores-cuenta-corriente.mjs', 'Compras!AM "CUIT (OS)" + la auxiliar _PROVEEDORES_OS — el origen del CUIT de la sección 2', ['_PROVEEDORES_OS'], ['--aplicar']],
   ['proveedores-materiales-pestana.mjs', 'Proveedores (notas de crédito, ARCA y control) + Materiales — de la frontera para abajo', ['Proveedores', 'Materiales']],
   // ANTES DE LAS DOS DINÁMICAS: los títulos "1 · …" y "2 · …" son su ANCLA y no los reponía nadie.

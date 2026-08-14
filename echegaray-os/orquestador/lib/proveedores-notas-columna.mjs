@@ -133,37 +133,3 @@ export function requestsDeNotas({ sheetId, filaRotulos, desde, hasta, columna, l
     },
   ]
 }
-
-/**
- * ¿HASTA DÓNDE LLEGA LA COLUMNA DE NOTAS DEL CUADRO DE DETALLE?
- *
- * ═══ POR QUÉ NO SE ESCRIBE HASTA EL FINAL DEL BLOQUE (14/08) ═══
- *
- * Una fórmula que devuelve "" NO es una celda vacía: `leerParaDecidirBorrado` pide `FORMULA` a
- * propósito, así que ve la fórmula y no el blanco. Llenar de notas hasta el título de la sección 2
- * dejaría el colchón congelado para siempre — `recortarElAire` no encontraría una sola fila en
- * blanco que devolver, y el agujero que el dueño reportó volvería, esta vez sin forma de cerrarlo.
- *
- * Por eso la columna llega hasta donde llega el CUADRO, medido releyendo, más un colchón chico para
- * que el proveedor que entre mañana ya tenga su nota esperándolo.
- *
- * `hasta` es EXCLUSIVO. Las tres filas en base 1.
- *
- * @param {{visible:any[][], filaSubtitulo:number, filaLimite:number, colNota:number, colchon?:number}} o
- *        `filaSubtitulo` la fila del subtítulo que abre el cuadro ("Cada operación").
- * @returns {{filaRotulos:number, desde:number, hasta:number}}
- */
-export function rangoDeNotasDelDetalle({ visible = [], filaSubtitulo, filaLimite, colNota, colchon = 4 }) {
-  const filaRotulos = filaSubtitulo + 1
-  const desde = filaRotulos + 1
-  // El alto se cuenta sobre las columnas del CUADRO, no sobre la fila entera: una fila de separación
-  // con un resto en cualquier columna deja de estar en blanco y el conteo sigue de largo. Devolvió
-  // 31 donde el cuadro tenía 11.
-  let alto = 0
-  for (let f = desde; f <= visible.length; f++) {
-    const fila = visible[f - 1] ?? []
-    if (!fila.slice(0, colNota).some((c) => String(c ?? '').trim() !== '')) break
-    alto++
-  }
-  return { filaRotulos, desde, hasta: Math.min(desde + alto + colchon, filaLimite - 1) }
-}

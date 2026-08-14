@@ -267,10 +267,35 @@ export function expresionSaldo(hoja = 'Compras!') {
  * @returns {string}
  */
 export function formulaDeudaNoMostrada(que = 'monto') {
-  const s = expresionSaldo()
-  // "ELIMINADO" queda afuera: son filas dadas de baja, no deuda escondida.
-  const universo = `(Compras!$AJ$4:$AJ=1)*(Compras!$X$4:$X<>"${PENDIENTE}")*(Compras!$X$4:$X<>"ELIMINADO")*(${s}>${TOL})`
-  return `=SUMPRODUCT(${universo}${que === 'monto' ? `*${s}` : ''})`
+  return `=SUMPRODUCT(${universoNoMostrado()}${que === 'monto' ? `*${expresionSaldo()}` : ''})`
+}
+
+/** El universo de la contradicción. Sale de una sola función porque el monto, el conteo y los
+ *  NOMBRES tienen que estar hablando exactamente de las mismas filas. "ELIMINADO" queda afuera: son
+ *  filas dadas de baja, no deuda escondida. */
+function universoNoMostrado() {
+  return `(Compras!$AJ$4:$AJ=1)*(Compras!$X$4:$X<>"${PENDIENTE}")*(Compras!$X$4:$X<>"ELIMINADO")`
+    + `*(${expresionSaldo()}>${TOL})`
+}
+
+/**
+ * A QUIÉNES SE LES DEBERÍA ESA PLATA — los nombres, al lado de la cifra.
+ *
+ * ═══ POR QUÉ HACEN FALTA LOS NOMBRES Y NO ALCANZA EL MONTO (14/08) ═══
+ *
+ * El dueño: *"la base SIEMPRE es el nombre del proveedor"*. Estas ocho facturas NO aparecen en el
+ * cuadro que ordena la deuda por proveedor —su saldo vale cero ahí, porque el estado dice "Pagado"—
+ * así que el ranking omite a Gruas San Blas con $5.124.412 y nada lo delata. Una cifra sin nombres
+ * dice que falta plata; con los nombres dice a quién hay que preguntarle.
+ *
+ * Va como FÓRMULA, igual que la cifra: el día que alguien corrija una de esas filas en Compras, el
+ * nombre desaparece solo. `UNIQUE` porque Con-Sec y DUPEC tienen más de un comprobante y repetir el
+ * nombre tres veces gasta el ancho que hace falta para los otros.
+ *
+ * @returns {string}
+ */
+export function formulaProveedoresNoMostrados() {
+  return `=IFERROR(TEXTJOIN(" · ";TRUE;UNIQUE(FILTER(Compras!$E$4:$E;${universoNoMostrado()})));"")`
 }
 
 /** El rótulo de la columna en Compras. Una sola constante: el que escribe y el que busca leen ésta. */

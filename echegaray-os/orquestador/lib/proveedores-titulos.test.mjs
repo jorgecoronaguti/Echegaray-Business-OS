@@ -20,10 +20,10 @@ function pestana({ sinTitulo1 = false, sinTitulo2 = false, sinRotulos2 = false, 
   f[12] = ['✓ el aging y el medio de pago dan el mismo total']
   if (!sinTitulo1) f[13] = ['1 · QUÉ SE DEBE Y CUÁNDO']
   f[15] = ['⚠ el detalle no cierra con el titular: falta $19.826.655.']
-  // Desde el 14/08 el cuadro A abre por la FECHA de pago, no por el proveedor: su fila de rótulos
-  // ya no dice "Proveedor" y el sembrador la reconoce por el `name` del valor ("Sale ese día").
-  f[16] = ['Fecha prevista de pago (día)', 'Sale ese día', 'Facturas', 'Qué hacer']
-  f[17] = ['Hormiserv', '5.995.792', '2', 'Esperar al cobrador']
+  // El cuadro que abre la sección tiene una línea por PROVEEDOR: su fila de rótulos dice "Proveedor"
+  // en la A y el sembrador la reconoce por el `name` del valor ("Se le debe").
+  f[16] = ['Proveedor', 'Se le debe', 'Vence', 'Qué hacer']
+  f[17] = ['Hormiserv', '5.995.792', '20/08/2026', 'Esperar al cobrador']
   f[30] = ['Cada operación']
   if (!sinTitulo2) f[34] = [`${numero2} · CUENTA CORRIENTE POR PROVEEDOR`]
   if (!sinRotulos2) f[35] = ['Proveedor', 'CUIT (OS)', 'Comprado 2026', 'Comprobantes']

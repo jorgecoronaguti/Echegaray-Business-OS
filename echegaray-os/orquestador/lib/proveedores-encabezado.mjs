@@ -23,7 +23,7 @@
 // alguien mira.
 
 import { TRAMOS, SIN_FECHA } from './proveedores-aging.mjs'
-import { formulaDeudaNoMostrada } from './deuda-por-tramos.mjs'
+import { formulaDeudaNoMostrada, formulaProveedoresNoMostrados } from './deuda-por-tramos.mjs'
 import { ALERTA } from './glifos.mjs'
 
 /** Rótulos de la izquierda, sin el prefijo numérico: el prefijo es del ordenamiento, no de la vista. */
@@ -66,7 +66,7 @@ export function grillaEncabezado() {
   const set = (fila, col, v) => { g[fila - 1][col] = v }
 
   set(F.titulo, 0, 'Proveedores')
-  set(F.bajada, 0, 'Deuda comercial por fecha de pago. Cada importe es una fórmula sobre Compras: se corrige allá y cambia acá.')
+  set(F.bajada, 0, 'Deuda comercial por proveedor. Cada importe es una fórmula sobre Compras: se corrige allá y cambia acá.')
 
   // ── izquierda: el aging
   set(F.rotulos, 0, '="DEUDA AL "&TEXT(TODAY();"dd/mm/yyyy")')
@@ -116,6 +116,11 @@ export function grillaEncabezado() {
   set(F.noMostrada, 0, `=IF(ROUND($B$${F.noMostrada};0)<=0;"";"${ALERTA} ")&"Dicen ""Pagado"" y falta plata"`)
   set(F.noMostrada, 1, formulaDeudaNoMostrada('monto'))
   set(F.noMostrada, 3, formulaDeudaNoMostrada('n'))
+  // Y A QUIÉNES. Estas facturas NO tienen fila en el cuadro que ordena la deuda por proveedor —su
+  // saldo vale cero ahí— así que el ranking omite a Gruas San Blas con $5.124.412 y nada lo delata.
+  // Va en la F para poder derramar sobre la G y la H, que en esta fila están vacías: son nombres
+  // largos y cortarlos deja la pregunta a medias.
+  set(F.noMostrada, 5, formulaProveedoresNoMostrados())
 
   // ── lo que la deuda NO ve: facturado con CAE que Compras no tiene cargado
   set(F.arca, 5, 'Facturado por ARCA que Compras no tiene')

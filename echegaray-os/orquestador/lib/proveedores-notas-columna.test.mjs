@@ -8,35 +8,43 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import {
-  formulaNota, notasQueNoEntran, rangoDeNotasDelDetalle, requestsDeNotas, ROTULO_NOTA,
+  formulaNota, notasQueNoEntran, requestsDeNotas, ROTULO_NOTA,
 } from './proveedores-notas-columna.mjs'
 
 const SCRIPT = new URL('../scripts/proveedores-dos-cuadros.mjs', import.meta.url)
 const NOTAS = new URL('../scripts/proveedores-notas-visibles.mjs', import.meta.url)
+const CUADRO_A = new URL('./proveedores-cuadro-a.mjs', import.meta.url)
 
 test('EL DEFECTO DEL 14/08: el generador que borra la columna la repone en la misma corrida', () => {
   const src = readFileSync(SCRIPT, 'utf8')
   // Limpia A:G — la columna de la nota entra en ese rectángulo.
   assert.match(src, /endColumnIndex: 7/, 'el generador sigue limpiando siete columnas')
   // Y por eso TIENE que reponerla él mismo: sin esto, correrlo suelto vuelve a borrar las notas.
-  assert.match(src, /reponerLasNotasQueEstaCorridaBorro/,
+  assert.match(src, /reponerLasColumnasQueEstaCorridaBorro/,
     'el generador que vacía A:G tiene que reponer "Qué hacer" en la misma corrida')
-  assert.match(src, /requestsDeNotas/, 'y con los MISMOS requests que el otro escritor')
+  // Con los MISMOS requests que el otro escritor. El generador los pide por `requestsDelCuadroA`,
+  // que es quien arma las dos columnas del cuadro; ésa a su vez llama a `requestsDeNotas`. La cadena
+  // se verifica entera: cortarla en cualquier eslabón devuelve el defecto de las notas borradas.
+  assert.match(src, /requestsDelCuadroA/, 'y con los MISMOS requests que el otro escritor')
+  assert.match(readFileSync(CUADRO_A, 'utf8'), /requestsDeNotas/,
+    'proveedores-cuadro-a tiene que delegar la nota en la lib compartida, no tipearla de nuevo')
 })
 
 test('los dos escritores comparten la fórmula: ninguno la vuelve a tipear', () => {
-  for (const f of [SCRIPT, NOTAS]) {
+  for (const f of [SCRIPT, NOTAS, CUADRO_A]) {
     const src = readFileSync(f, 'utf8')
     assert.ok(!/VLOOKUP\(\$/.test(src),
       `${f.pathname.split('/').pop()} no puede tener su propia copia del VLOOKUP de la nota`)
-    assert.match(src, /proveedores-notas-columna\.mjs/, 'sale de la lib compartida')
   }
+  // Y la lib compartida es la única fuente: los dos escritores llegan a ella, directo o por cuadro-a.
+  assert.match(readFileSync(NOTAS, 'utf8'), /proveedores-notas-columna\.mjs/)
+  assert.match(readFileSync(CUADRO_A, 'utf8'), /proveedores-notas-columna\.mjs/)
 })
 
 test('la reposición va DESPUÉS de recortar el aire, o el colchón queda congelado', () => {
   const src = readFileSync(SCRIPT, 'utf8')
   const iRecorte = src.indexOf('await recortarElAire(')
-  const iNotas = src.indexOf('await reponerLasNotasQueEstaCorridaBorro(')
+  const iNotas = src.indexOf('await reponerLasColumnasQueEstaCorridaBorro(')
   assert.ok(iRecorte > 0 && iNotas > 0, 'las dos llamadas existen')
   assert.ok(iNotas > iRecorte,
     'una fórmula que devuelve "" se lee como fórmula: escrita antes del recorte tapa todo el aire')
@@ -84,28 +92,10 @@ test('los requests cubren rótulo, fórmulas y formato — y el rótulo es el de
   }
 })
 
-test('el rango de la nota se mide por el CUADRO, no por la fila entera', () => {
-  // Fila 33 tiene un resto en una columna de más a la derecha: no es del cuadro y no lo agranda.
-  const visible = []
-  visible[27] = ['Cada operación']            // fila 28: el subtítulo
-  visible[28] = ['Fecha', 'Proveedor', 'N°']  // fila 29: los rótulos
-  visible[29] = ['14/08/2026', 'Alumetal', '0038-1', 'Taller', 'Echeq', '392.905']
-  visible[30] = ['', 'Mariana SA', '0015-147', 'Almacen', 'Cheque', '763.365']
-  visible[32] = [null, null, null, null, null, null, null, 'resto de otro dueño']
-  const r = rangoDeNotasDelDetalle({ visible, filaSubtitulo: 28, filaLimite: 60, colNota: 6, colchon: 4 })
-  assert.equal(r.filaRotulos, 29)
-  assert.equal(r.desde, 30)
-  assert.equal(r.hasta, 36, 'dos filas de cuadro + 4 de colchón: el resto de la fila 33 no cuenta')
-})
-
-test('la nota NUNCA se derrama sobre la sección de abajo', () => {
-  const visible = []
-  visible[27] = ['Cada operación']
-  visible[28] = ['Fecha', 'Proveedor']
-  for (let f = 30; f <= 48; f++) visible[f - 1] = ['14/08/2026', 'Alumetal', 'x', 'y', 'z', '1']
-  const r = rangoDeNotasDelDetalle({ visible, filaSubtitulo: 28, filaLimite: 50, colNota: 6, colchon: 4 })
-  assert.ok(r.hasta <= 49, `el techo es la fila anterior a la sección 2 (50); dio ${r.hasta}`)
-})
+// ═══ DÓNDE LLEGA LA COLUMNA: SE MUDÓ A `proveedores-cuadro-a.mjs` (14/08) ═══
+//
+// El rango se medía sobre el cuadro de DETALLE, donde la nota vivió doce horas. Volvió al cuadro que
+// abre la sección —el del proveedor— y con ella la medición: `rangoDelCuadroA`, con sus tests.
 
 test('una nota más larga que su columna se avisa, no se trunca — es texto del dueño', () => {
   const notas = new Map([

@@ -7,7 +7,8 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  COL, PENDIENTE, clasificar, esComercial, faltaDeclarada, formulaSaldoPendiente, pagadoDe,
+  COL, PENDIENTE, clasificar, esComercial, faltaDeclarada, formulaDeudaNoMostrada,
+  formulaProveedoresNoMostrados, formulaSaldoPendiente, pagadoDe,
   paréntesisQueNoCierran, posicionComercial, saldoDeLaFila,
 } from './deuda-por-tramos.mjs'
 
@@ -146,5 +147,42 @@ describe('la fórmula de la columna AL', () => {
     assert.ok(!abierta.includes(`$X$4:$X="${PENDIENTE}"`))
     // Las dos exigen proveedor comercial: la deuda con ARCA/nómina no es de esta pestaña.
     for (const x of [f, abierta]) assert.ok(x.includes('$AJ$4:$AJ=1'))
+  })
+})
+
+// ═══ LA CONTRADICCIÓN SIN NOMBRES ERA UNA CIFRA QUE NO SE PODÍA ACCIONAR (14/08) ═══
+//
+// Las ocho facturas que dicen "Pagado" con el paréntesis declarando que falta la plata NO tienen fila
+// en el cuadro que ordena la deuda por proveedor: su saldo vale cero ahí. Así, el ranking omite a
+// Gruas San Blas con $5.124.412 y nada lo delata. El dueño: *"la base SIEMPRE es el nombre del
+// proveedor"* — la cifra sin los nombres dice que falta plata; con los nombres dice a quién preguntar.
+describe('los NOMBRES de la deuda que el cuadro no muestra', () => {
+  const nombres = formulaProveedoresNoMostrados()
+
+  it('mira exactamente las mismas filas que la cifra y el conteo', () => {
+    // Si los tres universos se separan, el aviso dice "$11,9M en 8 facturas" y nombra a otros.
+    const universo = (f) => f.replace(/^=\w+\(/, '').replace(/\)+$/, '')
+    for (const trozo of ['$AJ$4:$AJ=1', `$X$4:$X<>"${PENDIENTE}"`, '$X$4:$X<>"ELIMINADO"']) {
+      assert.ok(nombres.includes(trozo), `los nombres no filtran por ${trozo}`)
+      assert.ok(formulaDeudaNoMostrada('monto').includes(trozo), `la cifra no filtra por ${trozo}`)
+      assert.ok(formulaDeudaNoMostrada('n').includes(trozo), `el conteo no filtra por ${trozo}`)
+    }
+    assert.ok(universo(nombres).includes('Compras!$E$4:$E'), 'no devuelve la columna del proveedor')
+  })
+
+  it('no repite un nombre por cada comprobante suyo', () => {
+    // Con-Sec tiene tres filas y DUPEC dos: sin UNIQUE, el aviso gasta el ancho en repetirlos.
+    assert.ok(nombres.includes('UNIQUE('), 'sin UNIQUE, Con-Sec sale tres veces y tapa a los demás')
+  })
+
+  it('se apaga sola cuando no queda ninguna: es fórmula viva, no un número pegado', () => {
+    // Un aviso que no se puede apagar deja de leerse. El día que alguien corrija esas filas en
+    // Compras, FILTER no devuelve nada, TEXTJOIN da #N/A y el IFERROR lo convierte en vacío.
+    assert.ok(nombres.startsWith('=IFERROR('), 'sin IFERROR queda un #N/A permanente en el encabezado')
+    assert.ok(nombres.endsWith(';"")'), 'el fallback tiene que ser vacío, no un texto')
+  })
+
+  it('es-AR: separador `;` y ni una coma suelta', () => {
+    assert.ok(!/,/.test(nombres), 'una coma en un archivo es-AR es un separador decimal')
   })
 })

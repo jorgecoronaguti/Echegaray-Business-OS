@@ -210,3 +210,40 @@ test('el censo corre AL FINAL: corriendo primero reportaría como FANTASMA la pe
       `${script} declara ${pestanas.join(', ')} y corre DESPUÉS del censo: un falso fantasma por corrida vuelve ruido al control`)
   }
 })
+
+// ═══ LAS DOS COLUMNAS DERIVADAS DE COMPRAS QUE NO TENÍAN DUEÑO (14/08) ═══
+//
+// El dueño: *"tomaba mal columnas de compras"*. `Compras!AL · Saldo pendiente (OS)` es de donde
+// cuelgan las CUATRO vistas de la pestaña Proveedores —el titular, el aging, el cuadro por proveedor
+// y el detalle— y no la escribía ningún script: vivía tipeada a mano en una celda, sin dueño, sin
+// test y sin paso acá. `Compras!AN · Tramo de vencimiento (OS)`, que alimenta el aging del
+// encabezado, tenía script desde el 05/08 y tampoco estaba: se actualizaba sólo si alguien lo corría.
+//
+// Es el modo de falla más silencioso que existe en este archivo: nada da error, la definición vive
+// fuera del repositorio y nadie es responsable de lo que dice.
+
+test('EL SALDO DE COMPRAS TIENE DUEÑO: la aritmética de los tramos de pago corre en el pipeline', () => {
+  const paso = PASOS.find(([s]) => s === 'compras-saldo-pendiente.mjs')
+  assert.ok(paso, 'Compras!AL no la escribe ningún paso: vuelve a ser una fórmula tipeada sin dueño')
+  assert.ok((paso?.[3] ?? []).includes('--aplicar'),
+    'sin --aplicar el paso hace un ensayo, sale 0 y la columna queda como esté')
+})
+
+test('EL AGING DE COMPRAS TIENE DUEÑO, y corre DESPUÉS del saldo que mide', () => {
+  const pos = (s) => PASOS.findIndex(([x]) => x === s)
+  assert.ok(pos('proveedores-aging-columna.mjs') >= 0,
+    'Compras!AN no está en PASOS: el aging del encabezado envejece sin dar un solo error')
+  assert.ok(pos('proveedores-aging-columna.mjs') > pos('compras-saldo-pendiente.mjs'),
+    'el tramo de vencimiento se calcula CONTRA el saldo: al revés mide una columna que todavía no está')
+})
+
+test('las dos columnas derivadas corren ANTES que todo lo que las suma', () => {
+  const pos = (s) => PASOS.findIndex(([x]) => x === s)
+  for (const consumidor of ['proveedores-dos-cuadros.mjs', 'proveedores-encabezado-aplicar.mjs',
+    'proveedores-seccion2-pivot.mjs']) {
+    assert.ok(pos(consumidor) > pos('compras-saldo-pendiente.mjs'),
+      `${consumidor} suma Compras!AL antes de que el pipeline la defina`)
+    assert.ok(pos(consumidor) > pos('proveedores-aging-columna.mjs'),
+      `${consumidor} lee Compras!AN antes de que el pipeline la defina`)
+  }
+})
