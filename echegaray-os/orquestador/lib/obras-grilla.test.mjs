@@ -20,6 +20,7 @@ import {
   ANCHO_OBRAS, ANCHOS_OBRAS, ANCHO_HISTORICO, ALTO_HISTORICO, conColaLimpiable, REFS_OBRAS, CLIENTES_MUESTRA,
   rotuloDeObra, SIN_CONTRATO, SECCION_OBRAS, SECCION_COSTO,
 } from './obras-grilla.mjs'
+import { ESPECIES_DE_PLATA } from './obras-especies.mjs'
 import { OBRAS_FUTURAS, CLIENTES_CANONICOS, comprasObraDe, esProyectable, totalEgresos } from './obras-datos.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 import { ALERTA, glifosInvisibles } from './glifos.mjs'
@@ -153,18 +154,21 @@ test('el RETENIDO sale de la columna de retenciones, sólo de lo COBRADO y por f
   assert.ok(!cel(g, `H${g.fTotClientes}`).includes('SUM(H'), 'ni es la suma de los renglones')
 })
 
-test('la H lleva IMPORTE en los dos cuadros que la usan, y el escritor lo sabe fila por fila', () => {
+test('la H lleva IMPORTE en los dos cuadros que la usan, y lo declara la celda', () => {
   // La H es `Retenido` por cliente y `Falta certificar` por obra: plata en los dos casos. Pero la
-  // columna no se puede declarar plata de arriba a abajo, porque el resto de las filas la deja
-  // vacía. `importeEnH` es la lista que el escritor usa; si quedara corta, $7.671.680 se publicarían
-  // con el formato de la celda de al lado y nadie daría un error.
-  assert.deepEqual(g.importeEnH,
-    [...rangoFilas(...g.fClientes), g.fTotClientes, ...g.bloques.map((b) => b.fProt), g.fTotObras])
+  // columna no se puede declarar plata de arriba a abajo, porque el resto de las filas lleva fecha.
+  // Hasta el 14/08 eso lo resolvía `importeEnH`, una lista de filas escrita a mano en la grilla y
+  // leída en el escritor: si quedaba corta, $7.671.680 salían dibujados como un día del año 2110.
+  // Ahora lo declara la celda, y esto lo verifica sobre la MATRIZ, no sobre la lista.
+  for (const f of [...rangoFilas(...g.fClientes), g.fTotClientes, ...g.bloques.map((b) => b.fProt), g.fTotObras]) {
+    assert.ok(ESPECIES_DE_PLATA.includes(g.especies[f - 1][7]), `H${f}: es plata y tiene que declararlo`)
+  }
   for (const f of [...rangoFilas(...g.fClientes), g.fTotClientes]) {
     assert.match(String(cel(g, `H${f}`)), /^=SUMIFS\(/, `H${f}: el retenido del cliente`)
   }
-  // Las filas del cuadro de COSTO no llevan nada en la H: su cuadro termina en la E.
-  for (const f of g.filasCosto) assert.ok(!g.importeEnH.includes(f), `${f}: el cuadro de costo no usa la H`)
+  // Las filas del cuadro de COSTO no llevan nada en la H: su cuadro termina en la E, así que la
+  // columna vuelve a su especie de fecha.
+  for (const f of g.filasCosto) assert.equal(g.especies[f - 1][7], 'fecha', `H${f}: el cuadro de costo no usa la H`)
 })
 
 test('el ⇒ TOTAL 2026 tiene la ventana que su rótulo promete', () => {

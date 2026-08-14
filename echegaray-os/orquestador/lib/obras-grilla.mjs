@@ -150,8 +150,19 @@ import { ALERTA } from './glifos.mjs'
 import {
   PLAZO_COBRO_DIAS, TRAMOS_ANTIGUEDAD, critPorVencer, critVencido, critTramo,
 } from './cobranzas-vencido.mjs'
+// LA ESPECIE DE CADA CELDA — de dónde sale su formato. Se declara donde se escribe el valor.
+import { ESPECIES, matrizDeEspecies } from './obras-especies.mjs'
 
 export const PESTANA_OBRAS = 'OBRAS'
+
+/**
+ * LA FILA DE ENCABEZADO DE UN CUADRO: nueve rótulos, nunca plata.
+ *
+ * Va como constante y no repetida en cada cuadro porque los tres encabezados son la MISMA cosa. El
+ * rótulo se ALINEA con su columna (a la derecha sobre importes) en el escritor, que es donde vive el
+ * criterio de alineación de un estado financiero — acá se declara qué ES la celda, no dónde se apoya.
+ */
+const ENCABEZADO = Object.freeze(Array.from({ length: 9 }, () => 'rotulo'))
 
 /**
  * A rótulo · B % cobrado (S1) | % contrato (S2) · C venta · D cobrado · E resta · F vencido ·
@@ -871,6 +882,7 @@ const proximoCobro = (cob, cliente, extra = '') => {
  *  vacía sale con el centinela VACIO ("es mía y va vacía") para que la fusión la limpie. */
 function hoja() {
   const filas = []
+  const especies = []
   const h = {
     filas,
     tipeadas: [],
@@ -878,12 +890,27 @@ function hoja() {
      *  `anchoColumnaA` mide píxeles de texto: sin esto mediría la fórmula y daría una columna de
      *  900px por un rótulo de 60 caracteres. */
     rotulos: [],
+    /** Fila → la ESPECIE declarada de cada celda (o `null`). Es lo que decide su `numberFormat`:
+     *  ver el porqué entero en `obras-especies.mjs`. Se declara acá, donde se escribe el valor, y no
+     *  en una lista de rangos del escritor — dos lugares que dicen lo mismo sobre la misma celda
+     *  divergen apenas alguien agrega una columna, y divergieron. */
+    especies,
     get n() { return filas.length },
-    push(c = []) {
+    /**
+     * @param {any[]} c los valores de la fila
+     * @param {(string|null)[]} [esp] la especie de cada celda, del vocabulario de `obras-especies`
+     */
+    push(c = [], esp = []) {
       const r = [...c].map((x) => (x === '' || x === undefined || x === null ? VACIO : x))
       while (r.length < ANCHO_OBRAS) r.push(VACIO)
       r.length = ANCHO_OBRAS
+      // UNA ESPECIE QUE NO EXISTE ES UN ERROR DE PROGRAMA, NO UN FORMATO FEO: se rompe acá, al armar
+      // la grilla, y no seis semanas después mirando un importe crudo en la pestaña del dueño.
+      for (const e of esp) {
+        if (e && !ESPECIES[e]) throw new Error(`especie desconocida "${e}" en la fila ${filas.length + 1} de ${PESTANA_OBRAS}`)
+      }
       filas.push(r)
+      especies.push(Array.from({ length: ANCHO_OBRAS }, (_, i) => esp[i] ?? null))
       return filas.length
     },
   }
@@ -925,12 +952,13 @@ function seccionCartera(h, refs) {
   const { cob } = refs
   // EL TÍTULO LLEVA LA FECHA VIVA. Una cartera es una foto: sin el día al lado, el lector no sabe si
   // mira la de hoy o la de la última corrida del generador. `TODAY()` la mantiene sola.
-  const fTitulo = h.push([`=${quote('1 · COBRANZAS PENDIENTES AL ')}&TEXT(TODAY();"dd/mm/yyyy")`])
+  const fTitulo = h.push([`=${quote('1 · COBRANZAS PENDIENTES AL ')}&TEXT(TODAY();"dd/mm/yyyy")`], ['rotulo'])
   h.rotulos.push({ fila: fTitulo, texto: '1 · COBRANZAS PENDIENTES AL 00/00/0000' })
   // EL ▲ VA EN EL ENCABEZADO DE LOS TRAMOS VENCIDOS y no en cada celda: marca de una sola vez cuáles
   // de las cinco columnas son la alarma, sin repetir el glifo en cada importe.
   h.push(['Cartera', '% venc.', 'Por vencer',
-    ...TRAMOS_ANTIGUEDAD.map((t) => `${ALERTA} ${t.clave}`), '', 'Total pendiente'])
+    ...TRAMOS_ANTIGUEDAD.map((t) => `${ALERTA} ${t.clave}`), '', 'Total pendiente'],
+  ENCABEZADO)
   const f = h.n + 1
   const cartera = (crit) => `=${enPesos(cob, 'total', `${abierto(cob, 'estado')};"<>${COBRADO}"`
     + `;${abierto(cob, 'estado')};"<>${NO_VENTA}"${enElAno(cob, 'fechaCobro')}${crit}`)}`
@@ -946,7 +974,11 @@ function seccionCartera(h, refs) {
     // regla de IFRS 18 de agregación y desagregación, resuelta con aire en vez de con una línea.
     '',
     `=C${f}+D${f}+E${f}+F${f}+G${f}`,
-  ])
+  ],
+  // La línea de cartera es un CIERRE: lleva el "$". Sus cinco columnas de tramo son importes, no la
+  // "alarma" que la F es en los otros cuadros — el ▲ ya está marcado una vez en el encabezado.
+  ['rotulo', 'porcentaje', 'monedaTotal', 'monedaTotal', 'monedaTotal', 'monedaTotal', 'monedaTotal',
+    null, 'monedaTotal'])
   h.push([])
   return { fCartera: f }
 }
@@ -966,8 +998,9 @@ function seccionCartera(h, refs) {
  */
 function seccionObrasDelAno(h, refs, clientes) {
   const { cob, cmp } = refs
-  h.push(['2 · OBRAS DEL AÑO'])
-  h.push(['Cliente', '% cob.', 'Venta (neto)', 'Cobrado (total)', ROTULO_RESTA, 'Vencido', 'Materiales (neto)', 'Retenido'])
+  h.push(['2 · OBRAS DEL AÑO'], ['rotulo'])
+  h.push(['Cliente', '% cob.', 'Venta (neto)', 'Cobrado (total)', ROTULO_RESTA, 'Vencido', 'Materiales (neto)', 'Retenido'],
+    ENCABEZADO)
   const f0 = h.n + 1
   /** En qué fila quedó cada cliente. El escritor lo necesita para el control de doble conteo: sin
    *  esto tendría que buscar el rótulo en la grilla, que es anclar en el texto de una fila. */
@@ -977,7 +1010,10 @@ function seccionObrasDelAno(h, refs, clientes) {
     filaDeCliente[cli] = f
     h.push([cli, pctCobrado(f), venta(cob, cli), cobrado(cob, cli), restaCobrar(cob, cli), vencido(cob, cli),
 costoNeto(cmp, cli),
-      retenido(cob, cli)])
+      retenido(cob, cli)],
+    // La H de ESTE cuadro es el RETENIDO —un importe—, no la fecha que la columna lleva en los otros
+    // bloques: $7.671.680 con formato de fecha se dibuja como un día del año 2110.
+    ['rotulo', 'porcentaje', 'moneda', 'moneda', 'moneda', 'alerta', 'moneda', 'moneda'])
   }
   const f1 = h.n
   // COBRANZAS ENTERA, sin filtrar por cliente. El único criterio es el estado, así que una fila con la
@@ -1000,7 +1036,8 @@ costoNeto(cmp, cli),
     `=SUM(F${f0}:F${f1})`, `=SUM(G${f0}:G${f1})`,
     // El retenido del año sale de la FUENTE ENTERA, igual que la venta y el cobrado: si un cliente
     // quedara fuera de la lista derivada, su retención tiene que seguir estando en el total.
-    `=${todo('retenciones', COBRADO)}`])
+    `=${todo('retenciones', COBRADO)}`],
+  ['rotulo', 'porcentaje', 'monedaTotal', 'monedaTotal', 'monedaTotal', 'alertaTotal', 'monedaTotal', 'monedaTotal'])
   h.push([])
   return { fClientes: [f0, f1], fTot, filaDeCliente }
 }
@@ -1122,7 +1159,13 @@ function bloqueObra(h, refs, o, idx, unica = false) {
     // cliente. Mientras eso no esté, la columna no vuelve.
     o.contrato ?? SIN_CONTRATO,
     saldoContrato(fProt, o.contrato, 'G'),
-    proximoCobro(cob, o.cliente, dela)])
+    proximoCobro(cob, o.cliente, dela)],
+  // LA `I` DE ESTE CUADRO ES `Próx. cobro`, Y NO ES PLATA: publica "21/08 · Transferencia", un rótulo
+  // armado con TEXT(). Estaba declarada como importe por la lista de columnas del escritor y sólo se
+  // veía bien porque un olfateador de contenido la re-marcaba como texto al final de cada corrida.
+  // El día que esa heurística no acertara, la fecha de cobro salía dibujada como "$46.255".
+  ['rotulo', 'porcentaje', 'monedaTotal', 'monedaTotal', 'monedaTotal', 'alertaTotal', 'monedaTotal',
+    'monedaTotal', 'rotulo'])
   return { clave: o.clave, fProt, proyectable, contrato: o.contrato ?? null }
 }
 
@@ -1178,7 +1221,12 @@ function bloqueCosto(h, refs, o, idx) {
   const proyectado = totalEgresos(o)
   const patron = comprasObraDe(o)
   h.push([rot.celda, `=IF(C${f}=0;0;D${f}/C${f})`, proyectado, compradoDeObra(cmp, o), `=C${f}-D${f}`,
-    patron ? `Compras: "${patron}"` : SIN_TEXTO_EN_COMPRAS])
+    patron ? `Compras: "${patron}"` : SIN_TEXTO_EN_COMPRAS],
+  // LA `F` DE ESTE CUADRO NO ES LA ALARMA SINO EL TEXTO QUE DECLARA POR DÓNDE EMPAREJÓ CADA OBRA, y
+  // por eso DERRAMA: mide 138px, `Compras: "Salones Comerciales"` mide 189, y con CLIP el texto no se
+  // recorta — desaparece, justo en las obras que sí emparejaron. La G, la H y la I de este cuadro
+  // están vacías, así que derramar sobre ellas usa un espacio que ya está y no tapa nada.
+  ['rotulo', 'porcentaje', 'monedaTotal', 'monedaTotal', 'monedaTotal', 'texto'])
   h.tipeadas.push({ fila: f, col: 2 })
   return { clave: o.clave, fila: f, proyectado, patron }
 }
@@ -1198,7 +1246,7 @@ export function grillaObras(ctx = {}) {
   const clientes = ctx.clientes ?? CLIENTES_MUESTRA
   const h = hoja()
 
-  h.push([`${PESTANA_OBRAS} — EL AÑO ENTERO, OBRA POR OBRA`])
+  h.push([`${PESTANA_OBRAS} — EL AÑO ENTERO, OBRA POR OBRA`], ['rotulo'])
   // UNA LÍNEA, Y SÓLO PARA DECLARAR EL CRITERIO. El dueño rechazó hoy otra pestaña por *"muchas
   // palabras y frases y explicaciones que nadie lee"*. Lo único que no se puede deducir mirando la
   // tabla es con qué criterio está medida cada columna, y eso la regla de oro 3 obliga a declararlo.
@@ -1221,7 +1269,7 @@ export function grillaObras(ctx = {}) {
     + ' · costo real = Compras imputada por su texto de "Detalles / Obra", al neto y sin corte por fecha de inicio'
     + ' (se compra antes de arrancar); el costo proyectado incluye la mano de obra, que va por Jornales'
     + ' · USD valuado a ')}&`
-    + `IFERROR(TEXT(${RANGO_TC};"$ #.##0,00");"(sin tipo de cambio)")`])
+    + `IFERROR(TEXT(${RANGO_TC};"$ #.##0,00");"(sin tipo de cambio)")`], ['rotulo'])
   h.push([])
 
   // EL TITULAR VA PRIMERO. El estándar del área lo pide con todas las letras —"las 2-3 cifras que se
@@ -1249,9 +1297,9 @@ export function grillaObras(ctx = {}) {
   // contratado (`Scheduled Value`), obra completada a la fecha (`Work Completed to Date`), el
   // porcentaje entre las dos (`% (G/C)`) y el saldo para terminar (`Balance to Finish`). No se
   // inventó un cuadro: se usó el que ya existe.
-  h.push([`${SECCION_OBRAS} · OBRAS — CONTRATO, CERTIFICACIÓN Y COBRO`])
+  h.push([`${SECCION_OBRAS} · OBRAS — CONTRATO, CERTIFICACIÓN Y COBRO`], ['rotulo'])
   h.push(['Obra', '% cert.', 'Certificado (neto)', 'Cobrado (total)', 'Por cobrar (total)', 'Vencido',
-    'Contratado', 'Falta certificar', 'Próx. cobro'])
+    'Contratado', 'Falta certificar', 'Próx. cobro'], ENCABEZADO)
   // Cuántas obras declaradas tiene cada cliente: es lo que habilita la regla del dueño de arriba.
   const porCliente = obras.reduce((m, o) => m.set(o.cliente, (m.get(o.cliente) ?? 0) + 1), new Map())
   const bloques = obras.map((o, i) => bloqueObra(h, refs, o, i + 1, porCliente.get(o.cliente) === 1))
@@ -1274,7 +1322,9 @@ export function grillaObras(ctx = {}) {
     // ninguna fila respalda.
     const pct = conContrato.length ? `=IF(G${fTot2}=0;0;(G${fTot2}-H${fTot2})/G${fTot2})` : SIN_CONTRATO
     h.push([`⇒ TOTAL — ${bloques.length} OBRAS`, pct, suma('C', filasObra), suma('D', filasObra),
-      suma('E', filasObra), suma('F', filasObra), contratado, falta, ''])
+      suma('E', filasObra), suma('F', filasObra), contratado, falta, ''],
+    ['rotulo', 'porcentaje', 'monedaTotal', 'monedaTotal', 'monedaTotal', 'alertaTotal', 'monedaTotal',
+      'monedaTotal', 'rotulo'])
   }
   h.push([])
 
@@ -1284,18 +1334,17 @@ export function grillaObras(ctx = {}) {
   // sumada: es su estimación, y se dibuja como tal. `Comprado (real)` es lo que Compras le imputó a
   // esa obra por su texto de "Detalles / Obra": es un hecho, y la columna F dice cuál es ese texto
   // para que se pueda ir a la fuente a verificarlo. El porqué del camino está en `compradoDeObra`.
-  h.push([`${SECCION_COSTO} · OBRAS — COSTO PROYECTADO Y COMPRAS IMPUTADAS`])
-  // La fila del encabezado se GUARDA, no se deduce restando: el día que el cuadro gane o pierda una
-  // fila, una resta a mano deja el formato apuntando a la obra 4.1 y nadie lo ve hasta publicar.
-  const fEncCosto = h.n + 1
-  h.push(['Obra', '% comprado', 'Costo proyectado', 'Comprado (real)', 'Resta proyectado', 'Imputado por'])
+  h.push([`${SECCION_COSTO} · OBRAS — COSTO PROYECTADO Y COMPRAS IMPUTADAS`], ['rotulo'])
+  h.push(['Obra', '% comprado', 'Costo proyectado', 'Comprado (real)', 'Resta proyectado', 'Imputado por'],
+    ENCABEZADO)
   const costos = obras.map((o, i) => bloqueCosto(h, refs, o, i + 1))
   const filasCosto = costos.map((c) => c.fila)
   const fTot3 = costos.length ? h.n + 1 : null
   let fSinImputar = null
   if (fTot3) {
     h.push([`⇒ TOTAL — ${costos.length} OBRAS`, `=IF(C${fTot3}=0;0;D${fTot3}/C${fTot3})`,
-      suma('C', filasCosto), suma('D', filasCosto), suma('E', filasCosto)])
+      suma('C', filasCosto), suma('D', filasCosto), suma('E', filasCosto)],
+    ['rotulo', 'porcentaje', 'monedaTotal', 'monedaTotal', 'monedaTotal'])
 
     // ═══ LA FILA QUE HACE QUE NADA SE PIERDA NI SE REPARTA (14/08) ═══
     //
@@ -1318,7 +1367,8 @@ export function grillaObras(ctx = {}) {
       fSinImputar = h.n + 1
       h.push(['⇒ SIN IMPUTAR — compras de estos clientes que no dicen la obra', '', '',
         `=${clientes3.map((c) => compradoDeCliente(refs.cmp, c)).join('+')}-D${fTot3}`, '',
-        `${ALERTA} falta escribir la obra en Compras`])
+        `${ALERTA} falta escribir la obra en Compras`],
+      ['rotulo', null, null, 'monedaTotal', null, 'texto'])
     }
   }
 
@@ -1326,6 +1376,13 @@ export function grillaObras(ctx = {}) {
   const totales = [s0.fCartera, s1.fTot, fTot2, fTot3, fSinImputar].filter(Boolean)
   return {
     filas: h.filas,
+    /** LA ESPECIE DECLARADA de cada celda, tal como la escribió quien la escribió — sin resolver.
+     *  El auditor la usa para nombrar la celda que publica un valor sin decir qué es. */
+    especiesDeclaradas: h.especies,
+    /** LA MATRIZ COMPLETA, sin agujeros: de acá sale el `numberFormat` de las nueve columnas en todas
+     *  las filas. Que no tenga agujeros es la mitad de la cura — un formato que nadie repone en cada
+     *  corrida es estado que sobrevive, y así seis celdas de `Vencido` quedaron en TEXTO. */
+    especies: matrizDeEspecies(h.filas.length, h.especies, ANCHO_OBRAS),
     /** La fila del titular de cartera. El escritor la necesita para el control de cierre: los cinco
      *  tramos tienen que dar el mismo total que la `Resta` del cuadro de clientes, por otro camino. */
     fCartera: s0.fCartera,
@@ -1343,24 +1400,13 @@ export function grillaObras(ctx = {}) {
     /** La fila SIN IMPUTAR del cuadro 4. El escritor la usa para el control de cierre: obras +
      *  sin imputar tiene que dar lo que Compras le imputó a estos clientes, por otro camino. */
     fSinImputar,
-    /** Las filas del cuadro 4 cuya columna F lleva TEXTO de auditoría y no un importe: el
-     *  encabezado, las siete obras y el SIN IMPUTAR. El formateador las necesita porque la F está
-     *  declarada como columna de alarma en pesos y dibujaría el texto pegado al margen derecho. */
-    textoEnF: [fEncCosto, ...filasCosto, fSinImputar].filter(Boolean),
     /** El cierre del cuadro de clientes: es el que concilia contra Cobranzas entera. */
     fTotClientes: s1.fTot,
     bloques,
     fClientes: s1.fClientes,
     filaDeCliente: s1.filaDeCliente,
-    /** Las filas donde la H lleva un IMPORTE y no una fecha ni un texto: el `Retenido` del cuadro de
-     *  clientes y el `Falta certificar` del de obras. El formateador las necesita porque un importe
-     *  con formato de fecha se dibuja como un día del año 2110 — ya pasó con $7.671.680. */
-    importeEnH: [...rango(s1.fClientes[0], s1.fClientes[1]), s1.fTot, ...filasObra, ...(fTot2 ? [fTot2] : [])],
   }
 }
-
-/** Los enteros de `a` a `b`, inclusive. */
-const rango = (a, b) => { const r = []; for (let i = a; i <= b; i++) r.push(i); return r }
 
 /**
  * EL RÓTULO DE UNA OBRA, CON SUS FECHAS DE INICIO Y FIN.

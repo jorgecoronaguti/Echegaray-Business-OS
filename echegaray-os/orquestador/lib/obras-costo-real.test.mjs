@@ -217,24 +217,26 @@ test('el residuo no puede dar negativo: sería doble conteo, no un saldo', () =>
 })
 
 test('el derrame de la F llega SÓLO al cuadro 4: en el cuadro 3 taparía el contratado', () => {
-  // La F mide 138 px y el texto de auditoría mide hasta 221: el formateador la deja derramar sobre la
-  // G/H/I, que en el cuadro 4 están vacías. En el cuadro 3 la G lleva el CONTRATADO — si `textoEnF`
-  // arrastrara una fila de ese cuadro, un rótulo de texto se dibujaría encima de un importe.
+  // La F mide 138 px y el texto de auditoría mide hasta 221: el que derrama es la ESPECIE `texto`, y
+  // en el cuadro 4 la G/H/I están vacías. En el cuadro 3 la G lleva el CONTRATADO — si una fila de ese
+  // cuadro declarara `texto` en la F, un rótulo se dibujaría encima de un importe.
   const cuadro3 = g.bloques.map((b) => b.fProt)
+  const textoEnF = g.especies.map((f, i) => (f[5] === 'texto' ? i + 1 : 0)).filter(Boolean)
   // Se mira la grilla CON LA COLA, que es la que se escribe: ahí las celdas que el generador no usa
   // llevan el centinela VACIO, que la fusión convierte en una celda realmente vacía. VACIO no es
   // contenido — es la instrucción de limpiar—, así que cuenta como espacio libre para el derrame.
   const conCola = conColaLimpiable(g.filas, ANCHO_HISTORICO, ALTO_HISTORICO)
   const libre = (v) => v === undefined || v === '' || v === VACIO
-  for (const f of g.textoEnF) {
+  for (const f of textoEnF) {
     assert.ok(!cuadro3.includes(f), `la fila ${f} es del cuadro 3: no puede derramar sobre el contratado`)
     for (const c of ['G', 'H', 'I']) {
       assert.ok(libre(conCola[f - 1]?.[c.charCodeAt(0) - 65]), `${c}${f} tiene contenido: el derrame lo taparía`)
     }
   }
   // Y la contraprueba: en el cuadro 3 esas columnas SÍ tienen plata, que es lo que el derrame taparía
-  // si alguien agregara una de sus filas a `textoEnF`.
+  // si alguien declarara `texto` en la F de una de sus filas.
   assert.ok(!libre(conCola[cuadro3[0] - 1]?.[6]), 'la G del cuadro 3 lleva el contratado')
-  // Y cubre lo que tiene que cubrir: encabezado, las siete obras y el residuo.
-  assert.deepEqual(g.textoEnF, [g.filasCosto[0] - 1, ...g.filasCosto, g.fSinImputar])
+  // Y cubre lo que tiene que cubrir: las siete obras y el residuo. El ENCABEZADO ya no entra: es un
+  // rótulo de columna, no prosa de auditoría, y como rótulo se alinea con su columna y no derrama.
+  assert.deepEqual(textoEnF, [...g.filasCosto, g.fSinImputar])
 })
