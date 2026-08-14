@@ -42,6 +42,8 @@ import {
   altoEmitido, bandasDeFormato, COL, formatoDeTodo, fuenteCompras, geometriaDeLaSeccion,
   diasDePago, PENDIENTE, pivotSeccion1, rotulosDelCuadro, VISTA,
 } from '../lib/proveedores-pivot-seccion1.mjs'
+import { requestsDeNotas, rangoDeNotasDelDetalle } from '../lib/proveedores-notas-columna.mjs'
+import { colNotaDetalle, colProveedorDetalle } from '../lib/proveedores-pivot-seccion1.mjs'
 import { requestsDeRotulos, rotulosQueNoEntran } from '../lib/proveedores-rotulos.mjs'
 import { ALERTA } from '../lib/glifos.mjs'
 
@@ -255,6 +257,7 @@ async function main() {
   if (rotos.length) { console.error(`✗✗ ${rotos.length} celda(s) con error: ${[...new Set(rotos)].join(' · ')}`); process.exitCode = 1 }
 
   await recortarElAire({ google, sheetId, geo })
+  await reponerLasNotasQueEstaCorridaBorro({ google, sheetId, geo })
 
   console.log('\nLEÍDO DEL ARCHIVO:')
   for (const f of leido ?? []) {
@@ -312,6 +315,80 @@ async function recortarElAire({ google, sheetId, geo }) {
   const ahora = sobranteDeColchon({ filas: despues, desde: geo.filaEncabezado, hasta: filaDelSiguienteTitulo(despues, geo.filaEncabezado) })
   if (ahora.blancas === COLCHON_FINAL) console.log(`✓ quedaron ${ahora.blancas} filas de aire, releídas del archivo`)
   else { console.error(`✗✗ quedaron ${ahora.blancas} filas de aire y se esperaban ${COLCHON_FINAL}`); process.exitCode = 1 }
+}
+
+/**
+ * REPONER LA COLUMNA "QUÉ HACER" — LA QUE ESTA MISMA CORRIDA ACABA DE BORRAR.
+ *
+ * ═══ EL DEFECTO, CON SU FECHA (14/08) ═══
+ *
+ * La limpieza de arriba vacía el rectángulo A:G de la sección para que ninguna dinámica vieja
+ * sobreviva. La columna "Qué hacer" —las catorce notas del dueño— vive DENTRO de ese rectángulo, y
+ * quien la repone es otro script, `proveedores-notas-visibles.mjs`, que sólo corre después dentro
+ * del pipeline. Correr este generador solo, que es exactamente lo que su cabecera documenta, borró
+ * las catorce notas y no avisó: la sección quedó completa a la vista, sin una celda en rojo, sin un
+ * error en el log y sin una línea distinta en la salida.
+ *
+ * El dueño, ese día: *"rompiste todo proveedores y lo q yo te pedia era arreglar y mejorar todo lo
+ * q habia, no romperlo y hacerlo desaparecer"*.
+ *
+ * ═══ LA REGLA QUE ESTO INSTALA: EL QUE BORRA REPONE, EN LA MISMA CORRIDA ═══
+ *
+ * No alcanza con documentar el orden de los pasos — el orden es una convención y las convenciones
+ * se rompen corriendo un script suelto, que es lo que pasó. La única forma de que no dependa de
+ * quién corre qué es que el script que vacía la columna la deje puesta antes de terminar. Los
+ * requests son los MISMOS que usa `proveedores-notas-visibles.mjs`: viven en
+ * `lib/proveedores-notas-columna.mjs` para que no puedan separarse.
+ *
+ * ═══ VA DESPUÉS DE `recortarElAire`, Y NO ES UN DETALLE ═══
+ *
+ * Una fórmula que devuelve "" se lee como fórmula, no como celda vacía. Escrita antes del recorte,
+ * la columna de notas taparía todo el aire del bloque y el colchón quedaría congelado — el agujero
+ * entre secciones que el dueño ya reportó, esta vez sin forma de cerrarlo.
+ *
+ * NO consulta la base: la fórmula busca contra la pestaña auxiliar. Si Postgres está caído, las
+ * notas vuelven igual.
+ */
+async function reponerLasNotasQueEstaCorridaBorro({ google, sheetId, geo }) {
+  const colNota = colNotaDetalle()
+  const colProv = colProveedorDetalle()
+  const visible = await google.readSheetValues(ID, `${PESTAÑA}!A1:R220`, { render: 'FORMATTED_VALUE' })
+  // El ancla es el SUBTÍTULO, no la salida de la corrida anterior: un cuadro en #REF! deja de
+  // reconocerse a sí mismo, y ahí es donde un generador se engancha en la fila equivocada.
+  const iSub = (visible ?? []).findIndex((f, i) => i >= geo.filaEncabezado
+    && /^cada operaci[oó]n/i.test(String(f?.[0] ?? '').trim()))
+  if (iSub < 0) {
+    console.error('  ✗ no encontré el subtítulo "Cada operación": NO repongo la columna "Qué hacer".'
+      + '\n    → node orquestador/scripts/proveedores-notas-visibles.mjs --aplicar')
+    process.exitCode = 1
+    return
+  }
+  const r = rangoDeNotasDelDetalle({
+    visible, filaSubtitulo: iSub + 1, filaLimite: geo.filaLimite, colNota,
+  })
+  const reqs = requestsDeNotas({
+    sheetId, ...r, columna: colNota, letraProveedor: String.fromCharCode(65 + colProv),
+  })
+  if (!reqs.length) {
+    console.error('  ✗ el cuadro de detalle no tiene ni una fila entre sus rótulos y la sección 2:'
+      + ' NO repongo la columna "Qué hacer".')
+    process.exitCode = 1
+    return
+  }
+  await google.spreadsheetBatchUpdate(ID, reqs, { espejo: true })
+
+  // LA EVIDENCIA ES DEL EFECTO: se relee y se cuenta cuántas notas quedaron A LA VISTA. Que el batch
+  // haya respondido 200 no prueba que una sola nota se vea.
+  const L = String.fromCharCode(65 + colNota)
+  const leido = await google.readSheetValues(ID, `${PESTAÑA}!A${r.desde}:${L}${r.hasta - 1}`)
+  const conNota = (leido ?? []).filter((f) => String(f?.[colNota] ?? '').trim() !== '').length
+  console.log(`✓ columna "Qué hacer" repuesta en ${L}${r.desde}:${L}${r.hasta - 1}`
+    + ` · ${conNota} nota(s) del dueño a la vista, releídas del archivo`)
+  if (conNota === 0) {
+    console.error('  ✗✗ ni una sola nota quedó visible. O la auxiliar _PROVEEDORES_OS está vacía'
+      + ' (la escribe proveedores-cuenta-corriente.mjs) o el cuadro no emitió proveedores.')
+    process.exitCode = 1
+  }
 }
 
 main().catch((e) => { console.error(e); process.exit(1) })
