@@ -25,7 +25,7 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { grillaEncabezado, F, FILAS_AGING, MEDIOS } from '../lib/proveedores-encabezado.mjs'
+import { grillaEncabezado, celdasEncabezado, F } from '../lib/proveedores-encabezado.mjs'
 // Los anchos de columna son de TODA la pestaña: su definición vive una sola vez y este script es el
 // único que la aplica. Ver el lib: el encabezado los fijaba mirando sólo su propio cuadro.
 import { requestsDeAncho } from '../lib/proveedores-frontera.mjs'
@@ -85,32 +85,42 @@ function pedidosDeFormato(sheetId, anchoHoja) {
     p.push(rango(sheetId, F.rotulos, F.rotulos, c1 + 1, c2, { userEnteredFormat: { horizontalAlignment: 'RIGHT' } }, `${FMT}.horizontalAlignment`))
   }
 
-  // Cuerpo del aging: monto sin $, % y cantidad.
-  const finAging = F.primerTramo + FILAS_AGING.length - 1
-  p.push(rango(sheetId, F.primerTramo, finAging, 1, 2, { userEnteredFormat: { numberFormat: MONTO, horizontalAlignment: 'RIGHT' } }, `${FMT}.numberFormat,${FMT}.horizontalAlignment`))
-  p.push(rango(sheetId, F.primerTramo, finAging, 2, 3, { userEnteredFormat: { numberFormat: PORCENTAJE, horizontalAlignment: 'RIGHT' } }, `${FMT}.numberFormat,${FMT}.horizontalAlignment`))
-  p.push(rango(sheetId, F.primerTramo, finAging, 3, 4, { userEnteredFormat: { numberFormat: ENTERO, horizontalAlignment: 'RIGHT' } }, `${FMT}.numberFormat,${FMT}.horizontalAlignment`))
-
-  // Cuerpo del medio de pago.
-  const finMedios = F.primerMedio + MEDIOS.length - 1
-  p.push(rango(sheetId, F.primerMedio, finMedios, 6, 7, { userEnteredFormat: { numberFormat: MONTO, horizontalAlignment: 'RIGHT' } }, `${FMT}.numberFormat,${FMT}.horizontalAlignment`))
-  p.push(rango(sheetId, F.primerMedio, finMedios, 7, ANCHO, { userEnteredFormat: { numberFormat: PORCENTAJE, horizontalAlignment: 'RIGHT' } }, `${FMT}.numberFormat,${FMT}.horizontalAlignment`))
-
-  // Totales: negrita, línea arriba, y acá SÍ el signo $.
-  const total = (fila, c1, c2, colMonto) => {
-    p.push(rango(sheetId, fila, fila, c1, c2, { userEnteredFormat: { textFormat: { bold: true, fontSize: 10, foregroundColor: TINTA }, borders: { top: LINEA } } }, `${FMT}.textFormat,${FMT}.borders`))
-    p.push(celda(sheetId, fila, colMonto, { userEnteredFormat: { numberFormat: MONTO_TOTAL, horizontalAlignment: 'RIGHT' } }, `${FMT}.numberFormat,${FMT}.horizontalAlignment`))
+  // ═══ EL FORMATO SALE DE LA ESPECIE DECLARADA, NO DE UNA LISTA DE RANGOS (14/08/2026) ═══
+  //
+  // Acá había ocho `rango(...)` y seis `celda(...)` escritos a mano, uno por bloque del cuadro. Cada
+  // uno correcto, y el conjunto incompleto: `F.noMostrada` —la fila "Dicen «Pagado» y falta plata",
+  // que nació después— no estaba en ninguno, así que sus dos números se quedaron con el TEXTO del
+  // reset base y la pestaña publicó `11919062,68` al lado de columnas que dicen "$15.097.040".
+  //
+  // El formato de una celda no puede depender de que alguien se acuerde de agregarla a una lista que
+  // vive en otro archivo. Ahora se recorre la grilla ENTERA y cada celda pide el formato de la especie
+  // que declaró donde se escribió su valor (ver lib/proveedores-encabezado.mjs). Una fila nueva se
+  // dibuja bien el día que se escribe, sin tocar este archivo.
+  const PORESPECIE = { monto: MONTO, montoTotal: MONTO_TOTAL, porcentaje: PORCENTAJE, entero: ENTERO }
+  for (const [i, fila] of celdasEncabezado().entries()) {
+    for (const [j, c] of fila.entries()) {
+      const nf = c && PORESPECIE[c.t]
+      if (!nf) continue
+      p.push(celda(sheetId, i + 1, j, { userEnteredFormat: { numberFormat: nf, horizontalAlignment: 'RIGHT' } }, `${FMT}.numberFormat,${FMT}.horizontalAlignment`))
+    }
   }
-  total(F.totalAging, 0, 4, 1)
-  total(F.totalMedios, 5, ANCHO, 6)
-  p.push(celda(sheetId, F.totalAging, 2, { userEnteredFormat: { numberFormat: PORCENTAJE, horizontalAlignment: 'RIGHT' } }, `${FMT}.numberFormat,${FMT}.horizontalAlignment`))
-  p.push(celda(sheetId, F.totalAging, 3, { userEnteredFormat: { numberFormat: ENTERO, horizontalAlignment: 'RIGHT' } }, `${FMT}.numberFormat,${FMT}.horizontalAlignment`))
-  p.push(celda(sheetId, F.totalMedios, 7, { userEnteredFormat: { numberFormat: PORCENTAJE, horizontalAlignment: 'RIGHT' } }, `${FMT}.numberFormat,${FMT}.horizontalAlignment`))
+
+  // Totales: negrita y línea arriba. El signo $ de la fila del total ya lo puso su especie
+  // `montoTotal` en el bucle de arriba: repetirlo acá sería la segunda lista que se desincroniza.
+  const total = (fila, c1, c2) => {
+    p.push(rango(sheetId, fila, fila, c1, c2, { userEnteredFormat: { textFormat: { bold: true, fontSize: 10, foregroundColor: TINTA }, borders: { top: LINEA } } }, `${FMT}.textFormat,${FMT}.borders`))
+  }
+  total(F.totalAging, 0, 4)
+  total(F.totalMedios, 5, ANCHO)
 
   // La línea de ARCA: no es deuda, no se suma a nada, y por eso va tenue y sin borde.
-  p.push(celda(sheetId, F.arca, 5, { userEnteredFormat: { textFormat: { fontSize: 9, foregroundColor: TENUE }, borders: {} } }, `${FMT}.textFormat,${FMT}.borders`))
-  p.push(celda(sheetId, F.arca, 6, { userEnteredFormat: { numberFormat: MONTO, horizontalAlignment: 'RIGHT', textFormat: { fontSize: 9, foregroundColor: TENUE }, borders: {} } }, `${FMT}.numberFormat,${FMT}.horizontalAlignment,${FMT}.textFormat,${FMT}.borders`))
-  p.push(celda(sheetId, F.arca, 7, { userEnteredFormat: { numberFormat: ENTERO, horizontalAlignment: 'RIGHT', textFormat: { fontSize: 9, foregroundColor: TENUE }, borders: {} } }, `${FMT}.numberFormat,${FMT}.horizontalAlignment,${FMT}.textFormat,${FMT}.borders`))
+  for (const col of [5, 6, 7]) {
+    p.push(celda(sheetId, F.arca, col, { userEnteredFormat: { textFormat: { fontSize: 9, foregroundColor: TENUE }, borders: {} } }, `${FMT}.textFormat,${FMT}.borders`))
+  }
+  // LA FILA QUE CUELGA DEL TOTAL NO ES EL TOTAL. Está pegada abajo a propósito —la contradicción tiene
+  // que leerse junto al número que contradice— pero sin esto hereda la negrita y la regla de la fila de
+  // arriba, y un aviso dibujado como subtotal se lee como plata que suma.
+  p.push(rango(sheetId, F.noMostrada, F.noMostrada, 0, ANCHO, { userEnteredFormat: { textFormat: { bold: false, fontSize: 9, foregroundColor: TENUE }, borders: {} } }, `${FMT}.textFormat,${FMT}.borders`))
 
   p.push(celda(sheetId, F.control, 0, { userEnteredFormat: { textFormat: { fontSize: 9, foregroundColor: TENUE } } }, `${FMT}.textFormat`))
   // El único color de la pestaña: rojo cuando el control no cierra.

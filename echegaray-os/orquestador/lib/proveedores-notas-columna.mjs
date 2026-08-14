@@ -125,10 +125,31 @@ export function requestsDeNotas({ sheetId, filaRotulos, desde, hasta, columna, l
           userEnteredFormat: {
             numberFormat: { type: 'TEXT', pattern: '@' },
             horizontalAlignment: 'LEFT',
+            // ═══ UNA NOTA LARGA NO PUEDE DESARMAR LA GRILLA (14/08/2026) ═══
+            //
+            // EL DEFECTO, en la captura que mandó el dueño: `D20` (Hormiserv) tiene ~200 caracteres
+            // —"Esperar a q escriba el cobrador… pedir bonificacion de 5m3, cerrar para pagar"— en una
+            // columna de 300px, y se derramaba sobre E, F y G tapando el cuadro de al lado. Es una de
+            // las cosas que él ve como "el diseño está roto".
+            //
+            // EL TEXTO ES SUYO Y NO SE TOCA: ni se recorta, ni se resume, ni se reescribe. Lo que se
+            // decide acá es cómo se MUESTRA, que es responsabilidad del formato. Sin `wrapStrategy`
+            // declarada la celda hereda lo que haya, y el default para texto es derramar.
+            //
+            // CLIP y no WRAP: envolver 200 caracteres en 300px hace una fila de seis renglones, y una
+            // fila alta en el medio de una tabla rompe la lectura tanto como el derrame. Con CLIP la
+            // nota queda acotada a su celda y el texto entero se lee al pararse encima (la barra de
+            // fórmulas lo muestra completo).
+            //
+            // LO QUE SE DESCARTÓ, Y POR QUÉ: poner el texto completo en la NOTA de la celda. Es lo que
+            // haría cualquier planilla, y en este archivo está prohibido — el dueño borraba las notas y
+            // volvían en la corrida siguiente, y la regla que salió de ahí es que ningún generador
+            // escribe notas nunca más. Ver la memoria "Notas que resucitan".
+            wrapStrategy: 'CLIP',
             textFormat: { fontSize: 9, italic: true, foregroundColor: { red: 0.45, green: 0.45, blue: 0.45 } },
           },
         },
-        fields: `${FMT}.numberFormat,${FMT}.horizontalAlignment,${FMT}.textFormat`,
+        fields: `${FMT}.numberFormat,${FMT}.horizontalAlignment,${FMT}.wrapStrategy,${FMT}.textFormat`,
       },
     },
   ]

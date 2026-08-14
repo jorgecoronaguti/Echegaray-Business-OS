@@ -1747,6 +1747,11 @@ async function main() {
     // y no la piso — sin que tengas que candar nada. --force la salta (regeneración pedida a mano).
     if (!FORCE && (await autoRespetarReescritura(ID, t.titulo, cuadroP, visible)).reescrita) continue
     if (FORCE) console.log(`  ⚡ ${t.titulo}: --force, regeneración intencional (guardas de skip omitidas; comentarios re-anclados igual)`)
+    // EL REGISTRO DE RÓTULOS SE LEE UNA VEZ Y LO USAN LOS DOS BARRIDOS —el del cuerpo y el de la cola—.
+    // Es la prueba de qué textos escribió este generador; sin él, `vaciarPropio` no puede probar nada y
+    // la guarda conserva todo, que es el estado en el que estábamos. Si la lectura falla, la lista sale
+    // vacía y el comportamiento vuelve a ser el de siempre: se conserva. Falla del lado seguro.
+    const { mios } = await leerRegistro(ID, t.titulo).catch(() => ({ mios: [] }))
     const { grid: cuadroFinal, respetadas, ediciones, candidatos } = await conEdicionesRespetadas(ID, t.titulo, cuadroP, visible)
     for (const r of respetadas) console.log(`  ✋ ${t.titulo}: respeto tu texto ("${String(r.suyo).slice(0, 40)}") en vez de "${String(r.mio).slice(0, 40)}"`)
     const fusion = fusionar(cuadroFinal, previo)
@@ -1757,7 +1762,39 @@ async function main() {
     // contenido se escribe por otro camino y sigue protegido).
     // EL RANGO ARRANCA EN LA FRONTERA. Con `A1` acá se escribiría el bloque entero encima del hero y
     // de las dos tablas dinámicas: la escritura las reemplaza por texto y las mata sin un solo error.
-    await google.batchUpdateValues(ID, [{ range: `${refPestana(t.titulo)}!A${filaArranque}`, values: fusion }], { yaGuardado: FORCE })
+    //
+    // ═══ EL CUERPO TAMBIÉN TIENE QUE PODER LIMPIAR LO SUYO (14/08/2026) ═══
+    //
+    // EL DEFECTO, leído del archivo vivo. La fila 112 de "Proveedores" tenía el título del cuadro 4 en
+    // la A y, en la MISMA fila, una nota de crédito en B·C·D y su clasificación en F·G. La 114, el
+    // encabezado del cuadro 4 en A..E y "▲ revisar (parcial o descuento)" en la F. La 134, datos de un
+    // proveedor en A..D y la palabra "Importe" —un encabezado— en la F. Dos corridas del mismo bloque,
+    // con DOS LAYOUTS DE COLUMNA DISTINTOS (el importe en la E en una, en la F en la otra), conviviendo
+    // fila por fila. Ninguna de las dos está mal: están las dos, entreveradas.
+    //
+    // LA CAUSA no es que dos bloques calculen mal su ancla —la grilla se apila derivando del alto real
+    // y eso funciona—: es que EL MECANISMO DE LIMPIEZA DEL PROPIO FOOTPRINT ESTABA DESACTIVADO. El
+    // generador rellena con el centinela VACIO todo lo que no llena, justamente para que la fusión
+    // BORRE el resto viejo (ver `aAnchoCompleto`), y después manda esa grilla en una escritura que no
+    // lleva `vaciarPropio`. `no-borrar.mjs` —la guarda sin bypass que corre al final de TODA escritura—
+    // revierte celda por celda cualquier vaciado que no venga probado: "si el valor nuevo está vacío y
+    // el destino tiene algo, gana el destino". El centinela no limpiaba nada.
+    //
+    // Y la otra vía de prueba, la huella, tampoco alcanza acá: tolera corrimientos de ±5 filas, y este
+    // bloque arranca donde termina una tabla dinámica, así que se corre tantas filas como esa dinámica
+    // crezca. Está escrito en `lib/no-borrar.mjs`, línea por línea, con la medición: "se midieron copias
+    // a ±50 · ahí la huella no alinea NUNCA · el residuo del propio OS queda blindado para siempre con
+    // el mismo blindaje que protege el trabajo del dueño".
+    //
+    // El remedio ya existía y estaba aplicado a la MITAD del problema: el barrido de cola (más abajo)
+    // manda `vaciarPropio` desde el 13/08 y por eso limpia. El cuerpo —donde vive el cuadro que el
+    // dueño mira— seguía sin mandarlo. Va el mismo registro de rótulos, leído UNA vez y compartido con
+    // la cola: `vaciarPropio` no es un permiso, es la prueba de que ese texto lo escribió este
+    // generador, y quien la verifica es la guarda sobre el destino que ella misma relee.
+    await google.batchUpdateValues(
+      ID, [{ range: `${refPestana(t.titulo)}!A${filaArranque}`, values: fusion }],
+      { yaGuardado: FORCE, vaciarPropio: { mios } },
+    )
     if (conservadas.length) console.log(`  ✋ ${t.titulo}: ${conservadas.length} celda(s) escritas por el dueño — CONSERVADAS, no se borra nada`)
 
     // ═══ LA COLA DE UN DISEÑO ANTERIOR MÁS LARGO ═══
@@ -1796,7 +1833,6 @@ async function main() {
       ID, `${refPestana(t.titulo)}!A${filaFin + 1}:${letra(anchoLeer - 1)}${filaFin + MAX_COLA}`,
     ).catch(() => [])
     if (colaCruda.length) {
-      const { mios } = await leerRegistro(ID, t.titulo).catch(() => ({ mios: [] }))
       const vacias = colaCruda.map(() => Array.from({ length: anchoP }, () => ''))
       await google.batchUpdateValues(
         ID, [{ range: `${refPestana(t.titulo)}!A${filaFin + 1}`, values: vacias }],
@@ -1901,6 +1937,16 @@ async function main() {
   // un rango con nombre apuntando a basura cuenta como defecto igual que una celda en `#REF!`: las
   // dos hacen que otra pestaña muestre un número equivocado sin dar error.
   let err = 0
+  // ═══ UN CONTADOR QUE NO DICE DE QUÉ ES, MIENTE (14/08/2026) ═══
+  //
+  // `err` suma TRES cosas distintas —rangos con nombre que no se pudieron apuntar, rangos que quedaron
+  // apuntando mal, y celdas en `#REF!`— y el mensaje final las llamaba a todas "celdas en error".
+  // Medido: la corrida decía "⚠ 4 celdas en error" con CERO celdas en error en las cuatro pestañas;
+  // los cuatro eran rangos con nombre. Costó una hora de búsqueda de un `#REF!` que no existía.
+  //
+  // Un aviso que nombra mal su causa manda a arreglar lo que no está roto. Se cuentan por separado y
+  // el mensaje dice cuál es cuál; el total sigue decidiendo lo mismo que antes.
+  const porCausa = { rangosAlPublicar: 0, rangosVivos: 0, celdas: 0 }
 
   // ═══ EL RETIRO NO DEPENDE DE HABER ESCRITO LA PESTAÑA, Y POR ESO VA ANTES DEL SKIP ═══
   //
@@ -2028,9 +2074,11 @@ async function main() {
       console.log(`  ⚠ RANGO CON NOMBRE MAL APUNTADO: ${m.name} → ${refPestana(NOMBRES.proveedores)}!${letra(m.col - 1)}${m.fila} `
         + `= ${JSON.stringify(m.valor)} (${m.encontro}, se esperaba ${m.espera}). Las pestañas que lo leen van a mostrar eso.`)
     }
-    if (nombres.malApuntados.length) err += nombres.malApuntados.length
+    if (nombres.malApuntados.length) { err += nombres.malApuntados.length; porCausa.rangosAlPublicar += nombres.malApuntados.length }
 
-    err += await verificarNombresVivos(google, hojaArca.sheetId)
+    const vivos = await verificarNombresVivos(google, hojaArca.sheetId)
+    err += vivos
+    porCausa.rangosVivos += vivos
   }
 
   // ═══ VERIFICACIÓN ANTES DE RETIRAR LA PESTAÑA VIEJA ═══
@@ -2039,9 +2087,13 @@ async function main() {
     // SÓLO EL TRAMO ESCRITO: una celda en error arriba de la frontera es de la dinámica, no mía, y
     // contarla haría que este generador se frene por un defecto que no puede arreglar.
     const v = await google.readSheetValues(ID, `${refPestana(e.titulo)}!A${e.filaArranque}:T${e.filaFin}`)
-    v.forEach((f, i) => (f || []).forEach((c, j) => { if (/^#(REF|ERROR|N\/A|VALUE|¡|DIV|NAME|NUM|NULL)/.test(String(c ?? ''))) { err++; if (err <= 8) console.log(`  ⚠ ${e.titulo}!${letra(j)}${e.filaArranque + i} = ${c}`) } }))
+    v.forEach((f, i) => (f || []).forEach((c, j) => { if (/^#(REF|ERROR|N\/A|VALUE|¡|DIV|NAME|NUM|NULL)/.test(String(c ?? ''))) { err++; porCausa.celdas++; if (porCausa.celdas <= 8) console.log(`  ⚠ ${e.titulo}!${letra(j)}${e.filaArranque + i} = ${c}`) } }))
   }
-  console.log(err ? `\n⚠ ${err} celdas en error: NO retiro la pestaña vieja` : '\n✓ las cuatro pestañas, sin una sola celda en error')
+  console.log(err
+    ? `\n${ALERTA} ${err} defecto(s): ${porCausa.celdas} celda(s) en error · `
+      + `${porCausa.rangosAlPublicar} rango(s) con nombre que no se pudieron apuntar · `
+      + `${porCausa.rangosVivos} rango(s) que quedaron apuntando mal. NO retiro la pestaña vieja`
+    : '\n✓ las cuatro pestañas, sin una sola celda en error y con todos los rangos con nombre en su lugar')
   // ═══ ESTO SALE CON CÓDIGO != 0, NO CON UN AVISO (13/08) ═══
   //
   // Hasta hoy la corrida terminaba en 0 con los avisos impresos, y el pipeline la contaba entre las

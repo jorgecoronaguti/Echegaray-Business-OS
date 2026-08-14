@@ -214,7 +214,13 @@ test('el generador cuenta como ERROR la línea que no encuentra, y verifica dón
     'una línea sin rótulo tiene que frenar el retiro de las pestañas viejas, no sólo avisar')
   assert.ok(!/Sus rangos con nombre NO se reapuntan — se quedan donde estaban/.test(SRC),
     '"se quedan donde estaban" sin verificar es exactamente el defecto que se está arreglando')
-  assert.match(SRC, /err \+= await verificarNombresVivos\(google, hojaArca\.sheetId\)/)
+  // El resultado de la verificación tiene que SUMAR al contador de defectos. Se pregunta por las dos
+  // piezas y no por una línea literal: el 14/08 el contador pasó a desglosarse por causa —"4 celdas en
+  // error" contaba rangos con nombre y mandó a buscar un #REF! que no existía— y un test atado al
+  // texto exacto de una línea se rompe con cada mejora de redacción sin decir nada sobre el comportamiento.
+  assert.match(SRC, /const vivos = await verificarNombresVivos\(google, hojaArca\.sheetId\)/)
+  assert.match(SRC, /err \+= vivos/,
+    'si la verificación no suma al contador, un nombre mal apuntado deja la corrida en verde')
   assert.match(SRC, /if \(err\) process\.exitCode = 1/,
     'un rango mal apuntado es plata equivocada en otra pestaña: el paso se reporta FALLADO, no con un aviso')
 })
