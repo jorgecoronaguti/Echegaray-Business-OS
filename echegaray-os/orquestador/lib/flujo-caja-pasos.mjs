@@ -282,6 +282,30 @@ export const PASOS = [
   // PEGADOS en vez de ser fórmula o celda derramada. Sin este censo, la única forma de enterarse era
   // que el dueño abriera una celda y mirara la barra de fórmulas — que es exactamente lo que pasó.
   ['censo-numeros-pegados.mjs', 'regla de oro: cuántos números están pegados en vez de calculados', []],
+  // ═══ EL CONTROL QUE HABRÍA CAZADO `_CRUCE_ARCA` NO LO CORRÍA NADIE (14/08/2026) ═══
+  //
+  // El censo de dueños existe desde el 23/07 y contesta la única pregunta que este archivo no puede
+  // contestar solo: qué pestaña del archivo real NO figura en esta lista. `_CRUCE_ARCA` tenía
+  // generador desde el 04/08, no estaba acá y no se refrescó en diez días — el censo lo habría dicho
+  // la primera mañana. No lo dijo porque el censo tampoco estaba acá: un control que hay que acordarse
+  // de tipear tiene exactamente la misma disponibilidad que el defecto que persigue.
+  //
+  // VA AL FINAL, CON LOS DEMÁS AUDITORES, Y NO AL PRINCIPIO. Poner un aviso ANTES de escribir suena
+  // mejor de lo que es, y acá está medido contra su propia definición:
+  //
+  //   · el censo NO puede frenar nada — el runner sigue con los demás pasos pase lo que pase, así que
+  //     adelantarlo no evita una sola escritura;
+  //   · corriendo primero, una pestaña que ESTA MISMA corrida crea todavía no existe en el archivo, y
+  //     el censo la reportaría como FANTASMA ("declarada por un paso pero NO EXISTE"). Un falso
+  //     positivo por corrida en el control que vino a detectar huérfanas lo vuelve ruido, que es cómo
+  //     murió el trinquete de frescura;
+  //   · corriendo último, el archivo ya tiene todas las pestañas de la corrida: cero fantasmas falsos,
+  //     y una huérfana nueva se ve el MISMO día.
+  //
+  // Y VA EN `REPORTES`: su ≠0 significa "encontré huérfanas", no "no pude generar los datos". Contado
+  // como fallo, el servicio quedaría siempre en rojo y —peor— la frescura del Cash Flow, que sólo se
+  // registra si nadie falló, dejaría de registrarse. Es el motivo por el que existe esa lista.
+  ['auditar-duenos-pestanas.mjs', 'censo de dueños: qué pestaña del archivo no la mantiene ningún paso de esta lista', []],
   // EL SALDO DEL BANCO CONTRA SUS PROPIOS MOVIMIENTOS (31/07). El dueño: "está mal el saldo de caja en
   // todos lados". De ese saldo cuelgan CAJA_TOTAL_DISPONIBLE, el efectivo inicial de los dos cash flow y
   // el piso proyectado: un agujero en el extracto cargado se propaga a todas las pantallas en silencio,
@@ -337,7 +361,7 @@ export const PASOS = [
 // pantalla o de auditoría es un REPORTE visible que no bloquea ni la frescura ni el estado del servicio.
 export const REPORTES = new Set([
   'formato-pestanas.mjs', 'reparar-pantalla.mjs', 'censo-numeros-pegados.mjs', 'auditar-saldo-banco.mjs',
-  'reparar-textos.mjs', 'formato-condicional.mjs', 'auditar-pantalla.mjs',
+  'reparar-textos.mjs', 'formato-condicional.mjs', 'auditar-pantalla.mjs', 'auditar-duenos-pestanas.mjs',
 ])
 
 /** NÚCLEO PURO: ¿este paso es de presentación/auditoría (su ≠0 es un reporte, no un fallo de datos)? */

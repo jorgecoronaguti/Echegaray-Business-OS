@@ -163,3 +163,34 @@ test('sólo el generador de texto declara "Proveedores" como pestaña suya', () 
   assert.deepEqual(dueñosDeLaPestaña, ['proveedores-materiales-pestana.mjs'],
     'dos pasos declaran "Proveedores": el censo va a reportar dos dueños de la misma pestaña')
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL CONTROL QUE NADIE CORRÍA (14/08/2026)
+//
+// `_CRUCE_ARCA` estuvo diez días sin refrescarse con `Materiales` leyendo $88.078.801 de ahí. El censo
+// de dueños lo habría dicho la primera mañana — existía desde el 23/07 y no estaba en PASOS. Un
+// control que hay que acordarse de tipear tiene la misma disponibilidad que el defecto que persigue.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('el censo de dueños CORRE en el pipeline: es el único que ve una pestaña sin dueño', () => {
+  assert.ok(PASOS.some(([s]) => s === 'auditar-duenos-pestanas.mjs'),
+    'sin este paso, una pestaña huérfana nueva sólo se descubre si alguien tipea el comando')
+})
+
+test('el censo es un REPORTE: su ≠0 no puede contar como fallo de datos ni bloquear la frescura', () => {
+  // La frescura del Cash Flow SÓLO se registra si `fallaron.length === 0`. Contado como fallo, el
+  // censo la apagaría todos los días que encuentre una huérfana — que son justo los días que importa.
+  assert.equal(esReporte('auditar-duenos-pestanas.mjs'), true)
+})
+
+test('el censo corre AL FINAL: corriendo primero reportaría como FANTASMA la pestaña que la corrida crea', () => {
+  const pos = (s) => PASOS.findIndex(([x]) => x === s)
+  const censo = pos('auditar-duenos-pestanas.mjs')
+  // Cualquier paso que DECLARE una pestaña propia tiene que haber corrido antes: si no, esa pestaña
+  // puede no existir todavía en el archivo y el censo la contaría como "declarada y NO EXISTE".
+  for (const [script, , pestanas] of PASOS) {
+    if (!(pestanas || []).length) continue
+    assert.ok(pos(script) < censo,
+      `${script} declara ${pestanas.join(', ')} y corre DESPUÉS del censo: un falso fantasma por corrida vuelve ruido al control`)
+  }
+})

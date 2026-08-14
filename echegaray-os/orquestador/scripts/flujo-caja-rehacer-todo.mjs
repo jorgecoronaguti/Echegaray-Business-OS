@@ -52,6 +52,42 @@ const DRY = process.argv.includes('--dry')
 // el agente entero (ver flujo-caja-pasos.mjs).
 
 /**
+ * NÚCLEO PURO: POR QUÉ FALLÓ UN PASO — la línea que explica, no la primera que se imprimió.
+ *
+ * ═══ EL DEFECTO (14/08/2026) ═══
+ *
+ * Esto decía `stderr.split('\n')[0]`, y la primera línea de stderr es la primera que el script mandó
+ * a `console.warn`, que casi nunca es la causa. Medido sobre las corridas del 13 y el 14/08:
+ * `proveedores-materiales-pestana.mjs` figuró FALLADO doce veces seguidas con esta explicación —
+ *
+ *     ⚠ VENTAS (no es de esta pestaña): 6 factura(s) emitidas que Cobranzas no tiene, $129.499.724.
+ *
+ * — que es un aviso informativo sobre OTRA pestaña, impreso ochocientas líneas antes de que el paso
+ * decidiera su código de salida. Durante días el log señaló una causa falsa con toda la autoridad de
+ * un `✗`, y el motivo real —el que sí había que arreglar— no aparecía en ninguna parte.
+ *
+ * ═══ LA REGLA ═══
+ *
+ * Una causa se busca DE ATRÁS PARA ADELANTE: lo último que un proceso alcanza a decir antes de morir
+ * es lo más cercano a por qué murió. Y se saltean las líneas que ya se sabe que NO son causas: las
+ * marcadas con el glifo de aviso, que el propio pipeline recolecta aparte para el resumen.
+ *
+ * SI NO QUEDA NINGUNA LÍNEA SIN MARCA, SE DICE ESO, no se cae a la primera. "Salió con código N y sólo
+ * imprimió avisos" es una descripción honesta que manda a leer el log entero; una advertencia
+ * ajena presentada como causa manda a arreglar lo que no está roto.
+ *
+ * @param {{stderr?:string, stdout?:string, message?:string, code?:number}} e el error de execFile
+ * @returns {string} una línea, ya recortada
+ */
+export function motivoDeFalla(e = {}) {
+  const lineas = String(e?.stderr ?? '').split('\n').map((l) => l.trim()).filter(Boolean)
+  const causa = [...lineas].reverse().find((l) => !MARCA_ALERTA.test(l))
+  if (causa) return causa.slice(0, 220)
+  if (lineas.length) return `salió con código ${e?.code ?? '?'} y en stderr sólo hay avisos (${lineas.length}): la causa está en el log del paso`.slice(0, 220)
+  return String(e?.message ?? 'sin stderr').split('\n')[0].slice(0, 220)
+}
+
+/**
  * Los dos cash flow son pestañas COMPARTIDAS: el cuadro lo arma un script y el bloque de cheques lo
  * escribe otro. Ese segundo script ensanchaba la columna F a 460px para su columna de explicación, y
  * arriba la F es el mes de mayo — el cuadro entero quedaba descuadrado y ningún control lo veía,
@@ -300,8 +336,9 @@ async function main() {
       console.log(`✓ ${script.padEnd(26)} ${((Date.now() - inicio) / 1000).toFixed(1)}s  ${que}`)
       if (alerta) console.log(`   ⚠ ${alerta.slice(0, 220)}`)
     } catch (e) {
-      ;(esReporte(script) ? reportes : fallaron).push({ script, que, error: String(e.stderr || e.message).split('\n')[0].slice(0, 220) })
-      console.error(`✗ ${script.padEnd(26)} ${que}\n   ${String(e.stderr || e.message).split('\n')[0].slice(0, 220)}`)
+      const porQue = motivoDeFalla(e)
+      ;(esReporte(script) ? reportes : fallaron).push({ script, que, error: porQue })
+      console.error(`✗ ${script.padEnd(26)} ${que}\n   ${porQue}`)
     }
   }
 
@@ -336,4 +373,18 @@ async function main() {
   }
 }
 
-main().catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
+// ═══ IMPORTAR ESTE ARCHIVO NO PUEDE ARRANCAR EL PIPELINE (14/08/2026) ═══
+//
+// Acá decía `main()` a secas: un `import` de este módulo —para probar una función pura, para leer
+// PASOS desde otro script— LANZABA la reescritura del Sheet real. Se descubrió escribiendo el test de
+// `motivoDeFalla`: el test importó el archivo y arrancó la corrida. Frenó el guardián de generadores
+// (salió ≠0 y el pipeline aborta con código 2, así que no se escribió una sola celda) — pero el freno
+// que salvó la situación no es el que corresponde: dependía de que la rama tuviera un generador sin
+// resolver. En main limpio, ese mismo import habría reescrito catorce pestañas.
+//
+// El repo ya usa esta guarda en todos los scripts que exportan algo (`auditar-duenos-pestanas.mjs`,
+// entre otros) y este archivo era la excepción, justo el que más caro sale ejecutar por accidente.
+// Bajo systemd `ExecStart` es exactamente esta ruta, así que la corrida real no cambia.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
+}
