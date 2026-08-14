@@ -22,6 +22,7 @@
 import { makeGoogleClient } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { leerCobro, repasar, porMes, aFecha } from '../lib/cobranzas-en-cashflow.mjs'
+import { leerTipoCambio } from '../lib/tipo-cambio.mjs'
 import { gruposIndistinguibles } from '../lib/cobranzas-duplicado.mjs'
 import { verificarCadena } from '../lib/cash-flow-ancla-saldo.mjs'
 
@@ -110,14 +111,26 @@ function cruzarCobranzas(cobros, cfm, hoy) {
 async function main() {
   const hoy = new Date()
   const google = makeGoogleClient({ config: loadConfig() }) // sin WRITE_SCOPES: este auditor no escribe
-  const [cob, cfs, cfm] = await Promise.all([
+  const [cob, cfs, cfm, tc] = await Promise.all([
     google.readSheetGrid(ID, 'Cobranzas!A1:BD500'),
     google.readSheetGrid(ID, 'Cash Flow Semanal!A1:BZ120'),
     google.readSheetGrid(ID, 'Cash Flow Mensual!A1:BZ120'),
+    // EL TIPO DE CAMBIO TAMBIÉN ACÁ (14/08). Este repaso llamaba a `leerCobro` sin él, así que los
+    // U$S 15.400 de la fila 62 entraban como $15.400: el vencido, el invisible y la reconstrucción
+    // mes a mes de julio se contaban $22,9M abajo. Es el mismo defecto que descuadraba el cuadre, en
+    // el segundo consumidor de la misma función.
+    leerTipoCambio(google, ID),
   ])
 
   const cobros = []
-  for (let i = 4; i < cob.filas.length; i++) { const c = leerCobro(cob.filas[i], i + 1); if (c) cobros.push(c) }
+  for (let i = 4; i < cob.filas.length; i++) {
+    const c = leerCobro(cob.filas[i], i + 1, { tipoCambio: tc.tc })
+    if (c) cobros.push(c)
+  }
+  const sinValuar = cobros.filter((c) => c.sinValuar)
+  // NO SE ABORTA, SE DECLARA: este script es un repaso de cartera, no la publicación. Pero un importe
+  // que no se pudo valuar y no se dice está contado a su valor nominal en todo lo que sigue.
+  for (const c of sinValuar) console.log(`   ⚠ fila ${c.fila} (${c.cliente}): ${c.sinValuar} — la cuento a valor nominal`)
   const r = repasar(cobros, { hoy })
 
   console.log(`═══ COBRANZAS — ${r.total} cobros por ${ars(r.montoTotal)}`)
