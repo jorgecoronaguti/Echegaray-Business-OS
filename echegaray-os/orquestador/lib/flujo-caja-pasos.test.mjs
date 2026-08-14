@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { PASOS, REPORTES, esReporte } from './flujo-caja-pasos.mjs'
+import { estaRetirado, PASOS, PASOS_RETIRADOS, REPORTES, esReporte } from './flujo-caja-pasos.mjs'
 import { DUENOS_DE_PROVEEDORES } from './proveedores-frontera.mjs'
 
 const AQUI = dirname(fileURLToPath(import.meta.url))
@@ -51,8 +51,27 @@ test('todo paso declarado existe como archivo: un nombre que apunta al vacío no
 test('todos los dueños de un bloque de Proveedores corren en el pipeline', () => {
   const scripts = PASOS.map(([s]) => s)
   for (const d of DUENOS_DE_PROVEEDORES) {
+    if (estaRetirado(d.script)) continue   // frenado a propósito: lo cubre el test de abajo
     assert.ok(scripts.includes(d.script),
       `"${d.bloque}" lo escribe ${d.script} y NO está en PASOS: sólo se actualiza si alguien lo corre a mano`)
+  }
+})
+
+// UN PASO FRENADO NO PUEDE PARECERSE A UN OLVIDO.
+//
+// El test de arriba deja pasar los retirados; éste es el precio. Un retiro sin motivo, sin criterio
+// de vuelta o sin decir qué queda viejo es exactamente lo que este archivo existe para evitar: una
+// pestaña que envejece sin dar error. Y el script tiene que seguir existiendo — un retiro no es un
+// borrado, se reactiva.
+test('un paso retirado declara motivo, criterio de vuelta y qué deja sin actualizar', () => {
+  const dir = join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts')
+  for (const p of PASOS_RETIRADOS) {
+    assert.ok(existsSync(join(dir, p.script)), `${p.script} está retirado pero ya no existe`)
+    assert.ok(!PASOS.some(([s]) => s === p.script), `${p.script} está en PASOS Y en PASOS_RETIRADOS`)
+    assert.match(p.desde ?? '', /^\d{4}-\d{2}-\d{2}$/, `${p.script}: falta la fecha del freno`)
+    assert.ok((p.motivo ?? '').length > 60, `${p.script}: el motivo tiene que decir qué se midió`)
+    assert.ok((p.vuelve ?? '').length > 30, `${p.script}: falta el criterio verificable para volver`)
+    assert.ok((p.cuesta ?? []).length > 0, `${p.script}: falta decir qué queda sin actualizar`)
   }
 })
 
@@ -60,10 +79,12 @@ test('los dueños corren EN ORDEN: cada uno necesita lo que dejó el anterior', 
   // El generador de texto va antes que las dinámicas porque es quien escribe el título "3 · …", y la
   // sección 2 se ubica por "la sección que sigue". El encabezado va último: su guarda aborta si la
   // sección 1 no está donde va, y es el único que aplica los anchos.
-  const posiciones = DUENOS_DE_PROVEEDORES.map((d) => PASOS.findIndex(([s]) => s === d.script))
+  const posiciones = DUENOS_DE_PROVEEDORES
+    .filter((d) => !estaRetirado(d.script))
+    .map((d) => PASOS.findIndex(([s]) => s === d.script))
   for (let i = 1; i < posiciones.length; i++) {
     assert.ok(posiciones[i] > posiciones[i - 1],
-      `${DUENOS_DE_PROVEEDORES[i].script} corre antes que ${DUENOS_DE_PROVEEDORES[i - 1].script}, y lo necesita`)
+      `el dueño ${i} corre antes que el ${i - 1}, y lo necesita`)
   }
 })
 
@@ -160,6 +181,16 @@ test('sólo el generador de texto declara "Proveedores" como pestaña suya', () 
   // El registro de PASOS es de PESTAÑAS: el que declara una figura como su dueño en el censo. Los
   // dueños de un BLOQUE declaran [] — mismo criterio que cheques-emitidos-sync-banco.mjs.
   const dueñosDeLaPestaña = PASOS.filter(([, , t = []]) => t.includes('Proveedores')).map(([s]) => s)
+  // Con el dueño RETIRADO la lista queda vacía, y eso es correcto: la pestaña no tiene quien la
+  // refresque y el censo tiene que decirlo. Lo que no puede pasar nunca es que sean DOS —ni que sea
+  // cero SIN que el retiro esté declarado con lo que cuesta, que es lo que verifica el test de
+  // PASOS_RETIRADOS—. El día que vuelva, este assert vuelve a exigir exactamente uno.
+  if (estaRetirado('proveedores-materiales-pestana.mjs')) {
+    assert.deepEqual(dueñosDeLaPestaña, [], 'el dueño está retirado: nadie más puede declarar la pestaña')
+    assert.ok(PASOS_RETIRADOS.some((p) => (p.cuesta ?? []).some((c) => c.startsWith('Proveedores'))),
+      'si nadie refresca "Proveedores", el retiro tiene que declararlo entre lo que cuesta')
+    return
+  }
   assert.deepEqual(dueñosDeLaPestaña, ['proveedores-materiales-pestana.mjs'],
     'dos pasos declaran "Proveedores": el censo va a reportar dos dueños de la misma pestaña')
 })
