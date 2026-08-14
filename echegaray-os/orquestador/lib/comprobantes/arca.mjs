@@ -76,6 +76,14 @@ export function fechaIsoDeArca(v) {
   return m ? `${m[1]}-${m[2]}-${m[3]}` : null
 }
 
+/** Fecha de una fila de ARCA → `DD/MM/AAAA`, que es como la escribe el resto del módulo. */
+export function fechaArAR(v) {
+  const iso = fechaIsoDeArca(v)
+  if (!iso) return null
+  const [a, m, d] = iso.split('-')
+  return `${d}/${m}/${a}`
+}
+
 /** `DD/MM/AAAA` → `AAAA-MM-DD`. La fecha del comprobante leído viene en formato es-AR. */
 export function fechaIsoDeComprobante(v) {
   const m = String(v ?? '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
@@ -213,15 +221,79 @@ export function aplicarArca(comprobante = {}, conciliacion = {}) {
   // El CUIT del emisor es del padrón, no de la foto: la foto trae dos CUIT y el modelo elige mal.
   if (conciliacion.emisorCuit) comprobante.cuit = conciliacion.emisorCuit
   if (conciliacion.cae && !comprobante.cae) comprobante.cae = conciliacion.cae
+  // LA FECHA DE EMISIÓN TAMBIÉN ES DEL PADRÓN. Un comprobante identificado por CAE puede traer la
+  // fecha mal leída (el 05/12/2003 de Barcelo), y ahí el control de plausibilidad lo frena pidiendo un
+  // dato que ya está verificado. Se corrige y se declara, igual que el número.
+  const fechaArca = conciliacion.fila?.fecha_emision != null ? fechaArAR(conciliacion.fila.fecha_emision) : null
+  if (fechaArca && fechaArca !== comprobante.fecha) {
+    bloque.fechaLeida = comprobante.fecha ?? null
+    comprobante.fecha = fechaArca
+    comprobante.fechaVerificadaArca = true
+  } else if (fechaArca) {
+    comprobante.fechaVerificadaArca = true
+  }
 
-  // Los importes leídos que no cierran se reemplazan por los del libro fiscal. El signo se
-  // conserva: ARCA guarda todo positivo y una nota de crédito entra en negativo.
-  if (importesCierran(comprobante) === false && conciliacion.total != null) {
+  // ═══ SI ARCA IDENTIFICÓ LA FILA, SUS IMPORTES MANDAN — TODOS (14/08) ═══
+  //
+  // Acá decía `if (importesCierran(comprobante) === false)`: el libro fiscal sólo corregía cuando los
+  // números leídos no cerraban ENTRE SÍ. Y el caso real que quedó afuera cerraba perfecto:
+  //
+  //   IMG_7578, Combustibles Barcelo, CAE 86327692337683 — conciliado contra ARCA por CAE
+  //     leído  · neto 71.470,11 + IVA 27.183,14 + otros 1.346,83 = 100.000,08  ← cierra
+  //     ARCA   · neto 71.470,11 + IVA 15.008,72 + otros …        = 100.000,07
+  //
+  // El modelo metió el impuesto interno del combustible adentro del IVA. La suma daba bien, así que
+  // `aritmetica.mjs` no tenía nada que decir; pero el IVA era el 38% del neto, así que
+  // `plausibilidad.mjs` lo declaraba imposible y **el comprobante se frenaba pidiéndole al dueño que
+  // lo corrija a mano** — teniendo el dato correcto, verificado por el organismo, ya en la memoria.
+  //
+  // LA REGLA: entre una foto leída por un modelo y el libro fiscal del mismo comprobante, manda el
+  // libro fiscal. No es aflojar un control: es preferir la fuente verificada a la inferida.
+  //
+  // LO QUE LO HACE SEGURO —y por eso esto vive DESPUÉS de `conciliarConArca` y no en su lugar—: para
+  // llegar acá la fila tuvo que ser ÚNICA y haber pasado el control cruzado de importe (una
+  // coincidencia por CAE o por número cuyo total no cierra se descarta antes, en `resolver`). O sea
+  // que el total ya coincidía dentro de $0,50: lo que esto corrige de verdad es el REPARTO entre neto,
+  // IVA y otros tributos, que es donde el OCR se equivoca y donde el IVA mal repartido se convierte en
+  // crédito fiscal mal computado.
+  //
+  // Y SE DECLARA SIEMPRE (`importesCorregidos`): un importe que cambió sin que nadie lo vea es
+  // indistinguible de un error.
+  if (conciliacion.total != null) {
     const signo = comprobante.esNotaCredito ? -1 : 1
-    bloque.importesCorregidos = { total: comprobante.total, iva: comprobante.iva, neto: comprobante.neto }
-    comprobante.total = redondear2(Math.abs(conciliacion.total) * signo)
-    comprobante.iva = conciliacion.iva == null ? comprobante.iva : redondear2(Math.abs(conciliacion.iva) * signo)
-    comprobante.neto = conciliacion.neto == null ? comprobante.neto : redondear2(Math.abs(conciliacion.neto) * signo)
+    const antes = { total: comprobante.total, iva: comprobante.iva, neto: comprobante.neto }
+    const conSigno = (v) => (v == null ? null : redondear2(Math.abs(v) * signo))
+    const total = conSigno(conciliacion.total)
+    const iva = conciliacion.iva == null ? comprobante.iva : conSigno(conciliacion.iva)
+    const neto = conciliacion.neto == null ? comprobante.neto : conSigno(conciliacion.neto)
+    const cambio = (a, b) => a !== b && !(a == null && b == null)
+    if (cambio(antes.total, total) || cambio(antes.iva, iva) || cambio(antes.neto, neto)) {
+      bloque.importesCorregidos = { ...antes, otrosTributos: comprobante.otrosTributos ?? null }
+      comprobante.total = total
+      comprobante.iva = iva
+      comprobante.neto = neto
+      // ═══ Y LOS OTROS TRIBUTOS SE DERIVAN, PORQUE ARCA NO LOS DECLARA APARTE ═══
+      //
+      // El libro fiscal trae total, IVA y neto gravado. Lo que queda entre los tres —el impuesto
+      // interno del combustible, las percepciones, lo exento— es el residuo, y NO es un dato
+      // inventado: es la misma identidad con la que se controla el comprobante y la misma resta con
+      // la que el contrato de columnas deriva M = Total − IVA.
+      //
+      // Sin esto, tomar los importes de ARCA rompía la aritmética: con el `otrosTributos` viejo
+      // ($1.346,83) contra el IVA nuevo ($15.008,72), la suma daba $87.825,66 sobre un total de
+      // $100.000,07 y el comprobante quedaba frenado por «los importes no cierran» — cambiando un
+      // bloqueo por otro.
+      if (total != null && neto != null) {
+        const resto = redondear2(total - neto - (iva ?? 0))
+        comprobante.otrosTributos = Math.abs(resto) < 0.01 ? null : resto
+      }
+      // LO QUE VIENE DEL LIBRO FISCAL NO SE VUELVE A CUESTIONAR. `plausibilidad.mjs` existe para dudar
+      // de lo que leyó un modelo, no de lo que declaró el organismo: sin esta marca, el IVA corregido
+      // volvería a evaluarse contra las bandas y un comprobante legítimo con impuesto interno seguiría
+      // frenado por el control que este arreglo acaba de dejar sin sustento.
+      comprobante.ivaVerificadoArca = true
+      comprobante.importesVia = 'arca'
+    }
   }
   return bloque
 }

@@ -49,7 +49,7 @@
 //
 // Es SÓLO LECTURA. Ni una escritura, ni una fórmula: el freno de mano de Sheets no lo afecta.
 
-import { numeroCanonico, fechaDeLectura, soloDigitos } from './lectura.mjs'
+import { numeroCanonico, fechaDeLectura, soloDigitos, claseDeComprobante } from './lectura.mjs'
 import { normalizar, aNumero, redondear2 } from '../carga-comprobantes.mjs'
 import { escalaDeTotales } from './aritmetica.mjs'
 
@@ -232,9 +232,16 @@ export function identidadProveedor(comprobante = {}, reg = {}) {
   return 'distinto'
 }
 
-/** ¿Este tipo es una nota de crédito? Es el SIGNO de la operación, y parte la identidad en dos. */
-function esNota(tipo) {
-  return String(tipo ?? '').toUpperCase().replace(/[^A-Z]/g, '') === 'NC'
+/**
+ * EL INSTRUMENTO de una fila de Compras: `F`, `NC` o `ND`. Parte la identidad en tres.
+ *
+ * Antes era un booleano «¿es nota de crédito?», y con eso la NOTA DE DÉBITO caía en la misma bolsa
+ * que la factura: una `ND 0038-00002807` se daba por la misma fila que la `F A 0038-00002807`. Son
+ * dos gastos distintos y los dos suman. Ver `claseDeComprobante` en `lectura.mjs`, que es la única
+ * definición y la comparten la clave de idempotencia y esta búsqueda.
+ */
+function claseDeFila(tipo) {
+  return claseDeComprobante({ tipo })
 }
 
 /** ¿Los dos importes son el mismo? null = alguno no se sabe (no se puede afirmar ni negar). */
@@ -253,7 +260,7 @@ function importeCierra(a, b) {
  */
 export function buscarEnCompras(comprobante = {}, indice = {}) {
   const numero = numeroCanonico(comprobante.numero)
-  const tipo = comprobante.esNotaCredito ? 'NC' : (comprobante.tipo ?? null)
+  const tipo = claseDeComprobante(comprobante) === 'F' ? (comprobante.tipo ?? null) : claseDeComprobante(comprobante)
   const fecha = comprobante.fecha ?? null
   const total = comprobante.total == null ? null : redondear2(comprobante.total)
   const sinProveedor = !normalizar(comprobante.proveedor) && soloDigitos(comprobante.cuit).length !== 11
@@ -277,7 +284,7 @@ export function buscarEnCompras(comprobante = {}, indice = {}) {
       // Sólo excluye cuando las DOS puntas saben qué son. Si la fila de Compras no trae el tipo
       // legible —muchas viejas no lo traen— no se afirma nada y la candidata sigue viva, igual que
       // antes: no saber no es saber que son distintas.
-      .filter((c) => !(tipo && c.r.tipo && esNota(tipo) !== esNota(c.r.tipo)))
+      .filter((c) => !(tipo && c.r.tipo && claseDeFila(tipo) !== claseDeFila(c.r.tipo)))
     // (proveedor|CUIT, número) con el importe que cierra, o (número, total) cuando no se sabe quién
     // es: en los dos casos es ÉSTE. Es la clave que cazaba el ticket de Barcelo y no se disparaba.
     const seguras = cands.filter((c) => c.cierra === true || (c.cierra == null && c.quien === 'igual'))
@@ -297,6 +304,20 @@ export function buscarEnCompras(comprobante = {}, indice = {}) {
       // (o ninguno), que es el duplicado con un dígito mal leído.
       .filter((c) => !numero || !c.r.numero || c.r.numero !== numero)
     const mismos = cands.filter((c) => c.quien === 'igual')
+    // ═══ Y SI ADEMÁS COINCIDE EL CORRELATIVO, NO ES UN "PROBABLE": ES ÉSE (14/08) ═══
+    //
+    // Mismo proveedor, mismo día, mismo importe al centavo y los mismos ocho dígitos de correlativo,
+    // difiriendo sólo en el punto de venta —que es el grupo de dígitos que el OCR más equivoca—. Caso
+    // real: `0015-00015751` contra la fila 841, que dice `0001-00015751`, VILLA DEL PINO por
+    // $99.998,98 el 12/08. Preguntarle eso al dueño es hacerle revisar un comprobante que el sistema
+    // ya sabe cuál es, que es exactamente el trabajo que pidió no hacer.
+    //
+    // Que dos comprobantes distintos del mismo emisor coincidan el mismo día, en el importe exacto Y
+    // en los ocho dígitos del correlativo no es un caso raro: es imposible en la práctica.
+    if (numero) {
+      const gemelos = mismos.filter((c) => mismoCorrelativo(numero, c.r.numero))
+      if (gemelos.length) return hallazgo(HALLAZGO.CARGADO, gemelos, 'proveedor+fecha+importe+correlativo')
+    }
     if (mismos.length) return hallazgo(HALLAZGO.PROBABLE, mismos, 'proveedor+fecha+importe')
     // Sin proveedor legible, fecha y total exactos siguen siendo una pista que hay que mostrar. Con
     // proveedor legible y distinto, no: dos compras del mismo día por la misma plata a proveedores
@@ -326,12 +347,40 @@ export function buscarEnCompras(comprobante = {}, indice = {}) {
   // positivo es una pregunta; el del falso negativo ya se midió y fueron $201M.
   if (numero && fecha) {
     const cands = (indice.porFecha?.get(fecha) ?? [])
-      .filter((r) => r.numero && r.numero !== numero && difiereEnUnCaracter(numero, r.numero))
+      .filter((r) => r.numero && r.numero !== numero
+        && (difiereEnUnCaracter(numero, r.numero) || mismoCorrelativo(numero, r.numero)))
       .map((r) => ({ r, quien: identidadProveedor(comprobante, r) }))
       .filter((c) => c.quien === 'igual')
-    if (cands.length) return hallazgo(HALLAZGO.PROBABLE, cands, 'proveedor+fecha+numero a un digito')
+    if (cands.length) {
+      const via = difiereEnUnCaracter(numero, cands[0].r.numero)
+        ? 'proveedor+fecha+numero a un digito'
+        : 'proveedor+fecha+correlativo (otro punto de venta)'
+      return hallazgo(HALLAZGO.PROBABLE, cands, via)
+    }
   }
   return null
+}
+
+/**
+ * ¿Los dos números tienen el MISMO correlativo y distinto punto de venta?
+ *
+ * ═══ POR QUÉ NO ALCANZABA "A UN DÍGITO" (14/08) ═══
+ *
+ * El punto de venta es el grupo de dígitos que el OCR más equivoca —es chico, va arriba y muchas
+ * veces está impreso con otro cuerpo—. Medido en los fajos reales: `0015-00015751` contra
+ * `0001-00015751` (VILLA DEL PINO, la misma foto leída dos veces) y `0001-00002807` contra
+ * `0038-00002807` (Trielec). Los dos primeros difieren en DOS caracteres, así que la pasada de "un
+ * dígito" no los agarraba; el correlativo, en cambio, coincide entero en los ocho.
+ *
+ * Sigue siendo un PROBABLE y no un CARGADO: un proveedor con dos puntos de venta puede llegar al
+ * mismo correlativo en los dos. Pero además tiene que ser el MISMO PROVEEDOR y el MISMO DÍA, y esa
+ * coincidencia triple es rarísima. El costo del falso positivo es una pregunta; el del falso
+ * negativo, un gasto contado dos veces.
+ */
+export function mismoCorrelativo(a, b) {
+  const x = String(a ?? ''); const y = String(b ?? '')
+  if (x.length < 9 || y.length < 9 || x === y) return false
+  return x.slice(-8) === y.slice(-8) && x.slice(0, -8) !== y.slice(0, -8)
 }
 
 /**

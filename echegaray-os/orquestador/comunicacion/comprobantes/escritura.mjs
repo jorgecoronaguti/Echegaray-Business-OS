@@ -33,7 +33,8 @@ import { join, resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { congelado } from '../../lib/congelador-sheets.mjs'
 import { estaCompleto, imputacionVacia, ESTADO } from '../../lib/comprobantes/fajo.mjs'
-import { numeroCanonico, claveComprobante, conceptoConAnotacion } from '../../lib/comprobantes/lectura.mjs'
+import { identificar } from '../../lib/comprobantes/identidad.mjs'
+import { numeroCanonico, claveComprobante, conceptoConAnotacion, conceptoConProveedorLeido } from '../../lib/comprobantes/lectura.mjs'
 import * as repoReal from './repositorio.mjs'
 import { avisosDeVerificacion, cierre, COL as VCOL, tablaDeLoEscrito } from '../../lib/comprobantes/verificacion.mjs'
 
@@ -85,10 +86,21 @@ export const ENSAYO = () => process.env.ORQ_COMPROBANTES_ENSAYO === '1'
 export function aFajoJson(items = []) {
   return items.filter(estaCompleto).map((it) => {
     const c = it.comprobante ?? {}
+    // ═══ EL PROVEEDOR FUERA DEL DESPLEGABLE NO VIAJA A LA CELDA (14/08) ═══
+    //
+    // La fila entra igual —el gasto es real y una fila que falta cuesta más que una incompleta— pero
+    // la columna E queda VACÍA: escribir ahí un valor que el desplegable estricto no tiene deja la
+    // celda en rojo y parte en dos la cuenta corriente del proveedor en todos los cruces. El nombre
+    // leído se transcribe al concepto, que es texto libre, para que completar la celda sea elegir del
+    // desplegable y no ir a buscar la foto. Ver `faltantes.mjs` → `EXIGIR_PROVEEDOR`.
+    const conceptoBase = conceptoConAnotacion(c)
+    const concepto = it.proveedorNuevo
+      ? conceptoConProveedorLeido(conceptoBase, { proveedor: c.proveedor, cuit: c.cuit })
+      : conceptoBase
     return {
       categoria: c.categoria ?? undefined,
       fecha: c.fecha,
-      proveedor: c.proveedor,
+      proveedor: it.proveedorNuevo ? undefined : c.proveedor,
       cuit: c.cuit ?? undefined,
       cae: c.cae ?? undefined,
       tipo: c.tipo,
@@ -96,7 +108,7 @@ export function aFajoJson(items = []) {
       // LO ESCRITO A MANO VIAJA AL CONCEPTO, LITERAL (04/08). Ver `conceptoConAnotacion`: la
       // anotación es la que decide la imputación, y la imputación se discute meses después. Sin la
       // transcripción en la fila, esa discusión obliga a ir a buscar la foto.
-      concepto: conceptoConAnotacion(c) ?? undefined,
+      concepto: concepto ?? undefined,
       iva: c.iva ?? undefined,
       total: c.total,
       condicion: c.condicion ?? undefined,
@@ -328,6 +340,10 @@ export async function escribirFajo(d, fajo) {
     .filter(({ campos }) => campos.length)
     .map(({ it, fila, campos }) => ({
       proveedor: it.comprobante?.proveedor ?? null,
+      // El importe y la fecha van con la fila: es lo que le permite al dueño reconocer el comprobante
+      // sin abrir Compras. Ver `identidad.mjs`.
+      total: it.comprobante?.total ?? null,
+      fecha: it.comprobante?.fecha ?? null,
       fila: fila.fila ?? null,
       campos,
     }))
@@ -491,6 +507,7 @@ async function releerLoEscrito(d, filas) {
 
 /** Cómo se llama cada columna de imputación en el aviso. Son los rótulos REALES de Compras. */
 const ROTULO_COLUMNA = Object.freeze({
+  proveedor: 'Proveedor (E)',
   categoria: 'Categoría (B)',
   unidad: 'Unidad de Negocio (I)',
   obra: 'Obra (J)',
@@ -532,7 +549,10 @@ export function textoCargado(filas, yaEstaban, datos, { pendientes = [], suma = 
       : `⚠️ ${pendientes.length} quedaron **con la imputación por completar** en Compras:`)
     for (const p of pendientes) {
       const cols = p.campos.map((c) => ROTULO_COLUMNA[c] ?? c).join(', ')
-      l.push(`· fila ${p.fila ?? '?'}${p.proveedor ? ` (${p.proveedor})` : ''} → falta ${cols}`)
+      // SE NOMBRA POR SU CONTENIDO, NO SÓLO POR LA FILA: «fila 846 (Clavero $172.002 del 09/08)». El
+      // dueño reconoce el papel por el importe, no por el número de fila que todavía no vio.
+      const quien = identificar({ comprobante: p }).texto
+      l.push(`· fila ${p.fila ?? '?'}${quien ? ` (${quien})` : ''} → falta ${cols}`)
     }
     l.push('_No la inventé: el comprobante no la dice y el historial no alcanzó para afirmarla._')
   }
