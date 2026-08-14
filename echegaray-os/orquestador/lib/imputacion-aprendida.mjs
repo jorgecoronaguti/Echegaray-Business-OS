@@ -56,6 +56,7 @@
 //     no recalcula montos (Nivel D, reversible). Degrada a perfiles vacíos si no hay historia.
 
 import { rubroDeCaja, SIN_CLASIFICAR, norm as normRubro } from './rubro-caja.mjs'
+import { sinMarcaDeOrigen } from './comprobantes/marca-origen.mjs'
 
 // n de comprobantes históricos de un proveedor para hablar con evidencia, y qué tan concentrada tiene que
 // estar su historia en un solo valor. Conservador: preferimos declarar el hueco y preguntar a inventar.
@@ -66,9 +67,16 @@ export const SHARE_PARCIAL = 0.6
 
 /** Normaliza un proveedor para agrupar sin cruzarlo por espacios/mayúsculas. PURA. */
 export const normProv = (v) => String(v ?? '').trim().replace(/\s+/g, ' ').toLowerCase()
-/** Palabras significativas de un concepto (≥4 letras), para refinar la obra por texto. PURA. */
+/**
+ * Palabras significativas de un concepto (≥4 letras), para refinar la obra por texto. PURA.
+ *
+ * LA MARCA DE ORIGEN SE QUITA ANTES (14/08). Desde que la columna L lleva `[historial: obra, detalle]`
+ * en las filas cuya imputación se dedujo, esas palabras entrarían al bag de TODAS las obras de TODOS
+ * los proveedores marcados y el refinamiento por concepto perdería filo — el OS aprendería de su
+ * propio metadato en vez de aprender de lo que se compró.
+ */
 export function palabrasConcepto(v) {
-  return String(v ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  return String(sinMarcaDeOrigen(v) ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
     .split(/[^a-z0-9]+/).filter((w) => w.length >= 4)
 }
 const redondear = (n, d = 2) => (n == null ? null : Math.round(n * 10 ** d) / 10 ** d)

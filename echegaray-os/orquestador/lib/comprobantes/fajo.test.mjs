@@ -4,19 +4,14 @@
 // seguidas se agrupan en UNA confirmación, y lo que garantiza que nada entre dos veces NO es la
 // ventana de tiempo sino la clave del comprobante.
 
-// ═══ ESTE ARCHIVO CORRE CON LAS TARJETAS ENCENDIDAS (13/08) ═══
+// ═══ ESTE ARCHIVO CORRE EN LA CONFIGURACIÓN DE PRODUCCIÓN (14/08) ═══
 //
-// El dueño las apagó: «no quiero mensajes del bot en la carga de comprobantes… solo quiero q
-// confirme q termino todo». `botonesFajo` devuelve [] salvo que se pida lo contrario, y ningún
-// camino de producción lo pide (ver `lib/comprobantes/parte.mjs` y `comunicacion/comprobantes/
-// tanda.mjs`, que son los que hoy arman el único mensaje).
-//
-// Lo de acá abajo sigue probando la MECÁNICA que quedó detrás del interruptor, porque un interruptor
-// con la vuelta atrás sin probar no es una vuelta atrás. Que las tarjetas NO se publican por defecto
-// se prueba aparte, en `sin-tarjetas.test.mjs`.
-process.env.ORQ_COMPROBANTES_BOTONES = '1'
+// Tenía la variable `ORQ_COMPROBANTES_BOTONES` encendida para el archivo entero. Sólo 6 de sus 20
+// tests dependen de los botones y son los que usan `testConBotones`; el agrupado y la idempotencia
+// —que es lo que este archivo prueba de verdad— corren como corre el bot.
 
 import test from 'node:test'
+import { testConBotones } from './botones-de-prueba.mjs'
 import assert from 'node:assert/strict'
 import {
   entraEnElFajo, colapsarRepetidos, botonesFajo, preguntasDe, estaCompleto, imputacionVacia,
@@ -147,7 +142,7 @@ test('un comprobante completo es cargable', () => {
 
 // ── Los botones ──────────────────────────────────────────────────────────────
 
-test('los botones llevan el secreto en la URL de integración y el id del fajo en el contexto', () => {
+testConBotones('los botones llevan el secreto en la URL de integración y el id del fajo en el contexto', () => {
   const url = 'https://chat.ecsas.com.ar/comprobantes/accion?t=SECRETO'
   const [att] = botonesFajo({ id: 'f1', items: [item()] }, { url })
   const ids = att.actions.map((a) => a.id)
@@ -158,7 +153,7 @@ test('los botones llevan el secreto en la URL de integración y el id del fajo e
   }
 })
 
-test('sin nada cargable NO aparece el botón de Confirmar', () => {
+testConBotones('sin nada cargable NO aparece el botón de Confirmar', () => {
   const url = 'https://x/accion?t=s'
   // Sin número no se puede cargar por chat: ése sigue siendo un faltante de verdad. (Sin obra ya no
   // lo es — ver arriba —, así que ese caso dejaría de probar lo que este test quiere probar.)
@@ -166,7 +161,7 @@ test('sin nada cargable NO aparece el botón de Confirmar', () => {
   assert.deepEqual(att.actions.map((a) => a.id), ['corregir', 'descartar'])
 })
 
-test('faltando el número, el menú de imputación SIGUE ofreciéndose', () => {
+testConBotones('faltando el número, el menú de imputación SIGUE ofreciéndose', () => {
   // El bloque de obra no cuelga de que el ítem sea cargable: cuelga de que la obra falte y tenga
   // opciones. Contestar la obra mientras se corrige el número no puede quedar bloqueado.
   const url = 'https://x/accion?t=s'
@@ -194,7 +189,7 @@ test('sin URL no se dibujan botones que no van a poder llamar a nadie', () => {
 // La asistencia ya lo había pagado el 30/07 con sus botones de fecha, y desde entonces tiene un
 // validador. Comprobantes se escribió después y no lo reusó. Este test cierra ese hueco acá.
 
-test('TODOS los ids de acción son alfanuméricos: Mattermost los mete en la URL', () => {
+testConBotones('TODOS los ids de acción son alfanuméricos: Mattermost los mete en la URL', () => {
   const url = 'https://x/comprobantes/accion?t=1'
   // Un fajo con las tres familias de botones a la vez: obra a elegir y un duplicado abierto.
   // El botón de obra sólo existe si el comprobante NO trae obra Y hay opciones sugeridas: sin las
@@ -225,7 +220,7 @@ test('TODOS los ids de acción son alfanuméricos: Mattermost los mete en la URL
   assert.ok(vistos >= 7, `tienen que revisarse los botones de obra, duplicado y confirmación (vistos: ${vistos})`)
 })
 
-test('cambiar el id no cambia el despacho: eso lo decide context.accion', () => {
+testConBotones('cambiar el id no cambia el despacho: eso lo decide context.accion', () => {
   const url = 'https://x/comprobantes/accion?t=1'
   const att = botonesFajo({ id: 'f1', items: [item({ comprobante: { obra: null } })] }, { url })
   const acciones = att.flatMap((a) => a.actions ?? [])
@@ -237,7 +232,7 @@ test('cambiar el id no cambia el despacho: eso lo decide context.accion', () => 
 
 // Con imputación pendiente, "Confirmar" cambia de nombre y deja de ser el botón primario: en
 // producción el dueño lo apretó porque los menús no respondían, y la fila entró sin clasificar.
-test('mientras falte imputar, el botón dice lo que de verdad hace', () => {
+testConBotones('mientras falte imputar, el botón dice lo que de verdad hace', () => {
   const url = 'https://x/accion?t=s'
   const it = { ...item({ comprobante: { obra: null } }), opciones: { obra: ['MESSINA', 'Taller'], unidad: [], detalle: {} } }
   const att = botonesFajo({ id: 'f1', items: [it] }, { url })

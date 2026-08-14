@@ -219,30 +219,34 @@ function deRegistro(conciliado = []) {
   for (const c of conciliado) {
     if (c.estado === 'ok') continue
     const quien = `${c.proveedor ?? '?'} ${c.numero ?? ''}`.trim()
+    // EL IMPORTE VIAJA CON EL HALLAZGO. Sin él, «Alumetal 0031-00002661 no está en Compras» es una
+    // molestia administrativa; con él es «el costo de esa obra está sobrestimado en $1.095.076,13», que
+    // es lo que hace que alguien lo mire. `vigilancia.mjs` suma esta columna para priorizar.
+    const conPlata = (h) => ({ ...h, total: c.total ?? null })
     if (c.estado === 'fila_movida') {
-      out.push({
+      out.push(conPlata({
         fila: c.filaReal, defecto: DEFECTO.REGISTRO, columna: '—', proveedor: c.proveedor,
         dice: `el registro dice fila ${c.filaRegistrada}`, deberia: `fila ${c.filaReal}`,
         origen: `${quien} está en la ${c.filaReal}; la ${c.filaRegistrada} tiene otro comprobante`,
-      })
+      }))
     } else if (c.estado === 'no_esta') {
-      out.push({
+      out.push(conPlata({
         fila: c.filaRegistrada, defecto: DEFECTO.REGISTRO, columna: '—', proveedor: c.proveedor,
         dice: `registrado como cargado en la fila ${c.filaRegistrada}`, deberia: 'no está en Compras',
         origen: `${quien} no aparece en ninguna fila: el registro bloquea volver a cargarlo y el gasto no está`,
-      })
+      }))
     } else if (c.estado === 'reserva_huerfana') {
-      out.push({
+      out.push(conPlata({
         fila: null, defecto: DEFECTO.RESERVA, columna: '—', proveedor: c.proveedor,
         dice: 'clave reservada sin fila', deberia: 'la fila donde quedó, o soltar la reserva',
         origen: `${quien} se reservó y la escritura no llegó a ocurrir: no está en Compras y no se puede volver a mandar`,
-      })
+      }))
     } else if (c.estado === 'reserva_cargada') {
-      out.push({
+      out.push(conPlata({
         fila: c.filaReal, defecto: DEFECTO.RESERVA, columna: '—', proveedor: c.proveedor,
         dice: 'clave reservada sin fila', deberia: `fila ${c.filaReal}`,
         origen: `${quien} SÍ está en Compras (fila ${c.filaReal}) pero el registro se quedó sin anotar dónde`,
-      })
+      }))
     }
   }
   return out

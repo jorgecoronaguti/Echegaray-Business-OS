@@ -4,19 +4,18 @@
 // Un test que sólo comprobara que la función devuelve algo pasaría con el proveedor equivocado, con
 // la obra inventada y con el comprobante duplicado.
 
-// ═══ ESTE ARCHIVO CORRE CON LAS TARJETAS ENCENDIDAS (13/08) ═══
+// ═══ ESTE ARCHIVO CORRE EN LA CONFIGURACIÓN DE PRODUCCIÓN (14/08) ═══
 //
-// El dueño las apagó: «no quiero mensajes del bot en la carga de comprobantes… solo quiero q
-// confirme q termino todo». `botonesFajo` devuelve [] salvo que se pida lo contrario, y ningún
-// camino de producción lo pide (ver `lib/comprobantes/parte.mjs` y `comunicacion/comprobantes/
-// tanda.mjs`, que son los que hoy arman el único mensaje).
+// Hasta el 14/08 la primera línea de este archivo era `process.env.ORQ_COMPROBANTES_BOTONES = '1'`, y
+// eso encendía las tarjetas para los 64 tests. Producción corre sin esa variable desde el 13/08: los
+// verdes no eran verdes sobre lo desplegado. Medido, sólo 12 de los 64 dependen de los botones, y son
+// los que ahora usan `testConBotones` — que enciende el interruptor para ESE test y lo restaura.
 //
-// Lo de acá abajo sigue probando la MECÁNICA que quedó detrás del interruptor, porque un interruptor
-// con la vuelta atrás sin probar no es una vuelta atrás. Que las tarjetas NO se publican por defecto
-// se prueba aparte, en `sin-tarjetas.test.mjs`.
-process.env.ORQ_COMPROBANTES_BOTONES = '1'
+// Los otros 52 —lectura, ARCA, duplicados, idempotencia, carga automática— corren como corre el bot.
+// Que las tarjetas NO se publican por defecto se prueba aparte, en `sin-tarjetas.test.mjs`.
 
 import test from 'node:test'
+import { testConBotones } from '../../lib/comprobantes/botones-de-prueba.mjs'
 import assert from 'node:assert/strict'
 import { procesarPost, armarItem, bajarAdjunto, TEXTO } from './flujo.mjs'
 import { repoMemoria, portGuarda, mmFalso, lecturaBarcelo, LISTAS, lecturaCorralonReal, ARCA_CORRALON, LISTAS_COMPRAS, filasCompras, filaCompras, lecturaTiqueBarcelo, filasBarcelo } from './dobles.mjs'
@@ -57,7 +56,7 @@ const post = (o = {}) => ({
 
 // ── El camino feliz ──────────────────────────────────────────────────────────
 
-test('una foto en el canal abre un fajo y devuelve el mensaje con los tres botones', async () => {
+testConBotones('una foto en el canal abre un fajo y devuelve el mensaje con los tres botones', async () => {
   const { d, repo } = armar()
   const r = await procesarPost(d, post())
   assert.equal(r.estado, 'confirmar')
@@ -217,7 +216,7 @@ test('si NO se pudieron leer las listas, no se acusa al proveedor de nuevo', () 
 
 // ── Sin obra ─────────────────────────────────────────────────────────────────
 
-test('sin anotación manuscrita, la obra se PREGUNTA — pero ya no bloquea (03/08/2026)', async () => {
+testConBotones('sin anotación manuscrita, la obra se PREGUNTA — pero ya no bloquea (03/08/2026)', async () => {
   const { d } = armar({ lecturas: [lecturaBarcelo({ anotacion_manuscrita: null })] })
   const r = await procesarPost(d, post())
   assert.match(r.texto, /❓ \*\*¿A qué obra va\?\*\*/)
@@ -231,7 +230,7 @@ test('sin anotación manuscrita, la obra se PREGUNTA — pero ya no bloquea (03/
 
 // ── Idempotencia ─────────────────────────────────────────────────────────────
 
-test('un comprobante YA CARGADO se avisa con su fila, y no se ofrece cargarlo de nuevo', async () => {
+testConBotones('un comprobante YA CARGADO se avisa con su fila, y no se ofrece cargarlo de nuevo', async () => {
   const repo = repoMemoria()
   repo._cargados.set('c:30712345678|0113-00010489', { clave: 'c:30712345678|0113-00010489', fila: 412, hoja: 'Compras' })
   const { d } = armar({ repo })
@@ -365,7 +364,7 @@ test('un post sin adjuntos no dispara ningún trabajo', async () => {
 // a mano en el papel antes de fotografiarlo. Verificado contra el Mattermost vivo: sin esto el bot
 // preguntaba por una obra que la persona acababa de escribir un renglón más arriba.
 
-test('la obra sale de lo que la persona ESCRIBIÓ al mandar la foto', async () => {
+testConBotones('la obra sale de lo que la persona ESCRIBIÓ al mandar la foto', async () => {
   const { d } = armar({ lecturas: [lecturaBarcelo({ anotacion_manuscrita: null })] })
   const r = await procesarPost(d, post({ texto: 'San Francisco' }))
   assert.match(r.texto, /\| Obra \| San Francisco/)
@@ -439,7 +438,7 @@ const otraFactura = (over) => lecturaCorralonReal({
   fecha: '02/08/2026', legible: true, ...over,
 })
 
-test('la obra ESCRITA A MANO se resuelve sola: no se pregunta lo que está en el papel', async () => {
+testConBotones('la obra ESCRITA A MANO se resuelve sola: no se pregunta lo que está en el papel', async () => {
   const { d } = armarConPadron({ lecturas: [otraFactura({ anotacion_manuscrita: 'Messinas BSA' })] })
   const r = await procesarPost(d, post())
   assert.match(r.texto, /\| Obra \| MESSINA/)
@@ -497,7 +496,7 @@ test('una anotación AMBIGUA sigue preguntando: el arreglo no es un adivinador',
   assert.match(r.texto, /⚠️ Va \*\*sin obra\*\*/)
 })
 
-test('el DÍGITO DE MÁS se corrige contra ARCA, y ahí aparece el duplicado de la fila 802', async () => {
+testConBotones('el DÍGITO DE MÁS se corrige contra ARCA, y ahí aparece el duplicado de la fila 802', async () => {
   const { d, repo } = armarConPadron({ lecturas: [lecturaCorralonReal({ anotacion_manuscrita: 'Messinas BSA' })] })
   const r = await procesarPost(d, post())
   const it = repo._fajos.get(r.fajoId).items[0]
@@ -510,7 +509,7 @@ test('el DÍGITO DE MÁS se corrige contra ARCA, y ahí aparece el duplicado de 
   assert.equal(r.attachments[0].actions.some((a) => a.id === 'confirmar'), false, 'no se ofrece cargar lo que ya está')
 })
 
-test('otra factura del MISMO proveedor el MISMO día NO se marca duplicada', async () => {
+testConBotones('otra factura del MISMO proveedor el MISMO día NO se marca duplicada', async () => {
   // La 3366 de $31.533,90 existe de verdad y es otra compra. Marcarla duplicada sería una alarma
   // falsa, y una alarma que suena por nada deja de leerse.
   const { d } = armarConPadron({
@@ -526,7 +525,7 @@ test('otra factura del MISMO proveedor el MISMO día NO se marca duplicada', asy
   assert.equal(r.attachments[0].actions.some((a) => a.id === 'confirmar'), true)
 })
 
-test('mismo proveedor, día e importe con OTRO número: se pregunta con botones, no se decide', async () => {
+testConBotones('mismo proveedor, día e importe con OTRO número: se pregunta con botones, no se decide', async () => {
   const { d } = armarConPadron({
     lecturas: [lecturaCorralonReal({ numero: '0009-00000123', anotacion_manuscrita: 'Messinas BSA' })],
     arca: [], // sin ARCA que corrija el número, queda el probable duplicado a secas
@@ -559,7 +558,7 @@ function armarTique({ filas = filasBarcelo(), arca = [], listas = LISTAS_COMPRAS
   }
 }
 
-test('un comprobante AUSENTE de ARCA se busca IGUAL en Compras: ahí estaba, fila 800', async () => {
+testConBotones('un comprobante AUSENTE de ARCA se busca IGUAL en Compras: ahí estaba, fila 800', async () => {
   const { d, repo } = armarTique()
   const r = await procesarPost(d, post())
   const it = repo._fajos.get(r.fajoId).items[0]
@@ -676,7 +675,7 @@ test('un comprobante al que no le falta nada SE CARGA SOLO, sin botones y sin cl
   assert.notEqual(repo._fajos.get(r.fajoId).estado, 'abierto')
 })
 
-test('el que SÍ tiene algo que preguntar sigue parando en los botones', async () => {
+testConBotones('el que SÍ tiene algo que preguntar sigue parando en los botones', async () => {
   // Proveedor fuera del desplegable Y SIN CUIT: sin identidad fuerte no hay clave, y agregarlo a la
   // lista de Compras es una decisión de una persona. (Con CUIT ya no frena — ver el test de arriba.)
   const { d } = armar({
@@ -723,7 +722,7 @@ test('la obra que SÍ se puede deducir se sigue deduciendo: no preguntar no es n
 //
 // `items.every(estaCompleto)` hacía que un solo comprobante trabado dejara toda la tanda esperando un
 // click. En una carga fuerte eso es la diferencia entre cargar todo y no cargar nada.
-test('en una tanda mixta entran los buenos y sólo el trabado queda preguntando', async () => {
+testConBotones('en una tanda mixta entran los buenos y sólo el trabado queda preguntando', async () => {
   const { d, repo } = armar({
     lecturas: [
       lecturaBarcelo(),                                                   // carga solo
