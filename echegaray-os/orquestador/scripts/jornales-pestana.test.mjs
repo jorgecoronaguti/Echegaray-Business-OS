@@ -10,7 +10,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { colDe, grilla, ultimoDiaCargado, rangosDeJornales, RANGOS_RETIRADOS, COLS_PAGO, COLS_ANIO, COL_ANIO } from './jornales-pestana.mjs'
-import { repartoQuincena, repartoPersona, filasDePersonas, ACUERDO_BANCO } from '../lib/jornales-reparto-pago.mjs'
+import {
+  repartoQuincena, repartoPersona, filasDePersonas, ACUERDO_BANCO,
+  canalesProyectados, DIRECCION_POR_BANCO,
+} from '../lib/jornales-reparto-pago.mjs'
 import { verificarRangos, explicarProblemas } from '../lib/rangos-con-nombre.mjs'
 import { VACIO, tiene } from '../lib/preservar-anotaciones.mjs'
 
@@ -407,6 +410,63 @@ test('PAGO 3 · EL 50/50 SE CALCULA CUANDO BANCO ESTÁ EN CERO, Y EL DATO CARGAD
   assert.match(aviso, /SUMPRODUCT/, 'el aviso está tipeado: tiene que apagarse solo cuando carguen BANCO')
 })
 
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL DEFECTO: LA FILA DE DIRECCIÓN NO TENÍA CANAL, Y LA FILA DE TOTAL DEJABA DE SUMAR
+//
+// «Por banco» de Dirección publicaba "—" con el argumento de que el canal de los retiros no está
+// registrado. Medido en la pestaña viva del 14/08: la fila de total decía «Por banco» $5.069.615 +
+// «En efectivo» $4.090.971 = $9.160.585 contra un «Neto a pagar» de $18.331.585. La identidad que
+// hace auditable el cuadro se rompía por $9.171.000 —el retiro entero— en el ÚNICO renglón que el
+// dueño usa para operar el pago, y sin una sola celda en rojo.
+//
+// La regla que lo cierra es del dueño: *"oficina 2 empleados 50 y 50, administracion todos por
+// banco"* (03/08). Revertir a "—" deja este test en rojo.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+test('PAGO 3bis · NINGUNA NÓMINA QUEDA SIN CANAL: las tres suman contra el neto', () => {
+  const [cNeto, cBanco, cEfec] = ['Neto a pagar', 'Por banco', 'En efectivo'].map(colPago)
+  for (let f = gm.hero.f0; f <= gm.hero.fFin; f++) {
+    for (const c of [cBanco, cEfec]) {
+      const celda = String(gm.filas[f - 1][c] ?? '')
+      assert.ok(celda.startsWith('='),
+        `fila ${f}: «${COLS_PAGO[c]}» no es un número (quedó "${celda}") y la fila de total deja de sumar el neto`)
+    }
+  }
+  // DIRECCIÓN VA ENTERA AL BANCO, y se lee de su propia fila: no un porcentaje, no una constante
+  // copiada — la celda cita su «Neto a pagar», así que el efectivo da 0 por construcción.
+  const fDir = gm.hero.fFin
+  assert.match(String(gm.filas[fDir - 1][cBanco]), new RegExp(`${L(cNeto)}${fDir}`),
+    'el banco de Dirección dejó de ser su neto entero')
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL DEFECTO: «PERSONAS» LEÍA LA COLUMNA B DEL BLOQUE MENSUAL "PORQUE AHÍ ESTABAN LAS PERSONAS"
+//
+// Dejó de estar el 14/08: cuando Oficina rehizo su grilla, la B pasó a ser «Ajuste escalón» y el
+// cuadro que decide el pago publicó **1,019 personas** en Oficina y 1,0384 en Dirección. Un número
+// plausible en la columna equivocada, sin error y sin #REF. Es el mismo defecto que `colDe` existe
+// para impedir, cometido sobre un bloque que no exporta sus rótulos.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+test('PAGO 8 · «Personas» NO SE LEE POR LETRA DE OTRO BLOQUE — el defecto de las "1,019 personas"', () => {
+  const cPer = colPago('Personas')
+  // Primero el hecho que produjo el defecto: la B del bloque mensual NO es «Personas».
+  const encOfi = gm.filas[gm.o0 - 2].map(String)
+  assert.equal(encOfi[1], 'Ajuste escalón', 'el bloque mensual cambió de layout: revisá quién lee su columna B')
+  for (const [nombre, fila, r0, r1] of [
+    ['oficina', gm.hero.f0 + 1, gm.o0, gm.oFin],
+    ['dirección', gm.hero.fFin, gm.d0, gm.dFin],
+  ]) {
+    const celda = String(gm.filas[fila - 1][cPer] ?? '')
+    assert.doesNotMatch(celda, new RegExp(`\\$B\\$${r0}:\\$B\\$${r1}`),
+      `${nombre}: «Personas» volvió a leer la columna B del bloque mensual, que es «Ajuste escalón»`)
+    // Y NO SE ESTAMPA UN NÚMERO: el plantel se cuenta sobre un rango vivo, así que una alta o una baja
+    // lo mueve sola. Un 2 escrito acá es cierto hoy y mentira el día que entre alguien.
+    assert.match(celda, /^=COUNTA\(/, `${nombre}: «Personas» dejó de contarse sobre un rango vivo ("${celda}")`)
+    assert.doesNotMatch(celda, /^=?\d+$/, `${nombre}: el plantel quedó estampado`)
+  }
+  // El de dirección cuenta la tabla de socios que sale de Compras, tres filas más arriba de su grilla.
+  assert.equal(String(gm.filas[gm.hero.fFin - 1][cPer]), `=COUNTA($A$${gm.dp0}:$A$${gm.dpFin})`)
+})
+
 test('PAGO 4 · EL AVISO DE HORAS INCOMPLETAS SE APAGA SOLO, POR LOS DOS CAMINOS', () => {
   // *"las horas están incompletas: 1.223 reales de 1.620 previstas"*. El total va a subir cuando se
   // carguen los últimos días, y el cuadro tiene que avisarlo — pero sólo mientras sea cierto.
@@ -456,6 +516,20 @@ test('PAGO 6 · LA ARITMÉTICA DEL 50/50, CONTRA LOS NÚMEROS REALES DE LA QUINC
   assert.equal(repartoPersona({ total: 400000, adelanto: 0, banco: 300000 }).banco, 300000)
   assert.equal(repartoPersona({ total: 400000, adelanto: 0, banco: 300000 }).bancoCalculado, false)
   assert.equal(ACUERDO_BANCO, 0.5, 'el acuerdo del dueño dejó de ser 50/50')
+})
+
+test('PAGO 6bis · LAS DOS MITADES DE LA PROYECCIÓN SUMAN EL TOTAL, POR CONSTRUCCIÓN', () => {
+  // La identidad no se verifica leyendo dos fórmulas y confiando: se construye. `banco` es `efectivo`
+  // más dirección entera, así que banco + efectivo = obreros + oficina + dirección SIEMPRE — y es lo
+  // que autorizó a sacar la columna TOTAL del calendario sin perder el número.
+  const c = canalesProyectados({ obreros: 'D29', oficina: 'E29', direccion: 'F29' })
+  assert.equal(c.efectivo, '=(D29+E29)/2')
+  assert.equal(c.banco, `${c.efectivo}+F29`, 'banco dejó de ser el efectivo más el retiro entero de dirección')
+  // LA TRAMPA DEL LOCALE: en es_AR la coma separa argumentos, así que `*0,5` parte la fórmula en dos y
+  // la celda queda en #ERROR. El acuerdo se escribe `/2` y el 0,5 vive sólo del lado del JavaScript.
+  for (const f of [c.banco, c.efectivo]) assert.doesNotMatch(f, /0[,.]5/)
+  // Y DIRECCIÓN VA ENTERA, no a la mitad: la orden del dueño del 03/08.
+  assert.equal(DIRECCION_POR_BANCO, 1, 'dirección dejó de cobrar todo por banco sin que nadie lo dijera')
 })
 
 test('PAGO 7 · las filas del cuadro son PERSONAS, no filas numeradas del espejo', () => {
@@ -1182,23 +1256,50 @@ test('el RESTO de la quincena en curso se marca como tal, y se dice en la pesta�
   assert.ok(!g3.filas.map((f) => String(f[0] ?? '')).some(esAviso))
 })
 
-test('EL CALENDARIO CONTESTA LA PREGUNTA: obreros, oficina y dirección, y su total, en una fila', () => {
+test('EL CALENDARIO CONTESTA LA PREGUNTA: obreros, oficina y dirección, y sus dos canales, en una fila', () => {
   // La fila se rellena hasta el ancho de la pestaña con el centinela: se compara el cuadro, no el relleno.
   assert.deepEqual(gm.filas[gm.p0 - 2].slice(0, COLS_CALENDARIO.length), COLS_CALENDARIO,
     'el encabezado del calendario no es el declarado')
   const tot = gm.filas[gm.fTotalProy - 1]
   assert.match(String(tot[0]), /^⇒ Total a pagar hasta diciembre/)
-  // Las tres poblaciones y el total, cada una sumando SU columna del cuadro: es el único renglón de
-  // la pestaña donde el dueño puede leer cuánto le falta pagar de cada una.
+  // Las tres poblaciones y los dos canales, cada uno sumando SU columna del cuadro: es el único
+  // renglón de la pestaña donde el dueño puede leer cuánto le falta pagar de cada una.
   const fin = gm.p0 + gm.nProy - 1
   for (const [i, letra] of [[3, 'D'], [4, 'E'], [5, 'F'], [6, 'G'], [7, 'H']]) {
     assert.equal(String(tot[i]), `=SUM(${letra}${gm.p0}:${letra}${fin})`, `la columna ${letra} del total no suma su cuadro`)
   }
-  // El TOTAL de cada fila suma EXACTAMENTE las tres columnas de población: ni una de más (doble
-  // conteo) ni una de menos (una nómina que desaparece del calendario).
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL DEFECTO: *"jornales con la proyección de sueldos 50 y 50"* — y el cuadro publicaba UNA mitad.
+//
+// El calendario tenía `Efectivo` = (Obreros+Oficina)/2 y NO tenía `Banco`. El dueño veía cuántos
+// billetes juntar y no cuánto se transfiere, que son los dos números con los que opera el pago.
+// Revertir la columna deja este test en rojo por el encabezado Y por la fila.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+test('LA PROYECCIÓN PUBLICA LAS DOS MITADES, NO UNA — y suman exactamente las tres nóminas', () => {
+  const cabecera = gm.filas[gm.p0 - 2].slice(0, COLS_CALENDARIO.length).map(String)
+  assert.ok(cabecera.includes('Banco'), 'el calendario volvió a publicar una sola mitad del acuerdo')
+  assert.ok(cabecera.includes('Efectivo'), 'se perdió la mitad en billetes')
+  // EL ANCHO NO SE NEGOCIA: dos grillas distintas en el mismo tab es el defecto que el auditor de
+  // patrón rechaza. Si «Banco» entró sumando una novena columna, esto salta.
+  assert.equal(COLS_CALENDARIO.length, 8, 'el calendario dejó de medir ocho columnas')
+  const iB = cabecera.indexOf('Banco'); const iE = cabecera.indexOf('Efectivo')
+  const fin = gm.p0 + gm.nProy - 1
   for (let r = gm.p0; r <= fin; r++) {
-    assert.equal(String(gm.filas[r - 1][6]), `=SUM(D${r}:F${r})`, `la fila ${r} no totaliza las tres nóminas`)
+    const banco = String(gm.filas[r - 1][iB]); const efectivo = String(gm.filas[r - 1][iE])
+    // LA IDENTIDAD, LEÍDA EN LAS DOS CELDAS: banco es el efectivo MÁS dirección entera. De ahí sale
+    // que banco + efectivo = obreros + oficina + dirección, que es lo que permitió sacar el TOTAL.
+    assert.equal(efectivo, `=(D${r}+E${r})/2`, `fila ${r}: el efectivo dejó de ser la mitad de obra + oficina`)
+    assert.equal(banco, `${efectivo}+F${r}`, `fila ${r}: banco y efectivo dejaron de sumar el total de la fila`)
+    // LA TRAMPA DEL LOCALE, EN EL TEST Y NO EN LA CABEZA DE NADIE: en es_AR la coma SEPARA
+    // ARGUMENTOS, así que un `*0,5` se parte en dos y la celda queda en #ERROR. Va `/2`.
+    for (const celda of [banco, efectivo]) assert.doesNotMatch(celda, /0,5/, `fila ${r}: literal decimal en locale es_AR`)
   }
+  // Y OFICINA SE REPARTE COMO OBREROS, que es la orden del dueño: *"quiero q la tabla de oficina sea
+  // igual que la de obreros dado q el acuerdo es el mismo 50% por banco, 50% efectivo"*. Si alguien
+  // volviera a dejar el efectivo como "sólo obra", la columna E desaparece de la fórmula.
+  assert.match(String(gm.filas[gm.p0 - 1][iE]), /E\d+/, 'oficina quedó fuera del reparto por canal')
 })
 
 test('OFICINA Y DIRECCIÓN CAEN EN LA QUINCENA QUE LAS PAGA — sin huecos ni solapes', () => {
@@ -1237,12 +1338,20 @@ test('EL TOTAL DEL CALENDARIO NO SE CUENTA DOS VECES EN CAJA: el rango publicado
   // perfectamente plausible y ninguna celda en rojo.
   const proy = rangosDeJornales(gm).find((x) => x.nombre === 'JORNALES_PROY_TOTAL')
   assert.equal(proy.ancla.texto, 'Obreros')
-  assert.notEqual(proy.c0, COLS_CALENDARIO.indexOf('TOTAL'))
+  // Los dos CANALES incluyen a oficina y a dirección: publicar el nombre sobre cualquiera de ellos
+  // las contaría dos veces. Es el mismo riesgo que corría la vieja columna TOTAL, ahora repartido en
+  // dos columnas — así que la prohibición vale para las dos.
+  assert.notEqual(proy.c0, COLS_CALENDARIO.indexOf('Banco'))
+  assert.notEqual(proy.c0, COLS_CALENDARIO.indexOf('Efectivo'))
   // Y el lector de la caja tiene que leer la MISMA columna: su declaración vive en nomina-sync, que
   // es el módulo que escribe el cuadro. Dos definiciones de dónde está el total es cómo se
   // desincronizó este mismo cuadro en julio.
   assert.equal(COL_PROYECCION.total, proy.c0, 'el lector de la caja y el rango publicado apuntan a columnas distintas')
-  assert.equal(COL_PROYECCION.consolidado, COLS_CALENDARIO.indexOf('TOTAL'))
+  assert.equal(COL_PROYECCION.banco, COLS_CALENDARIO.indexOf('Banco'))
+  assert.equal(COL_PROYECCION.efectivo, COLS_CALENDARIO.indexOf('Efectivo'))
+  // `consolidado` se retiró con la columna TOTAL: un índice con nombre inocente apuntando a una
+  // columna que NO se puede consumir es exactamente cómo se vuelve a contar dos veces.
+  assert.equal(COL_PROYECCION.consolidado, undefined, 'volvió el índice de la columna consolidada')
 })
 
 test('cada PROYECTADO del cuadro del año sale del bloque de SU grupo, no de una suma propia', () => {

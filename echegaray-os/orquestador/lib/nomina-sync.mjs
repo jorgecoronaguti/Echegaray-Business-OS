@@ -78,17 +78,26 @@ export const COL_REGISTRO = {
  *
  * ═══ `total` ES LA COLUMNA DE OBRA, Y ESO NO ES UN DESCUIDO (13/08) ═══
  *
- * El calendario muestra las tres nóminas y una columna "TOTAL" que las suma. Quien sincroniza la caja
- * NO puede leer esa columna: oficina y dirección ya entran por `OFICINA_PROYECTADO` y
- * `DIRECCION_PROYECTADO`, así que tomar el TOTAL las contaría DOS VECES —$50M de más en el calendario
- * de caja, sin un solo error, porque el número sería perfectamente plausible—.
+ * El calendario muestra las tres nóminas y, a la derecha, los dos canales por los que sale la plata.
+ * Quien sincroniza la caja NO puede leer esas columnas de la derecha: oficina y dirección ya entran
+ * por `OFICINA_PROYECTADO` y `DIRECCION_PROYECTADO`, así que tomar un canal —que las incluye— las
+ * contaría DOS VECES: $50M de más en el calendario de caja, sin un solo error, porque el número sería
+ * perfectamente plausible.
  *
  * `total` apunta a "Obreros" a propósito: es el total DE ESTE BLOQUE para quien lo consume. El nombre
  * se conserva porque `JORNALES_PROY_TOTAL` ya está publicado y citado por fórmulas del Sheet; el
  * contrato es que ese nombre significa "los jornales de obra proyectados", no "la nómina entera".
+ *
+ * ═══ `consolidado` SE FUE, NO SE REAPUNTÓ (14/08) ═══
+ *
+ * Era el índice de la columna "TOTAL" del calendario, que dejó de existir cuando el cuadro pasó a
+ * publicar las dos mitades del acuerdo (`Banco` y `Efectivo`) en lugar de su suma. Nadie lo leía —esa
+ * era justamente la advertencia de arriba— así que reapuntarlo a `Banco` habría dejado a mano, y con
+ * nombre inocente, exactamente el índice que no se puede consumir. `banco` y `efectivo` se declaran
+ * porque el layout los tiene, y siguen sin consumidores por la misma razón de siempre.
  */
 export const COL_PROYECCION = {
-  desde: 0, hasta: 1, pago: 2, total: 3, oficina: 4, direccion: 5, consolidado: 6, efectivo: 7,
+  desde: 0, hasta: 1, pago: 2, total: 3, oficina: 4, direccion: 5, banco: 6, efectivo: 7,
 }
 
 export function filasQuincenas(bloques, filaInicio = 6, hoja = '_J_OBREROS') {

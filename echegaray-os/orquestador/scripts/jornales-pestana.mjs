@@ -113,10 +113,15 @@ import {
 // condicionan su lectura. Toda la aritmética vive en la lib y se prueba con números, no con strings.
 import {
   filasDePersonas, avisoBancoCalculado, avisoHorasIncompletas, avisoEfectivoNegativo,
+  canalesProyectados,
 } from '../lib/jornales-reparto-pago.mjs'
-// Lo que se dibuja donde el reparto no se puede afirmar. Mismo glifo que el resto de la pestaña usa
-// para "no hay dato": un cero ahí se leería como "no sale nada por banco", que es otra cosa.
-const SIN_CANAL = '—'
+// Lo que se dibuja donde un dato no se puede afirmar. Mismo glifo que el resto de la pestaña usa para
+// "no hay dato": un cero ahí se leería como "no hay nadie", que es otra cosa.
+//
+// DEJÓ DE USARSE PARA EL CANAL DE DIRECCIÓN EL 14/08 (ver `DIRECCION_POR_BANCO`): ahí no faltaba el
+// dato, faltaba aplicar la regla que el dueño ya había dado. Sigue vivo para el plantel, que es el
+// único lugar de este cuadro donde puede no haber nada que contar.
+const SIN_DATO = '—'
 // EL PISO DEL CONVENIO: contra qué categoría se mide cada persona y si la proyección lo cubre.
 import { formulaControlPiso } from '../lib/jornales-piso-uocra.mjs'
 import {
@@ -639,11 +644,12 @@ export function grilla({
   const pFin = p0 + pendientes.length - 1
   const cO = colCalendario('Oficina')
   const cD = colCalendario('Dirección')
-  const cT = colCalendario('TOTAL')
+  const cB = colCalendario('Banco')
   const cE = colCalendario('Efectivo')
   const cObra = colCalendario('Obreros')
   pendientes.forEach((q, i) => {
     const r = p0 + i
+    const canal = canalesProyectados({ obreros: `${cObra}${r}`, oficina: `${cO}${r}`, direccion: `${cD}${r}` })
     push([
       // La primera arranca el día siguiente al último con HORAS CARGADAS; las demás encadenan. Así la
       // quincena en curso queda partida en su parte real y su parte proyectada, y el mes de transición
@@ -658,8 +664,7 @@ export function grilla({
       // citan filas que todavía no existen —el cuadro del escalón (sección 4) para la de obra, los
       // bloques mensuales (secciones 2 y 3) para las otras dos—. Ninguna se puede escribir acá.
       VACIO, VACIO, VACIO,
-      `=SUM(${cObra}${r}:${cD}${r})`,
-      // ═══ LOS BILLETES SALEN DEL ACUERDO, NO DE UNA MEDICIÓN (14/08) ═══
+      // ═══ LOS DOS CANALES SALEN DEL ACUERDO, NO DE UNA MEDICIÓN (14/08) ═══
       //
       // Era `obra × share_medido + oficina × share_oficina`, con dos porcentajes calculados sobre el
       // histórico (84,2% y otro distinto). El dueño: *"el acuerdo es 50 y 50 todas las quincenas"*.
@@ -667,20 +672,20 @@ export function grilla({
       // de la MISMA regla: dos definiciones del mismo canal en una pestaña son dos respuestas para una
       // pregunta, que es exactamente lo que hacía que no se entendiera.
       //
-      // Y deja de depender de que existan seis quincenas pagadas: la columna se puede calcular el 2 de
-      // enero, que es cuando el share medido se caía a vacío y el cuadro publicaba una franja en blanco.
+      // Y deja de depender de que existan seis quincenas pagadas: se puede calcular el 2 de enero, que
+      // es cuando el share medido se caía a vacío y el cuadro publicaba una franja en blanco.
       //
-      // DIRECCIÓN NO ENTRA, y eso no cambió: de esos tres retiros el canal no está registrado en
-      // ninguna parte y repartirlos con la regla de otro grupo sería inventarlo.
-      // `/2` y no `*0,5`: un literal decimal escrito por API viaja en el locale del archivo (es_AR).
-      `=(${cObra}${r}+${cO}${r})/2`,
+      // LAS DOS MITADES SALEN DE UNA SOLA FUNCIÓN (`canalesProyectados`) y no de dos fórmulas escritas
+      // acá: publicar `banco` y `efectivo` por separado es la forma exacta de que un día dejen de
+      // sumar el total. Con una función, la identidad es del código, no de la disciplina de quien edita.
+      canal.banco, canal.efectivo,
     ])
   })
   // Los huecos internos también son MÍOS: con `''` el generador preservaría la fórmula que el
   // layout anterior tenía en esa misma celda, y quedaría un #VALUE! al lado del total bueno.
   const sumaCol = (c) => `=SUM(${c}${p0}:${c}${pFin})`
   const fTotalProy = push([rotuloTotal('Total a pagar hasta diciembre'), VACIO, VACIO,
-    sumaCol(cObra), sumaCol(cO), sumaCol(cD), sumaCol(cT), sumaCol(cE)])
+    sumaCol(cObra), sumaCol(cO), sumaCol(cD), sumaCol(cB), sumaCol(cE)])
   // EL CONTROL VA DEBAJO DEL MENSAJE, NO ENCIMA. Se completa abajo, cuando existen los dos totales
   // contra los que compara.
   const fControlCal = push([VACIO])
@@ -743,6 +748,11 @@ export function grilla({
   // quedaría sin proyectar ni mostrar un peso — un agujero mudo en el medio del año.
   const cerradoOfi = (i) => conBloque(i) && completoOfi(i)
   const iBaseOfi = MESES.map((_, i) => i).filter(cerradoOfi).pop() ?? null
+  // EL PLANTEL DE OFICINA, PARA EL CUADRO QUE DECIDE EL PAGO. Es el ÚLTIMO bloque cargado —no el
+  // último CERRADO, que es `iBaseOfi`—: la pregunta del hero es "sobre cuánta gente se reparte el mes
+  // que estoy por pagar", y ésa es la del bloque más reciente aunque venga a medio cargar. Se pasa el
+  // rango, no el número: la celda cuenta sobre el espejo vivo y no estampa una dotación.
+  const ultimoBloqueOfi = bloquesOfi.length ? bloquesOfi[bloquesOfi.length - 1] : null
   // ═══ LA GLOSA MÁS LARGA DE LA PESTAÑA (243) ERA LA LEYENDA DE UNA COLUMNA (13/08) ═══
   //
   // Explicaba en prosa las tres reglas de completitud, y el cuadro de abajo ya las publica MES POR MES
@@ -1511,22 +1521,48 @@ export function grilla({
   })
   // OFICINA y DIRECCIÓN: la próxima fecha de caja con algo PROYECTADO todavía por pagar. Se mira la
   // columna «Proyectado» y no la «Pagado» — un mes ya pagado no es un pago que viene.
-  const proximoMensual = (f, r0, r1, banco) => {
+  // ═══ «PERSONAS» SE PIDE, NO SE ADIVINA LEYENDO LA COLUMNA B DEL BLOQUE (14/08) ═══
+  //
+  // Esta celda era `INDEX($B$r0:$B$r1;MATCH(…))` — la columna B del bloque mensual, "que es Personas".
+  // Dejó de serlo el mismo día: cuando Oficina cambió su grilla, la B pasó a ser «Ajuste escalón» y el
+  // cuadro que decide el pago publicó **1,019 personas** en la fila de Oficina y 1,0384 en la de
+  // Dirección. Ningún error, ningún #REF: un número plausible en la columna equivocada.
+  //
+  // Es EXACTAMENTE el defecto que `colDe` y `colCalendario` existen para impedir, cometido sobre un
+  // bloque que no tiene su lista de rótulos exportada. La corrección no es "apuntar a la letra buena"
+  // —mañana se mueve otra vez— sino que el plantel LO PASE EL LLAMADOR, desde el lugar que sabe
+  // contarlo: `dp0..dpFin` para Dirección (una fila por socio, salida de Compras) y el último bloque
+  // del espejo para Oficina (una fila por persona, columna B). Ninguno de los dos se estampa: los dos
+  // son `COUNTA` sobre un rango vivo, así que el día que entre o salga alguien, la celda se mueve sola.
+  const proximoMensual = (f, r0, r1, { personas, banco }) => {
     const min = `MINIFS($E$${r0}:$E$${r1};$E$${r0}:$E$${r1};">="&TODAY();$H$${r0}:$H$${r1};">0")`
     filaPago(f, {
-      // La gente del mes que se está por pagar, del propio bloque: no un plantel estampado acá.
-      personas: `=IF(N(C${f})=0;"";IFERROR(INDEX($B$${r0}:$B$${r1};MATCH(C${f};$E$${r0}:$E$${r1};0));""))`,
+      personas,
       cuando: `=IF(${min}=0;"";${min})`,
       total: `=IF(N(C${f})=0;"";SUMIFS($H$${r0}:$H$${r1};$E$${r0}:$E$${r1};C${f}))`,
       adelanto: VACIO,
       banco,
     })
   }
-  proximoMensual(fPago.oficina, o0, oFin, `=IF(N(D${fPago.oficina})=0;"";D${fPago.oficina}/2)`)
-  // DIRECCIÓN NO SE REPARTE, Y ESO NO ES UN OLVIDO. Los retiros de los socios no tienen canal
-  // registrado en ninguna fuente: ni la planilla ni Compras dicen si salen por banco o en billetes.
-  // Aplicarles el 50/50 sería fabricar el dato, así que van en "—" y el total de la fila queda entero.
-  proximoMensual(fPago.direccion, d0, dFin, SIN_CANAL)
+  proximoMensual(fPago.oficina, o0, oFin, {
+    // El plantel de oficina sale del ÚLTIMO bloque cargado del espejo, que es el mes que se está por
+    // pagar. Sin bloques no hay a quién contar y se dice, en vez de publicar un cero que se leería
+    // como "no hay nadie en oficina".
+    personas: ultimoBloqueOfi
+      ? `=COUNTA('${ESPEJO_OFI}'!$B$${ultimoBloqueOfi.inicio}:$B$${ultimoBloqueOfi.fin})`
+      : SIN_DATO,
+    banco: `=IF(N(D${fPago.oficina})=0;"";D${fPago.oficina}/2)`,
+  })
+  // DIRECCIÓN VA ENTERA POR BANCO — orden del dueño, no una medición: *"administracion todos por
+  // banco"* (03/08). Publicar "—" acá rompía la identidad POR BANCO + EN EFECTIVO = NETO en la fila de
+  // total por $9.171.000, que es el único renglón que él usa para operar el pago. El razonamiento
+  // completo y su excepción medida, en `DIRECCION_POR_BANCO`.
+  proximoMensual(fPago.direccion, d0, dFin, {
+    // Los socios que cobran retiro, contados de su propia tabla —la que sale de Compras, tres filas
+    // más arriba— y no de una constante: el día que entre o salga uno, esta celda lo sigue.
+    personas: `=COUNTA($A$${dp0}:$A$${dpFin})`,
+    banco: `=IF(N(D${fPago.direccion})=0;"";F${fPago.direccion})`,
+  })
   // EL 50/50 ES UN CÁLCULO MIENTRAS LA COLUMNA BANCO ESTÉ EN CERO, Y SE DICE. No es una alerta de
   // incumplimiento —eso es lo que el dueño rechazó— sino de dónde sale el número que está leyendo.
   filas[fAvisoBanco - 1][0] = personasPago.length
