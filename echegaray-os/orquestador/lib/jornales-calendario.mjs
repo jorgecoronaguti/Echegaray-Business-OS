@@ -70,25 +70,27 @@ export const COLS_CALENDARIO = [
   // lo que la fila es.
   // «Efectivo» y no «Efectivo (obra)» desde el 14/08: la columna dejó de ser sólo de obra. El dueño
   // ordenó que oficina se abra por canal igual que obreros, y su fuente (`_J_OFICINA`) trae las mismas
-  // tres columnas BANCO/ADELANTO/TOTAL RECIBO que la de obra. Dirección sigue afuera: de esos tres
-  // retiros el canal no está registrado en ninguna parte, y repartirlos con la proporción de otro
-  // grupo sería inventarlo.
-  // ═══ ENTRA «Por banco» Y SALE «TOTAL» (14/08) ═══
+  // tres columnas BANCO/ADELANTO/TOTAL RECIBO que la de obra.
   //
-  // El dueño, cuatro veces: *"la proyeccion de los restantes meses se basara en el 100% del convenio
-  // considerando el 50 y 50 acuerdo interno, lo dije mil veces"*. El calendario publicaba UNA sola
-  // mitad —«Efectivo»— así que veía cuánto sale en billetes y no cuánto por transferencia, que son
-  // los dos números con los que opera cada quincena.
+  // ═══ ENTRA «Banco» Y SALE «TOTAL» — LAS DOS MITADES, NO UNA (14/08) ═══
   //
-  // El ancho de la grilla es 8 y no se toca (dos anchos en el mismo tab es defecto de patrón), así
-  // que algo tenía que salir. Sale «TOTAL»: era la suma de las tres columnas que tiene a la
-  // izquierda, y con las dos mitades publicadas se recompone de un vistazo. Criterio del dueño para
-  // cada columna: ¿qué decisión cambia si este número cambia? El TOTAL no cambiaba ninguna.
+  // El pedido era *"jornales con la proyección de sueldos 50 y 50"* y el cuadro publicaba UNA mitad.
+  // El dueño ve cuántos billetes hay que juntar y no cuánto se transfiere, que son los dos números con
+  // los que opera el pago. El ancho es 8 y no se negocia —dos anchos de grilla en el mismo tab es el
+  // defecto que el auditor de patrón rechaza y el dueño lee como "descuadrado"—, así que para que
+  // entre una tiene que salir otra.
   //
-  // Las dos mitades cubren OBREROS + OFICINA. Dirección queda afuera de las dos y por eso su columna
-  // sigue existiendo: de esos tres retiros el canal no está registrado en ninguna fuente, y
-  // repartirlos con la proporción de otro grupo sería inventarlo.
-  'Período', 'Hasta', 'Se paga el', 'Obreros', 'Oficina', 'Dirección', 'Por banco', 'Efectivo',
+  // SALE «TOTAL», Y POR EL CRITERIO QUE ESTA PESTAÑA YA APLICÓ DOS VECES. El cuadro del año perdió
+  // «Falta pagar» y «Total año» con este argumento escrito: *"son sumas de las otras dos y ninguna
+  // decide nada"*. Acá es más fuerte todavía, porque el TOTAL no es una suma cualquiera: con dirección
+  // entera al banco (ver `DIRECCION_POR_BANCO`), «Banco» + «Efectivo» ES el total de la fila, por
+  // construcción y al peso. La columna que se va no se pierde: queda publicada dos veces, como la
+  // suma de las tres nóminas de la izquierda y como la de las dos mitades de la derecha.
+  //
+  // Y EL ORDEN IMPORTA: las tres poblaciones primero —de dónde sale la plata— y los dos canales al
+  // final —por dónde sale—. Es el mismo orden del cuadro de pago del hero, que termina en «Por banco»
+  // y «En efectivo». Un mismo significado, siempre en el mismo lugar del renglón.
+  'Período', 'Hasta', 'Se paga el', 'Obreros', 'Oficina', 'Dirección', 'Banco', 'Efectivo',
 ]
 
 /** La letra A1 de una columna del calendario, buscada por su rótulo. Falla RUIDOSA. */
