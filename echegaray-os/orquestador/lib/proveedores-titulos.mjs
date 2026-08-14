@@ -49,7 +49,10 @@ export const SECCIONES_DINAMICAS = Object.freeze([
   Object.freeze({
     clave: 'deuda',
     texto: 'QUÉ SE DEBE Y CUÁNDO',
-    valores: Object.freeze(['Se le debe', 'Facturas']),
+    // "Sale ese día" y no "Se le debe" desde el 14/08: el cuadro A pasó a tener una línea POR DÍA de
+    // pago, no por proveedor, y el rótulo tiene que decir de qué habla la fila. Es el `name` del
+    // valor del pivot, así que se cambia acá y llega solo al pivot y a la fila de rótulos.
+    valores: Object.freeze(['Sale ese día', 'Facturas']),
     aRotulos: AVISO + 1,
   }),
   Object.freeze({

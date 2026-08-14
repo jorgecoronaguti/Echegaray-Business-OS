@@ -1,14 +1,29 @@
 #!/usr/bin/env node
-// LA SECCIÓN 1 DE PROVEEDORES, EN DOS TABLAS DINÁMICAS NATIVAS.
+// LA SECCIÓN 1 DE PROVEEDORES, EN DOS TABLAS DINÁMICAS NATIVAS — CON EL DÍA COMO EJE.
 //
-// El pedido: "necesito ver los totales de lo que le debo a cada proveedor y luego ver dentro cada
-// operación". Una sola dinámica no puede: la API de Sheets NO emite el subtotal de un nivel externo
-// —sólo el gran total del pie—, y está medido contra el archivo real con dos y con seis niveles.
-// `showTotals: true` en el proveedor no produce la fila "Alumetal · total".
+// El pedido original (04/08): "necesito ver los totales de lo que le debo a cada proveedor y luego
+// ver dentro cada operación". Una sola dinámica no puede: la API de Sheets NO emite el subtotal de
+// un nivel externo —sólo el gran total del pie—, y está medido contra el archivo real con dos y con
+// seis niveles. `showTotals: true` en el nivel de arriba no produce la fila "Alumetal · total".
 //
-// Entonces son dos, las dos vivas y las dos dinámicas:
-//   A · QUIÉN Y CUÁNTO  — una línea por proveedor: cuánto se le debe y en cuántas facturas.
-//   B · CADA OPERACIÓN  — una línea por factura: número, cuándo, obra, con qué se paga, categoría.
+// EL PEDIDO QUE MANDA HOY (14/08), textual: *"el cuadro de pestaña proveedores esta incompleto aun
+// tengo q seguir usando algunos filtros en pestaña compras por ejemplo para saber exactamente a
+// quienes y como debo pagar un determinado dia"*.
+//
+// Que siga abriendo Compras ES la medida de que esta sección no cumple su función. La pregunta que
+// tiene todos los días son tres cosas —a QUIÉN, CUÁNTO y CÓMO, un DÍA determinado— y las tres ya
+// están en Compras: proveedor, comprobante, importe y "Tipo pago" (transferencia · echeq · cheque ·
+// efectivo · tarjeta). Lo que faltaba no era el dato: era el EJE. Ahora los dos cuadros abren por la
+// fecha de pago, en orden cronológico.
+//
+//   A · CUÁNDO SALE     — una línea por día de pago: cuánto sale ese día y en cuántas facturas.
+//   B · CADA OPERACIÓN  — ese día abierto: proveedor, comprobante, con qué se paga, categoría, obra.
+//
+// LO QUE ESTA SECCIÓN NO PUEDE CONTESTAR SOLA, y hay que decirlo: sale de Compras en estado
+// "Pendiente", así que muestra lo que TODAVÍA SE DEBE. Un cheque o un echeq YA LIBRADO con fecha de
+// pago futura es plata comprometida de ese día que puede estar marcada "Pagado" en Compras — ésa
+// vive en "Cheques Emitidos", que tiene su propio calendario. Unir las dos en un solo calendario
+// exige deduplicar factura contra instrumento y NO se hizo acá.
 //
 // Las dos cuelgan del mismo origen (la grilla entera de Compras) y del mismo filtro, así que no
 // pueden decir cosas distintas: si una compra entra, entra en las dos.
@@ -24,10 +39,11 @@ import { ANCHOS_PROVEEDORES } from '../lib/proveedores-frontera.mjs'
 import { leerParaDecidirBorrado } from '../lib/proveedores-lectura-dinamica.mjs'
 import { SECCIONES_DINAMICAS, VALORES_DETALLE } from '../lib/proveedores-titulos.mjs'
 import {
-  altoEmitido, bandasDeFormato, COL, filtros, formatoDeTodo, fuenteCompras, geometriaDeLaSeccion,
-  PENDIENTE, rotulosDelCuadro, VISTA,
+  altoEmitido, bandasDeFormato, COL, formatoDeTodo, fuenteCompras, geometriaDeLaSeccion,
+  diasDePago, PENDIENTE, pivotSeccion1, rotulosDelCuadro, VISTA,
 } from '../lib/proveedores-pivot-seccion1.mjs'
 import { requestsDeRotulos, rotulosQueNoEntran } from '../lib/proveedores-rotulos.mjs'
+import { ALERTA } from '../lib/glifos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Proveedores'
@@ -48,34 +64,21 @@ const VALORES = SECCIONES_DINAMICAS.find((s) => s.clave === 'deuda').valores
 
 const plata = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR')
 
-/** A · una línea por proveedor. COUNTA sobre el proveedor —no sobre el comprobante—: hay una factura
- *  sin número y contando comprobantes mostraba "0 facturas" a quien se le deben $100.000. */
-const cuadroTotales = (fuente) => ({
-  source: fuente,
-  rows: [{ sourceColumnOffset: COL.proveedor, showTotals: false, sortOrder: 'DESCENDING', valueBucket: { valuesIndex: 0 } }],
-  values: [
-    { sourceColumnOffset: COL.saldo, summarizeFunction: 'SUM', name: VALORES[0] },
-    { sourceColumnOffset: COL.proveedor, summarizeFunction: 'COUNTA', name: VALORES[1] },
-  ],
-  filterSpecs: filtros(),
-  valueLayout: 'HORIZONTAL',
-})
+// ═══ LOS DOS CUADROS SALEN DE `pivotSeccion1`, NO SE ARMAN ACÁ (14/08) ═══
+//
+// Estaban escritos dos veces: la lib declaraba `camposDeFila`/`valoresDelPivot` y este script volvía
+// a tipear el mismo objeto. Los formatos (`formatoDeTodo`, `formatoDeLaFecha`, `columnaDeLaDeuda`)
+// CALCULAN la posición de cada columna desde la lib, así que dos declaraciones distintas del mismo
+// pivot significan formato apuntado a la columna de al lado. Ya pasó con la fecha saliendo `46238`.
+//
+// A · CUÁNDO SALE   — una línea por día de pago: cuánto sale ese día y en cuántas facturas.
+// B · CADA OPERACIÓN — ese mismo día, abierto: a quién, por qué comprobante, con qué medio, qué obra.
+//
+// COUNTA va sobre el PROVEEDOR —no sobre el comprobante—: hay una factura sin número y contando
+// comprobantes mostraba "0 facturas" donde se deben $100.000.
+const cuadroTotales = (fuente) => pivotSeccion1(fuente, { vista: VISTA.POR_DIA, nombres: [...VALORES] })
 
-/** B · una línea por factura, con todo lo que hace falta para decidir un pago. */
-const cuadroDetalle = (fuente) => ({
-  source: fuente,
-  rows: [
-    { sourceColumnOffset: COL.proveedor, showTotals: false, sortOrder: 'DESCENDING', valueBucket: { valuesIndex: 0 } },
-    { sourceColumnOffset: COL.comprobante, showTotals: false, sortOrder: 'ASCENDING' },
-    { sourceColumnOffset: COL.proximoPago, showTotals: false, sortOrder: 'ASCENDING' },
-    { sourceColumnOffset: COL.obra, showTotals: false, sortOrder: 'ASCENDING' },
-    { sourceColumnOffset: COL.tipoPago, showTotals: false, sortOrder: 'ASCENDING' },
-    { sourceColumnOffset: COL.categoria, showTotals: false, sortOrder: 'ASCENDING' },
-  ],
-  values: [{ sourceColumnOffset: COL.saldo, summarizeFunction: 'SUM', name: 'Importe' }],
-  filterSpecs: filtros(),
-  valueLayout: 'HORIZONTAL',
-})
+const cuadroDetalle = (fuente) => pivotSeccion1(fuente, { vista: VISTA.DETALLE })
 
 const texto = (sheetId, fila, valor, bold = false) => ({ updateCells: {
   range: { sheetId, startRowIndex: fila, endRowIndex: fila + 1, startColumnIndex: 0, endColumnIndex: 1 },
@@ -94,6 +97,10 @@ async function main() {
     && String(f?.[COL.comercial] ?? '').trim() === '1')
   const proveedores = new Set(pendientes.map((f) => String(f?.[COL.proveedor] ?? '').trim())).size
   const total = pendientes.reduce((a, f) => a + (Number(f?.[COL.saldo]) || 0), 0)
+  // EL CUADRO A ES UNA LÍNEA POR DÍA: el alto que hay que reservar sale de los días, no de los
+  // proveedores. Contarlo con el criterio equivocado deja la última fila con el formato de la
+  // corrida anterior — que es exactamente el `67797,51 | 31/12/1899` del 04/08.
+  const { dias, sinFecha } = diasDePago(pendientes)
 
   const visible = await google.readSheetValues(ID, `${PESTAÑA}!A1:R220`, { render: 'FORMATTED_VALUE' })
   const antes = await google.readSheetValues(ID, `${PESTAÑA}!A1:R220`, { render: 'FORMULA' })
@@ -101,10 +108,16 @@ async function main() {
 
   // Dónde va cada cuadro y qué franja se formatea. El alto de un pivot es una ESTIMACIÓN y el
   // formato NO se mide con ella: las bandas cubren el footprint entero — ver `bandasDeFormato`.
-  let plan = bandasDeFormato({ ...geo, proveedores, facturas: pendientes.length })
+  let plan = bandasDeFormato({ ...geo, gruposA: dias, facturas: pendientes.length })
 
-  console.log(`PROVEEDORES ${proveedores} · FACTURAS ${pendientes.length} · TOTAL ${plata(total)}`)
-  console.log(`A (quién y cuánto) ${plan.altoA} filas · B (cada operación) ${plan.altoB} filas`
+  console.log(`DÍAS DE PAGO ${dias} · PROVEEDORES ${proveedores} · FACTURAS ${pendientes.length} · TOTAL ${plata(total)}`)
+  // Una deuda cuya fecha no es una fecha entra igual y arma su propio grupo: se dice ANTES de
+  // escribir, con la plata que representa, porque es un pago que nadie va a ver venir en el calendario.
+  for (const g of sinFecha) {
+    console.log(`  ${ALERTA} ${g.filas} factura(s) por ${plata(g.saldo)} con "${g.valor}" donde va la fecha de pago`
+      + ' — salen agrupadas bajo ese texto, no bajo un día. Se corrige en Compras.')
+  }
+  console.log(`A (cuándo sale) ${plan.altoA} filas · B (cada operación) ${plan.altoB} filas`
     + ` · necesita ${plan.necesita}, hay ${plan.disponibles}`)
   const faltan = plan.necesita > plan.disponibles ? plan.necesita - plan.disponibles + COLCHON : 0
   if (faltan) console.log(`⚠ se insertan ${faltan} fila(s) antes de la sección 2 (fila ${geo.filaLimite})`)
@@ -136,7 +149,7 @@ async function main() {
     geo.filaLimite += faltan
     // El colchón recién insertado forma parte del footprint: la banda de formato se recalcula para
     // llegar hasta el final, o las filas nuevas quedan crudas la primera vez que se usen.
-    plan = bandasDeFormato({ ...geo, proveedores, facturas: pendientes.length })
+    plan = bandasDeFormato({ ...geo, gruposA: dias, facturas: pendientes.length })
   }
 
   // La huella se toma DESPUÉS de insertar: si no, compara filas corridas y grita diferencias falsas.
@@ -151,7 +164,7 @@ async function main() {
   // LOS RÓTULOS DE CADA CUADRO, CALCULADOS ANTES DE ESCRIBIR. Si alguno no entra ni partido en dos
   // líneas se avisa: la regla de la pestaña es acortar el rótulo antes que ensanchar la columna, y
   // los de los campos de fila no se pueden acortar sin tocar Compras — así que hay que saberlo.
-  const rotulosA = rotulosDelCuadro({ vista: VISTA.POR_PROVEEDOR, cabecera, nombresDeValores: [...VALORES] })
+  const rotulosA = rotulosDelCuadro({ vista: VISTA.POR_DIA, cabecera, nombresDeValores: [...VALORES] })
   const rotulosB = rotulosDelCuadro({ vista: VISTA.DETALLE, cabecera, nombresDeValores: [...VALORES_DETALLE] })
   for (const [nombre, rots] of [['A', rotulosA], ['B', rotulosB]]) {
     for (const r of rotulosQueNoEntran(rots, ANCHOS_PROVEEDORES)) {
@@ -195,7 +208,7 @@ async function main() {
     // y la C en FECHA, que es lo que el cuadro B había dejado ahí.
     // EL CUERPO ARRANCA DEBAJO DEL RÓTULO: con la banda entera, "Se le debe" y "Facturas" quedaban
     // declaradas moneda y contador, y el auditor las reportaba como B17/C17/G32 en cada corrida.
-    ...formatoDeTodo({ sheetId, filaAncla: plan.cuerpoA.desde, alto: plan.cuerpoA.alto, vista: VISTA.POR_PROVEEDOR }),
+    ...formatoDeTodo({ sheetId, filaAncla: plan.cuerpoA.desde, alto: plan.cuerpoA.alto, vista: VISTA.POR_DIA }),
     ...formatoDeTodo({ sheetId, filaAncla: plan.cuerpoB.desde, alto: plan.cuerpoB.alto, vista: VISTA.DETALLE }),
     ...requestsDeRotulos({ sheetId, fila: plan.rotuloA, textos: rotulosA, anchos: ANCHOS_PROVEEDORES, derecha: [1, 2] }),
     ...requestsDeRotulos({ sheetId, fila: plan.rotuloB, textos: rotulosB, anchos: ANCHOS_PROVEEDORES, derecha: [2, 6] }),
