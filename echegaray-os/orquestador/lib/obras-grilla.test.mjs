@@ -20,7 +20,7 @@ import {
   ANCHO_OBRAS, ANCHOS_OBRAS, ANCHO_HISTORICO, ALTO_HISTORICO, conColaLimpiable, REFS_OBRAS, CLIENTES_MUESTRA,
   rotuloDeObra, SIN_CONTRATO, SECCION_OBRAS, SECCION_COSTO,
 } from './obras-grilla.mjs'
-import { OBRAS_FUTURAS, CLIENTES_CANONICOS, esProyectable, totalEgresos } from './obras-datos.mjs'
+import { OBRAS_FUTURAS, CLIENTES_CANONICOS, comprasObraDe, esProyectable, totalEgresos } from './obras-datos.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 import { ALERTA, glifosInvisibles } from './glifos.mjs'
 
@@ -282,18 +282,34 @@ test('dos obras del MISMO cliente no pueden compartir proveedor: el real se cont
   }
 })
 
-test('el neteo contra Compras SOBREVIVIÓ a la salida del detalle: vive en la columna "Pagado"', () => {
+test('el neteo contra Compras SOBREVIVIÓ a la salida del detalle: vive en la columna "Comprado"', () => {
   // Al sacar las 40 filas de detalle (pedido del dueño, 14/08) el riesgo real era perder con ellas el
-  // neteo vivo: la propiedad de que cuando entra la factura a Compras, lo que falta pagar BAJA SOLO.
+  // neteo vivo: la propiedad de que cuando entra la factura a Compras, lo que falta BAJA SOLO.
   // No se perdió — se condensó en una celda por obra. Si alguien la reemplaza por el monto tipeado,
   // esto se pone rojo y la pestaña vuelve a ser una foto congelada del 07/08.
   const c = g.filasCosto[0] // 4.1 = San Francisco PISOS INDUSTRIALES
-  const pagado = cel(g, `D${c}`)
-  const real = (prov) => `SUMIFS('Compras'!$M$4:$M;'Compras'!$E$4:$E;"${prov}";'Compras'!$J$4:$J;"San Francisco"`
-    + `;'Compras'!$C$4:$C;">="&${serialISO('2026-08-05')})`
-  assert.equal(pagado, `=MIN(377740;${real('ACA')})+MIN(977760;${real('VILLA DEL PINO')})`)
-  // Y lo que falta pagar sale de las dos celdas de SU fila, no de un número tipeado aparte.
+  // EL EMPAREJAMIENTO ES cliente + TEXTO DE OBRA, y las dos condiciones se afirman acá: por proveedor
+  // esta celda publicaba $0 en las siete obras con $74,7M cargados en Compras (ver `compradoDeObra`).
+  assert.equal(cel(g, `D${c}`),
+    '=SUMIFS(\'Compras\'!$M$4:$M;\'Compras\'!$J$4:$J;"San Francisco";\'Compras\'!$K$4:$K;"*Pisos Industriales*"'
+    + `;'Compras'!$C$4:$C;">="&${serialISO('2026-01-01')};'Compras'!$C$4:$C;"<="&${serialISO('2026-12-31')})`)
+  // Y lo que falta sale de las dos celdas de SU fila, no de un número tipeado aparte.
   assert.equal(cel(g, `E${c}`), `=C${c}-D${c}`)
+})
+
+test('NINGUNA celda de costo filtra por proveedor ni por la fecha de inicio de la obra', () => {
+  // LOS DOS DEFECTOS QUE PRODUJERON EL CERO, ESCRITOS COMO PROHIBICIÓN. El proveedor no identifica la
+  // obra (VILLA DEL PINO factura a "Administracion"; ACA, Bedini, Sika y Mercado Libre no existen en
+  // Compras) y el corte `≥ inicio` tira lo comprado ANTES de arrancar, que en construcción es lo
+  // normal: los $27.358.960 de Quattropani se facturaron el 29/07 para una obra que empieza el 18/08.
+  const inicios = OBRAS_FUTURAS.map((o) => serialISO(o.inicio))
+  for (const [i, o] of OBRAS_FUTURAS.entries()) {
+    const d = String(cel(g, `D${g.filasCosto[i]}`))
+    assert.ok(!d.includes(`$${REFS_OBRAS.cmp.proveedor}$`), `${o.clave}: volvió el filtro por PROVEEDOR`)
+    for (const s of inicios) {
+      assert.ok(!d.includes(`">="&${s}`), `${o.clave}: volvió el corte por fecha de inicio (${s})`)
+    }
+  }
 })
 
 test('las columnas salen de las refs INYECTADAS: ninguna letra queda pegada en la fórmula', () => {
@@ -301,7 +317,7 @@ test('las columnas salen de las refs INYECTADAS: ninguna letra queda pegada en l
   // fórmula sumaría otra columna el día que el archivo se reordene, y sin dar error.
   const refs = {
     cob: { hoja: 'Cobranzas', cliente: 'Z', concepto: 'Y', neto: 'V', total: 'X', retenciones: 'AB', estado: 'W', oc: 'S', fechaCobro: 'T', fechaVenta: 'N', fechaEmision: 'L', forma: 'M', categoria: 'R', moneda: 'AC', desde: 9 },
-    cmp: { hoja: 'Compras', fecha: 'V', proveedor: 'U', cliente: 'T', neto: 'R', iva: 'Q', total: 'S', familia: 'P', desde: 7 },
+    cmp: { hoja: 'Compras', fecha: 'V', proveedor: 'U', cliente: 'T', obra: 'N', neto: 'R', iva: 'Q', total: 'S', familia: 'P', desde: 7 },
     mat: REFS_OBRAS.mat,
   }
   const otra = grillaObras({ obras: OBRAS_FUTURAS, refs })
@@ -310,6 +326,11 @@ test('las columnas salen de las refs INYECTADAS: ninguna letra queda pegada en l
   assert.match(pagado, /'Compras'!\$R\$7:\$R/, 'el NETO de Compras ("Importe"), no el total con IVA')
   assert.match(pagado, /'Compras'!\$T\$7:\$T;"San Francisco"/, 'el cliente de Compras')
   assert.match(pagado, /'Compras'!\$V\$7:\$V/, 'la fecha de factura de Compras')
+  // LA COLUMNA DE OBRA TAMBIÉN SE INYECTA, y es la más nueva: si quedara pegada en la K, el día que
+  // Compras mueva una columna el cuadro 4 filtraría por "Concepto" y volvería a publicar $0 — el
+  // mismo defecto que se acaba de arreglar, entrando por la puerta de al lado.
+  assert.match(pagado, /'Compras'!\$N\$7:\$N;"\*Pisos Industriales\*"/, 'el texto de obra sale de las refs')
+  assert.match(cel(otra, `D${otra.fSinImputar}`), /'Compras'!\$R\$7:\$R/, 'el SIN IMPUTAR también')
   assert.match(cel(otra, `C${b.fProt}`), /'Cobranzas'!\$V\$9:\$V/, 'la venta sale del NETO de Cobranzas')
   assert.match(cel(otra, `G${otra.fClientes[0]}`), /'Compras'!\$R\$7:\$R/, 'el costo, del neto de Compras')
   assert.match(cel(otra, `D${b.fProt}`), /'Cobranzas'!\$X\$9:\$X/, 'el cobrado sale del TOTAL de Cobranzas')
@@ -323,7 +344,7 @@ test('las columnas salen de las refs INYECTADAS: ninguna letra queda pegada en l
   // de arreglar, con otro origen.
   assert.match(cel(otra, `F${b.fProt}`), /'Cobranzas'!\$L\$9:\$L;"<"&\(TODAY\(\)-30\)/, 'la emisión sale de las refs')
   for (const [ref, f] of formulas(otra)) {
-    assert.ok(!/'Compras'!\$[EJCO]\$4/.test(f), `${ref}: quedó una columna de Compras pegada`)
+    assert.ok(!/'Compras'!\$[EJKCO]\$4/.test(f), `${ref}: quedó una columna de Compras pegada`)
     assert.ok(!/'Cobranzas'!\$[GIJLMNOQ]\$5/.test(f), `${ref}: quedó una columna de Cobranzas pegada`)
     assert.ok(!/'Cobranzas'!\$AA\$5/.test(f), `${ref}: quedó la columna de MONEDA pegada`)
   }
@@ -415,29 +436,34 @@ test('la máquina propia NO entra al costo proyectado: es equipo propio, no plat
 })
 
 test('la mano de obra no se mide contra Compras: buscarla ahí la dejaría siempre en cero', () => {
-  // La MO se paga por Jornales. Está DENTRO del costo proyectado (es plata que sale) pero FUERA de
-  // lo pagado que mide esta pestaña, y por eso queda entera del lado de lo que falta. Si alguien la
-  // metiera en el neteo contra Compras, el "pagado" no cambiaría y el "falta" bajaría por nada.
+  // La MO se paga por Jornales. Está DENTRO del costo proyectado (es plata que sale) pero FUERA de lo
+  // comprado que mide esta pestaña, y por eso queda entera del lado de lo que falta. Es el 87% del
+  // proyectado ($126.974.442 de $145.855.278): por eso `Resta proyectado` no puede bajar a cero por
+  // más compras que entren, y el subtítulo lo declara en vez de dejarlo como un misterio del cuadro.
   for (const [i, o] of OBRAS_FUTURAS.entries()) {
-    const pagado = String(cel(g, `D${g.filasCosto[i]}`))
-    assert.ok(!/Jornales|Mano de obra/i.test(pagado), `${o.clave}: la MO no se busca en Compras`)
-    const sumandos = pagado.startsWith('=0') ? 0 : pagado.split('+MIN(').length
-    const conProveedor = (o.egresos ?? []).filter((e) => e.proveedor).length
-    assert.equal(sumandos, conProveedor, `${o.clave}: un sumando por egreso CON proveedor, ni uno más`)
+    const comprado = String(cel(g, `D${g.filasCosto[i]}`))
+    assert.ok(!/Jornales|Mano de obra/i.test(comprado), `${o.clave}: la MO no se busca en Compras`)
+    // Un SUMIFS y sólo uno: la celda no puede volver a ser una suma de sumandos por proveedor.
+    assert.equal(comprado.split('SUMIFS(').length - 1, comprasObraDe(o) ? 1 : 0,
+      `${o.clave}: exactamente un SUMIFS cuando declara texto de obra, ninguno cuando no`)
   }
+  const conMO = OBRAS_FUTURAS.reduce((s, o) => s + (o.moCargasPesos || 0), 0)
+  assert.ok(conMO > 0.8 * OBRAS_FUTURAS.reduce((s, o) => s + totalEgresos(o), 0),
+    'si la MO dejara de dominar el proyectado, la advertencia del subtítulo habría que revisarla')
 })
 
-test('un egreso sin proveedor no inventa un real: no suma a lo pagado y queda del lado del falta', () => {
-  // MAMPOSTERÍA tiene "Materiales sin itemizar" sin proveedor declarado. No hay contra qué medirlo en
-  // Compras, así que no puede aparecer en `Pagado` — inventarle un real bajaría lo que falta pagar.
-  const i = OBRAS_FUTURAS.findIndex((o) => o.clave === 'sf-mamposteria')
-  const o = OBRAS_FUTURAS[i]
-  const sinProv = (o.egresos ?? []).filter((e) => !e.proveedor)
-  assert.ok(sinProv.length >= 1, 'la obra de prueba tiene que tener un egreso sin proveedor')
-  const pagado = String(cel(g, `D${g.filasCosto[i]}`))
-  for (const e of sinProv) assert.ok(!pagado.includes(String(e.monto)), `${e.concepto}: no puede sumar a lo pagado`)
-  // Pero SÍ está en el costo proyectado: es plata que va a salir, sólo que todavía no se puede medir.
-  assert.equal(cel(g, `C${g.filasCosto[i]}`), totalEgresos(o))
+test('el monto declarado de un egreso NO entra a la celda de comprado: ahí sólo va lo que dice Compras', () => {
+  // MAMPOSTERÍA tiene "Materiales sin itemizar" sin proveedor. Antes eso importaba porque el neteo era
+  // por proveedor; ahora NINGÚN monto de la explosión puede aparecer del lado real, tenga proveedor o
+  // no. La celda D es un hecho de la fuente: si un número tipeado se cuela ahí, la pestaña estaría
+  // afirmando como comprado algo que el dueño sólo proyectó.
+  const montos = OBRAS_FUTURAS.flatMap((o) => (o.egresos ?? []).map((e) => String(e.monto)))
+  for (const [i, o] of OBRAS_FUTURAS.entries()) {
+    const comprado = String(cel(g, `D${g.filasCosto[i]}`))
+    for (const m of montos) assert.ok(!comprado.includes(m), `${o.clave}: se coló el monto proyectado ${m}`)
+    // Pero SÍ está en el costo proyectado: es plata que va a salir, sólo que todavía no se compró.
+    assert.equal(cel(g, `C${g.filasCosto[i]}`), totalEgresos(o))
+  }
 })
 
 // ─────────────────────────────────────────────────────────────────────────────

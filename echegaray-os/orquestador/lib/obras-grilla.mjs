@@ -134,7 +134,7 @@
 
 import { VACIO } from './preservar-anotaciones.mjs'
 import { conColaLimpiable as colaDeclarada } from './cola-de-rango.mjs'
-import { esProyectable, totalEgresos } from './obras-datos.mjs'
+import { comprasObraDe, esProyectable, totalEgresos } from './obras-datos.mjs'
 import { sumaNetaSheet, esMaterialSheet } from './costo-materiales.mjs'
 import { sumaConUSD } from './cobranzas-contrato.mjs'
 // EL TIPO DE CAMBIO SE IMPORTA, NO SE ESCRIBE DE NUEVO. Vive UNA vez, en el bloque de CAJA, y esta
@@ -442,7 +442,12 @@ export const REFS_OBRAS = {
   // `neto` es la columna "Importe" (M = Total − IVA). El costo se mide ahí, no en "Total" (O): la
   // venta ya se mide al neto, y comparar venta neta contra costo con IVA castigaba el margen ~21% en
   // todo lo que se compra en blanco. Neto contra neto. El IVA de compras es crédito fiscal, no costo.
-  cmp: { hoja: 'Compras', fecha: 'C', proveedor: 'E', cliente: 'J', neto: 'M', iva: 'N', total: 'O', familia: 'AE', desde: 4 },
+  // `obra` es la col K, "Detalles / Obra": el texto que el dueño escribe a mano al cargar el
+  // comprobante. Es el ÚNICO lugar de Compras donde consta a qué obra va un gasto — la col J
+  // ("Cliente / Asignación") llega hasta el cliente y ahí se detiene, y las cuatro obras de San
+  // Francisco comparten cliente. Por qué el emparejamiento va por acá y no por proveedor: el bloque
+  // `comprasObra` de obras-datos.mjs, que es donde vive la evidencia.
+  cmp: { hoja: 'Compras', fecha: 'C', proveedor: 'E', cliente: 'J', obra: 'K', neto: 'M', iva: 'N', total: 'O', familia: 'AE', desde: 4 },
   mat: { hoja: 'Materiales', filaTotal: 'TOTAL POR OBRA', filaCabecera: '2 · POR OBRA' },
 }
 
@@ -986,42 +991,54 @@ costoNeto(cmp, cli),
   return { fClientes: [f0, f1], fTot, filaDeCliente }
 }
 
-/** Lo REALMENTE facturado en Compras para un egreso: mismo proveedor (nombre canónico), mismo cliente
- *  y fecha de factura desde el inicio de la obra. El inicio va como serial literal: es dato del dueño
- *  (obras-datos.mjs) y ya no hay una celda de la fila protagonista donde leerlo — esa columna ahora
- *  publica la próxima fecha de COBRO. */
-function realEgreso(cmp, proveedor, cliente, inicio) {
-  return `SUMIFS(${abierto(cmp, 'neto')};${abierto(cmp, 'proveedor')};"${proveedor}";`
-    + `${abierto(cmp, 'cliente')};"${nombreEnCostos(cliente)}";${abierto(cmp, 'fecha')};">="&${serialISO(inicio)})`
-}
+/** Todo lo que Compras le imputó a un CLIENTE en el año, sin mirar la obra. Es el universo del que
+ *  sale lo de cada obra, y por eso es también el que cierra la fila SIN IMPUTAR. */
+const compradoDeCliente = (cmp, cliente) =>
+  `SUMIFS(${abierto(cmp, 'neto')};${abierto(cmp, 'cliente')};"${nombreEnCostos(cliente)}"${enElAno(cmp, 'fecha')})`
 
 /**
- * LO YA PAGADO DE UNA OBRA, MEDIDO CONTRA COMPRAS — SIN ABRIR EL DETALLE.
+ * LO QUE COMPRAS YA LE IMPUTÓ A UNA OBRA.
  *
- * ═══ POR QUÉ NO ES UN SOLO SUMIFS POR OBRA (14/08) ═══
+ * ═══ ACÁ VIVÍA EL EMPAREJAMIENTO POR PROVEEDOR, Y PUBLICABA $0 EN LAS SIETE OBRAS (14/08) ═══
  *
- * Porque no se puede: Compras tiene "Cliente / Asignación" pero NO tiene columna de obra. Las cuatro
- * obras de San Francisco comparten un único costo en la fuente, así que preguntarle a Compras "cuánto
- * pagué de PISOS INDUSTRIALES" no tiene respuesta. Es el mismo motivo por el que el dueño mandó sacar
- * la columna de margen, y no cambió.
+ * El dueño: *"el cuadro 4 en obras costo esta mal, hay gastos en pestaña compras q si se han hecho
+ * para las obras señaladas"*. Tenía razón, y el motivo de los tres filtros que fallaban a la vez
+ * —proveedor, cliente y fecha— está escrito con los números en el bloque `comprasObra` de
+ * obras-datos.mjs, que es donde vive la evidencia y donde se agrega el próximo patrón.
  *
- * LO QUE SÍ SE PUEDE MEDIR es cada egreso declarado contra las facturas de SU proveedor para ESE
- * cliente desde el inicio de la obra. Eso ya existía —vivía en la columna de cada fila de detalle— y
- * acá se suma en una sola celda: `Σ MIN(monto declarado; facturado del proveedor)`.
+ * LO QUE HAY ACÁ ES EL CAMINO QUE SÍ EXISTE: `cliente` + el texto que el dueño escribió en la
+ * columna "Detalles / Obra" de Compras. Un solo SUMIFS por obra, y las dos condiciones son datos de
+ * la fuente — ninguna es una deducción mía.
  *
- * EL `MIN` NO ES UN RECORTE COSMÉTICO. Sin él, un proveedor que factura a ese cliente más de lo que
- * esta obra tenía declarado inflaría el "pagado" de la obra con plata de otra. Con el `MIN`, lo
- * pagado nunca supera lo proyectado y `Falta pagar = proyectado − pagado` no puede dar negativo.
- * Es la misma acotación que hacía el `MAX(0; …)` de las filas de detalle, del otro lado del signo.
+ * ═══ LAS TRES COSAS QUE SE SACARON, Y POR QUÉ CADA UNA ═══
  *
- * LÍMITE CONOCIDO, Y SE DECLARA: un egreso SIN proveedor no se puede medir y cuenta como no pagado.
- * La mano de obra tampoco se mide acá —va por Jornales— y por eso su monto entero queda del lado de
- * lo que falta. Lo pagado de esta columna es un PISO, no el costo real de la obra.
+ * EL CORTE POR FECHA DE INICIO SE FUE. En construcción se compra ANTES de arrancar: los $27.358.960
+ * de Quattropani se facturaron el 29/07 para una obra que empieza el 18/08. El filtro `≥ inicio` no
+ * medía "lo gastado en esta obra", medía "lo gastado después de una fecha", y tiraba justo el gasto
+ * que el dueño estaba reclamando. Queda la ventana del AÑO, que es la que la pestaña declara en su
+ * subtítulo — no una ventana nueva, la misma que usan la venta y la cobranza.
+ *
+ * EL `MIN` CONTRA EL MONTO PROYECTADO SE FUE. Existía porque el emparejamiento era por proveedor y
+ * un proveedor factura a varias obras del mismo cliente: sin el tope, plata de otra obra inflaba
+ * ésta. Con el emparejamiento por obra ese riesgo desaparece —las filas SON de esta obra— y el tope
+ * pasa a hacer daño: taparía exactamente lo que hay que ver. BSA lo muestra: proyectado $2.108.281,
+ * comprado $7.955.772. Con `MIN` se publicaría $2.108.281 y la pestaña diría que va justa una obra
+ * que ya gastó casi cuatro veces su proyección. Un número recortado para que la resta no dé negativo
+ * es un número que miente para quedar prolijo.
+ *
+ * EL FILTRO POR OBRA PROYECTABLE SE FUE. Devolvía $0 si la obra no tenía fechas; el gasto real de
+ * una obra no depende de que se le haya puesto cronograma.
+ *
+ * @returns la fórmula, o `'=0'` cuando la obra no declara texto — que NO es "no gastó nada": es "no
+ *   hay ninguna compra que la nombre". Esa plata no se reparte: se ve entera en la fila SIN IMPUTAR.
  */
-function pagadoDeObra(cmp, o) {
-  const medibles = (o.egresos ?? []).filter((e) => e.proveedor && esProyectable(o))
-  if (!medibles.length) return '=0'
-  return `=${medibles.map((e) => `MIN(${e.monto};${realEgreso(cmp, e.proveedor, o.cliente, o.inicio)})`).join('+')}`
+function compradoDeObra(cmp, o) {
+  const patron = comprasObraDe(o)
+  if (!patron) return '=0'
+  // El `*` a los dos lados es a propósito: en K conviven "Planta de BSA", "Camion - BSA" y
+  // "Excavadora - BSA", y las tres son la misma obra. La igualdad exacta dejaría afuera dos de ellas.
+  return `=SUMIFS(${abierto(cmp, 'neto')};${abierto(cmp, 'cliente')};"${nombreEnCostos(o.cliente)}"`
+    + `;${abierto(cmp, 'obra')};"*${patron}*"${enElAno(cmp, 'fecha')})`
 }
 
 /**
@@ -1083,14 +1100,41 @@ function bloqueObra(h, refs, o, idx, unica = false) {
   return { clave: o.clave, fProt, proyectable, contrato: o.contrato ?? null }
 }
 
+/** El glifo de la columna de auditoría cuando ninguna compra nombra la obra. Es una alarma, no un
+ *  cero: la plata existe y está en la fila SIN IMPUTAR, esperando que Compras diga a qué obra va. */
+export const SIN_TEXTO_EN_COMPRAS = `${ALERTA} ninguna compra la nombra`
+
 /**
- * UNA OBRA EN EL CUADRO DE COSTO: lo que se pensaba gastar contra lo que ya se pagó.
+ * UNA OBRA EN EL CUADRO DE COSTO: lo que se pensaba gastar contra lo que ya se compró.
  *
  * ═══ QUÉ PREGUNTA CONTESTA, Y QUÉ NO PUEDE CONTESTAR ═══
  *
  * El dueño pidió *"presupuesto vs costo proyectado"*. Lo que este cuadro publica es **costo
- * proyectado vs pagado**: su propia explosión de gastos por obra (el insumo que él cargó el 07/08)
- * contra lo que Compras ya facturó de esos mismos proveedores.
+ * proyectado vs comprado**: su propia explosión de gastos por obra (el insumo que él cargó el 07/08)
+ * contra lo que Compras ya le imputó a esa obra.
+ *
+ * ═══ DICE "COMPRADO" Y NO "PAGADO", Y LA PALABRA IMPORTA (14/08) ═══
+ *
+ * La columna se llamaba `Pagado (real)` y medía el "Importe" de Compras, que es la FACTURA — no el
+ * pago. De los $39,5M que empareja hoy, $11,8M están en estado "Pendiente / 🟡 Por vencer": llamarlos
+ * pagados es presentar una obligación abierta como plata que ya salió, justo al lado de la columna
+ * de la que se decide qué se paga. Cuando haga falta lo PAGADO de verdad, la fuente es otra columna
+ * de Compras ("Monto Pagado", que además viene con IVA) y es una decisión del dueño, no una
+ * renombrada: por eso acá se publica lo que la fórmula mide de verdad y se lo dice.
+ *
+ * ═══ LA COLUMNA F DECLARA DE DÓNDE SALE CADA PESO ═══
+ *
+ * En la gramática de la pestaña la F es la alarma, y acá cumple las dos funciones con el mismo dato:
+ * dice el texto de Compras por el que la obra emparejó —para que el dueño pueda ir a la fuente,
+ * filtrar por él y ver las mismas filas— y cuando no hay texto, dice que no lo hay. Sin esto, la
+ * columna D sería un número sin forma de auditarlo.
+ *
+ * ═══ EL LÍMITE ESTRUCTURAL, QUE NINGÚN EMPAREJAMIENTO ARREGLA ═══
+ *
+ * `Costo proyectado` son $145.855.278 y $126.974.442 de eso (el 87%) es MANO DE OBRA. La mano de obra
+ * NO está en Compras ni va a estarlo: se paga por Jornales. Así que la columna `Resta proyectado`
+ * nunca va a bajar a cero por más compras que entren, y no es un defecto de este cuadro: es que el
+ * proyectado y el comprado miden universos distintos. Se declara en el subtítulo del bloque.
  *
  * EL PRESUPUESTO DE LA COTIZACIÓN NO ESTÁ Y NO SE INVENTA. Se buscó donde tiene que estar: la tabla
  * `presupuestos` del OS tiene DOS filas, las dos colgadas de obras de `public.obras` que están
@@ -1106,9 +1150,11 @@ function bloqueCosto(h, refs, o, idx) {
   const rot = rotuloDeObra(o, idx, SECCION_COSTO)
   h.rotulos.push({ fila: f, texto: rot.texto })
   const proyectado = totalEgresos(o)
-  h.push([rot.celda, `=IF(C${f}=0;0;D${f}/C${f})`, proyectado, pagadoDeObra(cmp, o), `=C${f}-D${f}`])
+  const patron = comprasObraDe(o)
+  h.push([rot.celda, `=IF(C${f}=0;0;D${f}/C${f})`, proyectado, compradoDeObra(cmp, o), `=C${f}-D${f}`,
+    patron ? `Compras: "${patron}"` : SIN_TEXTO_EN_COMPRAS])
   h.tipeadas.push({ fila: f, col: 2 })
-  return { clave: o.clave, fila: f, proyectado }
+  return { clave: o.clave, fila: f, proyectado, patron }
 }
 
 /**
@@ -1138,9 +1184,17 @@ export function grillaObras(ctx = {}) {
   // que no se puede deducir mirando la tabla: sin él, "Vencido" es un número sin definición. Va en el
   // subtítulo por la misma razón que el criterio de venta y el tipo de cambio — es un criterio, no una
   // explicación. (El número vive una sola vez, en `cobranzas-vencido.mjs`; acá se lo cita.)
+  // EL CRITERIO DEL CUADRO 4 ENTRA ACÁ Y NO EN UNA GLOSA APARTE (14/08). Son las dos cosas que no se
+  // pueden deducir mirando esa tabla: que el costo real se empareja por el TEXTO de "Detalles / Obra"
+  // de Compras (por eso hay una columna que dice cuál), y que el costo proyectado incluye la mano de
+  // obra, que se paga por Jornales y no puede aparecer nunca del lado comprado. Sin la segunda, la
+  // columna "Resta proyectado" se lee como una deuda con proveedores y es, en su mayor parte, sueldos.
   h.push([`=${quote(`${ANO} · venta al NETO (devengado) · cobranzas al TOTAL neto de retenciones (percibido)`
     + ` · vencido a los ${PLAZO_COBRO_DIAS} días de la fecha de emisión`
-    + ' · contrato leído de la ORDEN DE COMPRA de Cobranzas · USD valuado a ')}&`
+    + ' · contrato leído de la ORDEN DE COMPRA de Cobranzas'
+    + ' · costo real = Compras imputada por su texto de "Detalles / Obra", al neto y sin corte por fecha de inicio'
+    + ' (se compra antes de arrancar); el costo proyectado incluye la mano de obra, que va por Jornales'
+    + ' · USD valuado a ')}&`
     + `IFERROR(TEXT(${RANGO_TC};"$ #.##0,00");"(sin tipo de cambio)")`])
   h.push([])
 
@@ -1201,21 +1255,49 @@ export function grillaObras(ctx = {}) {
   // ═══ CUADRO 4 — EL GASTO. LO QUE ANTES ERAN 40 RENGLONES DE DETALLE, EN DOS COLUMNAS ═══
   //
   // `Costo proyectado` es la explosión de gastos que el dueño cargó por obra (`obras-datos.mjs`),
-  // sumada: es su estimación, y se dibuja como tal. `Pagado` es lo que Compras ya facturó de esos
-  // mismos proveedores desde el inicio de la obra: es un hecho. Por qué no se puede pedir el costo de
-  // una obra a Compras de una sola vez, y por qué lo pagado es un PISO, está en `pagadoDeObra`.
-  h.push([`${SECCION_COSTO} · OBRAS — COSTO PROYECTADO Y PAGOS`])
-  h.push(['Obra', '% pagado', 'Costo proyectado', 'Pagado (real)', 'Falta pagar'])
+  // sumada: es su estimación, y se dibuja como tal. `Comprado (real)` es lo que Compras le imputó a
+  // esa obra por su texto de "Detalles / Obra": es un hecho, y la columna F dice cuál es ese texto
+  // para que se pueda ir a la fuente a verificarlo. El porqué del camino está en `compradoDeObra`.
+  h.push([`${SECCION_COSTO} · OBRAS — COSTO PROYECTADO Y COMPRAS IMPUTADAS`])
+  // La fila del encabezado se GUARDA, no se deduce restando: el día que el cuadro gane o pierda una
+  // fila, una resta a mano deja el formato apuntando a la obra 4.1 y nadie lo ve hasta publicar.
+  const fEncCosto = h.n + 1
+  h.push(['Obra', '% comprado', 'Costo proyectado', 'Comprado (real)', 'Resta proyectado', 'Imputado por'])
   const costos = obras.map((o, i) => bloqueCosto(h, refs, o, i + 1))
   const filasCosto = costos.map((c) => c.fila)
   const fTot3 = costos.length ? h.n + 1 : null
+  let fSinImputar = null
   if (fTot3) {
     h.push([`⇒ TOTAL — ${costos.length} OBRAS`, `=IF(C${fTot3}=0;0;D${fTot3}/C${fTot3})`,
       suma('C', filasCosto), suma('D', filasCosto), suma('E', filasCosto)])
+
+    // ═══ LA FILA QUE HACE QUE NADA SE PIERDA NI SE REPARTA (14/08) ═══
+    //
+    // El dueño ya sacó dos veces una fila "⇒ sin ubicar" que daba $0 todos los días, y tenía razón:
+    // un renglón que nunca dice nada no es un control, es ruido. ÉSTA ES LO CONTRARIO — hoy vale
+    // $35.260.034 y nombra un trabajo concreto: hay compras cargadas a estos clientes que no dicen a
+    // qué obra van. Mientras esa plata no esté en ninguna obra, se ve entera acá.
+    //
+    // Y ES EL CONTROL DE INTEGRIDAD DEL CUADRO, no un comentario: se calcula como TODO lo que Compras
+    // le imputó a estos clientes MENOS lo que las obras se llevaron. Por construcción, obras +
+    // sin imputar = el total del cliente en la fuente. Si mañana el dueño escribe un texto nuevo en
+    // "Detalles / Obra", esta fila baja sola; si un patrón dejara de emparejar, sube sola. No hay
+    // forma de que un peso desaparezca en silencio, que es exactamente lo que pasaba antes.
+    //
+    // LA DIRECCIÓN DEL ERROR ES DELIBERADA: lo dudoso cae ACÁ, nunca en una obra. Un emparejamiento
+    // por parecido que acierta el 60% mete el gasto de una obra en otra y nadie se entera; un peso de
+    // más en esta fila se ve a la primera mirada.
+    const clientes3 = [...new Set(obras.map((o) => o.cliente))]
+    if (clientes3.length) {
+      fSinImputar = h.n + 1
+      h.push(['⇒ SIN IMPUTAR — compras de estos clientes que no dicen la obra', '', '',
+        `=${clientes3.map((c) => compradoDeCliente(refs.cmp, c)).join('+')}-D${fTot3}`, '',
+        `${ALERTA} falta escribir la obra en Compras`])
+    }
   }
 
   // LA LÍNEA DE CARTERA ES UN CIERRE: lleva el "$" y la regla arriba, como los otros dos totales.
-  const totales = [s0.fCartera, s1.fTot, fTot2, fTot3].filter(Boolean)
+  const totales = [s0.fCartera, s1.fTot, fTot2, fTot3, fSinImputar].filter(Boolean)
   return {
     filas: h.filas,
     /** La fila del titular de cartera. El escritor la necesita para el control de cierre: los cinco
@@ -1232,6 +1314,13 @@ export function grillaObras(ctx = {}) {
     /** Los cierres de cada cuadro, en orden — el escritor los cita por nombre y no por posición. */
     fTotObras: fTot2,
     fTotCosto: fTot3,
+    /** La fila SIN IMPUTAR del cuadro 4. El escritor la usa para el control de cierre: obras +
+     *  sin imputar tiene que dar lo que Compras le imputó a estos clientes, por otro camino. */
+    fSinImputar,
+    /** Las filas del cuadro 4 cuya columna F lleva TEXTO de auditoría y no un importe: el
+     *  encabezado, las siete obras y el SIN IMPUTAR. El formateador las necesita porque la F está
+     *  declarada como columna de alarma en pesos y dibujaría el texto pegado al margen derecho. */
+    textoEnF: [fEncCosto, ...filasCosto, fSinImputar].filter(Boolean),
     /** El cierre del cuadro de clientes: es el que concilia contra Cobranzas entera. */
     fTotClientes: s1.fTot,
     bloques,
