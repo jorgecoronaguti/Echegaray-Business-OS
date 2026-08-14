@@ -56,6 +56,22 @@ export function armarItem({ lectura, adjunto, listas, textoPost = null, ahora = 
       const alt = matchProveedor(comprobante.proveedorAlt, listas.proveedores, { cuit: comprobante.cuit, porCuit: listas.porCuit })
       if (!alt.esNuevo) m = alt
     }
+    // ═══ Y SI TODAVÍA ES NUEVO, SE PRUEBAN LOS OTROS NOMBRES DE ESE CUIT (14/08) ═══
+    //
+    // El CUIT casi siempre se lee aunque el membrete salga borroso, y hay dos fuentes que saben a
+    // quién pertenece: `public.proveedores` y el libro fiscal de ARCA (ver `nombresPorCuit`). Se
+    // prueban esos nombres contra la MISMA lista estricta y con el MISMO matcheo: no se afloja nada
+    // —un nombre que el desplegable no tiene sigue sin llegar a ninguna celda—, sólo se le dan al
+    // matcheo los nombres que el papel no dejó leer.
+    if (m.esNuevo) {
+      const c = String(comprobante.cuit ?? '').replace(/\D/g, '')
+      const mapa = listas.nombresPorCuit
+      const candidatos = c.length === 11 && mapa ? (mapa instanceof Map ? mapa.get(c) : mapa[c]) ?? [] : []
+      for (const nombre of candidatos) {
+        const otro = matchProveedor(nombre, listas.proveedores, { cuit: comprobante.cuit, porCuit: listas.porCuit })
+        if (!otro.esNuevo) { m = { ...otro, motivo: otro.motivo ?? 'cuit-padron' }; break }
+      }
+    }
     comprobante.proveedor = m.valor
     proveedorNuevo = m.esNuevo === true
     // ═══ EL ECO DEL NOMBRE MAL LEÍDO (04/08) ═══
