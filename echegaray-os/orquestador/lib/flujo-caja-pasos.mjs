@@ -122,7 +122,11 @@ export const PASOS = [
   // congela en silencio. Escribe UNA celda y sólo si está vacía; ver lib/proveedores-titulos.mjs.
   ['proveedores-titulos-sembrar.mjs', 'Proveedores · los títulos de las secciones 1 y 2, que son el ancla de las dinámicas', [], ['--aplicar']],
   ['proveedores-dos-cuadros.mjs', 'Proveedores · sección 1 — las dos dinámicas: quién y cuánto, y cada operación', [], ['--aplicar']],
-  ['proveedores-seccion2-pivot.mjs', 'Proveedores · sección 2 — la dinámica de concentración con su resto y su total', [], ['--aplicar']],
+  // ENTRE LAS DOS DINÁMICAS. Se ubica entre el final de la sección 1 y el título de la que sigue, así
+  // que la 1 tiene que estar escrita; y como cambia de alto según cuántos días de pago haya, corre
+  // hacia abajo la cuenta corriente — que se reancla por su título en la corrida siguiente.
+  ['proveedores-que-sale-cada-dia.mjs', 'Proveedores · sección 2 — qué sale cada día: a quiénes y por qué medio', [], ['--aplicar']],
+  ['proveedores-seccion2-pivot.mjs', 'Proveedores · sección 3 — la dinámica de concentración con su resto y su total', [], ['--aplicar']],
   ['proveedores-notas-visibles.mjs', 'Proveedores · la columna "Qué hacer" del dueño, anclada a su proveedor', [], ['--aplicar']],
   ['proveedores-encabezado-aplicar.mjs', 'Proveedores · el encabezado (la posición) y LOS ANCHOS de toda la pestaña', [], ['--aplicar']],
   // ═══ OBRAS ENTRA AL PIPELINE (13/08) ═══

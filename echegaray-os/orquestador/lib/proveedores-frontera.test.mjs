@@ -43,18 +43,19 @@ const pestana = ({ filasDinamica1 = 3, filasDinamica2 = 2 } = {}) => {
   return { filas: f, anclaUno, anclaDos, frontera }
 }
 
-test('la numeración sale de UNA lista: las dinámicas son 1 y 2, y lo generado arranca en 3', () => {
+test('la numeración sale de UNA lista: 1 y 3 son dinámicas, 2 es el cuadro por día, y lo generado arranca en 4', () => {
   assert.equal(nSeccion('deuda'), 1)
-  assert.equal(nSeccion('cuentaCorriente'), 2)
-  assert.equal(nSeccion(PRIMERA_GENERADA), 3)
-  assert.equal(nSeccion('faltanEnCompras'), 4)
-  assert.equal(nSeccion('control'), 5)
+  assert.equal(nSeccion('salePorDia'), 2)
+  assert.equal(nSeccion('cuentaCorriente'), 3)
+  assert.equal(nSeccion(PRIMERA_GENERADA), 4)
+  assert.equal(nSeccion('faltanEnCompras'), 5)
+  assert.equal(nSeccion('control'), 6)
   // Materiales es una pestaña propia: sus secciones arrancan en 1.
   assert.equal(nSeccion('familiaMes', SECCIONES_MATERIALES), 1)
   assert.equal(nSeccion('obra', SECCIONES_MATERIALES), 2)
   // Una clave que no existe no devuelve un número cualquiera: falla.
   assert.throws(() => nSeccion('inventada'), /sección desconocida/)
-  assert.equal(SECCIONES_PROVEEDORES.length, 5)
+  assert.equal(SECCIONES_PROVEEDORES.length, 6)
 })
 
 test('las ventas y "la plomería" ya no son secciones de esta pestaña', () => {
@@ -65,8 +66,8 @@ test('las ventas y "la plomería" ya no son secciones de esta pestaña', () => {
   assert.ok(!SECCIONES_PROVEEDORES.includes('arca'))
   assert.throws(() => nSeccion('emitidas'), /sección desconocida/)
   assert.throws(() => nSeccion('arca'), /sección desconocida/)
-  // Y la numeración queda consecutiva y sin huecos: 1..5, ni un salto.
-  assert.deepEqual(SECCIONES_PROVEEDORES.map((c) => nSeccion(c)), [1, 2, 3, 4, 5])
+  // Y la numeración queda consecutiva y sin huecos: 1..6, ni un salto.
+  assert.deepEqual(SECCIONES_PROVEEDORES.map((c) => nSeccion(c)), [1, 2, 3, 4, 5, 6])
 })
 
 test('el título se compara SIN su número y SIN tildes: "5 · NOTAS DE CRÉDITO" ≡ "3 · Notas de credito"', () => {
@@ -275,7 +276,7 @@ test('los números de sección son 1..N, consecutivos y sin huecos, en las dos p
     assert.equal(new Set(orden).size, orden.length, `${nombre}: una sección repetida`)
   }
   // Las dos dinámicas ocupan el 1 y el 2, así que el primer bloque que escribe el generador es el 3.
-  assert.equal(nSeccion(PRIMERA_GENERADA), 3)
+  assert.equal(nSeccion(PRIMERA_GENERADA), 4)
   // Y un número no puede salir de una clave inventada: eso es lo que producía el "7".
   assert.throws(() => nSeccion('emitidas'), /sección desconocida/)
 })
