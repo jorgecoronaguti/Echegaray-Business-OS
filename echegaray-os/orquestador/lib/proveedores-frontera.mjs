@@ -84,7 +84,14 @@ export const ANCHOS_PROVEEDORES = Object.freeze([
   300, // D
   90,  // E · el tipo de pago del cuadro de detalle ("Tarjeta Crédito"), y el aire del encabezado
   210, // F · "REFACTURACIÓN — el costo sigue", "Tarjeta de crédito", los importes de la sección 4
-  220, // G · "0006-00003002 → 0004-00003445" en la sección 3
+  // G · dos usos, y manda el más largo: el encadenado de notas de crédito de la sección 4
+  // ("0006-00003002 → 0004-00003445", 220px justos) y "A quiénes" del cuadro por día.
+  //
+  // MEDIDO sobre el archivo real, el peor caso de "A quiénes" es un día con cuatro proveedores:
+  //   "Mariana SA · Gerson Castro · PEDRO TELLO · Pedro Fredes" = 55 caracteres ≈ 385px
+  // con 220px entraban 31 y el resto derramaba sobre la H. La H mide 60px, así que ni sumándola
+  // alcanzaba. Y ese día no es hipotético: es el 14/08, el que el dueño estaba mirando.
+  390, // G
   60,  // H · el % de la posición
 ])
 
