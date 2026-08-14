@@ -6,9 +6,11 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { cuadraContraResta, ROTULOS_CAL, hoyISO, render, topeDeLectura } from './calendario-cobros-pestana.mjs'
+import { cuadraContraResta, ubicarRestaDeObras, ROTULOS_CAL, hoyISO, render, topeDeLectura } from './calendario-cobros-pestana.mjs'
 import { resolverColumnas } from './obras-pestana.mjs'
 import { grillaCalendario, ventanaDeMeses } from '../lib/calendario-cobros.mjs'
+import { grillaObras, ROTULO_TOTAL_ANO, ROTULO_RESTA, ANO } from '../lib/obras-grilla.mjs'
+import { OBRAS_FUTURAS } from '../lib/obras-datos.mjs'
 
 /** El encabezado REAL de Cobranzas, fila 4 del archivo (leído el 13/08/2026). */
 const ENCABEZADO = [[], [], [], [
@@ -92,6 +94,90 @@ test('el ensayo imprime las fórmulas COMPLETAS: recortarlas escondería justo l
   assert.match(txt, /SUMIFS\('Cobranzas'!\$M\$5:\$M/, 'la fórmula entera, con su rango')
   assert.ok(!txt.includes('…'), 'ninguna fórmula recortada')
   assert.ok(!txt.includes(String(Symbol.for('VACIO'))), 'el centinela no se dibuja como contenido')
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// DE QUÉ CELDA DE OBRAS SALE LA RESTA — el defecto del 14/08
+//
+// Las dos pestañas estaban BIEN, peso por peso. Lo que falló fue ELEGIR LA CELDA: el buscador iba
+// por el prefijo "⇒ TOTAL", ese día entró arriba el bloque "1 · COBRANZAS PENDIENTES" cuyo cierre
+// es "⇒ TOTAL POR COBRAR" (fila 6), y el control leyó su columna E —el tramo "▲ 31–60",
+// $3.488.735— en vez de la Resta de la fila 18 ($357.487.078). Diferencia: $353.998.343, y el paso
+// quedó abortando fail-closed.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+/** OBRAS con la forma que tenía el 14/08: el titular de cartera arriba y el cierre del año abajo. */
+const OBRAS_CON_DOS_TOTALES = [
+  [`OBRAS · ${ANO}`],
+  ['venta al NETO (devengado) · cobranzas al TOTAL neto de retenciones (percibido)'],
+  [],
+  ['1 · COBRANZAS PENDIENTES AL 14/08/2026'],
+  ['Cartera', '% venc.', 'Por vencer', '▲ 1–30', '▲ 31–60', '▲ 61–90', '▲ +90', '', 'Total pendiente'],
+  ['⇒ TOTAL POR COBRAR', 0.42, 210_000_000, 12_000_000, 3_488_735, 4_000_000, 127_998_343, '', 357_487_078],
+  [],
+  ['2 · OBRAS DEL AÑO'],
+  ['Cliente', '% cob.', 'Venta (neto)', 'Cobrado (total)', ROTULO_RESTA, 'Vencido', 'Materiales (neto)', 'Retenido'],
+  ...['ARCOR', 'QUATTROPANI', 'IMOTOR', 'LA ESTRELLA', 'SAN FRANCISCO', 'CMI', 'GLACIAR', 'OTROS']
+    .map((c) => [c, 0.5, 10_000_000, 5_000_000, 5_000_000, 0, 0, 0]),
+  [ROTULO_TOTAL_ANO, 0.55, 809_000_000, 451_512_922, 357_487_078, 140_000_000, 165_196_937, 7_380_000],
+]
+
+test('entre dos filas que empiezan con "⇒ TOTAL", el cuadre elige la del AÑO y no la de la cartera', () => {
+  const u = ubicarRestaDeObras(OBRAS_CON_DOS_TOTALES)
+  assert.equal(u.motivo, undefined)
+  assert.equal(u.fila, 18, 'la Resta del año está en la fila 18, no en la 6 del titular de cartera')
+  assert.equal(u.rotulo, ROTULO_TOTAL_ANO)
+  assert.equal(u.columna, 'E')
+  assert.equal(u.valor, 357_487_078)
+  // Y el efecto completo: con la celda bien elegida el control cierra; con la de la fila 6 abortaba
+  // por $353.998.343 con las dos pestañas sanas.
+  assert.equal(cuadraContraResta(357_487_078, u.valor), null)
+  assert.equal(OBRAS_CON_DOS_TOTALES[5][4], 3_488_735, 'esa es la celda que leía el defecto: un tramo de antigüedad')
+})
+
+test('el rótulo del cierre se construye desde ANO: el productor y el lector no pueden discrepar', () => {
+  // Tipear "⇒ TOTAL 2026" de los dos lados hace que subir ANO deje al lector buscando un rótulo que
+  // ya nadie escribe — y ese modo de falla es mudo: el control se saltea con un warning.
+  assert.equal(ROTULO_TOTAL_ANO, `⇒ TOTAL ${ANO}`)
+  const g = grillaObras({ obras: OBRAS_FUTURAS })
+  const u = ubicarRestaDeObras(g.filas)
+  assert.equal(u.motivo, undefined, 'sobre la grilla REAL de OBRAS el cuadre tiene que encontrar su celda')
+  assert.equal(u.fila, g.fTotClientes, 'y tiene que ser la fila que el generador declara como cierre de clientes')
+  assert.equal(u.columna, 'E')
+})
+
+test('la columna se resuelve por su ENCABEZADO, no por la letra E', () => {
+  // Una columna nueva en la Sección 2 corre la Resta a la derecha sin cambiar un solo rótulo. Con la
+  // letra fija, el control leería "Cobrado" y cerraría o abortaría por motivos falsos.
+  const corrida = OBRAS_CON_DOS_TOTALES.map((f, i) => (i >= 8 && f.length ? [...f.slice(0, 2), 'Nuevo', ...f.slice(2)] : f))
+  const u = ubicarRestaDeObras(corrida)
+  assert.equal(u.columna, 'F')
+  assert.equal(u.valor, 357_487_078)
+})
+
+test('si el cierre del año no está, el aviso NOMBRA las filas que sí vio', () => {
+  // El diagnóstico del 14/08 tardó porque nadie decía qué fila se había leído. Un control que no
+  // puede ubicarse tiene que dejar dicho contra qué se topó.
+  const sinCierre = OBRAS_CON_DOS_TOTALES.slice(0, 17)
+  const u = ubicarRestaDeObras(sinCierre)
+  assert.match(u.motivo, new RegExp(`⇒ TOTAL ${ANO}`))
+  assert.match(u.motivo, /fila 6="⇒ TOTAL POR COBRAR"/, 'tiene que decir con qué se topó en su lugar')
+  assert.equal(u.valor, undefined, 'y NO devolver una celda cualquiera')
+})
+
+test('sin encabezado "Resta (total)" no se adivina la columna: se declara el motivo', () => {
+  const sinEncabezado = OBRAS_CON_DOS_TOTALES.map((f, i) => (i === 8 ? f.map((c) => (c === ROTULO_RESTA ? 'Pendiente' : c)) : f))
+  const u = ubicarRestaDeObras(sinEncabezado)
+  assert.match(u.motivo, /Resta \(total\)/)
+  assert.match(u.motivo, /fila 18/)
+})
+
+test('cuando NO cuadra, el mensaje dice de qué celda y de qué fila sacó el número', () => {
+  const u = ubicarRestaDeObras(OBRAS_CON_DOS_TOTALES)
+  const p = cuadraContraResta(357_487_078, 3_488_735, 1, u)
+  assert.match(p, /OBRAS!E18/, 'la celda leída')
+  assert.match(p, new RegExp(`⇒ TOTAL ${ANO}`), 'y el rótulo de esa fila')
+  assert.match(p, /353\.998\.343/)
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════

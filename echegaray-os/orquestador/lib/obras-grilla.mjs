@@ -495,6 +495,19 @@ const NO_VENTA = 'CANCELAR'
 export const ANO = 2026
 
 /**
+ * EL RÓTULO DEL CIERRE DEL AÑO Y EL DE SU COLUMNA — porque quien los LEE también los necesita.
+ *
+ * El calendario de cobros se cuadra contra este cierre, y para eso tiene que encontrarlo en la
+ * pestaña ya publicada. Mientras cada lado tipeó su propio texto, el lector buscaba por el prefijo
+ * "⇒ TOTAL" — y el 14/08 entró arriba el titular de cartera, cuyo cierre es "⇒ TOTAL POR COBRAR":
+ * el buscador se quedó con esa fila y leyó un tramo de antigüedad ($3,5M) creyendo leer la Resta
+ * del año ($357,5M). Exportarlos desde acá hace que el que escribe y el que lee no puedan
+ * discrepar, y que subir `ANO` mueva los dos a la vez.
+ */
+export const ROTULO_TOTAL_ANO = `⇒ TOTAL ${ANO}`
+export const ROTULO_RESTA = 'Resta (total)'
+
+/**
  * EN QUÉ NÚMERO DE BLOQUE CAEN LAS OBRAS — y por qué es una constante y no un `2` tipeado.
  *
  * La numeración de bloques tiene que ser CONSECUTIVA y sin huecos: un cuadro que va "1, 3" hace creer
@@ -954,7 +967,7 @@ function seccionCartera(h, refs) {
 function seccionObrasDelAno(h, refs, clientes) {
   const { cob, cmp } = refs
   h.push(['2 · OBRAS DEL AÑO'])
-  h.push(['Cliente', '% cob.', 'Venta (neto)', 'Cobrado (total)', 'Resta (total)', 'Vencido', 'Materiales (neto)', 'Retenido'])
+  h.push(['Cliente', '% cob.', 'Venta (neto)', 'Cobrado (total)', ROTULO_RESTA, 'Vencido', 'Materiales (neto)', 'Retenido'])
   const f0 = h.n + 1
   /** En qué fila quedó cada cliente. El escritor lo necesita para el control de doble conteo: sin
    *  esto tendría que buscar el rótulo en la grilla, que es anclar en el texto de una fila. */
@@ -980,7 +993,7 @@ costoNeto(cmp, cli),
   // la fuente y ABORTA SIN PUBLICAR si difieren. Un generador que no escribe es mejor control que una
   // fila que el dueño ya dijo dos veces que no quiere ver.
   const fTot = h.n + 1
-  h.push(['⇒ TOTAL 2026', pctCobrado(fTot), `=${todo('neto', `<>${NO_VENTA}`)}`, `=${todo('total', COBRADO)}`,
+  h.push([ROTULO_TOTAL_ANO, pctCobrado(fTot), `=${todo('neto', `<>${NO_VENTA}`)}`, `=${todo('total', COBRADO)}`,
     // LOS PARÉNTESIS NO SON DE ESTILO: desde que la suma vale `todo − dólares + dólares×TC`, un
     // `A-B` sin agrupar restaría sólo el primer término de B y sumaría los otros dos.
     `=(${todo('total', `<>${NO_VENTA}`)})-(${todo('total', COBRADO)})`,
