@@ -81,7 +81,10 @@ export const ANCHOS_PROVEEDORES = Object.freeze([
   300, // D · las notas del dueño ("Qué hacer"). Era el valor que ya ganaba en la práctica.
   90,  // E · el tipo de pago del cuadro de detalle ("Tarjeta Crédito"), y el aire del encabezado
   210, // F · "REFACTURACIÓN — el costo sigue", "Tarjeta de crédito", los importes de la sección 4
-  220, // G · "0006-00003002 → 0004-00003445"
+  // G · "0006-00003002 → 0004-00003445" en la sección 3, y desde el 14/08 "Qué hacer" —la nota del
+  // dueño— en el cuadro de detalle. Pasa de 220 a 300 porque ése era el ancho que la nota ya tenía
+  // en la D: mudarla de columna no puede costarle diez caracteres de su propio texto.
+  300, // G
   60,  // H · el % de la posición
 ])
 

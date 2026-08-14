@@ -15,7 +15,21 @@
 // Escribir la nota en la fila 22 porque hoy ahí está Mariana SA es el defecto que ya se pagó tres
 // veces en este archivo: mañana la dinámica reordena por monto, Mariana baja dos filas y su nota
 // queda al lado de otro proveedor. La nota se resuelve por BÚSQUEDA sobre el nombre que la propia
-// dinámica escribió en la columna A. Si el proveedor se mueve, su nota se mueve con él.
+// dinámica escribió. Si el proveedor se mueve, su nota se mueve con él.
+//
+// ═══ SE MUDÓ AL CUADRO DE DETALLE (14/08) ═══
+//
+// Vivía en la D del cuadro A, al lado del total de cada proveedor. El 14/08 el cuadro A pasó a tener
+// una línea POR DÍA de pago —el dueño necesita saber a quién le paga un día determinado sin abrir
+// Compras— y en su columna A ya no hay un nombre de proveedor: la búsqueda habría devuelto vacío en
+// las doce notas, en silencio. Perder por un cambio de eje lo que el dueño escribió a mano es
+// exactamente lo que este archivo existe para no hacer.
+//
+// Ahora va en la primera columna libre a la derecha del cuadro de DETALLE, anclada al proveedor que
+// esa misma dinámica escribe. Y queda mejor ubicada que antes: la instrucción ("pagar con cheque a
+// 15", "no es prioridad") aparece al lado del pago que hay que decidir, no al lado de un total. La
+// dinámica escribe el nombre una sola vez por grupo, así que la nota sale una vez por día y
+// proveedor, no repetida en cada factura.
 //
 //   node orquestador/scripts/proveedores-notas-visibles.mjs            → muestra qué haría
 //   node orquestador/scripts/proveedores-notas-visibles.mjs --aplicar  → escribe y verifica
@@ -23,7 +37,7 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query } from '../lib/db.mjs'
-import { geometriaDeLaSeccion, altoEmitido } from '../lib/proveedores-pivot-seccion1.mjs'
+import { geometriaDeLaSeccion, colNotaDetalle, colProveedorDetalle } from '../lib/proveedores-pivot-seccion1.mjs'
 import { ANCHOS_PROVEEDORES } from '../lib/proveedores-frontera.mjs'
 import { COL_NOTA_AUX } from '../lib/proveedores-auxiliar.mjs'
 
@@ -33,8 +47,14 @@ const AUX = '_PROVEEDORES_OS'
 /** Quién escribe la auxiliar. Acá sólo se LEE: un bloque, un dueño. Ver lib/proveedores-auxiliar.mjs. */
 const DUEÑO_AUX = 'proveedores-cuenta-corriente.mjs'
 const APLICAR = process.argv.includes('--aplicar')
-/** La dinámica del cuadro A ocupa A·B·C. La nota va en la D, pegada y fuera de su cuerpo. */
-const COL_NOTA = 3
+/** La primera columna libre a la derecha del cuadro de detalle (hoy la G). CALCULADA del pivot:
+ *  ver `colNotaDetalle`. Un número tipeado acá escribe la nota encima del importe el día que el
+ *  cuadro gane un campo. */
+const COL_NOTA = colNotaDetalle()
+/** La columna del cuadro de detalle donde la dinámica escribe el nombre del proveedor (hoy la B). */
+const COL_PROV = colProveedorDetalle()
+/** La letra de esa columna, para la fórmula. Calculada, nunca tipeada. */
+const LETRA_PROV = String.fromCharCode(65 + COL_PROV)
 // ═══ EL ANCHO DE LA D NO SE FIJA ACÁ (04/08) ═══
 //
 // Este script ponía la D en 300px y proveedores-encabezado-aplicar.mjs la ponía en 80: ganaba el que
@@ -49,7 +69,29 @@ const COLCHON = 4
 // La columna de la nota sale del contrato de la auxiliar, no de un 3 tipeado: si mañana la auxiliar
 // gana una columna en el medio, esto se mueve con ella en vez de traer el CUIT como si fuera la nota.
 const formulaNota = (fila) =>
-  `=IF($A${fila}="";"";IFERROR(VLOOKUP($A${fila};${AUX}!$A:$C;${COL_NOTA_AUX};FALSE);""))`
+  `=IF($${LETRA_PROV}${fila}="";"";IFERROR(VLOOKUP($${LETRA_PROV}${fila};${AUX}!$A:$C;${COL_NOTA_AUX};FALSE);""))`
+
+/**
+ * CUÁNTAS FILAS OCUPA HOY EL CUADRO DE DETALLE, releídas — no estimadas.
+ *
+ * `altoEmitido` no sirve acá: cuenta hasta la primera fila en blanco mirando la fila ENTERA, y una
+ * fila de separación con un resto en cualquier columna deja de ser blanco. Devolvió 31 donde el
+ * cuadro tenía 11. Se cuenta lo que el cuadro escribió en SUS columnas: mientras haya un importe o
+ * un proveedor, la fila es suya.
+ *
+ * @param {any[][]} visible la pestaña leída desde la fila 1
+ * @param {number} desde primera fila del cuerpo, base 1
+ */
+function altoDelDetalle(visible = [], desde = 1) {
+  let n = 0
+  for (let f = desde; f <= visible.length; f++) {
+    const fila = visible[f - 1] ?? []
+    const propia = fila.slice(0, COL_NOTA).some((c) => String(c ?? '').trim() !== '')
+    if (!propia) break
+    n++
+  }
+  return n
+}
 
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
@@ -64,19 +106,17 @@ async function main() {
 
   const visible = await google.readSheetValues(ID, `${PESTAÑA}!A1:R220`, { render: 'FORMATTED_VALUE' })
   const geo = geometriaDeLaSeccion(visible)
-  // El alto sale de lo que la dinámica EMITIÓ, releído — no de una estimación. Una estimación corta
-  // deja proveedores sin su nota y una larga escribe fórmulas dentro del cuadro de abajo.
-  const cuerpo = visible.slice(geo.filaEncabezado) // desde la fila siguiente a los rótulos
-  const desde = geo.filaEncabezado + 1
-  // EL TECHO ES EL SUBTÍTULO DEL CUADRO B, buscado por su texto.
-  //
-  // `altoEmitido` cuenta hasta la primera fila en blanco, y una fila de separación con un resto en
-  // cualquier columna deja de ser blanco: acá devolvió 31 donde el cuadro tiene 11, y las fórmulas
-  // habrían caído adentro del cuadro de detalle. El subtítulo es un ancla de verdad.
+  // EL PISO ES EL CUADRO DE DETALLE, ubicado por el SUBTÍTULO que lo abre — no por su propia salida
+  // anterior, que es lo que deja de reconocerse el día que el cuadro da #REF!. Contrato de la
+  // sección: subtítulo · rótulos · cuerpo.
   const iSub = visible.findIndex((f, i) => i >= geo.filaEncabezado
     && /^cada operaci[oó]n/i.test(String(f?.[0] ?? '').trim()))
-  if (iSub < 0) throw new Error('no encontré el subtítulo "Cada operación": sin techo no escribo')
-  const hasta = Math.min(desde + altoEmitido(cuerpo) + COLCHON, iSub) // iSub es base 0 = la fila anterior en base 1
+  if (iSub < 0) throw new Error('no encontré el subtítulo "Cada operación": sin ancla no escribo')
+  const filaRotulos = iSub + 2          // base 1: el subtítulo está en iSub+1
+  const desde = filaRotulos + 1
+  // EL TECHO ES EL TÍTULO DE LA SECCIÓN 2: la nota no puede pasar de ahí ni con colchón. Es el
+  // mismo límite que usa la dinámica, así que las dos terminan donde termina la sección.
+  const hasta = Math.min(desde + altoDelDetalle(visible, desde) + COLCHON, geo.filaLimite - 1)
   // ═══ Y SE USA PARA AVISAR LO QUE NO VA A ENTRAR ═══
   //
   // Leer el ancho compartido sirve para algo más que no pisarlo: a fontSize 9 en itálica entran unos
@@ -90,9 +130,10 @@ async function main() {
       + `(~${CARACTERES} caracteres): se van a ver cortadas en la pestaña.`)
     for (const [n, t] of largas) console.log(`     ${n.padEnd(26)} ${t.length} car.: "${t.slice(0, CARACTERES)}…"`)
   }
-  console.log(`\nCUADRO A: rótulos en la fila ${geo.filaEncabezado} · "Cada operación" en la ${iSub + 1}`
-    + ` · la nota va en D${desde}:D${hasta - 1}`)
-  if (hasta - desde < 1) throw new Error('el cuadro A no tiene filas entre los rótulos y el subtítulo: no escribo')
+  const L = String.fromCharCode(65 + COL_NOTA)
+  console.log(`\nCUADRO DE DETALLE: "Cada operación" en la fila ${iSub + 1} · rótulos en la ${filaRotulos}`
+    + ` · el proveedor en la ${LETRA_PROV} · la nota va en ${L}${desde}:${L}${hasta - 1}`)
+  if (hasta - desde < 1) throw new Error('el cuadro de detalle no tiene filas entre sus rótulos y la sección 2: no escribo')
   if (!APLICAR) { console.log('\n(sin --aplicar: no se escribió nada)'); return }
 
   const meta = await google.getSheetMeta(ID)
@@ -112,7 +153,7 @@ async function main() {
   const FMT = 'userEnteredFormat'
   await google.spreadsheetBatchUpdate(ID, [
     { updateCells: {
-      range: { sheetId: hoja.sheetId, startRowIndex: geo.filaEncabezado - 1, endRowIndex: geo.filaEncabezado, startColumnIndex: COL_NOTA, endColumnIndex: COL_NOTA + 1 },
+      range: { sheetId: hoja.sheetId, startRowIndex: filaRotulos - 1, endRowIndex: filaRotulos, startColumnIndex: COL_NOTA, endColumnIndex: COL_NOTA + 1 },
       rows: [{ values: [{ userEnteredValue: { stringValue: ROTULO } }] }], fields: 'userEnteredValue' } },
     { updateCells: {
       range: { sheetId: hoja.sheetId, startRowIndex: desde - 1, endRowIndex: hasta - 1, startColumnIndex: COL_NOTA, endColumnIndex: COL_NOTA + 1 },
@@ -120,24 +161,24 @@ async function main() {
         values: [{ userEnteredValue: { formulaValue: formulaNota(desde + i) } }] })),
       fields: 'userEnteredValue' } },
     { repeatCell: {
-      range: { sheetId: hoja.sheetId, startRowIndex: geo.filaEncabezado - 1, endRowIndex: hasta - 1, startColumnIndex: COL_NOTA, endColumnIndex: COL_NOTA + 1 },
+      range: { sheetId: hoja.sheetId, startRowIndex: filaRotulos - 1, endRowIndex: hasta - 1, startColumnIndex: COL_NOTA, endColumnIndex: COL_NOTA + 1 },
       cell: { userEnteredFormat: { numberFormat: { type: 'TEXT', pattern: '@' }, horizontalAlignment: 'LEFT',
         textFormat: { fontSize: 9, italic: true, foregroundColor: { red: 0.45, green: 0.45, blue: 0.45 } } } },
       fields: `${FMT}.numberFormat,${FMT}.horizontalAlignment,${FMT}.textFormat` } },
   ], { espejo: true })
 
   // ── LA EVIDENCIA: qué proveedor con deuda quedó con su nota a la vista.
-  const leido = await google.readSheetValues(ID, `${PESTAÑA}!A${geo.filaEncabezado}:D${hasta - 1}`)
+  const leido = await google.readSheetValues(ID, `${PESTAÑA}!A${filaRotulos}:${L}${hasta - 1}`)
   console.log('\nLEÍDO DEL ARCHIVO')
   let conNota = 0
   for (const f of (leido ?? []).slice(1)) {
-    const prov = String(f?.[0] ?? '').trim()
+    const prov = String(f?.[COL_PROV] ?? '').trim()
     if (!prov) continue
-    const nota = String(f?.[3] ?? '').trim()
+    const nota = String(f?.[COL_NOTA] ?? '').trim()
     if (nota) conNota++
-    console.log(`  ${prov.padEnd(26)} ${String(f?.[1] ?? '').padStart(12)}  ${nota || '—'}`.slice(0, 118))
+    console.log(`  ${String(f?.[0] ?? '').padStart(10)} ${prov.padEnd(26)}  ${nota || '—'}`.slice(0, 118))
   }
-  const sinVer = [...porNombre.keys()].filter((n) => !(leido ?? []).some((f) => String(f?.[0] ?? '').trim() === n))
+  const sinVer = [...porNombre.keys()].filter((n) => !(leido ?? []).some((f) => String(f?.[COL_PROV] ?? '').trim() === n))
   console.log(`\n✓ ${conNota} proveedor(es) con deuda muestran su nota`)
   if (sinVer.length) console.log(`○ ${sinVer.length} nota(s) de proveedores SIN deuda hoy (no tienen fila en el cuadro): ${sinVer.slice(0, 6).join(' · ')}`)
 }

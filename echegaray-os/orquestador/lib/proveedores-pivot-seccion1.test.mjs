@@ -10,7 +10,8 @@ import {
   anchoDelPivot, altoEmitido, bandasDeFormato, cabeEnElHueco, camposDeFila, COL, filtros,
   filtrosPorCondicion, fuenteCompras, clavesRepetidas, formatoDeLaFecha, formatoDeTodo,
   formatoDelImporte, geometriaDeLaSeccion, nivelesConSubtotal,
-  celdasVacias, deudaSinNombre, formatoDeLaCantidad, letraDeLaDeuda, pivotSeccion1, proveedoresQueAgrupan,
+  celdasVacias, deudaSinNombre, diasDePago, formatoDeLaCantidad, letraDeLaDeuda,
+  pivotSeccion1, proveedoresQueAgrupan,
   reapuntarControl, rotulosDelCuadro, VISTA,
 } from './proveedores-pivot-seccion1.mjs'
 
@@ -44,9 +45,9 @@ test('el source se niega si no sabe cuántas filas tiene Compras', () => {
   assert.throws(() => fuenteCompras({ filas: 900 }), /falta el sheetId/)
 })
 
-test('por defecto: una línea por proveedor · deuda · facturas, y nada más', () => {
+test('por defecto: una línea por DÍA · sale ese día · facturas, y nada más', () => {
   const p = pivotSeccion1(fuente)
-  assert.deepEqual(p.rows.map((r) => r.sourceColumnOffset), [COL.proveedor])
+  assert.deepEqual(p.rows.map((r) => r.sourceColumnOffset), [COL.proximoPago])
   assert.equal(p.values[0].sourceColumnOffset, COL.saldo)
   // 1 campo de fila + 2 valores = 3 columnas: A..C, y la H del dueño queda lejos.
   assert.equal(anchoDelPivot(p), 3)
@@ -55,18 +56,69 @@ test('por defecto: una línea por proveedor · deuda · facturas, y nada más', 
 test('la vista DETALLE sigue existiendo, con sus agujeros declarados', () => {
   const p = pivotSeccion1(fuente, { vista: VISTA.DETALLE })
   assert.deepEqual(p.rows.map((r) => r.sourceColumnOffset),
-    // El comprobante volvió al detalle: sin el número de factura el cuadro no sirve para pagar.
-    [COL.proveedor, COL.comprobante, COL.proximoPago, COL.obra, COL.tipoPago, COL.categoria])
-  assert.equal(anchoDelPivot(p), 7)
+    // El comprobante sigue en el detalle: sin el número de factura el cuadro no sirve para pagar.
+    // "Categoría" (B/N) se fue el 14/08: no contesta a quién, cuánto ni cómo se paga, y su columna
+    // es la que deja lugar a "Qué hacer" — la nota del dueño, al lado del pago que decide.
+    [COL.proximoPago, COL.proveedor, COL.comprobante, COL.obra, COL.tipoPago])
+  assert.ok(!p.rows.some((r) => r.sourceColumnOffset === COL.categoria))
+  assert.equal(anchoDelPivot(p), 6)
 })
 
-test('EL PROVEEDOR VA PRIMERO, y el comprobante no se muestra', () => {
-  const p = pivotSeccion1(fuente)
+// ═══ EL DEFECTO QUE ESTOS TRES ATRAPAN (14/08) ═══
+//
+// El dueño: *"aun tengo q seguir usando algunos filtros en pestaña compras \u2026 para saber
+// exactamente a quienes y como debo pagar un determinado dia"*. Con el PROVEEDOR como primer campo,
+// "\u00bfqu\u00e9 sale el lunes 18?" no se contesta leyendo el cuadro: hay que recorrer las 20 filas del
+// detalle y sumar a ojo. Si alguien vuelve a poner el proveedor al frente, estos tests se ponen
+// rojos antes de que la pesta\u00f1a lo haga.
+test('EL EJE ES EL D\u00cdA: el primer campo de los dos cuadros es la fecha de pago, en orden cronol\u00f3gico', () => {
+  for (const vista of [VISTA.POR_DIA, VISTA.DETALLE]) {
+    const p = pivotSeccion1(fuente, { vista })
+    assert.equal(p.rows[0].sourceColumnOffset, COL.proximoPago, `la vista ${vista} no abre por la fecha`)
+    assert.equal(p.rows[0].sortOrder, 'ASCENDING',
+      'un calendario que empieza por el d\u00eda m\u00e1s caro no es un calendario')
+    assert.equal(p.rows[0].valueBucket, undefined,
+      'con valueBucket el primer nivel se ordena por la PLATA y el orden cronol\u00f3gico se pierde')
+  }
+})
+
+test('EL D\u00cdA ABIERTO contesta las tres cosas: a qui\u00e9n, por qu\u00e9 comprobante y CON QU\u00c9 MEDIO', () => {
+  const p = pivotSeccion1(fuente, { vista: VISTA.DETALLE })
+  const campos = p.rows.map((r) => r.sourceColumnOffset)
+  for (const [q, col] of [['a qui\u00e9n', COL.proveedor], ['por qu\u00e9 comprobante', COL.comprobante],
+    ['con qu\u00e9 medio', COL.tipoPago], ['para qu\u00e9 obra', COL.obra]]) {
+    assert.ok(campos.includes(col), `sin "${q}" hay que abrir Compras, que es lo que esto viene a evitar`)
+  }
+  // El orden de lectura es la pregunta: CU\u00c1NDO \u00b7 A QUI\u00c9N \u00b7 POR QU\u00c9 \u00b7 C\u00d3MO.
+  assert.ok(campos.indexOf(COL.proximoPago) < campos.indexOf(COL.proveedor))
+  assert.ok(campos.indexOf(COL.proveedor) < campos.indexOf(COL.comprobante))
+  assert.ok(campos.indexOf(COL.comprobante) < campos.indexOf(COL.tipoPago))
+})
+
+test('NING\u00daN NIVEL PIDE SUBTOTAL: la API no los emite y el total del d\u00eda lo da el cuadro A', () => {
+  for (const vista of [VISTA.POR_DIA, VISTA.DETALLE]) {
+    assert.deepEqual(nivelesConSubtotal(pivotSeccion1(fuente, { vista })), [],
+      'pedir showTotals no da error \u2014 no hace nada, y deja creyendo que el total del d\u00eda est\u00e1')
+  }
+})
+
+test('LOS D\u00cdAS DE PAGO se cuentan por el valor CRUDO, y lo que no es una fecha se declara', () => {
+  const fila = (fecha, saldo) => { const f = []; f[COL.proximoPago] = fecha; f[COL.saldo] = saldo; return f }
+  // Dos facturas el mismo d\u00eda son UN grupo: reservar alto por factura deja filas de m\u00e1s.
+  assert.equal(diasDePago([fila(46248, 100), fila(46248, 200), fila(46250, 50)]).dias, 3 - 1)
+  // Una fila con "Pendiente" donde va la fecha entra igual y arma su propio grupo \u2014 se declara con
+  // su plata, porque es un pago que nadie ve venir en el calendario.
+  const r = diasDePago([fila(46248, 100), fila('Pendiente', 900), fila('Pendiente', 100)])
+  assert.equal(r.dias, 2)
+  assert.deepEqual(r.sinFecha, [{ valor: 'Pendiente', filas: 2, saldo: 1000 }])
+  assert.deepEqual(diasDePago([fila('', 5)]).sinFecha, [{ valor: '(vac\u00edo)', filas: 1, saldo: 5 }])
+})
+
+test('la vista POR PROVEEDOR sigue existiendo, por si vuelve a tener cuadro propio', () => {
+  const p = pivotSeccion1(fuente, { vista: VISTA.POR_PROVEEDOR })
   assert.equal(p.rows[0].sourceColumnOffset, COL.proveedor)
-  assert.equal(p.rows[0].sortOrder, 'DESCENDING', 'a quién le debemos más, arriba')
+  assert.equal(p.rows[0].sortOrder, 'DESCENDING', 'a qui\u00e9n le debemos m\u00e1s, arriba')
   assert.deepEqual(p.rows[0].valueBucket, { valuesIndex: 0 })
-  assert.ok(!p.rows.some((r) => r.sourceColumnOffset === COL.comprobante),
-    'el comprobante sigue siendo una columna del cuadro')
 })
 
 test('se sabe ANTES de escribir cuántas filas quedan sin rótulo, y de quién', () => {
@@ -83,6 +135,9 @@ test('LA VISTA POR PROVEEDOR no deja una sola celda sin rótulo', () => {
   assert.equal(p.rows[0].sourceColumnOffset, COL.proveedor)
   // Y no se pide formatear una columna de fecha que en esta vista no existe.
   assert.equal(formatoDeLaFecha({ sheetId: 3, filaAncla: 17, alto: 15, vista: VISTA.POR_PROVEEDOR }), null)
+  // La vista por d\u00eda S\u00cd tiene fecha, y es su columna A.
+  assert.equal(formatoDeLaFecha({ sheetId: 3, filaAncla: 17, alto: 15, vista: VISTA.POR_DIA })
+    .repeatCell.range.startColumnIndex, 0)
 })
 
 test('avisa cuando dos facturas comparten comprobante: ahí vuelven los blancos', () => {
@@ -150,7 +205,7 @@ test('la DEUDA se formatea como plata, y no en la columna de la cantidad de fact
 })
 
 test('el cuerpo de la tabla NO repite el "$": estas dinámicas no emiten fila de total', () => {
-  for (const vista of [VISTA.POR_PROVEEDOR, VISTA.DETALLE]) {
+  for (const vista of [VISTA.POR_DIA, VISTA.DETALLE]) {
     for (const p of formatoDeTodo({ sheetId: 3, filaAncla: 17, alto: 15, vista })) {
       const nf = p.repeatCell.cell.userEnteredFormat.numberFormat
       if (nf.type !== 'CURRENCY') continue
@@ -218,8 +273,8 @@ test('EL CONTROL suma la columna de la DEUDA, no la de los conteos', () => {
   // Con dos valores, `ancho - 1` es la cantidad de facturas: el control sumaba 13 contra un titular
   // de $15.716.930 y daba cualquier cosa. La deuda es el primer valor.
   assert.equal(letraDeLaDeuda(), 'B')
-  // Detalle: 6 campos de fila (A..F) y el importe en la G.
-  assert.equal(letraDeLaDeuda({ vista: VISTA.DETALLE }), 'G')
+  // Detalle: 5 campos de fila (A..E) y el importe en la F. La G queda para "Qué hacer".
+  assert.equal(letraDeLaDeuda({ vista: VISTA.DETALLE }), 'F')
 })
 
 test('la cantidad de facturas lleva formato de entero, o hereda el de fecha de antes', () => {
@@ -257,7 +312,7 @@ test('EL DERRAME · la fila que la dinámica emite de más se queda con el forma
   // el importe pelado (formato TEXTO de la columna B del cuadro B) y el contador como FECHA (su
   // columna C). El alto se había estimado con 9 proveedores, así que la 10ª fila quedó fuera del
   // repeatCell y heredó lo que la corrida anterior había dejado ahí.
-  const p = bandasDeFormato({ filaEncabezado: 17, filaLimite: 80, proveedores: 9, facturas: 31 })
+  const p = bandasDeFormato({ filaEncabezado: 17, filaLimite: 80, gruposA: 9, facturas: 31 })
   const bandaVieja = { desde: p.iA, alto: p.altoA }   // el alto ESTIMADO de la corrida
   const decima = p.iA + 10                            // rótulo + 10 grupos: la fila que salió sin formato
   assert.equal(cubre(bandaVieja, decima), false, 'así salió RSV: fuera del rango de formato')
@@ -265,7 +320,7 @@ test('EL DERRAME · la fila que la dinámica emite de más se queda con el forma
 })
 
 test('el formato del cuadro A cubre el gran total del pie y la deriva del conteo', () => {
-  const p = bandasDeFormato({ filaEncabezado: 17, filaLimite: 80, proveedores: 10, facturas: 31 })
+  const p = bandasDeFormato({ filaEncabezado: 17, filaLimite: 80, gruposA: 10, facturas: 31 })
   // 0 = la última fila estimada · 1 = el gran total que agrega el pivot · 2 = un grupo de más
   // (el script cuenta con trim(), el pivot agrupa por el valor crudo: "RSV" y "RSV " son dos).
   for (const demas of [0, 1, 2]) {
@@ -279,7 +334,7 @@ test('EL FOOTPRINT ENTERO LLEVA FORMATO: las dos bandas no dejan una fila suelta
     for (const facturas of [proveedores, 31, 90]) {
       const filaEncabezado = 17
       const filaLimite = filaEncabezado + proveedores + facturas + 5 + 12 // + colchón
-      const p = bandasDeFormato({ filaEncabezado, filaLimite, proveedores, facturas })
+      const p = bandasDeFormato({ filaEncabezado, filaLimite, gruposA: proveedores, facturas })
       assert.equal(p.bandaA.desde, p.iA, 'el rótulo del cuadro A quedó afuera de la banda')
       assert.equal(p.bandaA.desde + p.bandaA.alto, p.bandaB.desde,
         `queda una fila sin banda entre los dos cuadros (${proveedores} prov · ${facturas} fact)`)
@@ -300,7 +355,7 @@ test('el CUERPO arranca debajo del rótulo, y el rótulo tiene su propia fila', 
     for (const facturas of [proveedores, 31, 90]) {
       const filaEncabezado = 17
       const filaLimite = filaEncabezado + proveedores + facturas + 5 + 12
-      const p = bandasDeFormato({ filaEncabezado, filaLimite, proveedores, facturas })
+      const p = bandasDeFormato({ filaEncabezado, filaLimite, gruposA: proveedores, facturas })
       assert.equal(p.rotuloA, p.iA + 1, 'la fila de rótulos del cuadro A, en base 1')
       assert.equal(p.rotuloB, p.iB + 1)
       assert.equal(p.cuerpoA.desde, p.iA + 1, 'el cuerpo de A empieza DESPUÉS del rótulo')
@@ -311,7 +366,7 @@ test('el CUERPO arranca debajo del rótulo, y el rótulo tiene su propia fila', 
     }
   }
   // Un bloque que todavía no entra no puede pedir un rango de alto negativo.
-  const apretado = bandasDeFormato({ filaEncabezado: 17, filaLimite: 18, proveedores: 9, facturas: 40 })
+  const apretado = bandasDeFormato({ filaEncabezado: 17, filaLimite: 18, gruposA: 9, facturas: 40 })
   assert.ok(apretado.cuerpoA.alto >= 0 && apretado.cuerpoB.alto >= 0)
 })
 
@@ -324,37 +379,37 @@ test('los rótulos que va a emitir la dinámica se saben ANTES de escribir', () 
   cabecera[COL.tipoPago] = 'Tipo pago'
   cabecera[COL.categoria] = 'Categoría'
   assert.deepEqual(rotulosDelCuadro({ vista: VISTA.DETALLE, cabecera }),
-    ['Proveedor', 'N° Comprobante', 'Fecha prevista de pago (día)', 'Cliente / Asignación', 'Tipo pago', 'Categoría', 'Importe'])
+    ['Fecha prevista de pago (día)', 'Proveedor', 'N° Comprobante', 'Cliente / Asignación', 'Tipo pago', 'Importe'])
   // Los `name` de los valores sí se pueden renombrar: son lo único que la API deja tocar.
-  assert.deepEqual(rotulosDelCuadro({ vista: VISTA.POR_PROVEEDOR, cabecera, nombresDeValores: ['Se le debe', 'Facturas'] }),
-    ['Proveedor', 'Se le debe', 'Facturas'])
+  assert.deepEqual(rotulosDelCuadro({ vista: VISTA.POR_DIA, cabecera, nombresDeValores: ['Sale ese d\u00eda', 'Facturas'] }),
+    ['Fecha prevista de pago (d\u00eda)', 'Sale ese d\u00eda', 'Facturas'])
   // Un rótulo por columna emitida, siempre: si no coinciden, el formato del rótulo se desalinea.
-  for (const vista of [VISTA.DETALLE, VISTA.POR_PROVEEDOR]) {
+  for (const vista of [VISTA.DETALLE, VISTA.POR_DIA, VISTA.POR_PROVEEDOR]) {
     assert.equal(rotulosDelCuadro({ vista, cabecera }).length, anchoDelPivot(pivotSeccion1({ sheetId: 1, startRowIndex: 2, endRowIndex: 9, startColumnIndex: 0, endColumnIndex: 38 }, { vista })))
   }
 })
 
 test('la factura de mañana cae en una fila YA formateada', () => {
   const filaLimite = 80
-  const hoy = bandasDeFormato({ filaEncabezado: 17, filaLimite, proveedores: 10, facturas: 31 })
-  const manana = bandasDeFormato({ filaEncabezado: 17, filaLimite, proveedores: 10, facturas: 35 })
+  const hoy = bandasDeFormato({ filaEncabezado: 17, filaLimite, gruposA: 10, facturas: 31 })
+  const manana = bandasDeFormato({ filaEncabezado: 17, filaLimite, gruposA: 10, facturas: 35 })
   const ultimaDeManana = manana.iB + manana.altoB - 1
   assert.equal(cubre(hoy.bandaB, ultimaDeManana), true,
     'el cuadro B crece dentro del colchón: si el colchón no lleva formato, la fila nueva sale cruda')
 })
 
 test('el bloque que todavía no entra no manda un repeatCell de alto 0', () => {
-  const apretado = bandasDeFormato({ filaEncabezado: 17, filaLimite: 20, proveedores: 10, facturas: 31 })
+  const apretado = bandasDeFormato({ filaEncabezado: 17, filaLimite: 20, gruposA: 10, facturas: 31 })
   assert.equal(apretado.bandaB.alto, 0, 'un rango con start = end no se manda: primero se insertan filas')
   assert.ok(apretado.necesita > apretado.disponibles, 'no detectó que el bloque no entra')
 })
 
-test('CADA COLUMNA SE DECLARA EN CADA CORRIDA: 3 en el cuadro A, 7 en el B', () => {
+test('CADA COLUMNA SE DECLARA EN CADA CORRIDA: 3 en el cuadro A, 6 en el B', () => {
   const pedidos = (vista) => formatoDeTodo({ sheetId: 3, filaAncla: 17, alto: 12, vista })
   const columnas = (vista) => pedidos(vista).map((p) => p.repeatCell.range.startColumnIndex)
-  assert.deepEqual(columnas(VISTA.POR_PROVEEDOR), [0, 1, 2], 'una columna sin declarar hereda el formato de antes')
-  assert.deepEqual(columnas(VISTA.DETALLE), [0, 1, 2, 3, 4, 5, 6])
-  for (const vista of [VISTA.POR_PROVEEDOR, VISTA.DETALLE]) {
+  assert.deepEqual(columnas(VISTA.POR_DIA), [0, 1, 2], 'una columna sin declarar hereda el formato de antes')
+  assert.deepEqual(columnas(VISTA.DETALLE), [0, 1, 2, 3, 4, 5])
+  for (const vista of [VISTA.POR_DIA, VISTA.DETALLE]) {
     for (const p of pedidos(vista)) {
       assert.ok(p.repeatCell.cell.userEnteredFormat.numberFormat.type, `columna ${p.repeatCell.range.startColumnIndex} sin numberFormat`)
       assert.equal(p.repeatCell.range.endColumnIndex, p.repeatCell.range.startColumnIndex + 1)
@@ -365,9 +420,10 @@ test('CADA COLUMNA SE DECLARA EN CADA CORRIDA: 3 en el cuadro A, 7 en el B', () 
 test('el tipo de cada columna es el que el dato pide, no el que la celda tenía', () => {
   const tipos = (vista) => formatoDeTodo({ sheetId: 3, filaAncla: 17, alto: 12, vista })
     .map((p) => p.repeatCell.cell.userEnteredFormat.numberFormat.type)
-  assert.deepEqual(tipos(VISTA.POR_PROVEEDOR), ['TEXT', 'CURRENCY', 'NUMBER'])
+  assert.deepEqual(tipos(VISTA.POR_DIA), ['DATE', 'CURRENCY', 'NUMBER'],
+    'la fecha del cuadro A sin formato DATE sale 46238, el n\u00famero de serie crudo')
   // El comprobante es TEXTO: como número, "826666" se veía 01/05/4163 con el formato de la vuelta anterior.
-  assert.deepEqual(tipos(VISTA.DETALLE), ['TEXT', 'TEXT', 'DATE', 'TEXT', 'TEXT', 'TEXT', 'CURRENCY'])
+  assert.deepEqual(tipos(VISTA.DETALLE), ['DATE', 'TEXT', 'TEXT', 'TEXT', 'TEXT', 'CURRENCY'])
 })
 
 test('ALTO EMITIDO · se cuenta lo que el archivo tiene, hasta la primera fila en blanco', () => {
