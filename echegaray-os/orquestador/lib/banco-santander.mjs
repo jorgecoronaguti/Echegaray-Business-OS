@@ -565,69 +565,32 @@ export function porTipo(movs = MOVIMIENTOS) {
   return [...acc.values()].sort((a, b) => a.monto - b.monto)
 }
 
-/**
- * LOS ECHEQ QUE LA EMPRESA EMITIÓ, según el banco.
- *
- * POR QUÉ HACEN FALTA (21/07). El dueño: "¿toda la información bancaria en referencia a cheques fue
- * cruzada con las deudas a los proveedores?". No lo estaba: se cruzaban los cheques de la pestaña
- * contra Compras por número de comprobante —o sea, si el pago tenía factura— pero nadie miraba lo
- * contrario, que es la pregunta de tesorería: a quién le debo y con qué instrumento.
- *
- * Un cheque emitido y no debitado es una deuda con ese proveedor que YA tiene instrumento entregado.
- * No es lo mismo que una deuda sin cheque: la primera tiene fecha cierta y no se puede negociar, la
- * segunda sí. Cruzarlas es la única forma de saber cuál de las dos es cada peso que se debe.
- *
- * ALCANCE: lista COMPLETA de la consulta de echeq emitidos (captura del 22/07). 38 echeq. Los únicos
- * que todavía no salieron de la cuenta son los tres de NEUMAGOM en estado "Aceptado" (vencen ago/sep/
- * oct) — el resto está Pagado. Dos casos muertos: el 228 Anulado y el 281 Repudiado (ese 281 es un
- * duplicado del 282, misma fecha e importe: se emitió dos veces y uno se rechazó).
- */
-export const ECHEQS_EMITIDOS = [
-  { numero: '00000309', beneficiario: 'NEUMAGOM SAS', cuit: '30691853825', pago: '2026-10-03', importe: 317000, estado: 'Aceptado' },
-  { numero: '00000308', beneficiario: 'NEUMAGOM SAS', cuit: '30691853825', pago: '2026-09-03', importe: 317000, estado: 'Aceptado' },
-  { numero: '00000307', beneficiario: 'NEUMAGOM SAS', cuit: '30691853825', pago: '2026-08-03', importe: 317000, estado: 'Aceptado' },
-  { numero: '00000305', beneficiario: 'ALUMETAL S.A', cuit: '30567363372', pago: '2026-07-18', importe: 893098.79, estado: 'Pagado' },
-  { numero: '00000299', beneficiario: 'ACEROLATINA SA', cuit: '30712167986', pago: '2026-07-07', importe: 1964635.58, estado: 'Pagado' },
-  { numero: '00000295', beneficiario: 'FRIOLATINA SA', cuit: '30679777986', pago: '2026-07-07', importe: 1854564.14, estado: 'Pagado' },
-  { numero: '00000361', beneficiario: 'MADERAS LLITERAS S.R.L', cuit: '30708390557', pago: '2026-07-04', importe: 383175, estado: 'Pagado' },
-  { numero: '00000362', beneficiario: 'MADERAS LLITERAS S.R.L', cuit: '30708390557', pago: '2026-07-04', importe: 383175, estado: 'Pagado' },
-  { numero: '00000360', beneficiario: 'MADERAS LLITERAS S.R.L', cuit: '30708390557', pago: '2026-07-04', importe: 383175, estado: 'Pagado' },
-  { numero: '00000363', beneficiario: 'MADERAS LLITERAS S.R.L', cuit: '30708390557', pago: '2026-07-04', importe: 383175, estado: 'Pagado' },
-  { numero: '00000304', beneficiario: 'ALUMETAL S.A', cuit: '30567363372', pago: '2026-07-03', importe: 893098.79, estado: 'Pagado' },
-  { numero: '00000306', beneficiario: 'NEUMAGOM SAS', cuit: '30691853825', pago: '2026-07-03', importe: 317000, estado: 'Pagado' },
-  { numero: '00000302', beneficiario: 'DUBOS UGARTE PEDRO LUIS RAUL', cuit: '20287737824', pago: '2026-06-26', importe: 3500000, estado: 'Pagado' },
-  { numero: '00000303', beneficiario: 'ALUMETAL S.A', cuit: '30567363372', pago: '2026-06-18', importe: 893098.79, estado: 'Pagado' },
-  { numero: '00000294', beneficiario: 'FRIOLATINA SA', cuit: '30679777986', pago: '2026-06-07', importe: 1854564.14, estado: 'Pagado' },
-  { numero: '00000298', beneficiario: 'ACEROLATINA SA', cuit: '30712167986', pago: '2026-06-07', importe: 1964635.58, estado: 'Pagado' },
-  { numero: '00000301', beneficiario: 'PANEL NOW S.A.S', cuit: '30716236338', pago: '2026-05-16', importe: 1058842.99, estado: 'Pagado' },
-  { numero: '00000291', beneficiario: 'MARIANA SA', cuit: '30691852071', pago: '2026-05-08', importe: 201075.38, estado: 'Pagado' },
-  { numero: '00000293', beneficiario: 'FRIOLATINA SA', cuit: '30679777986', pago: '2026-05-07', importe: 1854564.14, estado: 'Pagado' },
-  { numero: '00000297', beneficiario: 'ACEROLATINA SA', cuit: '30712167986', pago: '2026-05-07', importe: 1964635.58, estado: 'Pagado' },
-  { numero: '00000292', beneficiario: 'FRIOLATINA SA', cuit: '30679777986', pago: '2026-04-24', importe: 3709128.31, estado: 'Pagado' },
-  { numero: '00000296', beneficiario: 'ACEROLATINA SA', cuit: '30712167986', pago: '2026-04-24', importe: 3929271.16, estado: 'Pagado' },
-  { numero: '00000300', beneficiario: 'PANEL NOW S.A.S', cuit: '30716236338', pago: '2026-04-24', importe: 1058842.99, estado: 'Pagado' },
-  { numero: '00000286', beneficiario: 'NEUMAGOM SAS', cuit: '30691853825', pago: '2026-04-07', importe: 130486.67, estado: 'Pagado' },
-  { numero: '00000290', beneficiario: 'JLF SAS', cuit: '30717023664', pago: '2026-03-25', importe: 826000, estado: 'Pagado' },
-  { numero: '00000289', beneficiario: 'JORGE ROBERTO MARTINEZ', cuit: '20111183415', pago: '2026-03-13', importe: 1080100, estado: 'Pagado' },
-  { numero: '00000285', beneficiario: 'NEUMAGOM SAS', cuit: '30691853825', pago: '2026-03-07', importe: 130486.67, estado: 'Pagado' },
-  { numero: '00000288', beneficiario: 'JORGE ROBERTO MARTINEZ', cuit: '20111183415', pago: '2026-02-27', importe: 1080100, estado: 'Pagado' },
-  { numero: '00000287', beneficiario: 'JORGE ROBERTO MARTINEZ', cuit: '20111183415', pago: '2026-02-11', importe: 1080100, estado: 'Pagado' },
-  { numero: '00000232', beneficiario: 'BULONERA RAWSON SRL', cuit: '30712540814', pago: '2026-02-08', importe: 265000, estado: 'Pagado' },
-  { numero: '00000284', beneficiario: 'NEUMAGOM SAS', cuit: '30691853825', pago: '2026-02-07', importe: 130486.67, estado: 'Pagado' },
-  { numero: '00000282', beneficiario: 'ROBLES PINTURERIAS', cuit: '30711355223', pago: '2026-02-06', importe: 255644.73, estado: 'Pagado' },
-  { numero: '00000281', beneficiario: 'ROBLES PINTURERIAS', cuit: '30711355223', pago: '2026-02-06', importe: 255644.73, estado: 'Repudiado' },
-  { numero: '00000283', beneficiario: 'ROBLES PINTURERIAS', cuit: '30711355223', pago: '2026-02-05', importe: 24143.13, estado: 'Pagado' },
-  { numero: '00000280', beneficiario: 'SEGAL SERVICIOS INTEGRALES SAS', cuit: '30716912732', pago: '2026-01-31', importe: 321656.30, estado: 'Pagado' },
-  { numero: '00000228', beneficiario: 'SOSTEN SA', cuit: '30711577390', pago: '2026-01-28', importe: 593734.25, estado: 'Anulado' },
-  { numero: '00000174', beneficiario: 'HORMISERV SRL', cuit: '30681641730', pago: '2026-01-24', importe: 4600823.33, estado: 'Pagado' },
-  { numero: '00000277', beneficiario: 'DUBOS UGARTE PEDRO LUIS RAUL', cuit: '20287737824', pago: '2026-01-22', importe: 1002330.72, estado: 'Pagado' },
-]
+// ═══ ECHEQS_EMITIDOS SE RETIRÓ EL 14/08 ═══
+//
+// Era la lista completa de la consulta de echeq emitidos, transcripta a mano de la captura del 22/07.
+// Sirvió para contestar la pregunta de tesorería que la originó ("a quién le debo y con qué
+// instrumento"), y después se quedó: al 14/08 seguía afirmando que el 307 estaba "Aceptado" cuando el
+// banco lo había pagado el 03/08, y que los únicos vivos eran tres de NEUMAGOM cuando la captura del
+// 14/08 muestra siete por $6.114.994,80.
+//
+// Dos verdades del mismo concepto, y la de acá era la vieja. El estado de un cheque vive en
+// `public.cheques`, que se actualiza por `scripts/importar-cheques.mjs` sin tocar código. Una lista a
+// mano no es una fuente: envejece sin gritar — el mismo defecto que ya congeló el espejo de JORNALES
+// y el IPC. El resto de este archivo sigue siendo la transcripción declarada de UN extracto (mirá
+// `CORTE` y `ORIGEN`); un ESTADO VIVO no podía vivir adentro de una foto.
+//
+// `compromisosPorBeneficiario` sigue acá porque el cálculo es válido — lo que cambió es que ahora hay
+// que pasarle los cheques, y quien los tiene es la base.
 
 /** Estados que significan "todavía no salió de la cuenta": es un compromiso vivo. */
-const VIVOS = new Set(['emitido', 'aceptado'])
+const VIVOS = new Set(['emitido', 'aceptado', 'por aceptar'])
 
-/** NÚCLEO PURO: los echeq emitidos que todavía hay que cubrir, por beneficiario. */
-export function compromisosPorBeneficiario(echeqs = ECHEQS_EMITIDOS) {
+/**
+ * NÚCLEO PURO: los echeq emitidos que todavía hay que cubrir, por beneficiario.
+ * Sin valor por defecto A PROPÓSITO: quien pregunta tiene que traer la lista viva, y la lista viva
+ * está en `public.cheques`. Un default acá era lo que hacía pasar por actual a una foto del 22/07.
+ */
+export function compromisosPorBeneficiario(echeqs = []) {
   const acc = new Map()
   for (const e of echeqs) {
     if (!VIVOS.has(String(e.estado ?? '').toLowerCase())) continue

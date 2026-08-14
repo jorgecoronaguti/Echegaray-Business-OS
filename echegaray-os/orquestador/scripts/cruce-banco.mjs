@@ -17,7 +17,8 @@
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { MOVIMIENTOS, verificarCadena, porTipo, CUENTA, CORTE, ORIGEN, enCartera, endosados, totalEcheqs, compromisosPorBeneficiario, normProveedor, ECHEQS_EMITIDOS, ingresosPorNaturaleza, CONTRAPARTES } from '../lib/banco-santander.mjs'
+import { MOVIMIENTOS, verificarCadena, porTipo, CUENTA, CORTE, ORIGEN, enCartera, endosados, totalEcheqs, compromisosPorBeneficiario, normProveedor, ingresosPorNaturaleza, CONTRAPARTES } from '../lib/banco-santander.mjs'
+import { query, closePool } from '../lib/db.mjs'
 import { extraer as extraerCuit } from '../lib/cuit.mjs'
 import { saldosPorProveedor } from '../lib/cuentas-por-pagar.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
@@ -164,11 +165,22 @@ async function main() {
   }
 
   // EL CONTROL: cada echeq que el banco muestra vivo tiene que estar en la pestaña.
+  //
+  // LA FUENTE ES `public.cheques`, NO UNA LISTA EN CÓDIGO (14/08). Hasta hoy salía de `ECHEQS_EMITIDOS`,
+  // transcripta a mano el 22/07: decía que había 3 echeq vivos cuando había 7, y daba por vivo al 307
+  // que el banco pagó el 03/08. Un control que se mide contra una foto vieja avisa de lo que ya no
+  // pasa y calla lo que está pasando.
+  const { rows: echeqs } = await query(
+    `select numero, contraparte beneficiario, contraparte_cuit cuit, importe::float8 importe,
+            fecha_pago::text pago, estado, corte::text
+       from public.cheques where tipo = 'emitido' order by fecha_pago`)
+  const vivos = compromisosPorBeneficiario(echeqs)
   const numerosPestana = new Set(enPestana.map((f) => f.numero.replace(/^0+/, '')))
-  const faltanEnPestana = compromisosPorBeneficiario().length
-    ? ECHEQS_EMITIDOS.filter((e) => /emitido|aceptado/i.test(e.estado) && !numerosPestana.has(e.numero.replace(/^0+/, '')))
-    : []
-  console.log(`  control: ${ECHEQS_EMITIDOS.filter((e) => /emitido|aceptado/i.test(e.estado)).length} echeq vivos en el banco · ${faltanEnPestana.length} sin cargar en la pestaña ${tabCh}`)
+  const faltanEnPestana = echeqs.filter((e) => /emitido|aceptado|por aceptar/i.test(e.estado)
+    && !numerosPestana.has(String(e.numero).replace(/^0+/, '')))
+  const corte = echeqs.reduce((mx, e) => (String(e.corte) > mx ? String(e.corte) : mx), '') || 's/corte'
+  console.log(`  control: ${vivos.reduce((s, v) => s + v.cantidad, 0)} echeq vivos según public.cheques (corte ${corte})`
+    + ` · ${faltanEnPestana.length} sin cargar en la pestaña ${tabCh}`)
   for (const e of faltanEnPestana) console.log(`     ⚠ ${e.numero} ${e.beneficiario} ${ars(e.importe)} vence ${e.pago}`)
 
   const filas = []
@@ -193,9 +205,11 @@ async function main() {
   console.log(`\n  ⇒ ${ars(sinInstrumento)} de deuda sin cheque emitido: es la parte negociable.`)
   console.log(`  ⇒ ${ars(sinFactura)} de cheques emitidos a proveedores que NO tienen factura pendiente en Compras.`)
   console.log('     O la factura está cargada como pagada antes de que el cheque se debite, o falta cargarla.')
-  console.log(`  (los ECHEQ salen de la consulta del banco, ${ECHEQS_EMITIDOS.length} filas, página 1 de 2)`)
+  console.log(`  (los ECHEQ salen de public.cheques, ${echeqs.length} filas, corte ${corte} — se cargan con importar-cheques.mjs)`)
 
   console.log(`\nSaldo del banco al ${CORTE}: ${ars(CUENTA.saldoPesos)} en pesos · U$S ${CUENTA.saldoDolares} en dólares`)
 }
 
-main().catch((e) => { console.error('ERROR:', e.message); process.exit(1) })
+main()
+  .catch((e) => { console.error('ERROR:', e.message); process.exitCode = 1 })
+  .finally(() => closePool().catch(() => {}))
