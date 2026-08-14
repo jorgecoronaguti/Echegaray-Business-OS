@@ -102,6 +102,29 @@ const esTituloDe = (celda, s) => {
   return c === norm(s.texto) || (s.alias ?? []).some((a) => c === norm(a))
 }
 
+/**
+ * ¿ESTA CELDA ES EL TÍTULO DE ESTA SECCIÓN? — para el que necesita UBICARLA en la pestaña.
+ *
+ * El número de una sección NO ES SUYO: sale del orden, y se corre solo en cuanto alguien intercala
+ * otra sección arriba. Quien busca su bloque por `/^2 ·/` se queda sin bloque el día que eso pasa, y
+ * con un `throw` que no dice por qué. Pasó dos veces:
+ *
+ *   · el límite de ABAJO de la sección 2 estaba anclado a `/^3 ·/` y quedó huérfano cuando el
+ *     generador de texto renumeró — hoy es "la sección que sigue, sea la que sea";
+ *   · el ancla de ARRIBA quedó en `/^2 ·/`, y al intercalarse "QUÉ SALE CADA DÍA" la concentración
+ *     pasó a ser la 3: `no encontré la fila de rótulos de la sección 2`.
+ *
+ * El texto es lo único estable, y con `alias` sobrevive incluso a un renombre.
+ *
+ * @param {unknown} celda  el contenido de la columna A de una fila
+ * @param {string} clave   la clave de la sección en SECCIONES_DINAMICAS
+ */
+export function esTituloDeSeccion(celda, clave) {
+  const s = SECCIONES_DINAMICAS.find((x) => x.clave === clave)
+  if (!s) throw new Error(`"${clave}" no es una sección dinámica`)
+  return esTituloDe(celda, s)
+}
+
 /** El título completo, con su número. El número sale del orden de las secciones, nunca de acá. */
 export const tituloCompleto = (texto, n) => `${n} ${SEPARADOR} ${texto}`
 
