@@ -10,6 +10,7 @@ import {
   COLS_CALENDARIO, colCalendario, diasLaborables, expresionDias, MASCARA_FIN_DE_SEMANA,
   formulaVentana, formulaShareEfectivo, formulaGlosaShareEfectivo, formulaControlCalendario,
   formulaBajaNoRegistrada, LINEA_SABADOS, shareEfectivoAnual, MIN_QUINCENAS_SHARE,
+  formulaAcuerdoDeclarado, acuerdoDeclarado,
 } from './jornales-calendario.mjs'
 import { diasHabilesObra } from './jornales-demanda-obras.mjs'
 
@@ -251,3 +252,52 @@ test('LA BAJA NO REGISTRADA: la pestaña dice cuánto cuesta seguir proyectando 
   assert.doesNotMatch(sinTextos(f), /,/, 'separador es-AR')
 })
 
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL ACUERDO 50/50 DECLARADO CONTRA LO QUE LA PLANILLA REGISTRA (14/08)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('LA CONTRADICCIÓN SE MIDE, NO SE TAPA: 15,8% por banco contra un acuerdo del 50%', () => {
+  // Las quincenas pagadas de 2026 tal como las tiene el registro: $18.191.908 por banco sobre
+  // $115.054.273, y NUEVE de quince con la columna Banco en cero. El dueño declara 50/50; la planilla
+  // dice otra cosa. El número que importa para decidir es la distancia, y son los dos a la vez: el
+  // faltante en pesos y cuántas quincenas ni siquiera tienen el canal cargado.
+  const hoy = new Date(2026, 7, 14)
+  const d = (dia, mes) => new Date(2026, mes - 1, dia)
+  // Quince quincenas pagadas: seis con banco (suman $18.191.908) y nueve en cero.
+  const conBanco = [3031984.66, 3031984.66, 3031984.66, 3031984.67, 3031984.67, 3031984.68]
+  const filas = [
+    ...conBanco.map((b, i) => ({ hasta: d(15, i + 1), pagado: d(20, i + 1), banco: b, total: 7670284.87 })),
+    ...Array.from({ length: 9 }, (_, i) => ({
+      hasta: d(28, ((i % 6) + 1)), pagado: d(2, ((i % 6) + 2)), banco: 0, total: 7670284.86,
+    })),
+  ]
+  const r = acuerdoDeclarado(filas, hoy)
+  assert.equal(r.quincenas, 15)
+  assert.equal(r.enCero, 9, 'nueve quincenas pagadas sin un peso por banco')
+  assert.equal(Math.round(r.porBanco * 1000) / 10, 15.8, 'el 15,8% medido, no el 50% declarado')
+  // Y LA DISTANCIA EN PESOS, que es lo accionable: la mitad de lo pagado menos lo que salió por banco.
+  // Se compara contra el fixture y no contra una constante tipeada: si mañana cambia una quincena, el
+  // test sigue midiendo la MISMA regla en vez de romperse por un peso de redondeo.
+  const { banco, total } = shareEfectivoAnual(filas, hoy)
+  assert.equal(Math.round(r.faltaParaElAcuerdo), Math.round(total / 2 - banco))
+  assert.ok(Math.abs(r.faltaParaElAcuerdo - (115054273 / 2 - 18191908)) < 5,
+    'el orden de magnitud medido en el archivo vivo: ~$39,3M para llegar al acuerdo declarado')
+})
+
+test('la línea del acuerdo DERIVA del share que ya se mide — no calcula un segundo porcentaje', () => {
+  const cols = { banco: 'H', total: 'K', hasta: 'B', pagado: 'N' }
+  const { valor, glosa } = formulaAcuerdoDeclarado(cols, 116, 130, 16)
+  // Deriva de la celda del share: dos fórmulas para el mismo canal se separan el día que una cambia.
+  assert.equal(valor, '=IF($B$16="";"";1-$B$16)')
+  assert.match(glosa, /acuerdo 50%/)
+  assert.match(glosa, /quincenas con banco en \$0/)
+  // `ΣTOTAL/2` y NUNCA un literal decimal: en es_AR la coma es el decimal y el `;` el separador de
+  // argumentos, así que un `0,5` suelto parte la fórmula en dos argumentos.
+  assert.doesNotMatch(glosa, /0,5/)
+  assert.match(glosa, /\/2-/)
+  // El patrón de TEXT va en US aunque los argumentos vayan en locale — la otra mitad de la regla.
+  assert.match(glosa, /"#,##0"/)
+  // Y NO SE FABRICA EL 50%: la celda del valor publica lo medido, nunca el acuerdo.
+  assert.doesNotMatch(valor, /0,5|\b50\b/)
+})

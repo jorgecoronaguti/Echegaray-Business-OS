@@ -11,6 +11,7 @@ import {
   formulaSigmaConvenio, lineaSupuestoConvenio, sigmaConvenioDelPlantel,
   baseDeJornales, quincenaAlConvenio, ROTULO_SIGMA,
 } from './proyeccion-convenio.mjs'
+import { expresionSinEscala } from './jornales-piso-uocra.mjs'
 import { parsearAcuerdos } from './uocra-acuerdos.mjs'
 import { crearGrilla } from './cargas-grilla.mjs'
 import { bloqueDeclarado, bloquePagado, bloqueProyeccion } from './cargas-bloques.mjs'
@@ -107,9 +108,19 @@ test('EL GUARD DE LA Σ: sin básicos rinde VACÍO, no cero — que es lo que la
   assert.match(f, /^IF\(OR\(/, 'la Σ volvió a ser un SUMPRODUCT pelado: con la réplica caída publica 0')
   assert.match(f, /SUMPRODUCT\(\$B\$18:\$B\$21;\$F\$18:\$F\$21\)=0/, 'falta el caso "no hay un solo peso valuado"')
   // Y EL AGUJERO CHICO: una categoría CON PERSONAS y sin básico se valuaba $0 adentro del total. El
-  // total seguía siendo plausible y nadie podía verlo. `--(F="")` × personas lo detecta.
-  assert.match(f, /SUMPRODUCT\(\$B\$18:\$B\$21;--\(\$F\$18:\$F\$21=""\)\)>0/,
+  // total seguía siendo plausible y nadie podía verlo.
+  //
+  // ═══ EL GUARD PREGUNTABA POR EL VACÍO Y SE COMIÓ MEDIO PLANTEL (14/08) ═══
+  //
+  // Era `--(F="")`. Medido en el archivo vivo: `F80` («OF M», 8 de 16 personas) traía el texto
+  // "Banco" —residuo del rediseño del 13/08— que no es vacío. El guard no disparó, SUMPRODUCT trató
+  // el texto como 0 y la Σ publicó $46.988 donde el plantel completo vale $97.772. La pregunta
+  // correcta es si la celda es un NÚMERO mayor que cero, y vive en UNA definición compartida con el
+  // control del piso (`expresionSinEscala`), porque dos copias de un control se separan.
+  assert.ok(f.includes(`${expresionSinEscala('$B$18:$B$21', '$F$18:$F$21')}>0`),
     'una categoría sin escala vuelve a entrar al total valuada en cero')
+  assert.doesNotMatch(f, /--\(\$F\$18:\$F\$21=""\)/,
+    'el guard volvió a preguntar por el vacío: un texto residual lo esquiva')
   assert.match(f, /;"";/, 'el guard tiene que rendir vacío: un 0 acá dice "no hay jornales que pagar"')
   assert.doesNotMatch(f, /,/, 'separador es-AR')
   // La línea del canario evalúa ESTA MISMA expresión —no una copia—, así que hereda el guard.

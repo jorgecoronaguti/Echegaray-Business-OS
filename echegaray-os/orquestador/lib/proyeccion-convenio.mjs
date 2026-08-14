@@ -62,7 +62,7 @@
 
 import { sub } from './patron-pestana.mjs'
 import { convenioDe, CONVENIO_POR_CODIGO } from './uocra-paritaria.mjs'
-import { categoriaDelConvenio } from './jornales-piso-uocra.mjs'
+import { categoriaDelConvenio, expresionSinEscala } from './jornales-piso-uocra.mjs'
 import { ALERTA } from './glifos.mjs'
 
 /**
@@ -210,9 +210,14 @@ export function formulaSigmaConvenio(fPrimera, fUltima) {
   const B = `$B$${fPrimera}:$B$${fUltima}`
   const F = `$F$${fPrimera}:$F$${fUltima}`
   const sigma = `SUMPRODUCT(${B};${F})`
-  // `--(F="")` es 1 en las categorías sin básico: multiplicado por las personas de esa fila, da >0
-  // en cuanto haya UNA persona sin escala. Separador es-AR: punto y coma.
-  return `IF(OR(${sigma}=0;SUMPRODUCT(${B};--(${F}=""))>0);"";${sigma})`
+  // ═══ EL GUARD PREGUNTABA POR EL VACÍO Y EL AGUJERO ERA UN TEXTO (14/08) ═══
+  //
+  // Decía `--(F="")`. En el archivo vivo `F80` («OF M», 8 de 16 personas) traía el texto "Banco"
+  // —residuo del layout anterior— que NO es vacío: el guard no disparó, `SUMPRODUCT` trató el texto
+  // como 0 y la Σ publicó $46.988 en vez de $97.772. Un total corto y plausible, que es justo lo que
+  // este guard existe para impedir. La pregunta correcta —¿es un NÚMERO mayor que cero?— vive en una
+  // sola definición compartida con el control del piso, en lib/jornales-piso-uocra.mjs.
+  return `IF(OR(${sigma}=0;${expresionSinEscala(B, F)}>0);"";${sigma})`
 }
 
 /**

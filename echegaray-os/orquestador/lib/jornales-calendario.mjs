@@ -329,6 +329,70 @@ export function shareEfectivoAnual(filas, hoy = new Date()) {
 }
 
 /**
+ * NÚCLEO PURO: LO QUE EL ACUERDO DICE CONTRA LO QUE LA PLANILLA REGISTRA — la contradicción, medida.
+ *
+ * ═══ POR QUÉ ESTA LÍNEA (14/08) ═══
+ *
+ * El dueño: *"el acuerdo es el mismo 50% por banco (recibo de sueldo), 50% efectivo"*. Medido sobre
+ * las quincenas pagadas de 2026: **15,8% por banco**, $18.191.908 de $115.054.273, y **9 de 15
+ * quincenas con la columna Banco en cero**.
+ *
+ * O el acuerdo no se está cumpliendo, o la columna Banco está sub-cargada. Las dos cosas son
+ * información que él necesita para decidir, y ninguna se arregla escribiendo un 50% en la pestaña:
+ * fabricar el número que el acuerdo promete convertiría el control en decoración. La pestaña sigue
+ * midiendo LO REAL —el share de arriba no se toca— y esta línea pone al lado la distancia contra lo
+ * declarado, en pesos y en quincenas.
+ *
+ * `ΣTOTAL/2` y no `0,5*ΣTOTAL`: un literal decimal escrito por API viaja en el locale del archivo
+ * (es_AR, coma decimal) y es una fuente de #ERROR que no hace falta correr. El patrón de `TEXT` sí va
+ * en US (`#,##0`), que es la otra mitad de la misma regla.
+ *
+ * @param {{banco:string, total:string, hasta:string, pagado:string}} cols letras del registro
+ * @param {number} f0 primera fila del registro · @param {number} f1 última
+ * @param {number} fShare fila del share de efectivo, del que esta línea deriva la fracción por banco
+ */
+export function formulaAcuerdoDeclarado({ banco, total, hasta, pagado }, f0, f1, fShare) {
+  const v = ventanaAnualPagada({ total, hasta, pagado }, f0, f1)
+  const rg = (c) => `$${c}$${f0}:$${c}$${f1}`
+  const sBanco = `SUMPRODUCT(${v}*N(${rg(banco)}))`
+  const sTotal = `SUMPRODUCT(${v}*N(${rg(total)}))`
+  // Las quincenas pagadas SIN un peso por banco: el número que distingue "se paga poco por banco" de
+  // "hay quincenas enteras sin cargar el canal", que son dos problemas distintos y se arreglan
+  // distinto. Va al lado del importe porque sin él el porcentaje no se puede accionar.
+  const enCero = `SUMPRODUCT(${v}*(N(${rg(banco)})=0))`
+  const nPag = `SUMPRODUCT(${v})`
+  return {
+    // La fracción POR BANCO es el complemento de la de efectivo, que ya se mide arriba: derivarla de
+    // esa celda —y no volver a calcularla— es lo que impide que la pestaña publique dos números para
+    // el mismo canal el día que una de las dos se corrija.
+    valor: `=IF($B$${fShare}="";"";1-$B$${fShare})`,
+    glosa: `=IF($B$${fShare}="";"⊘ sin base para medir el canal";`
+      + `IF(${sTotal}=0;"⊘ sin quincenas pagadas";`
+      + `"acuerdo 50% · faltan $"&TEXT(MAX(0;${sTotal}/2-${sBanco});"#,##0")&" por banco · "`
+      + `&${enCero}&" de "&${nPag}&" quincenas con banco en $0"))`,
+  }
+}
+
+/**
+ * EL MISMO CRITERIO EN JAVASCRIPT, para poder afirmar el número sin leer la celda que él produce.
+ *
+ * @param {Array<{hasta:Date, pagado:Date|null, banco:number, total:number}>} filas
+ * @returns {{porBanco:number|null, faltaParaElAcuerdo:number, enCero:number, quincenas:number}}
+ */
+export function acuerdoDeclarado(filas, hoy = new Date(), acuerdo = 0.5) {
+  const { quincenas, banco, total, share } = shareEfectivoAnual(filas, hoy)
+  const enero = new Date(hoy.getFullYear(), 0, 1)
+  const base = (filas ?? []).filter((f) => f.hasta >= enero && f.hasta <= hoy
+    && f.pagado instanceof Date && Number(f.total) > 0)
+  return {
+    porBanco: share === null ? null : 1 - share,
+    faltaParaElAcuerdo: Math.max(0, total * acuerdo - banco),
+    enCero: base.filter((f) => !(Number(f.banco) > 0)).length,
+    quincenas,
+  }
+}
+
+/**
  * NÚCLEO PURO: la línea de control del calendario contra los bloques que lo alimentan.
  *
  * UN CONTROL NUNCA SE VALIDA CONTRA LA MISMA INFORMACIÓN QUE PRODUCE. La columna Oficina del

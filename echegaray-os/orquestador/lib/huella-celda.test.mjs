@@ -349,3 +349,80 @@ test('(l) el apóstrofo no tapa un borrado de verdad: la fórmula que vaciaste s
   assert.equal(suprimidas.length, 1)
   assert.equal(suprimidas[0].col, 1, 'la celda vaciada es la de la fórmula')
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL RESIDUO DE REDISEÑO — el veredicto `ajena` que lo volvía inmortal (14/08)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// La pestaña "Jornales por Quincena" se rediseñó el 13/08 y las filas se movieron. Al día siguiente
+// tres celdas seguían con lo que el layout ANTERIOR tenía en esa posición, y la peor —`F80`, con el
+// texto "Banco" donde va el `INDEX/MATCH` del básico de convenio— hizo que la Σ del plantel publicara
+// $46.988 en vez de $97.772: la mitad de las 16 personas afuera, sin un solo #ERROR.
+//
+// La causa no era el generador: era el veredicto de la huella. Sin huella en la coordenada nueva y
+// con contenido en la celda, `aplicarHuella` devolvía `''` ("nunca fue mía y tiene algo tuyo"),
+// `fusionar` preservaba el residuo, no se sellaba huella, y la corrida siguiente repetía el veredicto.
+// Un lazo que se confirma solo, en cada corrida, para siempre.
+
+/** La fila real 80 de la pestaña: la escribe el generador entera salvo la E, que es del dueño. */
+const filaPlantel = (basico) => ['OF M', '=COUNTIFS(D;"OF M")', '=SUMIFS(W;D;"OF M")', '=MINIFS(W)', '', basico, '=IF(N(F)=0;"";D/F-1)', 'sin escala para esa categoría']
+
+test('(m) EL RESIDUO DE REDISEÑO: "Banco" donde va el básico de convenio se PISA', () => {
+  const quiero = [...lastre(), ['Período', 'Hasta', 'Se paga el', 'Obreros', 'Oficina', 'Dirección', 'TOTAL', 'Banco'],
+    filaPlantel('=IFERROR(INDEX(_UOCRA_RAW!$D$5:$D$8;MATCH("Oficial";_UOCRA_RAW!$B$5:$B$8;0));"")')]
+  // La huella de la corrida anterior tiene TODA la fila menos la F: ahí el layout viejo dejó "Banco",
+  // así que esa coordenada nunca se selló. Es exactamente el estado que se leyó en la base el 14/08.
+  const huellas = huellasDe(quiero)
+  huellas.delete(claveCelda(quiero.length, 5))
+  const hoy = quiero.map((f, i) => (i === quiero.length - 1 ? filaPlantel('Banco') : f))
+
+  const { grid, ajenas, reescritos } = aplicarHuella(quiero, hoy, huellas)
+  assert.equal(reescritos.length, 1, 'el residuo tiene que reconocerse como propio, no como del dueño')
+  assert.equal(reescritos[0].suyo, 'Banco')
+  assert.deepEqual(ajenas, [], 'el residuo dejó de contarse como celda del dueño')
+  // Y LA PRUEBA DEL EFECTO, hasta el final de la cadena: la fórmula queda EN LA PESTAÑA.
+  assert.match(String(enLaPestana(grid, hoy).at(-1)[5]), /^=IFERROR\(INDEX/,
+    'el básico de convenio no llegó a la celda: la Σ vuelve a publicarse con medio plantel afuera')
+})
+
+test('(n) el residuo se pisa SÓLO si es un rótulo mío: un texto del dueño se conserva', () => {
+  const quiero = [...lastre(), ['Período', 'Hasta', 'Se paga el', 'Obreros', 'Oficina', 'Dirección', 'TOTAL', 'Banco'],
+    filaPlantel('=IFERROR(INDEX(_UOCRA_RAW!$D$5:$D$8;MATCH("Oficial";_UOCRA_RAW!$B$5:$B$8;0));"")')]
+  const huellas = huellasDe(quiero)
+  huellas.delete(claveCelda(quiero.length, 5))
+  // Misma fila, misma coordenada sin huella — pero lo que hay es una nota que el generador NO escribe
+  // en ninguna parte de su grilla. No hay evidencia de propiedad y la celda se queda como está.
+  const hoy = quiero.map((f, i) => (i === quiero.length - 1 ? filaPlantel('ojo: Pérez cambió de categoría') : f))
+  const { grid, ajenas, reescritos } = aplicarHuella(quiero, hoy, huellas)
+  assert.deepEqual(reescritos, [])
+  assert.equal(ajenas.length, 1)
+  assert.equal(enLaPestana(grid, hoy).at(-1)[5], 'ojo: Pérez cambió de categoría',
+    'una nota del dueño adentro de una fila mía tiene que sobrevivir')
+})
+
+test('(ñ) y sólo adentro de una fila PROBADA mía: un rótulo suelto en una fila ajena no se pisa', () => {
+  // La segunda condición, que es la que impide que este camino se vuelva un bypass. Si la fila no
+  // tiene huella propia —es una fila del dueño, o una que el generador nunca escribió— no alcanza con
+  // que el texto coincida con un rótulo mío: podría haberlo tipeado él.
+  const quiero = [...lastre(), ['Banco', 'Adelanto', 'Total recibo'], ['nuevo bloque', 'x', 'y']]
+  const huellas = huellasDe(quiero)
+  // NINGUNA celda de la última fila tiene huella: la fila entera es territorio no probado.
+  for (let j = 0; j < 3; j++) huellas.delete(claveCelda(quiero.length, j))
+  const hoy = quiero.map((f, i) => (i === quiero.length - 1 ? ['Banco', 'x', 'y'] : f))
+  const { ajenas, reescritos } = aplicarHuella(quiero, hoy, huellas)
+  assert.deepEqual(reescritos, [], 'sin fila probada mía no se pisa nada, aunque el texto coincida')
+  assert.ok(ajenas.some((a) => a.suyo === 'Banco'), 'la celda con mi rótulo se conserva como ajena')
+})
+
+test('(o) un residuo NUMÉRICO no se pisa: un serial se parece a cualquier dato del dueño', () => {
+  // Los otros residuos del mismo rediseño son seriales de fecha (`46063`, `46038`). Deliberadamente
+  // quedan afuera de este camino: comparten apariencia con cualquier número de la planilla y ninguna
+  // de las dos evidencias los separa. Se limpian por la vía declarada, con una persona nombrándolos.
+  const quiero = [...lastre(), ['Convenio (tuya)', 'Básico convenio'], ['A M', 5399]]
+  const huellas = huellasDe(quiero)
+  huellas.delete(claveCelda(quiero.length, 1))
+  const hoy = quiero.map((f, i) => (i === quiero.length - 1 ? ['A M', 46063] : f))
+  const { ajenas, reescritos } = aplicarHuella(quiero, hoy, huellas)
+  assert.deepEqual(reescritos, [], 'un número nunca es evidencia de propiedad')
+  assert.equal(ajenas.length, 1)
+})

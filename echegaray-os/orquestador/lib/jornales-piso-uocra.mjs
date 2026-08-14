@@ -131,6 +131,43 @@ export function quincenasBajoPiso(qs = []) {
 }
 
 /**
+ * NÚCLEO PURO: «CUÁNTAS PERSONAS ESTÁN SIN ESCALA», EN UNA SOLA DEFINICIÓN es-AR.
+ *
+ * ═══ EL FALSO POSITIVO QUE COSTÓ LA MITAD DEL PLANTEL (14/08) ═══
+ *
+ * Las dos celdas que vigilan el convenio —la Σ del bloque 4.2 y el ✓ del calendario— preguntaban lo
+ * mismo con la misma expresión escrita dos veces: `--(F="")`, o sea *«¿la celda del básico está
+ * VACÍA?»*. Medido en el archivo vivo, `F80` (la fila «OF M», 8 de 16 personas) no estaba vacía:
+ * tenía el texto **"Banco"**, residuo del layout anterior. Entonces:
+ *
+ *   · el guard de la Σ no disparó   → `SUMPRODUCT(B;F)` trató "Banco" como 0 y publicó $46.988,
+ *     que es la masa del plantel SIN «OF M». Con su básico real la Σ es $97.772: más del doble.
+ *   · el control del piso no disparó → publicó *"✓ las 9 quincenas proyectadas cubren el piso UOCRA"*
+ *     sobre un piso calculado con la mitad del plantel afuera.
+ *
+ * Ninguna de las dos mintió por su cuenta: mintieron porque preguntaban por el VACÍO cuando lo que
+ * las hace verdaderas es que la celda sea **un número mayor que cero**. Un texto no es un vacío, y
+ * es exactamente el estado que produce un rediseño de filas.
+ *
+ * Por qué `ISNUMBER(...)*(...>0)` y no `N(F)>0`: en Sheets un TEXTO comparado con un número da
+ * VERDADERO (`"Banco">0` es TRUE), así que `>0` solo volvería a dejar pasar el residuo. `ISNUMBER`
+ * primero, y el `>0` después, para que un básico en 0 —una escala que no trajo el mes— también
+ * cuente como sin escala. `1-(…)` en vez de `NOT(…)` porque adentro de SUMPRODUCT lo que se
+ * necesita es aritmética sobre el array, no un booleano escalar.
+ *
+ * Vive en UN solo lugar y la importan las dos celdas: dos copias de un criterio de control se
+ * separan el día que una se corrige, y ahí el número de la pestaña y el del aviso dejan de ser el
+ * mismo número — que es cómo un control empieza a validarse contra lo que él mismo produce.
+ *
+ * @param {string} celdasPersonas rango de «Personas» del bloque 1.1 (ej. `$B$79:$B$82`)
+ * @param {string} celdasBasico   rango de «Básico convenio» (ej. `$F$79:$F$82`)
+ * @returns {string} expresión (sin `=`) que rinde CUÁNTAS personas quedaron sin escala
+ */
+export function expresionSinEscala(celdasPersonas, celdasBasico) {
+  return `SUMPRODUCT(${celdasPersonas};1-(ISNUMBER(${celdasBasico})*(${celdasBasico}>0)))`
+}
+
+/**
  * NÚCLEO PURO: LA LÍNEA QUE DICE SI EL PISO SE ESTÁ APLICANDO — y que reemplaza a una que MENTÍA.
  *
  * La celda que avisaba del problema decía *"El convenio no devolvió escala — proyección vacía"*. Y la
@@ -144,7 +181,7 @@ export function quincenasBajoPiso(qs = []) {
  * @param {{celdasPersonas:string, celdasBasico:string, nQuincenas:number}} d rangos del bloque 1.1
  */
 export function formulaControlPiso({ celdasPersonas, celdasBasico, nQuincenas }) {
-  const sinEscala = `SUMPRODUCT(${celdasPersonas};--(${celdasBasico}=""))`
+  const sinEscala = expresionSinEscala(celdasPersonas, celdasBasico)
   return `=IF(${sinEscala}=0;`
     + `"✓ las ${nQuincenas} quincenas proyectadas cubren el piso UOCRA";`
     + `"${ALERTA} SIN piso UOCRA: "&${sinEscala}&" persona(s) sin escala — la proyección sale de la demanda")`

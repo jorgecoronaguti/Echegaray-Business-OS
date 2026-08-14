@@ -439,10 +439,10 @@ test('B3 · el "escalón que viene" NO puede mostrar un número de otro año', (
   const i = gm.filas.indexOf(fila)
   assert.doesNotMatch(String(gm.filas[i + 1][0] ?? ''), /Básico de .* desde ese mes/,
     'volvió la fila vacía del básico del mes que viene')
-  // `ratios` trae además las TRES fracciones del calendario y de oficina (efectivo de obra, adelanto
-  // ponderado y efectivo de oficina): se descuentan para que este control siga midiendo lo que vino a
-  // medir —cuántos MÁRGENES hay— y no el largo de la lista.
-  const fracciones = [gm.fShare, gm.fAdel, gm.fShareOfi]
+  // `ratios` trae además las CUATRO fracciones del calendario y de oficina (efectivo de obra, adelanto
+  // ponderado, por banco contra el acuerdo declarado, y efectivo de oficina): se descuentan para que
+  // este control siga midiendo lo que vino a medir —cuántos MÁRGENES hay— y no el largo de la lista.
+  const fracciones = [gm.fShare, gm.fAdel, gm.fAcuerdo, gm.fShareOfi]
   assert.equal(gm.ratios.filter((f) => !fracciones.includes(f)).length, 1,
     'sin acuerdo publicado hay UN margen, no dos')
   const texto = gm.filas.flat().map(String).join(' ')

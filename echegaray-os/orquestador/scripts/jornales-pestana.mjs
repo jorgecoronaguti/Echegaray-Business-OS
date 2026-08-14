@@ -106,6 +106,7 @@ import {
 import {
   COLS_CALENDARIO, colCalendario, diasLaborables, expresionDias,
   formulaVentana, formulaShareEfectivo, formulaGlosaShareEfectivo, formulaControlCalendario,
+  formulaAcuerdoDeclarado,
   formulaShareAdelanto, MIN_QUINCENAS_SHARE,
   formulaBajaNoRegistrada, LINEA_SABADOS, LINEA_HABERES_SIN_QUINCENA,
 } from '../lib/jornales-calendario.mjs'
@@ -513,6 +514,14 @@ export function grilla({
   // adelanto sale ANTES del día de pago, a lo largo de la quincena. Se mide con la misma ventana y la
   // misma razón de importes (ver `formulaShareAdelanto`), y al lado va lo que eso proyecta a diciembre.
   const fAdel = push([sub('En adelantos — ponderado sobre el total')])
+  // ═══ EL ACUERDO QUE DECLARÁS CONTRA EL QUE LA PLANILLA REGISTRA (14/08) ═══
+  //
+  // El dueño: *"el acuerdo es el mismo 50% por banco (recibo de sueldo), 50% efectivo"*. Las dos
+  // líneas de arriba miden lo REAL y dan 15,8% por banco. La distancia entre las dos cosas es la
+  // información que él pidió para decidir, y por eso va en la pestaña y no en un informe: o el
+  // acuerdo no se cumple, o la columna Banco está sub-cargada — y el número de quincenas en $0
+  // separa una explicación de la otra. No se fabrica el 50%: se publica cuánto falta para llegar.
+  const fAcuerdo = push([sub('Por banco — contra el acuerdo 50/50 declarado')])
   push(COLS_CALENDARIO)
   const p0 = filas.length + 1
   const pFin = p0 + pendientes.length - 1
@@ -1127,6 +1136,9 @@ export function grilla({
   const colShare = { banco: colDe('Banco'), total: colDe('TOTAL'), hasta: colDe('Hasta'), pagado: colDe('Pagado el') }
   filas[fShare - 1][1] = formulaShareEfectivo(colShare, f0, fLast)
   filas[fShare - 1][2] = formulaGlosaShareEfectivo(colShare, f0, fLast)
+  const acuerdo = formulaAcuerdoDeclarado(colShare, f0, fLast, fShare)
+  filas[fAcuerdo - 1][1] = acuerdo.valor
+  filas[fAcuerdo - 1][2] = acuerdo.glosa
   // EL ADELANTO, CON SU PROPIO % PONDERADO Y CON LO QUE ESO PROYECTA A DICIEMBRE (14/08). El % solo no
   // se puede usar: la pregunta del dueño es cuántos billetes hay que adelantar de acá a fin de año, y
   // ese número es el % por el total proyectado de obra. Va en la celda de al lado, que es donde el
@@ -1365,6 +1377,9 @@ export function grilla({
       // diciembre y los meses con canal cargado de oficina): sin declararlas, el pase por contenido no
       // las clasifica y el barrido de moneda las dibuja como pesos.
       { fila: fAdel, col: 2 }, { fila: fShareOfi, col: 2 },
+      // Y la del acuerdo declarado: dice "faltan $X por banco · N de M quincenas con banco en $0" por
+      // fórmula. Sin declararla, el barrido de moneda la dibujaría como un importe.
+      { fila: fAcuerdo, col: 2 },
       { fila: plantel.fTotal, col: 7 },
       // El control del calendario vive en la columna A y rinde texto por fórmula: sin declararlo, el
       // barrido de moneda no lo toca (empieza en la B) pero el pase por contenido tampoco lo clasifica.
@@ -1384,12 +1399,14 @@ export function grilla({
     // fila. Un 0 acá pediría formato para la fila 0 y el lote entero de formato se cae.
     // `fShare` es una FRACCIÓN (0,73), no plata: sin el formato de porcentaje el barrido de moneda la
     // dibuja "$1" y el cuadro parece decir que la quincena entera sale en billetes por un peso.
-    ratios: [fMargen, fMargenProx, fShare, fAdel, fShareOfi].filter(Boolean),
+    ratios: [fMargen, fMargenProx, fShare, fAdel, fAcuerdo, fShareOfi].filter(Boolean),
     nProy: pendientes.length,
     fShare,
     // Las dos fracciones nuevas del 14/08: el adelanto ponderado (obra) y el canal de oficina. Las dos
     // son FRACCIONES, no plata: sin declararlas acá el barrido de moneda las dibuja "$1".
     fAdel,
+    // Y la fracción por banco contra el acuerdo 50/50 declarado (14/08): misma naturaleza, mismo trato.
+    fAcuerdo,
     fShareOfi,
     fControlCal,
     fControlPiso,

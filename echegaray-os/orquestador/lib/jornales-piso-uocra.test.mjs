@@ -12,9 +12,9 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   CATEGORIAS_POR_HORA, categoriaDelConvenio, expresionClaveConvenio,
-  pisoDeQuincena, quincenasBajoPiso, formulaControlPiso,
+  pisoDeQuincena, quincenasBajoPiso, formulaControlPiso, expresionSinEscala,
 } from './jornales-piso-uocra.mjs'
-import { sigmaConvenioDelPlantel } from './proyeccion-convenio.mjs'
+import { sigmaConvenioDelPlantel, formulaSigmaConvenio } from './proyeccion-convenio.mjs'
 import { ESCALA_VERIFICADA } from './uocra-paritaria.mjs'
 import { diasHabilesObra } from './jornales-demanda-obras.mjs'
 
@@ -165,10 +165,119 @@ test('la línea de la pestaña avisa cuándo el piso NO se está aplicando, y cu
   const f = formulaControlPiso({ celdasPersonas: '$B$76:$B$79', celdasBasico: '$F$76:$F$79', nQuincenas: 9 })
   assert.match(f, /9 quincenas proyectadas cubren el piso UOCRA/)
   assert.match(f, /▲/, 'la marca de alerta tiene que ser la que se dibuja en el PDF')
-  assert.match(f, /SUMPRODUCT\(\$B\$76:\$B\$79;--\(\$F\$76:\$F\$79=""\)\)/,
+  assert.match(f, /SUMPRODUCT\(\$B\$76:\$B\$79;1-\(ISNUMBER\(\$F\$76:\$F\$79\)\*\(\$F\$76:\$F\$79>0\)\)\)/,
     'el control dejó de medirse sobre las dos columnas que arman la Σ')
   assert.doesNotMatch(f, /,/, 'separador es-AR')
   // Y NOMBRA EL NÚMERO CON EL QUE SE ARREGLA: cuántas personas quedaron sin escala. Un aviso que dice
   // "algo anda mal" no se puede accionar.
   assert.match(f, /persona\(s\) sin escala/)
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL FALSO POSITIVO DEL 14/08: LA CELDA QUE NO ESTABA VACÍA, ESTABA MAL
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * UN EVALUADOR MÍNIMO DE `SUMPRODUCT(P;1-(ISNUMBER(F)*(F>0)))` CON LAS REGLAS DE GOOGLE SHEETS.
+ *
+ * Existe porque la única forma de probar este defecto es evaluar la expresión que va a la CELDA, no
+ * una copia en JS de lo que uno cree que hace. Y la regla que hace la diferencia es contraintuitiva:
+ * en Sheets **un TEXTO comparado con un número da VERDADERO** (`"Banco">0` es TRUE), así que un `>0`
+ * a secas deja pasar el residuo. Ese comportamiento está codificado acá abajo, y si el emisor se
+ * corrige hacia una expresión que no evalúa con estas reglas, la comparación contra la fórmula
+ * emitida —el `assert.equal(expr, …)` de cada caso— se pone roja.
+ */
+function evaluarSinEscala(expr, personas, basicos) {
+  const esperada = expresionSinEscala('P', 'F')
+  assert.equal(expr, esperada, 'el evaluador sólo sabe leer la expresión que este módulo emite')
+  return personas.reduce((s, p, i) => {
+    const b = basicos[i]
+    const esNumero = typeof b === 'number'
+    // `"Banco" > 0` → TRUE en Sheets; `"" > 0` → FALSE (una celda vacía se coacciona a 0).
+    const mayorQueCero = esNumero ? b > 0 : String(b ?? '') !== ''
+    return s + p * (1 - (esNumero ? 1 : 0) * (mayorQueCero ? 1 : 0))
+  }, 0)
+}
+
+test('EL DEFECTO: una celda con la palabra "Banco" NO está vacía — el control la dejaba pasar', () => {
+  const expr = expresionSinEscala('P', 'F')
+  // El plantel del archivo vivo el 14/08: A M · OF M · OF · A, y «OF M» con el texto "Banco".
+  const personas = [2, 8, 4, 2]
+  const vivo = [5399, 'Banco', 6348, 5399]
+  assert.equal(evaluarSinEscala(expr, personas, vivo), 8,
+    'las 8 personas de «OF M» tienen que contar como SIN escala: es la mitad del plantel')
+  // El predicado ANTERIOR —`--(F="")`— sobre estos mismos datos daba 0, y por eso la pestaña publicó
+  // el ✓. Se deja medido para que la reversión sea visible, no una opinión.
+  const anterior = personas.reduce((s, p, i) => s + p * (String(vivo[i] ?? '') === '' ? 1 : 0), 0)
+  assert.equal(anterior, 0, 'el predicado viejo veía cero personas sin escala con 8 afuera')
+})
+
+test('el control sigue rojo con la celda VACÍA, y verde sólo con las cuatro resueltas', () => {
+  const expr = expresionSinEscala('P', 'F')
+  assert.equal(evaluarSinEscala(expr, [2, 8, 4, 2], [5399, '', 6348, 5399]), 8, 'vacía = sin escala')
+  assert.equal(evaluarSinEscala(expr, [2, 8, 4, 2], [5399, 0, 6348, 5399]), 8,
+    'un básico en 0 es una escala que el mes no trajo, no una escala de $0')
+  assert.equal(evaluarSinEscala(expr, [2, 8, 4, 2], [5399, 6348, 6348, 5399]), 0,
+    'con las cuatro categorías resueltas el control tiene que dar verde')
+  // Una categoría sin NADIE no puede encender la alerta: no hay persona sin escala.
+  assert.equal(evaluarSinEscala(expr, [2, 0, 4, 2], [5399, 'Banco', 6348, 5399]), 0)
+})
+
+test('LA Σ DEL CONVENIO Y EL CONTROL PREGUNTAN LO MISMO — una sola definición', () => {
+  // Las dos celdas se separaron una vez y costó la mitad del plantel: la Σ publicó $46.988 (sin «OF
+  // M») mientras el control de al lado decía ✓. Que las dos citen la MISMA expresión es lo que impide
+  // que vuelvan a contar historias distintas sobre el mismo plantel.
+  const sinEscala = expresionSinEscala('$B$79:$B$82', '$F$79:$F$82')
+  assert.ok(formulaSigmaConvenio(79, 82).includes(sinEscala),
+    'el guard de la Σ dejó de usar la definición compartida de «sin escala»')
+  assert.ok(formulaControlPiso({ celdasPersonas: '$B$79:$B$82', celdasBasico: '$F$79:$F$82', nQuincenas: 9 })
+    .includes(sinEscala), 'el control del piso dejó de usar la definición compartida')
+  assert.doesNotMatch(sinEscala, /,/, 'separador es-AR: una coma y las dos celdas son #ERROR!')
+})
+
+test('EL RECÁLCULO: la Σ partida dejó SEIS quincenas cortas por $23.754.205', () => {
+  // ═══ LA PREGUNTA QUE ABRIÓ ESTA TAREA, CON NÚMERO ═══
+  //
+  // Una vez que la Σ deja de estar partida a la mitad, ¿el piso sigue cerrando? La respuesta no es
+  // obvia: con «OF M» adentro la Σ pasa de $46.988 a $97.772, así que el piso de CADA quincena se
+  // duplica y hay que medirlo, no suponerlo.
+  //
+  // Lo que la pestaña publica hoy en «Obreros» son $84.868.442 hasta diciembre. Contra el piso del
+  // plantel COMPLETO faltan $23.754.205 repartidos en las seis quincenas de octubre a diciembre; las
+  // tres de agosto y septiembre zafan porque la demanda de las obras vendidas es más alta que el
+  // convenio, no porque el piso se estuviera aplicando. (Con las 7,2020 h/día exactas que mide la
+  // pestaña en vez de las 7,20 declaradas acá arriba, el faltante da $23.762.470: el criterio no
+  // cambia, la cifra se mueve $8k.)
+  //
+  // No son los $28.864.019 del hueco de ayer: aquél medía la proyección SIN ningún término de
+  // convenio, y éste mide una Σ a medias. Dos defectos distintos sobre la misma celda.
+  const SIGMA_PUBLICADA = 2 * 5399 + 8 * 0 + 4 * 6348 + 2 * 5399 // F80="Banco" vale 0 en SUMPRODUCT
+  assert.equal(SIGMA_PUBLICADA, 46988, 'la Σ que la pestaña publicaba el 14/08 en F90')
+
+  const conSigma = (sigma) => PENDIENTES.map((q) => {
+    const obligacion = sigmaConvenioDelPlantel(espejo(), BLOQUE, ESCALON)
+    const factor = FACTOR[q.hasta.getMonth() + 1] / FACTOR[8]
+    const dias = diasHabilesObra(q.desde, q.hasta)
+    return {
+      ...q,
+      porCategoria: obligacion.porCategoria,
+      factor,
+      horasPorDia: HORAS_POR_DIA,
+      dias,
+      proyectado: Math.max(sigma * factor * HORAS_POR_DIA * dias, q.demanda),
+    }
+  })
+
+  const publicado = quincenasBajoPiso(conSigma(SIGMA_PUBLICADA))
+  assert.equal(publicado.cortas, 6)
+  assert.equal(Math.round(publicado.falta), 23754205)
+  assert.deepEqual(publicado.filas.slice(0, 3).map((f) => Math.round(f.falta)), [0, 0, 0],
+    'agosto y septiembre los cubre la demanda de obras, no el convenio')
+
+  // Y con la Σ del plantel completo el MAX cubre el piso POR CONSTRUCCIÓN: ninguna queda corta.
+  const pleno = quincenasBajoPiso(conSigma(97772))
+  assert.equal(pleno.cortas, 0,
+    `${pleno.cortas} quincena(s) cortas con el plantel completo, faltan $${Math.round(pleno.falta).toLocaleString('es-AR')}`)
+  assert.equal(pleno.filas[0].detalle.reduce((s, x) => s + x.personas, 0), 16,
+    'el piso se mide contra las 16 personas, no contra las 8 que sobrevivían al agujero')
 })
