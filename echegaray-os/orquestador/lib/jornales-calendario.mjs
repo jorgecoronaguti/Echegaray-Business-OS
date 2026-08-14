@@ -347,29 +347,80 @@ export function shareEfectivoAnual(filas, hoy = new Date()) {
  * (es_AR, coma decimal) y es una fuente de #ERROR que no hace falta correr. El patrón de `TEXT` sí va
  * en US (`#,##0`), que es la otra mitad de la misma regla.
  *
+ * ═══ LA GLOSA MIDE 43 CARACTERES Y NO 78 (14/08, defecto visto en el PDF) ═══
+ *
+ * La primera versión decía «acuerdo 50% · faltan $39.335.228 por banco · 8 de 14 quincenas con banco
+ * en $0»: 78 caracteres en la columna C, y `auditarPatron` lo cazó en vivo como `nota-en-el-medio`
+ * (el tope es `LARGO_NOTA` = 60). No es cosmético — en el PDF el texto se derramaba sobre las
+ * columnas de la derecha y corría los encabezados «Dirección» y «TOTAL» del calendario.
+ *
+ * Lo que se fue es lo que YA dice el rótulo de la columna A («Por banco — contra el acuerdo 50/50
+ * declarado») y la palabra «quincenas», que la fila entera está contando. Queda el dato accionable:
+ * cuántos pesos faltan y cuántos períodos no tienen un peso por banco.
+ *
  * @param {{banco:string, total:string, hasta:string, pagado:string}} cols letras del registro
  * @param {number} f0 primera fila del registro · @param {number} f1 última
  * @param {number} fShare fila del share de efectivo, del que esta línea deriva la fracción por banco
  */
 export function formulaAcuerdoDeclarado({ banco, total, hasta, pagado }, f0, f1, fShare) {
-  const v = ventanaAnualPagada({ total, hasta, pagado }, f0, f1)
   const rg = (c) => `$${c}$${f0}:$${c}$${f1}`
-  const sBanco = `SUMPRODUCT(${v}*N(${rg(banco)}))`
-  const sTotal = `SUMPRODUCT(${v}*N(${rg(total)}))`
-  // Las quincenas pagadas SIN un peso por banco: el número que distingue "se paga poco por banco" de
-  // "hay quincenas enteras sin cargar el canal", que son dos problemas distintos y se arreglan
-  // distinto. Va al lado del importe porque sin él el porcentaje no se puede accionar.
-  const enCero = `SUMPRODUCT(${v}*(N(${rg(banco)})=0))`
-  const nPag = `SUMPRODUCT(${v})`
+  return brechaContraElAcuerdo({
+    v: ventanaAnualPagada({ total, hasta, pagado }, f0, f1),
+    rgBanco: rg(banco), rgTotal: rg(total), fShare, sinBase: 'sin quincenas pagadas',
+  })
+}
+
+/**
+ * NÚCLEO PURO: LA MISMA BRECHA, PARA UN BLOQUE MENSUAL (Oficina).
+ *
+ * ═══ POR QUÉ NO SE COPIA LA DE ARRIBA (14/08) ═══
+ *
+ * El dueño: *"quiero q la tabla de 'oficina' sea igual que la de 'obreros' dado q el acuerdo es el
+ * mismo 50% por banco (recibo de sueldo), 50% efectivo"*. El acuerdo es el mismo, así que el CONTROL
+ * tiene que ser el mismo — no uno parecido escrito al lado. Las dos líneas comparten el cuerpo
+ * (`brechaContraElAcuerdo`) y difieren sólo en la ventana, que es lo único que de verdad cambia:
+ *
+ *   · obra    → quincenas del año con fecha en «Pagado el» (el canal recién es un hecho cuando salió);
+ *   · oficina → meses con «Pagado» cargado, que es la MISMA ventana con la que se mide su share de
+ *     efectivo dos filas más arriba. Dos ventanas distintas para el mismo canal darían dos porcentajes
+ *     que no cierran entre sí en la misma pestaña.
+ *
+ * Oficina no tiene columna «Pagado el»: su bloque es mensual y lo que la planilla registra como salido
+ * es su «Pagado». Exigirle una marca de pago que no existe dejaría la ventana vacía y el control mudo.
+ *
+ * @param {{banco:string, pagado:string}} cols letras del bloque mensual
+ * @param {number} r0 primer mes · @param {number} r1 último mes
+ * @param {number} fShare fila del share de efectivo del bloque
+ */
+export function formulaAcuerdoMensual({ banco, pagado }, r0, r1, fShare) {
+  const rg = (c) => `$${c}$${r0}:$${c}$${r1}`
+  return brechaContraElAcuerdo({
+    v: `--(N(${rg(pagado)})>0)`, rgBanco: rg(banco), rgTotal: rg(pagado), fShare, sinBase: 'sin meses pagados',
+  })
+}
+
+/**
+ * El cuerpo compartido: la fracción por banco y la distancia contra el 50% declarado.
+ *
+ * NO SE FABRICA EL 50%. La celda de la izquierda publica LO REAL —derivado del share de efectivo, para
+ * que la pestaña no tenga dos números para el mismo canal— y la glosa publica la distancia. Escribir
+ * el 50% que el acuerdo promete convertiría el control en decoración.
+ *
+ * Los períodos SIN un peso por banco van al lado del importe: es lo que distingue "se paga poco por
+ * banco" de "hay períodos enteros sin registrar el canal", que son dos problemas distintos y se
+ * arreglan distinto. Sin ese número el porcentaje no se puede accionar.
+ */
+function brechaContraElAcuerdo({ v, rgBanco, rgTotal, fShare, sinBase }) {
+  const sBanco = `SUMPRODUCT(${v}*N(${rgBanco}))`
+  const sTotal = `SUMPRODUCT(${v}*N(${rgTotal}))`
+  const enCero = `SUMPRODUCT(${v}*(N(${rgBanco})=0))`
+  const n = `SUMPRODUCT(${v})`
   return {
-    // La fracción POR BANCO es el complemento de la de efectivo, que ya se mide arriba: derivarla de
-    // esa celda —y no volver a calcularla— es lo que impide que la pestaña publique dos números para
-    // el mismo canal el día que una de las dos se corrija.
     valor: `=IF($B$${fShare}="";"";1-$B$${fShare})`,
     glosa: `=IF($B$${fShare}="";"⊘ sin base para medir el canal";`
-      + `IF(${sTotal}=0;"⊘ sin quincenas pagadas";`
-      + `"acuerdo 50% · faltan $"&TEXT(MAX(0;${sTotal}/2-${sBanco});"#,##0")&" por banco · "`
-      + `&${enCero}&" de "&${nPag}&" quincenas con banco en $0"))`,
+      + `IF(${sTotal}=0;"⊘ ${sinBase}";`
+      + `"faltan $"&TEXT(MAX(0;${sTotal}/2-${sBanco});"#,##0")&" por banco · "`
+      + `&${enCero}&" de "&${n}&" en $0"))`,
   }
 }
 
@@ -389,6 +440,31 @@ export function acuerdoDeclarado(filas, hoy = new Date(), acuerdo = 0.5) {
     faltaParaElAcuerdo: Math.max(0, total * acuerdo - banco),
     enCero: base.filter((f) => !(Number(f.banco) > 0)).length,
     quincenas,
+  }
+}
+
+/**
+ * EL MISMO CRITERIO PARA EL BLOQUE MENSUAL, EN JAVASCRIPT.
+ *
+ * Existe por la misma razón que su gemelo de arriba: la fórmula es un string y un test sobre ella
+ * prueba que dice lo que quisimos escribir, nunca que el número sale bien. Con esto la aritmética del
+ * control se prueba con números, sin leer la celda que ella misma produce.
+ *
+ * SIN PISO DE PERÍODOS. El de obra exige `MIN_QUINCENAS_SHARE` porque proyecta caja con ese
+ * porcentaje; éste sólo publica una brecha ya ocurrida, y un mes pagado ya es una brecha real.
+ *
+ * @param {Array<{pagado:number, banco:number}>} meses los meses del bloque, en cualquier orden
+ * @returns {{porBanco:number|null, faltaParaElAcuerdo:number, enCero:number, meses:number}}
+ */
+export function acuerdoMensual(meses = [], acuerdo = 0.5) {
+  const base = (meses ?? []).filter((m) => Number(m.pagado) > 0)
+  const banco = base.reduce((a, m) => a + Number(m.banco || 0), 0)
+  const total = base.reduce((a, m) => a + Number(m.pagado || 0), 0)
+  return {
+    porBanco: total > 0 ? banco / total : null,
+    faltaParaElAcuerdo: Math.max(0, total * acuerdo - banco),
+    enCero: base.filter((m) => !(Number(m.banco) > 0)).length,
+    meses: base.length,
   }
 }
 

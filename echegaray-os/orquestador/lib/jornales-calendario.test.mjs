@@ -10,9 +10,12 @@ import {
   COLS_CALENDARIO, colCalendario, diasLaborables, expresionDias, MASCARA_FIN_DE_SEMANA,
   formulaVentana, formulaShareEfectivo, formulaGlosaShareEfectivo, formulaControlCalendario,
   formulaBajaNoRegistrada, LINEA_SABADOS, shareEfectivoAnual, MIN_QUINCENAS_SHARE,
-  formulaAcuerdoDeclarado, acuerdoDeclarado,
+  formulaAcuerdoDeclarado, acuerdoDeclarado, formulaAcuerdoMensual, acuerdoMensual,
 } from './jornales-calendario.mjs'
 import { diasHabilesObra } from './jornales-demanda-obras.mjs'
+// El tope de una glosa y el texto que el lector VE adentro de una fórmula: las dos cosas viven en el
+// auditor de patrón, y se importan en vez de copiarse — una copia del criterio se queda atrás.
+import { LARGO_NOTA, textoVisible } from './patron-pestana.mjs'
 
 // LAS QUINCENAS REALES DE 2026, con la columna "Días hábiles" que la planilla JORNALES cargó de
 // verdad (leída del registro de la pestaña viva el 13/08). Es el oráculo: no una opinión sobre qué
@@ -290,8 +293,8 @@ test('la línea del acuerdo DERIVA del share que ya se mide — no calcula un se
   const { valor, glosa } = formulaAcuerdoDeclarado(cols, 116, 130, 16)
   // Deriva de la celda del share: dos fórmulas para el mismo canal se separan el día que una cambia.
   assert.equal(valor, '=IF($B$16="";"";1-$B$16)')
-  assert.match(glosa, /acuerdo 50%/)
-  assert.match(glosa, /quincenas con banco en \$0/)
+  assert.match(glosa, /faltan \$/)
+  assert.match(glosa, /en \$0/)
   // `ΣTOTAL/2` y NUNCA un literal decimal: en es_AR la coma es el decimal y el `;` el separador de
   // argumentos, así que un `0,5` suelto parte la fórmula en dos argumentos.
   assert.doesNotMatch(glosa, /0,5/)
@@ -300,4 +303,59 @@ test('la línea del acuerdo DERIVA del share que ya se mide — no calcula un se
   assert.match(glosa, /"#,##0"/)
   // Y NO SE FABRICA EL 50%: la celda del valor publica lo medido, nunca el acuerdo.
   assert.doesNotMatch(valor, /0,5|\b50\b/)
+})
+
+test('LA GLOSA DEL ACUERDO ENTRA EN LA GRILLA: 78 caracteres desparramaban la fila entera', () => {
+  // ═══ EL DEFECTO, VISTO EN EL PDF DE LA PESTAÑA VIVA (14/08) ═══
+  //
+  // «acuerdo 50% · faltan $39.335.228 por banco · 8 de 14 quincenas con banco en $0» mide 78 y va en
+  // la columna C: `auditarPatron` lo marcó `nota-en-el-medio` (el tope es LARGO_NOTA = 60) y en el PDF
+  // el texto se derramaba sobre las columnas de la derecha, corriendo los encabezados «Dirección» y
+  // «TOTAL» del calendario. Un control que desalinea el cuadro que controla no está terminado.
+  //
+  // Se mide sobre el texto que el lector VE —el literal más largo adentro de la fórmula—, que es la
+  // única forma de cazarlo sin escribir el Sheet: en frío, el valor de una fórmula es la fórmula.
+  const cols = { banco: 'H', total: 'K', hasta: 'B', pagado: 'N' }
+  const largo = (f) => textoVisible(f).length
+  const quincenal = formulaAcuerdoDeclarado(cols, 116, 130, 16)
+  const mensual = formulaAcuerdoMensual({ banco: 'F', pagado: 'C' }, 37, 48, 20)
+  for (const [quien, g] of [['obra', quincenal.glosa], ['oficina', mensual.glosa]]) {
+    assert.ok(largo(g) <= LARGO_NOTA, `la glosa de ${quien} mide ${largo(g)} y el tope es ${LARGO_NOTA}: ${textoVisible(g)}`)
+  }
+  // Lo que se fue es lo que ya dice el rótulo de la columna A, no el dato: los pesos que faltan y los
+  // períodos sin un peso por banco siguen ahí.
+  assert.match(mensual.glosa, /faltan \$/)
+  assert.match(mensual.glosa, /en \$0/)
+})
+
+test('OFICINA MIDE EL MISMO ACUERDO QUE OBRA, sobre la ventana de SU bloque', () => {
+  // El dueño: *"quiero q la tabla de 'oficina' sea igual que la de 'obreros' dado q el acuerdo es el
+  // mismo 50% por banco (recibo de sueldo), 50% efectivo"*. El acuerdo es el mismo, así que el control
+  // es el mismo: la fracción sale del share que ya se mide y la brecha se publica al lado.
+  const { valor, glosa } = formulaAcuerdoMensual({ banco: 'F', pagado: 'C' }, 37, 48, 20)
+  assert.equal(valor, '=IF($B$20="";"";1-$B$20)', 'oficina calcula su propio porcentaje en vez de derivarlo')
+  // LA VENTANA ES LA DE SU BLOQUE: meses con «Pagado» cargado. Oficina no tiene columna «Pagado el»
+  // —se liquida por mes— y exigirle esa marca dejaría el control mudo para siempre.
+  assert.match(glosa, /--\(N\(\$C\$37:\$C\$48\)>0\)/)
+  assert.match(glosa, /\$F\$37:\$F\$48/)
+  assert.doesNotMatch(glosa, /TODAY/, 'oficina no filtra por fecha: su ventana es la del bloque')
+  // Mismo locale y mismo patrón que la línea de obra: `/2` y nunca `0,5`, `TEXT` en US.
+  assert.doesNotMatch(glosa, /0,5/)
+  assert.match(glosa, /"#,##0"/)
+})
+
+test('EL MISMO CRITERIO EN JAVASCRIPT: la brecha mensual se puede afirmar sin leer la celda', () => {
+  // Un test sobre un string prueba que la fórmula dice lo que quisimos escribir, nunca que el número
+  // sale bien. Acá la aritmética se prueba con números.
+  const meses = [
+    { pagado: 1000, banco: 400 }, { pagado: 1000, banco: 0 },
+    { pagado: 2000, banco: 0 }, { pagado: 0, banco: 0 },
+  ]
+  const r = acuerdoMensual(meses)
+  assert.equal(r.meses, 3, 'el mes sin pagar no entra: no hay canal que medir')
+  assert.equal(r.enCero, 2, 'dos meses pagados sin un peso por banco')
+  assert.equal(r.porBanco, 400 / 4000)
+  assert.equal(r.faltaParaElAcuerdo, 4000 / 2 - 400)
+  // SIN UN SOLO MES PAGADO NO SE OPINA. Un 0% sería un número fabricado por una guarda.
+  assert.equal(acuerdoMensual([{ pagado: 0, banco: 0 }]).porBanco, null)
 })

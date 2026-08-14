@@ -5,7 +5,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { copiaHuerfana, residuosDeclarados } from './jornales-residuo.mjs'
+import { copiaHuerfana, residuosDeclarados, candidatasDeBancoOficina } from './jornales-residuo.mjs'
 import { CANDIDATAS } from '../scripts/limpiar-residuo-jornales.mjs'
 
 const MIN = '=IFERROR(MIN(FILTER(Compras!$AD$4:$AD;REGEXMATCH(LOWER(Compras!$K$4:$K&"");"^(jorge echegaray|rodrigo echegaray|jorge corona)$");ISNUMBER(Compras!$AD$4:$AD)));"")'
@@ -71,4 +71,67 @@ test('una celda vacía no se toca ni se cuenta', () => {
   const r = copiaHuerfana(pestanaViva(), { fila: 99, col: 13, tabla: [115, 130] })
   assert.equal(r.gemelo, null)
   assert.match(r.motivo, /vacía/)
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA COLUMNA «Banco» DE OFICINA — el defecto que duplicaba el canal (14/08)
+//
+// Leída la pestaña viva con render FORMULA: mayo–agosto tenían las ventanas del CALENDARIO y
+// diciembre un TOTAL de la propia columna, que la fila de total volvía a sumar. El canal publicaba
+// $5.238.607 contra $2.619.303 reales. Las filas de abajo son las que se leyeron, recortadas.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+const VENTANA = (c) => `=SUMIFS($H$79:$H$90;$E$79:$E$90;">="&$C$${c};$E$79:$E$90;"<"&$C$${c + 1})`
+const BANCO = (a, b) => `=SUM('_J_OFICINA'!W${a}:W${b})`
+
+/** El cuadro de Oficina como estaba: encabezado en 36, doce meses 37..48, total 49, calendario 18..28. */
+function conOficina({ dic = '=SUM(F$36:F$47)' } = {}) {
+  const g = Array.from({ length: 60 }, () => [])
+  g[17] = ['Período', 'Hasta', 'Se paga el', 'Obreros', 'Oficina', 'Dirección', 'TOTAL', 'Efectivo']
+  for (let f = 19; f <= 27; f++) g[f - 1] = ['', '', '', '', '', VENTANA(f), '', '']
+  g[27] = ['⇒ Total a pagar hasta diciembre', '', '', '', '', '', '', '']
+  g[35] = ['Mes', 'Ajuste escalón', 'Pagado', 'Estado', 'Se paga el', 'Banco', 'Adelanto', 'Proyectado']
+  for (let f = 37; f <= 48; f++) g[f - 1] = ['Mes', '', 1000, 'pagado', '', '', '', '']
+  g[36][5] = BANCO(5, 8)      // F37 enero — banco de verdad
+  g[37][5] = BANCO(24, 25)    // F38 febrero — ídem
+  for (let f = 41; f <= 44; f++) g[f - 1][5] = VENTANA(f + 1) // F41:F44 — la ventana del calendario
+  g[47][5] = dic              // F48 diciembre — el total adentro del cuerpo
+  g[48] = ['⇒ Oficina — pagado y por pagar en el año', '', '', '', '', '=SUM(F$37:F$48)', '', '']
+  return g
+}
+
+test('EL TOTAL DUPLICADO: diciembre tenía un SUM de su propia columna y la fila de total lo volvía a sumar', () => {
+  const g = conOficina()
+  const { vaciables, conservadas } = residuosDeclarados(g, candidatasDeBancoOficina(g))
+  const filas = vaciables.map((v) => v.fila)
+  assert.ok(filas.includes(48), 'diciembre sigue con el total adentro de la tabla: el canal se publica al doble')
+  assert.deepEqual(filas, [41, 42, 43, 44, 48],
+    'tienen que salir las cuatro ventanas del calendario y el total de diciembre, y nada más')
+  // EL LADO QUE IMPORTA: el banco de verdad se conserva. Si esto se rompe, el arreglo borra el dato.
+  const sanas = conservadas.map((c) => c.fila)
+  assert.ok(sanas.includes(37) && sanas.includes(38), 'se marcó como residuo un banco leído del espejo')
+  assert.equal(vaciables.find((v) => v.fila === 48).gemelo, 49, 'el gemelo de diciembre es la fila de total')
+})
+
+test('EL ANCLA ES EL ENCABEZADO, NO LA FILA: el bloque se corre y las coordenadas siguen bien', () => {
+  // El propio arreglo mueve el cuadro —entra la línea del acuerdo 50/50 arriba— así que una lista de
+  // coordenadas escrita a mano sería correcta hasta la corrida siguiente, y después borraría la celda
+  // de al lado. Ése es exactamente el modo en que se pierde el trabajo del dueño.
+  const g = conOficina()
+  g.splice(30, 0, ['Por banco — contra el acuerdo 50/50 declarado'])  // el bloque baja un renglón
+  const filas = residuosDeclarados(g, candidatasDeBancoOficina(g)).vaciables.map((v) => v.fila)
+  assert.deepEqual(filas, [42, 43, 44, 45, 49], 'las candidatas no siguieron al bloque cuando se movió')
+})
+
+test('SIN ANCLA NO SE TOCA NADA: falla cerrado', () => {
+  const g = conOficina()
+  g[35] = ['Mes', 'Ajuste escalón', 'Pagado']  // el encabezado ya no es el del cuadro
+  assert.deepEqual(candidatasDeBancoOficina(g), [], 'sin encabezado reconocible tiene que devolver lista vacía')
+})
+
+test('UN BANCO SANO EN TODA LA COLUMNA NO PRODUCE UNA SOLA CANDIDATA VACIABLE', () => {
+  const g = conOficina({ dic: BANCO(90, 93) })
+  for (let f = 41; f <= 44; f++) g[f - 1][5] = BANCO(f * 2, f * 2 + 3)
+  const { vaciables } = residuosDeclarados(g, candidatasDeBancoOficina(g))
+  assert.deepEqual(vaciables, [], 'la limpieza tocaría celdas legítimas de la columna Banco')
 })

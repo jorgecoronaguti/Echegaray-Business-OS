@@ -29,7 +29,7 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { letraCol } from '../lib/preservar-anotaciones.mjs'
-import { residuosDeclarados } from '../lib/jornales-residuo.mjs'
+import { residuosDeclarados, candidatasDeBancoOficina } from '../lib/jornales-residuo.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Jornales por Quincena'
@@ -55,10 +55,11 @@ export const CANDIDATAS = [
 ]
 
 /**
- * CUÁNTAS CELDAS ES CREÍBLE VACIAR EN ESTA PESTAÑA. La lista tiene cinco y está escrita a mano: si
- * alguna vez se probaran más de cinco es porque alguien la amplió sin mirar, y entonces no escribo.
+ * CUÁNTAS CELDAS ES CREÍBLE VACIAR EN ESTA PESTAÑA. Las cinco declaradas a mano más, como mucho, los
+ * doce meses de la columna «Banco» de Oficina. Si alguna vez se probaran más, es que alguien amplió
+ * la lista sin mirar —o que el ancla cayó en otro cuadro— y entonces no escribo.
  */
-const TOPE = CANDIDATAS.length
+const TOPE = CANDIDATAS.length + 12
 
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
@@ -67,7 +68,12 @@ async function main() {
   const grid = await google.readSheetValues(ID, `'${PESTAÑA}'!A1:N${HASTA}`, { render: 'FORMULA' })
     .catch((e) => { throw new Error(`no pude leer "${PESTAÑA}" (${e.message}). NO escribo a ciegas.`) })
 
-  const { vaciables, conservadas } = residuosDeclarados(grid, CANDIDATAS)
+  // LAS DECLARADAS A MANO, MÁS LA COLUMNA «Banco» DE OFICINA UBICADA POR SU ENCABEZADO. Esa columna no
+  // se puede escribir con números de fila: el bloque se corre un renglón cada vez que entra una línea
+  // arriba, y una coordenada vieja borra la celda de al lado. La prueba es la misma para todas — la
+  // cosa que hay en la celda está viva, hoy, en su columna, adentro de otro cuadro.
+  const candidatas = [...CANDIDATAS, ...candidatasDeBancoOficina(grid)]
+  const { vaciables, conservadas } = residuosDeclarados(grid, candidatas)
   for (const c of conservadas) {
     console.log(`  ✋ ${letraCol(c.col)}${c.fila} = "${c.valor}" — ${c.motivo}`)
   }
