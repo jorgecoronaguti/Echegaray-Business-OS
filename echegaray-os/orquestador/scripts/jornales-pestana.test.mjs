@@ -238,6 +238,8 @@ import { parsearAcuerdos, escalonDe, escalonVigenteEn } from '../lib/uocra-acuer
 import { mesesDelMotor, formulaSigmaDelMes } from '../lib/motor-salarial.mjs'
 import { auditarPatron, glosasLargas } from '../lib/patron-pestana.mjs'
 import { contrastarEscala } from '../lib/uocra-paritaria.mjs'
+import { LINEA_DRIVER_OFICINA } from '../lib/oficina-escalon.mjs'
+import { ALERTA } from '../lib/glifos.mjs'
 
 const cinco = (rotulo, [oe, of, mo, ay, se]) => [
   [rotulo, 'Oficial Especializado', 'Hora', String(oe), '', '', String(oe), String(oe)],
@@ -652,7 +654,11 @@ test('UN SOLO DRIVER: obra, OFICINA y DIRECCIÓN se proyectan con el factor de p
 
   // OFICINA: los meses sin cargar toman el factor RELATIVO a su propio mes base (su planilla va
   // atrasada). Sin la división se le aplicaría el aumento acumulado desde antes de su último sueldo.
-  const ofiProy = gm.filas.slice(gm.o0 - 1, gm.oFin).filter((f) => String(f[3]) === 'proyección')
+  // CAMBIO DE CONTRATO (14/08): el «Estado» de un mes proyectado ahora dice además de dónde sale su
+  // aumento (`proyección · Ac.Mayo 2026`, `proyección · ▲ firmado hasta 08/2026`). Se filtra por
+  // prefijo — con la igualdad exacta este test se quedaba con CERO filas y pasaba sin mirar nada, que
+  // es la peor forma de romperlo.
+  const ofiProy = gm.filas.slice(gm.o0 - 1, gm.oFin).filter((f) => String(f[3]).startsWith('proyección'))
   assert.ok(ofiProy.length >= 5, `esperaba meses de oficina proyectados y hay ${ofiProy.length}`)
   // EL FACTOR VIVE EN LA B DESDE EL 14/08 (la G pasó a ser «Adelanto»). El índice sale de acá y no
   // del encabezado a propósito: si mañana se mueve otra vez, este test tiene que ponerse rojo.
@@ -1249,6 +1255,99 @@ test('cada PROYECTADO del cuadro del año sale del bloque de SU grupo, no de una
   assert.equal(String(gm.filas[gm.anio.direccion - 1][cProy]), `=$H$${gm.filas.findIndex((f) => /^⇒ Dirección —/.test(String(f[0]))) + 1}`)
 })
 
+test('OFICINA · CADA MES PROYECTADO DICE DE DÓNDE SALE SU AUMENTO, COMO EL CUADRO DE OBRA', () => {
+  // ═══ EL DEFECTO (14/08) ═══
+  //
+  // El dueño: *"jornales con el cuadro del grupo oficina como la proyeccion de obreros"*. La de
+  // obreros publica mes por mes el origen del factor (`Ac.Mayo 2026` / `proyección`) y su estado
+  // (`✓ acuerdo firmado` / `▲ proyección`). La de oficina publicaba un factor de cuatro decimales y
+  // la palabra "proyección", idéntica para un mes apoyado en un acuerdo FIRMADO y para uno apoyado en
+  // la repetición del último tramo conocido. Y ese número viaja por `OFICINA_PROYECTADO` a CAJA.
+  //
+  // La réplica de la fixture tiene acuerdo hasta AGOSTO y la planilla de oficina cierra el 31/07, así
+  // que el mes base es JULIO: agosto se apoya en un tramo firmado y de septiembre en adelante la
+  // cadena se corta.
+  const estado = (mes) => String(gm.filas[gm.o0 - 1 + mes - 1][3])
+  assert.equal(estado(8), 'proyección · Ac.Mayo 2026', 'agosto tiene acuerdo firmado y se leía igual que diciembre')
+  // ═══ Y LA CADENA A MEDIO FIRMAR DEGRADA PARCIAL, NUNCA SE APAGA ═══
+  //
+  // Es la trampa que costó $29.960.870 en el cuadro de obra el mismo día: la Σ del convenio devuelve
+  // `""` ENTERA si a una sola categoría le falta el básico, el término `convenio` del MAX quedó en
+  // cero y la proyección cayó a la demanda de obra sin que nada se pusiera en rojo. Acá el
+  // equivalente sería decir "no sé" desde septiembre. Se dice HASTA DÓNDE hay acuerdo.
+  for (const mes of [9, 10, 11, 12]) {
+    assert.equal(estado(mes), `proyección · ${ALERTA} firmado hasta 08/2026`,
+      `${mes}: un mes sin acuerdo se lee igual que uno firmado`)
+    assert.notEqual(estado(mes), 'proyección', 'volvió a ser mudo')
+    assert.notEqual(estado(mes), '', 'se apagó en silencio, que es peor que ser mudo')
+  }
+  // UN MES PAGADO NO ARRASTRA ESCALÓN: es un hecho y no tiene proyección adentro.
+  assert.equal(estado(6), 'pagado')
+  assert.equal(estado(7), 'pagado', 'el mes base es un hecho, no una proyección')
+  // Y UN MES ANTERIOR AL BASE QUE LA PLANILLA NUNCA CARGÓ DECLARA SU OTRO CRITERIO: su importe es la
+  // base DEFLACTADA, no ajustada hacia adelante. "proyección" a secas se leía como un olvido de carga.
+  assert.equal(estado(3), 'proyección · antes del mes base')
+  // Y NINGUNO SE PASA DEL TOPE DE LA GRILLA: la columna «Estado» está en el MEDIO, y ahí un texto
+  // largo desparrama la fila (regla `nota-en-el-medio` de auditarPatron).
+  for (let mes = 1; mes <= 12; mes++) {
+    assert.ok(estado(mes).length <= 60, `${mes}: "${estado(mes)}" mide ${estado(mes).length}`)
+  }
+})
+
+test('OFICINA · EL RIGOR NO SE PAGA CON UNA COLUMNA: OFICINA_PROYECTADO no se movió', () => {
+  // El rango alimenta CAJA y los dos cash flows. Publicar el origen del aumento tentaba a agregar las
+  // dos columnas que usa el cuadro 4.2 («De dónde sale» y «Estado»), y eso corría «Proyectado» de la
+  // H: los consumidores seguirían leyendo el nombre y devolverían otra cosa, sin dar un solo error.
+  const d = rangosDeJornales(gm).find((x) => x.nombre === 'OFICINA_PROYECTADO')
+  assert.ok(d, 'se cayó OFICINA_PROYECTADO: CAJA y los dos cash flows devuelven 0 sin avisar')
+  assert.equal(d.ancla.texto, 'Proyectado', 'el rango dejó de apuntar a la columna del proyectado')
+  assert.equal(d.c0, 7, 'el proyectado se corrió de la H: los consumidores leen otra columna')
+  assert.equal(d.c1, 7)
+  // Y EL ENCABEZADO SIGUE MIDIENDO OCHO. Dos anchos de grilla en el mismo tab es el defecto que el
+  // auditor de patrón rechaza y que el dueño llama "descuadrado".
+  // El relleno de la fila es el centinela VACIO hasta el ancho físico de la pestaña: lo que se mide es
+  // cuántos ENCABEZADOS hay, que es el ancho de la grilla que el lector ve.
+  const enc = gm.filas[gm.o0 - 2].filter(tiene)
+  assert.equal(enc.length, 8, `el bloque de oficina dejó de medir 8: ${enc.join(' · ')}`)
+  assert.deepEqual(enc,
+    ['Mes', 'Ajuste escalón', 'Pagado', 'Estado', 'Se paga el', 'Banco', 'Adelanto', 'Proyectado'])
+})
+
+test('OFICINA · EL PISO: hacia adelante el sueldo nominal no baja, hacia atrás sí', () => {
+  // ═══ POR QUÉ HAY PISO Y CUÁL ES (14/08) ═══
+  //
+  // Obreros tiene el piso del convenio. Buscado en todo el repositorio: no hay escala publicada para
+  // el personal administrativo —las cinco categorías de la réplica son de obra—, así que Oficina NO
+  // tiene piso de convenio y la pestaña lo declara en vez de dejar el hueco mudo.
+  //
+  // El que sí existe es aritmético: `base × factor` con el factor viniendo de una celda que puede dar
+  // menos de 1 (el parámetro PARITARIA_UOCRA_PROYECTADA es del dueño y es editable) o no ser un
+  // número (y entonces la multiplicación cruda da CERO, que se lee como un mes sin sueldo y viaja a
+  // la caja). Sin `MAX(1;…)` este test se pone rojo.
+  const proy = (mes) => String(gm.filas[gm.o0 - 1 + mes - 1][7])
+  // El mes base de la fixture es JULIO (la planilla cierra el 31/07). De agosto a diciembre, con piso.
+  for (const mes of [8, 9, 10, 11, 12]) {
+    assert.match(proy(mes), /MAX\(1;B\d+\)/, `${mes}: la proyección puede caer por debajo del último mes pagado`)
+  }
+  // ANTES DEL MES BASE NO HAY PISO, y no es un olvido: un mes que la planilla nunca cargó se proyecta
+  // deflactando la base, y ahí un factor menor que 1 es lo correcto —en marzo se cobraba menos—.
+  for (const mes of [1, 2, 3, 4, 5]) {
+    assert.doesNotMatch(proy(mes), /MAX\(1;/, `${mes}: un mes anterior al base quedó sobreestimado por el piso`)
+  }
+  // `MAX(1;…)` y NUNCA `MAX(1,0;…)`: un literal decimal escrito por API viaja en el locale es_AR del
+  // archivo, donde la coma separa argumentos, y la celda queda en #ERROR.
+  for (let mes = 1; mes <= 12; mes++) assert.doesNotMatch(proy(mes), /\d,\d/, `${mes}: decimal con coma dentro de la fórmula`)
+})
+
+test('OFICINA · el driver se declara en la pestaña, sin meter lo gremial en el medio', () => {
+  // Requisito del dueño por partida doble: que el número diga por qué sube (si no está bajo el
+  // convenio UOCRA, cuál es su driver), y que lo gremial viva junto y debajo de las tres nóminas.
+  const enBloque = gm.filas.slice(gm.o0 - 5, gm.o0 - 1).map((f) => String(f[0] ?? ''))
+  const linea = enBloque.find((c) => c.includes(LINEA_DRIVER_OFICINA))
+  assert.ok(linea, `el bloque de oficina no declara su driver ni su piso: ${enBloque.join(' | ')}`)
+  assert.ok(linea.length <= 60, `la línea mide ${linea.length}: la pestaña vuelve a la prosa`)
+})
+
 test('UN MES DE OFICINA A MEDIO CARGAR NO PUEDE SER LA BASE DE LOS QUE SIGUEN', () => {
   // ═══ EL DEFECTO, MEDIDO EN LA PESTAÑA VIVA (13/08) ═══
   // La planilla llegaba al 15/08 y agosto figuraba "pagado $814.500" —media quincena—. La base de la
@@ -1264,15 +1363,20 @@ test('UN MES DE OFICINA A MEDIO CARGAR NO PUEDE SER LA BASE DE LOS QUE SIGUEN', 
   })
   const filaDe = (mes) => g2.filas[g2.o0 - 1 + mes - 1]
   // Julio está cerrado; agosto está a medias y lo dice.
+  //
+  // CAMBIO DE CONTRATO (14/08): el «Estado» de un mes NO cerrado dice además de dónde sale su aumento
+  // (`parcial · Ac.Mayo 2026`), así que la igualdad exacta pasó a prefijo. Lo que se mide sigue siendo
+  // lo mismo: que agosto no se declare pagado con la planilla al 15.
   assert.equal(String(filaDe(7)[3]), 'pagado')
-  assert.equal(String(filaDe(8)[3]), 'parcial', 'agosto sigue declarándose pagado con la planilla al 15')
+  assert.ok(String(filaDe(8)[3]).startsWith('parcial'), 'agosto sigue declarándose pagado con la planilla al 15')
   const rJulio = g2.o0 + 6
-  // La base de TODOS los meses proyectados es julio —el último CERRADO—, no agosto.
+  // La base de TODOS los meses proyectados es julio —el último CERRADO—, no agosto. Y desde el 14/08
+  // el factor va con su piso: hacia adelante un sueldo nominal no baja (ver lib/oficina-escalon.mjs).
   for (const mes of [9, 10, 11, 12]) {
-    assert.match(String(filaDe(mes)[7]), new RegExp(`^=\\$C\\$${rJulio}\\*B`), `${mes}: la base no es el último mes cerrado`)
+    assert.match(String(filaDe(mes)[7]), new RegExp(`^=\\$C\\$${rJulio}\\*MAX\\(1;B`), `${mes}: la base no es el último mes cerrado`)
   }
   // Y agosto proyecta sólo lo que le falta, sin perder lo que ya se pagó ni generar un negativo.
-  assert.equal(String(filaDe(8)[7]), `=MAX(0;$C$${rJulio}*B${g2.o0 + 7}-N(C${g2.o0 + 7}))`)
+  assert.equal(String(filaDe(8)[7]), `=MAX(0;$C$${rJulio}*MAX(1;B${g2.o0 + 7})-N(C${g2.o0 + 7}))`)
   // El ajuste de escalón del mes parcial también se mide desde julio: con la base vieja, agosto
   // recibía factor 1 sobre un mes que ya no era el suyo.
   assert.match(String(filaDe(8)[1]), /MATCH\(EOMONTH\(DATE\(2026;8;1\);0\)/)

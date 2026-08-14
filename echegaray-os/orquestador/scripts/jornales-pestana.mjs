@@ -119,6 +119,9 @@ import {
 const SIN_CANAL = '—'
 // EL PISO DEL CONVENIO: contra qué categoría se mide cada persona y si la proyección lo cubre.
 import { formulaControlPiso } from '../lib/jornales-piso-uocra.mjs'
+import {
+  LINEA_DRIVER_OFICINA, estadoOficinaDelMes, formulaProyectadoOficina, origenDelEscalon, periodoDe,
+} from '../lib/oficina-escalon.mjs'
 import { VERIFICADA_EL, VIGENCIA_HASTA, contrastarEscala, tramoDe } from '../lib/uocra-paritaria.mjs'
 // El otro lado del MAX de 1.3: la demanda de las obras vendidas. Toda la lógica vive en la lib.
 import { claveQuincena, formulaProyectadoQuincena, glosaDemanda } from '../lib/jornales-demanda-obras.mjs'
@@ -751,6 +754,17 @@ export function grilla({
   push([sub(ultimoDiaOfi
     ? `Planilla Oficina al ${fecha(ultimoDiaOfi)} — ver «Estado» por mes`
     : 'Planilla Oficina sin meses cargados — todo proyección')])
+  // ═══ EL DRIVER Y EL PISO, DICHOS EN LA PESTAÑA (14/08) ═══
+  //
+  // El dueño: *"el cuadro del grupo oficina como la proyección de obreros"*. Lo que hace rigurosa a la
+  // de obreros no es la grilla —ésa es quincenal y la de oficina es mensual, y así se queda— sino que
+  // declara de dónde sale su aumento y contra qué piso se mide. Oficina no declaraba ninguna de las
+  // dos: multiplicaba por un factor y listo.
+  //
+  // Y LA RESPUESTA DEL PISO ES QUE NO TIENE. La réplica publica cinco categorías, las cinco de obra:
+  // no hay escala de administración en ninguna fuente del OS. Inventarle un piso —el mínimo, o la
+  // categoría de obra más baja— sería fabricar un dato. El porqué completo, en lib/oficina-escalon.mjs.
+  push([sub(LINEA_DRIVER_OFICINA)])
   // LAS DOS LÍNEAS DE CANAL DE OFICINA SE FUERON CON LAS DE OBRA (14/08), por la misma razón y en el
   // mismo movimiento: el acuerdo es el mismo 50/50, así que medir el histórico y publicar la brecha
   // pone dos números para un canal que ya está decidido. El bloque conserva su columna «Banco», que es
@@ -910,7 +924,25 @@ export function grilla({
     // TRES ESTADOS, NO DOS. "parcial" es el mes que la planilla empezó a cargar y todavía no cerró:
     // lo que muestra en "Pagado" es un hecho y lo que falta va en "Proyectado". Llamarlo "pagado"
     // —como hacía este cuadro— es lo que dejó a la oficina proyectada cuatro veces por debajo.
-    const estado = cerradoOfi(i) ? 'pagado' : (bs.length ? 'parcial' : 'proyección')
+    // ═══ Y EL ESTADO DICE ADEMÁS CUÁN FIRME ES EL AUMENTO QUE TIENE ADENTRO (14/08) ═══
+    //
+    // Un mes proyectado sobre un acuerdo FIRMADO y uno proyectado repitiendo el último tramo conocido
+    // se veían idénticos: los dos decían "proyección" y los dos mostraban un factor de cuatro
+    // decimales. Para el que decide no son lo mismo, y el número viaja por `OFICINA_PROYECTADO` hasta
+    // CAJA y los dos cash flows.
+    //
+    // Es la MISMA información que el cuadro 4.2 publica para obra en sus columnas «De dónde sale» y
+    // «Estado», leída de la MISMA fuente (`escalones`). No se recalcula: se cita el mismo origen.
+    // Acá entra en una sola columna porque el ancho de la pestaña es 8 y no se negocia.
+    const origen = origenDelEscalon({
+      escalones,
+      periodoBase: iBaseOfi === null ? null : periodoDe(AÑO, iBaseOfi + 1),
+      periodoMes: periodoDe(AÑO, i + 1),
+    })
+    const estado = estadoOficinaDelMes({
+      pago: cerradoOfi(i) ? 'pagado' : (bs.length ? 'parcial' : 'proyección'),
+      origen,
+    })
     push([nombre, VACIO, pagado, estado, pago, banco, adelanto, VACIO]) // B y H se completan abajo
   })
   const oFin = o0 + MESES.length - 1
@@ -1378,11 +1410,16 @@ export function grilla({
     // Sin un solo mes cerrado no hay de dónde proyectar: la celda queda vacía y la línea de arriba
     // dice por qué. Un número inventado acá viaja por rango con nombre hasta el cash flow.
     if (rBaseOfi === null) { filas[r - 1][7] = VACIO; return }
-    // El mes PARCIAL proyecta sólo lo que falta: base ajustada MENOS lo que ya se pagó. `MAX(0;…)`
-    // porque un mes cargado por encima de la base no genera un negativo — eso sería un reintegro.
-    filas[r - 1][7] = conBloque(i)
-      ? `=MAX(0;$C$${rBaseOfi}*B${r}-N(C${r}))`
-      : `=$C$${rBaseOfi}*B${r}`
+    // EL PISO, SÓLO HACIA ADELANTE (14/08). Un sueldo nominal no baja: si el escalón de un mes futuro
+    // viniera para abajo —ya pasó, es el defecto B3— la proyección publicaría para diciembre menos de
+    // lo que se pagó en el último mes cerrado. Hacia ATRÁS no se aplica: un mes anterior al base que
+    // la planilla nunca cargó se deflacta, y ahí un factor menor que 1 es lo correcto.
+    // La fila lo dice en su «Estado» (`▲ al piso`): un recorte silencioso taparía el defecto que lo
+    // hizo falta. La aritmética y el porqué, en lib/oficina-escalon.mjs.
+    filas[r - 1][7] = formulaProyectadoOficina({
+      celdaBase: `$C$${rBaseOfi}`, celdaFactor: `B${r}`, celdaPagado: `C${r}`,
+      conBloque: conBloque(i), conPiso: iBaseOfi !== null && i > iBaseOfi,
+    })
   })
   // ═══ DIRECCIÓN: EL ANCLA ES EL MES DEL IMPORTE, NO EL MES DEL CALENDARIO (14/08) ═══
   //

@@ -177,6 +177,21 @@ export function escalonDe(escalones = [], periodo) {
   return escalones.find((e) => e.periodo === periodo) ?? null
 }
 
+/**
+ * NÚCLEO PURO: el rótulo del acuerdo, acortado para entrar en una celda de grilla.
+ *
+ * "Acuerdo Mayo 2026" mide 17 caracteres y la columna «De dónde sale» tiene 112px: el prefijo
+ * "Acuerdo " se repite en TODAS las filas y no distingue ninguna de las otras. Vive acá —donde nace
+ * `escalon.acuerdo`— porque desde el 14/08 lo citan dos cuadros: el escalón de obra (4.2, columna
+ * «De dónde sale») y el estado por mes de Oficina. Dos `.replace()` iguales en dos archivos envejecen
+ * distinto: el día que el parser cambie el prefijo, uno de los dos cuadros lo dice mal y nadie se
+ * entera, porque los dos siguen mostrando un texto plausible.
+ */
+export function rotuloDeAcuerdo(acuerdo, tope = 19) {
+  const t = String(acuerdo ?? '').replace(/\s+/g, ' ').trim().replace(/^Acuerdo\s+/i, 'Ac.')
+  return t.slice(0, tope)
+}
+
 /** El escalón publicado más nuevo. */
 export function ultimoEscalon(escalones = []) {
   return escalones.slice().sort((a, b) => a.periodo.localeCompare(b.periodo)).pop() ?? null
