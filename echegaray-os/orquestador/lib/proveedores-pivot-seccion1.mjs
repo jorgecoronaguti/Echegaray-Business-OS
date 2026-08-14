@@ -32,6 +32,7 @@
 //    único total es el gran total del pie, que es el que se controla contra el titular.
 
 import { MONEDA_CUERPO } from './formato-statement.mjs'
+import { TITULO_DE_SECCION } from './proveedores-colchon.mjs'
 
 /** Las columnas de Compras por su offset dentro del source (que arranca en A). */
 // `obra: 9` es "Cliente / Asignación" (J), que es donde vive LA ESTRELLA / MESSINA / San Francisco.
@@ -518,8 +519,16 @@ export function geometriaDeLaSeccion(filas = []) {
   const colA = (i) => txt((filas[i] ?? [])[0])
   const iTitulo = filas.findIndex((_, i) => /^1\s*[·.\-]/.test(colA(i)) && /QUE SE DEBE/.test(colA(i)))
   if (iTitulo < 0) throw new Error('no encontré el título "1 · QUÉ SE DEBE Y CUÁNDO": la pestaña cambió de forma, no hay plan')
-  const iLimite = filas.findIndex((_, i) => i > iTitulo && /^2\s*[·.\-]/.test(colA(i)))
-  if (iLimite < 0) throw new Error('no encontré el título de la sección 2: sin límite no puedo reservar filas sin pisar lo de abajo')
+  // ═══ EL LÍMITE ES "LA SECCIÓN QUE SIGUE", NO "LA SECCIÓN 2" (14/08) ═══
+  //
+  // Estaba anclado a `/^2\s*[·.\-]/`. Anclar al NÚMERO de la sección de al lado es anclar en algo que
+  // no es mío y que se mueve: el día que se intercala una sección nueva —"2 · QUÉ SALE CADA DÍA"— la
+  // que antes era la 2 pasa a ser la 3, y entre que el sembrador la renumera y el bloque nuevo se
+  // escribe, esta búsqueda no encuentra ningún "2 ·" y la sección 1 entera se frena. Frenarse está
+  // bien; frenarse por un número ajeno es frenarse de gusto. Lo que no se mueve es que abajo empieza
+  // OTRA sección, y eso ya lo sabe reconocer `TITULO_DE_SECCION`.
+  const iLimite = filas.findIndex((_, i) => i > iTitulo && TITULO_DE_SECCION.test(colA(i)))
+  if (iLimite < 0) throw new Error('no encontré el título de la sección que sigue: sin límite no puedo reservar filas sin pisar lo de abajo')
   // La PRIMERA fila de rótulos después del título, con AL MENOS DOS columnas.
   //
   // Exigía cuatro. El cuadro de totales por proveedor tiene tres (proveedor · se le debe · facturas),

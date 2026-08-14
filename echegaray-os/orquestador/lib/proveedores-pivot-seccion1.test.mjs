@@ -246,9 +246,20 @@ test('la misma geometría sirve para el bloque de fórmulas viejo', () => {
   assert.equal(geometriaDeLaSeccion(conBloque).filaEncabezado, 4)
 })
 
-test('sin el título de la sección 2 no hay plan: no se escribe a ciegas', () => {
+test('sin el título de la sección que sigue no hay plan: no se escribe a ciegas', () => {
   const sinLimite = [['1 · QUÉ SE DEBE Y CUÁNDO'], ['Proveedor', 'a', 'b', 'c']]
-  assert.throws(() => geometriaDeLaSeccion(sinLimite), /sección 2/)
+  assert.throws(() => geometriaDeLaSeccion(sinLimite), /sección que sigue/)
+})
+
+test('el límite es la sección que SIGUE, no "la 2": intercalar una sección no frena la sección 1', () => {
+  // Estaba anclado a `/^2 ·/`. El día que se intercaló "2 · QUÉ SALE CADA DÍA", la cuenta corriente
+  // pasó a ser la 3 y esta búsqueda dejaba de encontrar su límite: la sección 1 entera se frenaba.
+  const conTres = [
+    ['1 · QUÉ SE DEBE Y CUÁNDO'], [], ['✓ cierra'],
+    ['Proveedor', 'Se le debe', 'Vence', 'Qué hacer'], ['Hormiserv', '1', '2', '3'],
+    ['3 · CUENTA CORRIENTE POR PROVEEDOR'],
+  ]
+  assert.equal(geometriaDeLaSeccion(conTres).filaLimite, 6)
 })
 
 test('SIN AGUJEROS · el valor es un SUM, que nunca puede quedar vacío', () => {

@@ -8,7 +8,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { elegirTestigo, anclaDelRango, testigoDeLote, sirveDeTestigo } from './aterrizaje-escritura.mjs'
+import { elegirTestigo, anclaDelRango, testigoDeLote, sirveDeTestigo, elegirTestigos, testigosDeLote } from './aterrizaje-escritura.mjs'
 
 test('EL CASO REAL: el testigo del lote A201 se busca en B202, no en A201', () => {
   // Reproduce las filas 201-203 del espejo de JORNALES tal como salieron del origen.
@@ -61,4 +61,39 @@ test('cuando el ancla no se puede calcular, se cae al rango entero (el comportam
   assert.equal(anclaDelRango('MiRangoConNombre'), null)
   const t = testigoDeLote('Caja!A:C', [['saldo declarado x extracto']])
   assert.deepEqual(t, { celda: 'Caja!A:C', texto: 'saldo declarado x extracto', exacta: false })
+})
+
+// ═══ UN TESTIGO NO ALCANZA PARA UN BLOQUE (14/08/2026) ═══
+//
+// EL DEFECTO. La guarda de aterrizaje miraba UNA celda por lote: la primera de texto plano, que en un
+// bloque es el título. En "Proveedores" son 106 filas x 16 columnas ⇒ verificaba 1 celda y daba por
+// buenas 1.695. Medido: el título aterrizaba, el cuerpo no siempre, y en la pestaña convivían filas de
+// la corrida nueva con rótulos que el generador dejó de producir el 04/08. La guarda decía que sí
+// porque miraba justo donde nunca fallaba — un control que no puede fallar no controla nada.
+test('EL DEFECTO · los testigos se reparten por la matriz, no se toman los primeros', () => {
+  // 40 filas de texto: si tomara los primeros N, todos caerían en la cabecera.
+  const values = Array.from({ length: 40 }, (_, i) => [`fila ${String.fromCharCode(97 + (i % 26))}${i}`])
+  const t = elegirTestigos(values, 5)
+  assert.equal(t.length, 5)
+  assert.equal(t[0].fila, 0, 'el primero siempre entra')
+  assert.equal(t[t.length - 1].fila, 39, 'y el último también: es donde se corta un lote a medio aterrizar')
+  const filas = t.map((x) => x.fila)
+  assert.deepEqual(filas, [...filas].sort((a, b) => a - b), 'vienen en orden')
+  assert.ok(filas[2] > 10 && filas[2] < 30, 'el del medio mira el cuerpo, no la cabecera')
+})
+
+test('testigosDeLote resuelve las celdas y el rectángulo que las cubre', () => {
+  const { celdas, rango } = testigosDeLote('Proveedores!A121', [['Notas de crédito'], ['Proveedor'], ['Alumetal']])
+  assert.equal(celdas.length, 3)
+  assert.equal(celdas[0].celda, 'Proveedores!A121')
+  assert.equal(celdas[2].celda, 'Proveedores!A123')
+  assert.equal(rango, 'Proveedores!A121:A123', 'una sola lectura cubre a todos: no gasta cuota extra')
+})
+
+test('sin ancla calculable no se inventa un testigo: no verificar es mejor que mentir', () => {
+  assert.deepEqual(testigosDeLote('Proveedores', [['hola']]), { celdas: [], rango: null })
+})
+
+test('un lote sin texto plano no se verifica (números y fórmulas vuelven transformados)', () => {
+  assert.deepEqual(elegirTestigos([[1234], ['=SUM(A1:A2)'], ['$45.000']]), [])
 })

@@ -11,10 +11,10 @@ import {
  *   13 ✓ el aging y el medio de pago dan el mismo total   ← lo último del encabezado
  *   14 1 · QUÉ SE DEBE Y CUÁNDO
  *   15 (aire)   16 el aviso de desfasaje   17 rótulos   18.. cuerpo de la dinámica
- *   35 2 · CUENTA CORRIENTE POR PROVEEDOR
+ *   35 3 · CON QUIÉN SE GASTA
  *   36 rótulos  37.. cuerpo
  */
-function pestana({ sinTitulo1 = false, sinTitulo2 = false, sinRotulos2 = false, numero2 = 2,
+function pestana({ sinTitulo1 = false, sinTitulo2 = false, sinRotulos2 = false, numero2 = 3,
   titulo2 = 'CON QUIÉN SE GASTA' } = {}) {
   const f = Array.from({ length: 40 }, () => [''])
   f[0] = ['Proveedores']
@@ -41,7 +41,9 @@ describe('tituloDeSeccion', () => {
     // CAMBIO DE CONTRATO (14/08): el título decía "CUENTA CORRIENTE POR PROVEEDOR" y esa sección no
     // es una cuenta corriente — no tiene debe, haber ni saldo, tiene "Comprado 2026" y la cantidad
     // de comprobantes. El nombre viejo queda vivo como alias; lo cubre el test del renombre.
-    assert.equal(tituloDeSeccion('cuentaCorriente'), '2 · CON QUIÉN SE GASTA')
+    // Y pasó de la 2 a la 3: "QUÉ SALE CADA DÍA" se intercaló antes. El número sale del ORDEN
+    // declarado, no del texto, así que las dos cosas se mueven solas.
+    assert.equal(tituloDeSeccion('cuentaCorriente'), '3 · CON QUIÉN SE GASTA')
     assert.equal(tituloCompleto('LO QUE SEA', 7), '7 · LO QUE SEA')
   })
 
@@ -63,7 +65,7 @@ describe('planDeSiembra', () => {
     const cc = de(p, 'cuentaCorriente')
     assert.equal(cc.estado, 'renumerado', 'el título viejo tiene que reconocerse y reescribirse')
     assert.equal(cc.fila, 35, 'y en SU fila, la que ya ocupaba')
-    assert.equal(cc.texto, '2 · CON QUIÉN SE GASTA')
+    assert.equal(cc.texto, '3 · CON QUIÉN SE GASTA')
     assert.ok(aEscribir(p).some((x) => x.clave === 'cuentaCorriente'), 'tiene que quedar por escribir')
   })
 
@@ -80,11 +82,11 @@ describe('planDeSiembra', () => {
   })
 
   it('EL DEFECTO: si el dueño borra el título de la sección 2, se repone en SU fila', () => {
-    // Ésta es la celda cuyo borrado congelaba la sección: `geometria` la busca por "^2 ·" y aborta.
+    // Ésta es la celda cuyo borrado congelaba la sección: `geometria` la busca como "la sección que sigue" y aborta.
     const p = de(plan({ sinTitulo2: true }), 'cuentaCorriente')
     assert.equal(p.estado, 'siembra')
     assert.equal(p.fila, 35, 'la fila de rótulos menos 1: el contrato es título · rótulos')
-    assert.equal(p.texto, '2 · CON QUIÉN SE GASTA')
+    assert.equal(p.texto, '3 · CON QUIÉN SE GASTA')
   })
 
   it('EL DEFECTO: y lo mismo con la sección 1, que tiene aire y aviso entre medio', () => {
@@ -112,12 +114,12 @@ describe('planDeSiembra', () => {
     const p = de(plan({ numero2: 7 }), 'cuentaCorriente')
     assert.equal(p.estado, 'renumerado')
     assert.equal(p.fila, 35)
-    assert.equal(p.texto, '2 · CON QUIÉN SE GASTA')
+    assert.equal(p.texto, '3 · CON QUIÉN SE GASTA')
   })
 
   it('los acentos y las mayúsculas no lo hacen escribir de nuevo sobre un título que ya está', () => {
     const f = pestana()
-    f[34] = ['2 · Con Quién se Gasta']
+    f[34] = ['3 · Con Quién se Gasta']
     assert.equal(de(planDeSiembra({ filas: f, numero: nSeccion }), 'cuentaCorriente').estado, 'presente')
   })
 
