@@ -196,6 +196,15 @@ test('el generador emite las bajas en CADA corrida: un nombre que ya no se reapu
     'sin el deleteNamedRange, el nombre retirado se queda para siempre donde quedó — hoy, sobre un CUIT')
 })
 
+test('las bajas se emiten ANTES del skip: si dependen de haber escrito, no corren el día que importa', () => {
+  // Que estos diez no los cite nadie es un hecho del archivo, no de la corrida. Adentro del `else`
+  // el arreglo tendría la misma disponibilidad que el defecto: ninguna, si la pestaña se saltea.
+  const iBajas = SRC.indexOf('retirar([...NOMBRES_ARCA_RETIRADOS]')
+  const iSkip = SRC.indexOf('const hojaArca = escritas.find')
+  assert.ok(iBajas > 0 && iSkip > 0)
+  assert.ok(iBajas < iSkip, 'el retiro tiene que correr aunque "Proveedores" quede fuera de la corrida')
+})
+
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 // UNA LÍNEA QUE NO SE EMITE NO DEJA SU NOMBRE DONDE ESTABA, Y LA CORRIDA NO SALE EN VERDE
 // ═══════════════════════════════════════════════════════════════════════════════════════════════

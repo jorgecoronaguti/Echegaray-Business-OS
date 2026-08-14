@@ -1901,6 +1901,23 @@ async function main() {
   // un rango con nombre apuntando a basura cuenta como defecto igual que una celda en `#REF!`: las
   // dos hacen que otra pestaña muestre un número equivocado sin dar error.
   let err = 0
+
+  // ═══ EL RETIRO NO DEPENDE DE HABER ESCRITO LA PESTAÑA, Y POR ESO VA ANTES DEL SKIP ═══
+  //
+  // Que estos diez nombres no los cite ninguna fórmula del libro es un hecho del ARCHIVO, no de esta
+  // corrida: vale igual si "Proveedores" se salteó por un candado, por la firma o por --solo. Adentro
+  // del `else` el arreglo tendría exactamente la disponibilidad del defecto que viene a cerrar —
+  // ninguna, si la pestaña se saltea todos los días, que es justo lo que venía pasando.
+  //
+  // Y es lo ÚNICO seguro de hacer con la pestaña salteada: borrar un nombre no escribe una celda. Lo
+  // que sí depende de la escritura —reapuntar los que quedan— sigue adentro, contra la grilla escrita.
+  const bajas = retirar([...NOMBRES_ARCA_RETIRADOS], await google.getNamedRanges(ID).catch(() => []))
+  if (bajas.length) {
+    await google.spreadsheetBatchUpdate(ID, bajas)
+    console.log(`  🗑 ${bajas.length} rango(s) con nombre de ARCA retirados: ninguna fórmula del libro los citaba `
+      + 'y vivían sobre la tabla de comprobantes faltantes. El cuadro los sigue mostrando en la pestaña.')
+  }
+
   const hojaArca = escritas.find((e) => e.titulo === NOMBRES.proveedores)
   if (!hojaArca) {
     console.log(`  ⏭ "${NOMBRES.proveedores}" no se escribió en esta corrida: no toco sus grupos +/- ni sus rangos con nombre. La geometría de la pestaña sigue siendo la de su última escritura, que es lo correcto.`)
@@ -1999,18 +2016,6 @@ async function main() {
     if (faltanSinNombre.length) {
       console.log(`  ○ ${faltanSinNombre.length} línea(s) del bloque ARCA no están en la grilla que escribí `
         + `(ninguna publica un rango con nombre): ${faltanSinNombre.join(' · ')}`)
-    }
-    // ═══ LOS QUE SE RETIRAN, ANTES DE PUBLICAR LOS QUE QUEDAN ═══
-    //
-    // Se borran PRIMERO por una razón de orden: `publicar` relee `getNamedRanges` para decidir entre
-    // crear y actualizar, y un nombre que se va no tiene por qué figurar en esa foto. Y se hace en
-    // cada corrida, no una vez a mano: el que ya no existe se descarta solo, así que repetirlo no
-    // cuesta nada y garantiza que un archivo restaurado de una copia vieja se limpie solo.
-    const bajas = retirar([...NOMBRES_ARCA_RETIRADOS], await google.getNamedRanges(ID).catch(() => []))
-    if (bajas.length) {
-      await google.spreadsheetBatchUpdate(ID, bajas)
-      console.log(`  🗑 ${bajas.length} rango(s) con nombre de ARCA retirados: ninguna fórmula del libro los citaba `
-        + 'y vivían sobre la tabla de comprobantes faltantes. El cuadro los sigue mostrando en la pestaña.')
     }
     const nombres = await publicar(google, ID, hojaArca.sheetId, destinosArca, { titulo: NOMBRES.proveedores })
     console.log(`  ${nombres.nombres} rangos con nombre publicados: el Cash Flow los referencia en vez de copiarlos`
