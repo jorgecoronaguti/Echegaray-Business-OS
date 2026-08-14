@@ -123,3 +123,29 @@ export function bloqueControlArca({ titulo, rubros, fila0 }) {
 
 /** Cuántas filas ocupa el bloque. Quien lo inserta necesita saberlo ANTES de armar la grilla. */
 export const ALTO_BLOQUE = 9
+
+/**
+ * QUÉ UNIDAD TIENE CADA FILA DEL BLOQUE — declarado acá, aplicado por las tres pestañas.
+ *
+ * ═══ EL DEFECTO (14/08/2026) ═══
+ *
+ * `Materiales!B52` mostraba **"$1"**. La fórmula estaba perfecta —0,6614, el 66,1% de cobertura
+ * fiscal— y la celda tenía formato MONEDA, heredado de la pasada que pinta la columna B entera.
+ * Redondeado a pesos, un 0,66 se dibuja como "$1": el número correcto, ilegible. Estructura y
+ * Recurrentes ya lo aplicaban bien, pero con los desplazamientos escritos a mano (`arca0 + 5`,
+ * `arca0 + 6`, `arca0 + 7`) en cada script. Tres copias de un número que depende del ORDEN de las
+ * filas de este archivo: mover una línea del bloque las desincroniza a las tres y ninguna grita.
+ *
+ * Acá vive el orden, y `control-arca-bloque.test.mjs` lo compara contra los rótulos que emite
+ * `bloqueControlArca`: si alguien reordena el bloque, el test se pone rojo antes que la pantalla.
+ *
+ * El valor NUNCA se toca — la cobertura sigue siendo la fracción que devuelve la división. Lo que se
+ * corrige es cómo se dibuja, igual que con las fechas-serial del Calendario.
+ */
+export const FILA_BLOQUE = Object.freeze({
+  titulo: 0, nota: 1, ventana: 2, universo: 3, conRespaldo: 4, sinRespaldo: 5,
+  cobertura: 6, global: 7, veredicto: 8,
+})
+
+/** Las filas del bloque que llevan un importe en la columna B, como rango [desde, hasta). */
+export const MONTOS_BLOQUE = Object.freeze({ desde: FILA_BLOQUE.universo, hasta: FILA_BLOQUE.cobertura })

@@ -70,7 +70,7 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { FAMILIAS, SIN_FAMILIA, formulaFamilia, familiaDeMaterial, RUBROS_CON_FAMILIA } from '../lib/familia-material.mjs'
-import { bloqueControlArca } from '../lib/control-arca-bloque.mjs'
+import { bloqueControlArca, FILA_BLOQUE, MONTOS_BLOQUE } from '../lib/control-arca-bloque.mjs'
 // "El mismo proveedor" se define UNA vez, en lib/: ver el comentario junto a RUBROS_COMERCIALES.
 import { tituloDeSeccion } from '../lib/proveedores-titulos.mjs'
 import { normNombre } from '../lib/razon-social.mjs'
@@ -2353,6 +2353,32 @@ async function formatear(google, sheetId, g, ancho, filas, { filaArranque = 1 } 
   // "Importe" y "Qué es" como si fueran importes.
   for (const c of [g.cabNC, g.cabAnu, g.cabArca]) {
     if (c) encabezadoStmt(c, 0, 8)
+  }
+  // ═══ EL BLOQUE "RESPALDO FISCAL" NO DECLARABA SU FORMATO — Y B52 MOSTRABA "$1" (14/08/2026) ═══
+  //
+  // Es la única de las tres pestañas que comparten `bloqueControlArca` que no formateaba el bloque:
+  // heredaba la moneda de la columna B entera. La fórmula de la cobertura estaba perfecta (0,6614 =
+  // 66,1%) y la celda la dibujaba como "$1". El valor NO se toca —sigue siendo la fracción— y lo que
+  // se corrige es la celda, igual que con las fechas-serial del Calendario.
+  //
+  // Los desplazamientos los declara el bloque, que es quien decide el orden de sus filas: escritos a
+  // mano acá serían la cuarta copia del mismo número (ver control-arca-bloque.mjs · FILA_BLOQUE).
+  if (g.arca0) {
+    const fArca = (i) => g.arca0 - 1 + i
+    fmt({ ...r(fArca(MONTOS_BLOQUE.desde), fArca(MONTOS_BLOQUE.hasta), 1, 2) },
+      'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+      { numberFormat: E.NUM.moneda, horizontalAlignment: 'RIGHT' })
+    fmt({ ...r(fArca(FILA_BLOQUE.cobertura), fArca(FILA_BLOQUE.cobertura + 1), 1, 2) },
+      'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+      { numberFormat: E.NUM.porcentaje, horizontalAlignment: 'RIGHT' })
+    fmt({ ...r(fArca(FILA_BLOQUE.global), fArca(FILA_BLOQUE.global + 1), 1, 2) },
+      'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+      { numberFormat: E.NUM.moneda, horizontalAlignment: 'RIGHT' })
+    // El veredicto es una frase que derrama sobre el ancho del bloque: con formato de moneda, un
+    // texto no se rompe, pero la celda queda alineada a la derecha y se lee como si fuera una cifra.
+    fmt({ ...r(fArca(FILA_BLOQUE.veredicto), fArca(FILA_BLOQUE.veredicto + 1), 1, 2) },
+      'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+      { numberFormat: E.NUM.texto, horizontalAlignment: 'LEFT' })
   }
   // UNA CANTIDAD DE COMPROBANTES NO ES PLATA. La columna B del bloque de ARCA mostraba "$16" donde
   // dice cuántas facturas emitidas hay: el formato moneda de la columna entera se lo comía.

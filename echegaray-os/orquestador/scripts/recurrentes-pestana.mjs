@@ -43,7 +43,7 @@ import { escribirPreservando, limpiarCentinela, VACIO } from '../lib/preservar-a
 import { conColaMedidaLeida, avisoDeCola } from '../lib/cola-de-rango.mjs'
 import { skinRequests } from '../lib/estilo-statement.mjs'
 import { MONEDA_CUERPO, MONEDA_TOTAL, MONEDA_CONTROL, CONTADOR, PORCENTAJE } from '../lib/formato-statement.mjs'
-import { bloqueControlArca } from '../lib/control-arca-bloque.mjs'
+import { bloqueControlArca, FILA_BLOQUE, MONTOS_BLOQUE } from '../lib/control-arca-bloque.mjs'
 import { RECURRENTES, norm } from '../lib/rubro-caja.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -378,9 +378,13 @@ export function formatosPropios(hoja, g) {
   // El bloque de ARCA: importes con "$", la cobertura como porcentaje, y en formato de control SÓLO
   // la línea que tiene que dar cero de verdad — lo que ARCA facturó y Compras no cargó. Lo que está
   // sin comprobante en el libro NO va en rojo: se sabe inflado por los proveedores que no facturan.
-  fmt(r(g.arca0 + 2, g.arca0 + 7, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_TOTAL })
-  fmt(r(g.arca0 + 5, g.arca0 + 6, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: PORCENTAJE })
-  fmt(r(g.arca0 + 6, g.arca0 + 7, 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_CONTROL })
+  // LOS DESPLAZAMIENTOS SALEN DEL BLOQUE, NO SE TIPEAN (14/08/2026). Estaban escritos a mano acá y en
+  // las otras dos pestañas que comparten el bloque: tres copias del mismo orden de filas. Ahora las
+  // declara `control-arca-bloque.mjs`, que es quien decide ese orden, y su test las ata a los rótulos.
+  const fArca = (i) => g.arca0 - 1 + i
+  fmt(r(fArca(MONTOS_BLOQUE.desde), fArca(MONTOS_BLOQUE.hasta), 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_TOTAL })
+  fmt(r(fArca(FILA_BLOQUE.cobertura), fArca(FILA_BLOQUE.cobertura + 1), 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: PORCENTAJE })
+  fmt(r(fArca(FILA_BLOQUE.global), fArca(FILA_BLOQUE.global + 1), 1, 2), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_CONTROL })
   // Las columnas auxiliares, ocultas: son andamio, no información.
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: C_AUX0, endIndex: ANCHO }, properties: { hiddenByUser: true }, fields: 'hiddenByUser' } })
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 340 }, fields: 'pixelSize' } })

@@ -28,6 +28,7 @@ import {
   formulaCobrosEfectivoPosteriores, formulaComprasEfectivoPosteriores, formulaDepositosEfectivoPosteriores,
   formulaJornalesEfectivoPosteriores, formulaOficinaEfectivoPosteriores, formulaExtraccionesEfectivoPosteriores,
 } from './caja-posterior-al-corte.mjs'
+import { filaHuecoDelExtracto } from './banco-detalle-declarado.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 import {
   bloqueLiquidez, bloqueConciliacion, bloqueVencido, bloqueTrazabilidad, bloqueCalendarioCiego,
@@ -94,6 +95,19 @@ function bloqueMovimientos(h) {
   const arqueo = DESDE_CAJA.arqueoArsFecha
   push(['A1 · MOVIMIENTOS POSTERIORES — DE QUÉ SE COMPONEN LOS DOS NETOS DE CAJA'])
   push(['Concepto', 'Moneda', 'Importe', '', '', 'Fecha', 'De dónde sale'])
+
+  // ═══ HASTA DÓNDE LLEGA EL DETALLE, ANTES DE EMPEZAR A SUMARLE COSAS (14/08/2026) ═══
+  //
+  // Todo este bloque parte del saldo del extracto y le suma lo que pasó después. Ese saldo es el
+  // DECLARADO por el banco —correcto— pero los movimientos cargados no llegan a él: faltan $45.080,
+  // anteriores al primer movimiento del extracto cargado. El auditor lo dice en el log del pipeline
+  // desde hace semanas y nadie abre ese log. Va como PRIMERA línea del bloque, no al final: quien
+  // reconcilie el detalle contra el saldo tiene que enterarse antes de empezar, no después de perder
+  // una tarde buscando un error de carga que no existe.
+  //
+  // NO SE RESTA DE NADA. CAJA sigue mostrando el saldo del banco: un hueco declarado es información;
+  // uno "corregido" por el OS sería un dato inventado. Ver lib/banco-detalle-declarado.mjs.
+  push(filaHuecoDelExtracto())
 
   // LA FECHA VA GUARDADA CON ISNUMBER: `=CAJA_BANCO_CORTE` sobre una celda vacía devuelve 0, y el 0 con
   // formato de fecha se dibuja "30/12/1899". Es el defecto `fecha_cero` que el auditor de pantalla
