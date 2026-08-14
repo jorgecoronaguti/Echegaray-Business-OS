@@ -157,6 +157,19 @@ export function formulaVentana({ rangoImporte, rangoFecha, celdaDesde, celdaHast
 export const MIN_QUINCENAS_SHARE = 6
 
 /**
+ * ⚠ SIN CONSUMIDOR DESDE EL 14/08 — NO LA USES SIN LEER ESTO PRIMERO.
+ *
+ * Esta función y las cuatro que la acompañan (`formulaGlosaShareEfectivo`, `shareEfectivoAnual`,
+ * `formulaAcuerdoDeclarado`, `formulaAcuerdoMensual`, `acuerdoDeclarado`, `acuerdoMensual`) medían el
+ * canal de pago REAL sobre el histórico y publicaban la brecha contra el acuerdo. El dueño las sacó de
+ * la pestaña: *"te he dicho q el acuerdo es 50 y 50 todas las quincenas y asi y todo no se entiende
+ * nada"*. El 50/50 es la REGLA de pago (ver `lib/jornales-reparto-pago.mjs`), no una métrica a auditar,
+ * y publicar el porcentaje medido al lado del acuerdo daba dos números para el mismo canal.
+ *
+ * Se conservan con sus tests porque la MEDICIÓN sigue siendo verdadera y sirve para contestar "¿cuánto
+ * de lo que pagamos pasó de verdad por el banco?" — una pregunta de control interno, de otra pestaña y
+ * de otro día. Volver a enchufarlas al cuadro que decide el pago es reponer el defecto.
+ *
  * NÚCLEO PURO: qué proporción de la quincena de obra sale en EFECTIVO, medida sobre el registro.
  *
  * ═══ POR QUÉ SE MIDE Y NO SE SUPONE ═══
