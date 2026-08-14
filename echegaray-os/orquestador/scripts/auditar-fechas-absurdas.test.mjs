@@ -4,7 +4,11 @@
 // general del auditor: la que importa es la que un MAX no ve.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { aSerial, fechasAbsurdas, serialDeHoy, serialATexto, ATRAS_DIAS, ADELANTE_DIAS } from './auditar-fechas-absurdas.mjs'
+import {
+  aSerial, fechasAbsurdas, serialDeHoy, serialATexto, filaDelRegistro, COLUMNAS,
+  ATRAS_DIAS, ADELANTE_DIAS,
+} from './auditar-fechas-absurdas.mjs'
+import { FILA_DATO0 } from '../lib/cheques-emitidos-geometria.mjs'
 
 const HOY = serialDeHoy(new Date(Date.UTC(2026, 7, 3))) // 03/08/2026
 
@@ -70,4 +74,41 @@ test('la ventana hacia adelante se puede cerrar por columna: el banco no tiene f
 test('"hoy" se calcula en UTC: con horas locales, medio año daría el día anterior', () => {
   const d = new Date(Date.UTC(2026, 7, 3, 2, 30))
   assert.equal(serialATexto(serialDeHoy(d)), '03/08/2026')
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL PANEL DE RESUMEN NO ES LA TABLA — LOS SEIS FALSOS POSITIVOS DE "Cheques Emitidos"
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Arriba del registro hay 25 filas de panel (DISPONIBLE / COMPROMETIDO / Vencido / Próximos 7 días)
+// y sus IMPORTES viven en la misma columna C que las fechas de emisión. Auditando desde la fila 2, el
+// auditor leía $5.160.137 como serial y lo declaraba una fecha del año 14.126: seis hallazgos —C5,
+// C17, C19, C20, C21, C23— que no eran fechas de nadie. Un control que grita mal deja de significar
+// algo, y éste tenía seis de siete gritos equivocados.
+
+test('la banda de resumen produce fechas absurdas si se la audita como si fuera la tabla', () => {
+  // El fixture es la banda REAL del archivo al 14/08/2026, columna C.
+  const banda = [[null], [null], [null], ['COMPROMETIDO'], [16469875.3], [null], [null], [null], [null], [null],
+    [null], [null], [null], [null], [null], ['CHEQUES'], [7], [0], [2], [6], [9], [0], [24], [null], [null]]
+  const malas = fechasAbsurdas(banda, { hoy: HOY, desdeFila: 2 })
+  assert.ok(malas.length >= 5, 'ésta es la lectura VIEJA: el panel entra como si fuera columna de fechas')
+})
+
+test('filaDelRegistro ubica el arranque por el rótulo del encabezado, no contando filas', () => {
+  const colA = [['CHEQUES EMITIDOS'], ['al 05/08/2026'], [null], ['DISPONIBLE'], [21630012.39], [null],
+    ['CALENDARIO'], [null], [null], ['REGISTRO'], ['Tipo'], ['FISICO'], ['ECHEQ']]
+  assert.equal(filaDelRegistro(colA, 'Tipo'), 12, 'el encabezado está en A11 → los datos arrancan en la 12')
+  // Y si la banda cambia de alto, el ancla se mueve sola: es todo el punto.
+  assert.equal(filaDelRegistro([[null], ['Tipo'], ['FISICO']], 'Tipo'), 3)
+})
+
+test('sin el rótulo del registro NO adivina una fila: devuelve null y el auditor falla cerrado', () => {
+  assert.equal(filaDelRegistro([['CHEQUES EMITIDOS'], ['DISPONIBLE'], [21630012.39]], 'Tipo'), null)
+})
+
+test('las columnas de "Cheques Emitidos" se anclan al rótulo del registro, no a la fila 2', () => {
+  for (const c of COLUMNAS.filter((x) => x.hoja === 'Cheques Emitidos')) {
+    assert.equal(c.anclaRegistro, 'Tipo', `${c.hoja}!${c.col} tiene que resolver su arranque contra la pestaña viva`)
+    assert.ok(c.desde >= FILA_DATO0, `${c.hoja}!${c.col} arranca en la fila ${c.desde}: eso es adentro del panel`)
+  }
 })

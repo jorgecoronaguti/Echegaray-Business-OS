@@ -58,7 +58,7 @@ import {
   conceptosDe, filaDeConcepto, colTotal, columnasDeTiempo, filaGraficos, footprintDe,
   medidasDeLaMatriz, bloquesDeMedida, formulasDeMedida,
   expresionVentana, formulaMayorImporte, formulaMayorContraparte,
-  ventanas, celda, rangoFila, serialDeFecha, URL_ARCHIVO, ROTULO_HOY,
+  ventanas, celda, rangoFila, serialDeFecha, URL_ARCHIVO, ROTULO_HOY, ROTULO_CONCEPTO,
 } from './cash-flow-matriz.mjs'
 import { terminoLibro } from './libro-sumas.mjs'
 import { bloquesDeCliente, filaTituloPorCliente, formulasPorCliente } from './cash-flow-por-cliente.mjs'
@@ -135,7 +135,7 @@ export function grillaSemanal({ hoy = new Date(), anio = null, refs = {}, gid = 
   bloqueHero(poner, meta, refs)
 
   // ── La cabecera: el concepto y los lunes del ejercicio ───────────────────────────────────────────
-  poner(FILA.cabecera, 0, 'Concepto')
+  poner(FILA.cabecera, 0, ROTULO_CONCEPTO)
   semanas.forEach((v, j) => poner(FILA.cabecera, COL.tiempo0 + j, serialDeFecha(v.desde)))
   poner(FILA.cabecera, cT, 'TOTAL')
 

@@ -35,6 +35,9 @@
 import { makeGoogleClient } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { resolverColumnas } from '../lib/compras-columnas.mjs'
+// La fila donde arranca el registro de cheques está declarada en un solo lugar. Acá se usa como
+// CONTRASTE, no como ancla: ver `filaDelRegistro`.
+import { FILA_DATO0 } from '../lib/cheques-emitidos-geometria.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 
@@ -124,8 +127,18 @@ export function fechasAbsurdas(filas = [], { hoy, desdeFila = 1, atras = ATRAS_D
  * son las que deciden qué fecha se le muestra al dueño arriba de un número con el que decide.
  */
 export const COLUMNAS = [
-  { hoja: 'Cheques Emitidos', col: 'C', desde: 2, que: 'fecha de emisión' },
-  { hoja: 'Cheques Emitidos', col: 'I', desde: 2, que: 'fecha de pago' },
+  // ═══ EL PANEL NO ES LA TABLA (14/08/2026) ═══
+  //
+  // Estas dos columnas arrancaban en la fila 2, o sea DENTRO de la banda de resumen: arriba del
+  // registro hay 25 filas con DISPONIBLE / COMPROMETIDO / Vencido / Próximos 7 días, y sus importes
+  // viven en la misma columna C que las fechas de emisión. Un importe leído como serial es siempre
+  // una fecha imposible: C5 ($5.160.137) daba el año 14.126. El auditor reportaba SEIS fechas
+  // absurdas —C5, C17, C19, C20, C21, C23— que no eran fechas de nadie. Seis falsos positivos en una
+  // lista de siete hallazgos es una lista que nadie vuelve a abrir.
+  //
+  // El registro empieza donde dice su encabezado, no en una fila contada: ver `filaDelRegistro`.
+  { hoja: 'Cheques Emitidos', col: 'C', anclaRegistro: 'Tipo', desde: FILA_DATO0, que: 'fecha de emisión' },
+  { hoja: 'Cheques Emitidos', col: 'I', anclaRegistro: 'Tipo', desde: FILA_DATO0, que: 'fecha de pago' },
   { hoja: 'Cobranzas', col: 'Q', desde: 5, que: 'fecha de cobro' },
   // El extracto no tiene futuro: un movimiento fechado mañana no es un diferido, es un error de
   // importación. La ventana hacia adelante se cierra sólo donde de verdad no puede haber nada.
@@ -137,10 +150,49 @@ export const COLUMNAS = [
   { hoja: 'Compras', encabezado: 'Fecha de caja', desde: 4, que: 'fecha de caja' },
 ]
 
+/**
+ * NÚCLEO PURO: la primera fila de DATOS de un registro, ubicada por el rótulo de su encabezado.
+ *
+ * Se resuelve contra la pestaña viva y NO contra la constante de geometría a propósito: un control
+ * que se ancla en el mismo número que usa el generador no puede detectar que la banda cambió de
+ * alto. Acá el número declarado sirve de contraste — si no coinciden, alguien movió el registro sin
+ * pasar por `cheques-emitidos-geometria.mjs`, y eso se avisa.
+ *
+ * @param {any[][]|any[]} columnaA los valores de la columna del rótulo, desde la fila 1
+ * @param {string} rotulo el encabezado del registro ("Tipo")
+ * @returns {number|null} el número de fila (1-based) del primer dato
+ */
+export function filaDelRegistro(columnaA = [], rotulo = '') {
+  const norm = (v) => String((Array.isArray(v) ? v[0] : v) ?? '').trim().toLowerCase()
+  const i = columnaA.findIndex((f) => norm(f) === String(rotulo).trim().toLowerCase())
+  return i < 0 ? null : i + 2
+}
+
+/** Resuelve, contra la pestaña viva, dónde arranca cada registro anclado por rótulo. */
+async function resolverAnclas(google, columnas) {
+  const cache = new Map()
+  for (const c of columnas.filter((x) => x.anclaRegistro)) {
+    if (!cache.has(c.hoja)) {
+      const col = (await google.readSheetValues(ID, `'${c.hoja}'!A1:A40`).catch(() => null)) ?? []
+      cache.set(c.hoja, filaDelRegistro(col, c.anclaRegistro))
+    }
+    const fila = cache.get(c.hoja)
+    // FALLA CERRADA: sin el rótulo no se sabe dónde termina el panel, y auditar desde la fila 2
+    // volvería a leer importes de resumen como si fueran fechas.
+    if (fila === null) { c.col = null; c.sinAncla = `no encontré "${c.anclaRegistro}" en ${c.hoja}!A1:A40`; continue }
+    if (fila !== c.desde) {
+      console.warn(`  ⚠ ${c.hoja}: el registro arranca en la fila ${fila} y la geometría declara ${c.desde}`
+        + ' — alguien movió la banda sin pasar por cheques-emitidos-geometria.mjs')
+    }
+    c.desde = fila
+  }
+}
+
 async function main() {
   // SIN `scopes`: el cliente queda con los de SÓLO LECTURA por defecto. No es un descuido, es el
   // control — este script no tiene con qué escribir.
   const google = makeGoogleClient({ config: loadConfig() })
+  await resolverAnclas(google, COLUMNAS)
   // Las columnas que se piden por encabezado se resuelven ANTES de leer nada: si el rótulo no está,
   // el auditor lo dice y no audita una columna al azar.
   for (const c of COLUMNAS.filter((x) => x.encabezado)) {
@@ -152,7 +204,7 @@ async function main() {
   let total = 0
   for (const c of COLUMNAS) {
     if (!c.col) {
-      console.error(`  ✖ ${c.hoja}: no encontré la columna "${c.encabezado}" — NO audito una columna al azar`)
+      console.error(`  ✖ ${c.hoja}: ${c.sinAncla ?? `no encontré la columna "${c.encabezado}"`} — NO audito una columna al azar`)
       total = -1
       continue
     }

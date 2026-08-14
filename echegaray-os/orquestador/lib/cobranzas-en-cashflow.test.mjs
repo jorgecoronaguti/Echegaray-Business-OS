@@ -1,6 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { C, leerCobro, repasar, porMes, esPendiente, esCobrado } from './cobranzas-en-cashflow.mjs'
+import {
+  C, auditar, leerCobro, repasar, porMes, esPendiente, esCobrado, ubicarCuadro, SUB_COBRANZAS,
+} from './cobranzas-en-cashflow.mjs'
+import { ROTULO_CONCEPTO } from './cash-flow-matriz.mjs'
 
 // El serial de Sheets de una fecha ISO, para escribir fixtures legibles.
 const serial = (iso) => Math.round((Date.parse(`${iso}T00:00:00Z`) - Date.UTC(1899, 11, 30)) / 86400000)
@@ -98,4 +101,79 @@ test('esCobrado / esPendiente parten el universo sin superponerse', () => {
 test('una fila sin monto no es un cobro vacío: no es un cobro', () => {
   assert.equal(leerCobro(fila({ total: 0 }), 1), null)
   assert.equal(leerCobro([], 1), null)
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL CUADRO SE UBICA POR SU RÓTULO — EL FALSO POSITIVO DE $808,99M
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// El auditor leía `A3:N9` y suponía que la fila 3 era el encabezado de meses y que las tres últimas
+// del rango eran las líneas de ingreso. El 06/08 la matriz movió el encabezado a la fila 7 y unificó
+// las tres líneas en "· Cobranzas". No falló: leyó el subtítulo, no reconoció ningún mes, y reportó
+// que TODOS los cobros —$808.990.000— quedaban fuera de la ventana del cuadro. El residuo real era
+// de tres órdenes de magnitud menos.
+//
+// Estos tests son ese defecto. La fila donde caen las cosas cambia en cada fixture a propósito: uno
+// que las ubique contando filas se pone rojo.
+
+/** Una celda de la grilla, como la devuelve readSheetGrid. */
+const cel = (valor, numero = null) => ({ valor, numero, formula: null, formato: null, derivada: false })
+
+/** El cuadro real, con `arriba` filas de hero antes de la cabecera. */
+function cuadro({ arriba = 6, reales = [100, 200], proyectados = [0, 50] } = {}) {
+  const relleno = Array.from({ length: arriba }, (_, i) => [cel(`hero ${i}`)])
+  const mes = (iso) => cel(iso, serial(iso))
+  return [
+    ...relleno,
+    [cel(ROTULO_CONCEPTO), mes('2026-01-01'), mes('2026-02-01'), cel('TOTAL')],
+    [cel('Saldo inicial')],
+    [cel('Ingresos reales'), cel('', reales[0]), cel('', reales[1])],
+    [cel(`    ${SUB_COBRANZAS}`), cel('', reales[0]), cel('', reales[1])],
+    [cel('    · Otros'), cel('', 0), cel('', 0)],
+    [cel('Ingresos proyectados'), cel('', proyectados[0]), cel('', proyectados[1])],
+    [cel(`    ${SUB_COBRANZAS}`), cel('', proyectados[0]), cel('', proyectados[1])],
+    [cel('Egresos reales'), cel('', 999), cel('', 999)],
+    [cel(`    ${SUB_COBRANZAS}`), cel('', 777), cel('', 777)], // trampa: no cuelga de un ingreso
+  ]
+}
+
+test('ubicarCuadro encuentra la cabecera por su rótulo, esté en la fila que esté', () => {
+  for (const arriba of [2, 6, 11]) {
+    const u = ubicarCuadro(cuadro({ arriba }))
+    assert.equal(u.cabecera, arriba, `con ${arriba} filas de hero, la cabecera es la ${arriba + 1}`)
+    assert.deepEqual(u.meses.map((m) => m.mes), ['2026-01', '2026-02'])
+  }
+})
+
+test('las líneas de ingreso son las "· Cobranzas" de ingresos — no las últimas del rango', () => {
+  const u = ubicarCuadro(cuadro({ arriba: 6 }))
+  assert.deepEqual(u.ingreso.map((i) => i.de), ['Ingresos reales', 'Ingresos proyectados'])
+  // La sub-línea "· Cobranzas" que cuelga de EGRESOS existe en el fixture y no tiene que entrar:
+  // sumarla contaría plata que sale como si entrara.
+  assert.equal(u.ingreso.length, 2)
+})
+
+test('auditar suma las dos líneas de cobranzas y no declara nada fuera de ventana', () => {
+  const cob = [
+    fila({ total: 100, cobro: '2026-01-15', estado: 'Cobrado' }),
+    fila({ total: 250, cobro: '2026-02-10', estado: 'Cobrado' }),
+  ]
+  const r = auditar(cob, cuadro({ reales: [100, 200], proyectados: [0, 50] }))
+  assert.equal(r.noPudoUbicar, null)
+  assert.deepEqual(r.fueraDeVentana, [], 'con la cabecera bien ubicada, ningún cobro cae fuera del cuadro')
+  assert.equal(r.totalCashFlow, 350, 'reales (100+200) + proyectados (0+50)')
+  assert.deepEqual(r.porMes, [
+    { mes: '2026-01', cobranzas: 100, cashflow: 100 },
+    { mes: '2026-02', cobranzas: 250, cashflow: 250 },
+  ])
+})
+
+test('sin el rótulo del cuadro NO inventa un hallazgo: declara que no pudo ubicarlo', () => {
+  // Es el 06/08 exacto: el layout cambió y el rango viejo devuelve celdas que no son la cabecera.
+  const roto = cuadro().map((f, i) => (i === 6 ? [cel('Cash Flow Mensual 2026')] : f))
+  const cob = [fila({ total: 808990000, cobro: '2026-01-15', estado: 'Cobrado' })]
+  const r = auditar(cob, roto)
+  assert.match(r.noPudoUbicar, /Concepto/)
+  assert.deepEqual(r.fueraDeVentana, [],
+    'un cuadro que no se pudo ubicar NO puede producir "$808,99M fuera de la ventana": eso es un hallazgo fabricado')
 })

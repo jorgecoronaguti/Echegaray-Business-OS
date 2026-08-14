@@ -29,7 +29,7 @@ import {
   COL, FILA,
   conceptosDe, filaDeConcepto, colTotal, columnasDeTiempo, filaGraficos, footprintDe,
   medidasDeLaMatriz, bloquesDeMedida, formulasDeMedida,
-  expresionVentana, ventanas, celda, rangoFila, serialDeFecha, rotuloMes, URL_ARCHIVO, ROTULO_HOY,
+  expresionVentana, ventanas, celda, rangoFila, serialDeFecha, rotuloMes, URL_ARCHIVO, ROTULO_HOY, ROTULO_CONCEPTO,
 } from './cash-flow-matriz.mjs'
 import { MEDIDAS, formulaMedida } from './cash-flow-medidas.mjs'
 import { terminoLibro } from './libro-sumas.mjs'
@@ -109,7 +109,7 @@ export function grillaMeses({ anio = 2026, refs = {}, gid = null, hoy = new Date
 
   bloqueHero(poner, meta)
 
-  poner(FILA.cabecera, 0, 'Concepto')
+  poner(FILA.cabecera, 0, ROTULO_CONCEPTO)
   meses.forEach((v, j) => poner(FILA.cabecera, COL.tiempo0 + j, serialDeFecha(v.desde)))
   poner(FILA.cabecera, cT, 'TOTAL')
 
