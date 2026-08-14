@@ -134,6 +134,52 @@ const celda = (f, j) => String(f?.[j] ?? '').trim()
 const vacia = (f) => !(f || []).some((c) => String(c ?? '').trim())
 
 /**
+ * LAS DOS REGLAS QUE SIGNIFICAN "LA PESTAÑA ESTÁ ROTA", Y NO "LA PESTAÑA SE LEE MAL".
+ *
+ * `error-de-formula` es un número que no existe: quien lea esa celda lee `#REF!`. `vacia` es una
+ * escritura que no llegó. Las dos invalidan el DATO. Todo el resto de la gramática —una fila sin
+ * rótulo, un ancho mezclado, una sección desordenada— invalida la LECTURA, con los números correctos
+ * publicados abajo.
+ */
+export const REGLAS_QUE_ROMPEN_EL_DATO = new Set(['error-de-formula', 'vacia'])
+
+/**
+ * NÚCLEO PURO: parte los defectos de patrón en los que tumban la corrida y los que son un REPORTE.
+ *
+ * ═══ POR QUÉ NO ES FAIL-CLOSED, QUE FUE LA OTRA OPCIÓN SOBRE LA MESA (14/08) ═══
+ *
+ * Un generador fail-closed sobre el patrón NO escribiría cuando la pestaña tiene un defecto. Suena
+ * bien y en este caso es peor, por dos razones medidas sobre el caso real:
+ *
+ *   1. EL DEFECTO ESTÁ EN LA PESTAÑA, NO EN LA GRILLA. El residuo `F41:F44` de "Jornales por
+ *      Quincena" ya estaba publicado antes de la corrida. No escribir no lo saca: lo CONGELA, y de
+ *      paso congela los jornales, las fechas de pago y la proyección — el dato bueno se pierde para
+ *      no publicar un defecto que igual queda a la vista.
+ *   2. EL AUDITOR CORRE DESPUÉS DE ESCRIBIR PORQUE MIDE LO QUE QUEDÓ. Auditar la grilla ANTES no
+ *      contesta la misma pregunta: la grilla no es lo que se ve (la fusión preserva, el centinela
+ *      limpia, el dueño edita). Una guarda fail-closed apoyada en esa medición distinta se dispara
+ *      por falsos positivos y deja la pestaña sin actualizar para siempre — la forma exacta de las
+ *      pérdidas que este repo ya pagó.
+ *
+ * Entonces: el defecto de patrón se declara REPORTE. No es un fallo de datos y no debe leerse como
+ * tal — leerlo así hace que el worker reintente una corrida que va a reproducir el mismo defecto, y
+ * mezcla "los números están mal" con "el cuadro se lee mal", que exigen acciones distintas.
+ *
+ * Lo que sí cambia: el reporte tiene que ser NOMBRABLE. Un `⚠ 1 defecto de patrón` no es accionable;
+ * la fila con su contenido sí, porque es lo que una persona necesita para limpiar la celda por la vía
+ * declarada. La corrida sigue en rojo sólo cuando el dato está roto.
+ *
+ * @param {{fila:number, regla:string, detalle:string}[]} defectos
+ * @returns {{rotos:Array, reporte:Array}}
+ */
+export function clasificarDefectos(defectos = []) {
+  const rotos = []
+  const reporte = []
+  for (const d of defectos || []) (REGLAS_QUE_ROMPEN_EL_DATO.has(d?.regla) ? rotos : reporte).push(d)
+  return { rotos, reporte }
+}
+
+/**
  * NÚCLEO PURO: mide una pestaña contra la gramática y devuelve lo que no la cumple.
  *
  * No arregla nada: nombra el defecto con su fila, para que el generador dueño lo corrija. Es el
