@@ -137,6 +137,7 @@ import { conColaLimpiable as colaDeclarada } from './cola-de-rango.mjs'
 import { comprasObraDe, esProyectable, totalEgresos } from './obras-datos.mjs'
 import { sumaNetaSheet, esMaterialSheet } from './costo-materiales.mjs'
 import { sumaConUSD } from './cobranzas-contrato.mjs'
+import { formulaCertificado } from './obras-certificado.mjs'
 // EL TIPO DE CAMBIO SE IMPORTA, NO SE ESCRIBE DE NUEVO. Vive UNA vez, en el bloque de CAJA, y esta
 // pestaña lo referencia por su nombre: un segundo tipo de cambio sería una segunda verdad para el
 // mismo concepto, que es justo lo que la REALIDAD ÚNICA prohíbe.
@@ -1082,7 +1083,19 @@ function bloqueObra(h, refs, o, idx, unica = false) {
     // contrato, no de cartera") y lo que la AIA G702 publica como `% (G/C)`: obra completada sobre
     // valor contratado. Numerador y denominador son los dos al NETO.
     pctContrato(fProt, o.contrato),
-    venta(cob, o.cliente, dela), cobrado(cob, o.cliente, dela), restaCobrar(cob, o.cliente, dela),
+    // ═══ LA `C` ES EL CERTIFICADO, Y HASTA HOY ERA `venta()` — LA MISMA FÓRMULA DEL CUADRO 2 ═══
+    //
+    // Certificar es reconocer avance CONTRA UN CONTRATO; facturar es cualquier cosa que se le cobre
+    // al cliente. Mientras coincidan el error no se ve, y en seis de las siete obras coinciden. La
+    // séptima —Quattropani— factura materiales en la MISMA factura que el anticipo, sobre un contrato
+    // de sólo mano de obra: publicaba 136,4% y "Falta certificar" en negativo. El dueño: *"esta mal
+    // eso de quattropani, revisa bien"*. El porqué entero y la aritmética contra el contrato firmado
+    // están en `obras-certificado.mjs`; acá sólo se elige la fórmula.
+    //
+    // SIN HITOS SE VUELVE A `venta()` A PROPÓSITO: BSA no declara contrato ni hitos, y publicar un
+    // vacío donde antes había un importe sería perder el dato para arreglar otra obra.
+    formulaCertificado(o.cert, `G${fProt}`) ?? venta(cob, o.cliente, dela),
+    cobrado(cob, o.cliente, dela), restaCobrar(cob, o.cliente, dela),
     vencido(cob, o.cliente, dela),
     // ═══ ACÁ IBA EL MARGEN. EL DUEÑO LO MANDÓ SACAR (13/08) Y ESTA NOTA ES PARA QUE NADIE LO REPONGA ═══
     //

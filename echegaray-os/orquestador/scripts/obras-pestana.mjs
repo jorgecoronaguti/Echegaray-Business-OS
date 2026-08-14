@@ -50,6 +50,10 @@ import {
   ANCHO_OBRAS, ANCHOS_OBRAS, PESTANA_OBRAS, REFS_OBRAS, SIN_CONTRATO, saldoContratoMalPublicado,
 } from '../lib/obras-grilla.mjs'
 import { contratoDeObra, monedasDesconocidas, normalizarMoneda } from '../lib/cobranzas-contrato.mjs'
+import { certificadoDeObra } from '../lib/obras-certificado.mjs'
+// El ⚠ del log sale de su única fuente, no tipeado: el guardián de `glifos-generadores.test.mjs`
+// existe porque un glifo tipeado ya se coló en una celda y el PDF no lo dibujaba.
+import { ALERTA } from '../lib/glifos.mjs'
 import { leerTipoCambio, RANGO_TC } from '../lib/tipo-cambio.mjs'
 import { OBRAS_FUTURAS, totalEgresos } from '../lib/obras-datos.mjs'
 
@@ -237,13 +241,22 @@ export function leerContratos(filas, refs, obras) {
   }
   const porCliente = obras.reduce((m, o) => m.set(o.cliente, (m.get(o.cliente) ?? 0) + 1), new Map())
   const contratos = new Map()
+  // LO CERTIFICADO SALE DE LA MISMA LECTURA Y DEL MISMO SELECTOR QUE EL CONTRATO, y eso no es
+  // comodidad: si el contrato se midiera sobre un universo de filas y lo certificado sobre otro, el
+  // saldo saldría mal sin dar error. Es la misma razón por la que el contrato se lee acá y no se
+  // tipea. El porqué del cálculo está en `obras-certificado.mjs`.
+  const certificados = new Map()
   for (const o of obras) {
-    contratos.set(o.clave, contratoDeObra(filas, cols, {
+    const selector = {
       variantes: variantesDe(o.cliente), needle: o.ventaTexto, unica: porCliente.get(o.cliente) === 1,
-    }, refs.cob.desde))
+    }
+    const c = contratoDeObra(filas, cols, selector, refs.cob.desde)
+    contratos.set(o.clave, c)
+    certificados.set(o.clave, certificadoDeObra(filas, cols, selector, c.contrato, refs.cob.desde))
   }
   return {
     contratos,
+    certificados,
     monedasRaras: monedasDesconocidas(filas, cols.moneda, refs.cob.desde),
     hayUSD: filas.some((f) => normalizarMoneda(f?.[cols.moneda]) === 'USD'),
   }
@@ -359,14 +372,31 @@ async function main() {
   if (!clientes.length) throw new Error(`no leí un solo cliente en ${refs.cob.hoja}!${refs.cob.cliente}: NO escribo una Sección 1 vacía.`)
   console.log(`clientes derivados de ${refs.cob.hoja}: ${clientes.length} · ${clientes.join(' · ')}`)
 
-  const { contratos, monedasRaras, hayUSD } = leerContratos(datos, refs, OBRAS_FUTURAS)
+  const { contratos, certificados, monedasRaras, hayUSD } = leerContratos(datos, refs, OBRAS_FUTURAS)
   await verificarMoneda(google, { monedasRaras, hayUSD })
-  const obras = OBRAS_FUTURAS.map((o) => ({ ...o, contrato: contratos.get(o.clave)?.contrato ?? null }))
+  const obras = OBRAS_FUTURAS.map((o) => ({
+    ...o, contrato: contratos.get(o.clave)?.contrato ?? null, cert: certificados.get(o.clave) ?? null,
+  }))
   for (const o of obras) {
     const c = contratos.get(o.clave)
     console.log(`  contrato · ${o.clave}: ${o.contrato === null ? 'NO DECLARADO en ninguna fila — publico "—"'
       : `$${o.contrato.toLocaleString('es-AR')}${c.partido ? ` (PARTIDO: ${c.distintos.map((d) => `$${d.toLocaleString('es-AR')}`).join(' + ')})` : ''}`
         + ` · declarado en ${c.valores.length} fila(s): ${c.valores.map((v) => v.fila).join(', ')}`}`)
+    // LOS HITOS SE LOGUEAN UNO POR UNO. La `C` publica un total; el que audita necesita ver de qué
+    // filas salió y qué filas quedaron AFUERA del contrato, porque ahí es donde vivía el defecto:
+    // una fila puede facturar el hito Y algo que el contrato no incluye (Quattropani, materiales).
+    if (o.cert?.certificado !== null && o.cert) {
+      console.log(`  certificado · ${o.clave}: $${Math.round(o.cert.certificado).toLocaleString('es-AR')}`
+        + ` = ${(o.cert.fraccion * 100).toFixed(1)}% del contrato · ${o.cert.hitos.length} hito(s)`
+        + `${o.cert.cubreElContrato ? '' : ` ${ALERTA} LOS HITOS NO CUBREN EL CONTRATO`}`)
+      for (const h of o.cert.hitos) {
+        console.log(`      ${h.num}/${h.den} de ${h.base ? `$${h.base.toLocaleString('es-AR')}` : 'el contrato'}`
+          + ` · fila(s) ${h.filas.join(', ')} · "${h.clave}"`)
+      }
+      if (o.cert.sinHito.length) {
+        console.log(`      fuera del contrato (no certifican): fila(s) ${o.cert.sinHito.map((s) => s.fila).join(', ')}`)
+      }
+    }
   }
 
   const g = grillaObras({ obras, refs, clientes })
