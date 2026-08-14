@@ -38,6 +38,12 @@ import {
 import { deRecurrentes } from '../lib/libro-extractores-recurrentes.mjs'
 import { deEstructura, diaTipicoDeEstructura, PESTANA_ESTRUCTURA } from '../lib/libro-extractores-estructura.mjs'
 import { deObras, conciliarConObras } from '../lib/libro-extractores-obras.mjs'
+// La medición de si la MO de las obras llegó de verdad al flujo. Ver la nota al pie de la
+// conciliación con OBRAS: la línea que decía "$126.974.442 de MO va por Jornales" no medía nada.
+import {
+  demandaJornalPorQuincena, publicadasPorQuincena, coberturaDeManoDeObra, informeCobertura,
+  fechaLocalDeSerial,
+} from '../lib/obras-en-cash-flow.mjs'
 import { cruzar, chequesDelRegistro } from '../lib/cruce-cheque-factura.mjs'
 import { endososDeCartera } from '../lib/libro-endosos.mjs'
 import { debitosDelExtracto, corteDelExtracto, pagosDeResumen, chequesCubiertosPorBanco } from '../lib/libro-respaldo-banco.mjs'
@@ -241,6 +247,27 @@ async function extraerDeLasFuentes(google, corte) {
     for (const x of c.faltan) {
       console.warn(`  ⚠ OBRAS declara "${x.obra} · ${x.concepto} · ${x.proveedor}" por ${pesos(x.monto)} `
         + 'y NO llegó al libro: el cash flow lo va a mostrar de menos.')
+    }
+    // ═══ "$X DE MO VA POR JORNALES" ERA UNA AFIRMACIÓN, NO UNA MEDICIÓN (14/08/2026) ═══
+    //
+    // La línea de arriba copia `moCargasPesos` de la explosión del dueño y lo da por llegado. Pero la
+    // MO de las obras entra al libro a través de la pestaña Jornales, cuya celda proyectada es
+    // `MAX(convenio; demanda)`: donde el piso del plantel vigente supera a la demanda, la MO de la
+    // obra está ADENTRO de lo publicado; donde la planilla queda corta, el cash flow muestra de menos
+    // y hasta hoy nada lo decía. Se mide contra lo que la planilla publica de verdad —dos fuentes
+    // independientes, que es lo único que hace válido a un control— y se imprime siempre, también
+    // cuando cubre el 100%: un control que sólo habla cuando falla no se distingue de uno apagado.
+    if (OBRAS_FUTURAS.length) {
+      const demanda = demandaJornalPorQuincena(OBRAS_FUTURAS, { desde: fechaLocalDeSerial(corte) })
+      const publicadas = publicadasPorQuincena({ hasta: R.JORNALES_PROY_HASTA, total: R.JORNALES_PROY_TOTAL })
+      for (const l of informeCobertura(coberturaDeManoDeObra(demanda, publicadas))) console.log(l)
+      if (publicadas.sinFecha) {
+        console.warn(`  ⚠ Jornales publica ${pesos(publicadas.sinFecha)} de quincenas proyectadas SIN fecha de cierre: `
+          + 'no se pueden ubicar en el calendario y quedan fuera de esta medición.')
+      }
+      for (const s of demanda.sinEscala) {
+        console.warn(`  ⚠ la categoría "${s}" tiene horas de obra y no tiene escala de convenio: su jornal no entra en la medición.`)
+      }
     }
   }
   // ═══ LA ESTRUCTURA DE SEPTIEMBRE A DICIEMBRE, QUE EL CUADRO NO MOSTRABA (13/08/2026) ═══
