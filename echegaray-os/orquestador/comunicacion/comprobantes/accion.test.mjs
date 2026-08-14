@@ -3,19 +3,15 @@
 // El cargador nunca se corre acá: `escribirFajo` recibe una corrida de mentira. Correr el cargador
 // de verdad para "probar que anda" es exactamente lo que ya borró trabajo del dueño tres veces.
 
-// ═══ ESTE ARCHIVO CORRE CON LAS TARJETAS ENCENDIDAS (13/08) ═══
+// ═══ ESTE ARCHIVO CORRE EN LA CONFIGURACIÓN DE PRODUCCIÓN (14/08) ═══
 //
-// El dueño las apagó: «no quiero mensajes del bot en la carga de comprobantes… solo quiero q
-// confirme q termino todo». `botonesFajo` devuelve [] salvo que se pida lo contrario, y ningún
-// camino de producción lo pide (ver `lib/comprobantes/parte.mjs` y `comunicacion/comprobantes/
-// tanda.mjs`, que son los que hoy arman el único mensaje).
-//
-// Lo de acá abajo sigue probando la MECÁNICA que quedó detrás del interruptor, porque un interruptor
-// con la vuelta atrás sin probar no es una vuelta atrás. Que las tarjetas NO se publican por defecto
-// se prueba aparte, en `sin-tarjetas.test.mjs`.
-process.env.ORQ_COMPROBANTES_BOTONES = '1'
+// Tenía `process.env.ORQ_COMPROBANTES_BOTONES = '1'` en la línea 16, que encendía las tarjetas para
+// los 59 tests aunque producción corra sin esa variable. Sólo 5 dependen de los botones y son los que
+// usan `testConBotones`; los otros 54 —escritura, reservas, idempotencia, freno de mano— corren como
+// corre el bot. Ver `lib/comprobantes/botones-de-prueba.mjs`.
 
 import test from 'node:test'
+import { testConBotones } from '../../lib/comprobantes/botones-de-prueba.mjs'
 import assert from 'node:assert/strict'
 import { crearManejadorComprobantes, indiceACorregir } from './accion.mjs'
 import { escribirFajo, correrCargador, aFajoJson, aIso, filaDeRegistro } from './escritura.mjs'
@@ -441,7 +437,7 @@ test('un click en Corregir abre el diálogo con el secreto en la URL', async () 
   assert.equal(mm.dialogos[0].trigger_id, 'trig1')
 })
 
-test('guardar la corrección actualiza el fajo y reescribe el mensaje del canal', async () => {
+testConBotones('guardar la corrección actualiza el fajo y reescribe el mensaje del canal', async () => {
   const { repo, fajo } = await conFajo({ items: [item({ comprobante: { obra: null } })] })
   const { manejar, mm } = manejador({ repo, escribir: async () => ({}) })
   const r = await manejar({
@@ -557,7 +553,7 @@ const conDuplicado = (o = {}) => ({
   posibleDuplicado: { fila: 802, hoja: 'Compras', numero: '0004-00003642', fecha: '30/07/2026', total: 62000, obra: 'MESSINA' },
 })
 
-test('mientras el duplicado no se conteste NO aparece Confirmar', async () => {
+testConBotones('mientras el duplicado no se conteste NO aparece Confirmar', async () => {
   const { repo, fajo } = await conFajo({ items: [conDuplicado()] })
   const { mm, manejar } = manejador({ repo })
   await manejar(click(fajo.id, 'corregir')) // cualquier acción que redibuje sirve para mirar el mensaje
@@ -567,7 +563,7 @@ test('mientras el duplicado no se conteste NO aparece Confirmar', async () => {
   assert.ok(mm)
 })
 
-test('"Es el mismo, no lo cargues" NO lo carga, y queda constancia de que se decidió', async () => {
+testConBotones('"Es el mismo, no lo cargues" NO lo carga, y queda constancia de que se decidió', async () => {
   const { repo, fajo } = await conFajo({ items: [conDuplicado()] })
   let escribio = false
   const { mm, manejar } = manejador({ repo, escribir: async () => { escribio = true; return {} } })
@@ -581,7 +577,7 @@ test('"Es el mismo, no lo cargues" NO lo carga, y queda constancia de que se dec
   assert.equal(post.props.attachments[0].actions.some((a) => a.id === 'confirmar'), false)
 })
 
-test('"Es otro, cargalo" habilita Confirmar', async () => {
+testConBotones('"Es otro, cargalo" habilita Confirmar', async () => {
   const { repo, fajo } = await conFajo({ items: [conDuplicado()] })
   const { mm, manejar } = manejador({ repo })
   await manejar(click(fajo.id, 'duplicado_otro', { context: { accion: 'duplicado_otro', fajo_id: fajo.id, indice: 0 } }))
@@ -637,7 +633,7 @@ test('elegir la ÚLTIMA imputación que faltaba carga sola, sin pedir Confirmar'
 
 // La otra mitad: mientras QUEDE algo que preguntar, no se escribe una fila a medias. Este ítem tiene
 // la unidad sin resolver y con opciones para ofrecer, así que contestar la obra no alcanza.
-test('si todavía queda imputación pendiente, se sigue preguntando en vez de cargar', async () => {
+testConBotones('si todavía queda imputación pendiente, se sigue preguntando en vez de cargar', async () => {
   const conUnidad = {
     ...sinObra(),
     opciones: { obra: ['San Francisco', 'Taller'], unidad: ['Civil', 'Estructura'], detalle: {} },

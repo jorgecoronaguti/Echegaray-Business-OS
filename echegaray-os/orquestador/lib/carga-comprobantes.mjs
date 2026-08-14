@@ -19,6 +19,8 @@
 // NO FABRICA DATOS: si la foto no dice la forma de pago (P), se deja vacía. Si el proveedor no está
 // en la lista estricta, se marca como nuevo y NO se inventa una variante.
 
+import { conMarcaDeOrigen, dimensionesInferidas } from './comprobantes/marca-origen.mjs'
+
 /** Columnas de Compras por rol. Índice 0 = A. Es contrato con el Sheet vivo. */
 export const COL = {
   id: 'A', categoria: 'B', fecha: 'C', mes: 'D', proveedor: 'E', modalidad: 'F', tipo: 'G',
@@ -274,7 +276,12 @@ export function valoresInput(c) {
   set('modalidad', c.modalidad ?? pago.modalidad)
   set('tipo', tipoComprobante(c.tipo))
   set('numero', c.numero != null ? String(c.numero) : null)
-  set('concepto', c.concepto)
+  // EL CONCEPTO LLEVA DE DÓNDE SALIÓ LA IMPUTACIÓN (14/08). Cuando la obra, el detalle, la unidad o
+  // la categoría no salieron del papel sino del perfil estadístico del proveedor, la celda queda
+  // igualita a la que escribió el dueño y meses después nadie puede distinguirlas. La marca va acá y
+  // no en J/I/B porque esas tres tienen desplegable estricto —un sufijo las deja en rojo— y no en una
+  // nota de celda porque ningún generador de este repo escribe notas. Ver `marca-origen.mjs`.
+  set('concepto', conMarcaDeOrigen(c.concepto, dimensionesInferidas(c)))
   set('neto', neto)
   set('iva', iva)
   // P SÓLO ACEPTA UNO DE SUS SEIS VALORES. Lo que no sea uno de ellos NO SE ESCRIBE: el desplegable
@@ -290,6 +297,62 @@ export function valoresInput(c) {
   // Si quedó pagada al contado, lo pagado es el total; en cuenta corriente pendiente, no hay pago aún.
   if (estado === 'Pagado' && total != null) set('pagado', total)
   return out
+}
+
+// ═══ DE QUÉ FILA SE COPIAN LAS FÓRMULAS (14/08) ═══
+//
+// EL DEFECTO MEDIDO. El cargador estampaba las fórmulas con `PASTE_FORMULA` copiando de `ultima`, la
+// última fila con datos. `PASTE_FORMULA` copia lo que HAY: si esa fila tiene la columna O pegada como
+// número, lo que baja a las filas nuevas es **el total de otra factura**, no la fórmula. Y no es un
+// caso hipotético: medido sobre Compras el 14/08, de 842 filas **434 tienen fórmula en O y 408 un
+// literal** — casi una de cada dos. La última literal es la 743.
+//
+// POR QUÉ NO LO CAZABA NADIE. En el camino del bot lo agarra el control de aritmética al releer
+// (`verificacion.mjs`: Importe + IVA ≠ Total). En el camino de Claude Code la verificación buscaba
+// `#ERROR` y la columna AC vacía, y **un número equivocado no es un `#ERROR`**: la fila entra al
+// Flujo de Fondos con el importe de otro comprobante y todo se ve verde.
+//
+// LA REGLA. La fila modelo no es "la última": es la última que TIENE fórmula en todas las columnas
+// que se van a estampar. Si no hay ninguna en la ventana mirada, no se degrada a copiar un literal —
+// se falla fuerte y se dice cuál columna falta. Degradar a un dato falso es peor que no escribir.
+
+/**
+ * La fila de la que se pueden copiar las fórmulas, buscando de abajo hacia arriba.
+ *
+ * NÚCLEO PURO: entra la grilla ya leída (`readSheetGrid`), no la red.
+ *
+ * @param {Array<Array<{formula?:string|null}>>} filas  grilla; `filas[0]` es la fila `desde`
+ * @param {{desde?:number, grupos?:Array<[string,string]>}} [o]
+ * @returns {{fila:number|null, faltan:string[]}}
+ *   `fila`: número de fila del Sheet, o null si ninguna sirve.
+ *   `faltan`: qué columnas no tenían fórmula en la última fila mirada — para poder decir POR QUÉ.
+ */
+export function filaModeloDeFormulas(filas = [], { desde = 4, grupos = GRUPOS_FORMULA } = {}) {
+  const columnas = []
+  for (const [a, b] of grupos) {
+    for (let i = colIndice(a); i <= colIndice(b); i++) columnas.push(i)
+  }
+  let faltan = []
+  for (let i = filas.length - 1; i >= 0; i--) {
+    const fila = filas[i] ?? []
+    const sin = columnas.filter((c) => !fila[c]?.formula)
+    if (!sin.length) return { fila: desde + i, faltan: [] }
+    // Se guarda el diagnóstico de la fila MÁS ABAJO que se miró: es la que el operador tiene delante
+    // cuando abre la pestaña, y por lo tanto la que explica el error sin obligarlo a buscar.
+    if (!faltan.length) faltan = sin.map(letraDeIndice)
+  }
+  return { fila: null, faltan }
+}
+
+/** Índice 0 → letra de columna. Inversa de `colIndice`: 0→'A', 26→'AA'. */
+export function letraDeIndice(i) {
+  let n = Number(i)
+  let s = ''
+  while (n >= 0) {
+    s = String.fromCharCode(65 + (n % 26)) + s
+    n = Math.floor(n / 26) - 1
+  }
+  return s
 }
 
 // ═══ VERIFICACIÓN DEL EFECTO (03/08) — el log no puede felicitar sin haber escrito ═══

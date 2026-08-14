@@ -62,6 +62,9 @@ cp "$SRC_DIR"/echegaray-balanz-*.service "$SRC_DIR"/echegaray-balanz-*.timer "$U
 # de git, sin historia y sin forma de reinstalarlo en otra máquina. Se versiona el 07/08 con el texto
 # exacto que estaba corriendo en la VM — versionar una unidad es capturar lo que hay, no rediseñarla.
 cp "$SRC_DIR"/echegaray-arca-sync.service "$SRC_DIR"/echegaray-arca-sync.timer "$UNIT_DIR/"
+# Vigía de comprobantes (14/08): compara el registro de cargas contra la pestaña Compras y anota los
+# descalces en backlog_autonomo. SÓLO LEE — no toca una celda, así que no depende del freno de mano.
+cp "$SRC_DIR"/echegaray-comprobantes-vigia.service "$SRC_DIR"/echegaray-comprobantes-vigia.timer "$UNIT_DIR/"
 echo "units copiadas a $UNIT_DIR"
 
 systemctl --user daemon-reload
@@ -76,6 +79,10 @@ systemctl --user enable --now echegaray-os-schedules.timer     # disparador de r
 # porque un timer copiado y no habilitado es el defecto más silencioso: no falla nada, simplemente no
 # pasa. Gasta cuota de AfipSDK, no de Anthropic, y desde el 07/08 se niega solo si no le alcanza.
 systemctl --user enable --now echegaray-arca-sync.timer        # comprobantes ARCA (lunes 03:00)
+# El vigía de comprobantes se habilita porque SÓLO LEE: no escribe una celda, no gasta API de
+# Anthropic y no decide nada. Un timer copiado y no habilitado es el defecto más silencioso que hay —
+# es exactamente lo que le pasó al auditor que este vigía viene a disparar: existía y no corría nunca.
+systemctl --user enable --now echegaray-comprobantes-vigia.timer  # descalces registro↔Compras (07:30)
 
 # El Tesorero se COPIA pero NO se habilita, a propósito. Antes de que corra solo hacen
 # falta tres cosas que no puede darse a sí mismo: la migración aplicada, la reserva

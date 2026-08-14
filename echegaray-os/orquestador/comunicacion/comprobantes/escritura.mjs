@@ -37,6 +37,11 @@ import { identificar } from '../../lib/comprobantes/identidad.mjs'
 import { numeroCanonico, claveComprobante, conceptoConAnotacion, conceptoConProveedorLeido } from '../../lib/comprobantes/lectura.mjs'
 import * as repoReal from './repositorio.mjs'
 import { avisosDeVerificacion, cierre, COL as VCOL, tablaDeLoEscrito } from '../../lib/comprobantes/verificacion.mjs'
+import { vigilar } from '../../lib/comprobantes/vigilancia.mjs'
+// El auditor entra por importación ESTÁTICA y no cuesta nada: ese script sólo importa el núcleo puro
+// de `lib/comprobantes/auditoria.mjs` arriba — su cliente de Google es un import dinámico dentro de
+// `main()`. Importarlo acá no abre una conexión ni pide una credencial.
+import { auditar as auditarCompras } from '../../scripts/auditar-comprobantes-cargados.mjs'
 
 const AQUI = dirname(fileURLToPath(import.meta.url))
 export const RUTA_CARGADOR = resolve(AQUI, '../../scripts/cargar-comprobantes-compras.mjs')
@@ -116,6 +121,16 @@ export function aFajoJson(items = []) {
       obra: c.obra ?? undefined,
       unidad: c.unidad ?? undefined,
       detalle: c.detalleObra ?? undefined,
+      // ═══ LAS VÍAS VIAJAN, O LA MARCA DE ORIGEN SE PIERDE EN EL CAMINO (14/08) ═══
+      //
+      // `valoresInput` decide con ellas si la columna L lleva el `[historial: …]` que declara que la
+      // imputación se dedujo de un promedio en vez de leerse del papel. El bot resolvía la imputación
+      // ANTES de armar este JSON, así que sin estos cuatro campos la fila del chat salía sin marca y
+      // la del cargador con marca: la misma inferencia, declarada en una vía y muda en la otra.
+      obraVia: c.obraVia ?? undefined,
+      detalleVia: c.detalleVia ?? undefined,
+      unidadVia: c.unidadVia ?? undefined,
+      categoriaVia: c.categoriaVia ?? undefined,
       duplicadoResuelto: it.duplicadoResuelto ?? undefined,
     }
   })
@@ -383,7 +398,32 @@ export async function escribirFajo(d, fajo) {
     }
   }
 
-  const texto = [textoCargado(filas, yaEstaban, r.datos, { pendientes, suma, varios }), prueba].filter(Boolean).join('\n')
+  // ═══ EL CONTROL SE DISPARA ACÁ, AL CERRAR LA CARGA (14/08) ═══
+  //
+  // El auditor de descalces registro↔pestaña existía y no lo llamaba nadie (`grep -rl auditarCompras`
+  // devolvía el script y su test). Éste es el momento exacto en que puede nacer uno: se acaba de
+  // escribir el Sheet y de anotar el registro, y entre las dos cosas hay una ventana. Corre DESPUÉS de
+  // que la carga terminó y las filas ya están anotadas, así que no puede dejarla a medias; y va
+  // envuelto en `vigilar`, que nunca lanza.
+  //
+  // ═══ POR QUÉ EL CLIENTE DE GOOGLE ENTRA Y NO SE CONSTRUYE ACÁ ═══
+  //
+  // Porque construirlo por default haría que CADA test de la escritura leyera la pestaña Compras del
+  // Sheet real: medido, 11 segundos y una lectura viva del archivo del dueño desde una prueba unitaria.
+  // El que arma el bot ya tiene el cliente en la mano (`especialistas/comprobantes.mjs`) y lo pasa; el
+  // que no lo tiene no dispara el control, y eso se ve. `especialista-vigilancia.test.mjs` prueba que
+  // el cableado existe: sin ese test, "el auditor no lo llama nadie" volvería en la próxima refactor.
+  //
+  // EN MODO ENSAYO NO CORRE: el cargador no escribió nada, así que todo lo reservado en este fajo
+  // aparecería como descalce y el aviso sería íntegramente falso.
+  const auditor = d.auditar ?? (d.google ? () => auditarCompras({ google: d.google, port }) : null)
+  const control = !ensayo && auditor
+    ? await (d.vigilar ?? vigilar)({ auditar: auditor, port, log })
+    : { aviso: null, resumen: {} }
+  if (control.motivo) log?.warn?.('comprobantes: vigilancia degradada', { detalle: control.motivo })
+
+  const texto = [textoCargado(filas, yaEstaban, r.datos, { pendientes, suma, varios }), prueba, control.aviso]
+    .filter(Boolean).join('\n')
   // EL RECUENTO VIAJA APARTE DEL TEXTO. Desde que la tanda publica UN mensaje para varios posts, el
   // texto de acá ya no se publica tal cual: hay que poder SUMAR lo de tres posts antes de escribir un
   // renglón, y un string no se suma. Se devuelven los mismos números que arma el texto —no otros—
@@ -395,7 +435,7 @@ export async function escribirFajo(d, fajo) {
     yaEstaban: yaEstaban.length,
     suma,
     sinImputar: pendientes,
-    avisos: avisosDuros(r.datos, varios),
+    avisos: avisosDuros(r.datos, varios, control.aviso),
   }
 }
 
@@ -405,10 +445,27 @@ export async function escribirFajo(d, fajo) {
  * comprobante. No entra acá nada informativo: el mensaje único es de tres renglones y todo lo que
  * sobra hace que no se lea el que importa.
  */
-function avisosDuros(datos, varios = []) {
+function avisosDuros(datos, varios = [], descalces = null) {
   const l = []
   if (datos?.errores) l.push(`${datos.errores} fila(s) quedaron con #ERROR en Compras — revisalas.`)
   if (datos?.nuevos?.length) l.push(`Proveedor(es) fuera del desplegable: ${datos.nuevos.join(' · ')}.`)
+  // LA ARITMÉTICA QUE NO CIERRA ES DURA. Un total equivocado no da `#ERROR` y se propaga solo a cuatro
+  // pestañas del Flujo de Fondos: si no entra acá, se pierde entre lo informativo.
+  if (datos?.noCierran?.length) {
+    l.push(`${datos.noCierran.length} fila(s) NO cierran (Importe + IVA ≠ Total): ${datos.noCierran.map((n) => `fila ${n.fila}`).join(', ')}. Revisalas antes de espejar.`)
+  }
+  // LA PERCEPCIÓN ABSORBIDA NO LLEGABA AL CHAT (14/08). El cargador la imprimía por stdout y el bot
+  // sólo parsea la línea JSON: en la fila 844 se metieron $53.356,45 de percepción de IIBB adentro del
+  // costo sin una palabra. Es correcto por el contrato de M (= Total − IVA, con las percepciones
+  // adentro para que el Total cierre con la plata que salió), pero es CRÉDITO FISCAL contabilizado
+  // como costo: si el dueño no se entera, no lo computa contra su IIBB y lo paga dos veces.
+  if (datos?.percep?.length) {
+    const total = datos.percep.reduce((a, p) => a + (Number(p.dif) || 0), 0)
+    l.push(`Percepción/impuesto interno absorbido en el Importe: $${Math.round(total).toLocaleString('es-AR')} `
+      + `(${datos.percep.map((p) => `${p.proveedor} $${Math.round(p.dif).toLocaleString('es-AR')}`).join(' · ')}). `
+      + 'Es crédito fiscal quedando dentro del costo — computalo contra IIBB.')
+  }
+  if (descalces) l.push(descalces)
   if (datos?.duplicados?.length) {
     l.push(`${datos.duplicados.length} NO lo(s) cargué: ya estaban en Compras (${datos.duplicados.map((d) => `fila ${d.fila}`).join(', ')}).`)
   }

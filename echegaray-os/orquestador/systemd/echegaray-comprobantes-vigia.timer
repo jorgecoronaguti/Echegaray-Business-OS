@@ -1,0 +1,12 @@
+[Unit]
+# 1x/día a las 07:30 -03, media hora después de la vigilancia autónoma: así lo que anote este vigía en
+# backlog_autonomo ya está cuando el Director triagea. Persistent para que un apagado no lo saltee.
+Description=Echegaray OS - Vigía de comprobantes (1x/día 07:30 -03)
+
+[Timer]
+OnCalendar=*-*-* 07:30:00
+Persistent=true
+Unit=echegaray-comprobantes-vigia.service
+
+[Install]
+WantedBy=timers.target
