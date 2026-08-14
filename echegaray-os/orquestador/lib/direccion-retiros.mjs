@@ -70,6 +70,8 @@
 // uno. Cuando esas dos salidas se carguen en Compras con su persona y su mes, el bloque las va a
 // tomar solo y sin tocar una línea de código — que es la prueba de que el criterio está bien puesto.
 
+import { expresionPagoDelMes } from './jornales-fecha-pago.mjs'
+
 /** Las tres personas de Dirección. Definidas UNA vez: de acá salen el rótulo, el regex y el total. */
 export const NOMBRES_DIRECCION = ['Jorge Echegaray', 'Rodrigo Echegaray', 'Jorge Corona']
 
@@ -78,11 +80,27 @@ export const RANGO_DIA_PAGO = 'DIRECCION_DIA_PAGO'
 /** MEDIDO en Compras: las cinco filas de sueldos de administración tienen fecha de caja 10/08. */
 export const DIA_PAGO_DEFAULT = 10
 
+/**
+ * RETIRADO EL 14/08 — SE PUBLICA PERO YA NO GOBIERNA NINGUNA FECHA.
+ *
+ * El día 10 salía de las cinco filas de Compras de julio, que tenían fecha de caja 10/08. Pero esa
+ * fecha era una PREVISIÓN cargada a mano, no un pago: los retiros que salieron de verdad por el banco
+ * fueron el 01/06, el 02/07 y el 03/08 — primeros días del mes siguiente, junto con el lote de
+ * haberes. Con la orden del dueño de que los tres grupos cobren el mismo día, la fecha de dirección
+ * pasó a ser la de la nómina (`expresionPagoDelMes`) y este parámetro dejó de tener consumidores.
+ *
+ * NO SE BORRA DESDE ACÁ: la fila ya existe en Parámetros y sacarla es una escritura del Sheet, que se
+ * hace desde el árbol principal. Queda declarado para que nadie la lea como si todavía decidiera algo.
+ */
 export const PARAMETRO_DIA_PAGO = {
   rango: RANGO_DIA_PAGO,
-  rotulo: 'Día del mes en que se pagan los retiros de Dirección',
+  rotulo: 'Día del mes en que se pagan los retiros de Dirección (RETIRADO)',
   valor: DIA_PAGO_DEFAULT,
-  nota: 'Los retiros de un mes se pagan este día del mes SIGUIENTE. MEDIDO en Compras: los cinco sueldos de administración de julio tienen fecha de caja 10/08. Cambiá este número y el cash flow semanal se recalcula.',
+  nota: 'RETIRADO el 14/08: ya no gobierna ninguna fecha. Los tres grupos cobran el día de la nómina '
+    + '(el lote de haberes del cierre de mes, o WORKDAY(cierre; JORNALES_DESFASE_PAGO) si el banco '
+    + 'todavía no lo prueba). El día 10 salía de una fecha de caja PREVISTA en Compras, no de un pago: '
+    + 'los retiros reales salieron el 01/06, el 02/07 y el 03/08.',
+  retirado: true,
 }
 
 // Las columnas de Compras que mira este bloque. Las mismas que ya usa el cash flow (COL_TOTAL,
@@ -151,6 +169,36 @@ export const formulaPrimerRetiro = (nombres = NOMBRES_DIRECCION) =>
  */
 export const formulaPrimerRetiroDe = (celdaNombre) =>
   `=IFERROR(MIN(FILTER(${COL_FECHA_CAJA};LOWER(${COL_PERSONA}&"")=LOWER(${celdaNombre});ISNUMBER(${COL_FECHA_CAJA})));"")`
+
+/**
+ * NÚCLEO PURO: EL MES AL QUE PERTENECE EL IMPORTE BASE — que no es el mes en que se pagó.
+ *
+ * ═══ EL DEFECTO (14/08) ═══
+ *
+ * El dueño: *"está mal hecha la proyección de aumentos en el grupo de 'dirección' porque no habría
+ * aumento reflejado en el mes siguiente"*. Medido en la pestaña viva:
+ *
+ *     Julio      $9.000.000  pagado      04/08   factor 0,9814
+ *     Agosto     $9.000.000  proyección  10/09   factor 1,0000   ← el mes siguiente, SIN aumento
+ *     Septiembre $9.171.000  proyección  10/10   factor 1,0190
+ *
+ * El ancla del factor era `EOMONTH(TODAY();0)` — el mes CALENDARIO en curso. Pero el importe base sale
+ * de la última carga de Compras, que es el retiro de JULIO pagado el 03–04/08. Anclar en agosto le
+ * asigna factor 1 a agosto, o sea: el retiro de agosto vale lo mismo que el de julio, y todos los
+ * meses siguientes arrastran ese mes de aumento que se perdió. Sobre la proyección a diciembre son
+ * $888.113 — un 1,9% de todo el bloque, en silencio, sin una sola celda en error.
+ *
+ * Y ES PEOR QUE UN NÚMERO CORTO: el ancla se MUEVE sola. El 1° de septiembre `EOMONTH(TODAY();0)` pasa
+ * a septiembre y la proyección pierde OTRO mes de aumento, sin que nadie toque nada. Un ancla que
+ * camina con el reloj mientras la base se queda quieta pierde un tramo de paritaria por mes.
+ *
+ * El ancla correcta es el mes al que corresponde el importe: el retiro de M se paga a principios de
+ * M+1, así que es `EOMONTH(fecha de caja de esa carga; -1)`. Sale del MISMO dato que el importe —la
+ * fila de Compras con la fecha de caja más alta— así que los dos no se pueden separar.
+ */
+export const expresionMesBaseRetiro = (nombres = NOMBRES_DIRECCION) =>
+  `EOMONTH(MAX(FILTER(${COL_FECHA_CAJA};REGEXMATCH(LOWER(${COL_PERSONA}&"");"${regexDireccion(nombres)}");`
+  + `IF(ISNUMBER(${COL_IMPORTE});${COL_IMPORTE};0)>0));-1)`
 
 /**
  * NÚCLEO PURO: LAS FILAS DE COMPRAS QUE PAGAN EL RETIRO DEL MES `mes` — definidas UNA sola vez.
@@ -224,7 +272,16 @@ export function formulaPagadoMes(mes, anio, nombres = NOMBRES_DIRECCION) {
  * Diciembre da enero del año que viene, y está bien: es percibido, y ese pago no es caja de este año.
  */
 export function formulaSePagaElDireccion(mes, anio, nombres = NOMBRES_DIRECCION) {
-  const prevista = fechaDeMes(anio, mes + 1, RANGO_DIA_PAGO)
+  // LA PREVISTA YA NO ES EL DÍA 10: ES LA FECHA DE LA NÓMINA DEL MES, LA MISMA DE LOS OTROS DOS GRUPOS
+  // (14/08, orden del dueño — "los tres grupos quiero q cobren el mismo dia"). El día 10 salía de
+  // medir las cinco filas de Compras de julio, que tenían fecha de caja 10/08 — una PREVISIÓN cargada
+  // a mano, no un pago. Los retiros que efectivamente salieron por el banco fueron el 01/06, el 02/07
+  // y el 03/08: primeros días del mes siguiente, dentro de la ventana del lote de haberes. El criterio
+  // y su evidencia, en lib/jornales-fecha-pago.mjs.
+  // EL MES ES `mes`, NO `mes+1`: la nómina que cierra a fin de M es la que se paga a principios de
+  // M+1, que es exactamente cuando sale el retiro. Medido: julio → WORKDAY(31/07;1) = lun 03/08, y el
+  // banco pagó los honorarios el 03/08.
+  const prevista = expresionPagoDelMes(anio, mes)
   return `=IFERROR(MAX(FILTER(${COL_FECHA_CAJA};${condicionesPagoDelMes(mes, anio, nombres).join(';')}));${prevista})`
 }
 

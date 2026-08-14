@@ -439,9 +439,12 @@ test('B3 · el "escalón que viene" NO puede mostrar un número de otro año', (
   const i = gm.filas.indexOf(fila)
   assert.doesNotMatch(String(gm.filas[i + 1][0] ?? ''), /Básico de .* desde ese mes/,
     'volvió la fila vacía del básico del mes que viene')
-  // `ratios` trae además la fracción de efectivo del calendario (13/08): se la descuenta para que
-  // este control siga midiendo lo que vino a medir —cuántos MÁRGENES hay— y no el largo de la lista.
-  assert.equal(gm.ratios.filter((f) => f !== gm.fShare).length, 1, 'sin acuerdo publicado hay UN margen, no dos')
+  // `ratios` trae además las TRES fracciones del calendario y de oficina (efectivo de obra, adelanto
+  // ponderado y efectivo de oficina): se descuentan para que este control siga midiendo lo que vino a
+  // medir —cuántos MÁRGENES hay— y no el largo de la lista.
+  const fracciones = [gm.fShare, gm.fAdel, gm.fShareOfi]
+  assert.equal(gm.ratios.filter((f) => !fracciones.includes(f)).length, 1,
+    'sin acuerdo publicado hay UN margen, no dos')
   const texto = gm.filas.flat().map(String).join(' ')
   assert.doesNotMatch(texto, /MATCH\(TEXT\(TODAY\(\);"mmmm"\)/, 'volvió el MATCH por nombre de mes')
 })
@@ -470,12 +473,21 @@ test('UN SOLO DRIVER: obra, OFICINA y DIRECCIÓN se proyectan con el factor de p
     assert.match(String(f[6]), /\/INDEX/, 'oficina perdió su propio mes base: se le aplica el aumento de otro')
   }
 
-  // DIRECCIÓN: la misma columna, el mismo cuadro, y la base es el MES EN CURSO por fórmula —el importe
-  // sale de la última carga en Compras, o sea que es el valor de hoy.
+  // ═══ DIRECCIÓN: EL ANCLA ES EL MES DEL IMPORTE, NO EL DEL CALENDARIO (14/08) ═══
+  //
+  // El dueño: "está mal hecha la proyección de aumentos en el grupo de 'dirección' porque no habría
+  // aumento reflejado en el mes siguiente". Era `EOMONTH(TODAY();0)`: el importe base sale de la última
+  // carga de Compras —el retiro de JULIO, pagado el 03–04/08— y anclar en agosto le daba factor 1 al
+  // mes siguiente al último pagado. $888.113 de menos a diciembre, y un tramo MÁS por cada 1° de mes
+  // que pasara, porque el ancla caminaba con el reloj mientras la base se quedaba quieta.
   const dir = gm.filas.slice(gm.d0 - 1, gm.dFin)
   for (const f of dir) {
     assert.match(String(f[6]), anclaEnEscalon, 'el retiro de un mes volvió a proyectarse sin ajuste')
-    assert.match(String(f[6]), /EOMONTH\(TODAY\(\);0\)/, 'la base del ajuste quedó estampada en un mes fijo')
+    assert.doesNotMatch(String(f[6]), /EOMONTH\(TODAY\(\);0\)/,
+      'el ancla volvió al mes del calendario: el mes siguiente al último pagado se queda sin aumento')
+    assert.match(String(f[6]), /EOMONTH\(MAX\(FILTER\('Compras'!\$AD/,
+      'el ancla dejó de salir del MISMO dato que el importe base')
+    assert.match(String(f[6]), /;-1\)/, 'el retiro de M se paga en M+1: sin el -1 el ancla se corre un mes')
   }
   // Y el proyectado MULTIPLICA por ese factor, con la celda validada: `total*""` daría 0 y borraría el
   // retiro del mes sin dar un solo error.
@@ -605,10 +617,17 @@ test('EL EFECTIVO PROYECTADO SE APAGA ENTERO CUANDO NO HAY BASE — nunca un #VA
   const efectivo = String(gm.filas[gm.p0 - 1][7])
   assert.match(efectivo, new RegExp(`^=IF\\(\\$B\\$${gm.fShare}="";"";`),
     `la columna Efectivo multiplica sin preguntar si hay base: ${efectivo}`)
-  assert.match(efectivo, new RegExp(`\\$B\\$${gm.fShare}\\)$`), 'el efectivo dejó de salir del share medido')
-  // Y multiplica la columna de OBRA, no el TOTAL: oficina y dirección no declaran canal de pago y
-  // repartirlas con la proporción de la obra sería inventarlo.
+  assert.match(efectivo, new RegExp(`\\$B\\$${gm.fShare}`), 'el efectivo dejó de salir del share medido')
+  // Multiplica la columna de OBRA y —desde el 14/08, por orden del dueño— la de OFICINA, que también
+  // registra su canal en la planilla. DIRECCIÓN no: de esos tres retiros el canal no está en ninguna
+  // parte, y repartirlos con la proporción de otro grupo sería inventarlo.
   assert.match(efectivo, new RegExp(`D${gm.p0}\\*`), 'el efectivo se calcula sobre una columna que no es la de obra')
+  assert.match(efectivo, new RegExp(`E${gm.p0}\\*`), 'oficina quedó fuera del efectivo: su canal SÍ está registrado')
+  assert.doesNotMatch(efectivo, new RegExp(`F${gm.p0}\\*`), 'dirección no declara canal: repartirla sería inventarlo')
+  // Que oficina no tenga base no puede borrar el efectivo de obra, que es el número con el que se
+  // junta la plata: su sumando se apaga en 0, no en "".
+  assert.match(efectivo, new RegExp(`\\+IF\\(\\$B\\$${gm.fShareOfi}="";0;`),
+    `el sumando de oficina se apaga en vacío y rompe la celda entera: ${efectivo}`)
   // El rótulo de al lado declara sobre qué se midió, con un número y sin una explicación.
   const glosa = String(gm.filas[gm.fShare - 1][2])
   assert.match(glosa, /quincenas pagadas del año/, 'el rótulo dejó de declarar que la ventana es el año')

@@ -68,7 +68,12 @@ export const COLS_CALENDARIO = [
   // "Período" y no "Quincena": la primera fila puede ser LO QUE QUEDA de la quincena en curso, y
   // rotularla "Quincena" es lo que hacía que el dueño leyera una quincena de un día. El rótulo dice
   // lo que la fila es.
-  'Período', 'Hasta', 'Se paga el', 'Obreros', 'Oficina', 'Dirección', 'TOTAL', 'Efectivo (obra)',
+  // «Efectivo» y no «Efectivo (obra)» desde el 14/08: la columna dejó de ser sólo de obra. El dueño
+  // ordenó que oficina se abra por canal igual que obreros, y su fuente (`_J_OFICINA`) trae las mismas
+  // tres columnas BANCO/ADELANTO/TOTAL RECIBO que la de obra. Dirección sigue afuera: de esos tres
+  // retiros el canal no está registrado en ninguna parte, y repartirlos con la proporción de otro
+  // grupo sería inventarlo.
+  'Período', 'Hasta', 'Se paga el', 'Obreros', 'Oficina', 'Dirección', 'TOTAL', 'Efectivo',
 ]
 
 /** La letra A1 de una columna del calendario, buscada por su rótulo. Falla RUIDOSA. */
@@ -211,6 +216,59 @@ export function formulaShareEfectivo({ banco, total, hasta, pagado }, f0, f1) {
   // ΣTOTAL>0 por construcción, porque `total>0` es una de las condiciones— o no se proyecta nada.
   return `=IF(SUMPRODUCT(${v})<${MIN_QUINCENAS_SHARE};"";`
     + `1-SUMPRODUCT(${v}*N(${rg}))/SUMPRODUCT(${v}*N($${total}$${f0}:$${total}$${f1})))`
+}
+
+/**
+ * NÚCLEO PURO: QUÉ PROPORCIÓN DE LA QUINCENA SALE COMO ADELANTO — PONDERADA, NO PROMEDIADA.
+ *
+ * ═══ LA ORDEN, REPETIDA DOS VECES (14/08) ═══
+ *
+ * *"te pedi q los 'adelantos' de los obreros se proyectaran en base a un porcentaje ponderado"*. Y
+ * antes: *"el adelanto es algo q no se puede proyectar asi como está, se tiene q hacer un calculo
+ * promedio del año y con ese % armarlo proyectado"*.
+ *
+ * Lo que había era el share de EFECTIVO —adelanto + resto contra recibo, juntos— y el adelanto no
+ * tenía proyección propia en ninguna parte. Son dos cosas distintas para tesorería: el efectivo es
+ * cuánto billete hay que juntar para el día de pago; el ADELANTO es plata que sale ANTES, a lo largo
+ * de la quincena, y por eso tiene su propio ritmo de caja.
+ *
+ * ES UNA RAZÓN DE IMPORTES: `Σadelanto / Σtotal`, nunca `AVERAGE(adelanto_i/total_i)`. Medido sobre las
+ * 14 quincenas pagadas de 2026: el ponderado da 13,73% ($15.794.784 sobre $115.054.273) y el promedio
+ * simple de porcentajes da bastante más, porque las quincenas chicas —enero, las que salieron casi
+ * enteras en billetes— pesan lo mismo que las de $10M. Sobre la proyección a diciembre esa diferencia
+ * es plata que se junta o no se junta.
+ *
+ * MISMA VENTANA Y MISMO PISO QUE EL SHARE DE EFECTIVO: el año calendario, sólo quincenas PAGADAS, y sin
+ * `MIN_QUINCENAS_SHARE` no se proyecta. Dos definiciones de "la base sobre la que se mide un canal de
+ * pago" en la misma pestaña es cómo aparecen dos porcentajes que no suman con el total.
+ *
+ * @param {{adelanto:string, total:string, hasta:string, pagado:string}} col letras del registro
+ */
+export function formulaShareAdelanto({ adelanto, total, hasta, pagado }, f0, f1) {
+  const v = ventanaAnualPagada({ total, hasta, pagado }, f0, f1)
+  const rg = (c) => `$${c}$${f0}:$${c}$${f1}`
+  // SIN IFERROR, por lo mismo que el share de efectivo: o hay base suficiente —y entonces ΣTOTAL>0 por
+  // construcción— o no se proyecta. Un 0/0 atrapado devolvería un número plausible fabricado.
+  return `=IF(SUMPRODUCT(${v})<${MIN_QUINCENAS_SHARE};"";`
+    + `SUMPRODUCT(${v}*N(${rg(adelanto)}))/SUMPRODUCT(${v}*N(${rg(total)})))`
+}
+
+/**
+ * EL MISMO CRITERIO EN JAVASCRIPT — para poder AFIRMAR el porcentaje sin leer la celda que lo calcula.
+ * @param {Array<{hasta:Date, pagado:Date|null, adelanto:number, total:number}>} filas
+ */
+export function shareAdelantoAnual(filas = [], hoy = new Date()) {
+  const enero = new Date(hoy.getFullYear(), 0, 1)
+  const base = (filas ?? []).filter((f) => f.hasta >= enero && f.hasta <= hoy
+    && f.pagado instanceof Date && Number(f.total) > 0)
+  const adelanto = base.reduce((a, f) => a + Number(f.adelanto || 0), 0)
+  const total = base.reduce((a, f) => a + Number(f.total || 0), 0)
+  return {
+    quincenas: base.length,
+    adelanto,
+    total,
+    share: base.length < MIN_QUINCENAS_SHARE ? null : adelanto / total,
+  }
 }
 
 /**
