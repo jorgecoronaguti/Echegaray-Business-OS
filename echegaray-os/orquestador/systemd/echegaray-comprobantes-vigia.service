@@ -1,0 +1,23 @@
+[Unit]
+# SÓLO LECTURA. No escribe una celda del Sheet: lee Compras y el registro de cargas y anota los
+# descalces en public.backlog_autonomo. El freno de mano de Sheets no lo afecta porque no escribe.
+Description=Echegaray OS - Vigía de comprobantes (registro de cargas vs. pestaña Compras, read-only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/jorge/echegaray-os/app/echegaray-os
+Environment=PATH=/home/jorge/.nvm/versions/node/v24.18.0/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=%h/.config/echegaray-orq/worker.env
+ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/vigilar-comprobantes.mjs
+# Salir con 2 significa "encontré comprobantes cargados que no están en Compras". No es una falla del
+# servicio: es el hallazgo. Sin esto systemd lo marcaría failed y el journal se llenaría de ruido rojo
+# que en dos días nadie mira.
+SuccessExitStatus=0 2
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=comprobantes-vigia
+
+[Install]
+WantedBy=default.target

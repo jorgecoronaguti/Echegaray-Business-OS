@@ -240,7 +240,11 @@ async function cargar({ texto, port, actor, google, fileIds, postId, mattermost,
     // EL ESCRITOR. Es el mismo `escribirFajo` que dispara el botón Confirmar —el que corre el
     // cargador de Claude Code como proceso hijo—: no hay dos caminos de escritura, hay uno solo
     // al que ahora también se llega sin apretar nada.
-    escribir: (f) => escribirFajo({ port, log }, f),
+    // `google` viaja para que al cerrar la carga corra el AUDITOR de descalces registro↔pestaña. Es
+    // el mismo cliente que ya se usó para leer las listas y la pestaña viva: el control no paga una
+    // autenticación más. Sin este argumento el auditor no se dispara — y "no lo dispara nadie" es
+    // exactamente el defecto que se está arreglando.
+    escribir: (f) => escribirFajo({ port, log, google }, f),
     url,
     log,
   }, {

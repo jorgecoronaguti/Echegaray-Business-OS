@@ -5,8 +5,11 @@
 // Corregir / Descartar y los desplegables de imputación eran la otra mitad del ruido.
 //
 // A propósito ESTE archivo NO toca `ORQ_COMPROBANTES_BOTONES`: corre con el entorno de producción.
-// Los que lo encienden (`fajo.test.mjs`, `mensaje.test.mjs`, `accion.test.mjs`, `flujo.test.mjs`)
-// prueban la mecánica que quedó detrás del interruptor; éste prueba la posición del interruptor.
+//
+// Desde el 14/08 ya no es el único: los otros cuatro archivos lo encendían para el ARCHIVO ENTERO
+// —147 tests corriendo en una configuración que nadie ejecuta— y ahora lo encienden por TEST, con
+// `testConBotones` (`lib/comprobantes/botones-de-prueba.mjs`). Aquéllos prueban la mecánica que quedó
+// detrás del interruptor; éste prueba la POSICIÓN del interruptor, que es otra cosa.
 //
 // PARA VER EL ROJO: poné `ORQ_COMPROBANTES_BOTONES=1` y este archivo entero se cae.
 

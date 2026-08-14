@@ -34,10 +34,12 @@ import { readFileSync } from 'node:fs'
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query, closePool } from '../lib/db.mjs'
-import { matchProveedor, valoresInput, aFechaAR, discrepanciaNeto, verificarEscritura, colIndice, GRUPOS_FORMULA } from '../lib/carga-comprobantes.mjs'
+import { matchProveedor, valoresInput, aFechaAR, discrepanciaNeto, verificarEscritura, colIndice, filaModeloDeFormulas, GRUPOS_FORMULA } from '../lib/carga-comprobantes.mjs'
 import { faltantesDe, puedeCargarse, POLITICA } from '../lib/comprobantes/faltantes.mjs'
 import { registrarSincronizacion } from '../lib/registrar-sincronizacion.mjs'
-import { perfilesDeImputacionDesdeDB, perfilesDeImputacion, sugerirImputacion } from '../lib/imputacion-aprendida.mjs'
+import { perfilesDeImputacionDesdeDB, perfilesDeImputacion } from '../lib/imputacion-aprendida.mjs'
+import { completarUno } from '../lib/comprobantes/imputacion-historial.mjs'
+import { aritmetica } from '../lib/comprobantes/verificacion.mjs'
 import { indiceDeCompras, buscarEnCompras, HALLAZGO } from '../lib/comprobantes/compras-vivas.mjs'
 import { conciliarConArca, aplicarArca, candidatasArca, ESTADO_ARCA } from '../lib/comprobantes/arca.mjs'
 import { listasDeCompras, proveedoresPorCuit } from '../lib/comprobantes/listas.mjs'
@@ -119,6 +121,48 @@ export async function escribirYVerificar(google, { desde, hasta, plan, fileId = 
   return { ok: false, congelado: respuesta?.congelado === true, motivo: porQueNoEntro(respuesta, Boolean(leido)), ...v, respuesta }
 }
 
+/**
+ * LO QUE QUEDÓ EN LAS FILAS RECIÉN ESCRITAS, con los TRES controles. NÚCLEO PURO.
+ *
+ * Exportada para poder probarla: la mitad que importa —la aritmética— es justamente la que no se
+ * podía ejercitar cuando vivía adentro de `main()`, que toca Google, Postgres y el Sheet real.
+ *
+ * · `errores`   → `#ERROR/#REF/#N/A/#VALUE` en id (A), total (O) o rubro (AC). Es el chequeo de las
+ *                 FÓRMULAS y sólo eso.
+ * · `sinRubro`  → AC vacía: la fila entra al Cash Flow sin clasificar. Informativo, no es un defecto.
+ * · `noCierran` → Importe + IVA ≠ Total. **Es lo que `#ERROR` no puede ver**: si `PASTE_FORMULA` bajó
+ *                 un literal en vez de la fórmula de O, la fila queda con el total de OTRA factura —
+ *                 un número perfectamente válido y perfectamente falso. Usa la MISMA `aritmetica()`
+ *                 que el bot al releer: si algún día cambia la tolerancia, cambia para los dos.
+ *
+ * @param {Array<Array<{valor?:string|null}>>} filas  la grilla releída de `Compras!A{desde}:AD{hasta}`
+ * @param {{desde:number}} o
+ */
+export function revisarFilasEscritas(filas = [], { desde = 0 } = {}) {
+  let errores = 0
+  let sinRubro = 0
+  const noCierran = []
+  for (const [k, f] of (filas ?? []).entries()) {
+    const val = (i) => f?.[i]?.valor ?? ''
+    if (/#(ERROR|REF|N\/A|VALUE|¿NOMBRE|NAME)/i.test([val(0), val(14), val(28)].join(' '))) errores++
+    if (!val(28)) sinRubro++
+    const a = aritmetica((f ?? []).map((c) => c?.valor ?? ''))
+    if (!a.cierra) noCierran.push({ fila: desde + k, ...a })
+  }
+  return { errores, sinRubro, noCierran }
+}
+
+/**
+ * ¿Hay que tocar el desplegable estricto de la columna E?
+ *
+ * Existe como función porque acá vivía `nuevos.size` sobre un ARRAY —`undefined`, falsy siempre— y
+ * `--add-proveedores` nunca agregó un proveedor sin que nadie se enterara. Una condición metida en el
+ * medio de `main()` no se puede probar, y por eso estuvo mal todo el tiempo que estuvo.
+ */
+export function debeAgregarProveedores(addProv, nuevos) {
+  return Boolean(addProv) && Array.isArray(nuevos) && nuevos.length > 0
+}
+
 /** Concilia contra el padrón. MUTA el comprobante: le corrige el número, el CUIT y el CAE. */
 async function conciliar(cc, arcaDe) {
   if (typeof arcaDe !== 'function') return { estado: ESTADO_ARCA.NO_VERIFICADO }
@@ -189,14 +233,23 @@ export async function prepararPlan(comprobantes = [], o = {}) {
     if (prov.esNuevo) nuevos.add(prov.valor)
     const dif = discrepanciaNeto(cc)
     if (dif) percep.push({ i, proveedor: prov.valor, dif })
-    // SUGERENCIA de imputación (F8): aparece para que el dueño la vea; NO cambia lo que se escribe.
-    // Sólo si el comprobante no trae la imputación explícita (no pisamos lo que el dueño ya anotó).
-    const sug = perfiles && !cc.unidad && !cc.obra
-      ? sugerirImputacion({ proveedor: prov.valor, concepto: cc.concepto, monto: cc.total ?? cc.neto }, perfiles)
-      : null
+    // ═══ LA IMPUTACIÓN SE APLICA, NO SE IMPRIME (14/08) ═══
+    //
+    // Acá se llamaba a `sugerirImputacion` y el resultado sólo se mostraba: «NO cambia lo que se
+    // escribe». El bot, con la misma lib, sí la escribía. El mismo comprobante quedaba imputado a una
+    // obra o a ninguna según por dónde entrara, y la obra es la columna que decide qué obra come el
+    // costo. Ahora los dos caminos llaman a `completarUno`, que aplica sólo lo FIRME (n≥5 y ≥80%),
+    // nunca pisa lo que el papel dice, y marca la vía — de ahí sale el `[historial: …]` de la
+    // columna L, para que meses después se pueda distinguir el dato del promedio.
+    // `campoDetalle: 'detalle'` porque en el `fajo.json` la columna K se llama así — en el ítem del
+    // chat se llama `detalleObra` y `detalle` es el desglose del IVA. La forma la declara el que
+    // llama; adivinarla dejaba la K vacía por una vía y le escribía texto al IVA por la otra.
+    const { aplicado, sugerencia: sug } = perfiles?.por_proveedor
+      ? completarUno(cc, perfiles, { campoDetalle: 'detalle' })
+      : { aplicado: {}, sugerencia: null }
     // `i` = índice del comprobante en el fajo de ENTRADA. Va en el plan porque los rechazados no
     // ocupan fila: sin él, quien llama no puede saber a qué comprobante suyo corresponde cada fila.
-    plan.push({ i, valores: valoresInput(cc), nuevo: prov.esNuevo, proveedor: prov.valor, sug })
+    plan.push({ i, valores: valoresInput(cc), nuevo: prov.esNuevo, proveedor: prov.valor, sug, aplicado })
   }
   // `revisadoContraCompras` viaja porque no poder mirar la pestaña NO es "no está cargado", y las dos
   // cosas se ven iguales si nadie las distingue. Quien informe esto tiene que poder decir cuál fue.
@@ -224,27 +277,63 @@ function informar({ plan, rechazos, duplicados, percep, nuevos, arca }, { ultima
 }
 
 /**
- * SUGERENCIA DE IMPUTACIÓN (F8) — el OS SUGIERE, el dueño CONFIRMA. Nunca imputa solo: estas filas se
- * escriben con Unidad/Obra VACÍAS igual que siempre (las completa el dueño, y ahí el rubro
- * reclasifica). Acá sólo se muestra qué imputó históricamente a proveedores parecidos, para que
- * complete más rápido y corrija si hace falta — esa corrección re-alimenta el aprendizaje.
+ * LA IMPUTACIÓN APRENDIDA: qué se ESCRIBIÓ y qué queda para el dueño.
+ *
+ * Antes esto decía «SUGIERE, no impone» y las filas se escribían con Unidad/Obra vacías. Desde el
+ * 14/08 el cargador aplica lo FIRME igual que el bot (ver `completarUno`), así que este informe tiene
+ * dos mitades y la primera es la que importa: lo que ya quedó escrito, con el conteo que lo respalda.
+ * Lo que no llegó a firme sigue siendo una sugerencia y se dice como tal.
  */
 function informarImputacion(plan, perfiles) {
   const conSug = plan.filter((p) => p.sug)
-  if (!perfiles?.disponible) {
+  if (!perfiles?.por_proveedor && !perfiles?.disponible) {
     console.log('\nℹ Imputación aprendida: sin historia espejada todavía (public.costos_obra). La máquina mide; la historia recién arranca.')
     return
   }
+  const aplicados = plan.filter((p) => Object.keys(p.aplicado ?? {}).length)
+  if (aplicados.length) {
+    console.log('\n✍ Imputación COMPLETADA con el historial (queda marcada en el Concepto como `[historial: …]`):')
+    for (const p of aplicados) {
+      const cual = Object.entries(p.aplicado)
+        .map(([k, v]) => `${k} = «${p.valores[COL_DE[k]] ?? '?'}» (${v.n} cargas, ${Math.round((v.share ?? 0) * 100)}%)`)
+      console.log(`   ${p.proveedor}: ${cual.join(' · ')}`)
+    }
+  }
   if (!conSug.length) return
-  console.log('\n💡 Sugerencia de imputación (aprendida de cómo imputaste comprobantes parecidos — SUGIERE, no impone; completá/corregí vos):')
-  for (const p of conSug) {
+  const dim = (d) => d?.sugerido ? `${d.sugerido}${d.pide_confirmacion ? ' (?)' : ' ✓'}` : '—'
+  // Sólo se listan los que tienen ALGO que ofrecer. Un proveedor sin historia produce cuatro guiones
+  // en fila: informar eso en cada comprobante es cómo un informe deja de leerse.
+  const pendientes = conSug.filter((p) => p.sug.pide_confirmacion
+    && [p.sug.unidad, p.sug.obra, p.sug.detalle, p.sug.rubro].some((d) => d?.sugerido))
+  if (!pendientes.length) return
+  console.log('\n💡 Lo que NO llegó a firme y no se escribió (lo completás vos en Compras; esa corrección re-alimenta el aprendizaje):')
+  for (const p of pendientes) {
     const s = p.sug
-    const dim = (d) => d.sugerido ? `${d.sugerido}${d.pide_confirmacion ? ' (?)' : ' ✓'}` : '—'
-    console.log(`   ${p.proveedor}: unidad ${dim(s.unidad)} · obra ${dim(s.obra)} · detalle ${dim(s.detalle ?? {})} · rubro ${dim(s.rubro)}  [${s.pide_confirmacion ? 'confirmá' : 'alta confianza'}]`)
-    console.log(`      ↳ ${s.nota}`)
+    console.log(`   ${p.proveedor}: unidad ${dim(s.unidad)} · obra ${dim(s.obra)} · detalle ${dim(s.detalle)} · rubro ${dim(s.rubro)}`)
+    if (s.nota) console.log(`      ↳ ${s.nota}`)
   }
   console.log('   (✓ = alta confianza · (?) = necesita tu confirmación)')
 }
+
+/** Dimensión de la imputación → letra de columna, para poder mostrar lo que quedó escrito. */
+const COL_DE = Object.freeze({ obra: 'J', detalle: 'K', unidad: 'I', categoria: 'B' })
+
+/**
+ * Cuántas filas hacia arriba se busca la fila modelo. 120 alcanza de sobra —la última fila con la
+ * columna O pegada era la 743 sobre 842— y acota la lectura: leer la pestaña entera en grilla para
+ * esto sería pagar 840 filas de formato para mirar nueve columnas.
+ */
+const VENTANA_MODELO = 120
+
+/** La fila de la que se copian las fórmulas. Toca la red; la decisión la toma `filaModeloDeFormulas`. */
+async function filaDeFormulas(google, ultima) {
+  const inicio = Math.max(FILA_PRIMERA, ultima - VENTANA_MODELO + 1)
+  const g = await google.readSheetGrid(ID, `Compras!A${inicio}:AI${ultima}`)
+  return filaModeloDeFormulas(g?.filas ?? [], { desde: inicio })
+}
+
+/** La primera fila de datos de Compras. Los encabezados viven arriba. Contrato con el Sheet. */
+const FILA_PRIMERA = 4
 
 /**
  * Los perfiles de imputación de la fuente más completa que haya. PRIMERO la pestaña viva —trae el
@@ -297,15 +386,34 @@ async function main() {
   if (!plan.length) {
     console.log('\nNada cargable.')
     // `duplicados` viaja: para quien llama no es lo mismo "no se pudo leer" que "ya estaba cargado".
-    emitir({ ok: false, motivo: duplicados.length && !rechazos.length ? 'ya_cargados' : 'nada_cargable', escritas: 0, rechazos, duplicados, nuevos })
+    emitir({ ok: false, motivo: duplicados.length && !rechazos.length ? 'ya_cargados' : 'nada_cargable', escritas: 0, rechazos, duplicados, nuevos, percep })
     await closePool(); return
+  }
+
+  // ═══ DE QUÉ FILA SE COPIAN LAS FÓRMULAS: DE UNA QUE TENGA FÓRMULA (14/08) ═══
+  //
+  // `PASTE_FORMULA` copia lo que HAY. Como 408 de las 842 filas de Compras tienen la columna O pegada
+  // como literal, copiar de `ultima` sin mirar baja el TOTAL DE OTRA FACTURA a las filas nuevas — y no
+  // es un `#ERROR`, así que la verificación de abajo nunca lo vería. Ver `filaModeloDeFormulas`.
+  const modelo = await filaDeFormulas(google, ultima)
+  if (!modelo.fila) {
+    console.error(`\n✖ No encontré ninguna fila con las fórmulas completas en las últimas ${VENTANA_MODELO} filas de Compras`
+      + `${modelo.faltan.length ? ` (a la ${ultima} le faltan en ${modelo.faltan.join(', ')})` : ''}.`)
+    console.error('   No copio fórmulas de una fila pegada a mano: bajaría el total de otro comprobante y quedaría verde.')
+    console.error('   Arreglá la fórmula de alguna fila reciente (o pegá la de la fila 4 hacia abajo) y volvé a correr. NO se escribió nada.')
+    emitir({ ok: false, motivo: 'sin_fila_modelo', escritas: 0, rechazos, duplicados, nuevos, percep, faltan: modelo.faltan })
+    process.exitCode = 1
+    await closePool(); return
+  }
+  if (modelo.fila !== ultima) {
+    console.log(`\nℹ Las fórmulas se copian de la fila ${modelo.fila}, no de la ${ultima}: la última tiene valores pegados a mano en ${modelo.faltan.join(', ') || 'alguna columna con fórmula'}.`)
   }
 
   if (DRY) {
     console.log('\n(--dry) Muestra de la primera fila a escribir:')
     console.log('  ', JSON.stringify(plan[0].valores))
-    console.log(`  Fórmulas a estampar por copyPaste desde la fila ${ultima}: ${GRUPOS_FORMULA.map((g) => g[0] === g[1] ? g[0] : g.join(':')).join(' ')}`)
-    emitir({ ok: true, dry: true, desde, hasta, escritas: 0, filas: plan.map((p, k) => ({ i: p.i, fila: desde + k, proveedor: p.proveedor })), rechazos, duplicados, nuevos })
+    console.log(`  Fórmulas a estampar por copyPaste desde la fila ${modelo.fila}: ${GRUPOS_FORMULA.map((g) => g[0] === g[1] ? g[0] : g.join(':')).join(' ')}`)
+    emitir({ ok: true, dry: true, desde, hasta, escritas: 0, filaModelo: modelo.fila, filas: plan.map((p, k) => ({ i: p.i, fila: desde + k, proveedor: p.proveedor })), rechazos, duplicados, nuevos, percep })
     await closePool(); return
   }
 
@@ -316,7 +424,15 @@ async function main() {
 
   // 0) PROVEEDORES NUEVOS → al desplegable estricto (si se pidió), para que queden fijos y matcheen
   //    en la próxima carga. Se reescribe la validación de toda la columna E con la lista ampliada.
-  if (ADD_PROV && nuevos.size) {
+  //
+  // ═══ `nuevos.size` SOBRE UN ARRAY: LA BANDERA MUERTA (14/08) ═══
+  //
+  // `prepararPlan` junta los nuevos en un Set y devuelve `[...nuevos]` — un ARRAY. Acá se preguntaba
+  // `nuevos.size`, que en un array es `undefined`: **falsy siempre**. O sea que `--add-proveedores`
+  // nunca agregó un solo proveedor al desplegable, y no lo avisaba. Mientras tanto el proveedor nuevo
+  // SÍ se escribía en la columna E, que tiene validación estricta: la celda quedaba en rojo y fuera
+  // del vocabulario de todos los cruces. Una bandera que falla en silencio es peor que no tenerla.
+  if (debeAgregarProveedores(ADD_PROV, nuevos)) {
     const listaFinal = [...lista, ...nuevos]
     await google.spreadsheetBatchUpdate(ID, [{
       setDataValidation: {
@@ -324,7 +440,13 @@ async function main() {
         rule: { condition: { type: 'ONE_OF_LIST', values: listaFinal.map((v) => ({ userEnteredValue: v })) }, strict: true, showCustomUi: true },
       },
     }])
-    console.log(`  + ${nuevos.size} proveedor(es) agregado(s) al desplegable: ${[...nuevos].join(' · ')}`)
+    console.log(`  + ${nuevos.length} proveedor(es) agregado(s) al desplegable: ${nuevos.join(' · ')}`)
+  } else if (nuevos.length) {
+    // SIN LA BANDERA, LA CELDA QUEDA EN ROJO Y HAY QUE DECIRLO. Agregar al desplegable estricto del
+    // dueño no se hace solo —es su lista—, pero callarse que la fila entra fuera del vocabulario sí
+    // sería un defecto: nadie va a ir a mirar esa celda si nadie la nombra.
+    console.log(`\n⚠ ${nuevos.length} proveedor(es) NO están en el desplegable estricto de la columna E: ${nuevos.join(' · ')}.`)
+    console.log('   La celda va a quedar EN ROJO y fuera de los cruces hasta que los agregues (o volvé a correr con --add-proveedores).')
   }
 
   // 1) VALORES de input y de imputación (obra), una columna por vez. NO toca fórmulas, derivadas
@@ -353,10 +475,11 @@ async function main() {
     await closePool(); return
   }
 
-  // 2) FÓRMULAS por fila: copiar de la última fila con datos a las nuevas (Google reajusta refs).
+  // 2) FÓRMULAS por fila: copiar de la fila MODELO a las nuevas (Google reajusta refs). La modelo es
+  //    la última que TIENE fórmula en todas estas columnas, no la última con datos: ver arriba.
   const reqs = GRUPOS_FORMULA.map(([a, b]) => ({
     copyPaste: {
-      source: { sheetId: hoja.sheetId, startRowIndex: ultima - 1, endRowIndex: ultima, startColumnIndex: idx(a), endColumnIndex: idx(b) + 1 },
+      source: { sheetId: hoja.sheetId, startRowIndex: modelo.fila - 1, endRowIndex: modelo.fila, startColumnIndex: idx(a), endColumnIndex: idx(b) + 1 },
       destination: { sheetId: hoja.sheetId, startRowIndex: desde - 1, endRowIndex: hasta, startColumnIndex: idx(a), endColumnIndex: idx(b) + 1 },
       pasteType: 'PASTE_FORMULA', pasteOrientation: 'NORMAL',
     },
@@ -382,14 +505,25 @@ async function main() {
   //    Buscar #ERROR es el chequeo de las FÓRMULAS, y sólo eso: un rango vacío no tiene errores, así que
   //    nunca podría haber detectado que la escritura no entró. Eso ya lo probó escribirYVerificar arriba,
   //    releyendo el dato en su destino — las dos verificaciones son de efectos distintos.
+  //
+  // ═══ Y LA ARITMÉTICA, QUE ES LO QUE #ERROR NO PUEDE VER (14/08) ═══
+  //
+  // Un total equivocado no es un `#ERROR`. Si la fórmula de O bajó como literal —o el IVA se leyó de
+  // otra línea— la fila queda con un número perfectamente válido y perfectamente falso, y de acá se
+  // propaga sola por fórmula a cuatro pestañas del Flujo de Fondos. El bot ya releía y lo controlaba
+  // con `aritmetica()` de `verificacion.mjs`; este camino no. Se usa LA MISMA función: una capacidad,
+  // una fuente — si algún día cambia la tolerancia, cambia para los dos o no cambia.
   const check = await google.readSheetGrid(ID, `Compras!A${desde}:AD${hasta}`)
-  let errores = 0; let sinRubro = 0
-  for (const f of check.filas) {
-    const val = (i) => f[i]?.valor ?? ''
-    if (/#(ERROR|REF|N\/A|VALUE|¿NOMBRE|NAME)/i.test([val(0), val(14), val(28)].join(' '))) errores++
-    if (!val(28)) sinRubro++
-  }
+  const { errores, sinRubro, noCierran } = revisarFilasEscritas(check.filas, { desde })
   console.log(`\n✔ Escritas y VERIFICADAS en el destino ${plan.length} fila(s) (${desde}..${hasta}). ${errores ? `⚠ ${errores} con #ERROR — revisar.` : 'Sin #ERROR.'}`)
+  if (noCierran.length) {
+    console.error(`\n⚠ ${noCierran.length} fila(s) NO cierran: Importe + IVA ≠ Total. Es lo que #ERROR no puede ver — revisalas ANTES de espejar a Supabase:`)
+    for (const n of noCierran) {
+      console.error(`   fila ${n.fila}: ${n.importe} + ${n.iva} = ${Math.round((n.importe + n.iva) * 100) / 100}, y el Total dice ${n.total} (${n.dif} de diferencia)`)
+    }
+  } else {
+    console.log('✓ La aritmética cierra en todas: Importe + IVA = Total.')
+  }
   if (sinRubro) console.log(`ℹ ${sinRubro} sin Rubro de caja (AC) todavía: se clasifican cuando completes la Unidad de Negocio (I).`)
   // FRESCURA (26/07). Cargar comprobantes a mano ES una ingesta de gastos sobre el Cash Flow: el OS
   // acaba de escribir ese Sheet. Se registra por drive_file_id (la misma fila que mantiene el
@@ -404,7 +538,13 @@ async function main() {
   emitir({
     ok: true, desde, hasta, escritas: plan.length, errores, sinRubro,
     filas: plan.map((p, k) => ({ i: p.i, fila: desde + k, proveedor: p.proveedor })),
-    rechazos, nuevos, duplicados, arca,
+    // `percep` VIAJA EN EL JSON (14/08). La percepción absorbida se imprimía sólo por stdout y el bot
+    // parsea únicamente esta línea: en la fila 844 se metieron $53.356,45 de percepción de IIBB
+    // adentro del costo sin que el dueño se enterara. Es correcto por el contrato de la columna M
+    // (Total − IVA), pero es CRÉDITO FISCAL contabilizado como costo y hay que decirlo.
+    // `noCierran` viaja por la misma razón: el control nuevo no sirve si su resultado se queda acá.
+    rechazos, nuevos, duplicados, arca, percep, filaModelo: modelo.fila,
+    noCierran: noCierran.map((n) => ({ fila: n.fila, dif: n.dif, total: n.total })),
   })
   console.log('\nSIGUIENTE: node orquestador/scripts/sync-compras.mjs  (espeja a Supabase, regla #6).')
   await closePool()

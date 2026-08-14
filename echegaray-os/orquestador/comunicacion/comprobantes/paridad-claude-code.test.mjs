@@ -25,6 +25,8 @@ import { claveComprobante } from '../../lib/comprobantes/lectura.mjs'
 import { valoresInput, COL } from '../../lib/carga-comprobantes.mjs'
 import { indexarCompras } from '../../lib/comprobantes/compras-vivas.mjs'
 import { prepararPlan } from '../../scripts/cargar-comprobantes-compras.mjs'
+import { perfilesDeImputacion } from '../../lib/imputacion-aprendida.mjs'
+import { completarConHistorial } from './flujo.mjs'
 import { aFajoJson } from './escritura.mjs'
 import { lecturaBarcelo, LISTAS, LISTAS_COMPRAS, filaCompras } from './dobles.mjs'
 
@@ -261,4 +263,48 @@ test('sin anotación y sin historial, la obra queda VACÍA y la celda J no se es
   // Y el resto de la fila entra igual: el gasto llega a Compras, que es lo que importa.
   assert.equal(v[COL.proveedor], 'Combustibles Barcelo')
   assert.equal(v[COL.neto], 30479.30)
+})
+
+// ── LA IMPUTACIÓN APRENDIDA: DOS CAMINOS, UNA SOLA RESPUESTA (14/08) ─────────
+//
+// ═══ EL DEFECTO ═══
+//
+// `completarConHistorial` (el chat) ESCRIBÍA obra, detalle, unidad y categoría deducidas del perfil
+// estadístico del proveedor. El cargador de línea de comandos, con la MISMA lib, sólo las imprimía:
+// su propio comentario lo decía, «NO cambia lo que se escribe». Dos comportamientos sobre la columna
+// que decide qué obra come el costo, según por dónde entrara el mismo papel.
+
+/** Historia que deja el perfil de Barcelo FIRME: n≥5 y ≥80% en la misma obra. */
+const HISTORIA_FIRME = Array.from({ length: 8 }, () => ({
+  proveedor: 'Combustibles Barcelo', unidad_negocio: 'Obras', obra_texto: 'San Francisco',
+  detalle: 'Civil', concepto: 'gasoil autoelevador', categoria: 'B',
+}))
+
+test('EL DEFECTO: el chat imputaba y el cargador no — ahora las dos vías escriben lo mismo', async () => {
+  const perfiles = perfilesDeImputacion(HISTORIA_FIRME)
+  const sinObra = () => itemDelBot({ anotacion_manuscrita: null })
+
+  // VÍA CHAT
+  const [itChat] = completarConHistorial([sinObra()], perfiles)
+  const celdasChat = valoresInput(aFajoJson([itChat])[0])
+
+  // VÍA CLAUDE CODE: el mismo fajo, por el planificador del cargador.
+  const { plan } = await prepararPlan(aFajoJson([sinObra()]), { lista: LISTAS.proveedores, perfiles })
+  const celdasCargador = plan[0].valores
+
+  assert.equal(celdasChat[COL.obra], 'San Francisco')
+  assert.equal(celdasCargador[COL.obra], 'San Francisco', 'el cargador dejó la obra vacía: sólo la imprimía')
+  assert.deepEqual(celdasCargador, celdasChat, 'las dos vías escriben celdas distintas para el mismo papel')
+})
+
+test('y la fila DECLARA que esa obra salió del historial, no del papel', () => {
+  const perfiles = perfilesDeImputacion(HISTORIA_FIRME)
+  const [it] = completarConHistorial([itemDelBot({ anotacion_manuscrita: null })], perfiles)
+  const v = valoresInput(aFajoJson([it])[0])
+  assert.match(v[COL.concepto], /\[historial: obra/, 'una inferencia escrita sin marca es una estimación con cara de hecho')
+  // Y lo que el papel SÍ dijo no se marca: el manuscrito «Estrella» manda sobre el promedio.
+  const [conPapel] = completarConHistorial([itemDelBot()], perfiles)
+  const vPapel = valoresInput(aFajoJson([conPapel])[0])
+  assert.equal(conPapel.comprobante.obra, 'Estrella')
+  assert.doesNotMatch(vPapel[COL.concepto], /historial:[^\]]*obra/)
 })

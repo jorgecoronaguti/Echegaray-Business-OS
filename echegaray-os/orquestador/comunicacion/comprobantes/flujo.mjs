@@ -30,7 +30,8 @@ import { mensajeFajo } from '../../lib/comprobantes/mensaje.mjs'
 import { rendicionDeAdjuntos, textoRendicion } from '../../lib/comprobantes/rendicion.mjs'
 import { parteVacia, parteDeRendicion, parteDeEscritura, sumarPartes } from '../../lib/comprobantes/parte.mjs'
 import { matchUnico } from '../../lib/comprobantes/imputacion.mjs'
-import { perfilesDeImputacion, sugerirImputacion } from '../../lib/imputacion-aprendida.mjs'
+import { perfilesDeImputacion } from '../../lib/imputacion-aprendida.mjs'
+import { completarUno } from '../../lib/comprobantes/imputacion-historial.mjs'
 import { puedeCargarComprobantes } from './guarda.mjs'
 import * as repoReal from './repositorio.mjs'
 
@@ -217,34 +218,10 @@ export function completarConHistorial(items = [], perfiles = null) {
   for (const it of items) {
     const c = it.comprobante ?? {}
     if (!c.proveedor) continue
-    const base = { proveedor: c.proveedor, concepto: c.concepto, monto: c.total }
-    let s = sugerirImputacion({ ...base, obra: c.obra }, perfiles)
-    const ap = {}
-    if (!c.obra && s.obra?.sugerido && !s.obra.pide_confirmacion) {
-      c.obra = s.obra.sugerido
-      c.obraVia = 'historial'
-      ap.obra = { n: s.obra.n, share: s.obra.share }
-      // El detalle depende de la obra: con la obra recién resuelta hay que volver a preguntar, o se
-      // estaría ofreciendo el detalle más frecuente de OTRA obra.
-      s = sugerirImputacion({ ...base, obra: c.obra }, perfiles)
-    }
-    if (!c.detalleObra && s.detalle?.sugerido && !s.detalle.pide_confirmacion) {
-      c.detalleObra = s.detalle.sugerido
-      c.detalleVia = 'historial'
-      ap.detalle = { n: s.detalle.n, share: s.detalle.share, obra: s.detalle.obra ?? c.obra ?? null }
-    }
-    if (!c.unidad && s.unidad?.sugerido && !s.unidad.pide_confirmacion) {
-      c.unidad = s.unidad.sugerido
-      ap.unidad = { n: s.unidad.n, share: s.unidad.share }
-    }
-    // LA CATEGORÍA (columna B) QUEDABA VACÍA EN TODA FILA QUE CARGÓ EL BOT (04/08). Depende del
-    // proveedor y de casi nada más —un corralón siempre es la misma categoría—, así que es la
-    // dimensión que el historial resuelve mejor. Mismos umbrales que las otras tres: sólo se aplica
-    // lo que la lib declara FIRME.
-    if (!c.categoria && s.categoria?.sugerido && !s.categoria.pide_confirmacion) {
-      c.categoria = s.categoria.sugerido
-      ap.categoria = { n: s.categoria.n, share: s.categoria.share }
-    }
+    // LA REGLA NO VIVE ACÁ (14/08). Vive en `lib/comprobantes/imputacion-historial.mjs`, y el
+    // cargador de línea de comandos llama a la MISMA función: antes esto escribía y el cargador sólo
+    // imprimía, así que el mismo comprobante quedaba imputado distinto según por dónde entrara.
+    const { aplicado, sugerencia } = completarUno(c, perfiles)
     // Lo que NO se aplicó viaja igual —con sus opciones, sus conteos y sus notas—: es con lo que el
     // mensaje pregunta sin preguntar en blanco, y de donde salen los botones. Tirarlo acá era la
     // causa del "Obra: falta — ¿a qué obra va?" que no decía nada, con 126 cargas de ese proveedor
@@ -252,11 +229,8 @@ export function completarConHistorial(items = [], perfiles = null) {
     //
     // El RUBRO viaja aunque no se pregunte nunca: es la línea del Cash Flow donde va a caer esta
     // plata, o sea la consecuencia de la imputación que el dueño está por elegir.
-    it.sugerencia = {
-      obra: s.obra ?? null, detalle: s.detalle ?? null, unidad: s.unidad ?? null,
-      categoria: s.categoria ?? null, rubro: s.rubro ?? null,
-    }
-    if (Object.keys(ap).length) it.aprendido = ap
+    if (sugerencia) it.sugerencia = sugerencia
+    if (Object.keys(aplicado).length) it.aprendido = aplicado
   }
   return items
 }
