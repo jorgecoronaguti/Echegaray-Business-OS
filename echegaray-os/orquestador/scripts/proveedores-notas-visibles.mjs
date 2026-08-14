@@ -40,10 +40,11 @@ import { query } from '../lib/db.mjs'
 import { geometriaDeLaSeccion, colNotaDetalle, colProveedorDetalle } from '../lib/proveedores-pivot-seccion1.mjs'
 import { ANCHOS_PROVEEDORES } from '../lib/proveedores-frontera.mjs'
 import { COL_NOTA_AUX } from '../lib/proveedores-auxiliar.mjs'
+import { AUX, notasQueNoEntran, rangoDeNotasDelDetalle, requestsDeNotas }
+  from '../lib/proveedores-notas-columna.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Proveedores'
-const AUX = '_PROVEEDORES_OS'
 /** Quién escribe la auxiliar. Acá sólo se LEE: un bloque, un dueño. Ver lib/proveedores-auxiliar.mjs. */
 const DUEÑO_AUX = 'proveedores-cuenta-corriente.mjs'
 const APLICAR = process.argv.includes('--aplicar')
@@ -62,36 +63,15 @@ const LETRA_PROV = String.fromCharCode(65 + COL_PROV)
 // ancho es de la columna entera, así que su definición es una sola —ANCHOS_PROVEEDORES en
 // lib/proveedores-frontera.mjs— y la aplica un solo generador. Acá se LEE, para no escribir una nota
 // más larga de lo que entra.
-const ROTULO = 'Qué hacer'
 /** Filas de más que se preparan: si mañana entra un proveedor, su nota ya lo espera. */
 const COLCHON = 4
 
-// La columna de la nota sale del contrato de la auxiliar, no de un 3 tipeado: si mañana la auxiliar
-// gana una columna en el medio, esto se mueve con ella en vez de traer el CUIT como si fuera la nota.
-const formulaNota = (fila) =>
-  `=IF($${LETRA_PROV}${fila}="";"";IFERROR(VLOOKUP($${LETRA_PROV}${fila};${AUX}!$A:$C;${COL_NOTA_AUX};FALSE);""))`
-
-/**
- * CUÁNTAS FILAS OCUPA HOY EL CUADRO DE DETALLE, releídas — no estimadas.
- *
- * `altoEmitido` no sirve acá: cuenta hasta la primera fila en blanco mirando la fila ENTERA, y una
- * fila de separación con un resto en cualquier columna deja de ser blanco. Devolvió 31 donde el
- * cuadro tenía 11. Se cuenta lo que el cuadro escribió en SUS columnas: mientras haya un importe o
- * un proveedor, la fila es suya.
- *
- * @param {any[][]} visible la pestaña leída desde la fila 1
- * @param {number} desde primera fila del cuerpo, base 1
- */
-function altoDelDetalle(visible = [], desde = 1) {
-  let n = 0
-  for (let f = desde; f <= visible.length; f++) {
-    const fila = visible[f - 1] ?? []
-    const propia = fila.slice(0, COL_NOTA).some((c) => String(c ?? '').trim() !== '')
-    if (!propia) break
-    n++
-  }
-  return n
-}
+// ═══ LA FÓRMULA, EL RÓTULO Y EL FORMATO YA NO VIVEN ACÁ (14/08) ═══
+//
+// Este script no es el único que escribe esta columna: `proveedores-dos-cuadros.mjs` la vacía al
+// limpiar su rectángulo y la repone en la MISMA corrida, porque correrlo solo borró las catorce
+// notas del dueño sin avisar. Dos escritores con dos copias de la misma fórmula es cómo se
+// desincronizan. Los requests salen de `lib/proveedores-notas-columna.mjs`, para los dos.
 
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
@@ -112,23 +92,22 @@ async function main() {
   const iSub = visible.findIndex((f, i) => i >= geo.filaEncabezado
     && /^cada operaci[oó]n/i.test(String(f?.[0] ?? '').trim()))
   if (iSub < 0) throw new Error('no encontré el subtítulo "Cada operación": sin ancla no escribo')
-  const filaRotulos = iSub + 2          // base 1: el subtítulo está en iSub+1
-  const desde = filaRotulos + 1
   // EL TECHO ES EL TÍTULO DE LA SECCIÓN 2: la nota no puede pasar de ahí ni con colchón. Es el
   // mismo límite que usa la dinámica, así que las dos terminan donde termina la sección.
-  const hasta = Math.min(desde + altoDelDetalle(visible, desde) + COLCHON, geo.filaLimite - 1)
+  const { filaRotulos, desde, hasta } = rangoDeNotasDelDetalle({
+    visible, filaSubtitulo: iSub + 1, filaLimite: geo.filaLimite, colNota: COL_NOTA, colchon: COLCHON,
+  })
   // ═══ Y SE USA PARA AVISAR LO QUE NO VA A ENTRAR ═══
   //
   // Leer el ancho compartido sirve para algo más que no pisarlo: a fontSize 9 en itálica entran unos
   // 7px por carácter, así que una nota más larga que eso se va a ver CORTADA en la pestaña. El dueño
   // escribe estas notas para leerlas; que una quede a medias es el mismo defecto de pantalla que el
   // resto del archivo persigue, sólo que en un texto suyo. No se trunca —es su texto— pero se avisa.
-  const CARACTERES = Math.floor(ANCHOS_PROVEEDORES[COL_NOTA] / 7)
-  const largas = [...porNombre.entries()].filter(([, t]) => t.length > CARACTERES)
+  const largas = notasQueNoEntran(porNombre, ANCHOS_PROVEEDORES[COL_NOTA])
   if (largas.length) {
     console.log(`\n⚠ ${largas.length} nota(s) más largas que los ${ANCHOS_PROVEEDORES[COL_NOTA]}px de la columna `
-      + `(~${CARACTERES} caracteres): se van a ver cortadas en la pestaña.`)
-    for (const [n, t] of largas) console.log(`     ${n.padEnd(26)} ${t.length} car.: "${t.slice(0, CARACTERES)}…"`)
+      + `(~${largas[0].entran} caracteres): se van a ver cortadas en la pestaña.`)
+    for (const x of largas) console.log(`     ${x.proveedor.padEnd(26)} ${x.caracteres} car.: "${x.nota.slice(0, x.entran)}…"`)
   }
   const L = String.fromCharCode(65 + COL_NOTA)
   console.log(`\nCUADRO DE DETALLE: "Cada operación" en la fila ${iSub + 1} · rótulos en la ${filaRotulos}`
@@ -149,23 +128,9 @@ async function main() {
       + `la escribe ${DUEÑO_AUX} y tiene que correr antes que esto. No escribo una búsqueda que va a dar vacío.`)
   }
 
-  // ── El rótulo y la columna de búsqueda, sobre todo el footprint del cuadro A.
-  const FMT = 'userEnteredFormat'
-  await google.spreadsheetBatchUpdate(ID, [
-    { updateCells: {
-      range: { sheetId: hoja.sheetId, startRowIndex: filaRotulos - 1, endRowIndex: filaRotulos, startColumnIndex: COL_NOTA, endColumnIndex: COL_NOTA + 1 },
-      rows: [{ values: [{ userEnteredValue: { stringValue: ROTULO } }] }], fields: 'userEnteredValue' } },
-    { updateCells: {
-      range: { sheetId: hoja.sheetId, startRowIndex: desde - 1, endRowIndex: hasta - 1, startColumnIndex: COL_NOTA, endColumnIndex: COL_NOTA + 1 },
-      rows: Array.from({ length: hasta - desde }, (_, i) => ({
-        values: [{ userEnteredValue: { formulaValue: formulaNota(desde + i) } }] })),
-      fields: 'userEnteredValue' } },
-    { repeatCell: {
-      range: { sheetId: hoja.sheetId, startRowIndex: filaRotulos - 1, endRowIndex: hasta - 1, startColumnIndex: COL_NOTA, endColumnIndex: COL_NOTA + 1 },
-      cell: { userEnteredFormat: { numberFormat: { type: 'TEXT', pattern: '@' }, horizontalAlignment: 'LEFT',
-        textFormat: { fontSize: 9, italic: true, foregroundColor: { red: 0.45, green: 0.45, blue: 0.45 } } } },
-      fields: `${FMT}.numberFormat,${FMT}.horizontalAlignment,${FMT}.textFormat` } },
-  ], { espejo: true })
+  await google.spreadsheetBatchUpdate(ID, requestsDeNotas({
+    sheetId: hoja.sheetId, filaRotulos, desde, hasta, columna: COL_NOTA, letraProveedor: LETRA_PROV,
+  }), { espejo: true })
 
   // ── LA EVIDENCIA: qué proveedor con deuda quedó con su nota a la vista.
   const leido = await google.readSheetValues(ID, `${PESTAÑA}!A${filaRotulos}:${L}${hasta - 1}`)
