@@ -11,12 +11,16 @@
 // de leer hasta BB deja de ver la marca de endosado sin dar un error.
 
 import { auditar } from './cobranzas-en-cashflow.mjs'
+import { LADOS, frasePorCulpable } from './cobranzas-lado.mjs'
 import { PESTANA_MENSUAL } from './cash-flow-meses.mjs'
 import { leerTipoCambio, RANGO_TC } from './tipo-cambio.mjs'
 import { ref as refPestana } from './partir-pestana.mjs'
 
 /** Los datos de Cobranzas arrancan en la fila 5 y hay que llegar hasta BB: ahí está "Valor banco". */
 export const RANGO_COBRANZAS = 'Cobranzas!A5:BC400'
+/** La réplica del extracto, ABIERTA HACIA ABAJO: el corte del cruce sale del último movimiento que
+ *  haya, no de una altura tipeada que se queda corta la primera vez que el banco manda más filas. */
+export const RANGO_BANCO = '_BANCO_RAW!A1:F'
 /** El cuadro se lee DESDE LA FILA 1: `ubicarCuadro` busca sus anclas de texto adentro, no cuenta filas. */
 export const rangoMensual = (pestana = PESTANA_MENSUAL) => `${refPestana(pestana)}!A1:N40`
 
@@ -32,15 +36,32 @@ export const rangoMensual = (pestana = PESTANA_MENSUAL) => `${refPestana(pestana
  * @param {{pestana?: string}} opciones
  */
 export async function auditarCuadreCobranzas(google, id, { pestana = PESTANA_MENSUAL } = {}) {
-  const [cob, cf, tc] = await Promise.all([
+  const [cob, cf, banco, tc] = await Promise.all([
     google.readSheetGrid(id, RANGO_COBRANZAS),
     google.readSheetGrid(id, rangoMensual(pestana)),
+    // EL EXTRACTO ES LA CUARTA FUENTE, y se lee con `readSheetValues`: el cruce sólo necesita fecha e
+    // importe, y una grilla de 400 filas con formato es leer diez veces más para tirarlo.
+    //
+    // `UNFORMATTED_VALUE` NO ES OPCIONAL. Sin él, la fecha llega como "14/08/2026" y el importe como
+    // "$15.000.000": el cruce ve cero acreditaciones, declara que el extracto no llega a ninguna fecha
+    // y NO emite un solo aviso. Medido contra el archivo vivo el 15/08 — 406 filas, 0 acreditaciones.
+    google.readSheetValues(id, RANGO_BANCO, { render: 'UNFORMATTED_VALUE' }).catch(() => null),
     leerTipoCambio(google, id),
   ])
-  return { ...auditar(cob.filas, cf.filas, { tipoCambio: tc.tc }), tipoCambio: tc.tc, pestana }
+  return {
+    ...auditar(cob.filas, cf.filas, { tipoCambio: tc.tc, filasBanco: banco }),
+    tipoCambio: tc.tc,
+    pestana,
+    // Que el extracto no se haya podido leer NO es lo mismo que un cruce limpio: sin esto, un
+    // `_BANCO_RAW` renombrado apagaría el aviso de devengado sin que nadie se entere.
+    sinExtracto: !banco,
+  }
 }
 
 const ars = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-AR')}`
+/** Un serial de Sheets, legible. Devuelve "?" cuando no hay fecha: un guión se lee como una fecha. */
+const fechaISO = (s) => (Number.isFinite(Number(s)) && Number(s) > 0
+  ? new Date(Date.UTC(1899, 11, 30) + Number(s) * 86400000).toISOString().slice(0, 10) : '?')
 
 /**
  * NÚCLEO PURO: el informe, como líneas de texto.
@@ -80,8 +101,33 @@ export function informe(r, { soloFallas = false } = {}) {
     out.push('')
   }
 
+  // ── EL AVISO QUE NO ES UN DESCUADRE: DEVENGADO DISFRAZADO DE PERCIBIDO ──────────────────────────
+  // Va SIEMPRE, incluso en `soloFallas`, y no baja el veredicto (ver `auditar`). Es plata que el
+  // cuadro declara adentro de la cuenta y el extracto no respalda: no descuadra nada porque los dos
+  // lados la cuentan igual — por eso ningún cuadre la iba a encontrar nunca.
+  if (r.sinExtracto) {
+    out.push(`⚠ NO PUDE LEER ${RANGO_BANCO}: no hay cruce bancario en esta corrida. Los "Cobrado" van sin verificar.`, '')
+  } else if (r.respaldo?.ilegible) {
+    out.push(`⚠ EXTRACTO ILEGIBLE: ${r.respaldo.ilegible}`, '')
+  } else if (r.cobradoSinRespaldo?.length) {
+    const total = r.cobradoSinRespaldo.reduce((s, v) => s + v.cobro.monto, 0)
+    out.push(`▲ COBRADO SIN RESPALDO DEL BANCO — ${r.cobradoSinRespaldo.length} por ${ars(total)}`)
+    out.push('   El Cash Flow los cuenta como INGRESO REAL. El Flujo va por percibido: o falta cargar el'
+      + ' movimiento del banco, o el cobro todavía no entró.')
+    for (const v of r.cobradoSinRespaldo.slice(0, 12)) {
+      out.push(`   fila ${String(v.cobro.fila).padStart(3)}  ${ars(v.cobro.monto).padStart(15)}  ${v.cobro.cliente.slice(0, 30)}`)
+    }
+    if (r.respaldo?.fueraDeCorte.length) {
+      // LA VENTANA DEL EXTRACTO, AL LADO DEL NÚMERO. Sin ella, "17 cobros sin juzgar" no se puede
+      // interpretar: no se sabe si falta importar enero o si el banco todavía no publicó agosto.
+      out.push(`   (además ${r.respaldo.fueraDeCorte.length} por ${ars(r.respaldo.montos.fueraDeCorte)} no se pueden juzgar:`
+        + ` quedan fuera de la ventana importada del banco, ${fechaISO(r.respaldo.desde)} → ${fechaISO(r.respaldo.corte)})`)
+    }
+    out.push('')
+  }
+
   const filas = soloFallas ? r.porMes.filter((m) => !m.ok) : r.porMes
-  if (filas.length && !soloFallas) out.push('MES A MES — Cobranzas (bruto − endosado − devoluciones) contra el cuadro:')
+  if (filas.length && !soloFallas) out.push('MES A MES — Cobranzas (bruto − endosado − devoluciones) contra el cuadro, REAL y PROYECTADO por separado:')
   for (const m of filas) {
     // Los conciliadores se nombran EN LA LÍNEA DEL MES. Un "−$20.000.000" sin decir que son los dos
     // echeq endosados de ese mes obliga a ir a buscarlo, y lo que obliga a buscar no se mira.
@@ -97,6 +143,16 @@ export function informe(r, { soloFallas = false } = {}) {
       : ''
     out.push(`   ${m.mes}  Cobranzas ${ars(m.cobranzas).padStart(15)}  cuadro ${ars(m.cashflow).padStart(15)}`
       + `  ${m.ok ? '✓' : `⚠ ${ars(m.dif)}`}${resta ? `   [bruto ${ars(m.bruto)} − ${resta}]` : ''}${dolares}`)
+    // EL REPARTO, DEBAJO DEL MES. Sólo cuando alguno de los dos lados falla: en un mes sano son dos
+    // renglones más que repiten lo de arriba, y el ruido es lo que hace que el desvío no se vea.
+    for (const lado of LADOS) {
+      const l = m.lados?.[lado]
+      if (!l || l.ok) continue
+      out.push(`      ${lado.padEnd(11)} Cobranzas ${ars(l.cobranzas).padStart(15)}  cuadro ${ars(l.cashflow).padStart(15)}  ⚠ ${ars(l.dif)}`)
+    }
+    // Y QUIÉN LO EXPLICA. El diagnóstico del 14/08 tardó media hora en llegar a la fila 44; el control
+    // tiene que escupirla solo o el trabajo de buscarla vuelve a ser de una persona.
+    for (const c of m.culpables ?? []) out.push(frasePorCulpable(c, ars))
   }
   return out
 }
