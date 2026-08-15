@@ -12,6 +12,7 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { formulaRubro, formulaFechaCaja, RUBROS, COL_RUBRO_CAJA, COL_FECHA_CAJA, colIndex } from '../lib/rubro-caja.mjs'
+import { ESPECIES, FIELDS, FILA0 } from '../lib/compras-especies.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const DRY = process.argv.includes('--dry')
@@ -80,6 +81,29 @@ async function main() {
       range: { sheetId, dimension: 'COLUMNS', startIndex: COL_RUBRO, endIndex: COL_FECHA + 1 },
       properties: { pixelSize: 190 },
       fields: 'pixelSize',
+    },
+  })
+  // ═══ EL VALOR VA SÓLO AL ANCLA; EL FORMATO VA A TODO EL DERRAME (15/08/2026) ═══
+  //
+  // Arriba, la fórmula se escribe SÓLO en `AD4` y eso está bien: "nunca se escribe el derrame de una
+  // ARRAYFORMULA, sólo su ancla". Por simetría, el `numberFormat` se ponía también sólo en `AD4` — y
+  // ahí la simetría es falsa: **el derrame no hereda el formato del ancla**. Medido en el archivo el
+  // 15/08: `AD4` con `DATE/dd/mm/yyyy` y 699 celdas (AD5:AD779) con `numberFormat: undefined`,
+  // dibujando el serial pelado (`AD5=46027`).
+  //
+  // No es cosmético: `scripts/cruce-banco.mjs` lee `Compras!A4:AD` sin `UNFORMATTED_VALUE` y filtra
+  // con `parseFecha`, que contra `"46027"` devuelve `null`. Esas 699 filas quedaban afuera de la
+  // comparación de egresos banco↔Compras sin un solo error en pantalla.
+  //
+  // Se repone la columna ENTERA, hasta el fondo de la grilla: las filas de abajo son donde el dueño va
+  // a tipear mañana. El formato sale de `compras-especies.mjs` para que exista UNA definición de qué
+  // es una fecha en esta pestaña, y la máscara `FIELDS` nombra sólo `userEnteredFormat.*`: este
+  // request no puede tocar un valor.
+  req.push({
+    repeatCell: {
+      range: { sheetId, startRowIndex: FILA0 - 1, endRowIndex: hoja.rows, startColumnIndex: COL_FECHA, endColumnIndex: COL_FECHA + 1 },
+      cell: { userEnteredFormat: ESPECIES.fecha },
+      fields: FIELDS,
     },
   })
 
