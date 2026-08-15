@@ -21,6 +21,8 @@ const HOJAS = [
   { title: 'SAC', rows: 5, cols: 2 },
   { title: '_BANCO_RAW', rows: 4, cols: 2 },
   { title: 'Deuda viva (OS)', rows: 3, cols: 2, sheetId: 77 },
+  // EL CASO REAL (15/08/2026): cita a CAJA sin `'CAJA'!` adelante — por RANGO CON NOMBRE.
+  { title: 'Cash Flow Semanal', rows: 2, cols: 1, sheetId: 5 },
 ]
 /** La dinámica de "Deuda viva (OS)" se arma sobre CAJA (sheetId 0 en este archivo de mentira). */
 const PIVOTS = { 'Deuda viva (OS)': { sheetId: 0, startRowIndex: 2, endRowIndex: 900, startColumnIndex: 0, endColumnIndex: 38 } }
@@ -47,12 +49,20 @@ const CELDAS = {
     FORMULA: [['', ''], ['', ''], ['', '']],
     FORMATTED_VALUE: [['Proveedor', 'Saldo'], ['FEMENIA', '$ 3.000.000'], ['Alumetal', '$ 1.000.000']],
   },
+  // CITA A CAJA POR NOMBRE, sin prefijo de pestaña — la fórmula real de "CAJA HOY".
+  'Cash Flow Semanal': {
+    FORMULA: [['=N(CAJA_TOTAL_DISPONIBLE)']],
+    FORMATTED_VALUE: [['18.270.071']],
+  },
 }
 
 function clienteSoloLectura(registro = []) {
   const permitido = {
     async getSheetMeta() { registro.push('getSheetMeta'); return HOJAS },
-    async getNamedRanges() { return [{ name: 'ANEXO_DESCUBIERTO' }] },
+    async getNamedRanges() { return [
+        { name: 'ANEXO_DESCUBIERTO' },
+        { name: 'CAJA_TOTAL_DISPONIBLE', range: { sheetId: 0 } },
+      ] },
     async apiGetSheets(url) {
       const u = new URL(url)
       // La lectura de dinámicas: una sola llamada con máscara de campos, sin rangos.
@@ -102,6 +112,19 @@ test('el mapa contesta las cuatro preguntas por pestaña', async () => {
   assert.equal(caja.vitalidad.formula, 3)                   // cuán viva está
   const libro = r.filas.find((f) => f.titulo === '_MOVIMIENTOS')
   assert.deepEqual(libro.citadaPor, [['CAJA', 1]])          // quién la lee
+})
+
+test('un rango con nombre resuelve a su pestaña de origen: CAJA aparece citada por Cash Flow Semanal', async () => {
+  // EL HALLAZGO QUE MOTIVÓ ESTE FIX (15/08/2026): `=N(CAJA_TOTAL_DISPONIBLE)` es la fórmula real de
+  // "CAJA HOY" en Cash Flow Semanal — sin `'CAJA'!` adelante. Antes de esto, `auditar()` devolvía
+  // `CAJA citadaPor: []` con esta misma fórmula en el archivo: el peor tipo de falla en un auditor,
+  // que dice "nadie depende de esto" sobre la celda de la que depende el año entero.
+  const r = await auditar(clienteSoloLectura(), { cargar: () => null })
+  const caja = r.filas.find((f) => f.titulo === 'CAJA')
+  assert.ok(caja.citadaPor.some(([pestana]) => pestana === 'Cash Flow Semanal'),
+    'CAJA_TOTAL_DISPONIBLE vive en CAJA: quien lo cita por nombre tiene que citar a CAJA')
+  // Y CAJA ya no puede salir como huérfana ni como "sin dueño y leída" a la vez: algo la cita.
+  assert.ok(!r.hallazgos.some((h) => h.pestana === 'CAJA' && h.tipo === 'HUÉRFANA'))
 })
 
 test('la pestaña con importes pegados y sin conexión sale como hallazgo, con su plata', async () => {
