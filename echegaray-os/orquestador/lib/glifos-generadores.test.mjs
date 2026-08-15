@@ -122,6 +122,12 @@ test('LOS QUE RECONOCEN LO PUBLICADO ACEPTAN LOS DOS GLIFOS — si no, el borrad
 const PUEDEN_NOMBRARLO = new Map([
   ['lib/glifos.mjs', 'lo declara: es el archivo que decide cuál se dibuja y cuál no'],
   ['lib/glifos.test.mjs', 'lo prueba'],
+  // Las CLAVES de su mapa son los cinco emoji publicados en Cobranzas!V: sin poder nombrarlos no
+  // habría cómo traducirlos. Los VALORES —lo único que este archivo llega a escribir en una celda—
+  // son los que sí se dibujan, y eso lo prueba su propio test contra `esInvisible`.
+  ['lib/glifos-semaforo.mjs', 'declara la traducción: sus claves SON los glifos que no se dibujan'],
+  ['lib/glifos-semaforo.test.mjs', 'lo prueba contra la fórmula real de Cobranzas!V5'],
+  ['scripts/cobranzas-glifos.test.mjs', 'transcribe la fórmula rota para probar que sale traducida'],
   ['lib/glifos-generadores.test.mjs', 'este archivo'],
   ['lib/defectos-pantalla.mjs', 'el detector: nombra el defecto que busca'],
   ['lib/defectos-pantalla.test.mjs', 'lo prueba'],

@@ -213,7 +213,85 @@ export function esFilaDeRotulos(fila = [], j = 0) {
   return llenas > 1
 }
 
-export function detectar(f, { desdeFila = 1, huecoMax = 3 } = {}) {
+/**
+ * NÚCLEO PURO: las columnas donde el formato numérico es de la COLUMNA, no de un dato.
+ *
+ * ═══ LA CLASE DE DEFECTO QUE ERA INVISIBLE (15/08) ═══
+ *
+ * `texto_en_numero` pregunta "¿hay un número más arriba en esta columna?" para no marcar los
+ * encabezados. El criterio es correcto y tiene un punto ciego exacto: si la columna ENTERA es texto,
+ * la respuesta es "no" en todas sus celdas y no se reporta ni una. Medido: `Compras!S` ("Total o
+ * Parcial", ~1.343 celdas), `Cobranzas!U` y `Jornales!M134:M148` arrastran formato de número sobre
+ * texto puro y ningún control lo vio nunca.
+ *
+ * No es cosmético: una columna de texto con formato `CURRENCY` alinea a la derecha, dibuja el vacío
+ * como guion y ofrece a cualquier fórmula un rango que parece de importes. Es la forma en que un
+ * `SUM` sobre esa columna da 0 sin dar un error.
+ *
+ * ═══ SE REPORTA UNA VEZ POR BLOQUE, NO UNA POR CELDA ═══
+ *
+ * El defecto es de la columna: son 1.343 celdas con UN solo arreglo. Emitir uno por celda multiplica
+ * el informe por tres y tapa los defectos que sí se arreglan de a uno — el modo conocido de que un
+ * control deje de mirarse en este repo.
+ *
+ * El bloque es el tramo entre títulos de sección, la misma frontera que usan `fechaCerca` y
+ * `esRotuloDeColumna`: en un layout de tablas apiladas, dos cuadros distintos pueden compartir la
+ * columna y sólo uno estar mal.
+ *
+ * Y EL BLOQUE SUBSUME A SUS CELDAS. Si el pase por celda ya nombró alguna de las que caen adentro
+ * —pasa cuando el cuadro de arriba tiene importes en la misma columna—, ése es el MISMO defecto
+ * contado dos veces. El que se queda es el de la columna, porque es el que se arregla de una vez.
+ * Por eso devuelve el tramo (`desde`, `hasta`): quien lo llama necesita saber a quién reemplaza.
+ *
+ * @param {{filas:Array<Array<{valor:string, formato:object}>>}} f
+ * @param {{minimo?:number}} [opts] `minimo`: cuántas celdas hacen falta para que esto sea una
+ *        columna y no un rótulo con una nota debajo. Tres, el mismo corte con el que `conFecha`
+ *        decide que una fila de fechas es un encabezado de períodos.
+ */
+export function columnasEnterasDeTexto(f, { minimo = 3 } = {}) {
+  const filas = f?.filas || []
+  const esTitulo = filas.map((fila) => TITULO_SECCION.test(String(fila?.[0]?.valor ?? '')))
+  const nCols = filas.reduce((m, fila) => Math.max(m, (fila || []).length), 0)
+  const bloques = []
+  let ini = 0
+  filas.forEach((_, i) => { if (esTitulo[i] && i > ini) { bloques.push([ini, i - 1]); ini = i } })
+  if (filas.length) bloques.push([ini, filas.length - 1])
+  const out = []
+  const L = (n) => { let s = ''; for (let i = n; i >= 0; i = Math.floor(i / 26) - 1) s = String.fromCharCode(65 + (i % 26)) + s; return s }
+  for (const [a, b] of bloques) {
+    for (let j = 0; j < nCols; j++) {
+      const celdas = []
+      let hayNumero = false
+      for (let i = a; i <= b && !hayNumero; i++) {
+        const c = filas[i]?.[j]
+        const v = String(c?.valor ?? '').trim()
+        if (!v || !NUMERICO.has(c?.formato?.numberFormat?.type)) continue
+        if (esTextoDeVerdad(v)) celdas.push({ fila: i + 1, valor: v }); else hayNumero = true
+      }
+      // UN SOLO NÚMERO EN EL BLOQUE Y NO ES ESTE DEFECTO: es una columna de importes con notas
+      // metidas, que es lo que ya reporta `texto_en_numero` celda por celda.
+      if (hayNumero || celdas.length < minimo) continue
+      const desde = celdas[0].fila
+      const hasta = celdas[celdas.length - 1].fila
+      const nf = filas[desde - 1]?.[j]?.formato?.numberFormat?.type
+      out.push({
+        tipo: 'columna_texto_en_numero', fila: desde, col: L(j), valor: celdas[0].valor.slice(0, 40),
+        celdas: celdas.length, desde, hasta,
+        que: `${celdas.length} celdas de ${L(j)}${desde}:${L(j)}${hasta} son texto con formato ${nf} y ninguna es un número: el formato es de la columna, no de un dato`,
+      })
+    }
+  }
+  return out
+}
+
+/**
+ * @param {{desdeFila?:number, huecoMax?:number, columnasEnteras?:boolean}} [opts]
+ *        `columnasEnteras` enciende `columnasEnterasDeTexto`. Va apagado por defecto a propósito:
+ *        agrega una clase de defecto que hoy nadie estaba contando, y encenderla sin querer cambiaría
+ *        los totales de todas las pestañas de golpe. Se prende para MEDIR, con la bandera del
+ *        auditor.
+ */
+export function detectar(f, { desdeFila = 1, huecoMax = 3, columnasEnteras = false } = {}) {
   const out = []
   if (!f?.filas) return out
   const anchos = f.anchos || []
@@ -396,7 +474,12 @@ export function detectar(f, { desdeFila = 1, huecoMax = 3 } = {}) {
     })
   })
 
-  return out
+  if (!columnasEnteras) return out
+  const bloques = columnasEnterasDeTexto(f)
+  const adentro = (d) => bloques.some((b) => b.col === d.col && d.fila >= b.desde && d.fila <= b.hasta)
+  // El bloque SUBSUME: una celda que cae adentro ya está contada por su columna, y contarla también
+  // de a una infla el informe con el mismo defecto dos veces.
+  return out.filter((d) => d.tipo !== 'texto_en_numero' || !adentro(d)).concat(bloques)
 }
 
 /** NÚCLEO PURO: el resumen por tipo, para el log y para decidir qué arreglar primero. */
