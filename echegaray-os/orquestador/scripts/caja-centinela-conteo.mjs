@@ -20,14 +20,13 @@ import { loadConfig } from '../lib/config.mjs'
 import { DESDE_CAJA } from '../lib/caja-anexo-nombres.mjs'
 import { PESTANA_ANEXO, SELLO_EFECTIVO, claveDeRotulo } from '../lib/caja-anexo.mjs'
 import { CMP } from '../lib/caja-posterior-al-corte.mjs'
-import { CONCEPTO, RESOLUCION_HORAS, anclaDelConteo, observarMuchas } from '../lib/caja-conteo-centinela.mjs'
-import { avisoCargaTardia, cargaTardia } from '../lib/caja-carga-tardia.mjs'
-import { diaDe } from '../lib/caja-ancla-por-instante.mjs'
+import { CONCEPTO, RESOLUCION_HORAS, anclaDelConteo } from '../lib/caja-conteo-centinela.mjs'
+import { avisoCargaTardia } from '../lib/caja-carga-tardia.mjs'
+import { leerCeldasDeEfectivo, medirCargaTardia } from '../lib/caja-carga-tardia-compras.mjs'
 import { ALERTA } from '../lib/glifos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const DRY = process.argv.includes('--dry')
-const PREFIJO_COMPRAS = `${CMP.hoja}!${CMP.montoPagado}`
 
 const num = (x) => (typeof x === 'number' ? x : (x === '' || x == null ? null : Number(String(x).replace(',', '.'))))
 const pesos = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-AR')}`
@@ -83,49 +82,18 @@ async function mirarConteo(google, concepto, rango, sello, ahora, { critico = fa
 }
 
 /**
- * LAS CELDAS DE IMPORTE QUE DESCARGAN EL CAJÓN — hoy, sólo la columna de Compras que paga en efectivo.
- *
- * EL ALCANCE ES MÍNIMO A PROPÓSITO y está medido: son ~850 celdas, cuatro lecturas de columna y una
- * tanda de upsert (500 celdas tardaron 1,2 s contra la base viva). Vigilar TODAS las fuentes que mueven
- * el cajón —Cobranzas, Jornales, Oficina, la réplica del extracto— multiplicaría eso sin cerrar el
- * mismo agujero: el caso que el dueño describió y el que cuesta plata es el PAGO cargado sobre una fila
- * vieja, que infla la caja. Lo que queda afuera está declarado en el README del paso y en el informe.
+ * LO QUE SE CARGÓ TARDE SOBRE FILAS VIEJAS. La lectura y la medición viven en
+ * `caja-carga-tardia-compras.mjs` porque el generador del anexo hace exactamente lo mismo para
+ * publicarlo en la pestaña: escrito dos veces, el número del log y el de la pestaña podrían discrepar,
+ * y el día que discrepen ninguno de los dos significaría nada.
  */
 async function mirarComprasEfectivo(google, ancla, ahora) {
-  const col = async (r) => (await google.readSheetValues(ID, `${CMP.hoja}!${r}`, { render: 'UNFORMATTED_VALUE' }).catch(() => []))
-  const [ce, pt, x, ad] = await Promise.all([
-    col(`C${CMP.desde}:E`), col(`P${CMP.desde}:T`), col(`X${CMP.desde}:X`), col(`AD${CMP.desde}:AD`),
-  ])
-  const alto = Math.max(ce.length, pt.length, x.length, ad.length)
-  const lecturas = []
-  const meta = new Map()
-  for (let i = 0; i < alto; i++) {
-    const tipo = String(pt[i]?.[0] ?? '').trim()
-    const pagado = num(pt[i]?.[4])
-    if (tipo.toLowerCase() !== 'efectivo' || pagado === null) continue
-    const estado = String(x[i]?.[0] ?? '').trim()
-    // LA FECHA ECONÓMICA ES LA QUE USA LA FÓRMULA, o el detector mediría otra ventana que la que
-    // gobierna la plata: "Pagado" va por su fecha de caja y "Pendiente" por la de la factura.
-    const fecha = estado === 'Pendiente' ? num(ce[i]?.[0]) : num(ad[i]?.[0])
-    const ref = `${CMP.hoja}!${CMP.montoPagado}${CMP.desde + i}`
-    lecturas.push({ concepto: ref, valor: pagado })
-    meta.set(ref, { fecha, etiqueta: String(ce[i]?.[2] ?? '').slice(0, 40) })
-  }
-  if (DRY || !lecturas.length) {
-    console.log(`  (${DRY ? 'dry' : 'sin datos'}) ${lecturas.length} celda(s) de pago en efectivo en ${CMP.hoja}`)
+  if (DRY) {
+    const celdas = await leerCeldasDeEfectivo(google, ID)
+    console.log(`  (dry) ${celdas.length} celda(s) de pago en efectivo en ${CMP.hoja} bajo vigilancia`)
     return null
   }
-  const obs = await observarMuchas(ID, lecturas, { ahora, prefijo: PREFIJO_COMPRAS })
-  const celdas = [...obs.entries()].map(([ref, o]) => ({
-    referencia: ref,
-    valor: o.fila.valor,
-    valorPrevio: o.fila.valorPrevio,
-    vistoDesde: o.fila.vistoDesde,
-    primera: o.accion === 'primera',
-    fecha: meta.get(ref)?.fecha ?? null,
-    etiqueta: meta.get(ref)?.etiqueta ?? '',
-  }))
-  const r = cargaTardia(celdas, { anclaDia: diaDe(ancla?.serial), anclaInstante: ancla?.fila?.vistoDesde })
+  const r = await medirCargaTardia(google, ID, ancla, { ahora })
   const aviso = avisoCargaTardia(r, { marca: ALERTA, fuente: CMP.hoja })
   if (aviso) console.log(`  ${aviso}`)
   else {
@@ -162,4 +130,4 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     .finally(async () => { await import('../lib/db.mjs').then((m) => m.closePool()).catch(() => {}) })
 }
 
-export { mirarComprasEfectivo, selloDeLaPestana }
+export { selloDeLaPestana }

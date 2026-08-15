@@ -25,12 +25,16 @@ import { publicar } from '../lib/rangos-nombrados.mjs'
 import { requestsTextoPorContenido } from '../lib/formato-texto-por-contenido.mjs'
 import {
   grillaAnexo, ANCHO_ANEXO, ANCHOS_ANEXO, PESTANA_ANEXO, SELLO_EFECTIVO, HISTORICO_EFECTIVO, claveDeRotulo,
+  CARGA_TARDIA,
 } from '../lib/caja-anexo.mjs'
 import {
   necesitaSello, dictamenEfectivo, avisoEfectivoImposible, avisoTechoNoVerificable,
   selloPorRenglonSembrable,
 } from '../lib/caja-efectivo-fisico.mjs'
 import { CONCEPTO, anclaDelConteo } from '../lib/caja-conteo-centinela.mjs'
+import { medirCargaTardia } from '../lib/caja-carga-tardia-compras.mjs'
+import { avisoCargaTardia } from '../lib/caja-carga-tardia.mjs'
+import { instanteDelSello } from '../lib/caja-ancla-por-instante.mjs'
 import { ALERTA } from '../lib/glifos.mjs'
 import { DESDE_CAJA, CELDA_CAJA_MINIMA, ESPECIE_ANEXO } from '../lib/caja-anexo-nombres.mjs'
 import { TIPO_CAMBIO } from '../lib/caja-disponibilidades.mjs'
@@ -68,6 +72,10 @@ export function rescatarAnexo(filas = []) {
     const num = (i) => { const c = fila?.[i]; return typeof c?.numero === 'number' ? c.numero : '' }
     if (a === claveDeRotulo(SELLO_EFECTIVO.sello)) { cargado.set(a, { selloNeto: num(3), selloFecha: num(5) }); continue }
     if (a === claveDeRotulo(SELLO_EFECTIVO.estado)) { cargado.set(a, { selloValor: num(3) }); continue }
+    // La medición de carga tardía la estampa la corrida en E y F. Sin rescatarla, cada regeneración la
+    // borraría y el renglón quedaría vacío hasta que volviera a medirse — un control intermitente se
+    // lee como un control en cero.
+    if (a === claveDeRotulo(CARGA_TARDIA.rotulo)) { cargado.set(a, { importe: num(4), medidoEn: num(5) }); continue }
     if (historico.has(a)) { cargado.set(a, { selloLinea: num(3) }); continue }
     if (a !== claveDeRotulo(TIPO_CAMBIO.declarado.nombre)) continue
     cargado.set(a, { saldo: leer(2), fecha: leer(5), origen: leer(6) })
@@ -329,6 +337,9 @@ async function main() {
   // siquiera se puede leer para controlar, eso también se grita: un control mudo se lee como un
   // control en verde, y ése es el modo de falla que este bloque entero vino a cerrar.
   await controlarEfectivo(google, g).catch((e) => console.log(`  ${ALERTA} NO PUDE CONTROLAR EL EFECTIVO (${e.message}): nadie verificó que el cajón no dé negativo`))
+  // Y LO QUE NINGUNA FÓRMULA PUEDE VER: lo que se cargó tarde sobre filas viejas. Va a la PESTAÑA y no
+  // sólo al log, porque este archivo ya tiene escrito que el log no lo abre nadie.
+  await publicarCargaTardia(google, g).catch((e) => console.log(`  ${ALERTA} NO PUDE MEDIR LA CARGA TARDÍA (${e.message}): un pago cargado sobre una fila vieja saldría del cajón sin que nada lo nombre`))
 
   // LA CAJA MÍNIMA NO VIVE EN NINGUNA DE LAS DOS PESTAÑAS: el nombre apunta a su FUENTE. Así CAJA y el
   // anexo la leen sin que ninguno la copie — un parámetro tiene una sola dirección en el archivo.
@@ -345,6 +356,37 @@ async function main() {
   await guardarRegistro(ID, PESTANA_ANEXO, g.filas, ediciones, quedo, candidatos)
     .catch((e) => console.warn(`  ⚠ no pude guardar el registro de rótulos: ${e.message}`))
   console.log('QUEDÓ ESCRITO.')
+}
+
+/**
+ * LO QUE SE CARGÓ TARDE SOBRE FILAS VIEJAS, PUBLICADO EN LA PESTAÑA.
+ *
+ * E lleva el importe y F el INSTANTE de la medición. Los dos son números pegados y los dos son de la
+ * misma especie que el sello: ninguna fórmula de Sheets puede calcularlos, porque dependen de cuándo
+ * cambió una celda y el archivo no lo sabe. La fecha al lado no es decoración — sin ella, una medición
+ * de hace tres días se lee como si fuera de ahora, que es la forma exacta en que un cuadro miente
+ * despacio.
+ *
+ * NO TIRA hacia arriba: la caja no depende de esto. Si falla, el renglón conserva la última medición
+ * con SU fecha, que sigue siendo verdad sobre ese momento.
+ */
+async function publicarCargaTardia(google, g) {
+  if (!g.fCargaTardia) return
+  const arq = await google.readSheetValues(ID, DESDE_CAJA.arqueoArs, { render: 'UNFORMATTED_VALUE' })
+  const valor = Number(arq?.[0]?.[0]) || 0
+  const ancla = await anclaDelConteo(ID, CONCEPTO.arqueoArs, valor,
+    { sello: { serial: Number(g.filas[g.fSello - 1]?.[5]), valorSellado: Number(g.filas[g.fEstado - 1]?.[3]) || 0 } })
+  const r = await medirCargaTardia(google, ID, ancla)
+  await google.batchUpdateValues(ID, [
+    { range: `${PESTANA_ANEXO}!E${g.fCargaTardia}`, values: [[r.sobreestimado]] },
+    { range: `${PESTANA_ANEXO}!F${g.fCargaTardia}`, values: [[instanteDelSello()]] },
+  ])
+  const aviso = avisoCargaTardia(r, { marca: ALERTA, fuente: 'Compras' })
+  // EL GLIFO VA EN LA LÍNEA DEL `console.log`, no en una continuación: el guardián de glifos juzga
+  // línea por línea y un literal suelto con un emoji parece un texto de celda. Ver glifos-generadores.
+  if (aviso) return console.log(`  ${aviso}`)
+  console.log(`  💵 sin carga tardía sobre filas viejas: ${r.cubiertas} celda(s) probadas desde antes del conteo`
+    + (r.sembrando ? ` · ${r.sembrando} sin comparar todavía` : ''))
 }
 
 /**

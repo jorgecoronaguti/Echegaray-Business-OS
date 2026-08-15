@@ -50,6 +50,23 @@ export const SELLO_EFECTIVO = {
 }
 
 /**
+ * EL RENGLÓN DE LA CARGA TARDÍA — el agujero que la ventana por fecha no puede ver, publicado.
+ *
+ * POR QUÉ ESTÁ EN LA PESTAÑA Y NO SÓLO EN EL LOG (15/08/2026). Este mismo archivo ya tiene la lección
+ * escrita dos renglones más arriba: *"el auditor lo dice en el log del pipeline desde hace semanas y
+ * nadie abre ese log"*. Un número que sólo existe en `journalctl` no existe.
+ *
+ * SU VALOR ES UN NÚMERO PEGADO, Y ES LEGÍTIMO — de la misma especie que el SELLO. Ninguna fórmula de
+ * Sheets puede calcularlo: depende de CUÁNDO cambió una celda, y eso el archivo no lo sabe. Lo estampa
+ * la corrida, igual que el sello, y por eso lleva al lado el INSTANTE en que se midió: un número de
+ * observación sin su fecha se lee como si fuera de ahora, para siempre.
+ */
+export const CARGA_TARDIA = {
+  rotulo: `      ${ALERTA} cargado tarde: pagos en efectivo anotados DESPUÉS del conteo sobre filas anteriores a él`,
+  origen: 'La ventana por fecha no los ve: el cajón puede tener esto de menos. Puede ser un pago cargado sobre una fila vieja (plata que salió) o la corrección de un importe histórico (plata que nunca se movió). NO se resta solo: no se pueden distinguir. Lo mide el centinela comparando cada celda de pago contra el valor que tenía antes del conteo.',
+}
+
+/**
  * LOS SEIS RENGLONES DEL HISTÓRICO DE EFECTIVO, declarados como datos y no como seis `push` sueltos.
  *
  * POR QUÉ SE DECLARAN ACÁ (14/08/2026). Sus rótulos dejaron de ser decoración: son el ancla con la que
@@ -380,7 +397,18 @@ function bloqueMovimientos(h) {
   const fImposible = push([SELLO_EFECTIVO.imposible, 'ARS', '', '',
     `=IF(NOT(ISNUMBER(${ancla}));0;${G.sinExplicar})`, '',
     'Un cajón no puede tener menos de cero pesos NI más que lo contado más lo que entró. Mientras esto no sea 0, el efectivo publicado es el conteo y NO el calculado.'])
-  return { fNeto, fSinCanal, fSello, fEstado, fImposible, filasHistorico: [f0, fSello - 1] }
+  // ═══ LO QUE LA VENTANA NO PUEDE VER, CON NÚMERO (15/08/2026) ═══
+  //
+  // VA DEBAJO DEL SELLO Y FUERA DEL BLOQUE, por la misma razón que el renglón de arriba: todo lo que
+  // esté en la columna C entre el primer histórico y el sello ENTRA AL NETO, y esto no se resta de
+  // nada. Por eso el importe va en la columna E, igual que el control de lo imposible.
+  //
+  // E y F los estampa la corrida (ver caja-anexo-pestana.mjs); acá salen con lo que quedó de la
+  // anterior, o el generador borraría la medición en cada regeneración.
+  const tardia = (campo) => { const v = h.previo(CARGA_TARDIA.rotulo, campo); return v === '' ? '' : v }
+  const fCargaTardia = push([CARGA_TARDIA.rotulo, 'ARS', '', '', tardia('importe'), tardia('medidoEn'),
+    CARGA_TARDIA.origen])
+  return { fNeto, fSinCanal, fSello, fEstado, fImposible, fCargaTardia, filasHistorico: [f0, fSello - 1] }
 }
 
 /**
