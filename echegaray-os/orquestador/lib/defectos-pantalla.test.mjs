@@ -266,3 +266,117 @@ test('una celda sola rodeada de vacío no es una fila de rótulos: un encabezado
   // convierte el encabezado de ésta en una fila de datos (era la fila 4 entera de "Cobranzas").
   assert.equal(esFilaDeRotulos([cel('Concepto'), cel('Monto'), null, cel('$300.588.858')], 1), true)
 })
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL PATRÓN DE LA CELDA ES PARTE DE LA EVIDENCIA (15/08)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+/** Una celda con su patrón de número: es la mitad de la evidencia que faltaba. */
+const celp = (valor, type, pattern) => ({ valor, formato: { numberFormat: { type, pattern } } })
+
+const ALERTA_PAT = '"▲ "#,##0;("▲ "#,##0);"—"'
+
+test('un importe dibujado con el ▲ de su propio patrón NO es texto', () => {
+  // OBRAS!F10. Adentro hay 17449303.3143 —medido con UNFORMATTED_VALUE— y el patrón de alerta le
+  // dibuja el triángulo adelante. Arreglar el formato movió el defecto al detector: las cinco celdas
+  // con importe de la columna «Vencido» pasaron a reportarse como "texto en una celda CURRENCY".
+  const d = detectar(hoja([
+    // El cuadro de arriba deja un importe en la MISMA columna: por eso las de abajo no se absuelven
+    // como encabezado, que es la situación real de OBRAS (F6 tiene el total del bloque anterior).
+    [cel('⇒ Vencido a 61–90'), celp('$1.000.000', 'CURRENCY', '"$"#,##0')],
+    [cel('Obra'), cel('Vencido', 'TEXT')],
+    [cel('San Francisco'), celp('▲ 17.449.303', 'CURRENCY', ALERTA_PAT)],
+    [cel('MESSINA'), celp('▲ $42.360.120', 'CURRENCY', '"▲ $"#,##0;("▲ $"#,##0);"—"')],
+  ])).filter((x) => x.tipo === 'texto_en_numero')
+  assert.deepEqual(d, [], `un número con literal en su patrón no es una nota: ${JSON.stringify(d)}`)
+})
+
+test('pero una NOTA en esa misma celda de alerta se sigue reportando', () => {
+  // "▲ ninguna compra la nombra" es lo que publica OBRAS cuando no puede emparejar. Sacarle el
+  // triángulo deja prosa, no un número: el control tiene que seguir viéndola.
+  const d = detectar(hoja([
+    [cel('⇒ Vencido a 61–90'), celp('$1.000.000', 'CURRENCY', '"$"#,##0')],
+    [cel('Obra'), cel('Vencido', 'TEXT')],
+    [cel('San Francisco'), celp('▲ 17.449.303', 'CURRENCY', ALERTA_PAT)],
+    [cel('MESSINA'), celp('▲ ninguna compra la nombra', 'CURRENCY', ALERTA_PAT)],
+  ])).filter((x) => x.tipo === 'texto_en_numero')
+  assert.equal(d.length, 1)
+  assert.equal(d[0].fila, 4)
+})
+
+test('"$ -" pegado en una columna de moneda SIGUE siendo un defecto', () => {
+  // Compras: 243 celdas dicen "$ -" y adentro tienen la CADENA "$ -", no un cero (verificado con
+  // UNFORMATTED_VALUE). El cero de ese patrón es "—" y sólo "—": ninguna de sus tres secciones
+  // dibuja "$ -". Sacarle el "$" del patrón dejaba "-", caía en la regla del guion y las 243
+  // desaparecían del informe.
+  const PAT = '"$"#,##0.00;("$"#,##0.00);"—"'
+  const d = detectar(hoja([
+    [cel('Proveedor'), cel('IVA', 'TEXT')],
+    [cel('Alumetal'), celp('$134.999,99', 'CURRENCY', PAT)],
+    [cel('Hormiserv'), celp('$ -', 'CURRENCY', PAT)],
+  ])).filter((x) => x.tipo === 'texto_en_numero')
+  assert.equal(d.length, 1, 'se silenciaron los 243 "$ -" de Compras')
+  assert.equal(d[0].fila, 3)
+})
+
+test('un negativo en notación contable no se convierte en texto al sacarle los literales', () => {
+  // Cobranzas: `"$ "#,##0.00;[RED]"($ "#,##0.00\\);\\-`. El paréntesis que ABRE está entre comillas y
+  // el que CIERRA va escapado con `\`, así que sacar sólo los entrecomillados deja "80.000,00)" —
+  // medio importe con un paréntesis suelto, que ya no parece número. Cuatro importes negativos
+  // legítimos (J58 · K58 · M58 · T58) se reportaban como texto.
+  const PAT = '"$ "#,##0.00;[RED]"($ "#,##0.00\\);\\-'
+  const d = detectar(hoja([
+    [cel('Cliente'), cel('Neto', 'TEXT')],
+    [cel('Quattropani'), celp('$ 192.000,00', 'CURRENCY', PAT)],
+    [cel('Nota de crédito'), celp('($ 80.000,00)', 'CURRENCY', PAT)],
+  ])).filter((x) => x.tipo === 'texto_en_numero')
+  assert.deepEqual(d, [], `un importe negativo contable no es una nota: ${JSON.stringify(d)}`)
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// UNA FILA DE DATOS CON VARIAS FECHAS NO ES UN ENCABEZADO DE PERÍODOS (15/08)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+/** El registro de "Jornales": tres fechas mezcladas con importes y un estado. NO es un encabezado. */
+const filaDeRegistro = () => [
+  cel('05/01/2026', 'DATE'), cel('15/01/2026', 'DATE'), celp('$1.380.275', 'CURRENCY', '"$"#,##0'),
+  celp('$4.888.075', 'CURRENCY', '"$"#,##0'), cel('10', 'NUMBER'), cel('18/05/2026', 'DATE'),
+]
+
+test('un serial dibujado como importe ARRIBA de su tabla se caza aunque la fila de datos tenga varias fechas', () => {
+  // Jornales!N126..N132: siete fechas de «Pagado el» publicadas como `$46.160 · $46.176 · …` arriba
+  // del encabezado del registro, residuo de un layout ocho filas más corto. Con "tres o más fechas =
+  // encabezado de períodos" las doce filas del registro no aportaban su columna N y NADIE las veía.
+  const d = detectar(hoja([
+    [cel('5 · OBRA — EL REGISTRO'), cel(''), cel(''), cel(''), cel(''), celp('$46.160', 'CURRENCY', '"$"#,##0')],
+    [cel('Quincena', 'TEXT'), cel('Hasta', 'TEXT'), cel('Banco', 'TEXT'), cel('TOTAL', 'TEXT'), cel('Días', 'TEXT'), cel('Pagado el', 'TEXT')],
+    filaDeRegistro(),
+  ])).filter((x) => x.tipo === 'fecha_como_moneda')
+  assert.equal(d.length, 1, 'el serial huérfano de la columna del dueño quedó invisible')
+  assert.equal(d[0].col, 'F')
+  assert.equal(d[0].fila, 1)
+})
+
+test('pero un encabezado de meses de verdad sigue sin contar como fecha vecina', () => {
+  // "ene feb mar abr" con formato de fecha arriba de un cuadro: contándolo, cualquier importe en el
+  // rango de seriales se marcaba ($54.043 en Recurrentes, $48.613 en Estructura, gastos reales).
+  const d = detectar(hoja([
+    [cel('Concepto'), cel('01/01/2026', 'DATE'), cel('01/02/2026', 'DATE'), cel('01/03/2026', 'DATE'), cel('01/04/2026', 'DATE')],
+    [cel('Alquiler'), celp('$46.198', 'CURRENCY', '"$"#,##0'), celp('$46.198', 'CURRENCY', '"$"#,##0'), celp('$46.198', 'CURRENCY', '"$"#,##0'), celp('$46.198', 'CURRENCY', '"$"#,##0')],
+  ])).filter((x) => x.tipo === 'fecha_como_moneda')
+  assert.deepEqual(d, [], 'volvieron los falsos positivos del encabezado de meses')
+})
+
+test('un título de sección CON contenido al lado no corta la mirada; uno pelado sí', () => {
+  // Es la misma frontera que ya usa `esRotuloDeColumna` y estaba escrita con otro predicado acá.
+  const conOrfano = (tituloConDato) => hoja([
+    [cel(''), cel(''), cel(''), cel(''), cel(''), celp('$46.160', 'CURRENCY', '"$"#,##0')],
+    [cel('5 · OBRA — EL REGISTRO'), cel(''), cel(''), cel(''), cel(''), tituloConDato ? celp('$46.176', 'CURRENCY', '"$"#,##0') : cel('')],
+    [cel('Quincena', 'TEXT'), cel('Hasta', 'TEXT'), cel('Banco', 'TEXT'), cel('TOTAL', 'TEXT'), cel('Días', 'TEXT'), cel('Pagado el', 'TEXT')],
+    filaDeRegistro(),
+  ])
+  const conDato = detectar(conOrfano(true)).filter((x) => x.tipo === 'fecha_como_moneda')
+  assert.equal(conDato.length, 2, 'un título que trae un dato al lado no abre un cuadro: no es frontera')
+  const pelado = detectar(conOrfano(false)).filter((x) => x.tipo === 'fecha_como_moneda')
+  assert.deepEqual(pelado, [], 'un título pelado SÍ separa dos tablas apiladas y la mirada no lo cruza')
+})

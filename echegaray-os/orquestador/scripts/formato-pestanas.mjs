@@ -62,7 +62,19 @@ export const PESTANAS = [
   // saltea para no pisarle el estilo — es la causa que ya se pagó una vez, dos formateadores sobre
   // la misma pestaña y gana el último que corre.
   // cols 13 (era 11) y hastaFila 90 (era 80): entró "Se paga el" y la grilla creció con la glosa.
-  { titulo: 'Jornales por Quincena', congeladas: 2, hastaFila: 90, cols: 13, propio: true },
+  //
+  // ═══ Y 14 DESDE EL 15/08: LA COLUMNA «Pagado el» NO LA AUDITABA NADIE ═══
+  //
+  // El generador escribe `ANCHO = 14` desde el 31/07 y esta entrada se quedó en 13, así que la N —la
+  // columna donde el dueño marca cuándo salió la plata de verdad— quedó fuera de todo control de
+  // pantalla durante dos semanas. No era una franja vacía: ahí arriba había siete seriales de fecha
+  // dibujados como importes (`$46.160 · $46.176 · $46.189 · $46.204 · $46.220 · $46.237 · $46.143`,
+  // filas 126 a 132), residuo de un layout ocho filas más corto, publicados ARRIBA de su propio
+  // encabezado. Un control que no sabe que una columna existe devuelve el mismo verde que uno que la
+  // revisó — es la misma falla que dejó OBRAS fuera de la lista durante un mes.
+  //
+  // El ancho de esta entrada tiene que seguir al `ANCHO` del generador; el test lo ata.
+  { titulo: 'Jornales por Quincena', congeladas: 2, hastaFila: 90, cols: 14, propio: true },
   { titulo: 'Cargas Sociales', congeladas: 0, hastaFila: 120, cols: 16 },
   // Piel de statement PROPIA (su generador aplica estilo-statement); el formateador general la saltea.
   // congeladas 12 (era 1) y cols 15 (era 12): la entrada estaba desalineada del generador, que escribe

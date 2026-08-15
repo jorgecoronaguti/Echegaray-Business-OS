@@ -164,7 +164,10 @@ const AÑO = 2026
 // CATORCE COLUMNAS DESDE EL 31/07: la última es "Pagado el", donde el dueño marca cuándo salió la
 // plata de verdad. Si este número no acompaña a la fila del registro, la columna nueva queda fuera del
 // footprint del generador y lo que haya debajo no se limpia nunca.
-const ANCHO = 14
+// SE EXPORTA para que la entrada de esta pestaña en `formato-pestanas.PESTANAS` no pueda volver a
+// quedarse corta: el auditor de pantalla recorre esa lista y con `cols: 13` no miraba la N durante dos
+// semanas. Un número declarado dos veces se separa sin dar error; atado por el test, no.
+export const ANCHO = 14
 /**
  * El ancho de la columna D, la del ESTADO de cada fila. Va aparte de los 112px del resto porque su
  * contenido es una frase, no un número: el peor caso medido en la pestaña viva es

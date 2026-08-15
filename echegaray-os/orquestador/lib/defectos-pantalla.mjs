@@ -55,6 +55,50 @@ export function esSerialCrudo(valor, nf) {
 /** Los tipos de formato que dicen "esta celda es un número". */
 const NUMERICO = new Set(['CURRENCY', 'NUMBER', 'PERCENT'])
 
+/**
+ * NÚCLEO PURO: el valor de una celda SIN los literales que dibuja su propio formato de número.
+ *
+ * ═══ POR QUÉ (15/08) ═══
+ *
+ * Arreglar el formato de la columna «Vencido» de OBRAS —las seis celdas que publicaban
+ * `17449303,3143` en crudo— movió el defecto de lugar en vez de sacarlo: las celdas pasaron a ser
+ * números con el patrón de alerta `"▲ "#,##0`, y este detector empezó a reportar las cinco que
+ * tienen importe (`F10`, `F15`, `F18`, `F27`, `F29`) como "texto en una celda con formato CURRENCY".
+ * Medido con `UNFORMATTED_VALUE`: adentro hay `17449303.3143`, un número. Lo que ve el detector es el
+ * DIBUJO —"▲ 17.449.303"— y ningún número empieza con un triángulo.
+ *
+ * LA REGLA, Y POR QUÉ NO ES UNA LISTA DE SÍMBOLOS: los tramos entre comillas de un patrón de número
+ * son texto que pone el FORMATO, no contenido de la celda. `"▲ "#,##0` promete un triángulo adelante
+ * igual que `"$"#,##0` promete un peso y `0" facturas"` promete la palabra atrás. Sacarlos del
+ * dibujo antes de juzgarlo es leer la celda por lo que su propia declaración dice que es — el mismo
+ * criterio que `lib/obras-especies.mjs`: el formato es una proyección del dato, no una lista aparte
+ * que alguien tiene que acordarse de actualizar. El día que entre un patrón nuevo, esto ya lo sabe.
+ *
+ * SÓLO EN LOS BORDES. Un patrón de número dibuja sus literales adelante o atrás del número, así que
+ * ahí es donde se sacan. Una nota de verdad metida en una celda de alerta —"▲ ninguna compra la
+ * nombra", que es lo que publica OBRAS cuando no puede emparejar— pierde el triángulo y sigue siendo
+ * prosa: se reporta igual, que es lo que tiene que pasar.
+ *
+ * @param {string} valor lo que se VE en la celda
+ * @param {string} [patron] `numberFormat.pattern` de esa misma celda
+ */
+export function sinLiteralesDelPatron(valor, patron) {
+  let s = String(valor ?? '').trim()
+  if (!patron || !s) return s
+  const literales = [...String(patron).matchAll(/"([^"]*)"/g)].map((m) => m[1].trim()).filter(Boolean)
+  if (!literales.length) return s
+  let saco = true
+  while (saco && s) {
+    saco = false
+    for (const l of literales) {
+      if (s.startsWith(l)) { s = s.slice(l.length).trim(); saco = true }
+      if (s.endsWith(l) && s !== l) { s = s.slice(0, -l.length).trim(); saco = true }
+    }
+  }
+  return s
+}
+
+
 /** ¿El texto es un número que Sheets ya formateó? Sirve para saber si el valor es texto de verdad. */
 const esTextoDeVerdad = (v) => {
   const s = String(v ?? '').trim()
@@ -89,6 +133,33 @@ const esTextoDeVerdad = (v) => {
   // ignorarlo — que es peor que no tenerlo.
   if (/^-?[\d.,]+\s+[a-zá-ú.]+$/i.test(s)) return false
   return true
+}
+
+/**
+ * ¿El DIBUJO de esta celda es texto, una vez sacado lo que puso su propio formato de número?
+ *
+ * Es la forma en que TODO este archivo pregunta "esto es texto": la celda entera, no el string suelto.
+ * `esTextoDeVerdad` sigue existiendo para el string pelado, pero preguntarle a él directamente vuelve
+ * a dejar afuera el patrón —que es la mitad de la evidencia— y así es como cinco importes de OBRAS
+ * pasaron a reportarse como notas mal puestas.
+ */
+const esTextoEnCelda = (celda) => {
+  const v = String(celda?.valor ?? '').trim()
+  // SACAR LITERALES SÓLO PUEDE DESCUBRIR UN NÚMERO, NUNCA TAPARLO. Si el dibujo ya se reconoce como
+  // número sin mirar el patrón, se termina acá. Sin esta puerta, el patrón contable de Cobranzas
+  // —`"$ "#,##0.00;[RED]"($ "#,##0.00\);\-`— convertía "($ 80.000,00)" en "80.000,00)": el paréntesis
+  // que abre está entre comillas y el que cierra va escapado con `\`, así que la mitad se sacaba y la
+  // otra quedaba, y cuatro importes negativos legítimos pasaban a reportarse como texto. Medido: 4
+  // falsos positivos nuevos en Cobranzas con la versión sin esta línea.
+  if (!esTextoDeVerdad(v)) return false
+  const resto = sinLiteralesDelPatron(v, celda?.formato?.numberFormat?.pattern)
+  // Y LO QUE QUEDA TIENE QUE TENER DÍGITOS: un patrón de número dibuja un NÚMERO. Sin esta condición,
+  // las 243 celdas de Compras que dicen `$ -` —texto pegado desde un export contable, verificado con
+  // `UNFORMATTED_VALUE`: adentro está la cadena "$ -", no un cero— quedaban en "-" al sacarle el "$"
+  // del patrón, caían en la regla del guion (que es el cero DIBUJADO) y dejaban de reportarse. El
+  // cero de ese patrón es "—" y sólo "—": ninguna de sus tres secciones puede producir "$ -".
+  if (!/\d/.test(resto)) return true
+  return esTextoDeVerdad(resto)
 }
 
 /**
@@ -154,8 +225,8 @@ export function esRotuloDeColumna(filas = [], i = 0, j = 0) {
     // columna con el criterio de siempre. Absolver de más apaga el control; condenar de más lo llena
     // de ruido, y en este archivo las dos formas de romperlo ya se pagaron.
     if (esTituloPelado(filas[k]) && i - k <= ZONA_ENCABEZADO && esFilaDeRotulos(filas[i], j)) return true
-    const v = String(filas[k]?.[j]?.valor ?? '').trim()
-    if (v && !esTextoDeVerdad(v)) return false
+    const c = filas[k]?.[j]
+    if (String(c?.valor ?? '').trim() && !esTextoEnCelda(c)) return false
   }
   return true
 }
@@ -206,10 +277,10 @@ export function esTituloPelado(fila = []) {
 export function esFilaDeRotulos(fila = [], j = 0) {
   const f = fila || []
   const en = (k) => String(f?.[k]?.valor ?? '').trim()
-  const esNumero = (v) => v !== '' && !esTextoDeVerdad(v)
+  const esNumero = (k) => en(k) !== '' && !esTextoEnCelda(f?.[k])
   let llenas = 0
-  for (let k = j; k >= 0 && en(k) !== ''; k--) { if (esNumero(en(k))) return false; llenas++ }
-  for (let k = j + 1; k < f.length && en(k) !== ''; k++) { if (esNumero(en(k))) return false; llenas++ }
+  for (let k = j; k >= 0 && en(k) !== ''; k--) { if (esNumero(k)) return false; llenas++ }
+  for (let k = j + 1; k < f.length && en(k) !== ''; k++) { if (esNumero(k)) return false; llenas++ }
   return llenas > 1
 }
 
@@ -234,6 +305,21 @@ export function detectar(f, { desdeFila = 1, huecoMax = 3 } = {}) {
   // en el rango de seriales se marcaba: pasó con $54.043 en Recurrentes y $48.613 en Estructura, que
   // son gastos reales. Una fila con tres o más fechas es un encabezado de períodos, no datos.
   //
+  // ═══ PERO UNA FILA DE DATOS CON VARIAS FECHAS NO ES UN ENCABEZADO (15/08) ═══
+  //
+  // "Tres o más fechas" solo, sin mirar el resto de la fila, apagó la señal entera en la columna
+  // «Pagado el» de "Jornales por Quincena". Cada fila del registro tiene CUATRO columnas de fecha
+  // —«Quincena», «Hasta», «Se paga el» y «Pagado el»— además de nueve de números y una de texto: por
+  // el conteo pelado, las 12 filas del registro se declaraban "encabezado de períodos" y ninguna
+  // aportaba su fecha. Con eso, los siete seriales que la columna N publica como `$46.160 · $46.176 ·
+  // $46.189 · $46.204 · $46.220 · $46.237 · $46.143` —arriba de su propio encabezado, residuo de un
+  // layout ocho filas más corto— no tenían contra qué compararse y NINGÚN control los veía.
+  //
+  // LA DIFERENCIA NO ES CUÁNTAS FECHAS HAY: ES SI LA FILA ES SÓLO FECHAS. Un encabezado de períodos
+  // ("ene feb mar…") está hecho de fechas y a lo sumo un rótulo al costado; una fila de datos las
+  // mezcla con importes, cantidades y estados. Que las fechas sean MAYORÍA de las celdas llenas
+  // separa las dos sin contar filas ni suponer un layout.
+  //
   // Y LA VECINDAD NO CRUZA UN TÍTULO DE SECCIÓN (05/08). La ventana de 15 filas se pensó para no
   // mirar la columna entera, pero sigue siendo una distancia: en "Proveedores" el pie de la sección 2
   // —"Comprado 2026", moneda en la columna C— y la fila de fechas de la sección 3 quedan a ocho filas,
@@ -242,12 +328,20 @@ export function detectar(f, { desdeFila = 1, huecoMax = 3 } = {}) {
   // Un título de sección ("3 · NOTAS DE CRÉDITO") es la frontera declarada entre bloques apilados —
   // el mismo criterio con el que `finDeDinamica` decide dónde termina una tabla dinámica.
   const VENTANA = 15
-  // La MISMA frontera que usa `esRotuloDeColumna`: declarada una vez arriba. Estaba escrita dos
-  // veces y son la misma decisión — dos copias del mismo criterio se separan sin dar error.
-  const esTitulo = f.filas.map((fila) => TITULO_SECCION.test(String(fila?.[0]?.valor ?? '')))
+  // ═══ LA FRONTERA ES `esTituloPelado`, LA MISMA QUE USA `esRotuloDeColumna` (15/08) ═══
+  //
+  // Estaba escrito el propósito —"la MISMA frontera"— con dos predicados distintos abajo: allá
+  // `esTituloPelado` y acá el regex crudo. Y las dos copias ya se separaron: la fila 127 de "Jornales"
+  // tiene el título «5 · OBRA — EL REGISTRO…» en la A y, en la MISMA fila, un serial huérfano en la N.
+  // Por el regex eso es una frontera y cortaba la mirada justo arriba del residuo; por `esTituloPelado`
+  // no lo es, y por la razón que ese predicado ya declara: un título con contenido al lado no abre un
+  // cuadro nuevo, es la banda de uno que ya trae datos.
+  const esTitulo = f.filas.map((fila) => esTituloPelado(fila))
   const conFecha = f.filas.map((fila) => {
     const cols = (fila || []).map((c, j) => ((c?.formato?.numberFormat?.type === 'DATE' || c?.formato?.numberFormat?.type === 'DATE_TIME') ? j : -1)).filter((j) => j >= 0)
-    return new Set(cols.length >= 3 ? [] : cols)
+    const llenas = (fila || []).filter((c) => String(c?.valor ?? '').trim() !== '').length
+    const esEncabezadoDePeriodos = cols.length >= 3 && cols.length * 2 > llenas
+    return new Set(esEncabezadoDePeriodos ? [] : cols)
   })
   const fechaCerca = (fila, col) => {
     for (let k = fila - 1; k >= Math.max(0, fila - VENTANA); k--) {
@@ -305,7 +399,7 @@ export function detectar(f, { desdeFila = 1, huecoMax = 3 } = {}) {
       //
       // Una fila de encabezado se reconoce sin adivinar: TODAS sus celdas con contenido son texto.
       // En cuanto aparece un número, es una fila de datos y ahí sí el texto molesta.
-      if (NUMERICO.has(nf) && esTextoDeVerdad(v) && !esRotuloDeColumna(f.filas, i, j)) {
+      if (NUMERICO.has(nf) && esTextoEnCelda(c) && !esRotuloDeColumna(f.filas, i, j)) {
         out.push({ tipo: 'texto_en_numero', fila: nFila, col, valor: v.slice(0, 40), que: `texto en una celda con formato ${nf}` })
       }
 
