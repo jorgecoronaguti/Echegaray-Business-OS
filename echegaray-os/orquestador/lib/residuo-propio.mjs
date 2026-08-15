@@ -41,23 +41,35 @@
 //
 // EL LADO PARA EQUIVOCARSE ES CONSERVAR. Sin registro, sin ancla o ante la duda, la celda se queda.
 
-import { ALERTA, ALERTA_HEREDADA } from './glifos.mjs'
+import { ALERTA, ALERTA_HEREDADA, SEMAFORO } from './glifos.mjs'
 
 // LAS MARCAS QUE PRODUCE UN GENERADOR Y QUE NADIE TIPEA AL ANOTAR AL MARGEN.
 //
 // Están las dos alertas —la vigente `▲` y la `⚠` que quedó publicada— y siguen los emoji de estado
-// (🟡 ✅), que este módulo NO escribe: los lee. Son de la columna Z de "Compras", que llena AppSheet;
-// sacarlos de acá haría que una fila de ese origen dejara de reconocerse como generada.
-const MARCAS_DE_GENERADOR = new RegExp(`[${ALERTA}${ALERTA_HEREDADA}⇒‖§·✓🟡✅]`)
+// (🟡 ✅), que este módulo NO escribe: los lee. Son de la columna Z de "Compras".
+//
+// ═══ POR QUÉ ENTRA `△` Y NO ENTRA `○` (15/08) ═══
+//
+// El semáforo de esa columna dejó de escribirse con emoji. Si acá sólo quedaran los viejos, las filas
+// que ya se reescribieron dejarían de reconocerse como generadas y su residuo se volvería INMORTAL:
+// la guarda de borrado conservaría para siempre lo que el generador pide limpiar. Por eso el cambio
+// de glifo y esta lista van en el mismo commit — separarlos rompe la guarda en silencio.
+//
+// De los cuatro estados sólo se agrega uno. `✓` (pagado) y `▲` (vencido) YA estaban. `△` (por
+// vencer) reemplaza al `🟡`, que estaba: sin él se PIERDE reconocimiento. `○` (vigente) reemplaza al
+// `🟢`, que NUNCA estuvo: agregarlo ensancharía qué celda puede borrar un generador, y ensanchar la
+// guarda no es lo que este cambio viene a hacer. La lista queda exactamente tan ancha como estaba.
+const MARCAS_DE_GENERADOR = new RegExp(`[${ALERTA}${ALERTA_HEREDADA}⇒‖§·✓🟡✅${SEMAFORO.porVencer}]`)
 
 /**
  * LA MARCA CON LA QUE ARRANCA UNA CELDA PROPIA — deliberadamente MÁS ANGOSTA que la de arriba.
  *
  * `‖` y `§` no están: separan columnas y numeran adentro de un rótulo, no lo abren. Ensancharla acá
  * sería ampliar en silencio qué celda puede borrar el generador, y eso no es lo que este cambio viene
- * a hacer — lo único que se agrega es la alerta nueva al lado de la publicada.
+ * a hacer — lo único que se agrega es la alerta nueva al lado de la publicada, y el `△` del semáforo
+ * al lado del `🟡` publicado, por el mismo motivo escrito arriba.
  */
-const INICIA_MARCA = new RegExp(`^(?:✓|${ALERTA}|${ALERTA_HEREDADA}|🟡|✅|⇒|·)`)
+const INICIA_MARCA = new RegExp(`^(?:✓|${ALERTA}|${ALERTA_HEREDADA}|${SEMAFORO.porVencer}|🟡|✅|⇒|·)`)
 
 /**
  * NÚCLEO PURO: ¿la celda tiene una forma que sólo produce un generador? Un importe, una fecha, un
