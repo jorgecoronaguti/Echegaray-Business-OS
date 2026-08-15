@@ -81,7 +81,7 @@ import { fusionar, sobrantes, VACIO, estructural } from '../lib/preservar-anotac
 import { obrasConMateriales } from '../lib/obras-con-materiales.mjs'
 import { sumaNetaSheet } from '../lib/costo-materiales.mjs'
 import { bloqueMaterialesPorObra } from '../lib/materiales-por-obra.mjs'
-import { conEdicionesRespetadas, guardarRegistro, detectarArranqueEnFrio, autoRespetarReescritura, leerRegistro, esRotulo } from '../lib/respetar-ediciones.mjs'
+import { conEdicionesRespetadas, guardarRegistro, detectarArranqueEnFrio, autoRespetarReescritura, leerRegistro } from '../lib/respetar-ediciones.mjs'
 // El respaldo de las notas por proveedor: sobrevive a que la lista de deuda cambie. Ver lib/proveedor-notas.mjs.
 import { claveProv, conciliarNotas, leerNotas, guardarNotas, borrarNotas, marcarEscritas, yaEscritas } from '../lib/proveedor-notas.mjs'
 import { firmaGuardia, sellarFirma } from '../lib/firma-tab.mjs'

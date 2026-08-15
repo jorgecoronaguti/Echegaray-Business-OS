@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { respetarEdiciones, detectarEdiciones, esRotulo, esEstructural, detectarArranqueEnFrio, MAX_BORRADOS_CREIBLES, duenoReescribioLaPestana} from './respetar-ediciones.mjs'
+import { respetarEdiciones, detectarEdiciones, esRotulo, detectarArranqueEnFrio, MAX_BORRADOS_CREIBLES, duenoReescribioLaPestana} from './respetar-ediciones.mjs'
 import { fusionar, VACIO } from './preservar-anotaciones.mjs'
 
 test('un rótulo es texto: no una fórmula, no un número, no un importe escrito', () => {
