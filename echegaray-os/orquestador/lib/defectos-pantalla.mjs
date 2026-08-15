@@ -56,6 +56,37 @@ export function esSerialCrudo(valor, nf) {
 const NUMERICO = new Set(['CURRENCY', 'NUMBER', 'PERCENT'])
 
 /**
+ * El aire que Sheets deja arriba y abajo del texto dentro de una fila. Sale de su propio default: una
+ * línea de 10pt vive en una fila de 21px, y la línea mide 15. No es un margen de cortesía elegido acá.
+ */
+const AIRE_DE_FILA = 6
+
+/**
+ * NÚCLEO PURO: el alto que ALCANZA para que `lineas` líneas se vean enteras.
+ *
+ * ═══ POR QUÉ NO SIRVE `altoNecesario` PARA REPARAR (15/08) ═══
+ *
+ * `altoNecesario` es el UMBRAL DE DETECCIÓN: por debajo de él el texto está cortado seguro. Un umbral
+ * tiene que quedarse corto a propósito —marcar de más llena el informe de ruido, y así es como en este
+ * repo se dejan de mirar los controles—. Reparar es la pregunta contraria y quiere el número
+ * contrario: no "a partir de dónde está mal" sino "hasta dónde tengo que llegar para que esté bien".
+ *
+ * Los dos números no coinciden y la diferencia es medible: `lineas * (tam + 5)` pide 30px para dos
+ * líneas de 10pt, y Sheets necesita 36 —15 de línea por 2, más los 6 de aire—. Reparar con el umbral
+ * deja la fila al borde justo, la segunda línea se ve a medias y el defecto vuelve sin que nadie haya
+ * tocado nada: el peor modo de falla, porque tiene la firma de un reparador que dijo que sí.
+ *
+ * EL 1,5 NO ES UN NÚMERO CÓMODO: es el que reproduce el default conocido de Sheets —una línea de 10pt
+ * en 21px—. Con ese ancla, la fórmula se extrapola sola a cualquier tamaño de fuente en vez de pedir
+ * una tabla que alguien tenga que acordarse de actualizar.
+ */
+export function altoQueEntra(lineas = 1, tam = 10) {
+  const n = Math.max(1, Math.ceil(Number(lineas) || 1))
+  const pt = Number(tam) || 10
+  return n * Math.round(pt * 1.5) + AIRE_DE_FILA
+}
+
+/**
  * NÚCLEO PURO: el valor de una celda SIN los literales que dibuja su propio formato de número.
  *
  * ═══ POR QUÉ (15/08) ═══
@@ -536,9 +567,12 @@ export function detectar(f, { desdeFila = 1, huecoMax = 3, columnasEnteras = fal
             const alto = altos[i] ?? 21
             const altoNecesario = lineas * (tam + 5)
             if (alto < altoNecesario) {
-              // altoNecesario lo consume reparar-pantalla: es el alto exacto que borra este defecto,
-              // el mismo umbral que se acaba de comparar, así que ponerlo lo deja al borde justo.
-              out.push({ tipo: 'texto_apretado', fila: nFila, col, valor: v.slice(0, 40), altoNecesario, que: `necesita ${lineas} líneas y la fila mide ${alto}px: se ve la primera y el resto queda cortado abajo` })
+              // `altoNecesario` es el UMBRAL con el que se acaba de decidir que está cortado; el alto
+              // con el que se REPARA sale de `altoQueEntra`, que es otro número y por otra razón (ver
+              // su cabecera). Se emiten `lineas` y `fontSize` para que quien repare no tenga que
+              // volver a derivarlos del texto: derivarlos dos veces es como los dos números se
+              // separan y uno queda viejo.
+              out.push({ tipo: 'texto_apretado', fila: nFila, col, valor: v.slice(0, 40), altoNecesario, lineas, fontSize: tam, que: `necesita ${lineas} líneas y la fila mide ${alto}px: se ve la primera y el resto queda cortado abajo` })
             }
           } else if (vecinaOcupada || wrap === 'CLIP') {
             out.push({ tipo: 'texto_cortado', fila: nFila, col, valor: v.slice(0, 40), que: `${v.length} caracteres en una columna de ${anchoCol}px: entran ${Math.floor(anchoCol / (tam * 0.57))}` })

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { detectar, resumen, FECHA_CERO, esSerialCrudo, esRotuloDeColumna, esFilaDeRotulos } from './defectos-pantalla.mjs'
+import { detectar, resumen, FECHA_CERO, esSerialCrudo, esRotuloDeColumna, esFilaDeRotulos, altoQueEntra } from './defectos-pantalla.mjs'
 
 const cel = (valor, type) => ({ valor, formato: type ? { numberFormat: { type } } : null })
 const hoja = (filas) => ({ filas, anchos: [] })
@@ -480,4 +480,41 @@ test('un título de sección CON contenido al lado no corta la mirada; uno pelad
   assert.equal(conDato.length, 2, 'un título que trae un dato al lado no abre un cuadro: no es frontera')
   const pelado = detectar(conOrfano(false)).filter((x) => x.tipo === 'fecha_como_moneda')
   assert.deepEqual(pelado, [], 'un título pelado SÍ separa dos tablas apiladas y la mirada no lo cruza')
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL ALTO CON EL QUE SE REPARA NO ES EL UMBRAL CON EL QUE SE DETECTA (15/08)
+// Agregados al final: este archivo ya tuvo un conflicto de merge feo y los de arriba no se tocan.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('altoQueEntra reproduce el default de Sheets: una línea de 10pt vive en 21px', () => {
+  // Es el ancla de la fórmula. Si esto cambia, el 1,5 dejó de significar lo que dice significar.
+  assert.equal(altoQueEntra(1, 10), 21)
+})
+
+test('EL DEFECTO: reparar con altoNecesario deja la fila corta y el texto sigue cortado', () => {
+  // Dos líneas de 10pt: el UMBRAL dice 30px y Sheets necesita 36 (15 de línea × 2 + 6 de aire).
+  // Reparar con 30 deja la segunda línea a medias — un reparador que dice que sí y no arregló.
+  const umbral = 2 * (10 + 5)
+  assert.equal(umbral, 30)
+  assert.equal(altoQueEntra(2, 10), 36)
+  assert.ok(altoQueEntra(2, 10) > umbral, 'el alto que repara tiene que superar al que detecta')
+})
+
+test('el alto que repara crece con la fuente y con las líneas, y nunca es cero', () => {
+  assert.equal(altoQueEntra(3, 10), 51)
+  assert.ok(altoQueEntra(2, 11) > altoQueEntra(2, 10), 'una fuente más grande pide más alto')
+  assert.equal(altoQueEntra(0, 10), 21, 'ni cero líneas deja una fila sin alto usable')
+  assert.equal(altoQueEntra(undefined, undefined), 21, 'sin datos, el default de Sheets')
+})
+
+test('texto_apretado publica lineas y fontSize: quien repara no vuelve a derivarlos del texto', () => {
+  // Derivar el mismo número dos veces en dos archivos es como uno queda viejo sin que nadie lo note.
+  const celWrap = { valor: 'una nota bastante larga que no entra ahí', formato: { textFormat: { fontSize: 10 }, wrapStrategy: 'WRAP' } }
+  const d = detectar({ filas: [[celWrap]], anchos: [100], altos: [21] }).filter((x) => x.tipo === 'texto_apretado')
+  assert.equal(d.length, 1)
+  assert.equal(d[0].lineas, 3)
+  assert.equal(d[0].fontSize, 10)
+  assert.equal(d[0].altoNecesario, 45, 'el umbral de detección NO se movió: los conteos de hoy no cambian solos')
+  assert.equal(altoQueEntra(d[0].lineas, d[0].fontSize), 51, 'pero se repara con el alto que de verdad entra')
 })
