@@ -30,7 +30,7 @@ import {
   necesitaSello, dictamenEfectivo, avisoEfectivoImposible, avisoTechoNoVerificable,
   selloPorRenglonSembrable,
 } from '../lib/caja-efectivo-fisico.mjs'
-import { instanteDelSello, ventanaDelSello } from '../lib/caja-ancla-por-instante.mjs'
+import { CONCEPTO, anclaDelConteo } from '../lib/caja-conteo-centinela.mjs'
 import { ALERTA } from '../lib/glifos.mjs'
 import { DESDE_CAJA, CELDA_CAJA_MINIMA, ESPECIE_ANEXO } from '../lib/caja-anexo-nombres.mjs'
 import { TIPO_CAMBIO } from '../lib/caja-disponibilidades.mjs'
@@ -76,11 +76,42 @@ export function rescatarAnexo(filas = []) {
 }
 
 /**
+ * EL ANCLA VUELVE A LA CELDA CUANDO SE PERDIÓ — la recuperación que antes no existía.
+ *
+ * El sello puede estar perfectamente vigente y la celda del ancla estar vacía: el rescate por rótulo
+ * estuvo roto desde que existe, un 429 parte la pestaña al medio, un rediseño la corre. Y como el
+ * re-estampado sólo ocurría al renovarse el sello, el ancla no volvía nunca: `IF(NOT(ISNUMBER(ancla)))`
+ * dejaba el neto en 0 y la pestaña publicaba el conteo pelado, con el automático apagado en silencio.
+ *
+ * Ahora el ancla es un dato de Postgres y la celda es sólo su copia publicada: se repone. Se compara
+ * con tolerancia de un segundo porque el serial viaja como flotante y una comparación exacta
+ * reescribiría la celda en cada corrida.
+ */
+export async function reanclar(google, g, enLaPestana, ancla) {
+  const UN_SEGUNDO = 1 / 86400
+  if (Number.isFinite(enLaPestana) && Math.abs(enLaPestana - ancla) < UN_SEGUNDO) return
+  await google.batchUpdateValues(ID, [{ range: `${PESTANA_ANEXO}!F${g.fSello}`, values: [[ancla]] }])
+  console.log(`  🧷 ancla repuesta en F${g.fSello}: la celda ${Number.isFinite(enLaPestana) && enLaPestana ? 'decía otro instante' : 'estaba vacía'} y el centinela sí lo tiene`)
+}
+
+/**
  * Sella el conteo si el arqueo tipeado es más nuevo que la copia sellada.
  *
  * El sello NO se calcula en JS desde las fuentes —eso duplicaría la lógica de las fórmulas y las
  * dos versiones divergirían sin aviso—: se lee el histórico RECIÉN ESCRITO y ya evaluado por
  * Sheets, que es exactamente lo que el renglón del sello va a restar.
+ *
+ * ═══ EL ANCLA YA NO LA INVENTA ESTA CORRIDA (15/08/2026) ═══
+ *
+ * Estampaba `instanteDelSello()`, o sea AHORA. Con eso el ancla nacía y moría con esta pestaña: si la
+ * celda se perdía no volvía, y el intervalo que se declaraba salía del sello del conteo ANTERIOR
+ * —días atrás— impreso como HH:mm, así que una ventana de una semana se leía como una de dos horas.
+ *
+ * El instante lo decide el CENTINELA, que mira la celda en cada corrida y persiste en Postgres cuándo
+ * vio cada valor por primera vez. Acá sólo se PUBLICA. Y si el centinela no puede afirmar un instante
+ * —base caída, conteo ilegible— esto TIRA y no se estampa nada: la pestaña sigue publicando el conteo
+ * tal cual, que es el lado seguro. El ancla gobierna CAJA_TOTAL_DISPONIBLE y con ella el saldo inicial
+ * de los dos cash flow: inventarle un instante sería equivocar el año entero, no una celda.
  */
 async function sellarConteo(google, g) {
   const uno = async (rango) => {
@@ -93,12 +124,18 @@ async function sellarConteo(google, g) {
   const arqueo = { valor: await uno(DESDE_CAJA.arqueoArs) }
   const sellado = { valor: Number(g.filas[g.fEstado - 1]?.[3]) || 0 }
   const [f0, f1] = g.filasHistorico
-  // EL INSTANTE ES DE ESTA CORRIDA, y el intervalo sale de la marca que dejó la anterior: el conteo se
-  // anotó entre las dos miradas. No se promete más precisión que ésa — ver ventanaDelSello.
-  const visto = instanteDelSello()
-  const cuando = ventanaDelSello({ visto, vistoPrevio: Number(g.filas[g.fSello - 1]?.[5]) })
+  const enLaPestana = Number(g.filas[g.fSello - 1]?.[5])
+  // El instante que ya estaba publicado se le ofrece al centinela para que lo ADOPTE si todavía no
+  // tiene registro de este conteo. Sin eso, enchufar el centinela movería el ancla hasta hoy y se
+  // tragaría adentro del conteo todo lo que se movió desde que se contó de verdad.
+  const ancla = await anclaDelConteo(ID, CONCEPTO.arqueoArs, arqueo.valor, {
+    sello: { serial: enLaPestana, valorSellado: sellado.valor },
+  })
+  const visto = ancla.serial
+  const cuando = ancla.ventana
   if (!necesitaSello(arqueo, sellado)) {
     console.log('  🧷 sello vigente: el conteo no cambió')
+    await reanclar(google, g, enLaPestana, visto)
     return sembrarSelloPorRenglon(google, g, sellado)
   }
   const hist = await google.readSheetValues(ID, `${PESTANA_ANEXO}!C${f0}:C${f1}`, { render: 'UNFORMATTED_VALUE' })
@@ -111,8 +148,9 @@ async function sellarConteo(google, g) {
   await google.batchUpdateValues(ID, [
     { range: `${PESTANA_ANEXO}!D${g.fSello}`, values: [[neto]] },
     // EL ANCLA. Antes se copiaba acá la FECHA que el dueño tipeaba, y por eso borrarla apagó el
-    // mecanismo entero. Ahora es el INSTANTE en que esta corrida vio el conteo nuevo: lo pone el
-    // código, nadie lo puede borrar desde CAJA, y es de lo que cuelga la guarda de la ventana.
+    // mecanismo entero. Después fue el instante de ESTA corrida, y por eso perder la celda apagaba el
+    // mecanismo otra vez. Ahora es el instante que el CENTINELA tiene persistido: acá sólo se publica,
+    // y si la celda se pierde `reanclar` la repone en la corrida siguiente.
     { range: `${PESTANA_ANEXO}!F${g.fSello}`, values: [[visto]] },
     { range: `${PESTANA_ANEXO}!D${g.fEstado}`, values: [[arqueo.valor]] },
     // EL SELLO DE CADA RENGLÓN, DE LA MISMA LECTURA Y EN EL MISMO BATCH. El total de arriba es el que
