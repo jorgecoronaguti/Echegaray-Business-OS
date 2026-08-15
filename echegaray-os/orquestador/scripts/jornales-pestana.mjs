@@ -122,7 +122,7 @@ import {
   COLS_CONTRASTE, colContraste, EFECTIVO_SIN_FUENTE, TOTAL_INFERIDO,
   formulaRealBanco, formulaMovimientos, formulaFechaDelLote, formulaOrigenDelReal,
   formulaTotalInferido, formulaDiferencia, formulaDelta, formulaAvisoUmbral,
-  formulaSubtituloContraste,
+  formulaSubtituloContraste, expresionCierreDeQuincena,
 } from '../lib/jornales-real-vs-estimado.mjs'
 // Lo que se dibuja donde un dato no se puede afirmar. Mismo glifo que el resto de la pestaña usa para
 // "no hay dato": un cero ahí se leería como "no hay nadie", que es otra cosa.
@@ -700,7 +700,10 @@ export function grilla({
       // quincena en curso queda partida en su parte real y su parte proyectada, y el mes de transición
       // deja de sumar una quincena a medio cargar MÁS una quincena entera (defecto A8).
       i === 0 ? fecha(q.desde) : `=B${r - 1}+1`,
-      `=IF(DAY(A${r})<16;DATE(YEAR(A${r});MONTH(A${r});15);EOMONTH(A${r};0))`,
+      // EL CIERRE DE UNA QUINCENA SE DEFINE UNA SOLA VEZ. Esta fórmula estaba escrita acá a mano y el
+      // bloque de estimado-contra-real necesitaba la misma: dos copias del mismo criterio en la misma
+      // pestaña es cómo un día dicen cosas distintas. Vive en `expresionCierreDeQuincena`.
+      `=${expresionCierreDeQuincena(`A${r}`)}`,
       // LA FECHA DE CAJA. Una quincena proyectada nunca tiene lote en el banco, así que acá manda el
       // parámetro — pero la fórmula es la MISMA que en el registro, para que el día que el pago
       // aparezca en el extracto la fila se corrija sola sin que nadie la toque.
@@ -1643,7 +1646,14 @@ export function grilla({
   const cDelta = colContraste('Δ %')
   const cOrigen = colContraste('De dónde sale el real')
   const iCol = (letra) => letra.charCodeAt(0) - 65
-  const cierre = `$B$${fReg}`
+  // ═══ EL ANCLA ES «Quincena», NO «Hasta» — Y ESO COSTÓ UNA PUBLICACIÓN (15/08) ═══
+  //
+  // Era `$B$${fReg}`, la columna «Hasta». El cuadro salió publicado con el estimado y sin el real,
+  // diciendo *"el extracto todavía no los muestra"* — falso: `B148` estaba VACÍA (ocho de las quince
+  // filas del registro tienen `=""` ahí) y `N($B$148)=0` apagaba las cuatro celdas. El cierre ahora
+  // se DERIVA del inicio con la regla de calendario, que es la misma que usa el calendario de pago.
+  // El porqué completo, en `expresionCierreDeQuincena`.
+  const desdeQ = `$A$${fReg}`
   filas[fSubReal - 1][0] = formulaSubtituloContraste(fReg)
   /** Una fila del cuadro: el estimado que cita, el real que se le puede probar, y la prosa del origen. */
   const filaContraste = (f, { estimado, real, cuando = SIN_DATO, movs = SIN_DATO, origen }) => {
@@ -1662,11 +1672,11 @@ export function grilla({
   // arriba: 14 hechos y, mientras alguien no cargue su columna BANCO, algún 50% calculado. Que el
   // banco lo desmienta es justamente para lo que sirve este renglón.
   filaContraste(fContraste.banco, {
-    cuando: formulaFechaDelLote(cierre),
-    movs: formulaMovimientos(cierre),
+    cuando: formulaFechaDelLote(desdeQ),
+    movs: formulaMovimientos(desdeQ),
     estimado: `=G${fPago.obra}`,
-    real: formulaRealBanco(cierre),
-    origen: formulaOrigenDelReal({ celdaHasta: cierre, celdaMovs: `${cMovs}${fContraste.banco}` }),
+    real: formulaRealBanco(desdeQ),
+    origen: formulaOrigenDelReal({ celdaDesde: desdeQ, celdaMovs: `${cMovs}${fContraste.banco}` }),
   })
   // 2 · EN EFECTIVO — estimado sí, real NO, y el motivo en la celda. Ver EFECTIVO_SIN_FUENTE: la
   // columna «Total recibo» de JORNALES es TOTAL−ADELANTO−BANCO, un residuo de la misma planilla.
@@ -1766,7 +1776,7 @@ export function grilla({
     // NOMBRE —nunca por letra—, que es la regla que impide que agregar una columna deje el formato de
     // porcentaje pintando la de al lado.
     contraste: {
-      cols: COLS_CONTRASTE, fCols: fContrasteCols,
+      cols: COLS_CONTRASTE, fCols: fContrasteCols, sub: fSubReal,
       f0: fContraste.banco, fFin: fContrasteTotal, aviso: fAvisoUmbral,
     },
     anio: {
@@ -1799,6 +1809,10 @@ export function grilla({
     fTotalProy,
     fTotalReal,
     f0,
+    // LA ÚLTIMA FILA DEL REGISTRO. Se expone para que un test pueda afirmar que los rangos con nombre
+    // LLEGAN hasta ella: un rango que no crece con el registro señala a enero para siempre, y lo que
+    // lo consume devuelve un número plausible sin una sola celda en rojo.
+    fLast,
     p0,
     // LOS ENCABEZADOS DE TABLA Y LA NOTA DE VIGENCIA SON TEXTO, NO PLATA. El formato de moneda cubre
     // toda la grilla de la B a la L, y donde el hero deja un número más arriba en la misma columna, el
