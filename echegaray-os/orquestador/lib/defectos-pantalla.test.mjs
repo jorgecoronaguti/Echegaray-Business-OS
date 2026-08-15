@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { detectar, resumen, FECHA_CERO, esSerialCrudo, esRotuloDeColumna, esFilaDeRotulos } from './defectos-pantalla.mjs'
+import { detectar, resumen, FECHA_CERO, esSerialCrudo, esRotuloDeColumna, esFilaDeRotulos, altoQueEntra, columnasEstadoYNumero } from './defectos-pantalla.mjs'
 
 const cel = (valor, type) => ({ valor, formato: type ? { numberFormat: { type } } : null })
 const hoja = (filas) => ({ filas, anchos: [] })
@@ -480,4 +480,104 @@ test('un título de sección CON contenido al lado no corta la mirada; uno pelad
   assert.equal(conDato.length, 2, 'un título que trae un dato al lado no abre un cuadro: no es frontera')
   const pelado = detectar(conOrfano(false)).filter((x) => x.tipo === 'fecha_como_moneda')
   assert.deepEqual(pelado, [], 'un título pelado SÍ separa dos tablas apiladas y la mirada no lo cruza')
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL ALTO CON EL QUE SE REPARA NO ES EL UMBRAL CON EL QUE SE DETECTA (15/08)
+// Agregados al final: este archivo ya tuvo un conflicto de merge feo y los de arriba no se tocan.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('altoQueEntra reproduce el default de Sheets: una línea de 10pt vive en 21px', () => {
+  // Es el ancla de la fórmula. Si esto cambia, el 1,5 dejó de significar lo que dice significar.
+  assert.equal(altoQueEntra(1, 10), 21)
+})
+
+test('EL DEFECTO: reparar con altoNecesario deja la fila corta y el texto sigue cortado', () => {
+  // Dos líneas de 10pt: el UMBRAL dice 30px y Sheets necesita 36 (15 de línea × 2 + 6 de aire).
+  // Reparar con 30 deja la segunda línea a medias — un reparador que dice que sí y no arregló.
+  const umbral = 2 * (10 + 5)
+  assert.equal(umbral, 30)
+  assert.equal(altoQueEntra(2, 10), 36)
+  assert.ok(altoQueEntra(2, 10) > umbral, 'el alto que repara tiene que superar al que detecta')
+})
+
+test('el alto que repara crece con la fuente y con las líneas, y nunca es cero', () => {
+  assert.equal(altoQueEntra(3, 10), 51)
+  assert.ok(altoQueEntra(2, 11) > altoQueEntra(2, 10), 'una fuente más grande pide más alto')
+  assert.equal(altoQueEntra(0, 10), 21, 'ni cero líneas deja una fila sin alto usable')
+  assert.equal(altoQueEntra(undefined, undefined), 21, 'sin datos, el default de Sheets')
+})
+
+test('texto_apretado publica lineas y fontSize: quien repara no vuelve a derivarlos del texto', () => {
+  // Derivar el mismo número dos veces en dos archivos es como uno queda viejo sin que nadie lo note.
+  const celWrap = { valor: 'una nota bastante larga que no entra ahí', formato: { textFormat: { fontSize: 10 }, wrapStrategy: 'WRAP' } }
+  const d = detectar({ filas: [[celWrap]], anchos: [100], altos: [21] }).filter((x) => x.tipo === 'texto_apretado')
+  assert.equal(d.length, 1)
+  assert.equal(d[0].lineas, 3)
+  assert.equal(d[0].fontSize, 10)
+  assert.equal(d[0].altoNecesario, 45, 'el umbral de detección NO se movió: los conteos de hoy no cambian solos')
+  assert.equal(altoQueEntra(d[0].lineas, d[0].fontSize), 51, 'pero se repara con el alto que de verdad entra')
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA COLUMNA QUE LLEVA UN CONTADOR Y UN ESTADO A LA VEZ — `Cobranzas!U`
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+/** La columna U real: un rótulo, 38 días y 53 palabras de una lista corta. */
+const columnaMixta = ({ dias = 6, palabras = ['Cobrado', 'Cobrado', 'Cobrado', 'Cobrado', 'Cobrado', 'Vencido'] } = {}) => {
+  const filas = [[cel('Días hasta vto.')]]
+  for (let i = 0; i < dias; i++) filas.push([cel(String(20 + i), 'NUMBER')])
+  for (const w of palabras) filas.push([cel(w, 'NUMBER')])
+  return hoja(filas)
+}
+
+test('EL DEFECTO: 24 avisos de una sola decisión que nadie puede cerrar', () => {
+  const f = columnaMixta()
+  const c = columnasEstadoYNumero(f, { minimo: 5 })
+  assert.equal(c.length, 1, 'una columna, un aviso')
+  assert.equal(c[0].col, 'A')
+  assert.equal(c[0].numeros, 6)
+  assert.equal(c[0].textos, 6)
+  assert.equal(c[0].distintos, 2)
+  assert.match(c[0].que, /dos conceptos en una columna/)
+})
+
+test('detectar la SUBSUME: las celdas dejan de contarse de a una y queda el aviso de la columna', () => {
+  const d = detectar(columnaMixta())
+  assert.deepEqual(d.filter((x) => x.tipo === 'texto_en_numero'), [], 'ninguna celda suelta')
+  assert.equal(d.filter((x) => x.tipo === 'columna_estado_y_numero').length, 1)
+})
+
+test('EL DEFECTO QUE INVENTABA 4.144 AVISOS: el guion del cero NO es un estado', () => {
+  // La primera versión preguntaba "¿parece un número?" con una regex propia y contaba como estados el
+  // `—` y el `(0)` con los que este archivo dibuja el cero. Una subsunción que AGREGA defectos donde
+  // el pase por celda no había marcado ninguno deja de ser una subsunción.
+  const PAT = '"$"#,##0.00;("$"#,##0.00);"—"'
+  const ceros = Array.from({ length: 40 }, () => [celp('—', 'CURRENCY', PAT)])
+  // el importe va SIN el signo pesos a propósito: así lo dibuja «Cash Flow Mensual», y es lo que hacía
+  // que el predicado propio contara un número y las 40 celdas de cero se le fueran a "estados".
+  const f = hoja([[cel('Importe')], [celp('1.000', 'CURRENCY', PAT)], ...ceros])
+  assert.deepEqual(columnasEstadoYNumero(f), [], 'el cero dibujado no es vocabulario de estado')
+  assert.deepEqual(detectar(f).filter((x) => x.tipo === 'columna_estado_y_numero'), [])
+})
+
+test('una columna de importes con NOTAS distintas se sigue reportando de a una: se arregla de a una', () => {
+  // El vocabulario es lo que separa un estado de una nota perdida: un estado se repite, una nota no.
+  const notas = ['no llega al 1% del total', 'pendiente de conciliar con banco', 'ver acta de obra',
+    'lo confirma el estudio contable', 'falta el remito del proveedor', 'revisar con administración']
+  const f = hoja([[cel('Importe')], [cel('$1.000', 'CURRENCY')], ...notas.map((n) => [cel(n, 'CURRENCY')])])
+  assert.deepEqual(columnasEstadoYNumero(f), [], 'seis frases distintas no son un vocabulario de estados')
+  assert.equal(detectar(f).filter((x) => x.tipo === 'texto_en_numero').length, 6)
+})
+
+test('sin ningún número no es este caso: ése es el de columnasEnterasDeTexto, que va por otro lado', () => {
+  const f = columnaMixta({ dias: 0 })
+  assert.deepEqual(columnasEstadoYNumero(f), [])
+})
+
+test('el encabezado de la columna no cuenta como estado', () => {
+  // Sin descontarlo, "Días hasta vto." entraría al vocabulario y ensuciaría el conteo de distintos.
+  const c = columnasEstadoYNumero(columnaMixta(), { minimo: 5 })
+  assert.equal(c[0].distintos, 2, 'sólo Cobrado y Vencido')
+  assert.ok(!String(c[0].que).includes('Días hasta vto.'))
 })
