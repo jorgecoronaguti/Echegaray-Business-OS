@@ -116,7 +116,17 @@ export function filasQuincenas(bloques, filaInicio = 6, hoja = '_J_OBREROS') {
       // (feriados, días sin cuadrilla). Medido en el bloque del 16/3: COUNTA da 12 pero el último
       // día está en la posición 14 → la celda quedaba VACÍA. Hay que buscar la POSICIÓN del último
       // no vacío, no contar cuántos hay.
-      { f: `=IFERROR(INDEX(${H}!F${ff}:U${ff},SUMPRODUCT(MAX((${H}!F${ff}:U${ff}<>"")*(COLUMN(${H}!F${ff}:U${ff})-COLUMN(${H}!F${ff})+1)))),"")` },
+      //
+      // ═══ EL SEPARADOR VA EN LOCALE, Y ACÁ COSTÓ LA COLUMNA ENTERA (15/08) ═══
+      //
+      // Era `INDEX(rango, n)` con COMA. El archivo es es_AR: Google la acepta al escribir y GUARDA
+      // `;`. Escribir funcionaba, entonces, pero la fórmula que el generador MANDA deja de ser la que
+      // la pestaña DEVUELVE — y todo mecanismo que se reconoce a sí mismo comparando esos dos textos
+      // queda ciego. Medido contra `sheet_huella_celda`: la huella de B134 quedó sellada con
+      // `f#:u#,sumproduct(` y la pestaña devuelve `f#:u#;sumproduct(`, así que la huella no coincidía
+      // ni consigo misma y el fósil de esta misma columna no se podía reclamar como propio.
+      // Es la única fórmula multiargumento que emite esta función; el resto de la pestaña ya usa `;`.
+      { f: `=IFERROR(INDEX(${H}!F${ff}:U${ff};SUMPRODUCT(MAX((${H}!F${ff}:U${ff}<>"")*(COLUMN(${H}!F${ff}:U${ff})-COLUMN(${H}!F${ff})+1))));"")` },
       { f: `=COUNTA(${H}!F${ff}:U${ff})` },
       { f: `=COUNT(${H}!A${b.inicio}:A${b.fin})` },
       // D = días hábiles, E = personas. Eran C y D hasta el 31/07: entró "Se paga el" en la columna C

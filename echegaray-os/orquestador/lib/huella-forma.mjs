@@ -229,6 +229,26 @@ export function quiereEscribir(v) {
 export const hayContenido = (v) => formaDe(v) !== ''
 
 /**
+ * LA FÓRMULA QUE NO PUEDE PUBLICAR NADA: `=""`.
+ *
+ * ═══ POR QUÉ ES UNA CATEGORÍA PROPIA (15/08) ═══
+ *
+ * `hayContenido` se lee con render FORMULA y contesta "sí" para `=""` — correcto para la pregunta que
+ * contesta (la celda tiene algo escrito adentro). Pero para la pregunta de la PROPIEDAD ese "sí" es
+ * engañoso: una celda cuyo cuerpo entero es la cadena vacía no publica un número, ni una fecha, ni una
+ * nota; publica nada, y se ve exactamente igual que una celda en blanco. Nadie la escribe para decir
+ * algo. Medido en "Jornales por Quincena": ocho filas del registro tenían `=""` en la columna «Hasta»
+ * y el veredicto de propiedad las leía como contenido del dueño, así que el generador nunca podía
+ * poner ahí su fórmula. La columna publicaba ocho vacíos y `JORNALES_REAL_HASTA` los repartía.
+ *
+ * DELIBERADAMENTE ANGOSTO. No entra `=IFERROR(…;"")` —ésa publica algo casi siempre— ni `=IF(a;"";b)`.
+ * Sólo el literal: `=""`, con los espacios y el apóstrofo de Google que se le quieran agregar.
+ */
+export function esFormulaNula(v) {
+  return /^=\s*""\s*$/.test(String(v ?? '').replace(/^'/, '').trim())
+}
+
+/**
  * LAS MARCAS QUE NADIE TIPEA AL ANOTAR AL MARGEN — la prueba de que una celda la escribió el OS.
  *
  * Están LAS DOS alertas: la vigente (`▲`) y la que quedó publicada en ~1.060 celdas (`⚠`). Si esta

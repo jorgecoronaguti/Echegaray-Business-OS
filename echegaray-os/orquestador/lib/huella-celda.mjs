@@ -56,8 +56,8 @@ import { query } from './db.mjs'
 import { VACIO, letraCol, limpiarCentinela } from './preservar-anotaciones.mjs'
 import { MIA_PROBADA } from './no-borrar.mjs'
 import {
-  claveCelda, formaComparable, formaDe, formulasPropiasPorColumna, hayContenido, LARGO_FORMA,
-  MARCAS_TIPOGRAFICAS, noReponerAusentes, normalizarFormula, quiereEscribir,
+  claveCelda, esFormulaNula, formaComparable, formaDe, formulasPropiasPorColumna, hayContenido,
+  LARGO_FORMA, MARCAS_TIPOGRAFICAS, noReponerAusentes, normalizarFormula, quiereEscribir,
 } from './huella-forma.mjs'
 import { marcarAbandonadas, partirPorFootprint, veredictoDeFootprint } from './huella-footprint.mjs'
 
@@ -66,7 +66,7 @@ import { marcarAbandonadas, partirPorFootprint, veredictoDeFootprint } from './h
 // noción de "la misma celda": el de acá —posición Y forma, el más fuerte— y el que decide cuando la
 // posición ya no se puede usar. Dos definiciones de "forma" en el archivo que decide qué se puede
 // reescribir del trabajo del dueño es exactamente la duplicación que hay que evitar.
-export { claveCelda, formaComparable, formaDe, formulasPropiasPorColumna, hayContenido, normalizarFormula, quiereEscribir }
+export { claveCelda, esFormulaNula, formaComparable, formaDe, formulasPropiasPorColumna, hayContenido, normalizarFormula, quiereEscribir }
 
 /** Cuántas celdas comparables hacen falta para que la alineación sea un juicio y no una casualidad. */
 export const MIN_COMPARABLES = 8
@@ -412,8 +412,56 @@ export function aplicarHuella(generado = [], actual = [], huellas = new Map(), o
       // fórmula fósil salió de esta bolsa el 14/08 y tiene camino propio abajo: una fórmula no se
       // parece a un dato, se compara carácter por carácter.)
       if (c !== VACIO && textosMios.has(norm(hoy)) && filaProbadaMia(actual, activas, i, col, { fila0, col0, off: alineacion.off })) {
-        reescritos.push({ fila: fila0 + i, col, suyo: String(hoy).slice(0, 60), mio: String(c).slice(0, 60) })
+        reescritos.push({ fila: fila0 + i, col, suyo: String(hoy).slice(0, 60), mio: String(c).slice(0, 60), por: 'un rótulo mío' })
         return c
+      }
+      // ═══ EL CUARTO CUADRANTE, QUE FALTABA: PISAR UN FÓSIL QUE NO ES TEXTO (15/08) ═══
+      //
+      // Los tres caminos de arriba cubren tres de las cuatro combinaciones y dejaban una abierta:
+      //
+      //                       │ el residuo es TEXTO        │ el residuo es FÓRMULA
+      //   pido LIMPIAR (VACIO)│ `residuos` (mias)          │ `residuos` (formulasMias, 14/08)
+      //   pido ESCRIBIR       │ `reescritos` (textosMios)  │ ← NADIE. Caía en `ajenas`, para siempre.
+      //
+      // Y "para siempre" es literal, porque el bloqueo se realimenta: cae en `ajenas` → se devuelve
+      // `''` → `fusionar` conserva el fósil → la celda no lleva contenido mío → no se sella huella →
+      // la corrida siguiente vuelve a no tener con qué probar que es mía. Un cuadro que CRECE entra
+      // derecho en esa trampa: sus filas nuevas nacen sobre las coordenadas donde el layout viejo dejó
+      // algo, y ahí el generador ya no puede escribir nunca más.
+      //
+      // Medido en "Jornales por Quincena" (15/08), columna B del registro, con la pestaña viva y
+      // `sheet_huella_celda` al lado: las filas 134..148 tienen 12 huellas cada una en las columnas
+      // A y C..M, y NINGUNA en la B de la 140 para abajo. La 140 (abril) publicaba el cierre de la
+      // ÚLTIMA quincena —15/08— porque quedó ahí el `INDEX(F496:U496)` de cuando el registro tenía
+      // siete filas, y las 141..148 publicaban vacío. `JORNALES_REAL_HASTA` es esas quince celdas.
+      //
+      // Se abre con dos evidencias, y cada una lleva la exigencia que le corresponde a su fuerza:
+      //
+      //   1. LA FÓRMULA FÓSIL DE MI PROPIA COLUMNA, sola. Es la misma prueba que el camino de arriba
+      //      —contenido exacto, indexado por columna— y ese camino ya la acepta SOLA para VACIAR la
+      //      celda. Vaciar es estrictamente más destructivo que pisarla con lo que va: exigirle a la
+      //      acción más suave una evidencia MAYOR sería incoherente. Y la exigencia de más no es
+      //      gratis: `filaProbadaMia` pide dos anclas en OTRAS columnas, y una fila que el generador
+      //      escribe con dos celdas no puede tener dos anclas nunca — medido en las filas 129 y 130,
+      //      que publicaban un serial de fecha con formato de moneda ($46.203 y $46.218) en los
+      //      renglones "De lo pagado — por banco" y "— en adelantos", y se quedaban a un ancla.
+      //   2. `=""`, CON la fila probada mía. Ésta es más débil: no es una firma de nadie, sólo la
+      //      constatación de que la celda no publica nada (ver `esFormulaNula`). Por eso no decide
+      //      sola y necesita que la huella ya haya probado que la fila es del generador.
+      //
+      // Lo que sigue sin tocar es lo mismo de siempre: un residuo NUMÉRICO, y cualquier fórmula del
+      // dueño que yo no escriba en esa columna. Ésos salen por la vía declarada, con una persona
+      // nombrando la celda (`scripts/limpiar-residuo-*.mjs`).
+      if (c !== VACIO) {
+        const suya = normalizarFormula(hoy)
+        const por = suya && formulasMias.get(col)?.has(suya) ? 'una fórmula que sigo escribiendo en esta columna'
+          : esFormulaNula(hoy) && filaProbadaMia(actual, activas, i, col, { fila0, col0, off: alineacion.off })
+            ? 'un `=""` que no publica nada'
+            : null
+        if (por) {
+          reescritos.push({ fila: fila0 + i, col, suyo: String(hoy).slice(0, 60), mio: String(c).slice(0, 60), por })
+          return c
+        }
       }
       // NUNCA FUE MÍA Y TIENE ALGO TUYO. Sin evidencia de que la escribí yo, no se pisa.
       ajenas.push({ fila, col, suyo: String(hoy).slice(0, 60) }); return ''
@@ -611,7 +659,7 @@ export function explicarHuella(pestana, h, log = console.log) {
   // qué evidencia el OS decidió vaciarle una celda.
   for (const r of (h.residuos ?? []).slice(0, 6)) log(`  🧹 ${letraCol(r.col)}${r.fila} es un residuo mío de un layout anterior — ${r.por ?? 'algo que sigo escribiendo'} ("${r.suyo}"): la limpio`)
   if ((h.residuos?.length ?? 0) > 6) log(`      … y ${h.residuos.length - 6} residuos más`)
-  for (const r of (h.reescritos ?? []).slice(0, 6)) log(`  🧹 ${letraCol(r.col)}${r.fila} tenía mi rótulo "${r.suyo}" de un layout anterior en una fila mía: escribo lo que va ("${r.mio}")`)
+  for (const r of (h.reescritos ?? []).slice(0, 6)) log(`  🧹 ${letraCol(r.col)}${r.fila} tenía ${r.por ?? 'algo mío'} de un layout anterior en una fila mía ("${r.suyo}"): escribo lo que va ("${r.mio}")`)
   if ((h.reescritos?.length ?? 0) > 6) log(`      … y ${h.reescritos.length - 6} residuos de rediseño más`)
   for (const d of (h.desocupadas ?? []).slice(0, 6)) log(`  🧹 ${letraCol(d.col)}${d.fila} la ocupé en un layout anterior y hoy ya no ("${d.suyo}"): la limpio`)
   if ((h.desocupadas?.length ?? 0) > 6) log(`      … y ${h.desocupadas.length - 6} celdas más que ocupé y ya no ocupo`)
