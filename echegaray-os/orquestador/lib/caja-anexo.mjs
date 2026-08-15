@@ -69,29 +69,68 @@ export const SELLO_EFECTIVO = {
  * un imposible tan claro como el negativo del 14/08, y con el signo que autoriza gastos en vez de
  * frenarlos. Ver `dictamenEfectivo` en caja-efectivo-fisico.mjs.
  */
-export const HISTORICO_EFECTIVO = [
-  { rotulo: '      · (+) cobrado en efectivo — histórico completo', entra: true,
-    formula: `=${formulaCobrosEfectivoPosteriores('0')}`,
+export const HISTORICO_EFECTIVO_BASE = [
+  { rotulo: '      · (+) cobrado en efectivo — desde el conteo', entra: true,
+    fn: (A) => `=${formulaCobrosEfectivoPosteriores(A)}`,
     origen: 'Cobranzas: forma "Efectivo" Y estado "Cobrado"' },
-  { rotulo: '      · (−) pagado en efectivo — histórico completo', entra: false,
-    formula: `=-(${formulaComprasEfectivoPosteriores('0')})`,
+  { rotulo: '      · (−) pagado en efectivo — desde el conteo', entra: false,
+    fn: (A) => `=-(${formulaComprasEfectivoPosteriores(A)})`,
     origen: 'Compras en efectivo: el MONTO PAGADO, parcial o total' },
-  { rotulo: '      · (−) jornales pagados en efectivo — histórico completo', entra: false,
-    formula: `=-(${formulaJornalesEfectivoPosteriores('0')})`,
+  { rotulo: '      · (−) jornales pagados en efectivo — desde el conteo', entra: false,
+    fn: (A) => `=-(${formulaJornalesEfectivoPosteriores(A)})`,
     origen: 'Jornales por Quincena, columnas Adelanto y Total recibo' },
-  { rotulo: '      · (−) sueldos de OFICINA en efectivo — histórico completo', entra: false,
-    formula: `=-(${formulaOficinaEfectivoPosteriores('0')})`,
+  { rotulo: '      · (−) sueldos de OFICINA en efectivo — desde el conteo', entra: false,
+    fn: (A) => `=-(${formulaOficinaEfectivoPosteriores(A)})`,
     origen: 'Oficina: lo pagado menos lo que salió por banco' },
   // EL ESPEJO DEL DEPÓSITO: el billete deja la cuenta y entra al cajón, así que acá SUMA. La caja
   // física sólo sabía BAJAR hacia el banco y nunca subir desde él — una asimetría que sólo puede dar
   // de menos.
-  { rotulo: '      · (+) extraído del banco — histórico completo', entra: true,
-    formula: `=${formulaExtraccionesEfectivoPosteriores('0')}`,
+  { rotulo: '      · (+) extraído del banco — desde el conteo', entra: true,
+    fn: (A) => `=${formulaExtraccionesEfectivoPosteriores(A)}`,
     origen: 'Réplica del extracto: débitos con concepto "extracción"' },
-  { rotulo: '      · (−) depositado en el banco — histórico completo', entra: false,
-    formula: `=-(${formulaDepositosEfectivoPosteriores('0')})`,
+  { rotulo: '      · (−) depositado en el banco — desde el conteo', entra: false,
+    fn: (A) => `=-(${formulaDepositosEfectivoPosteriores(A)})`,
     origen: 'Réplica del extracto: créditos con concepto "depósito de efectivo"' },
 ]
+
+/**
+ * LOS SEIS RENGLONES ACOTADOS AL INSTANTE DEL CONTEO (15/08/2026).
+ *
+ * EL DEFECTO: sumaban el histórico COMPLETO y el corte lo hacía una resta contra una foto (el SELLO).
+ * Una resta de fotos no distingue "salió plata" de "se corrigió un dato de hace seis meses": el 15/08
+ * la línea de jornales cambió $48,3M por una corrección y CAJA publicó $58.646.092 sobre un conteo de
+ * $12.000.000. Y con el sello al día publicaba el conteo pelado, sin los movimientos.
+ *
+ * El dueño lo pidió así, textual: *"de ahí se tienen q producir las cargas o descargas según
+ * corresponda"*. Eso es una ventana desde el instante del conteo, y cada movimiento entra por SU
+ * fecha económica — una corrección sobre una fila de marzo no gana fecha de hoy, así que no entra.
+ *
+ * LO QUE LA VENTANA NO PUEDE, DICHO: un parcial que crece sobre una fila vieja no tiene fecha nueva.
+ * El techo de `dictamenEfectivo` vigila esa punta.
+ */
+export function historicoEfectivo(ancla = '0') {
+  // ═══ EL MISMO DÍA DEL CONTEO: ASIMÉTRICO, Y A PROPÓSITO (15/08/2026) ═══
+  //
+  // Ninguna fuente guarda hora (medido: 1 valor con parte horaria sobre 2.198), así que un hecho
+  // fechado el día del conteo no se puede ubicar antes o después de él. Con corte estricto (`>`) se
+  // cayó el cobro en efectivo de $8.234.758 del 14/08 —el día en que el dueño cargó su conteo— y la
+  // caja quedó $8,2M por debajo de lo que puede tener.
+  //
+  // No se elige un borde para los dos lados: se elige EL LADO CONSERVADOR DE CADA UNO.
+  //   · lo que SALE del cajón entra desde el día del conteo INCLUIDO (`>= día`): si el pago fue antes,
+  //     el conteo ya lo reflejaba y restarlo de nuevo sólo puede mostrar de menos.
+  //   · lo que ENTRA al cajón entra desde el día SIGUIENTE (`> día`): si el cobro fue después del
+  //     conteo, mostrarlo de menos es prudente; si fuera al revés, estaríamos inventando billetes.
+  //
+  // El resultado siempre es el piso, nunca el techo. La plata del mismo día que queda afuera se
+  // NOMBRA en la pestaña en vez de desaparecer — un dato que no se puede ubicar no es un dato que no
+  // existe. El día que las fuentes traigan hora, esto se borra y manda el instante.
+  const desdeElDia = ancla === '0' ? '0' : `(${ancla}-1)`
+  return HISTORICO_EFECTIVO_BASE.map((l) => ({ ...l, formula: l.fn(l.entra ? ancla : desdeElDia) }))
+}
+
+/** Compatibilidad: los consumidores que sólo necesitan rótulo/entra/origen. */
+export const HISTORICO_EFECTIVO = HISTORICO_EFECTIVO_BASE
 /**
  * LA CLAVE CON LA QUE UNA FILA SE RESCATA POR SU RÓTULO — la misma de los dos lados.
  *
@@ -139,7 +178,8 @@ export function guardaDelCajon(f0) {
   const cajon = `N(${DESDE_CAJA.arqueoArs})+SUM(C${f0}:C${fSello})`
   const entrada = HISTORICO_EFECTIVO.map((l, i) => (l.entra ? f0 + i : 0)).filter(Boolean)
   // Lo que ENTRÓ desde el sello: el valor de hoy del renglón menos el que tenía al sellarse.
-  const techo = `N(${DESDE_CAJA.arqueoArs})+${entrada.map((f) => `(C${f}-N($D$${f}))`).join('+')}`
+  // Con ventana, `C` YA es lo que entró después del conteo: restarle su sello lo dejaba en negativo.
+  const techo = `N(${DESDE_CAJA.arqueoArs})+${entrada.map((f) => `C${f}`).join('+')}`
   const medible = entrada.map((f) => `ISNUMBER($D$${f})`).join('*')
   return {
     cajon,
@@ -304,14 +344,20 @@ function bloqueMovimientos(h) {
   // así que el desglose no puede decir otra cosa que el total. En D, lo que ESE renglón valía cuando
   // se selló el conteo: la resta contra su C dice quién se movió, que es lo que el 14/08 no se podía
   // ver con un solo número sellado para los seis.
-  for (const l of HISTORICO_EFECTIVO) push([l.rotulo, 'ARS', l.formula, h.previo(l.rotulo, 'selloLinea'), '', '', l.origen])
+  for (const l of historicoEfectivo(`$F$${fSello}`)) push([l.rotulo, 'ARS', l.formula, 0, '', '', l.origen])  // D en 0: con ventana el sello por
+    // renglón ya no resta nada. Dejarlo con la foto del histórico completo hacía que el TECHO diera
+    // -$141.300.064 y el control gritara "imposible" sobre una caja perfectamente sana.
   // EL SELLO. D lleva el número sellado (lo escribe el generador, no una persona); F, la fecha del
   // conteo al que pertenece. Con el sello viejo se autocancela: resta el histórico entero y el neto
   // queda en 0 — la pestaña muestra el conteo tal cual, nunca un descuento que ya está adentro.
   // EL TOTAL MANDA sobre los seis sellos de arriba: los escribe la misma lectura, en el mismo batch, y
   // los de renglón son el diagnóstico. Si alguna vez discreparan, el que resta es éste.
   push([SELLO_EFECTIVO.sello, 'ARS',
-    `=-IF((NOT(ISNUMBER(${ancla}))+${selloViejo}>0);SUM(C${f0}:C${fSello - 1});N($D$${fSello}))`,
+    // CON VENTANA EL SELLO YA NO RESTA: los seis renglones cuentan sólo lo posterior al instante
+    // sellado, así que restarles la foto del histórico los contaría dos veces y devolvía el conteo
+    // pelado. Queda en 0 y conserva su única función viva: mientras el conteo esté SIN sellar,
+    // autocancela el bloque para que la pestaña muestre el número tal cual lo contó el dueño.
+    `=-IF((NOT(ISNUMBER(${ancla}))+${selloViejo}>0);SUM(C${f0}:C${fSello - 1});0)`,
     sello('selloNeto'), '', sello('selloFecha', ''),
     'lo que el histórico sumaba cuando se cargó el conteo; lo sella la corrida del anexo. F es EL MOMENTO en que la corrida lo vio: es el ancla, y no lo tipea nadie'])
   // EL ESTADO DICE TAMBIÉN CUÁNTO SE MOVIÓ. El 14/08 esta fila decía "✓ sellado al conteo del 07/08",
