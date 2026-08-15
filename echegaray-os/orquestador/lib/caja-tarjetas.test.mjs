@@ -293,6 +293,15 @@ test('DISPONIBLE dice CUÁNTA PLATA está congelada, no "parte"', () => {
   assert.match(t.contexto, /TEXT\(\(IF\(AND\(ISNUMBER/, 'el monto se dibuja: sumarlo y no publicarlo no arregla nada')
 })
 
+test('UN PANEL SIN NINGUNA FECHA no publica "congelado al 30/12": MIN de vacías es 0, y 0 es número', () => {
+  // El ISNUMBER solo NO alcanza: `MIN($D$7;$D$10)` con las dos celdas vacías devuelve 0, ISNUMBER(0)
+  // es VERDADERO y TODAY()-0 son 126 años. La tarjeta dibujaría el serial 0 como fecha de 1899 al
+  // lado de "$0,0M". Con el `>0` la rama no se prende y la frase queda en la de siempre.
+  const t = conFilas()
+  assert.match(t.contexto, /ISNUMBER\(MIN\(\$D\$7;\$D\$10\)\);MIN\(\$D\$7;\$D\$10\)>0;/,
+    'falta el guardián del MIN vacío: un panel recién nacido publicaría una fecha de 1899')
+})
+
 test('DISPONIBLE no avisa de nada cuando no hay atraso: la frase del día bueno es la de siempre', () => {
   const t = conFilas([{ monto: '$C$7', fecha: '$D$7' }])
   // El aviso vive adentro de un IF y la rama del día bueno es LITERALMENTE la frase de siempre: un

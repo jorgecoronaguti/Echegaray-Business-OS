@@ -117,7 +117,12 @@ const millones = (e) => `TEXT((${e})/1000000;"$#,##0.0")`
 export function avisoDeAtraso(fecha, monto, avisoDias = DIAS_AVISO) {
   // ISNUMBER primero: una celda vacía o con "" haría `TODAY()-""` = un número enorme y el aviso
   // quedaría prendido para siempre sobre un dato que ni siquiera existe.
-  return `IF(AND(ISNUMBER(${fecha});TODAY()-${fecha}>${avisoDias});" · ${ALERTA} "&${millones(monto)}&"M congelado al "&${dia(fecha)};" · bancos y efectivo")`
+  //
+  // Y `>0` DESPUÉS, QUE NO ES REDUNDANTE: `MIN` sobre celdas TODAS vacías devuelve 0, y 0 ES un
+  // número — el ISNUMBER no lo atrapa. Un panel al que todavía no se le cargó ninguna fecha
+  // publicaría "▲ $0,0M congelado al 30/12", que es el serial 0 dibujado como fecha. Es el mismo
+  // defecto que la fila del total ya evita con su IFERROR, escrito en el otro extremo de la cuenta.
+  return `IF(AND(ISNUMBER(${fecha});${fecha}>0;TODAY()-${fecha}>${avisoDias});" · ${ALERTA} "&${millones(monto)}&"M congelado al "&${dia(fecha)};" · bancos y efectivo")`
 }
 
 /**
