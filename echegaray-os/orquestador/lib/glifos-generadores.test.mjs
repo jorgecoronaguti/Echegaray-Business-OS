@@ -30,7 +30,8 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { ALERTA, esInvisible, glifosInvisibles } from './glifos.mjs'
+import { ALERTA, SEMAFORO, esInvisible, glifosInvisibles } from './glifos.mjs'
+import { formulaEstadoPago } from './compras-valores.mjs'
 import { MARCAS, marcaDe } from './cheques-cobertura.mjs'
 import { SIN_FACTURA } from './cash-flow-conciliacion.mjs'
 import { formulasInstrumento, formulaChequesSinFactura, INSTRUMENTOS } from './cash-flow-lineas.mjs'
@@ -80,6 +81,15 @@ test('las fórmulas que suman por la marca no publican el glifo viejo COMO TEXTO
   }
 })
 
+test('el semáforo de Compras —846 celdas, la peor concentración del archivo— se dibuja', () => {
+  // Era de AppSheet y del dueño; desde el 15/08 lo escribe `scripts/compras-semaforo.mjs`, así que
+  // deja de ser una excepción de esta lista y pasa a estar exigido como cualquier otro generador.
+  sinGlifosCiegos(formulaEstadoPago(4), 'formulaEstadoPago')
+  assert.equal(esInvisible(SEMAFORO.porVencer), false, 'el glifo de "Por vencer" volvió a ser emoji')
+  assert.equal(esInvisible(SEMAFORO.vigente), false, 'el glifo de "Vigente" volvió a ser emoji')
+  assert.equal(SEMAFORO.vencido, ALERTA, 'el semáforo no puede tener una segunda decisión sobre la alerta')
+})
+
 test('los rótulos de frescura —los que más pestañas comparten— se dibujan', () => {
   sinGlifosCiegos(formulaAntiguedad('A1'), 'formulaAntiguedad')
   sinGlifosCiegos(rotuloAlDia('Cartera de terceros', 'A1'), 'rotuloAlDia')
@@ -127,7 +137,7 @@ const PUEDEN_NOMBRARLO = new Map([
   ['lib/defectos-pantalla.test.mjs', 'lo prueba'],
   ['lib/huella-forma.mjs', 'reconoce lo ya publicado para poder sellar que el dueño lo borró'],
   ['lib/huella-celda.mjs', 'ídem — comenta la lista de marcas'],
-  ['lib/residuo-propio.mjs', 'reconoce lo propio ya publicado y el semáforo 🟡✅ de Compras (AppSheet)'],
+  ['lib/residuo-propio.mjs', 'reconoce lo propio ya publicado, incluido el semáforo 🟡✅ que sigue en celdas de Compras'],
   ['lib/estilo-statement.mjs', 'rulea la alarma por su marca, publicada con cualquiera de las dos'],
   ['lib/impuestos-piel.mjs', 'ídem, en la columna A de Impuestos'],
   ['lib/cheques-cobertura.mjs', 'documenta por qué la marca cambió de glifo'],
@@ -184,7 +194,10 @@ function fuentesDeGeneradores() {
       const rel = `${dir}/${f}`
       if (PUEDEN_NOMBRARLO.has(rel)) continue
       const src = fs.readFileSync(path.join(RAIZ, dir, f), 'utf8')
-      if (!src.includes('ALERTA')) continue // no es de los corregidos: no se le exige nada todavía
+      // No es de los corregidos: no se le exige nada todavía. `SEMAFORO` entra por la misma puerta
+      // que `ALERTA` — es la otra constante de `glifos.mjs` que decide un glifo publicado, y sin
+      // nombrarla acá los archivos del semáforo de "Compras" quedaban fuera del barrido.
+      if (!src.includes('ALERTA') && !src.includes('SEMAFORO')) continue
       out.push([rel, src])
     }
   }
