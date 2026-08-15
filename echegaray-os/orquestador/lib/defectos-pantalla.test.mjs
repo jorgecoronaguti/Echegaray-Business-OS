@@ -552,8 +552,11 @@ test('EL DEFECTO QUE INVENTABA 4.144 AVISOS: el guion del cero NO es un estado',
   // La primera versión preguntaba "¿parece un número?" con una regex propia y contaba como estados el
   // `—` y el `(0)` con los que este archivo dibuja el cero. Una subsunción que AGREGA defectos donde
   // el pase por celda no había marcado ninguno deja de ser una subsunción.
-  const ceros = Array.from({ length: 40 }, () => [celp('—', 'CURRENCY', '"$"#,##0.00;("$"#,##0.00);"—"')])
-  const f = hoja([[cel('Importe')], [celp('$1.000', 'CURRENCY', '"$"#,##0.00;("$"#,##0.00);"—"')], ...ceros])
+  const PAT = '"$"#,##0.00;("$"#,##0.00);"—"'
+  const ceros = Array.from({ length: 40 }, () => [celp('—', 'CURRENCY', PAT)])
+  // el importe va SIN el signo pesos a propósito: así lo dibuja «Cash Flow Mensual», y es lo que hacía
+  // que el predicado propio contara un número y las 40 celdas de cero se le fueran a "estados".
+  const f = hoja([[cel('Importe')], [celp('1.000', 'CURRENCY', PAT)], ...ceros])
   assert.deepEqual(columnasEstadoYNumero(f), [], 'el cero dibujado no es vocabulario de estado')
   assert.deepEqual(detectar(f).filter((x) => x.tipo === 'columna_estado_y_numero'), [])
 })

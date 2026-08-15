@@ -128,10 +128,9 @@ export const GENERADOR_DE_FORMATO = Object.freeze(new Map([
  *
  * @param {{titulo:string, carga?:boolean}} p la pestaña
  * @param {Array<object>} defectos
- * @param {Array<Array<object>>} filas
  * @param {number[]} altos el alto ACTUAL de cada fila
  */
-export function planDePantalla(p, defectos = [], filas = [], altos = []) {
+export function planDePantalla(p, defectos = [], altos = []) {
   // EN UNA PESTAÑA DE CARGA NO SE TOCA EL FORMATO DE UNA CELDA SUELTA: es el escritorio del dueño.
   const celdas = defectos.filter((d) => d.tipo === 'texto_en_numero' && !p.carga)
   const altoPorFila = new Map()
@@ -171,7 +170,7 @@ async function main() {
     // cada corrida, y así es como un control deja de mirarse. Mismo criterio que `auditar-pantalla`.
     const d = detectar(f, { huecoMax: p.carga ? 999 : 3 })
     if (!d.length) { console.log(`  ${p.titulo.padEnd(26)} ✓`); continue }
-    const { celdas, altoPorFila, sinTocar } = planDePantalla(p, d, f.filas, f.altos || [])
+    const { celdas, altoPorFila, sinTocar } = planDePantalla(p, d, f.altos || [])
 
     const cabeceras = filasDeEncabezado(d)
     const reqs = celdas.map((x) => ({
@@ -208,7 +207,7 @@ async function main() {
     const f = await google.readSheetFormats(ID, `${p.titulo}!A1:${colLetra(p.cols)}${alto.get(p.titulo) || p.hastaFila}`).catch(() => null)
     if (!f) continue
     const d = detectar(f, { huecoMax: p.carga ? 999 : 3 })
-    const { celdas, altoPorFila } = planDePantalla(p, d, f.filas, f.altos || [])
+    const { celdas, altoPorFila } = planDePantalla(p, d, f.altos || [])
     quedan += celdas.length + altoPorFila.size
   }
   console.log(`\n✓ ${reparadas} celda(s)/fila(s) reparadas · quedan ${quedan} de formato/alto${sinReparar ? ` y ${sinReparar} que necesitan tocar el script` : ''}`)
