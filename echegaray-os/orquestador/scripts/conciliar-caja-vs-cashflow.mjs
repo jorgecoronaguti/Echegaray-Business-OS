@@ -87,24 +87,6 @@ const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
 const esNum = (v) => typeof v === 'number' && Number.isFinite(v)
 
 /**
- * NÚCLEO PURO: abre la diferencia entre el modelo y la pestaña TRAMO POR TRAMO y LADO POR LADO.
- *
- * POR QUÉ NO ALCANZA CON EL NÚMERO FINAL (05/08/2026). El script decía "no cierra por $12.188.441" y
- * ahí terminaba: con un solo número no se puede saber si la pestaña ve egresos de más, ingresos de
- * menos, o las dos cosas compensándose. Un residuo que no se puede atribuir a un lado no es una
- * conciliación, es una alarma.
- *
- * La diferencia de PISO es la suma acumulada de las diferencias de tramo hasta el tramo del piso: por
- * eso la última columna acumula. Si todas las diferencias de tramo dan cero y el piso igual no cierra,
- * el problema está en el saldo de arranque, no en el calendario.
- *
- * @param {Array<{rotulo:string}>} bordes
- * @param {Array<number>} entraModelo
- * @param {Array<number>} saleModelo
- * @param {Map<string,{entra:number, sale:number}>} pestaña por rótulo de tramo
- * @returns {Array<{rotulo:string, difEntra:number, difSale:number, dif:number, acum:number, falta:boolean}>}
- */
-/**
  * NÚCLEO PURO: los vencimientos del calendario fiscal (IVA + IIBB), en serial de Sheets.
  *
  * MISMA CUENTA QUE LA PESTAÑA, A PROPÓSITO: el IVA/IIBB de un período se paga alrededor del 20 del mes
@@ -126,17 +108,93 @@ export function vencimientosFiscales(anio, iva = [], iibb = []) {
   return out
 }
 
-export function descomponerPorTramo(bordes, entraModelo, saleModelo, pestaña) {
+/**
+ * NÚCLEO PURO: la primera celda de la grilla —recorrida fila por fila, de arriba abajo— cuyo VALOR
+ * cumple `predicado`. `null` si ninguna cumple.
+ *
+ * POR QUÉ EXISTE (15/08/2026). Hasta acá el conciliador leía el rótulo del piso y de cada tramo de
+ * `caja[i]?.[0]`: la columna A, fija. El rediseño "la portada ejecutiva" (05/08) movió ese panel a la
+ * F y este control pasó diez días leyendo silencio donde había seis tramos y un piso, sin que nadie lo
+ * notara — el script igual terminaba y daba un veredicto. ESTE REPO YA ROMPIÓ TRES ENLACES ASÍ ("anclar
+ * en 'el último' es anclar en la posición"): la cura no es apuntar a la columna nueva, es dejar de
+ * apuntar a una columna. Se busca por TEXTO, en toda la grilla.
+ *
+ * @param {any[][]} grilla
+ * @param {(valor:any) => boolean} predicado
+ * @returns {{fila:number, col:number}|null}
+ */
+export function buscarCelda(grilla, predicado) {
+  for (let f = 0; f < grilla.length; f++) {
+    const fila = grilla[f] || []
+    for (let c = 0; c < fila.length; c++) {
+      if (predicado(fila[c])) return { fila: f, col: c }
+    }
+  }
+  return null
+}
+
+/**
+ * NÚCLEO PURO: lee la escalera de vencimientos de CAJA por TEXTO —nunca por columna fija— y FALLA
+ * (lanza) apenas falta algo, nombrando exactamente qué rótulo buscó y no encontró. "No seguir" es la
+ * mitad de la corrección: un conciliador que sigue adelante sin uno de sus seis tramos no da un
+ * veredicto parcial, da un veredicto que PARECE completo y no lo es — que es peor que no tener uno.
+ *
+ * CAJA YA NO PUBLICA ENTRA/SALE POR SEPARADO por tramo (gramática de columnas de `caja-grilla.mjs`:
+ * A concepto · B moneda · C saldo en pesos · D fecha del dato · F tramo · G hasta · H el NETO del
+ * tramo · I con cuánto queda después). Comparar contra un "entra"/"sale" del lado de la pestaña sería
+ * comparar contra un dato que la pestaña dejó de tener: se lee el NETO, y el piso se lee de "Saldo
+ * después" —la columna que de verdad es una posición de caja, no un movimiento del tramo.
+ *
+ * @param {any[][]} grilla CAJA entera, UNFORMATTED_VALUE
+ * @param {Array<{rotulo:string}>} bordes las mismas seis constantes que usa `bordesDeTramos`
+ * @returns {{ porRotulo: Map<string, number>, pisoEscrito: number, filaPiso: number }}
+ */
+export function leerEscaleraDeCaja(grilla, bordes) {
+  const porTexto = (texto) => buscarCelda(grilla, (v) => String(v ?? '').trim() === texto)
+  const colNeto = porTexto('Neto')
+  if (!colNeto) throw new Error('conciliar: no encuentro en CAJA el encabezado "Neto" — sin él no puedo leer la escalera de vencimientos')
+  const colSaldoDespues = porTexto('Saldo después')
+  if (!colSaldoDespues) throw new Error('conciliar: no encuentro en CAJA el encabezado "Saldo después" — sin él no puedo leer el piso')
+
+  const porRotulo = new Map()
+  for (const b of bordes) {
+    const c = porTexto(b.rotulo)
+    if (!c) throw new Error(`conciliar: no encuentro en CAJA el tramo "${b.rotulo}" — se busca por texto en toda la pestaña y no aparece`)
+    porRotulo.set(b.rotulo, num(grilla[c.fila]?.[colNeto.col]))
+  }
+  // El piso es la fila cuyo rótulo habla de "piso" — el CONCEPTO, no una frase fija: la pestaña
+  // alterna entre "⇒ Piso del recorrido" y "⇒ Peor caso · piso" según lo que da su propio cálculo.
+  const filaPiso = buscarCelda(grilla, (v) => /\bpiso\b/i.test(String(v ?? '')))
+  if (!filaPiso) throw new Error('conciliar: no encuentro en CAJA ninguna línea que hable del "piso" — sin ella no puedo verificar el efecto')
+  return { porRotulo, pisoEscrito: num(grilla[filaPiso.fila]?.[colSaldoDespues.col]), filaPiso: filaPiso.fila }
+}
+
+/**
+ * NÚCLEO PURO: abre la diferencia entre el modelo y la pestaña, TRAMO POR TRAMO.
+ *
+ * YA NO ES "POR LADO" (15/08/2026). Hasta acá comparaba ENTRA y SALE por separado porque CAJA
+ * publicaba las dos columnas; desde el rediseño del 05/08 la escalera sólo publica el NETO de cada
+ * tramo (ver `leerEscaleraDeCaja`). El modelo sigue sabiendo entra y sale por separado —viene del
+ * dato crudo— así que se netea acá para que los dos lados de la comparación digan lo mismo.
+ *
+ * La diferencia de PISO es la suma acumulada de las diferencias de tramo hasta el tramo del piso: por
+ * eso la última columna acumula. Si todas las diferencias de tramo dan cero y el piso igual no cierra,
+ * el problema está en el saldo de arranque, no en el calendario.
+ *
+ * @param {Array<{rotulo:string}>} bordes
+ * @param {Array<number>} entraModelo
+ * @param {Array<number>} saleModelo
+ * @param {Map<string, number>} pestañaNeto NETO por rótulo de tramo — ya validado que están todos
+ * @returns {Array<{rotulo:string, dif:number, acum:number}>}
+ */
+export function descomponerPorTramo(bordes, entraModelo, saleModelo, pestañaNeto) {
   let acum = 0
   return bordes.map((b, k) => {
-    const p = pestaña.get(b.rotulo)
-    // El signo es SIEMPRE "pestaña − modelo", igual que el veredicto final: negativo = la pestaña ve
-    // menos plata que el modelo. Invertirlo en un lado y no en el otro haría que las columnas no sumen.
-    const difEntra = num(p?.entra) - entraModelo[k]
-    const difSale = -(num(p?.sale) - saleModelo[k])
-    const dif = difEntra + difSale
+    const netoModelo = entraModelo[k] - saleModelo[k]
+    // El signo es SIEMPRE "pestaña − modelo": negativo = la pestaña ve menos plata que el modelo.
+    const dif = num(pestañaNeto.get(b.rotulo)) - netoModelo
     acum += dif
-    return { rotulo: b.rotulo, difEntra, difSale, dif, acum, falta: !p }
+    return { rotulo: b.rotulo, dif, acum }
   })
 }
 
@@ -153,6 +211,26 @@ async function main() {
 
   console.log(`\nCorte del saldo: ${fmtFecha(corte)}   ·   disponibilidad percibida: ${pesos(disponible)}`)
   console.log(`Ventana del mes en curso: hasta ${fmtFecha(finAgo)} (excluyente)\n`)
+
+  // ── LO QUE LA PESTAÑA MUESTRA DE VERDAD, LEÍDO Y VALIDADO ACÁ ARRIBA ─────────────────────────────
+  //
+  // ═══ POR QUÉ SE LEE ACÁ Y NO AL FINAL, Y POR QUÉ YA NO ES COLUMNA FIJA (15/08/2026) ═══
+  //
+  // El rediseño "la portada ejecutiva" (05/08, commit 8782860) movió el panel de vencimientos de la
+  // columna A a la F, y este control seguía buscando el rótulo del piso y de cada tramo en la A: diez
+  // días leyendo "no está en CAJA" en los seis tramos, sin que nadie lo notara porque el script igual
+  // terminaba y daba un veredicto — falso, pero un veredicto. ESTE REPO YA PAGÓ ESTA LECCIÓN TRES
+  // VECES ("anclar en 'el último' es anclar en la posición"): la próxima vez que alguien reordene
+  // columnas en CAJA —y va a volver a pasar, es un tablero vivo, no un archivo congelado— una columna
+  // fija nueva vuelve a mentir en silencio el día que se mueva otra vez. La cura no es apuntar a F: es
+  // dejar de apuntar a una columna.
+  //
+  // SE BUSCA POR TEXTO, EN TODA LA PESTAÑA (`buscarCelda`), Y SI FALTA ALGO SE FALLA ACÁ ARRIBA — ANTES
+  // de calcular nada del resto de la función. Un conciliador que sigue adelante sin uno de sus seis
+  // tramos no da un veredicto parcial: da un veredicto que PARECE completo y no lo es, que es peor que
+  // no tener veredicto.
+  const grillaCaja = await g.readSheetValues(ID, 'CAJA!A1:Z200', { render: 'UNFORMATTED_VALUE' })
+  const escalera = leerEscaleraDeCaja(grillaCaja, bordes)
 
   // ── LO QUE SALE, DESDE EL DATO CRUDO ───────────────────────────────────────────────────────────
   const conceptos = []
@@ -362,65 +440,23 @@ async function main() {
 
   // ── LO QUE LA PESTAÑA MUESTRA DE VERDAD ────────────────────────────────────────────────────────
   //
-  // ═══ ESTO FALTABA, Y SIN ESTO EL SCRIPT NO VERIFICA NADA (04/08) ═══
-  //
-  // El encabezado prometía "recién al final compara contra lo que las dos pestañas muestran", y no lo
-  // hacía: las dos cifras de arriba son DOS MODELOS de este mismo archivo. Comparar un modelo con
-  // otro no prueba que la pestaña haya cambiado — es exactamente el "control validado contra la misma
-  // información que produce" que este trabajo entero vino a matar, cometido por el verificador.
-  //
-  // Ahora se lee la celda que CAJA publica. LA FILA SE BUSCA POR SU RÓTULO: el punto más bajo se
-  // mueve cada vez que el calendario gana o pierde una fila, y una referencia fija leería otra cosa
-  // sin dar error. Si la pestaña todavía no se regeneró, la diferencia lo dice con su número.
-  //
-  // ═══ Y SE BUSCA POR EL CONCEPTO, NO POR LA FRASE (05/08) ═══
-  //
-  // Estaba atado al texto exacto 'el punto más bajo del horizonte' y el rediseño de CAJA reescribió
-  // ese rótulo. El conciliador cerró los seis tramos en $0 —el modelo y la pestaña coincidían al
-  // peso— y terminó diciendo "no encontré la fila: sin ella no puedo verificar el efecto". Tercera
-  // vez en el mismo día que un contrato entre piezas estaba escrito como una frase: un rótulo se
-  // reescribe cuando mejora la lectura, y no puede llevarse puesto a un control.
-  //
-  // El ancla es el CONCEPTO —una línea anotada que habla del piso— y no la redacción. Si mañana el
-  // rótulo vuelve a cambiar, esto lo sigue encontrando; si desaparece la línea, lo dice.
-  const ROTULO_PISO = /^·.*\bpiso\b/i
-  const caja = await g.readSheetValues(ID, 'CAJA!A1:F', { render: 'UNFORMATTED_VALUE' })
-  const iPiso = caja.findIndex((f) => ROTULO_PISO.test(String(f?.[0] ?? '').trim()))
-
-  // ── LA DIFERENCIA, ABIERTA POR TRAMO Y POR LADO ────────────────────────────────────────────────
-  // Las filas del calendario se buscan POR RÓTULO, igual que el piso: son las mismas seis constantes
-  // que `bordesDeTramos` usa de este lado, así que si un día divergen el cuadro muestra "—" y no una
-  // resta contra la fila equivocada.
-  const porRotulo = new Map()
-  for (const b of bordes) {
-    const i = caja.findIndex((f) => String(f?.[0] ?? '').trim() === b.rotulo)
-    if (i >= 0) porRotulo.set(b.rotulo, { entra: num(caja[i]?.[2]), sale: num(caja[i]?.[3]) })
-  }
-  const abierta = descomponerPorTramo(bordes, entra, saleModelo, porRotulo)
-  console.log('DÓNDE ESTÁ LA DIFERENCIA — pestaña menos modelo, tramo por tramo')
+  // El piso y los seis tramos ya se leyeron y se validaron ARRIBA (ver `escalera`, antes de "LO QUE
+  // SALE, DESDE EL DATO CRUDO") — si a algún rótulo le faltaba su fila, el script ya falló ahí y no
+  // llegó hasta acá. Eso es "no seguir": un veredicto impreso con datos a medias es peor que ninguno.
+  const abierta = descomponerPorTramo(bordes, entra, saleModelo, escalera.porRotulo)
+  console.log('DÓNDE ESTÁ LA DIFERENCIA — pestaña menos modelo, tramo por tramo (NETO: CAJA ya no')
+  console.log('publica entra/sale por separado desde el rediseño del 05/08)')
   console.log('─'.repeat(72))
-  console.log(`  ${'Tramo'.padEnd(28)}${'por lo que ENTRA'.padStart(17)}${'por lo que SALE'.padStart(17)}`)
+  console.log(`  ${'Tramo'.padEnd(28)}${'diferencia'.padStart(17)}`)
   for (const t of abierta) {
-    console.log(`  ${(t.falta ? `${t.rotulo} (no está en CAJA)` : t.rotulo).padEnd(28)}`
-      + `${pesos(t.difEntra).padStart(17)}${pesos(t.difSale).padStart(17)}   acum ${pesos(t.acum)}`)
+    console.log(`  ${t.rotulo.padEnd(28)}${pesos(t.dif).padStart(17)}   acum ${pesos(t.acum)}`)
   }
   console.log('')
 
   console.log('EL VEREDICTO — LO QUE LA PESTAÑA MUESTRA CONTRA LO QUE DEBERÍA MOSTRAR')
   console.log('─'.repeat(72))
-  if (iPiso < 0) {
-    console.log('  ⚠ no encontré en CAJA ninguna línea anotada que hable del piso: sin ella no puedo verificar el efecto.\n')
-    process.exitCode = 1
-    return
-  }
-  // ═══ LA COLUMNA E, QUE ES DONDE VIVE EL NÚMERO QUE DECIDE (05/08) ═══
-  //
-  // Leía la F. Con el contrato de columnas nuevo de CAJA —A concepto · B moneda · C y D los insumos ·
-  // E el número que decide · F la fecha— la F trae la FECHA del piso: un serial de Sheets. El control
-  // habría comparado $81.484.555 contra 46246 y cantado un desvío de ochenta millones que no existe.
-  const escrito = num(caja[iPiso]?.[4])
-  console.log(`  piso escrito en CAJA (fila ${iPiso + 1}) : ${pesos(escrito)}`)
-  console.log(`  piso con la definición única        : ${pesos(peorNuevo.v)}`)
+  console.log(`  piso escrito en CAJA (fila ${escalera.filaPiso + 1}, "Saldo después") : ${pesos(escalera.pisoEscrito)}`)
+  console.log(`  piso con la definición única                        : ${pesos(peorNuevo.v)}`)
   // ═══ POR QUÉ NO SE EXIGE EL PESO EXACTO ═══
   //
   // El cajón en dólares se revalúa entre una lectura y la otra, así que las dos corridas no ven el
@@ -428,16 +464,10 @@ async function main() {
   // por debajo del error que este trabajo corrigió— y NO se relaja: si un día no cierra por más que
   // eso, es porque el calendario y esta cuenta volvieron a contar cosas distintas.
   //
-  // LA DIFERENCIA QUE ANTES ERA "LEGÍTIMA Y DECLARADA" YA NO EXISTE (05/08): el IVA/IIBB del calendario
-  // fiscal se modela arriba, con la misma regla de vencimiento que escribe la pestaña, así que el
-  // residuo de los tramos de septiembre en adelante bajó de $31.122.498 a $0. Un residuo declarado es
-  // mejor que uno oculto, pero uno medido es mejor que los dos: mientras estaba declarado, nadie podía
-  // saber si adentro del "IVA" viajaba además otro error.
-  //
   // LO QUE SIGUE SIN MODELARSE, Y HAY QUE SABERLO: interés del descubierto, comisiones bancarias e
   // impuesto al cheque. La pestaña también los pone en CERO y lo declara en su propio control, así que
   // los dos lados coinciden en el número — pero coinciden en un cero que ninguno de los dos midió.
-  const dif = escrito - peorNuevo.v
+  const dif = escalera.pisoEscrito - peorNuevo.v
   const TOLERANCIA = 1000
   console.log(`  el piso sigue inflado en            : ${pesos(dif)}`)
   console.log(Math.abs(dif) <= TOLERANCIA

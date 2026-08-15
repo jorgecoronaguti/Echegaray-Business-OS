@@ -225,28 +225,58 @@ export function bloquesPegados(formulas, vistas, { minFilas = 3 } = {}) {
 /**
  * EL GRAFO: quién cita a quién, quién quedó aislada y qué referencia apunta al vacío.
  *
+ * ═══ UN NOMBRE ES UNA CITA A SU PESTAÑA DE ORIGEN, NO SÓLO AL NOMBRE (15/08/2026) ═══
+ *
+ * `=N(CAJA_TOTAL_DISPONIBLE)` no lleva `'CAJA'!` adelante — por eso `p.refNombres` lo veía como una
+ * cita a un NOMBRE suelto, nunca como una cita a la PESTAÑA donde ese nombre vive. El resultado medido
+ * contra el archivo real: `CAJA citadaPor: []` cuando en realidad la citan `Cash Flow Semanal`,
+ * `Cash Flow Mensual` y `Cheques Emitidos` — la celda de la que cuelga el año entero salía "sin
+ * lectores", que es el peor tipo de falla en un auditor: no dice "no sé", dice "nadie depende de
+ * esto" sobre la celda de la que depende todo.
+ *
+ * `hojaDelNombre` resuelve esto con el DATO REAL del archivo (`getNamedRanges` trae `range.sheetId`,
+ * `getSheetMeta` trae `sheetId → title`) — no con una tabla escrita a mano: un nombre puede vivir en
+ * una pestaña que no lleva su prefijo (`ARCA_COMPRAS_TOTAL` vive en "Proveedores y Materiales", no en
+ * una pestaña "ARCA"), así que inferir la pestaña del propio nombre mentiría en ese caso.
+ *
  * @param {Array<{titulo:string, refPestanas:Map<string,number>, refNombres:Map<string,number>, refsRotas:number}>} pestanas
  * @param {string[]} titulos            las pestañas que EXISTEN hoy en el archivo
  * @param {string[]} nombresDefinidos   los rangos con nombre que EXISTEN hoy
+ * @param {Map<string,string>} hojaDelNombre  nombre de rango → título de la pestaña donde vive (puede
+ *   faltar una entrada: un nombre sin pestaña resuelta simplemente no agrega arista, no revienta)
  */
-export function construirGrafo(pestanas, titulos, nombresDefinidos) {
+export function construirGrafo(pestanas, titulos, nombresDefinidos, hojaDelNombre = new Map()) {
   const existe = new Set(titulos)
   const nombres = new Set(nombresDefinidos)
   const citadaPor = new Map(titulos.map((t) => [t, new Map()]))
   const rotas = []
+  // SUMA, NO PISA: una pestaña puede citar el mismo destino directo (`'CAJA'!A1`) Y por nombre
+  // (`CAJA_TOTAL_DISPONIBLE`) a la vez. Un `.set` liso haría que la segunda cita borre el conteo de
+  // la primera en vez de sumarse.
+  const citar = (destino, origen, n) => citadaPor.get(destino).set(origen, (citadaPor.get(destino).get(origen) ?? 0) + n)
   for (const p of pestanas) {
     for (const [destino, n] of p.refPestanas) {
       if (destino === p.titulo) continue              // autorreferencia: no es una arista del grafo
       if (!existe.has(destino)) { rotas.push({ pestana: p.titulo, tipo: 'pestaña', destino, celdas: n }); continue }
-      citadaPor.get(destino).set(p.titulo, n)
+      citar(destino, p.titulo, n)
     }
     for (const [nombre, n] of p.refNombres) {
-      if (nombres.has(nombre) || existe.has(nombre)) continue
-      rotas.push({ pestana: p.titulo, tipo: 'rango con nombre', destino: nombre, celdas: n })
+      if (!nombres.has(nombre) && !existe.has(nombre)) {
+        rotas.push({ pestana: p.titulo, tipo: 'rango con nombre', destino: nombre, celdas: n })
+        continue
+      }
+      const destino = hojaDelNombre.get(nombre)
+      if (destino && existe.has(destino) && destino !== p.titulo) citar(destino, p.titulo, n)
     }
     if (p.refsRotas) rotas.push({ pestana: p.titulo, tipo: '#REF!', destino: '#REF!', celdas: p.refsRotas })
   }
-  const sale = new Map(pestanas.map((p) => [p.titulo, [...p.refPestanas.keys()].filter((d) => existe.has(d) && d !== p.titulo)]))
+  const sale = new Map(pestanas.map((p) => {
+    const directas = [...p.refPestanas.keys()].filter((d) => existe.has(d) && d !== p.titulo)
+    const porNombre = [...p.refNombres.keys()]
+      .map((n) => hojaDelNombre.get(n))
+      .filter((d) => d && existe.has(d) && d !== p.titulo)
+    return [p.titulo, [...new Set([...directas, ...porNombre])]]
+  }))
   const huerfanas = titulos.filter((t) => !(sale.get(t) || []).length && !(citadaPor.get(t)?.size))
   return { citadaPor, sale, huerfanas, rotas }
 }
