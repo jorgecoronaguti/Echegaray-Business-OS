@@ -297,3 +297,117 @@ describe('el fin de la dinámica, que es de dónde sale la frontera de respaldo'
     assert.equal(anclasDeDinamicas(conColumnas)[0].ancho, 0)
   })
 })
+
+// ═══ LA CAPA SUPERPUESTA QUE SOBREVIVIÓ A LA PRIMERA CORRIDA REAL (14/08/2026) ═══
+//
+// Con el footprint arreglado la pestaña dejó de crecer —265 → 261 filas, achicó por primera vez— y
+// el tope viaja (`tope 400`). Pero el barrido seguía informando `0 vaciada(s) · 0 conservada(s)` y
+// el sedimento seguía publicado. Leídas las filas 118-145 del archivo real, columna por columna, se
+// ve QUÉ es exactamente ese sedimento:
+//
+//   119 | A=DUBOS UGARTE PEDRO LUIS RAUL  B=20-28773782-4  C=0011-00001262  D=26/2/2026
+//         F=Qué es  G=Anula → la reemplaza
+//
+// Esa es LA FILA DE ENCABEZADO del cuadro 4 (`Proveedor · Nota de crédito · Fecha · Importe · ·
+// Qué es · Anula → la reemplaza`) aterrizada con SÓLO la F y la G, sobre una fila de datos del
+// layout ANTERIOR (proveedor · CUIT · comprobante · fecha, que es el layout de 7 campos que se
+// retiró el 04/08). No son dos bloques mal ubicados: es UNA fila con dos dueños.
+//
+// La causa es un choque de vocabularios entre dos módulos que se llaman entre sí:
+//   · `respetarEdiciones`: `''` = "el dueño borró este rótulo, la celda va vacía";
+//   · `fusionar`:          `''` = "esta celda NO es mía: conservá lo que haya".
+// Un borrado respetado no vaciaba la celda: le entregaba el control al sedimento. Y por eso el
+// barrido informa 0 — cuando la guarda mira, la grilla ya trae los valores viejos escritos encima
+// de los míos, así que no queda una sola celda vacía sobre contenido que barrer.
+
+import { respetarEdiciones } from './respetar-ediciones.mjs'
+// OJO: SON DOS CENTINELAS DISTINTOS CON EL MISMO NOMBRE. `no-borrar.VACIO` es `\0VACIO` y
+// `preservar-anotaciones.VACIO` es `\0::VACIO::\0`. El que entiende `fusionar` —y por lo tanto el
+// que un generador tiene que emitir para declarar "esta celda es mía y va vacía"— es el segundo; el
+// primero vive del lado de la guarda. Importarlos con el mismo nombre en un mismo archivo es cómo se
+// escribe un vaciado que no vacía, así que acá se nombran distinto a propósito.
+import { fusionar, VACIO as VACIO_FUSION } from './preservar-anotaciones.mjs'
+
+describe('un rótulo que el dueño borró', () => {
+  /** La fila de encabezado del cuadro 4, y debajo lo que había: una fila del layout anterior. */
+  const encabezado = () => ['Proveedor', 'Nota de crédito', 'Fecha', 'Importe', VACIO_FUSION, 'Qué es', 'Anula → la reemplaza']
+  const sedimento = () => ['DUBOS UGARTE PEDRO LUIS RAUL', '20-28773782-4', '0011-00001262', '26/2/2026', '', '', '']
+
+  test('SE DECLARA MÍA Y VACÍA, no "no es mía": si no, el borrado conserva el sedimento', () => {
+    const borrados = new Map([['Proveedor', ''], ['Fecha', ''], ['Importe', '']])
+    const { grid, respetadas } = respetarEdiciones([encabezado()], [sedimento()], borrados)
+    assert.equal(respetadas.length, 3)
+    for (const j of [0, 2, 3]) {
+      assert.equal(grid[0][j], VACIO_FUSION,
+        `la columna ${j} tiene que quedar declarada MÍA Y VACÍA; con '' la fusión conserva lo que haya debajo`)
+    }
+    // Y la prueba del efecto, que es la que importa: la fila fusionada no arrastra el layout viejo.
+    const fusionada = fusionar(grid, [sedimento()])
+    assert.deepEqual(fusionada[0].slice(0, 4), ['', 'Nota de crédito', '', ''],
+      'la fila salió con datos del layout anterior en A/C/D y el encabezado nuevo en F/G: dos dueños en una fila')
+    assert.equal(fusionada[0][5], 'Qué es')
+  })
+
+  test('si el dueño lo cambió POR OTRO TEXTO, se escribe el suyo — eso no cambia', () => {
+    const { grid } = respetarEdiciones([['Importe']], [['x']], new Map([['Importe', 'Monto']]))
+    assert.equal(grid[0][0], 'Monto')
+  })
+
+  test('y una celda vacía del generador que NADIE registró sigue significando "no es mía"', () => {
+    const { grid } = respetarEdiciones([['Proveedor', '']], [['viejo', 'nota al margen']], new Map())
+    assert.equal(fusionar(grid, [['viejo', 'nota al margen']])[0][1], 'nota al margen')
+  })
+})
+
+// ═══ EL 117 CONTRA EL 121: LA FRONTERA ES EL TÍTULO, Y EL RESPALDO NO LA CORRE ═══
+//
+// El log de la corrida real dijo `frontera … fila 121 ("NOTAS DE CRÉDITO") · la última dinámica
+// termina en la fila 117`, y al terminar el pipeline el título estaba en la 117. No es un desfase
+// del cálculo: son DOS SISTEMAS DE COORDENADAS. El log se emite ANTES de escribir, con el archivo
+// como estaba (dinámica hasta 117 · colchón 118-120 · título 121); después de escribir, los
+// generadores de la sección 1 devolvieron 4 filas de aire —sus dos dinámicas se achicaron 2 filas
+// cada una— y todo lo de abajo subió 4. La misma geometría, corrida: dinámica hasta 113 · colchón
+// 114-116 · título 117. Medido sobre el archivo de hoy: `fronteraSegura` devuelve 117 por título.
+describe('la frontera contra el fin de la dinámica', () => {
+  /** La pestaña como quedó: dinámica hasta 113, tres filas de aire, el título en la 117. */
+  function comoQuedo() {
+    const filas = Array.from({ length: 130 }, () => [])
+    filas[64] = ['3 · CON QUIÉN SE GASTA']
+    for (let f = 66; f <= 113; f++) filas[f - 1] = [`Prov ${f}`, '30-1', '1.000', '2']
+    filas[116] = ['4 · NOTAS DE CRÉDITO']
+    return filas
+  }
+
+  test('con el título puesto, la frontera es SU fila — el fin de la dinámica no la mueve', () => {
+    const filas = comoQuedo()
+    const fin = finDeDinamica(filas, 65, { col: 0, ancho: 4 })
+    assert.equal(fin, 113, 'la dinámica termina en su cuerpo, no en el título de abajo')
+    assert.equal(fronteraSegura({ visible: filas, titulo: 'NOTAS DE CRÉDITO', dinamicas: [{ ancla: 65, fin }] }).fila, 117)
+    // Y aunque el fin viniera mal medido —más largo, más corto— el título sigue mandando.
+    for (const finMalo of [100, 113, 119]) {
+      assert.equal(fronteraSegura({ visible: filas, titulo: 'NOTAS DE CRÉDITO', dinamicas: [{ ancla: 65, fin: finMalo }] }).fila,
+        117, `con fin=${finMalo} la frontera se movió: el título tiene que ser el único punto fijo`)
+    }
+  })
+
+  test('el título NUNCA cuenta como cuerpo de la dinámica de arriba', () => {
+    const filas = comoQuedo()
+    // Sin la fila en blanco entre medio: la dinámica llega pegada al título.
+    for (let f = 114; f <= 116; f++) filas[f - 1] = [`Prov ${f}`, '30-1', '1.000', '2']
+    assert.equal(finDeDinamica(filas, 65, { col: 0, ancho: 4 }), 116, 'se comió el título del bloque de abajo')
+  })
+
+  test('SIN título, el respaldo NO puede aterrizar sobre la sección de otro: falla cerrado', () => {
+    const filas = comoQuedo()
+    filas[116] = []                       // el título ancla no está
+    filas[118] = ['5 · CONTROL Y AUDITORÍA DE CARGA']
+    assert.throws(
+      () => fronteraSegura({ visible: filas, titulo: 'NOTAS DE CRÉDITO', dinamicas: [{ ancla: 65, fin: 117 }] }),
+      /ahí ya empieza otra sección/,
+    )
+    // Con lugar libre debajo, el respaldo sí se usa: no se frena de gusto.
+    filas[118] = []
+    assert.deepEqual(fronteraSegura({ visible: filas, titulo: 'NOTAS DE CRÉDITO', dinamicas: [{ ancla: 65, fin: 113 }] }),
+      { fila: 115, por: 'dinamicas' })
+  })
+})

@@ -73,6 +73,8 @@
 // mucho menos que ensanchar la A, que es la que empuja de verdad. Las tablas de abajo siguen
 // salteando la E: su hueco pasa de 28 a 90px de aire, que no produce un solo defecto medido.
 
+import { filaDelSiguienteTitulo } from './proveedores-colchon.mjs'
+
 /** El ancho de cada columna de la pestaña "Proveedores", en píxeles. Índice 0 = columna A. */
 export const ANCHOS_PROVEEDORES = Object.freeze([
   330, // A · el rótulo más largo que se escribe ("TELEFONICA MOVILES ARGENTINA SOCIEDAD ANONIMA")
@@ -276,12 +278,29 @@ export function buscarFrontera(visible = [], titulo) {
  * @returns {{fila:number, por:'titulo'|'dinamicas'}}
  */
 export function fronteraSegura({ visible = [], titulo, dinamicas = [] } = {}) {
+  // EL TÍTULO MANDA SIEMPRE, Y NO SE PROMEDIA CON NADA. Es la única fila que este generador puede
+  // AFIRMAR: la escribe él, en la primera fila de su bloque. El fin de una dinámica es una medición
+  // sobre lo que se ve, y una medición no le gana a un hecho propio. Sólo se usa cuando no hay título.
   try {
     return { fila: buscarFrontera(visible, titulo), por: 'titulo' }
   } catch (e) {
     const fin = dinamicas.reduce((m, d) => Math.max(m, d?.fin ?? 0), 0)
     if (!fin) throw e
-    return { fila: fin + 2, por: 'dinamicas' }
+    const fila = fin + 2
+    // ═══ Y EL RESPALDO NO PUEDE ATERRIZAR SOBRE LA SECCIÓN DE OTRO (14/08/2026) ═══
+    //
+    // Sin título propio, `fin + 2` es una estimación; si abajo hay OTRA sección, escribir ahí la
+    // reemplaza por texto sin dar un solo error. Que la estimación no entre no es permiso para
+    // apretarla: es la prueba de que no se sabe dónde va el bloque. Falla cerrado, como el título.
+    const otra = filaDelSiguienteTitulo(visible, fin)
+    if (otra && otra <= fila) {
+      throw new Error(`sin el título "${titulo}" me ubicaría en la fila ${fila} (debajo de la última `
+        + `dinámica), pero ahí ya empieza otra sección (fila ${otra}: `
+        + `"${String((visible[otra - 1] ?? [])[0] ?? '').slice(0, 40)}"). NO escribo: escribir encima `
+        + 'de la sección de otro la reemplaza por texto sin dar error. Hay que reponer el título ancla '
+        + '(proveedores-titulos-sembrar.mjs) antes de que este bloque se pueda ubicar.')
+    }
+    return { fila, por: 'dinamicas' }
   }
 }
 

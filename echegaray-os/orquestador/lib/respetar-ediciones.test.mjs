@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { respetarEdiciones, detectarEdiciones, esRotulo, esEstructural, detectarArranqueEnFrio, MAX_BORRADOS_CREIBLES, duenoReescribioLaPestana} from './respetar-ediciones.mjs'
-import { VACIO } from './preservar-anotaciones.mjs'
+import { fusionar, VACIO } from './preservar-anotaciones.mjs'
 
 test('un rótulo es texto: no una fórmula, no un número, no un importe escrito', () => {
   assert.ok(esRotulo('Deuda previsional en cuotas'))
@@ -50,9 +50,17 @@ test('respeta la edición esté donde esté la fila', () => {
   assert.equal(respetadas.length, 1)
 })
 
-test('UNA ELIMINACIÓN TAMBIÉN ES UNA DECISIÓN: vacío gana', () => {
+test('UNA ELIMINACIÓN TAMBIÉN ES UNA DECISIÓN: vacío gana — y la celda queda MÍA Y VACÍA', () => {
   const { grid } = respetarEdiciones([['Lo que falta saber']], [['']], new Map([['Lo que falta saber', '']]))
-  assert.equal(grid[0][0], '')
+  // El borrado se declara con el CENTINELA, no con una cadena vacía. Los dos se ven "vacíos" y
+  // significan lo contrario: `''` le dice a `fusionar` "esta celda no es mía, conservá lo que haya",
+  // así que un borrado respetado terminaba preservando el residuo que ocupara esa celda en vez de
+  // limpiarlo. Se midió en "Proveedores": la fila de encabezado del cuadro 4 aterrizó con sólo dos
+  // de sus siete columnas y las otras cinco mostrando una fila del layout anterior.
+  assert.equal(grid[0][0], VACIO)
+  // LO QUE PRUEBA LA DECISIÓN ES EL EFECTO: fusionada contra una pestaña que tiene algo ahí, la
+  // celda sale vacía. Ésa es la eliminación respetada.
+  assert.equal(fusionar(grid, [['un resto de una corrida vieja']])[0][0], '')
 })
 
 test('si el dueño vuelve atrás, el generador retoma su versión', () => {
