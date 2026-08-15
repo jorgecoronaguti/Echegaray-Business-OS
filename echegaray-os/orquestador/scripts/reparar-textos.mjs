@@ -135,12 +135,23 @@ async function main() {
   for (const p of lista) {
     const hoja = meta.find((h) => h.title === p.titulo)
     if (!hoja) continue
-    const alto = Math.min(hoja.rows ?? p.hastaFila, 400)
+    // ═══ EL TECHO DE 400 FILAS DECÍA "✓ TODO ENTRA" SOBRE EL 35% DE LA PESTAÑA (15/08) ═══
+    //
+    // Acá había `Math.min(hoja.rows ?? p.hastaFila, 400)`. En "Compras", que tiene más de mil filas
+    // de datos, eso leía hasta la 400 y publicaba `✓ todo el texto entra en su celda` — mientras
+    // `auditar-pantalla.mjs`, que lee la pestaña entera, contaba dos textos cortados en la columna E,
+    // uno de ellos en la fila 743. Dos herramientas del mismo archivo dando respuestas opuestas sobre
+    // la misma pestaña, y la que mentía era la que tranquilizaba.
+    //
+    // Un techo no es un defecto por existir: es un defecto por ser MUDO. La lectura arranca ahora en
+    // el alto real de la grilla, y el veredicto imprime cuántas filas miró — un "✓" sobre una ventana
+    // parcial no se puede distinguir de un "✓" real si no dice hasta dónde llegó.
+    const alto = hoja.rows ?? p.hastaFila
     const f = await google.readSheetFormats(ID, `${p.titulo}!A1:${col(p.cols)}${alto}`).catch(() => null)
     if (!f) { console.log(`  ${p.titulo.padEnd(26)} no pude leerla`); continue }
 
     const defectos = detectar(f, { desdeFila: 1 }).filter((d) => d.tipo === 'texto_cortado')
-    if (!defectos.length) { console.log(`  ${p.titulo.padEnd(26)} ✓`); continue }
+    if (!defectos.length) { console.log(`  ${p.titulo.padEnd(26)} ✓ (leí ${alto} fila(s))`); continue }
 
     const anchoGobernado = CON_ANCHO_GOBERNADO.has(p.titulo)
     const declarados = anchosDe(p.titulo)

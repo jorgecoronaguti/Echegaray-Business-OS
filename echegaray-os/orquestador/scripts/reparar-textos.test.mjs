@@ -124,3 +124,29 @@ test('un párrafo nunca se arregla ensanchando, tenga o no dueño la pestaña', 
     assert.equal(r.aNota.length, 1, 'se reporta para que el generador lo acorte')
   }
 })
+
+// ═══ EL TECHO MUDO: "✓ TODO ENTRA" SOBRE UNA VENTANA PARCIAL (15/08) ═══
+//
+// La lectura se cortaba en `Math.min(hoja.rows, 400)` y el veredicto no decía hasta dónde había
+// mirado. En "Compras" —más de mil filas— eso publicaba `✓ todo el texto entra en su celda` con dos
+// textos cortados en la columna E, uno en la fila 743, que `auditar-pantalla.mjs` sí veía. Dos
+// herramientas del mismo repo contestando distinto sobre la misma pestaña, y la que tranquilizaba
+// era la equivocada.
+//
+// Este test mira el FUENTE porque el defecto no está en un núcleo puro: está en el rango que se le
+// pide a la API y en lo que se imprime al lado del ✓. Es el único lugar donde se puede fijar.
+test('la lectura no se corta en un techo fijo y el veredicto dice cuántas filas miró', async () => {
+  const fs = await import('node:fs')
+  const src = fs.readFileSync(new URL('./reparar-textos.mjs', import.meta.url), 'utf8')
+  // El comentario CITA la expresión vieja a propósito —es la evidencia de por qué se fue— así que la
+  // aserción mira el código, no la prosa. Un test que se pone rojo por su propia documentación
+  // enseña a borrar la documentación.
+  const codigo = src.split(/\r?\n/).filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n")
+  assert.doesNotMatch(codigo, /Math\.min\(hoja\.rows[^)]*,\s*\d+\)/,
+    'un techo fijo sobre el alto de la grilla deja filas sin mirar y el ✓ no las distingue')
+  assert.match(src, /const alto = hoja\.rows \?\? p\.hastaFila/,
+    'la ventana arranca en el alto real de la pestaña')
+  // Y el ✓ tiene que declarar su alcance: sin eso, un techo nuevo vuelve a ser invisible.
+  assert.match(src, /✓ \(leí \$\{alto\} fila\(s\)\)/,
+    'el veredicto limpio declara cuántas filas leyó')
+})
