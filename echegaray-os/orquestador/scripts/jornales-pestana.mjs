@@ -166,6 +166,14 @@ const AÑO = 2026
 // footprint del generador y lo que haya debajo no se limpia nunca.
 const ANCHO = 14
 /**
+ * El ancho de la columna D, la del ESTADO de cada fila. Va aparte de los 112px del resto porque su
+ * contenido es una frase, no un número: el peor caso medido en la pestaña viva es
+ * "proyección · ▲ firmado hasta 08/2026" (36 caracteres ⇒ 206px). Con 215 entra el peor caso y sobra
+ * lo mínimo — y con el texto entrando, `reparar-textos.mjs` no tiene defecto que arreglar y no le
+ * disputa el ancho a este generador.
+ */
+const ANCHO_ESTADO = 215
+/**
  * EL ENCABEZADO DEL REGISTRO ES EL CONTRATO — Y LA LETRA DE CADA COLUMNA SALE DE ACÁ, NUNCA A MANO.
  *
  * POR QUÉ (03/08). La fila 4 de la pestaña VIVA usa `MAXIFS($B:$B;$K:$K;">0")` y anda bien, así que
@@ -2486,6 +2494,24 @@ export function requestsDeFormato(sheetId, filas, g) {
     { repeatCell: { range: rg(0, filas.length, 0, ANCHO), cell: { userEnteredFormat: { wrapStrategy: 'OVERFLOW_CELL' } }, fields: 'userEnteredFormat.wrapStrategy' } },
     { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 330 }, fields: 'pixelSize' } },
     { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: ANCHO }, properties: { pixelSize: 112 }, fields: 'pixelSize' } },
+    // ═══ LA D ES MÁS ANCHA, Y ESTE GENERADOR TIENE QUE DECLARARLO (15/08) ═══
+    //
+    // La D lleva el ESTADO de cada fila, que no es una palabra sino una frase con su fundamento:
+    // "proyección · ▲ firmado hasta 08/2026" son 36 caracteres y en 112px entran 19. Como la E de esas
+    // mismas filas tiene la fecha de pago, no derrama: la mitad de la frase —justamente la parte que
+    // dice hasta dónde llega la paritaria firmada— simplemente no se ve. Cinco filas del cuadro de
+    // oficina, medidas por `auditar-pantalla`.
+    //
+    // POR QUÉ ENSANCHAR Y NO ACORTAR: 36 caracteres piden 206px, que es un ancho normal para una
+    // columna de estado. La regla del archivo es acortar cuando ningún ancho razonable alcanza; acá
+    // alcanza de sobra, y lo que se perdería al acortar es el "hasta cuándo está firmado", que es
+    // exactamente lo que separa un dato de una proyección.
+    //
+    // Y SE DECLARA ACÁ PORQUE ACÁ HAY UN DUEÑO. `reparar-textos.mjs` ensancha por su cuenta toda
+    // columna cuyo texto no entre y no esté gobernada, y corre DESPUÉS de este generador: con la D en
+    // 112 los dos se la disputaban en cada pasada y ganaba el último. Con la D ya ancha el texto entra,
+    // el reparador no encuentra defecto y no la toca — el conflicto se apaga solo en vez de alternar.
+    { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 3, endIndex: 4 }, properties: { pixelSize: ANCHO_ESTADO }, fields: 'pixelSize' } },
   ]
   // TODO RANGO SE ACOTA A LA GRILLA. Un `repeatCell` que pide una fila que la hoja no tiene hace
   // fallar el LOTE ENTERO ("exceeds grid limits"), no sólo esa regla: la corrida se cae después de

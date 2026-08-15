@@ -99,6 +99,12 @@ const esTextoDeVerdad = (v) => {
  * @returns {Array<{tipo:string, fila:number, col:string, valor:string, que:string}>}
  */
 /**
+ * El separador que llevan todos los títulos de sección del archivo: "3 · NOTAS DE CRÉDITO".
+ * Es la frontera DECLARADA entre dos bloques apilados sobre las mismas columnas.
+ */
+const TITULO_SECCION = /^\s*\d+\s*·\s*\S/
+
+/**
  * NÚCLEO PURO: ¿este texto en una celda numérica es el ENCABEZADO de la columna?
  *
  * La diferencia con una nota mal puesta no está en la celda: está en dónde cae. Un encabezado va
@@ -107,20 +113,104 @@ const esTextoDeVerdad = (v) => {
  * Se mira la propia columna: si no hay ningún número por encima, esto es el rótulo. En cuanto hay
  * un importe más arriba, el texto está en el medio de los datos y ahí sí molesta.
  *
+ * ═══ Y LA MIRADA NO CRUZA UN TÍTULO DE SECCIÓN (15/08) ═══
+ *
+ * "Tarjeta de Credito" apila cuatro cuadros sobre las mismas dos columnas, cada uno con su propia
+ * fila "Concepto | Monto". Mirando la columna entera, los importes del cuadro de arriba convertían
+ * el encabezado del cuadro de abajo en un defecto: `B12`, `B19` y `B26` —los tres la palabra
+ * "Monto"— eran los TRES únicos avisos de esa pestaña, y los tres estaban bien puestos. Un detector
+ * que sólo dice cosas falsas sobre una pestaña es peor que uno que no la mira: enseña a saltearla.
+ *
+ * La frontera es la misma que ya usa `fechaCerca` para lo suyo, y por la misma razón: en un layout
+ * de bloques apilados, un título numerado no es decoración — declara que arriba empieza otra tabla.
+ *
+ * ═══ PERO EL TÍTULO NO ABSUELVE A UNA FILA DE DATOS ═══
+ *
+ * La primera versión frenaba en el título y devolvía "es un rótulo", y con eso tapó `OBRAS!F10`
+ * ("▲ 17.449.303", un importe convertido en texto) sólo por ser la PRIMERA fila debajo de su título.
+ * El encabezado de un cuadro es una fila de puros rótulos; en cuanto AL LADO hay un importe, una
+ * fecha o un porcentaje, eso es una fila de datos y el texto está metido entre ellos.
+ *
+ * "AL LADO" ES EL TRAMO CONTIGUO DE CELDAS LLENAS, no la fila entera. La fila 4 de "Cobranzas"
+ * tiene su encabezado en A:AA y —sesenta columnas más a la derecha, separada por un hueco— la
+ * primera cifra del bloque de control en BD4. Mirando la fila completa, un número de OTRA tabla
+ * convertía los 27 rótulos legítimos en defectos. Una columna vacía separa dos tablas puestas en la
+ * misma fila, igual que un título separa dos tablas apiladas.
+ *
  * @param {Array<Array<object>>} filas la grilla completa
  * @param {number} i índice de la fila (0-based)
  * @param {number} j índice de la columna
  */
 export function esRotuloDeColumna(filas = [], i = 0, j = 0) {
-  // "HAY UN NÚMERO ARRIBA" SE DECIDE POR EL VALOR QUE SE VE, no por un campo `numero`: el lector de
-  // formatos (readSheetFormats) devuelve sólo `valor` y `formato`. La primera versión preguntaba por
-  // `numero`, que ahí siempre viene vacío, así que TODO parecía encabezado y el detector dejó de
-  // marcar hasta las notas legítimas. Un control que se apaga entero es peor que uno ruidoso.
-  for (let k = 0; k < i; k++) {
+  // "ES UN NÚMERO" SE DECIDE POR EL VALOR QUE SE VE, no por un campo `numero`: el lector de formatos
+  // (readSheetFormats) devuelve sólo `valor` y `formato`. La primera versión preguntaba por `numero`,
+  // que ahí siempre viene vacío, así que TODO parecía encabezado y el detector dejó de marcar hasta
+  // las notas legítimas. Un control que se apaga entero es peor que uno ruidoso.
+  for (let k = i - 1; k >= 0; k--) {
+    // EL TÍTULO ABSUELVE SÓLO A SU PROPIO ENCABEZADO, y sólo si de verdad lo es. Si no, no frena
+    // nada: se sigue mirando hacia arriba con el criterio de siempre.
+    // EL TÍTULO ABSUELVE, NO CONDENA. Si la fila es de rótulos y cuelga del título, es el encabezado
+    // del cuadro nuevo y se termina acá. Si no lo es, el título no dice nada: se sigue mirando la
+    // columna con el criterio de siempre. Absolver de más apaga el control; condenar de más lo llena
+    // de ruido, y en este archivo las dos formas de romperlo ya se pagaron.
+    if (esTituloPelado(filas[k]) && i - k <= ZONA_ENCABEZADO && esFilaDeRotulos(filas[i], j)) return true
     const v = String(filas[k]?.[j]?.valor ?? '').trim()
     if (v && !esTextoDeVerdad(v)) return false
   }
   return true
+}
+
+/**
+ * Cuántas filas puede haber entre el título de una sección y la fila de rótulos de su cuadro.
+ *
+ * Es la gramática de layout del archivo, no un número cómodo: entre el título y el encabezado hay
+ * como mucho UNA línea —el párrafo que explica el cuadro—. Medido: "Tarjeta de Credito" pone el
+ * encabezado pegado al título (distancia 1) y "Proveedores" intercala su explicación (distancia 2).
+ *
+ * ACOTARLO ES LO QUE EVITA QUE LA EXCEPCIÓN SE COMA EL CONTROL. Sin este tope, un título absolvía
+ * todo lo que tuviera debajo hasta el siguiente: `Proveedores!C200` —un comprobante en una celda de
+ * moneda, dieciséis filas más abajo— dejaba de reportarse por tener su fila vacía al lado.
+ */
+const ZONA_ENCABEZADO = 2
+
+/**
+ * NÚCLEO PURO: ¿esta fila es un título de sección Y NADA MÁS?
+ *
+ * La distinción no es cosmética. Un título SOLO abre un cuadro nuevo: lo que viene abajo es su fila
+ * de rótulos. Un título CON CIFRAS en la misma fila es la banda de encabezado de un cuadro que ya
+ * trae su total —"2 · CUENTA CORRIENTE ... $281.227.326 · 105"— y ahí la fila de abajo no arranca de
+ * cero: hereda una columna que YA tiene plata, que es justamente la evidencia con la que el detector
+ * distingue un rótulo de una nota perdida.
+ *
+ * Sin esta condición, el título con total absolvía la fila de rótulos de la sección 2 de
+ * "Proveedores" y apagaba el test que vigila que esa fila no se quede con el formato de moneda del
+ * cuerpo. Una excepción que apaga un control existente no es una mejora: es una regresión con buena
+ * letra.
+ */
+export function esTituloPelado(fila = []) {
+  if (!TITULO_SECCION.test(String(fila?.[0]?.valor ?? ''))) return false
+  return !(fila || []).some((c, k) => k > 0 && String(c?.valor ?? '').trim() !== '')
+}
+
+/**
+ * NÚCLEO PURO: ¿el tramo contiguo de celdas llenas que contiene a `j` es una fila de RÓTULOS?
+ *
+ * Es lo que distingue el encabezado de un cuadro de su primera fila de datos. Dos condiciones:
+ *
+ *   · todo el tramo es texto — un importe al lado y ya es una fila de datos;
+ *   · el tramo tiene MÁS DE UNA celda. Un encabezado rotula varias columnas a la vez ("Concepto |
+ *     Monto"); una celda sola rodeada de vacío no rotula nada. Sin esta segunda condición se tapaba
+ *     `Proveedores!C200` —un N° de comprobante en una celda de moneda, hermano de los cuatro que
+ *     tiene encima— sólo porque era la única celda escrita de su fila.
+ */
+export function esFilaDeRotulos(fila = [], j = 0) {
+  const f = fila || []
+  const en = (k) => String(f?.[k]?.valor ?? '').trim()
+  const esNumero = (v) => v !== '' && !esTextoDeVerdad(v)
+  let llenas = 0
+  for (let k = j; k >= 0 && en(k) !== ''; k--) { if (esNumero(en(k))) return false; llenas++ }
+  for (let k = j + 1; k < f.length && en(k) !== ''; k++) { if (esNumero(en(k))) return false; llenas++ }
+  return llenas > 1
 }
 
 export function detectar(f, { desdeFila = 1, huecoMax = 3 } = {}) {
@@ -152,7 +242,8 @@ export function detectar(f, { desdeFila = 1, huecoMax = 3 } = {}) {
   // Un título de sección ("3 · NOTAS DE CRÉDITO") es la frontera declarada entre bloques apilados —
   // el mismo criterio con el que `finDeDinamica` decide dónde termina una tabla dinámica.
   const VENTANA = 15
-  const TITULO_SECCION = /^\s*\d+\s*·\s*\S/
+  // La MISMA frontera que usa `esRotuloDeColumna`: declarada una vez arriba. Estaba escrita dos
+  // veces y son la misma decisión — dos copias del mismo criterio se separan sin dar error.
   const esTitulo = f.filas.map((fila) => TITULO_SECCION.test(String(fila?.[0]?.valor ?? '')))
   const conFecha = f.filas.map((fila) => {
     const cols = (fila || []).map((c, j) => ((c?.formato?.numberFormat?.type === 'DATE' || c?.formato?.numberFormat?.type === 'DATE_TIME') ? j : -1)).filter((j) => j >= 0)

@@ -227,26 +227,49 @@ export const MARCA_SIN_RESPALDO = 'DEVENGADO, NO PERCIBIDO'
  * @param {object} v un elemento de `veredictos`
  * @param {{alerta:string, fechaCorte:string}} opciones el glifo de alerta y el corte legible
  */
+/**
+ * ═══ CUÁNTO PUEDE MEDIR CADA VEREDICTO, Y POR QUÉ ES UN LÍMITE Y NO UN GUSTO (15/08) ═══
+ *
+ * Estos textos van a la columna BB de "Cobranzas", que lee 97 caracteres con el cuerpo declarado en
+ * `cobranzas-control.mjs`. El veredicto de `sinRespaldo` medía 222: en la pantalla se cortaba a los
+ * 50 —la columna venía sin ancho declarado— y lo que quedaba del lado invisible era exactamente qué
+ * hacer con la fila. Un aviso que no se lee entero no avisa; y la fila de al lado tiene datos, así
+ * que no derrama: desaparece.
+ *
+ * LA EXPLICACIÓN LARGA NO SE PERDIÓ: vive en la NOTA de la línea "Cobrado que el extracto NO
+ * confirma" del bloque de control, que es donde se lee una vez en vez de repetirse por fila.
+ */
+export const LARGO_MAXIMO_VEREDICTO = 97
+
 export function textoDeRespaldo(v, { alerta = '▲', fechaCorte = '' } = {}) {
   const al = fechaCorte ? ` (extracto al ${fechaCorte})` : ''
   switch (v.estado) {
     case 'confirma':
-      return `COBRADO · el extracto lo tiene el ${v.mov.fechaISO ?? ''} por $${v.mov.importe} — ya está en el saldo del banco`.replace('  ', ' ')
+      // Se sacó "— ya está en el saldo del banco": lo dice la palabra COBRADO que abre la frase, y
+      // era la parte que el importe largo empujaba fuera de la columna.
+      return `COBRADO · el extracto lo tiene el ${v.mov.fechaISO ?? ''} por $${v.mov.importe}`.replace('  ', ' ')
     case 'ambiguo':
-      return `${alerta} hay ${v.cuantos} acreditaciones por ese importe en la ventana: no puedo decir cuál es ésta`
+      return `${alerta} ${v.cuantos} acreditaciones por ese importe: no puedo decir cuál es ésta`
     case 'fueraDeCorte':
       return `sin juzgar: el extracto todavía no llega a esa fecha${al}`
     case 'anteriorAlExtracto':
-      return 'sin juzgar: la fecha de cobro es anterior al primer movimiento importado del banco'
+      return 'sin juzgar: el cobro es anterior al primer movimiento importado del banco'
     case 'noPasaPorLaCuenta':
-      return 'cobro que no pasa por la cuenta: su control es el del efectivo en CAJA, no el extracto'
+      return 'no pasa por la cuenta: su control es el del efectivo en CAJA, no el extracto'
     case 'noComparable':
       return 'sin juzgar: el importe no se puede comparar contra el extracto (moneda extranjera)'
     case 'extractoIlegible':
       return `${alerta} sin juzgar: no pude leer la réplica del banco`
     case 'sinRespaldo':
-      return `${alerta} ${MARCA_SIN_RESPALDO} · el extracto no tiene ninguna acreditación por ese importe${al}. `
-        + 'El Cash Flow lo cuenta como ingreso REAL: o falta cargar el movimiento del banco, o el cobro todavía no entró.'
+      // EL PREFIJO NO SE TOCA. La línea "Cobrado que el extracto NO confirma" suma con
+      // `LEFT(BB;n)=MARCA_ALERTA_RESPALDO`: cambiarle el arranque a esta frase no da error, da $0.
+      //
+      // Y LA CONSECUENCIA SE QUEDA. De los 222 caracteres que medía se sacó el diagnóstico ("o falta
+      // cargar el movimiento del banco, o el cobro todavía no entró"), que es lo mismo que dice la
+      // nota de su línea en el cuadro. Lo que NO se puede sacar es que el Cash Flow lo está contando
+      // como ingreso REAL: sin eso el aviso dice que algo está mal y no qué se rompe — y sin el
+      // corte, no se puede desmentir. Las dos cosas las exige el test de este módulo.
+      return `${alerta} ${MARCA_SIN_RESPALDO} · el Cash Flow lo cuenta como ingreso REAL${al}`
     default:
       return ''
   }

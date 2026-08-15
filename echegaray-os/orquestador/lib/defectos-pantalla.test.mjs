@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { detectar, resumen, FECHA_CERO, esSerialCrudo } from './defectos-pantalla.mjs'
+import { detectar, resumen, FECHA_CERO, esSerialCrudo, esRotuloDeColumna, esFilaDeRotulos } from './defectos-pantalla.mjs'
 
 const cel = (valor, type) => ({ valor, formato: type ? { numberFormat: { type } } : null })
 const hoja = (filas) => ({ filas, anchos: [] })
@@ -197,4 +197,72 @@ test('un glifo emoji en una celda se reporta: está escrito y no se va a ver', (
   // Los símbolos que el archivo usa a propósito no se reportan: si el detector gritara por "⇒ TOTAL"
   // o "↳ endosado" nadie volvería a mirar su lista.
   assert.deepEqual(detectar(hoja([[cel('⇒ TOTAL POR COBRAR'), cel('↳ endosado')]])), [])
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL ENCABEZADO DEL CUADRO DE ABAJO NO ES UN DEFECTO DEL CUADRO DE ARRIBA
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Los tres únicos avisos que tenía "Tarjeta de Credito" —B12, B19 y B26, las tres veces la palabra
+// "Monto"— eran los encabezados de sus tres cuadros apilados, y los tres estaban bien puestos. El
+// detector los marcaba porque miraba la columna entera y encontraba los importes del cuadro de
+// arriba. Una pestaña sobre la que un control sólo dice cosas falsas es una pestaña que se saltea.
+
+test('un encabezado debajo de un título de sección no hereda los números del cuadro de arriba', () => {
+  // La forma real de "Tarjeta de Credito", transcrita: un cuadro con importes, el título de la
+  // sección siguiente, y el encabezado del cuadro nuevo sobre las MISMAS dos columnas.
+  const filas = [
+    [cel('LA LÍNEA — CUÁNTO SE PUEDE GASTAR HOY')],
+    [cel('Concepto'), cel('Monto', 'NUMBER')],
+    [cel('Límite de compra'), cel('$10.000.000', 'NUMBER')],
+    [],
+    [cel('1 · CUÁNTO VENCE Y CUÁNDO')],
+    [cel('Concepto'), cel('Monto', 'NUMBER')],
+    [cel('Próximo débito'), cel('$965.864', 'NUMBER')],
+  ]
+  const d = detectar(hoja(filas)).filter((x) => x.tipo === 'texto_en_numero')
+  assert.deepEqual(d, [], 'el "Monto" de la fila 6 es el rótulo de su cuadro, no una nota perdida')
+  assert.equal(esRotuloDeColumna(filas, 5, 1), true)
+})
+
+test('pero el título NO absuelve a la primera fila de DATOS: el caso OBRAS!F10', () => {
+  // "▲ 17.449.303" es un importe convertido en texto, en la primera fila debajo del título. Frenar en
+  // el título y dar por buena esa fila lo tapaba — el defecto más caro de los que este detector busca,
+  // porque un importe que es texto no suma en ninguna fórmula y no da error.
+  // La forma real de OBRAS: el cuadro de cartera, su total, el título de la sección 2 y su cuadro.
+  const filas = [
+    [cel('Cartera'), cel('% venc.'), cel('▲ 61–90', 'CURRENCY')],
+    [cel('⇒ TOTAL POR COBRAR'), cel('12,1%'), cel('$3.488.735', 'CURRENCY')],
+    [],
+    [cel('2 · OBRAS DEL AÑO')],
+    [cel('Cliente'), cel('% cob.'), cel('Vencido', 'CURRENCY')],
+    [cel('ARCOR'), cel('69,2%'), cel('▲ 17.449.303', 'CURRENCY')],
+  ]
+  const d = detectar(hoja(filas)).filter((x) => x.tipo === 'texto_en_numero')
+  assert.equal(d.length, 1, 'la fila de datos se reporta aunque cuelgue de un título')
+  assert.equal(`${d[0].col}${d[0].fila}`, 'C6')
+  assert.equal(esRotuloDeColumna(filas, 4, 2), true, 'y la fila de rótulos sigue estando bien')
+})
+
+test('la excepción no se estira: un título no absuelve lo que está diez filas más abajo', () => {
+  // `Proveedores!C200` es un N° de comprobante en una celda de moneda, con la fila vacía al lado y el
+  // título de su sección dieciséis filas más arriba. Sin tope, el título lo daba por encabezado.
+  const filas = [
+    [cel('5 · LO QUE ARCA FACTURÓ')],
+    [cel('Proveedor'), cel('Comprobante', 'CURRENCY')],
+    [cel('ARCOR'), cel('$1.000', 'CURRENCY')],
+    [], [], [],
+    [null, cel('0001-00000205', 'CURRENCY')],
+  ]
+  const d = detectar(hoja(filas), { huecoMax: 99 }).filter((x) => x.tipo === 'texto_en_numero')
+  assert.deepEqual(d.map((x) => `${x.col}${x.fila}`), ['B7'])
+})
+
+test('una celda sola rodeada de vacío no es una fila de rótulos: un encabezado rotula VARIAS columnas', () => {
+  assert.equal(esFilaDeRotulos([cel('Concepto'), cel('Monto')], 1), true)
+  assert.equal(esFilaDeRotulos([null, cel('0001-00000205')], 1), false, 'una sola celda no rotula nada')
+  assert.equal(esFilaDeRotulos([cel('ARCOR'), cel('69,2%'), cel('▲ 17.449.303')], 2), false)
+  // Y el tramo se corta en la celda vacía: un número de OTRA tabla, sesenta columnas más allá, no
+  // convierte el encabezado de ésta en una fila de datos (era la fila 4 entera de "Cobranzas").
+  assert.equal(esFilaDeRotulos([cel('Concepto'), cel('Monto'), null, cel('$300.588.858')], 1), true)
 })
