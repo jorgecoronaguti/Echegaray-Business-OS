@@ -982,3 +982,71 @@ test('con el mapa vacío —el estado de "Proveedores" hoy— la huella devuelve
   }
   assert.deepEqual(r.grid, generado, 'la primera corrida modifica la grilla: sin mapa no puede probar nada sobre ninguna celda')
 })
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL BARRIDO DE COLA CRUZA EL CINTURÓN PORQUE MARCA LO QUE PROBÓ, NO PORQUE EL CINTURÓN AFLOJE
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// EL DEFECTO. El cinturón "vacío sobre lleno" se endureció para releer el FOOTPRINT en vez del ancla.
+// Correcto —el ancla no es el rango— y deja este barrido estructuralmente bloqueado: `colaCruda` se
+// lee desde `filaFin+1` y la API trunca las filas vacías del final, así que el footprint contiene POR
+// DEFINICIÓN todo lo que el barrido vino a sacar. Medido sobre la cola real: `PROTEGIDO`, 5 celdas que
+// `no-borrar` sí habría vaciado, entre ellas "456 comprobantes" y "$179.091.614" — $52,1M de
+// contradicción contra el bloque vivo. Venía pasando GRACIAS al bug: su ancla es el separador vacío.
+//
+// Este test corre el cinturón Y `no-borrar` de verdad, encadenados como en producción. Nada de grep
+// sobre el fuente: el único control que cubría el barrido verificaba que la palabra `vaciarPropio:`
+// estuviera escrita, que es cierto tanto si barre como si no.
+const COLA_REAL = [
+  ['5 · LA LIBRETA'],                                  // rótulo mío de un layout anterior
+  ['Una nota que escribió el dueño acá abajo'],        // NO es mía: se conserva
+  ['456 comprobantes', '$179.091.614'],                // el fósil que contradice al bloque vivo
+]
+
+test('EL DEFECTO · el barrido de cola no puede quedar bloqueado por el cinturón', async () => {
+  const { gridVacia, protegerVacioSobreLleno } = await import('../lib/guarda-escritura.mjs')
+  const { residuosPropios } = await import('../lib/residuo-propio.mjs')
+  const { protegerBorrado, MIA_PROBADA } = await import('../lib/no-borrar.mjs')
+  // Lo que el generador registró como suyo. La nota del dueño NO está.
+  const mios = new Set(['5 · LA LIBRETA', '456 comprobantes'])
+
+  // ── (1) LO QUE HACÍA ANTES: una grilla toda vacía. El cinturón la frena, y con razón.
+  const vaciaPelada = COLA_REAL.map(() => ['', ''])
+  assert.equal(gridVacia(vaciaPelada), true, 'una grilla de "" es una grilla vacía para el cinturón')
+  const cliente = { readSheetValues: async () => COLA_REAL }
+  const antes = await protegerVacioSobreLleno(cliente, 'F', [{ range: "'Proveedores'!A200", values: vaciaPelada }])
+  assert.equal(antes.data.length, 0, 'el barrido viejo no escribe nada: el cinturón lo protege entero')
+  assert.match(antes.protegidos[0].motivo, /destino con contenido/)
+
+  // ── (2) LO QUE HACE AHORA: marca con MIA_PROBADA lo que `residuosPropios` probó suyo.
+  const { vaciables } = residuosPropios(COLA_REAL, mios)
+  const marcada = COLA_REAL.map((_, i) => Array.from({ length: 2 },
+    (_, j) => (vaciables.has(`${i}:${j}`) ? MIA_PROBADA : '')))
+  assert.equal(gridVacia(marcada), false,
+    'la grilla marcada sigue siendo "vacía" para el cinturón: el barrido queda bloqueado igual')
+  const despues = await protegerVacioSobreLleno(cliente, 'F', [{ range: "'Proveedores'!A200", values: marcada }])
+  assert.equal(despues.data.length, 1, 'con el centinela, el barrido cruza el cinturón SIN tocar el cinturón')
+
+  // ── (3) Y `no-borrar` sigue decidiendo celda por celda: limpia lo mío, conserva lo del dueño.
+  const r = await protegerBorrado(cliente, 'F', despues.data, { vaciarPropio: { mios: [...mios], tope: 400 } })
+  const quedo = r.data[0].values
+  assert.equal(quedo[0][0], '', 'mi rótulo de un layout anterior se limpia')
+  assert.equal(quedo[2][0], '', 'el fósil que contradice al bloque vivo se limpia')
+  assert.equal(quedo[1][0], 'Una nota que escribió el dueño acá abajo', 'la nota del dueño se CONSERVA')
+})
+
+// Y el generador tiene que MIRAR el retorno: si una guarda frenó el barrido, decirlo con su motivo.
+// "log que felicita sin haber escrito" es un patrón que este repo ya pagó.
+test('EL DEFECTO · el generador no canta 🧹 cuando el barrido salió protegido', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  const i = src.indexOf('const rCola = await google.batchUpdateValues(')
+  assert.ok(i > 0, 'el barrido de cola no guarda el retorno de la escritura: no puede saber si escribió')
+  // SIN COMENTARIOS: el porqué de este arreglo NOMBRA al 🧹 y a `protegido`, así que un match sobre el
+  // fuente crudo se mide contra su propia explicación. Se juzga el código.
+  const tramo = src.slice(i, i + 1600).split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n')
+  assert.match(tramo, /rCola\?\.protegido/, 'no se mira si la guarda frenó el barrido')
+  assert.match(tramo, /rCola\.motivo/, 'se dice que quedó protegido pero no por qué')
+  // El 🧹 tiene que estar del lado del else, nunca antes del chequeo.
+  assert.ok(tramo.indexOf('rCola?.protegido') < tramo.indexOf('🧹'),
+    'el 🧹 se imprime antes de mirar el retorno: felicita sin haber escrito')
+})

@@ -296,10 +296,36 @@ export function aplicarHuella(generado = [], actual = [], huellas = new Map(), o
   // el contenido de hoy. Mezclarlos haría que el log dijera "la limpio" sobre una celda que quedó con
   // una fórmula — y el log es la única forma que tiene el dueño de auditar qué decidí sobre su celda.
   const reescritos = []
-  const vacio = { grid: generado, suprimidas, ajenas, residuos, limpiadas, editadas, reescritos, desocupadas, alineacion }
+  // Las celdas que el veredicto POR FORMA decide no reponer. Se cuentan aparte de `suprimidas` a
+  // propósito: ver abajo. Nunca llegan a la base.
+  const noRepuestas = []
+  const vacio = { grid: generado, suprimidas, ajenas, residuos, limpiadas, editadas, reescritos, desocupadas, noRepuestas, alineacion }
   if (!alineacion.alineada) {
+    // ═══ DECLARARSE DESALINEADO Y CONCLUIR "ESTO LO BORRASTE VOS" SON INCOMPATIBLES (15/08/2026) ═══
+    //
+    // EL DEFECTO, medido: la primera corrida de "Proveedores" con la huella enchufada dejó 27 celdas
+    // marcadas `borrada_en`. Se revisaron una por una y las 27 son del generador —`=SUMPRODUCT((
+    // _ARCA_RAW!…))` en C120:C135, `=SUM($F$#:$F$#)` en B144, y rótulos propios como "Comprobantes de
+    // compra (neto de notas)" o "· ▲ sin cargar en Compras"—. Ni una del dueño. Se verificó además que
+    // antes de esa corrida la pestaña no tenía UNA sola marca: las 27 nacieron ahí.
+    //
+    // Y la marca es PERMANENTE: `borrada_en` sólo se limpia si la celda vuelve a tener contenido, y el
+    // generador dejó de escribirla justamente porque la marca dice que no lo haga. Un lazo cerrado.
+    //
+    // LA CAUSA es este camino. `noReponerAusentes` juzga POR FORMA: "esta forma mía no está en ninguna
+    // parte de la pestaña". Cuando el mapa alinea, eso es evidencia de un borrado. Cuando NO alinea
+    // —que es exactamente cuando se llama acá— la ausencia de una forma tiene por lo menos tres
+    // explicaciones: la borró el dueño, la pisó otro escritor de la misma pestaña, o el generador dejó
+    // de producirla. Sólo la primera justifica una marca permanente, y no se puede distinguir. Es la
+    // segunda vez que este OS concluye un borrado que nadie hizo (la primera: los 74 rótulos de la
+    // Regla 0).
+    //
+    // LO QUE SE CONSERVA Y LO QUE NO. La GRILLA sigue igual: la celda cuya forma desapareció va en
+    // `''`, que `fusionar()` lee como "no es mi celda" y NO repone nada. La protección real —lo que el
+    // dueño vació no vuelve— vive ahí y no se toca. Lo único que se retira es el REGISTRO, que es la
+    // parte irreversible. Falla del lado seguro: no reponer es reversible, marcar borrado no lo es.
     const porForma = noReponerAusentes(generado, actual, huellas, { fila0, col0 })
-    suprimidas.push(...porForma.suprimidas)
+    noRepuestas.push(...porForma.suprimidas)
     return { ...vacio, grid: porForma.grid, alineacion: { ...alineacion, porForma: porForma.motivo } }
   }
   const mias = formasDeTextoPropio(generado)
@@ -652,6 +678,11 @@ export async function conHuellaDeCelda(fileId, pestana, generado, actual, opts =
 export function explicarHuella(pestana, h, log = console.log) {
   for (const s of h.suprimidas.slice(0, 12)) log(`  🚫 vos vaciaste la celda ${letraCol(s.col)}${s.filaHoy ?? s.fila}: no vuelvo a escribir "${s.mio}"`)
   if (h.suprimidas.length > 12) log(`      … y ${h.suprimidas.length - 12} celdas más que vaciaste`)
+  // SIN MAPA NO SE AFIRMA UN BORRADO. Estas celdas no se reponen —lo que haya ahí se conserva— pero
+  // no se registra que las hayas borrado vos: sin alineación no se puede saber si las vaciaste, si las
+  // pisó otro escritor de la pestaña o si dejé de producirlas. El log dice lo que hizo, no más.
+  for (const n of (h.noRepuestas ?? []).slice(0, 6)) log(`  ○ ${letraCol(n.col)}${n.fila}: mi "${n.mio}" no está en ninguna parte de la pestaña y no tengo mapa — no la repongo y no afirmo que la hayas borrado`)
+  if ((h.noRepuestas?.length ?? 0) > 6) log(`      … y ${h.noRepuestas.length - 6} celdas más que no repongo sin afirmar nada`)
   for (const a of h.ajenas.slice(0, 6)) log(`  ✋ ${letraCol(a.col)}${a.fila} nunca fue mía y tiene algo tuyo ("${a.suyo}"): no la piso`)
   for (const e of (h.editadas ?? []).slice(0, 6)) log(`  ✋ ${letraCol(e.col)}${e.fila} la escribí yo y hoy dice otra cosa ("${e.suyo}"): la editaste vos, la respeto`)
   // El residuo se limpia por DOS pruebas distintas (un texto mío, o una fórmula mía en la misma
@@ -718,6 +749,6 @@ export async function conHuellaFueraDelPorton(fileId, pestana, generado, actual,
     // Ni la base ni la huella pueden tumbar una escritura: sin veredicto, se escribe como siempre.
     // Se dice fuerte porque el costo de esta corrida es real — un borrado del dueño puede volver.
     console.warn(`  ⚠ huella por celda inactiva en "${pestana}" (${e.message}) — un borrado tuyo podría volver`)
-    return { grid: devolver(generado), suprimidas: [], ajenas: [], residuos: [], limpiadas: [], editadas: [], reescritos: [], desocupadas: [], alineacion: { alineada: false, motivo: e.message }, guardar: async () => {} }
+    return { grid: devolver(generado), suprimidas: [], ajenas: [], residuos: [], limpiadas: [], editadas: [], reescritos: [], desocupadas: [], noRepuestas: [], alineacion: { alineada: false, motivo: e.message }, guardar: async () => {} }
   }
 }

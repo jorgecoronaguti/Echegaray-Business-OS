@@ -79,6 +79,8 @@ import { partir, mapaDeFilas, filasHuerfanas, referenciasFuera, ref as refPestan
 import { anchosSegunContenido } from '../lib/nota-celda.mjs'
 import { fusionar, sobrantes, VACIO, estructural } from '../lib/preservar-anotaciones.mjs'
 import { conHuellaFueraDelPorton } from '../lib/huella-celda.mjs'
+import { residuosPropios } from '../lib/residuo-propio.mjs'
+import { MIA_PROBADA } from '../lib/no-borrar.mjs'
 import { obrasConMateriales } from '../lib/obras-con-materiales.mjs'
 import { sumaNetaSheet } from '../lib/costo-materiales.mjs'
 import { bloqueMaterialesPorObra } from '../lib/materiales-por-obra.mjs'
@@ -1927,12 +1929,49 @@ async function main() {
       ID, `${refPestana(t.titulo)}!A${filaFin + 1}:${letra(anchoLeer - 1)}${filaFin + MAX_COLA}`,
     ).catch(() => [])
     if (colaCruda.length) {
-      const vacias = colaCruda.map(() => Array.from({ length: anchoP }, () => ''))
-      await google.batchUpdateValues(
+      // ═══ EL BARRIDO MANDABA UNA GRILLA TODA VACÍA, Y ESO YA NO PASA EL CINTURÓN (15/08/2026) ═══
+      //
+      // El cinturón "vacío sobre lleno" se endureció para releer el FOOTPRINT en vez del ancla —el
+      // mismo defecto que este día encontró tres veces: el ancla no es el rango—. Correcto, y deja a
+      // este barrido estructuralmente bloqueado: `colaCruda` se lee desde `filaFin+1` y la API trunca
+      // las filas vacías del final, así que el footprint que ahora se relee CONTIENE, por definición,
+      // todo lo que el barrido vino a sacar. Medido con un cliente falso sobre la cola real:
+      // `PROTEGIDO — el barrido no escribe nada`, con 5 celdas que `no-borrar` sí habría vaciado
+      // (entre ellas "456 comprobantes" y "$179.091.614", $52,1M de contradicción contra el bloque
+      // vivo). Venía funcionando GRACIAS al bug: su ancla, A200, es el separador en blanco.
+      //
+      // LA SALIDA ES EL TERCER ESTADO QUE YA EXISTE, no aflojar el cinturón ni pasar por `--force`
+      // (que saltea el cinturón entero vía `yaGuardado` y es un límite operativo del dueño, no una
+      // herramienta de este barrido). `MIA_PROBADA` significa "es mía y va vacía" y `preservarNoVacias`
+      // lo limpia de verdad; una grilla que lo lleva NO es una grilla vacía, así que cruza el cinturón
+      // sin tocarlo y la decisión celda por celda la sigue tomando `no-borrar`.
+      //
+      // Y LA PRUEBA SE PUEDE HACER ACÁ: `residuosPropios` es un núcleo PURO que toma la relectura del
+      // destino y el registro de rótulos, y este barrido ya tiene los dos —`colaCruda` es su propia
+      // relectura—. No hace falta esperar a `protegerBorrado` para saber qué es mío.
+      //
+      // LO QUE SE PIERDE, dicho: al marcar acá, esas celdas se deciden contra MI lectura y no contra la
+      // que `protegerBorrado` hace un instante después. La ventana son milisegundos dentro de la misma
+      // llamada, y `vaciarPropio` sigue viajando para que la guarda aplique su propio criterio a todo
+      // lo demás. La alternativa era un barrido muerto el 100% de las veces que importa.
+      const { vaciables, conservadas } = residuosPropios(colaCruda, new Set(mios))
+      const vacias = colaCruda.map((_, i) => Array.from({ length: anchoP },
+        (_, j) => (vaciables.has(`${i}:${j}`) ? MIA_PROBADA : '')))
+      const rCola = await google.batchUpdateValues(
         ID, [{ range: `${refPestana(t.titulo)}!A${filaFin + 1}`, values: vacias }],
         { yaGuardado: FORCE, vaciarPropio: { mios, tope: TOPE_RESIDUO } },
       )
-      console.log(`  🧹 ${t.titulo}: reviso la cola (filas ${filaFin + 1}–${filaFin + colaCruda.length}) — se vacía sólo lo que se prueba mío`)
+      // ═══ Y SE MIRA EL RETORNO, QUE ES LO QUE NO SE HACÍA ═══
+      // Esta línea imprimía el 🧹 pasara lo que pasara. Con el cinturón nuevo habría sido falsa el
+      // 100% de las veces que importa: "log que felicita sin haber escrito", el patrón que este repo
+      // ya pagó. Lo que prueba una escritura es lo que devolvió, no la intención de haberla hecho.
+      if (rCola?.protegido) {
+        console.warn(`  ⛔ ${t.titulo}: el barrido de cola (filas ${filaFin + 1}–${filaFin + colaCruda.length}) NO escribió nada `
+          + `— ${rCola.motivo ?? 'una guarda lo frenó'}. El residuo de un layout anterior sigue publicado.`)
+      } else {
+        console.log(`  🧹 ${t.titulo}: reviso la cola (filas ${filaFin + 1}–${filaFin + colaCruda.length}) — `
+          + `${vaciables.size} celda(s) probadas mías${conservadas.length ? `, ${conservadas.length} conservada(s) sin prueba` : ''}`)
+      }
     }
     await sellarFirma(google, ID, t.titulo, refPestana(t.titulo))
     await guardarRegistro(ID, t.titulo, cuadroFinal, ediciones, visible, candidatos)
