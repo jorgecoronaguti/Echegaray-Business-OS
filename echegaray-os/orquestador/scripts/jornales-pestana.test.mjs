@@ -1579,3 +1579,74 @@ test('la medida ve el texto ADENTRO de la fórmula — si no, el párrafo vuelve
   // Y una máscara de formato larga NO es una glosa: sin el filtro, `TEXT(x;"#,##0")` daría falso rojo.
   assert.deepEqual(glosasLargas([['t'], ['sub'], [`=TEXT(A1;"${'#,##0'.repeat(20)}")`]]), [])
 })
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL PEDIDO DEL 03/08, QUE ESTUVO CUATRO MESES SIN EJECUTAR
+//
+// *"el valor q me mostras de la quincena es el estimado, quiero ese y el real"*.
+//
+// Lo que hacía imposible contestarlo hasta el 14/08 es que el único origen del número era JORNALES:
+// "estimado" y "real" eran la misma celda leída dos veces. Ahora el extracto del Santander prueba la
+// mitad bancaria, y estos controles existen para que ese real NO pueda volver a salir de la planilla.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+/** La columna del cuadro de contraste buscada por su rótulo — nunca por su letra. */
+const colC = (rotulo) => {
+  const i = gm.contraste.cols.indexOf(rotulo)
+  assert.ok(i >= 0, `el cuadro de contraste perdió la columna "${rotulo}"`)
+  return i
+}
+
+test('REAL 1 · el cuadro publica el estimado, el real y la diferencia de la misma quincena', () => {
+  const enc = gm.filas[gm.contraste.fCols - 1]
+  assert.deepEqual(enc.slice(0, gm.contraste.cols.length), gm.contraste.cols)
+  // El ancho tiene que ser el del hero: dos anchos de grilla en la pestaña es lo que el auditor de
+  // patrón marca como `anchos-mezclados` y el dueño ve corrido.
+  assert.equal(gm.contraste.cols.length, COLS_PAGO.length)
+  for (const f of [gm.contraste.f0, gm.contraste.fFin]) {
+    for (const rotulo of ['Estimado', 'Diferencia', 'Δ %']) {
+      assert.match(String(gm.filas[f - 1][colC(rotulo)]), /^=/, `fila ${f}: «${rotulo}» no es una fórmula viva`)
+    }
+  }
+})
+
+test('REAL 2 · el real sale del BANCO y el estimado CITA el cuadro de pago: nunca se recalcula', () => {
+  const real = String(gm.filas[gm.contraste.f0 - 1][colC('Real')])
+  // Si el real volviera a leer el espejo de jornales, el control se estaría validando contra la misma
+  // información que produce y daría cero de diferencia para siempre.
+  assert.match(real, /'_BANCO_RAW'/, 'el real de la fila de banco no sale del extracto')
+  assert.doesNotMatch(real, /_J_OBREROS|_J_OFICINA/, 'el real volvió a salir de la planilla')
+  // Y el estimado no recalcula nada: cita la fila de obra del cuadro de arriba. Recalcularlo dejaría
+  // dos versiones del mismo número en la misma pantalla.
+  const est = String(gm.filas[gm.contraste.f0 - 1][colC('Estimado')])
+  assert.match(est, new RegExp(`^=[A-H]${gm.hero.f0}$`), `el estimado no cita el cuadro de pago: ${est}`)
+})
+
+test('REAL 3 · el efectivo NO se estima: se declara el límite en la celda', () => {
+  const fila = gm.filas[gm.contraste.f0]
+  // La fila del efectivo trae su estimado (lo que hay que juntar en billetes) y NINGÚN real: la
+  // columna «Total recibo» de JORNALES es TOTAL−ADELANTO−BANCO, un residuo de la misma planilla.
+  assert.match(String(fila[colC('Estimado')]), /^=/)
+  assert.equal(String(fila[colC('Real')]), '—')
+  assert.match(String(fila[colC('De dónde sale el real')]), /residuo de la misma planilla/)
+})
+
+test('REAL 4 · el total se publica DECLARADO como inferencia, no como un hecho', () => {
+  const fila = gm.filas[gm.contraste.fFin - 1]
+  assert.match(String(fila[colC('Real')]), /^=IF\(N\(E\d+\)=0;"";E\d+\*2\)$/, 'el total inferido no es banco × 2')
+  assert.match(String(fila[colC('De dónde sale el real')]), /^INFERIDO/)
+  // Y el rótulo dice que no es la suma de las dos filas de arriba: ésas reparten el NETO y ésta es el
+  // TOTAL, que incluye lo ya adelantado. Sin decirlo, el cuadro parece no cerrar.
+  assert.match(String(fila[0]), /antes del adelanto/)
+})
+
+test('REAL 5 · el aviso del umbral se mide sobre el banco, que es la única fila con prueba', () => {
+  const aviso = String(gm.filas[gm.contraste.aviso - 1][0])
+  const fB = gm.contraste.f0
+  const est = String.fromCharCode(65 + colC('Estimado'))
+  const dif = String.fromCharCode(65 + colC('Diferencia'))
+  assert.ok(aviso.includes(`${est}${fB}`) && aviso.includes(`${dif}${fB}`), `el aviso no mira la fila del banco: ${aviso}`)
+  // No puede mirar la fila del total: ahí el real es una inferencia, y un aviso disparado por una
+  // inferencia no es un control.
+  assert.doesNotMatch(aviso, new RegExp(`[A-H]${gm.contraste.fFin}\\b`), 'el aviso se dispara sobre el total inferido')
+})
