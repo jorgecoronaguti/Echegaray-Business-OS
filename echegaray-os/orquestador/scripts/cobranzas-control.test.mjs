@@ -7,7 +7,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { marcaPorFila } from './cobranzas-control.mjs'
+import { marcaPorFila, bloque, MARCA_ALERTA_RESPALDO } from './cobranzas-control.mjs'
+import { textoDeRespaldo } from '../lib/cobranzas-respaldo-banco.mjs'
+import { ALERTA } from '../lib/glifos.mjs'
 import { CONTROLES, decisionesDe } from '../lib/decisiones-hallazgos.mjs'
 import { esCobroYaRevisado } from '../lib/cobranzas-duplicado.mjs'
 
@@ -76,4 +78,31 @@ test('la fórmula que va al Sheet sale del registro REAL: hoy libera la fila 39 
 test('importar este script NO corre la pestaña: la guarda de comando está puesta', () => {
   const src = readFileSync(new URL('./cobranzas-control.mjs', import.meta.url), 'utf8')
   assert.match(src, /if \(import\.meta\.url === `file:\/\/\$\{process\.argv\[1\]\}`\) \{/)
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL AVISO DE DEVENGADO DISFRAZADO DE PERCIBIDO, EN LA PESTAÑA
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('el contador del bloque compara contra el MISMO texto que escribe la columna BB', () => {
+  // Si el rótulo de la marca y la fórmula que la cuenta se escriben por separado, el día que se mejore
+  // la redacción el contador pasa a dar $0 — sin un solo error, con el aviso igual de visible en las
+  // filas. Es el mismo defecto que hizo que los conteos se mostraran como "$4": un texto leído a mano.
+  const escrito = textoDeRespaldo({ estado: 'sinRespaldo' }, { alerta: ALERTA, fechaCorte: '2026-08-14' })
+  assert.ok(escrito.startsWith(MARCA_ALERTA_RESPALDO), 'la marca es el prefijo real de lo que se escribe')
+  const linea = bloque().find(([rot]) => rot.includes('Cobrado que el extracto NO confirma'))
+  assert.ok(linea, 'el bloque de control tiene la línea')
+  assert.ok(linea[1].includes(MARCA_ALERTA_RESPALDO), 'y su fórmula compara contra esa misma marca')
+  assert.ok(linea[1].includes(`LEFT($BB$5:$BB$200;${MARCA_ALERTA_RESPALDO.length})`),
+    'contando los caracteres de la marca, no un número tipeado')
+  // La fórmula sale de la columna BB, no de un número calculado por el script: se recalcula sola.
+  assert.ok(!/\d{4,}/.test(linea[1].replace(/\$?[A-Z]+\$?\d+/g, '')), 'ningún importe pegado adentro de la fórmula')
+})
+
+test('el aviso NO se escribe para lo que el extracto no puede juzgar', () => {
+  for (const estado of ['fueraDeCorte', 'anteriorAlExtracto', 'noPasaPorLaCuenta', 'noComparable']) {
+    const t = textoDeRespaldo({ estado }, { alerta: ALERTA, fechaCorte: '2026-08-14' })
+    assert.ok(!t.startsWith(MARCA_ALERTA_RESPALDO), `"${estado}" no puede llevar la marca de sin respaldo`)
+    assert.ok(t.length > 0, `"${estado}" igual dice algo: una celda vacía no explica nada`)
+  }
 })

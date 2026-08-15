@@ -99,6 +99,26 @@ export function normalizarMoneda(valor) {
 export const COL_MONEDA_COBRANZAS = 'AA'
 
 /**
+ * LA FORMA DE COBRO, TRADUCIDA AL INSTRUMENTO. PURA.
+ *
+ * Vive en el contrato de la pestaña —y no en el extractor del Libro, donde nació— desde el 15/08:
+ * ahora la usan tres lugares (el Libro para clasificar el movimiento, el cruce de endosos para saber
+ * qué se puede endosar, y el respaldo bancario para saber qué cobro DEBERÍA aparecer en la cuenta).
+ * Escrita tres veces, la copia que se olvide del "eCheq" clasifica un echeq como cheque y el cruce
+ * empieza a buscar en la lista equivocada.
+ *
+ * "eCheq" contiene "cheque": el orden de las condiciones es el que decide, no un adorno.
+ */
+export function instrumentoDeCobro(forma) {
+  const f = String(forma ?? '').trim().toLowerCase()
+  if (/echeq/.test(f)) return 'echeq'
+  if (/cheque/.test(f)) return 'cheque'
+  if (/efectivo/.test(f)) return 'efectivo'
+  if (/transfer/.test(f)) return 'transferencia'
+  return 'desconocido'
+}
+
+/**
  * UN IMPORTE DE COBRANZAS, VALUADO EN LA MONEDA DEL LIBRO (PESOS).
  *
  * ES LA MISMA DECISIÓN QUE `sumaConUSD`, DEL OTRO LADO. Aquella compone el texto de la fórmula para

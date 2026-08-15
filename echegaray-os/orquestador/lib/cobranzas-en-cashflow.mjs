@@ -15,17 +15,25 @@
 // LOS RÓTULOS DEL CUADRO SE IMPORTAN DE QUIEN LOS ESCRIBE. Transcriptos acá, el día que cambie uno
 // este control seguiría buscando el texto viejo y volvería a no encontrar nada — que es la forma en
 // que ya falló, sólo que con números de fila en vez de con textos.
-import { CONCEPTOS, ROTULO_CONCEPTO } from './cash-flow-matriz.mjs'
+import { ROTULO_CONCEPTO } from './cash-flow-matriz.mjs'
 import { rotuloSub } from './cash-flow-rubros.mjs'
+// EL LADO —real o proyectado— ES UN CONCEPTO PROPIO Y VIVE EN SU ARCHIVO. Acá se usa; allá se define
+// contra las MEDIDAS de la matriz, que son las que deciden qué línea suma qué estado.
+import {
+  LADOS, LADO_POR_ROTULO, ROTULOS_INGRESO, parLados, totalDeLados, ladoDeCobro, veredictoDelLado, culpables,
+} from './cobranzas-lado.mjs'
+import { esCobrado, esPendiente } from './cobranzas-repaso.mjs'
+import { cruzarConElBanco } from './cobranzas-respaldo-banco.mjs'
 // LA VALUACIÓN ES LA MISMA FUNCIÓN QUE USA EL EXTRACTOR DEL LIBRO, importada y no copiada. Los dos
 // lados de esta comparación tienen que hablar la misma moneda o el control mide su propia diferencia
 // de criterio en vez de medir el dato (ver el bloque de la fila 62 más abajo).
-import { valuarEnPesos, COL_MONEDA_COBRANZAS } from './cobranzas-contrato.mjs'
+import { valuarEnPesos, COL_MONEDA_COBRANZAS, instrumentoDeCobro } from './cobranzas-contrato.mjs'
 import { colIndex } from './rubro-caja.mjs'
 
-/** Los dos conceptos que contienen cobranzas: lo ya cobrado y lo esperado. */
-export const ROTULOS_INGRESO = ['ingresoReal', 'ingresoProyectado']
-  .map((clave) => CONCEPTOS.find((c) => c.clave === clave).rotulo)
+// Los dos conceptos que contienen cobranzas —lo ya cobrado y lo esperado— y los dos predicados que
+// parten el universo, re-exportados para que ningún llamador tenga que saber que se mudaron.
+export { ROTULOS_INGRESO, LADOS } from './cobranzas-lado.mjs'
+export { esCobrado, esPendiente, repasar, porMes } from './cobranzas-repaso.mjs'
 
 /** La sub-línea del rubro Cobranzas, tal como la escribe la matriz ("· Cobranzas"). */
 export const SUB_COBRANZAS = rotuloSub('Cobranzas').trim()
@@ -99,7 +107,7 @@ export function leerCobro(fila, nro, { tipoCambio = null } = {}) {
   const fechaCobro = aFecha(num(C.fechaCobro))
   const f = fechaCobro ?? aFecha(num(C.fechaVenta))
   const val = valuarEnPesos(bruto, fila[C.moneda]?.valor, tipoCambio)
-  return {
+  const cobro = {
     fila: nro,
     // `monto` habla SIEMPRE en pesos —es lo que se compara contra el cuadro—; `montoOrigen` y
     // `moneda` guardan de dónde salió, para poder desmentir el número sin volver al Sheet.
@@ -113,101 +121,26 @@ export function leerCobro(fila, nro, { tipoCambio = null } = {}) {
     estado: txt(C.estado),
     fecha: f,
     fechaCobro,
+    // EL SERIAL CRUDO, ADEMÁS DEL Date. El extracto (`_BANCO_RAW`) habla en seriales de Sheets, y
+    // convertir de un lado y del otro sería tener dos criterios de huso para el mismo día: un cobro
+    // del 1° a las 00:00 UTC puede ser el 31 en otra conversión. Se compara serial contra serial.
+    serialCobro: num(C.fechaCobro),
     fechaVenta: aFecha(num(C.fechaVenta)),
     mes: fechaCobro ? mesDe(fechaCobro) : null,
     comprobante: txt(C.comprobante),
     concepto: txt(C.concepto),
     forma: txt(C.forma),
+    // El instrumento decide si este cobro TIENE que aparecer en el extracto (ver
+    // `deberiaEstarEnElBanco`). La traducción es la del contrato de la pestaña, no una copia.
+    instrumento: instrumentoDeCobro(txt(C.forma)),
     endosado: txt(C.banco).toUpperCase().startsWith(MARCA_ENDOSADO),
+    // El texto crudo de "Valor banco" viaja con el cobro: es lo que permite decir, sin volver al
+    // Sheet, si este "Cobrado" tiene respaldo del extracto o sólo la palabra de la pestaña.
+    valorBanco: txt(C.banco),
   }
-}
-
-/** La condición exacta con la que el cuadro cuenta un cobro como YA COBRADO (fila 6). */
-export const esCobrado = (c) => String(c.estado).toLowerCase() === 'cobrado'
-/** Y la de la línea de esperadas (fila 10): ni cobrado ni endosado. */
-export const esPendiente = (c) => !esCobrado(c) && String(c.estado).toLowerCase() !== 'endosado' && !c.endosado
-
-const primeroDelMes = (d) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1))
-
-/**
- * NÚCLEO PURO: el repaso de Cobranzas que pidió el dueño — "repasar todo cobranzas e ir viendo el
- * tema de caja a fin de cada semana y mes".
- *
- * LOS CUATRO HUECOS QUE BUSCA, Y POR QUÉ CADA UNO ES PLATA QUE EL CUADRO NO MUESTRA:
- *
- *   sinFecha — un pendiente sin fecha de cobro NI de venta no cae en ninguna columna. No aparece en
- *     ninguna semana ni en ningún mes: es invisible para el cuadro y para la decisión.
- *
- *   invisiblesAlCuadro — EL HUECO CARO Y SILENCIOSO. La línea de esperadas lleva el corte
- *     `(col >= EOMONTH(TODAY();-1)+1)` para no inflar un mes ya cerrado con un cobro que no entró, y
- *     eso está bien. Pero el efecto es que un pendiente FECHADO ANTES del mes en curso desaparece de
- *     las dos líneas: no es cobrado (no entró) y su columna está apagada. La empresa sigue esperando
- *     esa plata y el cuadro no la muestra en ningún lado. NO se corrige acá: dónde debe reaparecer
- *     —el mes en curso, una línea de vencidos, o nada hasta renegociar la fecha— es una decisión del
- *     dueño con efecto económico. Acá se mide y se declara.
- *
- *   vencidos — pendientes con fecha pasada que siguen pendientes. Incluye a los invisibles y además
- *     a los del mes en curso, que el cuadro sí muestra pero como si fueran a entrar.
- *
- *   cobradosAFuturo — marcados "Cobrado" con fecha de cobro POSTERIOR a hoy. El cash flow es
- *     percibido: no se puede haber cobrado algo que se cobra la semana que viene. O la fecha está
- *     mal, o el estado se adelantó; en cualquier caso el mes de ese cobro está afirmando un hecho
- *     que todavía no ocurrió.
- *
- * @param {Array<object>} cobros salida de leerCobro
- * @param {{hoy: Date|string|number}} opciones
- */
-export function repasar(cobros = [], { hoy } = {}) {
-  const h = new Date(hoy)
-  const inicioMes = primeroDelMes(h)
-  const pendientes = cobros.filter(esPendiente)
-  const sinFecha = pendientes.filter((c) => !c.fecha)
-  const conFecha = pendientes.filter((c) => c.fecha)
-  const suma = (l) => l.reduce((s, c) => s + c.monto, 0)
-  return {
-    total: cobros.length,
-    montoTotal: suma(cobros),
-    cobrados: cobros.filter(esCobrado).length,
-    pendientes: pendientes.length,
-    montoPendiente: suma(pendientes),
-    sinFecha,
-    vencidos: conFecha.filter((c) => c.fecha < h).sort((a, b) => a.fecha - b.fecha),
-    invisiblesAlCuadro: conFecha.filter((c) => c.fecha < inicioMes).sort((a, b) => a.fecha - b.fecha),
-    cobradosAFuturo: cobros.filter((c) => esCobrado(c) && c.fechaCobro && c.fechaCobro > h),
-    montos: {
-      sinFecha: suma(sinFecha),
-      vencidos: suma(conFecha.filter((c) => c.fecha < h)),
-      invisiblesAlCuadro: suma(conFecha.filter((c) => c.fecha < inicioMes)),
-      cobradosAFuturo: suma(cobros.filter((c) => esCobrado(c) && c.fechaCobro && c.fechaCobro > h)),
-    },
-  }
-}
-
-/**
- * NÚCLEO PURO: reconstruye, mes por mes, las DOS líneas de ingreso del cuadro desde Cobranzas.
- *
- * Es la contraprueba de la fila 6 y la fila 10 hecha en JavaScript con la misma regla de la fórmula,
- * para poder contestar "¿la línea de cobranzas de este mes se puede reconstruir?" sin preguntarle al
- * cuadro. Un control validado contra la misma fórmula que produce el número no es un control.
- *
- * @param {Array<object>} cobros · @param {{hoy: Date|string|number}} opciones
- * @returns {Map<string,{cobrado:number, esperado:number}>} clave AAAA-MM
- */
-export function porMes(cobros = [], { hoy } = {}) {
-  const corte = primeroDelMes(new Date(hoy))
-  const acc = new Map()
-  for (const c of cobros) {
-    // `mes` y `fechaCobro`, no `fecha`: el mes de imputación es el de la fecha de cobro y sólo ése
-    // (ver `leerCobro`). Un cobro que sólo tiene Fecha de Venta no cae en ninguna columna acá, igual
-    // que no produce movimiento en el libro.
-    if (!c.mes || c.endosado) continue
-    if (!acc.has(c.mes)) acc.set(c.mes, { cobrado: 0, esperado: 0 })
-    if (esCobrado(c)) acc.get(c.mes).cobrado += c.monto
-    // El corte de la fórmula: un esperado de un mes ya cerrado NO suma. Se replica tal cual para que
-    // la comparación mida el dato, no una diferencia de criterio inventada acá.
-    else if (esPendiente(c) && c.fechaCobro >= corte) acc.get(c.mes).esperado += c.monto
-  }
-  return acc
+  // El LADO se resuelve una vez, acá, y viaja con el cobro. Calculado en cada uso, la primera copia
+  // que se olvide de excluir el endosado inventa un ingreso — y el cuadre mediría ese olvido.
+  return { ...cobro, lado: ladoDeCobro(cobro, { esCobrado, esPendiente }) }
 }
 
 /**
@@ -301,12 +234,16 @@ export const DERIVA_TC = 0.005
  */
 export function clasificar(cobros = [], meses = []) {
   const huecos = { fueraDeVentana: [], endosados: [], sinUnidad: [], sinFecha: [], sinValuar: [], devoluciones: [] }
-  const cero = () => new Map(meses.map((m) => [m.mes, 0]))
+  // CADA ACUMULADOR ES UN PAR {real, proyectado}, NO UN NÚMERO. Ésta es la corrección entera: sumar
+  // los dos lados antes de comparar hace que una fila que cambia de lado no mueva el resultado.
+  const cero = () => new Map(meses.map((m) => [m.mes, parLados()]))
   // `ars` y `usd` parten lo COMPARABLE por moneda: los pesos se comparan al peso y los dólares por su
   // tipo de cambio implícito (ver `DERIVA_TC`). El nominal en dólares se guarda EN DÓLARES: valuarlo
   // acá volvería a meter la cotización de ahora dentro de la cuenta.
   const acum = { bruto: cero(), endosado: cero(), devolucion: cero(), ars: cero(), usd: cero() }
-  const sumar = (mapa, mes, v) => mapa.set(mes, mapa.get(mes) + v)
+  // El lado de un endosado o de una devolución es el que le tocaría por su estado: es del lado del
+  // que hay que restarlo. Sin lado (un estado que no es ni cobrado ni pendiente) no suma en ninguno.
+  const sumar = (mapa, mes, lado, v) => { if (lado) mapa.get(mes)[lado] += v }
 
   for (const c of cobros) {
     // EL ORDEN IMPORTA. `sinValuar` va primero: un dólar contado como peso no se arregla sabiendo en
@@ -319,41 +256,63 @@ export function clasificar(cobros = [], meses = []) {
       continue
     }
     if (!acum.bruto.has(c.mes)) { huecos.fueraDeVentana.push({ ...c, motivo: `su mes (${c.mes}) no es una columna del cuadro` }); continue }
-    if (c.endosado) { huecos.endosados.push({ ...c, motivo: 'el banco dice que se entregó a un tercero' }); sumar(acum.endosado, c.mes, c.monto) }
-    else if (c.monto < 0) { huecos.devoluciones.push({ ...c, motivo: 'cobro negativo: el libro lo emite como egreso' }); sumar(acum.devolucion, c.mes, c.monto) }
+    // UN ENDOSADO NO TIENE LADO —no entra por ninguna de las dos líneas— pero SÍ tiene que restarse
+    // del lado donde su estado lo habría puesto: es la resta que hace cerrar ese lado. Por eso el
+    // lado se recalcula acá ignorando la marca de endoso, en vez de usar `c.lado`, que es null.
+    const lado = c.lado ?? (esCobrado(c) ? 'real' : 'proyectado')
+    if (c.endosado) { huecos.endosados.push({ ...c, motivo: 'el banco dice que se entregó a un tercero' }); sumar(acum.endosado, c.mes, lado, c.monto) }
+    else if (c.monto < 0) { huecos.devoluciones.push({ ...c, motivo: 'cobro negativo: el libro lo emite como egreso' }); sumar(acum.devolucion, c.mes, lado, c.monto) }
     else {
       if (!c.unidad) huecos.sinUnidad.push({ ...c, motivo: 'la columna Unidad está vacía' })
-      sumar(c.moneda === 'USD' ? acum.usd : acum.ars, c.mes, c.moneda === 'USD' ? c.montoOrigen : c.monto)
+      sumar(c.moneda === 'USD' ? acum.usd : acum.ars, c.mes, lado, c.moneda === 'USD' ? c.montoOrigen : c.monto)
     }
-    sumar(acum.bruto, c.mes, c.monto)
+    sumar(acum.bruto, c.mes, lado, c.monto)
   }
   return { huecos, acum }
 }
 
 /**
- * NÚCLEO PURO: el veredicto de UN mes, con los números que lo sostienen.
+ * NÚCLEO PURO: el veredicto de UN mes — REAL contra REAL, PROYECTADO contra PROYECTADO, y el total.
+ *
+ * ═══ POR QUÉ EL TOTAL NO ALCANZA, Y POR QUÉ IGUAL SE CALCULA (15/08/2026) ═══
+ *
+ * El total es la suma de los dos lados: una fila que se mueve de real a proyectado no lo mueve ni un
+ * peso. Ése era el defecto — `✓ los 12 meses cierran` con la fila 44 del lado equivocado.
+ *
+ * Se sigue calculando porque contesta otra pregunta: si el total tampoco cierra, hay plata que
+ * aparece o desaparece, y eso no es un problema de reparto. El informe necesita poder distinguir
+ * "está mal ubicada" de "no está".
  *
  * Vive aparte de `auditar` porque es la aritmética que hay que poder leer sin el ruido de la
  * clasificación —y la que hay que poder testear con números escritos a mano, sin armar una grilla.
  *
  * @param {string} mes clave AAAA-MM
- * @param {object} n los acumulados del mes: `bruto` (todo, valuado), `endosado`, `devolucion`,
- *   `cashflow` (la línea del cuadro), `ars` y `usd` (lo COMPARABLE, partido por moneda; `usd` en
- *   dólares nominales), y el `tipoCambio` que declara el archivo.
+ * @param {object} n los acumulados del mes, cada uno un par `{real, proyectado}`: `bruto` (todo,
+ *   valuado), `endosado`, `devolucion`, `cashflow` (las dos líneas del cuadro), `ars` y `usd` (lo
+ *   COMPARABLE, partido por moneda; `usd` en dólares nominales), y el `tipoCambio` del archivo.
  */
 export function veredictoDelMes(mes, { bruto, endosado, devolucion, cashflow, ars, usd, tipoCambio }) {
-  // `cobranzas` es lo COMPARABLE: el bruto una vez descontado lo que el cuadro no tiene por qué
-  // mostrar. Los tres números viajan igual para que el informe pueda decir de dónde sale la resta.
-  const cobranzas = bruto - endosado - devolucion
-  const dif = cobranzas - cashflow
-  // EL TIPO DE CAMBIO IMPLÍCITO: lo que el cuadro pagó por cada dólar de este mes, una vez sacada la
-  // parte en pesos. Con dólares en el mes es el número que se juzga; sin dólares no existe y manda la
-  // igualdad al peso, que es el caso de once de los doce meses.
-  const tcImplicito = usd ? (cashflow - ars) / usd : null
-  const ok = usd
-    ? Boolean(tipoCambio) && Math.abs(tcImplicito - tipoCambio) <= tipoCambio * DERIVA_TC
-    : Math.abs(dif) < TOLERANCIA
-  return { mes, bruto, endosado, devolucion, cobranzas, cashflow, dif, ars, usd, tcImplicito, ok }
+  const opciones = { tolerancia: TOLERANCIA, deriva: DERIVA_TC }
+  const uno = (lado) => veredictoDelLado({
+    bruto: bruto[lado], endosado: endosado[lado], devolucion: devolucion[lado],
+    cashflow: cashflow[lado], ars: ars[lado], usd: usd[lado], tipoCambio,
+  }, opciones)
+  const lados = Object.fromEntries(LADOS.map((l) => [l, uno(l)]))
+  const total = veredictoDelLado({
+    bruto: totalDeLados(bruto), endosado: totalDeLados(endosado), devolucion: totalDeLados(devolucion),
+    cashflow: totalDeLados(cashflow), ars: totalDeLados(ars), usd: totalDeLados(usd), tipoCambio,
+  }, opciones)
+  return {
+    mes,
+    lados,
+    // `difLados` se llama distinto de `dif` A PROPÓSITO: `dif` es el número del TOTAL y lo lee el
+    // informe. Un solo nombre para las dos cosas es cómo se cuela el defecto que este archivo arregla.
+    difLados: { real: lados.real.dif, proyectado: lados.proyectado.dif },
+    // Los nombres planos del total se conservan porque los lee el informe y los tests del cuadre
+    // histórico: lo que cambió es que ya NO son el veredicto, sólo uno de sus tres componentes.
+    ...total,
+    ok: total.ok && LADOS.every((l) => lados[l].ok),
+  }
 }
 
 /**
@@ -378,13 +337,29 @@ export function veredictoDelMes(mes, { bruto, endosado, devolucion, cashflow, ar
  * EXACTAMENTE la suma de los dos conciliadores del mes es lo que convierte esto en un control: si
  * aparece un peso que ninguno de los dos explica, algo se imputó distinto en cada camino.
  *
+ * ═══ Y UNA TERCERA COMPARACIÓN QUE NO ES CONTRA EL CUADRO (15/08/2026) ═══
+ *
+ * Con `filasBanco` se cruza cada "Cobrado" contra el extracto (`_BANCO_RAW`). Un cobro que el
+ * extracto no respalda está sumando en INGRESOS REALES —plata que ya está en la cuenta— cuando es, en
+ * el mejor de los casos, devengado. El Flujo va por percibido: esa distinción es el criterio entero.
+ *
+ * NO BAJA EL VEREDICTO, Y ES A PROPÓSITO. `ok` gobierna si la publicación aborta (`cash-flow-vistas`
+ * la usa como portón). Un cobro sin respaldo no es un cuadro mal calculado: es un dato que sólo el
+ * dueño o una importación del banco pueden cerrar. Abortar la publicación de las dos vistas hasta que
+ * alguien concilie deja el cash flow viejo en pantalla y termina con el control apagado — que es
+ * exactamente cómo se pierde un control. Se declara fuerte, en la pestaña y en el informe, siempre.
+ *
  * @param {Array<Array<object>>} filasCob grilla de Cobranzas desde la fila 5
  * @param {Array<Array<object>>} filasCf grilla del cash flow DESDE LA FILA 1 (ver ubicarCuadro)
- * @param {{tipoCambio: number|null}} opciones el `TIPO_CAMBIO_USD` con el que se valúan los dólares
+ * @param {{tipoCambio: number|null, filasBanco: Array|null}} opciones el `TIPO_CAMBIO_USD` con el que
+ *   se valúan los dólares y, si se pasa, `_BANCO_RAW` para el cruce de respaldo.
  */
-export function auditar(filasCob = [], filasCf = [], { tipoCambio = null } = {}) {
+export function auditar(filasCob = [], filasCf = [], { tipoCambio = null, filasBanco = null } = {}) {
   const cobros = []
   filasCob.forEach((f, i) => { const c = leerCobro(f, i + 5, { tipoCambio }); if (c) cobros.push(c) })
+  // El cruce bancario se hace ANTES del portón de ubicación: no depende del cuadro, y un cuadro que
+  // no se pudo ubicar no es motivo para dejar de decir qué "Cobrado" no tiene respaldo.
+  const respaldo = filasBanco ? cruzarConElBanco(cobros, filasBanco, { esCobrado }) : null
 
   const { cabecera, meses, ingreso } = ubicarCuadro(filasCf)
   // FALLA CERRADA. Sin cabecera no hay ventana de meses, y sin ventana este auditor declara que TODO
@@ -398,21 +373,33 @@ export function auditar(filasCob = [], filasCf = [], { tipoCambio = null } = {})
           : `no encontré ninguna línea "${SUB_COBRANZAS}" bajo ${ROTULOS_INGRESO.join(' / ')}`),
       totalCobranzas: cobros.reduce((s, c) => s + c.monto, 0), totalCashFlow: 0,
       fueraDeVentana: [], endosados: [], sinUnidad: [], sinFecha: [], sinValuar: [],
-      devoluciones: [], porMes: [], ok: false,
+      devoluciones: [], porMes: [], respaldo, cobradoSinRespaldo: respaldo?.sinRespaldo ?? [], ok: false,
     }
   }
 
-  const enCuadro = new Map(meses.map((m) => [m.mes, 0]))
-  for (const { fila } of ingreso) {
-    for (const m of meses) enCuadro.set(m.mes, (enCuadro.get(m.mes) ?? 0) + (filasCf[fila]?.[m.col]?.numero ?? 0))
+  // CADA LÍNEA A SU LADO. `ingreso[].de` trae el rótulo del concepto del que cuelga la sub-línea, y
+  // `LADO_POR_ROTULO` lo traduce contra las MEDIDAS. Antes las dos se sumaban acá mismo, en un solo
+  // acumulador: por eso una fila del lado equivocado no movía el número y el control decía ✓.
+  const enCuadro = new Map(meses.map((m) => [m.mes, parLados()]))
+  for (const { fila, de } of ingreso) {
+    const lado = LADO_POR_ROTULO.get(de)
+    if (!lado) continue
+    for (const m of meses) enCuadro.get(m.mes)[lado] += (filasCf[fila]?.[m.col]?.numero ?? 0)
   }
 
   const { huecos, acum } = clasificar(cobros, meses)
-  const porMes = meses.map((m) => veredictoDelMes(m.mes, {
-    bruto: acum.bruto.get(m.mes) ?? 0, endosado: acum.endosado.get(m.mes) ?? 0,
-    devolucion: acum.devolucion.get(m.mes) ?? 0, cashflow: enCuadro.get(m.mes) ?? 0,
-    ars: acum.ars.get(m.mes) ?? 0, usd: acum.usd.get(m.mes) ?? 0, tipoCambio,
-  }))
+  const par = (mapa, mes) => mapa.get(mes) ?? parLados()
+  const porMes = meses.map((m) => {
+    const v = veredictoDelMes(m.mes, {
+      bruto: par(acum.bruto, m.mes), endosado: par(acum.endosado, m.mes),
+      devolucion: par(acum.devolucion, m.mes), cashflow: par(enCuadro, m.mes),
+      ars: par(acum.ars, m.mes), usd: par(acum.usd, m.mes), tipoCambio,
+    })
+    // EL CONTROL NOMBRA LA FILA. Sólo cuando falla: buscar candidatas en un mes que cierra sería
+    // ruido, y las candidatas de un mes verde no existen.
+    const culpa = v.ok ? [] : culpables(cobros.filter((c) => c.mes === m.mes), v.difLados, { tolerancia: TOLERANCIA })
+    return { ...v, culpables: culpa }
+  })
   const { fueraDeVentana, sinValuar, sinFecha } = huecos
 
   return {
@@ -421,9 +408,13 @@ export function auditar(filasCob = [], filasCf = [], { tipoCambio = null } = {})
     ingreso,
     noPudoUbicar: null,
     totalCobranzas: cobros.reduce((s, c) => s + c.monto, 0),
-    totalCashFlow: [...enCuadro.values()].reduce((s, v) => s + v, 0),
+    totalCashFlow: [...enCuadro.values()].reduce((s, v) => s + totalDeLados(v), 0),
     ...huecos,
     porMes,
+    // El cruce contra el extracto viaja entero (para poder desmentirlo) y además con su lista corta:
+    // los "Cobrado" que el banco NO respalda, que es el aviso que se escribe en la pestaña.
+    respaldo,
+    cobradoSinRespaldo: respaldo?.sinRespaldo ?? [],
     // El veredicto NO es sólo el de los meses. Una fila que no se pudo valuar o que quedó fuera de la
     // ventana no descuadra ningún mes justamente porque se la sacó: si además no bajara el veredicto,
     // el control estaría premiando el haberla escondido.

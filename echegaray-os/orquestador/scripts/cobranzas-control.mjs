@@ -33,6 +33,15 @@ import { esIndistinguible, plataEnJuego, esCobroYaRevisado } from '../lib/cobran
 // Lo que el dueño ya revisó no vuelve a marcarse con ⚠. Ver lib/decisiones-hallazgos.mjs.
 import { CONTROLES, decisionesDe, rotuloDecision } from '../lib/decisiones-hallazgos.mjs'
 import { ALERTA, ALERTA_HEREDADA, variantesDeMarca } from '../lib/glifos.mjs'
+// EL CRUCE CONTRA EL EXTRACTO VIVO. El núcleo es puro y se testea sin Google; acá sólo se lee y se
+// escribe. `leerCobro` es el MISMO lector que usa el cuadre: dos lectores de Cobranzas se
+// desincronizan, y el que se olvide de leer hasta BB deja de ver el endoso sin dar un error.
+import { leerCobro } from '../lib/cobranzas-en-cashflow.mjs'
+import { esCobrado } from '../lib/cobranzas-repaso.mjs'
+import { cruzarConElBanco, textoDeRespaldo, desmiente, MARCA_SIN_RESPALDO } from '../lib/cobranzas-respaldo-banco.mjs'
+import { corteDelExtracto } from '../lib/libro-respaldo-banco.mjs'
+import { RANGO_BANCO } from '../lib/cobranzas-cuadre-vivo.mjs'
+import { leerTipoCambio } from '../lib/tipo-cambio.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Cobranzas'
@@ -69,6 +78,14 @@ const C_FLAG = 52               // BA: la marca por fila
 const C_CTRL = 54               // BC: el bloque de control
 
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
+
+// La columna del veredicto del banco, como rango: de ahí sale el contador de sin-respaldo. La letra
+// se DERIVA de `C_VALOR` —la misma constante con la que se escribe— porque una letra tipeada acá
+// seguiría apuntando a BB el día que la columna se mueva, y el contador daría $0 sin dar un error.
+const VB = `$${letra(C_VALOR)}$${F0}:$${letra(C_VALOR)}$${F1}`
+/** El comienzo EXACTO de la marca de "cobrado sin respaldo". La fórmula compara contra esto y el
+ *  escritor lo produce: escrito dos veces, el contador da 0 el día que se mejore la redacción. */
+export const MARCA_ALERTA_RESPALDO = `${ALERTA} ${MARCA_SIN_RESPALDO}`
 
 // Marca de cada fila.
 //
@@ -117,7 +134,7 @@ const flagPorFila = marcaPorFila(decisionesDe(CONTROLES.cobroDuplicado))
 /** La firma que identifica el bloque como escrito por el OS. Permite rehacerlo sin pisar nada ajeno. */
 const FIRMA = 'CONTROL DE COBRANZAS'
 
-function bloque() {
+export function bloque() {
   // La UNIDAD se declara, no se adivina del rótulo. Antes se infería con una regex sobre el texto
   // de la etiqueta y al renombrar dos filas el 21/07 los conteos pasaron a mostrarse como "$4" y
   // "$2". Un formato que depende de cómo está redactado un rótulo se rompe cada vez que se mejora
@@ -141,6 +158,17 @@ function bloque() {
     L('Filas que no se pueden distinguir (mismo cliente, monto y día, SIN concepto)', `=SUMPRODUCT((COUNTIFS(${G};${G};${M};${M};${Q};${Q})>1)*(${E}="")*(${H}="")*(${I}="")*(${M}<>0))`, 'NO son duplicados: son cobros a los que les falta el dato que los diferencia. Se arregla completando el concepto, no borrando filas.', 'cantidad'),
     L('Plata en juego si esos cobros fueran duplicados', `=${PLATA}`, 'Es la mitad del monto marcado: de cada par sobraría uno. ESTIMACIÓN, no un dato — sólo quien conoce el cobro sabe cuál sobra. El control concluyente es el de CAJA: lo cobrado en efectivo tiene que aparecer depositado o en caja.'),
     L(''),
+    L(''),
+    // ═══ DEVENGADO DISFRAZADO DE PERCIBIDO ═══
+    // El Flujo va por PERCIBIDO. Un "Cobrado" que el extracto no respalda está sumando en INGRESOS
+    // REALES, o sea como plata que ya está en la cuenta. NO descuadra ningún cuadre —los dos lados lo
+    // cuentan igual— así que ningún control de cuadratura lo iba a encontrar nunca: sólo se ve
+    // preguntándole al banco. El contador sale de la columna BB por FÓRMULA, no de un número pegado
+    // por el script: se recalcula solo cuando el cruce vuelve a correr.
+    L(`${ALERTA} Cobrado que el extracto NO confirma`,
+      `=SUMPRODUCT((LEFT(${VB};${MARCA_ALERTA_RESPALDO.length})=${txt(MARCA_ALERTA_RESPALDO)})*IF(ISNUMBER(${M});${M};0))`,
+      'El Cash Flow lo cuenta como ingreso REAL. O falta cargar el movimiento del banco, o el cobro '
+      + 'todavía no entró: hasta saberlo, es devengado, no caja.'),
     L('Facturado y todavía no cobrado', `=SUMPRODUCT((${O}="Facturado")*IF(ISNUMBER(${M});${M};0))`, 'Plata emitida que la empresa está financiando.'),
     L('Proyectado (todavía ni facturado)', `=SUMPRODUCT((${O}="Proyectado")*IF(ISNUMBER(${M});${M};0))`, 'ESTIMACIÓN. Si una proyección ya se facturó, hay que darla de baja o queda contada dos veces.'),
   ]
@@ -160,37 +188,76 @@ function bloque() {
  *
  * EL CRUCE ES POR FECHA DE PAGO + IMPORTE, que es lo único que comparten las dos fuentes: el número
  * de echeq del banco (90020100) no está en ninguna columna de Cobranzas.
+ *
+ * ═══ LA SEGUNDA FUENTE, Y POR QUÉ HACÍA FALTA (15/08/2026) ═══
+ *
+ * `ECHEQS_TERCEROS` son OCHO echeqs transcriptos a mano, de un solo emisor, con corte al 22/07. Sirve
+ * para lo que fue hecha —decir qué valor se ENDOSÓ, que el extracto no distingue— y no sirve para
+ * negar un cobro: "no está en mi lista de ocho" se escribía como "el banco no tiene un echeq con esta
+ * fecha e importe". Con esa frase quedaron marcadas cuatro filas de LA ESTRELLA por $50.000.000.
+ *
+ * Ahora las dos fuentes trabajan juntas, cada una en lo suyo:
+ *   · la lista dice qué se endosó o está en custodia (la marca que el Libro necesita para excluirlo);
+ *   · `_BANCO_RAW` —el extracto vivo, que se actualiza con cada importación— dice si la plata entró.
+ *
+ * Y el corte del encabezado se DERIVA del extracto leído, no se tipea: un corte escrito a mano se
+ * queda viejo sin gritar, que es lo que pasó durante 23 días.
  */
 async function marcarValoresSegunBanco(google) {
-  const v = await google.readSheetValues(ID, `${PESTAÑA}!A${F0}:Q${F1}`)
+  // La grilla, no los valores: la fecha tiene que venir como SERIAL. Leída como texto formateado, un
+  // "5/8/2026" hay que volver a parsearlo y ahí es donde se rompe el día que el locale cambie.
+  const [grid, extracto, tc] = await Promise.all([
+    google.readSheetGrid(ID, `${PESTAÑA}!A${F0}:BC${F1}`),
+    // UNFORMATTED_VALUE: ver la nota de `cobranzas-cuadre-vivo`. Con el valor formateado, el extracto
+    // entra ilegible y ninguna fila se juzga.
+    google.readSheetValues(ID, RANGO_BANCO, { render: 'UNFORMATTED_VALUE' }),
+    leerTipoCambio(google, ID).catch(() => ({ tc: null })),
+  ])
+  const cobros = []
+  grid.filas.forEach((f, i) => { const c = leerCobro(f, i + F0, { tipoCambio: tc.tc }); if (c) cobros.push(c) })
+  const porFila = new Map(cruzarConElBanco(cobros, extracto, { esCobrado }).veredictos.map((v) => [v.cobro.fila, v]))
+  const corte = corteDelExtracto(extracto)
+  const corteISO = corte ? new Date(Date.UTC(1899, 11, 30) + corte * 86400000).toISOString().slice(0, 10) : BANCO_CORTE
+
   const clave = (f, m) => `${f}|${Math.round(m)}`
-  const banco = new Map()
+  const lista = new Map()
   for (const e of ECHEQS_TERCEROS) {
     const [a, mm, d] = e.pago.split('-').map(Number)
-    banco.set(clave(`${d}/${mm}/${a}`, e.importe), e)
+    lista.set(clave(`${d}/${mm}/${a}`, e.importe), e)
   }
+  const v = await google.readSheetValues(ID, `${PESTAÑA}!A${F0}:Q${F1}`)
   const marcas = []
   let endosados = 0
+  let sinRespaldo = 0
   for (let i = 0; i < F1 - F0 + 1; i++) {
     const f = v[i] ?? []
     const forma = String(f?.[13] ?? '').trim()
     const fecha = String(f?.[16] ?? '').trim()
     const monto = parseMonto(f?.[12])
-    if (!/eche?q/i.test(forma) || !fecha || !monto) { marcas.push(['']); continue }
-    const e = banco.get(clave(fecha, monto))
-    if (!e) { marcas.push([`${ALERTA} el banco no tiene un echeq con esta fecha e importe`]); continue }
-    if (e.estado === 'endosado') {
+    // LA LISTA PRIMERO, Y SÓLO PARA LO QUE SÓLO ELLA SABE. Un endoso no se puede leer del extracto:
+    // el valor entró y salió sin pasar por la cuenta. Perder esta marca haría que el Libro volviera a
+    // emitir $20.000.000 de ingreso que no existen (ver `libro-endosos.mjs`).
+    const e = /eche?q/i.test(forma) && fecha && monto ? lista.get(clave(fecha, monto)) : null
+    if (e?.estado === 'endosado') {
       endosados++
       marcas.push([`${MARCA_ENDOSADO} a ${e.beneficiario} · echeq ${e.numero} — se entregó, NO va a entrar a la cuenta`])
-    } else if (e.estado === 'custodia') marcas.push([`EN CUSTODIA · echeq ${e.numero} — sigue siendo de la empresa`])
-    else marcas.push([`COBRADO · echeq ${e.numero} — ya está en el saldo del banco`])
+      continue
+    }
+    if (e?.estado === 'custodia') { marcas.push([`EN CUSTODIA · echeq ${e.numero} — sigue siendo de la empresa`]); continue }
+    // Y para todo lo demás manda el extracto: es la fuente que se actualiza sola y que cubre a todos
+    // los clientes, no a uno.
+    const r = porFila.get(F0 + i)
+    if (!r) { marcas.push(['']); continue }
+    if (desmiente(r)) sinRespaldo++
+    marcas.push([textoDeRespaldo(r, { alerta: ALERTA, fechaCorte: corteISO })])
   }
   const col = letra(C_VALOR)
   await google.batchUpdateValues(ID, [
-    { range: `${PESTAÑA}!${col}4`, values: [[`Qué dice el banco de este valor · al ${BANCO_CORTE}`]] },
+    { range: `${PESTAÑA}!${col}4`, values: [[`Qué dice el banco de este valor · al ${corteISO}`]] },
     { range: `${PESTAÑA}!${col}${F0}:${col}${F1}`, values: marcas },
   ])
-  console.log(`  valores marcados según el banco: ${endosados} endosados (no cuentan como ingreso futuro)`)
+  console.log(`  valores marcados según el banco (extracto al ${corteISO}): ${endosados} endosados`
+    + ` · ${sinRespaldo} cobrados que el extracto no confirma`)
 }
 
 /**
@@ -275,6 +342,10 @@ async function main() {
   const MIAS = [
     FIRMA, ...variantesDeMarca(`${ALERTA} Control automático`), 'Qué dice el banco de este valor',
     ALERTA, ALERTA_HEREDADA, 'COBRADO ·', 'EN CUSTODIA ·', MARCA_ENDOSADO,
+    // Los veredictos del cruce contra el extracto que NO empiezan con el glifo de alerta. Sin ellos,
+    // la zona pasaría a contarse como texto ajeno y el control dejaría de escribirse — sin un solo
+    // error, que es como se rompen estas cosas.
+    'sin juzgar:', 'cobro que no pasa por la cuenta',
     ...b.flatMap(([rot, , nota]) => [rot, nota]).filter((t) => String(t ?? '').trim()),
   ]
   const ajeno = []
