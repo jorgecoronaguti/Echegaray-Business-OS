@@ -646,21 +646,30 @@ export function explicarHuella(pestana, h, log = console.log) {
  * un centinela que llega crudo a la API se escribe LITERAL — así aparecieron 61 celdas "::VACIO::"
  * en CAJA. `MIA_PROBADA` sí sobrevive: lo traduce `no-borrar.mjs`, que es su único lector.
  *
+ * ═══ SALVO CUANDO EL GENERADOR TIENE SU PROPIA FUSIÓN (15/08/2026) ═══
+ *
+ * "Proveedores y Materiales" escribe fuera del portón pero SÍ llama a `fusionar()` con su lectura
+ * previa —tiene que hacerlo: escribe desde una frontera y fusiona contra el bloque que hay debajo—.
+ * Ahí el centinela no sobra, es imprescindible: `fusionar` lo traduce a "" (limpiar) y sin él la
+ * celda que el generador declara vacía se lee como "no es mía" y se conserva el residuo. Con
+ * `centinelas: true` la grilla vuelve tal cual y la traducción la hace quien corresponde.
+ *
  * @param {string} fileId
  * @param {string} pestana
  * @param {any[][]} generado  lo que el generador quiere escribir (con centinelas `VACIO`)
  * @param {any[][]} actual    el MISMO rectángulo leído con render FORMULA
- * @param {{fila0?:number, col0?:number}} opts
+ * @param {{fila0?:number, col0?:number, centinelas?:boolean}} opts
  */
 export async function conHuellaFueraDelPorton(fileId, pestana, generado, actual, opts = {}) {
+  const devolver = (grid) => (opts.centinelas ? grid : limpiarCentinela(grid))
   try {
     const h = await conHuellaDeCelda(fileId, pestana, generado, actual, opts)
     explicarHuella(pestana, h)
-    return { ...h, grid: limpiarCentinela(h.grid) }
+    return { ...h, grid: devolver(h.grid) }
   } catch (e) {
     // Ni la base ni la huella pueden tumbar una escritura: sin veredicto, se escribe como siempre.
     // Se dice fuerte porque el costo de esta corrida es real — un borrado del dueño puede volver.
     console.warn(`  ⚠ huella por celda inactiva en "${pestana}" (${e.message}) — un borrado tuyo podría volver`)
-    return { grid: limpiarCentinela(generado), suprimidas: [], ajenas: [], residuos: [], limpiadas: [], editadas: [], reescritos: [], desocupadas: [], alineacion: { alineada: false, motivo: e.message }, guardar: async () => {} }
+    return { grid: devolver(generado), suprimidas: [], ajenas: [], residuos: [], limpiadas: [], editadas: [], reescritos: [], desocupadas: [], alineacion: { alineada: false, motivo: e.message }, guardar: async () => {} }
   }
 }

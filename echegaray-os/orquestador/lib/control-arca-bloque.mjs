@@ -108,7 +108,22 @@ export function bloqueControlArca({ titulo, rubros, fila0 }) {
   // vistas: es de Compras entera. Ese número ya existe y ya tiene nombre — `ARCA_FALTAN_MONTO`, que
   // publica Proveedores. Calcularlo de nuevo acá creaba una segunda cifra parecida con otro nombre
   // ($13.090.051 contra $13,8M), que es fuente garantizada de desconfianza. Una definición, una fuente.
-  filas.push([`${ALERTA} ARCA facturó y Compras NO lo tiene — de Compras ENTERA, no de esta pestaña`, '=ARCA_FALTAN_MONTO'])
+  //
+  // ═══ Y UN LECTOR QUE CONFÍA A CIEGAS PUBLICA LO QUE HAYA (15/08/2026) ═══
+  //
+  // MEDIDO EN EL ARCHIVO VIVO, hoy: `Materiales!B53` tiene esta fórmula y muestra `"0010-00000001"`
+  // —un número de comprobante— porque `ARCA_FALTAN_MONTO` quedó anclado en `Proveedores!C144`, una
+  // celda del layout anterior. La celda de al lado promete plata y publica un comprobante.
+  //
+  // La causa se cura en `lib/rangos-nombrados.mjs` (el nombre se reapunta o se retira) y esto es la
+  // otra mitad, que hace falta igual: mientras el nombre exista apuntando a cualquier lado, el que lo
+  // cita pelado publica lo que haya. `Proveedores!G11` —el ÚNICO otro lector— ya lleva esta guarda
+  // desde el 14/08 y por eso hoy muestra "—" en vez del comprobante: el mismo nombre roto, dos
+  // lectores, y sólo uno defendido. Un dato de otra especie dibujado como plata no se ve; un "—" sí.
+  //
+  // `IFERROR` cubre el nombre retirado (#NAME?) e `ISNUMBER`, el nombre vivo apuntando a basura.
+  filas.push([`${ALERTA} ARCA facturó y Compras NO lo tiene — de Compras ENTERA, no de esta pestaña`,
+    '=IFERROR(IF(ISNUMBER(ARCA_FALTAN_MONTO);ARCA_FALTAN_MONTO;"—");"—")'])
 
   // ═══ EL VEREDICTO ═══
   //

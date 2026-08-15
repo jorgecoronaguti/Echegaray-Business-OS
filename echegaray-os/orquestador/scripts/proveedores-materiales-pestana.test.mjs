@@ -13,12 +13,14 @@
 // del propio generador (la col I de los cruces ARCA, que es no-vacía y por eso se conserva).
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { estructural, predicadoConDeuda, soloConDeuda, layoutDeuda, notasAncladas, anchoBloque, traducirMarcadores, reportarVentasSinCobranza } from './proveedores-materiales-pestana.mjs'
+import { estructural, predicadoConDeuda, soloConDeuda, layoutDeuda, notasAncladas, anchoBloque, traducirMarcadores, reportarVentasSinCobranza, grilla, formatear } from './proveedores-materiales-pestana.mjs'
 import { fusionar, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { readFileSync } from 'node:fs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
-import { ANCHOS_PROVEEDORES } from '../lib/proveedores-frontera.mjs'
+import { ANCHOS_PROVEEDORES, aAnchoCompleto, anchoALimpiar } from '../lib/proveedores-frontera.mjs'
 import { caracteresQueEntran } from '../lib/proveedores-rotulos.mjs'
+import { partir } from '../lib/partir-pestana.mjs'
+import { destinosDeArca } from '../lib/bloque-arca-nombres.mjs'
 
 test('estructural: convierte los \'\' en VACIO y deja intacto todo lo no-vacío', () => {
   const out = estructural(['TOTAL', '', 0, '=SUM(A1:A2)', '', 'nota'])
@@ -751,4 +753,199 @@ test('EL DEFECTO · el aviso final separa las celdas en error de los rangos con 
     '"N celdas en error" cuenta también rangos con nombre: nombra mal su causa')
   assert.match(src, /porCausa\.celdas/, 'las celdas en error se cuentan aparte')
   assert.match(src, /porCausa\.rangosVivos/, 'los rangos que quedaron apuntando mal se cuentan aparte')
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL FORMATO DE UN IMPORTE SE DECLARA, NO SE HEREDA — Y EL VALOR NO PUEDE VIAJAR CON UN DECIMAL
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// EL DEFECTO (15/08/2026, leído del archivo vivo con FORMATTED_VALUE, o sea lo que el dueño VE):
+//
+//   C179 = "126944007.80000003"   ← TEXTO. Punto decimal inglés y cola de coma flotante.
+//   C180 = "38391091.4"           ← TEXTO.
+//   C177 = "220340664,1"          ← número, dibujado crudo: sin "$" y sin separador de miles.
+//
+// Son las seis líneas del bloque de cobertura de ARCA. De sus DOS columnas, sólo la B declaraba su
+// formato (`E.NUM.cantidad`); la C —los seis importes— caía en el formato que se le aplica a la
+// pestaña entera al principio de `formatear`. Dos consecuencias:
+//
+//   · Un importe sin declaración hereda el formato del inquilino anterior de esa fila física. Si ése
+//     era TEXTO, la escritura por USER_ENTERED —"como si lo tipearas"— guarda el número COMO TEXTO.
+//     Una celda de texto no suma en ninguna fórmula que la referencie y no da error.
+//   · El patrón de arrastre lleva `[Red]-`, prohibido por escrito en lib/estilo-pestana.mjs: pinta de
+//     rojo la línea "notas de crédito (restan)", que es negativa SIEMPRE por definición.
+//
+// Y la otra mitad del defecto está en el VALOR: los dos únicos importes pegados del bloque salían de
+// una suma de floats de JS. Redondearlos a centavos achicaba el síntoma sin tocar la causa —
+// `126944007.8` sigue llevando un separador decimal que hay que interpretar—. Un entero no.
+//
+// ESTE CONTROL NO LEE EL CÓDIGO FUENTE: arma la grilla real con `grilla()`, la parte como la parte
+// `main`, corre `formatear` con un cliente falso que captura los pedidos, y reconstruye el
+// numberFormat EFECTIVO de cada celda (el último pedido que la cubre es el que manda). Revienta
+// igual si alguien agrega una fila de importe nueva y se olvida de declararla.
+const clienteQueCaptura = () => { const req = []; return { req, spreadsheetBatchUpdate: async (_id, r) => req.push(...r) } }
+
+/** La pestaña "Proveedores" tal como saldría hoy: grilla + pedidos de formato, sin tocar Google. */
+async function pestanaProveedores() {
+  const cruce = {
+    porNumero: new Array(380), porImporte: new Array(76),
+    // Los dos totales tal como los devuelve la conciliación: sumas de floats, con su cola.
+    totales: { porNumero: 126944007.80000003, porImporte: 38391091.4 },
+  }
+  const g = grilla({
+    obras: ['OBRA A', 'OBRA B'],
+    proveedores: [{ nombre: 'ALUMETAL', cuit: '30123456789', familia: 'Aluminio' }],
+    resto: { cantidad: 5 },
+    deudaAgrupada: [{ nombre: 'ALUMETAL', filas: [{ fila: 10, comprobante: '0001-00000001' }] }],
+    faltanEnCompras: [{ nombre: 'X SA', cuit: '30111111119', comprobante: '0001-00000002', fecha: '1/2/2026', importe: 12345.67 }],
+    notasCredito: [{ proveedor: 'ALUMETAL', comprobante: '0003-00000001', fecha: '2/2/2026', cuit: '30123456789', que: 'Devolución', anula: '0004-00002971', reemplaza: '' }],
+    anuladasCargadas: [], cruce, deudaPrevio: [],
+    deudaCols: ['Proveedor / factura', 'Próximo pago', 'Comprobante', 'Importe', 'Obra', 'Tipo de Pago', 'Categoría', 'Comentarios'],
+  })
+  const FILA0 = 4
+  const frontera = 30   // cualquier fila: lo que se prueba es que el formato viaja con el bloque
+  const TRAMOS = [
+    { titulo: 'Proveedores', desde: g.marcas.b5, hasta: g.marcas.b3 - 1, desdeFila: frontera, enFrontera: true, anchos: new Array(16).fill(120) },
+    { titulo: 'Materiales', desde: g.marcas.b3, hasta: g.marcas.fin, desdeFila: FILA0, anchos: new Array(17).fill(100) },
+  ]
+  const partes = partir(g.filas, TRAMOS, { desdeFila: FILA0 })
+  const filasP = [...partes[0].filas]
+  const ancho = anchoALimpiar({ nuevas: filasP, declarado: TRAMOS[0].anchos.length })
+  const cuadro = aAnchoCompleto(filasP, ancho, VACIO)
+  const gP = { ...traducirMarcadores(g, TRAMOS, 'Proveedores', { desdeFila: FILA0 }), filas: cuadro }
+  const cli = clienteQueCaptura()
+  await formatear(cli, 7, gP, ancho, cuadro.length, { filaArranque: frontera })
+  /** El numberFormat que le queda a una celda: gana el ÚLTIMO pedido que la cubre. */
+  const formatoDe = (fila, col) => {
+    let nf = null
+    for (const { repeatCell: rc } of cli.req) {
+      if (!rc?.cell?.userEnteredFormat?.numberFormat || !String(rc.fields ?? '').includes('numberFormat')) continue
+      const { startRowIndex: r0 = 0, endRowIndex: r1 = Infinity, startColumnIndex: c0 = 0, endColumnIndex: c1 = Infinity } = rc.range ?? {}
+      if (fila - 1 >= r0 && fila - 1 < r1 && col - 1 >= c0 && col - 1 < c1) nf = rc.cell.userEnteredFormat.numberFormat
+    }
+    return nf
+  }
+  return { g: gP, cuadro, frontera, formatoDe, valor: (fila, col) => cuadro[fila - frontera]?.[col - 1] }
+}
+
+test('EL DEFECTO · ningún importe de las secciones de ARCA y de control sale sin declarar su formato', async () => {
+  const p = await pestanaProveedores()
+  // Las dos secciones que el dueño lee al pie de "Proveedores": el bloque de cobertura de ARCA
+  // (B = cuántos, C = plata) y el de "lo que hay que corregir en Compras" (idem).
+  // LAS CUATRO COLUMNAS DE PLATA que este generador escribe debajo de la frontera, cada una con la
+  // columna donde vive. Tres de las cuatro no se declaraban: caían en el formato de arrastre de la
+  // pestaña. Que estén enumeradas acá es lo que hace que la quinta no nazca igual.
+  const bloques = [
+    { nombre: 'cobertura de ARCA', desde: p.g.fArcaN, hasta: p.g.fArcaVentas, col: 3 },
+    { nombre: 'lo que hay que corregir en Compras', desde: p.g.ctrl, hasta: p.g.ctrl1, col: 3 },
+    { nombre: 'notas de crédito', desde: p.g.nc0, hasta: p.g.nc1, col: 4 },
+    { nombre: 'lo que ARCA facturó y Compras no tiene', desde: p.g.afip0, hasta: p.g.afip1, col: 6 },
+  ]
+  for (const b of bloques) {
+    assert.ok(b.desde && b.hasta >= b.desde, `no ubiqué el bloque "${b.nombre}" en la pestaña`)
+    for (let fila = b.desde; fila <= b.hasta; fila++) {
+      const v = p.valor(fila, b.col)
+      if (v === undefined || v === VACIO || v === '') continue
+      const nf = p.formatoDe(fila, b.col)
+      const donde = `${b.nombre}, fila ${fila} col ${String.fromCharCode(64 + b.col)} ("${String(p.valor(fila, 1)).slice(0, 40)}")`
+      assert.ok(nf, `${donde}: la celda de plata no declara numberFormat — hereda el de ayer`)
+      assert.equal(nf.type, 'CURRENCY', `${donde}: una celda de plata declara ${nf.type}`)
+      // La cláusula del cero y el negativo entre paréntesis son el patrón de la casa; el `[Red]` está
+      // prohibido (lib/estilo-pestana.mjs) y es justo lo que traía el formato heredado de la pestaña.
+      assert.doesNotMatch(nf.pattern ?? '', /\[Red\]/,
+        `${donde}: patrón con [Red] — es el formato de arrastre de la pestaña, no el declarado del bloque`)
+      assert.match(nf.pattern ?? '', /;"—"$/,
+        `${donde}: el patrón no tiene la cláusula de cero — un $0 se lee como un dato medido`)
+    }
+  }
+})
+
+test('EL DEFECTO · los importes pegados del bloque de ARCA viajan como entero, nunca como float ni como texto', async () => {
+  const p = await pestanaProveedores()
+  for (const fila of [p.g.fArcaEn, p.g.fArcaSinNum]) {
+    const v = p.valor(fila, 3)
+    const donde = `fila ${fila} ("${String(p.valor(fila, 1)).slice(0, 40)}")`
+    assert.equal(typeof v, 'number',
+      `${donde}: el importe se escribe como ${typeof v}. Un número convertido a texto no suma en ninguna fórmula que lo referencie`)
+    assert.ok(Number.isInteger(v),
+      `${donde}: el importe lleva decimales (${v}). Con USER_ENTERED sobre una celda que arrastra formato TEXTO, el separador decimal lo deja guardado como texto — es el "126944007.80000003" del archivo vivo`)
+  }
+  // Y no se inventó precisión: el entero es el redondeo del total real, no otro número.
+  assert.equal(p.valor(p.g.fArcaEn, 3), Math.round(126944007.80000003))
+  assert.equal(p.valor(p.g.fArcaSinNum, 3), Math.round(38391091.4))
+})
+
+// ═══ LOS DOS NOMBRES QUE OTRAS PESTAÑAS CITAN, ANCLADOS AL RÓTULO Y NO A UNA FILA ═══
+//
+// `ARCA_FALTAN_MONTO` y `ARCA_FALTAN_N` son los únicos dos rangos del bloque que se leen desde afuera
+// (Materiales!B53 y Proveedores!G11/H11). Medido en el archivo vivo el 15/08/2026: apuntaban a
+// Proveedores!B144 = "23-36911157-4" (un CUIT) y C144 = "0010-00000001" (un comprobante), mientras el
+// bloque vivía en las filas 176-182 — un layout anterior fosilizado.
+//
+// El anclaje por rótulo ya está (destinosDeArca busca el texto en la grilla ESCRITA, no una fila
+// fija). Lo que no estaba es alguien que lo compruebe de punta a punta: `bloque-arca-nombres.mjs`
+// declara por su cuenta que B es el contador y C la plata, y el generador lo declara otra vez al
+// escribir `estructural([rótulo, N, MONTO, …])`. Dos declaraciones del mismo hecho divergen — ya
+// divergieron una vez con el "SIN" en mayúsculas, y dejaron dos nombres sobre un CUIT durante días.
+test('los dos rangos de ARCA que otras pestañas citan caen sobre el contador y sobre la plata', async () => {
+  const p = await pestanaProveedores()
+  const { destinos, faltan, cabecera } = destinosDeArca(p.cuadro, p.frontera)
+  assert.ok(cabecera, 'no encontré la cabecera del bloque de ARCA en la grilla que el generador escribe')
+  assert.deepEqual(faltan, [], 'un rótulo con nombre colgando que no está en la grilla deja su rango donde estaba')
+  const donde = Object.fromEntries(destinos.map((d) => [d.name, d]))
+  assert.deepEqual(Object.keys(donde).sort(), ['ARCA_FALTAN_MONTO', 'ARCA_FALTAN_N'])
+  // Los dos sobre la MISMA fila que la línea "sin cargar en Compras" — la que el generador escribió.
+  assert.equal(donde.ARCA_FALTAN_N.fila, p.g.fArcaFaltan)
+  assert.equal(donde.ARCA_FALTAN_MONTO.fila, p.g.fArcaFaltan)
+  // Y cada uno sobre su especie: el contador cuenta filas, el importe las suma.
+  assert.match(String(p.valor(donde.ARCA_FALTAN_N.fila, donde.ARCA_FALTAN_N.col)), /^=COUNTIF\(/,
+    'ARCA_FALTAN_N no cae sobre el contador: publica lo que haya en esa columna')
+  assert.match(String(p.valor(donde.ARCA_FALTAN_MONTO.fila, donde.ARCA_FALTAN_MONTO.col)), /^=SUM\(/,
+    'ARCA_FALTAN_MONTO no cae sobre la plata: publica lo que haya en esa columna')
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA HUELLA POR CELDA — SIN ELLA, EL SEDIMENTO DE ESTA PESTAÑA ES INMORTAL
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// EL SÍNTOMA, medido contra el archivo real en dos corridas seguidas: `0 limpiada(s) por huella` las
+// dos veces, 18 y después 2 celdas vaciadas —todas por `vaciarPropio`—, y adentro del mismo cuadro
+// dos layouts conviviendo fila por fila hasta la 212. Un auditor independiente barrió las 17
+// pestañas del archivo: Proveedores es la ÚNICA con capas superpuestas.
+//
+// LA CAUSA, medida en la base: `sheet_huella_celda` tiene CERO filas para "Proveedores" y
+// "Materiales" —las únicas dos pestañas de contenido sin una sola— contra 4.430 de Cash Flow
+// Semanal y 987 de Jornales, refrescadas hoy. Que la única pestaña sin huella sea la única con capas
+// no es coincidencia: es la misma cosa vista de los dos lados.
+//
+// POR QUÉ FALTABA: los demás generadores entran por `escribirPreservando`, que llama a la huella
+// adentro; los que escriben por su cuenta usan `conHuellaFueraDelPorton`. Éste no hacía ninguna de
+// las dos — escribe por `batchUpdateValues` con su propia fusión— y en esa grieta se quedó sin la
+// única evidencia que distingue SU residuo de UNA NOTA DEL DUEÑO en la misma coordenada.
+//
+// Este control es sobre el CÓDIGO y no sobre la grilla a propósito: lo que se rompió no es un
+// cálculo, es un cable que no estaba enchufado. Lo que hay que impedir es que se desenchufe.
+test('EL DEFECTO · la escritura del cuerpo consulta y SELLA la huella por celda', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  assert.match(src, /import \{ conHuellaFueraDelPorton \} from '\.\.\/lib\/huella-celda\.mjs'/,
+    'sin la huella, `sheet_huella_celda` no recibe una sola fila de esta pestaña y ninguna corrida puede probar que un residuo es suyo')
+
+  const consulta = src.indexOf('await conHuellaFueraDelPorton(')
+  const escritura = src.indexOf('values: fusion')
+  const sello = src.indexOf('await huella.guardar?.(')
+  assert.ok(consulta > 0, 'la huella no se consulta antes de escribir el cuerpo')
+  assert.ok(sello > 0, 'la huella no se sella: sin sello, la corrida siguiente vuelve a ser "la primera"')
+  assert.ok(consulta < escritura,
+    'la huella se consulta después de escribir: llega tarde para decidir qué celda es residuo propio')
+  assert.ok(escritura < sello,
+    'la huella se sella ANTES de escribir: sellaría una propiedad que la escritura todavía no produjo (un 429 parte la pestaña al medio)')
+
+  // El centinela VACIO tiene que sobrevivir a la huella: lo traduce `fusionar`, dos líneas más abajo.
+  // Sin `centinelas: true` la grilla vuelve ya limpiada y la celda que el generador declara vacía se
+  // lee como "no es mía" — el residuo se conserva, que es exactamente el defecto.
+  assert.match(src.slice(consulta, consulta + 200), /centinelas: true/,
+    'la huella devuelve la grilla sin centinela y este generador fusiona: su VACIO dejaría de limpiar')
+  // Y se fusiona la grilla que devolvió la huella, no la de antes: si no, su veredicto se descarta.
+  assert.match(src, /const fusion = fusionar\(huella\.grid, previo\)/,
+    'se fusiona `cuadroFinal` en vez de `huella.grid`: el veredicto de la huella no llega a la escritura')
 })

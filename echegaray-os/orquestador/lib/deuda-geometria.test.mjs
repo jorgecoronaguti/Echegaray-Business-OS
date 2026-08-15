@@ -93,14 +93,31 @@ test('ningún generador formatea ni publica nombres después de una escritura sa
     const formatea = /\bawait formatear\(/.test(src)
     const publica = /\bawait publicar(Rangos)?\(/.test(src)
     if (!formatea && !publica) continue
-    // Tres formas VÁLIDAS de gobernarlo, las tres en uso en el repo:
+    // CUATRO formas VÁLIDAS de gobernarlo, las cuatro en uso en el repo:
     //   a) `if (!salteada) await formatear(...)`  — la guarda por bandera
     //   b) desestructurar `{ bloqueada, editadaPorHumano }` y `return` antes de formatear
     //   c) SACAR la pestaña candada de la lista de trabajo antes de formatearla (cash-flow-rehacer:
     //      escribe dos pestañas y formatea sólo las que quedaron en `data`)
+    //   d) LLEVAR UNA LISTA DE LO QUE SÍ SE ESCRIBIÓ y trabajar sólo sobre ella
+    //      (proveedores-materiales-pestana: `continue` antes de formatear en el bucle por pestaña, y
+    //      `escritas.push(...)` / `escritas.find(...)` antes de publicar un solo rango con nombre).
+    //
+    // ═══ POR QUÉ SE AGREGÓ LA (d) — Y NO SE ACHICÓ LA POBLACIÓN (15/08/2026) ═══
+    //
+    // El primer impulso fue otro: la población se elige con `src.includes('escribirPreservando')`, que
+    // es una BÚSQUEDA DE TEXTO sobre el archivo entero, comentarios incluidos. Un generador que no usa
+    // el portón entró a la lista el día que un comentario suyo nombró al portón para explicar por qué
+    // NO lo usa. Tentaba cambiar la población al `import`, que es la dependencia de verdad.
+    //
+    // Se midió antes de tocarla: con el `import` salían DOS archivos, y el segundo es
+    // `cash-flow-rehacer.mjs` —el que este mismo comentario nombra en la (c) como caso real—. Achicar
+    // la población para que deje de fallar un archivo se habría llevado puesto un generador que la
+    // guarda tiene que mirar. Una guarda que se ajusta hasta que deje de gritar no guarda nada: lo que
+    // faltaba no era sacar a nadie de la lista, era reconocer una cuarta forma legítima que ya existía.
     const gobierna = /if \(!salteada\) await (formatear|publicar)/.test(src)
       || /(bloqueada|editadaPorHumano)[\s\S]{0,300}?\breturn\b/.test(src)
       || /filtrarBloqueadas/.test(src)
+      || (/escritas\.push\(/.test(src) && /escritas\.find\(/.test(src))
     if (!gobierna) fallas.push(`${f}: formatea o publica nombres SIN mirar si la escritura se salteó`)
   }
   assert.deepEqual(fallas, [], `generadores que pueden repetir el desastre de CAJA:\n  ${fallas.join('\n  ')}`)

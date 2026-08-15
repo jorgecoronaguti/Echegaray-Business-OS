@@ -78,6 +78,7 @@ import { NOMBRES } from '../lib/sheet-pestanas.mjs'
 import { partir, mapaDeFilas, filasHuerfanas, referenciasFuera, ref as refPestana } from '../lib/partir-pestana.mjs'
 import { anchosSegunContenido } from '../lib/nota-celda.mjs'
 import { fusionar, sobrantes, VACIO, estructural } from '../lib/preservar-anotaciones.mjs'
+import { conHuellaFueraDelPorton } from '../lib/huella-celda.mjs'
 import { obrasConMateriales } from '../lib/obras-con-materiales.mjs'
 import { sumaNetaSheet } from '../lib/costo-materiales.mjs'
 import { bloqueMaterialesPorObra } from '../lib/materiales-por-obra.mjs'
@@ -457,7 +458,11 @@ export const soloConDeuda = (pred, valor, { texto = false } = {}) =>
     ? `=IF(${pred};"${String(valor).replace(/"/g, '""')}";"")`
     : `=IF(${pred};${String(valor).replace(/^=/, '')};"")`
 
-function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, notasCredito, anuladasCargadas, cruce, deudaCols, deudaPrevio, notasBase = new Map() }) {
+// SE EXPORTA PARA PODER PROBAR LO QUE ESCRIBE SIN TOCAR EL ARCHIVO REAL. Un test que arma la grilla y
+// los pedidos de formato en memoria es la única verificación de esta pestaña que no pasa por el Sheet
+// —y desde un worktree escribir el Sheet ya borró una pestaña entera—. Ver la sección "el formato de
+// los importes se declara, no se hereda" en proveedores-materiales-pestana.test.mjs.
+export function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, notasCredito, anuladasCargadas, cruce, deudaCols, deudaPrevio, notasBase = new Map() }) {
   const filas = []
   const push = (c) => { filas.push(c); return filas.length }
   const nombres = FAMILIAS.map(([n]) => n)
@@ -771,15 +776,31 @@ function grilla({ obras, proveedores, resto, deudaAgrupada, faltanEnCompras, not
   // como basura. Una explicación que se repite fila por fila es una explicación mal ubicada.
   // ═══ UN FLOAT CRUDO ATERRIZA COMO TEXTO EN UN SHEET es-AR (14/08/2026) ═══
   //
-  // Medido en el archivo real: `C179 = "126944007.80000003"` — TEXTO, con punto decimal inglés, en la
-  // celda que publica cuánto de ARCA está cargado en Compras. No es un formato mal puesto: la suma de
-  // floats de JS trae 17 dígitos significativos, la API los manda como los recibe y el Sheet los
-  // parsea EN SU LOCALE, donde el punto es separador de miles. Un número que no parsea no da error:
-  // queda de texto, y una celda de texto no suma en ninguna fórmula que la referencie.
-  // Los dos son PLATA, así que la precisión que corresponde son los centavos.
-  const centavos = (n) => Math.round((Number(n) || 0) * 100) / 100
-  const fArcaEn = push(estructural([rotuloArca(N_ARCA.enComprasN), cruce.porNumero.length, centavos(cruce.totales.porNumero), '', '', '', '', '', '']))
-  const fArcaSinNum = push(estructural([rotuloArca(N_ARCA.sinNumeroN), cruce.porImporte.length, centavos(cruce.totales.porImporte), '', '', '', '', '', '']))
+  // Medido en el archivo real: `C179 = "126944007.80000003"` y `C180 = "38391091.4"` — TEXTO, con
+  // punto decimal inglés, en las dos celdas que publican cuánto de ARCA está cargado en Compras. No es
+  // un formato mal puesto: la escritura va por USER_ENTERED, o sea "como si lo tipearas", y cuando la
+  // celda de destino todavía arrastra el formato TEXTO de un layout anterior, lo tipeado se GUARDA
+  // como texto tal cual llegó. Una celda de texto no suma en ninguna fórmula que la referencie, y no
+  // da error.
+  //
+  // ═══ POR QUÉ CENTAVOS NO ALCANZABA, Y VAN EN PESOS ENTEROS (15/08/2026) ═══
+  //
+  // El primer arreglo redondeó a centavos, para que el float no llegara con diecisiete dígitos. Achica
+  // el síntoma y no toca la causa: `126944007.8` sigue llevando un separador decimal, así que sigue
+  // dependiendo de en qué locale y con qué formato de celda se lo lea. Un ENTERO no: no tiene
+  // separador que interpretar, y ninguna configuración regional lo puede leer como otra cosa.
+  //
+  // Lo que se pierde son los centavos de dos totales de conciliación de ~$127M y ~$38M, que la celda
+  // NUNCA mostró —el bloque se dibuja `#,##0`, al peso— y que no alimentan ningún control al centavo:
+  // las cifras que otras pestañas citan por nombre son las de la línea "sin cargar en Compras", que es
+  // una fórmula viva. Se redondea el VALOR, no se lo disfraza con el formato, que es la distinción de
+  // siempre: la cobertura del bloque de ARCA sigue siendo su fracción exacta.
+  //
+  // La otra mitad —que la celda declare su formato en cada corrida y no herede TEXTO— está en
+  // `formatear`, donde ahora la columna C del bloque dice qué es.
+  const pesosEnteros = (n) => Math.round(Number(n) || 0)
+  const fArcaEn = push(estructural([rotuloArca(N_ARCA.enComprasN), cruce.porNumero.length, pesosEnteros(cruce.totales.porNumero), '', '', '', '', '', '']))
+  const fArcaSinNum = push(estructural([rotuloArca(N_ARCA.sinNumeroN), cruce.porImporte.length, pesosEnteros(cruce.totales.porImporte), '', '', '', '', '', '']))
   // Los que faltan sí tienen fórmula: son exactamente las filas de la tabla de abajo.
   const fArcaFaltan = push(estructural([rotuloArca(N_ARCA.faltanN), '', '', '', '', '', '', '', '']))
   // LA CIFRA DE VENTAS SE QUEDA, EL DETALLE NO. Alimenta ARCA_VENTAS_N/MONTO, que consume el Cash
@@ -1779,8 +1800,44 @@ async function main() {
     const { mios } = await leerRegistro(ID, t.titulo).catch(() => ({ mios: [] }))
     const { grid: cuadroFinal, respetadas, ediciones, candidatos } = await conEdicionesRespetadas(ID, t.titulo, cuadroP, visible)
     for (const r of respetadas) console.log(`  ✋ ${t.titulo}: respeto tu texto ("${String(r.suyo).slice(0, 40)}") en vez de "${String(r.mio).slice(0, 40)}"`)
-    const fusion = fusionar(cuadroFinal, previo)
-    const conservadas = sobrantes(cuadroFinal, previo)
+
+    // ═══ LA HUELLA POR CELDA — ESTE GENERADOR ERA EL ÚNICO QUE NO LA TENÍA (15/08/2026) ═══
+    //
+    // EL SÍNTOMA, medido por el dueño en dos corridas seguidas contra el archivo real:
+    // `0 limpiada(s) por huella` las dos veces, y 18 y después 2 celdas vaciadas —todas por
+    // `vaciarPropio`, la segunda vía—. A ese ritmo el sedimento no se va nunca, y se ve: adentro del
+    // MISMO cuadro conviven dos layouts fila por fila (la 119 con el encabezado nuevo en A/B/F/G y la
+    // cola del viejo en C/D; la 122 con un registro entero del layout anterior), y las capas llegan
+    // hasta la 212. Un auditor independiente barrió las 17 pestañas del archivo y no encontró capas
+    // superpuestas en NINGUNA otra.
+    //
+    // LA CAUSA, medida en la base y no deducida: `select ... from sheet_huella_celda` devuelve
+    // CERO filas para "Proveedores" y para "Materiales", contra 4.430 de Cash Flow Semanal, 987 de
+    // Jornales y miles más en las otras doce pestañas de contenido, todas refrescadas hoy. La huella
+    // no es que "no alinee": NO EXISTE. `mejorDesplazamiento` sale por su primera línea —"sin huella
+    // previa: primera corrida"— en cada corrida, para siempre. Y sin alineación `aplicarHuella` no
+    // recorre una sola celda, así que las CUATRO evidencias de propiedad quedan mudas de una vez: la
+    // huella viva, el residuo por texto, la fórmula fósil por columna y el footprint de la corrida
+    // anterior (`huella-footprint.mjs`, que está sano y nunca fue llamado desde acá).
+    //
+    // POR QUÉ FALTABA. Los demás generadores entran por `escribirPreservando`, que llama a la huella
+    // adentro; los seis que escriben por su cuenta usan `conHuellaFueraDelPorton`. Éste no hacía ni
+    // una cosa ni la otra: escribe por `batchUpdateValues` con su propia fusión, y en esa grieta se
+    // quedó sin la única evidencia que sabe distinguir MI residuo de UNA NOTA DEL DUEÑO en la misma
+    // coordenada. Que la única pestaña sin huella sea la única con capas no es coincidencia.
+    //
+    // POR QUÉ NO SE LIMPIA EL RECTÁNGULO ENTERO, QUE SERÍA MÁS CORTO. Porque "debajo de la frontera
+    // todo es mío" es cierto del LAYOUT y falso de las CELDAS: el dueño anota en la columna de
+    // Comentarios y al pie de las tablas, y este archivo ya pagó cinco pérdidas por barrer un
+    // rectángulo declarado propio. La huella hace exactamente lo que se pide —limpiar por footprint y
+    // no rótulo por rótulo— pero exigiendo, celda por celda, la forma que el generador selló. Adentro
+    // del mismo rectángulo conviven mi residuo y una nota suya, y sólo el primero tiene registro.
+    //
+    // `centinelas: true`: la traducción de VACIO la hace `fusionar`, dos líneas más abajo. Y se sella
+    // DESPUÉS de escribir, nunca antes — la huella es evidencia del efecto, no de la intención.
+    const huella = await conHuellaFueraDelPorton(ID, t.titulo, cuadroFinal, previo, { fila0: filaArranque, col0: 0, centinelas: true })
+    const fusion = fusionar(huella.grid, previo)
+    const conservadas = sobrantes(huella.grid, previo)
     // En --force el write también pasa el portón (yaGuardado): es una regeneración intencional de ESTA
     // pestaña (Proveedores/Materiales), pedida a mano. La fusión ya preservó lo del dueño, así que el
     // portón sólo estaría bloqueando la actualización que justamente se pidió. No afecta a Compras (su
@@ -1805,11 +1862,14 @@ async function main() {
     // revierte celda por celda cualquier vaciado que no venga probado: "si el valor nuevo está vacío y
     // el destino tiene algo, gana el destino". El centinela no limpiaba nada.
     //
-    // Y la otra vía de prueba, la huella, tampoco alcanza acá: tolera corrimientos de ±5 filas, y este
-    // bloque arranca donde termina una tabla dinámica, así que se corre tantas filas como esa dinámica
-    // crezca. Está escrito en `lib/no-borrar.mjs`, línea por línea, con la medición: "se midieron copias
-    // a ±50 · ahí la huella no alinea NUNCA · el residuo del propio OS queda blindado para siempre con
-    // el mismo blindaje que protege el trabajo del dueño".
+    // Y LA OTRA VÍA DE PRUEBA, LA HUELLA, NO ES QUE NO ALCANZARA: NO ESTABA (corregido el 15/08/2026).
+    // Acá decía que la huella "tolera ±5 filas y este bloque se corre más que eso, así que no alinea
+    // NUNCA". Suena bien y es falso: medido en la base, `sheet_huella_celda` tiene CERO filas para
+    // "Proveedores" y "Materiales" —las únicas dos pestañas de contenido del archivo sin una sola—,
+    // así que la alineación nunca llegó a medirse. Este generador jamás llamó a la huella; ver el
+    // bloque de `conHuellaFueraDelPorton`, doscientas líneas más arriba, donde ahora la llama.
+    // La explicación equivocada mandó a buscar el arreglo adentro de `huella-footprint.mjs`, que está
+    // sano — un comentario que sobrevive a su motivo cuesta lo mismo que un rango fosilizado.
     //
     // El remedio ya existía y estaba aplicado a la MITAD del problema: el barrido de cola (más abajo)
     // manda `vaciarPropio` desde el 13/08 y por eso limpia. El cuerpo —donde vive el cuadro que el
@@ -1820,6 +1880,15 @@ async function main() {
       ID, [{ range: `${refPestana(t.titulo)}!A${filaArranque}`, values: fusion }],
       { yaGuardado: FORCE, vaciarPropio: { mios, tope: TOPE_RESIDUO } },
     )
+    // EL SELLO VA DESPUÉS DE ESCRIBIR Y SOBRE LO QUE SE MANDÓ A ESCRIBIR, no sobre la fusión: la
+    // fusión trae también lo que se CONSERVÓ del dueño, y sellarlo lo declararía mío — el sello sería
+    // la puerta por la que su nota se vuelve "residuo del generador" en la corrida siguiente. Es el
+    // mismo argumento y el mismo orden que usa el portón (`escribirPreservando`).
+    //
+    // Y ES LA PRIMERA CORRIDA LA QUE NO PUEDE LIMPIAR NADA: siembra el mapa. La limpieza por
+    // footprint empieza a poder probar algo desde la SEGUNDA — quien publique esto tiene que correrlo
+    // dos veces y mirar `🧹 … limpiada(s) por huella`, que hoy dice 0 en las dos.
+    await huella.guardar?.(huella.grid)
     if (conservadas.length) console.log(`  ✋ ${t.titulo}: ${conservadas.length} celda(s) escritas por el dueño — CONSERVADAS, no se borra nada`)
 
     // ═══ LA COLA DE UN DISEÑO ANTERIOR MÁS LARGO ═══
@@ -2205,7 +2274,7 @@ async function verificarNombresVivos(google, sheetId) {
  *        de la grilla se corre con este offset. Sin él, el reset de formato del principio —que borra
  *        bordes, notas y colores de `r(0, filas)`— caería sobre las dinámicas.
  */
-async function formatear(google, sheetId, g, ancho, filas, { filaArranque = 1 } = {}) {
+export async function formatear(google, sheetId, g, ancho, filas, { filaArranque = 1 } = {}) {
   /** El desplazamiento 0-indexado entre la grilla y la pestaña. */
   const F0 = filaArranque - 1
   // LA PIEL ES DE STATEMENT: sin barras de color, la estructura se marca con tipografía (tinta INK,
@@ -2395,6 +2464,11 @@ async function formatear(google, sheetId, g, ancho, filas, { filaArranque = 1 } 
     fmt({ ...r(g.nc0 - 1, g.nc1, 2, 3) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
       { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'CENTER' })
     fmt({ ...r(g.nc0 - 1, g.nc1, 1, 2) }, 'userEnteredFormat.numberFormat', { numberFormat: { type: 'TEXT' } })
+    // D = el importe acreditado, y NO lo declaraba nadie: caía en el formato de arrastre de la pestaña,
+    // que lleva `[Red]`. Una nota de crédito es negativa por definición, así que la columna entera se
+    // dibujaba en rojo — el rojo que `lib/estilo-pestana.mjs` reserva para un control que no cierra.
+    fmt({ ...r(g.nc0 - 1, g.nc1, 3, 4) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+      { numberFormat: E.NUM.moneda, horizontalAlignment: 'RIGHT' })
     // E es el aire y F·G llevan "Qué es" y la cadena de comprobantes: texto de punta a punta. El rango
     // sigue al layout, que cambió al saltear la E — un rango de formato clavado en las columnas viejas
     // es como se dibuja un importe con formato de texto sin que nadie lo note.
@@ -2413,6 +2487,11 @@ async function formatear(google, sheetId, g, ancho, filas, { filaArranque = 1 } 
   // Los bloques documentales: comprobante y N° de cheque son TEXTO, y las fechas, fechas.
   fmt({ ...r(g.afip0 - 1, g.afip1, 1, 3) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'CENTER' })
+  // Y LA F, QUE ES EL IMPORTE, TAMPOCO SE DECLARABA. Es la tercera columna de plata de esta pestaña
+  // que vivía del formato de arrastre: el mismo defecto que la C del bloque de cobertura y la D de las
+  // notas de crédito. Se listan las tres juntas en el test, para que la cuarta no nazca igual.
+  fmt({ ...r(g.afip0 - 1, g.afip1, 5, 6) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+    { numberFormat: E.NUM.moneda, horizontalAlignment: 'RIGHT' })
   // EL BLOQUE 1 CAMBIÓ DE COLUMNAS al pasar a QUERY. Ahora:
   //   A fecha de pago (la que ordena) · B proveedor · C comprobante · D fecha factura
   //   E modalidad · F importe · G obra · H instrumento · I N° de cheque
@@ -2524,7 +2603,29 @@ async function formatear(google, sheetId, g, ancho, filas, { filaArranque = 1 } 
   }
   // UNA CANTIDAD DE COMPROBANTES NO ES PLATA. La columna B del bloque de ARCA mostraba "$16" donde
   // dice cuántas facturas emitidas hay: el formato moneda de la columna entera se lo comía.
-  if (g.fArcaN && g.fArcaVentas) fmt({ ...r(g.fArcaN - 1, g.fArcaVentas, 1, 2) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: E.NUM.cantidad, horizontalAlignment: 'CENTER' })
+  //
+  // ═══ Y LA COLUMNA DE AL LADO NUNCA DECLARÓ NADA (15/08/2026) ═══
+  //
+  // De las dos columnas de este bloque, sólo la B decía qué era. La C —la que lleva los seis importes
+  // del libro de IVA— caía en el formato que se le aplica a la pestaña ENTERA doscientas líneas más
+  // arriba, y eso tiene dos consecuencias, las dos medidas en el archivo vivo:
+  //
+  //   · EL ROJO QUE NADIE PIDIÓ. Ese patrón de arrastre es `"$"#,##0;[Red]-"$"#,##0;"—"`, y la línea
+  //     "· notas de crédito (restan)" es negativa SIEMPRE por definición (−$23.268.256). Se dibuja en
+  //     rojo en cada corrida, sobre un dato correcto. `lib/estilo-pestana.mjs` lo tiene prohibido por
+  //     escrito: "cuando todo puede ponerse rojo, el rojo deja de avisar"; el único rojo de una
+  //     pestaña es el de un control que no cierra.
+  //   · LA HERENCIA. Es la regla que este archivo repite hace semanas — UNA COLUMNA QUE NO DECLARA SU
+  //     FORMATO EN CADA CORRIDA MUESTRA EL DE AYER. Cuando el bloque se corre de fila, sus importes
+  //     aterrizan sobre celdas con el formato del inquilino anterior; si ése era TEXTO, la escritura
+  //     por USER_ENTERED guarda el número COMO TEXTO y ahí queda: `C179 = "126944007.80000003"`,
+  //     `C180 = "38391091.4"`. Una celda de texto no suma en ninguna fórmula que la referencie, y no
+  //     da error. Declararla la saca del camino de la herencia; la otra mitad —que el valor no pueda
+  //     malinterpretarse ni aunque caiga en una celda de texto— está en `enteros`, donde se pegan.
+  if (g.fArcaN && g.fArcaVentas) {
+    fmt({ ...r(g.fArcaN - 1, g.fArcaVentas, 1, 2) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: E.NUM.cantidad, horizontalAlignment: 'CENTER' })
+    fmt({ ...r(g.fArcaN - 1, g.fArcaVentas, 2, 3) }, 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment', { numberFormat: E.NUM.moneda, horizontalAlignment: 'RIGHT' })
+  }
   fmt({ ...r(g.fSub, g.fSub + 1, 5, 6) }, 'userEnteredFormat', E.nota())
   // ═══ LA COLUMNA "FECHA" MOSTRABA 46193, 46132, 46119 — Y NO EN TODAS LAS FILAS ═══
   //
