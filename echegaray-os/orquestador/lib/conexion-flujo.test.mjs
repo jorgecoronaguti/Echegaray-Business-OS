@@ -170,3 +170,42 @@ test('el #REF! de una fórmula llega al informe', () => {
   const g = construirGrafo([pest('CAJA', {}, {}, 3)], ['CAJA'], [])
   assert.deepEqual(g.rotas, [{ pestana: 'CAJA', tipo: '#REF!', destino: '#REF!', celdas: 3 }])
 })
+
+test('un rango con nombre CITA a la pestaña donde vive — =N(CAJA_TOTAL_DISPONIBLE) hace aparecer CAJA', () => {
+  // EL CASO REAL (15/08/2026): `auditar-conexion-flujo.mjs` reportaba `CAJA citadaPor: []` aunque
+  // "Cash Flow Semanal" la cita por `=N(CAJA_TOTAL_DISPONIBLE)` — sin `'CAJA'!` adelante, así que la
+  // referencia quedaba clasificada como "rango con nombre" y nunca como cita a una pestaña.
+  const hojaDelNombre = new Map([['CAJA_TOTAL_DISPONIBLE', 'CAJA']])
+  const g = construirGrafo(
+    [pest('CAJA'), pest('Cash Flow Semanal', {}, { CAJA_TOTAL_DISPONIBLE: 2 })],
+    ['CAJA', 'Cash Flow Semanal'],
+    ['CAJA_TOTAL_DISPONIBLE'],
+    hojaDelNombre,
+  )
+  assert.deepEqual([...g.citadaPor.get('CAJA')], [['Cash Flow Semanal', 2]])
+  assert.deepEqual(g.sale.get('Cash Flow Semanal'), ['CAJA'])
+  // Y CAJA deja de ser huérfana: algo depende de ella, aunque sea por nombre.
+  assert.ok(!g.huerfanas.includes('CAJA'))
+})
+
+test('una cita directa y una cita por nombre al MISMO destino se SUMAN, no se pisan', () => {
+  const hojaDelNombre = new Map([['CAJA_TOTAL_DISPONIBLE', 'CAJA']])
+  const g = construirGrafo(
+    [pest('CAJA'), pest('X', { CAJA: 3 }, { CAJA_TOTAL_DISPONIBLE: 2 })],
+    ['CAJA', 'X'],
+    ['CAJA_TOTAL_DISPONIBLE'],
+    hojaDelNombre,
+  )
+  assert.deepEqual([...g.citadaPor.get('CAJA')], [['X', 5]])
+})
+
+test('un nombre sin pestaña resuelta (sin range.sheetId, o apunta a una hoja que no existe) no revienta', () => {
+  const g = construirGrafo(
+    [pest('CAJA'), pest('X', {}, { UN_NOMBRE_SIN_HOJA: 1 })],
+    ['CAJA', 'X'],
+    ['UN_NOMBRE_SIN_HOJA'],
+    new Map(),   // sin resolución: el nombre existe (no es referencia rota), pero no agrega arista
+  )
+  assert.deepEqual(g.rotas, [])
+  assert.deepEqual([...g.citadaPor.get('CAJA')], [])
+})

@@ -155,7 +155,23 @@ function cargarArchivo(ruta) {
 export async function auditar(g, { id = ID, cargar = cargarArchivo } = {}) {
   const hojas = await g.getSheetMeta(id)
   const titulos = hojas.map((h) => h.title)
-  const nombresDefinidos = (await g.getNamedRanges(id)).map((n) => n.name)
+  const nombresRaw = await g.getNamedRanges(id)
+  const nombresDefinidos = nombresRaw.map((n) => n.name)
+  // ═══ A QUÉ PESTAÑA PERTENECE CADA NOMBRE — DEL DATO REAL, NO DE UNA TABLA A MANO (15/08/2026) ═══
+  //
+  // `getNamedRanges` trae `range.sheetId`; `getSheetMeta` trae `sheetId → title`. Con los dos alcanza
+  // para saber dónde vive `CAJA_TOTAL_DISPONIBLE` sin mantener un mapeo aparte que se desactualiza
+  // solo — el mismo patrón que ya usa `auditar-rangos-fosilizados.mjs`. Un nombre sin `range` (rango
+  // partido en varias áreas, o el doble de test que no lo declara) resuelve a `undefined` y
+  // simplemente no agrega arista: no revienta el resto del mapa.
+  // `!= null` en LAS DOS PUNTAS: un `sheetId` undefined no identifica ninguna hoja real (la API
+  // siempre lo manda), y tratarlo como clave válida hace que un nombre SIN `range` (o partido en
+  // varias áreas) resuelva por accidente a la última hoja que tampoco declaró el suyo — un bug real
+  // que este mismo cambio introdujo y que el test de abajo atrapa.
+  const porIdDeHoja = new Map(hojas.filter((h) => h.sheetId != null).map((h) => [h.sheetId, h.title]))
+  const hojaDelNombre = new Map(nombresRaw
+    .filter((n) => n.range?.sheetId != null)
+    .map((n) => [n.name, porIdDeHoja.get(n.range.sheetId)]))
   const formulas = await leerRenders(g, id, hojas, 'FORMULA')
   const vistas = await leerRenders(g, id, hojas, 'FORMATTED_VALUE')
 
@@ -167,7 +183,7 @@ export async function auditar(g, { id = ID, cargar = cargarArchivo } = {}) {
     for (const d of dinamicas.get(h.title) ?? []) a.refPestanas.set(d.origen, (a.refPestanas.get(d.origen) ?? 0) + 1)
     return { ...a, dinamicas: dinamicas.get(h.title) ?? [] }
   })
-  const grafo = construirGrafo(analisis, titulos, nombresDefinidos)
+  const grafo = construirGrafo(analisis, titulos, nombresDefinidos, hojaDelNombre)
   const duenos = duenosPorPestana()
   // DE CARGA es la que declara que sus números los pone una persona: los del formateador y los que
   // el registro de dueños exceptúa por escrito. En esas, un número pegado es el dato de origen.
