@@ -448,7 +448,22 @@ export function clasificarMovimiento(concepto = '') {
   // crédito fiscal y la percepción RG 2408 es pago a cuenta, o sea recuperables— es un asunto de la
   // posición fiscal, no del flujo: se declara en COBERTURA_NATURALEZA y no se descuenta acá.
   if (/comision|iva 21% reg de transfisc|iva percepcion rg 2408/i.test(c)) return 'Comisiones y gastos bancarios'
-  if (/pago haberes|pago de haberes/i.test(c)) return 'Sueldos'
+  // ═══ EL BANCO ESCRIBE "HABER" EN SINGULAR Y SE LLEVÓ $3.380.000 AL CAJÓN EQUIVOCADO (15/08) ═══
+  //
+  // La regla pedía "haberes" con ese literal, y el lote del 14/08 llega como *"Acreditacion en cta
+  // pago de haber - 260814507 cuit 30716304643"*: singular y con otro prefijo. Trece de los catorce
+  // movimientos de la quincena —$3.380.000— cayeron en «Transferencias a proveedores», y el
+  // decimocuarto ("Pago de haberes por cci") sí matcheó: el MISMO lote, partido en dos naturalezas.
+  //
+  // Lo que eso rompe no es la prolijidad. `expresionSePagaEl` busca la fecha de pago filtrando por
+  // Sueldos; el cuadro de estimado-contra-real suma el lote por la misma columna; la conciliación por
+  // naturaleza compara sueldos contra sueldos. Los tres leían $260.000 donde el banco pagó $3.640.000,
+  // sin un solo error a la vista, y los $3.380.000 inflaban los pagos a proveedores.
+  //
+  // La familia se ancla a la RAÍZ («haber» + su plural opcional) y admite el prefijo de acreditación,
+  // que es como el banco rotula el mismo servicio de pago por lote cuando la contrapartida es la
+  // cuenta sueldo del empleado. No se ancla al número de lote (260814507): ése cambia todos los días.
+  if (/pago (?:de )?haberes?\b|acreditacion en cta pago de haber/i.test(c)) return 'Sueldos'
   // UN ECHEQ QUE ENTRA NO ES UN CHEQUE QUE SALE (28/07). "Deposito e-cheq int misma plaza" es un
   // echeq de TERCERO que se acreditó: es plata que ENTRA (crédito), la contracara del que ya estaba
   // en "Valores a depositar". El bucket de cheques es de SALIDAS (echeq propios que el banco debitó,

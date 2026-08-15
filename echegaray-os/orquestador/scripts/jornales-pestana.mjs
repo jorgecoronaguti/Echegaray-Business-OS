@@ -115,6 +115,15 @@ import {
   filasDePersonas, avisoBancoCalculado, avisoHorasIncompletas, avisoEfectivoNegativo,
   canalesProyectados,
 } from '../lib/jornales-reparto-pago.mjs'
+// ESTIMADO CONTRA REAL. El estimado sale del cuadro de arriba (o sea, de JORNALES); el real, del
+// extracto replicado en `_BANCO_RAW`. Toda la aritmética y las fórmulas viven en la lib y se prueban
+// con números — acá sólo se eligen las celdas que se citan.
+import {
+  COLS_CONTRASTE, colContraste, EFECTIVO_SIN_FUENTE, TOTAL_INFERIDO,
+  formulaRealBanco, formulaMovimientos, formulaFechaDelLote, formulaOrigenDelReal,
+  formulaTotalInferido, formulaDiferencia, formulaDelta, formulaAvisoUmbral,
+  formulaSubtituloContraste,
+} from '../lib/jornales-real-vs-estimado.mjs'
 // Lo que se dibuja donde un dato no se puede afirmar. Mismo glifo que el resto de la pestaña usa para
 // "no hay dato": un cero ahí se leería como "no hay nadie", que es otra cosa.
 //
@@ -532,6 +541,42 @@ export function grilla({
   // NO SE COPIA EL NÚMERO ACÁ. Un concepto vive en un solo lugar y se referencia — duplicarlo es lo
   // que hace que el mismo dato tenga dos versiones distintas en dos pestañas.
   push([sub('No incluye SAC, vacaciones ni cargas sociales')])
+  blanco()
+
+  // ══ ESTIMADO CONTRA REAL: EL CUADRO DE ARRIBA MEDIDO CONTRA UNA FUENTE QUE NO ES LA PLANILLA ══
+  //
+  // ═══ EL PEDIDO (03/08, textual, y sin ejecutar hasta hoy) ═══
+  //
+  // *"el valor q me mostras de la quincena es el estimado, quiero ese y el real"*.
+  //
+  // El cuadro de pago sale de JORNALES de punta a punta: horas × $/hora, más la columna BANCO cuando
+  // alguien la carga. Preguntarle a ese cuadro si acertó es preguntarle a la planilla por la planilla.
+  // Este bloque compara la MISMA quincena contra el extracto del Santander, que es la única fuente de
+  // este pago que no depende de quien lo liquida.
+  //
+  // VA PEGADO ABAJO DEL CUADRO DE PAGO Y NO ADENTRO. Adentro habría hecho falta una novena columna, y
+  // dos anchos de grilla en la misma pestaña es el defecto que el auditor de patrón caza y el dueño ve
+  // corrido. Separado, además, no mezcla las dos preguntas: arriba "cuánto hay que pagar", acá "cuánto
+  // salió de verdad".
+  //
+  // LAS TRES FILAS SON TRES NIVELES DE EVIDENCIA, Y LA ÚLTIMA COLUMNA LO DICE EN CADA UNA:
+  //   · POR BANCO   → HECHO. El extracto lo prueba, movimiento por movimiento.
+  //   · EN EFECTIVO → SIN FUENTE. Nadie registra la entrega de billetes (ver EFECTIVO_SIN_FUENTE).
+  //   · EL TOTAL    → INFERIDO del acuerdo 50/50. Se publica declarado como inferencia, nunca como dato.
+  // No suman entre sí, y por eso el rótulo del total dice «antes del adelanto»: las dos primeras filas
+  // reparten el NETO y la tercera es el TOTAL de la quincena, que es el neto más lo ya adelantado.
+  push(['Estimado contra real — la quincena que se está pagando'])
+  const fSubReal = push([VACIO])
+  const fContrasteCols = push(COLS_CONTRASTE)
+  const fContraste = {
+    banco: push(['Por banco — el 50% acordado']),
+    efectivo: push(['En efectivo — el otro 50%']),
+  }
+  const fContrasteTotal = push([rotuloTotal('TOTAL DE LA QUINCENA — antes del adelanto')])
+  // EL AVISO DEL UMBRAL, EN SU PROPIA LÍNEA Y APAGADO MIENTRAS NO PASE NADA. Se mide sobre la fila del
+  // BANCO —la única con prueba— y nunca sobre el total, que es una inferencia: un aviso disparado por
+  // una inferencia no es un control, es una opinión con signo de admiración.
+  const fAvisoUmbral = push([VACIO])
   blanco()
 
   // ══ EL AÑO: LA OTRA VENTANA DE TIEMPO, SEPARADA ══
@@ -1580,6 +1625,71 @@ export function grilla({
     ? avisoEfectivoNegativo({ hoja: ESPEJO, r0: personasPago[0], r1: personasPago[personasPago.length - 1] })
     : VACIO
 
+  // ══ ESTIMADO CONTRA REAL: LAS TRES FILAS, CADA UNA CON SU NIVEL DE EVIDENCIA ══
+  //
+  // El ESTIMADO no se recalcula acá: cita la fila «Obreros · UOCRA» del cuadro de pago. Recalcularlo
+  // sería tener dos versiones del mismo número en la misma pantalla, que es exactamente lo que el
+  // dueño llamó "un desastre q no se entiende" — y encima el cuadro podría contradecirse a sí mismo
+  // cuatro filas más abajo.
+  //
+  // El REAL sale de `_BANCO_RAW` por la fecha de cierre del registro (`$B$fReg`). Por FECHA DE CIERRE
+  // y no por "el último lote": una quincena se paga después de terminar y el que mira tiene que poder
+  // ver a qué período corresponde cada peso. La ventana la deriva la lib del propio cierre.
+  const cCuando = colContraste('Cuándo')
+  const cMovs = colContraste('Movimientos')
+  const cEst = colContraste('Estimado')
+  const cReal = colContraste('Real')
+  const cDif = colContraste('Diferencia')
+  const cDelta = colContraste('Δ %')
+  const cOrigen = colContraste('De dónde sale el real')
+  const iCol = (letra) => letra.charCodeAt(0) - 65
+  const cierre = `$B$${fReg}`
+  filas[fSubReal - 1][0] = formulaSubtituloContraste(fReg)
+  /** Una fila del cuadro: el estimado que cita, el real que se le puede probar, y la prosa del origen. */
+  const filaContraste = (f, { estimado, real, cuando = SIN_DATO, movs = SIN_DATO, origen }) => {
+    filas[f - 1][iCol(cCuando)] = cuando
+    filas[f - 1][iCol(cMovs)] = movs
+    filas[f - 1][iCol(cEst)] = estimado
+    filas[f - 1][iCol(cReal)] = real
+    // La diferencia y el delta se escriben SIEMPRE con la misma fórmula, incluso en la fila que no
+    // tiene real: ahí se apagan solas (`N(real)=0`) y dibujan el "—" del patrón de moneda. Escribir
+    // un literal "—" en su lugar dejaría dos formas distintas de decir lo mismo en el mismo cuadro.
+    filas[f - 1][iCol(cDif)] = formulaDiferencia(`${cEst}${f}`, `${cReal}${f}`)
+    filas[f - 1][iCol(cDelta)] = formulaDelta(`${cEst}${f}`, `${cDif}${f}`)
+    filas[f - 1][iCol(cOrigen)] = origen
+  }
+  // 1 · POR BANCO — el único renglón con prueba. `G` es «Por banco» de la fila de obra del cuadro de
+  // arriba: 14 hechos y, mientras alguien no cargue su columna BANCO, algún 50% calculado. Que el
+  // banco lo desmienta es justamente para lo que sirve este renglón.
+  filaContraste(fContraste.banco, {
+    cuando: formulaFechaDelLote(cierre),
+    movs: formulaMovimientos(cierre),
+    estimado: `=G${fPago.obra}`,
+    real: formulaRealBanco(cierre),
+    origen: formulaOrigenDelReal({ celdaHasta: cierre, celdaMovs: `${cMovs}${fContraste.banco}` }),
+  })
+  // 2 · EN EFECTIVO — estimado sí, real NO, y el motivo en la celda. Ver EFECTIVO_SIN_FUENTE: la
+  // columna «Total recibo» de JORNALES es TOTAL−ADELANTO−BANCO, un residuo de la misma planilla.
+  // Usarla acá daría cero de diferencia todos los días y no probaría absolutamente nada.
+  filaContraste(fContraste.efectivo, {
+    estimado: `=H${fPago.obra}`,
+    real: SIN_DATO,
+    origen: EFECTIVO_SIN_FUENTE,
+  })
+  // 3 · EL TOTAL — la única forma de contestar "¿cuánto salió de verdad esta quincena?" con lo que
+  // hay: el banco por dos, porque el acuerdo es mitad y mitad. Es una INFERENCIA y la celda lo dice.
+  filaContraste(fContrasteTotal, {
+    estimado: `=D${fPago.obra}`,
+    real: formulaTotalInferido(`${cReal}${fContraste.banco}`),
+    origen: TOTAL_INFERIDO,
+  })
+  filas[fAvisoUmbral - 1][0] = formulaAvisoUmbral({
+    movs: `${cMovs}${fContraste.banco}`,
+    est: `${cEst}${fContraste.banco}`,
+    dif: `${cDif}${fContraste.banco}`,
+    delta: `${cDelta}${fContraste.banco}`,
+  })
+
   // ══ EL CUADRO DEL AÑO: DOS COLUMNAS, UNA POR VENTANA DE TIEMPO ══
   //
   // Cada celda sale del bloque que la produce y de ningún otro lado: si una nómina se recalculara acá
@@ -1637,6 +1747,11 @@ export function grilla({
       // los clasifica y quedarían con el formato que hubiera dejado el layout anterior.
       { fila: fSubPago, col: 0 }, { fila: fAvisoBanco, col: 0 },
       { fila: fAvisoHoras, col: 0 }, { fila: fAvisoNeg, col: 0 },
+      // El bloque de estimado-contra-real: su subtítulo, su aviso de umbral y la celda que RINDE la
+      // forma del lote ("14 movimientos iguales de $260.000…"). Las tres salen de una fórmula, así que
+      // el pase por contenido las saltea y sin declararlas el barrido de moneda las dibuja como pesos.
+      { fila: fSubReal, col: 0 }, { fila: fAvisoUmbral, col: 0 },
+      { fila: fContraste.banco, col: COLS_CONTRASTE.indexOf('De dónde sale el real') },
     ],
     enteros: [plantel.fTotal],
     // ── LOS DOS CUADROS DEL HERO, PARA EL FORMATO ──
@@ -1646,6 +1761,13 @@ export function grilla({
       cols: COLS_PAGO, fCols: fPagoCols, sub: fSubPago,
       f0: fPago0, fFin: fPagoFin, total: fPagoTotal, personas: personasPago.length,
       avisos: [fAvisoBanco, fAvisoHoras, fAvisoNeg],
+    },
+    // El cuadro de estimado contra real: sus filas y sus rótulos. El formato busca cada columna por
+    // NOMBRE —nunca por letra—, que es la regla que impide que agregar una columna deje el formato de
+    // porcentaje pintando la de al lado.
+    contraste: {
+      cols: COLS_CONTRASTE, fCols: fContrasteCols,
+      f0: fContraste.banco, fFin: fContrasteTotal, aviso: fAvisoUmbral,
     },
     anio: {
       cols: COLS_ANIO, col: COL_ANIO, fCols: fAnioCols,
@@ -2558,6 +2680,34 @@ export function requestsDeFormato(sheetId, filas, g) {
         fields: 'userEnteredFormat.textFormat',
       },
     })
+  }
+  // ── ESTIMADO CONTRA REAL: CADA COLUMNA CON SU TIPO, BUSCADA POR RÓTULO ──
+  //
+  // Cinco tipos distintos en ocho columnas, y el barrido general de moneda los pinta a todos como
+  // pesos: sin este bloque «Cuándo» sale "$46.248", «Movimientos» "$14" y el Δ % "$0". Es el mismo
+  // defecto que esta pestaña ya arregló cuatro veces en otros cuadros.
+  if (g.contraste) {
+    const cx = (rotulo) => g.contraste.cols.indexOf(rotulo)
+    const r0 = g.contraste.f0 - 1
+    const r1 = g.contraste.fFin
+    fmt(r0, r1, cx('Cuándo'), cx('Cuándo') + 1, { type: 'DATE', pattern: 'dd/mm/yyyy' })
+    fmt(r0, r1, cx('Movimientos'), cx('Movimientos') + 1, ENTERO)
+    // EL DELTA LLEVA LAS TRES SECCIONES CON LA DEL MEDIO ESCRITA. Un patrón "0.0%;;—" deja los
+    // negativos INVISIBLES, y acá el caso que importa es justamente el negativo: que el banco haya
+    // pagado MENOS de lo estimado es el que dice que la proyección no se puede creer.
+    fmt(r0, r1, cx('Δ %'), cx('Δ %') + 1, { type: 'PERCENT', pattern: '0.0%;[Red]-0.0%;"—"' })
+    // La última columna es prosa: alineada a la IZQUIERDA para que se derrame hacia la derecha, donde
+    // no hay nada, y no hacia atrás encima del porcentaje de al lado.
+    textoIzq(r0, r1, cx('De dónde sale el real'), cx('De dónde sale el real') + 1)
+    // LA FILA DEL TOTAL EN ACENTO, igual que la de los otros dos cuadros del hero: la notación de un
+    // mismo significado es la misma en toda la pestaña (UNIFY / ISO 24896).
+    escenario(g.contraste.fFin - 1, g.contraste.fFin, 0, ANCHO_HERO, { bold: true, color: ACENTO, size: 11 })
+    // Y SU «Real» EN ITÁLICA APAGADA AUNQUE ESTÉ EN LA FILA DE TOTAL: es una inferencia del acuerdo,
+    // no un hecho, y la pestaña ya usa esa marca para exactamente eso. Las dos cosas a la vez porque
+    // las dos son ciertas — es el mismo trato que recibe el proyectado del cuadro del año.
+    escenario(g.contraste.fFin - 1, g.contraste.fFin, cx('Real'), cx('Real') + 1, { bold: true, italic: true, color: ACENTO, size: 11 })
+    // El real del BANCO, en negrita y tinta plena: la plata salió y el extracto lo prueba.
+    escenario(g.contraste.f0 - 1, g.contraste.f0, cx('Real'), cx('Real') + 1, { bold: true })
   }
   // ── EL CUADRO DEL AÑO: LA MARCA DEL ESCENARIO, IGUAL QUE EN EL RESTO DEL LIBRO ──
   //
