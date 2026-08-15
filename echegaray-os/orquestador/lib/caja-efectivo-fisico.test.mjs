@@ -379,12 +379,23 @@ test('el sello por renglón sólo se siembra si se puede PROBAR que es exacto', 
 test('necesitaSello: sella ante conteo nuevo, no resella por decimales fantasma, y sin conteo no hay nada que sellar', async () => {
   const { necesitaSello } = await import('./caja-efectivo-fisico.mjs')
   // El caso real del 07/08: el dueño tipeó 5.920.000 y el sello era del conteo anterior (9.200.000).
-  assert.equal(necesitaSello({ valor: 5920000, fecha: 46240 }, { valor: 9200000, fecha: 46240 }), true)
-  // Recontar el MISMO monto otro día también resella: la fecha es parte de la identidad del conteo.
-  assert.equal(necesitaSello({ valor: 5920000, fecha: 46241 }, { valor: 5920000, fecha: 46240 }), true)
+  assert.equal(necesitaSello({ valor: 5920000 }, { valor: 9200000 }), true)
   // El flotante que vuelve de la API no puede resellar en cada corrida.
-  assert.equal(necesitaSello({ valor: 5920000.0000001, fecha: 46240 }, { valor: 5920000, fecha: 46240 }), false)
-  // Sin conteo cargado, nada que sellar: la guarda ISNUMBER de la formula ya muestra 0 sola.
-  assert.equal(necesitaSello({ valor: 0, fecha: 0 }, { valor: 9200000, fecha: 46240 }), false)
+  assert.equal(necesitaSello({ valor: 5920000.0000001 }, { valor: 5920000 }), false)
+  // Sin conteo cargado, nada que sellar: la guarda del sello ya muestra 0 sola.
+  assert.equal(necesitaSello({ valor: 0 }, { valor: 9200000 }), false)
   assert.equal(necesitaSello({}, {}), false)
+})
+
+test('LA FECHA TIPEADA NO PUEDE DISPARAR UN RESELLO — el dueño la borró y eso no es un conteo nuevo', async () => {
+  const { necesitaSello } = await import('./caja-efectivo-fisico.mjs')
+  // CAMBIO DE CONTRATO (15/08). Antes la fecha era parte de la identidad del conteo, y por eso al
+  // borrarla el arqueo pasaba a valer {valor:12000000, fecha:0} contra un sello de fecha 46241:
+  // distinto → resello → el histórico entero se metía adentro del conteo y los movimientos posteriores
+  // desaparecían. Una edición legítima del dueño no puede reescribir el ancla.
+  assert.equal(necesitaSello({ valor: 12000000, fecha: 0 }, { valor: 12000000, fecha: 46241 }), false)
+  // Y recontar el MISMO monto otro día ya no resella. Es una pérdida consciente: el ancla dejó de ser
+  // la fecha y pasó a ser el instante que estampa la corrida, que sólo se mueve con un valor nuevo.
+  // Cuesta un re-conteo idéntico no reconocido; compra que ninguna celda pueda apagar el mecanismo.
+  assert.equal(necesitaSello({ valor: 5920000, fecha: 46241 }, { valor: 5920000, fecha: 46240 }), false)
 })

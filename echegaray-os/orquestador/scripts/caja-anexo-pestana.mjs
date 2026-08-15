@@ -30,6 +30,7 @@ import {
   necesitaSello, dictamenEfectivo, avisoEfectivoImposible, avisoTechoNoVerificable,
   selloPorRenglonSembrable,
 } from '../lib/caja-efectivo-fisico.mjs'
+import { instanteDelSello, ventanaDelSello } from '../lib/caja-ancla-por-instante.mjs'
 import { ALERTA } from '../lib/glifos.mjs'
 import { DESDE_CAJA, CELDA_CAJA_MINIMA, ESPECIE_ANEXO } from '../lib/caja-anexo-nombres.mjs'
 import { TIPO_CAMBIO } from '../lib/caja-disponibilidades.mjs'
@@ -86,12 +87,16 @@ async function sellarConteo(google, g) {
     const v = await google.readSheetValues(ID, rango, { render: 'UNFORMATTED_VALUE' })
     return Number(v?.[0]?.[0]) || 0
   }
-  const arqueo = { valor: await uno(DESDE_CAJA.arqueoArs), fecha: await uno(DESDE_CAJA.arqueoArsFecha) }
-  const sellado = {
-    valor: Number(g.filas[g.fEstado - 1]?.[3]) || 0,
-    fecha: Number(g.filas[g.fSello - 1]?.[5]) || 0,
-  }
+  // SÓLO EL VALOR. La fecha tipeada ya no se lee: el dueño la borró a propósito ("no te guíes en eso
+  // sino en lo q marca los timestamps del código") y mientras se comparaba, un 0 contra el 46241
+  // sellado disparaba un resello que se habría tragado TODOS los movimientos adentro del conteo.
+  const arqueo = { valor: await uno(DESDE_CAJA.arqueoArs) }
+  const sellado = { valor: Number(g.filas[g.fEstado - 1]?.[3]) || 0 }
   const [f0, f1] = g.filasHistorico
+  // EL INSTANTE ES DE ESTA CORRIDA, y el intervalo sale de la marca que dejó la anterior: el conteo se
+  // anotó entre las dos miradas. No se promete más precisión que ésa — ver ventanaDelSello.
+  const visto = instanteDelSello()
+  const cuando = ventanaDelSello({ visto, vistoPrevio: Number(g.filas[g.fSello - 1]?.[5]) })
   if (!necesitaSello(arqueo, sellado)) {
     console.log('  🧷 sello vigente: el conteo no cambió')
     return sembrarSelloPorRenglon(google, g, sellado)
@@ -105,7 +110,10 @@ async function sellarConteo(google, g) {
   const neto = Math.round(hist.reduce((s, fila) => s + fila[0], 0) * 100) / 100
   await google.batchUpdateValues(ID, [
     { range: `${PESTANA_ANEXO}!D${g.fSello}`, values: [[neto]] },
-    { range: `${PESTANA_ANEXO}!F${g.fSello}`, values: [[arqueo.fecha]] },
+    // EL ANCLA. Antes se copiaba acá la FECHA que el dueño tipeaba, y por eso borrarla apagó el
+    // mecanismo entero. Ahora es el INSTANTE en que esta corrida vio el conteo nuevo: lo pone el
+    // código, nadie lo puede borrar desde CAJA, y es de lo que cuelga la guarda de la ventana.
+    { range: `${PESTANA_ANEXO}!F${g.fSello}`, values: [[visto]] },
     { range: `${PESTANA_ANEXO}!D${g.fEstado}`, values: [[arqueo.valor]] },
     // EL SELLO DE CADA RENGLÓN, DE LA MISMA LECTURA Y EN EL MISMO BATCH. El total de arriba es el que
     // resta; éstos son el diagnóstico —C menos D dice QUÉ canal se movió— y por venir del mismo `hist`
@@ -113,7 +121,8 @@ async function sellarConteo(google, g) {
     // que no suma su propio sello, que es peor que no tenerlo.
     { range: `${PESTANA_ANEXO}!D${f0}:D${f1}`, values: hist.map((fila) => [fila[0]]) },
   ])
-  console.log(`  🧷 conteo SELLADO: arqueo $${Math.round(arqueo.valor).toLocaleString('es-AR')} (serial ${arqueo.fecha}) · histórico al conteo $${Math.round(neto).toLocaleString('es-AR')}`)
+  console.log(`  🧷 conteo SELLADO: $${Math.round(arqueo.valor).toLocaleString('es-AR')} · histórico al conteo $${Math.round(neto).toLocaleString('es-AR')}`)
+  console.log(`  🕒 ${cuando.texto}`)
 }
 
 /**
