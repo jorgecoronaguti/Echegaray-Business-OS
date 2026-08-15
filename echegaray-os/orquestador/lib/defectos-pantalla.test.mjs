@@ -266,3 +266,103 @@ test('una celda sola rodeada de vacío no es una fila de rótulos: un encabezado
   // convierte el encabezado de ésta en una fila de datos (era la fila 4 entera de "Cobranzas").
   assert.equal(esFilaDeRotulos([cel('Concepto'), cel('Monto'), null, cel('$300.588.858')], 1), true)
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// UNA COLUMNA ENTERA DE TEXTO CON FORMATO DE NÚMERO (15/08)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// El punto ciego exacto de `texto_en_numero`: su criterio es "¿hay un número más arriba en esta
+// columna?" y en una columna que es TODA texto la respuesta es no en todas sus celdas. Cero avisos
+// sobre `Compras!S` ("Total o Parcial", ~1.343 celdas), `Cobranzas!U` y `Jornales!M134:M148`.
+
+/** La S real de Compras: un encabezado y valores que son palabras, todo con formato de moneda. */
+const columnaTodaTexto = (n = 5) => hoja([
+  [cel('Proveedor'), cel('Total o Parcial', 'CURRENCY')],
+  ...Array.from({ length: n }, (_, i) => [cel(`Prov ${i}`), cel(i % 2 ? 'Total' : 'Parcial', 'CURRENCY')]),
+])
+
+test('EL DEFECTO: una columna entera de texto con formato de moneda no se reporta nunca', () => {
+  const d = detectar(columnaTodaTexto())
+  assert.deepEqual(d.filter((x) => x.tipo === 'texto_en_numero'), [],
+    'ni una: cada celda cumple "no hay número arriba", así que todas parecen el encabezado')
+})
+
+test('con la bandera, la columna entera se reporta UNA vez, no una por celda', () => {
+  const d = detectar(columnaTodaTexto(), { columnasEnteras: true })
+    .filter((x) => x.tipo === 'columna_texto_en_numero')
+  assert.equal(d.length, 1, 'el defecto es de la columna: 1.343 celdas con un solo arreglo')
+  assert.equal(d[0].col, 'B')
+  assert.equal(d[0].celdas, 6, 'el encabezado cuenta: también arrastra el formato')
+  assert.match(d[0].que, /formato CURRENCY/)
+})
+
+test('la bandera va APAGADA por defecto: los totales de hoy no cambian solos', () => {
+  assert.deepEqual(detectar(columnaTodaTexto()).filter((x) => x.tipo === 'columna_texto_en_numero'), [])
+})
+
+test('un solo número en el bloque y ya no es este defecto: es una nota entre importes', () => {
+  const f = hoja([
+    [cel('Concepto'), cel('Monto', 'CURRENCY')],
+    [cel('a'), cel('$100.000', 'CURRENCY')],
+    [cel('b'), cel('pendiente', 'CURRENCY')],
+    [cel('c'), cel('pendiente', 'CURRENCY')],
+    [cel('d'), cel('pendiente', 'CURRENCY')],
+  ])
+  const d = detectar(f, { columnasEnteras: true })
+  assert.deepEqual(d.filter((x) => x.tipo === 'columna_texto_en_numero'), [])
+  assert.equal(d.filter((x) => x.tipo === 'texto_en_numero').length, 3, 'ésas ya las reportaba el pase por celda')
+})
+
+test('dos celdas no son una columna: un rótulo con una nota debajo no se marca', () => {
+  const f = hoja([
+    [cel('Concepto'), cel('Observación', 'CURRENCY')],
+    [cel('a'), cel('sin novedad', 'CURRENCY')],
+  ])
+  assert.deepEqual(detectar(f, { columnasEnteras: true }).filter((x) => x.tipo === 'columna_texto_en_numero'), [])
+})
+
+test('el bloque no cruza un título de sección: dos cuadros apilados se miden por separado', () => {
+  // El de arriba tiene importes de verdad; el de abajo es texto puro. Mirando la columna entera se
+  // perdería el de abajo, que es el que está mal.
+  const f = hoja([
+    [cel('Concepto'), cel('Monto', 'CURRENCY')],
+    [cel('a'), cel('$100.000', 'CURRENCY')],
+    [cel('b'), cel('$200.000', 'CURRENCY')],
+    [cel('2 · TOTAL O PARCIAL')],
+    [cel('Proveedor'), cel('Estado', 'CURRENCY')],
+    [cel('x'), cel('Total', 'CURRENCY')],
+    [cel('y'), cel('Parcial', 'CURRENCY')],
+  ])
+  const d = detectar(f, { columnasEnteras: true }).filter((x) => x.tipo === 'columna_texto_en_numero')
+  assert.equal(d.length, 1)
+  assert.equal(d[0].fila, 5, 'arranca en el encabezado del cuadro de abajo, no en el de arriba')
+  assert.equal(d[0].celdas, 3)
+})
+
+test('no se reporta dos veces lo mismo: si el pase por celda ya lo nombró, el bloque calla', () => {
+  // Un bloque de puro texto DEBAJO de un bloque con importes en la misma columna, sin título que los
+  // separe: ahí `esRotuloDeColumna` sí encuentra un número arriba y reporta celda por celda.
+  const f = hoja([
+    [cel('Concepto'), cel('Monto', 'CURRENCY')],
+    [cel('a'), cel('$100.000', 'CURRENCY')],
+    [cel('x'), cel('Total', 'CURRENCY')],
+    [cel('y'), cel('Parcial', 'CURRENCY')],
+    [cel('z'), cel('Total', 'CURRENCY')],
+  ])
+  const d = detectar(f, { columnasEnteras: true })
+  assert.equal(d.filter((x) => x.tipo === 'texto_en_numero').length, 3)
+  assert.deepEqual(d.filter((x) => x.tipo === 'columna_texto_en_numero'), [],
+    'el mismo defecto contado dos veces infla el informe y esconde los que faltan')
+})
+
+test('el guion del cero y el importe entre paréntesis no convierten una columna en texto', () => {
+  // Las dos formas en que un formato de número dibuja un valor: si se leyeran como texto, cada
+  // columna de importes con ceros pasaría a ser un defecto de columna entera.
+  const f = hoja([
+    [cel('Concepto'), cel('Monto', 'CURRENCY')],
+    [cel('a'), cel('—', 'CURRENCY')],
+    [cel('b'), cel('($ 96.800,00)', 'CURRENCY')],
+    [cel('c'), cel('-$2.949.816', 'CURRENCY')],
+  ])
+  assert.deepEqual(detectar(f, { columnasEnteras: true }).filter((x) => x.tipo === 'columna_texto_en_numero'), [])
+})

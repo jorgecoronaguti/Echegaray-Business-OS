@@ -42,6 +42,7 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { detectar } from '../lib/defectos-pantalla.mjs'
+import { anchosDe } from '../lib/anchos-declarados.mjs'
 import { PESTANAS } from './formato-pestanas.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -79,10 +80,25 @@ export const CON_ANCHO_GOBERNADO = new Set(['Proveedores'])
 
 /**
  * NÚCLEO PURO: decide qué hacer con cada texto que no entra.
- * @param {{anchoGobernado?:boolean}} [opts] la pestaña declara sus anchos en una fuente única
+ *
+ * ═══ UNA COLUMNA CON ANCHO DECLARADO NO PASA POR LAS HEURÍSTICAS (15/08) ═══
+ *
+ * `ANCHO_MAX` y `ES_PARRAFO` contestan la misma pregunta de dos formas: "¿hay un ancho razonable que
+ * contenga este texto?". Las dos son estimaciones sobre una columna de la que nadie se hizo cargo.
+ * Cuando el ancho está DECLARADO (`lib/anchos-declarados.mjs`), la pregunta ya la contestó una
+ * persona: se aplica ese número tal cual, y el único corte que queda es si el texto entra o no en él.
+ *
+ * Eso es lo que destraba `Cobranzas!H` —25 textos cortados en una pestaña de carga, o sea sin ningún
+ * generador a quien derivarle el arreglo— sin mover un tope global que gobierna otras veinte
+ * pestañas. Ver el porqué completo, con la medición, en la cabecera de `anchos-declarados.mjs`.
+ *
+ * @param {{anchoGobernado?:boolean, declarados?:Record<string, number>}} [opts]
+ *        `anchoGobernado`: la pestaña declara sus anchos en una fuente única Y los aplica su propio
+ *        generador — acá no se toca ninguna. `declarados`: el ancho por columna que este script SÍ
+ *        aplica, porque nadie más lo va a aplicar.
  * @returns {{ensanchar: Map<number, number>, aNota: Array<{fila:number, col:number, texto:string}>}}
  */
-export function planDeReparacion(defectos, anchos = [], filas = [], { anchoGobernado = false } = {}) {
+export function planDeReparacion(defectos, anchos = [], filas = [], { anchoGobernado = false, declarados = {} } = {}) {
   const ensanchar = new Map()
   const aNota = []
   for (const d of defectos) {
@@ -91,6 +107,14 @@ export function planDeReparacion(defectos, anchos = [], filas = [], { anchoGober
     const texto = String(filas[d.fila - 1]?.[j]?.valor ?? d.valor)
     const tam = filas[d.fila - 1]?.[j]?.formato?.textFormat?.fontSize ?? 10
     const necesita = Math.ceil(texto.length * tam * 0.57) + 16
+    const declarado = declarados[String(d.col).toUpperCase()] ?? null
+    if (declarado !== null) {
+      // El ancho declarado se aplica ENTERO, no "lo que necesite el texto de hoy": si dependiera del
+      // dato, cada carga nueva movería la columna y volvería la disputa que esto viene a apagar.
+      if (necesita > declarado) { aNota.push({ fila: d.fila, col: j, texto }); continue }
+      ensanchar.set(j, declarado)
+      continue
+    }
     // Un párrafo no se arregla ensanchando: rompería la tabla y seguiría sin entrar. Y en una pestaña
     // con anchos de fuente única, NINGUNO se arregla ensanchando desde acá — todos se reportan.
     if (anchoGobernado || texto.length > ES_PARRAFO || necesita > ANCHO_MAX) { aNota.push({ fila: d.fila, col: j, texto }); continue }
@@ -119,15 +143,22 @@ async function main() {
     if (!defectos.length) { console.log(`  ${p.titulo.padEnd(26)} ✓`); continue }
 
     const anchoGobernado = CON_ANCHO_GOBERNADO.has(p.titulo)
-    const { ensanchar, aNota } = planDeReparacion(defectos, f.anchos, f.filas, { anchoGobernado })
+    const declarados = anchosDe(p.titulo)
+    const { ensanchar, aNota } = planDeReparacion(defectos, f.anchos, f.filas, { anchoGobernado, declarados })
     console.log(`  ${p.titulo.padEnd(26)} ${defectos.length} cortado(s) · ${ensanchar.size} columna(s) a ensanchar · ${aNota.length} a acortar`
-      + (anchoGobernado ? ' · 🔒 anchos de fuente única: acá no se ensancha ninguna' : ''))
+      + (anchoGobernado ? ' · 🔒 anchos de fuente única: acá no se ensancha ninguna' : '')
+      + (Object.keys(declarados).length ? ` · ancho declarado en ${Object.keys(declarados).join(', ')}` : ''))
     total += defectos.length
     if (DRY) continue
 
     const reqs = []
     for (const [j, px] of ensanchar) {
-      reqs.push({ updateDimensionProperties: { range: { sheetId: hoja.sheetId, dimension: 'COLUMNS', startIndex: j, endIndex: j + 1 }, properties: { pixelSize: Math.min(px, ANCHO_MAX) }, fields: 'pixelSize' } })
+      // EL TOPE NO SE APLICA A UN ANCHO DECLARADO, y esto es lo que hace que la declaración sirva.
+      // `planDeReparacion` ya decidió el número; volver a acotarlo acá por `ANCHO_MAX` recortaría los
+      // 480px de `Cobranzas!H` a 344 y el texto seguiría cortado — con la columna movida igual, que
+      // es el peor de los dos mundos: el defecto sigue y encima nadie entiende de dónde salió el 344.
+      const declarado = anchosDe(p.titulo)[col(j + 1)] ?? null
+      reqs.push({ updateDimensionProperties: { range: { sheetId: hoja.sheetId, dimension: 'COLUMNS', startIndex: j, endIndex: j + 1 }, properties: { pixelSize: declarado ?? Math.min(px, ANCHO_MAX) }, fields: 'pixelSize' } })
     }
     // ═══ EL TEXTO LARGO SE REPORTA, NO SE ANOTA ═══
     //
