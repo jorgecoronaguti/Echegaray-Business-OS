@@ -85,12 +85,19 @@ test('EL SELLO: con conteo nuevo se autocancela (neto 0 = "lo contado, tal cual"
   assert.match(sello, new RegExp(`SUM\\(C${f0}:C${f1}\\)`), 'el sello viejo se autocancela restando el histórico ENTERO')
   assert.match(sello, new RegExp(`N\\(\\$D\\$${g.fSello}\\)`), 'y el sello vigente resta el número sellado en D')
   assert.match(sello, /<>N\(CAJA_ARQUEO_ARS\)/, 'la vigencia compara el VALOR del arqueo contra la copia sellada')
-  assert.match(sello, /<>N\(CAJA_ARQUEO_ARS_FECHA\)/, 'y también la FECHA: recontar el mismo monto otro día resella')
+  // CAMBIO DE CONTRATO (15/08): la FECHA salió de la identidad del conteo. El dueño la borró
+  // ("no te guíes en eso sino en lo q marca los timestamps del código") y mientras se comparara, un 0
+  // contra el 46241 sellado resellaba en cada corrida y se tragaba los movimientos adentro del conteo.
+  assert.doesNotMatch(sello, /CAJA_ARQUEO_ARS_FECHA/,
+    'ninguna celda que el dueño pueda borrar puede intervenir en la vigencia del sello')
   assert.ok(!sello.includes(','), 'es-AR: separador ; — una coma acá es un decimal, no un argumento')
   // El neto es la suma de TODO lo visible: los seis históricos y el sello. Nada por fuera. Y desde el
   // 14/08 lleva además la guarda de lo imposible (su propio test, más abajo).
   const neto = celda(g, g.fNeto, 2)
-  assert.match(neto, new RegExp(`^=IF\\(NOT\\(ISNUMBER\\(CAJA_ARQUEO_ARS_FECHA\\)\\);0;`))
+  // LA GUARDA CUELGA DEL SELLO, NO DE LA CELDA. Ése es todo el bug del 15/08: al borrar D7 el neto
+  // quedó en 0 y el automático se apagó entero. Si hay sello estampado por el código, hay ventana.
+  assert.match(neto, new RegExp(`^=IF\\(NOT\\(ISNUMBER\\(\\$F\\$${g.fSello}\\)\\);0;`))
+  assert.doesNotMatch(neto, /CAJA_ARQUEO_ARS_FECHA/, 'la fecha tipeada ya no puede apagar el mecanismo')
   assert.ok(neto.includes(`SUM(C${f0}:C${g.fSello})`), 'el neto suma exactamente el bloque visible')
   // Sin sellos previos, D del sello y D del estado salen en 0: fuerzan "conteo sin sellar" — el lado
   // que muestra lo contado tal cual, nunca un descuento fantasma.
@@ -185,7 +192,8 @@ test('EL CONTROL SE PUBLICA CON NOMBRE Y FUERA DEL BLOQUE QUE MIDE', () => {
   assert.ok(f > g.fSello, 'un control que cae adentro del rango del neto se sumaría a lo que mide')
   assert.ok(vacia(celda(g, f, 2)), 'por eso su columna C va vacía: C entre el histórico y el sello ES el neto')
   const control = celda(g, f, 4)
-  assert.match(control, /^=IF\(NOT\(ISNUMBER\(CAJA_ARQUEO_ARS_FECHA\)\);0;MAX\(0;-\(/, 'vale 0 cuando el efectivo es posible')
+  assert.match(control, new RegExp(`^=IF\\(NOT\\(ISNUMBER\\(\\$F\\$${g.fSello}\\)\\);0;MAX\\(0;-\\(`),
+    'vale 0 cuando el efectivo es posible, y cuelga del SELLO — no de la celda que el dueño puede borrar')
   const destino = g.destinos.find((d) => d.name === ANEXO.efectivoImposible)
   assert.deepEqual({ fila: destino?.fila, col: destino?.col }, { fila: f, col: 5 },
     'CAJA lo lee por nombre: sin publicarlo, la alerta de la portada mira una celda que no existe')
@@ -219,7 +227,7 @@ test('EL ESTADO DEL SELLO DICE CUÁNTO SE MOVIÓ EL HISTÓRICO, no sólo que est
   // Y —lo que importa— EN EL BRAZO SANO. El 14/08 el sello estaba vigente: si el monto movido sólo
   // apareciera en el brazo de la alerta, la línea que el dueño lee todos los días seguiría siendo un ✓
   // mudo hasta que fuera demasiado tarde.
-  assert.ok(estado.includes(`"✓ sellado al conteo del "&TEXT(N($F$${g.fSello});"dd/mm")&" · el histórico se movió "&${movido}`),
+  assert.ok(estado.includes(`"✓ sellado al conteo del "&TEXT(N($F$${g.fSello});"dd/mm HH:mm")&" · el histórico se movió "&${movido}`),
     `el estado SELLADO tiene que decir cuánto se movió el histórico. Es: ${estado}`)
   assert.match(estado, /IMPOSIBLE/, 'y el estado imposible se nombra con todas las letras')
   assert.match(estado, /✓ sellado al conteo del/, 'sin perder el estado sano')

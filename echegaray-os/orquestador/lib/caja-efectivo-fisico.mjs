@@ -149,15 +149,28 @@ const guardado = (arqueo, cuerpo) => `=IF(NOT(ISNUMBER(${arqueo}));0;${cuerpo})`
  *
  * Se compara en CENTAVOS redondeados: el valor sellado viaja por la API como flotante y una
  * comparación exacta resellaría en cada corrida por un decimal fantasma. Sin conteo cargado no hay
- * nada que sellar: la fórmula ya muestra 0 sola por la guarda ISNUMBER.
- * @param {{valor:number, fecha:number}} arqueo lo que está tipeado hoy
- * @param {{valor:number, fecha:number}} sello  la copia sellada en la última corrida
+ * nada que sellar: la fórmula ya muestra 0 sola por la guarda del sello.
+ *
+ * ═══ SÓLO EL VALOR — LA FECHA SALIÓ DE ACÁ (15/08/2026) ═══
+ *
+ * Comparaba valor Y fecha tipeada. El dueño borró la fecha en CAJA a propósito —*"te borré la fecha
+ * de los saldos en caja para q no te guíes en eso sino en lo q marca los timestamps del código"*— y
+ * con eso `fecha = 0` contra el `46241` sellado daba distinto en cada corrida: el anexo habría
+ * RESELLADO contra el histórico del momento, tragándose todos los movimientos adentro del conteo.
+ * Eso no es un sello desactualizado, es la caja volviendo al arqueo cada dos horas — el mismo daño
+ * que el sello rodante del 14/08, esta vez disparado por una edición legítima del dueño.
+ *
+ * EL ÚNICO DISPARADOR VÁLIDO ES QUE CAMBIE EL NÚMERO QUE ÉL TIPEA. Un conteo nuevo es un conteo con
+ * otro valor; el momento no lo declara él, lo estampa la corrida al detectarlo.
+ *
+ * @param {{valor:number}} arqueo lo que está tipeado hoy
+ * @param {{valor:number}} sello  la copia sellada en la última corrida
  * @returns {boolean}
  */
 export function necesitaSello(arqueo = {}, sello = {}) {
   const cent = (x) => Math.round((Number(x) || 0) * 100)
-  if (!cent(arqueo.valor) && !cent(arqueo.fecha)) return false
-  return cent(arqueo.valor) !== cent(sello.valor) || cent(arqueo.fecha) !== cent(sello.fecha)
+  if (!cent(arqueo.valor)) return false
+  return cent(arqueo.valor) !== cent(sello.valor)
 }
 
 /**
