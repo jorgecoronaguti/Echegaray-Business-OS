@@ -21,6 +21,7 @@ import { ANCHOS_PROVEEDORES, aAnchoCompleto, anchoALimpiar } from '../lib/provee
 import { caracteresQueEntran } from '../lib/proveedores-rotulos.mjs'
 import { partir } from '../lib/partir-pestana.mjs'
 import { destinosDeArca } from '../lib/bloque-arca-nombres.mjs'
+import { aplicarHuella } from '../lib/huella-celda.mjs'
 
 test('estructural: convierte los \'\' en VACIO y deja intacto todo lo no-vacío', () => {
   const out = estructural(['TOTAL', '', 0, '=SUM(A1:A2)', '', 'nota'])
@@ -948,4 +949,36 @@ test('EL DEFECTO · la escritura del cuerpo consulta y SELLA la huella por celda
   // Y se fusiona la grilla que devolvió la huella, no la de antes: si no, su veredicto se descarta.
   assert.match(src, /const fusion = fusionar\(huella\.grid, previo\)/,
     'se fusiona `cuadroFinal` en vez de `huella.grid`: el veredicto de la huella no llega a la escritura')
+})
+
+// ═══ LA PRIMERA CORRIDA CON LA HUELLA ENCHUFADA NO PUEDE TOCAR UNA SOLA CELDA ═══
+//
+// Es la pregunta que hay que poder contestar ANTES de publicar esto: ¿cuánto puede romper el día que
+// se enchufe? MEDIDO en la base: "Proveedores" tiene CERO huellas, así que su primera corrida entra a
+// `aplicarHuella` con el mapa vacío. Sin mapa no hay alineación —`mejorDesplazamiento` sale por su
+// primera línea, "sin huella previa: primera corrida"— y sin alineación la función devuelve la grilla
+// TAL CUAL: no suprime, no limpia, no desocupa, no reclama un residuo. Radio cero, por construcción.
+//
+// La limpieza empieza a poder probar algo desde la SEGUNDA corrida, cuando ya hay mapa. Por eso quien
+// publique esto tiene que correrlo DOS veces y mirar `🧹 … limpiada(s) por huella` en la segunda: en
+// la primera va a decir 0, y eso NO es que no funcione — es que todavía no puede afirmar nada.
+test('con el mapa vacío —el estado de "Proveedores" hoy— la huella devuelve la grilla intacta', () => {
+  const generado = [
+    ['TOTAL ACREDITADO', VACIO, '=SUM($D33:$D33)'],
+    [VACIO, VACIO, VACIO],
+    ['⚠ un rótulo largo del generador, con su marca', 123, VACIO],
+  ]
+  // Lo que hay hoy en esas mismas celdas: sedimento del layout anterior y notas del dueño, mezclados.
+  const actual = [
+    ['TOTAL ACREDITADO', '0002-00000664', '=SUM($D33:$D33)'],
+    ['STARLINK ARGENTINA S R L', '30-71754087-1', '46163'],
+    ['una nota del dueño', 123, 'otra nota del dueño'],
+  ]
+  const r = aplicarHuella(generado, actual, new Map(), { fila0: 117, col0: 0 })
+  assert.equal(r.alineacion.alineada, false)
+  assert.match(r.alineacion.motivo, /primera corrida/)
+  for (const k of ['suprimidas', 'limpiadas', 'desocupadas', 'residuos', 'reescritos']) {
+    assert.deepEqual(r[k], [], `la primera corrida reclama celdas por "${k}": el radio no es cero y publicar esto es apostar`)
+  }
+  assert.deepEqual(r.grid, generado, 'la primera corrida modifica la grilla: sin mapa no puede probar nada sobre ninguna celda')
 })
