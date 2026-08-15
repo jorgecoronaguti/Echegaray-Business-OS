@@ -1,6 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { bordesDeTramos, tramoDe, repartir, dateASerial, serialADate, descomponerPorTramo, vencimientosFiscales } from './conciliar-caja-vs-cashflow.mjs'
+import {
+  bordesDeTramos, tramoDe, repartir, dateASerial, serialADate, descomponerPorTramo, vencimientosFiscales,
+  buscarCelda, leerEscaleraDeCaja,
+} from './conciliar-caja-vs-cashflow.mjs'
 
 /** 04/08/2026, el día en que se midió la diferencia de $41.704.351. */
 const HOY = dateASerial(new Date(Date.UTC(2026, 7, 4)))
@@ -73,31 +76,80 @@ test('repartir NO crea ni pierde plata, y deja afuera lo que no tiene fecha', ()
   assert.equal(tramos[2], 6189317)
 })
 
-test('la diferencia se ATRIBUYE a un lado y a un tramo, no queda en un número final', () => {
-  // POR QUÉ IMPORTA: el 05/08 el script decía "no cierra por $12.188.441" y ahí terminaba. Con un solo
-  // número no se puede saber si la pestaña ve egresos de más o ingresos de menos, y los dos se
-  // arreglan al revés. Abierto por tramo y por lado, el residuo cayó entero en "Vencido / lo que SALE"
-  // y eso apuntó directo a la causa: cheques ya debitados restados otra vez.
+test('la diferencia se ATRIBUYE a un tramo, no queda en un número final — ahora NETO, no por lado', () => {
+  // POR QUÉ IMPORTA: el 05/08 el script decía "no cierra por $12.188.441" y ahí terminaba. Abierto por
+  // tramo, el residuo cae en el tramo que lo explica en vez de perderse en un total.
+  //
+  // YA NO ES "POR LADO" (15/08): desde el rediseño de CAJA la pestaña sólo publica el NETO de cada
+  // tramo (ver `leerEscaleraDeCaja`), así que la comparación se hace neto contra neto.
   const bordes = bordesDeTramos(HOY)
-  const pestaña = new Map(bordes.map((b, k) => [b.rotulo, { entra: 100 * k, sale: 10 * k }]))
-  // La pestaña ve 500 de egreso donde el modelo ve 12.188.441: la diferencia va del lado que SALE.
-  pestaña.set('Vencido — ya pasó la fecha', { entra: 0, sale: 12188441 })
+  const pestaña = new Map(bordes.map((b, k) => [b.rotulo, 90 * k]))   // (entra=100k) - (sale=10k)
+  // La pestaña ve -12.188.441 de neto donde el modelo ve 0: toda la diferencia cae acá.
+  pestaña.set('Vencido — ya pasó la fecha', -12188441)
   const abierta = descomponerPorTramo(bordes, bordes.map((_, k) => 100 * k), bordes.map((_, k) => 10 * k), pestaña)
-  assert.equal(abierta[0].difEntra, 0)
-  assert.equal(abierta[0].difSale, -12188441, 'la pestaña resta de más: el signo tiene que ser NEGATIVO')
+  assert.equal(abierta[0].dif, -12188441, 'la pestaña ve menos plata que el modelo: el signo tiene que ser NEGATIVO')
   assert.equal(abierta[0].acum, -12188441)
   // Y el acumulado es el que explica el piso: los tramos limpios no lo mueven.
   for (const t of abierta.slice(1)) assert.equal(t.dif, 0)
   assert.equal(abierta.at(-1).acum, -12188441)
 })
 
-test('un tramo que NO está en la pestaña se ve, no se descuenta como cero', () => {
-  // Un rótulo que cambia de un lado y no del otro dejaría la resta contra una fila inexistente. Eso
-  // tiene que verse como falta, no confundirse con "la pestaña no tiene nada en ese tramo".
+test('un tramo que NO está en el mapa de la pestaña se lee como 0, no como error silencioso', () => {
+  // `descomponerPorTramo` ya NO decide si falta un tramo — eso lo decide `leerEscaleraDeCaja` ANTES,
+  // fallando fuerte. Acá, si igual llega un mapa incompleto, el faltante pesa 0 del lado pestaña (todo
+  // el neto modelado queda de diferencia), no explota ni lo esconde.
   const bordes = bordesDeTramos(HOY)
   const abierta = descomponerPorTramo(bordes, bordes.map(() => 0), bordes.map(() => 7000), new Map())
-  assert.equal(abierta.every((t) => t.falta), true)
-  assert.equal(abierta[0].difSale, 7000)
+  assert.equal(abierta[0].dif, 7000, 'sin dato de la pestaña, la diferencia es "0 − netoModelo"')
+})
+
+test('buscarCelda encuentra por TEXTO en cualquier columna — no está anclado a una posición', () => {
+  // EL DEFECTO QUE ESTO ATRAPA: el conciliador leía `caja[i]?.[0]` (columna A) y el rediseño del
+  // 05/08 movió el panel de vencimientos a la F. Si `buscarCelda` sólo mirara la columna 0, este test
+  // fallaría igual que falló el script durante diez días.
+  const grilla = [
+    ['Cuenta', 'Importe', 'Saldo', '', '', 'Tramo', 'Hasta', 'Neto', 'Saldo después'],
+    ['Efectivo en pesos', 12000000, 7359430, '', '', 'Vencido — ya pasó la fecha', 46248, -57040295, -38770225],
+  ]
+  const c = buscarCelda(grilla, (v) => v === 'Neto')
+  assert.deepEqual(c, { fila: 0, col: 7 })
+  const c2 = buscarCelda(grilla, (v) => v === 'columna que no existe')
+  assert.equal(c2, null)
+})
+
+test('leerEscaleraDeCaja lee el NETO y el piso sin importar en qué columna estén', () => {
+  const bordes = bordesDeTramos(HOY)
+  // Una grilla CON UN CORRIMIENTO DE COLUMNAS DISTINTO AL REAL, a propósito: si el código estuviera
+  // anclado a F/H/I esto fallaría; si busca por texto, da igual dónde estén. El piso es una fila
+  // APARTE de los seis tramos —igual que en CAJA real, donde "Total disponibilidades" es su propia
+  // fila con el rótulo "⇒ Peor caso · piso" en la columna del Tramo—, nunca empieza con "·".
+  const cab = ['x', 'x', 'x', 'Tramo', 'Hasta', 'Neto', 'Saldo después']
+  const filas = bordes.map((b, k) => ['', '', '', b.rotulo, '', 100 * (k + 1), 1000 * (k + 1)])
+  const filaPiso = ['', '', '', '⇒ Peor caso · piso', '', '', 999999]
+  const grilla = [cab, ...filas, filaPiso]
+  const r = leerEscaleraDeCaja(grilla, bordes)
+  assert.equal(r.porRotulo.get(bordes[0].rotulo), 100)
+  assert.equal(r.porRotulo.get(bordes.at(-1).rotulo), 100 * bordes.length)
+  assert.equal(r.pisoEscrito, 999999)
+  assert.equal(r.filaPiso, filas.length + 1)   // la fila del piso, después del encabezado y los tramos
+})
+
+test('leerEscaleraDeCaja FALLA nombrando el rótulo exacto que no encontró — no sigue adelante', () => {
+  const bordes = bordesDeTramos(HOY)
+  const cab = ['Tramo', 'Neto', 'Saldo después']
+  // Falta a propósito el tramo "Esta semana".
+  const filas = bordes.filter((b) => b.rotulo !== 'Esta semana').map((b, k) => [b.rotulo, k, k])
+  const grilla = [cab, ...filas]
+  assert.throws(() => leerEscaleraDeCaja(grilla, bordes), /Esta semana/,
+    'el error tiene que nombrar el rótulo que buscó y no encontró')
+})
+
+test('leerEscaleraDeCaja FALLA si no hay ninguna línea que hable del "piso"', () => {
+  const bordes = bordesDeTramos(HOY)
+  const cab = ['Tramo', 'Neto', 'Saldo después']
+  const filas = bordes.map((b, k) => [b.rotulo, k, k])   // ningún rótulo menciona "piso"
+  const grilla = [cab, ...filas]
+  assert.throws(() => leerEscaleraDeCaja(grilla, bordes), /piso/)
 })
 
 test('el IVA/IIBB vence a los 20 días del cierre del mes, y sólo si hay monto', () => {
