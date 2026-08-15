@@ -382,3 +382,35 @@ test('el punto de venta leído distinto no convierte un comprobante en desaparec
 function registroDeFilaTest(f, i) {
   return { fila: i + 4, proveedor: String(f?.[EN.proveedor] ?? '').trim() || null, numero: String(f?.[EN.numero] ?? '').trim() || null, total: 121 }
 }
+
+test('EL FALSO POSITIVO DEL VIGÍA: el nombre de la celda difiere del registro y no es un desaparecido', () => {
+  // Fila 846, real: la celda dice «AXION SERVICENTRO MEDIA AGUA» —el único AXION del desplegable de
+  // Compras— y el registro «AXION SERVICENTRO DEL VALLE», que es el emisor por CUIT. `no_esta` es el
+  // aviso más caro del vigía («el costo de esa obra está sobrestimado») y era falso.
+  const filas = conFilas({
+    846: { ...SANA, proveedor: 'AXION SERVICENTRO MEDIA AGUA', numero: '00016-00029784', importe: 100, iva: 21, total: 121 },
+  })
+  const registro = [{
+    clave: 'c:30549581710|00016-00029784', cuit: '30549581710',
+    proveedor: 'AXION SERVICENTRO DEL VALLE', tipo: 'A', numero: '00016-00029784', total: 121, fila: 846,
+  }]
+  const r = auditarCompras(filas, { registro })
+  assert.equal(r.conciliado[0].estado, 'ok', `lo dio por desaparecido: «${r.conciliado[0].estado}»`)
+  assert.equal(r.hallazgos.filter((x) => x.defecto === DEFECTO.REGISTRO).length, 0)
+})
+
+test('con el CUIT resuelto, el emparejamiento lo sostiene la identidad del proveedor y no el texto', () => {
+  const filas = conFilas({
+    846: { ...SANA, proveedor: 'AXION SERVICENTRO MEDIA AGUA', numero: '00016-00029784', importe: 100, iva: 21, total: 999 },
+  })
+  const registro = [{
+    clave: 'c:1', cuit: '30549581710', proveedor: 'AXION SERVICENTRO DEL VALLE',
+    tipo: 'A', numero: '00016-00029784', total: 121, fila: 846,
+  }]
+  // Con los importes distintos, la red por número+importe NO alcanza: sin CUIT queda desaparecido.
+  assert.equal(auditarCompras(filas, { registro }).conciliado[0].estado, 'no_esta')
+  const cuitPorProveedor = new Map([['axion servicentro media agua', '30549581710']])
+  const con = auditarCompras(filas, { registro, cuitPorProveedor }).conciliado[0]
+  assert.equal(con.estado, 'ok')
+  assert.equal(con.por, 'cuit', 'no emparejó por CUIT teniendo el CUIT de los dos lados')
+})

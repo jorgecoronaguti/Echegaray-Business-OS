@@ -78,11 +78,35 @@ export async function auditar({ google, port, todas = false } = {}) {
   const filas = await google.readSheetValues(ID_CASHFLOW, RANGO)
   const registro = todas ? null : await registroDelBot(port)
   const totalesFiscales = await librofiscalPorCorrelativo(port)
-  return auditarCompras(filas ?? [], {
+  const opciones = {
     registro,
     totalesFiscales,
     motivoTodas: todas ? 'pedido con --todas' : 'no se pudo leer el registro del bot',
-  })
+  }
+  const r = auditarCompras(filas ?? [], opciones)
+
+  // ═══ EL CUIT SE PAGA SÓLO CUANDO PUEDE CAMBIAR UN VEREDICTO (15/08) ═══
+  //
+  // La columna E de Compras es un desplegable estricto y el registro guarda la razón social del
+  // emisor: cuando no son el mismo texto —fila 846, «AXION SERVICENTRO MEDIA AGUA» en la celda contra
+  // «AXION SERVICENTRO DEL VALLE» en el registro— la conciliación por nombre declaraba `no_esta` un
+  // comprobante perfectamente cargado. `no_esta` es el aviso más caro que tiene el vigía: dice que el
+  // costo de una obra está sobrestimado.
+  //
+  // Resolver el nombre a un CUIT cuesta una lectura más del Sheet y dos consultas más a Postgres, y
+  // esto corre al cierre de CADA carga de comprobantes. Así que sólo se paga cuando hay algo que
+  // desmentir: si ninguna entrada quedó como "desaparecida", el mapa no cambiaría un solo veredicto y
+  // no se pide. Ese es también el motivo por el que la auditoría se rehace entera en vez de parcharse
+  // — `auditarCompras` es pura y sobre 850 filas cuesta milisegundos, y dos caminos distintos para el
+  // mismo resultado es cómo aparecen dos verdades.
+  const desaparecidos = (r.conciliado ?? []).some((c) => c.estado === 'no_esta' || c.estado === 'reserva_huerfana')
+  if (!desaparecidos) return r
+  try {
+    const { cuitPorProveedor: armar } = await import('./reparar-registro-comprobantes.mjs')
+    const cuitPorProveedor = await armar({ google, port })
+    if (cuitPorProveedor.size) return auditarCompras(filas ?? [], { ...opciones, cuitPorProveedor })
+  } catch { /* sin alias, queda el veredicto por nombre: no se afirma de menos, se afirma igual */ }
+  return r
 }
 
 async function main() {

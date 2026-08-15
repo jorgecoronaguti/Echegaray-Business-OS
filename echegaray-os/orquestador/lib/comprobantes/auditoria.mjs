@@ -166,6 +166,102 @@ export function huella(reg = {}) {
 }
 
 /**
+ * EL CUIT DE UN LADO Y DEL OTRO — el del registro, o el que el nombre resuelve.
+ *
+ * El registro guarda el CUIT del comprobante; la pestaña Compras NO tiene columna de CUIT, así que
+ * del lado de la celda hay que resolverlo desde el nombre. El mapa lo arma quien lee las fuentes
+ * (`Proveedores!A:B` del Sheet, `public.proveedores`, el libro fiscal): acá no se consulta nada.
+ * Sin mapa, esto devuelve el CUIT del registro y nada más — que es exactamente el comportamiento
+ * anterior.
+ */
+function cuitDe(reg = {}, cuitPorProveedor = null) {
+  const propio = String(reg?.cuit ?? '').replace(/\D/g, '')
+  if (propio.length === 11) return propio
+  const alias = String(cuitPorProveedor?.get?.(normalizar(reg?.proveedor ?? '')) ?? '').replace(/\D/g, '')
+  return alias.length === 11 ? alias : null
+}
+
+/** El importe al centavo, como entero, para poder compararlo sin arrastrar el error del binario. */
+const centavos = (v) => {
+  const n = Number(v)
+  return Number.isFinite(n) && n !== 0 ? Math.round(n * 100) : null
+}
+
+/**
+ * LAS HUELLAS DE UN COMPROBANTE, EN ORDEN DE FUERZA. El cruce prueba la primera que exista.
+ *
+ * ═══ EL NOMBRE ES UNA ETIQUETA; EL CUIT ES LA IDENTIDAD (15/08) ═══
+ *
+ * `huella` sola empareja por NOMBRE normalizado, y el nombre de la celda no tiene por qué ser el del
+ * registro: la columna E de Compras es un desplegable estricto y el registro guarda la razón social
+ * del CUIT. Caso real medido, fila 846: la celda dice «AXION SERVICENTRO MEDIA AGUA» —el único AXION
+ * que el desplegable tiene— y el registro «AXION SERVICENTRO DEL VALLE», que es el emisor por CUIT.
+ * Mismo papel, mismo importe, mismo número; el vigía lo gritaba como «figura cargado y NO está en
+ * Compras», que es el aviso más caro que tiene y era falso.
+ *
+ * Los tres niveles, del más fuerte al más débil:
+ *
+ *   1. `cuit:` — CUIT + correlativo + signo. La identidad real del proveedor. Requiere que el nombre
+ *      de la celda resuelva a un CUIT por alguna fuente independiente del registro.
+ *   2. `prov:` — nombre normalizado + correlativo + signo. Lo de siempre, intacto.
+ *   3. `num:`  — número canónico COMPLETO (con punto de venta) + importe al centavo. No mira el
+ *      nombre. Es la red que atrapa el caso de AXION HOY, donde ese CUIT no está en ninguna de las
+ *      fuentes de nombres: dos papeles distintos con el mismo punto de venta, el mismo correlativo y
+ *      el mismo importe al centavo no existen. Va última justamente porque exige el importe, y el
+ *      importe es lo que a veces está mal leído (ver el caso Alumetal, ×100).
+ *
+ * @param {object} reg  una fila de Compras (`registroDeFila`) o una entrada del registro
+ * @param {{cuitPorProveedor?:Map<string,string>}} [o]
+ * @returns {string[]} puede ser vacío: sin número no hay huella de ninguna clase
+ */
+export function huellas(reg = {}, { cuitPorProveedor = null } = {}) {
+  const n = numeroCanonico(reg.numero ?? reg.numeroCrudo)
+  if (!n) return []
+  const corr = n.split('-')[1]
+  const signo = (Number(reg.total) || 0) < 0 ? '-' : '+'
+  const out = []
+  const c = cuitDe(reg, cuitPorProveedor)
+  if (c) out.push(`cuit:${c}|${corr}|${signo}`)
+  if (reg.proveedor) out.push(`prov:${normalizar(reg.proveedor)}|${corr}|${signo}`)
+  const cts = centavos(reg.total)
+  if (cts != null) out.push(`num:${n}|${cts}`)
+  return out
+}
+
+/**
+ * Índice de las filas de Compras por TODAS sus huellas. Lo comparten la conciliación y el reparador,
+ * para que los dos emparejen exactamente igual: dos criterios distintos sobre la misma pregunta es
+ * cómo un reparador termina escribiendo sobre una fila que el auditor nunca miró.
+ *
+ * @returns {Map<string, object[]>}
+ */
+export function indicePorHuella(registros = [], opciones = {}) {
+  const m = new Map()
+  for (const r of registros) {
+    for (const h of huellas(r, opciones)) {
+      if (!m.has(h)) m.set(h, [])
+      m.get(h).push(r)
+    }
+  }
+  return m
+}
+
+/**
+ * Las filas de Compras candidatas para una entrada del registro, probando las huellas EN ORDEN.
+ * La primera huella que tenga candidatos gana: no se mezclan niveles, porque mezclar el CUIT con el
+ * nombre haría que un empate débil contamine un emparejamiento fuerte.
+ *
+ * @returns {{filas:object[], por:string|null}}  `por` es el nivel que emparejó (`cuit`/`prov`/`num`)
+ */
+export function candidatasEnCompras(entrada = {}, indice = new Map(), opciones = {}) {
+  for (const h of huellas(entrada, opciones)) {
+    const filas = indice.get(h)
+    if (filas?.length) return { filas, por: h.split(':')[0] }
+  }
+  return { filas: [], por: null }
+}
+
+/**
  * ¿DÓNDE ESTÁ DE VERDAD CADA COMPROBANTE QUE EL BOT DICE HABER CARGADO?
  *
  * `comunicacion.comprobantes_cargados.fila` es INFORMATIVA por diseño —lo dice el comentario de la
@@ -180,20 +276,21 @@ export function huella(reg = {}) {
  * @returns {Array<{clave, proveedor, numero, filaRegistrada, filaReal, estado}>}
  *   estados: `ok` · `fila_movida` · `no_esta` · `reserva_cargada` · `reserva_huerfana`
  */
-export function conciliarRegistro(entradas = [], registros = []) {
-  const porHuella = new Map()
-  for (const r of registros) {
-    const h = huella(r)
-    if (!h) continue
-    if (!porHuella.has(h)) porHuella.set(h, [])
-    porHuella.get(h).push(r)
-  }
+export function conciliarRegistro(entradas = [], registros = [], opciones = {}) {
+  // ═══ EMPAREJA POR CUIT ANTES QUE POR NOMBRE (15/08) ═══
+  //
+  // Ver `huellas`. El nombre de la celda sale del desplegable de Compras y el del registro sale del
+  // padrón: cuando difieren —fila 846, AXION— esto declaraba `no_esta` un comprobante perfectamente
+  // cargado, y `no_esta` es el aviso más caro que tiene el vigía («el costo de esa obra está
+  // sobrestimado por ese importe»). Sin `opciones` el comportamiento es exactamente el anterior más
+  // la red por número+importe.
+  const indice = indicePorHuella(registros, opciones)
   return (entradas ?? []).map((e) => {
     // `Number(null)` es 0 y `Number.isInteger(0)` es true: sin el `== null` de adelante, una RESERVA
     // sin fila se leería como «cargado en la fila 0» y los cinco comprobantes que se reservaron y
     // nunca se escribieron desaparecerían del informe. Es el caso que más importa de los cinco.
     const filaRegistrada = e.fila == null || !Number.isInteger(Number(e.fila)) ? null : Number(e.fila)
-    const halladas = porHuella.get(huella(e) ?? ' ') ?? []
+    const { filas: halladas, por } = candidatasEnCompras(e, indice, opciones)
     const filaReal = halladas.length === 1 ? halladas[0].fila : (halladas.find((h) => h.fila === filaRegistrada)?.fila ?? halladas[0]?.fila ?? null)
     let estado
     if (filaRegistrada == null) estado = filaReal == null ? 'reserva_huerfana' : 'reserva_cargada'
@@ -208,6 +305,9 @@ export function conciliarRegistro(entradas = [], registros = []) {
       filaRegistrada,
       filaReal,
       repetidas: halladas.length > 1 ? halladas.map((h) => h.fila) : null,
+      // CON QUÉ se emparejó: `cuit`, `prov` o `num`. Es lo que permite mirar un veredicto y saber si
+      // lo sostiene la identidad real del proveedor o sólo el texto de la celda.
+      por: por ?? null,
       estado,
     }
   })
@@ -261,10 +361,14 @@ function deRegistro(conciliado = []) {
  *   declara — auditar de más se ve; auditar de menos, no.
  *   `totalesFiscales`: correlativo → totales del libro fiscal. Sin él los grupos repetidos NO se
  *   declaran duplicados: se declaran "a revisar" (ver `deDuplicados`).
+ *   `cuitPorProveedor`: nombre normalizado → CUIT, de fuentes independientes del registro. Sin él la
+ *   conciliación empareja por nombre, y un nombre distinto de los dos lados produce un `no_esta`
+ *   falso (ver `huellas`).
  * @returns {{hallazgos:Array, resumen:Object, filasDelBot:number, filasMal:number, alcance:string}}
  */
 export function auditarCompras(filas = [], {
   delBot = null, registro = null, perfiles = null, motivoTodas = null, totalesFiscales = null,
+  cuitPorProveedor = null,
 } = {}) {
   const registros = filas.map(registroDeFila).filter(hayFila)
 
@@ -272,7 +376,7 @@ export function auditarCompras(filas = [], {
   //
   // Si viene el registro entero se concilia por huella y se auditan las filas donde el comprobante
   // ESTÁ, no donde el registro dice que quedó. La evidencia es el dato leído en su destino.
-  const conciliado = registro ? conciliarRegistro(registro, registros) : null
+  const conciliado = registro ? conciliarRegistro(registro, registros, { cuitPorProveedor }) : null
   const filasDelRegistro = conciliado
     ? conciliado.map((c) => c.filaReal).filter(Number.isInteger)
     : (delBot ? [...delBot].map(Number) : null)
