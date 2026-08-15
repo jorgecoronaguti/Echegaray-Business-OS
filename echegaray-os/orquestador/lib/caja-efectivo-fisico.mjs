@@ -187,20 +187,50 @@ export function necesitaSello(arqueo = {}, sello = {}) {
  * no se explica. Publicar el negativo tampoco es neutral: baja $19M la disponibilidad con la que se
  * decide qué se paga, y ese número viaja a los dos cash flow, a Postgres y al Director.
  *
- * @param {{arqueo?:number, neto?:number}} m el conteo tipeado y el neto CRUDO (histórico − sello)
- * @returns {{movido:number, efectivo:number, imposible:boolean, faltante:number, netoPublicado:number, publicado:number}}
+ * ═══ LA GUARDA ERA DE UNA SOLA PUNTA, Y ESO ES UN DEFECTO PROPIO (15/08/2026) ═══
+ *
+ * "Un cajón no puede tener menos de cero pesos" era verdad y era la mitad de la verdad. El 15/08 la
+ * pestaña publicó $58.646.092 de efectivo sobre un conteo del dueño de $12.000.000, y este dictamen
+ * lo dejó pasar sin decir una palabra: es positivo. Un cajón contado en $12M que declara $58,6M es
+ * exactamente igual de imposible que uno negativo, y es MÁS caro — el negativo frena decisiones, el
+ * inflado las autoriza. Ese día el 100% de la diferencia era la línea de jornales cambiando hacia
+ * atrás (8 quincenas que perdieron su fecha de pago), leída por el modelo como billetes entrando.
+ *
+ * EL TECHO. Un cajón no puede tener MÁS que lo que se contó más lo que entró de verdad: cobros en
+ * efectivo y extracciones del banco. Las salidas no lo suben, así que no participan del techo. Con
+ * `entradas` = $0 —que era el caso: Cobranzas no se movió un peso desde el sello— el techo era el
+ * propio conteo y los $46.646.092 de "movimiento" no tenían de dónde haber salido.
+ *
+ * `entradas` NO TIENE DEFAULT NUMÉRICO A PROPÓSITO. Un 0 por omisión declararía imposible cualquier
+ * caja que creció legítimamente, y un Infinity por omisión dejaría el techo mudo — y un control mudo
+ * se lee como un control en verde, que es el modo de falla que este bloque entero vino a cerrar.
+ * Cuando no se puede medir, `techoVerificable` sale en false y el aviso lo dice con todas las letras.
+ *
+ * @param {{arqueo?:number, neto?:number, entradas?:number}} m el conteo tipeado, el neto CRUDO
+ *   (histórico − sello) y lo que ENTRÓ al cajón en esa misma ventana
+ * @returns {{movido:number, efectivo:number, imposible:boolean, faltante:number, lado:string|null,
+ *   techo:number|null, techoVerificable:boolean, netoPublicado:number, publicado:number}}
  */
-export function dictamenEfectivo({ arqueo = 0, neto = 0 } = {}) {
+export function dictamenEfectivo({ arqueo = 0, neto = 0, entradas } = {}) {
   // A CENTAVOS: los tres números vienen de la API como flotantes y una comparación contra 0 con
   // −0,000000001 declararía imposible una caja perfectamente cerrada.
   const cent = (x) => Math.round((Number(x) || 0) * 100) / 100
   const efectivo = cent(cent(arqueo) + cent(neto))
-  const imposible = efectivo < 0
+  const techoVerificable = Number.isFinite(Number(entradas))
+  const techo = techoVerificable ? cent(cent(arqueo) + cent(entradas)) : null
+  const bajoElPiso = efectivo < 0
+  const sobreElTecho = techoVerificable && efectivo > techo
+  const imposible = bajoElPiso || sobreElTecho
   return {
     movido: cent(neto),
     efectivo,
     imposible,
-    faltante: imposible ? -efectivo : 0,
+    // CUÁNTO NO SE EXPLICA, del lado que sea: lo que falta para llegar a cero, o lo que sobra por
+    // encima del techo. Un solo número para el aviso, y `lado` para que el aviso sepa qué decir.
+    faltante: bajoElPiso ? -efectivo : (sobreElTecho ? cent(efectivo - techo) : 0),
+    lado: bajoElPiso ? 'piso' : (sobreElTecho ? 'techo' : null),
+    techo,
+    techoVerificable,
     netoPublicado: imposible ? 0 : cent(neto),
     publicado: imposible ? cent(arqueo) : efectivo,
   }
@@ -248,10 +278,33 @@ export function avisoEfectivoImposible(d = {}, { por = [], marca = '▲' } = {})
     ? ` · manda "${String(culpable.rotulo).trim()}" con ${pesos(culpable.delta)}`
     : ''
   // `publicado` ES el conteo cuando el dictamen es imposible: no hace falta pasarlo por separado.
+  // LA REGLA VIOLADA SE NOMBRA, y son dos distintas: el piso manda a buscar plata que salió y no se
+  // registró; el techo manda a buscar un registro histórico que se movió. Decir "no cierra" en los
+  // dos casos manda a buscar al lado equivocado la mitad de las veces.
+  const regla = d.lado === 'techo'
+    ? `Un cajón no puede tener más que lo contado más lo que entró (techo ${pesos(d.techo)}): `
+      + 'hay un registro histórico que cambió hacia atrás, o una entrada contada dos veces.'
+    : 'Un cajón no puede tener menos de cero: hay un dato viejo mal cargado o el sello quedó desfasado.'
   return `${marca} EFECTIVO IMPOSIBLE: el conteo dice ${pesos(d.publicado)} y el histórico se movió `
     + `${pesos(d.movido)} desde el sello, lo que deja el cajón en ${pesos(d.efectivo)}. `
-    + `Publico el conteo tal cual; faltan ${pesos(d.faltante)} por explicar${quien}. `
-    + 'Un cajón no puede tener menos de cero: hay un dato viejo mal cargado o el sello quedó desfasado.'
+    + `Publico el conteo tal cual; ${d.lado === 'techo' ? 'sobran' : 'faltan'} ${pesos(d.faltante)} por explicar${quien}. `
+    + regla
+}
+
+/**
+ * EL TECHO NO SE MIDIÓ, Y ESO TAMBIÉN SE DICE. Un dictamen sin techo verificable pasa por posible
+ * cualquier cifra positiva — que es como los $58.646.092 del 15/08 estuvieron publicados dos días sin
+ * que nadie los mirara. Devuelve `null` cuando el techo SÍ se pudo medir: no hay nada que avisar.
+ * @param {ReturnType<typeof dictamenEfectivo>} d
+ */
+export function avisoTechoNoVerificable(d = {}, marca = '▲') {
+  // SÓLO habla cuando hay un dictamen que dice, explícitamente, que el techo no se pudo medir. Sin
+  // dictamen no hay nada que afirmar — un aviso que también suena cuando no se lo llamó con datos es
+  // ruido, y el ruido es lo que hace que los avisos de verdad dejen de leerse.
+  if (d?.techoVerificable !== false) return null
+  return `${marca} EL TECHO DEL EFECTIVO NO SE PUDO MEDIR: sin saber cuánto ENTRÓ al cajón desde el `
+    + 'conteo, un efectivo inflado pasa por posible. Falta el sello por renglón de las líneas que '
+    + 'cargan (cobrado en efectivo, extraído del banco).'
 }
 
 /** Los cobros en efectivo posteriores al arqueo (CARGA la caja). Con `=` adelante, para una celda. */

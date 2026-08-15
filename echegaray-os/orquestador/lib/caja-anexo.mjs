@@ -46,7 +46,7 @@ export const ANCHO_ANEXO = 7
 export const SELLO_EFECTIVO = {
   sello: '      · (−) lo que ya estaba adentro del conteo — SELLO',
   estado: '      ¿el sello está al día?',
-  imposible: `      ${ALERTA} imposible: cuánto falta para que el cajón cierre en cero`,
+  imposible: `      ${ALERTA} imposible: cuánto no se explica para que el cajón cierre`,
 }
 
 /**
@@ -60,27 +60,35 @@ export const SELLO_EFECTIVO = {
  * Todos van con arqueo `'0'` a propósito: SIN VENTANA DE FECHA. El día no puede ordenar dos hechos del
  * mismo día y un parcial que crece sobre una fila vieja es invisible para cualquier ventana; la única
  * ancla que funciona es un saldo sellado. Ver el bloque de abajo.
+ *
+ * ═══ `entra`: QUÉ RENGLONES PUEDEN SUBIR EL CAJÓN — Y POR QUÉ HACE FALTA SABERLO (15/08/2026) ═══
+ *
+ * No es una etiqueta descriptiva: es lo que hace calculable EL TECHO del efectivo. Un cajón no puede
+ * tener más que lo contado más lo que ENTRÓ, y hasta hoy nadie miraba ese lado. El 15/08 la pestaña
+ * publicó $58.646.092 sobre un conteo de $12.000.000 con las dos líneas de entrada quietas en cero:
+ * un imposible tan claro como el negativo del 14/08, y con el signo que autoriza gastos en vez de
+ * frenarlos. Ver `dictamenEfectivo` en caja-efectivo-fisico.mjs.
  */
 export const HISTORICO_EFECTIVO = [
-  { rotulo: '      · (+) cobrado en efectivo — histórico completo',
+  { rotulo: '      · (+) cobrado en efectivo — histórico completo', entra: true,
     formula: `=${formulaCobrosEfectivoPosteriores('0')}`,
     origen: 'Cobranzas: forma "Efectivo" Y estado "Cobrado"' },
-  { rotulo: '      · (−) pagado en efectivo — histórico completo',
+  { rotulo: '      · (−) pagado en efectivo — histórico completo', entra: false,
     formula: `=-(${formulaComprasEfectivoPosteriores('0')})`,
     origen: 'Compras en efectivo: el MONTO PAGADO, parcial o total' },
-  { rotulo: '      · (−) jornales pagados en efectivo — histórico completo',
+  { rotulo: '      · (−) jornales pagados en efectivo — histórico completo', entra: false,
     formula: `=-(${formulaJornalesEfectivoPosteriores('0')})`,
     origen: 'Jornales por Quincena, columnas Adelanto y Total recibo' },
-  { rotulo: '      · (−) sueldos de OFICINA en efectivo — histórico completo',
+  { rotulo: '      · (−) sueldos de OFICINA en efectivo — histórico completo', entra: false,
     formula: `=-(${formulaOficinaEfectivoPosteriores('0')})`,
     origen: 'Oficina: lo pagado menos lo que salió por banco' },
   // EL ESPEJO DEL DEPÓSITO: el billete deja la cuenta y entra al cajón, así que acá SUMA. La caja
   // física sólo sabía BAJAR hacia el banco y nunca subir desde él — una asimetría que sólo puede dar
   // de menos.
-  { rotulo: '      · (+) extraído del banco — histórico completo',
+  { rotulo: '      · (+) extraído del banco — histórico completo', entra: true,
     formula: `=${formulaExtraccionesEfectivoPosteriores('0')}`,
     origen: 'Réplica del extracto: débitos con concepto "extracción"' },
-  { rotulo: '      · (−) depositado en el banco — histórico completo',
+  { rotulo: '      · (−) depositado en el banco — histórico completo', entra: false,
     formula: `=-(${formulaDepositosEfectivoPosteriores('0')})`,
     origen: 'Réplica del extracto: créditos con concepto "depósito de efectivo"' },
 ]
@@ -110,6 +118,38 @@ export const claveDeRotulo = (r) => String(r ?? '').trim()
 export const ANCHOS_ANEXO = [420, 56, 140, 140, 140, 104, 260]
 
 const ars = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-AR')}`
+
+/**
+ * LAS DOS PUNTAS DEL CAJÓN, COMO TROZOS DE FÓRMULA — el piso y el techo, armados una sola vez.
+ *
+ * Vive afuera de `bloqueMovimientos` porque lo usan tres celdas (el neto, el estado y el control) y
+ * escribir la misma condición tres veces es cómo dos de ellas terminan diciendo cosas distintas: ya
+ * pasó en este archivo con el desglose que contradecía a su total.
+ *
+ * EL TECHO SÓLO EXISTE SI SE PUEDE MEDIR. Necesita el sello de CADA renglón que carga el cajón (la
+ * columna D). Con uno solo sin sellar, `N($D$x)` valdría 0, el delta sería el renglón entero y el
+ * techo saldría gigante: un control que nunca dispara, que es peor que no tenerlo porque se lee como
+ * verde. Por eso la condición arrastra `ISNUMBER` de todos ellos y el estado dice cuándo no se midió.
+ *
+ * @param {number} f0 primera fila del histórico
+ * @returns {{cajon:string, techo:string, medible:string, roto:string, sinExplicar:string}}
+ */
+export function guardaDelCajon(f0) {
+  const fSello = f0 + HISTORICO_EFECTIVO.length
+  const cajon = `N(${DESDE_CAJA.arqueoArs})+SUM(C${f0}:C${fSello})`
+  const entrada = HISTORICO_EFECTIVO.map((l, i) => (l.entra ? f0 + i : 0)).filter(Boolean)
+  // Lo que ENTRÓ desde el sello: el valor de hoy del renglón menos el que tenía al sellarse.
+  const techo = `N(${DESDE_CAJA.arqueoArs})+${entrada.map((f) => `(C${f}-N($D$${f}))`).join('+')}`
+  const medible = entrada.map((f) => `ISNUMBER($D$${f})`).join('*')
+  return {
+    cajon,
+    techo,
+    medible,
+    roto: `((${cajon}<0)+(${medible})*(${cajon}>${techo})>0)`,
+    // Cuánto no se explica, de la punta que sea. Las dos no pueden ser positivas a la vez.
+    sinExplicar: `MAX(0;-(${cajon}))+(${medible})*MAX(0;(${cajon})-(${techo}))`,
+  }
+}
 
 /**
  * El constructor de grilla del anexo. `push` devuelve el número de fila (1-based) de lo que acaba de
@@ -241,9 +281,13 @@ function bloqueMovimientos(h) {
   // CUAL —el mismo estado seguro que ya tenía el "conteo nuevo sin sellar"—, y las dos líneas de abajo
   // gritan cuánto no se explica. Ver lib/caja-efectivo-fisico.mjs para por qué no se resella solo.
   const crudo = `SUM(C${f0}:C${fSello})`
-  const cajon = `N(${DESDE_CAJA.arqueoArs})+${crudo}`
+  // LAS DOS PUNTAS, NO UNA (15/08). El 14/08 el cajón dio negativo y la guarda lo atajó; el 15/08 dio
+  // $58.646.092 contra un conteo de $12.000.000 y pasó de largo, porque era positivo. Ver
+  // `guardaDelCajon`: un cajón tampoco puede tener MÁS que lo contado más lo que entró.
+  const G = guardaDelCajon(f0)
+  const cajon = G.cajon
   push(['   ⇒ NETO de efectivo posterior al arqueo', 'ARS',
-    `=IF(NOT(ISNUMBER(${arqueo}));0;IF(${cajon}<0;0;${crudo}))`, '', '', '',
+    `=IF(NOT(ISNUMBER(${arqueo}));0;IF(${G.roto};0;${crudo}))`, '', '', '',
     'Es la mitad viva de: efectivo en caja = arqueo + movimientos posteriores'])
   // LOS SUMANDOS, UNO POR UNO — HISTÓRICO COMPLETO, sin ventana. El neto es la suma de lo que se ve,
   // así que el desglose no puede decir otra cosa que el total. En D, lo que ESE renglón valía cuando
@@ -263,17 +307,22 @@ function bloqueMovimientos(h) {
   // era verdad, y el número estaba roto igual: un sello vigente no dice nada sobre el histórico del
   // que depende. El monto movido al lado del ✓ es lo que convierte esa línea en un control.
   const movido = `TEXT(${crudo};"$#,##0")`
+  // EL ESTADO NOMBRA LA PUNTA VIOLADA. "No cierra" manda a buscar al lado equivocado la mitad de las
+  // veces: por abajo hay plata que salió y no se registró, por arriba hay un registro histórico que
+  // cambió hacia atrás. Y cuando el techo no se pudo medir lo dice, en vez de callarse en verde.
   push([SELLO_EFECTIVO.estado, '',
     `=IF(NOT(ISNUMBER(${arqueo}));"— sin conteo cargado";IF(${selloViejo};"${ALERTA} conteo nuevo sin sellar: se muestra tal cual lo contaste; la próxima corrida sella y los movimientos corren desde ahí";`
-    + `IF(${cajon}<0;"${ALERTA} IMPOSIBLE: el histórico se movió "&${movido}&" desde el sello y deja el cajón en "&TEXT(${cajon};"$#,##0")&": muestro el conteo tal cual. Hay un dato viejo mal cargado o el sello quedó desfasado";`
-    + `"✓ sellado al conteo del "&TEXT(N($F$${fSello});"dd/mm")&" · el histórico se movió "&${movido}&" desde entonces")))`,
+    + `IF(${cajon}<0;"${ALERTA} IMPOSIBLE por abajo: el histórico se movió "&${movido}&" desde el sello y deja el cajón en "&TEXT(${cajon};"$#,##0")&": muestro el conteo tal cual. Hay un dato viejo mal cargado o el sello quedó desfasado";`
+    + `IF(NOT(${G.medible});"${ALERTA} sin techo: falta el sello por renglón de las líneas que CARGAN el cajón, así que un efectivo inflado pasaría por posible";`
+    + `IF(${cajon}>${G.techo};"${ALERTA} IMPOSIBLE por arriba: el cajón daría "&TEXT(${cajon};"$#,##0")&" y sólo entraron "&TEXT((${G.techo})-N(${DESDE_CAJA.arqueoArs});"$#,##0")&" desde el conteo: muestro el conteo tal cual. Un registro histórico cambió hacia atrás";`
+    + `"✓ sellado al conteo del "&TEXT(N($F$${fSello});"dd/mm")&" · el histórico se movió "&${movido}&" desde entonces")))))`,
     selloEstado(), '', '', 'compara el conteo cargado contra la copia sellada (D de esta fila y F del sello)'])
   // EL CONTROL, CON NOMBRE PROPIO Y EN LA COLUMNA DE PESOS: CAJA lo suma a sus alertas de "no cierra".
   // VA DEBAJO DEL SELLO Y NO ADENTRO DEL BLOQUE: todo lo que esté en la columna C entre el primer
   // histórico y el sello ENTRA AL NETO, y un control que se suma a lo que mide no es un control.
   const fImposible = push([SELLO_EFECTIVO.imposible, 'ARS', '', '',
-    `=IF(NOT(ISNUMBER(${arqueo}));0;MAX(0;-(${cajon})))`, '',
-    'Un cajón no puede tener menos de cero pesos. Mientras esto no sea 0, el efectivo publicado es el conteo y NO el calculado.'])
+    `=IF(NOT(ISNUMBER(${arqueo}));0;${G.sinExplicar})`, '',
+    'Un cajón no puede tener menos de cero pesos NI más que lo contado más lo que entró. Mientras esto no sea 0, el efectivo publicado es el conteo y NO el calculado.'])
   return { fNeto, fSinCanal, fSello, fEstado, fImposible, filasHistorico: [f0, fSello - 1] }
 }
 

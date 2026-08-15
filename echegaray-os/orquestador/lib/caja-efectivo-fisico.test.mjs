@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import {
   IDENTIDAD, efectivoEnCaja, formulaCajaEnPesos, NETO_NO_SUMA_EN_PESOS,
   celdaCobrosEfectivo, celdaPagosEfectivo, celdaDepositosEfectivo, origenCajaEnPesos,
-  dictamenEfectivo, avisoEfectivoImposible, selloPorRenglonSembrable,
+  dictamenEfectivo, avisoEfectivoImposible, avisoTechoNoVerificable, selloPorRenglonSembrable,
 } from './caja-efectivo-fisico.mjs'
 import {
   formulaNetaEfectivoPosterior, formulaCobrosEfectivoPosteriores,
@@ -285,6 +285,78 @@ test('un efectivo posible NO emite aviso: un grito que suena siempre no avisa na
   assert.equal(avisoEfectivoImposible(dictamenEfectivo({ arqueo: 4320000, neto: -172002.26 })), null)
   assert.equal(avisoEfectivoImposible({}), null)
   assert.equal(avisoEfectivoImposible(), null)
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// 6 · EL TECHO — LA PUNTA QUE FALTABA, Y QUE COSTÓ $44.341.904 EL 15/08/2026
+//
+// La guarda del 14/08 atajó el cajón negativo y dejó pasar el inflado, porque era positivo. El 15/08
+// `CAJA!C7` publicó $58.646.092 sobre un conteo de $12.000.000: la línea de jornales en efectivo se
+// movió +$48.286.717 y la de OFICINA −$1.640.625 —las dos por correcciones de datos históricos, no
+// por billetes— mientras cobros y extracciones no se movieron un peso. Un cajón no puede tener más
+// que lo contado más lo que ENTRÓ, y no había nada que lo dijera. Si alguien saca el techo, estos
+// tests se ponen rojos.
+
+test('EL 15/08 AL CENTAVO: el cajón se infla, el techo lo declara imposible y publica el conteo', () => {
+  const d = dictamenEfectivo({ arqueo: 12000000, neto: 48286717 - 1640625, entradas: 0 })
+  assert.equal(d.efectivo, 58646092, 'lo que la pestaña publicaba')
+  assert.equal(d.techo, 12000000, 'sin una sola entrada, el techo es el propio conteo')
+  assert.equal(d.imposible, true)
+  assert.equal(d.lado, 'techo')
+  assert.equal(d.faltante, 46646092, 'cuánto apareció sin haber entrado de ningún lado')
+  assert.equal(d.publicado, 12000000, 'publica EL CONTEO, que es verdad definitiva')
+  assert.equal(d.netoPublicado, 0)
+})
+
+test('el techo NO castiga una caja que creció de verdad: lo que entró, entró', () => {
+  // Los números reales de la ventana posterior al 07/08: entraron $8.234.758 de cobros en efectivo y
+  // salieron $5.116.070 de compras más $814.500 de oficina. Cierra en $14.304.188, y es posible.
+  const d = dictamenEfectivo({ arqueo: 12000000, neto: 8234758 - 5116070 - 814500, entradas: 8234758 })
+  assert.equal(d.efectivo, 14304188)
+  assert.equal(d.techo, 20234758, 'el conteo más lo que entró')
+  assert.equal(d.imposible, false)
+  assert.equal(d.lado, null)
+  assert.equal(d.publicado, 14304188)
+})
+
+test('el borde del techo se compara al centavo, sin declarar imposible una caja que cierra justo', () => {
+  // Todo lo que entró sigue en el cajón: está EN el techo, no encima. Un centavo más ya no puede ser.
+  assert.equal(dictamenEfectivo({ arqueo: 1000, neto: 500, entradas: 500 }).imposible, false)
+  assert.equal(dictamenEfectivo({ arqueo: 1000, neto: 500.01, entradas: 500 }).imposible, true)
+  // Y el piso sigue mandando cuando los dos podrían disparar: una salida no puede dejarlo negativo.
+  const bajo = dictamenEfectivo({ arqueo: 1000, neto: -2000, entradas: 0 })
+  assert.equal(bajo.lado, 'piso')
+  assert.equal(bajo.faltante, 1000)
+})
+
+test('sin poder medir las entradas NO se inventa un techo, y se dice que no se midió', () => {
+  // Un 0 por omisión declararía imposible cualquier caja que creció; un techo infinito por omisión
+  // dejaría el control mudo. Un control mudo se lee como un control en verde.
+  const d = dictamenEfectivo({ arqueo: 12000000, neto: 46646092 })
+  assert.equal(d.techoVerificable, false)
+  assert.equal(d.techo, null)
+  assert.equal(d.imposible, false, 'sin techo medible el dictamen no puede afirmar nada del lado de arriba')
+  assert.match(avisoTechoNoVerificable(d), /^▲ EL TECHO DEL EFECTIVO NO SE PUDO MEDIR/)
+  assert.match(avisoTechoNoVerificable(d), /cobrado en efectivo, extraído del banco/, 'dice qué falta')
+  // Con el techo medido no hay nada que avisar: el aviso no puede sonar siempre.
+  assert.equal(avisoTechoNoVerificable(dictamenEfectivo({ arqueo: 1000, neto: 0, entradas: 0 })), null)
+  assert.equal(avisoTechoNoVerificable(), null)
+})
+
+test('el grito distingue la punta: por arriba manda a buscar un registro histórico, no plata perdida', () => {
+  const d = dictamenEfectivo({ arqueo: 12000000, neto: 48286717 - 1640625, entradas: 0 })
+  const aviso = avisoEfectivoImposible(d, {
+    por: [
+      { rotulo: '      · (−) jornales pagados en efectivo — histórico completo', delta: 48286717 },
+      { rotulo: '      · (−) sueldos de OFICINA en efectivo — histórico completo', delta: -1640625 },
+    ],
+  })
+  assert.match(aviso, /IMPOSIBLE/)
+  assert.match(aviso, /jornales pagados en efectivo/, 'nombra el renglón que más se movió')
+  assert.match(aviso, /sobran \$46\.646\.092/, 'por arriba SOBRA plata; decir "faltan" manda al lado equivocado')
+  assert.match(aviso, /techo \$12\.000\.000/)
+  assert.match(aviso, /registro histórico que cambió hacia atrás/)
+  assert.doesNotMatch(aviso, /menos de cero/, 'la regla del piso no aplica acá y no se cita')
 })
 
 test('el sello por renglón sólo se siembra si se puede PROBAR que es exacto', () => {
