@@ -273,6 +273,17 @@ export const PASOS = [
   // Escribe UNA sola pestaña (`_MOVIMIENTOS`, réplica generada y oculta) y verifica su propia
   // escritura releyéndola: si el archivo y la memoria no dicen lo mismo, sale con código ≠0.
   ['libro-movimientos-pestana.mjs', '_MOVIMIENTOS — el libro: todo movimiento de todas las fuentes, con su estado y su origen', ['_MOVIMIENTOS']],
+  // ═══ EL CENTINELA VA ANTES QUE EL ANEXO, Y NO ESCRIBE NADA (15/08/2026) ═══
+  //
+  // Mira la celda del conteo de efectivo —la tipea el dueño— y anota en Postgres qué valor vio y
+  // cuándo. De ahí sale el ANCLA con la que el anexo calcula los movimientos posteriores al conteo,
+  // así que tiene que correr primero o el anexo publicaría el ancla de la corrida anterior.
+  //
+  // NO DEJA NINGUNA PESTAÑA (tercera columna vacía, y es correcto): pide el cliente de Google sin
+  // scopes de escritura. Por eso también es el único paso de esta lista que sigue sirviendo con el
+  // freno de mano puesto — y observar es justamente lo que no puede dejar de pasar: cada corrida que
+  // no mira es una ventana en la que el conteo pudo cambiar sin que nadie lo viera.
+  ['caja-centinela-conteo.mjs', 'centinela del conteo de efectivo: cuándo apareció el monto tipeado y qué se cargó tarde sobre filas viejas', []],
   ['caja-anexo-pestana.mjs', '_CAJA_ANEXO — el detalle y las conciliaciones que sostienen los veredictos de CAJA', ['_CAJA_ANEXO']],
   ['caja-pestana.mjs', 'CAJA — la portada ejecutiva de tesorería: cinco tarjetas y una pantalla', ['CAJA']],
   // ═══ LAS DOS VISTAS VAN DESPUÉS DEL LIBRO Y DESPUÉS DE CAJA (13/08/2026) ═══

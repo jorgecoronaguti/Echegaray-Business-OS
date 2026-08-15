@@ -25,12 +25,16 @@ import { publicar } from '../lib/rangos-nombrados.mjs'
 import { requestsTextoPorContenido } from '../lib/formato-texto-por-contenido.mjs'
 import {
   grillaAnexo, ANCHO_ANEXO, ANCHOS_ANEXO, PESTANA_ANEXO, SELLO_EFECTIVO, HISTORICO_EFECTIVO, claveDeRotulo,
+  CARGA_TARDIA,
 } from '../lib/caja-anexo.mjs'
 import {
   necesitaSello, dictamenEfectivo, avisoEfectivoImposible, avisoTechoNoVerificable,
   selloPorRenglonSembrable,
 } from '../lib/caja-efectivo-fisico.mjs'
-import { instanteDelSello, ventanaDelSello } from '../lib/caja-ancla-por-instante.mjs'
+import { CONCEPTO, anclaDelConteo } from '../lib/caja-conteo-centinela.mjs'
+import { medirCargaTardia } from '../lib/caja-carga-tardia-compras.mjs'
+import { avisoCargaTardia } from '../lib/caja-carga-tardia.mjs'
+import { instanteDelSello } from '../lib/caja-ancla-por-instante.mjs'
 import { ALERTA } from '../lib/glifos.mjs'
 import { DESDE_CAJA, CELDA_CAJA_MINIMA, ESPECIE_ANEXO } from '../lib/caja-anexo-nombres.mjs'
 import { TIPO_CAMBIO } from '../lib/caja-disponibilidades.mjs'
@@ -68,6 +72,10 @@ export function rescatarAnexo(filas = []) {
     const num = (i) => { const c = fila?.[i]; return typeof c?.numero === 'number' ? c.numero : '' }
     if (a === claveDeRotulo(SELLO_EFECTIVO.sello)) { cargado.set(a, { selloNeto: num(3), selloFecha: num(5) }); continue }
     if (a === claveDeRotulo(SELLO_EFECTIVO.estado)) { cargado.set(a, { selloValor: num(3) }); continue }
+    // La medición de carga tardía la estampa la corrida en E y F. Sin rescatarla, cada regeneración la
+    // borraría y el renglón quedaría vacío hasta que volviera a medirse — un control intermitente se
+    // lee como un control en cero.
+    if (a === claveDeRotulo(CARGA_TARDIA.rotulo)) { cargado.set(a, { importe: num(4), medidoEn: num(5) }); continue }
     if (historico.has(a)) { cargado.set(a, { selloLinea: num(3) }); continue }
     if (a !== claveDeRotulo(TIPO_CAMBIO.declarado.nombre)) continue
     cargado.set(a, { saldo: leer(2), fecha: leer(5), origen: leer(6) })
@@ -76,11 +84,42 @@ export function rescatarAnexo(filas = []) {
 }
 
 /**
+ * EL ANCLA VUELVE A LA CELDA CUANDO SE PERDIÓ — la recuperación que antes no existía.
+ *
+ * El sello puede estar perfectamente vigente y la celda del ancla estar vacía: el rescate por rótulo
+ * estuvo roto desde que existe, un 429 parte la pestaña al medio, un rediseño la corre. Y como el
+ * re-estampado sólo ocurría al renovarse el sello, el ancla no volvía nunca: `IF(NOT(ISNUMBER(ancla)))`
+ * dejaba el neto en 0 y la pestaña publicaba el conteo pelado, con el automático apagado en silencio.
+ *
+ * Ahora el ancla es un dato de Postgres y la celda es sólo su copia publicada: se repone. Se compara
+ * con tolerancia de un segundo porque el serial viaja como flotante y una comparación exacta
+ * reescribiría la celda en cada corrida.
+ */
+export async function reanclar(google, g, enLaPestana, ancla) {
+  const UN_SEGUNDO = 1 / 86400
+  if (Number.isFinite(enLaPestana) && Math.abs(enLaPestana - ancla) < UN_SEGUNDO) return
+  await google.batchUpdateValues(ID, [{ range: `${PESTANA_ANEXO}!F${g.fSello}`, values: [[ancla]] }])
+  console.log(`  🧷 ancla repuesta en F${g.fSello}: la celda ${Number.isFinite(enLaPestana) && enLaPestana ? 'decía otro instante' : 'estaba vacía'} y el centinela sí lo tiene`)
+}
+
+/**
  * Sella el conteo si el arqueo tipeado es más nuevo que la copia sellada.
  *
  * El sello NO se calcula en JS desde las fuentes —eso duplicaría la lógica de las fórmulas y las
  * dos versiones divergirían sin aviso—: se lee el histórico RECIÉN ESCRITO y ya evaluado por
  * Sheets, que es exactamente lo que el renglón del sello va a restar.
+ *
+ * ═══ EL ANCLA YA NO LA INVENTA ESTA CORRIDA (15/08/2026) ═══
+ *
+ * Estampaba `instanteDelSello()`, o sea AHORA. Con eso el ancla nacía y moría con esta pestaña: si la
+ * celda se perdía no volvía, y el intervalo que se declaraba salía del sello del conteo ANTERIOR
+ * —días atrás— impreso como HH:mm, así que una ventana de una semana se leía como una de dos horas.
+ *
+ * El instante lo decide el CENTINELA, que mira la celda en cada corrida y persiste en Postgres cuándo
+ * vio cada valor por primera vez. Acá sólo se PUBLICA. Y si el centinela no puede afirmar un instante
+ * —base caída, conteo ilegible— esto TIRA y no se estampa nada: la pestaña sigue publicando el conteo
+ * tal cual, que es el lado seguro. El ancla gobierna CAJA_TOTAL_DISPONIBLE y con ella el saldo inicial
+ * de los dos cash flow: inventarle un instante sería equivocar el año entero, no una celda.
  */
 async function sellarConteo(google, g) {
   const uno = async (rango) => {
@@ -93,12 +132,18 @@ async function sellarConteo(google, g) {
   const arqueo = { valor: await uno(DESDE_CAJA.arqueoArs) }
   const sellado = { valor: Number(g.filas[g.fEstado - 1]?.[3]) || 0 }
   const [f0, f1] = g.filasHistorico
-  // EL INSTANTE ES DE ESTA CORRIDA, y el intervalo sale de la marca que dejó la anterior: el conteo se
-  // anotó entre las dos miradas. No se promete más precisión que ésa — ver ventanaDelSello.
-  const visto = instanteDelSello()
-  const cuando = ventanaDelSello({ visto, vistoPrevio: Number(g.filas[g.fSello - 1]?.[5]) })
+  const enLaPestana = Number(g.filas[g.fSello - 1]?.[5])
+  // El instante que ya estaba publicado se le ofrece al centinela para que lo ADOPTE si todavía no
+  // tiene registro de este conteo. Sin eso, enchufar el centinela movería el ancla hasta hoy y se
+  // tragaría adentro del conteo todo lo que se movió desde que se contó de verdad.
+  const ancla = await anclaDelConteo(ID, CONCEPTO.arqueoArs, arqueo.valor, {
+    sello: { serial: enLaPestana, valorSellado: sellado.valor },
+  })
+  const visto = ancla.serial
+  const cuando = ancla.ventana
   if (!necesitaSello(arqueo, sellado)) {
     console.log('  🧷 sello vigente: el conteo no cambió')
+    await reanclar(google, g, enLaPestana, visto)
     return sembrarSelloPorRenglon(google, g, sellado)
   }
   const hist = await google.readSheetValues(ID, `${PESTANA_ANEXO}!C${f0}:C${f1}`, { render: 'UNFORMATTED_VALUE' })
@@ -111,8 +156,9 @@ async function sellarConteo(google, g) {
   await google.batchUpdateValues(ID, [
     { range: `${PESTANA_ANEXO}!D${g.fSello}`, values: [[neto]] },
     // EL ANCLA. Antes se copiaba acá la FECHA que el dueño tipeaba, y por eso borrarla apagó el
-    // mecanismo entero. Ahora es el INSTANTE en que esta corrida vio el conteo nuevo: lo pone el
-    // código, nadie lo puede borrar desde CAJA, y es de lo que cuelga la guarda de la ventana.
+    // mecanismo entero. Después fue el instante de ESTA corrida, y por eso perder la celda apagaba el
+    // mecanismo otra vez. Ahora es el instante que el CENTINELA tiene persistido: acá sólo se publica,
+    // y si la celda se pierde `reanclar` la repone en la corrida siguiente.
     { range: `${PESTANA_ANEXO}!F${g.fSello}`, values: [[visto]] },
     { range: `${PESTANA_ANEXO}!D${g.fEstado}`, values: [[arqueo.valor]] },
     // EL SELLO DE CADA RENGLÓN, DE LA MISMA LECTURA Y EN EL MISMO BATCH. El total de arriba es el que
@@ -291,6 +337,9 @@ async function main() {
   // siquiera se puede leer para controlar, eso también se grita: un control mudo se lee como un
   // control en verde, y ése es el modo de falla que este bloque entero vino a cerrar.
   await controlarEfectivo(google, g).catch((e) => console.log(`  ${ALERTA} NO PUDE CONTROLAR EL EFECTIVO (${e.message}): nadie verificó que el cajón no dé negativo`))
+  // Y LO QUE NINGUNA FÓRMULA PUEDE VER: lo que se cargó tarde sobre filas viejas. Va a la PESTAÑA y no
+  // sólo al log, porque este archivo ya tiene escrito que el log no lo abre nadie.
+  await publicarCargaTardia(google, g).catch((e) => console.log(`  ${ALERTA} NO PUDE MEDIR LA CARGA TARDÍA (${e.message}): un pago cargado sobre una fila vieja saldría del cajón sin que nada lo nombre`))
 
   // LA CAJA MÍNIMA NO VIVE EN NINGUNA DE LAS DOS PESTAÑAS: el nombre apunta a su FUENTE. Así CAJA y el
   // anexo la leen sin que ninguno la copie — un parámetro tiene una sola dirección en el archivo.
@@ -307,6 +356,37 @@ async function main() {
   await guardarRegistro(ID, PESTANA_ANEXO, g.filas, ediciones, quedo, candidatos)
     .catch((e) => console.warn(`  ⚠ no pude guardar el registro de rótulos: ${e.message}`))
   console.log('QUEDÓ ESCRITO.')
+}
+
+/**
+ * LO QUE SE CARGÓ TARDE SOBRE FILAS VIEJAS, PUBLICADO EN LA PESTAÑA.
+ *
+ * E lleva el importe y F el INSTANTE de la medición. Los dos son números pegados y los dos son de la
+ * misma especie que el sello: ninguna fórmula de Sheets puede calcularlos, porque dependen de cuándo
+ * cambió una celda y el archivo no lo sabe. La fecha al lado no es decoración — sin ella, una medición
+ * de hace tres días se lee como si fuera de ahora, que es la forma exacta en que un cuadro miente
+ * despacio.
+ *
+ * NO TIRA hacia arriba: la caja no depende de esto. Si falla, el renglón conserva la última medición
+ * con SU fecha, que sigue siendo verdad sobre ese momento.
+ */
+async function publicarCargaTardia(google, g) {
+  if (!g.fCargaTardia) return
+  const arq = await google.readSheetValues(ID, DESDE_CAJA.arqueoArs, { render: 'UNFORMATTED_VALUE' })
+  const valor = Number(arq?.[0]?.[0]) || 0
+  const ancla = await anclaDelConteo(ID, CONCEPTO.arqueoArs, valor,
+    { sello: { serial: Number(g.filas[g.fSello - 1]?.[5]), valorSellado: Number(g.filas[g.fEstado - 1]?.[3]) || 0 } })
+  const r = await medirCargaTardia(google, ID, ancla)
+  await google.batchUpdateValues(ID, [
+    { range: `${PESTANA_ANEXO}!E${g.fCargaTardia}`, values: [[r.sobreestimado]] },
+    { range: `${PESTANA_ANEXO}!F${g.fCargaTardia}`, values: [[instanteDelSello()]] },
+  ])
+  const aviso = avisoCargaTardia(r, { marca: ALERTA, fuente: 'Compras' })
+  // EL GLIFO VA EN LA LÍNEA DEL `console.log`, no en una continuación: el guardián de glifos juzga
+  // línea por línea y un literal suelto con un emoji parece un texto de celda. Ver glifos-generadores.
+  if (aviso) return console.log(`  ${aviso}`)
+  console.log(`  💵 sin carga tardía sobre filas viejas: ${r.cubiertas} celda(s) probadas desde antes del conteo`
+    + (r.sembrando ? ` · ${r.sembrando} sin comparar todavía` : ''))
 }
 
 /**

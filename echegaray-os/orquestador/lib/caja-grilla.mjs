@@ -340,16 +340,23 @@ export function grilla(cargado, refs) {
   // avisaría por el atraso de plata que no está adentro del número que rotula. Las filas se enumeran
   // porque el generador ya sabe cuáles son —`noSuman` es la misma declaración que usa el total—, así
   // que agregar una cuarta fila que no suma sigue siendo declararla y nada más.
+  //
+  // ═══ Y VIAJA EL MONTO JUNTO A LA FECHA, NO LA FECHA SOLA (15/08/2026) ═══
+  //
+  // "▲ parte al 05/08" no se puede decidir: el lector no sabe si "parte" son $500.000 o $15.000.000.
+  // La tarjeta publica ahora cuánta plata del titular viene de esa fecha, y para eso necesita las
+  // MISMAS filas con su columna de saldo al lado. Van juntas en un solo parámetro justamente para que
+  // no puedan desincronizarse — avisar por una fila y sumar otra sería peor que no avisar.
   const filasQueSuman = []
   for (let f = d0; f <= d1; f++) if (!noSuman.includes(f)) filasQueSuman.push(f)
   // MIN sobre celdas vacías o con "" devuelve 0 y `avisoDeAtraso` lo descarta con su ISNUMBER: un
   // panel sin una sola fecha cargada no dispara un aviso de atraso de 126 años.
-  const fechaVieja = filasQueSuman.length ? `MIN(${filasQueSuman.map((f) => `$D$${f}`).join(';')})` : ''
+  const celdasQueSuman = filasQueSuman.map((f) => ({ monto: `$C$${f}`, fecha: `$D$${f}` }))
 
   const T = tarjetas({
     total: `$C$${fCierre}`,
     fecha: `$D$${fCierre}`,
-    fechaVieja,
+    celdasQueSuman,
     // Si la fila desaparece de CUENTAS, la referencia sale vacía y `tarjetas` FALLA CERRADO: mejor
     // romper acá que publicar una tarjeta que apunta a `$C$0`.
     invArs: fBalanzArs ? `$C$${fBalanzArs}` : '',
