@@ -15,6 +15,7 @@ import {
   canalesProyectados, DIRECCION_POR_BANCO,
 } from '../lib/jornales-reparto-pago.mjs'
 import { verificarRangos, explicarProblemas } from '../lib/rangos-con-nombre.mjs'
+import { expresionCierreDeQuincena } from '../lib/jornales-real-vs-estimado.mjs'
 import { VACIO, tiene } from '../lib/preservar-anotaciones.mjs'
 
 // Bloques mínimos con la forma que `filasQuincenas` y el cuadro de oficina esperan.
@@ -1649,4 +1650,79 @@ test('REAL 5 · el aviso del umbral se mide sobre el banco, que es la única fil
   // No puede mirar la fila del total: ahí el real es una inferencia, y un aviso disparado por una
   // inferencia no es un control.
   assert.doesNotMatch(aviso, new RegExp(`[A-H]${gm.contraste.fFin}\\b`), 'el aviso se dispara sobre el total inferido')
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LO QUE SE PUBLICÓ MUDO (15/08): EL ANCLA VACÍA, Y LA GEOMETRÍA QUE TIENE QUE SEGUIR AL REGISTRO
+//
+// El cuadro salió con el estimado y sin el real, diciendo "el extracto todavía no los muestra". Era
+// falso. El ancla era `$B$fReg` —la columna «Hasta»— y de las quince filas del registro OCHO tienen
+// `=""` ahí, incluida la última. Con `N($B$148)=0` las cuatro celdas del renglón se apagaban solas.
+//
+// Y el segundo control es el de la lección ya escrita en este repo: anclar en "el último" es anclar
+// en la posición. Un rango con nombre que no CREZCA con su bloque señala a enero para siempre.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('REAL 6 · el bloque se ancla en «Quincena» y NUNCA en la columna «Hasta» del registro', () => {
+  // RED si alguien vuelve a `$B$fReg`: es exactamente la celda que se publicó vacía.
+  const fReg = gm.fLast ?? gm.f0
+  const hasta = new RegExp(`\\$${colDe('Hasta')}\\$\\d+`)
+  const desde = new RegExp(`\\$${colDe('Quincena')}\\$\\d+`)
+  const celdas = [gm.filas[gm.contraste.sub - 1][0], ...gm.filas[gm.contraste.f0 - 1].slice(0, 8)]
+    .map(String).filter((s) => s.startsWith('='))
+  assert.ok(celdas.length >= 5, 'el bloque perdió sus fórmulas')
+  const citanElRegistro = celdas.filter((s) => desde.test(s))
+  assert.ok(citanElRegistro.length >= 4, 'ninguna celda se ancla en la celda «Quincena»')
+  for (const s of celdas) {
+    assert.doesNotMatch(s, hasta, `una celda del bloque sigue anclada en «Hasta»: ${s.slice(0, 110)}`)
+  }
+  assert.ok(fReg > 0)
+})
+
+test('REAL 7 · el cierre de una quincena está definido UNA vez y lo usan los dos cuadros', () => {
+  // El calendario de pago tenía la misma fórmula escrita a mano. Dos copias del mismo criterio en la
+  // misma pestaña es cómo un día dicen cosas distintas sin que nadie lo note.
+  const esperada = `=${expresionCierreDeQuincena(`A${gm.p0}`)}`
+  assert.equal(String(gm.filas[gm.p0 - 1][1]), esperada, 'el calendario dejó de usar la definición común')
+  assert.match(String(gm.filas[gm.contraste.f0 - 1][4]), /DAY\(\$A\$\d+\)<16/, 'el real no deriva el cierre')
+})
+
+test('RANGOS · cada nombre publicado CRECE con su bloque — no se queda en la primera fila', () => {
+  // ═══ LA LECCIÓN QUE ESTE TEST FIJA ═══
+  //
+  // "Anclar en 'el último' es anclar en la posición". Un rango con nombre que apunta a una fila fija
+  // dentro de una tabla que crece hacia abajo señala a enero para siempre, y nadie se entera: lo que
+  // lo consume devuelve un número perfectamente plausible.
+  //
+  // Se mide comparando DOS grillas que sólo difieren en una quincena más. Cada rango del registro
+  // tiene que valer una fila más y terminar en la última quincena, no en la primera.
+  const conUna = grilla({ bloques: BLOQUES, pendientes: PEND, bloquesOfi: [{ mes: 6, inicio: 5, fin: 8 }] })
+  const conDos = grilla({
+    bloques: [...BLOQUES, { filaFecha: 60, inicio: 61, fin: 74 }],
+    pendientes: PEND, bloquesOfi: [{ mes: 6, inicio: 5, fin: 8 }],
+  })
+  const mapa = (g) => new Map(rangosDeJornales(g).map((r) => [r.nombre, r]))
+  const a = mapa(conUna)
+  const b = mapa(conDos)
+  const delRegistro = [...a.keys()].filter((n) => n.startsWith('JORNALES_REAL_'))
+  assert.ok(delRegistro.length >= 8, 'se perdieron los rangos del registro')
+  for (const n of delRegistro) {
+    // 1. Termina en la ÚLTIMA quincena del registro, nunca antes.
+    assert.equal(a.get(n).r1, conUna.fLast, `${n} no llega a la última quincena`)
+    assert.equal(b.get(n).r1, conDos.fLast, `${n} no llega a la última quincena`)
+    // 2. Vale una fila más cuando entra una quincena más: eso es lo que prueba que no está clavado.
+    assert.equal(b.get(n).r1 - b.get(n).r0, a.get(n).r1 - a.get(n).r0 + 1, `${n} no creció con el registro`)
+    // 3. Y NUNCA es una sola fila: un rango de una fila sobre una tabla de quince es el defecto.
+    assert.ok(a.get(n).r1 > a.get(n).r0, `${n} quedó reducido a una fila`)
+  }
+  // Los otros tres bloques, con el mismo criterio: cada rango cubre su bloque entero.
+  const bloque = { JORNALES_PROY_: [conUna.p0, conUna.p0 + conUna.nProy - 1], OFICINA_: [conUna.o0, conUna.oFin], DIRECCION_: [conUna.d0, conUna.dFin] }
+  for (const [prefijo, [r0, r1]] of Object.entries(bloque)) {
+    const suyos = [...a.values()].filter((r) => r.nombre.startsWith(prefijo))
+    assert.ok(suyos.length, `no hay ningún rango ${prefijo}*`)
+    for (const r of suyos) {
+      assert.equal(r.r0, r0, `${r.nombre} no arranca donde su bloque`)
+      assert.equal(r.r1, r1, `${r.nombre} no termina donde su bloque`)
+    }
+  }
 })

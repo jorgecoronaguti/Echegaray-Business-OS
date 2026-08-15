@@ -289,35 +289,85 @@ const FECHA = `${RAW}!$A$4:$A`
 const IMPORTE = `${RAW}!$C$4:$C`
 const NAT = `${RAW}!$F$4:$F`
 
-/** Los dos bordes de la ventana, como expresiones del Sheet. `celdaHasta` es el cierre de la quincena. */
-export function expresionVentana(celdaHasta) {
+/**
+ * EL CIERRE DE UNA QUINCENA, DERIVADO DE SU FECHA DE INICIO — Y NO LEÍDO DE LA COLUMNA «Hasta».
+ *
+ * ═══ POR QUÉ CAMBIÓ, MEDIDO SOBRE LA PESTAÑA PUBLICADA (15/08) ═══
+ *
+ * La primera versión de este bloque anclaba toda la ventana en `$B$fReg`, la columna «Hasta» de la
+ * última fila del registro. Se publicó y el cuadro salió sin real, con este mensaje: *"sin
+ * movimientos de haberes en la ventana de pago — el extracto todavía no los muestra"*. Era falso: el
+ * extracto los mostraba. Lo que pasaba es que `B148` estaba VACÍA —de las quince filas del registro,
+ * ocho tienen `=""` en esa columna— así que `N($B$148)=0` apagaba las cuatro celdas y el subtítulo
+ * quedaba en «Quincena 3/8→», con el cierre en blanco.
+ *
+ * ═══ Y NO ES SÓLO QUE ESTUVIERA VACÍA: ES QUE MIDE OTRA COSA ═══
+ *
+ * «Hasta» del registro es *el último día CARGADO en el encabezado del bloque del espejo* — o sea
+ * cobertura de datos, no calendario. Aunque estuviera llena, atarle la ventana de pago sería un
+ * defecto silencioso: si alguien cargó horas sólo hasta el 12, la ventana arrancaría el 12/08 y se
+ * tragaría el pago suelto del 13/08 ($239.790,94), que no es de esta quincena. La ventana de pago no
+ * puede depender de cuánto se alcanzó a cargar.
+ *
+ * ═══ LA REGLA, QUE YA ESTABA ESCRITA EN LA PESTAÑA ═══
+ *
+ * Una quincena que arranca antes del 16 cierra el 15; si no, cierra a fin de mes. Es EXACTAMENTE la
+ * fórmula que el calendario de pago ya usaba en su columna «Hasta», y por eso vive acá y la usan los
+ * dos: dos definiciones del cierre de una quincena en la misma pestaña son dos respuestas para una
+ * sola pregunta. La `desde` sí es confiable — sale de `='_J_OBREROS'!F496`, la primera fecha del
+ * bloque, y es la única celda del registro que nunca estuvo vacía.
+ *
+ * @param {string} celdaDesde la celda con la fecha de inicio (ej. '$A$148')
+ */
+export const expresionCierreDeQuincena = (celdaDesde) =>
+  `IF(DAY(${celdaDesde})<16;DATE(YEAR(${celdaDesde});MONTH(${celdaDesde});15);EOMONTH(${celdaDesde};0))`
+
+/**
+ * Los dos bordes de la ventana, como expresiones del Sheet.
+ *
+ * TODO EL BLOQUE SE ANCLA EN LA CELDA «Quincena» (desde) Y EN NINGUNA OTRA. El cierre se deriva
+ * (`expresionCierreDeQuincena`) en vez de leerse: es la celda que se publicó vacía y dejó el cuadro
+ * mudo. Una sola celda de la que depender, y es la única del registro que nunca falló.
+ */
+export function expresionVentana(celdaDesde) {
+  const cierre = expresionCierreDeQuincena(celdaDesde)
   return {
     // `WORKDAY(x+1;-1)` = el último día hábil menor o igual a x. Es el mismo criterio que
     // `ultimoDiaHabil`, y tiene que serlo: si el JS y la fórmula difirieran, habría dos verdades sobre
     // qué pago es de esta quincena y el test verde no probaría lo que publica la celda.
-    desde: `WORKDAY(${celdaHasta}+1;-1)`,
-    hasta: `${celdaHasta}+${RANGO_VENTANA}`,
+    desde: `WORKDAY(${cierre}+1;-1)`,
+    hasta: `${cierre}+${RANGO_VENTANA}`,
   }
 }
 
 /** Los criterios de SUMIFS/COUNTIFS de la ventana. Uno solo, para que no puedan desalinearse. */
-const criterios = (celdaHasta) => {
-  const v = expresionVentana(celdaHasta)
+const criterios = (celdaDesde) => {
+  const v = expresionVentana(celdaDesde)
   return `${NAT};"${NATURALEZA_SUELDOS}";${FECHA};">="&${v.desde};${FECHA};"<="&${v.hasta}`
 }
 
+/**
+ * LA GUARDA DE TODAS LAS CELDAS DEL BLOQUE, ESCRITA UNA SOLA VEZ.
+ *
+ * Se pregunta por la celda «Quincena», no por el resultado: con el cierre derivado, un `desde` vacío
+ * da `DAY(0)=30` → `EOMONTH(0;0)` = 31/12/1899, que es un número perfectamente válido y una ventana
+ * de 1899. La guarda tiene que mirar el INSUMO; mirar el resultado la vuelve ciega justo al caso que
+ * existe para atrapar.
+ */
+const conQuincena = (celdaDesde, expr, siFalta = '""') => `=IF(N(${celdaDesde})=0;${siFalta};${expr})`
+
 /** Lo que el banco pagó de esta quincena. En POSITIVO: el extracto los trae negativos. */
-export const formulaRealBanco = (celdaHasta) =>
-  `=IF(N(${celdaHasta})=0;"";ABS(SUMIFS(${IMPORTE};${criterios(celdaHasta)})))`
+export const formulaRealBanco = (celdaDesde) =>
+  conQuincena(celdaDesde, `ABS(SUMIFS(${IMPORTE};${criterios(celdaDesde)}))`)
 
 /** Cuántos movimientos componen ese real. Es lo que distingue un lote de un pago suelto. */
-export const formulaMovimientos = (celdaHasta) =>
-  `=IF(N(${celdaHasta})=0;"";COUNTIFS(${criterios(celdaHasta)}))`
+export const formulaMovimientos = (celdaDesde) =>
+  conQuincena(celdaDesde, `COUNTIFS(${criterios(celdaDesde)})`)
 
 /** La fecha del lote: la PRIMERA del período, no la última importación. */
-export function formulaFechaDelLote(celdaHasta) {
-  const v = expresionVentana(celdaHasta)
-  return `=IFERROR(MIN(FILTER(${FECHA};${NAT}="${NATURALEZA_SUELDOS}";${FECHA}>=${v.desde};${FECHA}<=${v.hasta}));"")`
+export function formulaFechaDelLote(celdaDesde) {
+  const v = expresionVentana(celdaDesde)
+  return conQuincena(celdaDesde, `IFERROR(MIN(FILTER(${FECHA};${NAT}="${NATURALEZA_SUELDOS}";${FECHA}>=${v.desde};${FECHA}<=${v.hasta}));"")`)
 }
 
 /**
@@ -329,17 +379,27 @@ export function formulaFechaDelLote(celdaHasta) {
  * distintos devuelve #N/A, que `IFERROR` convierte en 0 y hace que la cuenta del modo dé cero: el
  * caso "liquidación individual" se resuelve solo, sin una rama extra.
  *
- * @param {{celdaHasta:string, celdaMovs:string}} p
+ * ═══ LA CELDA NUNCA PUEDE VOLVER A CULPAR AL EXTRACTO POR UN PROBLEMA PROPIO (15/08) ═══
+ *
+ * La versión publicada tenía UNA sola rama para el caso sin movimientos: *"el extracto todavía no los
+ * muestra"*. Cuando el ancla quedó vacía, esa frase se publicó siendo falsa —el extracto SÍ los
+ * mostraba— y mandó a buscar el problema al banco. Un mensaje de estado que no distingue "no hay
+ * pagos" de "no sé de qué período estoy hablando" es peor que ninguno: dirige mal la búsqueda.
+ * Ahora son dos ramas y la primera se acusa a sí misma.
+ *
+ * @param {{celdaDesde:string, celdaMovs:string}} p
  */
-export function formulaOrigenDelReal({ celdaHasta, celdaMovs }) {
-  const v = expresionVentana(celdaHasta)
+export function formulaOrigenDelReal({ celdaDesde, celdaMovs }) {
+  const v = expresionVentana(celdaDesde)
   const modo = `IFERROR(MODE(FILTER(${IMPORTE};${NAT}="${NATURALEZA_SUELDOS}";${FECHA}>=${v.desde};${FECHA}<=${v.hasta}));0)`
-  const nModo = `COUNTIFS(${criterios(celdaHasta)};${IMPORTE};${modo})`
+  const nModo = `COUNTIFS(${criterios(celdaDesde)};${IMPORTE};${modo})`
   const n = `N(${celdaMovs})`
-  return `=IF(${n}=0;"sin movimientos de haberes en la ventana de pago — el extracto todavía no los muestra";`
+  return conQuincena(celdaDesde,
+    `IF(${n}=0;"sin movimientos de haberes en la ventana de pago — el extracto todavía no los muestra";`
     + `IF(${nModo}*${UNIFORME_DEN}>=${n}*${UNIFORME_NUM};`
     + `"extracto · "&${n}&" movimientos iguales de "&TEXT(ABS(${modo});"$#,##0")&" — pago uniforme, la forma del 50% acordado; NO es la liquidación individual";`
-    + `"extracto · "&${n}&" movimientos de importes distintos — liquidación individual, persona por persona"))`
+    + `"extracto · "&${n}&" movimientos de importes distintos — liquidación individual, persona por persona"))`,
+    '"el registro no tiene la fecha de la quincena: no hay período contra el que medir"')
 }
 
 /** El total de la quincena INFERIDO del acuerdo: el banco por dos. `*2`, entero, sin coma. */
@@ -377,7 +437,10 @@ export function formulaAvisoUmbral({ movs, est, dif, delta }) {
  * de esta pestaña tiene tope de 60 y su test lo mide (ver `glosasLargas`).
  */
 export const formulaSubtituloContraste = (fReg) =>
-  `="Quincena "&TEXT($A$${fReg};"d/m")&"→"&TEXT($B$${fReg};"d/m")`
+  // EL CIERRE, DERIVADO — igual que la ventana. La versión publicada leía `$B$fReg` y salió
+  // «Quincena 3/8→», con la flecha apuntando a nada: el mismo ancla vacía, visible en el renglón que
+  // dice de qué período habla el cuadro.
+  `="Quincena "&TEXT($A$${fReg};"d/m")&"→"&TEXT(${expresionCierreDeQuincena(`$A$${fReg}`)};"d/m")`
   + `&" · el real sale del extracto, no de la planilla"`
 
 /**

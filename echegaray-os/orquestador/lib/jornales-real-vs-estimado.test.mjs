@@ -23,7 +23,7 @@ import {
   ultimoDiaHabil, ventanaDePago, formaDelLote, realDelPeriodo, emparejarPorPeriodo, contrastar,
   formulaRealBanco, formulaMovimientos, formulaFechaDelLote, formulaOrigenDelReal,
   formulaTotalInferido, formulaDiferencia, formulaDelta, formulaAvisoUmbral,
-  formulaSubtituloContraste, expresionVentana,
+  formulaSubtituloContraste, expresionVentana, expresionCierreDeQuincena,
 } from './jornales-real-vs-estimado.mjs'
 import { clasificarMovimiento } from './banco-santander.mjs'
 
@@ -161,7 +161,7 @@ test('"sin evidencia" no es "dentro del umbral": el aviso queda en null, no en f
 
 const TODAS = [
   formulaRealBanco('$B$60'), formulaMovimientos('$B$60'), formulaFechaDelLote('$B$60'),
-  formulaOrigenDelReal({ celdaHasta: '$B$60', celdaMovs: '$C$10' }),
+  formulaOrigenDelReal({ celdaDesde: '$B$60', celdaMovs: '$C$10' }),
   formulaTotalInferido('$E$10'), formulaDiferencia('$D$10', '$E$10'), formulaDelta('$D$10', '$F$10'),
   formulaAvisoUmbral({ movs: '$C$10', est: '$D$10', dif: '$F$10', delta: '$G$10' }),
   formulaSubtituloContraste(60),
@@ -184,11 +184,11 @@ test('ningún literal decimal: un 0,5 escrito por API se parte en dos argumentos
   // El 2% del umbral viaja como división entera, no como 0,02.
   assert.match(formulaAvisoUmbral({ movs: 'C1', est: 'D1', dif: 'F1', delta: 'G1' }), /N\(D1\)\/50/)
   // Y el 80% de la forma del lote, como producto de enteros.
-  assert.match(formulaOrigenDelReal({ celdaHasta: 'B1', celdaMovs: 'C1' }), /\*5>=.*\*4/)
+  assert.match(formulaOrigenDelReal({ celdaDesde: 'B1', celdaMovs: 'C1' }), /\*5>=.*\*4/)
 })
 
 test('los patrones de TEXT van en formato US aunque el archivo sea es_AR', () => {
-  const origen = formulaOrigenDelReal({ celdaHasta: 'B1', celdaMovs: 'C1' })
+  const origen = formulaOrigenDelReal({ celdaDesde: 'B1', celdaMovs: 'C1' })
   assert.match(origen, /TEXT\(ABS\(/)
   assert.match(origen, /;"\$#,##0"\)/)
   assert.match(formulaAvisoUmbral({ movs: 'C1', est: 'D1', dif: 'F1', delta: 'G1' }), /"0\.0%"/)
@@ -209,11 +209,58 @@ test('el real se filtra por la NATURALEZA del banco, no por el texto del concept
   assert.doesNotMatch(formulaRealBanco('B1'), /REGEXMATCH|SEARCH\(/)
 })
 
-test('la ventana de la fórmula dice lo mismo que la del JS: WORKDAY(hasta+1;-1)', () => {
+test('la ventana de la fórmula dice lo mismo que la del JS: WORKDAY(cierre+1;-1)', () => {
   // Si el JS y la fórmula difirieran habría DOS verdades sobre qué pago es de esta quincena, y el
   // test verde no probaría lo que publica la celda.
-  assert.equal(expresionVentana('$B$60').desde, 'WORKDAY($B$60+1;-1)')
-  assert.equal(expresionVentana('$B$60').hasta, '$B$60+JORNALES_VENTANA_BANCO')
+  const cierre = expresionCierreDeQuincena('$A$148')
+  assert.equal(expresionVentana('$A$148').desde, `WORKDAY(${cierre}+1;-1)`)
+  assert.equal(expresionVentana('$A$148').hasta, `${cierre}+JORNALES_VENTANA_BANCO`)
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LO QUE SE PUBLICÓ Y SALIÓ MUDO (15/08) — el ancla vacía
+//
+// El cuadro salió con el estimado ($3.640.000) y sin el real, diciendo *"el extracto todavía no los
+// muestra"*. El extracto SÍ los mostraba. El ancla era `$B$148` —la columna «Hasta» del registro— y
+// esa celda está VACÍA: ocho de las quince filas tienen `=""` ahí. `N($B$148)=0` apagaba las cuatro
+// celdas del renglón y el subtítulo salía «Quincena 3/8→», con la flecha apuntando a nada.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('CIERRE 1 · el cierre se DERIVA del inicio y no se lee de la columna «Hasta»', () => {
+  // Antes del 16 cierra el 15; desde el 16, a fin de mes. Es la regla que el calendario ya usaba.
+  assert.equal(expresionCierreDeQuincena('A5'), 'IF(DAY(A5)<16;DATE(YEAR(A5);MONTH(A5);15);EOMONTH(A5;0))')
+  // Y el JS dice lo mismo que la fórmula para el caso que rompió: 03/08 cierra el 15/08, y de ahí la
+  // ventana sale [14/08 (viernes), 25/08] — la que captura los catorce movimientos.
+  assert.equal(ventanaDePago({ hasta: '2026-08-15' }).desde, '2026-08-14')
+})
+
+test('CIERRE 2 · NINGUNA celda del bloque toca la columna «Hasta» del registro', () => {
+  // RED si alguien vuelve a anclar en `$B$fReg`: es la celda que se publicó vacía. Todo el bloque
+  // depende de UNA sola celda —«Quincena»— y es la única del registro que nunca falló.
+  const conDesde = [
+    formulaRealBanco('$A$148'), formulaMovimientos('$A$148'), formulaFechaDelLote('$A$148'),
+    formulaOrigenDelReal({ celdaDesde: '$A$148', celdaMovs: '$C$19' }), formulaSubtituloContraste(148),
+  ]
+  for (const f of conDesde) {
+    assert.doesNotMatch(f, /\$B\$148/, `sigue anclado en la columna «Hasta»: ${f.slice(0, 100)}`)
+    assert.match(f, /\$A\$148/, `no se ancla en la celda «Quincena»: ${f.slice(0, 100)}`)
+  }
+})
+
+test('CIERRE 3 · la guarda mira el INSUMO, no el resultado: un desde vacío da una ventana de 1899', () => {
+  // `DAY(0)` es 30 y `EOMONTH(0;0)` es el 31/12/1899: con el cierre derivado, preguntar por el
+  // resultado nunca da cero y la guarda quedaría ciega justo en el caso que existe para atrapar.
+  for (const f of [formulaRealBanco('$A$148'), formulaMovimientos('$A$148'), formulaFechaDelLote('$A$148')]) {
+    assert.match(f, /^=IF\(N\(\$A\$148\)=0;/, `la guarda no mira la celda «Quincena»: ${f.slice(0, 60)}`)
+  }
+})
+
+test('CIERRE 4 · la celda no puede culpar al extracto por un problema propio', () => {
+  const f = formulaOrigenDelReal({ celdaDesde: '$A$148', celdaMovs: '$C$19' })
+  // Sin período, se acusa a sí misma. Es la frase que faltaba y que mandó a buscar el problema al banco.
+  assert.match(f, /^=IF\(N\(\$A\$148\)=0;"el registro no tiene la fecha de la quincena/)
+  // Y la frase que culpa al extracto queda para el caso en que de verdad no hay movimientos.
+  assert.match(f, /el extracto todav[íi]a no los muestra/)
 })
 
 test('el cuadro tiene ocho columnas y su rótulo es reconocible como encabezado', () => {
