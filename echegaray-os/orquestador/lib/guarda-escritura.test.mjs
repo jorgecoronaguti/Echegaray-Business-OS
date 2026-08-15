@@ -256,6 +256,48 @@ test('protegerVacioSobreLleno: mezcla — descarta la vacía-sobre-llena, conser
   assert.deepEqual(protegidos.map((p) => p.range), ['Compras!A1:B2'])
 })
 
+// ═══ EL ANCLA (15/08/2026) — releer una celda y dejar pasar mil seiscientas ═══
+//
+// El defecto que estos tres fijan: con `range: "Proveedores!A121"` y una grilla de 100×16, el cinturón
+// releía A121 sola. Si esa celda estaba vacía concluía "vacío sobre vacío" y dejaba pasar la grilla
+// entera sin haber mirado el resto del destino. Es el mismo error de ancla que ya se arregló en
+// `protegerBorrado`, del lado en que no releer significa DEJAR PASAR.
+
+test('protegerVacioSobreLleno: rango ANCLA → relee el footprint, no la celda del ancla', async () => {
+  const leidos = []
+  const cliente = { async readSheetValues(_id, range) { leidos.push(range); return [] } }
+  const grilla = Array.from({ length: 100 }, () => Array.from({ length: 16 }, () => ''))
+  await protegerVacioSobreLleno(cliente, 'ID', [{ range: 'Proveedores!A121', values: grilla }])
+  assert.deepEqual(leidos, ['Proveedores!A121:P220'], 'lee las 100×16 que va a pisar, no A121')
+})
+
+test('protegerVacioSobreLleno: el ancla está vacía pero el footprint tiene datos → PROTEGIDO', async () => {
+  // Antes del arreglo esto PASABA: A121 vacía ⇒ "vacío sobre vacío: inofensivo" ⇒ 1.600 celdas pisadas.
+  //
+  // EL DOBLE NO PUEDE ASERTAR ADENTRO: `protegerVacioSobreLleno` envuelve la lectura en un try/catch,
+  // así que una assertion que falle ahí se traga y el rango termina protegido por fail-closed — el test
+  // pasaría en verde probando lo contrario de lo que dice. El doble sólo responde; se juzga afuera.
+  const cliente = {
+    async readSheetValues(_id, range) {
+      // El ancla sola está vacía; la fila del dueño vive 41 filas más abajo, dentro del footprint.
+      return range.endsWith('A121') ? [] : [[''], ['', '', 'una fila del dueño más abajo']]
+    },
+  }
+  const grilla = Array.from({ length: 100 }, () => Array.from({ length: 16 }, () => ''))
+  const { data, protegidos } = await protegerVacioSobreLleno(cliente, 'ID', [{ range: 'Proveedores!A121', values: grilla }])
+  assert.equal(data.length, 0, 'con el ancla sola esto pasaba y pisaba 1.600 celdas')
+  assert.equal(protegidos.length, 1)
+  assert.match(protegidos[0].motivo, /grilla rota|generador sin base/i)
+})
+
+test('protegerVacioSobreLleno: un rango que YA declara su fin no se toca', async () => {
+  // Estirar o achicar un rango que el llamador delimitó sería decidir por él sobre lo que va a pisar.
+  const leidos = []
+  const cliente = { async readSheetValues(_id, range) { leidos.push(range); return [] } }
+  await protegerVacioSobreLleno(cliente, 'ID', [{ range: 'Compras!A1:B2', values: [['', ''], ['', '']] }])
+  assert.deepEqual(leidos, ['Compras!A1:B2'])
+})
+
 test('guardarEscritura: sin base, grilla VACÍA sobre pestaña con datos → protegido, NO escribe', async () => {
   // El cinturón corre ANTES de candado/firma y no toca Postgres: aunque no haya DATABASE_URL, no piso.
   const cliente = { async readSheetValues() { return [['ARCOR', 1000]] } }
