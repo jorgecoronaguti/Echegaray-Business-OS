@@ -24,6 +24,7 @@
 // dueño vale más que la disponibilidad de la escritura. Ver evaluarBloqueadas.
 
 import { tiene } from './preservar-anotaciones.mjs'
+import { footprintDeRango } from './no-borrar.mjs'
 import { CLASE, clasificarRequest } from './clasificar-request.mjs'
 
 // ═══ CINTURÓN "VACÍO SOBRE LLENO" (28/07, TGUARD) — defensa en profundidad, INDEPENDIENTE de la base ═══
@@ -47,11 +48,33 @@ export function gridVacia(values) {
   return !Array.isArray(values) || !values.some((fila) => Array.isArray(fila) && fila.some((c) => tiene(c)))
 }
 
+// ═══ EL CINTURÓN RELEÍA EL ANCLA, ASÍ QUE NO VEÍA LO QUE IBA A PISAR (15/08/2026) ═══
+//
+// Es el MISMO defecto que ya se arregló una vez del otro lado: `protegerBorrado` dejó de releer
+// `d.range` literal el 14/08 y pasó a usar `footprintDeRango` (ver el porqué en no-borrar.mjs). Acá
+// quedó sin arreglar, y del lado en que MÁS duele — porque acá no releer significa DEJAR PASAR.
+//
+// Cómo se ve. Una escritura anclada manda `range: "Proveedores!A121"` con una grilla de 100×16. El
+// destino real es `A121:P220`. Este cinturón releía `A121` —UNA celda—: si esa celda estaba vacía,
+// concluía "vacío sobre vacío: inofensivo" y **dejaba pasar la grilla entera**, con las 1.599 celdas
+// restantes sin haber sido miradas nunca. La regla que este módulo declara defender —"una grilla sin
+// una sola celda con contenido no reemplaza un destino lleno"— no se estaba aplicando a ningún
+// escritor anclado, que son justamente los de Proveedores, la pestaña con el peor historial.
+//
+// Lo encontró una auditoría de cierre buscando romper OTRO cambio sobre este mismo archivo —una
+// excepción que se propuso acá y se descartó entera—. El agujero no era del cambio propuesto: ya
+// estaba, y la excepción lo hacía visible.
+//
+// `footprintDeRango` no inventa nada: si el llamador ya declaró el fin de su rango (`A121:H160`), lo
+// deja intacto — achicar o estirar un rango delimitado sería decidir por él. Sólo completa el destino
+// cuando el rango es un ancla y la grilla dice cuánto ocupa.
+
 /**
  * Filtra de `data` los rangos que dejarían un destino CON CONTENIDO reemplazado por una grilla VACÍA.
  * Impura sólo del lado Sheets (relee el destino); NO consulta la base — funciona aun sin DATABASE_URL.
  * Un rango con grilla no vacía pasa sin releer nada. Un rango con grilla vacía se permite únicamente si
  * el destino ya está vacío; si tiene contenido o no se puede releer, se protege (fail-closed).
+ * Lo que se relee es el FOOTPRINT (ancla + tamaño de la grilla), nunca el ancla sola.
  * @returns {Promise<{data:any[], protegidos:{range:string, motivo:string}[]}>}
  */
 export async function protegerVacioSobreLleno(cliente, fileId, data = []) {
@@ -59,7 +82,8 @@ export async function protegerVacioSobreLleno(cliente, fileId, data = []) {
   for (const d of data) {
     if (!gridVacia(d?.values)) { permitido.push(d); continue } // escritura con contenido: camino feliz, no se relee
     let previo
-    try { previo = await cliente.readSheetValues(fileId, d.range) } catch { previo = undefined }
+    const destino = footprintDeRango(d?.range, d?.values)
+    try { previo = await cliente.readSheetValues(fileId, destino) } catch { previo = undefined }
     if (previo === undefined) {
       protegidos.push({ range: d.range, motivo: 'grilla vacía y no pude releer el destino para confirmar que estaba vacío (fail-closed)' })
       continue
