@@ -27,7 +27,8 @@ import {
   grillaAnexo, ANCHO_ANEXO, ANCHOS_ANEXO, PESTANA_ANEXO, SELLO_EFECTIVO, HISTORICO_EFECTIVO, claveDeRotulo,
 } from '../lib/caja-anexo.mjs'
 import {
-  necesitaSello, dictamenEfectivo, avisoEfectivoImposible, selloPorRenglonSembrable,
+  necesitaSello, dictamenEfectivo, avisoEfectivoImposible, avisoTechoNoVerificable,
+  selloPorRenglonSembrable,
 } from '../lib/caja-efectivo-fisico.mjs'
 import { ALERTA } from '../lib/glifos.mjs'
 import { DESDE_CAJA, CELDA_CAJA_MINIMA, ESPECIE_ANEXO } from '../lib/caja-anexo-nombres.mjs'
@@ -161,16 +162,27 @@ async function controlarEfectivo(google, g) {
   const bloque = await google.readSheetValues(ID, `${PESTANA_ANEXO}!C${f0}:D${g.fSello}`, { render: 'UNFORMATTED_VALUE' })
   const num = (x) => (typeof x === 'number' ? x : Number(x) || 0)
   const neto = (bloque ?? []).reduce((s, fila) => s + num(fila?.[0]), 0)
-  const d = dictamenEfectivo({ arqueo: num(arq?.[0]?.[0]), neto })
   // EL DELTA POR RENGLÓN: C (hoy) menos D (al sellar). Sin sello de renglón todavía cargado el delta
   // es el renglón entero, así que sólo se nombra al culpable cuando su D es un número de verdad.
   const por = HISTORICO_EFECTIVO.map((l, i) => {
     const fila = bloque?.[i] ?? []
-    return typeof fila?.[1] === 'number' ? { rotulo: l.rotulo, delta: num(fila[0]) - num(fila[1]) } : null
+    return typeof fila?.[1] === 'number'
+      ? { rotulo: l.rotulo, entra: l.entra, delta: num(fila[0]) - num(fila[1]) } : null
   }).filter(Boolean)
-  const aviso = avisoEfectivoImposible(d, { por, marca: ALERTA })
+  // EL TECHO SALE DE LAS LÍNEAS QUE CARGAN EL CAJÓN, Y SÓLO SI ESTÁN TODAS. Con una sola sin sellar
+  // el techo se calcularía sobre una entrada de menos y declararía imposible una caja sana; peor aún,
+  // con la de cobros sin sellar el techo saldría enorme y no controlaría nada. Falta una → no hay
+  // techo, y el dictamen lo dice en vez de callarse.
+  const cargan = HISTORICO_EFECTIVO.filter((l) => l.entra).length
+  const entradas = por.filter((p) => p.entra)
+  const d = dictamenEfectivo({
+    arqueo: num(arq?.[0]?.[0]),
+    neto,
+    entradas: entradas.length === cargan ? entradas.reduce((s, p) => s + p.delta, 0) : undefined,
+  })
+  const aviso = avisoEfectivoImposible(d, { por, marca: ALERTA }) ?? avisoTechoNoVerificable(d, ALERTA)
   if (aviso) console.log(`  ${aviso}`)
-  else console.log(`  💵 efectivo en el cajón: $${Math.round(d.efectivo).toLocaleString('es-AR')} (el histórico se movió $${Math.round(d.movido).toLocaleString('es-AR')} desde el sello)`)
+  else console.log(`  💵 efectivo en el cajón: $${Math.round(d.efectivo).toLocaleString('es-AR')} (el histórico se movió $${Math.round(d.movido).toLocaleString('es-AR')} desde el sello · techo $${Math.round(d.techo).toLocaleString('es-AR')})`)
 }
 
 async function main() {

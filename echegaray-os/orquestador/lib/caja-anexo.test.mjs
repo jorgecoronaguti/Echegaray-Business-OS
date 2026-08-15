@@ -153,9 +153,30 @@ test('EL EFECTIVO NO PUEDE PUBLICARSE NEGATIVO: la guarda está en el neto, y el
   const g = construir()
   const neto = celda(g, g.fNeto, 2)
   const [f0] = g.filasHistorico
-  assert.ok(neto.includes(`IF(N(CAJA_ARQUEO_ARS)+SUM(C${f0}:C${g.fSello})<0;0;`),
+  const cajon = `N(CAJA_ARQUEO_ARS)+SUM(C${f0}:C${g.fSello})`
+  assert.ok(neto.includes(`(${cajon}<0)`),
     `el neto tiene que degradar a 0 cuando el cajón daría negativo. Es: ${neto}`)
   assert.ok(!neto.includes(','), 'es-AR: separador ; — una coma acá es un decimal, no un argumento')
+})
+
+test('NI POSITIVO IMPOSIBLE: el techo entra a la misma guarda que el piso', () => {
+  // EL 15/08. La guarda del 14/08 atajaba el cajón negativo y dejaba pasar el inflado, porque era
+  // positivo: la pestaña publicó $58.646.092 sobre un conteo de $12.000.000, con las dos líneas que
+  // CARGAN el cajón quietas en cero. Un cajón tampoco puede tener MÁS que lo contado más lo que entró.
+  const g = construir()
+  const neto = celda(g, g.fNeto, 2)
+  const [f0] = g.filasHistorico
+  const entrada = HISTORICO_EFECTIVO.map((l, i) => (l.entra ? f0 + i : 0)).filter(Boolean)
+  assert.deepEqual(entrada.length, 2, 'cobrado en efectivo y extraído del banco son las que cargan')
+  for (const f of entrada) {
+    assert.ok(neto.includes(`(C${f}-N($D$${f}))`), `el techo tiene que sumar lo que entró por la fila ${f}`)
+    assert.ok(neto.includes(`ISNUMBER($D$${f})`),
+      `sin el sello de la fila ${f} el techo no se puede medir, y un techo inventado no controla nada`)
+  }
+  // Y el control publicado mide LAS DOS PUNTAS, no sólo la de abajo.
+  const control = celda(g, g.fImposible, 4)
+  assert.match(control, /MAX\(0;-\(/, 'lo que falta para llegar a cero')
+  assert.match(control, /MAX\(0;\(/, 'y lo que sobra por encima del techo')
 })
 
 test('EL CONTROL SE PUBLICA CON NOMBRE Y FUERA DEL BLOQUE QUE MIDE', () => {
