@@ -400,6 +400,39 @@ export function traducirMarcadores(g, tramos, titulo, { desdeFila = 1 } = {}) {
   return out
 }
 
+/**
+ * NÚCLEO PURO: qué sellar como huella después de escribir — LA FORMA QUE QUEDÓ, SÓLO EN LO MÍO.
+ *
+ * ═══ LAS DOS PROPIEDADES QUE TIENE QUE CUMPLIR A LA VEZ ═══
+ *
+ * 1. EL MAPA DESCRIBE LA PESTAÑA REAL. Sellar la grilla que el generador QUISO escribir deja el mapa
+ *    describiendo una pestaña que no existe: `fusionar` conserva el sedimento en toda celda donde el
+ *    generador manda vacío. Medido con la geometría quieta —alto 222 y 222, frontera 117 y 117— la
+ *    alineación de la corrida siguiente daba 47%, debajo del umbral, y ahí se congela para siempre.
+ *
+ * 2. NO SE RECLAMA UNA SOLA CELDA AJENA. Sellar la relectura tal cual arregla (1) y rompe algo peor:
+ *    lo que quedó incluye lo que se conservó del dueño, y una celda suya con huella mía es una celda
+ *    que la corrida siguiente limpia en cuanto el generador mande VACIO ahí. Cinco pérdidas de este
+ *    repo entraron por esa puerta.
+ *
+ * La intersección las cumple las dos: el VALOR sale de la pestaña, la PROPIEDAD sale de lo que el
+ * generador puso. Donde el generador no puso contenido —'' o el centinela VACIO— no se sella nada,
+ * aunque la celda tenga algo: eso es justamente lo que no es suyo.
+ *
+ * @param {any[][]} mandado lo que el generador mandó a escribir (con centinelas)
+ * @param {any[][]} quedo   el MISMO rectángulo releído después de escribir (render FORMULA)
+ * @returns {any[][]} la grilla a sellar, del alto de `mandado`
+ */
+export function selloDeLoQueQuedo(mandado = [], quedo = []) {
+  return (mandado || []).map((fila, i) => (fila || []).map((c, j) => {
+    // El centinela dice "es mía y va vacía": no hay forma que sellar, y la celda quedó limpia.
+    if (c === VACIO || c === undefined || c === null || String(c).trim() === '') return ''
+    const hoy = (quedo[i] || [])[j]
+    // Si la relectura no llega hasta acá, la API truncó la cola vacía: no hay nada que sellar.
+    return hoy === undefined || hoy === null ? '' : hoy
+  }))
+}
+
 export function layoutDeuda(headers) {
   const H = (headers || []).map((h) => String(h ?? '').trim())
   const base = ['Proveedor / factura', 'Próximo pago', 'Comprobante', 'Importe', 'Obra', 'Tipo de pago', 'Categoría']
@@ -1882,15 +1915,45 @@ async function main() {
       ID, [{ range: `${refPestana(t.titulo)}!A${filaArranque}`, values: fusion }],
       { yaGuardado: FORCE, vaciarPropio: { mios, tope: TOPE_RESIDUO } },
     )
-    // EL SELLO VA DESPUÉS DE ESCRIBIR Y SOBRE LO QUE SE MANDÓ A ESCRIBIR, no sobre la fusión: la
-    // fusión trae también lo que se CONSERVÓ del dueño, y sellarlo lo declararía mío — el sello sería
-    // la puerta por la que su nota se vuelve "residuo del generador" en la corrida siguiente. Es el
-    // mismo argumento y el mismo orden que usa el portón (`escribirPreservando`).
+    // ═══ SE SELLA LA FORMA QUE QUEDÓ, EN LAS CELDAS QUE SON MÍAS (15/08/2026) ═══
     //
-    // Y ES LA PRIMERA CORRIDA LA QUE NO PUEDE LIMPIAR NADA: siembra el mapa. La limpieza por
-    // footprint empieza a poder probar algo desde la SEGUNDA — quien publique esto tiene que correrlo
-    // dos veces y mirar `🧹 … limpiada(s) por huella`, que hoy dice 0 en las dos.
-    await huella.guardar?.(huella.grid)
+    // EL DEFECTO, medido con el timer del Flujo de Caja DETENIDO entre dos corridas —o sea sin que
+    // nadie moviera una fila en el medio—: alto 222 y 222, frontera 117 y 117, bloque de ARCA 174 y
+    // 174, y la alineación de la corrida 2 igual dio 186/396 = 47%, debajo del umbral de 0,6. La
+    // geometría estaba quieta y el mapa igual no caía donde decía.
+    //
+    // La causa es que esto sellaba `huella.grid` —la grilla que el generador QUISO escribir— y
+    // `fusionar` conserva el sedimento en toda celda donde el generador manda vacío. En más de la
+    // mitad de las celdas selladas, lo que quedó en la pestaña no es lo que se selló. La corrida
+    // siguiente compara mapa contra pestaña, no reconoce ni la mitad, se declara desalineada y no
+    // limpia nada. El ciclo se repite idéntico para siempre.
+    //
+    // ═══ PERO SELLAR LA RELECTURA TAL CUAL SERÍA LA SEXTA PÉRDIDA ═══
+    //
+    // Lo que quedó incluye lo que se CONSERVÓ del dueño (7 celdas en la última corrida). Sellar eso
+    // declararía suya como mía: a la corrida siguiente su celda tendría huella propia con su forma
+    // intacta, y en cuanto el generador mande VACIO ahí, `aplicarHuella` la lee como "mi celda con mi
+    // forma" y la LIMPIA. Es exactamente el camino por el que este archivo ya perdió trabajo del dueño
+    // cinco veces.
+    //
+    // Se sella la INTERSECCIÓN: la forma que quedó, sólo en las celdas donde el generador puso
+    // contenido. Las dos propiedades a la vez —el mapa describe la pestaña real, y no reclama una sola
+    // celda que no escribió—. Ver `selloDeLoQueQuedo`.
+    //
+    // LA RELECTURA FALLA CERRADO: sin ella no se sella nada. Un sello sobre una lectura que no llegó
+    // es peor que no sellar, porque la corrida siguiente le cree — es el `.catch(() => previo)` que
+    // mezcló esta misma pestaña cuando la API contestó 429. Y va con render FORMULA, el mismo con el
+    // que la corrida siguiente lee `previo`: sellar el valor calculado y comparar contra la fórmula
+    // daría desalineado por construcción.
+    const quedo = await google.readSheetValues(
+      ID, `${refPestana(t.titulo)}!A${filaArranque}:${letra(anchoP - 1)}${filaFin}`, { render: 'FORMULA' },
+    ).catch(() => null)
+    if (!quedo) {
+      console.warn(`  ⚠ ${t.titulo}: no pude releer lo que quedó escrito — NO sello la huella. `
+        + 'La corrida siguiente va a arrancar sin mapa, que es lo correcto: un sello sobre una lectura que no llegó miente.')
+    } else {
+      await huella.guardar?.(selloDeLoQueQuedo(huella.grid, quedo))
+    }
     if (conservadas.length) console.log(`  ✋ ${t.titulo}: ${conservadas.length} celda(s) escritas por el dueño — CONSERVADAS, no se borra nada`)
 
     // ═══ LA COLA DE UN DISEÑO ANTERIOR MÁS LARGO ═══

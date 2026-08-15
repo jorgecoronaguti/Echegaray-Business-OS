@@ -13,7 +13,7 @@
 // del propio generador (la col I de los cruces ARCA, que es no-vacía y por eso se conserva).
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { estructural, predicadoConDeuda, soloConDeuda, layoutDeuda, notasAncladas, anchoBloque, traducirMarcadores, reportarVentasSinCobranza, grilla, formatear } from './proveedores-materiales-pestana.mjs'
+import { estructural, predicadoConDeuda, soloConDeuda, layoutDeuda, notasAncladas, anchoBloque, traducirMarcadores, reportarVentasSinCobranza, grilla, formatear, selloDeLoQueQuedo } from './proveedores-materiales-pestana.mjs'
 import { fusionar, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { readFileSync } from 'node:fs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
@@ -1049,4 +1049,62 @@ test('EL DEFECTO · el generador no canta 🧹 cuando el barrido salió protegid
   // El 🧹 tiene que estar del lado del else, nunca antes del chequeo.
   assert.ok(tramo.indexOf('rCola?.protegido') < tramo.indexOf('🧹'),
     'el 🧹 se imprime antes de mirar el retorno: felicita sin haber escrito')
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL SELLO DESCRIBE LA PESTAÑA REAL — Y NO RECLAMA UNA SOLA CELDA DEL DUEÑO
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// EL DEFECTO, medido con el timer del Flujo de Caja DETENIDO entre dos corridas (o sea, sin que nadie
+// moviera una fila en el medio): alto 222 y 222, frontera 117 y 117, bloque de ARCA 174 y 174 — la
+// geometría quieta— y la alineación de la corrida 2 igual dio 186/396 = 47%, debajo del umbral 0,6.
+//
+// La causa: se sellaba la grilla que el generador QUISO escribir. `fusionar` conserva el sedimento en
+// toda celda donde el generador manda vacío, así que en más de la mitad de las celdas selladas lo que
+// quedó en la pestaña no es lo que se selló. La corrida siguiente no reconoce su propio mapa y se
+// declara desalineada para siempre.
+//
+// Y el arreglo ingenuo —sellar la relectura tal cual— es peor: lo que quedó incluye lo que se conservó
+// del dueño, y una celda suya con huella mía es una celda que la corrida siguiente LIMPIA.
+test('EL DEFECTO · el sello toma la forma que QUEDÓ, no la que se quiso escribir', () => {
+  const mandado = [['MI RÓTULO', '=SUM(A1:A2)'], [VACIO, VACIO]]
+  // Lo que quedó: mi rótulo aterrizó; la fórmula NO (quedó el sedimento del layout anterior).
+  const quedo = [['MI RÓTULO', '46109'], ['STARLINK ARGENTINA S R L', '30-71754087-1']]
+  const sello = selloDeLoQueQuedo(mandado, quedo)
+  assert.equal(sello[0][0], 'MI RÓTULO')
+  assert.equal(sello[0][1], '46109',
+    'se selló la fórmula que se quiso escribir y no lo que quedó: el mapa describe una pestaña que no existe y la corrida siguiente no se reconoce')
+})
+
+test('EL DEFECTO · el sello NO reclama la celda que se conservó del dueño', () => {
+  // El generador manda VACIO (o nada) donde el dueño escribió: `fusionar` conserva lo suyo.
+  const mandado = [[VACIO, ''], ['MI RÓTULO', undefined]]
+  const quedo = [['una nota del dueño', 'otra nota suya'], ['MI RÓTULO', 'algo que él puso al lado']]
+  const sello = selloDeLoQueQuedo(mandado, quedo)
+  assert.equal(sello[0][0], '', 'sellar la celda que el dueño escribió la declara mía: la corrida siguiente la limpia')
+  assert.equal(sello[0][1], '', 'lo mismo para la celda que el generador ni siquiera declara suya')
+  assert.equal(sello[1][1], '', 'una celda fuera de lo que el generador puso no se sella aunque tenga contenido')
+  assert.equal(sello[1][0], 'MI RÓTULO', 'y lo que sí es mío se sella')
+})
+
+test('el sello tolera que la relectura venga truncada (la API corta la cola vacía)', () => {
+  const mandado = [['MI RÓTULO'], ['OTRO RÓTULO MÍO'], ['UN TERCERO']]
+  const sello = selloDeLoQueQuedo(mandado, [['MI RÓTULO']])
+  assert.deepEqual(sello, [['MI RÓTULO'], [''], ['']], 'sin relectura para esa fila no hay forma que sellar, y no se inventa')
+  assert.equal(sello.length, mandado.length, 'el alto lo manda lo escrito: el barrido de huellas viejas cubre todo el footprint')
+})
+
+test('EL DEFECTO · sin relectura NO se sella nada, y se dice', () => {
+  const src = readFileSync(new URL('./proveedores-materiales-pestana.mjs', import.meta.url), 'utf8')
+  const i = src.indexOf('const quedo = await google.readSheetValues(')
+  assert.ok(i > 0, 'el cuerpo no relee lo que quedó escrito: sigue sellando la intención')
+  const tramo = src.slice(i, i + 1400).split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n')
+  assert.match(tramo, /render: 'FORMULA'/,
+    'la relectura del sello no va con render FORMULA: sellaría el valor calculado y la corrida siguiente, que lee la fórmula, daría desalineada por construcción')
+  assert.match(tramo, /\.catch\(\(\) => null\)/, 'la relectura no falla cerrado')
+  assert.match(tramo, /if \(!quedo\)/, 'no se comprueba que la relectura llegó antes de sellar')
+  assert.ok(tramo.indexOf('if (!quedo)') < tramo.indexOf('huella.guardar'),
+    'se sella sin haber comprobado la relectura: un sello sobre una lectura que no llegó miente, y la corrida siguiente le cree')
+  assert.match(tramo, /selloDeLoQueQuedo\(huella\.grid, quedo\)/,
+    'se sella la relectura cruda: eso declara mías las celdas que se conservaron del dueño')
 })
