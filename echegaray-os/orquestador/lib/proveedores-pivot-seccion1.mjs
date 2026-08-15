@@ -83,7 +83,24 @@ export function camposDeFila({ vista = VISTA.POR_PROVEEDOR } = {}) {
   if (vista === VISTA.POR_PROVEEDOR) {
     return [{ sourceColumnOffset: COL.proveedor, showTotals: false, sortOrder: 'DESCENDING', valueBucket: { valuesIndex: 0 } }]
   }
-  // ═══ EL DETALLE ABRE POR EL DÍA, Y ES DONDE ESO CORRESPONDE ═══
+  // ═══ EL DETALLE ABRE POR EL PROVEEDOR — Y ESTO YA SE EQUIVOCÓ UNA VEZ (15/08/2026) ═══
+  //
+  // EL DEFECTO, dicho por el dueño mirando la pestaña: *"roto, eso está al revés de como lo pido"*.
+  // El detalle abría por `proximoPago`, así que el DÍA era el eje y el proveedor colgaba de él: un
+  // mismo proveedor aparecía repartido en cinco grupos de fecha y "cuánto le debo a Alumetal" había
+  // que sumarlo a ojo. Su regla es de una línea y no admite lectura: **la base siempre es el nombre
+  // del proveedor**.
+  //
+  // POR QUÉ ESTABA AL REVÉS, Y POR QUÉ AHORA SÍ SE PUEDE DAR VUELTA. El día se puso de eje para
+  // contestar un pedido anterior suyo —*"saber exactamente a quiénes y cómo debo pagar un determinado
+  // día"*— cuando este cuadro era el único lugar donde eso se podía leer. Ya no lo es: el cuadro
+  // **"2 · QUÉ SALE CADA DÍA"** lo contesta entero y mejor (una fila por día, abierta por medio de
+  // pago, con el total del día y a quiénes). Con ese cuadro publicado, sostener el día como eje acá
+  // no conserva nada y le rompe su regla.
+  //
+  // La fecha NO se va: baja a ser el segundo campo, que es su lugar — dentro de cada proveedor, sus
+  // vencimientos en orden cronológico. Es la misma decisión que el cuadro A ("A QUIÉN SE LE DEBE"):
+  // el eje es el proveedor y la fecha es un atributo suyo, no al revés.
   //
   // "Categoría" no está: "B"/"N" no contesta a quién, cuánto ni cómo se paga, y medida contra Compras
   // va pegada al medio de pago (efectivo→N, resto→B). Repite lo que la columna de al lado ya dice.
@@ -92,8 +109,8 @@ export function camposDeFila({ vista = VISTA.POR_PROVEEDOR } = {}) {
   // obra cae en la D (300px), el tipo de pago en la E (90px, medida para "Tarjeta Crédito") y el
   // importe en la F (210px). Ver ANCHOS_PROVEEDORES.
   return [
-    { sourceColumnOffset: COL.proximoPago, showTotals: false, sortOrder: 'ASCENDING' },
     { sourceColumnOffset: COL.proveedor, showTotals: false, sortOrder: 'ASCENDING' },
+    { sourceColumnOffset: COL.proximoPago, showTotals: false, sortOrder: 'ASCENDING' },
     { sourceColumnOffset: COL.comprobante, showTotals: false, sortOrder: 'ASCENDING' },
     { sourceColumnOffset: COL.obra, showTotals: false, sortOrder: 'ASCENDING' },
     { sourceColumnOffset: COL.tipoPago, showTotals: false, sortOrder: 'ASCENDING' },

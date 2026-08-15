@@ -60,7 +60,7 @@ test('la vista DETALLE sigue existiendo, con sus agujeros declarados', () => {
     // El comprobante sigue en el detalle: sin el número de factura el cuadro no sirve para pagar.
     // "Categoría" (B/N) se fue el 14/08: no contesta a quién, cuánto ni cómo se paga, y su columna
     // es la que deja lugar a "Qué hacer" — la nota del dueño, al lado del pago que decide.
-    [COL.proximoPago, COL.proveedor, COL.comprobante, COL.obra, COL.tipoPago])
+    [COL.proveedor, COL.proximoPago, COL.comprobante, COL.obra, COL.tipoPago])
   assert.ok(!p.rows.some((r) => r.sourceColumnOffset === COL.categoria))
   assert.equal(anchoDelPivot(p), 6)
 })
@@ -81,13 +81,18 @@ test('EL EJE ES EL PROVEEDOR: el cuadro que abre la sección abre por el NOMBRE,
     'sin valueBucket el orden es alfabético y "a quién le debo más" hay que buscarlo a ojo')
 })
 
-test('EL CORTE POR DÍA NO SE PERDIÓ: el detalle abre por la fecha, en orden cronológico', () => {
+// EL DUEÑO, 15/08, mirando la pestaña: "roto, eso está al revés de como lo pido". Su regla no admite
+// lectura: LA BASE SIEMPRE ES EL NOMBRE DEL PROVEEDOR. Con el día de eje, un mismo proveedor quedaba
+// repartido en cinco grupos de fecha. El corte por día no se pierde: lo da entero "2 · QUÉ SALE CADA
+// DÍA", que no existía cuando se puso la fecha de eje.
+test('LA BASE ES EL PROVEEDOR: el detalle abre por proveedor y la fecha es su segundo nivel', () => {
   const p = pivotSeccion1(fuente, { vista: VISTA.DETALLE })
-  assert.equal(p.rows[0].sourceColumnOffset, COL.proximoPago, 'el detalle no agrupa por día de pago')
-  assert.equal(p.rows[0].sortOrder, 'ASCENDING',
-    'un calendario que empieza por el día más caro no es un calendario')
+  assert.equal(p.rows[0].sourceColumnOffset, COL.proveedor, 'el detalle no abre por el nombre del proveedor')
+  assert.equal(p.rows[1].sourceColumnOffset, COL.proximoPago, 'la fecha tiene que quedar DENTRO del proveedor')
+  assert.equal(p.rows[1].sortOrder, 'ASCENDING',
+    'los vencimientos de un proveedor se leen del más próximo al más lejano')
   assert.equal(p.rows[0].valueBucket, undefined,
-    'con valueBucket el primer nivel se ordena por la PLATA y el orden cronológico se pierde')
+    'el ranking por plata es del cuadro A; acá el detalle se lee alfabético para encontrar un nombre')
 })
 
 test('NO EXISTE UNA VISTA "POR DÍA": el total del día lo dan el aging y el agrupamiento del detalle', () => {
@@ -95,15 +100,15 @@ test('NO EXISTE UNA VISTA "POR DÍA": el total del día lo dan el aging y el agr
     'un tercer cuadro para el mismo dato es lo que la regla de minimalismo de la pestaña prohíbe')
 })
 
-test('EL D\u00cdA ABIERTO contesta las tres cosas: a qui\u00e9n, por qu\u00e9 comprobante y CON QU\u00c9 MEDIO', () => {
+test('EL PROVEEDOR ABIERTO contesta las tres cosas: a qui\u00e9n, por qu\u00e9 comprobante y CON QU\u00c9 MEDIO', () => {
   const p = pivotSeccion1(fuente, { vista: VISTA.DETALLE })
   const campos = p.rows.map((r) => r.sourceColumnOffset)
   for (const [q, col] of [['a qui\u00e9n', COL.proveedor], ['por qu\u00e9 comprobante', COL.comprobante],
     ['con qu\u00e9 medio', COL.tipoPago], ['para qu\u00e9 obra', COL.obra]]) {
     assert.ok(campos.includes(col), `sin "${q}" hay que abrir Compras, que es lo que esto viene a evitar`)
   }
-  // El orden de lectura es la pregunta: CU\u00c1NDO \u00b7 A QUI\u00c9N \u00b7 POR QU\u00c9 \u00b7 C\u00d3MO.
-  assert.ok(campos.indexOf(COL.proximoPago) < campos.indexOf(COL.proveedor))
+  // El orden de lectura es la pregunta: A QUI\u00c9N \u00b7 CU\u00c1NDO \u00b7 POR QU\u00c9 \u00b7 C\u00d3MO.
+  assert.ok(campos.indexOf(COL.proveedor) < campos.indexOf(COL.proximoPago))
   assert.ok(campos.indexOf(COL.proveedor) < campos.indexOf(COL.comprobante))
   assert.ok(campos.indexOf(COL.comprobante) < campos.indexOf(COL.tipoPago))
 })
@@ -388,7 +393,7 @@ test('los rótulos que va a emitir la dinámica se saben ANTES de escribir', () 
   cabecera[COL.tipoPago] = 'Tipo pago'
   cabecera[COL.categoria] = 'Categoría'
   assert.deepEqual(rotulosDelCuadro({ vista: VISTA.DETALLE, cabecera }),
-    ['Fecha prevista de pago (día)', 'Proveedor', 'N° Comprobante', 'Cliente / Asignación', 'Tipo pago', 'Importe'])
+    ['Proveedor', 'Fecha prevista de pago (día)', 'N° Comprobante', 'Cliente / Asignación', 'Tipo pago', 'Importe'])
   // Los `name` de los valores sí se pueden renombrar: son lo único que la API deja tocar.
   assert.deepEqual(rotulosDelCuadro({ vista: VISTA.POR_PROVEEDOR, cabecera, nombresDeValores: ['Se le debe'] }),
     ['Proveedor', 'Se le debe'])
@@ -432,7 +437,9 @@ test('el tipo de cada columna es el que el dato pide, no el que la celda tenía'
   assert.deepEqual(tipos(VISTA.POR_PROVEEDOR), ['TEXT', 'CURRENCY'],
     'el nombre es TEXTO: un proveedor que se llame "2024" saldría como fecha con el formato de antes')
   // El comprobante es TEXTO: como número, "826666" se veía 01/05/4163 con el formato de la vuelta anterior.
-  assert.deepEqual(tipos(VISTA.DETALLE), ['DATE', 'TEXT', 'TEXT', 'TEXT', 'TEXT', 'CURRENCY'])
+  // Con el proveedor de eje, la A es TEXTO y la fecha baja a la B — y sigue siendo DATE: es el mismo
+  // mecanismo el que evita que un vencimiento se dibuje "$46.109", que es como se veía el sedimento.
+  assert.deepEqual(tipos(VISTA.DETALLE), ['TEXT', 'DATE', 'TEXT', 'TEXT', 'TEXT', 'CURRENCY'])
 })
 
 test('ALTO EMITIDO · se cuenta lo que el archivo tiene, hasta la primera fila en blanco', () => {
