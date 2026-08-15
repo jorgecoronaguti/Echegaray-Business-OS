@@ -6,6 +6,27 @@
 // para preguntarle al archivo cómo está AHORA sin tener que rehacer las dos pestañas — que es
 // justamente lo que no se puede hacer para averiguarlo.
 //
+// ═══ LÍMITE DECLARADO: "✓ cuadran" NO PRUEBA QUE `CAJA_TOTAL_DISPONIBLE` ESTÉ BIEN (15/08/2026) ═══
+//
+// Las dos vistas anclan su saldo inicial al MISMO rango con nombre (`=N(CAJA_TOTAL_DISPONIBLE)`, ver
+// `cash-flow-ancla-saldo.mjs`): si ese número está mal —de hecho estuvo mal $51.286.662 mientras el
+// efectivo de CAJA se calculaba con el modelo viejo (sellado contra el histórico, no contra el conteo
+// manual)—, Semanal y Mensual se mueven JUNTOS al mismo valor incorrecto y este control sigue diciendo
+// "✓ cuadran": UN CONTROL NUNCA SE VALIDA CONTRA LA MISMA INFORMACIÓN QUE PRODUCE, y acá las dos
+// "fuentes" comparadas comparten ese único origen. Este auditor prueba que Semanal y Mensual son
+// CONSISTENTES ENTRE SÍ — no que el número del que parten sea correcto.
+//
+// EL CONTROL QUE SÍ LO DETECTARÍA: uno que recalcule `CAJA_TOTAL_DISPONIBLE` desde el dato crudo —el
+// conteo manual, el extracto del banco (`_BANCO_RAW`) y `_MOVIMIENTOS`— SIN leer el nombre publicado,
+// y compare ese recálculo contra lo que CAJA publica hoy (la misma idea que `conciliar-caja-vs-
+// cashflow.mjs` ya aplica al PISO futuro, aplicada a la FOTO de hoy). No es barato: la fórmula de
+// `CAJA_TOTAL_DISPONIBLE` vive repartida en `caja-grilla.mjs` + `caja-disponibilidades.mjs` +
+// `caja-posterior-al-corte.mjs` (~1.400 líneas), y reimplementarla aparte para "verificarla" es
+// exactamente el riesgo que este archivo ya pagó una vez ("dos modelos que deberían describir la
+// misma realidad" — dos cálculos independientes del mismo libro que YA divergieron por su cuenta).
+// Por ahora esto queda como límite escrito, no como código: que el próximo que lea "✓ cuadran" sepa
+// qué pregunta esa firma NO contesta.
+//
 // Salida 0 si cuadra, 1 si no. Lee; nunca escribe.
 //
 //   node orquestador/scripts/auditar-cuadre-cash-flow.mjs
@@ -50,10 +71,14 @@ async function main() {
   for (const l of r.fuera) console.log(`  ✗ ${linea(l, a, b)}`)
   for (const p of r.problemas.slice(0, 8)) console.log(`  ⚠ ${p}`)
   if (r.problemas.length > 8) console.log(`  ⚠ …y ${r.problemas.length - 8} fila(s) más que no se pudieron leer`)
-  if (r.ok && g.ok) return console.log('✓ cuadran: las dos vistas dicen lo mismo del ejercicio.')
+  // "Cuadran" = son consistentes entre sí, NO que el saldo del que arrancan sea correcto (ver el
+  // límite declarado en la cabecera): las dos leen el mismo CAJA_TOTAL_DISPONIBLE.
+  if (r.ok && g.ok) return console.log('✓ cuadran entre sí: las dos vistas dicen lo mismo del ejercicio (no valida CAJA_TOTAL_DISPONIBLE — ver la cabecera).')
   const total = r.fuera.reduce((s, l) => s + Math.abs(l.delta), 0)
   console.log(`\n⛔ NO CUADRAN — ${r.fuera.length} fila(s), ${peso(total)} de diferencia absoluta acumulada.`)
-  console.log('   Son dos cálculos independientes del mismo libro: si no dan igual, uno de los dos miente.')
+  // Independientes en CÓMO se arman fila a fila (dos grillas, dos fórmulas), NO en de dónde arrancan:
+  // las dos anclan al mismo CAJA_TOTAL_DISPONIBLE. Ver el límite declarado arriba, en la cabecera.
+  console.log('   Son dos cálculos que arman su propia grilla fila a fila: si no dan igual, uno de los dos miente.')
   process.exitCode = 1
 }
 

@@ -232,6 +232,27 @@ export function instanteDelSello(ahora = new Date()) {
   return (ms + AR - Date.UTC(1899, 11, 30)) / 86400000
 }
 
+/**
+ * LA VUELTA: de un serial de Sheets al instante real. Es la inversa exacta de `instanteDelSello`, y
+ * vive al lado por eso mismo — dos conversiones con el mismo huso escritas en archivos distintos se
+ * desincronizan el día que alguien toca una sola, y el error son tres horas de corrimiento que nadie
+ * ve porque el número sigue siendo creíble.
+ *
+ * Hace falta para ADOPTAR el ancla que ya está estampada en la pestaña cuando el centinela todavía no
+ * tiene registro de ese conteo: sin esto, la primera corrida del centinela mudaría el ancla desde el
+ * momento real del conteo hasta AHORA, y se tragaría adentro del conteo todo lo que se movió en el
+ * medio. Es el mismo daño del sello rodante, disparado por la puesta en marcha.
+ *
+ * @param {number} serial días desde 1899-12-30, en hora de Argentina
+ * @returns {Date|null} null si el serial no es un número usable
+ */
+export function fechaDeSerial(serial) {
+  const s = Number(serial)
+  if (!Number.isFinite(s) || s <= 0) return null
+  const AR = -3 * 60 * 60 * 1000
+  return new Date(s * 86400000 + Date.UTC(1899, 11, 30) - AR)
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 // "TENÉS Q PODER SABER EN Q MOMENTO ANOTÉ LO Q PUSE" — LO QUE SE PUEDE AVERIGUAR, Y LO QUE NO
 //
