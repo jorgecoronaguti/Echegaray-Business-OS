@@ -278,3 +278,19 @@ test('las dos columnas derivadas corren ANTES que todo lo que las suma', () => {
       `${consumidor} lee Compras!AN antes de que el pipeline la defina`)
   }
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// UN CRITERIO DE VUELTA QUE NO SE PUEDE CORRER ES UNA INTENCIÓN (15/08/2026)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// El criterio anterior —"una corrida informa celdas vaciadas > 0 y la pestaña no crece"— era correcto
+// y no lo verificó nadie en un día entero: no decía CON QUÉ medirlo. La condición que de verdad
+// faltaba (que `sheet_huella_celda` tuviera una sola fila para esta pestaña) ni siquiera estaba en la
+// lista, y se descubrió consultando la base, no leyendo esto.
+test('el criterio de vuelta nombra el script con el que se lo mide', () => {
+  const p = PASOS_RETIRADOS.find((x) => x.script === 'proveedores-materiales-pestana.mjs')
+  assert.ok(p, 'el paso frenado tiene que seguir declarado mientras esté frenado')
+  assert.match(p.vuelve, /medir-huella-pestana\.mjs/, 'sin el medidor, "alinea" no lo puede comprobar un tercero')
+  assert.match(p.vuelve, /arca-reapuntar-nombres\.mjs/, 'los rangos con nombre son parte de lo que tiene que estar sano')
+  assert.match(p.vuelve, /limpiadas > 0/, 'alinear es poder decidir, no haber limpiado: la corrida real sigue haciendo falta')
+})

@@ -421,8 +421,38 @@ export const PASOS_RETIRADOS = Object.freeze([
       + 'no un layout mal calculado. El barrido de residuo propio informa "0 vaciada(s) · '
       + '0 conservada(s) · 0 limpiada(s)": no reconoce como suyo nada de lo que él mismo escribió. '
       + 'Mientras esa cuenta dé cero, cada corrida agrava el archivo del dueño.',
-    vuelve: 'una corrida informa celdas vaciadas > 0 Y la pestaña NO crece entre dos corridas '
-      + 'seguidas con los mismos datos (mismo alto y mismo número de fila del bloque de ARCA).',
+    // ═══ QUÉ SE CUMPLIÓ YA, MEDIDO — Y QUÉ FALTA (15/08/2026) ═══
+    //
+    // La PRECONDICIÓN que faltaba era otra y no estaba en esta lista: `sheet_huella_celda` tenía CERO
+    // filas para "Proveedores" y "Materiales" —las dos únicas pestañas de contenido del archivo sin una
+    // sola— contra 4.430 del Cash Flow Semanal. Sin huella, `aplicarHuella` no recorre una celda y las
+    // cuatro evidencias de propiedad quedan mudas de una vez: por eso el barrido daba 0 en todo.
+    //
+    // HOY, medido read-only con `node orquestador/scripts/medir-huella-pestana.mjs`:
+    //   · Proveedores  401/401 = 100,0% (corrimiento 0, rectángulo A117:G222)
+    //   · Materiales   568/568 = 100,0%
+    // contra el 186/396 = 47% de antes de `selloDeLoQueQuedo`, y contra el umbral de 0,6. La huella
+    // existe, describe la pestaña real y no reclama ninguna celda del dueño (0 marcas de borrada_en).
+    //
+    // LO QUE FALTA, y por qué NO alcanza con eso:
+    //
+    //  a) `limpiadas > 0` en una corrida REAL. Alinear es la condición para poder decidir; no es haber
+    //     limpiado. Sólo se mide corriendo, y correr esto es escribir la pestaña del dueño.
+    //  b) LA CAPA FÓSIL SIGUE EN LA PESTAÑA: filas 139-145, con la cabecera del bloque de ARCA y dos de
+    //     sus líneas entreveradas fila por fila con CUITs y comprobantes de otra tabla. Volver al
+    //     pipeline antes de que eso se vaya es volver a apilar sobre lo apilado.
+    //  c) CUATRO IMPORTES DEL BLOQUE SON TEXTO —B179, C179, B180, C180— y el generador los reescribe
+    //     así en cada corrida: el valor entra por USER_ENTERED y el `numberFormat` llega DESPUÉS, con
+    //     lo cual la celda que arrastra formato TEXTO se queda en texto para siempre. Reenchufarlo hoy
+    //     es republicar cuatro celdas rotas cada dos horas. Ver scripts/arca-reapuntar-nombres.mjs.
+    //
+    // Cada condición tiene su comando: un criterio que no se puede correr vuelve a ser una intención.
+    vuelve: 'las CUATRO, medidas y no afirmadas: (1) la huella de las dos pestañas alinea por encima '
+      + 'de 0,6 — medir-huella-pestana.mjs (CUMPLIDO 15/08: 100,0% y 100,0%); '
+      + '(2) una corrida informa celdas limpiadas > 0; (3) la pestaña NO crece entre dos corridas '
+      + 'seguidas con los mismos datos (mismo alto y misma fila del bloque de ARCA) y la capa fósil de '
+      + 'las filas 139-145 ya no está; (4) arca-reapuntar-nombres.mjs sale en verde: los nombres en su '
+      + 'línea y ningún importe del bloque guardado como texto.',
     // Lo que queda sin actualizar mientras dure el freno. Es el costo, dicho: es menor que apilar.
     cuesta: ['Proveedores · de la frontera para abajo (notas de crédito, ARCA y control)', 'Materiales'],
   }),
