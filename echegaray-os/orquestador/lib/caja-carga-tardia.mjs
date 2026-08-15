@@ -33,9 +33,11 @@
 //
 // ═══ LO QUE NO PUEDE VER, DECLARADO ═══
 //
-//   · LA PRIMERA CORRIDA NO VE NADA. Sin un valor anterior observado no hay delta: una celda que el
-//     centinela mira por primera vez no es evidencia de nada. El mecanismo empieza a servir en la
-//     SEGUNDA corrida, y hasta entonces informa cero porque no vio, no porque no haya.
+//   · LAS CELDAS QUE EL CENTINELA VIO POR PRIMERA VEZ DESPUÉS DEL CONTEO. Sin un valor anterior no hay
+//     delta, y no se finge uno: se cuentan aparte (`sembrando`) y el mensaje las nombra. Es un estado
+//     TRANSITORIO y se cura solo — en cuanto el dueño carga un conteo nuevo, todas las celdas pasan a
+//     tener su valor observado desde antes del ancla y quedan cubiertas. Hasta entonces el control
+//     informa cuántas puede afirmar y cuántas no, en vez de un cero que se lee como "está todo bien".
 //   · UNA FILA BORRADA Y REESCRITA con otro importe se lee como un delta. Es lo mismo que ve una
 //     persona mirando la pestaña: no hay forma de distinguirlas sin un registro de ediciones.
 //   · MOVER UN PAGO DE UNA FILA A OTRA da un delta positivo en una y negativo en otra. Por eso se
@@ -78,14 +80,23 @@ export function cargaTardia(celdas = [], { anclaDia, anclaInstante } = {}) {
   let sobreestimado = 0
   let subestimado = 0
   let sembrando = 0
+  let cubiertas = 0
   const detalle = []
   for (const c of celdas) {
-    // Una celda que el centinela mira por PRIMERA vez no prueba nada: no la vio antes.
+    if (!(c.vistoDesde instanceof Date)) { sembrando++; continue }
+    // ═══ EL VALOR YA ESTABA CUANDO CONTASTE — LA ÚNICA COBERTURA QUE SE PUEDE PROBAR ═══
+    //
+    // Esta celda tiene el mismo valor desde ANTES del conteo: lo que tenga adentro ya estaba a la
+    // vista cuando el dueño contó los billetes, así que no puede haber salido plata por acá desde
+    // entonces. Es lo que separa "miré y no pasó nada" de "no puedo saber", y esa diferencia es la
+    // que hace que este control signifique algo.
+    if (c.vistoDesde <= anclaInstante) { cubiertas++; continue }
+    // La celda cambió después del conteo, pero el centinela no tiene un valor anterior con qué
+    // compararla: la vio por primera vez recién ahora. No prueba nada, y se dice.
     if (c.primera || c.valorPrevio === null || c.valorPrevio === undefined) { sembrando++; continue }
-    if (!(c.vistoDesde instanceof Date) || c.vistoDesde <= anclaInstante) continue
-    if (!invisibleParaLaVentana(c.fecha, anclaDia)) continue
+    if (!invisibleParaLaVentana(c.fecha, anclaDia)) { cubiertas++; continue }
     const delta = Math.round((Number(c.valor) - Number(c.valorPrevio)) * 100) / 100
-    if (!delta) continue
+    if (!delta) { cubiertas++; continue }
     if (delta > 0) sobreestimado += delta
     else subestimado += -delta
     detalle.push({ referencia: c.referencia, etiqueta: c.etiqueta ?? '', delta, fecha: c.fecha, vistoDesde: c.vistoDesde })
@@ -97,7 +108,11 @@ export function cargaTardia(celdas = [], { anclaDia, anclaInstante } = {}) {
     sobreestimado: Math.round(sobreestimado * 100) / 100,
     subestimado: Math.round(subestimado * 100) / 100,
     detalle,
-    miradas: celdas.length - sembrando,
+    // `cubiertas` son las celdas sobre las que se puede AFIRMAR que no se movió plata invisible;
+    // `sembrando`, aquéllas sobre las que no se puede afirmar nada todavía. Un control que informa
+    // sólo su total no deja distinguir un cero medido de un cero por no haber mirado.
+    cubiertas,
+    miradas: cubiertas + detalle.length,
     sembrando,
   }
 }

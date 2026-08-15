@@ -6,8 +6,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  CONCEPTO, NO_DETECTA, RESOLUCION_HORAS, anclaComoSerial, mismoValor, observacionSiguiente,
-  ventanaDelConteo,
+  CONCEPTO, NO_DETECTA, RESOLUCION_HORAS, anclaComoSerial, esConteoLegible, mismoValor,
+  observacionSiguiente, ventanaDelConteo,
 } from './caja-conteo-centinela.mjs'
 import { fechaDeSerial, instanteDelSello } from './caja-ancla-por-instante.mjs'
 
@@ -97,9 +97,19 @@ test('UN VALOR ILEGIBLE NO ES UNA OBSERVACIÓN: falla cerrado en vez de anclar e
   // movimiento posterior al conteo. Antes que eso, no hay observación.
   // `Number('')` es 0 y 0 es finito: sin la guarda explícita, una celda VACÍA se observaba como un
   // conteo de cero y el ancla saltaba a esta corrida con un saldo inventado.
-  for (const malo of ['', null, undefined, 'doce millones', NaN, 0]) {
+  for (const malo of ['', null, undefined, 'doce millones', NaN]) {
     assert.throws(() => observacionSiguiente(null, { valor: malo, ahora: T(9) }), /valor numérico/)
   }
+  // Y EL CERO: no es un conteo, y la regla vive en la guarda del conteo y no en el acto de observar.
+  // Un cero SÍ es un dato válido en una celda de pago —es el estado normal de una compra sin pagar, y
+  // es el valor ANTERIOR del caso que el detector de carga tardía existe para atrapar—, así que
+  // rechazarlo adentro de `observacionSiguiente` rompía el vigilante de celdas entero.
+  for (const malo of ['', null, undefined, 'doce millones', NaN, 0, '0']) {
+    assert.equal(esConteoLegible(malo), false, `"${malo}" no es un conteo`)
+  }
+  assert.equal(esConteoLegible(12000000), true)
+  assert.deepEqual(observacionSiguiente(null, { valor: 0, ahora: T(9) }).fila.valor, 0,
+    'una celda de pago en 0 SÍ se observa: es el punto de partida del delta')
 })
 
 test('el ancla viaja a Sheets como serial CON hora y vuelve idéntica', () => {

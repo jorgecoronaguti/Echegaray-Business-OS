@@ -92,3 +92,28 @@ test('el aviso NOMBRA la celda que manda: "algo por $X" manda a buscar a seis la
   assert.equal(r.detalle[0].referencia, 'Compras!T44', 'ordenado por tamaño del delta')
   assert.match(avisoCargaTardia(r), /Compras!T44 \(CORRALÓN\)/)
 })
+
+test('UN CERO MEDIDO NO ES UN CERO POR NO HABER MIRADO: se cuentan por separado', () => {
+  // La distinción es la que hace que este control signifique algo. Una celda cuyo valor el centinela
+  // ya veía ANTES del conteo está PROBADA: lo que tiene adentro ya estaba a la vista cuando el dueño
+  // contó los billetes. Una que apareció después no prueba nada. Un total único las mezclaba y el
+  // mensaje se leía como "está todo bien" en los dos casos.
+  const r = cargaTardia([
+    celda({ referencia: 'Compras!T10', vistoDesde: new Date(2026, 7, 14, 9, 0, 0), valorPrevio: 0, valor: 0 }),
+    celda({ referencia: 'Compras!T11', vistoDesde: new Date(2026, 7, 15, 16, 0, 0), valorPrevio: null, primera: true, valor: 700000 }),
+  ], { anclaDia: CONTEO_DIA, anclaInstante: CONTEO })
+  assert.equal(r.cubiertas, 1, 'la que ya estaba antes del conteo se puede afirmar')
+  assert.equal(r.sembrando, 1, 'la que apareció después no')
+  assert.equal(r.sobreestimado, 0)
+})
+
+test('una celda que YA cambió después del conteo se sigue reportando en las corridas siguientes', () => {
+  // El delta no es un evento que se consume: mientras el conteo sea el mismo, ese pago sigue afuera de
+  // la ventana y el cajón sigue sobreestimado. Si el aviso apareciera una sola vez, el número quedaría
+  // mal hasta el próximo conteo y nadie se enteraría.
+  const yaCambio = celda({ valorPrevio: 200000, valor: 700000, vistoDesde: new Date(2026, 7, 15, 12, 0, 0) })
+  for (const corrida of [1, 2, 3]) {
+    const r = cargaTardia([yaCambio], { anclaDia: CONTEO_DIA, anclaInstante: CONTEO })
+    assert.equal(r.sobreestimado, 500000, `corrida ${corrida}: el hueco sigue abierto`)
+  }
+})

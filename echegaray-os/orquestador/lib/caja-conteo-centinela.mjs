@@ -96,6 +96,21 @@ const cent = (x) => Math.round((Number(x) || 0) * 100)
 export const mismoValor = (a, b) => cent(a) === cent(b)
 
 /**
+ * ¿ESTA CELDA TIENE UN CONTEO? — la guarda que decide si hay ancla o no la hay.
+ *
+ * Un cero NO es un conteo, y es una decisión, no un descuido: `Number('')` es 0, así que una celda
+ * vacía y un cajón contado en exactamente $0 llegan hasta acá indistinguibles. Se tratan igual, que es
+ * además el criterio que ya usa `necesitaSello` (un arqueo en 0 no dispara sello). Un criterio, no dos.
+ *
+ * El costo de equivocarse es asimétrico y por eso se elige este lado: con un cero tomado como conteo,
+ * el ancla saltaría a esta corrida con un saldo inventado y el efectivo publicado pasaría a ser cero
+ * más los movimientos. Sin ancla, la pestaña publica lo que ya tenía, y lo dice.
+ */
+export const esConteoLegible = (valor) =>
+  valor !== '' && valor !== null && valor !== undefined
+  && Number.isFinite(Number(valor)) && Number(valor) !== 0
+
+/**
  * NÚCLEO PURO: qué fila corresponde persistir después de mirar la celda. Sin base en el medio.
  *
  * `adopcion` sólo se usa cuando NO hay observación previa, y es el porqué entero de que exista: al
@@ -110,13 +125,15 @@ export const mismoValor = (a, b) => cent(a) === cent(b)
  */
 export function observacionSiguiente(previa, { valor, ahora = new Date(), adopcion = null } = {}) {
   const v = Number(valor)
-  // FALLA CERRADO. `Number('')` es 0 y 0 es finito: sin esta guarda, una celda VACÍA se observaría como
-  // un conteo de cero y el ancla saltaría a esta corrida con un saldo inventado. Y un cajón contado en
-  // exactamente $0 no se puede distinguir de una celda vacía por esta vía, así que se trata igual —
-  // que es el mismo criterio que ya usa `necesitaSello` (un arqueo en 0 no dispara sello). Un criterio,
-  // no dos. Con el conteo ilegible el ancla queda como estaba y la pestaña sigue publicando lo suyo.
-  if (valor === '' || valor === null || valor === undefined || !Number.isFinite(v) || v === 0) {
-    throw new Error('el centinela necesita un valor numérico distinto de cero: una celda vacía o ilegible no es una observación')
+  // FALLA CERRADO. `Number('')` es 0 y 0 es finito: sin nombrar el vacío, una celda VACÍA se observaría
+  // como un cero y el ancla saltaría a esta corrida con un saldo inventado.
+  //
+  // EL CERO SÍ ES UN DATO ACÁ, y la distinción no es cosmética: en la columna de pagos de Compras un 0
+  // es el estado normal de una compra sin pagar, y es justamente el valor ANTERIOR del caso que este
+  // mecanismo existe para atrapar (0 → $500.000 sobre una fila de marzo). La regla "un cero no es un
+  // conteo" pertenece a la celda del conteo, no al acto de observar: vive en `esConteoLegible`.
+  if (valor === '' || valor === null || valor === undefined || !Number.isFinite(v)) {
+    throw new Error('el centinela necesita un valor numérico: una celda vacía o ilegible no es una observación')
   }
   if (!previa) {
     const heredado = adopcion instanceof Date && Number.isFinite(adopcion.getTime()) && adopcion <= ahora ? adopcion : null
@@ -299,6 +316,7 @@ export async function observarMuchas(fileId, lecturas = [], { ahora = new Date()
  * @returns {Promise<{accion:string, fila:object, previa:object|null, serial:number, ventana:object}>}
  */
 export async function anclaDelConteo(fileId, concepto, valor, { ahora = new Date(), sello = {} } = {}) {
+  if (!esConteoLegible(valor)) throw new Error('sin conteo legible no hay ancla: no se inventa una')
   const adopcion = Number(sello.serial) > 0 && mismoValor(sello.valorSellado, valor)
     ? fechaDeSerial(sello.serial) : null
   const r = await observar(fileId, concepto, valor, { ahora, adopcion })
