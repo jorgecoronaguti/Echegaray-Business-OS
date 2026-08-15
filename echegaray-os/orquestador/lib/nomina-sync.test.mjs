@@ -39,6 +39,20 @@ check('la fecha se referencia, no se copia', filas[0][0].f === "='_J_OBREROS'!F3
 // El "Hasta" busca la POSICIÓN del último día cargado, no cuántos días hay: las filas de fecha
 // tienen huecos y COUNTA dejaba la celda vacía (bloque del 16/3: COUNTA 12, última posición 14).
 check('Hasta busca la posición del último, no cuenta', filas[0][1].f.includes('MAX(') && !filas[0][1].f.includes('COUNTA('))
+// ═══ EL SEPARADOR DE ARGUMENTOS VA EN LOCALE (15/08) ═══
+// El archivo es es_AR. Con COMA Google acepta la escritura y guarda `;`, así que la fórmula que se
+// MANDA deja de ser la que la pestaña DEVUELVE — y con eso queda ciego todo mecanismo que se
+// reconoce a sí mismo comparando esos dos textos (la huella por celda sella una y lee la otra).
+// Medido contra `sheet_huella_celda`: la huella de B134 decía `f#:u#,sumproduct(` y la pestaña
+// devolvía `f#:u#;sumproduct(`. Por eso el fósil de esta misma columna no se podía reclamar.
+check('Hasta separa argumentos con ; (locale es_AR), no con ,', !filas[0][1].f.includes(','))
+// Y CADA FILA MIRA SU PROPIA QUINCENA. El síntoma que delató todo: la fila de abril publicaba el
+// cierre de la ÚLTIMA quincena porque tenía adentro el INDEX de OTRA fila del espejo.
+check('cada Hasta indexa la fila de fechas de SU bloque', filas.every((r, i) => {
+  const ff = b[i].filaFecha
+  const propias = r[1].f.match(/F(\d+):U\1/g) || []
+  return propias.length === 3 && propias.every((m) => m === `F${ff}:U${ff}`)
+}))
 check('Σ del jornal por hora del plantel sale de la columna W', filas[0][10].f === "=SUM('_J_OBREROS'!W4:W6)")
 check('el total usa el rango del bloque', filas[0][9].f === "=SUM('_J_OBREROS'!AA4:AA6)")
 check('el segundo bloque usa SU rango', filas[1][9].f === "=SUM('_J_OBREROS'!AA9:AA10)")

@@ -414,6 +414,112 @@ test('(ñ) y sólo adentro de una fila PROBADA mía: un rótulo suelto en una fi
   assert.ok(ajenas.some((a) => a.suyo === 'Banco'), 'la celda con mi rótulo se conserva como ajena')
 })
 
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL CUADRANTE QUE FALTABA: el fósil que NO es texto, en una celda donde el generador escribe (15/08)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// El registro de quincenas de "Jornales por Quincena" (filas 134..148) publicaba OCHO de sus quince
+// celdas de «Hasta» vacías, y la de abril publicaba el cierre de la ÚLTIMA quincena. `aplicarHuella`
+// lo explicaba entero: `ajenas` en la columna B de las filas 140..148, `sheet_huella_celda` con doce
+// huellas por fila en TODAS las columnas menos ésa. El registro creció, sus filas nuevas nacieron
+// sobre lo que el layout viejo había dejado ahí, y el veredicto se realimentaba — sin huella no hay
+// prueba de propiedad, y sin escribir no hay huella. `JORNALES_REAL_HASTA` es esas quince celdas.
+//
+// Si se revierte el cuadrante, (p) y (q) se ponen rojos; (r), (s) y (t) son los frenos que impiden
+// que este camino se vuelva un bypass para pisarle una fórmula al dueño.
+
+/** Una fila del registro: la escribe el generador entera salvo la N («Pagado el»), que es del dueño. */
+const hastaDe = (f) => `=IFERROR(INDEX('_J_OBREROS'!F${f}:U${f};SUMPRODUCT(MAX(('_J_OBREROS'!F${f}:U${f}<>"")*(COLUMN('_J_OBREROS'!F${f}:U${f})-COLUMN('_J_OBREROS'!F${f})+1))));"")`
+const filaRegistro = (f, hasta = hastaDe(f)) =>
+  [`='_J_OBREROS'!F${f}`, hasta, `=IF(N(B1)=0;"";WORKDAY(B1;3))`, `=COUNTA('_J_OBREROS'!F${f}:U${f})`, `=COUNT('_J_OBREROS'!A${f + 1}:A${f + 9})`]
+/**
+ * El registro como lo emite el generador, y la huella de ayer SIN la columna «Hasta» de las filas
+ * que nacieron sobre un layout viejo — que es el estado exacto que se leyó en `sheet_huella_celda`.
+ */
+const registro = (filas, sinHuella = []) => {
+  const quiero = [...lastre(), ['Quincena', 'Hasta', 'Se paga el', 'Días hábiles', 'Personas'], ...filas.map((f) => filaRegistro(f))]
+  const huellas = huellasDe(quiero)
+  const fila1 = quiero.length - filas.length + 1
+  for (const k of sinHuella) huellas.delete(claveCelda(fila1 + k, 1))
+  return { quiero, huellas }
+}
+
+test('(p) `=""` en «Hasta» de una fila mía se PISA: ocho celdas que el registro publicaba vacías', () => {
+  const { quiero, huellas } = registro([6, 35, 216, 247], [2, 3])
+  // Lo que hay hoy: las dos primeras con su fórmula, las dos últimas con el `=""` que quedó ahí.
+  const hoy = quiero.map((f, i) => (i >= quiero.length - 2 ? [f[0], '=""', ...f.slice(2)] : f))
+
+  const { grid, ajenas, reescritos } = aplicarHuella(quiero, hoy, huellas)
+  assert.equal(reescritos.length, 2, 'un `=""` no es contenido de nadie: las dos celdas son reclamables')
+  assert.ok(reescritos.every((r) => r.por.includes('no publica nada')), 'el log tiene que decir con qué evidencia decidí')
+  assert.deepEqual(ajenas, [], 'ninguna de las dos puede seguir contándose como celda del dueño')
+  // LA PRUEBA DEL EFECTO, hasta el final de la cadena: la fórmula queda EN LA PESTAÑA.
+  assert.equal(enLaPestana(grid, hoy).at(-1)[1], hastaDe(247),
+    '«Hasta» de la última quincena sigue vacía: JORNALES_REAL_HASTA reparte un vacío')
+})
+
+test('(q) y el fósil de la MISMA fórmula en OTRA fila también: abril publicaba el cierre de agosto', () => {
+  const { quiero, huellas } = registro([6, 35, 216, 496], [2])
+  // La fila de abril (216) quedó con el `INDEX` de la ÚLTIMA quincena (496) de cuando el registro
+  // tenía menos filas. No es un vacío: es una FECHA REAL en la fila equivocada, que es peor.
+  const hoy = quiero.map((f, i) => (i === quiero.length - 2 ? [f[0], hastaDe(496), ...f.slice(2)] : f))
+
+  const { grid, reescritos } = aplicarHuella(quiero, hoy, huellas)
+  assert.equal(reescritos.length, 1)
+  assert.ok(reescritos[0].por.includes('en esta columna'), 'la evidencia es la fórmula exacta de mi propia columna')
+  assert.equal(enLaPestana(grid, hoy).at(-2)[1], hastaDe(216),
+    'abril sigue publicando el cierre de la última quincena: una fecha mala miente más que un vacío')
+})
+
+test('(r) una fórmula que YO NO escribo en esa columna se conserva: es del dueño', () => {
+  const { quiero, huellas } = registro([6, 35, 216, 247], [3])
+  const suya = '=SUMIFS(Compras!$M:$M;Compras!$C:$C;$A150)'
+  const hoy = quiero.map((f, i) => (i === quiero.length - 1 ? [f[0], suya, ...f.slice(2)] : f))
+  const { grid, ajenas, reescritos } = aplicarHuella(quiero, hoy, huellas)
+  assert.deepEqual(reescritos, [], 'una fórmula ajena adentro de una fila mía NO es evidencia de propiedad')
+  assert.equal(ajenas.length, 1)
+  assert.equal(enLaPestana(grid, hoy).at(-1)[1], suya, 'le pisé una fórmula al dueño')
+})
+
+test('(r bis) el fósil de mi propia columna NO necesita dos anclas: una fila de dos celdas no puede tenerlas', () => {
+  // Los renglones "De lo pagado — por banco" y "— en adelantos" (129 y 130) los escribe el generador
+  // con DOS celdas: el rótulo y el importe. `filaProbadaMia` pide dos anclas en OTRAS columnas, así
+  // que esas filas no pueden probarse nunca — y publicaban un serial de fecha con formato de moneda.
+  // La evidencia que decide acá es la misma que el camino de la limpieza ya acepta sola para VACIAR.
+  const quiero = [...lastre(), ['De lo pagado — por banco', '=SUMPRODUCT(($N$134:$N$148<>"")*N($H$134:$H$148))'],
+    ['Hasta', hastaDe(396)]]
+  const huellas = huellasDe(quiero)
+  huellas.delete(claveCelda(quiero.length - 1, 1))
+  const hoy = quiero.map((f, i) => (i === quiero.length - 2 ? [f[0], hastaDe(396)] : f))
+  const { grid, reescritos } = aplicarHuella(quiero, hoy, huellas)
+  assert.equal(reescritos.length, 1, 'una fila de dos celdas queda a un ancla: si se le exigen dos, no se cura nunca')
+  assert.match(String(enLaPestana(grid, hoy).at(-2)[1]), /^=SUMPRODUCT/,
+    'el renglón sigue publicando un serial de fecha donde va la plata que salió por ese canal')
+})
+
+test('(s) el `=""` SÍ exige la fila probada mía: es la evidencia débil de las dos', () => {
+  // `=""` no es una firma de nadie —sólo dice que la celda no publica nada—, así que no decide sola.
+  // Acá la fila queda con UNA sola ancla: por debajo de MIN_ANCLAS_DE_FILA, la celda se conserva.
+  const quiero = [...lastre(), ['Nota del dueño', '=""']]
+  const huellas = huellasDe(quiero)
+  huellas.delete(claveCelda(quiero.length, 1))
+  const nuevo = quiero.map((f, i) => (i === quiero.length - 1 ? [f[0], '=SUM(Z1:Z9)'] : f))
+  const { grid, ajenas, reescritos } = aplicarHuella(nuevo, quiero, huellas)
+  assert.deepEqual(reescritos.filter((r) => r.col === 1), [], 'con una sola ancla el `=""` no alcanza para pisar')
+  assert.ok(ajenas.some((a) => a.col === 1))
+  assert.equal(enLaPestana(grid, quiero).at(-1)[1], '=""', 'la celda del dueño tiene que quedar como está')
+})
+
+test('(t) el fósil sólo se pisa donde el generador ESCRIBE: donde pide limpiar sigue mandando VACIO', () => {
+  // `c === VACIO` corta antes del cuadrante nuevo. Si no cortara, la columna del dueño —la que se
+  // emite vacía a propósito— entraría por acá, y ése es exactamente el borrado que ya costó dos veces.
+  const { quiero, huellas } = registro([6, 35, 216, 247], [3])
+  const conVacio = quiero.map((f, i) => (i === quiero.length - 1 ? [f[0], VACIO, ...f.slice(2)] : f))
+  const hoy = quiero.map((f, i) => (i === quiero.length - 1 ? [f[0], '=""', ...f.slice(2)] : f))
+  const { reescritos } = aplicarHuella(conVacio, hoy, huellas)
+  assert.deepEqual(reescritos, [], 'pedir limpiar no es pedir escribir: son dos veredictos distintos')
+})
+
 test('(o) un residuo NUMÉRICO no se pisa: un serial se parece a cualquier dato del dueño', () => {
   // Los otros residuos del mismo rediseño son seriales de fecha (`46063`, `46038`). Deliberadamente
   // quedan afuera de este camino: comparten apariencia con cualquier número de la planilla y ninguna

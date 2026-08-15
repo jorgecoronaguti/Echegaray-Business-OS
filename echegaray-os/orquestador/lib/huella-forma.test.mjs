@@ -10,8 +10,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  esDistintiva, formaComparable, formaDe, formasAusentes, formasPresentes, noReponerAusentes,
-  LARGO_FORMA, MIN_FORMAS_PRESENTES, TOPE_BORRADOS_NUEVOS,
+  esDistintiva, esFormulaNula, formaComparable, formaDe, formasAusentes, formasPresentes,
+  noReponerAusentes, LARGO_FORMA, MIN_FORMAS_PRESENTES, TOPE_BORRADOS_NUEVOS,
 } from './huella-forma.mjs'
 import { aplicarHuella, claveCelda, huellasDeEscritura, mejorDesplazamiento } from './huella-celda.mjs'
 import { fusionar } from './preservar-anotaciones.mjs'
@@ -169,6 +169,28 @@ test('(j) una fórmula más larga que el corte del sellado sigue siendo la misma
   const sellada = huellasDeEscritura([[larga]])[0].forma
   assert.equal(formaComparable(sellada), formaComparable(formaDe(larga)),
     'la forma sellada y la de hoy tienen que comparar IGUAL, o la huella no decide nunca')
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// `=""` NO ES CONTENIDO — y el margen del predicado, que es lo único que lo hace seguro (15/08)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+test('(l) `=""` se reconoce como la fórmula que no publica nada, con o sin lo que le agrega Google', () => {
+  for (const v of ['=""', '= ""', ' ="" ', '\'=""']) {
+    assert.equal(esFormulaNula(v), true, `${JSON.stringify(v)} publica la cadena vacía y nada más`)
+  }
+})
+
+test('(m) y NO se traga nada que sí pueda publicar algo: el margen es la seguridad del veredicto', () => {
+  // Todas éstas publican un dato casi siempre. Si alguna entrara acá, el veredicto de propiedad
+  // pasaría a pisar fórmulas vivas del dueño con la excusa de que "no dicen nada".
+  const publican = [
+    '=IFERROR(INDEX(A1:A9;1);"")',                 // la fórmula de «Hasta»: vacía SÓLO si falla
+    '=IF(N(B10)=0;"";B10)',
+    '=""&A1',
+    '=CONCAT("";A1)',
+    '""', '', ' ', 0, null, undefined, 'sin datos',
+  ]
+  for (const v of publican) assert.equal(esFormulaNula(v), false, `${JSON.stringify(v)} no es una fórmula nula`)
 })
 
 test('(k) y con la fórmula larga, la huella vuelve a alinear', () => {
