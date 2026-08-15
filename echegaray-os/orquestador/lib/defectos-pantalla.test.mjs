@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { detectar, resumen, FECHA_CERO, esSerialCrudo, esRotuloDeColumna, esFilaDeRotulos, altoQueEntra } from './defectos-pantalla.mjs'
+import { detectar, resumen, FECHA_CERO, esSerialCrudo, esRotuloDeColumna, esFilaDeRotulos, altoQueEntra, columnasEstadoYNumero } from './defectos-pantalla.mjs'
 
 const cel = (valor, type) => ({ valor, formato: type ? { numberFormat: { type } } : null })
 const hoja = (filas) => ({ filas, anchos: [] })
@@ -517,4 +517,64 @@ test('texto_apretado publica lineas y fontSize: quien repara no vuelve a derivar
   assert.equal(d[0].fontSize, 10)
   assert.equal(d[0].altoNecesario, 45, 'el umbral de detección NO se movió: los conteos de hoy no cambian solos')
   assert.equal(altoQueEntra(d[0].lineas, d[0].fontSize), 51, 'pero se repara con el alto que de verdad entra')
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA COLUMNA QUE LLEVA UN CONTADOR Y UN ESTADO A LA VEZ — `Cobranzas!U`
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+/** La columna U real: un rótulo, 38 días y 53 palabras de una lista corta. */
+const columnaMixta = ({ dias = 6, palabras = ['Cobrado', 'Cobrado', 'Cobrado', 'Cobrado', 'Cobrado', 'Vencido'] } = {}) => {
+  const filas = [[cel('Días hasta vto.')]]
+  for (let i = 0; i < dias; i++) filas.push([cel(String(20 + i), 'NUMBER')])
+  for (const w of palabras) filas.push([cel(w, 'NUMBER')])
+  return hoja(filas)
+}
+
+test('EL DEFECTO: 24 avisos de una sola decisión que nadie puede cerrar', () => {
+  const f = columnaMixta()
+  const c = columnasEstadoYNumero(f, { minimo: 5 })
+  assert.equal(c.length, 1, 'una columna, un aviso')
+  assert.equal(c[0].col, 'A')
+  assert.equal(c[0].numeros, 6)
+  assert.equal(c[0].textos, 6)
+  assert.equal(c[0].distintos, 2)
+  assert.match(c[0].que, /dos conceptos en una columna/)
+})
+
+test('detectar la SUBSUME: las celdas dejan de contarse de a una y queda el aviso de la columna', () => {
+  const d = detectar(columnaMixta())
+  assert.deepEqual(d.filter((x) => x.tipo === 'texto_en_numero'), [], 'ninguna celda suelta')
+  assert.equal(d.filter((x) => x.tipo === 'columna_estado_y_numero').length, 1)
+})
+
+test('EL DEFECTO QUE INVENTABA 4.144 AVISOS: el guion del cero NO es un estado', () => {
+  // La primera versión preguntaba "¿parece un número?" con una regex propia y contaba como estados el
+  // `—` y el `(0)` con los que este archivo dibuja el cero. Una subsunción que AGREGA defectos donde
+  // el pase por celda no había marcado ninguno deja de ser una subsunción.
+  const ceros = Array.from({ length: 40 }, () => [celp('—', 'CURRENCY', '"$"#,##0.00;("$"#,##0.00);"—"')])
+  const f = hoja([[cel('Importe')], [celp('$1.000', 'CURRENCY', '"$"#,##0.00;("$"#,##0.00);"—"')], ...ceros])
+  assert.deepEqual(columnasEstadoYNumero(f), [], 'el cero dibujado no es vocabulario de estado')
+  assert.deepEqual(detectar(f).filter((x) => x.tipo === 'columna_estado_y_numero'), [])
+})
+
+test('una columna de importes con NOTAS distintas se sigue reportando de a una: se arregla de a una', () => {
+  // El vocabulario es lo que separa un estado de una nota perdida: un estado se repite, una nota no.
+  const notas = ['no llega al 1% del total', 'pendiente de conciliar con banco', 'ver acta de obra',
+    'lo confirma el estudio contable', 'falta el remito del proveedor', 'revisar con administración']
+  const f = hoja([[cel('Importe')], [cel('$1.000', 'CURRENCY')], ...notas.map((n) => [cel(n, 'CURRENCY')])])
+  assert.deepEqual(columnasEstadoYNumero(f), [], 'seis frases distintas no son un vocabulario de estados')
+  assert.equal(detectar(f).filter((x) => x.tipo === 'texto_en_numero').length, 6)
+})
+
+test('sin ningún número no es este caso: ése es el de columnasEnterasDeTexto, que va por otro lado', () => {
+  const f = columnaMixta({ dias: 0 })
+  assert.deepEqual(columnasEstadoYNumero(f), [])
+})
+
+test('el encabezado de la columna no cuenta como estado', () => {
+  // Sin descontarlo, "Días hasta vto." entraría al vocabulario y ensuciaría el conteo de distintos.
+  const c = columnasEstadoYNumero(columnaMixta(), { minimo: 5 })
+  assert.equal(c[0].distintos, 2, 'sólo Cobrado y Vencido')
+  assert.ok(!String(c[0].que).includes('Días hasta vto.'))
 })

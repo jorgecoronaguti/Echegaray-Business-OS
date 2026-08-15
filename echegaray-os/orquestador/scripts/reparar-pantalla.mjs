@@ -39,14 +39,20 @@
 // cambiarle el escritorio sin preguntarle"—, y eso es exactamente `formatoQueVa`: fuente, color,
 // itálica y fondo elegidos por heurística sobre las celdas que el dueño tipea. Esa sigue prohibida.
 //
-// Las otras dos no cambian nada de lo que él eligió:
-//   · el ALTO de una fila no toca ni un valor ni un formato de celda. Hace VISIBLE lo que ya está
-//     escrito. En `Compras` es además el costo declarado y nunca pagado del `WRAP` que puso
-//     `compras-formato.mjs` (ver su cabecera: "las ~74 filas afectadas crecen en alto").
-//   · SACARLE el `numberFormat` a una columna que es de estado y no de plata devuelve la columna a
-//     "Automático", que es su declaración correcta. No se le pone `TEXT` nunca: en Sheets una fórmula
-//     TIPEADA A MANO sobre formato de texto se guarda como el string `=IF(...)` en vez de evaluarse,
-//     y `Cobranzas!U` son 91 fórmulas tipeadas a mano. El porqué completo, en `compras-especies.mjs`.
+// La que sí se repara en una pestaña de carga es UNA sola: el ALTO de una fila. No toca ni un valor ni
+// un formato de celda — hace VISIBLE lo que ya está escrito, que es lo contrario de cambiarle el
+// escritorio a alguien. En `Compras` es además el costo declarado y nunca pagado del `WRAP` que puso
+// `compras-formato.mjs` (ver su cabecera: "las ~74 filas afectadas crecen en alto").
+//
+// ═══ LO QUE SE MIRÓ Y SE DECIDIÓ NO REPARAR: `Cobranzas!U` ═══
+//
+// Sus 24 avisos de `texto_en_numero` tentaban a sacarle el `numberFormat` a la columna. Medido, habría
+// sido apagar la luz: el formato es CORRECTO para las 38 celdas donde la fórmula devuelve un número de
+// días, y Sheets dibuja bien el texto de las otras. Sacárselo no arregla nada y hace que el detector
+// deje de mirar la columna — silenciar un error no es arreglarlo. Lo que está mal ahí es que una
+// columna lleve un contador Y un estado, con `V` ya llamándose «Estado cobro», y eso se parte en dos
+// columnas: una decisión del dueño sobre su planilla de carga. El núcleo lo reporta UNA vez
+// (`columnasEstadoYNumero`) y acá se nombra a quién le toca.
 //
 //   node orquestador/scripts/reparar-pantalla.mjs [--dry] [pestaña]
 
@@ -94,9 +100,6 @@ export function filasDeEncabezado(defectos = []) {
 const col0 = (letra) => { let n = 0; for (const c of letra) n = n * 26 + (c.charCodeAt(0) - 64); return n - 1 }
 function colLetra(n) { let s = ''; for (let i = n - 1; i >= 0; i = Math.floor(i / 26) - 1) s = String.fromCharCode(65 + (i % 26)) + s; return s }
 
-/** Los tipos de `numberFormat` que declaran "esta celda es un número". */
-const NUMERICO = new Set(['CURRENCY', 'NUMBER', 'PERCENT'])
-
 /** Quién arregla cada clase que este script NO toca. Se nombra por TIPO, no por pestaña tipeada. */
 export const QUIEN_LO_ARREGLA = Object.freeze({
   texto_cortado: 'reparar-textos.mjs (ensancha la columna) o el generador dueño (acorta el rótulo)',
@@ -105,73 +108,17 @@ export const QUIEN_LO_ARREGLA = Object.freeze({
   hueco: 'donde se decide el tamaño del colchón de derrame',
   glifo_invisible: 'el generador que lo escribe: usá ALERTA de lib/glifos.mjs',
   serial_crudo: 'el script que escribe la celda: es contenido de fecha con formato TEXT',
+  // NO SE REPARA A PROPÓSITO, y es la clase donde más tentaba hacerlo. Sacarle el `numberFormat` a la
+  // columna apagaría los avisos sin arreglar nada: el formato es correcto para sus celdas numéricas y
+  // Sheets dibuja bien el texto de las otras. Lo que está mal es que la columna lleve dos conceptos, y
+  // eso se parte en dos columnas — una decisión del dueño sobre su planilla. Silenciar no es arreglar.
+  columna_estado_y_numero: 'el dueño: partir la columna en dos (el contador y el estado)',
 })
 
 /** La pestaña que tiene un generador dueño de su FORMATO, para poder nombrarlo en el informe. */
 export const GENERADOR_DE_FORMATO = Object.freeze(new Map([
   ['Compras', 'orquestador/scripts/compras-formato.mjs'],
 ]))
-
-/**
- * NÚCLEO PURO: ¿qué columnas tienen un `numberFormat` que es de la COLUMNA y no de un dato?
- *
- * ═══ EL CASO QUE LO OBLIGA: `Cobranzas!U` (15/08) ═══
- *
- * Su encabezado dice «Días hasta vto.» y su fórmula es
- * `=IF(O5="Cobrado";"Cobrado";IF(O5="Pendiente";IF(Q5<TODAY();"Vencido";Q5-TODAY());O5))`. O sea: por
- * diseño devuelve un NÚMERO de días o una PALABRA de estado, y en el archivo real son 90 palabras
- * contra 1 número. La columna entera está en `NUMBER` con patrón `0`.
- *
- * Es el primero de los dos casos posibles y no el segundo: NO es un estado escrito en una columna de
- * importes —es un formato de número puesto sobre una columna de estado—. Medido antes de tocar nada:
- * CERO fórmulas del archivo referencian `Cobranzas!U` fuera de su propia celda, así que no hay ninguna
- * suma que se mueva. Un guion dibujado donde debería verse una palabra no cambia un peso; cambia lo
- * único que este archivo mira, que es si la pestaña se puede leer.
- *
- * ═══ POR QUÉ MAYORÍA Y NO "NINGÚN NÚMERO" ═══
- *
- * `columnasEnterasDeTexto` (en el núcleo) exige que NO haya ni un número, y por eso no ve ésta: el
- * único `6` de `U34` la absuelve entera. Ese corte es correcto para lo que aquella función decide
- * —"columna de importes con notas metidas"— y demasiado duro para reparar: una columna que devuelve
- * días O estado tiene números por diseño. El corte de acá es la MAYORÍA, que es lo que de verdad
- * distingue una columna de estado de una de plata con una nota adentro.
- *
- * SE EXIGEN VARIAS CELDAS REPORTADAS. Una sola —`Cobranzas!AA62`, la palabra "USD" suelta en la
- * columna «Moneda»— es una celda con el formato pegado, no una columna mal declarada: se informa y la
- * decide una persona. Sacarle el formato a una columna entera por una celda es el gesto que este
- * repositorio ya pagó seis veces.
- *
- * @param {Array<Array<{valor:string, formato:object}>>} filas la grilla completa
- * @param {Array<{tipo:string, col:string, fila:number}>} defectos lo que ya reportó el detector
- * @param {{minimo?:number, mayoria?:number}} [opts]
- * @returns {Array<{col:string, desde:number, hasta:number, texto:number, numeros:number, nf:string}>}
- */
-export function columnasDeEstado(filas = [], defectos = [], { minimo = 5, mayoria = 0.8 } = {}) {
-  const porCol = new Map()
-  for (const d of defectos) {
-    if (d.tipo !== 'texto_en_numero') continue
-    porCol.set(d.col, (porCol.get(d.col) ?? 0) + 1)
-  }
-  const out = []
-  for (const [col, reportadas] of porCol) {
-    if (reportadas < minimo) continue
-    const j = col0(col)
-    let texto = 0, numeros = 0, desde = 0, hasta = 0, nf = ''
-    for (let i = 0; i < filas.length; i++) {
-      const c = filas[i]?.[j]
-      const v = String(c?.valor ?? '').trim()
-      const tipo = c?.formato?.numberFormat?.type
-      if (!v || !NUMERICO.has(tipo)) continue
-      if (!desde) { desde = i + 1; nf = tipo }
-      hasta = i + 1
-      if (/^[-+]?[\d.,\s]+%?$/.test(v)) numeros++; else texto++
-    }
-    const total = texto + numeros
-    if (!total || texto / total < mayoria) continue
-    out.push({ col, desde, hasta, texto, numeros, nf })
-  }
-  return out
-}
 
 /**
  * NÚCLEO PURO: qué se repara en esta pestaña, qué queda para otro, y por qué.
@@ -185,10 +132,8 @@ export function columnasDeEstado(filas = [], defectos = [], { minimo = 5, mayori
  * @param {number[]} altos el alto ACTUAL de cada fila
  */
 export function planDePantalla(p, defectos = [], filas = [], altos = []) {
-  const columnas = columnasDeEstado(filas, defectos)
-  const enColumna = (d) => columnas.some((c) => c.col === d.col && d.fila >= c.desde && d.fila <= c.hasta)
   // EN UNA PESTAÑA DE CARGA NO SE TOCA EL FORMATO DE UNA CELDA SUELTA: es el escritorio del dueño.
-  const celdas = defectos.filter((d) => d.tipo === 'texto_en_numero' && !enColumna(d) && !p.carga)
+  const celdas = defectos.filter((d) => d.tipo === 'texto_en_numero' && !p.carga)
   const altoPorFila = new Map()
   for (const d of defectos.filter((x) => x.tipo === 'texto_apretado')) {
     // NUNCA SE ACHICA UNA FILA. El alto que el dueño le puso a una fila es una decisión suya; lo único
@@ -198,8 +143,8 @@ export function planDePantalla(p, defectos = [], filas = [], altos = []) {
     altoPorFila.set(d.fila, Math.max(altoPorFila.get(d.fila) ?? 0, px))
   }
   const reparado = new Set(celdas)
-  const sinTocar = defectos.filter((d) => d.tipo !== 'texto_apretado' && !reparado.has(d) && !enColumna(d))
-  return { celdas, altoPorFila, columnas, sinTocar }
+  const sinTocar = defectos.filter((d) => d.tipo !== 'texto_apretado' && !reparado.has(d))
+  return { celdas, altoPorFila, sinTocar }
 }
 
 async function main() {
@@ -226,7 +171,7 @@ async function main() {
     // cada corrida, y así es como un control deja de mirarse. Mismo criterio que `auditar-pantalla`.
     const d = detectar(f, { huecoMax: p.carga ? 999 : 3 })
     if (!d.length) { console.log(`  ${p.titulo.padEnd(26)} ✓`); continue }
-    const { celdas, altoPorFila, columnas, sinTocar } = planDePantalla(p, d, f.filas, f.altos || [])
+    const { celdas, altoPorFila, sinTocar } = planDePantalla(p, d, f.filas, f.altos || [])
 
     const cabeceras = filasDeEncabezado(d)
     const reqs = celdas.map((x) => ({
@@ -236,25 +181,14 @@ async function main() {
         fields: 'userEnteredFormat',
       },
     }))
-    // `cell: {}` con la máscara nombrando `numberFormat` lo BORRA: la columna vuelve a "Automático".
-    // Es la única forma segura — poner `TEXT` convertiría en string la próxima fórmula que se tipee.
-    for (const c of columnas) {
-      reqs.push({
-        repeatCell: {
-          range: { sheetId: hoja.sheetId, startRowIndex: c.desde - 1, endRowIndex: c.hasta, startColumnIndex: col0(c.col), endColumnIndex: col0(c.col) + 1 },
-          cell: {}, fields: 'userEnteredFormat.numberFormat',
-        },
-      })
-    }
     // Una fila puede tener varias celdas apretadas: se le pone el alto MÁXIMO que pida cualquiera.
     for (const [fila, px] of altoPorFila) {
       if (!px) continue
       reqs.push({ updateDimensionProperties: { range: { sheetId: hoja.sheetId, dimension: 'ROWS', startIndex: fila - 1, endIndex: fila }, properties: { pixelSize: px }, fields: 'pixelSize' } })
     }
 
-    const marca = p.carga ? ' (carga: sólo alto de fila y formato de columna)' : ''
+    const marca = p.carga ? ' (carga: sólo el alto de fila)' : ''
     console.log(`  ${p.titulo.padEnd(26)} ${reqs.length} reparable(s)${marca}${sinTocar.length ? ` · ${sinTocar.length} que NO se tocan` : ''}`)
-    for (const c of columnas) console.log(`     ⇢ ${c.col}${c.desde}:${c.col}${c.hasta} — ${c.texto} de ${c.texto + c.numeros} celdas son estado: le saco el ${c.nf}`)
     const dueño = GENERADOR_DE_FORMATO.get(p.titulo)
     for (const r of resumen(sinTocar)) {
       const quien = QUIEN_LO_ARREGLA[r.tipo] ?? (dueño ? `el generador dueño: ${dueño}` : 'el script que lo escribe')
@@ -274,8 +208,8 @@ async function main() {
     const f = await google.readSheetFormats(ID, `${p.titulo}!A1:${colLetra(p.cols)}${alto.get(p.titulo) || p.hastaFila}`).catch(() => null)
     if (!f) continue
     const d = detectar(f, { huecoMax: p.carga ? 999 : 3 })
-    const { celdas, altoPorFila, columnas } = planDePantalla(p, d, f.filas, f.altos || [])
-    quedan += celdas.length + altoPorFila.size + columnas.length
+    const { celdas, altoPorFila } = planDePantalla(p, d, f.filas, f.altos || [])
+    quedan += celdas.length + altoPorFila.size
   }
   console.log(`\n✓ ${reparadas} celda(s)/fila(s) reparadas · quedan ${quedan} de formato/alto${sinReparar ? ` y ${sinReparar} que necesitan tocar el script` : ''}`)
   if (quedan) process.exitCode = 1

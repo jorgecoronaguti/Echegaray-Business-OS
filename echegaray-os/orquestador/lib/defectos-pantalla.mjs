@@ -350,16 +350,114 @@ export function esFilaDeRotulos(fila = [], j = 0) {
  *        columna y no un rótulo con una nota debajo. Tres, el mismo corte con el que `conFecha`
  *        decide que una fila de fechas es un encabezado de períodos.
  */
-export function columnasEnterasDeTexto(f, { minimo = 3 } = {}) {
-  const filas = f?.filas || []
+/**
+ * NÚCLEO PURO: los tramos de filas entre títulos de sección.
+ *
+ * En un layout de tablas apiladas, dos cuadros distintos pueden compartir la misma columna y sólo uno
+ * estar mal. El corte estaba escrito adentro de `columnasEnterasDeTexto`; ahora lo comparte con
+ * `columnasEstadoYNumero`, que necesita exactamente la misma frontera y por la misma razón. Una sola
+ * definición: en este archivo dos copias del mismo criterio YA se separaron una vez (ver el bloque de
+ * `esTituloPelado`), y el que quedó viejo tapaba un defecto real.
+ */
+function bloquesDeSeccion(filas = []) {
   const esTitulo = filas.map((fila) => TITULO_SECCION.test(String(fila?.[0]?.valor ?? '')))
-  const nCols = filas.reduce((m, fila) => Math.max(m, (fila || []).length), 0)
   const bloques = []
   let ini = 0
   filas.forEach((_, i) => { if (esTitulo[i] && i > ini) { bloques.push([ini, i - 1]); ini = i } })
   if (filas.length) bloques.push([ini, filas.length - 1])
+  return bloques
+}
+
+/** Índice 0-based → letra de columna. */
+const LETRA = (n) => { let s = ''; for (let i = n; i >= 0; i = Math.floor(i / 26) - 1) s = String.fromCharCode(65 + (i % 26)) + s; return s }
+
+/**
+ * NÚCLEO PURO: la columna que lleva UN CONTADOR Y UN ESTADO a la vez, bajo un formato de número.
+ *
+ * ═══ EL TERCER CASO, EL QUE NO ERA NINGUNO DE LOS DOS (15/08) ═══
+ *
+ * `Cobranzas!U` publicaba 24 avisos de `texto_en_numero` —"Cobrado" en una celda con formato NUMBER—.
+ * La pregunta obvia era cuál de las dos cosas pasaba: o el formato estaba mal puesto sobre una columna
+ * de estado, o un estado estaba escrito en una columna de importes. Medido, no es ninguna de las dos:
+ *
+ *   · el encabezado dice «Días hasta vto.» y la fórmula es
+ *     `=IF(O5="Cobrado";"Cobrado";IF(O5="Pendiente";IF(Q5<TODAY();"Vencido";Q5-TODAY());O5))`;
+ *   · adentro hay 38 NÚMEROS de días reales y 53 palabras — 47 "Cobrado", 3 "Proyectado" y una de
+ *     "Vencido", "Facturado" y "CANCELAR";
+ *   · CERO fórmulas del archivo la referencian, así que no hay ninguna suma que se mueva.
+ *
+ * O sea: el formato de número es CORRECTO para 38 de sus celdas, y Sheets dibuja el texto de las otras
+ * 53 tal cual —un formato de número no deforma una cadena—. No hay una pantalla rota ni un formato que
+ * sacar. Lo que hay son DOS CONCEPTOS EN UNA COLUMNA, con `V` ya llamándose «Estado cobro»: se arregla
+ * partiendo la columna, y eso es una decisión del dueño sobre su planilla de carga, no algo que un
+ * reparador pueda deducir. Sacarle el formato le rompería el dibujo a los 38 días para tapar un aviso.
+ *
+ * ═══ POR QUÉ SE REPORTA UNA VEZ Y NO 24 ═══
+ *
+ * Porque son 24 avisos de UNA sola decisión, y ninguno se puede cerrar. Veinticuatro avisos que nadie
+ * puede cerrar es exactamente el ruido que este archivo ya documenta como fatal tres veces: enseñan a
+ * saltear la lista donde sí hay defectos reales. Esta función SÓLO REEMPLAZA avisos que ya existían
+ * por uno: nunca puede agregar un defecto donde no había ninguno.
+ *
+ * ═══ CÓMO SE DISTINGUE DE UNA NOTA PERDIDA ENTRE IMPORTES ═══
+ *
+ * Por el VOCABULARIO, que es lo que de verdad separa las dos cosas. Un estado es una palabra de una
+ * lista corta que se repite: 5 distintas en 53 celdas. Una nota metida en una columna de plata es
+ * prosa distinta cada vez —tantas frases como celdas—, y ésa se sigue reportando de a una porque se
+ * arregla de a una.
+ *
+ * @param {{filas:Array<Array<{valor:string, formato:object}>>}} f
+ * @param {{minimo?:number, vocabulario?:number, repeticion?:number}} [opts]
+ */
+export function columnasEstadoYNumero(f, { minimo = 5, vocabulario = 8, repeticion = 3 } = {}) {
+  const filas = f?.filas || []
+  const nCols = filas.reduce((m, fila) => Math.max(m, (fila || []).length), 0)
   const out = []
-  const L = (n) => { let s = ''; for (let i = n; i >= 0; i = Math.floor(i / 26) - 1) s = String.fromCharCode(65 + (i % 26)) + s; return s }
+  for (const [a, b] of bloquesDeSeccion(filas)) {
+    for (let j = 0; j < nCols; j++) {
+      const palabras = new Map()
+      let numeros = 0, desde = 0, hasta = 0, nf = ''
+      for (let i = a; i <= b; i++) {
+        const c = filas[i]?.[j]
+        const v = String(c?.valor ?? '').trim()
+        if (!v || !NUMERICO.has(c?.formato?.numberFormat?.type)) continue
+        if (!desde) { desde = i + 1; nf = c.formato.numberFormat.type }
+        hasta = i + 1
+        // ═══ EL MISMO PREDICADO QUE EL PASE POR CELDA, Y NO UNO PARECIDO ═══
+        //
+        // La primera versión preguntaba "¿parece un número?" con una regex propia, y con eso contó
+        // como ESTADOS el `—` y el `(0)` que los formatos de este archivo usan para dibujar el cero:
+        // 4.144 avisos inventados en «Cash Flow Mensual» y «OBRAS», celdas que el pase por celda nunca
+        // había marcado. Una subsunción que agrega defectos deja de ser una subsunción.
+        //
+        // `esTextoEnCelda` y `esRotuloDeColumna` son EXACTAMENTE los dos filtros con los que se
+        // produjeron los avisos que esta función viene a reemplazar. Usar los mismos es lo único que
+        // garantiza la promesa de arriba: sólo puede restar.
+        if (!esTextoEnCelda(c)) numeros++
+        else if (!esRotuloDeColumna(filas, i, j)) palabras.set(v, (palabras.get(v) ?? 0) + 1)
+      }
+      const textos = [...palabras.values()].reduce((n, k) => n + k, 0)
+      // HACEN FALTA LAS TRES: varias celdas de texto, al menos un número —sin ninguno el caso es el de
+      // `columnasEnterasDeTexto`, que va por otro lado— y un vocabulario corto que se repite.
+      if (textos < minimo || !numeros) continue
+      if (palabras.size > vocabulario || textos / palabras.size < repeticion) continue
+      const lista = [...palabras.keys()].slice(0, 4).join(', ')
+      out.push({
+        tipo: 'columna_estado_y_numero', fila: desde, col: LETRA(j), valor: [...palabras.keys()][0].slice(0, 40),
+        desde, hasta, textos, numeros, distintos: palabras.size,
+        que: `${LETRA(j)}${desde}:${LETRA(j)}${hasta} mezcla ${numeros} números con ${textos} estados (${lista}) bajo formato ${nf}: son dos conceptos en una columna, no un formato mal puesto`,
+      })
+    }
+  }
+  return out
+}
+
+export function columnasEnterasDeTexto(f, { minimo = 3 } = {}) {
+  const filas = f?.filas || []
+  const nCols = filas.reduce((m, fila) => Math.max(m, (fila || []).length), 0)
+  const bloques = bloquesDeSeccion(filas)
+  const out = []
+  const L = LETRA
   for (const [a, b] of bloques) {
     for (let j = 0; j < nCols; j++) {
       const celdas = []
@@ -602,12 +700,27 @@ export function detectar(f, { desdeFila = 1, huecoMax = 3, columnasEnteras = fal
     })
   })
 
-  if (!columnasEnteras) return out
+  // ═══ LAS DOS SUBSUNCIONES POR COLUMNA ═══
+  //
+  // Las dos contestan lo mismo —"esto es UN defecto de la columna, no N de sus celdas"— y las dos
+  // REEMPLAZAN los avisos que ya estaban. La diferencia es cuándo aplica cada una, y es excluyente:
+  // `columnasEstadoYNumero` exige que haya al menos un número en la columna; `columnasEnterasDeTexto`
+  // exige que no haya ninguno.
+  const adentroDe = (bloques) => (d) => bloques.some((b) => b.col === d.col && d.fila >= b.desde && d.fila <= b.hasta)
+
+  // VA ENCENDIDA SIN BANDERA, al revés que la de abajo, y la razón es que sólo puede RESTAR: reemplaza
+  // avisos existentes por uno y no puede marcar una celda que antes estaba limpia. La de abajo agrega
+  // una clase nueva, que es lo que obliga a medirla antes de prenderla.
+  const mixtas = columnasEstadoYNumero(f)
+  const conMixtas = mixtas.length
+    ? out.filter((d) => d.tipo !== 'texto_en_numero' || !adentroDe(mixtas)(d)).concat(mixtas)
+    : out
+
+  if (!columnasEnteras) return conMixtas
   const bloques = columnasEnterasDeTexto(f)
-  const adentro = (d) => bloques.some((b) => b.col === d.col && d.fila >= b.desde && d.fila <= b.hasta)
   // El bloque SUBSUME: una celda que cae adentro ya está contada por su columna, y contarla también
   // de a una infla el informe con el mismo defecto dos veces.
-  return out.filter((d) => d.tipo !== 'texto_en_numero' || !adentro(d)).concat(bloques)
+  return conMixtas.filter((d) => d.tipo !== 'texto_en_numero' || !adentroDe(bloques)(d)).concat(bloques)
 }
 
 /** NÚCLEO PURO: el resumen por tipo, para el log y para decidir qué arreglar primero. */
