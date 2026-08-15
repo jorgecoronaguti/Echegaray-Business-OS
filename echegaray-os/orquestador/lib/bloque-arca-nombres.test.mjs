@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import {
   CABECERA_ARCA, LINEAS_ARCA, NOMBRES_ARCA, NOMBRES_ARCA_RETIRADOS, destinosDeArca, dondeViveCadaNombre,
+  ubicarBloqueVivo, destinosDeLaPestana, norm,
 } from './bloque-arca-nombres.mjs'
 import { ARCA, ESPECIE, desalineados } from './rangos-nombrados.mjs'
 
@@ -240,4 +241,109 @@ test('el generador no declara ninguna variable que sombree la función `retirar`
   assert.match(SRC, /import \{[^}]*\bretirar\b[^}]*\} from '\.\.\/lib\/rangos-nombrados\.mjs'/)
   assert.doesNotMatch(SRC, /\b(?:const|let|var|function)\s+retirar\b/,
     'una declaración local con ese nombre deja el import en zona muerta y la corrida muere al llamarlo')
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// UBICAR EL BLOQUE VIVO LEYENDO LA PESTAÑA — EL CASO REAL DEL 15/08/2026
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// La columna A de "Proveedores" tal como se leyó del archivo vivo: una capa FÓSIL en 139-145 (la
+// cabecera del bloque y dos de sus seis líneas, con filas de otra tabla metidas en los huecos) y el
+// bloque BUENO en 177-182. Los nombres estaban clavados en B144/C144 — un CUIT y un comprobante.
+const COL_A_REAL = new Map([
+  [138, '5 · LO QUE ARCA FACTURÓ Y COMPRAS NO TIENE — 50 comprobantes'],
+  [139, 'Cobertura del libro de IVA de ARCA'],
+  [140, 'STARLINK ARGENTINA S R L'],
+  [141, '· notas de crédito (restan)'],
+  [142, 'PEREZ GARCIA MARISOL BIBIANA'],
+  [143, 'DANPE S. R. L.'],
+  [144, 'PEREZ GARCIA MARISOL BIBIANA'],
+  [145, 'Comprobantes emitidos (ventas)'],
+  [174, '6 · LO QUE ARCA REGISTRÓ — la plomería, no es para leer'],
+  [176, 'Concepto'],
+  // OJO CON ESTOS DOS: NO son los textos de LINEAS_ARCA. Son los que la Regla 0 dejó en la pestaña.
+  [177, 'Comprobantes de compra (neto de notas de crédito)'],
+  [178, '· notas de crédito (restan)'],
+  [179, '· cargados en Compras, por N° de comprobante'],
+  [180, '· cargados SIN su N° de comprobante'],
+  [181, '· ⚠ sin cargar en Compras'],
+  [182, 'Comprobantes emitidos (ventas)'],
+  [183, 'ARCOR'],
+])
+const colAReal = (desde = 117, hasta = 222) =>
+  Array.from({ length: hasta - desde + 1 }, (_, i) => [COL_A_REAL.get(desde + i) ?? ''])
+
+test('ubica el bloque BUENO (177) y no la capa fósil, sobre la columna A real', () => {
+  const u = ubicarBloqueVivo(colAReal(), 117)
+  assert.equal(u.fila, 177)
+  assert.deepEqual(u.filas, [177, 178, 179, 180, 181, 182])
+})
+
+// EL DEFECTO QUE ATRAPA: si el emparejamiento fuera por texto EXACTO contra `LINEAS_ARCA`, el bloque
+// vivo no se reconocería —la pestaña dice "(neto de notas de crédito)" y "SIN" en mayúsculas— y los
+// nombres se quedarían donde están. Que es exactamente lo que pasó: ARCA_FALTAN_* en B144/C144.
+test('el ancla tolera lo que la Regla 0 cambia: la cola del rótulo y el SIN en mayúsculas', () => {
+  const exacto = LINEAS_ARCA.map((l) => l.texto)
+  assert.notEqual(exacto[0], COL_A_REAL.get(177), 'el texto mandado y el que quedó son distintos: eso es el punto')
+  assert.notEqual(exacto[3].trim(), COL_A_REAL.get(180), 'el "SIN" en mayúsculas es el defecto del 13/08')
+  const u = ubicarBloqueVivo(colAReal(), 117)
+  assert.equal(u.fila, 177)
+})
+
+// EL DEFECTO QUE ATRAPA: "el último" eligió el fragmento huérfano de las filas 229-230 el 13/08 y
+// publicó 456 · $179.091.614 donde el bloque bueno dice 380. Con la gramática de seis consecutivas,
+// un fragmento no es candidato — no hay nada que elegir mal.
+test('un fragmento suelto del bloque no es candidato: no alcanza con que el rótulo aparezca', () => {
+  const col = [
+    ['· cargados en Compras, por N° de comprobante'],
+    ['· ⚠ sin cargar en Compras'],
+    ['algo de otra tabla'],
+  ]
+  const u = ubicarBloqueVivo(col, 229)
+  assert.equal(u.fila, null)
+  assert.match(u.motivo, /no encontré/)
+})
+
+// EL DEFECTO QUE ATRAPA: con dos copias COMPLETAS no hay forma honesta de elegir, y elegir por
+// posición es el defecto que este archivo persigue. Falla cerrado, con las dos filas dichas.
+test('con dos bloques completos falla cerrado y nombra los candidatos', () => {
+  const seis = LINEAS_ARCA.map((l) => [l.texto])
+  const u = ubicarBloqueVivo([...seis, ['relleno'], ...seis], 100)
+  assert.equal(u.fila, null)
+  assert.deepEqual(u.candidatos, [100, 107])
+  assert.match(u.motivo, /2 bloques completos/)
+})
+
+test('los destinos de la pestaña son los de la línea publicadora, en B y C', () => {
+  const { destinos, ubicacion } = destinosDeLaPestana(colAReal(), 117)
+  assert.equal(ubicacion.fila, 177)
+  assert.deepEqual(destinos, [
+    { name: ARCA.faltanN, fila: 181, col: 2 },
+    { name: ARCA.faltanMonto, fila: 181, col: 3 },
+  ])
+})
+
+// EL DEFECTO QUE ATRAPA: los dos caminos —la grilla que se escribe y la pestaña que quedó— tienen
+// que dar la MISMA fila cuando la Regla 0 no tocó nada. Si divergen, uno de los dos está mintiendo.
+test('sobre una grilla sin editar, la pestaña y la grilla escrita coinciden', () => {
+  const grid = bloque()
+  const porGrilla = destinosDeArca(grid, 177)
+  const porPestana = destinosDeLaPestana(grid, 177)
+  assert.deepEqual(porPestana.destinos, porGrilla.destinos)
+})
+
+// EL DEFECTO QUE ATRAPA: un ancla que matchea DOS líneas distintas haría que el bloque se reconociera
+// corrido, y los nombres caerían una fila más arriba o más abajo sin que nada gritara.
+test('ningún ancla matchea el rótulo de otra línea del bloque', () => {
+  for (const a of LINEAS_ARCA) {
+    const suyas = LINEAS_ARCA.filter((b) => norm(b.texto).includes(a.ancla))
+    assert.equal(suyas.length, 1, `el ancla "${a.ancla}" matchea ${suyas.length} líneas: ${suyas.map((s) => s.texto).join(' | ')}`)
+  }
+})
+
+test('cada línea declara su ancla y el ancla es prefijo-insensible del texto que manda', () => {
+  for (const l of LINEAS_ARCA) {
+    assert.ok(l.ancla, `la línea "${l.texto}" no declara ancla`)
+    assert.ok(norm(l.texto).includes(l.ancla), `el ancla "${l.ancla}" no está en el texto que se manda`)
+  }
 })
