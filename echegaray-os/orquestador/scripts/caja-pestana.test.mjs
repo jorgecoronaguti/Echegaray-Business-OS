@@ -534,7 +534,13 @@ test('la tarjeta DISPONIBLE mira la fecha MÁS VIEJA de las filas que suman, no 
   const g = construir()
   const contexto = g.tarjetas.find((t) => t.clave === 'disponible').contexto
   assert.match(contexto, /MIN\(/, 'sin el MIN, un corte de nueve días desaparece adentro del MAX del total')
-  assert.match(contexto, /▲ parte al/, 'y tiene que decirlo con la marca que sí se dibuja en el PDF')
+  assert.match(contexto, /▲ /, 'y tiene que decirlo con la marca que sí se dibuja en el PDF')
+  // 15/08: y CON EL MONTO. "parte al 05/08" no se puede decidir — sobre $18.270.071, "parte" tanto
+  // puede ser $500.000 como $15.000.000. La grilla tiene que pasarle a la tarjeta el saldo de cada
+  // fila junto a su fecha, o la frase vuelve a ser un adjetivo.
+  assert.match(contexto, /congelado al/, 'la tarjeta dice cuánta plata viene de esa fecha, no "parte"')
+  const enElMonto = (contexto.match(/N\(\$C\$\d+\)/g) ?? [])
+  assert.ok(enElMonto.length > 0, 'sin las celdas de saldo, el monto congelado no se puede sumar')
 })
 
 test('el MIN de la tarjeta EXCLUYE las filas ‖ que el total resta: avisaría por plata que no está adentro', () => {
