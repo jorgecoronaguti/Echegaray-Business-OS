@@ -76,6 +76,25 @@ test('EL ARQUEO MANDA SOBRE LA ANTIGÜEDAD DEL EXTRACTO', () => {
   assert.ok(cuarta.includes('la caja física vale $0'))
 })
 
+test('UN CONTEO SIN FECHA SE AVISA: es el automático apagado, no una celda fea (16/08/2026)', () => {
+  // EL DEFECTO QUE CIERRA. El dueño borró la celda donde tipeaba la fecha del conteo y con ella se
+  // apagó la ventana de movimientos posteriores: el neto se degrada a 0 por su propia guarda y CAJA
+  // publica el conteo pelado —deja de reaccionar a compras y cobranzas—. La única señal era la columna
+  // D vacía, que se lee como un detalle de formato. Nadie se enteró durante días.
+  const cuarta = A()[3]
+  assert.ok(cuarta.includes(ANEXO.conteoArsDia) && cuarta.includes(ANEXO.conteoUsdDia),
+    'las dos monedas: cada conteo tiene su propia fecha y su propia ventana')
+  assert.match(cuarta, /El conteo no tiene fecha/)
+  // SÓLO CON CONTEO CARGADO, o sería una alerta permanente sobre los dólares —que hoy valen 0— y una
+  // alerta que aparece todos los días deja de leerse.
+  for (const c of [DESDE_CAJA.arqueoArs, DESDE_CAJA.arqueoUsd]) {
+    assert.ok(cuarta.includes(`AND(N(${c})<>0;NOT(ISNUMBER(`),
+      `la alerta tiene que exigir que ${c} tenga conteo antes de reclamar su fecha`)
+  }
+  // Y EL ORDEN: sin conteo manda la alerta de arqueo (la caja física vale $0), que es más grave.
+  assert.ok(cuarta.indexOf('la caja física vale $0') < cuarta.indexOf('El conteo no tiene fecha'))
+})
+
 test('LA PRIMERA ACCIÓN ES CUBRIR O COLOCAR, nunca las dos, y con la reserva declarada', () => {
   const [primera] = AC()
   assert.ok(primera.includes('"Cubrir "'), 'si falta plata, dice cuánto')

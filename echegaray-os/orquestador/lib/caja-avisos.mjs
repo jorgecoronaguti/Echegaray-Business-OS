@@ -99,9 +99,21 @@ export function alertas(ref) {
   const condFalta = `${suma(FALTA.map(([n]) => n))}>0`
   const condArqueo = `N(${DESDE_CAJA.arqueoArs})+N(${DESDE_CAJA.arqueoUsd})=0`
   const condExtracto = `AND(ISNUMBER(${DESDE_CAJA.bancoCorte});TODAY()-${DESDE_CAJA.bancoCorte}>7)`
+  // ═══ UN CONTEO CARGADO Y SIN FECHA NO ES UNA CELDA FEA: ES EL AUTOMÁTICO APAGADO (16/08/2026) ═══
+  //
+  // La fecha de las dos filas de efectivo la estampa la corrida del anexo desde el centinela. Mientras
+  // no esté, el neto de movimientos posteriores se degrada a 0 por su propia guarda y la pestaña
+  // publica el conteo pelado: la caja deja de reaccionar a las compras y a las cobranzas. Eso ya pasó
+  // —el dueño borró la celda de la que dependía y nadie se enteró— y la única señal era una columna D
+  // vacía, que se lee como un detalle de formato.
+  //
+  // SE MIDE POR MONEDA para que no haga ruido: dispara sólo si HAY conteo y NO hay fecha. Sin conteo
+  // manda la alerta de arqueo, que ya existe y es más grave.
+  const sinFecha = (conteo, fecha) => `AND(N(${conteo})<>0;NOT(ISNUMBER(${fecha})))`
+  const condSinFecha = `OR(${sinFecha(DESDE_CAJA.arqueoArs, ANEXO.conteoArsDia)};${sinFecha(DESDE_CAJA.arqueoUsd, ANEXO.conteoUsdDia)})`
   // LA CALMA SE CALCULA CON LAS MISMAS CONDICIONES, no con una copia: si mañana se afloja un umbral y
   // acá quedara el viejo, la pestaña podría mostrar "sin alertas" arriba de tres alertas encendidas.
-  const nadaPasa = `NOT(OR(${condCorta};${condNoCierra};${condFalta};${condArqueo};${condExtracto}))`
+  const nadaPasa = `NOT(OR(${condCorta};${condNoCierra};${condFalta};${condArqueo};${condSinFecha};${condExtracto}))`
   const cuando = `IF(ISNUMBER(${ref.fechaPiso});" el "&${dia(ref.fechaPiso)};"")`
 
   return [
@@ -109,8 +121,12 @@ export function alertas(ref) {
     `=IF(${condNoCierra};"${MARCA_ALERTA} No cierra "&${plata(suma(NO_CIERRA.map(([n]) => n)))}&" · manda "&${cual(NO_CIERRA)};"")`,
     `=IF(${condFalta};"${MARCA_ALERTA} Falta cargar "&${plata(suma(FALTA.map(([n]) => n)))}&" · manda "&${cual(FALTA)};"")`,
     // EL ARQUEO MANDA SOBRE LA ANTIGÜEDAD DEL EXTRACTO: sin conteo la caja física vale $0 y eso
-    // desfigura el total entero; un extracto de ocho días desfigura una sola cuenta.
-    `=IF(${condArqueo};"${MARCA_ALERTA} Sin arqueo cargado: la caja física vale $0";IF(${condExtracto};"${MARCA_ALERTA} El extracto tiene "&TEXT(TODAY()-${DESDE_CAJA.bancoCorte};"0")&" días";""))`,
+    // desfigura el total entero; un extracto de ocho días desfigura una sola cuenta. Y el conteo SIN
+    // FECHA va en el medio: es menos grave que no tener conteo (la caja física sigue valiendo lo
+    // contado) y más que un extracto viejo (el descuento automático de compras y cobranzas no corre).
+    `=IF(${condArqueo};"${MARCA_ALERTA} Sin arqueo cargado: la caja física vale $0";`
+      + `IF(${condSinFecha};"${MARCA_ALERTA} El conteo no tiene fecha: se muestra tal cual y no se le descuenta nada";`
+      + `IF(${condExtracto};"${MARCA_ALERTA} El extracto tiene "&TEXT(TODAY()-${DESDE_CAJA.bancoCorte};"0")&" días";"")))`,
   ]
 }
 

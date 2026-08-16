@@ -26,6 +26,7 @@ import { VACIO } from '../lib/preservar-anotaciones.mjs'
 import { terminoLibro, LIBRO } from '../lib/libro-sumas.mjs'
 import { NO_REAL, FIN_DE_MES } from '../lib/caja-tarjetas.mjs'
 import { BORDES } from '../lib/caja-calendario.mjs'
+import { ANEXO } from '../lib/caja-anexo-nombres.mjs'
 
 /** Una celda VACÍA de la grilla. El generador no escribe cadena vacía: escribe el centinela VACIO, que
  *  le dice al portón "esta celda es MÍA y está vacía" (una celda ajena y vacía se preserva). */
@@ -321,18 +322,54 @@ test('CERO NÚMEROS PEGADOS: toda celda de plata es una fórmula', () => {
 // EL ARQUEO — LA ÚNICA CAPTURA DE TODO EL ARCHIVO
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
-test('sin nada leído, el arqueo sale AUSENTE: sin dato no se sobrescribe', () => {
+test('sin nada leído, el CONTEO sale AUSENTE: sin dato no se sobrescribe', () => {
   // NO ALCANZA CON `vacia()`: el centinela VACIO pasa por vacío y significa "es mía y va vacía", o sea
   // que la fusión la LIMPIA. La primera versión de este test decía vacia() y dejó pasar un generador
   // que le borraba el conteo al dueño en la primera corrida.
+  //
+  // 16/08: LA COLUMNA B SIGUE SIENDO SUYA Y LA D DEJÓ DE SERLO. El dueño borró la fecha a propósito
+  // ("no te guíes en eso sino en lo q marca los timestamps del código") y desde entonces `D7` y `D8`
+  // estaban vacías. Ahora las deriva el centinela: la B es la única celda de captura de la fila.
   const g = construir()
   for (const f of [g.fArqArs, g.fArqUsd]) {
     assert.ok(f > 0, 'las dos filas del arqueo tienen que existir')
-    for (const col of [1, 3]) {
-      assert.equal(g.filas[f - 1][col], undefined,
-        `la celda ${col} del arqueo tiene que estar AUSENTE (ni valor ni centinela VACIO): la carga el dueño`)
-    }
+    assert.equal(g.filas[f - 1][1], undefined,
+      'el IMPORTE del conteo tiene que estar AUSENTE (ni valor ni centinela VACIO): lo carga el dueño')
   }
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LAS FECHAS DE SALDO QUE FALTABAN (16/08/2026)
+//
+// El dueño: *"no completaste las fechas de saldos"*. `D7` y `D8` —las dos filas de efectivo, el 40% del
+// disponible— estaban VACÍAS desde que él borró la celda donde las tipeaba. Dos consecuencias medidas:
+// la fila más importante del panel no decía de cuándo era, y el aviso de congelado de la tarjeta no
+// podía dispararse NUNCA sobre ellas porque su condición arranca con `ISNUMBER($D$n)`.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('LAS DOS FILAS DE EFECTIVO PUBLICAN SU FECHA, y sale del centinela — no de TODAY() ni de una celda tipeada', () => {
+  const g = construir()
+  const fecha = (f) => String(g.filas[f - 1][3] ?? '')
+  assert.equal(fecha(g.fArqArs), `=IF(ISNUMBER(${ANEXO.conteoArsDia});${ANEXO.conteoArsDia};"")`)
+  assert.equal(fecha(g.fArqUsd), `=IF(ISNUMBER(${ANEXO.conteoUsdDia});${ANEXO.conteoUsdDia};"")`)
+  for (const f of [g.fArqArs, g.fArqUsd]) {
+    // UN `TODAY()` ACÁ AFIRMA QUE SE CONTÓ HOY, todos los días. Es el defecto que el dueño ya señaló
+    // tres veces en esta misma columna ("aún noto desactualizadas las fechas").
+    assert.doesNotMatch(fecha(f), /TODAY\(\)/, 'la fecha del conteo no puede salir del reloj de la corrida')
+    // Y LA GUARDA: sin ella, con la celda del anexo vacía la fecha se dibujaría como el serial 0, o sea
+    // 30/12/1899 — el mismo defecto que la tarjeta ya evita en el otro extremo de la cuenta.
+    assert.match(fecha(f), /^=IF\(ISNUMBER\(/, 'sin la guarda, una celda vacía se dibuja como 30/12/1899')
+  }
+})
+
+test('la fecha del conteo NO se le vuelve a pedir al dueño: la tipeada se descarta', () => {
+  // Él la borró y lo dijo con todas las letras. Si el rescate volviera a re-emitirla, la celda
+  // amarilla reaparecería y el mecanismo entero volvería a depender de que alguien la escriba.
+  const cargado = new Map([['Efectivo en pesos', { saldo: 12000000, fecha: 46233, origen: '', quien: '' }]])
+  const g = grilla(cargado, REFS)
+  assert.equal(g.filas[g.fArqArs - 1][1], 12000000, 'el CONTEO del dueño sí viaja: es su dato')
+  assert.equal(g.filas[g.fArqArs - 1][3], `=IF(ISNUMBER(${ANEXO.conteoArsDia});${ANEXO.conteoArsDia};"")`,
+    'su FECHA ya no: la derivan los timestamps del código')
 })
 
 test('EL RESCATE LEE LA MISMA COLUMNA EN LA QUE EL GENERADOR ESCRIBE EL ARQUEO', () => {
@@ -369,10 +406,6 @@ test('con el conteo ya cargado, el arqueo se RE-EMITE en su fila nueva (no se qu
   ])
   const g = grilla(cargado, REFS)
   assert.equal(g.filas[g.fArqArs - 1][1], 0, 'el importe 0 es un dato, no un vacío')
-  // LA FECHA VIAJA COMO NÚMERO DE SERIE, no como "30/07/2026": el texto depende del locale (es_AR) y
-  // ya vació una pestaña entera por leerse como dd/mm/yy.
-  assert.equal(g.filas[g.fArqArs - 1][3], 46233)
-  assert.equal(typeof g.filas[g.fArqArs - 1][3], 'number')
   assert.equal(g.filas[g.fArqUsd - 1][1], 15000)
 })
 
@@ -538,7 +571,11 @@ test('la tarjeta DISPONIBLE mira la fecha MÁS VIEJA de las filas que suman, no 
   // 15/08: y CON EL MONTO. "parte al 05/08" no se puede decidir — sobre $18.270.071, "parte" tanto
   // puede ser $500.000 como $15.000.000. La grilla tiene que pasarle a la tarjeta el saldo de cada
   // fila junto a su fecha, o la frase vuelve a ser un adjetivo.
-  assert.match(contexto, /congelado al/, 'la tarjeta dice cuánta plata viene de esa fecha, no "parte"')
+  // 16/08: y con la PREPOSICIÓN que dice que ese monto está ADENTRO del titular. "▲ $1,4M congelado
+  // al 05/08" al lado de $18.270.071 se lee como un segundo importe de otro origen — el dueño lo leyó
+  // así, textual: "confunde ese importe de origen q has diferenciado".
+  assert.match(contexto, /M de este total son del /,
+    'la tarjeta dice cuánta plata viene de esa fecha Y que es una parte del número de arriba')
   const enElMonto = (contexto.match(/N\(\$C\$\d+\)/g) ?? [])
   assert.ok(enElMonto.length > 0, 'sin las celdas de saldo, el monto congelado no se puede sumar')
 })

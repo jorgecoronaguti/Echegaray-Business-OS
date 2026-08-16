@@ -283,7 +283,13 @@ test('DISPONIBLE avisa cuando la fecha MÁS VIEJA de las filas que suman quedó 
 test('DISPONIBLE dice CUÁNTA PLATA está congelada, no "parte"', () => {
   const t = conFilas()
   assert.doesNotMatch(t.contexto, /parte al/, '"parte" no es un dato: no se puede decidir con él')
-  assert.match(t.contexto, /congelado al/, 'la frase nombra la condición con todas las letras')
+  // 16/08 — Y LA RELACIÓN CON EL TITULAR, QUE ES LA MITAD QUE FALTABA. "▲ $1,4M congelado al 05/08"
+  // era cierto y se leía como un importe aparte: el dueño lo dijo así ("confunde ese importe de origen
+  // q has diferenciado"). Sin la preposición, dos cifras pegadas no dicen si una está adentro de la
+  // otra. Si alguien vuelve a sacarla, este test se pone rojo.
+  assert.match(t.contexto, /M de este total son del /,
+    'la frase tiene que declarar que ese monto es una PARTE del número de arriba')
+  assert.doesNotMatch(t.contexto, /M congelado al/, 'la frase vieja no dice de dónde sale ese monto')
   // El monto se arma con la MISMA condición con la que se avisa, fila por fila: no es el total menos
   // lo vivo (una segunda definición del total) ni un número tipeado.
   for (const c of SUMAN) {

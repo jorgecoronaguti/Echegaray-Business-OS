@@ -211,6 +211,26 @@ export function grilla(cargado, refs) {
       const v = suyoOAusente(c.nombre, campo)
       return typeof v === 'string' && v.trim().startsWith('=') ? AJENA : v
     }
+    // ═══ LA FECHA DEL CONTEO YA NO SE TIPEA: SE DERIVA (16/08/2026) ═══
+    //
+    // El dueño: *"no completaste las fechas de saldos"*. `D7` y `D8` —el 40% del disponible— estaban
+    // VACÍAS desde que él borró la celda donde las tipeaba, y no las borró por descuido: *"te borré la
+    // fecha de los saldos en caja para q no te guíes en eso sino en lo q marca los timestamps del
+    // código"*. Con ellas vacías, la fila más importante del panel no decía de cuándo era y el aviso de
+    // congelado de la tarjeta no podía dispararse NUNCA sobre esas dos filas — su condición arranca
+    // con `ISNUMBER($D$n)`.
+    //
+    // Sale del CENTINELA, por rango con nombre, igual que el neto de efectivo: el anexo estampa el DÍA
+    // del conteo (`ANEXO_CONTEO_*_DIA`) y acá sólo se cita. Ninguna cuenta propia, ningún `TODAY()` —
+    // un `TODAY()` acá afirmaría que se contó hoy todos los días.
+    //
+    // LA GUARDA `ISNUMBER` NO ES DECORATIVA: mientras no haya conteo cargado la celda del anexo está
+    // VACÍA, y sin el `IF` la fecha se dibujaría como el serial 0, o sea 30/12/1899. Es el mismo
+    // defecto del `MIN` de celdas vacías que la tarjeta ya evita en el otro extremo de la cuenta.
+    const fechaDelConteo = (cuenta) => {
+      const nombre = cuenta.arqueo === DESDE_CAJA.arqueoUsdFecha ? ANEXO.conteoUsdDia : ANEXO.conteoArsDia
+      return `=IF(ISNUMBER(${nombre});${nombre};"")`
+    }
     if (c.arqueo === DESDE_CAJA.arqueoArsFecha) fArqArs = f
     if (c.arqueo === DESDE_CAJA.arqueoUsdFecha) fArqUsd = f
     const origen = c.banco === 'saldoPesos' && refs.bancoRaw ? formulaUltimoSaldo(refs.bancoRaw)
@@ -238,7 +258,7 @@ export function grilla(cargado, refs) {
       c.banco === 'saldoPesos' && refs.bancoRaw ? formulaFechaCorte(refs.bancoRaw)
         : c.banco === 'cartera' ? '=TODAY()'
           : c.banco ? corteDeBanco(c)
-            : c.arqueo ? conteo('fecha')
+            : c.arqueo ? fechaDelConteo(c)
               : (c.formula ? '=TODAY()' : previo(c.nombre, 'fecha')),
     ])
   }

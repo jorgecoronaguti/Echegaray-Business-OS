@@ -109,6 +109,18 @@ const millones = (e) => `TEXT((${e})/1000000;"$#,##0.0")`
  * viva también se congela (el importador del banco parado deja `_BANCO_RAW` quieto con su fórmula
  * intacta). Rotularlo "a mano" sería afirmar una causa que la celda no conoce.
  *
+ * ═══ Y EL MONTO SIN LA PALABRA "DE" ES OTRO IMPORTE, NO UNA PARTE (16/08/2026) ═══
+ *
+ * La frase decía *"al 15/08 · ▲ $1,4M congelado al 05/08"* y el dueño la leyó como lo que parece: un
+ * segundo importe, de otro origen, al lado del titular. Textual: *"confunde ese importe de origen q has
+ * diferenciado"*. Era correcta y era ilegible — dos cifras pegadas sin una preposición entre ellas no
+ * dicen si una está adentro de la otra o al lado.
+ *
+ * "$1,4M DE ESTE TOTAL son del 05/08" declara la relación en tres palabras: el $18,3M de arriba es el
+ * todo, el $1,4M es su parte vieja, y por diferencia se lee lo que queda vivo. Se descartó publicar las
+ * dos patas ("$16,9M vivos · $1,4M al 05/08") porque agrega un tercer número que NO está en ninguna
+ * celda de la pestaña: el lector no puede verificarlo contra nada, y el primero se leería como el total.
+ *
  * @param {string} fecha la celda o expresión con la fecha más vieja de las filas que suman
  * @param {string} monto la expresión que suma el importe de esas mismas filas cuando están viejas
  * @param {number} [avisoDias] el mismo umbral que la columna D de esta pestaña y que el resto del OS
@@ -122,7 +134,7 @@ export function avisoDeAtraso(fecha, monto, avisoDias = DIAS_AVISO) {
   // número — el ISNUMBER no lo atrapa. Un panel al que todavía no se le cargó ninguna fecha
   // publicaría "▲ $0,0M congelado al 30/12", que es el serial 0 dibujado como fecha. Es el mismo
   // defecto que la fila del total ya evita con su IFERROR, escrito en el otro extremo de la cuenta.
-  return `IF(AND(ISNUMBER(${fecha});${fecha}>0;TODAY()-${fecha}>${avisoDias});" · ${ALERTA} "&${millones(monto)}&"M congelado al "&${dia(fecha)};" · bancos y efectivo")`
+  return `IF(AND(ISNUMBER(${fecha});${fecha}>0;TODAY()-${fecha}>${avisoDias});" · ${ALERTA} "&${millones(monto)}&"M de este total son del "&${dia(fecha)};" · bancos y efectivo")`
 }
 
 /**

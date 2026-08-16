@@ -375,8 +375,11 @@ export async function formatear(google, sheetId, g, anexo) {
   // que una persona escribe tiene que verse distinto de lo que el sistema calcula. El diseño anterior
   // pintaba de amarillo dos celdas CALCULADAS: un color que miente sobre quién es dueño de la celda
   // invita a escribir encima de una fórmula.
+  // LA COLUMNA B Y NADA MÁS (16/08). La D del conteo dejó de tipearse: la deriva el centinela
+  // (`ANEXO_CONTEO_*_DIA`) y ahora lleva una fórmula. Dejarla amarilla invitaría a escribir encima —
+  // es el mismo error que este bloque ya arregló una vez con "Caja en pesos" y "Caja en dólares".
   for (const f of g.amarillas) {
-    for (const c of [1, 3]) fmt(r(f - 1, f, c, c + 1), 'userEnteredFormat.backgroundColor', { backgroundColor: AMARILLO })
+    fmt(r(f - 1, f, 1, 2), 'userEnteredFormat.backgroundColor', { backgroundColor: AMARILLO })
   }
 
   // ── EL TITULAR Y LAS CINCO TARJETAS ─────────────────────────────────────────────────────────────

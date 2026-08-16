@@ -244,9 +244,13 @@ export function bloqueTrazabilidad(h) {
     + `+${formulaJornalesEfectivoPosteriores('0')}+${formulaOficinaEfectivoPosteriores('0')}`, '', ''])
   // EL CAJÓN VIVO, NO EL ARQUEO CRUDO: con la identidad a historia completa, lo que cierra la resta
   // es lo que HAY en la caja hoy (arqueo ± movimientos posteriores) — el mismo número de CAJA!B7.
+  // LA FECHA SALE DEL CENTINELA Y NO DE `CAJA!D7` (16/08/2026). Citaba la celda que el dueño tipeaba, y
+  // desde que él la borró este renglón también quedó sin fecha — el mismo defecto que en la portada,
+  // acá donde nadie lo miró. Hoy la fecha del conteo la estampa la corrida dos bloques más arriba:
+  // citarla directo es una referencia menos y saca el rodeo por la otra pestaña.
   const fFisica = push(['Efectivo en el cajón HOY (arqueo ± posteriores)', '', '', '',
     `=N(${DESDE_CAJA.arqueoArs})+N(${ANEXO.efectivoNeto})`,
-    `=IF(ISNUMBER(${DESDE_CAJA.arqueoArsFecha});${DESDE_CAJA.arqueoArsFecha};"")`, ''])
+    `=IF(ISNUMBER(${ANEXO.conteoArsDia});${ANEXO.conteoArsDia};"")`, ''])
   const fSinExpl = push(['⇒ EFECTIVO SIN EXPLICAR', '', '', '',
     `=E${fCob}-E${fDup}+E${fExt}-E${fDep}-E${fGasto}-E${fFisica}`, '', ''])
 

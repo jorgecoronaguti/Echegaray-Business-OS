@@ -25,13 +25,13 @@ import { publicar } from '../lib/rangos-nombrados.mjs'
 import { requestsTextoPorContenido } from '../lib/formato-texto-por-contenido.mjs'
 import {
   grillaAnexo, ANCHO_ANEXO, ANCHOS_ANEXO, PESTANA_ANEXO, SELLO_EFECTIVO, HISTORICO_EFECTIVO, claveDeRotulo,
-  CARGA_TARDIA,
+  CARGA_TARDIA, FECHA_DEL_CONTEO,
 } from '../lib/caja-anexo.mjs'
 import {
   necesitaSello, dictamenEfectivo, avisoEfectivoImposible, avisoTechoNoVerificable,
   selloPorRenglonSembrable,
 } from '../lib/caja-efectivo-fisico.mjs'
-import { CONCEPTO, anclaDelConteo } from '../lib/caja-conteo-centinela.mjs'
+import { CONCEPTO, anclaDelConteo, esConteoLegible } from '../lib/caja-conteo-centinela.mjs'
 import { medirCargaTardia } from '../lib/caja-carga-tardia-compras.mjs'
 import { avisoCargaTardia } from '../lib/caja-carga-tardia.mjs'
 import { instanteDelSello } from '../lib/caja-ancla-por-instante.mjs'
@@ -76,6 +76,12 @@ export function rescatarAnexo(filas = []) {
     // borraría y el renglón quedaría vacío hasta que volviera a medirse — un control intermitente se
     // lee como un control en cero.
     if (a === claveDeRotulo(CARGA_TARDIA.rotulo)) { cargado.set(a, { importe: num(4), medidoEn: num(5) }); continue }
+    // Las dos fechas de conteo, por la misma razón que la carga tardía: las estampa la corrida, y sin
+    // rescatarlas cada regeneración las borraría — y con ellas la fecha de `CAJA!D7`, que es
+    // exactamente el defecto que este renglón vino a cerrar.
+    if (a === claveDeRotulo(FECHA_DEL_CONTEO.ars) || a === claveDeRotulo(FECHA_DEL_CONTEO.usd)) {
+      cargado.set(a, { dia: num(5) }); continue
+    }
     if (historico.has(a)) { cargado.set(a, { selloLinea: num(3) }); continue }
     if (a !== claveDeRotulo(TIPO_CAMBIO.declarado.nombre)) continue
     cargado.set(a, { saldo: leer(2), fecha: leer(5), origen: leer(6) })
@@ -340,6 +346,9 @@ async function main() {
   // Y LO QUE NINGUNA FÓRMULA PUEDE VER: lo que se cargó tarde sobre filas viejas. Va a la PESTAÑA y no
   // sólo al log, porque este archivo ya tiene escrito que el log no lo abre nadie.
   await publicarCargaTardia(google, g).catch((e) => console.log(`  ${ALERTA} NO PUDE MEDIR LA CARGA TARDÍA (${e.message}): un pago cargado sobre una fila vieja saldría del cajón sin que nada lo nombre`))
+  // Y LA FECHA DE LOS DOS CONTEOS, que es la columna D de las filas de efectivo de CAJA. Va con su
+  // propio catch: si falla, las celdas conservan la fecha rescatada de la corrida anterior.
+  await publicarFechaDelConteo(google, g).catch((e) => console.log(`  ${ALERTA} NO PUDE FECHAR EL CONTEO (${e.message}): CAJA muestra la fecha de la corrida anterior`))
 
   // LA CAJA MÍNIMA NO VIVE EN NINGUNA DE LAS DOS PESTAÑAS: el nombre apunta a su FUENTE. Así CAJA y el
   // anexo la leen sin que ninguno la copie — un parámetro tiene una sola dirección en el archivo.
@@ -356,6 +365,53 @@ async function main() {
   await guardarRegistro(ID, PESTANA_ANEXO, g.filas, ediciones, quedo, candidatos)
     .catch((e) => console.warn(`  ⚠ no pude guardar el registro de rótulos: ${e.message}`))
   console.log('QUEDÓ ESCRITO.')
+}
+
+/**
+ * LA FECHA DE LOS DOS CONTEOS — la que CAJA publica en `D7` y `D8`, estampada acá.
+ *
+ * POR QUÉ ACÁ Y NO EN CAJA (16/08/2026). El dato no es de Sheets: es el instante en que el centinela vio
+ * el conteo por primera vez, y vive en Postgres. CAJA lo cita por nombre y no lo recalcula, igual que
+ * hace con el neto de efectivo — una segunda copia de esta fecha en la otra pestaña sería una segunda
+ * definición de "cuándo se contó", que es justo lo que este renglón vino a terminar.
+ *
+ * SIN CONTEO SE ESCRIBE VACÍO, y es una decisión: una fecha sobre una celda de conteo en cero afirma un
+ * arqueo que nunca ocurrió. Es el caso de los dólares hoy. Se escribe el vacío EXPLÍCITAMENTE en vez de
+ * saltear la celda porque el día que el dueño borre el conteo, su fecha tiene que irse con él.
+ *
+ * NO TIRA hacia arriba: si esto falla, cada celda conserva la fecha de la corrida anterior (la grilla la
+ * rescata), que sigue siendo verdad sobre ese conteo mientras el conteo no cambie.
+ *
+ * LÍMITE DECLARADO: para los pesos el instante se ADOPTA del sello ya publicado cuando el centinela
+ * todavía no conoce ese conteo, así que enchufarlo no mueve la fecha hacia hoy. Para los dólares no hay
+ * sello del que adoptar: un conteo en dólares que YA estuviera cargado antes de la primera observación
+ * quedaría fechado el día de esa primera mirada. Hoy no puede pasar —`CAJA_ARQUEO_USD` vale 0— y el día
+ * que el dueño cargue uno, la primera mirada llega dentro de las 2 h del timer.
+ */
+export async function publicarFechaDelConteo(google, g, { ancla = anclaDelConteo } = {}) {
+  if (!g.fFechaArs || !g.fFechaUsd) return
+  const uno = async (rango) => {
+    const v = await google.readSheetValues(ID, rango, { render: 'UNFORMATTED_VALUE' })
+    return Number(v?.[0]?.[0]) || 0
+  }
+  const sello = {
+    serial: Number(g.filas?.[g.fSello - 1]?.[5]),
+    valorSellado: Number(g.filas?.[g.fEstado - 1]?.[3]) || 0,
+  }
+  // SIN CONTEO NO SE LE PREGUNTA AL CENTINELA. `anclaDelConteo` tira sobre un conteo ilegible —así se
+  // diseñó, para que nadie ancle en cero— y esa excepción abortaría el estampado de la OTRA celda.
+  const dia = async (concepto, valor, opciones) => {
+    if (!esConteoLegible(valor)) return ''
+    return (await ancla(ID, concepto, valor, opciones)).dia
+  }
+  const ars = await dia(CONCEPTO.arqueoArs, await uno(DESDE_CAJA.arqueoArs), { sello })
+  const usd = await dia(CONCEPTO.arqueoUsd, await uno(DESDE_CAJA.arqueoUsd), {})
+  await google.batchUpdateValues(ID, [
+    { range: `${PESTANA_ANEXO}!F${g.fFechaArs}`, values: [[ars]] },
+    { range: `${PESTANA_ANEXO}!F${g.fFechaUsd}`, values: [[usd]] },
+  ])
+  const texto = (s) => (s === '' ? 'sin conteo cargado: CAJA no publica fecha' : `serial ${s}`)
+  console.log(`  📅 fecha del conteo · pesos: ${texto(ars)} · dólares: ${texto(usd)}`)
 }
 
 /**

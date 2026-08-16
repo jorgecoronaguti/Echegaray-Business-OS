@@ -9,10 +9,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { grillaAnexo, ANCHO_ANEXO, SELLO_EFECTIVO, HISTORICO_EFECTIVO, claveDeRotulo } from './caja-anexo.mjs'
+import {
+  grillaAnexo, ANCHO_ANEXO, SELLO_EFECTIVO, HISTORICO_EFECTIVO, claveDeRotulo, FECHA_DEL_CONTEO,
+} from './caja-anexo.mjs'
 import { rescatarAnexo } from '../scripts/caja-anexo-pestana.mjs'
 import { ANEXO, DESDE_CAJA } from './caja-anexo-nombres.mjs'
-import { ESPECIE_ANEXO } from './caja-anexo-nombres.mjs'
+import { ESPECIE_ANEXO, PUEDE_ESTAR_VACIO } from './caja-anexo-nombres.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 import { MARCAS } from './cheques-cobertura.mjs'
 // La fila donde arranca el registro de Cheques Emitidos NO se escribe a mano en un test: es lo que
@@ -158,6 +160,57 @@ test('EL SELLO POR RENGLÓN YA NO SE RE-EMITE: con ventana, restarlo rompía el 
     assert.equal(g.filas[f - 1][3], 0, 'la foto del histórico completo ya no vuelve a su celda')
     assert.ok(vacia(String(g.filas[f - 1][4] ?? '')), 'y la columna de pesos sigue vacía: el desglose no suma')
   }
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LA FECHA DE LOS DOS CONTEOS — DE ACÁ SALE `CAJA!D7` Y `CAJA!D8` (16/08/2026)
+//
+// El dueño: *"no completaste las fechas de saldos"*. Estaban vacías desde que él borró la celda donde
+// las tipeaba, y él lo hizo a propósito: *"para q no te guíes en eso sino en lo q marca los timestamps
+// del código"*. El dato no lo puede calcular Sheets —depende de CUÁNDO cambió una celda—, así que lo
+// estampa la corrida desde el centinela y CAJA lo cita por nombre.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('LOS DOS RENGLONES DE FECHA DE CONTEO EXISTEN y quedan FUERA de la suma del cajón', () => {
+  const g = construir()
+  assert.ok(g.fFechaArs > g.fSello && g.fFechaUsd > g.fSello,
+    'van DEBAJO del sello: todo lo que esté en la columna C entre el histórico y el sello ENTRA al neto')
+  for (const f of [g.fFechaArs, g.fFechaUsd]) {
+    for (const c of [2, 3, 4]) {
+      assert.ok(vacia(String(g.filas[f - 1][c] ?? '')), `la columna ${c} tiene que estar vacía: no es plata`)
+    }
+    assert.ok(String(g.filas[f - 1][6] ?? '').length > 40, 'cada renglón dice de dónde sale su número')
+  }
+  // Y LOS DOS NOMBRES APUNTAN A LA COLUMNA F, que es la única de fechas del anexo. En la E —que va con
+  // formato de moneda— el serial 46248 se dibujaría "$46.248".
+  const destino = (n) => g.destinos.find((d) => d.name === n)
+  assert.equal(destino(ANEXO.conteoArsDia)?.col, 6)
+  assert.equal(destino(ANEXO.conteoUsdDia)?.col, 6)
+  assert.equal(destino(ANEXO.conteoArsDia)?.fila, g.fFechaArs)
+  assert.equal(destino(ANEXO.conteoUsdDia)?.fila, g.fFechaUsd)
+})
+
+test('LA FECHA ESTAMPADA SE RESCATA: sin esto, cada regeneración borraría la fecha de CAJA', () => {
+  // Es la misma trampa que ya costó el sello y la carga tardía: el valor lo escribe la corrida DESPUÉS
+  // de la grilla, así que si la grilla lo emite vacío y el estampado falla (base caída, un 429), la
+  // fecha del saldo desaparece de la portada por un problema de infraestructura.
+  const cargado = rescatarAnexo([
+    celdas(FECHA_DEL_CONTEO.ars, { 5: 46248 }),
+    celdas(FECHA_DEL_CONTEO.usd, { 5: 46239 }),
+  ])
+  assert.equal(cargado.get(claveDeRotulo(FECHA_DEL_CONTEO.ars))?.dia, 46248)
+  const g = grillaAnexo({ refs: REFS, cartera: CARTERA, conceptosCiegos: [], cargado })
+  assert.equal(g.filas[g.fFechaArs - 1][5], 46248, 'la fecha del conteo en pesos vuelve a su celda')
+  assert.equal(g.filas[g.fFechaUsd - 1][5], 46239)
+})
+
+test('SIN CONTEO, la celda queda VACÍA — y el nombre se publica igual o CAJA daría #NAME?', () => {
+  // Es el estado de los dólares hoy (`CAJA_ARQUEO_USD` = 0). Una fecha ahí afirmaría un arqueo que
+  // nunca ocurrió; retirar el nombre dejaría `CAJA!D8` en error. Las dos cosas están declaradas.
+  const g = construir()
+  assert.ok(vacia(String(g.filas[g.fFechaUsd - 1][5] ?? '')), 'sin conteo no hay fecha que emitir')
+  assert.ok(g.destinos.some((d) => d.name === ANEXO.conteoUsdDia), 'y el nombre se publica igual')
+  assert.ok(PUEDE_ESTAR_VACIO[ANEXO.conteoUsdDia]?.length > 40, 'con el motivo escrito, no en silencio')
 })
 
 test('EL EFECTIVO NO PUEDE PUBLICARSE NEGATIVO: la guarda está en el neto, y el neto es lo que CAJA lee', () => {
@@ -507,8 +560,18 @@ test('todos los nombres que CAJA cita se publican, y cada uno declara su especie
     assert.ok(publicados.has(n), `${n} lo cita CAJA y el anexo no lo publica: quedaría en #NAME?`)
   }
   for (const d of g.destinos) {
-    assert.ok(d.especie ?? ESPECIE_ANEXO[d.name], `${d.name} se publica sin declarar especie: no se puede verificar`)
     assert.ok(Number.isFinite(d.fila) && d.fila >= 1, `${d.name} apunta a una fila inválida`)
+    // LA EXCEPCIÓN ES NOMINAL Y TRAE SU MOTIVO ESCRITO. Un nombre cuya celda puede estar legítimamente
+    // vacía no puede declarar especie —`publicar` descartaría el destino y el nombre no se crearía,
+    // dejando #NAME? en CAJA—, así que la regla se relaja SÓLO para los que están en la lista.
+    const excusa = PUEDE_ESTAR_VACIO[d.name]
+    if (excusa) {
+      assert.ok(excusa.length > 40, `${d.name} está exceptuado sin explicar por qué`)
+      assert.ok(!(d.especie ?? ESPECIE_ANEXO[d.name]),
+        `${d.name} puede estar vacío Y declara especie: publicar lo descartaría y el nombre no existiría`)
+      continue
+    }
+    assert.ok(d.especie ?? ESPECIE_ANEXO[d.name], `${d.name} se publica sin declarar especie: no se puede verificar`)
     // Y la celda a la que apunta tiene que tener ALGO: un nombre sobre una celda vacía es tan mudo como
     // uno sobre un texto, y la API lo acepta con un 200.
     const v = g.filas[d.fila - 1]?.[d.col - 1]

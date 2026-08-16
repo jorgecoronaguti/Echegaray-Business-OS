@@ -60,7 +60,7 @@
 // Un conteo que no cruce el cero no dejaba ninguna huella, y ése es el agujero que se cierra.
 
 import { query } from './db.mjs'
-import { fechaDeSerial, instanteDelSello } from './caja-ancla-por-instante.mjs'
+import { diaDe, fechaDeSerial, instanteDelSello } from './caja-ancla-por-instante.mjs'
 
 /** El conteo de pesos y el de dólares, con el nombre con el que viajan a la base. */
 export const CONCEPTO = Object.freeze({
@@ -191,6 +191,35 @@ export function ventanaDelConteo(fila = {}) {
 /** El ancla como serial de Sheets, que es lo que la fórmula compara. */
 export const anclaComoSerial = (fila) => instanteDelSello(fila?.vistoDesde)
 
+/**
+ * EL DÍA DEL CONTEO — la única fecha que la pestaña puede AFIRMAR, como serial de Sheets.
+ *
+ * ═══ POR QUÉ NO ES `INT(ancla)` (16/08/2026) ═══
+ *
+ * El ancla es el borde DERECHO del intervalo: el instante en que esta corrida vio el número nuevo. El
+ * conteo ocurrió en algún punto entre la mirada anterior y ésa —hasta 2 h, `RESOLUCION_HORAS`— y ese
+ * intervalo puede cruzar la medianoche. Un conteo tipeado el martes 23:50 y visto el miércoles 00:30
+ * publicaría "miércoles" con `INT(ancla)`: un día que no fue.
+ *
+ * SE PUBLICA EL BORDE MÁS VIEJO QUE SE CONOCE, y por eso no hay dos ramas: cuando el intervalo NO cruza
+ * el día, los dos bordes dan el mismo día y la regla no cambia nada. Cuando lo cruza, elegir el día más
+ * viejo es el lado que no puede hacer daño — la columna D marca en ámbar lo que pasó de `DIAS_AVISO` y
+ * la tarjeta CAJA DISPONIBLE avisa por la fecha más vieja de las filas que suman: errar hacia lo viejo
+ * hace saltar la alarma un día antes, errar hacia lo nuevo la APAGA un día de más. La misma asimetría
+ * con la que `caja-ancla-por-instante` resuelve el empate del mismo día.
+ *
+ * OJO — ESTO NO ES EL ANCLA DEL CÁLCULO. La ventana de movimientos posteriores sigue corriendo desde
+ * `vistoDesde` (F del sello), que es lo único que el OS puede afirmar que ya estaba contado. Acá se
+ * decide qué FECHA SE MUESTRA, que es una pregunta distinta y con otro criterio de error.
+ *
+ * @param {{vistoDesde:Date, previoVistoEn?:Date|null}} fila la racha vigente del centinela
+ * @returns {number} serial ENTERO de Sheets (sin parte horaria)
+ */
+export function diaDelConteo(fila = {}) {
+  const v = ventanaDelConteo(fila)
+  return diaDe(instanteDelSello(v.desde ?? v.hasta))
+}
+
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 // PERSISTENCIA
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
@@ -313,12 +342,16 @@ export async function observarMuchas(fileId, lecturas = [], { ahora = new Date()
  * que pertenece a otro conteo no es evidencia de éste, es un número parecido.
  *
  * @param {{serial?:number, valorSellado?:number}} sello
- * @returns {Promise<{accion:string, fila:object, previa:object|null, serial:number, ventana:object}>}
+ * @returns {Promise<{accion:string, fila:object, previa:object|null, serial:number, dia:number, ventana:object}>}
  */
 export async function anclaDelConteo(fileId, concepto, valor, { ahora = new Date(), sello = {} } = {}) {
   if (!esConteoLegible(valor)) throw new Error('sin conteo legible no hay ancla: no se inventa una')
   const adopcion = Number(sello.serial) > 0 && mismoValor(sello.valorSellado, valor)
     ? fechaDeSerial(sello.serial) : null
   const r = await observar(fileId, concepto, valor, { ahora, adopcion })
-  return { ...r, serial: anclaComoSerial(r.fila), ventana: ventanaDelConteo(r.fila) }
+  // `serial` es el INSTANTE (el ancla del cálculo) y `dia` la FECHA QUE SE MUESTRA. Viajan juntos
+  // desde acá a propósito: son la misma observación leída con dos criterios de error, y calcularlos
+  // en dos lugares distintos es cómo la pestaña terminaría fechando el conteo un día después de la
+  // ventana que lo descuenta.
+  return { ...r, serial: anclaComoSerial(r.fila), dia: diaDelConteo(r.fila), ventana: ventanaDelConteo(r.fila) }
 }

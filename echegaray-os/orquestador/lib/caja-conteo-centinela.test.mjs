@@ -6,7 +6,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  CONCEPTO, NO_DETECTA, RESOLUCION_HORAS, anclaComoSerial, esConteoLegible, mismoValor,
+  CONCEPTO, NO_DETECTA, RESOLUCION_HORAS, anclaComoSerial, diaDelConteo, esConteoLegible, mismoValor,
   observacionSiguiente, ventanaDelConteo,
 } from './caja-conteo-centinela.mjs'
 import { fechaDeSerial, instanteDelSello } from './caja-ancla-por-instante.mjs'
@@ -62,6 +62,44 @@ test('EL INTERVALO ES EL REAL, NO EL DEL CONTEO ANTERIOR — y lleva la fecha', 
 
   const largo = ventanaDelConteo({ vistoDesde: T(17, 0, 15), previoVistoEn: T(15, 9, 8) })
   assert.match(largo.texto, /08\/08 15:09/, 'un intervalo de una semana MUESTRA la fecha del otro extremo')
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LA FECHA QUE PUBLICA `CAJA!D7` (16/08/2026)
+//
+// El dueño: *"no completaste las fechas de saldos"*. Las dos filas de efectivo —el 40% del disponible—
+// no tenían fecha desde que él borró la celda donde la tipeaba, y con la celda vacía el aviso de
+// congelado de la tarjeta no podía dispararse nunca sobre ellas (su condición arranca con `ISNUMBER`).
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('EL DÍA DEL CONTEO SALE DEL CENTINELA, sin parte horaria: la columna D es de fechas', () => {
+  // Un serial con hora en una celda formateada dd/mm/yyyy DIBUJA el día y VALE otra cosa: el MAX de la
+  // fila de cierre —que es `CAJA_FECHA_SALDO`, el saldo inicial de los dos cash flow— arrastraría esa
+  // fracción a todas las comparaciones ">= fecha de saldo" de la escalera.
+  const dia = diaDelConteo({ vistoDesde: T(17, 45), previoVistoEn: T(15, 40) })
+  assert.equal(dia, Math.trunc(dia), 'entero: el instante ya vive en F del sello, acá va la FECHA')
+  assert.equal(dia, Math.trunc(instanteDelSello(T(17, 45))))
+})
+
+test('SI EL INTERVALO CRUZA LA MEDIANOCHE SE PUBLICA EL DÍA MÁS VIEJO: no se inventa uno', () => {
+  // EL DEFECTO QUE CIERRA. El ancla es el borde DERECHO —cuándo lo vio el OS— y el conteo pudo haberse
+  // tipeado hasta 2 h antes (`RESOLUCION_HORAS`). Un conteo del martes 23:50 visto el miércoles 00:30
+  // publicaría "miércoles" con `INT(ancla)`: un día que no fue. Se elige el más viejo porque errar
+  // hacia atrás hace saltar la alarma de congelado un día antes y errar hacia adelante la APAGA.
+  const cruzado = { vistoDesde: T(0, 30, 16), previoVistoEn: T(23, 50, 15) }
+  assert.equal(diaDelConteo(cruzado), Math.trunc(instanteDelSello(T(23, 50, 15))),
+    'el día publicado tiene que ser el 15, que es el borde más viejo del intervalo')
+  assert.notEqual(diaDelConteo(cruzado), Math.trunc(instanteDelSello(T(0, 30, 16))),
+    'si se publicara el día del ancla, la fecha afirmaría un conteo que no ocurrió ese día')
+  // Y CUANDO NO CRUZA, LA REGLA NO CAMBIA NADA: los dos bordes caen en el mismo día. Por eso es una
+  // sola regla y no dos ramas — una rama que casi nunca corre es una rama que nadie prueba.
+  assert.equal(diaDelConteo({ vistoDesde: T(17), previoVistoEn: T(15, 9) }),
+    diaDelConteo({ vistoDesde: T(17), previoVistoEn: null }))
+})
+
+test('sin ancla NO hay fecha: se rompe en vez de devolver el serial 0 (30/12/1899)', () => {
+  assert.throws(() => diaDelConteo({}), /instante en que se vio el conteo/)
+  assert.throws(() => diaDelConteo({ vistoDesde: null }), /instante en que se vio el conteo/)
 })
 
 test('sin lectura anterior el intervalo queda ABIERTO y lo dice: no se cierra a ojo', () => {

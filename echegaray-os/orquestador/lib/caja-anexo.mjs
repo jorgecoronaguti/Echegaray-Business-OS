@@ -67,6 +67,27 @@ export const CARGA_TARDIA = {
 }
 
 /**
+ * LOS DOS RENGLONES DE LA FECHA DEL CONTEO — de acá sale la columna D de las filas de efectivo de CAJA.
+ *
+ * POR QUÉ EXISTEN (16/08/2026). El dueño: *"no completaste las fechas de saldos"*. `CAJA!D7` y `D8` —el
+ * 40% del disponible— estaban VACÍAS desde que él borró la celda donde las tipeaba, y con ellas vacías
+ * el aviso de congelado de la tarjeta no podía dispararse nunca sobre esas dos filas: su condición
+ * arranca con `ISNUMBER($D$n)`. La fecha no se le vuelve a pedir —él lo pidió así, textual: *"que no te
+ * guíes en eso sino en lo q marca los timestamps del código"*— y ahora existe de dónde sacarla.
+ *
+ * SU VALOR ES UN NÚMERO PEGADO Y ES LEGÍTIMO, igual que el SELLO y la CARGA TARDÍA: ninguna fórmula de
+ * Sheets puede saber CUÁNDO cambió una celda. Lo estampa la corrida desde `caja_conteo_observado`.
+ *
+ * VACÍO ES UN ESTADO VÁLIDO Y NO UN DEFECTO: sin conteo cargado no hubo conteo, y una fecha ahí sería
+ * una afirmación sobre un hecho que no ocurrió. Es el caso de los dólares hoy (`CAJA_ARQUEO_USD` = 0).
+ */
+export const FECHA_DEL_CONTEO = {
+  ars: '      · la fecha que CAJA publica para el conteo en pesos',
+  usd: '      · la fecha que CAJA publica para el conteo en dólares',
+  origen: 'La estampa la corrida desde el centinela: el DÍA del borde más viejo del intervalo en que se vio el conteo (resolución 2 h, el período del timer). No es el ancla del cálculo —ésa es el instante, en F del SELLO—: es la fecha que se muestra. Vacía = no hay conteo cargado, y entonces CAJA no publica fecha en vez de inventar una.',
+}
+
+/**
  * LOS SEIS RENGLONES DEL HISTÓRICO DE EFECTIVO, declarados como datos y no como seis `push` sueltos.
  *
  * POR QUÉ SE DECLARAN ACÁ (14/08/2026). Sus rótulos dejaron de ser decoración: son el ancla con la que
@@ -408,7 +429,16 @@ function bloqueMovimientos(h) {
   const tardia = (campo) => { const v = h.previo(CARGA_TARDIA.rotulo, campo); return v === '' ? '' : v }
   const fCargaTardia = push([CARGA_TARDIA.rotulo, 'ARS', '', '', tardia('importe'), tardia('medidoEn'),
     CARGA_TARDIA.origen])
-  return { fNeto, fSinCanal, fSello, fEstado, fImposible, fCargaTardia, filasHistorico: [f0, fSello - 1] }
+  // LA FECHA QUE VE EL DUEÑO EN CAJA, con su valor RESCATADO de la corrida anterior. Si se emitiera
+  // vacío y el estampado fallara (base caída, un 429), `CAJA!D7` quedaría en blanco hasta la corrida
+  // siguiente: la fecha del saldo desaparecería de la portada por un problema de infraestructura.
+  const fechaConteo = (campo) => { const v = h.previo(FECHA_DEL_CONTEO[campo], 'dia'); return v === '' ? '' : v }
+  const fFechaArs = push([FECHA_DEL_CONTEO.ars, '', '', '', '', fechaConteo('ars'), FECHA_DEL_CONTEO.origen])
+  const fFechaUsd = push([FECHA_DEL_CONTEO.usd, '', '', '', '', fechaConteo('usd'), FECHA_DEL_CONTEO.origen])
+  return {
+    fNeto, fSinCanal, fSello, fEstado, fImposible, fCargaTardia, fFechaArs, fFechaUsd,
+    filasHistorico: [f0, fSello - 1],
+  }
 }
 
 /**
@@ -592,6 +622,10 @@ export function grillaAnexo(ctx = {}) {
   // pueda crecer sin romper CAJA — y la especie de cada uno se verifica DESPUÉS de publicar.
   const destinos = [
     { name: ANEXO.efectivoNeto, fila: mov.fNeto, col: 3 },
+    // Las dos fechas de conteo van SIN especie: son fechas (seriales) y la de dólares está vacía
+    // mientras no haya conteo. Ver ESPECIE_ANEXO en caja-anexo-nombres.mjs.
+    { name: ANEXO.conteoArsDia, fila: mov.fFechaArs, col: 6 },
+    { name: ANEXO.conteoUsdDia, fila: mov.fFechaUsd, col: 6 },
     { name: ANEXO.efectivoImposible, fila: mov.fImposible, col: 5 },
     { name: ANEXO.oficinaSinCanal, fila: mov.fSinCanal, col: 3 },
     { name: ANEXO.difEcheq, fila: car.fDifCartera, col: 3 },
