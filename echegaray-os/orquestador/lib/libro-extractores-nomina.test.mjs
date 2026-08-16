@@ -147,6 +147,65 @@ test('DIRECCIÓN: si el respaldo es ambiguo NO se parte, y el aviso dice por qu�
   assert.match(avisos[0], /2 lotes/)
 })
 
+// ── LAS OCHO QUINCENAS QUE LA COLUMNA VACÍA CONVIRTIÓ EN DEUDA (16/08/2026) ──────────────────────
+//
+// El archivo vivo, tal cual: la columna "Pagado el" (`JORNALES_REAL_PAGADO`) llega de la API con
+// SIETE valores porque las ocho de abajo están vacías, y las otras columnas llegan con quince. El
+// extractor leía `pagado[7..14] === undefined` y publicaba $70.431.250 de deuda sin una sola señal.
+const CORTE_HOY = 46251
+const HABERES_17_07 = [238600, 267500, 256000, 258000, 250000, 256000, 253400, 251000, 277000,
+  258000, 248000, 240000, 252350, 217100].map((v, k) => ({ fecha: 46220, importe: v, fila: 234 + k, naturaleza: 'Sueldos', concepto: '' }))
+  .concat([{ fecha: 46220, importe: 252200, fila: 225, naturaleza: 'Sueldos', concepto: '' },
+    { fecha: 46170, importe: 69000, fila: 4, naturaleza: 'Comisiones y gastos bancarios', concepto: '' }])
+const EXTRACTO_VIVO = () => ({ debitos: HABERES_17_07, corte: 46248, usados: new Set() })
+// Dos quincenas: la de julio (que el banco prueba) y la de agosto (que todavía no se pagó).
+const COLUMNA_CORTA = {
+  pago: [46220, 46251], hasta: [46218, 46249], banco: [3775150, 3640000],
+  total: [7227250, 7318700], pagado: [], // ← así llega de la API cuando N está vacía
+}
+
+test('JORNALES: la columna "Pagado el" vacía NO convierte una quincena pagada en deuda', () => {
+  const ms = deJornalesQuincenas({ reales: COLUMNA_CORTA }, CORTE_HOY,
+    { aviso: () => {}, extracto: EXTRACTO_VIVO() })
+  const julio = ms.filter((m) => /2026-07-15/.test(m.concepto))
+  const real = julio.find((m) => m.estado === 'REAL')
+  assert.ok(real, 'el extracto tiene los $3.775.150 del 17/07: esa plata YA salió, diga lo que diga la columna')
+  assert.equal(real.importe, 3775150, 'el banco prueba lo que salió POR BANCO, no el total de la quincena')
+  assert.equal(real.fecha, 46220, 'REAL a la fecha del DÉBITO')
+  // El resto (adelanto + recibo) sale por caja física: ninguna fuente lo prueba y sigue abierto.
+  assert.equal(julio.find((m) => m.estado === 'COMPROMETIDO').importe, 3452100)
+  assert.equal(julio.reduce((a, m) => a + m.importe, 0), 7227250, 'partir no crea ni borra plata')
+})
+
+test('JORNALES: la quincena que nadie puede probar se GRITA con su monto, no queda deuda callada', () => {
+  const avisos = []
+  deJornalesQuincenas({ reales: COLUMNA_CORTA }, CORTE_HOY,
+    { aviso: (m) => avisos.push(m), extracto: EXTRACTO_VIVO() })
+  assert.ok(avisos.some((a) => /SIN_TESTIGO|FUERA_DE_VENTANA|SIN_BANCO/.test(a) && /7318700/.test(a)),
+    'una deuda que ninguna fuente confirma tiene que salir por pantalla con nombre y monto')
+})
+
+test('JORNALES: una fecha de pago IMPOSIBLE no mueve la plata de mes', () => {
+  // f134 del archivo vivo: quincena de enero con "Pagado el" del 18/05 (la columna corrida ocho
+  // filas). Usar esa fecha saca $4.888.075 de enero y los pone en mayo, en el Cash Flow Mensual.
+  const avisos = []
+  const ms = deJornalesQuincenas({
+    reales: { pago: [46038], hasta: [46037], banco: [1380275], total: [4888075], pagado: [46160] },
+  }, CORTE_HOY, { aviso: (m) => avisos.push(m), extracto: EXTRACTO_VIVO() })
+  assert.equal(ms.length, 1)
+  assert.equal(ms[0].fecha, 46038, 'manda la fecha prevista: la declarada no puede ser')
+  assert.equal(ms[0].estado, 'COMPROMETIDO', 'sin testigo válido no se afirma que salió')
+  assert.ok(avisos.some((a) => /FECHA_IMPOSIBLE/.test(a)))
+})
+
+test('JORNALES: un débito ya reclamado no vuelve a respaldar a otra quincena', () => {
+  const extracto = EXTRACTO_VIVO()
+  deJornalesQuincenas({ reales: COLUMNA_CORTA }, CORTE_HOY, { aviso: () => {}, extracto })
+  assert.equal(extracto.usados.size, 15, 'los quince débitos del lote quedan consumidos')
+  const otra = deJornalesQuincenas({ reales: COLUMNA_CORTA }, CORTE_HOY, { aviso: () => {}, extracto })
+  assert.ok(!otra.some((m) => m.estado === 'REAL'), 'la misma plata no puede pagar dos quincenas')
+})
+
 test('DIRECCIÓN: un "Pagado" con fecha ANTERIOR al corte sigue siendo REAL y no se toca', () => {
   // El histórico no se vuelve a discutir: si la fecha ya pasó, la plata salió y el saldo lo contiene.
   const ms = deDireccion({ pago: [46213], pagado: [9000000], proyectado: [''] }, HOY,

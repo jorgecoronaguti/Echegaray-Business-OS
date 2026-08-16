@@ -71,6 +71,7 @@ const ENCABEZADO = ['Fecha', 'Signo', 'Importe', 'Moneda', 'Concepto', 'Rubro', 
 /** Los rangos con nombre de la nómina. El cash flow lee EXACTAMENTE éstos: una sola definición. */
 const NOMBRES_NOMINA = [
   'JORNALES_REAL_PAGO', 'JORNALES_REAL_HASTA', 'JORNALES_REAL_PAGADO', 'JORNALES_REAL_TOTAL',
+  'JORNALES_REAL_BANCO',
   'JORNALES_PROY_PAGO', 'JORNALES_PROY_HASTA', 'JORNALES_PROY_TOTAL',
   'OFICINA_PAGO', 'OFICINA_PAGADO', 'OFICINA_PROYECTADO',
   'DIRECCION_PAGO', 'DIRECCION_PAGADO', 'DIRECCION_PROYECTADO',
@@ -320,10 +321,17 @@ async function extraerDeLasFuentes(google, corte) {
       _BANCO_RAW: deBancoCargos(banco, { fila0: 4 }),
       _CHEQUES_RAW: deCartera(carteraRaw),
       'Impuestos y Financieros': deImpuestosCalendario(impuestos, filasCal, new Date().getFullYear(), corte),
+      // EL EXTRACTO TAMBIÉN ES TESTIGO DE LAS QUINCENAS (16/08). Con la columna "Pagado el"
+      // desalineada, ocho quincenas entraban impagas y CAJA publicaba $70.431.250 de deuda que no
+      // existía. `JORNALES_REAL_BANCO` es la parte que sale por transferencia: es lo único que el
+      // banco puede confirmar, y es lo que se compara. Ver lib/jornales-testigos.mjs.
       Jornales: deJornalesQuincenas({
-        reales: { pago: R.JORNALES_REAL_PAGO, hasta: R.JORNALES_REAL_HASTA, pagado: R.JORNALES_REAL_PAGADO, total: R.JORNALES_REAL_TOTAL },
+        reales: {
+          pago: R.JORNALES_REAL_PAGO, hasta: R.JORNALES_REAL_HASTA, pagado: R.JORNALES_REAL_PAGADO,
+          total: R.JORNALES_REAL_TOTAL, banco: R.JORNALES_REAL_BANCO,
+        },
         proyectadas: { pago: R.JORNALES_PROY_PAGO, hasta: R.JORNALES_PROY_HASTA, total: R.JORNALES_PROY_TOTAL },
-      }, corte),
+      }, corte, { extracto, aviso: (m) => console.warn(`  ⚠ ${m}`) }),
       Oficina: deOficina({ pago: R.OFICINA_PAGO, pagado: R.OFICINA_PAGADO, proyectado: R.OFICINA_PROYECTADO },
         corte, { extracto }),
       Dirección: deDireccion({ pago: R.DIRECCION_PAGO, pagado: R.DIRECCION_PAGADO, proyectado: R.DIRECCION_PROYECTADO },
