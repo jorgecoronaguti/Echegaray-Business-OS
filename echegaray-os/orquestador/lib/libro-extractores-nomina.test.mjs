@@ -194,7 +194,13 @@ test('JORNALES: una fecha de pago IMPOSIBLE no mueve la plata de mes', () => {
   }, CORTE_HOY, { aviso: (m) => avisos.push(m), extracto: EXTRACTO_VIVO() })
   assert.equal(ms.length, 1)
   assert.equal(ms[0].fecha, 46038, 'manda la fecha prevista: la declarada no puede ser')
-  assert.equal(ms[0].estado, 'COMPROMETIDO', 'sin testigo válido no se afirma que salió')
+  // CORREGIDO EL 16/08, DESPUÉS DE PUBLICAR: acá decía `estado === 'COMPROMETIDO'`, y esa línea
+  // fijaba el defecto en vez del arreglo. Descartar la fecha por imposible no descarta que el dueño
+  // haya marcado la quincena como pagada: con el estado en COMPROMETIDO, las siete quincenas de
+  // enero a abril —$51.941.723 ya cobrados— salieron publicadas como deuda vencida. Lo que este
+  // test protege es que la plata NO SE MUEVA DE MES, que es su título; el estado lo decide la
+  // afirmación del dueño, no la credibilidad de su fecha.
+  assert.equal(ms[0].estado, 'REAL', 'la marcó pagada: sólo el CUÁNDO era indefendible')
   assert.ok(avisos.some((a) => /FECHA_IMPOSIBLE/.test(a)))
 })
 
@@ -213,4 +219,48 @@ test('DIRECCIÓN: un "Pagado" con fecha ANTERIOR al corte sigue siendo REAL y no
   assert.equal(ms.length, 1)
   assert.equal(ms[0].estado, 'REAL')
   assert.equal(ms[0].fecha, 46213)
+})
+
+// ═══ DESCARTAR LA FECHA NO ES DESCARTAR EL PAGO (16/08/2026) ═══
+//
+// Este test existe porque el defecto se publicó. La primera versión del cruce mandaba una fecha
+// imposible a `null` y el renglón caía en COMPROMETIDO: las siete quincenas de enero a abril
+// —$51.941.723 ya cobrados— aparecieron como deuda vencida, el tramo "Vencido" de CAJA pasó de
+// $(53.811.188) a $(98.641.528) y la tarjeta de "falta pagar" de $125,9M a $174,3M.
+//
+// Que la celda TENGA algo es la afirmación del dueño de que se pagó. Que ese algo sea una fecha
+// creíble es una afirmación distinta, sobre el CUÁNDO, y es la única que la aritmética puede
+// desmentir. Invalidar el cuándo no invalida el qué.
+test('JORNALES: una fecha de pago IMPOSIBLE no convierte una quincena cobrada en deuda', async () => {
+  const { deJornalesQuincenas } = await import('./libro-extractores-nomina.mjs')
+  // Quincena de enero: cierra el 15/01 (46037), se paga el 16/01 (46038), y la columna dice que se
+  // pagó el 18/05 (46160) — 122 días después de lo previsto. La fecha no puede ser: el valor es el
+  // "se paga el" de otra fila. Pero la quincena de enero está cobrada hace meses.
+  const bloques = {
+    reales: {
+      hasta: [[46037]], pago: [[46038]], pagado: [[46160]],
+      banco: [[0]], total: [[4888075]],
+    },
+  }
+  const avisos = []
+  const ms = deJornalesQuincenas(bloques, 46250, { aviso: (m) => avisos.push(m) })
+  assert.equal(ms.length, 1, 'un solo movimiento')
+  assert.equal(ms[0].estado, 'REAL',
+    'la quincena está pagada: descartar la fecha no puede convertirla en deuda')
+  assert.equal(ms[0].fecha, 46038,
+    'con la fecha declarada descartada, manda la PREVISTA — no la imposible')
+  assert.ok(avisos.some((a) => /FECHA_IMPOSIBLE/.test(a)),
+    'y se grita que la fecha se descartó, con nombre y monto')
+})
+
+// La otra mitad de la misma regla: SIN nada tipeado y sin respaldo del banco, sigue siendo deuda.
+// Si esto se relajara, volvería el defecto original — ocho quincenas impagas contadas como pagadas.
+test('JORNALES: sin «Pagado el» y sin banco, la quincena sigue siendo compromiso', async () => {
+  const { deJornalesQuincenas } = await import('./libro-extractores-nomina.mjs')
+  const bloques = {
+    reales: { hasta: [[46184]], pago: [[46186]], pagado: [[null]], banco: [[0]], total: [[8593590]] },
+  }
+  const ms = deJornalesQuincenas(bloques, 46250, { aviso: () => {} })
+  assert.equal(ms.length, 1)
+  assert.notEqual(ms[0].estado, 'REAL', 'nadie probó que salió: no se da por pagada')
 })

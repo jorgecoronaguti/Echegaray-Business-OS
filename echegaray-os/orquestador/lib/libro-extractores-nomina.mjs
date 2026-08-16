@@ -62,7 +62,7 @@ const filaDe = (bloque, i) => `${bloque}:${i + 1}`
  * bancario coincide sería presentar una inferencia como hecho. Se emiten dos renglones —el mismo
  * patrón que `partirContraElExtracto` usa para Dirección— y la suma no se mueve un peso.
  */
-function quincenaAMovimientos({ q, t, fecha, declarada, importe, i }, { corte, extracto, aviso }) {
+function quincenaAMovimientos({ q, t, fecha, declarada, marcada = false, importe, i }, { corte, extracto, aviso }) {
   const comun = {
     signo: SALE,
     importe,
@@ -77,6 +77,11 @@ function quincenaAMovimientos({ q, t, fecha, declarada, importe, i }, { corte, e
   // El dueño la marcó y la fecha es creíble: manda su edición. `estadoDeEgreso` sigue vigilando que un
   // "pagado" con fecha POSTERIOR al corte no se cuente como plata que ya salió (el caso de Dirección).
   if (declarada !== null) {
+    return [movimiento({ ...comun, fecha, estado: estadoDeEgreso({ instrumento: 'desconocido', pagado: true, fecha, corte }) })]
+  }
+  // MARCADA CON FECHA IMPOSIBLE: el dueño afirmó que se pagó y la aritmética sólo desmintió el CUÁNDO.
+  // Sale REAL con la fecha prevista, que es la única defendible, y el grito de arriba ya nombró por qué.
+  if (marcada) {
     return [movimiento({ ...comun, fecha, estado: estadoDeEgreso({ instrumento: 'desconocido', pagado: true, fecha, corte }) })]
   }
   if (t.veredicto !== VEREDICTO.banco || !t.cubierto) {
@@ -152,9 +157,24 @@ export function deJornalesQuincenas({ reales = {}, proyectadas = {} } = {}, cort
     // La fecha declarada sólo cuenta si PUEDE ser la de este pago: una imposible movía $4,9M de enero
     // a mayo en el Cash Flow Mensual sin dar un error. Descartada, manda la prevista.
     const declarada = t.veredicto === VEREDICTO.imposible ? null : q.pagado
+    // ═══ DESCARTAR LA FECHA NO ES DESCARTAR EL PAGO (16/08/2026, publicado y corregido) ═══
+    //
+    // La primera versión de esto mandaba una fecha imposible a `null` y ahí terminaba: el renglón
+    // caía en COMPROMETIDO. Se publicó, y las SIETE quincenas de enero a abril —$51.941.723 que el
+    // dueño cobró hace meses— aparecieron como deuda vencida. El tramo "Vencido" de CAJA pasó de
+    // $(53.811.188) a $(98.641.528) y "falta pagar este mes" de $125,9M a $174,3M. Cambié un error
+    // por otro más grande, y en la dirección contraria a la que este archivo vino a arreglar.
+    //
+    // Son DOS afirmaciones con fuerza distinta y el código las trataba como una:
+    //   · que la celda TENGA algo → el dueño afirma que esta quincena se pagó. Es su edición y manda.
+    //   · que ese algo sea UNA FECHA CREÍBLE → afirma CUÁNDO. Eso sí lo puede desmentir la aritmética.
+    //
+    // Invalidar el cuándo no invalida el qué. Una quincena marcada con fecha imposible sale REAL con
+    // la fecha PREVISTA —la única defendible— y se grita que la fecha se descartó.
+    const marcada = q.pagado !== null
     const fecha = declarada ?? q.pago ?? q.hasta
     if (fecha === null || !importe) continue
-    out.push(...quincenaAMovimientos({ q, t, fecha, declarada, importe, i },
+    out.push(...quincenaAMovimientos({ q, t, fecha, declarada, marcada, importe, i },
       { corte, extracto, aviso }))
   }
   const proy = { pago: columna(proyectadas.pago), hasta: columna(proyectadas.hasta), total: columna(proyectadas.total) }
