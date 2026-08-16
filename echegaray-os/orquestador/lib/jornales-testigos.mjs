@@ -45,9 +45,6 @@ import { isoDeSerial } from './libro-extractores-fechas.mjs'
  */
 export const HOLGURA_HABERES = 7
 
-/** Un peso de tolerancia: el extracto y la planilla redondean distinto, no discrepan de a miles. */
-export const TOLERANCIA = 1
-
 /**
  * Tope de grupos de importe distinto por día para intentar la combinación exacta.
  *
@@ -58,6 +55,13 @@ export const TOLERANCIA = 1
 export const TOPE_GRUPOS = 22
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+/**
+ * SIN TOLERANCIA, Y A PROPÓSITO: se compara en CENTAVOS ENTEROS y el emparejamiento es exacto.
+ *
+ * Acá una diferencia de un peso no es redondeo: es que el subconjunto elegido no es el correcto. Con
+ * ±$1 de holgura, dos combinaciones distintas del mismo día podrían "coincidir" las dos y el módulo
+ * elegiría una — que es exactamente lo que este archivo se niega a hacer.
+ */
 const centavos = (v) => Math.round(v * 100)
 
 /**
