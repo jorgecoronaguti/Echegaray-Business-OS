@@ -379,6 +379,12 @@ async function main() {
  * arqueo que nunca ocurrió. Es el caso de los dólares hoy. Se escribe el vacío EXPLÍCITAMENTE en vez de
  * saltear la celda porque el día que el dueño borre el conteo, su fecha tiene que irse con él.
  *
+ * LÍMITE, PORQUE ESE VACÍO NO SIEMPRE ATERRIZA: `no-borrar.mjs` corrige toda escritura que dejaría en
+ * blanco una celda que hoy tiene algo, y no tiene bypass — a propósito, después de siete pérdidas. O
+ * sea: si un conteo se BORRA, su fecha se queda publicada hasta que un conteo nuevo la reemplace. No se
+ * fuerza con `vaciarPropio`: el barrido de residuo propio ya se cobró un incidente, y ese estado tiene
+ * quien lo grite — con el arqueo en cero se enciende la alerta "Sin arqueo cargado" de la portada.
+ *
  * NO TIRA hacia arriba: si esto falla, cada celda conserva la fecha de la corrida anterior (la grilla la
  * rescata), que sigue siendo verdad sobre ese conteo mientras el conteo no cambie.
  *
