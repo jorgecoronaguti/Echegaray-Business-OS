@@ -30,11 +30,27 @@
 // el núcleo que ya hacía ese diagnóstico y sólo lo imprimía— y fusiona las dos fuentes. Cuando se
 // contradicen gana el extracto: un débito asentado es plata que ya no está.
 //
-// QUÉ HACE, y qué NO. Por (instrumento, número) escribe en la columna DEBITADO: Pagado→"SI",
-// Aceptado→"No". Agrega al final los eCheq que falten. NO toca ninguna otra columna, NO borra, NO
-// reordena, NO agrega los MUERTOS (anulado, repudiado: un repudiado suele ser el duplicado de uno que
-// sí se pagó — el 281 es el gemelo del 282) y NO INVENTA UNA FILA para un débito del banco que el
-// registro no explica: eso se declara como hallazgo en `backlog_autonomo`. Es idempotente.
+// ═══ QUÉ CAMBIÓ EL 17/08: EL NÚMERO DE LA FILA TAMBIÉN PUEDE ESTAR MAL ═══
+//
+// El registro tiene DOS filas "FISICO 316" (Diesel Rodriguez): la 101 por $500.000 y la 102 por
+// $510.000. El extracto dice 316 → $500.000 y 317 → $510.000. O sea que el número de la 102 está mal,
+// y por eso el cruce por número no la encontraba nunca: sus $510.000 salieron el 13/08 y la fila
+// seguía con DEBITADO = "No", figurando como plata comprometida que ya no estaba.
+//
+// El sync ahora aplica también el rescate por IMPORTE ÚNICO (`cheques-debito-banco.mjs`, segundo
+// pase) y hace las dos cosas que corresponden, que son distintas:
+//
+//   · MARCA el DEBITADO. Es completar un dato que el banco prueba, y es lo que el dueño autorizó
+//     cuando dijo "el registro es tuyo, así q si detectas eso lo tenés q agregar".
+//   · NO TOCA el número. Corregirlo reescribe la identidad de la fila y podría fusionar dos cheques
+//     distintos —ya hay dos 316—. Se publican las dos lecturas y lo decide él.
+//
+// QUÉ HACE, y qué NO. Por (instrumento, número) —y por importe único cuando el número no explica
+// nada— escribe en la columna DEBITADO: Pagado→"SI", Aceptado→"No". Agrega al final los eCheq de
+// `public.cheques` que falten. NO toca ninguna otra columna, NO borra, NO reordena, NO cambia el
+// número de ninguna fila, NO agrega los MUERTOS (anulado, repudiado: un repudiado suele ser el
+// duplicado de uno que sí se pagó — el 281 es el gemelo del 282) y NO INVENTA UNA FILA para un débito
+// que el registro no explica: eso se declara como hallazgo en `backlog_autonomo`. Es idempotente.
 //
 //   node orquestador/scripts/cheques-emitidos-sync-banco.mjs [--dry]
 
@@ -43,7 +59,7 @@ import { loadConfig } from '../lib/config.mjs'
 import { query, closePool } from '../lib/db.mjs'
 import { planSync, filaRegistro, verificarEncabezado, sinComprobante, COL, norm } from '../lib/cheques-emitidos-sync.mjs'
 import { conciliarDebitosDeCheques } from '../lib/cheques-debito-banco.mjs'
-import { fusionarDebitado, huerfanosDeDebito, anotarHuerfanos } from '../lib/cheques-debitado-fusion.mjs'
+import { fusionarDebitado, huerfanosDeDebito, anotarHuerfanos, numerosQueElBancoDesmiente } from '../lib/cheques-debitado-fusion.mjs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
 import { bloquear, desbloquear } from '../lib/pestana-bloqueada.mjs'
 
@@ -157,9 +173,11 @@ async function main() {
   // LA IDENTIDAD QUE CIERRA: cada salida de cheque del extracto tiene una fila que la explica, o un
   // motivo declarado. Sin este renglón, "3 marcados" no dice nada sobre los que quedaron afuera.
   const salidas = conciliacion.filter((r) => r.estado !== 'no_es_debito_de_cheque').length
-  const cuadra = resumen.emparejados + resumen.ambiguos + resumen.sin_cheque + resumen.sin_referencia === salidas
+  const cuadra = resumen.emparejados + resumen.emparejados_por_importe + resumen.ambiguos
+    + resumen.sin_cheque + resumen.sin_referencia === salidas
   console.log(`extracto: ${movs.length} débito(s) · ${salidas} son salidas de cheque = ${resumen.emparejados} emparejada(s)`
-    + ` + ${resumen.ambiguos} ambigua(s) + ${resumen.sin_cheque} sin fila + ${resumen.sin_referencia} sin referencia${cuadra ? '' : '  ✖ NO CIERRA'}`)
+    + ` + ${resumen.emparejados_por_importe} por importe + ${resumen.ambiguos} ambigua(s)`
+    + ` + ${resumen.sin_cheque} sin fila + ${resumen.sin_referencia} sin referencia${cuadra ? '' : '  ✖ NO CIERRA'}`)
   if (!cuadra) process.exitCode = 1
   // Un cheque sin NÚMERO no puede cruzarse contra el extracto nunca: queda fuera del cruce por
   // construcción, y callarlo haría pasar por "todo conciliado" a un registro con puntos ciegos.
@@ -190,6 +208,21 @@ async function main() {
     console.log(`\n⚠ ${conflictos.length} cheque(s) que public.cheques da por VIVOS y el extracto ya pagó — gana el extracto:`)
     for (const c of conflictos) console.log(`    ${c.clave.padEnd(12)} fila ${String(c.fila).padStart(4)}  ${c.evidencia}`)
     console.log('    La foto de public.cheques quedó vieja: corré `importar-cheques.mjs` con la pantalla de eCHEQ del banco.')
+  }
+
+  // ── EL NÚMERO DE LA FILA CONTRA EL NÚMERO DEL BANCO ──────────────────────────────────────────────
+  // Se marca el DEBITADO (el banco prueba que la plata salió) y NO se toca el número: corregirlo
+  // reescribe la identidad de la fila, y en el registro real ya hay dos "FISICO 316" — un número mal
+  // corregido fusiona dos cheques distintos. Lo decide el dueño, con las dos lecturas a la vista.
+  const desmentidos = numerosQueElBancoDesmiente(conciliacion)
+  if (desmentidos.length) {
+    console.log(`\n⚠ ${desmentidos.length} fila(s) con el NÚMERO de cheque en discusión — el DEBITADO sí se marca, el número NO:`)
+    for (const d of desmentidos) {
+      console.log(`    fila ${String(d.fila).padStart(4)}  dice N° ${String(d.numeroDeLaFila).padEnd(5)} y el banco dice N° ${String(d.referenciaDelBanco).padEnd(5)}`
+        + `  ${$(d.importe).padStart(16)}  ${d.beneficiario}`)
+      console.log(`      ${d.evidencia}`)
+    }
+    console.log('    Decidilo vos: o la fila tiene mal el número, o el extracto lo trajo mal. El importe coincide al centavo.')
   }
 
   // ── PLATA QUE SALIÓ SIN UNA FILA QUE LA RESPALDE ─────────────────────────────────────────────────

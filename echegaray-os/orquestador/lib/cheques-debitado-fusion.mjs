@@ -55,18 +55,28 @@ export function loQueAfirmaLaBase(base = []) {
   return m
 }
 
+/** Los dos estados en los que el extracto AFIRMA que ese cheque salió. El segundo llegó el 17/08. */
+const EMPAREJADOS = ['emparejado', 'emparejado_por_importe']
+
 /**
  * Las marcas de DEBITADO que se deducen del extracto: sólo los emparejados que la pestaña todavía da
  * por vivos. Un emparejado ya marcado "SI" no produce nada — el sync es idempotente por construcción.
+ *
+ * ENTRA TAMBIÉN EL RESCATE POR IMPORTE (17/08). La fila 102 del registro dice "FISICO 316" y el banco
+ * dice 317: el número no cierra, pero los $510.000 salieron el 13/08 y quedaba con DEBITADO = "No".
+ * Marcar eso es completar un dato que el banco prueba. Lo que NO se toca es el número: esta función
+ * sólo sabe producir marcas para la columna DEBITADO, y el `numero` que devuelve es el de LA FILA —no
+ * el del banco—, justamente para que nadie confunda esta marca con una corrección de identidad.
  *
  * @param {Array<object>} conciliacion resultados de `conciliarDebitosDeCheques`
  * @returns {Array<{fila:number, a:'SI', de:string, instrumento:string, numero:string, monto:number, evidencia:string, fuentes:string[]}>}
  */
 export function marcasDelBanco(conciliacion = []) {
   return conciliacion
-    .filter((r) => r?.estado === 'emparejado' && r.cheque && !r.cheque.debitado)
+    .filter((r) => EMPAREJADOS.includes(r?.estado) && r.cheque && !r.cheque.debitado)
     .map((r) => {
       const [instrumento, numero] = String(r.clave).split('|')
+      const base = `el banco lo debitó el ${r.mov?.fecha ?? 's/f'} ("${String(r.mov?.concepto ?? '').trim()}")`
       return {
         fila: r.cheque.fila,
         a: 'SI',
@@ -74,10 +84,43 @@ export function marcasDelBanco(conciliacion = []) {
         instrumento,
         numero,
         monto: Number(r.cheque.importe) || 0,
-        evidencia: `el banco lo debitó el ${r.mov?.fecha ?? 's/f'} ("${String(r.mov?.concepto ?? '').trim()}")`,
+        // Las DOS lecturas en la evidencia: marcar el DEBITADO sin nombrar el número que no cierra
+        // taparía el defecto de fondo justo en el renglón donde se lo puede ver.
+        evidencia: r.discrepancia
+          ? `${base} — el banco lo llama N° ${r.discrepancia.referenciaDelBanco} y esta fila dice `
+            + `${r.discrepancia.numeroDeLaFila}; empareja por importe exacto`
+          : base,
         fuentes: ['banco'],
       }
     })
+}
+
+/**
+ * LOS NÚMEROS QUE EL BANCO DESMIENTE — para que los decida el dueño, no el OS.
+ *
+ * Marcar un DEBITADO es completar un dato que el banco prueba. Cambiar el NÚMERO de un cheque es otra
+ * cosa: reescribe la identidad de la fila y puede fusionar dos cheques distintos —en el registro real
+ * ya hay DOS filas "FISICO 316"—. Así que la contradicción se publica con sus dos lecturas y se para
+ * ahí. Que este listado exista es lo que permite marcar el DEBITADO sin tapar el número equivocado.
+ *
+ * @param {Array<object>} conciliacion
+ * @returns {Array<{fila:number, referenciaDelBanco:string, numeroDeLaFila:string, importe:number,
+ *                  fecha:string, beneficiario:string, evidencia:string}>}
+ */
+export function numerosQueElBancoDesmiente(conciliacion = []) {
+  return conciliacion
+    .filter((r) => r?.estado === 'emparejado_por_importe' && r.discrepancia && r.cheque)
+    .map((r) => ({
+      fila: r.cheque.fila,
+      referenciaDelBanco: r.discrepancia.referenciaDelBanco,
+      numeroDeLaFila: r.discrepancia.numeroDeLaFila,
+      importe: Number(r.cheque.importe) || 0,
+      fecha: String(r.mov?.fecha ?? ''),
+      beneficiario: String(r.cheque.beneficiario ?? '').trim(),
+      evidencia: `El extracto tiene el ${r.mov?.fecha ?? 's/f'}: "${String(r.mov?.concepto ?? '').trim()}" por `
+        + `${$(Math.abs(Number(r.mov?.importe) || 0))} con la referencia ${r.discrepancia.referenciaDelBanco}. `
+        + `La fila ${r.cheque.fila} tiene ese importe exacto y lleva el número ${r.discrepancia.numeroDeLaFila}.`,
+    }))
 }
 
 /**
