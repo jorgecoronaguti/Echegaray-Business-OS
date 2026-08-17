@@ -47,6 +47,10 @@ import {
 import { cruzar, chequesDelRegistro } from '../lib/cruce-cheque-factura.mjs'
 import { endososDeCartera } from '../lib/libro-endosos.mjs'
 import { debitosDelExtracto, corteDelExtracto, pagosDeResumen, chequesCubiertosPorBanco } from '../lib/libro-respaldo-banco.mjs'
+// EL CRUCE DEL RESTO DEL LIBRO (cargas sociales, impuestos, financiero). Corre sobre el libro
+// ENTERO, como el de cheques: un extractor que sólo ve su pestaña no puede saber qué débito ya
+// reclamó otro. Ver lib/libro-cruce-banco.mjs.
+import { cruzarLibroContraBanco, aplicarCruce, VEREDICTO_CRUCE, GRITAN_CRUCE } from '../lib/libro-cruce-banco.mjs'
 import { ROTULOS_CALENDARIO, CALENDARIO_IMPUESTOS } from '../lib/cash-flow-lineas.mjs'
 import { coberturaPorRubro, huecosDeCobertura, problemasDeRol, verificarCobertura } from '../lib/cash-flow-cobertura.mjs'
 import { fechaDeSerial } from '../lib/libro-extractores-fechas.mjs'
@@ -343,14 +347,47 @@ async function extraerDeLasFuentes(google, corte) {
     // el libro ENTERO (necesita a los REAL para que consuman su débito primero), no dentro de un
     // extractor que sólo ve su pestaña.
     debitosBanco: extracto.debitos,
+    // EL MISMO Set QUE YA CONSUMIÓ LA NÓMINA. El cruce del resto del libro corre después y tiene que
+    // ver qué débitos están reclamados: con un Set nuevo, el lote de haberes que ya pagó una quincena
+    // podría además "pagar" una obligación de otra naturaleza. Un débito respalda a UNO solo.
+    usadosBanco: extracto.usados,
   }
+}
+
+/**
+ * EL CRUCE DEL RESTO DEL LIBRO CONTRA EL EXTRACTO, con su evidencia impresa.
+ *
+ * La decisión vive en `lib/libro-cruce-banco.mjs` (núcleo puro, probado en frío); acá sólo se le
+ * arma el contexto y se MUESTRA lo que decidió. Se imprime todo: lo que retira, lo que grita y lo
+ * que sobró del banco sin obligación que lo explique — una plata que cambia de estado sin que nadie
+ * diga cuánta es indistinguible de un error.
+ */
+function cruceBanco(libro, debitos, corteBanco, usados) {
+  const desdeExtracto = debitos.reduce((a, d) => (a === null || d.fecha < a ? d.fecha : a), null)
+  const r = cruzarLibroContraBanco(libro, debitos, { corte: corteBanco, desdeExtracto, usados })
+  for (const aviso of r.avisos) console.log(`  ⚠ ${aviso}`)
+  let retirado = 0
+  r.veredictos.forEach((v, i) => {
+    if (v.veredicto !== VEREDICTO_CRUCE.banco) return
+    retirado += libro[i].importe
+    console.log(`  ✓ ${libro[i].concepto?.slice(0, 46)} ${pesos(libro[i].importe)}: ${v.motivo} `
+      + `— pasa a REAL (_BANCO_RAW f${v.filas.join(', f')})`)
+  })
+  const gritan = [...r.veredictos.values()].filter((v) => GRITAN_CRUCE.includes(v.veredicto))
+  if (retirado) console.log(`  → el extracto retira ${pesos(retirado)} de deuda que ya estaba pagada`)
+  if (gritan.length) console.log(`  → ${gritan.length} obligación(es) que ninguna fuente prueba (ver deuda-evidencia-pago.mjs)`)
+  for (const s of r.sobrantes) {
+    console.log(`  ⚠ el banco pagó ${pesos(s.sobrante)} de ${s.naturaleza} el serial ${s.fecha} que NINGUNA `
+      + `obligación del libro explica (_BANCO_RAW f${s.fila}) — falta cargar ese concepto`)
+  }
+  return r
 }
 
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const corte = hoySerial()
-  const { fuentes: porFuente, excluidos, corteBanco, debitosBanco, colEstadoCompras, colsVivas } = await extraerDeLasFuentes(google, corte)
-  const todos = Object.values(porFuente).flat()
+  const { fuentes: porFuente, excluidos, corteBanco, debitosBanco, usadosBanco, colEstadoCompras, colsVivas } = await extraerDeLasFuentes(google, corte)
+  let todos = Object.values(porFuente).flat()
   // ═══ EL EXTRACTO CORRIGE LOS CHEQUES QUE LAS PESTAÑAS TODAVÍA DAN POR VIVOS (06/08) ═══
   //
   // `public.cheques` tenía corte 31/07 y el banco ya había debitado cheques que el libro seguía
@@ -364,6 +401,13 @@ async function main() {
       + `pasa a REAL al serial ${d.fecha} (débito _BANCO_RAW f${d.fila})`)
     todos[i] = { ...m, estado: 'REAL', fecha: d.fecha }
   })
+  // ═══ Y EL RESTO DEL LIBRO TAMBIÉN SE CRUZA CONTRA EL EXTRACTO (17/08) ═══
+  //
+  // Hasta hoy el extracto sólo era testigo de la nómina y de los cheques: las cargas sociales, los
+  // impuestos y el financiero decidían "pagado" por lo que dijera su pestaña de origen. Cuando nadie
+  // marcó la pestaña, la plata figuraba debiéndose aunque el banco la hubiera pagado once días antes
+  // — el F931 de julio ($7.074.772) con el pago de ARCA del 11/08 ya debitado. Ver lib/libro-cruce-banco.mjs.
+  todos = aplicarCruce(todos, cruceBanco(todos, debitosBanco, corteBanco, usadosBanco))
   const { libro: dedup, colapsos } = deduplicar(todos)
   const { consolidado, internas, netoInterno } = separarInternas(dedup)
 
