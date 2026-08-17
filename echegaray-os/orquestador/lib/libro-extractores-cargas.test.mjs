@@ -187,3 +187,64 @@ test('EL AÑO ES DEL DEVENGADO: la nómina de diciembre que sale en enero se lla
   assert.ok(!ms.some((m) => /-27$/.test(String(m.concepto).slice(-3)) && !String(m.concepto).includes('dic')),
     'ningún concepto puede citar un año que la serie no devenga')
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL CANDADO: LA CADENA NO RETIRA DEUDA PORQUE UNA FECHA HAYA VENCIDO (17/08/2026)
+//
+// Vino un pedido a arreglar esto: *"el F931 de julio salió publicado como deuda VENCIDA, pero la
+// pestaña Cargas Sociales ya declaraba en su fila 25 (bloque «2 · PAGADO») que en ago-26 salieron
+// $10.494.876 — el dato existía y el libro no lo miraba"*. La premisa era falsa y medirla lo probó:
+// esos $10.494.876 los armaban la fila 469 de Compras ($8.000.000, estado «Proyectado») y la 725
+// ($2.494.876, cuota de plan «Pendiente»). No había un peso pagado. El cuadro sumaba por fecha.
+//
+// HACERLO HABRÍA SIDO LA SÉPTIMA PÉRDIDA, y por dos motivos que se suman:
+//
+//   1. **Es un control validado contra la información que produce.** La fila 25 sale de Compras; la
+//      cadena existe precisamente para reemplazar las filas planas de Compras (ver la precedencia
+//      declarada arriba de este archivo). Leerla de vuelta cierra un círculo: la previsión tipeada
+//      terminaría probando que la obligación que ella misma proyecta ya se pagó.
+//   2. **Una fecha vencida no es un pago.** Es exactamente lo contrario: una obligación con la fecha
+//      pasada y sin marcar es lo que hay que MIRAR, no lo que hay que dar por saldado.
+//
+// El bloque 2 de la pestaña quedó arreglado (`cargas-bloques.mjs`: exige "Pagado" y acota por rubro),
+// así que hoy la fila 25 diría $0 en ago-26 y ni siquiera sostendría el retiro. Estos tests fijan que
+// el criterio del libro no se afloje: PAGADO ES LO QUE EL CARGADOR MARCÓ, y sólo eso.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+const VENCIDO_YA = S('2026-08-20') // corte posterior a TODAS las fechas de caja del fixture de agosto
+
+test('CANDADO · una fila con la fecha ya vencida y sin marcar NO cuenta como pagada', () => {
+  // Con corte al 20/08, las cuatro filas de agosto del fixture tienen la fecha pasada y ninguna está
+  // marcada. Si algún día `cargasEnCompras` empezara a leerlas como pagadas —que es lo que hacía el
+  // cuadro de la pestaña—, agosto desaparecería de `mesesPagados` y la cadena dejaría de emitirlo.
+  const { mesesPagados } = cargasEnCompras(COMPRAS)
+  assert.ok(!mesesPagados.has(`2026-08·${RUBRO_CARGAS}`),
+    'el F931 de agosto figura pagado y la única fila de Compras que lo respalda dice «Proyectado»')
+  assert.ok(!mesesPagados.has(`2026-08·${RUBRO_GREMIALES}`),
+    'los gremiales de agosto figuran pagados y sus filas dicen «Proyectado»')
+  // Y lo que SÍ está marcado sigue contando: el candado no puede apagar la precedencia real.
+  assert.ok(mesesPagados.has(`2026-06·${RUBRO_CARGAS}`), 'la fila «Pagado» de junio dejó de contar')
+})
+
+test('CANDADO · la obligación proyectada se sigue publicando aunque su fecha ya haya pasado', () => {
+  // El renglón no se retira: se marca VENCIDO, que es el estado que el libro define para "estaba
+  // previsto para una fecha que ya pasó y nadie lo marcó como real". Retirarlo sería inventar un pago.
+  const ms = deCargasSociales({ fechas: FECHAS, f931: F931, gremiales: GREMIALES }, VENCIDO_YA,
+    { mesesPagados: cargasEnCompras(COMPRAS).mesesPagados })
+  const agosto = ms.filter((m) => m.fecha === S('2026-08-10'))
+  assert.equal(agosto.length, 2, 'la obligación de agosto desapareció del libro sin que nadie la pagara')
+  for (const m of agosto) {
+    assert.equal(m.estado, 'VENCIDO', `la obligación vencida salió ${m.estado}: eso la esconde del trabajo pendiente`)
+  }
+  assert.equal(agosto.reduce((a, m) => a + m.importe, 0), 6955255 + 1614090)
+})
+
+test('CANDADO · el importe publicado es el que la cadena MIDIÓ, no el que Compras preveía', () => {
+  // La fila 469 de Compras dice $8.000.000 (redondo, tipeado); la cadena mide $6.955.255. Si el
+  // extractor tomara el número de Compras para "cerrar" contra el cuadro de lo pagado, el libro
+  // volvería a publicar el presupuesto que este archivo entero vino a reemplazar.
+  const ms = deCargasSociales({ fechas: FECHAS, f931: F931, gremiales: GREMIALES }, VENCIDO_YA)
+  const f931Agosto = ms.find((m) => m.fecha === S('2026-08-10') && m.rubro === RUBRO_CARGAS)
+  assert.equal(f931Agosto.importe, 6955255)
+  assert.notEqual(f931Agosto.importe, 8000000, 'volvió el número redondo tipeado en Compras')
+})
