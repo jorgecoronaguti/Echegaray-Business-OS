@@ -17,18 +17,32 @@ if (existsSync(envPath)) {
   }
 }
 
+// EL MISMO RECORRIDO SE PUEDE CORRER CONTRA PRODUCCIÓN.
+//
+// `E2E_BASE_URL=https://app.ecsas.com.ar npx playwright test` apunta los specs al sitio real y no
+// levanta ningún servidor local. Es el smoke test de después de un deploy: los tests que importan
+// —que sin sesión no se vea nada, que las pantallas abran con sesión real— sólo prueban algo si se
+// corren contra lo que el dueño abre en su teléfono. Con localhost, un permiso faltante en la base
+// de producción no se ve.
+const BASE = process.env.E2E_BASE_URL || 'http://localhost:3000'
+const esLocal = BASE.includes('localhost')
+
 export default defineConfig({
   testDir: './tests',
   fullyParallel: true,
   reporter: [['list']],
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: BASE,
     screenshot: 'only-on-failure',
   },
-  webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:3000',
-    reuseExistingServer: !process.env.CI,
-    timeout: 60_000,
-  },
+  ...(esLocal
+    ? {
+        webServer: {
+          command: 'npm run dev',
+          url: BASE,
+          reuseExistingServer: !process.env.CI,
+          timeout: 60_000,
+        },
+      }
+    : {}),
 })
