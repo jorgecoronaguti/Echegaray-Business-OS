@@ -363,3 +363,87 @@ test('la cadena arranca en los jornales: la remuneración proyectada cuelga de s
   const rem = filaCS(/^Remuneración proyectada/)
   assert.match(String(rem[9]), /JORNALES_PROY_TOTAL/, 'la remuneración dejó de colgar de los jornales proyectados')
 })
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL BLOQUE 2 DECÍA "SALIÓ DE LA CAJA" SOBRE PLATA QUE NO SALIÓ (17/08/2026)
+//
+// Medido contra el Sheet vivo. La fila «F931» del bloque *"2 · PAGADO — ¿cuánto salió efectivamente
+// de la caja?"* publicaba **$10.494.876 en ago-26**. Ninguno de esos pesos salió:
+//
+//   · Compras f469 — $8.000.000, ARCA, fecha de caja 10/08, estado **«Proyectado»**. Es el número
+//     redondo tipeado que `libro-extractores-cargas.mjs` ya denuncia en su cabecera como previsión.
+//   · Compras f725 — $2.494.876, cuota del plan W303094, fecha 16/08, estado **«Pendiente»**, rubro
+//     «Deuda previsional (planes de pago)» — pero con "F931" en Cliente/Asignación, así que entraba
+//     por la puerta del F931 Y volvía a contarse en la fila del plan de al lado.
+//
+// EL TOPE DE HOY NO ALCANZA, Y ÉSE ERA EL ERROR DE FONDO. El arreglo del 23/07 cortó el futuro
+// (`<=TODAY()`), que resuelve los meses que vienen; no resuelve la fila de ESTE mes cuya fecha
+// prevista ya pasó y que nadie marcó. Una fecha vencida no es un pago: es una previsión atrasada.
+//
+// Y LA PROPIA PESTAÑA YA SABÍA CÓMO SE PREGUNTA. Doce filas más arriba, el hero de planes de pago
+// mide por HECHO (`"<>Pagado"` sobre la columna del cargador) y por eso da bien. Dos definiciones de
+// "pagado" en la misma pestaña: la de arriba correcta y la de abajo por fecha. La consecuencia se
+// propagaba al hero —REAL inflado ~$10,5M y COMPROMETIDO desinflado en lo mismo, porque sale por
+// diferencia— y a la sección 3, que llegó a declarar $10.494.876 de sobrepago inexistente.
+//
+// LO QUE ESTOS TESTS NO HACEN, Y ES DELIBERADO: no leen la fila 25 para decidir nada. Un extractor
+// que retire deuda porque este cuadro dice "pagado" estaría validando el control contra la misma
+// información que lo produce (la fila sale de Compras, y la cadena existe para reemplazar a Compras).
+// El candado de ese lado vive en `lib/libro-extractores-cargas.test.mjs`.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+/** Las filas del bloque 2. `filaCS` devuelve la PRIMERA coincidencia y el bloque 2 va antes que el 4,
+ *  donde FCL/UOCRA/IERIC/FODECO vuelven a aparecer como proyección. */
+const CONCEPTOS_PAGADOS = ['F931', 'Deuda previsional en cuotas', 'FCL', 'UOCRA', 'IERIC', 'FODECO']
+
+test('2 · PAGADO: una fila que la planilla NO marcó "Pagado" no salió de la caja', () => {
+  const sinEstado = []
+  for (const rotulo of CONCEPTOS_PAGADOS) {
+    const f = filaCS(new RegExp(`^${rotulo}$`))
+    assert.ok(f, `no encontré la fila «${rotulo}» del bloque de lo pagado`)
+    // Se mira una columna cualquiera de la grilla mensual (ago = índice 8): las doce se generan igual.
+    const v = String(f[8] ?? '')
+    if (!new RegExp(`Compras!\\$${COLS.estado}\\$4`).test(v) || !/"Pagado"/.test(v)) sinEstado.push(`${rotulo}: ${v}`)
+  }
+  assert.deepEqual(sinEstado, [],
+    'estas filas dicen "salió de la caja" mirando sólo la FECHA. Al 17/08 eso publicó $10.494.876 de '
+    + `F931 pagado en agosto contra $0 realmente pagados:\n${sinEstado.join('\n')}`)
+})
+
+test('2 · PAGADO: el tope de HOY se queda, pero ya no decide solo', () => {
+  // El arreglo del 23/07 sigue vigente y hace falta: una fila marcada "Pagado" con fecha de caja
+  // futura tampoco salió todavía. Los dos filtros son necesarios y ninguno reemplaza al otro.
+  for (const rotulo of CONCEPTOS_PAGADOS) {
+    assert.match(String(filaCS(new RegExp(`^${rotulo}$`))[8]), /TODAY\(\)/,
+      `«${rotulo}» perdió el tope de hoy: lo previsto para diciembre volvería a contarse como pagado`)
+  }
+})
+
+test('2 · PAGADO: la cuota de un plan no entra por la fila del F931', () => {
+  // Compras f725 tiene "F931" en Cliente/Asignación y rubro «Deuda previsional (planes de pago)».
+  // Con el criterio por cliente solo, sus $2.494.876 sumaban en la fila del F931 mientras la fila del
+  // plan los contaba aparte: el mismo peso, dos veces, dentro del mismo cuadro.
+  const f931 = String(filaCS(/^F931$/)[8])
+  assert.match(f931, new RegExp(`Compras!\\$${COLS.rubro}\\$4`),
+    'la fila del F931 no acota por rubro: una cuota de plan rotulada "F931" se cuenta como F931')
+  assert.match(f931, /Nómina · Cargas sociales/, 'el rubro tiene que ser el de la taxonomía única')
+})
+
+test('2 · PAGADO: los gremiales se acotan a SU rubro', () => {
+  for (const rotulo of ['FCL', 'UOCRA', 'IERIC', 'FODECO']) {
+    const v = String(filaCS(new RegExp(`^${rotulo}$`))[8])
+    assert.match(v, /Nómina · Gremiales/,
+      `«${rotulo}» no acota por rubro: cualquier fila con ese texto en Cliente/Asignación entra al cuadro`)
+  }
+})
+
+test('UNA SOLA DEFINICIÓN DE "PAGADO" EN TODA LA PESTAÑA', () => {
+  // El defecto no fue una fórmula: fue que convivieran dos criterios para la misma palabra. Este test
+  // los ata. Si mañana alguien agrega un cuadro de "lo que salió" con un tercer criterio, se pone rojo.
+  const hero = String(filaCS(/^⇒ En planes de pago/)[1])
+  assert.match(hero, new RegExp(`Compras!\\$${COLS.estado}\\$4`), 'el hero mide por estado')
+  for (const rotulo of CONCEPTOS_PAGADOS) {
+    assert.match(String(filaCS(new RegExp(`^${rotulo}$`))[8]), new RegExp(`Compras!\\$${COLS.estado}\\$4`),
+      `«${rotulo}» mide "pagado" por un criterio distinto al del hero, en la misma pestaña`)
+  }
+})

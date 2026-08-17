@@ -25,7 +25,7 @@ import { CUENTAS } from '../lib/caja-disponibilidades.mjs'
 import { VACIO } from '../lib/preservar-anotaciones.mjs'
 import { terminoLibro, LIBRO } from '../lib/libro-sumas.mjs'
 import { NO_REAL, DEUDA, PLAN, FIN_DE_MES } from '../lib/caja-tarjetas.mjs'
-import { BORDES } from '../lib/caja-calendario.mjs'
+import { BORDES, signoDelTramo, TRAMO_VENCIDO } from '../lib/caja-calendario.mjs'
 import { ANEXO } from '../lib/caja-anexo-nombres.mjs'
 
 /** Una celda VACÍA de la grilla. El generador no escribe cadena vacía: escribe el centinela VACIO, que
@@ -225,7 +225,11 @@ test('EL PRIMER TRAMO ABRE EN EL SERIAL 0: un cheque viejo sin presentar no pued
   // debitado no caería en ningún tramo: el piso subiría sin que se haya pagado nada. Con el libro esto
   // es seguro porque lo que ya salió está marcado REAL, y REAL está excluido de todos los tramos.
   const g = construir()
-  assert.equal(celda(g, g.lad0, 7), `=${terminoLibro({ desde: '0', hasta: 'TODAY()', estados: NO_REAL })}`,
+  // EL LADO sale de `signoDelTramo` y no se tipea acá: este test es sobre la VENTANA (que abre en el
+  // serial 0), y con el signo escrito a mano volvería a fallar el día que la regla de lado cambie, por
+  // un invariante que no es el suyo. Quién cuenta qué lado lo prueba lib/caja-calendario.test.mjs.
+  assert.equal(celda(g, g.lad0, 7),
+    `=${terminoLibro({ desde: '0', hasta: 'TODAY()', estados: NO_REAL, signo: signoDelTramo(TRAMO_VENCIDO) })}`,
     'el tramo Vencido tiene que abrir en el serial 0 y cerrar hoy')
   assert.ok(celda(g, g.lad0 + 1, 7).includes('CAJA_FECHA_SALDO'),
     'y sólo el primero: el resto arranca en su borde, nunca antes del corte del extracto')

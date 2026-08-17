@@ -13,7 +13,7 @@ import {
   CONCEPTOS_CADENA, A_VERIFICAR, RANGO_DIA_PAGO_F931,
   formulaProporcionPrimerAnio, proyeccionDeConcepto, jornalesDelMes,
 } from './cargas-cadena.mjs'
-import { ROTULOS_CARGAS, RUBRO_PLANES } from './libro-extractores-cargas.mjs'
+import { ROTULOS_CARGAS, RUBRO_PLANES, RUBRO_CARGAS, RUBRO_GREMIALES } from './libro-extractores-cargas.mjs'
 import { MES, cm, REALES } from './cargas-grilla.mjs'
 import { notaSupuesto } from './proyeccion-convenio.mjs'
 import { ALERTA } from './glifos.mjs'
@@ -53,7 +53,7 @@ export function bloquePagado(G, { anio, C, fArtDecl = 0, fDeclTot = 0 }) {
   G.cabecera()
   // LAS COLUMNAS DE COMPRAS SE RESUELVEN POR SU ENCABEZADO. Éste es el bloque que estaba en #VALUE!
   // desde que una columna de Compras se movió y la referencia por letra quedó en #REF!.
-  // PAGADO ES PAGADO: SÓLO HASTA HOY.
+  // PAGADO ES PAGADO: LO QUE LA PLANILLA MARCÓ, Y SÓLO HASTA HOY.
   //
   // EL DEFECTO QUE ESTO CORRIGE (23/07). Compras tiene cargados los pagos PREVISTOS de los meses que
   // vienen, con su fecha de caja futura. Sin el tope de hoy, la sección "¿cuánto salió efectivamente
@@ -62,16 +62,51 @@ export function bloquePagado(G, { anio, C, fArtDecl = 0, fDeclTot = 0 }) {
   // $44,8M declarados. Un cuadro de lo pagado que incluye lo que todavía no se pagó no es un error
   // de presentación: es un número que se usa para decidir y está mal. Lo previsto se contrasta en la
   // sección 5, donde corresponde, contra la proyección propia.
+  //
+  // ═══ Y EL TOPE DE HOY NO ALCANZABA: UNA FECHA VENCIDA NO ES UN PAGO (17/08/2026) ═══
+  //
+  // El corte de arriba resuelve el FUTURO. No resuelve la fila de este mes cuya fecha prevista ya
+  // pasó y que nadie marcó — y ésa es justo la que se mira. Medido en el Sheet vivo al 17/08, esta
+  // fila publicaba **$10.494.876 de F931 "salido de la caja" en agosto contra $0 realmente pagados**:
+  //
+  //   · Compras f469 — $8.000.000, ARCA, fecha de caja 10/08, estado «Proyectado». Es el número
+  //     redondo tipeado que `libro-extractores-cargas.mjs` denuncia como previsión en su cabecera.
+  //   · Compras f725 — $2.494.876, cuota del plan W303094, 16/08, estado «Pendiente» y rubro
+  //     «Deuda previsional (planes de pago)», pero con "F931" en Cliente/Asignación.
+  //
+  // El daño no quedaba acá: el hero saca REAL de esta fila y COMPROMETIDO por diferencia, así que
+  // inflaba lo pagado ~$10,5M y desinflaba en lo mismo la deuda que se usa para decidir; y la
+  // sección 3 llegó a declarar $10.494.876 de sobrepago que no existe.
+  //
+  // LA PESTAÑA YA SABÍA CÓMO SE PREGUNTA. Doce filas más arriba el hero de planes mide por HECHO
+  // (`"<>Pagado"` sobre la columna del cargador). Convivían dos definiciones de "pagado" en la misma
+  // pestaña, la de arriba correcta y la de abajo por fecha. Ahora es una sola, y es la del cargador
+  // —la misma que `estaPagada` usa en el libro—, así que la pestaña y el Libro Canónico no pueden
+  // discrepar sobre qué salió.
+  //
+  // EL RUBRO ACOTA ADEMÁS DEL CLIENTE. "F931" en Cliente/Asignación no dice de qué obligación se
+  // trata: la cuota de un plan de pago de un F931 viejo también lo lleva. Sin el rubro, esos pesos
+  // sumaban en la fila del F931 Y otra vez en la fila del plan, dentro del mismo cuadro. Los textos
+  // salen de la taxonomía única (`rubro-caja.mjs` vía `libro-extractores-cargas.mjs`): escritos a
+  // mano acá, el día que la taxonomía cambie este filtro devuelve cero sin dar un solo error.
   const mes = (m) => `">="&DATE(${anio};${m};1);${rango(C.fecha)};"<="&MIN(EOMONTH(DATE(${anio};${m};1);0);TODAY())`
-  const pagado = (param) => (m) => `=IFERROR(SUMIFS(${rango(C.total)};${rango(C.cliente)};'Parámetros'!$A$${param};${rango(C.fecha)};${mes(m)});0)`
+  const salio = `${rango(C.estado)};"Pagado"`
+  const pagado = (param, rubro) => (m) => `=IFERROR(SUMIFS(${rango(C.total)};${rango(C.cliente)};`
+    + `'Parámetros'!$A$${param};${rango(C.rubro)};"${rubro}";${salio};${rango(C.fecha)};${mes(m)});0)`
   const p0 = G.n() + 1
   const filaPag = {}
-  filaPag.F931 = G.mensual('F931', pagado(35), `Compras · "${'F931'}" en Cliente/Asignación, por fecha de caja (col. ${C.fecha}).`)
+  filaPag.F931 = G.mensual('F931', pagado(35, RUBRO_CARGAS),
+    `Compras · "F931" en Cliente/Asignación con rubro "${RUBRO_CARGAS}", marcado Pagado, por fecha de caja (col. ${C.fecha}).`)
+  // El plan conserva su criterio propio (cliente + detalle): es la fila que distingue la cuota
+  // financiada del F931 corriente, y su rubro ya la separa del de arriba. Lo que sí gana es el
+  // estado — una cuota con vencimiento pasado y sin marcar no salió de la caja.
   filaPag.plan = G.mensual('Deuda previsional en cuotas', (m) =>
-    `=IFERROR(SUMIFS(${rango(C.total)};${rango(C.cliente)};'Parámetros'!$A$41;${rango(C.detalle)};'Parámetros'!$B$41;${rango(C.fecha)};${mes(m)});0)`,
-  'Compras · plan de pago, por fecha de caja.')
+    `=IFERROR(SUMIFS(${rango(C.total)};${rango(C.cliente)};'Parámetros'!$A$41;${rango(C.detalle)};`
+    + `'Parámetros'!$B$41;${salio};${rango(C.fecha)};${mes(m)});0)`,
+  'Compras · plan de pago marcado Pagado, por fecha de caja.')
   ;[['FCL', 36], ['UOCRA', 37], ['IERIC', 38], ['FODECO', 39]].forEach(([r, p]) => {
-    filaPag[r] = G.mensual(r, pagado(p), `Compras · "${r}" en Cliente/Asignación, por fecha de caja.`)
+    filaPag[r] = G.mensual(r, pagado(p, RUBRO_GREMIALES),
+      `Compras · "${r}" en Cliente/Asignación con rubro "${RUBRO_GREMIALES}", marcado Pagado, por fecha de caja.`)
   })
   const p1 = G.n()
   const fPagTot = G.mensual(rotuloTotal('Total pagado'), (m) => `=SUM(${cm(m)}${p0}:${cm(m)}${p1})`, 'Suma de los conceptos de arriba.')
