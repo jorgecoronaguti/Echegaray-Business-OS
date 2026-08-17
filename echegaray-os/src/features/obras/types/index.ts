@@ -23,7 +23,8 @@ export interface ObraPanel {
   cliente_texto: string | null
   estado: string
   tipo: string
-  etapa: Etapa
+  /** Puede ser NULL: la etapa que nadie declaró no se inventa con un default. */
+  etapa: Etapa | null
   jefe_obra: string | null
   monto_contratado: number | null
   fecha_inicio_plan: string | null
@@ -34,7 +35,10 @@ export interface ObraPanel {
   costo_real: number | null
   n_comprobantes: number | null
   margen_sobre_contratado_pct: number | null
+  /** Promedio sobre las actividades PLANIFICADAS (con fecha) que no son de resumen. */
   avance_pct: number | null
+  /** Cuántas actividades entran en ese promedio. Es la cobertura del número, y va a la vista. */
+  n_actividades_medidas: number
   n_actividades: number
   restricciones_abiertas: number
   restricciones_vencidas: number

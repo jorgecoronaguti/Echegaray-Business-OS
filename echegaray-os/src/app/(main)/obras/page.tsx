@@ -21,6 +21,9 @@ const plata = (n: number | null) =>
 
 /** La etapa se lee de un vistazo por su posición en la línea, no por un color arbitrario. */
 function Etapa({ etapa }: { etapa: ObraPanel['etapa'] }) {
+  // Sin etapa declarada NO se dibuja una: el default de la columna ponía "Desarrollo" hasta en una
+  // obra cerrada, y un default presentado como estado del ciclo de vida es un dato fabricado.
+  if (!etapa) return <span className="text-[12px] text-faint">etapa sin declarar</span>
   const orden = ['previo', 'inicio', 'desarrollo', 'terminacion', 'cierre']
   const i = orden.indexOf(etapa)
   return (
@@ -35,16 +38,23 @@ function Etapa({ etapa }: { etapa: ObraPanel['etapa'] }) {
   )
 }
 
-function Avance({ pct }: { pct: number | null }) {
+// EL NÚMERO DICE SOBRE QUÉ SE CALCULA. No es adorno: hoy el OS publica DOS avances del mismo
+// archivo —éste y el de `avance_obra`, que leen /chat y Pedidos y herramientas— y miden poblaciones
+// distintas (San Francisco: 80 actividades planificadas acá contra 24 allá). Mientras las dos
+// convivan, el que no diga su cobertura es el que engaña.
+function Avance({ pct, medidas, total }: { pct: number | null; medidas: number; total: number }) {
   if (pct == null) {
-    return <span className="text-[12px] text-faint">sin cargar</span>
+    return <span className="text-[12px] text-faint">{total ? 'sin avance cargado' : 'sin cronograma'}</span>
   }
   return (
     <span className="flex items-center gap-2">
-      <span className="h-1.5 w-20 overflow-hidden rounded-full bg-slate-100">
+      <span className="h-1.5 w-20 shrink-0 overflow-hidden rounded-full bg-slate-100">
         <span className="block h-full rounded-full bg-sky-600" style={{ width: `${Math.min(100, pct)}%` }} />
       </span>
-      <span className="w-9 text-right text-[12px] tabular-nums text-ink">{pct}%</span>
+      <span className="w-9 shrink-0 text-right text-[12px] tabular-nums text-ink">{pct}%</span>
+      <span className="whitespace-nowrap text-[11px] text-faint" title="Actividades planificadas que entran en el promedio, sobre el total del cronograma">
+        {medidas}/{total}
+      </span>
     </span>
   )
 }
@@ -96,7 +106,7 @@ export default async function ObrasPage() {
                     </Link>
                   </td>
                   <td className="px-3 py-2.5"><Etapa etapa={o.etapa} /></td>
-                  <td className="px-3 py-2.5"><Avance pct={o.avance_pct} /></td>
+                  <td className="px-3 py-2.5"><Avance pct={o.avance_pct} medidas={o.n_actividades_medidas} total={o.n_actividades} /></td>
                   <td className="px-3 py-2.5 text-right text-[12px] tabular-nums text-muted">{plata(o.monto_contratado)}</td>
                   <td className="px-3 py-2.5 text-right text-[12px] tabular-nums text-ink">{plata(o.costo_real)}</td>
                   <td className="px-3 py-2.5 text-center text-[12px] tabular-nums text-muted">{o.n_actividades || '—'}</td>

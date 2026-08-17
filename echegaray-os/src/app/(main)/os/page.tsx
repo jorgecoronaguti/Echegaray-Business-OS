@@ -110,7 +110,7 @@ export default async function OsPage() {
       {/* Respuestas del OS */}
       <Card
         title="Preguntas y respuestas"
-        action={<Link href="/direccion" className="text-xs text-indigo-600 hover:underline">Ver detalle completo →</Link>}
+        action={<Link href="/obras" className="text-xs text-indigo-600 hover:underline">Ver detalle completo →</Link>}
       >
         {objs.length === 0 ? (
           <p className="text-sm text-slate-400">Todavía no le preguntaste nada al OS. Empezá arriba.</p>
@@ -167,8 +167,8 @@ export default async function OsPage() {
       {/* Accesos */}
       <section className="flex flex-wrap gap-2">
         {[
-          { href: '/direccion', label: 'Dirección' },
-          { href: '/organizacion', label: 'Organización IA' },
+          { href: '/obras', label: 'Dirección' },
+          { href: '/obras', label: 'Organización IA' },
           { href: '/aprobaciones', label: 'Aprobaciones' },
           { href: '/flujo-caja', label: 'Flujo de Caja' },
           { href: '/reportes', label: 'Reportes' },

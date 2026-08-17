@@ -31,8 +31,10 @@ const fecha = (iso: string | null) =>
 
 /** La línea de ciclo de vida. Es el estado de la obra, y ese estado gobierna qué habilita el módulo:
  *  una obra en «previo» sin línea base sellada no debería pasar a ejecución. */
-function CicloDeVida({ etapa }: { etapa: string }) {
-  const i = ETAPAS.indexOf(etapa as (typeof ETAPAS)[number])
+function CicloDeVida({ etapa }: { etapa: string | null }) {
+  // Ninguna etapa resaltada cuando nadie la declaró: se ven las cinco en gris y se entiende que
+  // falta definirla, en vez de afirmar uno de los cinco estados sin que nadie lo haya dicho.
+  const i = etapa ? ETAPAS.indexOf(etapa as (typeof ETAPAS)[number]) : -1
   return (
     <ol className="flex flex-wrap items-center gap-1.5">
       {ETAPAS.map((e, k) => (
@@ -84,7 +86,17 @@ export default async function ObraPage({
 
   const supabase = await createClient()
   const { data: obra, error } = await getObra(supabase, obraId)
-  if (error || !obra) notFound()
+  // NO EXISTE y NO PUEDO LEER son dos cosas distintas, y confundirlas ya costó caro (17/08/2026):
+  // faltaba un `grant` y el módulo entero se veía como "página no encontrada" en vez de decir que no
+  // tenía permiso. Buscar un defecto de permisos detrás de un 404 es buscarlo en el lugar equivocado.
+  if (error) {
+    return (
+      <PageShell eyebrow={<Link href="/obras" className="hover:underline">01 · Obras</Link>} title="No pude leer la obra">
+        <Callout tono="neg">{error}</Callout>
+      </PageShell>
+    )
+  }
+  if (!obra) notFound()
 
   const [{ data: actividades }, { data: restricciones }, { data: documentos }] = await Promise.all([
     getActividades(supabase, obraId),

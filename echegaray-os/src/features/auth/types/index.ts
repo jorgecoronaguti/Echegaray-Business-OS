@@ -44,6 +44,8 @@ export const RUTAS_PUBLICAS = [
   '/descargar', // la landing de descarga de la extensión: estática, sin dato de la empresa
   '/api/oauth/callback', // el retorno de Google: llega sin sesión por definición
   '/api/os', // el proxy que consume la extensión, con su propia autorización
+  '/echegaray-os-extension.zip', // el archivo que descarga la landing pública: sin él, /descargar
+                                 // renderiza 200 y su único botón manda al login
 ]
 export function esRutaPublica(pathname: string): boolean {
   return RUTAS_PUBLICAS.some((r) => pathname === r || pathname.startsWith(r + '/'))

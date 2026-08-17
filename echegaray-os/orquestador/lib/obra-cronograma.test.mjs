@@ -137,6 +137,27 @@ test('un título de sección sin fechas ni avance también es resumen', () => {
   assert.equal(actividades[0].tipo, 'resumen')
 })
 
+test('un título de sección con «% Done» en CERO sigue siendo resumen', () => {
+  // ═══ EL TEST DE ARRIBA ESTABA VERDE CON UN CASO QUE EL ARCHIVO NUNCA PRODUCE ═══
+  //
+  // Usaba la celda de porcentaje VACÍA. En el archivo real esas celdas traen **0**, y con la regla
+  // vieja (`pct == null`) el título entraba como tarea al 0%. Efecto medido: Quattropani con CERO
+  // resúmenes sobre 108 filas, y San Francisco publicado al 33% cuando el resto del OS decía 85%,
+  // porque cada título de sección pesaba en el promedio como una tarea sin hacer.
+  //
+  // Con el código anterior este test FALLA. Es la diferencia entre probar la intención y probar el
+  // efecto, y es la razón por la que el auditor no firmó.
+  const { actividades } = parsearCronograma(grilla(ENC_EN, ['3', 'TRABAJOS PREVIOS', '', '', '', '', '', 0, '']))
+  assert.equal(actividades[0].tipo, 'resumen')
+})
+
+test('una tarea REAL sin fechas pero con duración no se confunde con un título', () => {
+  // La regla mira fechas y duración, no el porcentaje: una tarea planificada en días que todavía no
+  // tiene fecha asignada es trabajo, no un rótulo.
+  const { actividades } = parsearCronograma(grilla(ENC_EN, ['4', 'Pintura general', '', '', '', 3, '', 0, '']))
+  assert.equal(actividades[0].tipo, 'tarea')
+})
+
 // ── LO QUE NO SE INVENTA ─────────────────────────────────────────────────────
 
 test('NUNCA se deduce una dependencia de las fechas', () => {

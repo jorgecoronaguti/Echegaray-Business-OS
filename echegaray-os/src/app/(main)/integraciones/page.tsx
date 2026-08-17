@@ -187,7 +187,7 @@ export default async function IntegracionesPage() {
 
       <p className="text-xs text-gray-400">
         La frescura y cobertura del dato (para decisiones) vive en{' '}
-        <Link href="/fuentes" className="underline">
+        <Link href="/integraciones" className="underline">
           Fuentes de Datos
         </Link>
         . Esta pantalla es la capa de conectividad.

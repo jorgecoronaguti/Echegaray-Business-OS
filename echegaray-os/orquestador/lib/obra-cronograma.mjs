@@ -178,9 +178,19 @@ export function parsearCronograma(rows = []) {
   // con el de ellas (lo pesaría doble). Y una fila sin fechas ni avance es un TÍTULO DE SECCIÓN
   // ("PILON", "TRABAJOS PREVIOS"): también es un resumen, aunque el tracker no le cuelgue hijas por
   // código. Publicarla como tarea la dibujaría como una barra de duración desconocida.
+  //
+  // ═══ LA REGLA PEDÍA `pct == null` Y EL ARCHIVO TRAE `0` (17/08/2026) ═══
+  //
+  // Con `pct == null`, Quattropani terminó con CERO filas de resumen sobre 108: "TRABAJOS PREVIOS",
+  // "DEMOLICION" y "REPLANTEO" quedaron guardadas como tareas al 0%. Y como el avance de la obra
+  // promedia sobre lo que no es resumen, **cada título de sección entraba al promedio como una
+  // tarea sin hacer**: San Francisco se publicó al 33% cuando el resto del OS decía 85%.
+  //
+  // Un título de sección no tiene fechas NI duración. El porcentaje no distingue nada —una sección
+  // sin cargar trae 0 igual que una tarea sin empezar—, así que se saca de la regla.
   const conHijas = new Set(actividades.map((a) => a.codigo_padre).filter(Boolean))
   for (const a of actividades) {
-    if (conHijas.has(a.codigo) || (!a.inicio_plan && !a.fin_plan && a.pct == null)) a.tipo = 'resumen'
+    if (conHijas.has(a.codigo) || (!a.inicio_plan && !a.fin_plan && a.dias_plan == null)) a.tipo = 'resumen'
   }
   return { actividades }
 }
