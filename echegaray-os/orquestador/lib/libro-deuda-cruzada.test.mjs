@@ -8,6 +8,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 
 import { deCargasSociales } from './libro-extractores-cargas.mjs'
 import { sumar } from './libro-movimientos.mjs'
@@ -77,6 +78,18 @@ test('el pago de ARCA de UN mes no cancela el F931 del mes siguiente', () => {
   // su propio pago, con el estado que le corresponde por fecha.
   assert.equal(f931.estado, 'PROYECTADO')
   assert.equal(f931.importe, 7074772)
+})
+
+test('EL CABLEADO: el orquestador del libro corre el cruce, y comparte el Set de débitos usados', () => {
+  // Los tests de arriba prueban el CRITERIO. Éste prueba que esté ENCHUFADO: sin él, alguien podría
+  // borrar la llamada de `libro-movimientos-pestana.mjs` y todo seguiría verde mientras CAJA vuelve a
+  // publicar el F931 como deuda. Es exactamente el modo de falla que se publicó el 16/08 con la
+  // nómina — el criterio estaba bien y el resultado en el archivo estaba mal.
+  const src = readFileSync(new URL('../scripts/libro-movimientos-pestana.mjs', import.meta.url), 'utf8')
+  assert.match(src, /aplicarCruce\(/, 'el orquestador tiene que APLICAR el cruce, no sólo calcularlo')
+  assert.match(src, /cruzarLibroContraBanco/)
+  assert.match(src, /usadosBanco/, 'y tiene que compartir el Set `usados` que ya consumió la nómina: '
+    + 'con un Set nuevo, el mismo débito podría pagar dos obligaciones')
 })
 
 test('el F931 ya marcado pagado en Compras no lo emite la cadena, y el cruce no lo resucita', () => {
