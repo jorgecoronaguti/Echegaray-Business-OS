@@ -12,6 +12,7 @@ import assert from 'node:assert/strict'
 import { origenDelMes, ORIGEN, bloqueIva } from './impuestos-bloques.mjs'
 import { crearGrilla } from './impuestos-grilla.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
+import { anclaDeProyeccion } from './iva-libre-disponibilidad.mjs'
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 // LA CASCADA, EN FRÍO
@@ -107,6 +108,60 @@ test('el débito del mes ARCA es una FÓRMULA contra _ARCA_RAW, nunca un número
   assert.match(deb, /_ARCA_RAW!\$B\$4:\$B="Ventas"/, 'el débito sale del libro de VENTAS')
   const cred = String(celda(G, iva.fCred, 7))
   assert.match(cred, /_ARCA_RAW!\$B\$4:\$B="Compras"/, 'el crédito sale del libro de COMPRAS')
+})
+
+// ── LA COLUMNA DE JULIO, Y POR QUÉ SE RECUPERA (17/08) ───────────────────────────────────────────
+//
+// EL DEFECTO COMPLETO, MEDIDO EN EL ARCHIVO. La columna H (julio-26) del cuadro de IVA está corrida
+// UNA FILA HACIA ARRIBA: alguien pegó los cinco valores del mes arrancando en la fila del encabezado.
+//
+//   H53 encabezado  = 23.623.111,82  ← el DÉBITO de julio, encima de donde va "jul-26"
+//   H54 débito      = 11.328.237,58  ← el CRÉDITO
+//   H55 crédito     = 0              ← el "a pagar"
+//   H56 a pagar     = 7.050.036,33   ← la LIBRE DISPONIBILIDAD, publicada como IVA A PAGAR EN EFECTIVO
+//   H57 libre disp  = "⚠ vence 20/08" ← la leyenda, que es lo que hace estallar el hero
+//
+// Los tres primeros importes son los del comentario de `iva-libre-disponibilidad.mjs` al centavo.
+// El daño caro no es el #VALUE!: es la fila 56, que es la que leen el Libro y el cash flow, diciendo
+// que en julio hay que pagar $7.050.036 de IVA cuando ese número es plata A FAVOR. Signo invertido en
+// la fila del contrato.
+//
+// EL GENERADOR NO PODÍA ARREGLARLO PORQUE SE ANCLABA EN LA LEYENDA: con `esNumero("⚠ vence 20/08")`
+// dando true, el ancla caía en julio y `ofOAjeno` devolvía AJENO —"no la toques"— para toda la
+// columna. La corrupción quedaba congelada para siempre. Con el ancla en junio, julio vuelve a ser un
+// mes calculable y las cinco celdas se reescriben.
+// La fila 57 EXACTA del archivo el 17/08, como la lee el generador (FORMATTED_VALUE).
+const FILA_LIBRE_REAL = ['$20.803.502', '$25.836.241', '$16.413.003', '$18.757.047', '$19.326.154',
+  '$19.344.911', '⚠ vence 20/08', '—', '—', '—', '—', '—']
+/** El ancla NO se fija a mano: sale de la fila real, que es donde vive el defecto. */
+const anclaReal = () => anclaDeProyeccion(FILA_LIBRE_REAL, [1, 2, 3, 4, 5, 6]).ultimoMesConDato
+
+test('con el ancla en junio, JULIO se recalcula: la columna corrida no queda congelada', () => {
+  const { G, iva } = armarBloque({ arca: { meses: [1, 2, 3, 4, 5, 6, 7, 8] }, ancla: anclaReal(), hoy: '2026-08-17' })
+  // AJENO viaja a la celda como cadena vacía: es la marca de "preservar lo que haya".
+  for (const [nombre, fila] of [['débito', iva.fDeb], ['crédito', iva.fCred],
+    ['a pagar', iva.fAPagar], ['libre disponibilidad', iva.fLibre]]) {
+    const v = String(celda(G, fila, 7))
+    assert.notEqual(v, '', `julio quedaría PRESERVADO en ${nombre}: el valor corrido no se corrige nunca`)
+    assert.ok(v.startsWith('='), `julio se recalcula desde ARCA en ${nombre} y da "${v}"`)
+  }
+  assert.equal(iva.porOrigen.ajeno.length, 0, 'ningún mes queda intocable con las seis DDJJ presentadas')
+})
+
+test('ninguna celda de IMPORTE del cuadro de IVA lleva texto — sólo la fila de procedencia', () => {
+  // La regla que la pestaña violaba: una leyenda no puede vivir en una celda que promete un importe,
+  // porque otras fórmulas la suman. El aviso tiene su lugar —la fila "DDJJ presentada" y la columna
+  // de procedencia—, y las cuatro filas de plata no son ese lugar.
+  const { G, iva } = armarBloque({ arca: { meses: [7, 8] }, ancla: anclaReal() })
+  for (const fila of [iva.fDeb, iva.fCred, iva.fAPagar, iva.fLibre]) {
+    for (const m of [1, 6, 7, 8, 12]) {
+      const v = celda(G, fila, m)
+      if (typeof v === 'number' || v === '' || String(v).startsWith('=')) continue
+      assert.fail(`fila ${fila}, mes ${m}: "${v}" no es ni número ni fórmula, y está en una fila de importes`)
+    }
+  }
+  // Y la leyenda de procedencia SÍ está, en la fila que le corresponde.
+  assert.match(String(celda(G, iva.fDDJJ, 7)), /ARCA/, 'el aviso vive en "DDJJ presentada"')
 })
 
 test('la fórmula de ARCA va en locale es-AR: separador ";" y ni una coma de argumento', () => {

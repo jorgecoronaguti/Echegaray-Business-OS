@@ -77,9 +77,16 @@ test('el HERO referencia el detalle: no recalcula nada por su cuenta', () => {
   for (const f of formulas) {
     assert.ok(!/SUMIFS?\(/.test(f), `el hero no vuelve a sumar Compras: ${f}`)
     assert.ok(!/Compras!|_BANCO_RAW|_MOVIMIENTOS/.test(f), `el hero no toca una fuente: ${f}`)
-    assert.ok(/^=(\$?[A-N]\$?\d+)([+]\$?[A-N]\$?\d+)*$/.test(f), `el hero sólo suma celdas: ${f}`)
+    // LO QUE DELATA UN RECÁLCULO ES EL RANGO, NO LA FUNCIÓN. La regla era "sólo celdas sumadas con +",
+    // y desde el 17/08 las tres celdas de saldo a favor llevan una guarda (`ISNUMBER`/`COUNT`) para no
+    // publicar #VALUE! cuando el mes ajeno tiene texto. Esa guarda no recalcula nada: mira las MISMAS
+    // dos celdas. Lo que el hero sigue sin poder hacer es barrer un rango — ahí empezaría la segunda
+    // verdad que este test existe para impedir.
+    assert.ok(!/\$?[A-N]\$?\d+:\$?[A-N]?\$?\d*/.test(f), `el hero no barre un rango: ${f}`)
+    assert.ok(!/SUM\(|AVERAGE|COUNTIFS?\(/.test(f), `el hero no agrega: ${f}`)
   }
-  assert.equal(porRotulo(hero, /IMPUESTOS A FAVOR/)[1], '=$H$56+$G$66', 'a favor = libre disponibilidad de IVA + saldo de IIBB')
+  assert.match(porRotulo(hero, /IMPUESTOS A FAVOR/)[1], /^=IF\(COUNT\(\$H\$56;\$G\$66\)=2;\$H\$56\+\$G\$66;/,
+    'a favor = libre disponibilidad de IVA + saldo de IIBB, y sólo si los dos son importes')
   assert.equal(porRotulo(hero, /DEUDA PENDIENTE/)[1], '=$B$92+$B$93', 'deuda pendiente = prendario pendiente + planes pendientes')
 })
 
