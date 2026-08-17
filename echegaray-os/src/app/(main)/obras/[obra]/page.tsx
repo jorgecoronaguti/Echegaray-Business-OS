@@ -111,13 +111,27 @@ export default async function ObraPage({
 
   return (
     <PageShell
-      eyebrow={<Link href="/obras" className="hover:underline">01 · Obras</Link>}
+      // El camino de vuelta es el de la jerarquía: Clientes › el cliente › esta obra. Cuando la obra
+      // no tiene cliente declarado se dice, en vez de mandar a una ficha que no existe.
+      eyebrow={
+        obra.cliente_slug ? (
+          <>
+            <Link href="/clientes" className="hover:underline">01 · Obras</Link>
+            <span className="text-faint"> · </span>
+            <Link href={`/clientes/${obra.cliente_slug}`} className="hover:underline">{obra.cliente_nombre}</Link>
+          </>
+        ) : (
+          <Link href="/clientes" className="hover:underline">01 · Obras</Link>
+        )
+      }
       title={obra.nombre}
-      subtitle={obra.cliente_texto ?? undefined}
+      subtitle={obra.cliente_slug ? undefined : `${obra.cliente_texto ?? 'sin cliente'} · sin cliente declarado en el eje canónico`}
       maxWidth="max-w-7xl"
       right={<CicloDeVida etapa={obra.etapa} />}
     >
-      <nav className="mb-5 flex gap-1 border-b border-line">
+      {/* Las solapas se desplazan en vez de empujar la página: cuatro de ellas miden 407px y
+          la pantalla del teléfono tiene 390. */}
+      <nav className="mb-5 flex gap-1 overflow-x-auto border-b border-line">
         {VISTAS.map((v) => (
           <Link
             key={v.id}

@@ -22,7 +22,11 @@ const GRUPOS_NAV = [
   {
     grupo: '01 · Obras',
     links: [
-      { href: '/obras', label: 'Portafolio' },
+      // La entrada del módulo es el CLIENTE, que es la entidad de arriba: un cliente puede tener
+      // varias obras. El portafolio plano queda de segundo, para cuando se busca una obra y no se
+      // recuerda de quién es.
+      { href: '/clientes', label: 'Clientes' },
+      { href: '/obras', label: 'Todas las obras' },
       { href: '/control-obras', label: 'Pedidos y herramientas' },
     ],
   },
@@ -121,10 +125,13 @@ export default async function MainLayout({
               </div>
             ))}
           </div>
-          <div className="flex items-center gap-2 text-xs whitespace-nowrap text-gray-600" data-testid="usuario-actual">
+          {/* EL EMAIL NO PUEDE EMPUJAR LA PÁGINA. Con `whitespace-nowrap`, una dirección larga hacía
+              que TODA la app se desplazara de costado en el teléfono: 568px de ancho real contra 390
+              de pantalla, en cada pantalla del OS. Ahora corta donde haga falta. */}
+          <div className="flex min-w-0 items-center gap-2 text-xs text-gray-600" data-testid="usuario-actual">
             {email ? (
               <>
-                <span>
+                <span className="min-w-0 break-all">
                   {email} · {rolLabel}
                 </span>
                 <LogoutButton />

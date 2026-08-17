@@ -20,6 +20,11 @@ export const ETAPA_LABEL: Record<Etapa, string> = {
 export interface ObraPanel {
   obra_id: string
   nombre: string
+  /** El cliente al que pertenece. La obra cuelga del cliente: es la jerarquía del módulo. */
+  cliente_id: string | null
+  cliente_slug: string | null
+  cliente_nombre: string | null
+  /** Lo que dijo la fuente, conservado como procedencia. El que manda es `cliente_id`. */
   cliente_texto: string | null
   estado: string
   tipo: string

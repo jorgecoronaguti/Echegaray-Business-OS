@@ -105,7 +105,11 @@ export default async function ObrasPage() {
                   <td className="px-4 py-2.5">
                     <Link href={`/obras/${o.obra_id}`} className="block">
                       <span className="text-[13px] font-semibold text-ink hover:underline">{o.nombre}</span>
-                      <span className="block truncate text-[11px] text-faint">{o.cliente_texto ?? '—'}</span>
+                      {/* El cliente que manda es el canónico. `cliente_texto` era lo que decía la
+                          fuente, y tres obras de La Estrella eran tres cadenas iguales de casualidad. */}
+                      <span className="block truncate text-[11px] text-faint">
+                        {o.cliente_nombre ?? 'sin cliente declarado'}
+                      </span>
                     </Link>
                   </td>
                   <td className="px-3 py-2.5"><Etapa etapa={o.etapa} /></td>

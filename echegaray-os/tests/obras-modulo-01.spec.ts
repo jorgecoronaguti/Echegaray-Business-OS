@@ -31,7 +31,7 @@ async function entrar(page: import('@playwright/test').Page) {
 // RLS, que tapaba al resto de casualidad, no la cubría. Esto es el regreso de esa falla.
 
 test('sin sesión, las pantallas con datos de la empresa mandan al login', async ({ page }) => {
-  for (const ruta of ['/obras', '/obras/san-francisco', '/flujo-caja', '/control-obras', '/chat']) {
+  for (const ruta of ['/clientes', '/clientes/la-estrella', '/obras', '/obras/san-francisco', '/flujo-caja', '/control-obras', '/chat']) {
     const respuesta = await page.goto(ruta)
     await page.waitForURL(/\/login/, { timeout: 15000 })
     // Y no alcanza con terminar en /login: lo que no puede haber es el dato en el camino.
@@ -48,6 +48,48 @@ test('sin sesión, la descarga pública de la extensión sigue abierta', async (
   const r = await page.request.get('/echegaray-os-extension.zip')
   expect(r.status()).toBe(200)
   expect((await r.body()).subarray(0, 2).toString()).toBe('PK')
+})
+
+// ── LA JERARQUÍA: CLIENTE → OBRAS → OBRA ────────────────────────────────────
+//
+// El cliente es la entidad de arriba y la obra la unidad operativa. La Estrella es el caso que lo
+// prueba: tiene TRES obras, y hasta que existió `cliente_id` eran tres cadenas de texto iguales por
+// casualidad. Si este test se rompe, la jerarquía volvió a ser un texto repetido.
+
+test('clientes → cliente → sus obras → la obra', async ({ page }) => {
+  test.setTimeout(120000)
+  await entrar(page)
+
+  await page.goto('/clientes')
+  await expect(page.getByTestId('clientes-tabla')).toBeVisible()
+  const laEstrella = page.getByRole('link', { name: /La Estrella/ })
+  await expect(laEstrella).toBeVisible()
+
+  await laEstrella.click()
+  await page.waitForURL(/\/clientes\/la-estrella/)
+  await expect(page.getByRole('heading', { name: /La Estrella/ })).toBeVisible()
+
+  // Sus tres obras, con el MISMO avance que publica el portafolio: sale de `obra_panel`.
+  const tabla = page.getByTestId('obras-del-cliente')
+  await expect(tabla).toBeVisible()
+  expect(await tabla.locator('tbody tr').count()).toBe(3)
+
+  // Las tres solapas de la ficha existen y dicen la verdad sobre lo que todavía no se puede cargar.
+  await page.getByRole('link', { name: 'Contactos', exact: true }).click()
+  await page.waitForURL(/vista=contactos/)
+  await expect(page.getByText(/no se puede cargar un contacto/i)).toBeVisible()
+
+  await page.getByRole('link', { name: 'Documentos', exact: true }).click()
+  await page.waitForURL(/vista=documentos/)
+  // Los documentos son los de Drive: vínculo, nunca copia.
+  await expect(page.getByText(/viven en Drive/i)).toBeVisible()
+
+  // Y desde la obra se vuelve a SU cliente: la jerarquía se navega en los dos sentidos.
+  await page.goto('/obras/le-comedor')
+  const volver = page.getByRole('link', { name: /La Estrella/ })
+  await expect(volver).toBeVisible()
+  await volver.click()
+  await page.waitForURL(/\/clientes\/la-estrella/)
 })
 
 // ── EL RECORRIDO DEL MÓDULO, AUTENTICADO ────────────────────────────────────
@@ -95,6 +137,26 @@ test('portafolio → obra → resumen · gantt · planificación · documentos',
   await page.getByRole('link', { name: 'Documentos', exact: true }).click()
   await page.waitForURL(/vista=documentos/)
   await expect(page.getByText(/Drive/).first()).toBeVisible()
+})
+
+// ── EN EL TELÉFONO NO SE DESPLAZA DE COSTADO ────────────────────────────────
+
+test('ninguna pantalla del módulo empuja la página de costado en el teléfono', async ({ page }) => {
+  test.setTimeout(120000)
+  await entrar(page)
+  await page.setViewportSize({ width: 390, height: 780 })
+
+  // Medido el 18/08/2026: el OS entero salía 568px de ancho contra 390 de pantalla, porque el email
+  // del usuario en el nav tenía `whitespace-nowrap`. La tabla ancha SÍ puede desplazarse —dentro de
+  // su propio contenedor—, pero el cuerpo de la página no.
+  for (const ruta of ['/clientes', '/clientes/la-estrella', '/obras', '/obras/le-comedor', '/obras/le-comedor?vista=gantt']) {
+    await page.goto(ruta)
+    await page.waitForTimeout(400)
+    const { doc, win } = await page.evaluate(() => ({
+      doc: document.documentElement.scrollWidth, win: window.innerWidth,
+    }))
+    expect(doc, `${ruta} se desplaza de costado (${doc}px en una pantalla de ${win}px)`).toBeLessThanOrEqual(win)
+  }
 })
 
 // ── UN SOLO AVANCE PARA TODO EL OS ──────────────────────────────────────────

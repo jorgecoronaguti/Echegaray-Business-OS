@@ -28,7 +28,10 @@ export function PageShell({
             <h1 className="mt-1 text-[22px] font-semibold leading-tight text-ink">{title}</h1>
             {subtitle && <p className="mt-1.5 max-w-2xl text-[13px] leading-relaxed text-muted">{subtitle}</p>}
           </div>
-          {right && <div className="shrink-0">{right}</div>}
+          {/* `shrink-0` sin `min-w-0` empujaba la página entera de costado en el teléfono: la línea
+              de ciclo de vida de la obra mide más que 390px y no podía encoger. Ahora no encoge
+              cuando hay lugar, y cuando no lo hay se acomoda en vez de desbordar. */}
+          {right && <div className="min-w-0 shrink-0 max-w-full">{right}</div>}
         </header>
         {children}
       </div>
