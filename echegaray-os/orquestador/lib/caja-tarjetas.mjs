@@ -306,23 +306,41 @@ export function tarjetas(ref) {
     },
     {
       clave: 'comprometida',
-      // ═══ LÍMITE VIGENTE: ESTE NÚMERO NO ESTÁ CRUZADO CONTRA SU PESTAÑA DUEÑA (17/08) ═══
+      // ═══ LÍMITE VIGENTE: ESTE TITULAR NO TRAE $8.559.675 DE DEUDA COMERCIAL DEL MES (17/08) ═══
       //
-      // La deuda comercial con proveedores la calcula `Proveedores` desde `Compras` y la publica en
-      // su fila 11: al 17/08 son $12.497.040 en 17 facturas, con su aging y su medio de pago. Esta
-      // tarjeta NO lee ese número: lo vuelve a armar por otro camino, desde `_MOVIMIENTOS`.
+      // La diferencia contra la pestaña dueña YA ESTÁ MEDIDA. `auditar-deuda-comercial.mjs` pone las
+      // dos fuentes sobre esta misma ventana y la abre fila por fila:
       //
-      // Son DOS FUENTES DEL MISMO CONCEPTO, y la casa tiene una sola regla al respecto: un concepto
-      // que aparece en más de una cara se define UNA vez. Medido con `auditar-conexion-flujo.mjs`:
-      // `Proveedores` y `Materiales` se leen sólo entre ellas — son un circuito cerrado que no llega
-      // ni a CAJA ni a los dos Cash Flow. Por eso una puede decir $12,5M y la otra publicar un
-      // titular diez veces más grande sin que nada grite.
+      //   Proveedores!B11                 $12.497.040 · 17 facturas
+      //   componente comercial de acá     $13.678.022 · 13 filas
+      //   neto -$1.180.982 · BRUTO $18.300.332 · coinciden 3 filas de 27
       //
-      // El criterio "toda tarjeta se reconcilia contra la pestaña dueña del dato" está INCUMPLIDO
-      // acá — no pendiente: incumplido. El camino, cuando se cierre: leer `Proveedores!11` y gritar
-      // la diferencia contra el componente comercial del libro. Sin esa diferencia medida, decidir
-      // cuál de las dos tiene razón es una corazonada. El desarrollo y la medición, en
-      // `caja-tarjetas-conceptos.test.mjs`.
+      //   3 VENCIDAS       $3.937.365  las dos las ven. Es todo lo que coincide.
+      //   14 DEL MES       $8.559.675  ✗ están en el libro como PROYECTADO → las suma `mesPlan`, la
+      //                                línea de PLAN de contexto. Son facturas con comprobante,
+      //                                proveedor, vencimiento y echeq asignado (Alumetal
+      //                                0038-00025942, $2.014.940,07, vence el 31/08). NO son
+      //                                presupuesto, y este titular dice que sí.
+      //   10 YA PAGADAS    $9.740.657  con cheque/echeq sin debitar. Acá SÍ y en Proveedores no, y
+      //                                está bien: el proveedor ya cobró y la plata no salió.
+      //
+      // LA CAUSA NO ESTÁ EN ESTA FILA: `estadoDeEgreso` devuelve PROYECTADO para TODA compra no
+      // pagada, y `estadoContraCorte` sólo la asciende a VENCIDO cuando la fecha ya pasó. Entonces
+      // PROYECTADO significa dos cosas —"materiales estimados que nadie debe" y "factura cargada que
+      // vence el 31/08"— y sacarlo del titular el 16/08 (con razón, por lo primero) se llevó puesto
+      // lo segundo. El rótulo promete "Y DEL MES" y de la comercial del mes no hay nada.
+      //
+      // POR QUÉ NO SE ARREGLA ACÁ: sumar esas catorce sube este titular $8.559.675, que es el número
+      // con el que el dueño decide qué paga esta semana. Efecto económico, y ya se corrigió tres
+      // veces por creer que el problema era la frase. Lo firma él.
+      //
+      // PASO SIGUIENTE, EN ORDEN:
+      //   1. partir PROYECTADO: la compra CARGADA Y NO PAGADA no es el gasto ESTIMADO.
+      //   2. con eso, `DEUDA` incorpora la comercial del mes y el rótulo deja de mentir.
+      //   3. recién ahí decidir si CAJA lee `Proveedores` o `Proveedores` cuelga del libro. Antes,
+      //      cualquiera de las dos conexiones propaga este error más rápido.
+      //
+      // El criterio y la aritmética, en `deuda-comercial-conciliacion.mjs`.
       //
       // ═══ EL RÓTULO CONTESTA LA PREGUNTA, NO NOMBRA EL CONCEPTO (13/08, textual) ═══
       //

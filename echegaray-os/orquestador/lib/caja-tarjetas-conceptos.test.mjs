@@ -120,26 +120,20 @@ test('SALDO AL CIERRE sí gasta el plan: es el escenario de actividad normal', (
 // número se puede abrir hasta la pestaña que lo produjo—. Una constante tipeada acá cortaría esa
 // cadena y sería inauditable: se vería idéntica a la calculada y envejecería sin avisar.
 //
-// ═══ LÍMITE DECLARADO: `Proveedores` ES UNA SEGUNDA FUENTE DEL MISMO CONCEPTO (16/08/2026) ═══
+// ═══ EL CRUCE CONTRA `Proveedores` YA EXISTE, Y VIVE AFUERA DE ESTE ARCHIVO (17/08/2026) ═══
 //
-// Medido con `auditar-conexion-flujo.mjs`: `Proveedores` y `Materiales` se leen SÓLO entre ellas —
-// ningún paso del pipeline las escribe y ninguna otra pestaña las lee. Son un circuito cerrado. La
-// deuda comercial que `Proveedores` calcula desde `Compras` ($12.497.040, 17 facturas, con su aging
-// y su medio de pago cuadrados) **no llega a CAJA ni a ninguno de los dos Cash Flow**: la tarjeta de
-// DEUDA vuelve a armar "lo que se debe" desde `_MOVIMIENTOS`, por otro camino y desde el mismo
-// origen. Dos fuentes para un concepto es exactamente lo que la realidad única prohíbe.
+// Hasta el 16/08 este bloque declaraba el límite y no lo medía. Hoy lo mide
+// `deuda-comercial-conciliacion.mjs`, con su auditor `auditar-deuda-comercial.mjs`, y el resultado
+// es que las dos fuentes coinciden en 3 filas de 27: $8.559.675 de facturas cargadas viajan como
+// PROYECTADO y esta tarjeta las publica como plan de gasto. El detalle, la causa y el paso siguiente
+// están en el comentario de la tarjeta `comprometida` en `caja-tarjetas.mjs` — al lado del criterio
+// que incumplen, no en un informe suelto.
 //
-// ESO NO SE ARREGLA ACÁ Y NO SE FINGE ARREGLADO. Sería fácil escribir un test que compare la parte
-// comercial del titular contra $12.497.040 y dejarlo en verde: sería un control validado contra la
-// misma información que produce. Mientras la cadena no exista, este bloque verifica lo que SÍ puede
-// —que ninguna cifra nace en la tarjeta— y deja el resto dicho en voz alta.
-//
-// EL CAMINO, PARA QUIEN LO TOME: `Proveedores` es la dueña de la deuda comercial y ya la calcula
-// bien; CAJA tiene que LEER esa celda para su componente comercial en vez de recalcularla, o —si se
-// prefiere que el libro siga siendo la fuente— `Proveedores` tiene que colgar del libro. Lo que no
-// puede seguir es que las dos la calculen. El primer paso barato es que el generador lea la fila 11
-// de `Proveedores` y GRITE la diferencia contra el componente comercial del libro: sin ese número
-// medido, cualquier decisión sobre cuál de las dos tiene razón es una corazonada.
+// POR QUÉ LA COMPARACIÓN NO SE HACE ACÁ, y es a propósito: estos tests corren sobre las FÓRMULAS que
+// las tarjetas emiten, sin tocar el archivo. Comparar contra `Proveedores!B11` exige leer el Sheet
+// vivo, y un test que necesita credenciales deja de ser evidencia de cierre: se saltea en cualquier
+// máquina sin token y se pone verde por ausencia. Lo que este bloque SÍ puede verificar en frío —que
+// ninguna cifra nace en la tarjeta— es lo que verifica.
 
 test('NINGUNA tarjeta inventa un número: todo sale del libro o de una celda de la pestaña', () => {
   const conocidos = [
