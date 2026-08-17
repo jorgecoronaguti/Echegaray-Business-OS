@@ -306,41 +306,29 @@ export function tarjetas(ref) {
     },
     {
       clave: 'comprometida',
-      // ═══ LÍMITE VIGENTE: ESTE TITULAR NO TRAE $8.559.675 DE DEUDA COMERCIAL DEL MES (17/08) ═══
+      // ═══ ESTE TITULAR YA TRAE LA DEUDA COMERCIAL DEL MES: +$8.598.826 (17/08/2026) ═══
       //
-      // La diferencia contra la pestaña dueña YA ESTÁ MEDIDA. `auditar-deuda-comercial.mjs` pone las
-      // dos fuentes sobre esta misma ventana y la abre fila por fila:
+      // Hasta hoy no la traía. `estadoDeEgreso` devolvía PROYECTADO para TODA compra no pagada, así
+      // que ese estado significaba dos cosas —"materiales estimados que nadie debe" y "Alumetal
+      // 0038-00025942, $2.014.940,07, vence el 31/08"—: sacarlo del titular el 16/08 fue correcto por
+      // lo primero y se llevó puesto lo segundo, 14 facturas por $8.559.675 que publicaba `mesPlan`.
+      // Ahora la fila con N° de comprobante y Estado "Pendiente" nace COMPROMETIDA (`esFacturaCargada`).
       //
-      //   Proveedores!B11                 $12.497.040 · 17 facturas
-      //   componente comercial de acá     $13.678.022 · 13 filas
-      //   neto -$1.180.982 · BRUTO $18.300.332 · coinciden 3 filas de 27
+      //   CAJA DISPONIBLE       $17.678.974  sin cambio
+      //   DEUDA ATRASADA…       $28.574.886 → $37.173.712   +$8.598.826
+      //   SI NO COBRÁS MÁS     -$10.895.912 → -$19.494.738   -$8.598.826
+      //   CAJA INVERTIDA        $44.848.185  sin cambio
+      //   SALDO AL CIERRE      $102.968.064  SIN CAMBIO — la plata no se crea, cambia de columna
+      //   contexto "plan"       $37.977.593 → $29.378.767   -$8.598.826
       //
-      //   3 VENCIDAS       $3.937.365  las dos las ven. Es todo lo que coincide.
-      //   14 DEL MES       $8.559.675  ✗ están en el libro como PROYECTADO → las suma `mesPlan`, la
-      //                                línea de PLAN de contexto. Son facturas con comprobante,
-      //                                proveedor, vencimiento y echeq asignado (Alumetal
-      //                                0038-00025942, $2.014.940,07, vence el 31/08). NO son
-      //                                presupuesto, y este titular dice que sí.
-      //   10 YA PAGADAS    $9.740.657  con cheque/echeq sin debitar. Acá SÍ y en Proveedores no, y
-      //                                está bien: el proveedor ya cobró y la plata no salió.
+      // El cierre no se mueve por construcción (`A3 − C3 + cobros − plan`: lo que este titular gana,
+      // la línea de plan lo pierde) y está fijado con un test en `factura-no-es-plan.test.mjs`.
       //
-      // LA CAUSA NO ESTÁ EN ESTA FILA: `estadoDeEgreso` devuelve PROYECTADO para TODA compra no
-      // pagada, y `estadoContraCorte` sólo la asciende a VENCIDO cuando la fecha ya pasó. Entonces
-      // PROYECTADO significa dos cosas —"materiales estimados que nadie debe" y "factura cargada que
-      // vence el 31/08"— y sacarlo del titular el 16/08 (con razón, por lo primero) se llevó puesto
-      // lo segundo. El rótulo promete "Y DEL MES" y de la comercial del mes no hay nada.
-      //
-      // POR QUÉ NO SE ARREGLA ACÁ: sumar esas catorce sube este titular $8.559.675, que es el número
-      // con el que el dueño decide qué paga esta semana. Efecto económico, y ya se corrigió tres
-      // veces por creer que el problema era la frase. Lo firma él.
-      //
-      // PASO SIGUIENTE, EN ORDEN:
-      //   1. partir PROYECTADO: la compra CARGADA Y NO PAGADA no es el gasto ESTIMADO.
-      //   2. con eso, `DEUDA` incorpora la comercial del mes y el rótulo deja de mentir.
-      //   3. recién ahí decidir si CAJA lee `Proveedores` o `Proveedores` cuelga del libro. Antes,
-      //      cualquiera de las dos conexiones propaga este error más rápido.
-      //
-      // El criterio y la aritmética, en `deuda-comercial-conciliacion.mjs`.
+      // SIGUEN AFUERA, Y NO ES OLVIDO: $2.455.725 en 2 filas sin N° de comprobante (Hormiserv, La
+      // Isla Metal) — afirmar que hay factura donde no está el dato es fabricarlo, y el auditor las
+      // grita con el motivo FALTA_EL_COMPROBANTE, que se arregla llenando una celda; y $9.740.657 en
+      // 10 filas ya pagadas con cheque sin debitar, que acá son deuda y en `Proveedores` no, y está
+      // bien. La medición completa y el paso siguiente, en `deuda-comercial-conciliacion.mjs`.
       //
       // ═══ EL RÓTULO CONTESTA LA PREGUNTA, NO NOMBRA EL CONCEPTO (13/08, textual) ═══
       //

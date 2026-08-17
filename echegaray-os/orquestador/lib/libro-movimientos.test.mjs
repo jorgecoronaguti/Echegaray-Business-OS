@@ -101,7 +101,26 @@ test('UN PROYECTADO CUYA FECHA PASÓ ES UN VENCIDO — y un real no cambia con e
   assert.equal(estadoContraCorte('PROYECTADO', 45990, 46000), 'VENCIDO')
   assert.equal(estadoContraCorte('PROYECTADO', 46010, 46000), 'PROYECTADO')
   assert.equal(estadoContraCorte('REAL', 45990, 46000), 'REAL')
-  assert.equal(estadoContraCorte('COMPROMETIDO', 45990, 46000), 'COMPROMETIDO')
+})
+
+test('EL COMPROMETIDO ATRASADO TAMBIÉN ES UN VENCIDO (cambio de criterio, 17/08/2026)', () => {
+  // ═══ ANTES CREÍAMOS ═══ que el COMPROMETIDO no podía estar atrasado, y esta misma línea afirmaba
+  // `estadoContraCorte('COMPROMETIDO', 45990, 46000) === 'COMPROMETIDO'`. Era cierto por construcción:
+  // el único COMPROMETIDO era el cheque entregado, y `estadoDeEgreso` sólo lo devolvía para fechas
+  // POSTERIORES al corte. Medido en el archivo vivo el 17/08: cero COMPROMETIDOS anteriores al corte.
+  //
+  // ═══ EVIDENCIA NUEVA ═══ desde que la factura cargada y no pagada nace COMPROMETIDA
+  // (`esFacturaCargada`), las 3 facturas hoy vencidas por $3.937.365 llegaban a VENCIDO por la rama
+  // de PROYECTADO y dejarían de pasar por ella. El titular de la tarjeta no se movería —los dos
+  // estados son DEUDA— pero el atraso desaparecería de las alertas. Un defecto más silencioso.
+  //
+  // ═══ NUEVA REGLA ═══ vence todo lo que se debe y tiene fecha pasada, sin importar de dónde vino.
+  assert.equal(estadoContraCorte('COMPROMETIDO', 45990, 46000), 'VENCIDO')
+  assert.equal(estadoContraCorte('COMPROMETIDO', 46010, 46000), 'COMPROMETIDO')
+  // Y el compromiso SIN FECHA no: `cuotasEnCheque` manda serial 0 para el cheque sin fecha de pago, y
+  // 0 es menor que cualquier corte. Sin esta guarda, todos pasarían a VENCIDO de golpe declarando un
+  // atraso que nadie midió.
+  assert.equal(estadoContraCorte('COMPROMETIDO', 0, 46000), 'COMPROMETIDO')
 })
 
 test('UNA SOLA FUNCIÓN SUMA, CON DISTINTA VENTANA: es el punto entero del archivo', () => {

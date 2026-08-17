@@ -100,6 +100,7 @@ export const TOL = 1
  * calla justo cuando aparece uno nuevo.
  */
 export const MOTIVOS = Object.freeze({
+  FALTA_EL_COMPROBANTE: 'FALTA_EL_COMPROBANTE',
   PUBLICADA_COMO_PLAN: 'PUBLICADA_COMO_PLAN',
   SIN_FECHA_DE_CAJA: 'SIN_FECHA_DE_CAJA',
   NO_EMITIDA: 'NO_EMITIDA',
@@ -117,6 +118,12 @@ export const MOTIVOS = Object.freeze({
  * se lee el día que grita por algo real.
  */
 export const GLOSA = Object.freeze({
+  [MOTIVOS.FALTA_EL_COMPROBANTE]: {
+    defecto: true,
+    texto: 'Proveedores la cuenta como deuda y CAJA no puede: la fila no tiene N° de comprobante, '
+      + 'y sin ese dato el libro no puede afirmar que hay una factura. SE ARREGLA LLENANDO LA CELDA '
+      + '"N° Comprobante" en Compras — no hay nada que tocar en el código.',
+  },
   [MOTIVOS.PUBLICADA_COMO_PLAN]: {
     defecto: true,
     texto: 'factura cargada, con comprobante y con vencimiento, que el libro tiene como PROYECTADO. '
@@ -251,7 +258,13 @@ function motivoDe({ f, cols, pv, lv, hasta, comoPlan }) {
   if (lv === 0 && pv > 0) {
     // EL ORDEN IMPORTA: si el libro la tiene como plan, la fecha de caja está bien y el extractor la
     // emitió. Preguntar por la fecha primero contestaría "NO_EMITIDA" sobre una fila que sí se emitió.
-    if (comoPlan) return MOTIVOS.PUBLICADA_COMO_PLAN
+    //
+    // Y ANTES QUE ESO, EL DATO QUE FALTA. Una fila sin comprobante queda como plan A PROPÓSITO —el
+    // libro no inventa una factura que nadie tipeó—, y decirle "PUBLICADA_COMO_PLAN" mandaría a
+    // arreglar el código cuando lo que hay que hacer es llenar una celda.
+    if (comoPlan) {
+      return txt(f[cols.comprobante]) === '' ? MOTIVOS.FALTA_EL_COMPROBANTE : MOTIVOS.PUBLICADA_COMO_PLAN
+    }
     if (!(fechaCaja > 0)) return MOTIVOS.SIN_FECHA_DE_CAJA
     if (!enVentana(fechaCaja, hasta)) return MOTIVOS.FECHA_DISTINTA
     return MOTIVOS.NO_EMITIDA
