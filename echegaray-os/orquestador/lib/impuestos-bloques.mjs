@@ -371,6 +371,20 @@ export function bloqueCierre(G, { proy, vencimientos }) {
   // sentado donde el ojo busca plata.
   G.lista(`${ALERTA} Anticipo de Ganancias — sin registro desde mayo`, [],
     'HUECO DECLARADO · último anticipo cargado: abril. De mayo en adelante Compras no tiene ninguna fila. ¿Se dio de baja el anticipo, o no se cargó el comprobante? Si sigue vigente son ~$144.427 por mes que el cash flow no está proyectando. Lo confirma el estudio contable.')
+  // ═══ LO QUE SE DESCARTÓ DE LA FILA DE LIBRE DISPONIBILIDAD (17/08) ═══
+  //
+  // El 17/08 la celda de julio tenía "⚠ vence 20/08" —una leyenda tipeada a mano donde la fila promete
+  // un importe— y `esNumero` la tomaba por $2.008, anclando ahí la proyección entera. Ahora se
+  // descarta, y julio se recalcula desde ARCA. Pero descartar en silencio le borraría a una persona lo
+  // que escribió sin decirle por qué: el aviso que ella quiso dejar tiene lugar propio —esta sección,
+  // la fila "DDJJ presentada" y la columna de procedencia—, y ese lugar no es una celda de plata.
+  for (const { mes, valor } of proy?.textoDondeVaImporte ?? []) {
+    G.lista(`${ALERTA} ${MES[mes - 1]}: había un texto donde va el saldo de libre disponibilidad`, [],
+      `HUECO DECLARADO · la celda decía "${valor}", que no es un importe: se descartó para no anclar la `
+      + 'proyección en un número que no existe, y el mes se recalculó desde los comprobantes de _ARCA_RAW. '
+      + 'Si ese aviso hace falta, va en esta sección o en la fila "DDJJ presentada" — nunca en una celda '
+      + 'que otras fórmulas suman.')
+  }
   G.push([`${ALERTA} El vencimiento de IIBB de San Juan es un SUPUESTO: ${vencimientos.iibb}`])
   G.push([`${ALERTA} Los pagos de IVA e IIBB no están cargados en Compras: el cash flow los ve por esta pestaña, no por Compras.`])
   if (proy?.meses?.length) G.push([`${ALERTA} IVA de ${MES[proy.meses[0] - 1]} a diciembre: ${proy.supuesto}`])

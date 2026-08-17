@@ -9,7 +9,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { origenDelMes, ORIGEN, bloqueIva } from './impuestos-bloques.mjs'
+import { origenDelMes, ORIGEN, bloqueIva, bloqueCierre } from './impuestos-bloques.mjs'
 import { crearGrilla } from './impuestos-grilla.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 import { anclaDeProyeccion } from './iva-libre-disponibilidad.mjs'
@@ -235,4 +235,32 @@ test('sin comprobantes en ARCA el cuadro queda IDÉNTICO al de antes', () => {
     assert.match(String(celda(conArca.G, conArca.iva.fDeb, m)), /BRUTO_DEB_/)
     assert.equal(celda(conArca.G, conArca.iva.fDDJJ, m), '▲ PROYECCIÓN')
   }
+})
+
+// ── EL HUECO SE DECLARA EN LA PANTALLA, NO SÓLO EN LA CONSOLA (17/08) ────────────────────────────
+//
+// Arreglar `esNumero` evita el número inventado, pero por sí solo cambia una falla ruidosa por una
+// silenciosa: el generador recalcula la columna que una persona escribió a mano y nadie se entera de
+// que había algo puesto ahí. La sección 10 es donde viven los huecos declarados de esta pestaña, y
+// una leyenda sentada en una celda de importe es exactamente eso.
+
+test('un texto donde va un importe se declara como HUECO en la sección 10', () => {
+  const G = crearGrilla(2026)
+  bloqueCierre(G, {
+    proy: { meses: [7, 8], supuesto: 'x', textoDondeVaImporte: [{ mes: 7, valor: '⚠ vence 20/08' }] },
+    vencimientos: { iibb: 'día 20' },
+  })
+  const fila = G.filas.find((f) => /libre disponibilidad/i.test(String(f[0] ?? '')))
+  assert.ok(fila, 'la sección 10 nombra la fila donde estaba el texto')
+  assert.match(String(fila[0]), /jul/i, 'dice de qué MES era la celda: sin eso no se sabe dónde ir')
+  // La prosa va en la columna de procedencia (la última), nunca en la de importes.
+  assert.match(String(fila[fila.length - 1]), /HUECO DECLARADO/)
+  assert.match(String(fila[fila.length - 1]), /⚠ vence 20\/08/, 'cita el texto que había, para poder recuperarlo')
+  assert.equal(fila[1], VACIO, 'la columna B es de plata: el aviso no se sienta ahí')
+})
+
+test('sin texto mal puesto la sección 10 no inventa un aviso', () => {
+  const G = crearGrilla(2026)
+  bloqueCierre(G, { proy: { meses: [7], supuesto: 'x', textoDondeVaImporte: [] }, vencimientos: { iibb: 'día 20' } })
+  assert.equal(G.filas.filter((f) => /libre disponibilidad/i.test(String(f[0] ?? ''))).length, 0)
 })

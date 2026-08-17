@@ -293,7 +293,13 @@ async function planDeProyeccionIva(google, ivaOficial) {
   const iL = filaDe('Saldo de libre disponibilidad (acumulado)')
   const filaLibre = iL >= 0 ? (previo[iL] || []).slice(1, 13) : []
   const mesesConDDJJ = (ivaOficial ?? []).filter((d) => d.periodo).map((d) => Number(String(d.periodo).slice(5, 7)))
-  const { ultimoMesConDato, libreDisp, mesesAProyectar } = anclaDeProyeccion(filaLibre, mesesConDDJJ)
+  const { ultimoMesConDato, libreDisp, mesesAProyectar, textoDondeVaImporte } = anclaDeProyeccion(filaLibre, mesesConDDJJ)
+  // Un texto sentado en una celda de plata no puede irse sin dejar rastro: se avisa acá para el --dry
+  // y viaja a la sección 10, que es donde la pestaña declara sus huecos.
+  for (const { mes, valor } of textoDondeVaImporte) {
+    console.log(`  ${MES[mes - 1]}: "${valor}" está donde va el saldo de libre disponibilidad y no es un importe`
+      + ' — se descarta del ancla y el mes se recalcula.')
+  }
 
   // LA ALÍCUOTA VIGENTE SALE DE LA CELDA, NO DE UNA CONSTANTE. Si el dueño ya la editó, manda la
   // suya: es la regla de "edición manual = verdad definitiva". Sólo la primera vez se siembra 0,21.
@@ -322,6 +328,7 @@ async function planDeProyeccionIva(google, ivaOficial) {
     meses: mesesAProyectar,
     ultimoMesConDato,
     libreDisp,
+    textoDondeVaImporte,
     alicuotaVigente,
     bases,
     brutoDebito: brutoDebitoLibro,
