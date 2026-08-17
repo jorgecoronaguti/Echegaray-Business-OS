@@ -142,6 +142,25 @@ test('lo que YA VENCIÓ sí coincide: el libro lo asciende a VENCIDO y las dos f
   assert.equal(r.hayDefecto, false)
 })
 
+test('la fila SIN COMPROBANTE se queda como plan a propósito, y el motivo dice qué celda llenar', () => {
+  // Compras f820 · Hormiserv · $2.355.725 · Pendiente · vence 30/08 · SIN N° de comprobante. El libro
+  // no la asciende porque no puede afirmar que hay una factura donde el dato no está, y `Proveedores`
+  // sí la cuenta. La diferencia es real y se arregla en la planilla, no en el código: distinguirla de
+  // `PUBLICADA_COMO_PLAN` es lo que evita mandar a alguien a leer el extractor por una celda vacía.
+  const r = conciliar({
+    compras: compras(fila({ proveedor: 'Hormiserv', comprobante: '', total: 2355725, parcial1: -2355725, fechaPago: 46264, fechaCaja: 46264 })),
+    movimientos: movimientos(mov({ fecha: 46264, importe: 2355725, estado: 'PROYECTADO', filaOrigen: 4 })),
+    hasta: FIN,
+  })
+  const m = motivo(r, MOTIVOS.FALTA_EL_COMPROBANTE)
+  assert.ok(m, 'el dato que falta tiene que estar nombrado, no escondido en "publicada como plan"')
+  assert.equal(Math.round(m.monto), 2355725)
+  assert.equal(m.defecto, true, 'sigue siendo deuda que CAJA no publica: no se silencia')
+  assert.match(m.glosa, /N° Comprobante/, 'y la glosa dice exactamente qué celda llenar')
+  assert.equal(motivo(r, MOTIVOS.PUBLICADA_COMO_PLAN), undefined,
+    'no puede caer también en el motivo que manda a mirar el código')
+})
+
 test('la factura SIN "Fecha de caja" desaparece del libro entero, y tiene su propio motivo', () => {
   // `deCompras` corta con `if (importe === null || cargada === null) continue`: sin Fecha de caja no
   // hay movimiento de ningún estado. Hoy vale $0 en el archivo (las 14 filas SÍ la tienen cargada),

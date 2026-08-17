@@ -58,7 +58,7 @@ import { rubroDeCaja, SIN_CLASIFICAR } from './rubro-caja.mjs'
 import { columnasObligatorias } from './compras-columnas.mjs'
 // EL LADO "COMPRAS" COMO FUENTE vive aparte desde el 06/08: sus rótulos los leen DOS consumidores
 // (este extractor y el cruce cheque↔factura) y tipearlos dos veces deja a uno leyendo índices viejos.
-import { columnasDeCompras, estaPagada, pendienteDeCompra, cuotasEnCheque, fechaDeCajaDeCompra } from './libro-extractores-compras.mjs'
+import { columnasDeCompras, estaPagada, esFacturaCargada, pendienteDeCompra, cuotasEnCheque, fechaDeCajaDeCompra } from './libro-extractores-compras.mjs'
 import { INSTRUMENTOS, colMesDelAnio } from './cash-flow-lineas.mjs'
 import { cubiertaPorResumen } from './libro-respaldo-banco.mjs'
 // El default de `deChequesEmitidos` era un 20 escrito a mano y el registro se movió a la 27. El
@@ -173,7 +173,12 @@ export function deCompras(filas = [], corte = null, { aviso = (m) => console.war
     //
     // La regla vive en `caja-canales.mjs` junto con la lista de medios que SÍ pegan al banco en el
     // día, importada de la fórmula viva de CAJA — para que no puedan discrepar.
-    const estadoBase = estadoDeEgreso({ instrumento, pagado, fecha, corte })
+    //
+    // Y LA FILA NO PAGADA TAMPOCO ES SIEMPRE UN PLAN: si tiene número de comprobante y el estado dice
+    // "Pendiente", es una factura que alguien tiene que pagar. `esFacturaCargada` lo decide mirando
+    // la fila —no una lista de proveedores— y de ahí sale el COMPROMETIDO en vez del PROYECTADO.
+    const facturada = esFacturaCargada({ estado: f[c.estado], comprobante: f[c.comprobante] })
+    const estadoBase = estadoDeEgreso({ instrumento, pagado, fecha, corte, facturada })
     const base = {
       // Una NOTA DE CRÉDITO viene con importe negativo: es plata que VUELVE. El signo del movimiento
       // se invierte y la magnitud queda positiva — la clave de dedup ya distingue nota de factura.

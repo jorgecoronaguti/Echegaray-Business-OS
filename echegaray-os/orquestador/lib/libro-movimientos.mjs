@@ -222,13 +222,31 @@ export const RUBRO_INTERNO = 'Transferencia interna'
  * NÚCLEO PURO: el estado de un movimiento con fecha, mirado contra el corte.
  *
  * Un PROYECTADO cuya fecha ya pasó y que nadie marcó como real no sigue siendo un proyectado: es un
- * VENCIDO, y esa distinción es la que hace visible el trabajo pendiente de conciliación. Un REAL o un
- * COMPROMETIDO no cambian por el paso del tiempo — ya ocurrieron o ya están firmados.
+ * VENCIDO, y esa distinción es la que hace visible el trabajo pendiente de conciliación. Un REAL no
+ * cambia por el paso del tiempo — ya ocurrió.
+ *
+ * ═══ EL COMPROMETIDO TAMBIÉN VENCE (17/08/2026) ═══
+ *
+ * Hasta hoy el COMPROMETIDO no pasaba por acá, y era coherente mientras el único COMPROMETIDO fuera
+ * el cheque entregado: `estadoDeEgreso` sólo lo devolvía para fechas POSTERIORES al corte, así que
+ * no había ninguno atrasado que ascender (medido en el archivo vivo: cero).
+ *
+ * Desde que la factura cargada y no pagada nace COMPROMETIDA, sí los hay: las 3 facturas que hoy
+ * están vencidas ($3.937.365) llegaban a VENCIDO por la rama de PROYECTADO, y al nacer COMPROMETIDAS
+ * dejarían de pasar por ella. El titular de la tarjeta no se movería —los dos estados son DEUDA— pero
+ * el atraso desaparecería del cuadro y de las alertas de proyecciones vencidas. Sería cambiar un
+ * defecto por otro más silencioso.
+ *
+ * LA GUARDA `fecha > 0` NO ES DECORACIÓN: `cuotasEnCheque` manda `q.fechaPago ?? 0` para el cheque
+ * sin fecha de pago, y su propio comentario dice que *"un compromiso sin fecha no es uno que no
+ * vence, es uno que puede vencer mañana"*. El serial 0 es menor que cualquier corte, así que sin la
+ * guarda todo cheque sin fecha pasaría a VENCIDO de golpe — declarando un atraso que nadie midió.
  */
 export function estadoContraCorte(estado, fecha, corte) {
-  if (estado !== 'PROYECTADO') return estado
+  if (estado !== 'PROYECTADO' && estado !== 'COMPROMETIDO') return estado
   if (!Number.isFinite(fecha) || !Number.isFinite(corte)) return estado
-  return fecha < corte ? 'VENCIDO' : 'PROYECTADO'
+  if (estado === 'COMPROMETIDO' && !(fecha > 0)) return estado
+  return fecha < corte ? 'VENCIDO' : estado
 }
 
 /**

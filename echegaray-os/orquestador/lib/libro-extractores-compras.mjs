@@ -56,6 +56,46 @@ export const columnasDeCompras = (filas = []) => columnasObligatorias(filas[2] ?
 /** ¿La fila dice "Pagado"? Se tolera decoración alrededor de la palabra ("✅ Pagado"). */
 export const estaPagada = (celda) => /^pagado$/i.test(txt(celda).replace(/[^a-záéíóúüñ]/gi, ''))
 
+/** ¿La fila dice "Pendiente"? Mismo trato de la decoración que `estaPagada`, y por la misma razón. */
+export const estaPendiente = (celda) => /^pendiente$/i.test(txt(celda).replace(/[^a-záéíóúüñ]/gi, ''))
+
+/**
+ * NÚCLEO PURO: ¿esta fila de Compras es una FACTURA CARGADA o una ESTIMACIÓN?
+ *
+ * ═══ POR QUÉ HACE FALTA DISTINGUIRLAS Y POR QUÉ SALE DEL DATO (17/08/2026) ═══
+ *
+ * Hasta hoy `estadoDeEgreso` devolvía `PROYECTADO` para TODA compra no pagada. Ese estado terminó
+ * significando dos cosas incompatibles: *"materiales de obra estimados"* y *"Alumetal
+ * 0038-00025942, $2.014.940,07, vence el 31/08"*. Cuando el 16/08 se sacó `PROYECTADO` del titular
+ * de deuda —con razón, porque adentro estaban "Estructura esperada" y la nafta por cuota— se fueron
+ * con él 13 facturas por $8.598.826.
+ *
+ * LA DISTINCIÓN NO ES UNA LISTA DE FILAS NI DE PROVEEDORES: está escrita en la propia planilla.
+ *
+ *   · EL COMPROBANTE es el dato decisivo. Una estimación no tiene número de factura ni lo puede
+ *     tener; una factura cargada, sí. Cuando el número falta, NO se asciende la fila: afirmar que
+ *     existe una factura donde el dato no está es fabricarlo. Medido el 17/08 quedan afuera por eso
+ *     Hormiserv ($2.355.725) y La Isla Metal ($100.000) — compras reales sin el número tipeado, que
+ *     `auditar-deuda-comercial.mjs` sigue gritando con el motivo exacto y se arreglan llenando una
+ *     celda. Un control que las tapara sería peor que el defecto.
+ *
+ *   · EL ESTADO "Pendiente" es la declaración del dueño de que la obligación está viva. La planilla
+ *     ya distingue: la fila f478 de ARCA ($473.767) dice "Proyectado" en esa misma columna. Sin esta
+ *     condición, un comprobante copiado sobre una fila de proyección la convertiría en deuda.
+ *
+ * La FECHA no se pregunta acá porque `deCompras` ya descartó la fila que no la tiene.
+ *
+ * FALLA HACIA EL COMPORTAMIENTO ANTERIOR: cualquier duda devuelve `false`, o sea `PROYECTADO`. El
+ * riesgo de subir un peso de más al titular con el que se decide un pago es mayor que el de dejarlo
+ * un día más en la línea de abajo, donde además hay un auditor mirándolo.
+ *
+ * @param {{estado:any, comprobante:any}} f
+ * @returns {boolean}
+ */
+export function esFacturaCargada({ estado, comprobante } = {}) {
+  return estaPendiente(estado) && txt(comprobante) !== ''
+}
+
 /**
  * NÚCLEO PURO: lo que una fila de Compras TODAVÍA DEBE.
  *
