@@ -182,8 +182,27 @@ async function main() {
   // nuevos del mismo día, el orden real se perdía y la cadena "no cerraba" por un motivo inventado.
   // Para un pegado chico igual sirve: cada movimiento se compara con el anterior del propio pegado; el
   // primero sólo fija el ancla (no hay con qué compararlo, y verificarCadena lo tolera).
+  // ═══ EL VEREDICTO DECLARA SU VENTANA, O SE LEE COMO UNA CONTRADICCIÓN (17/08/2026) ═══
+  //
+  // Acá decía "✓ la cadena de saldos cierra de punta a punta", a secas. Y `auditar-saldo-banco.mjs`,
+  // que mide desde el arranque de la BASE, decía al mismo tiempo que faltaban $45.080. Dos
+  // herramientas del mismo repo firmando lo contrario sobre la misma cuenta, y ninguna de las dos
+  // diciendo hasta dónde había mirado. El dueño: *"pésimo, entonces no puede quedar así"*.
+  //
+  // Las dos tenían razón: ésta verifica el TRAMO QUE TRAJO EL ARCHIVO y la otra la base entera. Pero
+  // un "✓" que no dice de qué a qué no se puede distinguir de un "✓" sobre todo — es el mismo defecto
+  // que el techo mudo del reparador de textos, que firmaba "todo entra" mirando 400 de 1.155 filas.
+  //
+  // Ahora el veredicto imprime su ventana y, cuando el tramo NO empieza donde empieza la base, manda
+  // a la herramienta que sí puede contestar por el resto. Declarar el alcance es parte del veredicto.
   const { ok, cortes } = verificarCadena(movimientos, null)
-  if (ok) console.log('✓ la cadena de saldos cierra de punta a punta')
+  const v0 = movimientos[0]?.fecha ?? '?'
+  const v1 = movimientos[movimientos.length - 1]?.fecha ?? '?'
+  if (ok) {
+    console.log(`✓ la cadena de saldos cierra de punta a punta EN ESTE ARCHIVO (${v0} → ${v1})`)
+    console.log('  esto NO dice nada del tramo anterior: la base entera la audita '
+      + 'orquestador/scripts/auditar-saldo-banco.mjs')
+  }
   else {
     console.log(`\n⚠ la cadena de saldos NO cierra en ${cortes.length} punto(s):`)
     for (const c of cortes.slice(0, 5)) {
