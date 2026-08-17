@@ -38,10 +38,13 @@ function Etapa({ etapa }: { etapa: ObraPanel['etapa'] }) {
   )
 }
 
-// EL NÚMERO DICE SOBRE QUÉ SE CALCULA. No es adorno: hoy el OS publica DOS avances del mismo
-// archivo —éste y el de `avance_obra`, que leen /chat y Pedidos y herramientas— y miden poblaciones
-// distintas (San Francisco: 80 actividades planificadas acá contra 24 allá). Mientras las dos
-// convivan, el que no diga su cobertura es el que engaña.
+// EL NÚMERO DICE SOBRE QUÉ SE CALCULA.
+//
+// No es adorno. Hasta el 17/08/2026 el OS publicaba DOS avances del mismo archivo de Drive —éste y
+// el del chat— y medían poblaciones distintas: San Francisco al 85% mirando 24 actividades, y al
+// 44% mirando 80. Desde entonces el cálculo es uno solo (vista `obra_avance`, la lee también el
+// chat), pero la cobertura se sigue mostrando: un promedio sin decir sobre cuántas cosas se tomó es
+// la mitad de un dato.
 function Avance({ pct, medidas, total }: { pct: number | null; medidas: number; total: number }) {
   if (pct == null) {
     return <span className="text-[12px] text-faint">{total ? 'sin avance cargado' : 'sin cronograma'}</span>
@@ -84,7 +87,7 @@ export default async function ObrasPage() {
         // para mostrar, y sin manera de llegar a ellos. Con `overflow-x-auto` se desplaza y no se
         // pierde una sola columna.
         <div className="overflow-x-auto rounded-xl border border-line bg-white">
-          <table className="w-full min-w-[720px] text-left">
+          <table data-testid="portafolio-tabla" className="w-full min-w-[720px] text-left">
             <thead>
               <tr className="border-b border-line text-[10px] uppercase tracking-wide text-faint">
                 <th className="px-4 py-2.5 font-medium">Obra / Cliente</th>

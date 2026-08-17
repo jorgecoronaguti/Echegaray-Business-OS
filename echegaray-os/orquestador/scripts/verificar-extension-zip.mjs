@@ -35,6 +35,24 @@ function regenerar() {
 const esperada = versionDe(SRC)
 if (FIX) { regenerar(); console.log(`extension.zip regenerado en ${esperada} (ambas copias)`) }
 
+// ═══ UN ARTEFACTO QUE NO SE VERSIONA NO PUEDE SER PRECONDICIÓN DEL CIERRE (17/08/2026) ═══
+//
+// `extension.zip` de la raíz está en .gitignore: se construye, no se commitea. Este guardián exigía
+// que YA existiera, así que en cualquier clon nuevo —y en todo worktree, y en `main`— `npm run
+// orq:test` terminaba en 1 sin que hubiera nada roto. El comando que este repo declara como LA
+// evidencia de cierre estaba trabado en rojo, y un semáforo que siempre está en rojo no se mira.
+//
+// Si falta, se construye acá mismo y se dice. La defensa que motivó este script —servir una versión
+// vieja sin que nadie se entere— queda intacta: lo que se verifica es el zip que existe contra el
+// código fuente, y un zip viejo sigue fallando. Ausente no es viejo: ausente es no construido.
+// Se construye SÓLO el que falta: `cp` sobre el zip versionado lo deja modificado en el diff aunque
+// su contenido sea el mismo (cambian las fechas internas del zip), y una verificación no ensucia el
+// árbol de trabajo de nadie.
+if (!FIX && !existsSync(ZIPS[0]) && existsSync(SRC)) {
+  execFileSync('zip', ['-qr', ZIPS[0], '.', '-x', '*.DS_Store'], { cwd: SRC })
+  console.log(`  · extension.zip no estaba construido en este árbol (está gitignoreado): lo generé en v${esperada}`)
+}
+
 let fallas = 0
 const mal = (m) => { fallas++; console.error(`  ✖ ${m}`) }
 

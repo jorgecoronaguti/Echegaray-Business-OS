@@ -97,20 +97,24 @@ test('una fila con nombre pero sin código, ni fecha, ni avance NO entra', () =>
   assert.equal(actividades.length, 0)
 })
 
-test('una fila SIN código pero con fecha entra igual, con código por posición', () => {
+test('una fila SIN código pero con fecha entra igual', () => {
   // El tracker de Quattropani no numera ninguna fila. Descartar la fila sin código perdía esa obra
   // entera y el script informaba "sin actividades" sobre 30 renglones cargados a mano.
   const { actividades } = parsearCronograma(grilla(ENC_EN, ['', 'Excavación', '', 46195, 46200, 5, '', 0, '']))
   assert.equal(actividades.length, 1)
-  assert.equal(actividades[0].codigo, 'f2')
+  assert.equal(actividades[0].codigo, null)
+  assert.equal(actividades[0].clave, 'raiz/excavacion')
 })
 
-test('el mismo código dos veces no duplica: gana el primero', () => {
+test('el MISMO código en dos filas distintas ya no descarta una actividad', () => {
+  // En San Francisco la columna `#` arranca como código (1,01…1,08) y a la mitad pasa a ser una
+  // CANTIDAD: `2` aparece en tres filas, `3` en dos. Con el código como clave, la regla "gana el
+  // primero" borraba actividades reales del cronograma sin decirlo.
   const { actividades } = parsearCronograma(grilla(ENC_EN,
-    ['1', 'Primera', '', 46195, 46200, 5, '', 1, ''],
-    ['1', 'Repetida', '', 46201, 46205, 5, '', 0, '']))
-  assert.equal(actividades.length, 1)
-  assert.equal(actividades[0].nombre, 'Primera')
+    ['2', 'Colocacion de cancamo', '', 46195, 46200, 5, '', 0.5, ''],
+    ['2', 'Corte de paneles al sur', '', 46201, 46205, 5, '', 1, '']))
+  assert.equal(actividades.length, 2)
+  assert.deepEqual(actividades.map((a) => a.clave), ['raiz/colocacion-de-cancamo', 'raiz/corte-de-paneles-al-sur'])
 })
 
 // ── JERARQUÍA ────────────────────────────────────────────────────────────────
@@ -156,6 +160,78 @@ test('una tarea REAL sin fechas pero con duración no se confunde con un título
   // tiene fecha asignada es trabajo, no un rótulo.
   const { actividades } = parsearCronograma(grilla(ENC_EN, ['4', 'Pintura general', '', '', '', 3, '', 0, '']))
   assert.equal(actividades[0].tipo, 'tarea')
+})
+
+// ── IDENTIDAD: MOVER FILAS NO PUEDE MOVER DATOS DE UNA ACTIVIDAD A OTRA ──────
+//
+// El sincronizador hace `on conflict (obra_id, clave) do update`. Si la clave dependiera de la
+// posición —como dependía hasta el 17/08/2026, en 248 de 325 actividades— insertar una fila arriba
+// en el tracker haría que cada actividad escriba sus fechas SOBRE LA VECINA, y que el candado
+// `editado_a_mano` proteja a la actividad equivocada. No hay error visible: hay fechas cambiadas.
+//
+// Estos tests son la demostración que faltaba. La propiedad que se prueba es una sola: **una clave
+// que aparece antes y después de tocar las filas tiene que seguir señalando a la MISMA actividad**.
+
+const PISOS = [
+  ENC_EN,
+  ['1', 'TAREA DE LA SEMANA', '', '', '', '', '', '', ''],
+  ['1,01', 'Muro G 1/2 de 5m', '', 46195, 46200, 5, '', 1, ''],
+  ['', 'PISOS', '', '', '', '', '', 0, ''],
+  ['', 'GALPÓN 5 - 1000m2', '', '', '', '', '', 0, ''],
+  ['', 'Relleno', '', 46240, 46240, 1, '', 1, ''],
+  ['', 'Compactación', '', 46241, 46241, 1, '', 0.5, ''],
+  ['', 'GALPÓN 4', '', '', '', '', '', 0, ''],
+  ['', 'Relleno', '', 46241, 46241, 1, '', 0.7, ''],
+  ['', 'Compactación', '', 46244, 46244, 1, '', 0.5, ''],
+]
+const porClave = (rows) => new Map(parsearCronograma(rows).actividades.map((a) => [a.clave, a]))
+/** La identidad no migró: toda clave compartida sigue siendo la misma actividad. */
+function identidadEstable(antes, despues) {
+  let compartidas = 0
+  for (const [clave, a] of antes) {
+    const b = despues.get(clave)
+    if (!b) continue
+    compartidas++
+    assert.equal(b.nombre, a.nombre, `la clave ${clave} pasó de "${a.nombre}" a "${b.nombre}"`)
+    assert.equal(b.seccion, a.seccion, `la clave ${clave} cambió de sección`)
+    assert.equal(b.pct, a.pct, `la clave ${clave} se quedó con el avance de otra actividad`)
+    assert.equal(b.inicio_plan, a.inicio_plan, `la clave ${clave} se quedó con la fecha de otra actividad`)
+  }
+  return compartidas
+}
+
+test('el mismo Relleno de dos galpones distintos son DOS actividades', () => {
+  const m = porClave(PISOS)
+  assert.ok(m.has('galpon-5-1000m2/relleno') && m.has('galpon-4/relleno'))
+  assert.equal(m.get('galpon-5-1000m2/relleno').pct, 100)
+  assert.equal(m.get('galpon-4/relleno').pct, 70)
+})
+
+test('INSERTAR una fila arriba no le cambia la identidad a ninguna actividad', () => {
+  const conFilaNueva = [PISOS[0], ['', 'Reunión de arranque', '', 46190, 46190, 1, '', 1, ''], ...PISOS.slice(1)]
+  assert.equal(identidadEstable(porClave(PISOS), porClave(conFilaNueva)), 9)
+})
+
+test('BORRAR una fila del medio no le pasa sus datos a la de abajo', () => {
+  const sinRelleno5 = PISOS.filter((r) => r !== PISOS[5])
+  const despues = porClave(sinRelleno5)
+  assert.ok(!despues.has('galpon-5-1000m2/relleno'), 'la actividad borrada tiene que desaparecer, no heredarse')
+  assert.equal(identidadEstable(porClave(PISOS), despues), 8)
+})
+
+test('REORDENAR dentro de la sección no mueve datos de una actividad a otra', () => {
+  const dadoVuelta = [...PISOS]
+  ;[dadoVuelta[5], dadoVuelta[6]] = [dadoVuelta[6], dadoVuelta[5]]
+  assert.equal(identidadEstable(porClave(PISOS), porClave(dadoVuelta)), 9)
+})
+
+test('renombrar una actividad NO la pisa: crea otra y la vieja queda huérfana', () => {
+  // Es la contracara honesta de la clave por contenido. El sync reporta las huérfanas y no borra
+  // nada, así que un renombre se ve — en vez de propagarse solo sobre la fila de al lado.
+  const renombrada = PISOS.map((r) => (r === PISOS[5] ? ['', 'Relleno (2da etapa)', '', 46240, 46240, 1, '', 1, ''] : r))
+  const despues = porClave(renombrada)
+  assert.ok(!despues.has('galpon-5-1000m2/relleno'))
+  assert.ok(despues.has('galpon-5-1000m2/relleno-2da-etapa'))
 })
 
 // ── LO QUE NO SE INVENTA ─────────────────────────────────────────────────────

@@ -24,8 +24,8 @@
 import { makeGoogleClient } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { query } from '../lib/db.mjs'
-import { AVANCE_FILE_ID } from '../lib/avance-fisico.mjs'
-import { parsearCronograma } from '../lib/obra-cronograma.mjs'
+import { registrarSincronizacion } from '../lib/registrar-sincronizacion.mjs'
+import { AVANCE_FILE_ID, parsearCronograma } from '../lib/obra-cronograma.mjs'
 
 const APLICAR = process.argv.includes('--aplicar')
 
@@ -69,38 +69,45 @@ async function main() {
     if (!APLICAR) continue
 
     // Las editadas a mano ganan: se leen ANTES de escribir y se excluyen del upsert.
+    //
+    // POR CLAVE, NO POR POSICIÓN. Cuando la clave era el renglón, este candado protegía a la
+    // actividad EQUIVOCADA en cuanto alguien insertaba una fila en el tracker: la fila 57 editada a
+    // mano dejaba de ser la misma actividad, y el sync le escribía encima a la de al lado creyendo
+    // que respetaba algo. Ver `claveDe()` en lib/obra-cronograma.mjs.
     const { rows: mias } = await query(
-      `select codigo from obra_actividad where obra_id = $1 and editado_a_mano`, [obraId])
-    const protegidas = new Set(mias.map((m) => m.codigo))
-    const aEscribir = actividades.filter((a) => !protegidas.has(a.codigo))
+      `select clave from obra_actividad where obra_id = $1 and editado_a_mano`, [obraId])
+    const protegidas = new Set(mias.map((m) => m.clave))
+    const aEscribir = actividades.filter((a) => !protegidas.has(a.clave))
     if (protegidas.size) console.log(`      ✋ ${protegidas.size} actividad(es) editadas a mano: no las piso`)
 
     for (const a of aEscribir) {
       await query(
         `insert into obra_actividad
-           (obra_id, codigo, codigo_padre, nombre, tipo, orden, inicio_plan, fin_plan, dias_plan,
-            dias_real, pct, estado, cuadrilla, comentario, fuente, fuente_pestana, fuente_fila, sincronizado_en)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'avances_de_obra_drive',$15,$16, now())
-         on conflict (obra_id, codigo) do update set
-           codigo_padre = excluded.codigo_padre, nombre = excluded.nombre, tipo = excluded.tipo,
+           (obra_id, clave, seccion, codigo, codigo_padre, nombre, tipo, orden, inicio_plan, fin_plan,
+            dias_plan, dias_real, pct, estado, cuadrilla, comentario, fuente, fuente_pestana, fuente_fila, sincronizado_en)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'avances_de_obra_drive',$17,$18, now())
+         on conflict (obra_id, clave) do update set
+           seccion = excluded.seccion, codigo = excluded.codigo, codigo_padre = excluded.codigo_padre,
+           nombre = excluded.nombre, tipo = excluded.tipo,
            orden = excluded.orden, inicio_plan = excluded.inicio_plan, fin_plan = excluded.fin_plan,
            dias_plan = excluded.dias_plan, dias_real = excluded.dias_real, pct = excluded.pct,
            estado = excluded.estado, cuadrilla = excluded.cuadrilla, comentario = excluded.comentario,
            fuente_pestana = excluded.fuente_pestana, fuente_fila = excluded.fuente_fila,
            sincronizado_en = now()`,
-        [obraId, a.codigo, a.codigo_padre, a.nombre, a.tipo, a.orden, a.inicio_plan, a.fin_plan,
-          a.dias_plan, a.dias_real, a.pct, a.estado, a.cuadrilla, a.comentario, pestana, a.fuente_fila]
+        [obraId, a.clave, a.seccion, a.codigo, a.codigo_padre, a.nombre, a.tipo, a.orden, a.inicio_plan,
+          a.fin_plan, a.dias_plan, a.dias_real, a.pct, a.estado, a.cuadrilla, a.comentario, pestana, a.fuente_fila]
       )
     }
 
     // Lo que ya no está en el tracker se DECLARA. No se borra: el dato puede ser bueno y la pestaña
-    // haber cambiado de nombre.
-    const codigos = actividades.map((a) => a.codigo)
+    // haber cambiado de nombre. Con la clave por contenido, acá aparece además todo lo que alguien
+    // RENOMBRÓ en el tracker — que es exactamente lo que queremos ver antes de que se propague solo.
+    const claves = actividades.map((a) => a.clave)
     const { rows: huerfanas } = await query(
-      `select codigo, nombre from obra_actividad
-        where obra_id = $1 and fuente_pestana = $2 and not (codigo = any($3::text[]))`,
-      [obraId, pestana, codigos])
-    for (const h of huerfanas) console.log(`      ⚠ "${h.codigo} ${h.nombre}" ya no está en el tracker — no la borro`)
+      `select clave, nombre from obra_actividad
+        where obra_id = $1 and fuente_pestana = $2 and not (clave = any($3::text[]))`,
+      [obraId, pestana, claves])
+    for (const h of huerfanas) console.log(`      ⚠ "${h.nombre}" (${h.clave}) ya no está en el tracker — no la borro`)
   }
 
   if (sinObra.length) {
@@ -110,14 +117,20 @@ async function main() {
   console.log(`\n${APLICAR ? '✓ escrito' : '(sin --aplicar)'}: ${totalAct} actividades, ${totalConFecha} con fecha de inicio`)
 
   if (APLICAR) {
-    // LA EVIDENCIA ES DEL EFECTO: se relee de la base, no se confía en el retorno del insert.
+    // LA EVIDENCIA ES DEL EFECTO: se relee de la base —y del avance canónico, que es lo que van a
+    // ver las pantallas—, no se confía en el retorno del insert.
     const { rows } = await query(
-      `select o.nombre, count(a.*)::int as n, count(a.inicio_plan)::int as con_fecha,
-              min(a.inicio_plan) as desde, max(a.fin_plan) as hasta
-         from obra_canonica o join obra_actividad a on a.obra_id = o.id
-        group by o.nombre order by o.nombre`)
-    console.log('\n  releído de la base:')
-    for (const r of rows) console.log(`    ${String(r.nombre).padEnd(16)} ${String(r.n).padStart(3)} actividades · ${r.con_fecha} con fecha · ${r.desde ?? '—'} → ${r.hasta ?? '—'}`)
+      `select obra, n_actividades, n_medidas, n_sin_planificar, avance_pct, desde, hasta
+         from obra_avance where n_actividades > 0 order by obra`)
+    console.log('\n  releído de la base (vista obra_avance, la que leen todos):')
+    for (const r of rows) {
+      console.log(`    ${String(r.obra).padEnd(16)} ${String(r.avance_pct ?? '—').padStart(3)}% · ` +
+        `${r.n_medidas}/${r.n_actividades} medidas · ${r.n_sin_planificar} sin planificar · ${r.desde ?? '—'} → ${r.hasta ?? '—'}`)
+    }
+    // La frescura la alimentaba `sync-avance-obra.mjs`, que se dio de baja. Sin esto el archivo de
+    // Avances de Obra empezaría a figurar atrasado justo cuando el OS lo está leyendo todos los días.
+    const fr = await registrarSincronizacion({ query }, { driveFileId: AVANCE_FILE_ID })
+    console.log(fr.ok ? `\n  frescura: "${fr.nombre}" → ${fr.estado}` : `\n  frescura no registrada: ${fr.motivo}`)
   }
   process.exit(0)
 }

@@ -38,9 +38,12 @@ const isoDe = (d: Date) => d.toISOString().slice(0, 10)
 const fmtCorto = (iso: string | null) =>
   iso ? aDate(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' }) : '—'
 
-/** Nivel de anidamiento por el código: `2.03` cuelga de `2`. Se usa sólo para sangrar. */
-function nivelDe(codigo: string): number {
-  return Math.min(3, String(codigo).replace(',', '.').split('.').length - 1)
+/** Nivel de anidamiento para sangrar: por el código cuando de verdad es un código WBS (`2.03`
+ *  cuelga de `2`), y si no —la mayoría de las filas del tracker no llevan número— por si la
+ *  actividad pertenece a una sección. Es sangría, nada más: no decide ni identidad ni cálculo. */
+function nivelDe(a: Actividad): number {
+  if (a.codigo) return Math.min(3, a.codigo.replace(',', '.').split('.').length - 1)
+  return a.tipo === 'resumen' ? 0 : 1
 }
 
 export function Gantt({
@@ -118,7 +121,7 @@ export function Gantt({
   const hoyVisible = xHoy >= 0 && xHoy <= ancho
 
   return (
-    <div className="rounded-xl border border-line bg-white">
+    <div data-testid="gantt" className="rounded-xl border border-line bg-white">
       <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-2.5">
         <div className="flex items-center gap-3 text-[11px] text-muted">
           <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-4 rounded-sm bg-sky-500" />plan</span>
@@ -165,8 +168,8 @@ export function Gantt({
               >
                 <span
                   className={`min-w-0 flex-1 truncate ${a.tipo === 'resumen' ? 'font-semibold text-ink' : 'text-muted'}`}
-                  style={{ paddingLeft: nivelDe(a.codigo) * 12 }}
-                  title={`${a.codigo} · ${a.nombre}`}
+                  style={{ paddingLeft: nivelDe(a) * 12 }}
+                  title={[a.seccion, a.codigo, a.nombre].filter(Boolean).join(' · ')}
                 >{a.nombre}</span>
                 <span className="hidden w-11 shrink-0 text-right tabular-nums text-faint sm:inline">{fmtCorto(a.inicio_plan)}</span>
                 <span className="hidden w-11 shrink-0 text-right tabular-nums text-faint sm:inline">{fmtCorto(a.fin_plan)}</span>
@@ -236,7 +239,7 @@ export function Gantt({
         <aside className="border-t border-line bg-slate-50/70 px-4 py-3">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <p className="text-[11px] uppercase tracking-wide text-faint">{sel.codigo} · {sel.tipo}</p>
+              <p className="text-[11px] uppercase tracking-wide text-faint">{[sel.seccion, sel.codigo, sel.tipo].filter(Boolean).join(' · ')}</p>
               <p className="truncate text-[14px] font-semibold text-ink">{sel.nombre}</p>
             </div>
             <button type="button" onClick={() => setSel(null)} className="shrink-0 text-[12px] text-muted hover:text-ink">cerrar</button>

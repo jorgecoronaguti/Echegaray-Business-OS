@@ -170,7 +170,9 @@ function AvancePanel({ avance }: { avance: AvanceObra | null }) {
             <div className={`h-full rounded-full ${barra(prom)}`} style={{ width: `${Math.min(prom, 100)}%` }} />
           </div>
           <div className="mt-1 text-xs text-gray-500">
-            {avance.completadas}/{avance.actividades} actividades completas · fuente: tracker de Drive
+            {avance.completadas}/{avance.actividades} actividades planificadas completas
+            {avance.sin_planificar > 0 && ` · ${avance.sin_planificar} sin fecha, fuera del promedio`}
+            {' · '}fuente: tracker de Drive
           </div>
         </div>
       </div>

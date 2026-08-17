@@ -117,7 +117,9 @@ export async function getComprobantesSinAsignarConSugerencia(
 // tracker de avance; si no, una con minúsculas antes que TODO EN MAYÚSCULAS).
 export async function getObrasCanonicas(supabase: SupabaseClient): Promise<string[]> {
   const fuentes = await Promise.all([
-    supabase.from('avance_obra').select('obra'),
+    // `obra_avance` da el nombre CANÓNICO de la obra (obra_canonica.nombre). Antes esto leía
+    // `avance_obra`, que traía el nombre de la pestaña del tracker: dos grafías de la misma obra.
+    supabase.from('obra_avance').select('obra'),
     supabase.from('pedidos_materiales').select('obra_texto'),
     supabase.from('herramientas').select('ubicacion_actual'),
   ])

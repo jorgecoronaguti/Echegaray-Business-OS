@@ -1,95 +1,80 @@
-// PRP-017 F4 — AVANCE FÍSICO por obra, leído del archivo REAL que usa la empresa
-// ("Avances de Obra", una hoja por obra, tracker estilo MS-Project con Activity/Status/
-// % Done). Honesto con la realidad del dato: las hojas son HETEROGÉNEAS — las nuevas
-// (San Francisco, Messina, LE-*) tienen % Done por actividad; la vieja (Estrella) es un
-// checklist sin estado. Donde hay % ⇒ avance calculado; donde no ⇒ DESCONOCIDO, no se
-// inventa. Lee vía el Service Account (0 costo de API del modelo). No escribe nada.
-import { makeGoogleClient } from './google.mjs'
-import { loadConfig } from './config.mjs'
+// EL AVANCE FÍSICO DE UNA OBRA — LEÍDO DE DONDE SE CALCULA, NO CALCULADO OTRA VEZ.
+//
+// ═══ QUÉ HABÍA ACÁ HASTA EL 17/08/2026, Y POR QUÉ SE FUE ═══
+//
+// Este módulo tenía su propio parser del tracker "Avances de Obra" de Drive. El módulo de Obras
+// tiene otro (`obra-cronograma.mjs`), mejor, que además trae las fechas. Los dos leían el MISMO
+// archivo y publicaban NÚMEROS DISTINTOS de la misma obra en el mismo minuto: San Francisco al 85%
+// por el chat y al 44% por la web.
+//
+// No era un empate entre dos opiniones. El parser de acá exigía que la fila tuviera algo en la
+// columna `#` — y en San Francisco esa columna se llena en las primeras 24 filas y después no —,
+// así que promediaba el trabajo de junio y julio, casi todo terminado, y dejaba afuera PISOS,
+// ENTREPISO y MEDIANERA: 90 actividades planificadas hasta el 27/08. El 85% era el avance de la
+// parte vieja de la obra, publicado como si fuera el de la obra.
+//
+// Ahora el cálculo vive UNA sola vez, en la vista `obra_avance` de Postgres, y esto es un lector.
+// El parser y el sincronizador de aquel camino (`sync-avance-obra.mjs`, tabla `avance_obra`) se
+// dieron de baja en el mismo commit. La cadena quedó: Drive → obra-cronograma.mjs → obra_actividad
+// → obra_avance → web, chat y briefings.
+import { query } from './db.mjs'
 
-// El archivo lo pasó el dueño (2026-07-15) como la fuente que usa la empresa.
-export const AVANCE_FILE_ID = '1XHiqSC1wiMVrXAob8H_koN5vHr9BQLLvXn61yIW18Ug'
+const norm = (s) => String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim()
 
-const norm = (s) => String(s ?? '').trim()
-/** Parsea un valor de "% Done": "100%"→100, "0,5"→50 (fracción), "80"→80. null si vacío. */
-function parsePct(v) {
-  const s = norm(v).replace('%', '').replace(',', '.').trim()
-  if (!s) return null
-  const n = Number(s)
-  if (!Number.isFinite(n)) return null
-  return n <= 1 && s.includes('.') ? n * 100 : n // fracción 0-1 → %, si no ya es %
-}
-
-/** Encuentra la fila de encabezado y mapea columnas por nombre. null si no hay tracker. */
-function ubicarColumnas(rows) {
-  for (let i = 0; i < Math.min(rows.length, 12); i++) {
-    const r = rows[i] || []
-    const find = (re) => r.findIndex((c) => re.test(norm(c)))
-    const pct = find(/%\s*done|avance|%\s*compl/i)
-    const act = find(/activity|actividad|tarea|rubro|item/i)
-    if (pct >= 0 && act >= 0) {
-      return { header: i, act, pct, status: find(/status|estado/i), num: find(/^#$|n[°º]|nro|item/i) }
-    }
-  }
-  return null
-}
-
-/** Avance físico de UNA hoja/obra. Devuelve resumen o {estructurado:false} si no hay %. */
-export async function avanceHoja(g, tab) {
-  const rows = await g.readSheetValues(AVANCE_FILE_ID, `${tab}!A1:N250`).catch(() => [])
-  const cols = ubicarColumnas(Array.isArray(rows) ? rows : [])
-  if (!cols) return { tab, estructurado: false, motivo: 'la hoja no tiene columna de % avance (checklist sin estado)' }
-  let n = 0, suma = 0, completadas = 0
-  const detalle = []
-  for (let i = cols.header + 1; i < rows.length; i++) {
-    const r = rows[i] || []
-    const actividad = norm(r[cols.act])
-    // Actividad real: tiene nombre Y un # (código tipo "1,02"); descarta divisores de sección.
-    const tieneNum = cols.num >= 0 && /\d/.test(norm(r[cols.num]))
-    if (!actividad || !tieneNum) continue
-    const p = parsePct(r[cols.pct])
-    if (p == null) continue
-    n++; suma += p; if (p >= 99.5 || /complet|termin|finaliz/i.test(norm(r[cols.status]))) completadas++
-    detalle.push({ codigo: norm(r[cols.num]) || null, actividad, pct: Math.round(p), estado: cols.status >= 0 ? norm(r[cols.status]) || null : null })
-  }
-  if (!n) return { tab, estructurado: false, motivo: 'tracker presente pero sin actividades con % cargado' }
-  return { tab, estructurado: true, actividades: n, completadas, avancePromedio: Math.round(suma / n), detalle }
-}
-
-/** Avance físico de todas las hojas del archivo. Reusa un solo cliente Google. */
+/**
+ * Avance de todas las obras, de la fuente única.
+ *
+ * Conserva la forma de retorno del módulo viejo (`tab`, `estructurado`, `avancePromedio`, `motivo`)
+ * porque la consume la vigilancia autónoma, y agrega la COBERTURA: sobre cuántas actividades se
+ * tomó el promedio y cuántas quedaron sin planificar. Un promedio sin su cobertura fue justamente
+ * el defecto que hizo falta corregir.
+ */
 export async function avanceTodasLasObras() {
-  const g = makeGoogleClient({ config: loadConfig() })
-  const tabs = await g.listTabs(AVANCE_FILE_ID)
-  const out = []
-  for (const tab of tabs) out.push(await avanceHoja(g, tab))
-  return out
+  const { rows } = await query(
+    `select obra, avance_pct, n_actividades, n_medidas, n_sin_planificar, n_completas,
+            desde, hasta, sincronizado_en
+       from public.obra_avance order by obra`)
+  return rows.map((r) => ({
+    tab: r.obra,
+    estructurado: r.avance_pct !== null,
+    avancePromedio: r.avance_pct === null ? null : Number(r.avance_pct),
+    actividades: Number(r.n_medidas),
+    completadas: Number(r.n_completas),
+    sinPlanificar: Number(r.n_sin_planificar),
+    totalActividades: Number(r.n_actividades),
+    desde: r.desde,
+    hasta: r.hasta,
+    sincronizadoEn: r.sincronizado_en,
+    motivo: r.avance_pct === null
+      ? (Number(r.n_actividades) > 0
+        ? 'tiene actividades cargadas pero ninguna con fecha de inicio: no hay nada que medir todavía'
+        : 'la obra no tiene cronograma cargado en el tracker de Drive')
+      : null,
+  }))
 }
 
-/** Línea legible por hoja, para el cuadro/briefing. */
+/** Línea legible por obra, para el cuadro/briefing. La cobertura va pegada al número. */
 export function formatAvance(a) {
   if (!a.estructurado) return `${a.tab}: avance físico sin cargar (${a.motivo})`
-  return `${a.tab}: **${a.avancePromedio}%** físico (${a.completadas}/${a.actividades} actividades completas)`
+  const cola = a.sinPlanificar ? `, ${a.sinPlanificar} sin planificar` : ''
+  return `${a.tab}: **${a.avancePromedio}%** físico (${a.completadas}/${a.actividades} actividades planificadas completas${cola})`
 }
 
-/** Resumen de avance físico. Sin nombre → todas las obras del archivo. Con nombre →
- *  la(s) hoja(s) cuyo título coincide. Respuesta lista para el chat (0 API del modelo). */
+/**
+ * Resumen de avance físico. Sin nombre → todas las obras. Con nombre → la(s) que coincidan.
+ * Respuesta lista para el chat, 0 API del modelo.
+ */
 export async function avanceResumen(nombre) {
   let obras
   try { obras = await avanceTodasLasObras() } catch (e) {
-    return `No pude leer el archivo de Avances de Obra: ${String(e?.message ?? e).slice(0, 140)}`
+    return `No pude leer el avance de obra: ${String(e?.message ?? e).slice(0, 140)}`
   }
-  const filtro = norm(nombre).toLowerCase()
-  const sel = filtro ? obras.filter((o) => o.tab.toLowerCase().includes(filtro)) : obras
-  if (filtro && !sel.length) {
-    return `No encontré una hoja de avance para "${nombre}". Hay: ${obras.map((o) => o.tab).join(', ')}.`
+  const q = norm(nombre)
+  const elegidas = q ? obras.filter((o) => norm(o.tab).includes(q) || q.includes(norm(o.tab))) : obras
+  if (!elegidas.length) {
+    return q
+      ? `No encontré una obra que se llame "${nombre}". Las que hay: ${obras.map((o) => o.tab).join(', ')}.`
+      : 'Todavía no hay ninguna obra cargada.'
   }
-  const conDato = sel.filter((o) => o.estructurado)
-  const L = ['**Avance físico de obra**  _(fuente: "Avances de Obra" en Drive; 0 API)_', '']
-  for (const o of sel) L.push(`• ${formatAvance(o)}`)
-  if (conDato.length) {
-    const prom = Math.round(conDato.reduce((s, o) => s + o.avancePromedio, 0) / conDato.length)
-    L.push('', `Promedio de las obras con avance cargado: **${prom}%**.`)
-  }
-  L.push('', '_Es avance de ACTIVIDADES (% Done del tracker), no avance económico. Para el cruce físico vs económico pedime el cuadro económico de la obra._')
-  return L.join('\n')
+  return elegidas.map(formatAvance).join('\n')
 }

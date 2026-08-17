@@ -130,7 +130,16 @@ export default async function ObraPage({
       {vista === 'resumen' && (
         <div className="space-y-5">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Dato k="Avance físico" v={obra.avance_pct == null ? 'sin cargar' : `${obra.avance_pct}%`} sub={`${obra.n_actividades} actividades`} />
+            {/* La cobertura va PEGADA al porcentaje: es el mismo número que publica el chat, y lo
+                que lo hace comparable es decir sobre cuántas actividades se tomó. */}
+            <Dato
+              k="Avance físico"
+              v={obra.avance_pct == null ? 'sin cargar' : `${obra.avance_pct}%`}
+              sub={obra.avance_pct == null
+                ? `${obra.n_actividades} actividades, ninguna con fecha`
+                : `${obra.n_actividades_medidas} de ${obra.n_actividades} actividades` +
+                  (obra.n_actividades_sin_planificar ? ` · ${obra.n_actividades_sin_planificar} sin fecha` : '')}
+            />
             <Dato k="Costo real" v={plata(obra.costo_real)} sub={`${obra.n_comprobantes ?? 0} comprobantes`} />
             <Dato k="Contratado" v={plata(obra.monto_contratado)} sub={obra.monto_contratado == null ? 'no cargado' : undefined} />
             <Dato k="Restricciones" v={abiertas.length ? String(abiertas.length) : '—'} sub={obra.restricciones_vencidas ? `${obra.restricciones_vencidas} vencidas` : 'abiertas'} />
@@ -159,7 +168,7 @@ export default async function ObraPage({
             <div className="rounded-xl border border-line bg-white p-4">
               <h2 className="mb-2 text-[13px] font-semibold text-ink">Restricciones abiertas</h2>
               {abiertas.length === 0
-                ? <p className="text-[12px] text-faint">Ninguna cargada. En una obra en ejecución eso casi siempre significa que no se están registrando, no que no existan.</p>
+                ? <p className="text-[12px] text-faint">Ninguna cargada — y todavía no hay forma de cargarlas: la vista es de sólo lectura. En una obra en ejecución este vacío nunca significa que no haya restricciones.</p>
                 : <ul className="space-y-1 text-[12px]">
                     {abiertas.slice(0, 5).map((r) => (
                       <li key={r.id} className="flex justify-between gap-3">
@@ -210,10 +219,17 @@ export default async function ObraPage({
           <div>
             <h2 className="mb-2 text-[13px] font-semibold text-ink">Restricciones</h2>
             {restr.length === 0 ? (
-              <Callout tono="info">
-                Todavía no hay restricciones cargadas. Una restricción sin <strong>responsable con nombre</strong> y
-                sin <strong>fecha comprometida</strong> no es gestión: es una queja anotada. Las dos columnas existen
-                desde el día uno para que no se pueda cargar de otra forma.
+              // NO SIMULAR UNA CAPACIDAD QUE NO EXISTE. La tabla, sus tipos y el vencimiento están
+              // hechos, pero todavía no hay ninguna pantalla ni ningún sincronizador que dé de alta
+              // una restricción: hoy esto es SÓLO LECTURA sobre una tabla vacía. Decirlo acá es más
+              // barato que dejar que alguien la busque, y es la diferencia entre "no hay ninguna
+              // restricción" —que sería un dato— y "no hay por dónde cargarla" —que es la verdad—.
+              <Callout tono="warn">
+                <strong>Todavía no se puede cargar una restricción desde acá</strong>: esta vista es de sólo lectura y la
+                tabla está vacía. No leas el vacío como &laquo;esta obra no tiene restricciones&raquo;.
+                <br />
+                Cuando exista el alta, va a exigir <strong>responsable con nombre</strong> y <strong>fecha comprometida</strong>:
+                una restricción sin esas dos cosas no es gestión, es una queja anotada.
               </Callout>
             ) : (
               <div className="overflow-hidden rounded-xl border border-line bg-white">
@@ -241,9 +257,17 @@ export default async function ObraPage({
             >Abrir la carpeta de la obra en Drive ↗</a>
           )}
           {docs.length === 0 ? (
-            <Callout tono="info">
-              No hay documentos vinculados. Los archivos <strong>siguen viviendo en Drive</strong>: acá se guarda el
-              vínculo y el contexto, nunca una copia.
+            // Misma regla que en Restricciones: la lista vacía no es un dato de la obra, es una
+            // capacidad que falta. Los documentos existen —están en Drive—; lo que no existe es el
+            // vínculo, y no hay todavía pantalla para crearlo.
+            <Callout tono="warn">
+              <strong>Todavía no se puede vincular un documento desde acá</strong>: esta vista es de sólo lectura.
+              {obra.drive_carpeta_id
+                ? ' Mientras tanto, la carpeta de la obra en Drive es el camino — el botón de arriba.'
+                : ' Esta obra tampoco tiene declarada su carpeta de Drive, así que no hay ni por dónde entrar.'}
+              <br />
+              Los archivos <strong>siguen viviendo en Drive</strong>: acá se guardaría el vínculo y el contexto, nunca
+              una copia.
             </Callout>
           ) : (
             <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-white">

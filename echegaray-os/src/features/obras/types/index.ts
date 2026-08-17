@@ -35,11 +35,16 @@ export interface ObraPanel {
   costo_real: number | null
   n_comprobantes: number | null
   margen_sobre_contratado_pct: number | null
-  /** Promedio sobre las actividades PLANIFICADAS (con fecha) que no son de resumen. */
+  /** Promedio sobre las actividades PLANIFICADAS (con fecha) que no son de resumen.
+   *  Se calcula UNA vez, en la vista `obra_avance`, y de ahí lo leen también /chat y
+   *  /control-obras: dos cálculos del mismo número fue el defecto que obligó a unificarlo. */
   avance_pct: number | null
   /** Cuántas actividades entran en ese promedio. Es la cobertura del número, y va a la vista. */
   n_actividades_medidas: number
+  /** Actividades reales sin fecha: no se pueden medir todavía, y por eso no entran al promedio. */
+  n_actividades_sin_planificar: number
   n_actividades: number
+  avance_sincronizado_en: string | null
   restricciones_abiertas: number
   restricciones_vencidas: number
 }
@@ -52,7 +57,13 @@ export type TipoActividad = 'tarea' | 'resumen' | 'hito'
 export interface Actividad {
   id: string
   obra_id: string
-  codigo: string
+  /** LA IDENTIDAD: `sección/nombre`, derivada del contenido de la fila del tracker. No es la
+   *  posición: cuando lo era, insertar una fila hacía que cada actividad pisara a su vecina. */
+  clave: string
+  seccion: string | null
+  /** El `#` del tracker tal como vino. Puede faltar y puede repetirse — en San Francisco esa
+   *  columna arranca como código y a la mitad pasa a ser una cantidad. Sirve para mostrar. */
+  codigo: string | null
   codigo_padre: string | null
   nombre: string
   tipo: TipoActividad
