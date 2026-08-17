@@ -64,7 +64,7 @@ import { tarjetas, NO_REAL } from './caja-tarjetas.mjs'
 import { alertas, acciones } from './caja-avisos.mjs'
 // LA ESCALERA DE VENCIMIENTOS VIVE EN SU PROPIO ARCHIVO: la consumen el panel de acá y el conciliador
 // que compara tramo por tramo contra la planilla.
-import { BORDES, DESDE_SIEMPRE, desdeTramo, hastaTramo } from './caja-calendario.mjs'
+import { BORDES, DESDE_SIEMPRE, desdeTramo, hastaTramo, signoDelTramo, TRAMO_VENCIDO } from './caja-calendario.mjs'
 import { ALERTA } from './glifos.mjs'
 
 // `conciliar-caja-vs-cashflow.mjs` compara tramo por tramo contra lo que muestra la planilla y toma
@@ -306,7 +306,14 @@ export function grilla(cargado, refs) {
       // excluido y mostrarlo hacía leer "Hasta 13/08" para un tramo que termina el 12. En
       // castellano, "hasta" incluye.
       BORDES[k][1] ? `=(${BORDES[k][1]})-1` : '',
-      `=${terminoLibro({ desde: k === 0 ? DESDE_SIEMPRE : desdeTramo(k), hasta: hastaTramo(k), estados: NO_REAL })}`,
+      // EL LADO DEL LIBRO QUE CUENTA EL TRAMO lo decide `signoDelTramo`, no este archivo: el tramo del
+      // pasado cuenta lo que se DEBE y no lo que no se cobró. Ver el bloque de `caja-calendario.mjs`.
+      `=${terminoLibro({
+        desde: k === TRAMO_VENCIDO ? DESDE_SIEMPRE : desdeTramo(k),
+        hasta: hastaTramo(k),
+        estados: NO_REAL,
+        signo: signoDelTramo(k),
+      })}`,
       // La posición acumulada arranca en la disponibilidad: un neto de tramo sin la plata que hay
       // detrás no contesta nada.
       k === 0 ? `=${DESDE_CAJA.total}+$H${f}` : `=$I${f - 1}+$H${f}`,
