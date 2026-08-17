@@ -1,6 +1,6 @@
 import { createServerClient, type SetAllCookies } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-import { esRutaCampoPermitida } from '@/features/auth/types'
+import { esRutaCampoPermitida, esRutaPublica } from '@/features/auth/types'
 
 // Refresca la sesión de Supabase en cada request -- sin esto, un usuario logueado
 // puede quedar con un token vencido en Server Components y verse "deslogueado" sin
@@ -26,10 +26,22 @@ export async function middleware(request: NextRequest) {
   )
 
   const { data: { user } } = await supabase.auth.getUser()
+  const pathname = request.nextUrl.pathname
+
+  // ── SIN SESIÓN NO SE VE NADA. Es lo primero que se decide, antes que cualquier rol.
+  // Hasta el 17/08/2026 esto no existía y `/flujo-caja` respondía 200 a un anónimo con los
+  // importes y los nombres de los clientes: esa ruta no pasa por Supabase, lee el Sheet con una
+  // service account desde el servidor, así que el RLS —que tapaba al resto— no la cubría.
+  // Se guarda a dónde iba para devolverlo ahí después de entrar.
+  if (!user && !esRutaPublica(pathname)) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/login'
+    url.searchParams.set('volver', pathname)
+    return NextResponse.redirect(url)
+  }
 
   // RBAC de campo: un operario (rol 'campo') solo puede ver las rutas operativas. Si intenta
   // entrar a cualquier otra (caja, reportes, dirección…), lo mandamos a su pantalla de campo.
-  const pathname = request.nextUrl.pathname
   const esApiOAuth = pathname.startsWith('/api') || pathname.startsWith('/login') || pathname.startsWith('/signup')
   if (user && !esApiOAuth && !esRutaCampoPermitida(pathname)) {
     const { data: perfil } = await supabase.from('perfiles').select('rol').eq('id', user.id).maybeSingle()

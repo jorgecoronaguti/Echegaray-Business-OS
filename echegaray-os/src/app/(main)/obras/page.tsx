@@ -1,181 +1,122 @@
+// 01 OBRAS · PORTAFOLIO — la cartera entera en una pantalla.
+//
+// Cada columna contesta una pregunta y ninguna está de adorno: en qué etapa está la obra, cuánto
+// lleva ejecutado, cuánto costó hasta hoy, y qué la está frenando. Sin tarjetas de colores, sin
+// gráficos de torta y sin KPIs que nadie mira: la lista ES el tablero.
+//
+// FUENTE: la vista `obra_panel`, que sale de `obra_canonica` cruzada con `obra_costo_real`. NO se
+// lee `public.obras` legacy — era la tabla con 4 obras pausadas que hacía que la web dijera "0 obras
+// activas" mientras cuatro obras facturaban $287M.
+
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { getClientes } from '@/features/fundacion/services/fundacionService'
-import { getObras } from '@/features/obras/services/obrasService'
-import { getObrasPanel } from '@/features/obras/services/obraPanelService'
-import { CarteraReal } from '@/features/obras/components/CarteraReal'
-import { ObraForm } from '@/features/obras/components/ObraForm'
-import { getResumenEconomicoTodasLasObras } from '@/features/control-economico/services/controlEconomicoService'
-import { getHHResumenTodasLasObras } from '@/features/hh-productividad/services/hhProductividadService'
-import { getEjecucionFinancieraTodasLasObras } from '@/features/ejecucion-financiera/services/ejecucionFinancieraService'
-import { getActividadesSemanalesTodasLasObras } from '@/features/actividades-semanales/services/actividadesSemanalesService'
-import { construirTableroObras, ordenarTableroObras } from '@/features/obras/types/tableroObras'
-import { ESTADO_ECONOMICO_LABEL, ESTADO_ECONOMICO_CLASSNAME } from '@/features/control-economico/types'
-import { getDashboardDatosFuente } from '@/features/dashboard/services/dashboardDataService'
-import { construirAlertasDashboard } from '@/features/dashboard/types'
-import { getAcciones, accionesPorAlertaOrigen } from '@/features/acciones/services/accionesService'
-import { SeccionAlertas } from '@/features/dashboard/components/SeccionAlertas'
-import { alertasPorArea } from '@/features/areas/types'
-import { ConfianzaBadge } from '@/shared/components/ConfianzaBadge'
+import { getPortafolio } from '@/features/obras/services/obrasService'
+import { ETAPA_LABEL, type ObraPanel } from '@/features/obras/types'
+import { PageShell, Callout } from '@/shared/components/ui'
 
-const ESTADO_OBRA_LABEL: Record<string, string> = {
-  contratada: 'Contratada',
-  activa: 'Activa',
-  pausada: 'Pausada',
-  cerrada: 'Cerrada',
+export const dynamic = 'force-dynamic'
+
+const plata = (n: number | null) =>
+  n == null ? '—' : '$' + Math.round(n).toLocaleString('es-AR')
+
+/** La etapa se lee de un vistazo por su posición en la línea, no por un color arbitrario. */
+function Etapa({ etapa }: { etapa: ObraPanel['etapa'] }) {
+  const orden = ['previo', 'inicio', 'desarrollo', 'terminacion', 'cierre']
+  const i = orden.indexOf(etapa)
+  return (
+    <span className="inline-flex items-center gap-1.5" title={ETAPA_LABEL[etapa]}>
+      <span className="flex gap-[3px]">
+        {orden.map((_, k) => (
+          <i key={k} className={`h-1.5 w-1.5 rounded-full ${k <= i ? 'bg-slate-700' : 'bg-slate-200'}`} />
+        ))}
+      </span>
+      <span className="text-[12px] text-muted">{ETAPA_LABEL[etapa]}</span>
+    </span>
+  )
 }
 
-async function loadObrasData() {
-  try {
-    const supabase = await createClient()
-    const [clientes, obras, cartera, resumenes, hhResumenes, ejecuciones, actividades, datosDashboard, acciones] =
-      await Promise.all([
-        getClientes(supabase),
-        getObras(supabase),
-        getObrasPanel(supabase),
-        getResumenEconomicoTodasLasObras(supabase),
-        getHHResumenTodasLasObras(supabase),
-        getEjecucionFinancieraTodasLasObras(supabase),
-        getActividadesSemanalesTodasLasObras(supabase),
-        getDashboardDatosFuente(supabase),
-        getAcciones(supabase),
-      ])
-    return { clientes, obras, cartera, resumenes, hhResumenes, ejecuciones, actividades, datosDashboard, acciones }
-  } catch (err) {
-    const error = err instanceof Error ? err.message : 'Error desconocido al conectar con Supabase'
-    const failed = { data: null, error } as const
-    return {
-      clientes: failed,
-      obras: failed,
-      cartera: failed,
-      resumenes: failed,
-      hhResumenes: failed,
-      ejecuciones: failed,
-      actividades: failed,
-      datosDashboard: failed,
-      acciones: failed,
-    }
+function Avance({ pct }: { pct: number | null }) {
+  if (pct == null) {
+    return <span className="text-[12px] text-faint">sin cargar</span>
   }
-}
-
-function money(v: number) {
-  return `$${v.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+  return (
+    <span className="flex items-center gap-2">
+      <span className="h-1.5 w-20 overflow-hidden rounded-full bg-slate-100">
+        <span className="block h-full rounded-full bg-sky-600" style={{ width: `${Math.min(100, pct)}%` }} />
+      </span>
+      <span className="w-9 text-right text-[12px] tabular-nums text-ink">{pct}%</span>
+    </span>
+  )
 }
 
 export default async function ObrasPage() {
-  const { clientes, obras, cartera, resumenes, hhResumenes, ejecuciones, actividades, datosDashboard, acciones } =
-    await loadObrasData()
-
-  const pageError = clientes.error ?? obras.error
-  const isAuthError = pageError?.toLowerCase().includes('permission denied') ?? false
-
-  const todasLasAlertas = datosDashboard.data ? construirAlertasDashboard(datosDashboard.data) : []
-  const alertasDelArea = alertasPorArea(todasLasAlertas, 'obras')
-  const accionesMap = accionesPorAlertaOrigen(acciones.data ?? [])
-
-  const tablero =
-    obras.data && resumenes.data && hhResumenes.data && ejecuciones.data && actividades.data
-      ? ordenarTableroObras(
-          construirTableroObras(obras.data, resumenes.data, hhResumenes.data, ejecuciones.data, actividades.data)
-        )
-      : []
+  const supabase = await createClient()
+  const { data, error } = await getPortafolio(supabase)
+  const obras = data ?? []
+  const activas = obras.filter((o) => o.estado === 'activa')
 
   return (
-    <div className="min-h-screen space-y-8 p-8">
-      <div>
-        <h1 className="text-3xl font-bold">Obras</h1>
-        <p className="mt-2 text-gray-600">Tablero de gestión — obras activas primero, ordenadas por riesgo económico.</p>
-      </div>
+    <PageShell
+      eyebrow="01 · Obras"
+      title="Portafolio"
+      subtitle={`${activas.length} obra${activas.length === 1 ? '' : 's'} en curso. El avance sale del tracker de Drive; el costo, de Compras por obra.`}
+      maxWidth="max-w-7xl"
+    >
+      {error && <Callout tono="neg">No pude leer el portafolio: {error}</Callout>}
 
-      {cartera.data && <CarteraReal obras={cartera.data} />}
-
-      {pageError && isAuthError && (
-        <div className="rounded border border-amber-300 bg-amber-50 p-4 text-amber-900" data-testid="page-error">
-          <p className="font-semibold">No hay sesión autenticada — RLS está bloqueando el acceso correctamente.</p>
-          <p className="mt-1 text-sm">{pageError}</p>
-        </div>
-      )}
-      {pageError && !isAuthError && (
-        <div className="rounded border border-red-300 bg-red-50 p-4 text-red-800" data-testid="page-error">
-          <p className="font-semibold">Supabase no está configurado o no responde.</p>
-          <p className="mt-1 text-sm">{pageError}</p>
-        </div>
+      {!error && obras.length === 0 && (
+        <Callout tono="info">Todavía no hay obras cargadas en el eje canónico.</Callout>
       )}
 
-      {datosDashboard.data && (
-        <SeccionAlertas
-          titulo="Qué requiere atención hoy"
-          descripcion="Margen en riesgo, adicionales sin gestionar y obras activas sin movimiento reciente."
-          alertas={alertasDelArea}
-          testId="obras-area-alertas"
-          accionesPorAlertaId={accionesMap}
-        />
-      )}
-
-      {tablero.length > 0 && (
-        <section data-testid="obras-tablero-section">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b text-xs text-gray-500 uppercase">
-                  <th className="pr-4 py-2">Obra</th>
-                  <th className="pr-4 py-2">Estado</th>
-                  <th className="pr-4 py-2">Avance</th>
-                  <th className="pr-4 py-2">HH real/est.</th>
-                  <th className="pr-4 py-2">Costo real</th>
-                  <th className="pr-4 py-2">Margen actualizado</th>
-                  <th className="pr-4 py-2">Certificado</th>
-                  <th className="pr-4 py-2">Cobrado</th>
-                  <th className="pr-4 py-2">Salud económica</th>
+      {obras.length > 0 && (
+        <div className="overflow-hidden rounded-xl border border-line bg-white">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="border-b border-line text-[10px] uppercase tracking-wide text-faint">
+                <th className="px-4 py-2.5 font-medium">Obra / Cliente</th>
+                <th className="px-3 py-2.5 font-medium">Etapa</th>
+                <th className="px-3 py-2.5 font-medium">Avance</th>
+                <th className="px-3 py-2.5 text-right font-medium">Contratado</th>
+                <th className="px-3 py-2.5 text-right font-medium">Costo real</th>
+                <th className="px-3 py-2.5 text-center font-medium">Actividades</th>
+                <th className="px-3 py-2.5 text-center font-medium">Restric.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {obras.map((o) => (
+                <tr key={o.obra_id} className="border-b border-line/60 last:border-0 hover:bg-sky-50/50">
+                  <td className="px-4 py-2.5">
+                    <Link href={`/obras/${o.obra_id}`} className="block">
+                      <span className="text-[13px] font-semibold text-ink hover:underline">{o.nombre}</span>
+                      <span className="block truncate text-[11px] text-faint">{o.cliente_texto ?? '—'}</span>
+                    </Link>
+                  </td>
+                  <td className="px-3 py-2.5"><Etapa etapa={o.etapa} /></td>
+                  <td className="px-3 py-2.5"><Avance pct={o.avance_pct} /></td>
+                  <td className="px-3 py-2.5 text-right text-[12px] tabular-nums text-muted">{plata(o.monto_contratado)}</td>
+                  <td className="px-3 py-2.5 text-right text-[12px] tabular-nums text-ink">{plata(o.costo_real)}</td>
+                  <td className="px-3 py-2.5 text-center text-[12px] tabular-nums text-muted">{o.n_actividades || '—'}</td>
+                  <td className="px-3 py-2.5 text-center text-[12px] tabular-nums">
+                    {o.restricciones_abiertas === 0
+                      ? <span className="text-faint">—</span>
+                      : <span className={o.restricciones_vencidas > 0 ? 'font-semibold text-amber-700' : 'text-muted'}>
+                          {o.restricciones_abiertas}{o.restricciones_vencidas > 0 ? ` · ${o.restricciones_vencidas} vencidas` : ''}
+                        </span>}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {tablero.map((o) => (
-                  <tr key={o.obra_id} className="border-b" data-testid="obra-tablero-fila">
-                    <td className="pr-4 py-2">
-                      <Link href={`/obras/${o.obra_id}`} className="font-medium underline">
-                        {o.obra_nombre}
-                      </Link>
-                      {o.responsableReciente && (
-                        <p className="text-xs text-gray-500">Resp.: {o.responsableReciente}</p>
-                      )}
-                    </td>
-                    <td className="pr-4 py-2">{ESTADO_OBRA_LABEL[o.estado] ?? o.estado}</td>
-                    <td className="pr-4 py-2">{o.avanceFisicoPromedio != null ? `${o.avanceFisicoPromedio.toFixed(0)}%` : '—'}</td>
-                    <td className="pr-4 py-2">
-                      {o.hhReal}
-                      {o.hhEstimada != null ? ` / ${o.hhEstimada}` : ''}
-                    </td>
-                    <td className="pr-4 py-2">
-                      {money(o.costoRealAcumulado)}
-                      <div>
-                        <ConfianzaBadge naturaleza={o.costoRealAcumulado > 0 ? 'observado' : 'sin_dato'} />
-                      </div>
-                    </td>
-                    <td className="pr-4 py-2">{o.margenActualizado != null ? money(o.margenActualizado) : '—'}</td>
-                    <td className="pr-4 py-2">{money(o.totalCertificado)}</td>
-                    <td className="pr-4 py-2">{money(o.totalCobrado)}</td>
-                    <td className="pr-4 py-2">
-                      <span
-                        className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ${ESTADO_ECONOMICO_CLASSNAME[o.estadoEconomico]}`}
-                      >
-                        {ESTADO_ECONOMICO_LABEL[o.estadoEconomico]}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
-      <details className="rounded border p-3" data-testid="obra-form-section">
-        <summary className="cursor-pointer font-medium text-gray-700">+ Nueva obra</summary>
-        <div className="mt-3">
-          <ObraForm clientes={clientes.data ?? []} />
-        </div>
-      </details>
-    </div>
+      {/* LO QUE FALTA SE DICE, no se disimula con un cero. Un contratado en "—" es un contrato que
+          nadie cargó, y es distinto de un contrato de $0. */}
+      {obras.some((o) => o.monto_contratado == null) && (
+        <p className="mt-3 text-[12px] text-faint">
+          Las obras sin monto contratado no lo tienen cargado en ninguna fuente del OS — no es que valgan cero.
+        </p>
+      )}
+    </PageShell>
   )
 }

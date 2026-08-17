@@ -27,6 +27,28 @@ export function esRutaCampoPermitida(pathname: string): boolean {
   return CAMPO_RUTAS_PERMITIDAS.some((r) => pathname === r || pathname.startsWith(r + '/'))
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// LO QUE SE PUEDE VER SIN HABER ENTRADO. TODO LO DEMÁS EXIGE SESIÓN.
+//
+// El middleware refrescaba la sesión y aplicaba el RBAC de campo, pero NUNCA exigía estar
+// logueado: un anónimo pasaba entero. Casi todas las pantallas se salvaban de casualidad —el RLS
+// de Supabase le devuelve vacío a `anon`— pero `/flujo-caja` no pasa por Supabase: lee el Sheet
+// con una service account DESDE EL SERVIDOR, así que el RLS no aplica. Resultado verificado con
+// `curl` sin cookies el 17/08/2026: HTTP 200 con importes y nombres de clientes reales.
+//
+// La lista es blanca a propósito. Una lista negra deja afuera la ruta que alguien agregue mañana,
+// y el modo de fallar de una lista negra es publicar; el de una lista blanca, pedir login.
+export const RUTAS_PUBLICAS = [
+  '/login',
+  '/signup',
+  '/descargar', // la landing de descarga de la extensión: estática, sin dato de la empresa
+  '/api/oauth/callback', // el retorno de Google: llega sin sesión por definición
+  '/api/os', // el proxy que consume la extensión, con su propia autorización
+]
+export function esRutaPublica(pathname: string): boolean {
+  return RUTAS_PUBLICAS.some((r) => pathname === r || pathname.startsWith(r + '/'))
+}
+
 export const loginInputSchema = z.object({
   email: z.string().trim().email('Email inválido'),
   password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),

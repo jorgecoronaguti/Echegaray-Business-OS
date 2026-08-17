@@ -13,7 +13,8 @@ async function entrar(page: import('@playwright/test').Page) {
   await page.fill('input[name="email"]', EMAIL)
   await page.fill('input[name="password"]', PASSWORD)
   await page.click('button[type="submit"]')
-  await page.waitForURL(/\/dashboard/, { timeout: 15000 })
+  // /dashboard se borró con el frontend legacy; el destino tras el login es /flujo-caja.
+  await page.waitForURL(/\/(flujo-caja|obras)/, { timeout: 15000 })
   await page.goto('/calendario-financiero')
 }
 

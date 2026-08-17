@@ -1,38 +1,126 @@
-import { z } from 'zod'
+// MÓDULO 01 — OBRAS · los tipos del dominio.
+//
+// FRONTERA: Obras no administra Compras, Finanzas ni Personal. El costo real que aparece acá sale
+// de `obra_panel`, que lo calcula desde `costos_obra` por alias — no hay una columna de costo en
+// ninguna tabla de este módulo, y no debe haberla. Lo mismo con HH y con cobranza.
 
-// Obra — unidad económica central del negocio (PRP-002).
-// Columnas en snake_case, igual que la tabla en Supabase.
-// Ver supabase/migrations/20260706193000_obras_unidad_economica.sql
+/** Las cinco etapas del ciclo de vida, en su orden. La etapa gobierna qué habilita el módulo. */
+export const ETAPAS = ['previo', 'inicio', 'desarrollo', 'terminacion', 'cierre'] as const
+export type Etapa = (typeof ETAPAS)[number]
 
-export interface Obra {
-  id: string
-  cliente_id: string
-  nombre: string
-  estado: 'contratada' | 'activa' | 'pausada' | 'cerrada'
-  monto_contratado: number
-  fecha_inicio: string
-  fecha_fin_objetivo: string
-  created_at: string
-  updated_at: string
+export const ETAPA_LABEL: Record<Etapa, string> = {
+  previo: 'Previo',
+  inicio: 'Inicio',
+  desarrollo: 'Desarrollo',
+  terminacion: 'Terminación',
+  cierre: 'Cierre',
 }
 
-export const obraInputSchema = z
-  .object({
-    cliente_id: z.string().uuid('Elegí un cliente'),
-    nombre: z.string().trim().min(1, 'El nombre es obligatorio'),
-    monto_contratado: z.coerce.number().positive('El monto contratado debe ser mayor a 0'),
-    fecha_inicio: z.string().min(1, 'La fecha de inicio es obligatoria'),
-    fecha_fin_objetivo: z.string().min(1, 'La fecha objetivo es obligatoria'),
-    estado: z.enum(['contratada', 'activa', 'pausada', 'cerrada']).default('contratada'),
-  })
-  .superRefine((data, ctx) => {
-    if (data.fecha_fin_objetivo < data.fecha_inicio) {
-      ctx.addIssue({
-        code: 'custom',
-        message: 'La fecha objetivo debe ser posterior a la fecha de inicio',
-        path: ['fecha_fin_objetivo'],
-      })
-    }
-  })
+/** Una fila del portafolio. Todo sale de la vista `obra_panel`. */
+export interface ObraPanel {
+  obra_id: string
+  nombre: string
+  cliente_texto: string | null
+  estado: string
+  tipo: string
+  etapa: Etapa
+  jefe_obra: string | null
+  monto_contratado: number | null
+  fecha_inicio_plan: string | null
+  fecha_fin_plan: string | null
+  fecha_inicio_real: string | null
+  fecha_fin_real: string | null
+  drive_carpeta_id: string | null
+  costo_real: number | null
+  n_comprobantes: number | null
+  margen_sobre_contratado_pct: number | null
+  avance_pct: number | null
+  n_actividades: number
+  restricciones_abiertas: number
+  restricciones_vencidas: number
+}
 
-export type ObraInput = z.infer<typeof obraInputSchema>
+export type TipoActividad = 'tarea' | 'resumen' | 'hito'
+
+/** Una actividad del cronograma. `inicio_base`/`fin_base` es la línea base congelada: si están en
+ *  null, la obra todavía no tiene plan aprobado y el desvío no se puede medir — se dice, no se
+ *  dibuja un cero. */
+export interface Actividad {
+  id: string
+  obra_id: string
+  codigo: string
+  codigo_padre: string | null
+  nombre: string
+  tipo: TipoActividad
+  orden: number
+  inicio_plan: string | null
+  fin_plan: string | null
+  dias_plan: number | null
+  inicio_real: string | null
+  fin_real: string | null
+  dias_real: number | null
+  inicio_base: string | null
+  fin_base: string | null
+  pct: number | null
+  estado: string | null
+  cuadrilla: string | null
+  comentario: string | null
+  editado_a_mano: boolean
+  fuente_pestana: string | null
+}
+
+export const TIPO_RESTRICCION = [
+  'material', 'informacion', 'equipo', 'mano_de_obra', 'trabajo_previo',
+  'permiso', 'ingenieria_cliente', 'seguridad', 'acceso', 'contrato', 'otro',
+] as const
+export type TipoRestriccion = (typeof TIPO_RESTRICCION)[number]
+
+export const TIPO_RESTRICCION_LABEL: Record<TipoRestriccion, string> = {
+  material: 'Material',
+  informacion: 'Información / plano',
+  equipo: 'Equipo',
+  mano_de_obra: 'Mano de obra',
+  trabajo_previo: 'Trabajo previo',
+  permiso: 'Permiso / habilitación',
+  ingenieria_cliente: 'Ingeniería del cliente',
+  seguridad: 'Seguridad',
+  acceso: 'Espacio / acceso',
+  contrato: 'Contrato / adicional',
+  otro: 'Otro',
+}
+
+/** Una restricción del make-ready. Sin `responsable` y sin `fecha_compromiso` no es gestión: es una
+ *  queja anotada. Las dos columnas existen desde el día uno por eso. */
+export interface Restriccion {
+  id: string
+  obra_id: string
+  actividad_id: string | null
+  tipo: TipoRestriccion
+  descripcion: string
+  responsable: string | null
+  fecha_necesidad: string | null
+  fecha_compromiso: string | null
+  fecha_liberacion: string | null
+  estado: 'abierta' | 'en_curso' | 'liberada'
+}
+
+/** Un archivo de Drive vinculado a la obra. El archivo NO se copia: vive en Drive. */
+export interface DocumentoObra {
+  drive_file_id: string
+  rol: string | null
+  origen: 'manual' | 'path_inferido'
+  name: string | null
+  path: string | null
+  mime_type: string | null
+  modified_time: string | null
+}
+
+export type ServiceResult<T> = { data: T; error: null } | { data: null; error: string }
+
+/** Días de desvío del fin planificado contra la línea base. Positivo = atrasado.
+ *  Devuelve null si no hay baseline: un desvío sin contra qué medir no es cero, es desconocido. */
+export function desvioDias(a: Pick<Actividad, 'fin_plan' | 'fin_base'>): number | null {
+  if (!a.fin_plan || !a.fin_base) return null
+  const ms = new Date(a.fin_plan + 'T00:00:00Z').getTime() - new Date(a.fin_base + 'T00:00:00Z').getTime()
+  return Math.round(ms / 86400000)
+}

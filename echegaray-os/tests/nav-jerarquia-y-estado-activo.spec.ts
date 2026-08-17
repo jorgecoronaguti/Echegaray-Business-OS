@@ -6,7 +6,9 @@ import { test, expect } from '@playwright/test'
 // de Playwright estaba roto (ver playwright.config.ts). Se actualiza a la navegación REAL,
 // conservando lo que sigue importando: que el nav esté, y que marque dónde estoy parado.
 
-const GRUPOS = ['OS', 'Obras', 'Finanzas', 'Reportes', 'Conexiones']
+// 17/08/2026: '01 · Obras' encabeza el nav — es el primer módulo definitivo del OS. 'Comunicación'
+// salió: esa pantalla no leía un solo dato, y Mattermost vive en chat.ecsas.com.ar.
+const GRUPOS = ['01 · Obras', 'OS', 'Finanzas', 'Reportes', 'Conexiones']
 
 // OJO: el link rotulado "Scorecard" apunta a /calendario-caja. La página /scorecard existe pero no
 // está en el nav, así que visitarla nunca resalta nada — por eso se navega al href real del link.

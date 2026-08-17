@@ -5,13 +5,27 @@ import { ROL_LABEL } from '@/features/auth/types'
 import { LogoutButton } from '@/features/auth/components/LogoutButton'
 import { NavLink } from '@/shared/components/NavLink'
 
-// Decisión de Jorge (2026-07-09): el OS se enfoca exclusivamente en Flujo de Caja.
-// El Sheet real "Flujo de Caja - Cash Flow" es la fuente de verdad; la web lo
-// refleja en /flujo-caja. Todo lo demás (Dirección, Obras, Operación, Personas,
-// Operador Digital, Scorecard...) sale del nav pero NO se borra: cada página
-// sigue accesible por URL directa, igual que se hizo con Comercial/Compras en
-// UX-1. Si se retoma un módulo, se re-agrega acá su grupo.
+// LA NAVEGACIÓN DEL OS — 17/08/2026.
+//
+// El dueño: *"saca todo, pone solo lo nuevo"*. Salieron de la experiencia las 27 pantallas legacy
+// (dashboard, obras viejo, caja, personas, organización…) que colgaban de tablas congeladas el
+// 09/07 o directamente vacías: 198 archivos borrados, backend y workers intactos.
+//
+// **01 · Obras** encabeza porque es el primer módulo definitivo del Business OS y porque la obra es
+// el eje del negocio. Lo que queda debajo no es legacy: son las pantallas que leen dato fresco y
+// verificado (ingeniería financiera se recalcula todos los días, integraciones sincroniza cada 5
+// minutos). Cuando cada una se convierta en módulo, sube.
+//
+// Regla para el que agregue el próximo: un link acá es un compromiso de que la pantalla muestra
+// dato real. Si no lo muestra, no va al nav — va al backlog.
 const GRUPOS_NAV = [
+  {
+    grupo: '01 · Obras',
+    links: [
+      { href: '/obras', label: 'Portafolio' },
+      { href: '/control-obras', label: 'Pedidos y herramientas' },
+    ],
+  },
   {
     grupo: 'OS',
     links: [
@@ -19,10 +33,6 @@ const GRUPOS_NAV = [
       { href: '/chat', label: 'Chat del OS' },
       { href: '/aprobaciones', label: 'Aprobaciones' },
     ],
-  },
-  {
-    grupo: 'Obras',
-    links: [{ href: '/control-obras', label: 'Control de obras' }],
   },
   {
     grupo: 'Finanzas',
@@ -37,10 +47,6 @@ const GRUPOS_NAV = [
   {
     grupo: 'Reportes',
     links: [{ href: '/reportes', label: 'Reportes' }],
-  },
-  {
-    grupo: 'Comunicación',
-    links: [{ href: '/comunicacion', label: 'Comunicación' }],
   },
   {
     grupo: 'Conexiones',
