@@ -18,8 +18,8 @@ const fila = ({ fecha, proveedor, cliente, obra, neto }) => {
 /** 12/08/2026 en serial de Sheets. */
 const serial = (d) => Math.round(new Date(`${d}T00:00:00Z`).getTime() / 86400000) + 25569
 
-const TRIELEC = { fecha: serial('2026-08-12'), proveedor: 'Trielec', cliente: 'San Francisco', neto: 1_831_905 }
-const objetivo = [{ cliente: 'San Francisco', fecha: '2026-08-12', proveedor: 'Trielec', neto: 1_831_905, obra: 'Pisos Industriales' }]
+const TRIELEC = { fecha: serial('2026-08-12'), proveedor: 'Trielec', cliente: 'San Francisco', neto: 1_831_905.12 }
+const objetivo = [{ cliente: 'San Francisco', fecha: '2026-08-12', proveedor: 'Trielec', neto: 1_831_905.12, obra: 'Pisos Industriales' }]
 
 test('el serial de Sheets se lee como la fecha que es', () => {
   assert.equal(iso(serial('2026-08-12')), '2026-08-12')
@@ -62,7 +62,7 @@ test('CERO filas: tampoco inventa una', () => {
 
 test('un peso de diferencia NO es la misma compra', () => {
   // Ya pasó en este repo con dos cheques a un peso de distancia: el 312 y el 313.
-  const { problemas } = planDeImputacion([fila({ ...TRIELEC, neto: 1_831_904, obra: 'x' })], 4, objetivo)
+  const { problemas } = planDeImputacion([fila({ ...TRIELEC, neto: 1_831_904.12, obra: 'x' })], 4, objetivo)
   assert.equal(problemas[0].cuantas, 0)
 })
 

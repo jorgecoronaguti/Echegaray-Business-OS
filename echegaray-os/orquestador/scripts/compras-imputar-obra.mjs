@@ -69,7 +69,10 @@ export const COL = { fecha: 2, proveedor: 4, cliente: 9, obra: 10, neto: 12 }
  *     → **"Dejar sin imputar"**  ← por eso NO están en esta lista: la respuesta fue no tocarlas.
  */
 export const IMPUTACIONES_CONFIRMADAS = [
-  { cliente: 'San Francisco', fecha: '2026-08-12', proveedor: 'Trielec', neto: 1_831_905, obra: 'Pisos Industriales' },
+  // El neto lleva los centavos: la pantalla muestra $1.831.905 y el archivo dice 1831905,12. El
+  // comparador al centavo rechazó la primera versión de esta línea, que es exactamente su trabajo —
+  // un importe redondeado "casi igual" es como se imputa la fila equivocada.
+  { cliente: 'San Francisco', fecha: '2026-08-12', proveedor: 'Trielec', neto: 1_831_905.12, obra: 'Pisos Industriales' },
   { cliente: 'MESSINA', fecha: '2026-08-03', proveedor: 'Gerson Castro', neto: 2_300_000, obra: 'BSA' },
   { cliente: 'MESSINA', fecha: '2026-08-04', proveedor: 'DUPEC', neto: 388_070, obra: 'BSA' },
 ]
