@@ -9,7 +9,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { origenDelMes, ORIGEN, bloqueIva, bloqueCierre } from './impuestos-bloques.mjs'
+import { origenDelMes, ORIGEN, bloqueIva, bloqueCierre, mesDelSaldoVigente } from './impuestos-bloques.mjs'
 import { crearGrilla } from './impuestos-grilla.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 import { anclaDeProyeccion } from './iva-libre-disponibilidad.mjs'
@@ -263,4 +263,36 @@ test('sin texto mal puesto la sección 10 no inventa un aviso', () => {
   const G = crearGrilla(2026)
   bloqueCierre(G, { proy: { meses: [7], supuesto: 'x', textoDondeVaImporte: [] }, vencimientos: { iibb: 'día 20' } })
   assert.equal(G.filas.filter((f) => /libre disponibilidad/i.test(String(f[0] ?? ''))).length, 0)
+})
+
+// ── DE QUÉ MES ES EL SALDO A FAVOR QUE PUBLICA EL HERO (17/08) ───────────────────────────────────
+//
+// EL RIESGO QUE ESTE TEST CIERRA. Al sacar el ancla de julio, `ultimoMesConDato` vuelve a junio — y
+// el hero tomaba de ahí el mes del saldo a favor. Pero julio es un período CERRADO del que ARCA ya
+// tiene los 106 comprobantes: su saldo es un hecho, no una proyección. Publicar el de junio
+// ($19.344.911) cuando el de julio es ~$7,5M sobredeclara el activo fiscal en casi $12M, en la celda
+// más visible de la pestaña. La cascada ya distingue hecho de supuesto: el hero tiene que usar ESA
+// clasificación y no el ancla, que responde otra pregunta (desde dónde proyectar).
+test('el saldo a favor del hero sale del último mes CERRADO, no del ancla ni del último del cuadro', () => {
+  const porOrigen = {
+    ddjj: [1, 2, 3, 4, 5, 6], ajeno: [], arca: [7], 'arca-parcial': [8],
+    proyeccion: [9, 10, 11, 12], vacio: [],
+  }
+  assert.equal(mesDelSaldoVigente(porOrigen), 7, 'julio está cerrado y ARCA tiene sus comprobantes')
+})
+
+test('el mes EN CURSO no publica el saldo a favor: está a medio cargar', () => {
+  // Agosto se completa solo a medida que ARCA se carga; su saldo cambiaría todos los días y el hero
+  // dice "LA POSICIÓN AL 17/08", no "la posición de un mes que todavía no terminó".
+  const porOrigen = { ddjj: [1, 2, 3, 4, 5, 6], ajeno: [], arca: [], 'arca-parcial': [8], proyeccion: [9], vacio: [] }
+  assert.equal(mesDelSaldoVigente(porOrigen), 6)
+})
+
+test('un mes calculado por una persona también es dato cerrado', () => {
+  const porOrigen = { ddjj: [1, 2], ajeno: [3], arca: [], 'arca-parcial': [], proyeccion: [4], vacio: [] }
+  assert.equal(mesDelSaldoVigente(porOrigen), 3)
+})
+
+test('sin ningún mes cerrado no se inventa una posición', () => {
+  assert.equal(mesDelSaldoVigente({ ddjj: [], ajeno: [], arca: [], 'arca-parcial': [7], proyeccion: [8], vacio: [] }), 0)
 })

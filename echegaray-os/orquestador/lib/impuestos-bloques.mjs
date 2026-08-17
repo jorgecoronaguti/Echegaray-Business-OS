@@ -82,6 +82,24 @@ export function origenDelMes(m, { mesesDDJJ = [], ancla = 0, mesesArca = [], mes
   return ORIGEN.vacio
 }
 
+/**
+ * NÚCLEO PURO: de qué mes es el saldo a favor que el hero publica como LA POSICIÓN DE HOY.
+ *
+ * ES EL ÚLTIMO MES CERRADO, Y NO EL ANCLA DE LA PROYECCIÓN — son dos preguntas distintas que estaban
+ * contestadas con el mismo número. El ancla dice "desde dónde proyecto" y sube hasta el último mes con
+ * un importe en la hoja; esto dice "qué tengo a favor hoy", que sólo puede salir de un período
+ * terminado. Cuando julio dejó de anclar (su celda tenía una leyenda), el hero se llevó puesto el
+ * saldo de junio —$19.344.911— cuando el de julio, ya cerrado y con sus comprobantes en ARCA, es de
+ * ~$7,5M: casi $12M de activo fiscal sobredeclarado en la celda más visible de la pestaña.
+ *
+ * El mes EN CURSO queda afuera a propósito: se completa a medida que ARCA se carga, así que su saldo
+ * se movería todos los días bajo un rótulo que dice "la posición al <fecha>".
+ */
+export function mesDelSaldoVigente(porOrigen = {}) {
+  const cerrados = [ORIGEN.ddjj, ORIGEN.ajeno, ORIGEN.arca].flatMap((o) => porOrigen[o] ?? [])
+  return cerrados.length ? Math.max(...cerrados) : 0
+}
+
 export function bloqueIva(G, { anio, ivaOficial, proy, arca, hoy }) {
   G.push([seccion(4, 'IVA — la DDJJ oficial (F.2051): qué se debe o se tiene a favor')])
   G.cabecera()
