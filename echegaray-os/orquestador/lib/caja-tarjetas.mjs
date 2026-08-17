@@ -57,6 +57,37 @@ import { DIAS_AVISO } from './fecha-de-frescura.mjs'
  */
 export const NO_REAL = Object.freeze(['COMPROMETIDO', 'PROYECTADO', 'VENCIDO'])
 
+/**
+ * ═══ EL CORTE QUE FALTABA: LO QUE SE DEBE vs LO QUE SE PLANEA GASTAR (16/08/2026) ═══
+ *
+ * `NO_REAL` son los tres estados que todavía no pasaron por el banco, y durante semanas la tarjeta
+ * los sumó en un solo titular rotulado "FALTA PAGAR". El dueño lo reclamó tres veces. Medido contra
+ * el Sheet vivo: de los $122.325.841 publicados, **$37.977.572 eran PROYECTADO** — materiales de obra
+ * estimados, "Estructura esperada", "Recurrente esperado · Movistar", nafta y gasoil por cuota.
+ * Nadie debe eso. Es presupuesto.
+ *
+ * `libro-movimientos.mjs` cita la regla absoluta de la skill de tesorería en su propia cabecera:
+ * *"Nunca se suman dos categorías distintas en la misma columna sin distinguirlas"*. El libro la
+ * cumple (el estado es un campo del movimiento, no una propiedad de la vista); la tarjeta que lo
+ * publicaba la rompía. El defecto no era la frase — las dos correcciones anteriores tocaron la frase
+ * y el dueño volvió a rechazarlas — era qué entra adentro del número.
+ *
+ * · **DEUDA** = COMPROMETIDO + VENCIDO. Plata que hay que poner sí o sí. COMPROMETIDO es la
+ *   obligación con respaldo (la factura del proveedor todavía impaga, el cheque librado y no
+ *   debitado). VENCIDO estaba previsto para una fecha que ya pasó y nadie lo concilió: **no está
+ *   probado, pero tampoco es evitable** — o la plata ya salió y falta marcarla, o se debe. En las dos
+ *   lecturas dejó de ser una decisión futura, que es lo único que puede vivir en el plan. Va acá por
+ *   prudencia y se DECLARA aparte en el contexto, porque no es lo mismo que una factura firmada.
+ * · **PLAN** = PROYECTADO. Una estimación con fecha, no un hecho (`libro-movimientos.mjs`). Depende
+ *   de que la actividad siga: si no entra plata, no se compra.
+ *
+ * SON DISJUNTOS Y SU UNIÓN ES `NO_REAL`, y hay un test que lo fija. Partir un número en dos conceptos
+ * sólo es honesto si no se pierde ni se duplica plata en la costura.
+ */
+export const DEUDA = Object.freeze(['COMPROMETIDO', 'VENCIDO'])
+/** La otra mitad de `NO_REAL`: gasto planeado que todavía no es obligación de nadie. */
+export const PLAN = Object.freeze(['PROYECTADO'])
+
 /** El horizonte histórico de la proyección, en días. Lo siguen usando consumidores fuera de acá. */
 export const HORIZONTE = 30
 /** La frontera del idioma único: fin del mes corriente, EXCLUIDA (mismo criterio `hasta` del repo). */
@@ -176,9 +207,18 @@ export function tarjetas(ref) {
   // La que se fue es LIBRE: el dueño no la nombró en su definición final y en su lugar está lo que
   // faltaba ver — A COBRAR, la pata de ingresos que todas las versiones anteriores escondían. El
   // piso del recorrido (el mínimo día a día) sigue vivo en la escalera de al lado, que es su casa.
-  const mesPago = terminoLibro({ signo: -1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })
+  // ═══ Y EL IDIOMA ÚNICO NO ALCANZABA: FALTABA SEPARAR LOS CONCEPTOS (16/08/2026) ═══
+  //
+  // Las cinco hablaban el mes, sí, pero la segunda metía DEUDA y PRESUPUESTO en un solo número.
+  // `mesPago` (los tres estados de `NO_REAL` juntos) se parte en dos términos que NO se solapan y
+  // cuya unión sigue siendo exactamente el viejo total: nada se perdió en la costura, y hay un test
+  // que lo fija sobre las constantes, no sobre las fórmulas.
+  const mesDeuda = terminoLibro({ signo: -1, estados: DEUDA, hasta: FIN_DE_MES, medida: 'magnitud' })
+  const mesPlan = terminoLibro({ signo: -1, estados: PLAN, hasta: FIN_DE_MES, medida: 'magnitud' })
+  // La parte de la DEUDA que nadie probó. Es un subconjunto del titular, con el mismo `hasta`: si se
+  // definiera con una ventana propia podría dejar de ser una parte de lo que rotula.
+  const sinProbar = terminoLibro({ signo: -1, estados: ['VENCIDO'], hasta: FIN_DE_MES, medida: 'magnitud' })
   const mesCobro = terminoLibro({ signo: 1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })
-  const venceEn7 = terminoLibro({ signo: -1, estados: NO_REAL, hasta: 'TODAY()+7', medida: 'magnitud' })
   // ═══ LA MISMA FRESCURA EN LAS DOS PUNTAS (orden del dueño, 07/08) ═══
   //
   // DISPONIBLE lee Compras EN VIVO (los pagos posteriores al corte se restan por fórmula), pero el
@@ -202,26 +242,30 @@ export function tarjetas(ref) {
     nuevas = `SUMPRODUCT((${colC('X')}="Pendiente")*(${fechaCaja}<${FIN_DE_MES})*(N(${colC('O')})-N(${colC('T')})))`
   }
   // Lo ya pagado del mes: para que el contexto muestre que los pagos salen de ESTA tarjeta.
+  //
+  // ═══ Y COMPARARLO CONTRA EL TITULAR ERA LA COMPARACIÓN QUE EL DUEÑO SEÑALÓ (16/08) ═══
+  //
+  // La frase decía *"de $191M pagaste $65M"*: a la izquierda, deuda + presupuesto; a la derecha,
+  // pagos reales. Son dos cosas distintas y por eso el cuadro daba la sensación de que *"de repente
+  // debemos mas en lo q falta del mes q lo q ya se ha pagado"* (textual). Lo pagado sigue publicado
+  // —es el dato que muestra que los compromisos salen de esta tarjeta— pero ya no se lo presenta
+  // como la resta de un total inventado: se publica solo, contra el titular que ahora sí es deuda.
   const pagadoMes = terminoLibro({ signo: -1, estados: ['REAL'], desde: 'EOMONTH(TODAY();-1)+1', hasta: FIN_DE_MES, medida: 'magnitud' })
-  // ═══ EL ATRASO ARRASTRADO — LA MITAD DEL TITULAR QUE NO ES "DE ESTE MES" (15/08/2026) ═══
+  // ═══ EL ATRASO ARRASTRADO SE MUDÓ AL RÓTULO, Y SU CAUSA AL CONTEXTO (16/08/2026) ═══
   //
-  // El dueño vio la tarjeta saltar de $55,6M a $125,9M en una corrida y preguntó de dónde salía. La
-  // respuesta medida sobre el libro del 15/08: **$54.643.050 de los $125.943.171 tienen fecha
-  // ANTERIOR al 1° del mes** — seis quincenas de mayo, junio y julio que el libro sigue viendo
-  // impagas (`Jornales por Quincena`, filas 141-146 del registro; la columna "Pagado el" del dueño
-  // quedó desalineada de sus quincenas y las pasó de REAL a COMPROMETIDO). El número de la tarjeta
-  // es CORRECTO —eso es lo que el sistema sabe que falta pagar— pero el rótulo dice ESTE MES, y el
-  // 43% no es de este mes.
+  // El 15/08 el dueño vio la tarjeta saltar de $55,6M a $125,9M y el contexto pasó a publicar el
+  // término `atrasado` (lo impago con fecha anterior al 1° del mes) para explicarlo. Ese término se
+  // fue de acá por dos razones, no por falta de lugar:
   //
-  // NO SE SACA DEL TITULAR. Una deuda vencida hay que pagarla ahora, así que pertenece al número con
-  // el que se decide; sacarla haría que la tarjeta dijera que hay plata que no hay, y arrastraría a
-  // SALDO AL CIERRE, que es su consecuencia. Lo que faltaba era DECIRLO: el contexto publica el
-  // pedazo atrasado, y así un salto como éste se explica solo en la portada en vez de terminar en
-  // una investigación de dos horas.
+  // 1. EL RÓTULO LO DICE MEJOR. Decía "FALTA PAGAR ESTE MES" sobre una suma sin `desde`, o sea que
+  //    incluía todo lo atrasado: el rótulo mentía y el contexto salía a desmentirlo. "DEUDA ATRASADA
+  //    Y DEL MES" describe la ventana real, y entonces no hay nada que aclarar abajo.
+  // 2. EL "CUÁNDO" NO ERA LA PREGUNTA. Aquellos $54,6M eran seis quincenas de mayo, junio y julio que
+  //    el libro veía impagas; publicar que eran viejas no decía lo importante, que es que **nadie
+  //    probó que estén impagas**. Desde `estadoSinProbar` esas quincenas salen VENCIDO, y el contexto
+  //    publica ese monto: la misma explicación del salto, dando la causa en vez de la fecha.
   //
-  // ES LA MISMA SUMA DEL TITULAR CON OTRO `hasta` — una sola definición de "lo que falta pagar",
-  // cortada en el 1° del mes. `hasta` es exclusivo en todo el repo, así que el 1° NO entra acá.
-  const atrasado = terminoLibro({ signo: -1, estados: NO_REAL, hasta: 'EOMONTH(TODAY();-1)+1', medida: 'magnitud' })
+  // El lugar que ocupaba lo toma el gasto planeado, que es lo que el dueño reclamó tres veces.
   // LA SUMA VA CON N(): la celda de una fila sin dato dice "" y "" no se suma — sin el N() la tarjeta
   // entera daría #VALUE! el día que falte una de las dos patas, y con él suma la que esté.
   const invertido = `N(${ref.invArs})+N(${ref.invUsd})`
@@ -274,15 +318,26 @@ export function tarjetas(ref) {
       // ($15,2M de los $62,4M). Un rótulo que nombra un estado sobre un número que suma tres estados
       // es peor que uno vago: es falso, y verificable como falso.
       //
-      // "FALTA PAGAR ESTE MES" es la definición del propio dueño (06/08: *"lo comprometido es todo
-      // lo q hay q pagar en el mes − lo q ya se pagó"*) escrita como respuesta. La palabra
-      // "comprometido" sigue viva donde es un dato y no un rótulo: el estado del libro, el anexo.
-      rotulo: 'FALTA PAGAR ESTE MES',
-      // "TODO LO QUE HAY QUE PAGAR EN EL MES − LO QUE YA SE PAGÓ": egresos no-REAL hasta fin de mes
-      // (lo REAL ya salió del saldo del banco — restarlo otra vez lo contaría dos veces), más lo
-      // vencido impago (sin `desde`). MAGNITUD y no neto: "cuánto debo" es positivo. La urgencia no
-      // se pierde: lo que vence esta semana queda en el contexto.
-      valor: nuevas ? `=${mesPago}+${nuevas}` : `=${mesPago}`,
+      // "FALTA PAGAR ESTE MES" fue la respuesta del 13/08 y duró hasta el 16/08.
+      //
+      // ═══ Y "FALTA PAGAR" SOBRE UN NÚMERO CON PRESUPUESTO ADENTRO ES FALSO (16/08, la tercera) ═══
+      //
+      // El dueño, textual: *"no estas tomando bien los conceptos q surgen de compras proveedores
+      // cobranzas, y por ende las tarjetas estan todas mal, revisar y rehacer"*. Tenía razón por
+      // tercera vez, y las dos correcciones anteriores habían tocado la frase. El rótulo prometía
+      // deuda y el número traía $37.977.572 de PROYECTADO: materiales de obra estimados, "Estructura
+      // esperada", "Recurrente esperado · Movistar", nafta y gasoil por cuota. **Nadie debe eso.**
+      //
+      // "DEUDA ATRASADA Y DEL MES" dice las dos cosas que el rótulo anterior fallaba:
+      //   · DEUDA — el titular ya no tiene presupuesto adentro (`DEUDA`, no `NO_REAL`).
+      //   · ATRASADA Y DEL MES — la ventana REAL de la suma, que es un `hasta` sin `desde`. El rótulo
+      //     viejo decía "ESTE MES" sobre una suma que arrastraba meses anteriores, y por eso hacía
+      //     falta una línea de contexto para desmentirlo.
+      rotulo: 'DEUDA ATRASADA Y DEL MES',
+      // LO QUE SE DEBE: egresos COMPROMETIDO + VENCIDO hasta fin de mes. Lo REAL queda afuera porque
+      // ya salió del saldo del banco —restarlo otra vez lo contaría dos veces— y lo PROYECTADO queda
+      // afuera porque todavía no es de nadie. MAGNITUD y no neto: "cuánto debo" es positivo.
+      valor: nuevas ? `=${mesDeuda}+${nuevas}` : `=${mesDeuda}`,
       // ═══ EL TOTAL DEL MES VA EN LA FRASE, O LA TARJETA NO SE PUEDE LEER (07/08, textual) ═══
       //
       // "es comprometida y cuando se pagan los compromisos deben salir de ahí". Salen — pero sin el
@@ -300,18 +355,33 @@ export function tarjetas(ref) {
       // "7 días" quedó abreviado: el mismo dato, con su fecha y su saldo después, está tres columnas
       // a la derecha en el tramo "Esta semana" de la escalera.
       //
-      // ═══ Y LA FRASE SE PARTE EN DOS CUANDO HAY ATRASO (15/08, el salto de $55,6M a $125,9M) ═══
+      // ═══ LA FRASE PUBLICA LO QUE EL TITULAR DEJÓ AFUERA (16/08) ═══
       //
-      // "de $191M pagaste $65M" era, además de incompleto, FALSO el día que se leyó: esos $191M no
-      // son el total del mes sino el total del mes MÁS $54,6M de quincenas de mayo, junio y julio.
-      // Un total del mes que incluye tres meses anteriores es un número que no existe.
+      // Separar los conceptos sólo es honesto si el que sale del titular queda a la vista: si el plan
+      // desapareciera de la tarjeta, esto no sería arreglar el número sino esconder $38,0M. Por eso
+      // la PRIMERA cláusula, la que está todos los días, es el gasto planeado — nombrado "plan" para
+      // que no pueda volver a leerse como deuda, y en la misma fila que la deuda para que la suma de
+      // los dos siga siendo derivable a ojo.
       //
-      // Con atraso, la frase publica el atraso y suelta el total inventado. Sin atraso —el día en que
-      // no se debe nada de meses anteriores— vuelve LITERALMENTE la frase que pidió el dueño el
-      // 07/08, y ahí sí sus $X del mes son los del mes. El umbral es $0,1M porque es el mínimo que
-      // la frase sabe dibujar: por debajo diría "$0,0M atrasado", que es ruido con forma de alarma.
-      contexto: `=IF(${atrasado}>=100000;"pagaste "&TEXT(${pagadoMes}/1000000;"$#,##0")&"M · "&${millones(atrasado)}&"M atrasado";`
-        + `"de "&TEXT((${pagadoMes}+N($C$3))/1000000;"$#,##0")&"M pagaste "&TEXT(${pagadoMes}/1000000;"$#,##0")&"M · 7d "&${millones(venceEn7)}&"M")`,
+      // LA SEGUNDA CLÁUSULA ES LA DUDA, Y GANA CUANDO EXISTE. `VENCIDO` es la parte del titular que
+      // nadie probó: estaba prevista para una fecha que ya pasó y nadie la concilió. Desde
+      // `estadoSinProbar` ahí caen también las quincenas de jornales sin "Pagado el" que el extracto
+      // no respalda — los $47.415.800 que el dueño no puede probar si están pagos. Publicarlas como
+      // deuda cierta sin decir que son dudosas es exactamente lo que el Principio de Cierre prohíbe:
+      // una limitación declarada bloquea el criterio que toca, y no declararla lo anula.
+      //
+      // NO SE RESTAN DEL TITULAR. O la plata ya salió y falta marcarla, o se debe: en las dos lecturas
+      // hay que tenerla. Sacarla haría que la tarjeta dijera que hay plata que no hay — el error que
+      // ya se publicó una vez ($51,9M de deuda que el dueño había cobrado hace meses).
+      //
+      // CUANDO NO HAY DUDA, EL LUGAR LO OCUPA LO PAGADO, que es la frase que pidió el dueño el 07/08
+      // ("cuando se pagan los compromisos deben salir de ahí"). El umbral es $0,1M porque es el mínimo
+      // que la frase sabe dibujar: por debajo diría "$0,0M sin probar", ruido con forma de alarma.
+      //
+      // MEDIDO CONTRA LOS 216px (C+D) ≈ 37 caracteres: la rama con duda dibuja 35, la otra 30. La
+      // versión con las tres cláusulas medía 48 y se cortaba — y una frase cortada es peor que ninguna.
+      contexto: `=IF(${sinProbar}>=100000;"+ "&${millones(mesPlan)}&"M plan · ${ALERTA} "&${millones(sinProbar)}&"M sin probar";`
+        + `"+ "&${millones(mesPlan)}&"M plan · pagaste "&TEXT(${pagadoMes}/1000000;"$#,##0")&"M")`,
       especie: 'plata',
     },
     {
@@ -358,7 +428,22 @@ export function tarjetas(ref) {
       // de al lado ahora publica. Con "al 31/08" en su lugar, el lector leía el número como el saldo
       // de fin de mes y no como el test de estrés que es. La fecha se va —la ventana ya la dice el
       // rótulo, y en 198px no entran las dos cosas— y entra la condición que faltaba.
-      contexto: `="hay "&${millones(mesCobro)}&"M a cobrar · pagás todo"`,
+      // ═══ Y EL ESCENARIO SE CONTRADECÍA A SÍ MISMO (16/08) ═══
+      //
+      // La resta apagaba los ingresos y dejaba el gasto PROYECTADO prendido: asumía cero cobranzas y
+      // compraba igual los $15,6M de "materiales de obra proyectados" y la "Estructura esperada". Si
+      // no entra plata, esos materiales no se compran. Un escenario tiene que ser internamente
+      // consistente o no sirve para decidir, y éste medía un mundo que no puede existir.
+      //
+      // LA FÓRMULA NO CAMBIÓ Y ESO ES LO BUENO DEL ARREGLO: sigue siendo la resta de las dos tarjetas
+      // vecinas, verificable con los ojos contra la fila. Lo que cambió es qué hay adentro de C3 — al
+      // sacarle el plan a la deuda, el escenario se volvió coherente solo. Un arreglo que hubiera
+      // metido un tercer término acá habría tapado el defecto en vez de sacarlo.
+      //
+      // "sin el plan" ES LA MITAD DEL SUPUESTO QUE FALTABA ESCRITA. El rótulo declara una pata (no
+      // cobrás) y la resta usa las dos. Reemplaza a "pagás todo", que era cierto y ya no alcanza:
+      // ahora importa MENOS qué se paga que qué NO se gasta.
+      contexto: `="hay "&${millones(mesCobro)}&"M a cobrar · sin el plan"`,
       especie: 'plata',
     },
     {
@@ -420,8 +505,24 @@ export function tarjetas(ref) {
       // COBRA NADA MÁS, y ésta con cuánto termina COBRANDO TODO. Misma cuenta, los dos extremos. La
       // cláusula condicional se conserva porque sin ella el número se lee como plata garantizada, y
       // no lo es: la fecha sigue siendo calculada, así que la frase no envejece.
-      valor: `=N($A$3)-N($C$3)+${mesCobro}`,
-      contexto: `="al "&${dia('EOMONTH(TODAY();0)')}&" cobrando todo"`,
+      // ═══ Y EL CIERRE TENÍA EL ERROR SIMÉTRICO (16/08) ═══
+      //
+      // Si la tarjeta del medio apaga los ingresos y por lo tanto NO gasta el plan, ésta —que cobra
+      // todo— tiene que gastarlo: con $151,8M entrando, los materiales se compran. Cobrar los $151,8M
+      // y no descontar los $38,0M que se van a gastar publica $38,0M de plata que no va a estar. Es el
+      // mismo descuido del otro lado, y salía gratis mientras el plan viajaba escondido en C3.
+      //
+      // LA IDENTIDAD, ENTERA: disponible − deuda + cobros − plan. Los dos primeros por referencia a
+      // sus tarjetas (A3 y C3), los otros dos con los términos únicos del libro. Las cuatro cifras
+      // están publicadas en la fila —el plan en el contexto de la deuda, los cobros en el de al
+      // lado— así que el lector puede rehacer la cuenta sin abrir nada.
+      valor: `=N($A$3)-N($C$3)+${mesCobro}-${mesPlan}`,
+      // "cobrando y gastando" declara los DOS supuestos, que es lo que la vuelve el par exacto de la
+      // tarjeta del medio: aquélla no cobra y no gasta, ésta cobra y gasta. Sin la cláusula el número
+      // se leería como plata garantizada, y no lo es. La fecha va sin el "al " que llevaba antes: los
+      // 162px (I+J) ≈ 28 caracteres no dan para las dos cosas y la preposición es lo prescindible —
+      // "31/08 cobrando y gastando" dibuja 25.
+      contexto: `=${dia('EOMONTH(TODAY();0)')}&" cobrando y gastando"`,
       especie: 'plata',
     },
   ]

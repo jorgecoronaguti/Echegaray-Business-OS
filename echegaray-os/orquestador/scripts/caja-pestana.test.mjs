@@ -24,7 +24,7 @@ import {
 import { CUENTAS } from '../lib/caja-disponibilidades.mjs'
 import { VACIO } from '../lib/preservar-anotaciones.mjs'
 import { terminoLibro, LIBRO } from '../lib/libro-sumas.mjs'
-import { NO_REAL, FIN_DE_MES } from '../lib/caja-tarjetas.mjs'
+import { NO_REAL, DEUDA, PLAN, FIN_DE_MES } from '../lib/caja-tarjetas.mjs'
 import { BORDES } from '../lib/caja-calendario.mjs'
 import { ANEXO } from '../lib/caja-anexo-nombres.mjs'
 
@@ -87,7 +87,11 @@ test('LAS CINCO TARJETAS ESTÁN, EN ORDEN, Y CADA UNA OCUPA SUS TRES RENGLONES',
   // 13/08: las dos del medio se renombraron. El dueño no entendía la suya —*"no sé si es algo q
   // tengo q cubrir o ya está cubierto"*, *"la 'libre disponibilidad' es negativo lo cual me
   // confunde"*— y el defecto era del RÓTULO: los números están bien y no se tocó ninguna fórmula.
-  const esperados = ['CAJA DISPONIBLE', 'FALTA PAGAR ESTE MES', 'SI NO COBRÁS MÁS ESTE MES', 'CAJA INVERTIDA', 'SALDO AL CIERRE']
+  // 16/08: la segunda se renombró otra vez, y esta vez el defecto NO era del rótulo. "FALTA PAGAR"
+  // prometía deuda sobre un número que traía $38,0M de PROYECTADO adentro (materiales estimados,
+  // "Estructura esperada"). El arreglo fue del CONCEPTO —el titular pasó a sumar sólo `DEUDA`— y el
+  // rótulo lo acompañó. El porqué entero vive en caja-tarjetas.mjs y en caja-tarjetas-conceptos.
+  const esperados = ['CAJA DISPONIBLE', 'DEUDA ATRASADA Y DEL MES', 'SI NO COBRÁS MÁS ESTE MES', 'CAJA INVERTIDA', 'SALDO AL CIERRE']
   esperados.forEach((rot, i) => {
     const col = COLS_TARJETA[i]
     assert.equal(celda(g, g.fRotulos, col), rot, `la tarjeta ${i + 1} tiene que ser "${rot}" en la columna ${col}`)
@@ -112,15 +116,18 @@ test('LAS CIFRAS DE LAS TARJETAS SALEN DEL LIBRO O DE LA PROPIA PESTAÑA, nunca 
   const g = construir()
   const val = (i) => celda(g, g.fCifras, COLS_TARJETA[i])
   assert.equal(val(0), `=$C$${g.fCierre}`, 'la caja disponible es EL TOTAL del panel de cuentas, no una suma nueva')
-  // 6ª directiva (idioma único): el titular es el MES − lo pagado; los 7 días viven en el contexto.
-  assert.equal(val(1), `=${terminoLibro({ signo: -1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })}`)
+  // 6ª directiva (idioma único): el titular habla EL MES. 16/08: y habla de DEUDA — `COMPROMETIDO +
+  // VENCIDO`, sin el PROYECTADO, que es gasto planeado y vive en el contexto y en el cierre.
+  assert.equal(val(1), `=${terminoLibro({ signo: -1, estados: DEUDA, hasta: FIN_DE_MES, medida: 'magnitud' })}`)
   // 06/08 (4ª directiva del dueño): LIBRE = el piso de la escalera, referenciado de su fila de
   // cierre. El porqué vive en caja-tarjetas.mjs; acá sólo se fija que la grilla pase las celdas.
   assert.equal(val(2), '=N($A$3)-N($C$3)', 'LIBRE = disponible − comprometida, la definición del dueño')
   assert.equal(val(3), `=N($C$${g.fBalanzArs})+N($C$${g.fBalanzUsd})`,
     'INVERTIDO referencia las filas Balanz del panel, no una segunda fuente')
-  // La enumeración final: SALDO AL CIERRE = disponible − comprometida + cobros del mes.
-  assert.equal(val(4), `=N($A$3)-N($C$3)+${terminoLibro({ signo: 1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })}`)
+  // La enumeración final: SALDO AL CIERRE = disponible − deuda + cobros del mes − plan de gasto.
+  // El plan entra acá y no en el titular de al lado: cobrando todo, los materiales SE compran.
+  assert.equal(val(4), `=N($A$3)-N($C$3)+${terminoLibro({ signo: 1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })}`
+    + `-${terminoLibro({ signo: -1, estados: PLAN, hasta: FIN_DE_MES, medida: 'magnitud' })}`)
 })
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════

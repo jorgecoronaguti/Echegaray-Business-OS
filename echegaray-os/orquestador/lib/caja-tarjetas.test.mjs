@@ -10,7 +10,7 @@
 // `terminoLibro` con los filtros correctos — comparada contra la función, no contra un literal.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { tarjetas, NO_REAL, FIN_DE_MES } from './caja-tarjetas.mjs'
+import { tarjetas, NO_REAL, DEUDA, PLAN, FIN_DE_MES } from './caja-tarjetas.mjs'
 import { terminoLibro } from './libro-sumas.mjs'
 import { ANCHOS, COLS_TARJETA } from './caja-grilla.mjs'
 
@@ -49,44 +49,55 @@ test('CAJA DISPONIBLE es EL TOTAL del panel de cuentas — banco y caja, sin Bal
   assert.match(t.contexto, /bancos y efectivo/)
 })
 
-test('COMPROMETIDA = todo lo que hay que pagar en el mes − lo ya pagado, con la urgencia en contexto', () => {
-  // La definición textual del dueño. Lo REAL (pagado) queda afuera porque ya salió del saldo del
-  // banco; lo vencido impago entra (sin `desde`). Los "7d" del contexto conservan la urgencia que
-  // antes era el titular.
+test('LA DEUDA = lo COMPROMETIDO y lo VENCIDO del mes — el presupuesto NO entra', () => {
+  // 16/08: este test decía `NO_REAL` (los tres estados) y por eso el defecto que el dueño reclamó
+  // tres veces pasaba en verde. Lo REAL sigue afuera porque ya salió del saldo del banco; lo
+  // PROYECTADO sale porque todavía no es de nadie. El detalle del corte, en caja-tarjetas-conceptos.
+  //
+  // LOS "7d" SE FUERON del contexto: el lugar lo ocupa el plan, que es el concepto que faltaba. El
+  // mismo dato, con su fecha y su saldo al lado, está tres columnas a la derecha en el tramo "Esta
+  // semana" de la escalera — que es su casa y donde se lo puede leer con su detalle.
   const c = de('comprometida')
-  assert.equal(c.valor, `=${terminoLibro({ signo: -1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })}`)
-  assert.match(c.contexto, /7d/)
-  assert.ok(c.contexto.includes(terminoLibro({ signo: -1, estados: NO_REAL, hasta: 'TODAY()+7', medida: 'magnitud' })))
+  assert.equal(c.valor, `=${terminoLibro({ signo: -1, estados: DEUDA, hasta: FIN_DE_MES, medida: 'magnitud' })}`)
   assert.ok(!c.valor.includes('"REAL"'), 'lo REAL ya salió de la cuenta: no es obligación')
+  assert.ok(!c.valor.includes('"PROYECTADO"'), 'el presupuesto no es deuda')
 })
 
-test('EL RÓTULO DE COMPROMETIDA DICE QUE FALTA PAGAR: era la pregunta literal del dueño', () => {
+test('EL RÓTULO DE LA DEUDA NOMBRA EL CONCEPTO Y SU VENTANA REAL', () => {
   // 13/08, textual: *"la tarjeta 'caja comprometida' no sé si es algo q tengo q cubrir o ya está
   // cubierto"*. Un rótulo que empieza con "CAJA" nombra plata que se TIENE; ésta es plata que TIENE
-  // QUE SALIR. Y "COMPROMETIDO" a secas es el nombre de UNO de los tres estados que el número suma
-  // (COMPROMETIDO $15,2M de $62,4M): rotular con él sería falso, no vago.
+  // QUE SALIR. Eso sigue valiendo.
+  //
+  // 16/08: "FALTA PAGAR ESTE MES" fallaba en las DOS mitades. "Falta pagar" sobre un número con
+  // $38,0M de presupuesto adentro es falso; y "este mes" sobre una suma sin `desde` —que arrastra
+  // meses anteriores— también, tanto que hacía falta una línea de contexto para desmentirlo. El
+  // rótulo nuevo describe exactamente lo que la celda mide: deuda, atrasada y del mes.
   const c = de('comprometida')
-  assert.equal(c.rotulo, 'FALTA PAGAR ESTE MES')
-  assert.doesNotMatch(c.rotulo, /^CAJA /, 'no es un cajón de plata que se tiene: es plata que falta pagar')
-  assert.match(c.rotulo, /FALTA PAGAR/, 'el rótulo tiene que contestar "¿lo tengo que cubrir?"')
-  // El estado del libro NO se usa como rótulo de un número que suma los tres estados.
+  assert.equal(c.rotulo, 'DEUDA ATRASADA Y DEL MES')
+  assert.doesNotMatch(c.rotulo, /^CAJA /, 'no es un cajón de plata que se tiene: es plata que hay que poner')
+  assert.match(c.rotulo, /^DEUDA/, 'el rótulo tiene que contestar "¿lo tengo que cubrir?"')
+  assert.match(c.rotulo, /ATRASADA/, 'la suma no lleva `desde`: arrastra lo impago de meses anteriores y hay que decirlo')
+  // El estado del libro NO se usa como rótulo de un número que suma dos estados.
   assert.ok(!/^COMPROMETID[OA]\b/.test(c.rotulo),
-    'el titular suma COMPROMETIDO + PROYECTADO + VENCIDO: nombrarlo con un solo estado lo vuelve falso')
+    'el titular suma COMPROMETIDO + VENCIDO: nombrarlo con un solo estado lo vuelve falso')
 })
 
-test('EL CONTEXTO DE COMPROMETIDA cuenta la historia entera: total del mes → pagado → falta', () => {
-  // "es comprometida y cuando se pagan los compromisos deben salir de ahí" (dueño, 07/08). Salen —
-  // pero sin el TOTAL a la vista, $60M pagados junto a $44M comprometidos no cierran ninguna
-  // historia. La frase es: de $X pagaste $Y (el titular es la resta, a ojo). Y CORTA: la versión
-  // larga se truncaba en la celda, y una frase cortada es peor que ninguna. "Del mes" salió de la
-  // frase el 13/08 porque pasó al rótulo, que es donde se lee primero.
+test('EL CONTEXTO DE LA DEUDA publica lo pagado — los compromisos salen de esta tarjeta', () => {
+  // "es comprometida y cuando se pagan los compromisos deben salir de ahí" (dueño, 07/08). Salen, y
+  // sin lo pagado a la vista no se nota.
+  //
+  // 16/08 — LO QUE SE FUE ES "de $X": ese total del mes se armaba como `pagado + N($C$3)`, o sea
+  // pagos REALES sumados a un titular que traía deuda Y presupuesto. Sumar dos cosas que no son la
+  // misma no da un total: da un número que no existe, y era la comparación exacta que el dueño
+  // señaló (*"de repente debemos mas en lo q falta del mes q lo q ya se ha pagado"*). Lo pagado se
+  // publica solo, contra un titular que ahora sí es homogéneo.
   const c = de('comprometida')
   const pagado = terminoLibro({ signo: -1, estados: ['REAL'], desde: 'EOMONTH(TODAY();-1)+1', hasta: FIN_DE_MES, medida: 'magnitud' })
   assert.match(c.contexto, /pagaste/)
-  assert.match(de('comprometida').rotulo, /ESTE MES/, 'la ventana la declara el rótulo')
+  assert.match(c.rotulo, /Y DEL MES/, 'la ventana la declara el rótulo')
   assert.ok(c.contexto.includes(pagado))
-  // El TOTAL del mes = lo pagado + lo que falta (el titular C3): derivable a ojo, nunca una 3ª suma.
-  assert.ok(c.contexto.includes(`(${pagado}+N($C$3))`), 'el total del mes se arma con el titular, no con otra suma del libro')
+  assert.ok(!c.contexto.includes(`(${pagado}+N($C$3))`),
+    'sumar pagos reales con deuda+presupuesto no da un total: da un número que no existe')
 })
 
 test('CON FRONTERA, COMPROMETIDA suma en vivo las pendientes que el libro todavía no incorporó', () => {
@@ -161,11 +172,14 @@ test('INVERTIDO cita las filas Balanz de la grilla — una sola fuente, nunca un
 test('SALDO AL CIERRE es la CONSECUENCIA: disponible − comprometida + cobros del mes', () => {
   const t = de('cierre')
   assert.equal(t.rotulo, 'SALDO AL CIERRE')
-  assert.equal(t.valor, `=N($A$3)-N($C$3)+${terminoLibro({ signo: 1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })}`,
-    'disponible y comprometida por referencia; los cobros con la suma única del libro')
-  // EL PAR DE ESCENARIOS: la tarjeta del medio es el mismo número sin cobrar nada, ésta cobrando
-  // todo. La cláusula condicional no se negocia — sin ella el número se lee como plata garantizada.
-  assert.match(t.contexto, /cobrando todo/, 'sin la cláusula, se leería como plata garantizada')
+  // 16/08 — Y RESTANDO EL PLAN. Cobrando los $151,8M los materiales proyectados SE COMPRAN: un cierre
+  // que suma los cobros y no descuenta los $38,0M que se van a gastar publica plata que no va a estar.
+  assert.equal(t.valor, `=N($A$3)-N($C$3)+${terminoLibro({ signo: 1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })}`
+    + `-${terminoLibro({ signo: -1, estados: PLAN, hasta: FIN_DE_MES, medida: 'magnitud' })}`,
+  'disponible y deuda por referencia; cobros y plan con las sumas únicas del libro')
+  // EL PAR DE ESCENARIOS: la tarjeta del medio no cobra y no gasta, ésta cobra y gasta. La cláusula
+  // condicional no se negocia — sin ella el número se lee como plata garantizada.
+  assert.match(t.contexto, /cobrando y gastando/, 'sin los DOS supuestos, se leería como plata garantizada')
   assert.ok(t.contexto.includes('EOMONTH(TODAY();0)'), 'la fecha del cierre es calculada, no tipeada')
   assert.match(de('libre').rotulo, /SI NO COBRÁS/, 'el otro extremo del par: el mismo número sin cobrar nada')
   assert.ok(!t.valor.includes(REF.invArs) && !t.valor.includes(REF.invUsd),
@@ -366,34 +380,45 @@ test('INVERTIDO no inventa una antigüedad cuando la fecha no es un número', ()
 // ("de $191M") que incluía tres meses anteriores: un número que no existe.
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
-test('COMPROMETIDA publica cuánto de lo que falta pagar viene ATRASADO de meses anteriores', () => {
+test('LA DEUDA publica cuánto de ella NADIE PROBÓ — no se puede afirmar y cobrar a la vez', () => {
+  // 16/08 — REEMPLAZA AL TEST DEL ATRASO. Aquél exigía publicar qué parte del titular tenía fecha
+  // anterior al 1° del mes ($54,6M el 15/08). El "cuándo" nunca fue la pregunta: aquellos $54,6M eran
+  // seis quincenas de jornales que el libro veía impagas, y lo que había que decir no es que fueran
+  // viejas sino que **nadie probó que estén impagas**. Desde `estadoSinProbar` esas quincenas salen
+  // VENCIDO, y eso es lo que la tarjeta publica: la misma explicación del salto, con la causa.
+  //
+  // El "atrasado" no se perdió: pasó al RÓTULO ("DEUDA ATRASADA Y DEL MES"), que es donde declarar la
+  // ventana de una suma sin `desde` cuesta cero caracteres de contexto.
   const c = de('comprometida')
-  const atrasado = terminoLibro({ signo: -1, estados: NO_REAL, hasta: 'EOMONTH(TODAY();-1)+1', medida: 'magnitud' })
-  assert.ok(c.contexto.includes(atrasado), 'el atraso sale del MISMO término del libro, cortado en el 1° del mes')
-  assert.match(c.contexto, /M atrasado/, 'y se dibuja: calcularlo sin publicarlo no le sirve a nadie')
-  // ES EL MISMO CORTE QUE EL TITULAR CON OTRO `hasta`: si alguien lo redefine con `desde`, el atraso
-  // dejaría de ser un subconjunto del número que rotula y las dos cifras podrían no cerrar.
-  assert.ok(!atrasado.includes('>='), 'el atraso es un `hasta`, no una ventana propia')
-  assert.ok(c.valor.includes(terminoLibro({ signo: -1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })),
-    'el titular sigue siendo todo lo impago hasta fin de mes: el atraso se DECLARA, no se resta')
+  const sinProbar = terminoLibro({ signo: -1, estados: ['VENCIDO'], hasta: FIN_DE_MES, medida: 'magnitud' })
+  assert.ok(c.contexto.includes(sinProbar), 'la duda sale del MISMO término del libro que el titular')
+  assert.match(c.contexto, /M sin probar/, 'y se dibuja: calcularla sin publicarla no le sirve a nadie')
+  // MISMO `hasta` QUE EL TITULAR: con una ventana propia dejaría de ser una parte del número que
+  // rotula, y las dos cifras podrían no cerrar.
+  assert.ok(!sinProbar.includes('>='), 'la duda es un `hasta`, no una ventana propia')
+  assert.ok(c.valor.includes(terminoLibro({ signo: -1, estados: DEUDA, hasta: FIN_DE_MES, medida: 'magnitud' })),
+    'la duda se DECLARA, no se resta: o la plata ya salió y falta marcarla, o se debe')
 })
 
-test('SIN atraso vuelve la frase que pidió el dueño — y recién ahí "el total del mes" es cierto', () => {
+test('SIN nada sin probar, el lugar lo ocupa lo pagado — y el plan sigue estando en las dos ramas', () => {
   const c = de('comprometida')
   const pagado = terminoLibro({ signo: -1, estados: ['REAL'], desde: 'EOMONTH(TODAY();-1)+1', hasta: FIN_DE_MES, medida: 'magnitud' })
-  assert.ok(c.contexto.includes(`(${pagado}+N($C$3))`), 'la rama sin atraso conserva "de $X pagaste $Y"')
-  assert.match(c.contexto, /7d /, 'y conserva la urgencia de la semana')
-  // El umbral es el mínimo que la frase sabe dibujar: por debajo diría "$0,0M atrasado".
+  const plan = terminoLibro({ signo: -1, estados: PLAN, hasta: FIN_DE_MES, medida: 'magnitud' })
+  assert.ok(c.contexto.includes(pagado), 'la rama tranquila conserva "pagaste $Y"')
+  // EL PLAN NO ES CONDICIONAL. Es el concepto que el titular dejó afuera: si desapareciera en alguna
+  // rama, ese día la tarjeta escondería $38,0M en vez de separarlos.
+  assert.equal(c.contexto.split(plan).length - 1, 2, 'el plan se publica en LAS DOS ramas, no sólo en una')
+  // El umbral es el mínimo que la frase sabe dibujar: por debajo diría "$0,0M sin probar".
   assert.match(c.contexto, /^=IF\(SUMPRODUCT.*>=100000;/, 'la alarma se prende con un monto legible, no con centavos')
 })
 
-test('LA LIBRE declara la SEGUNDA mitad de su supuesto: pagás todo, incluido el atraso', () => {
-  // El rótulo declara una sola pata (no cobrás más) y la resta usa las dos: A3 − C3 le resta TODO lo
-  // impago, incluido lo de meses anteriores. Sin decirlo, el número se lee como un saldo de fin de
-  // mes y no como el test de estrés que es.
+test('LA LIBRE declara la SEGUNDA mitad de su supuesto: sin ingresos, no se gasta el plan', () => {
+  // El rótulo declara una sola pata (no cobrás más) y la resta usa las dos. Hasta el 16/08 la frase
+  // decía "pagás todo" y era cierta y estaba incompleta: lo que faltaba —y lo que hacía incoherente
+  // al escenario— es que sin ingresos el plan de gasto tampoco se ejecuta.
   const l = de('libre')
   assert.equal(l.valor, '=N($A$3)-N($C$3)')
-  assert.match(l.contexto, /pagás todo/, 'el supuesto de pago tiene que estar escrito al lado del número')
+  assert.match(l.contexto, /sin el plan/, 'el supuesto de gasto tiene que estar escrito al lado del número')
 })
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════

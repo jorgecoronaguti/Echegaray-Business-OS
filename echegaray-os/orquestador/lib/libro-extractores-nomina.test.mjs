@@ -32,10 +32,16 @@ test('JORNALES: sin fecha de pago cae al cierre — una quincena no puede desapa
   assert.equal(ms[1].fecha, CIERRE_31, 'el fallback a HASTA no es opcional: sin él la línea da cero callada')
 })
 
-test('JORNALES: cerrada NO es pagada — sin "Pagado el" es COMPROMETIDO, no REAL', () => {
+test('JORNALES: cerrada NO es pagada — sin "Pagado el" no es REAL', () => {
   const ms = deJornalesQuincenas({ reales: REALES }, CORTE)
   assert.equal(ms[0].estado, 'REAL', 'el dueño marcó el pago: es un hecho')
-  assert.equal(ms[1].estado, 'COMPROMETIDO', 'liquidada y con fecha, pero la plata sigue en la cuenta')
+  // 16/08/2026 — DECÍA COMPROMETIDO Y LA RAZÓN QUE DABA ERA UN SUPUESTO, NO UN HECHO: *"la plata
+  // sigue en la cuenta"* es justamente lo que nadie verificó (los jornales salen en buena parte por
+  // caja física y el extracto no los ve). Vence el 03/08 contra un corte del 05/08: la fecha pasó y
+  // nadie la concilió → VENCIDO (ver `estadoSinProbar`). Lo que el nombre del test defiende —que NO
+  // es REAL— queda intacto; que la plata tampoco se pierda lo fija libro-nomina-sin-probar.test.mjs.
+  assert.notEqual(ms[1].estado, 'REAL', 'nadie probó que salió: no se da por pagada')
+  assert.equal(ms[1].estado, 'VENCIDO', 'la fecha de pago pasó y nadie la concilió')
 })
 
 test('JORNALES: la proyectada vencida es VENCIDO, y no colisiona con la real del mismo renglón', () => {
@@ -172,8 +178,11 @@ test('JORNALES: la columna "Pagado el" vacía NO convierte una quincena pagada e
   assert.ok(real, 'el extracto tiene los $3.775.150 del 17/07: esa plata YA salió, diga lo que diga la columna')
   assert.equal(real.importe, 3775150, 'el banco prueba lo que salió POR BANCO, no el total de la quincena')
   assert.equal(real.fecha, 46220, 'REAL a la fecha del DÉBITO')
-  // El resto (adelanto + recibo) sale por caja física: ninguna fuente lo prueba y sigue abierto.
-  assert.equal(julio.find((m) => m.estado === 'COMPROMETIDO').importe, 3452100)
+  // El resto (adelanto + recibo) sale por caja física: ninguna fuente lo prueba y sigue abierto. Se
+  // busca por "no REAL" y no por el nombre del estado: desde el 16/08 el pedazo sin probar cae en
+  // VENCIDO cuando su fecha ya pasó (`estadoSinProbar`), y lo que este test defiende es el IMPORTE
+  // que queda abierto, no la etiqueta con la que se lo rotula.
+  assert.equal(julio.find((m) => m.estado !== 'REAL').importe, 3452100)
   assert.equal(julio.reduce((a, m) => a + m.importe, 0), 7227250, 'partir no crea ni borra plata')
 })
 

@@ -53,6 +53,40 @@ const columna = (v) => (Array.isArray(v) ? v : []).map((c) => (Array.isArray(c) 
 const filaDe = (bloque, i) => `${bloque}:${i + 1}`
 
 /**
+ * NÚCLEO PURO: el estado de una quincena que NADIE probó — la diferencia entre "no salió" y "no sé".
+ *
+ * ═══ EL DEFECTO (16/08/2026): $47,4M DE DUDA PUBLICADOS COMO DEUDA CIERTA ═══
+ *
+ * Esta rama emitía `COMPROMETIDO` a secas, y `libro-movimientos.mjs` define ese estado como *"está
+ * firmado y entregado, con fecha, pero todavía no salió de la cuenta. El caso canónico es el cheque
+ * emitido y no debitado"*. De un cheque librado se SABE que no se debitó. De una quincena sin
+ * "Pagado el" no se sabe nada: los jornales se pagan en buena parte por caja física —lo dice la
+ * cabecera de `quincenaAMovimientos` cuatro líneas más abajo— así que su ausencia del extracto no
+ * prueba absolutamente nada. Medido contra el Sheet vivo: **$47.415.800 de los $70.420.524
+ * COMPROMETIDO eran esto**, el 67% de lo que la portada de CAJA llamaba deuda probada.
+ *
+ * `VENCIDO` es el estado que el libro define para exactamente este caso: *"estaba previsto para una
+ * fecha que ya pasó y nadie lo marcó como real (…) es un PROYECTADO que necesita que alguien lo mire.
+ * Se distingue porque mezclarlo con el resto esconde el trabajo pendiente."* Eso es el renglón.
+ *
+ * NO SE LLEVA LA PLATA PUESTA, Y ESA ES LA MITAD DEL ARREGLO. La obligación existe —la quincena se
+ * trabajó— y las dos tarjetas que la publican suman `COMPROMETIDO + VENCIDO`, así que el total de la
+ * deuda no se mueve un peso. Lo único que cambia es que ahora se puede DECIR cuánto de ese total
+ * está sin probar, que es lo que el dueño reclamó tres veces. Hay un test que fija que la suma de los
+ * dos estados no cambia: si algún día este arreglo empieza a restar, se pone rojo.
+ *
+ * LA FECHA FUTURA SE QUEDA EN COMPROMETIDO. Una quincena cuyo pago todavía no venció no tiene nada
+ * que conciliar: es una obligación normal y corriente. Mandar toda la nómina futura a "sin probar"
+ * sería el error opuesto y del mismo tamaño.
+ *
+ * SIN CORTE NO SE DEGRADA NADA: sin extracto no hay contra qué medir el atraso, y afirmar la duda sin
+ * poder fecharla es inventar en la otra dirección. Falla hacia el comportamiento anterior.
+ */
+const estadoSinProbar = (fecha, corte) => (
+  Number.isFinite(fecha) && Number.isFinite(corte) && fecha < corte ? 'VENCIDO' : 'COMPROMETIDO'
+)
+
+/**
  * NÚCLEO PURO: un renglón del registro, ya con su veredicto, convertido en movimiento(s).
  *
  * ═══ SE PARTE EN LO QUE EL BANCO PRUEBA Y LO QUE NO ═══
@@ -84,8 +118,9 @@ function quincenaAMovimientos({ q, t, fecha, declarada, marcada = false, importe
   if (marcada) {
     return [movimiento({ ...comun, fecha, estado: estadoDeEgreso({ instrumento: 'desconocido', pagado: true, fecha, corte }) })]
   }
+  // NADIE LA MARCÓ Y EL BANCO NO LA PRUEBA: no es un compromiso firme, es un renglón sin conciliar.
   if (t.veredicto !== VEREDICTO.banco || !t.cubierto) {
-    return [movimiento({ ...comun, fecha, estado: 'COMPROMETIDO' })]
+    return [movimiento({ ...comun, fecha, estado: estadoSinProbar(fecha, corte) })]
   }
   // El débito respaldó a esta quincena y no puede respaldar a otra.
   for (const fila of t.filas) extracto?.usados?.add(fila)
@@ -101,7 +136,8 @@ function quincenaAMovimientos({ q, t, fecha, declarada, marcada = false, importe
     origen: { ...comun.origen, fila: `${comun.origen.fila}:real` },
   })]
   if (resto > 0) {
-    ms.push(movimiento({ ...comun, fecha, importe: resto, estado: 'COMPROMETIDO', origen: { ...comun.origen, fila: `${comun.origen.fila}:pendiente` } }))
+    // El resto es justamente la parte que el débito NO cubrió: tan sin probar como la de arriba.
+    ms.push(movimiento({ ...comun, fecha, importe: resto, estado: estadoSinProbar(fecha, corte), origen: { ...comun.origen, fila: `${comun.origen.fila}:pendiente` } }))
   }
   return ms
 }
