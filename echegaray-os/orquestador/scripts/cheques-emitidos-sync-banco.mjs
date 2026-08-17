@@ -30,23 +30,11 @@
 // el núcleo que ya hacía ese diagnóstico y sólo lo imprimía— y fusiona las dos fuentes. Cuando se
 // contradicen gana el extracto: un débito asentado es plata que ya no está.
 //
-// ═══ QUÉ CAMBIÓ EL 17/08: EL REGISTRO ES DEL OS PARA EL ALTA ═══
-//
-// El 317 —$510.000, debitado el 13/08— no tenía fila, y este script se negaba a crearla: "el registro
-// es del dueño y una fila fabricada es peor que un hueco visible". El dueño lo dio vuelta: **"no, el
-// registro es tuyo, así q si detectas eso lo tenés q agregar"**. Transcribir un débito asentado no es
-// fabricar un dato. Ahora esos huérfanos se dan de ALTA al final del registro, con lo único que el
-// banco informa (número, fecha, importe y DEBITADO="SI") y todo lo demás VACÍO y pedido en la propia
-// fila. El criterio de qué se agrega y qué no vive en `cheques-alta-desde-banco.mjs`.
-//
-// AGREGAR NO ES PISAR: lo que el dueño autorizó es el alta. Las filas nuevas van SIEMPRE después de
-// la última con dato; ninguna columna de ninguna fila existente se toca por este camino.
-//
 // QUÉ HACE, y qué NO. Por (instrumento, número) escribe en la columna DEBITADO: Pagado→"SI",
-// Aceptado→"No". Agrega al final los eCheq que falten y los débitos del extracto sin fila. NO toca
-// ninguna otra columna, NO borra, NO reordena y NO agrega los MUERTOS (anulado, repudiado: un
-// repudiado suele ser el duplicado de uno que sí se pagó — el 281 es el gemelo del 282). Todo lo que
-// no se da de alta se declara como hallazgo en `backlog_autonomo`. Es idempotente.
+// Aceptado→"No". Agrega al final los eCheq que falten. NO toca ninguna otra columna, NO borra, NO
+// reordena, NO agrega los MUERTOS (anulado, repudiado: un repudiado suele ser el duplicado de uno que
+// sí se pagó — el 281 es el gemelo del 282) y NO INVENTA UNA FILA para un débito del banco que el
+// registro no explica: eso se declara como hallazgo en `backlog_autonomo`. Es idempotente.
 //
 //   node orquestador/scripts/cheques-emitidos-sync-banco.mjs [--dry]
 
@@ -56,7 +44,6 @@ import { query, closePool } from '../lib/db.mjs'
 import { planSync, filaRegistro, verificarEncabezado, sinComprobante, COL, norm } from '../lib/cheques-emitidos-sync.mjs'
 import { conciliarDebitosDeCheques } from '../lib/cheques-debito-banco.mjs'
 import { fusionarDebitado, huerfanosDeDebito, anotarHuerfanos } from '../lib/cheques-debitado-fusion.mjs'
-import { planAltasDesdeBanco, filaAltaDesdeBanco } from '../lib/cheques-alta-desde-banco.mjs'
 import { parseMonto } from '../lib/cash-briefing.mjs'
 import { bloquear, desbloquear } from '../lib/pestana-bloqueada.mjs'
 
@@ -206,35 +193,19 @@ async function main() {
   }
 
   // ── PLATA QUE SALIÓ SIN UNA FILA QUE LA RESPALDE ─────────────────────────────────────────────────
-  // Desde el 17/08 esto no termina en un hallazgo y nada más: el débito que ningún número del registro
-  // toca se convierte en una fila al final. El que sí toca un número que ya existe NO se agrega —sería
-  // duplicar un cheque del dueño— y se sigue declarando.
   const huerfanos = huerfanosDeDebito(conciliacion)
-  const { altas, yaTienenFila } = planAltasDesdeBanco({ huerfanos, registro })
-  if (altas.length) {
-    const t = altas.reduce((s, a) => s + a.importe, 0)
-    console.log(`\n➕ ${altas.length} débito(s) de cheque que el registro no tenía — ${$(t)}: se dan de ALTA al final.`)
-    for (const a of altas) {
-      console.log(`    ${a.fecha}  N° ${String(a.numero).padStart(4)}  ${$(a.importe).padStart(16)}`
-        + `  tipo ${a.instrumento || '∅ (el banco no lo declara — lo completás vos)'}`)
+  if (huerfanos.length) {
+    const t = huerfanos.reduce((s, h) => s + h.importe, 0)
+    console.log(`\n⛔ ${huerfanos.length} débito(s) de cheque que NINGUNA fila del registro explica — ${$(t)}:`)
+    for (const h of huerfanos) console.log(`    ${h.fecha}  N° ${String(h.numero ?? 's/n').padStart(4)}  ${$(h.importe).padStart(16)}  ${h.motivo}`)
+    console.log('    NO se agrega ninguna fila: el registro es del dueño y una fila fabricada es peor que un hueco visible.')
+    // Anotarlo es lo que lo hace consultable después de que este log se pierda. En seco no se anota:
+    // --dry no escribe en ningún lado, ni en el Sheet ni en la base.
+    if (!DRY) {
+      const a = await anotarHuerfanos({ query }, huerfanos)
+      if (a.anotados == null) console.log(`    (no se pudo anotar en el backlog: ${a.motivo})`)
+      else console.log(`    ${a.anotados} anotado(s) en backlog_autonomo para consultarlo · ${a.yaEstaban} ya estaba(n).`)
     }
-    console.log('    Se transcribe lo que el banco informa: número, fecha, importe y DEBITADO="SI".')
-    console.log('    Beneficiario, obra, emisión y comprobante quedan VACÍOS y pedidos en la columna Proveedor.')
-  }
-  if (yaTienenFila.length) {
-    const t = yaTienenFila.reduce((s, h) => s + h.importe, 0)
-    console.log(`\n⛔ ${yaTienenFila.length} débito(s) de cheque que el registro NO explica y que NO se dan de alta — ${$(t)}:`)
-    for (const h of yaTienenFila) console.log(`    ${h.fecha}  N° ${String(h.numero ?? 's/n').padStart(4)}  ${$(h.importe).padStart(16)}  ${h.motivo}`)
-    console.log('    Ese número YA está en el registro: agregar una fila crearía dos cheques donde hay uno.')
-    console.log('    Se revisa a mano — o el importe o el número están mal transcriptos.')
-  }
-  if (huerfanos.length && !DRY) {
-    // Anotarlo es lo que lo hace consultable después de que este log se pierda — TAMBIÉN los que se
-    // dan de alta: la fila nueva está incompleta y sigue siendo trabajo pendiente. En seco no se
-    // anota: --dry no escribe en ningún lado, ni en el Sheet ni en la base.
-    const a = await anotarHuerfanos({ query }, [...altas, ...yaTienenFila])
-    if (a.anotados == null) console.log(`    (no se pudo anotar en el backlog: ${a.motivo})`)
-    else console.log(`    ${a.anotados} anotado(s) en backlog_autonomo para consultarlo · ${a.yaEstaban} ya estaba(n).`)
   }
   const sinRef = conciliacion.filter((r) => r.estado === 'sin_referencia')
   if (sinRef.length) {
@@ -246,14 +217,10 @@ async function main() {
   avisarSinComprobante(p)
 
   if (DRY) { console.log('\n(--dry) no escribí nada.'); return }
-  if (!p.updates.length && !p.agregar.length && !altas.length) { console.log('\nnada que sincronizar: el registro ya coincide con las dos fuentes.'); return }
+  if (!p.updates.length && !p.agregar.length) { console.log('\nnada que sincronizar: el registro ya coincide con la base.'); return }
 
   const data = p.updates.map((u) => ({ range: `${PESTANA}!K${u.fila}`, values: [[u.a]] }))
-  // LAS DOS LISTAS DE ALTA VAN EN UN SOLO BLOQUE CONTIGUO, DESPUÉS DE LA ÚLTIMA FILA CON DATO.
-  // Dos rangos que arrancan los dos en `ultima + 1` se pisarían entre ellos, y el segundo ganaría sin
-  // que nadie lo viera: los eCheqs de la base entrarían y se borrarían en la misma corrida.
-  const nuevas = [...p.agregar.map(filaRegistro), ...altas.map(filaAltaDesdeBanco)]
-  if (nuevas.length) data.push({ range: `${PESTANA}!A${ultima + 1}`, values: nuevas })
+  if (p.agregar.length) data.push({ range: `${PESTANA}!A${ultima + 1}`, values: p.agregar.map(filaRegistro) })
   // REGLA 0 — NO APLICA, Y ESTÁ DECIDIDO: respetar: false.
   // Escribe un HECHO verificado contra el banco, celda por celda, en la columna de estado — no un
   // rótulo redactado por nadie. Respetar acá sería dejar que una edición a mano contradiga al banco.
@@ -271,7 +238,7 @@ async function main() {
   } finally {
     if (FORZAR) await bloquear({ query }, ID, PESTANA, { motivo: 'el dueño edita — re-candada tras agregar los cheques emitidos que faltaban', por: 'OS' })
   }
-  console.log(`\n✔ ${p.updates.length} corregido(s) + ${p.agregar.length} agregado(s) desde public.cheques + ${altas.length} dado(s) de alta desde el extracto`)
+  console.log(`\n✔ ${p.updates.length} corregido(s) + ${p.agregar.length} agregado(s)`)
 
   // ── VERIFICACIÓN: releer y probar que quedó como el plan decía ───────────────────────────────────
   // Contra LAS DOS fuentes, no sólo contra la base: si sólo se verificara public.cheques, un físico que
@@ -288,14 +255,8 @@ async function main() {
   const p2 = planSync(base, reg2)
   const { resultados: c2 } = conciliarDebitosDeCheques(movs, reg2.map(paraConciliar).filter(Boolean))
   const f2 = fusionarDebitado({ base, planBase: p2, conciliacion: c2 })
-  // LA PRUEBA DEL ALTA ES QUE LA SEGUNDA CORRIDA NO TENGA NADA QUE AGREGAR. Se mide sobre el registro
-  // RELEÍDO —el dato en su destino, no la respuesta de la API—, y es también la prueba de idempotencia:
-  // si `planAltasDesdeBanco` volviera a proponer el mismo número, la próxima corrida lo duplicaría.
-  const a2 = planAltasDesdeBanco({ huerfanos: huerfanosDeDebito(c2), registro: reg2 })
-  const ok = !f2.updates.length && !p2.agregar.length && !a2.altas.length
-  console.log(`verificación: ${reg2.length} cheque(s) en el registro · ${ok
-    ? '✓ el registro coincide con public.cheques Y con el extracto, y no quedó ningún débito sin fila'
-    : `✖ quedaron ${f2.updates.length} diferencia(s), ${p2.agregar.length} sin agregar y ${a2.altas.length} débito(s) sin fila`}`)
+  const ok = !f2.updates.length && !p2.agregar.length
+  console.log(`verificación: ${reg2.length} cheque(s) en el registro · ${ok ? '✓ el registro coincide con public.cheques Y con el extracto' : `✖ quedaron ${f2.updates.length} diferencia(s) y ${p2.agregar.length} sin agregar`}`)
   if (!ok) process.exitCode = 1
 }
 

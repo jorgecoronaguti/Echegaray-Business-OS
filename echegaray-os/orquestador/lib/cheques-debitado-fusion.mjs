@@ -25,10 +25,9 @@
 //
 // ═══ LO QUE ESTE NÚCLEO NO HACE ═══
 //
-// No arma filas: sólo CORRIGE la columna DEBITADO de filas que ya existen. Qué hacer con un débito
-// que ninguna fila explica lo decide `cheques-alta-desde-banco.mjs` —desde el 17/08 se da de alta al
-// final del registro, por decisión explícita del dueño—. Acá el huérfano se DETECTA y se declara como
-// hallazgo con su monto y su fecha; convertirlo en fila es otra responsabilidad, en otro archivo.
+// No inventa filas. Un débito de cheque del extracto que ningún cheque del registro explica NO se
+// convierte en una fila nueva: el registro es del dueño y una fila fabricada por el OS es peor que un
+// hueco visible. Se declara como hallazgo, con su monto y su fecha, para que se pueda consultar.
 
 import { debitadoDe, instrumentoDe, clave } from './cheques-emitidos-sync.mjs'
 
@@ -116,11 +115,10 @@ export function fusionarDebitado({ base = [], planBase = {}, conciliacion = [] }
 /**
  * PLATA QUE SALIÓ DE LA CUENTA SIN UNA FILA QUE LA RESPALDE.
  *
- * Medido hoy: el 317, $510.000, debitado el 13/08. El registro tiene 106 cheques y ninguno lleva ese
- * número. Un débito de cheque sin respaldo es o un cheque que nunca se cargó, o un número mal
- * transcripto, o una salida que hay que explicar — y ninguna de las tres se puede revisar si nadie la
- * nombra. Esta función las NOMBRA; `planAltasDesdeBanco` decide después cuáles se convierten en fila
- * (las que ningún número del registro toca) y cuáles quedan para revisar a mano.
+ * Medido hoy: el FISICO 317, $510.000, debitado el 13/08. El registro tiene 106 cheques y ninguno
+ * lleva ese número. No se inventa la fila —el registro es del dueño— pero tampoco se ignora: un débito
+ * de cheque sin respaldo es o un cheque que nunca se cargó, o un número mal transcripto, o una salida
+ * que hay que explicar. Las tres se revisan a mano, y ninguna se puede revisar si nadie la nombra.
  *
  * Los `sin_referencia` NO entran: ahí el banco no mandó número y no hay nada que buscar en el registro
  * (emparejar por importe suelto ya se pagó caro). Se informan aparte, como lo que son: un límite del
@@ -195,13 +193,9 @@ export async function anotarHuerfanos(port, lista = []) {
           titulo,
           evidenciaHuerfano(h),
           'cheques-emitidos-sync-banco (extracto del Santander vs. registro de "Cheques Emitidos")',
-          // Los que se dan de alta traen su propia recomendación: pedirle al dueño que "cargue" un
-          // cheque que el OS acaba de agregar es una instrucción vieja, y una instrucción vieja en un
-          // tablero es la forma más rápida de que nadie vuelva a mirarlo.
-          h?.recomendacion
-            ?? `Buscar el cheque N° ${h?.numero ?? 's/n'} en la chequera física y cargarlo en "Cheques Emitidos" `
-              + 'con su beneficiario, importe y N° de comprobante. Si el número no existe, revisar la '
-              + 'transcripción del extracto: el débito está asentado igual.',
+          `Buscar el cheque N° ${h?.numero ?? 's/n'} en la chequera física y cargarlo en "Cheques Emitidos" `
+            + 'con su beneficiario, importe y N° de comprobante. Si el número no existe, revisar la '
+            + 'transcripción del extracto: el débito está asentado igual.',
         ])
       anotados++
     }
