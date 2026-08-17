@@ -23,6 +23,30 @@
 // motivo. Marcar debitado el cheque equivocado deja vivo uno que ya salió y mata uno que no: emparejar
 // mal es peor que no emparejar.
 //
+// ═══ EL SEGUNDO PASE: CUANDO EL NÚMERO DE LA FILA ES EL QUE ESTÁ MAL (17/08) ═══
+//
+// Medido en el registro real: las filas 101 y 102 dicen las DOS "FISICO 316" (Diesel Rodriguez), por
+// $500.000 y $510.000. El extracto dice 316 → $500.000 y 317 → $510.000. O sea que el número de la
+// 102 está mal. Con un solo pase por número, el débito de $510.000 caía en `sin_cheque` —"ningún
+// cheque lleva el 317"— y la fila 102 se quedaba con DEBITADO = "No" sobre plata que el banco ya se
+// había llevado el 13/08: $510.000 contados como comprometidos que no existían.
+//
+// El OS tiene los dos testigos y los estaba usando de a uno. Ahora, SÓLO para lo que el primer pase
+// no pudo explicar, se pregunta al segundo: ¿hay UNA fila —y una sola— cuyo importe coincida AL
+// CENTAVO, del instrumento que el banco declara y que ningún otro movimiento ya explicó? Si la hay,
+// ese cheque salió: se empareja como `emparejado_por_importe` y la contradicción entre las dos
+// lecturas —el banco dice 317, la fila dice 316— viaja en el resultado.
+//
+// LO QUE ESE PASE NO HACE, Y ES LA MITAD DEL DISEÑO:
+//
+//   · No elige entre las dos lecturas: las PUBLICA. Marcar el DEBITADO es completar un dato que el
+//     banco prueba; corregir el NÚMERO es reescribir la identidad de la fila —y acá ya hay dos 316,
+//     así que un número mal corregido fusiona dos cheques distintos—. Eso lo decide el dueño.
+//   · No afloja el importe ni un peso: FISICO 313 ($470.945) y FISICO 312 ($470.944) son dos cheques
+//     distintos del mismo proveedor. Se compara en centavos enteros.
+//   · No se mete con los `sin_referencia`: ahí el banco no mandó número, no hay ninguna lectura que
+//     contradecir y el importe quedaría solo. Emparejar por importe suelto ya se pagó caro.
+//
 // NO ESCRIBE NADA. Devuelve el diagnóstico; quién lo aplica y dónde es decisión de quien escribe.
 //
 // Distinto de `banco-conceptos.mjs`: aquel contesta "¿estos dos textos son EL MISMO movimiento?"
@@ -150,18 +174,73 @@ function resolverMovimiento(mov, porNumero) {
 }
 
 /**
+ * EL SEGUNDO PASE, PARA UN SOLO MOVIMIENTO: ¿hay una fila —y una sola— con ese importe exacto?
+ *
+ * Se corre únicamente sobre lo que el número no pudo explicar. El instrumento declarado sigue
+ * mandando: si el banco escribió "Echeq", un físico del mismo importe no es candidato.
+ *
+ * `debitado` NO filtra los candidatos a propósito: la identidad de un cheque no puede depender del
+ * estado que este mismo cruce está por escribir — eso sería validar un control contra lo que produce.
+ * Lo que sí acota es `yaExplicadas`: una fila que otro movimiento ya explicó no puede explicar un
+ * segundo débito.
+ *
+ * @param {object} mov
+ * @param {object[]} cheques
+ * @param {Set<object>} yaExplicadas
+ * @returns {{estado:string, clave?:string, cheque?:object, candidatos?:object[], motivo?:string,
+ *            discrepancia?:{referenciaDelBanco:string, numeroDeLaFila:string}}|null} null = no hay rescate
+ */
+function rescatarPorImporte(mov, cheques, yaExplicadas) {
+  const declarado = familiaDebitoCheque(mov?.concepto)?.instrumentoDeclarado
+  const ref = normalizarNumeroCheque(mov?.referencia)
+  const candidatos = cheques.filter((c) => centavos(c?.importe) === centavos(mov?.importe)
+    && !yaExplicadas.has(c)
+    && (!declarado || String(c?.instrumento).toUpperCase() === declarado))
+
+  if (!candidatos.length) return null
+  if (candidatos.length > 1) {
+    return {
+      estado: 'ambiguo',
+      candidatos,
+      motivo: `el número ${ref} no está en el registro y ${candidatos.length} cheques comparten ese importe `
+        + `(${candidatos.map(claveCheque).join(', ')}): elegir uno deja vivo el que ya salió`,
+    }
+  }
+  const c = candidatos[0]
+  const numeroDeLaFila = normalizarNumeroCheque(c?.numero) ?? ''
+  return {
+    estado: 'emparejado_por_importe',
+    clave: claveCheque(c),
+    cheque: c,
+    candidatos,
+    discrepancia: { referenciaDelBanco: ref, numeroDeLaFila },
+    motivo: `el banco dice que el cheque es el ${ref} y esa fila dice ${numeroDeLaFila}; el importe `
+      + 'coincide al centavo y es el único del registro, así que el cheque salió — pero uno de los dos '
+      + 'números está mal y ese lo corrige el dueño',
+  }
+}
+
+/**
  * NÚCLEO PURO — la conciliación de los débitos de cheque del extracto contra el registro.
  *
+ * DOS PASES: primero TODO por (instrumento, número) —el testigo fuerte—, y sólo después el rescate
+ * por importe único sobre lo que quedó sin explicar. El orden importa: si el rescate corriera
+ * intercalado, un movimiento podría llevarse por importe la fila que el número le iba a asignar al
+ * siguiente.
+ *
  * Un movimiento cae en exactamente uno de estos estados, y ninguno se resuelve adivinando:
- *   · emparejado            — clave (instrumento, número) única y con el importe corroborado
- *   · ambiguo               — más de un cheque posible, o la clave ya la tomó otro movimiento
- *   · sin_cheque            — el número no está en el registro, o ninguno de ese número cierra el importe
- *   · sin_referencia        — el banco no mandó número; emparejar por importe suelto ya se pagó caro
+ *   · emparejado             — clave (instrumento, número) única y con el importe corroborado
+ *   · emparejado_por_importe — el número no explicó nada y UNA sola fila coincide al centavo; la
+ *                              contradicción entre las dos lecturas viaja en `discrepancia`
+ *   · ambiguo                — más de un cheque posible, o la clave ya la tomó otro movimiento
+ *   · sin_cheque             — ni el número ni el importe encuentran una fila
+ *   · sin_referencia         — el banco no mandó número; emparejar por importe suelto ya se pagó caro
  *   · no_es_debito_de_cheque — el concepto no anuncia una salida de cheque (o es un crédito)
  *
  * @param {{fecha?:string, concepto?:string, importe?:number, referencia?:unknown}[]} movimientos
  * @param {{instrumento:string, numero:unknown, importe:number}[]} cheques
- * @returns {{resultados:object[], resumen:{emparejados:number, ambiguos:number, sin_cheque:number, sin_referencia:number}}}
+ * @returns {{resultados:object[], resumen:{emparejados:number, emparejados_por_importe:number,
+ *            ambiguos:number, sin_cheque:number, sin_referencia:number}}}
  */
 export function conciliarDebitosDeCheques(movimientos = [], cheques = []) {
   const porNumero = new Map()
@@ -187,11 +266,26 @@ export function conciliarDebitosDeCheques(movimientos = [], cheques = []) {
     resultados.push({ mov, ...r })
   }
 
+  // ── SEGUNDO PASE ─────────────────────────────────────────────────────────────────────────────
+  // Recién con TODO el primer pase resuelto se sabe qué filas quedaron libres. Sólo se reabre lo que
+  // quedó `sin_cheque`: un ambiguo ya tiene demasiados candidatos y un sin_referencia, ninguna lectura.
+  const yaExplicadas = new Set(resultados.map((r) => r.cheque).filter(Boolean))
+  for (const r of resultados) {
+    if (r.estado !== 'sin_cheque') continue
+    const rescate = rescatarPorImporte(r.mov, cheques, yaExplicadas)
+    if (!rescate) continue
+    // `motivo` del primer pase se reemplaza: describía por qué el número no alcanzó, y ahora la
+    // explicación es otra. Dejar el viejo diría "ningún cheque lleva ese número" sobre un emparejado.
+    Object.assign(r, rescate)
+    if (r.cheque) yaExplicadas.add(r.cheque)
+  }
+
   const cuenta = (e) => resultados.filter((r) => r.estado === e).length
   return {
     resultados,
     resumen: {
       emparejados: cuenta('emparejado'),
+      emparejados_por_importe: cuenta('emparejado_por_importe'),
       ambiguos: cuenta('ambiguo'),
       sin_cheque: cuenta('sin_cheque'),
       sin_referencia: cuenta('sin_referencia'),
