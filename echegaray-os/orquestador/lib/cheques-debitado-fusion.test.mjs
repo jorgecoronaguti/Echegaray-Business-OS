@@ -36,10 +36,13 @@ test('un FISICO que el banco debitó se marca: los $1.590.000 dejan de figurar c
   assert.match(updates[0].evidencia, /2026-08-13.*Cheque debitado/)
 })
 
-test('el FISICO 317 se DECLARA y no se inventa: ninguna fila nueva, un hallazgo con monto y fecha', () => {
+// CONTRATO CAMBIADO EL 17/08: este test decía "no se inventa: ninguna fila nueva". El dueño mandó lo
+// contrario —"el registro es tuyo, así q si detectas eso lo tenés q agregar"— y el alta se hace, en
+// `cheques-alta-desde-banco.mjs`. Lo que ESTE núcleo sigue sin poder hacer es tocar una fila existente:
+// el 317 no puede colarse como CORRECCIÓN sobre la fila de otro cheque.
+test('el 317 se DECLARA como huérfano y nunca como corrección de una fila ajena', () => {
   const c = conciliar()
   const { updates } = fusionarDebitado({ conciliacion: c })
-  // Lo que NO puede pasar: que el 317 se cuele como corrección o como fila.
   assert.equal(updates.some((u) => u.numero === '317'), false)
 
   const h = huerfanosDeDebito(c)
@@ -70,6 +73,19 @@ test('anotarHuerfanos es idempotente: si el ítem ya está abierto no inserta ot
 
   const vacio = { query: async (q) => ({ rows: q.includes('select') ? [] : [] }) }
   assert.deepEqual(await anotarHuerfanos(vacio, [h]), { anotados: 1, yaEstaban: 0 })
+})
+
+test('la recomendación la fija quien detecta: al huérfano ya dado de alta no se le pide cargarlo otra vez', async () => {
+  const [h] = huerfanosDeDebito(conciliar())
+  const insertados = []
+  const port = { query: async (q, p) => { if (q.includes('insert')) insertados.push(p); return { rows: [] } } }
+
+  await anotarHuerfanos(port, [{ ...h, recomendacion: 'El OS ya agregó la fila: completá el resto.' }])
+  assert.equal(insertados[0][3], 'El OS ya agregó la fila: completá el resto.')
+
+  // Sin override sigue valiendo el texto de siempre: el que no se dio de alta hay que ir a buscarlo.
+  await anotarHuerfanos(port, [h])
+  assert.match(insertados[1][3], /Buscar el cheque N° 317 en la chequera física/)
 })
 
 test('sin base no se puede anotar, y eso NO rompe el sync', async () => {
