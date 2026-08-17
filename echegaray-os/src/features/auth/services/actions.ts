@@ -19,7 +19,10 @@ export async function loginAction(_prev: ActionState, formData: FormData): Promi
   if (error) return { error: error.message }
 
   revalidatePath('/', 'layout')
-  redirect('/dashboard')
+  // El aterrizaje es el PORTAFOLIO DE OBRAS: es el primer módulo definitivo del OS y la obra es el
+  // eje del negocio. Antes iba a `/dashboard`, que se borró con el frontend legacy — quien entraba
+  // sin un `?volver=` caía en un 404 como primera pantalla del sistema.
+  redirect('/obras')
 }
 
 // Signup crea la cuenta en auth.users pero NO le asigna rol -- eso lo hace Jorge

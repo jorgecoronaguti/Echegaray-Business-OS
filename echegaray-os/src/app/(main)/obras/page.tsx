@@ -69,8 +69,12 @@ export default async function ObrasPage() {
       )}
 
       {obras.length > 0 && (
-        <div className="overflow-hidden rounded-xl border border-line bg-white">
-          <table className="w-full text-left">
+        // `overflow-hidden` RECORTABA la tabla en el teléfono: a 390px desaparecían avance,
+        // contratado, costo real, actividades y restricciones — todo lo que esta pantalla existe
+        // para mostrar, y sin manera de llegar a ellos. Con `overflow-x-auto` se desplaza y no se
+        // pierde una sola columna.
+        <div className="overflow-x-auto rounded-xl border border-line bg-white">
+          <table className="w-full min-w-[720px] text-left">
             <thead>
               <tr className="border-b border-line text-[10px] uppercase tracking-wide text-faint">
                 <th className="px-4 py-2.5 font-medium">Obra / Cliente</th>

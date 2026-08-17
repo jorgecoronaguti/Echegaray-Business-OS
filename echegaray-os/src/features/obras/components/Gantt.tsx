@@ -29,7 +29,6 @@ import type { Actividad, Restriccion } from '../types'
 
 const DIA = 86400000
 const ALTO_FILA = 26
-const ANCHO_GRILLA = 340
 
 type Escala = 'semana' | 'mes'
 const PX_POR_DIA: Record<Escala, number> = { semana: 13, mes: 4 }
@@ -141,11 +140,20 @@ export function Gantt({
       </div>
 
       <div className="relative max-h-[70vh] overflow-auto">
-        <div className="flex" style={{ width: ANCHO_GRILLA + ancho }}>
+        {/* EL ANCHO DE LA COLUMNA FIJA ES RESPONSIVO, Y NO ES UN DETALLE ESTÉTICO (17/08/2026).
+            Estaba clavado en 340px por estilo en línea. En un teléfono de 390px el contenedor
+            visible mide 348px: la columna de nombres se comía el 97,7% y NO SE VEÍA UNA SOLA BARRA
+            —ni la línea de hoy, ni el cronograma— aunque el scroll horizontal funcionara. El Gantt
+            es la vista más importante del módulo y el teléfono es el aparato del jefe de obra.
+            Ahora: 148px en móvil, 340px de `sm` para arriba, y las columnas de fecha se ocultan en
+            pantalla chica porque esa información ya está en la barra. */}
+        <div className="flex w-max">
           {/* ── COLUMNA FIJA: la grilla de actividades ───────────────────────────────── */}
-          <div className="sticky left-0 z-20 shrink-0 border-r border-line bg-white" style={{ width: ANCHO_GRILLA }}>
+          <div className="sticky left-0 z-20 w-[148px] shrink-0 border-r border-line bg-white sm:w-[340px]">
             <div className="sticky top-0 z-10 flex h-11 items-end gap-2 border-b border-line bg-white px-3 pb-1.5 text-[10px] font-medium uppercase tracking-wide text-faint">
-              <span className="flex-1">Actividad</span><span className="w-11 text-right">Inicio</span><span className="w-11 text-right">Fin</span>
+              <span className="flex-1">Actividad</span>
+              <span className="hidden w-11 text-right sm:inline">Inicio</span>
+              <span className="hidden w-11 text-right sm:inline">Fin</span>
             </div>
             {actividades.map((a) => (
               <button
@@ -160,8 +168,8 @@ export function Gantt({
                   style={{ paddingLeft: nivelDe(a.codigo) * 12 }}
                   title={`${a.codigo} · ${a.nombre}`}
                 >{a.nombre}</span>
-                <span className="w-11 shrink-0 text-right tabular-nums text-faint">{fmtCorto(a.inicio_plan)}</span>
-                <span className="w-11 shrink-0 text-right tabular-nums text-faint">{fmtCorto(a.fin_plan)}</span>
+                <span className="hidden w-11 shrink-0 text-right tabular-nums text-faint sm:inline">{fmtCorto(a.inicio_plan)}</span>
+                <span className="hidden w-11 shrink-0 text-right tabular-nums text-faint sm:inline">{fmtCorto(a.fin_plan)}</span>
               </button>
             ))}
           </div>
