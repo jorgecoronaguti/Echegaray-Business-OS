@@ -134,7 +134,7 @@
 
 import { VACIO } from './preservar-anotaciones.mjs'
 import { conColaLimpiable as colaDeclarada } from './cola-de-rango.mjs'
-import { comprasObraDe, esProyectable, totalEgresos } from './obras-datos.mjs'
+import { comprasObraDe, patronEstaDeclarado, esProyectable, totalEgresos } from './obras-datos.mjs'
 import { sumaNetaSheet, esMaterialSheet } from './costo-materiales.mjs'
 import { sumaConUSD } from './cobranzas-contrato.mjs'
 import { formulaCertificado } from './obras-certificado.mjs'
@@ -1169,9 +1169,17 @@ function bloqueObra(h, refs, o, idx, unica = false) {
   return { clave: o.clave, fProt, proyectable, contrato: o.contrato ?? null }
 }
 
-/** El glifo de la columna de auditoría cuando ninguna compra nombra la obra. Es una alarma, no un
- *  cero: la plata existe y está en la fila SIN IMPUTAR, esperando que Compras diga a qué obra va. */
-export const SIN_TEXTO_EN_COMPRAS = `${ALERTA} ninguna compra la nombra`
+/**
+ * El glifo de la columna de auditoría cuando el texto por el que empareja la obra todavía no fue
+ * verificado contra Compras. Es una alarma, no un cero: la plata existe y está en la fila SIN
+ * IMPUTAR, esperando que alguien diga a qué obra va.
+ *
+ * DECÍA "ninguna compra la nombra" Y ESO ERA UNA AFIRMACIÓN SOBRE EL MUNDO (17/08). Sonaba a "esta
+ * obra no gastó" y era, en realidad, "nadie configuró el patrón". El dueño leyó lo primero y reclamó
+ * con razón que había gastos sin considerar. Ahora la celda dice QUÉ HAY QUE HACER y dónde: es la
+ * única forma de que la alarma cierre el lazo en vez de describir un vacío.
+ */
+export const escribiEnCompras = (patron) => `${ALERTA} escribí "${patron}" en «Detalles / Obra»`
 
 /**
  * UNA OBRA EN EL CUADRO DE COSTO: lo que se pensaba gastar contra lo que ya se compró.
@@ -1221,7 +1229,7 @@ function bloqueCosto(h, refs, o, idx) {
   const proyectado = totalEgresos(o)
   const patron = comprasObraDe(o)
   h.push([rot.celda, `=IF(C${f}=0;0;D${f}/C${f})`, proyectado, compradoDeObra(cmp, o), `=C${f}-D${f}`,
-    patron ? `Compras: "${patron}"` : SIN_TEXTO_EN_COMPRAS],
+    patronEstaDeclarado(o) ? `Compras: "${patron}"` : escribiEnCompras(patron)],
   // LA `F` DE ESTE CUADRO NO ES LA ALARMA SINO EL TEXTO QUE DECLARA POR DÓNDE EMPAREJÓ CADA OBRA, y
   // por eso DERRAMA: mide 138px, `Compras: "Salones Comerciales"` mide 189, y con CLIP el texto no se
   // recorta — desaparece, justo en las obras que sí emparejaron. La G, la H y la I de este cuadro

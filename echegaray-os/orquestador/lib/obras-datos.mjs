@@ -83,9 +83,44 @@ export const CLIENTES_CANONICOS = ['San Francisco', 'MESSINA', 'Quattropani - Me
  * filas y el importe que empareja el día que se declaró. No se inventa un texto que "debería" estar.
  */
 
-/** El tramo de "Detalles / Obra" (Compras col K) que identifica esta obra, o `null` si todavía
- *  ninguna compra la nombra. El emparejamiento es SIEMPRE cliente + este texto: nunca por proveedor. */
-export const comprasObraDe = (o) => (o?.comprasObra ? String(o.comprasObra) : null)
+/**
+ * ═══ POR QUÉ `null` YA NO DEVUELVE `null` (17/08/2026) ═══
+ *
+ * El dueño, sobre el cuadro 4: *"hay mas gastos en compras de algunas de las obras nuevas q no estan
+ * siendo considerados"*. Tenía razón otra vez, y el motivo no era el criterio —que es bueno— sino
+ * dónde vivía: las cuatro obras nuevas declaraban `null`, `null` se traducía a `'=0'`, y la celda
+ * quedaba MUERTA. No "en cero": muerta. Aunque mañana alguien escribiera "Entrepiso" en la columna K
+ * de Compras, el cuadro habría seguido publicando $0 hasta que una persona editara este archivo.
+ *
+ * Eso es la misma falla que ya corregimos con las quincenas confirmadas: **el vínculo entre un dato y
+ * su obra vivía en el código y no en la fuente**. Una obra nueva no puede nacer sin forma de
+ * emparejar y esperar a que un programador la habilite.
+ *
+ * LO QUE NO CAMBIA, Y ES EL CORAZÓN DEL DISEÑO: sigue sin haber parecido automático. El patrón por
+ * defecto es el NOMBRE DE LA OBRA, literal — el texto que cualquiera escribiría en «Detalles / Obra»
+ * para decir a qué obra va ese gasto. Si nadie lo escribe, el SUMIFS da cero y la plata se ve entera
+ * en la fila SIN IMPUTAR, igual que antes. La dirección del error no se movió: lo dudoso nunca cae
+ * en una obra.
+ *
+ * LO QUE SÍ CAMBIA: `comprasObra` pasa de ser el ÚNICO camino a ser un OVERRIDE, para los casos en
+ * que la fuente no usa el nombre de la obra — "Salones Comerciales" por SALÓN COMERCIAL, "BSA" por
+ * la planta. Ésos siguen declarados a mano, con sus filas y su importe, porque son excepciones
+ * verificadas y no suposiciones.
+ */
+
+/** El tramo de "Detalles / Obra" (Compras col K) que identifica esta obra. Si no hay override
+ *  declarado, es el nombre de la obra tal como se lo escribiría en la fuente. El emparejamiento es
+ *  SIEMPRE cliente + este texto: nunca por proveedor. */
+export const comprasObraDe = (o) => {
+  if (o?.comprasObra) return String(o.comprasObra)
+  const propio = o?.ventaTexto ?? o?.obra
+  return propio ? String(propio) : null
+}
+
+/** ¿El texto por el que empareja fue VERIFICADO contra Compras, o es el nombre de la obra a la
+ *  espera de que alguien lo escriba en la fuente? La pestaña lo dice en su columna de auditoría: un
+ *  patrón supuesto no puede mostrarse igual que uno comprobado. */
+export const patronEstaDeclarado = (o) => Boolean(o?.comprasObra)
 
 /** ¿La obra tiene fechas y por lo tanto se puede proyectar al flujo? */
 export const esProyectable = (o) => Boolean(o?.inicio && o?.fin)
