@@ -35,7 +35,7 @@ const pesos = (n) => (n === null ? '—' : `$${Math.round(n).toLocaleString('es-
 const fecha = (s) => (num(s) === null ? '—' : isoDeSerial(s))
 
 /** Serial de Sheets de una fecha ISO. La época de Sheets es el 30/12/1899. */
-const serialDe = (iso) => Math.round((Date.parse(`${iso}T00:00:00Z`) - Date.parse('1899-12-30T00:00:00Z')) / 86400000)
+export const serialDe = (iso) => Math.round((Date.parse(`${iso}T00:00:00Z`) - Date.parse('1899-12-30T00:00:00Z')) / 86400000)
 
 /**
  * HASTA DÓNDE LLEGA "Y DEL MES" — el último día del mes en curso, DERIVADO y no tipeado.
@@ -43,7 +43,7 @@ const serialDe = (iso) => Math.round((Date.parse(`${iso}T00:00:00Z`) - Date.pars
  * Es el mismo corte que usa la tarjeta de CAJA. Un serial escrito a mano se queda viejo el 1° del
  * mes siguiente y la tabla empieza a contar otra cosa que el cuadro, sin dar un error.
  */
-function finDelMes(hoy = new Date()) {
+export function finDelMes(hoy = new Date()) {
   const d = new Date(Date.UTC(hoy.getFullYear(), hoy.getMonth() + 1, 0))
   return serialDe(d.toISOString().slice(0, 10))
 }
@@ -52,7 +52,7 @@ function finDelMes(hoy = new Date()) {
 const COL = { fecha: 0, signo: 1, importe: 2, concepto: 4, rubro: 5, estado: 7, instrumento: 8, contraparte: 9, pestana: 13, origen: 14 }
 
 /** NÚCLEO: las filas del libro publicado que la tarjeta cuenta como deuda. */
-function deudaPublicada(filas, hasta) {
+export function deudaPublicada(filas, hasta) {
   const out = []
   for (let i = 1; i < filas.length; i++) {
     const f = filas[i] ?? []
@@ -163,4 +163,9 @@ async function main() {
   console.log('  anterior o posterior a esa ventana ninguna fila de esta tabla prueba nada.')
 }
 
-main().catch((e) => { console.error(e.message); process.exit(1) })
+// Las dos funciones puras se exportan para que un test las mida sin red (`deuda-evidencia.test.mjs`),
+// y `main()` sólo corre cuando el script se invoca de verdad. Sin esta guarda, importarlo para
+// probarlo dispararía una lectura de Google.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((e) => { console.error(e.message); process.exit(1) })
+}
