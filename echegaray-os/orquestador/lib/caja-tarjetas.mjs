@@ -306,6 +306,24 @@ export function tarjetas(ref) {
     },
     {
       clave: 'comprometida',
+      // ═══ LÍMITE VIGENTE: ESTE NÚMERO NO ESTÁ CRUZADO CONTRA SU PESTAÑA DUEÑA (17/08) ═══
+      //
+      // La deuda comercial con proveedores la calcula `Proveedores` desde `Compras` y la publica en
+      // su fila 11: al 17/08 son $12.497.040 en 17 facturas, con su aging y su medio de pago. Esta
+      // tarjeta NO lee ese número: lo vuelve a armar por otro camino, desde `_MOVIMIENTOS`.
+      //
+      // Son DOS FUENTES DEL MISMO CONCEPTO, y la casa tiene una sola regla al respecto: un concepto
+      // que aparece en más de una cara se define UNA vez. Medido con `auditar-conexion-flujo.mjs`:
+      // `Proveedores` y `Materiales` se leen sólo entre ellas — son un circuito cerrado que no llega
+      // ni a CAJA ni a los dos Cash Flow. Por eso una puede decir $12,5M y la otra publicar un
+      // titular diez veces más grande sin que nada grite.
+      //
+      // El criterio "toda tarjeta se reconcilia contra la pestaña dueña del dato" está INCUMPLIDO
+      // acá — no pendiente: incumplido. El camino, cuando se cierre: leer `Proveedores!11` y gritar
+      // la diferencia contra el componente comercial del libro. Sin esa diferencia medida, decidir
+      // cuál de las dos tiene razón es una corazonada. El desarrollo y la medición, en
+      // `caja-tarjetas-conceptos.test.mjs`.
+      //
       // ═══ EL RÓTULO CONTESTA LA PREGUNTA, NO NOMBRA EL CONCEPTO (13/08, textual) ═══
       //
       // El dueño: *"la tarjeta 'caja comprometida' no sé si es algo q tengo q cubrir o ya está
