@@ -296,10 +296,14 @@ export function aplicarHuella(generado = [], actual = [], huellas = new Map(), o
   // el contenido de hoy. Mezclarlos haría que el log dijera "la limpio" sobre una celda que quedó con
   // una fórmula — y el log es la única forma que tiene el dueño de auditar qué decidí sobre su celda.
   const reescritos = []
+  // El EMPATE: la celda ya dice exactamente lo que voy a escribir. Se cuenta aparte de `reescritos`
+  // porque no hay ningún residuo que pisar y la pestaña no cambia — lo único que cambia es la huella,
+  // y el log tiene que poder decir eso y no "escribo lo que va", que sonaría a una corrección.
+  const selladas = []
   // Las celdas que el veredicto POR FORMA decide no reponer. Se cuentan aparte de `suprimidas` a
   // propósito: ver abajo. Nunca llegan a la base.
   const noRepuestas = []
-  const vacio = { grid: generado, suprimidas, ajenas, residuos, limpiadas, editadas, reescritos, desocupadas, noRepuestas, alineacion }
+  const vacio = { grid: generado, suprimidas, ajenas, residuos, limpiadas, editadas, reescritos, selladas, desocupadas, noRepuestas, alineacion }
   if (!alineacion.alineada) {
     // ═══ DECLARARSE DESALINEADO Y CONCLUIR "ESTO LO BORRASTE VOS" SON INCOMPATIBLES (15/08/2026) ═══
     //
@@ -445,9 +449,14 @@ export function aplicarHuella(generado = [], actual = [], huellas = new Map(), o
       //
       // Los tres caminos de arriba cubren tres de las cuatro combinaciones y dejaban una abierta:
       //
-      //                       │ el residuo es TEXTO        │ el residuo es FÓRMULA
-      //   pido LIMPIAR (VACIO)│ `residuos` (mias)          │ `residuos` (formulasMias, 14/08)
-      //   pido ESCRIBIR       │ `reescritos` (textosMios)  │ ← NADIE. Caía en `ajenas`, para siempre.
+      //                       │ el residuo es TEXTO        │ el residuo es FÓRMULA      │ NÚMERO
+      //   pido LIMPIAR (VACIO)│ `residuos` (mias)          │ `residuos` (formulasMias)  │ vía declarada
+      //   pido ESCRIBIR       │ `reescritos` (textosMios)  │ ← NADIE, hasta este bloque │ vía declarada
+      //
+      // El número sigue sin tener camino por parecido, y no lo va a tener: comparte apariencia con
+      // cualquier dato del dueño. La única excepción vive abajo (`selladas`, 17/08) y no se apoya en
+      // ningún parecido — se apoya en que el contenido es IDÉNTICO, o sea en que escribir no cambia
+      // nada. Es la diferencia entre "se parece a lo mío" y "ya es lo mío".
       //
       // Y "para siempre" es literal, porque el bloqueo se realimenta: cae en `ajenas` → se devuelve
       // `''` → `fusionar` conserva el fósil → la celda no lleva contenido mío → no se sella huella →
@@ -488,6 +497,56 @@ export function aplicarHuella(generado = [], actual = [], huellas = new Map(), o
           reescritos.push({ fila: fila0 + i, col, suyo: String(hoy).slice(0, 60), mio: String(c).slice(0, 60), por })
           return c
         }
+      }
+      // ═══ EL QUINTO CUADRANTE: EL RESIDUO ES EXACTAMENTE LO QUE VOY A ESCRIBIR (17/08) ═══
+      //
+      // Los caminos de arriba cubren el residuo que es TEXTO mío, FÓRMULA mía o un `=""`. Queda uno
+      // que no es residuo de nada: la celda ya dice, carácter por carácter, lo que el generador va a
+      // escribir hoy. Caía en `ajenas` → `''` → `fusionar` conserva → no se sella huella → la corrida
+      // siguiente repite el veredicto. El mismo lazo que se cerró dos veces antes, y con el agravante
+      // de que acá la queja del log es absurda: "no la piso" sobre una celda que ya dice lo mío.
+      //
+      // Medido el 17/08 en `_CAJA_ANEXO` con la base al lado: `sheet_huella_celda` no tiene UNA fila
+      // para la columna D de las filas 14..19 —los seis sellos por renglón de "Posteriores al
+      // CONTEO"— mientras A, B, C y G de esas mismas filas sí la tienen. Se escribieron a mano con
+      // bisturí, así que el generador nunca selló esa coordenada; empuja `0`, la celda dice `0`, y no
+      // puede tocarla nunca más. El día que el dueño carga un conteo nuevo el sello por renglón
+      // cambia, la celda sigue congelada, y la resta C−D publica el movimiento contra un sello viejo.
+      //
+      // ═══ POR QUÉ ESTO NO ES UN BYPASS, Y DÓNDE ESTÁ EL RIESGO DE VERDAD ═══
+      //
+      // Escribir o preservar dejan la pestaña IDÉNTICA: no hay nada que destruir, por construcción.
+      // Ninguno de los otros cuatro caminos puede decir eso — todos cambian lo que se ve. Pero el
+      // veredicto sí cambia: al escribirla se sella huella, y desde mañana el generador SÍ puede
+      // cambiarle el valor. Un número que el dueño tipeó y que HOY coincide con el calculado no puede
+      // comprarse la celda con esa coincidencia; el mes que viene el generador calcularía otra cosa.
+      //
+      // Por eso la evidencia es doble, igual que en los caminos que ya existen:
+      //
+      //   1. el contenido de hoy es EXACTAMENTE el que voy a escribir (`norm`, el mismo contenido
+      //      exacto que usa el camino del texto — NUNCA `formaDe`: `<N>` haría que cualquier número
+      //      del dueño empatara con cualquier número mío, que es justo la puerta que no se abre);
+      //   2. `filaProbadaMia`: ≥2 celdas de esta misma fila selladas por huella que hoy siguen con su
+      //      forma. Una fila que ya probé mía en otras columnas no es una fila del dueño.
+      //
+      // Y una tercera por construcción, la misma del camino del rediseño: acá el generador quiere
+      // escribir CONTENIDO en esta celda. La columna del dueño manda `''`, `quiereEscribir` la filtra
+      // arriba y nunca llega hasta acá.
+      //
+      // LO QUE CIERRA EL ARGUMENTO: sellar acá no otorga un poder nuevo. Toda celda donde el
+      // generador escribe contenido y tiene huella ya se pisa sin condiciones (`mia && ocupada &&
+      // c !== VACIO` cae en `return c`, abajo). Las únicas que se salvan son aquéllas donde el sello
+      // falló. Así que la pregunta no es "¿esta celda debería ser mía?" —el diseño ya dice que sí—
+      // sino "¿está adentro de mi cuadro?", y eso lo contesta `filaProbadaMia` a costo cero.
+      //
+      // EL LÍMITE QUE QUEDA, DICHO: si un generador escribiera esa celda sólo A VECES y el dueño la
+      // usara en las corridas en que no la escribe, una corrida de empate se la queda para siempre.
+      // Es angosto —exige además que la fila esté probada mía— pero es real, y sale por la vía de
+      // siempre: `borrada_en` sobre esa coordenada, o la columna del dueño fuera del footprint.
+      if (c !== VACIO && norm(hoy) === norm(c)
+          && filaProbadaMia(actual, activas, i, col, { fila0, col0, off: alineacion.off })) {
+        selladas.push({ fila: fila0 + i, col, mio: String(c).slice(0, 60) })
+        return c
       }
       // NUNCA FUE MÍA Y TIENE ALGO TUYO. Sin evidencia de que la escribí yo, no se pisa.
       ajenas.push({ fila, col, suyo: String(hoy).slice(0, 60) }); return ''
@@ -692,6 +751,10 @@ export function explicarHuella(pestana, h, log = console.log) {
   if ((h.residuos?.length ?? 0) > 6) log(`      … y ${h.residuos.length - 6} residuos más`)
   for (const r of (h.reescritos ?? []).slice(0, 6)) log(`  🧹 ${letraCol(r.col)}${r.fila} tenía ${r.por ?? 'algo mío'} de un layout anterior en una fila mía ("${r.suyo}"): escribo lo que va ("${r.mio}")`)
   if ((h.reescritos?.length ?? 0) > 6) log(`      … y ${h.reescritos.length - 6} residuos de rediseño más`)
+  // EL EMPATE dice explícitamente que NO cambia nada: si dijera "escribo", el dueño buscaría en la
+  // pestaña una corrección que no ocurrió. Lo único que cambia es de quién es la celda de acá en más.
+  for (const s of (h.selladas ?? []).slice(0, 6)) log(`  🔏 ${letraCol(s.col)}${s.fila} ya dice exactamente lo que voy a escribir ("${s.mio}") en una fila probada mía: no cambio nada y la sello como mía`)
+  if ((h.selladas?.length ?? 0) > 6) log(`      … y ${h.selladas.length - 6} celdas más que ya decían lo mío`)
   for (const d of (h.desocupadas ?? []).slice(0, 6)) log(`  🧹 ${letraCol(d.col)}${d.fila} la ocupé en un layout anterior y hoy ya no ("${d.suyo}"): la limpio`)
   if ((h.desocupadas?.length ?? 0) > 6) log(`      … y ${h.desocupadas.length - 6} celdas más que ocupé y ya no ocupo`)
   for (const l of (h.limpiadas ?? []).slice(0, 6)) log(`  🧹 ${letraCol(l.col)}${l.fila} la escribí yo y ya no va ("${l.mio}"): la limpio`)
@@ -749,6 +812,6 @@ export async function conHuellaFueraDelPorton(fileId, pestana, generado, actual,
     // Ni la base ni la huella pueden tumbar una escritura: sin veredicto, se escribe como siempre.
     // Se dice fuerte porque el costo de esta corrida es real — un borrado del dueño puede volver.
     console.warn(`  ⚠ huella por celda inactiva en "${pestana}" (${e.message}) — un borrado tuyo podría volver`)
-    return { grid: devolver(generado), suprimidas: [], ajenas: [], residuos: [], limpiadas: [], editadas: [], reescritos: [], desocupadas: [], noRepuestas: [], alineacion: { alineada: false, motivo: e.message }, guardar: async () => {} }
+    return { grid: devolver(generado), suprimidas: [], ajenas: [], residuos: [], limpiadas: [], editadas: [], reescritos: [], selladas: [], desocupadas: [], noRepuestas: [], alineacion: { alineada: false, motivo: e.message }, guardar: async () => {} }
   }
 }
