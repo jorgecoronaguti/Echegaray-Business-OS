@@ -211,3 +211,40 @@ test('la holgura mensual es menor que medio mes: un pago no puede explicar dos m
   assert.ok(HOLGURA_MENSUAL < 15,
     'con holgura ≥15 días el pago de un mes alcanzaría al vencimiento del mes siguiente')
 })
+
+// ═══ UN PAGO AGREGADO NO PRUEBA SU COMPOSICIÓN (17/08/2026) ═══
+//
+// El auditor se negó a firmar el retiro de $7.074.772 del F931 porque salía de una inferencia de
+// magnitud —"el banco le pagó a ARCA más de lo que el libro decía deberle"— publicada como hecho.
+// Tenía razón: el patrón citado como respaldo se contradecía solo, el pago del 20/07 fue de
+// $4.859.763, MENOS que un F931 mensual. Ahora el agregado sólo retira lo que el dueño confirmó.
+test('el pago agregado NO retira una obligación que el dueño no confirmó', async () => {
+  const { cruzarLibroContraBanco } = await import('./libro-cruce-banco.mjs')
+  const mov = [{
+    fecha: 46254, signo: -1, importe: 3000000, estado: 'VENCIDO',
+    concepto: 'F931 · nómina de ago-26', rubro: 'Nómina · Cargas sociales', contraparte: 'ARCA',
+  }]
+  const debitos = [{ fila: 1, fecha: 46256, importe: 9000000, naturaleza: 'AFIP' }]
+  const r = cruzarLibroContraBanco(mov, debitos, { corte: 46260, desdeExtracto: 46200 })
+  const v = r.veredictos.get(0)
+  assert.notEqual(v?.veredicto, 'BANCO',
+    'que el débito alcance no prueba que contenga esta obligación: no se retira sola')
+  assert.match(String(v?.motivo ?? ''), /confirme/,
+    'y el motivo tiene que decir que falta la confirmación, no callarse')
+})
+
+// La otra mitad: con la confirmación del dueño cargada, SÍ se retira. Es la que destrabó los
+// $7.074.772 del F931 de julio el 17/08.
+test('el pago agregado SÍ retira la obligación que el dueño confirmó', async () => {
+  const { cruzarLibroContraBanco } = await import('./libro-cruce-banco.mjs')
+  const { OBLIGACIONES_CONFIRMADAS } = await import('./confirmaciones-del-dueno.mjs')
+  const concepto = [...OBLIGACIONES_CONFIRMADAS.keys()][0]
+  assert.ok(concepto, 'tiene que haber al menos una confirmación cargada, con su cita')
+  const mov = [{
+    fecha: 46254, signo: -1, importe: 7074772, estado: 'VENCIDO',
+    concepto, rubro: 'Nómina · Cargas sociales', contraparte: 'ARCA',
+  }]
+  const debitos = [{ fila: 1, fecha: 46256, importe: 8235742, naturaleza: 'AFIP' }]
+  const r = cruzarLibroContraBanco(mov, debitos, { corte: 46260, desdeExtracto: 46200 })
+  assert.equal(r.veredictos.get(0)?.veredicto, 'BANCO', 'con la palabra del dueño deja de ser deuda')
+})

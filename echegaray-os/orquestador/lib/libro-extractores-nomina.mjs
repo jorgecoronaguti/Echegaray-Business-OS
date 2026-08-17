@@ -24,6 +24,7 @@
 import { movimiento, SALE, estadoContraCorte } from './libro-movimientos.mjs'
 import { isoDeSerial } from './libro-extractores-fechas.mjs'
 import { estadoDeEgreso } from './caja-canales.mjs'
+import { quincenaConfirmada, MOTIVO_QUINCENAS } from './confirmaciones-del-dueno.mjs'
 import { respaldoEnLote } from './libro-respaldo-banco.mjs'
 // El criterio de "¿esta quincena se pagó?", cruzado contra el extracto. Vive afuera porque lo usan
 // DOS: este extractor (para decidir el estado) y scripts/jornales-evidencia-pago.mjs (para mostrarle
@@ -96,7 +97,7 @@ const estadoSinProbar = (fecha, corte) => (
  * bancario coincide sería presentar una inferencia como hecho. Se emiten dos renglones —el mismo
  * patrón que `partirContraElExtracto` usa para Dirección— y la suma no se mueve un peso.
  */
-function quincenaAMovimientos({ q, t, fecha, declarada, marcada = false, importe, i }, { corte, extracto, aviso }) {
+function quincenaAMovimientos({ q, t, fecha, declarada, marcada = false, confirmada = false, importe, i }, { corte, extracto, aviso }) {
   const comun = {
     signo: SALE,
     importe,
@@ -116,6 +117,7 @@ function quincenaAMovimientos({ q, t, fecha, declarada, marcada = false, importe
   // MARCADA CON FECHA IMPOSIBLE: el dueño afirmó que se pagó y la aritmética sólo desmintió el CUÁNDO.
   // Sale REAL con la fecha prevista, que es la única defendible, y el grito de arriba ya nombró por qué.
   if (marcada) {
+    if (confirmada) aviso(`libro-extractores-nomina(Jornales): ${nombre} sale REAL porque ${MOTIVO_QUINCENAS}.`)
     return [movimiento({ ...comun, fecha, estado: estadoDeEgreso({ instrumento: 'desconocido', pagado: true, fecha, corte }) })]
   }
   // NADIE LA MARCÓ Y EL BANCO NO LA PRUEBA: no es un compromiso firme, es un renglón sin conciliar.
@@ -207,10 +209,16 @@ export function deJornalesQuincenas({ reales = {}, proyectadas = {} } = {}, cort
     //
     // Invalidar el cuándo no invalida el qué. Una quincena marcada con fecha imposible sale REAL con
     // la fecha PREVISTA —la única defendible— y se grita que la fecha se descartó.
-    const marcada = q.pagado !== null
+    // EL CUARTO TESTIGO ES EL DUEÑO. Los jornales salen en buena parte por caja física: el extracto
+    // no los ve NUNCA y la planilla puede estar vacía. Cuando él confirma a mano que una quincena se
+    // pagó, esa afirmación vale exactamente lo mismo que si la hubiera tipeado en su columna — es la
+    // misma persona diciendo lo mismo— y entra por el mismo camino, sin mecanismo nuevo. La FECHA
+    // sigue saliendo de la prevista: lo que confirmó es que está pagada, no cuándo.
+    const confirmada = quincenaConfirmada(isoDeSerial(q.hasta))
+    const marcada = q.pagado !== null || confirmada
     const fecha = declarada ?? q.pago ?? q.hasta
     if (fecha === null || !importe) continue
-    out.push(...quincenaAMovimientos({ q, t, fecha, declarada, marcada, importe, i },
+    out.push(...quincenaAMovimientos({ q, t, fecha, declarada, marcada, confirmada, importe, i },
       { corte, extracto, aviso }))
   }
   const proy = { pago: columna(proyectadas.pago), hasta: columna(proyectadas.hasta), total: columna(proyectadas.total) }

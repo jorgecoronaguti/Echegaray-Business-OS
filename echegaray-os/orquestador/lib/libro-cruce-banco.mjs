@@ -38,6 +38,7 @@
 // NÚCLEO PURO. No lee Google, no escribe, no toca la base.
 
 import { NAT } from './banco-santander.mjs'
+import { obligacionConfirmada } from './confirmaciones-del-dueno.mjs'
 import { combinacionUnica } from './jornales-testigos.mjs'
 import { isoDeSerial } from './libro-extractores-fechas.mjs'
 
@@ -212,12 +213,33 @@ function emparejarAgregado(grupo, debitos, ctx, salida) {
       }
       continue
     }
-    ctx.usados.add(d.fila)
+    // ═══ UN PAGO AGREGADO NO PRUEBA SU COMPOSICIÓN, Y ACÁ SE PLANTA (17/08/2026) ═══
+    //
+    // Que el banco le haya pagado a ARCA MÁS de lo que el libro decía deberle no prueba que ese
+    // débito contenga esta obligación: prueba que alcanzaba. El auditor rechazó firmar el retiro de
+    // $7.074.772 del F931 por eso, y tenía razón — el patrón que se citaba como respaldo se
+    // contradecía solo (el pago del 20/07 fue $4.859.763, MENOS que un F931 mensual). Publicar eso
+    // como REAL es presentar una estimación como hecho, que es la regla de oro 2.
+    //
+    // El detalle del VEP no está en ninguna fuente que el OS pueda leer. Así que el agregado NO
+    // retira solo: retira cuando el dueño confirma, y mientras tanto GRITA con el monto y la fecha
+    // para que la pregunta se pueda hacer. Los otros modos (cuota, exacto) sí prueban por aritmética
+    // y no pasan por acá.
+    const confirmadas = alcanza.filter((c) => obligacionConfirmada(c.m?.concepto))
+    if (confirmadas.length) ctx.usados.add(d.fila)
     for (const c of alcanza) {
-      salida.veredictos.set(c.i, veredicto(VEREDICTO_CRUCE.banco, {
-        fecha: d.fecha, cubierto: c.m.importe, filas: [d.fila],
-        motivo: `pago agregado de ${pesos(d.importe)} a ${d.naturaleza} el ${isoDeSerial(d.fecha)}: `
-          + 'contiene esta obligación, que ya vencía',
+      const ok = obligacionConfirmada(c.m?.concepto)
+      if (ok) {
+        salida.veredictos.set(c.i, veredicto(VEREDICTO_CRUCE.banco, {
+          fecha: d.fecha, cubierto: c.m.importe, filas: [d.fila],
+          motivo: `pago agregado de ${pesos(d.importe)} a ${d.naturaleza} el ${isoDeSerial(d.fecha)} · ${ok.motivo}`,
+        }))
+        continue
+      }
+      salida.veredictos.set(c.i, veredicto(VEREDICTO_CRUCE.contradice, {
+        motivo: `el banco pagó ${pesos(d.importe)} a ${d.naturaleza} el ${isoDeSerial(d.fecha)} y esta `
+          + 'obligación ya vencía, pero un pago agregado no prueba su composición: sigue contando '
+          + 'como deuda hasta que el dueño confirme que estaba adentro',
       }))
     }
     const sobrante = Math.round((d.importe - suma) * 100) / 100
