@@ -133,15 +133,36 @@ export interface Restriccion {
   estado: 'abierta' | 'en_curso' | 'liberada'
 }
 
-/** Un archivo de Drive vinculado a la obra. El archivo NO se copia: vive en Drive. */
+/** `archivo` o `carpeta`. Es lo único que hay que saber para armar la URL de Drive: un id de
+ *  carpeta abierto como archivo da 404, y al revés también. */
+export type TipoDrive = 'archivo' | 'carpeta'
+
+/** Lo que se pudo leer de un enlace de Drive pegado. `mime_type` sólo viene cuando la URL LO DICE
+ *  —una hoja de cálculo, un doc, una carpeta—; para un `/file/d/` genérico es null, porque la URL
+ *  no dice qué hay adentro y adivinarlo sería fabricar un dato. */
+export interface ReferenciaDrive {
+  drive_file_id: string
+  tipo: TipoDrive
+  mime_type: string | null
+}
+
+/**
+ * Un archivo o carpeta de Drive vinculado a la obra. El archivo NO se copia: vive en Drive.
+ *
+ * `name` es el nombre RESUELTO, no el guardado: `getDocumentos` le da precedencia a `drive_index`
+ * —el espejo de Drive— y recién si el archivo no está indexado usa el que se guardó al vincular.
+ * Así un archivo renombrado en Drive aparece con su nombre nuevo sin tocar el vínculo.
+ */
 export interface DocumentoObra {
   drive_file_id: string
   rol: string | null
-  origen: 'manual' | 'path_inferido'
+  origen: 'confirmado' | 'inferido'
+  tipo: TipoDrive
   name: string | null
   path: string | null
   mime_type: string | null
   modified_time: string | null
+  creado_en: string | null
 }
 
 /**

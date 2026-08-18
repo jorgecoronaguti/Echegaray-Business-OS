@@ -89,21 +89,27 @@ export async function getRestricciones(supabase: SupabaseClient, obraId: string)
  * Los documentos de la obra: el vínculo vive en `obra_documento` y los metadatos en `drive_index`.
  * Se hacen dos consultas y se cruzan acá en vez de un join, porque `drive_index` se resincroniza
  * entero cada 4 horas y un archivo puede desaparecer de él sin que el vínculo deje de ser válido:
- * en ese caso se publica el vínculo con el nombre en null, que es la verdad, en lugar de perder la
- * fila entera en un `inner join`.
+ * en ese caso se publica lo que se supo AL VINCULAR, en lugar de perder la fila entera en un
+ * `inner join`.
+ *
+ * ═══ POR QUÉ EL SELECT ES `*` Y NO LA LISTA DE COLUMNAS ═══
+ *
+ * Nombrar `nombre, tipo, mime_type` haría que la solapa entera devuelva un error 400 en cualquier
+ * base donde `20260819T0100_obra_documento` todavía no se aplicó — y una migración que está en el
+ * repositorio NO es una migración aplicada. Con `*`, PostgREST devuelve las columnas que existan y
+ * las que falten llegan como `undefined`, que es exactamente el caso que el mapeo de abajo ya
+ * contempla. Mismo criterio que `getUbicacion`: en el peor caso falta un campo, no la pantalla.
+ * Sobre una tabla de vínculo de nueve columnas, `*` no cuesta nada.
  */
 export async function getDocumentos(supabase: SupabaseClient, obraId: string): Promise<ServiceResult<DocumentoObra[]>> {
-  const { data: vinculos, error } = await supabase
-    .from('obra_documento')
-    .select('drive_file_id, rol, origen')
-    .eq('obra_id', obraId)
+  const { data: vinculos, error } = await supabase.from('obra_documento').select('*').eq('obra_id', obraId)
   if (error) return { data: null, error: error.message }
   const ids = (vinculos ?? []).map((v) => v.drive_file_id as string)
   if (!ids.length) return { data: [], error: null }
 
   const { data: archivos } = await supabase
     .from('drive_index')
-    .select('drive_file_id, name, path, mime_type, modified_time')
+    .select('drive_file_id, name, path, mime_type, is_folder, modified_time')
     .in('drive_file_id', ids)
   const porId = new Map((archivos ?? []).map((a) => [a.drive_file_id as string, a]))
 
@@ -112,11 +118,19 @@ export async function getDocumentos(supabase: SupabaseClient, obraId: string): P
     return {
       drive_file_id: v.drive_file_id as string,
       rol: (v.rol as string) ?? null,
-      origen: (v.origen as 'manual' | 'path_inferido') ?? 'manual',
-      name: (a?.name as string) ?? null,
+      // `manual`/`path_inferido` es el vocabulario viejo de la tabla. Se traduce acá para que la
+      // pantalla no muestre dos palabras distintas para lo mismo durante la ventana en la que la
+      // migración está escrita pero no aplicada.
+      origen: v.origen === 'inferido' || v.origen === 'path_inferido' ? 'inferido' : 'confirmado',
+      // `drive_index` GANA: un archivo renombrado en Drive aparece con su nombre nuevo sin que nadie
+      // toque el vínculo. Lo guardado al vincular es el respaldo para los archivos que el índice no
+      // conoce — sólo espeja la carpeta `administracion`.
+      tipo: a ? (a.is_folder ? 'carpeta' : 'archivo') : v.tipo === 'carpeta' ? 'carpeta' : 'archivo',
+      name: (a?.name as string) ?? (v.nombre as string) ?? null,
       path: (a?.path as string) ?? null,
-      mime_type: (a?.mime_type as string) ?? null,
+      mime_type: (a?.mime_type as string) ?? (v.mime_type as string) ?? null,
       modified_time: (a?.modified_time as string) ?? null,
+      creado_en: (v.creado_en as string) ?? null,
     }
   })
   return { data: docs, error: null }
