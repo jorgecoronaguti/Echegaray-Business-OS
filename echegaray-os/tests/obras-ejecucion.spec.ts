@@ -306,9 +306,9 @@ test('el resumen publica los desvíos con su origen, y cada uno lleva a la solap
   await expect(page.getByRole('heading', { name: 'Costo', exact: true })).toBeVisible()
 })
 
-// ── PORTAFOLIO TRANSVERSAL ──────────────────────────────────────────────────
+// ── EL RESUMEN DE OBRAS, TRANSVERSAL ────────────────────────────────────────
 
-test('el portafolio publica exactamente las seis columnas que pidió el dueño, y ninguna más', async ({ page }) => {
+test('el resumen de obras publica exactamente las siete columnas que pidió el dueño, y ninguna más', async ({ page }) => {
   test.setTimeout(120000)
   await entrar(page)
   await page.goto('/obras')
@@ -316,21 +316,29 @@ test('el portafolio publica exactamente las seis columnas que pidió el dueño, 
   const tabla = page.getByTestId('portafolio-tabla')
   await expect(tabla).toBeVisible()
 
-  // ═══ EL CONTRATO DE ESTA TABLA, TEXTUAL (19/08/2026) ═══
+  // ═══ EL CONTRATO DE ESTA TABLA, TEXTUAL ═══
   //
-  //   *"ADMINISTRACIÓN: OBRA/CLIENTE | ETAPA | AVANCE | PLAZO | CONTRATADO | COSTO REAL ·
-  //   OBRAS: OBRA/CLIENTE | ETAPA | AVANCE | PLAZO | COSTO REAL · NO: Margen; Estado; Impedimentos."*
+  //   19/08: *"ADMINISTRACIÓN: … | ETAPA | AVANCE | PLAZO | CONTRATADO | COSTO REAL ·
+  //   OBRAS: … | ETAPA | AVANCE | PLAZO | COSTO REAL · NO: Margen; Estado; Impedimentos."*
   //
-  // Este test exigía Margen y Estado, que es lo que la tabla tenía ANTES de esa corrección. Se
-  // reemplaza en vez de borrarse: una columna que el dueño mandó sacar vuelve sola la próxima vez
-  // que alguien "complete el portafolio", y sin este test nadie se entera.
-  for (const columna of ['Obra / Cliente', 'Etapa', 'Avance', 'Plazo', 'Contratado', 'Costo real']) {
+  //   20/08: *"La primera columna debe ser únicamente OBRA. La segunda únicamente CLIENTE. Hoy dice
+  //   «OBRA / CLIENTE» y muestra ambos mezclados. Eso está mal conceptualmente."*
+  //
+  // Este test exigía primero Margen y Estado, y después la columna mezclada «Obra / Cliente» — las
+  // dos cosas que el dueño mandó corregir. Se reemplaza en vez de borrarse: lo que el dueño sacó
+  // vuelve solo la próxima vez que alguien "complete el resumen", y sin este test nadie se entera.
+  for (const columna of ['Obra', 'Cliente', 'Etapa', 'Avance', 'Plazo', 'Contratado', 'Costo real']) {
     await expect(tabla.locator('th', { hasText: columna }).first(),
       `falta la columna ${columna}`).toBeVisible()
   }
+  // LA COLUMNA MEZCLADA NO PUEDE VOLVER. `hasText` es subcadena: «Obra» de arriba pasa igual con un
+  // encabezado «Obra / Cliente», así que sin esta línea el bucle de arriba estaría en verde con la
+  // tabla vieja intacta. Es exactamente el defecto que se vino a corregir.
+  await expect(tabla.locator('th', { hasText: '/' }),
+    'la primera columna volvió a mezclar obra y cliente').toHaveCount(0)
   for (const prohibida of ['Margen', 'Estado', 'Impedim']) {
     await expect(tabla.locator('th', { hasText: prohibida }),
-      `el portafolio volvió a publicar ${prohibida}`).toHaveCount(0)
+      `el resumen volvió a publicar ${prohibida}`).toHaveCount(0)
   }
 
   // NINGUNA OBRA TIENE LÍNEA BASE TODAVÍA: la columna lo dice en lugar de mostrar un cero.

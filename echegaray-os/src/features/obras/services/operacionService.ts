@@ -110,30 +110,10 @@ async function leerAlias(supabase: SupabaseClient): Promise<ServiceResult<FilaAl
   return { data: (data ?? []) as FilaAlias[], error: null }
 }
 
-/** El diccionario dado vuelta, para etiquetar filas. */
-export async function getIndiceObras(supabase: SupabaseClient): Promise<ServiceResult<IndiceObras>> {
-  const { data, error } = await leerAlias(supabase)
-  if (error !== null) return { data: null, error }
-  return { data: indiceDeAlias(data) as IndiceObras, error: null }
-}
-
-/**
- * Los nombres con los que se puede reconocer esta obra en las tablas que la guardan como texto.
- * Sirve para explicar por qué una obra no tiene NADA imputado: sin alias no hay puente.
- */
-export async function getNombresDeObra(
-  supabase: SupabaseClient,
-  obraId: string,
-): Promise<ServiceResult<string[]>> {
-  const { data, error } = await leerAlias(supabase)
-  if (error !== null) return { data: null, error }
-  return { data: aliasDeObra(data, obraId) as string[], error: null }
-}
-
 /**
  * ETIQUETAR Y —SI HAY OBRA— FILTRAR. Es el único lugar donde se decide de qué obra es una fila, y
- * lo usan las cuatro listas en las dos pantallas. Cambiar el criterio acá lo cambia en los ocho
- * lugares a la vez, que es exactamente lo contrario de tener dos sistemas.
+ * lo usan las cuatro listas de Operación. Cambiar el criterio acá lo cambia en las cuatro a la vez,
+ * que es exactamente lo contrario de tener dos sistemas.
  */
 function imputar<T>(
   filas: T[],
@@ -230,9 +210,14 @@ export async function getComprasObra(
 }
 
 /**
- * TODO lo de Operación en una sola llamada. Con `obraId` es la solapa de la obra; sin él, la vista
- * global de `/obras/operacion`. Las cuatro lecturas van en paralelo porque ninguna depende de otra;
- * lo único secuencial es el puente, que las cuatro necesitan.
+ * TODO lo de Operación en una sola llamada. Las cuatro lecturas van en paralelo porque ninguna
+ * depende de otra; lo único secuencial es el puente, que las cuatro necesitan.
+ *
+ * `obraId` sigue siendo OPCIONAL aunque hoy todos los llamadores lo pasen: la vista global
+ * `/obras/operacion` se retiró el 20/08 (Operación es un dominio DE la obra, no del área). El modo
+ * "todas las obras" no se saca acá a propósito — angostar el parámetro obliga a tocar las cuatro
+ * lecturas de más abajo, y este archivo es el que consume la solapa de la obra. Si nunca vuelve a
+ * hacer falta, se retira junto con el próximo cambio de esa solapa.
  *
  * Si una sub-vista falla, falla la pantalla entera y con el mensaje de la base: media pantalla con
  * tres listas llenas y una vacía se lee como "esta obra no tiene movimientos", que es mentira.
