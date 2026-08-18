@@ -49,7 +49,10 @@ test('cliente: se crea, se edita, se le agrega y se le saca un contacto — y to
     expect(creado.cuit).toBe('30712345674')
 
     // ── EDICIÓN ─────────────────────────────────────────────────────────────
+    // El formulario vive plegado: la ficha existe para LEERSE, y un formulario permanentemente
+    // abierto compite con lo que se vino a mirar.
     await page.goto(`/clientes/${creado.slug}?vista=informacion`)
+    await page.getByTestId('editar-cliente').locator('summary').click()
     await page.getByTestId('form-editar-cliente').locator('textarea[name="notas"]').fill(`${MARCA} nota editada`)
     await page.getByTestId('form-editar-cliente-enviar').click()
     await expect(page.getByTestId('form-editar-cliente-ok')).toBeVisible({ timeout: 30000 })
@@ -59,7 +62,7 @@ test('cliente: se crea, se edita, se le agrega y se le saca un contacto — y to
     // textarea del formulario de edición, y lo que se quiere probar es que se LEE de la base.
     await expect(page.getByRole('paragraph').filter({ hasText: `${MARCA} nota editada` })).toBeVisible()
 
-    // ── CONTACTO: ALTA Y BAJA ───────────────────────────────────────────────
+    // ── CONTACTO: ALTA, EDICIÓN Y BAJA ──────────────────────────────────────
     await page.goto(`/clientes/${creado.slug}?vista=contactos`)
     await page.getByTestId('alta-contacto').locator('summary').click()
     const fc = page.getByTestId('form-contacto')
@@ -74,6 +77,29 @@ test('cliente: se crea, se edita, se le agrega y se le saca un contacto — y to
     await expect(fila).toBeVisible()
     await expect(fila).toContainText('jefe de compras')
 
+    // EDITAR EXISTE PORQUE BORRAR Y RECARGAR NO ES EDITAR: sin esto, corregir un teléfono obligaba a
+    // borrar la persona y volver a cargarla, y con eso se perdía la fecha en que entró a la relación
+    // —que es un evento de la solapa Actividad—. La edición viaja en la URL: la fila se abre con un
+    // enlace, no con estado de navegador.
+    await fila.getByTestId('editar-contacto').click()
+    const fe = page.getByTestId('form-editar-contacto')
+    await fe.locator('input[name="telefono"]').fill('264 400 0000')
+    await fe.locator('input[name="rol"]').fill('gerente de compras')
+    await page.getByTestId('form-editar-contacto-enviar').click()
+    await expect(page.getByTestId('form-editar-contacto-ok')).toBeVisible({ timeout: 30000 })
+
+    // LA EVIDENCIA ES LA FILA EN LA BASE, no el cartelito verde del formulario.
+    const { data: contactoRaw } = await sb.from('cliente_contacto')
+      .select('id, telefono, rol, creado_en').eq('cliente_id', creado.id).single()
+    const elContacto = laFila(contactoRaw, 'el contacto editado')
+    expect(elContacto.telefono).toBe('264 400 0000')
+    expect(elContacto.rol).toBe('gerente de compras')
+    // Y la fecha de alta SIGUE siendo la original: editar no puede reescribir la historia.
+    expect(elContacto.creado_en).not.toBeNull()
+
+    await page.reload()
+    await expect(page.getByTestId('tabla-contactos')).toContainText('264 400 0000')
+
     await fila.getByTestId('borrar-contacto').click()
     await expect(page.getByTestId('tabla-contactos')).toHaveCount(0, { timeout: 30000 })
     await page.reload()
@@ -85,23 +111,40 @@ test('cliente: se crea, se edita, se le agrega y se le saca un contacto — y to
     await page.getByTestId('alta-documento').locator('summary').click()
     await page.getByTestId('form-documento').locator('input[name="url"]')
       .fill(`https://drive.google.com/file/d/${idFalso}/view`)
-    await page.getByTestId('form-documento').locator('input[name="rol"]').fill('contrato')
+    // «Para qué sirve» es un vocabulario CERRADO, no un campo de texto: escrito a mano, el mismo
+    // contrato entra como «contrato», «Contrato» y «cto», y la clasificación deja de servir.
+    await page.getByTestId('form-documento').locator('select[name="rol"]').selectOption('contrato')
     await page.getByTestId('form-documento-enviar').click()
     await expect(page.getByTestId('form-documento-ok')).toBeVisible({ timeout: 30000 })
 
     await page.reload()
     // El id se extrajo de la URL entera: nadie tiene por qué saber dónde termina dentro del enlace.
-    const { data: docs } = await sb.from('cliente_documento').select('drive_file_id').eq('cliente_id', creado.id)
+    const { data: docs } = await sb.from('cliente_documento')
+      .select('drive_file_id, rol').eq('cliente_id', creado.id)
     expect(docs?.map((d) => d.drive_file_id)).toContain(idFalso)
+    expect(docs?.[0]?.rol).toBe('contrato')
     // Y se ve en la pantalla aunque el índice de Drive no lo conozca: el vínculo vale igual.
     await expect(page.getByText(idFalso)).toBeVisible()
 
+    // ── RECLASIFICAR DESDE LA LISTA ─────────────────────────────────────────
+    // Es lo que convierte 214 vínculos en un archivo consultable. El desplegable guarda al soltarlo:
+    // un botón por fila duplica los clics y a la mitad de la tarea se abandona.
+    await page.getByTestId('rol-documento').selectOption('plano')
+    await expect(async () => {
+      const { data } = await sb.from('cliente_documento')
+        .select('rol').eq('cliente_id', creado.id).eq('drive_file_id', idFalso).single()
+      expect(laFila(data, 'el documento reclasificado').rol).toBe('plano')
+    }).toPass({ timeout: 30000 })
+    // Y sobrevive a la recarga: lo que se lee del servidor, no lo que quedó pintado.
+    await page.reload()
+    await expect(page.getByTestId('rol-documento')).toHaveValue('plano')
+
     // ── LA CARPETA DEL CLIENTE, PEGANDO LA URL ENTERA ───────────────────────
-    // Distinto de vincular UN documento: esto es la carpeta raíz, y es la que abre el botón de la
-    // solapa Documentos. Estaba construida y sin una sola comprobación — el único verbo de cliente
-    // que nadie había probado contra la base.
+    // Distinto de vincular UN documento: esto es la carpeta raíz, y es la que abre el enlace de la
+    // solapa Documentos.
     const carpetaFalsa = `zzE2Ecarpeta${'y'.repeat(20)}`
     await page.goto(`/clientes/${creado.slug}?vista=informacion`)
+    await page.getByTestId('carpeta-drive').locator('summary').click()
     await page.getByTestId('form-carpeta-drive').locator('input[name="url"]')
       .fill(`https://drive.google.com/drive/folders/${carpetaFalsa}?usp=sharing`)
     await page.getByTestId('form-carpeta-drive-enviar').click()
@@ -117,15 +160,26 @@ test('cliente: se crea, se edita, se le agrega y se le saca un contacto — y to
     await expect(page.getByRole('link', { name: /Abrir la carpeta del cliente en Drive/ }))
       .toHaveAttribute('href', `https://drive.google.com/drive/folders/${carpetaFalsa}`)
 
-    // ── ARCHIVAR NO ES BORRAR ───────────────────────────────────────────────
-    await page.goto(`/clientes/${creado.slug}?vista=informacion`)
-    await page.getByTestId('archivar-cliente').click()
-    await expect(async () => {
-      const { data } = await sb.from('clientes').select('activo').eq('id', creado.id).single()
-      expect(laFila(data, 'el cliente archivado').activo).toBe(false)
-    }).toPass({ timeout: 30000 })
-    await page.reload()
-    await expect(page.getByText('archivado').first()).toBeVisible()
+    // ── LA SOLAPA ACTIVIDAD MUESTRA HECHOS REALES, CON SU FECHA ─────────────
+    //
+    // No hay tabla de eventos: la lista se DERIVA de las fechas que ya están guardadas. Lo que se
+    // exige acá es que los hechos que este mismo test provocó —el alta del cliente y el vínculo del
+    // documento— aparezcan; y que NO aparezca el contacto, que fue borrado. Un timeline que
+    // inventara eventos, o que se quedara con los borrados, falla en este punto.
+    await page.goto(`/clientes/${creado.slug}?vista=actividad`)
+    const actividad = page.getByTestId('tabla-actividad')
+    await expect(actividad).toContainText('Alta del cliente')
+    await expect(actividad).toContainText('Documento vinculado')
+    await expect(actividad).not.toContainText(`${MARCA} Contacto`)
+    // La fecha de cada hecho está: una línea de tiempo sin fechas es una lista.
+    const hoy = new Date().toLocaleDateString('es-AR', {
+      day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'UTC',
+    })
+    await expect(actividad).toContainText(hoy)
+    // Y no habla en idioma de base de datos.
+    for (const jerga of ['created_at', 'cliente_documento', 'drive_file_id']) {
+      await expect(actividad).not.toContainText(jerga)
+    }
   } finally {
     await limpiar(sb)
     await sb.auth.signOut()
@@ -181,7 +235,7 @@ test('obra: se crea desde la ficha del cliente y se edita desde la obra', async 
     const cli = laFila(cliRaw, 'el cliente recién creado')
 
     // ── ALTA DE OBRA, COLGADA DEL CLIENTE ───────────────────────────────────
-    await page.goto(`/clientes/${cli.slug}`)
+    await page.goto(`/clientes/${cli.slug}?vista=obras`)
     await page.getByTestId('alta-obra').locator('summary').click()
     const alta = page.getByTestId('form-obra')
     await alta.locator('input[name="nombre"]').fill(obra)
@@ -264,7 +318,7 @@ test('obra: se archiva, desaparece de las listas, sigue entrando por su URL y se
     const { data: cliRaw } = await sb.from('clientes').select('id, slug').eq('nombre', cliente).single()
     const cli = laFila(cliRaw, 'el cliente recién creado')
 
-    await page.goto(`/clientes/${cli.slug}`)
+    await page.goto(`/clientes/${cli.slug}?vista=obras`)
     await page.getByTestId('alta-obra').locator('summary').click()
     await page.getByTestId('form-obra').locator('input[name="nombre"]').fill(obra)
     await page.getByTestId('form-obra-enviar').click()
@@ -278,7 +332,7 @@ test('obra: se archiva, desaparece de las listas, sigue entrando por su URL y se
     // escrito: no encontrar nada es el resultado por defecto de buscar mal.
     await page.goto('/obras')
     await expect(page.getByTestId('portafolio-tabla')).toContainText(obra)
-    await page.goto(`/clientes/${cli.slug}`)
+    await page.goto(`/clientes/${cli.slug}?vista=obras`)
     await expect(page.getByTestId('obras-del-cliente')).toContainText(obra)
 
     // ── ARCHIVAR ───────────────────────────────────────────────────────────
@@ -303,7 +357,7 @@ test('obra: se archiva, desaparece de las listas, sigue entrando por su URL y se
     // por «Todas las obras de este cliente están archivadas». `not.toContainText` sobre un elemento
     // que no existe no pasa —falla con "element(s) not found"—, y habría dado rojo por el motivo
     // equivocado, escondiendo si el filtro anda o no.
-    await page.goto(`/clientes/${cli.slug}`)
+    await page.goto(`/clientes/${cli.slug}?vista=obras`)
     await expect(page.getByRole('link', { name: obra })).toHaveCount(0)
     await page.getByTestId('ver-archivadas-cliente').click()
     await expect(page.getByTestId('obras-del-cliente')).toContainText(obra)
@@ -322,8 +376,144 @@ test('obra: se archiva, desaparece de las listas, sigue entrando por su URL y se
     }).toPass({ timeout: 30000 })
     await page.goto('/obras')
     await expect(page.getByTestId('portafolio-tabla')).toContainText(obra)
-    await page.goto(`/clientes/${cli.slug}`)
+    await page.goto(`/clientes/${cli.slug}?vista=obras`)
     await expect(page.getByTestId('obras-del-cliente')).toContainText(obra)
+  } finally {
+    await limpiar(sb)
+    await sb.auth.signOut()
+  }
+})
+
+// ── CLIENTE: ARCHIVAR ES SACARLO DE LA VISTA, NUNCA DE LA BASE ──────────────
+//
+// ═══ EL DEFECTO QUE ESTE TEST ATRAPA ═══
+//
+// `archivarCliente` escribía `activo = false` desde el primer día y `/clientes` NO MIRABA esa
+// columna: el cliente archivado seguía en la lista, en la misma posición y con los mismos números.
+// El verbo existía y el EFECTO no — el mismo patrón que tenía «cerrar una obra» hasta el 18/08.
+//
+// Un test que sólo comprobara que la acción devuelve `ok` habría pasado en verde todo ese tiempo,
+// porque la escritura SÍ ocurría. Lo que faltaba era que alguien la leyera. Por eso acá no se mide
+// la respuesta de la acción: se miden las cuatro consecuencias.
+//
+//   1. sale de /clientes, y el pie dice cuántos quedaron guardados,
+//   2. la fila SIGUE en la base y la ficha SIGUE abriendo por su URL, diciendo que está archivada,
+//   3. la puerta de vuelta los trae a la lista,
+//   4. se reactiva y vuelve por la puerta principal.
+//
+// Revertir cualquiera de las dos piezas —la action o el filtro de la lista— pone en rojo una
+// afirmación distinta.
+test('cliente: se archiva, sale de la lista, sigue entrando por su URL y se reactiva', async ({ page }) => {
+  test.setTimeout(240000)
+  const sb = await conBase()
+  await limpiar(sb)
+  const nombre = `${MARCA} Cliente Archivo ${Date.now()}`
+
+  try {
+    await entrar(page)
+
+    await page.goto('/clientes')
+    await page.getByTestId('alta-cliente').locator('summary').click()
+    await page.getByTestId('form-cliente').locator('input[name="nombre"]').fill(nombre)
+    await page.getByTestId('form-cliente-enviar').click()
+    await expect(page.getByTestId('form-cliente-ok')).toBeVisible({ timeout: 30000 })
+    const { data: cliRaw } = await sb.from('clientes').select('id, slug, activo').eq('nombre', nombre).single()
+    const cli = laFila(cliRaw, 'el cliente recién creado')
+    expect(cli.activo, 'un cliente nace activo').toBe(true)
+
+    // LÍNEA DE BASE. Sin esto, un test que sólo mira la ausencia pasaría igual con un selector mal
+    // escrito: no encontrar nada es el resultado por defecto de buscar mal.
+    await page.reload()
+    await expect(page.getByTestId('clientes-tabla')).toContainText(nombre)
+
+    // ── ARCHIVAR ───────────────────────────────────────────────────────────
+    await page.goto(`/clientes/${cli.slug}?vista=informacion`)
+    await page.getByTestId('archivar-cliente').click()
+    await expect(async () => {
+      const { data } = await sb.from('clientes').select('activo').eq('id', cli.id).single()
+      expect(laFila(data, 'el cliente archivado').activo).toBe(false)
+    }).toPass({ timeout: 30000 })
+
+    // 1 · FUERA DE LA LISTA, con la puerta de vuelta a la vista.
+    await page.goto('/clientes')
+    await expect(page.getByTestId('clientes-tabla')).not.toContainText(nombre)
+    await expect(page.getByTestId('pie-archivados')).toBeVisible()
+
+    // 2 · LA FICHA SIGUE ABRIENDO, Y LA PÁGINA LO DICE. Que un cliente salga de una lista no puede
+    //     romper el enlace que alguien mandó por WhatsApp hace dos meses.
+    await page.goto(`/clientes/${cli.slug}?vista=informacion`)
+    await expect(page.getByRole('heading', { name: nombre })).toBeVisible()
+    await expect(page.getByTestId('cliente-archivado')).toBeVisible()
+
+    // 3 · LA PUERTA DE VUELTA lo trae sin cambiar de pantalla.
+    await page.goto('/clientes')
+    await page.getByTestId('ver-archivados').click()
+    await expect(page.getByTestId('clientes-tabla')).toContainText(nombre)
+
+    // 4 · SE REACTIVA y vuelve por la puerta principal.
+    await page.goto(`/clientes/${cli.slug}?vista=informacion`)
+    await page.getByTestId('archivar-cliente').click()
+    await expect(async () => {
+      const { data } = await sb.from('clientes').select('activo').eq('id', cli.id).single()
+      expect(laFila(data, 'el cliente reactivado').activo).toBe(true)
+    }).toPass({ timeout: 30000 })
+    await page.goto('/clientes')
+    await expect(page.getByTestId('clientes-tabla')).toContainText(nombre)
+  } finally {
+    await limpiar(sb)
+    await sb.auth.signOut()
+  }
+})
+
+// ── CANARIO: LOS CAMPOS DE LA RELACIÓN TODAVÍA NO ESTÁN EN LA BASE ─────────
+//
+// `supabase/migrations/20260819T0500_cliente_es_una_relacion.sql` agrega dirección, teléfono, email
+// y responsable interno. NO ESTÁ APLICADA: aplicar migraciones no es de un agente, tocan datos
+// productivos (`.claude/rules/migraciones.md`). El SQL se ensayó contra el esquema vivo dentro de
+// una transacción con ROLLBACK, así que se sabe que es válido; lo que falta es la decisión de
+// correrlo, que es del dueño.
+//
+// Mientras tanto, lo único que se puede garantizar es que FALLA CERRADO: que nadie escriba el
+// teléfono de un cliente, vea «guardado» y se vaya convencido de que quedó registrado. La acción
+// escribe todo o no escribe nada, y cuando no escribe DICE QUÉ MIGRACIÓN FALTA.
+//
+// Y es un canario: el día que se aplique la migración, este test se pone ROJO —el guardado va a
+// funcionar— y obliga a reemplazarlo por el circuito completo (cargar → leer la fila en la base →
+// recargar → mismo dato) en vez de que la capacidad quede apagada y nadie se entere.
+test('cliente: cargar dirección o teléfono falla CERRADO mientras falte la migración', async ({ page }) => {
+  test.setTimeout(180000)
+  const sb = await conBase()
+  await limpiar(sb)
+  const nombre = `${MARCA} Cliente Relacion ${Date.now()}`
+
+  try {
+    await entrar(page)
+
+    // Un cliente SIN los campos nuevos se crea igual: que falte una columna no puede romper el alta.
+    await page.goto('/clientes')
+    await page.getByTestId('alta-cliente').locator('summary').click()
+    await page.getByTestId('form-cliente').locator('input[name="nombre"]').fill(nombre)
+    await page.getByTestId('form-cliente-enviar').click()
+    await expect(page.getByTestId('form-cliente-ok')).toBeVisible({ timeout: 30000 })
+    const { data: cliRaw } = await sb.from('clientes').select('id, slug').eq('nombre', nombre).single()
+    const cli = laFila(cliRaw, 'el cliente recién creado')
+
+    // Con un campo de la relación cargado, la acción TIENE que negarse y nombrar la migración.
+    await page.goto(`/clientes/${cli.slug}?vista=informacion`)
+    await page.getByTestId('editar-cliente').locator('summary').click()
+    const f = page.getByTestId('form-editar-cliente')
+    await f.locator('input[name="telefono"]').fill('264 400 1111')
+    await f.locator('textarea[name="notas"]').fill(`${MARCA} no tiene que guardarse`)
+    await page.getByTestId('form-editar-cliente-enviar').click()
+
+    const error = page.getByTestId('form-editar-cliente-error')
+    await expect(error).toBeVisible({ timeout: 30000 })
+    await expect(error).toContainText('20260819T0500_cliente_es_una_relacion')
+
+    // Y NO GUARDÓ NADA. Guardar la nota y tirar el teléfono, diciendo que sí, es la falla que este
+    // test existe para impedir: la evidencia es la fila en la base, no el cartel de la pantalla.
+    const { data: despues } = await sb.from('clientes').select('notas').eq('id', cli.id).single()
+    expect(laFila(despues, 'el cliente que no se debía tocar').notas).toBeNull()
   } finally {
     await limpiar(sb)
     await sb.auth.signOut()
