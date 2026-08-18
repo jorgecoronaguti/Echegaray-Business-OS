@@ -30,7 +30,12 @@ export async function entrar(page: Page) {
   await page.fill('input[name="email"]', EMAIL)
   await page.fill('input[name="password"]', PASSWORD)
   await page.click('button[type="submit"]')
-  await page.waitForURL(/\/(dashboard|flujo-caja|obras)/, { timeout: 20000 })
+  // 60 s Y NO 20. Medido contra producción el 20/08/2026, tres entradas seguidas: la PRIMERA
+  // después de un despliegue tardó **16,4 s** —el arranque en frío de la función serverless— y las
+  // dos siguientes 1,8 y 1,5 s. Con 20 s el humo contra producción daba rojo por estar del lado
+  // equivocado de esa frontera, y el rojo no señalaba ningún defecto: señalaba que el despliegue
+  // era reciente. Un test que falla por el reloj enseña a ignorar los rojos.
+  await page.waitForURL(/\/(dashboard|flujo-caja|obras)/, { timeout: 60000 })
 }
 
 export async function conBase(): Promise<SupabaseClient> {
