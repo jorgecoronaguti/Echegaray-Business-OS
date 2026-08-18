@@ -465,23 +465,29 @@ test('cliente: se archiva, sale de la lista, sigue entrando por su URL y se reac
   }
 })
 
-// ── CANARIO: LOS CAMPOS DE LA RELACIÓN TODAVÍA NO ESTÁN EN LA BASE ─────────
+
+// ── CLIENTE: LOS CAMPOS QUE HACEN QUE SEA UNA RELACIÓN Y NO UNA CARPETA ────
 //
-// `supabase/migrations/20260819T0500_cliente_es_una_relacion.sql` agrega dirección, teléfono, email
-// y responsable interno. NO ESTÁ APLICADA: aplicar migraciones no es de un agente, tocan datos
-// productivos (`.claude/rules/migraciones.md`). El SQL se ensayó contra el esquema vivo dentro de
-// una transacción con ROLLBACK, así que se sabe que es válido; lo que falta es la decisión de
-// correrlo, que es del dueño.
+// ═══ POR QUÉ ESTE TEST EXISTE, Y QUÉ REEMPLAZÓ ═══
 //
-// Mientras tanto, lo único que se puede garantizar es que FALLA CERRADO: que nadie escriba el
-// teléfono de un cliente, vea «guardado» y se vaya convencido de que quedó registrado. La acción
-// escribe todo o no escribe nada, y cuando no escribe DICE QUÉ MIGRACIÓN FALTA.
+// Hasta que se aplicó `20260819T0500_cliente_es_una_relacion`, acá vivía un CANARIO que exigía que
+// cargar un teléfono FALLARA CERRADO: lo único que se podía garantizar era que nadie escribiera un
+// dato, viera «guardado» y se fuera convencido de que había quedado registrado. El canario se puso
+// rojo con la migración aplicada —que era exactamente su trabajo— y se retiró en el mismo commit que
+// enciende éste. Un límite conocido que no está medido se olvida; uno medido avisa cuando deja de
+// ser un límite.
 //
-// Y es un canario: el día que se aplique la migración, este test se pone ROJO —el guardado va a
-// funcionar— y obliga a reemplazarlo por el circuito completo (cargar → leer la fila en la base →
-// recargar → mismo dato) en vez de que la capacidad quede apagada y nadie se entere.
-test('cliente: cargar dirección o teléfono falla CERRADO mientras falte la migración', async ({ page }) => {
-  test.setTimeout(180000)
+// ═══ QUÉ MIDE ═══
+//
+// El circuito entero, y contra la base: cargar por pantalla → LEER LA FILA EN POSTGRES → recargar la
+// página → el mismo dato. El paso del medio es el que importa: sin él sólo se probaría que React
+// pintó lo que le acaban de tipear.
+//
+// El responsable NO es un texto: es una fila de `perfiles`. Se elige del desplegable y se compara el
+// UUID guardado contra el que traía la opción — si alguien convirtiera el campo en texto libre,
+// «Rodrigo», «R. Echegaray» y «rodri» serían tres responsables y este test se pondría rojo.
+test('cliente: dirección, teléfono, email y responsable se guardan y se leen de la base', async ({ page }) => {
+  test.setTimeout(240000)
   const sb = await conBase()
   await limpiar(sb)
   const nombre = `${MARCA} Cliente Relacion ${Date.now()}`
@@ -489,7 +495,6 @@ test('cliente: cargar dirección o teléfono falla CERRADO mientras falte la mig
   try {
     await entrar(page)
 
-    // Un cliente SIN los campos nuevos se crea igual: que falte una columna no puede romper el alta.
     await page.goto('/clientes')
     await page.getByTestId('alta-cliente').locator('summary').click()
     await page.getByTestId('form-cliente').locator('input[name="nombre"]').fill(nombre)
@@ -498,22 +503,66 @@ test('cliente: cargar dirección o teléfono falla CERRADO mientras falte la mig
     const { data: cliRaw } = await sb.from('clientes').select('id, slug').eq('nombre', nombre).single()
     const cli = laFila(cliRaw, 'el cliente recién creado')
 
-    // Con un campo de la relación cargado, la acción TIENE que negarse y nombrar la migración.
+    // ── CARGA ───────────────────────────────────────────────────────────────
     await page.goto(`/clientes/${cli.slug}?vista=informacion`)
     await page.getByTestId('editar-cliente').locator('summary').click()
     const f = page.getByTestId('form-editar-cliente')
+    await f.locator('input[name="direccion"]').fill('Av. Libertador 1234, Rivadavia, San Juan')
     await f.locator('input[name="telefono"]').fill('264 400 1111')
-    await f.locator('textarea[name="notas"]').fill(`${MARCA} no tiene que guardarse`)
+    await f.locator('input[name="email"]').fill('compras@ejemplo.com')
+
+    // La primera opción es «sin asignar»; la segunda es una persona real del OS.
+    const sel = f.locator('select[name="responsable_id"]')
+    const opcion = sel.locator('option').nth(1)
+    const idResponsable = await opcion.getAttribute('value')
+    const nombreResponsable = (await opcion.textContent())?.trim() ?? ''
+    expect(idResponsable, 'tiene que haber al menos una persona en el OS para asignar').toBeTruthy()
+    await sel.selectOption(idResponsable as string)
+
     await page.getByTestId('form-editar-cliente-enviar').click()
+    await expect(page.getByTestId('form-editar-cliente-ok')).toBeVisible({ timeout: 30000 })
 
-    const error = page.getByTestId('form-editar-cliente-error')
-    await expect(error).toBeVisible({ timeout: 30000 })
-    await expect(error).toContainText('20260819T0500_cliente_es_una_relacion')
+    // ── LA EVIDENCIA ES LA FILA EN LA BASE ──────────────────────────────────
+    const { data: guardadoRaw } = await sb.from('clientes')
+      .select('direccion, telefono, email, responsable_id').eq('id', cli.id).single()
+    const guardado = laFila(guardadoRaw, 'el cliente con su ficha cargada')
+    expect(guardado.direccion).toBe('Av. Libertador 1234, Rivadavia, San Juan')
+    expect(guardado.telefono).toBe('264 400 1111')
+    expect(guardado.email).toBe('compras@ejemplo.com')
+    expect(guardado.responsable_id, 'el responsable es una fila de perfiles, no un texto')
+      .toBe(idResponsable)
 
-    // Y NO GUARDÓ NADA. Guardar la nota y tirar el teléfono, diciendo que sí, es la falla que este
-    // test existe para impedir: la evidencia es la fila en la base, no el cartel de la pantalla.
-    const { data: despues } = await sb.from('clientes').select('notas').eq('id', cli.id).single()
-    expect(laFila(despues, 'el cliente que no se debía tocar').notas).toBeNull()
+    // ── Y SOBREVIVE A LA RECARGA: se LEE del servidor, no del navegador ─────
+    await page.reload()
+    await expect(page.getByText('Av. Libertador 1234, Rivadavia, San Juan')).toBeVisible()
+    await expect(page.getByText('264 400 1111')).toBeVisible()
+    await expect(page.getByRole('link', { name: 'compras@ejemplo.com' }))
+      .toHaveAttribute('href', 'mailto:compras@ejemplo.com')
+    // El nombre del responsable NO está guardado en `clientes`: sale del join de `cliente_panel`
+    // contra `perfiles`. Si la vista dejara de traerlo, acá se vería «sin cargar».
+    await expect(page.getByText(nombreResponsable).first()).toBeVisible()
+
+    // Y la lista de clientes muestra de quién es cada uno: es la columna que contesta «¿quién lo
+    // atiende?» sin entrar a la ficha.
+    await page.goto('/clientes')
+    const fila = page.getByTestId('clientes-tabla').locator('tr', { hasText: nombre })
+    await expect(fila).toContainText(nombreResponsable)
+
+    // ── UN EMAIL MAL ESCRITO NO LLEGA A LA BASE ────────────────────────────
+    //
+    // Dos cerraduras, y las dos importan: el campo es `type="email"`, así que el navegador ni siquiera
+    // manda el formulario —por eso acá no aparece el error del servidor, y eso ES el comportamiento
+    // correcto—, y detrás está Zod, que es la que vale cuando el pedido no viene de un navegador.
+    // Lo que se mide es el EFECTO: el email guardado sigue siendo el bueno.
+    await page.goto(`/clientes/${cli.slug}?vista=informacion`)
+    await page.getByTestId('editar-cliente').locator('summary').click()
+    const campoEmail = page.getByTestId('form-editar-cliente').locator('input[name="email"]')
+    await campoEmail.fill('esto no es un email')
+    await page.getByTestId('form-editar-cliente-enviar').click()
+    expect(await campoEmail.evaluate((el: HTMLInputElement) => el.checkValidity()),
+      'el navegador tiene que marcar el campo como inválido').toBe(false)
+    const { data: intacto } = await sb.from('clientes').select('email').eq('id', cli.id).single()
+    expect(laFila(intacto, 'el cliente que no se debía tocar').email).toBe('compras@ejemplo.com')
   } finally {
     await limpiar(sb)
     await sb.auth.signOut()

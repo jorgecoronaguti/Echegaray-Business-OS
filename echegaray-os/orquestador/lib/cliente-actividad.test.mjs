@@ -133,9 +133,10 @@ test('dos hechos del MISMO día conservan el orden de la hora', () => {
   // aunque «b» sea de seis horas después. En un día de carga —que es cuando alguien mira esto— la
   // lista queda ordenada por nombre de archivo y parece que no pasó nada en orden.
   const r = construirLineaDeTiempo(vacio({
+    // VINCULADOS A MANO: no se agrupan, porque cada uno es una decisión de una persona.
     documentos: [
-      { drive_file_id: 'a-primero', name: 'Acta', rol: null, creado_en: '2026-08-18T09:00:00.000Z' },
-      { drive_file_id: 'z-despues', name: 'Contrato', rol: null, creado_en: '2026-08-18T15:00:00.000Z' },
+      { drive_file_id: 'a-primero', name: 'Acta', rol: null, origen: 'manual', creado_en: '2026-08-18T09:00:00.000Z' },
+      { drive_file_id: 'z-despues', name: 'Contrato', rol: null, origen: 'manual', creado_en: '2026-08-18T15:00:00.000Z' },
     ],
   }))
   assert.deepEqual(claves(r), ['doc-z-despues', 'doc-a-primero'])
@@ -145,7 +146,7 @@ test('un `date` de Postgres se ubica al principio de su día, no en el anterior'
   // `fecha_certificacion` es un `date` ('2026-08-18') y `creado_en` un `timestamptz`. Mezclarlos con
   // un parseo que los interprete en horario local corre el `date` al día anterior a las 21:00.
   const r = construirLineaDeTiempo(vacio({
-    documentos: [{ drive_file_id: 'd1', name: 'Plano', rol: null, creado_en: '2026-08-17T22:00:00.000Z' }],
+    documentos: [{ drive_file_id: 'd1', name: 'Plano', rol: null, origen: 'manual', creado_en: '2026-08-17T22:00:00.000Z' }],
     certificados: [{
       id: 'c1', numero: '1', obra_id: null, obra_nombre: 'ARCOR',
       fecha_certificacion: '2026-08-18', monto_certificado: 1,
@@ -169,10 +170,78 @@ test('ningún evento habla en idioma de base de datos', () => {
   const r = construirLineaDeTiempo(vacio({
     cliente: { nombre: 'ARCOR', creado_en: '2026-07-08T00:11:59Z', actualizado_en: '2026-08-17T23:37:18Z' },
     contactos: [{ id: 'a', nombre: 'Ana', rol: 'compras', creado_en: '2026-08-10T12:00:00Z' }],
-    documentos: [{ drive_file_id: 'd1', name: 'Contrato.pdf', rol: 'contrato', creado_en: '2026-08-11T12:00:00Z' }],
+    documentos: [{ drive_file_id: 'd1', name: 'Contrato.pdf', rol: 'contrato', origen: 'manual', creado_en: '2026-08-11T12:00:00Z' }],
   }))
   const texto = r.eventos.map((e) => `${e.titulo} ${e.detalle ?? ''} ${e.fuente}`).join(' | ')
   for (const jerga of ['cliente_contacto', 'created_at', 'updated_at', 'creado_en', 'drive_file_id', 'null']) {
     assert.ok(!texto.includes(jerga), `se filtró jerga de base a la pantalla: ${jerga}`)
   }
+})
+
+// ── LO QUE COLGÓ EL SINCRONIZADOR SE AGRUPA POR DÍA ────────────────────────
+//
+// EL DEFECTO MEDIDO EN LA BASE REAL: los 214 vínculos de `cliente_documento` los puso el
+// sincronizador de Drive de una sola pasada, todos con el mismo `creado_en` (17/08/2026). Uno por
+// renglón, la ficha de La Estrella abre con NOVENTA Y TRES líneas idénticas y el alta de sus obras
+// queda tres pantallas más abajo: la línea de tiempo deja de contar una historia y pasa a ser el
+// volcado de una tabla.
+//
+// Agrupar no inventa nada —el conteo es de filas reales y la fecha es la de esas filas—, y lo que se
+// pierde (el nombre de cada archivo) está entero en la solapa Documentos.
+
+test('93 vínculos del sincronizador del mismo día son UN evento, no 93', () => {
+  const documentos = Array.from({ length: 93 }, (_, i) => ({
+    drive_file_id: `f${i}`, name: `archivo ${i}.pdf`, rol: null,
+    origen: 'path_inferido', creado_en: `2026-08-17T03:00:0${i % 10}.000Z`,
+  }))
+  const r = construirLineaDeTiempo(vacio({ documentos }))
+  const docs = r.eventos.filter((e) => e.tipo === 'documento_alta')
+  assert.equal(docs.length, 1, 'un renglón por día, no uno por archivo')
+  assert.equal(docs[0].titulo, '93 documentos vinculados desde la carpeta de Drive')
+})
+
+test('el conteo del grupo es el de filas REALES, y los días distintos no se mezclan', () => {
+  const r = construirLineaDeTiempo(vacio({
+    documentos: [
+      { drive_file_id: 'a', name: 'a', rol: null, origen: 'path_inferido', creado_en: '2026-08-17T03:00:00Z' },
+      { drive_file_id: 'b', name: 'b', rol: null, origen: 'path_inferido', creado_en: '2026-08-17T04:00:00Z' },
+      { drive_file_id: 'c', name: 'c', rol: null, origen: 'path_inferido', creado_en: '2026-08-18T03:00:00Z' },
+    ],
+  }))
+  const docs = r.eventos.filter((e) => e.tipo === 'documento_alta')
+  assert.equal(docs.length, 2, 'dos días, dos renglones')
+  assert.equal(docs[0].titulo, 'Documento vinculado: c', 'un solo archivo ese día: se dice cuál')
+  assert.equal(docs[1].titulo, '2 documentos vinculados desde la carpeta de Drive')
+})
+
+test('lo que vinculó una PERSONA nunca se agrupa, ni con lo del sincronizador del mismo día', () => {
+  // Que alguien haya decidido colgar el contrato es un hecho de la relación, no un movimiento de
+  // sincronización. Meterlo en la bolsa de «31 documentos» lo borra.
+  const r = construirLineaDeTiempo(vacio({
+    documentos: [
+      { drive_file_id: 'x', name: 'Contrato firmado.pdf', rol: 'contrato', origen: 'manual', creado_en: '2026-08-17T10:00:00Z' },
+      { drive_file_id: 'a', name: 'a', rol: null, origen: 'path_inferido', creado_en: '2026-08-17T03:00:00Z' },
+      { drive_file_id: 'b', name: 'b', rol: null, origen: 'path_inferido', creado_en: '2026-08-17T04:00:00Z' },
+    ],
+  }))
+  const docs = r.eventos.filter((e) => e.tipo === 'documento_alta')
+  assert.equal(docs.length, 2)
+  assert.deepEqual(docs.map((e) => e.titulo), [
+    'Documento vinculado: Contrato firmado.pdf',
+    '2 documentos vinculados desde la carpeta de Drive',
+  ])
+  assert.equal(docs[0].detalle, 'contrato', 'el rol del papel viaja con el evento')
+})
+
+test('un vínculo del sincronizador SIN fecha no se cuela en el grupo del día de al lado', () => {
+  const r = construirLineaDeTiempo(vacio({
+    documentos: [
+      { drive_file_id: 'a', name: 'a', rol: null, origen: 'path_inferido', creado_en: '2026-08-17T03:00:00Z' },
+      { drive_file_id: 'b', name: 'b', rol: null, origen: 'path_inferido', creado_en: null },
+    ],
+  }))
+  const docs = r.eventos.filter((e) => e.tipo === 'documento_alta')
+  assert.equal(docs.length, 1)
+  assert.equal(docs[0].titulo, 'Documento vinculado: a', 'cuenta UNO, no dos')
+  assert.equal(r.sinFecha, 2, 'el vínculo sin fecha + el alta del cliente sin fecha')
 })

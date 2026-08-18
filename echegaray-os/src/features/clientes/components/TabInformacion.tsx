@@ -39,8 +39,12 @@ export function TabInformacion({
   vincularCarpeta: AccionFormulario
   archivar: (clienteId: string, activo: boolean) => Promise<ResultadoAccion>
 }) {
+  // ANCHO DE LECTURA, no ancho de pantalla. Una tabla usa los 1.400px porque tiene columnas que
+  // comparar; una ficha de nueve renglones estirada a 1.400 deja el rótulo pegado a la izquierda y
+  // el valor a la derecha con un metro de vacío en el medio, y hay que barrer la pantalla con la
+  // vista para leer un teléfono. Angostar es la excepción y hay que pedirla: acá se pide.
   return (
-    <div className="space-y-4">
+    <div className="max-w-3xl space-y-4">
       <div className="rounded-xl border border-line bg-white p-4">
         <dl className="divide-y divide-line/60 text-[12px]">
           <Renglon k="Razón social">{cliente.nombre}</Renglon>

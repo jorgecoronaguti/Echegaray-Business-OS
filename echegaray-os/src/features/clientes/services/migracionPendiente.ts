@@ -1,12 +1,17 @@
-// QUÉ HACER CUANDO LA MIGRACIÓN ESTÁ EN EL REPOSITORIO PERO NO EN LA BASE.
+// QUÉ HACER CUANDO LA BASE TODAVÍA NO CONOCE LAS COLUMNAS NUEVAS.
 //
 // ═══ EL PROBLEMA REAL ═══
 //
 // `20260819T0500_cliente_es_una_relacion` agrega dirección, teléfono, email y responsable a
-// `clientes`. Aplicar migraciones no es de un agente: tocan datos productivos. Mientras no esté
-// aplicada, escribir esas cuatro columnas devuelve PGRST204 — y sin este módulo el alta y la edición
-// de CUALQUIER cliente quedarían rotas, incluso para corregir una nota. Eso es peor que la
-// funcionalidad que todavía no está.
+// `clientes`. YA ESTÁ APLICADA —verificado el 19/08/2026 leyendo `information_schema.columns` y
+// `pg_constraint`, no la pantalla—, así que hoy este módulo no interviene. Sigue acá por dos
+// motivos concretos, no por prolijidad:
+//
+//   · PostgREST cachea el esquema. Después de un `alter table` hay una ventana de minutos en la que
+//     contesta PGRST204 aunque la columna exista. Sin esta guarda, en esa ventana el alta y la
+//     edición de CUALQUIER cliente quedan rotas, incluso para corregir una nota.
+//   · Una base que todavía no corrió la migración —una restaurada, una de prueba— tiene que poder
+//     seguir operando con lo que sí tiene.
 //
 // ═══ LA REGLA, QUE ES LA DEL OS ENTERO: NUNCA SE GUARDA DE MENOS EN SILENCIO ═══
 //

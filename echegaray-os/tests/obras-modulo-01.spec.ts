@@ -70,7 +70,16 @@ test('clientes → cliente → sus obras → la obra', async ({ page }) => {
   await page.waitForURL(/\/clientes\/la-estrella/)
   await expect(page.getByRole('heading', { name: /La Estrella/ })).toBeVisible()
 
+  // LA FICHA ABRE EN INFORMACIÓN, NO EN OBRAS (19/08/2026). El cliente es la RELACIÓN empresarial:
+  // entrar por su portafolio lo convertía en una carpeta con obras adentro. Las obras siguen a un
+  // clic y con acceso directo a cada una, pero son UNA de las cinco caras, no la relación.
+  await expect(page.getByRole('term').filter({ hasText: 'Responsable interno' })).toBeVisible()
+
   // Sus tres obras, con el MISMO avance que publica el portafolio: sale de `obra_panel`.
+  // Por testid y no por el rótulo: «Obras» también es un enlace de la barra de arriba, y el que
+  // gana por texto es el de la barra — el test navegaría al portafolio creyendo abrir la solapa.
+  await page.getByTestId('solapa-obras').click()
+  await page.waitForURL(/vista=obras/)
   const tabla = page.getByTestId('obras-del-cliente')
   await expect(tabla).toBeVisible()
   expect(await tabla.locator('tbody tr').count()).toBe(3)

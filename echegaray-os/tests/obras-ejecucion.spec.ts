@@ -327,16 +327,20 @@ test('el portafolio publica plazo, margen y estado, y dice qué falta cuando no 
 // ── EN EL TELÉFONO NO SE DESPLAZA DE COSTADO ────────────────────────────────
 
 test('ninguna pantalla nueva empuja la página de costado en el teléfono', async ({ page }) => {
-  // Once rutas, cada una compilada por primera vez en `next dev`: el presupuesto no es la lentitud
-  // de una pantalla, es el arranque del servidor multiplicado por once.
+  // Cada ruta se compila por primera vez en `next dev`: el presupuesto no es la lentitud de una
+  // pantalla, es el arranque del servidor multiplicado por la cantidad de rutas.
   test.setTimeout(360000)
   await entrar(page)
   await page.setViewportSize({ width: 390, height: 780 })
 
   const rutas = [
     '/clientes',
+    // Con los archivados a la vista: la lista suma una columna y un pie, y es cuando más ancho pide.
+    '/clientes?archivados=1',
     '/clientes/la-estrella?vista=informacion',
     '/clientes/la-estrella?vista=contactos',
+    '/clientes/la-estrella?vista=obras',
+    '/clientes/la-estrella?vista=actividad',
     '/clientes/la-estrella?vista=documentos',
     '/obras',
     `/obras/${OBRA}`,
@@ -360,6 +364,10 @@ test('ninguna pantalla nueva empuja la página de costado en el teléfono', asyn
   // teléfono, que es el aparato donde se carga.
   const conFormulario: [string, string][] = [
     ['/clientes', 'alta-cliente'],
+    // La ficha del cliente: el formulario más largo del módulo (nueve campos) y el de vincular.
+    ['/clientes/la-estrella?vista=informacion', 'editar-cliente'],
+    ['/clientes/la-estrella?vista=contactos', 'alta-contacto'],
+    ['/clientes/la-estrella?vista=documentos', 'alta-documento'],
     [`/obras/${OBRA}?vista=personal`, 'alta-asignacion'],
     [`/obras/${OBRA}?vista=economia`, 'alta-certificado'],
     [`/obras/${OBRA}?vista=cronograma&sub=proximos`, 'alta-impedimento'],
