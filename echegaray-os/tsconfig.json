@@ -10,6 +10,9 @@
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
+    // Los tests de lógica pura de `src/` los corre `node --test` con su despojado de tipos nativo, y
+    // Node exige la extensión real en el import. Con `noEmit` esto no cambia nada de lo que compila.
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",

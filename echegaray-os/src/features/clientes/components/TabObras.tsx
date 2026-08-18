@@ -51,6 +51,7 @@ function FilaObra({ o }: { o: ObraPanel }) {
 
 export function TabObras({
   obras, archivadas, conArchivadas, urlArchivadas, urlSinArchivadas, clienteId, crearObra,
+  puedeEditar = true,
 }: {
   obras: ObraPanel[]
   /** Cuántas quedaron fuera de la lista. Es el conteo, no la lista: si es 0 no hay puerta que abrir. */
@@ -60,6 +61,8 @@ export function TabObras({
   urlSinArchivadas: string
   clienteId: string
   crearObra: AccionFormulario
+  /** Crear una obra es de Administración. Ver las del cliente, no. */
+  puedeEditar?: boolean
 }) {
   return (
     <div className="space-y-3">
@@ -102,6 +105,7 @@ export function TabObras({
         </p>
       )}
 
+      {puedeEditar && (
       <details className="rounded-xl border border-line bg-white" data-testid="alta-obra">
         <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-medium text-ink">Nueva obra de este cliente</summary>
         <div className="border-t border-line p-4">
@@ -114,6 +118,7 @@ export function TabObras({
           </FormAccion>
         </div>
       </details>
+      )}
     </div>
   )
 }

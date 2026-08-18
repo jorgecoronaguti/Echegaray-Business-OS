@@ -28,20 +28,22 @@ import { SelectRolDocumento } from './SelectRolDocumento'
 const TOPE = 60
 
 export function TabDocumentos({
-  documentos, carpetaDriveId, vincular, clasificar, desvincular,
+  documentos, carpetaDriveId, vincular, clasificar, desvincular, puedeEditar = true,
 }: {
   documentos: DocumentoCliente[]
   carpetaDriveId: string | null
   vincular: AccionFormulario
   clasificar: (driveFileId: string) => AccionFormulario
   desvincular: (driveFileId: string) => Promise<ResultadoAccion>
+  /** Abrir un documento del cliente es operativo. Vincularlo, clasificarlo o quitarlo, no. */
+  puedeEditar?: boolean
 }) {
   const visibles = documentos.slice(0, TOPE)
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3">
-        <Vincular accion={vincular} />
+        {puedeEditar && <Vincular accion={vincular} />}
         {carpetaDriveId ? (
           <a
             href={`https://drive.google.com/drive/folders/${carpetaDriveId}`}
@@ -94,12 +96,16 @@ export function TabDocumentos({
                       {etiquetaDeTipo('archivo', d.mime_type, d.name)}
                     </td>
                     <td className="px-3 py-2.5">
-                      <SelectRolDocumento
-                        valor={d.rol}
-                        opciones={ROLES_DOCUMENTO}
-                        guardar={clasificar(d.drive_file_id)}
-                        testid="rol-documento"
-                      />
+                      {puedeEditar ? (
+                        <SelectRolDocumento
+                          valor={d.rol}
+                          opciones={ROLES_DOCUMENTO}
+                          guardar={clasificar(d.drive_file_id)}
+                          testid="rol-documento"
+                        />
+                      ) : (
+                        <span className="text-[12px] text-muted">{d.rol ?? 'sin clasificar'}</span>
+                      )}
                     </td>
                     {/* «Vinculado a mano» = una persona afirmó que este archivo es de este cliente.
                         «Por la carpeta» = lo dedujo el sincronizador por la ruta. Es la misma
@@ -110,10 +116,12 @@ export function TabDocumentos({
                       {d.origen === 'manual' ? 'Vinculado a mano' : 'Por la carpeta'}
                     </td>
                     <td className="px-3 py-2.5 text-right">
-                      <BotonAccion
-                        accion={desvincular} args={[d.drive_file_id]}
-                        testid="desvincular-documento-cliente" tono="peligro"
-                      >Quitar</BotonAccion>
+                      {puedeEditar && (
+                        <BotonAccion
+                          accion={desvincular} args={[d.drive_file_id]}
+                          testid="desvincular-documento-cliente" tono="peligro"
+                        >Quitar</BotonAccion>
+                      )}
                     </td>
                   </tr>
                 ))}

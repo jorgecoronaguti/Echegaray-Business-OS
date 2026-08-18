@@ -26,6 +26,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
+import { esAdministracion } from '@/features/auth/types/areas'
 import {
   getActividadCliente, getCliente, getContactos, getDocumentosCliente, getObrasDelCliente, getResponsables,
 } from '@/features/clientes/services/clientesService'
@@ -87,6 +88,19 @@ export default async function ClientePage({
   const id = cliente.cliente_id
   const url = (v: Vista, extra = '') => `/clientes/${slug}?vista=${v}${extra}`
 
+  // ═══ CONSULTAR NO ES ADMINISTRAR (19/08/2026) ═══
+  //
+  // El dueño: *"Un usuario Obras debe poder consultar clientes, contactos, personas, proveedores…
+  // No necesariamente puede administrar globalmente esas entidades. VER INFORMACIÓN OPERATIVA ≠
+  // ADMINISTRAR EL MAESTRO."*
+  //
+  // Por eso la ficha del cliente se abre para las dos áreas y los formularios de escritura sólo se
+  // dibujan para Administración. No es la cerradura —la RLS rechaza la escritura igual—, es no
+  // ofrecer un botón que la base va a rechazar. La cartera completa (`/clientes`) sigue siendo de
+  // Administración: ahí se ADMINISTRA el maestro.
+  const rol = (await getPerfilActual(supabase)).data?.rol ?? null
+  const puedeEditar = esAdministracion(rol)
+
   return (
     <PageShell
       eyebrow={<Link href="/clientes" className="hover:underline">01 · Obras · Clientes</Link>}
@@ -120,6 +134,7 @@ export default async function ClientePage({
           editar={editarCliente.bind(null, id)}
           vincularCarpeta={vincularCarpetaCliente.bind(null, id)}
           archivar={archivarCliente}
+          puedeEditar={puedeEditar}
         />
       )}
 
@@ -131,6 +146,7 @@ export default async function ClientePage({
           editar={(c) => editarContacto.bind(null, c)}
           crear={crearContacto.bind(null, id)}
           borrar={borrarContacto}
+          puedeEditar={puedeEditar}
         />
       )}
 
@@ -140,15 +156,14 @@ export default async function ClientePage({
           conArchivadas={conArchivadas}
           urlArchivadas={url('obras', '&archivadas=1')}
           urlSinArchivadas={url('obras')}
+          puedeEditar={puedeEditar}
         />
       )}
 
       {vista === 'actividad' && (
         <TabActividad
           linea={(await getActividadCliente(supabase, id)).data ?? { eventos: [], sinFecha: 0 }}
-          puedeVerContractuales={VE_CONTRACTUALES.includes(
-            (await getPerfilActual(supabase)).data?.rol ?? '',
-          )}
+          puedeVerContractuales={VE_CONTRACTUALES.includes(rol ?? '')}
         />
       )}
 
@@ -159,6 +174,7 @@ export default async function ClientePage({
           vincular={vincularDocumentoCliente.bind(null, id)}
           clasificar={(f) => clasificarDocumentoCliente.bind(null, id, f)}
           desvincular={desvincularDocumentoCliente.bind(null, id)}
+          puedeEditar={puedeEditar}
         />
       )}
     </PageShell>
@@ -173,12 +189,13 @@ function subtitulo(cuit: string | null, activo: boolean): string | undefined {
 /** La solapa Obras necesita su propia lectura y su propio filtro; se arma acá para que la página no
  *  cargue el portafolio cuando nadie lo está mirando. */
 async function SolapaObras({
-  clienteId, conArchivadas, urlArchivadas, urlSinArchivadas,
+  clienteId, conArchivadas, urlArchivadas, urlSinArchivadas, puedeEditar,
 }: {
   clienteId: string
   conArchivadas: boolean
   urlArchivadas: string
   urlSinArchivadas: string
+  puedeEditar: boolean
 }) {
   const supabase = await createClient()
   const todas = (await getObrasDelCliente(supabase, clienteId)).data ?? []
@@ -192,6 +209,7 @@ async function SolapaObras({
       urlSinArchivadas={urlSinArchivadas}
       clienteId={clienteId}
       crearObra={crearObra}
+      puedeEditar={puedeEditar}
     />
   )
 }

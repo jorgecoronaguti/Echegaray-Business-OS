@@ -31,7 +31,7 @@ function CamposContacto({ c }: { c?: Contacto }) {
 }
 
 export function TabContactos({
-  contactos, enEdicion, urlDe, editar, crear, borrar,
+  contactos, enEdicion, urlDe, editar, crear, borrar, puedeEditar = true,
 }: {
   contactos: Contacto[]
   /** El id del contacto cuyo formulario está abierto, o null. Viene de la URL. */
@@ -41,6 +41,8 @@ export function TabContactos({
   editar: (contactoId: string) => AccionFormulario
   crear: AccionFormulario
   borrar: (contactoId: string) => Promise<ResultadoAccion>
+  /** Ver el contacto de un cliente es operativo; administrar la agenda, no. */
+  puedeEditar?: boolean
 }) {
   return (
     <div className="space-y-3">
@@ -64,7 +66,7 @@ export function TabContactos({
               {contactos.map((c) => (
                 <FilaContacto
                   key={c.id} c={c} abierta={enEdicion === c.id}
-                  urlDe={urlDe} editar={editar} borrar={borrar}
+                  urlDe={urlDe} editar={editar} borrar={borrar} puedeEditar={puedeEditar}
                 />
               ))}
             </tbody>
@@ -72,26 +74,29 @@ export function TabContactos({
         </div>
       )}
 
-      <details className="rounded-xl border border-line bg-white" data-testid="alta-contacto">
-        <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-medium text-ink">Agregar un contacto</summary>
-        <div className="border-t border-line p-4">
-          <FormAccion accion={crear} testid="form-contacto" enviar="Agregar" limpiarAlOk mensajeOk="Contacto agregado.">
-            <CamposContacto />
-          </FormAccion>
-        </div>
-      </details>
+      {puedeEditar && (
+        <details className="rounded-xl border border-line bg-white" data-testid="alta-contacto">
+          <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-medium text-ink">Agregar un contacto</summary>
+          <div className="border-t border-line p-4">
+            <FormAccion accion={crear} testid="form-contacto" enviar="Agregar" limpiarAlOk mensajeOk="Contacto agregado.">
+              <CamposContacto />
+            </FormAccion>
+          </div>
+        </details>
+      )}
     </div>
   )
 }
 
 function FilaContacto({
-  c, abierta, urlDe, editar, borrar,
+  c, abierta, urlDe, editar, borrar, puedeEditar = true,
 }: {
   c: Contacto
   abierta: boolean
   urlDe: (contactoId: string | null) => string
   editar: (contactoId: string) => AccionFormulario
   borrar: (contactoId: string) => Promise<ResultadoAccion>
+  puedeEditar?: boolean
 }) {
   return (
     <>
@@ -103,6 +108,7 @@ function FilaContacto({
           {c.email ? <a href={`mailto:${c.email}`} className="hover:underline">{c.email}</a> : '—'}
         </td>
         <td className="px-3 py-2.5 text-right">
+          {puedeEditar && (
           <span className="inline-flex items-center gap-2">
             <Link
               href={urlDe(abierta ? null : c.id)}
@@ -111,6 +117,7 @@ function FilaContacto({
             >{abierta ? 'Cerrar' : 'Editar'}</Link>
             <BotonAccion accion={borrar} args={[c.id]} testid="borrar-contacto" tono="peligro">Borrar</BotonAccion>
           </span>
+          )}
         </td>
       </tr>
       {abierta && (
