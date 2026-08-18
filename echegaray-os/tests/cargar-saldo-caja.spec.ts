@@ -2,20 +2,40 @@ import { test, expect } from '@playwright/test'
 import { ATERRIZAJE } from './util/login'
 import { createClient } from '@supabase/supabase-js'
 
-// Carga nativa del saldo diario de Caja (ciclo autónomo, 2026-07-10). El dev
-// server no tiene GOOGLE_SERVICE_ACCOUNT_JSON (igual que Vercel), así que este
-// test prueba el camino real de producción: el formulario encola una Acción
-// con el payload, que el sync local pasa al Sheet. El test crea su propia
-// acción vía UI y la borra al final (delete policy de acciones existe desde
-// 20260708185509). El flush real al Sheet se prueba aparte a mano -- acá no se
-// escribe en el archivo real de negocio desde la suite.
+// CARGA NATIVA DEL SALDO DIARIO DE CAJA.
+//
+// ═══ ESTE TEST ESCRIBIÓ EN EL SHEET REAL DEL DUEÑO (18/08/2026) ═══
+//
+// Su cabecera decía, textual: *"El dev server no tiene GOOGLE_SERVICE_ACCOUNT_JSON (igual que
+// Vercel), así que este test prueba el camino real de producción: el formulario encola una Acción…
+// acá no se escribe en el archivo real de negocio desde la suite"*.
+//
+// La premisa dejó de ser cierta y nadie lo notó: **producción SÍ tiene la service account**. Corrido
+// con `E2E_BASE_URL=https://app.ecsas.com.ar`, el formulario tomó el camino directo y dejó DOS filas
+// en la pestaña CAJA del "Flujo de Caja - Cash Flow": `18/8/2026 · Efectivo · 1.234.567,89 · OS web`.
+// El test no falló por eso —falló porque el mensaje decía "cargado en el Sheet" en vez de
+// "sincronización"—, o sea que el aviso de que estaba escribiendo el archivo del dueño llegó por un
+// texto que no coincidía, de casualidad.
+//
+// LA REGLA QUE SALE DE ACÁ: un test no puede depender de que una credencial NO esté configurada para
+// no hacer daño. Eso no es una salvaguarda, es una coincidencia de entorno. El caso que escribe se
+// SALTEA explícitamente contra producción, y el que corre contra el dev server verifica lo único que
+// se puede verificar sin tocar el archivo: que la acción quede encolada.
 
 const EMAIL = 'jorge.o.corona+direccion-test-1783513222134@gmail.com'
 const PASSWORD = 'TestPassword123!'
 const NOTA_TEST = 'test-e2e-cargar-saldo (borrar)'
 
+const CONTRA_PRODUCCION = /app\.ecsas\.com\.ar/.test(process.env.E2E_BASE_URL ?? '')
+
 test('cargar el saldo del día desde la web lo encola para pasar al Sheet', async ({ page }) => {
-  test.setTimeout(60000)
+  // Contra producción este formulario ESCRIBE la pestaña CAJA del archivo real. No se corre.
+  test.skip(CONTRA_PRODUCCION,
+    'contra producción este caso escribe en la CAJA real del dueño: se corre sólo contra el dev server')
+  // `/flujo-caja` lee el Sheet real con una service account: contra producción es una función fría
+  // de Vercel + una llamada a la API de Google, y 60 s no alcanzan. Se sube SÓLO el techo — no se
+  // toca una afirmación: lo que tarda es el entorno, no lo que se prueba.
+  test.setTimeout(240000)
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL as string,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string,
