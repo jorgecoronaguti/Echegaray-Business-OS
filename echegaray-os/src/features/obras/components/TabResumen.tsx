@@ -77,6 +77,27 @@ export function alertasDeLaObra(
   return a
 }
 
+/**
+ * LO QUE FALTA CONFIGURAR PARA QUE LA OBRA SE PUEDA MEDIR — no es una alerta, es una lista de tareas.
+ *
+ * El dueño: *"Mostrar discretamente configuración faltante: Línea base · Responsable · HH plan ·
+ * Presupuesto → Pendiente"*. Y «discretamente» es la palabra que manda: una obra sin línea base no
+ * está en problemas, está sin configurar, y mezclar las dos cosas en el mismo bloque rojo enseña a
+ * ignorar el bloque rojo.
+ *
+ * Cada línea es la razón por la que una comparación de PLAN vs REAL no existe: sin línea base no hay
+ * desvío de plazo, sin HH plan no hay desvío de HH, sin presupuesto no hay desvío de costo. Por eso
+ * está acá y no en una pantalla de configuración: se lee justo al lado del vacío que explica.
+ */
+export function configuracionPendiente(obra: ObraPanel, plan: PlanVsReal | null): { k: string }[] {
+  return [
+    { k: 'Línea base', falta: !plan?.actividades_con_baseline },
+    { k: 'Responsable', falta: !obra.jefe_obra },
+    { k: 'HH plan', falta: plan?.hh_plan == null && plan?.hh_estimada == null },
+    { k: 'Presupuesto', falta: plan?.costo_presupuestado == null },
+  ].filter((x) => x.falta).map(({ k }) => ({ k }))
+}
+
 export function TabResumen({
   obra, plan, abiertas, obraId, editar, archivar,
 }: {
@@ -90,6 +111,7 @@ export function TabResumen({
   archivar?: React.ReactNode
 }) {
   const alertas = alertasDeLaObra(obra, plan, abiertas)
+  const pendientes = configuracionPendiente(obra, plan)
 
   // PLAZO: el desvío contra la LÍNEA BASE, que es lo único contra lo que un desvío significa algo.
   // Sin baseline sellada no hay desvío de plazo — hay un plan, y un plan no se desvía de sí mismo.
@@ -158,6 +180,22 @@ export function TabResumen({
       </section>
 
       {plan && <PlanVsRealResumen plan={plan} obraId={obraId} />}
+
+      {/* La configuración que falta va DEBAJO del plan contra real y en el tono más bajo de la
+          pantalla: explica los guiones de arriba, no compite con ellos. */}
+      {pendientes.length > 0 && (
+        <section data-testid="configuracion-pendiente">
+          <h2 className="mb-2 text-[11px] font-medium uppercase tracking-wide text-faint">Falta configurar</h2>
+          <dl className="grid gap-x-8 text-[13px] sm:grid-cols-2 lg:grid-cols-4">
+            {pendientes.map((x: { k: string }) => (
+              <div key={x.k} className="flex items-baseline justify-between gap-3 border-b border-line py-1.5">
+                <dt className="text-muted">{x.k}</dt>
+                <dd className="text-faint">Pendiente</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      )}
 
       {/* El plazo y el jefe de obra son ficha, no titular: se consultan, no se deciden todos los
           días. Por eso van al pie y en dos columnas de definición, sin recuadro propio. */}
