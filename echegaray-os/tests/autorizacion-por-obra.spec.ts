@@ -315,3 +315,29 @@ test('Economía no le inventa una explicación al nivel Obras, y le deja lo suyo
   await expect(resumen, 'la línea de margen se le dibujó a un jefe de obra').not.toContainText(/margen/i)
   await expect(resumen, 'el resumen se quedó sin la línea de costo, que sí es suya').toContainText(/costo/i)
 })
+
+
+// ═══ EL CHECKLIST DE PREPARACIÓN, CON UN USUARIO DE NIVEL OBRAS (19/08/2026) ═══
+//
+// El checklist se dibuja en el Resumen de la obra y tiene una línea de Contrato. Para un jefe de
+// obra, `obra_panel.monto_contratado` llega NULL: si el checklist lo leyera como respuesta, diría
+// «Contrato · pendiente» sobre una obra con el contrato cargado. La línea no se dibuja para él, y
+// eso se mide acá porque quien construyó el checklist no tenía credenciales de nivel Obras.
+test('el checklist de preparación no le habla de contrato al nivel Obras', async ({ page }) => {
+  test.setTimeout(120000)
+  await entrarComo(page, JEFE.email, JEFE.password)
+  await page.goto('/obras/san-francisco')
+
+  const checklist = page.getByTestId('preparacion')
+  // Puede estar plegado: lo que importa es que la línea de contrato no exista en el DOM.
+  await expect(checklist).toBeVisible()
+  await expect(page.getByTestId('preparacion-contrato'),
+    'el checklist le dibujó la línea de Contrato a un jefe de obra').toHaveCount(0)
+
+  // EL CASO POSITIVO, sin el cual esto pasaría con el checklist entero roto: las líneas que SÍ son
+  // su trabajo están.
+  for (const clave of ['cronograma', 'baseline', 'responsable', 'personal', 'hh_plan']) {
+    await expect(page.getByTestId(`preparacion-${clave}`),
+      `falta la línea ${clave}, que sí es trabajo de la obra`).toHaveCount(1)
+  }
+})
