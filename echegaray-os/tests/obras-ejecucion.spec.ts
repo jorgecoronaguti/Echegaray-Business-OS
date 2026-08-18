@@ -230,7 +230,11 @@ test('economía: el certificado cargado persiste, suma en los totales y cada nú
 
 // ── PLANIFICACIÓN: IMPEDIMENTOS ─────────────────────────────────────────────
 
-test('planificación: el impedimento se anota con dueño y fecha, persiste, y se libera', async ({ page }) => {
+// EL IMPEDIMENTO SE MUDÓ A OPERACIÓN (20/08/2026). El dueño puso los cinco bloques de la ejecución
+// diaria en esa solapa —pedidos, compras, herramientas, movimientos, impedimentos— y ahí quedó la
+// ÚNICA puerta de escritura. En Próximos trabajos quedó la lectura de los que frenan la ventana.
+// El recorrido no cambió: lo que cambió es dónde vive el formulario.
+test('operación: el impedimento se anota con dueño y fecha, persiste, y se libera', async ({ page }) => {
   test.setTimeout(180000)
   const sb = await conBase()
   await limpiar(sb)
@@ -238,9 +242,11 @@ test('planificación: el impedimento se anota con dueño y fecha, persiste, y se
 
   try {
     await entrar(page)
-    await page.goto(`/obras/${OBRA}?vista=cronograma&sub=proximos`)
-    // SIN JERGA EN LA PANTALLA: adentro se llama restricción y lookahead; afuera se lee en castellano.
-    await expect(page.getByRole('heading', { name: /Próximos trabajos/ })).toBeVisible()
+    await page.goto(`/obras/${OBRA}?vista=operacion&sub=impedimentos`)
+    // SIN JERGA EN LA PANTALLA: adentro se llama restricción; afuera se lee «impedimento». El
+    // encabezado que se exigía acá era el de «Próximos trabajos», que sigue existiendo pero en
+    // Cronograma: el alta se mudó a Operación y el ancla tenía que mudarse con ella.
+    await expect(page.getByTestId('bloque-impedimentos')).toBeVisible({ timeout: 30000 })
 
     await page.getByTestId('alta-impedimento').locator('summary').click()
     const form = page.getByTestId('form-impedimento')
@@ -370,6 +376,7 @@ test('ninguna pantalla nueva empuja la página de costado en el teléfono', asyn
     `/obras/${OBRA}?vista=economia`,
     `/obras/${OBRA}?vista=cronograma&sub=proximos`,
     `/obras/${OBRA}?vista=operacion`,
+    `/obras/${OBRA}?vista=operacion&sub=impedimentos`,
     `/obras/${OBRA}?vista=documentos`,
   ]
   for (const ruta of rutas) {
@@ -391,7 +398,7 @@ test('ninguna pantalla nueva empuja la página de costado en el teléfono', asyn
     ['/clientes/la-estrella?vista=documentos', 'alta-documento'],
     [`/obras/${OBRA}?vista=personal`, 'alta-asignacion'],
     [`/obras/${OBRA}?vista=economia`, 'alta-certificado'],
-    [`/obras/${OBRA}?vista=cronograma&sub=proximos`, 'alta-impedimento'],
+    [`/obras/${OBRA}?vista=operacion&sub=impedimentos`, 'alta-impedimento'],
     [`/obras/${OBRA}`, 'editar-obra'],
   ]
   for (const [ruta, testid] of conFormulario) {

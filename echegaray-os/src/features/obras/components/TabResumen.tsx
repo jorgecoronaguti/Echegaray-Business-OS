@@ -55,7 +55,10 @@ export function alertasDeLaObra(
   if (abiertas.length > 0) {
     const vencidos = obra.restricciones_vencidas ?? 0
     a.push({
-      clave: 'impedimentos', tono: vencidos > 0 ? 'neg' : 'warn', vista: 'cronograma',
+      // A OPERACIÓN, que es donde se anotan y se liberan desde el 20/08. Una alerta que lleva a la
+      // pantalla donde el dato ya no se puede tocar es peor que no tener alerta: hace dar una vuelta
+      // entera para descubrir que hay que ir a otro lado.
+      clave: 'impedimentos', tono: vencidos > 0 ? 'neg' : 'warn', vista: 'operacion',
       texto: `${abiertas.length} impedimento${abiertas.length === 1 ? '' : 's'} sin resolver` +
         (vencidos > 0 ? ` · ${vencidos} con la fecha vencida` : ''),
     })

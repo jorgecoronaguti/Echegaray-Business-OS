@@ -28,7 +28,7 @@
 
 import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { BotonAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
+import { BotonAccion, type ResultadoAccion } from '@/shared/components/ui'
 import type { Actividad, Dependencia, Persona, Restriccion } from '../types'
 import { Gantt } from './Gantt'
 import { VistaProximos, type Ventana } from './VistaProximos'
@@ -44,6 +44,7 @@ const SUBVISTAS: { id: SubVista; label: string }[] = [
 
 export function TabCronograma({
   actividades,
+  obraId,
   archivadas = [],
   restricciones = [],
   dependencias = [],
@@ -51,8 +52,6 @@ export function TabCronograma({
   acciones,
   masivas,
   yaSellada = false,
-  crearImpedimento,
-  liberarImpedimento,
   restaurarActividad,
   sub,
   semanas,
@@ -61,6 +60,8 @@ export function TabCronograma({
 }: {
   /** El cronograma vivo: las NO archivadas, en el orden del tracker. */
   actividades: Actividad[]
+  /** Para poder mandar a Operación, donde se anotan y se liberan los impedimentos. */
+  obraId: string
   /** Las archivadas, para poder devolverlas. Si no se pasan, no se dibuja la lista. */
   archivadas?: Actividad[]
   restricciones?: Restriccion[]
@@ -72,8 +73,6 @@ export function TabCronograma({
    *  dibuja una sola casilla de selección, en vez de dibujar controles que no escriben. */
   masivas?: AccionesEnLote
   yaSellada?: boolean
-  crearImpedimento: AccionFormulario
-  liberarImpedimento: (restriccionId: string) => Promise<ResultadoAccion>
   /** `archivarActividad` atada a la obra: se la llama con `(id, false)` para restaurar. */
   restaurarActividad?: (actividadId: string, archivada: boolean) => Promise<ResultadoAccion>
   /** Query `sub`. Si no viene, la sub-vista se gobierna sola y no toca la URL. */
@@ -162,9 +161,8 @@ export function TabCronograma({
         <VistaProximos
           actividades={actividades}
           impedimentos={restricciones}
+          obraId={obraId}
           personas={personas}
-          crear={crearImpedimento}
-          liberar={liberarImpedimento}
           semanas={ventanaActual}
           alCambiarSemanas={cambiarSemanas}
           {...(hoy ? { hoy } : {})}

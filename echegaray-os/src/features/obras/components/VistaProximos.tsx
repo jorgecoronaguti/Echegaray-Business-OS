@@ -14,16 +14,12 @@
 // obligatorios en el formulario porque son obligatorios en la acción del servidor: si el formulario
 // los dejara pasar, el error volvería igual y la carga se perdería.
 
+import Link from 'next/link'
 import { useMemo, useState } from 'react'
-import {
-  BotonAccion, Callout, Campo, CTRL, FormAccion, SegmentedControl,
-  type AccionFormulario, type ResultadoAccion,
-} from '@/shared/components/ui'
+import { SegmentedControl } from '@/shared/components/ui'
 import { lookahead } from '../services/obrasService'
 import { ESTADO_LABEL, estadoDe } from '../services/cronograma'
-import {
-  TIPO_RESTRICCION, TIPO_RESTRICCION_LABEL, type Actividad, type Persona, type Restriccion,
-} from '../types'
+import type { Actividad, Persona, Restriccion } from '../types'
 import { fecha } from './formato'
 
 export type Ventana = '1' | '2' | '6'
@@ -44,14 +40,14 @@ const TONO_ESTADO: Record<string, string> = {
 }
 
 export function VistaProximos({
-  actividades, impedimentos, personas = [], crear, liberar, semanas, alCambiarSemanas,
+  actividades, impedimentos, obraId, personas = [], semanas, alCambiarSemanas,
   hoy = new Date(),
 }: {
   actividades: Actividad[]
   impedimentos: Restriccion[]
+  /** Para poder mandar a Operación, que es donde se anotan y se liberan desde el 20/08. */
+  obraId: string
   personas?: Persona[]
-  crear: AccionFormulario
-  liberar: (restriccionId: string) => Promise<ResultadoAccion>
   /** Controlada por el que la usa —así la ventana puede vivir en la URL—. Sin esto se gobierna sola. */
   semanas?: Ventana
   alCambiarSemanas?: (v: Ventana) => void
@@ -144,91 +140,46 @@ export function VistaProximos({
         )}
       </section>
 
-      <section>
-        <h2 className="mb-2 text-[13px] font-semibold text-ink">Impedimentos</h2>
-        {impedimentos.length === 0 ? (
-          <Callout tono="info">
-            No hay ningún impedimento cargado. En una obra en ejecución eso rara vez significa que no haya:
-            significa que nadie los anotó.
-          </Callout>
-        ) : relacionados.length === 0 ? (
+      {/* ═══ ACÁ VIVÍA EL ALTA DE IMPEDIMENTOS, Y SE MUDÓ A OPERACIÓN (20/08/2026) ═══
+          El dueño puso los cinco bloques de la ejecución diaria en una sola solapa —pedidos,
+          compras, herramientas, movimientos, impedimentos— y ahí el alta vive una sola vez. Lo que
+          queda acá es lo que esta pantalla sí necesita: cuáles de los que hay frenan lo que viene
+          en esta ventana. Dos formularios para el mismo dato en dos pantallas se contestan distinto
+          el día que a uno se le agregue un campo. */}
+      <section data-testid="impedimentos-de-la-ventana">
+        <h2 className="mb-2 text-[13px] font-semibold text-ink">Qué lo frena</h2>
+        {abiertos.length === 0 ? (
           <p className="text-[12px] text-faint">
-            Ninguno toca lo que viene en esta ventana. Hay {abiertos.length} sin resolver en otras actividades.
+            Ningún impedimento sin resolver.{' '}
+            <Link href={`/obras/${obraId}?vista=operacion&sub=impedimentos`} className="text-ink underline underline-offset-2">
+              Anotar uno
+            </Link>.
           </p>
         ) : (
-          <div className="overflow-x-auto rounded-card border border-line bg-surface">
-            <table data-testid="tabla-impedimentos" className="w-full min-w-[680px] text-left">
-              <thead><tr className="border-b border-line text-[10px] uppercase tracking-wide text-faint">
-                <th className="px-3 py-2 font-medium">Qué frena</th>
-                <th className="px-3 py-2 font-medium">Tipo</th>
-                <th className="px-3 py-2 font-medium">Responsable</th>
-                <th className="px-3 py-2 text-right font-medium">Compromiso</th>
-                <th className="px-3 py-2 text-right font-medium">Estado</th>
-              </tr></thead>
-              <tbody>
-                {relacionados.map((r) => {
-                  const liberado = r.estado === 'liberada'
-                  const vencido = !liberado && !!r.fecha_compromiso && r.fecha_compromiso < hoyIso
-                  const act = nombreDe(r.actividad_id)
-                  return (
-                    <tr key={r.id} className="border-b border-line/60 last:border-0">
-                      <td className="px-3 py-2 text-[12px] text-ink">
-                        {r.descripcion}
-                        <span className="block text-[11px] text-faint">{act ?? 'no frena una actividad en particular'}</span>
-                      </td>
-                      <td className="px-3 py-2 text-[12px] text-muted">{TIPO_RESTRICCION_LABEL[r.tipo] ?? r.tipo}</td>
-                      <td className="px-3 py-2 text-[12px] text-muted">{r.responsable ?? <span className="text-warn">sin responsable</span>}</td>
-                      <td className={`whitespace-nowrap px-3 py-2 text-right text-[12px] tabular-nums ${vencido ? 'font-medium text-neg' : 'text-muted'}`}>
-                        {fecha(r.fecha_compromiso)}{vencido && ' · vencido'}
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        {liberado
-                          ? <span className="text-[11px] uppercase text-faint">liberado</span>
-                          : <BotonAccion accion={liberar} args={[r.id]} testid="liberar-impedimento">Liberar</BotonAccion>}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+          <>
+            <ul className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface">
+              {relacionados.filter((r) => r.estado !== 'liberada').map((r) => {
+                const vencido = !!r.fecha_compromiso && r.fecha_compromiso < hoyIso
+                return (
+                  <li key={r.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-3 py-2 text-[12px]">
+                    <span className="min-w-0 flex-1 text-ink">{r.descripcion}</span>
+                    <span className="text-faint">{nombreDe(r.actividad_id) ?? 'sin actividad'}</span>
+                    <span className={`tabular-nums ${vencido ? 'font-medium text-neg' : 'text-muted'}`}>
+                      {fecha(r.fecha_compromiso)}{vencido && ' · vencido'}
+                    </span>
+                  </li>
+                )
+              })}
+            </ul>
+            <p className="mt-2 text-[12px] text-faint">
+              {relacionados.filter((r) => r.estado !== 'liberada').length} de {abiertos.length} sin
+              resolver tocan esta ventana.{' '}
+              <Link href={`/obras/${obraId}?vista=operacion&sub=impedimentos`} className="text-ink underline underline-offset-2">
+                Anotarlos y liberarlos en Operación
+              </Link>.
+            </p>
+          </>
         )}
-
-        {abiertos.length > 0 && relacionados.length > 0 && (
-          <p className="mt-2 text-[12px] text-faint">
-            {abiertos.length} sin resolver. Liberar uno lo marca resuelto con la fecha de hoy; la fila queda.
-          </p>
-        )}
-
-        <details className="mt-3 rounded-card border border-line bg-surface" data-testid="alta-impedimento">
-          <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-medium text-ink">Anotar un impedimento</summary>
-          <div className="border-t border-line p-4">
-            <FormAccion accion={crear} testid="form-impedimento" enviar="Anotar" limpiarAlOk mensajeOk="Impedimento anotado.">
-              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                <Campo label="Qué frena el trabajo" ancho="col-span-2 sm:col-span-4">
-                  <input name="descripcion" required minLength={3} maxLength={300} className={CTRL} placeholder="falta el plano de detalle del tanque" />
-                </Campo>
-                <Campo label="Tipo">
-                  <select name="tipo" required defaultValue="material" className={CTRL}>
-                    {TIPO_RESTRICCION.map((t) => <option key={t} value={t}>{TIPO_RESTRICCION_LABEL[t]}</option>)}
-                  </select>
-                </Campo>
-                <Campo label="Quién lo resuelve" ayuda="Con nombre: sin dueño no se resuelve solo.">
-                  <input name="responsable" required minLength={2} maxLength={120} className={CTRL} />
-                </Campo>
-                <Campo label="Para cuándo" ayuda="La fecha comprometida, no un deseo.">
-                  <input type="date" name="fecha_compromiso" required className={CTRL} />
-                </Campo>
-                <Campo label="Actividad que frena" ayuda="Opcional. Si se elige, la barra se marca en el Gantt.">
-                  <select name="actividad_id" defaultValue="" className={CTRL}>
-                    <option value="">ninguna en particular</option>
-                    {actividades.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
-                  </select>
-                </Campo>
-              </div>
-            </FormAccion>
-          </div>
-        </details>
       </section>
     </div>
   )

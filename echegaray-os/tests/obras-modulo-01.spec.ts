@@ -150,9 +150,19 @@ test('portafolio → obra → resumen · gantt · planificación · documentos',
   // Barras dibujadas de verdad: cada actividad con fecha es un <g> con su rect en el SVG.
   expect(await gantt.locator('svg g').count()).toBeGreaterThan(5)
 
-  // 5. PRÓXIMOS TRABAJOS — la otra vista del mismo cronograma, con sus impedimentos.
+  // 5. PRÓXIMOS TRABAJOS — la otra vista del mismo cronograma. Desde el 20/08 muestra QUÉ FRENA lo
+  //    que viene, sin formulario: el alta y la liberación viven en Operación › Impedimentos, que es
+  //    donde el dueño puso los cinco bloques de la ejecución diaria. Dos altas del mismo dato en dos
+  //    pantallas se contestan distinto el día que a una se le agregue un campo.
   await page.getByTestId('subvista-proximos').click()
   await page.waitForURL(/sub=proximos/)
+  await expect(page.getByTestId('impedimentos-de-la-ventana')).toBeVisible()
+  await expect(page.getByTestId('alta-impedimento'),
+    'el alta volvió a Cronograma: hay dos puertas para el mismo dato').toHaveCount(0)
+
+  // 5b. OPERACIÓN › IMPEDIMENTOS — la puerta única, con los cinco bloques a la vista.
+  await page.goto('/obras/san-francisco?vista=operacion&sub=impedimentos')
+  await expect(page.getByTestId('bloque-impedimentos')).toBeVisible()
   await expect(page.getByTestId('alta-impedimento')).toBeVisible()
 
   // 6. DOCUMENTOS — el vínculo a Drive, nunca una copia.

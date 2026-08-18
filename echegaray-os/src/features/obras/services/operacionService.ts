@@ -48,7 +48,12 @@ import {
 } from '../../../../orquestador/lib/obra-operacion.mjs'
 import type { ServiceResult } from '../types'
 
-export const SUBS_OPERACION = ['pedidos', 'compras', 'herramientas', 'movimientos'] as const
+// IMPEDIMENTOS ES EL QUINTO (20/08). El dueño puso los cinco bloques en Operación: *"PEDIDOS,
+// COMPRAS, HERRAMIENTAS, MOVIMIENTOS, IMPEDIMENTOS"*. Los cuatro primeros son LECTURA de fuentes que
+// viven afuera (el Sheet, el índice de herramientas); el quinto es el único que se escribe desde
+// acá, y por eso su lista no la arma `getOperacionObra` sino que ya venía cargada en la página —
+// `obra_restriccion` es una tabla del OS y la ficha la lee para todas sus solapas.
+export const SUBS_OPERACION = ['pedidos', 'compras', 'herramientas', 'movimientos', 'impedimentos'] as const
 export type SubOperacion = (typeof SUBS_OPERACION)[number]
 
 /** El diccionario `obra_alias` dado vuelta. Opaco a propósito: sólo lo entiende `obraDeTexto`. */

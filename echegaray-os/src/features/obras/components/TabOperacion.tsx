@@ -17,6 +17,9 @@ import type {
   HerramientaOperacion, MovimientoOperacion, PedidoOperacion,
 } from '../services/operacionService'
 import type { ComprasObra, SubOperacion } from '../services/operacionService'
+import { BloqueImpedimentos } from './BloqueImpedimentos'
+import { Callout, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
+import type { Actividad, Restriccion } from '../types'
 import { fecha, plata } from './formato'
 // LAS MISMAS PIEZAS QUE LA VISTA GLOBAL. Eran privadas de este archivo; se mudaron a `tablas.tsx`
 // cuando apareció `/obras/operacion`, para que las dos pantallas no se separen por copia.
@@ -27,6 +30,7 @@ const SUBS: { id: SubOperacion; label: string }[] = [
   { id: 'compras', label: 'Compras' },
   { id: 'herramientas', label: 'Herramientas' },
   { id: 'movimientos', label: 'Movimientos' },
+  { id: 'impedimentos', label: 'Impedimentos' },
 ]
 
 const cantidad = (n: number | null) => (n == null ? '—' : n.toLocaleString('es-AR', { maximumFractionDigits: 2 }))
@@ -138,14 +142,24 @@ function Movimientos({ movimientos }: { movimientos: MovimientoOperacion[] }) {
 }
 
 export function TabOperacion({
-  sub, obraId, pedidos, compras, herramientas, movimientos,
+  sub, obraId, errorFuente = null, pedidos, compras, herramientas, movimientos,
+  impedimentos, actividades, crearImpedimento, liberarImpedimento,
 }: {
   sub: SubOperacion
   obraId: string
+  /** Lo que dijo la fuente externa cuando no se pudo leer. `null` = se leyó bien. Sólo afecta a los
+   *  cuatro bloques que salen de ahí: los impedimentos son del OS y siguen funcionando. */
+  errorFuente?: string | null
   pedidos: PedidoOperacion[]
   compras: ComprasObra
   herramientas: HerramientaOperacion[]
   movimientos: MovimientoOperacion[]
+  /** TODOS los de la obra. Los cuatro bloques de arriba se leen; éste se escribe. */
+  impedimentos: Restriccion[]
+  /** Para poder colgar el impedimento de la actividad que frena. */
+  actividades: Actividad[]
+  crearImpedimento: AccionFormulario
+  liberarImpedimento: (restriccionId: string) => Promise<ResultadoAccion>
 }) {
   const cuenta: Record<SubOperacion, number> = {
     pedidos: pedidos.length,
@@ -153,6 +167,11 @@ export function TabOperacion({
     compras: compras.nComprobantes ?? compras.filas.length,
     herramientas: herramientas.length,
     movimientos: movimientos.length,
+    // EL CONTADOR DE IMPEDIMENTOS CUENTA LOS ABIERTOS, no el total: los otros cuatro cuentan filas
+    // porque una fila de compra o de pedido no se «cierra», y un impedimento liberado ya no frena
+    // nada. Publicar el total pondría un número que sube para siempre al lado de cuatro que
+    // describen trabajo pendiente.
+    impedimentos: impedimentos.filter((r) => r.estado !== 'liberada').length,
   }
 
   return (
@@ -179,10 +198,24 @@ export function TabOperacion({
         </div>
       </nav>
 
-      {sub === 'pedidos' && <Pedidos pedidos={pedidos} />}
-      {sub === 'compras' && <Compras compras={compras} />}
-      {sub === 'herramientas' && <Herramientas herramientas={herramientas} />}
-      {sub === 'movimientos' && <Movimientos movimientos={movimientos} />}
+      {/* CUATRO LISTAS VACÍAS NO SON «no hay nada»: son «no pude leer». Se dice cuál es, y se dice
+          sólo sobre los bloques que dependen de esa fuente — Impedimentos sale de Postgres y no se
+          entera de que el Sheet está caído. */}
+      {errorFuente && sub !== 'impedimentos' && (
+        <Callout tono="neg">No pude leer esta información de su fuente: {errorFuente}</Callout>
+      )}
+      {!errorFuente && sub === 'pedidos' && <Pedidos pedidos={pedidos} />}
+      {!errorFuente && sub === 'compras' && <Compras compras={compras} />}
+      {!errorFuente && sub === 'herramientas' && <Herramientas herramientas={herramientas} />}
+      {!errorFuente && sub === 'movimientos' && <Movimientos movimientos={movimientos} />}
+      {sub === 'impedimentos' && (
+        <BloqueImpedimentos
+          impedimentos={impedimentos}
+          actividades={actividades}
+          crear={crearImpedimento}
+          liberar={liberarImpedimento}
+        />
+      )}
     </div>
   )
 }

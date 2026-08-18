@@ -137,10 +137,14 @@ test('Personal: imputar horas llega a Postgres y vuelve a la pantalla', async ({
   }
 })
 
-test('Operación reúne las cuatro vistas en una sola solapa', async ({ page }) => {
+// CINCO DESDE EL 20/08: el dueño puso IMPEDIMENTOS junto a los otros cuatro, porque es lo que la
+// obra necesita para ejecutarse cada día. Los cuatro primeros se leen de una fuente externa; el
+// quinto es el único que se escribe, y por eso además tiene su propio recorrido en
+// `obras-ejecucion.spec.ts` —anotarlo, verlo en la base y liberarlo—.
+test('Operación reúne las cinco vistas en una sola solapa', async ({ page }) => {
   test.setTimeout(120000)
   await entrar(page)
-  for (const sub of ['pedidos', 'compras', 'herramientas', 'movimientos']) {
+  for (const sub of ['pedidos', 'compras', 'herramientas', 'movimientos', 'impedimentos']) {
     const r = await page.goto(`/obras/${OBRA}?vista=operacion&sub=${sub}`)
     expect(r?.status(), `Operación/${sub} contesta ${r?.status()}`).toBeLessThan(400)
     expect(await page.content(), `Operación/${sub} rompió`).not.toContain('Application error')

@@ -23,6 +23,7 @@
 import { BotonAccion, Callout, Campo, CTRL, FormAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
 import type { DocumentoObra, TipoDrive } from '../types'
 import { etiquetaDeTipo, urlDeDrive } from '../services/driveUrl'
+import { CATEGORIAS_SUGERIDAS, porCategoria } from '../services/documentosCategoria'
 
 /** El formulario de alta, plegado. Dos: uno por tipo, porque un id pelado no dice cuál es. */
 function Vincular({
@@ -70,7 +71,10 @@ function Vincular({
               <input name="nombre" maxLength={300} className={CTRL} />
             </Campo>
             <Campo label="Qué es" ayuda="Contrato, plano, acta…">
-              <input name="rol" maxLength={120} className={CTRL} />
+              <input name="rol" maxLength={120} list="categorias-documento-obra" className={CTRL} />
+              <datalist id="categorias-documento-obra">
+                {CATEGORIAS_SUGERIDAS.map((c) => <option key={c} value={c} />)}
+              </datalist>
             </Campo>
           </div>
         </FormAccion>
@@ -99,10 +103,15 @@ export function TabDocumentos({
         <Callout tono="neutral">
           Todavía no hay ningún documento vinculado a esta obra.
         </Callout>
-      ) : (
-        // `overflow-x-auto` con `min-w` en la tabla: el que desborda en 390px es este recuadro, no
-        // la página. Mismo recurso que las tablas de Personal y Economía.
-        <div className="overflow-x-auto rounded-xl border border-line bg-white">
+      ) : porCategoria(documentos).map(({ categoria, docs }) => (
+        <section key={categoria} data-testid="categoria-documentos" data-categoria={categoria}>
+          <h2 className="mb-1.5 flex items-baseline gap-2 text-[11px] font-medium uppercase tracking-wide text-faint">
+            {categoria}
+            <span className="tabular-nums">{docs.length}</span>
+          </h2>
+          {/* `overflow-x-auto` con `min-w` en la tabla: el que desborda en 390px es este recuadro,
+              no la página. Mismo recurso que las tablas de Personal y Economía. */}
+          <div className="overflow-x-auto rounded-xl border border-line bg-white">
           <table data-testid="tabla-documentos" className="w-full min-w-[520px] text-left">
             <thead>
               <tr className="border-b border-line text-[10px] uppercase tracking-wide text-faint">
@@ -113,7 +122,7 @@ export function TabDocumentos({
               </tr>
             </thead>
             <tbody>
-              {documentos.map((d) => (
+              {docs.map((d) => (
                 <tr key={d.drive_file_id} className="border-b border-line/60 last:border-0">
                   <td className="max-w-[280px] px-4 py-2.5">
                     <a
@@ -127,7 +136,6 @@ export function TabDocumentos({
                           sería peor que feo. */}
                       {d.name ?? d.drive_file_id}
                     </a>
-                    {d.rol && <span className="block truncate text-[11px] text-faint">{d.rol}</span>}
                     {d.path && <span className="block truncate text-[11px] text-faint">{d.path}</span>}
                   </td>
                   <td className="px-3 py-2.5 text-[12px] text-muted">
@@ -151,7 +159,8 @@ export function TabDocumentos({
             </tbody>
           </table>
         </div>
-      )}
+        </section>
+      ))}
 
       {carpetaDriveId ? (
         <a

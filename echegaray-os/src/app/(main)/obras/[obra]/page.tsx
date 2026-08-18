@@ -158,7 +158,14 @@ export default async function ObraPage({
   const documentos = vista === 'documentos' ? (await getDocumentos(supabase, obraId)).data ?? [] : []
   // Operación trae sus cuatro listas de una sola vez: las cuatro se atan a la obra por el MISMO
   // puente (`obra_alias`), así que resolverlo cuatro veces sería resolverlo cuatro veces mal.
-  const operacion = vista === 'operacion' ? (await getOperacionObra(supabase, obraId)).data : null
+  // LAS CUATRO LISTAS Y LOS IMPEDIMENTOS NO COMPARTEN DESTINO (20/08/2026). Pedidos, compras,
+  // herramientas y movimientos salen de una fuente externa por el puente de alias; si esa fuente
+  // falla, las cuatro fallan juntas —y eso está bien, porque media pantalla llena se leería como
+  // «esta obra no tiene movimientos»—. Los impedimentos son una tabla del OS y no tienen NADA que
+  // ver con ese puente: hasta hoy se escondían con las otras cuatro, así que un problema del Sheet
+  // dejaba a la obra sin poder anotar qué la está frenando.
+  const opRes = vista === 'operacion' ? await getOperacionObra(supabase, obraId) : null
+  const operacion = opRes?.data ?? null
   const subOp: SubOperacion = SUBS_OPERACION.find((x) => x === sub) ?? 'pedidos'
 
   // ═══ EL CONTEXTO: DÓNDE ESTOY, DE QUIÉN ES ═══
@@ -238,6 +245,7 @@ export default async function ObraPage({
 
       {vista === 'cronograma' && (
         <TabCronograma
+          obraId={obraId}
           sub={sub === 'proximos' ? 'proximos' : 'gantt'}
           semanas={semanas === '1' || semanas === '6' ? semanas : '2'}
           actividadAbierta={act ?? null}
@@ -265,8 +273,6 @@ export default async function ObraPage({
             baseline: sellarBaselineMasivo.bind(null, obraId),
           }}
           restaurarActividad={archivarActividad.bind(null, obraId)}
-          crearImpedimento={crearImpedimento.bind(null, obraId)}
-          liberarImpedimento={liberarImpedimento.bind(null, obraId)}
         />
       )}
 
@@ -284,14 +290,23 @@ export default async function ObraPage({
         />
       )}
 
-      {vista === 'operacion' && operacion && (
+      {vista === 'operacion' && (
         <TabOperacion
           sub={subOp}
           obraId={obraId}
-          pedidos={operacion.pedidos}
-          compras={operacion.compras}
-          herramientas={operacion.herramientas}
-          movimientos={operacion.movimientos}
+          errorFuente={opRes?.error ?? null}
+          pedidos={operacion?.pedidos ?? []}
+          compras={operacion?.compras ?? { filas: [], total: null, nComprobantes: null, completo: false }}
+          herramientas={operacion?.herramientas ?? []}
+          movimientos={operacion?.movimientos ?? []}
+          impedimentos={restr}
+          actividades={acts}
+          // `.bind(null, obraId)` Y NO UNA ARROW. Una arrow escrita acá es una función NUEVA
+          // creada en el servidor, no la acción: React la rechaza en tiempo de ejecución con
+          // «Functions cannot be passed directly to Client Components» y la solapa queda en blanco.
+          // Ni el typecheck ni el build lo ven —las firmas son idénticas—; sólo el navegador.
+          crearImpedimento={crearImpedimento.bind(null, obraId)}
+          liberarImpedimento={liberarImpedimento.bind(null, obraId)}
         />
       )}
 
