@@ -100,10 +100,10 @@ export default async function ObraPage({
   params, searchParams,
 }: {
   params: Promise<{ obra: string }>
-  searchParams: Promise<{ vista?: string; sub?: string; semanas?: string; act?: string }>
+  searchParams: Promise<{ vista?: string; sub?: string; semanas?: string }>
 }) {
   const { obra: obraId } = await params
-  const { vista: vistaRaw, sub, semanas, act } = await searchParams
+  const { vista: vistaRaw, sub, semanas } = await searchParams
   const vista = resolverVista(vistaRaw)
 
   const supabase = await createClient()
@@ -199,7 +199,6 @@ export default async function ObraPage({
           obraId={obraId}
           sub={sub === 'proximos' ? 'proximos' : 'gantt'}
           semanas={semanas === '1' || semanas === '2' || semanas === '6' ? Number(semanas) as 1 | 2 | 6 : 2}
-          actividadAbierta={act ?? null}
           actividades={acts}
           archivadas={archivadas}
           restricciones={restr}

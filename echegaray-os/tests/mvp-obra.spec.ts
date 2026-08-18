@@ -165,3 +165,52 @@ test('en el teléfono el workspace de obra no se desplaza de costado', async ({ 
     expect(doc, `?vista=${vista} mide ${doc}px en una pantalla de ${win}px`).toBeLessThanOrEqual(win)
   }
 })
+
+// ═══ DOCUMENTOS: EL VÍNCULO A DRIVE, DE PUNTA A PUNTA ═══
+//
+// La solapa decía textualmente *"Todavía no se puede vincular un documento a la obra desde acá"*.
+// `obra_documento` existía con su RLS desde el módulo 01 y no tenía UN SOLO escritor. Ahora tiene
+// action, parser de URL y las cuatro policies separadas por comando.
+//
+// NO SE COPIA EL ARCHIVO: se guarda el vínculo. Por eso el test comprueba el `drive_file_id`, no un
+// contenido — y por eso pega una URL de Drive de verdad, con el formato que da el botón Compartir.
+test('Documentos: vincular un archivo de Drive llega a Postgres y vuelve a la pantalla', async ({ page }) => {
+  test.setTimeout(180000)
+  const sb = admin()
+  const fileId = 'ZZE2E' + '1cJ8hjIzHwGHfW9obhIq9eh'
+  await sb.from('obra_documento').delete().eq('obra_id', OBRA).eq('drive_file_id', fileId)
+
+  try {
+    await entrar(page)
+    await page.goto(`/obras/${OBRA}?vista=documentos`)
+
+    // Lo que NO es de Drive se rechaza ANTES de tocar la base: un id mal extraído no falla al
+    // guardar — entra, la pantalla dice "vinculado" y el 404 aparece semanas después.
+    await page.getByTestId('vincular-archivo').click()
+    await page.fill('input[name="enlace"]', 'https://www.dropbox.com/s/abc123/Contrato.pdf')
+    await page.getByTestId('vincular-archivo').getByRole('button', { name: /Vincular/ }).click()
+    await expect(page.getByText(/no es un enlace de Drive|Drive/i).first()).toBeVisible({ timeout: 15000 })
+    const { count: tras } = await sb.from('obra_documento')
+      .select('obra_id', { count: 'exact', head: true }).eq('drive_file_id', fileId)
+    expect(tras, 'una URL que no es de Drive llegó a escribir en la base').toBe(0)
+
+    // Y ahora la buena.
+    await page.fill('input[name="enlace"]', `https://drive.google.com/file/d/${fileId}/view?usp=sharing`)
+    await page.fill('input[name="nombre"]', `${MARCA} Contrato.pdf`)
+    await page.getByTestId('vincular-archivo').getByRole('button', { name: /Vincular/ }).click()
+
+    const { data } = await sb.from('obra_documento')
+      .select('obra_id, drive_file_id, tipo, origen').eq('drive_file_id', fileId).single()
+    const fila = laFila(data, 'el vínculo del documento recién creado')
+    expect(fila.obra_id).toBe(OBRA)
+    expect(fila.tipo).toBe('archivo')
+
+    await page.reload()
+    await expect(page.getByText(`${MARCA} Contrato.pdf`)).toBeVisible()
+  } finally {
+    await sb.from('obra_documento').delete().eq('drive_file_id', fileId)
+    const { count } = await sb.from('obra_documento')
+      .select('obra_id', { count: 'exact', head: true }).eq('drive_file_id', fileId)
+    expect(count, 'quedó un vínculo de prueba en los documentos de la obra').toBe(0)
+  }
+})
