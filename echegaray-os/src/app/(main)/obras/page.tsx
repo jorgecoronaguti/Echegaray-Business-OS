@@ -103,14 +103,30 @@ function Avance({ pct, medidas, total }: { pct: number | null; medidas: number; 
   )
 }
 
-export default async function ObrasPage() {
+export default async function ObrasPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ archivadas?: string }>
+}) {
+  const { archivadas: verArchivadas } = await searchParams
+  const conArchivadas = verArchivadas === '1'
+
   const supabase = await createClient()
   const [{ data, error }, { data: planes }] = await Promise.all([
     getPortafolio(supabase),
     getPlanVsRealPortafolio(supabase),
   ])
-  const obras = data ?? []
+  const todas = data ?? []
   const porObra = new Map((planes ?? []).map((p) => [p.obra_id, p]))
+
+  // ARCHIVADA = `cerrada`. La obra terminada sale de la cartera; la `pausada` NO — sigue siendo un
+  // compromiso abierto aunque hoy no avance, y esconderla sería esconder trabajo pendiente.
+  //
+  // El filtro se aplica ACÁ y no en la consulta a propósito: `getPortafolio` es la misma lectura que
+  // usa el resto del OS, y una obra que desaparece de la fuente desaparece también de los totales.
+  // Lo que cambia es qué se muestra, nunca qué existe.
+  const archivadas = todas.filter((o) => o.estado === 'cerrada')
+  const obras = conArchivadas ? todas : todas.filter((o) => o.estado !== 'cerrada')
   const activas = obras.filter((o) => o.estado === 'activa')
 
   return (
@@ -121,8 +137,12 @@ export default async function ObrasPage() {
     >
       {error && <Callout tono="neg">No pude leer el portafolio: {error}</Callout>}
 
-      {!error && obras.length === 0 && (
+      {!error && todas.length === 0 && (
         <Callout tono="info">Todavía no hay obras cargadas en el eje canónico.</Callout>
+      )}
+
+      {!error && todas.length > 0 && obras.length === 0 && (
+        <Callout tono="info">Todas las obras están archivadas.</Callout>
       )}
 
       {obras.length > 0 && (
@@ -184,6 +204,25 @@ export default async function ObrasPage() {
       {obras.some((o) => o.monto_contratado == null) && (
         <p className="mt-3 text-[12px] text-faint">
           Las obras sin monto contratado no lo tienen cargado en ninguna fuente del OS — no es que valgan cero.
+        </p>
+      )}
+
+      {/* LA PUERTA DE VUELTA. Una obra archivada no tiene que ser una obra perdida: el conteo dice
+          cuántas hay y el enlace las trae. Sin esto, archivar sería indistinguible de borrar para
+          quien mira la pantalla — que es la única prueba que le importa al que la usa. */}
+      {archivadas.length > 0 && (
+        <p className="mt-3 text-[12px] text-faint" data-testid="pie-archivadas">
+          {conArchivadas ? (
+            <>
+              Se muestran también {archivadas.length} obra{archivadas.length === 1 ? '' : 's'} archivada{archivadas.length === 1 ? '' : 's'}.{' '}
+              <Link href="/obras" className="text-ink underline underline-offset-2">Ocultarlas</Link>.
+            </>
+          ) : (
+            <>
+              {archivadas.length} obra{archivadas.length === 1 ? '' : 's'} archivada{archivadas.length === 1 ? '' : 's'} fuera de esta lista.{' '}
+              <Link href="/obras?archivadas=1" className="text-ink underline underline-offset-2" data-testid="ver-archivadas">Verlas</Link>.
+            </>
+          )}
         </p>
       )}
     </PageShell>

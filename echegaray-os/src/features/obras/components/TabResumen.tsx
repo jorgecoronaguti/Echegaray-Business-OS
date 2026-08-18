@@ -78,7 +78,7 @@ export function alertasDeLaObra(
 }
 
 export function TabResumen({
-  obra, plan, abiertas, obraId, editar,
+  obra, plan, abiertas, obraId, editar, archivar,
 }: {
   obra: ObraPanel
   plan: PlanVsReal | null
@@ -86,6 +86,8 @@ export function TabResumen({
   obraId: string
   /** El bloque de edición, que la página arma con su action atada a esta obra. */
   editar: React.ReactNode
+  /** Archivar o reactivar. Va al pie y no arriba: es la acción menos frecuente de la ficha. */
+  archivar?: React.ReactNode
 }) {
   const alertas = alertasDeLaObra(obra, plan, abiertas)
 
@@ -177,6 +179,8 @@ export function TabResumen({
       </section>
 
       {editar}
+
+      {archivar}
     </div>
   )
 }

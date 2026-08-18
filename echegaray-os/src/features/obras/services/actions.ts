@@ -107,6 +107,39 @@ export async function editarObra(obraId: string, form: FormData): Promise<Result
   return { ok: true }
 }
 
+/**
+ * ARCHIVAR LA OBRA — sacarla de la cartera sin perder un solo dato.
+ *
+ * ═══ POR QUÉ NO HAY COLUMNA `archivada` ═══
+ *
+ * `obra_actividad` archiva con una columna booleana porque una actividad no tiene ciclo de vida
+ * propio. Una obra sí lo tiene, y ya vive en `estado`: `activa` es la que se trabaja, `pausada` la
+ * que sigue en la cartera aunque hoy no avance, y `cerrada` la que terminó. Agregar `archivada` al
+ * lado de `estado` crearía DOS respuestas a la misma pregunta —una obra `cerrada` y no `archivada`,
+ * ¿está en la cartera?— y el OS no admite dos versiones del mismo concepto.
+ *
+ * Por eso archivar ES cerrar: la obra `cerrada` desaparece del portafolio y de la ficha del cliente,
+ * sigue entrando por su URL, y se restaura con el mismo botón.
+ *
+ * ═══ LO QUE ESTA ACCIÓN NO RECUERDA ═══
+ *
+ * Restaurar devuelve la obra a `activa`, aunque antes estuviera `pausada`: no hay dónde guardar el
+ * estado anterior y no se inventa uno. Es una pérdida chica y declarada; la alternativa era una
+ * columna más para un caso que todavía no se dio.
+ *
+ * NO BORRA NADA. El cronograma, las HH, los costos imputados y los certificados quedan enteros, y
+ * las vistas que suman por obra los siguen contando: el cliente sigue mostrando lo que esa obra
+ * costó. Archivar cambia dónde se ve, nunca qué pasó.
+ */
+export async function archivarObra(obraId: string, archivar: boolean): Promise<Resultado> {
+  const supabase = await createClient()
+  const { error } = await supabase.from('obra_canonica')
+    .update({ estado: archivar ? 'cerrada' : 'activa' }).eq('id', obraId)
+  if (error) return { ok: false, error: error.message }
+  revalidatePath(`/obras/${obraId}`); revalidatePath('/obras'); revalidatePath('/clientes', 'layout')
+  return { ok: true }
+}
+
 // ── ACTIVIDADES DEL CRONOGRAMA ───────────────────────────────────────────────
 
 const actividadSchema = z.object({
