@@ -46,6 +46,23 @@ export const RUTAS_PUBLICAS = [
   '/api/os', // el proxy que consume la extensión, con su propia autorización
   '/echegaray-os-extension.zip', // el archivo que descarga la landing pública: sin él, /descargar
                                  // renderiza 200 y su único botón manda al login
+  // ═══ LA MARCA (18/08/2026) ═══
+  //
+  // El logo y el isotipo viven en `public/marca/`. El matcher del middleware sólo exceptúa
+  // `_next/static`, así que TODO archivo de `public/` pasa por el guard de sesión — y el guard,
+  // correctamente, lo mandaba al login. Efecto: la pantalla de login, que por definición no tiene
+  // sesión, pedía su propio logo y recibía un 307 al login. Medido con curl:
+  //
+  //     /marca/logo.png → 307 text/plain 15b
+  //
+  // El typecheck y el build daban VERDE los dos: un 307 en una imagen no es un error de tipos ni de
+  // compilación. Se vio mirando la captura, que es para lo que existe mirar la captura.
+  //
+  // Va como entrada de la lista BLANCA y no relajando el matcher: exceptuar "todo archivo con
+  // extensión" abriría de una vez cualquier cosa que alguien deje caer en `public/` mañana, que es
+  // exactamente el modo de fallar de una lista negra.
+  '/marca', // el logotipo y el isotipo — la pantalla de login los necesita sin sesión
+  '/icon.png', // el favicon que genera Next desde src/app/icon.png
 ]
 export function esRutaPublica(pathname: string): boolean {
   return RUTAS_PUBLICAS.some((r) => pathname === r || pathname.startsWith(r + '/'))

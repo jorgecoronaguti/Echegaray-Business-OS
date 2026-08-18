@@ -49,6 +49,28 @@ test('la navegación tiene DOS áreas y ninguna categoría interna del OS', asyn
   expect(alto, `el header mide ${alto}px: volvió a ser de dos filas`).toBeLessThanOrEqual(56)
 })
 
+// ═══ EL LOGO TIENE QUE CARGAR SIN SESIÓN (18/08/2026) ═══
+//
+// La pantalla de login pide su propio logo y por definición no tiene sesión. El guard de sesión
+// —lista blanca— no tenía a `/marca`, así que devolvía un 307 al login: la primera pantalla del
+// sistema mostraba el ícono de imagen rota. Typecheck y build daban VERDE los dos, porque un 307 en
+// una imagen no es un error de tipos ni de compilación. Se vio mirando la captura.
+test('la marca carga sin sesión: es lo primero que se ve', async ({ page }) => {
+  test.setTimeout(120000)
+  for (const archivo of ['/marca/logo.png', '/marca/isotipo.png']) {
+    const r = await page.request.get(archivo)
+    expect(r.status(), `${archivo} no se sirve sin sesión`).toBe(200)
+    expect(r.headers()['content-type'], `${archivo} no es una imagen`).toContain('image')
+    expect((await r.body()).length, `${archivo} llegó vacío`).toBeGreaterThan(2000)
+  }
+  // Y en la pantalla: una imagen rota tiene naturalWidth 0 aunque el <img> exista.
+  await page.goto('/login')
+  const logo = page.getByAltText('Echegaray Construcciones')
+  await expect(logo).toBeVisible()
+  expect(await logo.evaluate((el: HTMLImageElement) => el.naturalWidth),
+    'el logo está en el DOM pero no cargó').toBeGreaterThan(0)
+})
+
 test('las rutas retiradas de la navegación SIGUEN respondiendo', async ({ page }) => {
   test.setTimeout(180000)
   await entrarComo(page, EMAIL, PASSWORD)
