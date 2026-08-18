@@ -14,8 +14,10 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { PageShell } from '@/shared/components/ui'
+import { plata } from '@/features/obras/components/formato'
 import { BarraFiltros, SelectFiltro } from '@/features/administracion/components/BarraFiltros'
-import { ColaNombres } from '@/features/administracion/components/ColaNombres'
+import { NombresResueltos, TablaNombres } from '@/features/administracion/components/TablaNombres'
+import { PanelNombre } from '@/features/administracion/components/PanelNombre'
 import { PanelProveedor } from '@/features/administracion/components/PanelProveedor'
 import { TablaProveedores } from '@/features/administracion/components/TablaProveedores'
 import {
@@ -36,7 +38,7 @@ const ACTIVOS: { valor: FiltroActivo; etiqueta: string }[] = [
   { valor: 'todos', etiqueta: 'Todos' },
 ]
 
-type Busqueda = { q?: string; activo?: string; p?: string; vista?: string }
+type Busqueda = { q?: string; activo?: string; p?: string; vista?: string; n?: string; bq?: string }
 
 function armarHref(base: Busqueda, cambios: Partial<Busqueda> = {}): string {
   const v = { ...base, ...cambios }
@@ -45,6 +47,8 @@ function armarHref(base: Busqueda, cambios: Partial<Busqueda> = {}): string {
   if (v.activo) params.set('activo', v.activo)
   if (v.vista) params.set('vista', v.vista)
   if (v.p) params.set('p', v.p)
+  if (v.n) params.set('n', v.n)
+  if (v.bq) params.set('bq', v.bq)
   const qs = params.toString()
   return `/administracion/proveedores${qs ? `?${qs}` : ''}`
 }
@@ -71,11 +75,11 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
   const activo = (ACTIVOS.find((a) => a.valor === sp.activo)?.valor ?? 'activos') as FiltroActivo
   const supabase = await createClient()
 
-  // El maestro se lee siempre: la cola necesita la lista completa de proveedores activos para poder
-  // ofrecerlos como destino de una vinculación.
-  const [listado, activosParaVincular] = await Promise.all([
+  // El maestro se lee siempre. Los CANDIDATOS de la cola se leen con el término del panel: la
+  // vinculación se elige buscando, no recorriendo una lista entera de proveedores.
+  const [listado, candidatos] = await Promise.all([
     getProveedores(supabase, { q: sp.q, activo }),
-    getProveedores(supabase, { activo: 'activos' }),
+    getProveedores(supabase, { q: sp.bq, activo: 'activos' }),
   ])
 
   if (listado.error) {
@@ -102,6 +106,8 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
     ? await Promise.all([getNombresPendientes(supabase), getNombresResueltos(supabase)])
     : [null, null]
 
+  const cola = pendientes?.data ?? []
+  const nombreAbierto = sp.n ? cola.find((n) => n.nombre_norm === sp.n) : undefined
   const panelAbierto = abrirAlta || seleccionado !== null
 
   return (
@@ -114,7 +120,7 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
         <Pestana href={armarHref(sp, { vista: undefined })} activa={vista === 'maestro'} testid="vista-maestro">
           Proveedores
         </Pestana>
-        <Pestana href={armarHref(sp, { vista: 'resolver', p: undefined })} activa={vista === 'resolver'} testid="vista-resolver">
+        <Pestana href={armarHref(sp, { vista: 'resolver', p: undefined, q: undefined })} activa={vista === 'resolver'} testid="vista-resolver">
           Nombres sin asignar
         </Pestana>
       </nav>
@@ -178,20 +184,41 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
                     </p>
                   )
                 : (
-                    <ColaNombres
-                      pendientes={pendientes?.data ?? []}
-                      resueltos={resueltos?.data ?? []}
-                      proveedores={activosParaVincular.data ?? []}
-                      vincular={vincularNombre}
-                      crearYVincular={crearYVincular}
-                      noEsProveedor={marcarNoEsProveedor}
-                      deshacer={deshacerResolucion}
-                    />
+                    <>
+                      <p className="mb-2 px-1 text-[12px] text-muted" data-testid="cola-total">
+                        {cola.length} {cola.length === 1 ? 'nombre' : 'nombres'} sin proveedor ·{' '}
+                        {cola.reduce((a, n) => a + n.comprobantes, 0)} comprobantes ·{' '}
+                        {plata(cola.reduce((a, n) => a + Number(n.total ?? 0), 0))}
+                      </p>
+                      <div className="flex flex-col overflow-hidden rounded-xl border border-line bg-white lg:flex-row">
+                        <div className="min-w-0 flex-1">
+                          <TablaNombres
+                            pendientes={cola}
+                            seleccionado={nombreAbierto?.nombre_norm}
+                            hrefDe={(n) => armarHref(sp, { n, bq: undefined })}
+                          />
+                        </div>
+                        {nombreAbierto && (
+                          <PanelNombre
+                            nombre={nombreAbierto}
+                            candidatos={candidatos.data ?? []}
+                            busqueda={sp.bq}
+                            accionBuscar="/administracion/proveedores"
+                            camposBuscar={{ vista: 'resolver', n: nombreAbierto.nombre_norm }}
+                            cerrarHref={armarHref(sp, { n: undefined, bq: undefined })}
+                            vincular={vincularNombre}
+                            crearYVincular={crearYVincular}
+                            noEsProveedor={marcarNoEsProveedor}
+                          />
+                        )}
+                      </div>
+                      <NombresResueltos resueltos={resueltos?.data ?? []} deshacer={deshacerResolucion} />
+                    </>
                   )}
               <p className="mt-3 px-1 text-[11px] text-faint">
                 Estos nombres vienen de la columna de proveedor de Compras, que es texto libre. El OS
-                no los vincula solo: sólo reconoce el nombre escrito exactamente igual. El resto lo
-                decide una persona.
+                no los vincula solo: sólo reconoce el nombre escrito exactamente igual — nunca por
+                parecido. Resolver uno resuelve sus N comprobantes de una vez.
               </p>
             </>
           )}
