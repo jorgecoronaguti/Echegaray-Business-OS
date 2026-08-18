@@ -152,3 +152,61 @@ test('sin sesión, las tablas de Operación no devuelven una sola fila', async (
     expect(r.status, `${tabla} contesta ${r.status} sin sesión`).toBe(401)
   }
 })
+
+// ═══ LO COMERCIAL NO SALE DE POSTGRES PARA EL NIVEL OBRAS (19/08/2026) ═══
+//
+// El dueño, textual: *"«Contratado» sólo puede verlo Administración. **No alcanza con ocultar la
+// columna. El dato no debe viajar al usuario Obras desde query/API/server component.**"*
+//
+// Por eso este test NO abre el navegador ni mira la tabla: le pregunta a PostgREST con el token del
+// jefe de obra —que es lo que puede hacer cualquiera con las devtools abiertas— y exige que la
+// columna venga NULL. Un test que mirara la pantalla se pondría verde con el dato viajando en el
+// payload del server component.
+//
+// Y CARGA UN VALOR PARA MEDIR. Hoy las ocho obras tienen `monto_contratado` nulo: sin escribir uno,
+// el test no distingue "enmascarado" de "no hay dato" y pasaría con la protección rota. Se escribe,
+// se mide, se revierte — y se verifica que quedó revertido.
+test('el monto contratado NO llega al nivel Obras: se enmascara en la base, no en la pantalla', async () => {
+  test.setTimeout(120000)
+  const admin = createClient(URL, SRV, { auth: { persistSession: false } })
+  const OBRA_DEL_JEFE = 'san-francisco'
+  const CENTINELA = 123456789
+
+  const { data: antes } = await admin.from('obra_canonica')
+    .select('monto_contratado').eq('id', OBRA_DEL_JEFE).single()
+  const original = antes?.monto_contratado ?? null
+
+  try {
+    await admin.from('obra_canonica').update({ monto_contratado: CENTINELA }).eq('id', OBRA_DEL_JEFE)
+
+    const jefe = await entrar(JEFE.email, JEFE.password)
+    const deJefe = await comoUsuario(jefe,
+      `obra_panel?select=obra_id,monto_contratado,costo_real&obra_id=eq.${OBRA_DEL_JEFE}`) as Array<Record<string, unknown>>
+    expect(deJefe.length, 'el jefe no ve su propia obra: el escenario no mide nada').toBe(1)
+    expect(deJefe[0].monto_contratado,
+      'EL MONTO CONTRATADO LLEGÓ AL NIVEL OBRAS desde la API — la máscara de obra_panel se rompió').toBeNull()
+    // El caso positivo: el costo real SÍ tiene que llegar. Sin esto, un `select` que devolviera todo
+    // en null —una vista rota— pasaría como si estuviera bien protegida.
+    expect(deJefe[0].costo_real, 'el jefe tampoco ve el costo real de su obra: se enmascaró de más').not.toBeNull()
+
+    // Y la contraparte: Administración SÍ lo recibe. Si no, la máscara está apagando a todos y el
+    // test de arriba no prueba nada.
+    const adm = await entrar(ADMIN.email, ADMIN.password)
+    const deAdmin = await comoUsuario(adm,
+      `obra_panel?select=monto_contratado&obra_id=eq.${OBRA_DEL_JEFE}`) as Array<Record<string, unknown>>
+    expect(Number(deAdmin[0].monto_contratado), 'Administración no recibe el contratado').toBe(CENTINELA)
+
+    // Lo mismo en la otra vista comercial: certificación, cobranza y margen.
+    const plan = await comoUsuario(jefe,
+      `obra_plan_vs_real?select=monto_contratado,certificado,facturado,cobrado,margen_actual,margen_esperado,hh_real&obra_id=eq.${OBRA_DEL_JEFE}`) as Array<Record<string, unknown>>
+    for (const col of ['monto_contratado', 'certificado', 'facturado', 'cobrado', 'margen_actual', 'margen_esperado']) {
+      expect(plan[0][col], `obra_plan_vs_real.${col} llegó al nivel Obras`).toBeNull()
+    }
+  } finally {
+    await admin.from('obra_canonica').update({ monto_contratado: original }).eq('id', OBRA_DEL_JEFE)
+    const { data: despues } = await admin.from('obra_canonica')
+      .select('monto_contratado').eq('id', OBRA_DEL_JEFE).single()
+    expect(despues?.monto_contratado ?? null,
+      'quedó el centinela del test escrito en el contrato de una obra real').toBe(original)
+  }
+})

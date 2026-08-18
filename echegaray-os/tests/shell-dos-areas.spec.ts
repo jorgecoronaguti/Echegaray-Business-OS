@@ -25,7 +25,7 @@ test('la navegación tiene DOS áreas y ninguna categoría interna del OS', asyn
 
   const header = page.getByTestId('app-header')
   await expect(header).toBeVisible()
-  await expect(header.getByTestId('marca')).toHaveText('ECHEGARAY')
+  await expect(header.getByTestId('marca')).toContainText('ECHEGARAY')
 
   // Las dos áreas, y sólo esas dos.
   const nav = page.getByTestId('nav-areas')

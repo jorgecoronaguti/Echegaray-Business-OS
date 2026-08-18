@@ -1,8 +1,16 @@
 // 01 OBRAS · PORTAFOLIO — la cartera entera en una pantalla.
 //
-// Cada columna contesta una pregunta y ninguna está de adorno: en qué etapa está la obra, cuánto
-// lleva ejecutado, cuánto costó hasta hoy, y qué la está frenando. Sin tarjetas de colores, sin
-// gráficos de torta y sin KPIs que nadie mira: la lista ES el tablero.
+// Cada columna contesta una pregunta y ninguna está de adorno. El dueño sacó tres el 19/08 —Margen,
+// Estado e Impedimentos— y la razón es la misma para las tres: no se decide nada mirándolas ACÁ.
+// El margen y los impedimentos se miran DENTRO de la obra, con su detalle al lado; el estado ya no
+// hace falta desde que archivar tiene efecto y una obra cerrada directamente no está en la lista.
+// Nueve columnas obligaban a desplazar la tabla de costado en cualquier pantalla.
+//
+// LO COMERCIAL DEPENDE DEL ROL, Y NO POR LA PANTALLA. «Contratado» sólo lo ve Administración, y el
+// filtro NO es este `esAdmin`: el dato ya viene en NULL desde `obra_panel`, que lo enmascara en
+// Postgres (ver `20260819T0400_economia_comercial_solo_administracion.sql`). Acá sólo se evita
+// dibujar una columna de guiones. Si esta condición se borrara por accidente, un jefe de obra vería
+// una columna vacía — no el número.
 //
 // FUENTE: la vista `obra_panel`, que sale de `obra_canonica` cruzada con `obra_costo_real`. NO se
 // lee `public.obras` legacy — era la tabla con 4 obras pausadas que hacía que la web dijera "0 obras
@@ -14,6 +22,8 @@ import { getPortafolio, getPlanVsRealPortafolio } from '@/features/obras/service
 import { ETAPA_LABEL, type ObraPanel, type PlanVsReal } from '@/features/obras/types'
 import { fecha, plata } from '@/features/obras/components/formato'
 import { PageShell, Callout } from '@/shared/components/ui'
+import { getPerfilActual } from '@/features/auth/services/authService'
+import { esAdministracion } from '@/features/auth/types/areas'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,20 +55,6 @@ function Plazo({ p }: { p: PlanVsReal | undefined }) {
   )
 }
 
-function Margen({ p }: { p: PlanVsReal | undefined }) {
-  if (p?.margen_actual != null) {
-    return (
-      <span className={`text-[12px] tabular-nums ${p.margen_actual < 0 ? 'font-semibold text-neg' : 'text-ink'}`}>
-        {plata(p.margen_actual)}
-      </span>
-    )
-  }
-  return (
-    <span className="text-[11px] leading-snug text-faint">
-      {p?.monto_contratado == null ? 'falta el contratado' : 'falta el costo imputado'}
-    </span>
-  )
-}
 
 /** La etapa se lee de un vistazo por su posición en la línea, no por un color arbitrario. */
 function Etapa({ etapa }: { etapa: ObraPanel['etapa'] }) {
@@ -112,6 +108,10 @@ export default async function ObrasPage({
   const conArchivadas = verArchivadas === '1'
 
   const supabase = await createClient()
+  // El nivel del usuario decide si se DIBUJA la columna comercial. El dato ya viene enmascarado de
+  // Postgres; esto sólo evita una columna de guiones. Falla al nivel MENOS privilegiado.
+  const perfil = await getPerfilActual(supabase)
+  const esAdmin = esAdministracion(perfil.data?.rol ?? null)
   const [{ data, error }, { data: planes }] = await Promise.all([
     getPortafolio(supabase),
     getPlanVsRealPortafolio(supabase),
@@ -150,24 +150,21 @@ export default async function ObrasPage({
         // contratado, costo real, actividades y restricciones — todo lo que esta pantalla existe
         // para mostrar, y sin manera de llegar a ellos. Con `overflow-x-auto` se desplaza y no se
         // pierde una sola columna.
-        <div className="overflow-x-auto rounded-xl border border-line bg-white">
-          <table data-testid="portafolio-tabla" className="w-full min-w-[960px] text-left">
+        <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+          <table data-testid="portafolio-tabla" className="w-full min-w-[720px] text-left">
             <thead>
               <tr className="border-b border-line text-[10px] uppercase tracking-wide text-faint">
                 <th className="px-4 py-2.5 font-medium">Obra / Cliente</th>
                 <th className="px-3 py-2.5 font-medium">Etapa</th>
                 <th className="px-3 py-2.5 font-medium">Avance</th>
                 <th className="px-3 py-2.5 font-medium">Plazo</th>
-                <th className="px-3 py-2.5 text-right font-medium">Contratado</th>
+                {esAdmin && <th className="px-3 py-2.5 text-right font-medium">Contratado</th>}
                 <th className="px-3 py-2.5 text-right font-medium">Costo real</th>
-                <th className="px-3 py-2.5 text-right font-medium">Margen</th>
-                <th className="px-3 py-2.5 font-medium">Estado</th>
-                <th className="px-3 py-2.5 text-center font-medium">Impedim.</th>
               </tr>
             </thead>
             <tbody>
               {obras.map((o) => (
-                <tr key={o.obra_id} className="border-b border-line/60 last:border-0 hover:bg-sky-50/50">
+                <tr key={o.obra_id} className="border-b border-line/60 last:border-0 hover:bg-surface-quiet">
                   <td className="px-4 py-2.5">
                     <Link href={`/obras/${o.obra_id}`} className="block">
                       <span className="text-[13px] font-semibold text-ink hover:underline">{o.nombre}</span>
@@ -181,17 +178,10 @@ export default async function ObrasPage({
                   <td className="px-3 py-2.5"><Etapa etapa={o.etapa} /></td>
                   <td className="px-3 py-2.5"><Avance pct={o.avance_pct} medidas={o.n_actividades_medidas} total={o.n_actividades} /></td>
                   <td className="px-3 py-2.5"><Plazo p={porObra.get(o.obra_id)} /></td>
-                  <td className="px-3 py-2.5 text-right text-[12px] tabular-nums text-muted">{plata(o.monto_contratado)}</td>
+                  {esAdmin && (
+                    <td className="px-3 py-2.5 text-right text-[12px] tabular-nums text-muted">{plata(o.monto_contratado)}</td>
+                  )}
                   <td className="px-3 py-2.5 text-right text-[12px] tabular-nums text-ink">{plata(o.costo_real)}</td>
-                  <td className="px-3 py-2.5 text-right"><Margen p={porObra.get(o.obra_id)} /></td>
-                  <td className="px-3 py-2.5 text-[12px] text-muted">{o.estado}</td>
-                  <td className="px-3 py-2.5 text-center text-[12px] tabular-nums">
-                    {o.restricciones_abiertas === 0
-                      ? <span className="text-faint">—</span>
-                      : <span className={o.restricciones_vencidas > 0 ? 'font-semibold text-amber-700' : 'text-muted'}>
-                          {o.restricciones_abiertas}{o.restricciones_vencidas > 0 ? ` · ${o.restricciones_vencidas} vencidas` : ''}
-                        </span>}
-                  </td>
                 </tr>
               ))}
             </tbody>
