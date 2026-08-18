@@ -212,6 +212,77 @@ test('el rojo del Gantt señala trabajo pendiente, no un calendario vencido', as
   }
 })
 
+/**
+ * UNA SOLA DEFINICIÓN DE ETAPA — LA MISMA EN LAS TRES PUNTAS.
+ *
+ * El dueño (20/08), textual: *"La etapa mostrada debe ser EXACTAMENTE la misma que aparece en
+ * /obras Resumen"* · *"NO crear una segunda definición de etapa"* · *"etapa Resumen = etapa Gantt
+ * global = etapa fuente canónica"*.
+ *
+ * El defecto que atrapa no rompe nada: las dos pantallas abren, las dos muestran una etapa creíble,
+ * y el typecheck pasa. Lo que falla es que una diga «Desarrollo» y la otra «Terminación» de la
+ * misma obra — y eso sólo se ve comparando LAS TRES a la vez. Por eso se lee primero la fuente
+ * (`obra_panel`, con la sesión), y recién después se le exige a cada pantalla que coincida con ella.
+ *
+ * Se compara contra el VALOR CRUDO (`data-etapa`), no contra el rótulo: si alguien cambiara el
+ * texto de `ETAPA_LABEL`, este test no tiene por qué ponerse rojo. Lo que no puede cambiar es de
+ * qué columna sale.
+ */
+test('la etapa del Gantt global es la del Resumen y la de la fuente canónica', async ({ page }) => {
+  test.setTimeout(120_000)
+  const sb = await conBase()
+  try {
+    const { data, error } = await sb.from('obra_panel').select('obra_id, nombre, etapa, estado')
+    expect(error?.message ?? null, 'obra_panel tiene que poder leerse con la sesión de prueba').toBeNull()
+    const enLaBase = (data ?? []).filter((o) => o.estado !== 'cerrada')
+    expect(enLaBase.length, 'sin obras en la base este test no prueba nada').toBeGreaterThan(0)
+    // Al menos UNA con etapa declarada: si todas fueran null, «coinciden» se cumpliría por vacío.
+    expect(enLaBase.filter((o) => o.etapa).length,
+      'ninguna obra tiene etapa declarada: la comparación pasaría por vacío').toBeGreaterThan(0)
+
+    // Sin etapa declarada las DOS pantallas escriben lo mismo, con esas palabras: es el texto que
+    // el dueño pidió y es lo que impide que un default se cuele como estado del ciclo de vida.
+    const rotulo = (etapa: string | null) => (etapa
+      ? { previo: 'Previo', inicio: 'Inicio', desarrollo: 'Desarrollo', terminacion: 'Terminación', cierre: 'Cierre' }[etapa]!
+      : 'etapa sin declarar')
+
+    await entrar(page)
+
+    // ── EL GANTT GLOBAL ────────────────────────────────────────────────────────────────────────
+    await page.goto('/obras/gantt')
+    await expect(page.getByTestId('gantt-obras')).toBeVisible({ timeout: 30_000 })
+    for (const o of enLaBase) {
+      const renglon = page.locator(`${RENGLON}[data-obra="${o.obra_id}"]`)
+      await expect(renglon, `${o.nombre} no está en el Gantt global`).toHaveCount(1)
+      // El VALOR CRUDO: es lo que prueba de qué columna sale. Y el rótulo en el `title`, que es lo
+      // que se lee — las dos cosas, porque el crudo puede estar bien y el texto igual mentir.
+      await expect(
+        renglon,
+        `${o.nombre}: el Gantt muestra una etapa que no es la de obra_panel`,
+      ).toHaveAttribute('data-etapa', (o.etapa as string | null) ?? '')
+      await expect(
+        renglon,
+        `${o.nombre}: el renglón del Gantt no dice la etapa en palabras`,
+      ).toHaveAttribute('title', new RegExp(rotulo(o.etapa as string | null)))
+    }
+
+    // ── Y EL RESUMEN, CONTRA LA MISMA FUENTE ───────────────────────────────────────────────────
+    //
+    // Se compara cada pantalla contra `obra_panel`, no una contra la otra: dos pantallas que leen
+    // la misma columna equivocada coincidirían perfectamente entre ellas.
+    await page.goto('/obras')
+    await expect(page.getByTestId('portafolio-tabla')).toBeVisible({ timeout: 30_000 })
+    for (const o of enLaBase) {
+      const fila = page.locator(`[data-obra="${o.obra_id}"]`)
+      await expect(fila, `${o.nombre} no está en el Resumen`).toHaveCount(1)
+      await expect(fila, `${o.nombre}: el Resumen no dice la etapa de obra_panel`)
+        .toContainText(rotulo(o.etapa as string | null))
+    }
+  } finally {
+    await sb.auth.signOut()
+  }
+})
+
 test('el Gantt global no empuja la página de costado en el teléfono', async ({ page }) => {
   // El Gantt es más ancho que un teléfono por definición. Lo que no puede pasar es que arrastre la
   // PÁGINA: el desplazamiento tiene que quedar adentro del contenedor del cronograma.

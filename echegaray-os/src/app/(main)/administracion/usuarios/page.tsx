@@ -98,7 +98,10 @@ export default async function UsuariosPage() {
       {lista.error ? (
         <Callout tono="neg">No pude leer las cuentas: {lista.error}</Callout>
       ) : (
-        <UsuariosManager usuarios={lista.data ?? []} obras={obras} actorId={usuario.id} />
+        <UsuariosManager
+          usuarios={lista.data ?? []} obras={obras}
+          actorId={usuario.id} rolActor={perfil.data?.rol ?? null}
+        />
       )}
     </PageShell>
   )

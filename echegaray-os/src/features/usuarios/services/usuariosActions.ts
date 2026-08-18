@@ -50,11 +50,18 @@ import type { Rol } from '@/features/auth/types'
 import { esAdministracion } from '@/features/auth/types/areas'
 import type { UsuarioGestion } from '../types'
 import { administradoresActivos, listarUsuarios } from './usuariosService'
-import { motivoParaNoCambiarRol, motivoParaNoDesactivar, ROLES_VALIDOS, type CuentaEnJuego } from './reglas'
+import {
+  motivoParaNoCambiarRol, motivoParaNoDesactivar, motivoParaNoRegenerarClave, ROLES_VALIDOS,
+  type CuentaEnJuego,
+} from './reglas'
 
 export type Resultado = { ok: true; id?: string } | { ok: false; error: string }
 /** El alta devuelve la clave temporal UNA vez: no se guarda en ningún lado ni se puede volver a ver. */
 export type ResultadoAlta = { ok: boolean; error?: string; email?: string; clave?: string }
+/** La regeneración devuelve lo mismo que el alta: una clave que se ve una vez y no se guarda. */
+export type ResultadoClave =
+  | { ok: true; email: string; clave: string; sinAcceso: boolean }
+  | { ok: false; error: string }
 
 const PATH = '/administracion/usuarios'
 
@@ -62,19 +69,34 @@ type Puerta =
   | { ok: true; admin: SupabaseClient; sesion: SupabaseClient; actorId: string }
   | { ok: false; error: string }
 
-/** QUIÉN LLAMA SE RESUELVE DESDE LA SESIÓN. `getUser()` valida el token contra el servidor de auth;
- *  `getSession()` se conformaría con lo que traiga la cookie. */
-async function soloAdministracion(): Promise<Puerta> {
+/**
+ * QUIÉN LLAMA SE RESUELVE DESDE LA SESIÓN. `getUser()` valida el token contra el servidor de auth;
+ * `getSession()` se conformaría con lo que traiga la cookie.
+ *
+ * DOS ALTURAS, UNA SOLA PUERTA. Casi todo exige el NIVEL Administración (`direccion` +
+ * `administracion`); regenerar una contraseña exige `direccion` a secas, porque quien pone una
+ * clave puede entrar con ella — el porqué completo está en `reglas.ts`. Se resuelve en la misma
+ * función a propósito: dos funciones que leen la sesión por su cuenta se desincronizan el día que
+ * una empiece a mirar algo que la otra no.
+ */
+async function puertaDe(exige: 'administracion' | 'direccion'): Promise<Puerta> {
   const sesion = await createClient()
   const { data } = await sesion.auth.getUser()
   if (!data.user) return { ok: false, error: 'Tenés que iniciar sesión.' }
   const { data: perfil } = await sesion.from('perfiles').select('rol').eq('id', data.user.id).maybeSingle()
+  const rol = perfil?.rol as Rol | undefined
   // Sin perfil legible se niega: el modo de fallar de un default permisivo es repartir accesos.
-  if (!esAdministracion(perfil?.rol as Rol | undefined)) {
+  if (exige === 'direccion') {
+    const motivo = motivoParaNoRegenerarClave(rol)
+    if (motivo) return { ok: false, error: motivo }
+  } else if (!esAdministracion(rol)) {
     return { ok: false, error: 'Sólo Administración puede gestionar los usuarios.' }
   }
   return { ok: true, admin: createAdminClient(), sesion, actorId: data.user.id }
 }
+
+const soloAdministracion = () => puertaDe('administracion')
+const soloDireccion = () => puertaDe('direccion')
 
 /** El contexto de las reglas: qué rol tiene hoy el objetivo y cuántos administradores quedan. */
 async function cuentaEnJuego(
@@ -147,6 +169,42 @@ export async function crearUsuario(_previo: ResultadoAlta, form: FormData): Prom
 
   revalidatePath(PATH)
   return { ok: true, email, clave }
+}
+
+// ── CONTRASEÑA ──────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * LE PONE UNA CLAVE NUEVA A UNA CUENTA QUE YA EXISTE, y la devuelve UNA vez.
+ *
+ * Existe porque hasta hoy no había ninguna forma de destrabar a alguien que perdió la suya: el
+ * «olvidé mi contraseña» de Supabase manda un mail y este proyecto no tiene SMTP, así que el mail
+ * se manda y no llega nunca. El único camino era entrar a Supabase a mano.
+ *
+ * `usuarioId` VIENE DEL NAVEGADOR Y NO SE LE CREE NADA: no decide el permiso —eso lo resolvió
+ * `soloDireccion()` contra la cookie— y sólo dice a quién aplicarlo. Es exactamente el mismo trato
+ * que reciben `cambiarRol` y `cambiarAcceso`.
+ *
+ * LA CLAVE NO SE GUARDA NI SE REGISTRA: se genera, viaja al que la pidió y se olvida. No hay
+ * `console.log` en este camino ni lo puede haber — un log de servidor con contraseñas adentro es
+ * una filtración que nadie mira hasta que alguien la mira.
+ */
+export async function regenerarClave(usuarioId: string): Promise<ResultadoClave> {
+  const puerta = await soloDireccion()
+  if (!puerta.ok) return { ok: false, error: puerta.error }
+
+  const contexto = await cuentaEnJuego(puerta.admin, puerta.actorId, usuarioId)
+  if (!contexto) return { ok: false, error: 'No encontré esa cuenta.' }
+  const { usuario } = contexto
+  if (!usuario.email) return { ok: false, error: 'Esa cuenta no tiene correo: no hay con qué entrar.' }
+
+  const clave = claveTemporal()
+  const { error } = await puerta.admin.auth.admin.updateUserById(usuarioId, { password: clave })
+  if (error) return { ok: false, error: `No pude cambiar la clave: ${error.message}` }
+
+  revalidatePath(PATH)
+  // UNA CLAVE NUEVA NO DEVUELVE EL ACCESO, y hay que decirlo donde se lee la clave: entregarla sin
+  // aclarar que la cuenta está bloqueada manda a la persona a probar tres veces y a llamar.
+  return { ok: true, email: usuario.email, clave, sinAcceso: usuario.estado !== 'activo' }
 }
 
 // ── EDICIÓN ─────────────────────────────────────────────────────────────────────────────────────

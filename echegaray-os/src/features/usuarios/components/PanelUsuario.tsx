@@ -14,12 +14,73 @@
 // nombre de la tabla no le sirve a nadie que use esta pantalla, y al que sí le sirve lo tiene en el
 // código.
 
+import { useState, useTransition } from 'react'
 import { BotonAccion, Campo, CTRL, FormAccion } from '@/shared/components/ui'
-import { ROL_LABEL } from '@/features/auth/types'
+import { ROL_LABEL, type Rol } from '@/features/auth/types'
 import { AREA_LABEL } from '@/features/auth/types/areas'
-import { ROLES_DE_AREA } from '../services/reglas'
-import { asignarObra, cambiarAcceso, cambiarRol, editarUsuario, quitarObra } from '../services/usuariosActions'
+import { motivoParaNoRegenerarClave, ROLES_DE_AREA } from '../services/reglas'
+import {
+  asignarObra, cambiarAcceso, cambiarRol, editarUsuario, quitarObra, regenerarClave,
+  type ResultadoClave,
+} from '../services/usuariosActions'
 import { permisosEfectivos, type ObraElegible, type UsuarioGestion } from '../types'
+import { Credencial } from './Credencial'
+
+/**
+ * CONTRASEÑA — la única forma de destrabar a alguien que perdió la suya.
+ *
+ * Sin SMTP configurado, el «olvidé mi contraseña» de Supabase manda un mail que no llega nunca. Sin
+ * este botón, el único camino era entrar a Supabase a mano.
+ *
+ * EL BOTÓN SE ESCONDE PARA QUIEN NO PUEDE, Y ESO NO ES LA CERRADURA: la acción del servidor vuelve
+ * a preguntar quién llama contra la cookie. Acá se esconde para no ofrecer algo que va a fallar —un
+ * botón que rebota es peor que uno que no está—, y se dice POR QUÉ en vez de dejar un hueco mudo.
+ */
+function Contrasena({ u, rolActor }: { u: UsuarioGestion; rolActor: Rol | null }) {
+  const impedimento = motivoParaNoRegenerarClave(rolActor)
+  const [resultado, setResultado] = useState<ResultadoClave | null>(null)
+  const [enCurso, empezar] = useTransition()
+
+  return (
+    <section data-testid="panel-contrasena">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-faint">Contraseña</p>
+      {impedimento ? (
+        <p className="mt-1.5 text-[12px] text-muted" data-testid="clave-sin-permiso">{impedimento}</p>
+      ) : (
+        <>
+          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={enCurso}
+              data-testid="regenerar-clave"
+              onClick={() => empezar(async () => setResultado(await regenerarClave(u.id)))}
+              className="rounded-control border border-line bg-surface px-3 py-1.5 text-[13px] text-ink hover:bg-surface-sunken disabled:opacity-50"
+            >
+              {enCurso ? 'Generando…' : 'Regenerar contraseña'}
+            </button>
+            <span className="text-[11px] text-faint">La de ahora deja de servir.</span>
+          </div>
+          {resultado && !resultado.ok && (
+            <p className="mt-1.5 text-[12px] text-neg" data-testid="error-clave">{resultado.error}</p>
+          )}
+          {resultado?.ok && (
+            <div className="mt-2">
+              <Credencial
+                email={resultado.email}
+                clave={resultado.clave}
+                testid="credencial-regenerada"
+                titulo="Contraseña nueva. Pasale estos datos:"
+                aviso={resultado.sinAcceso
+                  ? 'Ojo: esta cuenta no tiene acceso. La clave nueva no le va a servir hasta que se lo devuelvas acá abajo.'
+                  : null}
+              />
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  )
+}
 
 function SelectorDeRol({ valor }: { valor: string }) {
   return (
@@ -101,12 +162,14 @@ function ObrasDeLaCuenta({ u, obras }: { u: UsuarioGestion; obras: ObraElegible[
 }
 
 export function PanelUsuario({
-  usuario, obras, esUnoMismo, alCerrar,
+  usuario, obras, esUnoMismo, rolActor, alCerrar,
 }: {
   usuario: UsuarioGestion
   obras: ObraElegible[]
   /** La propia cuenta del que está mirando: no se puede cambiar el rol ni sacarse el acceso. */
   esUnoMismo: boolean
+  /** El rol del que MIRA, no el de la fila. Sólo Dirección regenera contraseñas. */
+  rolActor: Rol | null
   alCerrar: () => void
 }) {
   const u = usuario
@@ -174,6 +237,8 @@ export function PanelUsuario({
         </section>
 
         <ObrasDeLaCuenta u={u} obras={obras} />
+
+        <Contrasena u={u} rolActor={rolActor} />
 
         <section>
           <p className="text-[11px] font-medium uppercase tracking-wide text-faint">Acceso</p>

@@ -46,6 +46,7 @@ import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
 import { construirEscala, type Escala } from '../services/escala'
 import { UMBRAL_ATRASO, ventana, type Barra, type FilaObra, type Semaforo } from '../services/ganttObras'
+import { ETAPA_LABEL } from '../types'
 
 const ALTO_FILA = 30
 
@@ -72,8 +73,11 @@ const hrefDe = (obraId: string) => `/obras/${obraId}?vista=cronograma`
 const fmtCorto = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
 
 /** El resumen de una obra en texto, para el `title` del renglón y para los lectores de pantalla. */
+const etapaDe = (f: FilaObra) => (f.etapa ? ETAPA_LABEL[f.etapa] : 'etapa sin declarar')
+
 function resumen(f: FilaObra): string {
-  if (!f.barra) return `${f.nombre}: ${f.motivo}`
+  const quien = `${f.nombre}${f.clienteNombre ? ` · ${f.clienteNombre}` : ''} · ${etapaDe(f)}`
+  if (!f.barra) return `${quien}: ${f.motivo}`
   const b = f.barra
   const base = b.base ? ` · línea base ${fmtCorto(b.base.inicio)} → ${fmtCorto(b.base.fin)}` : ' · sin línea base sellada'
   const av = b.avancePct == null ? ' · sin avance publicado' : ` · avance ${b.avancePct}%`
@@ -87,7 +91,7 @@ function resumen(f: FilaObra): string {
       + (d.brechaPuntos > 0
           ? ` — ${d.brechaPuntos} puntos, unos ${d.atrasoDias} día${d.atrasoDias === 1 ? '' : 's'} de trabajo (estimado)`
           : '')
-  return `${f.nombre}: plan ${fmtCorto(b.inicio)} → ${fmtCorto(b.fin)}${base}${av}${estado}`
+  return `${quien}: plan ${fmtCorto(b.inicio)} → ${fmtCorto(b.fin)}${base}${av}${estado}`
 }
 
 /**
@@ -122,19 +126,41 @@ function Leyenda({ hayBase, estados }: { hayBase: boolean, estados: Set<Semaforo
   )
 }
 
-/** El renglón de la columna fija: nombre y avance. Es un enlace de verdad — funciona con teclado,
- *  se puede abrir en otra pestaña, y no depende de que el JavaScript haya cargado. */
+/**
+ * EL RENGLÓN DE LA COLUMNA FIJA: obra · cliente · etapa · avance.
+ *
+ * El dueño (20/08): *"Cada fila debe permitir ver: OBRA · CLIENTE · ETAPA · BARRA TEMPORAL ·
+ * AVANCE"*. Cliente y etapa NO se calculan acá: vienen en la misma fila de `obra_plan_vs_real` que
+ * trae las fechas, que es la misma que alimenta el Resumen.
+ *
+ * TODO EL RENGLÓN ES UN ENLACE A LA OBRA, y por eso el cliente NO es un segundo enlace acá adentro:
+ * un `<a>` dentro de otro `<a>` es marcado inválido y el navegador lo desarma solo. La puerta a la
+ * ficha CRM del cliente está en el Resumen, que es la vista que existe para eso; acá el cliente es
+ * el dato que dice de quién es la barra. En pantallas angostas se oculta —la obra y su barra son lo
+ * que no puede faltar— y sigue estando en el `title` para lectores de pantalla.
+ */
 function Renglon({ f }: { f: FilaObra }) {
   return (
     <Link
       href={hrefDe(f.obraId)}
       data-testid="obra-gantt"
       data-obra={f.obraId}
+      data-etapa={f.etapa ?? ''}
       title={resumen(f)}
       style={{ height: ALTO_FILA }}
       className="flex w-full items-center gap-2 border-b border-line/60 px-3 hover:bg-surface-sunken"
     >
       <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink">{f.nombre}</span>
+      <span className="hidden min-w-0 flex-1 truncate text-[11.5px] text-muted sm:inline" data-testid="cliente-gantt">
+        {f.clienteNombre ?? '—'}
+      </span>
+      {/* «etapa sin declarar» EN GRIS Y CON ESAS PALABRAS: es el mismo texto que usa el Resumen.
+          Poner un default como «Desarrollo» presentaría un dato fabricado como estado del ciclo de
+          vida de una obra real. */}
+      <span
+        className={`hidden w-[86px] shrink-0 truncate text-[11.5px] sm:inline ${f.etapa ? 'text-muted' : 'text-faint'}`}
+        data-testid="etapa-gantt"
+      >{etapaDe(f)}</span>
       {/* LA BRECHA EN NÚMERO, AL LADO DEL AVANCE. El color solo ordena la atención pero no dice
           cuánto: con «47% −39» se ve de un vistazo que la obra debería ir por 86, sin pasar el
           mouse por encima ni abrir la ficha. Sólo aparece cuando hay atraso. */}
@@ -230,9 +256,11 @@ export function GanttObras({ filas, hoyIso }: { filas: FilaObra[], hoyIso: strin
       <div className="relative max-h-[72vh] overflow-auto overscroll-x-contain">
         <div className="flex w-max">
           {/* ── COLUMNA FIJA: las obras ────────────────────────────────────────── */}
-          <div className="sticky left-0 z-20 w-[148px] shrink-0 border-r border-line bg-surface sm:w-[280px]">
+          <div className="sticky left-0 z-20 w-[148px] shrink-0 border-r border-line bg-surface sm:w-[420px]">
             <div className="sticky top-0 z-10 flex h-11 items-end gap-2 border-b border-line bg-surface px-3 pb-1.5 text-[10px] font-medium uppercase tracking-wide text-faint">
               <span className="flex-1">Obra</span>
+              <span className="hidden flex-1 sm:inline">Cliente</span>
+              <span className="hidden w-[86px] shrink-0 sm:inline">Etapa</span>
               <span className="shrink-0">Avance</span>
             </div>
             {filas.map((f) => <Renglon key={f.obraId} f={f} />)}

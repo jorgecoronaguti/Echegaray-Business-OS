@@ -25,7 +25,7 @@
 // obra no tiene barra" se prueban con `node --test`, sin navegador y sin base.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { ServiceResult } from '../types'
+import type { Etapa, ServiceResult } from '../types'
 
 /**
  * LO QUE EL GANTT GLOBAL NECESITA DE CADA OBRA. Es un subconjunto declarado de `PlanVsReal`, no un
@@ -34,6 +34,10 @@ import type { ServiceResult } from '../types'
 export interface PlazoObra {
   obra_id: string
   nombre: string
+  /** El cliente de la obra, ya resuelto por `obra_panel` (ficha si la hay, texto si no). */
+  cliente_nombre: string | null
+  /** La etapa CANÓNICA, la misma columna que lee el Resumen. `null` = sin declarar. */
+  etapa: Etapa | null
   estado: string
   inicio_plan: string | null
   fin_plan: string | null
@@ -44,9 +48,24 @@ export interface PlazoObra {
   n_actividades: number
 }
 
-/** La lista literal que se le pide a PostgREST. Sin una sola columna de plata. */
+/**
+ * La lista literal que se le pide a PostgREST. Sin una sola columna de plata.
+ *
+ * `etapa` y `cliente_nombre` ENTRAN POR ACÁ Y NO POR UNA SEGUNDA CONSULTA (20/08). El dueño:
+ * *"La etapa mostrada debe ser EXACTAMENTE la misma que aparece en /obras Resumen"* · *"NO crear
+ * una segunda definición de etapa"*. Las dos pantallas cuelgan de `obra_panel` —el Resumen directo,
+ * el Gantt a través de `obra_plan_vs_real`—, así que es la misma columna de la misma fila: no hay
+ * dos definiciones que puedan separarse, ni siquiera si mañana alguien cambia cómo se calcula.
+ *
+ * NO SE PIDE `cliente_slug`, y no es un olvido: `obra_plan_vs_real` no lo publica —lo publica
+ * `obra_panel`, que es de donde lo toma el Resumen—, y acá no hace falta porque en el Gantt el
+ * cliente NO es un enlace: el renglón entero ya es un enlace a la obra y un `<a>` dentro de otro
+ * `<a>` es marcado que el navegador desarma solo. La puerta a la ficha CRM está en el Resumen.
+ * Pedirlo igual costaba una migración sobre la vista de la que cuelga el plazo de todo el módulo.
+ */
 export const COLUMNAS_PLAZO =
-  'obra_id,nombre,estado,inicio_plan,fin_plan,inicio_base,fin_base,avance_pct,desvio_plazo_dias,n_actividades'
+  'obra_id,nombre,cliente_nombre,etapa,estado,'
+  + 'inicio_plan,fin_plan,inicio_base,fin_base,avance_pct,desvio_plazo_dias,n_actividades'
 
 /**
  * EL PLAZO DE CADA OBRA VISIBLE. Qué obras vuelven NO lo decide esta función: lo decide el RLS de
@@ -170,6 +189,8 @@ export interface Barra {
 export interface FilaObra {
   obraId: string
   nombre: string
+  clienteNombre: string | null
+  etapa: Etapa | null
   avancePct: number | null
   desvioPlazoDias: number | null
   barra: Barra | null
@@ -227,6 +248,8 @@ export function filasDeObras(obras: PlazoObra[], hoyIso: string, incluirArchivad
       return {
         obraId: o.obra_id,
         nombre: o.nombre,
+        clienteNombre: o.cliente_nombre,
+        etapa: o.etapa,
         avancePct: o.avance_pct,
         desvioPlazoDias: o.desvio_plazo_dias,
         barra,

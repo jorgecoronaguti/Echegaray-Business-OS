@@ -22,6 +22,8 @@ import { filasDeObras, ventana, COLUMNAS_PLAZO, UMBRAL_ATRASO, type PlazoObra } 
 const HOY = '2026-08-18'
 
 const obra = (p: Partial<PlazoObra> & { obra_id: string, nombre: string }): PlazoObra => ({
+  cliente_nombre: null,
+  etapa: null,
   estado: 'activa',
   inicio_plan: null,
   fin_plan: null,
@@ -166,6 +168,31 @@ test('la regla es pura: el mismo dato en dos días distintos da dos estados dist
   assert.equal(filasDeObras([laObra], '2026-08-16')[0].barra!.desvio.semaforo, 'al_dia')
   // Doce días después el calendario pide 90% y sigue en 50: el estado cambió sin tocar la base.
   assert.equal(filasDeObras([laObra], '2026-08-28')[0].barra!.desvio.semaforo, 'atraso_critico')
+})
+
+test('la etapa y el cliente llegan a la fila tal cual vienen de la vista', () => {
+  // EL DEFECTO QUE ATRAPA es el que el dueño prohibió explícitamente: *"NO crear una segunda
+  // definición de etapa"*. Si alguien derivara la etapa acá —del avance, de las fechas, de un
+  // default— el Gantt diría una etapa y el Resumen otra, y las dos parecerían correctas.
+  const filas = filasDeObras([
+    obra({ obra_id: 'comedor', nombre: 'Comedor', cliente_nombre: 'La Estrella', etapa: 'terminacion', inicio_plan: '2026-07-09', fin_plan: '2026-08-04', avance_pct: 93, n_actividades: 35 }),
+    obra({ obra_id: 'arcor', nombre: 'ARCOR', cliente_nombre: 'ARCOR' }),
+  ], HOY)
+
+  const comedor = filas.find((f) => f.obraId === 'comedor')!
+  assert.equal(comedor.etapa, 'terminacion')
+  assert.equal(comedor.clienteNombre, 'La Estrella')
+
+  // Sin etapa NO se inventa una: `null` sube tal cual y la pantalla escribe «etapa sin declarar».
+  const arcor = filas.find((f) => f.obraId === 'arcor')!
+  assert.equal(arcor.etapa, null, 'una obra sin etapa declarada no puede recibir una por defecto')
+})
+
+test('la lectura pide la etapa canónica, no la deduce', () => {
+  const pedidas = COLUMNAS_PLAZO.split(',')
+  for (const c of ['etapa', 'cliente_nombre']) {
+    assert.ok(pedidas.includes(c), `${c} tiene que venir de la vista, no calcularse en el navegador`)
+  }
 })
 
 test('las archivadas quedan afuera salvo que se las pida', () => {

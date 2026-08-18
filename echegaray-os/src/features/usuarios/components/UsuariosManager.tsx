@@ -12,7 +12,7 @@
 
 import { useMemo, useState } from 'react'
 import { Badge, SegmentedControl } from '@/shared/components/ui'
-import { ROL_LABEL } from '@/features/auth/types'
+import { ROL_LABEL, type Rol } from '@/features/auth/types'
 import { AltaUsuario } from './AltaUsuario'
 import { PanelUsuario } from './PanelUsuario'
 import type { ObraElegible, UsuarioGestion } from '../types'
@@ -52,12 +52,14 @@ function CeldaObras({ u }: { u: UsuarioGestion }) {
 }
 
 export function UsuariosManager({
-  usuarios, obras, actorId,
+  usuarios, obras, actorId, rolActor,
 }: {
   usuarios: UsuarioGestion[]
   obras: ObraElegible[]
   /** Quién está mirando. Viene del servidor: es lo que apaga los controles sobre la propia cuenta. */
   actorId: string
+  /** Con qué rol mira. Viene del servidor por el mismo motivo: sólo Dirección regenera claves. */
+  rolActor: Rol | null
 }) {
   const [texto, setTexto] = useState('')
   const [filtro, setFiltro] = useState<Filtro>('todos')
@@ -144,6 +146,7 @@ export function UsuariosManager({
           usuario={usuario}
           obras={obras}
           esUnoMismo={usuario.id === actorId}
+          rolActor={rolActor}
           alCerrar={() => setElegido(null)}
         />
       )}

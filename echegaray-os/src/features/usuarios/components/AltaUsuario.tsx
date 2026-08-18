@@ -11,35 +11,20 @@
 //
 // No se manda mail: `inviteUserByEmail` necesita SMTP configurado y hoy no lo está. Una invitación
 // que no llega es peor que ninguna, porque nadie se entera de que no llegó.
+//
+// El bloque que muestra la credencial vive en `Credencial.tsx`: lo comparte con la regeneración de
+// contraseña del panel, que es el mismo hecho —una clave recién generada que hay que pasarle a una
+// persona— y no puede decir dos cosas distintas según por dónde se haya llegado.
 
-import { useActionState, useState } from 'react'
+import { useActionState } from 'react'
 import { Campo, CTRL } from '@/shared/components/ui'
 import { ROL_LABEL } from '@/features/auth/types'
 import { AREA_LABEL } from '@/features/auth/types/areas'
 import { ROLES_DE_AREA } from '../services/reglas'
 import { crearUsuario, type ResultadoAlta } from '../services/usuariosActions'
-import { siteUrl } from '@/lib/site-url'
+import { Credencial } from './Credencial'
 
 const INICIAL: ResultadoAlta = { ok: false }
-
-function Credencial({ email, clave }: { email: string; clave: string }) {
-  const [copiado, setCopiado] = useState(false)
-  const texto = `Echegaray OS\n${siteUrl()}/login\nUsuario: ${email}\nClave: ${clave}`
-  return (
-    <div className="rounded-control border border-pos/30 bg-pos-soft p-2.5" data-testid="credencial-nueva">
-      <p className="text-[12px] font-medium text-pos">Cuenta creada. Pasale estos datos:</p>
-      <pre className="mt-1.5 whitespace-pre-wrap rounded bg-surface p-2 text-[11px] text-ink">{texto}</pre>
-      <button
-        type="button"
-        onClick={() => { navigator.clipboard?.writeText(texto); setCopiado(true) }}
-        className="mt-1.5 rounded-control border border-line bg-surface px-2 py-1 text-[11px] text-muted hover:bg-surface-sunken"
-      >
-        {copiado ? 'Copiado' : 'Copiar'}
-      </button>
-      <p className="mt-1.5 text-[11px] text-muted">La clave no se vuelve a mostrar.</p>
-    </div>
-  )
-}
 
 export function AltaUsuario({ alCerrar }: { alCerrar: () => void }) {
   const [estado, crear, creando] = useActionState(crearUsuario, INICIAL)
@@ -100,7 +85,9 @@ export function AltaUsuario({ alCerrar }: { alCerrar: () => void }) {
         </form>
 
         {estado.ok && estado.email && estado.clave && (
-          <div className="mt-3"><Credencial email={estado.email} clave={estado.clave} /></div>
+          <div className="mt-3">
+            <Credencial email={estado.email} clave={estado.clave} titulo="Cuenta creada. Pasale estos datos:" />
+          </div>
         )}
       </aside>
     </>

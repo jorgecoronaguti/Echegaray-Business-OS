@@ -258,6 +258,70 @@ test('el nivel Obras no puede darse a sí mismo una obra ni un rol, ni por la AP
 })
 
 
+/**
+ * REGENERAR LA CONTRASEÑA — Y LA EVIDENCIA ES QUE LA PERSONA ENTRA CON LA NUEVA.
+ *
+ * El dueño (20/08): *"habilitame q los q son «directores» tengan la posibilidad de crear usuarios y
+ * contraseñas"*. Crear ya se podía; lo que no existía era destrabar a alguien que perdió la suya:
+ * el «olvidé mi contraseña» de Supabase manda un mail y este proyecto no tiene SMTP, así que el
+ * único camino era entrar a Supabase a mano.
+ *
+ * QUE LA PANTALLA MUESTRE UNA CLAVE NO PRUEBA NADA: puede mostrar una que no se guardó, o guardar
+ * una distinta de la que muestra. Lo que se mide es el EFECTO en el proveedor de auth — se entra
+ * con la nueva y NO se entra con la vieja—, que es lo único que le importa a la persona que estaba
+ * afuera del sistema.
+ *
+ * QUIÉN PUEDE HACERLO no se prueba acá sino en `src/features/usuarios/services/reglas.test.ts`, y
+ * no es una comodidad: el portón del servidor llama a la MISMA función que ese test ejercita
+ * (`motivoParaNoRegenerarClave`), así que no pueden decir cosas distintas. Un caso de navegador
+ * exigiría una cuenta con rol `administracion`, y hoy no existe ninguna en producción.
+ */
+test('Dirección regenera la contraseña de otra cuenta, y esa cuenta entra con la nueva', async ({ page }) => {
+  test.setTimeout(180_000)
+  const admin = servicio()
+  const { data: lista } = await admin.auth.admin.listUsers({ perPage: 1000 })
+  const objetivo = lista?.users.find((u) => u.email?.startsWith(PREFIJO))
+  expect(objetivo, 'este test corre después del recorrido, que es el que crea la cuenta').toBeTruthy()
+
+  // La clave de la que se parte se pone acá para poder afirmar después que dejó de servir.
+  const vieja = 'ZZ-E2E-Vieja-77!'
+  await admin.auth.admin.updateUserById(objetivo!.id, { password: vieja, ban_duration: 'none' })
+  expect((await login(objetivo!.email!, vieja)).estado, 'la clave de partida tiene que servir').toBe(200)
+
+  await entrarComo(page, ADMIN.email, ADMIN.password)
+  await page.goto('/administracion/usuarios')
+  await abrirPanel(page, `fila-${objetivo!.email}`, 'panel-usuario')
+  await page.getByTestId('regenerar-clave').click()
+
+  const credencial = page.getByTestId('credencial-regenerada')
+  await expect(credencial).toBeVisible({ timeout: 30_000 })
+  const nueva = /Clave:\s*(\S+)/.exec(await credencial.innerText())?.[1]
+  expect(nueva, 'la pantalla no mostró la clave nueva').toBeTruthy()
+  expect(nueva).not.toBe(vieja)
+
+  // ── EL EFECTO, CONTRA EL PROVEEDOR DE AUTH ────────────────────────────────────────────────────
+  expect((await login(objetivo!.email!, nueva!)).estado,
+    'la clave que mostró la pantalla no sirve para entrar: se mostró algo que no se guardó').toBe(200)
+  expect((await login(objetivo!.email!, vieja)).estado,
+    'la clave vieja sigue sirviendo: se agregó una clave en vez de reemplazarla').toBe(400)
+
+  // ── Y UNA CUENTA BLOQUEADA NO ENTRA POR TENER CLAVE NUEVA, Y LA PANTALLA LO AVISA ─────────────
+  //
+  // Entregar una credencial sin decir que la cuenta está cerrada manda a la persona a probar tres
+  // veces y a llamar por teléfono: la clave anda, lo que no anda es la cuenta.
+  await page.getByTestId('quitar-acceso').click()
+  await expect(page.getByTestId('dar-acceso')).toBeVisible({ timeout: 30_000 })
+  await page.getByTestId('regenerar-clave').click()
+  await expect(page.getByTestId('credencial-regenerada-aviso')).toBeVisible({ timeout: 30_000 })
+  const conBloqueo = /Clave:\s*(\S+)/.exec(await page.getByTestId('credencial-regenerada').innerText())?.[1]
+  const intento = await login(objetivo!.email!, conBloqueo!)
+  expect(intento.estado, 'una cuenta sin acceso entró con una clave nueva').toBe(400)
+  expect(intento.codigo).toBe('user_banned')
+
+  await page.getByTestId('dar-acceso').click()
+  await expect(page.getByTestId('quitar-acceso')).toBeVisible({ timeout: 30_000 })
+})
+
 test('la pantalla no ofrece cambiarse el rol ni sacarse el acceso a uno mismo', async ({ page }) => {
   test.setTimeout(120_000)
   await entrarComo(page, ADMIN.email, ADMIN.password)
