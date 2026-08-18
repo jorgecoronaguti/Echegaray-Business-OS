@@ -141,7 +141,10 @@ test('portafolio → obra → resumen · gantt · planificación · documentos',
   // 6. DOCUMENTOS — el vínculo a Drive, nunca una copia.
   await page.getByRole('link', { name: 'Documentos', exact: true }).click()
   await page.waitForURL(/vista=documentos/)
-  await expect(page.getByText(/Drive/).first()).toBeVisible()
+  // Los dos formularios de vínculo nacen cerrados (`<details>`), así que la palabra «Drive» está en
+  // el DOM pero oculta. Lo que tiene que verse es la ACCIÓN: poder vincular algo.
+  await expect(page.getByTestId('vincular-archivo')).toBeVisible()
+  await expect(page.getByTestId('vincular-carpeta')).toBeVisible()
 })
 
 // ── EN EL TELÉFONO NO SE DESPLAZA DE COSTADO ────────────────────────────────

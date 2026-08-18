@@ -362,7 +362,7 @@ test('ninguna pantalla nueva empuja la página de costado en el teléfono', asyn
     ['/clientes', 'alta-cliente'],
     [`/obras/${OBRA}?vista=personal`, 'alta-asignacion'],
     [`/obras/${OBRA}?vista=economia`, 'alta-certificado'],
-    [`/obras/${OBRA}?vista=planificacion`, 'alta-impedimento'],
+    [`/obras/${OBRA}?vista=cronograma&sub=proximos`, 'alta-impedimento'],
     [`/obras/${OBRA}`, 'editar-obra'],
   ]
   for (const [ruta, testid] of conFormulario) {
