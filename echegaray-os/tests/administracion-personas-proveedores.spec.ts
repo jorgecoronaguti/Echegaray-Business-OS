@@ -222,7 +222,25 @@ test.describe('la identidad del proveedor la impone la base, no el formulario', 
     const antes = await admin.from('proveedor_nombre_pendiente').select('nombre_norm, nombre_origen')
     expect(antes.error, `no pude leer la cola: ${antes.error?.message}`).toBeNull()
     const cola = antes.data ?? []
-    test.skip(cola.length === 0, 'no hay nombres pendientes: nada que resolver')
+
+    // ═══ UN `test.skip` SOBRE UNA COLA VACÍA TAPÓ UN DEFECTO REAL (19/08/2026) ═══
+    //
+    // Acá vivía `test.skip(cola.length === 0)`. La vista cerraba su `where` con
+    // `and es_administracion()`, y ese predicado busca un perfil por `auth.uid()`: la SERVICE KEY no
+    // tiene usuario, así que devolvía CERO sobre una cola de 79 nombres por $382,8M. El recorrido se
+    // reportaba como SALTEADO —nunca como roto— y ocupaba el lugar de la evidencia.
+    //
+    // El skip se reemplaza por el cruce con la FUENTE: si en `costos_obra` hay nombres sin dueño
+    // canónico y la vista devuelve cero, eso no es "nada que resolver", es la vista rota. Y si el
+    // dueño resuelve los 79, los dos lados dan cero y el test se saltea con razón.
+    const crudos = await admin.from('costos_obra').select('proveedor').not('proveedor', 'is', null)
+    const distintos = new Set((crudos.data ?? [])
+      .map((r) => ((r as { proveedor: string }).proveedor ?? '').trim().toUpperCase())
+      .filter(Boolean))
+    if (cola.length === 0) {
+      expect(distintos.size, 'la cola devolvió CERO pero Compras tiene nombres de proveedor: la vista está filtrando de más').toBe(0)
+      test.skip(true, 'no hay nombres pendientes: nada que resolver')
+    }
 
     const elegido = cola[0] as { nombre_norm: string; nombre_origen: string }
     const prov = await admin.from('proveedores').insert({ nombre: `QA-COLA-${Date.now()}` }).select('id').single()
