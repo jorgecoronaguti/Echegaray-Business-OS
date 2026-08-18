@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// _UOCRA_RAW — LAS DDJJ DE UOCRA ADENTRO DEL SHEET. Hermana de _ARCA_RAW, _BANCO_RAW y _CHEQUES_RAW.
+// _UOCRA_DDJJ_RAW — LAS DDJJ DE UOCRA ADENTRO DEL SHEET. Hermana de _ARCA_RAW, _BANCO_RAW y _CHEQUES_RAW.
 //
 // ═══ POR QUÉ (18/08/2026) ═══
 //
@@ -26,7 +26,18 @@ import { conColaMedidaLeida, avisoDeCola } from '../lib/cola-de-rango.mjs'
 import { leerUocra } from '../lib/uocra-ddjj.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
-export const PESTAÑA = '_UOCRA_RAW'
+// ═══ EL NOMBRE CAMBIÓ PORQUE EL PRIMERO YA ESTABA OCUPADO — Y LO PISÉ (18/08/2026) ═══
+//
+// Esta réplica nació llamándose `_UOCRA_RAW`. Ese nombre **ya era de otra cosa**: la réplica VIVA de
+// la escala salarial de UOCRA, que llega por IMPORTHTML y de la que cuelga todo el cuadro 4.3 de
+// "Jornales por Quincena" (`uocra-acuerdos.mjs`: `HOJA = '_UOCRA_RAW'`). La escribí encima y borré
+// 391 filas suyas. El síntoma fue inmediato y absurdo —el básico de Ayudante pasó a $12.928.002 la
+// hora— porque el `INDEX` del cuadro empezó a leer mis columnas.
+//
+// No verifiqué si el nombre estaba libre antes de crear una pestaña. `getSheetMeta` estaba a una
+// línea de distancia y el propio script ya la llamaba: la usaba para decidir si CREAR la pestaña, no
+// para preguntarse de quién era.
+export const PESTAÑA = '_UOCRA_DDJJ_RAW'
 const DRY = process.argv.includes('--dry')
 
 /** El orden de las columnas es CONTRATO: las fórmulas de "Cargas Sociales" lo referencian por letra. */

@@ -395,7 +395,7 @@ export function bloqueSac(G, { anio, C, fRem, fRemProy }) {
   //
   // Una limitación declarada bloquea el criterio que toca. Ésta bloqueaba el control del Fondo de
   // Cese entero, y era falsa: el dato existía, sólo que nadie lo había ido a buscar. Ahora entra por
-  // `_UOCRA_RAW` y el devengado queda al lado de lo pagado, que es la única forma de contestar la
+  // `_UOCRA_DDJJ_RAW` y el devengado queda al lado de lo pagado, que es la única forma de contestar la
   // pregunta que importa — no cuánto es, sino si está al día.
   const fFclDev = G.mensual('Fondo de Cese devengado (DDJJ UOCRA)', (m) =>
     // El período va como TEXTO literal y no como TEXT(DATE(...)): en la réplica la columna A es
@@ -405,7 +405,7 @@ export function bloqueSac(G, { anio, C, fRem, fRemProy }) {
     // 0 se lee como "ese mes devengó cero", que es una afirmación falsa: julio simplemente todavía
     // no tiene DDJJ presentada. Se comprueba con COUNTIF antes de sumar. Visto en la primera
     // corrida (18/08): la columna de julio publicó 0 al lado de un devengado de $1,48M en junio.
-    `=IF(COUNTIF(_UOCRA_RAW!$A:$A;"${anio}-${String(m).padStart(2, '0')}")=0;"";SUMIFS(_UOCRA_RAW!$I:$I;_UOCRA_RAW!$A:$A;"${anio}-${String(m).padStart(2, '0')}"))`,
+    `=IF(COUNTIF(_UOCRA_DDJJ_RAW!$A:$A;"${anio}-${String(m).padStart(2, '0')}")=0;"";SUMIFS(_UOCRA_DDJJ_RAW!$I:$I;_UOCRA_DDJJ_RAW!$A:$A;"${anio}-${String(m).padStart(2, '0')}"))`,
     'DDJJ Nominativa de UOCRA, renglón "Total Aportes Devengados al Fondo de Cese Laboral", leído del PDF de Drive por scripts/uocra-raw-pestana.mjs. Vacío = ese mes todavía no tiene DDJJ presentada, NO cero.')
   const pieFcl = G.push([`${ALERTA} Fondo de Cese (Ley 22.250) — el devengado sale de la DDJJ de UOCRA (fila ${fFclDev}) y lo pagado, de Compras. ${A_VERIFICAR}: que los aportes estén al día; la diferencia entre las dos filas es lo que falta girar.`])
   G.push()
