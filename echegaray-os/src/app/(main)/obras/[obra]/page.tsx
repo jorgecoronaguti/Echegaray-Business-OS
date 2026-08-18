@@ -110,6 +110,10 @@ export default async function ObraPage({
   const vista = resolverVista(vistaRaw)
 
   const supabase = await createClient()
+  // UNA SOLA LECTURA DEL PERFIL PARA TODA LA FICHA. El dato comercial ya no llega de la base a quien
+  // no es Administración; esto decide qué CARTEL se dibuja, para no explicar una ausencia que no lo
+  // es. Ver el comentario largo en `TabEconomia`.
+  const veComercial = esAdministracion((await getPerfilActual(supabase)).data?.rol ?? null)
   const { data: obra, error } = await getObra(supabase, obraId)
   // NO EXISTE y NO PUEDO LEER son dos cosas distintas, y confundirlas ya costó caro (17/08/2026):
   // faltaba un `grant` y el módulo entero se veía como "página no encontrada" en vez de decir que no
@@ -194,6 +198,7 @@ export default async function ObraPage({
           plan={plan}
           abiertas={abiertas}
           obraId={obraId}
+          veComercial={veComercial}
           editar={
             <details className="rounded-lg border border-line bg-surface" data-testid="editar-obra">
               <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-medium text-ink">Editar la obra</summary>
@@ -284,7 +289,7 @@ export default async function ObraPage({
           certificados={certificados}
           crearCert={crearCertificado.bind(null, obraId)}
           borrarCert={borrarCertificado.bind(null, obraId)}
-          veComercial={esAdministracion((await getPerfilActual(supabase)).data?.rol ?? null)}
+          veComercial={veComercial}
         />
       )}
 

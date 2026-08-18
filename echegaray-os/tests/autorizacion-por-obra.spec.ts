@@ -305,4 +305,13 @@ test('Economía no le inventa una explicación al nivel Obras, y le deja lo suyo
   // Y que no quede el rastro en el HTML servido: el payload del server component es leíble.
   expect(await page.content(), 'la palabra «Contratado» viajó en el HTML del nivel Obras')
     .not.toContain('Contratado')
+
+  // EL RESUMEN, POR EL MISMO MOTIVO. La línea de margen decía *"No hay margen que calcular: falta el
+  // monto contratado"*, que para un jefe de obra es una explicación falsa de una ausencia. Plazo,
+  // avance, HH y costo se quedan: son su trabajo.
+  await page.goto('/obras/san-francisco')
+  const resumen = page.getByTestId('plan-vs-real')
+  await expect(resumen).toBeVisible()
+  await expect(resumen, 'la línea de margen se le dibujó a un jefe de obra').not.toContainText(/margen/i)
+  await expect(resumen, 'el resumen se quedó sin la línea de costo, que sí es suya').toContainText(/costo/i)
 })

@@ -99,7 +99,7 @@ export function configuracionPendiente(obra: ObraPanel, plan: PlanVsReal | null)
 }
 
 export function TabResumen({
-  obra, plan, abiertas, obraId, editar, archivar,
+  obra, plan, abiertas, obraId, editar, archivar, veComercial = true,
 }: {
   obra: ObraPanel
   plan: PlanVsReal | null
@@ -109,6 +109,9 @@ export function TabResumen({
   editar: React.ReactNode
   /** Archivar o reactivar. Va al pie y no arriba: es la acción menos frecuente de la ficha. */
   archivar?: React.ReactNode
+  /** El nivel Obras no ve margen. Ver `PlanVsRealResumen`: no es ocultar un número, es no explicar
+   *  mal una ausencia — el dato ya viene NULL de la base. */
+  veComercial?: boolean
 }) {
   const alertas = alertasDeLaObra(obra, plan, abiertas)
   const pendientes = configuracionPendiente(obra, plan)
@@ -179,7 +182,7 @@ export function TabResumen({
         )}
       </section>
 
-      {plan && <PlanVsRealResumen plan={plan} obraId={obraId} />}
+      {plan && <PlanVsRealResumen plan={plan} obraId={obraId} veComercial={veComercial} />}
 
       {/* La configuración que falta va DEBAJO del plan contra real y en el tono más bajo de la
           pantalla: explica los guiones de arriba, no compite con ellos. */}

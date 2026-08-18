@@ -37,7 +37,13 @@ const hoy = () => new Date().toISOString().slice(0, 10)
 
 /** Las cinco comparaciones del módulo, cada una con su origen. Sin ninguna inferencia: o hay dos
  *  puntas y se compara, o falta una y se nombra. */
-export function lineasPlanVsReal(p: PlanVsReal): Linea[] {
+/**
+ * @param veComercial Si es `false` —el nivel Obras— la línea de MARGEN no se arma. No es que se
+ * oculte un número: la base ya devolvió NULL y el número no existe de este lado. Lo que se evita es
+ * el cartel *"falta el monto contratado"*, que para un jefe de obra es MENTIRA — el contrato puede
+ * estar cargado y él no puede verlo. Explicar mal una ausencia fabrica un hecho.
+ */
+export function lineasPlanVsReal(p: PlanVsReal, veComercial = true): Linea[] {
   const l: Linea[] = []
 
   // ── PLAZO ──────────────────────────────────────────────────────────────────
@@ -140,32 +146,36 @@ export function lineasPlanVsReal(p: PlanVsReal): Linea[] {
     })
   }
 
-  // ── MARGEN ─────────────────────────────────────────────────────────────────
-  if (p.margen_actual != null) {
-    l.push({
-      clave: 'margen',
-      tono: p.margen_actual < 0 ? 'alerta' : 'ok',
-      titulo: `Margen a hoy ${plata(p.margen_actual)} (contratado ${plata(p.monto_contratado)} − costo ${plata(p.costo_real)})`,
-      origen: 'obra_canonica.monto_contratado contra el costo real de Compras. NO es el margen de fin de obra: falta lo que queda por gastar.',
-      vista: 'economia',
-    })
-  } else {
-    l.push({
-      clave: 'margen',
-      tono: 'falta',
-      titulo: p.monto_contratado == null
-        ? 'No hay margen que calcular: falta el monto contratado'
-        : 'No hay margen que calcular: falta el costo real imputado',
-      origen: 'obra_canonica.monto_contratado y Compras por obra',
-      vista: 'economia',
-    })
+  if (veComercial) {
+    // ── MARGEN ─────────────────────────────────────────────────────────────────
+    if (p.margen_actual != null) {
+      l.push({
+        clave: 'margen',
+        tono: p.margen_actual < 0 ? 'alerta' : 'ok',
+        titulo: `Margen a hoy ${plata(p.margen_actual)} (contratado ${plata(p.monto_contratado)} − costo ${plata(p.costo_real)})`,
+        origen: 'obra_canonica.monto_contratado contra el costo real de Compras. NO es el margen de fin de obra: falta lo que queda por gastar.',
+        vista: 'economia',
+      })
+    } else {
+      l.push({
+        clave: 'margen',
+        tono: 'falta',
+        titulo: p.monto_contratado == null
+          ? 'No hay margen que calcular: falta el monto contratado'
+          : 'No hay margen que calcular: falta el costo real imputado',
+        origen: 'obra_canonica.monto_contratado y Compras por obra',
+        vista: 'economia',
+      })
+    }
   }
 
   return l
 }
 
-export function PlanVsRealResumen({ plan, obraId }: { plan: PlanVsReal; obraId: string }) {
-  const lineas = lineasPlanVsReal(plan)
+export function PlanVsRealResumen({ plan, obraId, veComercial = true }: {
+  plan: PlanVsReal; obraId: string; veComercial?: boolean
+}) {
+  const lineas = lineasPlanVsReal(plan, veComercial)
   return (
     <div className="overflow-hidden rounded-card border border-line bg-surface" data-testid="plan-vs-real">
       <h2 className="border-b border-line px-4 py-2.5 text-[13px] font-semibold text-ink">Plan contra real</h2>
