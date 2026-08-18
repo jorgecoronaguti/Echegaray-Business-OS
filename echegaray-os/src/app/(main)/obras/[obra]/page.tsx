@@ -32,7 +32,8 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import {
-  getActividades, getDocumentos, getObra, getPlanVsReal, getRestricciones, getUbicacion,
+  getActividades, getDependencias, getDocumentos, getObra, getPlanVsReal, getRestricciones,
+  getUbicacion,
 } from '@/features/obras/services/obrasService'
 import { getAsignaciones, getPersonas, getRegistrosHH } from '@/features/obras/services/personalService'
 import { getCertificados } from '@/features/obras/services/contratoService'
@@ -100,10 +101,10 @@ export default async function ObraPage({
   params, searchParams,
 }: {
   params: Promise<{ obra: string }>
-  searchParams: Promise<{ vista?: string; sub?: string; semanas?: string }>
+  searchParams: Promise<{ vista?: string; sub?: string; semanas?: string; act?: string }>
 }) {
   const { obra: obraId } = await params
-  const { vista: vistaRaw, sub, semanas } = await searchParams
+  const { vista: vistaRaw, sub, semanas, act } = await searchParams
   const vista = resolverVista(vistaRaw)
 
   const supabase = await createClient()
@@ -136,6 +137,9 @@ export default async function ObraPage({
 
   // Cada solapa pide SÓLO lo suyo. Traerlo todo en cada visita costaría seis consultas para mostrar
   // una: la ficha se abre muchas veces por día desde el teléfono, en obra y con mala señal.
+  // Las precedencias sólo las dibuja el Gantt: traerlas en las otras cinco solapas es una consulta
+  // por visita para nadie.
+  const dependencias = vista === 'cronograma' ? (await getDependencias(supabase, obraId)).data ?? [] : []
   const necesitaPersonas = vista === 'cronograma' || vista === 'personal'
   const personas = necesitaPersonas ? (await getPersonas(supabase)).data ?? [] : []
   const ubicacion = vista === 'resumen' ? await getUbicacion(supabase, obraId) : null
@@ -196,12 +200,13 @@ export default async function ObraPage({
 
       {vista === 'cronograma' && (
         <TabCronograma
-          obraId={obraId}
           sub={sub === 'proximos' ? 'proximos' : 'gantt'}
-          semanas={semanas === '1' || semanas === '2' || semanas === '6' ? Number(semanas) as 1 | 2 | 6 : 2}
+          semanas={semanas === '1' || semanas === '6' ? semanas : '2'}
+          actividadAbierta={act ?? null}
           actividades={acts}
           archivadas={archivadas}
           restricciones={restr}
+          dependencias={dependencias}
           personas={personas}
           yaSellada={yaSellada}
           acciones={{
@@ -212,6 +217,7 @@ export default async function ObraPage({
             hito: marcarHito.bind(null, obraId),
             sellar: sellarBaseline.bind(null, obraId),
           }}
+          restaurarActividad={archivarActividad.bind(null, obraId)}
           crearImpedimento={crearImpedimento.bind(null, obraId)}
           liberarImpedimento={liberarImpedimento.bind(null, obraId)}
         />

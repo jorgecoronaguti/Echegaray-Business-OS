@@ -4,16 +4,31 @@
 // con ella. No es una pantalla aparte: el cronograma tiene que seguir a la vista mientras se edita,
 // porque lo que se está decidiendo es la fecha de esta actividad CONTRA las de al lado.
 //
+// ═══ EN EL TELÉFONO ES UNA HOJA QUE SUBE, NO UNA COLUMNA ═══
+//
+// Un panel de 330px al costado, en una pantalla de 390px, deja 60px para el cronograma: no es una
+// versión angosta de la pantalla, es ninguna de las dos cosas. Debajo del `lg` el panel se despega
+// del flujo y sube desde abajo ocupando el ancho completo y hasta el 85% del alto, con el
+// cronograma detrás. Es el mismo componente y el mismo marcado: cambia dónde se apoya.
+//
 // ═══ POR QUÉ EL AVANCE TIENE SU PROPIO BOTÓN ═══
 //
 // Registrar avance es la edición que se hace todos los días, desde el teléfono y con la obra
 // adelante. Si viviera dentro del formulario largo habría que pasar por diez campos para mover un
 // número. Va arriba, con un toque, y usa `registrarAvance`, que sólo escribe `pct`: así el avance
 // del jefe de obra nunca pisa una fecha por accidente.
+//
+// ═══ LA LÍNEA BASE NO SE TOCA DESDE ACÁ, Y ES LA REGLA DURA DEL MÓDULO ═══
+//
+// Guardar este formulario mueve `inicio_plan`/`fin_plan` y NADA MÁS. `inicio_base`/`fin_base` sólo
+// los escribe `sellarBaseline`, una vez. Si la edición moviera también la base, replanificar dejaría
+// el desvío en cero para siempre y el tablero diría que la obra siempre va en fecha.
 
 import { useState } from 'react'
 import { BotonAccion, Campo, CTRL, FormAccion, type ResultadoAccion } from '@/shared/components/ui'
-import type { Actividad, Persona } from '../types'
+import type { Actividad, Dependencia, Persona, Restriccion } from '../types'
+import { TIPO_DEPENDENCIA, TIPO_DEPENDENCIA_LABEL } from '../types'
+import { fecha } from './formato'
 
 export type AccionesCronograma = {
   crear: (form: FormData) => Promise<ResultadoAccion>
@@ -22,6 +37,10 @@ export type AccionesCronograma = {
   archivar: (actividadId: string, archivada: boolean) => Promise<ResultadoAccion>
   hito: (actividadId: string, esHito: boolean) => Promise<ResultadoAccion>
   sellar: () => Promise<ResultadoAccion>
+  /** Opcionales a propósito: una pantalla que todavía no las ata sigue compilando y no dibuja el
+   *  control. Un botón que no persiste es peor que no tenerlo. */
+  agregarDependencia?: (destinoId: string, form: FormData) => Promise<ResultadoAccion>
+  quitarDependencia?: (dependenciaId: string) => Promise<ResultadoAccion>
 }
 
 const fmt = (v: string | number | null | undefined) => (v == null ? '' : String(v))
@@ -46,7 +65,7 @@ function CamposActividad({ a, personas }: { a?: Actividad; personas: Persona[] }
         <input name="nombre" defaultValue={fmt(a?.nombre)} required minLength={2} maxLength={200} className={CTRL} />
       </Campo>
       {!a && (
-        <Campo label="Sección" ancho="col-span-2" ayuda="Agrupa la actividad en el cronograma. Es parte de su identidad: no se puede cambiar después.">
+        <Campo label="Grupo" ancho="col-span-2" ayuda="Agrupa la actividad en el cronograma. Es parte de su identidad: no se puede cambiar después.">
           <input name="seccion" maxLength={120} className={CTRL} placeholder="opcional" />
         </Campo>
       )}
@@ -58,7 +77,7 @@ function CamposActividad({ a, personas }: { a?: Actividad; personas: Persona[] }
       <Campo label="HH real"><input type="number" name="hh_real" min={0} step="0.5" defaultValue={fmt(a?.hh_real)} className={CTRL} /></Campo>
       <Campo label="Responsable" ancho="col-span-2"><SelectResponsable personas={personas} valor={a?.responsable_id ?? null} /></Campo>
       <Campo label="Cuadrilla" ancho="col-span-2"><input name="cuadrilla" defaultValue={fmt(a?.cuadrilla)} maxLength={120} className={CTRL} /></Campo>
-      <Campo label="Comentario" ancho="col-span-2"><input name="comentario" defaultValue={fmt(a?.comentario)} maxLength={400} className={CTRL} /></Campo>
+      <Campo label="Notas" ancho="col-span-2"><input name="comentario" defaultValue={fmt(a?.comentario)} maxLength={400} className={CTRL} /></Campo>
       {!a && (
         <label className="col-span-2 flex items-center gap-2 text-[12px] text-muted">
           <input type="checkbox" name="es_hito" className="h-3.5 w-3.5" /> Es un hito (una fecha, sin duración)
@@ -80,7 +99,7 @@ function AvanceRapido({ a, avance }: { a: Actividad; avance: AccionesCronograma[
   const [valor, setValor] = useState<string>(a.pct == null ? '' : String(a.pct))
 
   return (
-    <div className="rounded-control border border-line bg-white p-2.5" data-testid="avance-rapido">
+    <div className="rounded-control border border-line bg-surface p-2.5" data-testid="avance-rapido">
       <p className="text-[11px] uppercase tracking-wide text-faint">Avance</p>
       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
         {[0, 25, 50, 75, 100].map((p) => (
@@ -92,78 +111,201 @@ function AvanceRapido({ a, avance }: { a: Actividad; avance: AccionesCronograma[
           data-testid="avance-valor"
           className="w-16 rounded-control border border-line px-2 py-1 text-[12px] tabular-nums"
         />
-        <BotonAccion
-          accion={() => avance(a.id, Number(valor))}
-          testid="avance-guardar"
-          tono="fuerte"
-        >Registrar</BotonAccion>
+        <BotonAccion accion={() => avance(a.id, Number(valor))} testid="avance-guardar" tono="fuerte">Registrar</BotonAccion>
       </div>
     </div>
   )
 }
 
+/**
+ * LAS PRECEDENCIAS de esta actividad: de qué depende, y a quién habilita.
+ *
+ * Las dos direcciones se muestran juntas porque las dos son consecuencia de tocar esta fecha. Lo que
+ * se puede editar es sólo la primera —de qué depende ESTA—: dejar cargar las dos desde el mismo lado
+ * duplicaría cada arista en la cabeza del que la carga.
+ */
+function Dependencias({
+  a, actividades, dependencias, acciones,
+}: {
+  a: Actividad
+  actividades: Actividad[]
+  dependencias: Dependencia[]
+  acciones: AccionesCronograma
+}) {
+  const nombre = (id: string) => actividades.find((x) => x.id === id)?.nombre ?? 'una actividad archivada'
+  const dependeDe = dependencias.filter((d) => d.destino_id === a.id)
+  const habilitaA = dependencias.filter((d) => d.origen_id === a.id)
+  // No se puede depender de sí misma ni de algo que ya la precede: se sacan de la lista en vez de
+  // dejar elegirlas y contestar con un error.
+  const yaLigadas = new Set([a.id, ...dependeDe.map((d) => d.origen_id)])
+  const elegibles = actividades.filter((x) => !yaLigadas.has(x.id) && x.tipo !== 'resumen')
+
+  return (
+    <div className="rounded-control border border-line bg-surface p-2.5" data-testid="panel-dependencias">
+      <p className="text-[11px] uppercase tracking-wide text-faint">Depende de</p>
+      {dependeDe.length === 0 ? (
+        <p className="mt-1 text-[12px] text-faint">Nada declarado.</p>
+      ) : (
+        <ul className="mt-1 space-y-1">
+          {dependeDe.map((d) => (
+            <li key={d.id} className="flex items-start justify-between gap-2">
+              <span className="min-w-0 text-[12px] text-ink">
+                {nombre(d.origen_id)}
+                <span className="text-faint"> · {TIPO_DEPENDENCIA_LABEL[d.tipo]}{d.lag_dias ? ` · ${d.lag_dias} d` : ''}</span>
+              </span>
+              {acciones.quitarDependencia && (
+                <BotonAccion accion={acciones.quitarDependencia} args={[d.id]} testid="quitar-dependencia">quitar</BotonAccion>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {habilitaA.length > 0 && (
+        <p className="mt-2 text-[11px] text-faint">
+          Habilita a {habilitaA.map((d) => nombre(d.destino_id)).join(', ')}.
+        </p>
+      )}
+
+      {acciones.agregarDependencia && elegibles.length > 0 && (
+        <details className="mt-2">
+          <summary className="cursor-pointer text-[12px] text-muted hover:text-ink">Agregar una</summary>
+          <div className="mt-2">
+            <FormAccion
+              accion={(form) => acciones.agregarDependencia!(a.id, form)}
+              testid="form-dependencia"
+              enviar="Agregar"
+              limpiarAlOk
+              mensajeOk="Precedencia declarada."
+            >
+              <div className="grid grid-cols-2 gap-2.5">
+                <Campo label="Esta actividad no puede empezar hasta que" ancho="col-span-2">
+                  <select name="origen_id" required defaultValue="" className={CTRL}>
+                    <option value="" disabled>elegir una actividad</option>
+                    {elegibles.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
+                  </select>
+                </Campo>
+                <Campo label="Relación">
+                  <select name="tipo" defaultValue="FS" className={CTRL}>
+                    {TIPO_DEPENDENCIA.map((t) => <option key={t} value={t}>{TIPO_DEPENDENCIA_LABEL[t]}</option>)}
+                  </select>
+                </Campo>
+                <Campo label="Espera (días)" ayuda="0 si sigue de inmediato.">
+                  <input type="number" name="lag_dias" min={-365} max={365} step={1} defaultValue={0} className={CTRL} />
+                </Campo>
+              </div>
+            </FormAccion>
+          </div>
+        </details>
+      )}
+    </div>
+  )
+}
+
+/** Los impedimentos abiertos que frenan ESTA actividad. Se anotan y se liberan en Próximos trabajos:
+ *  acá se ven porque son la explicación de por qué la barra no se mueve. */
+function ImpedimentosDe({ abiertos }: { abiertos: Restriccion[] }) {
+  if (abiertos.length === 0) return null
+  return (
+    <div className="rounded-control border border-warn/30 bg-warn-soft p-2.5" data-testid="panel-impedimentos">
+      <p className="text-[11px] uppercase tracking-wide text-warn">
+        {abiertos.length === 1 ? 'Un impedimento la frena' : `${abiertos.length} impedimentos la frenan`}
+      </p>
+      <ul className="mt-1 space-y-1">
+        {abiertos.map((r) => (
+          <li key={r.id} className="text-[12px] text-ink">
+            {r.descripcion}
+            <span className="text-muted"> · {r.responsable ?? 'sin dueño'} · {fecha(r.fecha_compromiso)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 export function PanelActividad({
-  actividad, personas, acciones, alCerrar,
+  actividad, personas, acciones, alCerrar, actividades = [], dependencias = [], impedimentos = [],
 }: {
   actividad: Actividad
   personas: Persona[]
   acciones: AccionesCronograma
   alCerrar: () => void
+  /** El resto del cronograma: es la lista de la que se elige una precedencia. */
+  actividades?: Actividad[]
+  dependencias?: Dependencia[]
+  /** Ya filtrados a los de esta actividad y sin liberar. */
+  impedimentos?: Restriccion[]
 }) {
   const a = actividad
   return (
-    <aside
-      data-testid="panel-actividad"
-      className="w-full shrink-0 border-t border-line bg-slate-50/70 p-3.5 lg:w-[330px] lg:border-l lg:border-t-0"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-[11px] uppercase tracking-wide text-faint">
-            {[a.seccion, a.codigo, a.tipo].filter(Boolean).join(' · ')}
-          </p>
-          <p className="text-[14px] font-semibold leading-tight text-ink">{a.nombre}</p>
-        </div>
-        <button type="button" onClick={alCerrar} className="shrink-0 text-[12px] text-muted hover:text-ink">cerrar</button>
-      </div>
+    <>
+      {/* El fondo sólo existe en el teléfono, donde la hoja tapa el cronograma: es la manera de
+          salir sin buscar la cruz. En escritorio no hay nada que tapar. */}
+      <button
+        type="button"
+        aria-label="Cerrar el panel"
+        onClick={alCerrar}
+        className="fixed inset-0 z-30 bg-ink/20 lg:hidden"
+      />
+      <aside
+        data-testid="panel-actividad"
+        className="fixed inset-x-0 bottom-0 z-40 max-h-[85vh] overflow-y-auto rounded-t-card border-t border-line bg-surface-quiet p-3.5 shadow-pop lg:static lg:z-auto lg:max-h-none lg:w-[340px] lg:shrink-0 lg:overflow-visible lg:rounded-none lg:border-l lg:border-t-0 lg:shadow-none"
+      >
+        {/* El tirador de la hoja. En escritorio no hay hoja que tirar. */}
+        <div aria-hidden className="mx-auto mb-2 h-1 w-10 rounded-full bg-line-strong lg:hidden" />
 
-      {/* LA LÍNEA BASE SE DICE SIEMPRE: es contra qué se mide el desvío, y "sin sellar" no es lo
-          mismo que "en fecha". */}
-      <p className="mt-2 text-[11px] text-faint">
-        Línea base: {a.inicio_base ? `${a.inicio_base} → ${a.fin_base ?? '—'}` : 'sin sellar'}
-      </p>
-
-      <div className="mt-3 space-y-3">
-        <AvanceRapido key={`${a.id}:${a.pct}`} a={a} avance={acciones.avance} />
-
-        <details className="rounded-control border border-line bg-white">
-          <summary className="cursor-pointer px-2.5 py-1.5 text-[12px] font-medium text-ink">Editar la actividad</summary>
-          <div className="border-t border-line p-2.5">
-            <FormAccion
-              accion={(form) => acciones.editar(a.id, form)}
-              testid="form-editar-actividad"
-              enviar="Guardar cambios"
-              mensajeOk="Actividad guardada."
-            >
-              <CamposActividad a={a} personas={personas} />
-            </FormAccion>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="truncate text-[11px] uppercase tracking-wide text-faint">
+              {[a.seccion, a.codigo, a.tipo].filter(Boolean).join(' · ')}
+            </p>
+            <p className="text-[14px] font-semibold leading-tight text-ink">{a.nombre}</p>
           </div>
-        </details>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {a.tipo !== 'resumen' && (
-            <BotonAccion accion={() => acciones.hito(a.id, a.tipo !== 'hito')} testid="marcar-hito">
-              {a.tipo === 'hito' ? 'Dejar de ser hito' : 'Marcar como hito'}
-            </BotonAccion>
-          )}
-          <BotonAccion accion={() => acciones.archivar(a.id, true)} testid="archivar-actividad" tono="peligro">
-            Archivar
-          </BotonAccion>
+          <button type="button" onClick={alCerrar} className="shrink-0 text-[12px] text-muted hover:text-ink">cerrar</button>
         </div>
-        <p className="text-[11px] text-faint">
-          Archivar la saca del cronograma y de los promedios; no la borra. Su avance y su línea base quedan.
+
+        {/* LA LÍNEA BASE SE DICE SIEMPRE: es contra qué se mide el desvío, y "sin sellar" no es lo
+            mismo que "en fecha". */}
+        <p className="mt-2 text-[11px] tabular-nums text-faint">
+          Línea base: {a.inicio_base ? `${fecha(a.inicio_base)} → ${fecha(a.fin_base)}` : 'sin sellar'}
         </p>
-      </div>
-    </aside>
+
+        <div className="mt-3 space-y-3">
+          <ImpedimentosDe abiertos={impedimentos} />
+          <AvanceRapido key={`${a.id}:${a.pct}`} a={a} avance={acciones.avance} />
+
+          <details className="rounded-control border border-line bg-surface">
+            <summary className="cursor-pointer px-2.5 py-1.5 text-[12px] font-medium text-ink">Editar la actividad</summary>
+            <div className="border-t border-line p-2.5">
+              <FormAccion
+                accion={(form) => acciones.editar(a.id, form)}
+                testid="form-editar-actividad"
+                enviar="Guardar cambios"
+                mensajeOk="Actividad guardada."
+              >
+                <CamposActividad a={a} personas={personas} />
+              </FormAccion>
+            </div>
+          </details>
+
+          <Dependencias a={a} actividades={actividades} dependencias={dependencias} acciones={acciones} />
+
+          <div className="flex flex-wrap items-center gap-2">
+            {a.tipo !== 'resumen' && (
+              <BotonAccion accion={() => acciones.hito(a.id, a.tipo !== 'hito')} testid="marcar-hito">
+                {a.tipo === 'hito' ? 'Dejar de ser hito' : 'Marcar como hito'}
+              </BotonAccion>
+            )}
+            <BotonAccion accion={() => acciones.archivar(a.id, true)} testid="archivar-actividad" tono="peligro">
+              Archivar
+            </BotonAccion>
+          </div>
+          <p className="text-[11px] text-faint">
+            Archivar la saca del cronograma y de los promedios; no la borra. Su avance y su línea base quedan.
+          </p>
+        </div>
+      </aside>
+    </>
   )
 }
 
