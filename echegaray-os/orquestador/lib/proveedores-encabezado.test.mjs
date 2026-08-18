@@ -121,9 +121,26 @@ test('ninguna celda del encabezado publica plata de facturas que NO están Pendi
   }
 })
 
-test('el control de cuadratura quedó pegado al total, sin una fila muerta en el medio', () => {
-  assert.equal(F.control, F.totalAging + 1, 'al sacar la fila de la contradicción el control sube una')
+// ═══ EL DISEÑO DEL BLOQUE ES DEL DUEÑO, EL CONTENIDO DE LA FILA ES MÍO (18/08) ═══
+//
+// La primera corrección BORRÓ la fila 12 y subió el control a la 12. El dueño: *"no has respetado el
+// diseño q tenía"*. Tenía razón: lo que estaba mal era lo que la fila DECÍA, no que la fila existiera.
+test('el bloque conserva su forma: la línea que cuelga del total y el control al pie', () => {
+  assert.equal(F.sinImporte, F.totalAging + 1, 'la línea colgada del total es parte del diseño')
+  assert.equal(F.control, F.totalAging + 2, 'el control va al pie del bloque')
   assert.equal(F.fin, F.control, 'el bloque termina en el control: ni una fila más')
+})
+
+test('la línea colgada del total publica un CONTEO y jamás un importe', () => {
+  // El defecto entero en una línea: un número en pesos pegado al TOTAL se lee como deuda haga lo que
+  // haga el rótulo. Esas facturas están PAGADAS —lo declaró el dueño— y lo que les falta es el
+  // importe con el que CAJA las imputa. Se cuenta, no se valúa.
+  const C = celdasEncabezado()[F.sinImporte - 1]
+  assert.equal(C[3].t, 'entero', 'la cifra de esa fila es una cantidad de facturas')
+  for (const j of [1, 2]) {
+    assert.equal(C[j], null, `la columna ${j} de esa fila tiene que quedar vacía: ahí va plata en todo el resto del cuadro`)
+  }
+  assert.ok(!String(C[3].v).includes('$O$4:$O)'), 'el conteo no puede ponderar por importe')
 })
 
 // ═══ TODA CELDA QUE ESCRIBE UN NÚMERO DECLARA SU ESPECIE (14/08/2026) ═══

@@ -190,7 +190,9 @@ export function deCompras(filas = [], corte = null, { aviso = (m) => console.war
       cliente: txt(f[c.cliente]),
       instrumento,
     }
-    const debe = Math.abs(pendienteDeCompra({ importe, pagado, montoPagado: num(f[c.montoPagado]) },
+    // Los DOS tramos de pago: `Monto Pagado` y `Monto Parcial 2`. Ver `pendienteDeCompra`.
+    const debe = Math.abs(pendienteDeCompra(
+      { importe, pagado, montoPagado: num(f[c.montoPagado]), parcial2: num(f[c.parcial2]) },
       (m) => aviso(`libro-extractores(Compras) fila ${i + 1}: ${m}`)))
     // ═══ EL CHEQUE VIVO PARTE LA FILA EN DOS (06/08) ═══
     //

@@ -28,10 +28,13 @@ function fila({ proveedor = 'X', comprobante = '', total = 0, pagado = 0, u = 0,
 }
 
 // ── LAS FILAS REALES, tal como estaban en Compras el 14/08/2026 ────────────────────────────────
-/** Pendiente con pago parcial: pagó $1.000.000 de $2.300.000 y U declara los $1.300.000 que faltan. */
+/** Pendiente con el PRIMER tramo pagado y el segundo sin cargar: U = `=T-O` dice cuánto falta. */
 const GERSON = fila({ proveedor: 'Gerson Castro', total: 2300000, pagado: 1000000, u: -1300000 })
 /** Ídem, pero la columna S dice "Total" aunque el pago fue parcial: S no se puede usar para decidir. */
 const FREDES = fila({ proveedor: 'Pedro Fredes', total: 3300000, pagado: 2000000, u: -1300000, totalOParcial: 'Total' })
+/** LA FILA 819 ENTERA, con su SEGUNDO TRAMO cargado — que es lo que este archivo no leía.
+ *  O 2.300.000 · T 1.000.000 (14/08) · U −1.300.000 · V 14/08 · W 1.300.000 → saldada. */
+const GERSON_COMPLETA = fila({ proveedor: 'Gerson Castro', total: 2300000, pagado: 1000000, u: -1300000, w: 1300000, estado: 'Pagado' })
 /** Pendiente sin un peso pagado: U es el total entre paréntesis. */
 const ALUMETAL = fila({ proveedor: 'Alumetal', comprobante: '0038-00025942', total: 2014940, pagado: 0, u: -2014940 })
 /** ═══ LAS OCHO DEL FALSO AGUJERO (re-medidas el 18/08) ═══ dicen "Pagado" con `Monto Pagado` en 0
@@ -60,8 +63,19 @@ describe('la aritmética de los tramos', () => {
     assert.notEqual(saldoDeLaFila(FREDES), 3300000)
   })
 
-  it('un U POSITIVO sí es un pago y se suma', () => {
-    assert.equal(pagadoDe(COMBUSTIBLES), 34460 + 40000)
+  it('EL DEFECTO · un U POSITIVO NO es un pago: es lo que salió de caja, y restarlo cuenta doble', () => {
+    // Combustibles Barcelo, fila 5 del archivo: factura $34.460 y el ticket de la nafta $40.000. Este
+    // archivo restaba los U positivos «porque un positivo sí es un pago»: pagaba $74.460 de una
+    // factura de $34.460. Hay 60 filas con U > 0 y en 57 el criterio viejo lo restaba.
+    assert.equal(pagadoDe(COMBUSTIBLES), 34460, 'U no entra: lo pagado son T y W')
+    assert.equal(saldoDeLaFila(COMBUSTIBLES), 0)
+  })
+
+  it('EL SEGUNDO TRAMO SÍ ES UN PAGO: `V · Fecha prevista de pago 2` + `W · Monto Parcial 2`', () => {
+    // Las 8 filas del archivo con V cargada tienen W = |U| exacto. Sin leer W, esta factura figura
+    // debiendo $1.300.000 en "Proveedores" Y en las tarjetas de CAJA.
+    assert.equal(pagadoDe(GERSON_COMPLETA), 2300000)
+    assert.equal(saldoDeLaFila(GERSON_COMPLETA), 0)
   })
 
   it('la fila sin un peso pagado debe el comprobante entero', () => {
@@ -140,12 +154,23 @@ describe('el estado tipeado que contradice a su propia fórmula', () => {
 describe('la fórmula de la columna AL', () => {
   const f = formulaSaldoPendiente()
 
-  it('dice EXACTAMENTE lo mismo que el JS, tramo por tramo', () => {
+  it('dice EXACTAMENTE lo mismo que el JS: los DOS tramos, y U afuera', () => {
     assert.ok(f.includes('$O$4:$O'), 'sin el Total no hay de qué restar')
-    assert.ok(f.includes('$T$4:$T'), 'sin Monto Pagado la deuda es el total de la factura')
-    assert.ok(f.includes('$U$4:$U') && f.includes('$W$4:$W'), 'los dos parciales, o falta un tramo')
-    // El `>0` es lo que hace que un paréntesis NO se sume como pago. Sin él, Gerson da cero.
-    assert.equal((f.match(/>0/g) ?? []).length, 2, 'cada parcial necesita su filtro de positivos')
+    assert.ok(f.includes('$T$4:$T'), 'falta el primer tramo de pago')
+    assert.ok(f.includes('$W$4:$W'), 'falta el SEGUNDO tramo de pago')
+    assert.ok(!f.includes('$U$4:$U'), '«Monto Parcial 1» es `=T-O`, el saldo: restarlo cuenta dos veces')
+  })
+
+  // ═══ LA PRUEBA QUE HACE QUE ESTO NO PUEDA VOLVER A DIVERGIR ═══
+  //
+  // La planilla ya define «pagada» en la fórmula de su columna `Estado`, viva en 619 filas:
+  //   IF(ABS(T+W-O)<1;"Pagado";IF(T+W<O;"Pendiente";"Revisar"))
+  // Si el saldo se calcula con otras columnas que las que deciden el estado, el cuadro puede decir
+  // "Pendiente $0" o "Pagado y falta plata" sin que nada falle. Eso fue exactamente lo que pasó.
+  it('usa las MISMAS columnas con las que la planilla decide el estado: T y W, ni una más', () => {
+    const columnas = [...new Set((f.match(/\$([A-Z]{1,2})\$4:\$\1/g) ?? []).map((r) => r.slice(1, r.indexOf('$', 1))))]
+    assert.deepEqual(columnas.sort(), ['AJ', 'E', 'O', 'T', 'W', 'X'].sort(),
+      'la fórmula toca una columna que la definición de «pagada» no mira')
   })
 
   it('es-AR: separador `;` y ni una coma suelta', () => {

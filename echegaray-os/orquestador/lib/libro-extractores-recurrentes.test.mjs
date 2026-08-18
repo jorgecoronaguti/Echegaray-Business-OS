@@ -5,7 +5,7 @@ import { deRecurrentes, RUBRO_RECURRENTES } from './libro-extractores-recurrente
 import { serialDe } from './libro-extractores-fechas.mjs'
 
 // Compras de juguete: encabezado real en la fila 3 (índice 2), como la planilla.
-const CAB = ['id', 'Categoría', 'Fecha', 'Mes', 'Proveedor', 'CUIT (OS)', 'Tipo', 'N° Comprobante', 'Unidad', 'Cliente / Asignación', 'Detalles / Obra', 'Concepto', 'Importe', 'IVA', 'Total', 'Tipo pago', '', '', '', 'Monto Pagado', '', '', '', 'Estado', '', '', '', '', 'Rubro de caja', 'Fecha de caja']
+const CAB = ['id', 'Categoría', 'Fecha', 'Mes', 'Proveedor', 'CUIT (OS)', 'Tipo', 'N° Comprobante', 'Unidad', 'Cliente / Asignación', 'Detalles / Obra', 'Concepto', 'Importe', 'IVA', 'Total', 'Tipo pago', '', '', '', 'Monto Pagado', '', '', 'Monto Parcial 2', 'Estado', '', '', '', '', 'Rubro de caja', 'Fecha de caja']
 const col = Object.fromEntries(CAB.map((n, i) => [n, i]))
 const fila = ({ prov, total, fechaCaja, rubro = RUBRO_RECURRENTES, estado = 'Pagado' }) => {
   const f = Array.from({ length: CAB.length }, () => '')

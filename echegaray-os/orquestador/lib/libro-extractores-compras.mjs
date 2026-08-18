@@ -14,6 +14,7 @@
 // Es la misma partición que ya tenían `libro-extractores-nomina.mjs` y `-fechas.mjs`.
 
 import { columnasObligatorias } from './compras-columnas.mjs'
+import { pagadoDeTramos } from './deuda-por-tramos.mjs'
 import { instrumentoDePago } from './caja-canales.mjs'
 import { movimiento, estadoContraCorte } from './libro-movimientos.mjs'
 import { debitoRealDePlan } from './vencimientos-fiscales.mjs'
@@ -33,7 +34,15 @@ export const NOMBRES_COMPRAS = Object.freeze({
   // 'Estado' (columna X), NO 'Estado pago' (Z). La Z es el SEMÁFORO derivado —"✅ Pagado",
   // "🟡 Por vencer"— y /^pagado$/ no matchea un emoji adelante: TODA compra pagada quedaba
   // PROYECTADO. La X es la columna que escribe el cargador con el contrato Pagado/Pendiente.
+  // ═══ EL SEGUNDO TRAMO FALTABA, Y ES PLATA QUE CAJA CONTABA COMO IMPAGA (18/08) ═══
+  //
+  // Compras registra el pago en dos tramos —`Monto Pagado` y `Monto Parcial 2`, cada uno con su
+  // fecha— y este extractor sólo leía el primero. Una factura saldada en dos veces le llegaba a las
+  // tarjetas de CAJA debiendo el segundo tramo entero. Ver `pagadoDeTramos` en deuda-por-tramos.mjs,
+  // que es de dónde sale ahora la cuenta: la misma que usa "Proveedores" y la misma que usa la
+  // fórmula que la propia planilla tiene en su columna `Estado`.
   importe: 'Total', estado: 'Estado', tipoPago: 'Tipo pago', montoPagado: 'Monto Pagado',
+  parcial2: 'Monto Parcial 2',
   rubro: 'Rubro de caja', fechaCaja: 'Fecha de caja', obra: 'Detalles / Obra',
   // ═══ EL CLIENTE DEL EGRESO ES LA J, NO LA K ═══
   //
@@ -99,25 +108,33 @@ export function esFacturaCargada({ estado, comprobante } = {}) {
 /**
  * NÚCLEO PURO: lo que una fila de Compras TODAVÍA DEBE.
  *
- * Devuelve el total salvo que la fila esté abierta y con un pago parcial encima, en cuyo caso devuelve
- * el saldo. Los tres guardas no son paranoia, cada uno tapa un caso real de la planilla:
+ * Devuelve el total salvo que la fila esté abierta y con pagos encima, en cuyo caso devuelve el saldo.
+ * Los tres guardas no son paranoia, cada uno tapa un caso real de la planilla:
  *
  *   · `pagado` — la fila cerrada carga el instrumento por el total; su "Monto Pagado" es el total.
  *   · `importe > 0` — una nota de crédito viene en negativo y no tiene pagos parciales que restar.
- *   · `montoPagado < importe` — si la planilla dice "no está pagada" y a la vez "pagué todo" (hoy: la
- *     fila 457, FCL Junio, $800.000 con Estado=Proyectado), las dos columnas se contradicen. Devolver
- *     cero borraría el movimiento del libro entero por una celda mal cargada, y fabricar un cero es
- *     peor que arrastrar el total: se avisa y manda el total, que es la lectura conservadora.
+ *   · `ya >= importe` — si la planilla dice "no está pagada" y a la vez "pagué todo" (hoy: la fila
+ *     457, FCL Junio, $800.000 con Estado=Proyectado), las dos columnas se contradicen. Devolver cero
+ *     borraría el movimiento del libro entero por una celda mal cargada, y fabricar un cero es peor
+ *     que arrastrar el total: se avisa y manda el total, que es la lectura conservadora.
  *
- * @param {{importe:number, pagado:boolean, montoPagado:number|null}} f
+ * ═══ LO PAGADO SON LOS DOS TRAMOS, Y LA CUENTA NO VIVE ACÁ (18/08) ═══
+ *
+ * Era `importe - montoPagado`, sin `Monto Parcial 2`: una factura saldada en dos veces le llegaba a
+ * las tarjetas de CAJA debiendo el segundo tramo. Y el defecto de fondo no era el olvido de una
+ * columna — era que "cuánto debe esta factura" estaba escrito DOS VECES en el repositorio, acá y en
+ * `deuda-por-tramos.mjs`, así que "Proveedores" y "CAJA" podían decir cosas distintas de la misma
+ * fila sin que nada fallara. Ahora las dos llaman a `pagadoDeTramos`.
+ *
+ * @param {{importe:number, pagado:boolean, montoPagado:number|null, parcial2?:number|null}} f
  * @param {(m:string)=>void} aviso
  * @returns {number}
  */
-export function pendienteDeCompra({ importe, pagado, montoPagado }, aviso = () => {}) {
-  const ya = num(montoPagado) ?? 0
+export function pendienteDeCompra({ importe, pagado, montoPagado, parcial2 }, aviso = () => {}) {
+  const ya = pagadoDeTramos({ pagado: montoPagado, parcial2 })
   if (pagado || !(importe > 0) || !(ya > 0)) return importe
   if (ya >= importe) {
-    aviso(`"Monto Pagado" ${ya} cubre o supera el Total ${importe} pero el Estado no es "Pagado". `
+    aviso(`lo pagado ${ya} cubre o supera el Total ${importe} pero el Estado no es "Pagado". `
       + 'Va el total: la planilla se contradice y el libro no inventa un saldo cero.')
     return importe
   }

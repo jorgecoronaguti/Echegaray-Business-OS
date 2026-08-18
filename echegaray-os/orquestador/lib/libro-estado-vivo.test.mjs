@@ -218,7 +218,8 @@ test('SÓLO EL SALDO PURO VA VIVO: los demás casos conservan el valor pegado', 
 
 test('LAS TRES LETRAS SE RESUELVEN POR RÓTULO, o nada va vivo', () => {
   const CAB = ['id', 'x', 'x', 'x', 'Proveedor', 'CUIT (OS)', 'x', 'N° Comprobante', 'x', 'Cliente / Asignación',
-    'Detalles / Obra', 'x', 'x', 'x', 'Total', 'Tipo pago', 'x', 'x', 'x', 'Monto Pagado', 'x', 'x', 'x', 'Estado',
+    // «Monto Parcial 2» es la W (índice 22), el segundo tramo de pago: está en su posición real.
+    'Detalles / Obra', 'x', 'x', 'x', 'Total', 'Tipo pago', 'x', 'x', 'x', 'Monto Pagado', 'x', 'x', 'Monto Parcial 2', 'Estado',
     'x', 'x', 'x', 'x', 'Rubro de caja', 'Fecha de caja']
   const cols = columnasVivasDeCompras([[], [], CAB])
   assert.deepEqual(cols, { estado: 'X', total: 'O', montoPagado: 'T' })

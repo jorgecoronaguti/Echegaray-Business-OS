@@ -77,7 +77,7 @@ test('sin la serie publicada no hay movimientos — y por lo tanto no hay exclus
 /** Compras, con su encabezado real en la fila 3 y las columnas que el extractor resuelve por rótulo. */
 const ENC = ['Fecha', 'x', 'Fecha factura', 'y', 'Proveedor', 'CUIT (OS)', 'N° Comprobante', 'z', 'w',
   'Cliente / Asignación', 'Detalles / Obra', 'a', 'b', 'c', 'Total', 'Estado', 'Tipo pago',
-  'Monto Pagado', 'Rubro de caja', 'Fecha de caja']
+  'Monto Pagado', 'Monto Parcial 2', 'Rubro de caja', 'Fecha de caja']
 const I = Object.fromEntries(ENC.map((n, i) => [n, i]))
 const filaCompras = ({ prov, total, estado, rubro, fecha, tipo = 'Transferencia' }) => {
   const f = Array(ENC.length).fill('')

@@ -46,8 +46,10 @@ const CORTE = 46248 // 14/08/2026, hasta donde llega el extracto
 const FIN = 46266 // 01/09/2026, el `hasta` EXCLUIDO de las tarjetas
 
 const IX = Object.freeze({
+  // Las posiciones son las REALES del archivo: «Monto Parcial 2» es la W (22), el segundo tramo de
+  // pago, entre «Monto Pagado» (T, 19) y «Estado» (X, 23).
   proveedor: 4, comprobante: 7, cliente: 9, obra: 10, total: 14, tipoPago: 15,
-  montoPagado: 19, estado: 23, rubro: 27, fechaCaja: 29, cuit: 38,
+  montoPagado: 19, parcial2: 22, estado: 23, rubro: 27, fechaCaja: 29, cuit: 38,
 })
 
 function encabezado() {
@@ -59,6 +61,7 @@ function encabezado() {
   h[IX.total] = NOMBRES_COMPRAS.importe
   h[IX.tipoPago] = NOMBRES_COMPRAS.tipoPago
   h[IX.montoPagado] = NOMBRES_COMPRAS.montoPagado
+  h[IX.parcial2] = NOMBRES_COMPRAS.parcial2
   h[IX.estado] = NOMBRES_COMPRAS.estado
   h[IX.rubro] = NOMBRES_COMPRAS.rubro
   h[IX.fechaCaja] = NOMBRES_COMPRAS.fechaCaja
@@ -67,13 +70,14 @@ function encabezado() {
 }
 
 function fila({ proveedor = 'Proveedor SA', comprobante = '', total = 0, estado = 'Pendiente',
-  fechaCaja = 46260, tipoPago = 'Echeq', montoPagado = 0, rubro = 'Materiales Civil' } = {}) {
+  fechaCaja = 46260, tipoPago = 'Echeq', montoPagado = 0, parcial2 = 0, rubro = 'Materiales Civil' } = {}) {
   const f = new Array(40).fill('')
   f[IX.proveedor] = proveedor
   f[IX.comprobante] = comprobante
   f[IX.total] = total
   f[IX.tipoPago] = tipoPago
   f[IX.montoPagado] = montoPagado
+  f[IX.parcial2] = parcial2
   f[IX.estado] = estado
   f[IX.rubro] = rubro
   f[IX.fechaCaja] = fechaCaja

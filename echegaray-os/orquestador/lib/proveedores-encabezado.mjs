@@ -24,6 +24,7 @@
 
 import { TRAMOS, SIN_FECHA } from './proveedores-aging.mjs'
 import { ALERTA } from './glifos.mjs'
+import { formulaPagadasSinImporte, formulaProveedoresSinImporte } from './deuda-por-tramos.mjs'
 
 /** Rótulos de la izquierda, sin el prefijo numérico: el prefijo es del ordenamiento, no de la vista. */
 export const FILAS_AGING = Object.freeze(
@@ -49,15 +50,20 @@ export const F = Object.freeze({
   get primerMedio() { return this.rotulos + 1 },
   get totalMedios() { return this.primerMedio + MEDIOS.length },
   get arca() { return this.totalAging },
-  // ═══ ACÁ VIVÍA `noMostrada` — LA FILA QUE RESUCITABA LO YA PAGADO (18/08) ═══
+  // ═══ LA FILA 12 SE QUEDA DONDE ESTABA, Y CAMBIA LO QUE DICE (18/08) ═══
   //
-  // Publicaba, pegado al TOTAL y con un ▲, «Dicen "Pagado" y falta plata · $11.919.063 · 8 facturas»
-  // con los nombres de los proveedores al lado. Esa plata no se debe: las 8 filas son facturas donde
-  // el dueño tipeó "Pagado" encima de la fórmula del Estado, y los "importes que la contradecían"
-  // eran `Monto Pagado` (una fórmula que sólo se dispara con Modalidad = "pago") y `Monto Parcial 1`
-  // (que es literalmente `=T-O`). Tres lecturas de la misma celda presentadas como tres testigos.
-  // El dueño lo reclamó tres veces. Ver la cabecera de `deuda-por-tramos.mjs`.
-  get control() { return this.totalAging + 1 },
+  // Publicaba «Dicen "Pagado" y falta plata · $11.919.063 · 8 facturas» pegado al TOTAL. Esa plata no
+  // se debe, y el dueño lo reclamó tres veces. La primera corrección BORRÓ la fila entera, y eso fue
+  // el segundo error: *"no has respetado el diseño q tenía"*. El cuadro tiene su forma —el aging a la
+  // izquierda, el medio de pago a la derecha, una línea colgando del total y el control al pie— y esa
+  // forma es del dueño, no del hallazgo que la ocupaba.
+  //
+  // Lo que queda en la fila es lo que SÍ es cierto de esas ocho: están pagadas y NO tienen registrado
+  // con cuánto. Eso no es deuda —es carga incompleta— y por eso la línea lleva el CONTEO y no un
+  // importe: un número en pesos colgado del total se lee como deuda diga lo que diga el rótulo, que
+  // es exactamente cómo se llegó acá.
+  get sinImporte() { return this.totalAging + 1 },
+  get control() { return this.totalAging + 2 },
   get fin() { return this.control },
 })
 
@@ -130,6 +136,19 @@ export function celdasEncabezado() {
   set(F.totalMedios, 5, 'TOTAL')
   set(F.totalMedios, 6, `=SUM($G${F.primerMedio}:$G${F.primerMedio + MEDIOS.length - 1})`, 'montoTotal')
   set(F.totalMedios, 7, `=IF($G$${F.totalMedios}=0;0;1)`, 'porcentaje')
+
+  // ── PAGADAS SIN EL IMPORTE CARGADO — carga incompleta, no deuda.
+  //
+  // `Estado` dice "Pagado" y los dos tramos de pago (`Monto Pagado` + `Monto Parcial 2`) suman cero.
+  // La factura está saldada —lo declaró el dueño tipeando el estado— pero la planilla no sabe cuánta
+  // plata salió, y eso sí le importa a CAJA: ese egreso no tiene importe con el cual imputarse.
+  //
+  // VA SIN MONTO, A PROPÓSITO. El conteo manda a mirar; un importe al lado del TOTAL se suma con la
+  // vista aunque el rótulo diga otra cosa. El triángulo sólo se enciende si hay alguna.
+  set(F.sinImporte, 0, `=IF($D$${F.sinImporte}=0;"";"${ALERTA} ")&"Pagadas sin registrar con cuánto — CAJA no las puede imputar"`)
+  set(F.sinImporte, 3, formulaPagadasSinImporte(), 'entero')
+  // Y a quiénes, para poder preguntar sin abrir Compras.
+  set(F.sinImporte, 5, formulaProveedoresSinImporte())
 
   // ── lo que la deuda NO ve: facturado con CAE que Compras no tiene cargado
   //

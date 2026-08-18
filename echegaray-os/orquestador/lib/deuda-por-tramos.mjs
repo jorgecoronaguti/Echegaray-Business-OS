@@ -98,16 +98,55 @@ const positivo = (x) => (x > 0 ? x : 0)
 const txt = (v) => String(v ?? '').trim()
 
 /**
- * LO EFECTIVAMENTE PAGADO DE UNA FILA: los tres tramos, contando sólo los POSITIVOS.
+ * ═══ LO PAGADO DE UNA FILA: `T + W`. LOS DOS TRAMOS, Y NADA MÁS ═══
  *
- * El filtro no es prolijidad: un U negativo es el saldo que falta, y sumarlo como pago deja en cero
- * una factura que se debe entera. Ver la semántica medida en la cabecera.
+ * Compras registra el pago en DOS TRAMOS, y las columnas están de a pares:
+ *
+ *   tramo 1 → `Q · Fecha prevista de pago (día)`  +  `T · Monto Pagado`
+ *   tramo 2 → `V · Fecha prevista de pago 2`      +  `W · Monto Parcial 2`
+ *
+ * `U · Monto Parcial 1` NO ES UN TRAMO: es `=T-O`, el saldo que queda después del primero. Medido
+ * sobre las 8 filas del archivo con `V` cargada —las únicas con segundo tramo real— en las OCHO vale
+ * `W = |U|` exacto: Gerson Castro fila 819 (O 2.300.000 · T 1.000.000 · U −1.300.000 · V 14/08 ·
+ * W 1.300.000) y Pedro Fredes fila 832 (3.300.000 = 2.000.000 + 1.300.000). Las dos quedaron
+ * saldadas, y su Estado lo calcula sola la planilla.
+ *
+ * ═══ POR QUÉ `max(U;0)` ERA UN DEFECTO, NO UNA PRECAUCIÓN ═══
+ *
+ * Este archivo restaba además los U POSITIVOS «porque un positivo sí es un pago». No lo es: hay 60
+ * filas con U > 0 y ahí U es el importe que SALIÓ DE CAJA, que no coincide con el de la factura —
+ * nafta de Combustibles Barcelo, factura $34.460 y ticket $40.000. Restarlo cuenta el pago dos veces.
+ * En 57 de esas 60 el criterio viejo lo restaba.
+ *
+ * ═══ Y LA PRUEBA DE QUE ÉSTA ES LA DEFINICIÓN Y NO OTRA OPINIÓN ═══
+ *
+ * Es la MISMA que usa la fórmula que la planilla YA TIENE en su columna `Estado`, viva en 619 filas:
+ *
+ *     IF(ABS(T+W-O)<1;"Pagado";IF(T+W<O;"Pendiente";"Revisar"))
+ *
+ * La planilla decide el estado con `T+W` y este archivo calculaba el saldo con otra cuenta. Un cuadro
+ * cuyo "cuánto" no cierra con su propio "¿está pagada?" no puede estar bien por casualidad: el test
+ * compara las dos expresiones, no dos números que hoy empatan.
  *
  * @param {any[]} fila una fila de Compras (A..AN)
  * @returns {number}
  */
 export function pagadoDe(fila = []) {
-  return num(fila[COL.pagado]) + positivo(num(fila[COL.parcial1])) + positivo(num(fila[COL.parcial2]))
+  return pagadoDeTramos({ pagado: fila[COL.pagado], parcial2: fila[COL.parcial2] })
+}
+
+/**
+ * LA MISMA CUENTA, POR CAMPOS — para el que ya resolvió sus columnas por rótulo.
+ *
+ * Existe para que `libro-extractores-compras.mjs` —el que alimenta las tarjetas de CAJA— use ÉSTA y
+ * no la suya. Tenía la propia, `importe - montoPagado`, sin el segundo tramo: la misma factura valía
+ * una cosa en "Proveedores" y otra en "CAJA". Un concepto, una fuente.
+ *
+ * @param {{pagado:any, parcial2:any}} f
+ * @returns {number}
+ */
+export function pagadoDeTramos({ pagado, parcial2 } = {}) {
+  return num(pagado) + num(parcial2)
 }
 
 /**
@@ -209,8 +248,7 @@ export function posicionComercial(filas = []) {
  */
 export function formulaSaldoPendiente() {
   const n = (r) => `IF(ISNUMBER(${r});${r};0)`
-  const pos = (r) => `IF(ISNUMBER(${r});IF(${r}>0;${r};0);0)`
-  const saldo = `${n('$O$4:$O')}-${n('$T$4:$T')}-${pos('$U$4:$U')}-${pos('$W$4:$W')}`
+  const saldo = `${n('$O$4:$O')}-${n('$T$4:$T')}-${n('$W$4:$W')}`
   return `=ARRAYFORMULA(IF($E$4:$E="";"";IF(($X$4:$X="${PENDIENTE}")*($AJ$4:$AJ=1);${saldo};0)))`
 }
 
@@ -226,8 +264,35 @@ export function formulaSaldoPendiente() {
  */
 export function expresionSaldo(hoja = 'Compras!') {
   const n = (c) => `IF(ISNUMBER(${hoja}$${c}$4:$${c});${hoja}$${c}$4:$${c};0)`
-  const pos = (c) => `IF(ISNUMBER(${hoja}$${c}$4:$${c});IF(${hoja}$${c}$4:$${c}>0;${hoja}$${c}$4:$${c};0);0)`
-  return `(${n('O')}-${n('T')}-${pos('U')}-${pos('W')})`
+  return `(${n('O')}-${n('T')}-${n('W')})`
+}
+
+/**
+ * LAS FACTURAS PAGADAS SIN REGISTRAR CON CUÁNTO — el conteo, como fórmula viva.
+ *
+ * `Estado` = "Pagado" y los dos tramos de pago suman cero. NO ES DEUDA: el dueño declaró la factura
+ * saldada tipeando el estado encima de la fórmula, y eso manda. Lo que falta es el IMPORTE, y el que
+ * lo necesita es CAJA — un egreso sin monto no se puede imputar a ningún día ni a ninguna obra.
+ *
+ * DEVUELVE UN CONTEO, NUNCA PESOS, y es la decisión entera de esta función. Durante cuatro días este
+ * mismo universo se publicó con su importe al lado del TOTAL de la deuda y se leyó —correctamente—
+ * como $11.919.063 que la empresa debía. Ver la cabecera de este archivo.
+ *
+ * @returns {string}
+ */
+export function formulaPagadasSinImporte() {
+  return `=SUMPRODUCT(${universoSinImporte()})`
+}
+
+/** A quiénes, para poder preguntar sin abrir Compras. `UNIQUE` porque hay proveedores con más de una. */
+export function formulaProveedoresSinImporte() {
+  return `=IFERROR(TEXTJOIN(" · ";TRUE;UNIQUE(FILTER(Compras!$E$4:$E;${universoSinImporte()})));"")`
+}
+
+/** El universo, en un solo lugar: el conteo y los nombres tienen que hablar de las mismas filas. */
+function universoSinImporte() {
+  const n = (c) => `IF(ISNUMBER(Compras!$${c}$4:$${c});Compras!$${c}$4:$${c};0)`
+  return `(Compras!$AJ$4:$AJ=1)*(Compras!$X$4:$X="${PAGADO}")*(Compras!$O$4:$O>0)*((${n('T')}+${n('W')})=0)`
 }
 
 /** El rótulo de la columna en Compras. Una sola constante: el que escribe y el que busca leen ésta. */
