@@ -58,10 +58,10 @@ export default async function AdministracionPage() {
   return (
     <PageShell
       title="Administración"
-      subtitle="Los clientes, sus obras y los procesos operativos de todos los días."
+      subtitle="Lo que se administra desde acá, sin tocar la base de datos."
       maxWidth="max-w-3xl"
     >
-      <nav className="overflow-hidden rounded-xl border border-line bg-white" data-testid="admin-entidades">
+      <nav className="overflow-hidden rounded-lg border border-line bg-surface" data-testid="admin-entidades">
         <Entrada
           href="/clientes" testid="ir-clientes" titulo="Clientes"
           detalle="Información, contactos, documentos de Drive y sus obras"
@@ -72,13 +72,30 @@ export default async function AdministracionPage() {
           detalle="Todas las obras: cronograma, personal, economía y contrato"
           cuenta={obrasActivas.length ? `${obrasActivas.length} en curso` : undefined}
         />
+        {/* LAS TRES QUE FALTABAN (19/08/2026). El dueño: *"/administracion deja de ser sólo un menú.
+            Debe permitir administrar: Clientes | Obras | Usuarios | Personas | Proveedores"*. Las
+            dos primeras ya existían; estas tres son las que obligaban a entrar a Supabase para
+            hacer un cambio normal — dar de alta a alguien, darle acceso a una obra, unificar un
+            proveedor que en Compras está escrito de tres formas distintas. */}
+        <Entrada
+          href="/administracion/usuarios" testid="ir-usuarios" titulo="Usuarios"
+          detalle="Quién entra, con qué nivel, y a qué obras tiene acceso"
+        />
+        <Entrada
+          href="/administracion/personas" testid="ir-personas" titulo="Personas"
+          detalle="El plantel: función, categoría y en qué obra está cada uno"
+        />
+        <Entrada
+          href="/administracion/proveedores" testid="ir-proveedores" titulo="Proveedores"
+          detalle="Identidad única por CUIT, y los nombres de Compras sin resolver"
+        />
       </nav>
 
       {/* La separación es la que pidió el dueño: arriba las entidades, abajo los procesos. */}
       <p className="mt-7 mb-2 px-1 text-[11px] font-medium uppercase tracking-wide text-faint">
         Operación
       </p>
-      <nav className="overflow-hidden rounded-xl border border-line bg-white" data-testid="admin-operacion">
+      <nav className="overflow-hidden rounded-lg border border-line bg-surface" data-testid="admin-operacion">
         <Entrada
           href="/integraciones/pedidos-materiales" testid="ir-pedidos" titulo="Pedidos de materiales"
           detalle="Lo que pide la obra, desde AppSheet y desde el OS"
@@ -90,6 +107,10 @@ export default async function AdministracionPage() {
         <Entrada
           href="/integraciones/movimientos" testid="ir-movimientos" titulo="Movimientos"
           detalle="Entradas y salidas de pañol"
+        />
+        <Entrada
+          href="/administracion/pendientes" testid="ir-pendientes" titulo="Pendientes de imputación"
+          detalle="Textos de obra que nadie clasificó todavía, y que hay que resolver a mano"
         />
       </nav>
     </PageShell>
