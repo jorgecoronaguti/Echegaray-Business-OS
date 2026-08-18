@@ -74,12 +74,24 @@ function pct(valor: number | null | undefined, base: number | null | undefined):
 }
 
 export function TabEconomia({
-  plan, certificados, crearCert, borrarCert,
+  plan, certificados, crearCert, borrarCert, veComercial = true,
 }: {
   plan: PlanVsReal | null
   certificados: Certificado[]
   crearCert: AccionFormulario
   borrarCert: (certificadoId: string) => Promise<ResultadoAccion>
+  /**
+   * ═══ POR QUÉ ESTO NO ES «OCULTAR UNA COLUMNA» (19/08/2026) ═══
+   *
+   * El dato ya no llega: la base devuelve NULL a quien no es Administración, y la columna cruda ni
+   * siquiera está al alcance de `authenticated`. Este flag NO protege nada — protege Postgres.
+   *
+   * Lo que arregla es el CARTEL. Sin él, un jefe de obra veía «Contratado —» con la explicación
+   * *"Nadie lo cargó todavía"* al lado, que para él es MENTIRA: el contrato puede estar cargado y
+   * él no puede verlo. Dar una explicación falsa de una ausencia es peor que no explicarla: fabrica
+   * un hecho. Los dos bloques que sólo hablan de contrato, venta y margen no se dibujan.
+   */
+  veComercial?: boolean
 }) {
   if (!plan) return <Callout tono="neg">No pude leer el plan contra real de esta obra.</Callout>
 
@@ -95,6 +107,7 @@ export function TabEconomia({
       {/* Cuatro bloques en dos columnas: entran en una pantalla sin scroll y se comparan de un vistazo.
           Sin recuadro por bloque — son cuatro listas de definición, no cuatro tarjetas. */}
       <div className="grid gap-x-10 gap-y-6 lg:grid-cols-2">
+        {veComercial && (
         <Bloque titulo="Contrato" testid="economia-contrato">
           <Linea
             concepto="Contratado" fuerte
@@ -109,6 +122,7 @@ export function TabEconomia({
             falta="Esta obra no tiene presupuesto cargado."
           />
         </Bloque>
+        )}
 
         <Bloque titulo="Costo" testid="economia-costo">
           <Linea
@@ -161,14 +175,17 @@ export function TabEconomia({
             falta="Sin certificados no hay nada pendiente de cobrar."
             tono={plan.pendiente_cobrar ? 'warn' : 'ink'}
           />
-          <Linea
-            concepto="Pendiente de certificar"
-            valor={plan.pendiente_certificar == null ? null : plata(plan.pendiente_certificar)}
-            origen="Contratado menos certificado: lo que queda por certificar del contrato."
-            falta="Falta el monto contratado."
-          />
+          {veComercial && (
+            <Linea
+              concepto="Pendiente de certificar"
+              valor={plan.pendiente_certificar == null ? null : plata(plan.pendiente_certificar)}
+              origen="Contratado menos certificado: lo que queda por certificar del contrato."
+              falta="Falta el monto contratado."
+            />
+          )}
         </Bloque>
 
+        {veComercial && (
         <Bloque titulo="Resultado" testid="economia-resultado">
           <Linea
             concepto="Margen esperado"
@@ -188,6 +205,7 @@ export function TabEconomia({
             tono={plan.margen_actual != null && plan.margen_actual < 0 ? 'neg' : 'ink'}
           />
         </Bloque>
+        )}
       </div>
 
       {certificados.length > 0 && (

@@ -51,6 +51,8 @@ import { TabCronograma } from '@/features/obras/components/TabCronograma'
 import { TabPersonal } from '@/features/obras/components/TabPersonal'
 import { TabOperacion } from '@/features/obras/components/TabOperacion'
 import { getOperacionObra, SUBS_OPERACION, type SubOperacion } from '@/features/obras/services/operacionService'
+import { esAdministracion } from '@/features/auth/types/areas'
+import { getPerfilActual } from '@/features/auth/services/authService'
 import { TabEconomia } from '@/features/obras/components/TabEconomia'
 import { TabDocumentos } from '@/features/obras/components/TabDocumentos'
 import { desvincularDocumento, vincularDocumento } from '@/features/obras/services/actionsDocumentos'
@@ -282,6 +284,7 @@ export default async function ObraPage({
           certificados={certificados}
           crearCert={crearCertificado.bind(null, obraId)}
           borrarCert={borrarCertificado.bind(null, obraId)}
+          veComercial={esAdministracion((await getPerfilActual(supabase)).data?.rol ?? null)}
         />
       )}
 

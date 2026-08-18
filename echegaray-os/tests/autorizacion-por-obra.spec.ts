@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
+import { entrarComo } from './util/login'
 
 // AUTORIZACIÓN POR OBRA — LAS CUATRO PRUEBAS, CONTRA POSTGREST DIRECTO.
 //
@@ -275,4 +276,33 @@ test('el nivel Obras consulta los maestros pero no los administra', async () => 
     })
     expect(r.status, `un jefe de obra pudo escribir en ${tabla} (${r.status})`).toBeGreaterThanOrEqual(400)
   }
+})
+
+
+// ═══ LA PANTALLA NO PUEDE EXPLICAR UNA AUSENCIA QUE NO ES UNA AUSENCIA (19/08/2026) ═══
+//
+// La solapa Economía dibujaba «Contratado —» con la explicación *"Nadie lo cargó todavía"* al lado.
+// Para Administración es verdad. Para un jefe de obra es MENTIRA: el contrato puede estar cargado y
+// él no puede verlo. Una explicación falsa de una ausencia fabrica un hecho, que es lo único que
+// este sistema no puede hacer.
+//
+// La protección sigue estando en Postgres —la columna ni llega—; esto mide que el cartel tampoco
+// mienta. Y mide el CASO POSITIVO en la misma pasada: costo y certificación SÍ se dibujan, porque
+// un test que sólo comprueba ausencias se pone verde con la pantalla rota.
+test('Economía no le inventa una explicación al nivel Obras, y le deja lo suyo', async ({ page }) => {
+  test.setTimeout(120000)
+  await entrarComo(page, JEFE.email, JEFE.password)
+  await page.goto('/obras/san-francisco?vista=economia')
+
+  await expect(page.getByTestId('economia-costo'),
+    'el jefe no ve el costo de su obra: se enmascaró de más').toBeVisible()
+  await expect(page.getByTestId('economia-certificacion'),
+    'el jefe no ve la certificación de su obra, que el dueño declaró operativa').toBeVisible()
+  await expect(page.getByTestId('economia-contrato'),
+    'el bloque Contrato se le dibujó a un jefe de obra').toHaveCount(0)
+  await expect(page.getByTestId('economia-resultado'),
+    'el bloque Resultado (margen) se le dibujó a un jefe de obra').toHaveCount(0)
+  // Y que no quede el rastro en el HTML servido: el payload del server component es leíble.
+  expect(await page.content(), 'la palabra «Contratado» viajó en el HTML del nivel Obras')
+    .not.toContain('Contratado')
 })
