@@ -30,6 +30,9 @@ const config: Config = {
           DEFAULT: 'var(--os-accent)',
           hover: 'var(--os-accent-hover)',
         },
+        // LA MARCA. Es identidad, nunca estado ni acción: el amarillo #FDC900 da 1,6:1 sobre
+        // blanco y no puede llevar texto encima. Ver el porqué completo en globals.css.
+        marca: { DEFAULT: 'var(--os-marca)', soft: 'var(--os-marca-soft)' },
         pos: { DEFAULT: 'var(--os-pos)', soft: 'var(--os-pos-soft)' },
         neg: { DEFAULT: 'var(--os-neg)', soft: 'var(--os-neg-soft)' },
         warn: { DEFAULT: 'var(--os-warn)', soft: 'var(--os-warn-soft)' },
@@ -40,10 +43,11 @@ const config: Config = {
         card: '10px',
       },
       boxShadow: {
-        // Sombras azuladas multicapa muy sutiles — profundidad sin ruido.
-        card: '0 1px 2px rgba(10,37,64,0.04), 0 1px 3px rgba(10,37,64,0.06)',
-        pop: '0 4px 12px rgba(10,37,64,0.08), 0 12px 28px rgba(10,37,64,0.10)',
-        hero: '0 1px 2px rgba(10,37,64,0.10), 0 18px 40px -20px rgba(10,37,64,0.45)',
+        // Sombras del GRAFITO de la marca (#30302F), multicapa y muy sutiles: profundidad sin
+        // ruido. Eran azuladas (rgba(10,37,64,…)), del acento navy que se retiró el 18/08.
+        card: '0 1px 2px rgba(48,48,47,0.05), 0 1px 3px rgba(48,48,47,0.07)',
+        pop: '0 4px 12px rgba(48,48,47,0.09), 0 12px 28px rgba(48,48,47,0.11)',
+        hero: '0 1px 2px rgba(48,48,47,0.10), 0 18px 40px -20px rgba(48,48,47,0.45)',
       },
       fontFamily: {
         sans: [

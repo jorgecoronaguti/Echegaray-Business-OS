@@ -14,33 +14,67 @@
  * los componentes: si un color aparece, salió de un token.
  */
 :root {
-  /* Superficies */
-  --os-canvas: #f6f8fb; /* fondo de la aplicación (azulado muy claro) */
+  /* ═══════════════════════════════════════════════════════════════════════════
+   * LA MARCA, MEDIDA — no elegida (18/08/2026)
+   * ═══════════════════════════════════════════════════════════════════════════
+   * Los dos colores salen de contar los píxeles del logo oficial
+   * (Drive · "logo y colores de la empresa" · `Logo sin fondo.png`, 578×432):
+   *
+   *     #30302F  grafito   37,4% de los píxeles opacos  ← el logotipo y las barras oscuras
+   *     #FDC900  amarillo  37,2%                        ← las barras amarillas
+   *
+   * Son dos y están al 50%. No hay un tercero. Hasta hoy el acento del OS era
+   * `#10233a`, un navy que el propio archivo declaraba como "identidad Echegaray"
+   * sin haber mirado nunca el logo: era un placeholder que se quedó.
+   *
+   * ═══ EL AMARILLO NO PUEDE SER EL COLOR DE ACCIÓN, Y ES UNA DECISIÓN ═══
+   *
+   * #FDC900 sobre blanco da un contraste de 1,6:1. El mínimo de WCAG AA para
+   * texto es 4,5:1 y para un control, 3:1. Un botón primario amarillo con texto
+   * encima es ilegible, y pintarle texto oscuro lo convierte en un cartel de
+   * advertencia — que además choca con `--os-warn`, que ya significa problema.
+   *
+   * Entonces: el GRAFITO es el color de acción y de jerarquía (es el color del
+   * logotipo, la estructura de la marca) y el AMARILLO es la MARCA — el isotipo,
+   * y una regla fina donde hace falta decir "acá estás". Poco y en un solo lugar,
+   * que es como lo usa el logo: una señal, no un fondo. */
+
+  /* Superficies — neutro cálido, del gris del logo. Antes eran azuladas (#f6f8fb),
+     heredadas de una referencia de producto financiero ajena a esta empresa. */
+  --os-canvas: #f7f7f5; /* fondo de la aplicación */
   --os-surface: #ffffff; /* tarjetas y contenedores elevados */
-  --os-surface-quiet: #f7f9fc; /* superficie interior sutil (bloques dentro de cards) */
-  --os-surface-sunken: #eef2f7; /* pistas / hover apagados */
+  --os-surface-quiet: #fafaf8; /* superficie interior sutil (bloques dentro de cards) */
+  --os-surface-sunken: #efeeea; /* pistas / hover apagados */
 
-  /* Hairlines (frost) */
-  --os-line: #e6ebf1; /* borde por defecto, divisor de contenido */
-  --os-line-strong: #d5dde7; /* borde con más presencia (encabezado de tabla) */
+  /* Hairlines — del mismo neutro cálido que el canvas */
+  --os-line: #e7e6e2; /* borde por defecto, divisor de contenido */
+  --os-line-strong: #d7d5cf; /* borde con más presencia (encabezado de tabla) */
 
-  /* Tinta / texto (navy profundo, no negro puro) */
-  --os-ink: #0a2540; /* títulos y valores primarios */
-  --os-ink-soft: #35485d; /* etiquetas fuertes */
-  --os-muted: #64748b; /* texto secundario / cuerpo */
-  --os-faint: #8a97a6; /* captions, eyebrows, metadatos */
+  /* Tinta / texto — la familia del grafito #30302F, no negro puro */
+  --os-ink: #1f1f1e; /* títulos y valores primarios */
+  --os-ink-soft: #3a3a38; /* etiquetas fuertes */
+  --os-muted: #6b6b67; /* texto secundario / cuerpo */
+  --os-faint: #91918b; /* captions, eyebrows, metadatos */
 
-  /* Acento — identidad Echegaray (tinta oscura propia, no una marca ajena) */
-  --os-accent: #10233a; /* acciones primarias, selección, superficie oscura */
-  --os-accent-hover: #1d3452;
+  /* Acento — el GRAFITO del logotipo. Acciones primarias, selección, superficie oscura. */
+  --os-accent: #30302f;
+  --os-accent-hover: #454543;
 
-  /* Semántico — reservado para estado, con tinte tenue de fondo */
+  /* Marca — el AMARILLO del isotipo. Identidad, nunca estado ni acción.
+     `soft` es su versión de fondo, para un realce que no compita con el semántico. */
+  --os-marca: #fdc900;
+  --os-marca-soft: #fef4cf;
+
+  /* Semántico — reservado para ESTADO, con tinte tenue de fondo.
+     El warn se corrió a un ámbar más rojizo para que no se confunda con la marca:
+     dos amarillos parecidos, uno que dice "Echegaray" y otro "hay un problema",
+     es exactamente la ambigüedad que un sistema de color existe para evitar. */
   --os-pos: #067647;
   --os-pos-soft: #e7f6ee;
   --os-neg: #b42318;
   --os-neg-soft: #fbeae8;
-  --os-warn: #93591b;
-  --os-warn-soft: #fbf1e0;
+  --os-warn: #b54708;
+  --os-warn-soft: #fdf0e4;
   --os-info: #175cd3;
   --os-info-soft: #e9f0fd;
   --os-focus: #2f6df6; /* anillo de foco accesible */

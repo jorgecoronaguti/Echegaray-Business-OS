@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { AREA_HREF, AREA_LABEL, type Area } from '@/features/auth/types/areas'
@@ -56,12 +57,22 @@ export function AppHeader({
       {/* UNA SOLA LÍNEA, 48px. `h-12` es 6 unidades de la grilla de 8: el header es andamiaje, no
           contenido, y cada píxel que ocupa se lo saca a la tabla que la persona vino a leer. */}
       <div className="mx-auto flex h-12 max-w-[1400px] items-center gap-1 px-4 sm:px-6">
+        {/* LA MARCA REAL, NO SU NOMBRE ESCRITO (18/08/2026). El isotipo es el archivo oficial del
+            dueño —Drive · "logo y colores de la empresa" · `LOGO REDONDO.png`, con transparencia—,
+            no un redibujo mío: una marca redibujada a ojo es una marca distinta.
+            El logotipo va al lado en grafito, que es exactamente como está compuesto el logo. */}
         <Link
           href={areas.includes('administracion') ? '/administracion' : '/obras'}
-          className="mr-2 shrink-0 text-[13px] font-semibold tracking-[0.14em] text-ink"
+          className="mr-3 flex shrink-0 items-center gap-2"
           data-testid="marca"
+          aria-label="Echegaray Construcciones — inicio"
         >
-          ECHEGARAY
+          <Image src="/marca/isotipo.png" alt="" width={26} height={26} priority className="h-[26px] w-[26px]" />
+          {/* En el teléfono queda sólo el isotipo: 26px dicen lo mismo que 120px y no le sacan
+              lugar al nombre de la obra, que es lo que la persona vino a leer. */}
+          <span className="hidden text-[13px] font-semibold tracking-[0.14em] text-ink sm:block">
+            ECHEGARAY
+          </span>
         </Link>
 
         <nav className="flex min-w-0 items-center gap-0.5" data-testid="nav-areas">
@@ -74,10 +85,15 @@ export function AppHeader({
                 href={AREA_HREF[a]}
                 data-testid={`nav-${a}`}
                 aria-current={activa === a ? 'page' : undefined}
-                className={`rounded-md px-2.5 py-1.5 text-[13px] transition-colors ${
+                // EL ÁREA ACTIVA SE MARCA CON EL AMARILLO DE LA MARCA, y con una regla de 2px
+                // debajo — no con un fondo amarillo. #FDC900 da 1,6:1 sobre blanco: como fondo de
+                // un control con texto encima es ilegible. Como REGLA no lleva texto, así que el
+                // contraste no aplica y la identidad aparece donde de verdad significa algo:
+                // dónde estoy parado. Ver globals.css.
+                className={`rounded-t-md border-b-2 px-2.5 pb-[7px] pt-1.5 text-[13px] transition-colors ${
                   activa === a
-                    ? 'bg-surface-sunken font-medium text-ink'
-                    : 'text-muted hover:bg-surface-quiet hover:text-ink'
+                    ? 'border-marca font-medium text-ink'
+                    : 'border-transparent text-muted hover:bg-surface-quiet hover:text-ink'
                 }`}
               >
                 {AREA_LABEL[a]}
