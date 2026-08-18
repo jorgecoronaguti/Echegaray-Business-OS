@@ -25,7 +25,9 @@
 //   prematura y el precio se paga en bugs de scroll.
 
 import { useMemo, useState } from 'react'
-import type { Actividad, Restriccion } from '../types'
+import { BotonAccion, type ResultadoAccion } from '@/shared/components/ui'
+import type { Actividad, Persona, Restriccion } from '../types'
+import { FormNuevaActividad, PanelActividad, type AccionesCronograma } from './PanelActividad'
 
 const DIA = 86400000
 const ALTO_FILA = 26
@@ -46,17 +48,66 @@ function nivelDe(a: Actividad): number {
   return a.tipo === 'resumen' ? 0 : 1
 }
 
+/**
+ * SELLAR LA LÍNEA BASE — la acción con más consecuencias del módulo, y la única que no se deshace.
+ *
+ * La advertencia va ESCRITA Y VISIBLE, no en un `confirm()` del navegador: un diálogo nativo se
+ * cierra con el pulgar sin leerlo, no queda a la vista mientras se decide, y encima obliga a los
+ * tests a atrapar el evento. Acá el botón está detrás de un despliegue que dice qué pasa cuando se
+ * toca — y una vez sellada, el botón desaparece en lugar de fallar contra el servidor.
+ */
+function SellarLineaBase({ sellar, yaSellada }: { sellar: () => Promise<ResultadoAccion>; yaSellada: boolean }) {
+  if (yaSellada) {
+    return <span className="text-[11px] text-faint" data-testid="baseline-sellada">línea base sellada</span>
+  }
+  return (
+    <details className="relative">
+      <summary
+        data-testid="sellar-baseline"
+        className="cursor-pointer rounded-control border border-line px-2.5 py-1 text-[12px] text-ink hover:bg-slate-50"
+      >Sellar línea base</summary>
+      <div className="absolute right-0 z-30 mt-1 w-[280px] rounded-control border border-line bg-white p-3 shadow-lg">
+        <p className="text-[12px] leading-relaxed text-muted">
+          Congela las fechas de HOY como el plan aprobado. <strong className="text-ink">Se hace una sola vez</strong>:
+          desde entonces, mover una fecha produce un desvío medible. Si se pudiera volver a sellar, cada
+          reprogramación dejaría el desvío en cero y el tablero diría que siempre vamos en fecha.
+        </p>
+        <div className="mt-2.5">
+          <BotonAccion accion={() => sellar()} testid="sellar-baseline-confirmar" tono="fuerte">
+            Sellar el plan de hoy
+          </BotonAccion>
+        </div>
+      </div>
+    </details>
+  )
+}
+
 export function Gantt({
   actividades,
   restricciones = [],
   hoy = new Date(),
+  personas = [],
+  acciones,
+  yaSellada = false,
 }: {
   actividades: Actividad[]
   restricciones?: Restriccion[]
   hoy?: Date
+  /** El plantel elegible como responsable. Sin él, el panel deja el selector vacío y lo dice. */
+  personas?: Persona[]
+  /** Sin `acciones` el Gantt es de sólo lectura y no dibuja un solo control que no funcione. */
+  acciones?: AccionesCronograma
+  yaSellada?: boolean
 }) {
   const [escala, setEscala] = useState<Escala>('semana')
-  const [sel, setSel] = useState<Actividad | null>(null)
+  const [selId, setSelId] = useState<string | null>(null)
+  const [creando, setCreando] = useState(false)
+
+  // LA SELECCIÓN SE GUARDA POR ID, NO POR OBJETO. Guardando el objeto, después de editar una
+  // actividad el panel seguía mostrando los valores viejos: el servidor revalidaba y mandaba filas
+  // nuevas, pero el estado local conservaba la copia vieja y parecía que el guardado no había hecho
+  // nada. Por id, el panel siempre lee la fila que acaba de llegar.
+  const sel = selId ? (actividades.find((a) => a.id === selId) ?? null) : null
 
   // Las actividades con restricción abierta se marcan en la barra: es lo que conecta el cronograma
   // con el make-ready sin abrir otra pantalla.
@@ -82,11 +133,63 @@ export function Gantt({
     return { desde: new Date(min - 7 * DIA), hasta: new Date(max + 7 * DIA) }
   }, [conFecha])
 
+  // LA BARRA SE ARMA ANTES DEL CORTE POR "SIN FECHAS", y no es un detalle de orden: una obra sin
+  // ninguna actividad con fecha es exactamente donde hace falta poder crear la primera. Hasta acá,
+  // ese caso devolvía un cartel de aviso y ni un solo control.
+  const barra = (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-2.5">
+      <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted">
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-4 rounded-sm bg-sky-500" />plan</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-4 rounded-sm bg-sky-700" />ejecutado</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-1.5 w-4 rounded-sm bg-slate-300" />línea base</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rotate-45 bg-slate-700" />hito</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-1 rounded-sm bg-amber-500" />con impedimento</span>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {acciones && (
+          <>
+            <button
+              type="button"
+              onClick={() => setCreando((v) => !v)}
+              data-testid="nueva-actividad"
+              className="rounded-control border border-line px-2.5 py-1 text-[12px] text-ink hover:bg-slate-50"
+            >{creando ? 'Cancelar' : '+ Nueva actividad'}</button>
+            <SellarLineaBase sellar={acciones.sellar} yaSellada={yaSellada} />
+          </>
+        )}
+        <div className="flex overflow-hidden rounded-md border border-line text-[12px]">
+          {(['semana', 'mes'] as Escala[]).map((e) => (
+            <button
+              key={e}
+              type="button"
+              onClick={() => setEscala(e)}
+              className={`px-3 py-1 capitalize ${escala === e ? 'bg-slate-900 text-white' : 'bg-white text-muted hover:bg-slate-50'}`}
+            >{e}</button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+
+  const altaActividad = acciones && creando
+    ? (
+        <div className="border-b border-line bg-slate-50/70 p-3.5" data-testid="alta-actividad">
+          <FormNuevaActividad personas={personas} crear={acciones.crear} />
+        </div>
+      )
+    : null
+
   if (!rango) {
     return (
-      <p className="rounded-lg border border-dashed border-line px-4 py-8 text-center text-[13px] text-muted">
-        Esta obra todavía no tiene ninguna actividad con fecha en el tracker.
-      </p>
+      <div data-testid="gantt" className="rounded-xl border border-line bg-white">
+        {barra}
+        {altaActividad}
+        <p className="px-4 py-8 text-center text-[13px] text-muted">
+          {actividades.length
+            ? 'Hay actividades cargadas, pero ninguna tiene fecha: sin fechas no hay cronograma que dibujar.'
+            : 'Esta obra todavía no tiene ninguna actividad.'}
+        </p>
+      </div>
     )
   }
 
@@ -122,27 +225,15 @@ export function Gantt({
 
   return (
     <div data-testid="gantt" className="rounded-xl border border-line bg-white">
-      <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-2.5">
-        <div className="flex items-center gap-3 text-[11px] text-muted">
-          <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-4 rounded-sm bg-sky-500" />plan</span>
-          <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-4 rounded-sm bg-sky-700" />ejecutado</span>
-          <span className="inline-flex items-center gap-1.5"><i className="h-1.5 w-4 rounded-sm bg-slate-300" />línea base</span>
-          <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rotate-45 bg-slate-700" />hito</span>
-          <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-1 rounded-sm bg-amber-500" />con restricción</span>
-        </div>
-        <div className="flex overflow-hidden rounded-md border border-line text-[12px]">
-          {(['semana', 'mes'] as Escala[]).map((e) => (
-            <button
-              key={e}
-              type="button"
-              onClick={() => setEscala(e)}
-              className={`px-3 py-1 capitalize ${escala === e ? 'bg-slate-900 text-white' : 'bg-white text-muted hover:bg-slate-50'}`}
-            >{e}</button>
-          ))}
-        </div>
-      </div>
+      {barra}
+      {altaActividad}
 
-      <div className="relative max-h-[70vh] overflow-auto">
+      {/* EL PANEL VA AL COSTADO, NO DEBAJO. Lo que se está decidiendo al editar una actividad es su
+          fecha CONTRA la de las de al lado: si el cronograma se va de la pantalla para dejar lugar
+          al formulario, se edita a ciegas. En el teléfono no hay ancho para las dos cosas y el
+          panel pasa abajo, que es la única manera de que ninguna de las dos se recorte. */}
+      <div className="flex flex-col lg:flex-row">
+      <div className="relative max-h-[70vh] min-w-0 flex-1 overflow-auto">
         {/* EL ANCHO DE LA COLUMNA FIJA ES RESPONSIVO, Y NO ES UN DETALLE ESTÉTICO (17/08/2026).
             Estaba clavado en 340px por estilo en línea. En un teléfono de 390px el contenedor
             visible mide 348px: la columna de nombres se comía el 97,7% y NO SE VEÍA UNA SOLA BARRA
@@ -162,7 +253,7 @@ export function Gantt({
               <button
                 key={a.id}
                 type="button"
-                onClick={() => setSel(a)}
+                onClick={() => setSelId(a.id)}
                 style={{ height: ALTO_FILA }}
                 className={`flex w-full items-center gap-2 border-b border-line/60 px-3 text-left text-[12px] hover:bg-sky-50/60 ${sel?.id === a.id ? 'bg-sky-50' : ''}`}
               >
@@ -208,7 +299,7 @@ export function Gantt({
                 const w = Math.max(3, x1 - x0)
                 const frenada = conRestriccion.has(a.id)
                 return (
-                  <g key={a.id} onClick={() => setSel(a)} className="cursor-pointer">
+                  <g key={a.id} onClick={() => setSelId(a.id)} className="cursor-pointer">
                     {/* LÍNEA BASE — sólo si está sellada. Sin baseline no se dibuja una sombra en
                         el mismo lugar que el plan: eso haría parecer que el desvío es cero. */}
                     {a.inicio_base && a.fin_base && (
@@ -236,25 +327,36 @@ export function Gantt({
       </div>
 
       {sel && (
-        <aside className="border-t border-line bg-slate-50/70 px-4 py-3">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <p className="text-[11px] uppercase tracking-wide text-faint">{[sel.seccion, sel.codigo, sel.tipo].filter(Boolean).join(' · ')}</p>
-              <p className="truncate text-[14px] font-semibold text-ink">{sel.nombre}</p>
-            </div>
-            <button type="button" onClick={() => setSel(null)} className="shrink-0 text-[12px] text-muted hover:text-ink">cerrar</button>
-          </div>
-          <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-[12px] sm:grid-cols-4">
-            <div><dt className="text-faint">Plan</dt><dd className="tabular-nums text-ink">{fmtCorto(sel.inicio_plan)} → {fmtCorto(sel.fin_plan)}</dd></div>
-            <div><dt className="text-faint">Línea base</dt><dd className="tabular-nums text-ink">{sel.inicio_base ? `${fmtCorto(sel.inicio_base)} → ${fmtCorto(sel.fin_base)}` : 'sin sellar'}</dd></div>
-            <div><dt className="text-faint">Avance</dt><dd className="tabular-nums text-ink">{sel.pct == null ? '—' : `${sel.pct}%`}</dd></div>
-            <div><dt className="text-faint">Días plan / real</dt><dd className="tabular-nums text-ink">{sel.dias_plan ?? '—'} / {sel.dias_real ?? '—'}</dd></div>
-            {sel.cuadrilla && <div className="col-span-2"><dt className="text-faint">Cuadrilla</dt><dd className="text-ink">{sel.cuadrilla}</dd></div>}
-            {sel.estado && <div><dt className="text-faint">Estado</dt><dd className="text-ink">{sel.estado}</dd></div>}
-            {sel.fuente_pestana && <div><dt className="text-faint">Origen</dt><dd className="text-muted">{sel.fuente_pestana}</dd></div>}
-          </dl>
-        </aside>
+        acciones
+          ? (
+              <PanelActividad
+                actividad={sel}
+                personas={personas}
+                acciones={acciones}
+                alCerrar={() => setSelId(null)}
+              />
+            )
+          : (
+              // Sin acciones el panel muestra lo que hay, y NADA que parezca editable: un campo que
+              // no persiste es peor que no tenerlo.
+              <aside data-testid="panel-actividad" className="w-full shrink-0 border-t border-line bg-slate-50/70 px-4 py-3 lg:w-[330px] lg:border-l lg:border-t-0">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-[11px] uppercase tracking-wide text-faint">{[sel.seccion, sel.codigo, sel.tipo].filter(Boolean).join(' · ')}</p>
+                    <p className="truncate text-[14px] font-semibold text-ink">{sel.nombre}</p>
+                  </div>
+                  <button type="button" onClick={() => setSelId(null)} className="shrink-0 text-[12px] text-muted hover:text-ink">cerrar</button>
+                </div>
+                <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-[12px]">
+                  <div><dt className="text-faint">Plan</dt><dd className="tabular-nums text-ink">{fmtCorto(sel.inicio_plan)} → {fmtCorto(sel.fin_plan)}</dd></div>
+                  <div><dt className="text-faint">Línea base</dt><dd className="tabular-nums text-ink">{sel.inicio_base ? `${fmtCorto(sel.inicio_base)} → ${fmtCorto(sel.fin_base)}` : 'sin sellar'}</dd></div>
+                  <div><dt className="text-faint">Avance</dt><dd className="tabular-nums text-ink">{sel.pct == null ? '—' : `${sel.pct}%`}</dd></div>
+                  <div><dt className="text-faint">Días plan / real</dt><dd className="tabular-nums text-ink">{sel.dias_plan ?? '—'} / {sel.dias_real ?? '—'}</dd></div>
+                </dl>
+              </aside>
+            )
       )}
+      </div>
     </div>
   )
 }

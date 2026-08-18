@@ -1,33 +1,53 @@
-// 01 OBRAS · LA OBRA — resumen, ciclo de vida, Gantt, planificación y documentos.
+// 01 OBRAS · LA OBRA — resumen, cronograma, personal, economía, planificación y documentos.
 //
 // Las solapas van por query string y no por estado de cliente: cada vista es una URL que se puede
-// compartir y que el servidor renderiza con su dato, sin JavaScript de por medio. El único
-// componente de cliente de toda la pantalla es el Gantt.
+// compartir y que el servidor renderiza con su dato. Los únicos componentes de cliente de toda la
+// pantalla son el Gantt y los formularios, y los formularios lo son sólo para poder mostrar lo que
+// contestó el servidor.
 //
-// FRONTERA: acá se CONSUME el costo de Compras (vía `obra_panel`) y los archivos de Drive (vía
-// `drive_index`). No se copia ni se edita ninguno de los dos: son de otros dominios.
+// TODA ESCRITURA PASA POR UNA SERVER ACTION ATADA A ESTA OBRA. Las acciones se atan acá con `bind`
+// —`editarObra.bind(null, obraId)`— y el id nunca viaja en un campo del formulario: un id editable
+// desde el navegador dejaría escribir sobre la obra de al lado.
+//
+// FRONTERA: acá se CONSUME el costo de Compras (vía `obra_panel`), las horas de productividad (vía
+// `registros_hh`), el presupuesto (vía `presupuestos`) y los archivos de Drive (vía `drive_index`).
+// Ninguno de los cuatro se edita desde este módulo.
 
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getActividades, getDocumentos, getObra, getRestricciones, lookahead } from '@/features/obras/services/obrasService'
-import { ETAPAS, ETAPA_LABEL, TIPO_RESTRICCION_LABEL, type Restriccion } from '@/features/obras/types'
+import {
+  getActividades, getDocumentos, getObra, getPlanVsReal, getRestricciones, getUbicacion, lookahead,
+} from '@/features/obras/services/obrasService'
+import { getAsignaciones, getPersonas, getRegistrosHH } from '@/features/obras/services/personalService'
+import { getCertificados } from '@/features/obras/services/contratoService'
+import {
+  archivarActividad, crearActividad, crearImpedimento, editarActividad, editarObra,
+  liberarImpedimento, marcarHito, registrarAvance, sellarBaseline,
+} from '@/features/obras/services/actions'
+import { asignarPersona, quitarAsignacion } from '@/features/obras/services/actionsPersonal'
+import { borrarCertificado, crearCertificado } from '@/features/obras/services/actionsContrato'
+import { ETAPAS, ETAPA_LABEL } from '@/features/obras/types'
 import { Gantt } from '@/features/obras/components/Gantt'
-import { PageShell, Callout } from '@/shared/components/ui'
+import { CamposObra } from '@/features/obras/components/CamposObra'
+import { PlanVsRealResumen } from '@/features/obras/components/PlanVsRealResumen'
+import { TabPersonal } from '@/features/obras/components/TabPersonal'
+import { TabEconomia } from '@/features/obras/components/TabEconomia'
+import { TabPlanificacion } from '@/features/obras/components/TabPlanificacion'
+import { fecha, plata } from '@/features/obras/components/formato'
+import { BotonAccion, Callout, FormAccion, PageShell } from '@/shared/components/ui'
 
 export const dynamic = 'force-dynamic'
 
 const VISTAS = [
   { id: 'resumen', label: 'Resumen' },
   { id: 'gantt', label: 'Gantt' },
+  { id: 'personal', label: 'Personal' },
+  { id: 'economia', label: 'Economía' },
   { id: 'planificacion', label: 'Planificación' },
   { id: 'documentos', label: 'Documentos' },
 ] as const
 type Vista = (typeof VISTAS)[number]['id']
-
-const plata = (n: number | null) => (n == null ? '—' : '$' + Math.round(n).toLocaleString('es-AR'))
-const fecha = (iso: string | null) =>
-  iso ? new Date(iso + 'T00:00:00Z').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'UTC' }) : '—'
 
 /** La línea de ciclo de vida. Es el estado de la obra, y ese estado gobierna qué habilita el módulo:
  *  una obra en «previo» sin línea base sellada no debería pasar a ejecución. */
@@ -54,23 +74,8 @@ function Dato({ k, v, sub }: { k: string; v: string; sub?: string }) {
     <div className="rounded-lg border border-line bg-white px-3.5 py-2.5">
       <p className="text-[10px] uppercase tracking-wide text-faint">{k}</p>
       <p className="mt-0.5 text-[15px] font-semibold tabular-nums text-ink">{v}</p>
-      {sub && <p className="text-[11px] text-faint">{sub}</p>}
+      {sub && <p className="text-[11px] leading-snug text-faint">{sub}</p>}
     </div>
-  )
-}
-
-function FilaRestriccion({ r }: { r: Restriccion }) {
-  const vencida = r.estado !== 'liberada' && r.fecha_compromiso && r.fecha_compromiso < new Date().toISOString().slice(0, 10)
-  return (
-    <tr className="border-b border-line/60 last:border-0">
-      <td className="px-3 py-2 text-[12px] text-muted">{TIPO_RESTRICCION_LABEL[r.tipo] ?? r.tipo}</td>
-      <td className="px-3 py-2 text-[12px] text-ink">{r.descripcion}</td>
-      <td className="px-3 py-2 text-[12px] text-muted">{r.responsable ?? <span className="text-amber-700">sin responsable</span>}</td>
-      <td className={`px-3 py-2 text-right text-[12px] tabular-nums ${vencida ? 'font-semibold text-amber-700' : 'text-muted'}`}>
-        {r.fecha_compromiso ? fecha(r.fecha_compromiso) : <span className="text-amber-700">sin fecha</span>}
-      </td>
-      <td className="px-3 py-2 text-right text-[11px] uppercase text-faint">{r.estado}</td>
-    </tr>
   )
 }
 
@@ -98,45 +103,56 @@ export default async function ObraPage({
   }
   if (!obra) notFound()
 
-  const [{ data: actividades }, { data: restricciones }, { data: documentos }] = await Promise.all([
+  const [{ data: actividades }, { data: restricciones }, { data: plan }] = await Promise.all([
     getActividades(supabase, obraId),
     getRestricciones(supabase, obraId),
-    getDocumentos(supabase, obraId),
+    getPlanVsReal(supabase, obraId),
   ])
-  const acts = actividades ?? []
+  const todas = actividades ?? []
+  // LAS ARCHIVADAS NO ENTRAN AL CRONOGRAMA NI A NINGUNA LISTA: para eso se archivan. Siguen
+  // existiendo, y por eso hay abajo una lista aparte para volver a traerlas.
+  const acts = todas.filter((a) => !a.archivada)
+  const archivadas = todas.filter((a) => a.archivada)
   const restr = restricciones ?? []
-  const docs = documentos ?? []
   const abiertas = restr.filter((r) => r.estado !== 'liberada')
-  const conBaseline = acts.filter((a) => a.inicio_base).length
+  const yaSellada = todas.some((a) => a.sellada_en != null)
+
+  // Cada solapa pide SÓLO lo suyo. Traerlo todo en cada visita costaría seis consultas para mostrar
+  // una: la ficha se abre muchas veces por día desde el teléfono, en obra y con mala señal.
+  const necesitaPersonas = vista === 'gantt' || vista === 'personal'
+  const personas = necesitaPersonas ? (await getPersonas(supabase)).data ?? [] : []
+  const ubicacion = vista === 'resumen' ? await getUbicacion(supabase, obraId) : null
+  const asignaciones = vista === 'personal' ? (await getAsignaciones(supabase, obraId)).data ?? [] : []
+  const registros = vista === 'personal' ? (await getRegistrosHH(supabase, obraId)).data ?? [] : []
+  const certificados = vista === 'economia' ? (await getCertificados(supabase, obraId)).data ?? [] : []
+  const documentos = vista === 'documentos' ? (await getDocumentos(supabase, obraId)).data ?? [] : []
+
+  const eyebrow = obra.cliente_slug ? (
+    <>
+      <Link href="/obras" className="hover:underline">01 · Obras</Link>
+      <span className="text-faint"> · </span>
+      <Link href={`/clientes/${obra.cliente_slug}`} className="hover:underline">{obra.cliente_nombre}</Link>
+    </>
+  ) : (
+    <Link href="/obras" className="hover:underline">01 · Obras</Link>
+  )
 
   return (
     <PageShell
-      // El camino de vuelta es el de la jerarquía: Clientes › el cliente › esta obra. Cuando la obra
-      // no tiene cliente declarado se dice, en vez de mandar a una ficha que no existe.
-      eyebrow={
-        obra.cliente_slug ? (
-          <>
-            <Link href="/clientes" className="hover:underline">01 · Obras</Link>
-            <span className="text-faint"> · </span>
-            <Link href={`/clientes/${obra.cliente_slug}`} className="hover:underline">{obra.cliente_nombre}</Link>
-          </>
-        ) : (
-          <Link href="/clientes" className="hover:underline">01 · Obras</Link>
-        )
-      }
+      eyebrow={eyebrow}
       title={obra.nombre}
       subtitle={obra.cliente_slug ? undefined : `${obra.cliente_texto ?? 'sin cliente'} · sin cliente declarado en el eje canónico`}
       maxWidth="max-w-7xl"
       right={<CicloDeVida etapa={obra.etapa} />}
     >
-      {/* Las solapas se desplazan en vez de empujar la página: cuatro de ellas miden 407px y
-          la pantalla del teléfono tiene 390. */}
+      {/* Las solapas se desplazan en vez de empujar la página: seis de ellas no entran en los 390px
+          de un teléfono. */}
       <nav className="mb-5 flex gap-1 overflow-x-auto border-b border-line">
         {VISTAS.map((v) => (
           <Link
             key={v.id}
             href={`/obras/${obraId}?vista=${v.id}`}
-            className={`-mb-px border-b-2 px-3.5 py-2 text-[13px] ${vista === v.id ? 'border-slate-900 font-medium text-ink' : 'border-transparent text-muted hover:text-ink'}`}
+            className={`-mb-px shrink-0 border-b-2 px-3.5 py-2 text-[13px] ${vista === v.id ? 'border-slate-900 font-medium text-ink' : 'border-transparent text-muted hover:text-ink'}`}
           >{v.label}</Link>
         ))}
       </nav>
@@ -156,18 +172,10 @@ export default async function ObraPage({
             />
             <Dato k="Costo real" v={plata(obra.costo_real)} sub={`${obra.n_comprobantes ?? 0} comprobantes`} />
             <Dato k="Contratado" v={plata(obra.monto_contratado)} sub={obra.monto_contratado == null ? 'no cargado' : undefined} />
-            <Dato k="Restricciones" v={abiertas.length ? String(abiertas.length) : '—'} sub={obra.restricciones_vencidas ? `${obra.restricciones_vencidas} vencidas` : 'abiertas'} />
+            <Dato k="Impedimentos" v={abiertas.length ? String(abiertas.length) : '—'} sub={obra.restricciones_vencidas ? `${obra.restricciones_vencidas} vencidos` : 'sin resolver'} />
           </div>
 
-          {/* EL DESVÍO DE PLAZO NO SE PUBLICA SI NO HAY CONTRA QUÉ MEDIRLO. Un cero sin línea base
-              sellada es una mentira prolija: diría "vamos en fecha" cuando nadie aprobó una fecha. */}
-          {conBaseline === 0 && acts.length > 0 && (
-            <Callout tono="info">
-              Esta obra no tiene <strong>línea base sellada</strong>: se puede ver el plan y el avance, pero todavía
-              no hay desvío de plazo que medir. La línea base se congela una vez, cuando dirección aprueba el
-              cronograma — no la escribe el sincronizador.
-            </Callout>
-          )}
+          {plan && <PlanVsRealResumen plan={plan} obraId={obraId} />}
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="rounded-xl border border-line bg-white p-4">
@@ -180,9 +188,9 @@ export default async function ObraPage({
               </dl>
             </div>
             <div className="rounded-xl border border-line bg-white p-4">
-              <h2 className="mb-2 text-[13px] font-semibold text-ink">Restricciones abiertas</h2>
+              <h2 className="mb-2 text-[13px] font-semibold text-ink">Impedimentos sin resolver</h2>
               {abiertas.length === 0
-                ? <p className="text-[12px] text-faint">Ninguna cargada — y todavía no hay forma de cargarlas: la vista es de sólo lectura. En una obra en ejecución este vacío nunca significa que no haya restricciones.</p>
+                ? <p className="text-[12px] text-faint">Ninguno anotado. En una obra en ejecución, ese vacío casi nunca significa que no haya: se anotan en Planificación.</p>
                 : <ul className="space-y-1 text-[12px]">
                     {abiertas.slice(0, 5).map((r) => (
                       <li key={r.id} className="flex justify-between gap-3">
@@ -193,99 +201,110 @@ export default async function ObraPage({
                   </ul>}
             </div>
           </div>
+
+          <details className="rounded-xl border border-line bg-white" data-testid="editar-obra">
+            <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-medium text-ink">Editar la obra</summary>
+            <div className="border-t border-line p-4">
+              <FormAccion accion={editarObra.bind(null, obraId)} testid="form-editar-obra" enviar="Guardar la obra" mensajeOk="Obra guardada.">
+                <CamposObra obra={obra} ubicacion={ubicacion} />
+              </FormAccion>
+            </div>
+          </details>
         </div>
       )}
 
-      {vista === 'gantt' && <Gantt actividades={acts} restricciones={restr} />}
+      {vista === 'gantt' && (
+        <div className="space-y-4">
+          <Gantt
+            actividades={acts}
+            restricciones={restr}
+            personas={personas}
+            yaSellada={yaSellada}
+            acciones={{
+              crear: crearActividad.bind(null, obraId),
+              editar: editarActividad.bind(null, obraId),
+              avance: registrarAvance.bind(null, obraId),
+              archivar: archivarActividad.bind(null, obraId),
+              hito: marcarHito.bind(null, obraId),
+              sellar: sellarBaseline.bind(null, obraId),
+            }}
+          />
+          {archivadas.length > 0 && (
+            <details className="rounded-xl border border-line bg-white" data-testid="actividades-archivadas">
+              <summary className="cursor-pointer px-4 py-2.5 text-[13px] text-muted">
+                {archivadas.length} actividad(es) archivadas
+              </summary>
+              <ul className="divide-y divide-line/60 border-t border-line">
+                {archivadas.map((a) => (
+                  <li key={a.id} className="flex items-center justify-between gap-3 px-4 py-2">
+                    <span className="min-w-0 truncate text-[12px] text-muted">{a.nombre}</span>
+                    <BotonAccion accion={archivarActividad.bind(null, obraId)} args={[a.id, false]} testid="restaurar-actividad">
+                      Restaurar
+                    </BotonAccion>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </div>
+      )}
+
+      {vista === 'personal' && (
+        <TabPersonal
+          plan={plan}
+          asignaciones={asignaciones}
+          personas={personas}
+          actividades={acts}
+          registros={registros}
+          asignar={asignarPersona.bind(null, obraId)}
+          quitar={quitarAsignacion.bind(null, obraId)}
+        />
+      )}
+
+      {vista === 'economia' && (
+        <TabEconomia
+          plan={plan}
+          certificados={certificados}
+          crearCert={crearCertificado.bind(null, obraId)}
+          borrarCert={borrarCertificado.bind(null, obraId)}
+        />
+      )}
 
       {vista === 'planificacion' && (
-        <div className="space-y-5">
-          <div>
-            <h2 className="mb-2 text-[13px] font-semibold text-ink">Lookahead · próximas 6 semanas</h2>
-            {(() => {
-              const proximas = lookahead(acts, 6)
-              if (!proximas.length) return <p className="text-[12px] text-faint">No hay actividades con fecha en las próximas seis semanas.</p>
-              return (
-                <div className="overflow-hidden rounded-xl border border-line bg-white">
-                  <table className="w-full text-left">
-                    <thead><tr className="border-b border-line text-[10px] uppercase tracking-wide text-faint">
-                      <th className="px-3 py-2 font-medium">Actividad</th><th className="px-3 py-2 font-medium">Cuadrilla</th>
-                      <th className="px-3 py-2 text-right font-medium">Inicio</th><th className="px-3 py-2 text-right font-medium">Fin</th>
-                      <th className="px-3 py-2 text-right font-medium">Avance</th>
-                    </tr></thead>
-                    <tbody>
-                      {proximas.map((a) => (
-                        <tr key={a.id} className="border-b border-line/60 last:border-0">
-                          <td className="px-3 py-2 text-[12px] text-ink">{a.nombre}</td>
-                          <td className="px-3 py-2 text-[12px] text-muted">{a.cuadrilla ?? '—'}</td>
-                          <td className="px-3 py-2 text-right text-[12px] tabular-nums text-muted">{fecha(a.inicio_plan)}</td>
-                          <td className="px-3 py-2 text-right text-[12px] tabular-nums text-muted">{fecha(a.fin_plan)}</td>
-                          <td className="px-3 py-2 text-right text-[12px] tabular-nums text-ink">{a.pct == null ? '—' : `${a.pct}%`}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )
-            })()}
-          </div>
-
-          <div>
-            <h2 className="mb-2 text-[13px] font-semibold text-ink">Restricciones</h2>
-            {restr.length === 0 ? (
-              // NO SIMULAR UNA CAPACIDAD QUE NO EXISTE. La tabla, sus tipos y el vencimiento están
-              // hechos, pero todavía no hay ninguna pantalla ni ningún sincronizador que dé de alta
-              // una restricción: hoy esto es SÓLO LECTURA sobre una tabla vacía. Decirlo acá es más
-              // barato que dejar que alguien la busque, y es la diferencia entre "no hay ninguna
-              // restricción" —que sería un dato— y "no hay por dónde cargarla" —que es la verdad—.
-              <Callout tono="warn">
-                <strong>Todavía no se puede cargar una restricción desde acá</strong>: esta vista es de sólo lectura y la
-                tabla está vacía. No leas el vacío como &laquo;esta obra no tiene restricciones&raquo;.
-                <br />
-                Cuando exista el alta, va a exigir <strong>responsable con nombre</strong> y <strong>fecha comprometida</strong>:
-                una restricción sin esas dos cosas no es gestión, es una queja anotada.
-              </Callout>
-            ) : (
-              <div className="overflow-hidden rounded-xl border border-line bg-white">
-                <table className="w-full text-left">
-                  <thead><tr className="border-b border-line text-[10px] uppercase tracking-wide text-faint">
-                    <th className="px-3 py-2 font-medium">Tipo</th><th className="px-3 py-2 font-medium">Qué frena</th>
-                    <th className="px-3 py-2 font-medium">Responsable</th><th className="px-3 py-2 text-right font-medium">Compromiso</th>
-                    <th className="px-3 py-2 text-right font-medium">Estado</th>
-                  </tr></thead>
-                  <tbody>{restr.map((r) => <FilaRestriccion key={r.id} r={r} />)}</tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
+        <TabPlanificacion
+          proximas={lookahead(acts, 6)}
+          impedimentos={restr}
+          actividades={acts}
+          crear={crearImpedimento.bind(null, obraId)}
+          liberar={liberarImpedimento.bind(null, obraId)}
+        />
       )}
 
       {vista === 'documentos' && (
         <div className="space-y-3">
-          {obra.drive_carpeta_id && (
+          {obra.drive_carpeta_id ? (
             <a
               href={`https://drive.google.com/drive/folders/${obra.drive_carpeta_id}`}
               target="_blank" rel="noreferrer"
               className="inline-flex items-center gap-2 rounded-lg border border-line bg-white px-3.5 py-2 text-[13px] text-ink hover:bg-slate-50"
             >Abrir la carpeta de la obra en Drive ↗</a>
-          )}
-          {docs.length === 0 ? (
-            // Misma regla que en Restricciones: la lista vacía no es un dato de la obra, es una
-            // capacidad que falta. Los documentos existen —están en Drive—; lo que no existe es el
-            // vínculo, y no hay todavía pantalla para crearlo.
+          ) : (
             <Callout tono="warn">
-              <strong>Todavía no se puede vincular un documento desde acá</strong>: esta vista es de sólo lectura.
-              {obra.drive_carpeta_id
-                ? ' Mientras tanto, la carpeta de la obra en Drive es el camino — el botón de arriba.'
-                : ' Esta obra tampoco tiene declarada su carpeta de Drive, así que no hay ni por dónde entrar.'}
-              <br />
-              Los archivos <strong>siguen viviendo en Drive</strong>: acá se guardaría el vínculo y el contexto, nunca
-              una copia.
+              Esta obra no tiene declarada su carpeta de Drive. Se carga en <strong>Resumen › Editar la obra</strong>.
+            </Callout>
+          )}
+          {documentos.length === 0 ? (
+            // NO SIMULAR UNA CAPACIDAD QUE NO EXISTE. Vincular un archivo suelto de Drive a la OBRA
+            // todavia no tiene accion de servidor -- si la tiene el cliente --, y por eso aca no hay
+            // formulario. La lista vacia no dice "esta obra no tiene documentos": dice que nadie los
+            // vinculo.
+            <Callout tono="warn">
+              <strong>Todavia no se puede vincular un documento a la obra desde aca.</strong> Los archivos viven en
+              Drive; lo que falta es el vinculo. Mientras tanto, el camino es la carpeta de la obra.
             </Callout>
           ) : (
             <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-white">
-              {docs.map((d) => (
+              {documentos.map((d) => (
                 <li key={d.drive_file_id} className="flex items-center justify-between gap-3 px-4 py-2.5">
                   <a href={`https://drive.google.com/file/d/${d.drive_file_id}/view`} target="_blank" rel="noreferrer" className="min-w-0">
                     <span className="block truncate text-[13px] text-ink hover:underline">{d.name ?? d.drive_file_id}</span>

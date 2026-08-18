@@ -10,7 +10,7 @@
 // copia ni se sirve desde acá, sólo se enlaza.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Actividad, DocumentoObra, ObraPanel, Restriccion, ServiceResult } from '../types'
+import type { Actividad, DocumentoObra, ObraPanel, PlanVsReal, Restriccion, ServiceResult } from '../types'
 
 /** El portafolio: una fila por obra, ordenado por el orden declarado y después por nombre. */
 export async function getPortafolio(supabase: SupabaseClient): Promise<ServiceResult<ObraPanel[]>> {
@@ -28,6 +28,38 @@ export async function getObra(supabase: SupabaseClient, obraId: string): Promise
   if (error) return { data: null, error: error.message }
   if (!data) return { data: null, error: `No existe la obra "${obraId}"` }
   return { data: data as ObraPanel, error: null }
+}
+
+/**
+ * LA UBICACIÓN, leída de `obra_canonica` y no de `obra_panel`.
+ *
+ * La columna se agregó a la tabla y la vista nunca se rehizo, así que el panel no la trae. Se lee
+ * suelta en vez de tocar la vista: una migración en el repositorio no es una migración aplicada, y
+ * si la pantalla dependiera de una columna que en producción todavía no existe, la ficha entera
+ * dejaría de abrir. Acá, en el peor caso, falta un campo.
+ */
+export async function getUbicacion(supabase: SupabaseClient, obraId: string): Promise<string | null> {
+  const { data } = await supabase.from('obra_canonica').select('ubicacion').eq('id', obraId).maybeSingle()
+  return (data?.ubicacion as string) ?? null
+}
+
+/**
+ * PLAN CONTRA REAL de una obra. Sale entero de la vista `obra_plan_vs_real`: acá NO se resta, no se
+ * divide y no se completa nada. Si el desvío viene en null es porque le falta una punta, y ese null
+ * viaja hasta la pantalla — que dice cuál falta en vez de dibujar un cero tranquilizador.
+ */
+export async function getPlanVsReal(supabase: SupabaseClient, obraId: string): Promise<ServiceResult<PlanVsReal>> {
+  const { data, error } = await supabase.from('obra_plan_vs_real').select('*').eq('obra_id', obraId).maybeSingle()
+  if (error) return { data: null, error: error.message }
+  if (!data) return { data: null, error: `No hay plan contra real para "${obraId}"` }
+  return { data: data as PlanVsReal, error: null }
+}
+
+/** El plan contra real de TODAS las obras: es lo que le da al portafolio sus columnas de plazo y margen. */
+export async function getPlanVsRealPortafolio(supabase: SupabaseClient): Promise<ServiceResult<PlanVsReal[]>> {
+  const { data, error } = await supabase.from('obra_plan_vs_real').select('*')
+  if (error) return { data: null, error: error.message }
+  return { data: (data ?? []) as PlanVsReal[], error: null }
 }
 
 /** El cronograma completo de una obra, en el orden del tracker de origen. */

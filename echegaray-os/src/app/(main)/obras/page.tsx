@@ -10,14 +10,55 @@
 
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { getPortafolio } from '@/features/obras/services/obrasService'
-import { ETAPA_LABEL, type ObraPanel } from '@/features/obras/types'
+import { getPortafolio, getPlanVsRealPortafolio } from '@/features/obras/services/obrasService'
+import { ETAPA_LABEL, type ObraPanel, type PlanVsReal } from '@/features/obras/types'
+import { fecha, plata } from '@/features/obras/components/formato'
 import { PageShell, Callout } from '@/shared/components/ui'
 
 export const dynamic = 'force-dynamic'
 
-const plata = (n: number | null) =>
-  n == null ? '—' : '$' + Math.round(n).toLocaleString('es-AR')
+/**
+ * PLAZO Y MARGEN EN LA LISTA — las dos preguntas que hacen que el portafolio sirva de tablero:
+ * ¿esta obra llega?, ¿esta obra deja plata? Salen de `obra_plan_vs_real`, la misma vista que la
+ * ficha, y NO se recalculan acá: si el portafolio hiciera su propia cuenta, un día diría una cosa
+ * distinta de la ficha de la obra y no habría manera de saber cuál de las dos miente.
+ */
+function Plazo({ p }: { p: PlanVsReal | undefined }) {
+  if (!p) return <span className="text-[12px] text-faint">—</span>
+  if (p.desvio_plazo_dias != null) {
+    const d = p.desvio_plazo_dias
+    return (
+      <span className={`text-[12px] tabular-nums ${d > 0 ? 'font-semibold text-neg' : 'text-pos'}`}>
+        {d > 0 ? `+${d} d` : d < 0 ? `${d} d` : 'en fecha'}
+        {p.actividades_atrasadas ? <span className="block text-[11px] font-normal text-warn">{p.actividades_atrasadas} atrasadas</span> : null}
+      </span>
+    )
+  }
+  // SIN LÍNEA BASE NO HAY DESVÍO, Y UN CERO SERÍA UNA MENTIRA PROLIJA: diría "vamos en fecha"
+  // cuando nadie aprobó todavía una fecha contra la cual medir.
+  return (
+    <span className="text-[12px] text-faint">
+      {p.fin_plan ? `fin ${fecha(p.fin_plan)}` : 'sin fechas'}
+      <span className="block text-[11px]">sin línea base</span>
+      {p.actividades_atrasadas ? <span className="block text-[11px] text-warn">{p.actividades_atrasadas} atrasadas</span> : null}
+    </span>
+  )
+}
+
+function Margen({ p }: { p: PlanVsReal | undefined }) {
+  if (p?.margen_actual != null) {
+    return (
+      <span className={`text-[12px] tabular-nums ${p.margen_actual < 0 ? 'font-semibold text-neg' : 'text-ink'}`}>
+        {plata(p.margen_actual)}
+      </span>
+    )
+  }
+  return (
+    <span className="text-[11px] leading-snug text-faint">
+      {p?.monto_contratado == null ? 'falta el contratado' : 'falta el costo imputado'}
+    </span>
+  )
+}
 
 /** La etapa se lee de un vistazo por su posición en la línea, no por un color arbitrario. */
 function Etapa({ etapa }: { etapa: ObraPanel['etapa'] }) {
@@ -64,8 +105,12 @@ function Avance({ pct, medidas, total }: { pct: number | null; medidas: number; 
 
 export default async function ObrasPage() {
   const supabase = await createClient()
-  const { data, error } = await getPortafolio(supabase)
+  const [{ data, error }, { data: planes }] = await Promise.all([
+    getPortafolio(supabase),
+    getPlanVsRealPortafolio(supabase),
+  ])
   const obras = data ?? []
+  const porObra = new Map((planes ?? []).map((p) => [p.obra_id, p]))
   const activas = obras.filter((o) => o.estado === 'activa')
 
   return (
@@ -87,16 +132,18 @@ export default async function ObrasPage() {
         // para mostrar, y sin manera de llegar a ellos. Con `overflow-x-auto` se desplaza y no se
         // pierde una sola columna.
         <div className="overflow-x-auto rounded-xl border border-line bg-white">
-          <table data-testid="portafolio-tabla" className="w-full min-w-[720px] text-left">
+          <table data-testid="portafolio-tabla" className="w-full min-w-[960px] text-left">
             <thead>
               <tr className="border-b border-line text-[10px] uppercase tracking-wide text-faint">
                 <th className="px-4 py-2.5 font-medium">Obra / Cliente</th>
                 <th className="px-3 py-2.5 font-medium">Etapa</th>
                 <th className="px-3 py-2.5 font-medium">Avance</th>
+                <th className="px-3 py-2.5 font-medium">Plazo</th>
                 <th className="px-3 py-2.5 text-right font-medium">Contratado</th>
                 <th className="px-3 py-2.5 text-right font-medium">Costo real</th>
-                <th className="px-3 py-2.5 text-center font-medium">Actividades</th>
-                <th className="px-3 py-2.5 text-center font-medium">Restric.</th>
+                <th className="px-3 py-2.5 text-right font-medium">Margen</th>
+                <th className="px-3 py-2.5 font-medium">Estado</th>
+                <th className="px-3 py-2.5 text-center font-medium">Impedim.</th>
               </tr>
             </thead>
             <tbody>
@@ -114,9 +161,11 @@ export default async function ObrasPage() {
                   </td>
                   <td className="px-3 py-2.5"><Etapa etapa={o.etapa} /></td>
                   <td className="px-3 py-2.5"><Avance pct={o.avance_pct} medidas={o.n_actividades_medidas} total={o.n_actividades} /></td>
+                  <td className="px-3 py-2.5"><Plazo p={porObra.get(o.obra_id)} /></td>
                   <td className="px-3 py-2.5 text-right text-[12px] tabular-nums text-muted">{plata(o.monto_contratado)}</td>
                   <td className="px-3 py-2.5 text-right text-[12px] tabular-nums text-ink">{plata(o.costo_real)}</td>
-                  <td className="px-3 py-2.5 text-center text-[12px] tabular-nums text-muted">{o.n_actividades || '—'}</td>
+                  <td className="px-3 py-2.5 text-right"><Margen p={porObra.get(o.obra_id)} /></td>
+                  <td className="px-3 py-2.5 text-[12px] text-muted">{o.estado}</td>
                   <td className="px-3 py-2.5 text-center text-[12px] tabular-nums">
                     {o.restricciones_abiertas === 0
                       ? <span className="text-faint">—</span>

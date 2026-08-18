@@ -12,7 +12,9 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getClientes } from '@/features/clientes/services/clientesService'
-import { PageShell, Callout } from '@/shared/components/ui'
+import { crearCliente } from '@/features/clientes/services/actions'
+import { CamposCliente } from '@/features/clientes/components/CamposCliente'
+import { PageShell, Callout, FormAccion } from '@/shared/components/ui'
 
 export const dynamic = 'force-dynamic'
 
@@ -92,6 +94,18 @@ export default async function ClientesPage() {
           </table>
         </div>
       )}
+
+      <details className="mt-4 rounded-xl border border-line bg-white" data-testid="alta-cliente">
+        <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-medium text-ink">Nuevo cliente</summary>
+        <div className="border-t border-line p-4">
+          {/* El identificador de la URL sale del nombre y se calcula en el servidor: pedirlo acá
+              sería pedir que alguien invente una clave primaria. Si ya existe, la acción avisa en
+              vez de crear un segundo cliente que dejaría al primero inalcanzable. */}
+          <FormAccion accion={crearCliente} testid="form-cliente" enviar="Crear cliente" limpiarAlOk mensajeOk="Cliente creado.">
+            <CamposCliente />
+          </FormAccion>
+        </div>
+      </details>
 
       <p className="mt-3 text-[12px] text-faint">
         ¿Buscás una obra y no te acordás de quién es?{' '}
