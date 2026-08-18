@@ -23,6 +23,7 @@
 
 import { expect, test } from '@playwright/test'
 import { conBase, entrar } from './util/obras-e2e'
+import { entrarComo } from './util/login'
 
 interface FilaPanel {
   obra_id: string
@@ -147,4 +148,34 @@ test('la obra sin ficha de cliente muestra el texto, no un enlace roto', async (
   } finally {
     await sb.auth.signOut()
   }
+})
+
+
+// ═══ Y CÓMO LO VE UN JEFE DE OBRA — LA MITAD QUE NO SE MIRÓ (19/08/2026) ═══
+//
+// Quien construyó esta pantalla declaró que sólo la había visto como Dirección y que no tenía a mano
+// un usuario del nivel Obras. Existe: `qa.jefe.obra`. El hueco se cierra en vez de quedar declarado,
+// porque justo lo que no se miró es la columna del dato que el dueño declaró secreto.
+//
+// El dueño: *"Para Obras NO enviar contratado desde servidor."* La cerradura está en Postgres
+// —`obra_panel.monto_contratado` le llega NULL— y esto mide la otra mitad: que la columna tampoco se
+// dibuje, y que la palabra no viaje en el HTML del server component, que se lee con las devtools.
+test('el resumen de un jefe de obra no trae la columna Contratado, ni la palabra', async ({ page }) => {
+  test.setTimeout(120000)
+  await entrarComo(page, 'qa.jefe.obra@ecsas.com.ar', 'TestJefe123!')
+  await page.goto('/obras')
+
+  const tabla = page.getByTestId('portafolio-tabla')
+  await expect(tabla).toBeVisible()
+  await expect(tabla.locator('th', { hasText: 'Contratado' }),
+    'la columna Contratado se le dibujó a un jefe de obra').toHaveCount(0)
+  expect(await page.content(), 'la palabra «Contratado» viajó en el HTML del nivel Obras')
+    .not.toContain('Contratado')
+
+  // EL CASO POSITIVO, sin el cual esto pasaría con la pantalla rota: ve su obra, su cliente y su
+  // costo real, que son suyos.
+  await expect(tabla.locator('th', { hasText: 'Obra' }).first()).toBeVisible()
+  await expect(tabla.locator('th', { hasText: 'Cliente' }).first()).toBeVisible()
+  await expect(tabla.locator('th', { hasText: 'Costo real' }).first()).toBeVisible()
+  await expect(tabla.locator('tbody tr'), 'el jefe no ve ninguna obra').not.toHaveCount(0)
 })
