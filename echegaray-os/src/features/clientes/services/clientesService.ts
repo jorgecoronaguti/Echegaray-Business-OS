@@ -29,6 +29,7 @@ function normalizar(row: Record<string, unknown>): ClientePanel {
     email: t('email'),
     responsable_id: t('responsable_id'),
     responsable_nombre: t('responsable_nombre'),
+    razon_social: t('razon_social'),
   }
 }
 
@@ -44,7 +45,7 @@ export async function getClientes(supabase: SupabaseClient): Promise<ServiceResu
     .from('cliente_panel')
     .select('*')
     .order('n_obras_activas', { ascending: false })
-    .order('nombre', { ascending: true })
+    .order('nombre_comercial', { ascending: true })
   if (error) return { data: null, error: error.message }
   return { data: (data ?? []).map((r) => normalizar(r as Record<string, unknown>)), error: null }
 }
@@ -191,7 +192,7 @@ export async function getActividadCliente(
   clienteId: string,
 ): Promise<ServiceResult<LineaDeTiempo>> {
   const [ficha, obras, contactos, documentos, notas] = await Promise.all([
-    supabase.from('clientes').select('nombre, created_at, updated_at').eq('id', clienteId).maybeSingle(),
+    supabase.from('clientes').select('nombre_comercial, created_at, updated_at').eq('id', clienteId).maybeSingle(),
     supabase.from('obra_canonica')
       .select('id, nombre, created_at, fecha_inicio_real, fecha_fin_real')
       .eq('cliente_id', clienteId),
@@ -211,7 +212,7 @@ export async function getActividadCliente(
 
   const fuentes: FuentesActividad = {
     cliente: {
-      nombre: ficha.data.nombre as string,
+      nombre: ficha.data.nombre_comercial as string,
       creado_en: (ficha.data.created_at as string) ?? null,
       actualizado_en: (ficha.data.updated_at as string) ?? null,
     },

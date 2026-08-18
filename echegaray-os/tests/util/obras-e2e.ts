@@ -49,7 +49,7 @@ export async function limpiar(sb: SupabaseClient) {
   await sb.from('certificados').delete().eq('obra_canonica_id', OBRA).ilike('numero', `%${MARCA}%`)
   await sb.from('obra_restriccion').delete().eq('obra_id', OBRA).ilike('descripcion', `%${MARCA}%`)
   await sb.from('obra_actividad').delete().eq('obra_id', OBRA).ilike('nombre', `%${MARCA}%`)
-  const { data: cli } = await sb.from('clientes').select('id').ilike('nombre', `%${MARCA}%`)
+  const { data: cli } = await sb.from('clientes').select('id').ilike('nombre_comercial', `%${MARCA}%`)
   for (const c of cli ?? []) {
     await sb.from('cliente_documento').delete().eq('cliente_id', c.id)
     await sb.from('cliente_contacto').delete().eq('cliente_id', c.id)

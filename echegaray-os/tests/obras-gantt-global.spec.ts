@@ -141,6 +141,77 @@ test('la obra con fechas tiene barra, y tocar su renglón abre SU cronograma', a
   }
 })
 
+/**
+ * EL SEMÁFORO, MEDIDO CONTRA LA BASE — y sin recalcular la regla acá.
+ *
+ * El dueño (20/08): *"No pintar rojo sólo porque la fecha fin pasó"*. Repetir la fórmula de
+ * `desvioDePlazo` dentro de este test sería validar un control contra la misma información que
+ * produce: si la regla se escribiera mal en los dos lados, el test pasaría igual. Lo que se mide
+ * acá es el EFECTO que el dueño pidió, en la forma de dos invariantes que la regla vieja rompía y
+ * la nueva no puede romper:
+ *
+ *   1. Una obra que pasó su fin previsto pero está por terminar NO puede salir crítica. Con la
+ *      regla vieja (`fin < hoy && avance < 100`) salían rojas Comedor al 93% y Galpón 9 al 96%.
+ *   2. Una obra sin avance publicado NO puede salir «al día». Pintar de verde una obra de la que
+ *      no se sabe nada la borra de la lista de las que hay que ir a mirar.
+ *
+ * Los umbrales concretos —10/25 puntos, 10/30 días— se prueban donde viven, en
+ * `src/features/obras/services/ganttObras.test.ts`, sin navegador y en cualquier fecha.
+ */
+test('el rojo del Gantt señala trabajo pendiente, no un calendario vencido', async ({ page }) => {
+  const sb = await conBase()
+  try {
+    const hoy = new Date().toISOString().slice(0, 10)
+    const { data } = await sb
+      .from('obra_plan_vs_real')
+      .select('obra_id,nombre,inicio_plan,fin_plan,avance_pct,estado')
+      .not('inicio_plan', 'is', null)
+      .neq('estado', 'cerrada')
+    const conPlan = data ?? []
+
+    await entrar(page)
+    await page.goto('/obras/gantt')
+    await expect(page.getByTestId('gantt-obras')).toBeVisible({ timeout: 30000 })
+
+    // EL ESTADO SE LEE DEL `title` DEL RENGLÓN, no del enésimo `<rect>`: leer la barra por posición
+    // dependería del orden de las filas, y un test que se rompe al reordenar enseña a ignorarlo.
+    // El `title` está anclado a la obra por `data-obra` y ya lleva el estado en palabras.
+    let algunaNoRoja = 0
+    for (const o of conPlan) {
+      const titulo = await page.locator(`${RENGLON}[data-obra="${o.obra_id}"]`).getAttribute('title') ?? ''
+      const critica = titulo.includes('atraso crítico')
+
+      // ── INVARIANTE 1 ────────────────────────────────────────────────────────────────────────
+      const vencida = (o.fin_plan as string ?? '') < hoy
+      const casiTerminada = (o.avance_pct as number ?? 0) >= 90 && (o.avance_pct as number ?? 0) < 100
+      if (vencida && casiTerminada) {
+        expect(critica,
+          `${o.nombre} va al ${o.avance_pct}% y sale crítica: el color volvió a mirar el calendario`,
+        ).toBe(false)
+      }
+
+      // ── INVARIANTE 2 ────────────────────────────────────────────────────────────────────────
+      if (o.avance_pct == null) {
+        expect(titulo, `${o.nombre} no tiene avance publicado y no puede figurar «al día»`)
+          .toContain('sin datos para juzgar')
+      }
+
+      if (!critica) algunaNoRoja++
+    }
+
+    // Y LA CARTERA NO PUEDE SER TODA ROJA. Con la regla vieja lo era —cuatro de cinco—, que es el
+    // estado en que el color deja de significar algo. No se exige un reparto concreto: se exige
+    // que exista al menos una obra con plan que la pantalla NO esté marcando como crítica.
+    expect(algunaNoRoja, 'todas las obras con plan salen críticas: el rojo dejó de señalar')
+      .toBeGreaterThan(0)
+
+    // La leyenda hace auditable el color: dice con qué regla se pinta, en números.
+    await expect(page.getByTestId('gantt-obras')).toContainText('calendario ya consumido')
+  } finally {
+    await sb.auth.signOut()
+  }
+})
+
 test('el Gantt global no empuja la página de costado en el teléfono', async ({ page }) => {
   // El Gantt es más ancho que un teléfono por definición. Lo que no puede pasar es que arrastre la
   // PÁGINA: el desplazamiento tiene que quedar adentro del contenedor del cronograma.

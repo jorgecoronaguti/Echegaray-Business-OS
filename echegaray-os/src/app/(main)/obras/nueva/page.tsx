@@ -110,7 +110,7 @@ export default async function NuevaObraPage({
                 <select name="cliente_id" required defaultValue="" className={CTRL}>
                   <option value="" disabled>elegí un cliente</option>
                   {clientes.filter((c) => c.activo).map((c) => (
-                    <option key={c.cliente_id} value={c.cliente_id}>{c.nombre}</option>
+                    <option key={c.cliente_id} value={c.cliente_id}>{c.nombre_comercial}</option>
                   ))}
                 </select>
               </Campo>

@@ -67,7 +67,7 @@ test('el buscador deja sólo los clientes que se llaman así', async ({ page }) 
     for (const nombre of [gaviota, petunia]) {
       await page.goto('/clientes')
       await page.getByTestId('alta-cliente').locator('summary').click()
-      await page.getByTestId('form-cliente').locator('input[name="nombre"]').fill(nombre)
+      await page.getByTestId('form-cliente').locator('input[name="nombre_comercial"]').fill(nombre)
       await page.getByTestId('form-cliente-enviar').click()
       await expect(page.getByTestId('form-cliente-ok')).toBeVisible({ timeout: 30000 })
     }
@@ -173,11 +173,11 @@ test('nota manual: se escribe, queda en Postgres y sigue ahí después de recarg
     await entrar(page)
     await page.goto('/clientes')
     await page.getByTestId('alta-cliente').locator('summary').click()
-    await page.getByTestId('form-cliente').locator('input[name="nombre"]').fill(nombre)
+    await page.getByTestId('form-cliente').locator('input[name="nombre_comercial"]').fill(nombre)
     await page.getByTestId('form-cliente-enviar').click()
     await expect(page.getByTestId('form-cliente-ok')).toBeVisible({ timeout: 30000 })
 
-    const { data: cliRaw } = await sb.from('clientes').select('id, slug').eq('nombre', nombre).single()
+    const { data: cliRaw } = await sb.from('clientes').select('id, slug').eq('nombre_comercial', nombre).single()
     const cli = laFila(cliRaw, 'el cliente recién creado')
 
     // ── SE ESCRIBE POR LA PANTALLA, COMO EL DUEÑO ───────────────────────────

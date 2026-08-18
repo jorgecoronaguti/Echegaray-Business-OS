@@ -11,7 +11,7 @@ const num = (v) => (v == null ? null : Number(v))
 
 export async function carteraObras() {
   const { rows } = await query(`
-    select o.id, o.nombre, o.estado, o.monto_contratado, c.nombre as cliente,
+    select o.id, o.nombre, o.estado, o.monto_contratado, c.nombre_comercial as cliente,
       p.monto_presupuestado, p.margen_esperado,
       coalesce(p.costo_directo_presupuestado,0)+coalesce(p.costo_indirecto_presupuestado,0) as costo_presup,
       (select coalesce(sum(cr.monto),0) from public.costos_reales cr where cr.obra_id=o.id) as costo_real,

@@ -26,11 +26,21 @@ export function CamposCliente({
 }) {
   return (
     <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-      <Campo label="Razón social" ancho="col-span-2 sm:col-span-3">
-        <input name="nombre" defaultValue={v(cliente?.nombre)} required minLength={2} maxLength={160} className={CTRL} />
+      {/* EL COMERCIAL ES EL OBLIGATORIO, Y NO ES UNA PREFERENCIA DE DISEÑO: es el que la empresa
+          usa para nombrar al cliente, el que arma el identificador de la URL y el que aparece en
+          la columna CLIENTE del portafolio. Sin él no hay cómo llamar a la fila. */}
+      <Campo label="Nombre comercial" ancho="col-span-2 sm:col-span-3" ayuda="Con qué nombre se lo llama acá adentro.">
+        <input name="nombre_comercial" defaultValue={v(cliente?.nombre_comercial)} required minLength={2} maxLength={160} className={CTRL} />
       </Campo>
       <Campo label="CUIT" ancho="col-span-2 sm:col-span-1" ayuda="11 dígitos. Con guiones o sin ellos.">
         <input name="cuit" defaultValue={v(cliente?.cuit)} maxLength={16} className={CTRL} placeholder="30-12345678-9" />
+      </Campo>
+
+      {/* Y LA RAZÓN SOCIAL SE DEJA VACÍA MIENTRAS NO SE SEPA. Es lo que va con el CUIT en un
+          contrato o una factura: copiarle el nombre comercial «para que no quede vacía» pondría un
+          dato inventado exactamente donde más caro sale. Vacío significa que falta, y se ve. */}
+      <Campo label="Razón social" ancho="col-span-2 sm:col-span-4" ayuda="El nombre legal, el que va con el CUIT. Dejar vacío si no se sabe.">
+        <input name="razon_social" defaultValue={v(cliente?.razon_social)} maxLength={200} className={CTRL} placeholder="sin cargar" />
       </Campo>
 
       <Campo label="Dirección" ancho="col-span-2 sm:col-span-4">

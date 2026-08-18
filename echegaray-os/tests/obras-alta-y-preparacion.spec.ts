@@ -48,7 +48,7 @@ async function limpiarAlta(sb: SupabaseClient) {
     await sb.from('obra_actividad').delete().eq('obra_id', o.id)
     await sb.from('obra_canonica').delete().eq('id', o.id)
   }
-  await sb.from('clientes').delete().ilike('nombre', `%${MARCA}%`)
+  await sb.from('clientes').delete().ilike('nombre_comercial', `%${MARCA}%`)
 }
 
 /** El cliente se crea por la base y no por pantalla: lo que este recorrido prueba es el alta de la
@@ -56,7 +56,7 @@ async function limpiarAlta(sb: SupabaseClient) {
 async function clienteDePrueba(sb: SupabaseClient, sufijo: number): Promise<{ id: string; nombre: string }> {
   const nombre = `${MARCA} Cliente Alta ${sufijo}`
   const { data, error } = await sb.from('clientes')
-    .insert({ nombre, slug: `zze2e-alta-cliente-${sufijo}`, activo: true })
+    .insert({ nombre_comercial: nombre, slug: `zze2e-alta-cliente-${sufijo}`, activo: true })
     .select('id').single()
   if (error) throw new Error(`No pude crear el cliente de prueba: ${error.message}`)
   return { id: laFila(data, 'el cliente de prueba').id as string, nombre }

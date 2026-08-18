@@ -40,7 +40,10 @@ export function BloqueInformacion({
     <div className="space-y-3">
       <div className="rounded-xl border border-line bg-white px-4 py-2" data-testid="cliente-informacion">
         <dl className="divide-y divide-line/60">
-          <Propiedad rotulo="Razón social">{cliente.nombre}</Propiedad>
+          <Propiedad rotulo="Nombre comercial">{cliente.nombre_comercial}</Propiedad>
+          {/* «sin cargar» y no el nombre comercial repetido: la razón social vacía es un dato que
+              falta, y repetir el otro campo lo escondería haciéndolo parecer completo. */}
+          <Propiedad rotulo="Razón social">{oFalta(cliente.razon_social)}</Propiedad>
           <Propiedad rotulo="CUIT"><span className="tabular-nums">{oFalta(cliente.cuit)}</span></Propiedad>
           <Propiedad rotulo="Dirección">{oFalta(cliente.direccion)}</Propiedad>
           <Propiedad rotulo="Teléfono"><span className="tabular-nums">{oFalta(cliente.telefono)}</span></Propiedad>

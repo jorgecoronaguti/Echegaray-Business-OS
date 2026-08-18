@@ -17,7 +17,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { filasDeObras, ventana, COLUMNAS_PLAZO, type PlazoObra } from './ganttObras.ts'
+import { filasDeObras, ventana, COLUMNAS_PLAZO, UMBRAL_ATRASO, type PlazoObra } from './ganttObras.ts'
 
 const HOY = '2026-08-18'
 
@@ -72,16 +72,100 @@ test('la línea base se dibuja sólo con las dos puntas — hoy no hay ninguna s
   assert.deepEqual(filas.find((f) => f.obraId === 'c')!.barra!.base, { inicio: '2026-06-15', fin: '2026-07-20' })
 })
 
-test('vencida es plan pasado con avance por debajo de 100, y no el reloj de la máquina', () => {
-  const filas = filasDeObras([
-    obra({ obra_id: 'tarde', nombre: 'Tarde', inicio_plan: '2026-06-01', fin_plan: '2026-08-04', avance_pct: 93, n_actividades: 35 }),
-    obra({ obra_id: 'lista', nombre: 'Lista', inicio_plan: '2026-06-01', fin_plan: '2026-08-04', avance_pct: 100, n_actividades: 35 }),
-    obra({ obra_id: 'en-plazo', nombre: 'En plazo', inicio_plan: '2026-08-03', fin_plan: '2026-08-22', avance_pct: 0, n_actividades: 7 }),
-  ], HOY)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL SEMÁFORO — el defecto que atrapa es «todo rojo», que no rompe nada y arruina la pantalla
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// La versión anterior de estas pruebas medía `vencida`: `fin < hoy && avance < 100`. Pasaban en
+// verde y la pantalla estaba mal — cuatro de cinco barras rojas, incluidas dos obras que estaban
+// cerrando bien. Un test puede confirmar exactamente la regla equivocada; lo que cambió no es la
+// prueba sino el criterio, y por eso los casos de acá abajo son OBRAS REALES con sus números
+// reales del 18/08/2026, no fixtures inventados: si la regla vuelve a pintar de rojo a Comedor,
+// esto se pone colorado antes de que nadie abra el navegador.
 
-  assert.equal(filas.find((f) => f.obraId === 'tarde')!.barra!.vencida, true)
-  assert.equal(filas.find((f) => f.obraId === 'lista')!.barra!.vencida, false, 'terminada no es vencida')
-  assert.equal(filas.find((f) => f.obraId === 'en-plazo')!.barra!.vencida, false)
+test('el 100% está al día aunque su fin haya pasado — terminar tarde no es estar atrasado', () => {
+  const [f] = filasDeObras([obra({
+    obra_id: 'lista', nombre: 'Lista', inicio_plan: '2026-06-01', fin_plan: '2026-08-04',
+    avance_pct: 100, n_actividades: 35,
+  })], HOY)
+  assert.equal(f.barra!.desvio.semaforo, 'al_dia')
+})
+
+test('Comedor y Galpón 9 dejan de ser rojos: pasaron su fin, pero les falta muy poco', () => {
+  const filas = filasDeObras([
+    // Reales: Comedor 09/07→04/08 al 93%; Galpón 9 13/07→05/08 al 96%. Las dos vencidas.
+    obra({ obra_id: 'comedor', nombre: 'Comedor', inicio_plan: '2026-07-09', fin_plan: '2026-08-04', avance_pct: 93, n_actividades: 35 }),
+    obra({ obra_id: 'galpon-9', nombre: 'Galpón 9', inicio_plan: '2026-07-13', fin_plan: '2026-08-05', avance_pct: 96, n_actividades: 29 }),
+  ], HOY)
+  for (const f of filas) {
+    assert.equal(f.barra!.desvio.semaforo, 'al_dia',
+      `${f.nombre} sigue en rojo: el color volvió a mirar el calendario en vez del trabajo pendiente`)
+    assert.ok(f.barra!.desvio.atrasoDias! <= UMBRAL_ATRASO.menorDias)
+  }
+})
+
+test('las tres que sí requieren atención salen críticas, y por su brecha', () => {
+  const filas = filasDeObras([
+    // Reales: San Francisco 22/06→27/08 al 47% (debería ir por 86); Messina 06/07→14/08 al 67%;
+    // Salón Comercial 03/08→22/08 al 0% con tres cuartas partes del plazo consumido.
+    obra({ obra_id: 'sf', nombre: 'San Francisco', inicio_plan: '2026-06-22', fin_plan: '2026-08-27', avance_pct: 47, n_actividades: 89 }),
+    obra({ obra_id: 'messina', nombre: 'Messina', inicio_plan: '2026-07-06', fin_plan: '2026-08-14', avance_pct: 67, n_actividades: 31 }),
+    obra({ obra_id: 'salon', nombre: 'Salón Comercial', inicio_plan: '2026-08-03', fin_plan: '2026-08-22', avance_pct: 0, n_actividades: 7 }),
+  ], HOY)
+  for (const f of filas) {
+    assert.equal(f.barra!.desvio.semaforo, 'atraso_critico', `${f.nombre} dejó de pedir atención`)
+    assert.ok(f.barra!.desvio.brechaPuntos! > UMBRAL_ATRASO.criticoPuntos)
+  }
+  assert.equal(filas.find((f) => f.obraId === 'sf')!.barra!.desvio.avanceEsperadoPct, 86)
+})
+
+test('ir adelantado no es un desvío, y una obra que todavía no arrancó tampoco', () => {
+  const filas = filasDeObras([
+    obra({ obra_id: 'adelantada', nombre: 'Adelantada', inicio_plan: '2026-08-01', fin_plan: '2026-12-31', avance_pct: 80, n_actividades: 10 }),
+    obra({ obra_id: 'futura', nombre: 'Futura', inicio_plan: '2026-09-01', fin_plan: '2026-12-31', avance_pct: 0, n_actividades: 10 }),
+  ], HOY)
+  for (const f of filas) {
+    assert.equal(f.barra!.desvio.semaforo, 'al_dia')
+    assert.equal(f.barra!.desvio.brechaPuntos, 0, 'la brecha nunca es negativa')
+  }
+})
+
+test('las dos unidades hacen falta: cada una es ciega donde la otra ve', () => {
+  // OBRA LARGA, BRECHA CHICA: 8 puntos sobre dos años son 58 días de trabajo perdidos. Con puntos
+  // solos pasaría por «al día».
+  const [larga] = filasDeObras([obra({
+    obra_id: 'larga', nombre: 'Larga', inicio_plan: '2025-08-18', fin_plan: '2027-08-18', avance_pct: 42, n_actividades: 200,
+  })], HOY)
+  assert.equal(larga.barra!.desvio.brechaPuntos, 8)
+  assert.equal(larga.barra!.desvio.semaforo, 'atraso_critico', '58 días de atraso no son «al día»')
+
+  // OBRA CORTA, POCOS DÍAS: 40 puntos sobre 19 días son apenas 8 días. Con días solos pasaría por
+  // «al día», y es casi la mitad de la obra.
+  const [corta] = filasDeObras([obra({
+    obra_id: 'corta', nombre: 'Corta', inicio_plan: '2026-08-03', fin_plan: '2026-08-22', avance_pct: 39, n_actividades: 7,
+  })], HOY)
+  assert.ok(corta.barra!.desvio.atrasoDias! <= UMBRAL_ATRASO.menorDias)
+  assert.equal(corta.barra!.desvio.semaforo, 'atraso_critico', 'la brecha en puntos tiene que mandar en las obras cortas')
+})
+
+test('sin avance publicado NO se pinta de verde: se pinta de gris', () => {
+  // Es la mentira más cara de las cuatro. Una obra de la que no se sabe nada dibujada como «al
+  // día» desaparece de la lista de las que hay que ir a mirar.
+  const [f] = filasDeObras([obra({
+    obra_id: 'muda', nombre: 'Muda', inicio_plan: '2026-06-01', fin_plan: '2026-12-01', avance_pct: null, n_actividades: 12,
+  })], HOY)
+  assert.equal(f.barra!.desvio.semaforo, 'sin_datos')
+  assert.equal(f.barra!.desvio.brechaPuntos, null, 'no se publica un número que no se puede calcular')
+})
+
+test('la regla es pura: el mismo dato en dos días distintos da dos estados distintos', () => {
+  const laObra = obra({
+    obra_id: 'x', nombre: 'X', inicio_plan: '2026-08-01', fin_plan: '2026-08-31', avance_pct: 50, n_actividades: 10,
+  })
+  // Al día 15 de 30 le corresponde 50%: exactamente lo que lleva.
+  assert.equal(filasDeObras([laObra], '2026-08-16')[0].barra!.desvio.semaforo, 'al_dia')
+  // Doce días después el calendario pide 90% y sigue en 50: el estado cambió sin tocar la base.
+  assert.equal(filasDeObras([laObra], '2026-08-28')[0].barra!.desvio.semaforo, 'atraso_critico')
 })
 
 test('las archivadas quedan afuera salvo que se las pida', () => {

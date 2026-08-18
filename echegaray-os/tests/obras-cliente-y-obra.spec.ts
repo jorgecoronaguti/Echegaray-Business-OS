@@ -33,7 +33,7 @@ test('cliente: se crea, se edita, se le agrega y se le saca un contacto — y to
     await page.goto('/clientes')
     await page.getByTestId('alta-cliente').locator('summary').click()
     const alta = page.getByTestId('form-cliente')
-    await alta.locator('input[name="nombre"]').fill(nombre)
+    await alta.locator('input[name="nombre_comercial"]').fill(nombre)
     await alta.locator('input[name="cuit"]').fill('30-71234567-4')
     await page.getByTestId('form-cliente-enviar').click()
     await expect(page.getByTestId('form-cliente-ok')).toBeVisible({ timeout: 30000 })
@@ -42,7 +42,7 @@ test('cliente: se crea, se edita, se le agrega y se le saca un contacto — y to
     await page.reload()
     await expect(page.getByRole('link', { name: new RegExp(nombre) })).toBeVisible()
 
-    const { data: creadoRaw } = await sb.from('clientes').select('id, slug, cuit').eq('nombre', nombre).single()
+    const { data: creadoRaw } = await sb.from('clientes').select('id, slug, cuit').eq('nombre_comercial', nombre).single()
     const creado = laFila(creadoRaw, 'el cliente recién creado')
     // El CUIT se guarda con 11 dígitos y sin guiones: escrito de dos formas distintas deja de servir
     // para cruzar contra ARCA, que es para lo único que existe esa columna.
@@ -233,10 +233,10 @@ test('obra: se crea desde la ficha del cliente y se edita desde la obra', async 
     // El cliente sí se puede crear: `clientes` tiene sus grants desde la fundación.
     await page.goto('/clientes')
     await page.getByTestId('alta-cliente').locator('summary').click()
-    await page.getByTestId('form-cliente').locator('input[name="nombre"]').fill(cliente)
+    await page.getByTestId('form-cliente').locator('input[name="nombre_comercial"]').fill(cliente)
     await page.getByTestId('form-cliente-enviar').click()
     await expect(page.getByTestId('form-cliente-ok')).toBeVisible({ timeout: 30000 })
-    const { data: cliRaw } = await sb.from('clientes').select('id, slug').eq('nombre', cliente).single()
+    const { data: cliRaw } = await sb.from('clientes').select('id, slug').eq('nombre_comercial', cliente).single()
     const cli = laFila(cliRaw, 'el cliente recién creado')
 
     // ── ALTA DE OBRA, COLGADA DEL CLIENTE ───────────────────────────────────
@@ -327,10 +327,10 @@ test('obra: se archiva, desaparece de las listas, sigue entrando por su URL y se
 
     await page.goto('/clientes')
     await page.getByTestId('alta-cliente').locator('summary').click()
-    await page.getByTestId('form-cliente').locator('input[name="nombre"]').fill(cliente)
+    await page.getByTestId('form-cliente').locator('input[name="nombre_comercial"]').fill(cliente)
     await page.getByTestId('form-cliente-enviar').click()
     await expect(page.getByTestId('form-cliente-ok')).toBeVisible({ timeout: 30000 })
-    const { data: cliRaw } = await sb.from('clientes').select('id, slug').eq('nombre', cliente).single()
+    const { data: cliRaw } = await sb.from('clientes').select('id, slug').eq('nombre_comercial', cliente).single()
     const cli = laFila(cliRaw, 'el cliente recién creado')
 
     await page.goto(`/clientes/${cli.slug}`)
@@ -436,10 +436,10 @@ test('cliente: se archiva, sale de la lista, sigue entrando por su URL y se reac
 
     await page.goto('/clientes')
     await page.getByTestId('alta-cliente').locator('summary').click()
-    await page.getByTestId('form-cliente').locator('input[name="nombre"]').fill(nombre)
+    await page.getByTestId('form-cliente').locator('input[name="nombre_comercial"]').fill(nombre)
     await page.getByTestId('form-cliente-enviar').click()
     await expect(page.getByTestId('form-cliente-ok')).toBeVisible({ timeout: 30000 })
-    const { data: cliRaw } = await sb.from('clientes').select('id, slug, activo').eq('nombre', nombre).single()
+    const { data: cliRaw } = await sb.from('clientes').select('id, slug, activo').eq('nombre_comercial', nombre).single()
     const cli = laFila(cliRaw, 'el cliente recién creado')
     expect(cli.activo, 'un cliente nace activo').toBe(true)
 
@@ -513,22 +513,33 @@ test('cliente: dirección, teléfono, email y responsable se guardan y se leen d
   const sb = await conBase()
   await limpiar(sb)
   const nombre = `${MARCA} Cliente Relacion ${Date.now()}`
+  // Colgada del nombre único del caso: «Alimentos del Sur» existe de verdad en la base (es parte
+  // del nombre de La Estrella) y buscar por ahí devolvería dos filas.
+  const razonSocial = `${nombre} Sociedad Anónima`
 
   try {
     await entrar(page)
 
     await page.goto('/clientes')
     await page.getByTestId('alta-cliente').locator('summary').click()
-    await page.getByTestId('form-cliente').locator('input[name="nombre"]').fill(nombre)
+    await page.getByTestId('form-cliente').locator('input[name="nombre_comercial"]').fill(nombre)
     await page.getByTestId('form-cliente-enviar').click()
     await expect(page.getByTestId('form-cliente-ok')).toBeVisible({ timeout: 30000 })
-    const { data: cliRaw } = await sb.from('clientes').select('id, slug').eq('nombre', nombre).single()
+    const { data: cliRaw } = await sb.from('clientes')
+      .select('id, slug, razon_social').eq('nombre_comercial', nombre).single()
     const cli = laFila(cliRaw, 'el cliente recién creado')
+
+    // LA RAZÓN SOCIAL NACE VACÍA (20/08/2026). El dueño pidió separar los dos conceptos y NO
+    // inventar valores. El defecto que esto atrapa es el «arreglo» cómodo: copiarle el nombre
+    // comercial a la razón social para que la ficha no muestre un hueco. Sería un dato fabricado
+    // en el campo que termina en un contrato y en una factura, y encima parecería cargado.
+    expect(cli.razon_social, 'la razón social no se deriva del nombre comercial').toBeNull()
 
     // ── CARGA ───────────────────────────────────────────────────────────────
     await page.goto(`/clientes/${cli.slug}`)
     await page.getByTestId('editar-cliente').locator('summary').click()
     const f = page.getByTestId('form-editar-cliente')
+    await f.locator('input[name="razon_social"]').fill(razonSocial)
     await f.locator('input[name="direccion"]').fill('Av. Libertador 1234, Rivadavia, San Juan')
     await f.locator('input[name="telefono"]').fill('264 400 1111')
     await f.locator('input[name="email"]').fill('compras@ejemplo.com')
@@ -546,8 +557,13 @@ test('cliente: dirección, teléfono, email y responsable se guardan y se leen d
 
     // ── LA EVIDENCIA ES LA FILA EN LA BASE ──────────────────────────────────
     const { data: guardadoRaw } = await sb.from('clientes')
-      .select('direccion, telefono, email, responsable_id').eq('id', cli.id).single()
+      .select('nombre_comercial, razon_social, direccion, telefono, email, responsable_id')
+      .eq('id', cli.id).single()
     const guardado = laFila(guardadoRaw, 'el cliente con su ficha cargada')
+    // LOS DOS NOMBRES CONVIVEN Y NO SE PISAN: cargar el legal no puede cambiar con qué nombre la
+    // empresa llama al cliente, que es el que arma su dirección y el que sale en el portafolio.
+    expect(guardado.razon_social).toBe(razonSocial)
+    expect(guardado.nombre_comercial, 'guardar la razón social pisó el nombre comercial').toBe(nombre)
     expect(guardado.direccion).toBe('Av. Libertador 1234, Rivadavia, San Juan')
     expect(guardado.telefono).toBe('264 400 1111')
     expect(guardado.email).toBe('compras@ejemplo.com')
@@ -556,6 +572,9 @@ test('cliente: dirección, teléfono, email y responsable se guardan y se leen d
 
     // ── Y SOBREVIVE A LA RECARGA: se LEE del servidor, no del navegador ─────
     await page.reload()
+    const info = page.getByTestId('cliente-informacion')
+    await expect(info, 'la ficha tiene que mostrar los dos nombres, no uno').toContainText(razonSocial)
+    await expect(info).toContainText(nombre)
     await expect(page.getByText('Av. Libertador 1234, Rivadavia, San Juan')).toBeVisible()
     await expect(page.getByText('264 400 1111')).toBeVisible()
     await expect(page.getByRole('link', { name: 'compras@ejemplo.com' }))
@@ -572,6 +591,14 @@ test('cliente: dirección, teléfono, email y responsable se guardan y se leen d
     // lista que existe para ENCONTRAR Y ABRIR un cliente. Este test defiende esa decisión: si
     // alguien vuelve a colgar columnas del listado, acá se pone rojo.
     await page.goto('/clientes')
+    // SE BUSCA POR LOS DOS NOMBRES. El que teclea la razón social la tiene delante en una factura
+    // o en un contrato; si la búsqueda sólo mirara el comercial, no encontraría nada y el dato
+    // recién cargado sería inútil. La fila que aparece sigue mostrando el nombre comercial.
+    await page.getByTestId('buscar-cliente').fill('Sociedad Anónima')
+    await expect(page.getByTestId('clientes-tabla').locator('tbody tr')).toHaveCount(1)
+    await expect(page.getByTestId('clientes-tabla')).toContainText(nombre)
+    await page.getByTestId('buscar-cliente').fill('')
+
     const fila = page.getByTestId('clientes-tabla').locator('tr', { hasText: nombre })
     await expect(fila).not.toContainText(nombreResponsable)
     // Lo único que la fila lleva además del nombre es el conteo de obras: este cliente no tiene

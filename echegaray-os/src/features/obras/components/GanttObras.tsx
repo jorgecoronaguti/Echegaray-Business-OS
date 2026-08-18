@@ -27,18 +27,36 @@
 // Una barra de tres píxeles "para que se vea algo" afirma que la obra empieza y termina el mismo
 // día, y nadie la revisa porque no parece un error.
 //
-// El color es el del sistema: el plan y lo ejecutado son el MISMO acento a dos intensidades —así el
-// avance se lee de un vistazo—, el rojo queda para lo que está mal (pasó su fin sin terminar) y el
-// amarillo de la marca se usa donde lo usa el logo: la regla fina que dice «acá estás», la línea de
-// hoy. Hoy no es un problema y pintarlo de rojo era decir que sí.
+// ═══ EL COLOR DICE EL ESTADO, NO EL CALENDARIO (20/08) ═══
+//
+// El dueño: *"No pintar rojo sólo porque la fecha fin pasó"* · *"que el rojo vuelva a significar
+// «requiere atención»"*. Antes la barra se ponía roja con `fin < hoy && avance < 100`, y con eso
+// Comedor (93%) y Galpón 9 (96%) —dos obras que están cerrando bien— salían del mismo color que
+// Salón Comercial, que va 0%. Cuatro de cinco rojas: el rojo dejó de señalar nada.
+//
+// Ahora el color sale de `desvioDePlazo`, que compara el avance contra el calendario ya consumido.
+// La REGLA vive en el servicio, no acá: este archivo sólo la pinta. Cada renglón es plan (el mismo
+// tono al 22%) y avance (sólido), en el color de su estado — al día grafito, atraso menor ámbar,
+// atraso crítico rojo, sin datos gris. El amarillo de la marca se usa donde lo usa el logo: la
+// regla fina que dice «acá estás», la línea de hoy. Hoy no es un problema y pintarlo de rojo era
+// decir que sí.
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
 import { construirEscala, type Escala } from '../services/escala'
-import { ventana, type Barra, type FilaObra } from '../services/ganttObras'
+import { UMBRAL_ATRASO, ventana, type Barra, type FilaObra, type Semaforo } from '../services/ganttObras'
 
 const ALTO_FILA = 30
+
+/** EL ESTADO EN UN LUGAR: el color de la barra, el de la leyenda y la palabra del detalle salen de
+ *  acá. Tres tablas separadas se desincronizan el día que alguien agrega un estado. */
+const ESTADO: Record<Semaforo, { fill: string, punto: string, palabra: string }> = {
+  al_dia:         { fill: 'fill-accent', punto: 'bg-accent', palabra: 'al día' },
+  atraso_menor:   { fill: 'fill-warn',   punto: 'bg-warn',   palabra: 'atraso menor' },
+  atraso_critico: { fill: 'fill-neg',    punto: 'bg-neg',    palabra: 'atraso crítico' },
+  sin_datos:      { fill: 'fill-faint',  punto: 'bg-faint',  palabra: 'sin datos para juzgar' },
+}
 
 const hrefDe = (obraId: string) => `/obras/${obraId}?vista=cronograma`
 
@@ -59,20 +77,47 @@ function resumen(f: FilaObra): string {
   const b = f.barra
   const base = b.base ? ` · línea base ${fmtCorto(b.base.inicio)} → ${fmtCorto(b.base.fin)}` : ' · sin línea base sellada'
   const av = b.avancePct == null ? ' · sin avance publicado' : ` · avance ${b.avancePct}%`
-  return `${f.nombre}: plan ${fmtCorto(b.inicio)} → ${fmtCorto(b.fin)}${base}${av}`
+  const d = b.desvio
+  // «estimado» NO ES UNA MULETILLA: el avance esperado supone que el trabajo se reparte parejo
+  // sobre el calendario, y ninguna obra avanza así. Decir «26 días de atraso» a secas convertiría
+  // una estimación en un hecho, que es exactamente lo que no se hace acá.
+  const estado = d.brechaPuntos == null
+    ? ` · ${ESTADO[d.semaforo].palabra}`
+    : ` · ${ESTADO[d.semaforo].palabra}: ${b.avancePct}% contra ${d.avanceEsperadoPct}% esperado por calendario`
+      + (d.brechaPuntos > 0
+          ? ` — ${d.brechaPuntos} puntos, unos ${d.atrasoDias} día${d.atrasoDias === 1 ? '' : 's'} de trabajo (estimado)`
+          : '')
+  return `${f.nombre}: plan ${fmtCorto(b.inicio)} → ${fmtCorto(b.fin)}${base}${av}${estado}`
 }
 
-/** La leyenda dice qué significa cada forma. Sólo se nombra lo que la pantalla puede dibujar hoy. */
-function Leyenda({ hayBase }: { hayBase: boolean }) {
+/**
+ * LA LEYENDA NOMBRA LOS ESTADOS, Y ADEMÁS DICE CON QUÉ REGLA SE PINTAN.
+ *
+ * Un semáforo cuyo criterio no está escrito en ningún lado no se puede discutir: cada uno le
+ * inventa un significado al rojo y el color deja de ser un acuerdo. La regla entra en una línea de
+ * once píxeles y hace que el color rinda cuentas.
+ */
+function Leyenda({ hayBase, estados }: { hayBase: boolean, estados: Set<Semaforo> }) {
+  const orden: Semaforo[] = ['al_dia', 'atraso_menor', 'atraso_critico', 'sin_datos']
   return (
-    <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1.5 text-[11px] text-muted">
-      <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-4 rounded-sm bg-accent/25" />plan</span>
-      <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-4 rounded-sm bg-accent" />avance</span>
-      {/* LA LÍNEA BASE SÓLO SE NOMBRA SI ALGUNA OBRA LA TIENE. Una leyenda que explica una marca que
-          no aparece en ninguna fila manda a buscarla, y hoy no hay una sola actividad sellada. */}
-      {hayBase && <span className="inline-flex items-center gap-1.5"><i className="h-1.5 w-4 rounded-sm bg-line-strong" />línea base</span>}
-      <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-4 rounded-sm bg-neg" />pasó su fin</span>
-      <span className="inline-flex items-center gap-1.5"><i className="h-3 w-0.5 bg-marca" />hoy</span>
+    <div className="space-y-1">
+      <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1.5 text-[11px] text-muted">
+        {/* SÓLO LOS ESTADOS QUE LA PANTALLA ESTÁ DIBUJANDO. Nombrar «atraso crítico» un día en que
+            ninguna obra lo está manda a buscar una barra roja que no existe. */}
+        {orden.filter((e) => estados.has(e)).map((e) => (
+          <span key={e} className="inline-flex items-center gap-1.5">
+            <i className={`h-2.5 w-4 rounded-sm ${ESTADO[e].punto}`} />{ESTADO[e].palabra}
+          </span>
+        ))}
+        {/* LA LÍNEA BASE SÓLO SE NOMBRA SI ALGUNA OBRA LA TIENE. Una leyenda que explica una marca que
+            no aparece en ninguna fila manda a buscarla, y hoy no hay una sola actividad sellada. */}
+        {hayBase && <span className="inline-flex items-center gap-1.5"><i className="h-1.5 w-4 rounded-sm bg-line-strong" />línea base</span>}
+        <span className="inline-flex items-center gap-1.5"><i className="h-3 w-0.5 bg-marca" />hoy</span>
+      </div>
+      <p className="text-[10.5px] leading-tight text-faint">
+        Atraso = avance que falta contra el calendario ya consumido. Menor: más de {UMBRAL_ATRASO.menorPuntos} puntos
+        o {UMBRAL_ATRASO.menorDias} días. Crítico: más de {UMBRAL_ATRASO.criticoPuntos} puntos o {UMBRAL_ATRASO.criticoDias} días.
+      </p>
     </div>
   )
 }
@@ -90,6 +135,14 @@ function Renglon({ f }: { f: FilaObra }) {
       className="flex w-full items-center gap-2 border-b border-line/60 px-3 hover:bg-surface-sunken"
     >
       <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink">{f.nombre}</span>
+      {/* LA BRECHA EN NÚMERO, AL LADO DEL AVANCE. El color solo ordena la atención pero no dice
+          cuánto: con «47% −39» se ve de un vistazo que la obra debería ir por 86, sin pasar el
+          mouse por encima ni abrir la ficha. Sólo aparece cuando hay atraso. */}
+      {f.barra && f.barra.desvio.brechaPuntos != null && f.barra.desvio.brechaPuntos > 0 && (
+        <span
+          className={`shrink-0 text-[10.5px] tabular-nums ${f.barra.desvio.semaforo === 'atraso_critico' ? 'text-neg' : 'text-warn'}`}
+        >−{f.barra.desvio.brechaPuntos}</span>
+      )}
       <span className="shrink-0 text-[11px] tabular-nums text-faint">
         {f.avancePct == null ? '—' : `${f.avancePct}%`}
       </span>
@@ -101,10 +154,11 @@ function Renglon({ f }: { f: FilaObra }) {
 function BarraObra({ b, y, x }: { b: Barra, y: number, x: (iso: string) => number }) {
   const x0 = x(b.inicio)
   const w = Math.max(3, x(b.fin) - x0)
-  const color = b.vencida ? 'fill-neg' : 'fill-accent'
+  const color = ESTADO[b.desvio.semaforo].fill
   return (
     <>
-      <rect x={x0} y={y + 8} width={w} height={13} rx={3} className={color} opacity={0.22} />
+      <rect x={x0} y={y + 8} width={w} height={13} rx={3} className={color} opacity={0.22}
+            data-testid="barra-obra" data-semaforo={b.desvio.semaforo} />
       {b.avancePct != null && b.avancePct > 0 && (
         <rect x={x0} y={y + 8} width={Math.max(2, (w * Math.min(100, b.avancePct)) / 100)} height={13} rx={3} className={color} />
       )}
@@ -127,10 +181,14 @@ export function GanttObras({ filas, hoyIso }: { filas: FilaObra[], hoyIso: strin
   const [escala, setEscala] = useState<Escala>('semana')
   const rango = useMemo(() => ventana(filas, hoyIso), [filas, hoyIso])
   const hayBase = filas.some((f) => f.barra?.base)
+  const estados = useMemo(
+    () => new Set(filas.filter((f) => f.barra).map((f) => f.barra!.desvio.semaforo)),
+    [filas],
+  )
 
   const controles = (
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-2.5">
-      <Leyenda hayBase={hayBase} />
+      <Leyenda hayBase={hayBase} estados={estados} />
       <div className="flex overflow-hidden rounded-control border border-line text-[12px]">
         {(['semana', 'mes'] as Escala[]).map((e) => (
           <button

@@ -33,7 +33,11 @@ const cuitSchema = z.string().trim().transform((v) => v.replace(/\D/g, ''))
 const emailSchema = z.union([z.string().trim().email('Revisá el email: no tiene formato de correo'), z.literal('')]).optional()
 
 const clienteSchema = z.object({
-  nombre: z.string().trim().min(2, 'El nombre es obligatorio'),
+  nombre_comercial: z.string().trim().min(2, 'El nombre comercial es obligatorio'),
+  // OPCIONAL Y VACÍA POR DEFECTO. La razón social sólo se guarda si alguien la escribe: no se
+  // deriva del nombre comercial ni se copia de él, porque «Messina» no es la razón social de nadie
+  // y un dato inventado en este campo termina en un contrato.
+  razon_social: z.string().trim().max(200).optional(),
   cuit: cuitSchema.optional(),
   direccion: z.string().trim().max(300).optional(),
   telefono: z.string().trim().max(60).optional(),
@@ -48,7 +52,8 @@ const clienteSchema = z.object({
 /** Los campos de la ficha, listos para la base. `''` se guarda como null: vacío es SIN DATO. */
 function aFila(d: z.infer<typeof clienteSchema>) {
   return {
-    nombre: d.nombre,
+    nombre_comercial: d.nombre_comercial,
+    razon_social: d.razon_social || null,
     cuit: d.cuit || null,
     direccion: d.direccion || null,
     telefono: d.telefono || null,
@@ -66,7 +71,7 @@ export async function crearCliente(form: FormData): Promise<Resultado> {
   const supabase = await createClient()
   // El slug tiene que ser único: si ya existe, se avisa en vez de crear un segundo cliente con el
   // mismo identificador y que uno de los dos quede inalcanzable.
-  const slug = aSlug(parsed.data.nombre)
+  const slug = aSlug(parsed.data.nombre_comercial)
   const { data: existe } = await supabase.from('clientes').select('id').eq('slug', slug).maybeSingle()
   if (existe) return { ok: false, error: `Ya hay un cliente con el identificador "${slug}"` }
 

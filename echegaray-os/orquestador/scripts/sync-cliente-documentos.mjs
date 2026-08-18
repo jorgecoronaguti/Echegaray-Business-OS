@@ -22,7 +22,7 @@ const APLICAR = process.argv.includes('--aplicar')
 
 async function main() {
   const { rows: clientes } = await query(
-    `select id, slug, nombre, drive_carpeta_id from public.clientes order by nombre`)
+    `select id, slug, nombre_comercial as nombre, drive_carpeta_id from public.clientes order by nombre_comercial`)
 
   let total = 0
   const sinCarpeta = []

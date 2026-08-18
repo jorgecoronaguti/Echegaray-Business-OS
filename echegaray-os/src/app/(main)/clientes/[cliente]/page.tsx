@@ -127,7 +127,7 @@ export default async function ClientePage({
       // La miga de pan es UNA: volver a la lista. «01 · Obras · Clientes» contradecía a la barra de
       // Administración que corona la pantalla, y repetía en tres niveles lo que esa barra ya dice.
       eyebrow={<Link href="/clientes" className="hover:underline">← Clientes</Link>}
-      title={cliente.nombre}
+      title={cliente.nombre_comercial}
       // El CUIT es LA identidad fiscal del cliente: es lo que lo cruza contra ARCA y contra el
       // banco, y por eso acompaña al nombre acá arriba en vez de esconderse en una propiedad.
       subtitle={cliente.cuit ?? 'CUIT sin cargar'}

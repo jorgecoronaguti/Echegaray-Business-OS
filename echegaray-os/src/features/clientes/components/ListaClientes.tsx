@@ -36,8 +36,14 @@ function normalizar(s: string): string {
 export function ListaClientes({ clientes }: { clientes: ClientePanel[] }) {
   const [busqueda, setBusqueda] = useState('')
   const q = normalizar(busqueda)
+  // SE BUSCA POR LOS DOS NOMBRES. Desde que el cliente tiene nombre comercial y razón social por
+  // separado, buscar sólo por el comercial dejaría a «Alimentos del Sur SAS» sin resultado aunque
+  // esté cargado — el que busca por la razón social es justamente el que la tiene delante, en una
+  // factura o en un contrato. La lista muestra el comercial igual: el hallazgo no cambia el rótulo.
   const visibles = useMemo(
-    () => (q ? clientes.filter((c) => normalizar(c.nombre).includes(q)) : clientes),
+    () => (q
+      ? clientes.filter((c) => normalizar(`${c.nombre_comercial} ${c.razon_social ?? ''}`).includes(q))
+      : clientes),
     [clientes, q],
   )
 
@@ -83,13 +89,13 @@ function Fila({ c }: { c: ClientePanel }) {
       <td className="px-4 py-2">
         {c.slug ? (
           <Link href={`/clientes/${c.slug}`} className="text-[13px] font-medium text-ink hover:underline">
-            {c.nombre}
+            {c.nombre_comercial}
           </Link>
         ) : (
           // Sin identificador no hay record al que entrar. Se muestra igual: esconderlo haría que un
           // cliente real desapareciera de la lista sin que nadie se entere.
           <>
-            <span className="text-[13px] font-medium text-ink">{c.nombre}</span>
+            <span className="text-[13px] font-medium text-ink">{c.nombre_comercial}</span>
             <span className="block text-[11px] text-faint">sin identificador: no tiene ficha todavía</span>
           </>
         )}

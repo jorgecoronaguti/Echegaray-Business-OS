@@ -59,6 +59,101 @@ export async function getPlazoPorObra(supabase: SupabaseClient): Promise<Service
   return { data: (data ?? []) as unknown as PlazoObra[], error: null }
 }
 
+const DIA = 86400000
+const aDate = (iso: string) => new Date(iso + 'T00:00:00Z')
+const diasEntre = (desde: string, hasta: string) => Math.round((aDate(hasta).getTime() - aDate(desde).getTime()) / DIA)
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL SEMÁFORO DE PLAZO — la regla, escrita una sola vez
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// El dueño (20/08), textual: *"No pintar rojo sólo porque la fecha fin pasó"* · *"La prioridad
+// visual es: que el rojo vuelva a significar «requiere atención»."*
+//
+// LO QUE ESTABA MAL. La barra era roja con una sola condición: `fin_plan < hoy && avance < 100`.
+// Con eso, Comedor —93% terminada, con dos días de trabajo por delante— y Galpón 9 —96%— salían
+// del mismo color que Salón Comercial, que va 0% con tres cuartas partes de su plazo consumido.
+// Cuatro de cinco barras rojas: el color dejó de señalar y pasó a ser el fondo de la pantalla.
+//
+// LA REGLA, ENTERA:
+//
+//   avanceEsperado = 100 × (hoy − inicio) / (fin − inicio), acotado a [0, 100]
+//   brechaPuntos   = avanceEsperado − avance, nunca negativa (ir adelantado no es un desvío)
+//   atrasoDias     = brechaPuntos × duración / 100 — los días de trabajo que faltan contra el plan
+//
+//   sin fechas de plan, o sin avance publicado  → SIN DATOS (gris)
+//   avance ≥ 100                                → AL DÍA — terminada, no importa la fecha
+//   brecha > 25 puntos  o  atraso > 30 días     → ATRASO CRÍTICO (rojo)
+//   brecha > 10 puntos  o  atraso > 10 días     → ATRASO MENOR (ámbar)
+//   el resto                                    → AL DÍA
+//
+// POR QUÉ LAS DOS UNIDADES Y NO UNA. Los puntos porcentuales solos no ven el tamaño: 8 puntos en
+// una obra de dos años son 58 días de trabajo perdidos y se pintarían verdes. Los días solos no
+// ven la escala corta: en una obra de 19 días, 10 de atraso es más de la mitad de la obra y aún así
+// pasarían por «menor». Cada unidad manda donde la otra se queda ciega, y por eso van con `o`.
+//
+// EL AVANCE ESPERADO ES UNA ESTIMACIÓN, NO UN HECHO: supone que el trabajo se reparte parejo sobre
+// el calendario, y una obra real no avanza así. Sirve para ORDENAR la atención, no para afirmar
+// cuánto se atrasó una obra — por eso la pantalla lo dice con esa palabra en el detalle de cada
+// renglón, y por eso el semáforo no se guarda en ninguna columna de la base.
+
+/** Los cuatro números de la regla, en un solo lugar: la prueba y el comentario leen de acá. */
+export const UMBRAL_ATRASO = {
+  menorPuntos: 10,
+  criticoPuntos: 25,
+  menorDias: 10,
+  criticoDias: 30,
+} as const
+
+export type Semaforo = 'sin_datos' | 'al_dia' | 'atraso_menor' | 'atraso_critico'
+
+export interface Desvio {
+  semaforo: Semaforo
+  /** Cuánto debería llevar avanzado por calendario. `null` = no se puede juzgar. ESTIMACIÓN. */
+  avanceEsperadoPct: number | null
+  /** Puntos de avance que faltan contra lo esperado. Nunca negativo. */
+  brechaPuntos: number | null
+  /** Esos puntos convertidos a días de trabajo del plan. ESTIMACIÓN. */
+  atrasoDias: number | null
+}
+
+const SIN_DATOS: Desvio = { semaforo: 'sin_datos', avanceEsperadoPct: null, brechaPuntos: null, atrasoDias: null }
+
+/**
+ * EL SEMÁFORO DE UNA OBRA. Función pura y con el día por parámetro: la regla que decide el color de
+ * la pantalla se prueba sin navegador, sin base y en cualquier fecha.
+ */
+export function desvioDePlazo(
+  inicio: string | null, fin: string | null, avancePct: number | null, hoyIso: string,
+): Desvio {
+  // NO SE JUZGA LO QUE NO SE PUEDE JUZGAR. Sin fechas o sin avance publicado el renglón va gris:
+  // pintarlo verde diría «esta obra está bien» sobre una obra de la que no se sabe nada, que es la
+  // mentira más cara de las cuatro — es justo la que hay que ir a cargar.
+  if (!inicio || !fin || avancePct == null) return SIN_DATOS
+
+  const duracion = Math.max(1, diasEntre(inicio, fin))
+  const esperado = Math.min(100, Math.max(0, (diasEntre(inicio, hoyIso) / duracion) * 100))
+  const brecha = Math.max(0, esperado - avancePct)
+  const atrasoDias = (brecha * duracion) / 100
+  const medida = {
+    avanceEsperadoPct: Math.round(esperado),
+    brechaPuntos: Math.round(brecha),
+    atrasoDias: Math.round(atrasoDias),
+  }
+
+  // TERMINADA ES TERMINADA. Una obra al 100% no tiene nada pendiente que pueda estar atrasado,
+  // aunque haya cerrado tres semanas después de su fin previsto. Ese desvío se mide contra la
+  // línea base, en la ficha de la obra, no acá.
+  if (avancePct >= 100) return { semaforo: 'al_dia', ...medida }
+  if (brecha > UMBRAL_ATRASO.criticoPuntos || atrasoDias > UMBRAL_ATRASO.criticoDias) {
+    return { semaforo: 'atraso_critico', ...medida }
+  }
+  if (brecha > UMBRAL_ATRASO.menorPuntos || atrasoDias > UMBRAL_ATRASO.menorDias) {
+    return { semaforo: 'atraso_menor', ...medida }
+  }
+  return { semaforo: 'al_dia', ...medida }
+}
+
 /** La barra de una obra: sólo existe si la obra tiene cuándo empezar. */
 export interface Barra {
   inicio: string
@@ -67,8 +162,9 @@ export interface Barra {
   avancePct: number | null
   /** La línea base sellada. `null` = no está sellada, y entonces NO se dibuja ninguna marca. */
   base: { inicio: string, fin: string } | null
-  /** Pasó su fin previsto sin llegar al 100%. Sale de dos datos reales, no de una proyección. */
-  vencida: boolean
+  /** El semáforo y sus números. Reemplaza al viejo `vencida`, que pintaba de rojo el calendario
+   *  en vez del problema: ver `desvioDePlazo`. */
+  desvio: Desvio
 }
 
 export interface FilaObra {
@@ -105,7 +201,7 @@ function barraDe(o: PlazoObra, hoyIso: string): Barra | null {
     // LAS DOS PUNTAS O NINGUNA. Con media línea base no se puede comparar contra el plan, y media
     // marca debajo de la barra se lee como una línea base completa que casualmente coincide.
     base: o.inicio_base && o.fin_base ? { inicio: o.inicio_base, fin: o.fin_base } : null,
-    vencida: fin < hoyIso && (o.avance_pct ?? 0) < 100,
+    desvio: desvioDePlazo(o.inicio_plan, o.fin_plan, o.avance_pct, hoyIso),
   }
 }
 
@@ -144,9 +240,6 @@ export function filasDeObras(obras: PlazoObra[], hoyIso: string, incluirArchivad
       return a.barra.inicio.localeCompare(b.barra.inicio) || a.nombre.localeCompare(b.nombre, 'es')
     })
 }
-
-const DIA = 86400000
-const aDate = (iso: string) => new Date(iso + 'T00:00:00Z')
 
 /**
  * LA VENTANA DE TIEMPO QUE ABARCA LA CARTERA. `null` cuando ninguna obra tiene fechas: ahí no hay

@@ -13,7 +13,7 @@ grant usage on schema auth to authenticated, service_role;
 grant execute on function auth.uid() to authenticated, service_role;
 
 create table public.perfiles (id uuid primary key, nombre text, rol text);
-create table public.clientes (id uuid primary key default gen_random_uuid(), nombre text);
+create table public.clientes (id uuid primary key default gen_random_uuid(), nombre_comercial text, razon_social text);
 grant select on public.clientes to authenticated;
 
 create function public.current_rol() returns text language sql stable security definer set search_path to 'public' as $$
@@ -27,4 +27,4 @@ grant execute on function public.current_rol(), public.es_administracion() to au
 insert into public.perfiles values
   ('11111111-1111-1111-1111-111111111111','Jorge (direccion)','direccion'),
   ('22222222-2222-2222-2222-222222222222','Rodrigo (jefe_obra)','jefe_obra');
-insert into public.clientes (id, nombre) values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','La Estrella');
+insert into public.clientes (id, nombre_comercial) values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','La Estrella');

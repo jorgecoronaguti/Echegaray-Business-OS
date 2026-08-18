@@ -16,7 +16,12 @@ export interface ClientePanel {
   cliente_id: string
   /** El identificador legible y estable; es el que va en la URL. */
   slug: string | null
-  nombre: string
+  /** Con qué nombre se habla del cliente: «Messina», «ARCOR». Es el que se muestra en todas las
+   *  pantallas y el que armó el slug. Obligatorio — un cliente sin nombre no se puede nombrar. */
+  nombre_comercial: string
+  /** El nombre legal, el que va con el CUIT en un contrato o una factura. `null` = SIN CARGAR, y no
+   *  se deriva del comercial: «Messina» no es la razón social de nadie. */
+  razon_social: string | null
   cuit: string | null
   direccion: string | null
   telefono: string | null

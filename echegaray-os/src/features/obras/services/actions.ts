@@ -73,12 +73,12 @@ export async function crearObra(form: FormData): Promise<Resultado> {
   const { data: existe } = await supabase.from('obra_canonica').select('id').eq('id', id).maybeSingle()
   if (existe) return { ok: false, error: `Ya existe una obra con el identificador "${id}"` }
 
-  const { data: cli } = await supabase.from('clientes').select('nombre').eq('id', d.cliente_id).maybeSingle()
+  const { data: cli } = await supabase.from('clientes').select('nombre_comercial').eq('id', d.cliente_id).maybeSingle()
   const { error } = await supabase.from('obra_canonica').insert({
     id,
     nombre: d.nombre,
     cliente_id: d.cliente_id,
-    cliente_texto: (cli?.nombre as string) ?? null,
+    cliente_texto: (cli?.nombre_comercial as string) ?? null,
     estado: d.estado ?? 'activa',
     tipo: 'obra',
     etapa: vacioANull(d.etapa),
