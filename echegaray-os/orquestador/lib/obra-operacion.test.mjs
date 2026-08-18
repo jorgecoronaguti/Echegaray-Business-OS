@@ -3,7 +3,9 @@
 // muestra un número creíble y equivocado, que es la forma más cara de fallar de este módulo.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { aliasDeObra, detalleCubreElTotal, esDeObra, normObra } from './obra-operacion.mjs'
+import {
+  aliasDeObra, detalleCubreElTotal, esDeObra, indiceDeAlias, normObra, obraDeTexto,
+} from './obra-operacion.mjs'
 
 // El diccionario tal como vive en `public.obra_alias` (migraciones 20260718170000 y 20260817210000).
 const ALIAS = [
@@ -91,4 +93,37 @@ test('detalleCubreElTotal sin total declarado sólo cierra si tampoco hay detall
   assert.equal(detalleCubreElTotal([], null), true)
   assert.equal(detalleCubreElTotal([{ total: 10 }], null), false)
   assert.equal(detalleCubreElTotal([{ total: null }], null), true)
+})
+
+// ═══ EL ÍNDICE GLOBAL: LA VISTA DE TODAS LAS OBRAS Y LA DE UNA TIENEN QUE DECIR LO MISMO ═══
+
+test('obraDeTexto contesta lo mismo que esDeObra, obra por obra', () => {
+  // ÉSTE es el test que atrapa "dos sistemas". Si alguien toca una de las dos resoluciones y no la
+  // otra, una compra aparece en la lista global bajo una obra y desaparece de la ficha de esa obra
+  // —o al revés—, sin un solo error en pantalla.
+  const idx = indiceDeAlias(ALIAS)
+  const textos = ['La Estrella', 'MESSINAS', 'san francisco', 'Le Comedor', 'Taller', 'Estrella Norte', '', null]
+  for (const obraId of ['la-estrella', 'messina', 'san-francisco', 'le-comedor', 'arcor']) {
+    const nombres = aliasDeObra(ALIAS, obraId)
+    for (const t of textos) {
+      assert.equal(obraDeTexto(idx, t) === obraId, esDeObra(nombres, t), `${obraId} ← ${JSON.stringify(t)}`)
+    }
+  }
+})
+
+test('el índice deja afuera los indirectos: el costo de estructura no es de ninguna obra', () => {
+  const idx = indiceDeAlias(ALIAS)
+  assert.equal(obraDeTexto(idx, 'Administración'), null)
+  assert.equal(obraDeTexto(idx, 'Taller'), null)
+  assert.equal(obraDeTexto(idx, 'Arcor'), 'arcor') // 'mantenimiento' SÍ es obra
+})
+
+test('un alias que dos obras normalizan igual no se imputa a ninguna', () => {
+  // Sin esto, la fila caería bajo la obra que la base devolviera primero —un orden que nadie
+  // declaró— y el número de una obra tendría plata de la otra sin que nada se vea raro.
+  const idx = indiceDeAlias([
+    { alias: 'La Estrella', obra_id: 'la-estrella', clasificacion: 'obra' },
+    { alias: 'estrella', obra_id: 'estrella-2', clasificacion: 'obra' },
+  ])
+  assert.equal(obraDeTexto(idx, 'LA ESTRELLA'), null)
 })
