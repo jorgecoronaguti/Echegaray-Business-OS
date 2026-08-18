@@ -10,7 +10,9 @@
 // copia ni se sirve desde acá, sólo se enlaza.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Actividad, DocumentoObra, ObraPanel, PlanVsReal, Restriccion, ServiceResult } from '../types'
+import type {
+  Actividad, Dependencia, DocumentoObra, ObraPanel, PlanVsReal, Restriccion, ServiceResult,
+} from '../types'
 
 /** El portafolio: una fila por obra, ordenado por el orden declarado y después por nombre. */
 export async function getPortafolio(supabase: SupabaseClient): Promise<ServiceResult<ObraPanel[]>> {
@@ -83,6 +85,20 @@ export async function getRestricciones(supabase: SupabaseClient, obraId: string)
     .order('fecha_compromiso', { ascending: true, nullsFirst: false })
   if (error) return { data: null, error: error.message }
   return { data: (data ?? []) as Restriccion[], error: null }
+}
+
+/**
+ * LAS PRECEDENCIAS del cronograma. Hoy la tabla está vacía en las cinco obras, y eso es lo que hay
+ * que mostrar: el Gantt no dibuja una sola flecha hasta que alguien declare la primera. Deducirlas
+ * de las fechas sería fabricar la estructura del plan.
+ */
+export async function getDependencias(supabase: SupabaseClient, obraId: string): Promise<ServiceResult<Dependencia[]>> {
+  const { data, error } = await supabase
+    .from('obra_dependencia')
+    .select('id, obra_id, origen_id, destino_id, tipo, lag_dias')
+    .eq('obra_id', obraId)
+  if (error) return { data: null, error: error.message }
+  return { data: (data ?? []) as Dependencia[], error: null }
 }
 
 /**

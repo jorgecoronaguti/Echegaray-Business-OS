@@ -16,6 +16,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { claveDeActividad } from './claves'
+import { haceCiclo } from './cronograma'
 
 export type Resultado = { ok: true; id?: string } | { ok: false; error: string }
 
@@ -266,6 +267,66 @@ export async function sellarBaseline(obraId: string): Promise<Resultado> {
       .eq('id', a.id)
     if (error) return { ok: false, error: error.message }
   }
+  revalidatePath(`/obras/${obraId}`)
+  return { ok: true }
+}
+
+// ── DEPENDENCIAS ─────────────────────────────────────────────────────────────
+
+const dependenciaSchema = z.object({
+  origen_id: z.string().uuid('Elegí de qué actividad depende'),
+  tipo: z.enum(['FS', 'SS', 'FF', 'SF']).optional(),
+  lag_dias: z.union([z.coerce.number().int().min(-365).max(365), z.literal('')]).optional(),
+})
+
+/**
+ * DECLARAR QUE UNA ACTIVIDAD HABILITA A OTRA. `destinoId` es la que está abierta en el panel.
+ *
+ * La base ya rechaza la pareja repetida y la actividad contra sí misma. Lo que no puede ver —y por
+ * eso se chequea acá— es el círculo largo: A habilita a B, B a C, y C a A. Un cronograma circular no
+ * tiene por dónde empezar.
+ *
+ * Las dos actividades se verifican CONTRA ESTA OBRA antes de insertar: los ids viajan en el
+ * formulario, y sin este control se podría colgar una actividad de la obra de al lado.
+ */
+export async function agregarDependencia(obraId: string, destinoId: string, form: FormData): Promise<Resultado> {
+  const parsed = dependenciaSchema.safeParse(Object.fromEntries(form))
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
+  const d = parsed.data
+  const supabase = await createClient()
+
+  const { data: suyas } = await supabase.from('obra_actividad')
+    .select('id').eq('obra_id', obraId).in('id', [d.origen_id, destinoId])
+  if ((suyas ?? []).length !== 2) return { ok: false, error: 'Esa actividad no es de esta obra' }
+
+  const { data: previas, error: eLectura } = await supabase.from('obra_dependencia')
+    .select('origen_id, destino_id').eq('obra_id', obraId)
+  if (eLectura) return { ok: false, error: eLectura.message }
+  if (haceCiclo(previas ?? [], d.origen_id, destinoId)) {
+    return { ok: false, error: 'Esa precedencia cierra un círculo: las dos actividades quedarían esperándose entre sí.' }
+  }
+
+  const { error } = await supabase.from('obra_dependencia').insert({
+    obra_id: obraId,
+    origen_id: d.origen_id,
+    destino_id: destinoId,
+    tipo: d.tipo ?? 'FS',
+    lag_dias: vacioANull(d.lag_dias) ?? 0,
+  })
+  // El índice único es la última palabra: dos personas cargando lo mismo a la vez pasan los dos
+  // chequeos de arriba y sólo una llega a la tabla. Se traduce en vez de mostrar el error de Postgres.
+  if (error) {
+    return { ok: false, error: error.code === '23505' ? 'Esa precedencia ya estaba declarada' : error.message }
+  }
+  revalidatePath(`/obras/${obraId}`)
+  return { ok: true }
+}
+
+export async function quitarDependencia(obraId: string, dependenciaId: string): Promise<Resultado> {
+  const supabase = await createClient()
+  const { error } = await supabase.from('obra_dependencia')
+    .delete().eq('id', dependenciaId).eq('obra_id', obraId)
+  if (error) return { ok: false, error: error.message }
   revalidatePath(`/obras/${obraId}`)
   return { ok: true }
 }

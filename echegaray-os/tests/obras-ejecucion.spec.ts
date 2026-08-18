@@ -354,10 +354,16 @@ test('ninguna pantalla nueva empuja la página de costado en el teléfono', asyn
     expect(doc, `${ruta} con ${testid} abierto se desplaza de costado (${doc}px)`).toBeLessThanOrEqual(390)
   }
 
-  // El panel del Gantt es el caso más difícil: cronograma y formulario a la vez. En el teléfono va
-  // abajo, no al costado — es la única manera de que ninguno de los dos se recorte.
+  // El panel del Gantt es el caso más difícil: cronograma y formulario a la vez. En el teléfono sube
+  // desde abajo como una hoja y tapa el cronograma — es la única manera de que ninguno de los dos se
+  // recorte. Un panel de 330px al costado, en 390px de pantalla, no es ninguna de las dos cosas.
+  //
+  // SE ELIGE LA FILA POR LO QUE ES, NO POR SU POSICIÓN (18/08/2026). Este clic era `.nth(3)` sobre
+  // los botones del Gantt. Cuando el cronograma empezó a agrupar por sección, el cuarto botón pasó a
+  // ser la cabecera de un grupo —que pliega, no selecciona—, y el panel no abría. El test se caía por
+  // el orden del DOM y no por lo que vino a medir.
   await page.goto(`/obras/${OBRA}?vista=gantt`)
-  await page.getByTestId('gantt').locator('button').filter({ hasNotText: /^(semana|mes)$/ }).nth(3).click()
+  await page.getByTestId('actividad-cronograma').first().click()
   await expect(page.getByTestId('panel-actividad')).toBeVisible()
   await page.waitForTimeout(300)
   const conPanel = await page.evaluate(() => document.documentElement.scrollWidth)

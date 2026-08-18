@@ -133,6 +133,33 @@ export interface Restriccion {
   estado: 'abierta' | 'en_curso' | 'liberada'
 }
 
+/** Los cuatro tipos de precedencia. `FS` —termina una, empieza la otra— es el 95% de una obra. */
+export const TIPO_DEPENDENCIA = ['FS', 'SS', 'FF', 'SF'] as const
+export type TipoDependencia = (typeof TIPO_DEPENDENCIA)[number]
+
+export const TIPO_DEPENDENCIA_LABEL: Record<TipoDependencia, string> = {
+  FS: 'termina y recién ahí empieza',
+  SS: 'empiezan juntas',
+  FF: 'terminan juntas',
+  SF: 'empieza una y recién ahí termina la otra',
+}
+
+/**
+ * UNA PRECEDENCIA entre dos actividades: `origen` habilita a `destino`.
+ *
+ * La tabla nace vacía y se declara: el dato NO existe en ninguna fuente —el tracker de Drive no
+ * tiene columna de predecesoras— y NO se deduce de las fechas. Que una actividad empiece cuando
+ * otra termina no prueba que dependa de ella; puede ser que compartan la misma cuadrilla.
+ */
+export interface Dependencia {
+  id: string
+  obra_id: string
+  origen_id: string
+  destino_id: string
+  tipo: TipoDependencia
+  lag_dias: number
+}
+
 /** Un archivo de Drive vinculado a la obra. El archivo NO se copia: vive en Drive. */
 export interface DocumentoObra {
   drive_file_id: string
