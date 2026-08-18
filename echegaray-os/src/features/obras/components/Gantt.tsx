@@ -33,8 +33,10 @@
 // el logo lo usa: una regla fina que dice "acá estás" — la línea de hoy. Hoy no es un problema, y
 // pintarlo de rojo era decir que sí.
 
+import Link from 'next/link'
 import { useMemo, useState } from 'react'
-import { agruparActividades, estadoDe, filasVisibles } from '../services/cronograma'
+import { BotonAccion, type ResultadoAccion } from '@/shared/components/ui'
+import { agruparActividades, agruparPorObra, estadoDe, filasVisibles } from '../services/cronograma'
 import type { Actividad, Dependencia, Persona, Restriccion } from '../types'
 import { FormNuevaActividad, PanelActividad, type AccionesCronograma } from './PanelActividad'
 import { construirEscala, type Escala } from '../services/escala'
@@ -58,6 +60,7 @@ export function Gantt({
   yaSellada = false,
   seleccionInicial = null,
   masivas,
+  obras,
 }: {
   actividades: Actividad[]
   restricciones?: Restriccion[]
@@ -75,6 +78,15 @@ export function Gantt({
   /** Las acciones en lote. Sin ellas NO se dibuja una sola casilla: seleccionar cincuenta filas para
    *  descubrir que no hay nada que hacer con ellas es peor que no poder seleccionarlas. */
   masivas?: AccionesEnLote
+  /**
+   * EL EJE DE AGRUPACIÓN. Ausente (la ficha de la obra) = se agrupa por la sección del tracker.
+   * Presente (el Gantt global de `/obras/cronograma`) = se agrupa por obra, con estos nombres.
+   *
+   * Es UN componente para las dos pantallas a propósito: *"El Gantt global y el Gantt de una obra
+   * deben consumir exactamente las mismas actividades canónicas"*. Un segundo Gantt para la vista
+   * global habría empezado igual y divergido en el primer arreglo que se le hiciera a uno solo.
+   */
+  obras?: { id: string; nombre: string }[]
 }) {
   const [escala, setEscala] = useState<Escala>('semana')
   const [selId, setSelId] = useState<string | null>(seleccionInicial)
@@ -100,7 +112,11 @@ export function Gantt({
     return s
   }, [abiertas])
 
-  const grupos = useMemo(() => agruparActividades(actividades), [actividades])
+  const nombreDeObra = useMemo(() => new Map((obras ?? []).map((o) => [o.id, o.nombre])), [obras])
+  const grupos = useMemo(
+    () => (obras ? agruparPorObra(actividades, nombreDeObra) : agruparActividades(actividades)),
+    [actividades, obras, nombreDeObra],
+  )
   const filas = useMemo(() => filasVisibles(grupos, colapsados), [grupos, colapsados])
   const hoyIso = isoDe(hoy)
 
@@ -321,6 +337,14 @@ export function Gantt({
                     type="button"
                     onClick={() => setSelId(a.id)}
                     data-testid="actividad-cronograma"
+                    // DE QUÉ OBRA ES CADA FILA, siempre — también en la ficha, donde es redundante
+                    // para el que mira. No es adorno: es lo que deja CONTAR desde afuera que la
+                    // lista global y la de la obra traen exactamente las mismas actividades. Sin
+                    // esto, "no hay dos sistemas" es una afirmación sin forma de verificarla.
+                    data-obra={a.obra_id}
+                    data-tipo={a.tipo}
+                    // El alto, el borde y el padding los pone la ENVOLTURA de la fila, que además
+                    // sostiene la casilla de selección en lote. Repetirlos acá los duplicaba.
                     className="flex min-w-0 flex-1 items-center gap-2 text-left"
                   >
                     <span
@@ -469,6 +493,16 @@ export function Gantt({
                     </div>
                     <button type="button" onClick={() => setSelId(null)} className="shrink-0 text-[12px] text-muted hover:text-ink">cerrar</button>
                   </div>
+                  {/* LA VISTA GLOBAL NO EDITA: lleva a la obra, que es donde la actividad se toca.
+                      Reimplementar acá el panel de edición sería el segundo lugar donde se escribe
+                      una fecha, con su propia validación y su propio permiso. */}
+                  {obras && (
+                    <Link
+                      href={`/obras/${sel.obra_id}?vista=cronograma&act=${sel.id}`}
+                      data-testid="ir-a-la-obra"
+                      className="mt-2 inline-block text-[12px] text-ink underline underline-offset-2"
+                    >Abrir en {nombreDeObra.get(sel.obra_id) ?? sel.obra_id} →</Link>
+                  )}
                   <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-[12px]">
                     <div><dt className="text-faint">Plan</dt><dd className="tabular-nums text-ink">{fmtCorto(sel.inicio_plan)} → {fmtCorto(sel.fin_plan)}</dd></div>
                     <div><dt className="text-faint">Línea base</dt><dd className="tabular-nums text-ink">{sel.inicio_base ? `${fmtCorto(sel.inicio_base)} → ${fmtCorto(sel.fin_base)}` : 'sin sellar'}</dd></div>

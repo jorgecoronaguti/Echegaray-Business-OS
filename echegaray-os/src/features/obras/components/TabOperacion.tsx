@@ -11,13 +11,16 @@
 // costo real, y si el detalle no llega a ese total lo dice en una línea en vez de disimularlo.
 
 import Link from 'next/link'
-import type { ReactNode } from 'react'
 import { Badge } from '@/shared/components/ui'
-import { estadoInfo, type Herramienta } from '@/features/integraciones/services/herramientasService'
-import type { MovimientoConHerramienta } from '@/features/integraciones/services/movimientosService'
-import type { PedidoMaterial } from '@/features/integraciones/services/pedidosMaterialesService'
+import { estadoInfo } from '@/features/integraciones/services/herramientasService'
+import type {
+  HerramientaOperacion, MovimientoOperacion, PedidoOperacion,
+} from '../services/operacionService'
 import type { ComprasObra, SubOperacion } from '../services/operacionService'
 import { fecha, plata } from './formato'
+// LAS MISMAS PIEZAS QUE LA VISTA GLOBAL. Eran privadas de este archivo; se mudaron a `tablas.tsx`
+// cuando apareció `/obras/operacion`, para que las dos pantallas no se separen por copia.
+import { C, Fila, Tabla, Vacio } from './tablas'
 
 const SUBS: { id: SubOperacion; label: string }[] = [
   { id: 'pedidos', label: 'Pedidos' },
@@ -34,48 +37,14 @@ const entregado = (estado: string | null) => (estado ?? '').toLowerCase().includ
 /** El tono de estado de una herramienta, traducido a los tonos del sistema visual. */
 const TONO_HERRAMIENTA = { ok: 'pos', info: 'neutral', amber: 'warn', red: 'neg' } as const
 
-function Vacio({ children }: { children: ReactNode }) {
-  return <p className="px-4 py-6 text-[12px] leading-relaxed text-faint">{children}</p>
-}
-
-/** El contenedor scrollea por dentro: a 390px la página no puede correrse a lo ancho. */
-function Tabla({ testid, cols, children }: { testid: string; cols: { k: string; num?: boolean }[]; children: ReactNode }) {
-  return (
-    <div className="overflow-x-auto rounded-card border border-line bg-surface">
-      <table data-testid={testid} className="w-full min-w-[560px] text-left">
-        <thead>
-          <tr className="border-b border-line text-[10px] uppercase tracking-wide text-faint">
-            {cols.map((c) => (
-              <th key={c.k} className={`px-3 py-2 font-medium first:pl-4 last:pr-4 ${c.num ? 'text-right' : ''}`}>{c.k}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>{children}</tbody>
-      </table>
-    </div>
-  )
-}
-
-function Fila({ children }: { children: ReactNode }) {
-  return <tr className="border-b border-line/60 last:border-0">{children}</tr>
-}
-
-function C({ children, num, fuerte }: { children: ReactNode; num?: boolean; fuerte?: boolean }) {
-  return (
-    <td className={`px-3 py-2 first:pl-4 last:pr-4 ${num ? 'text-right tabular-nums' : ''} ${fuerte ? 'text-[13px] text-ink' : 'text-[12px] text-muted'}`}>
-      {children}
-    </td>
-  )
-}
-
-function Pedidos({ pedidos }: { pedidos: PedidoMaterial[] }) {
+function Pedidos({ pedidos }: { pedidos: PedidoOperacion[] }) {
   if (!pedidos.length) {
     return <Vacio>Los pedidos de material se registran a nombre de la obra, y ninguno quedó a nombre de ésta.</Vacio>
   }
   return (
     <Tabla testid="tabla-pedidos" cols={[{ k: 'Fecha' }, { k: 'Material' }, { k: 'Cantidad', num: true }, { k: 'Estado' }]}>
       {pedidos.map((p) => (
-        <Fila key={p.id_pedido}>
+        <Fila key={p.id_pedido} obra={p.obra_canonica_id}>
           <C num>{fecha(p.fecha)}</C>
           <C fuerte>{p.material ?? '—'}</C>
           <C num>{cantidad(p.cantidad)}</C>
@@ -106,7 +75,7 @@ function Compras({ compras }: { compras: ComprasObra }) {
         cols={[{ k: 'Fecha' }, { k: 'Proveedor' }, { k: 'Concepto' }, { k: 'Comprobante' }, { k: 'Importe', num: true }]}
       >
         {compras.filas.map((c) => (
-          <Fila key={c.id}>
+          <Fila key={c.id} obra={c.obra_canonica_id}>
             <C num>{fecha(c.fecha)}</C>
             <C fuerte>{c.proveedor ?? '—'}</C>
             <C>{c.concepto ?? '—'}</C>
@@ -130,7 +99,7 @@ function Compras({ compras }: { compras: ComprasObra }) {
   )
 }
 
-function Herramientas({ herramientas }: { herramientas: Herramienta[] }) {
+function Herramientas({ herramientas }: { herramientas: HerramientaOperacion[] }) {
   if (!herramientas.length) {
     return <Vacio>Ninguna herramienta figura hoy en esta obra.</Vacio>
   }
@@ -139,7 +108,7 @@ function Herramientas({ herramientas }: { herramientas: Herramienta[] }) {
       {herramientas.map((h) => {
         const e = estadoInfo(h.estado)
         return (
-          <Fila key={h.id_herramienta}>
+          <Fila key={h.id_herramienta} obra={h.obra_canonica_id}>
             <C fuerte>{h.nombre}</C>
             <C>{h.categoria ?? '—'}</C>
             <C><Badge tono={TONO_HERRAMIENTA[e.tone]}>{e.label}</Badge></C>
@@ -151,14 +120,14 @@ function Herramientas({ herramientas }: { herramientas: Herramienta[] }) {
   )
 }
 
-function Movimientos({ movimientos }: { movimientos: MovimientoConHerramienta[] }) {
+function Movimientos({ movimientos }: { movimientos: MovimientoOperacion[] }) {
   if (!movimientos.length) {
     return <Vacio>Todavía no se movió ninguna herramienta hacia esta obra.</Vacio>
   }
   return (
     <Tabla testid="tabla-movimientos" cols={[{ k: 'Fecha' }, { k: 'Herramienta' }, { k: 'Responsable' }]}>
       {movimientos.map((m) => (
-        <Fila key={m.id_movimiento}>
+        <Fila key={m.id_movimiento} obra={m.obra_canonica_id}>
           <C num>{fecha(m.fecha)}</C>
           <C fuerte>{m.herramienta_nombre ?? '—'}</C>
           <C>{m.responsable ?? '—'}</C>
@@ -173,10 +142,10 @@ export function TabOperacion({
 }: {
   sub: SubOperacion
   obraId: string
-  pedidos: PedidoMaterial[]
+  pedidos: PedidoOperacion[]
   compras: ComprasObra
-  herramientas: Herramienta[]
-  movimientos: MovimientoConHerramienta[]
+  herramientas: HerramientaOperacion[]
+  movimientos: MovimientoOperacion[]
 }) {
   const cuenta: Record<SubOperacion, number> = {
     pedidos: pedidos.length,

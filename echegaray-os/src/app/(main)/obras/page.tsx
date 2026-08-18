@@ -21,6 +21,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getPortafolio, getPlanVsRealPortafolio } from '@/features/obras/services/obrasService'
 import { ETAPA_LABEL, type ObraPanel, type PlanVsReal } from '@/features/obras/types'
 import { fecha, plata } from '@/features/obras/components/formato'
+import { NavObras } from '@/features/obras/components/NavObras'
 import { PageShell, Callout } from '@/shared/components/ui'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { esAdministracion } from '@/features/auth/types/areas'
@@ -145,6 +146,11 @@ export default async function ObrasPage({
         >+ Nueva obra</Link>
       ) : undefined}
     >
+      {/* LAS SEIS VISTAS DE LA CARTERA. El portafolio es una de ellas, no su índice: desde acá se
+          entra a UNA obra, y las otras cinco muestran el MISMO dato de todas las obras a la vez
+          —*"MISMA TABLA/FUENTE → vista global + filtro por obra"*—. Dos niveles y se terminó. */}
+      <NavObras />
+
       {error && <Callout tono="neg">No pude leer el portafolio: {error}</Callout>}
 
       {!error && todas.length === 0 && (

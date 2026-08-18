@@ -64,23 +64,37 @@ export async function getPlanVsRealPortafolio(supabase: SupabaseClient): Promise
   return { data: (data ?? []) as PlanVsReal[], error: null }
 }
 
-/** El cronograma completo de una obra, en el orden del tracker de origen. */
-export async function getActividades(supabase: SupabaseClient, obraId: string): Promise<ServiceResult<Actividad[]>> {
-  const { data, error } = await supabase
-    .from('obra_actividad')
-    .select('*')
-    .eq('obra_id', obraId)
+/**
+ * EL CRONOGRAMA, en el orden del tracker de origen.
+ *
+ * ═══ SIN `obraId` DEVUELVE EL DE TODAS LAS OBRAS, Y ES LA MISMA FUNCIÓN A PROPÓSITO ═══
+ *
+ * El dueño (19/08), textual: *"MISMA TABLA/FUENTE → vista global + filtro por obra"* · *"NO crear
+ * dos sistemas"*. Una `getActividadesGlobal()` aparte sería la segunda definición del cronograma:
+ * el día que una de las dos cambie un filtro —las archivadas, el orden, una columna— el Gantt de la
+ * obra y el Gantt global mostrarían plan distinto del mismo trabajo, y no habría manera de saber
+ * cuál miente. Acá el parámetro sólo AGREGA un `where`; todo lo demás es literalmente el mismo
+ * camino.
+ *
+ * QUÉ OBRAS VUELVEN NO LO DECIDE ESTA CAPA: lo decide el RLS de `obra_actividad`
+ * (`public.ve_obra(obra_id)`). Repetir acá el predicado de seguridad sería tenerlo escrito dos
+ * veces, y la copia de TypeScript no protege la llamada directa a PostgREST.
+ */
+export async function getActividades(supabase: SupabaseClient, obraId?: string): Promise<ServiceResult<Actividad[]>> {
+  const base = supabase.from('obra_actividad').select('*')
+  const { data, error } = await (obraId ? base.eq('obra_id', obraId) : base)
+    // El orden por obra es inocuo cuando hay una sola y es el que agrupa la vista global. Un solo
+    // orden para los dos casos: dos órdenes son dos cronogramas.
+    .order('obra_id', { ascending: true })
     .order('orden', { ascending: true })
   if (error) return { data: null, error: error.message }
   return { data: (data ?? []) as Actividad[], error: null }
 }
 
 /** Las restricciones. Las abiertas primero y, dentro de ellas, la que vence antes. */
-export async function getRestricciones(supabase: SupabaseClient, obraId: string): Promise<ServiceResult<Restriccion[]>> {
-  const { data, error } = await supabase
-    .from('obra_restriccion')
-    .select('*')
-    .eq('obra_id', obraId)
+export async function getRestricciones(supabase: SupabaseClient, obraId?: string): Promise<ServiceResult<Restriccion[]>> {
+  const base = supabase.from('obra_restriccion').select('*')
+  const { data, error } = await (obraId ? base.eq('obra_id', obraId) : base)
     .order('estado', { ascending: true })
     .order('fecha_compromiso', { ascending: true, nullsFirst: false })
   if (error) return { data: null, error: error.message }
@@ -92,13 +106,19 @@ export async function getRestricciones(supabase: SupabaseClient, obraId: string)
  * que mostrar: el Gantt no dibuja una sola flecha hasta que alguien declare la primera. Deducirlas
  * de las fechas sería fabricar la estructura del plan.
  */
-export async function getDependencias(supabase: SupabaseClient, obraId: string): Promise<ServiceResult<Dependencia[]>> {
-  const { data, error } = await supabase
-    .from('obra_dependencia')
-    .select('id, obra_id, origen_id, destino_id, tipo, lag_dias')
-    .eq('obra_id', obraId)
+export async function getDependencias(supabase: SupabaseClient, obraId?: string): Promise<ServiceResult<Dependencia[]>> {
+  const base = supabase.from('obra_dependencia').select('id, obra_id, origen_id, destino_id, tipo, lag_dias')
+  const { data, error } = await (obraId ? base.eq('obra_id', obraId) : base)
   if (error) return { data: null, error: error.message }
   return { data: (data ?? []) as Dependencia[], error: null }
+}
+
+/**
+ * De qué obra es cada documento. NO va en `DocumentoObra` —el tipo compartido— porque la solapa de
+ * la obra ya sabe de qué obra está mirando: la columna sólo existe en la lista global.
+ */
+export interface DocumentoConObra extends DocumentoObra {
+  obra_id: string
 }
 
 /**
@@ -117,8 +137,12 @@ export async function getDependencias(supabase: SupabaseClient, obraId: string):
  * contempla. Mismo criterio que `getUbicacion`: en el peor caso falta un campo, no la pantalla.
  * Sobre una tabla de vínculo de nueve columnas, `*` no cuesta nada.
  */
-export async function getDocumentos(supabase: SupabaseClient, obraId: string): Promise<ServiceResult<DocumentoObra[]>> {
-  const { data: vinculos, error } = await supabase.from('obra_documento').select('*').eq('obra_id', obraId)
+export async function getDocumentos(
+  supabase: SupabaseClient,
+  obraId?: string,
+): Promise<ServiceResult<DocumentoConObra[]>> {
+  const base = supabase.from('obra_documento').select('*')
+  const { data: vinculos, error } = await (obraId ? base.eq('obra_id', obraId) : base)
   if (error) return { data: null, error: error.message }
   const ids = (vinculos ?? []).map((v) => v.drive_file_id as string)
   if (!ids.length) return { data: [], error: null }
@@ -129,9 +153,10 @@ export async function getDocumentos(supabase: SupabaseClient, obraId: string): P
     .in('drive_file_id', ids)
   const porId = new Map((archivos ?? []).map((a) => [a.drive_file_id as string, a]))
 
-  const docs: DocumentoObra[] = (vinculos ?? []).map((v) => {
+  const docs: DocumentoConObra[] = (vinculos ?? []).map((v) => {
     const a = porId.get(v.drive_file_id as string)
     return {
+      obra_id: v.obra_id as string,
       drive_file_id: v.drive_file_id as string,
       rol: (v.rol as string) ?? null,
       // `manual`/`path_inferido` es el vocabulario viejo de la tabla. Se traduce acá para que la

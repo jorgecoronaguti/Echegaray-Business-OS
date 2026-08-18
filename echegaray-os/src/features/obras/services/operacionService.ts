@@ -1,4 +1,4 @@
-// MÓDULO 01 — OBRAS · OPERACIÓN. Qué pidió, qué compró y qué recursos se movieron para esta obra.
+// OPERACIÓN — qué se pidió, qué se compró y qué recursos se movieron. Para UNA obra o para todas.
 //
 // ═══ CERO CONSULTA NUEVA Y CERO IMPUTACIÓN INVENTADA ═══
 //
@@ -6,6 +6,13 @@
 // `getMovimientos` de Integraciones, y `costos_obra` —el espejo de la pestaña Compras del Sheet—
 // que es de donde `obra_panel` saca el costo real por obra. No se abre una fuente nueva para
 // ninguna de las cuatro.
+//
+// ═══ UNA SOLA LECTURA PARA LAS DOS PANTALLAS (19/08/2026) ═══
+//
+// El dueño, textual: *"MISMA TABLA/FUENTE → vista global + filtro por obra"* · *"NO crear dos
+// sistemas"*. Por eso `getOperacion(supabase)` y `getOperacion(supabase, obraId)` son la MISMA
+// función: la global no es otra consulta, es ésta sin el último filtro. Lo que cambia entre las dos
+// pantallas es qué columnas se dibujan, nunca de dónde sale la fila.
 //
 // ═══ EL PUENTE, QUE ES EL PROBLEMA REAL DE ESTA PANTALLA ═══
 //
@@ -17,24 +24,51 @@
 //   · `movimientos_herramienta.destino`      la ubicación destino
 //
 // (`pedidos_materiales.obra_id` SÍ existe, pero apunta a `public.obras` LEGACY —las cuatro obras
-// pausadas que hacían que la web dijera "0 obras activas". Usarlo devolvería el universo equivocado.)
+// pausadas que hacían que la web dijera "0 obras activas". Usarlo devolvería el universo
+// equivocado, y por eso el id canónico viaja en un campo con otro nombre: `obra_canonica_id`.)
 //
-// El único puente verificable es `obra_alias`, que es el mismo que usa `obra_costo_real`. Un texto
-// que no matchea ningún alias NO se muestra bajo esta obra: aparece como faltante. La regla del
-// match vive en `orquestador/lib/obra-operacion.mjs` y está cubierta por tests.
+// El único puente verificable es `obra_alias`, el mismo que usa `obra_costo_real`. Se resuelve UNA
+// vez —`indiceDeAlias`— y con ese índice se ETIQUETA cada fila. Filtrar por obra pasa a ser comparar
+// la etiqueta, así que la lista global y la ficha no pueden discrepar: es la misma etiqueta.
+// La regla vive en `orquestador/lib/obra-operacion.mjs` y está cubierta por tests.
+//
+// ═══ QUÉ FILAS VUELVEN NO LO DECIDE ESTA CAPA ═══
+//
+// Lo decide `ve_obra_texto()` en las policies de las cuatro tablas
+// (`20260819T0200_rls_por_obra_en_operacion.sql`). Acá NO se repite el predicado de seguridad: una
+// segunda copia en TypeScript se desincroniza de la de Postgres y encima no protege la llamada
+// directa a PostgREST, que es por donde se filtraba de verdad.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getHerramientas, type Herramienta } from '@/features/integraciones/services/herramientasService'
 import { getMovimientos, type MovimientoConHerramienta } from '@/features/integraciones/services/movimientosService'
 import { getPedidosMateriales, type PedidoMaterial } from '@/features/integraciones/services/pedidosMaterialesService'
-import { aliasDeObra, detalleCubreElTotal, esDeObra } from '../../../../orquestador/lib/obra-operacion.mjs'
+import {
+  aliasDeObra, detalleCubreElTotal, indiceDeAlias, obraDeTexto,
+} from '../../../../orquestador/lib/obra-operacion.mjs'
 import type { ServiceResult } from '../types'
 
 export const SUBS_OPERACION = ['pedidos', 'compras', 'herramientas', 'movimientos'] as const
 export type SubOperacion = (typeof SUBS_OPERACION)[number]
 
+/** El diccionario `obra_alias` dado vuelta. Opaco a propósito: sólo lo entiende `obraDeTexto`. */
+export type IndiceObras = Map<string, string | symbol>
+
+/**
+ * LA ETIQUETA CANÓNICA. `null` = el texto de la fila no resuelve a ninguna obra: es gasto de
+ * estructura (Administración, Taller, F931) o una grafía que nadie declaró todavía. Se dice; no se
+ * la cuelga de la primera obra de la lista.
+ */
+export interface Imputada {
+  obra_canonica_id: string | null
+}
+
+export type PedidoOperacion = PedidoMaterial & Imputada
+export type HerramientaOperacion = Herramienta & Imputada
+export type MovimientoOperacion = MovimientoConHerramienta & Imputada
+
 /** Una compra imputada a la obra, tal como vive en `costos_obra`. */
-export interface CompraObra {
+export interface CompraObra extends Imputada {
   id: string
   fecha: string | null
   proveedor: string | null
@@ -46,7 +80,12 @@ export interface CompraObra {
 
 export interface ComprasObra {
   filas: CompraObra[]
-  /** El costo real y su cobertura, tal como los publica `obra_costo_real`. No se recalculan acá. */
+  /**
+   * El costo real y su cobertura, tal como los publica `obra_costo_real`. No se recalculan acá.
+   * NULOS EN LA VISTA GLOBAL, y no por olvido: el total de una obra se controla donde vive el
+   * número —la ficha y el portafolio—, y sumar todas las obras acá sería inventar una cifra nueva
+   * (además de una que incluiría, o no, el gasto de estructura según quién mire).
+   */
   total: number | null
   nComprobantes: number | null
   /** false = el detalle listado no llega al total que declara la base. Se dice, no se disimula. */
@@ -54,40 +93,99 @@ export interface ComprasObra {
 }
 
 export interface OperacionObra {
-  /** Los nombres normalizados con los que el campo identifica esta obra. Vacío = no hay puente. */
+  /** Los nombres normalizados con los que el campo identifica esta obra. Vacío en la vista global. */
   nombres: string[]
-  pedidos: PedidoMaterial[]
+  pedidos: PedidoOperacion[]
   compras: ComprasObra
-  herramientas: Herramienta[]
-  movimientos: MovimientoConHerramienta[]
+  herramientas: HerramientaOperacion[]
+  movimientos: MovimientoOperacion[]
+}
+
+type FilaAlias = { alias: string; obra_id: string | null; clasificacion: string }
+
+/** El diccionario crudo. Se lee UNA vez por pantalla: es la tabla más chica y la más consultada. */
+async function leerAlias(supabase: SupabaseClient): Promise<ServiceResult<FilaAlias[]>> {
+  const { data, error } = await supabase.from('obra_alias').select('alias, obra_id, clasificacion')
+  if (error) return { data: null, error: error.message }
+  return { data: (data ?? []) as FilaAlias[], error: null }
+}
+
+/** El diccionario dado vuelta, para etiquetar filas. */
+export async function getIndiceObras(supabase: SupabaseClient): Promise<ServiceResult<IndiceObras>> {
+  const { data, error } = await leerAlias(supabase)
+  if (error !== null) return { data: null, error }
+  return { data: indiceDeAlias(data) as IndiceObras, error: null }
 }
 
 /**
  * Los nombres con los que se puede reconocer esta obra en las tablas que la guardan como texto.
- * Sale de `obra_alias`, el mismo diccionario que usa la vista del costo real.
+ * Sirve para explicar por qué una obra no tiene NADA imputado: sin alias no hay puente.
  */
 export async function getNombresDeObra(
   supabase: SupabaseClient,
   obraId: string,
 ): Promise<ServiceResult<string[]>> {
-  const { data, error } = await supabase.from('obra_alias').select('alias, obra_id, clasificacion')
-  if (error) return { data: null, error: error.message }
-  return { data: aliasDeObra(data ?? [], obraId), error: null }
-}
-
-/** Los pedidos de material hechos a nombre de esta obra, del más reciente al más viejo. */
-export async function getPedidosObra(
-  supabase: SupabaseClient,
-  nombres: string[],
-): Promise<ServiceResult<PedidoMaterial[]>> {
-  if (!nombres.length) return { data: [], error: null }
-  const { data, error } = await getPedidosMateriales(supabase)
-  if (error) return { data: null, error }
-  return { data: (data ?? []).filter((p) => esDeObra(nombres, p.obra_texto)), error: null }
+  const { data, error } = await leerAlias(supabase)
+  if (error !== null) return { data: null, error }
+  return { data: aliasDeObra(data, obraId) as string[], error: null }
 }
 
 /**
- * Las compras imputadas a esta obra, con el total que declara `obra_costo_real`.
+ * ETIQUETAR Y —SI HAY OBRA— FILTRAR. Es el único lugar donde se decide de qué obra es una fila, y
+ * lo usan las cuatro listas en las dos pantallas. Cambiar el criterio acá lo cambia en los ocho
+ * lugares a la vez, que es exactamente lo contrario de tener dos sistemas.
+ */
+function imputar<T>(
+  filas: T[],
+  idx: IndiceObras,
+  texto: (f: T) => string | null,
+  obraId?: string,
+): (T & Imputada)[] {
+  const marcadas = filas.map((f) => ({ ...f, obra_canonica_id: obraDeTexto(idx, texto(f)) as string | null }))
+  return obraId ? marcadas.filter((f) => f.obra_canonica_id === obraId) : marcadas
+}
+
+/** Los pedidos de material, del más reciente al más viejo. Sin `obraId`, los de todas las obras. */
+export async function getPedidos(
+  supabase: SupabaseClient,
+  idx: IndiceObras,
+  obraId?: string,
+): Promise<ServiceResult<PedidoOperacion[]>> {
+  const { data, error } = await getPedidosMateriales(supabase)
+  if (error) return { data: null, error }
+  return { data: imputar(data ?? [], idx, (p) => p.obra_texto, obraId), error: null }
+}
+
+/** Las herramientas por su ubicación actual. Sin `obraId`, las de todas las obras visibles. */
+export async function getHerramientasObra(
+  supabase: SupabaseClient,
+  idx: IndiceObras,
+  obraId?: string,
+): Promise<ServiceResult<HerramientaOperacion[]>> {
+  const { data, error } = await getHerramientas(supabase)
+  if (error) return { data: null, error }
+  return { data: imputar(data ?? [], idx, (h) => h.ubicacion_actual, obraId), error: null }
+}
+
+/**
+ * Los movimientos de herramienta HACIA una obra.
+ *
+ * El límite se sube a 2.000 SIEMPRE —también en la vista global— porque `getMovimientos` corta en
+ * 200 GLOBALES: si la ficha leyera 2.000 y la lista global 200, la misma obra tendría dos cuentas
+ * de movimientos y la global sería la que esconde los viejos.
+ */
+export async function getMovimientosObra(
+  supabase: SupabaseClient,
+  idx: IndiceObras,
+  obraId?: string,
+): Promise<ServiceResult<MovimientoOperacion[]>> {
+  const { data, error } = await getMovimientos(supabase, 2000)
+  if (error) return { data: null, error }
+  return { data: imputar(data ?? [], idx, (m) => m.destino, obraId), error: null }
+}
+
+/**
+ * Las compras. Con `obraId`, además del detalle trae el total que declara `obra_costo_real`.
  *
  * EL TOTAL NO SE SUMA ACÁ. Sale de la vista, que es la fuente única del costo real por obra y la
  * que ya consume `obra_panel`: dos cálculos del mismo número es el defecto que obligó a crear esa
@@ -96,9 +194,28 @@ export async function getPedidosObra(
  */
 export async function getComprasObra(
   supabase: SupabaseClient,
-  obraId: string,
-  nombres: string[],
+  idx: IndiceObras,
+  obraId?: string,
 ): Promise<ServiceResult<ComprasObra>> {
+  const { data, error } = await supabase
+    .from('costos_obra')
+    .select('id, fecha, proveedor, concepto, comprobante, total, obra_texto')
+    .order('fecha', { ascending: false, nullsFirst: false })
+  if (error) return { data: null, error: error.message }
+
+  const filas: CompraObra[] = imputar(data ?? [], idx, (c) => c.obra_texto as string | null, obraId)
+    .map((c) => ({
+      id: c.id as string,
+      obra_canonica_id: c.obra_canonica_id,
+      fecha: (c.fecha as string | null) ?? null,
+      proveedor: (c.proveedor as string | null) ?? null,
+      concepto: (c.concepto as string | null) ?? null,
+      comprobante: (c.comprobante as string | null) ?? null,
+      total: c.total == null ? null : Number(c.total),
+    }))
+
+  if (!obraId) return { data: { filas, total: null, nComprobantes: null, completo: true }, error: null }
+
   const { data: costo, error: errCosto } = await supabase
     .from('obra_costo_real')
     .select('costo_real, n_comprobantes')
@@ -109,78 +226,31 @@ export async function getComprasObra(
   // comprobantes no es "gastó cero", es "todavía no hay nada imputado", y esa diferencia viaja.
   const nComprobantes = costo?.n_comprobantes == null ? null : Number(costo.n_comprobantes)
   const total = nComprobantes ? Number(costo?.costo_real ?? 0) : null
-
-  if (!nombres.length) {
-    return { data: { filas: [], total, nComprobantes, completo: detalleCubreElTotal([], total) }, error: null }
-  }
-
-  const { data, error } = await supabase
-    .from('costos_obra')
-    .select('id, fecha, proveedor, concepto, comprobante, total, obra_texto')
-    .order('fecha', { ascending: false, nullsFirst: false })
-  if (error) return { data: null, error: error.message }
-
-  const filas: CompraObra[] = (data ?? [])
-    .filter((c) => esDeObra(nombres, c.obra_texto as string | null))
-    .map((c) => ({
-      id: c.id as string,
-      fecha: (c.fecha as string | null) ?? null,
-      proveedor: (c.proveedor as string | null) ?? null,
-      concepto: (c.concepto as string | null) ?? null,
-      comprobante: (c.comprobante as string | null) ?? null,
-      total: c.total == null ? null : Number(c.total),
-    }))
-
   return { data: { filas, total, nComprobantes, completo: detalleCubreElTotal(filas, total) }, error: null }
 }
 
-/** Las herramientas que hoy están en esta obra (su ubicación actual la nombra). */
-export async function getHerramientasObra(
-  supabase: SupabaseClient,
-  nombres: string[],
-): Promise<ServiceResult<Herramienta[]>> {
-  if (!nombres.length) return { data: [], error: null }
-  const { data, error } = await getHerramientas(supabase)
-  if (error) return { data: null, error }
-  return { data: (data ?? []).filter((h) => esDeObra(nombres, h.ubicacion_actual)), error: null }
-}
-
 /**
- * Los movimientos de herramienta HACIA esta obra.
+ * TODO lo de Operación en una sola llamada. Con `obraId` es la solapa de la obra; sin él, la vista
+ * global de `/obras/operacion`. Las cuatro lecturas van en paralelo porque ninguna depende de otra;
+ * lo único secuencial es el puente, que las cuatro necesitan.
  *
- * El límite se sube a 2.000 a propósito: `getMovimientos` corta en 200 GLOBALES, y filtrar después
- * de un corte global esconde en silencio los movimientos viejos de una obra con poco tráfico.
- */
-export async function getMovimientosObra(
-  supabase: SupabaseClient,
-  nombres: string[],
-): Promise<ServiceResult<MovimientoConHerramienta[]>> {
-  if (!nombres.length) return { data: [], error: null }
-  const { data, error } = await getMovimientos(supabase, 2000)
-  if (error) return { data: null, error }
-  return { data: (data ?? []).filter((m) => esDeObra(nombres, m.destino)), error: null }
-}
-
-/**
- * TODO lo de la solapa Operación en una sola llamada. Las cuatro lecturas van en paralelo porque
- * ninguna depende de otra; lo único secuencial es el puente, que las cuatro necesitan.
- *
- * Si una sub-vista falla, falla la solapa entera y con el mensaje de la base: media pantalla con
+ * Si una sub-vista falla, falla la pantalla entera y con el mensaje de la base: media pantalla con
  * tres listas llenas y una vacía se lee como "esta obra no tiene movimientos", que es mentira.
  */
-export async function getOperacionObra(
+export async function getOperacion(
   supabase: SupabaseClient,
-  obraId: string,
+  obraId?: string,
 ): Promise<ServiceResult<OperacionObra>> {
-  const puente = await getNombresDeObra(supabase, obraId)
+  const puente = await leerAlias(supabase)
   if (puente.error !== null) return { data: null, error: puente.error }
-  const nombres = puente.data
+  const idx = indiceDeAlias(puente.data) as IndiceObras
+  const nombres: string[] = obraId ? (aliasDeObra(puente.data, obraId) as string[]) : []
 
   const [pedidos, compras, herramientas, movimientos] = await Promise.all([
-    getPedidosObra(supabase, nombres),
-    getComprasObra(supabase, obraId, nombres),
-    getHerramientasObra(supabase, nombres),
-    getMovimientosObra(supabase, nombres),
+    getPedidos(supabase, idx, obraId),
+    getComprasObra(supabase, idx, obraId),
+    getHerramientasObra(supabase, idx, obraId),
+    getMovimientosObra(supabase, idx, obraId),
   ])
   const fallo = [pedidos, compras, herramientas, movimientos].find((r) => r.error)
   if (fallo?.error) return { data: null, error: fallo.error }
@@ -196,3 +266,6 @@ export async function getOperacionObra(
     error: null,
   }
 }
+
+/** El nombre viejo, que usa la ficha de la obra. Es la misma función con la obra puesta. */
+export const getOperacionObra = (supabase: SupabaseClient, obraId: string) => getOperacion(supabase, obraId)

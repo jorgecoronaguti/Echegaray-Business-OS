@@ -99,3 +99,59 @@ export function detalleCubreElTotal(filas, totalDeclarado) {
   // Tolerancia de un peso: `numeric` de Postgres y `number` de JS no redondean igual.
   return Math.abs(suma - Number(totalDeclarado)) < 1
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL ÍNDICE: EL MISMO PUENTE, RECORRIDO UNA VEZ PARA TODAS LAS OBRAS
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// `aliasDeObra` + `esDeObra` contestan «¿este texto es de ESTA obra?», que es la pregunta de la
+// ficha. La vista global hace la pregunta al revés: «¿de qué obra es este texto?». Escribir las dos
+// por separado es exactamente el defecto que el dueño nombró —*"NO crear dos sistemas"*—: dos
+// resoluciones del mismo cruce que se desincronizan y hacen que la fila aparezca en una pantalla y
+// no en la otra.
+//
+// Por eso hay UNA función que contesta las dos: `obraDeTexto()` devuelve la obra, y «¿es de la obra
+// X?» pasa a ser `obraDeTexto(idx, t) === X`. La equivalencia no es una convención que haya que
+// respetar a mano: es la misma llamada.
+//
+// UN ALIAS AMBIGUO NO SE IMPUTA A NADIE. Si dos obras declaran alias que normalizan igual, no hay
+// forma verificable de saber de cuál es la fila: se marca `null` y la fila queda «sin obra» en la
+// lista global. Falla cerrado, igual que `ve_obra_texto()` en Postgres — que ante un texto que no
+// resuelve deja la fila afuera en vez de mostrarla bajo la primera obra que aparezca.
+
+/** Marca interna de colisión. No se exporta: afuera, un alias ambiguo simplemente no resuelve. */
+const AMBIGUO = Symbol('alias ambiguo')
+
+/**
+ * El diccionario `obra_alias` dado vuelta: alias normalizado → id de obra.
+ * @param {FilaAlias[]} filas filas crudas de `public.obra_alias`
+ * @returns {Map<string, string|symbol>}
+ */
+export function indiceDeAlias(filas) {
+  /** @type {Map<string, string|symbol>} */
+  const idx = new Map()
+  for (const f of filas ?? []) {
+    if (!f || !f.obra_id) continue
+    if (!CLASIFICACION_DE_OBRA.has(f.clasificacion)) continue
+    const a = normObra(f.alias)
+    if (!a) continue
+    const previo = idx.get(a)
+    if (previo === undefined) idx.set(a, f.obra_id)
+    else if (previo !== f.obra_id) idx.set(a, AMBIGUO)
+  }
+  return idx
+}
+
+/**
+ * ¿De qué obra es este texto? `null` cuando no resuelve — que es la verdad, no un faltante que
+ * haya que rellenar. Match EXACTO sobre el alias normalizado, igual que `esDeObra`.
+ * @param {Map<string, string|symbol>} indice
+ * @param {unknown} texto
+ * @returns {string|null}
+ */
+export function obraDeTexto(indice, texto) {
+  const a = normObra(texto)
+  if (!a) return null
+  const v = indice.get(a)
+  return typeof v === 'string' ? v : null
+}

@@ -37,11 +37,12 @@ export async function getPersonas(supabase: SupabaseClient): Promise<ServiceResu
  * salvo Administración: la pantalla del jefe de obra habría mostrado "persona borrada del legajo" en
  * cada fila, que es el modo de falla más caro de todos, porque parece un dato.
  */
-export async function getAsignaciones(supabase: SupabaseClient, obraId: string): Promise<ServiceResult<Asignacion[]>> {
-  const { data, error } = await supabase
-    .from('obra_asignacion')
-    .select('*')
-    .eq('obra_id', obraId)
+export async function getAsignaciones(supabase: SupabaseClient, obraId?: string): Promise<ServiceResult<Asignacion[]>> {
+  // SIN `obraId` DEVUELVE EL PLANTEL DE TODAS LAS OBRAS VISIBLES, por el mismo camino. Quién ve qué
+  // obra lo decide el RLS de `obra_asignacion`, no este `if`.
+  const base = supabase.from('obra_asignacion').select('*')
+  const { data, error } = await (obraId ? base.eq('obra_id', obraId) : base)
+    .order('obra_id', { ascending: true })
     .order('rol', { ascending: true })
   if (error) return { data: null, error: error.message }
 
@@ -68,16 +69,21 @@ export async function getAsignaciones(supabase: SupabaseClient, obraId: string):
       persona_especialidad: p?.especialidad ?? null,
     } as Asignacion
   })
-  // Responsables primero y después por nombre: es el orden en que se lee una lista de plantel.
+  // Responsables primero y después por nombre: es el orden en que se lee una lista de plantel. En la
+  // lista global el criterio se aplica DENTRO de cada obra, que es como se lee una lista agrupada.
   filas.sort((a, b) =>
-    a.rol === b.rol
-      ? String(a.persona_nombre ?? '').localeCompare(String(b.persona_nombre ?? ''))
-      : a.rol === 'responsable' ? -1 : 1)
+    a.obra_id !== b.obra_id
+      ? a.obra_id.localeCompare(b.obra_id)
+      : a.rol === b.rol
+        ? String(a.persona_nombre ?? '').localeCompare(String(b.persona_nombre ?? ''))
+        : a.rol === 'responsable' ? -1 : 1)
   return { data: filas, error: null }
 }
 
 export interface RegistroHH {
   id: string
+  /** De qué obra son estas horas. La solapa de la obra no la usa; la lista global la muestra. */
+  obra_canonica_id: string | null
   trabajador_o_cuadrilla: string
   fecha_inicio_semana: string
   horas: number
@@ -91,11 +97,14 @@ export interface RegistroHH {
  * `public.obras`, y hasta que alguien las mapee al eje canónico esta consulta devuelve vacío. Ese
  * vacío es un dato —"nadie imputó HH a esta obra"— y la pantalla lo dice con esas palabras.
  */
-export async function getRegistrosHH(supabase: SupabaseClient, obraId: string): Promise<ServiceResult<RegistroHH[]>> {
-  const { data, error } = await supabase
+export async function getRegistrosHH(supabase: SupabaseClient, obraId?: string): Promise<ServiceResult<RegistroHH[]>> {
+  const base = supabase
     .from('registros_hh')
-    .select('id, trabajador_o_cuadrilla, fecha_inicio_semana, horas, categoria')
-    .eq('obra_canonica_id', obraId)
+    .select('id, obra_canonica_id, trabajador_o_cuadrilla, fecha_inicio_semana, horas, categoria')
+  const { data, error } = await (obraId ? base.eq('obra_canonica_id', obraId) : base)
+    // Las 19 filas históricas cuelgan de la tabla legacy y tienen `obra_canonica_id` en null: en la
+    // lista global aparecen como «sin obra», que es exactamente lo que son. No se les inventa una.
+    .not('obra_canonica_id', 'is', null)
     .order('fecha_inicio_semana', { ascending: false })
   if (error) return { data: null, error: error.message }
   return { data: (data ?? []) as RegistroHH[], error: null }
