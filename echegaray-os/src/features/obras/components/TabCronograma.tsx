@@ -33,6 +33,7 @@ import type { Actividad, Dependencia, Persona, Restriccion } from '../types'
 import { Gantt } from './Gantt'
 import { VistaProximos, type Ventana } from './VistaProximos'
 import { type AccionesCronograma } from './PanelActividad'
+import { type AccionesEnLote } from './AccionesMasivas'
 
 type SubVista = 'gantt' | 'proximos'
 
@@ -48,6 +49,7 @@ export function TabCronograma({
   dependencias = [],
   personas = [],
   acciones,
+  masivas,
   yaSellada = false,
   crearImpedimento,
   liberarImpedimento,
@@ -66,6 +68,9 @@ export function TabCronograma({
   personas?: Persona[]
   /** Sin `acciones` todo el cronograma queda de sólo lectura. */
   acciones?: AccionesCronograma
+  /** Las acciones en lote del Gantt. Opcional por la misma razón que `acciones`: sin ellas no se
+   *  dibuja una sola casilla de selección, en vez de dibujar controles que no escriben. */
+  masivas?: AccionesEnLote
   yaSellada?: boolean
   crearImpedimento: AccionFormulario
   liberarImpedimento: (restriccionId: string) => Promise<ResultadoAccion>
@@ -130,6 +135,7 @@ export function TabCronograma({
             dependencias={dependencias}
             personas={personas}
             acciones={acciones}
+            masivas={masivas}
             yaSellada={yaSellada}
             seleccionInicial={actividadAbierta}
             {...(hoy ? { hoy } : {})}

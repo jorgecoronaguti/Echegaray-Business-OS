@@ -41,6 +41,9 @@ import {
   archivarActividad, archivarObra, crearActividad, crearImpedimento, editarActividad, editarObra,
   liberarImpedimento, marcarHito, registrarAvance, sellarBaseline,
 } from '@/features/obras/services/actions'
+import {
+  asignarResponsableMasivo, cargarHHPlanMasivo, sellarBaselineMasivo,
+} from '@/features/obras/services/actionsMasivas'
 import { asignarPersona, quitarAsignacion } from '@/features/obras/services/actionsPersonal'
 import { borrarHH, imputarHH } from '@/features/obras/services/actionsHH'
 import { borrarCertificado, crearCertificado } from '@/features/obras/services/actionsContrato'
@@ -251,6 +254,15 @@ export default async function ObraPage({
             archivar: archivarActividad.bind(null, obraId),
             hito: marcarHito.bind(null, obraId),
             sellar: sellarBaseline.bind(null, obraId),
+          }}
+          /* LAS ACCIONES EN LOTE SE ATAN A LA OBRA ACÁ, igual que el resto: el `obraId` nunca viaja
+             en un campo del navegador. Los ids de actividad SÍ vienen del cliente —es una selección
+             que hace una persona—, y por eso cada acción vuelve a acotar por `obra_id` del lado del
+             servidor antes de escribir una sola fila. */
+          masivas={{
+            responsable: asignarResponsableMasivo.bind(null, obraId),
+            hhPlan: cargarHHPlanMasivo.bind(null, obraId),
+            baseline: sellarBaselineMasivo.bind(null, obraId),
           }}
           restaurarActividad={archivarActividad.bind(null, obraId)}
           crearImpedimento={crearImpedimento.bind(null, obraId)}

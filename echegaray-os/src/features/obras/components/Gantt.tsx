@@ -34,83 +34,19 @@
 // pintarlo de rojo era decir que sí.
 
 import { useMemo, useState } from 'react'
-import { BotonAccion, type ResultadoAccion } from '@/shared/components/ui'
 import { agruparActividades, estadoDe, filasVisibles } from '../services/cronograma'
 import type { Actividad, Dependencia, Persona, Restriccion } from '../types'
 import { FormNuevaActividad, PanelActividad, type AccionesCronograma } from './PanelActividad'
+import { construirEscala, type Escala } from '../services/escala'
+import { BarraMasiva, Casilla, SellarLineaBase, type AccionesEnLote } from './AccionesMasivas'
 
 const DIA = 86400000
 const ALTO_FILA = 26
-
-type Escala = 'semana' | 'mes'
-const PX_POR_DIA: Record<Escala, number> = { semana: 13, mes: 4 }
 
 const aDate = (iso: string) => new Date(iso + 'T00:00:00Z')
 const isoDe = (d: Date) => d.toISOString().slice(0, 10)
 const fmtCorto = (iso: string | null) =>
   iso ? aDate(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' }) : '—'
-
-/**
- * SELLAR LA LÍNEA BASE — la acción con más consecuencias del módulo, y la única que no se deshace.
- *
- * La advertencia va ESCRITA Y VISIBLE, no en un `confirm()` del navegador: un diálogo nativo se
- * cierra con el pulgar sin leerlo, no queda a la vista mientras se decide, y encima obliga a los
- * tests a atrapar el evento. Acá el botón está detrás de un despliegue que dice qué pasa cuando se
- * toca — y una vez sellada, el botón desaparece en lugar de fallar contra el servidor.
- */
-function SellarLineaBase({ sellar, yaSellada }: { sellar: () => Promise<ResultadoAccion>; yaSellada: boolean }) {
-  if (yaSellada) {
-    return <span className="text-[11px] text-faint" data-testid="baseline-sellada">línea base sellada</span>
-  }
-  return (
-    <details className="relative">
-      <summary
-        data-testid="sellar-baseline"
-        className="cursor-pointer rounded-control border border-line px-2.5 py-1 text-[12px] text-ink hover:bg-surface-sunken"
-      >Sellar línea base</summary>
-      <div className="absolute right-0 z-30 mt-1 w-[280px] rounded-control border border-line bg-surface p-3 shadow-pop">
-        <p className="text-[12px] leading-relaxed text-muted">
-          Congela las fechas de HOY como el plan aprobado. <strong className="text-ink">Se hace una sola vez</strong>:
-          desde entonces, mover una fecha produce un desvío medible. Si se pudiera volver a sellar, cada
-          reprogramación dejaría el desvío en cero y el tablero diría que siempre vamos en fecha.
-        </p>
-        <div className="mt-2.5">
-          <BotonAccion accion={() => sellar()} testid="sellar-baseline-confirmar" tono="fuerte">
-            Sellar el plan de hoy
-          </BotonAccion>
-        </div>
-      </div>
-    </details>
-  )
-}
-
-/** La escala horizontal: dónde cae cada fecha, y las divisiones que se dibujan arriba. */
-function construirEscala(desde: Date, hasta: Date, escala: Escala) {
-  const px = PX_POR_DIA[escala]
-  const ancho = Math.ceil((hasta.getTime() - desde.getTime()) / DIA) * px
-  const x = (iso: string) => ((aDate(iso).getTime() - desde.getTime()) / DIA) * px
-
-  const meses: { label: string; x0: number }[] = []
-  const ticks: { label: string; x: number }[] = []
-  const cur = new Date(desde)
-  cur.setUTCDate(1)
-  while (cur < hasta) {
-    const x0 = ((cur.getTime() - desde.getTime()) / DIA) * px
-    if (x0 > -px) {
-      meses.push({ label: cur.toLocaleDateString('es-AR', { month: 'short', year: '2-digit', timeZone: 'UTC' }), x0: Math.max(0, x0) })
-    }
-    cur.setUTCMonth(cur.getUTCMonth() + 1)
-  }
-  if (escala === 'semana') {
-    const d = new Date(desde)
-    d.setUTCDate(d.getUTCDate() + ((8 - d.getUTCDay()) % 7)) // primer lunes
-    while (d < hasta) {
-      ticks.push({ label: String(d.getUTCDate()).padStart(2, '0'), x: x(isoDe(d)) })
-      d.setUTCDate(d.getUTCDate() + 7)
-    }
-  }
-  return { px, ancho, x, meses, ticks }
-}
 
 export function Gantt({
   actividades,
@@ -121,6 +57,7 @@ export function Gantt({
   acciones,
   yaSellada = false,
   seleccionInicial = null,
+  masivas,
 }: {
   actividades: Actividad[]
   restricciones?: Restriccion[]
@@ -135,11 +72,18 @@ export function Gantt({
   /** Qué actividad viene abierta de la URL. Sólo el arranque: después la selección es local, porque
    *  escribir la URL en cada clic haría una vuelta al servidor por cada barra que se toca. */
   seleccionInicial?: string | null
+  /** Las acciones en lote. Sin ellas NO se dibuja una sola casilla: seleccionar cincuenta filas para
+   *  descubrir que no hay nada que hacer con ellas es peor que no poder seleccionarlas. */
+  masivas?: AccionesEnLote
 }) {
   const [escala, setEscala] = useState<Escala>('semana')
   const [selId, setSelId] = useState<string | null>(seleccionInicial)
   const [creando, setCreando] = useState(false)
   const [colapsados, setColapsados] = useState<ReadonlySet<string>>(new Set())
+  // LA SELECCIÓN EN LOTE VIVE EN EL CLIENTE Y NO VIAJA EN LA URL. Tildar cincuenta casillas serían
+  // cincuenta vueltas al servidor, y encima un enlace compartido resucitaría una selección que el
+  // que lo abre no hizo — sobre acciones que escriben. Es estado de trabajo, no una vista.
+  const [enLote, setEnLote] = useState<ReadonlySet<string>>(new Set())
 
   // LA SELECCIÓN SE GUARDA POR ID, NO POR OBJETO. Guardando el objeto, después de editar una
   // actividad el panel seguía mostrando los valores viejos: el servidor revalidaba y mandaba filas
@@ -182,6 +126,25 @@ export function Gantt({
       else s.add(clave)
       return s
     })
+
+  // ── LA SELECCIÓN EN LOTE ───────────────────────────────────────────────────
+  //
+  // Se elige sobre las HIJAS de los grupos y NUNCA sobre una fila de resumen: un resumen no es
+  // trabajo —agrupa el de otros—, y darle un responsable o cargarle HH plan metería horas que
+  // después se cuentan dos veces, una en la cabecera y otra en cada hija. `agruparActividades` ya
+  // consume la fila de resumen como cabecera, así que la casilla del grupo alcanza a sus hijas.
+  const seleccionables = useMemo(() => grupos.flatMap((g) => g.hijas.map((h) => h.id)), [grupos])
+  // Los ids salen del ORDEN del cronograma y no del orden en que se fue tildando: así el resultado
+  // de una acción se puede leer contra la pantalla.
+  const idsEnLote = useMemo(() => seleccionables.filter((id) => enLote.has(id)), [seleccionables, enLote])
+
+  const marcar = (ids: string[], puesto: boolean) =>
+    setEnLote((prev) => {
+      const s = new Set(prev)
+      for (const id of ids) { if (puesto) s.add(id); else s.delete(id) }
+      return s
+    })
+  const todasEnLote = seleccionables.length > 0 && idsEnLote.length === seleccionables.length
 
   // LA BARRA SE ARMA ANTES DEL CORTE POR "SIN FECHAS", y no es un detalle de orden: una obra sin
   // ninguna actividad con fecha es exactamente donde hace falta poder crear la primera. Hasta acá,
@@ -230,6 +193,12 @@ export function Gantt({
     </div>
   )
 
+  // LA BARRA DE LOTE SE ARMA CON EL RESTO Y NO ADENTRO DEL RETORNO: se dibuja igual arriba de la
+  // grilla, y así se ve dónde aparece sin leer el JSX entero.
+  const barraLote = masivas
+    ? <BarraMasiva ids={idsEnLote} personas={personas} acciones={masivas} alLimpiar={() => setEnLote(new Set())} />
+    : null
+
   const altaActividad = acciones && creando
     ? (
         <div className="border-b border-line bg-surface-quiet p-3.5" data-testid="alta-actividad">
@@ -267,6 +236,7 @@ export function Gantt({
     <div data-testid="gantt" className="rounded-card border border-line bg-surface">
       {barra}
       {altaActividad}
+      {barraLote}
 
       {/* EL PANEL VA AL COSTADO, NO DEBAJO. Lo que se está decidiendo al editar una actividad es su
           fecha CONTRA la de las de al lado: si el cronograma se va de la pantalla para dejar lugar
@@ -285,6 +255,14 @@ export function Gantt({
             {/* ── COLUMNA FIJA: la grilla de actividades ───────────────────────────────── */}
             <div className="sticky left-0 z-20 w-[148px] shrink-0 border-r border-line bg-surface sm:w-[340px]">
               <div className="sticky top-0 z-10 flex h-11 items-end gap-2 border-b border-line bg-surface px-3 pb-1.5 text-[10px] font-medium uppercase tracking-wide text-faint">
+                {masivas && (
+                  <Casilla
+                    puesta={todasEnLote}
+                    alCambiar={(v) => marcar(seleccionables, v)}
+                    etiqueta={`Seleccionar las ${seleccionables.length} actividades`}
+                    testid="masiva-todas"
+                  />
+                )}
                 <span className="flex-1">Actividad</span>
                 <span className="hidden w-11 text-right sm:inline">Inicio</span>
                 <span className="hidden w-11 text-right sm:inline">Fin</span>
@@ -293,41 +271,66 @@ export function Gantt({
                 if (f.tipo === 'grupo') {
                   const g = f.grupo
                   const cerrado = colapsados.has(g.clave)
+                  const suyas = g.hijas.map((h) => h.id)
                   return (
-                    <button
+                    <div
                       key={f.clave}
-                      type="button"
-                      onClick={() => alternar(g.clave)}
-                      aria-expanded={!cerrado}
-                      data-testid="grupo-cronograma"
                       style={{ height: ALTO_FILA }}
-                      className="flex w-full items-center gap-1.5 border-b border-line/60 bg-surface-quiet px-2 text-left hover:bg-surface-sunken"
+                      className="flex w-full items-center gap-1.5 border-b border-line/60 bg-surface-quiet px-2 hover:bg-surface-sunken"
                     >
-                      <span aria-hidden className={`shrink-0 text-[9px] text-muted transition-transform ${cerrado ? '' : 'rotate-90'}`}>▶</span>
-                      <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-ink" title={g.nombre}>{g.nombre}</span>
-                      <span className="shrink-0 text-[11px] tabular-nums text-faint">
-                        {g.pct == null ? `${g.hijas.length}` : `${g.pct}%`}
-                      </span>
-                    </button>
+                      {masivas && suyas.length > 0 && (
+                        <Casilla
+                          puesta={suyas.every((id) => enLote.has(id))}
+                          alCambiar={(v) => marcar(suyas, v)}
+                          etiqueta={`Seleccionar ${g.nombre}`}
+                          testid="masiva-grupo"
+                        />
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => alternar(g.clave)}
+                        aria-expanded={!cerrado}
+                        data-testid="grupo-cronograma"
+                        className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+                      >
+                        <span aria-hidden className={`shrink-0 text-[9px] text-muted transition-transform ${cerrado ? '' : 'rotate-90'}`}>▶</span>
+                        <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-ink" title={g.nombre}>{g.nombre}</span>
+                        <span className="shrink-0 text-[11px] tabular-nums text-faint">
+                          {g.pct == null ? `${g.hijas.length}` : `${g.pct}%`}
+                        </span>
+                      </button>
+                    </div>
                   )
                 }
                 const a = f.actividad
                 return (
-                  <button
+                  <div
                     key={f.clave}
+                    style={{ height: ALTO_FILA }}
+                    className={`flex w-full items-center gap-2 border-b border-line/60 px-2 text-[12px] hover:bg-surface-sunken ${sel?.id === a.id ? 'bg-surface-sunken' : ''}`}
+                  >
+                    {masivas && (
+                      <Casilla
+                        puesta={enLote.has(a.id)}
+                        alCambiar={(v) => marcar([a.id], v)}
+                        etiqueta={`Seleccionar ${a.nombre}`}
+                        testid="masiva-actividad"
+                      />
+                    )}
+                  <button
                     type="button"
                     onClick={() => setSelId(a.id)}
                     data-testid="actividad-cronograma"
-                    style={{ height: ALTO_FILA }}
-                    className={`flex w-full items-center gap-2 border-b border-line/60 px-3 text-left text-[12px] hover:bg-surface-sunken ${sel?.id === a.id ? 'bg-surface-sunken' : ''}`}
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
                   >
                     <span
-                      className="min-w-0 flex-1 truncate pl-3 text-muted"
+                      className="min-w-0 flex-1 truncate pl-1 text-muted"
                       title={[a.seccion, a.codigo, a.nombre].filter(Boolean).join(' · ')}
                     >{a.nombre}</span>
                     <span className="hidden w-11 shrink-0 text-right tabular-nums text-faint sm:inline">{fmtCorto(a.inicio_plan)}</span>
                     <span className="hidden w-11 shrink-0 text-right tabular-nums text-faint sm:inline">{fmtCorto(a.fin_plan)}</span>
                   </button>
+                  </div>
                 )
               })}
             </div>
