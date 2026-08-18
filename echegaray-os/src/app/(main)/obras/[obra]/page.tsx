@@ -52,6 +52,7 @@ import { TabOperacion } from '@/features/obras/components/TabOperacion'
 import { getOperacionObra, SUBS_OPERACION, type SubOperacion } from '@/features/obras/services/operacionService'
 import { TabEconomia } from '@/features/obras/components/TabEconomia'
 import { TabDocumentos } from '@/features/obras/components/TabDocumentos'
+import { desvincularDocumento, vincularDocumento } from '@/features/obras/services/actionsDocumentos'
 import { FormAccion, PageShell } from '@/shared/components/ui'
 
 export const dynamic = 'force-dynamic'
@@ -252,7 +253,12 @@ export default async function ObraPage({
       )}
 
       {vista === 'documentos' && (
-        <TabDocumentos obraId={obraId} carpeta={obra.drive_carpeta_id} documentos={documentos} />
+        <TabDocumentos
+          documentos={documentos}
+          carpetaDriveId={obra.drive_carpeta_id}
+          vincular={vincularDocumento.bind(null, obraId)}
+          desvincular={desvincularDocumento.bind(null, obraId)}
+        />
       )}
     </PageShell>
   )
