@@ -308,20 +308,33 @@ test('el resumen publica los desvíos con su origen, y cada uno lleva a la solap
 
 // ── PORTAFOLIO TRANSVERSAL ──────────────────────────────────────────────────
 
-test('el portafolio publica plazo, margen y estado, y dice qué falta cuando no puede calcularlos', async ({ page }) => {
+test('el portafolio publica exactamente las seis columnas que pidió el dueño, y ninguna más', async ({ page }) => {
   test.setTimeout(120000)
   await entrar(page)
   await page.goto('/obras')
 
   const tabla = page.getByTestId('portafolio-tabla')
   await expect(tabla).toBeVisible()
-  for (const columna of ['Plazo', 'Margen', 'Estado']) {
-    await expect(tabla.locator('th', { hasText: columna }).first()).toBeVisible()
+
+  // ═══ EL CONTRATO DE ESTA TABLA, TEXTUAL (19/08/2026) ═══
+  //
+  //   *"ADMINISTRACIÓN: OBRA/CLIENTE | ETAPA | AVANCE | PLAZO | CONTRATADO | COSTO REAL ·
+  //   OBRAS: OBRA/CLIENTE | ETAPA | AVANCE | PLAZO | COSTO REAL · NO: Margen; Estado; Impedimentos."*
+  //
+  // Este test exigía Margen y Estado, que es lo que la tabla tenía ANTES de esa corrección. Se
+  // reemplaza en vez de borrarse: una columna que el dueño mandó sacar vuelve sola la próxima vez
+  // que alguien "complete el portafolio", y sin este test nadie se entera.
+  for (const columna of ['Obra / Cliente', 'Etapa', 'Avance', 'Plazo', 'Contratado', 'Costo real']) {
+    await expect(tabla.locator('th', { hasText: columna }).first(),
+      `falta la columna ${columna}`).toBeVisible()
   }
+  for (const prohibida of ['Margen', 'Estado', 'Impedim']) {
+    await expect(tabla.locator('th', { hasText: prohibida }),
+      `el portafolio volvió a publicar ${prohibida}`).toHaveCount(0)
+  }
+
   // NINGUNA OBRA TIENE LÍNEA BASE TODAVÍA: la columna lo dice en lugar de mostrar un cero.
   await expect(tabla).toContainText(/sin línea base/i)
-  // Y el margen que no se puede calcular nombra la punta que falta.
-  await expect(tabla).toContainText(/falta el (contratado|costo imputado)/i)
 })
 
 // ── EN EL TELÉFONO NO SE DESPLAZA DE COSTADO ────────────────────────────────

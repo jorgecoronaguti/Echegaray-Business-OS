@@ -249,11 +249,21 @@ test('obra: se crea desde la ficha del cliente y se edita desde la obra', async 
     await page.reload()
     await expect(page.getByTestId('obras-del-cliente')).toContainText(obra)
 
+    // EL CONTRATO NO SE LEE DE LA TABLA, NI SIQUIERA ACÁ (19/08/2026). `authenticated` perdió SELECT
+    // sobre `obra_canonica.monto_contratado`: el único camino es `obra_panel`, que lo devuelve por
+    // una función `security definer` con `es_administracion()` adentro. Este test entra con la
+    // sesión de Dirección, así que recorre exactamente el camino de la web — y si alguien rompiera
+    // ese camino, acá se vería, que es más de lo que probaba leyendo la columna cruda.
     const { data: creadaRaw } = await sb.from('obra_canonica')
-      .select('id, cliente_id, ubicacion, monto_contratado, etapa').eq('nombre', obra).single()
+      .select('id, cliente_id, ubicacion, etapa').eq('nombre', obra).single()
     const creada = laFila(creadaRaw, 'la obra recién creada')
     expect(creada.cliente_id, 'la obra nace colgada de SU cliente, no de una cadena de texto').toBe(cli.id)
     expect(creada.ubicacion).toBe('San Juan')
+
+    const { data: panelRaw } = await sb.from('obra_panel')
+      .select('monto_contratado').eq('obra_id', creada.id).single()
+    expect(Number(laFila(panelRaw, 'la obra en el panel').monto_contratado),
+      'el contrato no le llega a Administración por el único camino que quedó').toBe(9000000)
 
     // ── EDICIÓN DESDE LA OBRA ───────────────────────────────────────────────
     await page.goto(`/obras/${creada.id}`)
