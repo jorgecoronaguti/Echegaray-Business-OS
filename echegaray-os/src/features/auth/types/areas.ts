@@ -67,7 +67,22 @@ export const RUTAS_SOLO_ADMINISTRACION = [
   '/calendario-caja', '/scorecard-finanzas', '/reportes', '/aprobaciones', '/operarios',
 ] as const
 
+/**
+ * ═══ LA EXCEPCIÓN, Y POR QUÉ ES UNA SOLA (19/08/2026) ═══
+ *
+ * El dueño corrigió la política: *"Un usuario Obras debe poder consultar clientes, contactos… VER
+ * INFORMACIÓN OPERATIVA ≠ ADMINISTRAR EL MAESTRO."*
+ *
+ * La distinción cae exactamente entre la CARTERA y la FICHA. `/clientes` es la pantalla donde se
+ * administra el maestro —se da de alta, se archiva, se ve la cartera entera— y sigue siendo de
+ * Administración. `/clientes/<cliente>` es la ficha de UN cliente: de quién es la obra, quién es el
+ * contacto, qué documentos hay. Eso es información de ejecución y se abre, en modo lectura (los
+ * formularios no se dibujan, y la RLS rechaza la escritura de todos modos).
+ */
+const FICHA_DE_CLIENTE = /^\/clientes\/[^/]+/
+
 export function puedeVerRuta(rol: Rol | null | undefined, pathname: string): boolean {
   if (esAdministracion(rol)) return true
+  if (FICHA_DE_CLIENTE.test(pathname)) return true
   return !RUTAS_SOLO_ADMINISTRACION.some((r) => pathname === r || pathname.startsWith(r + '/'))
 }

@@ -83,10 +83,15 @@ test('el nivel OBRAS ve su obra y NADA más — medido contra la base, no contra
   expect(await comoUsuario(token, `obra_actividad?obra_id=eq.${ajena}&select=id`)).toHaveLength(0)
   expect(await comoUsuario(token, `obra_plan_vs_real?obra_id=eq.${ajena}&select=obra_id`)).toHaveLength(0)
 
-  // 3 · LO DEL ÁREA ADMINISTRACIÓN, TAMPOCO. La cartera de clientes y la economía no son suyas.
-  expect(await comoUsuario(token, 'clientes?select=id')).toHaveLength(0)
-  expect(await comoUsuario(token, 'cliente_panel?select=cliente_id')).toHaveLength(0)
-  expect(await comoUsuario(token, 'certificados?select=id')).toHaveLength(0)
+  // 3 · LO QUE ES DE OTRA OBRA, TAMPOCO — Y LO QUE ES DE LA SUYA, SÍ.
+  //
+  // Este bloque exigía cero clientes, cero cliente_panel y cero certificados. El dueño corrigió la
+  // política el 19/08: *"La política anterior quedó DEMASIADO restrictiva."* Los maestros pasaron a
+  // ser consultables (lo mide `el nivel Obras consulta los maestros que necesita para trabajar`) y
+  // lo que queda acotado por obra son los HECHOS de cada obra. Un certificado ajeno sigue sin
+  // llegar: `certificados_select` es `ve_obra(obra_canonica_id)`.
+  expect(await comoUsuario(token, `certificados?obra_canonica_id=eq.${ajena}&select=id`)).toHaveLength(0)
+  expect(await comoUsuario(token, `obra_documento?obra_id=eq.${ajena}&select=obra_id`)).toHaveLength(0)
 })
 
 test('el nivel ADMINISTRACIÓN ve todas las obras y la cartera entera', async () => {
@@ -196,11 +201,33 @@ test('el monto contratado NO llega al nivel Obras: se enmascara en la base, no e
       `obra_panel?select=monto_contratado&obra_id=eq.${OBRA_DEL_JEFE}`) as Array<Record<string, unknown>>
     expect(Number(deAdmin[0].monto_contratado), 'Administración no recibe el contratado').toBe(CENTINELA)
 
-    // Lo mismo en la otra vista comercial: certificación, cobranza y margen.
+    // ── LA LÍNEA FINA (19/08/2026) ──────────────────────────────────────────────────────────────
+    //
+    // El dueño corrigió la política: *"La única información expresamente secreta para Obras es:
+    // PRESUPUESTO TOTAL / CONTRATADO TOTAL DE LA OBRA + cualquier cálculo que permita deducirlo
+    // directamente."* Certificación, facturación y cobranza pasaron a ser operativas y SE VEN.
+    //
+    // `pendiente_certificar` no: es `contratado − certificado`. Con el certificado a la vista,
+    // publicarlo publica el contrato con una resta de primer grado. Ésa es la distinción que este
+    // test fija, y es la que se rompe sola si alguien "destapa una columna más".
     const plan = await comoUsuario(jefe,
-      `obra_plan_vs_real?select=monto_contratado,certificado,facturado,cobrado,margen_actual,margen_esperado,hh_real&obra_id=eq.${OBRA_DEL_JEFE}`) as Array<Record<string, unknown>>
-    for (const col of ['monto_contratado', 'certificado', 'facturado', 'cobrado', 'margen_actual', 'margen_esperado']) {
+      `obra_plan_vs_real?select=monto_contratado,monto_presupuestado,margen_actual,margen_esperado,pendiente_certificar,certificado,hh_real&obra_id=eq.${OBRA_DEL_JEFE}`) as Array<Record<string, unknown>>
+    for (const col of ['monto_contratado', 'monto_presupuestado', 'margen_actual', 'margen_esperado',
+      'pendiente_certificar']) {
       expect(plan[0][col], `obra_plan_vs_real.${col} llegó al nivel Obras`).toBeNull()
+    }
+
+    // ── Y LA TABLA DE ABAJO, QUE ES DONDE ESTABA LA FUGA REAL ───────────────────────────────────
+    //
+    // Medido el 19/08 ANTES de la migración T1600: `presupuestos?select=monto_presupuestado` le
+    // devolvía 200 y DOS FILAS CON VALOR a este mismo token. El enmascarado vivía en la vista y la
+    // tabla estaba abierta. La RLS no puede cortar por columna: lo que corta es el GRANT por
+    // columna, y por eso ahora la respuesta correcta es 403 y no una fila en null.
+    for (const q of [`obra_canonica?select=monto_contratado&id=eq.${OBRA_DEL_JEFE}`,
+      'presupuestos?select=monto_presupuestado', 'presupuestos?select=margen_esperado',
+      'obra_canonica?select=*', 'personas?select=retribucion_pactada']) {
+      const r = await fetch(`${URL}/rest/v1/${q}`, { headers: { apikey: ANON, Authorization: `Bearer ${jefe}` } })
+      expect(r.status, `${q} NO dio 403 con el token de un jefe de obra`).toBe(403)
     }
   } finally {
     await admin.from('obra_canonica').update({ monto_contratado: original }).eq('id', OBRA_DEL_JEFE)
@@ -211,17 +238,41 @@ test('el monto contratado NO llega al nivel Obras: se enmascara en la base, no e
   }
 })
 
-// Y la prueba de EFECTO, que es la que de verdad importa: la cartera de clientes no le llega a un
-// jefe de obra por ningún camino — ni por la tabla ni por la vista.
-test('la cartera de clientes NO le llega al nivel Obras, ni por la tabla ni por la vista', async () => {
+// ═══ OBRAS OPERA: LO QUE ANTES DABA CERO Y AHORA TIENE QUE DAR FILAS (19/08/2026) ═══
+//
+// El dueño, textual: *"La política anterior quedó DEMASIADO restrictiva… Un usuario Obras debe poder
+// consultar clientes, contactos, personas, proveedores, certificados… VER INFORMACIÓN OPERATIVA ≠
+// ADMINISTRAR EL MAESTRO."*
+//
+// Este test es el reverso exacto del que vivía acá antes, que exigía CERO en las cinco. Se reemplaza
+// entero en vez de borrarse: una capacidad que se abre sin quedar medida se cierra sola la próxima
+// vez que alguien "endurezca la seguridad".
+test('el nivel Obras consulta los maestros que necesita para trabajar', async () => {
   test.setTimeout(60000)
   const token = await entrar(JEFE.email, JEFE.password)
   for (const q of ['clientes?select=id', 'cliente_panel?select=cliente_id',
-    'personas?select=id', 'proveedores?select=id', 'certificados?select=id']) {
-    expect(await comoUsuario(token, q), `${q} le devolvió filas a un jefe de obra`).toHaveLength(0)
+    'personas?select=id', 'proveedores?select=id', 'persona_plantel?select=id']) {
+    expect(await comoUsuario(token, q),
+      `${q} le devolvió CERO filas a un jefe de obra: no puede operar`).not.toHaveLength(0)
   }
-  // El caso positivo: sí ve el plantel, que es la desescalada declarada de `personas`. Sin esto, una
-  // base sin datos pasaría este test como si estuviera bien protegida.
-  expect(await comoUsuario(token, 'persona_plantel?select=id'),
-    'el jefe no ve el plantel: no puede asignar a nadie a su obra').not.toHaveLength(0)
+})
+
+// Y el contrapeso: consultar no es administrar. La escritura de los maestros sigue siendo de
+// Administración, y eso se prueba INTENTÁNDOLO, no leyendo la policy.
+test('el nivel Obras consulta los maestros pero no los administra', async () => {
+  test.setTimeout(60000)
+  const token = await entrar(JEFE.email, JEFE.password)
+  const intentos: Array<[string, string, Record<string, unknown>]> = [
+    ['clientes',    'POST',  { nombre: 'ZZ-E2E cliente que no debe existir' }],
+    ['proveedores', 'POST',  { nombre: 'ZZ-E2E proveedor que no debe existir' }],
+    ['personas',    'POST',  { nombre_completo: 'ZZ-E2E persona que no debe existir' }],
+  ]
+  for (const [tabla, metodo, cuerpo] of intentos) {
+    const r = await fetch(`${URL}/rest/v1/${tabla}`, {
+      method: metodo,
+      headers: { apikey: ANON, Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify(cuerpo),
+    })
+    expect(r.status, `un jefe de obra pudo escribir en ${tabla} (${r.status})`).toBeGreaterThanOrEqual(400)
+  }
 })
