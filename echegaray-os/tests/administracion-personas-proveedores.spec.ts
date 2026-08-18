@@ -54,18 +54,36 @@ async function comoUsuario(token: string, consulta: string) {
 }
 
 test.describe('lo de Administración es de Administración', () => {
-  test('el nivel OBRAS no lee el legajo ni el maestro de proveedores', async () => {
+  test('el nivel OBRAS consulta el legajo y el maestro de proveedores, pero no el sueldo', async () => {
     test.setTimeout(120000)
     const jefe = await entrar(JEFE.email, JEFE.password)
 
-    // CERO FILAS, no "menos filas". Un jefe de obra no tiene ninguna razón para leer un sueldo.
-    for (const tabla of ['personas', 'proveedores', 'proveedor_alias']) {
-      const r = await comoUsuario(jefe, `${tabla}?select=*&limit=5`)
-      expect(r.filas.length, `${tabla} le devolvió filas a un jefe de obra`).toBe(0)
+    // ═══ ESTE TEST EXIGÍA CERO EN LAS TRES. EL DUEÑO LO CORRIGIÓ (19/08/2026) ═══
+    //
+    //   *"La política anterior quedó DEMASIADO restrictiva… Un usuario Obras debe poder consultar
+    //   clientes, contactos, personas, proveedores… VER INFORMACIÓN OPERATIVA ≠ ADMINISTRAR EL
+    //   MAESTRO."*
+    //
+    // Se abre el legajo OPERATIVO. Lo que no se abre —y es una decisión declarada, de otro eje que
+    // el dueño no tocó— es el sueldo y los documentos de identidad de una persona: eso no es
+    // información de ejecución de obra. La línea la sostiene un GRANT por columna, no una pantalla.
+    for (const tabla of ['personas', 'proveedores']) {
+      const r = await comoUsuario(jefe, `${tabla}?select=id&limit=5`)
+      expect(r.filas.length, `${tabla} le devolvió CERO filas a un jefe de obra: no puede operar`)
+        .toBeGreaterThan(0)
     }
 
-    // Las vistas de resolución filtran por `es_administracion()` en su propio `where`: una vista no
-    // tiene RLS, así que si el filtro no estuviera adentro, esto pasaría igual y no probaría nada.
+    // Y LA LÍNEA QUE NO SE CRUZA: pedir el sueldo tiene que FALLAR, no devolver null. Un null se
+    // confunde con "no está cargado"; un 403 no se confunde con nada.
+    for (const q of ['personas?select=retribucion_pactada&limit=1', 'personas?select=dni&limit=1',
+      'personas?select=cuil&limit=1', 'personas?select=*&limit=1']) {
+      const r = await comoUsuario(jefe, q)
+      expect(r.status, `${q} NO falló para un jefe de obra`).toBe(403)
+    }
+
+    // La COLA de canonicalización sigue siendo trabajo de Administración: no es información
+    // operativa, es la resolución de un maestro. Las vistas filtran en su propio `where` — una vista
+    // no tiene RLS, así que si el filtro no estuviera adentro esto pasaría igual y no probaría nada.
     for (const vista of ['proveedor_nombre_pendiente', 'proveedor_nombre_resuelto']) {
       const r = await comoUsuario(jefe, `${vista}?select=*&limit=5`)
       expect(r.filas.length, `${vista} se le publicó a un jefe de obra`).toBe(0)

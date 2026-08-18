@@ -31,13 +31,16 @@ const oFalta = (v: string | null): ReactNode =>
   v ?? <span className="text-faint">sin cargar</span>
 
 export function TabInformacion({
-  cliente, responsables, editar, vincularCarpeta, archivar,
+  cliente, responsables, editar, vincularCarpeta, archivar, puedeEditar = true,
 }: {
   cliente: ClientePanel
   responsables: Responsable[]
   editar: AccionFormulario
   vincularCarpeta: AccionFormulario
   archivar: (clienteId: string, activo: boolean) => Promise<ResultadoAccion>
+  /** El nivel Obras CONSULTA la ficha; administrar el maestro es de Administración. No se dibuja un
+   *  formulario que la base va a rechazar: un botón que falla es peor que un botón que no está. */
+  puedeEditar?: boolean
 }) {
   // ANCHO DE LECTURA, no ancho de pantalla. Una tabla usa los 1.400px porque tiene columnas que
   // comparar; una ficha de nueve renglones estirada a 1.400 deja el rótulo pegado a la izquierda y
@@ -71,6 +74,7 @@ export function TabInformacion({
         {cliente.notas && <p className="mt-3 border-t border-line pt-3 text-[12px] leading-relaxed text-muted">{cliente.notas}</p>}
       </div>
 
+      {puedeEditar && (<>
       <details className="rounded-lg border border-line bg-surface" data-testid="editar-cliente">
         <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-medium text-ink">Editar la ficha</summary>
         <div className="border-t border-line p-4">
@@ -109,8 +113,9 @@ export function TabInformacion({
           tono={cliente.activo ? 'peligro' : 'neutral'}
         >{cliente.activo ? 'Archivar' : 'Reactivar'}</BotonAccion>
       </div>
+      </>)}
 
-      {!responsables.length && (
+      {puedeEditar && !responsables.length && (
         <Callout tono="info">
           No hay personas del OS para elegir como responsable. Se cargan con el acceso de cada uno.
         </Callout>

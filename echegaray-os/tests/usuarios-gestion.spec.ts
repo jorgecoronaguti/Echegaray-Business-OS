@@ -250,7 +250,11 @@ test('el nivel Obras no puede darse a sí mismo una obra ni un rol, ni por la AP
   const { data: p } = await admin.from('perfiles').select('rol').eq('id', yo!.id).maybeSingle()
   expect(p?.rol).toBe('jefe_obra')
   expect(await comoUsuario(token, 'obra_canonica?select=id')).toHaveLength(0)
-  expect(await comoUsuario(token, 'clientes?select=id')).toHaveLength(0)
+  // `clientes` dejó de estar acá el 19/08: los maestros pasaron a ser consultables por el nivel
+  // Obras. Lo que este test mide es que un usuario NO PUEDA DARSE PODER, y eso se prueba con lo que
+  // sigue cerrado: sin una obra asignada, ninguna obra le llega — ni la fila, ni sus hechos.
+  expect(await comoUsuario(token, 'obra_actividad?select=id')).toHaveLength(0)
+  expect(await comoUsuario(token, 'costos_obra?select=id')).toHaveLength(0)
 })
 
 
