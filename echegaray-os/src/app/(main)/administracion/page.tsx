@@ -92,6 +92,18 @@ export default async function AdministracionPage() {
           detalle="Entradas y salidas de pañol"
         />
       </nav>
+
+      {/* Las cuentas no son un proceso operativo ni una entidad del negocio: son el sistema mismo.
+          Por eso van solas al final y no mezcladas con clientes y obras. */}
+      <p className="mt-7 mb-2 px-1 text-[11px] font-medium uppercase tracking-wide text-faint">
+        Sistema
+      </p>
+      <nav className="overflow-hidden rounded-xl border border-line bg-white" data-testid="admin-sistema">
+        <Entrada
+          href="/administracion/usuarios" testid="ir-usuarios" titulo="Usuarios"
+          detalle="Quién entra, con qué rol y a qué obras"
+        />
+      </nav>
     </PageShell>
   )
 }
