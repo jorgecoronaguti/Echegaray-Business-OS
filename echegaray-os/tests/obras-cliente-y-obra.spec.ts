@@ -18,7 +18,10 @@ import { conBase, entrar, laFila, limpiar, MARCA } from './util/obras-e2e'
 // ── CLIENTE: ALTA, EDICIÓN, CONTACTO Y DOCUMENTO ────────────────────────────
 
 test('cliente: se crea, se edita, se le agrega y se le saca un contacto — y todo sobrevive a la recarga', async ({ page }) => {
-  test.setTimeout(180000)
+  // OCHO escrituras con su recarga y su relectura contra la base. En local entra en 17 s; contra
+  // producción cada una es una función fría de Vercel y el conjunto pasó de 180 s. El techo se sube
+  // por eso y no se toca una sola afirmación: lo que tarda es el entorno, no lo que se prueba.
+  test.setTimeout(360000)
   const sb = await conBase()
   await limpiar(sb)
   const nombre = `${MARCA} Cliente ${Date.now()}`
