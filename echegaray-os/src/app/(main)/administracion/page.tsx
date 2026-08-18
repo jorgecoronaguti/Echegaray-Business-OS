@@ -1,31 +1,31 @@
-// ADMINISTRACIÓN — LA ENTRADA DEL ÁREA.
+// ADMINISTRACIÓN — LA ENTRADA DEL ÁREA, Y NADA MÁS QUE SUS CINCO SECCIONES.
 //
-// El dueño, textual (18/08): *"No quiero un dashboard administrativo lleno de KPIs. Priorizar
-// navegación hacia objetos reales"*, y la forma que pidió:
+// ═══ QUÉ SE CORRIGIÓ ACÁ (19/08/2026) ═══
 //
-//     Administración
-//     Clientes
-//     Obras
-//     ────────────────────
-//     Pedidos de materiales
-//     Herramientas
-//     Movimientos
+// El dueño: *"NIVEL 1: Administración | Obras. NIVEL 2 Administración: Clientes / Usuarios /
+// Personas / Proveedores / Pendientes. **No mezclar niveles en la misma barra.**"*
 //
-// ═══ POR QUÉ ESTA PANTALLA NO TIENE UN SOLO NÚMERO GRANDE ═══
+// Esta pantalla mezclaba tres cosas:
 //
-// Un dashboard de entrada obliga a leer antes de poder ir a ningún lado, y lo que muestra es siempre
-// el promedio de todo — que no es la pregunta de nadie. Las dos primeras líneas son las ENTIDADES del
-// negocio (un cliente, una obra) y las tres de abajo son los procesos operativos que ya existen y que
-// hasta hoy vivían arriba de todas las pantallas, en la navegación global.
+//   1. Tenía **Obras** adentro. Obras es el OTRO módulo de nivel 1 — está en el encabezado, al lado
+//      de Administración. Ofrecerlo también acá adentro dice que Obras es una sección de
+//      Administración, que es justamente lo que no es.
+//   2. Tenía **Usuarios dos veces**: una vez entre las entidades y otra en un bloque «Sistema».
+//   3. Tenía Pedidos, Herramientas y Movimientos apuntando a `/integraciones/*`. Esos tres dominios
+//      ahora viven dentro del workspace de cada obra, acotados por `obra_id`, que es donde
+//      significan algo. Las rutas viejas siguen respondiendo —nadie pierde un enlace guardado—, sólo
+//      dejan de ofrecerse como si fueran secciones de Administración.
 //
-// Los contadores que sí aparecen son de NAVEGACIÓN, no de gestión: dicen cuánto hay del otro lado
-// para que nadie entre a una lista vacía sin saberlo. Salen de las mismas vistas que las pantallas
-// destino, así que no pueden discrepar con ellas.
+// Quedan las CINCO que pidió el dueño, en su orden, y la barra de nivel 2 (`NavAdministracion`)
+// dibuja exactamente las mismas: la pantalla y la barra no pueden discrepar porque salen de la
+// misma lista de secciones.
+//
+// Los contadores son de NAVEGACIÓN, no de gestión: dicen cuánto hay del otro lado para que nadie
+// entre a una lista vacía sin saberlo. Salen de las mismas fuentes que las pantallas destino, así
+// que no pueden contradecirlas.
 
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { getClientes } from '@/features/clientes/services/clientesService'
-import { getPortafolio } from '@/features/obras/services/obrasService'
 import { PageShell } from '@/shared/components/ui'
 
 export const dynamic = 'force-dynamic'
@@ -47,13 +47,21 @@ function Entrada({ href, titulo, detalle, cuenta, testid }: {
   )
 }
 
+/** El conteo de una tabla, sin traer una sola fila. Si la lectura falla, no hay contador — nunca un
+ *  cero, que se leería como «no hay ninguno». */
+async function contar(supabase: Awaited<ReturnType<typeof createClient>>, tabla: string) {
+  const { count, error } = await supabase.from(tabla).select('*', { count: 'exact', head: true })
+  return error ? undefined : count ?? undefined
+}
+
 export default async function AdministracionPage() {
   const supabase = await createClient()
-  // Las dos lecturas van en paralelo: son independientes y encadenarlas sólo suma latencia.
-  const [clientes, obras] = await Promise.all([getClientes(supabase), getPortafolio(supabase)])
-  const cs = clientes.data ?? []
-  const os = obras.data ?? []
-  const obrasActivas = os.filter((o) => o.etapa !== 'cierre' && o.estado !== 'archivada')
+  const [clientes, personas, proveedores, pendientes] = await Promise.all([
+    contar(supabase, 'clientes'),
+    contar(supabase, 'personas'),
+    contar(supabase, 'proveedores'),
+    contar(supabase, 'proveedor_nombre_pendiente'),
+  ])
 
   return (
     <PageShell
@@ -64,19 +72,9 @@ export default async function AdministracionPage() {
       <nav className="overflow-hidden rounded-lg border border-line bg-surface" data-testid="admin-entidades">
         <Entrada
           href="/clientes" testid="ir-clientes" titulo="Clientes"
-          detalle="Información, contactos, documentos de Drive y sus obras"
-          cuenta={cs.length ? `${cs.length}` : undefined}
+          detalle="Ficha, contactos, actividad, documentos y sus obras"
+          cuenta={clientes != null ? `${clientes}` : undefined}
         />
-        <Entrada
-          href="/obras" testid="ir-obras" titulo="Obras"
-          detalle="Todas las obras: cronograma, personal, economía y contrato"
-          cuenta={obrasActivas.length ? `${obrasActivas.length} en curso` : undefined}
-        />
-        {/* LAS TRES QUE FALTABAN (19/08/2026). El dueño: *"/administracion deja de ser sólo un menú.
-            Debe permitir administrar: Clientes | Obras | Usuarios | Personas | Proveedores"*. Las
-            dos primeras ya existían; estas tres son las que obligaban a entrar a Supabase para
-            hacer un cambio normal — dar de alta a alguien, darle acceso a una obra, unificar un
-            proveedor que en Compras está escrito de tres formas distintas. */}
         <Entrada
           href="/administracion/usuarios" testid="ir-usuarios" titulo="Usuarios"
           detalle="Quién entra, con qué nivel, y a qué obras tiene acceso"
@@ -84,45 +82,17 @@ export default async function AdministracionPage() {
         <Entrada
           href="/administracion/personas" testid="ir-personas" titulo="Personas"
           detalle="El plantel: función, categoría y en qué obra está cada uno"
+          cuenta={personas != null ? `${personas}` : undefined}
         />
         <Entrada
           href="/administracion/proveedores" testid="ir-proveedores" titulo="Proveedores"
           detalle="Identidad única por CUIT, y los nombres de Compras sin resolver"
-        />
-      </nav>
-
-      {/* La separación es la que pidió el dueño: arriba las entidades, abajo los procesos. */}
-      <p className="mt-7 mb-2 px-1 text-[11px] font-medium uppercase tracking-wide text-faint">
-        Operación
-      </p>
-      <nav className="overflow-hidden rounded-lg border border-line bg-surface" data-testid="admin-operacion">
-        <Entrada
-          href="/integraciones/pedidos-materiales" testid="ir-pedidos" titulo="Pedidos de materiales"
-          detalle="Lo que pide la obra, desde AppSheet y desde el OS"
-        />
-        <Entrada
-          href="/integraciones/herramientas" testid="ir-herramientas" titulo="Herramientas"
-          detalle="Inventario y a quién está prestada cada una"
-        />
-        <Entrada
-          href="/integraciones/movimientos" testid="ir-movimientos" titulo="Movimientos"
-          detalle="Entradas y salidas de pañol"
+          cuenta={proveedores != null ? `${proveedores}` : undefined}
         />
         <Entrada
           href="/administracion/pendientes" testid="ir-pendientes" titulo="Pendientes de imputación"
-          detalle="Textos de obra que nadie clasificó todavía, y que hay que resolver a mano"
-        />
-      </nav>
-
-      {/* Las cuentas no son un proceso operativo ni una entidad del negocio: son el sistema mismo.
-          Por eso van solas al final y no mezcladas con clientes y obras. */}
-      <p className="mt-7 mb-2 px-1 text-[11px] font-medium uppercase tracking-wide text-faint">
-        Sistema
-      </p>
-      <nav className="overflow-hidden rounded-xl border border-line bg-white" data-testid="admin-sistema">
-        <Entrada
-          href="/administracion/usuarios" testid="ir-usuarios" titulo="Usuarios"
-          detalle="Quién entra, con qué rol y a qué obras"
+          detalle="Lo que todavía no tiene obra, y los nombres de proveedor sin dueño"
+          cuenta={pendientes ? `${pendientes} sin dueño` : undefined}
         />
       </nav>
     </PageShell>

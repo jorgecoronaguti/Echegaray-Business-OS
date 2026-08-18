@@ -84,24 +84,58 @@ test('las rutas retiradas de la navegación SIGUEN respondiendo', async ({ page 
   }
 })
 
-test('Administración es navegación hacia objetos reales, sin dashboard de KPIs', async ({ page }) => {
+test('Administración tiene sus CINCO secciones, y ni una de otro nivel', async ({ page }) => {
   test.setTimeout(120000)
   await entrarComo(page, EMAIL, PASSWORD)
   await page.goto('/administracion')
 
   await expect(page.getByRole('heading', { name: 'Administración' })).toBeVisible()
-  // Las dos entidades arriba…
-  await expect(page.getByTestId('ir-clientes')).toBeVisible()
-  await expect(page.getByTestId('ir-obras')).toBeVisible()
-  // …y los tres procesos operativos abajo, que hasta hoy vivían arriba de TODAS las pantallas.
-  await expect(page.getByTestId('ir-pedidos')).toBeVisible()
-  await expect(page.getByTestId('ir-herramientas')).toBeVisible()
-  await expect(page.getByTestId('ir-movimientos')).toBeVisible()
+
+  // ═══ EL CONTRATO, TEXTUAL (19/08/2026) ═══
+  //
+  //   *"NIVEL 1: Administración | Obras. NIVEL 2 Administración: Clientes / Usuarios / Personas /
+  //   Proveedores / Pendientes. **No mezclar niveles en la misma barra.**"*
+  //
+  // Este test exigía «ir-obras» y las tres de integraciones. Se reemplaza porque eso era el
+  // problema: Obras es el OTRO módulo de nivel 1 —está en el encabezado, al lado de Administración—
+  // y ofrecerlo también acá adentro dice que es una sección de ésta. Pedidos, herramientas y
+  // movimientos se mudaron al workspace de cada obra, acotados por obra_id.
+  for (const t of ['ir-clientes', 'ir-usuarios', 'ir-personas', 'ir-proveedores', 'ir-pendientes']) {
+    await expect(page.getByTestId(t), `falta la sección ${t}`).toBeVisible()
+  }
+  for (const t of ['ir-obras', 'ir-pedidos', 'ir-herramientas', 'ir-movimientos']) {
+    await expect(page.getByTestId(t), `${t} volvió a ofrecerse dentro de Administración`).toHaveCount(0)
+  }
+  // Y «Usuarios» aparece UNA sola vez: estaba dos veces, entre las entidades y en un bloque aparte.
+  await expect(page.getByTestId('ir-usuarios')).toHaveCount(1)
+
+  // La barra de nivel 2 dibuja las mismas cinco, y dice dónde estoy parado.
+  const barra = page.getByTestId('nav-admin-secciones')
+  await expect(barra).toBeVisible()
+  await expect(barra.getByRole('link')).toHaveCount(5)
 
   // Y llevan a donde dicen.
   await page.getByTestId('ir-clientes').click()
   await page.waitForURL(/\/clientes/)
   await expect(page.getByTestId('clientes-tabla')).toBeVisible()
+
+  // La barra dice DÓNDE ESTOY PARADO. Sin esto, cinco secciones se ven iguales desde adentro.
+  await page.goto('/administracion/personas')
+  await expect(page.getByTestId('nav-admin-secciones').getByRole('link', { name: 'Personas' }))
+    .toHaveAttribute('aria-current', 'page')
+  await expect(page.getByTestId('nav-admin-secciones').getByRole('link', { name: 'Proveedores' }))
+    .not.toHaveAttribute('aria-current', 'page')
+})
+
+// Las rutas que salieron del menú SIGUEN respondiendo: sacar algo de la navegación no es apagarlo.
+test('las rutas de integraciones salieron del menú pero no del sistema', async ({ page }) => {
+  test.setTimeout(120000)
+  await entrarComo(page, EMAIL, PASSWORD)
+  for (const r of ['/integraciones/pedidos-materiales', '/integraciones/herramientas',
+    '/integraciones/movimientos']) {
+    const res = await page.goto(r)
+    expect(res?.status(), `${r} dejó de responder`).toBeLessThan(400)
+  }
 })
 
 // ═══ DE `nav-jerarquia-y-estado-activo.spec.ts`, QUE MURIÓ CON EL HEADER VIEJO ═══
