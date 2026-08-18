@@ -26,11 +26,13 @@ import {
 } from '../types'
 import { fecha } from './formato'
 
-const VENTANAS = [
+export type Ventana = '1' | '2' | '6'
+
+const VENTANAS: { value: Ventana; label: string }[] = [
   { value: '1', label: 'Esta semana' },
   { value: '2', label: '2 semanas' },
   { value: '6', label: '6 semanas' },
-] as const
+]
 
 /** El rojo es SÓLO para lo que está mal y el verde SÓLO para lo que está bien. El resto es tinta. */
 const TONO_ESTADO: Record<string, string> = {
@@ -42,21 +44,27 @@ const TONO_ESTADO: Record<string, string> = {
 }
 
 export function VistaProximos({
-  actividades, impedimentos, personas = [], crear, liberar, hoy = new Date(),
+  actividades, impedimentos, personas = [], crear, liberar, semanas, alCambiarSemanas,
+  hoy = new Date(),
 }: {
   actividades: Actividad[]
   impedimentos: Restriccion[]
   personas?: Persona[]
   crear: AccionFormulario
   liberar: (restriccionId: string) => Promise<ResultadoAccion>
+  /** Controlada por el que la usa —así la ventana puede vivir en la URL—. Sin esto se gobierna sola. */
+  semanas?: Ventana
+  alCambiarSemanas?: (v: Ventana) => void
   hoy?: Date
 }) {
-  const [semanas, setSemanas] = useState<'1' | '2' | '6'>('2')
+  const [local, setLocal] = useState<Ventana>(semanas ?? '2')
+  const ventana = semanas ?? local
+  const elegir = (v: Ventana) => { setLocal(v); alCambiarSemanas?.(v) }
   const hoyIso = hoy.toISOString().slice(0, 10)
 
   const proximas = useMemo(
-    () => lookahead(actividades, Number(semanas), hoy),
-    [actividades, semanas, hoy],
+    () => lookahead(actividades, Number(ventana), hoy),
+    [actividades, ventana, hoy],
   )
 
   const nombrePersona = useMemo(() => {
@@ -87,8 +95,8 @@ export function VistaProximos({
           <h2 className="text-[13px] font-semibold text-ink">Próximos trabajos</h2>
           <SegmentedControl
             options={VENTANAS}
-            value={semanas}
-            onChange={setSemanas}
+            value={ventana}
+            onChange={elegir}
             size="sm"
             ariaLabel="Ventana de los próximos trabajos"
           />
@@ -96,7 +104,7 @@ export function VistaProximos({
 
         {proximas.length === 0 ? (
           <p className="text-[12px] text-faint">
-            No hay actividades con fecha en {semanas === '1' ? 'esta semana' : `las próximas ${semanas} semanas`}.
+            No hay actividades con fecha en {ventana === '1' ? 'esta semana' : `las próximas ${ventana} semanas`}.
           </p>
         ) : (
           <div className="overflow-x-auto rounded-card border border-line bg-surface">

@@ -120,6 +120,7 @@ export function Gantt({
   personas = [],
   acciones,
   yaSellada = false,
+  seleccionInicial = null,
 }: {
   actividades: Actividad[]
   restricciones?: Restriccion[]
@@ -131,9 +132,12 @@ export function Gantt({
   /** Sin `acciones` el Gantt es de sólo lectura y no dibuja un solo control que no funcione. */
   acciones?: AccionesCronograma
   yaSellada?: boolean
+  /** Qué actividad viene abierta de la URL. Sólo el arranque: después la selección es local, porque
+   *  escribir la URL en cada clic haría una vuelta al servidor por cada barra que se toca. */
+  seleccionInicial?: string | null
 }) {
   const [escala, setEscala] = useState<Escala>('semana')
-  const [selId, setSelId] = useState<string | null>(null)
+  const [selId, setSelId] = useState<string | null>(seleccionInicial)
   const [creando, setCreando] = useState(false)
   const [colapsados, setColapsados] = useState<ReadonlySet<string>>(new Set())
 
