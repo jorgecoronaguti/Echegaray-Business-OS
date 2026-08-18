@@ -15,7 +15,7 @@
 // está allá.
 
 import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { createAdminClient, nombresDeConfiguracionSupabase } from '@/lib/supabase/admin'
 import { getPerfilActual, getUsuarioActual } from '@/features/auth/services/authService'
 import { esAdministracion } from '@/features/auth/types/areas'
 import { Callout, PageShell } from '@/shared/components/ui'
@@ -55,7 +55,8 @@ export default async function UsuariosPage() {
   try {
     const admin = createAdminClient()
     ;[lista, obras] = await Promise.all([listarUsuarios(admin), listarObrasElegibles(admin)])
-  } catch (e) {
+  } catch {
+    const presentes = nombresDeConfiguracionSupabase()
     return (
       <PageShell
         eyebrow="Administración"
@@ -65,10 +66,23 @@ export default async function UsuariosPage() {
       >
         <div data-testid="usuarios-sin-configuracion">
         <Callout tono="neg">
-          Falta <strong>SUPABASE_SERVICE_ROLE_KEY</strong> en el entorno de este despliegue. Es la
-          única pantalla que la necesita: las cuentas viven en el esquema de autenticación y no se
-          pueden leer con la sesión de una persona. Se carga en las variables de entorno del proyecto
-          en Vercel y hace falta volver a desplegar. {e instanceof Error ? `(${e.message})` : ''}
+          <p>
+            Falta la <strong>clave de servicio de Supabase</strong> en las variables de entorno de
+            este despliegue. Es la única pantalla que la necesita: las cuentas viven en el esquema de
+            autenticación y no se pueden leer con la sesión de una persona.
+          </p>
+          <p className="mt-2">
+            Se crea en <strong>Vercel → el proyecto → Settings → Environment Variables</strong>, con
+            el nombre <strong>SUPABASE_SERVICE_ROLE_KEY</strong>, marcada para{' '}
+            <strong>Production</strong> (y Preview si se usa), y después hay que volver a desplegar.
+            El valor sale de <strong>Supabase → Project Settings → API → service_role</strong>.
+          </p>
+          {/* Sólo los NOMBRES que existen. Un nombre de variable no es un secreto; su valor sí, y
+              acá no se lee ninguno. Sirve para distinguir «no está» de «está con otro nombre». */}
+          <p className="mt-2 text-[12px]">
+            Variables de Supabase presentes en este despliegue:{' '}
+            {presentes.length ? <code>{presentes.join(' · ')}</code> : 'ninguna'}.
+          </p>
         </Callout>
         </div>
       </PageShell>
