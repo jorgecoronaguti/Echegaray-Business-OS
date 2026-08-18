@@ -1,62 +1,74 @@
-// ECONOMÍA DE LA OBRA — presupuestado, costo real, desvío, contratado, margen, y el ciclo
-// certificado → facturado → cobrado.
+// ECONOMÍA DE LA OBRA — contrato, costo, certificación y resultado. La vista económica de ESTA obra,
+// no un sistema financiero nuevo.
 //
-// ═══ CADA NÚMERO CON SU ORIGEN AL LADO ═══
+// ═══ QUÉ CAMBIÓ, Y POR QUÉ (19/08/2026) ═══
 //
-// No es adorno ni prolijidad: es lo que hace auditable la pantalla. "Desvío de costo −12%" sin decir
-// contra qué presupuesto y con qué comprobantes es una afirmación que nadie puede verificar, y una
-// afirmación que nadie puede verificar no debería mover una decisión de plata.
+// Tenía tres tablas de tres columnas, y la tercera era «De dónde sale»: un párrafo por renglón, fijo
+// en pantalla, con cosas como *"obra_canonica · se carga en Resumen › Editar la obra"* o *"presupuesto
+// 3f2a1b8c · tabla presupuestos, versión aprobada"*. El dueño lo prohibió en dos reglas distintas
+// —*"texto secundario corto"* y *"nada de explicaciones técnicas permanentes"*— y es la misma
+// corrección que ya se hizo en el resumen de plan contra real.
 //
-// ═══ Y DONDE FALTA UNA PUNTA, SE DICE CUÁL ═══
+// EL ORIGEN NO SE BORRA: SE MUEVE. Viaja en el `title` de cada renglón, así que sigue disponible para
+// auditar —"¿de dónde sale este número?" se contesta apoyando el puntero— y deja de competir por la
+// atención con la cifra, que es lo que la persona vino a mirar. Un origen que hay que leer todos los
+// días para entender la pantalla significa que la pantalla no se entiende.
 //
-// La vista `obra_plan_vs_real` anula el desvío cuando le falta un lado de la comparación. Esta
-// pantalla NUNCA rellena ese null con 0 ni con un guión mudo: escribe qué falta y dónde se carga.
-// Un 0% de desvío sobre una obra sin presupuesto diría "vamos en presupuesto", que es exactamente
-// lo contrario de la verdad.
+// ═══ LO QUE NO CAMBIA: DONDE FALTA UNA PUNTA, SE DICE CUÁL ═══
+//
+// `obra_plan_vs_real` anula el desvío cuando le falta un lado de la comparación. Acá NUNCA se rellena
+// ese null con 0 ni con un guión mudo: se escribe qué falta. Un 0% de desvío sobre una obra sin
+// presupuesto diría "vamos en presupuesto", que es exactamente lo contrario de la verdad.
+//
+// FRONTERA: esto NO reconstruye Finanzas. Flujo de Caja, Pagos, Cheques e Ingeniería Financiera
+// siguen donde están; acá se leen las fuentes canónicas de esta obra y nada más.
 
 import type { ReactNode } from 'react'
-import { BotonAccion, Callout, Campo, CTRL, FormAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
+import {
+  BotonAccion, Callout, Campo, CTRL, FormAccion,
+  type AccionFormulario, type ResultadoAccion,
+} from '@/shared/components/ui'
 import type { Certificado, PlanVsReal } from '../types'
-import { desvio, fecha, plata } from './formato'
+import { fecha, plata } from './formato'
 
-/** Una línea económica: el número, de dónde sale, y —si no hay número— qué falta para que haya. */
+/** Un renglón: concepto ↔ cifra. El origen va en el `title`; el "qué falta", visible sólo si falta. */
 function Linea({
-  concepto, valor, origen, falta,
+  concepto, valor, origen, falta, fuerte = false, tono = 'ink',
 }: {
   concepto: string
   valor: string | null
   origen: string
   falta?: string
+  fuerte?: boolean
+  tono?: 'ink' | 'neg' | 'warn' | 'pos'
 }) {
+  const color = { ink: 'text-ink', neg: 'text-neg', warn: 'text-warn', pos: 'text-pos' }[tono]
   return (
-    <tr className="border-b border-line/60 last:border-0">
-      <td className="px-4 py-2.5 text-[13px] text-ink">{concepto}</td>
-      <td className="px-3 py-2.5 text-right text-[13px] font-semibold tabular-nums text-ink">
-        {valor ?? <span className="font-normal text-warn">no determinado</span>}
-      </td>
-      <td className="px-3 py-2.5 text-[11px] leading-snug text-faint">
-        {valor ? origen : (falta ?? origen)}
-      </td>
-    </tr>
+    <div className="flex items-baseline justify-between gap-4 border-b border-line py-2 last:border-0" title={origen}>
+      <dt className="min-w-0 text-[13px] text-muted">
+        {concepto}
+        {valor == null && falta && <span className="block text-[11px] leading-snug text-faint">{falta}</span>}
+      </dt>
+      <dd className={`shrink-0 text-[13px] tabular-nums ${fuerte ? 'font-semibold' : 'font-medium'} ${valor == null ? 'text-faint' : color}`}>
+        {valor ?? '—'}
+      </dd>
+    </div>
   )
 }
 
-function Tabla({ titulo, testid, children }: { titulo: string; testid?: string; children: ReactNode }) {
+function Bloque({ titulo, children }: { titulo: string; children: ReactNode }) {
   return (
-    <div>
-      <h2 className="mb-2 text-[13px] font-semibold text-ink">{titulo}</h2>
-      <div className="overflow-x-auto rounded-xl border border-line bg-white">
-        <table data-testid={testid} className="w-full min-w-[520px] text-left">
-          <thead><tr className="border-b border-line text-[10px] uppercase tracking-wide text-faint">
-            <th className="px-4 py-2 font-medium">Concepto</th>
-            <th className="px-3 py-2 text-right font-medium">Monto</th>
-            <th className="px-3 py-2 font-medium">De dónde sale</th>
-          </tr></thead>
-          <tbody>{children}</tbody>
-        </table>
-      </div>
-    </div>
+    <section>
+      <h2 className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-faint">{titulo}</h2>
+      <dl>{children}</dl>
+    </section>
   )
+}
+
+/** Un porcentaje sobre una base, sólo si las dos puntas existen y la base no es cero. */
+function pct(valor: number | null | undefined, base: number | null | undefined): string | null {
+  if (valor == null || !base) return null
+  return `${(valor / base * 100).toLocaleString('es-AR', { maximumFractionDigits: 1 })}%`
 }
 
 export function TabEconomia({
@@ -67,141 +79,156 @@ export function TabEconomia({
   crearCert: AccionFormulario
   borrarCert: (certificadoId: string) => Promise<ResultadoAccion>
 }) {
-  if (!plan) {
-    return <Callout tono="neg">No pude leer el plan contra real de esta obra.</Callout>
-  }
+  if (!plan) return <Callout tono="neg">No pude leer el plan contra real de esta obra.</Callout>
 
   const sinPresupuesto = plan.costo_presupuestado == null
   // `costo_real` llega en 0 cuando la obra existe pero no tiene un solo comprobante imputado. Ese 0
   // es real —la vista lo calcula— pero significa "todavía nadie cargó nada", no "salió gratis".
   const sinComprobantes = !plan.costo_real
+  const desvioPesos = plan.costo_presupuestado != null && plan.costo_real
+    ? plan.costo_real - plan.costo_presupuestado : null
 
   return (
-    <div className="space-y-5">
-      <Tabla titulo="Costo" testid="economia-costo">
-        <Linea
-          concepto="Costo directo presupuestado"
-          valor={plan.costo_presupuestado == null ? null : plata(plan.costo_presupuestado)}
-          origen={`presupuesto ${plan.presupuesto_id ? plan.presupuesto_id.slice(0, 8) : ''} · tabla presupuestos, versión aprobada`}
-          falta="No hay ningún presupuesto atado a esta obra en el eje canónico. Se carga en el módulo de presupuestos."
-        />
-        <Linea
-          concepto="Costo real acumulado"
-          valor={sinComprobantes ? null : plata(plan.costo_real)}
-          origen="Compras: comprobantes imputados a esta obra"
-          falta="Ningún comprobante de Compras está imputado a esta obra. No es que costó $0."
-        />
-        <Linea
-          concepto="Desvío de costo"
-          valor={plan.desvio_costo_pct == null ? null : desvio(plan.desvio_costo_pct)}
-          origen="(costo real − presupuestado) ÷ presupuestado"
-          falta={sinPresupuesto && sinComprobantes
-            ? 'Faltan las dos puntas: el presupuesto y los comprobantes.'
-            : sinPresupuesto ? 'Falta el presupuesto: sin él no hay contra qué medir el gasto.'
-              : 'Faltan comprobantes imputados: todavía no hay gasto que comparar.'}
-        />
-      </Tabla>
+    <div className="space-y-6">
+      {/* Cuatro bloques en dos columnas: entran en una pantalla sin scroll y se comparan de un vistazo.
+          Sin recuadro por bloque — son cuatro listas de definición, no cuatro tarjetas. */}
+      <div className="grid gap-x-10 gap-y-6 lg:grid-cols-2">
+        <Bloque titulo="Contrato">
+          <Linea
+            concepto="Contratado" fuerte
+            valor={plan.monto_contratado == null ? null : plata(plan.monto_contratado)}
+            origen="El monto del contrato de la obra. Se carga en Resumen › Editar la obra."
+            falta="Nadie lo cargó todavía. Se carga en Resumen › Editar la obra."
+          />
+          <Linea
+            concepto="Presupuestado (venta)"
+            valor={plan.monto_presupuestado == null ? null : plata(plan.monto_presupuestado)}
+            origen="Lo que se cotizó, del presupuesto aprobado de esta obra."
+            falta="Esta obra no tiene presupuesto cargado."
+          />
+        </Bloque>
 
-      <Tabla titulo="Contrato y margen" testid="economia-margen">
-        <Linea
-          concepto="Monto contratado"
-          valor={plan.monto_contratado == null ? null : plata(plan.monto_contratado)}
-          origen="obra_canonica · se carga en Resumen › Editar la obra"
-          falta="Nadie cargó el monto del contrato. Se carga en Resumen › Editar la obra."
-        />
-        <Linea
-          concepto="Margen esperado"
-          valor={plan.margen_esperado == null ? null : plata(plan.margen_esperado)}
-          origen="presupuesto aprobado · margen_esperado en pesos"
-          falta="Sale del presupuesto, y esta obra no tiene uno cargado."
-        />
-        <Linea
-          concepto="Margen actual"
-          valor={plan.margen_actual == null ? null : plata(plan.margen_actual)}
-          origen="contratado − costo real (percibido a hoy, no proyectado a fin de obra)"
-          falta={plan.monto_contratado == null
-            ? 'Falta el monto contratado.'
-            : 'Falta el costo real: ningún comprobante imputado.'}
-        />
-        <Linea
-          concepto="Monto presupuestado (venta)"
-          valor={plan.monto_presupuestado == null ? null : plata(plan.monto_presupuestado)}
-          origen="presupuesto aprobado · lo que se cotizó"
-          falta="Esta obra no tiene presupuesto cargado."
-        />
-      </Tabla>
+        <Bloque titulo="Costo">
+          <Linea
+            concepto="Presupuesto"
+            valor={plan.costo_presupuestado == null ? null : plata(plan.costo_presupuestado)}
+            origen="Costo directo presupuestado, de la versión aprobada del presupuesto."
+            falta="Sin presupuesto: no hay contra qué medir el gasto."
+          />
+          <Linea
+            concepto="Costo real"
+            valor={sinComprobantes ? null : plata(plan.costo_real)}
+            origen="Suma de los comprobantes de Compras imputados a esta obra."
+            falta="Ningún comprobante imputado. No es que costó $0."
+          />
+          <Linea
+            concepto="Desvío" fuerte
+            valor={desvioPesos == null ? null
+              : `${desvioPesos > 0 ? '+' : ''}${plata(desvioPesos)}` +
+                (pct(desvioPesos, plan.costo_presupuestado) ? ` · ${plan.desvio_costo_pct}%` : '')}
+            origen="Costo real menos presupuesto. Positivo = se gastó de más."
+            falta={sinPresupuesto && sinComprobantes ? 'Faltan las dos puntas.'
+              : sinPresupuesto ? 'Falta el presupuesto.' : 'Faltan comprobantes imputados.'}
+            tono={desvioPesos != null && desvioPesos > 0 ? 'neg' : 'pos'}
+          />
+        </Bloque>
 
-      <Tabla titulo="Certificación y cobranza" testid="economia-cobranza">
-        <Linea
-          concepto="Certificado"
-          valor={plan.certificado == null ? null : plata(plan.certificado)}
-          origen={`suma de ${certificados.length} certificado(s) de esta obra`}
-          falta="Todavía no hay ningún certificado cargado."
-        />
-        <Linea
-          concepto="Facturado"
-          valor={plan.facturado == null ? null : plata(plan.facturado)}
-          origen="certificados con fecha y monto de facturación"
-          falta="Ningún certificado tiene facturación cargada."
-        />
-        <Linea
-          concepto="Cobrado"
-          valor={plan.cobrado == null ? null : plata(plan.cobrado)}
-          origen="certificados con fecha y monto de cobranza"
-          falta="Ningún certificado tiene cobranza cargada."
-        />
-        <Linea
-          concepto="Pendiente de certificar"
-          valor={plan.pendiente_certificar == null ? null : plata(plan.pendiente_certificar)}
-          origen="contratado − certificado"
-          falta="Falta el monto contratado: sin contrato no se sabe cuánto queda por certificar."
-        />
-        <Linea
-          concepto="Pendiente de cobrar"
-          valor={certificados.length ? plata(plan.pendiente_cobrar) : null}
-          origen="certificado − cobrado"
-          falta="Sin certificados cargados no hay nada pendiente de cobrar que calcular."
-        />
-      </Tabla>
+        <Bloque titulo="Certificación">
+          <Linea
+            concepto="Certificado"
+            valor={plan.certificado == null ? null : plata(plan.certificado)}
+            origen={`Suma de los ${certificados.length} certificado(s) cargados en esta obra.`}
+            falta="Todavía no hay ningún certificado cargado."
+          />
+          <Linea
+            concepto="Facturado"
+            valor={plan.facturado == null ? null : plata(plan.facturado)}
+            origen="Certificados que ya tienen fecha y monto de facturación."
+            falta="Ningún certificado tiene facturación cargada."
+          />
+          <Linea
+            concepto="Cobrado"
+            valor={plan.cobrado == null ? null : plata(plan.cobrado)}
+            origen="Certificados que ya tienen fecha y monto de cobranza."
+            falta="Ningún certificado tiene cobranza cargada."
+          />
+          <Linea
+            concepto="Pendiente de cobrar" fuerte
+            valor={certificados.length ? plata(plan.pendiente_cobrar) : null}
+            origen="Certificado menos cobrado: la plata que ya se ganó y todavía no entró."
+            falta="Sin certificados no hay nada pendiente de cobrar."
+            tono={plan.pendiente_cobrar ? 'warn' : 'ink'}
+          />
+          <Linea
+            concepto="Pendiente de certificar"
+            valor={plan.pendiente_certificar == null ? null : plata(plan.pendiente_certificar)}
+            origen="Contratado menos certificado: lo que queda por certificar del contrato."
+            falta="Falta el monto contratado."
+          />
+        </Bloque>
+
+        <Bloque titulo="Resultado">
+          <Linea
+            concepto="Margen esperado"
+            valor={plan.margen_esperado == null ? null
+              : `${plata(plan.margen_esperado)}${pct(plan.margen_esperado, plan.monto_presupuestado) ? ` · ${pct(plan.margen_esperado, plan.monto_presupuestado)}` : ''}`}
+            origen="El margen del presupuesto aprobado, en pesos, y sobre la venta cotizada."
+            falta="Sale del presupuesto, y esta obra no tiene uno cargado."
+          />
+          <Linea
+            concepto="Margen actual" fuerte
+            valor={plan.margen_actual == null ? null
+              : `${plata(plan.margen_actual)}${pct(plan.margen_actual, plan.monto_contratado) ? ` · ${pct(plan.margen_actual, plan.monto_contratado)}` : ''}`}
+            // ES A HOY, NO A FIN DE OBRA, y decirlo importa: un margen alto al 20% de avance no
+            // significa que la obra vaya bien, significa que todavía no se gastó.
+            origen="Contratado menos costo real, a hoy. NO es una proyección a fin de obra."
+            falta={plan.monto_contratado == null ? 'Falta el monto contratado.' : 'Falta el costo real.'}
+            tono={plan.margen_actual != null && plan.margen_actual < 0 ? 'neg' : 'ink'}
+          />
+        </Bloque>
+      </div>
 
       {certificados.length > 0 && (
-        <div className="overflow-x-auto rounded-xl border border-line bg-white">
-          <table data-testid="tabla-certificados" className="w-full min-w-[700px] text-left">
-            <thead><tr className="border-b border-line text-[10px] uppercase tracking-wide text-faint">
-              <th className="px-4 py-2 font-medium">N°</th>
-              <th className="px-3 py-2 font-medium">Fecha</th>
-              <th className="px-3 py-2 text-right font-medium">Certificado</th>
-              <th className="px-3 py-2 text-right font-medium">Facturado</th>
-              <th className="px-3 py-2 text-right font-medium">Cobrado</th>
-              <th className="px-3 py-2 text-right font-medium"></th>
-            </tr></thead>
-            <tbody>
-              {certificados.map((c) => (
-                <tr key={c.id} className="border-b border-line/60 last:border-0">
-                  <td className="px-4 py-2 text-[13px] text-ink">
-                    {c.numero ?? 'sin número'}
-                    {c.descripcion && <span className="block text-[11px] text-faint">{c.descripcion}</span>}
-                  </td>
-                  <td className="px-3 py-2 text-[12px] tabular-nums text-muted">{fecha(c.fecha_certificacion)}</td>
-                  <td className="px-3 py-2 text-right text-[12px] tabular-nums text-ink">{plata(c.monto_certificado)}</td>
-                  <td className="px-3 py-2 text-right text-[12px] tabular-nums text-muted">
-                    {c.monto_facturado == null ? <span className="text-faint">sin facturar</span> : plata(c.monto_facturado)}
-                  </td>
-                  <td className="px-3 py-2 text-right text-[12px] tabular-nums text-muted">
-                    {c.monto_cobrado == null ? <span className="text-faint">sin cobrar</span> : plata(c.monto_cobrado)}
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <BotonAccion accion={borrarCert} args={[c.id]} testid="borrar-certificado" tono="peligro">Borrar</BotonAccion>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <section>
+          <h2 className="mb-2 text-[11px] font-medium uppercase tracking-wide text-faint">Certificados</h2>
+          <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+            <table data-testid="tabla-certificados" className="w-full min-w-[640px] text-left">
+              <thead><tr className="border-b border-line text-[10px] uppercase tracking-wide text-faint">
+                <th className="px-4 py-2 font-medium">N°</th>
+                <th className="px-3 py-2 font-medium">Fecha</th>
+                <th className="px-3 py-2 text-right font-medium">Certificado</th>
+                <th className="px-3 py-2 text-right font-medium">Facturado</th>
+                <th className="px-3 py-2 text-right font-medium">Cobrado</th>
+                <th className="px-3 py-2 text-right font-medium" />
+              </tr></thead>
+              <tbody>
+                {certificados.map((c) => (
+                  <tr key={c.id} className="border-b border-line/60 last:border-0">
+                    <td className="px-4 py-2 text-[13px] text-ink">
+                      {c.numero ?? 'sin número'}
+                      {c.descripcion && <span className="block text-[11px] text-faint">{c.descripcion}</span>}
+                    </td>
+                    <td className="px-3 py-2 text-[12px] tabular-nums text-muted">{fecha(c.fecha_certificacion)}</td>
+                    <td className="px-3 py-2 text-right text-[12px] tabular-nums text-ink">{plata(c.monto_certificado)}</td>
+                    <td className="px-3 py-2 text-right text-[12px] tabular-nums text-muted">
+                      {c.monto_facturado == null ? <span className="text-faint">sin facturar</span> : plata(c.monto_facturado)}
+                    </td>
+                    <td className="px-3 py-2 text-right text-[12px] tabular-nums text-muted">
+                      {c.monto_cobrado == null ? <span className="text-faint">sin cobrar</span> : plata(c.monto_cobrado)}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <BotonAccion accion={borrarCert} args={[c.id]} testid="borrar-certificado" tono="peligro">Borrar</BotonAccion>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
 
-      <details className="rounded-xl border border-line bg-white" data-testid="alta-certificado">
-        <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-medium text-ink">Cargar un certificado</summary>
+      <details className="rounded-lg border border-line bg-surface" data-testid="alta-certificado">
+        <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-medium text-ink">+ Cargar certificado</summary>
         <div className="border-t border-line p-4">
           <FormAccion accion={crearCert} testid="form-certificado" enviar="Cargar certificado" limpiarAlOk mensajeOk="Certificado cargado.">
             <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
