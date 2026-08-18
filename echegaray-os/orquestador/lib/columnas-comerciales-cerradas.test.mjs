@@ -36,6 +36,10 @@ import { query } from './db.mjs'
  */
 const CERRADAS = {
   obra_canonica: ['monto_contratado'],
+  // `public.obras` es la tabla LEGACY: cuatro filas, todas pausadas o cerradas. Su contrato es un
+  // contrato igual, y dejarlo abierto obligaba a explicar por qué el mismo dato está cerrado en una
+  // tabla y libre en la de al lado. Esa explicación no existía.
+  obras: ['monto_contratado'],
   presupuestos: ['monto_presupuestado', 'margen_esperado'],
   personas: ['retribucion_pactada', 'dni', 'cuil'],
 }
@@ -78,6 +82,49 @@ for (const [tabla, secretas] of Object.entries(CERRADAS)) {
   })
 }
 
+test('el contexto interno no queda ciego: sin JWT la función sí devuelve el dato', { skip: SIN_BASE }, async () => {
+  // ═══ EL MODO DE FALLA QUE ESTO PREVIENE NO REVIENTA: MIENTE (19/08/2026) ═══
+  //
+  // `orquestador/lib/estado-empresa.mjs` lee `obra_panel.monto_contratado` por conexión directa,
+  // como `postgres`. Ahí no hay JWT, `es_administracion()` devuelve false —falla cerrado, como se
+  // diseñó— y la función devolvía NULL: el estado de la empresa habría contado las ocho obras como
+  // «sin contrato», sin un solo error. Ningún test de permisos lo habría visto, porque desde el
+  // punto de vista de los permisos estaba funcionando perfecto.
+  //
+  // Este test corre POR CONEXIÓN DIRECTA, así que mide exactamente ese contexto.
+  const { rows: [antes] } = await query(
+    `select monto_contratado from public.obra_canonica where id = 'san-francisco'`)
+  try {
+    await query(`update public.obra_canonica set monto_contratado = 987654321 where id = 'san-francisco'`)
+    const { rows: [r] } = await query(
+      `select monto_contratado from public.obra_panel where obra_id = 'san-francisco'`)
+    assert.equal(Number(r.monto_contratado), 987654321,
+      'el contexto interno (pg_cron, el orquestador) dejó de ver el contrato: las rutinas mienten en silencio')
+  } finally {
+    await query(`update public.obra_canonica set monto_contratado = $1 where id = 'san-francisco'`,
+      [antes?.monto_contratado ?? null])
+    const { rows: [fin] } = await query(
+      `select monto_contratado from public.obra_canonica where id = 'san-francisco'`)
+    assert.equal(fin.monto_contratado, antes?.monto_contratado ?? null,
+      'quedó el centinela del test escrito en el contrato de una obra real')
+  }
+})
+
+test('las dos vistas legacy no las lee authenticated', { skip: SIN_BASE }, async () => {
+  // Publican contrato, presupuesto, margen y pendiente de certificar de la tabla legacy, y son
+  // `security_invoker`. Ningún archivo de `src/` las consulta; su único consumidor corre como dueño.
+  for (const vista of ['obra_resumen_economico', 'obra_ejecucion_financiera']) {
+    const { rows } = await query(
+      `select 1 from information_schema.role_table_grants
+        where table_schema = 'public' and table_name = $1
+          and grantee = 'authenticated' and privilege_type = 'SELECT'`,
+      [vista],
+    )
+    assert.equal(rows.length, 0,
+      `${vista} volvió a ser legible por authenticated y publica el cuadro comercial entero`)
+  }
+})
+
 test('el único camino al monto contratado tiene el portero adentro', { skip: SIN_BASE }, async () => {
   // Una función `security definer` corre como su dueño: si le faltara el `es_administracion()`,
   // devolvería el contrato a cualquiera. Se verifica que las tres lo citan y que fijan `search_path`
@@ -94,6 +141,8 @@ test('el único camino al monto contratado tiene el portero adentro', { skip: SI
     assert.ok(f.prosecdef, `${f.proname} no es security definer: no podría leer la columna cerrada`)
     assert.ok(f.def.includes('es_administracion()'),
       `${f.proname} devuelve el dato sin preguntar quién pregunta`)
+    assert.ok(f.def.includes('auth.uid() is null'),
+      `${f.proname} dejaría ciego al contexto interno (pg_cron, el orquestador): mentiría en silencio`)
     assert.ok(f.conf.includes('search_path=public'),
       `${f.proname} es definer y no fija search_path`)
   }
