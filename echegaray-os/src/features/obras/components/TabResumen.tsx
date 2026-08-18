@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import type { ObraPanel, PlanVsReal, Restriccion } from '@/features/obras/types'
 import { PlanVsRealResumen } from './PlanVsRealResumen'
+import { ChecklistPreparacion } from './ChecklistPreparacion'
 import { fecha, plataCorta } from './formato'
 
 // EL RESUMEN DE LA OBRA — contesta UNA pregunta: ¿cómo está, y qué necesita atención?
@@ -77,26 +78,19 @@ export function alertasDeLaObra(
   return a
 }
 
-/**
- * LO QUE FALTA CONFIGURAR PARA QUE LA OBRA SE PUEDA MEDIR — no es una alerta, es una lista de tareas.
+/*
+ * ═══ ACÁ VIVÍA `configuracionPendiente()`, Y LA REEMPLAZA EL CHECKLIST DE PREPARACIÓN ═══
  *
- * El dueño: *"Mostrar discretamente configuración faltante: Línea base · Responsable · HH plan ·
- * Presupuesto → Pendiente"*. Y «discretamente» es la palabra que manda: una obra sin línea base no
- * está en problemas, está sin configurar, y mezclar las dos cosas en el mismo bloque rojo enseña a
- * ignorar el bloque rojo.
+ * Miraba cuatro cosas —línea base, responsable, HH plan, presupuesto— y las publicaba como cuatro
+ * rótulos con la palabra «Pendiente» al lado. El defecto no era el criterio: era que «Pendiente» no
+ * es trabajo. No decía cuánto faltaba (0 de 344 o 343 de 344 se veían igual), no decía dónde
+ * resolverlo, y no miraba ni el cronograma, ni el personal asignado, ni la carpeta de Drive, ni el
+ * contrato — cuatro de las siete cosas que hay que tener listas para que una obra arranque.
  *
- * Cada línea es la razón por la que una comparación de PLAN vs REAL no existe: sin línea base no hay
- * desvío de plazo, sin HH plan no hay desvío de HH, sin presupuesto no hay desvío de costo. Por eso
- * está acá y no en una pantalla de configuración: se lee justo al lado del vacío que explica.
+ * Se reemplaza, NO se suma: dos listas de «lo que falta» en la misma pantalla se contradicen el día
+ * que a una se le agrega un criterio y a la otra no. La única lista vive en
+ * `services/preparacion.ts` (pura, con prueba) y la dibuja `<ChecklistPreparacion>`.
  */
-export function configuracionPendiente(obra: ObraPanel, plan: PlanVsReal | null): { k: string }[] {
-  return [
-    { k: 'Línea base', falta: !plan?.actividades_con_baseline },
-    { k: 'Responsable', falta: !obra.jefe_obra },
-    { k: 'HH plan', falta: plan?.hh_plan == null && plan?.hh_estimada == null },
-    { k: 'Presupuesto', falta: plan?.costo_presupuestado == null },
-  ].filter((x) => x.falta).map(({ k }) => ({ k }))
-}
 
 export function TabResumen({
   obra, plan, abiertas, obraId, editar, archivar, veComercial = true,
@@ -114,7 +108,6 @@ export function TabResumen({
   veComercial?: boolean
 }) {
   const alertas = alertasDeLaObra(obra, plan, abiertas)
-  const pendientes = configuracionPendiente(obra, plan)
 
   // PLAZO: el desvío contra la LÍNEA BASE, que es lo único contra lo que un desvío significa algo.
   // Sin baseline sellada no hay desvío de plazo — hay un plan, y un plan no se desvía de sí mismo.
@@ -184,21 +177,10 @@ export function TabResumen({
 
       {plan && <PlanVsRealResumen plan={plan} obraId={obraId} veComercial={veComercial} />}
 
-      {/* La configuración que falta va DEBAJO del plan contra real y en el tono más bajo de la
-          pantalla: explica los guiones de arriba, no compite con ellos. */}
-      {pendientes.length > 0 && (
-        <section data-testid="configuracion-pendiente">
-          <h2 className="mb-2 text-[11px] font-medium uppercase tracking-wide text-faint">Falta configurar</h2>
-          <dl className="grid gap-x-8 text-[13px] sm:grid-cols-2 lg:grid-cols-4">
-            {pendientes.map((x: { k: string }) => (
-              <div key={x.k} className="flex items-baseline justify-between gap-3 border-b border-line py-1.5">
-                <dt className="text-muted">{x.k}</dt>
-                <dd className="text-faint">Pendiente</dd>
-              </div>
-            ))}
-          </dl>
-        </section>
-      )}
+      {/* LO QUE FALTA PARA QUE LA OBRA PRODUZCA va DEBAJO del plan contra real y PLEGADO: explica
+          los guiones de arriba, no compite con ellos. Y desaparece solo cuando no falta nada — un
+          checklist entero en ✓ ocupa lugar sin decir nada. */}
+      <ChecklistPreparacion obraId={obraId} plegado ocultarSiCompleto />
 
       {/* El plazo y el jefe de obra son ficha, no titular: se consultan, no se deciden todos los
           días. Por eso van al pie y en dos columnas de definición, sin recuadro propio. */}
