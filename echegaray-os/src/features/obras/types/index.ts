@@ -87,6 +87,15 @@ export interface Actividad {
   comentario: string | null
   editado_a_mano: boolean
   fuente_pestana: string | null
+  /** Cuándo se congeló la línea base. Con fecha, `sellarBaseline` ya no vuelve a correr. */
+  sellada_en: string | null
+  /** La persona que responde por la actividad. Una cuadrilla no rinde cuentas; una persona sí. */
+  responsable_id: string | null
+  hh_plan: number | null
+  hh_real: number | null
+  /** Archivada NO es borrada: sale del Gantt y de los promedios, y su historia queda. */
+  archivada: boolean
+  creada_en_web: boolean
 }
 
 export const TIPO_RESTRICCION = [
@@ -133,6 +142,98 @@ export interface DocumentoObra {
   path: string | null
   mime_type: string | null
   modified_time: string | null
+}
+
+/**
+ * PLAN CONTRA REAL — una fila por obra, de la vista `obra_plan_vs_real`.
+ *
+ * La vista publica LAS DOS PUNTAS de cada comparación además del desvío, y anula el desvío cuando
+ * le falta una punta. Esos `null` son el dato más importante del tipo: no son "cero", son "falta
+ * la otra mitad", y la pantalla tiene que decir cuál falta en vez de dibujar un 0%.
+ */
+export interface PlanVsReal {
+  obra_id: string
+  nombre: string
+  cliente_id: string | null
+  cliente_nombre: string | null
+  estado: string
+  etapa: Etapa | null
+  // Plazo
+  inicio_plan: string | null
+  fin_plan: string | null
+  inicio_base: string | null
+  fin_base: string | null
+  desvio_plazo_dias: number | null
+  actividades_atrasadas: number | null
+  actividades_con_baseline: number | null
+  // Avance
+  avance_pct: number | null
+  n_actividades_medidas: number
+  n_actividades: number
+  // HH
+  hh_plan: number | null
+  hh_estimada: number | null
+  hh_real: number | null
+  desvio_hh_pct: number | null
+  // Economía
+  presupuesto_id: string | null
+  monto_presupuestado: number | null
+  costo_presupuestado: number | null
+  costo_real: number | null
+  desvio_costo_pct: number | null
+  monto_contratado: number | null
+  margen_esperado: number | null
+  margen_actual: number | null
+  // Contrato
+  certificado: number | null
+  facturado: number | null
+  cobrado: number | null
+  pendiente_certificar: number | null
+  pendiente_cobrar: number | null
+}
+
+/** Una persona del legajo. `personas` es la única fuente de nombres del plantel. */
+export interface Persona {
+  id: string
+  nombre_completo: string
+  categoria: string | null
+  especialidad: string | null
+  fecha_egreso: string | null
+}
+
+export const ROLES_ASIGNACION = ['responsable', 'integrante'] as const
+export type RolAsignacion = (typeof ROLES_ASIGNACION)[number]
+
+/** Quién trabaja en la obra. `persona` viene del join con `personas`. */
+export interface Asignacion {
+  id: string
+  obra_id: string
+  persona_id: string
+  rol: RolAsignacion
+  cuadrilla: string | null
+  actividad_id: string | null
+  desde: string | null
+  hasta: string | null
+  notas: string | null
+  persona_nombre: string | null
+  persona_especialidad: string | null
+}
+
+/** Un certificado de avance contra el contrato base. Las tres etapas van por separado y sin orden
+ *  impuesto: un certificado sin facturar y una factura sin cobrar son estados reales, no errores. */
+export interface Certificado {
+  id: string
+  obra_canonica_id: string | null
+  numero: string | null
+  descripcion: string | null
+  fecha_certificacion: string
+  monto_certificado: number
+  fecha_facturacion: string | null
+  monto_facturado: number | null
+  referencia_factura: string | null
+  fecha_cobranza: string | null
+  monto_cobrado: number | null
+  notas: string | null
 }
 
 export type ServiceResult<T> = { data: T; error: null } | { data: null; error: string }

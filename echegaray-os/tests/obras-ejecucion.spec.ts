@@ -1,0 +1,365 @@
+import { test, expect } from '@playwright/test'
+import { conBase, entrar, laFila, limpiar, MARCA, OBRA } from './util/obras-e2e'
+
+// MVP ERP DE OBRAS · LA EJECUCIÓN: cronograma, personal, economía y planificación.
+//
+// Mismo contrato que el recorrido del cliente: se carga por la pantalla, SE RECARGA, se exige el
+// dato, y se borra al final.
+//
+// ═══ POR QUÉ ESCRIBE SOBRE UNA OBRA REAL ═══
+//
+// Porque todavía no puede crear una de prueba: `obra_canonica` tiene su policy de escritura pero
+// nunca se le dio el grant de insert a `authenticated` (ver `obras-cliente-y-obra.spec.ts` y la
+// migración 20260818230000_obra_canonica_grant_escritura.sql). Hasta que eso se aplique, las
+// actividades, asignaciones, certificados e impedimentos se prueban sobre `le-comedor`, creando y
+// borrando filas propias marcadas con MARCA — que es lo que limpia `limpiar()` antes y después.
+
+// ── CRONOGRAMA: CREAR, EDITAR, AVANZAR Y ARCHIVAR UNA ACTIVIDAD ─────────────
+
+test('cronograma: la actividad creada desde el Gantt se edita, recibe avance y se archiva — y persiste', async ({ page }) => {
+  test.setTimeout(180000)
+  const sb = await conBase()
+  await limpiar(sb)
+  const nombre = `${MARCA} Actividad ${Date.now()}`
+
+  try {
+    await entrar(page)
+    await page.goto(`/obras/${OBRA}?vista=gantt`)
+
+    // ── ALTA ────────────────────────────────────────────────────────────────
+    await page.getByTestId('nueva-actividad').click()
+    const alta = page.getByTestId('form-nueva-actividad')
+    await alta.locator('input[name="nombre"]').fill(nombre)
+    await alta.locator('input[name="seccion"]').fill(MARCA)
+    await alta.locator('input[name="inicio_plan"]').fill('2026-08-20')
+    await alta.locator('input[name="fin_plan"]').fill('2026-08-27')
+    await page.getByTestId('form-nueva-actividad-enviar').click()
+    await expect(page.getByTestId('form-nueva-actividad-ok')).toBeVisible({ timeout: 30000 })
+
+    await page.reload()
+    const enGantt = page.getByTestId('gantt').getByRole('button', { name: new RegExp(nombre) })
+    await expect(enGantt).toBeVisible()
+
+    // ── EL PANEL CONTEXTUAL: SE SELECCIONA LA BARRA Y APARECE AL COSTADO ────
+    await enGantt.click()
+    const panel = page.getByTestId('panel-actividad')
+    await expect(panel).toBeVisible()
+    await expect(panel).toContainText(nombre)
+    // La línea base se dice siempre: "sin sellar" no es lo mismo que "en fecha".
+    await expect(panel).toContainText('sin sellar')
+
+    // ── EDICIÓN ─────────────────────────────────────────────────────────────
+    await panel.locator('summary', { hasText: 'Editar la actividad' }).click()
+    const editar = page.getByTestId('form-editar-actividad')
+    await editar.locator('input[name="hh_plan"]').fill('40')
+    await editar.locator('input[name="cuadrilla"]').fill(`${MARCA} cuadrilla`)
+    await editar.locator('select[name="responsable_id"]').selectOption({ index: 1 })
+    await page.getByTestId('form-editar-actividad-enviar').click()
+    await expect(page.getByTestId('form-editar-actividad-ok')).toBeVisible({ timeout: 30000 })
+
+    const { data: guardadaRaw } = await sb.from('obra_actividad')
+      .select('id, hh_plan, cuadrilla, responsable_id, editado_a_mano')
+      .eq('obra_id', OBRA).eq('nombre', nombre).single()
+    const guardada = laFila(guardadaRaw, 'la actividad recién creada')
+    expect(Number(guardada.hh_plan)).toBe(40)
+    expect(guardada.cuadrilla).toBe(`${MARCA} cuadrilla`)
+    expect(guardada.responsable_id, 'el responsable sale de `personas`, no de un texto libre').toBeTruthy()
+    // LO QUE TOCÓ UNA PERSONA LE GANA AL TRACKER: sin esta marca, el sincronizador de Drive lo pisa.
+    expect(guardada.editado_a_mano).toBe(true)
+
+    // Y la HH plan cargada aparece en Personal, que es donde se mide contra las horas reales.
+    await page.goto(`/obras/${OBRA}?vista=personal`)
+    await expect(page.getByText('HH plan')).toBeVisible()
+
+    // ── AVANCE RÁPIDO ───────────────────────────────────────────────────────
+    await page.goto(`/obras/${OBRA}?vista=gantt`)
+    await page.getByTestId('gantt').getByRole('button', { name: new RegExp(nombre) }).click()
+    await page.getByTestId('avance-50').click()
+    await expect(async () => {
+      const { data } = await sb.from('obra_actividad').select('pct').eq('id', guardada.id).single()
+      expect(Number(laFila(data, 'el avance registrado').pct)).toBe(50)
+    }).toPass({ timeout: 30000 })
+
+    await page.reload()
+    await page.getByTestId('gantt').getByRole('button', { name: new RegExp(nombre) }).click()
+    await expect(page.getByTestId('avance-valor')).toHaveValue('50')
+
+    // ── ARCHIVAR NO ES BORRAR ───────────────────────────────────────────────
+    await page.getByTestId('archivar-actividad').click()
+    await expect(async () => {
+      const { data } = await sb.from('obra_actividad').select('archivada, pct').eq('id', guardada.id).single()
+      const act = laFila(data, 'la actividad archivada')
+      expect(act.archivada).toBe(true)
+      // El avance sobrevive al archivado: por eso se archiva en vez de borrar.
+      expect(Number(act.pct)).toBe(50)
+    }).toPass({ timeout: 30000 })
+
+    await page.reload()
+    await expect(page.getByTestId('gantt').getByRole('button', { name: new RegExp(nombre) })).toHaveCount(0)
+    const archivadas = page.getByTestId('actividades-archivadas')
+    await expect(archivadas).toContainText(nombre)
+
+    await archivadas.locator('summary').click()
+    await archivadas.locator('li', { hasText: nombre }).getByTestId('restaurar-actividad').click()
+    await expect(async () => {
+      const { data } = await sb.from('obra_actividad').select('archivada').eq('id', guardada.id).single()
+      expect(laFila(data, 'la actividad restaurada').archivada).toBe(false)
+    }).toPass({ timeout: 30000 })
+  } finally {
+    await limpiar(sb)
+    await sb.auth.signOut()
+  }
+})
+
+// ── PERSONAL: ASIGNAR Y QUITAR GENTE DE LA OBRA ─────────────────────────────
+
+test('personal: la persona asignada sigue asignada después de recargar, y se puede sacar', async ({ page }) => {
+  test.setTimeout(180000)
+  const sb = await conBase()
+  await limpiar(sb)
+
+  try {
+    await entrar(page)
+    await page.goto(`/obras/${OBRA}?vista=personal`)
+
+    // LAS DOS PUNTAS DE LAS HH, Y EL DESVÍO SÓLO CUANDO ESTÁN LAS DOS. Ningún registro de horas
+    // apunta todavía al eje canónico: eso se dice, no se publica como cero.
+    await expect(page.getByText(/nadie imputó (horas|)/i).first()).toBeVisible()
+
+    await page.getByTestId('alta-asignacion').locator('summary').click()
+    const form = page.getByTestId('form-asignar')
+    const select = form.locator('select[name="persona_id"]')
+    const persona = ((await select.locator('option').nth(1).textContent()) ?? '').trim()
+    expect(persona, 'el legajo tiene que tener a alguien para asignar').toBeTruthy()
+    await select.selectOption({ index: 1 })
+    await form.locator('select[name="rol"]').selectOption('responsable')
+    await form.locator('input[name="cuadrilla"]').fill(`${MARCA} cuadrilla`)
+    await form.locator('input[name="notas"]').fill(MARCA)
+    await page.getByTestId('form-asignar-enviar').click()
+    await expect(page.getByTestId('form-asignar-ok')).toBeVisible({ timeout: 30000 })
+
+    await page.reload()
+    const fila = page.getByTestId('tabla-personal').locator('tr', { hasText: persona })
+    await expect(fila).toBeVisible()
+    await expect(fila).toContainText('responsable')
+
+    // Y no se puede asignar dos veces a lo mismo: el índice único lo impide y el error se MUESTRA
+    // traducido, en vez de tragarse un "duplicate key value violates unique constraint".
+    await page.getByTestId('alta-asignacion').locator('summary').click()
+    await page.getByTestId('form-asignar').locator('select[name="persona_id"]').selectOption({ index: 1 })
+    await page.getByTestId('form-asignar').locator('input[name="notas"]').fill(MARCA)
+    await page.getByTestId('form-asignar-enviar').click()
+    await expect(page.getByTestId('form-asignar-error')).toContainText(/ya está asignada/i, { timeout: 30000 })
+
+    await page.reload()
+    await page.getByTestId('tabla-personal').locator('tr', { hasText: persona })
+      .getByTestId('quitar-asignacion').click()
+    await expect(async () => {
+      const { count } = await sb.from('obra_asignacion')
+        .select('id', { count: 'exact', head: true }).eq('obra_id', OBRA).ilike('notas', `%${MARCA}%`)
+      expect(count).toBe(0)
+    }).toPass({ timeout: 30000 })
+    await page.reload()
+    await expect(page.getByTestId('tabla-personal')).toHaveCount(0)
+  } finally {
+    await limpiar(sb)
+    await sb.auth.signOut()
+  }
+})
+
+// ── ECONOMÍA Y COBRANZA: EL CERTIFICADO ─────────────────────────────────────
+
+test('economía: el certificado cargado persiste, suma en los totales y cada número dice de dónde sale', async ({ page }) => {
+  test.setTimeout(180000)
+  const sb = await conBase()
+  await limpiar(sb)
+  const numero = `${MARCA}-${Date.now()}`
+
+  try {
+    await entrar(page)
+    await page.goto(`/obras/${OBRA}?vista=economia`)
+
+    // LO QUE FALTA SE DICE CON PALABRAS. Esta obra no tiene presupuesto: publicar un 0% de desvío
+    // significaría "vamos en presupuesto", que es exactamente lo contrario de la verdad.
+    await expect(page.getByTestId('economia-costo')).toContainText('no determinado')
+    await expect(page.getByTestId('economia-costo')).toContainText(/no hay ningún presupuesto/i)
+
+    await page.getByTestId('alta-certificado').locator('summary').click()
+    const form = page.getByTestId('form-certificado')
+    await form.locator('input[name="numero"]').fill(numero)
+    await form.locator('input[name="fecha_certificacion"]').fill('2026-08-15')
+    await form.locator('input[name="monto_certificado"]').fill('1500000')
+    await form.locator('input[name="descripcion"]').fill(`${MARCA} certificado de prueba`)
+
+    // LA ETAPA VA COMPLETA O NO VA: un monto facturado sin su fecha no se puede ubicar en el flujo
+    // de fondos. La base lo rechaza con un mensaje de constraint que nadie entiende; se avisa antes.
+    await form.locator('input[name="monto_facturado"]').fill('1500000')
+    await page.getByTestId('form-certificado-enviar').click()
+    await expect(page.getByTestId('form-certificado-error')).toContainText(/facturación va completa/i, { timeout: 30000 })
+
+    await form.locator('input[name="fecha_facturacion"]').fill('2026-08-16')
+    await page.getByTestId('form-certificado-enviar').click()
+    await expect(page.getByTestId('form-certificado-ok')).toBeVisible({ timeout: 30000 })
+
+    await page.reload()
+    const fila = page.getByTestId('tabla-certificados').locator('tr', { hasText: numero })
+    await expect(fila).toBeVisible()
+    await expect(fila).toContainText('sin cobrar')
+    // El total sale de la vista `obra_plan_vs_real`, no de una suma hecha en la pantalla.
+    await expect(page.getByTestId('economia-cobranza')).toContainText('$1.500.000')
+
+    await fila.getByTestId('borrar-certificado').click()
+    await expect(async () => {
+      const { count } = await sb.from('certificados')
+        .select('id', { count: 'exact', head: true }).eq('numero', numero)
+      expect(count).toBe(0)
+    }).toPass({ timeout: 30000 })
+    await page.reload()
+    await expect(page.getByTestId('tabla-certificados')).toHaveCount(0)
+  } finally {
+    await limpiar(sb)
+    await sb.auth.signOut()
+  }
+})
+
+// ── PLANIFICACIÓN: IMPEDIMENTOS ─────────────────────────────────────────────
+
+test('planificación: el impedimento se anota con dueño y fecha, persiste, y se libera', async ({ page }) => {
+  test.setTimeout(180000)
+  const sb = await conBase()
+  await limpiar(sb)
+  const texto = `${MARCA} falta el plano de detalle`
+
+  try {
+    await entrar(page)
+    await page.goto(`/obras/${OBRA}?vista=planificacion`)
+    // SIN JERGA EN LA PANTALLA: adentro se llama restricción y lookahead; afuera se lee en castellano.
+    await expect(page.getByRole('heading', { name: /Próximos trabajos/ })).toBeVisible()
+
+    await page.getByTestId('alta-impedimento').locator('summary').click()
+    const form = page.getByTestId('form-impedimento')
+    await form.locator('input[name="descripcion"]').fill(texto)
+    await form.locator('select[name="tipo"]').selectOption('informacion')
+    await form.locator('input[name="responsable"]').fill(`${MARCA} responsable`)
+    await form.locator('input[name="fecha_compromiso"]').fill('2026-09-01')
+    await page.getByTestId('form-impedimento-enviar').click()
+    await expect(page.getByTestId('form-impedimento-ok')).toBeVisible({ timeout: 30000 })
+
+    await page.reload()
+    const fila = page.getByTestId('tabla-impedimentos').locator('tr', { hasText: texto })
+    await expect(fila).toBeVisible()
+    await expect(fila).toContainText(`${MARCA} responsable`)
+
+    await fila.getByTestId('liberar-impedimento').click()
+    await expect(async () => {
+      const { data } = await sb.from('obra_restriccion').select('estado, fecha_liberacion')
+        .eq('obra_id', OBRA).ilike('descripcion', `%${MARCA}%`).single()
+      const imp = laFila(data, 'el impedimento liberado')
+      expect(imp.estado).toBe('liberada')
+      expect(imp.fecha_liberacion).toBeTruthy()
+    }).toPass({ timeout: 30000 })
+    await page.reload()
+    await expect(page.getByTestId('tabla-impedimentos').locator('tr', { hasText: texto })).toContainText('liberado')
+  } finally {
+    await limpiar(sb)
+    await sb.auth.signOut()
+  }
+})
+
+// ── PLAN CONTRA REAL: LA ALERTA DICE DE DÓNDE SALE Y LLEVA AL DATO ──────────
+
+test('el resumen publica los desvíos con su origen, y cada uno lleva a la solapa del dato', async ({ page }) => {
+  test.setTimeout(120000)
+  await entrar(page)
+  await page.goto(`/obras/${OBRA}`)
+
+  const bloque = page.getByTestId('plan-vs-real')
+  await expect(bloque).toBeVisible()
+  // Cinco comparaciones: plazo, avance, HH, costo y margen (más atrasos, si los hay).
+  expect(await bloque.locator('li').count()).toBeGreaterThanOrEqual(5)
+
+  // NINGÚN SEMÁFORO SIN EXPLICACIÓN: la falta de línea base se publica como falta, no como "en
+  // fecha", y se dice de qué columna sale.
+  await expect(bloque).toContainText(/línea base no está sellada/i)
+  await expect(bloque).toContainText(/obra_actividad/)
+  await expect(bloque).toContainText(/no tiene presupuesto cargado/i)
+
+  // Y se puede TOCAR para ir al dato: una alerta que no se puede rastrear se deja de mirar.
+  await bloque.getByRole('link').filter({ hasText: /presupuesto/i }).first().click()
+  await page.waitForURL(/vista=economia/)
+  await expect(page.getByTestId('economia-costo')).toBeVisible()
+})
+
+// ── PORTAFOLIO TRANSVERSAL ──────────────────────────────────────────────────
+
+test('el portafolio publica plazo, margen y estado, y dice qué falta cuando no puede calcularlos', async ({ page }) => {
+  test.setTimeout(120000)
+  await entrar(page)
+  await page.goto('/obras')
+
+  const tabla = page.getByTestId('portafolio-tabla')
+  await expect(tabla).toBeVisible()
+  for (const columna of ['Plazo', 'Margen', 'Estado']) {
+    await expect(tabla.locator('th', { hasText: columna }).first()).toBeVisible()
+  }
+  // NINGUNA OBRA TIENE LÍNEA BASE TODAVÍA: la columna lo dice en lugar de mostrar un cero.
+  await expect(tabla).toContainText(/sin línea base/i)
+  // Y el margen que no se puede calcular nombra la punta que falta.
+  await expect(tabla).toContainText(/falta el (contratado|costo imputado)/i)
+})
+
+// ── EN EL TELÉFONO NO SE DESPLAZA DE COSTADO ────────────────────────────────
+
+test('ninguna pantalla nueva empuja la página de costado en el teléfono', async ({ page }) => {
+  test.setTimeout(180000)
+  await entrar(page)
+  await page.setViewportSize({ width: 390, height: 780 })
+
+  const rutas = [
+    '/clientes',
+    '/clientes/la-estrella?vista=informacion',
+    '/clientes/la-estrella?vista=contactos',
+    '/clientes/la-estrella?vista=documentos',
+    '/obras',
+    `/obras/${OBRA}`,
+    `/obras/${OBRA}?vista=gantt`,
+    `/obras/${OBRA}?vista=personal`,
+    `/obras/${OBRA}?vista=economia`,
+    `/obras/${OBRA}?vista=planificacion`,
+    `/obras/${OBRA}?vista=documentos`,
+  ]
+  for (const ruta of rutas) {
+    await page.goto(ruta)
+    await page.waitForTimeout(400)
+    const { doc, win } = await page.evaluate(() => ({
+      doc: document.documentElement.scrollWidth, win: window.innerWidth,
+    }))
+    expect(doc, `${ruta} se desplaza de costado (${doc}px en una pantalla de ${win}px)`).toBeLessThanOrEqual(win)
+  }
+
+  // Y con los formularios ABIERTOS tampoco: son lo que más ancho pide y se abren justo en el
+  // teléfono, que es el aparato donde se carga.
+  const conFormulario: [string, string][] = [
+    ['/clientes', 'alta-cliente'],
+    [`/obras/${OBRA}?vista=personal`, 'alta-asignacion'],
+    [`/obras/${OBRA}?vista=economia`, 'alta-certificado'],
+    [`/obras/${OBRA}?vista=planificacion`, 'alta-impedimento'],
+    [`/obras/${OBRA}`, 'editar-obra'],
+  ]
+  for (const [ruta, testid] of conFormulario) {
+    await page.goto(ruta)
+    await page.getByTestId(testid).locator('summary').click()
+    await page.waitForTimeout(300)
+    const doc = await page.evaluate(() => document.documentElement.scrollWidth)
+    expect(doc, `${ruta} con ${testid} abierto se desplaza de costado (${doc}px)`).toBeLessThanOrEqual(390)
+  }
+
+  // El panel del Gantt es el caso más difícil: cronograma y formulario a la vez. En el teléfono va
+  // abajo, no al costado — es la única manera de que ninguno de los dos se recorte.
+  await page.goto(`/obras/${OBRA}?vista=gantt`)
+  await page.getByTestId('gantt').locator('button').filter({ hasNotText: /^(semana|mes)$/ }).nth(3).click()
+  await expect(page.getByTestId('panel-actividad')).toBeVisible()
+  await page.waitForTimeout(300)
+  const conPanel = await page.evaluate(() => document.documentElement.scrollWidth)
+  expect(conPanel, `el Gantt con el panel abierto se desplaza de costado (${conPanel}px)`).toBeLessThanOrEqual(390)
+})

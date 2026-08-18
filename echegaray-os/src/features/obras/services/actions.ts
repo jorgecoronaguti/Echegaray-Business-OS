@@ -30,7 +30,12 @@ const obraSchema = z.object({
   cliente_id: z.string().uuid('Elegí un cliente'),
   ubicacion: z.string().trim().optional(),
   jefe_obra: z.string().trim().optional(),
-  etapa: z.enum(['previo', 'inicio', 'desarrollo', 'terminacion', 'cierre']).optional(),
+  // LA ETAPA SIN DECLARAR ES UNA RESPUESTA VÁLIDA, y por eso el vacío entra en el esquema.
+  // `z.enum(...).optional()` acepta que el campo NO VENGA, pero un <select> con la opción "sin
+  // declarar" manda cadena vacía, no ausencia: el alta de obra moría con "Invalid enum value.
+  // Expected 'previo' | ... received ''" cada vez que alguien no elegía etapa. Mismo criterio que
+  // `fechaOpt` y `numOpt` acá arriba.
+  etapa: z.union([z.enum(['previo', 'inicio', 'desarrollo', 'terminacion', 'cierre']), z.literal('')]).optional(),
   estado: z.enum(['activa', 'pausada', 'cerrada']).optional(),
   monto_contratado: numOpt,
   fecha_inicio_plan: fechaOpt,
@@ -65,7 +70,7 @@ export async function crearObra(form: FormData): Promise<Resultado> {
     cliente_texto: (cli?.nombre as string) ?? null,
     estado: d.estado ?? 'activa',
     tipo: 'obra',
-    etapa: d.etapa ?? null,
+    etapa: vacioANull(d.etapa),
     jefe_obra: d.jefe_obra || null,
     monto_contratado: vacioANull(d.monto_contratado),
     fecha_inicio_plan: vacioANull(d.fecha_inicio_plan),
@@ -74,7 +79,7 @@ export async function crearObra(form: FormData): Promise<Resultado> {
     ubicacion: d.ubicacion || null,
   })
   if (error) return { ok: false, error: error.message }
-  revalidatePath('/clientes'); revalidatePath('/obras')
+  revalidatePath('/clientes', 'layout'); revalidatePath('/obras')
   return { ok: true, id }
 }
 
@@ -87,7 +92,7 @@ export async function editarObra(obraId: string, form: FormData): Promise<Result
     nombre: d.nombre,
     ...(d.cliente_id ? { cliente_id: d.cliente_id } : {}),
     estado: d.estado,
-    etapa: d.etapa ?? null,
+    etapa: vacioANull(d.etapa),
     jefe_obra: d.jefe_obra || null,
     monto_contratado: vacioANull(d.monto_contratado),
     fecha_inicio_plan: vacioANull(d.fecha_inicio_plan),
@@ -98,7 +103,7 @@ export async function editarObra(obraId: string, form: FormData): Promise<Result
     ubicacion: d.ubicacion || null,
   }).eq('id', obraId)
   if (error) return { ok: false, error: error.message }
-  revalidatePath(`/obras/${obraId}`); revalidatePath('/obras'); revalidatePath('/clientes')
+  revalidatePath(`/obras/${obraId}`); revalidatePath('/obras'); revalidatePath('/clientes', 'layout')
   return { ok: true }
 }
 
@@ -195,7 +200,32 @@ export async function registrarAvance(obraId: string, actividadId: string, pct: 
     .update({ pct: Math.round(pct), editado_a_mano: true })
     .eq('id', actividadId).eq('obra_id', obraId)
   if (error) return { ok: false, error: error.message }
-  revalidatePath(`/obras/${obraId}`); revalidatePath('/obras'); revalidatePath('/clientes')
+  revalidatePath(`/obras/${obraId}`); revalidatePath('/obras'); revalidatePath('/clientes', 'layout')
+  return { ok: true }
+}
+
+/**
+ * MARCAR (O DESMARCAR) UNA ACTIVIDAD COMO HITO. Va aparte de `editarActividad` a propósito.
+ *
+ * `editarActividad` valida con el esquema en `partial`, y un checkbox que no viaja en el FormData es
+ * indistinguible de uno desmarcado. Si el tipo se editara ahí, abrir el panel de una fila de
+ * RESUMEN y guardar cualquier cambio la convertiría en tarea y se llevaría puesta la estructura del
+ * cronograma. Acá el tipo se cambia sólo cuando alguien lo pidió, y nunca sobre un resumen.
+ */
+export async function marcarHito(obraId: string, actividadId: string, esHito: boolean): Promise<Resultado> {
+  const supabase = await createClient()
+  const { data: act } = await supabase.from('obra_actividad')
+    .select('tipo').eq('id', actividadId).eq('obra_id', obraId).maybeSingle()
+  if (!act) return { ok: false, error: 'No encontré esa actividad en esta obra' }
+  if (act.tipo === 'resumen') {
+    return { ok: false, error: 'Una fila de resumen agrupa a otras: no puede ser un hito.' }
+  }
+  const { error } = await supabase.from('obra_actividad')
+    // El hito no dura: si tuviera días de plan, el Gantt dibujaría un rombo y una barra a la vez.
+    .update({ tipo: esHito ? 'hito' : 'tarea', ...(esHito ? { dias_plan: 0 } : {}), editado_a_mano: true })
+    .eq('id', actividadId).eq('obra_id', obraId)
+  if (error) return { ok: false, error: error.message }
+  revalidatePath(`/obras/${obraId}`)
   return { ok: true }
 }
 

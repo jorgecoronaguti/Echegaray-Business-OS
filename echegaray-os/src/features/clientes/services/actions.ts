@@ -46,7 +46,7 @@ export async function crearCliente(form: FormData): Promise<Resultado> {
     .insert({ nombre, slug, cuit: cuit || null, drive_carpeta_id: drive_carpeta_id || null, notas: notas || null })
     .select('id').single()
   if (error) return { ok: false, error: error.message }
-  revalidatePath('/clientes')
+  revalidatePath('/clientes', 'layout')
   return { ok: true, id: data.id as string }
 }
 
@@ -62,7 +62,7 @@ export async function editarCliente(clienteId: string, form: FormData): Promise<
     .update({ nombre, cuit: cuit || null, drive_carpeta_id: drive_carpeta_id || null, notas: notas || null })
     .eq('id', clienteId)
   if (error) return { ok: false, error: error.message }
-  revalidatePath('/clientes')
+  revalidatePath('/clientes', 'layout')
   return { ok: true }
 }
 
@@ -71,7 +71,7 @@ export async function archivarCliente(clienteId: string, activo: boolean): Promi
   const supabase = await createClient()
   const { error } = await supabase.from('clientes').update({ activo }).eq('id', clienteId)
   if (error) return { ok: false, error: error.message }
-  revalidatePath('/clientes')
+  revalidatePath('/clientes', 'layout')
   return { ok: true }
 }
 
@@ -104,7 +104,7 @@ export async function borrarContacto(contactoId: string): Promise<Resultado> {
   const supabase = await createClient()
   const { error } = await supabase.from('cliente_contacto').delete().eq('id', contactoId)
   if (error) return { ok: false, error: error.message }
-  revalidatePath('/clientes')
+  revalidatePath('/clientes', 'layout')
   return { ok: true }
 }
 
@@ -119,7 +119,7 @@ export async function vincularCarpetaDrive(clienteId: string, urlOId: string): P
   const supabase = await createClient()
   const { error } = await supabase.from('clientes').update({ drive_carpeta_id: id }).eq('id', clienteId)
   if (error) return { ok: false, error: error.message }
-  revalidatePath('/clientes')
+  revalidatePath('/clientes', 'layout')
   return { ok: true }
 }
 
@@ -136,6 +136,6 @@ export async function vincularDocumento(clienteId: string, urlOId: string, rol?:
     .upsert({ cliente_id: clienteId, drive_file_id: id, rol: rol || null, origen: 'manual' },
             { onConflict: 'cliente_id,drive_file_id' })
   if (error) return { ok: false, error: error.message }
-  revalidatePath('/clientes')
+  revalidatePath('/clientes', 'layout')
   return { ok: true }
 }

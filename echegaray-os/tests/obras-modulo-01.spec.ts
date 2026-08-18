@@ -74,15 +74,18 @@ test('clientes → cliente → sus obras → la obra', async ({ page }) => {
   await expect(tabla).toBeVisible()
   expect(await tabla.locator('tbody tr').count()).toBe(3)
 
-  // Las tres solapas de la ficha existen y dicen la verdad sobre lo que todavía no se puede cargar.
+  // Las solapas de la ficha existen Y YA SE PUEDE CARGAR EN ELLAS. Hasta el 18/08 esto exigía leer
+  // el cartel de "todavía no se puede cargar un contacto": esa afirmación dejó de ser verdad, y un
+  // test que la siguiera exigiendo estaría defendiendo una limitación en vez de la capacidad.
   await page.getByRole('link', { name: 'Contactos', exact: true }).click()
   await page.waitForURL(/vista=contactos/)
-  await expect(page.getByText(/no se puede cargar un contacto/i)).toBeVisible()
+  await expect(page.getByTestId('alta-contacto')).toBeVisible()
 
   await page.getByRole('link', { name: 'Documentos', exact: true }).click()
   await page.waitForURL(/vista=documentos/)
   // Los documentos son los de Drive: vínculo, nunca copia.
-  await expect(page.getByText(/viven en Drive/i)).toBeVisible()
+  await expect(page.getByText(/en Drive/i).first()).toBeVisible()
+  await expect(page.getByTestId('alta-documento')).toBeVisible()
 
   // Y desde la obra se vuelve a SU cliente: la jerarquía se navega en los dos sentidos.
   await page.goto('/obras/le-comedor')
@@ -125,13 +128,11 @@ test('portafolio → obra → resumen · gantt · planificación · documentos',
   // Barras dibujadas de verdad: cada actividad con fecha es un <g> con su rect en el SVG.
   expect(await gantt.locator('svg g').count()).toBeGreaterThan(5)
 
-  // 5. PLANIFICACIÓN — lookahead y restricciones.
+  // 5. PLANIFICACIÓN — próximos trabajos e impedimentos, ya con su alta.
   await page.getByRole('link', { name: 'Planificación', exact: true }).click()
   await page.waitForURL(/vista=planificacion/)
-  await expect(page.getByRole('heading', { name: /Lookahead/ })).toBeVisible()
-  // Sólo lectura DECLARADA: mientras no exista el alta, la pantalla tiene que decirlo. Un vacío sin
-  // esta aclaración se lee como "esta obra no tiene restricciones", que es una afirmación falsa.
-  await expect(page.getByText(/no se puede cargar una restricción/i)).toBeVisible()
+  await expect(page.getByRole('heading', { name: /Próximos trabajos/ })).toBeVisible()
+  await expect(page.getByTestId('alta-impedimento')).toBeVisible()
 
   // 6. DOCUMENTOS — el vínculo a Drive, nunca una copia.
   await page.getByRole('link', { name: 'Documentos', exact: true }).click()
@@ -149,7 +150,7 @@ test('ninguna pantalla del módulo empuja la página de costado en el teléfono'
   // Medido el 18/08/2026: el OS entero salía 568px de ancho contra 390 de pantalla, porque el email
   // del usuario en el nav tenía `whitespace-nowrap`. La tabla ancha SÍ puede desplazarse —dentro de
   // su propio contenedor—, pero el cuerpo de la página no.
-  for (const ruta of ['/clientes', '/clientes/la-estrella', '/obras', '/obras/le-comedor', '/obras/le-comedor?vista=gantt']) {
+  for (const ruta of ['/clientes', '/clientes/la-estrella', '/obras', '/obras/le-comedor', '/obras/le-comedor?vista=gantt', '/obras/le-comedor?vista=personal', '/obras/le-comedor?vista=economia']) {
     await page.goto(ruta)
     await page.waitForTimeout(400)
     const { doc, win } = await page.evaluate(() => ({
