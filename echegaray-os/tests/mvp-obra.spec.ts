@@ -100,9 +100,19 @@ test('Personal: imputar horas llega a Postgres y vuelve a la pantalla', async ({
     await page.fill('input[name="semana"]', '2026-08-12')   // un miércoles, a propósito
     await page.fill('input[name="horas"]', '37.5')
     await page.getByTestId('form-hh').getByRole('button', { name: /Imputar/ }).click()
-    await expect(page.getByText('Horas imputadas.')).toBeVisible({ timeout: 20000 })
 
-    // ── LA EVIDENCIA ES DEL EFECTO: la fila, leída en su destino.
+    // ── LA EVIDENCIA ES DEL EFECTO, Y SE ESPERA AL EFECTO — no a un cartel.
+    //
+    // La primera versión hacía `expect(getByText('Horas imputadas.'))` y enseguida consultaba la
+    // base. Falló con el botón todavía en «Guardando…»: la server action seguía en vuelo. Un cartel
+    // de la UI no prueba que la fila esté escrita, y esperar al cartel tampoco espera a la
+    // escritura. Se hace `poll` sobre la BASE, que es el único lugar donde el efecto es un hecho.
+    await expect.poll(async () => {
+      const { count } = await sb.from('registros_hh').select('id', { count: 'exact', head: true })
+        .eq('obra_canonica_id', OBRA).eq('trabajador_o_cuadrilla', trabajador)
+      return count ?? 0
+    }, { timeout: 30000, message: 'la fila de HH nunca llegó a Postgres' }).toBe(1)
+
     const { data } = await sb.from('registros_hh')
       .select('horas, fecha_inicio_semana, obra_canonica_id, obra_id')
       .eq('obra_canonica_id', OBRA).eq('trabajador_o_cuadrilla', trabajador).single()
@@ -198,6 +208,13 @@ test('Documentos: vincular un archivo de Drive llega a Postgres y vuelve a la pa
     await page.fill('input[name="enlace"]', `https://drive.google.com/file/d/${fileId}/view?usp=sharing`)
     await page.fill('input[name="nombre"]', `${MARCA} Contrato.pdf`)
     await page.getByTestId('vincular-archivo').getByRole('button', { name: /Vincular/ }).click()
+
+    // Mismo criterio que en HH: se espera al EFECTO en la base, no al cartel de la pantalla.
+    await expect.poll(async () => {
+      const { count } = await sb.from('obra_documento')
+        .select('obra_id', { count: 'exact', head: true }).eq('drive_file_id', fileId)
+      return count ?? 0
+    }, { timeout: 30000, message: 'el vínculo nunca llegó a Postgres' }).toBe(1)
 
     const { data } = await sb.from('obra_documento')
       .select('obra_id, drive_file_id, tipo, origen').eq('drive_file_id', fileId).single()
