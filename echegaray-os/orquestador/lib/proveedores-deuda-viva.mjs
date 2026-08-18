@@ -176,22 +176,6 @@ function restaCanonica(R, cond) {
     + `-SUMIFS(${R.parcial2}${SEP}${cond})`
 }
 
-/**
- * EL HALLAZGO QUE LA RESTA CANÓNICA DEJA A LA VISTA en vez de resolver sola.
- *
- * Filas comerciales PENDIENTES con un importe positivo cargado en «Monto Parcial 1». La canónica no
- * las descuenta —Parcial 1 es, en 716 de 1.136 filas, la derivada `=T−O` y no un pago— así que si
- * alguna de ellas SÍ era un pago real, su deuda está publicada de más. El cuadro lo dice con nombre y
- * monto para que se arregle en Compras, que es donde está el dato, en vez de discutirlo acá.
- */
-export function formulaParcial1Sospechoso(R) {
-  const u = `(${R.parcial1}>0)*(${R.estado}="${PENDIENTE}")*(${R.comercial}=1)`
-  return `=LET(n${SEP}SUMPRODUCT(${u})${SEP}m${SEP}SUMPRODUCT(${u}*${R.parcial1})${SEP}`
-    + `IF(n=0${SEP}"✓ ningún importe cargado en «Monto Parcial 1» sobre una factura pendiente"${SEP}`
-    + `"${ALERTA} "&n&" factura(s) pendientes con importe en «Monto Parcial 1» por "&TEXT(m${SEP}"$#,##0")`
-    + `&" ("&TEXTJOIN(" · "${SEP}TRUE${SEP}UNIQUE(FILTER(${R.prov}${SEP}${u})))&"): o ya están pagadas y falta el estado, `
-    + `o el importe va en «Monto Pagado». Mientras tanto se publican como deuda."))`
-}
 
 /** Las declaraciones LET comunes a los dos bloques: cada rango, una sola vez y con nombre. */
 function declaraciones(R, claves) {

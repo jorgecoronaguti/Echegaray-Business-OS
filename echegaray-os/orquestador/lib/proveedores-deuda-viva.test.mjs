@@ -19,10 +19,10 @@ import {
   SEP, COLS_PROVEEDOR, COLS_FACTURA, PENDIENTE,
   rangosCompras, esRangoAbierto, referenciasCompras,
   formulaPorProveedor, formulaPorFactura, formulaControl,
-  saldoNetoProveedor, deudaComercialTotal, reservaPara, formulaParcial1Sospechoso,
+  saldoNetoProveedor, deudaComercialTotal, reservaPara,
   filasLibreta, verificarMigracionNotas, esNombreSeguro,
 } from './proveedores-deuda-viva.mjs'
-import { expresionSaldo } from './deuda-por-tramos.mjs'
+import { expresionSaldo, formulaParcial1Sospechoso } from './deuda-por-tramos.mjs'
 
 /** Las columnas reales de Compras, tal como las resuelve el generador por encabezado. */
 const COLS = {
@@ -118,10 +118,10 @@ test('el saldo del bloque dice EXACTAMENTE lo mismo que la canónica de deuda-po
 })
 
 test('el hallazgo de «Monto Parcial 1» nombra al proveedor y dice el monto', () => {
-  const f = formulaParcial1Sospechoso(R)
+  const f = formulaParcial1Sospechoso()
   assert.ok(f.startsWith('='), 'es una fórmula viva, no un número calculado acá')
-  assert.ok(f.includes(R.parcial1) && f.includes('>0'), 'mira los positivos de Parcial 1')
-  assert.ok(f.includes(R.prov), 'nombra al proveedor: sin nombre no se puede ir a arreglarlo')
+  assert.ok(f.includes('$U$4:$U') && f.includes('>0'), 'mira los positivos de Parcial 1, con rango abierto')
+  assert.ok(f.includes('$E$4:$E'), 'nombra al proveedor: sin nombre no se puede ir a arreglarlo')
   assert.ok(f.includes('SUMPRODUCT'), 'cuenta y suma sobre rangos abiertos')
   // Y no puede quedarse callado cuando no hay ninguno: un control mudo no se distingue de uno roto.
   assert.ok(f.includes('✓'), 'dice algo también cuando no encuentra nada')

@@ -108,3 +108,47 @@ test('sin sesión la base no devuelve una sola fila del módulo', async () => {
     expect(await comoUsuario(ANON, q), `${q} devolvió filas a un anónimo`).toHaveLength(0)
   }
 })
+
+// ═══ LAS CUATRO TABLAS DE «OPERACIÓN» — LA FUGA QUE ENCONTRÓ ESTA SOLAPA (19/08/2026) ═══
+//
+// Pedidos, compras, herramientas y movimientos alimentan la solapa Operación de la obra, y las
+// cuatro tenían la misma policy de lectura: `for select to authenticated using (TRUE)`. La pantalla
+// filtraba por obra; la base, no. Un jefe acotado a UNA obra por `usuario_obra` podía leer las ocho
+// con un GET desde las devtools.
+//
+// Ninguna de las cuatro tiene `obra_canonica_id`: guardan el nombre como texto y se resuelven por
+// `norm_obra()` contra `obra_alias`, el mismo diccionario que usa `obra_costo_real`. Ver
+// `20260819T0200_rls_por_obra_en_operacion.sql`.
+//
+// Este test NO comprueba "devuelve pocas filas": comprueba que devuelva MENOS que administración y
+// más que cero. Un test contra un número fijo se pondría verde el día que la tabla se vacíe.
+const TABLAS_OPERACION = [
+  'costos_obra', 'pedidos_materiales', 'herramientas', 'movimientos_herramienta',
+] as const
+
+test('las tablas de Operación filtran por obra en la BASE, no sólo en la pantalla', async () => {
+  test.setTimeout(120000)
+  const jefe = await entrar(JEFE.email, JEFE.password)
+  const admin = await entrar(ADMIN.email, ADMIN.password)
+
+  for (const tabla of TABLAS_OPERACION) {
+    const deJefe = await comoUsuario(jefe, `${tabla}?select=id`)
+    const deAdmin = await comoUsuario(admin, `${tabla}?select=id`)
+
+    expect(deAdmin.length, `${tabla}: administración no ve nada, el test no puede medir`).toBeGreaterThan(0)
+    expect(deJefe.length,
+      `${tabla}: el jefe de obra ve las ${deJefe.length} filas de TODAS las obras — la policy volvió a ser using(true)`)
+      .toBeLessThan(deAdmin.length)
+    // Y el caso positivo: si viera CERO, el filtro estaría de más y no se distinguiría de una tabla
+    // sin permisos. Su obra tiene datos en las cuatro.
+    expect(deJefe.length, `${tabla}: el jefe no ve NADA de su propia obra`).toBeGreaterThan(0)
+  }
+})
+
+test('sin sesión, las tablas de Operación no devuelven una sola fila', async () => {
+  test.setTimeout(60000)
+  for (const tabla of TABLAS_OPERACION) {
+    const r = await fetch(`${URL}/rest/v1/${tabla}?select=id`, { headers: { apikey: ANON } })
+    expect(r.status, `${tabla} contesta ${r.status} sin sesión`).toBe(401)
+  }
+})

@@ -295,5 +295,41 @@ function universoSinImporte() {
   return `(Compras!$AJ$4:$AJ=1)*(Compras!$X$4:$X="${PAGADO}")*(Compras!$O$4:$O>0)*((${n('T')}+${n('W')})=0)`
 }
 
+/**
+ * LAS FACTURAS PENDIENTES CON UN IMPORTE TIPEADO EN «MONTO PARCIAL 1» — la pregunta que queda abierta.
+ *
+ * `saldoDeLaFila` es `Total − Monto Pagado − Monto Parcial 2` y NO resta `Monto Parcial 1`. No es un
+ * olvido, está medido sobre las 1.136 filas del archivo real:
+ *
+ *     U · Monto Parcial 1 → 716 fórmulas `=T−O` · 302 valores tipeados · 84 negativos · 61 positivos
+ *     W · Monto Parcial 2 →   0 fórmulas       ·   8 valores tipeados ·  0 negativos ·  8 positivos
+ *
+ * `U` es una columna MIXTA: casi siempre la derivada `=T−O`, que es negativa mientras la factura no
+ * se pagó. Restarla la convierte en un tramo de pago que no es — y ésa fue durante meses la segunda
+ * definición de la deuda, la que hacía que el control del pie contradijera al cuadro de arriba.
+ *
+ * PERO cuando alguien tipea ahí un importe POSITIVO sobre una factura pendiente, la fila se
+ * contradice sola: o ya está pagada y le falta el estado, o el importe está en la columna equivocada.
+ * Mientras tanto su saldo se publica entero, y puede estar de más.
+ *
+ * Esta fórmula no resuelve la contradicción: la NOMBRA, con proveedor y monto, para que se arregle en
+ * Compras, que es donde está el dato. Elegir una de las dos respuestas acá sería fabricarla.
+ *
+ * @returns {string}
+ */
+export function formulaParcial1Sospechoso() {
+  // `IF(ISNUMBER(...))` NO SOBRA, y la primera versión sin él publicó `#VALUE!` en la pestaña real.
+  // `Monto Parcial 1` tiene 302 valores cargados a mano y entre ellos hay celdas de TEXTO: la
+  // comparación `>0` las tolera, pero la MULTIPLICACIÓN de la máscara por la columna arrastra el
+  // texto y rompe el SUMPRODUCT entero. Es la misma coerción que ya hace `expresionSaldo`.
+  const n = '(IF(ISNUMBER(Compras!$U$4:$U);Compras!$U$4:$U;0))'
+  const u = `(${n}>0)*(Compras!$X$4:$X="${PENDIENTE}")*(Compras!$AJ$4:$AJ=1)`
+  return `=LET(n;SUMPRODUCT(${u});m;SUMPRODUCT(${u}*${n});`
+    + `IF(n=0;"✓ ningún importe suelto en «Monto Parcial 1»";`
+    + `n&" factura(s) pendientes con "&TEXT(m;"$#,##0")&" cargado en «Monto Parcial 1» ("`
+    + `&IFERROR(TEXTJOIN(" · ";TRUE;UNIQUE(FILTER(Compras!$E$4:$E;${u})));"sin nombre")`
+    + `&"): o ya están pagadas y falta el estado, o el importe va en «Monto Pagado»"))`
+}
+
 /** El rótulo de la columna en Compras. Una sola constante: el que escribe y el que busca leen ésta. */
 export const ROTULO_SALDO = 'Saldo pendiente (OS)'

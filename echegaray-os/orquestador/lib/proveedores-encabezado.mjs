@@ -24,7 +24,9 @@
 
 import { TRAMOS, SIN_FECHA } from './proveedores-aging.mjs'
 import { ALERTA } from './glifos.mjs'
-import { formulaPagadasSinImporte, formulaProveedoresSinImporte } from './deuda-por-tramos.mjs'
+import {
+  formulaPagadasSinImporte, formulaParcial1Sospechoso, formulaProveedoresSinImporte,
+} from './deuda-por-tramos.mjs'
 
 /** Rótulos de la izquierda, sin el prefijo numérico: el prefijo es del ordenamiento, no de la vista. */
 export const FILAS_AGING = Object.freeze(
@@ -169,7 +171,11 @@ export function celdasEncabezado() {
   // "—" sin avisar por qué es la mitad del trabajo, porque un guion se lee como "no hay deuda".
   // `IFERROR` cubre el nombre retirado (#NAME?) e `ISNUMBER`, el nombre vivo apuntando a basura.
   const arcaMonto = `IFERROR(IF(ISNUMBER(ARCA_FALTAN_MONTO);ARCA_FALTAN_MONTO;"—");"—")`
-  set(F.arca, 5, `=IF(ISNUMBER($G$${F.arca});"Facturado por ARCA que Compras no tiene";"${ALERTA} Facturado por ARCA que Compras no tiene — hoy no se puede medir")`)
+  // EL RÓTULO NO PUEDE DERRAMAR: G y H de esta fila llevan el monto y el conteo, así que lo que no
+  // entra en los 210px de la F se corta y no se lee. Decía "Facturado por ARCA que Compras no tiene
+  // — hoy no se puede medir" (65 caracteres; entran 40). El "por qué no se puede medir" se mudó a la
+  // nota de la celda del monto, que es donde se va a mirar cuando el número diga "—".
+  set(F.arca, 5, `=IF(ISNUMBER($G$${F.arca});"ARCA que Compras no tiene";"${ALERTA} ARCA: hoy no se puede medir")`)
   set(F.arca, 6, `=${arcaMonto}`, 'monto')
   set(F.arca, 7, '=IFERROR(IF(ISNUMBER(ARCA_FALTAN_N);ARCA_FALTAN_N;"—");"—")', 'entero')
 
@@ -177,6 +183,26 @@ export function celdasEncabezado() {
   // El aging suma por tramo de vencimiento; el medio de pago suma por instrumento. Si difieren, una
   // factura tiene saldo y no cae en ningún tramo, o cae en un medio que nadie declaró.
   set(F.control, 0, `=IF(ROUND($B$${F.totalAging}-$G$${F.totalMedios};0)=0;"✓ el aging y el medio de pago dan el mismo total";"✗ difieren en "&TEXT($B$${F.totalAging}-$G$${F.totalMedios};"$#,##0")&" — hay deuda que un cuadro ve y el otro no")`)
+
+  // ── LA PREGUNTA QUE LA ARITMÉTICA NO PUEDE CONTESTAR SOLA (19/08/2026) ────────────────────────
+  //
+  // «Lo que se debe» es `Total − Monto Pagado − Monto Parcial 2`. NO resta `Monto Parcial 1`, y eso
+  // está medido: de las 1.136 filas de Compras, 716 tienen ahí la fórmula derivada `=T−O` —negativa
+  // mientras la factura no se pagó— y sólo 302 un valor tipeado. Restarla convertía la columna en un
+  // tramo de pago que no es, y era la SEGUNDA definición de la deuda que hacía que el control de
+  // abajo contradijera al cuadro de arriba.
+  //
+  // Pero cuando alguien SÍ tipea un importe positivo ahí sobre una factura pendiente, la fila se
+  // contradice a sí misma y el saldo publicado puede estar de más. Hoy hay una: Ruviño Matías
+  // Esteban, $136.000, con «Total o Parcial» = *Total* y «Estado» = *Pendiente*. O ya se pagó y falta
+  // el estado, o el importe va en «Monto Pagado».
+  //
+  // Esa respuesta la tiene quien cargó la factura, no esta planilla. Va a la vista, con nombre y
+  // monto, en vez de que el archivo elija en silencio una de las dos y borre la pregunta.
+  // VA EN LA F Y DERRAMA SOBRE G Y H, que en esta fila están vacías — el mismo recurso que usa la
+  // línea de arriba para los nombres. Partirlo en "rótulo | detalle" obligaba a meter 180 caracteres
+  // en los 390px de la G, y un hallazgo cortado a la mitad no se puede accionar.
+  set(F.control, 5, formulaParcial1Sospechoso())
   return g
 }
 

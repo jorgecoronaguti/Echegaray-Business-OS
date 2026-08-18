@@ -48,7 +48,8 @@ import { CamposObra } from '@/features/obras/components/CamposObra'
 import { TabResumen } from '@/features/obras/components/TabResumen'
 import { TabCronograma } from '@/features/obras/components/TabCronograma'
 import { TabPersonal } from '@/features/obras/components/TabPersonal'
-import { TabOperacion, type SubOperacion } from '@/features/obras/components/TabOperacion'
+import { TabOperacion } from '@/features/obras/components/TabOperacion'
+import { getOperacionObra, SUBS_OPERACION, type SubOperacion } from '@/features/obras/services/operacionService'
 import { TabEconomia } from '@/features/obras/components/TabEconomia'
 import { TabDocumentos } from '@/features/obras/components/TabDocumentos'
 import { FormAccion, PageShell } from '@/shared/components/ui'
@@ -141,6 +142,10 @@ export default async function ObraPage({
   const registros = vista === 'personal' ? (await getRegistrosHH(supabase, obraId)).data ?? [] : []
   const certificados = vista === 'economia' ? (await getCertificados(supabase, obraId)).data ?? [] : []
   const documentos = vista === 'documentos' ? (await getDocumentos(supabase, obraId)).data ?? [] : []
+  // Operación trae sus cuatro listas de una sola vez: las cuatro se atan a la obra por el MISMO
+  // puente (`obra_alias`), así que resolverlo cuatro veces sería resolverlo cuatro veces mal.
+  const operacion = vista === 'operacion' ? (await getOperacionObra(supabase, obraId)).data : null
+  const subOp: SubOperacion = SUBS_OPERACION.find((x) => x === sub) ?? 'pedidos'
 
   // ═══ EL CONTEXTO: DÓNDE ESTOY, DE QUIÉN ES ═══
   // El dueño lo dibujó así: «← Obras», el nombre de la obra, y debajo el cliente. El cliente es un
@@ -226,8 +231,15 @@ export default async function ObraPage({
         />
       )}
 
-      {vista === 'operacion' && (
-        <TabOperacion obraId={obraId} obra={obra} sub={(sub as SubOperacion) ?? 'pedidos'} />
+      {vista === 'operacion' && operacion && (
+        <TabOperacion
+          sub={subOp}
+          obraId={obraId}
+          pedidos={operacion.pedidos}
+          compras={operacion.compras}
+          herramientas={operacion.herramientas}
+          movimientos={operacion.movimientos}
+        />
       )}
 
       {vista === 'economia' && (
