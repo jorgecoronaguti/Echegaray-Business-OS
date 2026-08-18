@@ -191,7 +191,14 @@ test('B8 · "POR PAGAR" INCLUYE EL MES EN CURSO — el criterio de posición per
 })
 
 test('B11 · los avisos ▲ tienen su texto EN la celda, no en la columna que el generador vacía', () => {
-  const avisos = gCS.filas.filter((f) => /^[▲]/.test(String(f[0] ?? '')) || /^(Vacaciones|Fondo de Cese)/.test(String(f[0] ?? '')))
+  // El filtro miraba SÓLO el texto del rótulo: cualquier fila que empezara con "Fondo de Cese"
+  // entraba, incluida una fila de DATOS mensuales agregada el 18/08 ("Fondo de Cese devengado
+  // (DDJJ UOCRA)"). Un renglón con doce importes no es un aviso y no tiene por qué explicarse en su
+  // propio rótulo. Lo que distingue a un aviso no es cómo empieza: es que ocupa la fila entera y no
+  // trae ni un número. Se afila por esa condición, que es la que el test de verdad quiere probar.
+  const esAviso = (f) => (/^[▲]/.test(String(f[0] ?? '')) || /^(Vacaciones|Fondo de Cese)/.test(String(f[0] ?? '')))
+    && f.slice(1, ANCHO_CS - 1).every((c) => c === '' || c == null || c === VACIO_CS)
+  const avisos = gCS.filas.filter(esAviso)
   assert.ok(avisos.length >= 4, `esperaba los cuatro avisos y encontré ${avisos.length}`)
   for (const a of avisos) {
     assert.ok(String(a[0]).length > 70,
