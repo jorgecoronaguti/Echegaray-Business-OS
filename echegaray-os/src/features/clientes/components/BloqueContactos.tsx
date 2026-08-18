@@ -30,7 +30,7 @@ function CamposContacto({ c }: { c?: Contacto }) {
   )
 }
 
-export function TabContactos({
+export function BloqueContactos({
   contactos, enEdicion, urlDe, editar, crear, borrar, puedeEditar = true,
 }: {
   contactos: Contacto[]
@@ -46,9 +46,21 @@ export function TabContactos({
 }) {
   return (
     <div className="space-y-3">
+      {/* EL ALTA VA ARRIBA. Debajo de una lista larga, «agregar un contacto» no la encuentra nadie
+          —y el bloque se queda vacío para siempre—. */}
+      {puedeEditar && (
+        <details className="rounded-xl border border-line bg-white" data-testid="alta-contacto">
+          <summary className="cursor-pointer select-none px-4 py-2.5 text-[13px] font-medium text-ink">+ Contacto</summary>
+          <div className="border-t border-line p-4">
+            <FormAccion accion={crear} testid="form-contacto" enviar="Agregar" limpiarAlOk mensajeOk="Contacto agregado.">
+              <CamposContacto />
+            </FormAccion>
+          </div>
+        </details>
+      )}
       {contactos.length === 0 ? (
         <Callout tono="neutral">
-          Este cliente no tiene contactos cargados. Se agregan acá abajo.
+          Este cliente no tiene contactos cargados.
         </Callout>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-line bg-white">
@@ -74,16 +86,6 @@ export function TabContactos({
         </div>
       )}
 
-      {puedeEditar && (
-        <details className="rounded-xl border border-line bg-white" data-testid="alta-contacto">
-          <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-medium text-ink">Agregar un contacto</summary>
-          <div className="border-t border-line p-4">
-            <FormAccion accion={crear} testid="form-contacto" enviar="Agregar" limpiarAlOk mensajeOk="Contacto agregado.">
-              <CamposContacto />
-            </FormAccion>
-          </div>
-        </details>
-      )}
     </div>
   )
 }

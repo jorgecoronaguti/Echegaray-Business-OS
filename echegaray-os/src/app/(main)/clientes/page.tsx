@@ -2,20 +2,26 @@
 //
 // El cliente es la RELACIÓN EMPRESARIAL y la obra la unidad operativa: un cliente puede tener varias
 // obras (La Estrella tiene tres) y hasta hace poco eso vivía como tres cadenas de texto iguales por
-// casualidad. Esta lista existe para una sola decisión: con qué cliente hay que sentarse hoy.
+// casualidad.
+//
+// ═══ ESTA LISTA EXISTE PARA ENCONTRAR Y ABRIR UN CLIENTE. NADA MÁS (19/08/2026) ═══
+//
+// El dueño: *"Quiero CLIENTE | OBRAS. Nada más para el MVP."* Se fueron responsable, contratado,
+// costo real, restricciones, documentos y el CUIT como subtítulo. Ninguno de esos números se perdió:
+// todos están en el record del cliente, a un clic, y los económicos además en el portafolio de
+// obras, que es donde se comparan contra algo. Acá no decidían nada — nadie elige a quién llamar por
+// su costo real acumulado — y le comían al nombre el 70% del ancho.
 //
 // NO ES UN EMBUDO COMERCIAL. No hay leads, ni oportunidades, ni etapa de venta: son los clientes
-// reales, con lo que ya calculan otras fuentes. La lista ES el tablero — sin tarjetas de colores ni
-// KPIs sueltos.
+// reales de la empresa.
 //
-// ═══ ARCHIVAR TIENE EFECTO (19/08/2026) ═══
+// ═══ ARCHIVAR TIENE EFECTO ═══
 //
 // `archivarCliente` escribía `activo = false` y esta lista NO FILTRABA: el cliente archivado seguía
-// acá igual que antes. El verbo existía y la consecuencia no. Ahora sale de la lista —mismo criterio
-// que el portafolio de obras— y el pie dice cuántos hay guardados y cómo verlos, porque archivar no
-// puede parecerse a borrar.
+// acá igual que antes. Ahora sale de la lista —mismo criterio que el portafolio de obras— y el pie
+// dice cuántos hay guardados y cómo verlos, porque archivar no puede parecerse a borrar.
 //
-// FUENTE: la vista `cliente_panel`, que SUMA lo que `obra_panel` ya calculó. No recalcula un peso.
+// FUENTE: la vista `cliente_panel`. No recalcula un peso.
 
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
@@ -23,12 +29,10 @@ import { getClientes } from '@/features/clientes/services/clientesService'
 import { separarArchivados } from '@/features/clientes/services/cartera'
 import { crearCliente } from '@/features/clientes/services/actions'
 import { CamposCliente } from '@/features/clientes/components/CamposCliente'
+import { ListaClientes } from '@/features/clientes/components/ListaClientes'
 import { PageShell, Callout, FormAccion } from '@/shared/components/ui'
-import type { ClientePanel } from '@/features/clientes/types'
 
 export const dynamic = 'force-dynamic'
-
-const plata = (n: number | null) => (n == null ? '—' : '$' + Math.round(n).toLocaleString('es-AR'))
 
 export default async function ClientesPage({
   searchParams,
@@ -42,13 +46,14 @@ export default async function ClientesPage({
   const { data, error } = await getClientes(supabase)
   const { activos, archivados: guardados } = separarArchivados(data ?? [])
   const clientes = conArchivados ? [...activos, ...guardados] : activos
-  const conObraActiva = activos.filter((c) => c.n_obras_activas > 0)
 
   return (
     <PageShell
-      eyebrow="01 · Obras"
+      // SIN EYEBROW (19/08/2026). Decía «01 · OBRAS», y la barra de nivel 2 que ahora corona esta
+      // pantalla dice «Administración · Clientes»: dos rótulos contradiciéndose a 40px de distancia.
+      // El que sobra es éste — la barra ya contesta «dónde estoy» y encima navega.
       title="Clientes"
-      subtitle={`${conObraActiva.length} cliente${conObraActiva.length === 1 ? '' : 's'} con obra en curso. Tocá uno para ver su ficha, sus contactos, sus obras y su carpeta de Drive.`}
+      subtitle="Tocá un cliente para abrir su ficha: sus obras, sus contactos, su actividad y sus documentos."
     >
       {error && <Callout tono="neg">No pude leer los clientes: {error}</Callout>}
 
@@ -60,104 +65,45 @@ export default async function ClientesPage({
         </Callout>
       )}
 
-      {clientes.length > 0 && (
-        // Se desplaza en el teléfono en vez de recortarse: `overflow-hidden` ya hizo desaparecer
-        // cinco columnas a 390px, que era todo lo que la pantalla existía para mostrar.
-        <div className="overflow-x-auto rounded-xl border border-line bg-white">
-          <table data-testid="clientes-tabla" className="w-full min-w-[760px] text-left">
-            <thead>
-              <tr className="border-b border-line text-[10px] uppercase tracking-wide text-faint">
-                <th className="px-4 py-2.5 font-medium">Cliente</th>
-                <th className="px-3 py-2.5 font-medium">Responsable</th>
-                <th className="px-3 py-2.5 text-center font-medium">Obras</th>
-                <th className="px-3 py-2.5 text-right font-medium">Contratado</th>
-                <th className="px-3 py-2.5 text-right font-medium">Costo real</th>
-                <th className="px-3 py-2.5 text-center font-medium">Restric.</th>
-                <th className="px-3 py-2.5 text-center font-medium">Docs.</th>
-              </tr>
-            </thead>
-            <tbody>{clientes.map((c) => <Fila key={c.cliente_id} c={c} />)}</tbody>
-          </table>
-        </div>
-      )}
+      {clientes.length > 0 && <ListaClientes clientes={clientes} />}
 
-      {/* LA PUERTA DE VUELTA. Un cliente archivado no es un cliente perdido: el conteo dice cuántos
-          hay y el enlace los trae a la vista sin cambiar de pantalla. */}
-      {guardados.length > 0 && (
-        <p className="mt-3 text-[12px] text-faint" data-testid="pie-archivados">
-          {conArchivados ? (
-            <>
-              Se muestran también {guardados.length} cliente{guardados.length === 1 ? '' : 's'} archivado{guardados.length === 1 ? '' : 's'}.{' '}
-              <Link href="/clientes" className="text-ink underline underline-offset-2">Ocultarlos</Link>.
-            </>
-          ) : (
-            <>
-              {guardados.length} cliente{guardados.length === 1 ? '' : 's'} archivado{guardados.length === 1 ? '' : 's'} fuera de esta lista.{' '}
-              <Link href="/clientes?archivados=1" className="text-ink underline underline-offset-2" data-testid="ver-archivados">Verlos</Link>.
-            </>
-          )}
+      <div className="mt-3 max-w-2xl space-y-3">
+        {/* LA PUERTA DE VUELTA. Un cliente archivado no es un cliente perdido: el conteo dice
+            cuántos hay y el enlace los trae a la vista sin cambiar de pantalla. */}
+        {guardados.length > 0 && (
+          <p className="text-[12px] text-faint" data-testid="pie-archivados">
+            {conArchivados ? (
+              <>
+                Se muestran también {guardados.length} cliente{guardados.length === 1 ? '' : 's'} archivado{guardados.length === 1 ? '' : 's'}.{' '}
+                <Link href="/clientes" className="text-ink underline underline-offset-2">Ocultarlos</Link>.
+              </>
+            ) : (
+              <>
+                {guardados.length} cliente{guardados.length === 1 ? '' : 's'} archivado{guardados.length === 1 ? '' : 's'} fuera de esta lista.{' '}
+                <Link href="/clientes?archivados=1" className="text-ink underline underline-offset-2" data-testid="ver-archivados">Verlos</Link>.
+              </>
+            )}
+          </p>
+        )}
+
+        {/* SIEMPRE VISIBLE, y plegado: el alta es de un rato, la lista es de todos los días. */}
+        <details className="rounded-xl border border-line bg-white" data-testid="alta-cliente">
+          <summary className="cursor-pointer select-none px-4 py-2.5 text-[13px] font-medium text-ink">+ Nuevo cliente</summary>
+          <div className="border-t border-line p-4">
+            {/* El identificador de la URL sale del nombre y se calcula en el servidor: pedirlo acá
+                sería pedir que alguien invente una clave primaria. Si ya existe, la acción avisa en
+                vez de crear un segundo cliente que dejaría al primero inalcanzable. */}
+            <FormAccion accion={crearCliente} testid="form-cliente" enviar="Crear cliente" limpiarAlOk mensajeOk="Cliente creado.">
+              <CamposCliente />
+            </FormAccion>
+          </div>
+        </details>
+
+        <p className="text-[12px] text-faint">
+          ¿Buscás una obra y no te acordás de quién es?{' '}
+          <Link href="/obras" className="text-ink underline underline-offset-2">Ver todas las obras</Link>.
         </p>
-      )}
-
-      <details className="mt-4 rounded-xl border border-line bg-white" data-testid="alta-cliente">
-        <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-medium text-ink">Nuevo cliente</summary>
-        <div className="border-t border-line p-4">
-          {/* El identificador de la URL sale del nombre y se calcula en el servidor: pedirlo acá
-              sería pedir que alguien invente una clave primaria. Si ya existe, la acción avisa en
-              vez de crear un segundo cliente que dejaría al primero inalcanzable. */}
-          <FormAccion accion={crearCliente} testid="form-cliente" enviar="Crear cliente" limpiarAlOk mensajeOk="Cliente creado.">
-            <CamposCliente />
-          </FormAccion>
-        </div>
-      </details>
-
-      <p className="mt-3 text-[12px] text-faint">
-        ¿Buscás una obra y no te acordás de quién es?{' '}
-        <Link href="/obras" className="text-ink underline underline-offset-2">Ver todas las obras</Link>.
-      </p>
+      </div>
     </PageShell>
-  )
-}
-
-function Fila({ c }: { c: ClientePanel }) {
-  return (
-    <tr className="border-b border-line/60 last:border-0 hover:bg-sky-50/50">
-      <td className="px-4 py-2.5">
-        {c.slug ? (
-          <Link href={`/clientes/${c.slug}`} className="block">
-            <span className="text-[13px] font-semibold text-ink hover:underline">{c.nombre}</span>
-            <span className="block truncate text-[11px] text-faint">
-              {c.cuit ?? 'CUIT sin cargar'}{!c.activo && ' · archivado'}
-            </span>
-          </Link>
-        ) : (
-          // Sin identificador no hay ficha a la que entrar. Se muestra igual: esconderlo haría que
-          // un cliente real desapareciera de la lista sin que nadie se entere.
-          <>
-            <span className="text-[13px] font-semibold text-ink">{c.nombre}</span>
-            <span className="block text-[11px] text-faint">sin identificador: no tiene ficha todavía</span>
-          </>
-        )}
-      </td>
-      <td className="px-3 py-2.5 text-[12px] text-muted">
-        {c.responsable_nombre ?? <span className="text-faint">sin asignar</span>}
-      </td>
-      <td className="px-3 py-2.5 text-center text-[12px] tabular-nums text-muted">
-        {c.n_obras === 0 ? '—' : (
-          <>
-            <span className="text-ink">{c.n_obras_activas}</span>
-            <span className="text-faint"> / {c.n_obras}</span>
-          </>
-        )}
-      </td>
-      <td className="px-3 py-2.5 text-right text-[12px] tabular-nums text-muted">{plata(c.contratado)}</td>
-      <td className="px-3 py-2.5 text-right text-[12px] tabular-nums text-ink">{plata(c.costo_real)}</td>
-      <td className="px-3 py-2.5 text-center text-[12px] tabular-nums">
-        {c.restricciones_abiertas === 0
-          ? <span className="text-faint">—</span>
-          : <span className="text-muted">{c.restricciones_abiertas}</span>}
-      </td>
-      <td className="px-3 py-2.5 text-center text-[12px] tabular-nums text-muted">{c.n_documentos || '—'}</td>
-    </tr>
   )
 }

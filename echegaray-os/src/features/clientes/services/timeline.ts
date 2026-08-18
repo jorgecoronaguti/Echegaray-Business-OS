@@ -178,6 +178,37 @@ function deLosDocumentos(f: FuentesActividad, out: EventoCliente[]): number {
   return sin
 }
 
+/**
+ * LAS NOTAS MANUALES — el único evento que NO se deriva de otra fila.
+ *
+ * Todo lo demás de esta línea de tiempo ya estaba guardado en algún lado con su fecha. «Llamé al
+ * arquitecto y dijo que la certificación de agosto entra recién en septiembre» no está guardado en
+ * ninguna parte y no se deduce de ninguna columna: o se escribe, o se pierde.
+ *
+ * NO SE AGRUPAN NI SE RECORTAN, al revés que los 214 vínculos que colgó el sincronizador de Drive.
+ * Cada nota la escribió una persona, de a una, y decidió que valía la pena escribirla: agruparlas
+ * por día borraría exactamente el contenido que las hace existir.
+ *
+ * Sin fecha no hay evento, igual que para todo el resto: una nota sin `creado_en` se descarta y se
+ * cuenta. No se le pone «hoy» ni se la manda al final de la lista.
+ */
+function deLasNotas(f: FuentesActividad, out: EventoCliente[]): number {
+  let sin = 0
+  for (const n of f.notas ?? []) {
+    sin += agregar(out, n.creado_en, {
+      clave: `nota-${n.id}`,
+      tipo: 'nota',
+      titulo: n.texto,
+      // La firma va en el detalle y NO en el título: el título es lo que se dijo, y el autor es
+      // quién lo dijo. Sin autor se declara: una nota sin firma es un hecho igual de cierto.
+      detalle: n.autor_nombre ? `Nota de ${n.autor_nombre}` : 'Nota sin autor registrado',
+      href: null,
+      fuente: 'Nota',
+    })
+  }
+  return sin
+}
+
 /** Los eventos CONTRACTUALES: certificar, facturar y cobrar son tres hechos distintos y tres
  *  fechas distintas. Colapsarlos en uno solo borraría justamente el plazo que importa. */
 function deLosCertificados(f: FuentesActividad, out: EventoCliente[]): number {
@@ -222,8 +253,11 @@ export function construirLineaDeTiempo(f: FuentesActividad): LineaDeTiempo {
     deLosContactos(f, eventos) +
     deLasObras(f, eventos) +
     deLosDocumentos(f, eventos) +
+    deLasNotas(f, eventos) +
     deLosCertificados(f, eventos)
 
   eventos.sort((a, b) => (b.orden - a.orden) || a.clave.localeCompare(b.clave))
-  return { eventos, sinFecha }
+  // El aviso de notas no leídas VIAJA HASTA LA PANTALLA. Si se quedara acá, una ficha cuyas notas
+  // no se pudieron traer se vería exactamente igual que una ficha que no tiene ninguna.
+  return { eventos, sinFecha, notasNoDisponibles: f.notasNoDisponibles ?? null }
 }

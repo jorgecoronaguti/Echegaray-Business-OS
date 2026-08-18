@@ -70,32 +70,33 @@ test('clientes → cliente → sus obras → la obra', async ({ page }) => {
   await page.waitForURL(/\/clientes\/la-estrella/)
   await expect(page.getByRole('heading', { name: /La Estrella/ })).toBeVisible()
 
-  // LA FICHA ABRE EN INFORMACIÓN, NO EN OBRAS (19/08/2026). El cliente es la RELACIÓN empresarial:
-  // entrar por su portafolio lo convertía en una carpeta con obras adentro. Las obras siguen a un
-  // clic y con acceso directo a cada una, pero son UNA de las cinco caras, no la relación.
+  // ═══ EL RECORD ESTÁ ENTERO EN UNA PANTALLA, SIN NAVEGAR (19/08/2026) ═══
+  //
+  // Hasta acá eran cinco solapas y esta parte del test hacía cuatro clics con su `waitForURL`. El
+  // dueño: *"CLIENTE = RECORD PRINCIPAL. Dentro veo: propiedades; actividad; contactos asociados;
+  // obras asociadas; documentos asociados."* Lo que se exige ahora es lo contrario de antes: que
+  // las cinco caras estén A LA VEZ, sin un solo clic de por medio. Si alguien volviera a esconder
+  // cualquiera de ellas detrás de una solapa, este bloque se pone rojo.
   await expect(page.getByRole('term').filter({ hasText: 'Responsable interno' })).toBeVisible()
 
   // Sus tres obras, con el MISMO avance que publica el portafolio: sale de `obra_panel`.
-  // Por testid y no por el rótulo: «Obras» también es un enlace de la barra de arriba, y el que
-  // gana por texto es el de la barra — el test navegaría al portafolio creyendo abrir la solapa.
-  await page.getByTestId('solapa-obras').click()
-  await page.waitForURL(/vista=obras/)
   const tabla = page.getByTestId('obras-del-cliente')
   await expect(tabla).toBeVisible()
   expect(await tabla.locator('tbody tr').count()).toBe(3)
 
-  // Las solapas de la ficha existen Y YA SE PUEDE CARGAR EN ELLAS. Hasta el 18/08 esto exigía leer
-  // el cartel de "todavía no se puede cargar un contacto": esa afirmación dejó de ser verdad, y un
-  // test que la siguiera exigiendo estaría defendiendo una limitación en vez de la capacidad.
-  await page.getByRole('link', { name: 'Contactos', exact: true }).click()
-  await page.waitForURL(/vista=contactos/)
+  // Y se puede CARGAR desde el record, sin cambiar de pantalla: el alta de cada bloque está a la
+  // vista, arriba de su lista, no enterrada al final de una tabla de 60 filas.
   await expect(page.getByTestId('alta-contacto')).toBeVisible()
-
-  await page.getByRole('link', { name: 'Documentos', exact: true }).click()
-  await page.waitForURL(/vista=documentos/)
+  await expect(page.getByTestId('alta-documento')).toBeVisible()
   // Los documentos son los de Drive: vínculo, nunca copia.
   await expect(page.getByText(/en Drive/i).first()).toBeVisible()
-  await expect(page.getByTestId('alta-documento')).toBeVisible()
+  // La actividad también, que era la quinta solapa.
+  await expect(page.getByTestId('bloque-actividad')).toBeVisible()
+
+  // Y NINGUNA solapa quedó viva: un resto de la navegación vieja significaría que hay dos caminos
+  // para la misma información y que uno de los dos muestra menos.
+  await expect(page.getByTestId('solapa-obras')).toHaveCount(0)
+  await expect(page.getByTestId('solapa-informacion')).toHaveCount(0)
 
   // Y desde la obra se vuelve a SU cliente: la jerarquía se navega en los dos sentidos.
   await page.goto('/obras/le-comedor')

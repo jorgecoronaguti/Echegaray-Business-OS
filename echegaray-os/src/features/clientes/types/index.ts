@@ -90,6 +90,7 @@ export interface DocumentoCliente {
 
 export type TipoEvento =
   | 'cliente_alta'
+  | 'nota'
   | 'cliente_actualizado'
   | 'contacto_alta'
   | 'obra_alta'
@@ -102,7 +103,7 @@ export type TipoEvento =
 
 /** De dónde salió el evento, en el idioma de la empresa. En pantalla NUNCA se escribe el nombre de
  *  una tabla: quien lee la ficha no tiene por qué saber que existe `cliente_documento`. */
-export type FuenteEvento = 'Ficha' | 'Contactos' | 'Obras' | 'Documentos' | 'Certificación'
+export type FuenteEvento = 'Ficha' | 'Contactos' | 'Obras' | 'Documentos' | 'Certificación' | 'Nota'
 
 export interface EventoCliente {
   /** Única y estable: ordena el desempate y es la key de React. */
@@ -122,9 +123,26 @@ export interface EventoCliente {
 
 export interface LineaDeTiempo {
   eventos: EventoCliente[]
+  /** El aviso cuando las notas manuales NO se pudieron leer —la migración todavía no está aplicada
+   *  en esta base—. `null` es «se leyeron bien», y NO es lo mismo que «no hay ninguna»: si esto
+   *  tuviera valor y la pantalla lo ignorara, una ficha sin notas se vería idéntica a una ficha
+   *  cuyas notas no se pudieron traer. */
+  notasNoDisponibles?: string | null
   /** Registros REALES que existen pero no tienen fecha, así que no se pueden ubicar. Se cuentan
    *  para poder decirlo: una línea de tiempo que omite en silencio miente por omisión. */
   sinFecha: number
+}
+
+/** Una nota escrita a mano. Es lo ÚNICO de la actividad que no se deriva de otra fila: «llamé al
+ *  arquitecto y la certificación de agosto entra en septiembre» no está guardado en ningún lado. */
+export interface NotaCliente {
+  id: string
+  texto: string
+  /** Quién la escribió. Sale de `auth.uid()` por default, nunca del formulario. `null` cuando la
+   *  persona se dio de baja: la nota queda sin firma, que es la verdad, en vez de desaparecer. */
+  autor_id: string | null
+  autor_nombre: string | null
+  creado_en: string | null
 }
 
 /** Lo que la línea de tiempo necesita leer. Todo sale de una fila real con su fecha real. */
@@ -146,6 +164,11 @@ export interface FuentesActividad {
     origen: 'manual' | 'path_inferido'
     creado_en: string | null
   }[]
+  /** Opcional a propósito: una base sin la migración de notas aplicada no tiene ninguna, y eso no
+   *  puede impedir que se arme el resto de la línea de tiempo. */
+  notas?: NotaCliente[]
+  /** El aviso a arrastrar hasta la pantalla cuando las notas no se pudieron leer. */
+  notasNoDisponibles?: string | null
   certificados: {
     id: string
     numero: string | null
