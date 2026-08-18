@@ -1,15 +1,24 @@
-// PENDIENTES DE IMPUTACIÓN — los textos de obra que nadie clasificó todavía.
+// PENDIENTES DE IMPUTACIÓN — los textos que nadie clasificó, con lo que hace falta para clasificarlos.
 //
-// El dueño: *"Si la relación es confiable, canonicalizar. Si es ambigua: PENDIENTE DE ASIGNACIÓN.
-// Administración debe poder resolverla desde la web. No inventar imputaciones."*
+// ═══ LO QUE MIDE ESTA PANTALLA, MEDIDO EL 18/08/2026 CONTRA LA BASE ═══
 //
-// Compras, herramientas y movimientos guardan la obra como TEXTO. `obra_alias` traduce ese texto al
-// eje canónico, y es el MISMO diccionario que usa el costo real de la obra. Resolver un texto acá
-// arregla todas las filas que dicen lo mismo, hoy y mañana.
+//   Compras (costos_obra)           845 filas · 533 a una obra · 312 estructura · 0 pendientes
+//   Pedidos (pedidos_materiales)     17 filas ·  17 a una obra ·   0 estructura · 0 pendientes
+//   Herramientas                    149 filas · 118 a una obra ·  29 estructura · 1 pendiente + 1 sin texto
+//   Movimientos                      53 filas ·  27 a una obra ·  25 estructura · 1 pendiente
 //
-// LO QUE ESTA PANTALLA NO HACE: sugerir. No hay "¿quisiste decir La Estrella?". Un emparejamiento
-// por parecido de nombre imputaría "Estrella Norte" a La Estrella y le fabricaría costo a una obra
-// que no lo tuvo — que es exactamente lo que el dueño prohibió.
+// El encargo llegó con "Compras 533/845". Esas 312 filas de diferencia NO son trabajo pendiente:
+// son filas que alguien YA declaró costo de estructura (Administración, Taller, F931, UOCRA…).
+// Confundirlas con pendientes manda a resolver algo resuelto, y peor, invita a imputarle a una obra
+// costo que es de la empresa. Por eso el resumen de arriba separa las cuatro columnas: sin él, la
+// pantalla contestaría "faltan 312" a una pregunta cuya respuesta real es "falta 1".
+//
+// ═══ LO QUE ESTA PANTALLA NO HACE ═══
+//
+// No propone obras por parecido de nombre. La columna «Sugerido» sale vacía salvo que exista
+// evidencia —un juicio humano previo sobre el MISMO texto, o un proveedor que nunca compró para
+// otra obra—, y cuando sale, dice por qué. Hoy, con los datos reales, no sale nunca: no hay
+// evidencia para el único texto pendiente. Eso es el comportamiento correcto, no una falta.
 
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
@@ -17,20 +26,52 @@ import { getPortafolio } from '@/features/obras/services/obrasService'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { esAdministracion } from '@/features/auth/types/areas'
 import { resolverImputacion } from '@/features/obras/services/actionsImputacion'
-import { plata } from '@/features/obras/components/formato'
-import { Callout, Campo, CTRL, FormAccion, PageShell } from '@/shared/components/ui'
+import { Callout, PageShell } from '@/shared/components/ui'
+import { TablaPendientes } from '@/features/administracion/components/TablaPendientes'
+import { PanelPendiente } from '@/features/administracion/components/PanelPendiente'
+import {
+  ETIQUETA_TIPO, getPendientesDeImputacion, type ResumenFuente,
+} from '@/features/administracion/services/imputacionService'
 
 export const dynamic = 'force-dynamic'
 
-interface Pendiente {
-  clave: string
-  texto: string
-  fuentes: string
-  filas: number
-  monto: number | null
+function ResumenFuentes({ resumen }: { resumen: ResumenFuente[] }) {
+  return (
+    <div className="mb-4 overflow-x-auto rounded-xl border border-line bg-white">
+      <table data-testid="resumen-fuentes" className="w-full min-w-[520px] text-left">
+        <thead>
+          <tr className="border-b border-line text-[10px] uppercase tracking-wide text-faint">
+            <th className="px-3 py-2 font-medium">Fuente</th>
+            <th className="px-3 py-2 text-right font-medium">A una obra</th>
+            <th className="px-3 py-2 text-right font-medium">Estructura</th>
+            <th className="px-3 py-2 text-right font-medium">Pendientes</th>
+            <th className="px-3 py-2 text-right font-medium">Sin texto</th>
+            <th className="px-3 py-2 text-right font-medium">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {resumen.map((r) => (
+            <tr key={r.tipo} data-testid={`resumen-${r.tipo}`} className="border-b border-line/60 last:border-0">
+              <td className="px-3 py-2 text-[13px] text-ink">{ETIQUETA_TIPO[r.tipo]}</td>
+              <td className="px-3 py-2 text-right text-[12px] tabular-nums text-muted">{r.obra}</td>
+              <td className="px-3 py-2 text-right text-[12px] tabular-nums text-muted">{r.estructura}</td>
+              <td className={`px-3 py-2 text-right text-[12px] tabular-nums ${r.pendiente > 0 ? 'text-warn' : 'text-muted'}`}>
+                {r.pendiente}
+              </td>
+              {/* Sin texto = ningún alias puede resolverlo. Se cuenta, pero no entra a la cola:
+                  ofrecer resolverlo sería ofrecer un trabajo imposible. */}
+              <td className="px-3 py-2 text-right text-[12px] tabular-nums text-faint">{r.sin_texto}</td>
+              <td className="px-3 py-2 text-right text-[12px] tabular-nums text-ink">{r.total}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
 }
 
-export default async function PendientesPage() {
+export default async function PendientesPage({ searchParams }: { searchParams: Promise<{ c?: string }> }) {
+  const sp = await searchParams
   const supabase = await createClient()
   const perfil = await getPerfilActual(supabase)
   if (!esAdministracion(perfil.data?.rol ?? null)) {
@@ -41,67 +82,62 @@ export default async function PendientesPage() {
     )
   }
 
-  const [{ data: pend }, { data: obras }] = await Promise.all([
-    supabase.from('imputacion_pendiente').select('*').returns<Pendiente[]>(),
+  const [pendientes, portafolio] = await Promise.all([
+    getPendientesDeImputacion(supabase),
     getPortafolio(supabase),
   ])
-  const lista = pend ?? []
-  const activas = (obras ?? []).filter((o) => o.estado !== 'cerrada')
+
+  if (pendientes.error || !pendientes.data) {
+    return (
+      <PageShell title="Pendientes de imputación" maxWidth="max-w-3xl">
+        <p data-testid="pendientes-error" className="text-[13px] text-neg">
+          No pude leer las fuentes: {pendientes.error}
+        </p>
+      </PageShell>
+    )
+  }
+
+  const obras = portafolio.data ?? []
+  const nombreDeObra = (obraId: string) => obras.find((o) => o.obra_id === obraId)?.nombre ?? obraId
+  const elegibles = obras.filter((o) => o.estado !== 'cerrada').map((o) => ({ obra_id: o.obra_id, nombre: o.nombre }))
+  const { grupos, resumen } = pendientes.data
+  const abierta = sp.c ? grupos.find((g) => g.clave === sp.c) : undefined
+  const href = (clave?: string) => `/administracion/pendientes${clave ? `?c=${encodeURIComponent(clave)}` : ''}`
 
   return (
     <PageShell
       eyebrow={<Link href="/administracion" className="hover:underline">← Administración</Link>}
       title="Pendientes de imputación"
-      subtitle="Textos que aparecen en compras, herramientas o movimientos y que todavía no se sabe a qué obra pertenecen."
-      maxWidth="max-w-4xl"
+      subtitle="Textos de obra que aparecen en compras, pedidos, herramientas o movimientos y que todavía no se sabe a qué obra pertenecen."
+      maxWidth="max-w-6xl"
     >
-      {lista.length === 0 ? (
-        <p className="text-[13px] text-muted">
-          Nada pendiente. Todo lo que aparece en las tres fuentes está clasificado como una obra o
-          como costo de estructura.
-        </p>
-      ) : (
-        <ul className="space-y-3" data-testid="pendientes-lista">
-          {lista.map((p) => (
-            <li key={p.clave} className="rounded-lg border border-line bg-surface p-4">
-              <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-                <span className="text-[14px] font-semibold text-ink">{p.texto}</span>
-                <span className="text-[12px] tabular-nums text-faint">
-                  {p.filas} fila(s) · {p.fuentes}
-                  {p.monto ? ` · ${plata(p.monto)}` : ''}
-                </span>
-              </div>
-              <FormAccion
-                accion={resolverImputacion}
-                testid={`resolver-${p.clave}`}
-                enviar="Resolver"
-                mensajeOk="Resuelto. El costo se reimputa solo."
-              >
-                <input type="hidden" name="clave" value={p.clave} />
-                <input type="hidden" name="ejemplo" value={p.texto} />
-                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                  <Campo label="¿Qué es?">
-                    <select name="clasificacion" defaultValue="obra" className={CTRL}>
-                      <option value="obra">Una obra</option>
-                      <option value="mantenimiento">Un mantenimiento</option>
-                      <option value="indirecto">Costo de estructura, no de obra</option>
-                      <option value="excluido">No corresponde contarlo</option>
-                    </select>
-                  </Campo>
-                  <Campo label="¿Cuál?" ayuda="En blanco si no es una obra.">
-                    <select name="obra_id" defaultValue="" className={CTRL}>
-                      <option value="">no es una obra</option>
-                      {activas.map((o) => (
-                        <option key={o.obra_id} value={o.obra_id}>{o.nombre}</option>
-                      ))}
-                    </select>
-                  </Campo>
-                </div>
-              </FormAccion>
-            </li>
-          ))}
-        </ul>
-      )}
+      <ResumenFuentes resumen={resumen} />
+
+      <div className="flex flex-col overflow-hidden rounded-xl border border-line bg-white lg:flex-row">
+        <div className="min-w-0 flex-1">
+          <TablaPendientes
+            grupos={grupos}
+            seleccionada={abierta?.clave}
+            hrefDe={href}
+            nombreDeObra={nombreDeObra}
+          />
+        </div>
+        {abierta && (
+          <PanelPendiente
+            grupo={abierta}
+            obras={elegibles}
+            resolver={resolverImputacion}
+            cerrarHref={href()}
+            nombreDeObra={nombreDeObra}
+          />
+        )}
+      </div>
+
+      <p className="mt-3 px-1 text-[11px] text-faint">
+        Resolver un texto escribe una sola fila en el diccionario de obras, y esa fila vale para todas
+        las filas que dicen lo mismo — las de hoy y las que entren mañana. Textos distintos se
+        resuelven por separado: nunca en lote.
+      </p>
     </PageShell>
   )
 }
