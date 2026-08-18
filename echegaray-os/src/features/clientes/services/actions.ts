@@ -2,13 +2,16 @@
 
 // CLIENTE — las acciones que ESCRIBEN. Toda entrada se valida con Zod antes de tocar la base.
 //
-// El rol lo decide la RLS de Postgres, no esta capa: `cliente_contacto` y `cliente_documento` sólo
-// admiten escritura de dirección y administración. Si alguien más lo intenta, la base devuelve el
-// error y acá se muestra — no se simula un éxito.
+// El rol lo decide la RLS de Postgres, no esta capa: `clientes`, `cliente_contacto` y
+// `cliente_documento` sólo admiten escritura de dirección y administración. Si alguien más lo
+// intenta, la base devuelve el error y acá se muestra — no se simula un éxito.
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
+// Qué hacer cuando la migración de la relación está en el repositorio y no en la base: el criterio
+// —y la regla de no guardar de menos en silencio— vive en su propio módulo, con tests.
+import { faltaLaRelacion, mensajeDeMigracion, sinLaRelacion } from './migracionPendiente'
 
 export type Resultado = { ok: true; id?: string } | { ok: false; error: string }
 
@@ -23,50 +26,86 @@ function aSlug(s: string): string {
 const cuitSchema = z.string().trim().transform((v) => v.replace(/\D/g, ''))
   .refine((v) => v === '' || v.length === 11, 'El CUIT tiene 11 dígitos')
 
+// Un email vacío es «no lo sé», no un email inválido: el campo es opcional y el formulario no puede
+// plantarse por un dato que nadie prometió tener.
+const emailSchema = z.union([z.string().trim().email('Revisá el email: no tiene formato de correo'), z.literal('')]).optional()
+
 const clienteSchema = z.object({
   nombre: z.string().trim().min(2, 'El nombre es obligatorio'),
   cuit: cuitSchema.optional(),
+  direccion: z.string().trim().max(300).optional(),
+  telefono: z.string().trim().max(60).optional(),
+  email: emailSchema,
+  // El responsable llega como el id de un perfil real o vacío. Un texto libre acá haría que
+  // «Rodrigo» y «R. Echegaray» fueran dos responsables distintos.
+  responsable_id: z.union([z.string().uuid('Elegí un responsable de la lista'), z.literal('')]).optional(),
   drive_carpeta_id: z.string().trim().optional(),
   notas: z.string().trim().optional(),
 })
 
+/** Los campos de la ficha, listos para la base. `''` se guarda como null: vacío es SIN DATO. */
+function aFila(d: z.infer<typeof clienteSchema>) {
+  return {
+    nombre: d.nombre,
+    cuit: d.cuit || null,
+    direccion: d.direccion || null,
+    telefono: d.telefono || null,
+    email: d.email || null,
+    responsable_id: d.responsable_id || null,
+    drive_carpeta_id: d.drive_carpeta_id || null,
+    notas: d.notas || null,
+  }
+}
+
 export async function crearCliente(form: FormData): Promise<Resultado> {
   const parsed = clienteSchema.safeParse(Object.fromEntries(form))
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
-  const { nombre, cuit, drive_carpeta_id, notas } = parsed.data
 
   const supabase = await createClient()
   // El slug tiene que ser único: si ya existe, se avisa en vez de crear un segundo cliente con el
   // mismo identificador y que uno de los dos quede inalcanzable.
-  const slug = aSlug(nombre)
+  const slug = aSlug(parsed.data.nombre)
   const { data: existe } = await supabase.from('clientes').select('id').eq('slug', slug).maybeSingle()
   if (existe) return { ok: false, error: `Ya hay un cliente con el identificador "${slug}"` }
 
-  const { data, error } = await supabase.from('clientes')
-    .insert({ nombre, slug, cuit: cuit || null, drive_carpeta_id: drive_carpeta_id || null, notas: notas || null })
-    .select('id').single()
+  const fila: Record<string, unknown> = { ...aFila(parsed.data), slug }
+  let { data, error } = await supabase.from('clientes').insert(fila).select('id').single()
+  if (error && faltaLaRelacion(error)) {
+    const reducida = sinLaRelacion(fila)
+    if (!reducida) return { ok: false, error: mensajeDeMigracion(error) }
+    ;({ data, error } = await supabase.from('clientes').insert(reducida).select('id').single())
+  }
   if (error) return { ok: false, error: error.message }
   revalidatePath('/clientes', 'layout')
-  return { ok: true, id: data.id as string }
+  return { ok: true, id: data!.id as string }
 }
 
 export async function editarCliente(clienteId: string, form: FormData): Promise<Resultado> {
   const parsed = clienteSchema.safeParse(Object.fromEntries(form))
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
-  const { nombre, cuit, drive_carpeta_id, notas } = parsed.data
 
   const supabase = await createClient()
   // El slug NO se recalcula al renombrar: es la URL del cliente y lo que apuntan los enlaces que
   // alguien ya compartió. Corregir "Messinas" a "Messina SRL" no puede romper una dirección.
-  const { error } = await supabase.from('clientes')
-    .update({ nombre, cuit: cuit || null, drive_carpeta_id: drive_carpeta_id || null, notas: notas || null })
-    .eq('id', clienteId)
+  const fila: Record<string, unknown> = aFila(parsed.data)
+  let { error } = await supabase.from('clientes').update(fila).eq('id', clienteId)
+  if (error && faltaLaRelacion(error)) {
+    const reducida = sinLaRelacion(fila)
+    if (!reducida) return { ok: false, error: mensajeDeMigracion(error) }
+    ;({ error } = await supabase.from('clientes').update(reducida).eq('id', clienteId))
+  }
   if (error) return { ok: false, error: error.message }
   revalidatePath('/clientes', 'layout')
   return { ok: true }
 }
 
-/** Archivar NO es borrar: el cliente sale de la lista operativa y su historia queda intacta. */
+/**
+ * Archivar NO es borrar: el cliente sale de la lista operativa y su historia queda intacta.
+ *
+ * EL EFECTO, que hasta acá no existía: `separarArchivados` lo saca de `/clientes`, la ficha sigue
+ * abriendo por su URL y el pie de la lista dice cuántos hay guardados y cómo verlos. Escribir
+ * `activo = false` en una columna que nadie leía era el verbo sin la consecuencia.
+ */
 export async function archivarCliente(clienteId: string, activo: boolean): Promise<Resultado> {
   const supabase = await createClient()
   const { error } = await supabase.from('clientes').update({ activo }).eq('id', clienteId)
@@ -75,66 +114,59 @@ export async function archivarCliente(clienteId: string, activo: boolean): Promi
   return { ok: true }
 }
 
+// ── CONTACTOS ──────────────────────────────────────────────────────────────────────────────────
+
 const contactoSchema = z.object({
   nombre: z.string().trim().min(2, 'El nombre del contacto es obligatorio'),
-  rol: z.string().trim().optional(),
-  email: z.union([z.string().trim().email('Email inválido'), z.literal('')]).optional(),
-  telefono: z.string().trim().optional(),
-  notas: z.string().trim().optional(),
+  rol: z.string().trim().max(120).optional(),
+  email: emailSchema,
+  telefono: z.string().trim().max(60).optional(),
+  notas: z.string().trim().max(400).optional(),
 })
+
+function aFilaContacto(d: z.infer<typeof contactoSchema>) {
+  return {
+    nombre: d.nombre,
+    rol: d.rol || null,
+    email: d.email || null,
+    telefono: d.telefono || null,
+    notas: d.notas || null,
+  }
+}
 
 export async function crearContacto(clienteId: string, form: FormData): Promise<Resultado> {
   const parsed = contactoSchema.safeParse(Object.fromEntries(form))
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
   const supabase = await createClient()
-  const { error } = await supabase.from('cliente_contacto').insert({
-    cliente_id: clienteId,
-    nombre: parsed.data.nombre,
-    rol: parsed.data.rol || null,
-    email: parsed.data.email || null,
-    telefono: parsed.data.telefono || null,
-    notas: parsed.data.notas || null,
-  })
-  if (error) return { ok: false, error: error.message }
-  revalidatePath(`/clientes`)
-  return { ok: true }
-}
-
-export async function borrarContacto(contactoId: string): Promise<Resultado> {
-  const supabase = await createClient()
-  const { error } = await supabase.from('cliente_contacto').delete().eq('id', contactoId)
-  if (error) return { ok: false, error: error.message }
-  revalidatePath('/clientes', 'layout')
-  return { ok: true }
-}
-
-// El vínculo a Drive acepta la URL entera y se queda con el id: nadie tiene por qué saber dónde
-// termina el id dentro de una URL de Drive, y pedirlo suelto es la forma más rápida de que se
-// cargue mal.
-const ID_DRIVE = /(?:\/folders\/|\/d\/|[?&]id=)([A-Za-z0-9_-]{20,})/
-export async function vincularCarpetaDrive(clienteId: string, urlOId: string): Promise<Resultado> {
-  const v = String(urlOId).trim()
-  const id = v.match(ID_DRIVE)?.[1] ?? (/^[A-Za-z0-9_-]{20,}$/.test(v) ? v : null)
-  if (!id) return { ok: false, error: 'No reconocí un id de carpeta de Drive en eso' }
-  const supabase = await createClient()
-  const { error } = await supabase.from('clientes').update({ drive_carpeta_id: id }).eq('id', clienteId)
+  const { error } = await supabase.from('cliente_contacto')
+    .insert({ cliente_id: clienteId, ...aFilaContacto(parsed.data) })
   if (error) return { ok: false, error: error.message }
   revalidatePath('/clientes', 'layout')
   return { ok: true }
 }
 
 /**
- * Vincula UN documento suelto de Drive al cliente. Queda marcado `manual` para distinguirlo del
- * vínculo que dedujo el sincronizador por la carpeta: quién lo colgó cambia cuánto se le cree.
+ * Editar un contacto EXISTENTE. Sin esto, corregir un teléfono mal anotado obligaba a borrar la
+ * persona y volver a cargarla: se perdía la fecha en que entró a la relación —que es un evento de la
+ * solapa Actividad— por cambiar un dígito.
+ *
+ * El `cliente_id` NO se toca: mudar un contacto de cliente no es una edición, y dejarlo editable
+ * permitiría moverlo desde el navegador.
  */
-export async function vincularDocumento(clienteId: string, urlOId: string, rol?: string): Promise<Resultado> {
-  const v = String(urlOId).trim()
-  const id = v.match(ID_DRIVE)?.[1] ?? (/^[A-Za-z0-9_-]{20,}$/.test(v) ? v : null)
-  if (!id) return { ok: false, error: 'No reconocí un id de archivo de Drive en eso' }
+export async function editarContacto(contactoId: string, form: FormData): Promise<Resultado> {
+  const parsed = contactoSchema.safeParse(Object.fromEntries(form))
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
   const supabase = await createClient()
-  const { error } = await supabase.from('cliente_documento')
-    .upsert({ cliente_id: clienteId, drive_file_id: id, rol: rol || null, origen: 'manual' },
-            { onConflict: 'cliente_id,drive_file_id' })
+  const { error } = await supabase.from('cliente_contacto')
+    .update(aFilaContacto(parsed.data)).eq('id', contactoId)
+  if (error) return { ok: false, error: error.message }
+  revalidatePath('/clientes', 'layout')
+  return { ok: true }
+}
+
+export async function borrarContacto(contactoId: string): Promise<Resultado> {
+  const supabase = await createClient()
+  const { error } = await supabase.from('cliente_contacto').delete().eq('id', contactoId)
   if (error) return { ok: false, error: error.message }
   revalidatePath('/clientes', 'layout')
   return { ok: true }
