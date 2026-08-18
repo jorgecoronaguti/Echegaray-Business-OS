@@ -96,39 +96,34 @@ test('todas las filas tienen el mismo ancho: el generador es dueño de su ancho 
   for (const f of G) assert.equal(f.length, 8)
 })
 
-// ═══ LA DEUDA QUE EL TOTAL NO CUENTA — el defecto del 14/08 ═══
+
+// ═══ LO PAGADO NO PUEDE VOLVER A APARECER COMO DEUDA (18/08/2026) ═══
 //
-// Ocho facturas comerciales dicen "Pagado" con el monto pagado en cero y el paréntesis de "Monto
-// Parcial 1" declarando que falta la plata entera: $11.919.063 que el titular, el aging y las dos
-// dinámicas cuentan como cero, porque las cuatro cuelgan de `Compras!AL`, que arranca con
-// IF(Estado="Pendiente"; …; 0). Si alguien saca esta línea, la contradicción vuelve a ser invisible.
-test('EL DEFECTO · la deuda que el cuadro no muestra sale AL LADO del total, no al pie', () => {
-  assert.equal(F.noMostrada, F.totalAging + 1, 'una línea despegada del total no se lee junto a él')
-  const monto = celda(F.noMostrada, 1)
-  const cuenta = celda(F.noMostrada, 3)
-  assert.ok(monto.startsWith('=SUMPRODUCT('), 'un número pegado seguiría gritando después de corregido (regla 5)')
-  // Mide lo contrario que el aging: filas cuyo ESTADO dice que ya no se deben.
-  assert.ok(monto.includes('$X$4:$X<>"Pendiente"'), 'sin esto vuelve a contar lo mismo que el TOTAL')
-  assert.ok(monto.includes('$AJ$4:$AJ=1'), 'la deuda no comercial vive en Impuestos y Financieros')
-  assert.ok(monto.includes('$T$4:$T') && monto.includes('$U$4:$U') && monto.includes('$W$4:$W'),
-    'sin los tres tramos de pago el saldo de la fila está mal')
-  assert.ok(!monto.includes('*(') === false && monto.length > cuenta.length,
-    'el monto pondera por el saldo; el conteo no')
-})
-
-test('el aviso se APAGA solo cuando no hay nada: un triángulo permanente deja de leerse', () => {
-  const rotulo = celda(F.noMostrada, 0)
-  assert.ok(rotulo.includes(`IF(ROUND($B$${F.noMostrada};0)<=0;""`), 'el glifo tiene que depender del importe')
-  assert.ok(rotulo.includes(ALERTA), 'la marca es ALERTA de glifos.mjs')
-  // `⚠` no se dibuja al exportar a PDF, y el PDF es con lo que el dueño verifica.
-  assert.ok(!rotulo.includes('⚠'), 'el ⚠ no sale en el PDF: la marca vigente es ▲')
-})
-
-test('es-AR en las tres celdas nuevas: separador `;` y ni una coma', () => {
-  for (const c of [0, 1, 3]) {
-    const v = celda(F.noMostrada, c)
-    assert.ok(!/,/.test(v), `la celda ${c} tiene una coma: en es-AR es un separador decimal`)
+// Acá vivían tres tests que DEFENDÍAN la fila «Dicen "Pagado" y falta plata»: exigían que estuviera
+// pegada al TOTAL, que su glifo se encendiera con el importe y que sus tres celdas fueran es-AR.
+// Defendían un defecto. Esos $11.919.063 no se deben: son 8 facturas donde el dueño tipeó "Pagado"
+// encima de la fórmula del Estado, y lo que "los contradecía" eran dos celdas DERIVADAS de esa misma
+// fila (`Monto Pagado` es `=IF(F="pago";O;0)` y `Monto Parcial 1` es `=T-O`). El dueño lo reclamó
+// tres veces: *"en la pestaña compras se paga y cambia a estado pagado y lo continua mostrando como
+// q se adeuda"*.
+//
+// Un test que exige la existencia de una celda es la forma más eficaz de que esa celda vuelva. Éste
+// exige lo contrario, y por eso reemplaza a los tres.
+test('ninguna celda del encabezado publica plata de facturas que NO están Pendientes', () => {
+  for (const [i, fila] of celdasEncabezado().entries()) {
+    for (const [j, c] of fila.entries()) {
+      const v = String(c?.v ?? '')
+      assert.ok(!v.includes('$X$4:$X<>"Pendiente"'),
+        `fila ${i + 1} col ${j}: suma filas cuyo estado NO dice Pendiente — eso es plata ya pagada`)
+      assert.ok(!/falta plata|Dicen ""?Pagado/.test(v),
+        `fila ${i + 1} col ${j}: vuelve a presentar lo pagado como deuda`)
+    }
   }
+})
+
+test('el control de cuadratura quedó pegado al total, sin una fila muerta en el medio', () => {
+  assert.equal(F.control, F.totalAging + 1, 'al sacar la fila de la contradicción el control sube una')
+  assert.equal(F.fin, F.control, 'el bloque termina en el control: ni una fila más')
 })
 
 // ═══ TODA CELDA QUE ESCRIBE UN NÚMERO DECLARA SU ESPECIE (14/08/2026) ═══
@@ -142,13 +137,6 @@ test('es-AR en las tres celdas nuevas: separador `;` y ni una coma', () => {
 //
 // El primero prueba el caso concreto; el segundo, la clase entera: cualquier fila futura que sume o
 // cuente sin declarar especie pone la suite en rojo el día que se escribe, no seis semanas después.
-test('la fila que cuelga del total declara sus dos números: sin especie salen crudos', () => {
-  const C = celdasEncabezado()
-  assert.equal(C[F.noMostrada - 1][1].t, 'monto', 'B12 es plata: sin esto se ve "11919062,68"')
-  assert.equal(C[F.noMostrada - 1][3].t, 'entero', 'D12 es un contador de facturas')
-  assert.equal(C[F.noMostrada - 1][0].t, 'texto', 'el rótulo con el triángulo no es un número')
-})
-
 test('ninguna fórmula que suma o cuenta quedó sin especie declarada', () => {
   assert.deepEqual(encabezadoSinFormato(), [],
     'esa celda escribe un número y no dice de qué especie: se va a dibujar con el formato de ayer')

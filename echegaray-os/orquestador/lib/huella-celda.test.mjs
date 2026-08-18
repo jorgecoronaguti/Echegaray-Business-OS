@@ -497,17 +497,39 @@ test('(r bis) el fósil de mi propia columna NO necesita dos anclas: una fila de
     'el renglón sigue publicando un serial de fecha donde va la plata que salió por ese canal')
 })
 
-test('(s) el `=""` SÍ exige la fila probada mía: es la evidencia débil de las dos', () => {
-  // `=""` no es una firma de nadie —sólo dice que la celda no publica nada—, así que no decide sola.
-  // Acá la fila queda con UNA sola ancla: por debajo de MIN_ANCLAS_DE_FILA, la celda se conserva.
-  const quiero = [...lastre(), ['Nota del dueño', '=""']]
+// ═══ (s) REESCRITO EL 18/08 — ANTES EXIGÍA LA FILA PROBADA, Y ESO CONGELABA CELDAS ═══
+//
+// Acá vivía *"el `=""` SÍ exige la fila probada mía: es la evidencia débil de las dos"*, con una
+// fixture titulada «Nota del dueño». No era una nota: por la definición de `esFormulaNula` —que es de
+// este mismo repo— un `=""` NO PUBLICA NADA y se ve igual que una celda en blanco. Nadie escribe eso
+// para decir algo.
+//
+// El costo de la exigencia, medido en el archivo vivo: `Jornales por Quincena!B118` —«Margen sobre el
+// piso», o sea EL número del cuadro «4.3 · CONTROL DE PISO — NINGÚN JORNAL POR DEBAJO»— es una fila
+// de DOS celdas, nunca puede juntar dos anclas, tenía `=""` y quedó congelada. El cuadro existía para
+// publicar ese porcentaje y publicaba un blanco. Es el mismo lazo que el test (r bis) de arriba ya
+// había roto para el fósil de la propia columna, sin extender la conclusión a esta vía.
+test('(s) un `=""` se pisa cuando lo mío SÍ publica: no hay nada visible que destruir', () => {
+  const quiero = [...lastre(), ['Margen sobre el piso', '=""']]
   const huellas = huellasDe(quiero)
   huellas.delete(claveCelda(quiero.length, 1))
   const nuevo = quiero.map((f, i) => (i === quiero.length - 1 ? [f[0], '=SUM(Z1:Z9)'] : f))
-  const { grid, ajenas, reescritos } = aplicarHuella(nuevo, quiero, huellas)
-  assert.deepEqual(reescritos.filter((r) => r.col === 1), [], 'con una sola ancla el `=""` no alcanza para pisar')
-  assert.ok(ajenas.some((a) => a.col === 1))
-  assert.equal(enLaPestana(grid, quiero).at(-1)[1], '=""', 'la celda del dueño tiene que quedar como está')
+  const { grid, reescritos } = aplicarHuella(nuevo, quiero, huellas)
+  assert.equal(reescritos.filter((r) => r.col === 1).length, 1, 'una fila de dos celdas no junta dos anclas nunca')
+  assert.equal(enLaPestana(grid, quiero).at(-1)[1], '=SUM(Z1:Z9)', 'el cuadro sigue publicando un blanco')
+})
+
+test('(s bis) si lo mío TAMPOCO publica nada, el `=""` se conserva: no se usa de excusa para vaciar', () => {
+  // La condición que sí queda. Sin ella, un `=""` sería una llave para vaciar cualquier coordenada
+  // ajena donde el generador no tiene nada que poner — y vaciar es la acción más destructiva de las
+  // cinco vías, no la más suave.
+  const quiero = [...lastre(), ['Margen sobre el piso', '=""']]
+  const huellas = huellasDe(quiero)
+  huellas.delete(claveCelda(quiero.length, 1))
+  const nuevo = quiero.map((f, i) => (i === quiero.length - 1 ? [f[0], ''] : f))
+  const { grid, reescritos } = aplicarHuella(nuevo, quiero, huellas)
+  assert.deepEqual(reescritos.filter((r) => r.col === 1), [])
+  assert.equal(enLaPestana(grid, quiero).at(-1)[1], '=""', 'se vació una celda sin nada que poner en su lugar')
 })
 
 test('(t) el fósil sólo se pisa donde el generador ESCRIBE: donde pide limpiar sigue mandando VACIO', () => {

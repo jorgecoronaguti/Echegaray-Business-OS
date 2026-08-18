@@ -159,7 +159,22 @@ async function main() {
   if (iSec1 < 0) throw new Error('no encontré el título de la sección 1: sin límite no escribo')
   if (iSec1 + 1 <= F.fin) throw new Error(`la sección 1 está en la fila ${iSec1 + 1} y el encabezado llega hasta la ${F.fin}: no la piso`)
 
+  // ═══ CUANDO EL BLOQUE SE ACHICA, LA FILA QUE SOBRA NO SE VA SOLA (18/08) ═══
+  //
+  // Al sacar «Dicen "Pagado" y falta plata» el encabezado pasó de 13 filas a 12, y el control de
+  // cuadratura —que antes vivía en la 13— subió a la 12. Sin esto, la 13 se queda con la copia vieja
+  // del control: dos veces la misma línea, y la de abajo congelada para siempre porque ya nadie la
+  // reescribe. Es el mismo residuo de rediseño que costó la limpieza de "Jornales".
+  //
+  // El bloque es dueño de las filas 1 hasta la anterior a la sección 1 —la guarda de arriba ya lo
+  // exige— así que las de sobra se blanquean, y se dice cuáles y qué tenían. Normalmente son cero.
+  const sobran = []
+  for (let f = F.fin + 1; f <= iSec1; f++) {
+    const texto = (visible?.[f - 1] ?? []).map((c) => String(c ?? '')).join(' ').trim()
+    if (texto) sobran.push({ fila: f, texto })
+  }
   console.log(`ENCABEZADO filas 1..${F.fin} · sección 1 en la ${iSec1 + 1} · ancho ${ANCHO} columnas`)
+  for (const r of sobran) console.log(`  ⌫ fila ${r.fila} queda fuera del bloque y se blanquea: "${r.texto.slice(0, 90)}"`)
   for (const [i, f] of grilla.entries()) {
     const s = f.map((c) => (c === null ? '' : String(c))).join(' | ').replace(/(\| ){3,}$/, '')
     if (s.replace(/[|\s]/g, '')) console.log(String(i + 1).padStart(3) + '  ' + s.slice(0, 120))
@@ -174,6 +189,12 @@ async function main() {
           : String(c).startsWith('=') ? { formulaValue: String(c) } : { stringValue: String(c) },
       })) })),
       fields: 'userEnteredValue' } },
+    // Las filas que el bloque dejó de ocupar. `endRowIndex` es exclusivo y `iSec1` es 0-based: el
+    // rango llega hasta la fila anterior al título de la sección 1, nunca hasta él.
+    ...(iSec1 > F.fin ? [{ updateCells: {
+      range: { sheetId: hoja.sheetId, startRowIndex: F.fin, endRowIndex: iSec1, startColumnIndex: 0, endColumnIndex: ANCHO },
+      rows: Array.from({ length: iSec1 - F.fin }, () => ({ values: Array.from({ length: ANCHO }, () => ({ userEnteredValue: null })) })),
+      fields: 'userEnteredValue' } }] : []),
     ...pedidosDeFormato(hoja.sheetId, hoja.cols ?? ANCHO),
   ], { espejo: true })
 

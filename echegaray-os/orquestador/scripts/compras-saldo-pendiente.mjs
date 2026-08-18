@@ -14,22 +14,23 @@
 // puede estar bien ni mal a propósito: nadie es responsable de lo que dice.
 //
 // Este script es la puerta al archivo; el criterio y su porqué viven en `lib/deuda-por-tramos.mjs`,
-// con sus tests. La regla, medida contra las 843 filas vivas:
+// con sus tests. La regla, re-medida el 18/08 leyendo FÓRMULAS contra las 1.151 filas vivas:
 //
-//     pagado = T + max(U;0) + max(W;0)          saldo = O − pagado
+//     SE DEBE ⇔ X · Estado = "Pendiente"        CUÁNTO = O − T − max(U;0) − max(W;0)
 //
-// Un `Monto Parcial` NEGATIVO no es un pago: es LO QUE FALTA, escrito entre paréntesis (Gerson
-// Castro: O=2.300.000 · T=1.000.000 · U=−1.300.000). Sumarlo como pago da deuda CERO donde faltan
-// $1,3M; restarlo de nuevo la duplica — medido, $30.167.844 contra $15.083.922, el doble exacto.
+// ═══ EL ESTADO NO SE DISCUTE CON LOS IMPORTES (18/08) ═══
 //
-// ═══ LO QUE ESTE SCRIPT NO DECIDE, Y ES DELIBERADO ═══
+// Acá vivía un `--sin-filtro-de-estado` para imprimir "la otra versión" —la que ignora el Estado y le
+// cree a los importes— y subía el titular $11.919.063. Se fue, y la contradicción que publicaba el
+// encabezado de "Proveedores" también. Motivo: `Monto Pagado` es una FÓRMULA (`=IF(F="pago";O;0)`,
+// 361 filas) que depende de la Modalidad, y `Monto Parcial 1` es `=T-O` en 716 de sus 717 celdas con
+// contenido. No son dos testigos de un pago: son la misma celda derivada dos veces. El único dato
+// tipeado por una persona en esa fila es el ESTADO —517 filas con el literal escrito ENCIMA de la
+// fórmula— y una palabra tipeada sobre una fórmula viva es la declaración más fuerte que hay.
 //
-// La fórmula sigue mirando el ESTADO (`X = "Pendiente"`). Sacarlo mueve el titular $11.919.063 hacia
-// arriba: son ocho facturas comerciales que dicen "Pagado" con el monto pagado en CERO y el
-// paréntesis declarando que falta la plata entera. O se pagaron y la columna quedó con basura vieja,
-// o no se pagaron y hay $11,9M de deuda que nadie ve. Las dos son posibles, tiene efecto económico y
-// no lo firma un generador. `--sin-filtro-de-estado` imprime la otra versión para compararlas con el
-// dueño delante; el encabezado de "Proveedores" ya publica esa contradicción al lado del total.
+// Lo que sí se informa acá, sin un peso al lado: cuántas filas tienen el estado tipeado
+// contradiciendo su propia fórmula. Es el único cruce entre dos fuentes distintas de este archivo, y
+// sirve para mirar la carga —no para corregir una deuda.
 //
 //   node orquestador/scripts/compras-saldo-pendiente.mjs            → muestra qué haría
 //   node orquestador/scripts/compras-saldo-pendiente.mjs --aplicar  → escribe y verifica
@@ -37,12 +38,11 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import {
-  COL, formulaSaldoPendiente, paréntesisQueNoCierran, posicionComercial, ROTULO_SALDO,
+  COL, estadoTipeadoQueContradice, formulaSaldoPendiente, posicionComercial, ROTULO_SALDO,
 } from '../lib/deuda-por-tramos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const APLICAR = process.argv.includes('--aplicar')
-const SIN_FILTRO = process.argv.includes('--sin-filtro-de-estado')
 const plata = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR')
 const letra = (n) => { let s = ''; let x = n + 1; while (x > 0) { const r = (x - 1) % 26; s = String.fromCharCode(65 + r) + s; x = (x - 1 - r) / 26 } return s }
 
@@ -53,7 +53,7 @@ async function main() {
   if (!compras) throw new Error('no encontré la pestaña Compras: no escribo a ciegas')
 
   const col = letra(COL.saldo)
-  const formula = formulaSaldoPendiente({ soloPendiente: !SIN_FILTRO })
+  const formula = formulaSaldoPendiente()
   console.log(`COLUMNA ${col} · "${ROTULO_SALDO}" · grilla ${compras.rows}×${compras.cols}`)
   console.log(formula)
 
@@ -64,21 +64,25 @@ async function main() {
   const filas = await google.readSheetValues(ID, 'Compras!A4:AN', { render: 'UNFORMATTED_VALUE' })
   const pos = posicionComercial(filas ?? [])
   console.log(`\nDEUDA COMERCIAL (JS)  ${plata(pos.enElCuadro.monto)} en ${pos.enElCuadro.n} factura(s)`)
-  if (pos.contradictorio.n) {
-    console.log(`  ⚠ ${pos.contradictorio.n} factura(s) dicen "Pagado" y los importes dicen que falta`
-      + ` ${plata(pos.contradictorio.monto)} — NO entran al total (lo decide el dueño):`)
-    for (const f of pos.contradictorio.filas) {
-      console.log(`      ${f.proveedor.padEnd(30)} ${f.comprobante.padEnd(16)} ${plata(f.saldo).padStart(13)}`)
-    }
-    console.log(`  TECHO si resultaran impagas: ${plata(pos.techo)}`)
-  }
   if (pos.pendienteSinSaldo.n) console.log(`  ○ ${pos.pendienteSinSaldo.n} fila(s) "Pendiente" sin saldo: inflan el conteo, no la plata`)
-  const noCierran = paréntesisQueNoCierran(filas ?? [])
-  if (noCierran.length) {
-    console.log(`  ⚠ ${noCierran.length} fila(s) donde el paréntesis y la aritmética no coinciden:`)
-    for (const f of noCierran.slice(0, 8)) {
-      console.log(`      ${f.proveedor.padEnd(30)} calculado ${plata(f.saldo).padStart(13)} · declarado ${plata(f.declarado).padStart(13)}`)
-    }
+
+  // ── EL ÚNICO CRUCE INDEPENDIENTE: LA PALABRA TIPEADA CONTRA LA ARITMÉTICA.
+  //
+  // Se informa SIN un importe al lado, y es a propósito. Un número en pesos impreso debajo de la
+  // deuda se lee como deuda diga lo que diga el rótulo — es exactamente cómo $11.919.063 de facturas
+  // pagadas terminaron publicados al lado del TOTAL de "Proveedores" durante cuatro días.
+  const formulas = await google.readSheetValues(ID, 'Compras!A4:AN', { render: 'FORMULA' })
+  const tipeados = []
+  for (const [i, f] of (formulas ?? []).entries()) {
+    const d = estadoTipeadoQueContradice(f, (filas ?? [])[i] ?? [])
+    if (d) tipeados.push({ fila: i + 4, ...d })
+  }
+  if (tipeados.length) {
+    const por = new Map()
+    for (const t of tipeados) por.set(`${t.tipeado} (la fórmula diría ${t.calculado})`, (por.get(`${t.tipeado} (la fórmula diría ${t.calculado})`) ?? 0) + 1)
+    console.log(`  ○ ${tipeados.length} fila(s) con el Estado TIPEADO encima de su fórmula:`)
+    for (const [k, n] of [...por].sort((a, b) => b[1] - a[1])) console.log(`      ${String(n).padStart(4)} · ${k}`)
+    console.log('      manda lo tipeado: es lo único que declaró una persona. Se informa, no se corrige.')
   }
 
   // ── LA GUARDA: la celda destino tiene que ser MÍA o estar vacía.
@@ -90,9 +94,6 @@ async function main() {
   const rotuloActual = String(cabecera?.[0]?.[0] ?? '').trim()
   if (rotuloActual && rotuloActual !== ROTULO_SALDO) {
     throw new Error(`la columna ${col} de Compras dice "${rotuloActual}" y no "${ROTULO_SALDO}". No es mía: no la piso.`)
-  }
-  if (SIN_FILTRO && APLICAR) {
-    throw new Error('--sin-filtro-de-estado sube el titular $11,9M: eso lo firma el dueño, no un script. Es sólo para mirar.')
   }
   if (!APLICAR) { console.log('\n(sin --aplicar: no se escribió nada)'); return }
 

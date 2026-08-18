@@ -7,9 +7,8 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  COL, PENDIENTE, clasificar, esComercial, faltaDeclarada, formulaDeudaNoMostrada,
-  formulaProveedoresNoMostrados, formulaSaldoPendiente, pagadoDe,
-  paréntesisQueNoCierran, posicionComercial, saldoDeLaFila,
+  COL, PENDIENTE, clasificar, esComercial, estadoTipeadoQueContradice,
+  formulaSaldoPendiente, pagadoDe, posicionComercial, saldoDeLaFila,
 } from './deuda-por-tramos.mjs'
 
 /** Arma una fila de Compras con sólo las columnas que esta aritmética mira. */
@@ -35,7 +34,10 @@ const GERSON = fila({ proveedor: 'Gerson Castro', total: 2300000, pagado: 100000
 const FREDES = fila({ proveedor: 'Pedro Fredes', total: 3300000, pagado: 2000000, u: -1300000, totalOParcial: 'Total' })
 /** Pendiente sin un peso pagado: U es el total entre paréntesis. */
 const ALUMETAL = fila({ proveedor: 'Alumetal', comprobante: '0038-00025942', total: 2014940, pagado: 0, u: -2014940 })
-/** ═══ EL AGUJERO ═══ dice "Pagado", no pagó nada, y U declara que faltan $5.124.412. */
+/** ═══ LAS OCHO DEL FALSO AGUJERO (re-medidas el 18/08) ═══ dicen "Pagado" con `Monto Pagado` en 0
+ *  y U en −Total. Y las dos celdas son FÓRMULAS: `T` es `=IF(F="pago";O;0)` con Modalidad = "Cuenta
+ *  Corriente" (rinde 0) y `U` es literalmente `=T-O`. El "Pagado" lo tipeó el dueño encima de la
+ *  fórmula del Estado. No se deben. */
 const GRUAS = fila({ proveedor: 'Gruas San Blas', comprobante: '00060-00001275', total: 5124412, pagado: 0, u: -5124411, estado: 'Pagado' })
 const HORMISERV = fila({ proveedor: 'Hormiserv', comprobante: '826666', total: 3640067, pagado: 0, u: -3640067, estado: 'Pagado' })
 /** Pagada de verdad, con un parcial POSITIVO (un pago real que además superó el importe). */
@@ -60,7 +62,6 @@ describe('la aritmética de los tramos', () => {
 
   it('un U POSITIVO sí es un pago y se suma', () => {
     assert.equal(pagadoDe(COMBUSTIBLES), 34460 + 40000)
-    assert.equal(faltaDeclarada(COMBUSTIBLES), 0, 'sin paréntesis no hay nada declarado como faltante')
   })
 
   it('la fila sin un peso pagado debe el comprobante entero', () => {
@@ -74,23 +75,27 @@ describe('la aritmética de los tramos', () => {
   })
 })
 
-describe('el agujero de $11.919.063: "Pagado" con saldo', () => {
-  it('EL DEFECTO · una fila que dice "Pagado" y no pagó nada NO es una fila saldada', () => {
-    assert.equal(clasificar(GRUAS), 'pagada-con-saldo')
-    assert.equal(saldoDeLaFila(GRUAS), 5124412)
-    // La fórmula que hoy vive en AL arranca con IF(X="Pendiente"; …; 0): ésta vale CERO en el cuadro.
-    assert.equal(clasificar(ALUMETAL), 'deuda')
+// ═══ EL ESTADO ES LA ÚNICA DECLARACIÓN, Y ES DEL DUEÑO (18/08/2026) ═══
+//
+// Acá vivía el bloque "el agujero de $11.919.063", que exigía que una fila con estado "Pagado" y
+// `Monto Pagado` en cero se clasificara como `pagada-con-saldo` y se publicara como plata que
+// posiblemente se deba. Re-medido leyendo FÓRMULAS y no valores: `Monto Pagado` es `=IF(F="pago";O;0)`
+// —depende de la Modalidad— y `Monto Parcial 1` es `=T-O`. Las dos "pruebas" salían de la misma
+// celda. El "Pagado" lo tipeó una persona encima de la fórmula, que es la declaración más fuerte que
+// hay. El dueño lo reclamó tres veces.
+describe('el estado manda: lo que dice "Pagado" no se debe', () => {
+  it('EL DEFECTO · una fila que dice "Pagado" está saldada, aunque los importes deriven otra cosa', () => {
+    assert.equal(clasificar(GRUAS), 'saldada')
+    assert.equal(clasificar(HORMISERV), 'saldada')
+    assert.equal(clasificar(ALUMETAL), 'deuda', 'y la que dice Pendiente sí se debe')
   })
 
-  it('la posición trae las dos cifras juntas: la que se muestra y la que se está tapando', () => {
+  it('la posición devuelve UNA cifra: la deuda declarada, sin techo ni contradicción al lado', () => {
     const p = posicionComercial([GERSON, FREDES, ALUMETAL, GRUAS, HORMISERV, COMBUSTIBLES])
     assert.equal(p.enElCuadro.n, 3)
     assert.equal(p.enElCuadro.monto, 1300000 + 1300000 + 2014940)
-    assert.equal(p.contradictorio.n, 2)
-    assert.equal(p.contradictorio.monto, 5124412 + 3640067)
-    assert.equal(p.techo, p.enElCuadro.monto + p.contradictorio.monto)
-    // Ordenadas por plata: la que más pesa, primero — es la que hay que preguntar.
-    assert.equal(p.contradictorio.filas[0].proveedor, 'Gruas San Blas')
+    assert.equal(p.contradictorio, undefined, 'publicar lo pagado como deuda es el defecto que se sacó')
+    assert.equal(p.techo, undefined)
   })
 
   it('una compra NO comercial no entra: su deuda vive en Impuestos y Financieros (regla 9)', () => {
@@ -106,16 +111,29 @@ describe('el agujero de $11.919.063: "Pagado" con saldo', () => {
   })
 })
 
-describe('el control por dos caminos', () => {
-  it('los paréntesis y la aritmética miden lo mismo, y cuando difieren se dice', () => {
-    // Las reales cierran al peso (la de Corralón difiere en $1 por redondeo y no se reporta).
-    assert.deepEqual(paréntesisQueNoCierran([GERSON, FREDES, ALUMETAL]), [])
-    // Una mal cargada: pagó 500 de 1000 y escribió que faltan 900.
-    const mala = fila({ proveedor: 'Z', total: 1000, pagado: 500, u: -900 })
-    const [d] = paréntesisQueNoCierran([mala])
-    assert.equal(d.saldo, 500)
-    assert.equal(d.declarado, 900)
-    assert.equal(d.dif, -400)
+// ═══ EL ÚNICO CRUCE QUE SÍ ES INDEPENDIENTE ═══
+//
+// Una persona tipeando una palabra contra una aritmética. Informa; no corrige, no suma, no publica un
+// peso. Necesita las DOS lecturas de la misma fila —fórmula y valor—: sin la de fórmulas no hay forma
+// de distinguir un estado tipeado de uno calculado, y suponerlo es el error que costó todo esto.
+describe('el estado tipeado que contradice a su propia fórmula', () => {
+  /** La MISMA fila, en sus dos lecturas: `X` tipeado "Pagado", `T` rindiendo 0 por la modalidad. */
+  const formulaGruas = fila({ proveedor: 'Gruas San Blas', total: '=N796+M796', pagado: '=IF(F796="pago";O796;0)', u: '=T796-O796', estado: 'Pagado' })
+
+  it('lo detecta y dice las dos versiones, sin tocar ninguna deuda', () => {
+    const d = estadoTipeadoQueContradice(formulaGruas, GRUAS)
+    assert.deepEqual(d, { tipeado: 'Pagado', calculado: 'Pendiente' })
+  })
+
+  it('un estado que ES una fórmula no es una declaración de nadie', () => {
+    const conFormula = fila({ estado: '=IF($E796="";"";IF(ABS(N($T796)+N($W796)-N($O796))<1;"Pagado";"Pendiente"))' })
+    assert.equal(estadoTipeadoQueContradice(conFormula, GRUAS), null)
+  })
+
+  it('cuando el tipeado coincide con lo calculado, no hay nada que informar', () => {
+    assert.equal(estadoTipeadoQueContradice(fila({ estado: 'Pendiente' }), ALUMETAL), null)
+    assert.equal(estadoTipeadoQueContradice(fila({ estado: 'ELIMINADO' }), ALUMETAL), null,
+      'una fila dada de baja no contradice nada')
   })
 })
 
@@ -140,49 +158,13 @@ describe('la fórmula de la columna AL', () => {
     assert.ok(f.includes('IF($E$4:$E="";"";'), 'sin esto pinta ceros hasta el fin de la grilla')
   })
 
-  it('la variante que le cree a los IMPORTES existe, y es OTRA fórmula', () => {
-    const abierta = formulaSaldoPendiente({ soloPendiente: false })
-    assert.notEqual(abierta, f)
-    assert.ok(f.includes(`$X$4:$X="${PENDIENTE}"`), 'la de hoy filtra por el estado — ahí está el agujero')
-    assert.ok(!abierta.includes(`$X$4:$X="${PENDIENTE}"`))
-    // Las dos exigen proveedor comercial: la deuda con ARCA/nómina no es de esta pestaña.
-    for (const x of [f, abierta]) assert.ok(x.includes('$AJ$4:$AJ=1'))
-  })
-})
-
-// ═══ LA CONTRADICCIÓN SIN NOMBRES ERA UNA CIFRA QUE NO SE PODÍA ACCIONAR (14/08) ═══
-//
-// Las ocho facturas que dicen "Pagado" con el paréntesis declarando que falta la plata NO tienen fila
-// en el cuadro que ordena la deuda por proveedor: su saldo vale cero ahí. Así, el ranking omite a
-// Gruas San Blas con $5.124.412 y nada lo delata. El dueño: *"la base SIEMPRE es el nombre del
-// proveedor"* — la cifra sin los nombres dice que falta plata; con los nombres dice a quién preguntar.
-describe('los NOMBRES de la deuda que el cuadro no muestra', () => {
-  const nombres = formulaProveedoresNoMostrados()
-
-  it('mira exactamente las mismas filas que la cifra y el conteo', () => {
-    // Si los tres universos se separan, el aviso dice "$11,9M en 8 facturas" y nombra a otros.
-    const universo = (f) => f.replace(/^=\w+\(/, '').replace(/\)+$/, '')
-    for (const trozo of ['$AJ$4:$AJ=1', `$X$4:$X<>"${PENDIENTE}"`, '$X$4:$X<>"ELIMINADO"']) {
-      assert.ok(nombres.includes(trozo), `los nombres no filtran por ${trozo}`)
-      assert.ok(formulaDeudaNoMostrada('monto').includes(trozo), `la cifra no filtra por ${trozo}`)
-      assert.ok(formulaDeudaNoMostrada('n').includes(trozo), `el conteo no filtra por ${trozo}`)
-    }
-    assert.ok(universo(nombres).includes('Compras!$E$4:$E'), 'no devuelve la columna del proveedor')
-  })
-
-  it('no repite un nombre por cada comprobante suyo', () => {
-    // Con-Sec tiene tres filas y DUPEC dos: sin UNIQUE, el aviso gasta el ancho en repetirlos.
-    assert.ok(nombres.includes('UNIQUE('), 'sin UNIQUE, Con-Sec sale tres veces y tapa a los demás')
-  })
-
-  it('se apaga sola cuando no queda ninguna: es fórmula viva, no un número pegado', () => {
-    // Un aviso que no se puede apagar deja de leerse. El día que alguien corrija esas filas en
-    // Compras, FILTER no devuelve nada, TEXTJOIN da #N/A y el IFERROR lo convierte en vacío.
-    assert.ok(nombres.startsWith('=IFERROR('), 'sin IFERROR queda un #N/A permanente en el encabezado')
-    assert.ok(nombres.endsWith(';"")'), 'el fallback tiene que ser vacío, no un texto')
-  })
-
-  it('es-AR: separador `;` y ni una coma suelta', () => {
-    assert.ok(!/,/.test(nombres), 'una coma en un archivo es-AR es un separador decimal')
+  it('NO tiene variante: no existe una segunda definición de cuánto se debe', () => {
+    // Tenía un `soloPendiente:false` que producía "la que le cree a los importes". Esa segunda
+    // versión no puede existir: los importes de Compras son fórmulas derivadas del propio estado y de
+    // la modalidad, así que no son una segunda opinión — son la misma celda con otro nombre.
+    assert.equal(formulaSaldoPendiente.length, 0, 'una fórmula con opciones son dos definiciones')
+    assert.equal(formulaSaldoPendiente({ soloPendiente: false }), f, 'el parámetro viejo ya no cambia nada')
+    assert.ok(f.includes(`$X$4:$X="${PENDIENTE}"`), 'se debe lo que el dueño declaró Pendiente')
+    assert.ok(f.includes('$AJ$4:$AJ=1'), 'la deuda con ARCA/nómina no es de esta pestaña')
   })
 })

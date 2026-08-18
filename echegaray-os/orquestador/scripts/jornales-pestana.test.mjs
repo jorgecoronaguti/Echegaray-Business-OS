@@ -1081,7 +1081,7 @@ test('la columna "Equivale a (convenio)" del plantel no lleva el centinela en ni
 // EL FORMATO, PROBADO EN FRÍO (06/08). Los dos defectos de abajo se vieron MIRANDO la pestaña y
 // ninguno da error: una cifra mal formateada es plausible y equivocada, que es la peor clase.
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
-import { requestsDeFormato } from './jornales-pestana.mjs'
+import { requestsDeFormato, ANCHO } from './jornales-pestana.mjs'
 
 /** El numberFormat que termina aplicándose a una celda: gana el ÚLTIMO pedido que la cubre. */
 const formatoDe = (reqs, fila, col) => {
@@ -1193,6 +1193,53 @@ test('LA JERARQUÍA LLEGA A LA PESTAÑA: cinco secciones en 11 y tres sub-seccio
   const reglas = reqs.filter((r) => r.updateBorders?.top?.style === 'SOLID')
   assert.ok(reglas.some((r) => r.updateBorders.range.endColumnIndex < 14),
     'ninguna regla se acortó al ancho de su bloque: el centinela sigue contando como contenido')
+})
+
+// ═══ LA COLUMNA «Pagado el» — LO QUE EL DUEÑO VIO EL 18/08 ═══
+//
+// *"jornales por quincena sigue roto desde fila 126 en adelante"* · *"no estás respetando que si yo
+// hago una modificación así sea de formato en una celda, la tenés que respetar y no volver a lo de
+// antes en la barrida"*.
+//
+// Las dos frases son el mismo defecto. El barrido de moneda iba de la B a la N e incluía la columna
+// del dueño, así que siete fechas suyas que un rediseño anterior dejó desplazadas en las filas 126 a
+// 132 —el título del cuadro 5 y sus notas— se dibujaban «$46.160», «$46.176»… La N está declarada
+// suya desde el 31/07 y `push()` la rellena con `''` en vez del centinela justamente por eso:
+// preservar el valor y repintarle el formato encima es preservar a medias.
+test('el barrido de moneda NO toca la columna del dueño, en ninguna fila de la pestaña', () => {
+  const reqs = requestsDeFormato(1, gm.filas, gm)
+  const N = ANCHO - 1
+  const moneda = reqs.filter((r) => r.repeatCell?.cell?.userEnteredFormat?.numberFormat?.type === 'CURRENCY')
+  for (const r of moneda) {
+    assert.ok(r.repeatCell.range.endColumnIndex <= N,
+      `un barrido de moneda llega hasta la columna ${r.repeatCell.range.endColumnIndex}: pisa «Pagado el»`)
+  }
+  // Y NINGÚN formato de moneda cae sobre la N en ninguna fila — ni por el barrido ni por una regla
+  // suelta. Se mide sobre filas del registro y sobre filas de PROSA, que es donde estaban los siete
+  // seriales: una regla que sólo cubre la tabla deja el resto de la columna pintado de pesos.
+  for (const f of [4, Math.round(gm.filas.length / 2), gm.f0, gm.fTotalReal, gm.filas.length]) {
+    assert.notEqual(formatoDe(reqs, f, N)?.type, 'CURRENCY', `fila ${f}: «Pagado el» dibujada como plata`)
+  }
+})
+
+test('«Pagado el» recibe el tipo que declara su encabezado —fecha— en TODA la columna', () => {
+  // No es opinar sobre el formato del dueño: es decir de qué es la columna. Sin esta regla un serial
+  // suyo se dibuja "46160" pelado, que se lee peor que "$46.160". Y tiene que cubrir la columna
+  // entera, no sólo las filas de quincena: los siete desplazados estaban FUERA de la tabla.
+  const reqs = requestsDeFormato(1, gm.filas, gm)
+  const N = ANCHO - 1
+  for (const f of [4, gm.f0, gm.fTotalReal, gm.filas.length]) {
+    assert.equal(formatoDe(reqs, f, N)?.type, 'DATE', `fila ${f}: «Pagado el» no se dibuja como fecha`)
+  }
+})
+
+test('la columna «Estado» del registro es una FRASE, no plata', () => {
+  // Dice "pagada el 18/5" o "cerrada · a pagar" y sale de una fórmula, así que el pase por contenido
+  // la saltea —ve un `=`— y se quedaba con el barrido de moneda encima.
+  const reqs = requestsDeFormato(1, gm.filas, gm)
+  for (const f of [gm.f0, gm.fTotalReal]) {
+    assert.equal(formatoDe(reqs, f, ANCHO - 2)?.type, 'TEXT', `fila ${f}: «Estado» del registro dibujada como plata`)
+  }
 })
 
 test('el calendario es TODO plata de la D a la H, y sus dos mediciones no se dibujan como pesos', () => {

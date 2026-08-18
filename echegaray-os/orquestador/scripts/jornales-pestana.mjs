@@ -2463,8 +2463,20 @@ export function requestsDeFormato(sheetId, filas, g) {
     // columnas: eso partía la fila de total en dos tamaños y dejaba un importe de doce dígitos al
     // borde de cortarse. La jerarquía del bloque la pone `escenario`, más abajo.
     ...skinRequests({ sheetId, filas, cols: ANCHO, congeladas: 2, titular: 0, filasHoja: filas.length }),
-    // Todo lo que es plata, a la derecha y con cifras tabulares.
-    { repeatCell: { range: rg(3, filas.length, 1, ANCHO), cell: { userEnteredFormat: { numberFormat: moneda, horizontalAlignment: 'RIGHT' } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment)' } },
+    // ═══ EL BARRIDO DE MONEDA LLEGA HASTA LA M, NUNCA HASTA LA N (18/08) ═══
+    //
+    // Iba `1, ANCHO` —B hasta N—, o sea que repintaba de moneda la pestaña ENTERA en cada corrida,
+    // incluida la columna «Pagado el». Y la N no es de este generador: `push()` rellena hasta la 13
+    // con el centinela VACIO ("es mía y va vacía") y pone `''` en la 14 ("no es mía, preservá lo que
+    // haya") — el propio archivo lo declara y lo explica, después de que la fusión le borrara al dueño
+    // sus fechas de pago tres veces. Preservar el VALOR y repintar el FORMATO encima es preservar a
+    // medias: el dueño lo dijo así, *"si yo hago una modificación así sea de formato en una celda, la
+    // tenés que respetar y no volver a lo de antes en la barrida"*.
+    //
+    // La N recibe UNA sola regla, más abajo: el tipo que declara su propio encabezado (fecha). Eso no
+    // es opinar sobre el formato de nadie —es decir de qué es la columna— y sin ella los seriales del
+    // dueño se dibujarían "46160" pelado, que es peor que "$46.160".
+    { repeatCell: { range: rg(3, filas.length, 1, ANCHO - 1), cell: { userEnteredFormat: { numberFormat: moneda, horizontalAlignment: 'RIGHT' } }, fields: 'userEnteredFormat(numberFormat,horizontalAlignment)' } },
     // La prosa se pinta como TEXTO decidida por contenido, DESPUÉS del barrido de moneda — antes de
     // él, el repeatCell la pisaba y "ver Cargas Sociales" quedaba como un número roto (06/08).
     ...requestsTextoPorContenido(sheetId, filas).requests,
@@ -2554,18 +2566,30 @@ export function requestsDeFormato(sheetId, filas, g) {
         fields: 'userEnteredFormat(numberFormat,horizontalAlignment)',
       },
     })
-    // Y LA CUARTA FECHA: "Pagado el", que es la última columna. Se le da formato de FECHA aunque el
-    // contenido sea del dueño —el formato es del generador, el dato es suyo—. Sin esto sus fechas se
-    // dibujaban "$46.055": el serial con el formato de moneda de la columna de al lado, que es el mismo
-    // defecto que este bloque vino a arreglar dos veces (para "Hasta" y para "Se paga el").
-    reqs.push({
-      repeatCell: {
-        range: rg(f - 1, f, ANCHO - 1, ANCHO),
-        cell: { userEnteredFormat: { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'CENTER' } },
-        fields: 'userEnteredFormat(numberFormat,horizontalAlignment)',
-      },
-    })
   }
+  // ═══ LA COLUMNA «Pagado el» ES DE FECHAS EN TODO SU LARGO, NO SÓLO EN SUS FILAS (18/08) ═══
+  //
+  // Esta regla vivía adentro del bucle de arriba: le daba formato de FECHA a la N sólo en las filas
+  // del registro. En TODAS las demás la N se quedaba con el barrido general de moneda —que pinta de
+  // la B a la N, la pestaña entera— y ahí es donde el dueño lo vio: siete seriales que un rediseño
+  // anterior dejó desplazados en las filas 126 a 132 (el título del cuadro 5 y sus notas) se
+  // dibujaban «$46.160», «$46.176», «$46.189»… números de seis cifras con signo de peso justo arriba
+  // del cuadro que dice cuánto se pagó de jornales. *"jornales por quincena sigue roto desde fila 126
+  // en adelante"*.
+  //
+  // LOS VALORES NO SE TOCAN, Y NO ES TIMIDEZ: la N está declarada 100% del dueño desde el 31/07, el
+  // generador emite filas más cortas que la grilla justamente para no llegar hasta ella, y borrarle
+  // fechas de pago ya costó seis pérdidas de trabajo suyo. Lo que estaba mal era MÍO —el formato— y
+  // es lo que se arregla. Dibujados como fecha, esos siete se leen «18/05/2026», «03/06/2026»…: se
+  // ven por lo que son, copias desplazadas de su propia columna, y el dueño las borra de un saque.
+  // Un dato ajeno mal dibujado se arregla dibujándolo bien, no borrándolo.
+  reqs.push({
+    repeatCell: {
+      range: rg(3, filas.length, ANCHO - 1, ANCHO),
+      cell: { userEnteredFormat: { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'CENTER' } },
+      fields: 'userEnteredFormat(numberFormat,horizontalAlignment)',
+    },
+  })
   const ENTERO = { type: 'NUMBER', pattern: '#,##0;-#,##0;"—"' }
   // EL "Ajuste escalón" DE LOS DOS BLOQUES MENSUALES, CON CUATRO DECIMALES Y EL MISMO PATRÓN. Iba con
   // "0.00" —heredado del ajuste por inflación del layout viejo— y un tramo de paritaria de +1,9% se
@@ -2586,6 +2610,12 @@ export function requestsDeFormato(sheetId, filas, g) {
   // Registro: días y personas enteros, las horas con un decimal.
   fmt(g.f0 - 1, g.fTotalReal, 3, 5, ENTERO)
   fmt(g.f0 - 1, g.fTotalReal, 5, 7, HORAS)
+  // La columna «Estado» del registro dice "pagada el 18/5" o "cerrada · a pagar": es una FRASE. Sale
+  // de una FÓRMULA, así que el pase por contenido la saltea —ve un `=`— y se quedaba con el formato
+  // de moneda del barrido general. Hoy el texto se dibuja igual, pero es la misma celda que el día
+  // que rinda un número lo publica como pesos; y es el cuadro 5, que el dueño mandó revisar entero.
+  // Los dos bloques mensuales ya tenían su regla equivalente diez líneas más abajo.
+  fmt(g.f0 - 1, g.fTotalReal, ANCHO - 2, ANCHO - 1, { type: 'TEXT' })
   // Oficina: el ajuste del escalón vive en la B desde el 14/08 y es un coeficiente, no plata. La
   // columna «Personas» —que era la que llevaba ENTERO acá— se fue en el mismo cambio.
   fmt(g.o0 - 1, g.oFin, 1, 2, FACTOR)

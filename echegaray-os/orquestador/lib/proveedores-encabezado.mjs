@@ -23,7 +23,6 @@
 // alguien mira.
 
 import { TRAMOS, SIN_FECHA } from './proveedores-aging.mjs'
-import { formulaDeudaNoMostrada, formulaProveedoresNoMostrados } from './deuda-por-tramos.mjs'
 import { ALERTA } from './glifos.mjs'
 
 /** Rótulos de la izquierda, sin el prefijo numérico: el prefijo es del ordenamiento, no de la vista. */
@@ -50,9 +49,15 @@ export const F = Object.freeze({
   get primerMedio() { return this.rotulos + 1 },
   get totalMedios() { return this.primerMedio + MEDIOS.length },
   get arca() { return this.totalAging },
-  // La deuda que el cuadro NO muestra, pegada al TOTAL: es la única forma de que se lea junto a él.
-  get noMostrada() { return this.totalAging + 1 },
-  get control() { return this.totalAging + 2 },
+  // ═══ ACÁ VIVÍA `noMostrada` — LA FILA QUE RESUCITABA LO YA PAGADO (18/08) ═══
+  //
+  // Publicaba, pegado al TOTAL y con un ▲, «Dicen "Pagado" y falta plata · $11.919.063 · 8 facturas»
+  // con los nombres de los proveedores al lado. Esa plata no se debe: las 8 filas son facturas donde
+  // el dueño tipeó "Pagado" encima de la fórmula del Estado, y los "importes que la contradecían"
+  // eran `Monto Pagado` (una fórmula que sólo se dispara con Modalidad = "pago") y `Monto Parcial 1`
+  // (que es literalmente `=T-O`). Tres lecturas de la misma celda presentadas como tres testigos.
+  // El dueño lo reclamó tres veces. Ver la cabecera de `deuda-por-tramos.mjs`.
+  get control() { return this.totalAging + 1 },
   get fin() { return this.control },
 })
 
@@ -125,28 +130,6 @@ export function celdasEncabezado() {
   set(F.totalMedios, 5, 'TOTAL')
   set(F.totalMedios, 6, `=SUM($G${F.primerMedio}:$G${F.primerMedio + MEDIOS.length - 1})`, 'montoTotal')
   set(F.totalMedios, 7, `=IF($G$${F.totalMedios}=0;0;1)`, 'porcentaje')
-
-  // ── LO QUE EL TOTAL DE ARRIBA NO ESTÁ CONTANDO, pegado al total (14/08)
-  //
-  // El dueño: "proveedores esta considerando mal las columnas de montos adeudados y pagos parciales
-  // … los valores son equivocados". Medido: ocho facturas comerciales dicen "Pagado" con el monto
-  // pagado en cero y el paréntesis de "Monto Parcial 1" declarando que falta la plata entera —
-  // $11.919.063 al 14/08. Las cuatro vistas de esta pestaña cuelgan de `Compras!AL`, que arranca con
-  // IF(Estado="Pendiente"; …; 0), así que las ocho valen CERO en todas.
-  //
-  // NO se suman al TOTAL, y es deliberado: o esas facturas se pagaron y la columna del paréntesis
-  // quedó con basura vieja, o no se pagaron y hay $11,9M de deuda invisible. Decidirlo tiene efecto
-  // económico y no lo firma un generador. Lo que sí corresponde es que la contradicción esté AL LADO
-  // del número que contradice, y no enterrada en un contador al pie de la pestaña — donde estaba, y
-  // por eso nadie la vio. El triángulo sólo se enciende si hay algo: un aviso permanente no se lee.
-  set(F.noMostrada, 0, `=IF(ROUND($B$${F.noMostrada};0)<=0;"";"${ALERTA} ")&"Dicen ""Pagado"" y falta plata"`)
-  set(F.noMostrada, 1, formulaDeudaNoMostrada('monto'), 'monto')
-  set(F.noMostrada, 3, formulaDeudaNoMostrada('n'), 'entero')
-  // Y A QUIÉNES. Estas facturas NO tienen fila en el cuadro que ordena la deuda por proveedor —su
-  // saldo vale cero ahí— así que el ranking omite a Gruas San Blas con $5.124.412 y nada lo delata.
-  // Va en la F para poder derramar sobre la G y la H, que en esta fila están vacías: son nombres
-  // largos y cortarlos deja la pregunta a medias.
-  set(F.noMostrada, 5, formulaProveedoresNoMostrados())
 
   // ── lo que la deuda NO ve: facturado con CAE que Compras no tiene cargado
   //

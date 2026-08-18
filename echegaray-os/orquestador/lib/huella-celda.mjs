@@ -480,9 +480,34 @@ export function aplicarHuella(generado = [], actual = [], huellas = new Map(), o
       //      escribe con dos celdas no puede tener dos anclas nunca — medido en las filas 129 y 130,
       //      que publicaban un serial de fecha con formato de moneda ($46.203 y $46.218) en los
       //      renglones "De lo pagado — por banco" y "— en adelantos", y se quedaban a un ancla.
-      //   2. `=""`, CON la fila probada mía. Ésta es más débil: no es una firma de nadie, sólo la
-      //      constatación de que la celda no publica nada (ver `esFormulaNula`). Por eso no decide
-      //      sola y necesita que la huella ya haya probado que la fila es del generador.
+      //   2. `=""`, cuando lo que voy a escribir SÍ publica algo. Ver abajo: pedía además la fila
+      //      probada mía, y esa exigencia dejaba celdas congeladas para siempre.
+      //
+      // ═══ EL `=""` NO NECESITA QUE LA FILA ESTÉ PROBADA, Y EXIGIRLO CONGELÓ EL CONTROL DE PISO ═══
+      //
+      // (18/08) Esta evidencia pedía `filaProbadaMia` — ≥2 celdas de la misma fila selladas por
+      // huella. Una fila que el generador escribe con DOS celdas no puede juntar dos anclas nunca, y
+      // el comentario de arriba ya lo había medido en las filas 129 y 130 sin sacar la conclusión:
+      // esas filas quedan atrapadas en el lazo que este mismo bloque describe (ajena → `''` → se
+      // conserva el fósil → no se sella huella → mañana igual, para siempre).
+      //
+      // MEDIDO EN EL ARCHIVO VIVO: `Jornales por Quincena!B118` —«Margen sobre el piso — negativo =
+      // deuda laboral», que es EL número del cuadro «4.3 · CONTROL DE PISO — NINGÚN JORNAL POR
+      // DEBAJO»— tenía `=""` y el generador no podía escribir su fórmula. El cuadro entero existía
+      // para publicar ese porcentaje y publicaba una celda en blanco. El dueño: *"está todo mal desde
+      // el cuadro 4.3 para abajo"*.
+      //
+      // POR QUÉ ES SEGURO SACAR LA EXIGENCIA. Un `=""` no publica NADA: se ve exactamente igual que
+      // una celda en blanco (es la definición entera de `esFormulaNula`, y por eso es una categoría
+      // propia). Pisarlo con contenido no puede destruir nada visible del dueño — por construcción,
+      // no por criterio. Es la más suave de las cinco vías, más suave incluso que el quinto cuadrante,
+      // que sí se acepta con la fila probada. El propio bloque de arriba usa este argumento para
+      // aceptar la evidencia 1 sola: *"vaciar es estrictamente más destructivo que pisarla con lo que
+      // va: exigirle a la acción más suave una evidencia MAYOR sería incoherente"*.
+      //
+      // LA CONDICIÓN QUE SÍ QUEDA: lo que voy a escribir tiene que PUBLICAR algo (`hayContenido(c)`).
+      // Si el generador viene a poner otro vacío, no hay nada que ganar y la celda se conserva tal
+      // cual — así un `=""` nunca se usa como excusa para vaciar una coordenada ajena.
       //
       // Lo que sigue sin tocar es lo mismo de siempre: un residuo NUMÉRICO, y cualquier fórmula del
       // dueño que yo no escriba en esa columna. Ésos salen por la vía declarada, con una persona
@@ -490,8 +515,8 @@ export function aplicarHuella(generado = [], actual = [], huellas = new Map(), o
       if (c !== VACIO) {
         const suya = normalizarFormula(hoy)
         const por = suya && formulasMias.get(col)?.has(suya) ? 'una fórmula que sigo escribiendo en esta columna'
-          : esFormulaNula(hoy) && filaProbadaMia(actual, activas, i, col, { fila0, col0, off: alineacion.off })
-            ? 'un `=""` que no publica nada'
+          : esFormulaNula(hoy) && hayContenido(c)
+            ? 'un `=""` que no publica nada, y lo mío sí publica'
             : null
         if (por) {
           reescritos.push({ fila: fila0 + i, col, suyo: String(hoy).slice(0, 60), mio: String(c).slice(0, 60), por })
