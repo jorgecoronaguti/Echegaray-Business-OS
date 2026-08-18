@@ -89,11 +89,12 @@ export default async function ClientePage({
   params, searchParams,
 }: {
   params: Promise<{ cliente: string }>
-  searchParams: Promise<{ vista?: string }>
+  searchParams: Promise<{ vista?: string; archivadas?: string }>
 }) {
   const { cliente: slug } = await params
-  const { vista: vistaRaw } = await searchParams
+  const { vista: vistaRaw, archivadas: verArchivadas } = await searchParams
   const vista: Vista = (VISTAS.find((v) => v.id === vistaRaw)?.id ?? 'obras') as Vista
+  const conArchivadas = verArchivadas === '1'
 
   const supabase = await createClient()
   const { data: cliente, error } = await getCliente(supabase, slug)
@@ -113,7 +114,13 @@ export default async function ClientePage({
     getContactos(supabase, cliente.cliente_id),
     getDocumentosCliente(supabase, cliente.cliente_id),
   ])
-  const lasObras = obras ?? []
+  // MISMO CRITERIO QUE EL PORTAFOLIO: archivada = `cerrada`, y `pausada` se sigue viendo. Si el
+  // cliente escondiera obras con una regla distinta de la del portafolio, la misma obra estaría o
+  // no estaría según por dónde se entre — que es exactamente el problema que el eje canónico vino a
+  // resolver.
+  const todasLasObras = obras ?? []
+  const obrasArchivadas = todasLasObras.filter((o) => o.estado === 'cerrada')
+  const lasObras = conArchivadas ? todasLasObras : todasLasObras.filter((o) => o.estado !== 'cerrada')
   const losContactos = contactos ?? []
   const losDocs = documentos ?? []
 
@@ -145,7 +152,11 @@ export default async function ClientePage({
           </div>
 
           {lasObras.length === 0 ? (
-            <Callout tono="info">Este cliente no tiene ninguna obra. Se crea con el formulario de abajo.</Callout>
+            <Callout tono="info">
+              {todasLasObras.length === 0
+                ? 'Este cliente no tiene ninguna obra. Se crea con el formulario de abajo.'
+                : 'Todas las obras de este cliente están archivadas.'}
+            </Callout>
           ) : (
             <div className="overflow-x-auto rounded-xl border border-line bg-white">
               <table data-testid="obras-del-cliente" className="w-full min-w-[620px] text-left">
@@ -160,6 +171,23 @@ export default async function ClientePage({
                 <tbody>{lasObras.map((o) => <FilaObra key={o.obra_id} o={o} />)}</tbody>
               </table>
             </div>
+          )}
+
+          {/* La puerta de vuelta, igual que en el portafolio: archivar no puede parecerse a borrar. */}
+          {obrasArchivadas.length > 0 && (
+            <p className="text-[12px] text-faint" data-testid="pie-archivadas-cliente">
+              {conArchivadas ? (
+                <>
+                  Se muestran también {obrasArchivadas.length} obra{obrasArchivadas.length === 1 ? '' : 's'} archivada{obrasArchivadas.length === 1 ? '' : 's'}.{' '}
+                  <Link href={`/clientes/${slug}`} className="text-ink underline underline-offset-2">Ocultarlas</Link>.
+                </>
+              ) : (
+                <>
+                  {obrasArchivadas.length} obra{obrasArchivadas.length === 1 ? '' : 's'} archivada{obrasArchivadas.length === 1 ? '' : 's'} fuera de esta lista.{' '}
+                  <Link href={`/clientes/${slug}?archivadas=1`} className="text-ink underline underline-offset-2" data-testid="ver-archivadas-cliente">Verlas</Link>.
+                </>
+              )}
+            </p>
           )}
 
           <details className="rounded-xl border border-line bg-white" data-testid="alta-obra">

@@ -96,6 +96,27 @@ test('cliente: se crea, se edita, se le agrega y se le saca un contacto — y to
     // Y se ve en la pantalla aunque el índice de Drive no lo conozca: el vínculo vale igual.
     await expect(page.getByText(idFalso)).toBeVisible()
 
+    // ── LA CARPETA DEL CLIENTE, PEGANDO LA URL ENTERA ───────────────────────
+    // Distinto de vincular UN documento: esto es la carpeta raíz, y es la que abre el botón de la
+    // solapa Documentos. Estaba construida y sin una sola comprobación — el único verbo de cliente
+    // que nadie había probado contra la base.
+    const carpetaFalsa = `zzE2Ecarpeta${'y'.repeat(20)}`
+    await page.goto(`/clientes/${creado.slug}?vista=informacion`)
+    await page.getByTestId('form-carpeta-drive').locator('input[name="url"]')
+      .fill(`https://drive.google.com/drive/folders/${carpetaFalsa}?usp=sharing`)
+    await page.getByTestId('form-carpeta-drive-enviar').click()
+    await expect(page.getByTestId('form-carpeta-drive-ok')).toBeVisible({ timeout: 30000 })
+
+    const { data: conCarpeta } = await sb.from('clientes').select('drive_carpeta_id').eq('id', creado.id).single()
+    // El id se extrae de la URL entera, sin el `?usp=sharing` pegado atrás: pedir el id suelto es la
+    // forma más rápida de que se cargue mal.
+    expect(laFila(conCarpeta, 'el cliente con carpeta').drive_carpeta_id).toBe(carpetaFalsa)
+
+    // Y la solapa Documentos deja de decir que no hay por dónde entrar.
+    await page.goto(`/clientes/${creado.slug}?vista=documentos`)
+    await expect(page.getByRole('link', { name: /Abrir la carpeta del cliente en Drive/ }))
+      .toHaveAttribute('href', `https://drive.google.com/drive/folders/${carpetaFalsa}`)
+
     // ── ARCHIVAR NO ES BORRAR ───────────────────────────────────────────────
     await page.goto(`/clientes/${creado.slug}?vista=informacion`)
     await page.getByTestId('archivar-cliente').click()
@@ -197,6 +218,110 @@ test('obra: se crea desde la ficha del cliente y se edita desde la obra', async 
       .toHaveValue('Rawson, San Juan')
     await page.goto(`/obras/${creada.id}?vista=economia`)
     await expect(page.getByTestId('economia-margen')).toContainText('$12.000.000')
+  } finally {
+    await limpiar(sb)
+    await sb.auth.signOut()
+  }
+})
+
+// ── OBRA: ARCHIVAR ES SACARLA DE LA VISTA, NUNCA DE LA BASE ─────────────────
+//
+// ═══ EL DEFECTO QUE ESTE TEST ATRAPA ═══
+//
+// `estado = 'cerrada'` se podía escribir desde siempre —el desplegable «Estado» del formulario de
+// edición ya lo ofrecía— y NO PASABA NADA. `obra_panel` no filtra por estado, el portafolio pintaba
+// las ocho filas y la ficha del cliente también: la obra 'galpones', cerrada en la base desde antes
+// de este trabajo, seguía en la cartera del dueño como una obra más.
+//
+// O sea: el verbo existía y el EFECTO no. Cerrar una obra era escribir una palabra en una columna
+// que nadie leía. Por eso este test no comprueba que la acción devuelva ok —eso ya lo hacía—: mide
+// las cuatro consecuencias, que es lo único que se pidió.
+//
+//   1. la obra archivada NO está en el portafolio ni en la ficha del cliente,
+//   2. la fila SIGUE en la base (archivar no es borrar),
+//   3. la ficha SIGUE abriendo por su URL, y dice que está archivada,
+//   4. se restaura y vuelve a los dos lugares.
+//
+// Revertir cualquiera de las tres piezas —la action, el filtro del portafolio, el filtro del
+// cliente— pone en rojo una afirmación distinta de este test.
+test('obra: se archiva, desaparece de las listas, sigue entrando por su URL y se restaura', async ({ page }) => {
+  test.setTimeout(240000)
+  const sb = await conBase()
+  await limpiar(sb)
+  const cliente = `${MARCA} Cliente Archivo ${Date.now()}`
+  const obra = `${MARCA} Obra Archivo ${Date.now()}`
+
+  try {
+    await entrar(page)
+
+    await page.goto('/clientes')
+    await page.getByTestId('alta-cliente').locator('summary').click()
+    await page.getByTestId('form-cliente').locator('input[name="nombre"]').fill(cliente)
+    await page.getByTestId('form-cliente-enviar').click()
+    await expect(page.getByTestId('form-cliente-ok')).toBeVisible({ timeout: 30000 })
+    const { data: cliRaw } = await sb.from('clientes').select('id, slug').eq('nombre', cliente).single()
+    const cli = laFila(cliRaw, 'el cliente recién creado')
+
+    await page.goto(`/clientes/${cli.slug}`)
+    await page.getByTestId('alta-obra').locator('summary').click()
+    await page.getByTestId('form-obra').locator('input[name="nombre"]').fill(obra)
+    await page.getByTestId('form-obra-enviar').click()
+    await expect(page.getByTestId('form-obra-ok')).toBeVisible({ timeout: 30000 })
+    const { data: creadaRaw } = await sb.from('obra_canonica').select('id, estado').eq('nombre', obra).single()
+    const creada = laFila(creadaRaw, 'la obra recién creada')
+    expect(creada.estado, 'una obra nace activa').toBe('activa')
+
+    // ── LÍNEA DE BASE: ANTES DE ARCHIVAR, LA OBRA ESTÁ EN LOS DOS LUGARES ───
+    // Sin esta comprobación, un test que sólo mira la ausencia pasaría igual con un selector mal
+    // escrito: no encontrar nada es el resultado por defecto de buscar mal.
+    await page.goto('/obras')
+    await expect(page.getByTestId('portafolio-tabla')).toContainText(obra)
+    await page.goto(`/clientes/${cli.slug}`)
+    await expect(page.getByTestId('obras-del-cliente')).toContainText(obra)
+
+    // ── ARCHIVAR ───────────────────────────────────────────────────────────
+    await page.goto(`/obras/${creada.id}`)
+    await page.getByTestId('archivar-obra').click()
+    await expect(async () => {
+      const { data } = await sb.from('obra_canonica').select('estado').eq('id', creada.id).single()
+      expect(laFila(data, 'la obra archivada').estado).toBe('cerrada')
+    }).toPass({ timeout: 30000 })
+
+    // 1 · FUERA DEL PORTAFOLIO, pero con la puerta de vuelta a la vista.
+    await page.goto('/obras')
+    await expect(page.getByTestId('portafolio-tabla')).not.toContainText(obra)
+    await expect(page.getByTestId('pie-archivadas')).toBeVisible()
+    await page.getByTestId('ver-archivadas').click()
+    await expect(page.getByTestId('portafolio-tabla')).toContainText(obra)
+
+    // 2 · FUERA DE LA FICHA DEL CLIENTE, con la misma puerta de vuelta.
+    //
+    // La ausencia se mide por el ENLACE a la obra y no con `not.toContainText` sobre la tabla: este
+    // cliente tiene una sola obra, así que al archivarla la tabla entera desaparece y es reemplazada
+    // por «Todas las obras de este cliente están archivadas». `not.toContainText` sobre un elemento
+    // que no existe no pasa —falla con "element(s) not found"—, y habría dado rojo por el motivo
+    // equivocado, escondiendo si el filtro anda o no.
+    await page.goto(`/clientes/${cli.slug}`)
+    await expect(page.getByRole('link', { name: obra })).toHaveCount(0)
+    await page.getByTestId('ver-archivadas-cliente').click()
+    await expect(page.getByTestId('obras-del-cliente')).toContainText(obra)
+
+    // 3 · LA URL SIGUE ABRIENDO, Y LA PÁGINA LO DICE. Que una obra salga de una lista no puede
+    //     romper el enlace que alguien mandó por WhatsApp hace dos meses.
+    await page.goto(`/obras/${creada.id}`)
+    await expect(page.getByRole('heading', { name: obra })).toBeVisible()
+    await expect(page.getByTestId('obra-archivada')).toBeVisible()
+
+    // 4 · SE RESTAURA, y vuelve a los dos lugares por la puerta principal.
+    await page.getByTestId('archivar-obra').click()
+    await expect(async () => {
+      const { data } = await sb.from('obra_canonica').select('estado').eq('id', creada.id).single()
+      expect(laFila(data, 'la obra reactivada').estado).toBe('activa')
+    }).toPass({ timeout: 30000 })
+    await page.goto('/obras')
+    await expect(page.getByTestId('portafolio-tabla')).toContainText(obra)
+    await page.goto(`/clientes/${cli.slug}`)
+    await expect(page.getByTestId('obras-del-cliente')).toContainText(obra)
   } finally {
     await limpiar(sb)
     await sb.auth.signOut()

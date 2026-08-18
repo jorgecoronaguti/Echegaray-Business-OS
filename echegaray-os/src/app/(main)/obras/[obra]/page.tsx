@@ -38,7 +38,7 @@ import {
 import { getAsignaciones, getPersonas, getRegistrosHH } from '@/features/obras/services/personalService'
 import { getCertificados } from '@/features/obras/services/contratoService'
 import {
-  archivarActividad, crearActividad, crearImpedimento, editarActividad, editarObra,
+  archivarActividad, archivarObra, crearActividad, crearImpedimento, editarActividad, editarObra,
   liberarImpedimento, marcarHito, registrarAvance, sellarBaseline,
 } from '@/features/obras/services/actions'
 import { asignarPersona, quitarAsignacion } from '@/features/obras/services/actionsPersonal'
@@ -54,7 +54,7 @@ import { getOperacionObra, SUBS_OPERACION, type SubOperacion } from '@/features/
 import { TabEconomia } from '@/features/obras/components/TabEconomia'
 import { TabDocumentos } from '@/features/obras/components/TabDocumentos'
 import { desvincularDocumento, vincularDocumento } from '@/features/obras/services/actionsDocumentos'
-import { FormAccion, PageShell } from '@/shared/components/ui'
+import { BotonAccion, FormAccion, PageShell } from '@/shared/components/ui'
 
 export const dynamic = 'force-dynamic'
 
@@ -157,11 +157,18 @@ export default async function ObraPage({
   // link cuando existe en el eje canónico; cuando la obra sólo tiene el nombre del cliente escrito
   // a mano, se muestra el texto y se dice que falta vincularlo — sin inventar la ficha.
   const eyebrow = <Link href="/obras" className="hover:underline">← Obras</Link>
-  const subtitulo = obra.cliente_slug ? (
+  // ARCHIVADA SE DICE EN EL ENCABEZADO. Es la única señal de que esta ficha se abrió por su URL y no
+  // desde el portafolio —porque del portafolio ya no cuelga—, y sin ella alguien podría cargar HH o
+  // avance sobre una obra archivada sin enterarse de que lo está.
+  const archivada = obra.estado === 'cerrada'
+  const deQuien = obra.cliente_slug ? (
     <Link href={`/clientes/${obra.cliente_slug}`} className="text-ink hover:underline">{obra.cliente_nombre}</Link>
   ) : obra.cliente_texto ? (
     <>{obra.cliente_texto} <span className="text-faint">· sin ficha de cliente vinculada</span></>
-  ) : undefined
+  ) : null
+  const subtitulo = archivada ? (
+    <span data-testid="obra-archivada">{deQuien}{deQuien ? ' · ' : ''}<span className="text-faint">archivada</span></span>
+  ) : (deQuien ?? undefined)
 
   return (
     <PageShell eyebrow={eyebrow} title={obra.nombre} subtitle={subtitulo} right={<CicloDeVida etapa={obra.etapa} />}>
@@ -194,6 +201,27 @@ export default async function ObraPage({
                 </FormAccion>
               </div>
             </details>
+          }
+          archivar={
+            // Mismo bloque que el de la ficha del cliente, a propósito: archivar es UNA idea en todo
+            // el OS —sale de la vista, no de la historia— y aprenderla dos veces con dos formas
+            // distintas es aprenderla mal.
+            <section>
+              <h2 className="mb-1 text-[11px] font-medium uppercase tracking-wide text-faint">
+                {archivada ? 'Reactivar la obra' : 'Archivar la obra'}
+              </h2>
+              <p className="mb-2.5 text-[13px] text-muted">
+                {archivada
+                  ? 'Vuelve al portafolio y a la ficha del cliente, con su cronograma, sus HH y sus costos intactos.'
+                  : 'Sale del portafolio y de la ficha del cliente. No se borra nada: el cronograma, las HH y los costos quedan enteros, esta página sigue abriendo por su dirección, y se reactiva cuando haga falta.'}
+              </p>
+              <BotonAccion
+                accion={archivarObra}
+                args={[obraId, !archivada]}
+                testid="archivar-obra"
+                tono={archivada ? 'neutral' : 'peligro'}
+              >{archivada ? 'Reactivar' : 'Archivar'}</BotonAccion>
+            </section>
           }
         />
       )}
