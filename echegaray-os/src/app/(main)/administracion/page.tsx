@@ -72,6 +72,14 @@ export default async function AdministracionPage() {
           detalle="Todas las obras: cronograma, personal, economía y contrato"
           cuenta={obrasActivas.length ? `${obrasActivas.length} en curso` : undefined}
         />
+        <Entrada
+          href="/administracion/personas" testid="ir-personas" titulo="Personas"
+          detalle="El legajo: alta, categoría de convenio y en qué obras está cada uno"
+        />
+        <Entrada
+          href="/administracion/proveedores" testid="ir-proveedores" titulo="Proveedores"
+          detalle="A quién se le compra, y los nombres de compras que falta asignar"
+        />
       </nav>
 
       {/* La separación es la que pidió el dueño: arriba las entidades, abajo los procesos. */}
