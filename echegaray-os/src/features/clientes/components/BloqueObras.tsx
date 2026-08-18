@@ -15,9 +15,13 @@ import { CamposObra } from '@/features/obras/components/CamposObra'
 import { ETAPA_LABEL, type ObraPanel } from '@/features/obras/types'
 import { plata } from '@/features/obras/components/formato'
 
+// SIN AZUL. `sky-50`/`sky-600` no existen en el sistema del OS: el acento es el grafito de la marca
+// y el amarillo se reserva para el logo y para «acá estás». Un color que entra por una sola pantalla
+// obliga a mirar dos veces para saber si significa algo. Es la misma corrección que ya se le hizo al
+// Gantt, donde las barras eran `sky` y la línea de hoy `rose`.
 function FilaObra({ o }: { o: ObraPanel }) {
   return (
-    <tr className="border-b border-line/60 last:border-0 hover:bg-sky-50/50">
+    <tr className="border-b border-line/60 last:border-0 hover:bg-surface-quiet">
       <td className="px-4 py-2.5">
         <Link href={`/obras/${o.obra_id}`} className="block">
           <span className="text-[13px] font-semibold text-ink hover:underline">{o.nombre}</span>
@@ -33,7 +37,7 @@ function FilaObra({ o }: { o: ObraPanel }) {
         ) : (
           <span className="flex items-center gap-2">
             <span className="h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-slate-100">
-              <span className="block h-full rounded-full bg-sky-600" style={{ width: `${Math.min(100, o.avance_pct)}%` }} />
+              <span className="block h-full rounded-full bg-ink" style={{ width: `${Math.min(100, o.avance_pct)}%` }} />
             </span>
             <span className="w-9 shrink-0 text-right text-[12px] tabular-nums text-ink">{o.avance_pct}%</span>
             {/* La cobertura va pegada al número, igual que en el portafolio y en el chat. */}

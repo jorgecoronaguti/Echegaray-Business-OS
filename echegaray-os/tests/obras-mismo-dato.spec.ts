@@ -44,9 +44,11 @@ import { conBase, entrar, laFila, limpiar, MARCA, OBRA } from './util/obras-e2e'
  * `agruparPorObra` el test seguía en verde. Ahora se cuenta TODO lo que cada Gantt dibuja como
  * actividad, que es lo único que hace comparables a las dos pantallas.
  */
-const BARRAS = `[data-testid="actividad-cronograma"][data-obra="${OBRA}"]`
+// Una fecha MUY posterior a cualquier actividad real: así el `max(fin_plan)` de la obra tiene que
+// moverse hasta acá, y el movimiento es la evidencia de que el global lee estas actividades.
+const FIN_LEJANO = '2031-12-31'
 
-test('el Gantt global y el de la obra dibujan exactamente las mismas actividades', async ({ page }) => {
+test('el renglón global de una obra responde a las actividades de esa obra', async ({ page }) => {
   const sb = await conBase()
   await limpiar(sb)
   const nombre = `${MARCA} misma actividad`
@@ -59,7 +61,7 @@ test('el Gantt global y el de la obra dibujan exactamente las mismas actividades
       tipo: 'tarea',
       orden: 9999,
       inicio_plan: '2026-08-10',
-      fin_plan: '2026-08-24',
+      fin_plan: FIN_LEJANO,
       pct: 10,
     }).select('id').single()
     expect(error?.message ?? null, 'la actividad de prueba tiene que poder crearse').toBeNull()
@@ -67,26 +69,41 @@ test('el Gantt global y el de la obra dibujan exactamente las mismas actividades
 
     await entrar(page)
 
-    // ── LA VISTA GLOBAL ───────────────────────────────────────────────────────
-    // `/obras/gantt` reemplaza a `/obras/cronograma`: es la MISMA vista global con el nombre que
-    // usa el dueño, y la única que sobrevive al recorte de la barra del área.
+    // ── LA VISTA GLOBAL: UN RENGLÓN POR OBRA, Y SU BARRA SALE DE ESTAS ACTIVIDADES ─────────────
+    //
+    // ═══ QUÉ CAMBIÓ, Y POR QUÉ ESTE TEST SE REESCRIBIÓ EN VEZ DE BORRARSE ═══
+    //
+    // Hasta hoy este bloque exigía que la actividad recién creada APARECIERA en el Gantt global, y
+    // comparaba cuántas barras dibujaba cada pantalla. El dueño cortó eso de raíz: *"NO quiero las
+    // 344 actividades de todas las obras desplegadas. **Quiero UN RENGLÓN POR OBRA**."*
+    //
+    // Pero el principio que el test protegía no cambió: *"No son dos sistemas: el global agrega la
+    // información de las actividades canónicas por obra_id."* Lo que cambia es CÓMO se comprueba.
+    // Ahora la pregunta es si el renglón de la obra RESPONDE a sus actividades — y se contesta
+    // moviendo una: se crea una actividad que termina mucho después que todas las demás, y el fin
+    // de la barra global tiene que correrse hasta ahí. Si el global tuviera su propia fuente, el
+    // renglón no se enteraría.
     await page.goto('/obras/gantt')
-    await expect(page.getByTestId('gantt')).toBeVisible({ timeout: 30000 })
-    // La actividad canónica que se acaba de crear tiene que estar acá, agrupada bajo su obra.
-    await expect(page.getByTestId('gantt').getByRole('button', { name: new RegExp(nombre) })).toHaveCount(1)
-    const enLaGlobal = await page.locator(BARRAS).count()
+    await expect(page.getByTestId('gantt-obras')).toBeVisible({ timeout: 30000 })
 
-    // ── LA VISTA DE LA OBRA ───────────────────────────────────────────────────
+    // NI UNA ACTIVIDAD en la vista global: es la mitad del pedido que se rompe sola si alguien
+    // "completa" el Gantt global desplegando el detalle.
+    await expect(page.getByTestId('actividad-cronograma'),
+      'el Gantt global volvió a desplegar actividades').toHaveCount(0)
+
+    // Y el fin de la barra de ESTA obra llegó hasta la actividad que se acaba de crear. El dato se
+    // lee de la fuente que alimenta la pantalla, no de la pantalla misma.
+    const { data: plazo } = await sb.from('obra_plan_vs_real')
+      .select('fin_plan').eq('obra_id', OBRA).single()
+    expect(laFila(plazo, 'el plazo de la obra de prueba').fin_plan,
+      'el renglón global no se enteró de una actividad nueva: tiene su propia fuente')
+      .toBe(FIN_LEJANO)
+
+    // ── LA VISTA DE LA OBRA: las actividades, que es donde sí van ──────────────────────────────
     await page.goto(`/obras/${OBRA}?vista=cronograma`)
     await expect(page.getByTestId('gantt')).toBeVisible({ timeout: 30000 })
-    await expect(page.getByTestId('gantt').getByRole('button', { name: new RegExp(nombre) })).toHaveCount(1)
-    const enLaObra = await page.locator(BARRAS).count()
-
-    expect(enLaGlobal, 'la obra de prueba tiene cronograma: si esto es 0, la comparación no prueba nada').toBeGreaterThan(0)
-    expect(
-      enLaGlobal,
-      `el Gantt global muestra ${enLaGlobal} actividades de ${OBRA} y el de la obra ${enLaObra}: son dos sistemas`,
-    ).toBe(enLaObra)
+    await expect(page.getByTestId('gantt').getByRole('button', { name: new RegExp(nombre) }))
+      .toHaveCount(1)
   } finally {
     await limpiar(sb)
     await sb.auth.signOut()

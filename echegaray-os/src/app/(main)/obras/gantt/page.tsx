@@ -19,7 +19,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { filasDeObras, getPlazoPorObra } from '@/features/obras/services/ganttObras'
 import { GanttObras } from '@/features/obras/components/GanttObras'
-import { FiltroObra, NavObras } from '@/features/obras/components/NavObras'
+import { NavObras } from '@/features/obras/components/NavObras'
 import { Callout, PageShell } from '@/shared/components/ui'
 
 export const dynamic = 'force-dynamic'
@@ -37,7 +37,6 @@ export default async function GanttGlobalPage() {
 
   return (
     <PageShell
-      eyebrow="01 · Obras"
       title="Gantt"
       subtitle={
         `${filas.length} obra${filas.length === 1 ? '' : 's'} en la cartera, ${conPlan} con fechas de plan. `
@@ -47,10 +46,10 @@ export default async function GanttGlobalPage() {
     >
       <NavObras />
 
-      <div className="mb-3 flex flex-wrap items-center justify-end gap-3">
-        <FiltroObra obras={filas.map((f) => ({ id: f.obraId, nombre: f.nombre }))} vista="cronograma" />
-      </div>
-
+      {/* SIN DESPLEGABLE PARA ELEGIR OBRA. Existía cuando la vista global desplegaba 344 actividades
+          y hacía falta una forma de saltar a una. Ahora cada renglón ES una obra y se toca: un
+          selector que hace lo mismo que la fila de al lado es chrome que hay que aprender dos veces.
+          `FiltroObra` se retiró junto con las cuatro vistas globales que lo usaban. */}
       {error && <Callout tono="neg">No pude leer el plazo de las obras: {error}</Callout>}
 
       {!error && filas.length === 0 && (
