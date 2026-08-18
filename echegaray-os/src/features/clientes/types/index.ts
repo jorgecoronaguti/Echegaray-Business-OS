@@ -138,7 +138,14 @@ export interface FuentesActividad {
     fecha_inicio_real: string | null
     fecha_fin_real: string | null
   }[]
-  documentos: { drive_file_id: string; name: string | null; rol: string | null; creado_en: string | null }[]
+  documentos: {
+    drive_file_id: string
+    name: string | null
+    rol: string | null
+    /** `path_inferido` lo colgó el sincronizador; `manual`, una persona. Cambia si se agrupa o no. */
+    origen: 'manual' | 'path_inferido'
+    creado_en: string | null
+  }[]
   certificados: {
     id: string
     numero: string | null

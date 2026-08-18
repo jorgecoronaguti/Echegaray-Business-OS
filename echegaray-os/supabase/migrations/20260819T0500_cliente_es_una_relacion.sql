@@ -33,6 +33,16 @@
 -- `cliente_documento.creado_en`, `certificados`). Una tabla de eventos nueva arranca vacía y le
 -- mostraría "sin actividad" a un cliente de tres años, que es una mentira con formato de dato.
 
+-- APLICADA Y VERIFICADA EL 19/08/2026 CONTRA EL CATÁLOGO, no contra la pantalla:
+--   select column_name from information_schema.columns
+--    where table_schema='public' and table_name='clientes'
+--      and column_name in ('direccion','telefono','email','responsable_id');   → las cuatro
+--   select conname, pg_get_constraintdef(oid) from pg_constraint
+--    where conrelid='public.clientes'::regclass and contype='f';
+--     → clientes_responsable_id_fkey FOREIGN KEY (responsable_id) REFERENCES perfiles(id) ON DELETE SET NULL
+--   cliente_panel quedó con sus 20 columnas y con `grant select` a `authenticated`.
+--   Los cinco clientes reales conservaron su `n_obras`: 1, 3, 1, 1, 1.
+
 alter table public.clientes add column if not exists direccion      text;
 alter table public.clientes add column if not exists telefono       text;
 alter table public.clientes add column if not exists email          text;

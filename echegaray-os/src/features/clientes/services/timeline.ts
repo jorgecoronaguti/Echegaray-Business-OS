@@ -117,15 +117,60 @@ function deLasObras(f: FuentesActividad, out: EventoCliente[]): number {
   return sin
 }
 
+/**
+ * Los documentos, con UNA distinción que cambia la lectura de toda la solapa.
+ *
+ * ═══ POR QUÉ LO QUE COLGÓ EL SINCRONIZADOR SE AGRUPA POR DÍA ═══
+ *
+ * Los 214 vínculos que existen hoy los puso el sincronizador de Drive de una sola pasada, todos con
+ * el mismo `creado_en`. Sin agrupar, la ficha de La Estrella abre con NOVENTA Y TRES renglones
+ * idénticos del 17/08 y el alta de sus obras queda enterrada tres pantallas más abajo. La línea de
+ * tiempo pasa a ser un volcado de una tabla, que es justo lo contrario de para qué existe.
+ *
+ * Agrupar NO inventa nada: el conteo es de filas reales y la fecha es la de esas filas. Lo que se
+ * pierde es el nombre de cada archivo, y ese está —entero y buscable— en la solapa Documentos.
+ *
+ * Lo que una PERSONA vinculó a mano NO se agrupa: son pocos, y que alguien haya decidido colgar el
+ * contrato es un hecho de la relación, no un movimiento de sincronización.
+ */
 function deLosDocumentos(f: FuentesActividad, out: EventoCliente[]): number {
   let sin = 0
+  const porDia = new Map<string, { n: number; ultimo: string; nombre: string | null }>()
+
   for (const d of f.documentos) {
-    sin += agregar(out, d.creado_en, {
-      clave: `doc-${d.drive_file_id}`,
+    if (d.origen === 'manual') {
+      sin += agregar(out, d.creado_en, {
+        clave: `doc-${d.drive_file_id}`,
+        tipo: 'documento_alta',
+        // Sin nombre se muestra el id: es feo y es la verdad. Un rótulo inventado sería peor.
+        titulo: `Documento vinculado: ${d.name ?? d.drive_file_id}`,
+        detalle: d.rol,
+        href: null,
+        fuente: 'Documentos',
+      })
+      continue
+    }
+    const orden = alOrden(d.creado_en)
+    if (orden == null) { sin += 1; continue }
+    const dia = (d.creado_en as string).slice(0, 10)
+    const g = porDia.get(dia)
+    // La fecha del grupo es la del ÚLTIMO vínculo de ese día: sigue siendo un instante real de una
+    // fila real, y no una fecha promedio, que no existiría en ningún lado.
+    if (!g) porDia.set(dia, { n: 1, ultimo: d.creado_en as string, nombre: d.name })
+    else {
+      g.n += 1
+      if (orden > (alOrden(g.ultimo) ?? 0)) g.ultimo = d.creado_en as string
+    }
+  }
+
+  for (const [dia, g] of porDia) {
+    agregar(out, g.ultimo, {
+      clave: `docs-${dia}`,
       tipo: 'documento_alta',
-      // Sin nombre se muestra el id: es feo y es la verdad. Un rótulo inventado sería peor que feo.
-      titulo: `Documento vinculado: ${d.name ?? d.drive_file_id}`,
-      detalle: d.rol,
+      titulo: g.n === 1
+        ? `Documento vinculado: ${g.nombre ?? 'sin nombre en el índice de Drive'}`
+        : `${g.n} documentos vinculados desde la carpeta de Drive`,
+      detalle: null,
       href: null,
       fuente: 'Documentos',
     })

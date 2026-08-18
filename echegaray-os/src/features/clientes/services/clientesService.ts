@@ -14,11 +14,10 @@ import type {
 import { construirLineaDeTiempo } from './timeline'
 
 /**
- * Los campos que agrega `20260819T0500_cliente_es_una_relacion` pueden todavía no estar en la vista:
- * una migración en el repositorio no es una migración aplicada. `select *` sobre la vista vieja no
- * falla —simplemente no trae la clave—, y `undefined` colado en un tipo que promete `string | null`
- * hace que la pantalla decida por comparación con null y muestre cualquier cosa. Se normaliza acá,
- * una vez, en el borde: adentro del módulo el contrato se cumple.
+ * `select *` sobre una vista que todavía no tenga los campos de la relación NO FALLA: simplemente no
+ * trae la clave, y `undefined` colado en un tipo que promete `string | null` hace que la pantalla
+ * decida por comparación contra null y muestre cualquier cosa. Se normaliza acá, una vez, en el
+ * borde: adentro del módulo el contrato se cumple, venga la vista vieja o la nueva.
  */
 function normalizar(row: Record<string, unknown>): ClientePanel {
   const t = (k: string) => (row[k] == null ? null : String(row[k]))
@@ -138,8 +137,8 @@ export async function getDocumentosCliente(
  * probado en `orquestador/lib/cliente-actividad.test.mjs`.
  *
  * LAS FECHAS DEL CLIENTE SE LEEN DE `clientes`, NO DE `cliente_panel`: la vista no las publica, y
- * agregarlas ahí ataría la solapa Actividad a una migración que todavía no se aplicó. Lo que ya está
- * guardado se puede mostrar hoy.
+ * agregarlas ahí sería sumar una migración a una solapa que no necesita ninguna — todo lo que
+ * Actividad muestra ya estaba guardado antes de este trabajo.
  *
  * LO QUE ESTA LECTURA PUEDE NO VER: `certificados` sólo es legible por administración y dirección
  * (`certificados_select` → `es_administracion()`). Un jefe de obra ve la ficha sin los eventos
@@ -156,7 +155,7 @@ export async function getActividadCliente(
       .select('id, nombre, created_at, fecha_inicio_real, fecha_fin_real')
       .eq('cliente_id', clienteId),
     supabase.from('cliente_contacto').select('id, nombre, rol, creado_en').eq('cliente_id', clienteId),
-    supabase.from('cliente_documento').select('drive_file_id, rol, creado_en').eq('cliente_id', clienteId),
+    supabase.from('cliente_documento').select('drive_file_id, rol, origen, creado_en').eq('cliente_id', clienteId),
   ])
   if (ficha.error) return { data: null, error: ficha.error.message }
   if (!ficha.data) return { data: null, error: 'No pude leer la ficha del cliente' }
@@ -188,6 +187,7 @@ export async function getActividadCliente(
       drive_file_id: d.drive_file_id as string,
       name: nombres.get(d.drive_file_id as string) ?? null,
       rol: (d.rol as string) ?? null,
+      origen: (d.origen as 'manual' | 'path_inferido') ?? 'manual',
       creado_en: (d.creado_en as string) ?? null,
     })),
     certificados,
