@@ -1,6 +1,8 @@
-import { test } from 'node:test'
+import { describe, it, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { identidadGlobal, roturasDeCadena, roturasQueExplican, auditarCuenta } from './banco-cadena-saldos.mjs'
+import {
+  completarCadenaDelDia, identidadGlobal, roturasDeCadena, roturasQueExplican, auditarCuenta,
+} from './banco-cadena-saldos.mjs'
 
 /** Un extracto sano: cada saldo es el anterior más el importe. */
 const sano = () => [
@@ -66,4 +68,57 @@ test('sin saldos declarados no se inventa un veredicto', () => {
   const a = auditarCuenta([{ fecha: '2026-07-01', importe: 100, saldo_despues: null }])
   assert.equal(a.identidad, null)
   assert.match(a.veredicto, /sin datos/)
+})
+
+// ═══ EL SALDO DEL DÍA — CALCULADO Y VERIFICADO CONTRA EL QUE DECLARA EL BANCO ═══
+//
+// El caso real del 18/08/2026: CAJA publicaba $11.200.755 (el saldo del 14/08) con FECHA 18/08,
+// porque la sección "Movimientos del Día" del extracto viene sin saldo corrido y la fórmula tomaba
+// el último valor numérico de la columna. El dueño: *"la pestaña caja esta mal, no has respetado lo
+// q dice el saldo de la cuenta enviado en el extracto"*.
+describe('completar la cadena de los movimientos del día', () => {
+  /** El extracto real del 18/08: el saldo del 14/08 y los cinco movimientos del día, sin saldo. */
+  const extracto = () => [
+    { fecha: '2026-08-14', importe: -27041.68, saldo: 11200755.18 },
+    { fecha: '2026-08-18', importe: -9361.00 },
+    { fecha: '2026-08-18', importe: -2494875.65 },
+    { fecha: '2026-08-18', importe: -473767.08 },
+    { fecha: '2026-08-18', importe: -13191.19 },
+    { fecha: '2026-08-18', importe: -13191.19 },
+  ]
+
+  it('EL DEFECTO · sin completar, el último saldo de la réplica es el del 14/08', () => {
+    const ultimoConSaldo = [...extracto()].reverse().find((m) => Number.isFinite(m.saldo))
+    assert.equal(ultimoConSaldo.saldo, 11200755.18)
+    assert.equal(ultimoConSaldo.fecha, '2026-08-14', 'y CAJA lo rotulaba con la fecha del 18/08')
+  })
+
+  it('completado, el último saldo es EXACTAMENTE el que declara el banco', () => {
+    const r = completarCadenaDelDia(extracto(), 8196369.07)
+    assert.equal(r.completados, 5)
+    assert.equal(Math.round(r.filas.at(-1).saldo * 100) / 100, 8196369.07)
+    assert.equal(r.cierra, true, 'la cadena tiene que cerrar contra el pie del extracto')
+    assert.ok(Math.abs(r.diferencia) < 1)
+  })
+
+  it('si NO cierra contra lo declarado, lo dice — no publica un número que nadie puede verificar', () => {
+    const r = completarCadenaDelDia(extracto(), 9000000)
+    assert.equal(r.cierra, false)
+    assert.ok(Math.abs(r.diferencia) > 1)
+  })
+
+  it('sin un saldo previo del que partir, NO inventa una cadena que arranca en cero', () => {
+    // Completar desde cero publicaría un saldo igual al primer importe: un número plausible y falso.
+    const r = completarCadenaDelDia([{ fecha: '2026-08-18', importe: -9361 }], null)
+    assert.equal(r.completados, 0)
+    assert.equal(r.filas[0].saldo, undefined)
+    assert.equal(r.cierra, null, 'sin declarado y sin cadena no hay nada que afirmar')
+  })
+
+  it('las filas que YA traían saldo no se tocan: el del banco manda sobre el calculado', () => {
+    const r = completarCadenaDelDia(extracto(), 8196369.07)
+    assert.equal(r.filas[0].saldo, 11200755.18)
+    assert.equal(r.filas[0].saldoCalculado, undefined)
+    assert.equal(r.filas[1].saldoCalculado, true, 'y las completadas quedan marcadas como tales')
+  })
 })

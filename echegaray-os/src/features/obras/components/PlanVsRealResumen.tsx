@@ -167,19 +167,30 @@ export function lineasPlanVsReal(p: PlanVsReal): Linea[] {
 export function PlanVsRealResumen({ plan, obraId }: { plan: PlanVsReal; obraId: string }) {
   const lineas = lineasPlanVsReal(plan)
   return (
-    <div className="overflow-hidden rounded-xl border border-line bg-white" data-testid="plan-vs-real">
+    <div className="overflow-hidden rounded-card border border-line bg-surface" data-testid="plan-vs-real">
       <h2 className="border-b border-line px-4 py-2.5 text-[13px] font-semibold text-ink">Plan contra real</h2>
       <ul className="divide-y divide-line/60">
         {lineas.map((l) => (
           <li key={l.clave}>
-            {/* TOCAR LA ALERTA LLEVA AL DATO. Una alerta que no se puede seguir hasta su origen
-                obliga a buscarlo a mano, y ahí es donde se deja de mirar. */}
-            <Link href={`/obras/${obraId}?vista=${l.vista}`} className="flex items-start gap-2.5 px-4 py-2.5 hover:bg-sky-50/50">
-              <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${PUNTO[l.tono]}`} />
-              <span className="min-w-0">
-                <span className="block text-[13px] leading-snug text-ink">{l.titulo}</span>
-                <span className="block text-[11px] leading-snug text-faint">{l.origen}</span>
-              </span>
+            {/* ═══ EL ORIGEN TÉCNICO SE FUE DEL RENGLÓN — Y NO SE BORRÓ (18/08/2026) ═══
+                El dueño, textual: *"No mostrar mensajes técnicos tipo `obra_actividad.fin_plan
+                anterior a hoy...`. Eso sirve para auditoría/debug, no para UX. La trazabilidad
+                técnica puede estar disponible en detalle contextual"*.
+
+                Se veían SEIS de esas líneas apiladas bajo el titular de la obra, en gris chico,
+                permanentes. Ahora viajan en el `title` del renglón: se leen al apoyar el mouse y
+                siguen ahí para auditar, sin ocupar la mitad del bloque todos los días. Es la misma
+                regla que el `no párrafos explicativos permanentes` de las reglas visuales.
+
+                TOCAR LA ALERTA SIGUE LLEVANDO AL DATO: una alerta que no se puede seguir hasta su
+                origen obliga a buscarlo a mano, y ahí es donde se deja de mirar. */}
+            <Link
+              href={`/obras/${obraId}?vista=${l.vista}`}
+              title={l.origen}
+              className="flex items-center gap-2.5 px-4 py-2 hover:bg-surface-quiet"
+            >
+              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${PUNTO[l.tono]}`} />
+              <span className="min-w-0 truncate text-[13px] leading-snug text-ink">{l.titulo}</span>
             </Link>
           </li>
         ))}
