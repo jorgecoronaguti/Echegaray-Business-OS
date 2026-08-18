@@ -21,7 +21,17 @@ import { haceCiclo } from './cronograma'
 export type Resultado = { ok: true; id?: string } | { ok: false; error: string }
 
 const fechaOpt = z.union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida'), z.literal('')]).optional()
-const numOpt = z.union([z.coerce.number().nonnegative(), z.literal('')]).optional()
+// ═══ EL ORDEN DE LAS OPCIONES NO ES COSMÉTICO (19/08/2026) ═══
+//
+// `z.union` devuelve la PRIMERA opción que valida. Con `z.coerce.number()` adelante, un
+// `<input type="number">` que nadie tocó manda `''`, `Number('')` da 0, y `.nonnegative()` lo
+// acepta encantado: **un contrato sin cargar se guardaba como un contrato de $0**, y una actividad
+// con el campo de HH vacío se guardaba con 0 horas planificadas. Los dos son el mismo defecto y el
+// mismo daño: convierten «no hay dato» en un número que después alguien suma.
+//
+// Con `z.literal('')` adelante, el vacío se reconoce como vacío y `vacioANull` lo manda a NULL,
+// que es lo único que significa «no hay dato» en todo este módulo.
+const numOpt = z.union([z.literal(''), z.coerce.number().nonnegative()]).optional()
 const vacioANull = <T,>(v: T | '' | undefined) => (v === '' || v === undefined ? null : v)
 
 // ── OBRA ─────────────────────────────────────────────────────────────────────
