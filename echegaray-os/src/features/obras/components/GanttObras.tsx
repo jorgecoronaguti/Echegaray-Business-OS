@@ -158,7 +158,7 @@ function Renglon({ f }: { f: FilaObra }) {
           Poner un default como «Desarrollo» presentaría un dato fabricado como estado del ciclo de
           vida de una obra real. */}
       <span
-        className={`hidden w-[86px] shrink-0 truncate text-[11.5px] sm:inline ${f.etapa ? 'text-muted' : 'text-faint'}`}
+        className={`hidden w-[118px] shrink-0 truncate text-[11.5px] sm:inline ${f.etapa ? 'text-muted' : 'text-faint'}`}
         data-testid="etapa-gantt"
       >{etapaDe(f)}</span>
       {/* LA BRECHA EN NÚMERO, AL LADO DEL AVANCE. El color solo ordena la atención pero no dice
@@ -256,11 +256,11 @@ export function GanttObras({ filas, hoyIso }: { filas: FilaObra[], hoyIso: strin
       <div className="relative max-h-[72vh] overflow-auto overscroll-x-contain">
         <div className="flex w-max">
           {/* ── COLUMNA FIJA: las obras ────────────────────────────────────────── */}
-          <div className="sticky left-0 z-20 w-[148px] shrink-0 border-r border-line bg-surface sm:w-[420px]">
+          <div className="sticky left-0 z-20 w-[148px] shrink-0 border-r border-line bg-surface sm:w-[452px]">
             <div className="sticky top-0 z-10 flex h-11 items-end gap-2 border-b border-line bg-surface px-3 pb-1.5 text-[10px] font-medium uppercase tracking-wide text-faint">
               <span className="flex-1">Obra</span>
               <span className="hidden flex-1 sm:inline">Cliente</span>
-              <span className="hidden w-[86px] shrink-0 sm:inline">Etapa</span>
+              <span className="hidden w-[118px] shrink-0 sm:inline">Etapa</span>
               <span className="shrink-0">Avance</span>
             </div>
             {filas.map((f) => <Renglon key={f.obraId} f={f} />)}
