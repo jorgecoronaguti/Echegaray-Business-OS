@@ -115,14 +115,18 @@ test('portafolio → obra → resumen · gantt · planificación · documentos',
   //    y la página renderiza igual. Lo que se exige es una obra con nombre.
   await page.goto('/obras')
   await expect(page.getByTestId('portafolio-tabla')).toBeVisible()
-  const filaSanFrancisco = page.getByRole('link', { name: /San Francisco/ })
+  // `exact: true` desde que OBRA y CLIENTE son dos columnas con DOS enlaces: en la fila de esta
+  // obra el cliente se llama «San Francisco (IMOTOR / Javier Sánchez)», así que un patrón laxo
+  // resolvía a dos elementos y el test moría por modo estricto. El que se quiere es el de la obra.
+  const filaSanFrancisco = page.getByRole('link', { name: 'San Francisco', exact: true })
   await expect(filaSanFrancisco).toBeVisible()
 
-  // 2. EL AVANCE VIENE CON SU COBERTURA. Un porcentaje sin decir sobre cuántas actividades se tomó
-  //    es la mitad de un dato — y fue exactamente el defecto que hizo convivir un 85% con un 44%.
+  // 2. EL RESUMEN PUBLICA EL AVANCE. La COBERTURA («24 de 80 actividades») ya no se exige acá: el
+  //    dueño la bajó al workspace de la obra el 20/08 —*"NO mostrar cantidad de actividades"* en la
+  //    vista global— y se comprueba en el paso 3, que es donde vive ahora. La cobertura no se
+  //    dejó de publicar, cambió de pantalla; si se dejara de publicar, el paso 3 se pone rojo.
   const filaTabla = page.locator('tr', { has: filaSanFrancisco })
   await expect(filaTabla).toContainText(/%/)
-  await expect(filaTabla).toContainText(/\d+\/\d+/)
 
   // 3. LA OBRA ABRE. El 404 de producción se veía justo acá.
   await filaSanFrancisco.click()
@@ -131,6 +135,9 @@ test('portafolio → obra → resumen · gantt · planificación · documentos',
   // «Avance físico» se acortó a «Avance» al pasar de cuatro tarjetas a una franja de cuatro cifras:
   // en una franja el rótulo compite por el ancho con los otros tres.
   await expect(page.getByTestId('titular-obra')).toContainText('Avance')
+  // EL AVANCE VIENE CON SU COBERTURA. Un porcentaje sin decir sobre cuántas actividades se tomó es
+  // la mitad de un dato — y fue exactamente el defecto que hizo convivir un 85% con un 44%.
+  await expect(page.getByTestId('titular-obra')).toContainText(/\d+ de \d+ actividades/)
 
   // 4. CRONOGRAMA — el núcleo del módulo, y ahora una sola solapa con DOS vistas de las mismas
   //    actividades. «Gantt» y «Planificación» dejaron de ser solapas principales: el dueño puso el

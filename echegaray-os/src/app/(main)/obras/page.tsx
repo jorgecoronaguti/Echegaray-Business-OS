@@ -1,10 +1,28 @@
-// 01 OBRAS · PORTAFOLIO — la cartera entera en una pantalla.
+// 01 OBRAS · RESUMEN — la cartera entera en una pantalla, y nada más que eso.
 //
-// Cada columna contesta una pregunta y ninguna está de adorno. El dueño sacó tres el 19/08 —Margen,
-// Estado e Impedimentos— y la razón es la misma para las tres: no se decide nada mirándolas ACÁ.
-// El margen y los impedimentos se miran DENTRO de la obra, con su detalle al lado; el estado ya no
-// hace falta desde que archivar tiene efecto y una obra cerrada directamente no está en la lista.
-// Nueve columnas obligaban a desplazar la tabla de costado en cualquier pantalla.
+// El dueño (20/08), textual: *"Quiero una vista ejecutiva MUY limpia de todas las obras. NO
+// desplegar actividades. NO convertir esto en dashboard. NO meter todos los dominios."* El título
+// es OBRAS porque es el área donde uno está parado; «Portafolio» nombraba una de seis vistas que ya
+// no existen.
+//
+// ═══ OBRA Y CLIENTE SON DOS COLUMNAS, NO UNA ═══
+//
+// Hasta hoy la primera columna se llamaba «Obra / Cliente» y apilaba los dos adentro del MISMO
+// enlace, que iba a la obra. Eso no era un apretón de espacio: era decir que el cliente es un
+// atributo de la obra. Es al revés —la obra cuelga del cliente, y por eso `obra_panel` trae
+// `cliente_id`—, y con los dos en un solo link el CRM del cliente quedaba inalcanzable desde acá.
+// Tres obras de La Estrella se leían como tres textos parecidos en vez de como un cliente con tres
+// obras.
+//
+//   Click en OBRA    → workspace de la obra
+//   Click en CLIENTE → ficha CRM del cliente
+//
+// SIN FICHA NO HAY ENLACE. Una obra puede tener el cliente escrito a mano (`cliente_texto`) sin
+// fila en `clientes`: se muestra el texto, sin link. Un enlace a `/clientes/null` sería una promesa
+// que termina en 404, y el usuario aprende a no tocar los links de esta columna.
+//
+// LO QUE NO SE MUESTRA, Y ES DELIBERADO: margen, estado, impedimentos y cantidad de actividades.
+// Nada de eso se decide mirando la cartera; se decide DENTRO de la obra, con su detalle al lado.
 //
 // LO COMERCIAL DEPENDE DEL ROL, Y NO POR LA PANTALLA. «Contratado» sólo lo ve Administración, y el
 // filtro NO es este `esAdmin`: el dato ya viene en NULL desde `obra_panel`, que lo enmascara en
@@ -13,8 +31,9 @@
 // una columna vacía — no el número.
 //
 // FUENTE: la vista `obra_panel`, que sale de `obra_canonica` cruzada con `obra_costo_real`. NO se
-// lee `public.obras` legacy — era la tabla con 4 obras pausadas que hacía que la web dijera "0 obras
-// activas" mientras cuatro obras facturaban $287M.
+// lee `public.obras` legacy —era la tabla con 4 obras pausadas que hacía que la web dijera "0 obras
+// activas" mientras cuatro obras facturaban $287M—, y tampoco `obra_canonica` cruda: un `select('*')`
+// sobre ella devuelve 403 para todos, Administración incluida.
 
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
@@ -29,10 +48,10 @@ import { esAdministracion } from '@/features/auth/types/areas'
 export const dynamic = 'force-dynamic'
 
 /**
- * PLAZO Y MARGEN EN LA LISTA — las dos preguntas que hacen que el portafolio sirva de tablero:
- * ¿esta obra llega?, ¿esta obra deja plata? Salen de `obra_plan_vs_real`, la misma vista que la
- * ficha, y NO se recalculan acá: si el portafolio hiciera su propia cuenta, un día diría una cosa
- * distinta de la ficha de la obra y no habría manera de saber cuál de las dos miente.
+ * PLAZO — una de las dos preguntas que hacen que el resumen sirva de tablero: ¿esta obra llega?
+ * Sale de `obra_plan_vs_real`, la misma vista que la ficha, y NO se recalcula acá: si el resumen
+ * hiciera su propia cuenta, un día diría una cosa distinta de la ficha de la obra y no habría
+ * manera de saber cuál de las dos miente.
  */
 function Plazo({ p }: { p: PlanVsReal | undefined }) {
   if (!p) return <span className="text-[12px] text-faint">—</span>
@@ -41,7 +60,6 @@ function Plazo({ p }: { p: PlanVsReal | undefined }) {
     return (
       <span className={`text-[12px] tabular-nums ${d > 0 ? 'font-semibold text-neg' : 'text-pos'}`}>
         {d > 0 ? `+${d} d` : d < 0 ? `${d} d` : 'en fecha'}
-        {p.actividades_atrasadas ? <span className="block text-[11px] font-normal text-warn">{p.actividades_atrasadas} atrasadas</span> : null}
       </span>
     )
   }
@@ -51,11 +69,9 @@ function Plazo({ p }: { p: PlanVsReal | undefined }) {
     <span className="text-[12px] text-faint">
       {p.fin_plan ? `fin ${fecha(p.fin_plan)}` : 'sin fechas'}
       <span className="block text-[11px]">sin línea base</span>
-      {p.actividades_atrasadas ? <span className="block text-[11px] text-warn">{p.actividades_atrasadas} atrasadas</span> : null}
     </span>
   )
 }
-
 
 /** La etapa se lee de un vistazo por su posición en la línea, no por un color arbitrario. */
 function Etapa({ etapa }: { etapa: ObraPanel['etapa'] }) {
@@ -76,14 +92,12 @@ function Etapa({ etapa }: { etapa: ObraPanel['etapa'] }) {
   )
 }
 
-// EL NÚMERO DICE SOBRE QUÉ SE CALCULA.
-//
-// No es adorno. Hasta el 17/08/2026 el OS publicaba DOS avances del mismo archivo de Drive —éste y
-// el del chat— y medían poblaciones distintas: San Francisco al 85% mirando 24 actividades, y al
-// 44% mirando 80. Desde entonces el cálculo es uno solo (vista `obra_avance`, la lee también el
-// chat), pero la cobertura se sigue mostrando: un promedio sin decir sobre cuántas cosas se tomó es
-// la mitad de un dato.
-function Avance({ pct, medidas, total }: { pct: number | null; medidas: number; total: number }) {
+// EL AVANCE, SIN LA COBERTURA. Hasta el 19/08 esta celda publicaba también «24/80» —sobre cuántas
+// actividades se tomó el promedio—, y era correcto: un promedio sin su población es medio dato. Se
+// saca de ACÁ igual, porque contar actividades es exactamente el tipo de detalle que el dueño mandó
+// bajar al workspace de la obra. La cobertura sigue publicada en la ficha, al lado del cronograma
+// que la explica. El cálculo no cambia: sigue siendo la vista `obra_avance`, la única del OS.
+function Avance({ pct, total }: { pct: number | null; total: number }) {
   if (pct == null) {
     return <span className="text-[12px] text-faint">{total ? 'sin avance cargado' : 'sin cronograma'}</span>
   }
@@ -93,11 +107,30 @@ function Avance({ pct, medidas, total }: { pct: number | null; medidas: number; 
         <span className="block h-full rounded-full bg-sky-600" style={{ width: `${Math.min(100, pct)}%` }} />
       </span>
       <span className="w-9 shrink-0 text-right text-[12px] tabular-nums text-ink">{pct}%</span>
-      <span className="whitespace-nowrap text-[11px] text-faint" title="Actividades planificadas que entran en el promedio, sobre el total del cronograma">
-        {medidas}/{total}
-      </span>
     </span>
   )
+}
+
+/**
+ * LA CELDA DEL CLIENTE — el segundo eje de la jerarquía, y la única puerta al CRM desde esta
+ * pantalla.
+ *
+ * El cliente que manda es el CANÓNICO (`cliente_slug` + `cliente_nombre`). `cliente_texto` es lo
+ * que decía la fuente y se conserva como procedencia: tres obras de La Estrella eran tres cadenas
+ * iguales de casualidad, no un cliente. Cuando sólo existe el texto se muestra el texto y no se
+ * enlaza — vincularlo es trabajo de Administración, no una suposición de esta tabla.
+ */
+function Cliente({ o }: { o: ObraPanel }) {
+  if (o.cliente_slug && o.cliente_nombre) {
+    return (
+      <Link href={`/clientes/${o.cliente_slug}`} className="text-[13px] text-ink hover:underline">
+        {o.cliente_nombre}
+      </Link>
+    )
+  }
+  const texto = o.cliente_nombre ?? o.cliente_texto
+  if (texto) return <span className="text-[13px] text-muted">{texto}</span>
+  return <span className="text-[12px] text-faint">sin cliente declarado</span>
 }
 
 export default async function ObrasPage({
@@ -132,8 +165,7 @@ export default async function ObrasPage({
 
   return (
     <PageShell
-      eyebrow="01 · Obras"
-      title="Portafolio"
+      title="OBRAS"
       subtitle={`${activas.length} obra${activas.length === 1 ? '' : 's'} en curso. El avance sale del tracker de Drive; el costo, de Compras por obra.`}
       // LA PUERTA DEL ALTA. `/obras/nueva` existía y sólo se llegaba tipeando la URL, que es
       // exactamente una pantalla «preparada para» — el dueño las prohibió. Sólo Administración crea
@@ -146,12 +178,10 @@ export default async function ObrasPage({
         >+ Nueva obra</Link>
       ) : undefined}
     >
-      {/* LAS SEIS VISTAS DE LA CARTERA. El portafolio es una de ellas, no su índice: desde acá se
-          entra a UNA obra, y las otras cinco muestran el MISMO dato de todas las obras a la vez
-          —*"MISMA TABLA/FUENTE → vista global + filtro por obra"*—. Dos niveles y se terminó. */}
+      {/* NIVEL 2 DEL ÁREA: Resumen y Gantt. Nada más entra en esta barra. */}
       <NavObras />
 
-      {error && <Callout tono="neg">No pude leer el portafolio: {error}</Callout>}
+      {error && <Callout tono="neg">No pude leer las obras: {error}</Callout>}
 
       {!error && todas.length === 0 && (
         <Callout tono="info">Todavía no hay obras cargadas en el eje canónico.</Callout>
@@ -162,15 +192,15 @@ export default async function ObrasPage({
       )}
 
       {obras.length > 0 && (
-        // `overflow-hidden` RECORTABA la tabla en el teléfono: a 390px desaparecían avance,
-        // contratado, costo real, actividades y restricciones — todo lo que esta pantalla existe
-        // para mostrar, y sin manera de llegar a ellos. Con `overflow-x-auto` se desplaza y no se
-        // pierde una sola columna.
+        // `overflow-hidden` RECORTABA la tabla en el teléfono: a 390px desaparecían las columnas de
+        // la derecha —todo lo que esta pantalla existe para mostrar— y sin manera de llegar a ellas.
+        // Con `overflow-x-auto` se desplaza por dentro y la PÁGINA no se corre de costado.
         <div className="overflow-x-auto rounded-lg border border-line bg-surface">
-          <table data-testid="portafolio-tabla" className="w-full min-w-[720px] text-left">
+          <table data-testid="portafolio-tabla" className="w-full min-w-[680px] text-left">
             <thead>
               <tr className="border-b border-line text-[10px] uppercase tracking-wide text-faint">
-                <th className="px-4 py-2.5 font-medium">Obra / Cliente</th>
+                <th className="px-4 py-2.5 font-medium">Obra</th>
+                <th className="px-3 py-2.5 font-medium">Cliente</th>
                 <th className="px-3 py-2.5 font-medium">Etapa</th>
                 <th className="px-3 py-2.5 font-medium">Avance</th>
                 <th className="px-3 py-2.5 font-medium">Plazo</th>
@@ -180,19 +210,15 @@ export default async function ObrasPage({
             </thead>
             <tbody>
               {obras.map((o) => (
-                <tr key={o.obra_id} className="border-b border-line/60 last:border-0 hover:bg-surface-quiet">
+                <tr key={o.obra_id} data-obra={o.obra_id} className="border-b border-line/60 last:border-0 hover:bg-surface-quiet">
                   <td className="px-4 py-2.5">
-                    <Link href={`/obras/${o.obra_id}`} className="block">
-                      <span className="text-[13px] font-semibold text-ink hover:underline">{o.nombre}</span>
-                      {/* El cliente que manda es el canónico. `cliente_texto` era lo que decía la
-                          fuente, y tres obras de La Estrella eran tres cadenas iguales de casualidad. */}
-                      <span className="block truncate text-[11px] text-faint">
-                        {o.cliente_nombre ?? 'sin cliente declarado'}
-                      </span>
+                    <Link href={`/obras/${o.obra_id}`} className="text-[13px] font-semibold text-ink hover:underline">
+                      {o.nombre}
                     </Link>
                   </td>
+                  <td className="px-3 py-2.5"><Cliente o={o} /></td>
                   <td className="px-3 py-2.5"><Etapa etapa={o.etapa} /></td>
-                  <td className="px-3 py-2.5"><Avance pct={o.avance_pct} medidas={o.n_actividades_medidas} total={o.n_actividades} /></td>
+                  <td className="px-3 py-2.5"><Avance pct={o.avance_pct} total={o.n_actividades} /></td>
                   <td className="px-3 py-2.5"><Plazo p={porObra.get(o.obra_id)} /></td>
                   {esAdmin && (
                     <td className="px-3 py-2.5 text-right text-[12px] tabular-nums text-muted">{plata(o.monto_contratado)}</td>
@@ -207,7 +233,7 @@ export default async function ObrasPage({
 
       {/* LO QUE FALTA SE DICE, no se disimula con un cero. Un contratado en "—" es un contrato que
           nadie cargó, y es distinto de un contrato de $0. */}
-      {obras.some((o) => o.monto_contratado == null) && (
+      {esAdmin && obras.some((o) => o.monto_contratado == null) && (
         <p className="mt-3 text-[12px] text-faint">
           Las obras sin monto contratado no lo tienen cargado en ninguna fuente del OS — no es que valgan cero.
         </p>
