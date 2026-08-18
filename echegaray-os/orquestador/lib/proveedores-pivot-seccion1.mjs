@@ -216,20 +216,42 @@ export function filtros() {
 }
 
 /**
- * EL ORIGEN DE LA DINÁMICA — Y POR QUÉ LLEGA HASTA EL FINAL DE LA GRILLA.
+ * EL ORIGEN DE LA DINÁMICA — SIN FILA FINAL, QUE ES LO QUE LA HACE VIVA.
  *
- * `filas` tiene que ser el `rowCount` de la PESTAÑA Compras, no la última fila con datos. Si se
- * corta en la última factura cargada, la compra que se cargue mañana cae FUERA del origen y la
- * dinámica no la ve nunca: deja de ser viva sin dar un solo error. Es el defecto que el cuadro
- * viejo tenía de otra forma (referencias a filas fijas) y que este cuadro existe para no repetir.
+ * ═══ EL DEFECTO (18/08/2026) ═══
+ *
+ * El dueño: *"no es una pestaña viva que se actualiza sola, no lee bien proveedores"*.
+ *
+ * Esta función devolvía `endRowIndex: filas`, con `filas` = el `rowCount` de Compras. El comentario
+ * que estaba acá defendía esa elección diciendo que el rowCount "llega hasta el final de la grilla" —
+ * y es cierto EN EL INSTANTE en que se escribe el pivot. Lo que no es cierto es después: cuando
+ * alguien carga una compra en la primera fila libre, Google AGRANDA la grilla, el rowCount pasa de
+ * 1155 a 1156, y el pivot se queda apuntando a 1155. La factura nueva cae fuera del origen y la
+ * dinámica no la ve — sin dar un solo error, que es el modo de falla caro.
+ *
+ * Medido el 18/08: las tres dinámicas de "Proveedores" tenían `endRowIndex: 1155` y Compras tenía
+ * exactamente 1155 filas de grilla. O sea: funcionaban hasta la próxima carga.
+ *
+ * ═══ LA CURA: UN `GridRange` SIN FILA FINAL ═══
+ *
+ * La API de Sheets trata un `GridRange` sin `endRowIndex` como ABIERTO hasta el final de la hoja, hoy
+ * y siempre — es el equivalente de `Compras!$A$3:$AL` en A1, que es la forma que este repositorio ya
+ * exige para toda referencia a Compras (`esRangoAbierto`, en deuda-por-tramos.mjs). El pivot deja de
+ * depender de cuándo corrió el generador por última vez.
  *
  * `startRowIndex: 2` es la fila 3, donde están los rótulos: el pivot la usa como encabezado.
  * Arrancar en la 4 le haría tomar la primera factura como nombre de columna.
+ *
+ * `endColumnIndex` SÍ se declara, y no es una inconsistencia: las columnas de Compras no crecen solas
+ * —las agrega una persona— y los `sourceColumnOffset` del pivot son posiciones dentro de este rango.
+ * Un origen de ancho abierto haría que agregar una columna al final cambiara qué mide cada campo.
  */
 export function fuenteCompras({ sheetId, filas }) {
   if (!Number.isInteger(sheetId)) throw new Error('fuenteCompras: falta el sheetId de Compras')
+  // `filas` ya no entra en el rango, pero se sigue exigiendo: es la prueba de que quien llama miró la
+  // grilla de Compras antes de armar la dinámica. Un origen sobre una pestaña vacía es un cuadro vacío.
   if (!(filas > 3)) throw new Error(`fuenteCompras: la grilla de Compras no puede tener ${filas} filas`)
-  return { sheetId, startRowIndex: 2, endRowIndex: filas, startColumnIndex: 0, endColumnIndex: 38 }
+  return { sheetId, startRowIndex: 2, startColumnIndex: 0, endColumnIndex: 38 }
 }
 
 /**

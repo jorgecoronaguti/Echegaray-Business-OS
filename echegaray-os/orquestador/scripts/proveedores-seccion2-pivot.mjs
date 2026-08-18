@@ -156,7 +156,11 @@ async function main() {
     geo.filaLimite += faltan
   }
 
-  const fuente = { sheetId: cm.sheetId, startRowIndex: 2, endRowIndex: cm.rows, startColumnIndex: 0, endColumnIndex: idx.cuit + 1 }
+  // SIN `endRowIndex`: un `GridRange` sin fila final es abierto hasta el final de la hoja. Con
+  // `cm.rows` el origen quedaba clavado en la altura que tenía Compras el día de la corrida, y la
+  // compra cargada después caía afuera sin dar un solo error. Ver `fuenteCompras` en
+  // lib/proveedores-pivot-seccion1.mjs, que es donde está escrito el porqué completo.
+  const fuente = { sheetId: cm.sheetId, startRowIndex: 2, startColumnIndex: 0, endColumnIndex: idx.cuit + 1 }
   const p1 = await escribirDinamica({ google, sid, geo, corte, idx, fuente })
   if (!p1) return
   const p0 = geo.filaRotulos + 1

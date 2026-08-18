@@ -1,6 +1,7 @@
 import { createServerClient, type SetAllCookies } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { esRutaCampoPermitida, esRutaPublica } from '@/features/auth/types'
+import { puedeVerRuta } from '@/features/auth/types/areas'
 
 // Refresca la sesión de Supabase en cada request -- sin esto, un usuario logueado
 // puede quedar con un token vencido en Server Components y verse "deslogueado" sin
@@ -43,11 +44,27 @@ export async function middleware(request: NextRequest) {
   // RBAC de campo: un operario (rol 'campo') solo puede ver las rutas operativas. Si intenta
   // entrar a cualquier otra (caja, reportes, dirección…), lo mandamos a su pantalla de campo.
   const esApiOAuth = pathname.startsWith('/api') || pathname.startsWith('/login') || pathname.startsWith('/signup')
-  if (user && !esApiOAuth && !esRutaCampoPermitida(pathname)) {
+  if (user && !esApiOAuth) {
     const { data: perfil } = await supabase.from('perfiles').select('rol').eq('id', user.id).maybeSingle()
-    if (perfil?.rol === 'campo') {
+    if (perfil?.rol === 'campo' && !esRutaCampoPermitida(pathname)) {
       const url = request.nextUrl.clone()
       url.pathname = '/campo'
+      return NextResponse.redirect(url)
+    }
+    // ── EL NIVEL «OBRAS» NO ENTRA A LO DE ADMINISTRACIÓN (18/08/2026).
+    //
+    // Dos niveles y sólo dos: Administración (dirección + administración) ve todo; Obras (jefe de
+    // obra + campo) trabaja sus obras y no ve clientes, economía global ni finanzas. Ver
+    // `features/auth/types/areas.ts`.
+    //
+    // ESTO ES LA PUERTA, NO LA CERRADURA. Una llamada directa a PostgREST no pasa por acá: eso lo
+    // decide el RLS, que filtra por `ve_obra()` en la base. Las dos capas hacen falta — el
+    // middleware evita que una pantalla se dibuje vacía y desconcertante; el RLS evita que los datos
+    // salgan del servidor. Redirigir sin RLS sería seguridad cosmética.
+    if (!puedeVerRuta(perfil?.rol, pathname)) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/obras'
+      url.search = ''
       return NextResponse.redirect(url)
     }
   }

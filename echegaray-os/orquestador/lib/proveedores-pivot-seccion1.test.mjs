@@ -37,7 +37,6 @@ test('TRAMPA 2 · ningún nivel pide un subtotal que la API no emite', () => {
 test('el source arranca en la fila de rótulos, no en la primera factura', () => {
   // startRowIndex 2 = fila 3. Arrancar en la 4 haría que el pivot tome una factura como encabezado.
   assert.equal(fuente.startRowIndex, 2)
-  assert.equal(fuente.endRowIndex, 900, 'un source sin techo recorre la hoja entera en cada recálculo')
 })
 
 test('el source se niega si no sabe cuántas filas tiene Compras', () => {
@@ -282,10 +281,27 @@ test('el detector de agujeros los encuentra, y no confunde una fila de más con 
   assert.deepEqual(celdasVacias([['A', 'B', 'C'], []], 3, 17), [], 'una fila entera vacía es el fin del bloque')
 })
 
-test('el origen llega al final de la GRILLA: una compra nueva entra sola', () => {
-  const f = fuenteCompras({ sheetId: 7, filas: 2000 })
-  assert.equal(f.endRowIndex, 2000,
-    'si el origen se corta en la última factura cargada, la de mañana queda afuera en silencio')
+// ═══ EL ORIGEN NO PUEDE TENER FILA FINAL (18/08/2026) ═══
+//
+// Tenía `endRowIndex = rowCount de Compras`, y el test de acá defendía ese número. El argumento era
+// "llega al final de la grilla", y es cierto en el instante de escribirlo: el problema es DESPUÉS.
+// Cuando alguien carga una compra en la primera fila libre, Google agranda la grilla y el pivot se
+// queda apuntando a la altura de ayer. Medido el 18/08 en el archivo vivo: las tres dinámicas de
+// "Proveedores" decían `endRowIndex: 1155` y Compras tenía exactamente 1155 filas. El dueño lo vio
+// como *"no es una pestaña viva que se actualiza sola, no lee bien proveedores"*.
+//
+// Un `GridRange` sin `endRowIndex` es abierto hasta el final de la hoja, hoy y siempre — el
+// equivalente de `Compras!$A$3:$AL`, que es la forma que este repositorio ya exige para toda
+// referencia a Compras. Este test exige la AUSENCIA de la propiedad, que es lo único que no envejece.
+test('el origen NO tiene fila final: una compra cargada mañana entra sola', () => {
+  for (const filas of [900, 2000]) {
+    const f = fuenteCompras({ sheetId: 7, filas })
+    assert.ok(!('endRowIndex' in f),
+      `el origen se cortó en la fila ${f.endRowIndex}: la compra de mañana queda afuera en silencio`)
+  }
+  // El ANCHO sí se declara: las columnas no crecen solas y los `sourceColumnOffset` son posiciones
+  // dentro de este rango. Un ancho abierto haría que agregar una columna cambie qué mide cada campo.
+  assert.equal(fuenteCompras({ sheetId: 7, filas: 900 }).endColumnIndex, 38)
 })
 
 test('EL CONTROL suma la columna de la DEUDA, no la de los conteos', () => {
