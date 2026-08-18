@@ -31,7 +31,6 @@ export default async function ClientesPage() {
       eyebrow="01 · Obras"
       title="Clientes"
       subtitle={`${conObraActiva.length} cliente${conObraActiva.length === 1 ? '' : 's'} con obra en curso. Tocá uno para ver sus obras, sus contactos y su carpeta de Drive.`}
-      maxWidth="max-w-7xl"
     >
       {error && <Callout tono="neg">No pude leer los clientes: {error}</Callout>}
 

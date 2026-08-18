@@ -126,19 +126,38 @@ function condPendiente(R, criterioProv) {
 /**
  * EL SALDO NETO DE UN PROVEEDOR, como expresión de fórmula.
  *
- * Total − Monto Pagado − los POSITIVOS de Parcial 1 y Parcial 2. El filtro `">0"` es la regla del
- * dueño (27/07): un negativo en esas columnas es el saldo que falta, no un pago, y restarlo infla la
- * deuda al doble.
+ * ═══ ACÁ VIVÍA LA SEGUNDA DEFINICIÓN DE «LO QUE SE DEBE» (19/08/2026) ═══
+ *
+ * Esta función restaba `Total − Pagado − POSITIVOS de Parcial 1 − POSITIVOS de Parcial 2`. La
+ * definición canónica del OS —`deuda-por-tramos.mjs`, la que escribe `Compras!AL`, la que consume
+ * CAJA y la que usan el aging y los tres bloques— resta `Total − Pagado − Parcial 2`. **Dos
+ * definiciones del mismo concepto en la misma pestaña**, y por eso el control del pie contradecía al
+ * cuadro que estaba justo arriba: el dueño lo vio como *"no lee bien de compras"*, tres veces.
+ *
+ * La diferencia es la columna `U · Monto Parcial 1`, y no es una preferencia — está MEDIDA sobre las
+ * 1.136 filas del archivo real:
+ *
+ *     U (Monto Parcial 1):  716 fórmulas `=T−O` · 302 valores tipeados · 84 negativos · 61 positivos
+ *     W (Monto Parcial 2):    0 fórmulas       ·   8 valores tipeados ·  0 negativos ·  8 positivos
+ *
+ * `U` es una columna MIXTA: casi siempre es la derivada `=T−O` (negativa mientras la factura no se
+ * pagó) y a veces un importe tipeado a mano. Ese doble uso es lo que obligó al filtro `">0"` del
+ * 27/07 —"un negativo no es un pago"— y ese parche es el que se convirtió en la segunda definición.
+ * `W`, en cambio, es carga manual pura y nunca negativa: por eso restarla sin filtro es idéntico a
+ * restar sus positivos, y la canónica y ésta pasan a decir exactamente lo mismo.
+ *
+ * Lo que NO se hace acá es decidir qué significa un `U > 0` en una fila pendiente. Hoy hay UNA
+ * (Ruviño Matías Esteban, $136.000) y su propia fila se contradice: `Total o Parcial` dice «Total»,
+ * `Estado` dice «Pendiente» y el importe está en la columna de un parcial. O está pagada y falta
+ * cambiarle el estado, o el importe está en la columna equivocada — y eso lo sabe quien la cargó, no
+ * esta función. Se publica como hallazgo con nombre y monto (`formulaParcial1Sospechoso`) en vez de
+ * elegir por su cuenta una de las dos respuestas y borrar la pregunta.
  *
  * @param {Record<string,string>} R rangos de Compras
  * @param {string} criterioProv el criterio de proveedor (una referencia como `p` o un literal `"X"`)
  */
 export function saldoNetoProveedor(R, criterioProv) {
-  const c = condPendiente(R, criterioProv)
-  return `SUMIFS(${R.total}${SEP}${c})`
-    + `-SUMIFS(${R.pagado}${SEP}${c})`
-    + `-SUMIFS(${R.parcial1}${SEP}${c}${SEP}${R.parcial1}${SEP}">0")`
-    + `-SUMIFS(${R.parcial2}${SEP}${c}${SEP}${R.parcial2}${SEP}">0")`
+  return restaCanonica(R, condPendiente(R, criterioProv))
 }
 
 /**
@@ -146,11 +165,32 @@ export function saldoNetoProveedor(R, criterioProv) {
  * Misma aritmética que `saldoNetoProveedor`, sin el filtro de proveedor.
  */
 export function deudaComercialTotal(R) {
-  const c = [`${R.estado}${SEP}"${PENDIENTE}"`, `${R.comercial}${SEP}1`].join(SEP)
-  return `SUMIFS(${R.total}${SEP}${c})`
-    + `-SUMIFS(${R.pagado}${SEP}${c})`
-    + `-SUMIFS(${R.parcial1}${SEP}${c}${SEP}${R.parcial1}${SEP}">0")`
-    + `-SUMIFS(${R.parcial2}${SEP}${c}${SEP}${R.parcial2}${SEP}">0")`
+  return restaCanonica(R, [`${R.estado}${SEP}"${PENDIENTE}"`, `${R.comercial}${SEP}1`].join(SEP))
+}
+
+/** `Total − Monto Pagado − Monto Parcial 2`. La MISMA resta que `saldoDeLaFila` de deuda-por-tramos,
+ *  escrita una sola vez para que el titular, el cuadro por proveedor y el control no puedan separarse. */
+function restaCanonica(R, cond) {
+  return `SUMIFS(${R.total}${SEP}${cond})`
+    + `-SUMIFS(${R.pagado}${SEP}${cond})`
+    + `-SUMIFS(${R.parcial2}${SEP}${cond})`
+}
+
+/**
+ * EL HALLAZGO QUE LA RESTA CANÓNICA DEJA A LA VISTA en vez de resolver sola.
+ *
+ * Filas comerciales PENDIENTES con un importe positivo cargado en «Monto Parcial 1». La canónica no
+ * las descuenta —Parcial 1 es, en 716 de 1.136 filas, la derivada `=T−O` y no un pago— así que si
+ * alguna de ellas SÍ era un pago real, su deuda está publicada de más. El cuadro lo dice con nombre y
+ * monto para que se arregle en Compras, que es donde está el dato, en vez de discutirlo acá.
+ */
+export function formulaParcial1Sospechoso(R) {
+  const u = `(${R.parcial1}>0)*(${R.estado}="${PENDIENTE}")*(${R.comercial}=1)`
+  return `=LET(n${SEP}SUMPRODUCT(${u})${SEP}m${SEP}SUMPRODUCT(${u}*${R.parcial1})${SEP}`
+    + `IF(n=0${SEP}"✓ ningún importe cargado en «Monto Parcial 1» sobre una factura pendiente"${SEP}`
+    + `"${ALERTA} "&n&" factura(s) pendientes con importe en «Monto Parcial 1» por "&TEXT(m${SEP}"$#,##0")`
+    + `&" ("&TEXTJOIN(" · "${SEP}TRUE${SEP}UNIQUE(FILTER(${R.prov}${SEP}${u})))&"): o ya están pagadas y falta el estado, `
+    + `o el importe va en «Monto Pagado». Mientras tanto se publican como deuda."))`
 }
 
 /** Las declaraciones LET comunes a los dos bloques: cada rango, una sola vez y con nombre. */

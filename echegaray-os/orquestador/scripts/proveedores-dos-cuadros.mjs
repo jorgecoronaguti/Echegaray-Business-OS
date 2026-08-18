@@ -52,13 +52,15 @@ import { leerParaDecidirBorrado } from '../lib/proveedores-lectura-dinamica.mjs'
 import { SECCIONES_DINAMICAS, VALORES_DETALLE } from '../lib/proveedores-titulos.mjs'
 import {
   altoEmitido, bandasDeFormato, COL, formatoDeTodo, fuenteCompras, geometriaDeLaSeccion,
-  diasDePago, letraDeLaDeuda, PENDIENTE, pivotSeccion1, reapuntarControl, rotulosDelCuadro, VISTA,
+  diasDePago, letraDeLaDeuda, PENDIENTE, pivotSeccion1, rotulosDelCuadro, VISTA,
 } from '../lib/proveedores-pivot-seccion1.mjs'
 import {
   colNota, colVence, rangoDelCuadroA, requestsDelCuadroA, reservaDelCuadroA, rotulosDelCuadroA,
   ROTULOS_A_LA_DERECHA,
 } from '../lib/proveedores-cuadro-a.mjs'
 import { requestsDeRotulos, rotulosQueNoEntran } from '../lib/proveedores-rotulos.mjs'
+import { formulaControl, rangosCompras } from '../lib/proveedores-deuda-viva.mjs'
+import { rangosDesdeEncabezado } from '../lib/proveedores-bloque-vivo.mjs'
 import { ALERTA } from '../lib/glifos.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -464,12 +466,37 @@ async function requestsDelControl({ google, sheetId, geo, rango }) {
     return []
   }
   const columna = letraDeLaDeuda()
-  const nueva = reapuntarControl(vieja, columna, { filaEncabezado: rango.desde - 1, filaLimite: rango.hasta })
+
+  // ═══ SE REGENERA, NO SE PARCHEA (19/08/2026) ═══
+  //
+  // Acá vivía un `reapuntarControl(vieja, …)` que tocaba ÚNICAMENTE el `SUM($X$n:$X$m)` y dejaba
+  // intacto el resto de la fórmula. Sonaba prudente —"no reescribo lo que no cambió"— y fue el
+  // escondite perfecto para un defecto de fondo: el cuerpo de la fórmula, los SUMIFS contra Compras,
+  // NUNCA se regeneraba. Cuando la definición de «lo que se debe» se corrigió en el repositorio, la
+  // celda del archivo siguió con la vieja, restando también `Monto Parcial 1`. Resultado: el control
+  // del pie contradecía por $136.000 al cuadro que tenía justo arriba, los dos "bien" según su propia
+  // aritmética, y el dueño leyéndolo —con razón— como *"no lee bien de compras"*.
+  //
+  // Una fórmula que sólo se parchea no puede recibir una corrección de criterio. Ahora se escribe
+  // entera desde `formulaControl()`, que a su vez sale de la resta canónica: si mañana cambia qué
+  // cuenta como pago, cambia en un archivo y baja sola a la pestaña en la corrida siguiente.
+  const cabecera = (await google.readSheetValues(ID, 'Compras!A3:BZ3'))[0] || []
+  const { rangos: crudos, avisos } = rangosDesdeEncabezado(cabecera)
+  for (const a of avisos) console.warn(`  ⚠ ${a}`)
+  const nueva = formulaControl({
+    rangos: rangosCompras(crudos),
+    rangoSaldo: `$${columna}$${rango.desde}:$${columna}$${rango.hasta - 1}`,
+    que: 'el detalle',
+  })
   if (nueva === vieja) {
-    console.log(`  ○ el control de A${filaControl} ya sumaba ${columna}${rango.desde}:${columna}${rango.hasta - 1}`)
+    console.log(`  ○ el control de A${filaControl} ya estaba al día (suma ${columna}${rango.desde}:${columna}${rango.hasta - 1})`)
     return []
   }
-  console.log(`  CONTROL A${filaControl} → SUM(${columna}${rango.desde}:${columna}${rango.hasta - 1})`)
+  // Se dice qué cambió, no sólo que cambió: si además del rango cambió el CRITERIO, eso es noticia.
+  const cambioCriterio = vieja.replace(/SUM\(\$[A-Z]{1,3}\$\d+:\$[A-Z]{1,3}\$\d+\)/, '')
+    !== nueva.replace(/SUM\(\$[A-Z]{1,3}\$\d+:\$[A-Z]{1,3}\$\d+\)/, '')
+  console.log(`  CONTROL A${filaControl} → SUM(${columna}${rango.desde}:${columna}${rango.hasta - 1})`
+    + (cambioCriterio ? '  ⟵ y con el criterio de deuda REGENERADO desde la definición canónica' : ''))
   return [{ updateCells: {
     range: { sheetId, startRowIndex: filaControl - 1, endRowIndex: filaControl, startColumnIndex: 0, endColumnIndex: 1 },
     rows: [{ values: [{ userEnteredValue: { formulaValue: nueva } }] }], fields: 'userEnteredValue' } }]

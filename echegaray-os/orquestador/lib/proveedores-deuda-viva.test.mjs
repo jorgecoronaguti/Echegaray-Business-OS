@@ -19,9 +19,10 @@ import {
   SEP, COLS_PROVEEDOR, COLS_FACTURA, PENDIENTE,
   rangosCompras, esRangoAbierto, referenciasCompras,
   formulaPorProveedor, formulaPorFactura, formulaControl,
-  saldoNetoProveedor, deudaComercialTotal, reservaPara,
+  saldoNetoProveedor, deudaComercialTotal, reservaPara, formulaParcial1Sospechoso,
   filasLibreta, verificarMigracionNotas, esNombreSeguro,
 } from './proveedores-deuda-viva.mjs'
+import { expresionSaldo } from './deuda-por-tramos.mjs'
 
 /** Las columnas reales de Compras, tal como las resuelve el generador por encabezado. */
 const COLS = {
@@ -83,15 +84,47 @@ test('NINGUNA referencia a Compras lleva fila final en ninguna fórmula de la se
   }
 })
 
-test('el saldo neto y el titular usan las MISMAS cuatro columnas, todas abiertas', () => {
+test('el saldo neto y el titular usan LA MISMA resta canónica: Total - Pagado - Parcial 2', () => {
+  // ═══ ESTE TEST EXIGÍA LA SEGUNDA DEFINICIÓN (19/08/2026) ═══
+  //
+  // Pedía cuatro SUMIFS y dos filtros `">0"`, o sea `Total − Pagado − POSITIVOS de Parcial 1 −
+  // POSITIVOS de Parcial 2`. Eso NO es lo que define «lo que se debe» en este repositorio: la
+  // canónica vive en `deuda-por-tramos.mjs` (`saldoDeLaFila` = O − T − W) y es la que escribe
+  // `Compras!AL`, la que consume CAJA y la que usan el aging y los tres bloques de la pestaña.
+  //
+  // Con las dos conviviendo, el control del pie contradecía al cuadro de arriba por $136.000 y el
+  // dueño lo leyó —bien— como "no lee bien de compras". El test verde era parte del problema: medía
+  // que la fórmula siguiera siendo la equivocada.
   for (const expr of [saldoNetoProveedor(R, '"Alumetal"'), deudaComercialTotal(R)]) {
-    for (const col of [R.total, R.pagado, R.parcial1, R.parcial2]) {
+    for (const col of [R.total, R.pagado, R.parcial2]) {
       assert.ok(expr.includes(col), `falta ${col}`)
     }
-    // Cuatro SUMIFS: total menos pagado menos los positivos de los dos parciales.
-    assert.equal((expr.match(/SUMIFS\(/g) ?? []).length, 4)
-    assert.equal((expr.match(/">0"/g) ?? []).length, 2, 'los parciales negativos NO son pagos: se descartan con ">0"')
+    assert.ok(!expr.includes(R.parcial1),
+      'Parcial 1 NO entra en la resta: es la derivada `=T−O` en 716 de 1.136 filas, no un tramo de pago')
+    assert.equal((expr.match(/SUMIFS\(/g) ?? []).length, 3, 'tres SUMIFS: total, pagado y parcial 2')
+    assert.equal((expr.match(/">0"/g) ?? []).length, 0,
+      'sin filtro `">0"`: W nunca es negativa (medido: 0 fórmulas, 8 valores, 0 negativos), así que el filtro sobraba')
   }
+})
+
+test('el saldo del bloque dice EXACTAMENTE lo mismo que la canónica de deuda-por-tramos', () => {
+  // La prueba de que no hay dos definiciones: las dos restan las mismas tres columnas de Compras.
+  const canonica = expresionSaldo('Compras!')
+  for (const col of ['O', 'T', 'W']) {
+    assert.ok(canonica.includes(`$${col}$4:$${col}`), `la canónica tiene que restar ${col}`)
+  }
+  assert.ok(!canonica.includes('$U$4:$U'), 'la canónica NO resta Parcial 1')
+  assert.ok(!deudaComercialTotal(R).includes(R.parcial1), 'y el titular del bloque tampoco')
+})
+
+test('el hallazgo de «Monto Parcial 1» nombra al proveedor y dice el monto', () => {
+  const f = formulaParcial1Sospechoso(R)
+  assert.ok(f.startsWith('='), 'es una fórmula viva, no un número calculado acá')
+  assert.ok(f.includes(R.parcial1) && f.includes('>0'), 'mira los positivos de Parcial 1')
+  assert.ok(f.includes(R.prov), 'nombra al proveedor: sin nombre no se puede ir a arreglarlo')
+  assert.ok(f.includes('SUMPRODUCT'), 'cuenta y suma sobre rangos abiertos')
+  // Y no puede quedarse callado cuando no hay ninguno: un control mudo no se distingue de uno roto.
+  assert.ok(f.includes('✓'), 'dice algo también cuando no encuentra nada')
 })
 
 // ── 2 · LOCALE es_AR ────────────────────────────────────────────────────────────────────────────

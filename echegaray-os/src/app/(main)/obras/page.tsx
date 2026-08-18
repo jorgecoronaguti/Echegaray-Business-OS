@@ -118,7 +118,6 @@ export default async function ObrasPage() {
       eyebrow="01 · Obras"
       title="Portafolio"
       subtitle={`${activas.length} obra${activas.length === 1 ? '' : 's'} en curso. El avance sale del tracker de Drive; el costo, de Compras por obra.`}
-      maxWidth="max-w-7xl"
     >
       {error && <Callout tono="neg">No pude leer el portafolio: {error}</Callout>}
 

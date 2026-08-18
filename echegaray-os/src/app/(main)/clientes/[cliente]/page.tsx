@@ -122,7 +122,6 @@ export default async function ClientePage({
       eyebrow={<Link href="/clientes" className="hover:underline">01 · Obras · Clientes</Link>}
       title={cliente.nombre}
       subtitle={cliente.activo ? (cliente.cuit ?? undefined) : `${cliente.cuit ?? 'sin CUIT'} · archivado`}
-      maxWidth="max-w-7xl"
     >
       {/* Las solapas se desplazan en vez de empujar la página: cuatro de ellas miden 407px y
           la pantalla del teléfono tiene 390. */}
