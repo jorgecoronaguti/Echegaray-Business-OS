@@ -36,8 +36,44 @@ export default async function UsuariosPage() {
     )
   }
 
-  const admin = createAdminClient()
-  const [lista, obras] = await Promise.all([listarUsuarios(admin), listarObrasElegibles(admin)])
+  // ═══ UNA PANTALLA EN BLANCO NO DICE QUÉ FALTA (19/08/2026) ═══
+  //
+  // Esta es la ÚNICA pantalla del sistema que necesita la clave de servicio: es la que llama a
+  // `auth.admin.listUsers`, porque las cuentas viven en el esquema `auth` y no hay forma de leerlas
+  // con la sesión de una persona. Si esa variable no está en el entorno, `createAdminClient()` tira
+  // y Next devuelve un 500 con el mensaje omitido "para no filtrar detalles sensibles" — así que el
+  // administrador ve *"This page couldn't load"* y no tiene forma de saber qué hacer.
+  //
+  // Medido en producción el 19/08: las trece rutas del MVP abren y ÉSTA daba 500. El resto de la
+  // Administración —personas, proveedores, pendientes, clientes— anda, porque entra con la sesión.
+  //
+  // Se atrapa y se NOMBRA lo que falta. El nombre de la variable no es un secreto; su valor sí, y no
+  // se toca. Un fallo de configuración que se explica solo se arregla en un minuto; uno en blanco
+  // cuesta una sesión entera de diagnóstico.
+  let lista: Awaited<ReturnType<typeof listarUsuarios>>
+  let obras: Awaited<ReturnType<typeof listarObrasElegibles>>
+  try {
+    const admin = createAdminClient()
+    ;[lista, obras] = await Promise.all([listarUsuarios(admin), listarObrasElegibles(admin)])
+  } catch (e) {
+    return (
+      <PageShell
+        eyebrow="Administración"
+        title="Usuarios"
+        subtitle="Esta pantalla no puede abrir porque le falta una variable de entorno."
+        maxWidth="max-w-2xl"
+      >
+        <div data-testid="usuarios-sin-configuracion">
+        <Callout tono="neg">
+          Falta <strong>SUPABASE_SERVICE_ROLE_KEY</strong> en el entorno de este despliegue. Es la
+          única pantalla que la necesita: las cuentas viven en el esquema de autenticación y no se
+          pueden leer con la sesión de una persona. Se carga en las variables de entorno del proyecto
+          en Vercel y hace falta volver a desplegar. {e instanceof Error ? `(${e.message})` : ''}
+        </Callout>
+        </div>
+      </PageShell>
+    )
+  }
 
   return (
     <PageShell
