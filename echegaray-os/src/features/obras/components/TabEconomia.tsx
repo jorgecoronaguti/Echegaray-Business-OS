@@ -56,9 +56,11 @@ function Linea({
   )
 }
 
-function Bloque({ titulo, children }: { titulo: string; children: ReactNode }) {
+/** El `testid` es del BLOQUE, no de su prosa: un test que se ata al texto se rompe cada vez que se
+ *  mejora una etiqueta, y entonces se dejan de mejorar las etiquetas. */
+function Bloque({ titulo, testid, children }: { titulo: string; testid: string; children: ReactNode }) {
   return (
-    <section>
+    <section data-testid={testid}>
       <h2 className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-faint">{titulo}</h2>
       <dl>{children}</dl>
     </section>
@@ -93,7 +95,7 @@ export function TabEconomia({
       {/* Cuatro bloques en dos columnas: entran en una pantalla sin scroll y se comparan de un vistazo.
           Sin recuadro por bloque — son cuatro listas de definición, no cuatro tarjetas. */}
       <div className="grid gap-x-10 gap-y-6 lg:grid-cols-2">
-        <Bloque titulo="Contrato">
+        <Bloque titulo="Contrato" testid="economia-contrato">
           <Linea
             concepto="Contratado" fuerte
             valor={plan.monto_contratado == null ? null : plata(plan.monto_contratado)}
@@ -108,7 +110,7 @@ export function TabEconomia({
           />
         </Bloque>
 
-        <Bloque titulo="Costo">
+        <Bloque titulo="Costo" testid="economia-costo">
           <Linea
             concepto="Presupuesto"
             valor={plan.costo_presupuestado == null ? null : plata(plan.costo_presupuestado)}
@@ -133,7 +135,7 @@ export function TabEconomia({
           />
         </Bloque>
 
-        <Bloque titulo="Certificación">
+        <Bloque titulo="Certificación" testid="economia-certificacion">
           <Linea
             concepto="Certificado"
             valor={plan.certificado == null ? null : plata(plan.certificado)}
@@ -167,7 +169,7 @@ export function TabEconomia({
           />
         </Bloque>
 
-        <Bloque titulo="Resultado">
+        <Bloque titulo="Resultado" testid="economia-resultado">
           <Linea
             concepto="Margen esperado"
             valor={plan.margen_esperado == null ? null

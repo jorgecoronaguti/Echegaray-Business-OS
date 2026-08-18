@@ -194,20 +194,24 @@ test('Documentos: vincular un archivo de Drive llega a Postgres y vuelve a la pa
     await entrar(page)
     await page.goto(`/obras/${OBRA}?vista=documentos`)
 
+    // TODO SE ACOTA AL BLOQUE «archivo». Hay dos formularios en la pantalla —archivo y carpeta— con
+    // un `input[name="enlace"]` cada uno: un selector global es ambiguo y Playwright, bien, se niega.
+    const bloque = page.getByTestId('vincular-archivo')
+    await bloque.locator('summary').click()
+
     // Lo que NO es de Drive se rechaza ANTES de tocar la base: un id mal extraído no falla al
     // guardar — entra, la pantalla dice "vinculado" y el 404 aparece semanas después.
-    await page.getByTestId('vincular-archivo').click()
-    await page.fill('input[name="enlace"]', 'https://www.dropbox.com/s/abc123/Contrato.pdf')
-    await page.getByTestId('vincular-archivo').getByRole('button', { name: /Vincular/ }).click()
-    await expect(page.getByText(/no es un enlace de Drive|Drive/i).first()).toBeVisible({ timeout: 15000 })
+    await bloque.locator('input[name="enlace"]').fill('https://www.dropbox.com/s/abc123/Contrato.pdf')
+    await bloque.getByRole('button', { name: 'Vincular' }).click()
+    await expect(bloque.getByText(/Drive/i).first()).toBeVisible({ timeout: 15000 })
     const { count: tras } = await sb.from('obra_documento')
       .select('obra_id', { count: 'exact', head: true }).eq('drive_file_id', fileId)
     expect(tras, 'una URL que no es de Drive llegó a escribir en la base').toBe(0)
 
     // Y ahora la buena.
-    await page.fill('input[name="enlace"]', `https://drive.google.com/file/d/${fileId}/view?usp=sharing`)
-    await page.fill('input[name="nombre"]', `${MARCA} Contrato.pdf`)
-    await page.getByTestId('vincular-archivo').getByRole('button', { name: /Vincular/ }).click()
+    await bloque.locator('input[name="enlace"]').fill(`https://drive.google.com/file/d/${fileId}/view?usp=sharing`)
+    await bloque.locator('input[name="nombre"]').fill(`${MARCA} Contrato.pdf`)
+    await bloque.getByRole('button', { name: 'Vincular' }).click()
 
     // Mismo criterio que en HH: se espera al EFECTO en la base, no al cartel de la pantalla.
     await expect.poll(async () => {

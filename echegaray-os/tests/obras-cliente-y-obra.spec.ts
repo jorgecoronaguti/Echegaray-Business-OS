@@ -217,7 +217,9 @@ test('obra: se crea desde la ficha del cliente y se edita desde la obra', async 
     await expect(page.getByTestId('form-editar-obra').locator('input[name="ubicacion"]'))
       .toHaveValue('Rawson, San Juan')
     await page.goto(`/obras/${creada.id}?vista=economia`)
-    await expect(page.getByTestId('economia-margen')).toContainText('$12.000.000')
+    // El monto contratado se mudó del bloque «Contrato y margen» al bloque «Contrato» cuando Economía
+  // pasó a los cuatro bloques del MVP. El número es el mismo.
+  await expect(page.getByTestId('economia-contrato')).toContainText('$12.000.000')
   } finally {
     await limpiar(sb)
     await sb.auth.signOut()

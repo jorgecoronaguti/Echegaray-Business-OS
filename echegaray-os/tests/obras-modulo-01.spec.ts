@@ -119,20 +119,23 @@ test('portafolio → obra → resumen · gantt · planificación · documentos',
   await filaSanFrancisco.click()
   await page.waitForURL(/\/obras\/san-francisco/)
   await expect(page.getByRole('heading', { name: /San Francisco/ })).toBeVisible()
-  await expect(page.getByText('Avance físico')).toBeVisible()
+  // «Avance físico» se acortó a «Avance» al pasar de cuatro tarjetas a una franja de cuatro cifras:
+  // en una franja el rótulo compite por el ancho con los otros tres.
+  await expect(page.getByTestId('titular-obra')).toContainText('Avance')
 
-  // 4. GANTT — el núcleo del módulo. Sin barras dibujadas no hay Gantt, hay una tabla vacía.
-  await page.getByRole('link', { name: 'Gantt', exact: true }).click()
-  await page.waitForURL(/vista=gantt/)
+  // 4. CRONOGRAMA — el núcleo del módulo, y ahora una sola solapa con DOS vistas de las mismas
+  //    actividades. «Gantt» y «Planificación» dejaron de ser solapas principales: el dueño puso el
+  //    tope en seis y pidió que planificar viva adentro del cronograma.
+  await page.getByRole('link', { name: 'Cronograma', exact: true }).click()
+  await page.waitForURL(/vista=cronograma/)
   const gantt = page.getByTestId('gantt')
   await expect(gantt).toBeVisible()
   // Barras dibujadas de verdad: cada actividad con fecha es un <g> con su rect en el SVG.
   expect(await gantt.locator('svg g').count()).toBeGreaterThan(5)
 
-  // 5. PLANIFICACIÓN — próximos trabajos e impedimentos, ya con su alta.
-  await page.getByRole('link', { name: 'Planificación', exact: true }).click()
-  await page.waitForURL(/vista=planificacion/)
-  await expect(page.getByRole('heading', { name: /Próximos trabajos/ })).toBeVisible()
+  // 5. PRÓXIMOS TRABAJOS — la otra vista del mismo cronograma, con sus impedimentos.
+  await page.getByTestId('subvista-proximos').click()
+  await page.waitForURL(/sub=proximos/)
   await expect(page.getByTestId('alta-impedimento')).toBeVisible()
 
   // 6. DOCUMENTOS — el vínculo a Drive, nunca una copia.
@@ -151,7 +154,7 @@ test('ninguna pantalla del módulo empuja la página de costado en el teléfono'
   // Medido el 18/08/2026: el OS entero salía 568px de ancho contra 390 de pantalla, porque el email
   // del usuario en el nav tenía `whitespace-nowrap`. La tabla ancha SÍ puede desplazarse —dentro de
   // su propio contenedor—, pero el cuerpo de la página no.
-  for (const ruta of ['/clientes', '/clientes/la-estrella', '/obras', '/obras/le-comedor', '/obras/le-comedor?vista=gantt', '/obras/le-comedor?vista=personal', '/obras/le-comedor?vista=economia']) {
+  for (const ruta of ['/clientes', '/clientes/la-estrella', '/obras', '/obras/le-comedor', '/obras/le-comedor?vista=cronograma', '/obras/le-comedor?vista=personal', '/obras/le-comedor?vista=economia']) {
     await page.goto(ruta)
     await page.waitForTimeout(400)
     const { doc, win } = await page.evaluate(() => ({

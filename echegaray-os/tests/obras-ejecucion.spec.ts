@@ -24,7 +24,7 @@ test('cronograma: la actividad creada desde el Gantt se edita, recibe avance y s
 
   try {
     await entrar(page)
-    await page.goto(`/obras/${OBRA}?vista=gantt`)
+    await page.goto(`/obras/${OBRA}?vista=cronograma`)
 
     // ── ALTA ────────────────────────────────────────────────────────────────
     await page.getByTestId('nueva-actividad').click()
@@ -72,7 +72,7 @@ test('cronograma: la actividad creada desde el Gantt se edita, recibe avance y s
     await expect(page.getByText('HH plan')).toBeVisible()
 
     // ── AVANCE RÁPIDO ───────────────────────────────────────────────────────
-    await page.goto(`/obras/${OBRA}?vista=gantt`)
+    await page.goto(`/obras/${OBRA}?vista=cronograma`)
     await page.getByTestId('gantt').getByRole('button', { name: new RegExp(nombre) }).click()
     await page.getByTestId('avance-50').click()
     await expect(async () => {
@@ -124,7 +124,10 @@ test('personal: la persona asignada sigue asignada después de recargar, y se pu
 
     // LAS DOS PUNTAS DE LAS HH, Y EL DESVÍO SÓLO CUANDO ESTÁN LAS DOS. Ningún registro de horas
     // apunta todavía al eje canónico: eso se dice, no se publica como cero.
-    await expect(page.getByText(/nadie imputó (horas|)/i).first()).toBeVisible()
+    // El rótulo pasó de "nadie imputó horas a esta obra" a "sin imputar" cuando la franja del titular
+  // reemplazó a las cuatro tarjetas. Sigue diciendo lo mismo —que no es cero, es desconocido— en el
+  // lugar donde ahora vive.
+  await expect(page.getByTestId('titular-personal')).toContainText(/sin imputar/i)
 
     await page.getByTestId('alta-asignacion').locator('summary').click()
     const form = page.getByTestId('form-asignar')
@@ -181,8 +184,11 @@ test('economía: el certificado cargado persiste, suma en los totales y cada nú
 
     // LO QUE FALTA SE DICE CON PALABRAS. Esta obra no tiene presupuesto: publicar un 0% de desvío
     // significaría "vamos en presupuesto", que es exactamente lo contrario de la verdad.
-    await expect(page.getByTestId('economia-costo')).toContainText('no determinado')
-    await expect(page.getByTestId('economia-costo')).toContainText(/no hay ningún presupuesto/i)
+    // «no determinado» era la palabra de la columna «De dónde sale», que se retiró: el origen ahora
+  // viaja en el `title` del renglón. Lo que se sigue exigiendo es lo importante — que el vacío NO se
+  // publique como cero y que diga QUÉ falta.
+  await expect(page.getByTestId('economia-costo')).toContainText(/sin presupuesto|falta el presupuesto/i)
+    await expect(page.getByTestId('economia-costo')).toContainText(/sin presupuesto|no hay contra qué medir/i)
 
     await page.getByTestId('alta-certificado').locator('summary').click()
     const form = page.getByTestId('form-certificado')
@@ -206,7 +212,7 @@ test('economía: el certificado cargado persiste, suma en los totales y cada nú
     await expect(fila).toBeVisible()
     await expect(fila).toContainText('sin cobrar')
     // El total sale de la vista `obra_plan_vs_real`, no de una suma hecha en la pantalla.
-    await expect(page.getByTestId('economia-cobranza')).toContainText('$1.500.000')
+    await expect(page.getByTestId('economia-certificacion')).toContainText('$1.500.000')
 
     await fila.getByTestId('borrar-certificado').click()
     await expect(async () => {
@@ -232,7 +238,7 @@ test('planificación: el impedimento se anota con dueño y fecha, persiste, y se
 
   try {
     await entrar(page)
-    await page.goto(`/obras/${OBRA}?vista=planificacion`)
+    await page.goto(`/obras/${OBRA}?vista=cronograma&sub=proximos`)
     // SIN JERGA EN LA PANTALLA: adentro se llama restricción y lookahead; afuera se lee en castellano.
     await expect(page.getByRole('heading', { name: /Próximos trabajos/ })).toBeVisible()
 
@@ -281,13 +287,23 @@ test('el resumen publica los desvíos con su origen, y cada uno lleva a la solap
   // NINGÚN SEMÁFORO SIN EXPLICACIÓN: la falta de línea base se publica como falta, no como "en
   // fecha", y se dice de qué columna sale.
   await expect(bloque).toContainText(/línea base no está sellada/i)
-  await expect(bloque).toContainText(/obra_actividad/)
   await expect(bloque).toContainText(/no tiene presupuesto cargado/i)
+
+  // ═══ EL ORIGEN TÉCNICO EXISTE, PERO NO A LA VISTA (19/08/2026) ═══
+  //
+  // Este test exigía leer `obra_actividad` EN PANTALLA. El dueño lo prohibió —*"nada de
+  // explicaciones técnicas permanentes"*— y la cadena se mudó al `title` del renglón: sigue
+  // disponible para auditar de dónde sale el semáforo, y deja de competir con la cifra.
+  // Se comprueban las dos mitades: que esté en el `title` y que NO esté impresa.
+  const conOrigen = bloque.locator('[title*="obra_actividad"]')
+  expect(await conOrigen.count(), 'se perdió el origen del desvío de plazo').toBeGreaterThan(0)
+  expect(await bloque.innerText(), 'el nombre de la tabla volvió a la pantalla').not.toContain('obra_actividad')
 
   // Y se puede TOCAR para ir al dato: una alerta que no se puede rastrear se deja de mirar.
   await bloque.getByRole('link').filter({ hasText: /presupuesto/i }).first().click()
   await page.waitForURL(/vista=economia/)
-  await expect(page.getByTestId('economia-costo')).toBeVisible()
+  // Economía pasó de tres tablas de tres columnas a los cuatro bloques del MVP.
+  await expect(page.getByRole('heading', { name: 'Costo', exact: true })).toBeVisible()
 })
 
 // ── PORTAFOLIO TRANSVERSAL ──────────────────────────────────────────────────
@@ -311,7 +327,9 @@ test('el portafolio publica plazo, margen y estado, y dice qué falta cuando no 
 // ── EN EL TELÉFONO NO SE DESPLAZA DE COSTADO ────────────────────────────────
 
 test('ninguna pantalla nueva empuja la página de costado en el teléfono', async ({ page }) => {
-  test.setTimeout(180000)
+  // Once rutas, cada una compilada por primera vez en `next dev`: el presupuesto no es la lentitud
+  // de una pantalla, es el arranque del servidor multiplicado por once.
+  test.setTimeout(360000)
   await entrar(page)
   await page.setViewportSize({ width: 390, height: 780 })
 
@@ -322,10 +340,11 @@ test('ninguna pantalla nueva empuja la página de costado en el teléfono', asyn
     '/clientes/la-estrella?vista=documentos',
     '/obras',
     `/obras/${OBRA}`,
-    `/obras/${OBRA}?vista=gantt`,
+    `/obras/${OBRA}?vista=cronograma`,
     `/obras/${OBRA}?vista=personal`,
     `/obras/${OBRA}?vista=economia`,
-    `/obras/${OBRA}?vista=planificacion`,
+    `/obras/${OBRA}?vista=cronograma&sub=proximos`,
+    `/obras/${OBRA}?vista=operacion`,
     `/obras/${OBRA}?vista=documentos`,
   ]
   for (const ruta of rutas) {
@@ -362,7 +381,7 @@ test('ninguna pantalla nueva empuja la página de costado en el teléfono', asyn
   // los botones del Gantt. Cuando el cronograma empezó a agrupar por sección, el cuarto botón pasó a
   // ser la cabecera de un grupo —que pliega, no selecciona—, y el panel no abría. El test se caía por
   // el orden del DOM y no por lo que vino a medir.
-  await page.goto(`/obras/${OBRA}?vista=gantt`)
+  await page.goto(`/obras/${OBRA}?vista=cronograma`)
   await page.getByTestId('actividad-cronograma').first().click()
   await expect(page.getByTestId('panel-actividad')).toBeVisible()
   await page.waitForTimeout(300)
