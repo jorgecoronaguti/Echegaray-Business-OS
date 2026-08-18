@@ -280,3 +280,18 @@ test('el checklist desaparece del Resumen cuando no falta nada', async ({ page }
     await limpiarAlta(sb)
   }
 })
+
+
+// ═══ LA PUERTA, NO SÓLO LA HABITACIÓN (19/08/2026) ═══
+//
+// `/obras/nueva` quedó terminada y sin un solo enlace: sólo se llegaba tipeando la URL. Eso es
+// exactamente una pantalla «preparada para», que el dueño prohibió. Este test no mira el alta —eso
+// ya está medido arriba—: mira que se pueda LLEGAR, que es la mitad que nadie prueba.
+test('al alta de obra se llega desde el portafolio, no tipeando la URL', async ({ page }) => {
+  test.setTimeout(120000)
+  await entrar(page)
+  await page.goto('/obras')
+  await page.getByTestId('alta-obra-nueva').click()
+  await page.waitForURL(/\/obras\/nueva/)
+  await expect(page.getByTestId('pasos-alta'), 'la página del alta no dibujó sus pasos').toBeVisible()
+})

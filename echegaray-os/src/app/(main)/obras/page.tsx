@@ -134,6 +134,16 @@ export default async function ObrasPage({
       eyebrow="01 · Obras"
       title="Portafolio"
       subtitle={`${activas.length} obra${activas.length === 1 ? '' : 's'} en curso. El avance sale del tracker de Drive; el costo, de Compras por obra.`}
+      // LA PUERTA DEL ALTA. `/obras/nueva` existía y sólo se llegaba tipeando la URL, que es
+      // exactamente una pantalla «preparada para» — el dueño las prohibió. Sólo Administración crea
+      // obras: la RLS lo rechaza igual, y un botón que falla es peor que un botón que no está.
+      right={esAdmin ? (
+        <Link
+          href="/obras/nueva"
+          data-testid="alta-obra-nueva"
+          className="rounded-control bg-slate-900 px-3.5 py-1.5 text-[13px] font-medium text-white"
+        >+ Nueva obra</Link>
+      ) : undefined}
     >
       {error && <Callout tono="neg">No pude leer el portafolio: {error}</Callout>}
 
