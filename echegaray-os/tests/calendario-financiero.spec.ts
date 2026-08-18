@@ -28,13 +28,18 @@ test('con sesión, el calendario muestra días reales y no el cartel de vacío',
   }
 })
 
-// HALLAZGO DEL QA (23/07): ninguna página de (main) redirige al anónimo a /login — el guardián real
-// es RLS en Supabase, y `finanzas_calendario` es `for select to authenticated`. Así que lo que hay
-// que probar no es la redirección (que este repo no hace en ninguna pantalla), sino la propiedad que
-// de verdad importa: sin sesión NO se ve un solo peso.
-test('sin sesión no se filtra ninguna cifra: RLS deja la pantalla sin datos', async ({ page }) => {
+// ═══ EL CONTRATO CAMBIÓ EL 17/08/2026, Y ES UNA CORRECCIÓN DE SEGURIDAD ═══
+//
+// Este test decía: "ninguna página de (main) redirige al anónimo a /login — el guardián real es RLS".
+// Era cierto, y era el agujero: `/flujo-caja` NO pasa por Supabase —lee el Sheet con una service
+// account desde el servidor— así que el RLS, que tapaba al resto de casualidad, no la cubría. Esa
+// ruta respondía 200 a cualquiera en internet con importes y nombres de clientes reales.
+//
+// Ahora el guardián es el middleware y sin sesión no se ve NINGUNA pantalla. Lo que se prueba pasa a
+// ser eso — y además, que en el camino no viaje una sola cifra.
+test('sin sesión no se ve la pantalla: manda al login y no filtra una cifra', async ({ page }) => {
   await page.goto('/calendario-financiero')
-  await expect(page.getByRole('heading', { name: 'Calendario Financiero' })).toBeVisible()
+  await page.waitForURL(/\/login/, { timeout: 15000 })
   await expect(page.getByText(/caja inicial/i)).toHaveCount(0)
   await expect(page.getByText(/\$\s?\d/)).toHaveCount(0)
 })
@@ -81,9 +86,20 @@ test('al elegir un día se abre su panel con el saldo y la composición', async 
 
   // El panel vive en el <aside>: "Movimientos" también es un link del nav, así que se acota el ámbito.
   const panel = page.getByRole('complementary')
+  // ═══ EL PANEL ESTÁ COLAPSADO A PROPÓSITO CUANDO HAY ESTRATEGIA (contrato nuevo) ═══
+  //
+  // `PanelDiaSecundario` se abre por defecto SÓLO si el día no tiene estrategia: cuando la hay, lo
+  // que manda es qué hacer hoy, y el saldo queda demotado adentro de un <details> cerrado. El test
+  // buscaba "Saldo inicial" visible sin abrirlo y fallaba con un locator oculto — un contrato de
+  // diseño que cambió, no un defecto. Se abre si está cerrado, y recién ahí se mira.
+  const resumen = panel.getByText('Movimientos y saldo del día')
+  await expect(resumen).toBeVisible()
+  if (!(await panel.getByText('Saldo inicial').isVisible())) await resumen.click()
   await expect(panel.getByText('Saldo inicial')).toBeVisible()
   await expect(panel.getByText('Saldo final')).toBeVisible()
-  await expect(panel.getByText('Movimientos')).toBeVisible()
+  // `exact`: el panel tiene "Movimientos y saldo del día" y "Movimientos", y sin esto el localizador
+  // resuelve a los dos y el test falla por ambigüedad, no por lo que quiere probar.
+  await expect(panel.getByText('Movimientos', { exact: true })).toBeVisible()
 })
 
 test('las recomendaciones del motor se muestran (la pantalla no decide nada por su cuenta)', async ({ page }) => {

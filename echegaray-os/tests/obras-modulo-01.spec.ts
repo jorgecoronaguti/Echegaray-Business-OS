@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { ATERRIZAJE } from './util/login'
 
 // MÓDULO 01 · OBRAS — el recorrido completo, en un navegador de verdad.
 //
@@ -21,7 +22,7 @@ async function entrar(page: import('@playwright/test').Page) {
   await page.fill('input[name="email"]', EMAIL)
   await page.fill('input[name="password"]', PASSWORD)
   await page.click('button[type="submit"]')
-  await page.waitForURL(/\/(dashboard|flujo-caja|obras)/, { timeout: 20000 })
+  await page.waitForURL(ATERRIZAJE, { timeout: 20000 })
 }
 
 // ── SIN SESIÓN NO SE VE NADA ────────────────────────────────────────────────

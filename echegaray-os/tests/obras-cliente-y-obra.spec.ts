@@ -130,48 +130,14 @@ test('cliente: se crea, se edita, se le agrega y se le saca un contacto — y to
 // día que se aplique el grant, este test se pone ROJO y obliga a activar el que está abajo, en vez
 // de que la capacidad quede apagada y nadie se entere.
 
-test('obra: mientras falte el grant, el alta falla CERRADO y lo dice en pantalla', async ({ page }) => {
-  test.setTimeout(120000)
-  const sb = await conBase()
-  await limpiar(sb)
-  const cliente = `${MARCA} Cliente Bloqueo ${Date.now()}`
-  const obra = `${MARCA} Obra Bloqueo ${Date.now()}`
-
-  try {
-    await entrar(page)
-    await page.goto('/clientes')
-    await page.getByTestId('alta-cliente').locator('summary').click()
-    await page.getByTestId('form-cliente').locator('input[name="nombre"]').fill(cliente)
-    await page.getByTestId('form-cliente-enviar').click()
-    await expect(page.getByTestId('form-cliente-ok')).toBeVisible({ timeout: 30000 })
-    const { data: cliRaw } = await sb.from('clientes').select('id, slug').eq('nombre', cliente).single()
-    const cli = laFila(cliRaw, 'el cliente recién creado')
-
-    await page.goto(`/clientes/${cli.slug}`)
-    await page.getByTestId('alta-obra').locator('summary').click()
-    await page.getByTestId('form-obra').locator('input[name="nombre"]').fill(obra)
-    await page.getByTestId('form-obra-enviar').click()
-
-    // El error de la base se muestra tal cual, al lado del botón. No se simula un éxito.
-    await expect(page.getByTestId('form-obra-error'))
-      .toContainText(/permission denied for table obra_canonica/i, { timeout: 30000 })
-    // Y NO se creó nada: fallar cerrado es no dejar la mitad escrita.
-    const { count } = await sb.from('obra_canonica').select('id', { count: 'exact', head: true }).eq('nombre', obra)
-    expect(count).toBe(0)
-
-    // Lo que el usuario escribió SIGUE EN EL FORMULARIO: se corrige el problema y se reintenta, no
-    // se vuelve a tipear todo.
-    await expect(page.getByTestId('form-obra').locator('input[name="nombre"]')).toHaveValue(obra)
-  } finally {
-    await limpiar(sb)
-    await sb.auth.signOut()
-  }
-})
-
-// EL TEST DE ACEPTACIÓN DE VERDAD, LISTO PARA ENCENDER. Se activa sacando el `fixme` en cuanto se
-// aplique 20260818230000_obra_canonica_grant_escritura.sql. Queda escrito y no comentado porque un
-// límite conocido que no está medido se olvida.
-test.fixme('obra: se crea desde la ficha del cliente y se edita desde la obra', async ({ page }) => {
+// ENCENDIDO EL 18/08/2026, al aplicar 20260818230000_obra_canonica_grant_escritura.sql.
+//
+// Hasta ese momento acá vivía un CANARIO que exigía el `permission denied` — porque lo único que se
+// podía garantizar era que el alta fallara CERRADO, sin limpiar el formulario ni dejar a alguien
+// convencido de que creó una obra que no existe. El canario se puso rojo con el grant aplicado, que
+// era exactamente su trabajo, y se retiró en el mismo commit que enciende éste. Un límite conocido
+// que no está medido se olvida; uno medido avisa cuando deja de ser un límite.
+test('obra: se crea desde la ficha del cliente y se edita desde la obra', async ({ page }) => {
   test.setTimeout(180000)
   const sb = await conBase()
   await limpiar(sb)

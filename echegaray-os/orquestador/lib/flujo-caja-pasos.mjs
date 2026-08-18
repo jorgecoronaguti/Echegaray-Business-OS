@@ -163,6 +163,11 @@ export const PASOS = [
   // enterara. Ahora f931-sheet sólo mantiene la réplica _F931_RAW (el insumo) y la PESTAÑA entera
   // la escribe un único generador.
   ['f931-sheet.mjs', 'la réplica _F931_RAW — las DDJJ F931 leídas de los PDF del data room', ['_F931_RAW']],
+  // ANTES DE CARGAS SOCIALES, Y NO ES ALFABÉTICO: la fila "Fondo de Cese devengado" de esa pestaña
+  // hace SUMIFS sobre esta réplica. Si la réplica se refrescara después, el devengado del mes nuevo
+  // aparecería recién en la corrida siguiente — el modo de falla más silencioso de este archivo: la
+  // pestaña no da error, envejece.
+  ['uocra-raw-pestana.mjs', 'Réplica _UOCRA_DDJJ_RAW — las DDJJ Nominativas de UOCRA leídas de los PDF de Drive (el Fondo de Cese devengado sale de acá)', ['_UOCRA_DDJJ_RAW']],
   ['cargas-sociales-pestana.mjs', 'Cargas Sociales — la pestaña entera: declarado, pagado, proyección, caja, SAC y planes', ['Cargas Sociales']],
   ['cobranzas-control.mjs', 'Cobranzas — detector de duplicados', []],
   ['cheques-cobertura-sheet.mjs', 'Cheques Emitidos — marcas de cobertura en la columna M (el bloque del Mensual se retiró: matriz 06/08)', [], ['--solo-marcas']],

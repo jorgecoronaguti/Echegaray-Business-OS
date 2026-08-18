@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { ATERRIZAJE } from './util/login'
 import { createClient } from '@supabase/supabase-js'
 
 // Carga nativa del saldo diario de Caja (ciclo autónomo, 2026-07-10). El dev
@@ -29,7 +30,7 @@ test('cargar el saldo del día desde la web lo encola para pasar al Sheet', asyn
     await page.fill('input[name="email"]', EMAIL)
     await page.fill('input[name="password"]', PASSWORD)
     await page.click('button[type="submit"]')
-    await page.waitForURL(/\/(dashboard|flujo-caja)/, { timeout: 15000 })
+    await page.waitForURL(ATERRIZAJE, { timeout: 15000 })
 
     await page.goto('/flujo-caja')
     await page.getByTestId('cargar-saldo-section').locator('summary').click()
