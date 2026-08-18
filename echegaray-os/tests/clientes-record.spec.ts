@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { conBase, entrar, laFila, limpiar, MARCA } from './util/obras-e2e'
+import { entrarComo } from './util/login'
 
 // EL CLIENTE COMO RECORD — la lista que sirve para encontrarlo y la pantalla que lo muestra entero.
 //
@@ -222,5 +223,38 @@ test('nota manual: se escribe, queda en Postgres y sigue ahí después de recarg
   } finally {
     await limpiar(sb)
     await sb.auth.signOut()
+  }
+})
+
+
+// ═══ EL RECORD VISTO POR UN JEFE DE OBRA — LA MITAD QUE NO SE MIRÓ (19/08/2026) ═══
+//
+// Quien construyó el record declaró que `puedeEditar` estaba conservado en los cinco bloques y
+// `+ Nota` gateado, pero que su evidencia era LECTURA DE CÓDIGO, no una sesión real. Un prop que se
+// pasa bien y un componente que lo ignora se ven idénticos en el diff y distinto en la pantalla.
+//
+// El dueño abrió la ficha del cliente al nivel Obras a propósito —*"Un usuario Obras debe poder
+// consultar clientes, contactos…"*— pero CONSULTAR no es ADMINISTRAR. La cerradura sigue siendo la
+// RLS, que rechaza la escritura; esto mide que no se le OFREZCA un formulario que la base va a
+// rechazar, que es lo que el dueño llama un botón falso.
+test('el jefe de obra lee el record del cliente, y no se le ofrece editarlo', async ({ page }) => {
+  test.setTimeout(120000)
+  await entrarComo(page, 'qa.jefe.obra@ecsas.com.ar', 'TestJefe123!')
+
+  const sb = await conBase()
+  const { data } = await sb.from('clientes').select('slug').not('slug', 'is', null).limit(1).single()
+  const slug = laFila(data, 'un cliente cualquiera').slug as string
+  await sb.auth.signOut()
+
+  await page.goto(`/clientes/${slug}`)
+
+  // LO QUE SÍ: el record se lee entero. Sin esto, una pantalla rota pasaría el test de abajo.
+  await expect(page.getByTestId('cliente-informacion'),
+    'el jefe de obra no puede leer la ficha del cliente de su obra').toBeVisible()
+
+  // LO QUE NO: ni un formulario de escritura.
+  for (const t of ['editar-cliente', 'carpeta-drive', 'alta-contacto', 'alta-obra', 'alta-nota',
+    'alta-documento', 'archivar-cliente']) {
+    await expect(page.getByTestId(t), `se le ofreció «${t}» a un jefe de obra`).toHaveCount(0)
   }
 })
