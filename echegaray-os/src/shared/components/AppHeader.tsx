@@ -68,13 +68,14 @@ export function AppHeader({
           aria-label="Echegaray Construcciones — inicio"
         >
           <Image src="/marca/isotipo.png" alt="" width={26} height={26} priority className="h-[26px] w-[26px]" />
-          {/* EL NOMBRE ENTERO, NO EL APELLIDO (19/08/2026). Decía sólo «ECHEGARAY»: el dueño pidió
-              «Echegaray Construcciones», que es como se llama la empresa y lo que la distingue de
-              cualquier otro Echegaray. «CONSTRUCCIONES» va en un peso menor —es el sustantivo, no la
-              identidad— y se retira en pantallas medianas, donde compite con el nombre de la obra.
-              En el teléfono queda sólo el isotipo: 26px dicen lo mismo que 120px. */}
+          {/* EL NOMBRE ENTERO, Y LAS DOS PALABRAS CON EL MISMO FORMATO (19/08/2026).
+              La primera versión ponía «CONSTRUCCIONES» en peso normal y gris, como si fuera una
+              bajada. El dueño lo corrigió: no son una marca y su descripción — son UN nombre. Mismo
+              peso, mismo color, mismo interletrado; lo único que cambia es que la segunda palabra se
+              retira por debajo de `lg`, donde compite con el nombre de la obra. En el teléfono queda
+              sólo el isotipo: 26px dicen lo mismo que 120px. */}
           <span className="hidden text-[13px] font-semibold tracking-[0.14em] text-ink sm:block">
-            ECHEGARAY<span className="hidden font-normal text-muted lg:inline"> CONSTRUCCIONES</span>
+            ECHEGARAY<span className="hidden lg:inline"> CONSTRUCCIONES</span>
           </span>
         </Link>
 
