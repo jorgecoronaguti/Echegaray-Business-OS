@@ -210,3 +210,18 @@ test('el monto contratado NO llega al nivel Obras: se enmascara en la base, no e
       'quedó el centinela del test escrito en el contrato de una obra real').toBe(original)
   }
 })
+
+// Y la prueba de EFECTO, que es la que de verdad importa: la cartera de clientes no le llega a un
+// jefe de obra por ningún camino — ni por la tabla ni por la vista.
+test('la cartera de clientes NO le llega al nivel Obras, ni por la tabla ni por la vista', async () => {
+  test.setTimeout(60000)
+  const token = await entrar(JEFE.email, JEFE.password)
+  for (const q of ['clientes?select=id', 'cliente_panel?select=cliente_id',
+    'personas?select=id', 'proveedores?select=id', 'certificados?select=id']) {
+    expect(await comoUsuario(token, q), `${q} le devolvió filas a un jefe de obra`).toHaveLength(0)
+  }
+  // El caso positivo: sí ve el plantel, que es la desescalada declarada de `personas`. Sin esto, una
+  // base sin datos pasaría este test como si estuviera bien protegida.
+  expect(await comoUsuario(token, 'persona_plantel?select=id'),
+    'el jefe no ve el plantel: no puede asignar a nadie a su obra').not.toHaveLength(0)
+})

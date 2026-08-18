@@ -41,7 +41,7 @@ export function TabInformacion({
 }) {
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-line bg-white p-4">
+      <div className="rounded-lg border border-line bg-surface p-4" data-testid="cliente-informacion">
         <dl className="divide-y divide-line/60 text-[12px]">
           <Renglon k="Razón social">{cliente.nombre}</Renglon>
           <Renglon k="CUIT"><span className="tabular-nums">{oFalta(cliente.cuit)}</span></Renglon>
@@ -67,7 +67,7 @@ export function TabInformacion({
         {cliente.notas && <p className="mt-3 border-t border-line pt-3 text-[12px] leading-relaxed text-muted">{cliente.notas}</p>}
       </div>
 
-      <details className="rounded-xl border border-line bg-white" data-testid="editar-cliente">
+      <details className="rounded-lg border border-line bg-surface" data-testid="editar-cliente">
         <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-medium text-ink">Editar la ficha</summary>
         <div className="border-t border-line p-4">
           <FormAccion accion={editar} testid="form-editar-cliente" enviar="Guardar" mensajeOk="Ficha guardada.">
@@ -76,7 +76,7 @@ export function TabInformacion({
         </div>
       </details>
 
-      <details className="rounded-xl border border-line bg-white" data-testid="carpeta-drive">
+      <details className="rounded-lg border border-line bg-surface" data-testid="carpeta-drive">
         <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-medium text-ink">
           Vincular la carpeta de Drive pegando la dirección
         </summary>

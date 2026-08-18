@@ -480,16 +480,24 @@ test('cliente: se archiva, sale de la lista, sigue entrando por su URL y se reac
 // Y es un canario: el día que se aplique la migración, este test se pone ROJO —el guardado va a
 // funcionar— y obliga a reemplazarlo por el circuito completo (cargar → leer la fila en la base →
 // recargar → mismo dato) en vez de que la capacidad quede apagada y nadie se entere.
-test('cliente: cargar dirección o teléfono falla CERRADO mientras falte la migración', async ({ page }) => {
+test('cliente: los campos de la relación se guardan y sobreviven a la recarga', async ({ page }) => {
+  // ═══ ESTE TEST ERA UN CANARIO, Y EL CANARIO CANTÓ (19/08/2026) ═══
+  //
+  // Nació exigiendo que la acción FALLARA CERRADO mientras faltara la migración
+  // `20260819T0500_cliente_es_una_relacion`, y con el encargo explícito de que, el día que se
+  // aplicara, se pusiera rojo y obligara a reemplazarlo por el circuito completo — en vez de que la
+  // capacidad quedara apagada sin que nadie se entere. La migración se aplicó, se puso rojo, y esto
+  // es el reemplazo: cargar → leer la fila en la base → recargar → el mismo dato en la pantalla.
   test.setTimeout(180000)
   const sb = await conBase()
   await limpiar(sb)
   const nombre = `${MARCA} Cliente Relacion ${Date.now()}`
+  const TEL = '264 400 1111'
+  const DIR = 'Av. Libertador 1234, Rivadavia'
 
   try {
     await entrar(page)
 
-    // Un cliente SIN los campos nuevos se crea igual: que falte una columna no puede romper el alta.
     await page.goto('/clientes')
     await page.getByTestId('alta-cliente').locator('summary').click()
     await page.getByTestId('form-cliente').locator('input[name="nombre"]').fill(nombre)
@@ -498,22 +506,25 @@ test('cliente: cargar dirección o teléfono falla CERRADO mientras falte la mig
     const { data: cliRaw } = await sb.from('clientes').select('id, slug').eq('nombre', nombre).single()
     const cli = laFila(cliRaw, 'el cliente recién creado')
 
-    // Con un campo de la relación cargado, la acción TIENE que negarse y nombrar la migración.
     await page.goto(`/clientes/${cli.slug}?vista=informacion`)
     await page.getByTestId('editar-cliente').locator('summary').click()
     const f = page.getByTestId('form-editar-cliente')
-    await f.locator('input[name="telefono"]').fill('264 400 1111')
-    await f.locator('textarea[name="notas"]').fill(`${MARCA} no tiene que guardarse`)
+    await f.locator('input[name="telefono"]').fill(TEL)
+    await f.locator('input[name="direccion"]').fill(DIR)
     await page.getByTestId('form-editar-cliente-enviar').click()
 
-    const error = page.getByTestId('form-editar-cliente-error')
-    await expect(error).toBeVisible({ timeout: 30000 })
-    await expect(error).toContainText('20260819T0500_cliente_es_una_relacion')
+    // LA EVIDENCIA ES DEL EFECTO, y se espera al efecto — no al cartel.
+    await expect.poll(async () => {
+      const { data } = await sb.from('clientes').select('telefono').eq('id', cli.id).single()
+      return data?.telefono ?? null
+    }, { timeout: 30000, message: 'el teléfono nunca llegó a Postgres' }).toBe(TEL)
 
-    // Y NO GUARDÓ NADA. Guardar la nota y tirar el teléfono, diciendo que sí, es la falla que este
-    // test existe para impedir: la evidencia es la fila en la base, no el cartel de la pantalla.
-    const { data: despues } = await sb.from('clientes').select('notas').eq('id', cli.id).single()
-    expect(laFila(despues, 'el cliente que no se debía tocar').notas).toBeNull()
+    const { data: fila } = await sb.from('clientes')
+      .select('telefono, direccion').eq('id', cli.id).single()
+    expect(laFila(fila, 'el cliente recién editado').direccion).toBe(DIR)
+
+    await page.reload()
+    await expect(page.getByTestId('cliente-informacion')).toContainText(TEL)
   } finally {
     await limpiar(sb)
     await sb.auth.signOut()
