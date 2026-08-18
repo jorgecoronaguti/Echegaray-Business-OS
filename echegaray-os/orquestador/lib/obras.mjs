@@ -2,17 +2,14 @@
 // distintas. Esto lo resuelve a la obra CANÓNICA (o la clasifica indirecto/excluido) usando la
 // tabla public.obra_alias como fuente única (misma que consume la web → una-capacidad-una-fuente).
 //
-// normObra() es IDÉNTICA a la de la web (src/features/control-obras/services/costosObraService.ts):
-// lowercase, sin acentos, saca artículos, colapsa. Si cambia una, cambia la otra.
+// normObra() SE MUDÓ a ./obra-operacion.mjs y desde acá sólo se reexporta. El motivo es que la web
+// necesita la misma regla y este módulo importa db.mjs (driver `pg`): tener dos copias de una
+// normalización que decide a qué obra va cada peso ya estaba anotado como mina en este archivo
+// ("si cambia una, cambia la otra"). Ahora hay una sola, y obras.test.mjs la sigue cubriendo.
 import { query } from './db.mjs'
+import { normObra } from './obra-operacion.mjs'
 
-/** Normaliza un texto de obra a su clave canónica (misma regla que la web). */
-export function normObra(s) {
-  return String(s ?? '')
-    .toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, ' ').replace(/\b(la|el|los|las|de|del)\b/g, ' ')
-    .replace(/\s+/g, ' ').trim()
-}
+export { normObra }
 
 // Cache del mapa de alias (se refresca solo cada 5 min; la tabla cambia rara vez).
 let _cache = null, _cacheAt = 0
