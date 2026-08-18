@@ -51,7 +51,7 @@ test('cliente: se crea, se edita, se le agrega y se le saca un contacto — y to
     // ── EDICIÓN ─────────────────────────────────────────────────────────────
     // El formulario vive plegado: la ficha existe para LEERSE, y un formulario permanentemente
     // abierto compite con lo que se vino a mirar.
-    await page.goto(`/clientes/${creado.slug}?vista=informacion`)
+    await page.goto(`/clientes/${creado.slug}`)
     await page.getByTestId('editar-cliente').locator('summary').click()
     await page.getByTestId('form-editar-cliente').locator('textarea[name="notas"]').fill(`${MARCA} nota editada`)
     await page.getByTestId('form-editar-cliente-enviar').click()
@@ -63,7 +63,7 @@ test('cliente: se crea, se edita, se le agrega y se le saca un contacto — y to
     await expect(page.getByRole('paragraph').filter({ hasText: `${MARCA} nota editada` })).toBeVisible()
 
     // ── CONTACTO: ALTA, EDICIÓN Y BAJA ──────────────────────────────────────
-    await page.goto(`/clientes/${creado.slug}?vista=contactos`)
+    await page.goto(`/clientes/${creado.slug}`)
     await page.getByTestId('alta-contacto').locator('summary').click()
     const fc = page.getByTestId('form-contacto')
     await fc.locator('input[name="nombre"]').fill(`${MARCA} Contacto`)
@@ -107,7 +107,7 @@ test('cliente: se crea, se edita, se le agrega y se le saca un contacto — y to
 
     // ── DOCUMENTO SUELTO DE DRIVE, PEGANDO LA URL ENTERA ────────────────────
     const idFalso = `zzE2E${'x'.repeat(20)}`
-    await page.goto(`/clientes/${creado.slug}?vista=documentos`)
+    await page.goto(`/clientes/${creado.slug}`)
     await page.getByTestId('alta-documento').locator('summary').click()
     await page.getByTestId('form-documento').locator('input[name="url"]')
       .fill(`https://drive.google.com/file/d/${idFalso}/view`)
@@ -124,7 +124,12 @@ test('cliente: se crea, se edita, se le agrega y se le saca un contacto — y to
     expect(docs?.map((d) => d.drive_file_id)).toContain(idFalso)
     expect(docs?.[0]?.rol).toBe('contrato')
     // Y se ve en la pantalla aunque el índice de Drive no lo conozca: el vínculo vale igual.
-    await expect(page.getByText(idFalso)).toBeVisible()
+    //
+    // Se busca el ENLACE del bloque de documentos y no el texto suelto (19/08/2026): con el record
+    // en una sola pantalla, la ACTIVIDAD del mismo cliente publica «Documento vinculado: <id>» y el
+    // id aparece dos veces en la página. Buscarlo suelto falla por ambigüedad, que es un rojo que
+    // no habla del defecto que este caso vino a medir.
+    await expect(page.getByTestId('documento-cliente-enlace')).toHaveText(idFalso)
 
     // ── RECLASIFICAR DESDE LA LISTA ─────────────────────────────────────────
     // Es lo que convierte 214 vínculos en un archivo consultable. El desplegable guarda al soltarlo:
@@ -143,7 +148,7 @@ test('cliente: se crea, se edita, se le agrega y se le saca un contacto — y to
     // Distinto de vincular UN documento: esto es la carpeta raíz, y es la que abre el enlace de la
     // solapa Documentos.
     const carpetaFalsa = `zzE2Ecarpeta${'y'.repeat(20)}`
-    await page.goto(`/clientes/${creado.slug}?vista=informacion`)
+    await page.goto(`/clientes/${creado.slug}`)
     await page.getByTestId('carpeta-drive').locator('summary').click()
     await page.getByTestId('form-carpeta-drive').locator('input[name="url"]')
       .fill(`https://drive.google.com/drive/folders/${carpetaFalsa}?usp=sharing`)
@@ -156,7 +161,7 @@ test('cliente: se crea, se edita, se le agrega y se le saca un contacto — y to
     expect(laFila(conCarpeta, 'el cliente con carpeta').drive_carpeta_id).toBe(carpetaFalsa)
 
     // Y la solapa Documentos deja de decir que no hay por dónde entrar.
-    await page.goto(`/clientes/${creado.slug}?vista=documentos`)
+    await page.goto(`/clientes/${creado.slug}`)
     await expect(page.getByRole('link', { name: /Abrir la carpeta del cliente en Drive/ }))
       .toHaveAttribute('href', `https://drive.google.com/drive/folders/${carpetaFalsa}`)
 
@@ -166,7 +171,7 @@ test('cliente: se crea, se edita, se le agrega y se le saca un contacto — y to
     // exige acá es que los hechos que este mismo test provocó —el alta del cliente y el vínculo del
     // documento— aparezcan; y que NO aparezca el contacto, que fue borrado. Un timeline que
     // inventara eventos, o que se quedara con los borrados, falla en este punto.
-    await page.goto(`/clientes/${creado.slug}?vista=actividad`)
+    await page.goto(`/clientes/${creado.slug}`)
     const actividad = page.getByTestId('tabla-actividad')
     await expect(actividad).toContainText('Alta del cliente')
     await expect(actividad).toContainText('Documento vinculado')
@@ -235,7 +240,7 @@ test('obra: se crea desde la ficha del cliente y se edita desde la obra', async 
     const cli = laFila(cliRaw, 'el cliente recién creado')
 
     // ── ALTA DE OBRA, COLGADA DEL CLIENTE ───────────────────────────────────
-    await page.goto(`/clientes/${cli.slug}?vista=obras`)
+    await page.goto(`/clientes/${cli.slug}`)
     await page.getByTestId('alta-obra').locator('summary').click()
     const alta = page.getByTestId('form-obra')
     await alta.locator('input[name="nombre"]').fill(obra)
@@ -328,7 +333,7 @@ test('obra: se archiva, desaparece de las listas, sigue entrando por su URL y se
     const { data: cliRaw } = await sb.from('clientes').select('id, slug').eq('nombre', cliente).single()
     const cli = laFila(cliRaw, 'el cliente recién creado')
 
-    await page.goto(`/clientes/${cli.slug}?vista=obras`)
+    await page.goto(`/clientes/${cli.slug}`)
     await page.getByTestId('alta-obra').locator('summary').click()
     await page.getByTestId('form-obra').locator('input[name="nombre"]').fill(obra)
     await page.getByTestId('form-obra-enviar').click()
@@ -342,7 +347,7 @@ test('obra: se archiva, desaparece de las listas, sigue entrando por su URL y se
     // escrito: no encontrar nada es el resultado por defecto de buscar mal.
     await page.goto('/obras')
     await expect(page.getByTestId('portafolio-tabla')).toContainText(obra)
-    await page.goto(`/clientes/${cli.slug}?vista=obras`)
+    await page.goto(`/clientes/${cli.slug}`)
     await expect(page.getByTestId('obras-del-cliente')).toContainText(obra)
 
     // ── ARCHIVAR ───────────────────────────────────────────────────────────
@@ -367,8 +372,15 @@ test('obra: se archiva, desaparece de las listas, sigue entrando por su URL y se
     // por «Todas las obras de este cliente están archivadas». `not.toContainText` sobre un elemento
     // que no existe no pasa —falla con "element(s) not found"—, y habría dado rojo por el motivo
     // equivocado, escondiendo si el filtro anda o no.
-    await page.goto(`/clientes/${cli.slug}?vista=obras`)
-    await expect(page.getByRole('link', { name: obra })).toHaveCount(0)
+    //
+    // Y se mide DENTRO del bloque de obras (19/08/2026). Con el record en una sola pantalla, la
+    // ACTIVIDAD del mismo cliente publica «Alta de la obra: <nombre>» como enlace: buscar el enlace
+    // en toda la página lo encontraría ahí y daría rojo diciendo que la obra sigue en la lista
+    // cuando no está. El bloque es el que tiene que contestar por su propia lista.
+    await page.goto(`/clientes/${cli.slug}`)
+    await expect(page.getByTestId('bloque-obras').getByRole('link', { name: obra })).toHaveCount(0)
+    // Y en la actividad SÍ sigue estando: archivar una obra no borra que se dio de alta.
+    await expect(page.getByTestId('bloque-actividad')).toContainText(obra)
     await page.getByTestId('ver-archivadas-cliente').click()
     await expect(page.getByTestId('obras-del-cliente')).toContainText(obra)
 
@@ -386,7 +398,7 @@ test('obra: se archiva, desaparece de las listas, sigue entrando por su URL y se
     }).toPass({ timeout: 30000 })
     await page.goto('/obras')
     await expect(page.getByTestId('portafolio-tabla')).toContainText(obra)
-    await page.goto(`/clientes/${cli.slug}?vista=obras`)
+    await page.goto(`/clientes/${cli.slug}`)
     await expect(page.getByTestId('obras-del-cliente')).toContainText(obra)
   } finally {
     await limpiar(sb)
@@ -437,7 +449,7 @@ test('cliente: se archiva, sale de la lista, sigue entrando por su URL y se reac
     await expect(page.getByTestId('clientes-tabla')).toContainText(nombre)
 
     // ── ARCHIVAR ───────────────────────────────────────────────────────────
-    await page.goto(`/clientes/${cli.slug}?vista=informacion`)
+    await page.goto(`/clientes/${cli.slug}`)
     await page.getByTestId('archivar-cliente').click()
     await expect(async () => {
       const { data } = await sb.from('clientes').select('activo').eq('id', cli.id).single()
@@ -451,7 +463,7 @@ test('cliente: se archiva, sale de la lista, sigue entrando por su URL y se reac
 
     // 2 · LA FICHA SIGUE ABRIENDO, Y LA PÁGINA LO DICE. Que un cliente salga de una lista no puede
     //     romper el enlace que alguien mandó por WhatsApp hace dos meses.
-    await page.goto(`/clientes/${cli.slug}?vista=informacion`)
+    await page.goto(`/clientes/${cli.slug}`)
     await expect(page.getByRole('heading', { name: nombre })).toBeVisible()
     await expect(page.getByTestId('cliente-archivado')).toBeVisible()
 
@@ -461,7 +473,7 @@ test('cliente: se archiva, sale de la lista, sigue entrando por su URL y se reac
     await expect(page.getByTestId('clientes-tabla')).toContainText(nombre)
 
     // 4 · SE REACTIVA y vuelve por la puerta principal.
-    await page.goto(`/clientes/${cli.slug}?vista=informacion`)
+    await page.goto(`/clientes/${cli.slug}`)
     await page.getByTestId('archivar-cliente').click()
     await expect(async () => {
       const { data } = await sb.from('clientes').select('activo').eq('id', cli.id).single()
@@ -514,7 +526,7 @@ test('cliente: dirección, teléfono, email y responsable se guardan y se leen d
     const cli = laFila(cliRaw, 'el cliente recién creado')
 
     // ── CARGA ───────────────────────────────────────────────────────────────
-    await page.goto(`/clientes/${cli.slug}?vista=informacion`)
+    await page.goto(`/clientes/${cli.slug}`)
     await page.getByTestId('editar-cliente').locator('summary').click()
     const f = page.getByTestId('form-editar-cliente')
     await f.locator('input[name="direccion"]').fill('Av. Libertador 1234, Rivadavia, San Juan')
@@ -552,11 +564,19 @@ test('cliente: dirección, teléfono, email y responsable se guardan y se leen d
     // contra `perfiles`. Si la vista dejara de traerlo, acá se vería «sin cargar».
     await expect(page.getByText(nombreResponsable).first()).toBeVisible()
 
-    // Y la lista de clientes muestra de quién es cada uno: es la columna que contesta «¿quién lo
-    // atiende?» sin entrar a la ficha.
+    // ── Y LA LISTA NO LO REPITE (19/08/2026) ───────────────────────────────
+    //
+    // El dueño: *"Quiero CLIENTE | OBRAS. Nada más para el MVP. Eliminar del listado: Responsable,
+    // Contratado, Costo real, Restricciones, Documentos, CUIT como subtítulo permanente."* El
+    // responsable no se perdió —se acaba de leer arriba, en el record—: dejó de ocupar ancho en una
+    // lista que existe para ENCONTRAR Y ABRIR un cliente. Este test defiende esa decisión: si
+    // alguien vuelve a colgar columnas del listado, acá se pone rojo.
     await page.goto('/clientes')
     const fila = page.getByTestId('clientes-tabla').locator('tr', { hasText: nombre })
-    await expect(fila).toContainText(nombreResponsable)
+    await expect(fila).not.toContainText(nombreResponsable)
+    // Lo único que la fila lleva además del nombre es el conteo de obras: este cliente no tiene
+    // ninguna, y por eso el guion.
+    await expect(fila).toContainText('—')
 
     // ── UN EMAIL MAL ESCRITO NO LLEGA A LA BASE ────────────────────────────
     //
@@ -564,7 +584,7 @@ test('cliente: dirección, teléfono, email y responsable se guardan y se leen d
     // manda el formulario —por eso acá no aparece el error del servidor, y eso ES el comportamiento
     // correcto—, y detrás está Zod, que es la que vale cuando el pedido no viene de un navegador.
     // Lo que se mide es el EFECTO: el email guardado sigue siendo el bueno.
-    await page.goto(`/clientes/${cli.slug}?vista=informacion`)
+    await page.goto(`/clientes/${cli.slug}`)
     await page.getByTestId('editar-cliente').locator('summary').click()
     const campoEmail = page.getByTestId('form-editar-cliente').locator('input[name="email"]')
     await campoEmail.fill('esto no es un email')

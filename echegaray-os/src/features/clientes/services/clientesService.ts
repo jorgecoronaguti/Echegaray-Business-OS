@@ -9,8 +9,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ObraPanel, ServiceResult } from '@/features/obras/types'
 import type {
-  ClientePanel, Contacto, DocumentoCliente, FuentesActividad, LineaDeTiempo, Responsable,
+  ClientePanel, Contacto, DocumentoCliente, FuentesActividad, LineaDeTiempo, NotaCliente, Responsable,
 } from '../types'
+import { avisoDeNotasPendiente, faltaLaTablaDeNotas } from './notaPendiente'
 import { construirLineaDeTiempo } from './timeline'
 
 /**
@@ -145,17 +146,58 @@ export async function getDocumentosCliente(
  * contractuales. No es un error de esta función: es la RLS haciendo su trabajo, y la pantalla lo
  * dice en vez de presentar una historia incompleta como si fuera toda.
  */
+/**
+ * LAS NOTAS MANUALES. Es la única lectura de este módulo que puede fallar por una migración que
+ * todavía no está aplicada, y por eso devuelve el aviso en vez de tirar la ficha entera abajo.
+ *
+ * `{ notas: [], aviso: '…' }` y `{ notas: [], aviso: null }` son dos estados DISTINTOS y por eso
+ * viajan separados: el primero es «no las pude leer», el segundo es «no hay ninguna». Colapsarlos
+ * en una lista vacía haría que una base sin la tabla se viera idéntica a un cliente sin notas.
+ *
+ * El nombre del autor NO está en `cliente_nota`: se resuelve contra `perfiles`, que es la misma
+ * tabla que decide el rol de quien entra. Si el perfil ya no está, la nota queda sin firma —que es
+ * la verdad— en lugar de perderse.
+ */
+export async function getNotasCliente(
+  supabase: SupabaseClient,
+  clienteId: string,
+): Promise<{ notas: NotaCliente[]; aviso: string | null }> {
+  const { data, error } = await supabase
+    .from('cliente_nota')
+    .select('id, texto, autor_id, creado_en')
+    .eq('cliente_id', clienteId)
+    .order('creado_en', { ascending: false })
+  if (error) return { notas: [], aviso: faltaLaTablaDeNotas(error) ? avisoDeNotasPendiente() : error.message }
+
+  const autores = [...new Set((data ?? []).map((n) => n.autor_id as string).filter(Boolean))]
+  const nombres = new Map<string, string>()
+  if (autores.length) {
+    const { data: perfiles } = await supabase.from('perfiles').select('id, nombre').in('id', autores)
+    for (const p of perfiles ?? []) nombres.set(p.id as string, p.nombre as string)
+  }
+
+  const notas: NotaCliente[] = (data ?? []).map((n) => ({
+    id: n.id as string,
+    texto: n.texto as string,
+    autor_id: (n.autor_id as string) ?? null,
+    autor_nombre: nombres.get(n.autor_id as string) ?? null,
+    creado_en: (n.creado_en as string) ?? null,
+  }))
+  return { notas, aviso: null }
+}
+
 export async function getActividadCliente(
   supabase: SupabaseClient,
   clienteId: string,
 ): Promise<ServiceResult<LineaDeTiempo>> {
-  const [ficha, obras, contactos, documentos] = await Promise.all([
+  const [ficha, obras, contactos, documentos, notas] = await Promise.all([
     supabase.from('clientes').select('nombre, created_at, updated_at').eq('id', clienteId).maybeSingle(),
     supabase.from('obra_canonica')
       .select('id, nombre, created_at, fecha_inicio_real, fecha_fin_real')
       .eq('cliente_id', clienteId),
     supabase.from('cliente_contacto').select('id, nombre, rol, creado_en').eq('cliente_id', clienteId),
     supabase.from('cliente_documento').select('drive_file_id, rol, origen, creado_en').eq('cliente_id', clienteId),
+    getNotasCliente(supabase, clienteId),
   ])
   if (ficha.error) return { data: null, error: ficha.error.message }
   if (!ficha.data) return { data: null, error: 'No pude leer la ficha del cliente' }
@@ -190,6 +232,8 @@ export async function getActividadCliente(
       origen: (d.origen as 'manual' | 'path_inferido') ?? 'manual',
       creado_en: (d.creado_en as string) ?? null,
     })),
+    notas: notas.notas,
+    notasNoDisponibles: notas.aviso,
     certificados,
   }
   return { data: construirLineaDeTiempo(fuentes), error: null }

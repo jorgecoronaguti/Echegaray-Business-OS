@@ -245,3 +245,86 @@ test('un vínculo del sincronizador SIN fecha no se cuela en el grupo del día d
   assert.equal(docs[0].titulo, 'Documento vinculado: a', 'cuenta UNO, no dos')
   assert.equal(r.sinFecha, 2, 'el vínculo sin fecha + el alta del cliente sin fecha')
 })
+
+// ── LAS NOTAS MANUALES ──────────────────────────────────────────────────────
+//
+// Son el ÚNICO evento de esta línea de tiempo que no se deriva de otra fila. Todo lo demás ya estaba
+// guardado en algún lado con su fecha; «llamé al arquitecto y la certificación de agosto entra
+// recién en septiembre» no está en ninguna columna y no se deduce de ninguna. Por eso tienen su
+// propia tabla — y por eso las reglas de la línea de tiempo tienen que valer para ellas igual que
+// para el resto, sin excepciones de cortesía.
+
+test('la nota entra a la línea de tiempo con su texto como título y su autor como detalle', () => {
+  const r = construirLineaDeTiempo(vacio({
+    notas: [{
+      id: 'n1', texto: 'Llamé al arquitecto: la certificación de agosto entra en septiembre',
+      autor_id: 'u1', autor_nombre: 'Jorge Echegaray', creado_en: '2026-08-19T14:00:00Z',
+    }],
+  }))
+  assert.equal(r.eventos.length, 1)
+  const [e] = r.eventos
+  assert.equal(e.tipo, 'nota')
+  // El TÍTULO es lo que se dijo. Poner ahí «Nota de Jorge» y el contenido en el detalle invierte la
+  // jerarquía: lo que importa es el hecho, no quién lo anotó.
+  assert.equal(e.titulo, 'Llamé al arquitecto: la certificación de agosto entra en septiembre')
+  assert.equal(e.detalle, 'Nota de Jorge Echegaray')
+  assert.equal(e.fuente, 'Nota')
+})
+
+test('una nota sin autor se declara sin firma; NO se le inventa uno ni se la esconde', () => {
+  // Pasa de verdad: `autor_id` es `on delete set null` — dar de baja a una persona no puede borrar
+  // lo que dijo del cliente. La nota queda sin firma, que es la verdad.
+  const r = construirLineaDeTiempo(vacio({
+    notas: [{ id: 'n1', texto: 'Pidió factura A', autor_id: null, autor_nombre: null, creado_en: '2026-08-19T14:00:00Z' }],
+  }))
+  assert.equal(r.eventos.length, 1, 'sin autor la nota se muestra igual: el hecho ocurrió')
+  assert.equal(r.eventos[0].detalle, 'Nota sin autor registrado')
+})
+
+test('una nota SIN fecha se descarta y se cuenta, igual que cualquier otro registro', () => {
+  // La regla dura de esta línea de tiempo no tiene excepción para las notas: sin fecha no hay dónde
+  // ubicarla, y ponerla al principio o al final sería inventar una fecha por posición.
+  const r = construirLineaDeTiempo(vacio({
+    notas: [{ id: 'n1', texto: 'sin fecha', autor_id: null, autor_nombre: null, creado_en: null }],
+  }))
+  assert.equal(r.eventos.length, 0)
+  // Dos: la nota sin fecha + el alta del cliente, que en `vacio()` tampoco la tiene.
+  assert.equal(r.sinFecha, 2, 'descartarla está bien; no contarla, no')
+})
+
+test('DOS notas del mismo día son DOS renglones: no se agrupan como los vínculos de Drive', () => {
+  // Los 214 vínculos que colgó el sincronizador SÍ se agrupan por día, porque son un movimiento de
+  // máquina y sin agrupar entierran la ficha. Una nota es al revés: la escribió una persona, de a
+  // una, y decidió que valía la pena. Agruparlas borraría exactamente el contenido que las hace
+  // existir. Si alguien copia acá el agrupamiento de documentos, este test se pone rojo.
+  const r = construirLineaDeTiempo(vacio({
+    notas: [
+      { id: 'n1', texto: 'Llamó el arquitecto', autor_id: 'u1', autor_nombre: 'Jorge', creado_en: '2026-08-19T09:00:00Z' },
+      { id: 'n2', texto: 'Confirmó por mail', autor_id: 'u1', autor_nombre: 'Jorge', creado_en: '2026-08-19T17:00:00Z' },
+    ],
+  }))
+  assert.equal(r.eventos.length, 2)
+  assert.deepEqual(claves(r), ['nota-n2', 'nota-n1'], 'la más reciente arriba')
+})
+
+test('la nota se ordena MEZCLADA con el resto por fecha, no en una sección aparte', () => {
+  // Una nota que quedara siempre arriba —o siempre abajo— rompería lo único que esta lista promete:
+  // que el orden es el de lo que pasó.
+  const r = construirLineaDeTiempo(vacio({
+    cliente: { nombre: 'ARCOR', creado_en: '2026-07-01T10:00:00Z', actualizado_en: null },
+    notas: [{ id: 'n1', texto: 'Nota vieja', autor_id: null, autor_nombre: null, creado_en: '2026-06-01T10:00:00Z' }],
+    obras: [{ obra_id: 'o1', nombre: 'Planta', creada_en: '2026-08-01T10:00:00Z', fecha_inicio_real: null, fecha_fin_real: null }],
+  }))
+  assert.deepEqual(claves(r), ['obra-alta-o1', 'cliente-alta', 'nota-n1'])
+})
+
+test('sin notas y con notas ilegibles NO se ven igual: el aviso viaja hasta la pantalla', () => {
+  // ESTE es el defecto que más cuesta ver. Con la migración sin aplicar, el servicio devuelve cero
+  // notas; si el aviso se quedara en el camino, una ficha cuyas notas no se pudieron traer se vería
+  // idéntica a una ficha que no tiene ninguna, y nadie se enteraría nunca de que faltan.
+  const sinNinguna = construirLineaDeTiempo(vacio())
+  assert.equal(sinNinguna.notasNoDisponibles, null)
+
+  const noLeidas = construirLineaDeTiempo(vacio({ notasNoDisponibles: 'falta aplicar la migración X' }))
+  assert.equal(noLeidas.notasNoDisponibles, 'falta aplicar la migración X')
+})

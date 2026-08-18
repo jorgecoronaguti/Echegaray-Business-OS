@@ -49,7 +49,7 @@ function FilaObra({ o }: { o: ObraPanel }) {
   )
 }
 
-export function TabObras({
+export function BloqueObras({
   obras, archivadas, conArchivadas, urlArchivadas, urlSinArchivadas, clienteId, crearObra,
   puedeEditar = true,
 }: {
@@ -66,10 +66,27 @@ export function TabObras({
 }) {
   return (
     <div className="space-y-3">
+      {/* EL ALTA VA ARRIBA. Debajo de la lista, «nueva obra» no la encuentra nadie. La obra nace
+          COLGADA DE ESTE CLIENTE: que el cliente venga del contexto y no de un desplegable es lo que
+          impide crear una obra huérfana. */}
+      {puedeEditar && (
+      <details className="rounded-xl border border-line bg-white" data-testid="alta-obra">
+        <summary className="cursor-pointer select-none px-4 py-2.5 text-[13px] font-medium text-ink">+ Nueva obra</summary>
+        <div className="border-t border-line p-4">
+          <FormAccion accion={crearObra} testid="form-obra" enviar="Crear obra" limpiarAlOk mensajeOk="Obra creada.">
+            {/* La obra nace COLGADA DE ESTE CLIENTE. Que el cliente venga del contexto y no de un
+                desplegable es lo que impide crear una obra huérfana: hasta que existió `cliente_id`,
+                las tres obras de La Estrella eran tres cadenas de texto iguales por casualidad. */}
+            <input type="hidden" name="cliente_id" value={clienteId} />
+            <CamposObra />
+          </FormAccion>
+        </div>
+      </details>
+      )}
       {obras.length === 0 ? (
         <Callout tono="neutral">
           {archivadas === 0
-            ? 'Este cliente no tiene ninguna obra. Se crea acá abajo.'
+            ? 'Este cliente no tiene ninguna obra.'
             : 'Todas las obras de este cliente están archivadas.'}
         </Callout>
       ) : (
@@ -105,20 +122,6 @@ export function TabObras({
         </p>
       )}
 
-      {puedeEditar && (
-      <details className="rounded-xl border border-line bg-white" data-testid="alta-obra">
-        <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-medium text-ink">Nueva obra de este cliente</summary>
-        <div className="border-t border-line p-4">
-          <FormAccion accion={crearObra} testid="form-obra" enviar="Crear obra" limpiarAlOk mensajeOk="Obra creada.">
-            {/* La obra nace COLGADA DE ESTE CLIENTE. Que el cliente venga del contexto y no de un
-                desplegable es lo que impide crear una obra huérfana: hasta que existió `cliente_id`,
-                las tres obras de La Estrella eran tres cadenas de texto iguales por casualidad. */}
-            <input type="hidden" name="cliente_id" value={clienteId} />
-            <CamposObra />
-          </FormAccion>
-        </div>
-      </details>
-      )}
     </div>
   )
 }

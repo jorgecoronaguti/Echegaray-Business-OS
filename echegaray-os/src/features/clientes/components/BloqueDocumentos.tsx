@@ -19,16 +19,27 @@
 // acción de cuatro segundos en una interrupción, y la interrupción es lo que hace que nadie vincule
 // nada y el índice quede vacío para siempre. Panel lateral es para edición compleja.
 
+import Link from 'next/link'
 import { BotonAccion, Callout, Campo, CTRL, FormAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
 import { etiquetaDeTipo, urlDeDrive } from '@/features/obras/services/driveUrl'
 import { ROLES_DOCUMENTO, type DocumentoCliente } from '../types'
 import { SelectRolDocumento } from './SelectRolDocumento'
 
-/** Cuántos se listan. Más allá de esto la lista deja de ser un índice y hay que ir a Drive. */
-const TOPE = 60
+// ═══ POR QUÉ EL RECORD MUESTRA OCHO Y NO SESENTA (19/08/2026) ═══
+//
+// Con las cinco solapas, Documentos era una pantalla entera y sesenta filas eran su contenido. En el
+// record de una sola pantalla, sesenta filas empujan la actividad y las obras fuera de la vista: el
+// bloque más lleno del cliente más cargado se comería el record de todos los demás. Se muestran los
+// más recientes y el resto está a un clic, con el TOTAL dicho al lado — recortar en silencio sería
+// el mismo defecto que omitir un evento sin contarlo.
+//
+// Más allá del tope grande la lista deja de ser un índice y hay que ir a Drive.
+const TOPE = 8
+const TOPE_TODO = 60
 
-export function TabDocumentos({
+export function BloqueDocumentos({
   documentos, carpetaDriveId, vincular, clasificar, desvincular, puedeEditar = true,
+  todo = false, urlTodo, urlPoco,
 }: {
   documentos: DocumentoCliente[]
   carpetaDriveId: string | null
@@ -37,8 +48,13 @@ export function TabDocumentos({
   desvincular: (driveFileId: string) => Promise<ResultadoAccion>
   /** Abrir un documento del cliente es operativo. Vincularlo, clasificarlo o quitarlo, no. */
   puedeEditar?: boolean
+  /** Viene de `?documentos=todo`. El despliegue es un estado de la DIRECCIÓN, compartible. */
+  todo?: boolean
+  urlTodo: string
+  urlPoco: string
 }) {
-  const visibles = documentos.slice(0, TOPE)
+  const tope = todo ? TOPE_TODO : TOPE
+  const visibles = documentos.slice(0, tope)
 
   return (
     <div className="space-y-3">
@@ -128,10 +144,21 @@ export function TabDocumentos({
               </tbody>
             </table>
           </div>
-          <p className="text-[11px] text-faint">
-            {documentos.length > TOPE
-              ? `Se muestran los ${TOPE} más recientes de ${documentos.length}. El resto está en la carpeta de Drive.`
-              : `${documentos.length} archivo${documentos.length === 1 ? '' : 's'}. Viven en Drive: acá está el vínculo, nunca una copia.`}
+          <p className="text-[11px] text-faint" data-testid="pie-documentos-cliente">
+            {documentos.length <= TOPE ? (
+              `${documentos.length} archivo${documentos.length === 1 ? '' : 's'}. Viven en Drive: acá está el vínculo, nunca una copia.`
+            ) : todo ? (
+              <>
+                Se muestran {visibles.length} de {documentos.length}
+                {documentos.length > TOPE_TODO && '; el resto está en la carpeta de Drive'}.{' '}
+                <Link href={urlPoco} className="text-ink underline underline-offset-2">Ver sólo los últimos</Link>.
+              </>
+            ) : (
+              <>
+                Se muestran los {TOPE} más recientes de {documentos.length}.{' '}
+                <Link href={urlTodo} className="text-ink underline underline-offset-2" data-testid="ver-todos-documentos">Ver todos</Link>.
+              </>
+            )}
           </p>
         </>
       )}

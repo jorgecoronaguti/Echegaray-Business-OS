@@ -12,6 +12,8 @@ import { createClient } from '@/lib/supabase/server'
 // Qué hacer cuando la migración de la relación está en el repositorio y no en la base: el criterio
 // —y la regla de no guardar de menos en silencio— vive en su propio módulo, con tests.
 import { faltaLaRelacion, mensajeDeMigracion, sinLaRelacion } from './migracionPendiente'
+// La nota manual necesita su propia guarda: su tabla es la que TODAVÍA NO EXISTE en la base.
+import { faltaLaTablaDeNotas, mensajeDeNotasPendiente } from './notaPendiente'
 
 export type Resultado = { ok: true; id?: string } | { ok: false; error: string }
 
@@ -168,6 +170,46 @@ export async function borrarContacto(contactoId: string): Promise<Resultado> {
   const supabase = await createClient()
   const { error } = await supabase.from('cliente_contacto').delete().eq('id', contactoId)
   if (error) return { ok: false, error: error.message }
+  revalidatePath('/clientes', 'layout')
+  return { ok: true }
+}
+
+// ── NOTAS ──────────────────────────────────────────────────────────────────────────────────────
+//
+// LA ÚNICA ESCRITURA DE ACTIVIDAD DEL MÓDULO. Todo lo demás de la línea de tiempo se deriva de
+// filas que ya existen; una llamada telefónica no, y si no se escribe se pierde.
+
+const notaSchema = z.object({
+  // 2 caracteres mínimos, igual que un nombre: «ok» es una nota legítima y «» no es nada. El tope
+  // es alto a propósito — recortar en silencio lo que alguien escribió es perder el dato sin decirlo.
+  texto: z.string().trim().min(2, 'La nota está vacía').max(4000, 'La nota es demasiado larga'),
+})
+
+/**
+ * Escribe una nota manual sobre el cliente.
+ *
+ * ═══ EL AUTOR NO VIAJA EN EL FORMULARIO ═══
+ *
+ * `autor_id` lo pone el DEFAULT `auth.uid()` de la tabla y la policy exige que coincida con la
+ * sesión. Un campo de formulario lo edita cualquiera desde el navegador, y una nota firmada por
+ * otro es peor que una nota sin firma.
+ *
+ * ═══ MIENTRAS LA MIGRACIÓN NO ESTÉ APLICADA, FALLA CERRADO ═══
+ *
+ * Si `cliente_nota` no existe, la base contesta PGRST205 y acá se traduce a un mensaje que nombra
+ * la migración que falta. NUNCA se contesta `{ ok: true }`: el modo de falla que esto existe para
+ * impedir es que alguien escriba algo importante, lea «Nota guardada» y no haya ninguna fila.
+ */
+export async function crearNota(clienteId: string, form: FormData): Promise<Resultado> {
+  const parsed = notaSchema.safeParse(Object.fromEntries(form))
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
+
+  const supabase = await createClient()
+  const { error } = await supabase.from('cliente_nota')
+    .insert({ cliente_id: clienteId, texto: parsed.data.texto })
+  if (error) {
+    return { ok: false, error: faltaLaTablaDeNotas(error) ? mensajeDeNotasPendiente() : error.message }
+  }
   revalidatePath('/clientes', 'layout')
   return { ok: true }
 }
