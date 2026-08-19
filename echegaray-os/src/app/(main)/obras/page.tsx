@@ -41,6 +41,7 @@ import { getPortafolio, getPlanVsRealPortafolio } from '@/features/obras/service
 import { ETAPA_LABEL, type ObraPanel, type PlanVsReal } from '@/features/obras/types'
 import { fecha, plata } from '@/features/obras/components/formato'
 import { NavObras } from '@/features/obras/components/NavObras'
+import { RecordarVista } from '@/features/obras/components/RecordarVista'
 import { PageShell, Callout } from '@/shared/components/ui'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { esAdministracion } from '@/features/auth/types/areas'
@@ -216,6 +217,10 @@ export default async function ObrasPage({
       ) : undefined}
     >
       {/* NIVEL 2 DEL ÁREA: Resumen y Gantt. Nada más entra en esta barra. */}
+      {/* GUARDA CÓMO QUEDÓ ESTA VISTA. Es lo único que corre en el navegador de esta pantalla, y
+          está acá y no en el middleware porque una precarga de Next no monta nada: sólo se guarda
+          lo que alguien está mirando de verdad. Ver `components/RecordarVista.tsx`. */}
+      <RecordarVista />
       <NavObras />
 
       {/* La barra va entre la navegación y la tabla: es una decisión sobre lo que se está por leer.

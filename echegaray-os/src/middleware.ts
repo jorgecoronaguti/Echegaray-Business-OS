@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { esRutaCampoPermitida, esRutaPublica } from '@/features/auth/types'
 import { puedeVerRuta } from '@/features/auth/types/areas'
 import {
-  CLAVE_LIMPIAR, cookieDeVista, esEleccionDeVista, preferenciaDe, queryARestaurar,
+  CLAVE_LIMPIAR, cookieDeVista, queryARestaurar,
 } from '@/features/obras/services/vistaRecordada'
 
 // Refresca la sesión de Supabase en cada request -- sin esto, un usuario logueado
@@ -77,26 +77,13 @@ export async function middleware(request: NextRequest) {
   // El dueño: *"que guarden cuál fue el último filtrado que hice según la columna para que me la
   // muestre de esa manera y no tener que estar poniendo nuevamente cómo quiero verlo"*.
   //
-  // Vive en el middleware y no en la página porque un server component NO puede escribir una cookie
-  // durante el render —Next lo prohíbe— y porque acá la redirección ocurre ANTES de que se dibuje
-  // nada: no hay una pintura con el orden equivocado que después se corrige sola.
+  // ACÁ SÓLO SE RESTAURA. Guardar lo hace el navegador (`components/RecordarVista.tsx`) porque el
+  // servidor no puede distinguir una precarga de Next de una navegación real —lo intentamos por
+  // cabeceras y se filtraba igual—, y el navegador sí: una precarga trae bytes y no monta nada.
   //
-  // Sólo GET, y sólo si hay sesión: guardar preferencias de pantalla de alguien que todavía no
-  // entró no tiene sentido y ensucia la cookie del que entre después en el mismo navegador.
-  // ═══ UNA PRECARGA NO ES UNA ELECCIÓN (19/08/2026) ═══
-  //
-  // Next PRECARGA todos los `<Link>` que entran en pantalla, y cada precarga es un GET normal a esa
-  // URL. Sin este filtro, la barra de filtros —seis pastillas, cada una con su `?etapa=…`— hacía que
-  // el navegador guardara SEIS preferencias distintas sin que nadie tocara nada, y la última que
-  // llegara ganaba. Medido contra producción: se elegía «Terminación» y la vista volvía con
-  // `etapa=inicio` o con `etapa=` (la pastilla «Todas»), según qué precarga hubiera terminado
-  // última. En desarrollo no pasaba porque ahí la precarga es mucho menos agresiva — el defecto sólo
-  // existía donde el dueño lo iba a usar.
-  //
-  // Se distingue por la cabecera que Next pone en la precarga y NO en la navegación real. Las
-  // navegaciones de cliente (`RSC: 1`) sí se guardan: ésas las produce una persona tocando algo.
-  const cookieVista = user && esEleccionDeVista(request.method, request.headers)
-    ? cookieDeVista(pathname) : null
+  // Restaurar sigue acá porque la redirección ocurre ANTES de que se dibuje nada: no hay una
+  // pintura con el orden equivocado que después se corrige sola.
+  const cookieVista = user && request.method === 'GET' ? cookieDeVista(pathname) : null
   if (cookieVista) {
     const params = request.nextUrl.searchParams
     if (params.has(CLAVE_LIMPIAR)) {
@@ -105,9 +92,8 @@ export async function middleware(request: NextRequest) {
       const url = request.nextUrl.clone()
       url.search = ''
       const limpia = NextResponse.redirect(url)
-      // EL `path` NO SOBRA: la cookie se guardó con `path: '/obras'`, y borrarla sin decirlo borra
-      // otra —la de `path: '/'`, que no existe—, así que la preferencia sobrevivía al "quitar
-      // filtros" y la pantalla se volvía a filtrar sola en la visita siguiente.
+      // EL `path` NO SOBRA: la cookie vive en `/obras`, y borrarla sin decirlo borra otra —la de
+      // `path: '/'`, que no existe—, así que la preferencia sobrevivía al "quitar filtros".
       limpia.cookies.delete({ name: cookieVista, path: '/obras' })
       return limpia
     }
@@ -117,14 +103,6 @@ export async function middleware(request: NextRequest) {
       const url = request.nextUrl.clone()
       url.search = restaurar
       return NextResponse.redirect(url)
-    }
-    const preferencia = preferenciaDe(params)
-    // Se escribe SÓLO cuando cambió: una cookie reescrita en cada visita gasta una cabecera de
-    // respuesta por página para no decir nada nuevo.
-    if (preferencia && preferencia !== guardada) {
-      response.cookies.set(cookieVista, preferencia, {
-        path: '/obras', sameSite: 'lax', httpOnly: true, maxAge: 60 * 60 * 24 * 365,
-      })
     }
   }
 
