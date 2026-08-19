@@ -220,11 +220,47 @@ export async function editarUsuario(usuarioId: string, form: FormData): Promise<
   })
   if (aErr) return { ok: false, error: aErr.message }
 
-  const { error } = await puerta.admin
-    .from('perfiles').upsert({ id: usuarioId, nombre: parsed.data.nombre }, { onConflict: 'id' })
-  if (error) return { ok: false, error: error.message }
+  // ═══ `upsert` ACÁ NO PODÍA FUNCIONAR NUNCA (19/08/2026) ═══
+  //
+  // El dueño, textual: *"quise poner mi nombre bien y no me dejo"*. La pantalla devolvía
+  // `null value in column "rol" of relation "perfiles" violates not-null constraint`.
+  //
+  // La causa no era el permiso: era la FORMA de la escritura. `upsert` es `insert … on conflict do
+  // update`, y Postgres valida los NOT NULL sobre la fila PROPUESTA **antes** de resolver el
+  // conflicto. Como acá sólo viajaba `nombre`, la fila propuesta traía `rol` en `null` y la
+  // restricción saltaba aunque el perfil existiera y el update fuera a ser inocuo. O sea que
+  // cambiar el nombre de CUALQUIER cuenta estuvo roto desde siempre: nunca fue un caso borde.
+  //
+  // Un `update` no propone una fila nueva: toca las columnas que se le dan y deja el resto como
+  // está. Es además lo que corresponde conceptualmente — editar un perfil que ya existe.
+  //
+  // EL `select` NO ES DECORACIÓN: un `update` que no encuentra la fila NO es un error, devuelve
+  // cero filas. Sin pedir las filas afectadas, una cuenta sin perfil respondería "guardado" con el
+  // nombre sin cambiar. Es la misma trampa que ya está anotada en `cambiarRol`.
+  const { data: tocadas, error } = await puerta.admin
+    .from('perfiles').update({ nombre: parsed.data.nombre }).eq('id', usuarioId).select('id')
+  if (error) return { ok: false, error: enCastellano(error.message) }
+  if (!tocadas?.length) {
+    // El correo YA se cambió arriba: decir sólo "no se pudo" mentiría sobre lo que quedó hecho.
+    return {
+      ok: false,
+      error: 'Cambié el correo, pero esa cuenta todavía no tiene perfil y por eso el nombre no se ' +
+        'guardó. Asignale un rol y volvé a intentarlo.',
+    }
+  }
   revalidatePath(PATH)
   return { ok: true }
+}
+
+/**
+ * EL ERROR DE LA BASE NO ES UN MENSAJE PARA UNA PERSONA. La captura del dueño mostraba
+ * `null value in column "rol" of relation "perfiles" violates not-null constraint` en rojo, arriba
+ * del botón Guardar: nombra una columna y una tabla que él no tiene por qué conocer, y no dice qué
+ * hacer. El texto técnico se conserva en el log del servidor, que es donde sirve.
+ */
+function enCastellano(mensaje: string): string {
+  console.error('[usuarios] fallo al guardar el perfil:', mensaje)
+  return 'No pude guardar los datos. Quedó anotado el detalle técnico para revisarlo.'
 }
 
 export async function cambiarRol(usuarioId: string, form: FormData): Promise<Resultado> {
