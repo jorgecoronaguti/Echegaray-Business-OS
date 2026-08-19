@@ -32,25 +32,15 @@ import { BotonAccion, type ResultadoAccion } from '@/shared/components/ui'
 import type { Actividad, Dependencia, Persona, Restriccion } from '../types'
 import type { ActividadHH } from '../services/personalService'
 import { Gantt } from './Gantt'
+// LAS SUB-VISTAS VIVEN EN UN MÓDULO NEUTRAL: la página, que es un Server Component, también las
+// necesita, y un valor exportado desde un archivo `'use client'` no cruza esa frontera.
+import { SUBVISTAS, type SubVista } from '../services/subvistas'
 import { VistaProximos, type Ventana } from './VistaProximos'
 import { VistaLista } from './VistaLista'
 import { VistaTablero } from './VistaTablero'
 import { type AccionesCronograma } from './PanelActividad'
 import { type AccionesEnLote } from './AccionesMasivas'
 
-// CUATRO MANERAS DE MIRAR LAS MISMAS ACTIVIDADES, y las cuatro reciben EL MISMO array.
-//
-// Gantt para ver el tiempo, Lista para cargar en volumen, Tablero para ver dónde se amontona el
-// trabajo, Próximos para saber qué viene. Acá no se vuelve a consultar nada: si cada vista trajera
-// sus filas, alcanzaría con que una filtrara distinto para que la obra tuviera cuatro planes.
-export type SubVista = 'gantt' | 'lista' | 'tablero' | 'proximos'
-
-export const SUBVISTAS: { id: SubVista; label: string }[] = [
-  { id: 'gantt', label: 'Gantt' },
-  { id: 'lista', label: 'Lista' },
-  { id: 'tablero', label: 'Tablero' },
-  { id: 'proximos', label: 'Próximos' },
-]
 
 export function TabCronograma({
   actividades,

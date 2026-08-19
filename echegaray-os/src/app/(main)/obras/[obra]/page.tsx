@@ -54,7 +54,8 @@ import { borrarCertificado, crearCertificado } from '@/features/obras/services/a
 import { ETAPAS, ETAPA_LABEL } from '@/features/obras/types'
 import { CamposObra } from '@/features/obras/components/CamposObra'
 import { TabResumen } from '@/features/obras/components/TabResumen'
-import { TabCronograma, SUBVISTAS, type SubVista } from '@/features/obras/components/TabCronograma'
+import { TabCronograma } from '@/features/obras/components/TabCronograma'
+import { esSubVista } from '@/features/obras/services/subvistas'
 import { TabEjecucion } from '@/features/obras/components/TabEjecucion'
 import { getPartes } from '@/features/obras/services/ejecucionService'
 import { getIntegrantesPorCuadrilla } from '@/features/obras/services/personalService'
@@ -269,7 +270,7 @@ export default async function ObraPage({
       {vista === 'cronograma' && (
         <TabCronograma
           obraId={obraId}
-          sub={SUBVISTAS.some((v) => v.id === sub) ? (sub as SubVista) : 'gantt'}
+          sub={esSubVista(sub) ? sub : 'gantt'}
           semanas={semanas === '1' || semanas === '6' ? semanas : '2'}
           actividadAbierta={act ?? null}
           hhPorActividad={new Map(actividadHH.map((h) => [h.actividad_id, h]))}
