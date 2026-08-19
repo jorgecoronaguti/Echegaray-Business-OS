@@ -149,6 +149,10 @@ export function TabEconomia({
           />
         </Bloque>
 
+        {/* CERTIFICAR ES FACTURARLE AL CLIENTE: es precio, no costo. Antes se dibujaba para todos y
+            al jefe de obra le quedaban cuatro líneas vacías y un botón que la base iba a rechazar —
+            un control que no puede funcionar es peor que un control que no está. */}
+        {veComercial && (
         <Bloque titulo="Certificación" testid="economia-certificacion">
           <Linea
             concepto="Certificado"
@@ -175,15 +179,14 @@ export function TabEconomia({
             falta="Sin certificados no hay nada pendiente de cobrar."
             tono={plan.pendiente_cobrar ? 'warn' : 'ink'}
           />
-          {veComercial && (
-            <Linea
-              concepto="Pendiente de certificar"
-              valor={plan.pendiente_certificar == null ? null : plata(plan.pendiente_certificar)}
-              origen="Contratado menos certificado: lo que queda por certificar del contrato."
-              falta="Falta el monto contratado."
-            />
-          )}
+          <Linea
+            concepto="Pendiente de certificar"
+            valor={plan.pendiente_certificar == null ? null : plata(plan.pendiente_certificar)}
+            origen="Contratado menos certificado: lo que queda por certificar del contrato."
+            falta="Falta el monto contratado."
+          />
         </Bloque>
+        )}
 
         {veComercial && (
         <Bloque titulo="Resultado" testid="economia-resultado">
@@ -247,6 +250,7 @@ export function TabEconomia({
         </section>
       )}
 
+      {veComercial && (
       <details className="rounded-lg border border-line bg-surface" data-testid="alta-certificado">
         <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-medium text-ink">+ Cargar certificado</summary>
         <div className="border-t border-line p-4">
@@ -270,6 +274,7 @@ export function TabEconomia({
           </FormAccion>
         </div>
       </details>
+      )}
     </div>
   )
 }
