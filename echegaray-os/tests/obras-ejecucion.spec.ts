@@ -68,8 +68,13 @@ test('cronograma: la actividad creada desde el Gantt se edita, recibe avance y s
     expect(guardada.editado_a_mano).toBe(true)
 
     // Y la HH plan cargada aparece en Personal, que es donde se mide contra las horas reales.
+    //
+    // Se apunta al TITULAR y no a un `getByText('HH plan')` suelto: desde que Personal muestra el
+    // plan contra real por actividad, ese texto está también en el encabezado de una columna y el
+    // localizador resolvía a dos elementos. Un test ambiguo no falla por un defecto: falla por
+    // haberse quedado corto, y manda a buscar el problema al lugar equivocado.
     await page.goto(`/obras/${OBRA}?vista=personal`)
-    await expect(page.getByText('HH plan')).toBeVisible()
+    await expect(page.getByTestId('titular-personal')).toContainText(/HH plan \d/)
 
     // ── AVANCE RÁPIDO ───────────────────────────────────────────────────────
     await page.goto(`/obras/${OBRA}?vista=cronograma`)

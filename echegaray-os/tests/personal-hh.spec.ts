@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import { entrar, MARCA, OBRA } from './util/obras-e2e'
+import { entrar, MARCA } from './util/obras-e2e'
 
 // MÓDULO 03 · PERSONAL / HH — EL CIRCUITO REAL, DE PUNTA A PUNTA.
 //
@@ -23,6 +23,21 @@ import { entrar, MARCA, OBRA } from './util/obras-e2e'
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL as string
 const SRV = process.env.SUPABASE_SERVICE_ROLE_KEY as string
 const sb = (): SupabaseClient => createClient(URL, SRV, { auth: { persistSession: false } })
+
+/**
+ * ═══ ESTE RECORRIDO NO USA `le-comedor` ═══
+ *
+ * `OBRA` de `util/obras-e2e` es la obra compartida por los recorridos de Cronograma y Ejecución, y
+ * Playwright corre los archivos EN PARALELO. Con las dos suites escribiendo asignaciones y horas
+ * sobre la misma obra al mismo tiempo, cada una veía las filas de la otra: la de Ejecución exigía
+ * «sin imputar» en el titular mientras ésta imputaba, y terminaba con la tabla de personal vacía
+ * mientras ésta la llenaba. Ninguno de los dos rojos señalaba un defecto — es el mismo modo de falla
+ * que el servidor de otro worktree reusado: la prueba no medía lo que decía medir.
+ *
+ * `le-galpon-9` está activa, tiene cronograma cargado (30 actividades vivas, hacen falta para medir
+ * el plan contra real) y ninguna otra suite la toca.
+ */
+const OBRA = 'le-galpon-9'
 
 const PERSONA = `${MARCA} Peón Personal`
 const OTRA = `${MARCA} Peón Segundo`
