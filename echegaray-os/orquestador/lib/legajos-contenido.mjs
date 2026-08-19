@@ -142,3 +142,118 @@ export function mismaPersona(nombreDelPapel, nombreDelLegajo) {
   }
   return coincidencia(nombreDelPapel, nombreDelLegajo) !== null
 }
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════
+// LA LIBRETA DEL IERIC ES EL LEGAJO ENTERO EN UNA HOJA
+// ═════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Sesenta de los papeles del data room son esta libreta, y trae —en texto, no en un escaneo— casi
+// todo lo que la ficha tenía en «sin cargar»: documento, nacimiento, nacionalidad, domicilio
+// completo, categoría de convenio, especialidad, ART y fecha de ingreso.
+//
+// ═══ LA TRAMPA: LA HOJA TIENE DOS DOMICILIOS ═══
+//
+// Después de «Datos del empleador» se repiten Domicilio, Localidad, Código Postal y Provincia — pero
+// son los de ECHEGARAY CONSTRUCCIONES (AV. RIOJA (NORTE) 75). Leer el segundo le pone a los sesenta
+// trabajadores el domicilio de la empresa como propio, y el teléfono que figura ahí también es el de
+// la empresa: por eso el texto se corta antes y `telefono` NO sale de acá.
+
+/** Los rótulos del bloque del trabajador, EN EL ORDEN EN QUE LA HOJA LOS IMPRIME: cada valor es lo
+ *  que va entre un rótulo y el siguiente. */
+const CAMPOS_LIBRETA = [
+  ['nombre', 'Apellido y nombre'], ['cuil', 'CUIL'], ['calle', 'Domicilio'], ['nro', 'Nro'],
+  ['piso', 'Piso'], ['depto', 'Depto'], ['localidad', 'Localidad'], ['cp', 'Código Postal'],
+  ['provincia', 'Provincia'], ['documento', 'Doc. identidad'], ['art', 'A.R.T'],
+  ['nacionalidad', 'Nacionalidad'], ['nacimiento', 'Fecha de nacimiento'], ['categoria', 'Categoría'],
+  ['especialidad', 'Especialidad'], ['ingreso', 'Fecha de ingreso del trabajador'],
+  ['egreso', 'Fecha de egreso del trabajador'],
+]
+
+const CATEGORIA_CONVENIO = {
+  'OFICIAL ESPECIALIZADO': 'oficial_especializado',
+  'MEDIO OFICIAL': 'medio_oficial',
+  OFICIAL: 'oficial',
+  AYUDANTE: 'ayudante',
+}
+
+/** La categoría del convenio, en el vocabulario del módulo. Lo que no es una de las cuatro devuelve
+ *  `null`: «JEFE DE OBRA» es un puesto, no una categoría de la escala de UOCRA. */
+export function categoriaDeConvenio(texto) {
+  return CATEGORIA_CONVENIO[PLANO(texto).replace(/\s+/g, ' ').trim()] ?? null
+}
+
+/** El DNI que está adentro del CUIL: son sus ocho dígitos del medio. No es una inferencia — es cómo
+ *  se construye el número— y por eso sirve de respaldo para quien no tiene libreta. */
+export function dniDelCuil(cuil) {
+  const d = String(cuil ?? '').replace(/\D/g, '')
+  return d.length === 11 ? String(Number(d.slice(2, 10))) : null
+}
+
+const fechaISO = (v) => {
+  const m = String(v ?? '').match(/(\d{2})\/(\d{2})\/(\d{4})/)
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : null
+}
+
+/** Todo lo que la libreta declara del TRABAJADOR. `null` si el papel no es una libreta. */
+export function libretaDelIeric(texto) {
+  const entero = String(texto ?? '').replace(/\s+/g, ' ')
+  if (!/Libreta de Fondo de Cese/i.test(entero)) return null
+  // Cortar acá NO es una optimización: es lo único que impide leer el domicilio del empleador.
+  const t = entero.split(/Datos del empleador/i)[0]
+
+  // ═══ SE RECORREN LOS RÓTULOS EN SECUENCIA, NO CON UNA EXPRESIÓN POR CAMPO ═══
+  //
+  // El mismo formulario sale del PDF con los corchetes en dos órdenes distintos según cómo se generó
+  // —«Domicilio [ ] __ __ QUIROZ» en unos y «Domicilio __ __] [ QUIROZ» en otros—, y una expresión
+  // atada a una de las dos formas devolvía TODO vacío en la mitad de las libretas sin fallar: los
+  // campos quedaban en null y parecía que el papel no los traía.
+  //
+  // Buscar cada rótulo a partir de donde terminó el anterior no depende de eso, y además impide que
+  // «Nro» o «Localidad» —que aparecen dos veces en la hoja— se lean del bloque equivocado.
+  const posiciones = []
+  let desde = 0
+  for (const [clave, rotulo] of CAMPOS_LIBRETA) {
+    const i = t.indexOf(rotulo, desde)
+    posiciones.push({ clave, rotulo, i })
+    if (i !== -1) desde = i + rotulo.length
+  }
+  const crudo = {}
+  for (let i = 0; i < posiciones.length; i++) {
+    const p = posiciones[i]
+    if (p.i === -1) { crudo[p.clave] = ''; continue }
+    const proximo = posiciones.slice(i + 1).find((x) => x.i !== -1)
+    const bruto = t.slice(p.i + p.rotulo.length, proximo ? proximo.i : t.length)
+    // El `°` de «B° VALLE GRANDE» sale del PDF como carácter de reemplazo y llegaba así al
+    // domicilio. Se restituye: la alternativa era publicar un domicilio con un rombo negro adentro.
+    crudo[p.clave] = bruto
+      .replace(/[_[\]]/g, ' ')
+      .replace(/\uFFFD/g, '°')
+      .replace(/\s+/g, ' ')
+      .trim()
+  }
+
+  const partes = [
+    [crudo.calle, crudo.nro].filter(Boolean).join(' '),
+    crudo.piso && `piso ${crudo.piso}`,
+    crudo.depto && `depto ${crudo.depto}`,
+    [crudo.localidad, crudo.cp && `(${crudo.cp})`].filter(Boolean).join(' '),
+    crudo.provincia !== crudo.localidad ? crudo.provincia : '',
+  ].filter(Boolean)
+
+  return {
+    nombre: crudo.nombre || null,
+    cuil: cuilDelTexto(t),
+    // «DNI 38218815»: el rótulo del tipo de documento viene pegado al número.
+    documento: (crudo.documento.match(/\d[\d.]{5,}/) ?? [null])[0]?.replace(/\./g, '') ?? null,
+    nacionalidad: crudo.nacionalidad || null,
+    nacimiento: fechaISO(crudo.nacimiento),
+    ingreso: fechaISO(crudo.ingreso),
+    egreso: fechaISO(crudo.egreso),
+    categoria: categoriaDeConvenio(crudo.categoria),
+    especialidad: crudo.especialidad || null,
+    art: crudo.art || null,
+    domicilio: partes.length ? partes.join(', ') : null,
+  }
+}
+
+const escapar = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   actoDeLaConstancia, coberturaDeLaConstancia, cuilDelTexto, fechasDeLaConstancia, mismaPersona,
-  nombreDelTexto, tipoSegunContenido,
+  nombreDelTexto, tipoSegunContenido, libretaDelIeric, dniDelCuil, categoriaDeConvenio,
 } from './legajos-contenido.mjs'
 
 // Los textos son RECORTES REALES de los papeles del data room, no inventados: lo que se prueba es
@@ -80,4 +80,69 @@ test('un legajo de un solo apellido se compara por el apellido, y uno completo p
   // Y con nombre y apellido sí se exigen los dos: éste es un papel en el legajo de otro.
   assert.ok(!mismaPersona('CONTRERAS LUCAS LEONEL', 'CONTRERAS JAVIER'))
   assert.ok(mismaPersona('CONTRERAS ALDANA JAVIER O', 'CONTRERAS JAVIER'))
+})
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════
+// LA LIBRETA DEL IERIC — los dos órdenes en que sale del PDF, y el domicilio del empleador
+// ═════════════════════════════════════════════════════════════════════════════════════════════════
+
+const LIB_A = `INSTITUTO DE ESTADISTICA Y REGISTRO DE LA INDUSTRIA DE LA CONSTRUCCION Libreta de
+Fondo de Cese Laboral Ley Nro 22.250 ORIGINAL N° 000005861940 Datos del trabajador Apellido y
+nombre [ ] __ __ ALANIZ, EMANUEL ARIEL CUIL [ ] __ __ 20-38218815-3 Domicilio [ ] __ __ CANDELARES
+MZA E CASA Nro [ ] __ 03 Piso [ ] __ Depto [ ] __ Localidad [ ] __ SAN JUAN Código Postal [ ] __
+5400 Provincia [ ] __ SAN JUAN Doc. identidad [ ] __ DNI 38218815 A.R.T [ ] __ PREVENSION
+Nacionalidad [ ] __ ARGENTINA Fecha de nacimiento [ ] __ 26/07/1994 Categoría [ ] __ AYUDANTE
+Especialidad [ ] __ ALBAÑIL Fecha de ingreso del trabajador [ ] __ 21/01/2026 Datos del empleador
+Apellido y nombre o Razón Social [ ] __ ECHEGARAY CONSTRUCCIONES S.A.S. CUIT [ ] __ 30-71630464-3
+Domicilio [ ] __ AV. RIOJA (NORTE) Nro [ ] __ 75 Localidad [ ] __ SAN JUAN Código Postal [ ] __ 5400
+Provincia [ ] __ SAN JUAN Nro telefónico [ ] __ 0264 -4544550`
+
+// El MISMO formulario, con los corchetes al otro lado: así sale de la mitad de los PDF.
+const LIB_B = `INSTITUTO DE ESTADISTICA Y REGISTRO DE LA INDUSTRIA DE LA CONSTRUCCION Libreta de
+Fondo de Cese Laboral ORIGINAL N° 000005914316 Datos del trabajador Apellido y nombre __ __] [
+CASTRO PEREZ, ROBERTO EDGAR CUIL __ __] [ 20-25830350-5 Domicilio __ __] [ QUIROZ Nro __] [ 68
+Piso __] [ Depto __] [ Localidad __] [ RAWSON Código Postal __] [ 5425 Provincia __] [ SAN JUAN
+Doc. identidad __] [ DNI 25830350 A.R.T __] [ PREVENCION Nacionalidad __] [ ARGENTINA Fecha de
+nacimiento __] [ 25/04/1977 Categoría __] [ MEDIO OFICIAL Especialidad __] [ ALBAÑIL Fecha de
+ingreso del trabajador __] [ 02/03/2026 Datos del empleador Apellido y nombre o Razón Social __] [
+ECHEGARAY CONSTRUCCIONES S.A.S. CUIT __] [ 30-71630464-3 Domicilio __] [ AV. RIOJA (NORTE)`
+
+test('la libreta se lee igual con los corchetes de los dos lados', () => {
+  const a = libretaDelIeric(LIB_A)
+  const b = libretaDelIeric(LIB_B)
+  assert.equal(a.documento, '38218815')
+  assert.equal(a.nacimiento, '1994-07-26')
+  assert.equal(a.categoria, 'ayudante')
+  assert.equal(a.ingreso, '2026-01-21')
+  assert.equal(b.documento, '25830350')
+  assert.equal(b.nacimiento, '1977-04-25')
+  assert.equal(b.categoria, 'medio_oficial')
+  assert.equal(b.ingreso, '2026-03-02')
+})
+
+test('EL DOMICILIO DE LA EMPRESA NO ES EL DE NADIE', () => {
+  // La hoja repite Domicilio/Localidad/Provincia después de «Datos del empleador». Leer el segundo
+  // le ponía AV. RIOJA (NORTE) 75 como domicilio propio a los sesenta trabajadores.
+  assert.equal(libretaDelIeric(LIB_A).domicilio, 'CANDELARES MZA E CASA 03, SAN JUAN (5400)')
+  assert.equal(libretaDelIeric(LIB_B).domicilio, 'QUIROZ 68, RAWSON (5425), SAN JUAN')
+  assert.ok(!libretaDelIeric(LIB_A).domicilio.includes('RIOJA'))
+})
+
+test('un papel que no es la libreta devuelve null, no un objeto vacío', () => {
+  assert.equal(libretaDelIeric(ALTA), null)
+  assert.equal(libretaDelIeric(''), null)
+})
+
+test('el DNI está adentro del CUIL: son sus ocho dígitos del medio', () => {
+  assert.equal(dniDelCuil('20-38218815-3'), '38218815')
+  assert.equal(dniDelCuil('27432212950'), '43221295')
+  // Con documento de menos de ocho cifras el CUIL rellena con ceros: no se publican.
+  assert.equal(dniDelCuil('20-09123456-7'), '9123456')
+  assert.equal(dniDelCuil('123'), null)
+})
+
+test('jefe de obra es un puesto, no una categoría del convenio', () => {
+  assert.equal(categoriaDeConvenio('OFICIAL ESPECIALIZADO'), 'oficial_especializado')
+  assert.equal(categoriaDeConvenio('Medio Oficial'), 'medio_oficial')
+  assert.equal(categoriaDeConvenio('JEFE DE OBRA'), null)
 })
