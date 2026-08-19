@@ -67,10 +67,31 @@ export function IndicadorNavegacion() {
         setPedido({ desde: `${window.location.pathname}?${window.location.search.replace(/^\?/, '')}`, n: Date.now() })
       }
     }
-    // También los formularios que hacen POST a una Server Action y terminan en `redirect()`: el alta
-    // de una obra tarda lo mismo que una navegación y hasta hoy tampoco mostraba nada.
-    function alEnviar() {
-      setPedido({ desde: `${window.location.pathname}?${window.location.search.replace(/^\?/, '')}`, n: Date.now() })
+    // ═══ UN GUARDADO EN EL LUGAR NO ES UNA NAVEGACIÓN (19/08/2026) ═══
+    //
+    // EL DEFECTO, reportado por el dueño con captura: guarda la obra, la pantalla dice
+    // **"Obra guardada."** y al mismo tiempo sigue el cartel **"Cargando…"**, y hay que recargar a
+    // mano. La causa está acá: este escucha se prendía con CUALQUIER `submit`, y el indicador sólo se
+    // apaga cuando cambia la ruta. Un formulario contra una Server Action que guarda y se queda en la
+    // misma pantalla NO cambia de ruta, así que la barra quedaba corriendo hasta el límite de dos
+    // minutos, encima del mensaje de éxito. Es exactamente el modo de falla que este componente
+    // declaró querer evitar —"una barra corriendo para siempre arriba de una pantalla que nunca
+    // cambia"— y estaba entrando por la puerta de los formularios.
+    //
+    // CÓMO SE DISTINGUE, SIN ADIVINAR. `FormAccion` intercepta el envío con `preventDefault()` y
+    // ejecuta la acción por `startTransition`: no hay navegación. Un formulario que sí navega —el
+    // login, un POST nativo— no lo previene. Este escucha está en CAPTURA, así que corre ANTES que el
+    // manejador de React y ahí `defaultPrevented` todavía es `false`; por eso la decisión se toma en
+    // un `setTimeout(0)`, cuando el evento ya terminó de propagarse y la respuesta es definitiva.
+    //
+    // Y el guardado no se queda mudo: el propio botón de `FormAccion` dice "Guardando…" mientras
+    // corre, que es la señal correcta para algo que pasa DENTRO de la pantalla y no entre pantallas.
+    function alEnviar(e: Event) {
+      const desde = `${window.location.pathname}?${window.location.search.replace(/^\?/, '')}`
+      setTimeout(() => {
+        if (e.defaultPrevented) return
+        setPedido({ desde, n: Date.now() })
+      }, 0)
     }
     document.addEventListener('click', alClic, true)
     document.addEventListener('submit', alEnviar, true)
