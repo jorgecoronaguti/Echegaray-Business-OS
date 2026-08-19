@@ -37,8 +37,9 @@ import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { BotonAccion, type ResultadoAccion } from '@/shared/components/ui'
 import { agruparActividades, agruparPorObra, estadoDe, filasVisibles } from '../services/cronograma'
-import type { Actividad, Dependencia, Persona, Restriccion } from '../types'
+import type { Actividad, Dependencia, ParteEjecucion, Persona, Restriccion } from '../types'
 import type { ActividadHH } from '../services/personalService'
+import { EstadoChip } from './EstadoChip'
 import { FormNuevaActividad, PanelActividad, type AccionesCronograma } from './PanelActividad'
 import { construirEscala, type Escala } from '../services/escala'
 import { BarraMasiva, Casilla, SellarLineaBase, type AccionesEnLote } from './AccionesMasivas'
@@ -63,6 +64,7 @@ export function Gantt({
   masivas,
   obras,
   hhPorActividad,
+  partesPorActividad,
 }: {
   actividades: Actividad[]
   restricciones?: Restriccion[]
@@ -93,6 +95,8 @@ export function Gantt({
    *  vista que lee la solapa Personal: el Cronograma no recalcula nada, muestra el mismo número.
    *  Opcional, como el resto de los props de este componente — el Gantt global no la trae. */
   hhPorActividad?: Map<string, ActividadHH>
+  /** Los partes de ejecución por actividad. El panel muestra los últimos de la seleccionada. */
+  partesPorActividad?: Map<string, ParteEjecucion[]>
 }) {
   const [escala, setEscala] = useState<Escala>('semana')
   const [selId, setSelId] = useState<string | null>(seleccionInicial)
@@ -286,6 +290,7 @@ export function Gantt({
                   />
                 )}
                 <span className="flex-1">Actividad</span>
+                <span className="hidden w-[68px] sm:inline">Estado</span>
                 <span className="hidden w-11 text-right sm:inline">Inicio</span>
                 <span className="hidden w-11 text-right sm:inline">Fin</span>
               </div>
@@ -357,6 +362,12 @@ export function Gantt({
                       className="min-w-0 flex-1 truncate pl-1 text-muted"
                       title={[a.seccion, a.codigo, a.nombre].filter(Boolean).join(' · ')}
                     >{a.nombre}</span>
+                    {/* EL ESTADO OPERATIVO, no el guardado: una actividad con un impedimento
+                        abierto dice «Bloqueada» aunque su estado cargado siga siendo «En curso». Es
+                        la misma derivación que usa el tablero — un solo lugar donde se decide. */}
+                    <span className="hidden w-[68px] shrink-0 sm:inline">
+                      <EstadoChip estado={a.estado_operativo} />
+                    </span>
                     <span className="hidden w-11 shrink-0 text-right tabular-nums text-faint sm:inline">{fmtCorto(a.inicio_plan)}</span>
                     <span className="hidden w-11 shrink-0 text-right tabular-nums text-faint sm:inline">{fmtCorto(a.fin_plan)}</span>
                   </button>
@@ -482,6 +493,7 @@ export function Gantt({
                   actividad={sel}
                   personas={personas}
                   hh={hhPorActividad?.get(sel.id)}
+                  partes={partesPorActividad?.get(sel.id) ?? []}
                   acciones={acciones}
                   actividades={actividades}
                   dependencias={dependencias}

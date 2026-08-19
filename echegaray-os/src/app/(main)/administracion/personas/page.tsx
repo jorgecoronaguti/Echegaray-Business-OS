@@ -100,7 +100,7 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
                           : 'Todavía no hay personas cargadas.'}
                 </p>
               )
-            : <TablaPersonas personas={personas} />}
+            : <TablaPersonas personas={personas} conBaja={filtro === 'inactivos'} />}
         </div>
 
         {sp.nueva === '1' && (

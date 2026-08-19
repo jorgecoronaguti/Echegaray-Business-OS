@@ -16,7 +16,7 @@
 
 import { useMemo } from 'react'
 import type { Actividad } from '../types'
-import { ESTADO_LABEL } from '../types'
+import { EstadoChip } from './EstadoChip'
 import { C, Fila, Tabla, Vacio } from './tablas'
 import { fecha as fmtFecha } from './formato'
 
@@ -24,12 +24,6 @@ const num = (n: number | null | undefined) =>
   n == null ? null : n.toLocaleString('es-AR', { maximumFractionDigits: 2 })
 
 const SinCargar = () => <span className="text-faint">sin cargar</span>
-
-/** El tono del estado. Rojo SÓLO para bloqueada, que es el único problema real de esta columna. */
-function EstadoChip({ estado }: { estado: string }) {
-  const tono = estado === 'bloqueada' ? 'text-neg' : estado === 'hecha' ? 'text-pos' : 'text-muted'
-  return <span className={`text-[12px] ${tono}`}>{ESTADO_LABEL[estado as keyof typeof ESTADO_LABEL] ?? estado}</span>
-}
 
 export function VistaLista({
   actividades, onAbrir,

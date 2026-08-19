@@ -29,7 +29,7 @@
 import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { BotonAccion, type ResultadoAccion } from '@/shared/components/ui'
-import type { Actividad, Dependencia, Persona, Restriccion } from '../types'
+import type { Actividad, Dependencia, ParteEjecucion, Persona, Restriccion } from '../types'
 import type { ActividadHH } from '../services/personalService'
 import { Gantt } from './Gantt'
 // LAS SUB-VISTAS VIVEN EN UN MÓDULO NEUTRAL: la página, que es un Server Component, también las
@@ -38,6 +38,8 @@ import { SUBVISTAS, type SubVista } from '../services/subvistas'
 import { VistaProximos, type Ventana } from './VistaProximos'
 import { VistaLista } from './VistaLista'
 import { VistaTablero } from './VistaTablero'
+import { FranjaObra } from './FranjaObra'
+import { resumenDelPlan } from '../services/resumenDelPlan'
 import { type AccionesCronograma } from './PanelActividad'
 import { type AccionesEnLote } from './AccionesMasivas'
 
@@ -59,6 +61,7 @@ export function TabCronograma({
   hoy,
   hhPorActividad,
   cambiarEstado,
+  partesPorActividad,
 }: {
   /** El cronograma vivo: las NO archivadas, en el orden del tracker. */
   actividades: Actividad[]
@@ -91,6 +94,8 @@ export function TabCronograma({
   /** Mover una actividad de estado desde el tablero. Sin ella el tablero no se dibuja: mostrar
    *  columnas que no se pueden mover es prometer una acción que no existe. */
   cambiarEstado?: (actividadId: string, estado: string) => Promise<ResultadoAccion>
+  /** Los partes de ejecución, indexados por actividad. El panel muestra los últimos. */
+  partesPorActividad?: Map<string, ParteEjecucion[]>
 }) {
   const router = useRouter()
   const params = useSearchParams()
@@ -162,6 +167,7 @@ export function TabCronograma({
             yaSellada={yaSellada}
             seleccionInicial={actividadAbierta}
             hhPorActividad={hhPorActividad}
+            partesPorActividad={partesPorActividad}
             {...(hoy ? { hoy } : {})}
           />
           {archivadas.length > 0 && restaurarActividad && (
@@ -193,6 +199,14 @@ export function TabCronograma({
           {...(hoy ? { hoy } : {})}
         />
       ) : null}
+
+      {/* AL PIE Y NO ARRIBA: el plan es el trabajo y va primero. Estas cifras se leen al terminar
+          de mirarlo, y salen de las MISMAS actividades que se acaban de dibujar. */}
+      <FranjaObra
+        r={resumenDelPlan(actividades, restricciones, (hoy ?? new Date()).toISOString().slice(0, 10),
+          Number(ventanaActual))}
+        semanas={Number(ventanaActual)}
+      />
     </div>
   )
 }

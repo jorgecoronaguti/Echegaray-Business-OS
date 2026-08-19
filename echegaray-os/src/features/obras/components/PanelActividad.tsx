@@ -26,7 +26,7 @@
 
 import { useState } from 'react'
 import { BotonAccion, Campo, CTRL, FormAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
-import type { Actividad, Dependencia, Persona, Restriccion } from '../types'
+import type { Actividad, Dependencia, ParteEjecucion, Persona, Restriccion } from '../types'
 import type { ActividadHH } from '../services/personalService'
 import { METODO_LABEL, TIPO_DEPENDENCIA, TIPO_DEPENDENCIA_LABEL, UNIDADES } from '../types'
 import { fecha } from './formato'
@@ -258,71 +258,111 @@ function ImpedimentosDe({ abiertos }: { abiertos: Restriccion[] }) {
  * `origen_avance` viene calculado de la base y se muestra al lado del número: es la respuesta a
  * «¿de dónde salió este 53%?» sin tener que ir a buscarla.
  */
-function BloqueMedicion({ a, definir }: { a: Actividad; definir?: AccionFormulario }) {
-  const num = (n: number | null) => (n == null ? null : n.toLocaleString('es-AR', { maximumFractionDigits: 2 }))
-  return (
-    <details className="rounded-md border border-line bg-surface px-3 py-2" data-testid="bloque-medicion">
-      <summary className="cursor-pointer text-[12px] text-muted">
-        Medición y ejecución
-        {a.avance_pct != null && (
-          <span className="ml-2 tabular-nums text-ink">{num(a.avance_pct)}%</span>
-        )}
-        {a.origen_avance && (
-          <span className="ml-1.5 text-[11px] text-faint">
-            ({a.origen_avance === 'cantidad' ? 'calculado' : a.origen_avance === 'partes' ? 'de los partes' : 'declarado'})
-          </span>
-        )}
-      </summary>
+function BloqueMedicion({ a, definir, partes = [] }: {
+  a: Actividad
+  definir?: AccionFormulario
+  partes?: ParteEjecucion[]
+}) {
+  const n = (v: number | null) => (v == null ? null : v.toLocaleString('es-AR', { maximumFractionDigits: 2 }))
+  const Dato = ({ k, v }: { k: string; v: React.ReactNode }) => (
+    <>
+      <dt className="truncate text-faint">{k}</dt>
+      <dd className="text-right tabular-nums text-ink">{v ?? <span className="text-faint">sin cargar</span>}</dd>
+    </>
+  )
 
-      <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[12px]">
-        <dt className="text-faint">Ejecutado</dt>
-        <dd className="text-right tabular-nums text-ink">
-          {a.metodo_avance === 'cantidad'
-            ? `${num(a.cantidad_ejecutada ?? 0)} / ${num(a.cantidad_objetivo)} ${a.unidad ?? ''}`
-            : `${a.n_partes} parte(s)`}
-        </dd>
-        <dt className="text-faint">HH imputadas</dt>
-        <dd className="text-right tabular-nums text-ink">{num(a.hh_real) ?? <span className="text-faint">—</span>}</dd>
-        {/* LA PRODUCTIVIDAD EXISTE SÓLO CON LAS DOS PUNTAS. Con una sola sería una división por un
-            dato que falta, no un indicador bajo — y así es como una obra sana parece improductiva. */}
-        {a.productividad != null && (
-          <>
-            <dt className="text-faint">Productividad</dt>
-            <dd className="text-right tabular-nums text-ink">{num(a.productividad)} {a.unidad}/HH</dd>
-          </>
-        )}
-      </dl>
+  return (
+    <div data-testid="bloque-medicion" className="space-y-2">
+      {/* PLAN Y REAL ENFRENTADOS. Es la pregunta del panel —¿cómo viene contra lo previsto?— y por
+          eso se lee sin abrir nada. Dos listas una debajo de la otra obligan a recordar el número
+          de arriba mientras se lee el de abajo. */}
+      <div className="grid grid-cols-2 gap-2">
+        <section className="rounded-md border border-line bg-surface px-2.5 py-2">
+          <p className="mb-1 text-[10px] uppercase tracking-wide text-faint">Plan</p>
+          <dl className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[12px]">
+            <Dato k="Unidad" v={a.unidad} />
+            <Dato k="Objetivo" v={n(a.cantidad_objetivo)} />
+            <Dato k="HH plan" v={n(a.hh_plan)} />
+          </dl>
+        </section>
+        <section className="rounded-md border border-line bg-surface px-2.5 py-2">
+          <p className="mb-1 text-[10px] uppercase tracking-wide text-faint">Real</p>
+          <dl className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[12px]">
+            <Dato
+              k="Ejecutado"
+              v={a.metodo_avance === 'cantidad' ? n(a.cantidad_ejecutada ?? 0) : `${a.n_partes} parte(s)`}
+            />
+            <Dato k="Avance" v={a.avance_pct == null ? null : `${n(a.avance_pct)}%`} />
+            <Dato k="HH reales" v={n(a.hh_real)} />
+            {/* LA PRODUCTIVIDAD EXISTE SÓLO CON LAS DOS PUNTAS. Con una sola sería una división por
+                un dato que falta, no un indicador bajo — así es como una obra sana parece
+                improductiva. */}
+            {a.productividad != null && <Dato k="Prod." v={`${n(a.productividad)} ${a.unidad}/HH`} />}
+          </dl>
+        </section>
+      </div>
+
+      {/* DE DÓNDE SALIÓ EL AVANCE. Un 53% calculado desde 95 de 180 m² y un 53% que alguien tipeó no
+          valen lo mismo, y quien decide tiene que poder distinguirlos sin ir a buscarlo. */}
+      {a.origen_avance && (
+        <p className="text-[11px] text-faint" data-testid="origen-avance">
+          Avance {a.origen_avance === 'cantidad'
+            ? 'calculado desde la producción cargada'
+            : a.origen_avance === 'partes' ? 'sumado de los partes diarios' : 'declarado a mano'}.
+        </p>
+      )}
+
+      {partes.length > 0 && (
+        <section data-testid="ejecucion-reciente">
+          <p className="mb-1 text-[10px] uppercase tracking-wide text-faint">Ejecución reciente</p>
+          <ul className="divide-y divide-line/60 rounded-md border border-line bg-surface">
+            {partes.slice(0, 4).map((p) => (
+              <li key={p.id} className="flex items-baseline justify-between gap-2 px-2.5 py-1 text-[12px]">
+                <span className="tabular-nums text-faint">{fecha(p.fecha)}</span>
+                <span className="min-w-0 flex-1 truncate text-muted">{p.comentario ?? ''}</span>
+                <span className="shrink-0 tabular-nums text-ink">
+                  {p.cantidad != null ? `+${n(p.cantidad)} ${a.unidad ?? ''}` : `+${n(p.avance_pct)}%`}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {definir && (
-        <div className="mt-2 border-t border-line pt-2">
-          <FormAccion accion={definir} testid="form-medicion" enviar="Guardar" mensajeOk="Guardado.">
-            <div className="grid grid-cols-2 gap-2">
-              <Campo label="Unidad">
-                <input name="unidad" defaultValue={a.unidad ?? ''} list="unidades-obra" maxLength={12} className={CTRL} />
-              </Campo>
-              <Campo label="Cantidad objetivo">
-                <input name="cantidad_objetivo" type="number" step="any" min="0" defaultValue={a.cantidad_objetivo ?? ''} className={CTRL} />
-              </Campo>
-              <Campo label="Cómo se mide el avance" ancho="col-span-2">
-                <select name="metodo_avance" defaultValue={a.metodo_avance} className={CTRL} data-testid="metodo-avance">
-                  {(Object.keys(METODO_LABEL) as (keyof typeof METODO_LABEL)[]).map((m) => (
-                    <option key={m} value={m}>{METODO_LABEL[m]}</option>
-                  ))}
-                </select>
-              </Campo>
-            </div>
-            <datalist id="unidades-obra">
-              {UNIDADES.map((u) => <option key={u} value={u} />)}
-            </datalist>
-          </FormAccion>
-        </div>
+        <details className="rounded-md border border-line bg-surface px-2.5 py-1.5">
+          <summary className="cursor-pointer text-[12px] text-muted">Cómo se mide esta actividad</summary>
+          <div className="mt-2">
+            <FormAccion accion={definir} testid="form-medicion" enviar="Guardar" mensajeOk="Guardado.">
+              <div className="grid grid-cols-2 gap-2">
+                <Campo label="Unidad">
+                  <input name="unidad" defaultValue={a.unidad ?? ''} list="unidades-obra" maxLength={12} className={CTRL} />
+                </Campo>
+                <Campo label="Cantidad objetivo">
+                  <input name="cantidad_objetivo" type="number" step="any" min="0" defaultValue={a.cantidad_objetivo ?? ''} className={CTRL} />
+                </Campo>
+                <Campo label="Cómo se mide el avance" ancho="col-span-2">
+                  <select name="metodo_avance" defaultValue={a.metodo_avance} className={CTRL} data-testid="metodo-avance">
+                    {(Object.keys(METODO_LABEL) as (keyof typeof METODO_LABEL)[]).map((m) => (
+                      <option key={m} value={m}>{METODO_LABEL[m]}</option>
+                    ))}
+                  </select>
+                </Campo>
+              </div>
+              <datalist id="unidades-obra">
+                {UNIDADES.map((u) => <option key={u} value={u} />)}
+              </datalist>
+            </FormAccion>
+          </div>
+        </details>
       )}
-    </details>
+    </div>
   )
 }
 
 export function PanelActividad({
   actividad, personas, acciones, alCerrar, actividades = [], dependencias = [], impedimentos = [], hh,
+  partes = [],
 }: {
   actividad: Actividad
   personas: Persona[]
@@ -337,6 +377,8 @@ export function PanelActividad({
    *  ella el panel dice «sin imputar» en vez de romperse, que es lo que hace el resto de los props
    *  de este árbol. */
   hh?: ActividadHH
+  /** Los últimos partes de ESTA actividad. Sin ellos el bloque no dibuja la lista. */
+  partes?: ParteEjecucion[]
 }) {
   const a = actividad
   return (
@@ -376,6 +418,7 @@ export function PanelActividad({
           <ImpedimentosDe abiertos={impedimentos} />
           <BloqueMedicion
             a={a}
+            partes={partes}
             definir={acciones.definirMedicion ? acciones.definirMedicion.bind(null, a.id) : undefined}
           />
           {/* EL AVANCE RÁPIDO SÓLO CUANDO EL AVANCE ES DECLARADO. En una actividad que se mide por

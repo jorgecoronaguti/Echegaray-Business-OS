@@ -1,7 +1,12 @@
-// EL LISTADO DE PERSONAL — cinco columnas, y ninguna de más.
+// EL LISTADO DE PERSONAL — y ninguna columna de más.
 //
 // El dueño, textual: *"PERSONA | CATEGORÍA | CUADRILLA | OBRA ACTUAL | ESTADO. Nada más. NO mostrar
 // en la tabla DNI, CUIL, sueldo, teléfono, documentación ni métricas."*
+//
+// Después pidió las fechas: *"una columna que indique fecha de alta en activos y de alta y baja en
+// inactivos"*. ALTA está siempre. BAJA sólo en el filtro Inactivos, que es donde significa algo: en
+// el plantel esa columna sería un guión en las diecisiete filas, y una columna que nunca tiene dato
+// es ancho gastado en no decir nada.
 //
 // No es sólo una decisión visual: lo que la tabla no muestra tampoco se pide a la base. El listado
 // sale de `persona_directorio`, que no publica documento ni retribución, así que ese dato no viaja
@@ -13,7 +18,20 @@
 import Link from 'next/link'
 import { esCategoriaDeConvenio, etiquetaCategoria, type PersonaEnDirectorio } from '../types'
 
-export function TablaPersonas({ personas }: { personas: PersonaEnDirectorio[] }) {
+/** dd/mm/aaaa. Una fecha sin cargar se dice, no se dibuja como un guión que puede leerse como cero. */
+function fecha(iso: string | null) {
+  if (!iso) return <span className="text-faint">sin cargar</span>
+  const [a, m, d] = iso.slice(0, 10).split('-')
+  return <span className="tabular-nums">{`${d}/${m}/${a}`}</span>
+}
+
+export function TablaPersonas({
+  personas, conBaja = false,
+}: {
+  personas: PersonaEnDirectorio[]
+  /** El listado de Inactivos agrega la fecha de baja. */
+  conBaja?: boolean
+}) {
   if (personas.length === 0) {
     return (
       <p data-testid="personas-vacio" className="px-1 py-6 text-[13px] text-muted">
@@ -24,13 +42,15 @@ export function TablaPersonas({ personas }: { personas: PersonaEnDirectorio[] })
 
   return (
     <div className="overflow-x-auto rounded-xl border border-line bg-white">
-      <table data-testid="tabla-personas" className="w-full min-w-[680px] text-left">
+      <table data-testid="tabla-personas" className="w-full min-w-[820px] text-left">
         <thead>
           <tr className="border-b border-line text-[10px] uppercase tracking-wide text-faint">
             <th className="px-3.5 py-2 font-medium">Persona</th>
             <th className="px-3 py-2 font-medium">Categoría</th>
             <th className="px-3 py-2 font-medium">Cuadrilla</th>
             <th className="px-3 py-2 font-medium">Obra actual</th>
+            <th className="px-3 py-2 font-medium">Alta</th>
+            {conBaja && <th className="px-3 py-2 font-medium">Baja</th>}
             <th className="px-3 py-2 font-medium">Estado</th>
           </tr>
         </thead>
@@ -82,6 +102,15 @@ export function TablaPersonas({ personas }: { personas: PersonaEnDirectorio[] })
                     )
                   : <span className="text-faint">sin asignar</span>}
               </td>
+              <td className="px-3 py-2 text-[12px] text-muted">{fecha(p.fecha_ingreso)}</td>
+              {conBaja && (
+                <td className="px-3 py-2 text-[12px] text-muted">
+                  {/* SE FUE SIN FECHA NO ES LO MISMO QUE NO SE FUE. De los 45 legajos cerrados, 22
+                      no tienen baja documentada: decir «sin papel de baja» es el dato, y un guión
+                      ahí haría pensar que falta cargarla cuando lo que falta es el papel. */}
+                  {p.fecha_egreso ? fecha(p.fecha_egreso) : <span className="text-faint">sin papel de baja</span>}
+                </td>
+              )}
               <td className="px-3 py-2 text-[12px]">
                 {/* EL ESTADO SALE DE `en_la_empresa`, NO DE LA FECHA: hay 15 personas que se
                     fueron sin baja documentada y por la fecha figurarían activas. */}

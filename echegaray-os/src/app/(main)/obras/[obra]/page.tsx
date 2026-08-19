@@ -177,7 +177,16 @@ export default async function ObraPage({
   const necesitaCuadrillas = vista === 'personal' || vista === 'ejecucion'
   const cuadrillas = necesitaCuadrillas ? await getCuadrillas(supabase) : []
   const integrantes = vista === 'ejecucion' ? await getIntegrantesPorCuadrilla(supabase) : {}
-  const partes = vista === 'ejecucion' ? (await getPartes(supabase, obraId)).data ?? [] : []
+  // Los partes también en Planificación: el panel de la actividad muestra su ejecución reciente, que
+  // es lo que contesta «¿cómo viene?» sin salir del cronograma.
+  const partes = vista === 'ejecucion' || vista === 'cronograma'
+    ? (await getPartes(supabase, obraId)).data ?? [] : []
+  const partesPorActividad = new Map<string, typeof partes>()
+  for (const p of partes) {
+    const previos = partesPorActividad.get(p.actividad_id) ?? []
+    previos.push(p)
+    partesPorActividad.set(p.actividad_id, previos)
+  }
   const certificados = vista === 'economia' ? (await getCertificados(supabase, obraId)).data ?? [] : []
   const documentos = vista === 'documentos' ? (await getDocumentos(supabase, obraId)).data ?? [] : []
   // Operación trae sus cuatro listas de una sola vez: las cuatro se atan a la obra por el MISMO
@@ -300,6 +309,7 @@ export default async function ObraPage({
           }}
           restaurarActividad={archivarActividad.bind(null, obraId)}
           cambiarEstado={cambiarEstado.bind(null, obraId)}
+          partesPorActividad={partesPorActividad}
         />
       )}
 
