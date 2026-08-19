@@ -120,24 +120,49 @@ function SelectActividad({ actividades }: { actividades: Actividad[] }) {
 
 /** CARGA A: una persona, un día. */
 export function FormIndividual({
-  personas, actividades, imputar,
+  personas, asignadas, actividades, imputar,
 }: {
   personas: Persona[]
+  /** Los ids de quienes están asignados a ESTA obra hoy. Se muestran primero. */
+  asignadas?: string[]
   actividades: Actividad[]
   imputar: AccionFormulario
 }) {
+  // ═══ LOS DE ESTA OBRA ARRIBA, EL RESTO DEL PLANTEL DESPUÉS (19/08/2026, QA) ═══
+  //
+  // La lista traía las 30 personas de la empresa en un solo bloque alfabético, así que imputarle
+  // horas a alguien que no trabaja en esta obra era tan fácil como imputárselas al de al lado. No
+  // se recorta la lista —a veces hay que cargarle horas a alguien que todavía no está asignado, y
+  // esconderlo obligaría a salir de la pantalla—: se separa en dos grupos, y el que se usa todos
+  // los días queda primero.
+  const enLaObra = new Set(asignadas ?? [])
+  const acá = personas.filter((p) => enLaObra.has(p.id))
+  const resto = personas.filter((p) => !enLaObra.has(p.id))
   return (
     <FormAccion accion={imputar} testid="form-hh" enviar="Imputar" limpiarAlOk mensajeOk="Horas imputadas.">
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
         <Campo label="Persona" ancho="col-span-2">
           <select name="persona_id" required defaultValue="" className={CTRL}>
             <option value="" disabled>elegir del plantel</option>
-            {personas.map((p) => <option key={p.id} value={p.id}>{p.nombre_completo}</option>)}
+            {acá.length > 0 && (
+              <optgroup label="En esta obra">
+                {acá.map((p) => <option key={p.id} value={p.id}>{p.nombre_completo}</option>)}
+              </optgroup>
+            )}
+            {resto.length > 0 && (
+              <optgroup label={acá.length > 0 ? 'Resto del plantel' : 'Plantel'}>
+                {resto.map((p) => <option key={p.id} value={p.id}>{p.nombre_completo}</option>)}
+              </optgroup>
+            )}
           </select>
         </Campo>
         <Campo label="Día"><input type="date" name="fecha" required className={CTRL} /></Campo>
         <Campo label="Horas">
-          <input type="number" name="horas" required min="0.5" max="24" step="0.5" className={CTRL} />
+          {/* JORNADA COMPLETA POR DEFECTO, igual que la carga masiva: medido por QA, la carga de a
+              una persona pedía tipear el número a mano y era el único campo que no se podía dejar
+              como venía. Ocho es lo que sale en la enorme mayoría de las filas; el que hizo media
+              jornada lo corrige, que es un caso y no la regla. */}
+          <input type="number" name="horas" required min="0.5" max="24" step="0.5" defaultValue="8" className={CTRL} />
         </Campo>
         <Campo label="Actividad" ancho="col-span-2" ayuda="Opcional: en blanco quedan imputadas a la obra entera.">
           <SelectActividad actividades={actividades} />

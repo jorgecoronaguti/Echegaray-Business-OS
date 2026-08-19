@@ -37,7 +37,7 @@ const asignacionSchema = z.object({
   notas: z.string().trim().max(300).optional(),
 })
 
-const YA_ASIGNADA = 'Esa persona ya está asignada a esta obra (o a esa misma actividad).'
+const YA_ASIGNADA = 'Esa persona ya está asignada a esta obra (o a esa misma actividad) y sigue vigente.'
 
 export async function asignarPersona(obraId: string, form: FormData): Promise<Resultado> {
   const parsed = asignacionSchema.safeParse(Object.fromEntries(form))
@@ -55,8 +55,16 @@ export async function asignarPersona(obraId: string, form: FormData): Promise<Re
     hasta: d.hasta || null,
     notas: d.notas || null,
   })
-  // El índice único `obra_asignacion_unica` impide asignar dos veces a la misma persona a lo mismo.
-  // Se traduce, porque "duplicate key value violates unique constraint" no le dice nada a un jefe.
+  // ═══ EL ÚNICO AHORA ES SOBRE LA ASIGNACIÓN **VIGENTE** (19/08/2026) ═══
+  //
+  // Antes el índice miraba (obra, persona, actividad) sin importar si el período estaba cerrado, así
+  // que alguien que trabajó en marzo, se fue, y volvió en junio chocaba con 23505: la pantalla decía
+  // "ya está asignada" y la única salida era REABRIR la vieja, que borra los dos meses que estuvo
+  // afuera. El módulo prometía que el historial no se pisa y el índice obligaba a pisarlo.
+  //
+  // Con `obra_asignacion_una_vigente … where hasta is null`, volver a asignar a alguien que ya se
+  // fue es un alta normal y el período anterior queda intacto. El 23505 ahora significa lo que dice:
+  // esa persona está asignada AHORA MISMO a eso.
   if (error) return { ok: false, error: error.code === '23505' ? YA_ASIGNADA : error.message }
   revalidatePath(`/obras/${obraId}`)
   return { ok: true }

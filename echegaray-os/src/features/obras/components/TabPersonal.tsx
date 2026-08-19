@@ -242,7 +242,8 @@ export function TabPersonal({
           + Imputar horas a una persona
         </summary>
         <div className="border-t border-line p-4">
-          <FormIndividual personas={personas} actividades={actividades} imputar={imputar} />
+          <FormIndividual personas={personas} asignadas={asignaciones.map((a) => a.persona_id)}
+            actividades={actividades} imputar={imputar} />
         </div>
       </details>
 
