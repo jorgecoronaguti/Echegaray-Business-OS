@@ -1,0 +1,21 @@
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════
+-- SE COMPLETA EL RETIRO DE `obra_actividad.hh_real` (segundo paso)
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════
+--
+-- `20260819T2500` la devolvió VACÍA a propósito: la base se cambia antes que el código, y entre las
+-- dos cosas el código vivo todavía mandaba la columna en cada alta y edición de actividad. Borrarla
+-- ahí habría dejado `PGRST204` en las ocho obras.
+--
+-- Ese paso ya pasó: el despliegue está vivo y verificado contra producción el 19/08/2026
+-- (`tests/gantt-ancho.spec.ts` + `tests/personal-hh.spec.ts`, 6/6 en verde contra
+-- https://app.ecsas.com.ar). Antes de esta migración se midió, no se supuso:
+--
+--   obra_actividad: 348 filas · hh_real con dato: 0
+--   vistas que dependen de la columna: ninguna (pg_depend sobre el atributo)
+--
+-- Las tres vistas que publican `hh_real` (`obra_panel`, `obra_actividad_hh`) lo calculan sumando
+-- `registros_hh` — el nombre coincide, la fuente no es ésta. Por eso el DROP no las toca.
+--
+-- HH real por actividad tiene desde hoy UN solo cálculo: `obra_actividad_hh`.
+
+alter table public.obra_actividad drop column if exists hh_real;
