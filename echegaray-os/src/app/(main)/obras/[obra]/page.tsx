@@ -80,7 +80,7 @@ import { getPerfilActual } from '@/features/auth/services/authService'
 import { TabEconomia } from '@/features/obras/components/TabEconomia'
 import { TabDocumentos } from '@/features/obras/components/TabDocumentos'
 import {
-  asignarActividadADocumento, desvincularDocumento, vincularDocumento,
+  asignarActividadADocumento, desvincularDocumento, soltarDocumentoDeActividad, vincularDocumento,
 } from '@/features/obras/services/actionsDocumentos'
 import { fecha as fmtFecha } from '@/features/obras/components/formato'
 import { BotonAccion, FormAccion, PageShell } from '@/shared/components/ui'
@@ -394,7 +394,7 @@ export default async function ObraPage({
             crearImpedimento: crearImpedimento.bind(null, obraId),
             liberarImpedimento: liberarImpedimento.bind(null, obraId),
             vincularDocumento: vincularDocumento.bind(null, obraId),
-            soltarDocumento: (driveFileId: string) => asignarActividadADocumento(obraId, driveFileId, ''),
+            soltarDocumento: soltarDocumentoDeActividad.bind(null, obraId),
             moverDeRubro: moverActividadDeRubro.bind(null, obraId),
           }}
           accionesPlan={{

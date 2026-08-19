@@ -90,6 +90,11 @@ test('cronograma: la actividad creada desde el Gantt se edita, recibe avance y s
     await expect(page.getByTestId('avance-valor')).toHaveValue('50')
 
     // ── ARCHIVAR NO ES BORRAR ───────────────────────────────────────────────
+    // ARCHIVAR VIVE DENTRO DE «Editar la actividad» desde el 20/08, y hay que abrirlo. No es un
+    // rodeo del test: archivar cambia la DEFINICIÓN de la actividad, no su avance del día, y
+    // dejarlo suelto en el panel ponía un botón destructivo al lado del que se aprieta todos los
+    // días. El panel muestra arriba lo que se mira y esconde lo que se decide.
+    await page.locator('summary', { hasText: 'Editar la actividad' }).click()
     await page.getByTestId('archivar-actividad').click()
     await expect(async () => {
       const { data } = await sb.from('obra_actividad').select('archivada, pct').eq('id', guardada.id).single()

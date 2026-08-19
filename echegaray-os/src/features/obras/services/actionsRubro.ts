@@ -97,8 +97,11 @@ export async function renombrarRubro(obraId: string, anterior: string, form: For
 
   // LAS HIJAS VAN SÍ O SÍ. Si esto falla después de renombrar la cabecera, el rubro queda partido —
   // por eso se dice, en vez de devolver un ok que taparía un cronograma con dos grupos.
+  // `editado_a_mano` TAMBIÉN EN LAS HIJAS, y no es un detalle. `sync-obra-cronograma` se saltea
+  // sólo las filas marcadas: sin esto, la próxima corrida del tracker devolvería la `seccion` vieja
+  // y el rubro se partiría en dos sin que nadie tocara nada.
   const { error: e2 } = await supabase.from('obra_actividad')
-    .update({ seccion: nombre }).eq('obra_id', obraId).eq('seccion', anterior)
+    .update({ seccion: nombre, editado_a_mano: true }).eq('obra_id', obraId).eq('seccion', anterior)
   if (e2) return { ok: false, error: `La cabecera se renombró pero sus actividades no: ${e2.message}` }
 
   revalidatePath(`/obras/${obraId}`)
@@ -147,9 +150,12 @@ export async function moverRubro(obraId: string, nombre: string, direccion: 'arr
       if (f.orden !== n) cambios.push({ id: f.id, orden: n })
     }
   }
+  // EL ORDEN TAMBIÉN SE PROTEGE DEL TRACKER. `sync-obra-cronograma` reescribe `orden` desde la
+  // planilla en toda fila que no esté marcada: sin esto, subir un rubro duraría hasta la próxima
+  // corrida y nadie entendería por qué «no se guardó».
   for (const c of cambios) {
     const { error: e } = await supabase.from('obra_actividad')
-      .update({ orden: c.orden }).eq('id', c.id).eq('obra_id', obraId)
+      .update({ orden: c.orden, editado_a_mano: true }).eq('id', c.id).eq('obra_id', obraId)
     if (e) return { ok: false, error: e.message }
   }
   revalidatePath(`/obras/${obraId}`)
@@ -164,11 +170,15 @@ export async function moverRubro(obraId: string, nombre: string, direccion: 'arr
  */
 export async function archivarRubro(obraId: string, nombre: string, archivar: boolean): Promise<Resultado> {
   const supabase = await createClient()
+  // `editado_a_mano` va junto con el archivado por la misma razón que en el renombrado: el
+  // sincronizador del tracker sólo respeta las filas marcadas, y sin esto un rubro archivado
+  // reaparecería en el cronograma en la próxima corrida.
   const { error: e1 } = await supabase.from('obra_actividad')
-    .update({ archivada: archivar }).eq('obra_id', obraId).eq('tipo', 'resumen').eq('nombre', nombre)
+    .update({ archivada: archivar, editado_a_mano: true })
+    .eq('obra_id', obraId).eq('tipo', 'resumen').eq('nombre', nombre)
   if (e1) return { ok: false, error: e1.message }
   const { error: e2 } = await supabase.from('obra_actividad')
-    .update({ archivada: archivar }).eq('obra_id', obraId).eq('seccion', nombre)
+    .update({ archivada: archivar, editado_a_mano: true }).eq('obra_id', obraId).eq('seccion', nombre)
   if (e2) return { ok: false, error: e2.message }
   revalidatePath(`/obras/${obraId}`)
   return { ok: true, mensaje: archivar ? `Rubro «${nombre}» archivado.` : `Rubro «${nombre}» restaurado.` }

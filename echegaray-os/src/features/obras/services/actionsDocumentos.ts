@@ -153,3 +153,17 @@ export async function asignarActividadADocumento(
   revalidatePath(`/obras/${obraId}`)
   return { ok: true }
 }
+
+/**
+ * SOLTAR UN PAPEL DE SU ACTIVIDAD, sin desvincularlo de la obra.
+ *
+ * Existe como acción propia y no como `asignarActividadADocumento(obraId, id, '')` escrito en la
+ * página porque una ARROW creada en un Server Component NO es una server action: React la rechaza en
+ * tiempo de ejecución con «Functions cannot be passed directly to Client Components» y la pantalla
+ * entera queda en blanco. Ni el typecheck ni el build lo ven —las firmas son idénticas—; sólo el
+ * navegador. Ya pasó con `crearImpedimento` el 20/08. La regla: lo que cruza a un componente cliente
+ * se ata con `.bind`, y si la forma no coincide, la acción que falta se escribe acá.
+ */
+export async function soltarDocumentoDeActividad(obraId: string, driveFileId: string): Promise<Resultado> {
+  return asignarActividadADocumento(obraId, driveFileId, '')
+}

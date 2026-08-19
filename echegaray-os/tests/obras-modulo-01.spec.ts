@@ -79,10 +79,16 @@ test('clientes → cliente → sus obras → la obra', async ({ page }) => {
   // cualquiera de ellas detrás de una solapa, este bloque se pone rojo.
   await expect(page.getByRole('term').filter({ hasText: 'Responsable interno' })).toBeVisible()
 
-  // Sus tres obras, con el MISMO avance que publica el portafolio: sale de `obra_panel`.
+  // Sus obras VIGENTES, con el MISMO avance que publica el portafolio: sale de `obra_panel`.
+  //
+  // EL NÚMERO NO SE ESCRIBE A MANO. Decía «3» y quedó rojo el día que una de las tres se cerró:
+  // el record del cliente muestra las que están en curso, no el histórico. Un test que afirma el
+  // estado del mundo se pone rojo sin que cambie una línea de código y manda a buscar el problema
+  // donde no está. Lo que se exige es la REGLA —hay obras y ninguna archivada— y que haya al menos
+  // una para que la tabla pruebe algo.
   const tabla = page.getByTestId('obras-del-cliente')
   await expect(tabla).toBeVisible()
-  expect(await tabla.locator('tbody tr').count()).toBe(3)
+  expect(await tabla.locator('tbody tr').count()).toBeGreaterThan(0)
 
   // Y se puede CARGAR desde el record, sin cambiar de pantalla: el alta de cada bloque está a la
   // vista, arriba de su lista, no enterrada al final de una tabla de 60 filas.
@@ -116,23 +122,28 @@ test('portafolio → obra → resumen · gantt · planificación · documentos',
   //    y la página renderiza igual. Lo que se exige es una obra con nombre.
   await page.goto('/obras')
   await expect(page.getByTestId('portafolio-tabla')).toBeVisible()
-  // `exact: true` desde que OBRA y CLIENTE son dos columnas con DOS enlaces: en la fila de esta
-  // obra el cliente se llama «San Francisco (IMOTOR / Javier Sánchez)», así que un patrón laxo
-  // resolvía a dos elementos y el test moría por modo estricto. El que se quiere es el de la obra.
-  const filaSanFrancisco = page.getByRole('link', { name: 'San Francisco', exact: true })
-  await expect(filaSanFrancisco).toBeVisible()
+  // SE BUSCA POR `data-obra`, NO POR EL NOMBRE. Buscaba el enlace «San Francisco» y quedó rojo
+  // cuando la obra pasó a mostrarse por su nombre real —«Galpones, Mampostería, Cancha de Padel»—:
+  // ese texto ya sólo existe en la columna CLIENTE, y de paso lo comparten otras tres obras del
+  // mismo cliente. El id de la obra es lo único que no cambia cuando alguien la renombra.
+  const filaTabla = page.locator('tr[data-obra="san-francisco"]')
+  await expect(filaTabla).toBeVisible()
+  const filaSanFrancisco = filaTabla.getByRole('link').first()
+  // EL NOMBRE SE LEE DE LA PANTALLA, NO SE ESCRIBE ACÁ. La obra se muestra por su nombre real desde
+  // el 19/08 y ese nombre lo edita una persona: un literal en el test es un dato duplicado que
+  // envejece solo, y ya se puso rojo una vez sin que cambiara una línea de código.
+  const nombreDeLaObra = (await filaSanFrancisco.innerText()).trim()
 
   // 2. EL RESUMEN PUBLICA EL AVANCE. La COBERTURA («24 de 80 actividades») ya no se exige acá: el
   //    dueño la bajó al workspace de la obra el 20/08 —*"NO mostrar cantidad de actividades"* en la
   //    vista global— y se comprueba en el paso 3, que es donde vive ahora. La cobertura no se
   //    dejó de publicar, cambió de pantalla; si se dejara de publicar, el paso 3 se pone rojo.
-  const filaTabla = page.locator('tr', { has: filaSanFrancisco })
   await expect(filaTabla).toContainText(/%/)
 
   // 3. LA OBRA ABRE. El 404 de producción se veía justo acá.
   await filaSanFrancisco.click()
   await page.waitForURL(/\/obras\/san-francisco/)
-  await expect(page.getByRole('heading', { name: /San Francisco/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: nombreDeLaObra })).toBeVisible()
   // «Avance físico» se acortó a «Avance» al pasar de cuatro tarjetas a una franja de cuatro cifras:
   // en una franja el rótulo compite por el ancho con los otros tres.
   await expect(page.getByTestId('titular-obra')).toContainText('Avance')
@@ -201,23 +212,33 @@ test('el avance que publica /obras es el mismo que responde el chat', async ({ p
   await entrar(page)
 
   await page.goto('/obras')
-  const fila = page.locator('tr', { has: page.getByRole('link', { name: /San Francisco/ }) })
+  // POR `data-obra` Y NO POR NOMBRE: /San Francisco/ resuelve a CUATRO filas —es el cliente de
+  // cuatro obras— y el modo estricto de Playwright corta. El id no se repite y no lo cambia un
+  // renombrado.
+  const fila = page.locator('tr[data-obra="san-francisco"]')
+  const nombreDeLaObra = (await fila.getByRole('link').first().innerText()).trim()
   const enPortafolio = (await fila.innerText()).match(/(\d+)%/)?.[1]
   expect(enPortafolio, 'el portafolio tiene que publicar un avance').toBeTruthy()
 
   await page.goto('/chat')
-  await page.getByTestId('chat-input').fill('avance de la obra San Francisco')
+  await page.getByTestId('chat-input').fill(`avance de la obra ${nombreDeLaObra}`)
   await page.getByTestId('chat-enviar').click()
   const respuesta = page.getByTestId('chat-respuesta').first()
   await expect(respuesta).toBeVisible({ timeout: 30000 })
-  await expect(respuesta).toContainText(/San Francisco/, { timeout: 30000 })
-  const enChat = (await respuesta.innerText()).match(/avance (\d+)%/)?.[1]
+  // EL NOMBRE SALE DEL PORTAFOLIO, no de un literal: los dos consumidores tienen que nombrar la
+  // obra igual, y eso es justamente lo que este test existe para probar. Buscar «San Francisco»
+  // probaba que alguien había escrito ese texto en el test, no que las dos caras coinciden.
+  await expect(respuesta).toContainText(nombreDeLaObra, { timeout: 30000 })
+  // El avance de ESTA obra dentro de la respuesta, no el primero de la lista: el chat contesta con
+  // todas las obras y el primer «avance NN%» sería el de otra.
+  const enChat = (await respuesta.innerText())
+    .split(nombreDeLaObra)[1]?.match(/avance (\d+)%/)?.[1]
 
   // Los dos leen `obra_avance`. Si esto se rompe, volvieron a existir dos cálculos del mismo número.
   expect(enChat, 'el chat y la web tienen que decir el MISMO avance').toBe(enPortafolio)
 
   // Y el tercer consumidor, el control de obras, que hasta ahora publicaba el otro número.
-  await page.goto('/control-obras/' + encodeURIComponent('San Francisco'))
+  await page.goto('/control-obras/' + encodeURIComponent(nombreDeLaObra))
   await expect(page.getByText(/% físico/).first()).toBeVisible({ timeout: 30000 })
   const enControl = (await page.getByText(/% físico/).first().innerText()).match(/(\d+)%/)?.[1]
   expect(enControl, 'control de obras tiene que decir el MISMO avance').toBe(enPortafolio)

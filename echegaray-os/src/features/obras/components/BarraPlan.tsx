@@ -152,7 +152,8 @@ export function BarraPlan({
           )}
           <p className="mt-2 text-[11px] text-faint">
             Archivar un rubro archiva también su trabajo: sale del cronograma y de los promedios, y
-            no se borra nada.
+            no se borra nada. Renombrar, ordenar o archivar deja esas actividades PROTEGIDAS del
+            tracker de Drive: lo que se toca acá ya no lo vuelve a pisar la planilla.
           </p>
         </div>
       )}
