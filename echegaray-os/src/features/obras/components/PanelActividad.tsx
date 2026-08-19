@@ -222,6 +222,9 @@ export function PanelActividad({
   const hoyIso = hoy.toISOString().slice(0, 10)
   const abiertos = impedimentos.filter((r) => r.estado !== 'liberada')
   const liberados = impedimentos.filter((r) => r.estado === 'liberada')
+  const responsable = a.responsable_id
+    ? (personas.find((p) => p.id === a.responsable_id)?.nombre_completo ?? null)
+    : null
 
   return (
     <>
@@ -235,21 +238,30 @@ export function PanelActividad({
       />
       <aside
         data-testid="panel-actividad"
-        className="fixed inset-x-0 bottom-0 z-40 max-h-[85vh] overflow-y-auto rounded-t-card border-t border-line bg-surface-quiet p-3 shadow-pop lg:static lg:z-auto lg:max-h-[72vh] lg:w-[33%] lg:min-w-[340px] lg:max-w-[460px] lg:shrink-0 lg:rounded-none lg:border-l lg:border-t-0 lg:shadow-none"
+        className="fixed inset-x-0 bottom-0 z-40 max-h-[85vh] overflow-y-auto rounded-t-card border-t border-line bg-surface-quiet p-3 shadow-pop lg:static lg:z-auto lg:max-h-[78vh] lg:w-[34%] lg:min-w-[400px] lg:max-w-[620px] lg:shrink-0 lg:rounded-none lg:border-l lg:border-t-0 lg:shadow-none"
       >
         {/* El tirador de la hoja. En escritorio no hay hoja que tirar. */}
         <div aria-hidden className="mx-auto mb-2 h-1 w-10 rounded-full bg-line-strong lg:hidden" />
 
+        {/* ═══ LA CABECERA CONTESTA QUÉ ES Y DE QUIÉN ES ═══
+            Nombre, estado, rubro y responsable. El responsable estaba sólo dentro del formulario de
+            edición: para saber quién la tiene a cargo había que abrir «Editar la actividad», que es
+            exactamente al revés de lo que se pregunta primero. */}
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-[14px] font-semibold leading-tight text-ink">{a.nombre}</p>
-            <p className="mt-0.5 truncate text-[11px] text-faint">
-              {[a.rubro ?? a.seccion, a.codigo].filter(Boolean).join(' · ') || 'sin rubro'}
+            <p className="text-[15px] font-semibold leading-tight text-ink">{a.nombre}</p>
+            <p className="mt-1 truncate text-[11px] text-faint">
+              <span className="text-faint">Rubro:</span>{' '}
+              <span className="text-muted">{a.rubro ?? a.seccion ?? 'sin clasificar'}</span>
+              {' · '}
+              <span className="text-faint">Responsable:</span>{' '}
+              <span className="text-muted" data-testid="panel-responsable">{responsable ?? 'sin asignar'}</span>
+              {a.codigo ? ` · ${a.codigo}` : ''}
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <EstadoChip estado={a.estado_operativo} />
-            <button type="button" onClick={alCerrar} className="text-[12px] text-muted hover:text-ink">cerrar</button>
+            <button type="button" onClick={alCerrar} aria-label="Cerrar el panel" className="text-[16px] leading-none text-muted hover:text-ink">×</button>
           </div>
         </div>
 
@@ -265,16 +277,13 @@ export function PanelActividad({
           </div>
         )}
 
+        {/* ═══ EL ORDEN DEL PANEL ES EL ORDEN DE LAS PREGUNTAS (20/08/2026) ═══
+            Arrancaba por los impedimentos: la primera lectura de CUALQUIER actividad era «no hay
+            ningún impedimento», que es la respuesta a una pregunta que todavía nadie hizo. Primero
+            va el resumen operativo —Plan contra Real—, después con quién y con qué se hace, después
+            qué pasó estos días, y recién ahí lo que la frena. Lo que se abre para HACER algo
+            —tareas, precedencias, papeles, edición— queda plegado abajo. */}
         <div className="mt-3 space-y-2.5">
-          <BloqueImpedimentosActividad
-            a={a}
-            abiertos={abiertos}
-            liberados={liberados}
-            crear={acciones.crearImpedimento}
-            liberar={acciones.liberarImpedimento}
-            hoyIso={hoyIso}
-          />
-
           <BloqueMedicion
             a={a}
             definir={acciones.definirMedicion ? acciones.definirMedicion.bind(null, a.id) : undefined}
@@ -295,6 +304,23 @@ export function PanelActividad({
             personasPorFecha={datos.hhPorFecha}
             {...(obraId ? { verTodo: `/obras/${obraId}?vista=ejecucion` } : {})}
           />
+
+          <BloqueImpedimentosActividad
+            a={a}
+            abiertos={abiertos}
+            liberados={liberados}
+            crear={acciones.crearImpedimento}
+            liberar={acciones.liberarImpedimento}
+            hoyIso={hoyIso}
+          />
+
+          <BloqueNotas
+            notas={datos.notas}
+            agregar={acciones.agregarNota ? acciones.agregarNota.bind(null, a.id) : undefined}
+            borrar={acciones.borrarNota}
+          />
+
+          {/* ── DE ACÁ PARA ABAJO, LO QUE SE ABRE CUANDO SE VA A HACER ALGO ────────── */}
 
           {/* Las tareas SÓLO en una actividad: una tarea no tiene tareas. */}
           {!a.actividad_padre_id && (
@@ -318,12 +344,6 @@ export function PanelActividad({
             documentos={datos.documentos}
             vincular={acciones.vincularDocumento}
             soltar={acciones.soltarDocumento}
-          />
-
-          <BloqueNotas
-            notas={datos.notas}
-            agregar={acciones.agregarNota ? acciones.agregarNota.bind(null, a.id) : undefined}
-            borrar={acciones.borrarNota}
           />
 
           <details className="rounded-md border border-line bg-surface px-2.5 py-1.5">

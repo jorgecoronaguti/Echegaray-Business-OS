@@ -59,7 +59,7 @@ import {
 } from '@/features/obras/services/recursosService'
 import { borrarHH, imputarHH, imputarHHMasivo } from '@/features/obras/services/actionsHH'
 import { borrarCertificado, crearCertificado } from '@/features/obras/services/actionsContrato'
-import { ETAPAS, ETAPA_LABEL } from '@/features/obras/types'
+import { ETAPAS, ETAPA_LABEL, type Etapa } from '@/features/obras/types'
 import { CamposObra } from '@/features/obras/components/CamposObra'
 import { TabResumen } from '@/features/obras/components/TabResumen'
 import { TabCronograma } from '@/features/obras/components/TabCronograma'
@@ -285,18 +285,33 @@ export default async function ObraPage({
   ) : obra.cliente_texto ? (
     <>{obra.cliente_texto} <span className="text-faint">· sin ficha de cliente vinculada</span></>
   ) : null
-  // EL PLAZO VA EN LA CABECERA. «¿De cuándo a cuándo es esta obra?» se pregunta antes de mirar nada
-  // más, y hasta hoy había que abrir Resumen para contestarla. Sin fechas se dice «sin fechas de
-  // plan»: un guión solo se leería como que la obra empieza hoy.
-  const plazo = obra.fecha_inicio_plan || obra.fecha_fin_plan
-    ? `${fmtFecha(obra.fecha_inicio_plan)} → ${fmtFecha(obra.fecha_fin_plan)}`
-    : 'sin fechas de plan'
-  const contexto = (
-    <span data-testid="cabecera-obra">
-      {deQuien}{deQuien ? ' · ' : ''}
-      <span className="text-muted">{plazo}</span>
-      {archivada && <> · <span className="text-faint" data-testid="obra-archivada">archivada</span></>}
+  // ═══ LA CABECERA ROTULA CADA DATO (20/08/2026) ═══
+  //
+  // Decía «La Estrella · 06/07/26 → 22/08/26»: cuatro datos distintos separados por puntos, donde
+  // el que mira tiene que adivinar cuál es el cliente, cuál la etapa y cuál de las dos fechas es el
+  // fin. El dueño lo pidió rotulado —«Cliente: · Etapa: · Inicio: · Fin plan:»— y rotulado se lee
+  // sin pensar. Cada campo dice qué le falta por su nombre: una fecha vacía es «sin fecha», nunca
+  // un guión suelto que se leería como «hoy».
+  const etapaLabel = obra.etapa
+    ? (ETAPA_LABEL[obra.etapa as Etapa] ?? obra.etapa)
+    : 'sin declarar'
+  const Campo = ({ k, children }: { k: string; children: React.ReactNode }) => (
+    <span className="whitespace-nowrap">
+      <span className="text-faint">{k}:</span> <span className="text-ink">{children}</span>
     </span>
+  )
+  const contexto = (
+    <div data-testid="cabecera-obra" className="flex flex-wrap items-center gap-x-5 gap-y-1">
+      {deQuien && <Campo k="Cliente">{deQuien}</Campo>}
+      <Campo k="Etapa">{etapaLabel}</Campo>
+      <Campo k="Inicio">
+        <span className="tabular-nums">{obra.fecha_inicio_plan ? fmtFecha(obra.fecha_inicio_plan) : 'sin fecha'}</span>
+      </Campo>
+      <Campo k="Fin plan">
+        <span className="tabular-nums">{obra.fecha_fin_plan ? fmtFecha(obra.fecha_fin_plan) : 'sin fecha'}</span>
+      </Campo>
+      {archivada && <span className="rounded border border-line px-1.5 py-[1px] text-[11px] text-faint" data-testid="obra-archivada">archivada</span>}
+    </div>
   )
   const subtitulo = contexto
 

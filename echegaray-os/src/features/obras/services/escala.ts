@@ -10,7 +10,13 @@
 const DIA = 86400000
 
 export type Escala = 'semana' | 'mes'
-export const PX_POR_DIA: Record<Escala, number> = { semana: 13, mes: 4 }
+// ═══ EL PISO DE LA ESCALA ES UN PISO, NO UN OBJETIVO (20/08/2026) ═══
+//
+// «semana» estaba en 13 px por día: una obra de dos meses medía 1.040 px de lienzo, y con el panel
+// de actividad abierto el calendario tiene ~600. Resultado: se abría el Gantt y no se veía una sola
+// barra hasta arrastrar. Con 9 el mismo plan entra casi entero y el estiramiento de `construirEscala`
+// se encarga del resto cuando sobra lugar — que es el caso normal con el panel cerrado.
+export const PX_POR_DIA: Record<Escala, number> = { semana: 9, mes: 4 }
 
 const aDate = (iso: string) => new Date(iso + 'T00:00:00Z')
 const isoDe = (d: Date) => d.toISOString().slice(0, 10)

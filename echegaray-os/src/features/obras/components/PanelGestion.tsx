@@ -161,8 +161,12 @@ export function BloqueNotas({ notas, agregar, borrar }: {
 }) {
   if (!agregar && notas.length === 0) return null
   return (
-    <Plegable titulo="Notas" cuenta={notas.length} testid="bloque-notas">
-      <ul className="space-y-1.5">
+    // LAS NOTAS SE VEN, NO SE ABREN. Eran un plegable más al final: una nota que hay que descubrir
+    // no la lee nadie, y el campo para escribirla estaba a dos clics. Es el último bloque del panel
+    // y el más simple que hay: texto, quién y cuándo.
+    <section className="rounded-md border border-line bg-surface px-2.5 py-2" data-testid="bloque-notas">
+      <Rotulo cuenta={notas.length}>Notas</Rotulo>
+      <ul className="mt-1.5 space-y-1.5">
         {notas.slice(0, 8).map((n) => (
           <li key={n.id} className="text-[12px]" data-testid="nota-actividad">
             <div className="flex items-start justify-between gap-2">
@@ -183,7 +187,7 @@ export function BloqueNotas({ notas, agregar, borrar }: {
           </FormAccion>
         </div>
       )}
-    </Plegable>
+    </section>
   )
 }
 

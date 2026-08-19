@@ -56,7 +56,7 @@ export function AppHeader({
     <header className="sticky top-0 z-30 border-b border-line bg-surface" data-testid="app-header">
       {/* UNA SOLA LÍNEA, 48px. `h-12` es 6 unidades de la grilla de 8: el header es andamiaje, no
           contenido, y cada píxel que ocupa se lo saca a la tabla que la persona vino a leer. */}
-      <div className="mx-auto flex h-12 max-w-[1400px] items-center gap-1 px-4 sm:px-6">
+      <div className="mx-auto flex h-12 w-full max-w-[2560px] items-center gap-1 px-4 sm:px-6 lg:px-8">
         {/* LA MARCA REAL, NO SU NOMBRE ESCRITO (18/08/2026). El isotipo es el archivo oficial del
             dueño —Drive · "logo y colores de la empresa" · `LOGO REDONDO.png`, con transparencia—,
             no un redibujo mío: una marca redibujada a ojo es una marca distinta.

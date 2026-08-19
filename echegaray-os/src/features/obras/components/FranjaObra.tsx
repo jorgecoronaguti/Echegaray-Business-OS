@@ -30,12 +30,12 @@ function Cifra({
 }) {
   return (
     <div className="min-w-0">
-      <p className="truncate text-[10px] uppercase tracking-wide text-faint">{rotulo}</p>
-      <p className={`text-[17px] font-semibold leading-tight tabular-nums ${tono === 'neg' ? 'text-neg' : 'text-ink'}`}>
+      <p className="truncate text-[11px] uppercase tracking-wide text-faint">{rotulo}</p>
+      <p className={`mt-0.5 text-[24px] font-semibold leading-tight tabular-nums ${tono === 'neg' ? 'text-neg' : 'text-ink'}`}>
         {/* SIN CARGAR NO ES CERO. Un 0 acá diría que la obra no avanzó, o que no consumió horas. */}
-        {valor ?? <span className="text-[13px] font-normal text-faint">sin cargar</span>}
+        {valor ?? <span className="text-[14px] font-normal text-faint">sin cargar</span>}
       </p>
-      {nota && <p className="truncate text-[11px] text-muted">{nota}</p>}
+      {nota && <p className="mt-0.5 truncate text-[11px] text-muted">{nota}</p>}
     </div>
   )
 }
@@ -45,7 +45,7 @@ export function FranjaObra({ r, semanas = 2 }: { r: ResumenDelPlan; semanas?: nu
   return (
     <section
       data-testid="franja-obra"
-      className="grid grid-cols-2 gap-x-6 gap-y-3 rounded-card border border-line bg-surface px-4 py-3 sm:grid-cols-3 lg:grid-cols-6"
+      className="grid grid-cols-2 gap-x-8 gap-y-4 rounded-card border border-line bg-surface px-5 py-4 sm:grid-cols-3 lg:grid-cols-6"
     >
       <Cifra rotulo="Avance físico" valor={r.avance == null ? null : `${r.avance}%`} />
       <Cifra
