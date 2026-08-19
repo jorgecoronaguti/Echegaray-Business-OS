@@ -83,6 +83,8 @@ export interface PersonaEnDirectorio {
   cuadrilla_id: string | null
   cuadrilla: string | null
   obra_actual_id: string | null
+  /** El NOMBRE de la obra. El id es un slug de URL y no se le muestra a nadie. */
+  obra_actual: string | null
   rol_en_obra: string | null
   asignada_desde: string | null
 }

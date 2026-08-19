@@ -244,12 +244,14 @@ export interface PlanVsReal {
 }
 
 /** Una persona del legajo. `personas` es la única fuente de nombres del plantel. */
+/** El plantel elegible, tal como lo publica `persona_plantel`: CINCO columnas y ninguna más. El
+ *  puesto y la fecha de ingreso quedaron afuera de esa vista a propósito —ver el comentario de
+ *  `vistas-security-invoker.test.mjs`—, así que tampoco están acá. */
 export interface Persona {
   id: string
   nombre_completo: string
   categoria: string | null
   especialidad: string | null
-  puesto: string | null
   fecha_egreso: string | null
 }
 

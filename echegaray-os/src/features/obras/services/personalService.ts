@@ -18,7 +18,10 @@ import type { Asignacion, Persona, ServiceResult } from '../types'
 export async function getPersonas(supabase: SupabaseClient): Promise<ServiceResult<Persona[]>> {
   const { data, error } = await supabase
     .from('persona_plantel')
-    .select('id, nombre_completo, categoria, especialidad, puesto, fecha_egreso')
+    // SIN `puesto`: `persona_plantel` publica CINCO columnas y ninguna más — el contrato lo fija
+    // `orquestador/lib/vistas-security-invoker.test.mjs`. Pedir una columna que la vista no tiene
+    // no devuelve null: devuelve error, y el selector de asignación queda VACÍO sin decir por qué.
+    .select('id, nombre_completo, categoria, especialidad, fecha_egreso')
     .is('fecha_egreso', null)
     .order('nombre_completo', { ascending: true })
   if (error) return { data: null, error: error.message }

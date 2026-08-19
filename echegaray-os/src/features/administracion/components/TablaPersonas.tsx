@@ -65,10 +65,13 @@ export function TablaPersonas({ personas }: { personas: PersonaEnDirectorio[] })
               </td>
               <td className="px-3 py-2 text-[12px] text-muted">{p.cuadrilla ?? '—'}</td>
               <td className="px-3 py-2 text-[12px]">
+                {/* SIN ASIGNAR NO ES UN HUECO: es una respuesta, y se escribe. Y la obra va por su
+                    NOMBRE — el id es el slug de la URL, que en ninguna otra pantalla del OS se
+                    muestra. */}
                 {p.obra_actual_id
                   ? (
                       <Link href={`/obras/${p.obra_actual_id}`} className="text-ink hover:underline">
-                        {p.obra_actual_id}
+                        {p.obra_actual ?? p.obra_actual_id}
                       </Link>
                     )
                   : <span className="text-faint">sin asignar</span>}

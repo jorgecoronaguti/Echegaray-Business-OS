@@ -252,10 +252,43 @@ test('el nivel Obras consulta los maestros que necesita para trabajar', async ()
   test.setTimeout(60000)
   const token = await entrar(JEFE.email, JEFE.password)
   for (const q of ['clientes?select=id', 'cliente_panel?select=cliente_id',
-    'personas?select=id', 'proveedores?select=id', 'persona_plantel?select=id']) {
+    'proveedores?select=id', 'persona_plantel?select=id']) {
     expect(await comoUsuario(token, q),
       `${q} le devolvió CERO filas a un jefe de obra: no puede operar`).not.toHaveLength(0)
   }
+})
+
+// ═══ Y `personas` SE ACOTÓ OTRA VEZ, MÁS FINO (19/08/2026, tarde) ═══
+//
+// El pliego del módulo PERSONAL / HH, textual: *"OBRAS: **ve las personas relacionadas con SUS
+// obras**."* No contradice lo de la mañana —sigue siendo "ver ≠ administrar"— pero acota QUÉ FILAS,
+// que es lo único que la RLS puede decidir.
+//
+// EL TEST NO MIDE UN NÚMERO, MIDE LA RELACIÓN. Hoy la obra del jefe de QA no tiene a nadie asignado,
+// así que lo correcto es CERO — y un `not.toHaveLength(0)` habría exigido abrir el legajo entero
+// para ponerse verde. Lo que tiene que valer siempre es que lo que lee sea exactamente la gente
+// ligada a sus obras: ni una fila más, y todas las que sí.
+test('el nivel Obras ve del legajo a su gente, y a nadie más', async () => {
+  test.setTimeout(60000)
+  const token = await entrar(JEFE.email, JEFE.password)
+
+  const legajo = await comoUsuario(token, 'personas?select=id') as { id: string }[]
+  const ligadas = await comoUsuario(token, 'obra_asignacion?select=persona_id') as { persona_id: string }[]
+  const esperadas = new Set(ligadas.map((f) => f.persona_id))
+
+  for (const p of legajo) {
+    expect(esperadas.has(p.id), `leyó del legajo a alguien que no trabaja en sus obras: ${p.id}`).toBe(true)
+  }
+  // Y al revés: nadie de su obra le queda invisible, que sería el defecto opuesto —no poder ver a
+  // quien dirige— y también silencioso.
+  for (const id of esperadas) {
+    expect(legajo.some((p) => p.id === id), `no puede ver a alguien de su propia obra: ${id}`).toBe(true)
+  }
+
+  // El PLANTEL completo le sigue llegando por la vista acotada: sin esa lista no existe la primera
+  // asignación, porque todavía no hay nadie ligado a su obra a quien elegir.
+  const plantel = await comoUsuario(token, 'persona_plantel?select=id') as unknown[]
+  expect(plantel.length, 'sin plantel no hay a quién asignar').toBeGreaterThan(legajo.length)
 })
 
 // Y el contrapeso: consultar no es administrar. La escritura de los maestros sigue siendo de
@@ -340,4 +373,49 @@ test('el checklist de preparación no le habla de contrato al nivel Obras', asyn
     await expect(page.getByTestId(`preparacion-${clave}`),
       `falta la línea ${clave}, que sí es trabajo de la obra`).toHaveCount(1)
   }
+})
+
+// ═══ LAS HORAS TAMBIÉN SE ACOTAN POR OBRA (MÓDULO PERSONAL / HH, 19/08/2026) ═══
+//
+// `registros_hh` tenía la policy de SELECT en `using (true)`: cualquier jefe de obra leía por
+// PostgREST las horas imputadas a las OCHO obras. Y lo que se puede leer se puede escribir mal: sin
+// cota, la carga masiva de una obra podía sembrar imputaciones en otra.
+//
+// Se mide INTENTÁNDOLO, no leyendo la policy: una policy correcta sin su `grant` devuelve
+// `permission denied` y una policy floja con el grant puesto devuelve datos, y desde el código las
+// dos se ven igual de bien.
+test('el nivel Obras no lee ni escribe horas de una obra que no es suya', async () => {
+  test.setTimeout(60000)
+  const token = await entrar(JEFE.email, JEFE.password)
+  const servicio = createClient(URL, SRV, { auth: { persistSession: false } })
+
+  // La obra que este jefe NO ve. Se resuelve contra la base para que el test no dependa de que el
+  // catálogo de obras siga siendo el mismo dentro de seis meses.
+  const { data: suyas } = await servicio.from('usuario_obra').select('obra_canonica_id')
+  const mias = new Set((suyas ?? []).map((f) => (f as { obra_canonica_id: string }).obra_canonica_id))
+  const { data: todas } = await servicio.from('obra_canonica').select('id')
+  const ajena = (todas ?? []).map((o) => (o as { id: string }).id).find((id) => !mias.has(id))
+  expect(ajena, 'no hay ninguna obra ajena contra la cual medir').toBeTruthy()
+
+  const leidas = await comoUsuario(token, `registros_hh?select=id&obra_canonica_id=eq.${ajena}`)
+  expect(leidas, 'un jefe de obra leyó las horas de una obra ajena').toHaveLength(0)
+
+  const { data: alguien } = await servicio.from('personas').select('id').limit(1).single()
+  const r = await fetch(`${URL}/rest/v1/registros_hh`, {
+    method: 'POST',
+    headers: {
+      apikey: ANON, Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json', Prefer: 'return=representation',
+    },
+    body: JSON.stringify({
+      obra_canonica_id: ajena,
+      persona_id: (alguien as { id: string }).id,
+      fecha: '2026-08-19', fecha_inicio_semana: '2026-08-17',
+      horas: 8, fuente_legacy: 'ZZ-E2E autorizacion',
+    }),
+  })
+  expect(r.status, 'un jefe de obra pudo imputar horas a una obra ajena').toBeGreaterThanOrEqual(400)
+
+  // Y si por algún motivo entró, no se deja en los jornales del dueño.
+  await servicio.from('registros_hh').delete().eq('fuente_legacy', 'ZZ-E2E autorizacion')
 })

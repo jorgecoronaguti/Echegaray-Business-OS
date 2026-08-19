@@ -55,7 +55,9 @@ function Titular({ plan, asignaciones, registros }: {
   const partes = [
     vigentes.length === 0 ? 'nadie asignado' : `${vigentes.length} ${vigentes.length === 1 ? 'persona' : 'personas'}`,
     hhPlan == null ? 'HH plan sin cargar' : `HH plan ${n(hhPlan)}`,
-    hhReal == null ? 'HH real sin imputar' : `HH real ${n(hhReal)} (${registros.length} registros)`,
+    hhReal == null
+      ? 'HH real sin imputar'
+      : `HH real ${n(hhReal)} (${registros.length} ${registros.length === 1 ? 'registro' : 'registros'})`,
   ]
 
   return (

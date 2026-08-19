@@ -43,10 +43,10 @@ function Texto({ name, valor, label, ancho, tipo = 'text', max = 200, ayuda }: {
 export function CamposIdentidad({ persona }: { persona: Persona | null }) {
   return (
     <div className="grid grid-cols-2 gap-2.5">
-      <Campo
-        label="Nombre y apellido" ancho="col-span-2"
-        ayuda="Va completo en un solo campo: las 30 fichas cargadas son un texto único y partirlo sería adivinar dónde termina el apellido."
-      >
+      {/* UN SOLO CAMPO, y no `nombre` + `apellido`: las 30 fichas reales están cargadas como un
+          texto único («PEREZ JUAN CARLOS») y partirlo obliga a adivinar dónde termina el apellido.
+          El motivo vive acá, en el código, y no como un párrafo permanente debajo del campo. */}
+      <Campo label="Nombre y apellido" ancho="col-span-2">
         <input
           name="nombre_completo" required maxLength={200} className={CTRL}
           defaultValue={persona?.nombre_completo ?? ''} data-testid="persona-nombre"
