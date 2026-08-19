@@ -24,7 +24,7 @@
 // los escribe `sellarBaseline`, una vez. Si la edición moviera también la base, replanificar dejaría
 // el desvío en cero para siempre y el tablero diría que la obra siempre va en fecha.
 
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { BotonAccion, Campo, CTRL, FormAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
 import type { Actividad, Dependencia, ParteEjecucion, Persona, Restriccion } from '../types'
 import type { ActividadHH } from '../services/personalService'
@@ -258,19 +258,26 @@ function ImpedimentosDe({ abiertos }: { abiertos: Restriccion[] }) {
  * `origen_avance` viene calculado de la base y se muestra al lado del número: es la respuesta a
  * «¿de dónde salió este 53%?» sin tener que ir a buscarla.
  */
-function BloqueMedicion({ a, definir, partes = [] }: {
-  a: Actividad
-  definir?: AccionFormulario
-  partes?: ParteEjecucion[]
-}) {
-  const n = (v: number | null) => (v == null ? null : v.toLocaleString('es-AR', { maximumFractionDigits: 2 }))
-  const Dato = ({ k, v }: { k: string; v: React.ReactNode }) => (
+const n2 = (v: number | null) => (v == null ? null : v.toLocaleString('es-AR', { maximumFractionDigits: 2 }))
+
+/** Una línea de la lista Plan/Real. FUERA del componente a propósito: definida adentro, React la
+ *  vuelve a crear en cada render y remonta el subárbol —además de que la regla `static-components`
+ *  lo rechaza—. */
+function Dato({ k, v }: { k: string; v: ReactNode }) {
+  return (
     <>
       <dt className="truncate text-faint">{k}</dt>
       <dd className="text-right tabular-nums text-ink">{v ?? <span className="text-faint">sin cargar</span>}</dd>
     </>
   )
+}
 
+function BloqueMedicion({ a, definir, partes = [] }: {
+  a: Actividad
+  definir?: AccionFormulario
+  partes?: ParteEjecucion[]
+}) {
+  const n = n2
   return (
     <div data-testid="bloque-medicion" className="space-y-2">
       {/* PLAN Y REAL ENFRENTADOS. Es la pregunta del panel —¿cómo viene contra lo previsto?— y por
