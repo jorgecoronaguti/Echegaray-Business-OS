@@ -189,6 +189,25 @@ test('5-9 · el panel declara la precedencia, la tarea, el impedimento y la nota
 
   await page.reload()
   await expect(panel).toBeVisible({ timeout: 20_000 })
+
+  // ═══ Y SE CORRIGE SIN DUPLICARLO ═══
+  // Lo que se mide no es que el formulario acepte: es que DESPUÉS de editar siga habiendo UNA sola
+  // fila. Liberar el viejo y anotar otro también dejaría el responsable nuevo en pantalla, y sería
+  // el defecto que esta acción existe para evitar.
+  const editarImp = panel.getByTestId('editar-impedimento').first()
+  await editarImp.locator('summary').click()
+  const fEdit = editarImp.getByTestId('form-editar-impedimento')
+  await fEdit.locator('input[name="responsable"]').fill('Jefe de obra')
+  await fEdit.getByRole('button', { name: 'Guardar' }).click()
+  await expect.poll(async () => {
+    const { data } = await c.from('obra_restriccion')
+      .select('responsable, estado').eq('actividad_id', actividadId)
+    const filas = (data ?? []) as { responsable: string; estado: string }[]
+    return { cuantas: filas.length, responsable: filas[0]?.responsable }
+  }, { timeout: 20_000 }).toMatchObject({ cuantas: 1, responsable: 'Jefe de obra' })
+
+  await page.reload()
+  await expect(panel).toBeVisible({ timeout: 20_000 })
   await panel.getByTestId('resolver-impedimento').first().click()
   // RESUELTO EL IMPEDIMENTO, EL OPERATIVO VUELVE A SER EL GUARDADO. Se compara contra `estado` y no
   // contra un valor escrito a mano: lo que se afirma es la REGLA —bloqueada se deriva y se
