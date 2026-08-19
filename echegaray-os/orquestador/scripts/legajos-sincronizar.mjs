@@ -73,7 +73,7 @@ async function main() {
   const { carpetas, archivos } = await fotoDeDrive(google)
   const nomina = await leerNomina(google)
   const leerPersonas = async () => (await query(
-    'select id, nombre_completo, legajo, puesto, drive_folder_id, en_la_empresa from personas')).rows
+    'select id, nombre_completo, legajo, puesto, categoria, drive_folder_id, en_la_empresa from personas')).rows
 
   // ═══ PASO 1 · LA NÓMINA ═══
   let personas = await leerPersonas()
@@ -89,16 +89,18 @@ async function main() {
   if (!enSeco) {
     for (const a of nom.altas) {
       await query(
-        'insert into personas (nombre_completo, legajo, puesto, en_la_empresa) values ($1,$2,$3,$4)',
-        [a.nombre, a.legajo, a.puesto, a.en_la_empresa])
+        `insert into personas (nombre_completo, legajo, categoria, puesto, en_la_empresa)
+         values ($1, $2, $3, $4, $5)`,
+        [a.nombre, a.legajo, a.categoria, a.puesto, a.en_la_empresa])
     }
     for (const c of nom.cambios) {
       await query(
         `update personas set legajo = coalesce($1, legajo), puesto = coalesce($2, puesto),
-                             en_la_empresa = coalesce($3, en_la_empresa),
-                             fecha_egreso = case when $3 is true then null else fecha_egreso end
-          where id = $4`,
-        [c.legajo ?? null, c.puesto ?? null, c.en_la_empresa ?? null, c.persona.id])
+                             categoria = coalesce($3, categoria),
+                             en_la_empresa = coalesce($4, en_la_empresa),
+                             fecha_egreso = case when $4 is true then null else fecha_egreso end
+          where id = $5`,
+        [c.legajo ?? null, c.puesto ?? null, c.categoria ?? null, c.en_la_empresa ?? null, c.persona.id])
     }
     personas = await leerPersonas()
   }

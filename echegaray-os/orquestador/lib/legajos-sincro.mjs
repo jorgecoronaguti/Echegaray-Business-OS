@@ -16,6 +16,7 @@
 // 3. LO QUE ESCRIBIÓ UNA PERSONA NO SE PISA. El plan sólo propone completar lo que está vacío;
 //    quién decide sobreescribir es el script, y por defecto no lo hace.
 
+import { categoriaDeConvenio } from './legajos-contenido.mjs'
 import { coincidencia, mismoToken, sinFechaPegada, tokens } from './legajos-orden.mjs'
 
 export const BUCKET_ACTIVOS = '1. ACTIVOS'
@@ -167,9 +168,13 @@ export function planDeNomina({ nomina, personas }) {
     const { persona, motivo } = porLegajo ? { persona: porLegajo, motivo: null } : personaDeCarpeta(fila.nombre, personas)
     if (!persona) {
       if (motivo?.startsWith('ambigua')) plan.ambiguas.push({ nomina: fila.nombre, motivo })
+      const cat = categoriaDeConvenio(fila.cargo)
       plan.altas.push({
         nombre: nombreCanonico(fila.nombre.replace(/,/g, ' ')),
-        legajo: fila.legajo || null, puesto: fila.cargo || null, en_la_empresa: fila.activo,
+        legajo: fila.legajo || null,
+        categoria: cat,
+        puesto: cat ? null : (fila.cargo || null),
+        en_la_empresa: fila.activo,
       })
       continue
     }
@@ -178,7 +183,12 @@ export function planDeNomina({ nomina, personas }) {
     // planilla no tiene por qué ganarle a una corrección hecha a mano.
     const cambio = { persona }
     if (fila.legajo && persona.legajo !== fila.legajo) cambio.legajo = fila.legajo
-    if (fila.cargo && !persona.puesto) cambio.puesto = fila.cargo
+    // EL CARGO DE LA NÓMINA ES LA CATEGORÍA DEL CONVENIO, no un puesto. Cargarlo en `puesto` daba
+    // dos respuestas al mismo hecho —y distintas, porque `categoria` se llenaba de la libreta con la
+    // del ingreso—. Sólo lo que NO está en la escala («JEFE DE OBRA») es un puesto de verdad.
+    const categoria = categoriaDeConvenio(fila.cargo)
+    if (categoria && persona.categoria !== categoria) cambio.categoria = categoria
+    if (fila.cargo && !categoria && !persona.puesto) cambio.puesto = fila.cargo
     if (persona.en_la_empresa !== fila.activo) cambio.en_la_empresa = fila.activo
     if (Object.keys(cambio).length > 1) plan.cambios.push(cambio)
   }

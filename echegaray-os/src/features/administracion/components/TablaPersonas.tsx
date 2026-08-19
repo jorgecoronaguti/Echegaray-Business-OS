@@ -50,8 +50,14 @@ export function TablaPersonas({ personas }: { personas: PersonaEnDirectorio[] })
                   data-testid="abrir-persona"
                 >
                   <span className="text-[13px] text-ink hover:underline">{p.nombre_completo}</span>
-                  {(p.puesto ?? p.especialidad) && (
-                    <span className="block truncate text-[11px] text-faint">{p.puesto ?? p.especialidad}</span>
+                  {/* EL OFICIO, NO LA CATEGORÍA. Acá decía el puesto, y el puesto traía el CARGO de
+                      la nómina —que ES la categoría del convenio—: la fila mostraba «OFICIAL» debajo
+                      del nombre y «Ayudante» en la columna CATEGORÍA, dos respuestas al mismo hecho y
+                      distintas. La especialidad es lo que esta línea puede decir que la columna no.
+                      El puesto sólo aparece cuando dice algo que no es una categoría, como JEFE DE
+                      OBRA. */}
+                  {(p.especialidad ?? p.puesto) && (
+                    <span className="block truncate text-[11px] text-faint">{p.especialidad ?? p.puesto}</span>
                   )}
                 </Link>
               </td>

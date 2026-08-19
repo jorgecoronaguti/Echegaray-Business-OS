@@ -65,3 +65,23 @@ test('el plantel es exactamente quien está en la empresa', { skip: SIN_BASE }, 
             (select count(*) from personas where en_la_empresa)::int as tabla`)
   assert.equal(rows[0].vista, rows[0].tabla)
 })
+
+test('la categoría no se dice dos veces: ningún puesto repite una categoría del convenio', { skip: SIN_BASE }, async () => {
+  // El listado mostraba «OFICIAL» debajo del nombre y «Ayudante» en la columna CATEGORÍA: el CARGO
+  // de la nómina —que ES la categoría de la escala— se había cargado en `puesto`, y `categoria`
+  // venía de la libreta con la del ingreso. Dos respuestas al mismo hecho, y distintas.
+  const { rows } = await query(
+    `select nombre_completo, puesto from personas
+      where upper(trim(coalesce(puesto, ''))) in
+            ('OFICIAL ESPECIALIZADO', 'MEDIO OFICIAL', 'OFICIAL', 'AYUDANTE')`)
+  assert.deepEqual(rows, [],
+    'estas personas tienen una categoría de convenio guardada como puesto: ' +
+    rows.map((r) => `${r.nombre_completo} (${r.puesto})`).join(', '))
+})
+
+test('la especialidad es el oficio, no la categoría con el oficio pegado', { skip: SIN_BASE }, async () => {
+  const { rows } = await query(
+    `select nombre_completo, especialidad from personas
+      where especialidad ~* '^(AYUDANTE|MEDIO OFICIAL|OFICIAL ESPECIALIZADO|OFICIAL)\\s*/'`)
+  assert.deepEqual(rows, [])
+})
