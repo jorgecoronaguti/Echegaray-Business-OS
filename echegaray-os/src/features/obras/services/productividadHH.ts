@@ -26,9 +26,25 @@ const pct = (n: number | null) =>
 export function lecturaProductividad(a: ActividadHH): string {
   if (a.hh_plan == null) return 'HH plan sin cargar'
   if (a.hh_real == null) return 'sin horas imputadas'
+  // ═══ UN PLAN DE CERO HORAS NO ES UN PLAN (19/08/2026, revisión independiente) ═══
+  //
+  // `hh_plan = 0` NO es `null`, así que la guarda de arriba no lo atrapaba, y `obra_actividad_hh`
+  // anula `consumo_plan_pct` cuando el plan no es mayor que cero. Con el `?? 0` que había más
+  // abajo, ese `null` se leía como consumo 0% y el resultado era este cartel, ejecutado contra la
+  // función real con hh_plan = 0, hh_real = 40 y avance 45%:
+  //
+  //     «Avance 45% · HH consumidas — del plan — rinde mejor que el plan»
+  //
+  // Cuarenta horas gastadas contra un plan inexistente, felicitadas. Es exactamente lo que el
+  // encabezado de este archivo dice evitar. Si no hay con qué comparar, se dice que no hay.
+  if (a.consumo_plan_pct == null) {
+    return a.avance_pct == null
+      ? 'HH plan sin cargar'
+      : `Avance ${pct(a.avance_pct)} · HH plan sin cargar`
+  }
   if (a.avance_pct == null) return `HH consumidas ${pct(a.consumo_plan_pct)} del plan · avance sin medir`
   const texto = `Avance ${pct(a.avance_pct)} · HH consumidas ${pct(a.consumo_plan_pct)} del plan`
-  const consumo = Number(a.consumo_plan_pct ?? 0)
+  const consumo = Number(a.consumo_plan_pct)
   const avance = Number(a.avance_pct)
   if (consumo - avance > 10) return `${texto} — consumo adelantado`
   if (avance - consumo > 10) return `${texto} — rinde mejor que el plan`

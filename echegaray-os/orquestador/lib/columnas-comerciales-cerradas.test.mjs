@@ -44,24 +44,27 @@ const CERRADAS = {
   personas: ['retribucion_pactada', 'dni', 'cuil'],
 }
 
-// ═══ POR QUÉ LAS COLUMNAS NUEVAS DEL MÓDULO PERSONAL NO ESTÁN EN LA LISTA (19/08/2026) ═══
+// ═══ `personas` SE INVIRTIÓ: SE ENUMERA LO QUE SE ABRE (19/08/2026, revisión independiente) ═══
 //
-// El módulo PERSONAL / HH le agregó seis columnas a `personas`: `telefono`, `email`, `domicilio`,
-// `contacto_emergencia`, `contacto_emergencia_telefono` y `puesto`. Ninguna entra a `CERRADAS`, y
-// el criterio es el mismo que ya rige acá — se cierra por columna lo que NO se puede cerrar por
-// fila, no todo lo que suena delicado:
+// Este bloque decía, textual: *"Un jefe de obra que pregunte por `telefono` recibe CERO FILAS, no un
+// valor"*, y sobre esa premisa se justificó no cerrar seis columnas nuevas. La premisa era cierta
+// con `T2200`, donde el RLS de filas era `es_administracion()`. **`T2400`, del mismo día y unas
+// horas después, lo reemplazó** por `es_administracion() or exists(obra_asignacion…) or
+// exists(registros_hh…)`: desde ahí un jefe de obra SÍ recibe filas de su gente. La justificación
+// cayó y el test siguió verde, porque sólo medía las tres columnas de su lista.
 //
-//  · Lo que decide quién ve estas seis es el RLS de filas de `personas`, que desde el 19/08 es
-//    `es_administracion()`. Un jefe de obra que pregunte por `telefono` recibe CERO FILAS, no un
-//    valor. Un grant por columna encima de eso no protegería nada más y sí escondería el dato a
-//    Administración, que es quien tiene que cargarlo — porque `authenticated` es un solo rol para
-//    los cuatro roles de la aplicación.
-//  · `dni`, `cuil` y `retribucion_pactada` SÍ siguen cerradas por columna, y por eso hay una vista
-//    con portero (`persona_legajo`) que es el único camino de la web a las dos primeras. La tercera
-//    no la publica ni esa vista.
-//  · Y lo que la obra necesita para trabajar viaja por `persona_plantel`, que publica cinco columnas
-//    y ninguna de estas seis. La antigüedad (`fecha_ingreso`) y el oficio (`puesto`) se evaluaron
-//    para esa vista y se dejaron afuera: ver el comentario de `vistas-security-invoker.test.mjs`.
+// Lo que quedaba abierto no era teórico: `notas` tenía contenido en 30/30 filas y una decía
+// *"Convenio 76/75 UOCRA. Retribución pactada $3910/hora…"* —la retribución en texto plano, al lado
+// de la columna cerrada para esconderla—, y `drive_folder_id` (30/30) es la carpeta del legajo en
+// Drive, el mismo id que `documentacion_legajo` se había cerrado para no publicar.
+//
+// Por eso `personas` deja de medirse con una lista negra: se mide con una BLANCA. Una lista negra
+// olvida las columnas que todavía no existen; una blanca las cierra sola. Lo que queda legible es
+// lo que las pantallas de Obras necesitan y lo que consume `persona_directorio`.
+
+const PERSONAS_ABIERTAS = [
+  'id', 'nombre_completo', 'categoria', 'especialidad', 'puesto', 'fecha_ingreso', 'fecha_egreso',
+]
 
 const SIN_BASE = !process.env.DATABASE_URL
 
@@ -85,7 +88,10 @@ async function todas(tabla) {
   return rows.map((r) => r.column_name)
 }
 
-for (const [tabla, secretas] of Object.entries(CERRADAS)) {
+// `personas` sale del bucle de LISTA NEGRA: se mide con la lista BLANCA de abajo, que es más
+// fuerte —cierra también lo que todavía no existe— y por eso las dos formas no pueden convivir
+// sobre la misma tabla: la negra exigiría conceder todo lo que no está en su lista.
+for (const [tabla, secretas] of Object.entries(CERRADAS).filter(([t]) => t !== 'personas')) {
   test(`${tabla}: authenticated no alcanza lo comercial`, { skip: SIN_BASE }, async () => {
     const puede = await concedidas(tabla)
     const abiertas = secretas.filter((c) => puede.has(c))
@@ -100,6 +106,21 @@ for (const [tabla, secretas] of Object.entries(CERRADAS)) {
       `${tabla}: estas columnas quedaron sin conceder y la web las ve vacías: ${faltan.join(', ')}`)
   })
 }
+
+test('`personas` sólo abre las columnas operativas: la lista es BLANCA', { skip: SIN_BASE }, async () => {
+  // Lista blanca, no negra: una columna nueva del legajo nace cerrada aunque nadie se acuerde de
+  // agregarla a ninguna lista. Es lo que falló el 19/08 —`notas` y `drive_folder_id` quedaron
+  // abiertas por omisión— y lo que esta forma del test hace imposible repetir.
+  const abiertas = [...await concedidas('personas')].sort()
+  const demas = abiertas.filter((c) => !PERSONAS_ABIERTAS.includes(c))
+  assert.deepEqual(demas, [],
+    `estas columnas del legajo quedaron legibles para todo el sistema: ${demas.join(', ')}. ` +
+    'El legajo se lee por `persona_legajo`, que exige es_administracion().')
+  for (const c of PERSONAS_ABIERTAS) {
+    assert.ok(abiertas.includes(c),
+      `se cerró \`${c}\`, que las pantallas de Obras y \`persona_directorio\` necesitan`)
+  }
+})
 
 test('el contexto interno no queda ciego: sin JWT la función sí devuelve el dato', { skip: SIN_BASE }, async () => {
   // ═══ EL MODO DE FALLA QUE ESTO PREVIENE NO REVIENTA: MIENTE (19/08/2026) ═══

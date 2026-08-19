@@ -43,8 +43,13 @@ export function Bloque({
 }
 
 export function Dato({ k, v }: { k: string; v: string | null }) {
+  // `min-w-0` EN LA RAÍZ, NO SÓLO EN EL VALOR (19/08/2026, QA en teléfono). El `truncate` de abajo
+  // no cortaba nada: un ítem de grid arranca con `min-width: auto`, así que la pista crecía hasta el
+  // ancho del texto y estiraba la PÁGINA ENTERA — 557 px de contenido en una pantalla de 390, con
+  // "Ingreso: sin cargar" empujado fuera de la vista y sin ninguna señal de que había que correrse.
+  // Una nota larga en el legajo alcanzaba para romper la ficha en el teléfono.
   return (
-    <div className="flex items-baseline justify-between gap-3 border-b border-line/60 py-1.5 last:border-0">
+    <div className="flex min-w-0 items-baseline justify-between gap-3 border-b border-line/60 py-1.5 last:border-0">
       <span className="shrink-0 text-[12px] text-faint">{k}</span>
       <span className={`min-w-0 truncate text-right text-[13px] ${v ? 'text-ink' : 'text-faint'}`}>
         {v ?? 'sin cargar'}
