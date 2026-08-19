@@ -137,6 +137,16 @@ export interface Actividad {
   /** Unidades por hora hombre. Existe sólo con producción física Y horas imputadas. */
   productividad: number | null
   consumo_hh_pct: number | null
+
+  /** Si está, esta fila es una TAREA de esa actividad. Un solo nivel: una tarea no tiene tareas.
+   *  Las tareas NO se dibujan en el Gantt, la Lista ni el Tablero —pesarían doble contra una
+   *  actividad que nadie partió—: viven dentro del panel de su actividad. */
+  actividad_padre_id: string | null
+  n_tareas: number
+  n_tareas_hechas: number
+  /** Pedidos de material colgados de esta actividad. El pedido sigue siendo de la OBRA: esto sólo
+   *  dice para qué se pidió, cuando alguien lo declaró. */
+  n_pedidos: number
 }
 
 /** Los cinco estados del tablero. `bloqueada` NO se guarda: sale de tener un impedimento abierto. */

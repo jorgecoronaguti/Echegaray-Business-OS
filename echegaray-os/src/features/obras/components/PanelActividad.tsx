@@ -44,6 +44,9 @@ export type AccionesCronograma = {
   quitarDependencia?: (dependenciaId: string) => Promise<ResultadoAccion>
   /** Unidad, cantidad objetivo y método de avance de la actividad. */
   definirMedicion?: (actividadId: string, form: FormData) => Promise<ResultadoAccion>
+  /** Agregar una tarea a la actividad, y marcarla hecha o reabrirla. */
+  crearTarea?: (actividadId: string, form: FormData) => Promise<ResultadoAccion>
+  cambiarEstadoTarea?: (tareaId: string, estado: string) => Promise<ResultadoAccion>
 }
 
 const fmt = (v: string | number | null | undefined) => (v == null ? '' : String(v))
@@ -272,6 +275,65 @@ function Dato({ k, v }: { k: string; v: ReactNode }) {
   )
 }
 
+/**
+ * LAS TAREAS DE UNA ACTIVIDAD — el nivel opcional.
+ *
+ * «Columnas de carga» se hace en seis pasos: armado, colocación, encofrado, hormigonado,
+ * desencofrado, curado. Eso es una actividad con tareas, no seis actividades del cronograma.
+ *
+ * ═══ SIN ROLLUP AUTOMÁTICO ═══
+ *
+ * Que 3 de 6 estén hechas NO es 50% de la actividad: las seis no duran ni pesan lo mismo. Se dice
+ * «3 de 6», que es un hecho, en vez de un porcentaje que nadie puede defender. El avance de la
+ * actividad sigue saliendo de su método declarado.
+ *
+ * Y NO SE PIDE NADA MÁS QUE EL NOMBRE. Una tarea con fecha, responsable, unidad y estimación es una
+ * actividad, y para eso ya está el cronograma. Acá la fricción tiene que ser cero o no se usa.
+ */
+function BloqueTareas({ tareas, crear, alternar }: {
+  tareas: Actividad[]
+  crear?: AccionFormulario
+  alternar?: (tareaId: string, estado: string) => Promise<ResultadoAccion>
+}) {
+  if (tareas.length === 0 && !crear) return null
+  const hechas = tareas.filter((t) => t.estado === 'hecha').length
+  return (
+    <details className="rounded-md border border-line bg-surface px-2.5 py-1.5" data-testid="bloque-tareas">
+      <summary className="cursor-pointer text-[12px] text-muted">
+        Tareas
+        {tareas.length > 0 && <span className="ml-2 tabular-nums text-ink">{hechas} de {tareas.length}</span>}
+      </summary>
+      <ul className="mt-2 space-y-1">
+        {tareas.map((t) => (
+          <li key={t.id} className="flex items-center justify-between gap-2 text-[12px]" data-testid="tarea">
+            <span className={t.estado === 'hecha' ? 'min-w-0 truncate text-faint line-through' : 'min-w-0 truncate text-muted'}>
+              {t.nombre}
+            </span>
+            {alternar && (
+              <BotonAccion
+                accion={alternar}
+                args={[t.id, t.estado === 'hecha' ? 'pendiente' : 'hecha']}
+                testid="alternar-tarea"
+              >{t.estado === 'hecha' ? 'Reabrir' : 'Hecha'}</BotonAccion>
+            )}
+          </li>
+        ))}
+        {tareas.length === 0 && <li className="text-[12px] text-faint">Ninguna. La tarea es opcional.</li>}
+      </ul>
+      {crear && (
+        <div className="mt-2 border-t border-line pt-2">
+          <FormAccion accion={crear} testid="form-tarea" enviar="Agregar" limpiarAlOk mensajeOk="Tarea agregada.">
+            <input
+              name="nombre" required minLength={2} maxLength={200} className={CTRL}
+              placeholder="Armado, encofrado, hormigonado…" data-testid="tarea-nombre"
+            />
+          </FormAccion>
+        </div>
+      )}
+    </details>
+  )
+}
+
 function BloqueMedicion({ a, definir, partes = [] }: {
   a: Actividad
   definir?: AccionFormulario
@@ -369,7 +431,7 @@ function BloqueMedicion({ a, definir, partes = [] }: {
 
 export function PanelActividad({
   actividad, personas, acciones, alCerrar, actividades = [], dependencias = [], impedimentos = [], hh,
-  partes = [],
+  partes = [], tareas = [],
 }: {
   actividad: Actividad
   personas: Persona[]
@@ -386,6 +448,8 @@ export function PanelActividad({
   hh?: ActividadHH
   /** Los últimos partes de ESTA actividad. Sin ellos el bloque no dibuja la lista. */
   partes?: ParteEjecucion[]
+  /** Las tareas de ESTA actividad. */
+  tareas?: Actividad[]
 }) {
   const a = actividad
   return (
@@ -433,6 +497,14 @@ export function PanelActividad({
               botón parecería roto. Ahí el avance se mueve cargando un parte en Ejecución. */}
           {a.metodo_avance === 'manual' && (
             <AvanceRapido key={`${a.id}:${a.pct}`} a={a} avance={acciones.avance} />
+          )}
+          {/* Las tareas SÓLO en una actividad: una tarea no tiene tareas. */}
+          {!a.actividad_padre_id && (
+            <BloqueTareas
+              tareas={tareas}
+              crear={acciones.crearTarea ? acciones.crearTarea.bind(null, a.id) : undefined}
+              alternar={acciones.cambiarEstadoTarea}
+            />
           )}
 
           <details className="rounded-control border border-line bg-surface">

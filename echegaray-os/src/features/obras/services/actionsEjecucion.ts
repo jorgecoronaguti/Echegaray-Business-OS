@@ -32,6 +32,7 @@ import { createClient } from '@/lib/supabase/server'
 import type { Resultado } from './actions'
 import { imputarHHMasivo } from './actionsHH'
 import { leerReparto, totalDelReparto } from './repartoHH'
+import { cambiosDeMedicion, metodoTrasMedir } from './medicionEnLote'
 
 const parteSchema = z.object({
   actividad_id: z.string().uuid('Elegí la actividad'),
@@ -178,4 +179,94 @@ export async function cambiarEstado(obraId: string, actividadId: string, estado:
   if (error) return { ok: false, error: error.message }
   revalidatePath(`/obras/${obraId}`)
   return { ok: true }
+}
+
+const tareaSchema = z.object({
+  nombre: z.string().trim().min(2, 'Poné el nombre de la tarea').max(200),
+})
+
+/**
+ * Agregar una tarea a una actividad.
+ *
+ * NO PIDE NADA MÁS QUE EL NOMBRE. Una tarea con fecha, responsable, unidad y estimación es una
+ * actividad, y para eso ya está el cronograma. Acá la fricción tiene que ser cero o no se usa.
+ *
+ * La tarea es una fila de `obra_actividad` con `actividad_padre_id`: la misma entidad, el mismo
+ * estado, el mismo RLS. Una tabla aparte sería una segunda entidad de trabajo con su propia manera
+ * de quedarse vieja. Un trigger de la base impide que una tarea tenga tareas.
+ */
+export async function crearTarea(obraId: string, actividadId: string, form: FormData): Promise<Resultado> {
+  const parsed = tareaSchema.safeParse(Object.fromEntries(form))
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
+
+  const supabase = await createClient()
+  const { data: padre, error: errPadre } = await supabase
+    .from('obra_actividad').select('id, obra_id, orden, seccion, codigo_padre')
+    .eq('id', actividadId).eq('obra_id', obraId).maybeSingle()
+  if (errPadre) return { ok: false, error: errPadre.message }
+  if (!padre) return { ok: false, error: 'Esa actividad no existe o no es de esta obra.' }
+  const p = padre as { orden: number; seccion: string | null; codigo_padre: string | null }
+
+  const { error } = await supabase.from('obra_actividad').insert({
+    obra_id: obraId,
+    actividad_padre_id: actividadId,
+    nombre: parsed.data.nombre,
+    tipo: 'tarea',
+    // Hereda el orden del padre para que, si algún día se listan juntas, caigan al lado suyo.
+    orden: p.orden,
+    seccion: p.seccion,
+    // `clave` es la identidad de la fila y tiene índice único por obra: se arma con el id del padre
+    // para que dos tareas del mismo nombre en dos actividades distintas no choquen.
+    clave: `${actividadId}/${parsed.data.nombre.toLowerCase().slice(0, 60)}`,
+    fuente: 'web',
+    creada_en_web: true,
+    estado: 'pendiente',
+  })
+  if (error) {
+    if (error.code === '23505') return { ok: false, error: 'Esa actividad ya tiene una tarea con ese nombre.' }
+    return { ok: false, error: error.message }
+  }
+  revalidatePath(`/obras/${obraId}`)
+  return { ok: true, mensaje: 'Tarea agregada.' }
+}
+
+/** Marcar una tarea hecha, o reabrirla. Es `cambiarEstado` con el obraId ya atado. */
+export async function cambiarEstadoTarea(obraId: string, tareaId: string, estado: string): Promise<Resultado> {
+  return cambiarEstado(obraId, tareaId, estado)
+}
+
+/**
+ * MEDIR MUCHAS ACTIVIDADES DE UNA VEZ, desde la Lista.
+ *
+ * Ponerle unidad y cantidad a cuarenta actividades de a una, abriendo el panel cada vez, son
+ * cuarenta idas y vueltas. Acá se cargan todas y se guarda una sola vez.
+ *
+ * SÓLO SE ESCRIBE LO QUE CAMBIÓ (`cambiosDeMedicion`): mandar las cuarenta pisaría con el mismo
+ * valor lo que alguien acaba de corregir en otra pestaña.
+ *
+ * Y CARGAR LA MEDICIÓN ES ELEGIR EL MÉTODO: una actividad con unidad y objetivo pasa a calcular su
+ * avance desde la producción. Sin eso habría que volver a entrar al panel de cada una para decirlo,
+ * y la carga masiva no serviría de nada.
+ */
+export async function medirEnLote(obraId: string, form: FormData): Promise<Resultado> {
+  const supabase = await createClient()
+  const { data: actuales, error: errLectura } = await supabase
+    .from('obra_actividad').select('id, unidad, cantidad_objetivo, metodo_avance').eq('obra_id', obraId)
+  if (errLectura) return { ok: false, error: errLectura.message }
+
+  const filas = (actuales ?? []) as { id: string; unidad: string | null; cantidad_objetivo: number | null; metodo_avance: string }[]
+  const cambios = cambiosDeMedicion(form.entries(), filas)
+  if (cambios.length === 0) return { ok: true, mensaje: 'No había nada que cambiar.' }
+
+  const metodoDe = new Map(filas.map((f) => [f.id, f.metodo_avance]))
+  for (const c of cambios) {
+    const { error } = await supabase.from('obra_actividad').update({
+      unidad: c.unidad,
+      cantidad_objetivo: c.cantidad_objetivo,
+      metodo_avance: metodoTrasMedir(c, metodoDe.get(c.actividad_id) ?? 'manual'),
+    }).eq('id', c.actividad_id).eq('obra_id', obraId)
+    if (error) return { ok: false, error: error.message }
+  }
+  revalidatePath(`/obras/${obraId}`)
+  return { ok: true, mensaje: `${cambios.length} actividad(es) medidas.` }
 }

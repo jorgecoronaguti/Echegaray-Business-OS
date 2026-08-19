@@ -13,7 +13,8 @@ const act = (x: Partial<Actividad>): Actividad => ({
   cuadrilla_id: null, cuadrilla_prevista: null, partida_codigo: null, partida_cantidad: null,
   cantidad_ejecutada: null, n_partes: 0, ultimo_parte: null, hh_real: null, hh_extra: null,
   n_imputaciones: 0, impedimentos_abiertos: 0, avance_pct: null, origen_avance: null,
-  estado_operativo: 'pendiente', productividad: null, consumo_hh_pct: null, ...x,
+  estado_operativo: 'pendiente', productividad: null, consumo_hh_pct: null,
+  actividad_padre_id: null, n_tareas: 0, n_tareas_hechas: 0, n_pedidos: 0, ...x,
 })
 
 const imp = (x: Partial<Restriccion>): Restriccion => ({

@@ -60,7 +60,7 @@ import { TabEjecucion } from '@/features/obras/components/TabEjecucion'
 import { getPartes } from '@/features/obras/services/ejecucionService'
 import { getIntegrantesPorCuadrilla } from '@/features/obras/services/personalService'
 import {
-  borrarParte, cambiarEstado, definirMedicion, registrarEjecucion,
+  borrarParte, cambiarEstado, cambiarEstadoTarea, crearTarea, definirMedicion, medirEnLote, registrarEjecucion,
 } from '@/features/obras/services/actionsEjecucion'
 import { TabPersonal } from '@/features/obras/components/TabPersonal'
 import { TabOperacion } from '@/features/obras/components/TabOperacion'
@@ -154,8 +154,19 @@ export default async function ObraPage({
   const todas = actividades ?? []
   // LAS ARCHIVADAS NO ENTRAN AL CRONOGRAMA NI A NINGUNA LISTA: para eso se archivan. Siguen
   // existiendo, y por eso hay dentro de Cronograma una lista aparte para volver a traerlas.
-  const acts = todas.filter((a) => !a.archivada)
+  // LAS TAREAS NO SON FILAS DEL PLAN. Descomponen una actividad y viven DENTRO de su panel: en el
+  // Gantt serían una fila más y en el promedio de avance pesarían doble contra una actividad que
+  // nadie partió. Se separan una sola vez, acá, y no cinco veces en cada vista.
+  const vivas = todas.filter((a) => !a.archivada)
+  const acts = vivas.filter((a) => !a.actividad_padre_id)
   const archivadas = todas.filter((a) => a.archivada)
+  const tareasPorActividad = new Map<string, typeof vivas>()
+  for (const t of vivas) {
+    if (!t.actividad_padre_id) continue
+    const previas = tareasPorActividad.get(t.actividad_padre_id) ?? []
+    previas.push(t)
+    tareasPorActividad.set(t.actividad_padre_id, previas)
+  }
   const restr = restricciones ?? []
   const abiertas = restr.filter((r) => r.estado !== 'liberada')
   const yaSellada = todas.some((a) => a.sellada_en != null)
@@ -297,6 +308,8 @@ export default async function ObraPage({
             hito: marcarHito.bind(null, obraId),
             sellar: sellarBaseline.bind(null, obraId),
             definirMedicion: definirMedicion.bind(null, obraId),
+            crearTarea: crearTarea.bind(null, obraId),
+            cambiarEstadoTarea: cambiarEstadoTarea.bind(null, obraId),
           }}
           /* LAS ACCIONES EN LOTE SE ATAN A LA OBRA ACÁ, igual que el resto: el `obraId` nunca viaja
              en un campo del navegador. Los ids de actividad SÍ vienen del cliente —es una selección
@@ -310,6 +323,8 @@ export default async function ObraPage({
           restaurarActividad={archivarActividad.bind(null, obraId)}
           cambiarEstado={cambiarEstado.bind(null, obraId)}
           partesPorActividad={partesPorActividad}
+          tareasPorActividad={tareasPorActividad}
+          medirEnLote={medirEnLote.bind(null, obraId)}
         />
       )}
 

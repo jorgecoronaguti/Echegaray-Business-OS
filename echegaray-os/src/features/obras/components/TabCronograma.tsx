@@ -28,7 +28,7 @@
 
 import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { BotonAccion, type ResultadoAccion } from '@/shared/components/ui'
+import { BotonAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
 import type { Actividad, Dependencia, ParteEjecucion, Persona, Restriccion } from '../types'
 import type { ActividadHH } from '../services/personalService'
 import { Gantt } from './Gantt'
@@ -62,6 +62,8 @@ export function TabCronograma({
   hhPorActividad,
   cambiarEstado,
   partesPorActividad,
+  tareasPorActividad,
+  medirEnLote,
 }: {
   /** El cronograma vivo: las NO archivadas, en el orden del tracker. */
   actividades: Actividad[]
@@ -96,6 +98,10 @@ export function TabCronograma({
   cambiarEstado?: (actividadId: string, estado: string) => Promise<ResultadoAccion>
   /** Los partes de ejecución, indexados por actividad. El panel muestra los últimos. */
   partesPorActividad?: Map<string, ParteEjecucion[]>
+  /** Las tareas de cada actividad. No son filas del plan: viven dentro del panel. */
+  tareasPorActividad?: Map<string, Actividad[]>
+  /** Guardar la medición de todas las filas de la Lista de una vez. */
+  medirEnLote?: AccionFormulario
 }) {
   const router = useRouter()
   const params = useSearchParams()
@@ -149,7 +155,7 @@ export function TabCronograma({
         ))}
       </nav>
 
-      {subActual === 'lista' && <VistaLista actividades={actividades} onAbrir={abrirActividad} />}
+      {subActual === 'lista' && <VistaLista actividades={actividades} onAbrir={abrirActividad} medir={medirEnLote} />}
 
       {subActual === 'tablero' && cambiarEstado && (
         <VistaTablero actividades={actividades} cambiarEstado={cambiarEstado} onAbrir={abrirActividad} />
@@ -168,6 +174,7 @@ export function TabCronograma({
             seleccionInicial={actividadAbierta}
             hhPorActividad={hhPorActividad}
             partesPorActividad={partesPorActividad}
+            tareasPorActividad={tareasPorActividad}
             {...(hoy ? { hoy } : {})}
           />
           {archivadas.length > 0 && restaurarActividad && (

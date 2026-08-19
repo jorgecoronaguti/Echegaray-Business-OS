@@ -15,7 +15,9 @@
 // gris — nunca con un cero, que se confundiría con «cero metros ejecutados».
 
 import { useMemo } from 'react'
+import { CTRL, FormAccion, type AccionFormulario } from '@/shared/components/ui'
 import type { Actividad } from '../types'
+import { UNIDADES } from '../types'
 import { EstadoChip } from './EstadoChip'
 import { C, Fila, Tabla, Vacio } from './tablas'
 import { fecha as fmtFecha } from './formato'
@@ -26,10 +28,13 @@ const num = (n: number | null | undefined) =>
 const SinCargar = () => <span className="text-faint">sin cargar</span>
 
 export function VistaLista({
-  actividades, onAbrir,
+  actividades, onAbrir, medir,
 }: {
   actividades: Actividad[]
   onAbrir?: (id: string) => void
+  /** Guardar unidad y cantidad objetivo de TODAS las filas de una vez. Sin ella, las dos columnas
+   *  quedan de lectura: campos que no persisten son peores que campos que no existen. */
+  medir?: AccionFormulario
 }) {
   const grupos = useMemo(() => {
     const ejecutables = actividades.filter((a) => a.tipo !== 'resumen' && !a.archivada)
@@ -48,7 +53,7 @@ export function VistaLista({
 
   if (grupos.length === 0) return <Vacio>Esta obra todavía no tiene actividades.</Vacio>
 
-  return (
+  const cuerpo = (
     <div className="space-y-5" data-testid="vista-lista">
       {grupos.map((g) => (
         <section key={g.rubro}>
@@ -69,16 +74,43 @@ export function VistaLista({
                     className="text-left text-ink hover:underline"
                   >{a.nombre}</button>
                 </C>
-                <C>{a.unidad ?? <SinCargar />}</C>
+                {/* SE EDITA ACÁ MISMO. Esta vista existe para cargar en volumen: si para poner una
+                    unidad hay que abrir el panel, es más rápido el Excel. */}
+                <C>
+                  {medir
+                    ? (
+                        <input
+                          name={`unidad_${a.id}`} defaultValue={a.unidad ?? ''} list="unidades-lista"
+                          maxLength={12} className={`${CTRL} w-[74px] py-1`} data-testid="lista-unidad"
+                          aria-label={`Unidad de ${a.nombre}`}
+                        />
+                      )
+                    : (a.unidad ?? <SinCargar />)}
+                </C>
                 <C num>
-                  {a.cantidad_objetivo == null
-                    ? <SinCargar />
-                    : (
-                        <span>
-                          {num(a.cantidad_ejecutada ?? 0)}
-                          <span className="text-faint">/{num(a.cantidad_objetivo)}</span>
+                  {medir
+                    ? (
+                        <span className="flex items-baseline justify-end gap-1">
+                          {/* Lo ejecutado NO se edita: sale de los partes. Se muestra al lado para
+                              que quien carga el objetivo vea contra qué va. */}
+                          {a.cantidad_ejecutada != null && (
+                            <span className="tabular-nums text-faint">{num(a.cantidad_ejecutada)}/</span>
+                          )}
+                          <input
+                            name={`cantidad_${a.id}`} defaultValue={a.cantidad_objetivo ?? ''}
+                            inputMode="decimal" className={`${CTRL} w-[86px] py-1 text-right`}
+                            data-testid="lista-cantidad" aria-label={`Cantidad objetivo de ${a.nombre}`}
+                          />
                         </span>
-                      )}
+                      )
+                    : a.cantidad_objetivo == null
+                      ? <SinCargar />
+                      : (
+                          <span>
+                            {num(a.cantidad_ejecutada ?? 0)}
+                            <span className="text-faint">/{num(a.cantidad_objetivo)}</span>
+                          </span>
+                        )}
                 </C>
                 <C>{a.inicio_plan ? fmtFecha(a.inicio_plan) : <SinCargar />}</C>
                 <C>{a.fin_plan ? fmtFecha(a.fin_plan) : <SinCargar />}</C>
@@ -90,5 +122,19 @@ export function VistaLista({
         </section>
       ))}
     </div>
+  )
+
+  if (!medir) return cuerpo
+  return (
+    <FormAccion accion={medir} testid="form-medicion-lote" enviar="Guardar medición" mensajeOk="Guardado.">
+      {cuerpo}
+      <datalist id="unidades-lista">
+        {UNIDADES.map((u) => <option key={u} value={u} />)}
+      </datalist>
+      <p className="mt-1 text-[11px] text-faint">
+        Con unidad y cantidad objetivo, el avance de esa actividad pasa a calcularse desde la
+        producción que se carga en Ejecución. Vaciar las dos la devuelve a declarar el avance a mano.
+      </p>
+    </FormAccion>
   )
 }

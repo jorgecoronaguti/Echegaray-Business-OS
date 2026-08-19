@@ -65,6 +65,7 @@ export function Gantt({
   obras,
   hhPorActividad,
   partesPorActividad,
+  tareasPorActividad,
 }: {
   actividades: Actividad[]
   restricciones?: Restriccion[]
@@ -97,6 +98,8 @@ export function Gantt({
   hhPorActividad?: Map<string, ActividadHH>
   /** Los partes de ejecución por actividad. El panel muestra los últimos de la seleccionada. */
   partesPorActividad?: Map<string, ParteEjecucion[]>
+  /** Las tareas de cada actividad, para el panel. */
+  tareasPorActividad?: Map<string, Actividad[]>
 }) {
   const [escala, setEscala] = useState<Escala>('semana')
   const [selId, setSelId] = useState<string | null>(seleccionInicial)
@@ -494,6 +497,7 @@ export function Gantt({
                   personas={personas}
                   hh={hhPorActividad?.get(sel.id)}
                   partes={partesPorActividad?.get(sel.id) ?? []}
+                  tareas={tareasPorActividad?.get(sel.id) ?? []}
                   acciones={acciones}
                   actividades={actividades}
                   dependencias={dependencias}

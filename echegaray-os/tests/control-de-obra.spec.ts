@@ -30,12 +30,19 @@ const SRV = process.env.SUPABASE_SERVICE_ROLE_KEY as string
 const sb = (): SupabaseClient => createClient(URL, SRV, { auth: { persistSession: false } })
 
 const OBRA = 'messina'
+
 const NOMBRE = `${MARCA} Mampostería de prueba`
 const HOY = new Date().toISOString().slice(0, 10)
 
+// LA MARCA ES PROPIA DE ESTE ARCHIVO, no `ZZ-E2E` a secas: `control-obra-permisos.spec.ts` también
+// escribe en Messina y Playwright corre los dos en paralelo. Con la marca compartida, el `.single()`
+// de acá encontraba DOS filas y el rojo no señalaba ningún defecto — el mismo modo de falla que ya
+// costó tres rojos con el servidor de otro worktree reusado.
+const MIA = `${MARCA} Mampostería`
+
 async function limpiar() {
   const c = sb()
-  const { data: acts } = await c.from('obra_actividad').select('id').eq('obra_id', OBRA).ilike('nombre', `%${MARCA}%`)
+  const { data: acts } = await c.from('obra_actividad').select('id').eq('obra_id', OBRA).ilike('nombre', `%${MIA}%`)
   const ids = (acts ?? []).map((a) => (a as { id: string }).id)
   if (ids.length) {
     await c.from('obra_ejecucion').delete().in('actividad_id', ids)
@@ -44,6 +51,15 @@ async function limpiar() {
     await c.from('obra_actividad').delete().in('id', ids)
   }
 }
+
+// ═══ EN SERIE, Y NO ES UNA PREFERENCIA ═══
+//
+// `playwright.config` tiene `fullyParallel: true`, así que los tests de UN MISMO archivo se reparten
+// entre workers — y cada worker corre su propio `beforeAll`. Los tres de acá son un CIRCUITO: el
+// primero crea la actividad y los otros dos trabajan sobre ella. Repartidos, el `limpiar()` del
+// segundo worker borraba lo que había creado el primero, y el rojo aparecía en el tercer paso sin
+// que hubiera un solo defecto en el sistema.
+test.describe.configure({ mode: 'serial' })
 
 test.beforeAll(limpiar)
 test.afterAll(limpiar)
@@ -71,7 +87,11 @@ test('1-9 · crear la actividad, medirla en m², y verla en las cuatro vistas', 
 
   // ═══ LA UNIDAD Y EL OBJETIVO SE CARGAN DESDE EL PANEL ═══
   await page.goto(`/obras/${OBRA}?vista=cronograma&sub=gantt&act=${actividadId}`)
-  await expect(page.getByTestId('panel-actividad')).toBeVisible()
+  // SE ESPERA AL GANTT ANTES QUE AL PANEL, y con holgura: el panel lo abre el cliente después de
+  // hidratar, y con Playwright corriendo dos archivos en paralelo los 5 segundos por defecto se
+  // quedan cortos. El rojo que daba no señalaba ningún defecto, sólo que la máquina iba cargada.
+  await expect(page.getByTestId('gantt')).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByTestId('panel-actividad')).toBeVisible({ timeout: 20_000 })
   const medicion = page.getByTestId('bloque-medicion')
   if (!(await medicion.getAttribute('open'))) await medicion.locator('summary').click()
   await medicion.locator('input[name="unidad"]').fill('m²')
@@ -103,7 +123,7 @@ test('1-9 · crear la actividad, medirla en m², y verla en las cuatro vistas', 
 
 test('14-20 · un parte mueve la producción, el avance, las HH de la obra y las de la persona', async ({ page }) => {
   const c = sb()
-  const { data: act } = await c.from('obra_actividad').select('id').eq('obra_id', OBRA).ilike('nombre', `%${MARCA}%`).single()
+  const { data: act } = await c.from('obra_actividad').select('id').eq('obra_id', OBRA).ilike('nombre', `%${MIA}%`).single()
   const actividadId = (act as { id: string }).id
   const { data: persona } = await c.from('personas').select('id, nombre_completo').eq('en_la_empresa', true).limit(1).single()
   const personaId = (persona as { id: string }).id
@@ -159,7 +179,7 @@ test('14-20 · un parte mueve la producción, el avance, las HH de la obra y las
 
 test('21-23 · un impedimento abierto bloquea la actividad, y resolverlo la destraba', async () => {
   const c = sb()
-  const { data: act } = await c.from('obra_actividad').select('id, estado').eq('obra_id', OBRA).ilike('nombre', `%${MARCA}%`).single()
+  const { data: act } = await c.from('obra_actividad').select('id, estado').eq('obra_id', OBRA).ilike('nombre', `%${MIA}%`).single()
   const actividadId = (act as { id: string; estado: string }).id
 
   const { data: imp, error } = await c.from('obra_restriccion').insert({
@@ -178,4 +198,67 @@ test('21-23 · un impedimento abierto bloquea la actividad, y resolverlo la dest
   await c.from('obra_restriccion').update({ fecha_liberacion: HOY, estado: 'liberada' })
     .eq('id', (imp as { id: string }).id)
   expect(await leer()).toMatchObject({ estado_operativo: 'en_curso', impedimentos_abiertos: 0 })
+})
+
+test('8 · la tarea descompone la actividad, y no aparece como una fila más del plan', async ({ page }) => {
+  const c = sb()
+  const { data: act } = await c.from('obra_actividad').select('id').eq('obra_id', OBRA).ilike('nombre', `%${MIA}%`).single()
+  const actividadId = (act as { id: string }).id
+
+  await entrar(page)
+  await page.goto(`/obras/${OBRA}?vista=cronograma&sub=gantt&act=${actividadId}`)
+  await expect(page.getByTestId('gantt')).toBeVisible({ timeout: 20_000 })
+  const panel = page.getByTestId('panel-actividad')
+  await expect(panel).toBeVisible({ timeout: 20_000 })
+
+  const bloque = panel.getByTestId('bloque-tareas')
+  if (!(await bloque.getAttribute('open'))) await bloque.locator('summary').click()
+  await bloque.getByTestId('tarea-nombre').fill(`${MARCA} encofrado`)
+  await bloque.getByTestId('form-tarea').getByRole('button', { name: 'Agregar' }).click()
+
+  await expect.poll(async () => {
+    const { data } = await c.from('obra_actividad_control')
+      .select('n_tareas, n_tareas_hechas').eq('actividad_id', actividadId).single()
+    return data
+  }, { timeout: 15_000 }).toMatchObject({ n_tareas: 1, n_tareas_hechas: 0 })
+
+  // LA TAREA NO ES UNA FILA DEL PLAN. En la Lista aparecería como una actividad más y en el promedio
+  // de avance pesaría igual que la actividad entera — una obra informando distinto según cuánto se
+  // detalló el plan.
+  await page.goto(`/obras/${OBRA}?vista=cronograma&sub=lista`)
+  await expect(page.getByTestId('vista-lista')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId('vista-lista').getByText(`${MARCA} encofrado`)).toHaveCount(0)
+
+  // Y no cuenta en el avance de la obra, que es la definición que lee todo el OS.
+  const { data: antes } = await c.from('obra_avance').select('n_actividades').eq('obra_id', OBRA).single()
+  const { count: enTabla } = await c.from('obra_actividad')
+    .select('id', { count: 'exact', head: true })
+    .eq('obra_id', OBRA).is('actividad_padre_id', null).neq('tipo', 'resumen')
+  expect(Number((antes as { n_actividades: number }).n_actividades)).toBe(enTabla)
+})
+
+test('9 · la Lista mide muchas actividades de una vez', async ({ page }) => {
+  const c = sb()
+  const { data: act } = await c.from('obra_actividad').select('id').eq('obra_id', OBRA).ilike('nombre', `%${MIA}%`).single()
+  const actividadId = (act as { id: string }).id
+  // Se la desmide primero para que el cambio que se mide sea el de esta prueba.
+  await c.from('obra_actividad')
+    .update({ unidad: null, cantidad_objetivo: null, metodo_avance: 'manual' }).eq('id', actividadId)
+
+  await entrar(page)
+  await page.goto(`/obras/${OBRA}?vista=cronograma&sub=lista`)
+  await expect(page.getByTestId('vista-lista')).toBeVisible({ timeout: 20_000 })
+  const fila = page.locator('tr', { hasText: NOMBRE })
+  await fila.getByTestId('lista-unidad').fill('un')
+  await fila.getByTestId('lista-cantidad').fill('12')
+  await page.getByTestId('form-medicion-lote').getByRole('button', { name: 'Guardar medición' }).click()
+
+  // MEDIRLA ES ELEGIR EL MÉTODO: pasa a calcular su avance desde la producción, sin volver a entrar
+  // al panel de cada una.
+  await expect.poll(async () => {
+    const { data } = await c.from('obra_actividad_control')
+      .select('unidad, cantidad_objetivo, metodo_avance').eq('actividad_id', actividadId).single()
+    const d = data as { unidad: string; cantidad_objetivo: number | string; metodo_avance: string } | null
+    return d && { ...d, cantidad_objetivo: Number(d.cantidad_objetivo) }
+  }, { timeout: 20_000 }).toMatchObject({ unidad: 'un', cantidad_objetivo: 12, metodo_avance: 'cantidad' })
 })
