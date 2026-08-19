@@ -13,6 +13,19 @@ import { entrar } from './util/obras-e2e'
 // función pura puede afirmar.
 
 const filas = (page: Page) => page.locator('[data-testid="portafolio-tabla"] tbody tr')
+
+/**
+ * QUÉ OBRAS SE VEN Y EN QUÉ ORDEN — que es lo que este test afirma.
+ *
+ * No se compara el texto completo de la fila: `innerText` depende del layout en el instante en que
+ * se lee, y la MISMA tabla vuelve con separadores distintos según haya llegado por una navegación
+ * completa —la que produce la redirección que restaura la vista— o por una transición de cliente.
+ * Contra producción eso hacía fallar la comparación de ocho filas que eran exactamente las mismas
+ * obras en el mismo orden, sólo que pegadas sin espacios. Un test que se rompe por eso no está
+ * midiendo la vista: está midiendo el navegador.
+ */
+const contenido = async (page: Page) =>
+  (await filas(page).locator('td:first-child').allInnerTexts()).map((t) => t.trim())
 const etapas = async (page: Page) =>
   page.locator('[data-testid="portafolio-tabla"] tbody tr td:nth-child(3)').allInnerTexts()
 
@@ -75,14 +88,15 @@ test('la vista se abre como la dejé, sin volver a elegir nada', async ({ page }
   await page.waitForURL(/etapa=terminacion/)
   await page.getByTestId('orden-avance').click()
   await page.waitForURL(/orden=avance/)
-  const comoLaDeje = await filas(page).allInnerTexts()
+  const comoLaDeje = await contenido(page)
 
   // IRSE DE VERDAD: otra pantalla, y volver a la URL PELADA — que es lo que hace el enlace del menú.
   await page.goto('/administracion/personas')
   await page.goto('/obras')
   await expect(page).toHaveURL(/etapa=terminacion/)
   await expect(page).toHaveURL(/orden=avance/)
-  expect(await filas(page).allInnerTexts()).toEqual(comoLaDeje)
+  await expect(filas(page)).toHaveCount(comoLaDeje.length)
+  expect(await contenido(page)).toEqual(comoLaDeje)
 
   // Y «quitar filtros» además OLVIDA: la próxima visita pelada vuelve a la cartera entera.
   await page.getByTestId('limpiar-filtros').click()
@@ -111,9 +125,13 @@ test('el Gantt recuerda su propia vista, distinta de la del Resumen', async ({ p
   await page.goto('/obras/gantt')
   await expect(page).toHaveURL(/etapa=terminacion/)
 
+  // El «quitar filtros» se espera visible antes de tocarlo: es el último enlace de la barra y en
+  // producción la tabla llega después que el resto de la pantalla.
+  await expect(page.getByTestId('limpiar-filtros')).toBeVisible()
   await page.getByTestId('limpiar-filtros').click()
-  await page.waitForURL(/\/obras\/gantt$/)
+  await expect(page).toHaveURL(/\/obras\/gantt$/)
   await page.goto('/obras')
+  await expect(page.getByTestId('limpiar-filtros')).toBeVisible()
   await page.getByTestId('limpiar-filtros').click()
-  await page.waitForURL(/\/obras$/)
+  await expect(page).toHaveURL(/\/obras$/)
 })
