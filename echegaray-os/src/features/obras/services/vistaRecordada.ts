@@ -76,7 +76,15 @@ export function esEleccionDeVista(
 ): boolean {
   if (metodo !== 'GET') return false
   if (cabeceras.get('next-router-prefetch') !== null) return false
+  // Next 16 precarga POR SEGMENTO y esa variante NO manda `next-router-prefetch`: manda ésta. Con
+  // la primera sola, contra producción seguía guardándose `etapa=previo` —la primera pastilla— sin
+  // que nadie la tocara.
+  if (cabeceras.get('next-router-segment-prefetch') !== null) return false
   if (cabeceras.get('purpose') === 'prefetch') return false
   if (cabeceras.get('x-purpose') === 'preview') return false
+  // ÚLTIMO CANDADO, por si mañana aparece una tercera forma de precargar. Una navegación de cliente
+  // REAL manda el árbol de estado del router —de dónde viene—; una precarga no tiene de dónde
+  // venir, así que no lo manda. Un pedido RSC sin árbol es una precarga aunque no lo diga.
+  if (cabeceras.get('rsc') !== null && cabeceras.get('next-router-state-tree') === null) return false
   return true
 }

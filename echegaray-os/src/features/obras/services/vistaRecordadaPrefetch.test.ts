@@ -19,13 +19,22 @@ test('una navegación de verdad se guarda', () => {
 })
 
 test('una navegación de cliente TAMBIÉN se guarda: la produce alguien tocando algo', () => {
-  assert.equal(esEleccionDeVista('GET', h({ rsc: '1' })), true)
+  // Con el árbol de estado: viene de una pantalla, o sea que alguien tocó algo.
+  assert.equal(esEleccionDeVista('GET', h({ rsc: '1', 'next-router-state-tree': '%5B%22%22%5D' })), true)
 })
 
-test('una precarga NO se guarda, en sus tres formas', () => {
+test('una precarga NO se guarda, en ninguna de sus formas', () => {
   assert.equal(esEleccionDeVista('GET', h({ 'next-router-prefetch': '1' })), false)
+  // Next 16 precarga por SEGMENTO y esa variante no manda la cabecera de arriba.
+  assert.equal(esEleccionDeVista('GET', h({ 'next-router-segment-prefetch': '/_index' })), false)
   assert.equal(esEleccionDeVista('GET', h({ purpose: 'prefetch' })), false)
   assert.equal(esEleccionDeVista('GET', h({ 'x-purpose': 'preview' })), false)
+})
+
+test('un pedido RSC SIN árbol de estado es una precarga aunque no lo diga', () => {
+  // El candado que no depende de que Next mantenga el nombre de sus cabeceras: una navegación real
+  // viene de algún lado y lo declara; una precarga no viene de ningún lado.
+  assert.equal(esEleccionDeVista('GET', h({ rsc: '1' })), false)
 })
 
 test('una precarga que además es RSC sigue siendo precarga', () => {
