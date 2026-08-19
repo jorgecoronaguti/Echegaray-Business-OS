@@ -81,8 +81,27 @@ function geometria(filas) {
   // suyo; el texto sí, y `esTituloDeSeccion` reconoce además los nombres anteriores.
   const i2 = filas.findIndex((_, i) => esTituloDeSeccion(t(i), 'cuentaCorriente'))
   if (i2 < 0) throw new Error('no encontré el título de la sección de concentración por proveedor')
-  const filaLimite = filaDelSiguienteTitulo(filas, i2 + 1)
-  if (!filaLimite) throw new Error('no encontré la sección que sigue a la 2: sin límite no escribo')
+  // ═══ CUANDO ES LA ÚLTIMA SECCIÓN, EL LÍMITE ES EL FIN DE LA PESTAÑA (19/08/2026) ═══
+  //
+  // Este paso falló en TODAS las corridas del pipeline del día con `no encontré la sección que sigue
+  // a la 2: sin límite no escribo`, y no había nada roto: la sección de concentración por proveedor
+  // quedó ÚLTIMA en la pestaña, así que no hay ninguna que le siga. Exigir un título abajo era exigir
+  // una vecina que la geometría no obliga a tener.
+  //
+  // El fail-closed original sigue siendo correcto y no se afloja: sin límite NO se escribe, porque
+  // pasarse de largo pisa la sección de al lado. Lo que cambia es de dónde sale el límite cuando no
+  // hay vecina — de la última fila con contenido de la pestaña, que es exactamente hasta dónde llega
+  // esta sección cuando es la última. Sigue siendo un borde REAL leído del archivo, no un número.
+  //
+  // Si ni siquiera hay contenido debajo del título, ahí sí se aborta: una sección sin una sola fila
+  // no es una sección última, es una lectura que salió mal.
+  let filaLimite = filaDelSiguienteTitulo(filas, i2 + 1)
+  if (!filaLimite) {
+    const ultima = ultimaConDato(filas, { desde: i2 + 2, hasta: filas.length + 1 })
+    if (!ultima) throw new Error('la sección de concentración por proveedor es la última y no tiene ni una fila debajo: no escribo')
+    filaLimite = ultima + 1
+    console.log(`  es la última sección de la pestaña: el límite es el fin del contenido, fila ${ultima}`)
+  }
   const iCab = filas.findIndex((_, i) => i > i2 && i < filaLimite - 1 && /PROVEEDOR/i.test(t(i)))
   if (iCab < 0) throw new Error('no encontré la fila de rótulos de la sección 2')
   return { filaRotulos: iCab + 1, filaLimite }
