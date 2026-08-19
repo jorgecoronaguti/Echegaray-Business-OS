@@ -42,6 +42,23 @@ test('cada movimiento tiene fecha, concepto e importe', () => {
   }
 })
 
+// EL FONDO DE CESE LABORAL NO ES UN PAGO A PROVEEDORES (19/08/2026). El 18/08 el banco debitó 36
+// acreditaciones "fondo desempleo" por $2.481.098, una por obrero: es el fondo de cese laboral de la
+// construcción (ley 22.250), o sea COSTO LABORAL. Sin regla propia caían en «Transferencias a
+// proveedores» —el cajón de sastre—, inflando los pagos a proveedores y dejando el costo laboral del
+// mes $2,48M por debajo de lo que salió. Es el mismo defecto del 15/08 con «haber» en singular.
+test('el fondo de cese laboral es carga social, no un pago a proveedores ni un jornal', () => {
+  const real = 'Pagos personalizados acred cuenta - Acreditacion fondo desempleo  000000 - cuit 30716304643              260818507'
+  assert.equal(clasificarMovimiento(real), 'Cargas sociales (fondo de cese laboral)')
+  // Las dos formas en que el mismo concepto aparece rotulado, y la raíz que las cubre a las dos.
+  assert.equal(clasificarMovimiento('Deposito fondo de cese laboral uocra'), 'Cargas sociales (fondo de cese laboral)')
+  assert.equal(clasificarMovimiento('Acreditacion fondo de desempleo'), 'Cargas sociales (fondo de cese laboral)')
+  // NO se lo lleva Sueldos: el control de la quincena se compara contra lo que liquida Jornales, y el
+  // fondo de cese se deposita aparte. Mezclarlos haría que ese control cerrara mal todos los meses.
+  assert.notEqual(clasificarMovimiento(real), 'Sueldos')
+  assert.equal(clasificarMovimiento('Pago de haberes - 260814507'), 'Sueldos')
+})
+
 // UN ECHEQ QUE ENTRA NO ES UN CHEQUE QUE SALE (28/07). "Deposito E-cheq Int Misma Plaza" es un
 // echeq de tercero acreditado: plata que ENTRA. Antes matcheaba /e-?cheq/ y caía en el bucket
 // "Cheques y echeq" —que es de SALIDAS y cuyo destino es la columna DEBITADO de Cheques Emitidos—,
