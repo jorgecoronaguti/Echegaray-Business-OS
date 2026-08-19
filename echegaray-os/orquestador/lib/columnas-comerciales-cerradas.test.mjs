@@ -44,6 +44,25 @@ const CERRADAS = {
   personas: ['retribucion_pactada', 'dni', 'cuil'],
 }
 
+// ═══ POR QUÉ LAS COLUMNAS NUEVAS DEL MÓDULO PERSONAL NO ESTÁN EN LA LISTA (19/08/2026) ═══
+//
+// El módulo PERSONAL / HH le agregó seis columnas a `personas`: `telefono`, `email`, `domicilio`,
+// `contacto_emergencia`, `contacto_emergencia_telefono` y `puesto`. Ninguna entra a `CERRADAS`, y
+// el criterio es el mismo que ya rige acá — se cierra por columna lo que NO se puede cerrar por
+// fila, no todo lo que suena delicado:
+//
+//  · Lo que decide quién ve estas seis es el RLS de filas de `personas`, que desde el 19/08 es
+//    `es_administracion()`. Un jefe de obra que pregunte por `telefono` recibe CERO FILAS, no un
+//    valor. Un grant por columna encima de eso no protegería nada más y sí escondería el dato a
+//    Administración, que es quien tiene que cargarlo — porque `authenticated` es un solo rol para
+//    los cuatro roles de la aplicación.
+//  · `dni`, `cuil` y `retribucion_pactada` SÍ siguen cerradas por columna, y por eso hay una vista
+//    con portero (`persona_legajo`) que es el único camino de la web a las dos primeras. La tercera
+//    no la publica ni esa vista.
+//  · Y lo que la obra necesita para trabajar viaja por `persona_plantel`, que publica cinco columnas
+//    y ninguna de estas seis. La antigüedad (`fecha_ingreso`) y el oficio (`puesto`) se evaluaron
+//    para esa vista y se dejaron afuera: ver el comentario de `vistas-security-invoker.test.mjs`.
+
 const SIN_BASE = !process.env.DATABASE_URL
 
 /** Las columnas que `authenticated` puede leer hoy, según el catálogo. */

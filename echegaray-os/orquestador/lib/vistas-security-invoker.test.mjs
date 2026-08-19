@@ -22,15 +22,41 @@ import { query } from './db.mjs'
 const CON_RLS = [
   'obra_panel', 'obra_plan_vs_real', 'obra_avance', 'cliente_panel',
   'imputacion_pendiente', 'proveedor_nombre_pendiente',
+  // MÓDULO PERSONAL / HH (19/08/2026). Las tres se apoyan en el RLS de sus tablas:
+  //  · `persona_directorio` hereda el de `personas` — por eso el listado es de Administración sola.
+  //  · `cuadrilla_panel` hereda el de `obra_asignacion` para derivar la obra de cada cuadrilla.
+  //  · `obra_actividad_hh` hereda el de `obra_actividad` y el de `registros_hh`: un jefe de obra ve
+  //    el plan contra real de SUS obras y de ninguna otra.
+  'persona_directorio', 'cuadrilla_panel', 'obra_actividad_hh',
 ]
 
 /**
- * LA EXCEPCIÓN, DECLARADA. `persona_plantel` es `security_invoker = false` A PROPÓSITO: publica
- * cuatro columnas no sensibles del legajo (nombre, categoría, especialidad, egreso) para que la obra
- * pueda asignar personal sin poder leer `personas`, que es de Administración. Es una desescalada
- * deliberada y acotada — no un olvido — y por eso está nombrada acá en vez de simplemente ausente.
+ * LAS EXCEPCIONES, DECLARADAS Y CON SU CONTRATO DE COLUMNAS.
+ *
+ * `security_invoker = false` significa que la vista corre como su dueño y saltea el RLS de las
+ * tablas que lee. Son las DOS únicas del OS, las dos sobre `personas`, y existen porque
+ * `authenticated` es UN SOLO rol de Postgres para los cuatro roles de la aplicación: un grant por
+ * columna no puede darle el DNI a Administración y negárselo a Obras. La puerta se abre a mano, se
+ * nombra acá, y su lista de columnas queda fijada por el test.
+ *
+ *  · `persona_plantel` publica lo NO sensible para que la obra pueda asignar personal sin leer el
+ *    legajo. Nombre, categoría, especialidad y egreso. Sin portero adentro: cualquier autenticado la
+ *    lee, y eso es deliberado — sin una lista de candidatos no existe la primera asignación.
+ *
+ *  · `persona_legajo` publica EL legajo, con `dni` y `cuil`, y lleva el portero adentro
+ *    (`where es_administracion()`). Es el único camino de la web a esos dos campos: el grant por
+ *    columna se los niega a `authenticated`, y el test de columnas cerradas lo vigila.
+ *    NO publica `retribucion_pactada`, y eso también lo fija este contrato.
  */
-const DESESCALADA_DECLARADA = ['persona_plantel']
+const DESESCALADA_DECLARADA = {
+  persona_plantel: ['id', 'nombre_completo', 'categoria', 'especialidad', 'fecha_egreso'],
+  persona_legajo: [
+    'id', 'nombre_completo', 'dni', 'cuil', 'fecha_nacimiento', 'nacionalidad',
+    'telefono', 'email', 'domicilio', 'contacto_emergencia', 'contacto_emergencia_telefono',
+    'fecha_ingreso', 'fecha_egreso', 'convenio_colectivo', 'categoria', 'especialidad', 'puesto',
+    'modalidad_liquidacion', 'art', 'obra_social', 'drive_folder_id', 'notas',
+  ],
+}
 
 const SIN_BASE = !process.env.DATABASE_URL
 
@@ -49,15 +75,48 @@ test('ninguna vista que dependa del RLS corre con los permisos de su dueño', { 
     `perdieron security_invoker y saltean el RLS de sus tablas: ${sinInvoker.join(', ')}`)
 })
 
-test('la desescalada de `persona_plantel` sigue siendo la única, y sigue siendo acotada', { skip: SIN_BASE }, async () => {
-  // Si mañana alguien le agrega una columna sensible a esta vista, la desescalada deja de ser
-  // acotada y hay que volver a discutirla. El test fija el contrato: estas cuatro y nada más.
+for (const [vista, columnas] of Object.entries(DESESCALADA_DECLARADA)) {
+  test(`la desescalada de \`${vista}\` sigue siendo acotada`, { skip: SIN_BASE }, async () => {
+    // Si mañana alguien le agrega una columna sensible, la desescalada deja de ser acotada y hay que
+    // volver a discutirla. El test fija el contrato: estas columnas y ninguna más.
+    const { rows } = await query(
+      `select column_name from information_schema.columns
+        where table_schema = 'public' and table_name = $1 order by ordinal_position`,
+      [vista],
+    )
+    assert.deepEqual(rows.map((r) => r.column_name), columnas,
+      `cambió lo que publica \`${vista}\`, que salta el RLS a propósito`)
+  })
+}
+
+test('no apareció una tercera puerta al legajo sin declararse', { skip: SIN_BASE }, async () => {
+  // ═══ LA MITAD QUE NADIE MIRA ═══
+  //
+  // Los dos tests de arriba vigilan las vistas que YA se conocen. El agujero que queda es la vista
+  // NUEVA: `create view` sin `security_invoker` corre como su dueño POR DEFAULT, así que una vista
+  // agregada sin pensarlo saltea el RLS y ningún test la nombra. Acá se buscan en el catálogo de
+  // dependencias TODAS las vistas que leen `personas` corriendo como dueño, y se exige que sean
+  // exactamente las dos declaradas arriba.
+  //
+  // ALCANCE DECLARADO: este barrido mira `personas` y nada más. Corriendo el mismo criterio sobre el
+  // esquema entero aparecen otras diez vistas que corren como su dueño y que `authenticated` puede
+  // leer —`obra_costo_real`, `nomina_por_mes`, `egreso_por_area`, `factor_ajuste`,
+  // `finanzas_scorecard_vigente`, `recupero_art_por_mes`, `recupero_art_sin_imputar` y las tres
+  // `v_drive_busqueda_*`—. Ninguna toca `personas`, son de otros módulos y NO se tocan desde acá:
+  // ampliar el barrido sin auditarlas una por una dejaría un test rojo que el próximo lo apaga.
+  // Queda escrito para que se audite con su dueño, no para que se descubra dos veces.
   const { rows } = await query(
-    `select column_name from information_schema.columns
-      where table_schema = 'public' and table_name = $1 order by ordinal_position`,
-    [DESESCALADA_DECLARADA[0]],
+    `select c.relname
+       from pg_class c join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = 'public' and c.relkind = 'v'
+        and coalesce(array_to_string(c.reloptions, ','), '') not like '%security_invoker=true%'
+        and exists (
+          select 1 from pg_depend d
+            join pg_rewrite rw on rw.oid = d.objid
+            join pg_class t on t.oid = d.refobjid
+           where rw.ev_class = c.oid and t.relname = 'personas')
+      order by 1`,
   )
-  assert.deepEqual(rows.map((r) => r.column_name),
-    ['id', 'nombre_completo', 'categoria', 'especialidad', 'fecha_egreso'],
-    'cambió lo que publica `persona_plantel`: era la única vista que salta el RLS a propósito')
+  assert.deepEqual(rows.map((r) => r.relname), Object.keys(DESESCALADA_DECLARADA).sort(),
+    'apareció una vista que lee `personas` salteando el RLS y no está declarada arriba')
 })

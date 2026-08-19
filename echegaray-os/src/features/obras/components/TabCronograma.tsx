@@ -30,6 +30,7 @@ import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { BotonAccion, type ResultadoAccion } from '@/shared/components/ui'
 import type { Actividad, Dependencia, Persona, Restriccion } from '../types'
+import type { ActividadHH } from '../services/personalService'
 import { Gantt } from './Gantt'
 import { VistaProximos, type Ventana } from './VistaProximos'
 import { type AccionesCronograma } from './PanelActividad'
@@ -57,6 +58,7 @@ export function TabCronograma({
   semanas,
   actividadAbierta = null,
   hoy,
+  hhPorActividad,
 }: {
   /** El cronograma vivo: las NO archivadas, en el orden del tracker. */
   actividades: Actividad[]
@@ -83,6 +85,9 @@ export function TabCronograma({
   actividadAbierta?: string | null
   /** Sólo para poder fijar el día en un test. En la pantalla es hoy. */
   hoy?: Date
+  /** HH plan contra real por actividad, indexada por id. Viene de `obra_actividad_hh`, que es la
+   *  misma fuente que muestra la solapa Personal: el pliego pide UN solo cálculo, no dos. */
+  hhPorActividad?: Map<string, ActividadHH>
 }) {
   const router = useRouter()
   const params = useSearchParams()
@@ -137,6 +142,7 @@ export function TabCronograma({
             masivas={masivas}
             yaSellada={yaSellada}
             seleccionInicial={actividadAbierta}
+            hhPorActividad={hhPorActividad}
             {...(hoy ? { hoy } : {})}
           />
           {archivadas.length > 0 && restaurarActividad && (

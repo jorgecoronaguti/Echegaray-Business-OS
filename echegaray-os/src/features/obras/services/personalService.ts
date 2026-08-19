@@ -1,18 +1,15 @@
-// PERSONAL DE OBRA — el acceso a datos de quién trabaja dónde.
+// PERSONAL DE OBRA — el acceso a datos de quién trabaja dónde y cuántas horas lleva.
 //
 // FRONTERA: este módulo NO administra legajos. El legajo es de Administración
-// (`/administracion/personas`); acá sólo se lee para poder elegir un nombre. `registros_hh` es de
-// productividad y acá sólo se lee para mostrar el detalle que respalda el total. El total de HH real
-// NO se suma acá: lo publica `obra_plan_vs_real`, que es la única fuente del número. Sumarlo también
-// en esta capa sería la segunda versión del mismo dato.
+// (`/administracion/personas`); acá se lee `persona_plantel` para poder elegir un nombre. El total de
+// HH real de la obra NO se suma acá: lo publica `obra_plan_vs_real`, y por actividad lo publica
+// `obra_actividad_hh`. Sumarlo también en esta capa sería la segunda versión del mismo número.
 //
-// ═══ POR QUÉ SE LEE `persona_plantel` Y NO `personas` (19/08/2026) ═══
+// ═══ POR QUÉ SE LEE `persona_plantel` Y NO `personas` ═══
 //
-// `personas` guarda `retribucion_pactada`, `cuil`, `dni`, `fecha_nacimiento`, `art` y `obra_social`,
-// y su policy de SELECT decía `using (true)`: cualquier autenticado —un jefe de obra, con las
-// devtools abiertas— leía sueldos y documentos por PostgREST. Ahora la tabla es de Administración y
-// la obra lee `persona_plantel`, que publica sólo lo operativo: quién es, categoría, especialidad y
-// si sigue en el plantel. Ver `20260819T1200_administracion_personas_y_proveedores.sql`.
+// `personas` guarda `retribucion_pactada`, `cuil`, `dni`, `fecha_nacimiento`, `art` y `obra_social`.
+// Desde el 19/08/2026 la tabla es de Administración por RLS y la obra lee la vista, que publica sólo
+// lo operativo: quién es, categoría, especialidad, puesto e ingreso.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Asignacion, Persona, ServiceResult } from '../types'
@@ -21,91 +18,164 @@ import type { Asignacion, Persona, ServiceResult } from '../types'
 export async function getPersonas(supabase: SupabaseClient): Promise<ServiceResult<Persona[]>> {
   const { data, error } = await supabase
     .from('persona_plantel')
-    .select('id, nombre_completo, categoria, especialidad, fecha_egreso')
+    .select('id, nombre_completo, categoria, especialidad, puesto, fecha_egreso')
     .is('fecha_egreso', null)
     .order('nombre_completo', { ascending: true })
   if (error) return { data: null, error: error.message }
   return { data: (data ?? []) as Persona[], error: null }
 }
 
+/** Las cuadrillas para el selector. Se leen enteras: hay pocas y la lista no depende de la obra. */
+export async function getCuadrillas(
+  supabase: SupabaseClient,
+): Promise<{ id: string; nombre: string; integrantes: number }[]> {
+  const { data } = await supabase
+    .from('cuadrilla_panel').select('id, nombre, integrantes').eq('activa', true)
+    .order('nombre', { ascending: true })
+  return (data ?? []) as { id: string; nombre: string; integrantes: number }[]
+}
+
 /**
  * Quién está asignado a la obra. El nombre NO se copia: se resuelve contra el plantel.
  *
- * Son dos consultas y no un embed de PostgREST porque el nombre ahora vive en la vista
- * `persona_plantel`, y PostgREST sólo sabe embeber por una clave foránea declarada —que una vista no
- * tiene. Un `personas(...)` embebido seguiría compilando y devolvería `null` para todo el mundo
- * salvo Administración: la pantalla del jefe de obra habría mostrado "persona borrada del legajo" en
- * cada fila, que es el modo de falla más caro de todos, porque parece un dato.
+ * Son dos consultas y no un embed de PostgREST porque el nombre vive en la vista `persona_plantel`,
+ * y PostgREST sólo sabe embeber por una clave foránea declarada —que una vista no tiene. Un
+ * `personas(...)` embebido seguiría compilando y devolvería `null` para todo el mundo salvo
+ * Administración: la pantalla del jefe de obra habría mostrado "persona borrada del legajo" en cada
+ * fila, que es el modo de falla más caro de todos, porque parece un dato.
  */
 export async function getAsignaciones(supabase: SupabaseClient, obraId?: string): Promise<ServiceResult<Asignacion[]>> {
-  // SIN `obraId` DEVUELVE EL PLANTEL DE TODAS LAS OBRAS VISIBLES, por el mismo camino. Quién ve qué
-  // obra lo decide el RLS de `obra_asignacion`, no este `if`.
-  const base = supabase.from('obra_asignacion').select('*')
+  // SIN `obraId` DEVUELVE EL PLANTEL DE TODAS LAS OBRAS VISIBLES. Quién ve qué obra lo decide el RLS
+  // de `obra_asignacion`, no este `if`.
+  const base = supabase.from('obra_asignacion')
+    .select('id, obra_id, persona_id, rol, cuadrilla, cuadrilla_id, actividad_id, desde, hasta, ' +
+      'notas, cuadrilla_rel:cuadrilla_id(nombre)')
   const { data, error } = await (obraId ? base.eq('obra_id', obraId) : base)
     .order('obra_id', { ascending: true })
     .order('rol', { ascending: true })
   if (error) return { data: null, error: error.message }
 
-  const crudas = (data ?? []) as unknown as Asignacion[]
-  const ids = [...new Set(crudas.map((a) => a.persona_id).filter(Boolean))] as string[]
-  const plantel = new Map<string, { nombre_completo: string | null; especialidad: string | null }>()
-  if (ids.length > 0) {
-    const { data: personas } = await supabase
-      .from('persona_plantel')
-      .select('id, nombre_completo, especialidad')
-      .in('id', ids)
-    for (const p of (personas ?? []) as { id: string; nombre_completo: string | null; especialidad: string | null }[]) {
-      plantel.set(p.id, { nombre_completo: p.nombre_completo, especialidad: p.especialidad })
-    }
+  type Cruda = Omit<Asignacion, 'persona_nombre' | 'persona_especialidad' | 'cuadrilla'> & {
+    cuadrilla: string | null
+    cuadrilla_rel: { nombre: string } | null
   }
+  const crudas = (data ?? []) as unknown as Cruda[]
+  const plantel = await plantelDe(supabase, crudas.map((a) => a.persona_id))
 
-  const filas = crudas.map((a) => {
-    const p = a.persona_id ? plantel.get(a.persona_id) : undefined
-    return {
-      ...a,
-      // El nombre puede faltar si la persona se borró del legajo: se publica el vínculo igual, con
-      // el nombre en null. Perder la fila entera escondería una asignación que existe.
-      persona_nombre: p?.nombre_completo ?? null,
-      persona_especialidad: p?.especialidad ?? null,
-    } as Asignacion
-  })
-  // Responsables primero y después por nombre: es el orden en que se lee una lista de plantel. En la
-  // lista global el criterio se aplica DENTRO de cada obra, que es como se lee una lista agrupada.
-  filas.sort((a, b) =>
-    a.obra_id !== b.obra_id
-      ? a.obra_id.localeCompare(b.obra_id)
-      : a.rol === b.rol
-        ? String(a.persona_nombre ?? '').localeCompare(String(b.persona_nombre ?? ''))
-        : a.rol === 'responsable' ? -1 : 1)
-  return { data: filas, error: null }
+  const filas: Asignacion[] = crudas.map((a) => ({
+    ...a,
+    // El texto legacy ('1', '2') es el respaldo cuando todavía no se migró a la cuadrilla canónica.
+    cuadrilla: a.cuadrilla_rel?.nombre ?? a.cuadrilla,
+    // El nombre puede faltar si la persona se borró del legajo: se publica el vínculo igual, con el
+    // nombre en null. Perder la fila entera escondería una asignación que existe.
+    persona_nombre: plantel.get(a.persona_id)?.nombre_completo ?? null,
+    persona_especialidad: plantel.get(a.persona_id)?.especialidad ?? null,
+  }))
+  return { data: ordenar(filas), error: null }
 }
 
+async function plantelDe(supabase: SupabaseClient, personaIds: (string | null)[]) {
+  const ids = [...new Set(personaIds.filter(Boolean))] as string[]
+  const m = new Map<string, { nombre_completo: string | null; especialidad: string | null }>()
+  if (ids.length === 0) return m
+  const { data } = await supabase
+    .from('persona_plantel').select('id, nombre_completo, especialidad').in('id', ids)
+  for (const p of (data ?? []) as { id: string; nombre_completo: string | null; especialidad: string | null }[]) {
+    m.set(p.id, { nombre_completo: p.nombre_completo, especialidad: p.especialidad })
+  }
+  return m
+}
+
+/** Vigentes primero, después responsables, después por nombre. Una asignación cerrada es historia y
+ *  no tiene por qué disputarle el primer renglón a quien está trabajando hoy. */
+function ordenar(filas: Asignacion[]): Asignacion[] {
+  return [...filas].sort((a, b) => {
+    if (a.obra_id !== b.obra_id) return a.obra_id.localeCompare(b.obra_id)
+    const cerrada = (x: Asignacion) => (x.hasta ? 1 : 0)
+    if (cerrada(a) !== cerrada(b)) return cerrada(a) - cerrada(b)
+    if (a.rol !== b.rol) return a.rol === 'responsable' ? -1 : 1
+    return String(a.persona_nombre ?? '').localeCompare(String(b.persona_nombre ?? ''))
+  })
+}
+
+/** Una imputación de horas tal como la muestra la obra. */
 export interface RegistroHH {
   id: string
-  /** De qué obra son estas horas. La solapa de la obra no la usa; la lista global la muestra. */
   obra_canonica_id: string | null
-  trabajador_o_cuadrilla: string
+  persona_id: string | null
+  /** TEXTO LEGACY del Sheet de JORNALES. En las filas nuevas es null. */
+  trabajador_o_cuadrilla: string | null
+  persona_nombre: string | null
+  actividad_id: string | null
+  actividad_nombre: string | null
+  fecha: string | null
   fecha_inicio_semana: string
   horas: number
   categoria: string | null
+  notas: string | null
 }
 
 /**
  * El DETALLE de las HH imputadas a la obra, para que el total se pueda auditar.
  *
- * Se filtra por `obra_canonica_id`, no por el `obra_id` legacy: las 19 filas cargadas cuelgan de
- * `public.obras`, y hasta que alguien las mapee al eje canónico esta consulta devuelve vacío. Ese
- * vacío es un dato —"nadie imputó HH a esta obra"— y la pantalla lo dice con esas palabras.
+ * Se filtra por `obra_canonica_id`, no por el `obra_id` legacy: las 19 filas históricas cuelgan de
+ * `public.obras` y hasta que alguien las mapee al eje canónico no aparecen acá. Ese vacío es un dato
+ * —"nadie imputó HH a esta obra"— y la pantalla lo dice con esas palabras.
  */
 export async function getRegistrosHH(supabase: SupabaseClient, obraId?: string): Promise<ServiceResult<RegistroHH[]>> {
-  const base = supabase
-    .from('registros_hh')
-    .select('id, obra_canonica_id, trabajador_o_cuadrilla, fecha_inicio_semana, horas, categoria')
+  const base = supabase.from('registros_hh')
+    .select('id, obra_canonica_id, persona_id, trabajador_o_cuadrilla, actividad_id, fecha, ' +
+      'fecha_inicio_semana, horas, categoria, notas, obra_actividad(nombre)')
   const { data, error } = await (obraId ? base.eq('obra_canonica_id', obraId) : base)
-    // Las 19 filas históricas cuelgan de la tabla legacy y tienen `obra_canonica_id` en null: en la
-    // lista global aparecen como «sin obra», que es exactamente lo que son. No se les inventa una.
     .not('obra_canonica_id', 'is', null)
+    .order('fecha', { ascending: false, nullsFirst: false })
     .order('fecha_inicio_semana', { ascending: false })
   if (error) return { data: null, error: error.message }
-  return { data: (data ?? []) as RegistroHH[], error: null }
+
+  type Cruda = Omit<RegistroHH, 'persona_nombre' | 'actividad_nombre'> & {
+    obra_actividad: { nombre: string } | null
+  }
+  const crudas = (data ?? []) as unknown as Cruda[]
+  const plantel = await plantelDe(supabase, crudas.map((r) => r.persona_id))
+  return {
+    data: crudas.map((r) => ({
+      ...r,
+      horas: Number(r.horas),
+      persona_nombre: r.persona_id ? plantel.get(r.persona_id)?.nombre_completo ?? null : null,
+      actividad_nombre: r.obra_actividad?.nombre ?? null,
+    })),
+    error: null,
+  }
+}
+
+/** HH plan contra HH real POR ACTIVIDAD. Sale de `obra_actividad_hh`, que es el único cálculo:
+ *  lo leen Cronograma y Personal, y por eso no pueden mostrar números distintos. */
+export interface ActividadHH {
+  actividad_id: string
+  obra_id: string
+  nombre: string
+  tipo: string
+  orden: number
+  avance_pct: number | null
+  hh_plan: number | null
+  hh_real: number | null
+  n_imputaciones: number
+  desvio_pct: number | null
+  consumo_plan_pct: number | null
+}
+
+export async function getActividadHH(
+  supabase: SupabaseClient, obraId: string,
+): Promise<ServiceResult<ActividadHH[]>> {
+  const { data, error } = await supabase
+    .from('obra_actividad_hh').select('*').eq('obra_id', obraId).order('orden', { ascending: true })
+  if (error) return { data: null, error: error.message }
+  return {
+    data: ((data ?? []) as ActividadHH[]).map((a) => ({
+      ...a,
+      hh_plan: a.hh_plan == null ? null : Number(a.hh_plan),
+      hh_real: a.hh_real == null ? null : Number(a.hh_real),
+    })),
+    error: null,
+  }
 }

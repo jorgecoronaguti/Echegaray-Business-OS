@@ -92,7 +92,10 @@ export interface Actividad {
   /** La persona que responde por la actividad. Una cuadrilla no rinde cuentas; una persona sí. */
   responsable_id: string | null
   hh_plan: number | null
-  hh_real: number | null
+  /** NO HAY `hh_real` ACÁ. Se cargaba a mano en el panel de la actividad, al lado de las horas
+   *  imputadas de verdad en `registros_hh`: dos números para el mismo hecho. La columna se borró de
+   *  la base el 19/08/2026 con 0 filas cargadas de 344. HH real por actividad la publica
+   *  `obra_actividad_hh` sumando las imputaciones, y es el único cálculo. */
   /** Archivada NO es borrada: sale del Gantt y de los promedios, y su historia queda. */
   archivada: boolean
   creada_en_web: boolean
@@ -246,6 +249,7 @@ export interface Persona {
   nombre_completo: string
   categoria: string | null
   especialidad: string | null
+  puesto: string | null
   fecha_egreso: string | null
 }
 
@@ -258,7 +262,9 @@ export interface Asignacion {
   obra_id: string
   persona_id: string
   rol: RolAsignacion
+  /** El nombre de la cuadrilla canónica, con el texto legacy ('1', '2') como respaldo. */
   cuadrilla: string | null
+  cuadrilla_id: string | null
   actividad_id: string | null
   desde: string | null
   hasta: string | null

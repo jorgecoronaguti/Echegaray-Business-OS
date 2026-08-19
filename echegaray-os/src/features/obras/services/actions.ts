@@ -18,7 +18,7 @@ import { createClient } from '@/lib/supabase/server'
 import { claveDeActividad } from './claves'
 import { haceCiclo } from './cronograma'
 
-export type Resultado = { ok: true; id?: string } | { ok: false; error: string }
+export type Resultado = { ok: true; id?: string; mensaje?: string } | { ok: false; error: string }
 
 const fechaOpt = z.union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida'), z.literal('')]).optional()
 // ═══ EL ORDEN DE LAS OPCIONES NO ES COSMÉTICO (19/08/2026) ═══
@@ -161,7 +161,6 @@ const actividadSchema = z.object({
   dias_plan: numOpt,
   pct: numOpt,
   hh_plan: numOpt,
-  hh_real: numOpt,
   responsable_id: z.union([z.string().uuid(), z.literal('')]).optional(),
   cuadrilla: z.string().trim().optional(),
   comentario: z.string().trim().optional(),
@@ -197,7 +196,6 @@ export async function crearActividad(obraId: string, form: FormData): Promise<Re
     dias_plan: d.es_hito === 'on' ? 0 : vacioANull(d.dias_plan),
     pct: vacioANull(d.pct),
     hh_plan: vacioANull(d.hh_plan),
-    hh_real: vacioANull(d.hh_real),
     responsable_id: d.responsable_id || null,
     cuadrilla: d.cuadrilla || null,
     comentario: d.comentario || null,
@@ -223,7 +221,6 @@ export async function editarActividad(obraId: string, actividadId: string, form:
     dias_plan: vacioANull(d.dias_plan),
     pct: vacioANull(d.pct),
     hh_plan: vacioANull(d.hh_plan),
-    hh_real: vacioANull(d.hh_real),
     responsable_id: d.responsable_id || null,
     cuadrilla: d.cuadrilla || null,
     comentario: d.comentario || null,

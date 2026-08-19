@@ -22,7 +22,12 @@
 
 import { startTransition, useActionState, useEffect, useRef, type FormEvent, type ReactNode } from 'react'
 
-export type ResultadoAccion = { ok: true; id?: string } | { ok: false; error: string }
+export type ResultadoAccion =
+  /** `mensaje` es para cuando el resultado NO es "guardado" a secas: una carga masiva que imputó a
+   *  12 personas y salteó 3 tiene que decirlo, o la persona se va creyendo que cargó 15. Cuando la
+   *  acción no lo manda, se muestra el `mensajeOk` del formulario. */
+  | { ok: true; id?: string; mensaje?: string }
+  | { ok: false; error: string }
 
 /** La firma de toda acción de escritura del módulo, ya atada a su id por `bind`. */
 export type AccionFormulario = (form: FormData) => Promise<ResultadoAccion>
@@ -85,7 +90,7 @@ export function FormAccion({
           {pendiente ? 'Guardando…' : enviar}
         </button>
         {estado?.ok === true && (
-          <span data-testid={testid ? `${testid}-ok` : undefined} className="text-[12px] text-pos">{mensajeOk}</span>
+          <span data-testid={testid ? `${testid}-ok` : undefined} className="text-[12px] text-pos">{estado.mensaje ?? mensajeOk}</span>
         )}
         {estado?.ok === false && (
           <span data-testid={testid ? `${testid}-error` : undefined} className="text-[12px] text-neg">{estado.error}</span>
