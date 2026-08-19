@@ -6,8 +6,12 @@ export default function Cargando() {
     <PantallaEsqueleto>
       <EncabezadoEsqueleto ancho="w-64" />
       <div className="mb-5 flex gap-4 border-b border-line pb-2.5">
-        {['w-16', 'w-20', 'w-14', 'w-24', 'w-20'].map((w) => (
-          <Linea key={w} className={`h-2.5 ${w}`} />
+        {/* LA CLAVE ES LA POSICIÓN, NO EL ANCHO. Las seis solapas repiten anchos —dos miden `w-20`— y
+            usar el ancho de clave hacía que React avisara "two children with the same key" y pudiera
+            omitir una. Acá el orden es fijo y no hay reordenamiento posible: el índice es la
+            identidad correcta. */}
+        {['w-16', 'w-20', 'w-14', 'w-24', 'w-20'].map((w, i) => (
+          <Linea key={i} className={`h-2.5 ${w}`} />
         ))}
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
