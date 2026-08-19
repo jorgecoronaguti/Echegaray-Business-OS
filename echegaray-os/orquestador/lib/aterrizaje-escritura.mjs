@@ -32,7 +32,25 @@ import { colLetra } from './sheet-formulas.mjs'
  * fórmula vuelve como su resultado. Con cualquiera de esos, la guarda gritaría en falso.
  */
 export function sirveDeTestigo(c) {
-  return typeof c === 'string' && c.trim() !== '' && c[0] !== '=' && !/^[\d.,/\-$\s%]+$/.test(c)
+  if (typeof c !== 'string' || c.trim() === '' || c[0] === '=') return false
+  // ═══ EL APÓSTROFO DE ADELANTE ES UNA ORDEN PARA SHEETS, NO CONTENIDO (19/08/2026) ═══
+  //
+  // MEDIDO EN VIVO. `_F931_RAW` escribe los períodos como `'2026-01` —el apóstrofo obliga a Sheets a
+  // tratarlos como TEXTO y no como fecha—, y Sheets devuelve `2026-01`, sin él. La comparación de
+  // ida y vuelta daba distinto y el aviso decía **"LA ESCRITURA NO ATERRIZÓ en 7 rangos… NO des por
+  // buena esta corrida"** sobre una réplica que estaba perfecta: las siete declaraciones, julio
+  // incluido, escritas donde correspondía.
+  //
+  // Un control que grita en falso es peor que no tenerlo: la corrida siguiente ya nadie la mira. Es
+  // la misma lección del auditor de ventana fija y del cruce de cobranzas contra una lista de ocho
+  // echeqs, las dos ya pagadas en este repositorio.
+  //
+  // LA REGLA NO SE AFLOJA, SE APLICA AL CONTENIDO. Se juzga el texto SIN el apóstrofo, porque eso es
+  // lo que va a volver del archivo. `'2026-01` queda descartado como testigo por la misma razón de
+  // siempre —sólo dígitos y separadores no hace el viaje sin transformarse— y `'Total` sigue
+  // sirviendo, que es texto de verdad.
+  const contenido = c[0] === "'" ? c.slice(1) : c
+  return contenido.trim() !== '' && !/^[\d.,/\-$\s%]+$/.test(contenido)
 }
 
 /**

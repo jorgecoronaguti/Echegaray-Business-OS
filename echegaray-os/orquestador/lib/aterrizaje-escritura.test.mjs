@@ -97,3 +97,29 @@ test('sin ancla calculable no se inventa un testigo: no verificar es mejor que m
 test('un lote sin texto plano no se verifica (números y fórmulas vuelven transformados)', () => {
   assert.deepEqual(elegirTestigos([[1234], ['=SUM(A1:A2)'], ['$45.000']]), [])
 })
+
+// ═══ EL APÓSTROFO DE ADELANTE NO ES CONTENIDO (19/08/2026) ═══
+//
+// `_F931_RAW` escribe los períodos como `'2026-01` para que Sheets no los lea como fecha, y Sheets
+// devuelve `2026-01`. La comparación de ida y vuelta daba distinto y el aviso decía "LA ESCRITURA NO
+// ATERRIZÓ en 7 rangos… NO des por buena esta corrida" sobre una réplica que estaba perfecta.
+test('un período forzado a texto con apóstrofo NO se usa de testigo', () => {
+  assert.equal(sirveDeTestigo("'2026-01"), false)
+  assert.equal(sirveDeTestigo("'2026-07"), false)
+  assert.equal(sirveDeTestigo("'1.234,56"), false)
+})
+
+test('el apóstrofo no convierte un número en texto verificable, pero tampoco arruina un texto real', () => {
+  // Texto de verdad: sigue sirviendo, con o sin la marca de texto adelante.
+  assert.equal(sirveDeTestigo("'Aportes de Seguridad Social"), true)
+  assert.equal(sirveDeTestigo('Aportes de Seguridad Social'), true)
+})
+
+test('lo que ya se descartaba se sigue descartando', () => {
+  assert.equal(sirveDeTestigo('67.981,02'), false)
+  assert.equal(sirveDeTestigo('=SUM(A1:A2)'), false)
+  assert.equal(sirveDeTestigo('   '), false)
+  assert.equal(sirveDeTestigo("'"), false)
+  assert.equal(sirveDeTestigo(1234), false)
+  assert.equal(sirveDeTestigo(null), false)
+})
