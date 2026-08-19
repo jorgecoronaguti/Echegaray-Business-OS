@@ -24,6 +24,7 @@ import { filtrar, filtroDesde } from '@/features/obras/services/filtroObras'
 import { FiltrosObras } from '@/features/obras/components/FiltrosObras'
 import { GanttObras } from '@/features/obras/components/GanttObras'
 import { NavObras } from '@/features/obras/components/NavObras'
+import { RecordarVista } from '@/features/obras/components/RecordarVista'
 import { Callout, PageShell } from '@/shared/components/ui'
 
 export const dynamic = 'force-dynamic'
@@ -62,6 +63,10 @@ export default async function GanttGlobalPage({
         + (archivadas ? ` ${archivadas} archivada${archivadas === 1 ? '' : 's'} queda${archivadas === 1 ? '' : 'n'} afuera.` : '')
       }
     >
+      {/* GUARDA CÓMO QUEDÓ ESTA VISTA. Es lo único que corre en el navegador de esta pantalla, y
+          está acá y no en el middleware porque una precarga de Next no monta nada: sólo se guarda
+          lo que alguien está mirando de verdad. Ver `components/RecordarVista.tsx`. */}
+      <RecordarVista />
       <NavObras />
 
       {/* La tira va DEBAJO de la navegación y ARRIBA del lienzo: es una decisión sobre lo que se está
