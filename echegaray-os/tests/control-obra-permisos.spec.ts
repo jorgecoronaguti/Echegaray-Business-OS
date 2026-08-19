@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { MARCA } from './util/obras-e2e'
 
@@ -149,4 +149,37 @@ test('EL COSTO SÍ, EL PRECIO NO — la línea exacta que pidió el dueño', asy
       expect(row[c], `${c} llegó al jefe de obra`).toBeNull()
     }
   }
+})
+
+
+/** Entrar con el usuario de prueba de Jefe de Obra. `entrar()` de `util` usa el de Dirección. */
+async function entrarComoJefe(page: Page) {
+  await page.goto('/login')
+  await page.getByLabel(/correo|email/i).fill('qa.jefe.obra@ecsas.com.ar')
+  await page.getByLabel(/contraseñ|password/i).fill('TestJefe123!')
+  await page.getByRole('button', { name: /ingresar|entrar|iniciar/i }).click()
+  await page.waitForURL(/obras|administracion/, { timeout: 20_000 })
+}
+
+test('la pantalla tampoco le ofrece lo que la base le va a negar', async ({ page }) => {
+  // UN CONTROL QUE NO PUEDE FUNCIONAR ES PEOR QUE UN CONTROL QUE NO ESTÁ: el que aprieta «Cargar
+  // certificado» y recibe un error cree que el sistema falló, no que no le corresponde.
+  await entrarComoJefe(page)
+  await page.goto('/obras/san-francisco?vista=economia')
+
+  // Lo suyo: el costo presupuestado, lo gastado y el desvío entre los dos.
+  await expect(page.getByTestId('economia-costo')).toBeVisible({ timeout: 20_000 })
+
+  // Lo que no: contrato, certificación y el formulario de certificado.
+  await expect(page.getByTestId('economia-contrato')).toHaveCount(0)
+  await expect(page.getByTestId('economia-certificacion')).toHaveCount(0)
+  await expect(page.getByTestId('economia-resultado')).toHaveCount(0)
+  await expect(page.getByTestId('alta-certificado')).toHaveCount(0)
+})
+
+test('y sí le ofrece Administración en la navegación global', async ({ page }) => {
+  await entrarComoJefe(page)
+  await page.goto('/administracion/personas')
+  await expect(page.getByTestId('tabla-personas')).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('link', { name: 'Administración' })).toBeVisible()
 })
