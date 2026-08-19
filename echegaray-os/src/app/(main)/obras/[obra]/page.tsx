@@ -41,7 +41,8 @@ import {
 import { getCertificados } from '@/features/obras/services/contratoService'
 import {
   agregarDependencia, archivarActividad, archivarObra, crearActividad, crearImpedimento,
-  editarActividad, editarObra, liberarImpedimento, marcarHito, quitarDependencia, registrarAvance,
+  editarActividad, editarImpedimento, editarObra, liberarImpedimento, marcarHito, quitarDependencia,
+  registrarAvance,
   sellarBaseline,
 } from '@/features/obras/services/actions'
 import {
@@ -408,6 +409,7 @@ export default async function ObraPage({
             // que a una de las dos se le agregue un campo.
             crearImpedimento: crearImpedimento.bind(null, obraId),
             liberarImpedimento: liberarImpedimento.bind(null, obraId),
+            editarImpedimento: editarImpedimento.bind(null, obraId),
             vincularDocumento: vincularDocumento.bind(null, obraId),
             soltarDocumento: soltarDocumentoDeActividad.bind(null, obraId),
             moverDeRubro: moverActividadDeRubro.bind(null, obraId),

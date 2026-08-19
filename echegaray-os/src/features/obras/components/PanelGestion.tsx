@@ -32,12 +32,15 @@ import { fecha } from './formato'
 // anote mañana o nunca. La escritura de Operación sigue existiendo —es la lista completa de la
 // obra— y las dos llaman a la MISMA acción.
 
-export function BloqueImpedimentosActividad({ a, abiertos, liberados, crear, liberar, hoyIso }: {
+export function BloqueImpedimentosActividad({ a, abiertos, liberados, crear, liberar, editar, hoyIso }: {
   a: Actividad
   abiertos: Restriccion[]
   liberados: Restriccion[]
   crear?: AccionFormulario
   liberar?: (restriccionId: string) => Promise<ResultadoAccion>
+  /** Corregir el que ya está: sin esto, mover una fecha comprometida obliga a liberar el
+   *  impedimento y anotar otro, y la obra pierde cuándo se detectó el problema. */
+  editar?: (restriccionId: string, form: FormData) => Promise<ResultadoAccion>
   hoyIso: string
 }) {
   const hay = abiertos.length > 0
@@ -72,9 +75,41 @@ export function BloqueImpedimentosActividad({ a, abiertos, liberados, crear, lib
                 <span className={vencido ? 'font-medium text-neg' : ''}>{fecha(r.fecha_compromiso)}</span>
                 {' · '}{TIPO_RESTRICCION_LABEL[r.tipo] ?? r.tipo}
               </p>
-              {liberar && (
-                <div className="mt-1">
-                  <BotonAccion accion={liberar} args={[r.id]} testid="resolver-impedimento">Resolver</BotonAccion>
+              {(liberar || editar) && (
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  {liberar && (
+                    <BotonAccion accion={liberar} args={[r.id]} testid="resolver-impedimento">Resolver</BotonAccion>
+                  )}
+                  {editar && (
+                    <details data-testid="editar-impedimento">
+                      <summary className="cursor-pointer text-[11px] text-muted hover:text-ink">Editar</summary>
+                      <div className="mt-1.5 w-full">
+                        <FormAccion
+                          accion={editar.bind(null, r.id)}
+                          testid="form-editar-impedimento"
+                          enviar="Guardar"
+                          mensajeOk="Impedimento corregido."
+                        >
+                          <div className="grid grid-cols-2 gap-2">
+                            <Campo label="Qué frena el trabajo" ancho="col-span-2">
+                              <input name="descripcion" defaultValue={r.descripcion} required minLength={3} maxLength={300} className={CTRL} />
+                            </Campo>
+                            <Campo label="Tipo">
+                              <select name="tipo" required defaultValue={r.tipo} className={CTRL}>
+                                {TIPO_RESTRICCION.map((t) => <option key={t} value={t}>{TIPO_RESTRICCION_LABEL[t]}</option>)}
+                              </select>
+                            </Campo>
+                            <Campo label="Quién lo resuelve">
+                              <input name="responsable" defaultValue={r.responsable ?? ''} required minLength={2} maxLength={120} className={CTRL} />
+                            </Campo>
+                            <Campo label="Para cuándo" ancho="col-span-2">
+                              <input type="date" name="fecha_compromiso" defaultValue={r.fecha_compromiso ?? ''} required className={CTRL} />
+                            </Campo>
+                          </div>
+                        </FormAccion>
+                      </div>
+                    </details>
+                  )}
                 </div>
               )}
             </li>

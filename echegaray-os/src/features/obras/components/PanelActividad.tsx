@@ -66,6 +66,9 @@ export type AccionesCronograma = {
   /** Impedimentos: la MISMA acción que usa Operación, con `actividad_id` en el formulario. */
   crearImpedimento?: AccionFormulario
   liberarImpedimento?: (restriccionId: string) => Promise<ResultadoAccion>
+  /** Corregir uno ya anotado: un compromiso se corre y un responsable cambia. Liberar el viejo y
+   *  anotar uno nuevo duplicaría la fila y borraría cuándo se detectó el problema. */
+  editarImpedimento?: (restriccionId: string, form: FormData) => Promise<ResultadoAccion>
   /** Papeles de la actividad. `vincularDocumento` lleva `actividad_id` en el formulario. */
   vincularDocumento?: AccionFormulario
   soltarDocumento?: (driveFileId: string) => Promise<ResultadoAccion>
@@ -317,6 +320,7 @@ export function PanelActividad({
             liberados={liberados}
             crear={acciones.crearImpedimento}
             liberar={acciones.liberarImpedimento}
+            editar={acciones.editarImpedimento}
             hoyIso={hoyIso}
           />
 

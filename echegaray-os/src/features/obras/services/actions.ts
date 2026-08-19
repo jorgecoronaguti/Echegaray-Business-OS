@@ -402,6 +402,35 @@ export async function crearImpedimento(obraId: string, form: FormData): Promise<
   return { ok: true }
 }
 
+/**
+ * EDITAR UN IMPEDIMENTO. El dueño lo pidió al lado de «Resolver»: un compromiso se corre y un
+ * responsable cambia, y hasta hoy la única salida era liberar el viejo y anotar uno nuevo — que
+ * duplica la fila y borra la historia de cuándo se anotó el problema de verdad.
+ *
+ * SE VALIDA CON EL MISMO ESQUEMA QUE EL ALTA, y no es un detalle: si la edición aceptara un
+ * impedimento sin responsable, alcanzaría con crear uno y editarlo para saltear la regla que el
+ * alta impone. La actividad NO se toca acá — mover un impedimento de actividad es otra cosa.
+ */
+export async function editarImpedimento(
+  obraId: string, restriccionId: string, form: FormData,
+): Promise<Resultado> {
+  const parsed = impedimentoSchema.omit({ actividad_id: true }).safeParse(Object.fromEntries(form))
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
+  const d = parsed.data
+  const supabase = await createClient()
+  const { error } = await supabase.from('obra_restriccion')
+    .update({
+      tipo: d.tipo,
+      descripcion: d.descripcion,
+      responsable: d.responsable,
+      fecha_compromiso: d.fecha_compromiso,
+    })
+    .eq('id', restriccionId).eq('obra_id', obraId)
+  if (error) return { ok: false, error: error.message }
+  revalidatePath(`/obras/${obraId}`); revalidatePath('/obras')
+  return { ok: true }
+}
+
 export async function liberarImpedimento(obraId: string, restriccionId: string): Promise<Resultado> {
   const supabase = await createClient()
   const { error } = await supabase.from('obra_restriccion')
