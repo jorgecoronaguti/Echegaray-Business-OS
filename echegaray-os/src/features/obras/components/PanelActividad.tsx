@@ -296,7 +296,13 @@ export function PanelActividad({
             <AvanceRapido key={`${a.id}:${a.pct}`} a={a} avance={acciones.avance} />
           )}
 
-          <BloqueRecursos a={a} personas={personas} reales={datos.personasReales} equipos={datos.equipos} />
+          <BloqueRecursos
+            a={a}
+            personas={personas}
+            reales={datos.personasReales}
+            equipos={datos.equipos}
+            {...(obraId ? { obraId } : {})}
+          />
 
           <BloqueEjecucion
             a={a}

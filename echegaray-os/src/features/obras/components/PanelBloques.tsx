@@ -119,12 +119,14 @@ export function BloqueMedicion({ a, definir }: { a: Actividad; definir?: AccionF
 // horas, habría que mantenerla al día a mano y el día que alguien no la actualice diría que trabajó
 // gente que no trabajó.
 
-export function BloqueRecursos({ a, personas, reales, equipos }: {
+export function BloqueRecursos({ a, personas, reales, equipos, obraId }: {
   a: Actividad
   /** El plantel, para poder poner nombre a un id. */
   personas: Persona[]
   reales: PersonaEnActividad[]
   equipos: EquipoEnActividad[]
+  /** La obra, para llevar a la solapa donde el recurso se asigna de verdad. */
+  obraId?: string
 }) {
   const nombreDe = (id: string) => personas.find((p) => p.id === id)?.nombre_completo ?? id
   const responsable = a.responsable_id ? nombreDe(a.responsable_id) : null
@@ -134,7 +136,10 @@ export function BloqueRecursos({ a, personas, reales, equipos }: {
   return (
     <div className="grid grid-cols-2 gap-2" data-testid="bloque-recursos">
       <section className="rounded-md border border-line bg-surface px-2.5 py-2">
-        <Rotulo cuenta={reales.length}>Personal</Rotulo>
+        <Rotulo
+          cuenta={reales.length}
+          {...(obraId ? { verMas: `/obras/${obraId}?vista=personal`, verMasTitulo: 'Ver el personal de la obra' } : {})}
+        >Personal</Rotulo>
         <p className="text-[11px] text-faint">
           Previsto: <span className="text-muted">{prevista ?? 'sin cuadrilla asignada'}</span>
         </p>
@@ -159,7 +164,10 @@ export function BloqueRecursos({ a, personas, reales, equipos }: {
       </section>
 
       <section className="rounded-md border border-line bg-surface px-2.5 py-2">
-        <Rotulo cuenta={equipos.length}>Equipos</Rotulo>
+        <Rotulo
+          cuenta={equipos.length}
+          {...(obraId ? { verMas: `/obras/${obraId}?vista=operacion&sub=herramientas`, verMasTitulo: 'Ver los equipos de la obra' } : {})}
+        >Equipos</Rotulo>
         {equipos.length === 0 ? (
           <p className="text-[12px] text-faint">Ninguno cargado. Se anotan al registrar la ejecución.</p>
         ) : (

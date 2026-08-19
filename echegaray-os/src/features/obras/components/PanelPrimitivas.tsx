@@ -16,11 +16,28 @@ export const n2 = (v: number | null | undefined) =>
 
 /** El rótulo de un bloque del panel. Uno solo para los ocho: si cada uno trajera el suyo, la
  *  columna se leería como ocho pantallas apiladas en vez de una. */
-export function Rotulo({ children, cuenta }: { children: ReactNode; cuenta?: number | null }) {
+export function Rotulo({ children, cuenta, verMas, verMasTitulo }: {
+  children: ReactNode
+  cuenta?: number | null
+  /** A dónde lleva el bloque cuando hay un detalle que el panel no puede contener. */
+  verMas?: string
+  verMasTitulo?: string
+}) {
   return (
     <p className="mb-1 flex items-baseline gap-1.5 text-[10px] uppercase tracking-wide text-faint">
       {children}
       {cuenta != null && cuenta > 0 && <span className="tabular-nums text-muted">{cuenta}</span>}
+      {/* EL DETALLE NO SE REIMPLEMENTA EN EL PANEL: lleva a la solapa donde ese dato se edita. Un
+          segundo lugar para asignar personal sería un segundo lugar donde se escriben horas. */}
+      {verMas && (
+        <a
+          href={verMas}
+          title={verMasTitulo}
+          data-testid="ver-mas-bloque"
+          className="ml-auto text-[12px] normal-case tracking-normal text-muted hover:text-ink"
+          aria-label={verMasTitulo}
+        >›</a>
+      )}
     </p>
   )
 }
