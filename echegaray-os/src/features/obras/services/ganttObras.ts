@@ -25,6 +25,8 @@
 // obra no tiene barra" se prueban con `node --test`, sin navegador y sin base.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+// Con extensión: `ganttObras.test.ts` lo corre con borrado de tipos y `ordenar` es un valor real.
+import { ordenar, type CampoOrden, type Direccion } from './ordenObras.ts'
 import type { Etapa, ServiceResult } from '../types'
 
 /**
@@ -240,7 +242,25 @@ function barraDe(o: PlazoObra, hoyIso: string): Barra | null {
  * @param incluirArchivadas Las obras `cerrada` quedan afuera por defecto, igual que en el portafolio
  * y en `getContextoGlobal`. Un Gantt de la cartera es de lo que está en curso.
  */
-export function filasDeObras(obras: PlazoObra[], hoyIso: string, incluirArchivadas = false): FilaObra[] {
+export function filasDeObras(
+  obras: PlazoObra[],
+  hoyIso: string,
+  incluirArchivadas = false,
+  // EL ORDEN ELEGIDO PISA AL CRONOLÓGICO, Y SÓLO SI SE ELIGE UNO. Un Gantt sin pedido explícito se
+  // lee por fecha de arranque: es lo que hace que las barras bajen en diagonal y se vea la secuencia
+  // de la cartera. Pero "mostrame primero las más atrasadas" es una pregunta legítima y distinta.
+  orden: CampoOrden | null = null,
+  dir: Direccion = 'desc',
+): FilaObra[] {
+  if (orden) {
+    const elegidas = obras.filter((o) => incluirArchivadas || o.estado !== 'cerrada')
+    const desvio = new Map(elegidas.map((o) => [o.obra_id, o.desvio_plazo_dias ?? null]))
+    return ordenar(elegidas, orden, dir, (id) => desvio.get(id) ?? null)
+      .map((o) => { const barra = barraDe(o, hoyIso); return {
+        obraId: o.obra_id, nombre: o.nombre, clienteNombre: o.cliente_nombre, etapa: o.etapa,
+        avancePct: o.avance_pct, desvioPlazoDias: o.desvio_plazo_dias, barra, motivo: barra ? null : motivoSinBarra(o),
+      } })
+  }
   return obras
     .filter((o) => incluirArchivadas || o.estado !== 'cerrada')
     .map((o) => {
