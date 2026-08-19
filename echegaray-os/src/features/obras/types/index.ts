@@ -271,6 +271,9 @@ export interface Asignacion {
   notas: string | null
   persona_nombre: string | null
   persona_especialidad: string | null
+  /** La categoría de convenio, para la columna «Rol / categoría». Sale de `persona_plantel`: no se
+   *  copia en la asignación, porque el día que se corrija el legajo la copia envejecería sola. */
+  persona_categoria: string | null
 }
 
 /** Un certificado de avance contra el contrato base. Las tres etapas van por separado y sin orden

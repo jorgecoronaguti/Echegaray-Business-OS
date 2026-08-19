@@ -10,7 +10,8 @@
 
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { Callout, Campo, CTRL, FormAccion, PageShell } from '@/shared/components/ui'
+import { Campo, CTRL, PageShell } from '@/shared/components/ui'
+import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
 import { PanelCuadrilla } from '@/features/administracion/components/PanelCuadrilla'
 import { TablaCuadrillas } from '@/features/administracion/components/TablaCuadrillas'
 import { getCuadrillas, getIntegrantes } from '@/features/administracion/services/cuadrillasService'
@@ -55,7 +56,8 @@ export default async function CuadrillasPage({ searchParams }: { searchParams: P
   }
 
   const cuadrillas = listado.data ?? []
-  const abierta = cuadrillas.find((c) => c.id === sp.c) ?? null
+  const alta = sp.c === 'nueva'
+  const abierta = alta ? null : cuadrillas.find((c) => c.id === sp.c) ?? null
   const integrantes = abierta ? (await getIntegrantes(supabase, abierta.id, true)).data ?? [] : []
   const activas = (obras.data ?? []).filter((o) => o.estado !== 'cerrada')
 
@@ -63,70 +65,84 @@ export default async function CuadrillasPage({ searchParams }: { searchParams: P
     <PageShell
       eyebrow={<Link href="/administracion/personas" className="hover:underline">← Personal</Link>}
       title="Cuadrillas"
-      subtitle="Quién conduce cada cuadrilla, quiénes la integran hoy y en qué obra está trabajando."
       maxWidth="max-w-6xl"
     >
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+      {/* UNA LÍNEA: el filtro discreto y la acción primaria. El alta abre el MISMO panel lateral
+          que la edición — un formulario siempre abierto arriba de la tabla ocupa la mitad de la
+          pantalla para algo que se hace una vez cada tanto. */}
+      <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
         <Link
           href={href({ ...sp, archivadas: verArchivadas ? undefined : '1' })}
           data-testid="ver-archivadas"
           className="text-[12px] text-muted hover:text-ink hover:underline"
         >{verArchivadas ? 'Ver sólo las activas' : 'Ver también las archivadas'}</Link>
+        <Link
+          href={href(sp, 'nueva')}
+          data-testid="nueva-cuadrilla"
+          className="ml-auto rounded-control bg-slate-900 px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-slate-700"
+        >+ Nueva cuadrilla</Link>
       </div>
 
-      <div className="mb-4 rounded-xl border border-line bg-white p-4" data-testid="alta-cuadrilla">
-        <h2 className="mb-2 text-[13px] font-semibold text-ink">Nueva cuadrilla</h2>
-        <FormAccion accion={crearCuadrilla} testid="form-cuadrilla-alta" enviar="Crear" limpiarAlOk mensajeOk="Cuadrilla creada.">
-          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-            <Campo label="Nombre" ancho="col-span-2">
-              <input name="nombre" required maxLength={120} className={CTRL} data-testid="nueva-cuadrilla-nombre" />
-            </Campo>
-            <Campo label="Responsable / capataz" ancho="col-span-2">
-              <select name="responsable_id" defaultValue="" className={CTRL}>
-                <option value="">sin responsable</option>
-                {(plantel.data ?? []).map((p) => (
-                  <option key={p.id} value={p.id}>{p.nombre_completo}</option>
-                ))}
-              </select>
-            </Campo>
-          </div>
-        </FormAccion>
-      </div>
-
-      {cuadrillas.length === 0
-        ? (
-            <Callout>
-              Todavía no hay cuadrillas. Hasta hoy la cuadrilla era el texto suelto de cada
-              asignación —valores «1» y «2»—: eso no dice quién la conduce ni quién la integra.
-            </Callout>
-          )
-        : (
-            <div className="flex flex-col overflow-hidden rounded-xl border border-line bg-white lg:flex-row">
-              <div className="min-w-0 flex-1">
-                <TablaCuadrillas
-                  cuadrillas={cuadrillas}
-                  abierta={abierta?.id}
-                  hrefDe={(id) => href(sp, id)}
-                />
-              </div>
-              {abierta && (
-                <PanelCuadrilla
-                  cuadrilla={abierta}
-                  integrantes={integrantes}
-                  plantel={plantel.data ?? []}
-                  obras={activas.map((o) => ({ id: o.obra_id, nombre: o.nombre }))}
-                  // `bind` y NO una arrow: una función nueva la rechaza React en runtime y la
-                  // pantalla queda en blanco sin que typecheck ni build lo vean.
-                  editar={editarCuadrilla.bind(null, abierta.id)}
-                  archivar={archivarCuadrilla.bind(null, abierta.id)}
-                  agregar={agregarIntegrante.bind(null, abierta.id)}
-                  quitar={quitarIntegrante}
-                  asignarAObra={asignarCuadrillaAObra}
-                  cerrarHref={href({ ...sp, c: undefined })}
-                />
+      <div className="flex flex-col gap-4 lg:flex-row">
+        <div className="min-w-0 flex-1">
+          {cuadrillas.length === 0
+            ? (
+                <p data-testid="cuadrillas-vacio" className="rounded-xl border border-line bg-white px-4 py-8 text-center text-[13px] text-muted">
+                  Todavía no hay cuadrillas cargadas.
+                </p>
+              )
+            : (
+                <div className="overflow-hidden rounded-xl border border-line bg-white">
+                  <TablaCuadrillas
+                    cuadrillas={cuadrillas}
+                    abierta={abierta?.id}
+                    hrefDe={(id) => href(sp, id)}
+                  />
+                </div>
               )}
+        </div>
+
+        {alta && (
+          <PanelEdicion
+            titulo="Nueva cuadrilla"
+            accion={crearCuadrilla}
+            cerrarHref={href({ ...sp, c: undefined })}
+            enviar="Crear"
+            testid="panel-alta-cuadrilla"
+          >
+            <div className="grid grid-cols-2 gap-2.5">
+              <Campo label="Nombre" ancho="col-span-2">
+                <input name="nombre" required maxLength={120} className={CTRL} data-testid="nueva-cuadrilla-nombre" autoFocus />
+              </Campo>
+              <Campo label="Responsable / capataz" ancho="col-span-2" ayuda="Una persona del legajo, no un texto.">
+                <select name="responsable_id" defaultValue="" className={CTRL}>
+                  <option value="">sin responsable</option>
+                  {(plantel.data ?? []).map((p) => (
+                    <option key={p.id} value={p.id}>{p.nombre_completo}</option>
+                  ))}
+                </select>
+              </Campo>
             </div>
-          )}
+          </PanelEdicion>
+        )}
+
+        {abierta && (
+          <PanelCuadrilla
+            cuadrilla={abierta}
+            integrantes={integrantes}
+            plantel={plantel.data ?? []}
+            obras={activas.map((o) => ({ id: o.obra_id, nombre: o.nombre }))}
+            // `bind` y NO una arrow: una función nueva la rechaza React en runtime y la pantalla
+            // queda en blanco sin que typecheck ni build lo vean.
+            editar={editarCuadrilla.bind(null, abierta.id)}
+            archivar={archivarCuadrilla.bind(null, abierta.id)}
+            agregar={agregarIntegrante.bind(null, abierta.id)}
+            quitar={quitarIntegrante}
+            asignarAObra={asignarCuadrillaAObra}
+            cerrarHref={href({ ...sp, c: undefined })}
+          />
+        )}
+      </div>
     </PageShell>
   )
 }

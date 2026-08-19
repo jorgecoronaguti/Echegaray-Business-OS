@@ -39,12 +39,12 @@ function Texto({ name, valor, label, ancho, tipo = 'text', max = 200, ayuda }: {
   )
 }
 
-/** BLOQUE A — quién es. */
-export function CamposInformacion({ persona }: { persona: Persona | null }) {
+/** IDENTIDAD — quién es. Es lo que edita el panel lateral `?editar=identidad`. */
+export function CamposIdentidad({ persona }: { persona: Persona | null }) {
   return (
-    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+    <div className="grid grid-cols-2 gap-2.5">
       <Campo
-        label="Nombre y apellido" ancho="col-span-2 sm:col-span-4"
+        label="Nombre y apellido" ancho="col-span-2"
         ayuda="Va completo en un solo campo: las 30 fichas cargadas son un texto único y partirlo sería adivinar dónde termina el apellido."
       >
         <input
@@ -71,10 +71,10 @@ export function CamposInformacion({ persona }: { persona: Persona | null }) {
   )
 }
 
-/** BLOQUE B — la relación laboral. */
+/** LABORAL — la relación de trabajo. Es lo que edita el panel lateral `?editar=laboral`. */
 export function CamposLaboral({ persona }: { persona: Persona | null }) {
   return (
-    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+    <div className="grid grid-cols-2 gap-2.5">
       <Texto name="fecha_ingreso" label="Ingreso" tipo="date" valor={persona?.fecha_ingreso ?? null} />
       <Texto
         name="fecha_egreso" label="Egreso" tipo="date" valor={persona?.fecha_egreso ?? null}
@@ -84,7 +84,7 @@ export function CamposLaboral({ persona }: { persona: Persona | null }) {
       <Campo label="Categoría"><SelectCategoria valor={persona?.categoria ?? null} /></Campo>
       <Texto name="especialidad" label="Especialidad" valor={persona?.especialidad ?? null} max={120} />
       <Texto name="puesto" label="Puesto u oficio" valor={persona?.puesto ?? null} max={120} />
-      <Campo label="Modalidad" ancho="col-span-2">
+      <Campo label="Modalidad">
         <select name="modalidad_liquidacion" defaultValue={persona?.modalidad_liquidacion ?? ''} className={CTRL}>
           <option value="">sin declarar</option>
           {MODALIDADES.map((m) => <option key={m} value={m}>{m}</option>)}
@@ -94,7 +94,34 @@ export function CamposLaboral({ persona }: { persona: Persona | null }) {
           )}
         </select>
       </Campo>
-      <Texto name="notas" label="Notas" ancho="col-span-2 sm:col-span-4" valor={persona?.notas ?? null} max={300} />
+      <Texto name="notas" label="Notas" ancho="col-span-2" valor={persona?.notas ?? null} max={300} />
+    </div>
+  )
+}
+
+/**
+ * EL ALTA — lo mínimo para que la persona exista, y nada más.
+ *
+ * El dueño: *"Para altas complejas, formulario progresivo, no una pared de campos."* Dar de alta a
+ * alguien en obra pasa con el teléfono en la mano: pedirle veinte campos a quien sólo sabe el nombre
+ * y la categoría hace que la carga se posponga, y una persona sin cargar no se puede asignar.
+ *
+ * El resto del legajo —documento, contacto, domicilio, convenio— se completa después en la ficha,
+ * campo por campo, desde el panel lateral. Lo que falta se ve como «sin cargar», que es exactamente
+ * lo que es.
+ */
+export function CamposAlta() {
+  return (
+    <div className="grid grid-cols-2 gap-2.5">
+      <Campo label="Nombre y apellido" ancho="col-span-2">
+        <input
+          name="nombre_completo" required maxLength={200} className={CTRL}
+          data-testid="persona-nombre" autoFocus
+        />
+      </Campo>
+      <Campo label="Categoría"><SelectCategoria valor={null} /></Campo>
+      <Campo label="Puesto u oficio"><input name="puesto" maxLength={120} className={CTRL} /></Campo>
+      <Campo label="Ingreso" ancho="col-span-2"><input type="date" name="fecha_ingreso" className={CTRL} /></Campo>
     </div>
   )
 }

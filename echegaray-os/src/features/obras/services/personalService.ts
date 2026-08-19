@@ -55,7 +55,7 @@ export async function getAsignaciones(supabase: SupabaseClient, obraId?: string)
     .order('rol', { ascending: true })
   if (error) return { data: null, error: error.message }
 
-  type Cruda = Omit<Asignacion, 'persona_nombre' | 'persona_especialidad' | 'cuadrilla'> & {
+  type Cruda = Omit<Asignacion, 'persona_nombre' | 'persona_especialidad' | 'persona_categoria' | 'cuadrilla'> & {
     cuadrilla: string | null
     cuadrilla_rel: { nombre: string } | null
   }
@@ -70,18 +70,20 @@ export async function getAsignaciones(supabase: SupabaseClient, obraId?: string)
     // nombre en null. Perder la fila entera escondería una asignación que existe.
     persona_nombre: plantel.get(a.persona_id)?.nombre_completo ?? null,
     persona_especialidad: plantel.get(a.persona_id)?.especialidad ?? null,
+    persona_categoria: plantel.get(a.persona_id)?.categoria ?? null,
   }))
   return { data: ordenar(filas), error: null }
 }
 
 async function plantelDe(supabase: SupabaseClient, personaIds: (string | null)[]) {
   const ids = [...new Set(personaIds.filter(Boolean))] as string[]
-  const m = new Map<string, { nombre_completo: string | null; especialidad: string | null }>()
+  type Fila = { id: string; nombre_completo: string | null; especialidad: string | null; categoria: string | null }
+  const m = new Map<string, Omit<Fila, 'id'>>()
   if (ids.length === 0) return m
   const { data } = await supabase
-    .from('persona_plantel').select('id, nombre_completo, especialidad').in('id', ids)
-  for (const p of (data ?? []) as { id: string; nombre_completo: string | null; especialidad: string | null }[]) {
-    m.set(p.id, { nombre_completo: p.nombre_completo, especialidad: p.especialidad })
+    .from('persona_plantel').select('id, nombre_completo, especialidad, categoria').in('id', ids)
+  for (const p of (data ?? []) as Fila[]) {
+    m.set(p.id, { nombre_completo: p.nombre_completo, especialidad: p.especialidad, categoria: p.categoria })
   }
   return m
 }

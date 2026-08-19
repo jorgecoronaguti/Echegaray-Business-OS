@@ -113,13 +113,23 @@ test('una imputación con persona SIEMPRE tiene su día', { skip: SIN_BASE }, as
 })
 
 test('las HH reales de la actividad son la SUMA de sus imputaciones, no una columna', { skip: SIN_BASE }, async () => {
-  // `obra_actividad.hh_real` era un campo que se cargaba a mano al lado de las horas imputadas: dos
-  // números para el mismo hecho. Se borró. Este test falla si alguien la vuelve a crear y la usa.
-  const { rows } = await query(
-    `select column_name from information_schema.columns
-      where table_schema = 'public' and table_name = 'obra_actividad' and column_name = 'hh_real'`)
-  assert.equal(rows.length, 0,
-    'volvió `obra_actividad.hh_real`: hay dos versiones de las horas reales de una actividad')
+  // ═══ EL CANARIO DE LA COLUMNA RETIRADA ═══
+  //
+  // `obra_actividad.hh_real` se cargaba A MANO en el panel de la actividad, al lado de las horas
+  // imputadas de verdad en `registros_hh`: dos números para el mismo hecho, y ninguna regla que
+  // dijera cuál manda. El campo salió de la pantalla y de las dos acciones que lo escribían.
+  //
+  // La COLUMNA sigue existiendo a propósito hasta que se despliegue ese código: borrarla antes deja
+  // a la versión viva de la aplicación mandando una columna inexistente, y guardar una actividad
+  // falla con `PGRST204` en las ocho obras. Ver
+  // `20260819T2500_la_columna_fosil_se_retira_en_dos_pasos.sql`.
+  //
+  // Lo que este test vigila mientras tanto es que NADIE la vuelva a escribir. Un comentario no
+  // impide nada; un canario sí.
+  const { rows: escritas } = await query(
+    `select count(*)::int as n from public.obra_actividad where hh_real is not null`)
+  assert.equal(escritas[0].n, 0,
+    'alguien volvió a escribir `obra_actividad.hh_real`: hay dos versiones de las horas reales')
 
   const e = await escenario()
   if (!e.actividadId) return

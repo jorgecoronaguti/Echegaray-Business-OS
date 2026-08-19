@@ -27,24 +27,22 @@ import {
 } from '@/shared/components/ui'
 import type { ActividadHH, RegistroHH } from '../services/personalService'
 import type { Actividad, Asignacion, Persona, PlanVsReal } from '../types'
+import { etiquetaCategoria } from '@/features/administracion/types'
 import { FormIndividual, FormMasiva, TablaHoras, TablaProductividad } from './PersonalHH'
 import { horasPorAsignado } from '../services/productividadHH'
 import { desvio } from './formato'
 
-/** Una cifra de la franja del titular. Mismo criterio que el Resumen: un recuadro, cuatro números. */
-function Cifra({ k, v, sub, tono = 'ink' }: {
-  k: string; v: string; sub?: string; tono?: 'ink' | 'neg' | 'warn' | 'pos'
-}) {
-  const color = { ink: 'text-ink', neg: 'text-neg', warn: 'text-warn', pos: 'text-pos' }[tono]
-  return (
-    <div className="min-w-0 px-4 py-3 first:pl-0 sm:px-5">
-      <p className="text-[10px] font-medium uppercase tracking-wide text-faint">{k}</p>
-      <p className={`mt-1 truncate text-[19px] font-semibold leading-none tabular-nums ${color}`}>{v}</p>
-      {sub && <p className="mt-1.5 truncate text-[11px] leading-none text-faint">{sub}</p>}
-    </div>
-  )
-}
-
+/**
+ * EL TITULAR, EN UNA LÍNEA.
+ *
+ * El dueño lo dibujó así: *"12 personas · HH plan 420 · HH real 380 · −40 HH"*, y agregó *"sin KPIs
+ * decorativos"*. Eran cuatro recuadros con borde; ahora es un renglón. Las mismas cuatro cifras
+ * ocupan un tercio del alto y se leen de un vistazo, que es lo que hace un titular.
+ *
+ * NINGUNA DE LAS CUATRO SE INVENTA. Sin plan cargado no dice «0 HH»: dice «HH plan sin cargar», y el
+ * desvío directamente no aparece. Un cero donde falta un dato convierte una obra sin planificar en
+ * una obra perfectamente cumplida.
+ */
 function Titular({ plan, asignaciones, registros }: {
   plan: PlanVsReal | null; asignaciones: Asignacion[]; registros: RegistroHH[]
 }) {
@@ -52,39 +50,29 @@ function Titular({ plan, asignaciones, registros }: {
   const hhReal = plan?.hh_real ?? null
   const dif = hhPlan != null && hhReal != null ? hhReal - hhPlan : null
   const vigentes = asignaciones.filter((a) => !a.hasta)
+  const n = (x: number) => Math.round(x).toLocaleString('es-AR')
+
+  const partes = [
+    vigentes.length === 0 ? 'nadie asignado' : `${vigentes.length} ${vigentes.length === 1 ? 'persona' : 'personas'}`,
+    hhPlan == null ? 'HH plan sin cargar' : `HH plan ${n(hhPlan)}`,
+    hhReal == null ? 'HH real sin imputar' : `HH real ${n(hhReal)} (${registros.length} registros)`,
+  ]
+
   return (
-    <div
-      className="grid grid-cols-2 divide-line rounded-lg border border-line bg-surface sm:grid-cols-4 sm:divide-x"
-      data-testid="titular-personal"
-    >
-      <Cifra
-        k="Personas"
-        v={vigentes.length ? String(vigentes.length) : '—'}
-        sub={vigentes.length
-          ? `${vigentes.filter((a) => a.rol === 'responsable').length} responsable(s)`
-          : 'nadie asignado'}
-      />
-      <Cifra
-        k="HH plan"
-        v={hhPlan == null ? '—' : Math.round(hhPlan).toLocaleString('es-AR')}
-        sub={hhPlan == null ? 'sin cargar en las actividades' : 'suma del cronograma'}
-      />
-      <Cifra
-        k="HH real"
-        v={hhReal == null ? '—' : Math.round(hhReal).toLocaleString('es-AR')}
-        sub={hhReal == null ? 'sin imputar' : `${registros.length} registro(s)`}
-      />
-      <Cifra
-        k="Desvío"
-        v={dif == null ? '—' : `${dif > 0 ? '+' : ''}${Math.round(dif).toLocaleString('es-AR')} HH`}
-        // EL DESVÍO SIN UNA PUNTA NO ES CERO: es desconocido, y se dice cuál falta.
-        sub={dif != null
-          ? desvio(plan?.desvio_hh_pct)
-          : hhPlan == null && hhReal == null ? 'faltan las dos puntas'
-            : hhPlan == null ? 'falta el plan' : 'falta el real'}
-        tono={dif != null && dif > 0 ? 'warn' : 'ink'}
-      />
-    </div>
+    <p className="text-[13px] text-muted" data-testid="titular-personal">
+      {partes.join(' · ')}
+      {dif != null && (
+        <>
+          {' · '}
+          {/* ROJO SÓLO PARA UN PROBLEMA REAL: pasarse del plan de horas lo es. Estar por debajo no
+              se pinta de verde —puede ser que falte imputar—, así que queda neutro. */}
+          <span className={dif > 0 ? 'font-medium text-neg' : 'font-medium text-ink'}>
+            {dif > 0 ? '+' : '−'}{n(Math.abs(dif))} HH
+          </span>
+          <span className="text-faint"> {desvio(plan?.desvio_hh_pct)}</span>
+        </>
+      )}
+    </p>
   )
 }
 
@@ -97,13 +85,12 @@ function TablaAsignaciones({ asignaciones, actividadDe, porAsignado, cerrar, qui
 }) {
   return (
     <div className="overflow-x-auto rounded-lg border border-line bg-surface">
-      <table data-testid="tabla-personal" className="w-full min-w-[720px] text-left">
+      <table data-testid="tabla-personal" className="w-full min-w-[620px] text-left">
         <thead><tr className="border-b border-line text-[10px] uppercase tracking-wide text-faint">
           <th className="px-4 py-2 font-medium">Persona</th>
-          <th className="px-3 py-2 font-medium">Rol</th>
+          <th className="px-3 py-2 font-medium">Rol / categoría</th>
           <th className="px-3 py-2 font-medium">Cuadrilla</th>
           <th className="px-3 py-2 font-medium">Actividad</th>
-          <th className="px-3 py-2 font-medium">Período</th>
           <th className="px-3 py-2 text-right font-medium">HH</th>
           <th className="px-3 py-2" />
         </tr></thead>
@@ -116,18 +103,24 @@ function TablaAsignaciones({ asignaciones, actividadDe, porAsignado, cerrar, qui
                   <span className="block text-[11px] text-faint">{a.persona_especialidad}</span>
                 )}
               </td>
-              <td className="px-3 py-2 text-[12px] text-muted">{a.rol}</td>
+              {/* ROL Y CATEGORÍA JUNTOS: son la misma pregunta —«¿qué hace acá?»— y separarlos
+                  gastaba una columna en un dato de una palabra. */}
+              <td className="px-3 py-2 text-[12px] text-muted">
+                {a.rol}
+                {a.persona_categoria && (
+                  <span className="block text-[11px] text-faint">{etiquetaCategoria(a.persona_categoria)}</span>
+                )}
+              </td>
               <td className="px-3 py-2 text-[12px] text-muted">{a.cuadrilla ?? '—'}</td>
               <td className="px-3 py-2 text-[12px] text-muted">
                 {a.actividad_id ? (actividadDe.get(a.actividad_id) ?? '—') : 'toda la obra'}
-              </td>
-              <td className="px-3 py-2 text-[12px] tabular-nums">
-                {a.hasta
-                  ? <span className="text-faint">{a.desde ?? '…'} → {a.hasta}</span>
-                  : <span className="text-pos">vigente</span>}
+                {/* La asignación cerrada no se esconde —es la historia de la obra— pero se dice con
+                    una palabra en vez de gastar una columna de fechas en el listado operativo. */}
+                {a.hasta && <span className="block text-[11px] text-faint">hasta {a.hasta}</span>}
               </td>
               <td className="px-3 py-2 text-right text-[12px] tabular-nums text-ink">
-                {porAsignado.get(a.id)?.toLocaleString('es-AR', { maximumFractionDigits: 1 }) ?? '—'}
+                {porAsignado.get(a.id)?.toLocaleString('es-AR', { maximumFractionDigits: 1 })
+                  ?? <span className="text-faint">sin imputar</span>}
               </td>
               <td className="px-3 py-2 text-right">
                 {/* CERRAR conserva el período; QUITAR borra la fila y sólo sirve para el alta hecha

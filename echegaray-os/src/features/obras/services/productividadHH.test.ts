@@ -63,7 +63,7 @@ test('a la par no se adjetiva: el ruido de ±10 puntos no es una señal', () => 
 const asignacion = (p: Partial<Asignacion>): Asignacion => ({
   id: 'as1', obra_id: 'o1', persona_id: 'p1', rol: 'integrante', cuadrilla: null,
   cuadrilla_id: null, actividad_id: null, desde: null, hasta: null, notas: null,
-  persona_nombre: 'PEREZ JUAN', persona_especialidad: null, ...p,
+  persona_nombre: 'PEREZ JUAN', persona_especialidad: null, persona_categoria: null, ...p,
 })
 
 const registro = (p: Partial<RegistroHH>): RegistroHH => ({

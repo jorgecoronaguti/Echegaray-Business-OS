@@ -1,38 +1,41 @@
-// LA FICHA CANÓNICA DE UNA PERSONA — los cinco bloques del pliego, en una pantalla.
+// LA FICHA DE UNA PERSONA — cuatro solapas, y el cambio chico por panel lateral.
 //
-// ═══ POR QUÉ ES UNA RUTA Y NO EL PANEL LATERAL QUE HABÍA ═══
+// ═══ POR QUÉ NO ESTÁ TODO A LA VISTA ═══
 //
-// El dueño: *"Cada fila abre su ficha"*, y la ficha tiene cinco bloques —información, laboral,
-// asignación, horas y documentos—. Eso no entra en 360px sin volverse un acordeón de acordeones. Con
-// URL propia, además, la ficha se comparte, se recarga y vuelve con el botón de atrás.
+// El dueño: *"NO mostrar toda la información simultáneamente en 15 cards."* La ficha tiene identidad,
+// relación laboral, historial de asignaciones, horas y documentos: junto es una pared. Separado en
+// Resumen · Asignaciones · Horas · Documentos, cada pregunta tiene una solapa y el Resumen responde
+// las tres que se hacen todos los días —quién es, qué cobra de categoría, dónde está hoy—.
 //
-// ═══ LECTURA PRIMERO, EDICIÓN A UN CLIC ═══
+// ═══ Y POR QUÉ SE EDITA EN UN PANEL ═══
 //
-// Los bloques se leen; editar abre el formulario. Es lo que pidió el pliego (*"progressive
-// disclosure"*) y lo que hace que abrir una ficha para consultar un teléfono no ponga treinta campos
-// editables delante de nadie.
+// *"Priorizar click sobre entidad/campo → panel lateral. Nada de páginas de formulario gigantes para
+// cambios simples."* Corregir un teléfono no puede costar abrir una pantalla con veinte campos. El
+// panel viaja en la URL (`?editar=identidad`), así que se puede compartir, recargar y cerrar con el
+// botón de atrás.
+//
+// Es una RUTA y no un panel dentro del listado porque son cuatro solapas: no entran en 380px sin
+// volverse un acordeón de acordeones.
 
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { BotonAccion, Callout, FormAccion, PageShell } from '@/shared/components/ui'
+import { BotonAccion, Callout, PageShell } from '@/shared/components/ui'
 import { BloqueAsignacion, BloqueDocumentos, BloqueHoras } from '@/features/administracion/components/BloquesFicha'
-import { CamposInformacion, CamposLaboral } from '@/features/administracion/components/FormularioPersona'
-import { AltaDocumento, Bloque, Dato, EstadoPersona } from '@/features/administracion/components/FichaPartes'
-import {
-  getAsignacionesDe, getDocumentos, getPersona,
-} from '@/features/administracion/services/personasService'
-import {
-  agrupar, getHHDePersona, horasEntre, porActividad, porObra,
-} from '@/features/administracion/services/hhPersonaService'
-import { darDeBaja, editarPersona, reincorporar } from '@/features/administracion/services/personasActions'
+import { CamposIdentidad, CamposLaboral } from '@/features/administracion/components/FormularioPersona'
+import { AltaDocumento, Bloque, Dato } from '@/features/administracion/components/FichaPartes'
+import { NavFicha, VISTAS_FICHA, type VistaFicha } from '@/features/administracion/components/NavFicha'
+import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
+import { getAsignacionesDe, getDocumentos, getPersona } from '@/features/administracion/services/personasService'
+import { getHHDePersona, horasEntre, porActividad, porObra } from '@/features/administracion/services/hhPersonaService'
+import { darDeBaja, editarPersona, reincorporar, type GrupoEdicion } from '@/features/administracion/services/personasActions'
 import { cerrarAsignacionDePersona } from '@/features/administracion/services/asignacionActions'
-import {
-  desvincularDocumento, vincularDocumento,
-} from '@/features/administracion/services/documentosActions'
+import { desvincularDocumento, vincularDocumento } from '@/features/administracion/services/documentosActions'
 import { etiquetaCategoria } from '@/features/administracion/types'
 
 export const dynamic = 'force-dynamic'
+
+type Busqueda = { v?: string; editar?: string }
 
 /** El período del bloque HORAS: los últimos 30 días. Se declara con fechas concretas en la pantalla
  *  —no «el último mes»— porque un total sin ventana declarada no se puede verificar contra nada. */
@@ -43,10 +46,21 @@ function ultimos30() {
   return { desde: desde.toISOString().slice(0, 10), hasta: hasta.toISOString().slice(0, 10) }
 }
 
-export default async function FichaPersonaPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function FichaPersonaPage({
+  params, searchParams,
+}: {
+  params: Promise<{ id: string }>
+  searchParams: Promise<Busqueda>
+}) {
   const { id } = await params
-  const supabase = await createClient()
+  const sp = await searchParams
+  const vista = (VISTAS_FICHA.find((v) => v === sp.v) ?? 'resumen') as VistaFicha
+  const editar = sp.editar === 'identidad' || sp.editar === 'laboral' ? (sp.editar as GrupoEdicion) : null
+  const base = `/administracion/personas/${id}`
+  const href = (v: VistaFicha, e?: GrupoEdicion) =>
+    `${base}${v === 'resumen' && !e ? '' : `?${new URLSearchParams({ ...(v !== 'resumen' ? { v } : {}), ...(e ? { editar: e } : {}) })}`}`
 
+  const supabase = await createClient()
   const { data: persona, error } = await getPersona(supabase, id)
   // NO EXISTE y NO PUEDO LEER son dos cosas distintas: confundirlas manda a buscar un defecto de
   // permisos detrás de un 404, que ya costó media jornada en este repo.
@@ -59,153 +73,150 @@ export default async function FichaPersonaPage({ params }: { params: Promise<{ i
   }
   if (!persona) notFound()
 
-  const [asignaciones, documentos, horas] = await Promise.all([
-    getAsignacionesDe(supabase, id),
-    getDocumentos(supabase, id),
-    getHHDePersona(supabase, id),
-  ])
-  const filasHH = horas.data ?? []
-  const ventana = ultimos30()
+  // Cada solapa pide SÓLO lo suyo: el Resumen se abre muchas veces por día y no necesita el
+  // historial de horas para decir quién es esta persona.
+  const asignaciones = vista === 'resumen' || vista === 'asignaciones'
+    ? await getAsignacionesDe(supabase, id) : null
+  const horas = vista === 'horas' ? await getHHDePersona(supabase, id) : null
+  const documentos = vista === 'documentos' ? await getDocumentos(supabase, id) : null
+
+  const vigente = (asignaciones?.data ?? []).find((a) => !a.hasta) ?? null
   const egresada = Boolean(persona.fecha_egreso)
+  const filasHH = horas?.data ?? []
+  const ventana = ultimos30()
 
   return (
     <PageShell
       eyebrow={<Link href="/administracion/personas" className="hover:underline">← Personal</Link>}
       title={persona.nombre_completo}
-      subtitle={
-        <>
-          {etiquetaCategoria(persona.categoria)}
-          {persona.puesto ? ` · ${persona.puesto}` : persona.especialidad ? ` · ${persona.especialidad}` : ''}
-          {' · '}<EstadoPersona fechaEgreso={persona.fecha_egreso} />
-        </>
-      }
+      subtitle={[
+        etiquetaCategoria(persona.categoria),
+        persona.convenio_colectivo ?? 'convenio sin cargar',
+        egresada ? `inactiva desde el ${persona.fecha_egreso}` : 'en el plantel',
+      ].join(' · ')}
       maxWidth="max-w-5xl"
+      right={egresada
+        ? <BotonAccion accion={reincorporar} args={[id]} testid="reincorporar">Reincorporar</BotonAccion>
+        // `args` y NO una función flecha: `accion={() => darDeBaja(id)}` crea una función nueva que
+        // React rechaza en runtime —"Functions cannot be passed directly to Client Components"— y la
+        // pantalla queda EN BLANCO, sin que ni typecheck ni build lo detecten.
+        : <BotonAccion accion={darDeBaja} args={[id]} testid="dar-de-baja">Dar de baja</BotonAccion>}
     >
-      {(asignaciones.error || documentos.error || horas.error) && (
+      <NavFicha activa={vista} hrefDe={(v) => href(v)} />
+
+      {(asignaciones?.error || horas?.error || documentos?.error) && (
         <div className="mb-4">
-          <Callout tono="neg">
-            {asignaciones.error ?? documentos.error ?? horas.error}
-          </Callout>
+          <Callout tono="neg">{asignaciones?.error ?? horas?.error ?? documentos?.error}</Callout>
         </div>
       )}
 
-      <div className="space-y-4">
-        <Bloque titulo="Información" testid="bloque-informacion">
-          <div className="grid gap-x-8 gap-y-0 sm:grid-cols-2">
-            <Dato k="DNI" v={persona.dni} />
-            <Dato k="CUIL" v={persona.cuil} />
-            <Dato k="Nacimiento" v={persona.fecha_nacimiento} />
-            <Dato k="Nacionalidad" v={persona.nacionalidad} />
-            <Dato k="Teléfono" v={persona.telefono} />
-            <Dato k="Email" v={persona.email} />
-            <Dato k="Domicilio" v={persona.domicilio} />
-            <Dato
-              k="Contacto de emergencia"
-              v={[persona.contacto_emergencia, persona.contacto_emergencia_telefono].filter(Boolean).join(' · ') || null}
-            />
-          </div>
-        </Bloque>
+      <div className="flex flex-col gap-4 lg:flex-row">
+        <div className="min-w-0 flex-1 space-y-4">
+          {vista === 'resumen' && (
+            <>
+              <Bloque titulo="Identidad" testid="bloque-identidad" editarHref={href('resumen', 'identidad')}>
+                <div className="grid gap-x-8 sm:grid-cols-2">
+                  <Dato k="DNI" v={persona.dni} />
+                  <Dato k="CUIL" v={persona.cuil} />
+                  <Dato k="Nacimiento" v={persona.fecha_nacimiento} />
+                  <Dato k="Nacionalidad" v={persona.nacionalidad} />
+                  <Dato k="Teléfono" v={persona.telefono} />
+                  <Dato k="Email" v={persona.email} />
+                  <Dato k="Domicilio" v={persona.domicilio} />
+                  <Dato
+                    k="Emergencia"
+                    v={[persona.contacto_emergencia, persona.contacto_emergencia_telefono]
+                      .filter(Boolean).join(' · ') || null}
+                  />
+                </div>
+              </Bloque>
 
-        <Bloque titulo="Laboral" testid="bloque-laboral">
-          <div className="grid gap-x-8 gap-y-0 sm:grid-cols-2">
-            <Dato k="Ingreso" v={persona.fecha_ingreso} />
-            <Dato k="Egreso" v={persona.fecha_egreso} />
-            <Dato k="Convenio" v={persona.convenio_colectivo} />
-            <Dato k="Categoría" v={persona.categoria ? etiquetaCategoria(persona.categoria) : null} />
-            <Dato k="Especialidad" v={persona.especialidad} />
-            <Dato k="Puesto u oficio" v={persona.puesto} />
-            <Dato k="Modalidad" v={persona.modalidad_liquidacion} />
-            <Dato k="Notas" v={persona.notas} />
-          </div>
-        </Bloque>
+              <Bloque titulo="Laboral" testid="bloque-laboral" editarHref={href('resumen', 'laboral')}>
+                <div className="grid gap-x-8 sm:grid-cols-2">
+                  <Dato k="Ingreso" v={persona.fecha_ingreso} />
+                  <Dato k="Egreso" v={persona.fecha_egreso} />
+                  <Dato k="Convenio" v={persona.convenio_colectivo} />
+                  <Dato k="Categoría" v={persona.categoria ? etiquetaCategoria(persona.categoria) : null} />
+                  <Dato k="Especialidad" v={persona.especialidad} />
+                  <Dato k="Puesto u oficio" v={persona.puesto} />
+                  <Dato k="Modalidad" v={persona.modalidad_liquidacion} />
+                  <Dato k="Notas" v={persona.notas} />
+                </div>
+              </Bloque>
 
-        <details className="rounded-xl border border-line bg-white" data-testid="editar-persona">
-          <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-medium text-ink">
-            Editar información y datos laborales
-          </summary>
-          <div className="border-t border-line p-4">
-            {/* `bind` y NO una función flecha: una arrow crea una función nueva que React rechaza en
-                runtime con "Functions cannot be passed directly to Client Components", y la pantalla
-                queda EN BLANCO sin que ni typecheck ni build lo detecten. */}
-            <FormAccion accion={editarPersona.bind(null, id)} testid="form-persona-editar" enviar="Guardar">
-              <div className="space-y-4">
-                <CamposInformacion persona={persona} />
-                <div className="border-t border-line pt-4"><CamposLaboral persona={persona} /></div>
-              </div>
-            </FormAccion>
-          </div>
-        </details>
+              <Bloque titulo="Asignación actual" testid="bloque-asignacion-actual">
+                {vigente
+                  ? (
+                      <div className="grid gap-x-8 sm:grid-cols-2">
+                        <Dato k="Obra" v={vigente.obra_nombre ?? vigente.obra_id} />
+                        <Dato k="Actividad" v={vigente.actividad_nombre ?? 'toda la obra'} />
+                        <Dato k="Cuadrilla" v={vigente.cuadrilla} />
+                        <Dato k="Rol" v={vigente.rol} />
+                        <Dato k="Desde" v={vigente.desde} />
+                      </div>
+                    )
+                  : (
+                      <p className="py-2 text-[13px] text-muted">
+                        Sin asignar.{' '}
+                        <Link href="/obras" className="text-ink hover:underline">
+                          Se asigna desde la solapa Personal de la obra.
+                        </Link>
+                      </p>
+                    )}
+              </Bloque>
+            </>
+          )}
 
-        <Bloque
-          titulo="Asignación"
-          testid="bloque-asignacion"
-          ayuda="Sale de la misma relación que muestra la solapa Personal de la obra. Se crea desde la obra."
-        >
-          <BloqueAsignacion
-            asignaciones={asignaciones.data ?? []}
-            cerrar={cerrarAsignacionDePersona.bind(null, id)}
-          />
-        </Bloque>
+          {vista === 'asignaciones' && (
+            <Bloque
+              titulo="Historial de asignaciones"
+              testid="bloque-asignaciones"
+              ayuda="La misma relación que muestra Obra → Personal."
+            >
+              <BloqueAsignacion
+                asignaciones={asignaciones?.data ?? []}
+                cerrar={cerrarAsignacionDePersona.bind(null, id)}
+              />
+            </Bloque>
+          )}
 
-        <Bloque titulo="Horas" testid="bloque-horas">
-          <BloqueHoras
-            periodo={`${ventana.desde} a ${ventana.hasta}`}
-            horasPeriodo={horasEntre(filasHH, ventana.desde, ventana.hasta)}
-            porObra={porObra(filasHH)}
-            porActividad={porActividad(filasHH)}
-            historial={filasHH}
-          />
-        </Bloque>
+          {vista === 'horas' && (
+            <Bloque titulo="Horas imputadas" testid="bloque-horas">
+              <BloqueHoras
+                periodo={`${ventana.desde} a ${ventana.hasta}`}
+                horasPeriodo={horasEntre(filasHH, ventana.desde, ventana.hasta)}
+                porObra={porObra(filasHH)}
+                porActividad={porActividad(filasHH)}
+                historial={filasHH}
+              />
+            </Bloque>
+          )}
 
-        <Bloque
-          titulo="Documentos"
-          testid="bloque-documentos"
-          ayuda="El archivo vive en Drive. Acá se guarda el vínculo, nunca una copia."
-        >
-          <BloqueDocumentos
-            documentos={documentos.data ?? []}
-            desvincular={desvincularDocumento.bind(null, id)}
-          />
-          <AltaDocumento vincular={vincularDocumento.bind(null, id)} />
-        </Bloque>
+          {vista === 'documentos' && (
+            <Bloque titulo="Documentos" testid="bloque-documentos" ayuda="Vínculos a Drive. El archivo no se copia.">
+              <BloqueDocumentos
+                documentos={documentos?.data ?? []}
+                desvincular={desvincularDocumento.bind(null, id)}
+              />
+              <AltaDocumento vincular={vincularDocumento.bind(null, id)} />
+            </Bloque>
+          )}
+        </div>
 
-        <Bloque titulo="Plantel" testid="bloque-plantel">
-          {egresada
-            ? (
-                <>
-                  <p className="mb-2 text-[13px] text-muted">
-                    Egresó el {persona.fecha_egreso}. No se ofrece para asignar a una obra; sus
-                    asignaciones y sus horas quedan como están.
-                  </p>
-                  {/* `args` y NO una función flecha: `accion={() => reincorporar(id)}` crea una
-                      función nueva que React rechaza en runtime —"Functions cannot be passed
-                      directly to Client Components"— y la pantalla queda EN BLANCO, sin que ni
-                      typecheck ni build lo detecten. */}
-                  <BotonAccion accion={reincorporar} args={[id]} testid="reincorporar" tono="fuerte">
-                    Reincorporar al plantel
-                  </BotonAccion>
-                </>
-              )
-            : (
-                <>
-                  <p className="mb-2 text-[13px] text-muted">
-                    Dar de baja escribe la fecha de egreso de hoy y la saca del plantel. No borra
-                    nada: sus obras y sus horas quedan.
-                  </p>
-                  <BotonAccion accion={darDeBaja} args={[id]} testid="dar-de-baja" tono="peligro">
-                    Dar de baja
-                  </BotonAccion>
-                </>
-              )}
-        </Bloque>
+        {editar && (
+          <PanelEdicion
+            titulo={editar === 'identidad' ? 'Editar identidad' : 'Editar datos laborales'}
+            subtitulo={persona.nombre_completo}
+            accion={editarPersona.bind(null, id, editar)}
+            cerrarHref={href('resumen')}
+            testid={`panel-editar-${editar}`}
+          >
+            {editar === 'identidad'
+              ? <CamposIdentidad persona={persona} />
+              : <CamposLaboral persona={persona} />}
+          </PanelEdicion>
+        )}
       </div>
-
-      {/* El agrupado por semana no se muestra: la fuente es diaria y agregar una tercera lectura del
-          mismo total sólo daría una cuarta cifra para conciliar. */}
-      <p className="mt-4 px-1 text-[11px] text-faint">
-        {agrupar(filasHH, (f) => f.obra_canonica_id, (f) => f.obra_canonica_id, 'sin obra').length} obra(s)
-        con horas imputadas a esta persona.
-      </p>
     </PageShell>
   )
 }
