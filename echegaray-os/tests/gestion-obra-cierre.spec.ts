@@ -201,8 +201,9 @@ test('5-9 · el panel declara la precedencia, la tarea, el impedimento y la nota
   }, { timeout: 20_000 }).toMatchObject({ iguales: true, abiertos: 0 })
 
   // ═══ LA NOTA ═══
+  // LAS NOTAS YA NO SE ABREN: son un bloque visible al final del panel. El test abría el
+  // `<summary>` que existía cuando estaban plegadas — medía la implementación, no la regla.
   const notas = panel.getByTestId('bloque-notas')
-  await notas.locator('summary').click()
   await notas.getByTestId('nota-texto').fill(`${M} el hierro llegó a media mañana`)
   await notas.getByTestId('form-nota').getByRole('button', { name: 'Agregar' }).click()
   await expect.poll(async () => {

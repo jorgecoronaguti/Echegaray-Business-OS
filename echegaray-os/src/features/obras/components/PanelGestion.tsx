@@ -46,23 +46,37 @@ export function BloqueImpedimentosActividad({ a, abiertos, liberados, crear, lib
       className={`rounded-md border px-2.5 py-2 ${hay ? 'border-warn/30 bg-warn-soft' : 'border-line bg-surface'}`}
       data-testid="panel-impedimentos"
     >
-      <Rotulo cuenta={abiertos.length}>{hay ? 'Impedimentos' : 'Impedimentos'}</Rotulo>
+      <Rotulo cuenta={abiertos.length}>Impedimentos</Rotulo>
       {!hay && <p className="text-[12px] text-faint">Ninguno abierto.</p>}
       <ul className="space-y-1.5">
         {abiertos.map((r) => {
           const vencido = !!r.fecha_compromiso && r.fecha_compromiso < hoyIso
           return (
+            // UN IMPEDIMENTO ES UNA FICHA, NO UNA LÍNEA. Quién lo resuelve y para cuándo van
+            // ROTULADOS: son los dos datos que convierten una queja anotada en algo que alguien
+            // tiene que destrabar, y sin el rótulo se leían como un texto suelto más.
             <li key={r.id} className="text-[12px]" data-testid="impedimento-actividad">
               <div className="flex items-start justify-between gap-2">
-                <span className="min-w-0 text-ink">{r.descripcion}</span>
-                {liberar && (
-                  <BotonAccion accion={liberar} args={[r.id]} testid="resolver-impedimento">Resolver</BotonAccion>
-                )}
+                <span className="min-w-0 font-medium text-ink">
+                  <span aria-hidden className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle ${vencido ? 'bg-neg' : 'bg-warn'}`} />
+                  {r.descripcion}
+                </span>
+                <span className="shrink-0 rounded border border-line px-1.5 py-[1px] text-[10px] uppercase text-muted">
+                  {vencido ? 'vencido' : 'abierto'}
+                </span>
               </div>
-              <span className="text-[11px] text-muted">
-                {TIPO_RESTRICCION_LABEL[r.tipo] ?? r.tipo} · {r.responsable ?? 'sin responsable'} ·
-                <span className={vencido ? ' font-medium text-neg' : ''}> {fecha(r.fecha_compromiso)}{vencido ? ' · vencido' : ''}</span>
-              </span>
+              <p className="mt-0.5 text-[11px] text-muted">
+                <span className="text-faint">Responsable:</span> {r.responsable ?? 'sin asignar'}
+                {' · '}
+                <span className="text-faint">Vencimiento:</span>{' '}
+                <span className={vencido ? 'font-medium text-neg' : ''}>{fecha(r.fecha_compromiso)}</span>
+                {' · '}{TIPO_RESTRICCION_LABEL[r.tipo] ?? r.tipo}
+              </p>
+              {liberar && (
+                <div className="mt-1">
+                  <BotonAccion accion={liberar} args={[r.id]} testid="resolver-impedimento">Resolver</BotonAccion>
+                </div>
+              )}
             </li>
           )
         })}
