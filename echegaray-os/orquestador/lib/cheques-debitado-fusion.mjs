@@ -72,8 +72,28 @@ const EMPAREJADOS = ['emparejado', 'emparejado_por_importe']
  * @returns {Array<{fila:number, a:'SI', de:string, instrumento:string, numero:string, monto:number, evidencia:string, fuentes:string[]}>}
  */
 export function marcasDelBanco(conciliacion = []) {
+  // ═══ EL BANCO AFIRMA UN HECHO, NO PIDE UN CAMBIO (19/08/2026) ═══
+  //
+  // Este filtro decía además `&& !r.cheque.debitado`: sólo hablaba de los cheques que la pestaña
+  // TODAVÍA no tenía marcados. Parecía una optimización y era una OSCILACIÓN.
+  //
+  // MEDIDO EN VIVO HOY. El ECHEQ 366 ($635.020,10, DUPEC) lo debitó el banco el 19/08. La corrida lo
+  // marcó SI. En la corrida siguiente, con la pestaña ya en SI, este filtro lo excluía —"ya está
+  // debitado, no tengo nada que pedir"— y entonces la única voz que quedaba sobre esa fila era
+  // `public.cheques`, cuya foto es del 06/08 y lo da por VIVO: proponía SI → No y lo desmarcaba. A la
+  // corrida siguiente el banco lo volvía a marcar. La pestaña iba a alternar SI/No para siempre, y en
+  // cada vuelta que quedaba en "No" la disponibilidad neta descontaba como compromiso futuro
+  // $635.020 que ya habían salido de la cuenta.
+  //
+  // La cabecera de este archivo ya declaraba la regla —"cuando se contradicen, gana el extracto"— y
+  // la fusión sabe aplicarla; lo que fallaba era que el extracto se CALLABA justo cuando la pestaña
+  // ya coincidía con él, o sea exactamente cuando había que defender esa coincidencia.
+  //
+  // Ahora se devuelve lo que el banco afirma de TODOS los cheques emparejados, con `yaEstaba` para
+  // que la fusión distinga afirmar de corregir. Un hecho no deja de ser cierto porque alguien ya lo
+  // haya anotado.
   return conciliacion
-    .filter((r) => EMPAREJADOS.includes(r?.estado) && r.cheque && !r.cheque.debitado)
+    .filter((r) => EMPAREJADOS.includes(r?.estado) && r.cheque)
     .map((r) => {
       const [instrumento, numero] = String(r.clave).split('|')
       const base = `el banco lo debitó el ${r.mov?.fecha ?? 's/f'} ("${String(r.mov?.concepto ?? '').trim()}")`
@@ -90,6 +110,8 @@ export function marcasDelBanco(conciliacion = []) {
           ? `${base} — el banco lo llama N° ${r.discrepancia.referenciaDelBanco} y esta fila dice `
             + `${r.discrepancia.numeroDeLaFila}; empareja por importe exacto`
           : base,
+        /** La pestaña YA lo tiene marcado: el banco lo confirma, pero no hay nada que escribir. */
+        yaEstaba: Boolean(r.cheque.debitado),
         fuentes: ['banco'],
       }
     })
@@ -147,8 +169,12 @@ export function fusionarDebitado({ base = [], planBase = {}, conciliacion = [] }
       conflictos.push({ clave: k, fila: p.fila, dice: 'public.cheques lo da por NO debitado', evidencia: p.evidencia })
     }
     const prev = porFila.get(p.fila)
+    // EL EXTRACTO MANDA, Y MANDA TAMBIÉN PARA CALLAR. Si la pestaña ya dice SI porque el banco lo
+    // debitó, cualquier corrección de la base que quiera volverla a "No" se DESCARTA: la foto de
+    // `public.cheques` es vieja y ese es justamente el conflicto que se declara más abajo. Sin esto
+    // la fila alternaba en cada corrida.
+    if (p.yaEstaba) { if (prev) porFila.delete(p.fila); continue }
     if (!prev) { porFila.set(p.fila, p); continue }
-    // El extracto manda: la plata ya salió. `prev.a` sólo se conserva cuando coincide.
     porFila.set(p.fila, { ...p, de: prev.de ?? p.de, fuentes: [...new Set([...prev.fuentes, 'banco'])] })
   }
 
