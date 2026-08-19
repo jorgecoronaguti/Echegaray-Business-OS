@@ -14,7 +14,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Asignacion, Persona, ServiceResult } from '../types'
 
-/** El plantel elegible. Quien tiene fecha de egreso ya no está: no se ofrece para asignar. */
+/**
+ * El plantel elegible.
+ *
+ * NO FILTRA ACÁ. Quién está disponible lo decide `persona_plantel`, que publica sólo a quien tiene
+ * `en_la_empresa`. Hasta hoy la regla vivía copiada en este servicio y en el de Administración, cada
+ * uno con su `.is('fecha_egreso', null)` — y esa condición dejaba entrar a las 15 personas que se
+ * fueron sin baja documentada, porque su fecha de egreso no consta en ningún papel.
+ */
 export async function getPersonas(supabase: SupabaseClient): Promise<ServiceResult<Persona[]>> {
   const { data, error } = await supabase
     .from('persona_plantel')
@@ -22,7 +29,6 @@ export async function getPersonas(supabase: SupabaseClient): Promise<ServiceResu
     // `orquestador/lib/vistas-security-invoker.test.mjs`. Pedir una columna que la vista no tiene
     // no devuelve null: devuelve error, y el selector de asignación queda VACÍO sin decir por qué.
     .select('id, nombre_completo, categoria, especialidad, fecha_egreso')
-    .is('fecha_egreso', null)
     .order('nombre_completo', { ascending: true })
   if (error) return { data: null, error: error.message }
   return { data: (data ?? []) as Persona[], error: null }

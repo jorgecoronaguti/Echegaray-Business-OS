@@ -25,7 +25,8 @@ import type {
 const COLUMNAS_FICHA =
   'id, nombre_completo, dni, cuil, fecha_nacimiento, nacionalidad, telefono, email, domicilio, ' +
   'contacto_emergencia, contacto_emergencia_telefono, fecha_ingreso, fecha_egreso, ' +
-  'convenio_colectivo, categoria, especialidad, puesto, modalidad_liquidacion, notas'
+  'convenio_colectivo, categoria, especialidad, puesto, modalidad_liquidacion, notas, ' +
+  'legajo, en_la_empresa, drive_folder_id'
 
 /** Los cuatro filtros del dueño. `todos` es literal: incluye a los que ya no están, y la columna
  *  ESTADO los distingue. Esconder a los inactivos detrás de un filtro llamado "todos" es la clase
@@ -59,8 +60,9 @@ export async function getDirectorio(
 ): Promise<ServiceResult<PersonaEnDirectorio[]>> {
   let consulta = supabase.from('persona_directorio').select('*')
 
-  if (filtro === 'inactivos') consulta = consulta.not('fecha_egreso', 'is', null)
-  else consulta = consulta.is('fecha_egreso', null)
+  // QUIÉN ESTÁ SE PREGUNTA POR `en_la_empresa`, NO POR LA FECHA. De los 43 legajos fuera de la
+  // nómina, 15 se fueron sin baja documentada: con `fecha_egreso is null` los 15 volvían al plantel.
+  consulta = consulta.eq('en_la_empresa', filtro !== 'inactivos')
   if (filtro === 'en_obra') consulta = consulta.not('obra_actual_id', 'is', null)
   if (filtro === 'sin_asignar') consulta = consulta.is('obra_actual_id', null)
 

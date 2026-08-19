@@ -11,6 +11,7 @@ import Link from 'next/link'
 import { BotonAccion, type ResultadoAccion } from '@/shared/components/ui'
 import { urlDeDrive } from '@/features/obras/services/driveUrl'
 import type { TotalHH } from '../services/hhPersonaService'
+import { faltaEnElLegajo } from '../types'
 import type { AsignacionDePersona, DocumentoLegajo, ImputacionHH } from '../types'
 import { TIPO_HORA_LABEL, type TipoHora } from '@/features/obras/services/tipoHora'
 import { PERIODOS, PERIODO_LABEL, type Periodo } from '../services/periodoHH'
@@ -212,16 +213,54 @@ export function BloqueHoras({
   )
 }
 
-/** BLOQUE E — los documentos. El archivo vive en Drive; acá está el vínculo y se abre allá. */
+/**
+ * BLOQUE E — los documentos. El archivo vive en Drive; acá está el vínculo y se abre allá.
+ *
+ * ═══ QUÉ FALTA SE DERIVA, NO SE GUARDA ═══
+ *
+ * La línea de arriba es la pregunta que el legajo existe para contestar: a quién le falta el alta,
+ * el DNI, el apto médico o la constancia de entrega de EPP. Se calcula restando lo vinculado, sin
+ * ninguna fila que diga "no está": guardar la ausencia daría dos definiciones de lo mismo y el día
+ * que alguien suba el papel sólo se actualizaría una.
+ *
+ * Y SÓLO PARA QUIEN TRABAJA HOY: a alguien que se fue hace dos años no se le puede pedir un apto
+ * médico vigente, y pintar de rojo 43 legajos cerrados esconde los que sí importan.
+ */
 export function BloqueDocumentos({
-  documentos, desvincular,
+  documentos, desvincular, enLaEmpresa = true, carpetaDrive = null,
 }: {
   documentos: DocumentoLegajo[]
   desvincular: (documentoId: string) => Promise<ResultadoAccion>
+  enLaEmpresa?: boolean
+  carpetaDrive?: string | null
 }) {
-  if (documentos.length === 0) return <Vacio>Sin documentos vinculados.</Vacio>
+  const falta = enLaEmpresa ? faltaEnElLegajo(documentos) : []
+  const encabezado = (
+    <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+      <p className="text-[12px]" data-testid="falta-en-el-legajo">
+        {falta.length === 0
+          ? <span className="text-muted">{enLaEmpresa ? 'El legajo está completo.' : 'Legajo cerrado.'}</span>
+          : (
+              <>
+                <span className="text-faint">Falta </span>
+                <span className="text-warn">{falta.map((f) => f.replace(/_/g, ' ')).join(' · ')}</span>
+              </>
+            )}
+      </p>
+      {carpetaDrive && (
+        <a
+          href={urlDeDrive(carpetaDrive, 'carpeta')} target="_blank" rel="noreferrer"
+          className="text-[12px] text-muted hover:text-ink hover:underline" data-testid="abrir-carpeta"
+        >ver la carpeta en Drive</a>
+      )}
+    </div>
+  )
+  if (documentos.length === 0) {
+    return <>{encabezado}<Vacio>Sin documentos vinculados.</Vacio></>
+  }
   return (
     <div className="overflow-x-auto">
+      {encabezado}
       <table data-testid="ficha-documentos" className="w-full min-w-[520px] text-left">
         <thead><tr className="border-b border-line text-[10px] uppercase tracking-wide text-faint">
           <th className="px-1 py-2 font-medium">Categoría</th>

@@ -34,6 +34,9 @@ const personaSchema = z.object({
   contacto_emergencia_telefono: opcional,
   fecha_ingreso: fechaISO,
   fecha_egreso: fechaISO,
+  // El número de la nómina. Se acepta libre —hay legajos de una y de dos cifras— y su unicidad la
+  // impone la base: dos personas con el mismo número liquidarían contra la misma fila de JORNALES.
+  legajo: opcional,
   convenio_colectivo: opcional,
   // La categoría se acepta libre a propósito: hay tres personas con códigos mal importados
   // ('1591', '6E60', '004212') y rechazarlos impediría abrir su ficha para corregirlos.
@@ -56,7 +59,7 @@ function aFila(d: Partial<z.infer<typeof personaSchema>>) {
     nacionalidad: v(d.nacionalidad), telefono: v(d.telefono), email: v(d.email),
     domicilio: v(d.domicilio), contacto_emergencia: v(d.contacto_emergencia),
     contacto_emergencia_telefono: v(d.contacto_emergencia_telefono),
-    fecha_ingreso: v(d.fecha_ingreso), fecha_egreso: v(d.fecha_egreso),
+    fecha_ingreso: v(d.fecha_ingreso), fecha_egreso: v(d.fecha_egreso), legajo: v(d.legajo),
     convenio_colectivo: v(d.convenio_colectivo), categoria: v(d.categoria),
     especialidad: v(d.especialidad), puesto: v(d.puesto),
     modalidad_liquidacion: v(d.modalidad_liquidacion), notas: v(d.notas),
@@ -91,7 +94,7 @@ const GRUPOS = {
     contacto_emergencia: true, contacto_emergencia_telefono: true,
   }),
   laboral: personaSchema.pick({
-    fecha_ingreso: true, fecha_egreso: true, convenio_colectivo: true, categoria: true,
+    fecha_ingreso: true, fecha_egreso: true, legajo: true, convenio_colectivo: true, categoria: true,
     especialidad: true, puesto: true, modalidad_liquidacion: true, notas: true,
   }),
 } as const
@@ -118,9 +121,13 @@ export async function editarPersona(
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
 
   const fila = aFila(parsed.data as z.infer<typeof personaSchema>)
-  const soloDelGrupo = Object.fromEntries(
+  const soloDelGrupo: Record<string, unknown> = Object.fromEntries(
     Object.entries(fila).filter(([clave]) => clave in parsed.data),
   )
+  // CARGAR UNA FECHA DE EGRESO ES DAR DE BAJA. El CHECK de la base no admite una fecha de egreso en
+  // alguien que figura en la empresa, y sin esto el formulario devolvía el texto crudo de Postgres.
+  // Borrarla NO reincorpora: para eso está el botón, que es una decisión, no un campo que se vacía.
+  if (soloDelGrupo.fecha_egreso) soloDelGrupo.en_la_empresa = false
 
   const supabase = await createClient()
   const { error } = await supabase.from('personas').update(soloDelGrupo).eq('id', personaId)
@@ -131,29 +138,34 @@ export async function editarPersona(
 }
 
 /**
- * Dar de baja del plantel: se escribe la FECHA de egreso, no una bandera.
+ * Dar de baja del plantel.
  *
- * `fecha_egreso` ya es lo que decide quién está disponible para asignar a una obra. Agregar un
- * `activo` al lado daría dos verdades sobre el mismo hecho, y el día que se contradigan no habría
- * forma de saber cuál manda.
+ * SON DOS COSAS Y SE ESCRIBEN LAS DOS: `en_la_empresa` dice que ya no está —y es lo que la saca del
+ * selector de asignación de las ocho obras— y `fecha_egreso` dice desde cuándo. Sin fecha se da de
+ * baja igual: 15 de los legajos del data room se fueron sin baja documentada, y el día que se pulsa
+ * el botón sin saber la fecha, poner la de hoy inventaría el dato en lugar de dejarlo faltando.
  *
  * NO CIERRA LAS ASIGNACIONES NI BORRA LAS HORAS. Las horas que trabajó son un costo de obra real y
  * su asignación es historia: lo que cambia es que deja de ofrecerse para asignar.
  */
 export async function darDeBaja(personaId: string, fechaEgreso?: string | null): Promise<Resultado> {
   const supabase = await createClient()
-  const valor = fechaEgreso?.trim() ? fechaEgreso.trim() : new Date().toISOString().slice(0, 10)
-  const { error } = await supabase.from('personas').update({ fecha_egreso: valor }).eq('id', personaId)
+  const valor = fechaEgreso?.trim() ? fechaEgreso.trim() : null
+  const { error } = await supabase
+    .from('personas').update({ en_la_empresa: false, fecha_egreso: valor }).eq('id', personaId)
   if (error) return { ok: false, error: error.message }
   revalidatePath('/administracion/personas')
   revalidatePath(`/administracion/personas/${personaId}`)
   return { ok: true }
 }
 
-/** Reincorporar: se borra la fecha de egreso. La historia de asignaciones queda intacta. */
+/** Reincorporar: vuelve al plantel y se borra la fecha de egreso. Las dos juntas, porque el CHECK
+ *  de la base no admite una fecha de egreso en alguien que está en la empresa —que es justamente lo
+ *  que impide que las dos columnas se contradigan—. La historia de asignaciones queda intacta. */
 export async function reincorporar(personaId: string): Promise<Resultado> {
   const supabase = await createClient()
-  const { error } = await supabase.from('personas').update({ fecha_egreso: null }).eq('id', personaId)
+  const { error } = await supabase
+    .from('personas').update({ en_la_empresa: true, fecha_egreso: null }).eq('id', personaId)
   if (error) return { ok: false, error: error.message }
   revalidatePath('/administracion/personas')
   revalidatePath(`/administracion/personas/${personaId}`)

@@ -75,10 +75,14 @@ export function CamposIdentidad({ persona }: { persona: Persona | null }) {
 export function CamposLaboral({ persona }: { persona: Persona | null }) {
   return (
     <div className="grid grid-cols-2 gap-2.5">
+      <Texto
+        name="legajo" label="Legajo" valor={persona?.legajo ?? null} max={12}
+        ayuda="El número de la nómina. Es con el que liquida Jornales."
+      />
       <Texto name="fecha_ingreso" label="Ingreso" tipo="date" valor={persona?.fecha_ingreso ?? null} />
       <Texto
         name="fecha_egreso" label="Egreso" tipo="date" valor={persona?.fecha_egreso ?? null}
-        ayuda="Con fecha de egreso deja de ofrecerse para asignar."
+        ayuda="Cargar la fecha la saca del plantel. Para volver a incorporarla está el botón."
       />
       <Texto name="convenio_colectivo" label="Convenio" valor={persona?.convenio_colectivo ?? null} max={120} />
       <Campo label="Categoría"><SelectCategoria valor={persona?.categoria ?? null} /></Campo>

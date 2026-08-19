@@ -42,8 +42,12 @@ export function esCategoriaDeConvenio(valor: string | null): boolean {
 /** EL LEGAJO COMPLETO, tal como lo administra esta área. Sólo Administración lo lee: la RLS de
  *  `personas` es `es_administracion()` y la obra ve el subconjunto operativo de `persona_plantel`.
  *
- *  `fecha_egreso` es lo que saca a alguien del plantel: no hay un `activo` aparte, porque dos
- *  banderas para el mismo hecho se contradicen sin avisar.
+ *  `en_la_empresa` es lo que saca a alguien del plantel, y `fecha_egreso` dice DESDE CUÁNDO. No son
+ *  dos banderas del mismo hecho: son dos preguntas, y la segunda a veces no tiene respuesta. De los
+ *  43 legajos del data room que están fuera de la nómina, 15 no tienen baja documentada — se fueron,
+ *  consta, y la fecha no consta en ningún papel. Con un solo campo había que elegir entre dejarlos
+ *  ofreciéndose para asignar a una obra o inventarles una fecha. Un CHECK en la base impide que se
+ *  contradigan: con fecha de egreso, `en_la_empresa` es false.
  *
  *  NO HAY `nombre` Y `apellido` SEPARADOS, y es a propósito: las 30 filas reales están cargadas como
  *  un solo texto («PEREZ JUAN CARLOS») y partirlo requiere adivinar dónde termina el apellido. Un
@@ -51,6 +55,12 @@ export function esCategoriaDeConvenio(valor: string | null): boolean {
 export interface Persona {
   id: string
   nombre_completo: string
+  /** El número de la nómina (pestaña PERSONAL de NUEVA ASISTENCIA). Es la clave con la que liquida
+   *  JORNALES. Falta en quien ya no está: la nómina vigente no lo tiene. */
+  legajo: string | null
+  en_la_empresa: boolean
+  /** La carpeta del legajo en el data room. El archivo NUNCA se copia: acá está el vínculo. */
+  drive_folder_id: string | null
   dni: string | null
   cuil: string | null
   fecha_nacimiento: string | null
@@ -87,6 +97,7 @@ export interface PersonaEnDirectorio {
   obra_actual: string | null
   rol_en_obra: string | null
   asignada_desde: string | null
+  en_la_empresa: boolean
 }
 
 /** Una cuadrilla con lo que se deriva de ella. Su obra NO es una columna de la tabla. */
@@ -110,13 +121,30 @@ export interface Integrante {
   hasta: string | null
 }
 
-/** Las categorías de documento del legajo: las que ya existen en `documentacion_legajo` más las
- *  que un legajo de constructora necesita sí o sí. NO es un CHECK en la base: cerrar el dominio
- *  obligaría a editar las 12 filas cargadas para que corra una migración. */
+/** Las categorías de documento del legajo de una constructora.
+ *
+ *  SÍ ES UN CHECK EN LA BASE, y esta lista tiene que ser exactamente la misma. Durante un mes no lo
+ *  fue: la base conservaba el vocabulario de julio ('alta_afip', 'dni_escaneado'…) y el selector
+ *  ofrecía éste, así que NINGUNA de las opciones que se podían elegir pasaba la validación y
+ *  vincular un documento devolvía 23514 siempre. Que las dos listas no se separen otra vez lo vigila
+ *  `orquestador/lib/legajos-catalogo.test.mjs`, que compara ésta contra el CHECK vivo. */
 export const CATEGORIAS_DOCUMENTO = [
-  'dni', 'cuil', 'alta_temprana', 'contrato', 'art', 'libreta_fondo_cese',
-  'certificado_medico', 'capacitacion', 'licencia_conducir', 'otro',
+  'dni', 'cuil', 'alta_temprana', 'ieric', 'contrato', 'art', 'libreta_fondo_cese',
+  'examen_medico', 'epp', 'capacitacion', 'recibo_sueldo', 'licencia_conducir', 'baja', 'otro',
 ] as const
+
+/** Lo que un legajo de quien TRABAJA HOY tiene que tener: alta, identidad, apto médico y entrega de
+ *  elementos de protección. Es el criterio del dueño y el que mira IERIC. A quien ya no está no se
+ *  le puede pedir un apto médico, así que no se le calcula. */
+export const REQUERIDOS_LEGAJO = ['alta_temprana', 'dni', 'examen_medico', 'epp'] as const
+
+/** Qué le falta a un legajo. Se DERIVA de los documentos vinculados: guardar la ausencia como una
+ *  fila daría dos definiciones de "qué falta", y el día que alguien suba el papel sólo se
+ *  actualizaría una. */
+export function faltaEnElLegajo(documentos: { tipo_documento: string | null }[]): string[] {
+  const tiene = new Set(documentos.map((d) => d.tipo_documento))
+  return REQUERIDOS_LEGAJO.filter((r) => !tiene.has(r))
+}
 
 /** Un documento del legajo. El archivo vive en Drive: acá va el vínculo, nunca una copia. */
 export interface DocumentoLegajo {

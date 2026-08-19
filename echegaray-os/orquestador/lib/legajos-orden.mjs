@@ -60,7 +60,7 @@ export function coincidencia(a, b) {
  * Se acepta UNA letra de diferencia y sólo en tokens de cinco letras o más: en uno corto, una letra
  * es la diferencia entre dos nombres distintos («JUAN» y «JUANA», «LUIS» y «LUCA»).
  */
-function mismoToken(a, b) {
+export function mismoToken(a, b) {
   if (a === b) return true
   if (a.length < 5 || b.length < 5) return false
   // NOMBRE CORTADO EN LA PLANILLA. La nómina trae «RETA RAMON HECTOR SEBAST» —la celda quedó

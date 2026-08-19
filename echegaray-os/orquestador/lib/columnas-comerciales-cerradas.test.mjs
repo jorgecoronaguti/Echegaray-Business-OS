@@ -64,6 +64,11 @@ const CERRADAS = {
 
 const PERSONAS_ABIERTAS = [
   'id', 'nombre_completo', 'categoria', 'especialidad', 'puesto', 'fecha_ingreso', 'fecha_egreso',
+  // `en_la_empresa` la necesita `persona_directorio`, que es `security_invoker`. Es operativa: si la
+  // persona sigue trabajando acá. `legajo` NO está y no tiene que estar — es el número con el que
+  // liquida JORNALES, la obra no lo usa, y la ficha lo lee por `persona_legajo`, que corre como su
+  // dueño y no depende de este grant.
+  'en_la_empresa',
 ]
 
 const SIN_BASE = !process.env.DATABASE_URL

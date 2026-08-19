@@ -55,6 +55,9 @@ const DESESCALADA_DECLARADA = {
     'telefono', 'email', 'domicilio', 'contacto_emergencia', 'contacto_emergencia_telefono',
     'fecha_ingreso', 'fecha_egreso', 'convenio_colectivo', 'categoria', 'especialidad', 'puesto',
     'modalidad_liquidacion', 'art', 'obra_social', 'drive_folder_id', 'notas',
+    // El número de la nómina y si sigue en la empresa. Ninguno es sensible —el legajo ya publica
+    // DNI y CUIL, que sí lo son— y los dos son de Administración por el portero de la vista.
+    'legajo', 'en_la_empresa',
   ],
 }
 

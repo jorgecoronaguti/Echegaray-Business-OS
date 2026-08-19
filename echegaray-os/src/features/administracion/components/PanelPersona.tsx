@@ -109,7 +109,7 @@ export function PanelPersona({
   cerrarHref: string
 }) {
   const esAlta = persona === null
-  const egresada = Boolean(persona?.fecha_egreso)
+  const egresada = persona !== null && !persona.en_la_empresa
 
   return (
     <aside
@@ -155,7 +155,10 @@ export function PanelPersona({
               ? (
                   <>
                     <p className="mb-2 text-[12px] text-muted">
-                      Egresó el {persona.fecha_egreso}. No se ofrece para asignar a una obra.
+                      {persona.fecha_egreso
+                        ? `Egresó el ${persona.fecha_egreso}.`
+                        : 'Ya no está en la empresa; la fecha de baja no consta en ningún papel.'}
+                      {' '}No se ofrece para asignar a una obra.
                     </p>
                     <BotonAccion accion={alta} args={[persona.id]} testid="reincorporar">
                       Reincorporar al plantel
@@ -165,8 +168,9 @@ export function PanelPersona({
               : (
                   <>
                     <p className="mb-2 text-[12px] text-muted">
-                      Dar de baja la saca del plantel con la fecha de hoy. No borra nada: sus obras y
-                      sus horas quedan como están.
+                      Dar de baja la saca del plantel. No pone la fecha de hoy —inventaría el dato—:
+                      la fecha de egreso se carga en Laboral cuando conste en un papel. No borra
+                      nada: sus obras y sus horas quedan como están.
                     </p>
                     <BotonAccion accion={baja} args={[persona.id]} testid="dar-de-baja" tono="peligro">
                       Dar de baja

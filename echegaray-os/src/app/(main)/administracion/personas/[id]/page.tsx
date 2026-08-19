@@ -79,7 +79,7 @@ export default async function FichaPersonaPage({
   const documentos = vista === 'documentos' ? await getDocumentos(supabase, id) : null
 
   const vigente = (asignaciones?.data ?? []).find((a) => !a.hasta) ?? null
-  const egresada = Boolean(persona.fecha_egreso)
+  const egresada = !persona.en_la_empresa
   const filasHH = horas?.data ?? []
   const periodo = esPeriodo(sp.p) ? sp.p : PERIODO_POR_DEFECTO
   // EL DÍA SE FIJA EN EL SERVIDOR: calcularlo en el cliente daría una quincena distinta alrededor
@@ -94,7 +94,10 @@ export default async function FichaPersonaPage({
       subtitle={[
         etiquetaCategoria(persona.categoria),
         persona.convenio_colectivo ?? 'convenio sin cargar',
-        egresada ? `inactiva desde el ${persona.fecha_egreso}` : 'en el plantel',
+        egresada
+          ? (persona.fecha_egreso ? `inactiva desde el ${persona.fecha_egreso}` : 'ya no está en la empresa')
+          : 'en el plantel',
+        persona.legajo ? `legajo ${persona.legajo}` : 'sin número de legajo',
       ].join(' · ')}
       maxWidth="max-w-5xl"
       right={egresada
@@ -135,6 +138,7 @@ export default async function FichaPersonaPage({
 
               <Bloque titulo="Laboral" testid="bloque-laboral" editarHref={href('resumen', 'laboral')}>
                 <div className="grid gap-x-8 sm:grid-cols-2">
+                  <Dato k="Legajo" v={persona.legajo} />
                   <Dato k="Ingreso" v={persona.fecha_ingreso} />
                   <Dato k="Egreso" v={persona.fecha_egreso} />
                   <Dato k="Convenio" v={persona.convenio_colectivo} />
@@ -203,6 +207,8 @@ export default async function FichaPersonaPage({
               <BloqueDocumentos
                 documentos={documentos?.data ?? []}
                 desvincular={desvincularDocumento.bind(null, id)}
+                enLaEmpresa={persona.en_la_empresa}
+                carpetaDrive={persona.drive_folder_id}
               />
               <AltaDocumento vincular={vincularDocumento.bind(null, id)} />
             </Bloque>

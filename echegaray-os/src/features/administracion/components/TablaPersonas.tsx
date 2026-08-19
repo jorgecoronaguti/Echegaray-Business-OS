@@ -77,9 +77,11 @@ export function TablaPersonas({ personas }: { personas: PersonaEnDirectorio[] })
                   : <span className="text-faint">sin asignar</span>}
               </td>
               <td className="px-3 py-2 text-[12px]">
-                {p.fecha_egreso
-                  ? <span className="text-faint">inactiva</span>
-                  : <span className="text-muted">activa</span>}
+                {/* EL ESTADO SALE DE `en_la_empresa`, NO DE LA FECHA: hay 15 personas que se
+                    fueron sin baja documentada y por la fecha figurarían activas. */}
+                {p.en_la_empresa
+                  ? <span className="text-muted">activa</span>
+                  : <span className="text-faint">inactiva</span>}
               </td>
             </tr>
           ))}
