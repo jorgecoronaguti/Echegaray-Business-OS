@@ -1,9 +1,11 @@
+import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { getUsuarioActual, getPerfilActual } from '@/features/auth/services/authService'
 import { ROL_LABEL } from '@/features/auth/types'
 import { areasDe } from '@/features/auth/types/areas'
 import { LogoutButton } from '@/features/auth/components/LogoutButton'
 import { AppHeader } from '@/shared/components/AppHeader'
+import { HeaderEsqueleto } from '@/shared/components/carga'
 
 // EL MARCO DE LA APLICACIÓN — 18/08/2026.
 //
@@ -23,15 +25,32 @@ import { AppHeader } from '@/shared/components/AppHeader'
 // no desaparecieron: bajaron al lugar donde se usan, que es adentro del área (ver `/administracion`
 // y la vista «Operación» de cada obra), no arriba de todo en cada pantalla del sistema.
 
-export default async function MainLayout({ children }: { children: React.ReactNode }) {
-  const { email, rolLabel, rol } = await loadUsuario()
-
+// ═══ EL MARCO SE PINTA ANTES DE SABER QUIÉN ENTRÓ (19/08/2026) ═══
+//
+// Este layout era `async` y esperaba `loadUsuario()` —dos llamadas a Supabase— antes de devolver una
+// sola etiqueta. Como TODA página de este grupo es `force-dynamic`, esa espera se sumaba a la de la
+// página y el navegador no pintaba NADA hasta que terminaban las dos: el *"no responde, no se mueve,
+// nada"* del dueño. Medido contra producción el 19/08, una pantalla de este grupo tardaba ~95 s en
+// contestar, y esos 95 s eran de pantalla anterior congelada, sin una sola señal.
+//
+// Ahora el layout es SÍNCRONO y la parte que depende del servidor —quién sos y qué áreas ves— cuelga
+// de un `<Suspense>`. El documento sale por streaming: marco, header y el esqueleto del `loading.tsx`
+// primero; el contenido, cuando esté. Lo que se muestra sigue dependiendo del rol exactamente igual:
+// `HeaderConUsuario` es el mismo código de antes, corriendo en el servidor.
+export default function MainLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-canvas">
-      <AppHeader areas={areasDe(rol)} email={email} rolLabel={rolLabel} salir={<LogoutButton />} />
+      <Suspense fallback={<HeaderEsqueleto />}>
+        <HeaderConUsuario />
+      </Suspense>
       <main>{children}</main>
     </div>
   )
+}
+
+async function HeaderConUsuario() {
+  const { email, rolLabel, rol } = await loadUsuario()
+  return <AppHeader areas={areasDe(rol)} email={email} rolLabel={rolLabel} salir={<LogoutButton />} />
 }
 
 async function loadUsuario() {
@@ -39,7 +58,8 @@ async function loadUsuario() {
     const supabase = await createClient()
     const user = await getUsuarioActual(supabase)
     if (!user) return { email: null, rolLabel: null, rol: null }
-    const perfil = await getPerfilActual(supabase)
+    // El id ya está: `getPerfilActual()` sin él volvía a preguntarle a Supabase quién es el usuario.
+    const perfil = await getPerfilActual(supabase, user.id)
     return {
       email: user.email ?? null,
       rolLabel: perfil.data ? ROL_LABEL[perfil.data.rol] : 'Sin rol asignado',
