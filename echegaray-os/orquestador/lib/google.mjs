@@ -1287,7 +1287,11 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
         if (!leido) continue
         for (const t of testigos) {
           const hay = (leido[t.fila - f0] || [])[t.col - c0]
-          if (String(hay ?? '') !== String(t.texto)) perdidos.push({ ...t, range: d.range })
+          // El apóstrofo de adelante lo consume Sheets al guardar (es la orden "esto es texto") y no
+          // vuelve en la lectura. Se saca de los DOS lados para comparar contenido contra contenido:
+          // `sirveDeTestigo` ya descarta los que además no hacen el viaje, y esto es el cinturón.
+          const sinApostrofo = (v) => { const x = String(v ?? ''); return x[0] === "'" ? x.slice(1) : x }
+          if (sinApostrofo(hay) !== sinApostrofo(t.texto)) perdidos.push({ ...t, range: d.range })
         }
       }
       if (perdidos.length) {
