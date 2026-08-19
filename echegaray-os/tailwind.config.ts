@@ -38,6 +38,12 @@ const config: Config = {
         warn: { DEFAULT: 'var(--os-warn)', soft: 'var(--os-warn-soft)' },
         info: { DEFAULT: 'var(--os-info)', soft: 'var(--os-info-soft)' },
       },
+      // EL ÚNICO MOVIMIENTO DEL SISTEMA VISUAL: la barra que dice que el servidor está trabajando.
+      // Va acá y no en un `style` suelto porque un color o una animación que aparece en un
+      // componente sin pasar por un token es la forma en que un sistema visual empieza a tener dos.
+      animation: {
+        'barra-carga': 'barra-carga 1.1s ease-in-out infinite',
+      },
       borderRadius: {
         control: '6px',
         card: '10px',

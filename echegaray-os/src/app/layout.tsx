@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from 'next'
+import { Suspense } from 'react'
 import './globals.css'
 import { siteUrl } from '@/lib/site-url'
+import { IndicadorNavegacion } from '@/shared/components/carga'
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl()),
@@ -22,7 +24,16 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es">
-      <body>{children}</body>
+      <body>
+        {/* LA ÚNICA SEÑAL GLOBAL DE QUE EL SISTEMA ESTÁ TRABAJANDO. Va en la raíz —y no en el layout
+            de `(main)`— porque el login y la pantalla de campo esperan lo mismo que el resto. El
+            `<Suspense>` es requisito de `useSearchParams`: sin él, una pantalla prerenderizada
+            fallaría el build entero por un indicador. */}
+        <Suspense fallback={null}>
+          <IndicadorNavegacion />
+        </Suspense>
+        {children}
+      </body>
     </html>
   )
 }

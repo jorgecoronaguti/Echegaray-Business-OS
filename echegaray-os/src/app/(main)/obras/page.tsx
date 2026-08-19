@@ -142,14 +142,25 @@ export default async function ObrasPage({
   const conArchivadas = verArchivadas === '1'
 
   const supabase = await createClient()
-  // El nivel del usuario decide si se DIBUJA la columna comercial. El dato ya viene enmascarado de
-  // Postgres; esto sólo evita una columna de guiones. Falla al nivel MENOS privilegiado.
-  const perfil = await getPerfilActual(supabase)
-  const esAdmin = esAdministracion(perfil.data?.rol ?? null)
-  const [{ data, error }, { data: planes }] = await Promise.all([
+  // LAS TRES LECTURAS SALEN JUNTAS, Y LA DEL PERFIL TAMBIÉN (19/08/2026).
+  //
+  // El perfil se esperaba SOLO y recién después salían las dos consultas de datos. Eran dos viajes
+  // encadenados a Supabase (`auth.getUser` y `perfiles`) delante de todo lo demás, y ninguna de las
+  // otras dos consultas los necesita: `obra_panel` y `obra_plan_vs_real` filtran por RLS en la base,
+  // con la sesión que ya viaja en la cookie. El perfil acá decide una cosa sola —si se DIBUJA la
+  // columna comercial—, y eso se sabe al renderizar, no antes de leer.
+  //
+  // Contra Vercel esa cascada se paga cara: la función corre en iad1 y la base está en São Paulo, así
+  // que cada viaje encadenado son ~120 ms de puro cable. En paralelo, la pantalla espera el más
+  // lento en vez de la suma.
+  const [perfil, { data, error }, { data: planes }] = await Promise.all([
+    getPerfilActual(supabase),
     getPortafolio(supabase),
     getPlanVsRealPortafolio(supabase),
   ])
+  // El nivel del usuario decide si se DIBUJA la columna comercial. El dato ya viene enmascarado de
+  // Postgres; esto sólo evita una columna de guiones. Falla al nivel MENOS privilegiado.
+  const esAdmin = esAdministracion(perfil.data?.rol ?? null)
   const todas = data ?? []
   const porObra = new Map((planes ?? []).map((p) => [p.obra_id, p]))
 
