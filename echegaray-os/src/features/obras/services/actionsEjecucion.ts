@@ -32,6 +32,9 @@ import { createClient } from '@/lib/supabase/server'
 import type { Resultado } from './actions'
 import { imputarHHMasivo } from './actionsHH'
 import { leerReparto, totalDelReparto } from './repartoHH'
+import { leerEquipos, rotuloEquipo } from './equiposDelParte'
+import { crearImpedimento } from './actions'
+import { vincularDocumento } from './actionsDocumentos'
 import { cambiosDeMedicion, metodoTrasMedir } from './medicionEnLote'
 
 const parteSchema = z.object({
@@ -85,7 +88,7 @@ export async function registrarEjecucion(obraId: string, form: FormData): Promis
     return { ok: false, error: 'Poné el avance del día.' }
   }
 
-  const { error } = await supabase.from('obra_ejecucion').insert({
+  const { data: parte, error } = await supabase.from('obra_ejecucion').insert({
     obra_id: obraId,
     actividad_id: d.actividad_id,
     fecha: d.fecha,
@@ -93,7 +96,7 @@ export async function registrarEjecucion(obraId: string, form: FormData): Promis
     avance_pct: vacio(d.avance_pct) ? null : Number(d.avance_pct),
     comentario: d.comentario || null,
     fuente: 'web',
-  })
+  }).select('id').single()
   if (error) return { ok: false, error: error.message }
 
   // CARGAR UN AVANCE DEL DÍA ES ELEGIR EL MÉTODO. Sin esto, alguien carga partes toda la semana y el
@@ -111,6 +114,47 @@ export async function registrarEjecucion(obraId: string, form: FormData): Promis
     efectos.push(horas.ok
       ? `${totalDelReparto(reparto)} HH de ${reparto.length} persona(s)`
       : `las horas NO se cargaron: ${horas.error}`)
+  }
+
+  // ── EL EQUIPO QUE TRABAJÓ ESE DÍA ──────────────────────────────────────────
+  // Cuelga del PARTE y no de la actividad: «la hormigonera hizo 4 h» es un hecho de una jornada,
+  // igual que la producción. Va después del insert porque necesita el id del parte.
+  const equipos = leerEquipos(form.entries())
+  if (equipos.length > 0 && parte?.id) {
+    const { error: eEq } = await supabase.from('obra_ejecucion_equipo').insert(
+      equipos.map((e) => ({ ejecucion_id: parte.id as string, obra_id: obraId, equipo: e.equipo, horas: e.horas })),
+    )
+    efectos.push(eEq ? `el equipo NO se cargó: ${eEq.message}` : equipos.map(rotuloEquipo).join(', '))
+  }
+
+  // ── LO QUE FRENÓ LA JORNADA ────────────────────────────────────────────────
+  // Un impedimento anotado al cerrar el parte es el que se anota de verdad: el que hay que ir a
+  // cargar a otra pantalla se anota mañana o nunca. Se reusa `crearImpedimento` —una sola
+  // definición de qué es un impedimento y qué campos exige— atándolo a ESTA actividad.
+  const impedimento = String(form.get('impedimento') ?? '').trim()
+  if (impedimento) {
+    const fImp = new FormData()
+    fImp.set('descripcion', impedimento)
+    fImp.set('tipo', String(form.get('impedimento_tipo') ?? 'otro'))
+    fImp.set('responsable', String(form.get('impedimento_responsable') ?? '').trim())
+    fImp.set('fecha_compromiso', String(form.get('impedimento_compromiso') ?? ''))
+    fImp.set('actividad_id', d.actividad_id)
+    const r = await crearImpedimento(obraId, fImp)
+    efectos.push(r.ok ? 'impedimento anotado' : `el impedimento NO se anotó: ${r.error}`)
+  }
+
+  // ── LA EVIDENCIA ───────────────────────────────────────────────────────────
+  // La foto o el remito quedan colgados de la actividad, no sueltos en la obra. El archivo NO se
+  // copia: se guarda el vínculo de Drive, igual que en Documentos.
+  const evidencia = String(form.get('evidencia') ?? '').trim()
+  if (evidencia) {
+    const fDoc = new FormData()
+    fDoc.set('enlace', evidencia)
+    fDoc.set('nombre', String(form.get('evidencia_nombre') ?? '').trim() || `Evidencia ${d.fecha} · ${a.nombre}`)
+    fDoc.set('rol', 'evidencia')
+    fDoc.set('actividad_id', d.actividad_id)
+    const r = await vincularDocumento(obraId, fDoc)
+    efectos.push(r.ok ? 'evidencia vinculada' : `la evidencia NO se vinculó: ${r.error}`)
   }
 
   revalidatePath(`/obras/${obraId}`)

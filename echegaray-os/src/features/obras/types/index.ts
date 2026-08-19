@@ -288,6 +288,8 @@ export interface DocumentoObra {
   mime_type: string | null
   modified_time: string | null
   creado_en: string | null
+  /** Para qué actividad de la obra es. NULL es lo normal: un plano general no es de ninguna. */
+  actividad_id: string | null
 }
 
 /**

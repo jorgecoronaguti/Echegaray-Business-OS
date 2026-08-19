@@ -40,8 +40,9 @@ import {
 } from '@/features/obras/services/personalService'
 import { getCertificados } from '@/features/obras/services/contratoService'
 import {
-  archivarActividad, archivarObra, crearActividad, crearImpedimento, editarActividad, editarObra,
-  liberarImpedimento, marcarHito, registrarAvance, sellarBaseline,
+  agregarDependencia, archivarActividad, archivarObra, crearActividad, crearImpedimento,
+  editarActividad, editarObra, liberarImpedimento, marcarHito, quitarDependencia, registrarAvance,
+  sellarBaseline,
 } from '@/features/obras/services/actions'
 import {
   asignarResponsableMasivo, cargarHHPlanMasivo, sellarBaselineMasivo,
@@ -49,12 +50,20 @@ import {
 import {
   asignarPersona, cerrarAsignacion, quitarAsignacion,
 } from '@/features/obras/services/actionsPersonal'
+import {
+  archivarRubro, crearRubro, moverActividadDeRubro, moverRubro, renombrarRubro,
+} from '@/features/obras/services/actionsRubro'
+import { agregarNota, borrarNota } from '@/features/obras/services/actionsNotas'
+import {
+  getCatalogoEquipos, getEquiposPorActividad, getNotas, getTrabajoPorActividad,
+} from '@/features/obras/services/recursosService'
 import { borrarHH, imputarHH, imputarHHMasivo } from '@/features/obras/services/actionsHH'
 import { borrarCertificado, crearCertificado } from '@/features/obras/services/actionsContrato'
 import { ETAPAS, ETAPA_LABEL } from '@/features/obras/types'
 import { CamposObra } from '@/features/obras/components/CamposObra'
 import { TabResumen } from '@/features/obras/components/TabResumen'
 import { TabCronograma } from '@/features/obras/components/TabCronograma'
+import type { DatosDeActividad } from '@/features/obras/components/PanelActividad'
 import { esSubVista } from '@/features/obras/services/subvistas'
 import { TabEjecucion } from '@/features/obras/components/TabEjecucion'
 import { getPartes } from '@/features/obras/services/ejecucionService'
@@ -70,7 +79,10 @@ import { veEconomia } from '@/features/auth/types/areas'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { TabEconomia } from '@/features/obras/components/TabEconomia'
 import { TabDocumentos } from '@/features/obras/components/TabDocumentos'
-import { desvincularDocumento, vincularDocumento } from '@/features/obras/services/actionsDocumentos'
+import {
+  asignarActividadADocumento, desvincularDocumento, vincularDocumento,
+} from '@/features/obras/services/actionsDocumentos'
+import { fecha as fmtFecha } from '@/features/obras/components/formato'
 import { BotonAccion, FormAccion, PageShell } from '@/shared/components/ui'
 
 export const dynamic = 'force-dynamic'
@@ -203,7 +215,50 @@ export default async function ObraPage({
     partesPorActividad.set(p.actividad_id, previos)
   }
   const certificados = vista === 'economia' ? (await getCertificados(supabase, obraId)).data ?? [] : []
-  const documentos = vista === 'documentos' ? (await getDocumentos(supabase, obraId)).data ?? [] : []
+  // LOS PAPELES LOS PIDEN DOS SOLAPAS. Documentos muestra los de la obra; Planificación, los que
+  // alguien colgó de una actividad. Es la MISMA lectura: dos consultas darían dos listas que un día
+  // no coinciden.
+  const documentos = vista === 'documentos' || vista === 'cronograma'
+    ? (await getDocumentos(supabase, obraId)).data ?? [] : []
+
+  // ═══ LO QUE MUESTRA EL PANEL DE UNA ACTIVIDAD ═══
+  //
+  // Cuatro lecturas por OBRA y no una por actividad: el panel cambia de actividad con cada clic, y
+  // una consulta por clic haría el cronograma pegajoso justo en lo que más se usa. Se indexan una
+  // vez, acá, y el Gantt sólo se las pasa al panel.
+  const trabajo = vista === 'cronograma'
+    ? await getTrabajoPorActividad(supabase, obraId)
+    : { personas: new Map(), porFecha: new Map() }
+  const equiposPorActividad = vista === 'cronograma'
+    ? await getEquiposPorActividad(supabase, obraId) : new Map()
+  const notasPorActividad = vista === 'cronograma'
+    ? await getNotas(supabase, obraId) : new Map()
+  // El catálogo de equipos es AYUDA de carga, no restricción: el campo acepta cualquier texto, y un
+  // equipo alquilado por una semana no puede ser motivo para no anotarlo.
+  const catalogoEquipos = vista === 'ejecucion' ? await getCatalogoEquipos(supabase) : []
+
+  const docsPorActividad = new Map<string, typeof documentos>()
+  for (const d of documentos) {
+    if (!d.actividad_id) continue
+    const previos = docsPorActividad.get(d.actividad_id) ?? []
+    previos.push(d)
+    docsPorActividad.set(d.actividad_id, previos)
+  }
+
+  const datosPorActividad = new Map<string, DatosDeActividad>()
+  if (vista === 'cronograma') {
+    for (const a of acts) {
+      datosPorActividad.set(a.id, {
+        partes: partesPorActividad.get(a.id) ?? [],
+        tareas: tareasPorActividad.get(a.id) ?? [],
+        notas: notasPorActividad.get(a.id) ?? [],
+        documentos: docsPorActividad.get(a.id) ?? [],
+        personasReales: trabajo.personas.get(a.id) ?? [],
+        equipos: equiposPorActividad.get(a.id) ?? [],
+        hhPorFecha: trabajo.porFecha.get(a.id) ?? new Map(),
+      })
+    }
+  }
   // Operación trae sus cuatro listas de una sola vez: las cuatro se atan a la obra por el MISMO
   // puente (`obra_alias`), así que resolverlo cuatro veces sería resolverlo cuatro veces mal.
   // LAS CUATRO LISTAS Y LOS IMPEDIMENTOS NO COMPARTEN DESTINO (20/08/2026). Pedidos, compras,
@@ -230,9 +285,20 @@ export default async function ObraPage({
   ) : obra.cliente_texto ? (
     <>{obra.cliente_texto} <span className="text-faint">· sin ficha de cliente vinculada</span></>
   ) : null
-  const subtitulo = archivada ? (
-    <span data-testid="obra-archivada">{deQuien}{deQuien ? ' · ' : ''}<span className="text-faint">archivada</span></span>
-  ) : (deQuien ?? undefined)
+  // EL PLAZO VA EN LA CABECERA. «¿De cuándo a cuándo es esta obra?» se pregunta antes de mirar nada
+  // más, y hasta hoy había que abrir Resumen para contestarla. Sin fechas se dice «sin fechas de
+  // plan»: un guión solo se leería como que la obra empieza hoy.
+  const plazo = obra.fecha_inicio_plan || obra.fecha_fin_plan
+    ? `${fmtFecha(obra.fecha_inicio_plan)} → ${fmtFecha(obra.fecha_fin_plan)}`
+    : 'sin fechas de plan'
+  const contexto = (
+    <span data-testid="cabecera-obra">
+      {deQuien}{deQuien ? ' · ' : ''}
+      <span className="text-muted">{plazo}</span>
+      {archivada && <> · <span className="text-faint" data-testid="obra-archivada">archivada</span></>}
+    </span>
+  )
+  const subtitulo = contexto
 
   return (
     <PageShell eyebrow={eyebrow} title={obra.nombre} subtitle={subtitulo} right={<CicloDeVida etapa={obra.etapa} />}>
@@ -314,6 +380,28 @@ export default async function ObraPage({
             definirMedicion: definirMedicion.bind(null, obraId),
             crearTarea: crearTarea.bind(null, obraId),
             cambiarEstadoTarea: cambiarEstadoTarea.bind(null, obraId),
+            // LAS PRECEDENCIAS SE PODÍAN ESCRIBIR DESDE EL 17/08 Y NADIE PODÍA CARGAR UNA: las dos
+            // acciones existían y esta página no las ataba, así que el panel dibujaba «nada
+            // declarado» sin un solo control para declarar algo — y el Gantt no tenía una flecha que
+            // dibujar porque la tabla estaba vacía por falta de puerta, no por falta de dato.
+            agregarDependencia: agregarDependencia.bind(null, obraId),
+            quitarDependencia: quitarDependencia.bind(null, obraId),
+            agregarNota: agregarNota.bind(null, obraId),
+            borrarNota: borrarNota.bind(null, obraId),
+            // LA MISMA ACCIÓN QUE USA OPERACIÓN. El `actividad_id` viaja en el formulario del panel;
+            // una segunda implementación de «anotar un impedimento» se contestaría distinto el día
+            // que a una de las dos se le agregue un campo.
+            crearImpedimento: crearImpedimento.bind(null, obraId),
+            liberarImpedimento: liberarImpedimento.bind(null, obraId),
+            vincularDocumento: vincularDocumento.bind(null, obraId),
+            soltarDocumento: (driveFileId: string) => asignarActividadADocumento(obraId, driveFileId, ''),
+            moverDeRubro: moverActividadDeRubro.bind(null, obraId),
+          }}
+          accionesPlan={{
+            crearRubro: crearRubro.bind(null, obraId),
+            renombrarRubro: renombrarRubro.bind(null, obraId),
+            moverRubro: moverRubro.bind(null, obraId),
+            archivarRubro: archivarRubro.bind(null, obraId),
           }}
           /* LAS ACCIONES EN LOTE SE ATAN A LA OBRA ACÁ, igual que el resto: el `obraId` nunca viaja
              en un campo del navegador. Los ids de actividad SÍ vienen del cliente —es una selección
@@ -326,8 +414,7 @@ export default async function ObraPage({
           }}
           restaurarActividad={archivarActividad.bind(null, obraId)}
           cambiarEstado={cambiarEstado.bind(null, obraId)}
-          partesPorActividad={partesPorActividad}
-          tareasPorActividad={tareasPorActividad}
+          datosPorActividad={datosPorActividad}
           medirEnLote={medirEnLote.bind(null, obraId)}
         />
       )}
@@ -341,6 +428,7 @@ export default async function ObraPage({
           cuadrillas={cuadrillas}
           integrantes={integrantes}
           hoy={new Date().toISOString().slice(0, 10)}
+          equipos={catalogoEquipos}
           registrar={registrarEjecucion.bind(null, obraId)}
           borrarParte={borrarParte.bind(null, obraId)}
         />
@@ -398,9 +486,11 @@ export default async function ObraPage({
       {vista === 'documentos' && (
         <TabDocumentos
           documentos={documentos}
+          actividades={acts}
           carpetaDriveId={obra.drive_carpeta_id}
           vincular={vincularDocumento.bind(null, obraId)}
           desvincular={desvincularDocumento.bind(null, obraId)}
+          asignarActividad={asignarActividadADocumento.bind(null, obraId)}
         />
       )}
     </PageShell>

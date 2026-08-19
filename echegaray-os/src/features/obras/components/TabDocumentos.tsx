@@ -21,7 +21,8 @@
 // Ninguno de los dos lleva color: no son un problema ni un logro, son el nivel de certeza.
 
 import { BotonAccion, Callout, Campo, CTRL, FormAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
-import type { DocumentoObra, TipoDrive } from '../types'
+import type { Actividad, DocumentoObra, TipoDrive } from '../types'
+import { AsignarActividad } from './AsignarActividad'
 import { etiquetaDeTipo, urlDeDrive } from '../services/driveUrl'
 import { CATEGORIAS_SUGERIDAS, porCategoria } from '../services/documentosCategoria'
 
@@ -84,14 +85,19 @@ function Vincular({
 }
 
 export function TabDocumentos({
-  documentos, carpetaDriveId, vincular, desvincular,
+  documentos, carpetaDriveId, vincular, desvincular, actividades = [], asignarActividad,
 }: {
   documentos: DocumentoObra[]
+  /** El cronograma vivo, para poder decir de qué actividad es un papel. Sin él no se dibuja la
+   *  columna: un desplegable vacío es peor que no tenerlo. */
+  actividades?: Actividad[]
+  asignarActividad?: (driveFileId: string, actividadId: string) => Promise<ResultadoAccion>
   /** `obra_canonica.drive_carpeta_id`. Null en las ocho obras de hoy: nadie la declaró todavía. */
   carpetaDriveId: string | null
   vincular: AccionFormulario
   desvincular: (driveFileId: string) => Promise<ResultadoAccion>
 }) {
+  const asignar = actividades.length > 0 ? asignarActividad : undefined
   return (
     <div className="space-y-3">
       <div className="flex flex-col items-start gap-2 sm:flex-row">
@@ -118,6 +124,7 @@ export function TabDocumentos({
                 <th className="px-4 py-2.5 font-medium">Nombre</th>
                 <th className="px-3 py-2.5 font-medium">Tipo</th>
                 <th className="px-3 py-2.5 font-medium">Relación</th>
+                {asignar && <th className="px-3 py-2.5 font-medium">Actividad</th>}
                 <th className="px-3 py-2.5 text-right font-medium"></th>
               </tr>
             </thead>
@@ -144,6 +151,16 @@ export function TabDocumentos({
                   <td className="px-3 py-2.5 text-[12px] text-muted">
                     {d.origen === 'confirmado' ? 'Confirmado' : 'Inferido'}
                   </td>
+                  {asignar && (
+                    <td className="px-3 py-2.5">
+                      <AsignarActividad
+                        driveFileId={d.drive_file_id}
+                        actual={d.actividad_id}
+                        actividades={actividades}
+                        asignar={asignar}
+                      />
+                    </td>
+                  )}
                   <td className="px-3 py-2.5 text-right">
                     <BotonAccion
                       accion={desvincular}

@@ -22,6 +22,8 @@ import { BotonAccion, Callout, Campo, CTRL, FormAccion, type AccionFormulario, t
 import type { Actividad, ParteEjecucion, Persona } from '../types'
 import { deHoy } from '../services/ejecucionService'
 import { C, Fila, Tabla, Vacio } from './tablas'
+import { FilasDeEquipo } from './FilasDeEquipo'
+import { TIPO_RESTRICCION, TIPO_RESTRICCION_LABEL } from '../types'
 import { fecha as fmtFecha } from './formato'
 
 const num = (n: number | null | undefined, dec = 1) =>
@@ -42,6 +44,7 @@ function Barra({ pct }: { pct: number | null }) {
 
 export function TabEjecucion({
   obraId, actividades, partes, personas, cuadrillas, integrantes, hoy, registrar, borrarParte,
+  equipos = [],
 }: {
   obraId: string
   actividades: Actividad[]
@@ -51,6 +54,8 @@ export function TabEjecucion({
   /** Quiénes integran cada cuadrilla. Elegir una recorta la lista de casilleros a los suyos. */
   integrantes: Record<string, string[]>
   hoy: string
+  /** El catálogo de equipos, como ayuda de carga. Sale de `herramientas`, el espejo del Sheet. */
+  equipos?: string[]
   registrar: AccionFormulario
   borrarParte: (parteId: string) => Promise<ResultadoAccion>
 }) {
@@ -156,9 +161,56 @@ export function TabEjecucion({
               </div>
             </details>
 
+            {/* ═══ EL EQUIPO NO ES UNA PERSONA ═══
+                Las horas de una persona van a `registros_hh` —de donde sale la liquidación— y las de
+                una máquina a `obra_ejecucion_equipo`. Si compartieran tabla, el costo de mano de
+                obra incluiría a la hormigonera. */}
+            <details className="mt-2 rounded-md border border-line bg-surface px-3 py-2" data-testid="parte-equipos">
+              <summary className="cursor-pointer text-[12px] text-muted">Equipos de la jornada</summary>
+              <div className="mt-2"><FilasDeEquipo catalogo={equipos} /></div>
+            </details>
+
+            {/* ═══ EL IMPEDIMENTO SE ANOTA CUANDO PASA ═══
+                El que hay que ir a cargar a otra pantalla se anota mañana o nunca. Sale por la MISMA
+                acción que lo anota en Operación, atado a la actividad de este parte. */}
+            <details className="mt-2 rounded-md border border-line bg-surface px-3 py-2" data-testid="parte-impedimento">
+              <summary className="cursor-pointer text-[12px] text-muted">¿Algo frenó el trabajo?</summary>
+              <div className="mt-2 grid gap-2.5 sm:grid-cols-2">
+                <Campo label="Qué frenó el trabajo" ancho="sm:col-span-2">
+                  <input name="impedimento" maxLength={300} className={CTRL} data-testid="parte-impedimento-desc" />
+                </Campo>
+                <Campo label="Tipo">
+                  <select name="impedimento_tipo" defaultValue="material" className={CTRL}>
+                    {TIPO_RESTRICCION.map((t) => <option key={t} value={t}>{TIPO_RESTRICCION_LABEL[t]}</option>)}
+                  </select>
+                </Campo>
+                <Campo label="Quién lo resuelve">
+                  <input name="impedimento_responsable" maxLength={120} className={CTRL} />
+                </Campo>
+                <Campo label="Para cuándo" ancho="sm:col-span-2" ayuda="Sin responsable y sin fecha no es gestión: es una queja anotada, y por eso no se guarda.">
+                  <input type="date" name="impedimento_compromiso" className={CTRL} />
+                </Campo>
+              </div>
+            </details>
+
+            {/* LA EVIDENCIA NO SE COPIA: se guarda el vínculo de Drive, y queda colgada de la
+                actividad — no suelta en la obra. */}
+            <details className="mt-2 rounded-md border border-line bg-surface px-3 py-2" data-testid="parte-evidencia">
+              <summary className="cursor-pointer text-[12px] text-muted">Evidencia (foto, remito, plano)</summary>
+              <div className="mt-2 grid gap-2.5 sm:grid-cols-2">
+                <Campo label="Enlace de Drive" ancho="sm:col-span-2">
+                  <input name="evidencia" className={CTRL} placeholder="https://drive.google.com/file/d/…" data-testid="parte-evidencia-enlace" />
+                </Campo>
+                <Campo label="Nombre" ayuda="Sólo si el archivo no está en el índice de Drive.">
+                  <input name="evidencia_nombre" maxLength={300} className={CTRL} />
+                </Campo>
+              </div>
+            </details>
+
             <p className="mt-2 text-[11px] text-faint">
               Un parte mueve la producción y el avance de la actividad; las horas van a Personal, a la
-              obra y a cada persona. Se cargan una sola vez.
+              obra y a cada persona; el equipo y la evidencia quedan en la actividad. Se carga una
+              sola vez.
             </p>
           </FormAccion>
         </div>

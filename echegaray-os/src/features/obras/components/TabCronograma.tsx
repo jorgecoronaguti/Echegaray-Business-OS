@@ -1,35 +1,38 @@
 'use client'
 
-// CRONOGRAMA — UNA pestaña con dos maneras de mirar LAS MISMAS actividades.
+// PLANIFICACIÓN — UNA pestaña con cuatro maneras de mirar LAS MISMAS actividades.
 //
-// ═══ POR QUÉ PLANIFICACIÓN DEJÓ DE SER UNA PESTAÑA ═══
+// ═══ POR QUÉ NO HAY UNA SOLAPA «PLANIFICACIÓN» Y OTRA «GANTT» ═══
 //
-// «Gantt» y «Planificación» eran dos solapas principales sobre el mismo cronograma: la primera lo
-// dibujaba entero y la segunda mostraba el recorte de lo que viene. Separadas obligaban a volver al
-// nivel de arriba para cruzar dos vistas del mismo trabajo, y hacían parecer que había dos planes.
-// Son una herramienta con dos zooms, y por eso viven juntas.
+// Eran dos solapas principales sobre el mismo cronograma: la primera lo dibujaba entero y la segunda
+// mostraba el recorte de lo que viene. Separadas obligaban a volver al nivel de arriba para cruzar
+// dos vistas del mismo trabajo, y hacían parecer que había dos planes. Son una herramienta con
+// cuatro zooms, y por eso viven juntas.
 //
-// LAS ACTIVIDADES SON LAS MISMAS Y SE PASAN UNA VEZ. Acá no se vuelve a consultar nada ni se filtra
-// con una regla propia: «Próximos trabajos» sale de `lookahead()` sobre esta lista.
+// LAS ACTIVIDADES SON LAS MISMAS Y SE FILTRAN UNA SOLA VEZ, ACÁ. Gantt, Lista, Tablero y Próximos
+// reciben la lista YA recortada: si cada vista filtrara con su propia regla, cambiar de solapa
+// cambiaría lo que se ve sin que nadie haya tocado el filtro.
+//
+// ═══ CREAR NO ES UNA FUNCIÓN DEL GANTT ═══
+//
+// «+ Nueva actividad» y «+ Nuevo rubro» viven en la barra de arriba (`BarraPlan`), no adentro del
+// Gantt. Desde Lista, Tablero o Próximos no se podía crear nada: había que volver al Gantt para
+// agregar una fila que después se iba a mirar desde otra vista.
 //
 // ═══ LA SUB-VISTA Y LA VENTANA VIAJAN EN LA URL; LA SELECCIÓN DE UNA BARRA NO ═══
 //
 // «Estoy mirando el Gantt» y «estoy mirando las próximas dos semanas» son VISTAS: se mandan por
-// mensaje, se abren de nuevo mañana y tienen que volver iguales. Van en la query, como las solapas
-// principales de la obra.
+// mensaje, se abren de nuevo mañana y tienen que volver iguales. Van en la query.
 //
 // Seleccionar una barra NO. En el Gantt se toca una actividad tras otra para comparar fechas: si
 // cada clic escribiera la URL, cada clic sería una vuelta al servidor y el cronograma se sentiría
 // pegajoso justo en lo que más se usa. Entra por `actividadAbierta` —para que un enlace pueda abrir
 // una actividad concreta— y a partir de ahí la selección es local.
-//
-// Los tres props son OPCIONALES: sin ellos el componente se gobierna solo y sigue funcionando. Así
-// la página puede cablearlos cuando quiera sin que este archivo deje de compilar en el medio.
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { BotonAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
-import type { Actividad, Dependencia, ParteEjecucion, Persona, Restriccion } from '../types'
+import type { Actividad, Dependencia, Persona, Restriccion } from '../types'
 import type { ActividadHH } from '../services/personalService'
 import { Gantt } from './Gantt'
 // LAS SUB-VISTAS VIVEN EN UN MÓDULO NEUTRAL: la página, que es un Server Component, también las
@@ -39,8 +42,11 @@ import { VistaProximos, type Ventana } from './VistaProximos'
 import { VistaLista } from './VistaLista'
 import { VistaTablero } from './VistaTablero'
 import { FranjaObra } from './FranjaObra'
+import { BarraPlan, type AccionesPlan } from './BarraPlan'
 import { resumenDelPlan } from '../services/resumenDelPlan'
-import { type AccionesCronograma } from './PanelActividad'
+import { aplicarFiltro, FILTRO_VACIO, hayFiltro, type FiltroPlan } from '../services/filtroPlan'
+import { rubrosDe } from '../services/rubros'
+import { FormNuevaActividad, type AccionesCronograma, type DatosDeActividad } from './PanelActividad'
 import { type AccionesEnLote } from './AccionesMasivas'
 
 
@@ -53,6 +59,7 @@ export function TabCronograma({
   personas = [],
   acciones,
   masivas,
+  accionesPlan = {},
   yaSellada = false,
   restaurarActividad,
   sub,
@@ -61,13 +68,12 @@ export function TabCronograma({
   hoy,
   hhPorActividad,
   cambiarEstado,
-  partesPorActividad,
-  tareasPorActividad,
+  datosPorActividad,
   medirEnLote,
 }: {
   /** El cronograma vivo: las NO archivadas, en el orden del tracker. */
   actividades: Actividad[]
-  /** Para poder mandar a Operación, donde se anotan y se liberan los impedimentos. */
+  /** Para poder mandar a Operación, donde se ve la lista completa de impedimentos. */
   obraId: string
   /** Las archivadas, para poder devolverlas. Si no se pasan, no se dibuja la lista. */
   archivadas?: Actividad[]
@@ -79,6 +85,8 @@ export function TabCronograma({
   /** Las acciones en lote del Gantt. Opcional por la misma razón que `acciones`: sin ellas no se
    *  dibuja una sola casilla de selección, en vez de dibujar controles que no escriben. */
   masivas?: AccionesEnLote
+  /** Crear, renombrar, ordenar y archivar rubros. */
+  accionesPlan?: AccionesPlan
   yaSellada?: boolean
   /** `archivarActividad` atada a la obra: se la llama con `(id, false)` para restaurar. */
   restaurarActividad?: (actividadId: string, archivada: boolean) => Promise<ResultadoAccion>
@@ -96,10 +104,8 @@ export function TabCronograma({
   /** Mover una actividad de estado desde el tablero. Sin ella el tablero no se dibuja: mostrar
    *  columnas que no se pueden mover es prometer una acción que no existe. */
   cambiarEstado?: (actividadId: string, estado: string) => Promise<ResultadoAccion>
-  /** Los partes de ejecución, indexados por actividad. El panel muestra los últimos. */
-  partesPorActividad?: Map<string, ParteEjecucion[]>
-  /** Las tareas de cada actividad. No son filas del plan: viven dentro del panel. */
-  tareasPorActividad?: Map<string, Actividad[]>
+  /** Partes, tareas, notas, papeles, personal real y equipos de cada actividad, para el panel. */
+  datosPorActividad?: Map<string, DatosDeActividad>
   /** Guardar la medición de todas las filas de la Lista de una vez. */
   medirEnLote?: AccionFormulario
 }) {
@@ -107,11 +113,19 @@ export function TabCronograma({
   const params = useSearchParams()
   const [subLocal, setSubLocal] = useState<SubVista>(sub ?? 'gantt')
   const [semanasLocal, setSemanasLocal] = useState<Ventana>(semanas ?? '2')
+  // EL FILTRO NO VIAJA EN LA URL. Es estado de trabajo —«mostrame lo mío ahora»— y no una vista que
+  // se comparte: un enlace mandado por chat que llega con un recorte que el que lo abre no puso es
+  // la manera más rápida de leer mal una obra.
+  const [filtro, setFiltro] = useState<FiltroPlan>(FILTRO_VACIO)
 
   // Controlado cuando la página pasa el valor; libre cuando no. El estado local se actualiza igual
   // para que la pantalla responda en el acto y no espere la vuelta del servidor.
   const subActual = sub ?? subLocal
   const ventanaActual = semanas ?? semanasLocal
+
+  const rubros = useMemo(() => rubrosDe(actividades), [actividades])
+  const nombresDeRubro = useMemo(() => rubros.map((r) => r.nombre), [rubros])
+  const visibles = useMemo(() => aplicarFiltro(actividades, filtro), [actividades, filtro])
 
   /** Se reescribe SÓLO el parámetro que cambió: `vista` y el resto de la query quedan como estaban.
    *  Construir la URL entera desde acá obligaría a saber cómo se llama la solapa en la página, que
@@ -136,11 +150,11 @@ export function TabCronograma({
   const cambiarSemanas = (v: Ventana) => { setSemanasLocal(v); irA('semanas', v) }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* SEGUNDO NIVEL DE NAVEGACIÓN Y ÚLTIMO: área arriba, obra en el medio, y esto. Un cuarto nivel
           obligaría a decodificar la pantalla antes de leerla. Se desplaza en vez de empujar la
-          página: en 390px las dos solapas y el ancho del contenedor no siempre entran. */}
-      <nav className="-mb-px flex gap-1 overflow-x-auto border-b border-line" aria-label="Vistas del cronograma">
+          página: en 390px las cuatro solapas y el ancho del contenedor no siempre entran. */}
+      <nav className="-mb-px flex gap-1 overflow-x-auto border-b border-line" aria-label="Vistas del plan">
         {SUBVISTAS.map((v) => (
           <button
             key={v.id}
@@ -155,16 +169,34 @@ export function TabCronograma({
         ))}
       </nav>
 
-      {subActual === 'lista' && <VistaLista actividades={actividades} onAbrir={abrirActividad} medir={medirEnLote} />}
+      <BarraPlan
+        rubros={rubros}
+        personas={personas}
+        filtro={filtro}
+        alFiltrar={setFiltro}
+        acciones={accionesPlan}
+        alta={acciones ? <FormNuevaActividad personas={personas} crear={acciones.crear} rubros={nombresDeRubro} /> : undefined}
+      />
+
+      {/* CUÁNTO SE ESTÁ ESCONDIENDO. Un cronograma filtrado que parece completo es cómo se lee mal
+          una obra: si hay recorte, se dice cuántas filas quedaron afuera. */}
+      {hayFiltro(filtro) && (
+        <p className="text-[12px] text-muted" data-testid="aviso-filtro">
+          Mostrando {visibles.filter((a) => a.tipo !== 'resumen').length} de{' '}
+          {actividades.filter((a) => a.tipo !== 'resumen').length} actividades.
+        </p>
+      )}
+
+      {subActual === 'lista' && <VistaLista actividades={visibles} onAbrir={abrirActividad} medir={medirEnLote} />}
 
       {subActual === 'tablero' && cambiarEstado && (
-        <VistaTablero actividades={actividades} cambiarEstado={cambiarEstado} onAbrir={abrirActividad} />
+        <VistaTablero actividades={visibles} cambiarEstado={cambiarEstado} onAbrir={abrirActividad} />
       )}
 
       {subActual === 'gantt' ? (
         <>
           <Gantt
-            actividades={actividades}
+            actividades={visibles}
             restricciones={restricciones}
             dependencias={dependencias}
             personas={personas}
@@ -173,8 +205,8 @@ export function TabCronograma({
             yaSellada={yaSellada}
             seleccionInicial={actividadAbierta}
             hhPorActividad={hhPorActividad}
-            partesPorActividad={partesPorActividad}
-            tareasPorActividad={tareasPorActividad}
+            datosPorActividad={datosPorActividad}
+            rubros={nombresDeRubro}
             {...(hoy ? { hoy } : {})}
           />
           {archivadas.length > 0 && restaurarActividad && (
@@ -197,7 +229,7 @@ export function TabCronograma({
         </>
       ) : subActual === 'proximos' ? (
         <VistaProximos
-          actividades={actividades}
+          actividades={visibles}
           impedimentos={restricciones}
           obraId={obraId}
           personas={personas}
@@ -208,9 +240,11 @@ export function TabCronograma({
       ) : null}
 
       {/* AL PIE Y NO ARRIBA: el plan es el trabajo y va primero. Estas cifras se leen al terminar
-          de mirarlo, y salen de las MISMAS actividades que se acaban de dibujar. */}
+          de mirarlo, y salen de las MISMAS actividades que se acaban de dibujar — filtradas
+          incluidas, porque una franja que cuenta lo que la pantalla no muestra es una franja que
+          contradice a la pantalla. */}
       <FranjaObra
-        r={resumenDelPlan(actividades, restricciones, (hoy ?? new Date()).toISOString().slice(0, 10),
+        r={resumenDelPlan(visibles, restricciones, (hoy ?? new Date()).toISOString().slice(0, 10),
           Number(ventanaActual))}
         semanas={Number(ventanaActual)}
       />

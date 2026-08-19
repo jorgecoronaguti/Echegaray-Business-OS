@@ -63,3 +63,51 @@ test('LAS HORAS NO SE GUARDAN DOS VECES: `obra_ejecucion` no tiene columna de ho
         and column_name ~* 'hora|hh|persona|cuadrilla'`)
   assert.deepEqual(rows, [])
 })
+
+test('las tablas nuevas de la actividad tienen RLS y no dejan editar lo escrito', { skip: SIN_BASE }, async () => {
+  // ═══ POR QUÉ ═══
+  //
+  // Una tabla sin RLS en Supabase queda abierta a cualquier `authenticated`: es la puerta por la que
+  // el jefe de una obra leería las notas y los equipos de otra. Y una tabla con policy pero sin
+  // GRANT falla al revés —`permission denied`— con la policy diciendo que sí. Las dos se miden.
+  const { rows } = await query(
+    `select c.relname, c.relrowsecurity,
+            (select count(*)::int from pg_policies p
+              where p.schemaname = 'public' and p.tablename = c.relname) as policies
+       from pg_class c join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = 'public' and c.relname in ('obra_actividad_nota', 'obra_ejecucion_equipo')
+      order by c.relname`)
+  assert.equal(rows.length, 2, 'faltan tablas: la migración no está aplicada')
+  for (const r of rows) {
+    assert.equal(r.relrowsecurity, true, `${r.relname} sin RLS`)
+    assert.ok(r.policies >= 3, `${r.relname} tiene ${r.policies} policies`)
+  }
+
+  // NINGUNA DE LAS DOS SE ACTUALIZA. Una nota que se puede editar deja de ser citable, y un equipo
+  // de un parte de la semana pasada no se corrige: se borra la fila y se carga bien.
+  const { rows: upd } = await query(
+    `select table_name from information_schema.role_table_grants
+      where table_schema = 'public' and grantee = 'authenticated' and privilege_type = 'UPDATE'
+        and table_name in ('obra_actividad_nota', 'obra_ejecucion_equipo')`)
+  assert.deepEqual(upd, [])
+})
+
+test('el equipo de un parte NO es una persona, y no puede colarse en las HH', { skip: SIN_BASE }, async () => {
+  // Las horas de una persona van a `registros_hh` —de donde sale la liquidación— y las de una
+  // máquina a `obra_ejecucion_equipo`. Si esta tabla tuviera `persona_id`, el costo de mano de obra
+  // terminaría incluyendo a la hormigonera.
+  const { rows } = await query(
+    `select column_name from information_schema.columns
+      where table_schema = 'public' and table_name = 'obra_ejecucion_equipo'
+        and column_name ~* 'persona|cuadrilla|legajo'`)
+  assert.deepEqual(rows, [])
+})
+
+test('la vista publica los tres conteos que el panel muestra sin abrir nada', { skip: SIN_BASE }, async () => {
+  const { rows } = await query(
+    `select column_name from information_schema.columns
+      where table_schema = 'public' and table_name = 'obra_actividad_control'
+        and column_name in ('n_notas', 'n_documentos', 'n_equipos')
+      order by column_name`)
+  assert.deepEqual(rows.map((r) => r.column_name), ['n_documentos', 'n_equipos', 'n_notas'])
+})

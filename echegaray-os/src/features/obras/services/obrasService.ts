@@ -179,6 +179,9 @@ export async function getDocumentos(
       mime_type: (a?.mime_type as string) ?? (v.mime_type as string) ?? null,
       modified_time: (a?.modified_time as string) ?? null,
       creado_en: (v.creado_en as string) ?? null,
+      // PARA QUÉ ACTIVIDAD ES, cuando alguien lo declaró. `undefined` en una base donde la columna
+      // todavía no existe: por eso el `??`, igual que el resto de los campos de esta tabla.
+      actividad_id: (v.actividad_id as string) ?? null,
     }
   })
   return { data: docs, error: null }

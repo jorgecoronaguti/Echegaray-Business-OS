@@ -40,6 +40,9 @@ const documentoSchema = z.object({
   tipo: z.enum(['archivo', 'carpeta']).optional(),
   nombre: z.string().trim().max(300).optional(),
   rol: z.string().trim().max(120).optional(),
+  // PARA QUÉ ACTIVIDAD ES. Opcional y lo seguirá siendo: un plano de la obra no es de ninguna
+  // actividad en particular, y obligar a elegir una haría que se cargue mal o no se cargue.
+  actividad_id: z.union([z.string().uuid(), z.literal('')]).optional(),
 })
 
 const NO_ES_DRIVE =
@@ -78,6 +81,7 @@ export async function vincularDocumento(obraId: string, form: FormData): Promise
     tipo: indexado ? (indexado.is_folder ? 'carpeta' : 'archivo') : ref.tipo,
     mime_type: (indexado?.mime_type as string) ?? ref.mime_type,
     rol: d.rol || null,
+    actividad_id: d.actividad_id || null,
     // Lo vinculó una PERSONA: es un hecho afirmado, no una deducción del OS por la ruta del archivo.
     origen: 'confirmado',
     // `creado_por` NO se manda: lo pone la base con `default auth.uid()`. Un campo del formulario o
@@ -121,6 +125,30 @@ export async function desvincularDocumento(obraId: string, driveFileId: string):
     .delete()
     .eq('obra_id', obraId)
     .eq('drive_file_id', driveFileId)
+  if (error) return { ok: false, error: error.message }
+  revalidatePath(`/obras/${obraId}`)
+  return { ok: true }
+}
+
+/**
+ * COLGAR UN PAPEL YA VINCULADO DE UNA ACTIVIDAD, o soltarlo.
+ *
+ * El documento sigue siendo DE LA OBRA: esto sólo agrega la respuesta a «¿qué papeles tiene esta
+ * actividad?». Pasar `''` lo devuelve al nivel de la obra sin desvincularlo — sacarlo de la
+ * actividad no puede ser lo mismo que perder el vínculo.
+ */
+export async function asignarActividadADocumento(
+  obraId: string, driveFileId: string, actividadId: string,
+): Promise<Resultado> {
+  const supabase = await createClient()
+  if (actividadId) {
+    const { data: act } = await supabase.from('obra_actividad')
+      .select('id').eq('id', actividadId).eq('obra_id', obraId).maybeSingle()
+    if (!act) return { ok: false, error: 'Esa actividad no es de esta obra.' }
+  }
+  const { error } = await supabase.from('obra_documento')
+    .update({ actividad_id: actividadId || null })
+    .eq('obra_id', obraId).eq('drive_file_id', driveFileId)
   if (error) return { ok: false, error: error.message }
   revalidatePath(`/obras/${obraId}`)
   return { ok: true }

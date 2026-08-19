@@ -35,12 +35,13 @@
 
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
-import { BotonAccion, type ResultadoAccion } from '@/shared/components/ui'
 import { agruparActividades, agruparPorObra, estadoDe, filasVisibles } from '../services/cronograma'
-import type { Actividad, Dependencia, ParteEjecucion, Persona, Restriccion } from '../types'
+import type { Actividad, Dependencia, Persona, Restriccion } from '../types'
 import type { ActividadHH } from '../services/personalService'
 import { EstadoChip } from './EstadoChip'
-import { FormNuevaActividad, PanelActividad, type AccionesCronograma } from './PanelActividad'
+import {
+  DATOS_VACIOS, PanelActividad, type AccionesCronograma, type DatosDeActividad,
+} from './PanelActividad'
 import { construirEscala, type Escala } from '../services/escala'
 import { BarraMasiva, Casilla, SellarLineaBase, type AccionesEnLote } from './AccionesMasivas'
 
@@ -64,8 +65,8 @@ export function Gantt({
   masivas,
   obras,
   hhPorActividad,
-  partesPorActividad,
-  tareasPorActividad,
+  datosPorActividad,
+  rubros = [],
 }: {
   actividades: Actividad[]
   restricciones?: Restriccion[]
@@ -96,14 +97,15 @@ export function Gantt({
    *  vista que lee la solapa Personal: el Cronograma no recalcula nada, muestra el mismo número.
    *  Opcional, como el resto de los props de este componente — el Gantt global no la trae. */
   hhPorActividad?: Map<string, ActividadHH>
-  /** Los partes de ejecución por actividad. El panel muestra los últimos de la seleccionada. */
-  partesPorActividad?: Map<string, ParteEjecucion[]>
-  /** Las tareas de cada actividad, para el panel. */
-  tareasPorActividad?: Map<string, Actividad[]>
+  /** TODO lo que el panel muestra de cada actividad —partes, tareas, notas, papeles, personal real
+   *  y equipos—, ya indexado. Va junto y no en seis mapas sueltos: el Gantt no los mira, sólo se los
+   *  pasa al panel, y seis props es seis oportunidades de olvidarse uno. */
+  datosPorActividad?: Map<string, DatosDeActividad>
+  /** Los rubros de la obra, para poder mover la actividad de grupo desde el panel. */
+  rubros?: string[]
 }) {
   const [escala, setEscala] = useState<Escala>('semana')
   const [selId, setSelId] = useState<string | null>(seleccionInicial)
-  const [creando, setCreando] = useState(false)
   const [colapsados, setColapsados] = useState<ReadonlySet<string>>(new Set())
   // LA SELECCIÓN EN LOTE VIVE EN EL CLIENTE Y NO VIAJA EN LA URL. Tildar cincuenta casillas serían
   // cincuenta vueltas al servidor, y encima un enlace compartido resucitaría una selección que el
@@ -197,17 +199,7 @@ export function Gantt({
             className="rounded-control border border-line px-2.5 py-1 text-[12px] text-muted hover:bg-surface-sunken hover:text-ink"
           >{colapsados.size ? 'Expandir todo' : 'Contraer todo'}</button>
         )}
-        {acciones && (
-          <>
-            <button
-              type="button"
-              onClick={() => setCreando((v) => !v)}
-              data-testid="nueva-actividad"
-              className="rounded-control border border-line px-2.5 py-1 text-[12px] text-ink hover:bg-surface-sunken"
-            >{creando ? 'Cancelar' : '+ Nueva actividad'}</button>
-            <SellarLineaBase sellar={acciones.sellar} yaSellada={yaSellada} />
-          </>
-        )}
+        {acciones && <SellarLineaBase sellar={acciones.sellar} yaSellada={yaSellada} />}
         <div className="flex overflow-hidden rounded-control border border-line text-[12px]">
           {(['semana', 'mes'] as Escala[]).map((e) => (
             <button
@@ -228,19 +220,10 @@ export function Gantt({
     ? <BarraMasiva ids={idsEnLote} personas={personas} acciones={masivas} alLimpiar={() => setEnLote(new Set())} />
     : null
 
-  const altaActividad = acciones && creando
-    ? (
-        <div className="border-b border-line bg-surface-quiet p-3.5" data-testid="alta-actividad">
-          <FormNuevaActividad personas={personas} crear={acciones.crear} />
-        </div>
-      )
-    : null
-
   if (!rango) {
     return (
       <div data-testid="gantt" className="rounded-card border border-line bg-surface">
         {barra}
-        {altaActividad}
         <p className="px-4 py-8 text-center text-[13px] text-muted">
           {actividades.length
             ? 'Hay actividades cargadas, pero ninguna tiene fecha: sin fechas no hay cronograma que dibujar.'
@@ -264,7 +247,6 @@ export function Gantt({
   return (
     <div data-testid="gantt" className="rounded-card border border-line bg-surface">
       {barra}
-      {altaActividad}
       {barraLote}
 
       {/* EL PANEL VA AL COSTADO, NO DEBAJO. Lo que se está decidiendo al editar una actividad es su
@@ -282,8 +264,8 @@ export function Gantt({
               pantalla chica porque esa información ya está en la barra. */}
           <div className="flex w-max">
             {/* ── COLUMNA FIJA: la grilla de actividades ───────────────────────────────── */}
-            <div className="sticky left-0 z-20 w-[148px] shrink-0 border-r border-line bg-surface sm:w-[340px]">
-              <div className="sticky top-0 z-10 flex h-11 items-end gap-2 border-b border-line bg-surface px-3 pb-1.5 text-[10px] font-medium uppercase tracking-wide text-faint">
+            <div className="sticky left-0 z-20 w-[152px] shrink-0 border-r border-line bg-surface sm:w-[386px] lg:w-[420px]">
+              <div className="sticky top-0 z-10 flex h-9 items-end gap-2 border-b border-line bg-surface px-2 pb-1 text-[10px] font-medium uppercase tracking-wide text-faint">
                 {masivas && (
                   <Casilla
                     puesta={todasEnLote}
@@ -296,6 +278,7 @@ export function Gantt({
                 <span className="hidden w-[68px] sm:inline">Estado</span>
                 <span className="hidden w-11 text-right sm:inline">Inicio</span>
                 <span className="hidden w-11 text-right sm:inline">Fin</span>
+                <span className="hidden w-9 text-right sm:inline">%</span>
               </div>
               {filas.map((f) => {
                 if (f.tipo === 'grupo') {
@@ -373,6 +356,12 @@ export function Gantt({
                     </span>
                     <span className="hidden w-11 shrink-0 text-right tabular-nums text-faint sm:inline">{fmtCorto(a.inicio_plan)}</span>
                     <span className="hidden w-11 shrink-0 text-right tabular-nums text-faint sm:inline">{fmtCorto(a.fin_plan)}</span>
+                    {/* EL AVANCE CALCULADO, no el declarado: es el mismo número que muestra el panel
+                        y el que promedia la obra. «—» cuando no hay ninguno — un 0% inventado diría
+                        que la actividad no arrancó cuando lo que pasa es que nadie la midió. */}
+                    <span className="hidden w-9 shrink-0 text-right tabular-nums text-muted sm:inline">
+                      {a.avance_pct == null ? '—' : `${Math.round(Number(a.avance_pct))}%`}
+                    </span>
                   </button>
                   </div>
                 )
@@ -492,16 +481,19 @@ export function Gantt({
         {sel && (
           acciones
             ? (
+                // TODOS los impedimentos de esta actividad, no sólo los abiertos: el panel cuenta
+                // los ya resueltos, y eso es la diferencia entre «no hay problemas» y «hubo tres».
                 <PanelActividad
                   actividad={sel}
                   personas={personas}
                   hh={hhPorActividad?.get(sel.id)}
-                  partes={partesPorActividad?.get(sel.id) ?? []}
-                  tareas={tareasPorActividad?.get(sel.id) ?? []}
+                  datos={datosPorActividad?.get(sel.id) ?? DATOS_VACIOS}
+                  rubros={rubros}
                   acciones={acciones}
                   actividades={actividades}
                   dependencias={dependencias}
-                  impedimentos={abiertas.filter((r) => r.actividad_id === sel.id)}
+                  impedimentos={restricciones.filter((r) => r.actividad_id === sel.id)}
+                  hoy={hoy}
                   alCerrar={() => setSelId(null)}
                 />
               )
