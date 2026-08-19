@@ -60,3 +60,23 @@ export function queryARestaurar(params: URLSearchParams, guardada: string | null
 
 /** El pedido explícito de volver al estado de fábrica. Borra la cookie y abre la pantalla limpia. */
 export const CLAVE_LIMPIAR = 'limpiar'
+
+/**
+ * ¿Este pedido es alguien ELIGIENDO cómo quiere ver la pantalla?
+ *
+ * Next PRECARGA todos los `<Link>` que entran en pantalla, y cada precarga es un GET normal a esa
+ * URL. La barra de filtros tiene seis pastillas: sin esta pregunta, el navegador guardaba seis
+ * preferencias distintas sin que nadie tocara nada, y ganaba la última en llegar. Medido contra
+ * producción el 19/08/2026: se elegía «Terminación» y la vista volvía con `etapa=inicio`.
+ *
+ * Las navegaciones de CLIENTE (`RSC: 1`) sí cuentan: ésas las produce una persona tocando algo.
+ */
+export function esEleccionDeVista(
+  metodo: string, cabeceras: { get(nombre: string): string | null },
+): boolean {
+  if (metodo !== 'GET') return false
+  if (cabeceras.get('next-router-prefetch') !== null) return false
+  if (cabeceras.get('purpose') === 'prefetch') return false
+  if (cabeceras.get('x-purpose') === 'preview') return false
+  return true
+}
