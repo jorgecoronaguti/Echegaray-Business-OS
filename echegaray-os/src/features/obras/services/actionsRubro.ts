@@ -15,7 +15,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import type { Resultado } from './actions'
-import { normalizarRubro, rubroQueChoca } from './rubros'
+import { cruzarBloques, normalizarRubro, rubroQueChoca } from './rubros'
 
 const nombreSchema = z.object({
   nombre: z.string().trim().min(2, 'Poné el nombre del rubro').max(120),
@@ -138,18 +138,18 @@ export async function moverRubro(obraId: string, nombre: string, direccion: 'arr
   const j = direccion === 'arriba' ? i - 1 : i + 1
   if (j < 0 || j >= bloques.length) return { ok: true, mensaje: 'Ya está en la punta.' }
 
-  const reordenados = [...bloques]
-  reordenados[i] = bloques[j]; reordenados[j] = bloques[i]
+  // ═══ SE REESCRIBE SÓLO EL PAR QUE SE CRUZÓ ═══
+  //
+  // La primera versión renumeraba la obra entera de 1 a N. Como el `orden` que trae el tracker NO es
+  // 1..N —tiene huecos y saltos—, casi todas las filas quedaban con un número distinto y subir un
+  // rubro disparaba 124 escrituras en una obra grande, una por una, dentro de una server action.
+  //
+  // Lo que se hace ahora: se toman los números de orden que ocupan LOS DOS bloques juntos, se
+  // ordenan, y se reparten sobre las filas en el orden nuevo. Los dos bloques se cruzan de lugar y
+  // no se toca una sola fila del resto de la obra.
+  const par = i < j ? [bloques[i], bloques[j]] : [bloques[j], bloques[i]]
+  const cambios = cruzarBloques(par[0].filas, par[1].filas)
 
-  // Se reescribe SÓLO lo que cambió de número: los dos bloques que se cruzaron.
-  let n = 0
-  const cambios: { id: string; orden: number }[] = []
-  for (const b of reordenados) {
-    for (const f of b.filas) {
-      n++
-      if (f.orden !== n) cambios.push({ id: f.id, orden: n })
-    }
-  }
   // EL ORDEN TAMBIÉN SE PROTEGE DEL TRACKER. `sync-obra-cronograma` reescribe `orden` desde la
   // planilla en toda fila que no esté marcada: sin esto, subir un rubro duraría hasta la próxima
   // corrida y nadie entendería por qué «no se guardó».

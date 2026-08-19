@@ -7,7 +7,7 @@
 
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
-import { normalizarRubro, rubroQueChoca, rubrosDe } from './rubros.ts'
+import { cruzarBloques, normalizarRubro, rubroQueChoca, rubrosDe } from './rubros.ts'
 import type { Actividad } from '../types/index.ts'
 
 const act = (p: Partial<Actividad>): Actividad => ({
@@ -69,4 +69,29 @@ test('las TAREAS no cuentan como trabajo de un rubro', () => {
     act({ id: 't1', nombre: 'Armado', seccion: 'Estructura', orden: 1, actividad_padre_id: 'a1' }),
   ])
   assert.equal(rs[0].n, 1)
+})
+
+test('cruzar dos rubros NO renumera la obra: reparte los números que ya ocupaban', () => {
+  // El `orden` del tracker tiene huecos —10, 11, 20, 21, 22— y renumerar de 1 a N tocaría todas las
+  // filas de la obra. Acá se cruzan los dos bloques y ninguna otra fila cambia de número.
+  const arriba = [{ id: 'a1', orden: 10 }, { id: 'a2', orden: 11 }]
+  const abajo = [{ id: 'b1', orden: 20 }, { id: 'b2', orden: 21 }, { id: 'b3', orden: 22 }]
+  const c = cruzarBloques(arriba, abajo)
+  assert.deepEqual(c, [
+    { id: 'b1', orden: 10 }, { id: 'b2', orden: 11 }, { id: 'b3', orden: 20 },
+    { id: 'a1', orden: 21 }, { id: 'a2', orden: 22 },
+  ])
+})
+
+test('sólo vuelven las filas que cambiaron de número', () => {
+  // Dos bloques de un elemento cada uno con el mismo `orden` no se mueven: mandar la escritura
+  // igual pisaría con el mismo valor algo que otro pudo haber corregido en el medio.
+  assert.deepEqual(cruzarBloques([{ id: 'a', orden: 5 }], [{ id: 'b', orden: 5 }]), [])
+})
+
+test('el orden resultante nunca inventa un número que no estaba', () => {
+  const arriba = [{ id: 'a', orden: 3 }]
+  const abajo = [{ id: 'b', orden: 99 }]
+  const c = cruzarBloques(arriba, abajo)
+  assert.deepEqual(c.map((x) => x.orden).sort((x, y) => x - y), [3, 99])
 })

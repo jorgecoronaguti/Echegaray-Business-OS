@@ -80,3 +80,31 @@ export function rubroQueChoca(nombre: string, existentes: readonly string[]): st
   const k = normalizarRubro(nombre)
   return existentes.find((e) => normalizarRubro(e) === k) ?? null
 }
+
+/** Una fila del cronograma, en lo mínimo que hace falta para ordenarla. */
+export interface FilaOrdenable { id: string; orden: number }
+
+/**
+ * CRUZAR DOS BLOQUES DEL CRONOGRAMA sin tocar el resto de la obra.
+ *
+ * ═══ POR QUÉ NO SE RENUMERA DE 1 A N ═══
+ *
+ * El `orden` que trae el tracker NO es 1..N: tiene huecos y saltos. Renumerando la obra entera,
+ * casi todas las filas quedaban con un número distinto y subir un rubro disparaba 124 escrituras —
+ * una por una, dentro de una server action— en la obra más grande.
+ *
+ * Acá se toman los números que YA ocupan los dos bloques juntos, se ordenan, y se reparten sobre las
+ * filas en el orden nuevo. Los dos bloques se cruzan de lugar y ninguna otra fila cambia de número.
+ *
+ * Devuelve SÓLO las filas cuyo orden cambió: mandar las que quedan igual sería pisar con el mismo
+ * valor algo que otro pudo haber corregido en el medio.
+ */
+export function cruzarBloques(
+  arriba: readonly FilaOrdenable[], abajo: readonly FilaOrdenable[],
+): { id: string; orden: number }[] {
+  const huecos = [...arriba, ...abajo].map((f) => f.orden).sort((a, b) => a - b)
+  const nuevo = [...abajo, ...arriba]
+  return nuevo
+    .map((f, k) => ({ id: f.id, orden: huecos[k] }))
+    .filter((c, k) => c.orden !== nuevo[k].orden)
+}
