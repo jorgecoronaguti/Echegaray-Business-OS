@@ -154,7 +154,10 @@ test('portafolio → obra → resumen · gantt · planificación · documentos',
   // 4. CRONOGRAMA — el núcleo del módulo, y ahora una sola solapa con DOS vistas de las mismas
   //    actividades. «Gantt» y «Planificación» dejaron de ser solapas principales: el dueño puso el
   //    tope en seis y pidió que planificar viva adentro del cronograma.
-  await page.getByRole('link', { name: 'Cronograma', exact: true }).click()
+  // POR `data-testid` Y NO POR EL RÓTULO. Buscaba el enlace «Cronograma» y la solapa se llama
+  // «Planificación» desde que el dueño la renombró: el id de la vista no cambia cuando cambia la
+  // palabra que lee una persona, y lo que este test mide es la NAVEGACIÓN, no el diccionario.
+  await page.getByTestId('tab-cronograma').click()
   await page.waitForURL(/vista=cronograma/)
   const gantt = page.getByTestId('gantt')
   await expect(gantt).toBeVisible()

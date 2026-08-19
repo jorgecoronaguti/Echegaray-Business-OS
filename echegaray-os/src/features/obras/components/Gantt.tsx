@@ -34,7 +34,7 @@
 // pintarlo de rojo era decir que sí.
 
 import Link from 'next/link'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { agruparActividades, agruparPorObra, estadoDe, filasVisibles } from '../services/cronograma'
 import type { Actividad, Dependencia, Persona, Restriccion } from '../types'
 import type { ActividadHH } from '../services/personalService'
@@ -109,6 +109,31 @@ export function Gantt({
   obraId?: string
 }) {
   const [escala, setEscala] = useState<Escala>('semana')
+  // ═══ EL LIENZO TIENE QUE LLENAR EL LUGAR QUE TIENE (20/08/2026) ═══
+  //
+  // El Gantt GLOBAL estiraba los píxeles por día hasta llenar el ancho disponible desde el 19/08; el
+  // de la OBRA —que es la pantalla más usada del módulo— nunca recibió ese ancho. Resultado, medido
+  // en producción sobre «Galpón 9»: una obra de seis semanas dibujaba las barras apretadas en el 40%
+  // izquierdo y dejaba el 60% en blanco, con las actividades de un día convertidas en una rayita de
+  // tres píxeles. Se lee como una pantalla rota, y por eso el objetivo no se parecía al resultado.
+  //
+  // Se OBSERVA en vez de calcularse una vez: el panel lateral aparece y desaparece, y el ancho libre
+  // cambia sin que la ventana cambie de tamaño. Mientras no se midió vale 0 y manda la escala
+  // elegida — nunca se dibuja más chico de lo que corresponde.
+  const cajaRef = useRef<HTMLDivElement>(null)
+  const [anchoLibre, setAnchoLibre] = useState(0)
+  useEffect(() => {
+    const caja = cajaRef.current
+    if (!caja || typeof ResizeObserver === 'undefined') return
+    const medir = () => {
+      const fija = caja.querySelector('[data-columna-fija]')
+      setAnchoLibre(Math.max(0, caja.clientWidth - (fija?.clientWidth ?? 0)))
+    }
+    medir()
+    const obs = new ResizeObserver(medir)
+    obs.observe(caja)
+    return () => obs.disconnect()
+  }, [])
   const [selId, setSelId] = useState<string | null>(seleccionInicial)
   const [colapsados, setColapsados] = useState<ReadonlySet<string>>(new Set())
   // LA SELECCIÓN EN LOTE VIVE EN EL CLIENTE Y NO VIAJA EN LA URL. Tildar cincuenta casillas serían
@@ -237,7 +262,7 @@ export function Gantt({
     )
   }
 
-  const { ancho, x, meses, ticks } = construirEscala(rango.desde, rango.hasta, escala)
+  const { ancho, x, meses, ticks } = construirEscala(rango.desde, rango.hasta, escala, anchoLibre)
   const alto = filas.length * ALTO_FILA
   const xHoy = x(hoyIso)
   const hoyVisible = xHoy >= 0 && xHoy <= ancho
@@ -258,7 +283,7 @@ export function Gantt({
           al formulario, se edita a ciegas. En el teléfono no hay ancho para las dos cosas y el panel
           sube desde abajo como una hoja, tapando el cronograma en vez de aplastarlo. */}
       <div className="flex flex-col lg:flex-row">
-        <div className="relative max-h-[72vh] min-w-0 flex-1 overflow-auto">
+        <div ref={cajaRef} className="relative max-h-[72vh] min-w-0 flex-1 overflow-auto overscroll-x-contain">
           {/* EL ANCHO DE LA COLUMNA FIJA ES RESPONSIVO, Y NO ES UN DETALLE ESTÉTICO (17/08/2026).
               Estaba clavado en 340px por estilo en línea. En un teléfono de 390px el contenedor
               visible mide 348px: la columna de nombres se comía el 97,7% y NO SE VEÍA UNA SOLA BARRA
@@ -268,7 +293,7 @@ export function Gantt({
               pantalla chica porque esa información ya está en la barra. */}
           <div className="flex w-max">
             {/* ── COLUMNA FIJA: la grilla de actividades ───────────────────────────────── */}
-            <div className="sticky left-0 z-20 w-[152px] shrink-0 border-r border-line bg-surface sm:w-[386px] lg:w-[420px]">
+            <div data-columna-fija className="sticky left-0 z-20 w-[152px] shrink-0 border-r border-line bg-surface sm:w-[386px] lg:w-[420px]">
               <div className="sticky top-0 z-10 flex h-9 items-end gap-2 border-b border-line bg-surface px-2 pb-1 text-[10px] font-medium uppercase tracking-wide text-faint">
                 {masivas && (
                   <Casilla
@@ -414,7 +439,7 @@ export function Gantt({
                     const g = f.grupo
                     if (!g.inicio) return null
                     const x0 = x(g.inicio)
-                    const w = Math.max(3, x(g.fin ?? g.inicio) - x0)
+                    const w = Math.max(8, x(g.fin ?? g.inicio) - x0)
                     return (
                       <g key={f.clave}>
                         <rect x={x0} y={y + 10} width={w} height={5} rx={1} className="fill-ink" opacity={0.8} />
@@ -428,7 +453,9 @@ export function Gantt({
                   if (!a.inicio_plan) return null
                   const x0 = x(a.inicio_plan)
                   const x1 = x(a.fin_plan ?? a.inicio_plan)
-                  const w = Math.max(3, x1 - x0)
+                  // 8 px Y NO 3: una actividad de un solo día —la mitad de las de una obra— se
+                  // dibujaba como una rayita que no se distingue de una línea de la grilla.
+                  const w = Math.max(8, x1 - x0)
                   const frenada = conRestriccion.has(a.id)
                   const atrasada = estadoDe(a, hoyIso) === 'atrasada'
                   return (
@@ -436,7 +463,7 @@ export function Gantt({
                       {/* LÍNEA BASE — sólo si está sellada. Sin baseline no se dibuja una sombra en
                           el mismo lugar que el plan: eso haría parecer que el desvío es cero. */}
                       {a.inicio_base && a.fin_base && (
-                        <rect x={x(a.inicio_base)} y={y + 18} width={Math.max(3, x(a.fin_base) - x(a.inicio_base))} height={3} rx={1} className="fill-line-strong" />
+                        <rect x={x(a.inicio_base)} y={y + 18} width={Math.max(8, x(a.fin_base) - x(a.inicio_base))} height={3} rx={1} className="fill-line-strong" />
                       )}
                       {a.tipo === 'hito' ? (
                         <rect x={x0 - 5} y={y + 7} width={10} height={10} className={atrasada ? 'fill-neg' : 'fill-accent'} transform={`rotate(45 ${x0} ${y + 12})`} />
@@ -447,6 +474,16 @@ export function Gantt({
                             <rect x={x0} y={y + 6} width={Math.max(2, (w * Math.min(100, a.pct)) / 100)} height={12} rx={3} className={atrasada ? 'fill-neg' : 'fill-accent'} />
                           )}
                           {frenada && <rect x={x0 - 3} y={y + 4} width={3} height={16} rx={1} className="fill-warn" />}
+                          {/* EL AVANCE AL LADO DE LA BARRA. La mitad de las actividades de una obra
+                              duran un día: sin este número la barra es un cuadradito de 8 px y la
+                              fila no dice nada de un vistazo. Es el MISMO valor de la columna «%»
+                              —no un segundo cálculo—: lo que cambia es que acá se lee sobre el
+                              calendario, que es donde se compara contra las de al lado. */}
+                          {a.avance_pct != null && (
+                            <text x={x0 + w + 4} y={y + 16} fontSize={10} className="fill-faint tabular-nums">
+                              {Math.round(Number(a.avance_pct))}%
+                            </text>
+                          )}
                         </>
                       )}
                     </g>
