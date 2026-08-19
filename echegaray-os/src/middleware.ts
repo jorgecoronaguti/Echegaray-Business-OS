@@ -2,6 +2,9 @@ import { createServerClient, type SetAllCookies } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { esRutaCampoPermitida, esRutaPublica } from '@/features/auth/types'
 import { puedeVerRuta } from '@/features/auth/types/areas'
+import {
+  CLAVE_LIMPIAR, cookieDeVista, preferenciaDe, queryARestaurar,
+} from '@/features/obras/services/vistaRecordada'
 
 // Refresca la sesión de Supabase en cada request -- sin esto, un usuario logueado
 // puede quedar con un token vencido en Server Components y verse "deslogueado" sin
@@ -66,6 +69,49 @@ export async function middleware(request: NextRequest) {
       url.pathname = '/obras'
       url.search = ''
       return NextResponse.redirect(url)
+    }
+  }
+
+  // ═══ LA VISTA DE OBRAS SE ABRE COMO LA DEJÉ (19/08/2026) ═══
+  //
+  // El dueño: *"que guarden cuál fue el último filtrado que hice según la columna para que me la
+  // muestre de esa manera y no tener que estar poniendo nuevamente cómo quiero verlo"*.
+  //
+  // Vive en el middleware y no en la página porque un server component NO puede escribir una cookie
+  // durante el render —Next lo prohíbe— y porque acá la redirección ocurre ANTES de que se dibuje
+  // nada: no hay una pintura con el orden equivocado que después se corrige sola.
+  //
+  // Sólo GET, y sólo si hay sesión: guardar preferencias de pantalla de alguien que todavía no
+  // entró no tiene sentido y ensucia la cookie del que entre después en el mismo navegador.
+  const cookieVista = user && request.method === 'GET' ? cookieDeVista(pathname) : null
+  if (cookieVista) {
+    const params = request.nextUrl.searchParams
+    if (params.has(CLAVE_LIMPIAR)) {
+      // Volver al estado de fábrica: se olvida y se abre limpia. La cookie se borra ACÁ y no en la
+      // pantalla, porque si sobreviviera un instante la redirección la volvería a aplicar.
+      const url = request.nextUrl.clone()
+      url.search = ''
+      const limpia = NextResponse.redirect(url)
+      // EL `path` NO SOBRA: la cookie se guardó con `path: '/obras'`, y borrarla sin decirlo borra
+      // otra —la de `path: '/'`, que no existe—, así que la preferencia sobrevivía al "quitar
+      // filtros" y la pantalla se volvía a filtrar sola en la visita siguiente.
+      limpia.cookies.delete({ name: cookieVista, path: '/obras' })
+      return limpia
+    }
+    const guardada = request.cookies.get(cookieVista)?.value ?? null
+    const restaurar = queryARestaurar(params, guardada)
+    if (restaurar) {
+      const url = request.nextUrl.clone()
+      url.search = restaurar
+      return NextResponse.redirect(url)
+    }
+    const preferencia = preferenciaDe(params)
+    // Se escribe SÓLO cuando cambió: una cookie reescrita en cada visita gasta una cabecera de
+    // respuesta por página para no decir nada nuevo.
+    if (preferencia && preferencia !== guardada) {
+      response.cookies.set(cookieVista, preferencia, {
+        path: '/obras', sameSite: 'lax', httpOnly: true, maxAge: 60 * 60 * 24 * 365,
+      })
     }
   }
 
