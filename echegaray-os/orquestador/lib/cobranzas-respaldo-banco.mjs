@@ -107,16 +107,86 @@ export function inicioDelExtracto(filas = [], { fila0 = FILA0_BANCO } = {}) {
  * @param {{corte:number|null, ventana?:number, tolerancia?:number}} opciones
  * @returns {{estado:'confirma'|'ambiguo'|'fueraDeCorte'|'sinRespaldo'|'sinFecha', mov?:object, cuantos?:number}}
  */
+/**
+ * CUÁNTOS MOVIMIENTOS DEL BANCO PUEDE VALER UN SOLO COBRO.
+ *
+ * Tres es lo medido: el anticipo de Quattropani del 28/07 —$65.678.419,31— entró en TRES
+ * transferencias credin ($35.000.000 + $30.000.000 + $678.419,31) el mismo día. Subirlo abre la
+ * puerta a que una combinación cualquiera de cinco importes chicos dé la cifra por casualidad.
+ */
+export const MAXIMO_PARTES = 3
+
+/**
+ * NÚCLEO PURO: ¿una SUMA de acreditaciones explica este cobro?
+ *
+ * ═══ POR QUÉ EXISTE (19/08/2026) ═══
+ *
+ * El control denunció **$87.044.023 "cobrado sin respaldo del banco"**. Rastreados uno por uno contra
+ * el extracto, **$82,5M SÍ estaban** — el cruce buscaba UN movimiento por cobro y la plata no llega
+ * así:
+ *
+ *   · Quattropani $65.678.419,31 entró el 28/07 en TRES transferencias credin.
+ *   · Dos facturas de MESSINA, $16.832.407,20 juntas, llegaron como un echeq depositado
+ *     ($16.807.425,92 el 29/07) MÁS una transferencia de $24.981,28 el 28/07. Cierra al centavo.
+ *
+ * Un control que es 95% falso positivo enseña a ignorar la alerta — y el 5% verdadero (plata que el
+ * cuadro cuenta como ingreso real y nunca entró) queda enterrado abajo. Es la misma lección que ya
+ * dejaron el auditor de ventana fija y el cruce contra la lista de ocho echeqs.
+ *
+ * ═══ POR QUÉ ESTO NO INVENTA CONFIRMACIONES ═══
+ *
+ * Tres candados, y los tres hacen falta:
+ *   1. **Como mucho `MAXIMO_PARTES` movimientos.** Con suficientes sumandos, cualquier número sale.
+ *   2. **Exacto a la tolerancia**, que es UN PESO. Que tres importes del banco sumen al peso el
+ *      importe de una factura no es una coincidencia plausible: es esa cobranza.
+ *   3. **Si hay DOS combinaciones distintas que dan el mismo total, no se confirma ninguna**: se
+ *      devuelve `ambiguo`. La regla del repo es no escribir donde el mapeo dice que no.
+ *
+ * Y no se prueba con un solo movimiento: ése ya lo resolvió la comparación directa de arriba.
+ *
+ * @param {number} monto el importe del cobro
+ * @param {Array<{importe:number, fecha:number}>} enVentana acreditaciones dentro de la ventana de días
+ * @param {number} tolerancia
+ * @returns {{estado:'confirma'|'ambiguo', mov?:object, partes?:Array, cuantos?:number}|null}
+ */
+export function porPartes(monto, enVentana = [], tolerancia = TOLERANCIA_IMPORTE) {
+  // Sólo las que solas no alcanzan: una acreditación MAYOR al cobro no puede ser parte de su suma.
+  const utiles = enVentana.filter((a) => a.importe > 0 && a.importe < monto + tolerancia)
+  if (utiles.length < 2) return null
+  const hallazgos = []
+  const combinar = (desde, faltante, elegidas) => {
+    if (hallazgos.length > 1) return // con dos ya alcanza para saber que es ambiguo
+    if (elegidas.length >= 2 && Math.abs(faltante) < tolerancia) { hallazgos.push([...elegidas]); return }
+    if (elegidas.length >= MAXIMO_PARTES) return
+    for (let i = desde; i < utiles.length; i++) {
+      const a = utiles[i]
+      if (a.importe > faltante + tolerancia) continue
+      elegidas.push(a)
+      combinar(i + 1, faltante - a.importe, elegidas)
+      elegidas.pop()
+      if (hallazgos.length > 1) return
+    }
+  }
+  combinar(0, monto, [])
+  if (!hallazgos.length) return null
+  if (hallazgos.length > 1) return { estado: 'ambiguo', cuantos: hallazgos.length, mov: hallazgos[0][0] }
+  const partes = hallazgos[0].slice().sort((a, b) => a.fecha - b.fecha || b.importe - a.importe)
+  return { estado: 'confirma', mov: partes[0], partes }
+}
+
 export function respaldoDeCobro(cobro, acreditaciones = [], {
   corte = null, desde = null, ventana = VENTANA_DIAS, tolerancia = TOLERANCIA_IMPORTE,
 } = {}) {
   const fecha = num(cobro?.serialCobro)
   const monto = num(cobro?.monto)
   if (fecha === null || monto === null || monto <= 0) return { estado: 'sinFecha' }
-  const candidatas = acreditaciones.filter((a) => Math.abs(a.importe - monto) < tolerancia
-    && Math.abs(a.fecha - fecha) <= ventana)
+  const enVentana = acreditaciones.filter((a) => Math.abs(a.fecha - fecha) <= ventana)
+  const candidatas = enVentana.filter((a) => Math.abs(a.importe - monto) < tolerancia)
   if (candidatas.length === 1) return { estado: 'confirma', mov: candidatas[0] }
   if (candidatas.length > 1) return { estado: 'ambiguo', cuantos: candidatas.length, mov: candidatas[0] }
+  // UN COBRO NO LLEGA COMO UN MOVIMIENTO. Antes de negarlo, se prueba si lo explica una SUMA.
+  const partido = porPartes(monto, enVentana, tolerancia)
+  if (partido) return partido
   // SIN CANDIDATA, EL VEREDICTO DEPENDE DE LA VENTANA DEL EXTRACTO — POR LOS DOS EXTREMOS.
   // Arriba: un cobro fechado más allá de lo que el banco publicó no se puede negar (se exige que el
   // extracto cubra también la ventana de días, porque la acreditación puede caer después).
@@ -247,6 +317,14 @@ export function textoDeRespaldo(v, { alerta = '▲', fechaCorte = '' } = {}) {
     case 'confirma':
       // Se sacó "— ya está en el saldo del banco": lo dice la palabra COBRADO que abre la frase, y
       // era la parte que el importe largo empujaba fuera de la columna.
+      //
+      // UN COBRO PARTIDO SE DICE PARTIDO. Que el importe de la factura no coincida con ningún
+      // movimiento suelto es exactamente lo que hace dudar a quien concilia a mano: si la frase
+      // mostrara sólo el primero de los tres, el número no cerraría contra el extracto y el control
+      // volvería a leerse como un error. Se declara en cuántos entró.
+      if (v.partes?.length > 1) {
+        return `COBRADO · el extracto lo tiene en ${v.partes.length} movimientos desde el ${v.partes[0].fechaISO ?? ''}`.replace('  ', ' ')
+      }
       return `COBRADO · el extracto lo tiene el ${v.mov.fechaISO ?? ''} por $${v.mov.importe}`.replace('  ', ' ')
     case 'ambiguo':
       return `${alerta} ${v.cuantos} acreditaciones por ese importe: no puedo decir cuál es ésta`
