@@ -44,6 +44,8 @@ import { NavObras } from '@/features/obras/components/NavObras'
 import { PageShell, Callout } from '@/shared/components/ui'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { esAdministracion } from '@/features/auth/types/areas'
+import { esCampo, ordenar, type Direccion } from '@/features/obras/services/ordenObras'
+import { ThOrden } from '@/features/obras/components/ThOrden'
 
 export const dynamic = 'force-dynamic'
 
@@ -136,10 +138,14 @@ function Cliente({ o }: { o: ObraPanel }) {
 export default async function ObrasPage({
   searchParams,
 }: {
-  searchParams: Promise<{ archivadas?: string }>
+  searchParams: Promise<{ archivadas?: string; orden?: string; dir?: string }>
 }) {
-  const { archivadas: verArchivadas } = await searchParams
+  const { archivadas: verArchivadas, orden: ordenPedido, dir: dirPedida } = await searchParams
   const conArchivadas = verArchivadas === '1'
+  // EL ORDEN VIENE DE LA URL Y SE VALIDA. Un `?orden=sueldo` escrito a mano no ordena por nada: la
+  // pantalla vuelve al orden de la fuente en vez de romperse o de inventar una columna.
+  const orden = esCampo(ordenPedido) ? ordenPedido : null
+  const dir: Direccion = dirPedida === 'asc' ? 'asc' : 'desc'
 
   const supabase = await createClient()
   // LAS TRES LECTURAS SALEN JUNTAS, Y LA DEL PERFIL TAMBIÉN (19/08/2026).
@@ -171,8 +177,16 @@ export default async function ObrasPage({
   // usa el resto del OS, y una obra que desaparece de la fuente desaparece también de los totales.
   // Lo que cambia es qué se muestra, nunca qué existe.
   const archivadas = todas.filter((o) => o.estado === 'cerrada')
-  const obras = conArchivadas ? todas : todas.filter((o) => o.estado !== 'cerrada')
+  const visibles = conArchivadas ? todas : todas.filter((o) => o.estado !== 'cerrada')
+  // EL ORDEN SE APLICA DESPUÉS DE FILTRAR Y SOBRE UNA COPIA: `todas` es la lectura compartida y el
+  // pie de archivadas la sigue contando. El desvío de plazo no vive en la fila —llega de la otra
+  // consulta—, así que se le pasa como función en vez de fusionar las dos tablas para poder ordenar.
+  const obras = ordenar(visibles, orden, dir, (id) => porObra.get(id)?.desvio_plazo_dias ?? null)
   const activas = obras.filter((o) => o.estado === 'activa')
+
+  const qBase = { archivadas: conArchivadas ? '1' : undefined }
+  // Mostrar u ocultar las archivadas NO tiene por qué perder el orden que el que mira eligió.
+  const qOrden = orden ? `?orden=${orden}&dir=${dir}` : ''
 
   return (
     <PageShell
@@ -209,14 +223,16 @@ export default async function ObrasPage({
         <div className="overflow-x-auto rounded-lg border border-line bg-surface">
           <table data-testid="portafolio-tabla" className="w-full min-w-[680px] text-left">
             <thead>
+              {/* TODAS LAS COLUMNAS ORDENAN. `extra` conserva `archivadas`: cambiar el orden no
+                  puede hacer desaparecer las obras que se acababan de mostrar. */}
               <tr className="border-b border-line text-[10px] uppercase tracking-wide text-faint">
-                <th className="px-4 py-2.5 font-medium">Obra</th>
-                <th className="px-3 py-2.5 font-medium">Cliente</th>
-                <th className="px-3 py-2.5 font-medium">Etapa</th>
-                <th className="px-3 py-2.5 font-medium">Avance</th>
-                <th className="px-3 py-2.5 font-medium">Plazo</th>
-                {esAdmin && <th className="px-3 py-2.5 text-right font-medium">Contratado</th>}
-                <th className="px-3 py-2.5 text-right font-medium">Costo real</th>
+                <ThOrden campo="nombre" activo={orden} dir={dir} base="/obras" extra={qBase} className="!px-4" />
+                <ThOrden campo="cliente" activo={orden} dir={dir} base="/obras" extra={qBase} />
+                <ThOrden campo="etapa" activo={orden} dir={dir} base="/obras" extra={qBase} />
+                <ThOrden campo="avance" activo={orden} dir={dir} base="/obras" extra={qBase} />
+                <ThOrden campo="plazo" activo={orden} dir={dir} base="/obras" extra={qBase} />
+                {esAdmin && <ThOrden campo="contratado" activo={orden} dir={dir} base="/obras" extra={qBase} alineado="right" />}
+                <ThOrden campo="costo" activo={orden} dir={dir} base="/obras" extra={qBase} alineado="right" />
               </tr>
             </thead>
             <tbody>
@@ -258,12 +274,12 @@ export default async function ObrasPage({
           {conArchivadas ? (
             <>
               Se muestran también {archivadas.length} obra{archivadas.length === 1 ? '' : 's'} archivada{archivadas.length === 1 ? '' : 's'}.{' '}
-              <Link href="/obras" className="text-ink underline underline-offset-2">Ocultarlas</Link>.
+              <Link href={`/obras${qOrden}`} className="text-ink underline underline-offset-2">Ocultarlas</Link>.
             </>
           ) : (
             <>
               {archivadas.length} obra{archivadas.length === 1 ? '' : 's'} archivada{archivadas.length === 1 ? '' : 's'} fuera de esta lista.{' '}
-              <Link href="/obras?archivadas=1" className="text-ink underline underline-offset-2" data-testid="ver-archivadas">Verlas</Link>.
+              <Link href={`/obras?archivadas=1${qOrden ? `&${qOrden.slice(1)}` : ''}`} className="text-ink underline underline-offset-2" data-testid="ver-archivadas">Verlas</Link>.
             </>
           )}
         </p>

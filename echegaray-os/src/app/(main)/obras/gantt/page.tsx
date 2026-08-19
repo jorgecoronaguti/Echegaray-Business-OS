@@ -18,20 +18,29 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { filasDeObras, getPlazoPorObra } from '@/features/obras/services/ganttObras'
+import { esCampo, type Direccion } from '@/features/obras/services/ordenObras'
+import { OrdenGantt } from '@/features/obras/components/OrdenGantt'
 import { GanttObras } from '@/features/obras/components/GanttObras'
 import { NavObras } from '@/features/obras/components/NavObras'
 import { Callout, PageShell } from '@/shared/components/ui'
 
 export const dynamic = 'force-dynamic'
 
-export default async function GanttGlobalPage() {
+export default async function GanttGlobalPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ orden?: string; dir?: string; archivadas?: string }>
+}) {
+  const { orden: ordenPedido, dir: dirPedida, archivadas: verArchivadas } = await searchParams
+  const orden = esCampo(ordenPedido) ? ordenPedido : null
+  const dir: Direccion = dirPedida === 'asc' ? 'asc' : 'desc'
   const supabase = await createClient()
   const { data, error } = await getPlazoPorObra(supabase)
 
   // EL DÍA SE FIJA EN EL SERVIDOR Y VIAJA. Calcularlo en el cliente para decidir «vencida» y en el
   // servidor para ordenar daría dos verdades distintas alrededor de la medianoche.
   const hoyIso = new Date().toISOString().slice(0, 10)
-  const filas = filasDeObras(data ?? [], hoyIso)
+  const filas = filasDeObras(data ?? [], hoyIso, verArchivadas === '1', orden, dir)
   const conPlan = filas.filter((f) => f.barra).length
   const archivadas = (data ?? []).filter((o) => o.estado === 'cerrada').length
 
@@ -45,6 +54,10 @@ export default async function GanttGlobalPage() {
       }
     >
       <NavObras />
+
+      {/* La tira va DEBAJO de la navegación y ARRIBA del lienzo: es una decisión sobre lo que se está
+          por leer, no una acción de la pantalla. */}
+      {!error && filas.length > 1 && <OrdenGantt activo={orden} dir={dir} archivadas={verArchivadas === '1'} />}
 
       {/* SIN DESPLEGABLE PARA ELEGIR OBRA. Existía cuando la vista global desplegaba 344 actividades
           y hacía falta una forma de saltar a una. Ahora cada renglón ES una obra y se toca: un
