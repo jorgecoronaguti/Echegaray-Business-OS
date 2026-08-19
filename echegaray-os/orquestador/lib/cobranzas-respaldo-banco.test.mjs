@@ -220,3 +220,64 @@ test('LA VENTANA DEL EXTRACTO TIENE DOS EXTREMOS: lo anterior al primer movimien
   const dentro = cruzarConElBanco([cobro({ fila: 7, serialCobro: serial('2026-07-20'), monto: 18150000 })], extracto, { esCobrado })
   assert.equal(dentro.veredictos[0].estado, 'sinRespaldo')
 })
+
+// ═══ UN COBRO NO LLEGA COMO UN MOVIMIENTO DEL BANCO (19/08/2026) ═══
+//
+// El control denunció $87.044.023 "cobrado sin respaldo". Rastreados contra el extracto, $82,5M
+// estaban: el cruce buscaba UN movimiento por cobro. Los dos casos reales están acá con sus cifras.
+test('el anticipo que entró en tres transferencias el mismo día se confirma', () => {
+  // Quattropani, 28/07/2026: $65.678.419,31 en tres credin.
+  const acred = [
+    { fecha: 100, importe: 35000000, concepto: 'Transferencia recibida - credin' },
+    { fecha: 100, importe: 30000000, concepto: 'Transferencia recibida - credin' },
+    { fecha: 100, importe: 678419.31, concepto: 'Transferencia recibida - credin' },
+  ]
+  const r = respaldoDeCobro({ serialCobro: 100, monto: 65678419.31 }, acred, { corte: 120, desde: 1 })
+  assert.equal(r.estado, 'confirma')
+  assert.equal(r.partes.length, 3)
+})
+
+test('el cobro que llegó mitad echeq y mitad transferencia, en días distintos, se confirma', () => {
+  // MESSINA: $16.832.407,20 = echeq $16.807.425,92 del 29/07 + transferencia $24.981,28 del 28/07.
+  const acred = [
+    { fecha: 101, importe: 16807425.92, concepto: 'Deposito E-cheq 48hs Presencia Bsr' },
+    { fecha: 100, importe: 24981.28, concepto: 'Transferencia recibida - De manufacturas quimicas' },
+  ]
+  const r = respaldoDeCobro({ serialCobro: 101, monto: 16832407.20 }, acred, { corte: 120, desde: 1 })
+  assert.equal(r.estado, 'confirma')
+  assert.equal(r.partes.length, 2)
+})
+
+test('lo que el banco NO tiene sigue diciendo que no lo tiene', () => {
+  // El otro cobro de MESSINA, $4.300.876,36 del 20/07: no hay ningún importe ni suma que lo explique.
+  const acred = [{ fecha: 100, importe: 3940000, concepto: 'Deposito e-cheq int ots plazas' }]
+  const r = respaldoDeCobro({ serialCobro: 100, monto: 4300876.36 }, acred, { corte: 120, desde: 1 })
+  assert.equal(r.estado, 'sinRespaldo')
+})
+
+test('dos combinaciones distintas que dan el mismo total NO confirman ninguna', () => {
+  const acred = [
+    { fecha: 100, importe: 500 }, { fecha: 100, importe: 500 },
+    { fecha: 100, importe: 300 }, { fecha: 100, importe: 700 },
+  ]
+  const r = respaldoDeCobro({ serialCobro: 100, monto: 1000 }, acred, { corte: 120, desde: 1 })
+  assert.equal(r.estado, 'ambiguo')
+})
+
+test('no se arma una suma con más partes de las declaradas', () => {
+  // Cuatro sumandos para MAXIMO_PARTES=3: con suficientes sumandos cualquier número sale, y por eso
+  // el tope existe. Este cobro NO se confirma.
+  const acred = [
+    { fecha: 100, importe: 100 }, { fecha: 100, importe: 200 },
+    { fecha: 100, importe: 300 }, { fecha: 100, importe: 400 },
+  ]
+  const r = respaldoDeCobro({ serialCobro: 100, monto: 1000 }, acred, { corte: 120, desde: 1 })
+  assert.equal(r.estado, 'sinRespaldo')
+})
+
+test('una acreditación MAYOR al cobro no puede ser parte de su suma', () => {
+  const acred = [{ fecha: 100, importe: 9999999 }, { fecha: 100, importe: 600 }, { fecha: 100, importe: 400 }]
+  const r = respaldoDeCobro({ serialCobro: 100, monto: 1000 }, acred, { corte: 120, desde: 1 })
+  assert.equal(r.estado, 'confirma')
+  assert.equal(r.partes.length, 2)
+})
