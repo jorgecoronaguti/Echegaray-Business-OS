@@ -463,6 +463,31 @@ export function clasificarMovimiento(concepto = '') {
   // La familia se ancla a la RAÍZ («haber» + su plural opcional) y admite el prefijo de acreditación,
   // que es como el banco rotula el mismo servicio de pago por lote cuando la contrapartida es la
   // cuenta sueldo del empleado. No se ancla al número de lote (260814507): ése cambia todos los días.
+  // ═══ EL FONDO DE CESE LABORAL NO ES UN PAGO A PROVEEDORES (19/08/2026) ═══
+  //
+  // El 18/08 el banco debitó 36 acreditaciones *"Pagos personalizados acred cuenta - Acreditacion
+  // fondo desempleo 000000 - cuit 30716304643"* por $2.481.098 — una por obrero, con el CUIT de la
+  // empresa como ordenante. Es el FONDO DE CESE LABORAL de la construcción (ley 22.250), que UOCRA y
+  // el banco siguen llamando "fondo de desempleo": la empresa deposita mensualmente un porcentaje de
+  // la remuneración en la cuenta individual de cada trabajador, y el trabajador lo cobra al terminar
+  // la obra. Es COSTO LABORAL, no un pago a un proveedor.
+  //
+  // Sin esta regla los 36 movimientos caían en «Transferencias a proveedores» —el cajón de sastre— y
+  // ahí hacían dos daños a la vez: inflaban en $2,48M lo que el control cree que se le pagó a
+  // proveedores, y dejaban el costo laboral del mes $2,48M por debajo de lo que realmente salió. Es
+  // exactamente el defecto del 15/08 («haber» en singular se llevó $3,38M al cajón equivocado), sólo
+  // que con otra familia de conceptos.
+  //
+  // NO VA CON `Sueldos`, Y ES A PROPÓSITO. Esa naturaleza se compara contra lo que liquida Jornales
+  // por Quincena; el fondo de cese es un concepto aparte, se deposita aparte y no se paga con la
+  // quincena. Sumarlo ahí haría que el control de "estimado contra real" de los jornales cerrara mal
+  // todos los meses. Tiene su propia naturaleza porque es una decisión propia.
+  //
+  // LA RAÍZ ES «fondo de(sempleo|cese)», no el rótulo entero: el prefijo del banco («Pagos
+  // personalizados acred cuenta») describe el SERVICIO de pago por lote —el mismo que usa para los
+  // haberes— y cambia según cómo se ordene el pago. El número de lote (260818507) cambia todos los
+  // días y por eso tampoco se ancla ahí.
+  if (/fondo (?:de )?(?:desempleo|cese)/i.test(c)) return 'Cargas sociales (fondo de cese laboral)'
   if (/pago (?:de )?haberes?\b|acreditacion en cta pago de haber/i.test(c)) return 'Sueldos'
   // UN ECHEQ QUE ENTRA NO ES UN CHEQUE QUE SALE (28/07). "Deposito e-cheq int misma plaza" es un
   // echeq de TERCERO que se acreditó: es plata que ENTRA (crédito), la contracara del que ya estaba
@@ -750,6 +775,7 @@ export const NAT = {
   // naturaleza.GRUPOS (que es lo que arma el bloque 4.7 de CAJA) y COMISIONES.marca de abajo.
   comisiones: 'Comisiones y gastos bancarios',
   sueldos: 'Sueldos',
+  cargasSociales: 'Cargas sociales (fondo de cese laboral)',
   cheques: 'Cheques y echeq',
   afip: 'AFIP',
   prendario: 'Préstamo prendario',
@@ -784,6 +810,10 @@ export const COBERTURA_NATURALEZA = [
     nota: 'Lo que el banco cobra por tener la cuenta abierta y mover plata: comisión de servicio de cuenta, comisión mensual de clearing, comisión de cuenta en dólares, comisión de compensación de cheques, cada una con su IVA 21% y su percepción RG 2408 al 3%. NO sale de Compras (el banco no factura por ahí, lo debita solo): la línea lee _BANCO_RAW, igual que el descubierto y el impuesto al cheque. Medido sobre el extracto: $113.794,80 en junio y $267.854,84 en julio; la parte recurrente es ~$122.000/mes y julio trae además $145.888,44 de compensación de cheques, que no es mensual. El IVA y la percepción se incluyen porque el cuadro es de CAJA y salen de la cuenta; que sean crédito fiscal y pago a cuenta (recuperables) es un asunto de la posición fiscal, no del flujo.',
   },
   { naturaleza: NAT.sueldos, lado: 'egreso', destino: 'Jornales por Quincena → línea "Jornales de obra"', alCashFlow: true, grupoConciliacion: true, nota: 'La acreditación de haberes; el dato real vive en Jornales por Quincena.' },
+  {
+    naturaleza: NAT.cargasSociales, lado: 'egreso', destino: 'Cargas Sociales → el fondo de cese laboral del mes', alCashFlow: true, grupoConciliacion: true,
+    nota: 'El depósito del fondo de cese laboral (ley 22.250) en la cuenta individual de cada obrero, que el banco rotula "fondo de desempleo". Va con las cargas sociales y NO con los jornales: se deposita aparte de la quincena, así que sumarlo a Sueldos rompería el control de estimado-contra-real de Jornales por Quincena.',
+  },
   { naturaleza: NAT.cheques, lado: 'egreso', destino: 'Cheques Emitidos (rubro de su factura si está en Compras; si no, línea "Cheques y tarjeta sin factura")', alCashFlow: true, grupoConciliacion: true, nota: 'Cheque propio ya debitado; se concilia contra Cheques Emitidos DEBITADO=SI.' },
   { naturaleza: NAT.afip, lado: 'egreso', destino: 'Compras rubro Impuestos → línea "Impuestos nacionales y provinciales"', alCashFlow: true, grupoConciliacion: true, nota: 'Pago a AFIP; su detalle vive en Impuestos y Financieros.' },
   { naturaleza: NAT.prendario, lado: 'egreso', destino: 'Compras rubro Financiero / Recurrentes → línea "Cuotas de crédito prendario"', alCashFlow: true, grupoConciliacion: true, nota: 'Cuota del prendario; línea propia en Financiación.' },

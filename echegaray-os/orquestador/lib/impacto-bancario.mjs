@@ -115,6 +115,13 @@ export const DESTINOS = {
     fuente: 'pestañas de nómina (fuera de este camino)',
     escribe: 'no',
   },
+  'Cargas sociales (fondo de cese laboral)': {
+    pestaña: 'Cargas Sociales',
+    seccion: 'Fondo de cese laboral (ley 22.250) depositado en la cuenta individual de cada obrero',
+    mecanismo: 'El saldo del banco absorbe el depósito; el devengado del mes vive en Cargas Sociales, que se calcula sobre la nómina y no desde el concepto bancario',
+    fuente: 'pestañas de nómina (fuera de este camino)',
+    escribe: 'no',
+  },
   'Compras con tarjeta de débito': {
     pestaña: 'Compras',
     seccion: 'Egreso de proveedor pagado con débito — el detalle (obra, rubro) lo pone Compras',

@@ -74,6 +74,12 @@ export const GRUPOS = [
     nota: `${ALERTA} Compras de mostrador pagadas con débito. No hay forma de aislarlas en Compras: la pestaña no registra el medio de pago. Si no están cargadas, son costo que no aparece en ningún rubro.`,
   },
   {
+    naturaleza: 'Cargas sociales (fondo de cese laboral)',
+    pestana: 'Cargas Sociales',
+    formula: null,
+    nota: `${ALERTA} El depósito del fondo de cese laboral en la cuenta de cada obrero. La pestaña lleva el DEVENGADO del mes (lo que se calcula sobre la nómina), no la fecha en que el banco lo debita: compararlos al peso mezclaría criterios. Sirve para ver que el mes se depositó.`,
+  },
+  {
     naturaleza: 'AFIP',
     pestana: 'Impuestos y Financieros',
     formula: null,
