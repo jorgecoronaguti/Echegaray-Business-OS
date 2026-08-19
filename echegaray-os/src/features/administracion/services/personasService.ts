@@ -28,13 +28,19 @@ const COLUMNAS_FICHA =
   'convenio_colectivo, categoria, especialidad, puesto, modalidad_liquidacion, notas, ' +
   'legajo, en_la_empresa, drive_folder_id'
 
-/** Los cuatro filtros del dueño. `todos` es literal: incluye a los que ya no están, y la columna
- *  ESTADO los distingue. Esconder a los inactivos detrás de un filtro llamado "todos" es la clase
- *  de mentira chica que después hace dudar de la lista entera. */
-export type FiltroPersonal = 'todos' | 'en_obra' | 'sin_asignar' | 'inactivos'
+/**
+ * Los cuatro filtros del listado.
+ *
+ * EL PRIMERO SE LLAMABA «TODOS» Y NUNCA MOSTRÓ A TODOS: filtraba a los que seguían en la empresa,
+ * igual que ahora. No se notaba porque no había nadie dado de baja; con los 45 legajos cerrados que
+ * trajo el data room, el nombre pasó a ser una mentira visible. Se llama por lo que hace.
+ *
+ * Ver a los que ya no están es lo que hace «Inactivos», y entre los dos está todo el mundo.
+ */
+export type FiltroPersonal = 'plantel' | 'en_obra' | 'sin_asignar' | 'inactivos'
 
 export const FILTROS: { valor: FiltroPersonal; etiqueta: string }[] = [
-  { valor: 'todos', etiqueta: 'Todos' },
+  { valor: 'plantel', etiqueta: 'En el plantel' },
   { valor: 'en_obra', etiqueta: 'En obra' },
   { valor: 'sin_asignar', etiqueta: 'Sin asignar' },
   { valor: 'inactivos', etiqueta: 'Inactivos' },
@@ -55,7 +61,7 @@ async function idsPorDocumento(supabase: SupabaseClient, q: string): Promise<str
 
 export async function getDirectorio(
   supabase: SupabaseClient,
-  filtro: FiltroPersonal = 'todos',
+  filtro: FiltroPersonal = 'plantel',
   q?: string,
 ): Promise<ServiceResult<PersonaEnDirectorio[]>> {
   let consulta = supabase.from('persona_directorio').select('*')

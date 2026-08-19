@@ -29,7 +29,7 @@ function armarHref(base: Busqueda, filtro?: FiltroPersonal, nueva?: boolean): st
   const params = new URLSearchParams()
   if (base.q) params.set('q', base.q)
   const f = filtro ?? base.f
-  if (f && f !== 'todos') params.set('f', f)
+  if (f && f !== 'plantel') params.set('f', f)
   if (nueva) params.set('nueva', '1')
   const qs = params.toString()
   return `/administracion/personas${qs ? `?${qs}` : ''}`
@@ -37,7 +37,7 @@ function armarHref(base: Busqueda, filtro?: FiltroPersonal, nueva?: boolean): st
 
 export default async function PersonalPage({ searchParams }: { searchParams: Promise<Busqueda> }) {
   const sp = await searchParams
-  const filtro = (FILTROS.find((f) => f.valor === sp.f)?.valor ?? 'todos') as FiltroPersonal
+  const filtro = (FILTROS.find((f) => f.valor === sp.f)?.valor ?? 'plantel') as FiltroPersonal
   const supabase = await createClient()
   const listado = await getDirectorio(supabase, filtro, sp.q)
 
@@ -69,7 +69,7 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
             placeholder="Buscar…"
             testid="filtros-personas"
             compacta
-            extra={{ f: filtro === 'todos' ? undefined : filtro }}
+            extra={{ f: filtro === 'plantel' ? undefined : filtro }}
           />
         </div>
         <FiltrosPersonal activo={filtro} hrefDe={(f) => armarHref(sp, f)} />
