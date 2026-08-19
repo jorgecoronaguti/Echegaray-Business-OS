@@ -10,6 +10,9 @@
 // un dato fabricado. Compras no suma su propio total: muestra el que declara la fuente única del
 // costo real, y si el detalle no llega a ese total lo dice en una línea en vez de disimularlo.
 
+'use client'
+
+import { useState } from 'react'
 import Link from 'next/link'
 import { Badge } from '@/shared/components/ui'
 import { estadoInfo } from '@/features/integraciones/services/herramientasService'
@@ -41,21 +44,88 @@ const entregado = (estado: string | null) => (estado ?? '').toLowerCase().includ
 /** El tono de estado de una herramienta, traducido a los tonos del sistema visual. */
 const TONO_HERRAMIENTA = { ok: 'pos', info: 'neutral', amber: 'warn', red: 'neg' } as const
 
-function Pedidos({ pedidos }: { pedidos: PedidoOperacion[] }) {
+/**
+ * LOS PEDIDOS, Y PARA QUÉ ACTIVIDAD SON.
+ *
+ * La columna ACTIVIDAD sólo aparece cuando la ficha pasa la lista de actividades y la acción: en la
+ * vista global de Operación —donde las filas son de ocho obras distintas— un selector de actividades
+ * no tendría de qué obra elegirlas.
+ *
+ * ES OPCIONAL Y SE VE QUE LO ES: «sin asignar» en gris, no un hueco. La obra sigue siendo el eje del
+ * pedido; esto contesta «¿qué está esperando esta actividad?» cuando alguien lo sabe.
+ */
+function Pedidos({
+  pedidos, actividades = [], asignar,
+}: {
+  pedidos: PedidoOperacion[]
+  /** Decir para qué actividad es un pedido. Sin ella la columna no se dibuja: un selector que no
+   *  persiste es peor que no tenerlo. */
+  asignarActividadAPedido?: (idPedido: string, actividadId: string) => Promise<ResultadoAccion>
+  actividades?: Actividad[]
+  asignar?: (idPedido: string, actividadId: string) => Promise<ResultadoAccion>
+}) {
   if (!pedidos.length) {
     return <Vacio>Los pedidos de material se registran a nombre de la obra, y ninguno quedó a nombre de ésta.</Vacio>
   }
+  const elegibles = actividades.filter((a) => a.tipo !== 'resumen' && !a.archivada && !a.actividad_padre_id)
+  const conActividad = Boolean(asignar) && elegibles.length > 0
+  const cols = [{ k: 'Fecha' }, { k: 'Material' }, { k: 'Cantidad', num: true }, { k: 'Estado' }]
   return (
-    <Tabla testid="tabla-pedidos" cols={[{ k: 'Fecha' }, { k: 'Material' }, { k: 'Cantidad', num: true }, { k: 'Estado' }]}>
+    <Tabla testid="tabla-pedidos" cols={conActividad ? [...cols, { k: 'Para' }] : cols}>
       {pedidos.map((p) => (
         <Fila key={p.id_pedido} obra={p.obra_canonica_id}>
           <C num>{fecha(p.fecha)}</C>
           <C fuerte>{p.material ?? '—'}</C>
           <C num>{cantidad(p.cantidad)}</C>
           <C>{p.estado ? entregado(p.estado) ? <Badge tono="pos">{p.estado}</Badge> : p.estado : '—'}</C>
+          {conActividad && (
+            <C>
+              <SelectActividad
+                actividades={elegibles}
+                valor={p.actividad_id}
+                alElegir={(id) => asignar!(p.id_pedido, id)}
+              />
+            </C>
+          )}
         </Fila>
       ))}
     </Tabla>
+  )
+}
+
+/** El selector guarda al elegir: un botón «guardar» por fila en una lista de treinta pedidos es
+ *  treinta clics de más para un dato que es un solo campo. */
+function SelectActividad({
+  actividades, valor, alElegir,
+}: {
+  actividades: Actividad[]
+  valor: string | null
+  alElegir: (actividadId: string) => Promise<ResultadoAccion>
+}) {
+  const [guardando, setGuardando] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  return (
+    <span className="flex flex-col gap-0.5">
+      <select
+        defaultValue={valor ?? ''}
+        disabled={guardando}
+        data-testid="pedido-actividad"
+        className="w-full max-w-[220px] rounded border border-line bg-surface px-1.5 py-1 text-[12px] text-muted"
+        onChange={async (e) => {
+          setGuardando(true)
+          setError(null)
+          const r = await alElegir(e.target.value)
+          if (!r.ok) setError(r.error ?? 'No se pudo guardar.')
+          setGuardando(false)
+        }}
+      >
+        <option value="">sin asignar</option>
+        {actividades.map((a) => (
+          <option key={a.id} value={a.id}>{a.rubro ? `${a.rubro} · ` : ''}{a.nombre}</option>
+        ))}
+      </select>
+      {error && <span className="text-[11px] text-neg">{error}</span>}
+    </span>
   )
 }
 
@@ -142,7 +212,7 @@ function Movimientos({ movimientos }: { movimientos: MovimientoOperacion[] }) {
 }
 
 export function TabOperacion({
-  sub, obraId, errorFuente = null, pedidos, compras, herramientas, movimientos,
+  sub, obraId, errorFuente = null, pedidos, compras, herramientas, movimientos, asignarActividadAPedido,
   impedimentos, actividades, crearImpedimento, liberarImpedimento,
 }: {
   sub: SubOperacion
@@ -151,6 +221,9 @@ export function TabOperacion({
    *  cuatro bloques que salen de ahí: los impedimentos son del OS y siguen funcionando. */
   errorFuente?: string | null
   pedidos: PedidoOperacion[]
+  /** Decir para qué actividad es un pedido. Sin ella la columna no se dibuja: un selector que no
+   *  persiste es peor que no tenerlo. */
+  asignarActividadAPedido?: (idPedido: string, actividadId: string) => Promise<ResultadoAccion>
   compras: ComprasObra
   herramientas: HerramientaOperacion[]
   movimientos: MovimientoOperacion[]
@@ -204,7 +277,9 @@ export function TabOperacion({
       {errorFuente && sub !== 'impedimentos' && (
         <Callout tono="neg">No pude leer esta información de su fuente: {errorFuente}</Callout>
       )}
-      {!errorFuente && sub === 'pedidos' && <Pedidos pedidos={pedidos} />}
+      {!errorFuente && sub === 'pedidos' && (
+        <Pedidos pedidos={pedidos} actividades={actividades} asignar={asignarActividadAPedido} />
+      )}
       {!errorFuente && sub === 'compras' && <Compras compras={compras} />}
       {!errorFuente && sub === 'herramientas' && <Herramientas herramientas={herramientas} />}
       {!errorFuente && sub === 'movimientos' && <Movimientos movimientos={movimientos} />}

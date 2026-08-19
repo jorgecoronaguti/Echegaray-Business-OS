@@ -270,3 +270,30 @@ export async function medirEnLote(obraId: string, form: FormData): Promise<Resul
   revalidatePath(`/obras/${obraId}`)
   return { ok: true, mensaje: `${cambios.length} actividad(es) medidas.` }
 }
+
+/**
+ * DECIR PARA QUÉ ACTIVIDAD ES UN PEDIDO.
+ *
+ * El pedido sigue siendo de la OBRA —es su eje operativo y económico— y `actividad_id` es opcional:
+ * esto sólo agrega la respuesta a «¿qué está esperando esta actividad?» cuando alguien la sabe.
+ *
+ * NO TOCA NINGÚN OTRO CAMPO. Los pedidos se sincronizan desde el Sheet de AppSheet y esta columna no
+ * está en ese contrato: escribirla acá no compite con el origen, y el sync no la pisa.
+ */
+export async function asignarActividadAPedido(
+  obraId: string, idPedido: string, actividadId: string,
+): Promise<Resultado> {
+  const supabase = await createClient()
+  if (actividadId) {
+    // La actividad tiene que ser DE ESTA OBRA. Sin este chequeo, un id de otra obra colgaría el
+    // pedido de un trabajo que nadie de acá puede ver.
+    const { data: act } = await supabase
+      .from('obra_actividad').select('id').eq('id', actividadId).eq('obra_id', obraId).maybeSingle()
+    if (!act) return { ok: false, error: 'Esa actividad no es de esta obra.' }
+  }
+  const { error } = await supabase.from('pedidos_materiales')
+    .update({ actividad_id: actividadId || null }).eq('id_pedido', idPedido)
+  if (error) return { ok: false, error: error.message }
+  revalidatePath(`/obras/${obraId}`)
+  return { ok: true }
+}

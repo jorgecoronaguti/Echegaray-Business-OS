@@ -60,7 +60,8 @@ import { TabEjecucion } from '@/features/obras/components/TabEjecucion'
 import { getPartes } from '@/features/obras/services/ejecucionService'
 import { getIntegrantesPorCuadrilla } from '@/features/obras/services/personalService'
 import {
-  borrarParte, cambiarEstado, cambiarEstadoTarea, crearTarea, definirMedicion, medirEnLote, registrarEjecucion,
+  asignarActividadAPedido, borrarParte, cambiarEstado, cambiarEstadoTarea, crearTarea,
+  definirMedicion, medirEnLote, registrarEjecucion,
 } from '@/features/obras/services/actionsEjecucion'
 import { TabPersonal } from '@/features/obras/components/TabPersonal'
 import { TabOperacion } from '@/features/obras/components/TabOperacion'
@@ -377,6 +378,7 @@ export default async function ObraPage({
           // Ni el typecheck ni el build lo ven —las firmas son idénticas—; sólo el navegador.
           crearImpedimento={crearImpedimento.bind(null, obraId)}
           liberarImpedimento={liberarImpedimento.bind(null, obraId)}
+          asignarActividadAPedido={asignarActividadAPedido.bind(null, obraId)}
         />
       )}
 

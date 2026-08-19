@@ -262,3 +262,16 @@ test('9 · la Lista mide muchas actividades de una vez', async ({ page }) => {
     return d && { ...d, cantidad_objetivo: Number(d.cantidad_objetivo) }
   }, { timeout: 20_000 }).toMatchObject({ unidad: 'un', cantidad_objetivo: 12, metodo_avance: 'cantidad' })
 })
+
+test('10 · un pedido de material puede decir para qué actividad es', async ({ page }) => {
+  // SAN FRANCISCO y no Messina: los pedidos vienen del Sheet de AppSheet y sólo tres obras tienen.
+  // Una obra sin pedidos dibuja su estado vacío, y el test mediría eso en vez de la columna.
+  await entrar(page)
+  await page.goto('/obras/san-francisco?vista=operacion&sub=pedidos')
+  await expect(page.getByTestId('tabla-pedidos')).toBeVisible({ timeout: 20_000 })
+
+  const selector = page.getByTestId('pedido-actividad').first()
+  await expect(selector, 'la columna Para no se dibujó').toBeVisible()
+  // Más de una opción: «sin asignar» más las actividades de ESA obra.
+  expect(await selector.locator('option').count()).toBeGreaterThan(1)
+})
