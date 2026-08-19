@@ -26,10 +26,15 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import type { Resultado } from './actions'
 import { leerReparto, totalDelReparto } from './repartoHH'
+import { TIPOS_HORA, esTipoHora } from './tipoHora'
 
 const HORAS = z.coerce.number()
   .positive('Las horas tienen que ser mayores que cero')
   .max(24, 'En un día no se pueden trabajar más de 24 horas')
+
+// LA CLASE DE HORA VIAJA CON LA HORA. Sin default en el schema no: `normal` es lo que se carga el
+// 95% de los días y exigirlo en cada envío sólo agrega una forma de que falle.
+const TIPO = z.enum(TIPOS_HORA).default('normal')
 
 const imputacionSchema = z.object({
   persona_id: z.string().uuid('Elegí a quién le imputás las horas'),
@@ -38,6 +43,7 @@ const imputacionSchema = z.object({
   // obligaría a inventar una para poder registrar horas que sí se trabajaron.
   actividad_id: z.union([z.string().uuid(), z.literal('')]).optional(),
   horas: HORAS,
+  tipo_hora: TIPO,
   notas: z.string().trim().max(300).optional(),
 })
 
@@ -67,6 +73,7 @@ export async function imputarHH(obraId: string, form: FormData): Promise<Resulta
     // `not null` y un insert sin ella fallaría si el trigger se cayera.
     fecha_inicio_semana: d.fecha,
     horas: d.horas,
+    tipo_hora: d.tipo_hora,
     fuente_legacy: 'web:obra',
     notas: d.notas || null,
   })
@@ -78,6 +85,7 @@ export async function imputarHH(obraId: string, form: FormData): Promise<Resulta
 const masivaSchema = z.object({
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Elegí el día'),
   actividad_id: z.union([z.string().uuid(), z.literal('')]).optional(),
+  tipo_hora: TIPO,
   notas: z.string().trim().max(300).optional(),
 })
 
@@ -101,17 +109,23 @@ export async function imputarHHMasivo(obraId: string, form: FormData): Promise<R
   const supabase = await createClient()
   const actividad = d.actividad_id || null
 
-  let yaCargados = supabase.from('registros_hh').select('persona_id')
+  // EL REPETIDO SE MIDE POR (persona, día, actividad, TIPO), que es la clave única real desde que
+  // existe el tipo de hora: alguien con 8 normales cargadas SÍ puede recibir 2 al 50% el mismo día.
+  // Sin el tipo acá, la carga masiva de extras se saltearía a toda la cuadrilla en silencio.
+  const tipoDe = (r: { tipo_hora?: string }) => (esTipoHora(r.tipo_hora) ? r.tipo_hora : d.tipo_hora)
+  let yaCargados = supabase.from('registros_hh').select('persona_id, tipo_hora')
     .eq('obra_canonica_id', obraId).eq('fecha', d.fecha)
+    .in('tipo_hora', [...new Set(reparto.map(tipoDe))])
     .in('persona_id', reparto.map((r) => r.persona_id))
   yaCargados = actividad ? yaCargados.eq('actividad_id', actividad) : yaCargados.is('actividad_id', null)
   const { data: existentes, error: errorLectura } = await yaCargados
   if (errorLectura) return { ok: false, error: errorLectura.message }
 
-  const repetidos = new Set((existentes ?? []).map((f) => (f as { persona_id: string }).persona_id))
-  const nuevos = reparto.filter((r) => !repetidos.has(r.persona_id))
+  const repetidos = new Set((existentes ?? [])
+    .map((f) => `${(f as { persona_id: string }).persona_id}·${(f as { tipo_hora: string }).tipo_hora}`))
+  const nuevos = reparto.filter((r) => !repetidos.has(`${r.persona_id}·${tipoDe(r)}`))
   if (nuevos.length === 0) {
-    return { ok: false, error: `Las ${reparto.length} personas ya tenían horas cargadas ese día.` }
+    return { ok: false, error: `Las ${reparto.length} personas ya tenían esas horas cargadas ese día.` }
   }
 
   const { error } = await supabase.from('registros_hh').insert(nuevos.map((r) => ({
@@ -121,6 +135,7 @@ export async function imputarHHMasivo(obraId: string, form: FormData): Promise<R
     fecha: d.fecha,
     fecha_inicio_semana: d.fecha,
     horas: r.horas,
+    tipo_hora: tipoDe(r),
     fuente_legacy: 'web:masiva',
     notas: d.notas || null,
   })))

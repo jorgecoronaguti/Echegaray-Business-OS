@@ -51,6 +51,12 @@ function Titular({ plan, asignaciones, registros }: {
   const dif = hhPlan != null && hhReal != null ? hhReal - hhPlan : null
   const vigentes = asignaciones.filter((a) => !a.hasta)
   const n = (x: number) => Math.round(x).toLocaleString('es-AR')
+  // LAS EXTRAS SALEN DE LOS MISMOS REGISTROS, no de un contador aparte: son las horas de la obra,
+  // desagregadas por clase. Se nombran sólo si las hubo — «0 extras» en toda obra sin extras es
+  // ruido que tapa a la que sí las tuvo.
+  const extras = registros
+    .filter((r) => r.tipo_hora === 'extra_50' || r.tipo_hora === 'extra_100')
+    .reduce((t, r) => t + r.horas, 0)
 
   const partes = [
     vigentes.length === 0 ? 'nadie asignado' : `${vigentes.length} ${vigentes.length === 1 ? 'persona' : 'personas'}`,
@@ -58,6 +64,7 @@ function Titular({ plan, asignaciones, registros }: {
     hhReal == null
       ? 'HH real sin imputar'
       : `HH real ${n(hhReal)} (${registros.length} ${registros.length === 1 ? 'registro' : 'registros'})`,
+    ...(extras > 0 ? [`${n(extras)} HH extras`] : []),
   ]
 
   return (

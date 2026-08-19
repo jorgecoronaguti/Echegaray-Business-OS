@@ -137,7 +137,11 @@ export interface ImputacionHH {
   obra_canonica_id: string | null
   actividad_id: string | null
   actividad_nombre: string | null
+  /** El nombre de la obra, para no mostrar un uuid donde va un nombre. */
+  obra_nombre: string | null
   horas: number
+  /** normal | extra_50 | extra_100 | ausencia | licencia. Ver `features/obras/services/tipoHora.ts`. */
+  tipo_hora: string
   notas: string | null
   fuente_legacy: string
 }

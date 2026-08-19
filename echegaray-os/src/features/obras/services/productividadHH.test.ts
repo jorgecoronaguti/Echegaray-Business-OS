@@ -23,7 +23,7 @@ import type { Asignacion } from '../types/index.ts'
 
 const act = (p: Partial<ActividadHH>): ActividadHH => ({
   actividad_id: 'a1', obra_id: 'o1', nombre: 'Hormigón', tipo: 'tarea', orden: 1,
-  avance_pct: null, hh_plan: null, hh_real: null, n_imputaciones: 0,
+  avance_pct: null, hh_plan: null, hh_real: null, hh_extra: null, n_imputaciones: 0,
   desvio_pct: null, consumo_plan_pct: null, ...p,
 })
 
@@ -69,7 +69,7 @@ const asignacion = (p: Partial<Asignacion>): Asignacion => ({
 const registro = (p: Partial<RegistroHH>): RegistroHH => ({
   id: 'r1', obra_canonica_id: 'o1', persona_id: 'p1', trabajador_o_cuadrilla: null,
   persona_nombre: null, actividad_id: null, actividad_nombre: null, fecha: '2026-08-19',
-  fecha_inicio_semana: '2026-08-17', horas: 8, categoria: null, notas: null, ...p,
+  fecha_inicio_semana: '2026-08-17', horas: 8, tipo_hora: 'normal', categoria: null, notas: null, ...p,
 })
 
 test('las horas cruzan por id aunque el nombre esté escrito distinto', () => {
