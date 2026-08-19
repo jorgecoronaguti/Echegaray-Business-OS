@@ -67,6 +67,7 @@ export function Gantt({
   hhPorActividad,
   datosPorActividad,
   rubros = [],
+  obraId,
 }: {
   actividades: Actividad[]
   restricciones?: Restriccion[]
@@ -103,6 +104,9 @@ export function Gantt({
   datosPorActividad?: Map<string, DatosDeActividad>
   /** Los rubros de la obra, para poder mover la actividad de grupo desde el panel. */
   rubros?: string[]
+  /** La obra, para que el panel pueda llevar al historial completo. El Gantt global no la pasa:
+   *  ahí cada fila es de una obra distinta. */
+  obraId?: string
 }) {
   const [escala, setEscala] = useState<Escala>('semana')
   const [selId, setSelId] = useState<string | null>(seleccionInicial)
@@ -489,6 +493,7 @@ export function Gantt({
                   hh={hhPorActividad?.get(sel.id)}
                   datos={datosPorActividad?.get(sel.id) ?? DATOS_VACIOS}
                   rubros={rubros}
+                  {...(obraId ? { obraId } : {})}
                   acciones={acciones}
                   actividades={actividades}
                   dependencias={dependencias}

@@ -207,6 +207,7 @@ export function TabCronograma({
             hhPorActividad={hhPorActividad}
             datosPorActividad={datosPorActividad}
             rubros={nombresDeRubro}
+            obraId={obraId}
             {...(hoy ? { hoy } : {})}
           />
           {archivadas.length > 0 && restaurarActividad && (

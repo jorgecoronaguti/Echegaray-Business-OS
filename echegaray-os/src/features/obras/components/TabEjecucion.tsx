@@ -18,7 +18,7 @@
 // no «¿qué cargué?». El detalle de partes vive abajo, plegado, para poder auditar y corregir.
 
 import { useMemo, useState } from 'react'
-import { BotonAccion, Callout, Campo, CTRL, FormAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
+import { BotonAccion, Campo, CTRL, FormAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
 import type { Actividad, ParteEjecucion, Persona } from '../types'
 import { deHoy } from '../services/ejecucionService'
 import { C, Fila, Tabla, Vacio } from './tablas'

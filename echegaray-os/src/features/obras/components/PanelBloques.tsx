@@ -186,9 +186,11 @@ export function BloqueRecursos({ a, personas, reales, equipos }: {
 // EJECUCIÓN RECIENTE — el historial de la actividad, sin salir del panel
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export function BloqueEjecucion({ a, partes, personasPorFecha }: {
+export function BloqueEjecucion({ a, partes, personasPorFecha, verTodo }: {
   a: Actividad
   partes: ParteEjecucion[]
+  /** A dónde lleva «ver todo el historial». Sin él se dice cuántos quedan, sin enlace. */
+  verTodo?: string
   /** Cuántas HH y cuántas personas se imputaron a ESTA actividad cada día. Sale de `registros_hh`,
    *  no del parte: el parte no guarda horas, y por eso las dos columnas pueden faltar. */
   personasPorFecha: Map<string, { horas: number; personas: number }>
@@ -235,7 +237,13 @@ export function BloqueEjecucion({ a, partes, personasPorFecha }: {
         </table>
       </div>
       {partes.length > 5 && (
-        <p className="mt-1 text-[11px] text-faint">y {partes.length - 5} parte(s) más, en la solapa Ejecución.</p>
+        <p className="mt-1 text-[11px] text-faint">
+          {verTodo
+            ? <a href={verTodo} className="text-muted underline underline-offset-2" data-testid="ver-historial">
+                Ver todo el historial ({partes.length}) →
+              </a>
+            : `y ${partes.length - 5} parte(s) más, en la solapa Ejecución.`}
+        </p>
       )}
     </section>
   )

@@ -197,8 +197,10 @@ function AvanceRapido({ a, avance }: { a: Actividad; avance: AccionesCronograma[
 
 export function PanelActividad({
   actividad, personas, acciones, alCerrar, actividades = [], dependencias = [], impedimentos = [],
-  hh, datos = DATOS_VACIOS, rubros = [], hoy = new Date(),
+  hh, datos = DATOS_VACIOS, rubros = [], hoy = new Date(), obraId,
 }: {
+  /** Para poder llevar al historial completo, que vive en la solapa Ejecución. */
+  obraId?: string
   actividad: Actividad
   personas: Persona[]
   acciones: AccionesCronograma
@@ -287,7 +289,12 @@ export function PanelActividad({
 
           <BloqueRecursos a={a} personas={personas} reales={datos.personasReales} equipos={datos.equipos} />
 
-          <BloqueEjecucion a={a} partes={datos.partes} personasPorFecha={datos.hhPorFecha} />
+          <BloqueEjecucion
+            a={a}
+            partes={datos.partes}
+            personasPorFecha={datos.hhPorFecha}
+            {...(obraId ? { verTodo: `/obras/${obraId}?vista=ejecucion` } : {})}
+          />
 
           {/* Las tareas SÓLO en una actividad: una tarea no tiene tareas. */}
           {!a.actividad_padre_id && (
