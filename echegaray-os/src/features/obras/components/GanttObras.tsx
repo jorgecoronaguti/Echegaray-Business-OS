@@ -43,7 +43,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
 import { construirEscala, type Escala } from '../services/escala'
 import { UMBRAL_ATRASO, ventana, type Barra, type FilaObra, type Semaforo } from '../services/ganttObras'
 import { ETAPA_LABEL } from '../types'
@@ -205,6 +205,24 @@ function BarraObra({ b, y, x }: { b: Barra, y: number, x: (iso: string) => numbe
 export function GanttObras({ filas, hoyIso }: { filas: FilaObra[], hoyIso: string }) {
   const router = useRouter()
   const [escala, setEscala] = useState<Escala>('semana')
+  // SE MIDE EL LUGAR REAL, no se supone. El lienzo tiene que llenar lo que le queda al lado de la
+  // columna fija; cuánto es eso depende de la ventana del navegador y cambia al rotar el teléfono o
+  // arrastrar el borde, así que se observa en vez de calcularse una vez. Mientras no se midió vale 0
+  // y manda la escala elegida: nunca se dibuja más chico de lo que corresponde.
+  const cajaRef = useRef<HTMLDivElement>(null)
+  const [anchoLibre, setAnchoLibre] = useState(0)
+  useEffect(() => {
+    const caja = cajaRef.current
+    if (!caja || typeof ResizeObserver === 'undefined') return
+    const medir = () => {
+      const fija = caja.querySelector('[data-columna-fija]')
+      setAnchoLibre(Math.max(0, caja.clientWidth - (fija?.clientWidth ?? 0)))
+    }
+    medir()
+    const obs = new ResizeObserver(medir)
+    obs.observe(caja)
+    return () => obs.disconnect()
+  }, [])
   const rango = useMemo(() => ventana(filas, hoyIso), [filas, hoyIso])
   const hayBase = filas.some((f) => f.barra?.base)
   const estados = useMemo(
@@ -241,7 +259,7 @@ export function GanttObras({ filas, hoyIso }: { filas: FilaObra[], hoyIso: strin
     )
   }
 
-  const { ancho, x, meses, ticks } = construirEscala(rango.desde, rango.hasta, escala)
+  const { ancho, x, meses, ticks } = construirEscala(rango.desde, rango.hasta, escala, anchoLibre)
   const alto = filas.length * ALTO_FILA
   const xHoy = x(hoyIso)
   const hoyVisible = xHoy >= 0 && xHoy <= ancho
@@ -253,10 +271,10 @@ export function GanttObras({ filas, hoyIso }: { filas: FilaObra[], hoyIso: strin
       {/* UN SOLO CONTENEDOR CON SCROLL, y el desplazamiento pasa ACÁ ADENTRO: en un teléfono de
           390px la página no se corre de costado, se corre el Gantt. `overscroll-x-contain` evita
           que al llegar al borde el gesto arrastre la pantalla entera. */}
-      <div className="relative max-h-[72vh] overflow-auto overscroll-x-contain">
+      <div ref={cajaRef} data-gantt-caja className="relative max-h-[72vh] overflow-auto overscroll-x-contain">
         <div className="flex w-max">
           {/* ── COLUMNA FIJA: las obras ────────────────────────────────────────── */}
-          <div className="sticky left-0 z-20 w-[148px] shrink-0 border-r border-line bg-surface sm:w-[452px]">
+          <div data-columna-fija className="sticky left-0 z-20 w-[148px] shrink-0 border-r border-line bg-surface sm:w-[452px]">
             <div className="sticky top-0 z-10 flex h-11 items-end gap-2 border-b border-line bg-surface px-3 pb-1.5 text-[10px] font-medium uppercase tracking-wide text-faint">
               <span className="flex-1">Obra</span>
               <span className="hidden flex-1 sm:inline">Cliente</span>

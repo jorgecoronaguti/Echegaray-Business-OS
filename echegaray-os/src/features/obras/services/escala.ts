@@ -15,9 +15,34 @@ export const PX_POR_DIA: Record<Escala, number> = { semana: 13, mes: 4 }
 const aDate = (iso: string) => new Date(iso + 'T00:00:00Z')
 const isoDe = (d: Date) => d.toISOString().slice(0, 10)
 
-export function construirEscala(desde: Date, hasta: Date, escala: Escala) {
-  const px = PX_POR_DIA[escala]
-  const ancho = Math.ceil((hasta.getTime() - desde.getTime()) / DIA) * px
+/**
+ * EL AIRE DEL FINAL. La última etiqueta de mes se dibuja EN su línea y el texto sale hacia la
+ * derecha: sin este margen, un lienzo que termina justo en el 1° de septiembre corta la palabra a la
+ * mitad —"Se"— y parece que la pantalla se rompió. Medido en producción el 19/08/2026.
+ */
+export const COLA_PX = 56
+
+/**
+ * ═══ EL LIENZO NO PUEDE SER MÁS ANGOSTO QUE EL LUGAR QUE TIENE (19/08/2026) ═══
+ *
+ * El dueño, con captura: *"hay un error en la vista gantt se corta y no corre a la derecha para ver
+ * todo el cronograma"*. No se cortaba por falta de scroll —el contenedor ya desplaza— sino al revés:
+ * en escala "mes" son 4 px por día, y con la cartera entera cayendo en unos dos meses el lienzo
+ * medía ~260 px dentro de un área de ~715 px. Las siete barras apretadas contra el borde izquierdo y
+ * medio panel en blanco a la derecha se leen como una pantalla rota, y la última etiqueta encima
+ * quedaba cortada.
+ *
+ * `pxMinimoTotal` es el ancho disponible: si la ventana no llega a llenarlo, los píxeles por día se
+ * ESTIRAN hasta que lo llene. La escala sigue siendo uniforme —todos los días miden lo mismo— así
+ * que las cabeceras siguen cayendo sobre sus barras; lo único que cambia es el zoom. Y nunca se
+ * achica por debajo de la escala elegida: si la cartera es larga, manda `PX_POR_DIA` y el lienzo
+ * desborda, que es cuando el desplazamiento tiene sentido.
+ */
+export function construirEscala(desde: Date, hasta: Date, escala: Escala, pxMinimoTotal = 0) {
+  const dias = Math.max(1, Math.ceil((hasta.getTime() - desde.getTime()) / DIA))
+  const disponible = Math.max(0, pxMinimoTotal - COLA_PX)
+  const px = Math.max(PX_POR_DIA[escala], disponible / dias)
+  const ancho = dias * px + COLA_PX
   const x = (iso: string) => ((aDate(iso).getTime() - desde.getTime()) / DIA) * px
 
   const meses: { label: string; x0: number }[] = []
