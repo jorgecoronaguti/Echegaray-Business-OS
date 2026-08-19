@@ -19,6 +19,7 @@ import {
 import type { ActividadHH, RegistroHH } from '../services/personalService'
 import type { Actividad, Asignacion, Persona } from '../types'
 import { lecturaProductividad } from '../services/productividadHH'
+import { TIPOS_HORA, TIPO_HORA_LABEL, type TipoHora } from '../services/tipoHora'
 
 const hh = (n: number | null) => (n == null ? '—' : n.toLocaleString('es-AR', { maximumFractionDigits: 1 }))
 const pct = (n: number | null) => (n == null ? '—' : `${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 1 })}%`)
@@ -79,6 +80,7 @@ export function TablaHoras({
           <th className="px-4 py-2 font-medium">Día</th>
           <th className="px-3 py-2 font-medium">Persona</th>
           <th className="px-3 py-2 font-medium">Actividad</th>
+          <th className="px-3 py-2 font-medium">Tipo</th>
           <th className="px-3 py-2 text-right font-medium">Horas</th>
           <th className="px-3 py-2" />
         </tr></thead>
@@ -97,6 +99,11 @@ export function TablaHoras({
                 )}
               </td>
               <td className="px-3 py-2 text-[12px] text-muted">{r.actividad_nombre ?? 'toda la obra'}</td>
+              {/* La normal no se rotula: es el 95% de las filas y ponerle una etiqueta a cada una
+                  haría que la excepción —que es lo que hay que ver— dejara de saltar a la vista. */}
+              <td className="px-3 py-2 text-[12px] text-muted">
+                {r.tipo_hora && r.tipo_hora !== 'normal' ? TIPO_HORA_LABEL[r.tipo_hora as TipoHora] : ''}
+              </td>
               <td className="px-3 py-2 text-right text-[12px] tabular-nums text-ink">{hh(r.horas)}</td>
               <td className="px-3 py-2 text-right">
                 <BotonAccion accion={borrarHoras} args={[r.id]} testid="borrar-hh" tono="peligro">Quitar</BotonAccion>
@@ -106,6 +113,21 @@ export function TablaHoras({
         </tbody>
       </table>
     </div>
+  )
+}
+
+/** LA CLASE DE HORA, en todas las cargas. Arranca en «Normal» porque es lo que se carga casi
+ *  siempre: el que tuvo extras la cambia, y el que no, no toca nada. */
+function SelectTipoHora({ nombre = 'tipo_hora', compacto = false }: { nombre?: string; compacto?: boolean }) {
+  return (
+    <select
+      name={nombre} defaultValue="normal" data-testid={compacto ? 'tipo-masiva' : 'tipo-hora'}
+      className={compacto
+        ? 'shrink-0 rounded-control border border-line bg-white px-1.5 py-1 text-[11px] text-muted'
+        : CTRL}
+    >
+      {TIPOS_HORA.map((t) => <option key={t} value={t}>{TIPO_HORA_LABEL[t]}</option>)}
+    </select>
   )
 }
 
@@ -167,6 +189,10 @@ export function FormIndividual({
         <Campo label="Actividad" ancho="col-span-2" ayuda="Opcional: en blanco quedan imputadas a la obra entera.">
           <SelectActividad actividades={actividades} />
         </Campo>
+        <Campo label="Tipo de hora" ancho="col-span-2"
+          ayuda="Las horas se cargan reales: el recargo no se multiplica acá.">
+          <SelectTipoHora />
+        </Campo>
         <Campo label="Observación" ancho="col-span-2">
           <input name="notas" maxLength={300} className={CTRL} />
         </Campo>
@@ -210,8 +236,11 @@ export function FormMasiva({
     <FormAccion accion={imputarMasivo} testid="form-hh-masiva" enviar="Imputar a todos" mensajeOk="Imputado.">
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
         <Campo label="Día"><input type="date" name="fecha" required className={CTRL} /></Campo>
-        <Campo label="Actividad" ancho="col-span-2 sm:col-span-3" ayuda="Opcional: en blanco quedan en la obra entera.">
+        <Campo label="Actividad" ancho="col-span-2 sm:col-span-2" ayuda="Opcional: en blanco quedan en la obra entera.">
           <SelectActividad actividades={actividades} />
+        </Campo>
+        <Campo label="Tipo de hora" ayuda="El de toda la carga. Se puede cambiar de a uno abajo.">
+          <SelectTipoHora />
         </Campo>
       </div>
 
@@ -223,11 +252,18 @@ export function FormMasiva({
               {gente.map((a) => (
                 <label key={a.persona_id} className="flex items-center justify-between gap-3 rounded-control border border-line bg-white px-2.5 py-1.5">
                   <span className="min-w-0 truncate text-[12px] text-ink">{a.persona_nombre}</span>
-                  <input
-                    type="number" name={`horas_${a.persona_id}`} min="0" max="24" step="0.5"
-                    defaultValue="8" data-testid="horas-masiva"
-                    className="w-16 shrink-0 rounded-control border border-line px-2 py-1 text-right text-[12px] tabular-nums text-ink"
-                  />
+                  {/* LA EXCEPCIÓN SE CORRIGE DONDE ESTÁ LA PERSONA. El dueño pidió poder cambiarle
+                      las horas Y el tipo a uno solo: en una cuadrilla que se quedó hasta tarde, dos
+                      hicieron extras y el resto no. Sin tipo por persona habría que cargar la misma
+                      cuadrilla dos veces. En blanco hereda el tipo general de arriba. */}
+                  <span className="flex shrink-0 items-center gap-1.5">
+                    <SelectTipoHora nombre={`tipo_${a.persona_id}`} compacto />
+                    <input
+                      type="number" name={`horas_${a.persona_id}`} min="0" max="24" step="0.5"
+                      defaultValue="8" data-testid="horas-masiva"
+                      className="w-16 shrink-0 rounded-control border border-line px-2 py-1 text-right text-[12px] tabular-nums text-ink"
+                    />
+                  </span>
                 </label>
               ))}
             </div>

@@ -116,6 +116,8 @@ export interface RegistroHH {
   fecha: string | null
   fecha_inicio_semana: string
   horas: number
+  /** normal | extra_50 | extra_100 | ausencia | licencia. Ver `services/tipoHora.ts`. */
+  tipo_hora: string
   categoria: string | null
   notas: string | null
 }
@@ -130,7 +132,7 @@ export interface RegistroHH {
 export async function getRegistrosHH(supabase: SupabaseClient, obraId?: string): Promise<ServiceResult<RegistroHH[]>> {
   const base = supabase.from('registros_hh')
     .select('id, obra_canonica_id, persona_id, trabajador_o_cuadrilla, actividad_id, fecha, ' +
-      'fecha_inicio_semana, horas, categoria, notas, obra_actividad(nombre)')
+      'fecha_inicio_semana, horas, tipo_hora, categoria, notas, obra_actividad(nombre)')
   const { data, error } = await (obraId ? base.eq('obra_canonica_id', obraId) : base)
     .not('obra_canonica_id', 'is', null)
     .order('fecha', { ascending: false, nullsFirst: false })
@@ -164,6 +166,8 @@ export interface ActividadHH {
   avance_pct: number | null
   hh_plan: number | null
   hh_real: number | null
+  /** Cuántas de esas HH reales fueron extras. Sale de la MISMA vista: no se recalcula. */
+  hh_extra: number | null
   n_imputaciones: number
   desvio_pct: number | null
   consumo_plan_pct: number | null
@@ -180,6 +184,7 @@ export async function getActividadHH(
       ...a,
       hh_plan: a.hh_plan == null ? null : Number(a.hh_plan),
       hh_real: a.hh_real == null ? null : Number(a.hh_real),
+      hh_extra: a.hh_extra == null ? null : Number(a.hh_extra),
     })),
     error: null,
   }

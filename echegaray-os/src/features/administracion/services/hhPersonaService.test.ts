@@ -13,14 +13,15 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { horasEntre, porActividad, porObra } from './hhPersonaService.ts'
+import { horasEntre, porActividad, porObra, resumenDelPeriodo } from './hhPersonaService.ts'
 import type { ImputacionHH } from '../types/index.ts'
 
 const imp = (p: Partial<ImputacionHH>): ImputacionHH => ({
   id: Math.random().toString(36).slice(2),
   fecha: '2026-08-19', fecha_inicio_semana: '2026-08-17',
-  obra_canonica_id: 'san-francisco', actividad_id: 'act-1', actividad_nombre: 'Hormigón',
-  horas: 8, notas: null, fuente_legacy: 'web:obra', ...p,
+  obra_canonica_id: 'san-francisco', obra_nombre: 'San Francisco',
+  actividad_id: 'act-1', actividad_nombre: 'Hormigón',
+  horas: 8, tipo_hora: 'normal', notas: null, fuente_legacy: 'web:obra', ...p,
 })
 
 test('el período recorta por el día trabajado, con los bordes adentro', () => {
@@ -67,4 +68,57 @@ test('el corte por obra suma lo mismo que el total: ninguna fila se pierde en el
   ]
   const total = filas.reduce((s, f) => s + f.horas, 0)
   assert.equal(porObra(filas).reduce((s, x) => s + x.horas, 0), total)
+})
+
+
+// ═══ EL RESUMEN QUE ALIMENTA LA LIQUIDACIÓN (19/08/2026) ═══
+//
+// El dueño: *"El futuro módulo salarial NO debe volver a pedir las horas"*. Esto prueba que de las
+// MISMAS filas que consume la obra salen las horas por clase, el total trabajado y la distribución
+// por obra — sin un segundo lugar donde cargar nada.
+
+test('una ausencia tiene horas y NO es trabajo: no suma al total trabajado', () => {
+  const r = resumenDelPeriodo([
+    imp({ fecha: '2026-08-03', horas: 8 }),
+    imp({ fecha: '2026-08-04', horas: 8, tipo_hora: 'ausencia' }),
+  ], '2026-08-01', '2026-08-15')
+  assert.equal(r.trabajadas, 8, 'la ausencia se contó como trabajo')
+  assert.equal(r.porTipo.ausencia, 8, 'la ausencia se perdió: hay que poder verla')
+  // Y no ensucia la distribución por obra, que es la que se convierte en costo.
+  assert.equal(r.obras.reduce((s, o) => s + o.horas, 0), 8)
+})
+
+test('las extras se cuentan aparte pero SÍ son horas trabajadas', () => {
+  const r = resumenDelPeriodo([
+    imp({ fecha: '2026-08-03', horas: 8 }),
+    imp({ fecha: '2026-08-03', horas: 2, tipo_hora: 'extra_50' }),
+    imp({ fecha: '2026-08-04', horas: 1, tipo_hora: 'extra_100' }),
+  ], '2026-08-01', '2026-08-15')
+  assert.equal(r.trabajadas, 11)
+  assert.equal(r.porTipo.normal, 8)
+  assert.equal(r.porTipo.extra_50, 2)
+  assert.equal(r.porTipo.extra_100, 1)
+})
+
+test('las horas se guardan REALES: dos al 50% son dos, no tres', () => {
+  // Multiplicar el recargo al cargar entierra el dato y además infla las HH de obra.
+  const r = resumenDelPeriodo([imp({ fecha: '2026-08-03', horas: 2, tipo_hora: 'extra_50' })],
+    '2026-08-01', '2026-08-15')
+  assert.equal(r.trabajadas, 2)
+})
+
+test('lo de otro período no entra, y las cinco clases se informan siempre', () => {
+  const r = resumenDelPeriodo([imp({ fecha: '2026-07-31', horas: 8 })], '2026-08-01', '2026-08-15')
+  assert.equal(r.trabajadas, 0)
+  // Cinco ceros explícitos: una clave ausente obliga a quien lee a preguntarse si hubo o no hubo.
+  assert.deepEqual(Object.keys(r.porTipo).sort(),
+    ['ausencia', 'extra_100', 'extra_50', 'licencia', 'normal'])
+})
+
+test('la distribución por obra se rotula con el NOMBRE, no con el id', () => {
+  const r = resumenDelPeriodo([
+    imp({ fecha: '2026-08-03', horas: 8, obra_canonica_id: 'o1', obra_nombre: 'Galpón 9' }),
+    imp({ fecha: '2026-08-04', horas: 4, obra_canonica_id: 'o2', obra_nombre: 'Pilón' }),
+  ], '2026-08-01', '2026-08-15')
+  assert.deepEqual(r.obras.map((o) => `${o.etiqueta} ${o.horas}`), ['Galpón 9 8', 'Pilón 4'])
 })

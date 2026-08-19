@@ -27,7 +27,8 @@ import { AltaDocumento, Bloque, Dato } from '@/features/administracion/component
 import { NavFicha, VISTAS_FICHA, type VistaFicha } from '@/features/administracion/components/NavFicha'
 import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
 import { getAsignacionesDe, getDocumentos, getPersona } from '@/features/administracion/services/personasService'
-import { getHHDePersona, horasEntre, porActividad, porObra } from '@/features/administracion/services/hhPersonaService'
+import { getHHDePersona, resumenDelPeriodo } from '@/features/administracion/services/hhPersonaService'
+import { esPeriodo, rotulo, ventanaDe, type Periodo } from '@/features/administracion/services/periodoHH'
 import { darDeBaja, editarPersona, reincorporar, type GrupoEdicion } from '@/features/administracion/services/personasActions'
 import { cerrarAsignacionDePersona } from '@/features/administracion/services/asignacionActions'
 import { desvincularDocumento, vincularDocumento } from '@/features/administracion/services/documentosActions'
@@ -35,16 +36,13 @@ import { etiquetaCategoria } from '@/features/administracion/types'
 
 export const dynamic = 'force-dynamic'
 
-type Busqueda = { v?: string; editar?: string }
+type Busqueda = { v?: string; editar?: string; p?: string }
 
-/** El período del bloque HORAS: los últimos 30 días. Se declara con fechas concretas en la pantalla
- *  —no «el último mes»— porque un total sin ventana declarada no se puede verificar contra nada. */
-function ultimos30() {
-  const hasta = new Date()
-  const desde = new Date(hasta)
-  desde.setUTCDate(desde.getUTCDate() - 29)
-  return { desde: desde.toISOString().slice(0, 10), hasta: hasta.toISOString().slice(0, 10) }
-}
+// EL PERÍODO LO ELIGE QUIEN MIRA (19/08/2026). Antes era una ventana fija de 30 días, que no
+// coincide con NINGUNA liquidación: el dueño pidió *"día · semana · quincena · mes"*, y la quincena
+// es la de la empresa —1 al 15 y 16 a fin de mes—, no quince días para atrás. Ver
+// `services/periodoHH.ts`, donde eso se calcula y se prueba sin depender del reloj.
+const PERIODO_POR_DEFECTO: Periodo = 'quincena'
 
 export default async function FichaPersonaPage({
   params, searchParams,
@@ -83,7 +81,11 @@ export default async function FichaPersonaPage({
   const vigente = (asignaciones?.data ?? []).find((a) => !a.hasta) ?? null
   const egresada = Boolean(persona.fecha_egreso)
   const filasHH = horas?.data ?? []
-  const ventana = ultimos30()
+  const periodo = esPeriodo(sp.p) ? sp.p : PERIODO_POR_DEFECTO
+  // EL DÍA SE FIJA EN EL SERVIDOR: calcularlo en el cliente daría una quincena distinta alrededor
+  // de la medianoche según desde dónde se mire.
+  const ventana = ventanaDe(periodo, new Date().toISOString().slice(0, 10))
+  const resumen = resumenDelPeriodo(filasHH, ventana.desde, ventana.hasta)
 
   return (
     <PageShell
@@ -183,11 +185,15 @@ export default async function FichaPersonaPage({
           {vista === 'horas' && (
             <Bloque titulo="Horas imputadas" testid="bloque-horas">
               <BloqueHoras
-                periodo={`${ventana.desde} a ${ventana.hasta}`}
-                horasPeriodo={horasEntre(filasHH, ventana.desde, ventana.hasta)}
-                porObra={porObra(filasHH)}
-                porActividad={porActividad(filasHH)}
+                periodo={rotulo(ventana)}
+                horasPeriodo={resumen.trabajadas}
+                porTipo={resumen.porTipo}
+                porObra={resumen.obras}
+                porActividad={resumen.actividades}
+                registros={resumen.registros}
                 historial={filasHH}
+                periodoActivo={periodo}
+                hrefPeriodo={(p) => `${base}?${new URLSearchParams({ v: 'horas', p })}`}
               />
             </Bloque>
           )}

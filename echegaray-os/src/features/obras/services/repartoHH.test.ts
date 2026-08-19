@@ -19,7 +19,7 @@ const DOS = '22222222-2222-4222-8222-222222222222'
 
 test('el casillero vacío NO se imputa como cero', () => {
   const r = leerReparto([[`horas_${UNO}`, '8'], [`horas_${DOS}`, '']])
-  assert.deepEqual(r, [{ persona_id: UNO, horas: 8 }])
+  assert.deepEqual(r, [{ persona_id: UNO, horas: 8, tipo_hora: undefined }])
 })
 
 test('el cero explícito tampoco se imputa: es la forma de sacar a alguien de la carga', () => {
@@ -31,7 +31,7 @@ test('un valor negativo o un texto se ignoran en vez de convertirse en horas', (
 })
 
 test('la coma decimal es media jornada, no NaN', () => {
-  assert.deepEqual(leerReparto([[`horas_${UNO}`, '4,5']]), [{ persona_id: UNO, horas: 4.5 }])
+  assert.deepEqual(leerReparto([[`horas_${UNO}`, '4,5']]), [{ persona_id: UNO, horas: 4.5, tipo_hora: undefined }])
 })
 
 test('los otros campos del formulario no entran al reparto', () => {
@@ -43,7 +43,7 @@ test('los otros campos del formulario no entran al reparto', () => {
     ['notas', 'lo que sea'],
     [`horas_${DOS}`, '6'],
   ])
-  assert.deepEqual(r, [{ persona_id: DOS, horas: 6 }])
+  assert.deepEqual(r, [{ persona_id: DOS, horas: 6, tipo_hora: undefined }])
 })
 
 test('una clave que no es un uuid no se acepta', () => {
@@ -52,4 +52,34 @@ test('una clave que no es un uuid no se acepta', () => {
 
 test('el total es el que se le informa a quien cargó', () => {
   assert.equal(totalDelReparto([{ persona_id: UNO, horas: 8 }, { persona_id: DOS, horas: 4.5 }]), 12.5)
+})
+
+
+// ═══ EL TIPO DE HORA POR PERSONA (19/08/2026) ═══
+//
+// El dueño pidió poder cambiarle el tipo a UNO SOLO de la cuadrilla: *"cambiar tipo de hora de una
+// persona"*. En una cuadrilla que se quedó hasta tarde, dos hicieron extras y el resto no — sin tipo
+// propio habría que cargar la misma cuadrilla dos veces.
+
+test('cada persona puede llevar su propia clase de hora', () => {
+  const r = leerReparto([
+    [`horas_${UNO}`, '8'], [`tipo_${UNO}`, 'normal'],
+    [`horas_${DOS}`, '2'], [`tipo_${DOS}`, 'extra_50'],
+  ])
+  assert.deepEqual(r, [
+    { persona_id: UNO, horas: 8, tipo_hora: 'normal' },
+    { persona_id: DOS, horas: 2, tipo_hora: 'extra_50' },
+  ])
+})
+
+test('el tipo que llega DESPUÉS de las horas se toma igual', () => {
+  // `FormData` no garantiza orden entre campos de la misma persona: leer en una sola pasada dejaba
+  // el tipo afuera según cómo el navegador serializara el formulario.
+  const r = leerReparto([[`horas_${UNO}`, '3'], [`tipo_${UNO}`, 'extra_100']])
+  assert.equal(r[0].tipo_hora, 'extra_100')
+})
+
+test('sin tipo propio queda indefinido: lo resuelve el tipo general del formulario', () => {
+  const r = leerReparto([[`horas_${UNO}`, '8'], [`tipo_${UNO}`, '  ']])
+  assert.equal(r[0].tipo_hora, undefined)
 })

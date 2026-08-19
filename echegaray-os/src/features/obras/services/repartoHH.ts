@@ -12,9 +12,14 @@
 export interface RepartoPersona {
   persona_id: string
   horas: number
+  /** La clase de hora de ESA persona. El dueño pidió poder cambiarla de a uno: en una cuadrilla que
+   *  se quedó hasta tarde, dos hicieron extras y el resto no. Sin tipo propio habría que cargar la
+   *  cuadrilla dos veces. Vacío = el tipo general del formulario. */
+  tipo_hora?: string
 }
 
 const CLAVE = /^horas_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i
+const CLAVE_TIPO = /^tipo_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i
 
 /**
  * Las horas de cada persona en una carga masiva, leídas del formulario.
@@ -28,13 +33,21 @@ const CLAVE = /^horas_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
  */
 export function leerReparto(entradas: Iterable<[string, FormDataEntryValue]>): RepartoPersona[] {
   const filas: RepartoPersona[] = []
-  for (const [clave, valor] of entradas) {
+  const tipos = new Map<string, string>()
+  // DOS PASADAS SOBRE UNA SOLA LECTURA: `FormData` no garantiza que el tipo venga antes que las
+  // horas de la misma persona, y recorrer dos veces un iterable ya consumido devuelve vacío.
+  const todas = [...entradas]
+  for (const [clave, valor] of todas) {
+    const t = CLAVE_TIPO.exec(clave)
+    if (t && typeof valor === 'string' && valor.trim()) tipos.set(t[1].toLowerCase(), valor.trim())
+  }
+  for (const [clave, valor] of todas) {
     const m = CLAVE.exec(clave)
     if (!m || typeof valor !== 'string') continue
     const horas = Number(valor.trim().replace(',', '.'))
     // Un negativo o un texto NO se convierten en 0 ni se imputan: se ignoran, igual que el blanco.
     if (!Number.isFinite(horas) || horas <= 0) continue
-    filas.push({ persona_id: m[1], horas })
+    filas.push({ persona_id: m[1], horas, tipo_hora: tipos.get(m[1].toLowerCase()) })
   }
   return filas
 }
