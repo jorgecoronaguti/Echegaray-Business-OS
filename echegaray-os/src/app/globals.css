@@ -101,3 +101,17 @@
     border-radius: 6px;
   }
 }
+
+/* LA BARRA DE CARGA — el recorrido de ida y vuelta de `IndicadorNavegacion`.
+   Es indeterminada A PROPÓSITO: el servidor no informa progreso, y una barra que
+   "llega al 90%" y se queda ahí miente sobre lo que falta. Esto dice una sola cosa,
+   la única que se sabe: el sistema está trabajando. Bajo `motion-safe`, así que
+   quien pidió menos movimiento en su sistema ve la barra quieta, no parpadeando. */
+@keyframes barra-carga {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
