@@ -111,8 +111,12 @@ test('la misma hora, cargada una vez, se lee desde la obra y desde la persona', 
     .getByTestId('quitar-asignacion').click()
 
   await page.reload()
-  await expect(page.getByTestId('tabla-personal')).not.toContainText(MARCA)
-  await expect(page.getByTestId('tabla-hh')).not.toContainText(MARCA)
+  // `not.toContainText` sobre un locator QUE NO EXISTE falla. Y al sacar la última asignación la
+  // pantalla deja de dibujar la tabla y pone su estado vacío, así que el locator desaparece — que
+  // es justamente la prueba de que quedó limpia. Se cuenta en vez de negar el texto: funciona en
+  // los dos casos, con tabla y sin tabla.
+  await expect(page.getByTestId('tabla-personal').filter({ hasText: MARCA })).toHaveCount(0)
+  await expect(page.getByTestId('tabla-hh').filter({ hasText: MARCA })).toHaveCount(0)
 
   // La persona SE ARCHIVA, no se borra: es lo que dice el modelo —el legajo de alguien que trabajó
   // no se elimina— y es también la razón por la que no se comprueba que su nombre desaparezca de la
