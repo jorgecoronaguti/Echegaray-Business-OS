@@ -21,10 +21,19 @@ const DEL_GANTT: { campo: CampoOrden; label: string }[] = [
   { campo: 'avance', label: 'avance' },
 ]
 
-export function OrdenGantt({ activo, dir, archivadas }: { activo: CampoOrden | null; dir: Direccion; archivadas: boolean }) {
+export function OrdenGantt({ activo, dir, archivadas, etapa, q: texto }: {
+  activo: CampoOrden | null
+  dir: Direccion
+  archivadas: boolean
+  /** El filtro puesto: cambiar el orden no puede devolver a la pantalla las obras que se filtraron. */
+  etapa?: string
+  q?: string
+}) {
   const q = (extra: Record<string, string>) => {
     const p = new URLSearchParams()
     if (archivadas) p.set('archivadas', '1')
+    if (etapa) p.set('etapa', etapa)
+    if (texto) p.set('q', texto)
     for (const [k, v] of Object.entries(extra)) p.set(k, v)
     const s = p.toString()
     return `/obras/gantt${s ? `?${s}` : ''}`

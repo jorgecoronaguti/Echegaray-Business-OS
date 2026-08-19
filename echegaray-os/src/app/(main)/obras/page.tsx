@@ -46,6 +46,8 @@ import { getPerfilActual } from '@/features/auth/services/authService'
 import { esAdministracion } from '@/features/auth/types/areas'
 import { esCampo, ordenar, type Direccion } from '@/features/obras/services/ordenObras'
 import { ThOrden } from '@/features/obras/components/ThOrden'
+import { filtrar, filtroDesde } from '@/features/obras/services/filtroObras'
+import { FiltrosObras } from '@/features/obras/components/FiltrosObras'
 
 export const dynamic = 'force-dynamic'
 
@@ -138,9 +140,11 @@ function Cliente({ o }: { o: ObraPanel }) {
 export default async function ObrasPage({
   searchParams,
 }: {
-  searchParams: Promise<{ archivadas?: string; orden?: string; dir?: string }>
+  searchParams: Promise<{ archivadas?: string; orden?: string; dir?: string; etapa?: string; q?: string }>
 }) {
-  const { archivadas: verArchivadas, orden: ordenPedido, dir: dirPedida } = await searchParams
+  const sp = await searchParams
+  const { archivadas: verArchivadas, orden: ordenPedido, dir: dirPedida } = sp
+  const filtro = filtroDesde(sp)
   const conArchivadas = verArchivadas === '1'
   // EL ORDEN VIENE DE LA URL Y SE VALIDA. Un `?orden=sueldo` escrito a mano no ordena por nada: la
   // pantalla vuelve al orden de la fuente en vez de romperse o de inventar una columna.
@@ -181,10 +185,18 @@ export default async function ObrasPage({
   // EL ORDEN SE APLICA DESPUÉS DE FILTRAR Y SOBRE UNA COPIA: `todas` es la lectura compartida y el
   // pie de archivadas la sigue contando. El desvío de plazo no vive en la fila —llega de la otra
   // consulta—, así que se le pasa como función en vez de fusionar las dos tablas para poder ordenar.
-  const obras = ordenar(visibles, orden, dir, (id) => porObra.get(id)?.desvio_plazo_dias ?? null)
+  // FILTRAR PRIMERO, ORDENAR DESPUÉS: ordenar trece filas para tirar diez es trabajo al pedo, y el
+  // contador de "N de M" tiene que contar sobre lo que se ve, no sobre lo que se leyó.
+  const enFiltro = filtrar(visibles, filtro)
+  const obras = ordenar(enFiltro, orden, dir, (id) => porObra.get(id)?.desvio_plazo_dias ?? null)
   const activas = obras.filter((o) => o.estado === 'activa')
 
-  const qBase = { archivadas: conArchivadas ? '1' : undefined }
+  // Lo que hay que conservar al tocar un encabezado o una pastilla: el resto de la vista.
+  const qBase = {
+    archivadas: conArchivadas ? '1' : undefined,
+    etapa: filtro.etapa ?? undefined,
+    q: filtro.q || undefined,
+  }
   // Mostrar u ocultar las archivadas NO tiene por qué perder el orden que el que mira eligió.
   const qOrden = orden ? `?orden=${orden}&dir=${dir}` : ''
 
@@ -205,6 +217,13 @@ export default async function ObrasPage({
     >
       {/* NIVEL 2 DEL ÁREA: Resumen y Gantt. Nada más entra en esta barra. */}
       <NavObras />
+
+      {/* La barra va entre la navegación y la tabla: es una decisión sobre lo que se está por leer.
+          Con una sola obra no aparece — filtrar una lista de uno es chrome. */}
+      {!error && visibles.length > 1 && (
+        <FiltrosObras filtro={filtro} base="/obras" resultados={obras.length} total={visibles.length}
+          extra={{ archivadas: conArchivadas ? '1' : undefined, orden: orden ?? undefined, dir: orden ? dir : undefined }} />
+      )}
 
       {error && <Callout tono="neg">No pude leer las obras: {error}</Callout>}
 
