@@ -38,6 +38,7 @@ import { useMemo, useState } from 'react'
 import { BotonAccion, type ResultadoAccion } from '@/shared/components/ui'
 import { agruparActividades, agruparPorObra, estadoDe, filasVisibles } from '../services/cronograma'
 import type { Actividad, Dependencia, Persona, Restriccion } from '../types'
+import type { ActividadHH } from '../services/personalService'
 import { FormNuevaActividad, PanelActividad, type AccionesCronograma } from './PanelActividad'
 import { construirEscala, type Escala } from '../services/escala'
 import { BarraMasiva, Casilla, SellarLineaBase, type AccionesEnLote } from './AccionesMasivas'
@@ -61,6 +62,7 @@ export function Gantt({
   seleccionInicial = null,
   masivas,
   obras,
+  hhPorActividad,
 }: {
   actividades: Actividad[]
   restricciones?: Restriccion[]
@@ -87,6 +89,10 @@ export function Gantt({
    * global habría empezado igual y divergido en el primer arreglo que se le hiciera a uno solo.
    */
   obras?: { id: string; nombre: string }[]
+  /** HH plan contra real por actividad, indexada por id. Sale de `obra_actividad_hh`, la MISMA
+   *  vista que lee la solapa Personal: el Cronograma no recalcula nada, muestra el mismo número.
+   *  Opcional, como el resto de los props de este componente — el Gantt global no la trae. */
+  hhPorActividad?: Map<string, ActividadHH>
 }) {
   const [escala, setEscala] = useState<Escala>('semana')
   const [selId, setSelId] = useState<string | null>(seleccionInicial)
@@ -475,6 +481,7 @@ export function Gantt({
                 <PanelActividad
                   actividad={sel}
                   personas={personas}
+                  hh={hhPorActividad?.get(sel.id)}
                   acciones={acciones}
                   actividades={actividades}
                   dependencias={dependencias}

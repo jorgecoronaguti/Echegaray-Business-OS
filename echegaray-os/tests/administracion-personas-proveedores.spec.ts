@@ -58,20 +58,38 @@ test.describe('lo de Administración es de Administración', () => {
     test.setTimeout(120000)
     const jefe = await entrar(JEFE.email, JEFE.password)
 
-    // ═══ ESTE TEST EXIGÍA CERO EN LAS TRES. EL DUEÑO LO CORRIGIÓ (19/08/2026) ═══
+    // ═══ ESTE TEST CAMBIÓ DOS VECES EL MISMO DÍA, Y LAS DOS POR EL DUEÑO (19/08/2026) ═══
     //
-    //   *"La política anterior quedó DEMASIADO restrictiva… Un usuario Obras debe poder consultar
-    //   clientes, contactos, personas, proveedores… VER INFORMACIÓN OPERATIVA ≠ ADMINISTRAR EL
-    //   MAESTRO."*
+    // Mañana: *"La política anterior quedó DEMASIADO restrictiva… Un usuario Obras debe poder
+    // consultar clientes, contactos, personas, proveedores… VER INFORMACIÓN OPERATIVA ≠ ADMINISTRAR
+    // EL MAESTRO."* → se abrió `personas` con `using (true)`.
     //
-    // Se abre el legajo OPERATIVO. Lo que no se abre —y es una decisión declarada, de otro eje que
-    // el dueño no tocó— es el sueldo y los documentos de identidad de una persona: eso no es
-    // información de ejecución de obra. La línea la sostiene un GRANT por columna, no una pantalla.
-    for (const tabla of ['personas', 'proveedores']) {
-      const r = await comoUsuario(jefe, `${tabla}?select=id&limit=5`)
-      expect(r.filas.length, `${tabla} le devolvió CERO filas a un jefe de obra: no puede operar`)
-        .toBeGreaterThan(0)
+    // Tarde, en el pliego del módulo PERSONAL / HH: *"OBRAS: **ve las personas relacionadas con SUS
+    // obras**."* Es más específico y no contradice lo anterior: sigue siendo "ver ≠ administrar",
+    // pero acota QUÉ FILAS. Y eso sí lo puede hacer la RLS, que es lo único que decide filas.
+    //
+    // `proveedores` NO cambió: el maestro de proveedores no tiene eje de obra.
+    const proveedores = await comoUsuario(jefe, 'proveedores?select=id&limit=5')
+    expect(proveedores.filas.length, 'proveedores le devolvió CERO filas a un jefe de obra')
+      .toBeGreaterThan(0)
+
+    // LA MEDIDA ES CONTRA LA RELACIÓN, NO CONTRA UN NÚMERO FIJO. Lo que el jefe puede leer de
+    // `personas` tiene que ser EXACTAMENTE la gente ligada a las obras que ve. Un `toBeGreaterThan(0)`
+    // pasaría igual si mañana se abriera el legajo entero.
+    const suyas = await comoUsuario(jefe, 'personas?select=id')
+    expect(suyas.status, 'personas falló para un jefe de obra').toBe(200)
+    const ligadas = await comoUsuario(jefe, 'obra_asignacion?select=persona_id')
+    const esperadas = new Set((ligadas.filas as { persona_id: string }[]).map((f) => f.persona_id))
+    const leidas = new Set((suyas.filas as { id: string }[]).map((f) => f.id))
+    for (const id of leidas) {
+      expect(esperadas.has(id), `el jefe leyó del legajo a alguien que no trabaja en sus obras: ${id}`)
+        .toBe(true)
     }
+
+    // Y el plantel COMPLETO le sigue llegando por la vista acotada: sin eso no puede asignar a nadie
+    // por primera vez, porque todavía no está ligado a su obra.
+    const plantel = await comoUsuario(jefe, 'persona_plantel?select=id')
+    expect(plantel.filas.length, 'sin plantel no hay a quién asignar').toBeGreaterThan(leidas.size)
 
     // Y LA LÍNEA QUE NO SE CRUZA: pedir el sueldo tiene que FALLAR, no devolver null. Un null se
     // confunde con "no está cargado"; un 403 no se confunde con nada.
@@ -80,6 +98,12 @@ test.describe('lo de Administración es de Administración', () => {
       const r = await comoUsuario(jefe, q)
       expect(r.status, `${q} NO falló para un jefe de obra`).toBe(403)
     }
+
+    // Y `persona_legajo` —la puerta con portero por la que Administración SÍ llega al DNI— no le
+    // devuelve una sola fila. El filtro vive DENTRO de la vista: una vista no tiene RLS, así que si
+    // el `where es_administracion()` no estuviera, esto pasaría con las 30 filas.
+    const legajo = await comoUsuario(jefe, 'persona_legajo?select=id,dni&limit=5')
+    expect(legajo.filas.length, 'persona_legajo le publicó el legajo a un jefe de obra').toBe(0)
 
     // La COLA de canonicalización sigue siendo trabajo de Administración: no es información
     // operativa, es la resolución de un maestro. Las vistas filtran en su propio `where` — una vista
@@ -125,7 +149,10 @@ test.describe('lo de Administración es de Administración', () => {
   test('Administración sí lee las dos secciones', async () => {
     test.setTimeout(120000)
     const admin = await entrar(ADMIN.email, ADMIN.password)
-    const personas = await comoUsuario(admin, 'personas?select=id&limit=5')
+    // Administración llega al legajo por `persona_legajo`: el grant por columna le niega `dni` y
+    // `cuil` a `authenticated`, que es UN SOLO rol de Postgres para los cuatro roles de la
+    // aplicación. Sin esa vista, cerrar la columna habría dejado ciega también a Administración.
+    const personas = await comoUsuario(admin, 'persona_legajo?select=id,dni,cuil&limit=5')
     expect(personas.filas.length, 'Administración se quedó sin legajo').toBeGreaterThan(0)
     const proveedores = await comoUsuario(admin, 'proveedores?select=id&limit=5')
     expect(proveedores.filas.length, 'Administración se quedó sin proveedores').toBeGreaterThan(0)

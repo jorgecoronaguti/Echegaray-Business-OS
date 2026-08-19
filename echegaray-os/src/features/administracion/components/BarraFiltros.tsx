@@ -26,6 +26,7 @@ export function BarraFiltros({
   children,
   testid,
   extra,
+  compacta = false,
 }: {
   /** La ruta a la que vuelve el formulario. Es la misma pantalla: GET sobre sí misma. */
   accion: string
@@ -35,31 +36,40 @@ export function BarraFiltros({
   testid?: string
   /** Campos que hay que preservar al filtrar (p. ej. el panel abierto). */
   extra?: Record<string, string | undefined>
+  /**
+   * MODO COMPACTO: sólo el campo, sin rótulo y sin botón. Se envía con Enter.
+   *
+   * Existe para las pantallas donde la búsqueda comparte renglón con los filtros y la acción
+   * primaria (Personal). Ahí un rótulo «Buscar» encima y un botón «Filtrar» al lado hacen que la
+   * línea se parta en dos y compitan tres controles por la misma atención. Cuando hay desplegables
+   * el botón SIGUE estando: un `select` que no envía solo necesita cómo enviarse.
+   */
+  compacta?: boolean
 }) {
   return (
     <form method="get" action={accion} data-testid={testid} className="flex flex-wrap items-end gap-2">
       {Object.entries(extra ?? {}).map(([k, v]) =>
         v ? <input key={k} type="hidden" name={k} value={v} /> : null,
       )}
-      <label className="flex min-w-0 flex-1 basis-48 flex-col text-[11px] text-faint">
-        Buscar
+      <label className={compacta ? 'min-w-0 flex-1' : 'flex min-w-0 flex-1 basis-48 flex-col text-[11px] text-faint'}>
+        {!compacta && 'Buscar'}
         <input
           type="search"
           name="q"
           defaultValue={q ?? ''}
           placeholder={placeholder}
-          className={CTRL}
+          className={compacta ? `${CTRL} mt-0` : CTRL}
           data-testid={testid ? `${testid}-q` : undefined}
         />
       </label>
       {children}
-      <button
+      {!compacta && <button
         type="submit"
         data-testid={testid ? `${testid}-aplicar` : undefined}
         className="rounded-control border border-line px-3 py-1.5 text-[12px] text-muted hover:bg-slate-50"
       >
         Filtrar
-      </button>
+      </button>}
     </form>
   )
 }

@@ -1,69 +1,139 @@
 'use server'
 
-// LAS HORAS TRABAJADAS, IMPUTADAS A LA OBRA — la punta REAL del plan contra real de HH.
+// LAS HORAS TRABAJADAS — la punta REAL del plan contra real de HH.
 //
-// ═══ POR QUÉ EXISTE (19/08/2026) ═══
+// ═══ EL GRANO CANÓNICO (19/08/2026) ═══
 //
-// «HH real» venía `—` en las ocho obras y la lectura fácil era "todavía nadie las cargó". No: NO SE
-// PODÍAN CARGAR. `registros_hh.obra_id` era `not null` contra `public.obras` —la tabla legacy, 4
-// filas, ninguna activa—, así que imputar una hora a San Francisco exigía inventar el uuid de una
-// obra que no existe en el eje canónico. La columna `obra_canonica_id` estaba al lado, opcional.
-// El eje muerto era obligatorio y el vivo optativo. Ver `20260819T0100_hh_sobre_el_eje_canonico.sql`.
+// El dueño: *"Cada imputación es `persona_id · fecha · obra_id · actividad_id opcional · horas ·
+// observación opcional`"*. Hasta hoy la tabla guardaba `trabajador_o_cuadrilla` en TEXTO LIBRE y la
+// SEMANA, heredados del Sheet de JORNALES, y el cruce persona↔horas se hacía comparando nombres
+// normalizados: alcanzaba para pintar una columna y no alcanzaba para nada más — con un apodo, una
+// tilde o un segundo nombre, las horas de esa persona desaparecían de su ficha sin un error.
 //
-// ═══ LO QUE ESTA ACCIÓN NO HACE ═══
+// Ahora la fila apunta a `personas.id` y al DÍA. `fecha_inicio_semana` sigue existiendo y sigue
+// siendo `not null` —es el grano de las 19 filas históricas y de `obra_hh_resumen`— pero ya NO se
+// pide: la deriva el trigger `registros_hh_normalizar` desde la fecha. Pedirle el lunes a quien
+// carga un martes es pedirle que calcule a mano una clave única.
 //
-// No calcula costo. `horas × tarifa` no se guarda acá y es deliberado desde el diseño original de la
-// tabla: el costo de mano de obra ya se registra en su propia fuente, y valorizarlo también acá
-// crearía la segunda versión del mismo peso. Tampoco administra legajos: `personas` es de RRHH.
+// ═══ LO QUE ESTA ACCIÓN SIGUE SIN HACER ═══
 //
-// LA SEMANA ES EL GRANO. `fecha_inicio_semana` existe porque la fuente de estas horas —JORNALES— es
-// quincenal/semanal, no diaria. Se normaliza al LUNES: si dos personas cargan la misma semana con
-// fechas distintas del mismo lunes a domingo, la clave única no las vería como la misma y se
-// duplicarían las horas.
+// No calcula costo. `horas × tarifa` no se guarda acá: el costo de mano de obra ya se registra en su
+// propia fuente y valorizarlo también acá crearía la segunda versión del mismo peso.
+// Tampoco es un fichaje de entrada/salida: para el MVP se trabaja por DURACIÓN.
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import type { Resultado } from './actions'
-import { lunesDeLaSemana } from './semana'
+import { leerReparto, totalDelReparto } from './repartoHH'
 
-const CATEGORIAS = ['oficial_especializado', 'oficial', 'medio_oficial', 'ayudante'] as const
+const HORAS = z.coerce.number()
+  .positive('Las horas tienen que ser mayores que cero')
+  .max(24, 'En un día no se pueden trabajar más de 24 horas')
 
-const hhSchema = z.object({
-  trabajador_o_cuadrilla: z.string().trim().min(1, 'Poné quién trabajó (persona o cuadrilla)'),
-  semana: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Elegí la semana'),
-  horas: z.coerce.number().positive('Las horas tienen que ser mayores que cero').max(400, 'Son demasiadas horas para una semana'),
-  categoria: z.union([z.enum(CATEGORIAS), z.literal('')]).optional(),
-  notas: z.string().trim().optional(),
+const imputacionSchema = z.object({
+  persona_id: z.string().uuid('Elegí a quién le imputás las horas'),
+  fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Elegí el día'),
+  // Opcional a propósito: no toda obra tiene el cronograma cargado, y exigir una actividad
+  // obligaría a inventar una para poder registrar horas que sí se trabajaron.
+  actividad_id: z.union([z.string().uuid(), z.literal('')]).optional(),
+  horas: HORAS,
+  notas: z.string().trim().max(300).optional(),
 })
 
+const YA_CARGADO =
+  'Esa persona ya tiene horas cargadas ese día para esa actividad. Corregí el registro en vez de agregar otro.'
+
+function traducir(error: { code?: string; message: string }): string {
+  if (error.code === '23505') return YA_CARGADO
+  // El trigger `registros_hh_normalizar` rechaza imputar a una actividad de OTRA obra: su mensaje ya
+  // dice cuál es cuál, así que se muestra tal cual en vez de taparlo con un texto genérico.
+  return error.message
+}
+
 export async function imputarHH(obraId: string, form: FormData): Promise<Resultado> {
-  const parsed = hhSchema.safeParse(Object.fromEntries(form))
+  const parsed = imputacionSchema.safeParse(Object.fromEntries(form))
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
   const d = parsed.data
   const supabase = await createClient()
 
   const { error } = await supabase.from('registros_hh').insert({
-    // El eje canónico y SÓLO el canónico. `obra_id` queda null: es la columna legacy y las filas
-    // nuevas no pertenecen a ese eje.
+    // El eje canónico y SÓLO el canónico. `obra_id` queda null: es la columna legacy.
     obra_canonica_id: obraId,
-    trabajador_o_cuadrilla: d.trabajador_o_cuadrilla,
-    categoria: d.categoria || null,
-    fecha_inicio_semana: lunesDeLaSemana(d.semana),
+    persona_id: d.persona_id,
+    actividad_id: d.actividad_id || null,
+    fecha: d.fecha,
+    // La semana la deriva el trigger. Se manda igual para no depender de un default: la columna es
+    // `not null` y un insert sin ella fallaría si el trigger se cayera.
+    fecha_inicio_semana: d.fecha,
     horas: d.horas,
     fuente_legacy: 'web:obra',
     notas: d.notas || null,
   })
-  if (error) {
-    return {
-      ok: false,
-      error: error.code === '23505'
-        ? 'Esa persona o cuadrilla ya tiene horas cargadas en esa semana para esta obra. Editá el registro en vez de agregar otro.'
-        : error.message,
-    }
-  }
+  if (error) return { ok: false, error: traducir(error) }
   revalidatePath(`/obras/${obraId}`)
   return { ok: true }
+}
+
+const masivaSchema = z.object({
+  fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Elegí el día'),
+  actividad_id: z.union([z.string().uuid(), z.literal('')]).optional(),
+  notas: z.string().trim().max(300).optional(),
+})
+
+/**
+ * Carga masiva: una obra, un día, y las horas de cada integrante.
+ *
+ * ═══ POR QUÉ SE CONSULTA ANTES DE INSERTAR ═══
+ *
+ * Un insert de 15 filas es UNA sentencia: si una sola choca contra la clave única, se caen las
+ * quince. En una cuadrilla donde ya se cargó a uno por separado, eso significa no poder cargar a los
+ * otros catorce y no saber por quién. Se leen primero los que ya tienen horas ese día, se los saltea
+ * y SE DICE cuántos fueron. Saltear en silencio sería peor que fallar.
+ */
+export async function imputarHHMasivo(obraId: string, form: FormData): Promise<Resultado> {
+  const parsed = masivaSchema.safeParse(Object.fromEntries(form))
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
+  const d = parsed.data
+  const reparto = leerReparto(form.entries())
+  if (reparto.length === 0) return { ok: false, error: 'No pusiste horas en ninguna persona.' }
+
+  const supabase = await createClient()
+  const actividad = d.actividad_id || null
+
+  let yaCargados = supabase.from('registros_hh').select('persona_id')
+    .eq('obra_canonica_id', obraId).eq('fecha', d.fecha)
+    .in('persona_id', reparto.map((r) => r.persona_id))
+  yaCargados = actividad ? yaCargados.eq('actividad_id', actividad) : yaCargados.is('actividad_id', null)
+  const { data: existentes, error: errorLectura } = await yaCargados
+  if (errorLectura) return { ok: false, error: errorLectura.message }
+
+  const repetidos = new Set((existentes ?? []).map((f) => (f as { persona_id: string }).persona_id))
+  const nuevos = reparto.filter((r) => !repetidos.has(r.persona_id))
+  if (nuevos.length === 0) {
+    return { ok: false, error: `Las ${reparto.length} personas ya tenían horas cargadas ese día.` }
+  }
+
+  const { error } = await supabase.from('registros_hh').insert(nuevos.map((r) => ({
+    obra_canonica_id: obraId,
+    persona_id: r.persona_id,
+    actividad_id: actividad,
+    fecha: d.fecha,
+    fecha_inicio_semana: d.fecha,
+    horas: r.horas,
+    fuente_legacy: 'web:masiva',
+    notas: d.notas || null,
+  })))
+  if (error) return { ok: false, error: traducir(error) }
+
+  revalidatePath(`/obras/${obraId}`)
+  const total = totalDelReparto(nuevos)
+  return {
+    ok: true,
+    mensaje: repetidos.size > 0
+      ? `${nuevos.length} imputaciones (${total} HH). ${repetidos.size} ya tenían horas ese día y se saltearon.`
+      : `${nuevos.length} imputaciones (${total} HH).`,
+  }
 }
 
 export async function borrarHH(obraId: string, registroId: string): Promise<Resultado> {

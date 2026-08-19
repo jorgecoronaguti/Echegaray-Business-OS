@@ -86,9 +86,19 @@ test('el Resumen abre con CUATRO cifras y sin cadenas técnicas de base de datos
 test('Personal: imputar horas llega a Postgres y vuelve a la pantalla', async ({ page }) => {
   test.setTimeout(180000)
   const sb = admin()
-  const trabajador = `${MARCA} Peón de prueba`
-  // Piso limpio: si una corrida anterior murió a la mitad, su fila haría fallar la clave única.
-  await sb.from('registros_hh').delete().eq('obra_canonica_id', OBRA).eq('trabajador_o_cuadrilla', trabajador)
+  const nombre = `${MARCA} Peón de prueba`
+  const DIA = '2026-08-12'   // un MIÉRCOLES, a propósito
+
+  // ═══ AHORA LA IMPUTACIÓN APUNTA A UNA PERSONA Y A UN DÍA (19/08/2026) ═══
+  //
+  // Antes se escribía `trabajador_o_cuadrilla` en texto libre y la SEMANA. Con un apodo o una tilde,
+  // las horas de esa persona no cruzaban con su asignación y desaparecían de su fila sin un error.
+  // El grano canónico es `persona_id · fecha · obra · actividad`. Este test carga por la pantalla y
+  // verifica la fila en la base — que es el único lugar donde el efecto es un hecho.
+  const { data: creada } = await sb.from('personas')
+    .insert({ nombre_completo: nombre }).select('id').single()
+  const personaId = (creada as { id: string }).id
+  await sb.from('registros_hh').delete().eq('obra_canonica_id', OBRA).eq('persona_id', personaId)
 
   try {
     await entrar(page)
@@ -96,10 +106,11 @@ test('Personal: imputar horas llega a Postgres y vuelve a la pantalla', async ({
     await expect(page.getByTestId('titular-personal')).toBeVisible()
 
     await page.getByTestId('alta-hh').click()
-    await page.fill('input[name="trabajador_o_cuadrilla"]', trabajador)
-    await page.fill('input[name="semana"]', '2026-08-12')   // un miércoles, a propósito
-    await page.fill('input[name="horas"]', '37.5')
-    await page.getByTestId('form-hh').getByRole('button', { name: /Imputar/ }).click()
+    const form = page.getByTestId('form-hh')
+    await form.locator('select[name="persona_id"]').selectOption({ label: nombre })
+    await page.fill('input[name="fecha"]', DIA)
+    await page.fill('input[name="horas"]', '7.5')
+    await form.getByRole('button', { name: /Imputar/ }).click()
 
     // ── LA EVIDENCIA ES DEL EFECTO, Y SE ESPERA AL EFECTO — no a un cartel.
     //
@@ -109,30 +120,35 @@ test('Personal: imputar horas llega a Postgres y vuelve a la pantalla', async ({
     // escritura. Se hace `poll` sobre la BASE, que es el único lugar donde el efecto es un hecho.
     await expect.poll(async () => {
       const { count } = await sb.from('registros_hh').select('id', { count: 'exact', head: true })
-        .eq('obra_canonica_id', OBRA).eq('trabajador_o_cuadrilla', trabajador)
+        .eq('obra_canonica_id', OBRA).eq('persona_id', personaId)
       return count ?? 0
     }, { timeout: 30000, message: 'la fila de HH nunca llegó a Postgres' }).toBe(1)
 
     const { data } = await sb.from('registros_hh')
-      .select('horas, fecha_inicio_semana, obra_canonica_id, obra_id')
-      .eq('obra_canonica_id', OBRA).eq('trabajador_o_cuadrilla', trabajador).single()
+      .select('horas, fecha, fecha_inicio_semana, obra_canonica_id, obra_id, persona_id, trabajador_o_cuadrilla')
+      .eq('obra_canonica_id', OBRA).eq('persona_id', personaId).single()
     const fila = laFila(data, 'el registro de HH recién imputado')
-    expect(Number(fila.horas)).toBe(37.5)
-    // Se cargó un miércoles y se guarda el LUNES de esa semana: sin normalizar, la clave única no ve
-    // que dos cargas son la misma semana y las horas entran dos veces.
-    expect(fila.fecha_inicio_semana, 'la semana no se normalizó al lunes').toBe('2026-08-10')
+    expect(Number(fila.horas)).toBe(7.5)
+    expect(fila.fecha, 'la imputación se guardó sin el día trabajado').toBe(DIA)
+    // Se cargó un miércoles y la SEMANA se deriva al LUNES. La deriva el trigger
+    // `registros_hh_normalizar`, no la pantalla: si la calculara TypeScript, Postgres y la web
+    // podrían decir lunes distintos y la clave única dejaría entrar las horas dos veces.
+    expect(fila.fecha_inicio_semana, 'la semana no se derivó al lunes').toBe('2026-08-10')
     expect(fila.obra_canonica_id, 'la hora no quedó atada al eje canónico').toBe(OBRA)
     expect(fila.obra_id, 'la fila nueva se ató al eje LEGACY').toBeNull()
+    // EL NOMBRE NO SE COPIA. Si se guardara, envejecería solo el día que se corrija el legajo.
+    expect(fila.trabajador_o_cuadrilla, 'se copió el nombre al lado del persona_id').toBeNull()
 
     // ── Y de vuelta en la pantalla, después de recargar.
     await page.reload()
-    await expect(page.getByTestId('tabla-hh').getByText(trabajador)).toBeVisible()
+    await expect(page.getByTestId('tabla-hh').getByText(nombre)).toBeVisible()
     await expect(page.getByTestId('titular-personal')).toContainText('HH real')
   } finally {
-    await sb.from('registros_hh').delete().eq('obra_canonica_id', OBRA).eq('trabajador_o_cuadrilla', trabajador)
+    await sb.from('registros_hh').delete().eq('obra_canonica_id', OBRA).eq('persona_id', personaId)
+    await sb.from('personas').delete().eq('id', personaId)
     const { count } = await sb.from('registros_hh')
       .select('id', { count: 'exact', head: true })
-      .eq('obra_canonica_id', OBRA).eq('trabajador_o_cuadrilla', trabajador)
+      .eq('obra_canonica_id', OBRA).eq('persona_id', personaId)
     expect(count, 'quedó una fila de prueba en los jornales del dueño').toBe(0)
   }
 })

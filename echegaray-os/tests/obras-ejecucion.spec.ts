@@ -68,8 +68,13 @@ test('cronograma: la actividad creada desde el Gantt se edita, recibe avance y s
     expect(guardada.editado_a_mano).toBe(true)
 
     // Y la HH plan cargada aparece en Personal, que es donde se mide contra las horas reales.
+    //
+    // Se apunta al TITULAR y no a un `getByText('HH plan')` suelto: desde que Personal muestra el
+    // plan contra real por actividad, ese texto está también en el encabezado de una columna y el
+    // localizador resolvía a dos elementos. Un test ambiguo no falla por un defecto: falla por
+    // haberse quedado corto, y manda a buscar el problema al lugar equivocado.
     await page.goto(`/obras/${OBRA}?vista=personal`)
-    await expect(page.getByText('HH plan')).toBeVisible()
+    await expect(page.getByTestId('titular-personal')).toContainText(/HH plan \d/)
 
     // ── AVANCE RÁPIDO ───────────────────────────────────────────────────────
     await page.goto(`/obras/${OBRA}?vista=cronograma`)
@@ -136,7 +141,8 @@ test('personal: la persona asignada sigue asignada después de recargar, y se pu
     expect(persona, 'el legajo tiene que tener a alguien para asignar').toBeTruthy()
     await select.selectOption({ index: 1 })
     await form.locator('select[name="rol"]').selectOption('responsable')
-    await form.locator('input[name="cuadrilla"]').fill(`${MARCA} cuadrilla`)
+    // La cuadrilla dejó de ser texto libre: es una entidad. El selector puede estar vacío —todavía
+    // no hay ninguna cargada— y eso NO impide asignar: la cuadrilla es opcional.
     await form.locator('input[name="notas"]').fill(MARCA)
     await page.getByTestId('form-asignar-enviar').click()
     await expect(page.getByTestId('form-asignar-ok')).toBeVisible({ timeout: 30000 })
@@ -153,6 +159,22 @@ test('personal: la persona asignada sigue asignada después de recargar, y se pu
     await page.getByTestId('form-asignar').locator('input[name="notas"]').fill(MARCA)
     await page.getByTestId('form-asignar-enviar').click()
     await expect(page.getByTestId('form-asignar-error')).toContainText(/ya está asignada/i, { timeout: 30000 })
+
+    // ═══ CERRAR CONSERVA EL HISTORIAL; QUITAR BORRA ═══
+    //
+    // El pliego del módulo PERSONAL lo pide con esas palabras: *"cerrar asignación conserva
+    // historial"*. Cerrar escribe `hasta`, y la fila sigue existiendo — es lo que respalda las horas
+    // que esa persona imputó mientras estuvo en la obra. Quitar es para el alta hecha por error, y
+    // por eso sólo aparece DESPUÉS de cerrar.
+    await page.reload()
+    await page.getByTestId('tabla-personal').locator('tr', { hasText: persona })
+      .getByTestId('cerrar-asignacion').click()
+    await expect(async () => {
+      const { data } = await sb.from('obra_asignacion')
+        .select('hasta').eq('obra_id', OBRA).ilike('notas', `%${MARCA}%`).single()
+      expect((data as { hasta: string | null } | null)?.hasta, 'cerrar no escribió la fecha de fin')
+        .toBeTruthy()
+    }).toPass({ timeout: 30000 })
 
     await page.reload()
     await page.getByTestId('tabla-personal').locator('tr', { hasText: persona })

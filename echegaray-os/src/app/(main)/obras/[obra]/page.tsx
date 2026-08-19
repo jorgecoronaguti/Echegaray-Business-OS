@@ -35,7 +35,9 @@ import {
   getActividades, getDependencias, getDocumentos, getObra, getPlanVsReal, getRestricciones,
   getUbicacion,
 } from '@/features/obras/services/obrasService'
-import { getAsignaciones, getPersonas, getRegistrosHH } from '@/features/obras/services/personalService'
+import {
+  getActividadHH, getAsignaciones, getCuadrillas, getPersonas, getRegistrosHH,
+} from '@/features/obras/services/personalService'
 import { getCertificados } from '@/features/obras/services/contratoService'
 import {
   archivarActividad, archivarObra, crearActividad, crearImpedimento, editarActividad, editarObra,
@@ -44,8 +46,10 @@ import {
 import {
   asignarResponsableMasivo, cargarHHPlanMasivo, sellarBaselineMasivo,
 } from '@/features/obras/services/actionsMasivas'
-import { asignarPersona, quitarAsignacion } from '@/features/obras/services/actionsPersonal'
-import { borrarHH, imputarHH } from '@/features/obras/services/actionsHH'
+import {
+  asignarPersona, cerrarAsignacion, quitarAsignacion,
+} from '@/features/obras/services/actionsPersonal'
+import { borrarHH, imputarHH, imputarHHMasivo } from '@/features/obras/services/actionsHH'
 import { borrarCertificado, crearCertificado } from '@/features/obras/services/actionsContrato'
 import { ETAPAS, ETAPA_LABEL } from '@/features/obras/types'
 import { CamposObra } from '@/features/obras/components/CamposObra'
@@ -154,6 +158,11 @@ export default async function ObraPage({
   const ubicacion = vista === 'resumen' ? await getUbicacion(supabase, obraId) : null
   const asignaciones = vista === 'personal' ? (await getAsignaciones(supabase, obraId)).data ?? [] : []
   const registros = vista === 'personal' ? (await getRegistrosHH(supabase, obraId)).data ?? [] : []
+  // Plan contra real por actividad y las cuadrillas: sólo los pide la solapa Personal.
+  // Cronograma la usa para mostrar HH real en el panel de la actividad, con el MISMO cálculo.
+  const actividadHH = vista === 'personal' || vista === 'cronograma'
+    ? (await getActividadHH(supabase, obraId)).data ?? [] : []
+  const cuadrillas = vista === 'personal' ? await getCuadrillas(supabase) : []
   const certificados = vista === 'economia' ? (await getCertificados(supabase, obraId)).data ?? [] : []
   const documentos = vista === 'documentos' ? (await getDocumentos(supabase, obraId)).data ?? [] : []
   // Operación trae sus cuatro listas de una sola vez: las cuatro se atan a la obra por el MISMO
@@ -249,6 +258,7 @@ export default async function ObraPage({
           sub={sub === 'proximos' ? 'proximos' : 'gantt'}
           semanas={semanas === '1' || semanas === '6' ? semanas : '2'}
           actividadAbierta={act ?? null}
+          hhPorActividad={new Map(actividadHH.map((h) => [h.actividad_id, h]))}
           actividades={acts}
           archivadas={archivadas}
           restricciones={restr}
@@ -281,11 +291,15 @@ export default async function ObraPage({
           plan={plan}
           asignaciones={asignaciones}
           personas={personas}
+          cuadrillas={cuadrillas}
           actividades={acts}
+          actividadHH={actividadHH}
           registros={registros}
           asignar={asignarPersona.bind(null, obraId)}
+          cerrar={cerrarAsignacion.bind(null, obraId)}
           quitar={quitarAsignacion.bind(null, obraId)}
           imputar={imputarHH.bind(null, obraId)}
+          imputarMasivo={imputarHHMasivo.bind(null, obraId)}
           borrarHoras={borrarHH.bind(null, obraId)}
         />
       )}

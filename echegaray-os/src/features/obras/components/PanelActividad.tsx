@@ -27,6 +27,7 @@
 import { useState } from 'react'
 import { BotonAccion, Campo, CTRL, FormAccion, type ResultadoAccion } from '@/shared/components/ui'
 import type { Actividad, Dependencia, Persona, Restriccion } from '../types'
+import type { ActividadHH } from '../services/personalService'
 import { TIPO_DEPENDENCIA, TIPO_DEPENDENCIA_LABEL } from '../types'
 import { fecha } from './formato'
 
@@ -58,7 +59,7 @@ function SelectResponsable({ personas, valor }: { personas: Persona[]; valor: st
 
 /** Los campos comunes al alta y a la edición. Uno solo: si se separaran, el alta y la edición
  *  terminarían aceptando cosas distintas y el desvío entre las dos se descubriría tarde. */
-function CamposActividad({ a, personas }: { a?: Actividad; personas: Persona[] }) {
+function CamposActividad({ a, personas, hh }: { a?: Actividad; personas: Persona[]; hh?: ActividadHH }) {
   return (
     <div className="grid grid-cols-2 gap-2.5">
       <Campo label="Actividad" ancho="col-span-2">
@@ -74,7 +75,27 @@ function CamposActividad({ a, personas }: { a?: Actividad; personas: Persona[] }
       <Campo label="Días"><input type="number" name="dias_plan" min={0} step={1} defaultValue={fmt(a?.dias_plan)} className={CTRL} /></Campo>
       <Campo label="Avance %"><input type="number" name="pct" min={0} max={100} step={1} defaultValue={fmt(a?.pct)} className={CTRL} /></Campo>
       <Campo label="HH plan"><input type="number" name="hh_plan" min={0} step="0.5" defaultValue={fmt(a?.hh_plan)} className={CTRL} /></Campo>
-      <Campo label="HH real"><input type="number" name="hh_real" min={0} step="0.5" defaultValue={fmt(a?.hh_real)} className={CTRL} /></Campo>
+      {/* ═══ HH REAL NO ES UN CAMPO ═══
+          Hasta el 19/08/2026 acá había un `input` que escribía `obra_actividad.hh_real` a mano, al
+          lado de las horas imputadas de verdad en `registros_hh`: dos números para el mismo hecho.
+          La columna se borró (0 filas cargadas de 344) y esto muestra lo que publica
+          `obra_actividad_hh`, la MISMA vista que lee la solapa Personal. Un solo cálculo. */}
+      <Campo label="HH real" ayuda="Suma de las horas imputadas a esta actividad.">
+        <p className="mt-1 py-1.5 text-[13px] tabular-nums text-ink" data-testid="actividad-hh-real">
+          {hh?.hh_real == null
+            ? <span className="text-faint">sin imputar</span>
+            : `${Number(hh.hh_real).toLocaleString('es-AR', { maximumFractionDigits: 1 })}`}
+          {hh?.desvio_pct != null && (
+            <span className="ml-2 text-[11px] text-faint">
+              {Number(hh.desvio_pct) > 0 ? '+' : ''}{Number(hh.desvio_pct)}% vs plan
+            </span>
+          )}
+          {/* EL DESVÍO SIN LAS DOS PUNTAS NO ES CERO: es desconocido, y se dice cuál falta. */}
+          {hh?.hh_real != null && hh?.hh_plan == null && (
+            <span className="ml-2 text-[11px] text-warn">HH plan sin cargar</span>
+          )}
+        </p>
+      </Campo>
       <Campo label="Responsable" ancho="col-span-2"><SelectResponsable personas={personas} valor={a?.responsable_id ?? null} /></Campo>
       <Campo label="Cuadrilla" ancho="col-span-2"><input name="cuadrilla" defaultValue={fmt(a?.cuadrilla)} maxLength={120} className={CTRL} /></Campo>
       <Campo label="Notas" ancho="col-span-2"><input name="comentario" defaultValue={fmt(a?.comentario)} maxLength={400} className={CTRL} /></Campo>
@@ -224,7 +245,7 @@ function ImpedimentosDe({ abiertos }: { abiertos: Restriccion[] }) {
 }
 
 export function PanelActividad({
-  actividad, personas, acciones, alCerrar, actividades = [], dependencias = [], impedimentos = [],
+  actividad, personas, acciones, alCerrar, actividades = [], dependencias = [], impedimentos = [], hh,
 }: {
   actividad: Actividad
   personas: Persona[]
@@ -235,6 +256,10 @@ export function PanelActividad({
   dependencias?: Dependencia[]
   /** Ya filtrados a los de esta actividad y sin liberar. */
   impedimentos?: Restriccion[]
+  /** HH plan contra real de ESTA actividad, tal como la publica `obra_actividad_hh`. Opcional: sin
+   *  ella el panel dice «sin imputar» en vez de romperse, que es lo que hace el resto de los props
+   *  de este árbol. */
+  hh?: ActividadHH
 }) {
   const a = actividad
   return (
@@ -283,7 +308,7 @@ export function PanelActividad({
                 enviar="Guardar cambios"
                 mensajeOk="Actividad guardada."
               >
-                <CamposActividad a={a} personas={personas} />
+                <CamposActividad a={a} personas={personas} hh={hh} />
               </FormAccion>
             </div>
           </details>
