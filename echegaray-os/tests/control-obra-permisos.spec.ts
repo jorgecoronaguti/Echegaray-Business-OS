@@ -80,7 +80,7 @@ test('y puede planificar y ejecutar: crea la actividad, la mide y carga el parte
   expect(Number((data as { avance_pct: number }).avance_pct)).toBe(25)
 })
 
-test('PERO LO ECONÓMICO SIGUE CERRADO: ni el monto de la obra ni la retribución de nadie', async () => {
+test('el monto de venta y la retribución no salen de la base ni con una llamada directa', async () => {
   const jefe = await comoJefe()
 
   // 42501 es «permission denied»: el grant de columna no existe, así que el dato ni siquiera sale de
@@ -88,14 +88,11 @@ test('PERO LO ECONÓMICO SIGUE CERRADO: ni el monto de la obra ni la retribució
   const monto = await jefe.from('obra_canonica').select('id, monto_contratado')
   expect(monto.error?.code, 'el jefe llegó al monto contratado').toBe('42501')
 
+  // LA RETRIBUCIÓN NO SE ABRIÓ. Un sueldo no es un «monto de venta de obra», pero es el dato más
+  // sensible del legajo y el dueño lo cerró con todas las letras el 19/08. Abrirlo es una línea;
+  // hacerlo sin que lo pida, no.
   const sueldo = await jefe.from('personas').select('id, retribucion_pactada')
   expect(sueldo.error?.code, 'el jefe llegó a la retribución pactada').toBe('42501')
-
-  // `persona_legajo` corre como su dueño y lleva el portero adentro: para el jefe devuelve VACÍO, no
-  // error. Cero filas de una vista que sí existe es exactamente el diseño.
-  const legajo = await jefe.from('persona_legajo').select('id, dni, cuil')
-  expect(legajo.error).toBeNull()
-  expect(legajo.data).toHaveLength(0)
 })
 
 test('lo operativo del personal sí lo ve: el plantel para poder asignar, sin un dato sensible', async () => {
@@ -106,4 +103,50 @@ test('lo operativo del personal sí lo ve: el plantel para poder asignar, sin un
   // Cinco columnas y ninguna más: el contrato lo fija `vistas-security-invoker.test.mjs`.
   expect(Object.keys(data![0]).sort()).toEqual(
     ['categoria', 'especialidad', 'fecha_egreso', 'id', 'nombre_completo'])
+})
+
+test('el jefe de obra entra a Administración y administra los maestros', async () => {
+  const jefe = await comoJefe()
+  // Lo que ADMINISTRA: personas con su legajo, cuadrillas, clientes, proveedores.
+  for (const t of ['personas', 'clientes', 'proveedores', 'cuadrilla', 'documentacion_legajo']) {
+    const { error } = await jefe.from(t).select('id').limit(1)
+    expect(error, `${t}: ${error?.message}`).toBeNull()
+  }
+  // Y el legajo completo, que hasta hoy le devolvía cero filas.
+  const legajo = await jefe.from('persona_legajo').select('id, dni, cuil').limit(1)
+  expect(legajo.error).toBeNull()
+  expect(legajo.data!.length).toBeGreaterThan(0)
+})
+
+test('EL COSTO SÍ, EL PRECIO NO — la línea exacta que pidió el dueño', async () => {
+  const jefe = await comoJefe()
+
+  // ═══ VE EL COSTO ═══ el presupuestado en la cotización y lo que se lleva gastado. Sin eso no
+  // puede saber si su obra se está yendo de precio, que es su trabajo.
+  const costo = await jefe.from('presupuestos')
+    .select('id, costo_directo_presupuestado, costo_indirecto_presupuestado, hh_estimada').limit(1)
+  expect(costo.error, 'el jefe no llegó al costo presupuestado').toBeNull()
+  expect(costo.data!.length).toBeGreaterThan(0)
+
+  const gastado = await jefe.from('obra_panel').select('obra_id, costo_real, n_comprobantes').limit(1)
+  expect(gastado.error, 'el jefe no llegó a lo gastado').toBeNull()
+
+  // ═══ NO VE EL PRECIO ═══ ni por la tabla ni por las vistas que lo derivan.
+  expect((await jefe.from('presupuestos').select('id, monto_presupuestado')).error?.code).toBe('42501')
+  expect((await jefe.from('presupuestos').select('id, margen_esperado')).error?.code).toBe('42501')
+
+  // `contratado_de_obra()` es SECURITY DEFINER y es el ÚNICO camino al monto: devuelve null, no error.
+  const { data: panel } = await jefe.from('obra_panel')
+    .select('obra_id, monto_contratado, margen_sobre_contratado_pct')
+    .not('monto_contratado', 'is', null).limit(1)
+  expect(panel, 'una sola obra con monto visible ya es la filtración entera').toHaveLength(0)
+
+  const { data: pvr } = await jefe.from('obra_plan_vs_real')
+    .select('obra_id, monto_contratado, monto_presupuestado, margen_actual, certificado').limit(5)
+  for (const f of pvr ?? []) {
+    const row = f as Record<string, unknown>
+    for (const c of ['monto_contratado', 'monto_presupuestado', 'margen_actual', 'certificado']) {
+      expect(row[c], `${c} llegó al jefe de obra`).toBeNull()
+    }
+  }
 })

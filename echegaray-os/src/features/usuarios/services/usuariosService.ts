@@ -13,7 +13,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Rol } from '@/features/auth/types'
-import { areaDe, esAdministracion } from '@/features/auth/types/areas'
+import { areaDe, veEconomia } from '@/features/auth/types/areas'
 import type { ServiceResult } from '@/features/auth/services/authService'
 import type { EstadoUsuario, ObraDeUsuario, ObraElegible, UsuarioGestion } from '../types'
 
@@ -91,7 +91,10 @@ export async function listarUsuarios(admin: SupabaseClient): Promise<ServiceResu
 /** Cuántas cuentas de nivel Administración pueden entrar hoy. Es el número de la regla del último
  *  administrador, y se calcula sobre el ESTADO REAL, no sobre el rol solo. */
 export function administradoresActivos(usuarios: UsuarioGestion[]): number {
-  return usuarios.filter((u) => esAdministracion(u.rol) && u.estado === 'activo').length
+  // SE CUENTAN LOS QUE VEN LA PLATA, no los que administran. Desde que el jefe de obra entra a
+  // Administración, contarlo acá haría que la regla del «último administrador» diera por cubierto
+  // un sistema donde nadie puede ya ver un contrato ni cambiar un rol.
+  return usuarios.filter((u) => veEconomia(u.rol) && u.estado === 'activo').length
 }
 
 /** El catálogo de obras para asignar. Incluye las cerradas: se sigue trabajando en el cierre. */

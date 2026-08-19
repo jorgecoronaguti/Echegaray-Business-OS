@@ -47,7 +47,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { Rol } from '@/features/auth/types'
-import { esAdministracion } from '@/features/auth/types/areas'
+import { veEconomia } from '@/features/auth/types/areas'
 import type { UsuarioGestion } from '../types'
 import { administradoresActivos, listarUsuarios } from './usuariosService'
 import {
@@ -89,8 +89,11 @@ async function puertaDe(exige: 'administracion' | 'direccion'): Promise<Puerta> 
   if (exige === 'direccion') {
     const motivo = motivoParaNoRegenerarClave(rol)
     if (motivo) return { ok: false, error: motivo }
-  } else if (!esAdministracion(rol)) {
-    return { ok: false, error: 'Sólo Administración puede gestionar los usuarios.' }
+  } else if (!veEconomia(rol)) {
+    // NO ES `esAdministracion`: desde el 19/08 el jefe de obra administra los maestros, pero dar de
+    // alta usuarios y cambiar roles es la puerta a la economía —bastaría con ascenderse—, y eso
+    // sigue siendo de Dirección y Administración.
+    return { ok: false, error: 'Sólo Dirección y Administración pueden gestionar los usuarios.' }
   }
   return { ok: true, admin: createAdminClient(), sesion, actorId: data.user.id }
 }

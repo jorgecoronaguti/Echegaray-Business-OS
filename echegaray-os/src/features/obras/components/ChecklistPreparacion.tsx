@@ -23,7 +23,7 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
-import { esAdministracion } from '@/features/auth/types/areas'
+import { veEconomia } from '@/features/auth/types/areas'
 import { getPreparacion } from '../services/preparacionService'
 import { loQueFalta, preparacionDeObra, type LineaPreparacion } from '../services/preparacion'
 
@@ -60,7 +60,8 @@ export async function ChecklistPreparacion({
 }) {
   const supabase = await createClient()
   const perfil = await getPerfilActual(supabase)
-  const verContrato = esAdministracion(perfil.data?.rol ?? null)
+  // EL CONTRATO ES PRECIO. El jefe de obra administra su obra y ve su costo; cuánto se vendió, no.
+  const verContrato = veEconomia(perfil.data?.rol ?? null)
 
   const { insumos, error } = await getPreparacion(supabase, obraId, verContrato)
   // NO SE INVENTA UN CHECKLIST VACÍO CUANDO LA LECTURA FALLA. Siete líneas en «pendiente» por un

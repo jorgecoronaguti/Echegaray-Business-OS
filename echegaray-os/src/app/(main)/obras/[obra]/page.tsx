@@ -66,7 +66,7 @@ import {
 import { TabPersonal } from '@/features/obras/components/TabPersonal'
 import { TabOperacion } from '@/features/obras/components/TabOperacion'
 import { getOperacionObra, SUBS_OPERACION, type SubOperacion } from '@/features/obras/services/operacionService'
-import { esAdministracion } from '@/features/auth/types/areas'
+import { veEconomia } from '@/features/auth/types/areas'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { TabEconomia } from '@/features/obras/components/TabEconomia'
 import { TabDocumentos } from '@/features/obras/components/TabDocumentos'
@@ -133,7 +133,10 @@ export default async function ObraPage({
   // UNA SOLA LECTURA DEL PERFIL PARA TODA LA FICHA. El dato comercial ya no llega de la base a quien
   // no es Administración; esto decide qué CARTEL se dibuja, para no explicar una ausencia que no lo
   // es. Ver el comentario largo en `TabEconomia`.
-  const veComercial = esAdministracion((await getPerfilActual(supabase)).data?.rol ?? null)
+  // COMERCIAL ES PRECIO, y el precio es de Dirección y Administración. El jefe de obra entra a
+  // Administración desde el 19/08 y ve el COSTO de su obra —el presupuestado y el gastado—, pero no
+  // cuánto se vendió: `veEconomia`, no `esAdministracion`.
+  const veComercial = veEconomia((await getPerfilActual(supabase)).data?.rol ?? null)
   const { data: obra, error } = await getObra(supabase, obraId)
   // NO EXISTE y NO PUEDO LEER son dos cosas distintas, y confundirlas ya costó caro (17/08/2026):
   // faltaba un `grant` y el módulo entero se veía como "página no encontrada" en vez de decir que no

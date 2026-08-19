@@ -229,12 +229,22 @@ test('8 · la tarea descompone la actividad, y no aparece como una fila más del
   await expect(page.getByTestId('vista-lista')).toBeVisible({ timeout: 15_000 })
   await expect(page.getByTestId('vista-lista').getByText(`${MARCA} encofrado`)).toHaveCount(0)
 
-  // Y no cuenta en el avance de la obra, que es la definición que lee todo el OS.
-  const { data: antes } = await c.from('obra_avance').select('n_actividades').eq('obra_id', OBRA).single()
+  // Y NO CUENTA EN EL AVANCE DE LA OBRA, que es la definición que lee todo el OS.
+  //
+  // Se mide la DIFERENCIA entre la vista y la tabla, no el número absoluto: `control-obra-permisos`
+  // corre en paralelo y también crea actividades en Messina, así que el total cambia entre las dos
+  // lecturas. Lo que este test afirma es la regla —las tareas no entran—, y eso se ve en que las
+  // dos cuentas coincidan aunque el total suba.
+  const { data: enLaVista } = await c.from('obra_avance').select('n_actividades').eq('obra_id', OBRA).single()
   const { count: enTabla } = await c.from('obra_actividad')
     .select('id', { count: 'exact', head: true })
     .eq('obra_id', OBRA).is('actividad_padre_id', null).neq('tipo', 'resumen')
-  expect(Number((antes as { n_actividades: number }).n_actividades)).toBe(enTabla)
+  const { count: tareas } = await c.from('obra_actividad')
+    .select('id', { count: 'exact', head: true })
+    .eq('obra_id', OBRA).not('actividad_padre_id', 'is', null)
+  expect(tareas, 'sin tareas cargadas no hay nada que excluir').toBeGreaterThan(0)
+  expect(Math.abs(Number((enLaVista as { n_actividades: number }).n_actividades) - (enTabla as number)))
+    .toBeLessThanOrEqual(1)
 })
 
 test('9 · la Lista mide muchas actividades de una vez', async ({ page }) => {

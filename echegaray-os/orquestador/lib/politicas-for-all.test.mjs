@@ -36,7 +36,10 @@ const DEL_MVP = [
  * otra llave, y por eso entra acá — la primera versión de este test la dejó afuera y marcó las cuatro
  * como abiertas, que es el falso positivo caro: enseña a ignorar el rojo.
  */
-const ACOTA = /es_administracion\(\)|ve_obra(_texto)?\(|current_rol\(\)/
+// `ve_economia()` entra a la lista: es MÁS estricto que `ve_obra()` —sólo Dirección y
+// Administración— y es lo que ahora acota certificados y adicionales, que son montos de venta y no
+// hechos de la obra.
+const ACOTA = /es_administracion\(\)|ve_economia\(\)|ve_obra(_texto)?\(|current_rol\(\)/
 
 const SIN_BASE = !process.env.DATABASE_URL
 

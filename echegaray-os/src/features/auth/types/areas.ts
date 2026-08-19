@@ -19,17 +19,44 @@ import type { Rol } from './index'
 export type Area = 'administracion' | 'obras'
 
 /**
- * EL NIVEL DE UN ROL. Dirección y Administración ven todo; Jefe de Obra y Campo, sus obras.
+ * ═══ DOS PREGUNTAS QUE HASTA HOY ERAN UNA (19/08/2026) ═══
  *
- * Un rol desconocido —o un usuario sin perfil— cae en `obras`, que es el nivel MENOS privilegiado.
- * Falla cerrado: el modo de fallar de un default permisivo es publicar la economía de la empresa.
+ * El dueño: *"quiero que los usuarios con permisos de «jefe de obra» pueda acceder a administracion,
+ * solo no quiero que vean los montos de venta de las obras"* y, precisando: *"los costos de las obras
+ * que se han estipulado en la cotización… y lo que se lleva gastado, sí tienen que ver"*.
+ *
+ * `esAdministracion()` respondía a la vez «¿administra los maestros?» y «¿ve cuánto se vendió?»,
+ * porque hasta hoy eran la misma gente. Se parte en dos, y la línea es COSTO / PRECIO:
+ *
+ *   `esAdministracion()`  administra personas, legajos, cuadrillas, clientes y proveedores, y ve el
+ *                         COSTO de su obra —el presupuestado y el gastado—. Incluye al jefe de obra.
+ *   `veEconomia()`        ve el PRECIO: contratado, monto presupuestado, margen, certificado,
+ *                         facturado, cobrado. Y administra usuarios, que es la puerta a todo eso.
+ *
+ * Los dos fallan cerrado: un rol desconocido, o un usuario sin perfil, no es ninguna de las dos
+ * cosas. El modo de fallar de un default permisivo es publicar lo que se vendió cada obra.
+ *
+ * ESTO ES LA PUERTA, NO LA CERRADURA. La base decide qué filas y qué columnas devuelve —
+ * `es_administracion()` y `ve_economia()` en Postgres— y eso vale también para una llamada directa a
+ * PostgREST que no pasa por ninguna ruta de Next.
  */
 export function areaDe(rol: Rol | null | undefined): Area {
-  return rol === 'direccion' || rol === 'administracion' ? 'administracion' : 'obras'
+  return rol === 'direccion' || rol === 'administracion' || rol === 'jefe_obra'
+    ? 'administracion'
+    : 'obras'
 }
 
-/** ¿Este rol ve la economía, los contratos y todas las obras? */
+/** ¿Administra los maestros y ve el COSTO de su obra? Dirección, Administración y Jefe de Obra. */
 export const esAdministracion = (rol: Rol | null | undefined) => areaDe(rol) === 'administracion'
+
+/**
+ * ¿Ve el PRECIO? Cuánto se contrató, cuánto se presupuestó, el margen y lo certificado.
+ *
+ * También gobierna el alta de usuarios y el cambio de rol: si un jefe de obra pudiera ascender a
+ * alguien —o ascenderse—, todo lo de arriba sería decorativo.
+ */
+export const veEconomia = (rol: Rol | null | undefined) =>
+  rol === 'direccion' || rol === 'administracion'
 
 /**
  * LAS ÁREAS QUE VE UN ROL EN LA NAVEGACIÓN GLOBAL.
@@ -62,8 +89,17 @@ export const AREA_HREF: Record<Area, string> = {
  * NO reemplaza al RLS: la base decide qué filas devuelve, y eso vale también para una llamada directa
  * a PostgREST que no pasa por ninguna ruta de Next. Esto es la puerta; el RLS es la cerradura.
  */
-export const RUTAS_SOLO_ADMINISTRACION = [
-  '/administracion', '/clientes', '/flujo-caja', '/ingenieria-financiera', '/calendario-financiero',
+/**
+ * LAS RUTAS DEL DINERO. Las únicas que el jefe de obra no abre.
+ *
+ * `/administracion` y `/clientes` SALIERON de esta lista: el jefe de obra entra a administrar
+ * personas, legajos, cuadrillas, clientes y proveedores. Lo que no ve son los montos de venta, y eso
+ * lo cierran los grants de columna y `ve_economia()` en la base, no una lista de rutas.
+ *
+ * `/administracion/usuarios` SÍ queda cerrada, y no por económica: es la puerta a cambiar roles.
+ */
+export const RUTAS_SOLO_ECONOMIA = [
+  '/administracion/usuarios', '/flujo-caja', '/ingenieria-financiera', '/calendario-financiero',
   '/calendario-caja', '/scorecard-finanzas', '/reportes', '/aprobaciones', '/operarios',
 ] as const
 
@@ -82,7 +118,7 @@ export const RUTAS_SOLO_ADMINISTRACION = [
 const FICHA_DE_CLIENTE = /^\/clientes\/[^/]+/
 
 export function puedeVerRuta(rol: Rol | null | undefined, pathname: string): boolean {
-  if (esAdministracion(rol)) return true
+  if (veEconomia(rol)) return true
   if (FICHA_DE_CLIENTE.test(pathname)) return true
-  return !RUTAS_SOLO_ADMINISTRACION.some((r) => pathname === r || pathname.startsWith(r + '/'))
+  return !RUTAS_SOLO_ECONOMIA.some((r) => pathname === r || pathname.startsWith(r + '/'))
 }

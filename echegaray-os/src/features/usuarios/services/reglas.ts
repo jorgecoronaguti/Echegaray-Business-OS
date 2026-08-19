@@ -20,10 +20,10 @@
 // LA RUTA RELATIVA CON EXTENSIÓN NO ES UN DESCUIDO. Este archivo lo ejercita `reglas.test.ts` con
 // `node --test`, que no conoce el alias `@/` de TypeScript: un `import` de VALOR por alias hace que
 // la prueba muera con `ERR_MODULE_NOT_FOUND` antes de correr una sola aserción. `Rol` puede seguir
-// por alias porque es `import type` y se borra al compilar; `esAdministracion` es una función real y
+// por alias porque es `import type` y se borra al compilar; `veEconomia` es una función real y
 // tiene que poder resolverse. Es la misma razón por la que `areas.test.ts` importa `'./areas.ts'`.
 import type { Rol } from '@/features/auth/types'
-import { esAdministracion, type Area } from '../../auth/types/areas.ts'
+import { veEconomia, type Area } from '../../auth/types/areas.ts'
 
 /**
  * LOS ROLES QUE SE PUEDEN ELEGIR, AGRUPADOS POR NIVEL.
@@ -58,7 +58,7 @@ const ULTIMO_ADMIN =
 /** El motivo por el que NO se puede desactivar esta cuenta, o `null` si se puede. */
 export function motivoParaNoDesactivar(c: CuentaEnJuego): string | null {
   if (c.actorId === c.objetivoId) return 'No podés sacarte el acceso a vos mismo.'
-  if (esAdministracion(c.rolActual) && c.adminsActivos <= 1) return ULTIMO_ADMIN
+  if (veEconomia(c.rolActual) && c.adminsActivos <= 1) return ULTIMO_ADMIN
   return null
 }
 
@@ -103,6 +103,6 @@ export function motivoParaNoCambiarRol(c: CuentaEnJuego, rolNuevo: Rol): string 
   }
   // Bajar de nivel al último administrador deja el sistema sin administradores igual que apagarlo:
   // la puerta es la misma y por eso el motivo también.
-  if (esAdministracion(c.rolActual) && !esAdministracion(rolNuevo) && c.adminsActivos <= 1) return ULTIMO_ADMIN
+  if (veEconomia(c.rolActual) && !veEconomia(rolNuevo) && c.adminsActivos <= 1) return ULTIMO_ADMIN
   return null
 }

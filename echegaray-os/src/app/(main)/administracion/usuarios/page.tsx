@@ -17,7 +17,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient, nombresDeConfiguracionSupabase } from '@/lib/supabase/admin'
 import { getPerfilActual, getUsuarioActual } from '@/features/auth/services/authService'
-import { esAdministracion } from '@/features/auth/types/areas'
+import { veEconomia } from '@/features/auth/types/areas'
 import { Callout, PageShell } from '@/shared/components/ui'
 import { listarObrasElegibles, listarUsuarios } from '@/features/usuarios/services/usuariosService'
 import { UsuariosManager } from '@/features/usuarios/components/UsuariosManager'
@@ -28,7 +28,9 @@ export default async function UsuariosPage() {
   const supabase = await createClient()
   const [usuario, perfil] = await Promise.all([getUsuarioActual(supabase), getPerfilActual(supabase)])
 
-  if (!usuario || !esAdministracion(perfil.data?.rol)) {
+  // Cambiar un rol es la puerta a la economía: queda en Dirección y Administración aunque el jefe
+  // de obra ya entre al resto de Administración.
+  if (!usuario || !veEconomia(perfil.data?.rol)) {
     return (
       <PageShell title="Usuarios" subtitle="Sólo Administración gestiona las cuentas del sistema." maxWidth="max-w-2xl">
         <Callout tono="neutral">No tenés permiso para ver esta pantalla.</Callout>

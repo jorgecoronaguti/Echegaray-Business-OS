@@ -184,8 +184,11 @@ test('el único camino al monto contratado tiene el portero adentro', { skip: SI
   assert.equal(rows.length, 3, 'faltan funciones del camino comercial')
   for (const f of rows) {
     assert.ok(f.prosecdef, `${f.proname} no es security definer: no podría leer la columna cerrada`)
-    assert.ok(f.def.includes('es_administracion()'),
-      `${f.proname} devuelve el dato sin preguntar quién pregunta`)
+    // `ve_economia()` Y NO `es_administracion()`: desde el 19/08 el jefe de obra administra los
+    // maestros y VE EL COSTO de su obra, pero el precio —contratado, presupuestado, margen— es de
+    // Dirección y Administración. Estas tres funciones son el único camino a ese precio.
+    assert.ok(f.def.includes('ve_economia()'),
+      `${f.proname} devuelve el PRECIO sin preguntar quién pregunta`)
     assert.ok(f.def.includes('auth.uid() is null'),
       `${f.proname} dejaría ciego al contexto interno (pg_cron, el orquestador): mentiría en silencio`)
     assert.ok(f.conf.includes('search_path=public'),

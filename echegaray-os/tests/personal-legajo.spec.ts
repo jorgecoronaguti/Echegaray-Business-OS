@@ -20,20 +20,35 @@ const sb = (): SupabaseClient => createClient(URL, SRV, { auth: { persistSession
 
 test('1 · el plantel de la pantalla es el mismo que el de la base, y no incluye a quien se fue', async ({ page }) => {
   const cliente = sb()
-  const { count: enLaEmpresa } = await cliente
-    .from('personas').select('id', { count: 'exact', head: true }).eq('en_la_empresa', true)
-  const { count: fuera } = await cliente
-    .from('personas').select('id', { count: 'exact', head: true }).eq('en_la_empresa', false)
-  expect(enLaEmpresa, 'sin plantel no hay nada que medir').toBeGreaterThan(0)
-  expect(fuera, 'sin legajos cerrados el filtro Inactivos no prueba nada').toBeGreaterThan(0)
+
+  // ═══ SE COMPARAN NOMBRES, NO CANTIDADES, Y SIN LAS FILAS DE PRUEBA AJENAS ═══
+  //
+  // Este test contaba filas contra un `count` de la base. `personal-hh.spec.ts` corre en paralelo y
+  // crea y borra personas `ZZ-E2E` todo el tiempo: el número cambiaba entre la lectura y la pantalla
+  // y el rojo no señalaba ningún defecto. Es la misma trampa que ya costó dos rojos en este repo —
+  // un test que afirma el estado del mundo en vez de una regla.
+  //
+  // La REGLA es: la pantalla muestra exactamente a quien está en la empresa. Eso se puede afirmar
+  // sacando de los dos lados lo que las otras suites crean.
+  const reales = (xs: string[]) => xs.filter((n) => !n.startsWith('ZZ-E2E')).sort()
+  const nombresDe = async (enLaEmpresa: boolean) => {
+    const { data } = await cliente.from('personas').select('nombre_completo').eq('en_la_empresa', enLaEmpresa)
+    return reales((data ?? []).map((p) => (p as { nombre_completo: string }).nombre_completo))
+  }
 
   await entrar(page)
   await page.goto('/administracion/personas')
   await expect(page.getByTestId('tabla-personas')).toBeVisible()
-  await expect(page.getByTestId('fila-persona')).toHaveCount(enLaEmpresa as number)
+  const enPantalla = async () => reales(
+    (await page.getByTestId('abrir-persona').allInnerTexts()).map((t) => t.split('\n')[0].trim()))
+
+  // `expect.poll` y no una lectura suelta: la tabla vieja sigue en pantalla mientras el servidor
+  // devuelve la nueva, así que `toBeVisible()` pasa en el acto y se leerían las filas del filtro
+  // anterior. El primer intento de este test daba los 17 activos donde esperaba los 45 inactivos.
+  await expect.poll(enPantalla, { timeout: 15_000 }).toEqual(await nombresDe(true))
 
   await page.getByTestId('filtro-inactivos').click()
-  await expect(page.getByTestId('fila-persona')).toHaveCount(fuera as number)
+  await expect.poll(enPantalla, { timeout: 15_000 }).toEqual(await nombresDe(false))
 })
 
 test('2 · el legajo muestra sus papeles del data room y cada uno se abre en Drive', async ({ page }) => {
