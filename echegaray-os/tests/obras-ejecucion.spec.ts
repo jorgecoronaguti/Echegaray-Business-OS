@@ -312,9 +312,16 @@ test('el resumen publica los desvíos con su origen, y cada uno lleva a la solap
   // Cinco comparaciones: plazo, avance, HH, costo y margen (más atrasos, si los hay).
   expect(await bloque.locator('li').count()).toBeGreaterThanOrEqual(5)
 
-  // NINGÚN SEMÁFORO SIN EXPLICACIÓN: la falta de línea base se publica como falta, no como "en
-  // fecha", y se dice de qué columna sale.
-  await expect(bloque).toContainText(/línea base no está sellada/i)
+  // NINGÚN SEMÁFORO SIN EXPLICACIÓN: la línea de PLAZO existe siempre y nombra la línea base —sea
+  // para compararse contra ella, sea para decir que nadie la selló—.
+  //
+  // ═══ POR QUÉ NO SE EXIGE UNA DE LAS DOS RAMAS ACÁ (19/08/2026) ═══
+  //
+  // Este test exigía leer *"la línea base no está sellada"*. El 19/08 se sellaron las líneas base de
+  // las ocho obras y el test se puso rojo sin que cambiara una línea de código: estaba afirmando un
+  // ESTADO DE LOS DATOS, no una regla del sistema. Las dos ramas se prueban con datos armados en
+  // `services/planVsReal.test.ts`, que corre siempre y no depende de lo que haya en la base hoy.
+  await expect(bloque).toContainText(/línea base/i)
   await expect(bloque).toContainText(/no tiene presupuesto cargado/i)
 
   // ═══ EL ORIGEN TÉCNICO EXISTE, PERO NO A LA VISTA (19/08/2026) ═══
@@ -369,8 +376,18 @@ test('el resumen de obras publica exactamente las siete columnas que pidió el d
       `el resumen volvió a publicar ${prohibida}`).toHaveCount(0)
   }
 
-  // NINGUNA OBRA TIENE LÍNEA BASE TODAVÍA: la columna lo dice en lugar de mostrar un cero.
-  await expect(tabla).toContainText(/sin línea base/i)
+  // NINGUNA CELDA DE PLAZO QUEDA MUDA. Cada obra dice o su desvío contra la línea base, o que no
+  // hay línea base contra la cual medirlo — nunca un cero prolijo que se leería como "vamos bien".
+  //
+  // Antes exigía literalmente «sin línea base», que era cierto el día que se escribió y dejó de
+  // serlo el 19/08 cuando se sellaron las ocho. Lo que se vigila es la regla: la celda habla.
+  const celdas = tabla.locator('tbody tr td:nth-child(5)')
+  const n = await celdas.count()
+  expect(n, 'el resumen no publicó ninguna obra').toBeGreaterThan(0)
+  for (let i = 0; i < n; i++) {
+    await expect(celdas.nth(i), `la celda de plazo ${i + 1} no dice nada`)
+      .toHaveText(/en fecha|\d+ d|sin línea base|sin fechas|—/)
+  }
 })
 
 // ── EN EL TELÉFONO NO SE DESPLAZA DE COSTADO ────────────────────────────────
