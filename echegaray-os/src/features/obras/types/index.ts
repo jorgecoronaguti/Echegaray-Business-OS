@@ -99,6 +99,91 @@ export interface Actividad {
   /** Archivada NO es borrada: sale del Gantt y de los promedios, y su historia queda. */
   archivada: boolean
   creada_en_web: boolean
+
+  // ═══ LO QUE AGREGA `obra_actividad_control` ═══
+  //
+  // Gantt, Lista, Tablero, Próximos, Ejecución y Plan vs Real leen TODOS la misma vista. Antes el
+  // Gantt leía la tabla y Plan vs Real una vista aparte: dos caminos al mismo trabajo es cómo se
+  // llega a que dos pantallas muestren distinto avance de la misma actividad.
+
+  /** El nombre de la actividad de resumen que la cuelga. La jerarquía ya vivía en `codigo_padre`;
+   *  esto es sólo publicar el nombre en vez del código. */
+  rubro: string | null
+  unidad: string | null
+  cantidad_objetivo: number | null
+  /** `cantidad` · `partes` · `manual`. Ver `avance_pct` y `origen_avance`. */
+  metodo_avance: MetodoAvance
+  cuadrilla_id: string | null
+  /** La cuadrilla PREVISTA. Quién trabajó de verdad sale de `registros_hh`. */
+  cuadrilla_prevista: string | null
+  partida_codigo: string | null
+  partida_cantidad: number | null
+
+  cantidad_ejecutada: number | null
+  n_partes: number
+  ultimo_parte: string | null
+  hh_real: number | null
+  hh_extra: number | null
+  n_imputaciones: number
+  impedimentos_abiertos: number
+
+  /** EL avance. Calculado desde la producción, sumado de los partes, o el declarado — y
+   *  `origen_avance` dice cuál de los tres, porque no valen lo mismo. */
+  avance_pct: number | null
+  origen_avance: OrigenAvance | null
+  /** El estado cargado, salvo que haya un impedimento abierto: entonces `bloqueada`. NO se guarda
+   *  —se deriva—, así que resolver el impedimento la destraba sola. */
+  estado_operativo: EstadoActividad | 'bloqueada'
+  /** Unidades por hora hombre. Existe sólo con producción física Y horas imputadas. */
+  productividad: number | null
+  consumo_hh_pct: number | null
+}
+
+/** Los cinco estados del tablero. `bloqueada` NO se guarda: sale de tener un impedimento abierto. */
+export const ESTADOS_ACTIVIDAD = ['pendiente', 'lista', 'en_curso', 'hecha'] as const
+export type EstadoActividad = (typeof ESTADOS_ACTIVIDAD)[number]
+
+export const ESTADO_LABEL: Record<EstadoActividad | 'bloqueada', string> = {
+  pendiente: 'Pendiente',
+  lista: 'Lista',
+  en_curso: 'En curso',
+  bloqueada: 'Bloqueada',
+  hecha: 'Hecha',
+}
+
+/** El orden del tablero, de izquierda a derecha. */
+export const COLUMNAS_TABLERO = ['pendiente', 'lista', 'en_curso', 'bloqueada', 'hecha'] as const
+
+export type MetodoAvance = 'cantidad' | 'partes' | 'manual'
+export type OrigenAvance = 'cantidad' | 'partes' | 'declarado'
+
+export const METODO_LABEL: Record<MetodoAvance, string> = {
+  cantidad: 'Se calcula desde la producción cargada',
+  partes: 'Se suma de los partes diarios',
+  manual: 'Lo declara una persona',
+}
+
+/**
+ * Las unidades de medición de obra.
+ *
+ * NO ES UN CHECK EN LA BASE y no debe serlo: el catálogo de una constructora crece con cada obra
+ * —un día aparece «jornal», otro «gl»— y una migración para poder cargar una unidad nueva es la
+ * clase de fricción que hace que se deje de usar la pantalla. La lista es una AYUDA de carga; el
+ * campo acepta lo que haga falta.
+ */
+export const UNIDADES = ['m²', 'm³', 'ml', 'm', 'un', 'kg', 'tn', 'l', 'gl', 'h', 'jornal', '%'] as const
+
+/** Un parte de ejecución: lo que pasó un día en una actividad. Es un HECHO y no se reescribe. */
+export interface ParteEjecucion {
+  id: string
+  obra_id: string
+  actividad_id: string
+  fecha: string
+  cantidad: number | null
+  avance_pct: number | null
+  comentario: string | null
+  fuente: string
+  creado_en: string
 }
 
 export const TIPO_RESTRICCION = [

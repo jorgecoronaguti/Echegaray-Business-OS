@@ -25,10 +25,10 @@
 // el desvío en cero para siempre y el tablero diría que la obra siempre va en fecha.
 
 import { useState } from 'react'
-import { BotonAccion, Campo, CTRL, FormAccion, type ResultadoAccion } from '@/shared/components/ui'
+import { BotonAccion, Campo, CTRL, FormAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
 import type { Actividad, Dependencia, Persona, Restriccion } from '../types'
 import type { ActividadHH } from '../services/personalService'
-import { TIPO_DEPENDENCIA, TIPO_DEPENDENCIA_LABEL } from '../types'
+import { METODO_LABEL, TIPO_DEPENDENCIA, TIPO_DEPENDENCIA_LABEL, UNIDADES } from '../types'
 import { fecha } from './formato'
 
 export type AccionesCronograma = {
@@ -42,6 +42,8 @@ export type AccionesCronograma = {
    *  control. Un botón que no persiste es peor que no tenerlo. */
   agregarDependencia?: (destinoId: string, form: FormData) => Promise<ResultadoAccion>
   quitarDependencia?: (dependenciaId: string) => Promise<ResultadoAccion>
+  /** Unidad, cantidad objetivo y método de avance de la actividad. */
+  definirMedicion?: (actividadId: string, form: FormData) => Promise<ResultadoAccion>
 }
 
 const fmt = (v: string | number | null | undefined) => (v == null ? '' : String(v))
@@ -244,6 +246,81 @@ function ImpedimentosDe({ abiertos }: { abiertos: Restriccion[] }) {
   )
 }
 
+/**
+ * CÓMO SE MIDE ESTA ACTIVIDAD — y qué lleva ejecutado.
+ *
+ * ═══ POR QUÉ EL MÉTODO ES UN CAMPO Y NO UNA DEDUCCIÓN ═══
+ *
+ * Un avance calculado desde 95 de 180 m² y un 53% que alguien tipeó no valen lo mismo, y la pantalla
+ * tiene que poder distinguirlos. Si el método se dedujera de «¿tiene unidad cargada?», cargar la
+ * unidad para dejarlo anotado cambiaría en silencio de dónde sale el porcentaje de la obra.
+ *
+ * `origen_avance` viene calculado de la base y se muestra al lado del número: es la respuesta a
+ * «¿de dónde salió este 53%?» sin tener que ir a buscarla.
+ */
+function BloqueMedicion({ a, definir }: { a: Actividad; definir?: AccionFormulario }) {
+  const num = (n: number | null) => (n == null ? null : n.toLocaleString('es-AR', { maximumFractionDigits: 2 }))
+  return (
+    <details className="rounded-md border border-line bg-surface px-3 py-2" data-testid="bloque-medicion">
+      <summary className="cursor-pointer text-[12px] text-muted">
+        Medición y ejecución
+        {a.avance_pct != null && (
+          <span className="ml-2 tabular-nums text-ink">{num(a.avance_pct)}%</span>
+        )}
+        {a.origen_avance && (
+          <span className="ml-1.5 text-[11px] text-faint">
+            ({a.origen_avance === 'cantidad' ? 'calculado' : a.origen_avance === 'partes' ? 'de los partes' : 'declarado'})
+          </span>
+        )}
+      </summary>
+
+      <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[12px]">
+        <dt className="text-faint">Ejecutado</dt>
+        <dd className="text-right tabular-nums text-ink">
+          {a.metodo_avance === 'cantidad'
+            ? `${num(a.cantidad_ejecutada ?? 0)} / ${num(a.cantidad_objetivo)} ${a.unidad ?? ''}`
+            : `${a.n_partes} parte(s)`}
+        </dd>
+        <dt className="text-faint">HH imputadas</dt>
+        <dd className="text-right tabular-nums text-ink">{num(a.hh_real) ?? <span className="text-faint">—</span>}</dd>
+        {/* LA PRODUCTIVIDAD EXISTE SÓLO CON LAS DOS PUNTAS. Con una sola sería una división por un
+            dato que falta, no un indicador bajo — y así es como una obra sana parece improductiva. */}
+        {a.productividad != null && (
+          <>
+            <dt className="text-faint">Productividad</dt>
+            <dd className="text-right tabular-nums text-ink">{num(a.productividad)} {a.unidad}/HH</dd>
+          </>
+        )}
+      </dl>
+
+      {definir && (
+        <div className="mt-2 border-t border-line pt-2">
+          <FormAccion accion={definir} testid="form-medicion" enviar="Guardar" mensajeOk="Guardado.">
+            <div className="grid grid-cols-2 gap-2">
+              <Campo label="Unidad">
+                <input name="unidad" defaultValue={a.unidad ?? ''} list="unidades-obra" maxLength={12} className={CTRL} />
+              </Campo>
+              <Campo label="Cantidad objetivo">
+                <input name="cantidad_objetivo" type="number" step="any" min="0" defaultValue={a.cantidad_objetivo ?? ''} className={CTRL} />
+              </Campo>
+              <Campo label="Cómo se mide el avance" ancho="col-span-2">
+                <select name="metodo_avance" defaultValue={a.metodo_avance} className={CTRL} data-testid="metodo-avance">
+                  {(Object.keys(METODO_LABEL) as (keyof typeof METODO_LABEL)[]).map((m) => (
+                    <option key={m} value={m}>{METODO_LABEL[m]}</option>
+                  ))}
+                </select>
+              </Campo>
+            </div>
+            <datalist id="unidades-obra">
+              {UNIDADES.map((u) => <option key={u} value={u} />)}
+            </datalist>
+          </FormAccion>
+        </div>
+      )}
+    </details>
+  )
+}
+
 export function PanelActividad({
   actividad, personas, acciones, alCerrar, actividades = [], dependencias = [], impedimentos = [], hh,
 }: {
@@ -297,7 +374,16 @@ export function PanelActividad({
 
         <div className="mt-3 space-y-3">
           <ImpedimentosDe abiertos={impedimentos} />
-          <AvanceRapido key={`${a.id}:${a.pct}`} a={a} avance={acciones.avance} />
+          <BloqueMedicion
+            a={a}
+            definir={acciones.definirMedicion ? acciones.definirMedicion.bind(null, a.id) : undefined}
+          />
+          {/* EL AVANCE RÁPIDO SÓLO CUANDO EL AVANCE ES DECLARADO. En una actividad que se mide por
+              producción, escribir el porcentaje a mano no lo cambiaría —la vista lo calcula— y el
+              botón parecería roto. Ahí el avance se mueve cargando un parte en Ejecución. */}
+          {a.metodo_avance === 'manual' && (
+            <AvanceRapido key={`${a.id}:${a.pct}`} a={a} avance={acciones.avance} />
+          )}
 
           <details className="rounded-control border border-line bg-surface">
             <summary className="cursor-pointer px-2.5 py-1.5 text-[12px] font-medium text-ink">Editar la actividad</summary>

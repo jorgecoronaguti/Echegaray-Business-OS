@@ -81,7 +81,14 @@ export async function getPlanVsRealPortafolio(supabase: SupabaseClient): Promise
  * veces, y la copia de TypeScript no protege la llamada directa a PostgREST.
  */
 export async function getActividades(supabase: SupabaseClient, obraId?: string): Promise<ServiceResult<Actividad[]>> {
-  const base = supabase.from('obra_actividad').select('*')
+  // ═══ SE LEE LA VISTA, NO LA TABLA ═══
+  //
+  // `obra_actividad_control` es un superconjunto estricto de `obra_actividad`: las mismas columnas
+  // más el avance calculado, la producción acumulada, las HH imputadas, los impedimentos abiertos y
+  // el estado operativo. Leyendo la tabla, cada pantalla que necesitara uno de esos números tenía
+  // que calcularlo por su cuenta — y ahí es donde el Gantt y el tablero empiezan a mostrar distinto
+  // avance de la misma actividad. Hereda el RLS por `security_invoker`.
+  const base = supabase.from('obra_actividad_control').select('*')
   const { data, error } = await (obraId ? base.eq('obra_id', obraId) : base)
     // El orden por obra es inocuo cuando hay una sola y es el que agrupa la vista global. Un solo
     // orden para los dos casos: dos órdenes son dos cronogramas.

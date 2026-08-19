@@ -195,3 +195,22 @@ export async function getActividadHH(
     error: null,
   }
 }
+
+/**
+ * Quiénes integran cada cuadrilla HOY.
+ *
+ * Se usa para que el parte de ejecución muestre cinco casilleros de horas y no diecisiete: elegir la
+ * cuadrilla es lo que convierte una carga de jornada en algo de segundos. Sólo los vínculos
+ * vigentes: quien salió de la cuadrilla en marzo no aparece hoy, y su historia queda igual.
+ */
+export async function getIntegrantesPorCuadrilla(
+  supabase: SupabaseClient,
+): Promise<Record<string, string[]>> {
+  const { data } = await supabase
+    .from('cuadrilla_integrante').select('cuadrilla_id, persona_id').is('hasta', null)
+  const m: Record<string, string[]> = {}
+  for (const f of (data ?? []) as { cuadrilla_id: string; persona_id: string }[]) {
+    (m[f.cuadrilla_id] ??= []).push(f.persona_id)
+  }
+  return m
+}

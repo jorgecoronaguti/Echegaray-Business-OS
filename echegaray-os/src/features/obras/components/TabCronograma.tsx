@@ -33,14 +33,23 @@ import type { Actividad, Dependencia, Persona, Restriccion } from '../types'
 import type { ActividadHH } from '../services/personalService'
 import { Gantt } from './Gantt'
 import { VistaProximos, type Ventana } from './VistaProximos'
+import { VistaLista } from './VistaLista'
+import { VistaTablero } from './VistaTablero'
 import { type AccionesCronograma } from './PanelActividad'
 import { type AccionesEnLote } from './AccionesMasivas'
 
-type SubVista = 'gantt' | 'proximos'
+// CUATRO MANERAS DE MIRAR LAS MISMAS ACTIVIDADES, y las cuatro reciben EL MISMO array.
+//
+// Gantt para ver el tiempo, Lista para cargar en volumen, Tablero para ver dónde se amontona el
+// trabajo, Próximos para saber qué viene. Acá no se vuelve a consultar nada: si cada vista trajera
+// sus filas, alcanzaría con que una filtrara distinto para que la obra tuviera cuatro planes.
+export type SubVista = 'gantt' | 'lista' | 'tablero' | 'proximos'
 
-const SUBVISTAS: { id: SubVista; label: string }[] = [
+export const SUBVISTAS: { id: SubVista; label: string }[] = [
   { id: 'gantt', label: 'Gantt' },
-  { id: 'proximos', label: 'Próximos trabajos' },
+  { id: 'lista', label: 'Lista' },
+  { id: 'tablero', label: 'Tablero' },
+  { id: 'proximos', label: 'Próximos' },
 ]
 
 export function TabCronograma({
@@ -59,6 +68,7 @@ export function TabCronograma({
   actividadAbierta = null,
   hoy,
   hhPorActividad,
+  cambiarEstado,
 }: {
   /** El cronograma vivo: las NO archivadas, en el orden del tracker. */
   actividades: Actividad[]
@@ -88,6 +98,9 @@ export function TabCronograma({
   /** HH plan contra real por actividad, indexada por id. Viene de `obra_actividad_hh`, que es la
    *  misma fuente que muestra la solapa Personal: el pliego pide UN solo cálculo, no dos. */
   hhPorActividad?: Map<string, ActividadHH>
+  /** Mover una actividad de estado desde el tablero. Sin ella el tablero no se dibuja: mostrar
+   *  columnas que no se pueden mover es prometer una acción que no existe. */
+  cambiarEstado?: (actividadId: string, estado: string) => Promise<ResultadoAccion>
 }) {
   const router = useRouter()
   const params = useSearchParams()
@@ -109,6 +122,16 @@ export function TabCronograma({
   }
 
   const cambiarSub = (v: SubVista) => { setSubLocal(v); irA('sub', v) }
+
+  // Abrir una actividad desde Lista o Tablero lleva al Gantt con ella seleccionada: el panel de la
+  // actividad vive ahí y es UNO solo. Tres paneles distintos para la misma actividad terminarían
+  // mostrando tres versiones de sus datos.
+  const abrirActividad = (id: string) => {
+    const p = new URLSearchParams(params.toString())
+    p.set('sub', 'gantt')
+    p.set('act', id)
+    router.replace(`?${p.toString()}`, { scroll: false })
+  }
   const cambiarSemanas = (v: Ventana) => { setSemanasLocal(v); irA('semanas', v) }
 
   return (
@@ -130,6 +153,12 @@ export function TabCronograma({
           >{v.label}</button>
         ))}
       </nav>
+
+      {subActual === 'lista' && <VistaLista actividades={actividades} onAbrir={abrirActividad} />}
+
+      {subActual === 'tablero' && cambiarEstado && (
+        <VistaTablero actividades={actividades} cambiarEstado={cambiarEstado} onAbrir={abrirActividad} />
+      )}
 
       {subActual === 'gantt' ? (
         <>
@@ -163,7 +192,7 @@ export function TabCronograma({
             </details>
           )}
         </>
-      ) : (
+      ) : subActual === 'proximos' ? (
         <VistaProximos
           actividades={actividades}
           impedimentos={restricciones}
@@ -173,7 +202,7 @@ export function TabCronograma({
           alCambiarSemanas={cambiarSemanas}
           {...(hoy ? { hoy } : {})}
         />
-      )}
+      ) : null}
     </div>
   )
 }

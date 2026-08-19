@@ -65,11 +65,16 @@ async function main() {
         continue
       }
       const { suma, diferencia } = coherencia(partes, parsePct(fila[col.pct]))
-      if (diferencia !== null && Math.abs(diferencia) > 1) {
+      // LA GRILLA MANDA SÓLO SI CIERRA CON EL ACUMULADO DECLARADO. «MONTAJE DE COLUMNA METALICA»
+      // tiene la grilla al 30% y `% Done` al 100% (Completado): pasar esa actividad a método
+      // 'partes' haría que una obra terminada informe 30%. Los partes entran igual —son historia
+      // real— pero el número sigue saliendo del declarado hasta que una persona mire cuál vale.
+      const cierra = diferencia !== null && Math.abs(diferencia) <= 1
+      if (!cierra) {
         discrepan.push({ obra: actividad.obra_id, nombre: actividad.nombre, suma, declarado: parsePct(fila[col.pct]) })
       }
       conPartes++
-      for (const p of partes) partesTodos.push({ actividad, ...p })
+      for (const p of partes) partesTodos.push({ actividad, cierra, ...p })
     }
     console.log(`  ✓ ${pestana}: ${conPartes} actividades con grilla diaria`)
   }
@@ -83,6 +88,7 @@ async function main() {
   if (enSeco) { console.log('\nEN SECO. Nada se escribió. Para aplicar: --aplicar\n'); return }
 
   let escritos = 0
+  const aPartes = new Set(partesTodos.filter((p) => p.cierra).map((p) => p.actividad.id))
   for (const p of partesTodos) {
     const { rowCount } = await query(
       `insert into obra_ejecucion (obra_id, actividad_id, fecha, avance_pct, fuente)
@@ -91,7 +97,11 @@ async function main() {
       [p.actividad.obra_id, p.actividad.id, p.fecha, p.pct])
     escritos += rowCount ?? 0
   }
-  console.log(`\n✓ ${escritos} partes migrados · ${partesTodos.length - escritos} ya estaban\n`)
+  for (const id of aPartes) {
+    await query("update obra_actividad set metodo_avance = 'partes' where id = $1 and metodo_avance = 'manual'", [id])
+  }
+  console.log(`\n✓ ${escritos} partes migrados · ${partesTodos.length - escritos} ya estaban`)
+  console.log(`✓ ${aPartes.size} actividades pasan a calcular su avance desde los partes\n`)
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

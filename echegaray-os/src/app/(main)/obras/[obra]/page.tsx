@@ -54,7 +54,13 @@ import { borrarCertificado, crearCertificado } from '@/features/obras/services/a
 import { ETAPAS, ETAPA_LABEL } from '@/features/obras/types'
 import { CamposObra } from '@/features/obras/components/CamposObra'
 import { TabResumen } from '@/features/obras/components/TabResumen'
-import { TabCronograma } from '@/features/obras/components/TabCronograma'
+import { TabCronograma, SUBVISTAS, type SubVista } from '@/features/obras/components/TabCronograma'
+import { TabEjecucion } from '@/features/obras/components/TabEjecucion'
+import { getPartes } from '@/features/obras/services/ejecucionService'
+import { getIntegrantesPorCuadrilla } from '@/features/obras/services/personalService'
+import {
+  borrarParte, cambiarEstado, definirMedicion, registrarEjecucion,
+} from '@/features/obras/services/actionsEjecucion'
 import { TabPersonal } from '@/features/obras/components/TabPersonal'
 import { TabOperacion } from '@/features/obras/components/TabOperacion'
 import { getOperacionObra, SUBS_OPERACION, type SubOperacion } from '@/features/obras/services/operacionService'
@@ -69,7 +75,8 @@ export const dynamic = 'force-dynamic'
 
 const VISTAS = [
   { id: 'resumen', label: 'Resumen' },
-  { id: 'cronograma', label: 'Cronograma' },
+  { id: 'cronograma', label: 'Planificación' },
+  { id: 'ejecucion', label: 'Ejecución' },
   { id: 'personal', label: 'Personal' },
   { id: 'operacion', label: 'Operación' },
   { id: 'economia', label: 'Economía' },
@@ -78,7 +85,11 @@ const VISTAS = [
 type Vista = (typeof VISTAS)[number]['id']
 
 /** Las solapas que existían antes y siguen llegando por link. Redirigen, no se pierden. */
-const ALIAS: Record<string, Vista> = { gantt: 'cronograma', planificacion: 'cronograma' }
+// PLANIFICACIÓN Y EJECUCIÓN SON DOS PREGUNTAS DISTINTAS: qué debería pasar y qué pasó de verdad.
+// La solapa que se llamaba «Cronograma» era la primera y ahora lo dice; la segunda es nueva.
+const ALIAS: Record<string, Vista> = {
+  gantt: 'cronograma', planificacion: 'cronograma', cronograma: 'cronograma',
+}
 
 function resolverVista(raw: string | undefined): Vista {
   if (!raw) return 'resumen'
@@ -153,7 +164,7 @@ export default async function ObraPage({
   // Las precedencias sólo las dibuja el Gantt: traerlas en las otras cinco solapas es una consulta
   // por visita para nadie.
   const dependencias = vista === 'cronograma' ? (await getDependencias(supabase, obraId)).data ?? [] : []
-  const necesitaPersonas = vista === 'cronograma' || vista === 'personal'
+  const necesitaPersonas = vista === 'cronograma' || vista === 'personal' || vista === 'ejecucion'
   const personas = necesitaPersonas ? (await getPersonas(supabase)).data ?? [] : []
   const ubicacion = vista === 'resumen' ? await getUbicacion(supabase, obraId) : null
   const asignaciones = vista === 'personal' ? (await getAsignaciones(supabase, obraId)).data ?? [] : []
@@ -162,7 +173,10 @@ export default async function ObraPage({
   // Cronograma la usa para mostrar HH real en el panel de la actividad, con el MISMO cálculo.
   const actividadHH = vista === 'personal' || vista === 'cronograma'
     ? (await getActividadHH(supabase, obraId)).data ?? [] : []
-  const cuadrillas = vista === 'personal' ? await getCuadrillas(supabase) : []
+  const necesitaCuadrillas = vista === 'personal' || vista === 'ejecucion'
+  const cuadrillas = necesitaCuadrillas ? await getCuadrillas(supabase) : []
+  const integrantes = vista === 'ejecucion' ? await getIntegrantesPorCuadrilla(supabase) : {}
+  const partes = vista === 'ejecucion' ? (await getPartes(supabase, obraId)).data ?? [] : []
   const certificados = vista === 'economia' ? (await getCertificados(supabase, obraId)).data ?? [] : []
   const documentos = vista === 'documentos' ? (await getDocumentos(supabase, obraId)).data ?? [] : []
   // Operación trae sus cuatro listas de una sola vez: las cuatro se atan a la obra por el MISMO
@@ -255,7 +269,7 @@ export default async function ObraPage({
       {vista === 'cronograma' && (
         <TabCronograma
           obraId={obraId}
-          sub={sub === 'proximos' ? 'proximos' : 'gantt'}
+          sub={SUBVISTAS.some((v) => v.id === sub) ? (sub as SubVista) : 'gantt'}
           semanas={semanas === '1' || semanas === '6' ? semanas : '2'}
           actividadAbierta={act ?? null}
           hhPorActividad={new Map(actividadHH.map((h) => [h.actividad_id, h]))}
@@ -272,6 +286,7 @@ export default async function ObraPage({
             archivar: archivarActividad.bind(null, obraId),
             hito: marcarHito.bind(null, obraId),
             sellar: sellarBaseline.bind(null, obraId),
+            definirMedicion: definirMedicion.bind(null, obraId),
           }}
           /* LAS ACCIONES EN LOTE SE ATAN A LA OBRA ACÁ, igual que el resto: el `obraId` nunca viaja
              en un campo del navegador. Los ids de actividad SÍ vienen del cliente —es una selección
@@ -283,6 +298,21 @@ export default async function ObraPage({
             baseline: sellarBaselineMasivo.bind(null, obraId),
           }}
           restaurarActividad={archivarActividad.bind(null, obraId)}
+          cambiarEstado={cambiarEstado.bind(null, obraId)}
+        />
+      )}
+
+      {vista === 'ejecucion' && (
+        <TabEjecucion
+          obraId={obraId}
+          actividades={acts}
+          partes={partes}
+          personas={personas}
+          cuadrillas={cuadrillas}
+          integrantes={integrantes}
+          hoy={new Date().toISOString().slice(0, 10)}
+          registrar={registrarEjecucion.bind(null, obraId)}
+          borrarParte={borrarParte.bind(null, obraId)}
         />
       )}
 
