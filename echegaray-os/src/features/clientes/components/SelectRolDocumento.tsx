@@ -50,7 +50,7 @@ export function SelectRolDocumento({
           form.set('rol', e.target.value)
           startTransition(() => ejecutar(form))
         }}
-        className="min-w-0 rounded-control border border-line bg-white px-2 py-1 text-[12px] text-ink disabled:opacity-50"
+        className="min-w-0 rounded-control border border-line-strong bg-surface px-2 py-1 text-[12.5px] text-ink disabled:bg-surface-sunken disabled:text-faint"
       >
         <option value="">sin clasificar</option>
         {lista.map((r) => <option key={r} value={r}>{r}</option>)}

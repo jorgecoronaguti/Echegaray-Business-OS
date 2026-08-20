@@ -13,11 +13,10 @@
 //
 // ═══ POR QUÉ NO ES UNA `Card` ═══
 //
-// `Card` dibuja borde, fondo y sombra. Anidada alrededor de tablas que YA tienen su borde
-// (`rounded-xl border border-line bg-white`), da dos marcos concéntricos por bloque y cuatro
-// bloques dan ocho marcos: es exactamente el ruido que el dueño pidió sacar. Acá el bloque aporta
-// SEPARACIÓN y JERARQUÍA —un título, un contador, una acción— y el contenido trae su propia
-// superficie. Cero chrome adicional.
+// `Card` dibuja borde, fondo y sombra, y desde el Design Handoff V2 las tablas de este record ya no
+// van en caja: hairline superior y divisores de fila (`COMPONENTS.md` §Table). Una `Card` alrededor
+// devolvería el marco que se acaba de sacar, y cuatro bloques darían cuatro marcos concéntricos con
+// la tabla adentro. Acá el bloque aporta SEPARACIÓN y JERARQUÍA —un título, un contador— y nada más.
 
 import type { ReactNode } from 'react'
 
@@ -37,9 +36,11 @@ export function Bloque({
 }) {
   return (
     <section data-testid={testid} className="min-w-0">
-      <h2 className="mb-2 flex items-baseline gap-2 text-[13px] font-semibold uppercase tracking-wide text-ink">
+      {/* 13/600 SIN VERSALITAS (mock 2h). En versalitas, «Obras asociadas» y «Documentos» pesaban
+          más que los nombres de las obras que rotulan: el título de un bloque orienta, no compite. */}
+      <h2 className="mb-3 flex items-baseline gap-2 text-[13px] font-semibold text-ink">
         {titulo}
-        {cuenta != null && <span className="text-[12px] font-normal tabular-nums text-faint">{cuenta}</span>}
+        {cuenta != null && <span className="font-mono text-[11.5px] font-normal tabular-nums text-faint">{cuenta}</span>}
       </h2>
       {children}
     </section>

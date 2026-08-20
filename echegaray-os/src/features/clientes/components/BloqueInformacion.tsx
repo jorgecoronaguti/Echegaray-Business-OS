@@ -14,8 +14,24 @@
 //
 // «sin cargar» NUNCA se dibuja como un problema: no hay rojo ni naranja. Que falte el teléfono de un
 // cliente es un dato que falta, no un desvío.
+//
+// ═══ SIN CAJA ALREDEDOR DE LAS PROPIEDADES (Design Handoff V2) ═══
+//
+// `SPACING_BORDERS.md`: *"Antes de crear una caja: ¿hace falta para entender el dato? La jerarquía
+// se consigue con tipografía, espacio, alineación y proximidad"*. El aside de 320px ya está
+// separado de la columna ancha por 28px de aire y por su rótulo: el borde no agregaba una sola
+// respuesta y sí una línea más para procesar.
+//
+// EL PAR SIGUE SIENDO RÓTULO ARRIBA / VALOR ABAJO y no rótulo-izquierda/valor-derecha como en el
+// mockup: en 320px «Responsable interno» y «Rodrigo Echegaray» no entran en la misma línea, y
+// forzarlos parte las dos en cuatro renglones. La razón está medida, no supuesta.
+//
+// FALTAN DOS CAMPOS DEL HANDOFF y no se inventan: «Condición IVA» y «Condición de pago» no existen
+// como columnas de `clientes`. Dibujarlos con «sin cargar» sería prometer un campo que ningún
+// formulario puede llenar; agregarlos es una migración con la decisión del dueño detrás.
 
-import { BotonAccion, Callout, Campo, CTRL, FormAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
+import { Aviso } from '@/shared/components/ds'
+import { BotonAccion, Campo, CTRL, FormAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
 import type { ClientePanel, Responsable } from '../types'
 import { CamposCliente } from './CamposCliente'
 import { oFalta, Propiedad } from './Bloque'
@@ -38,8 +54,8 @@ export function BloqueInformacion({
 }) {
   return (
     <div className="space-y-3">
-      <div className="rounded-xl border border-line bg-white px-4 py-2" data-testid="cliente-informacion">
-        <dl className="divide-y divide-line/60">
+      <div data-testid="cliente-informacion">
+        <dl className="divide-y divide-[#EFEEEA] border-t border-line">
           <Propiedad rotulo="Nombre comercial">{cliente.nombre_comercial}</Propiedad>
           {/* «sin cargar» y no el nombre comercial repetido: la razón social vacía es un dato que
               falta, y repetir el otro campo lo escondería haciéndolo parecer completo. */}
@@ -62,10 +78,10 @@ export function BloqueInformacion({
           </Propiedad>
           {/* El identificador NO se edita: es la URL del cliente y lo que apuntan los enlaces que
               alguien ya compartió. Corregir la razón social no puede romper una dirección. */}
-          <Propiedad rotulo="Identificador">{cliente.slug ?? '—'}</Propiedad>
+          <Propiedad rotulo="Identificador">{oFalta(cliente.slug)}</Propiedad>
         </dl>
         {cliente.notas && (
-          <p className="border-t border-line py-2.5 text-[12px] leading-relaxed text-muted">{cliente.notas}</p>
+          <p className="border-t border-[#EFEEEA] py-2.5 text-[12px] leading-relaxed text-muted">{cliente.notas}</p>
         )}
       </div>
 
@@ -91,20 +107,20 @@ function Administrar({
 }) {
   return (
     <>
-      <details className="rounded-xl border border-line bg-white" data-testid="editar-cliente" open={edicionAbierta}>
-        <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-medium text-ink">Editar la ficha</summary>
-        <div className="border-t border-line p-4">
+      <details className="rounded-card border border-line bg-surface" data-testid="editar-cliente" open={edicionAbierta}>
+        <summary className="cursor-pointer px-3.5 py-2 text-[12.5px] text-ink">Editar la ficha</summary>
+        <div className="border-t border-line p-3.5">
           <FormAccion accion={editar} testid="form-editar-cliente" enviar="Guardar" mensajeOk="Ficha guardada.">
             <CamposCliente cliente={cliente} responsables={responsables} />
           </FormAccion>
         </div>
       </details>
 
-      <details className="rounded-xl border border-line bg-white" data-testid="carpeta-drive">
-        <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-medium text-ink">
+      <details className="rounded-card border border-line bg-surface" data-testid="carpeta-drive">
+        <summary className="cursor-pointer px-3.5 py-2 text-[12.5px] text-ink">
           Vincular la carpeta de Drive
         </summary>
-        <div className="border-t border-line p-4">
+        <div className="border-t border-line p-3.5">
           <FormAccion accion={vincularCarpeta} testid="form-carpeta-drive" enviar="Vincular carpeta" limpiarAlOk mensajeOk="Carpeta vinculada.">
             <Campo label="Dirección de la carpeta" ayuda="La que da el botón Compartir de Drive. También sirve el id.">
               <input name="url" required maxLength={500} className={CTRL} placeholder="https://drive.google.com/drive/folders/…" />
@@ -113,13 +129,15 @@ function Administrar({
         </div>
       </details>
 
-      <div className="rounded-xl border border-line bg-white p-4">
-        <h3 className="mb-1 text-[13px] font-semibold text-ink">
-          {cliente.activo ? 'Archivar el cliente' : 'Reactivar el cliente'}
-        </h3>
-        <p className="mb-2.5 text-[12px] leading-relaxed text-muted">
+      {/* ARCHIVAR NO ES BORRAR, y el texto es lo único que lo garantiza antes del clic. Va al pie
+          del aside —como en el handoff—, separado por un hairline y sin caja propia. */}
+      <div className="border-t border-[#EFEEEA] pt-3.5">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-faint">
+          {cliente.activo ? 'Archivar cliente' : 'Reactivar cliente'}
+        </div>
+        <p className="mb-2.5 mt-1.5 text-[12px] leading-relaxed text-muted">
           {cliente.activo
-            ? 'Sale de la lista de clientes y de la operación diaria. Su historia —obras, costos, contactos, documentos— queda entera y esta página sigue abriendo por su dirección.'
+            ? 'Sale de la lista de clientes. Las obras y los documentos quedan enteros, y esta página sigue abriendo por su dirección.'
             : 'Vuelve a la lista de clientes y a la operación diaria.'}
         </p>
         <BotonAccion
@@ -131,9 +149,9 @@ function Administrar({
       </div>
 
       {!responsables.length && (
-        <Callout tono="info">
+        <Aviso tono="info">
           No hay personas del OS para elegir como responsable. Se cargan con el acceso de cada uno.
-        </Callout>
+        </Aviso>
       )}
     </>
   )
