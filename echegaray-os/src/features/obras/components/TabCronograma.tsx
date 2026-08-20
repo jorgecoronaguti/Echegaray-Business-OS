@@ -1,6 +1,6 @@
 'use client'
 
-// PLANIFICACIÓN — UNA pestaña con cuatro maneras de mirar LAS MISMAS actividades.
+// PLANIFICACIÓN — UNA solapa con cuatro maneras de mirar LAS MISMAS actividades.
 //
 // ═══ POR QUÉ NO HAY UNA SOLAPA «PLANIFICACIÓN» Y OTRA «GANTT» ═══
 //
@@ -13,42 +13,86 @@
 // reciben la lista YA recortada: si cada vista filtrara con su propia regla, cambiar de solapa
 // cambiaría lo que se ve sin que nadie haya tocado el filtro.
 //
-// ═══ CREAR NO ES UNA FUNCIÓN DEL GANTT ═══
+// ═══ QUÉ VIVE ACÁ Y POR QUÉ ═══
 //
-// «+ Nueva actividad» y «+ Nuevo rubro» viven en la barra de arriba (`BarraPlan`), no adentro del
-// Gantt. Desde Lista, Tablero o Próximos no se podía crear nada: había que volver al Gantt para
-// agregar una fila que después se iba a mirar desde otra vista.
+// La barra de vista (48px) necesita saber si el panel está cerrado —para ofrecer `Detalle ‹`— y qué
+// escala tiene el calendario. Por eso la selección de actividad, el estado del panel y la escala
+// viven en este nivel y no adentro del Gantt: el control y el estado que gobierna tienen que estar
+// en el mismo lugar, o hace falta un canal de vuelta que nadie mantiene.
 //
 // ═══ LA SUB-VISTA Y LA VENTANA VIAJAN EN LA URL; LA SELECCIÓN DE UNA BARRA NO ═══
 //
 // «Estoy mirando el Gantt» y «estoy mirando las próximas dos semanas» son VISTAS: se mandan por
-// mensaje, se abren de nuevo mañana y tienen que volver iguales. Van en la query.
-//
-// Seleccionar una barra NO. En el Gantt se toca una actividad tras otra para comparar fechas: si
-// cada clic escribiera la URL, cada clic sería una vuelta al servidor y el cronograma se sentiría
-// pegajoso justo en lo que más se usa. Entra por `actividadAbierta` —para que un enlace pueda abrir
-// una actividad concreta— y a partir de ahí la selección es local.
+// mensaje, se abren de nuevo mañana y tienen que volver iguales. Van en la query. Seleccionar una
+// barra NO: en el Gantt se toca una actividad tras otra para comparar fechas, y una vuelta al
+// servidor por clic haría el cronograma pegajoso justo en lo que más se usa.
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useSyncExternalStore } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { Franja, type Metrica } from '@/shared/components/ds'
 import { BotonAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
 import type { Actividad, Dependencia, Persona, Restriccion } from '../types'
 import type { ActividadHH } from '../services/personalService'
 import { Gantt } from './Gantt'
 // LAS SUB-VISTAS VIVEN EN UN MÓDULO NEUTRAL: la página, que es un Server Component, también las
 // necesita, y un valor exportado desde un archivo `'use client'` no cruza esa frontera.
-import { SUBVISTAS, type SubVista } from '../services/subvistas'
+import { type SubVista } from '../services/subvistas'
 import { VistaProximos, type Ventana } from './VistaProximos'
 import { VistaLista } from './VistaLista'
 import { VistaTablero } from './VistaTablero'
-import { FranjaObra } from './FranjaObra'
 import { BarraPlan, type AccionesPlan } from './BarraPlan'
-import { resumenDelPlan } from '../services/resumenDelPlan'
+import { resumenDelPlan, type ResumenDelPlan } from '../services/resumenDelPlan'
 import { aplicarFiltro, FILTRO_VACIO, hayFiltro, type FiltroPlan } from '../services/filtroPlan'
 import { rubrosDe } from '../services/rubros'
-import { FormNuevaActividad, type AccionesCronograma, type DatosDeActividad } from './PanelActividad'
-import { type AccionesEnLote } from './AccionesMasivas'
+import type { Escala } from '../services/escala'
+import { FormNuevaActividad } from './FormActividad'
+import type { AccionesCronograma, DatosDeActividad } from './PanelActividad'
+import { SellarLineaBase, type AccionesEnLote } from './AccionesMasivas'
 
+// ═══ HAY DOS COLUMNAS O NO LAS HAY ═══
+//
+// El panel se elige solo en ESCRITORIO. En el teléfono no es una columna: es una hoja que sube y
+// tapa el cronograma, y abrirla sola deja al jefe de obra mirando una ficha que no pidió, con el
+// fondo comiéndose el primer toque. Se lee con `useSyncExternalStore` y no con un efecto que
+// escribe estado: el servidor contesta `false` —sin panel en la primera pintura, sin desajuste de
+// hidratación— y el navegador corrige en el mismo render, sin una vuelta extra.
+const MQ = '(min-width: 1024px)'
+const suscribirAncho = (avisar: () => void) => {
+  const m = window.matchMedia(MQ)
+  m.addEventListener('change', avisar)
+  return () => m.removeEventListener('change', avisar)
+}
+
+const n = (v: number | null, dec = 0) =>
+  v == null ? null : v.toLocaleString('es-AR', { maximumFractionDigits: dec })
+
+/** La franja de seis cifras del pie. Sale de las MISMAS actividades que se acaban de dibujar. */
+function metricasDelPlan(r: ResumenDelPlan, semanas: number): Metrica[] {
+  const sinCargar = <span className="text-[13px] font-normal text-faint">sin cargar</span>
+  return [
+    { etiqueta: 'Avance físico', valor: r.avance == null ? sinCargar : `${r.avance}%` },
+    {
+      etiqueta: 'HH consumidas',
+      valor: n(r.hhReal, 1) ?? sinCargar,
+      contexto: r.hhPlan == null ? 'sin plan de HH' : `de ${n(r.hhPlan, 1)} previstas`,
+    },
+    {
+      etiqueta: 'Desvío HH',
+      valor: r.desvioHH == null ? sinCargar : `${r.desvioHH > 0 ? '+' : ''}${n(r.desvioHH, 1)}`,
+      contexto: r.desvioHH == null ? 'falta una punta' : 'contra el plan',
+      // Rojo SÓLO cuando es un problema real: gastar horas de más. Por debajo del plan no es rojo.
+      ...(r.desvioHH != null && r.desvioHH > 0 ? { tono: 'neg' as const } : {}),
+    },
+    { etiqueta: 'Actividades', valor: String(r.actividades), contexto: `${r.enCurso} en curso` },
+    {
+      etiqueta: 'Impedimentos',
+      valor: String(r.impedimentosAbiertos),
+      contexto: r.impedimentosVencidos > 0 ? `${r.impedimentosVencidos} vencido(s)` : 'ninguno vencido',
+      ...(r.impedimentosVencidos > 0 ? { tono: 'neg' as const } : {}),
+    },
+    { etiqueta: `Próximas ${semanas} sem.`, valor: String(r.proximas), contexto: 'por arrancar o cerrar' },
+  ]
+}
 
 export function TabCronograma({
   actividades,
@@ -70,10 +114,11 @@ export function TabCronograma({
   cambiarEstado,
   datosPorActividad,
   medirEnLote,
+  anchoTabla,
+  anchoPanel,
 }: {
   /** El cronograma vivo: las NO archivadas, en el orden del tracker. */
   actividades: Actividad[]
-  /** Para poder mandar a Operación, donde se ve la lista completa de impedimentos. */
   obraId: string
   /** Las archivadas, para poder devolverlas. Si no se pasan, no se dibuja la lista. */
   archivadas?: Actividad[]
@@ -82,32 +127,25 @@ export function TabCronograma({
   personas?: Persona[]
   /** Sin `acciones` todo el cronograma queda de sólo lectura. */
   acciones?: AccionesCronograma
-  /** Las acciones en lote del Gantt. Opcional por la misma razón que `acciones`: sin ellas no se
-   *  dibuja una sola casilla de selección, en vez de dibujar controles que no escriben. */
   masivas?: AccionesEnLote
   /** Crear, renombrar, ordenar y archivar rubros. */
   accionesPlan?: AccionesPlan
   yaSellada?: boolean
   /** `archivarActividad` atada a la obra: se la llama con `(id, false)` para restaurar. */
   restaurarActividad?: (actividadId: string, archivada: boolean) => Promise<ResultadoAccion>
-  /** Query `sub`. Si no viene, la sub-vista se gobierna sola y no toca la URL. */
   sub?: SubVista
-  /** Query `semanas`. Ventana de «Próximos trabajos». */
   semanas?: Ventana
   /** Query `act`: qué actividad abrir al entrar. Después la selección es local. */
   actividadAbierta?: string | null
   /** Sólo para poder fijar el día en un test. En la pantalla es hoy. */
   hoy?: Date
-  /** HH plan contra real por actividad, indexada por id. Viene de `obra_actividad_hh`, que es la
-   *  misma fuente que muestra la solapa Personal: el pliego pide UN solo cálculo, no dos. */
   hhPorActividad?: Map<string, ActividadHH>
-  /** Mover una actividad de estado desde el tablero. Sin ella el tablero no se dibuja: mostrar
-   *  columnas que no se pueden mover es prometer una acción que no existe. */
   cambiarEstado?: (actividadId: string, estado: string) => Promise<ResultadoAccion>
-  /** Partes, tareas, notas, papeles, personal real y equipos de cada actividad, para el panel. */
   datosPorActividad?: Map<string, DatosDeActividad>
-  /** Guardar la medición de todas las filas de la Lista de una vez. */
   medirEnLote?: AccionFormulario
+  /** Los anchos del split, leídos de la cookie por el servidor. */
+  anchoTabla?: number
+  anchoPanel?: number
 }) {
   const router = useRouter()
   const params = useSearchParams()
@@ -117,9 +155,10 @@ export function TabCronograma({
   // se comparte: un enlace mandado por chat que llega con un recorte que el que lo abre no puso es
   // la manera más rápida de leer mal una obra.
   const [filtro, setFiltro] = useState<FiltroPlan>(FILTRO_VACIO)
+  const [escala, setEscala] = useState<Escala>('semana')
+  const [selId, setSelId] = useState<string | null>(actividadAbierta)
+  const [panelCerrado, setPanelCerrado] = useState(false)
 
-  // Controlado cuando la página pasa el valor; libre cuando no. El estado local se actualiza igual
-  // para que la pantalla responda en el acto y no espere la vuelta del servidor.
   const subActual = sub ?? subLocal
   const ventanaActual = semanas ?? semanasLocal
 
@@ -127,108 +166,112 @@ export function TabCronograma({
   const nombresDeRubro = useMemo(() => rubros.map((r) => r.nombre), [rubros])
   const visibles = useMemo(() => aplicarFiltro(actividades, filtro), [actividades, filtro])
 
-  /** Se reescribe SÓLO el parámetro que cambió: `vista` y el resto de la query quedan como estaban.
-   *  Construir la URL entera desde acá obligaría a saber cómo se llama la solapa en la página, que
-   *  es justo lo que este componente no tiene por qué saber. */
+  // ═══ EL WORKSPACE ARRANCA PARTIDO ═══
+  //
+  // El objetivo se dibuja CON una actividad seleccionada y la pantalla arrancaba sin ninguna: se
+  // entraba a una tabla ancha con un calendario al lado, y el panel —que es un tercio de lo que el
+  // dueño pidió— sólo aparecía si adivinaba que había que tocar una fila. La elegida por defecto es
+  // la primera CON FECHA: una sin fechas abre un panel que no puede mostrar el plan.
+  const esEscritorio = useSyncExternalStore(suscribirAncho, () => window.matchMedia(MQ).matches, () => false)
+  const primeraConFecha = useMemo(
+    () => actividades.find((a) => a.inicio_plan && a.tipo !== 'resumen') ?? null,
+    [actividades],
+  )
+  const seleccion = selId ?? (esEscritorio ? (primeraConFecha?.id ?? null) : null)
+
+  /** Se reescribe SÓLO el parámetro que cambió: el resto de la query queda como estaba. */
   const irA = (clave: string, valor: string) => {
     const p = new URLSearchParams(params.toString())
     p.set(clave, valor)
     router.replace(`?${p.toString()}`, { scroll: false })
   }
-
   const cambiarSub = (v: SubVista) => { setSubLocal(v); irA('sub', v) }
-
-  // Abrir una actividad desde Lista o Tablero lleva al Gantt con ella seleccionada: el panel de la
-  // actividad vive ahí y es UNO solo. Tres paneles distintos para la misma actividad terminarían
-  // mostrando tres versiones de sus datos.
-  const abrirActividad = (id: string) => {
-    const p = new URLSearchParams(params.toString())
-    p.set('sub', 'gantt')
-    p.set('act', id)
-    router.replace(`?${p.toString()}`, { scroll: false })
-  }
   const cambiarSemanas = (v: Ventana) => { setSemanasLocal(v); irA('semanas', v) }
 
-  return (
-    <div className="space-y-4">
-      {/* SEGUNDO NIVEL DE NAVEGACIÓN Y ÚLTIMO: área arriba, obra en el medio, y esto. Un cuarto nivel
-          obligaría a decodificar la pantalla antes de leerla. Se desplaza en vez de empujar la
-          página: en 390px las cuatro solapas y el ancho del contenedor no siempre entran. */}
-      <nav className="-mb-px flex gap-1 overflow-x-auto border-b border-line" aria-label="Vistas del plan">
-        {SUBVISTAS.map((v) => (
-          <button
-            key={v.id}
-            type="button"
-            onClick={() => cambiarSub(v.id)}
-            aria-current={subActual === v.id ? 'page' : undefined}
-            data-testid={`subvista-${v.id}`}
-            className={`shrink-0 border-b-2 px-4 py-2.5 text-[clamp(14px,0.92vw,32px)] ${
-              subActual === v.id ? 'border-accent font-medium text-ink' : 'border-transparent text-muted hover:text-ink'
-            }`}
-          >{v.label}</button>
-        ))}
-      </nav>
+  // Abrir una actividad desde Lista o Tablero lleva al Gantt con ella seleccionada: el panel de la
+  // actividad vive ahí y es UNO solo. Tres paneles para la misma actividad terminarían mostrando
+  // tres versiones de sus datos.
+  const abrirActividad = (id: string) => {
+    setSelId(id)
+    setPanelCerrado(false)
+    cambiarSub('gantt')
+  }
 
+  const resumen = resumenDelPlan(
+    visibles, restricciones, (hoy ?? new Date()).toISOString().slice(0, 10), Number(ventanaActual),
+  )
+
+  return (
+    <div className="flex min-h-0 flex-col">
       <BarraPlan
         rubros={rubros}
         personas={personas}
         filtro={filtro}
         alFiltrar={setFiltro}
         acciones={accionesPlan}
-        alta={acciones ? <FormNuevaActividad personas={personas} crear={acciones.crear} rubros={nombresDeRubro} /> : undefined}
+        sub={subActual}
+        alCambiarSub={cambiarSub}
+        detalleCerrado={subActual === 'gantt' && (panelCerrado || seleccion === null)}
+        alAbrirDetalle={() => {
+          setPanelCerrado(false)
+          if (!seleccion) {
+            const primera = primeraConFecha ?? actividades[0]
+            if (primera) setSelId(primera.id)
+          }
+        }}
+        escala={escala}
+        alCambiarEscala={setEscala}
+        {...(acciones ? { sellar: <SellarLineaBase sellar={acciones.sellar} yaSellada={yaSellada} /> } : {})}
+        {...(acciones
+          ? { alta: <FormNuevaActividad personas={personas} crear={acciones.crear} rubros={nombresDeRubro} /> }
+          : {})}
       />
 
       {/* CUÁNTO SE ESTÁ ESCONDIENDO. Un cronograma filtrado que parece completo es cómo se lee mal
           una obra: si hay recorte, se dice cuántas filas quedaron afuera. */}
       {hayFiltro(filtro) && (
-        <p className="text-[12px] text-muted" data-testid="aviso-filtro">
+        <p className="pb-2 text-[12px] text-muted" data-testid="aviso-filtro">
           Mostrando {visibles.filter((a) => a.tipo !== 'resumen').length} de{' '}
           {actividades.filter((a) => a.tipo !== 'resumen').length} actividades.
         </p>
       )}
 
-      {subActual === 'lista' && <VistaLista actividades={visibles} onAbrir={abrirActividad} medir={medirEnLote} />}
-
-      {subActual === 'tablero' && cambiarEstado && (
-        <VistaTablero actividades={visibles} cambiarEstado={cambiarEstado} onAbrir={abrirActividad} />
-      )}
-
-      {subActual === 'gantt' ? (
-        <>
+      {subActual === 'gantt' && (
+        // El workspace ocupa el alto que queda entre la barra de vista y la franja. No es `100vh`
+        // entero: arriba viven el header global, el encabezado de la obra y sus dos barras.
+        <div className="flex h-[70vh] min-h-[420px] flex-col lg:h-[calc(100vh-330px)]">
           <Gantt
             actividades={visibles}
             restricciones={restricciones}
             dependencias={dependencias}
             personas={personas}
-            acciones={acciones}
-            masivas={masivas}
-            yaSellada={yaSellada}
-            seleccionInicial={actividadAbierta}
-            hhPorActividad={hhPorActividad}
-            datosPorActividad={datosPorActividad}
+            {...(acciones ? { acciones } : {})}
+            {...(masivas ? { masivas } : {})}
+            seleccionada={seleccion}
+            alSeleccionar={(id) => { setSelId(id); setPanelCerrado(false) }}
+            panelAbierto={!panelCerrado}
+            alCerrarPanel={() => setPanelCerrado(true)}
+            escala={escala}
+            {...(hhPorActividad ? { hhPorActividad } : {})}
+            {...(datosPorActividad ? { datosPorActividad } : {})}
             rubros={nombresDeRubro}
             obraId={obraId}
+            {...(anchoTabla ? { anchoTablaInicial: anchoTabla } : {})}
+            {...(anchoPanel ? { anchoPanelInicial: anchoPanel } : {})}
             {...(hoy ? { hoy } : {})}
           />
-          {archivadas.length > 0 && restaurarActividad && (
-            <details className="rounded-card border border-line bg-surface" data-testid="actividades-archivadas">
-              <summary className="cursor-pointer px-4 py-2.5 text-[13px] text-muted">
-                {archivadas.length} actividad(es) archivadas
-              </summary>
-              <ul className="divide-y divide-line/60 border-t border-line">
-                {archivadas.map((a) => (
-                  <li key={a.id} className="flex items-center justify-between gap-3 px-4 py-2">
-                    <span className="min-w-0 truncate text-[12px] text-muted">{a.nombre}</span>
-                    <BotonAccion accion={restaurarActividad} args={[a.id, false]} testid="restaurar-actividad">
-                      Restaurar
-                    </BotonAccion>
-                  </li>
-                ))}
-              </ul>
-            </details>
-          )}
-        </>
-      ) : subActual === 'proximos' ? (
+        </div>
+      )}
+
+      {subActual === 'lista' && (
+        <VistaLista actividades={visibles} onAbrir={abrirActividad} {...(medirEnLote ? { medir: medirEnLote } : {})} />
+      )}
+
+      {subActual === 'tablero' && cambiarEstado && (
+        <VistaTablero actividades={visibles} cambiarEstado={cambiarEstado} onAbrir={abrirActividad} />
+      )}
+
+      {subActual === 'proximos' && (
         <VistaProximos
           actividades={visibles}
           impedimentos={restricciones}
@@ -238,17 +281,30 @@ export function TabCronograma({
           alCambiarSemanas={cambiarSemanas}
           {...(hoy ? { hoy } : {})}
         />
-      ) : null}
+      )}
 
-      {/* AL PIE Y NO ARRIBA: el plan es el trabajo y va primero. Estas cifras se leen al terminar
-          de mirarlo, y salen de las MISMAS actividades que se acaban de dibujar — filtradas
-          incluidas, porque una franja que cuenta lo que la pantalla no muestra es una franja que
-          contradice a la pantalla. */}
-      <FranjaObra
-        r={resumenDelPlan(visibles, restricciones, (hoy ?? new Date()).toISOString().slice(0, 10),
-          Number(ventanaActual))}
-        semanas={Number(ventanaActual)}
-      />
+      {subActual === 'gantt' && archivadas.length > 0 && restaurarActividad && (
+        <details className="border-t border-line py-2" data-testid="actividades-archivadas">
+          <summary className="cursor-pointer text-[12.5px] text-muted">
+            {archivadas.length} actividad(es) archivadas
+          </summary>
+          <ul className="divide-y divide-[#EFEEEA]">
+            {archivadas.map((a) => (
+              <li key={a.id} className="flex items-center justify-between gap-3 py-2">
+                <span className="min-w-0 truncate text-[12.5px] text-muted">{a.nombre}</span>
+                <BotonAccion accion={restaurarActividad} args={[a.id, false]} testid="restaurar-actividad">
+                  Restaurar
+                </BotonAccion>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      {/* AL PIE Y NO ARRIBA: el plan es el trabajo y va primero. Estas cifras se leen al terminar de
+          mirarlo, y salen de las MISMAS actividades que se acaban de dibujar —filtradas incluidas,
+          porque una franja que cuenta lo que la pantalla no muestra contradice a la pantalla. */}
+      <Franja testid="franja-obra" metricas={metricasDelPlan(resumen, Number(ventanaActual))} />
     </div>
   )
 }
