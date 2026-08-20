@@ -7,6 +7,7 @@ import { Aviso, Estado } from '@/shared/components/ds'
 import { PantallaEmpleado, Seccion } from '@/features/empleado/components/ShellEmpleado'
 import { Dato, Fila, Nada } from '@/features/empleado/components/Filas'
 import { getMiLegajo } from '@/features/empleado/services/empleadoService'
+import { legible } from '@/features/empleado/services/fecha'
 
 // «MI LEGAJO» — identidad, situación laboral e historial de asignaciones.
 //
@@ -67,9 +68,9 @@ export default async function MiLegajoPage() {
           <Seccion titulo="SITUACIÓN LABORAL">
             <div data-testid="situacion-laboral">
               <Dato rotulo="Legajo" valor={l.legajo} />
-              <Dato rotulo="Categoría" valor={l.categoria} />
-              <Dato rotulo="Especialidad" valor={l.especialidad} />
-              <Dato rotulo="Puesto" valor={l.puesto} />
+              <Dato rotulo="Categoría" valor={legible(l.categoria)} />
+              <Dato rotulo="Especialidad" valor={legible(l.especialidad)} />
+              <Dato rotulo="Puesto" valor={legible(l.puesto)} />
               <Dato rotulo="Convenio" valor={l.convenio_colectivo} />
               <Dato rotulo="ART" valor={l.art} />
               <Dato rotulo="Obra social" valor={l.obra_social} />

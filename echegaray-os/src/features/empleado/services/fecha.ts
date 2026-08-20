@@ -54,3 +54,13 @@ export function dm(iso: string | null): string | null {
   const [, m, d] = iso.slice(0, 10).split('-')
   return d ? `${d}/${m}` : iso
 }
+
+/** `oficial_especializado` → `Oficial especializado`. El vocabulario de la base se escribe con
+ *  guiones bajos porque es una clave; a la persona se le muestra su categoría, no la clave. No hay
+ *  diccionario: una clave nueva se lee igual de bien y no queda sin traducir hasta que alguien se
+ *  acuerde de agregarla. */
+export function legible(v: string | null | undefined): string | null {
+  if (!v) return null
+  const t = v.replace(/_/g, ' ').trim()
+  return t ? t[0].toUpperCase() + t.slice(1) : null
+}
