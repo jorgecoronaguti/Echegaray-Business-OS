@@ -1,81 +1,93 @@
-import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { getPedidosMateriales } from '@/features/integraciones/services/pedidosMaterialesService'
-import { PedidosManager } from '@/features/integraciones/components/PedidosManager'
+import { Aviso } from '@/shared/components/ds'
+import { PageShell } from '@/shared/components/ui'
+import { NavOperacion } from '@/features/integraciones/components/NavOperacion'
+import { PedidosGlobal } from '@/features/integraciones/components/PedidosGlobal'
+import {
+  getActividadesDeObras,
+  getPedidosGlobal,
+  getPuenteObras,
+  type PedidoGlobal,
+} from '@/features/integraciones/services/operacionGlobalService'
+import { asignarActividadPedidoAction } from '@/features/integraciones/services/pedidosActions'
 import { fechaHora } from '@/shared/utils/fecha'
+
+// OPERACIÓN · PEDIDOS — bloque 3b del handoff: la lista de la obra, sin acotar por obra.
+//
+// ═══ SI LA FUENTE FALLA, LA PANTALLA LO DICE CON EL MENSAJE DE LA FUENTE ═══
+//
+// Estos pedidos son el espejo en Postgres de un Sheet de AppSheet. Cuando la lectura falla —RLS sin
+// sesión, la tabla caída— la lista NO se dibuja vacía: una lista vacía por error se lee como «esta
+// empresa no pidió nada», que es lo contrario de lo que pasó. Se muestra el error y nada más.
 
 export const dynamic = 'force-dynamic'
 
-// URL del AppSheet (editor que pasó el dueño). Configurable por env para el runtime embebido.
 const APPSHEET_URL =
   process.env.NEXT_PUBLIC_APPSHEET_PEDIDOS_URL ||
   'https://www.appsheet.com/Template/AppDef?appName=PedidosdeMateriales-659097345'
-const APPSHEET_EMBED = process.env.NEXT_PUBLIC_APPSHEET_PEDIDOS_EMBED || null
 
-async function loadData() {
+async function cargar() {
   try {
     const supabase = await createClient()
-    return { res: await getPedidosMateriales(supabase) }
+    const puente = await getPuenteObras(supabase)
+    if (puente.error !== null) return { error: puente.error, pedidos: [] as PedidoGlobal[], actividades: {} }
+    const pedidos = await getPedidosGlobal(supabase, puente.data)
+    if (pedidos.error !== null) return { error: pedidos.error, pedidos: [] as PedidoGlobal[], actividades: {} }
+    const obraIds = [...new Set(pedidos.data.map((p) => p.obra_canonica_id).filter((o): o is string => !!o))]
+    const actividades = await getActividadesDeObras(supabase, obraIds)
+    // Que no se puedan leer las ACTIVIDADES no invalida la lista de pedidos: se pierde el selector
+    // «para la actividad», no el dato. Se dice arriba y la lista se dibuja igual.
+    return { error: actividades.error, pedidos: pedidos.data, actividades: actividades.data ?? {} }
   } catch (err) {
-    return { res: { data: null, error: err instanceof Error ? err.message : 'Error' } as const }
+    return { error: err instanceof Error ? err.message : 'Error al conectar con Supabase', pedidos: [], actividades: {} }
   }
 }
 
 export default async function PedidosMaterialesPage() {
-  const { res } = await loadData()
-  const pedidos = res.data ?? []
+  const { error, pedidos, actividades } = await cargar()
   const obras = [...new Set(pedidos.map((p) => p.obra_texto).filter((o): o is string => !!o))].sort()
-  const ultimoSync = pedidos.reduce<string | null>((acc, p) => (!acc || p.sincronizado_en > acc ? p.sincronizado_en : acc), null)
+  const ultimoSync = pedidos.reduce<string | null>(
+    (acc, p) => (!acc || p.sincronizado_en > acc ? p.sincronizado_en : acc),
+    null,
+  )
 
   return (
-    <div className="min-h-screen space-y-6 p-8">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="text-sm text-gray-500">
-            <Link href="/integraciones" className="underline">
-              Integraciones
-            </Link>{' '}
-            / Pedidos de Materiales
-          </div>
-          <h1 className="mt-1 text-3xl font-bold tracking-tight">Pedidos de Materiales</h1>
-          <p className="mt-2 max-w-3xl text-gray-600">
-            Módulo nativo del OS: cargá, editá y seguí los pedidos acá mismo. La app AppSheet sigue disponible durante la
-            transición; lo que gestionás en el OS no lo pisa la sincronización.
-          </p>
-        </div>
+    <PageShell
+      title="Operación"
+      subtitle="Lo pedido, lo que hay en obra y lo que se movió, en todas las obras. Cada fila dice a qué obra pertenece."
+      right={
         <a
           href={APPSHEET_URL}
           target="_blank"
           rel="noopener noreferrer"
-          className="shrink-0 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+          className="text-[12.5px] text-muted transition-colors hover:text-ink"
         >
-          Abrir AppSheet ↗
+          Abrir la app de AppSheet ↗
         </a>
-      </div>
+      }
+    >
+      <div className="space-y-5">
+        <NavOperacion activa="pedidos" cuenta={error && pedidos.length === 0 ? null : pedidos.length} />
 
-      {res.error && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-900" data-testid="page-error">
-          <p className="font-semibold">No se pudo leer pedidos (¿sesión / RLS?).</p>
-          <p className="mt-1 text-sm">{res.error}</p>
-        </div>
-      )}
+        {error && (
+          <Aviso tono="neg" titulo="No se pudo leer todo lo de esta pantalla." testid="page-error">
+            {error}
+          </Aviso>
+        )}
 
-      {ultimoSync && (
-        <p className="text-xs text-gray-400">Última sincronización desde AppSheet: {fechaHora(ultimoSync)}</p>
-      )}
-
-      <PedidosManager pedidos={pedidos} obras={obras} />
-
-      {APPSHEET_EMBED && (
-        <div>
-          <h2 className="mb-2 text-lg font-semibold">App en vivo (AppSheet)</h2>
-          <iframe
-            src={APPSHEET_EMBED}
-            className="h-[720px] w-full rounded-lg border"
-            title="Pedidos de Materiales (AppSheet)"
+        {!(error && pedidos.length === 0) && (
+          <PedidosGlobal
+            pedidos={pedidos}
+            obras={obras}
+            actividadesPorObra={actividades}
+            asignarActividad={asignarActividadPedidoAction}
           />
-        </div>
-      )}
-    </div>
+        )}
+
+        {ultimoSync && (
+          <p className="text-[11.5px] text-faint">Última sincronización desde AppSheet: {fechaHora(ultimoSync)}</p>
+        )}
+      </div>
+    </PageShell>
   )
 }
