@@ -130,14 +130,17 @@ test('14-20 · un parte mueve la producción, el avance, las HH de la obra y las
 
   await entrar(page)
   await page.goto(`/obras/${OBRA}?vista=ejecucion`)
-  await page.getByTestId('abrir-registrar').click()
+  // El parte YA NO SE ABRE: desde el Design Handoff V2 (20/08/2026) el formulario del día es la
+  // columna izquierda de la solapa y está siempre a la vista, y el reparto de horas dejó de ser un
+  // bloque plegado. Un parte diario que hay que desplegar es un parte diario que se carga dos
+  // semanas. Por eso se fueron el clic en `abrir-registrar` y el clic en el `summary` de
+  // `parte-personal`: no se borró funcionalidad, se dejó de esconder.
   const panel = page.getByTestId('panel-registrar')
   await panel.getByTestId('parte-actividad').selectOption(actividadId)
   await panel.getByTestId('parte-cantidad').fill('45')
   await panel.getByTestId('parte-comentario').fill(`${MARCA} parte de prueba`)
-  await panel.getByTestId('parte-personal').locator('summary').click()
   await panel.getByTestId(`horas-${personaId}`).fill('8')
-  await panel.getByTestId('form-ejecucion').getByRole('button', { name: 'Guardar parte' }).click()
+  await panel.getByTestId('form-ejecucion').getByRole('button', { name: 'Registrar parte' }).click()
 
   // ═══ UNA CARGA, CUATRO EFECTOS — leídos en la base, no en la pantalla ═══
   await expect.poll(async () => {

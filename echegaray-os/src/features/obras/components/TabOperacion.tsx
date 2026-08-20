@@ -1,11 +1,18 @@
-// OPERACIÓN DE LA OBRA — qué pidió, qué compró y qué recursos se movieron.
+// OPERACIÓN DE LA OBRA — qué pidió, qué compró, qué recursos se movieron y qué la está frenando.
 //
-// LAS CUATRO LISTAS SON LO MISMO CON DISTINTO CONTENIDO, y por eso hay una sola `Tabla`: cuatro
-// tablas escritas a mano se desalinean en el primer cambio de densidad. La sub-vista viaja por
-// query string igual que `vista`, así que cada lista es una URL que se comparte y el servidor
-// renderiza sin estado de cliente.
+// ═══ LA FORMA LA FIJA EL HANDOFF APROBADO (design/screens/obras.md §1f) ═══
 //
-// LO QUE NO ESTÁ ES LO QUE NO EXISTE. Pedidos no muestra "solicitante": ni el Sheet de respaldo ni
+//   Cinco sublistas con contador —Pedidos · Compras · Herramientas · Movimientos · Impedimentos—
+//   como SubTabs de nivel 3: texto con contador mono y subrayado en el activo. Eran pastillas
+//   rellenas dentro de una caja, o sea una tercera barra de navegación disfrazada, y el sistema
+//   permite dos.
+//
+// LAS CINCO LISTAS SON LO MISMO CON DISTINTO CONTENIDO, y por eso salen todas de la misma `Tabla`
+// del design system: cinco tablas escritas a mano se desalinean en el primer cambio de densidad. La
+// sub-vista viaja por query string igual que `vista`, así que cada lista es una URL que se comparte
+// y el servidor renderiza sin estado de cliente.
+//
+// LO QUE NO ESTÁ ES LO QUE NO EXISTE. Pedidos no muestra «solicitante»: ni el Sheet de respaldo ni
 // la tabla espejo lo tienen, y una columna vacía o rellenada con el responsable de otra cosa sería
 // un dato fabricado. Compras no suma su propio total: muestra el que declara la fuente única del
 // costo real, y si el detalle no llega a ese total lo dice en una línea en vez de disimularlo.
@@ -13,20 +20,16 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
-import { Badge } from '@/shared/components/ui'
+import { Aviso, Estado, FilaTotal, Nulo, SubTabs, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
 import { estadoInfo } from '@/features/integraciones/services/herramientasService'
 import type {
   HerramientaOperacion, MovimientoOperacion, PedidoOperacion,
 } from '../services/operacionService'
 import type { ComprasObra, SubOperacion } from '../services/operacionService'
 import { BloqueImpedimentos } from './BloqueImpedimentos'
-import { Callout, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
+import type { AccionFormulario, ResultadoAccion } from '@/shared/components/ui'
 import type { Actividad, Restriccion } from '../types'
 import { fecha, plata } from './formato'
-// LAS MISMAS PIEZAS QUE LA VISTA GLOBAL. Eran privadas de este archivo; se mudaron a `tablas.tsx`
-// cuando apareció `/obras/operacion`, para que las dos pantallas no se separen por copia.
-import { C, Fila, Tabla, Vacio } from './tablas'
 
 const SUBS: { id: SubOperacion; label: string }[] = [
   { id: 'pedidos', label: 'Pedidos' },
@@ -42,14 +45,13 @@ const cantidad = (n: number | null) => (n == null ? '—' : n.toLocaleString('es
 const entregado = (estado: string | null) => (estado ?? '').toLowerCase().includes('entreg')
 
 /** El tono de estado de una herramienta, traducido a los tonos del sistema visual. */
-const TONO_HERRAMIENTA = { ok: 'pos', info: 'neutral', amber: 'warn', red: 'neg' } as const
+const TONO_HERRAMIENTA = { ok: 'pos', info: 'pendiente', amber: 'warn', red: 'neg' } as const
 
 /**
  * LOS PEDIDOS, Y PARA QUÉ ACTIVIDAD SON.
  *
- * La columna ACTIVIDAD sólo aparece cuando la ficha pasa la lista de actividades y la acción: en la
- * vista global de Operación —donde las filas son de ocho obras distintas— un selector de actividades
- * no tendría de qué obra elegirlas.
+ * La columna ACTIVIDAD sólo aparece cuando la ficha pasa la lista de actividades y la acción: un
+ * selector que no persiste es peor que no tenerlo.
  *
  * ES OPCIONAL Y SE VE QUE LO ES: «sin asignar» en gris, no un hueco. La obra sigue siendo el eje del
  * pedido; esto contesta «¿qué está esperando esta actividad?» cuando alguien lo sabe.
@@ -58,9 +60,6 @@ function Pedidos({
   pedidos, actividades = [], asignar,
 }: {
   pedidos: PedidoOperacion[]
-  /** Decir para qué actividad es un pedido. Sin ella la columna no se dibuja: un selector que no
-   *  persiste es peor que no tenerlo. */
-  asignarActividadAPedido?: (idPedido: string, actividadId: string) => Promise<ResultadoAccion>
   actividades?: Actividad[]
   asignar?: (idPedido: string, actividadId: string) => Promise<ResultadoAccion>
 }) {
@@ -69,26 +68,35 @@ function Pedidos({
   }
   const elegibles = actividades.filter((a) => a.tipo !== 'resumen' && !a.archivada && !a.actividad_padre_id)
   const conActividad = Boolean(asignar) && elegibles.length > 0
-  const cols = [{ k: 'Fecha' }, { k: 'Material' }, { k: 'Cantidad', num: true }, { k: 'Estado' }]
   return (
-    <Tabla testid="tabla-pedidos" cols={conActividad ? [...cols, { k: 'Para' }] : cols}>
-      {pedidos.map((p) => (
-        <Fila key={p.id_pedido} obra={p.obra_canonica_id}>
-          <C num>{fecha(p.fecha)}</C>
-          <C fuerte>{p.material ?? '—'}</C>
-          <C num>{cantidad(p.cantidad)}</C>
-          <C>{p.estado ? entregado(p.estado) ? <Badge tono="pos">{p.estado}</Badge> : p.estado : '—'}</C>
-          {conActividad && (
-            <C>
-              <SelectActividad
-                actividades={elegibles}
-                valor={p.actividad_id}
-                alElegir={(id) => asignar!(p.id_pedido, id)}
-              />
-            </C>
-          )}
-        </Fila>
-      ))}
+    <Tabla testid="tabla-pedidos" minWidth={640}>
+      <THead>
+        <Th num>Fecha</Th><Th>Material</Th><Th num>Cantidad</Th><Th>Estado</Th>
+        {conActividad && <Th>Para</Th>}
+      </THead>
+      <tbody>
+        {pedidos.map((p) => (
+          <Tr key={p.id_pedido} compacta {...{ 'data-obra': p.obra_canonica_id ?? undefined }}>
+            <Td num className="whitespace-nowrap text-muted">{fecha(p.fecha)}</Td>
+            <Td fuerte>{p.material ?? <Nulo>sin material declarado</Nulo>}</Td>
+            <Td num>{cantidad(p.cantidad)}</Td>
+            <Td>
+              {p.estado
+                ? <Estado tono={entregado(p.estado) ? 'pos' : 'pendiente'} clave={p.estado}>{p.estado}</Estado>
+                : <Nulo>sin estado</Nulo>}
+            </Td>
+            {conActividad && (
+              <Td>
+                <SelectActividad
+                  actividades={elegibles}
+                  valor={p.actividad_id}
+                  alElegir={(id) => asignar!(p.id_pedido, id)}
+                />
+              </Td>
+            )}
+          </Tr>
+        ))}
+      </tbody>
     </Tabla>
   )
 }
@@ -110,7 +118,7 @@ function SelectActividad({
         defaultValue={valor ?? ''}
         disabled={guardando}
         data-testid="pedido-actividad"
-        className="w-full max-w-[220px] rounded border border-line bg-surface px-1.5 py-1 text-[12px] text-muted"
+        className="w-full max-w-[220px] rounded-control border border-line-strong bg-surface px-1.5 py-1 text-[12px] text-muted"
         onChange={async (e) => {
           setGuardando(true)
           setError(null)
@@ -137,36 +145,40 @@ function Compras({ compras }: { compras: ComprasObra }) {
     return compras.completo ? (
       <Vacio>Todavía no hay ninguna compra imputada a esta obra.</Vacio>
     ) : (
-      <p className="px-4 py-6 text-[12px] leading-relaxed text-warn">
+      <Aviso tono="warn">
         Esta obra tiene {plata(compras.total)} en compras registradas, pero acá no se pudo listar ninguna.
-      </p>
+      </Aviso>
     )
   }
   return (
-    <div className="space-y-2">
-      <Tabla
-        testid="tabla-compras"
-        cols={[{ k: 'Fecha' }, { k: 'Proveedor' }, { k: 'Concepto' }, { k: 'Comprobante' }, { k: 'Importe', num: true }]}
-      >
-        {compras.filas.map((c) => (
-          <Fila key={c.id} obra={c.obra_canonica_id}>
-            <C num>{fecha(c.fecha)}</C>
-            <C fuerte>{c.proveedor ?? '—'}</C>
-            <C>{c.concepto ?? '—'}</C>
-            <C>{c.comprobante ?? '—'}</C>
-            <C num fuerte>{plata(c.total)}</C>
-          </Fila>
-        ))}
-        <tr className="border-t border-line-strong">
-          <td colSpan={4} className="px-3 py-2 pl-4 text-[12px] text-muted">Costo real de la obra</td>
-          <td className="px-3 py-2 pr-4 text-right text-[13px] font-semibold tabular-nums text-ink">{plata(compras.total)}</td>
-        </tr>
+    <div className="flex flex-col gap-2.5">
+      <Tabla testid="tabla-compras" minWidth={820}>
+        <THead>
+          <Th num>Fecha</Th><Th>Proveedor</Th><Th>Concepto</Th><Th>Comprobante</Th><Th num>Importe</Th>
+        </THead>
+        <tbody>
+          {compras.filas.map((c) => (
+            <Tr key={c.id} compacta {...{ 'data-obra': c.obra_canonica_id ?? undefined }}>
+              <Td num className="whitespace-nowrap text-muted">{fecha(c.fecha)}</Td>
+              <Td fuerte>{c.proveedor ?? <Nulo>sin proveedor</Nulo>}</Td>
+              <Td>{c.concepto ?? <Nulo>sin concepto</Nulo>}</Td>
+              <Td num className="text-muted">{c.comprobante ?? <Nulo>sin comprobante</Nulo>}</Td>
+              <Td num fuerte>{plata(c.total)}</Td>
+            </Tr>
+          ))}
+          {/* EL TOTAL NO SE SUMA ACÁ: es el que declara `obra_costo_real`, la fuente única del costo
+              de la obra. Sumar la columna daría un número que coincide sólo mientras el detalle esté
+              completo, y el día que no lo esté nadie sabría cuál de los dos mirar. */}
+          <FilaTotal>
+            <Td colSpan={4}>Costo real de la obra</Td>
+            <Td num fuerte>{plata(compras.total)}</Td>
+          </FilaTotal>
+        </tbody>
       </Tabla>
-      {/* El total lo declara la fuente del costo real; el detalle se lista aparte. Cuando no
-          coinciden se dice cuánto se está viendo, en vez de dejar creer que la lista es todo. */}
       {!compras.completo && (
-        <p className="text-[11px] text-warn">
-          Se listan {compras.filas.length} de {compras.nComprobantes ?? 0} comprobantes.
+        <p className="text-[11.5px] text-warn" data-testid="cobertura-compras">
+          Se listan {compras.filas.length} de {compras.nComprobantes ?? 0} comprobantes. El total lo
+          declara la fuente del costo real; el detalle se lista aparte.
         </p>
       )}
     </div>
@@ -174,39 +186,41 @@ function Compras({ compras }: { compras: ComprasObra }) {
 }
 
 function Herramientas({ herramientas }: { herramientas: HerramientaOperacion[] }) {
-  if (!herramientas.length) {
-    return <Vacio>Ninguna herramienta figura hoy en esta obra.</Vacio>
-  }
+  if (!herramientas.length) return <Vacio>Ninguna herramienta figura hoy en esta obra.</Vacio>
   return (
-    <Tabla testid="tabla-herramientas" cols={[{ k: 'Herramienta' }, { k: 'Categoría' }, { k: 'Estado' }, { k: 'Responsable' }]}>
-      {herramientas.map((h) => {
-        const e = estadoInfo(h.estado)
-        return (
-          <Fila key={h.id_herramienta} obra={h.obra_canonica_id}>
-            <C fuerte>{h.nombre}</C>
-            <C>{h.categoria ?? '—'}</C>
-            <C><Badge tono={TONO_HERRAMIENTA[e.tone]}>{e.label}</Badge></C>
-            <C>{h.responsable_actual ?? '—'}</C>
-          </Fila>
-        )
-      })}
+    <Tabla testid="tabla-herramientas" minWidth={600}>
+      <THead><Th>Herramienta</Th><Th>Categoría</Th><Th>Estado</Th><Th>Responsable</Th></THead>
+      <tbody>
+        {herramientas.map((h) => {
+          const e = estadoInfo(h.estado)
+          return (
+            <Tr key={h.id_herramienta} compacta {...{ 'data-obra': h.obra_canonica_id ?? undefined }}>
+              <Td fuerte>{h.nombre}</Td>
+              <Td>{h.categoria ?? <Nulo>sin categoría</Nulo>}</Td>
+              <Td><Estado tono={TONO_HERRAMIENTA[e.tone]} clave={e.label}>{e.label}</Estado></Td>
+              <Td>{h.responsable_actual ?? <Nulo>sin responsable</Nulo>}</Td>
+            </Tr>
+          )
+        })}
+      </tbody>
     </Tabla>
   )
 }
 
 function Movimientos({ movimientos }: { movimientos: MovimientoOperacion[] }) {
-  if (!movimientos.length) {
-    return <Vacio>Todavía no se movió ninguna herramienta hacia esta obra.</Vacio>
-  }
+  if (!movimientos.length) return <Vacio>Todavía no se movió ninguna herramienta hacia esta obra.</Vacio>
   return (
-    <Tabla testid="tabla-movimientos" cols={[{ k: 'Fecha' }, { k: 'Herramienta' }, { k: 'Responsable' }]}>
-      {movimientos.map((m) => (
-        <Fila key={m.id_movimiento} obra={m.obra_canonica_id}>
-          <C num>{fecha(m.fecha)}</C>
-          <C fuerte>{m.herramienta_nombre ?? '—'}</C>
-          <C>{m.responsable ?? '—'}</C>
-        </Fila>
-      ))}
+    <Tabla testid="tabla-movimientos" minWidth={520}>
+      <THead><Th num>Fecha</Th><Th>Herramienta</Th><Th>Responsable</Th></THead>
+      <tbody>
+        {movimientos.map((m) => (
+          <Tr key={m.id_movimiento} compacta {...{ 'data-obra': m.obra_canonica_id ?? undefined }}>
+            <Td num className="whitespace-nowrap text-muted">{fecha(m.fecha)}</Td>
+            <Td fuerte>{m.herramienta_nombre ?? <Nulo>sin herramienta</Nulo>}</Td>
+            <Td>{m.responsable ?? <Nulo>sin responsable</Nulo>}</Td>
+          </Tr>
+        ))}
+      </tbody>
     </Tabla>
   )
 }
@@ -221,8 +235,7 @@ export function TabOperacion({
    *  cuatro bloques que salen de ahí: los impedimentos son del OS y siguen funcionando. */
   errorFuente?: string | null
   pedidos: PedidoOperacion[]
-  /** Decir para qué actividad es un pedido. Sin ella la columna no se dibuja: un selector que no
-   *  persiste es peor que no tenerlo. */
+  /** Decir para qué actividad es un pedido. Sin ella la columna no se dibuja. */
   asignarActividadAPedido?: (idPedido: string, actividadId: string) => Promise<ResultadoAccion>
   compras: ComprasObra
   herramientas: HerramientaOperacion[]
@@ -234,6 +247,7 @@ export function TabOperacion({
   crearImpedimento: AccionFormulario
   liberarImpedimento: (restriccionId: string) => Promise<ResultadoAccion>
 }) {
+  const abiertos = impedimentos.filter((r) => r.estado !== 'liberada').length
   const cuenta: Record<SubOperacion, number> = {
     pedidos: pedidos.length,
     // La cobertura del costo real la declara la fuente; el largo de la lista es lo que se ve.
@@ -244,38 +258,27 @@ export function TabOperacion({
     // porque una fila de compra o de pedido no se «cierra», y un impedimento liberado ya no frena
     // nada. Publicar el total pondría un número que sube para siempre al lado de cuatro que
     // describen trabajo pendiente.
-    impedimentos: impedimentos.filter((r) => r.estado !== 'liberada').length,
+    impedimentos: abiertos,
   }
 
   return (
-    <div className="space-y-3">
-      {/* Cuatro sub-vistas entran en 390px sólo si el conmutador se desplaza en vez de envolverse. */}
-      <nav className="-mx-0.5 overflow-x-auto px-0.5 pb-0.5">
-        <div className="inline-flex gap-0.5 rounded-control border border-line bg-surface p-0.5">
-          {SUBS.map((s) => {
-            const activa = s.id === sub
-            return (
-              <Link
-                key={s.id}
-                href={`/obras/${obraId}?vista=operacion&sub=${s.id}`}
-                aria-current={activa ? 'page' : undefined}
-                className={`flex shrink-0 items-center gap-1.5 rounded-[5px] px-3 py-1.5 text-[13px] font-medium transition ${
-                  activa ? 'bg-accent text-white' : 'text-muted hover:bg-surface-sunken hover:text-ink'
-                }`}
-              >
-                {s.label}
-                <span className={`text-[11px] tabular-nums ${activa ? 'text-white/60' : 'text-faint'}`}>{cuenta[s.id]}</span>
-              </Link>
-            )
-          })}
-        </div>
-      </nav>
+    <div className="flex flex-col gap-4">
+      <SubTabs
+        testid="subs-operacion"
+        items={SUBS.map((s) => ({
+          href: `/obras/${obraId}?vista=operacion&sub=${s.id}`,
+          label: s.label,
+          cuenta: cuenta[s.id],
+          activo: s.id === sub,
+          testid: `sub-${s.id}`,
+        }))}
+      />
 
-      {/* CUATRO LISTAS VACÍAS NO SON «no hay nada»: son «no pude leer». Se dice cuál es, y se dice
-          sólo sobre los bloques que dependen de esa fuente — Impedimentos sale de Postgres y no se
-          entera de que el Sheet está caído. */}
+      {/* CUATRO LISTAS VACÍAS NO SON «no hay nada»: son «no pude leer». Se dice cuál es, con el
+          mensaje de la fuente, y sólo sobre los bloques que dependen de ella — Impedimentos sale de
+          Postgres y no se entera de que el Sheet está caído. */}
       {errorFuente && sub !== 'impedimentos' && (
-        <Callout tono="neg">No pude leer esta información de su fuente: {errorFuente}</Callout>
+        <Aviso tono="neg" titulo="No pude leer esta información de su fuente">{errorFuente}</Aviso>
       )}
       {!errorFuente && sub === 'pedidos' && (
         <Pedidos pedidos={pedidos} actividades={actividades} asignar={asignarActividadAPedido} />

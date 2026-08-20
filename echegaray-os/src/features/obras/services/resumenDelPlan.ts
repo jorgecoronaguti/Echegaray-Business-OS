@@ -71,3 +71,57 @@ export function resumenDelPlan(
     proximas: vivas.filter((a) => a.estado_operativo !== 'hecha' && (dentro(a.inicio_plan) || dentro(a.fin_plan))).length,
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LO QUE EL RESUMEN DE LA OBRA DECIDE — la regla que vivía dentro del `.tsx`.
+//
+// `node --test` sabe borrar los tipos de un `.ts` pero no de un `.tsx`, así que una regla metida
+// adentro de un componente sólo se puede ejercitar levantando un navegador — y entonces no se
+// ejercita. Ésta decide QUÉ TRABAJO entra en la ventana de las próximas dos semanas, que es la
+// mitad de lo que contesta el Resumen. La pantalla sólo la dibuja.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+/** Una actividad de la ventana «Próximas 2 semanas» del Resumen. */
+export interface ProximaActividad {
+  id: string
+  nombre: string
+  rubro: string | null
+  inicio_plan: string | null
+  fin_plan: string | null
+  hito: boolean
+  /** La fecha por la que entró a la ventana. Es la que ordena, y la que se muestra primero. */
+  ancla: string
+}
+
+/**
+ * LO QUE HAY QUE MIRAR ESTA QUINCENA: lo que arranca o lo que termina dentro de la ventana.
+ *
+ * Las dos cosas obligan a mirarla, y contar sólo los inicios esconde lo que hay que cerrar — es el
+ * mismo criterio que usa `resumenDelPlan().proximas`, a propósito: si acá se contara distinto, el
+ * titular diría «4 próximas» sobre una lista de 6.
+ *
+ * Lo HECHO no entra aunque su fecha caiga adentro: ya no es trabajo por venir.
+ */
+export function proximasDeLaObra(
+  actividades: Actividad[], hoy: string, semanas = 2,
+): ProximaActividad[] {
+  const hasta = new Date(`${hoy}T00:00:00Z`)
+  hasta.setUTCDate(hasta.getUTCDate() + semanas * 7)
+  const limite = hasta.toISOString().slice(0, 10)
+  const dentro = (f: string | null) => f != null && f >= hoy && f <= limite
+
+  return actividades
+    .filter((a) => !a.archivada && a.tipo !== 'resumen' && a.estado_operativo !== 'hecha')
+    .filter((a) => dentro(a.inicio_plan) || dentro(a.fin_plan))
+    .map((a) => ({
+      id: a.id,
+      nombre: a.nombre,
+      rubro: a.rubro,
+      inicio_plan: a.inicio_plan,
+      fin_plan: a.fin_plan,
+      hito: a.tipo === 'hito',
+      // Si arranca en la ventana manda el arranque; si ya venía en curso, manda su cierre.
+      ancla: (dentro(a.inicio_plan) ? a.inicio_plan : a.fin_plan) as string,
+    }))
+    .sort((x, y) => x.ancla.localeCompare(y.ancla) || x.nombre.localeCompare(y.nombre, 'es'))
+}

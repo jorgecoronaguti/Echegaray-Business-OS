@@ -6,7 +6,7 @@
 // pueda encontrar y borrar.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { ParteEjecucion, ServiceResult } from '../types'
+import type { Actividad, ParteEjecucion, ServiceResult } from '../types'
 
 /** Los partes de la obra, del más nuevo al más viejo. Con `actividadId`, los de esa actividad. */
 export async function getPartes(
@@ -40,4 +40,49 @@ export function deHoy(partes: ParteEjecucion[], fecha: string): Map<string, { ca
     m.set(p.actividad_id, { cantidad: a.cantidad + (p.cantidad ?? 0), pct: a.pct + (p.avance_pct ?? 0) })
   }
   return m
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LOS KPIs DE LA JORNADA — `design/screens/obras.md` §1c.
+//
+// El handoff pide cuatro: partes de hoy, HH del día, actividades tocadas y «sin parte» en rojo.
+//
+// ═══ SE PUBLICAN TRES, Y SE DICE POR QUÉ ═══
+//
+// «HH del día» sale de `registros_hh`, que esta solapa no lee: las horas del parte las escribe
+// `imputarHHMasivo` en la tabla de Personal, y sumarlas acá desde otra fuente sería la segunda
+// definición de las HH del día. Se publica cuando la página pase los registros, no antes.
+//
+// «Sin parte» en el handoff son CUADRILLAS sin parte, y `obra_ejecucion` no guarda cuadrilla: un
+// parte no sabe quién lo hizo. Lo que sí se sabe —y contesta la misma pregunta— es qué frentes
+// abiertos no reportaron hoy: actividades EN CURSO sin un solo parte en la jornada. Es un hecho, no
+// una inferencia sobre quién trabajó.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+export interface KpisDelDia {
+  /** Partes cargados en la jornada. */
+  partes: number
+  /** Actividades distintas tocadas en la jornada. */
+  tocadas: number
+  /** Actividades en curso, que es contra lo que se leen las tocadas. */
+  enCurso: number
+  /** Frentes en curso que hoy no reportaron. Es el número que va en `neg`. */
+  sinParte: number
+}
+
+export function kpisDelDia(
+  partes: ParteEjecucion[], actividades: Actividad[], dia: string,
+): KpisDelDia {
+  const delDia = partes.filter((p) => p.fecha === dia)
+  const tocadas = new Set(delDia.map((p) => p.actividad_id))
+  // Un rubro de resumen no se ejecuta: se completa solo con sus hijas, y exigirle un parte diario
+  // pondría un «sin parte» permanente que nadie puede resolver.
+  const enCurso = actividades.filter(
+    (a) => !a.archivada && a.tipo !== 'resumen' && a.estado_operativo === 'en_curso')
+  return {
+    partes: delDia.length,
+    tocadas: tocadas.size,
+    enCurso: enCurso.length,
+    sinParte: enCurso.filter((a) => !tocadas.has(a.id)).length,
+  }
 }
