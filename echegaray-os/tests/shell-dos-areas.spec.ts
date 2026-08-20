@@ -33,8 +33,22 @@ test('la navegación tiene DOS áreas y ninguna categoría interna del OS', asyn
   await expect(nav.getByTestId('nav-obras')).toBeVisible()
   expect(await nav.getByRole('link').count(), 'la navegación tiene más de dos áreas').toBe(2)
 
-  // Ninguna categoría del header viejo sobrevive EN EL HEADER.
-  const texto = (await header.innerText()).replace(/\s+/g, ' ')
+  // Ninguna categoría del header viejo sobrevive COMO DESTINO DE NAVEGACIÓN.
+  //
+  // Antes esto barría el texto entero del header buscando subcadenas. El 20/08, con el descriptor
+  // «Business OS» del handoff de marca (`design/system/BRAND.md`), la regla empezó a dar rojo sobre
+  // sí misma: la categoría vieja se llamaba «OS» y «Business OS» la contiene. El test no medía lo
+  // que decía medir — no es que hubiera vuelto una categoría, es que la marca del producto tiene el
+  // nombre adentro.
+  //
+  // Lo que la regla PROHÍBE es que la arquitectura interna del OS vuelva a ser navegación. La
+  // navegación son LINKS, así que se miran los links del header salvo la marca (que no lleva a un
+  // módulo: lleva al inicio). Una categoría que vuelva, vuelve como link.
+  const links = await header.getByRole('link').all()
+  const destinos = await Promise.all(
+    links.map(async (l) => ((await l.getAttribute('data-testid')) === 'marca' ? '' : l.innerText())),
+  )
+  const texto = destinos.join(' · ').replace(/\s+/g, ' ')
   for (const c of CATEGORIAS_VIEJAS) {
     expect(texto, `la categoría interna "${c}" volvió a la navegación`).not.toContain(c)
   }
