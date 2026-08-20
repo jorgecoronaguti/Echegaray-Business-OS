@@ -134,8 +134,26 @@ export type EstadoPresentacion = 'en_revision' | 'aprobado' | 'requiere_correcci
 
 /** Registrar una marca. El tipo lo decide el servidor mirando el día, no el formulario: si viniera
  *  del cliente, un `salida` mandado a mano cerraría un día que nunca se abrió. */
+/**
+ * El punto donde se registró la marca. LAS TRES SON OPCIONALES y llegan como texto del formulario.
+ *
+ * ═══ UNA MARCA SIN PUNTO ES UNA MARCA VÁLIDA ═══
+ *
+ * El teléfono puede negar el permiso, no tener señal de GPS o estar adentro de un galpón de chapa.
+ * Fichar es lo importante; el punto es información de más. Si la coordenada no viene —o viene rota—
+ * se guarda la marca sin ella y la pantalla escribe «sin ubicación», que es la verdad. Lo que no se
+ * hace NUNCA es rellenarla con la de la obra: un punto inventado se ve igual que uno real y decide
+ * discusiones sobre si alguien estaba donde dijo.
+ */
+const coordenada = (min: number, max: number) =>
+  z.coerce.number().min(min).max(max).optional().catch(undefined)
+
 export const marcaInputSchema = z.object({
   obra_id: z.string().trim().max(120).optional().transform((v) => v || null),
+  lat: coordenada(-90, 90),
+  lon: coordenada(-180, 180),
+  // Un radio de precisión negativo o absurdo no es un dato: se descarta y el punto queda sin él.
+  precision_m: z.coerce.number().int().min(0).max(100000).optional().catch(undefined),
 })
 
 export const incidenciaInputSchema = z.object({

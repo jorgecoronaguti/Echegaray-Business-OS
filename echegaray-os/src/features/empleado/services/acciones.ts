@@ -63,8 +63,13 @@ export async function registrarMarca(form: FormData): Promise<Resultado> {
   }
   const tipo = estado === 'sin_registrar' ? 'entrada' : 'salida'
 
+  // EL PUNTO SÓLO VIAJA CON LA ENTRADA. Es lo que se pidió —«dónde dio el inicio del día»— y es la
+  // única de las dos marcas donde la ubicación decide algo. Guardar también la de la salida sería
+  // duplicar un dato personal sin que nadie lo mire.
+  const punto = tipo === 'entrada' ? puntoDe(parsed.data) : {}
   const { error } = await supabase.from('asistencia_marca').insert({
     persona_id: personaId, fecha, tipo, obra_id: parsed.data.obra_id, origen: 'empleado_web',
+    ...punto,
   })
   if (error) return { ok: false, error: traducir(error.message) }
 
@@ -205,6 +210,12 @@ export async function reportarProblema(form: FormData): Promise<Resultado> {
       ? 'Reportado. Queda como impedimento de la actividad y lo ve el jefe de obra.'
       : 'Reportado. Queda como impedimento de la actividad y lo ve el jefe de obra.',
   }
+}
+
+/** El punto, sólo si está ENTERO. Media coordenada no ubica nada: la base lo rechaza y con razón. */
+function puntoDe(d: { lat?: number; lon?: number; precision_m?: number }) {
+  if (d.lat == null || d.lon == null) return {}
+  return { lat: d.lat, lon: d.lon, precision_m: d.precision_m ?? null }
 }
 
 /** El `42501` de Postgres es «permission denied» y no le dice nada a nadie parado en una obra. */

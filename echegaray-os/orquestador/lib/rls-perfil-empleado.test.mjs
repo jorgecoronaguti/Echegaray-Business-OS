@@ -178,3 +178,52 @@ test('el bucket de la documentación del legajo es PRIVADO y por carpeta de pers
       `${x.polname}: la carpeta dejó de ser la persona`)
   }
 })
+
+// ── LA PRESENCIA QUE VE LA OBRA (20/08/2026) ────────────────────────────────────────────────────
+
+test('`presencia_del_dia` corre con los permisos de QUIEN PREGUNTA, no con los de su dueño', { skip: SIN_BASE }, async () => {
+  // Es al revés que las `mi_*`: publica a todo el mundo que marcó, y quién puede verlo ya está
+  // escrito en las policies de `asistencia_marca` y `personas`. Con `security_invoker = true` esa
+  // decisión se toma UNA vez, en la tabla. Si corriera como su dueño sería una segunda definición de
+  // quién ve la presencia ajena, y el día que las dos difieran gana la que nadie audita.
+  const { rows } = await query(
+    `select coalesce(array_to_string(c.reloptions, ','), '') as opts
+       from pg_class c join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = 'public' and c.relname = 'presencia_del_dia'`)
+  assert.equal(rows.length, 1, 'falta la vista: no se aplicó 20260820T7000')
+  assert.match(rows[0].opts, /security_invoker=true/,
+    'la vista pasó a correr como su dueño: publicaría la presencia de todo el plantel a cualquiera')
+})
+
+test('la presencia no publica DNI, CUIL ni teléfono', { skip: SIN_BASE }, async () => {
+  const { rows } = await query(
+    `select column_name from information_schema.columns
+      where table_schema = 'public' and table_name = 'presencia_del_dia' order by 1`)
+  const cols = rows.map((r) => r.column_name)
+  for (const prohibida of ['dni', 'cuil', 'telefono', 'domicilio', 'retribucion_pactada']) {
+    assert.ok(!cols.includes(prohibida), `presencia_del_dia publica ${prohibida}`)
+  }
+  for (const necesaria of ['persona_id', 'nombre_completo', 'entrada', 'salida', 'estado', 'lat', 'lon']) {
+    assert.ok(cols.includes(necesaria), `falta ${necesaria}`)
+  }
+})
+
+test('MEDIA COORDENADA NO ES UN PUNTO', { skip: SIN_BASE }, async () => {
+  // Una lat sin lon no ubica nada y ensucia todo cruce posterior. Y un punto fuera del planeta es un
+  // defecto de lectura, no un dato: los dos los rechaza la base, no la pantalla.
+  const { rows } = await query(
+    `select conname, pg_get_constraintdef(oid) as def from pg_constraint
+      where conrelid = 'public.asistencia_marca'::regclass and conname like '%punto%' order by 1`)
+  assert.equal(rows.length, 2, 'faltan los checks del punto')
+  assert.match(rows.map((r) => r.def).join(' '), /lat IS NULL\) = \(lon IS NULL/)
+  assert.match(rows.map((r) => r.def).join(' '), /90/)
+})
+
+test('las columnas del punto tienen su grant: sin él el insert da 404 en la pantalla', { skip: SIN_BASE }, async () => {
+  const { rows } = await query(
+    `select column_name from information_schema.column_privileges
+      where table_schema = 'public' and table_name = 'asistencia_marca'
+        and grantee = 'authenticated' and privilege_type = 'INSERT'
+        and column_name in ('lat', 'lon', 'precision_m') order by 1`)
+  assert.deepEqual(rows.map((r) => r.column_name), ['lat', 'lon', 'precision_m'])
+})
