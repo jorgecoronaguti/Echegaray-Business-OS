@@ -43,15 +43,17 @@ const TOPE = 12
 
 /** La fecha del timeline es corta —`19/08`— porque la columna mide 52px y el año casi nunca
  *  desambigua: lo que se lee es el orden, y el año completo está en el registro de origen. */
-function corta(iso: string): string {
-  const f = fecha(iso)
-  return f === '—' ? f : f.slice(0, 5)
-}
+// LA FECHA DEL TIMELINE LLEVA EL AÑO, Y NO ES UN DETALLE.
+//
+// Se recortaba a `dd/mm` para ganar ancho en la columna del `Timeline`. Pero la actividad de un
+// cliente abarca años: «20/08» a secas no dice de cuándo es, y en una lista ordenada de más nuevo a
+// más viejo el ojo asume que todo es reciente. El año es el dato que separa «lo cobró el mes
+// pasado» de «lo cobró en 2024» — y con dos dígitos entra igual.
 
 function aEvento(e: EventoCliente): Evento {
   return {
     id: e.clave,
-    fecha: corta(e.fecha),
+    fecha: fecha(e.fecha),
     tipo: e.fuente,
     texto: (
       // La nota es lo único que escribió una persona: lleva el amarillo de la marca como marca de
