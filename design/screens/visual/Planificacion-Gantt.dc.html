@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet"><style>html,body{margin:0;padding:0;background:#F4F3F2}*{box-sizing:border-box}a{color:#1F1F1E;text-decoration:none}a:hover{color:#8A6A00}div::-webkit-scrollbar{width:0;height:0}</style></helmet>
+<div ref="{{ rootRef }}" style="width:1440px;height:1024px;background:#FFFFFF;font-family:'IBM Plex Sans',system-ui,sans-serif;color:#1F1F1E;display:flex;flex-direction:column;overflow:hidden;border:1px solid #E7E6E2;user-select:none">
+
+  <div style="height:56px;flex:none;display:flex;align-items:center;gap:28px;padding:0 20px;border-bottom:1px solid #EFEEEA">
+    <div style="display:flex;align-items:center;gap:10px">
+      <img src="./isotipo.png" alt="Echegaray Construcciones" style="width:26px;height:26px;display:block">
+      <span style="font-size:13px;font-weight:600;letter-spacing:0.14em">ECHEGARAY CONSTRUCCIONES</span>
+      <span style="font-size:11.5px;color:#91918B;padding-left:2px">Business OS</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:2px">
+      <div style="padding:6px 10px;font-size:13px;color:#6B6B67">Administración</div>
+      <div style="padding:6px 10px 7px;font-size:13px;font-weight:500;border-bottom:2px solid #FDC900">Obras</div>
+    </div>
+    <div style="flex:1"></div>
+    <div style="display:flex;align-items:center;gap:14px">
+      <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="#91918B" stroke-width="1.6"><circle cx="9" cy="9" r="6"></circle><line x1="13.5" y1="13.5" x2="18" y2="18" stroke-linecap="round"></line></svg>
+      <span style="font-size:12px;color:#91918B">jorge@ecsas.com.ar</span>
+      <span style="font-size:12.5px;color:#6B6B67">Salir</span>
+    </div>
+  </div>
+
+  <div style="flex:none;padding:16px 20px 0">
+    <div style="font-size:11.5px;color:#91918B;margin-bottom:6px">← Obras</div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <h1 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.01em">Comedor La Estrella</h1>
+    </div>
+    <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px 20px;font-size:12.5px">
+      <span><span style="color:#91918B">Cliente:</span> La Estrella S.A.</span>
+      <span><span style="color:#91918B">Etapa:</span> Desarrollo</span>
+      <span><span style="color:#91918B">Inicio:</span> <span style="font-family:'IBM Plex Mono',monospace">10/06/25</span></span>
+      <span><span style="color:#91918B">Fin plan:</span> <span style="font-family:'IBM Plex Mono',monospace">15/12/25</span></span>
+    </div>
+    <div style="display:flex;align-items:center;margin-top:14px">
+      <div style="padding:8px 10px;font-size:13px;color:#6B6B67">Resumen</div>
+      <div style="padding:8px 10px;font-size:13px;font-weight:600;box-shadow:inset 0 -2px 0 #FDC900">Planificación</div>
+      <div style="padding:8px 10px;font-size:13px;color:#6B6B67">Ejecución</div>
+      <div style="padding:8px 10px;font-size:13px;color:#6B6B67">Personal</div>
+      <div style="padding:8px 10px;font-size:13px;color:#6B6B67">Operación</div>
+      <div style="padding:8px 10px;font-size:13px;color:#6B6B67">Economía</div>
+      <div style="padding:8px 10px;font-size:13px;color:#6B6B67">Documentos</div>
+    </div>
+  </div>
+  <div style="height:1px;background:#EFEEEA;flex:none"></div>
+
+  <div style="flex:none;height:48px;display:flex;align-items:center;padding:0 20px;gap:14px">
+    <div style="display:flex;align-items:center;gap:16px">
+      <div style="font-size:12.5px;font-weight:600;padding-bottom:3px;box-shadow:inset 0 -1.5px 0 #1F1F1E">Gantt</div>
+      <div style="font-size:12.5px;color:#6B6B67">Lista</div>
+      <div style="font-size:12.5px;color:#6B6B67">Tablero</div>
+      <div style="font-size:12.5px;color:#6B6B67">Próximos</div>
+    </div>
+    <div style="flex:1"></div>
+    <div style="display:flex;align-items:center;gap:18px">
+      <sc-if value="{{ panelClosed }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ openPanel }}" style="font-size:12.5px;color:#6B6B67;cursor:pointer">Detalle ‹</div>
+      </sc-if>
+      <div style="font-size:12.5px;color:#6B6B67">Filtros</div>
+      <div style="font-size:12.5px;color:#6B6B67">+ Nuevo rubro</div>
+      <div style="padding:7px 13px;border-radius:6px;font-size:12.5px;font-weight:600;background:#FDC900;color:#1F1F1E">+ Nueva actividad</div>
+    </div>
+  </div>
+
+  <div style="flex:1;min-height:0;display:flex;border-top:1px solid #EFEEEA">
+
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+      <div style="flex:1;min-height:0;display:flex">
+
+        <div style="{{ tableColStyle }}">
+          <div style="height:72px;flex:none;display:flex;align-items:flex-end;padding-bottom:12px;font-size:10px;font-weight:600;letter-spacing:0.08em;color:#91918B">
+            <div style="flex:1;padding-left:20px">ACTIVIDAD</div>
+            <div style="width:88px">ESTADO</div>
+            <div style="width:54px">INICIO</div>
+            <div style="width:54px">FIN</div>
+            <div style="width:48px;text-align:right;padding-right:12px">%</div>
+          </div>
+          <div ref="{{ tableRef }}" onScroll="{{ onTableScroll }}" style="flex:1;overflow-y:auto;overflow-x:hidden;scrollbar-width:none">
+            <sc-for list="{{ rows }}" as="row" hint-placeholder-count="12">
+              <div style="{{ row.tableRowStyle }}" onClick="{{ row.onClick }}">
+                <sc-if value="{{ row.isRubro }}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex;align-items:center;gap:7px;padding-left:14px">
+                    <span style="{{ row.caretStyle }}">▾</span>
+                    <span style="font-size:11.5px;font-weight:600;letter-spacing:0.04em;color:#3A3A38">{{ row.label }}</span>
+                    <span style="font-size:10.5px;color:#91918B;font-family:'IBM Plex Mono',monospace">{{ row.count }}</span>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ row.isAct }}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex;align-items:center;width:100%">
+                    <div style="flex:1;min-width:0;padding-left:32px;display:flex;align-items:center;gap:7px">
+                      <span style="{{ row.nameStyle }}">{{ row.label }}</span>
+                      <sc-if value="{{ row.hasBlocker }}" hint-placeholder-val="{{ false }}">
+                        <span style="width:5px;height:5px;border-radius:50%;background:#B42318;flex:none"></span>
+                      </sc-if>
+                    </div>
+                    <div style="width:88px;display:flex;align-items:center;gap:6px">
+                      <span style="{{ row.dotStyle }}"></span>
+                      <span style="{{ row.estadoStyle }}">{{ row.estado }}</span>
+                    </div>
+                    <div style="width:54px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#6B6B67">{{ row.inicio }}</div>
+                    <div style="width:54px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#6B6B67">{{ row.fin }}</div>
+                    <div style="width:48px;text-align:right;padding-right:12px"><span style="{{ row.pctCellStyle }}">{{ row.pct }}</span></div>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-for>
+            <div style="height:32px"></div>
+          </div>
+        </div>
+
+        <div onMouseDown="{{ startTableDrag }}" style="{{ dividerAStyle }}"><div style="{{ gripAStyle }}"></div></div>
+
+        <div ref="{{ ganttRef }}" style="flex:1;min-width:0;overflow-x:auto;overflow-y:hidden;display:flex;flex-direction:column;scrollbar-width:none">
+          <div style="{{ timelineWidthStyle }}">
+            <div style="height:72px;flex:none;position:relative">
+              <sc-for list="{{ months }}" as="m" hint-placeholder-count="3">
+                <div style="{{ m.style }}">{{ m.label }}</div>
+              </sc-for>
+              <sc-for list="{{ days }}" as="d" hint-placeholder-count="20">
+                <div style="{{ d.style }}">{{ d.label }}</div>
+              </sc-for>
+              <sc-for list="{{ milestones }}" as="ms" hint-placeholder-count="0">
+                <div style="{{ ms.style }}">
+                  <span style="width:7px;height:7px;background:#1F1F1E;transform:rotate(45deg);flex:none"></span>
+                  <span style="font-size:10px;font-weight:600;color:#3A3A38;white-space:nowrap">{{ ms.label }}</span>
+                </div>
+              </sc-for>
+              <div style="{{ todayFlagStyle }}">HOY</div>
+            </div>
+            <div ref="{{ ganttBodyRef }}" onScroll="{{ onGanttScroll }}" style="flex:1;overflow-y:auto;scrollbar-width:none;position:relative">
+              <div style="{{ canvasStyle }}">
+                <sc-for list="{{ weekendBands }}" as="w" hint-placeholder-count="8">
+                  <div style="{{ w.style }}"></div>
+                </sc-for>
+                <sc-for list="{{ rows }}" as="row" hint-placeholder-count="12">
+                  <div style="{{ row.ganttRowStyle }}" onClick="{{ row.onClick }}">
+                    <sc-if value="{{ row.isAct }}" hint-placeholder-val="{{ true }}">
+                      <div style="{{ row.trackStyle }}"><div style="{{ row.fillStyle }}"></div></div>
+                    </sc-if>
+                    <sc-if value="{{ row.showBaseline }}" hint-placeholder-val="{{ false }}">
+                      <div style="{{ row.baselineStyle }}"></div>
+                    </sc-if>
+                    <sc-if value="{{ row.isAct }}" hint-placeholder-val="{{ true }}">
+                      <div style="{{ row.pctLabelStyle }}">{{ row.pct }}</div>
+                    </sc-if>
+                    <sc-if value="{{ row.hasBlocker }}" hint-placeholder-val="{{ false }}">
+                      <div style="{{ row.blockerStyle }}"></div>
+                    </sc-if>
+                    <sc-if value="{{ row.isRubro }}" hint-placeholder-val="{{ false }}">
+                      <div style="{{ row.rollupStyle }}"></div>
+                    </sc-if>
+                  </div>
+                </sc-for>
+                <sc-for list="{{ depSegs }}" as="s" hint-placeholder-count="0">
+                  <div style="{{ s.style }}"></div>
+                </sc-for>
+                <sc-for list="{{ msLines }}" as="ml" hint-placeholder-count="0">
+                  <div style="{{ ml.style }}"></div>
+                </sc-for>
+                <div style="{{ todayLineStyle }}"></div>
+              </div>
+              <div style="height:32px"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <sc-if value="{{ panelOpen }}" hint-placeholder-val="{{ true }}">
+      <div onMouseDown="{{ startPanelDrag }}" style="{{ dividerBStyle }}"><div style="{{ gripBStyle }}"></div></div>
+    </sc-if>
+
+    <sc-if value="{{ panelOpen }}" hint-placeholder-val="{{ true }}">
+      <div style="{{ panelStyle }}">
+        <div style="flex:1;min-height:0;overflow-y:auto;scrollbar-width:none">
+
+          <div style="padding:18px 24px 16px">
+            <div style="display:flex;align-items:center;gap:10px">
+              <h2 style="margin:0;font-size:16px;font-weight:600;letter-spacing:-0.01em;flex:1">{{ sel.nombre }}</h2>
+              <span style="{{ sel.estadoPillStyle }}">{{ sel.estado }}</span>
+              <span onClick="{{ closePanel }}" style="font-size:12px;color:#91918B;cursor:pointer">✕</span>
+            </div>
+            <div style="margin-top:6px;font-size:12px;color:#6B6B67;display:flex;gap:7px">
+              <span>{{ sel.rubro }}</span><span style="color:#D7D5CF">·</span><span style="{{ sel.resp.s }}">{{ sel.resp.t }}</span>
+            </div>
+          </div>
+
+          <div style="padding:0 24px 18px">
+            <div style="display:flex;gap:22px;padding-bottom:10px">
+              <div style="flex:1;font-size:10.5px;font-weight:500;letter-spacing:0.05em;color:#91918B">Plan</div>
+              <div style="flex:1;font-size:10.5px;font-weight:500;letter-spacing:0.05em;color:#91918B;padding-left:22px">Real</div>
+            </div>
+            <div style="display:flex;gap:22px">
+              <div style="flex:1;display:flex;flex-direction:column;gap:9px">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><span style="font-size:12px;color:#6B6B67">Unidad</span><span style="{{ sel.unidad.s }}">{{ sel.unidad.t }}</span></div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><span style="font-size:12px;color:#6B6B67">Cantidad</span><span style="{{ sel.objetivo.s }}">{{ sel.objetivo.t }}</span></div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><span style="font-size:12px;color:#6B6B67">Inicio</span><span style="{{ sel.iniPlan.s }}">{{ sel.iniPlan.t }}</span></div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><span style="font-size:12px;color:#6B6B67">Fin</span><span style="{{ sel.finPlan.s }}">{{ sel.finPlan.t }}</span></div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><span style="font-size:12px;color:#6B6B67">HH</span><span style="{{ sel.hhPlan.s }}">{{ sel.hhPlan.t }}</span></div>
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column;gap:9px;border-left:1px solid #EFEEEA;padding-left:22px">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><span style="font-size:12px;color:#6B6B67">Ejecutado</span><span style="{{ sel.ejecutado.s }}">{{ sel.ejecutado.t }}</span></div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><span style="font-size:12px;color:#6B6B67">Avance</span><span style="{{ sel.avance.s }}">{{ sel.avance.t }}</span></div>
+                <div style="height:3px;background:#EFEEEA"><div style="{{ sel.avanceBarStyle }}"></div></div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><span style="font-size:12px;color:#6B6B67">HH reales</span><span style="{{ sel.hhReal.s }}">{{ sel.hhReal.t }}</span></div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><span style="font-size:12px;color:#6B6B67">Product.</span><span style="{{ sel.prod.s }}">{{ sel.prod.t }}</span></div>
+              </div>
+            </div>
+            <div style="margin-top:14px;font-size:12px;display:flex;gap:6px;align-items:baseline">
+              <span style="{{ sel.desvioStyle }}">{{ sel.desvioTxt }}</span>
+              <span style="color:#91918B">sobre lo previsto a la fecha</span>
+            </div>
+          </div>
+
+          <div style="border-top:1px solid #EFEEEA">
+
+            <div onClick="{{ sec.personal.toggle }}" style="{{ sec.personal.head }}">
+              <span style="{{ sec.personal.label }}">Personal</span><span style="{{ sec.personal.countStyle }}">5</span>
+              <span style="flex:1"></span><span style="{{ sec.personal.chev }}">›</span>
+            </div>
+            <sc-if value="{{ sec.personal.open }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:0 24px 16px;display:flex;flex-direction:column;gap:9px">
+                <sc-for list="{{ crew }}" as="p" hint-placeholder-count="5">
+                  <div style="display:flex;align-items:baseline;gap:10px">
+                    <span style="font-size:12.5px;width:126px">{{ p.nombre }}</span>
+                    <span style="font-size:11.5px;color:#6B6B67;flex:1">{{ p.rol }}</span>
+                    <span style="{{ p.hhStyle }}">{{ p.hh }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <div onClick="{{ sec.equipos.toggle }}" style="{{ sec.equipos.head }}">
+              <span style="{{ sec.equipos.label }}">Equipos</span><span style="{{ sec.equipos.countStyle }}">2</span>
+              <span style="flex:1"></span><span style="{{ sec.equipos.chev }}">›</span>
+            </div>
+            <sc-if value="{{ sec.equipos.open }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:0 24px 16px;display:flex;flex-direction:column;gap:9px">
+                <div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:12.5px;flex:1">Hormigonera 250 L</span><span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#6B6B67">4,00 h hoy</span></div>
+                <div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:12.5px;flex:1">Andamio tubular ×12</span><span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#6B6B67">todo el día</span></div>
+              </div>
+            </sc-if>
+
+            <div onClick="{{ sec.ejecucion.toggle }}" style="{{ sec.ejecucion.head }}">
+              <span style="{{ sec.ejecucion.label }}">Ejecución</span><span style="{{ sec.ejecucion.countStyle }}">3</span>
+              <span style="flex:1"></span><span style="{{ sec.ejecucion.chev }}">›</span>
+            </div>
+            <sc-if value="{{ sec.ejecucion.open }}" hint-placeholder-val="{{ true }}">
+              <div style="padding:0 24px 16px">
+                <div style="display:flex;align-items:center;height:22px;font-size:9.5px;font-weight:600;letter-spacing:0.07em;color:#91918B">
+                  <div style="width:48px">FECHA</div><div style="width:72px;text-align:right">CANT.</div><div style="width:42px;text-align:right">HH</div><div style="width:32px;text-align:right">PERS.</div><div style="flex:1;padding-left:14px">COMENTARIO</div>
+                </div>
+                <sc-for list="{{ logs }}" as="l" hint-placeholder-count="3">
+                  <div style="{{ l.rowStyle }}">
+                    <div style="width:48px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#6B6B67">{{ l.fecha }}</div>
+                    <div style="width:72px;text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11.5px">{{ l.cant }}</div>
+                    <div style="width:42px;text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#6B6B67">{{ l.hh }}</div>
+                    <div style="width:32px;text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#6B6B67">{{ l.pers }}</div>
+                    <div style="flex:1;padding-left:14px;font-size:12px;color:#6B6B67;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ l.com }}</div>
+                  </div>
+                </sc-for>
+                <div style="margin-top:10px;font-size:12px;color:#6B6B67">Ver historial →</div>
+              </div>
+            </sc-if>
+
+            <div onClick="{{ sec.impedimentos.toggle }}" style="{{ sec.impedimentos.head }}">
+              <span style="{{ sec.impedimentos.label }}">Impedimentos</span><span style="{{ sec.impedimentos.countStyle }}">1</span>
+              <span style="flex:1"></span>
+              <sc-if value="{{ sec.impedimentos.alert }}" hint-placeholder-val="{{ true }}">
+                <span style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#B42318;padding-right:10px"><span style="width:5px;height:5px;border-radius:50%;background:#B42318"></span>vence 22/08</span>
+              </sc-if>
+              <span style="{{ sec.impedimentos.chev }}">›</span>
+            </div>
+            <sc-if value="{{ sec.impedimentos.open }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:0 24px 16px">
+                <div style="font-size:12.5px">Falta de bloques cerámicos 18×18</div>
+                <div style="margin-top:4px;font-size:11.5px;color:#6B6B67">Compras · vence <span style="font-family:'IBM Plex Mono',monospace">22/08</span> · Abierto</div>
+              </div>
+            </sc-if>
+
+            <div onClick="{{ sec.tareas.toggle }}" style="{{ sec.tareas.head }}">
+              <span style="{{ sec.tareas.label }}">Tareas</span><span style="{{ sec.tareas.countStyle }}">5</span>
+              <span style="flex:1"></span><span style="font-size:11.5px;color:#91918B;padding-right:10px">2 hechas</span><span style="{{ sec.tareas.chev }}">›</span>
+            </div>
+            <sc-if value="{{ sec.tareas.open }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:0 24px 16px;display:flex;flex-direction:column;gap:10px">
+                <sc-for list="{{ tareas }}" as="t" hint-placeholder-count="5">
+                  <div style="display:flex;align-items:center;gap:10px">
+                    <span style="{{ t.boxStyle }}"></span>
+                    <span style="{{ t.txtStyle }}">{{ t.n }}</span>
+                    <span style="flex:1"></span>
+                    <span style="{{ t.metaStyle }}">{{ t.meta }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <div onClick="{{ sec.dependencias.toggle }}" style="{{ sec.dependencias.head }}">
+              <span style="{{ sec.dependencias.label }}">Dependencias</span><span style="{{ sec.dependencias.countStyle }}">2</span>
+              <span style="flex:1"></span><span style="{{ sec.dependencias.chev }}">›</span>
+            </div>
+            <sc-if value="{{ sec.dependencias.open }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:0 24px 16px;display:flex;flex-direction:column;gap:9px">
+                <div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:11.5px;color:#91918B;width:58px">Antes</span><span style="font-size:12.5px;flex:1">Losa de entrepiso</span><span style="font-size:11.5px;color:#6B6B67">Pendiente</span></div>
+                <div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:11.5px;color:#91918B;width:58px">Después</span><span style="font-size:12.5px;flex:1">Mampostería exterior</span><span style="font-size:11.5px;color:#6B6B67">Pendiente</span></div>
+              </div>
+            </sc-if>
+
+            <div onClick="{{ sec.notas.toggle }}" style="{{ sec.notas.head }}">
+              <span style="{{ sec.notas.label }}">Notas</span><span style="{{ sec.notas.countStyle }}">1</span>
+              <span style="flex:1"></span><span style="{{ sec.notas.chev }}">›</span>
+            </div>
+            <sc-if value="{{ sec.notas.open }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:0 24px 16px">
+                <div style="font-size:12.5px;line-height:1.5">Se reprograma el muro sur al lunes por lluvia.</div>
+                <div style="margin-top:4px;font-size:11px;color:#91918B;font-family:'IBM Plex Mono',monospace">J. Morales · 19/08 17:20</div>
+                <div style="margin-top:12px;font-size:12.5px;color:#91918B">Agregar nota…</div>
+              </div>
+            </sc-if>
+
+            <div onClick="{{ sec.documentos.toggle }}" style="{{ sec.documentos.head }}">
+              <span style="{{ sec.documentos.label }}">Documentos</span><span style="{{ sec.documentos.countStyle }}">4</span>
+              <span style="flex:1"></span><span style="{{ sec.documentos.chev }}">›</span>
+            </div>
+            <sc-if value="{{ sec.documentos.open }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:0 24px 16px;display:flex;flex-direction:column;gap:9px">
+                <div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:12.5px;flex:1">Plano albañilería R3.pdf</span><span style="font-size:11px;color:#91918B;font-family:'IBM Plex Mono',monospace">12/08</span></div>
+                <div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:12.5px;flex:1">Detalle dinteles.pdf</span><span style="font-size:11px;color:#91918B;font-family:'IBM Plex Mono',monospace">12/08</span></div>
+                <div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:12.5px;flex:1">Remito bloques 1204.pdf</span><span style="font-size:11px;color:#91918B;font-family:'IBM Plex Mono',monospace">18/08</span></div>
+                <div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:12.5px;flex:1">Avance muro norte.jpg</span><span style="font-size:11px;color:#91918B;font-family:'IBM Plex Mono',monospace">20/08</span></div>
+              </div>
+            </sc-if>
+          </div>
+          <div style="height:16px"></div>
+        </div>
+
+        <div style="flex:none;border-top:1px solid #EFEEEA;padding:12px 24px;display:flex;align-items:center;gap:12px">
+          <span style="flex:1;font-size:11px;color:#91918B">Actualizado hoy 08:40</span>
+          <span style="font-size:12.5px;color:#6B6B67">Registrar avance</span>
+          <span style="padding:7px 13px;border-radius:6px;font-size:12.5px;font-weight:600;background:#FDC900;color:#1F1F1E">Editar actividad</span>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+
+  <div style="flex:none;height:56px;position:sticky;bottom:0;z-index:5;border-top:1px solid #EFEEEA;display:flex;align-items:center;padding:0 20px;gap:40px">
+    <div style="display:flex;flex-direction:column;gap:1px">
+      <span style="font-size:10px;font-weight:500;letter-spacing:0.04em;color:#91918B">Avance</span>
+      <div style="display:flex;align-items:baseline;gap:7px"><span style="font-size:14px;font-weight:600">28%</span><span style="font-size:11px;color:#067647">+3% sem.</span></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:1px">
+      <span style="font-size:10px;font-weight:500;letter-spacing:0.04em;color:#91918B">HH</span>
+      <div style="display:flex;align-items:baseline;gap:7px"><span style="font-size:14px;font-weight:600;font-variant-numeric:tabular-nums">8.540</span><span style="font-size:11px;color:#6B6B67">/ 12.400</span></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:1px">
+      <span style="font-size:10px;font-weight:500;letter-spacing:0.04em;color:#91918B">Desvío HH</span>
+      <div style="display:flex;align-items:baseline;gap:7px"><span style="font-size:14px;font-weight:600;color:#B42318;font-variant-numeric:tabular-nums">+850</span><span style="font-size:11px;color:#6B6B67">vs plan</span></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:1px">
+      <span style="font-size:10px;font-weight:500;letter-spacing:0.04em;color:#91918B">Actividades</span>
+      <div style="display:flex;align-items:baseline;gap:7px"><span style="font-size:14px;font-weight:600">37</span><span style="font-size:11px;color:#6B6B67">12 en curso</span></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:1px">
+      <span style="font-size:10px;font-weight:500;letter-spacing:0.04em;color:#91918B">Impedimentos</span>
+      <div style="display:flex;align-items:baseline;gap:7px"><span style="font-size:14px;font-weight:600;color:#B42318">4</span><span style="font-size:11px;color:#B42318">2 críticos</span></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:1px">
+      <span style="font-size:10px;font-weight:500;letter-spacing:0.04em;color:#91918B">Próx. 2 sem.</span>
+      <div style="display:flex;align-items:baseline;gap:7px"><span style="font-size:14px;font-weight:600">9</span><span style="font-size:11px;color:#6B6B67">por iniciar</span></div>
+    </div>
+    <div style="flex:1"></div>
+    <span style="font-size:11px;color:#91918B">Escala: día · Semana 34</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:1024},&quot;density&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;compacto&quot;,&quot;cómodo&quot;],&quot;default&quot;:&quot;compacto&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Gantt&quot;},&quot;showDependencies&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Gantt&quot;},&quot;showBaseline&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Gantt&quot;},&quot;panelOpen&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Workspace&quot;}}">
+const DAY_W = 16;
+const START = new Date('2025-06-08T00:00:00');
+const END = new Date('2025-11-16T00:00:00');
+const TODAY = '2025-08-20';
+const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const BRAND = '#FDC900', GRAPHITE = '#3A3A38', CRIT = '#B42318', OK = '#067647';
+
+const di = (s) => Math.round((new Date(s + 'T00:00:00') - START) / 86400000);
+const dm = (s) => { const p = s.split('-'); return p[2] + '/' + p[1]; };
+const num = (n, d) => n == null ? null : n.toLocaleString('es-AR', { minimumFractionDigits: d, maximumFractionDigits: d });
+
+const DATA = [
+  { id: 'r1', rubro: 'ESTRUCTURA', acts: [
+    { id: 'a1', n: 'Excavaciones', e: 'Hecha', i: '2025-06-10', f: '2025-06-14', p: 100, unidad: 'm³', obj: 240, hhPlan: 180, ejec: 240, hhReal: 172, resp: 'Ing. Martínez' },
+    { id: 'a2', n: 'Fundaciones', e: 'Hecha', i: '2025-06-15', f: '2025-06-28', p: 100, unidad: 'm³', obj: 96, hhPlan: 320, ejec: 96, hhReal: 348, resp: 'Ing. Martínez' },
+    { id: 'a3', n: 'Columnas', e: 'En curso', i: '2025-06-29', f: '2025-07-12', p: 62, unidad: 'u', obj: 34, hhPlan: 260, ejec: 21, hhReal: 198, resp: 'Ing. Martínez', base: ['2025-06-29', '2025-07-08'] },
+    { id: 'a4', n: 'Vigas', e: 'En curso', i: '2025-07-05', f: '2025-07-20', p: 40, unidad: 'ml', obj: 148, hhPlan: 290, ejec: 59.2, hhReal: 142, resp: 'Ing. Martínez' },
+    { id: 'a5', n: 'Losa de entrepiso', e: 'Pendiente', i: '2025-07-21', f: '2025-08-10', p: null, unidad: 'm²', obj: 210, hhPlan: 410, ejec: null, hhReal: null, resp: 'Ing. Martínez', base: ['2025-07-18', '2025-08-04'] }
+  ]},
+  { id: 'r2', rubro: 'MAMPOSTERÍA', acts: [
+    { id: 'a6', n: 'Mampostería interior', e: 'En curso', i: '2025-08-01', f: '2025-08-25', p: 53, unidad: 'm²', obj: 180, hhPlan: 126, ejec: 95.4, hhReal: 88, resp: 'Ing. Martínez', base: ['2025-07-28', '2025-08-20'], blocker: true },
+    { id: 'a7', n: 'Mampostería exterior', e: 'Pendiente', i: '2025-08-26', f: '2025-09-10', p: null, unidad: 'm²', obj: 260, hhPlan: 190, ejec: null, hhReal: null, resp: null }
+  ]},
+  { id: 'r3', rubro: 'INSTALACIONES', acts: [
+    { id: 'a8', n: 'Sanitarias', e: 'Pendiente', i: '2025-09-15', f: '2025-09-28', p: null, unidad: 'gl', obj: null, hhPlan: 240, ejec: null, hhReal: null, resp: 'Subcontrato Rivas' },
+    { id: 'a9', n: 'Eléctricas', e: 'Pendiente', i: '2025-09-20', f: '2025-10-15', p: null, unidad: 'gl', obj: null, hhPlan: null, ejec: null, hhReal: null, resp: null }
+  ]},
+  { id: 'r4', rubro: 'TERMINACIONES', acts: [
+    { id: 'a10', n: 'Revoques', e: 'Pendiente', i: '2025-10-01', f: '2025-10-20', p: null, unidad: 'm²', obj: 440, hhPlan: 380, ejec: null, hhReal: null, resp: null },
+    { id: 'a11', n: 'Pisos', e: 'Pendiente', i: '2025-10-21', f: '2025-11-10', p: null, unidad: 'm²', obj: 310, hhPlan: 300, ejec: null, hhReal: null, resp: null }
+  ]}
+];
+const DEPS = [['a1','a2'],['a2','a3'],['a3','a4'],['a4','a5'],['a6','a7'],['a8','a9']];
+const MILES = [{ d: '2025-08-10', label: 'Fin estructura' }, { d: '2025-09-10', label: 'Entrega mampostería' }];
+const SECTIONS = ['personal','equipos','ejecucion','impedimentos','tareas','dependencias','notas','documentos'];
+
+class Component extends DCLogic {
+  state = { sel: 'a6', collapsed: {}, open: { ejecucion: true }, tableW: 470, panelW: 452, closed: false, dragging: null };
+
+  componentDidMount() {
+    if (this.gantt) this.gantt.scrollLeft = Math.max(0, di('2025-07-28') * DAY_W - 24);
+    window.addEventListener('mousemove', this.onMove);
+    window.addEventListener('mouseup', this.onUp);
+  }
+  componentWillUnmount() {
+    window.removeEventListener('mousemove', this.onMove);
+    window.removeEventListener('mouseup', this.onUp);
+  }
+  onMove = (e) => {
+    const d = this.state.dragging;
+    if (!d) return;
+    e.preventDefault();
+    if (d.kind === 'table') {
+      this.setState({ tableW: Math.min(760, Math.max(300, d.w + (e.clientX - d.x))) });
+    } else {
+      this.setState({ panelW: Math.min(760, Math.max(340, d.w - (e.clientX - d.x))) });
+    }
+  };
+  onUp = () => { if (this.state.dragging) this.setState({ dragging: null }); };
+
+  fv(v, opts) {
+    const base = { fontSize: '12.5px', fontWeight: 600, color: '#1F1F1E', fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: 'tabular-nums' };
+    const nul = { fontSize: '11.5px', fontWeight: 400, color: '#91918B' };
+    if (v == null || v === '') return { t: (opts && opts.nullTxt) || 'sin cargar', s: nul };
+    if (opts && opts.plain) return { t: v, s: { fontSize: '12px', color: '#6B6B67' } };
+    return { t: v, s: base };
+  }
+
+  renderVals() {
+    const RH = this.props.density === 'cómodo' ? 44 : 38;
+    const totalDays = Math.round((END - START) / 86400000);
+    const totalW = totalDays * DAY_W;
+    const showBase = this.props.showBaseline !== false;
+    const showDeps = this.props.showDependencies !== false;
+    const panelOpen = (this.props.panelOpen !== false) && !this.state.closed;
+    const dragging = this.state.dragging;
+
+    const flat = [];
+    DATA.forEach(g => {
+      const open = !this.state.collapsed[g.id];
+      flat.push({ kind: 'rubro', id: g.id, label: g.rubro, count: g.acts.length, open, g });
+      if (open) g.acts.forEach(a => flat.push({ kind: 'act', id: a.id, a, g }));
+    });
+
+    const yOf = {};
+    let yCur = 0;
+    const rows = flat.map((r, idx) => {
+      if (r.kind === 'rubro' && idx) yCur += 8;
+      const top = yCur;
+      yCur += RH;
+      const isSel = r.kind === 'act' && r.id === this.state.sel;
+      if (r.kind === 'act') yOf[r.id] = top + RH / 2;
+      const base = { height: RH + 'px', display: 'flex', alignItems: 'center', cursor: 'pointer', position: 'relative' };
+      const o = {
+        isRubro: r.kind === 'rubro', isAct: r.kind === 'act',
+        label: r.kind === 'rubro' ? r.label : r.a.n,
+        count: r.kind === 'rubro' ? r.count : '',
+        onClick: r.kind === 'rubro'
+          ? () => this.setState(s => ({ collapsed: Object.assign({}, s.collapsed, { [r.id]: !s.collapsed[r.id] }) }))
+          : () => this.setState({ sel: r.id, closed: false }),
+        caretStyle: { fontSize: '9px', color: '#91918B', display: 'inline-block', transform: r.open ? 'none' : 'rotate(-90deg)' },
+        tableRowStyle: Object.assign({}, base, r.kind === 'rubro'
+          ? { marginTop: idx ? '8px' : '0' }
+          : isSel ? { background: '#FFFCF2', boxShadow: 'inset 2px 0 0 ' + BRAND } : {}),
+        ganttRowStyle: Object.assign({}, base, { width: totalW + 'px' },
+          isSel ? { background: 'rgba(255,200,0,0.07)' } : {}, r.kind === 'rubro' ? { marginTop: idx ? '8px' : '0' } : {})
+      };
+      if (r.kind === 'rubro') {
+        const x1 = Math.max(0, di(r.g.acts[0].i) * DAY_W);
+        const x2 = Math.max.apply(null, r.g.acts.map(a => (di(a.f) + 1) * DAY_W));
+        o.rollupStyle = { position: 'absolute', left: x1 + 'px', width: Math.max(0, x2 - x1) + 'px', top: (RH / 2 - 1) + 'px', height: '2px', background: '#E7E6E2' };
+        return o;
+      }
+      const a = r.a, pct = a.p, done = pct >= 100;
+      const x = di(a.i) * DAY_W, w = (di(a.f) - di(a.i) + 1) * DAY_W;
+      o.estado = a.e;
+      o.estadoStyle = { fontSize: '11.5px', color: a.e === 'Pendiente' ? '#6B6B67' : '#3A3A38' };
+      o.dotStyle = { width: '6px', height: '6px', borderRadius: '50%', flex: 'none',
+        background: a.e === 'Hecha' ? OK : a.e === 'En curso' ? GRAPHITE : 'transparent',
+        border: a.e === 'Pendiente' ? '1px solid #D7D5CF' : 'none' };
+      o.inicio = dm(a.i); o.fin = dm(a.f);
+      o.pct = pct == null ? '—' : pct + '%';
+      o.pctCellStyle = { fontFamily: "'IBM Plex Mono', monospace", fontSize: '11.5px', fontWeight: isSel ? 600 : 400, color: pct == null ? '#D7D5CF' : '#1F1F1E' };
+      o.nameStyle = { fontSize: '12.5px', fontWeight: isSel ? 600 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
+      o.hasBlocker = !!a.blocker;
+      o.trackStyle = { position: 'absolute', left: x + 'px', width: w + 'px', top: (RH / 2 - 5) + 'px', height: '10px', borderRadius: '2px', background: pct == null ? '#EFEEEA' : '#EFEEEA', border: isSel ? '1px solid ' + BRAND : '1px solid transparent', overflow: 'hidden' };
+      o.fillStyle = { width: (pct || 0) + '%', height: '100%', background: done ? OK : GRAPHITE };
+      o.showBaseline = showBase && !!a.base;
+      if (a.base) {
+        const bx = di(a.base[0]) * DAY_W, bw = (di(a.base[1]) - di(a.base[0]) + 1) * DAY_W;
+        o.baselineStyle = { position: 'absolute', left: bx + 'px', width: bw + 'px', top: (RH / 2 + 7) + 'px', height: '2px', background: 'repeating-linear-gradient(90deg,#D7D5CF 0 3px,transparent 3px 6px)' };
+      }
+      o.pctLabelStyle = { position: 'absolute', left: (x + w + 8) + 'px', top: (RH / 2 - 6) + 'px', height: '12px', lineHeight: '12px', fontFamily: "'IBM Plex Mono', monospace", fontSize: '10px', color: pct == null ? '#D7D5CF' : '#6B6B67' };
+      if (a.blocker) o.blockerStyle = { position: 'absolute', left: (x + w - 16) + 'px', top: (RH / 2 - 12) + 'px', width: 0, height: 0, borderLeft: '4px solid transparent', borderRight: '4px solid transparent', borderBottom: '7px solid ' + CRIT };
+      return o;
+    });
+
+    const days = [], weekendBands = [], months = [];
+    let mStart = 0, mIdx = START.getMonth();
+    for (let i = 0; i < totalDays; i++) {
+      const dte = new Date(START.getTime() + i * 86400000);
+      const we = dte.getDay() === 0 || dte.getDay() === 6;
+      const iso = dte.getFullYear() + '-' + String(dte.getMonth() + 1).padStart(2, '0') + '-' + String(dte.getDate()).padStart(2, '0');
+      const isToday = iso === TODAY;
+      days.push({ label: String(dte.getDate()).padStart(2, '0'), style: {
+        position: 'absolute', left: (i * DAY_W) + 'px', width: DAY_W + 'px', top: '30px', height: '20px',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '9.5px',
+        fontFamily: "'IBM Plex Mono', monospace", color: isToday ? '#1F1F1E' : we ? '#D7D5CF' : '#6B6B67',
+        fontWeight: isToday ? 600 : 400 } });
+      if (we) weekendBands.push({ style: { position: 'absolute', left: (i * DAY_W) + 'px', width: DAY_W + 'px', top: 0, bottom: 0, background: '#FAFAF8' } });
+      if (dte.getMonth() !== mIdx || i === totalDays - 1) {
+        const end = dte.getMonth() !== mIdx ? i : i + 1;
+        months.push({ label: MONTHS[mIdx], style: { position: 'absolute', left: (mStart * DAY_W + 2) + 'px', width: ((end - mStart) * DAY_W) + 'px', top: '10px', height: '16px', display: 'flex', alignItems: 'center', fontSize: '10.5px', fontWeight: 600, letterSpacing: '0.04em', color: '#6B6B67' } });
+        mStart = i; mIdx = dte.getMonth();
+      }
+    }
+
+    const canvasH = yCur + 24;
+    const inRange = (iso) => di(iso) >= 0 && di(iso) < totalDays;
+    const depSegs = [];
+    if (showDeps) DEPS.forEach(pair => {
+      const A = DATA.reduce((acc, g) => acc.concat(g.acts), []).find(x => x.id === pair[0]);
+      const B = DATA.reduce((acc, g) => acc.concat(g.acts), []).find(x => x.id === pair[1]);
+      if (!A || !B || yOf[pair[0]] == null || yOf[pair[1]] == null) return;
+      if (!inRange(A.f) || !inRange(B.i)) return;
+      const x1 = (di(A.f) + 1) * DAY_W, x2 = di(B.i) * DAY_W;
+      const y1 = yOf[pair[0]], y2 = yOf[pair[1]], mx = Math.max(x1 + 8, Math.min(x2 - 8, x1 + 8));
+      const c = '#D7D5CF';
+      depSegs.push({ style: { position: 'absolute', left: x1 + 'px', width: Math.max(0, mx - x1) + 'px', top: y1 + 'px', height: '1px', background: c } });
+      depSegs.push({ style: { position: 'absolute', left: mx + 'px', width: '1px', top: Math.min(y1, y2) + 'px', height: Math.abs(y2 - y1) + 'px', background: c } });
+      depSegs.push({ style: { position: 'absolute', left: mx + 'px', width: Math.max(0, x2 - mx) + 'px', top: y2 + 'px', height: '1px', background: c } });
+      depSegs.push({ style: { position: 'absolute', left: (x2 - 4) + 'px', top: (y2 - 3) + 'px', width: 0, height: 0, borderTop: '3px solid transparent', borderBottom: '3px solid transparent', borderLeft: '4px solid ' + c } });
+    });
+
+    const milestones = MILES.filter(m => inRange(m.d)).map(m => ({ label: m.label, style: { position: 'absolute', left: (di(m.d) * DAY_W - 3) + 'px', top: '52px', height: '16px', display: 'flex', alignItems: 'center', gap: '6px' } }));
+    const msLines = MILES.filter(m => inRange(m.d)).map(m => ({ style: { position: 'absolute', left: (di(m.d) * DAY_W + DAY_W / 2) + 'px', top: 0, width: '1px', height: canvasH + 'px', background: 'repeating-linear-gradient(180deg,#E7E6E2 0 3px,transparent 3px 7px)' } }));
+
+    const sa = DATA.reduce((acc, g) => acc.concat(g.acts), []).find(x => x.id === this.state.sel) || DATA[1].acts[0];
+    const grp = DATA.find(g => g.acts.indexOf(sa) >= 0);
+    const prod = (sa.ejec != null && sa.hhReal) ? sa.ejec / sa.hhReal : null;
+    const desvio = (sa.hhReal != null && sa.hhPlan != null && sa.p != null) ? Math.round(sa.hhReal - sa.hhPlan * (sa.p / 100)) : null;
+    const sel = {
+      nombre: sa.n, estado: sa.e,
+      rubro: grp.rubro.charAt(0) + grp.rubro.slice(1).toLowerCase(),
+      estadoPillStyle: { fontSize: '11.5px', color: sa.e === 'Hecha' ? OK : sa.e === 'En curso' ? '#3A3A38' : '#6B6B67', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' },
+      resp: this.fv(sa.resp, { plain: true, nullTxt: 'sin asignar' }),
+      unidad: this.fv(sa.unidad),
+      objetivo: this.fv(num(sa.obj, 2), { nullTxt: 'sin plan' }),
+      iniPlan: this.fv(sa.i.split('-').reverse().join('/')),
+      finPlan: this.fv(sa.f.split('-').reverse().join('/')),
+      hhPlan: this.fv(num(sa.hhPlan, 2), { nullTxt: 'sin plan' }),
+      ejecutado: this.fv(sa.ejec == null ? null : num(sa.ejec, 2) + ' ' + (sa.unidad || ''), { nullTxt: 'sin registrar' }),
+      avance: this.fv(sa.p == null ? null : sa.p + '%', { nullTxt: 'sin avance' }),
+      hhReal: this.fv(num(sa.hhReal, 2), { nullTxt: 'sin registrar' }),
+      prod: this.fv(prod == null ? null : num(prod, 2) + ' ' + sa.unidad + '/HH', { nullTxt: 'sin registrar' }),
+      avanceBarStyle: { width: (sa.p || 0) + '%', height: '100%', background: sa.p >= 100 ? OK : GRAPHITE },
+      desvioTxt: desvio == null ? 'Desvío HH sin calcular' : (desvio > 0 ? '+' : '') + num(desvio, 0) + ' HH',
+      desvioStyle: { fontSize: '12.5px', fontWeight: 600, fontFamily: "'IBM Plex Mono', monospace", color: desvio == null ? '#91918B' : desvio > 0 ? CRIT : OK }
+    };
+
+    const sec = {};
+    SECTIONS.forEach(k => {
+      const open = !!this.state.open[k];
+      sec[k] = {
+        open, alert: k === 'impedimentos' && !open,
+        toggle: () => this.setState(s => ({ open: Object.assign({}, s.open, { [k]: !s.open[k] }) })),
+        head: { height: '44px', display: 'flex', alignItems: 'center', gap: '8px', padding: '0 24px', cursor: 'pointer', borderBottom: open ? 'none' : '1px solid #EFEEEA' },
+        label: { fontSize: '12.5px', fontWeight: open ? 600 : 400, color: '#1F1F1E' },
+        countStyle: { fontSize: '11px', color: '#91918B', fontFamily: "'IBM Plex Mono', monospace" },
+        chev: { fontSize: '13px', color: '#D7D5CF', display: 'inline-block', transform: open ? 'rotate(90deg)' : 'none' }
+      };
+    });
+
+    const crew = [
+      { nombre: 'J. Morales', rol: 'Oficial albañil', hh: '40,00' },
+      { nombre: 'R. Aguirre', rol: 'Ayudante', hh: '40,00' },
+      { nombre: 'L. Cabrera', rol: 'Oficial', hh: '32,00' },
+      { nombre: 'D. Peralta', rol: 'Ayudante', hh: '24,00' },
+      { nombre: 'S. Giménez', rol: 'Ayudante', hh: null }
+    ].map(p => ({ nombre: p.nombre, rol: p.rol, hh: p.hh == null ? 'sin cargar' : p.hh + ' HH',
+      hhStyle: { fontFamily: p.hh == null ? "'IBM Plex Sans'" : "'IBM Plex Mono', monospace", fontSize: '11.5px', color: p.hh == null ? '#91918B' : '#6B6B67' } }));
+
+    const logRow = (hl) => ({ display: 'flex', alignItems: 'center', height: '30px', borderTop: '1px solid #EFEEEA', background: hl ? '#FFFCF2' : 'transparent' });
+    const logs = [
+      { fecha: '20/08', cant: '+15,20 m²', hh: '12,00', pers: '5', com: 'Muro norte 2ª hilada', rowStyle: logRow(true) },
+      { fecha: '19/08', cant: '+18,30 m²', hh: '13,00', pers: '5', com: 'Muro sur completo', rowStyle: logRow(false) },
+      { fecha: '18/08', cant: '+12,50 m²', hh: '10,00', pers: '4', com: 'Continuación muro este', rowStyle: logRow(false) }
+    ];
+
+    const tareas = [
+      { n: 'Replanteo de muros', done: true, meta: '12/08' },
+      { n: 'Muro norte', done: true, meta: '19/08' },
+      { n: 'Muro sur', done: false, meta: 'en curso' },
+      { n: 'Muro este', done: false, meta: '22/08' },
+      { n: 'Dinteles y encadenados', done: false, meta: 'sin plan' }
+    ].map(t => ({ n: t.n, meta: t.meta,
+      boxStyle: { width: '11px', height: '11px', borderRadius: '2px', flex: 'none', background: t.done ? OK : 'transparent', border: t.done ? 'none' : '1px solid #D7D5CF' },
+      txtStyle: { fontSize: '12.5px', color: t.done ? '#6B6B67' : '#1F1F1E', textDecoration: t.done ? 'line-through' : 'none' },
+      metaStyle: { fontSize: '11px', fontFamily: t.meta === 'sin plan' || t.meta === 'en curso' ? "'IBM Plex Sans'" : "'IBM Plex Mono', monospace", color: t.meta === 'sin plan' ? '#91918B' : '#6B6B67' } }));
+
+    const divider = (active) => ({ width: '9px', flex: 'none', cursor: 'col-resize', display: 'flex', alignItems: 'center', justifyContent: 'center', background: active ? 'rgba(255,200,0,0.10)' : 'transparent' });
+    const grip = (active) => ({ width: active ? '2px' : '1px', height: '100%', background: active ? BRAND : '#EFEEEA' });
+
+    return {
+      rows, days, months, weekendBands, depSegs, msLines, milestones, sel, sec, crew, logs, tareas,
+      panelOpen, panelClosed: !panelOpen,
+      tableColStyle: { width: this.state.tableW + 'px', flex: 'none', display: 'flex', flexDirection: 'column', minWidth: 0 },
+      panelStyle: { width: this.state.panelW + 'px', flex: 'none', display: 'flex', flexDirection: 'column', minHeight: 0 },
+      dividerAStyle: divider(dragging && dragging.kind === 'table'),
+      gripAStyle: grip(dragging && dragging.kind === 'table'),
+      dividerBStyle: divider(dragging && dragging.kind === 'panel'),
+      gripBStyle: grip(dragging && dragging.kind === 'panel'),
+      startTableDrag: (e) => { e.preventDefault(); this.setState({ dragging: { kind: 'table', x: e.clientX, w: this.state.tableW } }); },
+      startPanelDrag: (e) => { e.preventDefault(); this.setState({ dragging: { kind: 'panel', x: e.clientX, w: this.state.panelW } }); },
+      closePanel: () => this.setState({ closed: true }),
+      openPanel: () => this.setState({ closed: false }),
+      timelineWidthStyle: { width: totalW + 'px', minWidth: '100%', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 },
+      canvasStyle: { position: 'relative', width: totalW + 'px', height: canvasH + 'px' },
+      todayLineStyle: { position: 'absolute', left: (di(TODAY) * DAY_W + DAY_W / 2) + 'px', top: 0, width: '1.5px', height: canvasH + 'px', background: BRAND },
+      todayFlagStyle: { position: 'absolute', left: (di(TODAY) * DAY_W - 8) + 'px', top: '52px', height: '16px', padding: '0 5px', borderRadius: '2px', background: BRAND, color: '#1F1F1E', fontSize: '9px', fontWeight: 700, letterSpacing: '0.08em', display: 'flex', alignItems: 'center' },
+      rootRef: (el) => { this.root = el; },
+      tableRef: (el) => { this.tbody = el; },
+      ganttRef: (el) => { this.gantt = el; },
+      ganttBodyRef: (el) => { this.gbody = el; },
+      onTableScroll: (e) => { if (this.gbody && this.gbody.scrollTop !== e.target.scrollTop) this.gbody.scrollTop = e.target.scrollTop; },
+      onGanttScroll: (e) => { if (this.tbody && this.tbody.scrollTop !== e.target.scrollTop) this.tbody.scrollTop = e.target.scrollTop; }
+    };
+  }
+}
+</script>
+</body>
+</html>
