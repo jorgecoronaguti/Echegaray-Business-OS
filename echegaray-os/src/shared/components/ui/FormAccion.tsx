@@ -85,7 +85,11 @@ export function FormAccion({
           type="submit"
           disabled={pendiente}
           data-testid={testid ? `${testid}-enviar` : undefined}
-          className="rounded-control bg-slate-900 px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+          // LA PRIMARIA DEL SISTEMA, NO UN NEGRO DE TAILWIND (20/08/2026). Era `bg-slate-900`, un
+          // color que no está en la paleta del handoff — y lo comparten los catorce formularios
+          // del OS, así que era el botón más repetido del sistema y ninguno era de la marca.
+          // Amarillo con texto grafito: #FDC900 da 1,6:1 sobre blanco y no admite texto claro.
+          className="rounded-control bg-marca px-3.5 py-[7px] text-[12.5px] font-semibold text-[color:var(--os-on-marca)] transition-colors hover:brightness-[0.97] disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-faint disabled:hover:brightness-100"
         >
           {pendiente ? 'Guardando…' : enviar}
         </button>
@@ -133,12 +137,15 @@ export function BotonAccion<A extends unknown[] = []>({
     () => accion(...((args ?? []) as A)),
     null,
   )
+  // Los tonos salen de la paleta del handoff. `slate-900`/`slate-50` eran neutros de Tailwind:
+  // grises FRÍOS dentro de un sistema cuyos neutros son cálidos (salen del grafito del logo). La
+  // diferencia se nota poco de a uno y mucho en una tabla con veinte de estos.
   const estilo =
     tono === 'peligro'
       ? 'border-neg/30 text-neg hover:bg-neg-soft'
       : tono === 'fuerte'
-        ? 'border-transparent bg-slate-900 text-white hover:bg-slate-700'
-        : 'border-line text-muted hover:bg-slate-50'
+        ? 'border-transparent bg-marca font-semibold text-[color:var(--os-on-marca)] hover:brightness-[0.97]'
+        : 'border-line text-muted hover:bg-surface-quiet hover:text-ink'
 
   return (
     <form action={ejecutar} className={`inline-flex flex-wrap items-center gap-2 ${className}`}>

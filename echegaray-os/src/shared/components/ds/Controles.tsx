@@ -56,9 +56,13 @@ export function Buscador({
 }) {
   return (
     <div className={`flex min-w-0 items-center gap-2 border-b border-line ${className}`}>
-      <span aria-hidden className="shrink-0 text-[13px] text-faint">
-        ⌕
-      </span>
+      {/* SVG Y NO EL CARÁCTER `⌕` (U+2315): IBM Plex Sans no lo tiene, y un glifo que la fuente no
+          trae se dibuja como el rectángulo vacío del "tofu". Un icono del sistema no puede depender
+          de qué caracteres traiga la tipografía. */}
+      <svg aria-hidden viewBox="0 0 16 16" className="h-[13px] w-[13px] shrink-0 text-faint" fill="none">
+        <circle cx="7" cy="7" r="4.25" stroke="currentColor" strokeWidth="1.3" />
+        <path d="M10.2 10.2 L14 14" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+      </svg>
       <input
         type="search"
         value={value}
