@@ -1,19 +1,21 @@
 // PERSONAL DE LA OBRA — quién está, con qué rol, y cuántas horas lleva.
 //
+// ═══ LA FORMA LA FIJA EL HANDOFF APROBADO (design/screens/obras.md §1e) ═══
+//
+//   Titular en UNA línea · asignaciones · plan contra real por actividad · horas imputadas.
+//   Las altas van por ACCIÓN DISCRETA, no por formulario permanente en pantalla.
+//
+// Los tres formularios de carga estaban esparcidos entre las tablas, cada uno en su recuadro: la
+// pantalla se leía como cuatro bloques de escritura con algunas tablas en el medio, cuando lo que
+// se hace acá casi siempre es MIRAR. Ahora los tres viven en una fila de acciones debajo de la
+// tabla de asignaciones, plegados, y se abren donde están.
+//
 // ═══ ES LA MISMA RELACIÓN QUE MUESTRA LA FICHA DE LA PERSONA ═══
 //
 // Esta solapa NO es un segundo maestro de personas: es la vista de recursos humanos DE ESTA OBRA.
 // Lee `obra_asignacion` —la misma tabla que lee `/administracion/personas/<id>`— y `registros_hh`,
 // que es la única fuente de las horas. Ninguna de las dos pantallas guarda un resumen propio, y por
 // eso no pueden decir cosas distintas.
-//
-// ═══ EL CRUCE PERSONA ↔ HORAS AHORA ES POR ID ═══
-//
-// Hasta el 19/08/2026 se comparaban NOMBRES normalizados, porque `registros_hh` guardaba
-// `trabajador_o_cuadrilla` como texto libre. Con un apodo, una tilde o un segundo nombre, las horas
-// de esa persona desaparecían de la fila sin un solo error. Ahora la imputación apunta a
-// `personas.id`. Las 19 filas históricas siguen sin persona y se muestran igual en la tabla de
-// abajo, marcadas: son horas reales aunque no se sepa de quién, y no se les inventa un dueño.
 //
 // ═══ LAS DOS PUNTAS DE LAS HH, Y EL DESVÍO SÓLO CUANDO ESTÁN LAS DOS ═══
 //
@@ -22,9 +24,11 @@
 // sumar: se muestra lo que la vista publicó y, debajo, las filas que lo respaldan.
 
 import {
-  BotonAccion, Callout, Campo, CTRL, FormAccion,
-  type AccionFormulario, type ResultadoAccion,
+  BotonAccion, FormAccion, type AccionFormulario, type ResultadoAccion,
 } from '@/shared/components/ui'
+import {
+  Aviso, CAMPO, Campo, Eyebrow, Nulo, Tabla, Td, Th, THead, Tr, Vacio,
+} from '@/shared/components/ds'
 import type { ActividadHH, RegistroHH } from '../services/personalService'
 import type { Actividad, Asignacion, Persona, PlanVsReal } from '../types'
 import { etiquetaCategoria } from '@/features/administracion/types'
@@ -35,13 +39,13 @@ import { desvio } from './formato'
 /**
  * EL TITULAR, EN UNA LÍNEA.
  *
- * El dueño lo dibujó así: *"12 personas · HH plan 420 · HH real 380 · −40 HH"*, y agregó *"sin KPIs
- * decorativos"*. Eran cuatro recuadros con borde; ahora es un renglón. Las mismas cuatro cifras
- * ocupan un tercio del alto y se leen de un vistazo, que es lo que hace un titular.
+ * El dueño lo dibujó así: *"12 personas · HH plan 12.400 · HH real 8.540 (312 registros) · 148 HH
+ * extras · +850 HH"*, y agregó *"sin KPIs decorativos"*. Eran cuatro recuadros con borde; ahora es
+ * un renglón. Las mismas cifras ocupan un tercio del alto y se leen de un vistazo.
  *
- * NINGUNA DE LAS CUATRO SE INVENTA. Sin plan cargado no dice «0 HH»: dice «HH plan sin cargar», y el
- * desvío directamente no aparece. Un cero donde falta un dato convierte una obra sin planificar en
- * una obra perfectamente cumplida.
+ * NINGUNA SE INVENTA. Sin plan cargado no dice «0 HH»: dice «HH plan sin cargar», y el desvío
+ * directamente no aparece. Un cero donde falta un dato convierte una obra sin planificar en una
+ * obra perfectamente cumplida.
  */
 function Titular({ plan, asignaciones, registros }: {
   plan: PlanVsReal | null; asignaciones: Asignacion[]; registros: RegistroHH[]
@@ -78,7 +82,7 @@ function Titular({ plan, asignaciones, registros }: {
           <span className={dif > 0 ? 'font-medium text-neg' : 'font-medium text-ink'}>
             {dif > 0 ? '+' : '−'}{n(Math.abs(dif))} HH
           </span>
-          <span className="text-faint"> {desvio(plan?.desvio_hh_pct)}</span>
+          <span className="text-faint"> {desvio(plan?.desvio_hh_pct)} vs plan</span>
         </>
       )}
     </p>
@@ -93,56 +97,72 @@ function TablaAsignaciones({ asignaciones, actividadDe, porAsignado, cerrar, qui
   quitar: (asignacionId: string) => Promise<ResultadoAccion>
 }) {
   return (
-    <div className="overflow-x-auto rounded-lg border border-line bg-surface">
-      <table data-testid="tabla-personal" className="w-full min-w-[620px] text-left">
-        <thead><tr className="border-b border-line text-[10px] uppercase tracking-wide text-faint">
-          <th className="px-4 py-2 font-medium">Persona</th>
-          <th className="px-3 py-2 font-medium">Rol / categoría</th>
-          <th className="px-3 py-2 font-medium">Cuadrilla</th>
-          <th className="px-3 py-2 font-medium">Actividad</th>
-          <th className="px-3 py-2 text-right font-medium">HH</th>
-          <th className="px-3 py-2" />
-        </tr></thead>
-        <tbody>
-          {asignaciones.map((a) => (
-            <tr key={a.id} data-testid="fila-asignacion" className="border-b border-line/60 last:border-0">
-              <td className="px-4 py-2 text-[13px] text-ink">
-                {a.persona_nombre ?? <span className="text-warn">persona borrada del legajo</span>}
-                {a.persona_especialidad && (
-                  <span className="block text-[11px] text-faint">{a.persona_especialidad}</span>
-                )}
-              </td>
-              {/* ROL Y CATEGORÍA JUNTOS: son la misma pregunta —«¿qué hace acá?»— y separarlos
-                  gastaba una columna en un dato de una palabra. */}
-              <td className="px-3 py-2 text-[12px] text-muted">
-                {a.rol}
-                {a.persona_categoria && (
-                  <span className="block text-[11px] text-faint">{etiquetaCategoria(a.persona_categoria)}</span>
-                )}
-              </td>
-              <td className="px-3 py-2 text-[12px] text-muted">{a.cuadrilla ?? '—'}</td>
-              <td className="px-3 py-2 text-[12px] text-muted">
-                {a.actividad_id ? (actividadDe.get(a.actividad_id) ?? '—') : 'toda la obra'}
-                {/* La asignación cerrada no se esconde —es la historia de la obra— pero se dice con
-                    una palabra en vez de gastar una columna de fechas en el listado operativo. */}
-                {a.hasta && <span className="block text-[11px] text-faint">hasta {a.hasta}</span>}
-              </td>
-              <td className="px-3 py-2 text-right text-[12px] tabular-nums text-ink">
-                {porAsignado.get(a.id)?.toLocaleString('es-AR', { maximumFractionDigits: 1 })
-                  ?? <span className="text-faint">sin imputar</span>}
-              </td>
-              <td className="px-3 py-2 text-right">
-                {/* CERRAR conserva el período; QUITAR borra la fila y sólo sirve para el alta hecha
-                    por error. Si las dos hicieran lo mismo, cada rotación borraría el pasado. */}
-                {a.hasta
-                  ? <BotonAccion accion={quitar} args={[a.id]} testid="quitar-asignacion" tono="peligro">Quitar</BotonAccion>
-                  : <BotonAccion accion={cerrar} args={[a.id]} testid="cerrar-asignacion">Cerrar</BotonAccion>}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <Tabla testid="tabla-personal" minWidth={720}>
+      <THead>
+        <Th>Persona</Th><Th>Rol / categoría</Th><Th>Cuadrilla</Th><Th>Actividad</Th>
+        <Th num>HH</Th><Th num />
+      </THead>
+      <tbody>
+        {asignaciones.map((a) => (
+          <Tr key={a.id} {...{ 'data-testid': 'fila-asignacion' }}>
+            <Td fuerte>
+              {/* Sin persona en el legajo se MARCA en `warn` y no se rellena: la asignación existe,
+                  el legajo la perdió, y eso es trabajo pendiente de alguien. */}
+              {a.persona_nombre ?? <span className="text-warn">persona borrada del legajo</span>}
+              {a.persona_especialidad && (
+                <span className="block text-[11px] text-faint">{a.persona_especialidad}</span>
+              )}
+            </Td>
+            {/* ROL Y CATEGORÍA JUNTOS: son la misma pregunta —«¿qué hace acá?»— y separarlos
+                gastaba una columna en un dato de una palabra. */}
+            <Td>
+              {a.rol}
+              {a.persona_categoria && (
+                <span className="block text-[11px] text-faint">{etiquetaCategoria(a.persona_categoria)}</span>
+              )}
+            </Td>
+            <Td>{a.cuadrilla ?? <Nulo>sin cuadrilla</Nulo>}</Td>
+            <Td>
+              {a.actividad_id
+                ? (actividadDe.get(a.actividad_id) ?? <Nulo>actividad archivada</Nulo>)
+                : 'toda la obra'}
+              {/* La asignación cerrada no se esconde —es la historia de la obra— pero se dice con
+                  una palabra en vez de gastar una columna de fechas en el listado operativo. */}
+              {a.hasta && <span className="block text-[11px] text-faint">hasta {a.hasta}</span>}
+            </Td>
+            <Td num fuerte>
+              {porAsignado.get(a.id)?.toLocaleString('es-AR', { maximumFractionDigits: 1 })
+                ?? <Nulo>sin imputar</Nulo>}
+            </Td>
+            <Td num>
+              {/* CERRAR conserva el período; QUITAR borra la fila y sólo sirve para el alta hecha
+                  por error. Si las dos hicieran lo mismo, cada rotación borraría el pasado. */}
+              {a.hasta
+                ? <BotonAccion accion={quitar} args={[a.id]} testid="quitar-asignacion" tono="peligro">Quitar</BotonAccion>
+                : <BotonAccion accion={cerrar} args={[a.id]} testid="cerrar-asignacion">Cerrar</BotonAccion>}
+            </Td>
+          </Tr>
+        ))}
+      </tbody>
+    </Tabla>
+  )
+}
+
+/**
+ * UN ALTA COMO ACCIÓN DISCRETA. Cerrada es un enlace más de la fila de acciones; abierta baja su
+ * panel debajo. Sin estado de cliente: lo resuelve `<details>`, y por eso la pantalla entera sigue
+ * siendo un componente de servidor.
+ */
+function Alta({ titulo, testid, children }: {
+  titulo: string; testid: string; children: React.ReactNode
+}) {
+  return (
+    <details className="w-full min-w-0 sm:w-auto" data-testid={testid}>
+      <summary className="cursor-pointer select-none text-[12.5px] text-muted hover:text-ink">
+        {titulo}
+      </summary>
+      <div className="mt-3 border-t border-[#EFEEEA] pt-3.5">{children}</div>
+    </details>
   )
 }
 
@@ -166,102 +186,96 @@ export function TabPersonal({
 }) {
   const porAsignado = horasPorAsignado(asignaciones, registros)
   const actividadDe = new Map(actividades.map((a) => [a.id, a.nombre]))
+  const sinPersona = registros.filter((r) => !r.persona_id).length
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-8">
       <Titular plan={plan} asignaciones={asignaciones} registros={registros} />
 
       <section>
-        <h2 className="mb-2 text-[11px] font-medium uppercase tracking-wide text-faint">
-          Quién trabaja en esta obra
-        </h2>
+        <Eyebrow className="mb-2.5">Quién trabaja en esta obra</Eyebrow>
         {asignaciones.length === 0
-          ? <p className="text-[13px] text-muted">Nadie asignado todavía.</p>
+          ? <Vacio>Nadie tiene una asignación en esta obra. Se asigna con «+ Asignar persona».</Vacio>
           : (
               <TablaAsignaciones
                 asignaciones={asignaciones} actividadDe={actividadDe}
                 porAsignado={porAsignado} cerrar={cerrar} quitar={quitar}
               />
             )}
+
+        <div className="mt-3.5 flex flex-wrap items-start gap-x-6 gap-y-3">
+          <Alta titulo="+ Asignar persona" testid="alta-asignacion">
+            {personas.length === 0
+              ? <Aviso tono="warn">No hay ninguna persona activa en el legajo, así que no hay a quién asignar.</Aviso>
+              : (
+                  <FormAccion accion={asignar} testid="form-asignar" enviar="Asignar" limpiarAlOk mensajeOk="Asignado.">
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                      <Campo rotulo="Persona" className="col-span-2">
+                        <select name="persona_id" required className={CAMPO} defaultValue="">
+                          <option value="" disabled>elegir del legajo</option>
+                          {personas.map((p) => <option key={p.id} value={p.id}>{p.nombre_completo}</option>)}
+                        </select>
+                      </Campo>
+                      <Campo rotulo="Rol">
+                        <select name="rol" defaultValue="integrante" className={CAMPO}>
+                          <option value="integrante">integrante</option>
+                          <option value="responsable">responsable</option>
+                        </select>
+                      </Campo>
+                      <Campo rotulo="Cuadrilla">
+                        <select name="cuadrilla_id" defaultValue="" className={CAMPO}>
+                          <option value="">sin cuadrilla</option>
+                          {cuadrillas.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                        </select>
+                      </Campo>
+                      <Campo rotulo="Desde"><input type="date" name="desde" className={CAMPO} /></Campo>
+                      <Campo
+                        rotulo="Actividad" className="col-span-2 sm:col-span-3"
+                        ayuda="Opcional: en blanco queda asignado a la obra entera."
+                      >
+                        <select name="actividad_id" defaultValue="" className={CAMPO}>
+                          <option value="">toda la obra</option>
+                          {actividades.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+                        </select>
+                      </Campo>
+                      <Campo rotulo="Notas" className="col-span-2 sm:col-span-4" ayuda="Por qué está en esta obra.">
+                        <input name="notas" maxLength={300} className={CAMPO} />
+                      </Campo>
+                    </div>
+                  </FormAccion>
+                )}
+          </Alta>
+
+          <Alta titulo="+ Imputar horas" testid="alta-hh">
+            <FormIndividual personas={personas} asignadas={asignaciones.map((a) => a.persona_id)}
+              actividades={actividades} imputar={imputar} />
+          </Alta>
+
+          <Alta titulo="+ Imputar a la cuadrilla" testid="alta-hh-masiva">
+            <FormMasiva asignaciones={asignaciones} actividades={actividades} imputarMasivo={imputarMasivo} />
+          </Alta>
+        </div>
       </section>
 
-      <details className="rounded-lg border border-line bg-surface" data-testid="alta-asignacion">
-        <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-medium text-ink">+ Asignar persona</summary>
-        <div className="border-t border-line p-4">
-          {personas.length === 0
-            ? <Callout tono="warn">No hay ninguna persona activa en el legajo, así que no hay a quién asignar.</Callout>
-            : (
-                <FormAccion accion={asignar} testid="form-asignar" enviar="Asignar" limpiarAlOk mensajeOk="Asignado.">
-                  <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                    <Campo label="Persona" ancho="col-span-2">
-                      <select name="persona_id" required className={CTRL} defaultValue="">
-                        <option value="" disabled>elegir del legajo</option>
-                        {personas.map((p) => <option key={p.id} value={p.id}>{p.nombre_completo}</option>)}
-                      </select>
-                    </Campo>
-                    <Campo label="Rol">
-                      <select name="rol" defaultValue="integrante" className={CTRL}>
-                        <option value="integrante">integrante</option>
-                        <option value="responsable">responsable</option>
-                      </select>
-                    </Campo>
-                    <Campo label="Cuadrilla">
-                      <select name="cuadrilla_id" defaultValue="" className={CTRL}>
-                        <option value="">sin cuadrilla</option>
-                        {cuadrillas.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                      </select>
-                    </Campo>
-                    <Campo label="Desde"><input type="date" name="desde" className={CTRL} /></Campo>
-                    <Campo
-                      label="Actividad" ancho="col-span-2 sm:col-span-3"
-                      ayuda="Opcional: en blanco queda asignado a la obra entera."
-                    >
-                      <select name="actividad_id" defaultValue="" className={CTRL}>
-                        <option value="">toda la obra</option>
-                        {actividades.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
-                      </select>
-                    </Campo>
-                    <Campo label="Notas" ancho="col-span-2 sm:col-span-4" ayuda="Por qué está en esta obra.">
-                      <input name="notas" maxLength={300} className={CTRL} />
-                    </Campo>
-                  </div>
-                </FormAccion>
-              )}
-        </div>
-      </details>
+      {/* Las dos tablas de horas, enfrentadas: la de la izquierda dice si el plan alcanza, la de la
+          derecha dice de dónde sale el número. Se leen juntas o no se leen. */}
+      <div className="flex flex-col gap-8 xl:flex-row xl:gap-10">
+        <section className="min-w-0 flex-1">
+          <Eyebrow className="mb-2.5">Plan contra real por actividad</Eyebrow>
+          <TablaProductividad actividades={actividadHH} />
+        </section>
 
-      <section>
-        <h2 className="mb-2 text-[11px] font-medium uppercase tracking-wide text-faint">
-          Plan contra real por actividad
-        </h2>
-        <TablaProductividad actividades={actividadHH} />
-      </section>
-
-      <section>
-        <h2 className="mb-2 text-[11px] font-medium uppercase tracking-wide text-faint">
-          Horas imputadas a esta obra
-        </h2>
-        <TablaHoras registros={registros} borrarHoras={borrarHoras} />
-      </section>
-
-      <details className="rounded-lg border border-line bg-surface" data-testid="alta-hh">
-        <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-medium text-ink">
-          + Imputar horas a una persona
-        </summary>
-        <div className="border-t border-line p-4">
-          <FormIndividual personas={personas} asignadas={asignaciones.map((a) => a.persona_id)}
-            actividades={actividades} imputar={imputar} />
-        </div>
-      </details>
-
-      <details className="rounded-lg border border-line bg-surface" data-testid="alta-hh-masiva">
-        <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-medium text-ink">
-          + Imputar horas a la cuadrilla
-        </summary>
-        <div className="border-t border-line p-4">
-          <FormMasiva asignaciones={asignaciones} actividades={actividades} imputarMasivo={imputarMasivo} />
-        </div>
-      </details>
+        <section className="min-w-0 xl:w-[520px] xl:shrink-0">
+          <Eyebrow className="mb-2.5">Horas imputadas a esta obra</Eyebrow>
+          <TablaHoras registros={registros} borrarHoras={borrarHoras} />
+          {sinPersona > 0 && (
+            <p className="mt-2.5 text-[11px] leading-relaxed text-faint">
+              {sinPersona} {sinPersona === 1 ? 'registro histórico no tiene' : 'registros históricos no tienen'} persona:
+              son horas reales aunque no se sepa de quién, y no se les inventa un dueño.
+            </p>
+          )}
+        </section>
+      </div>
     </div>
   )
 }

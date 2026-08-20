@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { resumenDelPlan } from './resumenDelPlan.ts'
+import { proximasDeLaObra, resumenDelPlan } from './resumenDelPlan.ts'
 import type { Actividad, Restriccion } from '../types/index.ts'
 
 const act = (x: Partial<Actividad>): Actividad => ({
@@ -77,4 +77,39 @@ test('las de resumen y las archivadas no son trabajo', () => {
     act({ id: '3', archivada: true }),
   ], [], '2026-08-19')
   assert.equal(r.actividades, 1)
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA VENTANA DEL RESUMEN DE OBRA (Design Handoff V2, 20/08/2026)
+//
+// «Próximas 2 semanas» vivía dentro de `TabResumen.tsx` y por eso nunca tuvo prueba: el runner no
+// lee `.tsx`. El defecto que atrapan estos tests es de PUBLICACIÓN: una ventana que contara sólo
+// los inicios escondería lo que hay que CERRAR esta quincena, y una que no filtrara lo hecho
+// pondría trabajo terminado en la lista de lo que viene.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('próximas 2 semanas: entra lo que arranca Y lo que termina, y lo hecho no entra', () => {
+  const r = proximasDeLaObra([
+    act({ id: 'arranca', nombre: 'Mampostería exterior', inicio_plan: '2026-08-21', fin_plan: '2026-09-10' }),
+    act({ id: 'cierra', nombre: 'Columnas', inicio_plan: '2026-07-01', fin_plan: '2026-08-26' }),
+    act({ id: 'lejos', nombre: 'Pintura', inicio_plan: '2026-10-01', fin_plan: '2026-10-20' }),
+    act({ id: 'pasada', nombre: 'Excavaciones', inicio_plan: '2026-07-01', fin_plan: '2026-07-20' }),
+    act({ id: 'hecha', nombre: 'Fundaciones', inicio_plan: '2026-08-22', estado_operativo: 'hecha' }),
+    act({ id: 'archivada', nombre: 'Vieja', inicio_plan: '2026-08-22', archivada: true }),
+    act({ id: 'rubro', nombre: 'RUBRO', tipo: 'resumen', inicio_plan: '2026-08-22' }),
+  ], '2026-08-19')
+  // Ordenadas por la fecha que las metió en la ventana: primero lo que arranca el 21.
+  assert.deepEqual(r.map((x) => x.id), ['arranca', 'cierra'])
+  assert.equal(r[0].ancla, '2026-08-21')
+  // La que ya venía en curso se ancla en su CIERRE: es lo que hay que cerrar esta quincena.
+  assert.equal(r[1].ancla, '2026-08-26')
+})
+
+test('el hito se marca por su tipo, no por no tener duración', () => {
+  const r = proximasDeLaObra([
+    act({ id: 'h', nombre: 'Fin estructura', tipo: 'hito', inicio_plan: '2026-08-26', fin_plan: '2026-08-26' }),
+    act({ id: 't', nombre: 'Tarea de un día', inicio_plan: '2026-08-25', fin_plan: '2026-08-25' }),
+  ], '2026-08-19')
+  assert.equal(r.find((x) => x.id === 'h')!.hito, true)
+  assert.equal(r.find((x) => x.id === 't')!.hito, false)
 })

@@ -63,10 +63,16 @@ test('el Resumen abre con CUATRO cifras y sin cadenas técnicas de base de datos
 
   const titular = page.getByTestId('titular-obra')
   await expect(titular).toBeVisible()
-  for (const k of ['Avance', 'Plazo', 'HH', 'Costo']) {
+  // Los rótulos son los del handoff aprobado (design/screens/obras.md §1b): «Avance físico» y
+  // «Costo real». Se habían acortado a «Avance» y «Costo» cuando el titular eran cuatro
+  // tarjetas; en la fila de métricas del handoff entran enteros y dicen qué miden.
+  for (const k of ['Avance físico', 'Plazo', 'HH', 'Costo real']) {
     await expect(titular.getByText(k, { exact: true })).toBeVisible()
   }
-  await expect(page.getByTestId('requiere-atencion')).toBeVisible()
+  // «Requiere atención» se fue del Resumen el 20/08: publicaba los mismos atrasos y los mismos
+  // desvíos que «Lecturas del plan», que además dice de qué dato sale cada uno. Lo que este test
+  // mide —que el Resumen publique lo que está mal y lleve al dato— lo mide sobre la que quedó.
+  await expect(page.getByTestId('plan-vs-real')).toBeVisible()
 
   // ═══ NADA DE EXPLICACIONES TÉCNICAS PERMANENTES (regla visual del dueño) ═══
   // El resumen publicaba `obra_actividad.fin_plan anterior a hoy…` como texto fijo. El origen no se
