@@ -210,8 +210,10 @@ export default async function ObraPage({
   const cuadrillas = necesitaCuadrillas ? await getCuadrillas(supabase) : []
   const integrantes = vista === 'ejecucion' ? await getIntegrantesPorCuadrilla(supabase) : {}
   // Los partes también en Planificación: el panel de la actividad muestra su ejecución reciente, que
-  // es lo que contesta «¿cómo viene?» sin salir del cronograma.
-  const partes = vista === 'ejecucion' || vista === 'cronograma'
+  // es lo que contesta «¿cómo viene?» sin salir del cronograma. Y en el Resumen, porque «último
+  // movimiento» es literalmente el último parte: sin ellos esa línea no se dibujaba, y una sección
+  // que no aparece porque la página no pidió el dato se lee igual que una obra sin movimiento.
+  const partes = vista === 'ejecucion' || vista === 'cronograma' || vista === 'resumen'
     ? (await getPartes(supabase, obraId)).data ?? [] : []
   const partesPorActividad = new Map<string, typeof partes>()
   for (const p of partes) {
@@ -368,6 +370,11 @@ export default async function ObraPage({
           abiertas={abiertas}
           obraId={obraId}
           veComercial={veComercial}
+          // «Próximas 2 semanas» y «último movimiento» son secciones del Resumen en el handoff.
+          // Son props OPCIONALES a propósito —«la página no lo pidió» no es lo mismo que «no viene
+          // nada»— y hasta acá la página no las pedía, así que las dos secciones no existían.
+          actividades={acts}
+          partes={partes}
           editar={
             <details className="rounded-lg border border-line bg-surface" data-testid="editar-obra">
               <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-medium text-ink">Editar la obra</summary>
