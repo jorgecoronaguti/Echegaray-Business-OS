@@ -12,10 +12,8 @@
 // actividad sin planificar en una actividad perfectamente cumplida, que es la mentira más cara que
 // puede decir esta pantalla.
 
-import {
-  Campo, CTRL, FormAccion, BotonAccion,
-  type AccionFormulario, type ResultadoAccion,
-} from '@/shared/components/ui'
+import { FormAccion, BotonAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
+import { CAMPO, Campo, Nulo, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
 import type { ActividadHH, RegistroHH } from '../services/personalService'
 import type { Actividad, Asignacion, Persona } from '../types'
 import { lecturaProductividad } from '../services/productividadHH'
@@ -32,35 +30,29 @@ export function TablaProductividad({ actividades }: { actividades: ActividadHH[]
   const conAlgo = actividades.filter((a) => a.hh_plan != null || a.hh_real != null)
   if (conAlgo.length === 0) {
     return (
-      <p className="text-[13px] text-muted">
-        Ninguna actividad tiene HH plan cargadas ni horas imputadas. El plan se carga en Cronograma;
-        las horas, acá abajo.
-      </p>
+      <Vacio>
+        Ninguna actividad tiene HH plan cargadas ni horas imputadas. El plan se carga en
+        Planificación; las horas, con «+ Imputar horas».
+      </Vacio>
     )
   }
   return (
-    <div className="overflow-x-auto rounded-lg border border-line bg-surface">
-      <table data-testid="tabla-productividad" className="w-full min-w-[680px] text-left">
-        <thead><tr className="border-b border-line text-[10px] uppercase tracking-wide text-faint">
-          <th className="px-4 py-2 font-medium">Actividad</th>
-          <th className="px-3 py-2 text-right font-medium">Avance</th>
-          <th className="px-3 py-2 text-right font-medium">HH plan</th>
-          <th className="px-3 py-2 text-right font-medium">HH real</th>
-          <th className="px-3 py-2 font-medium">Lectura</th>
-        </tr></thead>
-        <tbody>
-          {conAlgo.map((a) => (
-            <tr key={a.actividad_id} data-testid="fila-productividad" className="border-b border-line/60 last:border-0">
-              <td className="px-4 py-2 text-[13px] text-ink">{a.nombre}</td>
-              <td className="px-3 py-2 text-right text-[12px] tabular-nums text-muted">{pct(a.avance_pct)}</td>
-              <td className="px-3 py-2 text-right text-[12px] tabular-nums text-muted">{hh(a.hh_plan)}</td>
-              <td className="px-3 py-2 text-right text-[12px] tabular-nums text-ink">{hh(a.hh_real)}</td>
-              <td className="px-3 py-2 text-[12px] text-muted">{lecturaProductividad(a)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <Tabla testid="tabla-productividad" minWidth={620}>
+      <THead>
+        <Th>Actividad</Th><Th num>Avance</Th><Th num>HH plan</Th><Th num>HH real</Th><Th>Lectura</Th>
+      </THead>
+      <tbody>
+        {conAlgo.map((a) => (
+          <Tr key={a.actividad_id} compacta {...{ 'data-testid': 'fila-productividad' }}>
+            <Td fuerte>{a.nombre}</Td>
+            <Td num className="text-muted">{a.avance_pct == null ? <Nulo>sin medir</Nulo> : pct(a.avance_pct)}</Td>
+            <Td num className="text-muted">{a.hh_plan == null ? <Nulo>sin cargar</Nulo> : hh(a.hh_plan)}</Td>
+            <Td num fuerte>{a.hh_real == null ? <Nulo>sin imputar</Nulo> : hh(a.hh_real)}</Td>
+            <Td className="text-[11.5px] text-muted">{lecturaProductividad(a)}</Td>
+          </Tr>
+        ))}
+      </tbody>
+    </Tabla>
   )
 }
 
@@ -71,48 +63,53 @@ export function TablaHoras({
   borrarHoras: (registroId: string) => Promise<ResultadoAccion>
 }) {
   if (registros.length === 0) {
-    return <p className="text-[13px] text-muted">Sin horas imputadas. Se cargan con los formularios de abajo.</p>
+    return <Vacio>Sin horas imputadas a esta obra. Se cargan con «+ Imputar horas».</Vacio>
   }
   return (
-    <div className="overflow-x-auto rounded-lg border border-line bg-surface">
-      <table data-testid="tabla-hh" className="w-full min-w-[600px] text-left">
-        <thead><tr className="border-b border-line text-[10px] uppercase tracking-wide text-faint">
-          <th className="px-4 py-2 font-medium">Día</th>
-          <th className="px-3 py-2 font-medium">Persona</th>
-          <th className="px-3 py-2 font-medium">Actividad</th>
-          <th className="px-3 py-2 font-medium">Tipo</th>
-          <th className="px-3 py-2 text-right font-medium">Horas</th>
-          <th className="px-3 py-2" />
-        </tr></thead>
-        <tbody>
-          {registros.map((r) => (
-            <tr key={r.id} data-testid="fila-hh" className="border-b border-line/60 last:border-0">
-              <td className="px-4 py-2 text-[12px] tabular-nums text-muted">
-                {/* Las filas legacy no tienen día: su grano es la semana, y se dice así en vez de
-                    inventarles un lunes que nadie cargó. */}
-                {r.fecha ?? `semana del ${r.fecha_inicio_semana}`}
-              </td>
-              <td className="px-3 py-2 text-[12px] text-ink">
-                {r.persona_nombre ?? r.trabajador_o_cuadrilla ?? '—'}
-                {!r.persona_id && (
-                  <span className="block text-[10px] text-faint">carga vieja, sin legajo vinculado</span>
-                )}
-              </td>
-              <td className="px-3 py-2 text-[12px] text-muted">{r.actividad_nombre ?? 'toda la obra'}</td>
-              {/* La normal no se rotula: es el 95% de las filas y ponerle una etiqueta a cada una
-                  haría que la excepción —que es lo que hay que ver— dejara de saltar a la vista. */}
-              <td className="px-3 py-2 text-[12px] text-muted">
-                {r.tipo_hora && r.tipo_hora !== 'normal' ? TIPO_HORA_LABEL[r.tipo_hora as TipoHora] : ''}
-              </td>
-              <td className="px-3 py-2 text-right text-[12px] tabular-nums text-ink">{hh(r.horas)}</td>
-              <td className="px-3 py-2 text-right">
+    <Tabla testid="tabla-hh" minWidth={600}>
+      <THead>
+        <Th>Día</Th><Th>Persona</Th><Th>Actividad</Th><Th>Tipo</Th><Th num>Horas</Th><Th num />
+      </THead>
+      <tbody>
+        {registros.map((r) => (
+          <Tr key={r.id} compacta className="group" {...{ 'data-testid': 'fila-hh' }}>
+            <Td num className="whitespace-nowrap text-muted">
+              {/* Las filas legacy no tienen día: su grano es la semana, y se dice así en vez de
+                  inventarles un lunes que nadie cargó. */}
+              {r.fecha ?? `semana del ${r.fecha_inicio_semana}`}
+            </Td>
+            {/* EL REGISTRO SIN PERSONA SE MARCA, NO SE ADOPTA. Son horas reales aunque no se sepa
+                de quién: `warn` es exactamente eso —un dato que falta y bloquea—, y ponerle el
+                texto legacy como si fuera un nombre le inventaría dueño. */}
+            <Td fuerte>
+              {r.persona_id
+                ? r.persona_nombre
+                : (
+                    <span className="text-warn">
+                      sin persona
+                      {r.trabajador_o_cuadrilla && (
+                        <span className="block text-[10px] text-faint">
+                          carga vieja: «{r.trabajador_o_cuadrilla}»
+                        </span>
+                      )}
+                    </span>
+                  )}
+            </Td>
+            <Td>{r.actividad_nombre ?? <Nulo>toda la obra</Nulo>}</Td>
+            {/* La normal no se rotula: es el 95% de las filas y ponerle una etiqueta a cada una
+                haría que la excepción —que es lo que hay que ver— dejara de saltar a la vista. */}
+            <Td>{r.tipo_hora && r.tipo_hora !== 'normal' ? TIPO_HORA_LABEL[r.tipo_hora as TipoHora] : ''}</Td>
+            <Td num fuerte>{hh(r.horas)}</Td>
+            <Td num>
+              {/* En hover: son cientos de filas y quitar horas es la excepción, no la lectura. */}
+              <span className="opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
                 <BotonAccion accion={borrarHoras} args={[r.id]} testid="borrar-hh" tono="peligro">Quitar</BotonAccion>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+              </span>
+            </Td>
+          </Tr>
+        ))}
+      </tbody>
+    </Tabla>
   )
 }
 
@@ -124,7 +121,7 @@ function SelectTipoHora({ nombre = 'tipo_hora', compacto = false }: { nombre?: s
       name={nombre} defaultValue="normal" data-testid={compacto ? 'tipo-masiva' : 'tipo-hora'}
       className={compacto
         ? 'shrink-0 rounded-control border border-line bg-white px-1.5 py-1 text-[11px] text-muted'
-        : CTRL}
+        : CAMPO}
     >
       {TIPOS_HORA.map((t) => <option key={t} value={t}>{TIPO_HORA_LABEL[t]}</option>)}
     </select>
@@ -133,7 +130,7 @@ function SelectTipoHora({ nombre = 'tipo_hora', compacto = false }: { nombre?: s
 
 function SelectActividad({ actividades }: { actividades: Actividad[] }) {
   return (
-    <select name="actividad_id" defaultValue="" className={CTRL}>
+    <select name="actividad_id" defaultValue="" className={CAMPO}>
       <option value="">toda la obra</option>
       {actividades.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
     </select>
@@ -163,8 +160,8 @@ export function FormIndividual({
   return (
     <FormAccion accion={imputar} testid="form-hh" enviar="Imputar" limpiarAlOk mensajeOk="Horas imputadas.">
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-        <Campo label="Persona" ancho="col-span-2">
-          <select name="persona_id" required defaultValue="" className={CTRL}>
+        <Campo rotulo="Persona" className="col-span-2">
+          <select name="persona_id" required defaultValue="" className={CAMPO}>
             <option value="" disabled>elegir del plantel</option>
             {acá.length > 0 && (
               <optgroup label="En esta obra">
@@ -178,23 +175,23 @@ export function FormIndividual({
             )}
           </select>
         </Campo>
-        <Campo label="Día"><input type="date" name="fecha" required className={CTRL} /></Campo>
-        <Campo label="Horas">
+        <Campo rotulo="Día"><input type="date" name="fecha" required className={CAMPO} /></Campo>
+        <Campo rotulo="Horas">
           {/* JORNADA COMPLETA POR DEFECTO, igual que la carga masiva: medido por QA, la carga de a
               una persona pedía tipear el número a mano y era el único campo que no se podía dejar
               como venía. Ocho es lo que sale en la enorme mayoría de las filas; el que hizo media
               jornada lo corrige, que es un caso y no la regla. */}
-          <input type="number" name="horas" required min="0.5" max="24" step="0.5" defaultValue="8" className={CTRL} />
+          <input type="number" name="horas" required min="0.5" max="24" step="0.5" defaultValue="8" className={CAMPO} />
         </Campo>
-        <Campo label="Actividad" ancho="col-span-2" ayuda="Opcional: en blanco quedan imputadas a la obra entera.">
+        <Campo rotulo="Actividad" className="col-span-2" ayuda="Opcional: en blanco quedan imputadas a la obra entera.">
           <SelectActividad actividades={actividades} />
         </Campo>
-        <Campo label="Tipo de hora" ancho="col-span-2"
+        <Campo rotulo="Tipo de hora" className="col-span-2"
           ayuda="Las horas se cargan reales: el recargo no se multiplica acá.">
           <SelectTipoHora />
         </Campo>
-        <Campo label="Observación" ancho="col-span-2">
-          <input name="notas" maxLength={300} className={CTRL} />
+        <Campo rotulo="Observación" className="col-span-2">
+          <input name="notas" maxLength={300} className={CAMPO} />
         </Campo>
       </div>
     </FormAccion>
@@ -221,9 +218,10 @@ export function FormMasiva({
   const vigentes = asignaciones.filter((a) => !a.hasta && a.persona_nombre)
   if (vigentes.length === 0) {
     return (
-      <p className="text-[13px] text-muted">
-        No hay nadie asignado a la obra con asignación vigente: la carga masiva sale de esa lista.
-      </p>
+      <Vacio>
+        Nadie tiene una asignación vigente en esta obra: la carga masiva sale de esa lista. Se
+        asigna con «+ Asignar persona».
+      </Vacio>
     )
   }
   const grupos = new Map<string, Asignacion[]>()
@@ -235,11 +233,11 @@ export function FormMasiva({
   return (
     <FormAccion accion={imputarMasivo} testid="form-hh-masiva" enviar="Imputar a todos" mensajeOk="Imputado.">
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-        <Campo label="Día"><input type="date" name="fecha" required className={CTRL} /></Campo>
-        <Campo label="Actividad" ancho="col-span-2 sm:col-span-2" ayuda="Opcional: en blanco quedan en la obra entera.">
+        <Campo rotulo="Día"><input type="date" name="fecha" required className={CAMPO} /></Campo>
+        <Campo rotulo="Actividad" className="col-span-2 sm:col-span-2" ayuda="Opcional: en blanco quedan en la obra entera.">
           <SelectActividad actividades={actividades} />
         </Campo>
-        <Campo label="Tipo de hora" ayuda="El de toda la carga. Se puede cambiar de a uno abajo.">
+        <Campo rotulo="Tipo de hora" ayuda="El de toda la carga. Se puede cambiar de a uno abajo.">
           <SelectTipoHora />
         </Campo>
       </div>
@@ -275,8 +273,8 @@ export function FormMasiva({
         El que no trabajó se deja en blanco o en cero: no se imputa. Quien ya tenga horas cargadas ese
         día se saltea y se avisa cuántos fueron.
       </p>
-      <Campo label="Observación" ancho="mt-2 block">
-        <input name="notas" maxLength={300} className={CTRL} />
+      <Campo rotulo="Observación" className="mt-2 block">
+        <input name="notas" maxLength={300} className={CAMPO} />
       </Campo>
     </FormAccion>
   )

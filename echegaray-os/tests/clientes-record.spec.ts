@@ -65,8 +65,11 @@ test('el buscador deja sólo los clientes que se llaman así', async ({ page }) 
   try {
     await entrar(page)
     for (const nombre of [gaviota, petunia]) {
-      await page.goto('/clientes')
-      await page.getByTestId('alta-cliente').locator('summary').click()
+      // EL ALTA VIVE EN LA URL desde el Design Handoff V2: la primaria `+ Nuevo cliente` va al lado
+      // del buscador y un `<summary>` tiene que ser el primer hijo de su `<details>`, así que ese
+      // botón no podía seguir siendo el control que despliega el formulario. Se navega, no se
+      // despliega — y de paso la dirección con el alta abierta se puede compartir.
+      await page.goto('/clientes?nuevo=1')
       await page.getByTestId('form-cliente').locator('input[name="nombre_comercial"]').fill(nombre)
       await page.getByTestId('form-cliente-enviar').click()
       await expect(page.getByTestId('form-cliente-ok')).toBeVisible({ timeout: 30000 })
@@ -171,8 +174,7 @@ test('nota manual: se escribe, queda en Postgres y sigue ahí después de recarg
 
   try {
     await entrar(page)
-    await page.goto('/clientes')
-    await page.getByTestId('alta-cliente').locator('summary').click()
+    await page.goto('/clientes?nuevo=1')
     await page.getByTestId('form-cliente').locator('input[name="nombre_comercial"]').fill(nombre)
     await page.getByTestId('form-cliente-enviar').click()
     await expect(page.getByTestId('form-cliente-ok')).toBeVisible({ timeout: 30000 })

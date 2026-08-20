@@ -1,92 +1,44 @@
 'use client'
 
-// EL GANTT DE OBRA. Es la herramienta de ejecución del módulo, no un gráfico.
+// EL WORKSPACE DE PLANIFICACIÓN — tabla ↔ divisor ↔ Gantt │ divisor │ panel de la actividad.
 //
 // ═══ POR QUÉ ES CÓDIGO PROPIO Y NO UNA LIBRERÍA ═══
 //
 // Se evaluaron las vigentes (agosto 2026). Las dos serias con licencia MIT —`dhtmlx-gantt` 10.x y
 // `@svar-ui/react-gantt`— ponen **baseline y camino crítico detrás del muro PRO**, y baseline es uno
-// de los cuatro requisitos declarados de este módulo. `frappe-gantt` es la más liviana pero sólo
-// soporta fin-a-comienzo y no publica tipos. Además este repo no tiene NI UNA dependencia de UI de
-// terceros —sólo Next, React, Supabase, Zod y Tailwind— y ninguna librería del mercado modela
-// restricciones, que es lo que hace que este Gantt sirva para algo. Sumar 90 KB y 17 paquetes para
-// la primera pantalla del módulo es un cambio de arquitectura, no una elección de componente.
+// de los cuatro requisitos declarados de este módulo. `frappe-gantt` sólo soporta fin-a-comienzo y
+// no publica tipos. Además este repo no tiene NI UNA dependencia de UI de terceros, y ninguna
+// librería del mercado modela restricciones — que es lo que hace que este Gantt sirva para algo.
 //
-// ═══ LAS DECISIONES DE IMPLEMENTACIÓN QUE IMPORTAN ═══
+// ═══ TRES ZONAS Y DOS DIVISORES (Design Handoff V2) ═══
 //
-// · UN SOLO contenedor con scroll y `position: sticky` para el encabezado y la columna izquierda.
-//   Sincronizar dos scrolls por JavaScript es de donde sale el tirón que hace sentir lento un Gantt.
-// · La escala se acumula por celda; NUNCA `left = (fecha − inicio) × pxPorDía` sobre meses, porque
-//   los meses tienen entre 28 y 31 días.
-// · Sin arrastre en esta versión. Un Gantt de lectura rápido y correcto vale más que uno arrastrable
-//   y con fechas que se corren solas: mover una barra escribe una fecha, y eso se hace con su
-//   confirmación y su registro, en el paso siguiente.
-// · Sin virtualizar: la obra más grande tiene 124 actividades. Virtualizar 124 filas es optimización
-//   prematura y el precio se paga en bugs de scroll.
+// La misma pantalla sirve para dos trabajos distintos: armar el plan (tabla ancha) y mirar cómo
+// viene la obra (calendario ancho). Un reparto fijo elige mal para uno de los dos siempre, así que
+// el reparto lo elige quien mira y se guarda en cookie — el servidor la lee y la primera pintura ya
+// sale con el ancho correcto (ver `ds/split-servidor.ts`).
 //
-// ═══ EL COLOR SALE DE LOS TOKENS, Y NO ES COSMÉTICA ═══
+// ═══ LA ALINEACIÓN NO SE AJUSTA A OJO ═══
 //
-// Las barras eran `sky-500`/`sky-700` y la línea de hoy `rose`: tres colores que no existen en el
-// sistema del OS. El acento es UNO —el grafito de la marca— y el plan y lo ejecutado son el mismo
-// color a distinta intensidad, que es lo que deja ver el avance de un vistazo. El rojo y el ámbar
-// quedan reservados para lo que está mal (atrasado, frenado) y el amarillo de la marca se usa donde
-// el logo lo usa: una regla fina que dice "acá estás" — la línea de hoy. Hoy no es un problema, y
-// pintarlo de rojo era decir que sí.
+// Las dos mitades leen `disposicionDeFilas`: la fila `i` de la tabla y la barra `i` del calendario
+// caen en el mismo píxel por construcción. El scroll vertical se sincroniza en los dos sentidos y
+// el horizontal es sólo del calendario, que es lo único que se extiende más allá de la pantalla.
 
-import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { agruparActividades, agruparPorObra, estadoDe, filasVisibles } from '../services/cronograma'
+import { Divisor, useSplit, Vacio, ZonaSplit } from '@/shared/components/ds'
+import { agruparActividades, disposicionDeFilas, filasVisibles } from '../services/cronograma'
 import type { Actividad, Dependencia, Persona, Restriccion } from '../types'
 import type { ActividadHH } from '../services/personalService'
-import { EstadoChip } from './EstadoChip'
-import {
-  DATOS_VACIOS, PanelActividad, type AccionesCronograma, type DatosDeActividad,
-} from './PanelActividad'
+import { DATOS_VACIOS, PanelActividad, type AccionesCronograma, type DatosDeActividad } from './PanelActividad'
 import { construirEscala, type Escala } from '../services/escala'
-import { BarraMasiva, Casilla, SellarLineaBase, type AccionesEnLote } from './AccionesMasivas'
+import { BarraMasiva, type AccionesEnLote } from './AccionesMasivas'
+import { CabeceraGantt, CuerpoGantt } from './LienzoGantt'
+import { CabeceraTabla, CuerpoTabla, ListaPorFecha } from './TablaActividades'
 
 const DIA = 86400000
-// ═══ LA FILA RESPIRA (20/08/2026) ═══
-// Estaba en 26px con texto de 12: la pantalla se leía como una planilla comprimida y el dueño la
-// rechazó por eso. 36px es la densidad de una herramienta de trabajo —Linear, Asana— donde la
-// información sigue siendo compacta pero cada renglón se distingue del de al lado sin esforzarse.
-// ═══ LA ESCALA ES CONTINUA Y SIGUE AL ANCHO REAL (20/08/2026) ═══
-//
-// Tercera vuelta sobre lo mismo, y ésta es la causa de verdad. La pantalla del dueño tiene un
-// viewport enorme; la app dibujaba en píxeles fijos, así que TODO el workspace le entraba en la
-// mitad superior de la pantalla con el texto en unos seis píxeles. No era la composición —ya era la
-// del objetivo— era el TAMAÑO.
-//
-// Primero lo resolví con escalones discretos. No alcanzó: el último escalón se quedaba corto justo
-// donde hace falta. Ahora es una función continua del ancho medido, con piso y techo:
-//
-//     base = ancho × 0,009   acotado a [13, 34] px
-//
-// De ahí cuelga TODO —el alto de fila, el texto de la tabla, los números del SVG— en múltiplos de
-// esa base, así que la pantalla mantiene sus proporciones en 1.024 px y en 5.000. No es zoom: los
-// píxeles por día los sigue decidiendo la escala del calendario; lo que cambia es cuánto ocupa una
-// fila y cuánto mide su texto, que es lo que decide si la pantalla se lee o se descifra.
-//
-// El 0,009 sale de la referencia: en el objetivo, a 1.536 px de ancho, el texto de una actividad
-// mide 14 px — un 0,91% del ancho. Se toma algo por debajo de la proporción lineal porque una
-// pantalla más grande también se mira desde más lejos, y el techo de 34 evita el absurdo.
-function escalaDe(ancho: number) {
-  const base = Math.min(34, Math.max(13, Math.round(ancho * 0.009)))
-  return {
-    base,
-    fila: Math.round(base * 2.8),
-    px: {
-      mes: Math.round(base * 0.86),
-      dia: Math.round(base * 0.72),
-      barra: Math.round(base * 0.76),
-    },
-  }
-}
-
 const aDate = (iso: string) => new Date(iso + 'T00:00:00Z')
 const isoDe = (d: Date) => d.toISOString().slice(0, 10)
-const fmtCorto = (iso: string | null) =>
-  iso ? aDate(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' }) : '—'
+/** Sin barra de desplazamiento visible: la tabla y el calendario tienen que medir lo mismo. */
+const SIN_BARRA = '[scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
 
 export function Gantt({
   actividades,
@@ -95,14 +47,18 @@ export function Gantt({
   hoy = new Date(),
   personas = [],
   acciones,
-  yaSellada = false,
-  seleccionInicial = null,
+  seleccionada,
+  alSeleccionar,
+  panelAbierto = true,
+  alCerrarPanel,
+  escala = 'semana',
   masivas,
-  obras,
   hhPorActividad,
   datosPorActividad,
   rubros = [],
   obraId,
+  anchoTablaInicial = 470,
+  anchoPanelInicial = 452,
 }: {
   actividades: Actividad[]
   restricciones?: Restriccion[]
@@ -111,157 +67,60 @@ export function Gantt({
   hoy?: Date
   /** El plantel elegible como responsable. Sin él, el panel deja el selector vacío y lo dice. */
   personas?: Persona[]
-  /** Sin `acciones` el Gantt es de sólo lectura y no dibuja un solo control que no funcione. */
+  /** Sin `acciones` el workspace es de sólo lectura y no dibuja un control que no escriba. */
   acciones?: AccionesCronograma
-  yaSellada?: boolean
-  /** Qué actividad viene abierta de la URL. Sólo el arranque: después la selección es local, porque
-   *  escribir la URL en cada clic haría una vuelta al servidor por cada barra que se toca. */
-  seleccionInicial?: string | null
-  /** Las acciones en lote. Sin ellas NO se dibuja una sola casilla: seleccionar cincuenta filas para
-   *  descubrir que no hay nada que hacer con ellas es peor que no poder seleccionarlas. */
+  /** La actividad abierta. Vive en `TabCronograma` porque la barra de vista también la necesita. */
+  seleccionada: string | null
+  alSeleccionar: (id: string) => void
+  panelAbierto?: boolean
+  alCerrarPanel?: () => void
+  escala?: Escala
+  /** Las acciones en lote. Sin ellas NO se dibuja una sola casilla: seleccionar cincuenta filas
+   *  para descubrir que no hay nada que hacer con ellas es peor que no poder seleccionarlas. */
   masivas?: AccionesEnLote
-  /**
-   * EL EJE DE AGRUPACIÓN. Ausente (la ficha de la obra) = se agrupa por la sección del tracker.
-   * Presente (el Gantt global de `/obras/cronograma`) = se agrupa por obra, con estos nombres.
-   *
-   * Es UN componente para las dos pantallas a propósito: *"El Gantt global y el Gantt de una obra
-   * deben consumir exactamente las mismas actividades canónicas"*. Un segundo Gantt para la vista
-   * global habría empezado igual y divergido en el primer arreglo que se le hiciera a uno solo.
-   */
-  obras?: { id: string; nombre: string }[]
-  /** HH plan contra real por actividad, indexada por id. Sale de `obra_actividad_hh`, la MISMA
-   *  vista que lee la solapa Personal: el Cronograma no recalcula nada, muestra el mismo número.
-   *  Opcional, como el resto de los props de este componente — el Gantt global no la trae. */
+  /** HH plan contra real por actividad. Sale de `obra_actividad_hh`, la MISMA vista que lee la
+   *  solapa Personal: el Cronograma no recalcula nada, muestra el mismo número. */
   hhPorActividad?: Map<string, ActividadHH>
-  /** TODO lo que el panel muestra de cada actividad —partes, tareas, notas, papeles, personal real
-   *  y equipos—, ya indexado. Va junto y no en seis mapas sueltos: el Gantt no los mira, sólo se los
-   *  pasa al panel, y seis props es seis oportunidades de olvidarse uno. */
+  /** Partes, tareas, notas, papeles, personal real y equipos de cada actividad, ya indexados. */
   datosPorActividad?: Map<string, DatosDeActividad>
-  /** Los rubros de la obra, para poder mover la actividad de grupo desde el panel. */
   rubros?: string[]
-  /** La obra, para que el panel pueda llevar al historial completo. El Gantt global no la pasa:
-   *  ahí cada fila es de una obra distinta. */
   obraId?: string
+  /** Los anchos que leyó el servidor de la cookie: la primera pintura ya sale bien. */
+  anchoTablaInicial?: number
+  anchoPanelInicial?: number
 }) {
-  const [escala, setEscala] = useState<Escala>('semana')
-  // ═══ EL LIENZO TIENE QUE LLENAR EL LUGAR QUE TIENE (20/08/2026) ═══
-  //
-  // El Gantt GLOBAL estiraba los píxeles por día hasta llenar el ancho disponible desde el 19/08; el
-  // de la OBRA —que es la pantalla más usada del módulo— nunca recibió ese ancho. Resultado, medido
-  // en producción sobre «Galpón 9»: una obra de seis semanas dibujaba las barras apretadas en el 40%
-  // izquierdo y dejaba el 60% en blanco, con las actividades de un día convertidas en una rayita de
-  // tres píxeles. Se lee como una pantalla rota, y por eso el objetivo no se parecía al resultado.
-  //
-  // Se OBSERVA en vez de calcularse una vez: el panel lateral aparece y desaparece, y el ancho libre
-  // cambia sin que la ventana cambie de tamaño. Mientras no se midió vale 0 y manda la escala
-  // elegida — nunca se dibuja más chico de lo que corresponde.
-  // ═══ EL REPARTO DEL ANCHO ES UNA PROPORCIÓN, NO UN NÚMERO FIJO (20/08/2026) ═══
-  //
-  // La columna de actividades tenía un ancho por punto de quiebre (`lg:w-[520px]`), y los puntos de
-  // quiebre miran la VENTANA, no el lugar que queda. Medido en 1536 con el panel de actividad
-  // abierto: tabla 620 px, panel 520 y calendario 345 — el Gantt, que es la superficie principal,
-  // era la más chica de las tres y no se veía una sola barra. Ahora la caja se mide y la tabla toma
-  // el 40% de lo que haya, con un piso de 168 px (el teléfono) y un techo de 640 (un monitor de
-  // 27"): el objetivo declarado —tabla 35-45%, calendario 55-65%— se cumple con el panel abierto y
-  // con el panel cerrado, sin un punto de quiebre que adivine cuál de los dos es.
-  const cajaRef = useRef<HTMLDivElement>(null)
-  const [anchoCaja, setAnchoCaja] = useState(0)
-  useEffect(() => {
-    const caja = cajaRef.current
-    if (!caja || typeof ResizeObserver === 'undefined') return
-    const medir = () => setAnchoCaja(caja.clientWidth)
-    medir()
-    const obs = new ResizeObserver(medir)
-    obs.observe(caja)
-    return () => obs.disconnect()
-  }, [])
-  // La tabla toma el 38% de lo que haya: el objetivo pide 35-40% para la tabla y 60-65% para el
-  // calendario, y el techo sube con la pantalla en vez de quedar clavado.
-  const esc = escalaDe(anchoCaja || 1400)
-  const ALTO_FILA = esc.fila
-  // LAS DOS CABECERAS MIDEN LO MISMO o las filas de la tabla y las del calendario arrancan
-  // desfasadas, y a partir de ahí cada renglón miente sobre qué barra le toca.
-  const ALTO_CABECERA = esc.fila + 12
-  // LA PROPORCIÓN NO ES LA MISMA EN 1.000 PX QUE EN 2.500. El objetivo pide 35-40% para la tabla,
-  // pero ese 38% sobre una caja de 1.024 —1.536 con el panel abierto— deja 389 px, y ahí las cuatro
-  // columnas de apoyo se comen el nombre entero. Las columnas tienen un ancho mínimo real: cuanto
-  // más chica la caja, mayor tiene que ser la fracción para que la tabla siga diciendo algo.
-  const fraccion = !anchoCaja ? 0.38 : anchoCaja < 1300 ? 0.52 : anchoCaja < 1900 ? 0.44 : 0.38
-  const anchoFijo = anchoCaja ? Math.round(Math.max(168, anchoCaja * fraccion)) : 0
-  const anchoLibre = anchoCaja ? anchoCaja - anchoFijo : 0
-  // EL NOMBRE DE LA ACTIVIDAD MANDA SOBRE LAS COLUMNAS DE APOYO. Con el panel abierto la tabla mide
-  // ~390 px y las cuatro columnas de la derecha se comían 300: quedaban 88 px para el nombre y la
-  // pantalla decía «Muro G 1/…». El estado y el avance se quedan —son los que se leen de un vistazo—
-  // y las fechas se van cuando no hay lugar: están en la barra, que es lo que se está mirando, y
-  // enteras en el panel de la actividad.
-  const mostrarFechas = anchoFijo === 0 || anchoFijo >= 440
-  // LAS COLUMNAS DE APOYO SE ENCOGEN ANTES QUE EL NOMBRE. Medido en 1536 —el ancho del objetivo—:
-  // la tabla mide 583 px y estado+inicio+fin+% se llevaban 284, así que «Colocación de Plegados de
-  // Ventanas» entraba en 180 px y salía «Colocacion de Plegad…». El nombre es el dato de la fila;
-  // las otras cuatro columnas son apoyo y pueden apretarse sin perder nada.
-  const angosta = anchoFijo > 0 && anchoFijo < 760
-  const wEstado = angosta ? 84 : 100
-  const wFecha = angosta ? 52 : 68
-  const wPct = angosta ? 48 : 64
-  // NO HAY DESPLAZAMIENTO AUTOMÁTICO. Se probó centrar en hoy y es peor: en «San Francisco» las
-  // primeras veinte filas son de junio y hoy cae en agosto, así que la pantalla abría en un
-  // rectángulo vacío con las barras de las filas visibles fuera de cuadro. El plan se lee de
-  // principio a fin; la línea de hoy dice dónde estamos y se llega arrastrando.
-  //
-  // ═══ EL WORKSPACE ARRANCA PARTIDO (20/08/2026) ═══
-  //
-  // El dueño comparó cuatro veces su pantalla contra el objetivo y cuatro veces dijo que no era lo
-  // mismo. La diferencia no estaba en el layout: estaba en que el objetivo se dibuja CON una
-  // actividad seleccionada y la pantalla arrancaba sin ninguna. Al entrar veía una tabla ancha con
-  // un calendario al lado —«TABLA + GANTT GIGANTE», textual— y el panel, que es la mitad de lo que
-  // pidió, sólo aparecía si adivinaba que había que tocar una fila.
-  //
-  // Así que abre partido: la primera actividad con fecha viene elegida. Cerrar el panel le devuelve
-  // TODO el ancho al Gantt, que es la regla que él escribió; lo que cambia es de qué lado empieza.
-  // Sólo en la ficha de la obra: en el Gantt global cada fila es de una obra distinta y elegir una
-  // sola sería decidir por el que mira.
-  // ═══ Y SÓLO EN ESCRITORIO ═══
-  //
-  // En el teléfono el panel NO es una columna: es una hoja que sube y tapa el cronograma, con su
-  // fondo oscuro encima. Abrirla sola dejaba al jefe de obra mirando una ficha que no pidió, con el
-  // Gantt detrás y sin manera obvia de volver — y el fondo se comía el primer toque. Se elige sola
-  // cuando hay dos columnas, que es cuando ver el plan y operar la actividad pasan a la vez.
-  const [selId, setSelId] = useState<string | null>(seleccionInicial)
-  const yaElegi = useRef(false)
-  useEffect(() => {
-    if (yaElegi.current || obras || seleccionInicial) return
-    yaElegi.current = true
-    if (typeof window === 'undefined' || !window.matchMedia('(min-width: 1024px)').matches) return
-    const primera = actividades.find((a) => a.inicio_plan && a.tipo !== 'resumen')
-    if (primera) setSelId((s) => s ?? primera.id)
-  }, [actividades, obras, seleccionInicial])
   const [colapsados, setColapsados] = useState<ReadonlySet<string>>(new Set())
   // LA SELECCIÓN EN LOTE VIVE EN EL CLIENTE Y NO VIAJA EN LA URL. Tildar cincuenta casillas serían
-  // cincuenta vueltas al servidor, y encima un enlace compartido resucitaría una selección que el
-  // que lo abre no hizo — sobre acciones que escriben. Es estado de trabajo, no una vista.
+  // cincuenta vueltas al servidor, y un enlace compartido resucitaría una selección que el que lo
+  // abre no hizo — sobre acciones que escriben.
   const [enLote, setEnLote] = useState<ReadonlySet<string>>(new Set())
 
-  // LA SELECCIÓN SE GUARDA POR ID, NO POR OBJETO. Guardando el objeto, después de editar una
-  // actividad el panel seguía mostrando los valores viejos: el servidor revalidaba y mandaba filas
-  // nuevas, pero el estado local conservaba la copia vieja y parecía que el guardado no había hecho
-  // nada. Por id, el panel siempre lee la fila que acaba de llegar.
-  const sel = selId ? (actividades.find((a) => a.id === selId) ?? null) : null
+  const tabla = useSplit({ clave: 'obra-tabla', inicial: anchoTablaInicial, min: 300, max: 760 })
+  const panel = useSplit({ clave: 'obra-panel', inicial: anchoPanelInicial, min: 340, max: 760 })
 
-  // Las actividades con restricción abierta se marcan en la barra: es lo que conecta el cronograma
-  // con el make-ready sin abrir otra pantalla.
+  // El scroll vertical es UNO solo repartido en dos cajas. El guarda de igualdad corta el rebote:
+  // sin él, cada caja contesta el scroll de la otra y la rueda se siente pegajosa.
+  const cajaTabla = useRef<HTMLDivElement>(null)
+  const cajaLienzo = useRef<HTMLDivElement>(null)
+  const sincronizar = (desde: HTMLDivElement | null, hacia: HTMLDivElement | null) => {
+    if (!desde || !hacia || hacia.scrollTop === desde.scrollTop) return
+    hacia.scrollTop = desde.scrollTop
+  }
+
+  // LA SELECCIÓN SE GUARDA POR ID, NO POR OBJETO: guardando el objeto, después de editar una
+  // actividad el panel seguía mostrando los valores viejos.
+  const sel = seleccionada ? (actividades.find((a) => a.id === seleccionada) ?? null) : null
+
   const abiertas = useMemo(() => restricciones.filter((r) => r.estado !== 'liberada'), [restricciones])
-  const conRestriccion = useMemo(() => {
+  const conImpedimento = useMemo(() => {
     const s = new Set<string>()
     for (const r of abiertas) if (r.actividad_id) s.add(r.actividad_id)
     return s
   }, [abiertas])
 
-  const nombreDeObra = useMemo(() => new Map((obras ?? []).map((o) => [o.id, o.nombre])), [obras])
-  const grupos = useMemo(
-    () => (obras ? agruparPorObra(actividades, nombreDeObra) : agruparActividades(actividades)),
-    [actividades, obras, nombreDeObra],
-  )
+  const grupos = useMemo(() => agruparActividades(actividades), [actividades])
   const filas = useMemo(() => filasVisibles(grupos, colapsados), [grupos, colapsados])
+  const disp = useMemo(() => disposicionDeFilas(filas), [filas])
   const hoyIso = isoDe(hoy)
 
   const rango = useMemo(() => {
@@ -275,10 +134,32 @@ export function Gantt({
       min = Math.min(min, i, b0); max = Math.max(max, f, b1)
     }
     if (min === Infinity) return null
-    // Un margen de una semana a cada lado para que la primera barra no nazca pegada al borde.
+    // Una semana de margen a cada lado: la primera barra no nace pegada al borde.
     return { desde: new Date(min - 7 * DIA), hasta: new Date(max + 7 * DIA) }
   }, [actividades])
 
+  // El ancho libre del calendario se mide: el panel aparece y desaparece, y el lienzo tiene que
+  // llenar lo que quede en vez de dibujar las barras apretadas contra el borde izquierdo.
+  const cajaCalendario = useRef<HTMLDivElement>(null)
+  const [anchoLibre, setAnchoLibre] = useState(0)
+  useEffect(() => {
+    const caja = cajaCalendario.current
+    if (!caja || typeof ResizeObserver === 'undefined') return
+    const medir = () => setAnchoLibre(caja.clientWidth)
+    medir()
+    const obs = new ResizeObserver(medir)
+    obs.observe(caja)
+    return () => obs.disconnect()
+  }, [])
+
+  const seleccionables = useMemo(() => grupos.flatMap((g) => g.hijas.map((h) => h.id)), [grupos])
+  const idsEnLote = useMemo(() => seleccionables.filter((id) => enLote.has(id)), [seleccionables, enLote])
+  const marcar = (ids: string[], puesto: boolean) =>
+    setEnLote((prev) => {
+      const s = new Set(prev)
+      for (const id of ids) { if (puesto) s.add(id); else s.delete(id) }
+      return s
+    })
   const alternar = (clave: string) =>
     setColapsados((prev) => {
       const s = new Set(prev)
@@ -287,529 +168,172 @@ export function Gantt({
       return s
     })
 
-  // ── LA SELECCIÓN EN LOTE ───────────────────────────────────────────────────
-  //
-  // Se elige sobre las HIJAS de los grupos y NUNCA sobre una fila de resumen: un resumen no es
-  // trabajo —agrupa el de otros—, y darle un responsable o cargarle HH plan metería horas que
-  // después se cuentan dos veces, una en la cabecera y otra en cada hija. `agruparActividades` ya
-  // consume la fila de resumen como cabecera, así que la casilla del grupo alcanza a sus hijas.
-  const seleccionables = useMemo(() => grupos.flatMap((g) => g.hijas.map((h) => h.id)), [grupos])
-  // Los ids salen del ORDEN del cronograma y no del orden en que se fue tildando: así el resultado
-  // de una acción se puede leer contra la pantalla.
-  const idsEnLote = useMemo(() => seleccionables.filter((id) => enLote.has(id)), [seleccionables, enLote])
-
-  const marcar = (ids: string[], puesto: boolean) =>
-    setEnLote((prev) => {
-      const s = new Set(prev)
-      for (const id of ids) { if (puesto) s.add(id); else s.delete(id) }
-      return s
-    })
-  const todasEnLote = seleccionables.length > 0 && idsEnLote.length === seleccionables.length
-
-  // LA BARRA SE ARMA ANTES DEL CORTE POR "SIN FECHAS", y no es un detalle de orden: una obra sin
-  // ninguna actividad con fecha es exactamente donde hace falta poder crear la primera. Hasta acá,
-  // ese caso devolvía un cartel de aviso y ni un solo control.
-  const barra = (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-2.5">
-      <div className="flex flex-wrap items-center gap-3 text-[0.85em] text-muted">
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-4 rounded-sm bg-accent/25" />plan</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-4 rounded-sm bg-accent" />ejecutado</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-1.5 w-4 rounded-sm bg-line-strong" />línea base</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rotate-45 bg-accent" />hito</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-1 rounded-sm bg-warn" />con impedimento</span>
-        <span className="inline-flex items-center gap-1.5"><i className="h-3 w-0.5 bg-marca" />hoy</span>
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        {grupos.length > 1 && (
-          <button
-            type="button"
-            onClick={() => setColapsados((p) => (p.size ? new Set() : new Set(grupos.map((g) => g.clave))))}
-            data-testid="alternar-grupos"
-            className="rounded-control border border-line px-2.5 py-1 text-[0.92em] text-muted hover:bg-surface-sunken hover:text-ink"
-          >{colapsados.size ? 'Expandir todo' : 'Contraer todo'}</button>
-        )}
-        {acciones && <SellarLineaBase sellar={acciones.sellar} yaSellada={yaSellada} />}
-        <div className="flex overflow-hidden rounded-control border border-line text-[0.92em]">
-          {(['semana', 'mes'] as Escala[]).map((e) => (
-            <button
-              key={e}
-              type="button"
-              onClick={() => setEscala(e)}
-              className={`px-3 py-1 capitalize ${escala === e ? 'bg-accent text-white' : 'bg-surface text-muted hover:bg-surface-sunken'}`}
-            >{e}</button>
-          ))}
-        </div>
-      </div>
-    </div>
+  const hitos = useMemo(
+    () => actividades
+      .filter((a) => a.tipo === 'hito' && a.inicio_plan)
+      .map((a) => ({ fecha: a.inicio_plan as string, nombre: a.nombre })),
+    [actividades],
   )
 
-  // LA BARRA DE LOTE SE ARMA CON EL RESTO Y NO ADENTRO DEL RETORNO: se dibuja igual arriba de la
-  // grilla, y así se ve dónde aparece sin leer el JSX entero.
-  const barraLote = masivas
-    ? <BarraMasiva ids={idsEnLote} personas={personas} acciones={masivas} alLimpiar={() => setEnLote(new Set())} />
-    : null
+  const escalaCal = rango ? construirEscala(rango.desde, rango.hasta, escala, anchoLibre) : null
+  const finesDeSemana = useMemo(() => {
+    if (!rango || !escalaCal || escalaCal.px < 7) return []
+    const xs: number[] = []
+    const d = new Date(rango.desde)
+    let i = 0
+    while (d.getTime() < rango.hasta.getTime()) {
+      if (d.getUTCDay() === 6) xs.push(i * escalaCal.px)
+      d.setUTCDate(d.getUTCDate() + 1); i++
+    }
+    return xs
+  }, [rango, escalaCal])
 
-  if (!rango) {
+  const conPanel = panelAbierto && sel !== null
+
+  // ═══ SIN ACTIVIDADES NO SE DIBUJA UN WORKSPACE VACÍO ═══
+  //
+  // Un encabezado de cinco columnas sobre una grilla en blanco parece una pantalla rota o una obra
+  // que no cargó. Lo que hay que decir es que todavía no hay plan, y dónde se empieza — «una línea,
+  // accionable» (`COMPONENTS.md` §Empty state). El botón está a la vista, en la barra de arriba: se
+  // lo nombra en vez de repetirlo, porque una segunda primaria en la misma pantalla no es una
+  // acción más importante, son dos que no se leen.
+  if (filas.length === 0) {
     return (
-      <div data-testid="gantt" className="rounded-card border border-line bg-surface" style={{ fontSize: esc.base }}>
-        {barra}
-        <p className="px-4 py-8 text-center text-[1em] text-muted">
-          {actividades.length
-            ? 'Hay actividades cargadas, pero ninguna tiene fecha: sin fechas no hay cronograma que dibujar.'
-            : 'Esta obra todavía no tiene ninguna actividad.'}
-        </p>
+      <div data-testid="gantt" className="flex min-h-0 flex-1 flex-col border-t border-line">
+        <Vacio>Todavía no hay ninguna actividad. Se crea con «+ Nueva actividad», arriba a la derecha.</Vacio>
       </div>
     )
   }
 
-  const { px, ancho, x, meses, ticks, porDia } = construirEscala(rango.desde, rango.hasta, escala, anchoLibre)
-  const medio = Math.round(ALTO_CABECERA / 2)
-  const alto = filas.length * ALTO_FILA
-  const xHoy = x(hoyIso)
-  const hoyVisible = xHoy >= 0 && xHoy <= ancho
-
-  // ═══ EL CALENDARIO TIENE QUE PARECER UN CALENDARIO ═══
-  //
-  // El cuerpo dibujaba UNA línea por mes: entre el 1° de julio y el 1° de agosto no había una sola
-  // referencia vertical, así que una barra flotaba en un rectángulo blanco y no se podía decir de
-  // un vistazo en qué semana caía. Ahora: los sábados y domingos sombreados —en obra no se trabaja,
-  // y ver dónde están explica los saltos del plan—, una línea por semana y una por mes.
-  //
-  // Sólo cuando el día mide lo suficiente: en escala «mes» son 4px por día y sombrear los fines de
-  // semana sería una trama gris, no información.
-  const finesDeSemana: { x: number; w: number }[] = []
-  if (px >= 7) {
-    const d = new Date(rango.desde)
-    let i = 0
-    while (d.getTime() < rango.hasta.getTime()) {
-      if (d.getUTCDay() === 6) finesDeSemana.push({ x: i * px, w: px * 2 })
-      d.setUTCDate(d.getUTCDate() + 1); i++
-    }
-  }
-
-  // La fila donde quedó cada actividad, para colgar de ahí las flechas de precedencia. Una actividad
-  // dentro de un grupo contraído no está en el mapa: su flecha no se dibuja en vez de apuntar a la
-  // fila que le tocó el lugar.
-  const filaDe = new Map<string, number>()
-  filas.forEach((f, i) => { if (f.tipo === 'actividad') filaDe.set(f.actividad.id, i) })
-
   return (
-    <div data-testid="gantt" className="rounded-card border border-line bg-surface">
-      {barra}
-      {barraLote}
-
-      {/* EL PANEL VA AL COSTADO, NO DEBAJO. Lo que se está decidiendo al editar una actividad es su
-          fecha CONTRA la de las de al lado: si el cronograma se va de la pantalla para dejar lugar
-          al formulario, se edita a ciegas. En el teléfono no hay ancho para las dos cosas y el panel
-          sube desde abajo como una hoja, tapando el cronograma en vez de aplastarlo. */}
-      <div className="flex flex-col lg:flex-row">
-        <div ref={cajaRef} className="relative max-h-[78vh] min-h-[360px] min-w-0 flex-1 overflow-auto overscroll-x-contain">
-          {/* EL ANCHO DE LA COLUMNA FIJA ES RESPONSIVO, Y NO ES UN DETALLE ESTÉTICO (17/08/2026).
-              Estaba clavado en 340px por estilo en línea. En un teléfono de 390px el contenedor
-              visible mide 348px: la columna de nombres se comía el 97,7% y NO SE VEÍA UNA SOLA BARRA
-              —ni la línea de hoy, ni el cronograma— aunque el scroll horizontal funcionara. El Gantt
-              es la vista más importante del módulo y el teléfono es el aparato del jefe de obra.
-              Ahora: 148px en móvil, 340px de `sm` para arriba, y las columnas de fecha se ocultan en
-              pantalla chica porque esa información ya está en la barra. */}
-          <div className="flex w-max">
-            {/* ── COLUMNA FIJA: la grilla de actividades ───────────────────────────────── */}
-            <div
-              data-columna-fija
-              style={anchoFijo ? { width: anchoFijo } : undefined}
-              className="sticky left-0 z-20 w-[168px] shrink-0 border-r border-line bg-surface sm:w-[400px] lg:w-[460px]"
-            >
-              <div className="sticky top-0 z-10 flex items-end gap-2 border-b border-line bg-surface-quiet px-3 pb-2 text-[0.74em] font-medium uppercase tracking-wide text-faint" style={{ height: ALTO_CABECERA }}>
-                {masivas && (
-                  <Casilla
-                    puesta={todasEnLote}
-                    alCambiar={(v) => marcar(seleccionables, v)}
-                    etiqueta={`Seleccionar las ${seleccionables.length} actividades`}
-                    testid="masiva-todas"
-                  />
-                )}
-                <span className="flex-1">Actividad</span>
-                <span className="hidden px-2 sm:inline" style={{ width: wEstado }}>Estado</span>
-                {mostrarFechas && <span className="hidden px-2 text-right sm:inline" style={{ width: wFecha }}>Inicio</span>}
-                {mostrarFechas && <span className="hidden px-2 text-right sm:inline" style={{ width: wFecha }}>Fin</span>}
-                <span className="hidden px-2 text-right sm:inline" style={{ width: wPct }}>%</span>
-              </div>
-              {filas.map((f) => {
-                if (f.tipo === 'grupo') {
-                  const g = f.grupo
-                  const cerrado = colapsados.has(g.clave)
-                  const suyas = g.hijas.map((h) => h.id)
-                  return (
-                    <div
-                      key={f.clave}
-                      style={{ height: ALTO_FILA }}
-                      className="flex w-full items-center gap-1.5 border-b border-line px-3 hover:bg-surface-sunken"
-                    >
-                      {masivas && suyas.length > 0 && (
-                        <Casilla
-                          puesta={suyas.every((id) => enLote.has(id))}
-                          alCambiar={(v) => marcar(suyas, v)}
-                          etiqueta={`Seleccionar ${g.nombre}`}
-                          testid="masiva-grupo"
-                        />
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => alternar(g.clave)}
-                        aria-expanded={!cerrado}
-                        data-testid="grupo-cronograma"
-                        className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
-                      >
-                        {/* EL RUBRO ES UN NIVEL, NO UNA FILA MÁS. Versalitas, negrita y su propia
-                            banda: la jerarquía Rubro → Actividad tiene que verse sin leer. */}
-                        {/* EL RUBRO ES UN NIVEL, y el objetivo lo dibuja con su chevron y en
-                            negrita —no en versalitas sobre una banda gris—: la jerarquía la hace la
-                            indentación de las hijas, no el color de fondo del padre. */}
-                        <span aria-hidden className={`shrink-0 text-[0.78em] text-muted transition-transform ${cerrado ? '-rotate-90' : ''}`}>▾</span>
-                        <span className="min-w-0 flex-1 truncate font-semibold text-ink" title={g.nombre}>{g.nombre}</span>
-                        <span className="shrink-0 text-[0.92em] tabular-nums text-muted">
-                          {g.pct == null ? `${g.hijas.length}` : `${g.pct}%`}
-                        </span>
-                      </button>
-                    </div>
-                  )
-                }
-                const a = f.actividad
-                return (
-                  <div
-                    key={f.clave}
-                    style={{ height: ALTO_FILA }}
-                    className={`flex w-full cursor-pointer items-center border-b border-line/60 pl-3 hover:bg-surface-sunken ${sel?.id === a.id ? 'bg-marca-soft' : ''}`}
-                  >
-                    {masivas && (
-                      <Casilla
-                        puesta={enLote.has(a.id)}
-                        alCambiar={(v) => marcar([a.id], v)}
-                        etiqueta={`Seleccionar ${a.nombre}`}
-                        testid="masiva-actividad"
-                      />
-                    )}
-                  <button
-                    type="button"
-                    onClick={() => setSelId(a.id)}
-                    data-testid="actividad-cronograma"
-                    // DE QUÉ OBRA ES CADA FILA, siempre — también en la ficha, donde es redundante
-                    // para el que mira. No es adorno: es lo que deja CONTAR desde afuera que la
-                    // lista global y la de la obra traen exactamente las mismas actividades. Sin
-                    // esto, "no hay dos sistemas" es una afirmación sin forma de verificarla.
-                    data-obra={a.obra_id}
-                    data-tipo={a.tipo}
-                    // El alto, el borde y el padding los pone la ENVOLTURA de la fila, que además
-                    // sostiene la casilla de selección en lote. Repetirlos acá los duplicaba.
-                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                  >
-                    {/* INDENTADA BAJO SU RUBRO, y en el color del texto —no en gris—: es el dato
-                        principal de la fila. El `title` da el nombre entero cuando no entra. */}
-                    <span aria-hidden className="shrink-0 pl-4 pr-1.5 text-[0.78em] text-faint">›</span>
-                    <span
-                      className="min-w-0 flex-1 truncate py-2 pr-2 text-ink"
-                      title={[a.seccion, a.codigo, a.nombre].filter(Boolean).join(' · ')}
-                    >{a.nombre}</span>
-                    {/* EL ESTADO OPERATIVO, no el guardado: una actividad con un impedimento
-                        abierto dice «Bloqueada» aunque su estado cargado siga siendo «En curso». Es
-                        la misma derivación que usa el tablero — un solo lugar donde se decide. */}
-                    <span className="hidden h-full shrink-0 items-center border-l border-line/50 px-2 sm:flex" style={{ width: wEstado }}>
-                      <EstadoChip estado={a.estado_operativo} />
-                    </span>
-                    {mostrarFechas && <span className="hidden h-full shrink-0 items-center justify-end border-l border-line/50 px-2 text-[0.92em] tabular-nums text-muted sm:flex" style={{ width: wFecha }}>{fmtCorto(a.inicio_plan)}</span>}
-                    {mostrarFechas && <span className="hidden h-full shrink-0 items-center justify-end border-l border-line/50 px-2 text-[0.92em] tabular-nums text-muted sm:flex" style={{ width: wFecha }}>{fmtCorto(a.fin_plan)}</span>}
-                    {/* EL AVANCE CALCULADO, no el declarado: es el mismo número que muestra el panel
-                        y el que promedia la obra. «—» cuando no hay ninguno — un 0% inventado diría
-                        que la actividad no arrancó cuando lo que pasa es que nadie la midió. */}
-                    <span className="hidden h-full shrink-0 items-center justify-end border-l border-line/50 px-2 text-[0.92em] font-medium tabular-nums text-ink sm:flex" style={{ width: wPct }}>
-                      {a.avance_pct == null
-                        ? <span className="font-normal text-faint">—</span>
-                        : <span className={a.estado_operativo === 'en_curso' ? 'text-ink' : 'font-normal text-muted'}>{Math.round(Number(a.avance_pct))}%</span>}
-                    </span>
-                  </button>
-                  </div>
-                )
-              })}
-            </div>
-
-            {/* ── LÍNEA DE TIEMPO ──────────────────────────────────────────────────────── */}
-            <div className="relative shrink-0" style={{ width: ancho }}>
-              <div className="sticky top-0 z-10 border-b border-line bg-surface-quiet" style={{ height: ALTO_CABECERA }}>
-                <svg width={ancho} height={ALTO_CABECERA} className="block">
-                  {finesDeSemana.map((f) => (
-                    <rect key={'hfs' + f.x} x={f.x} y={medio} width={f.w} height={ALTO_CABECERA - medio} className="fill-surface-sunken" />
-                  ))}
-                  {meses.map((m) => (
-                    <g key={m.label + m.x0}>
-                      <line x1={m.x0} y1={0} x2={m.x0} y2={ALTO_CABECERA} className="stroke-line-strong" />
-                      <text x={m.x0 + 8} y={medio - 7} fontSize={esc.px.mes} className="fill-ink capitalize" fontWeight={600}>{m.label}</text>
-                    </g>
-                  ))}
-                  <line x1={0} y1={medio} x2={ancho} y2={medio} className="stroke-line" />
-                  {/* LA COLUMNA DEL DÍA, con su número. Es lo que deja decir «esto arranca el martes»
-                      sin contar cuadraditos contra la regla de arriba. */}
-                  {ticks.map((t) => (
-                    <g key={t.x}>
-                      <line x1={t.x} y1={medio} x2={t.x} y2={ALTO_CABECERA} className="stroke-line" />
-                      <text
-                        x={porDia ? t.x + px / 2 : t.x + 4}
-                        y={ALTO_CABECERA - 7}
-                        fontSize={esc.px.dia}
-                        textAnchor={porDia ? 'middle' : 'start'}
-                        className={t.finde ? 'fill-faint tabular-nums' : 'fill-muted tabular-nums'}
-                      >{t.label}</text>
-                    </g>
-                  ))}
-                  {/* HOY: la pastilla amarilla del objetivo sobre el número del día. */}
-                  {hoyVisible && (
-                    <>
-                      <rect
-                        x={porDia ? xHoy + 1 : xHoy - 14}
-                        y={medio + 3}
-                        width={porDia ? Math.max(18, px - 2) : 28}
-                        height={ALTO_CABECERA - medio - 6}
-                        rx={4}
-                        className="fill-marca"
-                      />
-                      <text
-                        x={porDia ? xHoy + px / 2 : xHoy}
-                        y={ALTO_CABECERA - 7}
-                        fontSize={esc.px.dia}
-                        textAnchor="middle"
-                        className="fill-ink tabular-nums"
-                        fontWeight={700}
-                      >{porDia ? hoyIso.slice(8, 10) : 'hoy'}</text>
-                    </>
-                  )}
-                </svg>
-              </div>
-
-              <svg width={ancho} height={alto} className="block">
-                <defs>
-                  <marker id="flecha-dep" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
-                    <path d="M0,0 L7,3.5 L0,7 z" className="fill-ink" />
-                  </marker>
-                  {/* LO QUE FALTA HACER VA RAYADO, no en un tono más claro. Un relleno pálido se lee
-                      como «poco» y no como «todavía nada»: la trama dice que ahí hay plan sin
-                      ejecutar, que es la mitad de lo que un Gantt tiene que contestar. */}
-                  <pattern id="trama-pendiente" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-                    <rect width="6" height="6" className="fill-surface" />
-                    <line x1="0" y1="0" x2="0" y2="6" className="stroke-line-strong" strokeWidth="3" />
-                  </pattern>
-                </defs>
-
-                {finesDeSemana.map((f) => (
-                  <rect key={'fs' + f.x} x={f.x} y={0} width={f.w} height={alto} className="fill-surface-quiet" />
-                ))}
-
-                {/* LA FILA DE LA TABLA Y LA DEL CALENDARIO SON UNA SOLA FILA. Sin estas separaciones
-                    el ojo pierde el renglón a los tres nombres y se lee la barra equivocada. */}
-                {filas.map((_, i) => (
-                  <line key={'h' + i} x1={0} y1={(i + 1) * ALTO_FILA} x2={ancho} y2={(i + 1) * ALTO_FILA} className="stroke-line/50" />
-                ))}
-
-                {ticks.map((t) => (
-                  <line key={'t' + t.x} x1={t.x} y1={0} x2={t.x} y2={alto} className={porDia ? 'stroke-line/40' : 'stroke-line/70'} />
-                ))}
-
-                {meses.map((m) => (
-                  <line key={'g' + m.x0} x1={m.x0} y1={0} x2={m.x0} y2={alto} className="stroke-line-strong" />
-                ))}
-
-                {/* LA LÍNEA DE HOY va en el amarillo de la marca: es el "acá estás" del logo, no un
-                    estado. Estaba en rojo, que en este sistema significa problema. La banda detrás
-                    la hace encontrable sin buscarla — es la referencia que más se usa. */}
-                {hoyVisible && (
-                  <>
-                    <rect x={xHoy - Math.max(3, px / 2)} y={0} width={Math.max(6, px)} height={alto} className="fill-marca" opacity={0.16} />
-                    <line x1={xHoy} y1={0} x2={xHoy} y2={alto} className="stroke-marca" strokeWidth={2} data-testid="linea-hoy" />
-                  </>
-                )}
-
-                {filas.map((f, i) => {
-                  const y = i * ALTO_FILA
-                  // ── LA BARRA DEL GRUPO: se DERIVA de sus hijas, porque la fila de resumen del
-                  //    tracker no trae fechas. Se dibuja también contraído: es la única manera de
-                  //    ver la obra entera de un vistazo sin abrir los doce grupos.
-                  if (f.tipo === 'grupo') {
-                    const g = f.grupo
-                    if (!g.inicio) return null
-                    const x0 = x(g.inicio)
-                    const w = Math.max(8, x(g.fin ?? g.inicio) - x0)
-                    return (
-                      <g key={f.clave}>
-                        <rect x={x0} y={y + ALTO_FILA / 2 - 3} width={w} height={6} rx={1} className="fill-ink" opacity={0.85} />
-                        <rect x={x0} y={y + ALTO_FILA / 2 - 3} width={3} height={11} className="fill-ink" opacity={0.85} />
-                        <rect x={x0 + w - 3} y={y + ALTO_FILA / 2 - 3} width={3} height={11} className="fill-ink" opacity={0.85} />
-                      </g>
-                    )
-                  }
-
-                  const a = f.actividad
-                  if (!a.inicio_plan) return null
-                  const x0 = x(a.inicio_plan)
-                  const x1 = x(a.fin_plan ?? a.inicio_plan)
-                  // 8 px Y NO 3: una actividad de un solo día —la mitad de las de una obra— se
-                  // dibujaba como una rayita que no se distingue de una línea de la grilla.
-                  const frenada = conRestriccion.has(a.id)
-                  const hb = Math.max(14, Math.round(ALTO_FILA * 0.58))
-                  const centro = Math.round(ALTO_FILA / 2)
-                  // UNA ACTIVIDAD DE UN DÍA SIGUE SIENDO UNA BARRA. La mitad de las de una obra
-                  // duran una jornada: a nueve píxeles de ancho contra veintitrés de alto se
-                  // dibujaban como un punto, y treinta puntos en fila no son un cronograma. El piso
-                  // es el alto de la barra, así que lo más corto que se puede ver es un cuadrado
-                  // redondeado — chico, pero una barra.
-                  const w = Math.max(hb, x1 - x0)
-                  const atrasada = estadoDe(a, hoyIso) === 'atrasada'
-                  // ═══ LA BARRA DICE EN QUÉ ESTADO ESTÁ, NO SÓLO CUÁNDO ═══
-                  //
-                  // Eran todas del mismo grafito: treinta barras iguales donde hay hechas, en curso
-                  // y pendientes, y para saber cuál era cuál había que leer la columna «Estado» de
-                  // la izquierda renglón por renglón. El color es el MISMO del chip de estado —una
-                  // sola definición de qué significa cada uno—: verde hecha, rojo bloqueada o
-                  // atrasada, el acento en curso, y gris lo que todavía no arrancó.
-                  const tono = atrasada || a.estado_operativo === 'bloqueada'
-                    ? 'fill-neg'
-                    : a.estado_operativo === 'hecha'
-                      ? 'fill-pos'
-                      : a.estado_operativo === 'en_curso'
-                        ? 'fill-accent'
-                        : 'fill-line-strong'
-                  return (
-                    <g key={f.clave} onClick={() => setSelId(a.id)} className="cursor-pointer">
-                      {/* LÍNEA BASE — sólo si está sellada. Sin baseline no se dibuja una sombra en
-                          el mismo lugar que el plan: eso haría parecer que el desvío es cero. */}
-                      {a.inicio_base && a.fin_base && (
-                        <rect x={x(a.inicio_base)} y={y + ALTO_FILA - 9} width={Math.max(8, x(a.fin_base) - x(a.inicio_base))} height={3} rx={1} className="fill-line-strong" />
-                      )}
-                      {a.tipo === 'hito' ? (
-                        <rect x={x0 - hb / 2} y={y + centro - hb / 2} width={hb} height={hb} className={tono} transform={`rotate(45 ${x0} ${y + centro})`} />
-                      ) : (
-                        <>
-                          {/* ═══ LA BARRA (20/08/2026) ═══
-                              Gruesa —60% del alto de fila, como el objetivo—, con lo PENDIENTE
-                              rayado y lo EJECUTADO en pleno. Antes eran dos rectángulos del mismo
-                              color a distinta opacidad: a cuatro píxeles de alto no se distinguía
-                              cuál era cuál, y una actividad al 20% se leía igual que una al 80%. */}
-                          <rect
-                            x={x0} y={y + centro - hb / 2} width={w} height={hb} rx={4}
-                            fill="url(#trama-pendiente)" stroke="currentColor"
-                            className="stroke-line text-transparent" strokeWidth={1}
-                          />
-                          {a.pct != null && a.pct > 0 && (
-                            <rect
-                              x={x0} y={y + centro - hb / 2}
-                              width={Math.max(3, (w * Math.min(100, a.pct)) / 100)}
-                              height={hb} rx={4} className={tono}
-                            />
-                          )}
-                          {/* LA TILDE DE LO TERMINADO. Es el remate del objetivo y no es adorno: en
-                              una columna de treinta barras verdes, dice cuáles cerraron de verdad
-                              contra cuáles quedaron al 99%. */}
-                          {a.pct != null && a.pct >= 100 && w >= hb * 1.6 && (
-                            <g transform={`translate(${x0 + w - hb / 2 - 2} ${y + centro})`}>
-                              <circle r={hb / 2 - 1} className="fill-surface" />
-                              <path
-                                d={`M ${-hb * 0.2} 0 L ${-hb * 0.05} ${hb * 0.15} L ${hb * 0.22} ${-hb * 0.18}`}
-                                fill="none" className={tono.replace('fill-', 'stroke-')}
-                                strokeWidth={Math.max(1.5, hb * 0.13)} strokeLinecap="round" strokeLinejoin="round"
-                              />
-                            </g>
-                          )}
-                          {frenada && <rect x={x0 - 5} y={y + centro - hb / 2 - 2} width={3} height={hb + 4} rx={1} className="fill-warn" />}
-                          {/* EL AVANCE AL LADO DE LA BARRA. La mitad de las actividades de una obra
-                              duran un día: sin este número la barra es un cuadradito de 8 px y la
-                              fila no dice nada de un vistazo. Es el MISMO valor de la columna «%»
-                              —no un segundo cálculo—: lo que cambia es que acá se lee sobre el
-                              calendario, que es donde se compara contra las de al lado. */}
-                          {a.avance_pct != null && (
-                            <text x={x0 + w + 7} y={y + centro + esc.px.barra / 2 - 1} fontSize={esc.px.barra} className="fill-muted tabular-nums">
-                              {Math.round(Number(a.avance_pct))}%
-                            </text>
-                          )}
-                        </>
-                      )}
-                    </g>
-                  )
-                })}
-
-                {/* ── LAS PRECEDENCIAS. Hoy no hay ninguna declarada en ninguna obra y por eso no se
-                    ve una sola flecha: es el estado real del dato, no una función que falta. */}
-                {dependencias.map((d) => {
-                  const io = filaDe.get(d.origen_id); const id = filaDe.get(d.destino_id)
-                  if (io == null || id == null) return null
-                  const o = filas[io]; const t = filas[id]
-                  if (o.tipo !== 'actividad' || t.tipo !== 'actividad') return null
-                  const finO = o.actividad.fin_plan ?? o.actividad.inicio_plan
-                  const iniT = t.actividad.inicio_plan
-                  if (!finO || !iniT) return null
-                  const ox = x(finO); const oy = io * ALTO_FILA + ALTO_FILA / 2
-                  const dx = x(iniT); const dy = id * ALTO_FILA + ALTO_FILA / 2
-                  const codo = ox + 8
-                  return (
-                    <path
-                      key={d.id}
-                      d={`M ${ox} ${oy} H ${codo} V ${dy} H ${dx}`}
-                      fill="none"
-                      className="stroke-muted"
-                      strokeWidth={1}
-                      markerEnd="url(#flecha-dep)"
-                    />
-                  )
-                })}
-              </svg>
-            </div>
-          </div>
+    <div data-testid="gantt" className="flex min-h-0 flex-1 flex-col">
+      {masivas && idsEnLote.length > 0 && (
+        <BarraMasiva ids={idsEnLote} personas={personas} acciones={masivas} alLimpiar={() => setEnLote(new Set())} />
+      )}
+      <div className="flex min-h-0 flex-1 border-t border-line">
+        {/* EN EL TELÉFONO, LA LISTA POR FECHA. Ver `ListaPorFecha`: el Gantt de barras no se
+            mantiene abajo de 768px, y la ficha de la actividad pasa a pantalla completa. El panel
+            queda AFUERA de esta partición porque abajo de `lg` no es una columna: es una hoja
+            posicionada, y tiene que existir en los dos tamaños. */}
+        <div className="min-h-0 flex-1 overflow-y-auto md:hidden">
+          <ListaPorFecha filas={filas} seleccionada={seleccionada} alSeleccionar={alSeleccionar} />
         </div>
 
-        {sel && (
-          acciones
-            ? (
-                // TODOS los impedimentos de esta actividad, no sólo los abiertos: el panel cuenta
-                // los ya resueltos, y eso es la diferencia entre «no hay problemas» y «hubo tres».
-                <PanelActividad
-                  actividad={sel}
-                  personas={personas}
-                  hh={hhPorActividad?.get(sel.id)}
-                  datos={datosPorActividad?.get(sel.id) ?? DATOS_VACIOS}
-                  rubros={rubros}
-                  {...(obraId ? { obraId } : {})}
-                  acciones={acciones}
-                  actividades={actividades}
-                  dependencias={dependencias}
-                  impedimentos={restricciones.filter((r) => r.actividad_id === sel.id)}
-                  hoy={hoy}
-                  alCerrar={() => setSelId(null)}
+        <div className="hidden min-h-0 min-w-0 flex-1 md:flex">
+        <ZonaSplit>
+          <div className="flex min-h-0 flex-1">
+            {/* ── LA TABLA ─────────────────────────────────────────────────────────── */}
+            <div
+              // ABAJO DE `lg` EL ANCHO NO SALE DEL DIVISOR —no hay divisor—: es fijo, y tiene que
+              // serlo. Sin ancho, la columna toma el de su contenido y empuja la página de costado,
+              // que es exactamente lo que el handoff prohíbe sin matices.
+              className="flex w-[300px] shrink-0 flex-col md:w-[340px] lg:[width:var(--ancho-tabla)]"
+              style={{ ['--ancho-tabla' as string]: `${tabla.ancho}px` }}
+            >
+              <CabeceraTabla
+                conCasilla={Boolean(masivas)}
+                todas={seleccionables.length > 0 && idsEnLote.length === seleccionables.length}
+                alMarcarTodas={(v) => marcar(seleccionables, v)}
+                compacta={tabla.ancho < 420}
+                hayColapsados={colapsados.size > 0}
+                {...(grupos.length > 1
+                  ? { alAlternarTodos: () => setColapsados((p) => (p.size ? new Set() : new Set(grupos.map((g) => g.clave)))) }
+                  : {})}
+              />
+              <div
+                ref={cajaTabla}
+                onScroll={() => sincronizar(cajaTabla.current, cajaLienzo.current)}
+                className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden ${SIN_BARRA}`}
+              >
+                <CuerpoTabla
+                  filas={filas}
+                  disp={disp}
+                  seleccionada={seleccionada}
+                  alSeleccionar={alSeleccionar}
+                  colapsados={colapsados}
+                  alAlternar={alternar}
+                  compacta={tabla.ancho < 420}
+                  {...(masivas ? { enLote, alMarcar: marcar } : {})}
                 />
-              )
-            : (
-                // Sin acciones el panel muestra lo que hay, y NADA que parezca editable: un campo que
-                // no persiste es peor que no tenerlo.
-                <aside data-testid="panel-actividad" className="w-full shrink-0 border-t border-line bg-surface-quiet px-4 py-3 lg:w-[340px] lg:border-l lg:border-t-0">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <p className="text-[0.85em] uppercase tracking-wide text-faint">{[sel.seccion, sel.codigo, sel.tipo].filter(Boolean).join(' · ')}</p>
-                      <p className="truncate text-[14px] font-semibold text-ink">{sel.nombre}</p>
-                    </div>
-                    <button type="button" onClick={() => setSelId(null)} className="shrink-0 text-[0.92em] text-muted hover:text-ink">cerrar</button>
+                <div className="h-8" />
+              </div>
+            </div>
+
+            <Divisor
+              testid="divisor-tabla"
+              titulo="Arrastrar para repartir el ancho entre la tabla y el calendario"
+              arrastrando={tabla.arrastrando}
+              setArrastrando={tabla.setArrastrando}
+              onArrastre={(dx, fin) => {
+                const n = tabla.acotar(tabla.ancho + dx)
+                if (fin) tabla.guardar(n)
+                else tabla.setAncho(n)
+              }}
+            />
+
+            {/* ── EL CALENDARIO ────────────────────────────────────────────────────── */}
+            <div ref={cajaCalendario} className={`flex min-w-0 flex-1 flex-col overflow-x-auto ${SIN_BARRA}`}>
+              {escalaCal ? (
+                <div className="flex min-h-0 flex-1 flex-col" style={{ width: escalaCal.ancho, minWidth: '100%' }}>
+                  <CabeceraGantt escala={escalaCal} hoyIso={hoyIso} hitos={hitos} />
+                  <div
+                    ref={cajaLienzo}
+                    onScroll={() => sincronizar(cajaLienzo.current, cajaTabla.current)}
+                    className={`min-h-0 flex-1 overflow-y-auto ${SIN_BARRA}`}
+                  >
+                    <CuerpoGantt
+                      d={{
+                        filas, disp, escala: escalaCal, finesDeSemana, hoyIso,
+                        seleccionada, alSeleccionar, dependencias, conImpedimento,
+                      }}
+                    />
                   </div>
-                  {/* LA VISTA GLOBAL NO EDITA: lleva a la obra, que es donde la actividad se toca.
-                      Reimplementar acá el panel de edición sería el segundo lugar donde se escribe
-                      una fecha, con su propia validación y su propio permiso. */}
-                  {obras && (
-                    <Link
-                      href={`/obras/${sel.obra_id}?vista=cronograma&act=${sel.id}`}
-                      data-testid="ir-a-la-obra"
-                      className="mt-2 inline-block text-[0.92em] text-ink underline underline-offset-2"
-                    >Abrir en {nombreDeObra.get(sel.obra_id) ?? sel.obra_id} →</Link>
-                  )}
-                  <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-[0.92em]">
-                    <div><dt className="text-faint">Plan</dt><dd className="tabular-nums text-ink">{fmtCorto(sel.inicio_plan)} → {fmtCorto(sel.fin_plan)}</dd></div>
-                    <div><dt className="text-faint">Línea base</dt><dd className="tabular-nums text-ink">{sel.inicio_base ? `${fmtCorto(sel.inicio_base)} → ${fmtCorto(sel.fin_base)}` : 'sin sellar'}</dd></div>
-                    <div><dt className="text-faint">Avance</dt><dd className="tabular-nums text-ink">{sel.pct == null ? '—' : `${sel.pct}%`}</dd></div>
-                    <div><dt className="text-faint">Días plan / real</dt><dd className="tabular-nums text-ink">{sel.dias_plan ?? '—'} / {sel.dias_real ?? '—'}</dd></div>
-                  </dl>
-                </aside>
-              )
+                </div>
+              ) : (
+                <p className="px-4 pt-16 text-center text-[13px] text-muted" data-testid="gantt-sin-fechas">
+                  {actividades.length
+                    ? 'Hay actividades cargadas, pero ninguna tiene fecha: sin fechas no hay cronograma que dibujar.'
+                    : 'Todavía no hay ninguna actividad.'}
+                </p>
+              )}
+            </div>
+          </div>
+        </ZonaSplit>
+        </div>
+
+        {/* ── EL PANEL DE LA ACTIVIDAD ─────────────────────────────────────────────── */}
+        {conPanel && (
+          <Divisor
+            testid="divisor-panel"
+            titulo="Arrastrar para cambiar el ancho del panel"
+            arrastrando={panel.arrastrando}
+            setArrastrando={panel.setArrastrando}
+            onArrastre={(dx, fin) => {
+              // El panel crece hacia la IZQUIERDA: el delta va restado.
+              const n = panel.acotar(panel.ancho - dx)
+              if (fin) panel.guardar(n)
+              else panel.setAncho(n)
+            }}
+          />
+        )}
+        {conPanel && sel && (
+          <PanelActividad
+            actividad={sel}
+            personas={personas}
+            ancho={panel.ancho}
+            hh={hhPorActividad?.get(sel.id)}
+            datos={datosPorActividad?.get(sel.id) ?? DATOS_VACIOS}
+            rubros={rubros}
+            {...(obraId ? { obraId } : {})}
+            {...(acciones ? { acciones } : {})}
+            actividades={actividades}
+            dependencias={dependencias}
+            // TODOS los de esta actividad, no sólo los abiertos: el panel cuenta los ya resueltos, y
+            // eso es la diferencia entre «no hay problemas» y «hubo tres».
+            impedimentos={restricciones.filter((r) => r.actividad_id === sel.id)}
+            hoy={hoy}
+            alCerrar={() => alCerrarPanel?.()}
+          />
         )}
       </div>
     </div>

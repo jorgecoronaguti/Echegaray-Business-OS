@@ -85,6 +85,10 @@ import {
 } from '@/features/obras/services/actionsDocumentos'
 import { fecha as fmtFecha } from '@/features/obras/components/formato'
 import { BotonAccion, FormAccion, PageShell } from '@/shared/components/ui'
+import { EntityHeader, Tabs } from '@/shared/components/ds'
+// `anchoSplit` se importa por su RUTA y no por el barril del DS: usa `next/headers`, y ese barril lo
+// importan componentes de cliente. Ver el comentario en `ds/index.ts`.
+import { anchoSplit } from '@/shared/components/ds/split-servidor'
 
 export const dynamic = 'force-dynamic'
 
@@ -206,8 +210,10 @@ export default async function ObraPage({
   const cuadrillas = necesitaCuadrillas ? await getCuadrillas(supabase) : []
   const integrantes = vista === 'ejecucion' ? await getIntegrantesPorCuadrilla(supabase) : {}
   // Los partes también en Planificación: el panel de la actividad muestra su ejecución reciente, que
-  // es lo que contesta «¿cómo viene?» sin salir del cronograma.
-  const partes = vista === 'ejecucion' || vista === 'cronograma'
+  // es lo que contesta «¿cómo viene?» sin salir del cronograma. Y en el Resumen, porque «último
+  // movimiento» es literalmente el último parte: sin ellos esa línea no se dibujaba, y una sección
+  // que no aparece porque la página no pidió el dato se lee igual que una obra sin movimiento.
+  const partes = vista === 'ejecucion' || vista === 'cronograma' || vista === 'resumen'
     ? (await getPartes(supabase, obraId)).data ?? [] : []
   const partesPorActividad = new Map<string, typeof partes>()
   for (const p of partes) {
@@ -237,6 +243,14 @@ export default async function ObraPage({
   // El catálogo de equipos es AYUDA de carga, no restricción: el campo acepta cualquier texto, y un
   // equipo alquilado por una semana no puede ser motivo para no anotarlo.
   const catalogoEquipos = vista === 'ejecucion' ? await getCatalogoEquipos(supabase) : []
+  // ═══ EL ANCHO DEL SPLIT SE LEE EN EL SERVIDOR ═══
+  // La cookie la escribe el navegador al soltar el divisor y la lee acá el servidor, así que la
+  // PRIMERA pintura del workspace ya sale con el reparto que la persona eligió. Leyéndola en el
+  // cliente, la pantalla más pesada del sistema nacería con el ancho por defecto y se corregiría
+  // sola cien milisegundos después — un salto visible justo donde más molesta.
+  const [anchoTabla, anchoPanel] = vista === 'cronograma'
+    ? await Promise.all([anchoSplit('obra-tabla', 470, 300, 760), anchoSplit('obra-panel', 452, 340, 760)])
+    : [470, 452]
 
   const docsPorActividad = new Map<string, typeof documentos>()
   for (const d of documentos) {
@@ -276,7 +290,6 @@ export default async function ObraPage({
   // El dueño lo dibujó así: «← Obras», el nombre de la obra, y debajo el cliente. El cliente es un
   // link cuando existe en el eje canónico; cuando la obra sólo tiene el nombre del cliente escrito
   // a mano, se muestra el texto y se dice que falta vincularlo — sin inventar la ficha.
-  const eyebrow = <Link href="/obras" className="hover:underline">← Obras</Link>
   // ARCHIVADA SE DICE EN EL ENCABEZADO. Es la única señal de que esta ficha se abrió por su URL y no
   // desde el portafolio —porque del portafolio ya no cuelga—, y sin ella alguien podría cargar HH o
   // avance sobre una obra archivada sin enterarse de que lo está.
@@ -296,41 +309,59 @@ export default async function ObraPage({
   const etapaLabel = obra.etapa
     ? (ETAPA_LABEL[obra.etapa as Etapa] ?? obra.etapa)
     : 'sin declarar'
-  const Campo = ({ k, children }: { k: string; children: React.ReactNode }) => (
-    <span className="whitespace-nowrap">
-      <span className="text-faint">{k}:</span> <span className="text-ink">{children}</span>
-    </span>
-  )
-  const contexto = (
-    <div data-testid="cabecera-obra" className="flex flex-wrap items-center gap-x-5 gap-y-1">
-      {deQuien && <Campo k="Cliente">{deQuien}</Campo>}
-      <Campo k="Etapa">{etapaLabel}</Campo>
-      <Campo k="Inicio">
-        <span className="tabular-nums">{obra.fecha_inicio_plan ? fmtFecha(obra.fecha_inicio_plan) : 'sin fecha'}</span>
-      </Campo>
-      <Campo k="Fin plan">
-        <span className="tabular-nums">{obra.fecha_fin_plan ? fmtFecha(obra.fecha_fin_plan) : 'sin fecha'}</span>
-      </Campo>
-      {archivada && <span className="rounded border border-line px-1.5 py-[1px] text-[11px] text-faint" data-testid="obra-archivada">archivada</span>}
-    </div>
-  )
-  const subtitulo = contexto
+  const campos = [
+    ...(deQuien ? [{ rotulo: 'Cliente', valor: deQuien }] : []),
+    { rotulo: 'Etapa', valor: obra.etapa ? etapaLabel : null, falta: 'sin declarar' },
+    {
+      rotulo: 'Inicio',
+      valor: obra.fecha_inicio_plan ? <span className="tabular-nums">{fmtFecha(obra.fecha_inicio_plan)}</span> : null,
+      falta: 'sin fecha',
+    },
+    {
+      rotulo: 'Fin plan',
+      valor: obra.fecha_fin_plan ? <span className="tabular-nums">{fmtFecha(obra.fecha_fin_plan)}</span> : null,
+      falta: 'sin fecha',
+    },
+  ]
 
   return (
-    <PageShell eyebrow={eyebrow} title={obra.nombre} subtitle={subtitulo} right={<CicloDeVida etapa={obra.etapa} />}>
-      {/* Las solapas se desplazan en vez de empujar la página: seis no entran en los 390px de un
-          teléfono. `overscroll-x-contain` evita que el gesto arrastre la página de atrás. */}
-      <nav className="mb-5 flex gap-1 overflow-x-auto overscroll-x-contain border-b border-line" data-testid="tabs-obra">
-        {VISTAS.map((v) => (
-          <Link
-            key={v.id}
-            href={`/obras/${obraId}?vista=${v.id}`}
-            data-testid={`tab-${v.id}`}
-            aria-current={vista === v.id ? 'page' : undefined}
-            className={`-mb-px shrink-0 border-b-2 px-4 py-2.5 text-[clamp(14px,0.92vw,32px)] transition-colors ${vista === v.id ? 'border-marca font-medium text-ink' : 'border-transparent text-muted hover:text-ink'}`}
-          >{v.label}</Link>
-        ))}
-      </nav>
+    // EL WORKSPACE NO USA `PageShell`: su encabezado es el de una ENTIDAD —volver, nombre, campos
+    // rotulados y ciclo de vida— y sus dos barras de navegación tienen que quedar pegadas al
+    // contenido, sin el margen de una página de lectura. El marco (fondo y padding de pantalla) es
+    // el mismo: 16px en el teléfono, 40px en escritorio.
+    <div className="min-h-screen bg-canvas">
+      <div className="w-full px-4 pt-6 lg:px-10">
+        <EntityHeader
+          volverA="/obras"
+          volverLabel="Obras"
+          titulo={obra.nombre}
+          campos={campos}
+          derecha={
+            <div className="flex flex-wrap items-center gap-3" data-testid="cabecera-obra">
+              {/* ARCHIVADA SE DICE EN EL ENCABEZADO: es la única señal de que esta ficha se abrió
+                  por su URL y no desde el portafolio, y sin ella alguien podría cargar HH o avance
+                  sobre una obra archivada sin enterarse de que lo está. */}
+              {archivada && (
+                <span className="rounded border border-line px-1.5 py-[1px] text-[11px] text-faint" data-testid="obra-archivada">
+                  archivada
+                </span>
+              )}
+              <CicloDeVida etapa={obra.etapa} />
+            </div>
+          }
+        />
+        {/* Nivel 2: siete solapas que se desplazan en vez de empujar la página — en 390px no entran. */}
+        <Tabs
+          testid="tabs-obra"
+          tabs={VISTAS.map((v) => ({
+            href: `/obras/${obraId}?vista=${v.id}`,
+            label: v.label,
+            activo: vista === v.id,
+            testid: `tab-${v.id}`,
+          }))}
+        />
+      </div>
+      <div className="w-full px-4 pb-6 pt-4 lg:px-10">
 
       {vista === 'resumen' && (
         <TabResumen
@@ -339,6 +370,11 @@ export default async function ObraPage({
           abiertas={abiertas}
           obraId={obraId}
           veComercial={veComercial}
+          // «Próximas 2 semanas» y «último movimiento» son secciones del Resumen en el handoff.
+          // Son props OPCIONALES a propósito —«la página no lo pidió» no es lo mismo que «no viene
+          // nada»— y hasta acá la página no las pedía, así que las dos secciones no existían.
+          actividades={acts}
+          partes={partes}
           editar={
             <details className="rounded-lg border border-line bg-surface" data-testid="editar-obra">
               <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-medium text-ink">Editar la obra</summary>
@@ -433,6 +469,8 @@ export default async function ObraPage({
           cambiarEstado={cambiarEstado.bind(null, obraId)}
           datosPorActividad={datosPorActividad}
           medirEnLote={medirEnLote.bind(null, obraId)}
+          anchoTabla={anchoTabla}
+          anchoPanel={anchoPanel}
         />
       )}
 
@@ -510,6 +548,7 @@ export default async function ObraPage({
           asignarActividad={asignarActividadADocumento.bind(null, obraId)}
         />
       )}
-    </PageShell>
+      </div>
+    </div>
   )
 }

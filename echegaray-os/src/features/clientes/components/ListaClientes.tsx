@@ -22,9 +22,17 @@
 //
 // El día que sean miles, el criterio cambia y el filtro se muda al servidor. Queda declarado como
 // decisión tomada sobre el tamaño real del negocio, no como un olvido.
+//
+// ═══ LA TABLA NO VA EN CAJA (Design Handoff V2) ═══
+//
+// `COMPONENTS.md` §Table: hairline superior + divisores de fila. El `rounded-xl border` que tenía
+// alrededor era un contenedor que no aportaba nada —la tabla ya se delimita sola con su encabezado
+// y sus divisores— y encima entraba en conflicto con el buscador, que en el sistema es sólo un
+// hairline inferior: caja arriba, caja abajo, dos marcos para dos controles.
 
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
+import { Buscador, Nulo, Tabla, THead, Th, Tr, Td } from '@/shared/components/ds'
 import type { ClientePanel } from '../types'
 
 /** Sin acentos, sin mayúsculas y sin espacios de más: «La Estrella», «la estrella» y «ESTRELLA»
@@ -33,7 +41,16 @@ function normalizar(s: string): string {
   return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim()
 }
 
-export function ListaClientes({ clientes }: { clientes: ClientePanel[] }) {
+export function ListaClientes({
+  clientes,
+  accion,
+}: {
+  clientes: ClientePanel[]
+  /** La primaria `+ Nuevo cliente`, que sólo el servidor sabe si corresponde dibujar. Viaja como
+   *  nodo para que quede AL LADO del buscador —como en el handoff— sin volver de cliente la
+   *  decisión de permisos, que es del servidor y sólo del servidor. */
+  accion?: React.ReactNode
+}) {
   const [busqueda, setBusqueda] = useState('')
   const q = normalizar(busqueda)
   // SE BUSCA POR LOS DOS NOMBRES. Desde que el cliente tiene nombre comercial y razón social por
@@ -48,36 +65,30 @@ export function ListaClientes({ clientes }: { clientes: ClientePanel[] }) {
   )
 
   return (
-    <div className="max-w-2xl space-y-3">
-      {/* ANCHO DE LECTURA, NO ANCHO DE PANTALLA. Dos columnas estiradas a 1.400px dejan el nombre
-          pegado a la izquierda y el número de obras a la derecha con un metro de vacío en el medio,
-          y hay que barrer la pantalla con la vista para leer un renglón. */}
-      <input
-        type="search"
-        value={busqueda}
-        onChange={(e) => setBusqueda(e.target.value)}
-        data-testid="buscar-cliente"
-        placeholder="Buscar un cliente…"
-        aria-label="Buscar un cliente"
-        className="w-full rounded-control border border-line bg-white px-3 py-1.5 text-[13px] text-ink placeholder:text-faint"
-      />
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <Buscador
+          value={busqueda}
+          onChange={setBusqueda}
+          placeholder="Buscar un cliente…"
+          testid="buscar-cliente"
+          className="flex-1"
+        />
+        {accion}
+      </div>
 
       {visibles.length === 0 ? (
-        <p className="rounded-xl border border-line bg-white px-4 py-3 text-[13px] text-muted" data-testid="sin-resultados">
+        <p className="border-t border-line py-6 text-[13px] text-muted" data-testid="sin-resultados">
           Ningún cliente se llama así.
         </p>
       ) : (
-        <div className="rounded-xl border border-line bg-white">
-          <table data-testid="clientes-tabla" className="w-full text-left">
-            <thead>
-              <tr className="border-b border-line text-[10px] uppercase tracking-wide text-faint">
-                <th className="px-4 py-2 font-medium">Cliente</th>
-                <th className="w-20 px-4 py-2 text-right font-medium">Obras</th>
-              </tr>
-            </thead>
-            <tbody>{visibles.map((c) => <Fila key={c.cliente_id} c={c} />)}</tbody>
-          </table>
-        </div>
+        <Tabla testid="clientes-tabla" minWidth={320}>
+          <THead>
+            <Th>Cliente</Th>
+            <Th num className="w-24">Obras</Th>
+          </THead>
+          <tbody>{visibles.map((c) => <Fila key={c.cliente_id} c={c} />)}</tbody>
+        </Tabla>
       )}
     </div>
   )
@@ -85,25 +96,29 @@ export function ListaClientes({ clientes }: { clientes: ClientePanel[] }) {
 
 function Fila({ c }: { c: ClientePanel }) {
   return (
-    <tr className="border-b border-line/60 last:border-0 hover:bg-slate-50">
-      <td className="px-4 py-2">
-        {c.slug ? (
-          <Link href={`/clientes/${c.slug}`} className="text-[13px] font-medium text-ink hover:underline">
-            {c.nombre_comercial}
-          </Link>
-        ) : (
-          // Sin identificador no hay record al que entrar. Se muestra igual: esconderlo haría que un
-          // cliente real desapareciera de la lista sin que nadie se entere.
-          <>
-            <span className="text-[13px] font-medium text-ink">{c.nombre_comercial}</span>
-            <span className="block text-[11px] text-faint">sin identificador: no tiene ficha todavía</span>
-          </>
-        )}
-        {/* El «archivado» se queda: es la razón por la que esta fila normalmente NO estaría acá, y
-            sin él la lista con archivados no se distingue de la lista sin ellos. */}
-        {!c.activo && <span className="ml-2 text-[11px] text-faint">archivado</span>}
-      </td>
-      <td className="px-4 py-2 text-right text-[13px] tabular-nums text-muted">{c.n_obras || '—'}</td>
-    </tr>
+    <Tr>
+      <Td fuerte>
+        <span className="flex flex-wrap items-baseline gap-x-2">
+          {c.slug ? (
+            <Link href={`/clientes/${c.slug}`} className="text-[13px] font-medium text-ink hover:underline">
+              {c.nombre_comercial}
+            </Link>
+          ) : (
+            // Sin identificador no hay record al que entrar. Se muestra igual: esconderlo haría que
+            // un cliente real desapareciera de la lista sin que nadie se entere.
+            <>
+              <span className="text-[13px] font-medium text-ink">{c.nombre_comercial}</span>
+              <Nulo className="text-[11px]">sin identificador: no tiene ficha todavía</Nulo>
+            </>
+          )}
+          {/* El «archivado» se queda: es la razón por la que esta fila normalmente NO estaría acá, y
+              sin él la lista con archivados no se distingue de la lista sin ellos. */}
+          {!c.activo && <Nulo className="text-[11px]">archivado</Nulo>}
+        </span>
+      </Td>
+      {/* CERO OBRAS SE ESCRIBE «—» Y NO «0»: un cliente sin obras cargadas y un cliente al que le
+          contratamos cero veces son cosas distintas, y esta lista no sabe cuál es cuál. */}
+      <Td num>{c.n_obras || <Nulo>—</Nulo>}</Td>
+    </Tr>
   )
 }

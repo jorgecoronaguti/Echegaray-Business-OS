@@ -1,20 +1,20 @@
 // PERSONAL — la entrada al módulo. Buscar, filtrar, crear, y entrar a una ficha.
 //
-// El dueño dibujó esta pantalla y dijo *"Nada más salvo razón operativa fuerte"*: una línea con la
-// búsqueda, los cuatro filtros y el alta, y debajo cinco columnas. Lo que NO está es tan deliberado
-// como lo que está —ni DNI, ni CUIL, ni teléfono, ni documentos, ni HH— y no está de verdad: el
-// listado sale de `persona_directorio`, que no publica esos campos, así que tampoco viajan al
-// navegador aunque alguien abra las herramientas de desarrollo.
+// El dueño dibujó esta pantalla y dijo *"Nada más salvo razón operativa fuerte"*: UNA línea con la
+// búsqueda, los cuatro filtros, Cuadrillas y el alta, y debajo la tabla. Lo que NO está es tan
+// deliberado como lo que está —ni DNI, ni CUIL, ni teléfono, ni retribución, ni métricas— y no está
+// de verdad: el listado sale de `persona_directorio` con sus columnas nombradas una por una, así que
+// esos campos tampoco viajan al navegador aunque alguien abra las herramientas de desarrollo.
 //
-// Es una vista de GESTIÓN, no un tablero: sin tarjetas, sin cifras de arriba, sin gráficos. Todo el
+// Es una vista de GESTIÓN, no un tablero: sin tarjetas, sin cifras arriba, sin gráficos. Todo el
 // estado vive en la URL y es un server component entero — no hay un `useState` que se pierda al
 // recargar ni una segunda copia de los datos en el navegador.
 
-import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { PageShell } from '@/shared/components/ui'
-import { BarraFiltros } from '@/features/administracion/components/BarraFiltros'
-import { FiltrosPersonal } from '@/features/administracion/components/FiltrosPersonal'
+import { Aviso, BotonEnlace, Vacio } from '@/shared/components/ds'
+import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
+import { BuscadorURL, FiltrosURL } from '@/features/administracion/components/Controles'
 import { CamposAlta } from '@/features/administracion/components/FormularioPersona'
 import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
 import { TablaPersonas } from '@/features/administracion/components/TablaPersonas'
@@ -35,6 +35,14 @@ function armarHref(base: Busqueda, filtro?: FiltroPersonal, nueva?: boolean): st
   return `/administracion/personas${qs ? `?${qs}` : ''}`
 }
 
+/** Qué decir cuando no hay ninguna fila: una línea, y que diga qué hacer. */
+function vacioDe(filtro: FiltroPersonal, q?: string) {
+  if (filtro === 'sin_asignar') return 'Todo el plantel está asignado a una obra.'
+  if (filtro === 'en_obra') return 'Nadie tiene una asignación vigente. Se asigna desde la solapa Personal de la obra.'
+  if (filtro === 'inactivos') return 'Nadie egresó del plantel.'
+  return q ? `Ninguna persona coincide con «${q}».` : 'Todavía no hay personas cargadas.'
+}
+
 export default async function PersonalPage({ searchParams }: { searchParams: Promise<Busqueda> }) {
   const sp = await searchParams
   const filtro = (FILTROS.find((f) => f.valor === sp.f)?.valor ?? 'plantel') as FiltroPersonal
@@ -47,10 +55,11 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
   // ("permission denied for table personas") y este mensaje es lo que permitió encontrarlo.
   if (listado.error) {
     return (
-      <PageShell title="Personal" maxWidth="max-w-6xl">
-        <p data-testid="personas-error" className="text-[13px] text-neg">
-          No pude leer el legajo: {listado.error}
-        </p>
+      <PageShell title="Personal">
+        <NavAdministracion />
+        <div data-testid="personas-error">
+          <Aviso tono="neg" titulo="No pude leer el legajo">{listado.error}</Aviso>
+        </div>
       </PageShell>
     )
   }
@@ -58,49 +67,48 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
   const personas = listado.data ?? []
 
   return (
-    <PageShell title="Personal" maxWidth="max-w-6xl">
-      {/* UNA SOLA LÍNEA: buscar · filtros · la acción primaria. Cuadrillas va discreta al lado
-          porque es navegación, no una acción — y vive DENTRO de Personal, no como sección nueva. */}
-      <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
-        <div className="w-52 shrink-0">
-          <BarraFiltros
-            accion="/administracion/personas"
-            q={sp.q}
-            placeholder="Buscar…"
-            testid="filtros-personas"
-            compacta
-            extra={{ f: filtro === 'plantel' ? undefined : filtro }}
-          />
-        </div>
-        <FiltrosPersonal activo={filtro} hrefDe={(f) => armarHref(sp, f)} />
+    <PageShell title="Personal">
+      <NavAdministracion />
+
+      {/* UNA SOLA LÍNEA: buscar · filtros · Cuadrillas · la acción primaria. Cuadrillas va discreta
+          porque es NAVEGACIÓN, no una acción — y vive DENTRO de Personal, no como sección nueva. */}
+      <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-3">
+        <BuscadorURL
+          accion="/administracion/personas"
+          q={sp.q}
+          placeholder="Buscar…"
+          oculto={{ f: filtro === 'plantel' ? undefined : filtro }}
+          ancho="w-full sm:w-[208px]"
+          testid="filtros-personas"
+        />
+        <FiltrosURL
+          testid="filtros-personal"
+          opciones={FILTROS.map((f) => ({
+            label: f.etiqueta,
+            href: armarHref(sp, f.valor),
+            activo: f.valor === filtro,
+            testid: `filtro-${f.valor}`,
+          }))}
+        />
         <div className="ml-auto flex items-center gap-4">
-          <Link
-            href="/administracion/personas/cuadrillas"
-            data-testid="ir-cuadrillas"
-            className="text-[12px] text-muted hover:text-ink hover:underline"
-          >Cuadrillas</Link>
-          <Link
-            href={armarHref(sp, filtro, true)}
-            data-testid="nueva-persona"
-            className="rounded-control bg-slate-900 px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-slate-700"
-          >+ Nueva persona</Link>
+          <BotonEnlace href="/administracion/personas/cuadrillas" variante="discreta" data-testid="ir-cuadrillas">
+            Cuadrillas
+          </BotonEnlace>
+          <BotonEnlace href={armarHref(sp, filtro, true)} variante="primaria" data-testid="nueva-persona">
+            + Nueva persona
+          </BotonEnlace>
         </div>
       </div>
 
-      <div className="flex flex-col gap-4 lg:flex-row">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
         <div className="min-w-0 flex-1">
           {personas.length === 0
-            ? (
-                // ESTADO VACÍO SIMPLE Y ACCIONABLE: dice qué pasa y qué hacer, en una línea.
-                <p data-testid="personas-vacio" className="rounded-xl border border-line bg-white px-4 py-8 text-center text-[13px] text-muted">
-                  {filtro === 'sin_asignar' ? 'Todo el plantel está asignado a una obra.'
-                    : filtro === 'en_obra' ? 'Nadie tiene una asignación vigente. Se asigna desde la solapa Personal de la obra.'
-                      : filtro === 'inactivos' ? 'Nadie egresó del plantel.'
-                        : sp.q ? `Ninguna persona coincide con «${sp.q}».`
-                          : 'Todavía no hay personas cargadas.'}
-                </p>
-              )
+            ? <div data-testid="personas-vacio"><Vacio>{vacioDe(filtro, sp.q)}</Vacio></div>
             : <TablaPersonas personas={personas} conBaja={filtro === 'inactivos'} />}
+          <p className="mt-3 text-[11px] text-faint">
+            {personas.length} {personas.length === 1 ? 'persona' : 'personas'} · el estado sale de la
+            pertenencia vigente, no de la fecha de baja.
+          </p>
         </div>
 
         {sp.nueva === '1' && (
@@ -110,15 +118,12 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
             cerrarHref={armarHref(sp, filtro)}
             enviar="Crear"
             testid="panel-alta-persona"
+            ayuda="DNI, CUIL, teléfono y retribución se cargan en el legajo, no en el listado."
           >
             <CamposAlta />
           </PanelEdicion>
         )}
       </div>
-
-      <p className="mt-3 px-1 text-[11px] text-faint">
-        {personas.length} {personas.length === 1 ? 'persona' : 'personas'}
-      </p>
     </PageShell>
   )
 }

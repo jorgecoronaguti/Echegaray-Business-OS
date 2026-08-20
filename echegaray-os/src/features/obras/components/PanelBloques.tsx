@@ -10,113 +10,68 @@ import { Campo, CTRL, FormAccion, type AccionFormulario } from '@/shared/compone
 import type { Actividad, ParteEjecucion, Persona } from '../types'
 import { METODO_LABEL, UNIDADES } from '../types'
 import type { EquipoEnActividad, PersonaEnActividad } from '../services/recursosService'
-import { Dato, n2, Plegable, Rotulo } from './PanelPrimitivas'
+import { n2, Plegable } from './PanelPrimitivas'
 import { fecha } from './formato'
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// PLAN CONTRA REAL — el bloque central del panel
+// CÓMO SE MIDE — y las lecturas que acompañan a Plan | Real
 // ═══════════════════════════════════════════════════════════════════════════════
 //
-// Un avance calculado desde 95 de 180 m² y un 53% que alguien tipeó no valen lo mismo, y la pantalla
-// tiene que poder distinguirlos. Por eso el método es un CAMPO —no una deducción de «¿tiene unidad
-// cargada?»— y `origen_avance` viaja al lado del número.
+// El cuadro Plan|Real lo dibuja el panel con `PlanVsReal` del DS. Acá quedan las dos cosas que ese
+// cuadro no puede decir: DE DÓNDE salió el avance —un 53% calculado desde 95 de 180 m² y un 53% que
+// alguien tipeó no valen lo mismo— y el formulario que define la medición.
 
-export function BloqueMedicion({ a, definir }: { a: Actividad; definir?: AccionFormulario }) {
+/** Las lecturas al pie del cuadro: consumo contra avance, y el origen del número. */
+export function NotasDeMedicion({ a }: { a: Actividad }) {
   return (
-    <div data-testid="bloque-medicion" className="space-y-2">
-      {/* PLAN Y REAL ENFRENTADOS. Es la pregunta del panel —¿cómo viene contra lo previsto?— y por
-          eso se lee sin abrir nada. Dos listas una debajo de la otra obligan a recordar el número
-          de arriba mientras se lee el de abajo. */}
-      <div className="grid grid-cols-2 gap-3">
-        <section>
-          <Rotulo>Plan</Rotulo>
-          <dl className="grid grid-cols-2 gap-x-2 gap-y-1 rounded-card border border-line bg-surface px-3 py-2.5 text-[0.92em]">
-            <Dato k="Unidad" v={a.unidad} />
-            <Dato k="Objetivo" v={n2(a.cantidad_objetivo)} />
-            <Dato k="Inicio" v={a.inicio_plan ? fecha(a.inicio_plan) : null} />
-            <Dato k="Fin" v={a.fin_plan ? fecha(a.fin_plan) : null} />
-            <Dato k="HH plan" v={n2(a.hh_plan)} />
-          </dl>
-        </section>
-        {/* REAL VA TINTADO. En el objetivo las dos tarjetas no son iguales: el plan es lo que se
-            prometió y lo real es lo que pasó, y darle un fondo propio evita tener que leer el
-            rótulo para saber cuál de las dos columnas se está mirando. */}
-        <section>
-          <Rotulo>Real</Rotulo>
-          <dl className="grid grid-cols-2 gap-x-2 gap-y-1 rounded-card border border-line bg-surface-quiet px-3 py-2.5 text-[0.92em]">
-            <Dato
-              k="Ejecutado"
-              v={a.metodo_avance === 'cantidad' ? n2(a.cantidad_ejecutada ?? 0) : `${a.n_partes} parte(s)`}
-            />
-            <Dato k="Avance" v={a.avance_pct == null ? null : `${n2(a.avance_pct)}%`} />
-            <Dato k="Inicio" v={a.inicio_real ? fecha(a.inicio_real) : null} />
-            <Dato k="Último parte" v={a.ultimo_parte ? fecha(a.ultimo_parte) : null} />
-            <Dato k="HH reales" v={n2(a.hh_real)} />
-            {/* LA PRODUCTIVIDAD EXISTE SÓLO CON LAS DOS PUNTAS. Con una sola sería una división por
-                un dato que falta, no un indicador bajo — así es como una obra sana parece
-                improductiva. */}
-            {a.productividad != null && <Dato k="Prod." v={`${n2(a.productividad)} ${a.unidad}/HH`} />}
-            {/* LA BARRA DE AVANCE. Un porcentaje se lee; una barra se ve. Sólo cuando el número
-                existe: una barra vacía diría «0%» donde lo que pasa es que nadie midió. */}
-            {a.avance_pct != null && (
-              <div className="col-span-2 mt-1 h-2 w-full overflow-hidden rounded-full bg-line" data-testid="barra-avance">
-                <div
-                  className="h-full rounded-full bg-accent"
-                  style={{ width: `${Math.max(0, Math.min(100, Number(a.avance_pct)))}%` }}
-                />
-              </div>
-            )}
-          </dl>
-        </section>
-      </div>
-
-      {/* EL CONSUMO DE HH CONTRA EL AVANCE FÍSICO. Las dos mitades o ninguna: decir «70% del plan»
-          sin poder decir cuánto se avanzó es la mitad de una comparación, y la mitad engaña. */}
+    <>
+      {/* LAS DOS MITADES O NINGUNA: decir «70% del plan» sin poder decir cuánto se avanzó es la
+          mitad de una comparación, y la mitad engaña. */}
       {a.consumo_hh_pct != null && a.avance_pct != null && (
-        <p className="text-[0.85em] text-muted" data-testid="avance-vs-hh">
-          Avance físico <span className="tabular-nums text-ink">{n2(a.avance_pct)}%</span> · HH
-          consumidas <span className="tabular-nums text-ink">{n2(a.consumo_hh_pct)}%</span> del plan
+        <p className="text-[11.5px] text-muted" data-testid="avance-vs-hh">
+          Avance físico <span className="font-mono tabular-nums text-ink">{n2(a.avance_pct)}%</span> · HH
+          consumidas <span className="font-mono tabular-nums text-ink">{n2(a.consumo_hh_pct)}%</span> del plan
         </p>
       )}
       {a.hh_real != null && a.hh_plan == null && (
-        <p className="text-[0.85em] text-warn">Hay horas imputadas pero falta la HH plan: el desvío no se puede medir.</p>
+        <p className="text-[11.5px] text-warn">Hay horas imputadas pero falta la HH plan: el desvío no se puede medir.</p>
       )}
-
-      {/* DE DÓNDE SALIÓ EL AVANCE. Quien decide tiene que poder distinguir un número calculado de
-          uno tipeado sin ir a buscarlo. */}
       {a.origen_avance && (
-        <p className="text-[0.85em] text-faint" data-testid="origen-avance">
+        <p className="text-[11.5px] text-faint" data-testid="origen-avance">
           Avance {a.origen_avance === 'cantidad'
             ? 'calculado desde la producción cargada'
             : a.origen_avance === 'partes' ? 'sumado de los partes diarios' : 'declarado a mano'}.
         </p>
       )}
+    </>
+  )
+}
 
-      {definir && (
-        <Plegable titulo="Cómo se mide esta actividad">
-          <FormAccion accion={definir} testid="form-medicion" enviar="Guardar" mensajeOk="Guardado.">
-            <div className="grid grid-cols-2 gap-2">
-              <Campo label="Unidad">
-                <input name="unidad" defaultValue={a.unidad ?? ''} list="unidades-obra" maxLength={12} className={CTRL} />
-              </Campo>
-              <Campo label="Cantidad objetivo">
-                <input name="cantidad_objetivo" type="number" step="any" min="0" defaultValue={a.cantidad_objetivo ?? ''} className={CTRL} />
-              </Campo>
-              <Campo label="Cómo se mide el avance" ancho="col-span-2">
-                <select name="metodo_avance" defaultValue={a.metodo_avance} className={CTRL} data-testid="metodo-avance">
-                  {(Object.keys(METODO_LABEL) as (keyof typeof METODO_LABEL)[]).map((m) => (
-                    <option key={m} value={m}>{METODO_LABEL[m]}</option>
-                  ))}
-                </select>
-              </Campo>
-            </div>
-            <datalist id="unidades-obra">
-              {UNIDADES.map((u) => <option key={u} value={u} />)}
-            </datalist>
-          </FormAccion>
-        </Plegable>
-      )}
-    </div>
+export function BloqueMedicion({ a, definir }: { a: Actividad; definir?: AccionFormulario }) {
+  if (!definir) return null
+  return (
+    <Plegable titulo="Cómo se mide esta actividad" testid="bloque-medicion">
+      <FormAccion accion={definir} testid="form-medicion" enviar="Guardar" mensajeOk="Guardado.">
+        <div className="grid grid-cols-2 gap-2">
+          <Campo label="Unidad">
+            <input name="unidad" defaultValue={a.unidad ?? ''} list="unidades-obra" maxLength={12} className={CTRL} />
+          </Campo>
+          <Campo label="Cantidad objetivo">
+            <input name="cantidad_objetivo" type="number" step="any" min="0" defaultValue={a.cantidad_objetivo ?? ''} className={CTRL} />
+          </Campo>
+          <Campo label="Cómo se mide el avance" ancho="col-span-2">
+            <select name="metodo_avance" defaultValue={a.metodo_avance} className={CTRL} data-testid="metodo-avance">
+              {(Object.keys(METODO_LABEL) as (keyof typeof METODO_LABEL)[]).map((m) => (
+                <option key={m} value={m}>{METODO_LABEL[m]}</option>
+              ))}
+            </select>
+          </Campo>
+        </div>
+        <datalist id="unidades-obra">
+          {UNIDADES.map((u) => <option key={u} value={u} />)}
+        </datalist>
+      </FormAccion>
+    </Plegable>
   )
 }
 
@@ -132,73 +87,79 @@ export function BloqueMedicion({ a, definir }: { a: Actividad; definir?: AccionF
 // horas, habría que mantenerla al día a mano y el día que alguien no la actualice diría que trabajó
 // gente que no trabajó.
 
-export function BloqueRecursos({ a, personas, reales, equipos, obraId }: {
+/** Quién trabajó: el plan (cuadrilla y responsable) y el real (los que imputaron horas). */
+export function ListaPersonal({ a, personas, reales, obraId }: {
   a: Actividad
   /** El plantel, para poder poner nombre a un id. */
   personas: Persona[]
   reales: PersonaEnActividad[]
-  equipos: EquipoEnActividad[]
-  /** La obra, para llevar a la solapa donde el recurso se asigna de verdad. */
+  /** La obra, para llevar a la solapa donde el personal se asigna de verdad. */
   obraId?: string
 }) {
   const nombreDe = (id: string) => personas.find((p) => p.id === id)?.nombre_completo ?? id
   const responsable = a.responsable_id ? nombreDe(a.responsable_id) : null
   const prevista = a.cuadrilla_prevista ?? a.cuadrilla
   const hhTotal = reales.reduce((s, r) => s + r.horas, 0)
-
   return (
-    <div className="grid grid-cols-2 gap-3" data-testid="bloque-recursos">
-      <section className="rounded-card border border-line bg-surface px-3 py-2.5">
-        <Rotulo
-          cuenta={reales.length}
-          {...(obraId ? { verMas: `/obras/${obraId}?vista=personal`, verMasTitulo: 'Ver el personal de la obra' } : {})}
-        >Personal</Rotulo>
-        <p className="text-[0.85em] text-faint">
-          Previsto: <span className="text-muted">{prevista ?? 'sin cuadrilla asignada'}</span>
-        </p>
-        <p className="text-[0.85em] text-faint">
-          Responsable: <span className="text-muted">{responsable ?? 'sin asignar'}</span>
-        </p>
-        {reales.length === 0 ? (
-          <p className="mt-1 text-[0.92em] text-faint">Nadie imputó horas todavía.</p>
-        ) : (
-          <ul className="mt-1 space-y-0.5" data-testid="personal-real">
-            {reales.slice(0, 6).map((r) => (
-              <li key={r.persona_id} className="flex items-baseline justify-between gap-2 text-[0.92em]">
-                <span className="min-w-0 truncate text-muted">{nombreDe(r.persona_id)}</span>
-                <span className="shrink-0 tabular-nums text-ink">{n2(r.horas)} h</span>
-              </li>
-            ))}
-            {reales.length > 6 && (
-              <li className="text-[0.85em] text-faint">y {reales.length - 6} más · {n2(hhTotal)} h en total</li>
-            )}
-          </ul>
-        )}
-      </section>
+    <div data-testid="bloque-personal">
+      <p className="text-[11.5px] text-faint">
+        Previsto: <span className="text-muted">{prevista ?? 'sin cuadrilla asignada'}</span>
+      </p>
+      <p className="text-[11.5px] text-faint">
+        Responsable: <span className="text-muted">{responsable ?? 'sin asignar'}</span>
+      </p>
+      {reales.length === 0 ? (
+        <p className="mt-1 text-[12.5px] text-faint">Nadie imputó horas todavía.</p>
+      ) : (
+        <ul className="mt-1.5 space-y-1" data-testid="personal-real">
+          {reales.slice(0, 8).map((r) => (
+            <li key={r.persona_id} className="flex items-baseline justify-between gap-2 text-[12.5px]">
+              <span className="min-w-0 truncate text-ink-soft">{nombreDe(r.persona_id)}</span>
+              <span className="shrink-0 font-mono text-[11.5px] tabular-nums text-muted">{n2(r.horas)} HH</span>
+            </li>
+          ))}
+          {reales.length > 8 && (
+            <li className="text-[11.5px] text-faint">y {reales.length - 8} más · {n2(hhTotal)} HH en total</li>
+          )}
+        </ul>
+      )}
+      {/* EL DETALLE NO SE REIMPLEMENTA ACÁ: lleva a la solapa donde ese dato se edita. Un segundo
+          lugar para asignar personal sería un segundo lugar donde se escriben horas. */}
+      {obraId && (
+        <a href={`/obras/${obraId}?vista=personal`} className="mt-2 inline-block text-[12px] text-muted hover:text-ink" data-testid="ver-mas-bloque">
+          Ver el personal de la obra →
+        </a>
+      )}
+    </div>
+  )
+}
 
-      <section className="rounded-card border border-line bg-surface px-3 py-2.5">
-        <Rotulo
-          cuenta={equipos.length}
-          {...(obraId ? { verMas: `/obras/${obraId}?vista=operacion&sub=herramientas`, verMasTitulo: 'Ver los equipos de la obra' } : {})}
-        >Equipos</Rotulo>
-        {equipos.length === 0 ? (
-          <p className="text-[0.92em] text-faint">Ninguno cargado. Se anotan al registrar la ejecución.</p>
-        ) : (
-          <ul className="space-y-0.5" data-testid="equipos-actividad">
-            {equipos.slice(0, 6).map((e) => (
-              <li key={e.equipo} className="flex items-baseline justify-between gap-2 text-[0.92em]">
-                <span className="min-w-0 truncate text-muted">{e.equipo}</span>
-                {/* HORAS SIN ANOTAR NO SON CERO: se dice en cuántas jornadas apareció, que es lo
-                    único que se sabe. */}
-                <span className="shrink-0 tabular-nums text-ink">
-                  {e.horas == null ? `${e.jornadas} jorn.` : `${n2(e.horas)} h`}
-                </span>
-              </li>
-            ))}
-            {equipos.length > 6 && <li className="text-[0.85em] text-faint">y {equipos.length - 6} más</li>}
-          </ul>
-        )}
-      </section>
+/** Con qué se hizo. No se asignan: se deducen de los partes, que es donde alguien los anotó. */
+export function ListaEquipos({ equipos, obraId }: { equipos: EquipoEnActividad[]; obraId?: string }) {
+  return (
+    <div data-testid="bloque-equipos">
+      {equipos.length === 0 ? (
+        <p className="text-[12.5px] text-faint">Ninguno cargado. Se anotan al registrar la ejecución.</p>
+      ) : (
+        <ul className="space-y-1" data-testid="equipos-actividad">
+          {equipos.slice(0, 8).map((e) => (
+            <li key={e.equipo} className="flex items-baseline justify-between gap-2 text-[12.5px]">
+              <span className="min-w-0 truncate text-ink-soft">{e.equipo}</span>
+              {/* HORAS SIN ANOTAR NO SON CERO: se dice en cuántas jornadas apareció, que es lo
+                  único que se sabe. */}
+              <span className="shrink-0 font-mono text-[11.5px] tabular-nums text-muted">
+                {e.horas == null ? `${e.jornadas} jorn.` : `${n2(e.horas)} h`}
+              </span>
+            </li>
+          ))}
+          {equipos.length > 8 && <li className="text-[11.5px] text-faint">y {equipos.length - 8} más</li>}
+        </ul>
+      )}
+      {obraId && (
+        <a href={`/obras/${obraId}?vista=operacion&sub=herramientas`} className="mt-2 inline-block text-[12px] text-muted hover:text-ink" data-testid="ver-mas-bloque">
+          Ver los equipos de la obra →
+        </a>
+      )}
     </div>
   )
 }
@@ -207,7 +168,7 @@ export function BloqueRecursos({ a, personas, reales, equipos, obraId }: {
 // EJECUCIÓN RECIENTE — el historial de la actividad, sin salir del panel
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export function BloqueEjecucion({ a, partes, personasPorFecha, verTodo, todas }: {
+export function BloqueEjecucion({ a, partes, personasPorFecha, verTodo }: {
   a: Actividad
   partes: ParteEjecucion[]
   /** A dónde lleva «ver todo el historial». Sin él se dice cuántos quedan, sin enlace. */
@@ -215,24 +176,21 @@ export function BloqueEjecucion({ a, partes, personasPorFecha, verTodo, todas }:
   /** Cuántas HH y cuántas personas se imputaron a ESTA actividad cada día. Sale de `registros_hh`,
    *  no del parte: el parte no guarda horas, y por eso las dos columnas pueden faltar. */
   personasPorFecha: Map<string, { horas: number; personas: number }>
-  /** La pestaña «Ejecución» del panel muestra el historial entero; el resumen, los últimos cinco. */
-  todas?: boolean
 }) {
   if (partes.length === 0) {
     return (
-      <section data-testid="ejecucion-reciente">
-        <Rotulo>Ejecución reciente</Rotulo>
-        <p className="text-[0.92em] text-faint">Sin partes cargados.</p>
-      </section>
+      <p data-testid="ejecucion-reciente" className="text-[12.5px] text-faint">Sin partes cargados.</p>
     )
   }
   return (
     <section data-testid="ejecucion-reciente">
-      <Rotulo cuenta={a.n_partes}>Ejecución reciente</Rotulo>
-      <div className="overflow-hidden rounded-card border border-line bg-surface">
-        <table className="w-full text-left text-[0.92em]">
+      {/* SIN CAJA: la tabla se delimita con su encabezado y sus divisores de fila
+          (`COMPONENTS.md` §Table). Un borde alrededor, dentro de un panel de 380px, es una línea
+          más para procesar y ni un dato más. */}
+      <div>
+        <table className="w-full text-left text-[12.5px]">
           <thead>
-            <tr className="border-b border-line text-[0.78em] uppercase tracking-wide text-faint">
+            <tr className="border-b border-line text-[10px] uppercase tracking-wide text-faint">
               <th className="px-2 py-1 font-medium">Fecha</th>
               <th className="px-2 py-1 text-right font-medium">Cant.</th>
               <th className="px-2 py-1 text-right font-medium">HH</th>
@@ -241,7 +199,7 @@ export function BloqueEjecucion({ a, partes, personasPorFecha, verTodo, todas }:
             </tr>
           </thead>
           <tbody>
-            {(todas ? partes : partes.slice(0, 5)).map((p) => {
+            {partes.slice(0, 5).map((p) => {
               const hh = personasPorFecha.get(p.fecha)
               return (
                 <tr key={p.id} className="border-b border-line/60 last:border-0" data-testid="fila-parte">
@@ -259,15 +217,15 @@ export function BloqueEjecucion({ a, partes, personasPorFecha, verTodo, todas }:
           </tbody>
         </table>
       </div>
-      {partes.length > 5 && (
-        <p className="mt-1 text-[0.85em] text-faint">
-          {verTodo
-            ? <a href={verTodo} className="text-muted underline underline-offset-2" data-testid="ver-historial">
-                Ver todo el historial ({partes.length}) →
-              </a>
-            : `y ${partes.length - 5} parte(s) más, en la solapa Ejecución.`}
+      {verTodo ? (
+        <p className="mt-2 text-[12px]">
+          <a href={verTodo} className="text-muted hover:text-ink" data-testid="ver-historial">
+            Ver historial ({partes.length}) →
+          </a>
         </p>
-      )}
+      ) : partes.length > 5 ? (
+        <p className="mt-1 text-[11.5px] text-faint">y {partes.length - 5} parte(s) más, en la solapa Ejecución.</p>
+      ) : null}
     </section>
   )
 }

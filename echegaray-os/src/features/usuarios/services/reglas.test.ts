@@ -12,9 +12,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  motivoParaNoCambiarRol, motivoParaNoDesactivar, motivoParaNoRegenerarClave,
-  type CuentaEnJuego,
+  motivoParaNoCambiarRol, motivoParaNoDesactivar, motivoParaNoRegenerarClave, ultimoIngresoDicho,
+  veTodasLasObras, type CuentaEnJuego,
 } from './reglas.ts'
+import { permisosEfectivos, type UsuarioGestion } from '../types.ts'
 
 const cuenta = (p: Partial<CuentaEnJuego> = {}): CuentaEnJuego => ({
   actorId: 'yo', objetivoId: 'otro', rolActual: 'jefe_obra', adminsActivos: 3, ...p,
@@ -52,4 +53,51 @@ test('sólo Dirección regenera contraseñas — Administración NO, y el motivo
     // mudo termina siempre en un botón escondido sin explicación.
     assert.match(motivo, /Dirección/)
   }
+})
+
+test('UNA CUENTA QUE NUNCA ENTRÓ NO TIENE FECHA, Y ESO ES UN DATO', () => {
+  // La lista de cuentas muestra «último ingreso». Una invitación que nadie usó y una cuenta que
+  // entra todos los días son situaciones opuestas: un guión las iguala y esconde la invitación
+  // muerta. `null` obliga a la pantalla a escribir «nunca ingresó».
+  assert.equal(ultimoIngresoDicho(null), null)
+  assert.equal(ultimoIngresoDicho(''), null)
+
+  // Y la hora es la de San Juan, no la del proceso: Vercel corre en UTC, tres horas adelante. Un
+  // ingreso de las 23:00 del 19 se anunciaría como «hoy 02:00» del 20 si se mirara el reloj del
+  // servidor — día equivocado y hora equivocada, sin un solo error visible.
+  const ahora = new Date('2026-08-20T14:00:00Z')
+  assert.equal(ultimoIngresoDicho('2026-08-20T02:00:00Z', ahora), 'ayer 23:00')
+  assert.equal(ultimoIngresoDicho('2026-08-20T11:04:00Z', ahora), 'hoy 08:04')
+})
+
+test('LA PANTALLA NO PUEDE AFIRMAR UN PERMISO QUE LA BASE NIEGA', () => {
+  // `ve_obra()` en Postgres da TODAS las obras a Dirección, Administración y jefe de obra. La
+  // pantalla decidía lo mismo con `areaDe(rol) === 'administracion'`, que acierta por casualidad:
+  // ese es el área de NAVEGACIÓN, no el alcance de obra.
+  assert.equal(veTodasLasObras('direccion'), true)
+  assert.equal(veTodasLasObras('administracion'), true)
+  assert.equal(veTodasLasObras('jefe_obra'), true)
+  assert.equal(veTodasLasObras('campo'), false)
+  assert.equal(veTodasLasObras(null), false)
+})
+
+test('un jefe de obra NO ve la economía, y su ficha tiene que decirlo', () => {
+  // Decía «Ve todas las obras, los clientes y la economía» para todo el área Administración — y el
+  // jefe de obra está en esa área con `veEconomia` en false. Afirmaba un permiso que no tiene.
+  const base = { id: 'u1', nombre: 'Marcos', email: 'm@ecsas.com.ar', obras: [], ultimoIngreso: null, persona: null }
+  const jefe = { ...base, rol: 'jefe_obra', area: 'administracion', estado: 'activo' } as UsuarioGestion
+  const frase = permisosEfectivos(jefe)
+  assert.match(frase, /Entra a todas las obras/)
+  assert.match(frase, /No ve el precio de venta ni la economía/)
+  assert.doesNotMatch(frase, /Ve los clientes/)
+
+  const direccion = { ...base, rol: 'direccion', area: 'administracion', estado: 'activo' } as UsuarioGestion
+  assert.match(permisosEfectivos(direccion), /Ve los clientes, el precio de venta y la economía/)
+
+  // Campo sin obras: entra y no ve NADA. Es lo que hay que poder leer de un vistazo.
+  const campo = { ...base, rol: 'campo', area: 'obras', estado: 'activo' } as UsuarioGestion
+  assert.match(permisosEfectivos(campo), /Sin obras asignadas/)
+
+  // Y sin acceso, ninguna de las dos preguntas aplica.
+  assert.equal(permisosEfectivos({ ...campo, estado: 'sin_acceso' }), 'No puede entrar al sistema.')
 })

@@ -161,8 +161,11 @@ test('portafolio → obra → resumen · gantt · planificación · documentos',
   await page.waitForURL(/vista=cronograma/)
   const gantt = page.getByTestId('gantt')
   await expect(gantt).toBeVisible()
-  // Barras dibujadas de verdad: cada actividad con fecha es un <g> con su rect en el SVG.
-  expect(await gantt.locator('svg g').count()).toBeGreaterThan(5)
+  // BARRAS DIBUJADAS DE VERDAD. Se cuentan las FILAS del calendario y no los nodos del SVG: con el
+  // Design Handoff V2 el lienzo dejó de ser un `<svg>` —cada fila es una caja posicionada, para que
+  // la alineación con la tabla sea aritmética y no un ajuste a ojo—. Lo que el test afirma es lo
+  // mismo de antes: que el cronograma dibuja el plan y no una grilla vacía.
+  expect(await gantt.getByTestId('fila-gantt').count()).toBeGreaterThan(5)
 
   // 5. PRÓXIMOS TRABAJOS — la otra vista del mismo cronograma. Desde el 20/08 muestra QUÉ FRENA lo
   //    que viene, sin formulario: el alta y la liberación viven en Operación › Impedimentos, que es

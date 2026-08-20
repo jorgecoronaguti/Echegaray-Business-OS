@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import { conBase, entrar, laFila, limpiar, MARCA } from './util/obras-e2e'
 
 // MVP ERP DE OBRAS · EL CLIENTE Y LA OBRA, PROBADOS CONTRA LA BASE.
@@ -17,6 +17,21 @@ import { conBase, entrar, laFila, limpiar, MARCA } from './util/obras-e2e'
 
 // ── CLIENTE: ALTA, EDICIÓN, CONTACTO Y DOCUMENTO ────────────────────────────
 
+// ═══ EL ALTA DE CLIENTE YA NO ES UN `<details>` ═══
+//
+// Era un `<summary>` que desplegaba el formulario, y el Design Handoff V2 pide la primaria amarilla
+// AL LADO del buscador — un `<summary>` tiene que ser el primer hijo de su `<details>`, así que las
+// dos cosas no pueden convivir. El estado se movió a `?nuevo=1`, que además es la regla 10 de
+// `design/system/UX_PRINCIPLES.md`: el estado vive en la URL y la vista se puede compartir.
+//
+// Esto no afloja nada: sigue midiendo que el formulario se abra desde la pantalla y no tipeando una
+// ruta. Vale la pena escribirlo acá porque el modo de falla anterior era caro: cinco llamadas
+// esperaban seis minutos cada una por un `<summary>` que ya no existe, y la suite parecía colgada.
+async function abrirAltaCliente(page: Page) {
+  await page.getByTestId('abrir-alta-cliente').click()
+  await expect(page.getByTestId('form-cliente')).toBeVisible({ timeout: 30000 })
+}
+
 test('cliente: se crea, se edita, se le agrega y se le saca un contacto — y todo sobrevive a la recarga', async ({ page }) => {
   // OCHO escrituras con su recarga y su relectura contra la base. En local entra en 17 s; contra
   // producción cada una es una función fría de Vercel y el conjunto pasó de 180 s. El techo se sube
@@ -31,7 +46,7 @@ test('cliente: se crea, se edita, se le agrega y se le saca un contacto — y to
 
     // ── ALTA ────────────────────────────────────────────────────────────────
     await page.goto('/clientes')
-    await page.getByTestId('alta-cliente').locator('summary').click()
+    await abrirAltaCliente(page)
     const alta = page.getByTestId('form-cliente')
     await alta.locator('input[name="nombre_comercial"]').fill(nombre)
     await alta.locator('input[name="cuit"]').fill('30-71234567-4')
@@ -232,7 +247,7 @@ test('obra: se crea desde la ficha del cliente y se edita desde la obra', async 
 
     // El cliente sí se puede crear: `clientes` tiene sus grants desde la fundación.
     await page.goto('/clientes')
-    await page.getByTestId('alta-cliente').locator('summary').click()
+    await abrirAltaCliente(page)
     await page.getByTestId('form-cliente').locator('input[name="nombre_comercial"]').fill(cliente)
     await page.getByTestId('form-cliente-enviar').click()
     await expect(page.getByTestId('form-cliente-ok')).toBeVisible({ timeout: 30000 })
@@ -326,7 +341,7 @@ test('obra: se archiva, desaparece de las listas, sigue entrando por su URL y se
     await entrar(page)
 
     await page.goto('/clientes')
-    await page.getByTestId('alta-cliente').locator('summary').click()
+    await abrirAltaCliente(page)
     await page.getByTestId('form-cliente').locator('input[name="nombre_comercial"]').fill(cliente)
     await page.getByTestId('form-cliente-enviar').click()
     await expect(page.getByTestId('form-cliente-ok')).toBeVisible({ timeout: 30000 })
@@ -435,7 +450,7 @@ test('cliente: se archiva, sale de la lista, sigue entrando por su URL y se reac
     await entrar(page)
 
     await page.goto('/clientes')
-    await page.getByTestId('alta-cliente').locator('summary').click()
+    await abrirAltaCliente(page)
     await page.getByTestId('form-cliente').locator('input[name="nombre_comercial"]').fill(nombre)
     await page.getByTestId('form-cliente-enviar').click()
     await expect(page.getByTestId('form-cliente-ok')).toBeVisible({ timeout: 30000 })
@@ -521,7 +536,7 @@ test('cliente: dirección, teléfono, email y responsable se guardan y se leen d
     await entrar(page)
 
     await page.goto('/clientes')
-    await page.getByTestId('alta-cliente').locator('summary').click()
+    await abrirAltaCliente(page)
     await page.getByTestId('form-cliente').locator('input[name="nombre_comercial"]').fill(nombre)
     await page.getByTestId('form-cliente-enviar').click()
     await expect(page.getByTestId('form-cliente-ok')).toBeVisible({ timeout: 30000 })

@@ -55,17 +55,42 @@ const config: Config = {
         pop: '0 4px 12px rgba(48,48,47,0.09), 0 12px 28px rgba(48,48,47,0.11)',
         hero: '0 1px 2px rgba(48,48,47,0.10), 0 18px 40px -20px rgba(48,48,47,0.45)',
       },
+      // LA TIPOGRAFÍA — decisión canónica del handoff (`design/system/TYPOGRAPHY.md`).
+      // El stack del sistema queda como FALLBACK, no como decisión: si la variable no llegó
+      // (build sin red, fuente bloqueada), la pantalla sigue siendo legible con la métrica más
+      // parecida que haya. Las variables las declara `next/font/google` en el layout raíz.
       fontFamily: {
         sans: [
+          'var(--font-plex-sans)',
+          'IBM Plex Sans',
           'ui-sans-serif',
           'system-ui',
-          '-apple-system',
           'Segoe UI',
-          'Roboto',
           'Helvetica Neue',
           'Arial',
           'sans-serif',
         ],
+        mono: [
+          'var(--font-plex-mono)',
+          'IBM Plex Mono',
+          'ui-monospace',
+          'SFMono-Regular',
+          'Menlo',
+          'monospace',
+        ],
+      },
+      // LAS ALTURAS DEL SISTEMA (design/system/tokens.css). Estaban repartidas como números
+      // sueltos en cada componente: `h-12` acá, `h-[46px]` allá. Un token que vive en un solo
+      // lugar es la única forma de que la fila de la tabla y la fila del Gantt midan igual.
+      spacing: {
+        header: 'var(--os-header-h)',
+        fila: 'var(--os-row-h)',
+        'fila-compacta': 'var(--os-row-h-compacta)',
+        thead: 'var(--os-thead-h)',
+        disclosure: 'var(--os-disclosure-h)',
+        statusbar: 'var(--os-statusbar-h)',
+        control: 'var(--os-control-h)',
+        'control-movil': 'var(--os-control-h-mobile)',
       },
     },
   },

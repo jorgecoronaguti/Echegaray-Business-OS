@@ -53,10 +53,12 @@ export function AppHeader({
         : null
 
   return (
-    <header className="sticky top-0 z-30 border-b border-line bg-surface" data-testid="app-header">
-      {/* UNA SOLA LÍNEA, 48px. `h-12` es 6 unidades de la grilla de 8: el header es andamiaje, no
-          contenido, y cada píxel que ocupa se lo saca a la tabla que la persona vino a leer. */}
-      <div className="flex h-12 w-full items-center gap-1 px-4 sm:px-6 lg:px-10">
+    // UNA SOLA LÍNEA, 48px CONTANDO EL HAIRLINE. El alto vive en el `<header>` y no en el div de
+    // adentro: con `h-12` adentro y el borde afuera, el header medía 49px — 48 de contenido más 1 de
+    // línea. Un píxel no se ve, pero el header es la referencia de la que cuelga todo lo demás, y el
+    // handoff dice 48. Es la medida que la regla ejecutable comprueba en las 22 pantallas.
+    <header className="sticky top-0 z-30 h-12 border-b border-line bg-surface" data-testid="app-header">
+      <div className="flex h-full w-full items-center gap-1 px-4 sm:px-6 lg:px-10">
         {/* LA MARCA REAL, NO SU NOMBRE ESCRITO (18/08/2026). El isotipo es el archivo oficial del
             dueño —Drive · "logo y colores de la empresa" · `LOGO REDONDO.png`, con transparencia—,
             no un redibujo mío: una marca redibujada a ojo es una marca distinta.
@@ -76,6 +78,13 @@ export function AppHeader({
               sólo el isotipo: 26px dicen lo mismo que 120px. */}
           <span className="hidden text-[13px] font-semibold tracking-[0.14em] text-ink sm:block">
             ECHEGARAY<span className="hidden lg:inline"> CONSTRUCCIONES</span>
+          </span>
+          {/* EL DESCRIPTOR DEL PRODUCTO, Y NUNCA CON PESO NI COLOR DE MARCA (`design/system/BRAND.md`).
+              «Business OS» describe qué es esto; la marca es ECHEGARAY CONSTRUCCIONES. En cuanto el
+              descriptor toma peso o color, la pantalla pasa a tener dos marcas compitiendo — y la
+              que gana es la que no lo es. Por eso va en 11,5px, `faint`, detrás de un separador. */}
+          <span className="hidden text-[11.5px] text-faint lg:inline" aria-hidden>
+            Business OS
           </span>
         </Link>
 
@@ -111,9 +120,18 @@ export function AppHeader({
         <div className="ml-auto flex min-w-0 items-center gap-2" data-testid="usuario-actual">
           {email ? (
             <>
-              <span className="hidden min-w-0 truncate text-[12px] text-faint sm:block" title={`${email} · ${rolLabel ?? ''}`}>
-                {email}
-              </span>
+              {/* `[email · rol]` — el rol estaba sólo en el `title`, invisible salvo que alguien
+                  dejara el puntero quieto encima. Es el dato que contesta «¿por qué no veo tal
+                  pantalla?» sin abrir Usuarios, así que se escribe. */}
+              <Link
+                href="/mi-cuenta"
+                data-testid="mi-cuenta"
+                className="hidden min-w-0 items-center gap-1.5 rounded-control px-2 py-1 transition-colors hover:bg-surface-quiet sm:flex"
+                title={`${email}${rolLabel ? ` · ${rolLabel}` : ''} — mi cuenta`}
+              >
+                <span className="min-w-0 truncate text-[12px] text-muted">{email}</span>
+                {rolLabel && <span className="hidden shrink-0 text-[12px] text-faint lg:inline">· {rolLabel}</span>}
+              </Link>
               {salir}
             </>
           ) : (

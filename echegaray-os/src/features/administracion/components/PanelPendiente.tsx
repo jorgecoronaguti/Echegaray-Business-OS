@@ -19,6 +19,7 @@
 
 import Link from 'next/link'
 import { Campo, CTRL, FormAccion, type AccionFormulario } from '@/shared/components/ui'
+import { Eyebrow, Nulo, Num, Tabla, Td, Th, THead, Tr } from '@/shared/components/ds'
 import { fecha, plata } from '@/features/obras/components/formato'
 import { ETIQUETA_TIPO, type GrupoPendiente } from '../services/imputacionService'
 
@@ -29,38 +30,33 @@ export interface ObraElegible {
 
 function Detalle({ grupo }: { grupo: GrupoPendiente }) {
   return (
-    <div className="overflow-x-auto">
-      <table data-testid="detalle-pendiente" className="w-full text-left">
-        <thead>
-          <tr className="border-b border-line text-[10px] uppercase tracking-wide text-faint">
-            <th className="px-2 py-1.5 font-medium">Tipo</th>
-            <th className="px-2 py-1.5 font-medium">Fecha</th>
-            <th className="px-2 py-1.5 font-medium">Descripción</th>
-            <th className="px-2 py-1.5 font-medium">Importe / recurso</th>
-            <th className="px-2 py-1.5 font-medium">Origen</th>
-          </tr>
-        </thead>
-        <tbody>
-          {grupo.filas.map((f) => (
-            <tr key={`${f.tabla}-${f.id}`} data-testid="fila-detalle" className="border-b border-line/60 last:border-0">
-              <td className="px-2 py-1.5 text-[11px] text-muted">{ETIQUETA_TIPO[f.tipo]}</td>
-              <td className="px-2 py-1.5 text-[11px] tabular-nums text-muted">{fecha(f.fecha)}</td>
-              <td className="px-2 py-1.5 text-[12px] text-ink">{f.descripcion}</td>
-              <td className="px-2 py-1.5 text-[12px] tabular-nums text-ink">
-                {f.importe != null ? plata(f.importe) : <span className="text-muted">{f.recurso ?? '—'}</span>}
-              </td>
-              {/* La trazabilidad del origen es la tabla MÁS el identificador: sin el segundo, "salió
-                  de compras" no permite ir a buscar el comprobante y confirmarlo. */}
-              <td className="px-2 py-1.5 text-[11px] text-faint">
-                {f.tabla}
-                {f.referencia ? ` · ${f.referencia}` : ''}
-                {f.fuente ? ` · ${f.fuente}` : ''}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <Tabla testid="detalle-pendiente" minWidth={0}>
+      <THead>
+        <Th>Tipo</Th>
+        <Th>Fecha</Th>
+        <Th>Descripción</Th>
+        <Th>Importe / recurso</Th>
+      </THead>
+      <tbody>
+        {grupo.filas.map((f) => (
+          <Tr key={`${f.tabla}-${f.id}`} compacta data-testid="fila-detalle">
+            <Td className="w-[90px]">{ETIQUETA_TIPO[f.tipo]}</Td>
+            <Td num className="w-[80px]">{f.fecha ? fecha(f.fecha) : <Nulo>sin fecha</Nulo>}</Td>
+            <Td fuerte>
+              {f.descripcion}
+              {/* LA TRAZABILIDAD DEL ORIGEN ES LA TABLA MÁS EL IDENTIFICADOR: sin el segundo, «salió
+                  de compras» no permite ir a buscar el comprobante y confirmarlo. */}
+              <span className="block truncate text-[11px] text-faint">
+                {f.tabla}{f.referencia ? ` · ${f.referencia}` : ''}{f.fuente ? ` · ${f.fuente}` : ''}
+              </span>
+            </Td>
+            <Td num>
+              {f.importe != null ? plata(f.importe) : <span className="text-[12px] text-muted">{f.recurso ?? '—'}</span>}
+            </Td>
+          </Tr>
+        ))}
+      </tbody>
+    </Tabla>
   )
 }
 
@@ -75,35 +71,39 @@ export function PanelPendiente({ grupo, obras, resolver, cerrarHref, nombreDeObr
   return (
     <aside
       data-testid="panel-pendiente"
-      className="w-full shrink-0 border-t border-line bg-surface p-4 lg:w-[27rem] lg:border-l lg:border-t-0"
+      className="w-full shrink-0 border-t border-line pt-4 lg:w-[392px] lg:border-l lg:border-t-0 lg:py-1 lg:pl-6 lg:pt-0"
     >
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="truncate text-[14px] font-semibold text-ink">{grupo.textos[0]}</h2>
-          <p className="text-[11px] text-faint">
-            {grupo.cantidad} fila(s) · {grupo.importe > 0 ? plata(grupo.importe) : 'sin importe'} ·
-            clave «{grupo.clave}»
-          </p>
-        </div>
-        <Link href={cerrarHref} data-testid="cerrar-panel" className="text-[12px] text-muted hover:text-ink">
-          Cerrar
-        </Link>
+      <div className="flex items-baseline gap-2.5">
+        <h2 className="min-w-0 flex-1 truncate font-mono text-[14px] font-semibold text-ink">{grupo.textos[0]}</h2>
+        <Link
+          href={cerrarHref} data-testid="cerrar-panel" aria-label="Cerrar el panel"
+          className="shrink-0 text-[12px] leading-none text-faint transition-colors hover:text-ink"
+        >✕</Link>
+      </div>
+      <p className="mt-1.5 text-[12px] text-muted">
+        {grupo.cantidad} fila(s) en {grupo.tipos.map((t) => ETIQUETA_TIPO[t]).join(' · ')} ·{' '}
+        {grupo.importe > 0 ? <Num className="text-muted">{plata(grupo.importe)}</Num> : <Nulo>sin importe asociado</Nulo>}
+      </p>
+      <p className="mt-1 text-[11px] text-faint">clave «{grupo.clave}»</p>
+
+      <div className="mt-5">
+        <Eyebrow className="mb-2">Las filas que va a mover</Eyebrow>
+        <Detalle grupo={grupo} />
       </div>
 
-      <Detalle grupo={grupo} />
-
-      <div className="mt-4 border-t border-line pt-3">
+      <div className="mt-5 border-t border-line pt-4">
         {sug
           ? (
-              <p data-testid="motivo-sugerencia" className="mb-3 text-[12px] text-muted">
+              <p data-testid="motivo-sugerencia" className="mb-4 text-[12px] leading-relaxed text-muted">
                 <span className="font-medium text-ink">Sugerido: {nombreDeObra(sug.obra_id)}.</span>{' '}
                 {sug.motivo}
                 {!sug.preseleccionar && ' Es una inferencia, no un hecho: elegí la obra a mano.'}
               </p>
             )
           : (
-              <p data-testid="sin-sugerencia" className="mb-3 text-[12px] text-muted">
-                No hay evidencia para sugerir una obra. No se propone ninguna por parecido de nombre.
+              <p data-testid="sin-sugerencia" className="mb-4 text-[12px] leading-relaxed text-muted">
+                <span className="text-[11px] font-medium uppercase tracking-[0.06em] text-faint">Sugerido </span><br />
+                Sin evidencia previa para este texto. No se propone obra por parecido de nombre.
               </p>
             )}
 
@@ -139,6 +139,10 @@ export function PanelPendiente({ grupo, obras, resolver, cerrarHref, nombreDeObr
             </Campo>
           </div>
         </FormAccion>
+        <p className="mt-4 text-[11px] leading-relaxed text-faint">
+          Resolver escribe una fila en el diccionario de obras y vale para todas las filas que digan
+          lo mismo — hoy y mañana. Nunca en lote.
+        </p>
       </div>
     </aside>
   )

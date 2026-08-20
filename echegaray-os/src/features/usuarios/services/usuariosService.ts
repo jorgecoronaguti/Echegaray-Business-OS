@@ -42,10 +42,15 @@ export async function listarUsuarios(admin: SupabaseClient): Promise<ServiceResu
     if (aErr) return { data: null, error: aErr.message }
 
     const [{ data: perfiles, error: pErr }, { data: asignaciones }, { data: obras }] = await Promise.all([
-      admin.from('perfiles').select('id, rol, nombre'),
+      admin.from('perfiles').select('id, rol, nombre, persona_id'),
       admin.from('usuario_obra').select('id, usuario_id, obra_canonica_id, papel'),
       admin.from('obra_canonica').select('id, nombre'),
     ])
+    // El nombre de la persona vinculada. Se pide aparte y no con un join anidado: `perfiles` puede
+    // apuntar a una persona dada de baja, y un join interno la haría desaparecer de la lista —
+    // que es justo el caso en el que alguien necesita ver el vínculo para deshacerlo.
+    const { data: personas } = await admin.from('personas').select('id, nombre_completo')
+    const nombrePersona = new Map((personas ?? []).map((x) => [x.id as string, x.nombre_completo as string]))
     if (pErr) return { data: null, error: pErr.message }
 
     const perfilDe = new Map((perfiles ?? []).map((p) => [p.id as string, p]))
@@ -67,6 +72,12 @@ export async function listarUsuarios(admin: SupabaseClient): Promise<ServiceResu
       const rol = (perfil?.rol as Rol | undefined) ?? null
       return {
         id: u.id,
+        persona: perfil?.persona_id
+          ? {
+              id: perfil.persona_id as string,
+              nombre: nombrePersona.get(perfil.persona_id as string) ?? (perfil.persona_id as string),
+            }
+          : null,
         nombre: (perfil?.nombre as string | undefined) ?? null,
         email: u.email ?? null,
         rol,
@@ -105,4 +116,28 @@ export async function listarObrasElegibles(admin: SupabaseClient): Promise<ObraE
     nombre: o.nombre as string,
     estado: (o.estado as string | null) ?? null,
   }))
+}
+
+/**
+ * EL CATÁLOGO PARA VINCULAR: el plantel, con quién ya tiene cuenta marcado.
+ *
+ * No se filtran las personas ya vinculadas: se muestran deshabilitadas con el email que las tomó.
+ * Sacarlas de la lista deja a quien busca a alguien sin saber si no está cargado, si se llama
+ * distinto o si ya tiene cuenta — tres problemas con tres soluciones opuestas.
+ */
+export async function listarPersonasVinculables(
+  admin: SupabaseClient,
+): Promise<{ id: string; nombre: string; tomadaPor: string | null }[]> {
+  const [{ data: personas }, { data: perfiles }] = await Promise.all([
+    admin.from('personas').select('id, nombre_completo, en_la_empresa').order('nombre_completo'),
+    admin.from('perfiles').select('id, persona_id, nombre').not('persona_id', 'is', null),
+  ])
+  const tomada = new Map((perfiles ?? []).map((p) => [p.persona_id as string, (p.nombre as string) ?? 'otra cuenta']))
+  return (personas ?? [])
+    .filter((p) => p.en_la_empresa !== false)
+    .map((p) => ({
+      id: p.id as string,
+      nombre: p.nombre_completo as string,
+      tomadaPor: tomada.get(p.id as string) ?? null,
+    }))
 }

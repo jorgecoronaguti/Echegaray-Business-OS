@@ -16,14 +16,15 @@
 
 import { useState, useTransition } from 'react'
 import { BotonAccion, Campo, CTRL, FormAccion } from '@/shared/components/ui'
+import { Estado, Eyebrow, Nulo, PanelDetalle } from '@/shared/components/ds'
 import { ROL_LABEL, type Rol } from '@/features/auth/types'
 import { AREA_LABEL } from '@/features/auth/types/areas'
 import { motivoParaNoRegenerarClave, ROLES_DE_AREA } from '../services/reglas'
 import {
-  asignarObra, cambiarAcceso, cambiarRol, editarUsuario, quitarObra, regenerarClave,
+  asignarObra, cambiarAcceso, cambiarRol, editarUsuario, quitarObra, regenerarClave, vincularPersona,
   type ResultadoClave,
 } from '../services/usuariosActions'
-import { permisosEfectivos, type ObraElegible, type UsuarioGestion } from '../types'
+import { permisosEfectivos, type ObraElegible, type PersonaVinculable, type UsuarioGestion } from '../types'
 import { Credencial } from './Credencial'
 
 /**
@@ -43,7 +44,7 @@ function Contrasena({ u, rolActor }: { u: UsuarioGestion; rolActor: Rol | null }
 
   return (
     <section data-testid="panel-contrasena">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-faint">Contraseña</p>
+      <Eyebrow className="mb-2">Contraseña</Eyebrow>
       {impedimento ? (
         <p className="mt-1.5 text-[12px] text-muted" data-testid="clave-sin-permiso">{impedimento}</p>
       ) : (
@@ -96,6 +97,54 @@ function SelectorDeRol({ valor }: { valor: string }) {
   )
 }
 
+/**
+ * QUIÉN ES ESTA CUENTA — el vínculo con la persona del plantel.
+ *
+ * Sin él, «Mi cuenta» está vacío: las cuatro vistas `mi_*` de la base cuelgan de `mi_persona_id()`,
+ * que lee justamente esta columna. Vincular no es un dato administrativo más — es lo que le da a
+ * alguien acceso a un legajo, así que la pantalla dice en voz alta qué se abre al elegir.
+ *
+ * Las personas ya tomadas por otra cuenta se muestran DESHABILITADAS con el nombre de esa cuenta,
+ * no se sacan de la lista: quien busca a alguien y no lo encuentra no sabe si no está cargado, si
+ * se escribe distinto o si ya tiene cuenta, y son tres problemas con tres soluciones opuestas.
+ */
+function PersonaDeLaCuenta({ u, personas }: { u: UsuarioGestion; personas: PersonaVinculable[] }) {
+  return (
+    <section data-testid="panel-persona">
+      <Eyebrow className="mb-2">Persona del plantel</Eyebrow>
+      {u.persona ? (
+        <p className="mb-2 text-[12.5px] text-ink" data-testid="persona-vinculada">
+          Esta cuenta es <span className="font-medium">{u.persona.nombre}</span>. Ve su legajo, sus
+          horas y sus documentos en «Mi cuenta».
+        </p>
+      ) : (
+        <p className="mb-2 text-[12.5px] text-faint" data-testid="persona-sin-vincular">
+          Sin vincular: en «Mi cuenta» no ve legajo, horas ni documentos. Una casilla de sistema
+          puede quedarse así.
+        </p>
+      )}
+      <FormAccion
+        accion={(form) => vincularPersona(u.id, form)}
+        testid="form-persona"
+        enviar={u.persona ? 'Cambiar la persona' : 'Vincular'}
+        mensajeOk="Vínculo guardado."
+      >
+        <Campo label="Persona" ayuda="Vincular le abre SU legajo, sus horas y sus documentos. Nada de terceros.">
+          <select name="persona_id" defaultValue={u.persona?.id ?? ''} className={CTRL} data-testid="select-persona">
+            <option value="">Sin vincular</option>
+            {personas.map((p) => (
+              <option key={p.id} value={p.id} disabled={p.tomadaPor !== null && p.id !== u.persona?.id}>
+                {p.nombre}
+                {p.tomadaPor !== null && p.id !== u.persona?.id ? ` — ya es ${p.tomadaPor}` : ''}
+              </option>
+            ))}
+          </select>
+        </Campo>
+      </FormAccion>
+    </section>
+  )
+}
+
 /** Las obras de esta persona: las que tiene y el alta de una más. */
 function ObrasDeLaCuenta({ u, obras }: { u: UsuarioGestion; obras: ObraElegible[] }) {
   const yaTiene = new Set(u.obras.map((o) => o.obraId))
@@ -103,7 +152,7 @@ function ObrasDeLaCuenta({ u, obras }: { u: UsuarioGestion; obras: ObraElegible[
 
   return (
     <section data-testid="panel-obras">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-faint">Obras asignadas</p>
+      <Eyebrow className="mb-2">Obras con acceso</Eyebrow>
       {u.area === 'administracion' ? (
         <p className="mt-1.5 text-[12px] text-muted">
           Administración entra a todas las obras. No hace falta asignarle ninguna.
@@ -162,10 +211,11 @@ function ObrasDeLaCuenta({ u, obras }: { u: UsuarioGestion; obras: ObraElegible[
 }
 
 export function PanelUsuario({
-  usuario, obras, esUnoMismo, rolActor, alCerrar,
+  usuario, obras, personas, esUnoMismo, rolActor, alCerrar,
 }: {
   usuario: UsuarioGestion
   obras: ObraElegible[]
+  personas: PersonaVinculable[]
   /** La propia cuenta del que está mirando: no se puede cambiar el rol ni sacarse el acceso. */
   esUnoMismo: boolean
   /** El rol del que MIRA, no el de la fila. Sólo Dirección regenera contraseñas. */
@@ -176,37 +226,34 @@ export function PanelUsuario({
   const activo = u.estado === 'activo'
 
   return (
-    <>
-      <button
-        type="button" aria-label="Cerrar el panel" onClick={alCerrar}
-        className="fixed inset-0 z-30 bg-ink/20 lg:hidden"
-      />
-      <aside
-        data-testid="panel-usuario"
-        className="fixed inset-x-0 bottom-0 z-40 max-h-[85vh] space-y-5 overflow-y-auto rounded-t-card border-t border-line bg-surface-quiet p-3.5 shadow-pop lg:sticky lg:top-16 lg:z-auto lg:max-h-none lg:w-[340px] lg:shrink-0 lg:rounded-none lg:border-l lg:border-t-0 lg:shadow-none"
-      >
-        <div aria-hidden className="mx-auto mb-2 h-1 w-10 rounded-full bg-line-strong lg:hidden" />
-
-        <header className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="truncate text-[11px] uppercase tracking-wide text-faint">
-              {u.rol ? ROL_LABEL[u.rol] : 'Sin rol asignado'} · {AREA_LABEL[u.area]}
-            </p>
-            <h2 className="truncate text-[15px] font-semibold text-ink">{u.nombre ?? u.email ?? 'Sin nombre'}</h2>
-            <p className="mt-1 text-[12px] leading-relaxed text-muted" data-testid="permisos-efectivos">
-              {permisosEfectivos(u)}
-            </p>
-          </div>
-          <button
-            type="button" onClick={alCerrar} data-testid="cerrar-panel"
-            className="shrink-0 rounded-control border border-line px-2 py-1 text-[12px] text-muted hover:bg-surface-sunken"
-          >
-            Cerrar
-          </button>
-        </header>
+    // LA CUENTA ES EL CORREO, y por eso es el título del panel: es lo único único y es con lo que
+    // esa persona entra. El nombre del perfil va debajo, y cuando falta se DICE — una cuenta que
+    // puede entrar y de la que no se sabe de quién es, es lo que esta pantalla existe para evitar.
+    <PanelDetalle
+      titulo={u.email ?? 'sin correo'}
+      subtitulo={
+        <>
+          {u.nombre ?? <Nulo>sin persona vinculada</Nulo>}
+          <span className="text-faint"> · {u.rol ? ROL_LABEL[u.rol] : 'sin nivel'} · {AREA_LABEL[u.area]}</span>
+        </>
+      }
+      estado={activo
+        ? <Estado tono="pos" clave="activa">activa</Estado>
+        : <Estado tono="warn" clave="sin_acceso">sin acceso</Estado>}
+      onCerrar={alCerrar}
+      ancho={340}
+      testid="panel-usuario"
+    >
+      <div className="space-y-6">
+        {/* LO QUE VE ESTA PERSONA, EN CASTELLANO. Es exactamente lo que contestan
+            `es_administracion()` y `ve_obra()` en la base, dicho para alguien que no sabe qué es una
+            policy: el nombre de la tabla no le sirve a nadie que use esta pantalla. */}
+        <p className="text-[12.5px] leading-relaxed text-muted" data-testid="permisos-efectivos">
+          {permisosEfectivos(u)}
+        </p>
 
         <section>
-          <p className="text-[11px] font-medium uppercase tracking-wide text-faint">Datos</p>
+          <Eyebrow className="mb-2">Datos de la cuenta</Eyebrow>
           <div className="mt-1.5">
             <FormAccion accion={(form) => editarUsuario(u.id, form)} testid="form-datos" mensajeOk="Guardado.">
               <div className="grid grid-cols-2 gap-2.5">
@@ -222,7 +269,7 @@ export function PanelUsuario({
         </section>
 
         <section>
-          <p className="text-[11px] font-medium uppercase tracking-wide text-faint">Rol</p>
+          <Eyebrow className="mb-2">Nivel</Eyebrow>
           {esUnoMismo ? (
             <p className="mt-1.5 text-[12px] text-muted" data-testid="rol-propio">
               Es tu propia cuenta: el rol te lo tiene que cambiar otra persona de Administración.
@@ -236,12 +283,14 @@ export function PanelUsuario({
           )}
         </section>
 
+        <PersonaDeLaCuenta u={u} personas={personas} />
+
         <ObrasDeLaCuenta u={u} obras={obras} />
 
         <Contrasena u={u} rolActor={rolActor} />
 
         <section>
-          <p className="text-[11px] font-medium uppercase tracking-wide text-faint">Acceso</p>
+          <Eyebrow className="mb-2">Acceso</Eyebrow>
           {esUnoMismo ? (
             <p className="mt-1.5 text-[12px] text-muted" data-testid="acceso-propio">
               No podés sacarte el acceso a vos mismo.
@@ -260,7 +309,7 @@ export function PanelUsuario({
             </div>
           )}
         </section>
-      </aside>
-    </>
+      </div>
+    </PanelDetalle>
   )
 }

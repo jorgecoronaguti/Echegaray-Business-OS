@@ -49,6 +49,15 @@ const CON_RLS = [
  *    NO publica `retribucion_pactada`, y eso también lo fija este contrato.
  */
 const DESESCALADA_DECLARADA = {
+  // `mi_legajo` es la TERCERA, y es de otra familia: no publica un listado, publica UNA fila —la
+  // del que está mirando— porque lleva `where p.id = mi_persona_id()` adentro. Con la cuenta sin
+  // vincular devuelve cero filas: falla cerrado. Y NO publica `dni`, `cuil`, `domicilio` ni
+  // `retribucion_pactada` aunque sean del propio interesado: ninguna pantalla los muestra, y una
+  // columna que viaja sin dibujarse es una fuga sin beneficio.
+  mi_legajo: [
+    'id', 'nombre_completo', 'categoria', 'especialidad', 'puesto', 'convenio_colectivo',
+    'fecha_ingreso', 'fecha_egreso', 'en_la_empresa', 'legajo',
+  ],
   persona_plantel: ['id', 'nombre_completo', 'categoria', 'especialidad', 'fecha_egreso'],
   persona_legajo: [
     'id', 'nombre_completo', 'dni', 'cuil', 'fecha_nacimiento', 'nacionalidad',
@@ -122,4 +131,39 @@ test('no apareció una tercera puerta al legajo sin declararse', { skip: SIN_BAS
   )
   assert.deepEqual(rows.map((r) => r.relname), Object.keys(DESESCALADA_DECLARADA).sort(),
     'apareció una vista que lee `personas` salteando el RLS y no está declarada arriba')
+})
+
+// ═══ LAS VISTAS `mi_*`: LA DESESCALADA CON PORTERO ADENTRO ═══
+//
+// Son cuatro —`mi_legajo`, `mi_asignacion`, `mi_hh_dia`, `mi_documento_legajo`— y corren como su
+// dueño A PROPÓSITO: el empleado no tiene permiso de lectura sobre `personas`, `registros_hh` ni
+// `documentacion_legajo`, y no puede tenerlo, porque `authenticated` es UN SOLO rol de Postgres
+// para los cuatro roles de la aplicación.
+//
+// LO QUE LAS HACE SEGURAS NO ES EL RLS: ES EL `where … = mi_persona_id()`. Ése es todo el
+// aislamiento. Una vista `mi_*` a la que se le caiga ese filtro no falla, no da error y no cambia
+// de aspecto: publica el legajo, las horas o los papeles de TODO EL PLANTEL, con 200 y sin una
+// línea en el log. Por eso el filtro es lo que se fija con un test y no una convención de nombre.
+const VISTAS_PROPIAS = ['mi_legajo', 'mi_asignacion', 'mi_hh_dia', 'mi_documento_legajo']
+
+for (const vista of VISTAS_PROPIAS) {
+  test(`\`${vista}\` filtra por mi_persona_id(): sin eso publica el plantel entero`, { skip: SIN_BASE }, async () => {
+    const { rows } = await query('select pg_get_viewdef($1::regclass, true) as def', [`public.${vista}`])
+    assert.equal(rows.length, 1, `la vista \`${vista}\` no existe: «Mi cuenta» queda sin fuente`)
+    assert.match(rows[0].def, /mi_persona_id\(\)/,
+      `\`${vista}\` perdió su portero y devuelve las filas de todas las personas`)
+  })
+}
+
+test('nadie más que Administración escribe el vínculo cuenta ↔ persona', { skip: SIN_BASE }, async () => {
+  // El grant de `perfiles` para `authenticated` es POR COLUMNA. Si alguien lo cambia por un grant
+  // de tabla, la policy `id = auth.uid()` deja de alcanzar: cualquiera podría vincularse el legajo
+  // que quiera —o ascenderse a dirección— sobre su propia fila, que la policy permite escribir.
+  const { rows } = await query(
+    `select column_name from information_schema.column_privileges
+      where grantee = 'authenticated' and table_schema = 'public'
+        and table_name = 'perfiles' and privilege_type = 'UPDATE' order by 1`,
+  )
+  assert.deepEqual(rows.map((r) => r.column_name), ['avatar_url', 'nombre', 'telefono'],
+    'cambió qué puede escribir un usuario común en `perfiles`: `rol` y `persona_id` no pueden estar')
 })

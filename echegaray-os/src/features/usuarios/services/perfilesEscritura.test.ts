@@ -52,3 +52,37 @@ test('el error crudo de la base no viaja a la pantalla', () => {
   assert.doesNotMatch(primeraFalla, /error:\s*error\.message/,
     'el mensaje de Postgres vuelve a mostrarse tal cual al usuario')
 })
+
+// ═══ EL VÍNCULO CUENTA ↔ PERSONA: EL CANARIO DE «MI CUENTA» ═══
+//
+// `vincularPersona` es lo que le abre a alguien SU legajo, sus horas y sus documentos. Es el único
+// camino que escribe `perfiles.persona_id`, y por eso las tres cosas que se vigilan acá no son de
+// estilo: si alguna se afloja, la consecuencia es que una persona ve los papeles de otra.
+//
+// Comprobado contra la base real el 20/08 con `set local role authenticated` y rollback: un
+// usuario común NO puede escribir esa columna («permission denied for table perfiles»), porque el
+// `grant update` cubre sólo `nombre`, `telefono` y `avatar_url`. La cerradura es ésa; esto vigila
+// que la puerta no se abra por otro lado.
+
+const vincular = fuente.slice(fuente.indexOf('export async function vincularPersona'))
+  .slice(0, fuente.slice(fuente.indexOf('export async function vincularPersona')).indexOf('\n}\n') + 3)
+
+test('vincular una persona a una cuenta lo hace SÓLO Administración', () => {
+  assert.notEqual(vincular, '', 'desapareció `vincularPersona`: sin ella «Mi cuenta» no se llena nunca')
+  assert.match(vincular, /await soloAdministracion\(\)/,
+    'quedó sin portero: cualquiera podría vincularse a sí mismo el legajo que quiera')
+  assert.match(vincular, /if \(!puerta\.ok\) return \{ ok: false/,
+    'llama al portero pero no corta cuando dice que no')
+})
+
+test('la persona que se vincula viene validada, no tal cual la mandó el formulario', () => {
+  assert.match(vincular, /z\s*\n?\s*\.object\(\{ persona_id/,
+    'el id de la persona entra sin validar: un valor cualquiera va derecho a la base')
+})
+
+test('que una persona ya esté tomada se dice en castellano, no con el nombre del índice', () => {
+  assert.match(vincular, /'23505'/,
+    'no se distingue la colisión del índice único: el usuario vería el nombre del índice de Postgres')
+  assert.match(vincular, /ya está vinculada a otra cuenta/,
+    'se perdió el mensaje que explica qué hacer cuando la persona ya tiene cuenta')
+})

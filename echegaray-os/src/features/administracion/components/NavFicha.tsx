@@ -1,13 +1,14 @@
-// LAS SOLAPAS DE LA FICHA — el mismo renglón de solapas que el workspace de la obra.
+// LAS SOLAPAS DE LA FICHA — el nivel 2 DENTRO del legajo.
 //
-// Se reusa el patrón de `NavObras` y `NavAdministracion` —línea, subrayado en el amarillo de la
-// marca, desplazable en el teléfono— en vez de inventar un tercero. Dos formas de decir "dónde
-// estoy" en la misma aplicación se aprenden dos veces y se aprenden mal.
+// Son las mismas cuatro preguntas que se le hacen a una persona: quién es, dónde estuvo, cuánto
+// trabajó y qué papeles tiene. Se dibujan con `Tabs` del design system —regla amarilla de 2px— en
+// vez de con una tercera copia de la misma barra escrita a mano.
 //
-// SON DOS NIVELES VISIBLES COMO MÁXIMO: la barra de Administración arriba y ésta. La ficha no abre
-// un tercero.
+// ACÁ NO ESTÁ LA BARRA DEL ÁREA, y es a propósito: el legajo está un nivel por debajo de Personas y
+// vuelve con el `← Personal` del encabezado. Poner las dos daría TRES niveles de navegación a la
+// vista, que es lo que prohíbe `design/system/LAYOUT_RESPONSIVE.md`.
 
-import Link from 'next/link'
+import { Tabs } from '@/shared/components/ds'
 
 export const VISTAS_FICHA = ['resumen', 'asignaciones', 'horas', 'documentos'] as const
 export type VistaFicha = (typeof VISTAS_FICHA)[number]
@@ -21,21 +22,13 @@ const LABEL: Record<VistaFicha, string> = {
 
 export function NavFicha({ activa, hrefDe }: { activa: VistaFicha; hrefDe: (v: VistaFicha) => string }) {
   return (
-    <nav
-      className="mb-5 flex gap-1 overflow-x-auto overscroll-x-contain border-b border-line"
-      data-testid="nav-ficha-persona"
-    >
-      {VISTAS_FICHA.map((v) => (
-        <Link
-          key={v}
-          href={hrefDe(v)}
-          data-testid={`nav-ficha-${v}`}
-          aria-current={v === activa ? 'page' : undefined}
-          className={`-mb-px shrink-0 border-b-2 px-3.5 py-2 text-[13px] transition-colors ${
-            v === activa ? 'border-marca font-medium text-ink' : 'border-transparent text-muted hover:text-ink'
-          }`}
-        >{LABEL[v]}</Link>
-      ))}
-    </nav>
+    <div className="mb-6" data-testid="nav-ficha-persona">
+      <Tabs
+        testid="tabs-ficha-persona"
+        tabs={VISTAS_FICHA.map((v) => ({
+          href: hrefDe(v), label: LABEL[v], activo: v === activa, testid: `nav-ficha-${v}`,
+        }))}
+      />
+    </div>
   )
 }

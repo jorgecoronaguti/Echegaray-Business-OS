@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Locator } from '@playwright/test'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { entrar, MARCA } from './util/obras-e2e'
 
@@ -28,6 +28,23 @@ import { entrar, MARCA } from './util/obras-e2e'
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL as string
 const SRV = process.env.SUPABASE_SERVICE_ROLE_KEY as string
 const sb = (): SupabaseClient => createClient(URL, SRV, { auth: { persistSession: false } })
+
+// ═══ ABRIR UNA SECCIÓN DEL PANEL (Design Handoff V2) ═══
+//
+// El panel dejó de tener pestañas: ahora son secciones plegables (`Plegable` del DS), cerradas por
+// defecto salvo Ejecución. Este ayudante abre la que haga falta y es idempotente.
+//
+// EL GUARDA VA CONTRA `null` Y NO CONTRA LA CADENA. Un atributo presente sin valor —`data-abierto`,
+// como `<details open>`— devuelve la cadena VACÍA, que es falsy: con `if (!attr)` la sección abierta
+// se volvería a cerrar de un clic y el test fallaría sin que hubiera un defecto.
+async function abrirSeccion(panel: Locator, testid: string): Promise<Locator> {
+  const seccion = panel.getByTestId(testid)
+  await expect(seccion).toBeVisible({ timeout: 20_000 })
+  if ((await seccion.getAttribute('data-abierto')) === null) {
+    await seccion.getByRole('button').first().click()
+  }
+  return seccion
+}
 
 const OBRA = 'messina'
 
@@ -130,14 +147,17 @@ test('14-20 · un parte mueve la producción, el avance, las HH de la obra y las
 
   await entrar(page)
   await page.goto(`/obras/${OBRA}?vista=ejecucion`)
-  await page.getByTestId('abrir-registrar').click()
+  // El parte YA NO SE ABRE: desde el Design Handoff V2 (20/08/2026) el formulario del día es la
+  // columna izquierda de la solapa y está siempre a la vista, y el reparto de horas dejó de ser un
+  // bloque plegado. Un parte diario que hay que desplegar es un parte diario que se carga dos
+  // semanas. Por eso se fueron el clic en `abrir-registrar` y el clic en el `summary` de
+  // `parte-personal`: no se borró funcionalidad, se dejó de esconder.
   const panel = page.getByTestId('panel-registrar')
   await panel.getByTestId('parte-actividad').selectOption(actividadId)
   await panel.getByTestId('parte-cantidad').fill('45')
   await panel.getByTestId('parte-comentario').fill(`${MARCA} parte de prueba`)
-  await panel.getByTestId('parte-personal').locator('summary').click()
   await panel.getByTestId(`horas-${personaId}`).fill('8')
-  await panel.getByTestId('form-ejecucion').getByRole('button', { name: 'Guardar parte' }).click()
+  await panel.getByTestId('form-ejecucion').getByRole('button', { name: 'Registrar parte' }).click()
 
   // ═══ UNA CARGA, CUATRO EFECTOS — leídos en la base, no en la pantalla ═══
   await expect.poll(async () => {
@@ -213,9 +233,7 @@ test('8 · la tarea descompone la actividad, y no aparece como una fila más del
 
   // LAS TAREAS VIVEN EN SU PESTAÑA desde el 20/08: el panel dejó de ser una columna de bloques
   // plegados y pasó a Resumen · Tareas · Ejecución · Dependencias · Documentos.
-  await panel.getByTestId('tab-panel-tareas').click()
-  const bloque = panel.getByTestId('bloque-tareas')
-  if ((await bloque.getAttribute('open')) === null) await bloque.locator('summary').click()
+  const bloque = await abrirSeccion(panel, 'seccion-tareas')
   await bloque.getByTestId('tarea-nombre').fill(`${MARCA} encofrado`)
   await bloque.getByTestId('form-tarea').getByRole('button', { name: 'Agregar' }).click()
 
