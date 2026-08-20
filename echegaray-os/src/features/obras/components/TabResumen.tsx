@@ -69,7 +69,7 @@ function Metrica({ k, v, falta, contra, tonoContra = 'muted', pista, sub, tono =
         {v == null ? (
           <span className="text-[15px] leading-none text-faint" data-nulo="">{falta ?? 'sin cargar'}</span>
         ) : (
-          <span className={`font-mono text-[24px] font-semibold leading-none tracking-[-0.02em] tabular-nums ${TONO_VALOR[tono]}`}>{v}</span>
+          <span className={`font-mono text-[22px] font-semibold leading-none tracking-[-0.01em] tabular-nums ${TONO_VALOR[tono]}`}>{v}</span>
         )}
         {v != null && contra && (
           <span className={`truncate text-[12px] ${tonoContra === 'neg' ? 'text-neg' : tonoContra === 'pos' ? 'text-pos' : 'text-muted'}`}>

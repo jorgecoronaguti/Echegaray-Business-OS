@@ -29,8 +29,11 @@ function FilaMaestro({ m }: { m: Maestro }) {
       data-testid={`ir-${m.clave}`}
       className="group flex items-baseline gap-3 border-b border-[#EFEEEA] py-[15px] last:border-0 hover:bg-surface-quiet"
     >
-      <span className="flex w-[250px] shrink-0 items-baseline gap-2.5">
-        <span className="text-[14.5px] font-medium text-ink group-hover:underline">{m.titulo}</span>
+      {/* A 390px la fila entera son 358px útiles: con el nombre clavado en 250 y la señal de
+          estado sin poder encoger, la PÁGINA se corría 2px de costado. El nombre cede
+          primero porque es el único de los tres que se puede leer truncado. */}
+      <span className="flex w-[150px] shrink-0 items-baseline gap-2.5 sm:w-[250px]">
+        <span className="text-[14px] font-medium text-ink group-hover:underline">{m.titulo}</span>
         {/* SIN LECTURA NO HAY CONTADOR — NUNCA UN CERO. Un «0» acá afirmaría que no hay ninguno, y
             lo que pasó fue que la consulta falló. */}
         {m.cuenta !== null && <Num className="text-faint">{m.cuenta}</Num>}

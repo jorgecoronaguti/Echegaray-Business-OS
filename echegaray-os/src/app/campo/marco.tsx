@@ -28,7 +28,7 @@ export function MarcoCampo({
             ← Campo
           </Link>
         )}
-        <h1 className="mt-2 text-[19px] font-semibold tracking-[-0.01em] text-ink">{titulo}</h1>
+        <h1 className="mt-2 text-[20px] font-semibold tracking-[-0.01em] text-ink">{titulo}</h1>
         {subtitulo && <p className="mt-1 text-[12.5px] text-muted">{subtitulo}</p>}
         <div className="mt-5">{children}</div>
       </div>

@@ -355,7 +355,7 @@ export function GanttObras({ filas, hoyIso }: { filas: FilaObra[]; hoyIso: strin
                     <text x={m.x0 + 6} y={15} fontSize={11} className="fill-muted capitalize">{m.label}</text>
                   </g>
                 ))}
-                {ticks.map((t) => <text key={t.x} x={t.x + 2} y={32} fontSize={9} className="fill-faint">{t.label}</text>)}
+                {ticks.map((t) => <text key={t.x} x={t.x + 2} y={32} fontSize={10} className="fill-faint">{t.label}</text>)}
               </svg>
             </div>
 

@@ -129,7 +129,7 @@ function Total({ rotulo, valor, sub, grande }: { rotulo: string; valor: string; 
     <div className="min-w-0">
       <div className="text-[11.5px] text-muted">{rotulo}</div>
       <div className="mt-0.5 flex items-baseline gap-2">
-        <Num className={`font-semibold tracking-[-0.01em] text-ink ${grande ? '!text-[30px] sm:!text-[20px]' : '!text-[20px]'}`}>{valor}</Num>
+        <Num className={`font-semibold tracking-[-0.01em] text-ink ${grande ? '!text-[28px] sm:!text-[20px]' : '!text-[20px]'}`}>{valor}</Num>
         {sub && <span className="min-w-0 truncate text-[11.5px] text-faint">{sub}</span>}
       </div>
     </div>

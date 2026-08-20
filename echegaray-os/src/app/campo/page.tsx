@@ -104,7 +104,7 @@ export default async function CampoPage() {
         ) : (
           <div className="text-[11.5px] text-faint">sin obra asignada</div>
         )}
-        <h1 className="mt-1 text-[19px] font-semibold tracking-[-0.01em] text-ink">
+        <h1 className="mt-1 text-[20px] font-semibold tracking-[-0.01em] text-ink">
           Hola, {nombre.split(' ')[0]}
         </h1>
       </div>

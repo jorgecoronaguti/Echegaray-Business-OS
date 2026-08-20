@@ -36,10 +36,21 @@ export function Avatar({
       {url ? (
         <img src={url} alt={`Foto de ${nombre}`} width={lado} height={lado} className="h-full w-full object-cover" />
       ) : (
-        <span style={{ fontSize: Math.round(lado * 0.34) }} className="font-semibold leading-none" aria-hidden>
+        // LAS INICIALES TAMBIÉN SALEN DE LA ESCALA. Era `lado * 0,34`, que para el avatar de 88px
+        // daba 30px — un tamaño que no está entre los nueve del handoff. Que sea "casi" texto no lo
+        // exime: un cálculo que produce cualquier número produce, con el tiempo, todos.
+        <span style={{ fontSize: escalon(lado) }} className="font-semibold leading-none" aria-hidden>
           {iniciales || '·'}
         </span>
       )}
     </div>
   )
+}
+
+/** El tamaño de las iniciales para un avatar de `lado` px, tomado de la escala del handoff. */
+function escalon(lado: number): number {
+  if (lado >= 72) return 28
+  if (lado >= 48) return 20
+  if (lado >= 32) return 14
+  return 11
 }

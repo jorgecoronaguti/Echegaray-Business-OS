@@ -56,7 +56,7 @@ function Barra({ pct }: { pct: number | null }) {
 function Kpi({ k, v, sub, neg }: { k: string; v: string; sub: string; neg?: boolean }) {
   return (
     <div className="min-w-0" data-kpi={k}>
-      <div className="text-[9.5px] font-semibold uppercase tracking-[0.08em] text-faint">{k}</div>
+      <div className="text-[10px] font-medium uppercase tracking-[0.06em] text-faint">{k}</div>
       <div className="mt-1 flex items-baseline gap-1.5">
         <span className={`font-mono text-[16px] font-semibold tabular-nums ${neg ? 'text-neg' : 'text-ink'}`}>{v}</span>
         <span className="truncate text-[11.5px] text-muted">{sub}</span>

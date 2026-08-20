@@ -63,7 +63,7 @@ export function CabeceraGantt({ escala, hoyIso, hitos }: {
       {ticks.map((t) => (
         <div
           key={'d' + t.x}
-          className={`absolute top-[30px] flex h-5 items-center justify-center font-mono text-[9.5px] tabular-nums ${
+          className={`absolute top-[30px] flex h-5 items-center justify-center font-mono text-[10px] tabular-nums ${
             t.finde ? 'text-line-strong' : 'text-muted'
           }`}
           style={{ left: t.x, width: porDia ? px : undefined }}
@@ -82,7 +82,7 @@ export function CabeceraGantt({ escala, hoyIso, hitos }: {
       ))}
       {hoyVisible && (
         <div
-          className="absolute top-[52px] flex h-4 items-center rounded-[2px] bg-marca px-[5px] text-[9px] font-bold tracking-[0.08em] text-ink"
+          className="absolute top-[52px] flex h-4 items-center rounded-[2px] bg-marca px-[5px] text-[10px] font-semibold tracking-[0.06em] text-ink"
           style={{ left: Math.max(0, xHoy - 8) }}
           data-testid="bandera-hoy"
         >HOY</div>
@@ -146,13 +146,18 @@ function FilaLienzo({ f, i, d }: { f: Fila; i: number; d: DatosLienzo }) {
           {/* LA LÍNEA BASE, SÓLO SI ESTÁ SELLADA. Punteada y debajo de la barra: es contra qué se
               mide el desvío, y dibujarla donde no existe diría que el desvío es cero. */}
           {a.inicio_base && a.fin_base && (
+            // EL PUNTEADO ES UN BORDE, NO UN GRADIENTE. Con `repeating-linear-gradient` el
+            // resultado se ve igual, pero el handoff prohíbe los gradientes sin excepciones y la
+            // regla ejecutable los busca por `background-image` — sin distinguir el que decora del
+            // que dibuja una línea de puntos. Una excepción "pero éste es distinto" es exactamente
+            // como una regla absoluta deja de serlo.
             <div
-              className="absolute h-[2px]"
+              className="absolute border-t-2 border-dotted"
               style={{
                 left: escala.x(a.inicio_base),
                 width: Math.max(4, escala.x(a.fin_base) + escala.px - escala.x(a.inicio_base)),
                 top: disp.alto / 2 + ALTO_BARRA / 2 + 2,
-                background: `repeating-linear-gradient(90deg, ${BASE} 0 3px, transparent 3px 6px)`,
+                borderColor: BASE,
               }}
               data-testid="baseline-gantt"
             />
