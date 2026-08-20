@@ -2,7 +2,7 @@
 //
 // ═══ POR QUÉ ES UN COMPONENTE DE SERVIDOR QUE LEE SOLO ═══
 //
-// Se dibuja en dos lugares —al terminar el alta y en el Resumen de la obra— y en los dos tiene que
+// Se dibuja en dos lugares —al costado del alta y en el Resumen de la obra— y en los dos tiene que
 // decir exactamente lo mismo. Si los insumos llegaran por props, cada pantalla tendría que armarlos,
 // y el día que una se olvide de una consulta el checklist diría dos verdades distintas de la misma
 // obra. Es la misma familia de defecto que las DOS definiciones de la deuda en Proveedores. Acá la
@@ -10,38 +10,44 @@
 //
 // ═══ LO QUE NO TIENE, A PROPÓSITO ═══
 //
-// Ni porcentaje de preparación, ni barra, ni semáforo de tres colores, ni una tarjeta por línea.
-// *"Esto NO es un dashboard. Es un checklist operativo de preparación."* Un ✓ y un rótulo
-// «Pendiente» alcanzan para saber qué hacer; lo demás es decoración que compite con el trabajo.
+// Ni porcentaje de preparación, ni barra, ni semáforo de tres colores, ni una tarjeta por línea, ni
+// una caja alrededor. *"Esto NO es un dashboard. Es un checklist operativo de preparación."* Un ✓ y
+// el faltante CONCRETO alcanzan para saber qué hacer; lo demás es decoración que compite con el
+// trabajo. La lista va con hairline superior y divisores de fila, igual que cualquier tabla del OS
+// (`design/system/COMPONENTS.md` §Table).
 //
 // ═══ EL ROL SE RESUELVE ACÁ, Y FALLA AL NIVEL MENOS PRIVILEGIADO ═══
 //
-// Un perfil ilegible cae en «Obras» (`esAdministracion(null) === false`), o sea: ante la duda, la
-// línea de Contrato NO se dibuja. El modo de fallar de un default permisivo sería publicar el
-// estado del contrato a quien no debe verlo; el de éste, esconderle una línea a quien sí.
+// Un perfil ilegible cae en «Obras» (`veEconomia(null) === false`), o sea: ante la duda, la línea de
+// Contrato NO se dibuja. El modo de fallar de un default permisivo sería publicar el estado del
+// contrato a quien no debe verlo; el de éste, esconderle una línea a quien sí.
 
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { veEconomia } from '@/features/auth/types/areas'
+import { Eyebrow } from '@/shared/components/ds'
 import { getPreparacion } from '../services/preparacionService'
 import { loQueFalta, preparacionDeObra, type LineaPreparacion } from '../services/preparacion'
 
 function Fila({ l }: { l: LineaPreparacion }) {
   return (
-    <li data-testid={`preparacion-${l.clave}`} data-listo={l.listo ? 'si' : 'no'}>
+    <li data-testid={`preparacion-${l.clave}`} data-listo={l.listo ? 'si' : 'no'} className="border-b border-[#EFEEEA]">
       <Link
         href={l.href}
-        className="flex items-baseline gap-2.5 px-4 py-2 text-[13px] hover:bg-surface-quiet"
+        className="flex h-10 items-center gap-3 text-[13px] transition-colors hover:bg-surface-quiet"
       >
+        {/* ✓ o `·`. El punto hueco es «todavía no», no «mal»: el checklist no reta a nadie. */}
         <span
           aria-hidden
           className={`w-3 shrink-0 text-center ${l.listo ? 'text-pos' : 'text-faint'}`}
         >{l.listo ? '✓' : '·'}</span>
         <span className="w-[104px] shrink-0 text-muted">{l.titulo}</span>
-        <span className={`min-w-0 flex-1 ${l.listo ? 'text-faint' : 'text-ink'}`}>{l.detalle}</span>
+        {/* EL FALTANTE CONCRETO ES LO ÚNICO QUE CONVIERTE LA LÍNEA EN TRABAJO: «0 de 344 actividades
+            con línea base» dice cuánto falta y qué hay que hacer; «pendiente» no dice nada. */}
+        <span className={`min-w-0 flex-1 truncate ${l.listo ? 'text-faint' : 'text-ink'}`}>{l.detalle}</span>
         {/* La flecha sólo donde hay trabajo: en una línea ya resuelta sería una invitación a nada. */}
-        <span className="shrink-0 text-faint">{l.listo ? '' : '›'}</span>
+        <span className="w-3 shrink-0 text-right text-faint">{l.listo ? '' : '›'}</span>
       </Link>
     </li>
   )
@@ -79,35 +85,35 @@ export async function ChecklistPreparacion({
   if (ocultarSiCompleto && faltan.length === 0) return null
 
   const lista = (
-    <ul
-      data-testid="checklist-preparacion"
-      className="divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface"
-    >
+    <ul data-testid="checklist-preparacion" className="border-t border-line">
       {lineas.map((l) => <Fila key={l.clave} l={l} />)}
     </ul>
   )
 
   const resumenTexto = faltan.length === 0
     ? 'Preparación completa'
-    : `Preparación: ${faltan.length} de ${lineas.length} pendientes`
+    : `${faltan.length} de ${lineas.length} pendientes`
 
   if (!plegado) {
     return (
       <section data-testid="preparacion">
-        <h2 className="mb-2 text-[11px] font-medium uppercase tracking-wide text-faint">
-          Estado de preparación
-        </h2>
+        <div className="mb-2.5 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+          <Eyebrow>Estado de preparación</Eyebrow>
+          <span className="text-[11.5px] text-faint" data-testid="preparacion-cuenta">{resumenTexto}</span>
+        </div>
         {lista}
       </section>
     )
   }
 
   return (
-    <details data-testid="preparacion" className="rounded-lg border border-line bg-surface">
-      <summary className="cursor-pointer px-4 py-2.5 text-[13px] text-muted" data-testid="preparacion-abrir">
-        {resumenTexto} <span className="text-faint">· {faltan.map((f) => f.titulo).join(', ')}</span>
+    <details data-testid="preparacion" className="border-t border-line">
+      <summary className="flex h-disclosure cursor-pointer items-center gap-2 text-[13px] text-muted" data-testid="preparacion-abrir">
+        <span className="font-medium text-ink">Preparación</span>
+        <span>{resumenTexto}</span>
+        <span className="min-w-0 flex-1 truncate text-faint">· {faltan.map((f) => f.titulo).join(', ')}</span>
       </summary>
-      <div className="border-t border-line p-3">{lista}</div>
+      <div className="pb-3">{lista}</div>
     </details>
   )
 }

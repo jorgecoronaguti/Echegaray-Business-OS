@@ -52,7 +52,29 @@ function plano(s: string): string {
 export interface ObraFiltrable {
   nombre: string | null
   cliente_nombre?: string | null
+  /** Lo que dijo la fuente cuando el cliente no tiene ficha. Ver `clienteVisible`. */
+  cliente_texto?: string | null
   etapa?: string | null
+}
+
+/**
+ * ═══ SE BUSCA POR EL CLIENTE QUE LA PANTALLA MUESTRA, NO POR OTRO ═══
+ *
+ * La celda de cliente de la cartera dibuja `cliente_nombre ?? cliente_texto` —el canónico si existe,
+ * el texto de origen si no— y el orden de la tabla compara EXACTAMENTE ese mismo par
+ * (`ordenObras.valorDe`, caso `cliente`). La búsqueda, en cambio, sólo miraba `cliente_nombre`.
+ *
+ * El defecto que eso produce no da ningún error: una obra cuyo cliente todavía no está vinculado a
+ * una ficha se puede VER en la columna, se puede ORDENAR por ella, y desaparece al tipear su nombre
+ * en el buscador. Quien busca concluye que la obra no existe —que es la conclusión más cara que
+ * puede sacar de esta pantalla— justo sobre las obras peor cargadas, que son las que más se buscan.
+ *
+ * Es la misma familia que las DOS definiciones de la deuda de Proveedores: dos lecturas del mismo
+ * concepto que se separan en silencio. Acá el concepto es «el cliente de esta obra» y se resuelve en
+ * un solo lugar, del que leen el filtro y —por su propia vía— la columna.
+ */
+export function clienteVisible(o: ObraFiltrable): string {
+  return (o.cliente_nombre ?? o.cliente_texto ?? '').trim()
 }
 
 export function filtrar<T extends ObraFiltrable>(obras: T[], f: FiltroObras): T[] {
@@ -60,6 +82,6 @@ export function filtrar<T extends ObraFiltrable>(obras: T[], f: FiltroObras): T[
   return obras.filter((o) => {
     if (f.etapa && o.etapa !== f.etapa) return false
     if (!q) return true
-    return plano(`${o.nombre ?? ''} ${o.cliente_nombre ?? ''}`).includes(q)
+    return plano(`${o.nombre ?? ''} ${clienteVisible(o)}`).includes(q)
   })
 }

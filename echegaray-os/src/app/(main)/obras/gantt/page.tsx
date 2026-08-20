@@ -1,4 +1,4 @@
-// GANTT GLOBAL — LA CARTERA EN UN RENGLÓN POR OBRA.
+// GANTT DE CARTERA — LA CARTERA EN UN RENGLÓN POR OBRA.
 //
 // El dueño, textual: *"GANTT GLOBAL = obras. GANTT OBRA = actividades. No son dos sistemas: el
 // global agrega la información de las actividades canónicas por `obra_id`. No duplicar datos."*
@@ -7,14 +7,15 @@
 //
 // En `obra_plan_vs_real`, la vista que ya publica `min(inicio_plan)` / `max(fin_plan)` /
 // `min(inicio_base)` / `max(fin_base)` por obra sobre `obra_actividad`, y que es la misma que
-// alimenta las columnas de plazo del portafolio y el bloque «Plan contra real» de cada obra. No hay
+// alimenta las columnas de plazo de la cartera y el bloque «Plan contra real» de cada obra. No hay
 // columna nueva, no hay tabla nueva y no hay una segunda suma escrita en TypeScript: el fin de obra
 // que se ve acá es literalmente el mismo número que la ficha usa para decir si la obra se atrasó.
 //
 // ═══ ESTA PANTALLA NO HABLA DE PLATA ═══
 //
 // La lectura pide las columnas de plazo una por una (`COLUMNAS_PLAZO`). Contrato, presupuesto y
-// márgenes no se piden — ni siquiera enmascarados. Un Gantt es una pregunta sobre el tiempo.
+// márgenes no se piden — ni siquiera enmascarados. Un Gantt es una pregunta sobre el tiempo, y el
+// handoff lo dice con todas las letras (`design/screens/obras.md` §1h).
 
 import { createClient } from '@/lib/supabase/server'
 import { filasDeObras, getPlazoPorObra } from '@/features/obras/services/ganttObras'
@@ -60,7 +61,9 @@ export default async function GanttGlobalPage({
       subtitle={
         `${filas.length} obra${filas.length === 1 ? '' : 's'} en la cartera, ${conPlan} con fechas de plan. `
         + `Cada barra va del inicio al fin de la obra, agregados de sus actividades. Tocar una abre su cronograma.`
-        + (archivadas ? ` ${archivadas} archivada${archivadas === 1 ? '' : 's'} queda${archivadas === 1 ? '' : 'n'} afuera.` : '')
+        + (archivadas && verArchivadas !== '1'
+            ? ` ${archivadas} archivada${archivadas === 1 ? '' : 's'} queda${archivadas === 1 ? '' : 'n'} afuera.`
+            : '')
       }
     >
       {/* GUARDA CÓMO QUEDÓ ESTA VISTA. Es lo único que corre en el navegador de esta pantalla, y
