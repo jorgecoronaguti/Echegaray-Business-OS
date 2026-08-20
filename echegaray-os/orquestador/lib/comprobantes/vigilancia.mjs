@@ -43,6 +43,18 @@ export const SIN_GASTO = Object.freeze(['no_esta', 'reserva_huerfana'])
 export const SIN_RASTRO = Object.freeze(['fila_movida', 'reserva_cargada'])
 
 /**
+ * NO SE PUDO VERIFICAR. Ni plata ni rastro: una AUSENCIA DE VEREDICTO.
+ *
+ * Lo emite `conciliarRegistro` cuando la pestaña no devolvió los importes y por lo tanto la huella
+ * más débil —número + importe— no se pudo construir de ese lado. Sin ella, un comprobante cuyo
+ * nombre de celda difiere del nombre del registro se ve exactamente igual que uno que no está.
+ *
+ * Va aparte a propósito: meterlo en `SIN_GASTO` es lo que hizo que el bot gritara «el costo de esas
+ * obras está sobrestimado» sobre seis comprobantes que estaban perfectamente cargados.
+ */
+export const SIN_VEREDICTO = Object.freeze(['no_verificable'])
+
+/**
  * Los descalces registro↔pestaña de un resultado de `auditarCompras`. PURA.
  *
  * Trabaja sobre `conciliado` y no sobre `hallazgos`: `conciliado` viene tipado por estado y el estado
@@ -59,8 +71,12 @@ export function descalces(resultado = {}) {
   if (!Array.isArray(c)) return { disponible: false, sinGasto: [], sinRastro: [], plata: 0, total: 0 }
   const sinGasto = c.filter((x) => SIN_GASTO.includes(x.estado))
   const sinRastro = c.filter((x) => SIN_RASTRO.includes(x.estado))
+  const sinVeredicto = c.filter((x) => SIN_VEREDICTO.includes(x.estado))
   const plata = sinGasto.reduce((a, x) => a + Math.abs(Number(x.total) || 0), 0)
-  return { disponible: true, sinGasto, sinRastro, plata, total: sinGasto.length + sinRastro.length }
+  return {
+    disponible: true, sinGasto, sinRastro, sinVeredicto, plata,
+    total: sinGasto.length + sinRastro.length,
+  }
 }
 
 /**
@@ -87,6 +103,10 @@ export function evidenciaDescalce(d = {}) {
     return `${quien}${d.total != null ? ` (${pesos(d.total)})` : ''} tiene la clave RESERVADA y ninguna fila:`
       + ' la escritura no llegó a ocurrir. No está en Compras y no se puede volver a mandar.'
   }
+  if (d.estado === 'no_verificable') {
+    return `${quien} no se pudo cruzar contra Compras: la lectura no trajo los importes, y sin ellos`
+      + ' la única huella que empareja a este comprobante no se puede construir. No es un faltante.'
+  }
   if (d.estado === 'fila_movida') {
     return `${quien} está en la fila ${d.filaReal} de Compras, pero el registro dice la ${d.filaRegistrada},`
       + ' que tiene otro comprobante. El gasto está bien; lo que miente es el rastro.'
@@ -96,6 +116,9 @@ export function evidenciaDescalce(d = {}) {
 
 /** Qué hacer con él, en las palabras de quien lo va a arreglar. PURA. */
 export function recomendacionDescalce(d = {}) {
+  if (SIN_VEREDICTO.includes(d.estado)) {
+    return 'Nada: volver a correr la vigilancia cuando la pestaña haya terminado de recalcular.'
+  }
   if (SIN_GASTO.includes(d.estado)) {
     return 'Verificar el comprobante en papel/ARCA. Si el gasto es real: soltar la reserva de esa clave'
       + ' (`comunicacion.comprobantes_cargados`) y volver a cargarlo. Si no lo es: borrar la fila del registro.'
@@ -118,8 +141,16 @@ export function recomendacionDescalce(d = {}) {
 export function avisoDescalces(d = {}, { nuevos = null } = {}) {
   const sinGasto = d.sinGasto ?? []
   const sinRastro = d.sinRastro ?? []
-  if (!sinGasto.length && !sinRastro.length) return null
+  const sinVeredicto = d.sinVeredicto ?? []
+  if (!sinGasto.length && !sinRastro.length && !sinVeredicto.length) return null
   const l = []
+  // LO QUE NO SE PUDO VERIFICAR SE DICE, Y SE DICE COMO LO QUE ES. No es una acusación —no dice que
+  // falte plata— pero tampoco se calla: callarlo sería afirmar que el control corrió y dio limpio.
+  if (sinVeredicto.length) {
+    l.push(`ℹ No pude verificar ${sinVeredicto.length} comprobante(s) contra Compras: la pestaña no`
+      + ' devolvió los importes en esta lectura (suele pasar justo después de una carga, mientras'
+      + ' recalcula). No afirmo que falten: vuelvo a mirarlos en la próxima corrida.')
+  }
   if (sinGasto.length) {
     l.push(`⛔ **${sinGasto.length} comprobante(s) figuran cargados y NO están en Compras** (${pesos(d.plata)}).`
       + ' La clave bloquea recargarlos y el gasto no está: el costo de esas obras está sobrestimado.')
