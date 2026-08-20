@@ -91,6 +91,12 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
           }))}
         />
         <div className="ml-auto flex items-center gap-4">
+          {/* «En obra ahora» va al lado de Cuadrillas y por el mismo motivo: es NAVEGACIÓN dentro de
+              Personal, no una sección nueva del sistema. Quién está hoy y quién es el plantel son la
+              misma pregunta mirada a dos distancias. */}
+          <BotonEnlace href="/administracion/personas/en-obra" variante="discreta" data-testid="ir-en-obra">
+            En obra ahora
+          </BotonEnlace>
           <BotonEnlace href="/administracion/personas/cuadrillas" variante="discreta" data-testid="ir-cuadrillas">
             Cuadrillas
           </BotonEnlace>
