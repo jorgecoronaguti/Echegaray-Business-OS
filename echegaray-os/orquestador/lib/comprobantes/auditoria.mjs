@@ -285,6 +285,22 @@ export function conciliarRegistro(entradas = [], registros = [], opciones = {}) 
   // sobrestimado por ese importe»). Sin `opciones` el comportamiento es exactamente el anterior más
   // la red por número+importe.
   const indice = indicePorHuella(registros, opciones)
+  // ═══ LA RED MÁS DÉBIL SE PUEDE CAER, Y ENTONCES NO SE AFIRMA (20/08/2026) ═══
+  //
+  // Seis comprobantes emparejan SÓLO por `num:` —número + importe al centavo— porque su nombre de
+  // celda no es el del registro y su CUIT no está en ninguna fuente de nombres. Esa huella necesita
+  // el IMPORTE del lado de la pestaña, y el importe de Compras vive en `O`, que es una FÓRMULA.
+  //
+  // Si la lectura no trae los importes —la pestaña recalculando justo después de una carga, un rango
+  // que volvió corto— del lado de la pestaña no se puede construir una sola huella `num:`, y esos
+  // seis pasan a `no_esta`: *«figuran cargados y NO están en Compras… el costo de esas obras está
+  // sobrestimado»*. Es el aviso más caro que tiene el vigía y es FALSO: las filas están, con su
+  // número y su importe, algunas desde hace días. Pasó el 20/08 con las filas 846, 857, 864, 870,
+  // 872 y 875.
+  //
+  // Un control que no puede evaluar su propia clave no dice «no está»: dice que no pudo. Se mide
+  // sobre el índice —¿construyó ALGUNA huella de número?— y no sobre lo que el llamador afirme.
+  const hayRedDeNumero = [...indice.keys()].some((k) => k.startsWith('num:'))
   return (entradas ?? []).map((e) => {
     // `Number(null)` es 0 y `Number.isInteger(0)` es true: sin el `== null` de adelante, una RESERVA
     // sin fila se leería como «cargado en la fila 0» y los cinco comprobantes que se reservaron y
@@ -293,8 +309,11 @@ export function conciliarRegistro(entradas = [], registros = [], opciones = {}) 
     const { filas: halladas, por } = candidatasEnCompras(e, indice, opciones)
     const filaReal = halladas.length === 1 ? halladas[0].fila : (halladas.find((h) => h.fila === filaRegistrada)?.fila ?? halladas[0]?.fila ?? null)
     let estado
-    if (filaRegistrada == null) estado = filaReal == null ? 'reserva_huerfana' : 'reserva_cargada'
-    else if (filaReal == null) estado = 'no_esta'
+    // Sin la red de número, un `no_esta` puede ser un nombre distinto de los dos lados y nada más.
+    const sinPoderVerificar = !hayRedDeNumero && centavos(e.total) != null
+    if (filaRegistrada == null) {
+      estado = filaReal != null ? 'reserva_cargada' : (sinPoderVerificar ? 'no_verificable' : 'reserva_huerfana')
+    } else if (filaReal == null) estado = sinPoderVerificar ? 'no_verificable' : 'no_esta'
     else if (filaReal !== filaRegistrada) estado = 'fila_movida'
     else estado = 'ok'
     return {
