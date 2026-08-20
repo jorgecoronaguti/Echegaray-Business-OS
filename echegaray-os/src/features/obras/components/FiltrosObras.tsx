@@ -27,6 +27,7 @@
 // visita: ver `services/vistaRecordada.ts`.
 
 import Link from 'next/link'
+import { IconoBuscar } from '@/shared/components/ds'
 import { ETAPAS, ETAPA_LABEL, type Etapa } from '../types'
 import { CLAVE_LIMPIAR } from '../services/vistaRecordada'
 import type { FiltroObras } from '../services/filtroObras'
@@ -68,15 +69,7 @@ export function FiltrosObras({
           ? <input key={k} type="hidden" name={k} value={v} />
           : null)}
         {filtro.etapa && <input type="hidden" name="etapa" value={filtro.etapa} />}
-        {/* LA LUPA VA COMO SVG Y NO COMO CARÁCTER. `⌕` (U+2315) no existe en IBM Plex Sans: en la
-            captura del 20/08 salía como el rectángulo del glifo faltante, justo delante del
-            placeholder. Un icono que depende de que la fuente lo tenga es un icono que un día no
-            está — y no falla, se dibuja mal. */}
-        <svg aria-hidden width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor"
-             strokeWidth="1.8" className="shrink-0 text-faint">
-          <circle cx="9" cy="9" r="6" />
-          <line x1="13.5" y1="13.5" x2="18" y2="18" strokeLinecap="round" />
-        </svg>
+        <IconoBuscar />
         <input
           name="q"
           defaultValue={filtro.q}

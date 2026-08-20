@@ -18,8 +18,7 @@
 // desincronizar con lo que se ve.
 
 import { useMemo, useState } from 'react'
-import { Boton, Estado, Filtros, Nulo, Num, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
-import { IconoBuscar } from '@/features/administracion/components/Controles'
+import { Boton, Estado, Filtros, IconoBuscar, Nulo, Num, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
 import { ROL_LABEL, type Rol } from '@/features/auth/types'
 import { ultimoIngresoDicho, veTodasLasObras } from '../services/reglas'
 import { AltaUsuario } from './AltaUsuario'
@@ -90,10 +89,10 @@ export function UsuariosManager({
           su estado en dos extremos que el ojo no relaciona. */}
       <div className={`min-w-0 flex-1 ${alta || usuario ? '' : 'lg:max-w-[1160px]'}`}>
         <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-3">
-          {/* NO ES EL `Buscador` DEL DS por una sola razón: su lupa es el carácter «⌕», que IBM
-              Plex Sans no tiene y el navegador pinta como un rectángulo vacío. La anatomía es la
-              misma —hairline inferior, icono de 13px, sin caja—; sólo cambia el icono, que acá es
-              un SVG. Cuando el DS cambie el suyo, esto vuelve a ser `<Buscador>`. */}
+          {/* La anatomía es la del DS —hairline inferior, lupa de 13px, sin caja— y la lupa es
+              literalmente la del DS. Se arma acá y no con `<Buscador>` porque este listado filtra
+              en el navegador sobre una lista ya cargada: el `data-testid` y el `aria-label` son
+              propios de la cuenta, no de una lista genérica. */}
           <div className="flex min-w-0 items-center gap-2 border-b border-line sm:w-[220px]">
             <IconoBuscar />
             <input

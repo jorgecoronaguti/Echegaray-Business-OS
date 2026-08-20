@@ -22,7 +22,6 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { FormAccion, type AccionFormulario } from '@/shared/components/ui'
-import { PRIMARIA_FORM } from './Controles'
 
 export function PanelEdicion({
   titulo, subtitulo, accion, cerrarHref, enviar = 'Guardar', ayuda, children, testid,
@@ -59,7 +58,7 @@ export function PanelEdicion({
         </div>
         {subtitulo && <p className="mt-1 truncate text-[12.5px] text-muted">{subtitulo}</p>}
         <div className="mt-4">
-          <FormAccion accion={accion} testid={`${testid}-form`} enviar={enviar} className={PRIMARIA_FORM}>
+          <FormAccion accion={accion} testid={`${testid}-form`} enviar={enviar}>
             {children}
           </FormAccion>
         </div>

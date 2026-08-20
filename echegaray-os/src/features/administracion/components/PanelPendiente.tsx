@@ -21,7 +21,6 @@ import Link from 'next/link'
 import { Campo, CTRL, FormAccion, type AccionFormulario } from '@/shared/components/ui'
 import { Eyebrow, Nulo, Num, Tabla, Td, Th, THead, Tr } from '@/shared/components/ds'
 import { fecha, plata } from '@/features/obras/components/formato'
-import { PRIMARIA_FORM } from './Controles'
 import { ETIQUETA_TIPO, type GrupoPendiente } from '../services/imputacionService'
 
 export interface ObraElegible {
@@ -113,7 +112,6 @@ export function PanelPendiente({ grupo, obras, resolver, cerrarHref, nombreDeObr
           testid="form-resolver"
           enviar={`Resolver ${grupo.cantidad} fila(s)`}
           mensajeOk="Resuelto. El costo se reimputa solo."
-          className={PRIMARIA_FORM}
         >
           <input type="hidden" name="clave" value={grupo.clave} />
           <input type="hidden" name="ejemplo" value={grupo.textos[0]} />

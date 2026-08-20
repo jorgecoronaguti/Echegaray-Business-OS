@@ -14,7 +14,6 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { Campo, CTRL, FormAccion, type AccionFormulario } from '@/shared/components/ui'
 import { Eyebrow, Nulo } from '@/shared/components/ds'
-import { PRIMARIA_FORM } from './Controles'
 import { CATEGORIAS_DOCUMENTO } from '../types'
 
 export function Bloque({
@@ -74,7 +73,7 @@ export function AltaDocumento({ vincular }: { vincular: AccionFormulario }) {
       <div className="pt-3">
         <FormAccion
           accion={vincular} testid="form-documento" enviar="Vincular" limpiarAlOk
-          mensajeOk="Vinculado." className={PRIMARIA_FORM}
+          mensajeOk="Vinculado."
         >
           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
             <Campo label="Categoría">

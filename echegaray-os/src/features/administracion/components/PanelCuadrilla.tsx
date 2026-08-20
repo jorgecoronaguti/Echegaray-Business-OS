@@ -14,7 +14,6 @@ import {
   type AccionFormulario, type ResultadoAccion,
 } from '@/shared/components/ui'
 import { Eyebrow, Nulo, Num } from '@/shared/components/ds'
-import { PRIMARIA_FORM } from './Controles'
 import type { Cuadrilla, Integrante } from '../types'
 
 interface Plantel { id: string; nombre_completo: string }
@@ -164,7 +163,7 @@ export function PanelCuadrilla({
         {vigentes.length === 0
           ? <p className="text-[12.5px] text-muted">Sin integrantes vigentes no hay a quién asignar.</p>
           : (
-              <FormAccion accion={asignarAObra} testid="form-cuadrilla-obra" enviar="Asignar a obra" className={PRIMARIA_FORM}>
+              <FormAccion accion={asignarAObra} testid="form-cuadrilla-obra" enviar="Asignar a obra">
                 <input type="hidden" name="cuadrilla_id" value={cuadrilla.id} />
                 <div className="grid grid-cols-2 gap-2.5">
                   <Campo label="Obra" ancho="col-span-2">

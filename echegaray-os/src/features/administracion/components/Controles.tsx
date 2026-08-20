@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
+import { IconoBuscar } from '@/shared/components/ds'
 
 // LOS CONTROLES DE ADMINISTRACIÓN QUE EL DS NO PUEDE DAR TAL CUAL.
 //
@@ -12,26 +13,10 @@ import type { ReactNode } from 'react'
 // `design/system/COMPONENTS.md` §Inputs («Buscador de lista: sólo hairline inferior + icono 13px»).
 // Lo único que cambia es quién lo dibuja.
 
-/**
- * LA LUPA, COMO SVG Y NO COMO CARÁCTER.
- *
- * El design system la dibuja con «⌕» (U+2315) y en IBM Plex Sans ESE GLIFO NO EXISTE: el navegador
- * pinta un rectángulo vacío. Se ve en la captura de la entrada de Administración a 1536px. Un icono
- * tipográfico depende de que la familia lo tenga, y la familia acá está cerrada por el handoff.
- * Queda declarado como defecto del DS —`shared/components/ds/Controles.tsx` tiene el mismo carácter
- * y está fuera del alcance de este bloque—.
- */
-export function IconoBuscar() {
-  return (
-    <svg
-      aria-hidden width="13" height="13" viewBox="0 0 20 20" fill="none"
-      stroke="currentColor" strokeWidth="1.8" className="shrink-0 text-faint"
-    >
-      <circle cx="9" cy="9" r="6" />
-      <line x1="13.5" y1="13.5" x2="18" y2="18" strokeLinecap="round" />
-    </svg>
-  )
-}
+// LA LUPA ES LA DEL DESIGN SYSTEM. Vivió acá un rato como SVG propio porque la del DS era el
+// carácter «⌕», que IBM Plex Sans no trae y el navegador pinta como un rectángulo vacío. Ese
+// defecto se corrigió en su origen, así que ésta se reexporta en vez de existir dos veces.
+export { IconoBuscar }
 
 /** El buscador de una lista, como formulario GET sobre la propia pantalla. */
 export function BuscadorURL({
@@ -113,17 +98,3 @@ export function FiltrosURL({
     </div>
   )
 }
-
-// ═══ LA PRIMARIA DE UN `FormAccion`, VESTIDA DESDE AFUERA ═══
-//
-// `shared/components/ui/FormAccion.tsx` pinta su botón de envío con `bg-slate-900`, que no es la
-// primaria del design system (amarillo `#FDC900` con texto grafito). Ese archivo es de `shared/` y
-// está fuera del alcance de este bloque, así que la primaria se re-viste con una variante de
-// Tailwind sobre el `form`, en UN solo lugar en vez de en los once formularios del área.
-//
-// Es deuda declarada, no una solución: el día que `FormAccion` use `Boton` del DS, esta constante
-// se borra y no queda nada más que limpiar.
-export const PRIMARIA_FORM =
-  '[&>div>button[type=submit]]:bg-marca [&>div>button[type=submit]]:text-ink ' +
-  '[&>div>button[type=submit]]:font-semibold [&>div>button[type=submit]]:hover:bg-marca ' +
-  '[&>div>button[type=submit]]:hover:brightness-[0.97]'

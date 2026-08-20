@@ -41,6 +41,35 @@ export function Campo({
  * El buscador de una lista: SÓLO hairline inferior + icono. Sin caja.
  * Un buscador con borde completo arriba de una tabla sin caja es la caja que la tabla no tiene.
  */
+/**
+ * LA LUPA DEL SISTEMA — SVG, NUNCA EL CARÁCTER `⌕` (U+2315).
+ *
+ * IBM Plex Sans no trae ese glifo: el navegador dibuja el rectángulo vacío del «tofu». Y no falla,
+ * se dibuja mal — que es peor, porque nada avisa. Un icono que depende de qué caracteres traiga la
+ * tipografía es un icono que un día no está.
+ *
+ * Se exporta porque hay tres buscadores en el OS con formas distintas —uno controlado, dos como
+ * formulario GET sobre la propia pantalla— y los tres necesitan ESTA lupa. Las tres áreas la
+ * redibujaron por su cuenta el mismo día; una sola definición es lo que evita la cuarta.
+ */
+export function IconoBuscar({ className = '' }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden
+      width="13"
+      height="13"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className={`shrink-0 text-faint ${className}`}
+    >
+      <circle cx="9" cy="9" r="6" />
+      <line x1="13.5" y1="13.5" x2="18" y2="18" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 export function Buscador({
   value,
   onChange,
@@ -56,13 +85,7 @@ export function Buscador({
 }) {
   return (
     <div className={`flex min-w-0 items-center gap-2 border-b border-line ${className}`}>
-      {/* SVG Y NO EL CARÁCTER `⌕` (U+2315): IBM Plex Sans no lo tiene, y un glifo que la fuente no
-          trae se dibuja como el rectángulo vacío del "tofu". Un icono del sistema no puede depender
-          de qué caracteres traiga la tipografía. */}
-      <svg aria-hidden viewBox="0 0 16 16" className="h-[13px] w-[13px] shrink-0 text-faint" fill="none">
-        <circle cx="7" cy="7" r="4.25" stroke="currentColor" strokeWidth="1.3" />
-        <path d="M10.2 10.2 L14 14" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-      </svg>
+      <IconoBuscar />
       <input
         type="search"
         value={value}

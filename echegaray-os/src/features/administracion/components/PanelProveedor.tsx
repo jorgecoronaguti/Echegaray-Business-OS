@@ -26,7 +26,6 @@ import {
 } from '@/shared/components/ui'
 import { Eyebrow, Nulo, Num } from '@/shared/components/ds'
 import { plata } from '@/features/obras/components/formato'
-import { PRIMARIA_FORM } from './Controles'
 import { formatearCuit } from './TablaProveedores'
 import type { ComprasDelProveedor } from '../services/proveedoresService'
 import type { Proveedor } from '../types'
@@ -158,7 +157,6 @@ export function PanelProveedor({
           enviar={esAlta ? 'Crear' : 'Guardar'}
           limpiarAlOk={esAlta}
           mensajeOk={esAlta ? 'Proveedor creado.' : 'Guardado.'}
-          className={PRIMARIA_FORM}
         >
           <CamposProveedor proveedor={proveedor} />
         </FormAccion>
