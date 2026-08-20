@@ -53,19 +53,6 @@ import { FormAccion, PageShell } from '@/shared/components/ui'
 
 export const dynamic = 'force-dynamic'
 
-// LA PRIMARIA DEL PASO ES AMARILLA, Y ESTO ES UN PARCHE DECLARADO.
-//
-// El botón de envío vive dentro de `FormAccion` (`src/shared/components/ui/FormAccion.tsx`), que lo
-// pinta `bg-slate-900`. Ese archivo es compartido por los catorce formularios del OS y está fuera
-// del alcance de este bloque, así que no se toca: se corrige el color desde afuera, con una variante
-// arbitraria acotada a este formulario. Duplicar `FormAccion` para cambiarle un color sería duplicar
-// también la regla que hace que el error del servidor SIEMPRE se muestre — y ésa no se duplica.
-//
-// LO QUE HAY QUE HACER DE VERDAD: mover el estilo del botón a `Boton` del design system, en
-// `FormAccion`. Está anotado en el informe del bloque.
-const PRIMARIA_DEL_FORM =
-  '[&_button]:bg-marca [&_button]:font-semibold [&_button]:text-ink [&_button]:hover:brightness-[0.97]'
-
 export default async function NuevaObraPage({
   searchParams,
 }: {
@@ -123,7 +110,7 @@ export default async function NuevaObraPage({
         {/* ── 1 · INFORMACIÓN Y CLIENTE ─────────────────────────────────────── */}
         {paso === 'informacion' && !obraId && (
           <Paso paso="informacion">
-            <FormAccion accion={crearBorradorObra} testid="form-alta-obra" enviar="Crear la obra y seguir" className={PRIMARIA_DEL_FORM}>
+            <FormAccion accion={crearBorradorObra} testid="form-alta-obra" enviar="Crear la obra y seguir">
               <div className="grid grid-cols-2 gap-3">
                 <CampoNombre />
                 <Campo rotulo="Cliente" className="col-span-2" ayuda="La obra cuelga del cliente: es la jerarquía del módulo.">
@@ -186,7 +173,6 @@ export default async function NuevaObraPage({
               accion={guardarPasoObra.bind(null, obraId, paso)}
               testid={`form-paso-${paso}`}
               enviar="Guardar y seguir"
-              className={PRIMARIA_DEL_FORM}
             >
               <div className="grid grid-cols-2 gap-3">
                 {paso === 'responsable' && <CampoJefeObra valor={obra.jefe_obra} />}
