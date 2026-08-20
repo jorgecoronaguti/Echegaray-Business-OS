@@ -211,7 +211,14 @@ test('5-9 · el panel declara la precedencia, la tarea, el impedimento y la nota
   // Lo que se mide no es que el formulario acepte: es que DESPUÉS de editar siga habiendo UNA sola
   // fila. Liberar el viejo y anotar otro también dejaría el responsable nuevo en pantalla, y sería
   // el defecto que esta acción existe para evitar.
-  const editarImp = panel.getByTestId('editar-impedimento').first()
+  //
+  // CADA RECARGA VUELVE A CERRAR LA SECCIÓN. Las del panel nacen plegadas —lo pide el handoff— y su
+  // estado vive en el componente, no en la URL: después de `page.reload()`, «Impedimentos» está
+  // cerrada otra vez y lo que hay adentro no está en el DOM. Sin volver a abrirla, el clic espera
+  // treinta segundos por un elemento que nadie va a dibujar. Por eso `abrirSeccion` se llama
+  // DESPUÉS de cada recarga y no una sola vez al principio.
+  const editarImp = (await abrirSeccion(panel, 'seccion-impedimentos'))
+    .getByTestId('editar-impedimento').first()
   await editarImp.locator('summary').click()
   const fEdit = editarImp.getByTestId('form-editar-impedimento')
   await fEdit.locator('input[name="responsable"]').fill('Jefe de obra')
@@ -225,7 +232,8 @@ test('5-9 · el panel declara la precedencia, la tarea, el impedimento y la nota
 
   await page.reload()
   await expect(panel).toBeVisible({ timeout: 20_000 })
-  await panel.getByTestId('resolver-impedimento').first().click()
+  await (await abrirSeccion(panel, 'seccion-impedimentos'))
+    .getByTestId('resolver-impedimento').first().click()
   // RESUELTO EL IMPEDIMENTO, EL OPERATIVO VUELVE A SER EL GUARDADO. Se compara contra `estado` y no
   // contra un valor escrito a mano: lo que se afirma es la REGLA —bloqueada se deriva y se
   // desderiva— y no en qué estado quedó esta actividad de prueba.

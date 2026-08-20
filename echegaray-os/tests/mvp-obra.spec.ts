@@ -22,10 +22,23 @@ const URL = process.env.NEXT_PUBLIC_SUPABASE_URL as string
 const SRV = process.env.SUPABASE_SERVICE_ROLE_KEY as string
 const admin = () => createClient(URL, SRV, { auth: { persistSession: false } })
 
-/** Las seis solapas definitivas. Ni una más: el dueño puso el tope en seis. */
-const SOLAPAS = ['Resumen', 'Cronograma', 'Personal', 'Operación', 'Economía', 'Documentos'] as const
+/**
+ * LAS SIETE SOLAPAS DEL WORKSPACE — `design/screens/planificacion-gantt.md` §Layout.
+ *
+ * Eran seis y la segunda se llamaba «Cronograma». El Design Handoff V2, aprobado por el dueño el
+ * 20/08, declara estas siete y renombra esa solapa a «Planificación». No es un cambio de rótulo:
+ * «Cronograma» nombra un artefacto —el diagrama— y «Planificación» nombra el trabajo, que es lo que
+ * la persona viene a hacer; el Gantt pasó a ser UNA de sus cuatro vistas (Gantt · Lista · Tablero ·
+ * Próximos).
+ *
+ * El tope sigue existiendo y sigue siendo lo que este test protege: siete y ni una más. Lo que
+ * cambió es el número, no la regla — el handoff es el contrato más nuevo que firmó el dueño.
+ */
+const SOLAPAS = [
+  'Resumen', 'Planificación', 'Ejecución', 'Personal', 'Operación', 'Economía', 'Documentos',
+] as const
 
-test('el workspace de obra tiene SEIS solapas y son las del MVP', async ({ page }) => {
+test('el workspace de obra tiene SIETE solapas y son las del handoff', async ({ page }) => {
   test.setTimeout(120000)
   await entrar(page)
   await page.goto(`/obras/${OBRA}`)
@@ -36,12 +49,13 @@ test('el workspace de obra tiene SEIS solapas y son las del MVP', async ({ page 
     await expect(tabs.getByRole('link', { name: s, exact: true })).toBeVisible()
   }
   expect(await tabs.getByRole('link').count(),
-    'hay más de seis solapas principales: el tope declarado son seis').toBe(6)
+    'hay más de siete solapas principales: el tope del handoff son siete').toBe(SOLAPAS.length)
 
-  // Y las que se retiraron NO pueden seguir ahí como séptima y octava.
+  // Y lo que NO puede volver como solapa principal es el nombre del artefacto: el Gantt es una de
+  // las cuatro vistas de Planificación, no un lugar del sistema.
   const texto = await tabs.innerText()
-  expect(texto, '«Gantt» volvió como solapa principal: ahora es una vista DENTRO de Cronograma').not.toContain('Gantt')
-  expect(texto, '«Planificación» volvió como solapa principal').not.toContain('Planificación')
+  expect(texto, '«Gantt» volvió como solapa principal: es una vista DENTRO de Planificación').not.toContain('Gantt')
+  expect(texto, '«Cronograma» volvió: el handoff renombró esa solapa a «Planificación»').not.toContain('Cronograma')
 })
 
 test('las URLs viejas de las solapas siguen llevando a donde llevaban', async ({ page }) => {
