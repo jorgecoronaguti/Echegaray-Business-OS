@@ -33,7 +33,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
-import { esAdministracion, veEconomia } from '@/features/auth/types/areas'
+import { esAdministracion } from '@/features/auth/types/areas'
 import {
   getActividadCliente, getCliente, getContactos, getDocumentosCliente, getObrasDelCliente, getResponsables,
 } from '@/features/clientes/services/clientesService'
@@ -97,23 +97,22 @@ export default async function ClientePage({
   // formularios de escritura sólo se dibujan para Administración. No es la cerradura —la RLS rechaza
   // la escritura igual—, es no ofrecer un botón que la base va a rechazar.
   //
-  // ═══ Y EL PREDICADO ES `veEconomia`, NO `esAdministracion` (20/08/2026) ═══
+  // ═══ EL PREDICADO VOLVIÓ A SER `esAdministracion` — PORQUE LA BASE SE MOVIÓ (20/08/2026) ═══
   //
-  // El 19/08 `esAdministracion()` pasó a incluir al jefe de obra. Esta línea no se tocó, así que el
-  // jefe empezó a ver «Editar cliente», «+ Contacto», «+ Obra», «+ Documento» y «Archivar» — y la
-  // base los rechaza a todos: `clientes_write`, `cliente_contacto_write`, `cliente_documento_write`
-  // y `obra_canonica_write` siguen siendo `current_rol() in ('direccion','administracion')`.
-  // Medido con su token: `POST /clientes` → 403, y un `PATCH` no toca una sola fila.
+  // Historia corta de un día: el 19/08 `esAdministracion()` incorporó al jefe de obra, pero
+  // `clientes_write`, `cliente_contacto_write`, `cliente_documento_write` y `obra_canonica_write`
+  // se quedaron con la lista literal `('direccion','administracion')`. La pantalla le ofrecía cinco
+  // formularios que la base rechazaba con 403, así que a la mañana se acotó acá a `veEconomia`.
   //
-  // Cinco botones falsos. Se alinea la pantalla con la base, que es quien decide, y NO al revés:
-  // abrir el maestro de clientes al jefe es una decisión del dueño, no un arreglo de pantalla.
-  // Queda declarado como pendiente para que la decida él.
+  // Esa fue la corrección correcta MIENTRAS la base decía que no: no se abre un permiso desde el
+  // frontend. A la tarde el dueño resolvió la contradicción del lado que corresponde —
+  // `20260820T5000` mueve las cuatro policies a `es_administracion()`— y entonces la pantalla
+  // vuelve a lo que el modelo dice. Medido con el token del jefe después de la migración:
+  // `POST /clientes` → 201, `PATCH` → escribe.
   //
-  // `+ Nota` es la excepción y no es un olvido: `cliente_nota_*` SÍ es `es_administracion()`, así
-  // que el jefe puede dejar una nota. Se le ofrece porque la base la acepta.
+  // La lección, que es la que importa: el predicado de pantalla SIGUE a la policy, nunca al revés.
   const rol = (await getPerfilActual(supabase)).data?.rol ?? null
-  const puedeEditar = veEconomia(rol)
-  const puedeAnotar = esAdministracion(rol)
+  const puedeEditar = esAdministracion(rol)
 
   // Las cinco caras del record, en una sola vuelta. Secuencial, cada una sumaría su latencia a la
   // apertura de una pantalla que antes mostraba una sola.
@@ -192,7 +191,7 @@ export default async function ClientePage({
             <BloqueActividad
               linea={linea.data ?? { eventos: [], sinFecha: 0 }}
               puedeVerContractuales={VE_CONTRACTUALES.includes(rol ?? '')}
-              puedeEscribir={puedeAnotar}
+              puedeEscribir={puedeEditar}
               crearNota={crearNota.bind(null, id)}
               todo={q.actividad === 'todo'}
               urlTodo={url({ actividad: 'todo' })}

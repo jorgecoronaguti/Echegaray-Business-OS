@@ -460,8 +460,14 @@ test('Economía no le inventa una explicación al jefe de obra, y le deja lo suy
 
   await expect(page.getByTestId('economia-costo'),
     'el jefe no ve el costo de su obra: se enmascaró de más').toBeVisible()
+  // LA CERTIFICACIÓN NO: esta aserción decía lo contrario y estaba mal desde el 19/08. Medido con
+  // el token del jefe: `obra_plan_vs_real` le manda certificado, facturado y cobrado en NULL, y
+  // `certificados_select` es `ve_economia()`, o sea cero filas. Dibujarle el bloque sería mostrarle
+  // cuatro guiones con la explicación «todavía no hay ninguno cargado» sobre una obra que sí puede
+  // tenerlos — la explicación falsa de una ausencia, que es lo único que este sistema no puede
+  // hacer. Si algún día tiene que verla, primero se mueve la policy; la pantalla va detrás.
   await expect(page.getByTestId('economia-certificacion'),
-    'el jefe no ve la certificación de su obra, que el dueño declaró operativa').toBeVisible()
+    'el bloque Certificación se le dibujó a un jefe de obra, que no recibe ni un dato de adentro').toHaveCount(0)
   await expect(page.getByTestId('economia-contrato'),
     'el bloque Contrato se le dibujó a un jefe de obra').toHaveCount(0)
   await expect(page.getByTestId('economia-resultado'),
@@ -562,5 +568,156 @@ test('el nivel CAMPO no lee ni escribe horas de una obra que no es suya', async 
     const { count } = await admin.from('registros_hh')
       .select('id', { count: 'exact', head: true }).eq('fuente_legacy', 'ZZ-E2E autorizacion')
     expect(count, 'quedaron horas de prueba en los jornales').toBe(0)
+  }
+})
+
+// ═══ LA ESCRITURA OPERATIVA SE ACOTA POR OBRA (20/08/2026) ═══
+//
+// Doce policies de escritura seguían en `true` con su grant puesto, y `CAMPO_RUTAS_PERMITIDAS` le
+// abre a un operario las pantallas de pedidos, herramientas y movimientos —que tienen alta, edición
+// y baja—. Medido con su token ANTES de `20260820T5000`, leyendo el efecto en la base: **14 desvíos
+// sobre 30 casos**. Insertaba en las tres tablas apuntando a una obra que ni ve, borraba
+// movimientos del historial y reimputaba comprobantes de ARCA.
+//
+// Estos tests miden lo mismo con identidades reales. Miran la FILA, no el status: un PATCH que no
+// toca nada devuelve 204 igual que uno que escribe.
+
+/** Escribe con el token de alguien y devuelve si la fila quedó en la base. */
+async function entro(token: string, tabla: string, cuerpo: Record<string, unknown>, clave: string, valor: string) {
+  const admin = servicio()
+  const status = await escribir(token, tabla, 'POST', cuerpo)
+  const { count } = await admin.from(tabla).select('*', { count: 'exact', head: true }).eq(clave, valor)
+  await admin.from(tabla).delete().eq(clave, valor)
+  return { entro: (count ?? 0) > 0, status }
+}
+
+test('el nivel CAMPO opera su obra y no puede escribir en la ajena', async () => {
+  test.setTimeout(120000)
+  const admin = servicio()
+  const campo = await entrar(CAMPO.email, CAMPO.password)
+
+  // Los nombres de obra tal como los escribe el Sheet, resueltos por el mismo diccionario que usa
+  // la policy. Sin esto el test compararía contra un nombre inventado y mediría otra cosa.
+  const { data: alias } = await admin.from('obra_alias').select('alias, obra_id').not('obra_id', 'is', null)
+  const texto = (obra: string) => (alias ?? []).find((a) => (a as { obra_id: string }).obra_id === obra) as { alias: string } | undefined
+  const MIA = texto(OBRA_CAMPO)?.alias
+  const otra = (alias ?? []).find((a) => (a as { obra_id: string }).obra_id !== OBRA_CAMPO) as { alias: string } | undefined
+  expect(MIA, 'la obra del usuario de campo no está en el diccionario: el test no mide nada').toBeTruthy()
+  expect(otra, 'no hay una segunda obra en el diccionario').toBeTruthy()
+  const AJENA = otra!.alias
+
+  try {
+    // 1 · PEDIDOS — el caso positivo primero: si no puede operar SU obra, lo de abajo no prueba
+    // aislamiento, prueba que la tabla está cerrada para todos.
+    const propio = await entro(campo, 'pedidos_materiales',
+      { id_pedido: 'ZZ-E2E-p-mia', obra_texto: MIA, material: 'ZZ-E2E', cantidad: 1, origen: 'zz_e2e' },
+      'id_pedido', 'ZZ-E2E-p-mia')
+    expect(propio.entro, 'el usuario de campo no puede cargar un pedido de SU obra: se cerró de más').toBe(true)
+
+    const ajeno = await entro(campo, 'pedidos_materiales',
+      { id_pedido: 'ZZ-E2E-p-ajena', obra_texto: AJENA, material: 'ZZ-E2E', cantidad: 1, origen: 'zz_e2e' },
+      'id_pedido', 'ZZ-E2E-p-ajena')
+    expect(ajeno.entro, 'un usuario de campo cargó un pedido en una obra que no es suya').toBe(false)
+
+    // 2 · MOVIMIENTOS — el destino se acota igual.
+    const movMio = await entro(campo, 'movimientos_herramienta',
+      { id_movimiento: 'ZZ-E2E-m-mia', id_herramienta: 'ZZ', destino: MIA, origen: 'zz_e2e' },
+      'id_movimiento', 'ZZ-E2E-m-mia')
+    expect(movMio.entro, 'el usuario de campo no puede registrar un movimiento hacia SU obra').toBe(true)
+
+    const movAjeno = await entro(campo, 'movimientos_herramienta',
+      { id_movimiento: 'ZZ-E2E-m-ajena', id_herramienta: 'ZZ', destino: AJENA, origen: 'zz_e2e' },
+      'id_movimiento', 'ZZ-E2E-m-ajena')
+    expect(movAjeno.entro, 'un usuario de campo fabricó un movimiento hacia una obra ajena').toBe(false)
+
+    // 3 · HERRAMIENTAS — la de otra obra no se toca; la propia se devuelve al almacén.
+    //
+    // Esta segunda mitad no es un lujo: la policy de SELECT tiene que dejar ver la fila NUEVA
+    // —PostgREST cierra el UPDATE con un RETURNING—, así que sin «o el lugar no es de ninguna obra»
+    // devolver una herramienta al almacén daba 403 y el operario se quedaba sin poder soltarla.
+    const { data: hAjena } = await admin.from('herramientas')
+      .insert({ id_herramienta: 'ZZ-E2E-h-ajena', nombre: 'ZZ-E2E', ubicacion_actual: AJENA, origen: 'zz_e2e' })
+      .select('id').single()
+    await escribir(campo, `herramientas?id=eq.${hAjena!.id}`, 'PATCH', { ubicacion_actual: MIA })
+    const { data: sigue } = await admin.from('herramientas').select('ubicacion_actual').eq('id', hAjena!.id).single()
+    expect(sigue!.ubicacion_actual, 'un usuario de campo se llevó una herramienta de la obra de otro').toBe(AJENA)
+
+    const { data: hMia } = await admin.from('herramientas')
+      .insert({ id_herramienta: 'ZZ-E2E-h-mia', nombre: 'ZZ-E2E', ubicacion_actual: MIA, origen: 'zz_e2e' })
+      .select('id').single()
+    await escribir(campo, `herramientas?id=eq.${hMia!.id}`, 'PATCH', { ubicacion_actual: 'ALMACEN' })
+    const { data: devuelta } = await admin.from('herramientas').select('ubicacion_actual').eq('id', hMia!.id).single()
+    expect(devuelta!.ubicacion_actual,
+      'el usuario de campo no pudo devolver al almacén una herramienta de su obra').toBe('ALMACEN')
+  } finally {
+    for (const t of ['pedidos_materiales', 'movimientos_herramienta', 'herramientas']) {
+      await admin.from(t).delete().eq('origen', 'zz_e2e')
+    }
+  }
+})
+
+test('el maestro lo escribe Administración: el jefe sí, el nivel campo no', async () => {
+  test.setTimeout(120000)
+  const admin = servicio()
+  const campo = await entrar(CAMPO.email, CAMPO.password)
+  const jefe = await entrar(JEFE.email, JEFE.password)
+
+  try {
+    // Dar de ALTA una herramienta es el maestro global, no una operación de obra.
+    expect((await entro(campo, 'herramientas',
+      { id_herramienta: 'ZZ-E2E-alta-campo', nombre: 'ZZ-E2E', ubicacion_actual: 'ALMACEN', origen: 'zz_e2e' },
+      'id_herramienta', 'ZZ-E2E-alta-campo')).entro,
+    'un usuario de campo dio de alta una herramienta en el maestro').toBe(false)
+
+    expect((await entro(jefe, 'herramientas',
+      { id_herramienta: 'ZZ-E2E-alta-jefe', nombre: 'ZZ-E2E', ubicacion_actual: 'ALMACEN', origen: 'zz_e2e' },
+      'id_herramienta', 'ZZ-E2E-alta-jefe')).entro,
+    'el jefe de obra no pudo dar de alta una herramienta, y administra el maestro').toBe(true)
+
+    // El maestro de clientes y el de obras: la contradicción que cerró `20260820T5000`. La pantalla
+    // le ofrecía los formularios al jefe desde el 19/08 y la base los rechazaba.
+    expect((await entro(campo, 'clientes', { nombre_comercial: 'ZZ-E2E cliente campo' },
+      'nombre_comercial', 'ZZ-E2E cliente campo')).entro,
+    'un usuario de campo creó un cliente').toBe(false)
+    expect((await entro(jefe, 'clientes', { nombre_comercial: 'ZZ-E2E cliente jefe' },
+      'nombre_comercial', 'ZZ-E2E cliente jefe')).entro,
+    'el jefe de obra no pudo crear un cliente, y el modelo vigente dice que administra').toBe(true)
+
+    // Y renombrar una obra, que es el mismo maestro.
+    const { data: obra } = await admin.from('obra_canonica').select('id, nombre').limit(1).single()
+    for (const [quien, token, esperado] of [['campo', campo, false], ['jefe', jefe, true]] as const) {
+      await escribir(token, `obra_canonica?id=eq.${obra!.id}`, 'PATCH', { nombre: `ZZ-E2E ${quien}` })
+      const { data: ahora } = await admin.from('obra_canonica').select('nombre').eq('id', obra!.id).single()
+      const escribio = ahora!.nombre === `ZZ-E2E ${quien}`
+      if (escribio) await admin.from('obra_canonica').update({ nombre: obra!.nombre }).eq('id', obra!.id)
+      expect(escribio, `renombrar una obra siendo ${quien}: se esperaba ${esperado}`).toBe(esperado)
+    }
+    const { data: fin } = await admin.from('obra_canonica').select('nombre').eq('id', obra!.id).single()
+    expect(fin!.nombre, 'quedó el nombre del test escrito en una obra real').toBe(obra!.nombre)
+  } finally {
+    await admin.from('herramientas').delete().eq('origen', 'zz_e2e')
+    await admin.from('clientes').delete().like('nombre_comercial', 'ZZ-E2E%')
+  }
+})
+
+test('un movimiento de herramienta es historial: no lo borra nadie', async () => {
+  test.setTimeout(120000)
+  const admin = servicio()
+  const { data: mov } = await admin.from('movimientos_herramienta')
+    .insert({ id_movimiento: 'ZZ-E2E-hist', id_herramienta: 'ZZ', destino: 'ALMACEN', origen: 'zz_e2e' })
+    .select('id').single()
+
+  try {
+    // Si estuvo mal, se corrige con OTRO movimiento. Borrarlo lo tapa, y el historial de una
+    // herramienta es lo único que dice dónde estuvo.
+    for (const [quien, cred] of [['campo', CAMPO], ['jefe de obra', JEFE], ['dirección', ADMIN]] as const) {
+      const token = await entrar(cred.email, cred.password)
+      await escribir(token, `movimientos_herramienta?id=eq.${mov!.id}`, 'DELETE')
+      const { count } = await admin.from('movimientos_herramienta')
+        .select('id', { count: 'exact', head: true }).eq('id', mov!.id)
+      expect(count, `${quien} borró un movimiento del historial`).toBe(1)
+    }
+  } finally {
+    await admin.from('movimientos_herramienta').delete().eq('origen', 'zz_e2e')
   }
 })

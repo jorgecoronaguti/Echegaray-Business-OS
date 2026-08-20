@@ -152,19 +152,24 @@ export function TabEconomia({
         {/* CERTIFICAR ES FACTURARLE AL CLIENTE: es precio, no costo. Antes se dibujaba para todos y
             al jefe de obra le quedaban cuatro líneas vacías y un botón que la base iba a rechazar —
             un control que no puede funcionar es peor que un control que no está. */}
-        {/* ═══ CERTIFICACIÓN SE VE SIEMPRE, Y ESO LO DECIDIÓ EL DUEÑO (19/08/2026) ═══
+        {/* ═══ POR QUÉ LA CERTIFICACIÓN SIGUE DETRÁS DEL PRECIO (20/08/2026) ═══
 
-            *"La única información expresamente secreta para Obras es: PRESUPUESTO TOTAL /
-            CONTRATADO TOTAL DE LA OBRA + cualquier cálculo que permita deducirlo directamente.
-            Certificación, facturación y cobranza pasaron a ser operativas y SE VEN."*
+            El 19/08 quedó escrito en un test que el dueño había declarado la certificación
+            «operativa» y que el jefe de obra tenía que verla. Ese día se abrió el bloque acá y el
+            test se puso verde. Medido hoy contra la base, con el token de un jefe:
 
-            El bloque entero estaba detrás de `veComercial`, así que un jefe de obra no veía la
-            certificación de su propia obra —y la base sí se la manda: `obra_plan_vs_real.certificado`
-            no está enmascarado para él—. La pantalla era más cerrada que la cerradura.
+              obra_plan_vs_real → certificado: null · facturado: null · cobrado: null
+              certificados      → `certificados_select` es `ve_economia()`: cero filas
 
-            La ÚNICA línea que no puede pasar es «Pendiente de certificar», que es
-            `contratado − certificado`: con el certificado a la vista, publicarla publica el contrato
-            con una resta de primer grado. Ésa se gatea sola, abajo. */}
+            O sea que el bloque no le mostraría la certificación: le mostraría CUATRO GUIONES, cada
+            uno con su explicación —«Todavía no hay ningún certificado cargado»— sobre una obra que
+            sí podría tenerlos. Es exactamente la explicación falsa de una ausencia que el resto de
+            esta pantalla existe para evitar.
+
+            Abrir el bloque sin abrir el dato no es mostrar: es mentir con más celdas. Si el dueño
+            quiere que la vea, lo que se mueve primero es `certificados_select` y la máscara de
+            `obra_plan_vs_real`; esta línea va detrás, nunca adelante. */}
+        {veComercial && (
         <Bloque titulo="Certificación" testid="economia-certificacion">
           <Linea
             concepto="Certificado"
@@ -191,18 +196,14 @@ export function TabEconomia({
             falta="Sin certificados no hay nada pendiente de cobrar."
             tono={plan.pendiente_cobrar ? 'warn' : 'ink'}
           />
-          {/* Y ACÁ NO ALCANZA CON QUE LLEGUE NULL: el `falta` diría *"Falta el monto contratado"*
-              sobre una obra que lo tiene cargado. Una explicación falsa de una ausencia fabrica un
-              hecho. Para quien no ve el precio, la línea no existe. */}
-          {veComercial && (
           <Linea
             concepto="Pendiente de certificar"
             valor={plan.pendiente_certificar == null ? null : plata(plan.pendiente_certificar)}
             origen="Contratado menos certificado: lo que queda por certificar del contrato."
             falta="Falta el monto contratado."
           />
-          )}
         </Bloque>
+        )}
 
         {veComercial && (
         <Bloque titulo="Resultado" testid="economia-resultado">

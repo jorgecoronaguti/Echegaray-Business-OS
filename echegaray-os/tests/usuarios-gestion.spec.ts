@@ -143,9 +143,19 @@ test('crear · asignar obra · quitarla · sacar el acceso — cada paso verific
   await entrarComo(page, ADMIN.email, ADMIN.password)
   await page.goto('/administracion/usuarios')
   await abrirPanel(page, 'abrir-alta', 'panel-alta')
-  await page.fill('[data-testid="form-alta"] input[name="nombre"]', 'ZZ-E2E Jefe Prestado')
+  await page.fill('[data-testid="form-alta"] input[name="nombre"]', 'ZZ-E2E Operario Prestado')
   await page.fill('[data-testid="form-alta"] input[name="email"]', EMAIL_NUEVO)
-  await page.selectOption('[data-testid="form-alta"] select[name="rol"]', 'jefe_obra')
+  // ═══ EL ROL TIENE QUE SER `campo`, Y NO ES UN DETALLE (20/08/2026) ═══
+  //
+  // Este test creaba un `jefe_obra` y medía que sin asignaciones no viera ninguna obra. Desde el
+  // 19/08 el jefe de obra ES Administración: `ve_obra()` le devuelve true para todas, tenga o no
+  // filas en `usuario_obra`. O sea que el test le pedía a la base lo contrario de lo que el dueño
+  // decidió, y su rojo no era una fuga: era un supuesto vencido.
+  //
+  // Lo que el test PRUEBA sigue siendo valioso y no se toca: que asignar una obra desde la pantalla
+  // tiene efecto en la base, con el MISMO token, y que quitarla lo revierte. Para que eso signifique
+  // algo hace falta una identidad que de verdad esté acotada por obra, y hoy la única es `campo`.
+  await page.selectOption('[data-testid="form-alta"] select[name="rol"]', 'campo')
   await page.getByTestId('crear-usuario').click()
 
   const credencial = page.getByTestId('credencial-nueva')
@@ -158,7 +168,7 @@ test('crear · asignar obra · quitarla · sacar el acceso — cada paso verific
   const nuevo = lista?.users.find((u) => u.email === EMAIL_NUEVO)
   expect(nuevo, 'la cuenta no llegó a auth').toBeTruthy()
   const { data: perfil } = await admin.from('perfiles').select('rol').eq('id', nuevo!.id).maybeSingle()
-  expect(perfil?.rol).toBe('jefe_obra')
+  expect(perfil?.rol).toBe('campo')
 
   // ── 2 · ENTRA, Y TODAVÍA NO VE NINGUNA OBRA ───────────────────────────────────────────────────
   const sesion = await login(EMAIL_NUEVO, clave!)
@@ -207,7 +217,7 @@ test('crear · asignar obra · quitarla · sacar el acceso — cada paso verific
     'le devolvieron el acceso y sigue sin poder entrar').toBe(200)
 })
 
-test('el nivel Obras no puede darse a sí mismo una obra ni un rol, ni por la API', async () => {
+test('el nivel CAMPO no puede darse a sí mismo una obra ni un rol, ni por la API', async () => {
   test.setTimeout(120_000)
   const admin = servicio()
   const { data: lista } = await admin.auth.admin.listUsers({ perPage: 1000 })
@@ -248,7 +258,11 @@ test('el nivel Obras no puede darse a sí mismo una obra ni un rol, ni por la AP
   const { data: uo } = await admin.from('usuario_obra').select('id').eq('usuario_id', yo!.id)
   expect(uo ?? [], 'quedó una asignación que se hizo a sí mismo').toHaveLength(0)
   const { data: p } = await admin.from('perfiles').select('rol').eq('id', yo!.id).maybeSingle()
-  expect(p?.rol).toBe('jefe_obra')
+  // Sigue siendo el rol con el que lo creó el recorrido anterior. Es `campo` desde el 20/08 porque
+  // ése es hoy el único nivel acotado por obra, y sin una identidad acotada las tres aserciones de
+  // abajo —ninguna obra, ningún hecho, ningún costo— pasarían por ser Administración, no por la
+  // cerradura.
+  expect(p?.rol, 'le cambió el rol a la cuenta: la escalada funcionó').toBe('campo')
   expect(await comoUsuario(token, 'obra_canonica?select=id')).toHaveLength(0)
   // `clientes` dejó de estar acá el 19/08: los maestros pasaron a ser consultables por el nivel
   // Obras. Lo que este test mide es que un usuario NO PUEDA DARSE PODER, y eso se prueba con lo que

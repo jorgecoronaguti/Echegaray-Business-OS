@@ -240,18 +240,23 @@ test('nota manual: se escribe, queda en Postgres y sigue ahí después de recarg
 // RLS, que rechaza la escritura; esto mide que no se le OFREZCA un formulario que la base va a
 // rechazar, que es lo que el dueño llama un botón falso.
 //
-// ═══ Y ESTE TEST SE PUSO ROJO EL 20/08, CON RAZÓN ═══
+// ═══ Y ESTE TEST CAMBIÓ DE SIGNO EL 20/08, DOS VECES EN EL MISMO DÍA ═══
 //
-// El 19/08 `esAdministracion()` pasó a incluir al jefe de obra, y la ficha del cliente calculaba
-// `puedeEditar = esAdministracion(rol)`. Aparecieron los cinco botones. La base NO se movió:
-// `clientes_write`, `cliente_contacto_write`, `cliente_documento_write` y `obra_canonica_write`
-// siguen siendo `direccion | administracion`. Medido con el token del jefe: `POST /clientes` → 403.
+// A la mañana se puso rojo con razón: el 19/08 `esAdministracion()` incorporó al jefe de obra y la
+// ficha calculaba `puedeEditar = esAdministracion(rol)`, así que aparecieron cinco botones que la
+// base rechazaba con 403 — `clientes_write` y sus tres hermanas seguían en la lista literal
+// `('direccion','administracion')`. Ése era un botón falso, y se corrigió la PANTALLA.
 //
-// O sea que el rojo no era un supuesto vencido —como sí lo fue en los otros siete tests que se
-// reescribieron ese día—: era la regresión que este test existe para atrapar. Se corrigió la
-// PANTALLA, no el test. Si el dueño decide que el jefe administre el maestro de clientes, lo que
-// cambia es la policy, y este test cambia con ella.
-test('el jefe de obra lee el record del cliente, y no se le ofrece editarlo', async ({ page }) => {
+// A la tarde el dueño resolvió la contradicción del otro lado: `20260820T5000` mueve las cuatro
+// policies a `es_administracion()`, que es lo que el modelo vigente dice desde el 19/08. Con la
+// base abierta, la pantalla vuelve a ofrecer los formularios y **este test tiene que medir lo
+// contrario de lo que medía**.
+//
+// No es relajar un test para que pase: es que el contrato cambió, y el test fija el contrato ACTUAL.
+// Lo que no cambia es la parte que de verdad importa —que lo ofrecido y lo aceptado coincidan—, y
+// por eso cada formulario que se afirma acá se prueba también contra PostgREST en
+// `autorizacion-por-obra.spec.ts`: la pantalla no es la evidencia del permiso.
+test('el jefe de obra administra el record del cliente, porque es Administración', async ({ page }) => {
   test.setTimeout(120000)
   await entrarComo(page, 'qa.jefe.obra@ecsas.com.ar', 'TestJefe123!')
 
@@ -266,15 +271,11 @@ test('el jefe de obra lee el record del cliente, y no se le ofrece editarlo', as
   await expect(page.getByTestId('cliente-informacion'),
     'el jefe de obra no puede leer la ficha del cliente de su obra').toBeVisible()
 
-  // LO QUE NO: ni un formulario de escritura de los que la base rechaza.
-  for (const t of ['editar-cliente', 'carpeta-drive', 'alta-contacto', 'alta-obra',
-    'alta-documento', 'archivar-cliente']) {
-    await expect(page.getByTestId(t), `se le ofreció «${t}» a un jefe de obra`).toHaveCount(0)
+  // LO QUE SÍ: los formularios de administración del maestro, porque la base los acepta. Si alguno
+  // faltara, el jefe estaría viendo una ficha de sólo lectura sobre un cliente que sí administra.
+  for (const t of ['editar-cliente', 'alta-contacto', 'alta-obra', 'alta-documento',
+    'alta-nota', 'archivar-cliente']) {
+    await expect(page.getByTestId(t),
+      `no se le ofreció «${t}» a un jefe de obra, y la base sí se lo acepta`).toHaveCount(1)
   }
-
-  // LO QUE SÍ, Y NO ES UNA EXCEPCIÓN CAPRICHOSA: `cliente_nota_insert` es `es_administracion() and
-  // autor_id = auth.uid()`, y desde el 19/08 eso incluye al jefe. La base la acepta, así que
-  // ofrecerla no es un botón falso: es el único de los seis que hace lo que promete.
-  await expect(page.getByTestId('alta-nota'),
-    'se le negó al jefe de obra la nota que la base sí le acepta').toHaveCount(1)
 })
