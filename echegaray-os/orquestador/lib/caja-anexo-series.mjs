@@ -52,6 +52,29 @@ export const MESES = 12
 export const TOP_N = 5
 /** La ventana de los dos gráficos de concentración, en días. */
 export const DIAS_TOP = 30
+/** La ventana del gráfico de necesidad diaria. El dueño la pidió a 30 días, día por día. */
+export const DIAS_NECESIDAD = 30
+
+/**
+ * ═══ LOS CINCO BALDES DE LA SALIDA (20/08/2026) ═══
+ *
+ * El dueño: *"que el gráfico me indique los rubros o lo que me va a ir haciendo descargos de dinero,
+ * es decir, cheques, proveedores, sueldos, cargas sociales, impuestos"*. Son cinco baldes y tienen
+ * que ser MUTUAMENTE EXCLUYENTES: si una fila cae en dos, el total del día miente hacia arriba y el
+ * gráfico dice que hace falta plata que no hace falta.
+ *
+ * Por eso «Proveedores» NO tiene lista propia: es el RESTO —todos los egresos menos los otros
+ * cuatro—. Así ningún rubro queda afuera del gráfico por no haberlo enumerado, que es como se pierde
+ * un vencimiento. Y si algún día un sueldo se pagara con cheque, el resto daría negativo y se vería:
+ * un balde que se solapa tiene que gritar, no esconderse.
+ */
+export const BALDES = Object.freeze({
+  sueldos: Object.freeze(['Nómina · Jornales de obra', 'Nómina · Sueldos administración']),
+  cargas: Object.freeze(['Nómina · Cargas sociales', 'Nómina · Gremiales', 'Deuda previsional (planes de pago)']),
+  impuestos: Object.freeze(['Impuestos']),
+  /** Cheques se define por INSTRUMENTO, no por rubro: un cheque a un corralón sigue siendo un cheque. */
+  cheques: Object.freeze(['cheque', 'echeq']),
+})
 
 /**
  * LOS RÓTULOS SON EL CONTRATO. `caja-pestana.mjs` no sabe en qué fila del anexo quedó cada serie:
@@ -68,11 +91,13 @@ export const ROTULOS = Object.freeze({
   proyeccion: `Concepto · saldo proyectado, próximos ${DIAS_PROYECCION} días`,
   pagos: `Concepto · pagos, top contrapartes a ${DIAS_TOP} días`,
   cobranzas: `Concepto · cobranzas, top contrapartes a ${DIAS_TOP} días`,
+  necesidad: `Concepto · necesidad diaria por rubro vs cobranzas, próximos ${DIAS_NECESIDAD} días`,
 })
 
 /** Cuántas filas de datos tiene cada serie, para poder ubicarlas sin volver a leer nada. */
 export const LARGO = Object.freeze({
   equilibrio: MESES, historia: DIAS_HISTORIA, proyeccion: DIAS_PROYECCION, pagos: TOP_N, cobranzas: TOP_N,
+  necesidad: DIAS_NECESIDAD,
 })
 
 /**
@@ -154,14 +179,53 @@ export const saldoProyectado = (d) =>
  * @param {number} k la posición del ranking, 1-based
  * @param {1|2} col 1 = el nombre de la contraparte, 2 = el importe
  */
+/**
+ * NÚCLEO PURO: cuánta plata sale de UN balde el día `d`, y cuánta entra por cobranzas.
+ *
+ * Todo en `magnitud`: el gráfico apila salidas, y apilar números negativos dibuja las barras para
+ * abajo y hace ilegible el cruce con la cobranza, que es exactamente lo que hay que mirar.
+ *
+ * La ventana es de un día: `desde` el día y `hasta` el siguiente. No se filtra por estado —lo REAL
+ * de hoy también hay que pagarlo— salvo en el resto, donde se restan los otros cuatro sobre la misma
+ * ventana para que el balde de proveedores no pueda contar dos veces.
+ */
+export function necesidadDelDia(d, balde) {
+  const ventana = { desde: dia(d), hasta: dia(d + 1), medida: 'magnitud' }
+  const salida = (extra) => terminoLibro({ ...ventana, signo: -1, ...extra })
+  if (balde === 'cobranzas') return `=${terminoLibro({ ...ventana, signo: 1 })}`
+  if (balde === 'cheques') return `=${salida({ instrumentos: [...BALDES.cheques] })}`
+  if (balde === 'sueldos') return `=${salida({ rubros: [...BALDES.sueldos] })}`
+  if (balde === 'cargas') return `=${salida({ rubros: [...BALDES.cargas] })}`
+  if (balde === 'impuestos') return `=${salida({ rubros: [...BALDES.impuestos] })}`
+  // PROVEEDORES ES EL RESTO. Ver `BALDES`: enumerarlo sería dejar afuera el rubro que nadie listó.
+  const otros = [
+    salida({ instrumentos: [...BALDES.cheques] }),
+    salida({ rubros: [...BALDES.sueldos] }),
+    salida({ rubros: [...BALDES.cargas] }),
+    salida({ rubros: [...BALDES.impuestos] }),
+  ]
+  return `=${salida()}-${otros.join('-')}`
+}
+
 export function topContraparte(signo, k, col) {
   const c = LIBRO.col
   const q = `select ${c.contraparte}, sum(${c.importe}) `
     + `where ${c.signo} = ${signo} and ${c.estado} <> 'REAL' and ${c.contraparte} <> '' `
-    + `and ${c.fecha} >= date '"&TEXT(TODAY();"yyyy-mm-dd")&"' `
-    + `and ${c.fecha} < date '"&TEXT(TODAY()+${DIAS_TOP};"yyyy-mm-dd")&"' `
+    // ═══ LA FECHA DEL LIBRO ES UN NÚMERO DE SERIE, NO UNA FECHA (20/08/2026) ═══
+    //
+    // La columna A de `_MOVIMIENTOS` guarda el serial (46254), no un valor de tipo fecha. El filtro
+    // decía `A >= date '2026-08-20'` y QUERY compara un número contra una fecha: no matcheaba NADA.
+    // Con 56 filas que cumplían el resto de las condiciones, los dos gráficos salían vacíos.
+    + `and ${c.fecha} >= "&TEXT(TODAY();"0")&" `
+    + `and ${c.fecha} < "&TEXT(TODAY()+${DIAS_TOP};"0")&" `
     + `group by ${c.contraparte} order by sum(${c.importe}) desc limit ${TOP_N}`
-  return `=IFERROR(INDEX(QUERY(${LIBRO.pestana}!$A$${LIBRO.fila0}:$P;"${q}";0);${k};${col});"")`
+  // ═══ EL +1 NO ES UN AJUSTE FINO: SIN ÉL EL GRÁFICO SALE VACÍO (20/08/2026) ═══
+  //
+  // `QUERY` con `group by` antepone SIEMPRE una fila de encabezado —«sum Importe»— aunque se le pase
+  // 0 en el argumento de headers: ese 0 describe la ENTRADA, no la salida. Con `INDEX(…;1;2)` la
+  // primera fila leída era ese rótulo, así que el anexo publicaba el texto "sum " donde tenía que ir
+  // el primer importe, y los dos gráficos de CAJA quedaban sin datos sin que nada dijera por qué.
+  return `=IFERROR(INDEX(QUERY(${LIBRO.pestana}!$A$${LIBRO.fila0}:$P;"${q}";0);${k + 1};${col});"")`
 }
 
 /**
@@ -210,7 +274,32 @@ export function bloqueSeries(h) {
   for (let k = 1; k <= TOP_N; k++) push([topContraparte(1, k, 1), '', topContraparte(1, k, 2)])
   const fCob1 = h.n
 
-  return { fEq0, fEq1, fHist0, fHist1, fProy0, fProy1, fPag0, fPag1, fCob0, fCob1 }
+  // ═══ LA NECESIDAD DIARIA (20/08/2026) ═══
+  //
+  // Seis columnas contiguas porque el gráfico las apila en ese orden: cinco baldes de salida y, por
+  // encima, la cobranza del día como línea. La pregunta que contesta es una sola y es la que el dueño
+  // hizo: *"¿cubrimos día a día esa necesidad?"*. Un total mensual no la contesta — la plata no falta
+  // en el mes, falta el martes.
+  // ═══ ESTA SERIE VIVE EN LA H Y SIGUIENTES, DETRÁS DE LA COLUMNA DE PROSA ═══
+  //
+  // Las columnas B a G ya tienen dueño y formato: la F es FECHA para las otras series y la G es la
+  // nota. Poner «Cargas sociales» en la F dibujaba seis millones de pesos como «30/12/1899», y correr
+  // la prosa dejaba los contadores del anexo sin formato de número. Las siete columnas de este bloque
+  // arrancan después de todo eso.
+  push([ROTULOS.necesidad, '', '', '', '', '',
+    `Salidas apiladas por rubro contra lo que entra, próximos ${DIAS_NECESIDAD} días`,
+    'Día', 'Cheques', 'Proveedores', 'Sueldos', 'Cargas sociales', 'Impuestos', 'Cobranzas'])
+  const fNec0 = h.n + 1
+  for (let i = 0; i < DIAS_NECESIDAD; i++) {
+    // LA FECHA VA EN LA B, DEBAJO DE SU PROPIO ENCABEZADO. En la A va el rótulo del bloque —así lo
+    // ubica `ubicarSeries`— y las filas de datos la dejan vacía, igual que historia y proyección.
+    push(['', '', '', '', '', '', '', `=${dia(i)}`,
+      necesidadDelDia(i, 'cheques'), necesidadDelDia(i, 'proveedores'), necesidadDelDia(i, 'sueldos'),
+      necesidadDelDia(i, 'cargas'), necesidadDelDia(i, 'impuestos'), necesidadDelDia(i, 'cobranzas')])
+  }
+  const fNec1 = h.n
+
+  return { fEq0, fEq1, fHist0, fHist1, fProy0, fProy1, fPag0, fPag1, fCob0, fCob1, fNec0, fNec1 }
 }
 
 /**
@@ -242,5 +331,8 @@ export function ubicarSeries(colA = []) {
     proyeccion: buscar(ROTULOS.proyeccion, LARGO.proyeccion),
     pagos: buscar(ROTULOS.pagos, LARGO.pagos, { conDatos: true }),
     cobranzas: buscar(ROTULOS.cobranzas, LARGO.cobranzas, { conDatos: true }),
+    // La necesidad NO lleva `conDatos`: su columna A son fechas, siempre llenas, y un día sin
+    // vencimientos es información —ese día no hace falta plata—, no una serie vacía.
+    necesidad: buscar(ROTULOS.necesidad, LARGO.necesidad),
   }
 }

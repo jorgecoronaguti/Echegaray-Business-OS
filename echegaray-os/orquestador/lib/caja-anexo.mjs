@@ -39,7 +39,16 @@ import { ALERTA } from './glifos.mjs'
 export { PESTANA_ANEXO }
 
 /** A concepto · B moneda · C importe origen · D número 2 · E importe en pesos · F fecha · G texto. */
-export const ANCHO_ANEXO = 7
+// CATORCE COLUMNAS DESDE EL 20/08/2026. Eran siete y la serie de la necesidad diaria necesita siete
+// más: el día, cinco baldes de salida y la cobranza. Con siete, `addChart` devolvía «Range
+// '_CAJA_ANEXO'!H258:H288 exceeds grid limits» y NINGÚN gráfico se dibujaba — el lote es uno solo.
+//
+// LAS SIETE NUEVAS VAN DESPUÉS DE LA PROSA, no antes. La G es la columna de nota y de contadores, y
+// el formateador la ubica como «la última» (`ANCHO_ANEXO - 1`); meter las series en el medio le
+// corría el rótulo y dejaba los conteos sin formato de número. Ver el test de `fCuantos`.
+export const ANCHO_ANEXO = 14
+/** La columna de prosa y contadores. Era «la última»; con la serie nueva atrás, hay que nombrarla. */
+export const COL_NOTA = 7
 
 /** Los rótulos del SELLO del conteo, letra por letra: son el ancla con la que el rescate y la
  *  corrida que sella encuentran sus celdas aunque el bloque se mueva. */
@@ -192,7 +201,7 @@ export const HISTORICO_EFECTIVO = HISTORICO_EFECTIVO_BASE
 export const claveDeRotulo = (r) => String(r ?? '').trim()
 
 /** Los anchos de columna, en píxeles. Los mismos que CAJA para que las dos se lean igual. */
-export const ANCHOS_ANEXO = [420, 56, 140, 140, 140, 104, 260]
+export const ANCHOS_ANEXO = [420, 56, 140, 140, 140, 104, 260, 90, 130, 130, 130, 130, 130, 130]
 
 const ars = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-AR')}`
 

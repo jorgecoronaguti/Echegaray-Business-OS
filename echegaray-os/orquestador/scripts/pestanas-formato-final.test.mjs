@@ -22,7 +22,7 @@ import { pintar, numerosDibujadosComoTexto, a1 } from '../lib/formato-en-capas.m
 import { grilla as grillaCaja, formatear as formatearCaja } from './caja-pestana.mjs'
 import { ANCHO as ANCHO_CAJA } from '../lib/caja-grilla.mjs'
 import { formatear as formatearAnexo } from './caja-anexo-pestana.mjs'
-import { grillaAnexo, ANCHO_ANEXO } from '../lib/caja-anexo.mjs'
+import { grillaAnexo, ANCHO_ANEXO, COL_NOTA } from '../lib/caja-anexo.mjs'
 import { grilla as grillaImpuestos } from './impuestos-pestana.mjs'
 import { formatear as formatearImpuestos } from '../lib/impuestos-piel.mjs'
 import { ANCHO as ANCHO_IMPUESTOS } from '../lib/impuestos-grilla.mjs'
@@ -107,11 +107,11 @@ test('_CAJA_ANEXO: el bloque declara QUÉ FILAS cuentan, y son las que tienen co
   const [f0, f1] = g.fCuantos
   assert.ok(f1 >= f0, `${f0}..${f1} no es un rango`)
   for (let f = f0; f <= f1; f++) {
-    const v = String(g.filas[f - 1]?.[ANCHO_ANEXO - 1] ?? '')
+    const v = String(g.filas[f - 1]?.[COL_NOTA - 1] ?? '')
     assert.match(v, /^=SUMPRODUCT\(/, `G${f} tendría que ser un conteo y dice "${v.slice(0, 40)}"`)
   }
   // Y el encabezado "Cuántos" queda AFUERA: es un rótulo, y con formato de número se dibujaría mal.
-  assert.equal(String(g.filas[f0 - 2]?.[ANCHO_ANEXO - 1] ?? ''), 'Cuántos')
+  assert.equal(String(g.filas[f0 - 2]?.[COL_NOTA - 1] ?? ''), 'Cuántos')
 })
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════

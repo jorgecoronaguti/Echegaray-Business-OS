@@ -24,7 +24,7 @@ import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-edicion
 import { publicar } from '../lib/rangos-nombrados.mjs'
 import { requestsTextoPorContenido } from '../lib/formato-texto-por-contenido.mjs'
 import {
-  grillaAnexo, ANCHO_ANEXO, ANCHOS_ANEXO, PESTANA_ANEXO, SELLO_EFECTIVO, HISTORICO_EFECTIVO, claveDeRotulo,
+  grillaAnexo, ANCHO_ANEXO, ANCHOS_ANEXO, COL_NOTA, PESTANA_ANEXO, SELLO_EFECTIVO, HISTORICO_EFECTIVO, claveDeRotulo,
   CARGA_TARDIA, FECHA_DEL_CONTEO,
 } from '../lib/caja-anexo.mjs'
 import {
@@ -477,7 +477,9 @@ export async function formatear(google, sheetId, g) {
   for (const gr of grupos) req.push({ deleteDimensionGroup: { range: { sheetId, dimension: 'ROWS', startIndex: gr.startIndex, endIndex: gr.endIndex } } })
 
   // El "$" es del TOTAL, no de cada celda: un símbolo repetido en cien filas no distingue nada.
-  for (const c of [2, 3, 4]) {
+  // LAS COLUMNAS DE PLATA. La 6 y la 7 (G y H) entraron con la serie de necesidad diaria: sin ellas
+  // «Cargas sociales» e «Impuestos» salían como número crudo al lado de columnas formateadas.
+  for (const c of [2, 3, 4, 8, 9, 10, 11, 12, 13]) {
     fmt(r(0, n, c, c + 1), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
       { numberFormat: MONEDA_CUERPO, horizontalAlignment: 'RIGHT' })
   }
@@ -486,10 +488,13 @@ export async function formatear(google, sheetId, g) {
   }
   fmt(r(0, n, 1, 2), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'CENTER' })
+  // LA H ES EL DÍA DE LA SERIE DE NECESIDAD: sin esto el eje del gráfico salía en números de serie.
+  fmt(r(0, n, 7, 8), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
+    { numberFormat: { type: 'DATE', pattern: 'dd/mm' }, horizontalAlignment: 'CENTER' })
   fmt(r(0, n, 5, 6), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
     { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'CENTER' })
   // La última columna es PROSA: texto, gris, con ajuste. Nunca plata.
-  fmt(r(0, n, ANCHO_ANEXO - 1, ANCHO_ANEXO), 'userEnteredFormat',
+  fmt(r(0, n, COL_NOTA - 1, COL_NOTA), 'userEnteredFormat',
     { ...E.nota(), numberFormat: { type: 'TEXT' }, wrapStrategy: 'WRAP', verticalAlignment: 'MIDDLE' })
   // …SALVO LAS CUATRO CELDAS QUE CUENTAN, que el bloque declara (`fCuantos`). Un contador dibujado
   // como prosa sale crudo y pegado a la izquierda: "1234" en vez de "1.234", y el cero se lee como un
@@ -501,7 +506,7 @@ export async function formatear(google, sheetId, g) {
   // izquierda se leen como dos columnas distintas. La corrección es que el número sea un número.
   if (g.fCuantos) {
     const [q0, q1] = g.fCuantos
-    fmt(r(q0 - 1, q1, ANCHO_ANEXO - 1, ANCHO_ANEXO), 'userEnteredFormat.numberFormat',
+    fmt(r(q0 - 1, q1, COL_NOTA - 1, COL_NOTA), 'userEnteredFormat.numberFormat',
       { numberFormat: { type: 'NUMBER', pattern: '#,##0;-#,##0;"—"' } })
   }
   // UNA TASA NO ES PLATA: con formato de moneda, el 55% anual se dibuja "$1".

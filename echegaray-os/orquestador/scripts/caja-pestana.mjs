@@ -530,6 +530,14 @@ export async function formatear(google, sheetId, g, anexo) {
     return null
   })
   if (!colA) return
+  // ═══ LAS FILAS VACÍAS DEL FINAL NO VUELVEN DE LA API (20/08/2026) ═══
+  //
+  // `readSheetValues` recorta las filas en blanco del final del rango. El ranking de cobranzas es el
+  // ÚLTIMO bloque del anexo y ese día tenía cuatro contrapartes de cinco: la quinta fila existe en la
+  // hoja pero no volvió, la lectura quedó una fila corta, y `ubicarSeries` —que exige que la serie
+  // tenga sus filas debajo, para no dibujar media verdad— la descartó. El gráfico desaparecía por un
+  // artefacto del transporte, no por falta de dato. Se rellena hasta el largo pedido.
+  while (colA.length < 600) colA.push([''])
   const charts = await requestsDeGraficos(google, ID, sheetId, anexo?.sheetId, ubicarSeries(colA))
   if (!charts.length) return
   await google.spreadsheetBatchUpdate(ID, charts)
