@@ -138,12 +138,24 @@ test('LA LIB NO ESCRIBE NINGUNA LETRA DE COLUMNA: el layout es del llamador', ()
   assert.doesNotMatch(f.replace(/C7/g, ''), /\b[A-Z]\d+\b/, `la lib volvió a escribir una letra de columna: ${f}`)
 })
 
-test('con demanda, la fórmula es MAX(convenio; constante entera) gateada por la frontera de caja comprometida, en es-AR', () => {
-  const f = formulaProyectadoQuincena({ convenio: 'SIG*HS*DIAS', celdaPago: 'C41' }, { jornales: 1234567.89 })
-  assert.ok(f.includes('MAX(IFERROR(SIG*HS*DIAS;0);1234568)'), f)
-  assert.ok(f.includes('EOMONTH(TODAY();0)'), 'la frontera es la misma de formulaSigmaDelMes y se reclasifica sola')
-  assert.ok(f.includes('N(C41)>0'), 'sin fecha de pago no hay frontera que aplicar: va al MAX de planificación')
-  assert.ok(!f.includes(','), 'separador es-AR: punto y coma, nunca coma')
+test('EL MAX CONTRA LA DEMANDA NO VUELVE: la proyección es el 100% del convenio sobre el plantel actual', () => {
+  // ═══ CAMBIO DE CONTRATO (14/08) ═══
+  //
+  // Esto exigía `MAX(convenio; demanda de obra)`. Con esa regla la columna cambiaba de NATURALEZA fila
+  // por fila: de agosto a septiembre publicaba lo que piden las obras vendidas ($18,7M–$21,5M) y de
+  // octubre en adelante lo que obliga el convenio ($7,2M–$8,8M). El dueño: *"esas proyecciones no
+  // puedn ser asi, no dan confianza"* · *"q mierda estas haciendo con las proyecciones de obreros"* ·
+  // *"hace lo solicitado CON EL PLANTEL ACTUAL"*.
+  //
+  // Y tenía razón por aritmética: esos $18,7M equivalen a ~38 personas con la Σ $/hora del convenio,
+  // contra las 16 del plantel. El número no describía ni a su gente ni a su escala.
+  const conDemanda = formulaProyectadoQuincena({ convenio: 'SIG*HS*DIAS', celdaPago: 'C41' }, { jornales: 1234567.89 })
+  const sinDemanda = formulaProyectadoQuincena({ convenio: 'SIG*HS*DIAS', celdaPago: 'C41' }, null)
+  assert.equal(conDemanda, sinDemanda, 'la demanda de obra volvió a pisar el convenio')
+  assert.equal(conDemanda, '=IFERROR(SIG*HS*DIAS;"")')
+  assert.ok(!conDemanda.includes('MAX'), 'volvió el MAX contra la demanda')
+  assert.ok(!conDemanda.includes('1234568'), 'la demanda se coló como constante en la fórmula')
+  assert.ok(!conDemanda.includes(','), 'separador es-AR: punto y coma, nunca coma')
 })
 
 test('la glosa habla sólo cuando alguna quincena lleva demanda, y dice cuántas obras la empujan', () => {

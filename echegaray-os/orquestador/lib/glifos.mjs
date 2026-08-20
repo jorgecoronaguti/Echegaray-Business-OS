@@ -113,6 +113,61 @@ export function comparaMarca(rango, marca) {
 }
 
 /**
+ * EL SEMÁFORO DE `Compras!Z · Estado pago`: cuatro estados, cuatro glifos que el papel dibuja.
+ *
+ * ═══ QUÉ ESTABA MAL (15/08) ═══
+ *
+ * Las 1.136 fórmulas de esa columna llevaban `✅ 🔴 🟡 🟢` DENTRO del texto que devuelven. Los cuatro
+ * son emoji, o sea que el exportador no los embebe: en la pantalla hay un semáforo y en el PDF —que
+ * es con lo que el dueño da una pestaña por buena— hay cuatro palabras sin señal. 846 celdas medidas
+ * por `auditar-pantalla`, la peor concentración del archivo.
+ *
+ * ═══ POR QUÉ ESTOS CUATRO Y NO OTROS ═══
+ *
+ * Ninguno tiene propiedad Emoji (verificado con `\p{Emoji}`, `\p{Extended_Pictographic}` y
+ * `\p{Emoji_Presentation}`), que es el corte medido que separa lo que el PDF dibuja de lo que pierde
+ * — el mismo criterio con el que se eligió `▲` y por el que `▶` (U+25B6) quedó descartado.
+ *
+ *   · `pagado` = `✓` (U+2713). Ya es el glifo de "esto está cumplido" en todo el archivo: el
+ *     `✓ ofi…` de Jornales y el `✓ $0` de un control que cierra. Una compra pagada es lo mismo.
+ *   · `vencido` = `ALERTA`. No es un glifo nuevo: es LA señal de alerta del archivo, y una factura
+ *     vencida es exactamente "esto es lo que hay que mirar". `glifos.mjs` decide con qué carácter se
+ *     alerta; cada pestaña decide CUÁNDO — acá se decide cuándo.
+ *   · `porVencer` = `△` (U+25B3). Es `▲` sin rellenar, y eso es el semáforo: la MISMA forma con
+ *     menos urgencia. Un semáforo codifica grado, no categoría; en blanco y negro el grado tiene que
+ *     seguir viéndose, y el relleno es lo único que sobrevive a la tinta. Vive en Geometric Shapes,
+ *     pegado a `▲`.
+ *   · `vigente` = `○` (U+25CB). El estado sin nada que hacer: círculo abierto, ninguna acción
+ *     pendiente. Cierra la escalera `✓ hecho · ▲ ahora · △ mirá · ○ nada`, que se lee de un vistazo.
+ *
+ * NINGUNO REPITE UN SIGNIFICADO YA TOMADO: `⇒` abre un total, `↳` marca lo derivado, `⊘` marca lo
+ * excluido, `✗` marca lo que falló. Los tres primeros siguen libres de este uso y el `✗` no entra:
+ * una compra "no pagada" no es una compra fallida.
+ *
+ * LIMITACIÓN DECLARADA: la verificación de estos dos glifos nuevos es por PROPIEDAD UNICODE, no por
+ * PDF exportado — publicarlos para mirarlos es escribir el archivo real, y eso lo hace el dueño. El
+ * argumento es el mismo que sostiene a `▲`, que sí se verificó en papel.
+ */
+export const SEMAFORO = Object.freeze({
+  pagado: '✓',
+  vencido: ALERTA,
+  porVencer: '△',
+  vigente: '○',
+})
+
+/**
+ * EL SEMÁFORO YA PUBLICADO. Mismo motivo que `ALERTA_HEREDADA`: hasta que corra el generador de la
+ * columna conviven las dos formas en las celdas, y `residuo-propio` reconoce lo publicado POR SU
+ * TEXTO. Se saca cuando `auditar-pantalla` no reporte un solo `glifo_invisible` en `Compras`.
+ */
+export const SEMAFORO_HEREDADO = Object.freeze({
+  pagado: '✅',
+  vencido: '🔴',
+  porVencer: '🟡',
+  vigente: '🟢',
+})
+
+/**
  * LOS RANGOS QUE EL PDF NO DIBUJA: los pictográficos y los símbolos con presentación emoji.
  *
  * Es una lista CONSERVADORA y explícita, no "todo lo que no sea ASCII": el archivo usa a propósito

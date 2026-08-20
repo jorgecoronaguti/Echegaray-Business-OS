@@ -18,6 +18,9 @@ const ALARMA = { red: 0.7, green: 0.2, blue: 0.1 }
 /** Un renglón vacío entre bloques respira; uno de datos no. Es el "espacio en blanco" del dueño. */
 const ALTO_SEPARADOR = 32
 
+/** El ancho de la columna A, la de los rótulos. El porqué del número está donde se aplica. */
+export const ANCHO_ROTULO = 500
+
 /**
  * NÚCLEO PURO: qué trato tipográfico le toca a cada fila, decidido por el CONTENIDO.
  *
@@ -165,7 +168,20 @@ export async function formatear(google, fileId, sheetId, g, filasHoja = 0) {
   // paréntesis abierto, porque la celda de al lado tiene el importe y no hay adónde rebalsar. Un
   // titular cortado no es un titular: es un error de imprenta. El rótulo además se acortó (el emisor
   // entre paréntesis se saca), así que son dos cinturones para el mismo problema.
-  req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 400 }, fields: 'pixelSize' } })
+  //
+  // ═══ 500 DESDE EL 15/08: EL RENGLÓN DEL CALENDARIO CRECIÓ CON LA DECISIÓN DEL DUEÑO ═══
+  //
+  // Una línea del calendario ya no es sólo el vencimiento: cuando el dueño la revisó, lleva su
+  // veredicto pegado al final. `A26` mide 86 caracteres —"16/07 · Ingresos Brutos San Juan (DGR) ·
+  // jun ✓ 13/08 lo revisó el dueño: «no afectan»"— y en 400px entran 70, con el importe al lado
+  // impidiendo el derrame. Lo que se cortaba era el final: justo la parte que dice que ese
+  // vencimiento YA está resuelto, o sea la razón por la que no hay que hacer nada con él.
+  //
+  // SE ENSANCHA EN VEZ DE ACORTAR PORQUE ALCANZA: 86 caracteres piden 490px. El criterio del archivo
+  // es acortar cuando ningún ancho razonable entra; acá entra con 500 y sobra para un rótulo más
+  // largo. Acortar habría significado tirar el nombre de quien decidió o su palabra textual, que es
+  // lo único que hace verificable la decisión.
+  req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: ANCHO_ROTULO }, fields: 'pixelSize' } })
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: 13 }, properties: { pixelSize: 108 }, fields: 'pixelSize' } })
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: 13, endIndex: 14 }, properties: { pixelSize: 124 }, fields: 'pixelSize' } })
   // La columna de procedencia ya no muestra texto (se vacía): angosta.

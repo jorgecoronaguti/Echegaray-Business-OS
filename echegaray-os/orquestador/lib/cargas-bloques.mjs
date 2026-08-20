@@ -13,7 +13,7 @@ import {
   CONCEPTOS_CADENA, A_VERIFICAR, RANGO_DIA_PAGO_F931,
   formulaProporcionPrimerAnio, proyeccionDeConcepto, jornalesDelMes,
 } from './cargas-cadena.mjs'
-import { ROTULOS_CARGAS, RUBRO_PLANES } from './libro-extractores-cargas.mjs'
+import { ROTULOS_CARGAS, RUBRO_PLANES, RUBRO_CARGAS, RUBRO_GREMIALES } from './libro-extractores-cargas.mjs'
 import { MES, cm, REALES } from './cargas-grilla.mjs'
 import { notaSupuesto } from './proyeccion-convenio.mjs'
 import { ALERTA } from './glifos.mjs'
@@ -53,7 +53,7 @@ export function bloquePagado(G, { anio, C, fArtDecl = 0, fDeclTot = 0 }) {
   G.cabecera()
   // LAS COLUMNAS DE COMPRAS SE RESUELVEN POR SU ENCABEZADO. Éste es el bloque que estaba en #VALUE!
   // desde que una columna de Compras se movió y la referencia por letra quedó en #REF!.
-  // PAGADO ES PAGADO: SÓLO HASTA HOY.
+  // PAGADO ES PAGADO: LO QUE LA PLANILLA MARCÓ, Y SÓLO HASTA HOY.
   //
   // EL DEFECTO QUE ESTO CORRIGE (23/07). Compras tiene cargados los pagos PREVISTOS de los meses que
   // vienen, con su fecha de caja futura. Sin el tope de hoy, la sección "¿cuánto salió efectivamente
@@ -62,16 +62,51 @@ export function bloquePagado(G, { anio, C, fArtDecl = 0, fDeclTot = 0 }) {
   // $44,8M declarados. Un cuadro de lo pagado que incluye lo que todavía no se pagó no es un error
   // de presentación: es un número que se usa para decidir y está mal. Lo previsto se contrasta en la
   // sección 5, donde corresponde, contra la proyección propia.
+  //
+  // ═══ Y EL TOPE DE HOY NO ALCANZABA: UNA FECHA VENCIDA NO ES UN PAGO (17/08/2026) ═══
+  //
+  // El corte de arriba resuelve el FUTURO. No resuelve la fila de este mes cuya fecha prevista ya
+  // pasó y que nadie marcó — y ésa es justo la que se mira. Medido en el Sheet vivo al 17/08, esta
+  // fila publicaba **$10.494.876 de F931 "salido de la caja" en agosto contra $0 realmente pagados**:
+  //
+  //   · Compras f469 — $8.000.000, ARCA, fecha de caja 10/08, estado «Proyectado». Es el número
+  //     redondo tipeado que `libro-extractores-cargas.mjs` denuncia como previsión en su cabecera.
+  //   · Compras f725 — $2.494.876, cuota del plan W303094, 16/08, estado «Pendiente» y rubro
+  //     «Deuda previsional (planes de pago)», pero con "F931" en Cliente/Asignación.
+  //
+  // El daño no quedaba acá: el hero saca REAL de esta fila y COMPROMETIDO por diferencia, así que
+  // inflaba lo pagado ~$10,5M y desinflaba en lo mismo la deuda que se usa para decidir; y la
+  // sección 3 llegó a declarar $10.494.876 de sobrepago que no existe.
+  //
+  // LA PESTAÑA YA SABÍA CÓMO SE PREGUNTA. Doce filas más arriba el hero de planes mide por HECHO
+  // (`"<>Pagado"` sobre la columna del cargador). Convivían dos definiciones de "pagado" en la misma
+  // pestaña, la de arriba correcta y la de abajo por fecha. Ahora es una sola, y es la del cargador
+  // —la misma que `estaPagada` usa en el libro—, así que la pestaña y el Libro Canónico no pueden
+  // discrepar sobre qué salió.
+  //
+  // EL RUBRO ACOTA ADEMÁS DEL CLIENTE. "F931" en Cliente/Asignación no dice de qué obligación se
+  // trata: la cuota de un plan de pago de un F931 viejo también lo lleva. Sin el rubro, esos pesos
+  // sumaban en la fila del F931 Y otra vez en la fila del plan, dentro del mismo cuadro. Los textos
+  // salen de la taxonomía única (`rubro-caja.mjs` vía `libro-extractores-cargas.mjs`): escritos a
+  // mano acá, el día que la taxonomía cambie este filtro devuelve cero sin dar un solo error.
   const mes = (m) => `">="&DATE(${anio};${m};1);${rango(C.fecha)};"<="&MIN(EOMONTH(DATE(${anio};${m};1);0);TODAY())`
-  const pagado = (param) => (m) => `=IFERROR(SUMIFS(${rango(C.total)};${rango(C.cliente)};'Parámetros'!$A$${param};${rango(C.fecha)};${mes(m)});0)`
+  const salio = `${rango(C.estado)};"Pagado"`
+  const pagado = (param, rubro) => (m) => `=IFERROR(SUMIFS(${rango(C.total)};${rango(C.cliente)};`
+    + `'Parámetros'!$A$${param};${rango(C.rubro)};"${rubro}";${salio};${rango(C.fecha)};${mes(m)});0)`
   const p0 = G.n() + 1
   const filaPag = {}
-  filaPag.F931 = G.mensual('F931', pagado(35), `Compras · "${'F931'}" en Cliente/Asignación, por fecha de caja (col. ${C.fecha}).`)
+  filaPag.F931 = G.mensual('F931', pagado(35, RUBRO_CARGAS),
+    `Compras · "F931" en Cliente/Asignación con rubro "${RUBRO_CARGAS}", marcado Pagado, por fecha de caja (col. ${C.fecha}).`)
+  // El plan conserva su criterio propio (cliente + detalle): es la fila que distingue la cuota
+  // financiada del F931 corriente, y su rubro ya la separa del de arriba. Lo que sí gana es el
+  // estado — una cuota con vencimiento pasado y sin marcar no salió de la caja.
   filaPag.plan = G.mensual('Deuda previsional en cuotas', (m) =>
-    `=IFERROR(SUMIFS(${rango(C.total)};${rango(C.cliente)};'Parámetros'!$A$41;${rango(C.detalle)};'Parámetros'!$B$41;${rango(C.fecha)};${mes(m)});0)`,
-  'Compras · plan de pago, por fecha de caja.')
+    `=IFERROR(SUMIFS(${rango(C.total)};${rango(C.cliente)};'Parámetros'!$A$41;${rango(C.detalle)};`
+    + `'Parámetros'!$B$41;${salio};${rango(C.fecha)};${mes(m)});0)`,
+  'Compras · plan de pago marcado Pagado, por fecha de caja.')
   ;[['FCL', 36], ['UOCRA', 37], ['IERIC', 38], ['FODECO', 39]].forEach(([r, p]) => {
-    filaPag[r] = G.mensual(r, pagado(p), `Compras · "${r}" en Cliente/Asignación, por fecha de caja.`)
+    filaPag[r] = G.mensual(r, pagado(p, RUBRO_GREMIALES),
+      `Compras · "${r}" en Cliente/Asignación con rubro "${RUBRO_GREMIALES}", marcado Pagado, por fecha de caja.`)
   })
   const p1 = G.n()
   const fPagTot = G.mensual(rotuloTotal('Total pagado'), (m) => `=SUM(${cm(m)}${p0}:${cm(m)}${p1})`, 'Suma de los conceptos de arriba.')
@@ -351,7 +386,28 @@ export function bloqueSac(G, { anio, C, fRem, fRemProy }) {
   //
   // LA PREGUNTA QUE IMPORTA NO ES CUÁNTO, ES SI ESTÁ AL DÍA. Un Fondo de Cese atrasado es
   // incumplimiento y habilita reclamos, y este cuadro no lo puede contestar solo.
-  const pieFcl = G.push([`${ALERTA} Fondo de Cese (Ley 22.250) — no lo declara la DDJJ: su devengado no se controla contra nada, sólo se sabe lo que salió de la caja. ${A_VERIFICAR}: la alícuota, y que los aportes estén al día.`])
+  // ═══ LA AFIRMACIÓN ANTERIOR ERA FALSA, Y COSTABA CARA (18/08/2026) ═══
+  //
+  // Acá decía: *"no lo declara la DDJJ: su devengado no se controla contra nada"*. **Lo declara.**
+  // La DDJJ Nominativa de UOCRA trae, mes a mes, el renglón "Total Aportes Devengados al Fondo de
+  // Cese Laboral", y los seis PDF de 2026 estaban en Drive desde febrero — en la misma carpeta que
+  // IIBB e IVA, que el OS ya leía. UOCRA era la única de las cuatro subcarpetas que no leía nadie.
+  //
+  // Una limitación declarada bloquea el criterio que toca. Ésta bloqueaba el control del Fondo de
+  // Cese entero, y era falsa: el dato existía, sólo que nadie lo había ido a buscar. Ahora entra por
+  // `_UOCRA_DDJJ_RAW` y el devengado queda al lado de lo pagado, que es la única forma de contestar la
+  // pregunta que importa — no cuánto es, sino si está al día.
+  const fFclDev = G.mensual('Fondo de Cese devengado (DDJJ UOCRA)', (m) =>
+    // El período va como TEXTO literal y no como TEXT(DATE(...)): en la réplica la columna A es
+    // texto ("2026-01"), y hacer que la fórmula lo construya agrega un formato de fecha que en este
+    // locale es justo donde este repo se corta los dedos. El año y el mes se conocen al generar.
+    // SIN DDJJ, LA CELDA VA VACÍA — no en cero. `SUMIFS` sobre cero coincidencias devuelve 0, y ese
+    // 0 se lee como "ese mes devengó cero", que es una afirmación falsa: julio simplemente todavía
+    // no tiene DDJJ presentada. Se comprueba con COUNTIF antes de sumar. Visto en la primera
+    // corrida (18/08): la columna de julio publicó 0 al lado de un devengado de $1,48M en junio.
+    `=IF(COUNTIF(_UOCRA_DDJJ_RAW!$A:$A;"${anio}-${String(m).padStart(2, '0')}")=0;"";SUMIFS(_UOCRA_DDJJ_RAW!$I:$I;_UOCRA_DDJJ_RAW!$A:$A;"${anio}-${String(m).padStart(2, '0')}"))`,
+    'DDJJ Nominativa de UOCRA, renglón "Total Aportes Devengados al Fondo de Cese Laboral", leído del PDF de Drive por scripts/uocra-raw-pestana.mjs. Vacío = ese mes todavía no tiene DDJJ presentada, NO cero.')
+  const pieFcl = G.push([`${ALERTA} Fondo de Cese (Ley 22.250) — el devengado sale de la DDJJ de UOCRA (fila ${fFclDev}) y lo pagado, de Compras. ${A_VERIFICAR}: que los aportes estén al día; la diferencia entre las dos filas es lo que falta girar.`])
   G.push()
   return { pies: [pieVac, pieFcl] }
 }

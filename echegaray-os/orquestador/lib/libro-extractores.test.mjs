@@ -23,7 +23,7 @@ import { serialDe, isoDeSerial } from './libro-extractores-fechas.mjs'
 // del saldo parcial y las del cliente las completan explícitamente.
 const ENC_COMPRAS = ['Proveedor', 'CUIT (OS)', 'N° Comprobante', 'Total', 'Estado',
   'Tipo pago', 'Rubro de caja', 'Fecha de caja', 'Detalles / Obra', 'Estado pago', 'Monto Pagado',
-  'Cliente / Asignación']
+  'Cliente / Asignación', 'Monto Parcial 2']
 const compras = (extra = []) => [[], [], ENC_COMPRAS,
   ['Mariana SA', '30-71037035-0', '0002-00000683', 100000, 'Pagado', 'Transferencia', 'Materiales Civil', 46000, 'ARCOR'],
   ['Nota SA', '30-71037035-0', '0002-00000683', -21359, 'Pagado', 'Transferencia', 'Materiales Civil', 46001, ''],
@@ -111,7 +111,24 @@ test('COMPRAS: "Monto Pagado" ≥ Total sin estado Pagado avisa y manda el TOTAL
   ]), 46240, { aviso: (m) => avisos.push(m) })
   assert.equal(ms.find((m) => m.concepto === 'FCL').importe, 800000)
   assert.equal(avisos.length, 1, avisos.join(' / '))
-  assert.match(avisos[0], /Monto Pagado/)
+  // El aviso nombra LO PAGADO, no una columna: desde el 18/08 son los dos tramos («Monto Pagado» +
+  // «Monto Parcial 2») y decir sólo el nombre del primero mandaría a mirar la celda equivocada.
+  assert.match(avisos[0], /lo pagado 800000 cubre o supera el Total 800000/)
+})
+
+test('COMPRAS: los DOS tramos de pago descuentan — el segundo también', () => {
+  // EL DEFECTO (18/08): `pendienteDeCompra` era `importe - montoPagado` y no miraba «Monto Parcial
+  // 2», así que una factura saldada en dos veces le llegaba a las tarjetas de CAJA debiendo el
+  // segundo tramo entero. Medido en Compras: 8 filas tienen el segundo tramo cargado, y en las ocho
+  // vale exactamente el saldo que dejó el primero (Gerson Castro: 2.300.000 = 1.000.000 + 1.300.000).
+  // La fila queda ABIERTA a propósito con los dos tramos cobrando una parte: si los dos cubrieran el
+  // total, el guarda de contradicción manda el total entero (una fila saldada no dice "Pendiente") y
+  // el test no mediría lo que dice medir.
+  const ms = deCompras(compras([
+    ['Gerson Castro', '', '', 2300000, 'Pendiente', 'Efectivo', 'Materiales Civil', 46240, '', '', 1000000, '', 800000],
+  ]), 46240)
+  const g = ms.find((m) => m.concepto === 'Gerson Castro')
+  assert.equal(g.importe, 500000, 'sin el segundo tramo CAJA pedía $1.300.000 en vez de $500.000')
 })
 
 test('COMPRAS: pagado=REAL, pendiente vencido=VENCIDO', () => {

@@ -10,11 +10,18 @@
 // ═══ LO QUE LA DINÁMICA OBLIGA A CEDER, DICHO ANTES ═══
 //
 // **El importe queda a la derecha de todo.** En un pivot los valores van SIEMPRE después de los
-// campos de fila; no hay forma de intercalarlos. El bloque tenía el importe en la D, entre
-// comprobante y obra, y ahora queda en la G. Es una limitación de la API, no una decisión.
+// campos de fila; no hay forma de intercalarlos. Es una limitación de la API, no una decisión, y es
+// la razón por la que el cuadro que abre la sección tiene UN solo valor: cada valor de más empuja
+// una columna las que sí deciden (el vencimiento y la nota "Qué hacer").
 //
 // **Los rótulos son los de Compras.** Un campo de fila hereda el encabezado de su columna origen
 // ("Fecha prevista de pago (día)"), y la API no permite renombrarlo. Sólo el valor acepta `name`.
+// Eso es lo que hace que la columna A del cuadro que abre la sección diga "Proveedor" —el rótulo de
+// Compras!E— y que `proveedores-plan-vivo.mjs`, que lo exige, vuelva a poder correr.
+//
+// **Una dinámica no calcula nada que no esté en su origen.** El vencimiento más próximo de un
+// proveedor y su nota no pueden ser columnas del pivot: van a su derecha como fórmulas ancladas al
+// NOMBRE que el pivot escribe. Ver `proveedores-cuadro-a.mjs`.
 //
 // ═══ LAS DOS TRAMPAS YA PAGADAS (ver deuda-viva-pivot.mjs) ═══
 //
@@ -24,7 +31,8 @@
 // 2. `showTotals` en un nivel intermedio NO emite subtotales. Se apaga en todos los niveles: el
 //    único total es el gran total del pie, que es el que se controla contra el titular.
 
-import { CONTADOR, MONEDA_CUERPO } from './formato-statement.mjs'
+import { MONEDA_CUERPO } from './formato-statement.mjs'
+import { TITULO_DE_SECCION } from './proveedores-colchon.mjs'
 
 /** Las columnas de Compras por su offset dentro del source (que arranca en A). */
 // `obra: 9` es "Cliente / Asignación" (J), que es donde vive LA ESTRELLA / MESSINA / San Francisco.
@@ -39,97 +47,91 @@ export const COL = Object.freeze({
 export const PENDIENTE = 'Pendiente'
 
 /**
- * LOS CAMPOS DE FILA — Y POR QUÉ EL PRIMERO ES LA FECHA (14/08).
+ * LOS CAMPOS DE FILA — Y POR QUÉ EL PRIMERO VUELVE A SER EL PROVEEDOR (14/08, segunda vuelta).
  *
- * ═══ EL EJE ERA EL PROVEEDOR Y LA PREGUNTA ES EL DÍA ═══
+ * ═══ EL EJE SE CAMBIÓ POR LA FECHA Y EL DUEÑO LO RECHAZÓ EL MISMO DÍA ═══
  *
- * El 04/08 el dueño pidió explícitamente el proveedor al frente y así estaba. El 14/08 dijo por qué
- * no le alcanza, textual: *"el cuadro de pestaña proveedores esta incompleto aun tengo q seguir
- * usando algunos filtros en pestaña compras por ejemplo para saber exactamente a quienes y como debo
- * pagar un determinado dia"*.
+ * A la mañana pidió *"saber exactamente a quiénes y cómo debo pagar un determinado día"* y el eje del
+ * cuadro se movió del proveedor a la fecha de pago. A la tarde, textual:
  *
- * LA PRUEBA DE QUE ESTA SECCIÓN SIRVE ES QUE ÉL NO ABRA COMPRAS. Con el proveedor al frente, "¿qué
- * sale el lunes?" se contesta recorriendo las 20 filas del detalle a ojo y sumando de memoria — que
- * es exactamente lo que hace el filtro de Compras que sigue usando. Con la FECHA al frente, el
- * cuadro A da el total del día y el cuadro B lo abre en sus operaciones, agrupadas bajo ese día.
+ *   *"roto proveedores, esta verga asi no sirve para nada, LA BASE SIEMPRE ES EL NOMBRE DEL
+ *    PROVEEDOR, ademas de q tomaba mal columnas de compras … rehacer"*
  *
- * Se cambia un pedido explícito anterior por uno explícito posterior, y el posterior trae la razón:
- * el anterior era sobre la FORMA (dónde va cada columna), éste es sobre la FUNCIÓN (qué decide).
+ * El error de razonamiento fue tratar dos pedidos como excluyentes. No lo son: el corte por día es
+ * una VISTA de la deuda, y la deuda es de un proveedor. Cambiar el eje mató tres cosas de una:
  *
- * ═══ LO QUE EL CAMBIO CUESTA, DICHO ═══
+ *   1. el ranking "a quién le debo más" desapareció de la pestaña;
+ *   2. las doce notas del dueño perdieron su ancla —vivían al lado de un NOMBRE, en la columna D—
+ *      y se borraron sin que nada avisara;
+ *   3. `proveedores-plan-vivo.mjs`, que exige "Proveedor" en la columna A, dejó de poder correr.
  *
- * El primer nivel agrupa y escribe su rótulo UNA vez por grupo, así que los blancos de la columna A
- * se mudan del proveedor a la fecha — y ahí son correctos: una fecha repetida en cada renglón de su
- * propio día es ruido. A cambio, la columna del proveedor (B) queda LLENA en todas las filas, que es
- * el agujero que el dueño reportó tres veces.
+ * ═══ CÓMO CONVIVEN LOS DOS PEDIDOS ═══
  *
- * El orden de lectura de izquierda a derecha es la pregunta que él hace: CUÁNDO · A QUIÉN · POR QUÉ
- * COMPROBANTE · CON QUÉ MEDIO · DE QUÉ CATEGORÍA · PARA QUÉ OBRA · CUÁNTO.
+ *   cuadro A · A QUIÉN SE LE DEBE  — una línea POR PROVEEDOR, ordenada por lo que se le debe.
+ *                                    Es el que abre la sección: el eje, con su vencimiento más
+ *                                    próximo y su nota "Qué hacer" al lado (ver proveedores-cuadro-a).
+ *   cuadro B · CADA OPERACIÓN      — el detalle, agrupado por DÍA DE PAGO: qué sale cada día, a
+ *                                    quién, por qué comprobante y con qué medio. Ahí vive el corte
+ *                                    por día que el dueño pidió, sin desalojar al proveedor del eje.
  *
- * Ninguno lleva `showTotals`: ver la trampa 2 de la cabecera — la API no emite el subtotal de un
- * nivel externo, y por eso el total por día lo da el cuadro A y no éste.
+ * `showTotals: false` en TODOS los niveles: la API no emite el subtotal de un nivel externo (trampa
+ * 2, medida contra el archivo real). Pedirlo no da error — no hace nada.
  */
-export function camposDeFila({ vista = VISTA.POR_DIA } = {}) {
-  // UNA LÍNEA POR DÍA DE PAGO. Orden CRONOLÓGICO, nunca por importe: un calendario que empieza por
-  // el día más caro no es un calendario. `valueBucket` se omite a propósito — es lo que haría que
-  // Sheets ordenara por la plata.
-  if (vista === VISTA.POR_DIA) {
-    return [{ sourceColumnOffset: COL.proximoPago, showTotals: false, sortOrder: 'ASCENDING' }]
-  }
-  // La vista vieja, una línea por proveedor y ordenada por lo que se le debe. Ya no la usa la
-  // pestaña; se conserva porque es la que contesta "¿a quién le debo más?" y esa pregunta sigue
-  // existiendo — el día que tenga cuadro propio, sale de acá y no se reinventa.
+export function camposDeFila({ vista = VISTA.POR_PROVEEDOR } = {}) {
+  // UNA LÍNEA POR PROVEEDOR, ORDENADA POR LO QUE SE LE DEBE. El `valueBucket` es lo que hace el
+  // ranking: sin él Sheets ordena alfabéticamente y "a quién le debo más" hay que buscarlo a ojo.
   if (vista === VISTA.POR_PROVEEDOR) {
     return [{ sourceColumnOffset: COL.proveedor, showTotals: false, sortOrder: 'DESCENDING', valueBucket: { valuesIndex: 0 } }]
   }
-  // ═══ SEIS CAMPOS PASARON A CINCO, Y LA QUE SE FUE ES "CATEGORÍA" (14/08) ═══
+  // ═══ EL DETALLE ABRE POR EL PROVEEDOR — Y ESTO YA SE EQUIVOCÓ UNA VEZ (15/08/2026) ═══
   //
-  // No se recortó por lugar: se recortó porque no decide nada de lo que este cuadro existe para
-  // decidir. La pregunta es a QUIÉN, CUÁNTO y CÓMO se paga un día; "B"/"N" no contesta ninguna de
-  // las tres, y medida contra Compras va pegada al medio de pago (efectivo→N, cheque/echeq/
-  // transferencia→B), así que además repite lo que la columna de al lado ya dice.
+  // EL DEFECTO, dicho por el dueño mirando la pestaña: *"roto, eso está al revés de como lo pido"*.
+  // El detalle abría por `proximoPago`, así que el DÍA era el eje y el proveedor colgaba de él: un
+  // mismo proveedor aparecía repartido en cinco grupos de fecha y "cuánto le debo a Alumetal" había
+  // que sumarlo a ojo. Su regla es de una línea y no admite lectura: **la base siempre es el nombre
+  // del proveedor**.
   //
-  // Lo que su columna deja libre es lo que hacía falta: la G, donde ahora entra "Qué hacer" —la nota
-  // del dueño, anclada a SU proveedor— al lado del pago que tiene que decidir, en vez de al lado de
-  // un total. Ver `proveedores-notas-visibles.mjs`.
+  // POR QUÉ ESTABA AL REVÉS, Y POR QUÉ AHORA SÍ SE PUEDE DAR VUELTA. El día se puso de eje para
+  // contestar un pedido anterior suyo —*"saber exactamente a quiénes y cómo debo pagar un determinado
+  // día"*— cuando este cuadro era el único lugar donde eso se podía leer. Ya no lo es: el cuadro
+  // **"2 · QUÉ SALE CADA DÍA"** lo contesta entero y mejor (una fila por día, abierta por medio de
+  // pago, con el total del día y a quiénes). Con ese cuadro publicado, sostener el día como eje acá
+  // no conserva nada y le rompe su regla.
   //
-  // Y el orden respeta el ancho de cada columna, que es de la pestaña entera y no de este cuadro:
-  // la obra cae en la D (300px), el tipo de pago en la E (90px, medida para "Tarjeta Crédito") y el
+  // La fecha NO se va: baja a ser el segundo campo, que es su lugar — dentro de cada proveedor, sus
+  // vencimientos en orden cronológico. Es la misma decisión que el cuadro A ("A QUIÉN SE LE DEBE"):
+  // el eje es el proveedor y la fecha es un atributo suyo, no al revés.
+  //
+  // "Categoría" no está: "B"/"N" no contesta a quién, cuánto ni cómo se paga, y medida contra Compras
+  // va pegada al medio de pago (efectivo→N, resto→B). Repite lo que la columna de al lado ya dice.
+  //
+  // El orden respeta el ancho de cada columna, que es de la pestaña entera y no de este cuadro: la
+  // obra cae en la D (300px), el tipo de pago en la E (90px, medida para "Tarjeta Crédito") y el
   // importe en la F (210px). Ver ANCHOS_PROVEEDORES.
-  //
-  // `showTotals: false` en TODOS los niveles, incluido el primero: la API no emite el subtotal de un
-  // nivel externo (trampa 2, medida contra el archivo real). Pedirlo no da error — no hace nada, y
-  // deja creyendo que el total del día está. El total del día lo da el cuadro A.
   return [
-    { sourceColumnOffset: COL.proximoPago, showTotals: false, sortOrder: 'ASCENDING' },
     { sourceColumnOffset: COL.proveedor, showTotals: false, sortOrder: 'ASCENDING' },
+    { sourceColumnOffset: COL.proximoPago, showTotals: false, sortOrder: 'ASCENDING' },
     { sourceColumnOffset: COL.comprobante, showTotals: false, sortOrder: 'ASCENDING' },
     { sourceColumnOffset: COL.obra, showTotals: false, sortOrder: 'ASCENDING' },
     { sourceColumnOffset: COL.tipoPago, showTotals: false, sortOrder: 'ASCENDING' },
   ]
 }
 
-/**
- * LA COLUMNA DONDE VA "QUÉ HACER" — la nota del dueño, CALCULADA del cuadro y nunca tipeada.
- *
- * Es la primera libre a la derecha del cuadro de detalle: campos de fila + valores. Si mañana el
- * cuadro gana o pierde un campo, la nota se corre con él en vez de caer encima del importe o de
- * dejar una columna muerta. Un 6 tipeado acá es cómo se escribe una nota sobre una cifra.
- *
- * @returns {number} índice 0-based (hoy 6 ⇒ la G)
- */
-export function colNotaDetalle() {
-  return camposDeFila({ vista: VISTA.DETALLE }).length + valoresDelPivot({ vista: VISTA.DETALLE }).length
-}
-
-/** La columna del PROVEEDOR dentro del cuadro de detalle: es a lo que la nota se ancla. */
+/** La columna del PROVEEDOR dentro del cuadro de detalle. */
 export function colProveedorDetalle() {
   return camposDeFila({ vista: VISTA.DETALLE }).findIndex((r) => r.sourceColumnOffset === COL.proveedor)
 }
 
-/** Las formas del cuadro. El detalle muestra cada operación; las otras, una línea por día o por
- *  proveedor. `POR_DIA` es la que la pestaña usa arriba desde el 14/08. */
-export const VISTA = Object.freeze({ DETALLE: 'detalle', POR_DIA: 'por-dia', POR_PROVEEDOR: 'por-proveedor' })
+/**
+ * Las formas del cuadro. `POR_PROVEEDOR` es la que ABRE la sección —el eje— y `DETALLE` la que la
+ * cierra, agrupada por día de pago.
+ *
+ * NO HAY VISTA "POR DÍA" y es a propósito: existió doce horas, desalojó al proveedor del eje y el
+ * dueño la rechazó. El total por día lo dan el aging del encabezado (vencido · esta semana · 8-30 ·
+ * 31-60 · +60) y el agrupamiento del cuadro de detalle. Un cuadro más para el mismo dato es lo que
+ * la regla de minimalismo de la pestaña prohíbe.
+ */
+export const VISTA = Object.freeze({ DETALLE: 'detalle', POR_PROVEEDOR: 'por-proveedor' })
 
 /**
  * ¿CUÁNTAS CELDAS VAN A QUEDAR SIN RÓTULO, Y DE QUIÉN?
@@ -153,7 +155,7 @@ export function proveedoresQueAgrupan(filas = []) {
 }
 
 /**
- * LOS DÍAS DE PAGO DISTINTOS QUE VA A EMITIR EL CUADRO A — y cuáles de ellos NO son un día.
+ * LOS DÍAS DE PAGO DISTINTOS QUE VA A AGRUPAR EL CUADRO DE DETALLE — y cuáles NO son un día.
  *
  * El pivot agrupa por el VALOR CRUDO de la columna "Fecha prevista de pago (día)". Todo lo que no
  * sea un número de serie arma su propio grupo igual: hay filas de Compras con la palabra "Pendiente"
@@ -214,48 +216,63 @@ export function filtros() {
 }
 
 /**
- * EL ORIGEN DE LA DINÁMICA — Y POR QUÉ LLEGA HASTA EL FINAL DE LA GRILLA.
+ * EL ORIGEN DE LA DINÁMICA — SIN FILA FINAL, QUE ES LO QUE LA HACE VIVA.
  *
- * `filas` tiene que ser el `rowCount` de la PESTAÑA Compras, no la última fila con datos. Si se
- * corta en la última factura cargada, la compra que se cargue mañana cae FUERA del origen y la
- * dinámica no la ve nunca: deja de ser viva sin dar un solo error. Es el defecto que el cuadro
- * viejo tenía de otra forma (referencias a filas fijas) y que este cuadro existe para no repetir.
+ * ═══ EL DEFECTO (18/08/2026) ═══
+ *
+ * El dueño: *"no es una pestaña viva que se actualiza sola, no lee bien proveedores"*.
+ *
+ * Esta función devolvía `endRowIndex: filas`, con `filas` = el `rowCount` de Compras. El comentario
+ * que estaba acá defendía esa elección diciendo que el rowCount "llega hasta el final de la grilla" —
+ * y es cierto EN EL INSTANTE en que se escribe el pivot. Lo que no es cierto es después: cuando
+ * alguien carga una compra en la primera fila libre, Google AGRANDA la grilla, el rowCount pasa de
+ * 1155 a 1156, y el pivot se queda apuntando a 1155. La factura nueva cae fuera del origen y la
+ * dinámica no la ve — sin dar un solo error, que es el modo de falla caro.
+ *
+ * Medido el 18/08: las tres dinámicas de "Proveedores" tenían `endRowIndex: 1155` y Compras tenía
+ * exactamente 1155 filas de grilla. O sea: funcionaban hasta la próxima carga.
+ *
+ * ═══ LA CURA: UN `GridRange` SIN FILA FINAL ═══
+ *
+ * La API de Sheets trata un `GridRange` sin `endRowIndex` como ABIERTO hasta el final de la hoja, hoy
+ * y siempre — es el equivalente de `Compras!$A$3:$AL` en A1, que es la forma que este repositorio ya
+ * exige para toda referencia a Compras (`esRangoAbierto`, en deuda-por-tramos.mjs). El pivot deja de
+ * depender de cuándo corrió el generador por última vez.
  *
  * `startRowIndex: 2` es la fila 3, donde están los rótulos: el pivot la usa como encabezado.
  * Arrancar en la 4 le haría tomar la primera factura como nombre de columna.
+ *
+ * `endColumnIndex` SÍ se declara, y no es una inconsistencia: las columnas de Compras no crecen solas
+ * —las agrega una persona— y los `sourceColumnOffset` del pivot son posiciones dentro de este rango.
+ * Un origen de ancho abierto haría que agregar una columna al final cambiara qué mide cada campo.
  */
 export function fuenteCompras({ sheetId, filas }) {
   if (!Number.isInteger(sheetId)) throw new Error('fuenteCompras: falta el sheetId de Compras')
+  // `filas` ya no entra en el rango, pero se sigue exigiendo: es la prueba de que quien llama miró la
+  // grilla de Compras antes de armar la dinámica. Un origen sobre una pestaña vacía es un cuadro vacío.
   if (!(filas > 3)) throw new Error(`fuenteCompras: la grilla de Compras no puede tener ${filas} filas`)
-  return { sheetId, startRowIndex: 2, endRowIndex: filas, startColumnIndex: 0, endColumnIndex: 38 }
+  return { sheetId, startRowIndex: 2, startColumnIndex: 0, endColumnIndex: 38 }
 }
 
 /**
- * LOS VALORES — y por qué la fecha ES UN CAMPO DE FILA Y NO UN VALOR.
+ * LOS VALORES — UNO SOLO, Y POR QUÉ SE FUE "FACTURAS".
  *
- * Un valor de pivot es siempre una agregación numérica, así que "próximo pago" como valor sólo
- * podría entrar como MIN de la fecha prevista — y ahí aparece un agujero medido: hay filas de
- * Compras con la palabra "Pendiente" en la columna de la fecha en vez de una fecha, MIN no encuentra
- * ningún número y la celda sale vacía.
+ * Un valor de pivot es siempre una agregación numérica y va SIEMPRE a la derecha de los campos de
+ * fila: cada valor que se agrega empuja una columna más las que vienen después. En el cuadro que
+ * abre la sección eso importa, porque a su derecha van las dos columnas que sí deciden —el
+ * vencimiento más próximo y la nota "Qué hacer"— y la pestaña sólo tiene siete columnas antes de la
+ * H, que es del dueño.
  *
- * Como CAMPO DE FILA no hay agujero posible: esa fila arma su propio grupo, rotulado "Pendiente", y
- * queda a la vista arriba de todo en vez de desaparecer. Un defecto de carga que se ve es mejor que
- * un total que no lo cuenta — y ése es el motivo de fondo por el que la fecha pasó al frente.
+ * El criterio de corte es el del área: ¿qué decisión cambia si este número cambia? "Facturas" (el
+ * conteo por proveedor) no cambia ninguna —el cuadro de detalle de abajo las lista una por una— así
+ * que se va. El vencimiento sí: decide a quién se le paga primero.
  *
- * SUM y COUNTA no pueden quedar vacíos nunca: un grupo existe porque tiene al menos una fila.
+ * El SUM no puede quedar vacío nunca: un grupo existe porque tiene al menos una fila.
  */
-export function valoresDelPivot({ vista = VISTA.POR_DIA, nombres = ['Importe', 'Facturas'] } = {}) {
-  // En el DETALLE, un COUNTA pondría un "1" en cada renglón de factura: ruido en todas las filas
-  // para un dato que sólo significa algo en un total. Va sólo en las vistas agregadas.
+export function valoresDelPivot({ vista = VISTA.POR_PROVEEDOR, nombres = ['Se le debe'] } = {}) {
+  // En el DETALLE el rótulo del importe es otro: ahí una línea es una factura, no un proveedor.
   if (vista === VISTA.DETALLE) return [{ sourceColumnOffset: COL.saldo, summarizeFunction: 'SUM', name: 'Importe' }]
-  return [
-    { sourceColumnOffset: COL.saldo, summarizeFunction: 'SUM', name: nombres[0] },
-    // COUNTA sobre el PROVEEDOR, no sobre el número de comprobante: hay una factura sin número
-    // (La Isla Metal SRL) y COUNTA sólo cuenta lo no vacío — mostraba "0 facturas" para un
-    // proveedor al que le debemos $100.000. El proveedor está en todas las filas del grupo por
-    // definición: es lo único que garantiza que el conteo sea la cantidad de filas.
-    { sourceColumnOffset: COL.proveedor, summarizeFunction: 'COUNTA', name: 'Facturas' },
-  ]
+  return [{ sourceColumnOffset: COL.saldo, summarizeFunction: 'SUM', name: nombres[0] }]
 }
 
 /**
@@ -263,7 +280,7 @@ export function valoresDelPivot({ vista = VISTA.POR_DIA, nombres = ['Importe', '
  * el script no vuelve a declararlo, porque los formatos calculan la posición de cada columna desde
  * `camposDeFila` y dos declaraciones que se separan dejan el formato una columna corrido.
  */
-export function pivotSeccion1(fuente, { vista = VISTA.POR_DIA, nombres } = {}) {
+export function pivotSeccion1(fuente, { vista = VISTA.POR_PROVEEDOR, nombres } = {}) {
   return {
     source: fuente,
     rows: camposDeFila({ vista }),
@@ -346,19 +363,19 @@ export function nivelesConSubtotal(pivot = {}) {
  *
  * @param {{sheetId:number, filaAncla:number, alto:number, ancho:number}} o  filas en base 1
  */
-export function columnaDeLaDeuda({ vista = VISTA.POR_DIA } = {}) {
-  // La deuda es el PRIMER valor, no el último: con dos valores (deuda y facturas) tomar `ancho - 1`
-  // formatea la cantidad de facturas como pesos y deja la deuda pelada — y peor, hace que el
-  // control de arriba sume la columna de los conteos y dé cualquier cosa.
+export function columnaDeLaDeuda({ vista = VISTA.POR_PROVEEDOR } = {}) {
+  // La deuda es el PRIMER valor, no el último. Hoy los dos cuadros tienen un valor solo, pero el día
+  // que alguien agregue otro, `ancho - 1` formatearía al nuevo como pesos y dejaría la deuda pelada —
+  // y peor, haría que el control de arriba sume la columna equivocada.
   return camposDeFila({ vista }).length
 }
 
 /** La letra de la columna de la deuda, para el control. Calculada, nunca tipeada. */
-export function letraDeLaDeuda({ vista = VISTA.POR_DIA } = {}) {
+export function letraDeLaDeuda({ vista = VISTA.POR_PROVEEDOR } = {}) {
   return String.fromCharCode(65 + columnaDeLaDeuda({ vista }))
 }
 
-export function formatoDelImporte({ sheetId, filaAncla, alto, vista = VISTA.POR_DIA }) {
+export function formatoDelImporte({ sheetId, filaAncla, alto, vista = VISTA.POR_PROVEEDOR }) {
   const columna = columnaDeLaDeuda({ vista })
   return formatoDeColumna({
     sheetId, filaAncla, alto, columna,
@@ -388,20 +405,6 @@ export function formatoDeLaFecha({ sheetId, filaAncla, alto, vista = VISTA.DETAL
 }
 
 /**
- * EL FORMATO DE LA CANTIDAD DE FACTURAS — un entero, y hay que decirlo.
- *
- * Sin esto, la columna se queda con el formato que TENÍA de la corrida anterior. Pasó de verdad:
- * quedó con formato de fecha y "2 facturas" se mostró como `01/01/1900`. Una celda no vuelve sola a
- * "automático" porque el contenido cambió de sentido; el formato es del archivo, no del dato.
- */
-export function formatoDeLaCantidad({ sheetId, filaAncla, alto, ancho }) {
-  return formatoDeColumna({
-    sheetId, filaAncla, alto, columna: ancho - 1,
-    numberFormat: CONTADOR, horizontalAlignment: 'RIGHT',
-  })
-}
-
-/**
  * EL FORMATO DE TODAS LAS COLUMNAS DEL BLOQUE, DE UNA.
  *
  * Una dinámica no trae formato: usa el que la celda ya tenía. Después de tres reescrituras seguidas,
@@ -409,7 +412,7 @@ export function formatoDeLaCantidad({ sheetId, filaAncla, alto, ancho }) {
  * como `01/05/4163`. Cada columna se declara explícitamente en cada corrida — el formato es del
  * archivo, no del dato, y nunca vuelve solo a "automático".
  */
-export function formatoDeTodo({ sheetId, filaAncla, alto, vista = VISTA.POR_DIA }) {
+export function formatoDeTodo({ sheetId, filaAncla, alto, vista = VISTA.POR_PROVEEDOR }) {
   const campos = camposDeFila({ vista })
   const iFecha = campos.findIndex((r) => r.sourceColumnOffset === COL.proximoPago)
   const ancho = campos.length + valoresDelPivot({ vista }).length
@@ -425,15 +428,17 @@ export function formatoDeTodo({ sheetId, filaAncla, alto, vista = VISTA.POR_DIA 
   // del nivel externo también apaga el gran total del pie, medido contra el archivo), así que el
   // único "$" de la sección es el del titular de arriba — que es exactamente donde tiene que estar.
   // El cero sale en raya y el negativo entre paréntesis: ver `lib/formato-statement.mjs`.
+  //
+  // Un solo `push` y no un bucle sobre los valores: los dos cuadros tienen UN valor y es plata. El
+  // día que aparezca un segundo valor que no sea plata, esto tiene que fallar en el test —no
+  // formatear el nuevo como pesos en silencio—, y por eso la guarda de abajo grita en vez de adivinar.
   pedidos.push(formatoDeColumna({
     sheetId, filaAncla, alto, columna: campos.length,
     numberFormat: MONEDA_CUERPO, horizontalAlignment: 'RIGHT',
   }))
   if (ancho > campos.length + 1) {
-    pedidos.push(formatoDeColumna({
-      sheetId, filaAncla, alto, columna: ancho - 1,
-      numberFormat: CONTADOR, horizontalAlignment: 'RIGHT',
-    }))
+    throw new Error(`formatoDeTodo: la vista "${vista}" tiene ${ancho - campos.length} valores y sólo`
+      + ' sé formatear uno (plata). Declaralo acá antes de agregarlo al pivot.')
   }
   return pedidos
 }
@@ -449,7 +454,7 @@ export function formatoDeTodo({ sheetId, filaAncla, alto, vista = VISTA.POR_DIA 
  * @param {{vista?:string, cabecera?:any[], nombresDeValores?:string[]}} o  la fila 3 de Compras
  * @returns {string[]} un rótulo por columna, en el orden en que la dinámica los emite
  */
-export function rotulosDelCuadro({ vista = VISTA.POR_DIA, cabecera = [], nombresDeValores = [] } = {}) {
+export function rotulosDelCuadro({ vista = VISTA.POR_PROVEEDOR, cabecera = [], nombresDeValores = [] } = {}) {
   const campos = camposDeFila({ vista }).map((r) => String(cabecera[r.sourceColumnOffset] ?? '').trim())
   const valores = valoresDelPivot({ vista }).map((v, i) => String(nombresDeValores[i] ?? v.name ?? '').trim())
   return [...campos, ...valores]
@@ -487,10 +492,10 @@ function formatoDeColumna({ sheetId, filaAncla, alto, columna, numberFormat, hor
  * el rótulo de B, B desde ahí hasta el final del colchón. Una fila de más formateada y vacía no se
  * ve; una de menos rompe en silencio. Filas en base 1 a la entrada; `desde` en base 0.
  *
- * `gruposA` es la cantidad de LÍNEAS que va a emitir el cuadro A, y desde el 14/08 eso son los DÍAS
- * de pago distintos, no los proveedores. Se llamaba `proveedores` y el nombre habría quedado
- * mintiendo apenas cambió el eje — un parámetro que dice una cosa y transporta otra es cómo el
- * formato termina apuntado a la fila de al lado.
+ * `gruposA` es la cantidad de LÍNEAS que va a emitir el cuadro que abre la sección: hoy, PROVEEDORES
+ * distintos con deuda. El nombre es genérico a propósito — cuando el eje se movió a la fecha y volvió,
+ * lo único que cambió fue quién lo calcula. Un parámetro que dice "proveedores" y transporta días es
+ * cómo el formato termina apuntado a la fila de al lado (pasó: `67797,51 | 31/12/1899`).
  *
  * @param {{filaEncabezado:number, filaLimite:number, gruposA:number, facturas:number}} o
  */
@@ -553,8 +558,16 @@ export function geometriaDeLaSeccion(filas = []) {
   const colA = (i) => txt((filas[i] ?? [])[0])
   const iTitulo = filas.findIndex((_, i) => /^1\s*[·.\-]/.test(colA(i)) && /QUE SE DEBE/.test(colA(i)))
   if (iTitulo < 0) throw new Error('no encontré el título "1 · QUÉ SE DEBE Y CUÁNDO": la pestaña cambió de forma, no hay plan')
-  const iLimite = filas.findIndex((_, i) => i > iTitulo && /^2\s*[·.\-]/.test(colA(i)))
-  if (iLimite < 0) throw new Error('no encontré el título de la sección 2: sin límite no puedo reservar filas sin pisar lo de abajo')
+  // ═══ EL LÍMITE ES "LA SECCIÓN QUE SIGUE", NO "LA SECCIÓN 2" (14/08) ═══
+  //
+  // Estaba anclado a `/^2\s*[·.\-]/`. Anclar al NÚMERO de la sección de al lado es anclar en algo que
+  // no es mío y que se mueve: el día que se intercala una sección nueva —"2 · QUÉ SALE CADA DÍA"— la
+  // que antes era la 2 pasa a ser la 3, y entre que el sembrador la renumera y el bloque nuevo se
+  // escribe, esta búsqueda no encuentra ningún "2 ·" y la sección 1 entera se frena. Frenarse está
+  // bien; frenarse por un número ajeno es frenarse de gusto. Lo que no se mueve es que abajo empieza
+  // OTRA sección, y eso ya lo sabe reconocer `TITULO_DE_SECCION`.
+  const iLimite = filas.findIndex((_, i) => i > iTitulo && TITULO_DE_SECCION.test(colA(i)))
+  if (iLimite < 0) throw new Error('no encontré el título de la sección que sigue: sin límite no puedo reservar filas sin pisar lo de abajo')
   // La PRIMERA fila de rótulos después del título, con AL MENOS DOS columnas.
   //
   // Exigía cuatro. El cuadro de totales por proveedor tiene tres (proveedor · se le debe · facturas),

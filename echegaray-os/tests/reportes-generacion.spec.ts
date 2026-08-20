@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { ATERRIZAJE } from './util/login'
 
 // Reportes automáticos (2026-07-10): las 3 definiciones seed existen, y generar
 // on-demand el Diario de Dirección publica un reporte real con su bloque de
@@ -18,7 +19,7 @@ test('las definiciones seed existen y el Diario de Dirección se genera y public
   await page.fill('input[name="email"]', EMAIL)
   await page.fill('input[name="password"]', PASSWORD)
   await page.click('button[type="submit"]')
-  await page.waitForURL(/\/(dashboard|flujo-caja)/, { timeout: 15000 })
+  await page.waitForURL(ATERRIZAJE, { timeout: 15000 })
 
   await page.goto('/reportes')
   await expect(page.getByTestId('definicion-diario-direccion')).toBeVisible()

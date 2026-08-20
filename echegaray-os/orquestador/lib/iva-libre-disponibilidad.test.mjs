@@ -179,6 +179,52 @@ test('un "—" o un vacío NO son un dato: no anclan ni cuentan como mes cargado
   assert.equal(aNumero('$1.234,50'), 1234.5)
 })
 
+// ── UN TEXTO CON DÍGITOS ADENTRO NO ES UN IMPORTE (17/08) ────────────────────────────────────────
+//
+// EL DEFECTO, MEDIDO EN EL ARCHIVO REAL. La celda H57 —julio, "Saldo de libre disponibilidad"— tiene
+// la leyenda "⚠ vence 20/08", tipeada por una persona. `esNumero` la aceptaba porque su única guarda
+// era "¿tiene algún dígito?", pensada para que el rótulo "DDJJ presentada" no se colara. Un texto CON
+// dígitos pasaba: sacándole los no-numéricos, "⚠ vence 20/08" queda en "2008" y Number("2008") es
+// finito. El ancla de toda la proyección de IVA quedaba en julio con $2.008 de saldo a favor.
+//
+// La misma puerta deja pasar la fila que el PROPIO generador escribe: "20/07·N…6115" (fecha de
+// presentación + últimas cuatro del N° de transacción) vale $20.076.115 como importe.
+test('un texto con dígitos NO es un importe: ni la leyenda del dueño ni un N° de transacción', () => {
+  // Los dos valores están HOY en el archivo, leídos con UNFORMATTED_VALUE el 17/08.
+  assert.equal(esNumero('⚠ vence 20/08'), false, 'una leyenda no es plata aunque tenga una fecha adentro')
+  assert.equal(aNumero('⚠ vence 20/08'), null, '"20/08" no vale $2.008')
+  assert.equal(esNumero('20/07·N…6115'), false, 'la fila "DDJJ presentada" que escribe el generador')
+  assert.equal(aNumero('20/07·N…6115'), null, 'un N° de transacción no vale $20.076.115')
+  assert.equal(esNumero('⚠ PROYECCIÓN — DDJJ vence 20/08'), false)
+  assert.equal(esNumero('s/d'), false, 'el hueco declarado de la sección 10')
+  // Y lo que SÍ es un importe sigue siéndolo: el arreglo no puede cerrarle la puerta a la plata.
+  assert.equal(esNumero('$20.803.502'), true)
+  assert.equal(aNumero('$20.803.502'), 20803502)
+  assert.equal(aNumero('-$1.234,50'), -1234.5)
+  assert.equal(aNumero('$ 19.344.911'), 19344911)
+  assert.equal(aNumero(7050036.33), 7050036.33)
+})
+
+test('el ancla NO se para en una leyenda: retrocede al último mes con un importe de verdad', () => {
+  // La fila 57 EXACTA del archivo, leída como la lee el generador (FORMATTED_VALUE) el 17/08.
+  // Julio está corrido una fila: donde va su saldo quedó la leyenda que el dueño tipeó.
+  const fila = ['$20.803.502', '$25.836.241', '$16.413.003', '$18.757.047', '$19.326.154',
+    '$19.344.911', '⚠ vence 20/08', '—', '—', '—', '—', '—']
+  const a = anclaDeProyeccion(fila, [1, 2, 3, 4, 5, 6])
+  // Antes: ultimoMesConDato 7 con libreDisp 2008 — un número que no existe en ningún lado.
+  assert.equal(a.ultimoMesConDato, 6, 'junio es el último mes con un saldo real')
+  assert.equal(a.libreDisp, 19344911)
+  assert.deepEqual(a.mesesAProyectar, [7, 8, 9, 10, 11, 12], 'julio vuelve a calcularse')
+  // Y EL HALLAZGO NO SE TRAGA. Descartar la celda en silencio deja al dueño sin saber por qué su
+  // leyenda desapareció ni que había texto donde la pestaña promete un importe.
+  assert.deepEqual(a.textoDondeVaImporte, [{ mes: 7, valor: '⚠ vence 20/08' }])
+})
+
+test('sin texto raro no se reporta nada: el aviso no puede volverse ruido de todas las corridas', () => {
+  const a = anclaDeProyeccion(['$100', '$200', '—', ''], [1, 2])
+  assert.deepEqual(a.textoDondeVaImporte, [], 'un "—" o un vacío son ausencia, no texto mal puesto')
+})
+
 test('el ancla es el ÚLTIMO MES CON DATO EN LA HOJA, no la última DDJJ presentada', () => {
   // La hoja real al 04/08: ene→jul con número (jul lo escribió el dueño a mano), ago→dic vacíos.
   // En Drive sólo hay F.2051 hasta junio.

@@ -5,7 +5,10 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { copiaHuerfana, residuosDeclarados, candidatasDeBancoOficina } from './jornales-residuo.mjs'
+import {
+  copiaHuerfana, residuosDeclarados, candidatasDeBancoOficina, candidatasDeBancoDireccion,
+  encabezadosDeMesBanco, finDeBloque,
+} from './jornales-residuo.mjs'
 import { CANDIDATAS } from '../scripts/limpiar-residuo-jornales.mjs'
 
 const MIN = '=IFERROR(MIN(FILTER(Compras!$AD$4:$AD;REGEXMATCH(LOWER(Compras!$K$4:$K&"");"^(jorge echegaray|rodrigo echegaray|jorge corona)$");ISNUMBER(Compras!$AD$4:$AD)));"")'
@@ -134,4 +137,80 @@ test('UN BANCO SANO EN TODA LA COLUMNA NO PRODUCE UNA SOLA CANDIDATA VACIABLE', 
   for (let f = 41; f <= 44; f++) g[f - 1][5] = BANCO(f * 2, f * 2 + 3)
   const { vaciables } = residuosDeclarados(g, candidatasDeBancoOficina(g))
   assert.deepEqual(vaciables, [], 'la limpieza tocaría celdas legítimas de la columna Banco')
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA COLUMNA «Banco» DEL BLOQUE 3 (DIRECCIÓN) — la que nadie miraba (15/08)
+//
+// La pestaña tiene DOS cuadros con el encabezado «Mes · Ajuste escalón · Pagado · Estado · Se paga
+// el · Banco · Adelanto · Proyectado», carácter por carácter: Oficina (fila 53 del archivo vivo) y
+// Dirección (fila 76). `findIndex` devolvía el primero y ahí se quedaba. Medido en el archivo:
+//
+//   F88  "Básico convenio"   ← el encabezado vivo de esa columna está en F96, adentro del 4.1
+//
+// publicado en el renglón de Diciembre de los retiros de los socios.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+/** Los dos cuadros mensuales y el 4.1, con las coordenadas del archivo vivo del 15/08. */
+function conDosCuadros({ f88 = 'Básico convenio' } = {}) {
+  const g = Array.from({ length: 105 }, () => [])
+  const ENCABEZADO = ['Mes', 'Ajuste escalón', 'Pagado', 'Estado', 'Se paga el', 'Banco', 'Adelanto', 'Proyectado']
+  g[52] = [...ENCABEZADO]                                        // fila 53 — Oficina
+  for (let f = 54; f <= 65; f++) g[f - 1] = ['Mes', '', 1000, 'pagado', '', '', '', '']
+  g[65] = ['⇒ Oficina — pagado y por pagar en el año', '', '', '', '', '', '', '']
+  g[75] = [...ENCABEZADO]                                        // fila 76 — Dirección, el segundo
+  for (let f = 77; f <= 88; f++) g[f - 1] = ['Mes', '', 1000, 'pagado', '', '', '', '']
+  g[87][5] = f88                                                 // F88 — el residuo
+  g[88] = ['⇒ Dirección — pagado y por pagar en el año', '', '', '', '', '', '', '']
+  g[95] = ['Categoría', 'Personas', 'Σ $/hora', '$/hora mínimo', 'Convenio (tuya)', 'Básico convenio', 'Margen', 'Estado']
+  for (let f = 97; f <= 100; f++) g[f - 1] = ['OF', 4, 23700, 5400, '', 6348, -0.149, '✓ sobre el convenio']
+  g[100] = ['⇒ Plantel base — la última quincena cerrada', 15, 80400, 4500, '', '', '', '']
+  return g
+}
+
+test('LOS DOS ENCABEZADOS «Mes … Banco … Proyectado», no sólo el primero', () => {
+  assert.deepEqual(encabezadosDeMesBanco(conDosCuadros()), [52, 75],
+    'con findIndex la columna Banco de Dirección no era candidata de nada')
+})
+
+test('F88 «Básico convenio» se prueba contra su gemelo VIVO en F96, adentro del 4.1', () => {
+  const g = conDosCuadros()
+  const { vaciables, conservadas } = residuosDeclarados(g, candidatasDeBancoDireccion(g))
+  assert.deepEqual(vaciables.map((v) => [v.fila, v.col, v.gemelo]), [[88, 5, 96]],
+    `el residuo del renglón de Diciembre no se pudo probar: ${conservadas.map((c) => c.motivo).join(' · ')}`)
+})
+
+test('y las once celdas sanas de esa columna se conservan, una por una', () => {
+  const { conservadas } = residuosDeclarados(conDosCuadros(), candidatasDeBancoDireccion(conDosCuadros()))
+  assert.equal(conservadas.length, 11, 'la limpieza tocaría celdas legítimas de la columna Banco')
+  assert.ok(conservadas.every((c) => /vacía|NO tiene gemelo/.test(c.motivo)))
+})
+
+test('EL SEGURO: un retiro que el dueño cargó a mano en esa misma celda NO se borra', () => {
+  // Es la razón por la que la columna se emite con cadena vacía. Un importe sin gemelo vivo adentro
+  // del 4.1 no tiene con qué probarse, y el lado para equivocarse es conservar.
+  const g = conDosCuadros({ f88: 3000000 })
+  const { vaciables, conservadas } = residuosDeclarados(g, candidatasDeBancoDireccion(g))
+  assert.deepEqual(vaciables, [], 'se borró un retiro cargado a mano')
+  assert.ok(conservadas.some((c) => c.fila === 88 && /NO tiene gemelo vivo/.test(c.motivo)))
+})
+
+test('SIN EL 4.1 NO SE BUSCA GEMELO AHÍ: falla cerrado', () => {
+  const g = conDosCuadros()
+  g[95] = ['Categoría', 'Personas']          // el 4.1 ya no es reconocible
+  const { vaciables } = residuosDeclarados(g, candidatasDeBancoDireccion(g))
+  assert.deepEqual(vaciables, [], 'sin la tabla viva no hay nada que probar y no se toca nada')
+})
+
+test('SIN SEGUNDO CUADRO, LISTA VACÍA', () => {
+  const g = conDosCuadros()
+  g[75] = ['Mes', 'Ajuste escalón', 'Pagado']
+  assert.deepEqual(candidatasDeBancoDireccion(g), [])
+})
+
+test('el fin de un bloque es su fila de TOTAL, y sin total no se inventa un tope', () => {
+  const g = conDosCuadros()
+  assert.equal(finDeBloque(g, 95), 101, 'el 4.1 termina en su ⇒ Plantel base')
+  g[100] = ['Categoría suelta']
+  assert.equal(finDeBloque(g, 95), -1, 'un rango que se estira encuentra gemelos en otra tabla')
 })

@@ -1,0 +1,59 @@
+/* Tokens del handoff de diseño — ESPEJO de echegaray-os/src/app/globals.css.
+   Si un valor difiere, gana globals.css. Este archivo documenta además los tokens
+   de layout que hoy viven repartidos en los componentes. */
+:root {
+  /* marca */
+  --os-marca: #fdc900;
+  --os-marca-soft: #fef4cf;
+  --os-on-marca: #1f1f1e;
+  --os-accent: #30302f;
+  --os-accent-hover: #454543;
+
+  /* superficies */
+  --os-canvas: #f7f7f5;
+  --os-surface: #ffffff;
+  --os-surface-quiet: #fafaf8;
+  --os-surface-sunken: #efeeea;
+
+  /* hairlines */
+  --os-line: #e7e6e2;
+  --os-line-strong: #d7d5cf;
+
+  /* tinta */
+  --os-ink: #1f1f1e;
+  --os-ink-soft: #3a3a38;
+  --os-muted: #6b6b67;
+  --os-faint: #91918b;
+
+  /* semántico */
+  --os-pos: #067647;  --os-pos-soft: #e7f6ee;
+  --os-neg: #b42318;  --os-neg-soft: #fbeae8;
+  --os-warn: #b54708; --os-warn-soft: #fdf0e4;
+  --os-info: #175cd3; --os-info-soft: #e9f0fd;
+  --os-focus: #2f6df6;
+
+  /* tipografía — decisión canónica */
+  --os-font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  --os-font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* espaciado y forma */
+  --os-space: 8px;
+  --os-radius-control: 6px;
+  --os-radius-card: 10px;
+
+  /* alturas del sistema */
+  --os-header-h: 48px;
+  --os-row-h: 46px;
+  --os-row-h-compacta: 38px;
+  --os-thead-h: 32px;
+  --os-disclosure-h: 44px;
+  --os-statusbar-h: 56px;
+  --os-control-h: 34px;
+  --os-control-h-mobile: 48px;
+
+  /* split workspace */
+  --os-split-handle: 9px;
+  --os-split-min-tabla: 300px;
+  --os-split-min-panel: 340px;
+  --os-split-max: 760px;
+}

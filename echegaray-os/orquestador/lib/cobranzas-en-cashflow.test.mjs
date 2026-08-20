@@ -155,20 +155,76 @@ test('las líneas de ingreso son las "· Cobranzas" de ingresos — no las últi
   assert.equal(u.ingreso.length, 2)
 })
 
-test('auditar suma las dos líneas de cobranzas y no declara nada fuera de ventana', () => {
+test('auditar lee las dos líneas de cobranzas y no declara nada fuera de ventana', () => {
   const cob = [
     fila({ total: 100, cobro: '2026-01-15', estado: 'Cobrado' }),
     fila({ total: 250, cobro: '2026-02-10', estado: 'Cobrado' }),
   ]
-  const r = auditar(cob, cuadro({ reales: [100, 200], proyectados: [0, 50] }))
+  const r = auditar(cob, cuadro({ reales: [100, 250], proyectados: [0, 0] }))
   assert.equal(r.noPudoUbicar, null)
   assert.deepEqual(r.fueraDeVentana, [], 'con la cabecera bien ubicada, ningún cobro cae fuera del cuadro')
-  assert.equal(r.totalCashFlow, 350, 'reales (100+200) + proyectados (0+50)')
+  assert.equal(r.totalCashFlow, 350, 'reales (100+250) + proyectados (0+0)')
   assert.deepEqual(r.porMes.map((m) => [m.mes, m.cobranzas, m.cashflow, m.ok]), [
     ['2026-01', 100, 100, true],
     ['2026-02', 250, 250, true],
   ])
   assert.equal(r.ok, true)
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL REPARTO ENTRE REAL Y PROYECTADO — LO QUE EL ✓ NO MIRABA (15/08/2026)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Este fixture es, literalmente, el que tenía el test de arriba hasta hoy: febrero con $250 cobrados
+// en Cobranzas y el cuadro mostrando $200 en la línea real y $50 en la proyectada. El cuadre viejo
+// sumaba las dos líneas ($250), lo comparaba contra el total del mes ($250) y decía ✓ — el mismo ✓
+// que sostuvo durante semanas la idea de que el Cash Flow reflejaba el estado de las cobranzas.
+
+test('una fila del lado equivocado ya no cierra: REAL se compara contra REAL', () => {
+  const cob = [
+    fila({ total: 100, cobro: '2026-01-15', estado: 'Cobrado' }),
+    fila({ total: 250, cobro: '2026-02-10', estado: 'Cobrado' }),
+  ]
+  const r = auditar(cob, cuadro({ reales: [100, 200], proyectados: [0, 50] }))
+  const feb = r.porMes.find((m) => m.mes === '2026-02')
+  assert.equal(feb.difLados.real + feb.difLados.proyectado, 0, 'el TOTAL cierra: por eso el cuadre viejo pasaba')
+  assert.equal(feb.cobranzas, feb.cashflow, 'y la comparación de totales sigue dando igual…')
+  assert.equal(feb.ok, false, '…pero el reparto no: $50 declarados cobrados están en la línea proyectada')
+  assert.equal(feb.lados.real.dif, 50)
+  assert.equal(feb.lados.proyectado.dif, -50)
+  assert.equal(r.ok, false)
+})
+
+test('cuando falla, el control dice QUÉ FILA está del lado equivocado y por cuánto', () => {
+  // El caso real: la fila 44 de Cobranzas, LA ESTRELLA, $8.234.758. Pasó a "Cobrado" en la pestaña y
+  // el cuadro seguía mostrándola del lado proyectado. Encontrarla a mano llevó media hora.
+  const otras = fila({ total: 30000000, cliente: 'ARCOR', estado: 'Cobrado', cobro: '2026-08-04' })
+  const f44 = fila({ total: 8234758, cliente: 'LA ESTRELLA /ALIMENTOS DEL SUR SAS', estado: 'Cobrado', cobro: '2026-08-11' })
+  const r = auditar([otras, f44], cuadroConProyectado(30000000, 8234758), { tipoCambio: TC })
+  const ago = r.porMes.find((m) => m.mes === '2026-08')
+  assert.equal(ago.ok, false)
+  const [c] = ago.culpables
+  assert.equal(c.fila, 6, 'la segunda fila del fixture — el auditor numera desde la 5 del archivo')
+  assert.match(c.cliente, /ESTRELLA/)
+  assert.equal(c.monto, 8234758)
+  assert.equal(c.lado, 'real', 'Cobranzas la declara cobrada')
+  assert.equal(c.haciaLado, 'proyectado', 'y el cuadro la muestra del otro lado')
+  assert.equal(c.exacta, true)
+  assert.equal(c.sola, true, 'una sola fila explica el desvío entero: no es una pista, es la fila')
+  assert.equal(c.traspaso, true, 'los dos lados se compensan: cambió de lado, no apareció ni desapareció')
+})
+
+test('plata que falta NO se disfraza de traspaso: sin candidata exacta se dice que no la hay', () => {
+  const uno = fila({ total: 1000, cliente: 'ARCOR', estado: 'Cobrado', cobro: '2026-08-04' })
+  // El cuadro muestra $400 de más en real y nada de menos en proyectado: no es un reparto, falta plata.
+  const r = auditar([uno], cuadroConProyectado(1400, 0), { tipoCambio: TC })
+  const ago = r.porMes.find((m) => m.mes === '2026-08')
+  assert.equal(ago.ok, false)
+  assert.equal(ago.lados.real.dif, -400)
+  assert.equal(ago.lados.proyectado.dif, 0, 'el otro lado no lo explica')
+  const [c] = ago.culpables
+  assert.equal(c.traspaso, false)
+  assert.equal(c.fila, null, 'no hay ninguna fila proyectada de ese mes: se dice, no se inventa una')
 })
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
@@ -189,12 +245,21 @@ test('auditar suma las dos líneas de cobranzas y no declara nada fuera de venta
 // Y f43/f48, los dos echeq endosados de LA ESTRELLA en agosto, son la tercera pieza: diferencia
 // legítima de $20.000.000 que el control tiene que EXIGIR, no tolerar.
 
-/** El cuadro real de julio y agosto, con el valor que muestra cada mes. */
+/** El cuadro real de julio y agosto, con el valor que muestra cada mes EN LA LÍNEA REAL. */
 const cuadroJulAgo = (julio, agosto) => [
   [cel('hero')],
   [cel(ROTULO_CONCEPTO), cel('jul', serial('2026-07-01')), cel('ago', serial('2026-08-01'))],
   [cel('Ingresos reales'), cel('', julio), cel('', agosto)],
   [cel(`    ${SUB_COBRANZAS}`), cel('', julio), cel('', agosto)],
+]
+
+/** Un solo mes (agosto) con LAS DOS líneas: es el único fixture que puede mostrar un reparto. */
+const cuadroConProyectado = (real, proyectado) => [
+  [cel(ROTULO_CONCEPTO), cel('ago', serial('2026-08-01'))],
+  [cel('Ingresos reales'), cel('', real)],
+  [cel(`    ${SUB_COBRANZAS}`), cel('', real)],
+  [cel('Ingresos proyectados'), cel('', proyectado)],
+  [cel(`    ${SUB_COBRANZAS}`), cel('', proyectado)],
 ]
 
 // Las cuatro filas reales del archivo vivo, con sus valores exactos.
@@ -354,4 +419,38 @@ test('sin el rótulo del cuadro NO inventa un hallazgo: declara que no pudo ubic
   assert.match(r.noPudoUbicar, /Concepto/)
   assert.deepEqual(r.fueraDeVentana, [],
     'un cuadro que no se pudo ubicar NO puede producir "$808,99M fuera de la ventana": eso es un hallazgo fabricado')
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LAS TRES EXCLUSIONES DE DISEÑO, AHORA CON EL CUADRO PARTIDO POR LADO
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Endosos, devoluciones y filas plantilla vacías NO son defectos: son diferencias legítimas entre la
+// pestaña y el cuadro, cada una con su motivo (ver el encabezado de `auditar` y `libro-endosos.mjs`).
+// El riesgo que trae partir el cuadre en dos es NUEVO: que la resta se aplique al lado equivocado. Un
+// endoso marcado "Cobrado" tiene que restar del lado REAL — restarlo del proyectado dejaría los dos
+// lados descuadrados por su importe, con el total cerrando igual que antes.
+
+test('las tres exclusiones de diseño siguen excluidas, y cada una de SU lado', () => {
+  const endosadoCobrado = fila({
+    total: 10000000, cliente: 'LA ESTRELLA /ALIMENTOS DEL SUR SAS', estado: 'Cobrado',
+    cobro: '2026-08-15', banco: 'ENDOSADO a ALUMETAL S.A · echeq 90020100',
+  })
+  const devolucion = fila({ total: -96800, cliente: 'MACRO CONSTRUCCIONES SRL', estado: 'Cobrado', cobro: '2026-08-07' })
+  const plantillaVacia = fila({ total: 0, cliente: '', estado: '' })
+  const pendienteSano = fila({ total: 5000000, cliente: 'San Francisco', estado: 'Pendiente', cobro: '2026-08-19' })
+
+  // El cuadro NO muestra ni el endoso ni la devolución en la línea de ingresos: real $0, proyectado $5M.
+  const r = auditar([endosadoCobrado, devolucion, plantillaVacia, pendienteSano], cuadroConProyectado(0, 5000000), { tipoCambio: TC })
+  const ago = r.porMes.find((m) => m.mes === '2026-08')
+  assert.equal(r.cobros.length, 3, 'la fila plantilla sin monto no es un cobro vacío: no es un cobro')
+  assert.equal(ago.lados.real.endosado, 10000000, 'el endoso resta del lado REAL: el estado es "Cobrado"')
+  assert.equal(ago.lados.proyectado.endosado, 0, 'y NO del proyectado, que es donde el total lo taparía')
+  assert.equal(ago.lados.real.devolucion, -96800, 'la devolución también es de una fila cobrada')
+  assert.equal(ago.lados.real.cobranzas, 0, 'descontadas las dos, el lado real no espera nada del cuadro')
+  assert.equal(ago.lados.proyectado.cobranzas, 5000000)
+  assert.equal(ago.ok, true)
+  assert.equal(r.endosados.length, 1)
+  assert.equal(r.devoluciones.length, 1)
+  assert.equal(r.ok, true)
 })

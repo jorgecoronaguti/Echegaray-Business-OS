@@ -59,6 +59,7 @@ import { recallResumen } from './lib/memory.mjs'
 import { priorizarCajaResumen, proyeccionCajaResumen } from './lib/caja-alertas.mjs'
 import { registerChatGap, registerRespuestaFallida } from './lib/emergence.mjs'
 import { avanceResumen } from './lib/avance-fisico.mjs'
+import { decidirAcceso } from './lib/os-auth.mjs'
 import { libroIvaResumen, comprobantesSinRegistrar, parsePeriodo, conciliarProveedoresArca } from './lib/libro-iva.mjs'
 import { pedidosResumen } from './lib/pedidos-materiales.mjs'
 import { appsheetPedidosTools } from './lib/tools/appsheet-pedidos.mjs'
@@ -1246,19 +1247,21 @@ const server = http.createServer(async (req, res) => {
   // A partir de acá, rutas protegidas. Acepta (1) el token compartido (dueño, super_admin)
   // o (2) una LLAVE POR USUARIO (usuarios_os.access_key) → identidad y rol atados a la llave
   // (seguro: el email no se auto-declara). authEmail queda para el /ask.
-  const bearer = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim()
-  let authEmail = null
-  if (TOKEN && bearer === TOKEN) {
-    authEmail = null // dueño con la llave compartida → super_admin por defecto
-  } else if (bearer) {
-    try {
-      const { rows } = await query(`select email from public.usuarios_os where access_key = $1 and activo = true limit 1`, [bearer])
-      if (rows.length) authEmail = rows[0].email
-      else return send(res, 401, { error: 'no autorizado' })
-    } catch { return send(res, 401, { error: 'no autorizado' }) }
-  } else if (TOKEN) {
-    return send(res, 401, { error: 'no autorizado' })
-  }
+  // FALLA CERRADO. Antes el rechazo era `else if (TOKEN)`: con la variable de entorno vacía, una
+  // petición SIN `Authorization` no entraba a ningún 401 y seguía de largo con la identidad del
+  // dueño — y este servidor está publicado a internet por el proxy `/api/os/*`. La decisión vive
+  // en `lib/os-auth.mjs` justamente para tener un test que lo demuestre. Ver ese archivo.
+  const acceso = await decidirAcceso({
+    token: TOKEN,
+    authorization: req.headers.authorization,
+    buscarUsuario: async (llave) => {
+      const { rows } = await query(
+        `select email from public.usuarios_os where access_key = $1 and activo = true limit 1`, [llave])
+      return rows[0]?.email ?? null
+    },
+  })
+  if (!acceso.ok) return send(res, acceso.status, { error: acceso.error })
+  const authEmail = acceso.email
 
   // Operaciones pendientes de aprobación (la extensión las lista y las decide).
   if (req.method === 'GET' && req.url === '/pending') {

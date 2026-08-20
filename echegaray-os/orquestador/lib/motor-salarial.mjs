@@ -63,7 +63,7 @@ import { VACIO } from './preservar-anotaciones.mjs'
 import { sub, total as rotuloTotal } from './patron-pestana.mjs'
 import {
   CATEGORIA_ANCLA, COL as UOCRA_COL, HOJA as UOCRA_HOJA,
-  escalonDe, escalonPromedio, estadoReplica, filasPorHora, ultimoEscalon,
+  escalonDe, escalonPromedio, estadoReplica, filasPorHora, rotuloDeAcuerdo, ultimoEscalon,
 } from './uocra-acuerdos.mjs'
 import {
   CONVENIO_POR_CODIGO, GAP_SUMAS_NR, ORIGEN_ACUERDO, ULTIMO_TRAMO, VIGENCIA_HASTA,
@@ -442,7 +442,8 @@ export function filasEscalon({
       // Σ $/hora del plantel × el factor acumulado desde el mes de SU ancla. NO se recalcula por
       // categoría: el plantel vive UNA sola vez, en 1.1, y acá se referencia.
       `=IFERROR(${sigma}*$E${r}/$E$${rAncla};"")`,
-      firmado && e ? `${String(e.acuerdo ?? 'acuerdo').replace(/^Acuerdo\s+/, 'Ac.')}`.slice(0, 19) : 'proyección',
+      // EL MISMO ACORTADOR QUE CITA EL «Estado» DE OFICINA (14/08): dos `.replace()` iguales envejecen
+      firmado && e ? (rotuloDeAcuerdo(e.acuerdo) || 'acuerdo') : 'proyección',
       i === 0
         ? 'mes base: factor 1,0000, sin aumento'
         : (firmado ? '✓ acuerdo firmado' : `${ALERTA} proyección · últ: ${(ult?.rotulo ?? '—').slice(0, 12)}`),

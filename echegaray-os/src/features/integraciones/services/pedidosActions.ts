@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
+import { asignarActividadAPedido } from '@/features/obras/services/actionsEjecucion'
 
 // Módulo NATIVO de Pedidos de Materiales (control desde la web, no desde el chat). Supabase
 // es la fuente de verdad de lo que se crea/edita acá. Los pedidos nativos usan id_pedido
@@ -113,6 +114,32 @@ export async function deletePedidoAction(_prev: ActionState, formData: FormData)
   if (!c.supabase) return { error: c.error! }
   const { error } = await c.supabase.from('pedidos_materiales').delete().eq('id_pedido', id)
   if (error) return { error: error.message }
+  revalidatePath(PATH)
+  return { error: null, ok: true }
+}
+
+// ═══ PARA QUÉ ACTIVIDAD ES EL PEDIDO, DESDE LA LISTA GLOBAL ═══
+//
+// La REGLA no se reescribe acá: la escribe `asignarActividadAPedido`, que además verifica que la
+// actividad sea de esa obra (sin ese chequeo, un id de otra obra colgaría el pedido de un trabajo
+// que nadie de acá puede ver). Esta acción sólo agrega lo que esa no puede saber: que hay que
+// revalidar la lista global, no la ficha de la obra.
+const asignarSchema = z.object({
+  id_pedido: z.string().trim().min(1),
+  obra_id: z.string().trim().min(1),
+  // Vacío = DESASIGNAR, que es una decisión válida: alguien lo colgó de la actividad equivocada.
+  actividad_id: z.union([z.string().uuid(), z.literal('')]),
+})
+
+export async function asignarActividadPedidoAction(
+  idPedido: string,
+  obraId: string,
+  actividadId: string,
+): Promise<ActionState> {
+  const parsed = asignarSchema.safeParse({ id_pedido: idPedido, obra_id: obraId, actividad_id: actividadId })
+  if (!parsed.success) return { error: parsed.error.issues[0].message }
+  const r = await asignarActividadAPedido(parsed.data.obra_id, parsed.data.id_pedido, parsed.data.actividad_id)
+  if (!r.ok) return { error: r.error }
   revalidatePath(PATH)
   return { error: null, ok: true }
 }

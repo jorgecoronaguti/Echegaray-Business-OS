@@ -9,10 +9,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { grillaAnexo, ANCHO_ANEXO, SELLO_EFECTIVO, HISTORICO_EFECTIVO, claveDeRotulo } from './caja-anexo.mjs'
+import {
+  grillaAnexo, ANCHO_ANEXO, SELLO_EFECTIVO, HISTORICO_EFECTIVO, claveDeRotulo, FECHA_DEL_CONTEO,
+} from './caja-anexo.mjs'
 import { rescatarAnexo } from '../scripts/caja-anexo-pestana.mjs'
 import { ANEXO, DESDE_CAJA } from './caja-anexo-nombres.mjs'
-import { ESPECIE_ANEXO } from './caja-anexo-nombres.mjs'
+import { ESPECIE_ANEXO, PUEDE_ESTAR_VACIO } from './caja-anexo-nombres.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 import { MARCAS } from './cheques-cobertura.mjs'
 // La fila donde arranca el registro de Cheques Emitidos NO se escribe a mano en un test: es lo que
@@ -52,12 +54,12 @@ test('el desglose del efectivo está entero: los seis históricos, cada uno en s
   // se ve, así que el desglose no puede decir otra cosa que el total.
   const g = construir()
   const renglones = [
-    [/\(\+\) cobrado en efectivo — histórico completo/i, false],
-    [/\(−\) pagado en efectivo — histórico completo/i, true],
-    [/\(−\) jornales pagados en efectivo — histórico completo/i, true],
-    [/\(−\) sueldos de OFICINA en efectivo — histórico completo/i, true],
-    [/\(\+\) extraído del banco — histórico completo/i, false],
-    [/\(−\) depositado en el banco — histórico completo/i, true],
+    [/\(\+\) cobrado en efectivo — desde el conteo/i, false],
+    [/\(−\) pagado en efectivo — desde el conteo/i, true],
+    [/\(−\) jornales pagados en efectivo — desde el conteo/i, true],
+    [/\(−\) sueldos de OFICINA en efectivo — desde el conteo/i, true],
+    [/\(\+\) extraído del banco — desde el conteo/i, false],
+    [/\(−\) depositado en el banco — desde el conteo/i, true],
   ]
   for (const [re, resta] of renglones) {
     const f = filaDe(g, re)
@@ -83,14 +85,23 @@ test('EL SELLO: con conteo nuevo se autocancela (neto 0 = "lo contado, tal cual"
   const sello = celda(g, g.fSello, 2)
   const [f0, f1] = g.filasHistorico
   assert.match(sello, new RegExp(`SUM\\(C${f0}:C${f1}\\)`), 'el sello viejo se autocancela restando el histórico ENTERO')
-  assert.match(sello, new RegExp(`N\\(\\$D\\$${g.fSello}\\)`), 'y el sello vigente resta el número sellado en D')
+  // CON VENTANA EL SELLO YA NO RESTA (15/08/2026): los renglones cuentan sólo lo posterior al instante
+  // sellado, así que restarles la foto del histórico los contaría dos veces. Ver caja-anexo.mjs.
+  assert.match(sello, /;0\)$/, 'con el conteo sellado el sello aporta 0: la ventana ya hizo el corte')
   assert.match(sello, /<>N\(CAJA_ARQUEO_ARS\)/, 'la vigencia compara el VALOR del arqueo contra la copia sellada')
-  assert.match(sello, /<>N\(CAJA_ARQUEO_ARS_FECHA\)/, 'y también la FECHA: recontar el mismo monto otro día resella')
+  // CAMBIO DE CONTRATO (15/08): la FECHA salió de la identidad del conteo. El dueño la borró
+  // ("no te guíes en eso sino en lo q marca los timestamps del código") y mientras se comparara, un 0
+  // contra el 46241 sellado resellaba en cada corrida y se tragaba los movimientos adentro del conteo.
+  assert.doesNotMatch(sello, /CAJA_ARQUEO_ARS_FECHA/,
+    'ninguna celda que el dueño pueda borrar puede intervenir en la vigencia del sello')
   assert.ok(!sello.includes(','), 'es-AR: separador ; — una coma acá es un decimal, no un argumento')
   // El neto es la suma de TODO lo visible: los seis históricos y el sello. Nada por fuera. Y desde el
   // 14/08 lleva además la guarda de lo imposible (su propio test, más abajo).
   const neto = celda(g, g.fNeto, 2)
-  assert.match(neto, new RegExp(`^=IF\\(NOT\\(ISNUMBER\\(CAJA_ARQUEO_ARS_FECHA\\)\\);0;`))
+  // LA GUARDA CUELGA DEL SELLO, NO DE LA CELDA. Ése es todo el bug del 15/08: al borrar D7 el neto
+  // quedó en 0 y el automático se apagó entero. Si hay sello estampado por el código, hay ventana.
+  assert.match(neto, new RegExp(`^=IF\\(NOT\\(ISNUMBER\\(\\$F\\$${g.fSello}\\)\\);0;`))
+  assert.doesNotMatch(neto, /CAJA_ARQUEO_ARS_FECHA/, 'la fecha tipeada ya no puede apagar el mecanismo')
   assert.ok(neto.includes(`SUM(C${f0}:C${g.fSello})`), 'el neto suma exactamente el bloque visible')
   // Sin sellos previos, D del sello y D del estado salen en 0: fuerzan "conteo sin sellar" — el lado
   // que muestra lo contado tal cual, nunca un descuento fantasma.
@@ -136,14 +147,70 @@ test('EL SELLO SE RESCATA DE VERDAD: el rótulo del Sheet viene con su sangría'
     'y el sello DE CADA RENGLÓN, que es lo que dice quién se movió')
 })
 
-test('EL SELLO POR RENGLÓN vuelve a su celda D, y el desglose sigue sin aportar pesos', () => {
+// EL SELLO POR RENGLÓN SE RETIRA (15/08/2026). Con los seis renglones acotados al instante del conteo,
+// su columna D —la foto del histórico COMPLETO al sellar— dejó de significar algo, y peor: el techo la
+// restaba. Con ella puesta, el control publicaba techo −$141.300.064 y gritaba "efectivo imposible"
+// sobre una caja perfectamente sana. Se emite 0 y la columna queda como testigo del layout, no como
+// dato. El sello TOTAL (fila del SELLO) sigue vivo para el caso "conteo nuevo sin sellar".
+test('EL SELLO POR RENGLÓN YA NO SE RE-EMITE: con ventana, restarlo rompía el techo', () => {
   const cargado = rescatarAnexo(HISTORICO_EFECTIVO.map((l, i) => celdas(l.rotulo, { 3: -1000 * (i + 1) })))
   const g = grillaAnexo({ refs: REFS, cartera: CARTERA, conceptosCiegos: [], cargado })
   const [f0, f1] = g.filasHistorico
   for (let f = f0; f <= f1; f++) {
-    assert.equal(g.filas[f - 1][3], -1000 * (f - f0 + 1), 'cada renglón re-emite SU sello')
+    assert.equal(g.filas[f - 1][3], 0, 'la foto del histórico completo ya no vuelve a su celda')
     assert.ok(vacia(String(g.filas[f - 1][4] ?? '')), 'y la columna de pesos sigue vacía: el desglose no suma')
   }
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LA FECHA DE LOS DOS CONTEOS — DE ACÁ SALE `CAJA!D7` Y `CAJA!D8` (16/08/2026)
+//
+// El dueño: *"no completaste las fechas de saldos"*. Estaban vacías desde que él borró la celda donde
+// las tipeaba, y él lo hizo a propósito: *"para q no te guíes en eso sino en lo q marca los timestamps
+// del código"*. El dato no lo puede calcular Sheets —depende de CUÁNDO cambió una celda—, así que lo
+// estampa la corrida desde el centinela y CAJA lo cita por nombre.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('LOS DOS RENGLONES DE FECHA DE CONTEO EXISTEN y quedan FUERA de la suma del cajón', () => {
+  const g = construir()
+  assert.ok(g.fFechaArs > g.fSello && g.fFechaUsd > g.fSello,
+    'van DEBAJO del sello: todo lo que esté en la columna C entre el histórico y el sello ENTRA al neto')
+  for (const f of [g.fFechaArs, g.fFechaUsd]) {
+    for (const c of [2, 3, 4]) {
+      assert.ok(vacia(String(g.filas[f - 1][c] ?? '')), `la columna ${c} tiene que estar vacía: no es plata`)
+    }
+    assert.ok(String(g.filas[f - 1][6] ?? '').length > 40, 'cada renglón dice de dónde sale su número')
+  }
+  // Y LOS DOS NOMBRES APUNTAN A LA COLUMNA F, que es la única de fechas del anexo. En la E —que va con
+  // formato de moneda— el serial 46248 se dibujaría "$46.248".
+  const destino = (n) => g.destinos.find((d) => d.name === n)
+  assert.equal(destino(ANEXO.conteoArsDia)?.col, 6)
+  assert.equal(destino(ANEXO.conteoUsdDia)?.col, 6)
+  assert.equal(destino(ANEXO.conteoArsDia)?.fila, g.fFechaArs)
+  assert.equal(destino(ANEXO.conteoUsdDia)?.fila, g.fFechaUsd)
+})
+
+test('LA FECHA ESTAMPADA SE RESCATA: sin esto, cada regeneración borraría la fecha de CAJA', () => {
+  // Es la misma trampa que ya costó el sello y la carga tardía: el valor lo escribe la corrida DESPUÉS
+  // de la grilla, así que si la grilla lo emite vacío y el estampado falla (base caída, un 429), la
+  // fecha del saldo desaparece de la portada por un problema de infraestructura.
+  const cargado = rescatarAnexo([
+    celdas(FECHA_DEL_CONTEO.ars, { 5: 46248 }),
+    celdas(FECHA_DEL_CONTEO.usd, { 5: 46239 }),
+  ])
+  assert.equal(cargado.get(claveDeRotulo(FECHA_DEL_CONTEO.ars))?.dia, 46248)
+  const g = grillaAnexo({ refs: REFS, cartera: CARTERA, conceptosCiegos: [], cargado })
+  assert.equal(g.filas[g.fFechaArs - 1][5], 46248, 'la fecha del conteo en pesos vuelve a su celda')
+  assert.equal(g.filas[g.fFechaUsd - 1][5], 46239)
+})
+
+test('SIN CONTEO, la celda queda VACÍA — y el nombre se publica igual o CAJA daría #NAME?', () => {
+  // Es el estado de los dólares hoy (`CAJA_ARQUEO_USD` = 0). Una fecha ahí afirmaría un arqueo que
+  // nunca ocurrió; retirar el nombre dejaría `CAJA!D8` en error. Las dos cosas están declaradas.
+  const g = construir()
+  assert.ok(vacia(String(g.filas[g.fFechaUsd - 1][5] ?? '')), 'sin conteo no hay fecha que emitir')
+  assert.ok(g.destinos.some((d) => d.name === ANEXO.conteoUsdDia), 'y el nombre se publica igual')
+  assert.ok(PUEDE_ESTAR_VACIO[ANEXO.conteoUsdDia]?.length > 40, 'con el motivo escrito, no en silencio')
 })
 
 test('EL EFECTIVO NO PUEDE PUBLICARSE NEGATIVO: la guarda está en el neto, y el neto es lo que CAJA lee', () => {
@@ -153,9 +220,33 @@ test('EL EFECTIVO NO PUEDE PUBLICARSE NEGATIVO: la guarda está en el neto, y el
   const g = construir()
   const neto = celda(g, g.fNeto, 2)
   const [f0] = g.filasHistorico
-  assert.ok(neto.includes(`IF(N(CAJA_ARQUEO_ARS)+SUM(C${f0}:C${g.fSello})<0;0;`),
+  const cajon = `N(CAJA_ARQUEO_ARS)+SUM(C${f0}:C${g.fSello})`
+  assert.ok(neto.includes(`(${cajon}<0)`),
     `el neto tiene que degradar a 0 cuando el cajón daría negativo. Es: ${neto}`)
   assert.ok(!neto.includes(','), 'es-AR: separador ; — una coma acá es un decimal, no un argumento')
+})
+
+test('NI POSITIVO IMPOSIBLE: el techo entra a la misma guarda que el piso', () => {
+  // EL 15/08. La guarda del 14/08 atajaba el cajón negativo y dejaba pasar el inflado, porque era
+  // positivo: la pestaña publicó $58.646.092 sobre un conteo de $12.000.000, con las dos líneas que
+  // CARGAN el cajón quietas en cero. Un cajón tampoco puede tener MÁS que lo contado más lo que entró.
+  const g = construir()
+  const neto = celda(g, g.fNeto, 2)
+  const [f0] = g.filasHistorico
+  const entrada = HISTORICO_EFECTIVO.map((l, i) => (l.entra ? f0 + i : 0)).filter(Boolean)
+  assert.deepEqual(entrada.length, 2, 'cobrado en efectivo y extraído del banco son las que cargan')
+  for (const f of entrada) {
+    // CON VENTANA, `C` YA ES LO QUE ENTRÓ DESPUÉS DEL CONTEO (15/08). Restarle su sello —la foto del
+    // histórico completo— lo mandaba a un negativo enorme y el techo dejaba de controlar.
+    assert.ok(neto.includes(`+C${f}`), `el techo tiene que sumar lo que entró por la fila ${f}`)
+    assert.ok(!neto.includes(`(C${f}-N($D$${f}))`), 'con ventana el techo no resta el sello de su propia fila')
+    assert.ok(neto.includes(`ISNUMBER($D$${f})`),
+      `sin el sello de la fila ${f} el techo no se puede medir, y un techo inventado no controla nada`)
+  }
+  // Y el control publicado mide LAS DOS PUNTAS, no sólo la de abajo.
+  const control = celda(g, g.fImposible, 4)
+  assert.match(control, /MAX\(0;-\(/, 'lo que falta para llegar a cero')
+  assert.match(control, /MAX\(0;\(/, 'y lo que sobra por encima del techo')
 })
 
 test('EL CONTROL SE PUBLICA CON NOMBRE Y FUERA DEL BLOQUE QUE MIDE', () => {
@@ -164,7 +255,8 @@ test('EL CONTROL SE PUBLICA CON NOMBRE Y FUERA DEL BLOQUE QUE MIDE', () => {
   assert.ok(f > g.fSello, 'un control que cae adentro del rango del neto se sumaría a lo que mide')
   assert.ok(vacia(celda(g, f, 2)), 'por eso su columna C va vacía: C entre el histórico y el sello ES el neto')
   const control = celda(g, f, 4)
-  assert.match(control, /^=IF\(NOT\(ISNUMBER\(CAJA_ARQUEO_ARS_FECHA\)\);0;MAX\(0;-\(/, 'vale 0 cuando el efectivo es posible')
+  assert.match(control, new RegExp(`^=IF\\(NOT\\(ISNUMBER\\(\\$F\\$${g.fSello}\\)\\);0;MAX\\(0;-\\(`),
+    'vale 0 cuando el efectivo es posible, y cuelga del SELLO — no de la celda que el dueño puede borrar')
   const destino = g.destinos.find((d) => d.name === ANEXO.efectivoImposible)
   assert.deepEqual({ fila: destino?.fila, col: destino?.col }, { fila: f, col: 5 },
     'CAJA lo lee por nombre: sin publicarlo, la alerta de la portada mira una celda que no existe')
@@ -198,7 +290,7 @@ test('EL ESTADO DEL SELLO DICE CUÁNTO SE MOVIÓ EL HISTÓRICO, no sólo que est
   // Y —lo que importa— EN EL BRAZO SANO. El 14/08 el sello estaba vigente: si el monto movido sólo
   // apareciera en el brazo de la alerta, la línea que el dueño lee todos los días seguiría siendo un ✓
   // mudo hasta que fuera demasiado tarde.
-  assert.ok(estado.includes(`"✓ sellado al conteo del "&TEXT(N($F$${g.fSello});"dd/mm")&" · el histórico se movió "&${movido}`),
+  assert.ok(estado.includes(`"✓ sellado al conteo del "&TEXT(N($F$${g.fSello});"dd/mm HH:mm")&" · el histórico se movió "&${movido}`),
     `el estado SELLADO tiene que decir cuánto se movió el histórico. Es: ${estado}`)
   assert.match(estado, /IMPOSIBLE/, 'y el estado imposible se nombra con todas las letras')
   assert.match(estado, /✓ sellado al conteo del/, 'sin perder el estado sano')
@@ -210,7 +302,7 @@ test('la nómina en efectivo DESCARGA la caja física y la de banco NO: son cana
   // por transferencia. Ni una mitad ni la otra bajaba ninguna disponibilidad: la nómina no es una compra
   // ni un cheque. La plata se pagaba y no salía de la pestaña.
   const g = construir()
-  const efvo = celda(g, filaDe(g, /jornales pagados en efectivo — histórico completo/i), 2)
+  const efvo = celda(g, filaDe(g, /jornales pagados en efectivo — desde el conteo/i), 2)
   assert.match(efvo, /JORNALES_REAL_ADELANTO/)
   assert.match(efvo, /JORNALES_REAL_RECIBO/)
   assert.ok(!efvo.includes('JORNALES_REAL_BANCO'), 'lo que salió por banco no puede salir también del cajón')
@@ -234,7 +326,7 @@ test('la extracción SUMA al cajón — es el espejo del depósito, que resta', 
   // La caja física sólo sabía BAJAR hacia el banco y nunca subir desde él: una asimetría que sólo puede
   // dar de menos.
   const g = construir()
-  const c = celda(g, filaDe(g, /extraído del banco — histórico completo/i), 2)
+  const c = celda(g, filaDe(g, /extraído del banco — desde el conteo/i), 2)
   assert.match(c, /extraccion/)
   assert.ok(!/^=-\(/.test(c), 'la extracción CARGA la caja: no lleva signo negativo')
 })
@@ -468,8 +560,18 @@ test('todos los nombres que CAJA cita se publican, y cada uno declara su especie
     assert.ok(publicados.has(n), `${n} lo cita CAJA y el anexo no lo publica: quedaría en #NAME?`)
   }
   for (const d of g.destinos) {
-    assert.ok(d.especie ?? ESPECIE_ANEXO[d.name], `${d.name} se publica sin declarar especie: no se puede verificar`)
     assert.ok(Number.isFinite(d.fila) && d.fila >= 1, `${d.name} apunta a una fila inválida`)
+    // LA EXCEPCIÓN ES NOMINAL Y TRAE SU MOTIVO ESCRITO. Un nombre cuya celda puede estar legítimamente
+    // vacía no puede declarar especie —`publicar` descartaría el destino y el nombre no se crearía,
+    // dejando #NAME? en CAJA—, así que la regla se relaja SÓLO para los que están en la lista.
+    const excusa = PUEDE_ESTAR_VACIO[d.name]
+    if (excusa) {
+      assert.ok(excusa.length > 40, `${d.name} está exceptuado sin explicar por qué`)
+      assert.ok(!(d.especie ?? ESPECIE_ANEXO[d.name]),
+        `${d.name} puede estar vacío Y declara especie: publicar lo descartaría y el nombre no existiría`)
+      continue
+    }
+    assert.ok(d.especie ?? ESPECIE_ANEXO[d.name], `${d.name} se publica sin declarar especie: no se puede verificar`)
     // Y la celda a la que apunta tiene que tener ALGO: un nombre sobre una celda vacía es tan mudo como
     // uno sobre un texto, y la API lo acepta con un 200.
     const v = g.filas[d.fila - 1]?.[d.col - 1]

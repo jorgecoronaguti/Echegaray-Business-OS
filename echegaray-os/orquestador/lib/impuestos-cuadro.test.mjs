@@ -5,7 +5,7 @@ import {
   formulaAlicuotaIibbVigente, formulaBaseIibbProyectada, formulaIibbDeterminado,
   formulaImpuestoChequeProyectado, formulaImpuestoCheque, filasFinanciamiento,
   costoDescubiertoDiario, formulaVentana, formulaVencidoImpago, formulaDeudaPendiente,
-  proximoVencimiento, rangoIibb,
+  proximoVencimiento, rangoIibb, formulaSaldoAFavor, formulaSaldoDeclarado,
 } from './impuestos-cuadro.mjs'
 import { serialDe } from './vencimientos-fiscales.mjs'
 import { ACUERDO, TARJETA } from './banco-santander.mjs'
@@ -208,10 +208,37 @@ test('el próximo vencimiento es el primero NO vencido, con su fecha y su celda'
   assert.equal(proximoVencimiento(CAL.filter((f) => f.vencido)), null)
 })
 
+// ══ LOS SALDOS A FAVOR NO PUEDEN PUBLICAR #VALUE! NI UN CERO MUDO ═════════════════════════════════
+//
+// EL DEFECTO, VISTO POR EL DUEÑO EL 17/08. La fila 10 del hero era `=$H$57+$G$67` y publicaba
+// "#VALUE! (Function ADD parameter 1 expects number values. But '⚠ vence 20/08' is a text...)".
+// La celda H57 —el saldo de libre disponibilidad de julio— tenía una leyenda tipeada a mano.
+//
+// LA SALIDA FÁCIL ERA UN IFERROR, Y ES PEOR QUE EL ERROR. Un IFERROR deja $0 donde hay $20,2M a
+// favor, y "$0 de saldo a favor" es una afirmación falsa que nadie va a ir a verificar: se lee como
+// "no tengo nada a favor". Degradar es decir QUÉ falta, no reemplazar el hueco por un número.
+
+test('el saldo a favor con un término que no es número: ni #VALUE! ni un cero, dice qué falta', () => {
+  const f = formulaSaldoAFavor('$G$57', '$G$67')
+  // Suma sólo si LOS DOS son números: COUNT no cuenta el texto.
+  assert.ok(f.startsWith('=IF(COUNT($G$57;$G$67)=2;$G$57+$G$67;'), `la guarda va primero: ${f}`)
+  assert.ok(!/IFERROR/.test(f), 'un IFERROR taparía el hueco con un cero que se lee como "no hay saldo"')
+  // Y el texto del hueco NOMBRA cuál de los dos falta: sin eso, el dueño ve un aviso y no sabe dónde ir.
+  assert.ok(f.includes('ISNUMBER($G$57)') && f.includes('ISNUMBER($G$67)'), `nombra cada término: ${f}`)
+  assert.ok(f.includes('IVA') && f.includes('IIBB'), `dice qué impuesto falta: ${f}`)
+})
+
+test('un saldo suelto que no es número tampoco se muestra como plata', () => {
+  const f = formulaSaldoDeclarado('$G$57')
+  assert.ok(f.startsWith('=IF(ISNUMBER($G$57);$G$57;'), `el importe manda cuando es importe: ${f}`)
+  assert.ok(/sin dato/.test(f), `una celda vacía se declara, no se dibuja en $0: ${f}`)
+})
+
 // ══ LOCALE ════════════════════════════════════════════════════════════════════════════════════════
 
 test('todas las fórmulas van en locale es-AR: separador ";", nunca ","', () => {
   const todas = [
+    formulaSaldoAFavor('$G$57', '$G$67'), formulaSaldoDeclarado('$G$57'),
     formulaCuotaPrendario(C, 2026, 9), formulaPrendarioPendiente(C),
     formulaPlanesPendiente(C, [{ patron: 'W303094', campo: 'concepto' }]),
     formulaAlicuotaIibbVigente(IIBB.hoja, IIBB.fila0, IIBB.col, '2026-06'),

@@ -76,11 +76,38 @@ export function celdaCabecera(periodo, col) {
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
 
-  // Los PDFs del data room, por nombre. El índice de Drive ya los tiene catalogados.
-  const { rows: archivos } = await query(
-    `select name, drive_file_id from drive_index
+  // ═══ EL MISMO F931 ESTÁ DOS VECES EN DRIVE, Y UNA COPIA SE QUEDÓ EN JUNIO (19/08/2026) ═══
+  //
+  // El índice tiene el archivo fiscal duplicado: una copia bajo
+  // `administracion/ECHEGARAY CONTRUCCIONES SAS - NO TOCAR/2026/931/` y otra bajo el archivo que el
+  // dueño mantiene al día. Mismo nombre de archivo, distinto `drive_file_id`, distinto contenido
+  // cuando una de las dos deja de actualizarse — que es lo que pasó: la primera llega hasta junio y
+  // la segunda tiene julio desde el 14/08. Sin desempate, la consulta traía las DOS y el mismo
+  // período entraba dos veces en la réplica.
+  //
+  // DESEMPATA LA FECHA DE MODIFICACIÓN, no la carpeta. Elegir por ruta obligaría a escribir acá el
+  // nombre de una carpeta —y ese nombre lo pone la variable de entorno del indexador, así que sería
+  // un acoplamiento invisible que se rompe el día que alguien la renombra—. "De dos copias del mismo
+  // documento vale la más nueva" es una regla que se sostiene sola, sin saber nada del árbol.
+  //
+  // Y LA DUPLICACIÓN SE DECLARA. Que un documento fiscal exista dos veces no es un detalle de
+  // archivo: es que hay dos lugares donde alguien puede subir el F931 y sólo uno se está mirando.
+  // Se avisa con nombre y ruta para que se pueda cerrar la copia que sobra.
+  const { rows: todos } = await query(
+    `select name, drive_file_id, path, modified_time from drive_index
       where name ilike '%931%' and name like $1 and mime_type = 'application/pdf'
-      order by name`, [`${AÑO}%`])
+      order by name, modified_time desc nulls last`, [`${AÑO}%`])
+  const porNombre = new Map()
+  const duplicados = []
+  for (const a of todos) {
+    if (porNombre.has(a.name)) { duplicados.push(a); continue }
+    porNombre.set(a.name, a)
+  }
+  const archivos = [...porNombre.values()]
+  if (duplicados.length) {
+    console.warn(`  ${ALERTA} ${duplicados.length} F931 duplicado(s) en Drive — me quedo con la copia más nueva de cada uno:`)
+    for (const d of duplicados) console.warn(`     descartada: ${d.path}`)
+  }
   if (!archivos.length) { console.log(`no hay DDJJ F931 de ${AÑO} en el índice de Drive`); return }
 
   const datos = []

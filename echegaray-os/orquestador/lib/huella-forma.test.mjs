@@ -10,8 +10,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  esDistintiva, formaComparable, formaDe, formasAusentes, formasPresentes, noReponerAusentes,
-  LARGO_FORMA, MIN_FORMAS_PRESENTES, TOPE_BORRADOS_NUEVOS,
+  esDistintiva, esFormulaNula, formaComparable, formaDe, formasAusentes, formasPresentes,
+  noReponerAusentes, LARGO_FORMA, MIN_FORMAS_PRESENTES, TOPE_BORRADOS_NUEVOS,
 } from './huella-forma.mjs'
 import { aplicarHuella, claveCelda, huellasDeEscritura, mejorDesplazamiento } from './huella-celda.mjs'
 import { fusionar } from './preservar-anotaciones.mjs'
@@ -58,7 +58,12 @@ test('(a) sin mapa de posición, un rótulo que el dueño vació NO se repone', 
 
   const r = aplicarHuella(generado, hoy, huellas, { fila0: 1, col0: 0 })
   assert.equal(r.alineacion.alineada, false, 'el escenario exige que el mapa NO alinee')
-  assert.equal(r.suprimidas.length, 1, 'la celda vaciada tiene que quedar suprimida')
+  // LA CELDA NO SE REPONE, PERO NO SE REGISTRA COMO BORRADA POR EL DUEÑO. Sin mapa, la ausencia de
+  // una forma tiene tres explicaciones y sólo una es "la borró él" (ver `aplicarHuella`). Lo que este
+  // test protege —que el rótulo vaciado NO vuelva— se comprueba tres líneas más abajo, sobre la
+  // GRILLA, que es donde vive de verdad: el registro sólo agrega una consecuencia permanente.
+  assert.equal(r.noRepuestas.length, 1, 'la celda vaciada tiene que dejar de reponerse')
+  assert.deepEqual(r.suprimidas, [], 'sin mapa NO se puede afirmar un borrado del dueño: 27 celdas del generador se marcaron así')
 
   const queda = enLaPestana(r.grid, hoy)
   const textos = queda.flat().map(String)
@@ -171,6 +176,28 @@ test('(j) una fórmula más larga que el corte del sellado sigue siendo la misma
     'la forma sellada y la de hoy tienen que comparar IGUAL, o la huella no decide nunca')
 })
 
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// `=""` NO ES CONTENIDO — y el margen del predicado, que es lo único que lo hace seguro (15/08)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+test('(l) `=""` se reconoce como la fórmula que no publica nada, con o sin lo que le agrega Google', () => {
+  for (const v of ['=""', '= ""', ' ="" ', '\'=""']) {
+    assert.equal(esFormulaNula(v), true, `${JSON.stringify(v)} publica la cadena vacía y nada más`)
+  }
+})
+
+test('(m) y NO se traga nada que sí pueda publicar algo: el margen es la seguridad del veredicto', () => {
+  // Todas éstas publican un dato casi siempre. Si alguna entrara acá, el veredicto de propiedad
+  // pasaría a pisar fórmulas vivas del dueño con la excusa de que "no dicen nada".
+  const publican = [
+    '=IFERROR(INDEX(A1:A9;1);"")',                 // la fórmula de «Hasta»: vacía SÓLO si falla
+    '=IF(N(B10)=0;"";B10)',
+    '=""&A1',
+    '=CONCAT("";A1)',
+    '""', '', ' ', 0, null, undefined, 'sin datos',
+  ]
+  for (const v of publican) assert.equal(esFormulaNula(v), false, `${JSON.stringify(v)} no es una fórmula nula`)
+})
+
 test('(k) y con la fórmula larga, la huella vuelve a alinear', () => {
   const larga = (n) => `=SUMPRODUCT(ISNUMBER('_MOVIMIENTOS'!$A$2:$A)*('_MOVIMIENTOS'!$A$2:$A>=$${unico(n)}$5)*(${'ABCDEFGHIJ'.repeat(40)}))`
   const grid = Array.from({ length: 12 }, (_, k) => [larga(k)])
@@ -179,4 +206,47 @@ test('(k) y con la fórmula larga, la huella vuelve a alinear', () => {
   const al = mejorDesplazamiento(grid, huellas, { fila0: 1, col0: 0 })
   assert.equal(al.alineada, true, 'la pestaña no cambió: el mapa TIENE que alinear')
   assert.ok(al.fraccion > 0.9)
+})
+
+// ═══ EL DEFECTO DE LAS 27 · SIN MAPA NO SE REGISTRA NI UN BORRADO, PASE LO QUE PASE ═══
+//
+// MEDIDO en el archivo real: la primera corrida de "Proveedores" con la huella enchufada dejó 27
+// celdas con `borrada_en`. Se revisaron una por una y las 27 son del GENERADOR —fórmulas
+// `=SUMPRODUCT((_ARCA_RAW!…))`, `=SUM($F$#:$F$#)` y rótulos propios como "· ▲ sin cargar en
+// Compras"—. Ninguna del dueño. Antes de esa corrida la pestaña no tenía una sola marca.
+//
+// La marca es permanente y se auto-sostiene: `borrada_en` sólo se limpia si la celda vuelve a tener
+// contenido, y el generador dejó de escribirla porque la marca se lo dice. Un lazo cerrado.
+//
+// Este control es el freno: cuando la alineación falla, `suprimidas` sale VACÍO haya las formas que
+// haya. No mide un caso, mide la propiedad — recorre varios escenarios que antes sí registraban.
+test('EL DEFECTO · con el mapa desalineado, NINGÚN escenario registra una supresión', () => {
+  // Rótulos únicos POR LETRAS: un `número 1` y un `número 2` se enmascaran a la misma forma (`<n>`) y
+  // entonces cualquier desplazamiento alinea — el error que este mismo test cometió al escribirse.
+  const bloque = (n, pre = 'Rótulo distintivo del generador') => Array.from({ length: n }, (_, k) => [`${pre} ${unico(k)} de esta pestaña`])
+  const escenarios = [
+    ['todas mis formas desaparecieron', bloque(20), bloque(20, 'Texto ajeno enteramente distinto')],
+    ['la pestaña se corrió 9 filas', bloque(20), [...bloque(9, 'Relleno de arriba'), ...bloque(20)]],
+    ['una sola forma mía falta y el resto se corrió', bloque(20), [...bloque(9, 'Relleno de arriba'), ...bloque(20).filter((_, k) => k !== 3)]],
+    ['la pestaña quedó casi vacía', bloque(20), [['algo suelto']]],
+  ]
+  for (const [nombre, generado, hoy] of escenarios) {
+    const huellas = huellasDe(generado)
+    const r = aplicarHuella(generado, hoy, huellas, { fila0: 1, col0: 0 })
+    assert.equal(r.alineacion.alineada, false, `"${nombre}": el escenario exige que el mapa NO alinee`)
+    assert.deepEqual(r.suprimidas, [],
+      `"${nombre}": se registró un borrado sin mapa que lo pruebe — así nacieron las 27 celdas del generador marcadas como borradas por el dueño`)
+  }
+})
+
+// La contracara, para que el arreglo no se coma la protección real: CON mapa alineado, una celda que
+// el dueño vació de verdad SÍ se registra. Sin este test, "no registrar nunca" pasaría el de arriba.
+test('con el mapa alineado, un borrado real del dueño SÍ se registra', () => {
+  const generado = Array.from({ length: 20 }, (_, k) => [`Rótulo distintivo del generador número ${k}`])
+  const huellas = huellasDe(generado)
+  const hoy = generado.map((f, k) => (k === 3 ? [''] : [...f]))
+  const r = aplicarHuella(generado, hoy, huellas, { fila0: 1, col0: 0 })
+  assert.equal(r.alineacion.alineada, true, r.alineacion.motivo)
+  assert.equal(r.suprimidas.length, 1, 'con mapa, la celda vacía bajo huella propia es un borrado del dueño y se registra')
+  assert.equal(r.suprimidas[0].fila, 4)
 })

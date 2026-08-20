@@ -292,6 +292,59 @@ export function aRescatar(malApuntados = [], existentes = [], sheetId = null, le
 }
 
 /**
+ * NÚCLEO PURO: los nombres que hay que BORRAR porque no queda ninguna celda buena a la que apuntar.
+ *
+ * ═══ EL AGUJERO QUE ESTO TAPA (14/08/2026) ═══
+ *
+ * `aRescatar` se niega, por escrito, a tocar un nombre que vive en otra pestaña: "uno anclado en otra
+ * pestaña puede estar bien donde está". Es cierto mientras alguien lo verifique, y nadie lo verifica:
+ * la relectura de `publicar` cubre el rectángulo de la pestaña DESTINO, así que del nombre emigrado no
+ * se sabe nada. Medido en el archivo vivo: `ARCA_FALTAN_MONTO` vive en `Materiales!B53`, que publica
+ * `0038-00025483` —un número de comprobante—, y sus dos únicos lectores son `Proveedores!G11` y `H11`,
+ * bajo los rótulos "Saldo" y "%". Un comprobante dibujado como plata y un CUIT dibujado como
+ * porcentaje, en el cuadro que abre la pestaña.
+ *
+ * Las tres puertas estaban cerradas a la vez: `publicar` no lo mueve porque el destino nuevo no
+ * convence, `aRescatar` no lo rescata porque está en otra pestaña, y `retirar` sólo se llama con la
+ * lista fija de nombres que el bloque dejó de publicar. El nombre se queda mintiendo para siempre.
+ *
+ * ═══ LA REGLA: O APUNTA A LO QUE PROMETE, O NO EXISTE ═══
+ *
+ * Es la misma que ya está escrita en `retirar`, aplicada al caso que se le escapaba. Retirarlo tiene
+ * el modo de falla correcto: la fórmula que lo cite da `#NAME?`, que se VE y que la corrida siguiente
+ * repone en cuanto haya una celda buena. Dejarlo apuntando a un comprobante da un número creíble en
+ * otra pestaña, que no se ve. Entre un error visible y una mentira silenciosa, siempre el visible.
+ *
+ * LO QUE DELIBERADAMENTE NO ENTRA: un nombre cuyo destino nuevo no convence pero cuyo rango ACTUAL
+ * está sano en la pestaña correcta. Ése se queda donde está —es el caso que protege `aRescatar` al
+ * revés— y por eso `rescatados` se descuenta: lo que se va a mover no se borra.
+ *
+ * @param {Array<{name:string, espera?:string, especie?:string}>} malApuntados lo de `desalineados`
+ * @param {Array<{name:string, namedRangeId:string, range?:object}>} existentes
+ * @param {number} sheetId la pestaña donde el nombre TIENE que vivir
+ * @param {string[]} [rescatados] los que `aRescatar` ya decidió mover: ésos no se borran
+ * @returns {string[]} los nombres a retirar del archivo
+ */
+export function aRetirarPorMentir(malApuntados = [], existentes = [], sheetId = null, rescatados = []) {
+  const porNombre = new Map(existentes.map((r) => [r.name, r]))
+  const salvados = new Set(rescatados)
+  return malApuntados
+    .filter((m) => !salvados.has(m.name))
+    .filter((m) => {
+      const actual = porNombre.get(m.name)?.range
+      // El que todavía no existe no se borra ni se crea sobre contenido dudoso: ya lo decide `publicar`.
+      if (!actual) return false
+      // Vive donde tiene que vivir: `aRescatar` ya lo miró con el valor a la vista y decidió. Si no lo
+      // rescató es porque su celda actual está mejor que el destino nuevo — no hay nada que retirar.
+      if (actual.sheetId === sheetId) return false
+      // Emigrado, y el destino calculado tampoco convence: no queda ninguna celda de la que se pueda
+      // afirmar que tiene la especie prometida. Se retira.
+      return true
+    })
+    .map((m) => m.name)
+}
+
+/**
  * Publica los nombres Y COMPRUEBA QUE APUNTEN A ALGO DE LA ESPECIE PROMETIDA.
  *
  * La relectura es UNA sola llamada: el rectángulo que cubre todos los destinos. Doce lecturas
@@ -324,6 +377,8 @@ export async function publicar(google, fileId, sheetId, destinos = [], { titulo 
   let malApuntados = []
   let aPublicar = destinos
   let verificado = false
+  /** Los que se borran del archivo: sin celda buena a la que apuntar, existir es mentir. */
+  let retirados = []
   if (titulo) {
     const f0 = Math.min(...destinos.map((d) => d.fila)), f1 = Math.max(...destinos.map((d) => d.fila))
     const c0 = Math.min(...destinos.map((d) => d.col)), c1 = Math.max(...destinos.map((d) => d.col))
@@ -359,14 +414,26 @@ export async function publicar(google, fileId, sheetId, destinos = [], { titulo 
         const set = new Set(rescatar)
         aPublicar = aPublicar.concat(destinos.filter((d) => set.has(d.name)))
       }
+      // Y EL QUE NO TIENE NINGUNA CELDA BUENA SE RETIRA. Ver `aRetirarPorMentir`: el nombre emigrado a
+      // otra pestaña no lo mira nadie —la relectura cubre la pestaña destino— y se queda publicando lo
+      // que haya. Un `#NAME?` que se ve es mejor que un comprobante dibujado como plata.
+      retirados = aRetirarPorMentir(malApuntados, existentes, sheetId, rescatar)
+      if (retirados.length) {
+        console.warn(`  ⚠ ${retirados.length} nombre(s) RETIRADOS: viven fuera de esta pestaña y su destino `
+          + `tampoco tiene la especie que prometen, así que no hay celda de la que se pueda afirmar que `
+          + `dicen la verdad: ${retirados.join(', ')}. Toda fórmula que los cite va a dar #NAME?, que se ve.`)
+      }
     }
   }
 
-  if (aPublicar.length) await google.spreadsheetBatchUpdate(fileId, pedidos(sheetId, aPublicar, existentes))
+  const req = [...pedidos(sheetId, aPublicar, existentes), ...retirar(retirados, existentes)]
+  if (req.length) await google.spreadsheetBatchUpdate(fileId, req)
   return {
     nombres: aPublicar.length,
     verificado,
     malApuntados,
+    /** Los que se borraron del archivo por no tener ninguna celda con la especie que prometen. */
+    retirados,
     /** Los que NO se apuntaron a la celda pedida porque esa celda no tiene lo que el nombre promete. */
     noPublicados: malApuntados.map((m) => m.name),
   }

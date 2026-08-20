@@ -20,6 +20,7 @@ import {
   ANCHO_OBRAS, ANCHOS_OBRAS, ANCHO_HISTORICO, ALTO_HISTORICO, conColaLimpiable, REFS_OBRAS, CLIENTES_MUESTRA,
   rotuloDeObra, SIN_CONTRATO, SECCION_OBRAS, SECCION_COSTO,
 } from './obras-grilla.mjs'
+import { ESPECIES_DE_PLATA } from './obras-especies.mjs'
 import { OBRAS_FUTURAS, CLIENTES_CANONICOS, comprasObraDe, esProyectable, totalEgresos } from './obras-datos.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 import { ALERTA, glifosInvisibles } from './glifos.mjs'
@@ -153,18 +154,21 @@ test('el RETENIDO sale de la columna de retenciones, sólo de lo COBRADO y por f
   assert.ok(!cel(g, `H${g.fTotClientes}`).includes('SUM(H'), 'ni es la suma de los renglones')
 })
 
-test('la H lleva IMPORTE en los dos cuadros que la usan, y el escritor lo sabe fila por fila', () => {
+test('la H lleva IMPORTE en los dos cuadros que la usan, y lo declara la celda', () => {
   // La H es `Retenido` por cliente y `Falta certificar` por obra: plata en los dos casos. Pero la
-  // columna no se puede declarar plata de arriba a abajo, porque el resto de las filas la deja
-  // vacía. `importeEnH` es la lista que el escritor usa; si quedara corta, $7.671.680 se publicarían
-  // con el formato de la celda de al lado y nadie daría un error.
-  assert.deepEqual(g.importeEnH,
-    [...rangoFilas(...g.fClientes), g.fTotClientes, ...g.bloques.map((b) => b.fProt), g.fTotObras])
+  // columna no se puede declarar plata de arriba a abajo, porque el resto de las filas lleva fecha.
+  // Hasta el 14/08 eso lo resolvía `importeEnH`, una lista de filas escrita a mano en la grilla y
+  // leída en el escritor: si quedaba corta, $7.671.680 salían dibujados como un día del año 2110.
+  // Ahora lo declara la celda, y esto lo verifica sobre la MATRIZ, no sobre la lista.
+  for (const f of [...rangoFilas(...g.fClientes), g.fTotClientes, ...g.bloques.map((b) => b.fProt), g.fTotObras]) {
+    assert.ok(ESPECIES_DE_PLATA.includes(g.especies[f - 1][7]), `H${f}: es plata y tiene que declararlo`)
+  }
   for (const f of [...rangoFilas(...g.fClientes), g.fTotClientes]) {
     assert.match(String(cel(g, `H${f}`)), /^=SUMIFS\(/, `H${f}: el retenido del cliente`)
   }
-  // Las filas del cuadro de COSTO no llevan nada en la H: su cuadro termina en la E.
-  for (const f of g.filasCosto) assert.ok(!g.importeEnH.includes(f), `${f}: el cuadro de costo no usa la H`)
+  // Las filas del cuadro de COSTO no llevan nada en la H: su cuadro termina en la E, así que la
+  // columna vuelve a su especie de fecha.
+  for (const f of g.filasCosto) assert.equal(g.especies[f - 1][7], 'fecha', `H${f}: el cuadro de costo no usa la H`)
 })
 
 test('el ⇒ TOTAL 2026 tiene la ventana que su rótulo promete', () => {
@@ -745,12 +749,19 @@ test('una obra sin fechas se VE, se marca y no proyecta nada: sin inicio no hay 
   const b = otra.bloques[0]
   assert.equal(b.proyectable, false)
   assert.match(String(cel(otra, `A${b.fProt}`)), /sin fechas/, 'se marca en el rótulo')
-  // Sin inicio no hay ventana para netear contra Compras: lo pagado no se puede medir y vale 0. No
-  // se inventa una ventana ni se toma el gasto entero del cliente, que sería de las otras obras.
+  // LO COMPRADO NO DEPENDE DE QUE LA OBRA TENGA CRONOGRAMA (17/08). Este test afirmaba `=0` con el
+  // motivo "sin fechas no hay ventana", y el motivo era falso: la ventana de este SUMIFS SIEMPRE fue
+  // el año que declara la pestaña, nunca las fechas de la obra. El `=0` venía de otro lado —la obra
+  // no declaraba texto de Compras— y el nombre del test tapaba esa causa.
+  //
+  // Lo que sí hay que garantizar es que la ventana no se invente a partir de la obra: una obra sin
+  // fechas no puede terminar midiendo un rango distinto del de sus hermanas.
   const c = otra.filasCosto[0]
-  assert.equal(cel(otra, `D${c}`), '=0', 'sin fechas no se puede medir lo pagado')
-  assert.ok(!String(cel(otra, `D${c}`)).includes('Compras'), 'y no se inventa una ventana')
-  assert.equal(cel(otra, `C${c}`), totalEgresos(sinFecha), 'pero el costo proyectado se sigue viendo')
+  const d = String(cel(otra, `D${c}`))
+  assert.ok(d.includes('SUMIFS'), 'el gasto real de una obra no depende de que se le haya puesto cronograma')
+  assert.ok(d.includes(`"*${comprasObraDe(sinFecha)}*"`), 'empareja por su propio nombre, no por proveedor')
+  assert.ok(d.includes(`${ANO}`) || /46023|46387/.test(d), 'la ventana es el AÑO de la pestaña, no las fechas de la obra')
+  assert.equal(cel(otra, `C${c}`), totalEgresos(sinFecha), 'y el costo proyectado se sigue viendo')
 })
 
 test('sin obras no se arma media pestaña: la sección 2 no publica un total que no existe', () => {

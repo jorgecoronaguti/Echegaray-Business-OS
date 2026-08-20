@@ -28,6 +28,7 @@ import { loadConfig } from '../lib/config.mjs'
 import * as BANCO from '../lib/banco-santander.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
 import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
+import { completarCadenaDelDia } from '../lib/banco-cadena-saldos.mjs'
 import { conColaMedidaLeida, avisoDeCola } from '../lib/cola-de-rango.mjs'
 import { query } from '../lib/db.mjs'
 
@@ -103,6 +104,47 @@ async function main() {
         saldo: r.saldo == null ? undefined : Number(r.saldo),
       }))
       console.log(`fuente: public.banco_movimientos — ${movs.length} movimiento(s)`)
+
+      // ═══ LOS MOVIMIENTOS DEL DÍA VIENEN SIN SALDO CORRIDO — Y CAJA LEE ESA COLUMNA (18/08/2026)
+      //
+      // El dueño: *"la pestaña caja esta mal, no has respetado lo q dice el saldo de la cuenta
+      // enviado en el extracto"*. CAJA publicaba `Santander · cta cte ARS $11.200.755` con FECHA
+      // 18/08; el extracto dice $8.196.369,07. $11.200.755 es el saldo del 14/08.
+      //
+      // La sección "Movimientos del Día" del Santander no trae la columna Saldo. La fórmula de CAJA
+      // toma el último valor NUMÉRICO de «Saldo después», así que se quedaba con el del último día
+      // que sí lo traía — y la fecha, que sale de `MAX(A:A)`, sí decía 18/08. Un saldo viejo
+      // rotulado con la fecha de hoy es peor que uno viejo: nada delata que lo está.
+      //
+      // `saldo(n) = saldo(n−1) + importe(n)` es una identidad del extracto, la misma con la que este
+      // repositorio AUDITA el archivo. Se corre hacia adelante y se completa lo que falta — y NO se
+      // cree sola: se contrasta contra el saldo que el banco declara al pie. Si no cierra, se avisa
+      // y el número queda igual publicado, porque tapar el saldo del día sería peor; lo que no puede
+      // pasar es que nadie se entere.
+      let declarado = null
+      try {
+        const { rows: d } = await query(
+          `select fecha, saldo from public.banco_saldo_declarado order by fecha desc limit 1`,
+        )
+        if (d.length) declarado = { fecha: String(d[0].fecha).slice(0, 10), saldo: Number(d[0].saldo) }
+      } catch { /* sin saldo declarado la cadena se completa igual y no se puede contrastar */ }
+
+      const cadena = completarCadenaDelDia(movs, declarado?.saldo ?? null)
+      movs = cadena.filas
+      if (cadena.completados) {
+        const ultimo = movs.at(-1)?.saldo
+        console.log(`saldo corrido completado en ${cadena.completados} movimiento(s) del día → `
+          + `$${Math.round(ultimo).toLocaleString('es-AR')}`)
+        if (cadena.cierra === true) {
+          console.log(`✓ coincide al peso con el saldo que declara el banco al ${declarado.fecha}`)
+        } else if (cadena.cierra === false) {
+          console.warn(`⚠ NO coincide con el saldo declarado ($${Math.round(declarado.saldo).toLocaleString('es-AR')} `
+            + `al ${declarado.fecha}): difiere $${Math.round(cadena.diferencia).toLocaleString('es-AR')}. `
+            + 'Falta un movimiento del día o hay uno cargado dos veces.')
+        } else {
+          console.warn('⚠ no hay saldo declarado con qué contrastar la cadena del día')
+        }
+      }
     }
   } catch (e) {
     console.warn(`⚠ no pude leer public.banco_movimientos (${String(e.message).slice(0, 70)}): uso el extracto del código`)

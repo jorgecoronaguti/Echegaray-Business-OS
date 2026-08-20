@@ -32,10 +32,16 @@ test('JORNALES: sin fecha de pago cae al cierre — una quincena no puede desapa
   assert.equal(ms[1].fecha, CIERRE_31, 'el fallback a HASTA no es opcional: sin él la línea da cero callada')
 })
 
-test('JORNALES: cerrada NO es pagada — sin "Pagado el" es COMPROMETIDO, no REAL', () => {
+test('JORNALES: cerrada NO es pagada — sin "Pagado el" no es REAL', () => {
   const ms = deJornalesQuincenas({ reales: REALES }, CORTE)
   assert.equal(ms[0].estado, 'REAL', 'el dueño marcó el pago: es un hecho')
-  assert.equal(ms[1].estado, 'COMPROMETIDO', 'liquidada y con fecha, pero la plata sigue en la cuenta')
+  // 16/08/2026 — DECÍA COMPROMETIDO Y LA RAZÓN QUE DABA ERA UN SUPUESTO, NO UN HECHO: *"la plata
+  // sigue en la cuenta"* es justamente lo que nadie verificó (los jornales salen en buena parte por
+  // caja física y el extracto no los ve). Vence el 03/08 contra un corte del 05/08: la fecha pasó y
+  // nadie la concilió → VENCIDO (ver `estadoSinProbar`). Lo que el nombre del test defiende —que NO
+  // es REAL— queda intacto; que la plata tampoco se pierda lo fija libro-nomina-sin-probar.test.mjs.
+  assert.notEqual(ms[1].estado, 'REAL', 'nadie probó que salió: no se da por pagada')
+  assert.equal(ms[1].estado, 'VENCIDO', 'la fecha de pago pasó y nadie la concilió')
 })
 
 test('JORNALES: la proyectada vencida es VENCIDO, y no colisiona con la real del mismo renglón', () => {
@@ -147,6 +153,74 @@ test('DIRECCIÓN: si el respaldo es ambiguo NO se parte, y el aviso dice por qu�
   assert.match(avisos[0], /2 lotes/)
 })
 
+// ── LAS OCHO QUINCENAS QUE LA COLUMNA VACÍA CONVIRTIÓ EN DEUDA (16/08/2026) ──────────────────────
+//
+// El archivo vivo, tal cual: la columna "Pagado el" (`JORNALES_REAL_PAGADO`) llega de la API con
+// SIETE valores porque las ocho de abajo están vacías, y las otras columnas llegan con quince. El
+// extractor leía `pagado[7..14] === undefined` y publicaba $70.431.250 de deuda sin una sola señal.
+const CORTE_HOY = 46251
+const HABERES_17_07 = [238600, 267500, 256000, 258000, 250000, 256000, 253400, 251000, 277000,
+  258000, 248000, 240000, 252350, 217100].map((v, k) => ({ fecha: 46220, importe: v, fila: 234 + k, naturaleza: 'Sueldos', concepto: '' }))
+  .concat([{ fecha: 46220, importe: 252200, fila: 225, naturaleza: 'Sueldos', concepto: '' },
+    { fecha: 46170, importe: 69000, fila: 4, naturaleza: 'Comisiones y gastos bancarios', concepto: '' }])
+const EXTRACTO_VIVO = () => ({ debitos: HABERES_17_07, corte: 46248, usados: new Set() })
+// Dos quincenas: la de julio (que el banco prueba) y la de agosto (que todavía no se pagó).
+const COLUMNA_CORTA = {
+  pago: [46220, 46251], hasta: [46218, 46249], banco: [3775150, 3640000],
+  total: [7227250, 7318700], pagado: [], // ← así llega de la API cuando N está vacía
+}
+
+test('JORNALES: la columna "Pagado el" vacía NO convierte una quincena pagada en deuda', () => {
+  const ms = deJornalesQuincenas({ reales: COLUMNA_CORTA }, CORTE_HOY,
+    { aviso: () => {}, extracto: EXTRACTO_VIVO() })
+  const julio = ms.filter((m) => /2026-07-15/.test(m.concepto))
+  const real = julio.find((m) => m.estado === 'REAL')
+  assert.ok(real, 'el extracto tiene los $3.775.150 del 17/07: esa plata YA salió, diga lo que diga la columna')
+  assert.equal(real.importe, 3775150, 'el banco prueba lo que salió POR BANCO, no el total de la quincena')
+  assert.equal(real.fecha, 46220, 'REAL a la fecha del DÉBITO')
+  // El resto (adelanto + recibo) sale por caja física: ninguna fuente lo prueba y sigue abierto. Se
+  // busca por "no REAL" y no por el nombre del estado: desde el 16/08 el pedazo sin probar cae en
+  // VENCIDO cuando su fecha ya pasó (`estadoSinProbar`), y lo que este test defiende es el IMPORTE
+  // que queda abierto, no la etiqueta con la que se lo rotula.
+  assert.equal(julio.find((m) => m.estado !== 'REAL').importe, 3452100)
+  assert.equal(julio.reduce((a, m) => a + m.importe, 0), 7227250, 'partir no crea ni borra plata')
+})
+
+test('JORNALES: la quincena que nadie puede probar se GRITA con su monto, no queda deuda callada', () => {
+  const avisos = []
+  deJornalesQuincenas({ reales: COLUMNA_CORTA }, CORTE_HOY,
+    { aviso: (m) => avisos.push(m), extracto: EXTRACTO_VIVO() })
+  assert.ok(avisos.some((a) => /SIN_TESTIGO|FUERA_DE_VENTANA|SIN_BANCO/.test(a) && /7318700/.test(a)),
+    'una deuda que ninguna fuente confirma tiene que salir por pantalla con nombre y monto')
+})
+
+test('JORNALES: una fecha de pago IMPOSIBLE no mueve la plata de mes', () => {
+  // f134 del archivo vivo: quincena de enero con "Pagado el" del 18/05 (la columna corrida ocho
+  // filas). Usar esa fecha saca $4.888.075 de enero y los pone en mayo, en el Cash Flow Mensual.
+  const avisos = []
+  const ms = deJornalesQuincenas({
+    reales: { pago: [46038], hasta: [46037], banco: [1380275], total: [4888075], pagado: [46160] },
+  }, CORTE_HOY, { aviso: (m) => avisos.push(m), extracto: EXTRACTO_VIVO() })
+  assert.equal(ms.length, 1)
+  assert.equal(ms[0].fecha, 46038, 'manda la fecha prevista: la declarada no puede ser')
+  // CORREGIDO EL 16/08, DESPUÉS DE PUBLICAR: acá decía `estado === 'COMPROMETIDO'`, y esa línea
+  // fijaba el defecto en vez del arreglo. Descartar la fecha por imposible no descarta que el dueño
+  // haya marcado la quincena como pagada: con el estado en COMPROMETIDO, las siete quincenas de
+  // enero a abril —$51.941.723 ya cobrados— salieron publicadas como deuda vencida. Lo que este
+  // test protege es que la plata NO SE MUEVA DE MES, que es su título; el estado lo decide la
+  // afirmación del dueño, no la credibilidad de su fecha.
+  assert.equal(ms[0].estado, 'REAL', 'la marcó pagada: sólo el CUÁNDO era indefendible')
+  assert.ok(avisos.some((a) => /FECHA_IMPOSIBLE/.test(a)))
+})
+
+test('JORNALES: un débito ya reclamado no vuelve a respaldar a otra quincena', () => {
+  const extracto = EXTRACTO_VIVO()
+  deJornalesQuincenas({ reales: COLUMNA_CORTA }, CORTE_HOY, { aviso: () => {}, extracto })
+  assert.equal(extracto.usados.size, 15, 'los quince débitos del lote quedan consumidos')
+  const otra = deJornalesQuincenas({ reales: COLUMNA_CORTA }, CORTE_HOY, { aviso: () => {}, extracto })
+  assert.ok(!otra.some((m) => m.estado === 'REAL'), 'la misma plata no puede pagar dos quincenas')
+})
+
 test('DIRECCIÓN: un "Pagado" con fecha ANTERIOR al corte sigue siendo REAL y no se toca', () => {
   // El histórico no se vuelve a discutir: si la fecha ya pasó, la plata salió y el saldo lo contiene.
   const ms = deDireccion({ pago: [46213], pagado: [9000000], proyectado: [''] }, HOY,
@@ -154,4 +228,48 @@ test('DIRECCIÓN: un "Pagado" con fecha ANTERIOR al corte sigue siendo REAL y no
   assert.equal(ms.length, 1)
   assert.equal(ms[0].estado, 'REAL')
   assert.equal(ms[0].fecha, 46213)
+})
+
+// ═══ DESCARTAR LA FECHA NO ES DESCARTAR EL PAGO (16/08/2026) ═══
+//
+// Este test existe porque el defecto se publicó. La primera versión del cruce mandaba una fecha
+// imposible a `null` y el renglón caía en COMPROMETIDO: las siete quincenas de enero a abril
+// —$51.941.723 ya cobrados— aparecieron como deuda vencida, el tramo "Vencido" de CAJA pasó de
+// $(53.811.188) a $(98.641.528) y la tarjeta de "falta pagar" de $125,9M a $174,3M.
+//
+// Que la celda TENGA algo es la afirmación del dueño de que se pagó. Que ese algo sea una fecha
+// creíble es una afirmación distinta, sobre el CUÁNDO, y es la única que la aritmética puede
+// desmentir. Invalidar el cuándo no invalida el qué.
+test('JORNALES: una fecha de pago IMPOSIBLE no convierte una quincena cobrada en deuda', async () => {
+  const { deJornalesQuincenas } = await import('./libro-extractores-nomina.mjs')
+  // Quincena de enero: cierra el 15/01 (46037), se paga el 16/01 (46038), y la columna dice que se
+  // pagó el 18/05 (46160) — 122 días después de lo previsto. La fecha no puede ser: el valor es el
+  // "se paga el" de otra fila. Pero la quincena de enero está cobrada hace meses.
+  const bloques = {
+    reales: {
+      hasta: [[46037]], pago: [[46038]], pagado: [[46160]],
+      banco: [[0]], total: [[4888075]],
+    },
+  }
+  const avisos = []
+  const ms = deJornalesQuincenas(bloques, 46250, { aviso: (m) => avisos.push(m) })
+  assert.equal(ms.length, 1, 'un solo movimiento')
+  assert.equal(ms[0].estado, 'REAL',
+    'la quincena está pagada: descartar la fecha no puede convertirla en deuda')
+  assert.equal(ms[0].fecha, 46038,
+    'con la fecha declarada descartada, manda la PREVISTA — no la imposible')
+  assert.ok(avisos.some((a) => /FECHA_IMPOSIBLE/.test(a)),
+    'y se grita que la fecha se descartó, con nombre y monto')
+})
+
+// La otra mitad de la misma regla: SIN nada tipeado y sin respaldo del banco, sigue siendo deuda.
+// Si esto se relajara, volvería el defecto original — ocho quincenas impagas contadas como pagadas.
+test('JORNALES: sin «Pagado el» y sin banco, la quincena sigue siendo compromiso', async () => {
+  const { deJornalesQuincenas } = await import('./libro-extractores-nomina.mjs')
+  const bloques = {
+    reales: { hasta: [[46184]], pago: [[46186]], pagado: [[null]], banco: [[0]], total: [[8593590]] },
+  }
+  const ms = deJornalesQuincenas(bloques, 46250, { aviso: () => {} })
+  assert.equal(ms.length, 1)
+  assert.notEqual(ms[0].estado, 'REAL', 'nadie probó que salió: no se da por pagada')
 })

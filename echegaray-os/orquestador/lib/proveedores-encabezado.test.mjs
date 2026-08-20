@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { grillaEncabezado, FILAS_AGING, MEDIOS, F } from './proveedores-encabezado.mjs'
+import { grillaEncabezado, celdasEncabezado, encabezadoSinFormato, FILAS_AGING, MEDIOS, F } from './proveedores-encabezado.mjs'
 import { ALERTA } from './glifos.mjs'
 
 const G = grillaEncabezado()
@@ -96,37 +96,98 @@ test('todas las filas tienen el mismo ancho: el generador es dueño de su ancho 
   for (const f of G) assert.equal(f.length, 8)
 })
 
-// ═══ LA DEUDA QUE EL TOTAL NO CUENTA — el defecto del 14/08 ═══
+
+// ═══ LO PAGADO NO PUEDE VOLVER A APARECER COMO DEUDA (18/08/2026) ═══
 //
-// Ocho facturas comerciales dicen "Pagado" con el monto pagado en cero y el paréntesis de "Monto
-// Parcial 1" declarando que falta la plata entera: $11.919.063 que el titular, el aging y las dos
-// dinámicas cuentan como cero, porque las cuatro cuelgan de `Compras!AL`, que arranca con
-// IF(Estado="Pendiente"; …; 0). Si alguien saca esta línea, la contradicción vuelve a ser invisible.
-test('EL DEFECTO · la deuda que el cuadro no muestra sale AL LADO del total, no al pie', () => {
-  assert.equal(F.noMostrada, F.totalAging + 1, 'una línea despegada del total no se lee junto a él')
-  const monto = celda(F.noMostrada, 1)
-  const cuenta = celda(F.noMostrada, 3)
-  assert.ok(monto.startsWith('=SUMPRODUCT('), 'un número pegado seguiría gritando después de corregido (regla 5)')
-  // Mide lo contrario que el aging: filas cuyo ESTADO dice que ya no se deben.
-  assert.ok(monto.includes('$X$4:$X<>"Pendiente"'), 'sin esto vuelve a contar lo mismo que el TOTAL')
-  assert.ok(monto.includes('$AJ$4:$AJ=1'), 'la deuda no comercial vive en Impuestos y Financieros')
-  assert.ok(monto.includes('$T$4:$T') && monto.includes('$U$4:$U') && monto.includes('$W$4:$W'),
-    'sin los tres tramos de pago el saldo de la fila está mal')
-  assert.ok(!monto.includes('*(') === false && monto.length > cuenta.length,
-    'el monto pondera por el saldo; el conteo no')
-})
-
-test('el aviso se APAGA solo cuando no hay nada: un triángulo permanente deja de leerse', () => {
-  const rotulo = celda(F.noMostrada, 0)
-  assert.ok(rotulo.includes(`IF(ROUND($B$${F.noMostrada};0)<=0;""`), 'el glifo tiene que depender del importe')
-  assert.ok(rotulo.includes(ALERTA), 'la marca es ALERTA de glifos.mjs')
-  // `⚠` no se dibuja al exportar a PDF, y el PDF es con lo que el dueño verifica.
-  assert.ok(!rotulo.includes('⚠'), 'el ⚠ no sale en el PDF: la marca vigente es ▲')
-})
-
-test('es-AR en las tres celdas nuevas: separador `;` y ni una coma', () => {
-  for (const c of [0, 1, 3]) {
-    const v = celda(F.noMostrada, c)
-    assert.ok(!/,/.test(v), `la celda ${c} tiene una coma: en es-AR es un separador decimal`)
+// Acá vivían tres tests que DEFENDÍAN la fila «Dicen "Pagado" y falta plata»: exigían que estuviera
+// pegada al TOTAL, que su glifo se encendiera con el importe y que sus tres celdas fueran es-AR.
+// Defendían un defecto. Esos $11.919.063 no se deben: son 8 facturas donde el dueño tipeó "Pagado"
+// encima de la fórmula del Estado, y lo que "los contradecía" eran dos celdas DERIVADAS de esa misma
+// fila (`Monto Pagado` es `=IF(F="pago";O;0)` y `Monto Parcial 1` es `=T-O`). El dueño lo reclamó
+// tres veces: *"en la pestaña compras se paga y cambia a estado pagado y lo continua mostrando como
+// q se adeuda"*.
+//
+// Un test que exige la existencia de una celda es la forma más eficaz de que esa celda vuelva. Éste
+// exige lo contrario, y por eso reemplaza a los tres.
+test('ninguna celda del encabezado publica plata de facturas que NO están Pendientes', () => {
+  for (const [i, fila] of celdasEncabezado().entries()) {
+    for (const [j, c] of fila.entries()) {
+      const v = String(c?.v ?? '')
+      assert.ok(!v.includes('$X$4:$X<>"Pendiente"'),
+        `fila ${i + 1} col ${j}: suma filas cuyo estado NO dice Pendiente — eso es plata ya pagada`)
+      assert.ok(!/falta plata|Dicen ""?Pagado/.test(v),
+        `fila ${i + 1} col ${j}: vuelve a presentar lo pagado como deuda`)
+    }
   }
+})
+
+// ═══ EL DISEÑO DEL BLOQUE ES DEL DUEÑO, EL CONTENIDO DE LA FILA ES MÍO (18/08) ═══
+//
+// La primera corrección BORRÓ la fila 12 y subió el control a la 12. El dueño: *"no has respetado el
+// diseño q tenía"*. Tenía razón: lo que estaba mal era lo que la fila DECÍA, no que la fila existiera.
+test('el bloque conserva su forma: la línea que cuelga del total y el control al pie', () => {
+  assert.equal(F.sinImporte, F.totalAging + 1, 'la línea colgada del total es parte del diseño')
+  assert.equal(F.control, F.totalAging + 2, 'el control va al pie del bloque')
+  assert.equal(F.fin, F.control, 'el bloque termina en el control: ni una fila más')
+})
+
+test('la línea colgada del total publica un CONTEO y jamás un importe', () => {
+  // El defecto entero en una línea: un número en pesos pegado al TOTAL se lee como deuda haga lo que
+  // haga el rótulo. Esas facturas están PAGADAS —lo declaró el dueño— y lo que les falta es el
+  // importe con el que CAJA las imputa. Se cuenta, no se valúa.
+  const C = celdasEncabezado()[F.sinImporte - 1]
+  assert.equal(C[3].t, 'entero', 'la cifra de esa fila es una cantidad de facturas')
+  for (const j of [1, 2]) {
+    assert.equal(C[j], null, `la columna ${j} de esa fila tiene que quedar vacía: ahí va plata en todo el resto del cuadro`)
+  }
+  assert.ok(!String(C[3].v).includes('$O$4:$O)'), 'el conteo no puede ponderar por importe')
+})
+
+// ═══ TODA CELDA QUE ESCRIBE UN NÚMERO DECLARA SU ESPECIE (14/08/2026) ═══
+//
+// EL DEFECTO QUE ESTOS TRES TESTS ATRAPAN. `Proveedores!B12` publicaba `11919062,68` —coma decimal,
+// sin miles, sin símbolo— al lado de columnas que muestran "$15.097.040". La celda existía desde el
+// mismo día, la fórmula estaba bien y el número era correcto: lo que faltaba era el FORMATO, porque
+// el aplicador lo daba por una lista de rangos escrita a mano en otro archivo y `F.noMostrada` no
+// estaba en esa lista. Sin formato propio hereda el reset base, que es TEXTO, y un número con
+// formato de texto se dibuja crudo.
+//
+// El primero prueba el caso concreto; el segundo, la clase entera: cualquier fila futura que sume o
+// cuente sin declarar especie pone la suite en rojo el día que se escribe, no seis semanas después.
+test('ninguna fórmula que suma o cuenta quedó sin especie declarada', () => {
+  assert.deepEqual(encabezadoSinFormato(), [],
+    'esa celda escribe un número y no dice de qué especie: se va a dibujar con el formato de ayer')
+})
+
+test('grillaEncabezado es la proyección de celdasEncabezado: una sola fuente', () => {
+  const C = celdasEncabezado()
+  const G2 = grillaEncabezado()
+  assert.equal(G2.length, C.length)
+  for (const [i, fila] of C.entries()) {
+    for (const [j, c] of fila.entries()) {
+      assert.equal(G2[i][j], c === null ? null : c.v, `fila ${i + 1} col ${j}: las dos vistas discrepan`)
+    }
+  }
+})
+
+// ═══ UNA CELDA QUE PROMETE PLATA NO PUEDE PUBLICAR UN COMPROBANTE (14/08/2026) ═══
+//
+// `ARCA_FALTAN_MONTO` vive hoy en `Materiales!B53`, que publica `0038-00025483`. Estas dos celdas son
+// sus únicos lectores, así que la posición mostraba ese comprobante bajo el rótulo "Saldo" y un CUIT
+// bajo "%". El rango se cura en `rangos-nombrados.mjs`; acá se cura el lector, que hace falta igual:
+// mientras el nombre exista apuntando a cualquier lado, el que lo cita a ciegas publica lo que haya.
+test('las dos celdas de ARCA no publican lo que no sea un número', () => {
+  for (const [col, nombre] of [[6, 'ARCA_FALTAN_MONTO'], [7, 'ARCA_FALTAN_N']]) {
+    const v = celda(F.arca, col)
+    assert.ok(v.includes(`ISNUMBER(${nombre})`),
+      `${nombre} se publica sin preguntar si es un número: un comprobante se dibujaría como plata`)
+    assert.ok(v.includes('IFERROR('), `${nombre}: si el rango se retira, la celda tiene que dar "—", no #REF!`)
+    assert.ok(v.includes('"—"'), `${nombre}: cuando el número no está, la celda muestra "—"`)
+  }
+})
+
+test('cuando no hay número, el rótulo de ARCA lo dice: un "—" solo se lee como "no hay deuda"', () => {
+  const rotulo = celda(F.arca, 5)
+  assert.ok(rotulo.includes(`ISNUMBER($G$${F.arca})`), 'el rótulo tiene que mirar la celda que acompaña')
+  assert.ok(rotulo.includes(ALERTA), 'y avisar con el mismo triángulo que el resto del cuadro')
 })

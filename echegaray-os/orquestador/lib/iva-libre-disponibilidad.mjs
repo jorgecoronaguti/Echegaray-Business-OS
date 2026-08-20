@@ -200,16 +200,38 @@ export function formulaLibreDispProyectada(celdaSaldoPrevio, colDebito, colCredi
 //
 // La regla, entonces: un mes con dato en la hoja es DATO, venga de la DDJJ o de una persona.
 
-/** ¿Hay un número utilizable en esta celda? Un "—", un texto o un vacío no lo son. PURA. */
+// LO QUE PUEDE ACOMPAÑAR A UN IMPORTE es_AR Y NO LO DESMIENTE: el símbolo de moneda, espacios
+// (incluido el duro que mete Sheets), el signo, los separadores de miles y de decimales. Cualquier
+// otro carácter —una letra, una barra, un glifo— dice que la celda NO es un importe.
+const AJENO_A_UN_IMPORTE = /[^0-9.,\-+$\s ]/
+
+/**
+ * ¿Hay un número utilizable en esta celda? Un "—", un texto o un vacío no lo son. PURA.
+ *
+ * ═══ UN TEXTO CON DÍGITOS ADENTRO NO ES UN IMPORTE (17/08) ═══
+ *
+ * La guarda anterior era "¿tiene algún dígito?", puesta para que el rótulo "DDJJ presentada" no se
+ * colara (sin dígitos, `Number('')` da 0 y 0 es finito). Pero filtraba por la ausencia de dígitos, no
+ * por la presencia de texto, así que dejaba entrar todo lo que tuviera un número adentro. Medido en el
+ * archivo real el 17/08:
+ *
+ *   · "⚠ vence 20/08"   → valía $2.008     ← la leyenda que el dueño tipeó en la celda del saldo
+ *   · "20/07·N…6115"    → valía $20.076.115 ← la fila "DDJJ presentada" que escribe ESTE generador
+ *
+ * El primero anclaba la proyección entera de IVA en julio con $2.008 de libre disponibilidad, cuando
+ * el último saldo real es el de junio: $19.344.911. Un número inventado a partir de una fecha,
+ * gobernando cinco meses de proyección y el saldo a favor que publica la portada.
+ *
+ * Ahora la pregunta se da vuelta: un importe es un número, o una cadena que ES ÍNTEGRAMENTE un
+ * importe. Que contenga uno no alcanza.
+ */
 export function esNumero(v) {
   if (v === null || v === undefined) return false
   if (typeof v === 'number') return Number.isFinite(v)
   const s = String(v).trim()
   if (!s || s === '—' || s === '-') return false
-  // SIN UN SOLO DÍGITO NO HAY NÚMERO. Sacando los no-numéricos, "DDJJ presentada" queda en cadena
-  // vacía y Number('') es 0 —finito—, así que un rótulo se colaba como si fuera un importe. Con la
-  // fila de la DDJJ eso alcanzaba para anclar la proyección en un mes sin saldo.
   if (!/\d/.test(s)) return false
+  if (AJENO_A_UN_IMPORTE.test(s)) return false
   // es_AR: miles con punto, decimales con coma, y el símbolo de moneda adelante.
   const n = Number(s.replace(/[^0-9,.-]/g, '').replace(/\./g, '').replace(',', '.'))
   return Number.isFinite(n)
@@ -228,20 +250,28 @@ export function aNumero(v) {
  * @param {Array} filaLibreDisp la fila de libre disponibilidad tal como está HOY en la hoja,
  *        desde la columna B (enero). Se acepta cruda: valores formateados, "—" o vacíos.
  * @param {number[]} mesesConDDJJ los meses que sí tienen F.2051 en Drive.
- * @returns {{ultimoMesConDato:number|null, libreDisp:number|null, mesesAProyectar:number[]}}
+ * @returns {{ultimoMesConDato:number|null, libreDisp:number|null, mesesAProyectar:number[],
+ *            textoDondeVaImporte:Array<{mes:number, valor:string}>}}
  */
 export function anclaDeProyeccion(filaLibreDisp = [], mesesConDDJJ = []) {
   let ultimo = null
   let saldo = null
+  // DESCARTAR EN SILENCIO ES LA MITAD DEL DEFECTO. Que "⚠ vence 20/08" deje de valer $2.008 evita el
+  // número inventado, pero si además se ignora sin decir nada, al dueño se le recalcula la columna que
+  // escribió a mano y nadie le dice por qué. Lo que no es un importe pero TAMPOCO es ausencia
+  // (vacío, "—") se devuelve nombrado, para que la pestaña lo declare como el hueco que es.
+  const textoDondeVaImporte = []
   for (let m = 1; m <= 12; m++) {
     const v = filaLibreDisp[m - 1]
-    if (esNumero(v)) { ultimo = m; saldo = aNumero(v) }
+    if (esNumero(v)) { ultimo = m; saldo = aNumero(v); continue }
+    const s = String(v ?? '').trim()
+    if (s && s !== '—' && s !== '-') textoDondeVaImporte.push({ mes: m, valor: s })
   }
   // La DDJJ presentada también cuenta, aunque la hoja todavía no la muestre (primera corrida).
   for (const m of mesesConDDJJ) if (ultimo === null || m > ultimo) ultimo = m
   const mesesAProyectar = ultimo === null ? [] : []
   if (ultimo !== null) for (let m = ultimo + 1; m <= 12; m++) mesesAProyectar.push(m)
-  return { ultimoMesConDato: ultimo, libreDisp: saldo, mesesAProyectar }
+  return { ultimoMesConDato: ultimo, libreDisp: saldo, mesesAProyectar, textoDondeVaImporte }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════

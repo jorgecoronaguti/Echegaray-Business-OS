@@ -1,137 +1,73 @@
-import Link from 'next/link'
+import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { getUsuarioActual, getPerfilActual } from '@/features/auth/services/authService'
 import { ROL_LABEL } from '@/features/auth/types'
+import { areasDe } from '@/features/auth/types/areas'
 import { LogoutButton } from '@/features/auth/components/LogoutButton'
-import { NavLink } from '@/shared/components/NavLink'
+import { AppHeader } from '@/shared/components/AppHeader'
+import { HeaderEsqueleto } from '@/shared/components/carga'
 
-// Decisión de Jorge (2026-07-09): el OS se enfoca exclusivamente en Flujo de Caja.
-// El Sheet real "Flujo de Caja - Cash Flow" es la fuente de verdad; la web lo
-// refleja en /flujo-caja. Todo lo demás (Dirección, Obras, Operación, Personas,
-// Operador Digital, Scorecard...) sale del nav pero NO se borra: cada página
-// sigue accesible por URL directa, igual que se hizo con Comercial/Compras en
-// UX-1. Si se retoma un módulo, se re-agrega acá su grupo.
-const GRUPOS_NAV = [
-  {
-    grupo: 'OS',
-    links: [
-      { href: '/os', label: 'Centro de Operación' },
-      { href: '/chat', label: 'Chat del OS' },
-      { href: '/aprobaciones', label: 'Aprobaciones' },
-    ],
-  },
-  {
-    grupo: 'Obras',
-    links: [{ href: '/control-obras', label: 'Control de obras' }],
-  },
-  {
-    grupo: 'Finanzas',
-    links: [
-      { href: '/ingenieria-financiera', label: 'Ingeniería Financiera' },
-      { href: '/calendario-financiero', label: 'Calendario Financiero' },
-      { href: '/scorecard-finanzas', label: 'Scorecard Admin/Finanzas' },
-      { href: '/calendario-caja', label: 'Scorecard' },
-      { href: '/flujo-caja', label: 'Flujo de Caja' },
-    ],
-  },
-  {
-    grupo: 'Reportes',
-    links: [{ href: '/reportes', label: 'Reportes' }],
-  },
-  {
-    grupo: 'Comunicación',
-    links: [{ href: '/comunicacion', label: 'Comunicación' }],
-  },
-  {
-    grupo: 'Conexiones',
-    links: [
-      { href: '/integraciones', label: 'Integraciones' },
-      { href: '/integraciones/pedidos-materiales', label: 'Pedidos de Materiales' },
-      { href: '/integraciones/herramientas', label: 'Herramientas' },
-      { href: '/integraciones/movimientos', label: 'Movimientos' },
-      { href: '/descargas', label: 'Descargar extensión' },
-    ],
-  },
-] as const
+// EL MARCO DE LA APLICACIÓN — 18/08/2026.
+//
+// Acá vivían 17 links repartidos en seis grupos (`01 · Obras`, `OS`, `Finanzas`, `Reportes`,
+// `Conexiones`, `Administración`) con sus títulos en versalitas arriba. El dueño lo rechazó entero:
+// *"está saturado, sin jerarquía y debe rehacerse"* · *"Eso representa arquitectura interna, no
+// navegación para usuarios"*. Toda esa estructura se fue a `AppHeader`, que dibuja UNA línea con las
+// dos áreas de producto.
+//
+// LAS RUTAS SIGUEN TODAS VIVAS. `/os`, `/chat`, `/aprobaciones`, `/ingenieria-financiera`,
+// `/calendario-financiero`, `/scorecard-finanzas`, `/calendario-caja`, `/flujo-caja`, `/reportes`,
+// `/integraciones`, `/descargas`, `/operarios`: ninguna se borró y ninguna cambió. Lo único que
+// cambió es que ya no ocupan la navegación principal. El dueño lo pidió así, textual: *"No borrar
+// rutas ni funcionalidades. Sólo retirarlas de la navegación principal"*.
+//
+// Las que siguen siendo parte del trabajo diario —Pedidos de materiales, Herramientas, Movimientos—
+// no desaparecieron: bajaron al lugar donde se usan, que es adentro del área (ver `/administracion`
+// y la vista «Operación» de cada obra), no arriba de todo en cada pantalla del sistema.
+
+// ═══ EL MARCO SE PINTA ANTES DE SABER QUIÉN ENTRÓ (19/08/2026) ═══
+//
+// Este layout era `async` y esperaba `loadUsuario()` —dos llamadas a Supabase— antes de devolver una
+// sola etiqueta. Como TODA página de este grupo es `force-dynamic`, esa espera se sumaba a la de la
+// página y el navegador no pintaba NADA hasta que terminaban las dos: el *"no responde, no se mueve,
+// nada"* del dueño. Medido contra producción el 19/08, una pantalla de este grupo tardaba ~95 s en
+// contestar, y esos 95 s eran de pantalla anterior congelada, sin una sola señal.
+//
+// Ahora el layout es SÍNCRONO y la parte que depende del servidor —quién sos y qué áreas ves— cuelga
+// de un `<Suspense>`. El documento sale por streaming: marco, header y el esqueleto del `loading.tsx`
+// primero; el contenido, cuando esté. Lo que se muestra sigue dependiendo del rol exactamente igual:
+// `HeaderConUsuario` es el mismo código de antes, corriendo en el servidor.
+export default function MainLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-screen bg-canvas">
+      <Suspense fallback={<HeaderEsqueleto />}>
+        <HeaderConUsuario />
+      </Suspense>
+      <main>{children}</main>
+    </div>
+  )
+}
+
+async function HeaderConUsuario() {
+  const { email, rolLabel, rol } = await loadUsuario()
+  return <AppHeader areas={areasDe(rol)} email={email} rolLabel={rolLabel} salir={<LogoutButton />} />
+}
 
 async function loadUsuario() {
   try {
     const supabase = await createClient()
     const user = await getUsuarioActual(supabase)
     if (!user) return { email: null, rolLabel: null, rol: null }
-    const perfil = await getPerfilActual(supabase)
+    // El id ya está: `getPerfilActual()` sin él volvía a preguntarle a Supabase quién es el usuario.
+    const perfil = await getPerfilActual(supabase, user.id)
     return {
       email: user.email ?? null,
       rolLabel: perfil.data ? ROL_LABEL[perfil.data.rol] : 'Sin rol asignado',
       rol: perfil.data?.rol ?? null,
     }
   } catch {
+    // Sin perfil legible se cae al nivel MENOS privilegiado (`areasDe(null)` → sólo Obras), nunca al
+    // más. Un error de lectura no puede ser una puerta a la economía de la empresa.
     return { email: null, rolLabel: null, rol: null }
   }
-}
-
-// El campo (operario) ve una navegación mínima: solo sus módulos operativos.
-const NAV_CAMPO = [
-  {
-    grupo: 'Campo',
-    links: [
-      { href: '/campo', label: 'Inicio' },
-      { href: '/integraciones/pedidos-materiales', label: 'Pedidos' },
-      { href: '/integraciones/herramientas', label: 'Herramientas' },
-      { href: '/integraciones/movimientos', label: 'Movimientos' },
-      { href: '/descargas', label: 'Descargar extensión' },
-    ],
-  },
-] as const
-
-export default async function MainLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
-  const { email, rolLabel, rol } = await loadUsuario()
-  const grupos =
-    rol === 'campo'
-      ? NAV_CAMPO
-      : rol === 'direccion'
-        ? [...GRUPOS_NAV, { grupo: 'Administración', links: [{ href: '/operarios', label: 'Operarios' }] }]
-        : GRUPOS_NAV
-
-  return (
-    <div className="min-h-screen">
-      <nav className="border-b bg-white" data-testid="nav-areas">
-        <div className="flex flex-wrap items-start justify-between gap-3 p-3 text-sm">
-          <div className="flex flex-wrap items-start gap-4">
-            {grupos.map(({ grupo, links }) => (
-              <div key={grupo} className="flex flex-col gap-1">
-                <span className="text-[11px] font-semibold tracking-wide text-gray-400 uppercase">{grupo}</span>
-                <div className="flex flex-wrap gap-1">
-                  {links.map((link) => (
-                    <NavLink key={link.href} href={link.href}>
-                      {link.label}
-                    </NavLink>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="flex items-center gap-2 text-xs whitespace-nowrap text-gray-600" data-testid="usuario-actual">
-            {email ? (
-              <>
-                <span>
-                  {email} · {rolLabel}
-                </span>
-                <LogoutButton />
-              </>
-            ) : (
-              <Link href="/login" className="rounded px-3 py-1 hover:bg-gray-100">
-                Ingresar
-              </Link>
-            )}
-          </div>
-        </div>
-      </nav>
-      <main>{children}</main>
-    </div>
-  )
 }

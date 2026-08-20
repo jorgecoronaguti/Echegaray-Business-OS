@@ -33,6 +33,15 @@ import { esIndistinguible, plataEnJuego, esCobroYaRevisado } from '../lib/cobran
 // Lo que el dueño ya revisó no vuelve a marcarse con ⚠. Ver lib/decisiones-hallazgos.mjs.
 import { CONTROLES, decisionesDe, rotuloDecision } from '../lib/decisiones-hallazgos.mjs'
 import { ALERTA, ALERTA_HEREDADA, variantesDeMarca } from '../lib/glifos.mjs'
+// EL CRUCE CONTRA EL EXTRACTO VIVO. El núcleo es puro y se testea sin Google; acá sólo se lee y se
+// escribe. `leerCobro` es el MISMO lector que usa el cuadre: dos lectores de Cobranzas se
+// desincronizan, y el que se olvide de leer hasta BB deja de ver el endoso sin dar un error.
+import { leerCobro } from '../lib/cobranzas-en-cashflow.mjs'
+import { esCobrado } from '../lib/cobranzas-repaso.mjs'
+import { cruzarConElBanco, textoDeRespaldo, desmiente, MARCA_SIN_RESPALDO } from '../lib/cobranzas-respaldo-banco.mjs'
+import { corteDelExtracto } from '../lib/libro-respaldo-banco.mjs'
+import { RANGO_BANCO } from '../lib/cobranzas-cuadre-vivo.mjs'
+import { leerTipoCambio } from '../lib/tipo-cambio.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Cobranzas'
@@ -68,7 +77,56 @@ const C_VALOR = 53              // BB: qué dice el BANCO de ese valor (endosado
 const C_FLAG = 52               // BA: la marca por fila
 const C_CTRL = 54               // BC: el bloque de control
 
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL ANCHO DE LAS CINCO COLUMNAS, DECLARADO ACÁ Y EN NINGÚN OTRO LADO
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// POR QUÉ ESTÁ ESCRITO (15/08). Este script escribe CINCO columnas y hasta hoy declaraba el ancho de
+// TRES: BA, BC y BD. La BB —los veredictos del banco, la columna con las frases más largas del
+// bloque— y la BE —las notas— se quedaban con el ancho que les hubiera dejado el layout anterior o
+// una persona. Resultado medido por `auditar-pantalla`: 17 de los 21 textos cortados del bloque
+// estaban justamente en esas dos columnas sin dueño.
+//
+// Y NO ES QUE FALTARA PONERLES UN NÚMERO: es que el ancho de una columna es de la COLUMNA ENTERA, así
+// que o lo decide UNO y los demás lo leen, o gana el último que corre. `reparar-textos.mjs` ensancha
+// por su cuenta cualquier columna cuyo texto no entre y que no esté gobernada, y corre DESPUÉS que
+// este generador: mientras el texto no entre, los dos se van a disputar la misma propiedad en cada
+// pasada. La forma de apagar esa disputa no es prohibirle al otro que escriba — es que el texto
+// entre, y para eso el ancho y la redacción tienen que decidirse juntos, que es lo que pasa acá.
+//
+// CADA NÚMERO SALE DEL PEOR TEXTO QUE ESTE SCRIPT PUBLICA EN ESA COLUMNA, medido en caracteres contra
+// su cuerpo tipográfico (≈ 0,57 px por punto y por carácter, el mismo factor que usa el detector).
+export const ANCHOS_CONTROL = Object.freeze({
+  // BA · la marca por fila, cuerpo 9 ⇒ 64 caracteres. Las marcas se acortaron para entrar acá: son
+  // por fila y se repiten, y ninguna instrucción de tres renglones mejora por estar cien veces.
+  [C_FLAG]: 330,
+  // BB · el veredicto del banco, cuerpo 9 ⇒ 97 caracteres. Era 317px con cuerpo 11 (50 caracteres) y
+  // el veredicto más largo medía 222: no se leía ni el nombre del defecto. El cuerpo baja a 9 para
+  // igualar a su hermana BA —las dos son anotación al costado de la fila, no dato— y con eso el mismo
+  // texto necesita un tercio menos de ancho.
+  [C_VALOR]: 500,
+  // BC · el rótulo de cada línea del control, cuerpo 11 ⇒ 78 caracteres. El más largo mide 76 ("Filas
+  // que no se pueden distinguir (mismo cliente, monto y día, SIN concepto)"): entra sin acortarlo, y
+  // acortarlo habría sido tirar la definición de qué cuenta esa línea.
+  [C_CTRL]: 490,
+  // BD · el número. Doce caracteres es el peor caso ("$300.588.858").
+  [C_CTRL + 1]: 140,
+  // BE · la nota que explica cada línea, cuerpo 9. Su propio ancho son 330px, pero DERRAMA sobre las
+  // columnas vacías de la derecha (ver `wrapStrategy` más abajo), así que el espacio real de lectura
+  // son 528px ⇒ 102 caracteres. Las cuatro notas que pasaban de eso se acortaron: 227 caracteres no
+  // los arregla ningún ancho razonable.
+  [C_CTRL + 2]: 330,
+})
+
 const letra = (i) => { let s = ''; for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s; return s }
+
+// La columna del veredicto del banco, como rango: de ahí sale el contador de sin-respaldo. La letra
+// se DERIVA de `C_VALOR` —la misma constante con la que se escribe— porque una letra tipeada acá
+// seguiría apuntando a BB el día que la columna se mueva, y el contador daría $0 sin dar un error.
+const VB = `$${letra(C_VALOR)}$${F0}:$${letra(C_VALOR)}$${F1}`
+/** El comienzo EXACTO de la marca de "cobrado sin respaldo". La fórmula compara contra esto y el
+ *  escritor lo produce: escrito dos veces, el contador da 0 el día que se mejore la redacción. */
+export const MARCA_ALERTA_RESPALDO = `${ALERTA} ${MARCA_SIN_RESPALDO}`
 
 // Marca de cada fila.
 //
@@ -102,13 +160,39 @@ const anidar = (pares, ultimo = '""') => pares.reduceRight((acc, [c, t]) => `IF(
  *
  * @param {Array} liberadas las decisiones vigentes del dueño para este control
  */
+/**
+ * LAS CUATRO MARCAS DE FILA, EN UN SOLO LUGAR — y por qué son cortas.
+ *
+ * ═══ LO QUE DECÍAN ANTES, Y POR QUÉ NO SERVÍA (15/08) ═══
+ *
+ * La marca de duplicado medía 170 caracteres y la columna que la lleva entra 64: en la pantalla se
+ * leía "▲ Otro cobro con el MISMO cliente, monto, forma, estad" y se cortaba ahí, con la instrucción
+ * —la parte que decía qué hacer— del lado invisible. Una marca por fila no puede ser un párrafo: se
+ * repite en cada fila marcada y no hay ancho que la contenga sin desarmar el bloque.
+ *
+ * QUÉ SE PERDIÓ Y DÓNDE ESTÁ AHORA: la instrucción no se tiró, se mudó a la NOTA de la línea del
+ * control que cuenta esas mismas filas (columna BE). Ahí está una vez, con lugar para decirla entera,
+ * en vez de cien veces cortada. La marca dice QUÉ pasa; la nota dice qué hacer.
+ *
+ * Y ESTÁN ACÁ, JUNTAS, PORQUE EL GUARD LAS NECESITA: la lista de "esto lo escribí yo" se deriva de
+ * esta constante en vez de repetir los textos. Copiadas, se desincronizan el día que se mejora una
+ * redacción — y este script no reconocería su propia marca, la contaría como texto del dueño y se
+ * negaría a escribir.
+ */
+export const MARCAS_FILA = Object.freeze({
+  indistinguible: `${ALERTA} Otro cobro igual en cliente, monto, forma, estado y día`,
+  igualEnTodo: `${ALERTA} Igual en TODO — revisá si se cargó dos veces`,
+  sinConcepto: 'Sin concepto: no se distingue de su par — completalo',
+  proyeccionGemela: `${ALERTA} Proyección con gemela ya facturada — dar de baja una`,
+})
+
 export function marcaPorFila(liberadas = []) {
   return `=ARRAYFORMULA(IF(${M}=0;"";${anidar([
     ...liberadas.map((d) => [esCobroYaRevisado(d.forma, PESTAÑA, F0, F1), txt(rotuloDecision(d))]),
-    [INDIST, txt(`${ALERTA} Otro cobro con el MISMO cliente, monto, forma, estado y día. Si son dos cobros distintos, escribí conceptos distintos; si es el mismo cargado dos veces, dá de baja uno.`)],
-    [`COUNTIFS(${G};${G};${M};${M};${Q};${Q};${E};${E};${H};${H};${I};${I})>1`, txt(`${ALERTA} Igual en TODO: cliente, monto, fecha, comprobante, orden de compra y concepto. Acá sí hay que revisar si se cargó dos veces.`)],
-    [`(COUNTIFS(${G};${G};${M};${M};${Q};${Q})>1)*(${E}="")*(${H}="")*(${I}="")>0`, txt('Otro cobro del mismo cliente, monto y día. No se puede distinguir de su par porque los dos están SIN concepto — completalo y esta marca se va sola.')],
-    [`(${O}="Proyectado")*(COUNTIFS(${G};${G};${M};${M})>1)>0`, txt(`${ALERTA} Proyección con gemela ya facturada por el mismo monto — dar de baja o queda contada dos veces`)],
+    [INDIST, txt(MARCAS_FILA.indistinguible)],
+    [`COUNTIFS(${G};${G};${M};${M};${Q};${Q};${E};${E};${H};${H};${I};${I})>1`, txt(MARCAS_FILA.igualEnTodo)],
+    [`(COUNTIFS(${G};${G};${M};${M};${Q};${Q})>1)*(${E}="")*(${H}="")*(${I}="")>0`, txt(MARCAS_FILA.sinConcepto)],
+    [`(${O}="Proyectado")*(COUNTIFS(${G};${G};${M};${M})>1)>0`, txt(MARCAS_FILA.proyeccionGemela)],
   ])}))`
 }
 
@@ -117,7 +201,7 @@ const flagPorFila = marcaPorFila(decisionesDe(CONTROLES.cobroDuplicado))
 /** La firma que identifica el bloque como escrito por el OS. Permite rehacerlo sin pisar nada ajeno. */
 const FIRMA = 'CONTROL DE COBRANZAS'
 
-function bloque() {
+export function bloque() {
   // La UNIDAD se declara, no se adivina del rótulo. Antes se infería con una regex sobre el texto
   // de la etiqueta y al renombrar dos filas el 21/07 los conteos pasaron a mostrarse como "$4" y
   // "$2". Un formato que depende de cómo está redactado un rótulo se rompe cada vez que se mejora
@@ -135,12 +219,35 @@ function bloque() {
     L('Cobros sin cliente', `=SUMPRODUCT((${G}="")*IF(ISNUMBER(${M});${M};0))`, 'El cash flow los clasifica por unidad de negocio; sin cliente no se sabe de qué obra son.'),
     L(''),
     L(`${ALERTA} POSIBLES DUPLICADOS`),
-    L('Cobros indistinguibles entre sí (mismo cliente, monto, forma, estado y día)', `=SUMPRODUCT((${INDIST})*(${M}<>0))`, 'La señal ya NO es el ID: la columna A se autonumera sola y no puede repetirse. Ver la marca en la columna X.', 'cantidad'),
+    // ═══ LAS NOTAS ENTRAN EN SU COLUMNA, Y ESO CAMBIÓ LO QUE DICEN (15/08) ═══
+    //
+    // La columna de notas lee 102 caracteres. Cuatro de éstas medían 108, 132, 148 y 227: se dibujaban
+    // cortadas justo donde empezaba lo que había que hacer. No se arreglan con ancho —227 caracteres
+    // pedirían 1.294px— así que se acortaron, y lo que se sacó de cada una está dicho abajo.
+    //
+    // La marca de la fila se cita por su LETRA DERIVADA, no tipeada: la nota decía "ver la marca en la
+    // columna X" y la marca vive en la BA desde que el bloque se mudó. Un puntero a una columna que
+    // no es no manda a ningún lado y nadie se entera, porque no da error.
+    L('Cobros indistinguibles entre sí (mismo cliente, monto, forma, estado y día)', `=SUMPRODUCT((${INDIST})*(${M}<>0))`, `Cobros distintos ⇒ escribí conceptos distintos. El mismo dos veces ⇒ dá de baja uno. Marca en ${letra(C_FLAG)}.`, 'cantidad'),
     L('Proyecciones con gemela ya facturada', `=SUMPRODUCT((${O}="Proyectado")*(COUNTIFS(${G};${G};${M};${M})>1)*(${M}<>0))`, 'La proyección quedó viva después de emitir la factura. Es el caso de MESSINAS filas 55/56.', 'cantidad'),
     L('Filas idénticas en TODO (cliente, monto, fecha, comprobante, OC y concepto)', `=SUMPRODUCT((COUNTIFS(${G};${G};${M};${M};${Q};${Q};${E};${E};${H};${H};${I};${I})>1)*(${M}<>0))`, 'Esto sí amerita revisar si se cargó dos veces. Una cuota legítima NO cae acá: cobra en otra fecha.', 'cantidad'),
-    L('Filas que no se pueden distinguir (mismo cliente, monto y día, SIN concepto)', `=SUMPRODUCT((COUNTIFS(${G};${G};${M};${M};${Q};${Q})>1)*(${E}="")*(${H}="")*(${I}="")*(${M}<>0))`, 'NO son duplicados: son cobros a los que les falta el dato que los diferencia. Se arregla completando el concepto, no borrando filas.', 'cantidad'),
-    L('Plata en juego si esos cobros fueran duplicados', `=${PLATA}`, 'Es la mitad del monto marcado: de cada par sobraría uno. ESTIMACIÓN, no un dato — sólo quien conoce el cobro sabe cuál sobra. El control concluyente es el de CAJA: lo cobrado en efectivo tiene que aparecer depositado o en caja.'),
+    // Se sacó "NO son duplicados: son cobros a los que": el resto ya lo dice, y era la parte cortada.
+    L('Filas que no se pueden distinguir (mismo cliente, monto y día, SIN concepto)', `=SUMPRODUCT((COUNTIFS(${G};${G};${M};${M};${Q};${Q})>1)*(${E}="")*(${H}="")*(${I}="")*(${M}<>0))`, 'No son duplicados: les falta el dato que los diferencia. Completá el concepto, no borres filas.', 'cantidad'),
+    // Se sacó la explicación del control de CAJA —que ya vive en la pestaña CAJA— y quedó lo que esta
+    // línea necesita para no leerse como un hecho: que es una ESTIMACIÓN y quién puede resolverla.
+    L('Plata en juego si esos cobros fueran duplicados', `=${PLATA}`, 'ESTIMACIÓN: de cada par sobraría uno. Cuál sobra lo dice el control de efectivo de CAJA.'),
     L(''),
+    L(''),
+    // ═══ DEVENGADO DISFRAZADO DE PERCIBIDO ═══
+    // El Flujo va por PERCIBIDO. Un "Cobrado" que el extracto no respalda está sumando en INGRESOS
+    // REALES, o sea como plata que ya está en la cuenta. NO descuadra ningún cuadre —los dos lados lo
+    // cuentan igual— así que ningún control de cuadratura lo iba a encontrar nunca: sólo se ve
+    // preguntándole al banco. El contador sale de la columna BB por FÓRMULA, no de un número pegado
+    // por el script: se recalcula solo cuando el cruce vuelve a correr.
+    L(`${ALERTA} Cobrado que el extracto NO confirma`,
+      `=SUMPRODUCT((LEFT(${VB};${MARCA_ALERTA_RESPALDO.length})=${txt(MARCA_ALERTA_RESPALDO)})*IF(ISNUMBER(${M});${M};0))`,
+      // Se sacó "hasta saberlo, es devengado, no caja": es la conclusión que el rótulo ya declara.
+      'El Cash Flow lo cuenta como ingreso REAL. O falta el movimiento del banco, o el cobro no entró.'),
     L('Facturado y todavía no cobrado', `=SUMPRODUCT((${O}="Facturado")*IF(ISNUMBER(${M});${M};0))`, 'Plata emitida que la empresa está financiando.'),
     L('Proyectado (todavía ni facturado)', `=SUMPRODUCT((${O}="Proyectado")*IF(ISNUMBER(${M});${M};0))`, 'ESTIMACIÓN. Si una proyección ya se facturó, hay que darla de baja o queda contada dos veces.'),
   ]
@@ -160,37 +267,76 @@ function bloque() {
  *
  * EL CRUCE ES POR FECHA DE PAGO + IMPORTE, que es lo único que comparten las dos fuentes: el número
  * de echeq del banco (90020100) no está en ninguna columna de Cobranzas.
+ *
+ * ═══ LA SEGUNDA FUENTE, Y POR QUÉ HACÍA FALTA (15/08/2026) ═══
+ *
+ * `ECHEQS_TERCEROS` son OCHO echeqs transcriptos a mano, de un solo emisor, con corte al 22/07. Sirve
+ * para lo que fue hecha —decir qué valor se ENDOSÓ, que el extracto no distingue— y no sirve para
+ * negar un cobro: "no está en mi lista de ocho" se escribía como "el banco no tiene un echeq con esta
+ * fecha e importe". Con esa frase quedaron marcadas cuatro filas de LA ESTRELLA por $50.000.000.
+ *
+ * Ahora las dos fuentes trabajan juntas, cada una en lo suyo:
+ *   · la lista dice qué se endosó o está en custodia (la marca que el Libro necesita para excluirlo);
+ *   · `_BANCO_RAW` —el extracto vivo, que se actualiza con cada importación— dice si la plata entró.
+ *
+ * Y el corte del encabezado se DERIVA del extracto leído, no se tipea: un corte escrito a mano se
+ * queda viejo sin gritar, que es lo que pasó durante 23 días.
  */
 async function marcarValoresSegunBanco(google) {
-  const v = await google.readSheetValues(ID, `${PESTAÑA}!A${F0}:Q${F1}`)
+  // La grilla, no los valores: la fecha tiene que venir como SERIAL. Leída como texto formateado, un
+  // "5/8/2026" hay que volver a parsearlo y ahí es donde se rompe el día que el locale cambie.
+  const [grid, extracto, tc] = await Promise.all([
+    google.readSheetGrid(ID, `${PESTAÑA}!A${F0}:BC${F1}`),
+    // UNFORMATTED_VALUE: ver la nota de `cobranzas-cuadre-vivo`. Con el valor formateado, el extracto
+    // entra ilegible y ninguna fila se juzga.
+    google.readSheetValues(ID, RANGO_BANCO, { render: 'UNFORMATTED_VALUE' }),
+    leerTipoCambio(google, ID).catch(() => ({ tc: null })),
+  ])
+  const cobros = []
+  grid.filas.forEach((f, i) => { const c = leerCobro(f, i + F0, { tipoCambio: tc.tc }); if (c) cobros.push(c) })
+  const porFila = new Map(cruzarConElBanco(cobros, extracto, { esCobrado }).veredictos.map((v) => [v.cobro.fila, v]))
+  const corte = corteDelExtracto(extracto)
+  const corteISO = corte ? new Date(Date.UTC(1899, 11, 30) + corte * 86400000).toISOString().slice(0, 10) : BANCO_CORTE
+
   const clave = (f, m) => `${f}|${Math.round(m)}`
-  const banco = new Map()
+  const lista = new Map()
   for (const e of ECHEQS_TERCEROS) {
     const [a, mm, d] = e.pago.split('-').map(Number)
-    banco.set(clave(`${d}/${mm}/${a}`, e.importe), e)
+    lista.set(clave(`${d}/${mm}/${a}`, e.importe), e)
   }
+  const v = await google.readSheetValues(ID, `${PESTAÑA}!A${F0}:Q${F1}`)
   const marcas = []
   let endosados = 0
+  let sinRespaldo = 0
   for (let i = 0; i < F1 - F0 + 1; i++) {
     const f = v[i] ?? []
     const forma = String(f?.[13] ?? '').trim()
     const fecha = String(f?.[16] ?? '').trim()
     const monto = parseMonto(f?.[12])
-    if (!/eche?q/i.test(forma) || !fecha || !monto) { marcas.push(['']); continue }
-    const e = banco.get(clave(fecha, monto))
-    if (!e) { marcas.push([`${ALERTA} el banco no tiene un echeq con esta fecha e importe`]); continue }
-    if (e.estado === 'endosado') {
+    // LA LISTA PRIMERO, Y SÓLO PARA LO QUE SÓLO ELLA SABE. Un endoso no se puede leer del extracto:
+    // el valor entró y salió sin pasar por la cuenta. Perder esta marca haría que el Libro volviera a
+    // emitir $20.000.000 de ingreso que no existen (ver `libro-endosos.mjs`).
+    const e = /eche?q/i.test(forma) && fecha && monto ? lista.get(clave(fecha, monto)) : null
+    if (e?.estado === 'endosado') {
       endosados++
       marcas.push([`${MARCA_ENDOSADO} a ${e.beneficiario} · echeq ${e.numero} — se entregó, NO va a entrar a la cuenta`])
-    } else if (e.estado === 'custodia') marcas.push([`EN CUSTODIA · echeq ${e.numero} — sigue siendo de la empresa`])
-    else marcas.push([`COBRADO · echeq ${e.numero} — ya está en el saldo del banco`])
+      continue
+    }
+    if (e?.estado === 'custodia') { marcas.push([`EN CUSTODIA · echeq ${e.numero} — sigue siendo de la empresa`]); continue }
+    // Y para todo lo demás manda el extracto: es la fuente que se actualiza sola y que cubre a todos
+    // los clientes, no a uno.
+    const r = porFila.get(F0 + i)
+    if (!r) { marcas.push(['']); continue }
+    if (desmiente(r)) sinRespaldo++
+    marcas.push([textoDeRespaldo(r, { alerta: ALERTA, fechaCorte: corteISO })])
   }
   const col = letra(C_VALOR)
   await google.batchUpdateValues(ID, [
-    { range: `${PESTAÑA}!${col}4`, values: [[`Qué dice el banco de este valor · al ${BANCO_CORTE}`]] },
+    { range: `${PESTAÑA}!${col}4`, values: [[`Qué dice el banco de este valor · al ${corteISO}`]] },
     { range: `${PESTAÑA}!${col}${F0}:${col}${F1}`, values: marcas },
   ])
-  console.log(`  valores marcados según el banco: ${endosados} endosados (no cuentan como ingreso futuro)`)
+  console.log(`  valores marcados según el banco (extracto al ${corteISO}): ${endosados} endosados`
+    + ` · ${sinRespaldo} cobrados que el extracto no confirma`)
 }
 
 /**
@@ -275,7 +421,15 @@ async function main() {
   const MIAS = [
     FIRMA, ...variantesDeMarca(`${ALERTA} Control automático`), 'Qué dice el banco de este valor',
     ALERTA, ALERTA_HEREDADA, 'COBRADO ·', 'EN CUSTODIA ·', MARCA_ENDOSADO,
+    // Los veredictos del cruce contra el extracto que NO empiezan con el glifo de alerta. Sin ellos,
+    // la zona pasaría a contarse como texto ajeno y el control dejaría de escribirse — sin un solo
+    // error, que es como se rompen estas cosas.
+    'sin juzgar:', 'cobro que no pasa por la cuenta', 'no pasa por la cuenta',
     ...b.flatMap(([rot, , nota]) => [rot, nota]).filter((t) => String(t ?? '').trim()),
+    // Y LAS MARCAS DE FILA, DERIVADAS DE SU CONSTANTE. Dos de las cuatro no empiezan con el glifo de
+    // alerta —son informativas, no alarmas— así que sin esto la columna BA entera contaba como texto
+    // del dueño en cuanto la firma de BC1 se perdiera, y el guard bloquearía en vez de proteger.
+    ...Object.values(MARCAS_FILA),
   ]
   const ajeno = []
   zona.forEach((f) => (f || []).forEach((c, j) => {
@@ -331,10 +485,25 @@ async function main() {
     { repeatCell: { range: rg(4, F1, C_FLAG, C_FLAG + 1), cell: { userEnteredFormat: { textFormat: { fontSize: 9, foregroundColor: { red: 0.7, green: 0.3, blue: 0.1 } }, numberFormat: { type: 'TEXT' } } }, fields: 'userEnteredFormat.textFormat,userEnteredFormat.numberFormat' } },
     { repeatCell: { range: rg(0, 1, C_CTRL, C_CTRL + 1), cell: { userEnteredFormat: { textFormat: { bold: true, fontSize: 12 } } }, fields: 'userEnteredFormat.textFormat' } },
     { repeatCell: { range: rg(10, 11, C_CTRL, C_CTRL + 1), cell: { userEnteredFormat: { textFormat: { bold: true, fontSize: 11, foregroundColor: { red: 0.7, green: 0.2, blue: 0.1 } } } }, fields: 'userEnteredFormat.textFormat' } },
-    { repeatCell: { range: rg(0, b.length, C_CTRL + 2, C_CTRL + 3), cell: { userEnteredFormat: { textFormat: { fontSize: 9, italic: true, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } }, wrapStrategy: 'CLIP' } }, fields: 'userEnteredFormat' } },
-    { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: C_FLAG, endIndex: C_FLAG + 1 }, properties: { pixelSize: 330 }, fields: 'pixelSize' } },
-    { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: C_CTRL, endIndex: C_CTRL + 1 }, properties: { pixelSize: 300 }, fields: 'pixelSize' } },
-    { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: C_CTRL + 1, endIndex: C_CTRL + 2 }, properties: { pixelSize: 140 }, fields: 'pixelSize' } },
+    // EL VEREDICTO DEL BANCO, CON EL MISMO CUERPO QUE LA MARCA DE AL LADO. Las dos son anotación al
+    // costado de la fila; la BB venía en 11 —el cuerpo del dato— y por eso una frase de 86 caracteres
+    // pedía 539px. En 9 pide 441 y entra en su columna declarada.
+    { repeatCell: { range: rg(4, F1, C_VALOR, C_VALOR + 1), cell: { userEnteredFormat: { textFormat: { fontSize: 9 }, numberFormat: { type: 'TEXT' } } }, fields: 'userEnteredFormat.textFormat.fontSize,userEnteredFormat.numberFormat' } },
+    // ═══ LA NOTA DERRAMA, NO SE RECORTA (15/08) ═══
+    //
+    // Estaba en CLIP, y CLIP significa "cortá lo que sobre" aunque a la derecha no haya nada que
+    // tapar. La BE es la última columna que este bloque escribe: de la BF en adelante la pestaña está
+    // vacía, así que derramar suma 198px de lectura sin invadir un solo dato. Es la misma decisión
+    // que ya tomó "Jornales por Quincena" para toda su grilla — derramar no es invadir: el texto sólo
+    // se extiende sobre celdas VACÍAS, y donde hay algo al lado se recorta igual que antes.
+    { repeatCell: { range: rg(0, b.length, C_CTRL + 2, C_CTRL + 3), cell: { userEnteredFormat: { textFormat: { fontSize: 9, italic: true, foregroundColor: { red: 0.4, green: 0.4, blue: 0.45 } }, wrapStrategy: 'OVERFLOW_CELL' } }, fields: 'userEnteredFormat' } },
+    // LOS CINCO ANCHOS, DE LA ÚNICA DECLARACIÓN QUE HAY. Antes eran tres tipeados acá y dos sin dueño.
+    ...Object.entries(ANCHOS_CONTROL).map(([col, px]) => ({
+      updateDimensionProperties: {
+        range: { sheetId, dimension: 'COLUMNS', startIndex: Number(col), endIndex: Number(col) + 1 },
+        properties: { pixelSize: px }, fields: 'pixelSize',
+      },
+    })),
   ])
 
   const v = await google.readSheetValues(ID, `${PESTAÑA}!${letra(C_CTRL)}1:${letra(C_CTRL + 1)}${b.length}`)

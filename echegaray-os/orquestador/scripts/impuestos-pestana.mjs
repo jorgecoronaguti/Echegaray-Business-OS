@@ -49,7 +49,7 @@ import {
   leerIIBB, leerIVA, leerRetenciones, ventasProyectadas, planesDePago, escribirIIBBRaw,
 } from '../lib/impuestos-fuentes.mjs'
 import {
-  bloqueIva, bloqueIibb, bloqueRetenciones, bloqueOtros, bloquePlanes, bloqueDeudaFinanciera, bloqueCierre,
+  bloqueIva, mesDelSaldoVigente, bloqueIibb, bloqueRetenciones, bloqueOtros, bloquePlanes, bloqueDeudaFinanciera, bloqueCierre,
 } from '../lib/impuestos-bloques.mjs'
 import {
   obligacionesDelCalendario, altoDeLaPosicion, filasDeLaPosicion, formulaOtrosSinFecha,
@@ -234,9 +234,11 @@ export function grilla({ anio, C, planes, iibb, ivaOficial, proy, arca, hoy }) {
     calCrudo.filter((o) => o.vencido).map(hallazgoDeVencimiento), { hoy })
   explicarDecisiones(decVenc, console.log, { detalle: (h) => `el vencimiento ${h.clave} (${h.forma.fecha})` })
   const cal = conDecisionesDelDueno(calCrudo, new Map(decVenc.silenciados.map((s) => [s.clave, s.decision])))
-  // El saldo a favor es el del ÚLTIMO MES CON DATO REAL, no el del último mes del cuadro: de agosto
-  // en adelante es proyección, y el hero dice cuál es la posición HOY.
-  const mesSaldoIva = proy?.ultimoMesConDato ?? mesesOf[mesesOf.length - 1] ?? 0
+  // El saldo a favor es el del ÚLTIMO MES CERRADO, no el del último mes del cuadro: de agosto en
+  // adelante es proyección, y el hero dice cuál es la posición HOY. Sale de la CASCADA —que ya sabe
+  // qué mes es un hecho y cuál un supuesto— y no del ancla de la proyección, que contesta otra
+  // pregunta y venía publicando el saldo de un mes anterior al último cerrado. Ver `mesDelSaldoVigente`.
+  const mesSaldoIva = mesDelSaldoVigente(iva.porOrigen) || mesesOf[mesesOf.length - 1] || 0
   const refs = {
     saldoIva: mesSaldoIva ? `$${cmes(mesSaldoIva)}$${iva.fLibre}` : '0',
     saldoIibb: ibb.ultimoReal ? `$${cmes(ibb.ultimoReal)}$${ibb.fSaldo}` : '0',
@@ -293,7 +295,13 @@ async function planDeProyeccionIva(google, ivaOficial) {
   const iL = filaDe('Saldo de libre disponibilidad (acumulado)')
   const filaLibre = iL >= 0 ? (previo[iL] || []).slice(1, 13) : []
   const mesesConDDJJ = (ivaOficial ?? []).filter((d) => d.periodo).map((d) => Number(String(d.periodo).slice(5, 7)))
-  const { ultimoMesConDato, libreDisp, mesesAProyectar } = anclaDeProyeccion(filaLibre, mesesConDDJJ)
+  const { ultimoMesConDato, libreDisp, mesesAProyectar, textoDondeVaImporte } = anclaDeProyeccion(filaLibre, mesesConDDJJ)
+  // Un texto sentado en una celda de plata no puede irse sin dejar rastro: se avisa acá para el --dry
+  // y viaja a la sección 10, que es donde la pestaña declara sus huecos.
+  for (const { mes, valor } of textoDondeVaImporte) {
+    console.log(`  ${MES[mes - 1]}: "${valor}" está donde va el saldo de libre disponibilidad y no es un importe`
+      + ' — se descarta del ancla y el mes se recalcula.')
+  }
 
   // LA ALÍCUOTA VIGENTE SALE DE LA CELDA, NO DE UNA CONSTANTE. Si el dueño ya la editó, manda la
   // suya: es la regla de "edición manual = verdad definitiva". Sólo la primera vez se siembra 0,21.
@@ -322,6 +330,7 @@ async function planDeProyeccionIva(google, ivaOficial) {
     meses: mesesAProyectar,
     ultimoMesConDato,
     libreDisp,
+    textoDondeVaImporte,
     alicuotaVigente,
     bases,
     brutoDebito: brutoDebitoLibro,

@@ -182,7 +182,21 @@ export const CUENTAS = [
     // MISMA pestaña: el control de acá miraba hasta la 200 y la línea que lo compara hasta la 400,
     // así que el día que Cobranzas pasara esa fila la "diferencia contra el banco" iba a acusar un
     // desvío que no existe.
-    control: '=SUMPRODUCT((Cobranzas!$N$5:$N$400="Echeq")*(Cobranzas!$Q$5:$Q$400>TODAY())*IF(ISNUMBER(Cobranzas!$M$5:$M$400);Cobranzas!$M$5:$M$400;0))',
+    // ═══ EL BORDE ES `>=`, Y ESE UN DÍA VALÍA $10.000.000 (15/08/2026) ═══
+    //
+    // Con `>` el control dejaba afuera al echeq que se acredita HOY, y la cartera contra la que se
+    // compara —cheques "En custodia" de la réplica del banco— no tiene ventana de fecha ninguna: los
+    // cuenta todos mientras no se hayan depositado. Dos poblaciones distintas no controlan nada.
+    //
+    // El día que se midió: `_CHEQUES_RAW` tenía DOS cheques de Alimentos Del Sur en estado Endosado
+    // —90020100 por $10.000.000 que se acreditaba el 15/08 y 90020101 por $10.000.000 el 31/08— y
+    // Cobranzas los tenía a los dos como "Cobrado" por Echeq en esas mismas dos fechas. El control
+    // publicaba $10.000.000 de diferencia: el de hoy se le escapaba por el borde. La línea de al lado
+    // de este mismo anexo ya decía en voz alta que eran "los $20.000.000 que el cuadro creía tener y
+    // ya no tiene" — el control desmentía al comentario, y el comentario tenía razón.
+    //
+    // Un cheque que se acredita hoy TODAVÍA no se acreditó. Va adentro.
+    control: '=SUMPRODUCT((Cobranzas!$N$5:$N$400="Echeq")*(Cobranzas!$Q$5:$Q$400>=TODAY())*IF(ISNUMBER(Cobranzas!$M$5:$M$400);Cobranzas!$M$5:$M$400;0))',
     // El dueño (21/07): "quiero un agrupar +/- con la información de esos cheques". Un total de
     // $30.000.000 no se puede verificar ni gestionar: hay que saber de quién es cada cheque y qué
     // día entra. El detalle se arma con REFERENCIAS a las filas de Cobranzas, no copiando importes.

@@ -59,7 +59,7 @@ export async function generarDiarioDireccion(supabase: SupabaseClient): Promise<
       resumen_ejecutivo: `${vencidas?.length ?? 0} acciones vencidas, ${pendientes?.length ?? 0} abiertas en total. Saldo disponible ${calendario.saldoHoy !== null ? pesos.format(calendario.saldoHoy) : 'sin dato'}. ${cobrosVencidos.length} cobros vencidos sin ejecutar por ${pesos.format(montoCobrosVencidos)}.`,
       principales_cambios: [],
       numeros_clave: [
-        { label: 'Acciones vencidas', valor: String(vencidas?.length ?? 0), link: '/acciones' },
+        { label: 'Acciones vencidas', valor: String(vencidas?.length ?? 0), link: '/os' },
         { label: 'Saldo disponible hoy', valor: calendario.saldoHoy !== null ? pesos.format(calendario.saldoHoy) : 'sin dato', link: '/flujo-caja' },
         { label: 'Cobros vencidos sin ejecutar', valor: pesos.format(montoCobrosVencidos), link: '/flujo-caja' },
         { label: 'Hallazgos de impacto alto abiertos', valor: String(backlog?.length ?? 0), link: '/backlog-autonomo' },
@@ -74,7 +74,7 @@ export async function generarDiarioDireccion(supabase: SupabaseClient): Promise<
         : [],
       links_os: [
         { label: 'Calendario de cobros y pagos', href: '/flujo-caja' },
-        { label: 'Centro de Acción', href: '/acciones' },
+        { label: 'Centro de Acción', href: '/os' },
       ],
     },
   }

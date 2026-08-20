@@ -46,7 +46,7 @@
 // equivocados. Un gráfico huérfano que sigue pintando algo que ya no significa nada es peor que uno
 // que falta. Esto vale para CAJA, que es íntegramente generada, y no es un permiso general.
 
-import { COL, DIAS_PROYECCION, DIAS_TOP, TOP_N } from './caja-anexo-series.mjs'
+import { COL, DIAS_NECESIDAD, DIAS_PROYECCION, DIAS_TOP, TOP_N } from './caja-anexo-series.mjs'
 
 /**
  * DÓNDE SE ANCLAN. Los gráficos flotan, pero el ANCLA es una celda REAL: si la hoja no llega a esa
@@ -69,6 +69,7 @@ export const TITULO_EQUILIBRIO = `${MARCA}Ingresos vs egresos por mes — punto 
 export const TITULO_PROYECCION = `${MARCA}Proyección de la caja`
 export const TITULO_PAGOS = `${MARCA}Concentración de pagos`
 export const TITULO_COBRANZAS = `${MARCA}Concentración de cobranzas`
+export const TITULO_NECESIDAD = `${MARCA}¿Alcanza la caja? — qué sale cada día y qué saldo queda`
 
 // La misma paleta que la pestaña: tinta, gris apagado y UN acento.
 const INK = { red: 0.10, green: 0.13, blue: 0.20 }
@@ -109,12 +110,56 @@ function base(titulo, subtitulo, basicChart, sheetId, posicion) {
           overlayPosition: {
             anchorCell: { sheetId, rowIndex: FILA_ANCLA, columnIndex: COL_ANCLA },
             offsetXPixels: posicion.x, offsetYPixels: posicion.y,
-            widthPixels: ANCHO_PX, heightPixels: ALTO_PX,
+            widthPixels: posicion.ancho ?? ANCHO_PX, heightPixels: ALTO_PX,
           },
         },
       },
     },
   }
+}
+
+/**
+ * ═══ LA NECESIDAD DIARIA (20/08/2026) ═══
+ *
+ * El dueño lo pidió así: *"que el gráfico me indique los rubros que me van a ir haciendo descargos de
+ * dinero —cheques, proveedores, sueldos, cargas sociales, impuestos— con montos y fechas, y poner las
+ * cobranzas totales en el mismo gráfico para ver si cubrimos día a día esa necesidad"*.
+ *
+ * Cinco columnas APILADAS —lo que sale, abierto por rubro— y la cobranza como LÍNEA por encima. El
+ * día en que la línea queda por debajo de la pila es el día que hay que ir a resolver, y se ve sin
+ * leer un número. Un total del mes no contesta esto: la plata no falta en el mes, falta el martes.
+ *
+ * Es COMBO y no COLUMN porque `type` por serie —la línea de cobranzas sobre las barras— sólo lo
+ * respeta ese tipo de gráfico; con COLUMN la API acepta el request y dibuja seis barras.
+ */
+function necesidadDiaria({ titulo, subtitulo, sheetId, anexo, rango: r, posicion }) {
+  const col = (c) => rango(anexo, r.f0 - 1, r.f1, c, c)
+  const COLORES = [GRIS, INK, ACENTO, { red: 0.45, green: 0.40, blue: 0.30 }, ROJO]
+  return base(titulo, subtitulo, {
+    chartType: 'COMBO',
+    stackedType: 'STACKED',
+    legendPosition: 'BOTTOM_LEGEND',
+    headerCount: 1,
+    domains: [{ domain: fuente(col(8)) }],
+    series: [
+      // I..M (9..13): las cinco salidas del día, apiladas. Eje IZQUIERDO, en la escala del día.
+      ...[9, 10, 11, 12, 13].map((c, i) => ({
+        series: fuente(col(c)), targetAxis: 'LEFT_AXIS', type: 'COLUMN', color: COLORES[i],
+      })),
+      // ═══ Y LAS DOS CURVAS DE SALDO, EN EL EJE DERECHO ═══
+      //
+      // Van en el OTRO eje porque son otra magnitud: el saldo se mide en decenas de millones y lo que
+      // sale un día, en unidades. En el mismo eje las barras quedaban aplastadas contra el piso y el
+      // gráfico dejaba de mostrar lo que sale, que es la mitad de la pregunta.
+      { series: fuente(col(14)), targetAxis: 'RIGHT_AXIS', type: 'LINE', color: ACENTO, lineStyle: { width: 3 } },
+      { series: fuente(col(15)), targetAxis: 'RIGHT_AXIS', type: 'LINE', color: ROJO, lineStyle: { width: 2, type: 'MEDIUM_DASHED' } },
+    ],
+    axis: [
+      { position: 'BOTTOM_AXIS', format: texto(9) },
+      { position: 'LEFT_AXIS', title: 'Sale ese día', format: texto(9) },
+      { position: 'RIGHT_AXIS', title: 'Saldo acumulado', format: texto(9) },
+    ],
+  }, sheetId, posicion)
 }
 
 /** Una curva de saldo: fecha en el eje de abajo, plata en el de la izquierda, UNA sola serie. */
@@ -188,6 +233,11 @@ function ranking({ titulo, subtitulo, sheetId, anexo, rango: r, posicion, color 
  */
 export function graficos(sheetId, anexo, series = {}) {
   const cuadros = [
+    ['necesidad', (r, posicion) => necesidadDiaria({
+      titulo: TITULO_NECESIDAD,
+      subtitulo: 'Barras: lo que sale ese día, abierto por rubro. Curvas (eje derecho): el saldo que queda — la llena cobrando lo previsto, la punteada sin cobrar un peso. El día que cruzan el cero, no alcanza.',
+      sheetId, anexo, rango: r, posicion,
+    })],
     ['equilibrio', (r, posicion) => cruce({
       titulo: TITULO_EQUILIBRIO,
       subtitulo: 'Donde el rojo supera al azul, el mes se financia con caja acumulada',
@@ -199,24 +249,33 @@ export function graficos(sheetId, anexo, series = {}) {
       // EL ACENTO ES DE LA PROYECCIÓN: es la única curva con la que se decide algo hoy.
       sheetId, anexo, rango: r, posicion, color: ACENTO,
     })],
-    ['pagos', (r, posicion) => ranking({
-      titulo: TITULO_PAGOS,
-      subtitulo: `Top ${TOP_N} contrapartes a ${DIAS_TOP} días — con quién se negocia el plazo`,
-      sheetId, anexo, rango: r, posicion, color: GRIS,
-    })],
-    ['cobranzas', (r, posicion) => ranking({
-      titulo: TITULO_COBRANZAS,
-      subtitulo: `Top ${TOP_N} contrapartes a ${DIAS_TOP} días — si uno solo pesa demasiado, el riesgo es comercial`,
-      sheetId, anexo, rango: r, posicion, color: ACENTO,
-    })],
+    // ═══ LOS DOS RANKINGS DE CONCENTRACIÓN YA NO SE DIBUJAN (20/08/2026) ═══
+    //
+    // El dueño: *"tenés que quitar los gráficos que ya no voy a usar, como el de concentración de
+    // pagos y cobranzas"*. Las SERIES siguen en el anexo —el dato es suyo y no pidió borrarlo, igual
+    // que con la historia de sesenta días—: se dejó de DIBUJAR, no se borró.
   ]
   const requests = []
   const faltan = []
-  cuadros.forEach(([clave, hacer], i) => {
-    const r = series?.[clave]
-    if (!r) return faltan.push(clave)
-    // Dos por fila: el orden de lectura es evolución → proyección arriba, concentraciones abajo.
-    requests.push(hacer(r, { x: (i % 2) * (ANCHO_PX + 16), y: Math.floor(i / 2) * (ALTO_PX + 16) }))
+  // ═══ LA GRILLA ES DE DOS COLUMNAS Y EL PRIMERO OCUPA LAS DOS ═══
+  //
+  // El dueño pidió que estén ALINEADOS. Antes el lugar de cada uno salía de su índice en la lista, así
+  // que cuando uno no se dibujaba —porque su serie estaba vacía— los de atrás se corrían y la grilla
+  // se desarmaba. Ahora el lugar se calcula sobre los que SE VAN A DIBUJAR, y el primero —la
+  // necesidad diaria, que son treinta días en el eje— toma el ancho entero: apretado a la mitad, las
+  // barras de un día miden cuatro píxeles.
+  const vivos = cuadros.filter(([clave]) => { if (series?.[clave]) return true; faltan.push(clave); return false })
+  let fila = 0
+  vivos.forEach(([clave, hacer], i) => {
+    const ancho = clave === 'necesidad'
+    const r = series[clave]
+    if (ancho) {
+      requests.push(hacer(r, { x: 0, y: fila * (ALTO_PX + 16), ancho: ANCHO_PX * 2 + 16 }))
+      fila++
+      return
+    }
+    const k = vivos.slice(0, i).filter(([c]) => c !== 'necesidad').length
+    requests.push(hacer(r, { x: (k % 2) * (ANCHO_PX + 16), y: (fila + Math.floor(k / 2)) * (ALTO_PX + 16) }))
   })
   return { requests, faltan }
 }

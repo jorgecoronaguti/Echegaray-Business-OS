@@ -159,7 +159,10 @@ test('los tres avisos de la guarda son distintos: sin prueba nunca se dice "tuya
 test('el barrido de cola de Proveedores pide el vaciado verificado, y mira la cola CON TECHO', () => {
   const src = readFileSync(new URL('../scripts/proveedores-materiales-pestana.mjs', import.meta.url).pathname, 'utf8')
   const cola = src.slice(src.indexOf('LA COLA DE UN DISEÑO ANTERIOR MÁS LARGO'))
-  assert.match(cola, /vaciarPropio:\s*\{\s*mios\s*\}/,
+  // El pedido viaja con el registro de rótulos y, desde el 14/08, con su tope por rango: 200 es el
+  // tamaño de un residuo chico y acá el residuo son N capas — con el tope global el rango se descarta
+  // entero y no se limpia una sola celda. Ver TOPE_VACIADO_MAX en no-borrar.mjs.
+  assert.match(cola, /vaciarPropio:\s*\{\s*mios(,\s*tope:\s*TOPE_RESIDUO)?\s*\}/,
     'sin el pedido, `no-borrar` revierte la limpieza celda por celda y la cola es inmortal')
   assert.match(cola, /MAX_COLA/,
     'la cola se lee con techo: rellenar a ciegas hasta el borde de la hoja ya borró 14 fechas del dueño')

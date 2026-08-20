@@ -78,17 +78,30 @@ export const COL_REGISTRO = {
  *
  * ═══ `total` ES LA COLUMNA DE OBRA, Y ESO NO ES UN DESCUIDO (13/08) ═══
  *
- * El calendario muestra las tres nóminas y una columna "TOTAL" que las suma. Quien sincroniza la caja
- * NO puede leer esa columna: oficina y dirección ya entran por `OFICINA_PROYECTADO` y
- * `DIRECCION_PROYECTADO`, así que tomar el TOTAL las contaría DOS VECES —$50M de más en el calendario
- * de caja, sin un solo error, porque el número sería perfectamente plausible—.
+ * El calendario muestra las tres nóminas y, a la derecha, los dos canales por los que sale la plata.
+ * Quien sincroniza la caja NO puede leer esas columnas de la derecha: oficina y dirección ya entran
+ * por `OFICINA_PROYECTADO` y `DIRECCION_PROYECTADO`, así que tomar un canal —que las incluye— las
+ * contaría DOS VECES: $50M de más en el calendario de caja, sin un solo error, porque el número sería
+ * perfectamente plausible.
  *
  * `total` apunta a "Obreros" a propósito: es el total DE ESTE BLOQUE para quien lo consume. El nombre
  * se conserva porque `JORNALES_PROY_TOTAL` ya está publicado y citado por fórmulas del Sheet; el
  * contrato es que ese nombre significa "los jornales de obra proyectados", no "la nómina entera".
+ *
+ * ═══ `consolidado` SE FUE, NO SE REAPUNTÓ (14/08) ═══
+ *
+ * Era el índice de la columna "TOTAL" del calendario, que dejó de existir cuando el cuadro pasó a
+ * publicar las dos mitades del acuerdo (`Banco` y `Efectivo`) en lugar de su suma. Nadie lo leía —esa
+ * era justamente la advertencia de arriba— así que reapuntarlo a `Banco` habría dejado a mano, y con
+ * nombre inocente, exactamente el índice que no se puede consumir. `banco` y `efectivo` se declaran
+ * porque el layout los tiene, y siguen sin consumidores por la misma razón de siempre.
  */
+// `banco` ocupa el lugar que tenía `consolidado` (el TOTAL de la fila) desde el 14/08: el dueño pidió
+// cuatro veces las DOS mitades del acuerdo 50/50 en la proyección y el calendario publicaba sólo el
+// efectivo. El TOTAL salió porque era la suma de las tres columnas que tenía al lado y no decidía
+// nada; y `consolidado` estaba declarado acá sin un solo lector, así que nada aguas abajo lo pierde.
 export const COL_PROYECCION = {
-  desde: 0, hasta: 1, pago: 2, total: 3, oficina: 4, direccion: 5, consolidado: 6, efectivo: 7,
+  desde: 0, hasta: 1, pago: 2, total: 3, oficina: 4, direccion: 5, banco: 6, efectivo: 7,
 }
 
 export function filasQuincenas(bloques, filaInicio = 6, hoja = '_J_OBREROS') {
@@ -103,7 +116,17 @@ export function filasQuincenas(bloques, filaInicio = 6, hoja = '_J_OBREROS') {
       // (feriados, días sin cuadrilla). Medido en el bloque del 16/3: COUNTA da 12 pero el último
       // día está en la posición 14 → la celda quedaba VACÍA. Hay que buscar la POSICIÓN del último
       // no vacío, no contar cuántos hay.
-      { f: `=IFERROR(INDEX(${H}!F${ff}:U${ff},SUMPRODUCT(MAX((${H}!F${ff}:U${ff}<>"")*(COLUMN(${H}!F${ff}:U${ff})-COLUMN(${H}!F${ff})+1)))),"")` },
+      //
+      // ═══ EL SEPARADOR VA EN LOCALE, Y ACÁ COSTÓ LA COLUMNA ENTERA (15/08) ═══
+      //
+      // Era `INDEX(rango, n)` con COMA. El archivo es es_AR: Google la acepta al escribir y GUARDA
+      // `;`. Escribir funcionaba, entonces, pero la fórmula que el generador MANDA deja de ser la que
+      // la pestaña DEVUELVE — y todo mecanismo que se reconoce a sí mismo comparando esos dos textos
+      // queda ciego. Medido contra `sheet_huella_celda`: la huella de B134 quedó sellada con
+      // `f#:u#,sumproduct(` y la pestaña devuelve `f#:u#;sumproduct(`, así que la huella no coincidía
+      // ni consigo misma y el fósil de esta misma columna no se podía reclamar como propio.
+      // Es la única fórmula multiargumento que emite esta función; el resto de la pestaña ya usa `;`.
+      { f: `=IFERROR(INDEX(${H}!F${ff}:U${ff};SUMPRODUCT(MAX((${H}!F${ff}:U${ff}<>"")*(COLUMN(${H}!F${ff}:U${ff})-COLUMN(${H}!F${ff})+1))));"")` },
       { f: `=COUNTA(${H}!F${ff}:U${ff})` },
       { f: `=COUNT(${H}!A${b.inicio}:A${b.fin})` },
       // D = días hábiles, E = personas. Eran C y D hasta el 31/07: entró "Se paga el" en la columna C

@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   pedidos, ARCA, CAJA, ESPECIE, especieDe, desalineados, esSerialDeFecha, publicar,
-  aRescatar, retirar, mientenPorEspecie,
+  aRescatar, retirar, mientenPorEspecie, aRetirarPorMentir,
 } from './rangos-nombrados.mjs'
 
 test('crea el nombre cuando no existe', () => {
@@ -284,4 +284,67 @@ test('mientenPorEspecie caza el CUIT bajo un contador y el comprobante bajo un i
 test('un nombre SIN especie declarada no se juzga: inventar el criterio no es auditar', () => {
   assert.equal(ESPECIE.PROV_LIBRETA, undefined)
   assert.deepEqual(mientenPorEspecie([{ nombre: 'PROV_LIBRETA', hoja: 'Proveedores', valor: 'una nota del dueño' }]), [])
+})
+
+// ═══ LOS TRECE RANGOS DE ARCA, TAL COMO ESTABAN EN EL ARCHIVO EL 14/08/2026 ═══
+//
+// No es un ejemplo: son las coordenadas y los valores leídos del archivo real. Las filas 127-132 de
+// "Proveedores" son HOY el cuerpo de la lista de comprobantes de ARCA —columna B = CUIT, columna C =
+// N° de comprobante— y el bloque de control del que estos nombres cuelgan ya no vive ahí. Cada uno
+// promete un importe o un contador y publica un CUIT o un comprobante, y el daño no se ve en esta
+// pestaña: se ve en Recurrentes, Estructura, Materiales y el Cash Flow Mensual, que muestran lo que
+// haya en esa celda.
+const ARCA_EN_EL_ARCHIVO = [
+  { name: ARCA.total, fila: 127, col: 3, valor: '0008-00021938' },
+  { name: ARCA.comprobantes, fila: 127, col: 2, valor: '30-71170927-0' },
+  { name: ARCA.notasMonto, fila: 128, col: 3, valor: '2470-01608263' },
+  { name: ARCA.notasN, fila: 128, col: 2, valor: '30-67881435-7' },
+  { name: ARCA.enComprasMonto, fila: 129, col: 3, valor: '2470-01545411' },
+  { name: ARCA.sinNumeroMonto, fila: 130, col: 3, valor: '0006-00006997' },
+  { name: ARCA.sinNumeroN, fila: 130, col: 2, valor: '30-71135522-3' },
+  { name: ARCA.faltanMonto, fila: 131, col: 3, valor: '0038-00025483' },
+  { name: ARCA.faltanN, fila: 131, col: 2, valor: '30-56736337-2' },
+  { name: ARCA.ventasMonto, fila: 132, col: 3, valor: '0007-00002477' },
+  { name: ARCA.ventasN, fila: 132, col: 2, valor: '23-36911157-4' },
+]
+
+test('EL DEFECTO · un nombre que promete plata sobre un comprobante no puede pasar por sano', () => {
+  const leer = (d) => ARCA_EN_EL_ARCHIVO.find((x) => x.name === d.name)?.valor
+  const mal = desalineados(ARCA_EN_EL_ARCHIVO, leer)
+  assert.equal(mal.length, ARCA_EN_EL_ARCHIVO.length,
+    'los once tienen que salir marcados: ninguno apunta a lo que su nombre promete')
+  for (const m of mal) {
+    assert.ok(m.espera === 'importe' || m.espera === 'entero')
+    assert.equal(m.encontro, 'texto', `${m.name}: un CUIT y un comprobante son TEXTO, no plata`)
+  }
+})
+
+test('un CUIT no cuenta como entero aunque parezca un número', () => {
+  // "30-56736337-2" tiene guiones: si `especieDe` los ignorara, un CUIT pasaría por contador.
+  assert.equal(especieDe('30-56736337-2'), 'texto')
+  assert.equal(especieDe('0038-00025483'), 'texto', 'los ceros a la izquierda delatan un comprobante')
+  assert.equal(especieDe('433'), 'entero', 'el 433 de "cargados en Compras" sí es un contador')
+})
+
+test('el nombre emigrado a otra pestaña que tampoco convence se RETIRA, no se deja mintiendo', () => {
+  const SHEET = 5
+  // ARCA_FALTAN_MONTO vive en Materiales (sheetId 9) sobre un comprobante; su destino calculado en
+  // Proveedores tampoco confirmó. No queda ninguna celda de la que se pueda afirmar que dice la verdad.
+  const existentes = [
+    { name: ARCA.faltanMonto, namedRangeId: 'r1', range: { sheetId: 9, startRowIndex: 52, startColumnIndex: 1 } },
+    { name: ARCA.faltanN, namedRangeId: 'r2', range: { sheetId: SHEET, startRowIndex: 130, startColumnIndex: 1 } },
+  ]
+  const mal = [{ name: ARCA.faltanMonto, espera: 'importe' }, { name: ARCA.faltanN, espera: 'entero' }]
+  assert.deepEqual(aRetirarPorMentir(mal, existentes, SHEET, []), [ARCA.faltanMonto],
+    'el que vive en otra pestaña se retira; el que vive acá lo resuelve aRescatar')
+})
+
+test('lo que se va a rescatar no se retira: sería borrar lo que se está por arreglar', () => {
+  const existentes = [{ name: ARCA.faltanMonto, namedRangeId: 'r1', range: { sheetId: 9, startRowIndex: 52, startColumnIndex: 1 } }]
+  const mal = [{ name: ARCA.faltanMonto, espera: 'importe' }]
+  assert.deepEqual(aRetirarPorMentir(mal, existentes, 5, [ARCA.faltanMonto]), [])
+})
+
+test('un nombre que todavía no existe no se retira ni se crea sobre contenido dudoso', () => {
+  assert.deepEqual(aRetirarPorMentir([{ name: ARCA.faltanN, espera: 'entero' }], [], 5, []), [])
 })

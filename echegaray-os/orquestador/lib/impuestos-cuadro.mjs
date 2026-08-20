@@ -286,6 +286,47 @@ export function formulaVencidoImpago(filas = []) {
  */
 export const formulaDeudaPendiente = (celdaPrendario, celdaPlanes) => `=${celdaPrendario}+${celdaPlanes}`
 
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LOS SALDOS A FAVOR — UNA SUMA QUE NO SE ROMPE, Y QUE TAMPOCO MIENTE (17/08)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// EL DEFECTO QUE VIO EL DUEÑO. La fila "⇒ IMPUESTOS A FAVOR" era `=$H$57+$G$67` y publicaba
+// `#VALUE!` en la primera pantalla de la pestaña, porque H57 —el saldo de libre disponibilidad de
+// julio— tiene la leyenda "⚠ vence 20/08" que alguien tipeó ahí.
+//
+// LA CAUSA DE FONDO SE ARREGLA EN OTRO LADO (`esNumero`, en iva-libre-disponibilidad.mjs: el ancla
+// ya no se para en una leyenda, así que el hero vuelve a apuntar a junio). Esto es la SEGUNDA
+// defensa: la celda de destino la escribe una persona y puede volver a tener texto mañana.
+//
+// POR QUÉ NO UN IFERROR. Dejaría $0 donde hay $20,2M a favor. Un cero se lee como "no tengo nada a
+// favor" y nadie va a verificarlo — es peor que el #VALUE!, que al menos grita. La regla del repo es
+// que un hueco se vea como un hueco: la celda dice qué término falta y en qué impuesto ir a mirar.
+//
+// Locale es_AR: separador `;`.
+
+/** El texto del hueco, nombrando cuál de los dos términos no es un importe. */
+const faltante = (celdaIva, celdaIibb) =>
+  `"${ALERTA} falta el saldo de "&IF(ISNUMBER(${celdaIva});"";"IVA ")&IF(ISNUMBER(${celdaIibb});"";"IIBB ")`
+  + '&"— hay texto donde va un importe"'
+
+/**
+ * NÚCLEO PURO: los dos saldos a favor sumados, o el hueco declarado. `COUNT` cuenta números y sólo
+ * números: si cualquiera de los dos términos es texto, la suma no se hace y no hay #VALUE!.
+ *
+ * NO SE PUBLICA UNA SUMA PARCIAL. Mostrar el término que sí está, bajo el rótulo del total, sería un
+ * total falso con aspecto de total. El sub-ítem de abajo ya muestra el que sobrevive.
+ */
+export const formulaSaldoAFavor = (celdaIva, celdaIibb) =>
+  `=IF(COUNT(${celdaIva};${celdaIibb})=2;${celdaIva}+${celdaIibb};${faltante(celdaIva, celdaIibb)})`
+
+/**
+ * NÚCLEO PURO: un saldo suelto del hero. Si la celda tiene un importe, manda el importe; si tiene
+ * texto, se muestra ESE texto precedido del glifo —el dueño tiene que poder leer qué hay puesto ahí
+ * para ir a corregirlo— y si está vacía se declara el hueco en vez de dibujar un $0.
+ */
+export const formulaSaldoDeclarado = (celda) =>
+  `=IF(ISNUMBER(${celda});${celda};IF(${celda}="";"${ALERTA} sin dato";"${ALERTA} "&${celda}))`
+
 /**
  * NÚCLEO PURO: el próximo vencimiento, como las tres piezas que se muestran.
  * @returns {{fecha:string, concepto:string, formulaImporte:string}|null}

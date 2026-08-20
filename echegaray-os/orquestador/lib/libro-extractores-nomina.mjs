@@ -25,6 +25,10 @@ import { movimiento, SALE, estadoContraCorte } from './libro-movimientos.mjs'
 import { isoDeSerial } from './libro-extractores-fechas.mjs'
 import { estadoDeEgreso } from './caja-canales.mjs'
 import { respaldoEnLote } from './libro-respaldo-banco.mjs'
+// El criterio de "¿esta quincena se pagó?", cruzado contra el extracto. Vive afuera porque lo usan
+// DOS: este extractor (para decidir el estado) y scripts/jornales-evidencia-pago.mjs (para mostrarle
+// la evidencia al dueño). Escrito dos veces, el libro y la tabla podrían decir cosas distintas.
+import { lotesDeHaberes, testigoDeQuincena, VEREDICTO, GRITAN } from './jornales-testigos.mjs'
 
 /** La pestaña de la que salen los tres bloques. Es una sola: el bloque distingue, no la pestaña. */
 export const PESTANA_NOMINA = 'Jornales por Quincena'
@@ -49,6 +53,96 @@ const columna = (v) => (Array.isArray(v) ? v : []).map((c) => (Array.isArray(c) 
 const filaDe = (bloque, i) => `${bloque}:${i + 1}`
 
 /**
+ * NÚCLEO PURO: el estado de una quincena que NADIE probó — la diferencia entre "no salió" y "no sé".
+ *
+ * ═══ EL DEFECTO (16/08/2026): $47,4M DE DUDA PUBLICADOS COMO DEUDA CIERTA ═══
+ *
+ * Esta rama emitía `COMPROMETIDO` a secas, y `libro-movimientos.mjs` define ese estado como *"está
+ * firmado y entregado, con fecha, pero todavía no salió de la cuenta. El caso canónico es el cheque
+ * emitido y no debitado"*. De un cheque librado se SABE que no se debitó. De una quincena sin
+ * "Pagado el" no se sabe nada: los jornales se pagan en buena parte por caja física —lo dice la
+ * cabecera de `quincenaAMovimientos` cuatro líneas más abajo— así que su ausencia del extracto no
+ * prueba absolutamente nada. Medido contra el Sheet vivo: **$47.415.800 de los $70.420.524
+ * COMPROMETIDO eran esto**, el 67% de lo que la portada de CAJA llamaba deuda probada.
+ *
+ * `VENCIDO` es el estado que el libro define para exactamente este caso: *"estaba previsto para una
+ * fecha que ya pasó y nadie lo marcó como real (…) es un PROYECTADO que necesita que alguien lo mire.
+ * Se distingue porque mezclarlo con el resto esconde el trabajo pendiente."* Eso es el renglón.
+ *
+ * NO SE LLEVA LA PLATA PUESTA, Y ESA ES LA MITAD DEL ARREGLO. La obligación existe —la quincena se
+ * trabajó— y las dos tarjetas que la publican suman `COMPROMETIDO + VENCIDO`, así que el total de la
+ * deuda no se mueve un peso. Lo único que cambia es que ahora se puede DECIR cuánto de ese total
+ * está sin probar, que es lo que el dueño reclamó tres veces. Hay un test que fija que la suma de los
+ * dos estados no cambia: si algún día este arreglo empieza a restar, se pone rojo.
+ *
+ * LA FECHA FUTURA SE QUEDA EN COMPROMETIDO. Una quincena cuyo pago todavía no venció no tiene nada
+ * que conciliar: es una obligación normal y corriente. Mandar toda la nómina futura a "sin probar"
+ * sería el error opuesto y del mismo tamaño.
+ *
+ * SIN CORTE NO SE DEGRADA NADA: sin extracto no hay contra qué medir el atraso, y afirmar la duda sin
+ * poder fecharla es inventar en la otra dirección. Falla hacia el comportamiento anterior.
+ */
+const estadoSinProbar = (fecha, corte) => (
+  Number.isFinite(fecha) && Number.isFinite(corte) && fecha < corte ? 'VENCIDO' : 'COMPROMETIDO'
+)
+
+/**
+ * NÚCLEO PURO: un renglón del registro, ya con su veredicto, convertido en movimiento(s).
+ *
+ * ═══ SE PARTE EN LO QUE EL BANCO PRUEBA Y LO QUE NO ═══
+ *
+ * El extracto prueba la columna "Banco" de la quincena, no su TOTAL: el adelanto y lo pagado contra
+ * recibo salen por caja física y el banco no los ve. Marcar REAL el total entero porque el lote
+ * bancario coincide sería presentar una inferencia como hecho. Se emiten dos renglones —el mismo
+ * patrón que `partirContraElExtracto` usa para Dirección— y la suma no se mueve un peso.
+ */
+function quincenaAMovimientos({ q, t, fecha, declarada, marcada = false, importe, i }, { corte, extracto, aviso }) {
+  const comun = {
+    signo: SALE,
+    importe,
+    concepto: `Jornales · quincena al ${isoDeSerial(q.hasta ?? fecha)}`,
+    rubro: RUBRO_JORNALES,
+    origen: { pestana: PESTANA_NOMINA, fila: filaDe('Quincenas reales', i) },
+  }
+  const nombre = `la quincena al ${isoDeSerial(q.hasta ?? fecha)} ($${importe})`
+  if (GRITAN.includes(t.veredicto)) {
+    aviso(`libro-extractores-nomina(Jornales): ${nombre} sale ${t.veredicto} — ${t.motivo}.`)
+  }
+  // El dueño la marcó y la fecha es creíble: manda su edición. `estadoDeEgreso` sigue vigilando que un
+  // "pagado" con fecha POSTERIOR al corte no se cuente como plata que ya salió (el caso de Dirección).
+  if (declarada !== null) {
+    return [movimiento({ ...comun, fecha, estado: estadoDeEgreso({ instrumento: 'desconocido', pagado: true, fecha, corte }) })]
+  }
+  // MARCADA CON FECHA IMPOSIBLE: el dueño afirmó que se pagó y la aritmética sólo desmintió el CUÁNDO.
+  // Sale REAL con la fecha prevista, que es la única defendible, y el grito de arriba ya nombró por qué.
+  if (marcada) {
+    return [movimiento({ ...comun, fecha, estado: estadoDeEgreso({ instrumento: 'desconocido', pagado: true, fecha, corte }) })]
+  }
+  // NADIE LA MARCÓ Y EL BANCO NO LA PRUEBA: no es un compromiso firme, es un renglón sin conciliar.
+  if (t.veredicto !== VEREDICTO.banco || !t.cubierto) {
+    return [movimiento({ ...comun, fecha, estado: estadoSinProbar(fecha, corte) })]
+  }
+  // El débito respaldó a esta quincena y no puede respaldar a otra.
+  for (const fila of t.filas) extracto?.usados?.add(fila)
+  aviso(`libro-extractores-nomina(Jornales): ${nombre} no tiene «Pagado el» y el extracto la prueba: `
+    + `$${t.cubierto} debitados el ${isoDeSerial(t.fecha)}. Esa parte pasa a REAL; el resto sigue abierto.`)
+  const resto = Math.round((importe - t.cubierto) * 100) / 100
+  const ms = [movimiento({
+    ...comun,
+    fecha: t.fecha,
+    importe: t.cubierto,
+    estado: 'REAL',
+    concepto: `${comun.concepto} · ${t.motivo}`,
+    origen: { ...comun.origen, fila: `${comun.origen.fila}:real` },
+  })]
+  if (resto > 0) {
+    // El resto es justamente la parte que el débito NO cubrió: tan sin probar como la de arriba.
+    ms.push(movimiento({ ...comun, fecha, importe: resto, estado: estadoSinProbar(fecha, corte), origen: { ...comun.origen, fila: `${comun.origen.fila}:pendiente` } }))
+  }
+  return ms
+}
+
+/**
  * JORNALES POR QUINCENA → los egresos de la nómina de obra.
  *
  * ═══ LA FECHA QUE DECIDE, EN EL MISMO ORDEN QUE LA FÓRMULA ═══
@@ -63,34 +157,72 @@ const filaDe = (bloque, i) => `${bloque}:${i + 1}`
  *
  * El bloque real son las quincenas CERRADAS, que no es lo mismo que PAGADAS: la que cierra el 31/07 se
  * paga el 03/08. Marcarla REAL diría que la plata ya salió de la cuenta cinco días antes de que salga
- * —una estimación presentada como hecho, que es la regla de oro nº 2— así que manda la columna que el
- * dueño marca: con "Pagado el" es REAL, sin ella es COMPROMETIDO (liquidada, con fecha, todavía en la
- * cuenta). Para el calendario de CAJA no cambia un peso: los tramos filtran por FECHA, no por estado.
+ * —una estimación presentada como hecho, que es la regla de oro nº 2—.
+ *
+ * ═══ PERO LA COLUMNA TIPEADA YA NO DECIDE SOLA (16/08/2026) ═══
+ *
+ * Hasta hoy esta función hacía `estado = pagado === null ? 'COMPROMETIDO' : 'REAL'`. La columna N se
+ * desalineó ocho filas y OCHO quincenas quedaron sin fecha: el libro las publicó impagas y CAJA dijo
+ * que faltaba pagar más de lo ya pagado. **$70.431.250 de deuda que salió de una celda vacía.**
+ *
+ * Un testigo que falta no prueba lo contrario. Ahora se cruza contra el extracto
+ * (`lib/jornales-testigos.mjs`) y cada renglón sale con uno de tres desenlaces:
+ *   · el banco lo prueba → la parte que salió por banco es REAL, con la FECHA DEL DÉBITO;
+ *   · el dueño lo marcó   → REAL (su edición manda), salvo fecha imposible o posterior al corte;
+ *   · nadie puede probarlo → COMPROMETIDO **y se grita con nombre y monto**, que es la diferencia
+ *     entre una deuda medida y una deuda inventada en silencio.
  *
  * @param {{reales?:object, proyectadas?:object}} bloques columnas de los rangos con nombre
  * @param {number|null} corte serial del corte, para que un proyectado vencido se vea como VENCIDO
+ * @param {{aviso?:Function, extracto?:object}} ctx el extracto compartido (`debitos`/`corte`/`usados`)
  * @returns {Array} movimientos
  */
-export function deJornalesQuincenas({ reales = {}, proyectadas = {} } = {}, corte = null) {
+export function deJornalesQuincenas({ reales = {}, proyectadas = {} } = {}, corte = null,
+  { aviso = avisoPorDefecto, extracto = null } = {}) {
   const out = []
   const real = {
-    pago: columna(reales.pago), hasta: columna(reales.hasta),
+    pago: columna(reales.pago), hasta: columna(reales.hasta), banco: columna(reales.banco),
     pagado: columna(reales.pagado), total: columna(reales.total),
   }
+  const lotes = lotesDeHaberes(extracto?.debitos ?? [], { usados: extracto?.usados })
+  const desdeExtracto = (extracto?.debitos ?? []).reduce((a, d) => (a === null || d.fecha < a ? d.fecha : a), null)
   for (let i = 0; i < Math.max(real.total.length, real.pago.length, real.hasta.length); i++) {
-    const pagado = num(real.pagado[i])
-    const fecha = pagado ?? num(real.pago[i]) ?? num(real.hasta[i])
+    const q = { pago: num(real.pago[i]), hasta: num(real.hasta[i]), banco: num(real.banco[i]), pagado: num(real.pagado[i]) }
+    const t = testigoDeQuincena(q, { lotes, corte: extracto?.corte ?? null, desdeExtracto })
     const importe = num(real.total[i])
+    // La fecha declarada sólo cuenta si PUEDE ser la de este pago: una imposible movía $4,9M de enero
+    // a mayo en el Cash Flow Mensual sin dar un error. Descartada, manda la prevista.
+    const declarada = t.veredicto === VEREDICTO.imposible ? null : q.pagado
+    // ═══ DESCARTAR LA FECHA NO ES DESCARTAR EL PAGO (16/08/2026, publicado y corregido) ═══
+    //
+    // La primera versión de esto mandaba una fecha imposible a `null` y ahí terminaba: el renglón
+    // caía en COMPROMETIDO. Se publicó, y las SIETE quincenas de enero a abril —$51.941.723 que el
+    // dueño cobró hace meses— aparecieron como deuda vencida. El tramo "Vencido" de CAJA pasó de
+    // $(53.811.188) a $(98.641.528) y "falta pagar este mes" de $125,9M a $174,3M. Cambié un error
+    // por otro más grande, y en la dirección contraria a la que este archivo vino a arreglar.
+    //
+    // Son DOS afirmaciones con fuerza distinta y el código las trataba como una:
+    //   · que la celda TENGA algo → el dueño afirma que esta quincena se pagó. Es su edición y manda.
+    //   · que ese algo sea UNA FECHA CREÍBLE → afirma CUÁNDO. Eso sí lo puede desmentir la aritmética.
+    //
+    // Invalidar el cuándo no invalida el qué. Una quincena marcada con fecha imposible sale REAL con
+    // la fecha PREVISTA —la única defendible— y se grita que la fecha se descartó.
+    // EL CUARTO TESTIGO ES EL DUEÑO, Y SU RESPUESTA VA A SU COLUMNA (17/08/2026)
+    //
+    // Los jornales salen en buena parte por caja física: el extracto no los ve NUNCA y la planilla
+    // puede estar vacía. El cuarto testigo es él. Pero su confirmación NO se guarda acá: se escribe
+    // en «Pagado el» con `scripts/jornales-marcar-pagadas.mjs`, y este extractor la lee como lee
+    // cualquier otra fecha suya.
+    //
+    // Hubo una versión que la guardaba en un módulo del código y él la rechazó: *"no dejes nada que
+    // pueda hacer que arrastre error"*. Tenía razón — una confirmación viviendo en el código mientras
+    // la planilla dice otra cosa es una SEGUNDA FUENTE del mismo concepto, que es el defecto que este
+    // archivo entero viene arreglando. Una sola fuente: la columna.
+    const marcada = q.pagado !== null
+    const fecha = declarada ?? q.pago ?? q.hasta
     if (fecha === null || !importe) continue
-    out.push(movimiento({
-      fecha,
-      signo: SALE,
-      importe,
-      concepto: `Jornales · quincena al ${isoDeSerial(num(real.hasta[i]) ?? fecha)}`,
-      rubro: RUBRO_JORNALES,
-      estado: pagado === null ? 'COMPROMETIDO' : 'REAL',
-      origen: { pestana: PESTANA_NOMINA, fila: filaDe('Quincenas reales', i) },
-    }))
+    out.push(...quincenaAMovimientos({ q, t, fecha, declarada, marcada, importe, i },
+      { corte, extracto, aviso }))
   }
   const proy = { pago: columna(proyectadas.pago), hasta: columna(proyectadas.hasta), total: columna(proyectadas.total) }
   for (let i = 0; i < Math.max(proy.total.length, proy.pago.length, proy.hasta.length); i++) {

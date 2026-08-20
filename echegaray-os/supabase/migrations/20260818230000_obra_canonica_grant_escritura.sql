@@ -1,0 +1,25 @@
+-- LA POLICY ESTABA Y EL GRANT NO. Otra vez.
+--
+-- ═══ QUÉ SE ENCONTRÓ (18/08/2026, probado contra la base viva) ═══
+--
+-- `obra_canonica` tiene desde el 19/07 su policy `obra_canonica_write` —dirección y administración
+-- escriben, el resto no—, pero el único grant que se le dio a `authenticated` fue `select`
+-- (20260817223000_modulo_01_grants.sql, línea 35). RLS y GRANT son permisos distintos: la policy
+-- decide QUÉ FILAS toca un rol que ya puede tocar la tabla; el grant decide SI PUEDE TOCARLA.
+--
+-- Consecuencia medida entrando como el usuario de prueba (rol `direccion`) por PostgREST:
+--
+--   update public.obra_canonica set ubicacion = ubicacion where id = 'le-comedor';
+--   → permission denied for table obra_canonica
+--
+-- O sea: `crearObra` y `editarObra` existen, validan, y NO PUEDEN ESCRIBIR. La pantalla muestra el
+-- error del servidor —no simula un éxito—, pero el alta de obra desde la ficha del cliente y la
+-- edición desde la obra están muertas hasta que esto se aplique.
+--
+-- Es exactamente el defecto que dejó el módulo 01 entero en 404 el 17/08: policy puesta, grant
+-- ausente, y validado con el driver de Postgres —que entra como dueño del esquema y no necesita
+-- grant— en vez de por donde entra la web.
+--
+-- No se toca la policy: quién puede escribir ya está decidido y sigue igual.
+
+grant insert, update, delete on public.obra_canonica to authenticated;

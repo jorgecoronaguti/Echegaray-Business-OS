@@ -49,15 +49,28 @@ export const SECCIONES_DINAMICAS = Object.freeze([
   Object.freeze({
     clave: 'deuda',
     texto: 'QUÉ SE DEBE Y CUÁNDO',
-    // "Sale ese día" y no "Se le debe" desde el 14/08: el cuadro A pasó a tener una línea POR DÍA de
-    // pago, no por proveedor, y el rótulo tiene que decir de qué habla la fila. Es el `name` del
-    // valor del pivot, así que se cambia acá y llega solo al pivot y a la fila de rótulos.
-    valores: Object.freeze(['Sale ese día', 'Facturas']),
+    // "Se le debe": el cuadro que abre la sección tiene una línea por PROVEEDOR y el rótulo dice de
+    // qué habla la fila. Fue "Sale ese día" durante las doce horas en que el eje fue la fecha de
+    // pago, y el dueño lo rechazó. Es el `name` del valor del pivot, así que se cambia acá y llega
+    // solo al pivot y a la fila de rótulos.
+    //
+    // UN SOLO VALOR: "Facturas" (el conteo) se fue porque no cambia ninguna decisión —el cuadro de
+    // detalle las lista una por una— y cada valor de más empuja una columna al vencimiento y a la
+    // nota, que son las que sí deciden. Ver `lib/proveedores-cuadro-a.mjs`.
+    valores: Object.freeze(['Se le debe']),
     aRotulos: AVISO + 1,
   }),
   Object.freeze({
     clave: 'cuentaCorriente',
-    texto: 'CUENTA CORRIENTE POR PROVEEDOR',
+    // EL TÍTULO DECÍA "CUENTA CORRIENTE POR PROVEEDOR" Y ESA SECCIÓN NO ES UNA CUENTA CORRIENTE.
+    //
+    // Una cuenta corriente tiene debe, haber y saldo. Ésta tiene "Comprado 2026" y "Comprobantes":
+    // cuánto se le compró a cada uno en el año y en cuántas facturas. Nunca mostró lo pagado ni un
+    // saldo, y el saldo vive en la sección 1. El propio generador de la sección lo dice con todas las
+    // letras —"la pregunta que contesta esta sección es CONCENTRACIÓN DE PROVEEDOR: con quién se
+    // gasta"—; el rótulo del Sheet era el único que decía otra cosa.
+    texto: 'CON QUIÉN SE GASTA',
+    alias: Object.freeze(['CUENTA CORRIENTE POR PROVEEDOR']),
     valores: Object.freeze(['Comprado 2026', 'Comprobantes']),
     aRotulos: 1,
   }),
@@ -69,6 +82,48 @@ export const VALORES_DETALLE = Object.freeze(['Importe'])
 const norm = (v) => String(v ?? '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 const sinNumero = (v) => norm(v).replace(/^\d{1,2}\s*[·.\-]\s*/, '')
 const vacia = (f) => (f ?? []).every((c) => String(c ?? '').trim() === '')
+
+/**
+ * ¿ESTA CELDA ES EL TÍTULO DE ESTA SECCIÓN — INCLUIDO EL NOMBRE QUE TENÍA ANTES?
+ *
+ * El sembrador ubica cada sección buscando su título POR EL TEXTO. Eso convierte a cualquier cambio
+ * de nombre en una forma silenciosa de congelar la sección: el texto nuevo no aparece en la pestaña,
+ * el viejo sigue ocupando la celda, y el plan da "ocupada" —que por diseño NO escribe—. La dinámica
+ * se queda buscando un ancla que nadie va a poner nunca, y el bloque de abajo se queda quieto días
+ * mostrando restos de corridas viejas. Ya pasó con "3 · NOTAS DE CRÉDITO".
+ *
+ * `alias` son los nombres ANTERIORES de la sección. Reconocerlos es lo que permite que un título
+ * cambie: la celda se encuentra igual, el plan la marca como distinta del texto esperado, y se
+ * reescribe. Un alias no se borra cuando el renombre ya corrió — la pestaña puede volver de una copia
+ * vieja o de un historial, y ahí el alias es lo único que sabe reencontrar el ancla.
+ */
+const esTituloDe = (celda, s) => {
+  const c = sinNumero(celda)
+  return c === norm(s.texto) || (s.alias ?? []).some((a) => c === norm(a))
+}
+
+/**
+ * ¿ESTA CELDA ES EL TÍTULO DE ESTA SECCIÓN? — para el que necesita UBICARLA en la pestaña.
+ *
+ * El número de una sección NO ES SUYO: sale del orden, y se corre solo en cuanto alguien intercala
+ * otra sección arriba. Quien busca su bloque por `/^2 ·/` se queda sin bloque el día que eso pasa, y
+ * con un `throw` que no dice por qué. Pasó dos veces:
+ *
+ *   · el límite de ABAJO de la sección 2 estaba anclado a `/^3 ·/` y quedó huérfano cuando el
+ *     generador de texto renumeró — hoy es "la sección que sigue, sea la que sea";
+ *   · el ancla de ARRIBA quedó en `/^2 ·/`, y al intercalarse "QUÉ SALE CADA DÍA" la concentración
+ *     pasó a ser la 3: `no encontré la fila de rótulos de la sección 2`.
+ *
+ * El texto es lo único estable, y con `alias` sobrevive incluso a un renombre.
+ *
+ * @param {unknown} celda  el contenido de la columna A de una fila
+ * @param {string} clave   la clave de la sección en SECCIONES_DINAMICAS
+ */
+export function esTituloDeSeccion(celda, clave) {
+  const s = SECCIONES_DINAMICAS.find((x) => x.clave === clave)
+  if (!s) throw new Error(`"${clave}" no es una sección dinámica`)
+  return esTituloDe(celda, s)
+}
 
 /** El título completo, con su número. El número sale del orden de las secciones, nunca de acá. */
 export const tituloCompleto = (texto, n) => `${n} ${SEPARADOR} ${texto}`
@@ -106,7 +161,7 @@ export function planDeSiembra({ filas = [], secciones = SECCIONES_DINAMICAS, num
   if (typeof numero !== 'function') throw new Error('planDeSiembra: falta `numero(clave)`')
   return secciones.map((s) => {
     const texto = tituloCompleto(s.texto, numero(s.clave))
-    const iTitulo = filas.findIndex((f) => sinNumero((f ?? [])[0]) === norm(s.texto))
+    const iTitulo = filas.findIndex((f) => esTituloDe((f ?? [])[0], s))
     if (iTitulo >= 0) {
       const igual = norm((filas[iTitulo] ?? [])[0]) === norm(texto)
       return { clave: s.clave, estado: igual ? 'presente' : 'renumerado', fila: iTitulo + 1, texto }

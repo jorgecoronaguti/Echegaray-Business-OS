@@ -10,8 +10,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { colDe, grilla, ultimoDiaCargado, rangosDeJornales, RANGOS_RETIRADOS, COLS_PAGO, COLS_ANIO, COL_ANIO } from './jornales-pestana.mjs'
-import { repartoQuincena, repartoPersona, filasDePersonas, ACUERDO_BANCO } from '../lib/jornales-reparto-pago.mjs'
+import {
+  repartoQuincena, repartoPersona, filasDePersonas, ACUERDO_BANCO,
+  canalesProyectados, DIRECCION_POR_BANCO,
+} from '../lib/jornales-reparto-pago.mjs'
 import { verificarRangos, explicarProblemas } from '../lib/rangos-con-nombre.mjs'
+import { expresionCierreDeQuincena } from '../lib/jornales-real-vs-estimado.mjs'
 import { VACIO, tiene } from '../lib/preservar-anotaciones.mjs'
 
 // Bloques mínimos con la forma que `filasQuincenas` y el cuadro de oficina esperan.
@@ -238,6 +242,8 @@ import { parsearAcuerdos, escalonDe, escalonVigenteEn } from '../lib/uocra-acuer
 import { mesesDelMotor, formulaSigmaDelMes } from '../lib/motor-salarial.mjs'
 import { auditarPatron, glosasLargas } from '../lib/patron-pestana.mjs'
 import { contrastarEscala } from '../lib/uocra-paritaria.mjs'
+import { LINEA_DRIVER_OFICINA } from '../lib/oficina-escalon.mjs'
+import { ALERTA } from '../lib/glifos.mjs'
 
 const cinco = (rotulo, [oe, of, mo, ay, se]) => [
   [rotulo, 'Oficial Especializado', 'Hora', String(oe), '', '', String(oe), String(oe)],
@@ -405,6 +411,63 @@ test('PAGO 3 · EL 50/50 SE CALCULA CUANDO BANCO ESTÁ EN CERO, Y EL DATO CARGAD
   assert.match(aviso, /SUMPRODUCT/, 'el aviso está tipeado: tiene que apagarse solo cuando carguen BANCO')
 })
 
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL DEFECTO: LA FILA DE DIRECCIÓN NO TENÍA CANAL, Y LA FILA DE TOTAL DEJABA DE SUMAR
+//
+// «Por banco» de Dirección publicaba "—" con el argumento de que el canal de los retiros no está
+// registrado. Medido en la pestaña viva del 14/08: la fila de total decía «Por banco» $5.069.615 +
+// «En efectivo» $4.090.971 = $9.160.585 contra un «Neto a pagar» de $18.331.585. La identidad que
+// hace auditable el cuadro se rompía por $9.171.000 —el retiro entero— en el ÚNICO renglón que el
+// dueño usa para operar el pago, y sin una sola celda en rojo.
+//
+// La regla que lo cierra es del dueño: *"oficina 2 empleados 50 y 50, administracion todos por
+// banco"* (03/08). Revertir a "—" deja este test en rojo.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+test('PAGO 3bis · NINGUNA NÓMINA QUEDA SIN CANAL: las tres suman contra el neto', () => {
+  const [cNeto, cBanco, cEfec] = ['Neto a pagar', 'Por banco', 'En efectivo'].map(colPago)
+  for (let f = gm.hero.f0; f <= gm.hero.fFin; f++) {
+    for (const c of [cBanco, cEfec]) {
+      const celda = String(gm.filas[f - 1][c] ?? '')
+      assert.ok(celda.startsWith('='),
+        `fila ${f}: «${COLS_PAGO[c]}» no es un número (quedó "${celda}") y la fila de total deja de sumar el neto`)
+    }
+  }
+  // DIRECCIÓN VA ENTERA AL BANCO, y se lee de su propia fila: no un porcentaje, no una constante
+  // copiada — la celda cita su «Neto a pagar», así que el efectivo da 0 por construcción.
+  const fDir = gm.hero.fFin
+  assert.match(String(gm.filas[fDir - 1][cBanco]), new RegExp(`${L(cNeto)}${fDir}`),
+    'el banco de Dirección dejó de ser su neto entero')
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL DEFECTO: «PERSONAS» LEÍA LA COLUMNA B DEL BLOQUE MENSUAL "PORQUE AHÍ ESTABAN LAS PERSONAS"
+//
+// Dejó de estar el 14/08: cuando Oficina rehizo su grilla, la B pasó a ser «Ajuste escalón» y el
+// cuadro que decide el pago publicó **1,019 personas** en Oficina y 1,0384 en Dirección. Un número
+// plausible en la columna equivocada, sin error y sin #REF. Es el mismo defecto que `colDe` existe
+// para impedir, cometido sobre un bloque que no exporta sus rótulos.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+test('PAGO 8 · «Personas» NO SE LEE POR LETRA DE OTRO BLOQUE — el defecto de las "1,019 personas"', () => {
+  const cPer = colPago('Personas')
+  // Primero el hecho que produjo el defecto: la B del bloque mensual NO es «Personas».
+  const encOfi = gm.filas[gm.o0 - 2].map(String)
+  assert.equal(encOfi[1], 'Ajuste escalón', 'el bloque mensual cambió de layout: revisá quién lee su columna B')
+  for (const [nombre, fila, r0, r1] of [
+    ['oficina', gm.hero.f0 + 1, gm.o0, gm.oFin],
+    ['dirección', gm.hero.fFin, gm.d0, gm.dFin],
+  ]) {
+    const celda = String(gm.filas[fila - 1][cPer] ?? '')
+    assert.doesNotMatch(celda, new RegExp(`\\$B\\$${r0}:\\$B\\$${r1}`),
+      `${nombre}: «Personas» volvió a leer la columna B del bloque mensual, que es «Ajuste escalón»`)
+    // Y NO SE ESTAMPA UN NÚMERO: el plantel se cuenta sobre un rango vivo, así que una alta o una baja
+    // lo mueve sola. Un 2 escrito acá es cierto hoy y mentira el día que entre alguien.
+    assert.match(celda, /^=COUNTA\(/, `${nombre}: «Personas» dejó de contarse sobre un rango vivo ("${celda}")`)
+    assert.doesNotMatch(celda, /^=?\d+$/, `${nombre}: el plantel quedó estampado`)
+  }
+  // El de dirección cuenta la tabla de socios que sale de Compras, tres filas más arriba de su grilla.
+  assert.equal(String(gm.filas[gm.hero.fFin - 1][cPer]), `=COUNTA($A$${gm.dp0}:$A$${gm.dpFin})`)
+})
+
 test('PAGO 4 · EL AVISO DE HORAS INCOMPLETAS SE APAGA SOLO, POR LOS DOS CAMINOS', () => {
   // *"las horas están incompletas: 1.223 reales de 1.620 previstas"*. El total va a subir cuando se
   // carguen los últimos días, y el cuadro tiene que avisarlo — pero sólo mientras sea cierto.
@@ -454,6 +517,20 @@ test('PAGO 6 · LA ARITMÉTICA DEL 50/50, CONTRA LOS NÚMEROS REALES DE LA QUINC
   assert.equal(repartoPersona({ total: 400000, adelanto: 0, banco: 300000 }).banco, 300000)
   assert.equal(repartoPersona({ total: 400000, adelanto: 0, banco: 300000 }).bancoCalculado, false)
   assert.equal(ACUERDO_BANCO, 0.5, 'el acuerdo del dueño dejó de ser 50/50')
+})
+
+test('PAGO 6bis · LAS DOS MITADES DE LA PROYECCIÓN SUMAN EL TOTAL, POR CONSTRUCCIÓN', () => {
+  // La identidad no se verifica leyendo dos fórmulas y confiando: se construye. `banco` es `efectivo`
+  // más dirección entera, así que banco + efectivo = obreros + oficina + dirección SIEMPRE — y es lo
+  // que autorizó a sacar la columna TOTAL del calendario sin perder el número.
+  const c = canalesProyectados({ obreros: 'D29', oficina: 'E29', direccion: 'F29' })
+  assert.equal(c.efectivo, '=(D29+E29)/2')
+  assert.equal(c.banco, `${c.efectivo}+F29`, 'banco dejó de ser el efectivo más el retiro entero de dirección')
+  // LA TRAMPA DEL LOCALE: en es_AR la coma separa argumentos, así que `*0,5` parte la fórmula en dos y
+  // la celda queda en #ERROR. El acuerdo se escribe `/2` y el 0,5 vive sólo del lado del JavaScript.
+  for (const f of [c.banco, c.efectivo]) assert.doesNotMatch(f, /0[,.]5/)
+  // Y DIRECCIÓN VA ENTERA, no a la mitad: la orden del dueño del 03/08.
+  assert.equal(DIRECCION_POR_BANCO, 1, 'dirección dejó de cobrar todo por banco sin que nadie lo dijera')
 })
 
 test('PAGO 7 · las filas del cuadro son PERSONAS, no filas numeradas del espejo', () => {
@@ -652,7 +729,11 @@ test('UN SOLO DRIVER: obra, OFICINA y DIRECCIÓN se proyectan con el factor de p
 
   // OFICINA: los meses sin cargar toman el factor RELATIVO a su propio mes base (su planilla va
   // atrasada). Sin la división se le aplicaría el aumento acumulado desde antes de su último sueldo.
-  const ofiProy = gm.filas.slice(gm.o0 - 1, gm.oFin).filter((f) => String(f[3]) === 'proyección')
+  // CAMBIO DE CONTRATO (14/08): el «Estado» de un mes proyectado ahora dice además de dónde sale su
+  // aumento (`proyección · Ac.Mayo 2026`, `proyección · ▲ firmado hasta 08/2026`). Se filtra por
+  // prefijo — con la igualdad exacta este test se quedaba con CERO filas y pasaba sin mirar nada, que
+  // es la peor forma de romperlo.
+  const ofiProy = gm.filas.slice(gm.o0 - 1, gm.oFin).filter((f) => String(f[3]).startsWith('proyección'))
   assert.ok(ofiProy.length >= 5, `esperaba meses de oficina proyectados y hay ${ofiProy.length}`)
   // EL FACTOR VIVE EN LA B DESDE EL 14/08 (la G pasó a ser «Adelanto»). El índice sale de acá y no
   // del encabezado a propósito: si mañana se mueve otra vez, este test tiene que ponerse rojo.
@@ -1000,7 +1081,7 @@ test('la columna "Equivale a (convenio)" del plantel no lleva el centinela en ni
 // EL FORMATO, PROBADO EN FRÍO (06/08). Los dos defectos de abajo se vieron MIRANDO la pestaña y
 // ninguno da error: una cifra mal formateada es plausible y equivocada, que es la peor clase.
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
-import { requestsDeFormato } from './jornales-pestana.mjs'
+import { requestsDeFormato, ANCHO } from './jornales-pestana.mjs'
 
 /** El numberFormat que termina aplicándose a una celda: gana el ÚLTIMO pedido que la cubre. */
 const formatoDe = (reqs, fila, col) => {
@@ -1114,6 +1195,53 @@ test('LA JERARQUÍA LLEGA A LA PESTAÑA: cinco secciones en 11 y tres sub-seccio
     'ninguna regla se acortó al ancho de su bloque: el centinela sigue contando como contenido')
 })
 
+// ═══ LA COLUMNA «Pagado el» — LO QUE EL DUEÑO VIO EL 18/08 ═══
+//
+// *"jornales por quincena sigue roto desde fila 126 en adelante"* · *"no estás respetando que si yo
+// hago una modificación así sea de formato en una celda, la tenés que respetar y no volver a lo de
+// antes en la barrida"*.
+//
+// Las dos frases son el mismo defecto. El barrido de moneda iba de la B a la N e incluía la columna
+// del dueño, así que siete fechas suyas que un rediseño anterior dejó desplazadas en las filas 126 a
+// 132 —el título del cuadro 5 y sus notas— se dibujaban «$46.160», «$46.176»… La N está declarada
+// suya desde el 31/07 y `push()` la rellena con `''` en vez del centinela justamente por eso:
+// preservar el valor y repintarle el formato encima es preservar a medias.
+test('el barrido de moneda NO toca la columna del dueño, en ninguna fila de la pestaña', () => {
+  const reqs = requestsDeFormato(1, gm.filas, gm)
+  const N = ANCHO - 1
+  const moneda = reqs.filter((r) => r.repeatCell?.cell?.userEnteredFormat?.numberFormat?.type === 'CURRENCY')
+  for (const r of moneda) {
+    assert.ok(r.repeatCell.range.endColumnIndex <= N,
+      `un barrido de moneda llega hasta la columna ${r.repeatCell.range.endColumnIndex}: pisa «Pagado el»`)
+  }
+  // Y NINGÚN formato de moneda cae sobre la N en ninguna fila — ni por el barrido ni por una regla
+  // suelta. Se mide sobre filas del registro y sobre filas de PROSA, que es donde estaban los siete
+  // seriales: una regla que sólo cubre la tabla deja el resto de la columna pintado de pesos.
+  for (const f of [4, Math.round(gm.filas.length / 2), gm.f0, gm.fTotalReal, gm.filas.length]) {
+    assert.notEqual(formatoDe(reqs, f, N)?.type, 'CURRENCY', `fila ${f}: «Pagado el» dibujada como plata`)
+  }
+})
+
+test('«Pagado el» recibe el tipo que declara su encabezado —fecha— en TODA la columna', () => {
+  // No es opinar sobre el formato del dueño: es decir de qué es la columna. Sin esta regla un serial
+  // suyo se dibuja "46160" pelado, que se lee peor que "$46.160". Y tiene que cubrir la columna
+  // entera, no sólo las filas de quincena: los siete desplazados estaban FUERA de la tabla.
+  const reqs = requestsDeFormato(1, gm.filas, gm)
+  const N = ANCHO - 1
+  for (const f of [4, gm.f0, gm.fTotalReal, gm.filas.length]) {
+    assert.equal(formatoDe(reqs, f, N)?.type, 'DATE', `fila ${f}: «Pagado el» no se dibuja como fecha`)
+  }
+})
+
+test('la columna «Estado» del registro es una FRASE, no plata', () => {
+  // Dice "pagada el 18/5" o "cerrada · a pagar" y sale de una fórmula, así que el pase por contenido
+  // la saltea —ve un `=`— y se quedaba con el barrido de moneda encima.
+  const reqs = requestsDeFormato(1, gm.filas, gm)
+  for (const f of [gm.f0, gm.fTotalReal]) {
+    assert.equal(formatoDe(reqs, f, ANCHO - 2)?.type, 'TEXT', `fila ${f}: «Estado» del registro dibujada como plata`)
+  }
+})
+
 test('el calendario es TODO plata de la D a la H, y sus dos mediciones no se dibujan como pesos', () => {
   // ANTES (hasta el 13/08) este cuadro mezclaba cantidades con importes y hacían falta tres reglas de
   // formato apuntando a tres columnas distintas — dos de las cuales ya habían apuntado a la columna de
@@ -1176,23 +1304,50 @@ test('el RESTO de la quincena en curso se marca como tal, y se dice en la pesta�
   assert.ok(!g3.filas.map((f) => String(f[0] ?? '')).some(esAviso))
 })
 
-test('EL CALENDARIO CONTESTA LA PREGUNTA: obreros, oficina y dirección, y su total, en una fila', () => {
+test('EL CALENDARIO CONTESTA LA PREGUNTA: obreros, oficina y dirección, y sus dos canales, en una fila', () => {
   // La fila se rellena hasta el ancho de la pestaña con el centinela: se compara el cuadro, no el relleno.
   assert.deepEqual(gm.filas[gm.p0 - 2].slice(0, COLS_CALENDARIO.length), COLS_CALENDARIO,
     'el encabezado del calendario no es el declarado')
   const tot = gm.filas[gm.fTotalProy - 1]
   assert.match(String(tot[0]), /^⇒ Total a pagar hasta diciembre/)
-  // Las tres poblaciones y el total, cada una sumando SU columna del cuadro: es el único renglón de
-  // la pestaña donde el dueño puede leer cuánto le falta pagar de cada una.
+  // Las tres poblaciones y los dos canales, cada uno sumando SU columna del cuadro: es el único
+  // renglón de la pestaña donde el dueño puede leer cuánto le falta pagar de cada una.
   const fin = gm.p0 + gm.nProy - 1
   for (const [i, letra] of [[3, 'D'], [4, 'E'], [5, 'F'], [6, 'G'], [7, 'H']]) {
     assert.equal(String(tot[i]), `=SUM(${letra}${gm.p0}:${letra}${fin})`, `la columna ${letra} del total no suma su cuadro`)
   }
-  // El TOTAL de cada fila suma EXACTAMENTE las tres columnas de población: ni una de más (doble
-  // conteo) ni una de menos (una nómina que desaparece del calendario).
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL DEFECTO: *"jornales con la proyección de sueldos 50 y 50"* — y el cuadro publicaba UNA mitad.
+//
+// El calendario tenía `Efectivo` = (Obreros+Oficina)/2 y NO tenía `Banco`. El dueño veía cuántos
+// billetes juntar y no cuánto se transfiere, que son los dos números con los que opera el pago.
+// Revertir la columna deja este test en rojo por el encabezado Y por la fila.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+test('LA PROYECCIÓN PUBLICA LAS DOS MITADES, NO UNA — y suman exactamente las tres nóminas', () => {
+  const cabecera = gm.filas[gm.p0 - 2].slice(0, COLS_CALENDARIO.length).map(String)
+  assert.ok(cabecera.includes('Banco'), 'el calendario volvió a publicar una sola mitad del acuerdo')
+  assert.ok(cabecera.includes('Efectivo'), 'se perdió la mitad en billetes')
+  // EL ANCHO NO SE NEGOCIA: dos grillas distintas en el mismo tab es el defecto que el auditor de
+  // patrón rechaza. Si «Banco» entró sumando una novena columna, esto salta.
+  assert.equal(COLS_CALENDARIO.length, 8, 'el calendario dejó de medir ocho columnas')
+  const iB = cabecera.indexOf('Banco'); const iE = cabecera.indexOf('Efectivo')
+  const fin = gm.p0 + gm.nProy - 1
   for (let r = gm.p0; r <= fin; r++) {
-    assert.equal(String(gm.filas[r - 1][6]), `=SUM(D${r}:F${r})`, `la fila ${r} no totaliza las tres nóminas`)
+    const banco = String(gm.filas[r - 1][iB]); const efectivo = String(gm.filas[r - 1][iE])
+    // LA IDENTIDAD, LEÍDA EN LAS DOS CELDAS: banco es el efectivo MÁS dirección entera. De ahí sale
+    // que banco + efectivo = obreros + oficina + dirección, que es lo que permitió sacar el TOTAL.
+    assert.equal(efectivo, `=(D${r}+E${r})/2`, `fila ${r}: el efectivo dejó de ser la mitad de obra + oficina`)
+    assert.equal(banco, `${efectivo}+F${r}`, `fila ${r}: banco y efectivo dejaron de sumar el total de la fila`)
+    // LA TRAMPA DEL LOCALE, EN EL TEST Y NO EN LA CABEZA DE NADIE: en es_AR la coma SEPARA
+    // ARGUMENTOS, así que un `*0,5` se parte en dos y la celda queda en #ERROR. Va `/2`.
+    for (const celda of [banco, efectivo]) assert.doesNotMatch(celda, /0,5/, `fila ${r}: literal decimal en locale es_AR`)
   }
+  // Y OFICINA SE REPARTE COMO OBREROS, que es la orden del dueño: *"quiero q la tabla de oficina sea
+  // igual que la de obreros dado q el acuerdo es el mismo 50% por banco, 50% efectivo"*. Si alguien
+  // volviera a dejar el efectivo como "sólo obra", la columna E desaparece de la fórmula.
+  assert.match(String(gm.filas[gm.p0 - 1][iE]), /E\d+/, 'oficina quedó fuera del reparto por canal')
 })
 
 test('OFICINA Y DIRECCIÓN CAEN EN LA QUINCENA QUE LAS PAGA — sin huecos ni solapes', () => {
@@ -1231,12 +1386,20 @@ test('EL TOTAL DEL CALENDARIO NO SE CUENTA DOS VECES EN CAJA: el rango publicado
   // perfectamente plausible y ninguna celda en rojo.
   const proy = rangosDeJornales(gm).find((x) => x.nombre === 'JORNALES_PROY_TOTAL')
   assert.equal(proy.ancla.texto, 'Obreros')
-  assert.notEqual(proy.c0, COLS_CALENDARIO.indexOf('TOTAL'))
+  // Los dos CANALES incluyen a oficina y a dirección: publicar el nombre sobre cualquiera de ellos
+  // las contaría dos veces. Es el mismo riesgo que corría la vieja columna TOTAL, ahora repartido en
+  // dos columnas — así que la prohibición vale para las dos.
+  assert.notEqual(proy.c0, COLS_CALENDARIO.indexOf('Banco'))
+  assert.notEqual(proy.c0, COLS_CALENDARIO.indexOf('Efectivo'))
   // Y el lector de la caja tiene que leer la MISMA columna: su declaración vive en nomina-sync, que
   // es el módulo que escribe el cuadro. Dos definiciones de dónde está el total es cómo se
   // desincronizó este mismo cuadro en julio.
   assert.equal(COL_PROYECCION.total, proy.c0, 'el lector de la caja y el rango publicado apuntan a columnas distintas')
-  assert.equal(COL_PROYECCION.consolidado, COLS_CALENDARIO.indexOf('TOTAL'))
+  assert.equal(COL_PROYECCION.banco, COLS_CALENDARIO.indexOf('Banco'))
+  assert.equal(COL_PROYECCION.efectivo, COLS_CALENDARIO.indexOf('Efectivo'))
+  // `consolidado` se retiró con la columna TOTAL: un índice con nombre inocente apuntando a una
+  // columna que NO se puede consumir es exactamente cómo se vuelve a contar dos veces.
+  assert.equal(COL_PROYECCION.consolidado, undefined, 'volvió el índice de la columna consolidada')
 })
 
 test('cada PROYECTADO del cuadro del año sale del bloque de SU grupo, no de una suma propia', () => {
@@ -1247,6 +1410,99 @@ test('cada PROYECTADO del cuadro del año sale del bloque de SU grupo, no de una
   assert.equal(String(gm.filas[gm.anio.obra - 1][cProy]), `=$D$${gm.fTotalProy}`, 'obra dejó de leer la columna «Obreros» del calendario')
   assert.equal(String(gm.filas[gm.anio.oficina - 1][cProy]), `=$H$${gm.filas.findIndex((f) => /^⇒ Oficina —/.test(String(f[0]))) + 1}`)
   assert.equal(String(gm.filas[gm.anio.direccion - 1][cProy]), `=$H$${gm.filas.findIndex((f) => /^⇒ Dirección —/.test(String(f[0]))) + 1}`)
+})
+
+test('OFICINA · CADA MES PROYECTADO DICE DE DÓNDE SALE SU AUMENTO, COMO EL CUADRO DE OBRA', () => {
+  // ═══ EL DEFECTO (14/08) ═══
+  //
+  // El dueño: *"jornales con el cuadro del grupo oficina como la proyeccion de obreros"*. La de
+  // obreros publica mes por mes el origen del factor (`Ac.Mayo 2026` / `proyección`) y su estado
+  // (`✓ acuerdo firmado` / `▲ proyección`). La de oficina publicaba un factor de cuatro decimales y
+  // la palabra "proyección", idéntica para un mes apoyado en un acuerdo FIRMADO y para uno apoyado en
+  // la repetición del último tramo conocido. Y ese número viaja por `OFICINA_PROYECTADO` a CAJA.
+  //
+  // La réplica de la fixture tiene acuerdo hasta AGOSTO y la planilla de oficina cierra el 31/07, así
+  // que el mes base es JULIO: agosto se apoya en un tramo firmado y de septiembre en adelante la
+  // cadena se corta.
+  const estado = (mes) => String(gm.filas[gm.o0 - 1 + mes - 1][3])
+  assert.equal(estado(8), 'proyección · Ac.Mayo 2026', 'agosto tiene acuerdo firmado y se leía igual que diciembre')
+  // ═══ Y LA CADENA A MEDIO FIRMAR DEGRADA PARCIAL, NUNCA SE APAGA ═══
+  //
+  // Es la trampa que costó $29.960.870 en el cuadro de obra el mismo día: la Σ del convenio devuelve
+  // `""` ENTERA si a una sola categoría le falta el básico, el término `convenio` del MAX quedó en
+  // cero y la proyección cayó a la demanda de obra sin que nada se pusiera en rojo. Acá el
+  // equivalente sería decir "no sé" desde septiembre. Se dice HASTA DÓNDE hay acuerdo.
+  for (const mes of [9, 10, 11, 12]) {
+    assert.equal(estado(mes), `proyección · ${ALERTA} firmado hasta 08/2026`,
+      `${mes}: un mes sin acuerdo se lee igual que uno firmado`)
+    assert.notEqual(estado(mes), 'proyección', 'volvió a ser mudo')
+    assert.notEqual(estado(mes), '', 'se apagó en silencio, que es peor que ser mudo')
+  }
+  // UN MES PAGADO NO ARRASTRA ESCALÓN: es un hecho y no tiene proyección adentro.
+  assert.equal(estado(6), 'pagado')
+  assert.equal(estado(7), 'pagado', 'el mes base es un hecho, no una proyección')
+  // Y UN MES ANTERIOR AL BASE QUE LA PLANILLA NUNCA CARGÓ DECLARA SU OTRO CRITERIO: su importe es la
+  // base DEFLACTADA, no ajustada hacia adelante. "proyección" a secas se leía como un olvido de carga.
+  assert.equal(estado(3), 'proyección · antes del mes base')
+  // Y NINGUNO SE PASA DEL TOPE DE LA GRILLA: la columna «Estado» está en el MEDIO, y ahí un texto
+  // largo desparrama la fila (regla `nota-en-el-medio` de auditarPatron).
+  for (let mes = 1; mes <= 12; mes++) {
+    assert.ok(estado(mes).length <= 60, `${mes}: "${estado(mes)}" mide ${estado(mes).length}`)
+  }
+})
+
+test('OFICINA · EL RIGOR NO SE PAGA CON UNA COLUMNA: OFICINA_PROYECTADO no se movió', () => {
+  // El rango alimenta CAJA y los dos cash flows. Publicar el origen del aumento tentaba a agregar las
+  // dos columnas que usa el cuadro 4.2 («De dónde sale» y «Estado»), y eso corría «Proyectado» de la
+  // H: los consumidores seguirían leyendo el nombre y devolverían otra cosa, sin dar un solo error.
+  const d = rangosDeJornales(gm).find((x) => x.nombre === 'OFICINA_PROYECTADO')
+  assert.ok(d, 'se cayó OFICINA_PROYECTADO: CAJA y los dos cash flows devuelven 0 sin avisar')
+  assert.equal(d.ancla.texto, 'Proyectado', 'el rango dejó de apuntar a la columna del proyectado')
+  assert.equal(d.c0, 7, 'el proyectado se corrió de la H: los consumidores leen otra columna')
+  assert.equal(d.c1, 7)
+  // Y EL ENCABEZADO SIGUE MIDIENDO OCHO. Dos anchos de grilla en el mismo tab es el defecto que el
+  // auditor de patrón rechaza y que el dueño llama "descuadrado".
+  // El relleno de la fila es el centinela VACIO hasta el ancho físico de la pestaña: lo que se mide es
+  // cuántos ENCABEZADOS hay, que es el ancho de la grilla que el lector ve.
+  const enc = gm.filas[gm.o0 - 2].filter(tiene)
+  assert.equal(enc.length, 8, `el bloque de oficina dejó de medir 8: ${enc.join(' · ')}`)
+  assert.deepEqual(enc,
+    ['Mes', 'Ajuste escalón', 'Pagado', 'Estado', 'Se paga el', 'Banco', 'Adelanto', 'Proyectado'])
+})
+
+test('OFICINA · EL PISO: hacia adelante el sueldo nominal no baja, hacia atrás sí', () => {
+  // ═══ POR QUÉ HAY PISO Y CUÁL ES (14/08) ═══
+  //
+  // Obreros tiene el piso del convenio. Buscado en todo el repositorio: no hay escala publicada para
+  // el personal administrativo —las cinco categorías de la réplica son de obra—, así que Oficina NO
+  // tiene piso de convenio y la pestaña lo declara en vez de dejar el hueco mudo.
+  //
+  // El que sí existe es aritmético: `base × factor` con el factor viniendo de una celda que puede dar
+  // menos de 1 (el parámetro PARITARIA_UOCRA_PROYECTADA es del dueño y es editable) o no ser un
+  // número (y entonces la multiplicación cruda da CERO, que se lee como un mes sin sueldo y viaja a
+  // la caja). Sin `MAX(1;…)` este test se pone rojo.
+  const proy = (mes) => String(gm.filas[gm.o0 - 1 + mes - 1][7])
+  // El mes base de la fixture es JULIO (la planilla cierra el 31/07). De agosto a diciembre, con piso.
+  for (const mes of [8, 9, 10, 11, 12]) {
+    assert.match(proy(mes), /MAX\(1;B\d+\)/, `${mes}: la proyección puede caer por debajo del último mes pagado`)
+  }
+  // ANTES DEL MES BASE NO HAY PISO, y no es un olvido: un mes que la planilla nunca cargó se proyecta
+  // deflactando la base, y ahí un factor menor que 1 es lo correcto —en marzo se cobraba menos—.
+  for (const mes of [1, 2, 3, 4, 5]) {
+    assert.doesNotMatch(proy(mes), /MAX\(1;/, `${mes}: un mes anterior al base quedó sobreestimado por el piso`)
+  }
+  // `MAX(1;…)` y NUNCA `MAX(1,0;…)`: un literal decimal escrito por API viaja en el locale es_AR del
+  // archivo, donde la coma separa argumentos, y la celda queda en #ERROR.
+  for (let mes = 1; mes <= 12; mes++) assert.doesNotMatch(proy(mes), /\d,\d/, `${mes}: decimal con coma dentro de la fórmula`)
+})
+
+test('OFICINA · el driver se declara en la pestaña, sin meter lo gremial en el medio', () => {
+  // Requisito del dueño por partida doble: que el número diga por qué sube (si no está bajo el
+  // convenio UOCRA, cuál es su driver), y que lo gremial viva junto y debajo de las tres nóminas.
+  const enBloque = gm.filas.slice(gm.o0 - 5, gm.o0 - 1).map((f) => String(f[0] ?? ''))
+  const linea = enBloque.find((c) => c.includes(LINEA_DRIVER_OFICINA))
+  assert.ok(linea, `el bloque de oficina no declara su driver ni su piso: ${enBloque.join(' | ')}`)
+  assert.ok(linea.length <= 60, `la línea mide ${linea.length}: la pestaña vuelve a la prosa`)
 })
 
 test('UN MES DE OFICINA A MEDIO CARGAR NO PUEDE SER LA BASE DE LOS QUE SIGUEN', () => {
@@ -1264,15 +1520,20 @@ test('UN MES DE OFICINA A MEDIO CARGAR NO PUEDE SER LA BASE DE LOS QUE SIGUEN', 
   })
   const filaDe = (mes) => g2.filas[g2.o0 - 1 + mes - 1]
   // Julio está cerrado; agosto está a medias y lo dice.
+  //
+  // CAMBIO DE CONTRATO (14/08): el «Estado» de un mes NO cerrado dice además de dónde sale su aumento
+  // (`parcial · Ac.Mayo 2026`), así que la igualdad exacta pasó a prefijo. Lo que se mide sigue siendo
+  // lo mismo: que agosto no se declare pagado con la planilla al 15.
   assert.equal(String(filaDe(7)[3]), 'pagado')
-  assert.equal(String(filaDe(8)[3]), 'parcial', 'agosto sigue declarándose pagado con la planilla al 15')
+  assert.ok(String(filaDe(8)[3]).startsWith('parcial'), 'agosto sigue declarándose pagado con la planilla al 15')
   const rJulio = g2.o0 + 6
-  // La base de TODOS los meses proyectados es julio —el último CERRADO—, no agosto.
+  // La base de TODOS los meses proyectados es julio —el último CERRADO—, no agosto. Y desde el 14/08
+  // el factor va con su piso: hacia adelante un sueldo nominal no baja (ver lib/oficina-escalon.mjs).
   for (const mes of [9, 10, 11, 12]) {
-    assert.match(String(filaDe(mes)[7]), new RegExp(`^=\\$C\\$${rJulio}\\*B`), `${mes}: la base no es el último mes cerrado`)
+    assert.match(String(filaDe(mes)[7]), new RegExp(`^=\\$C\\$${rJulio}\\*MAX\\(1;B`), `${mes}: la base no es el último mes cerrado`)
   }
   // Y agosto proyecta sólo lo que le falta, sin perder lo que ya se pagó ni generar un negativo.
-  assert.equal(String(filaDe(8)[7]), `=MAX(0;$C$${rJulio}*B${g2.o0 + 7}-N(C${g2.o0 + 7}))`)
+  assert.equal(String(filaDe(8)[7]), `=MAX(0;$C$${rJulio}*MAX(1;B${g2.o0 + 7})-N(C${g2.o0 + 7}))`)
   // El ajuste de escalón del mes parcial también se mide desde julio: con la base vieja, agosto
   // recibía factor 1 sobre un mes que ya no era el suyo.
   assert.match(String(filaDe(8)[1]), /MATCH\(EOMONTH\(DATE\(2026;8;1\);0\)/)
@@ -1365,4 +1626,150 @@ test('la medida ve el texto ADENTRO de la fórmula — si no, el párrafo vuelve
   assert.equal(d[0].fila, 3)
   // Y una máscara de formato larga NO es una glosa: sin el filtro, `TEXT(x;"#,##0")` daría falso rojo.
   assert.deepEqual(glosasLargas([['t'], ['sub'], [`=TEXT(A1;"${'#,##0'.repeat(20)}")`]]), [])
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL PEDIDO DEL 03/08, QUE ESTUVO CUATRO MESES SIN EJECUTAR
+//
+// *"el valor q me mostras de la quincena es el estimado, quiero ese y el real"*.
+//
+// Lo que hacía imposible contestarlo hasta el 14/08 es que el único origen del número era JORNALES:
+// "estimado" y "real" eran la misma celda leída dos veces. Ahora el extracto del Santander prueba la
+// mitad bancaria, y estos controles existen para que ese real NO pueda volver a salir de la planilla.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+/** La columna del cuadro de contraste buscada por su rótulo — nunca por su letra. */
+const colC = (rotulo) => {
+  const i = gm.contraste.cols.indexOf(rotulo)
+  assert.ok(i >= 0, `el cuadro de contraste perdió la columna "${rotulo}"`)
+  return i
+}
+
+test('REAL 1 · el cuadro publica el estimado, el real y la diferencia de la misma quincena', () => {
+  const enc = gm.filas[gm.contraste.fCols - 1]
+  assert.deepEqual(enc.slice(0, gm.contraste.cols.length), gm.contraste.cols)
+  // El ancho tiene que ser el del hero: dos anchos de grilla en la pestaña es lo que el auditor de
+  // patrón marca como `anchos-mezclados` y el dueño ve corrido.
+  assert.equal(gm.contraste.cols.length, COLS_PAGO.length)
+  for (const f of [gm.contraste.f0, gm.contraste.fFin]) {
+    for (const rotulo of ['Estimado', 'Diferencia', 'Δ %']) {
+      assert.match(String(gm.filas[f - 1][colC(rotulo)]), /^=/, `fila ${f}: «${rotulo}» no es una fórmula viva`)
+    }
+  }
+})
+
+test('REAL 2 · el real sale del BANCO y el estimado CITA el cuadro de pago: nunca se recalcula', () => {
+  const real = String(gm.filas[gm.contraste.f0 - 1][colC('Real')])
+  // Si el real volviera a leer el espejo de jornales, el control se estaría validando contra la misma
+  // información que produce y daría cero de diferencia para siempre.
+  assert.match(real, /'_BANCO_RAW'/, 'el real de la fila de banco no sale del extracto')
+  assert.doesNotMatch(real, /_J_OBREROS|_J_OFICINA/, 'el real volvió a salir de la planilla')
+  // Y el estimado no recalcula nada: cita la fila de obra del cuadro de arriba. Recalcularlo dejaría
+  // dos versiones del mismo número en la misma pantalla.
+  const est = String(gm.filas[gm.contraste.f0 - 1][colC('Estimado')])
+  assert.match(est, new RegExp(`^=[A-H]${gm.hero.f0}$`), `el estimado no cita el cuadro de pago: ${est}`)
+})
+
+test('REAL 3 · el efectivo NO se estima: se declara el límite en la celda', () => {
+  const fila = gm.filas[gm.contraste.f0]
+  // La fila del efectivo trae su estimado (lo que hay que juntar en billetes) y NINGÚN real: la
+  // columna «Total recibo» de JORNALES es TOTAL−ADELANTO−BANCO, un residuo de la misma planilla.
+  assert.match(String(fila[colC('Estimado')]), /^=/)
+  assert.equal(String(fila[colC('Real')]), '—')
+  assert.match(String(fila[colC('De dónde sale el real')]), /residuo de la misma planilla/)
+})
+
+test('REAL 4 · el total se publica DECLARADO como inferencia, no como un hecho', () => {
+  const fila = gm.filas[gm.contraste.fFin - 1]
+  assert.match(String(fila[colC('Real')]), /^=IF\(N\(E\d+\)=0;"";E\d+\*2\)$/, 'el total inferido no es banco × 2')
+  assert.match(String(fila[colC('De dónde sale el real')]), /^INFERIDO/)
+  // Y el rótulo dice que no es la suma de las dos filas de arriba: ésas reparten el NETO y ésta es el
+  // TOTAL, que incluye lo ya adelantado. Sin decirlo, el cuadro parece no cerrar.
+  assert.match(String(fila[0]), /antes del adelanto/)
+})
+
+test('REAL 5 · el aviso del umbral se mide sobre el banco, que es la única fila con prueba', () => {
+  const aviso = String(gm.filas[gm.contraste.aviso - 1][0])
+  const fB = gm.contraste.f0
+  const est = String.fromCharCode(65 + colC('Estimado'))
+  const dif = String.fromCharCode(65 + colC('Diferencia'))
+  assert.ok(aviso.includes(`${est}${fB}`) && aviso.includes(`${dif}${fB}`), `el aviso no mira la fila del banco: ${aviso}`)
+  // No puede mirar la fila del total: ahí el real es una inferencia, y un aviso disparado por una
+  // inferencia no es un control.
+  assert.doesNotMatch(aviso, new RegExp(`[A-H]${gm.contraste.fFin}\\b`), 'el aviso se dispara sobre el total inferido')
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LO QUE SE PUBLICÓ MUDO (15/08): EL ANCLA VACÍA, Y LA GEOMETRÍA QUE TIENE QUE SEGUIR AL REGISTRO
+//
+// El cuadro salió con el estimado y sin el real, diciendo "el extracto todavía no los muestra". Era
+// falso. El ancla era `$B$fReg` —la columna «Hasta»— y de las quince filas del registro OCHO tienen
+// `=""` ahí, incluida la última. Con `N($B$148)=0` las cuatro celdas del renglón se apagaban solas.
+//
+// Y el segundo control es el de la lección ya escrita en este repo: anclar en "el último" es anclar
+// en la posición. Un rango con nombre que no CREZCA con su bloque señala a enero para siempre.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('REAL 6 · el bloque se ancla en «Quincena» y NUNCA en la columna «Hasta» del registro', () => {
+  // RED si alguien vuelve a `$B$fReg`: es exactamente la celda que se publicó vacía.
+  const fReg = gm.fLast ?? gm.f0
+  const hasta = new RegExp(`\\$${colDe('Hasta')}\\$\\d+`)
+  const desde = new RegExp(`\\$${colDe('Quincena')}\\$\\d+`)
+  const celdas = [gm.filas[gm.contraste.sub - 1][0], ...gm.filas[gm.contraste.f0 - 1].slice(0, 8)]
+    .map(String).filter((s) => s.startsWith('='))
+  assert.ok(celdas.length >= 5, 'el bloque perdió sus fórmulas')
+  const citanElRegistro = celdas.filter((s) => desde.test(s))
+  assert.ok(citanElRegistro.length >= 4, 'ninguna celda se ancla en la celda «Quincena»')
+  for (const s of celdas) {
+    assert.doesNotMatch(s, hasta, `una celda del bloque sigue anclada en «Hasta»: ${s.slice(0, 110)}`)
+  }
+  assert.ok(fReg > 0)
+})
+
+test('REAL 7 · el cierre de una quincena está definido UNA vez y lo usan los dos cuadros', () => {
+  // El calendario de pago tenía la misma fórmula escrita a mano. Dos copias del mismo criterio en la
+  // misma pestaña es cómo un día dicen cosas distintas sin que nadie lo note.
+  const esperada = `=${expresionCierreDeQuincena(`A${gm.p0}`)}`
+  assert.equal(String(gm.filas[gm.p0 - 1][1]), esperada, 'el calendario dejó de usar la definición común')
+  assert.match(String(gm.filas[gm.contraste.f0 - 1][4]), /DAY\(\$A\$\d+\)<16/, 'el real no deriva el cierre')
+})
+
+test('RANGOS · cada nombre publicado CRECE con su bloque — no se queda en la primera fila', () => {
+  // ═══ LA LECCIÓN QUE ESTE TEST FIJA ═══
+  //
+  // "Anclar en 'el último' es anclar en la posición". Un rango con nombre que apunta a una fila fija
+  // dentro de una tabla que crece hacia abajo señala a enero para siempre, y nadie se entera: lo que
+  // lo consume devuelve un número perfectamente plausible.
+  //
+  // Se mide comparando DOS grillas que sólo difieren en una quincena más. Cada rango del registro
+  // tiene que valer una fila más y terminar en la última quincena, no en la primera.
+  const conUna = grilla({ bloques: BLOQUES, pendientes: PEND, bloquesOfi: [{ mes: 6, inicio: 5, fin: 8 }] })
+  const conDos = grilla({
+    bloques: [...BLOQUES, { filaFecha: 60, inicio: 61, fin: 74 }],
+    pendientes: PEND, bloquesOfi: [{ mes: 6, inicio: 5, fin: 8 }],
+  })
+  const mapa = (g) => new Map(rangosDeJornales(g).map((r) => [r.nombre, r]))
+  const a = mapa(conUna)
+  const b = mapa(conDos)
+  const delRegistro = [...a.keys()].filter((n) => n.startsWith('JORNALES_REAL_'))
+  assert.ok(delRegistro.length >= 8, 'se perdieron los rangos del registro')
+  for (const n of delRegistro) {
+    // 1. Termina en la ÚLTIMA quincena del registro, nunca antes.
+    assert.equal(a.get(n).r1, conUna.fLast, `${n} no llega a la última quincena`)
+    assert.equal(b.get(n).r1, conDos.fLast, `${n} no llega a la última quincena`)
+    // 2. Vale una fila más cuando entra una quincena más: eso es lo que prueba que no está clavado.
+    assert.equal(b.get(n).r1 - b.get(n).r0, a.get(n).r1 - a.get(n).r0 + 1, `${n} no creció con el registro`)
+    // 3. Y NUNCA es una sola fila: un rango de una fila sobre una tabla de quince es el defecto.
+    assert.ok(a.get(n).r1 > a.get(n).r0, `${n} quedó reducido a una fila`)
+  }
+  // Los otros tres bloques, con el mismo criterio: cada rango cubre su bloque entero.
+  const bloque = { JORNALES_PROY_: [conUna.p0, conUna.p0 + conUna.nProy - 1], OFICINA_: [conUna.o0, conUna.oFin], DIRECCION_: [conUna.d0, conUna.dFin] }
+  for (const [prefijo, [r0, r1]] of Object.entries(bloque)) {
+    const suyos = [...a.values()].filter((r) => r.nombre.startsWith(prefijo))
+    assert.ok(suyos.length, `no hay ningún rango ${prefijo}*`)
+    for (const r of suyos) {
+      assert.equal(r.r0, r0, `${r.nombre} no arranca donde su bloque`)
+      assert.equal(r.r1, r1, `${r.nombre} no termina donde su bloque`)
+    }
+  }
 })

@@ -64,7 +64,7 @@ import { tarjetas, NO_REAL } from './caja-tarjetas.mjs'
 import { alertas, acciones } from './caja-avisos.mjs'
 // LA ESCALERA DE VENCIMIENTOS VIVE EN SU PROPIO ARCHIVO: la consumen el panel de acá y el conciliador
 // que compara tramo por tramo contra la planilla.
-import { BORDES, DESDE_SIEMPRE, desdeTramo, hastaTramo } from './caja-calendario.mjs'
+import { BORDES, DESDE_SIEMPRE, desdeTramo, hastaTramo, signoDelTramo, TRAMO_VENCIDO } from './caja-calendario.mjs'
 import { ALERTA } from './glifos.mjs'
 
 // `conciliar-caja-vs-cashflow.mjs` compara tramo por tramo contra lo que muestra la planilla y toma
@@ -211,6 +211,26 @@ export function grilla(cargado, refs) {
       const v = suyoOAusente(c.nombre, campo)
       return typeof v === 'string' && v.trim().startsWith('=') ? AJENA : v
     }
+    // ═══ LA FECHA DEL CONTEO YA NO SE TIPEA: SE DERIVA (16/08/2026) ═══
+    //
+    // El dueño: *"no completaste las fechas de saldos"*. `D7` y `D8` —el 40% del disponible— estaban
+    // VACÍAS desde que él borró la celda donde las tipeaba, y no las borró por descuido: *"te borré la
+    // fecha de los saldos en caja para q no te guíes en eso sino en lo q marca los timestamps del
+    // código"*. Con ellas vacías, la fila más importante del panel no decía de cuándo era y el aviso de
+    // congelado de la tarjeta no podía dispararse NUNCA sobre esas dos filas — su condición arranca
+    // con `ISNUMBER($D$n)`.
+    //
+    // Sale del CENTINELA, por rango con nombre, igual que el neto de efectivo: el anexo estampa el DÍA
+    // del conteo (`ANEXO_CONTEO_*_DIA`) y acá sólo se cita. Ninguna cuenta propia, ningún `TODAY()` —
+    // un `TODAY()` acá afirmaría que se contó hoy todos los días.
+    //
+    // LA GUARDA `ISNUMBER` NO ES DECORATIVA: mientras no haya conteo cargado la celda del anexo está
+    // VACÍA, y sin el `IF` la fecha se dibujaría como el serial 0, o sea 30/12/1899. Es el mismo
+    // defecto del `MIN` de celdas vacías que la tarjeta ya evita en el otro extremo de la cuenta.
+    const fechaDelConteo = (cuenta) => {
+      const nombre = cuenta.arqueo === DESDE_CAJA.arqueoUsdFecha ? ANEXO.conteoUsdDia : ANEXO.conteoArsDia
+      return `=IF(ISNUMBER(${nombre});${nombre};"")`
+    }
     if (c.arqueo === DESDE_CAJA.arqueoArsFecha) fArqArs = f
     if (c.arqueo === DESDE_CAJA.arqueoUsdFecha) fArqUsd = f
     const origen = c.banco === 'saldoPesos' && refs.bancoRaw ? formulaUltimoSaldo(refs.bancoRaw)
@@ -238,7 +258,7 @@ export function grilla(cargado, refs) {
       c.banco === 'saldoPesos' && refs.bancoRaw ? formulaFechaCorte(refs.bancoRaw)
         : c.banco === 'cartera' ? '=TODAY()'
           : c.banco ? corteDeBanco(c)
-            : c.arqueo ? conteo('fecha')
+            : c.arqueo ? fechaDelConteo(c)
               : (c.formula ? '=TODAY()' : previo(c.nombre, 'fecha')),
     ])
   }
@@ -286,7 +306,14 @@ export function grilla(cargado, refs) {
       // excluido y mostrarlo hacía leer "Hasta 13/08" para un tramo que termina el 12. En
       // castellano, "hasta" incluye.
       BORDES[k][1] ? `=(${BORDES[k][1]})-1` : '',
-      `=${terminoLibro({ desde: k === 0 ? DESDE_SIEMPRE : desdeTramo(k), hasta: hastaTramo(k), estados: NO_REAL })}`,
+      // EL LADO DEL LIBRO QUE CUENTA EL TRAMO lo decide `signoDelTramo`, no este archivo: el tramo del
+      // pasado cuenta lo que se DEBE y no lo que no se cobró. Ver el bloque de `caja-calendario.mjs`.
+      `=${terminoLibro({
+        desde: k === TRAMO_VENCIDO ? DESDE_SIEMPRE : desdeTramo(k),
+        hasta: hastaTramo(k),
+        estados: NO_REAL,
+        signo: signoDelTramo(k),
+      })}`,
       // La posición acumulada arranca en la disponibilidad: un neto de tramo sin la plata que hay
       // detrás no contesta nada.
       k === 0 ? `=${DESDE_CAJA.total}+$H${f}` : `=$I${f - 1}+$H${f}`,
@@ -340,16 +367,23 @@ export function grilla(cargado, refs) {
   // avisaría por el atraso de plata que no está adentro del número que rotula. Las filas se enumeran
   // porque el generador ya sabe cuáles son —`noSuman` es la misma declaración que usa el total—, así
   // que agregar una cuarta fila que no suma sigue siendo declararla y nada más.
+  //
+  // ═══ Y VIAJA EL MONTO JUNTO A LA FECHA, NO LA FECHA SOLA (15/08/2026) ═══
+  //
+  // "▲ parte al 05/08" no se puede decidir: el lector no sabe si "parte" son $500.000 o $15.000.000.
+  // La tarjeta publica ahora cuánta plata del titular viene de esa fecha, y para eso necesita las
+  // MISMAS filas con su columna de saldo al lado. Van juntas en un solo parámetro justamente para que
+  // no puedan desincronizarse — avisar por una fila y sumar otra sería peor que no avisar.
   const filasQueSuman = []
   for (let f = d0; f <= d1; f++) if (!noSuman.includes(f)) filasQueSuman.push(f)
   // MIN sobre celdas vacías o con "" devuelve 0 y `avisoDeAtraso` lo descarta con su ISNUMBER: un
   // panel sin una sola fecha cargada no dispara un aviso de atraso de 126 años.
-  const fechaVieja = filasQueSuman.length ? `MIN(${filasQueSuman.map((f) => `$D$${f}`).join(';')})` : ''
+  const celdasQueSuman = filasQueSuman.map((f) => ({ monto: `$C$${f}`, fecha: `$D$${f}` }))
 
   const T = tarjetas({
     total: `$C$${fCierre}`,
     fecha: `$D$${fCierre}`,
-    fechaVieja,
+    celdasQueSuman,
     // Si la fila desaparece de CUENTAS, la referencia sale vacía y `tarjetas` FALLA CERRADO: mejor
     // romper acá que publicar una tarjeta que apunta a `$C$0`.
     invArs: fBalanzArs ? `$C$${fBalanzArs}` : '',

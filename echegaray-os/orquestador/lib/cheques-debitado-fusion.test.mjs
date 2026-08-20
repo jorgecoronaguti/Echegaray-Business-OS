@@ -4,7 +4,7 @@ import { conciliarDebitosDeCheques } from './cheques-debito-banco.mjs'
 import { planSync } from './cheques-emitidos-sync.mjs'
 import {
   loQueAfirmaLaBase, marcasDelBanco, fusionarDebitado,
-  huerfanosDeDebito, tituloHuerfano, anotarHuerfanos,
+  huerfanosDeDebito, tituloHuerfano, anotarHuerfanos, numerosQueElBancoDesmiente,
 } from './cheques-debitado-fusion.mjs'
 
 // ── LOS DATOS REALES DEL 14/08 ───────────────────────────────────────────────────────────────────
@@ -48,6 +48,54 @@ test('el FISICO 317 se DECLARA y no se inventa: ninguna fila nueva, un hallazgo 
     { numero: h[0].numero, importe: h[0].importe, fecha: h[0].fecha },
     { numero: '317', importe: 510000, fecha: '2026-08-13' })
   assert.match(h[0].motivo, /ningún cheque del registro lleva el número 317/)
+})
+
+// ─── EL RESCATE POR IMPORTE ÚNICO: MARCA EL DEBITADO Y NO TOCA EL NÚMERO ────────────────────────
+// Filas 101 y 102 del registro real: las dos dicen "FISICO 316" y el banco dice 316→$500.000 y
+// 317→$510.000. El número de la 102 está mal, y por eso sus $510.000 seguían figurando comprometidos.
+const F101 = { instrumento: 'FISICO', numero: '316', importe: 500000, beneficiario: 'Diesel Rodriguez', debitado: true, fila: 101 }
+const F102 = { instrumento: 'FISICO', numero: '316', importe: 510000, beneficiario: 'Diesel Rodriguez', debitado: false, fila: 102 }
+const MOVS_316 = [
+  { fecha: '2026-08-13', concepto: 'Cheque debitado', importe: -500000, referencia: '316' },
+  { fecha: '2026-08-13', concepto: 'Cheque debitado', importe: -510000, referencia: '317' },
+]
+
+test('el cheque rescatado por importe se marca DEBITADO: los $510.000 dejan de figurar comprometidos', () => {
+  const c = conciliarDebitosDeCheques(MOVS_316, [F101, F102]).resultados
+  const { updates } = fusionarDebitado({ conciliacion: c })
+  assert.deepEqual(updates.map((u) => [u.fila, u.a]), [[102, 'SI']])
+  assert.equal(updates[0].monto, 510000)
+  // La evidencia lleva LAS DOS lecturas: sin eso, marcar el DEBITADO taparía el número equivocado.
+  assert.match(updates[0].evidencia, /2026-08-13/)
+  assert.match(updates[0].evidencia, /317/)
+  assert.match(updates[0].evidencia, /316/)
+})
+
+test('el rescate NUNCA propone cambiar el número: eso reescribe la identidad de la fila', () => {
+  // Hay dos filas "FISICO 316". Corregir el número a 317 podría fusionar dos cheques distintos, así
+  // que se reporta y lo decide el dueño. Este núcleo sólo puede producir marcas de DEBITADO.
+  const c = conciliarDebitosDeCheques(MOVS_316, [F101, F102]).resultados
+  const { updates } = fusionarDebitado({ conciliacion: c })
+  for (const u of updates) {
+    assert.equal(u.a, 'SI')
+    assert.equal('numeroCorregido' in u, false)
+    assert.equal(u.numero, '316', 'el update conserva el número que tiene la fila, no el del banco')
+  }
+})
+
+test('un cheque rescatado que YA está marcado no produce nada: el rescate es idempotente', () => {
+  const c = conciliarDebitosDeCheques(MOVS_316, [F101, { ...F102, debitado: true }]).resultados
+  assert.deepEqual(fusionarDebitado({ conciliacion: c }).updates, [])
+})
+
+test('el número que el banco desmiente se puede listar aparte para que lo decida el dueño', () => {
+  const c = conciliarDebitosDeCheques(MOVS_316, [F101, F102]).resultados
+  const d = numerosQueElBancoDesmiente(c)
+  assert.equal(d.length, 1)
+  assert.deepEqual(
+    { fila: d[0].fila, dice: d[0].numeroDeLaFila, banco: d[0].referenciaDelBanco, importe: d[0].importe },
+    { fila: 102, dice: '316', banco: '317', importe: 510000 })
+  assert.match(d[0].evidencia, /Cheque debitado/)
 })
 
 test('el título del hallazgo es estable: correrlo dos veces no anota el 317 dos veces', () => {
@@ -162,4 +210,50 @@ test('un débito cuyo número existe pero con otro importe tampoco marca nada: s
   const [h] = huerfanosDeDebito(c)
   assert.equal(h.numero, '316')
   assert.match(h.motivo, /ningún importe coincide/)
+})
+
+// ═══ LA OSCILACIÓN QUE ESTE TEST CIERRA (19/08/2026) ═══
+//
+// Medido en el archivo vivo: el ECHEQ 366 ($635.020,10, DUPEC) lo debitó el banco el 19/08 y la
+// corrida lo marcó SI. En la corrida SIGUIENTE, con la pestaña ya en SI, `marcasDelBanco` lo excluía
+// —"ya está debitado"— y la única voz que quedaba era `public.cheques`, con foto del 06/08 y el
+// cheque dado por vivo: proponía SI → No. A la vuelta siguiente el banco lo volvía a marcar. La
+// pestaña alternaba para siempre, y en cada vuelta en "No" la disponibilidad neta descontaba como
+// compromiso futuro plata que ya había salido de la cuenta.
+test('un cheque que el banco ya debitó NO se desmarca porque la base tenga la foto vieja', () => {
+  const conciliacion = [{
+    estado: 'emparejado',
+    clave: 'ECHEQ|366',
+    cheque: { fila: 126, importe: 635020.1, debitado: true },   // la pestaña YA dice SI
+    mov: { fecha: '2026-08-19', concepto: 'Echeq clearing recibido 48hs' },
+  }]
+  // `public.cheques` quedó vieja y lo da por vivo: propone volver la fila a "No".
+  const planBase = { updates: [{ fila: 126, a: 'No', de: 'SI' }] }
+  const base = [{ numero: '366', estado: 'Aceptado', origen: 'echeq' }]
+
+  const r = fusionarDebitado({ base, planBase, conciliacion })
+  // NO se escribe nada sobre esa fila: el hecho del extracto gana y la corrección de la base se cae.
+  assert.deepEqual(r.updates.filter((u) => u.fila === 126), [])
+  // Y el conflicto SÍ se declara: su causa es que no se corrió la puerta de entrada de los echeq.
+  assert.equal(r.conflictos.length, 1)
+  assert.equal(r.conflictos[0].fila, 126)
+})
+
+test('el que el banco debitó y la pestaña todavía no tiene, se marca igual que antes', () => {
+  const conciliacion = [{
+    estado: 'emparejado',
+    clave: 'FISICO|312',
+    cheque: { fila: 103, importe: 470944, debitado: false },
+    mov: { fecha: '2026-08-19', concepto: 'Cheque debitado' },
+  }]
+  const r = fusionarDebitado({ base: [], planBase: { updates: [] }, conciliacion })
+  assert.equal(r.updates.length, 1)
+  assert.equal(r.updates[0].fila, 103)
+  assert.equal(r.updates[0].a, 'SI')
+})
+
+test('una corrección de la base sobre una fila de la que el banco NO habla sigue pasando', () => {
+  const planBase = { updates: [{ fila: 90, a: 'SI', de: 'No' }] }
+  const r = fusionarDebitado({ base: [], planBase, conciliacion: [] })
+  assert.deepEqual(r.updates.map((u) => u.fila), [90])
 })

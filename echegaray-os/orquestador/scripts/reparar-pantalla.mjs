@@ -27,11 +27,38 @@
 // Esos tres se informan y no se tocan. Reparar lo que se puede y callar lo que no sería peor que no
 // reparar nada.
 //
+// ═══ UNA PESTAÑA DE CARGA YA NO SE SALTEA EN SILENCIO (15/08) ═══
+//
+// El filtro era `!p.carga` y sacaba `Compras` y `Cobranzas` ANTES de leerlas: `--dry` sobre `Compras`
+// no proponía nada y tampoco decía por qué. Mientras tanto la pestaña tenía 75 defectos medidos, 70 de
+// ellos filas con `WRAP` puesto y 20px de alto — o sea texto ESCRITO Y ESCONDIDO. El filtro protegía
+// bien y informaba mal, y un control que calla se vuelve indistinguible de uno que da verde.
+//
+// LA REGLA NO ES "TODO O NADA": ES QUÉ CLASE DE REPARACIÓN. Lo que la protección quiere impedir está
+// escrito arriba —"cambiarle el formato a una planilla donde alguien carga a mano todos los días es
+// cambiarle el escritorio sin preguntarle"—, y eso es exactamente `formatoQueVa`: fuente, color,
+// itálica y fondo elegidos por heurística sobre las celdas que el dueño tipea. Esa sigue prohibida.
+//
+// La que sí se repara en una pestaña de carga es UNA sola: el ALTO de una fila. No toca ni un valor ni
+// un formato de celda — hace VISIBLE lo que ya está escrito, que es lo contrario de cambiarle el
+// escritorio a alguien. En `Compras` es además el costo declarado y nunca pagado del `WRAP` que puso
+// `compras-formato.mjs` (ver su cabecera: "las ~74 filas afectadas crecen en alto").
+//
+// ═══ LO QUE SE MIRÓ Y SE DECIDIÓ NO REPARAR: `Cobranzas!U` ═══
+//
+// Sus 24 avisos de `texto_en_numero` tentaban a sacarle el `numberFormat` a la columna. Medido, habría
+// sido apagar la luz: el formato es CORRECTO para las 38 celdas donde la fórmula devuelve un número de
+// días, y Sheets dibuja bien el texto de las otras. Sacárselo no arregla nada y hace que el detector
+// deje de mirar la columna — silenciar un error no es arreglarlo. Lo que está mal ahí es que una
+// columna lleve un contador Y un estado, con `V` ya llamándose «Estado cobro», y eso se parte en dos
+// columnas: una decisión del dueño sobre su planilla de carga. El núcleo lo reporta UNA vez
+// (`columnasEstadoYNumero`) y acá se nombra a quién le toca.
+//
 //   node orquestador/scripts/reparar-pantalla.mjs [--dry] [pestaña]
 
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
-import { detectar, resumen } from '../lib/defectos-pantalla.mjs'
+import { detectar, resumen, altoQueEntra } from '../lib/defectos-pantalla.mjs'
 import { PESTANAS } from './formato-pestanas.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
 
@@ -73,19 +100,63 @@ export function filasDeEncabezado(defectos = []) {
 const col0 = (letra) => { let n = 0; for (const c of letra) n = n * 26 + (c.charCodeAt(0) - 64); return n - 1 }
 function colLetra(n) { let s = ''; for (let i = n - 1; i >= 0; i = Math.floor(i / 26) - 1) s = String.fromCharCode(65 + (i % 26)) + s; return s }
 
+/** Quién arregla cada clase que este script NO toca. Se nombra por TIPO, no por pestaña tipeada. */
+export const QUIEN_LO_ARREGLA = Object.freeze({
+  texto_cortado: 'reparar-textos.mjs (ensancha la columna) o el generador dueño (acorta el rótulo)',
+  fecha_cero: 'el script que escribe la fórmula: es un MINIFS que devuelve 0',
+  cuit_sin_formato: 'el script que escribe el valor: hay que reescribirlo, no reformatearlo',
+  hueco: 'donde se decide el tamaño del colchón de derrame',
+  glifo_invisible: 'el generador que lo escribe: usá ALERTA de lib/glifos.mjs',
+  serial_crudo: 'el script que escribe la celda: es contenido de fecha con formato TEXT',
+  // NO SE REPARA A PROPÓSITO, y es la clase donde más tentaba hacerlo. Sacarle el `numberFormat` a la
+  // columna apagaría los avisos sin arreglar nada: el formato es correcto para sus celdas numéricas y
+  // Sheets dibuja bien el texto de las otras. Lo que está mal es que la columna lleve dos conceptos, y
+  // eso se parte en dos columnas — una decisión del dueño sobre su planilla. Silenciar no es arreglar.
+  columna_estado_y_numero: 'el dueño: partir la columna en dos (el contador y el estado)',
+})
+
+/** La pestaña que tiene un generador dueño de su FORMATO, para poder nombrarlo en el informe. */
+export const GENERADOR_DE_FORMATO = Object.freeze(new Map([
+  ['Compras', 'orquestador/scripts/compras-formato.mjs'],
+]))
+
+/**
+ * NÚCLEO PURO: qué se repara en esta pestaña, qué queda para otro, y por qué.
+ *
+ * Separado del `main` porque es la única parte que tiene criterio: el resto es armar requests y
+ * mandarlos. Devuelve DESCRIPTORES, no requests, para poder probarlo sin una hoja ni un `sheetId`.
+ *
+ * @param {{titulo:string, carga?:boolean}} p la pestaña
+ * @param {Array<object>} defectos
+ * @param {number[]} altos el alto ACTUAL de cada fila
+ */
+export function planDePantalla(p, defectos = [], altos = []) {
+  // EN UNA PESTAÑA DE CARGA NO SE TOCA EL FORMATO DE UNA CELDA SUELTA: es el escritorio del dueño.
+  const celdas = defectos.filter((d) => d.tipo === 'texto_en_numero' && !p.carga)
+  const altoPorFila = new Map()
+  for (const d of defectos.filter((x) => x.tipo === 'texto_apretado')) {
+    // NUNCA SE ACHICA UNA FILA. El alto que el dueño le puso a una fila es una decisión suya; lo único
+    // que este script sabe es que hace falta MÁS. `max` con el actual lo vuelve monótono: reparar no
+    // puede deshacer nada, sólo destapar.
+    const px = Math.max(altos[d.fila - 1] ?? 0, altoQueEntra(d.lineas, d.fontSize))
+    altoPorFila.set(d.fila, Math.max(altoPorFila.get(d.fila) ?? 0, px))
+  }
+  const reparado = new Set(celdas)
+  const sinTocar = defectos.filter((d) => d.tipo !== 'texto_apretado' && !reparado.has(d))
+  return { celdas, altoPorFila, sinTocar }
+}
+
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
   const meta = await google.getSheetMeta(ID)
   // La grilla real acota el rango: pedir/escribir más allá de las filas asignadas hace fallar la API.
   const alto = new Map(meta.map((h) => [h.title, h.rows ?? 0]))
-  // Las pestañas de CARGA son del dueño: se auditan, no se reformatean. Cambiarle el formato a una
-  // planilla donde alguien carga a mano todos los días es cambiarle el escritorio sin preguntarle.
-  // Y EL CANDADO (24/07): una pestaña que el dueño tomó no se reformatea NI un ancho de columna —
+  // EL CANDADO (24/07): una pestaña que el dueño tomó no se reformatea NI un ancho de columna —
   // "ningún agente la toca" incluye este reparador. Sin esto, se le cambiaba altos/anchos/formatos a
-  // la pestaña que él acababa de restaurar.
+  // la pestaña que él acababa de restaurar. Las de CARGA ya NO se filtran acá: se leen, se informan y
+  // se les repara sólo lo que no cambia nada de lo que el dueño eligió (ver la cabecera del archivo).
   const bloqueadas = await import('../lib/pestana-bloqueada.mjs').then((m) => m.pestanasBloqueadas({}, ID)).catch(() => new Set())
   const lista = (SOLO ? PESTANAS.filter((p) => p.titulo.toLowerCase().includes(SOLO.toLowerCase())) : PESTANAS)
-    .filter((p) => !p.carga)
     .filter((p) => { if (bloqueadas.has(p.titulo)) { console.log(`🔒 ${p.titulo}: bajo tu control, no la reformateo.`); return false } return true })
   let reparadas = 0, sinReparar = 0
 
@@ -95,20 +166,14 @@ async function main() {
     const f = await google.readSheetFormats(ID, `${p.titulo}!A1:${colLetra(p.cols)}${alto.get(p.titulo) || p.hastaFila}`).catch(() => null)
     if (!f) { console.log(`  ${p.titulo.padEnd(26)} no pude leerla`); continue }
 
-    const d = detectar(f)
-    const arreglables = d.filter((x) => x.tipo === 'texto_en_numero')
-    // texto_apretado: la celda YA está en WRAP y su contenido es correcto —sólo la fila es más baja
-    // que las líneas que necesita, así que se ve la primera y el resto queda cortado abajo—. Subir el
-    // alto de la fila al que el propio detector calculó (altoNecesario) borra el defecto sin tocar ni
-    // el contenido ni el formato. Es seguro y universal, así se deja de acortar la misma clase de nota
-    // pestaña por pestaña. NO se toca texto_cortado: ese sí exige decidir (ensanchar, envolver o
-    // acortar) y se resuelve en el script que lo escribe.
-    const apretados = d.filter((x) => x.tipo === 'texto_apretado')
-    const otros = d.filter((x) => x.tipo !== 'texto_en_numero' && x.tipo !== 'texto_apretado')
+    // Una pestaña de carga tiene filas vacías al final POR DISEÑO: contarlas como hueco es ruido en
+    // cada corrida, y así es como un control deja de mirarse. Mismo criterio que `auditar-pantalla`.
+    const d = detectar(f, { huecoMax: p.carga ? 999 : 3 })
     if (!d.length) { console.log(`  ${p.titulo.padEnd(26)} ✓`); continue }
+    const { celdas, altoPorFila, sinTocar } = planDePantalla(p, d, f.altos || [])
 
     const cabeceras = filasDeEncabezado(d)
-    const reqs = arreglables.map((x) => ({
+    const reqs = celdas.map((x) => ({
       repeatCell: {
         range: { sheetId: hoja.sheetId, startRowIndex: x.fila - 1, endRowIndex: x.fila, startColumnIndex: col0(x.col), endColumnIndex: col0(x.col) + 1 },
         cell: { userEnteredFormat: formatoQueVa(x.valor, cabeceras.has(x.fila)) },
@@ -116,16 +181,19 @@ async function main() {
       },
     }))
     // Una fila puede tener varias celdas apretadas: se le pone el alto MÁXIMO que pida cualquiera.
-    const altoPorFila = new Map()
-    for (const x of apretados) altoPorFila.set(x.fila, Math.max(altoPorFila.get(x.fila) ?? 0, x.altoNecesario ?? 0))
-    for (const [fila, alto] of altoPorFila) {
-      if (!alto) continue
-      reqs.push({ updateDimensionProperties: { range: { sheetId: hoja.sheetId, dimension: 'ROWS', startIndex: fila - 1, endIndex: fila }, properties: { pixelSize: alto }, fields: 'pixelSize' } })
+    for (const [fila, px] of altoPorFila) {
+      if (!px) continue
+      reqs.push({ updateDimensionProperties: { range: { sheetId: hoja.sheetId, dimension: 'ROWS', startIndex: fila - 1, endIndex: fila }, properties: { pixelSize: px }, fields: 'pixelSize' } })
     }
 
-    console.log(`  ${p.titulo.padEnd(26)} ${arreglables.length + altoPorFila.size} reparable(s)${otros.length ? ` · ${otros.length} que NO se tocan` : ''}`)
-    for (const r of resumen(otros)) console.log(`     ✗ ${String(r.n).padStart(2)}× ${r.tipo} (ej. ${r.ejemplo.col}${r.ejemplo.fila}) — se arregla en el script que lo escribe`)
-    sinReparar += otros.length
+    const marca = p.carga ? ' (carga: sólo el alto de fila)' : ''
+    console.log(`  ${p.titulo.padEnd(26)} ${reqs.length} reparable(s)${marca}${sinTocar.length ? ` · ${sinTocar.length} que NO se tocan` : ''}`)
+    const dueño = GENERADOR_DE_FORMATO.get(p.titulo)
+    for (const r of resumen(sinTocar)) {
+      const quien = QUIEN_LO_ARREGLA[r.tipo] ?? (dueño ? `el generador dueño: ${dueño}` : 'el script que lo escribe')
+      console.log(`     ✗ ${String(r.n).padStart(2)}× ${r.tipo} (ej. ${r.ejemplo.col}${r.ejemplo.fila} "${String(r.ejemplo.valor).slice(0, 28)}") — lo arregla ${quien}`)
+    }
+    sinReparar += sinTocar.length
     if (DRY || !reqs.length) continue
     for (let i = 0; i < reqs.length; i += 300) await google.spreadsheetBatchUpdate(ID, reqs.slice(i, i + 300))
     reparadas += reqs.length
@@ -133,11 +201,14 @@ async function main() {
 
   if (DRY) { console.log('\n(--dry) no escribí nada'); return }
 
-  // VERIFICACIÓN: releer y contar lo que quedó.
+  // VERIFICACIÓN: releer y contar lo que quedó. LA EVIDENCIA ES DEL EFECTO, NO DEL INTENTO.
   let quedan = 0
   for (const p of lista) {
     const f = await google.readSheetFormats(ID, `${p.titulo}!A1:${colLetra(p.cols)}${alto.get(p.titulo) || p.hastaFila}`).catch(() => null)
-    if (f) quedan += detectar(f).filter((x) => x.tipo === 'texto_en_numero' || x.tipo === 'texto_apretado').length
+    if (!f) continue
+    const d = detectar(f, { huecoMax: p.carga ? 999 : 3 })
+    const { celdas, altoPorFila } = planDePantalla(p, d, f.altos || [])
+    quedan += celdas.length + altoPorFila.size
   }
   console.log(`\n✓ ${reparadas} celda(s)/fila(s) reparadas · quedan ${quedan} de formato/alto${sinReparar ? ` y ${sinReparar} que necesitan tocar el script` : ''}`)
   if (quedan) process.exitCode = 1

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { ATERRIZAJE } from './util/login'
 import { createClient } from '@supabase/supabase-js'
 
 // F6 — Scorecard de Admin/Finanzas + KPIs del propio OS.
@@ -10,11 +11,11 @@ import { createClient } from '@supabase/supabase-js'
 const EMAIL = 'jorge.o.corona+direccion-test-1783513222134@gmail.com'
 const PASSWORD = 'TestPassword123!'
 
-test('sin sesión autenticada, RLS bloquea con un aviso claro (no crash)', async ({ page }) => {
-  const response = await page.goto('/scorecard-finanzas')
-  expect(response?.status()).toBe(200)
-  await expect(page.getByRole('heading', { name: 'Scorecard · Admin y Finanzas', level: 1 })).toBeVisible()
-  await expect(page.getByTestId('page-error')).toContainText('No hay sesión autenticada')
+// Contrato cambiado el 17/08/2026: el anónimo ya no llega a la pantalla a que RLS lo frene — lo
+// frena el middleware antes, y en TODAS las rutas. Ver el comentario largo en calendario-financiero.
+test('sin sesión autenticada no se llega a la pantalla: manda al login', async ({ page }) => {
+  await page.goto('/scorecard-finanzas')
+  await page.waitForURL(/\/login/, { timeout: 15000 })
   await expect(page.locator('body')).not.toContainText('Application error')
 })
 
@@ -32,7 +33,7 @@ test('autenticado como Dirección: las secciones pintan datos reales y ningún v
     await page.fill('input[name="email"]', EMAIL)
     await page.fill('input[name="password"]', PASSWORD)
     await page.click('button[type="submit"]')
-    await page.waitForURL(/\/(dashboard|flujo-caja)/, { timeout: 15000 })
+    await page.waitForURL(ATERRIZAJE, { timeout: 15000 })
 
     await page.goto('/scorecard-finanzas')
 

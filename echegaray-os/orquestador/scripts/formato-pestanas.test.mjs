@@ -62,3 +62,19 @@ test('el ancho declarado de cada pestaña nueva es el que su generador escribe',
   assert.equal(PESTANAS.find((p) => p.titulo === 'OBRAS').cols, 9)
   assert.equal(PESTANAS.find((p) => p.titulo === 'Calendario de Cobros').cols, 17)
 })
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// Y UNA PESTAÑA PUEDE ESTAR EN LA LISTA Y AUDITARSE A MEDIAS (15/08)
+//
+// "Jornales por Quincena" estaba anotada con `cols: 13` mientras su generador escribe `ANCHO = 14`.
+// La columna N —«Pagado el», la del dueño— quedó fuera de todo control de pantalla durante dos
+// semanas, y no estaba vacía: tenía siete seriales de fecha dibujados como importes, arriba de su
+// propio encabezado. Estar en la lista con el ancho equivocado da el mismo verde que no estar.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test('el ancho declarado de "Jornales por Quincena" es el que escribe su generador', async () => {
+  const { ANCHO } = await import('./jornales-pestana.mjs')
+  const p = PESTANAS.find((x) => x.titulo === 'Jornales por Quincena')
+  assert.equal(p.cols, ANCHO,
+    'el auditor de pantalla recorre PESTANAS: con cols menor que ANCHO no mira las últimas columnas')
+})

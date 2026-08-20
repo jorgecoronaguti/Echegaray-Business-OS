@@ -95,12 +95,54 @@ function porQueNoEntro(respuesta, leidoOk) {
  *
  * @returns {Promise<{ok:boolean, motivo?:string, vacias:object[], distintas:object[], respuesta:any}>}
  */
-export async function escribirYVerificar(google, { desde, hasta, plan, fileId = ID }) {
-  const letras = [...new Set(plan.flatMap((p) => Object.keys(p.valores)))]
-  const data = letras.map((L) => ({
-    range: `Compras!${L}${desde}:${L}${hasta}`,
-    values: plan.map((p) => [p.valores[L] ?? '']),
+/**
+ * LOS RANGOS A ESCRIBIR: sólo las celdas que este lote LLENA. NÚCLEO PURO.
+ *
+ * ═══ MANDAR "" NO ES NO ESCRIBIR: ES PISAR (20/08/2026) ═══
+ *
+ * Antes se armaba un bloque por columna —`Compras!T869:T878`— y las filas que no tenían ese dato
+ * viajaban como `''`. Diez comprobantes en un lote, seis pagados y cuatro no: como ALGUNO tenía
+ * `Monto Pagado`, la columna T entera entraba al pedido, y las cuatro filas sin pago mandaban vacío
+ * sobre la fórmula `=IF(F="pago";O;0)` que la plantilla ya tenía ahí.
+ *
+ * Eso disparaba la guarda de `no-borrar.mjs` —"no dejes vacía una celda con contenido"— que conservó
+ * el contenido… leído como TEXTO. La fórmula quedó reemplazada por su renderizado, «—», y `U = T-O`
+ * pasó a `#VALUE!` en cuatro filas: $903.538 de saldo pendiente que dejaron de sumar. Las dos puntas
+ * se arreglan —la guarda ya preserva la fórmula—, pero el pedido tampoco tiene por qué nombrar una
+ * celda que no va a llenar.
+ *
+ * Se emite UN rango por cada corrida de filas CONSECUTIVAS que sí tienen ese dato. Un lote donde
+ * todas las filas llenan la columna sigue produciendo un solo rango, igual que antes.
+ *
+ * @param {Array<{valores:object}>} plan
+ * @param {{desde:number}} o
+ * @returns {Array<{range:string, values:any[][]}>}
+ */
+export function rangosAEscribir(plan = [], { desde = 0 } = {}) {
+  const letras = [...new Set(plan.flatMap((p) => Object.keys(p?.valores ?? {})))]
+  const data = []
+  for (const L of letras) {
+    let corrida = null
+    plan.forEach((p, i) => {
+      const v = p?.valores?.[L]
+      // El 0 y el false son DATOS, no ausencias: sólo `null`, `undefined` y '' cortan la corrida.
+      const tiene = v !== undefined && v !== null && v !== ''
+      if (!tiene) { corrida = null; return }
+      if (!corrida) {
+        corrida = { desde: desde + i, values: [] }
+        data.push({ letra: L, corrida })
+      }
+      corrida.values.push([v])
+    })
+  }
+  return data.map(({ letra, corrida }) => ({
+    range: `Compras!${letra}${corrida.desde}:${letra}${corrida.desde + corrida.values.length - 1}`,
+    values: corrida.values,
   }))
+}
+
+export async function escribirYVerificar(google, { desde, hasta, plan, fileId = ID }) {
+  const data = rangosAEscribir(plan, { desde })
   // REGLA 0 — NO APLICA, Y ESTÁ DECIDIDO: respetar: false.
   // Este cargador AGREGA filas de comprobante al final de "Compras". No escribe un solo rótulo:
   // escribe datos —CUIT, número, importe, fecha— en filas que antes no existían. No hay texto de

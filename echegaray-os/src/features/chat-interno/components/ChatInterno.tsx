@@ -1,11 +1,24 @@
 'use client'
 
 import { useRef, useState } from 'react'
+import { Aviso, Boton, CAMPO, Eyebrow, Nulo, TituloPantalla } from '@/shared/components/ds'
+import { fechaHora } from '@/shared/utils/fecha'
 import type { ChatRespuesta, ChatTurno } from '../types'
 
 // UI del chat interno (F7). Pregunta → POST /api/chat-interno → respuesta ya formateada (texto). Esta
 // UI NO calcula ni interpreta números: sólo pinta strings que el backend armó. Guarda `typeof`: si algo
 // no es string, no se renderiza (nunca un objeto como nodo React). 0-API: el backend es determinístico.
+//
+// ═══ QUÉ ES ESTA PANTALLA Y QUÉ NO ES (20/08/2026) ═══
+//
+// El handoff 3d dibuja OTRA cosa con el mismo nombre: un chat entre PERSONAS, un canal por obra, con
+// no leídos y con lo decidido anclado a la actividad. Eso no existe todavía —no hay tabla de mensajes,
+// ni canales, ni no leídos— y dibujarlo sería una maqueta que no guarda nada: el primer mensaje que
+// alguien escriba se pierde, y el que lo escribió va a creer que su jefe de obra lo leyó.
+//
+// Lo que sí existe es esto: preguntarle al OS y que conteste leyendo las tablas que ya materializó,
+// sin inventar un peso y sin llamar a ninguna API. Se lo lleva al lenguaje visual del handoff, se
+// dice en la pantalla qué es, y el chat por obra queda declarado como lo que es: pendiente.
 
 const SUGERENCIAS = [
   '¿Cuánto tengo en caja hoy?',
@@ -21,40 +34,39 @@ function texto(v: unknown): string {
 
 function RespuestaVista({ r }: { r: ChatRespuesta }) {
   return (
-    <div
-      className={`rounded-lg border p-3 text-sm ${r.cubierta ? 'border-gray-200 bg-white' : 'border-amber-200 bg-amber-50'}`}
-      data-testid="chat-respuesta"
-    >
-      <div className="flex items-center gap-2">
-        <span className="font-semibold">{texto(r.titulo)}</span>
+    <div className="border-t border-line pt-3" data-testid="chat-respuesta">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className="text-[16px] font-semibold text-ink">{texto(r.titulo)}</span>
+        {/* El título YA dice «No tengo esa capacidad todavía» (lo arma el route handler). Acá va
+            la marca corta: repetir la frase entera al lado de sí misma se lee como un error. */}
         {!r.cubierta && (
-          <span className="rounded bg-amber-200 px-1.5 py-0.5 text-[10px] font-medium text-amber-900" data-testid="chat-no-cubierta">
+          <span className="text-[12.5px] text-warn" data-testid="chat-no-cubierta">
             sin capacidad
           </span>
         )}
       </div>
-      {r.intro && <p className="mt-1 text-gray-600">{texto(r.intro)}</p>}
+      {r.intro && <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">{texto(r.intro)}</p>}
+
       {r.datos.length > 0 && (
-        <ul className="mt-2 divide-y divide-gray-100 border-t border-gray-100">
+        <ul className="mt-3 divide-y divide-[#EFEEEA] border-t border-[#EFEEEA]">
           {r.datos.map((d, i) => (
-            <li key={i} className="flex flex-wrap items-baseline justify-between gap-x-4 py-1.5">
-              <span className="text-gray-700">{texto(d.etiqueta)}</span>
-              <span className="flex items-baseline gap-2">
-                {d.valor && (
-                  <span className={`font-mono font-medium ${d.estado === 'sin_datos' ? 'text-gray-400' : 'text-gray-900'}`}>
-                    {texto(d.valor)}
-                  </span>
+            <li key={i} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2">
+              <span className="text-[13px] text-ink-soft">{texto(d.etiqueta)}</span>
+              <span className="flex items-baseline gap-3">
+                {d.estado === 'sin_datos' ? (
+                  <Nulo>{texto(d.valor) || 'aún sin datos'}</Nulo>
+                ) : (
+                  <span className="font-mono text-[12.5px] tabular-nums text-ink">{texto(d.valor)}</span>
                 )}
-                {d.fuente && <span className="text-[10px] text-gray-400">{texto(d.fuente)}</span>}
+                {d.fuente && <span className="text-[11px] text-faint">{texto(d.fuente)}</span>}
               </span>
             </li>
           ))}
         </ul>
       )}
-      {r.nota && <p className="mt-2 text-xs text-gray-500">{texto(r.nota)}</p>}
-      {r.capturadoEn && (
-        <p className="mt-1 text-[10px] text-gray-400">Datos al {new Date(r.capturadoEn).toLocaleString('es-AR')}</p>
-      )}
+
+      {r.nota && <p className="mt-2.5 text-[12.5px] text-muted">{texto(r.nota)}</p>}
+      {r.capturadoEn && <p className="mt-1 text-[11px] text-faint">Datos al {fechaHora(r.capturadoEn)}</p>}
     </div>
   )
 }
@@ -82,9 +94,7 @@ export function ChatInterno() {
       })
       const data = (await res.json()) as { respuesta?: ChatRespuesta; error?: string }
       setTurnos((prev) =>
-        prev.map((t) =>
-          t.id === id ? { ...t, respuesta: data.respuesta ?? null, error: data.error ?? null } : t,
-        ),
+        prev.map((t) => (t.id === id ? { ...t, respuesta: data.respuesta ?? null, error: data.error ?? null } : t)),
       )
     } catch (err) {
       const mensaje = err instanceof Error ? err.message : 'No pude conectar con el OS'
@@ -95,68 +105,70 @@ export function ChatInterno() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl p-4" data-testid="chat-interno">
-      <h1 className="text-lg font-semibold">Chat del OS</h1>
-      <p className="mt-1 text-sm text-gray-600">
-        Preguntá sobre caja, cobranzas, obligaciones, obras o el scorecard. Respondo con lo que el OS ya
-        calculó — sin inventar. Si no tengo la capacidad, te lo digo.
-      </p>
+    <div className="min-h-screen bg-canvas">
+      <div className="w-full px-4 py-6 lg:px-10">
+        <div className="max-w-[680px]" data-testid="chat-interno">
+          <TituloPantalla>Chat del OS</TituloPantalla>
+          <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">
+            Preguntale al OS por caja, cobranzas, obligaciones, obras o el scorecard: contesta con lo que ya calculó,
+            sin inventar, y si no tiene la capacidad te lo dice. La conversación por obra entre personas —canales,
+            no leídos, mensajes anclados a una actividad— todavía no existe.
+          </p>
 
-      {turnos.length === 0 && (
-        <div className="mt-4 flex flex-wrap gap-2" data-testid="chat-sugerencias">
-          {SUGERENCIAS.map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => preguntar(s)}
-              className="rounded-full border border-gray-200 px-3 py-1 text-xs text-gray-700 hover:bg-gray-50"
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div className="mt-4 flex flex-col gap-4" data-testid="chat-hilo">
-        {turnos.map((t) => (
-          <div key={t.id} className="flex flex-col gap-2">
-            <div className="self-end rounded-lg bg-gray-900 px-3 py-1.5 text-sm text-white" data-testid="chat-pregunta">
-              {t.pregunta}
-            </div>
-            {t.respuesta && <RespuestaVista r={t.respuesta} />}
-            {t.error && (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" data-testid="chat-error">
-                {t.error}
+          {turnos.length === 0 && (
+            <div className="mt-5" data-testid="chat-sugerencias">
+              <Eyebrow>Lo que puedo contestar hoy</Eyebrow>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {SUGERENCIAS.map((s) => (
+                  <Boton key={s} variante="secundaria" onClick={() => void preguntar(s)}>
+                    {s}
+                  </Boton>
+                ))}
               </div>
-            )}
-            {!t.respuesta && !t.error && <div className="text-xs text-gray-400">Consultando el OS…</div>}
-          </div>
-        ))}
-      </div>
+            </div>
+          )}
 
-      <form
-        className="mt-4 flex gap-2"
-        onSubmit={(e) => {
-          e.preventDefault()
-          void preguntar(texto0)
-        }}
-      >
-        <input
-          value={texto0}
-          onChange={(e) => setTexto0(e.target.value)}
-          placeholder="Escribí tu pregunta…"
-          className="flex-1 rounded border border-gray-300 px-3 py-2 text-sm"
-          data-testid="chat-input"
-        />
-        <button
-          type="submit"
-          disabled={pending || !texto0.trim()}
-          className="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
-          data-testid="chat-enviar"
-        >
-          Preguntar
-        </button>
-      </form>
+          <div className="mt-6 flex flex-col gap-6" data-testid="chat-hilo">
+            {turnos.map((t) => (
+              <div key={t.id} className="flex flex-col gap-3">
+                <div className="flex items-baseline gap-3">
+                  <span className="shrink-0 text-[10px] uppercase tracking-[0.06em] text-faint">Vos</span>
+                  <span className="text-[13px] text-ink" data-testid="chat-pregunta">
+                    {t.pregunta}
+                  </span>
+                </div>
+                {t.respuesta && <RespuestaVista r={t.respuesta} />}
+                {t.error && (
+                  <Aviso tono="neg" titulo="El OS no pudo contestar." testid="chat-error">
+                    {t.error}
+                  </Aviso>
+                )}
+                {!t.respuesta && !t.error && <p className="text-[12.5px] text-faint">Consultando el OS…</p>}
+              </div>
+            ))}
+          </div>
+
+          <form
+            className="mt-6 flex gap-2 border-t border-line pt-4"
+            onSubmit={(e) => {
+              e.preventDefault()
+              void preguntar(texto0)
+            }}
+          >
+            <input
+              value={texto0}
+              onChange={(e) => setTexto0(e.target.value)}
+              placeholder="Escribí tu pregunta…"
+              className={CAMPO}
+              data-testid="chat-input"
+              aria-label="Tu pregunta"
+            />
+            <Boton type="submit" variante="primaria" disabled={pending || !texto0.trim()} data-testid="chat-enviar">
+              {pending ? 'Consultando…' : 'Preguntar'}
+            </Boton>
+          </form>
+        </div>
+      </div>
     </div>
   )
 }

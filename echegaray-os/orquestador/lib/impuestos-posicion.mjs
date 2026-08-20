@@ -17,7 +17,7 @@ import { cmes } from './impuestos-grilla.mjs'
 import { calendario, diasEntre } from './vencimientos-fiscales.mjs'
 import {
   formulaVentana, formulaVencidoImpago, formulaDeudaPendiente, proximoVencimiento,
-  filasFinanciamiento,
+  filasFinanciamiento, formulaSaldoAFavor, formulaSaldoDeclarado,
 } from './impuestos-cuadro.mjs'
 import { ALERTA } from './glifos.mjs'
 
@@ -217,9 +217,12 @@ export function filasDeLaPosicion({ cal, base, hoy, refs, acuerdo, tarjeta }) {
     formulaDeudaPendiente(refs.prendPend, refs.planesPend)])
   F.push([subItem('prendario · cuotas por vencer'), `=${refs.prendPend}`])
   F.push([subItem('planes F931 · cuotas por vencer'), `=${refs.planesPend}`])
-  F.push([rotuloTotal('IMPUESTOS A FAVOR'), `=${refs.saldoIva}+${refs.saldoIibb}`])
-  F.push([subItem('saldo a favor de IVA · F.2051'), `=${refs.saldoIva}`])
-  F.push([subItem('saldo a favor de IIBB · DGR'), `=${refs.saldoIibb}`])
+  // LAS TRES CELDAS DEL SALDO A FAVOR APUNTAN A CELDAS QUE ESCRIBE UNA PERSONA (el mes ajeno del
+  // cuadro de IVA), así que no pueden asumir que ahí hay un número: el 17/08 había una leyenda y esta
+  // fila publicó #VALUE! en la primera pantalla. Ver `formulaSaldoAFavor`.
+  F.push([rotuloTotal('IMPUESTOS A FAVOR'), formulaSaldoAFavor(refs.saldoIva, refs.saldoIibb)])
+  F.push([subItem('saldo a favor de IVA · F.2051'), formulaSaldoDeclarado(refs.saldoIva)])
+  F.push([subItem('saldo a favor de IIBB · DGR'), formulaSaldoDeclarado(refs.saldoIibb)])
   F.push([])
 
   // ── 1 · RIESGO Y PROYECCIÓN ─────────────────────────────────────────────────────────────────────

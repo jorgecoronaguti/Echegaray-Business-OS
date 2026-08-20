@@ -10,7 +10,7 @@
 // `terminoLibro` con los filtros correctos — comparada contra la función, no contra un literal.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { tarjetas, NO_REAL, FIN_DE_MES } from './caja-tarjetas.mjs'
+import { tarjetas, NO_REAL, DEUDA, PLAN, FIN_DE_MES } from './caja-tarjetas.mjs'
 import { terminoLibro } from './libro-sumas.mjs'
 import { ANCHOS, COLS_TARJETA } from './caja-grilla.mjs'
 
@@ -49,44 +49,55 @@ test('CAJA DISPONIBLE es EL TOTAL del panel de cuentas — banco y caja, sin Bal
   assert.match(t.contexto, /bancos y efectivo/)
 })
 
-test('COMPROMETIDA = todo lo que hay que pagar en el mes − lo ya pagado, con la urgencia en contexto', () => {
-  // La definición textual del dueño. Lo REAL (pagado) queda afuera porque ya salió del saldo del
-  // banco; lo vencido impago entra (sin `desde`). Los "7d" del contexto conservan la urgencia que
-  // antes era el titular.
+test('LA DEUDA = lo COMPROMETIDO y lo VENCIDO del mes — el presupuesto NO entra', () => {
+  // 16/08: este test decía `NO_REAL` (los tres estados) y por eso el defecto que el dueño reclamó
+  // tres veces pasaba en verde. Lo REAL sigue afuera porque ya salió del saldo del banco; lo
+  // PROYECTADO sale porque todavía no es de nadie. El detalle del corte, en caja-tarjetas-conceptos.
+  //
+  // LOS "7d" SE FUERON del contexto: el lugar lo ocupa el plan, que es el concepto que faltaba. El
+  // mismo dato, con su fecha y su saldo al lado, está tres columnas a la derecha en el tramo "Esta
+  // semana" de la escalera — que es su casa y donde se lo puede leer con su detalle.
   const c = de('comprometida')
-  assert.equal(c.valor, `=${terminoLibro({ signo: -1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })}`)
-  assert.match(c.contexto, /7d/)
-  assert.ok(c.contexto.includes(terminoLibro({ signo: -1, estados: NO_REAL, hasta: 'TODAY()+7', medida: 'magnitud' })))
+  assert.equal(c.valor, `=${terminoLibro({ signo: -1, estados: DEUDA, hasta: FIN_DE_MES, medida: 'magnitud' })}`)
   assert.ok(!c.valor.includes('"REAL"'), 'lo REAL ya salió de la cuenta: no es obligación')
+  assert.ok(!c.valor.includes('"PROYECTADO"'), 'el presupuesto no es deuda')
 })
 
-test('EL RÓTULO DE COMPROMETIDA DICE QUE FALTA PAGAR: era la pregunta literal del dueño', () => {
+test('EL RÓTULO DE LA DEUDA NOMBRA EL CONCEPTO Y SU VENTANA REAL', () => {
   // 13/08, textual: *"la tarjeta 'caja comprometida' no sé si es algo q tengo q cubrir o ya está
   // cubierto"*. Un rótulo que empieza con "CAJA" nombra plata que se TIENE; ésta es plata que TIENE
-  // QUE SALIR. Y "COMPROMETIDO" a secas es el nombre de UNO de los tres estados que el número suma
-  // (COMPROMETIDO $15,2M de $62,4M): rotular con él sería falso, no vago.
+  // QUE SALIR. Eso sigue valiendo.
+  //
+  // 16/08: "FALTA PAGAR ESTE MES" fallaba en las DOS mitades. "Falta pagar" sobre un número con
+  // $38,0M de presupuesto adentro es falso; y "este mes" sobre una suma sin `desde` —que arrastra
+  // meses anteriores— también, tanto que hacía falta una línea de contexto para desmentirlo. El
+  // rótulo nuevo describe exactamente lo que la celda mide: deuda, atrasada y del mes.
   const c = de('comprometida')
-  assert.equal(c.rotulo, 'FALTA PAGAR ESTE MES')
-  assert.doesNotMatch(c.rotulo, /^CAJA /, 'no es un cajón de plata que se tiene: es plata que falta pagar')
-  assert.match(c.rotulo, /FALTA PAGAR/, 'el rótulo tiene que contestar "¿lo tengo que cubrir?"')
-  // El estado del libro NO se usa como rótulo de un número que suma los tres estados.
+  assert.equal(c.rotulo, 'DEUDA ATRASADA Y DEL MES')
+  assert.doesNotMatch(c.rotulo, /^CAJA /, 'no es un cajón de plata que se tiene: es plata que hay que poner')
+  assert.match(c.rotulo, /^DEUDA/, 'el rótulo tiene que contestar "¿lo tengo que cubrir?"')
+  assert.match(c.rotulo, /ATRASADA/, 'la suma no lleva `desde`: arrastra lo impago de meses anteriores y hay que decirlo')
+  // El estado del libro NO se usa como rótulo de un número que suma dos estados.
   assert.ok(!/^COMPROMETID[OA]\b/.test(c.rotulo),
-    'el titular suma COMPROMETIDO + PROYECTADO + VENCIDO: nombrarlo con un solo estado lo vuelve falso')
+    'el titular suma COMPROMETIDO + VENCIDO: nombrarlo con un solo estado lo vuelve falso')
 })
 
-test('EL CONTEXTO DE COMPROMETIDA cuenta la historia entera: total del mes → pagado → falta', () => {
-  // "es comprometida y cuando se pagan los compromisos deben salir de ahí" (dueño, 07/08). Salen —
-  // pero sin el TOTAL a la vista, $60M pagados junto a $44M comprometidos no cierran ninguna
-  // historia. La frase es: de $X pagaste $Y (el titular es la resta, a ojo). Y CORTA: la versión
-  // larga se truncaba en la celda, y una frase cortada es peor que ninguna. "Del mes" salió de la
-  // frase el 13/08 porque pasó al rótulo, que es donde se lee primero.
+test('EL CONTEXTO DE LA DEUDA publica lo pagado — los compromisos salen de esta tarjeta', () => {
+  // "es comprometida y cuando se pagan los compromisos deben salir de ahí" (dueño, 07/08). Salen, y
+  // sin lo pagado a la vista no se nota.
+  //
+  // 16/08 — LO QUE SE FUE ES "de $X": ese total del mes se armaba como `pagado + N($C$3)`, o sea
+  // pagos REALES sumados a un titular que traía deuda Y presupuesto. Sumar dos cosas que no son la
+  // misma no da un total: da un número que no existe, y era la comparación exacta que el dueño
+  // señaló (*"de repente debemos mas en lo q falta del mes q lo q ya se ha pagado"*). Lo pagado se
+  // publica solo, contra un titular que ahora sí es homogéneo.
   const c = de('comprometida')
   const pagado = terminoLibro({ signo: -1, estados: ['REAL'], desde: 'EOMONTH(TODAY();-1)+1', hasta: FIN_DE_MES, medida: 'magnitud' })
   assert.match(c.contexto, /pagaste/)
-  assert.match(de('comprometida').rotulo, /ESTE MES/, 'la ventana la declara el rótulo')
+  assert.match(c.rotulo, /Y DEL MES/, 'la ventana la declara el rótulo')
   assert.ok(c.contexto.includes(pagado))
-  // El TOTAL del mes = lo pagado + lo que falta (el titular C3): derivable a ojo, nunca una 3ª suma.
-  assert.ok(c.contexto.includes(`(${pagado}+N($C$3))`), 'el total del mes se arma con el titular, no con otra suma del libro')
+  assert.ok(!c.contexto.includes(`(${pagado}+N($C$3))`),
+    'sumar pagos reales con deuda+presupuesto no da un total: da un número que no existe')
 })
 
 test('CON FRONTERA, COMPROMETIDA suma en vivo las pendientes que el libro todavía no incorporó', () => {
@@ -142,8 +153,7 @@ test('EL CONTEXTO DE LA LIBRE PUBLICA EL MONTO A COBRAR, y sale de la MISMA fuen
   assert.match(l.contexto, /^=/, 'el contexto es fórmula, nunca texto pegado')
   assert.ok(l.contexto.includes(mesCobro), 'el monto a cobrar sale del libro, con la definición del cierre')
   assert.ok(de('cierre').valor.includes(mesCobro), 'y es el MISMO término que suma SALDO AL CIERRE')
-  assert.match(l.contexto, /a cobrar al /, 'el monto va fechado: sin fecha no se sabe hasta cuándo vale')
-  assert.ok(l.contexto.includes('EOMONTH(TODAY();0)'), 'la fecha es el cierre del mes, calculado, no tipeado')
+  assert.match(l.contexto, /a cobrar/, 'el monto se publica: "se cubre con lo cobrado" no dice con cuánto')
   // NINGÚN NÚMERO PEGADO (regla de oro 5), medido donde importa: adentro del TEXTO QUE SE DIBUJA. Un
   // "$160,8M" tipeado en la frase se ve idéntico al calculado y envejece sin avisar. Los patrones de
   // formato que viven dentro de TEXT() no cuentan: no se dibujan.
@@ -156,18 +166,20 @@ test('INVERTIDO cita las filas Balanz de la grilla — una sola fuente, nunca un
   const t = de('invertido')
   assert.equal(t.valor, `=N(${REF.invArs})+N(${REF.invUsd})`)
   assert.match(t.contexto, /Balanz/)
-  assert.match(t.contexto, /liquidez T\+1/)
   assert.ok(t.contexto.includes(REF.invFecha))
 })
 
 test('SALDO AL CIERRE es la CONSECUENCIA: disponible − comprometida + cobros del mes', () => {
   const t = de('cierre')
   assert.equal(t.rotulo, 'SALDO AL CIERRE')
-  assert.equal(t.valor, `=N($A$3)-N($C$3)+${terminoLibro({ signo: 1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })}`,
-    'disponible y comprometida por referencia; los cobros con la suma única del libro')
-  // EL PAR DE ESCENARIOS: la tarjeta del medio es el mismo número sin cobrar nada, ésta cobrando
-  // todo. La cláusula condicional no se negocia — sin ella el número se lee como plata garantizada.
-  assert.match(t.contexto, /cobrando todo/, 'sin la cláusula, se leería como plata garantizada')
+  // 16/08 — Y RESTANDO EL PLAN. Cobrando los $151,8M los materiales proyectados SE COMPRAN: un cierre
+  // que suma los cobros y no descuenta los $38,0M que se van a gastar publica plata que no va a estar.
+  assert.equal(t.valor, `=N($A$3)-N($C$3)+${terminoLibro({ signo: 1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })}`
+    + `-${terminoLibro({ signo: -1, estados: PLAN, hasta: FIN_DE_MES, medida: 'magnitud' })}`,
+  'disponible y deuda por referencia; cobros y plan con las sumas únicas del libro')
+  // EL PAR DE ESCENARIOS: la tarjeta del medio no cobra y no gasta, ésta cobra y gasta. La cláusula
+  // condicional no se negocia — sin ella el número se lee como plata garantizada.
+  assert.match(t.contexto, /cobrando y gastando/, 'sin los DOS supuestos, se leería como plata garantizada')
   assert.ok(t.contexto.includes('EOMONTH(TODAY();0)'), 'la fecha del cierre es calculada, no tipeada')
   assert.match(de('libre').rotulo, /SI NO COBRÁS/, 'el otro extremo del par: el mismo número sin cobrar nada')
   assert.ok(!t.valor.includes(REF.invArs) && !t.valor.includes(REF.invUsd),
@@ -261,39 +273,152 @@ test('FALLA CERRADO: sin una referencia, rompe antes de escribir una celda en er
 // una congelada. Si alguien saca `fechaVieja` o el aviso del invertido, estos tests se ponen rojos.
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
+// Las dos filas que el 15/08 están congeladas en el panel real: la cuenta en dólares ($1.447.698,
+// pegada a mano al 05/08) y su vecina viva. `celdasQueSuman` es la lista de filas que SUMAN al total,
+// con su saldo al lado de su fecha — el mismo par con el que la tarjeta avisa y suma.
+const SUMAN = [{ monto: '$C$7', fecha: '$D$7' }, { monto: '$C$10', fecha: '$D$10' }]
+const conFilas = (celdasQueSuman = SUMAN) => tarjetas({ ...REF, celdasQueSuman }).find((x) => x.clave === 'disponible')
+
 test('DISPONIBLE avisa cuando la fecha MÁS VIEJA de las filas que suman quedó atrás', () => {
-  const t = tarjetas({ ...REF, fechaVieja: 'MIN($D$7;$D$10)' }).find((x) => x.clave === 'disponible')
+  const t = conFilas()
   assert.match(t.contexto, /MIN\(\$D\$7;\$D\$10\)/, 'la tarjeta tiene que mirar la más vieja, no sólo el MAX del total')
-  assert.match(t.contexto, /parte al/, 'el aviso dice que una PARTE del total viene de otra fecha')
   assert.match(t.contexto, /▲/, 'la marca es ALERTA (▲): el ⚠ no se dibuja al exportar a PDF')
   assert.match(t.contexto, /TODAY\(\)-MIN\(\$D\$7;\$D\$10\)>7/, 'el umbral es el mismo DIAS_AVISO del resto del OS')
 })
 
-test('DISPONIBLE no avisa de nada cuando no hay atraso: la frase del día bueno es la de siempre', () => {
-  const t = tarjetas({ ...REF, fechaVieja: 'MIN($D$7)' }).find((x) => x.clave === 'disponible')
-  // El aviso vive adentro de un IF: existe la rama que devuelve "" y no agrega una sola letra.
-  assert.match(t.contexto, /;""\)/, 'sin atraso el término tiene que ser vacío — un aviso permanente deja de leerse')
-  assert.match(t.contexto, /"al "&TEXT\(\$D\$15;"dd\/mm"\)&" · bancos y efectivo"/, 'la frase base no cambia')
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL DEFECTO DEL 15/08: "▲ parte al 05/08" NO SE PUEDE DECIDIR
+//
+// El dueño rechazó la tarjeta tres veces. El aviso decía que "parte" del total venía del 05/08 y no
+// decía cuánta: sobre $18.270.071, "parte" puede ser $500.000 o $15.000.000, y la decisión de pagar
+// cambia. Si alguien vuelve a dejar el aviso sin monto, este test se pone rojo.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('DISPONIBLE dice CUÁNTA PLATA está congelada, no "parte"', () => {
+  const t = conFilas()
+  assert.doesNotMatch(t.contexto, /parte al/, '"parte" no es un dato: no se puede decidir con él')
+  // 16/08 — Y LA RELACIÓN CON EL TITULAR, QUE ES LA MITAD QUE FALTABA. "▲ $1,4M congelado al 05/08"
+  // era cierto y se leía como un importe aparte: el dueño lo dijo así ("confunde ese importe de origen
+  // q has diferenciado"). Sin la preposición, dos cifras pegadas no dicen si una está adentro de la
+  // otra. Si alguien vuelve a sacarla, este test se pone rojo.
+  assert.match(t.contexto, /M de este total son del /,
+    'la frase tiene que declarar que ese monto es una PARTE del número de arriba')
+  assert.doesNotMatch(t.contexto, /M congelado al/, 'la frase vieja no dice de dónde sale ese monto')
+  // El monto se arma con la MISMA condición con la que se avisa, fila por fila: no es el total menos
+  // lo vivo (una segunda definición del total) ni un número tipeado.
+  for (const c of SUMAN) {
+    assert.ok(t.contexto.includes(`IF(AND(ISNUMBER(${c.fecha});TODAY()-${c.fecha}>7);N(${c.monto});0)`),
+      `la fila ${c.monto} tiene que aportar su saldo al monto congelado con su propia condición`)
+  }
+  assert.match(t.contexto, /TEXT\(\(IF\(AND\(ISNUMBER/, 'el monto se dibuja: sumarlo y no publicarlo no arregla nada')
 })
 
-test('DISPONIBLE sin `fechaVieja` queda EXACTAMENTE como antes: falla hacia atrás, no hacia una fecha inventada', () => {
+test('UN PANEL SIN NINGUNA FECHA no publica "congelado al 30/12": MIN de vacías es 0, y 0 es número', () => {
+  // El ISNUMBER solo NO alcanza: `MIN($D$7;$D$10)` con las dos celdas vacías devuelve 0, ISNUMBER(0)
+  // es VERDADERO y TODAY()-0 son 126 años. La tarjeta dibujaría el serial 0 como fecha de 1899 al
+  // lado de "$0,0M". Con el `>0` la rama no se prende y la frase queda en la de siempre.
+  const t = conFilas()
+  assert.match(t.contexto, /ISNUMBER\(MIN\(\$D\$7;\$D\$10\)\);MIN\(\$D\$7;\$D\$10\)>0;/,
+    'falta el guardián del MIN vacío: un panel recién nacido publicaría una fecha de 1899')
+})
+
+test('DISPONIBLE no avisa de nada cuando no hay atraso: la frase del día bueno es la de siempre', () => {
+  const t = conFilas([{ monto: '$C$7', fecha: '$D$7' }])
+  // El aviso vive adentro de un IF y la rama del día bueno es LITERALMENTE la frase de siempre: un
+  // aviso que aparece todos los días deja de leerse.
+  assert.match(t.contexto, /;" · bancos y efectivo"\)/, 'sin atraso, la tarjeta vuelve sola a su frase base')
+  assert.match(t.contexto, /"al "&TEXT\(\$D\$15;"dd\/mm"\)&/, 'la fecha publicada sigue siendo la del total')
+})
+
+test('DISPONIBLE sin `celdasQueSuman` queda EXACTAMENTE como antes: falla hacia atrás, no hacia una fecha inventada', () => {
   const t = tarjetas(REF).find((x) => x.clave === 'disponible')
-  assert.doesNotMatch(t.contexto, /parte al/)
+  assert.doesNotMatch(t.contexto, /congelado/)
   assert.match(t.contexto, /"al "&TEXT\(\$D\$15;"dd\/mm"\)&" · bancos y efectivo"/)
 })
 
-test('INVERTIDO publica los días encima en vez de "liquidez T+1" cuando la posición está vieja', () => {
+test('INVERTIDO publica los días encima cuando la posición está vieja', () => {
   const t = tarjetas(REF).find((x) => x.clave === 'invertido')
   assert.match(t.contexto, /TODAY\(\)-\$D\$11>7/, 'compara contra el mismo umbral que la columna de fechas')
-  assert.match(t.contexto, /▲ "&TEXT\(TODAY\(\)-\$D\$11;"0"\)&" días"/, 'dice cuántos días, no sólo que está vieja')
-  assert.doesNotMatch(t.contexto, /hace/, 'el patrón del archivo es `▲ N días` (formulaAntiguedad), no "hace N días"')
-  assert.match(t.contexto, /liquidez T\+1/, 'y sigue diciendo su naturaleza los días en que está al día')
+  assert.match(t.contexto, /▲ "&TEXT\(TODAY\(\)-\$D\$11;"0"\)&"d"/, 'dice cuántos días, no sólo que está vieja')
+  assert.doesNotMatch(t.contexto, /hace/, 'el patrón del archivo es `▲ N` (formulaAntiguedad), no "hace N días"')
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// BALANZ ES MANUAL DE FORMA PERMANENTE (15/08/2026)
+//
+// El dueño ordenó apagar el navegador de Balanz en la VM y quedó apagado (`echegaray-balanz-browser`
+// y `echegaray-balanz-remoto`: stopped + disabled). No hay corrida futura que refresque esas dos
+// filas. Una tarjeta que sólo publica la antigüedad promete por omisión que alguien la va a
+// actualizar: mientras el navegador siga apagado, el origen del dato se dice TODOS los días.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('INVERTIDO declara que la posición se carga A MANO en sus tres ramas', () => {
+  const t = tarjetas(REF).find((x) => x.clave === 'invertido')
+  const ramas = t.contexto.split('IF(').length
+  assert.ok(ramas >= 3, 'la tarjeta tiene tres estados: sin fecha, al día y vieja')
+  // Una sola aparición de "a mano" dejaría alguna rama prometiendo frescura.
+  assert.equal((t.contexto.match(/a mano/g) ?? []).length, 2,
+    'las dos ramas con texto propio dicen "a mano"; la tercera lo hereda de la frase base')
+  assert.doesNotMatch(t.contexto, /liquidez T\+1"/,
+    'con 202px no entran las dos cosas: entre la naturaleza (cierta siempre) y el origen del dato, gana el origen')
 })
 
 test('INVERTIDO no inventa una antigüedad cuando la fecha no es un número', () => {
   const t = tarjetas(REF).find((x) => x.clave === 'invertido')
-  assert.match(t.contexto, /IF\(NOT\(ISNUMBER\(\$D\$11\)\);"Balanz · liquidez T\+1"/,
+  assert.match(t.contexto, /IF\(NOT\(ISNUMBER\(\$D\$11\)\);"Balanz · a mano · sin fecha"/,
     'sin fecha, TODAY()-"" daría un número enorme y el aviso quedaría prendido para siempre')
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL SALTO DE $55,6M A $125,9M — EL RÓTULO DICE "ESTE MES" Y EL 43% NO ERA DE ESTE MES (15/08/2026)
+//
+// Medido sobre el libro del 15/08: de los $125.943.171 del titular, $54.643.050 tienen fecha ANTERIOR
+// al 1° del mes, y son SEIS quincenas de mayo, junio y julio que el libro sigue viendo impagas
+// (`Jornales por Quincena`: la columna "Pagado el" quedó desalineada de sus quincenas). El número es
+// el correcto —esa plata falta pagar— pero sin publicar el atraso, un salto así se lee como un error
+// del sistema y termina en una investigación. La frase vieja además afirmaba un total del mes
+// ("de $191M") que incluía tres meses anteriores: un número que no existe.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('LA DEUDA publica cuánto de ella NADIE PROBÓ — no se puede afirmar y cobrar a la vez', () => {
+  // 16/08 — REEMPLAZA AL TEST DEL ATRASO. Aquél exigía publicar qué parte del titular tenía fecha
+  // anterior al 1° del mes ($54,6M el 15/08). El "cuándo" nunca fue la pregunta: aquellos $54,6M eran
+  // seis quincenas de jornales que el libro veía impagas, y lo que había que decir no es que fueran
+  // viejas sino que **nadie probó que estén impagas**. Desde `estadoSinProbar` esas quincenas salen
+  // VENCIDO, y eso es lo que la tarjeta publica: la misma explicación del salto, con la causa.
+  //
+  // El "atrasado" no se perdió: pasó al RÓTULO ("DEUDA ATRASADA Y DEL MES"), que es donde declarar la
+  // ventana de una suma sin `desde` cuesta cero caracteres de contexto.
+  const c = de('comprometida')
+  const sinProbar = terminoLibro({ signo: -1, estados: ['VENCIDO'], hasta: FIN_DE_MES, medida: 'magnitud' })
+  assert.ok(c.contexto.includes(sinProbar), 'la duda sale del MISMO término del libro que el titular')
+  assert.match(c.contexto, /M sin probar/, 'y se dibuja: calcularla sin publicarla no le sirve a nadie')
+  // MISMO `hasta` QUE EL TITULAR: con una ventana propia dejaría de ser una parte del número que
+  // rotula, y las dos cifras podrían no cerrar.
+  assert.ok(!sinProbar.includes('>='), 'la duda es un `hasta`, no una ventana propia')
+  assert.ok(c.valor.includes(terminoLibro({ signo: -1, estados: DEUDA, hasta: FIN_DE_MES, medida: 'magnitud' })),
+    'la duda se DECLARA, no se resta: o la plata ya salió y falta marcarla, o se debe')
+})
+
+test('SIN nada sin probar, el lugar lo ocupa lo pagado — y el plan sigue estando en las dos ramas', () => {
+  const c = de('comprometida')
+  const pagado = terminoLibro({ signo: -1, estados: ['REAL'], desde: 'EOMONTH(TODAY();-1)+1', hasta: FIN_DE_MES, medida: 'magnitud' })
+  const plan = terminoLibro({ signo: -1, estados: PLAN, hasta: FIN_DE_MES, medida: 'magnitud' })
+  assert.ok(c.contexto.includes(pagado), 'la rama tranquila conserva "pagaste $Y"')
+  // EL PLAN NO ES CONDICIONAL. Es el concepto que el titular dejó afuera: si desapareciera en alguna
+  // rama, ese día la tarjeta escondería $38,0M en vez de separarlos.
+  assert.equal(c.contexto.split(plan).length - 1, 2, 'el plan se publica en LAS DOS ramas, no sólo en una')
+  // El umbral es el mínimo que la frase sabe dibujar: por debajo diría "$0,0M sin probar".
+  assert.match(c.contexto, /^=IF\(SUMPRODUCT.*>=100000;/, 'la alarma se prende con un monto legible, no con centavos')
+})
+
+test('LA LIBRE declara la SEGUNDA mitad de su supuesto: sin ingresos, no se gasta el plan', () => {
+  // El rótulo declara una sola pata (no cobrás más) y la resta usa las dos. Hasta el 16/08 la frase
+  // decía "pagás todo" y era cierta y estaba incompleta: lo que faltaba —y lo que hacía incoherente
+  // al escenario— es que sin ingresos el plan de gasto tampoco se ejecuta.
+  const l = de('libre')
+  assert.equal(l.valor, '=N($A$3)-N($C$3)')
+  assert.match(l.contexto, /sin el plan/, 'el supuesto de gasto tiene que estar escrito al lado del número')
 })
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
@@ -339,9 +464,12 @@ const largoDeRama = (expr) => {
   if (m) return Math.max(0, ...partir(m[1], ';').slice(1).map(largoDeRama))
   return ANCHO_DE_TOKEN
 }
-test('las tarjetas que declaran FRESCURA entran en su ancho aun en su rama más larga', () => {
-  const t = T()
-  for (const clave of ['disponible', 'invertido']) {
+// LAS CINCO, NO DOS: desde el 15/08 también COMPROMETIDA y LIBRE tienen ramas (el atraso), y la
+// medición se hace con las referencias REALES del panel — la rama con el aviso es la más larga y es
+// la que se dibuja los días en que hay algo que decir.
+test('las cinco tarjetas entran en su ancho aun en su rama más larga', () => {
+  const t = tarjetas({ ...REF, celdasQueSuman: SUMAN })
+  for (const clave of ['disponible', 'comprometida', 'libre', 'invertido', 'cierre']) {
     const i = t.findIndex((x) => x.clave === clave)
     const px = largoDeRama(t[i].contexto) * PX_POR_CARACTER
     assert.ok(px <= anchoDeTarjeta(i),

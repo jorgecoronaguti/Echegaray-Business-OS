@@ -1,0 +1,296 @@
+// EL GANTT GLOBAL ES DE OBRAS, NO DE ACTIVIDADES — MEDIDO CONTRA EL DOM.
+//
+// El dueño, textual: *"NO quiero las 344 actividades de todas las obras desplegadas. Quiero UN
+// RENGLÓN POR OBRA"* · *"Click en una obra → abre el Gantt detallado DE ESA OBRA."*
+//
+// ═══ QUÉ DEFECTO ATRAPA, Y POR QUÉ NINGÚN OTRO TEST LO ATRAPA ═══
+//
+// "El Gantt global se desplegó de vuelta en actividades" no rompe nada: la página abre, las barras
+// se ven, el typecheck pasa y el usuario sólo siente que la pantalla es ilegible. El único síntoma
+// medible es el CONTEO — 8 renglones contra 344 — y eso hay que contarlo. Si alguien cambiara la
+// fuente de `obra_plan_vs_real` a `getActividades()` "para tener más detalle", este archivo se pone
+// rojo en la primera línea y ningún otro se entera.
+//
+// El segundo defecto que atrapa es más silencioso todavía: que una obra SIN fechas de plan reciba
+// una barra igual. Ahí la pantalla no miente por lo que dice sino por lo que dibuja, y no hay un
+// error en ningún lado. Se mide contra la base ANTES de mirar la pantalla: cuántas obras tienen
+// fechas y cuántas no sale de `obra_plan_vs_real`, no de lo que el Gantt haya decidido pintar.
+//
+// ═══ LA LÍNEA BASE NO SE EXIGE, Y ESO SE MIDE ═══
+//
+// Al 18/08/2026 hay CERO de 344 actividades con `inicio_base` en toda la empresa, así que ninguna
+// obra tiene línea base y exigir la marca sería exigir que la pantalla invente una. Lo que se exige
+// es lo contrario y es verificable en los dos sentidos: se cuenta la línea base en la base, y la
+// pantalla tiene que dibujar exactamente esa cantidad de marcas. El día que se selle la primera, el
+// test empieza a exigirla solo.
+
+import { expect, test } from '@playwright/test'
+import { conBase, entrar } from './util/obras-e2e'
+
+/** El renglón de una obra en el Gantt global. */
+const RENGLON = '[data-testid="obra-gantt"]'
+/** La fila de UNA actividad en el Gantt de obra: acá adentro no puede haber ni una. */
+const ACTIVIDAD = '[data-testid="actividad-cronograma"]'
+
+test('el Gantt global dibuja un renglón por obra y ninguna actividad', async ({ page }) => {
+  const sb = await conBase()
+  try {
+    // ── LA VERDAD SE MIDE EN LA BASE PRIMERO ──────────────────────────────────
+    // Un test que compara la pantalla contra sí misma no prueba nada: pasa con cualquier número.
+    const { data: plazos, error } = await sb
+      .from('obra_plan_vs_real')
+      .select('obra_id,nombre,estado,inicio_plan,inicio_base,fin_base')
+    expect(error?.message ?? null, 'la vista de plan contra real tiene que poder leerse').toBeNull()
+
+    const cartera = (plazos ?? []).filter((o) => o.estado !== 'cerrada')
+    const conFechas = cartera.filter((o) => o.inicio_plan != null)
+    const sinFechas = cartera.filter((o) => o.inicio_plan == null)
+    const conBaseSellada = cartera.filter((o) => o.inicio_base != null && o.fin_base != null)
+
+    expect(cartera.length, 'sin obras en la cartera la comparación no prueba nada').toBeGreaterThan(0)
+    expect(conFechas.length, 'sin una sola obra con plan no se puede probar que la barra aparece').toBeGreaterThan(0)
+
+    const { count: nActividades } = await sb
+      .from('obra_actividad').select('id', { count: 'exact', head: true }).eq('archivada', false)
+    expect(nActividades ?? 0, 'sin actividades, "no se despliegan las actividades" es trivial').toBeGreaterThan(50)
+
+    // ── LA PANTALLA ───────────────────────────────────────────────────────────
+    await entrar(page)
+    await page.goto('/obras/gantt')
+    await expect(page.getByTestId('gantt-obras')).toBeVisible({ timeout: 30000 })
+
+    const renglones = await page.locator(RENGLON).count()
+    expect(
+      renglones,
+      `el Gantt global dibuja ${renglones} renglones y la cartera tiene ${cartera.length} obras`,
+    ).toBe(cartera.length)
+
+    // EL CONTRASTE QUE PIDIÓ EL DUEÑO: un renglón por obra, no una fila por actividad.
+    expect(
+      await page.locator(ACTIVIDAD).count(),
+      `el Gantt global no puede desplegar las ${nActividades} actividades: es de obras`,
+    ).toBe(0)
+    expect(renglones, `${renglones} renglones contra ${nActividades} actividades`).toBeLessThan(nActividades ?? 0)
+
+    // ── LO QUE EXISTE SE DIBUJA; LO QUE NO, SE DICE ───────────────────────────
+    const sinPlan = page.getByTestId('obra-sin-plan')
+    expect(
+      await sinPlan.count(),
+      `${sinFechas.length} obras sin fechas de plan en la base tienen que declararlo en la pantalla`,
+    ).toBe(sinFechas.length)
+    for (const o of sinFechas) {
+      const renglon = page.locator(`${RENGLON}[data-obra="${o.obra_id}"]`)
+      await expect(renglon, `${o.nombre} no tiene fechas: su renglón tiene que estar igual`).toHaveCount(1)
+      // La ausencia se declara en palabras. Una barra de largo cero diría que empieza y termina hoy.
+      await expect(renglon).toHaveAttribute('title', /sin (fechas de plan|cronograma)/)
+    }
+    if (sinFechas.length) {
+      await expect(sinPlan.first()).toHaveText(/sin (fechas de plan|cronograma)/)
+    }
+
+    // La línea de hoy es uno de los cuatro elementos pedidos y hoy siempre cae dentro del eje:
+    // `ventana()` la mete a la fuerza justamente para que nunca quede fuera de la pantalla.
+    await expect(page.getByTestId('linea-hoy-obras')).toHaveCount(1)
+
+    // LA LÍNEA BASE: exactamente las que hay, ni una más. Al 18/08/2026 son CERO —0 de 344
+    // actividades con `inicio_base`— así que hoy esto exige que NO se dibuje ninguna marca. Se mide
+    // contra la base y no contra un cero escrito a mano: el día que se selle la primera línea base,
+    // el test empieza a exigir que aparezca sin que nadie lo edite.
+    expect(
+      await page.getByTestId('linea-base-obra').count(),
+      `${conBaseSellada.length} obras tienen línea base sellada en la base de datos`,
+    ).toBe(conBaseSellada.length)
+  } finally {
+    await sb.auth.signOut()
+  }
+})
+
+test('la obra con fechas tiene barra, y tocar su renglón abre SU cronograma', async ({ page }) => {
+  const sb = await conBase()
+  try {
+    const { data } = await sb
+      .from('obra_plan_vs_real')
+      .select('obra_id,nombre,inicio_plan,fin_plan,estado')
+      .not('inicio_plan', 'is', null)
+      .neq('estado', 'cerrada')
+    const conPlan = data ?? []
+    expect(conPlan.length, 'hace falta al menos una obra con plan').toBeGreaterThan(0)
+
+    await entrar(page)
+    await page.goto('/obras/gantt')
+    await expect(page.getByTestId('gantt-obras')).toBeVisible({ timeout: 30000 })
+
+    // EL CASO POSITIVO: la obra con fechas tiene barra de verdad, con ancho. Se cuenta contra la
+    // base: si el componente dejara de dibujar las barras, el conteo cae y esto se pone rojo.
+    for (const o of conPlan) {
+      const renglon = page.locator(`${RENGLON}[data-obra="${o.obra_id}"]`)
+      await expect(renglon, `${o.nombre} tiene plan y tiene que estar en el Gantt`).toHaveCount(1)
+      // El renglón de una obra CON plan no puede declarar una ausencia.
+      await expect(renglon).toHaveAttribute('title', /plan \d{2}\/\d{2} → \d{2}\/\d{2}/)
+    }
+
+    const elegida = conPlan[0]
+    await page.locator(`${RENGLON}[data-obra="${elegida.obra_id}"]`).click()
+    await page.waitForURL(new RegExp(`/obras/${elegida.obra_id}\\?vista=cronograma`), { timeout: 20000 })
+    // Y del otro lado tiene que estar el Gantt DETALLADO: el de actividades, el que la vista global
+    // deliberadamente no es.
+    await expect(page.getByTestId('gantt')).toBeVisible({ timeout: 30000 })
+    expect(await page.locator(ACTIVIDAD).count(), 'el Gantt de la obra sí despliega sus actividades').toBeGreaterThan(0)
+  } finally {
+    await sb.auth.signOut()
+  }
+})
+
+/**
+ * EL SEMÁFORO, MEDIDO CONTRA LA BASE — y sin recalcular la regla acá.
+ *
+ * El dueño (20/08): *"No pintar rojo sólo porque la fecha fin pasó"*. Repetir la fórmula de
+ * `desvioDePlazo` dentro de este test sería validar un control contra la misma información que
+ * produce: si la regla se escribiera mal en los dos lados, el test pasaría igual. Lo que se mide
+ * acá es el EFECTO que el dueño pidió, en la forma de dos invariantes que la regla vieja rompía y
+ * la nueva no puede romper:
+ *
+ *   1. Una obra que pasó su fin previsto pero está por terminar NO puede salir crítica. Con la
+ *      regla vieja (`fin < hoy && avance < 100`) salían rojas Comedor al 93% y Galpón 9 al 96%.
+ *   2. Una obra sin avance publicado NO puede salir «al día». Pintar de verde una obra de la que
+ *      no se sabe nada la borra de la lista de las que hay que ir a mirar.
+ *
+ * Los umbrales concretos —10/25 puntos, 10/30 días— se prueban donde viven, en
+ * `src/features/obras/services/ganttObras.test.ts`, sin navegador y en cualquier fecha.
+ */
+test('el rojo del Gantt señala trabajo pendiente, no un calendario vencido', async ({ page }) => {
+  const sb = await conBase()
+  try {
+    const hoy = new Date().toISOString().slice(0, 10)
+    const { data } = await sb
+      .from('obra_plan_vs_real')
+      .select('obra_id,nombre,inicio_plan,fin_plan,avance_pct,estado')
+      .not('inicio_plan', 'is', null)
+      .neq('estado', 'cerrada')
+    const conPlan = data ?? []
+
+    await entrar(page)
+    await page.goto('/obras/gantt')
+    await expect(page.getByTestId('gantt-obras')).toBeVisible({ timeout: 30000 })
+
+    // EL ESTADO SE LEE DEL `title` DEL RENGLÓN, no del enésimo `<rect>`: leer la barra por posición
+    // dependería del orden de las filas, y un test que se rompe al reordenar enseña a ignorarlo.
+    // El `title` está anclado a la obra por `data-obra` y ya lleva el estado en palabras.
+    let algunaNoRoja = 0
+    for (const o of conPlan) {
+      const titulo = await page.locator(`${RENGLON}[data-obra="${o.obra_id}"]`).getAttribute('title') ?? ''
+      const critica = titulo.includes('atraso crítico')
+
+      // ── INVARIANTE 1 ────────────────────────────────────────────────────────────────────────
+      const vencida = (o.fin_plan as string ?? '') < hoy
+      const casiTerminada = (o.avance_pct as number ?? 0) >= 90 && (o.avance_pct as number ?? 0) < 100
+      if (vencida && casiTerminada) {
+        expect(critica,
+          `${o.nombre} va al ${o.avance_pct}% y sale crítica: el color volvió a mirar el calendario`,
+        ).toBe(false)
+      }
+
+      // ── INVARIANTE 2 ────────────────────────────────────────────────────────────────────────
+      if (o.avance_pct == null) {
+        expect(titulo, `${o.nombre} no tiene avance publicado y no puede figurar «al día»`)
+          .toContain('sin datos para juzgar')
+      }
+
+      if (!critica) algunaNoRoja++
+    }
+
+    // Y LA CARTERA NO PUEDE SER TODA ROJA. Con la regla vieja lo era —cuatro de cinco—, que es el
+    // estado en que el color deja de significar algo. No se exige un reparto concreto: se exige
+    // que exista al menos una obra con plan que la pantalla NO esté marcando como crítica.
+    expect(algunaNoRoja, 'todas las obras con plan salen críticas: el rojo dejó de señalar')
+      .toBeGreaterThan(0)
+
+    // La leyenda hace auditable el color: dice con qué regla se pinta, en números.
+    await expect(page.getByTestId('gantt-obras')).toContainText('calendario ya consumido')
+  } finally {
+    await sb.auth.signOut()
+  }
+})
+
+/**
+ * UNA SOLA DEFINICIÓN DE ETAPA — LA MISMA EN LAS TRES PUNTAS.
+ *
+ * El dueño (20/08), textual: *"La etapa mostrada debe ser EXACTAMENTE la misma que aparece en
+ * /obras Resumen"* · *"NO crear una segunda definición de etapa"* · *"etapa Resumen = etapa Gantt
+ * global = etapa fuente canónica"*.
+ *
+ * El defecto que atrapa no rompe nada: las dos pantallas abren, las dos muestran una etapa creíble,
+ * y el typecheck pasa. Lo que falla es que una diga «Desarrollo» y la otra «Terminación» de la
+ * misma obra — y eso sólo se ve comparando LAS TRES a la vez. Por eso se lee primero la fuente
+ * (`obra_panel`, con la sesión), y recién después se le exige a cada pantalla que coincida con ella.
+ *
+ * Se compara contra el VALOR CRUDO (`data-etapa`), no contra el rótulo: si alguien cambiara el
+ * texto de `ETAPA_LABEL`, este test no tiene por qué ponerse rojo. Lo que no puede cambiar es de
+ * qué columna sale.
+ */
+test('la etapa del Gantt global es la del Resumen y la de la fuente canónica', async ({ page }) => {
+  test.setTimeout(120_000)
+  const sb = await conBase()
+  try {
+    const { data, error } = await sb.from('obra_panel').select('obra_id, nombre, etapa, estado')
+    expect(error?.message ?? null, 'obra_panel tiene que poder leerse con la sesión de prueba').toBeNull()
+    const enLaBase = (data ?? []).filter((o) => o.estado !== 'cerrada')
+    expect(enLaBase.length, 'sin obras en la base este test no prueba nada').toBeGreaterThan(0)
+    // Al menos UNA con etapa declarada: si todas fueran null, «coinciden» se cumpliría por vacío.
+    expect(enLaBase.filter((o) => o.etapa).length,
+      'ninguna obra tiene etapa declarada: la comparación pasaría por vacío').toBeGreaterThan(0)
+
+    // Sin etapa declarada las DOS pantallas escriben lo mismo, con esas palabras: es el texto que
+    // el dueño pidió y es lo que impide que un default se cuele como estado del ciclo de vida.
+    const rotulo = (etapa: string | null) => (etapa
+      ? { previo: 'Previo', inicio: 'Inicio', desarrollo: 'Desarrollo', terminacion: 'Terminación', cierre: 'Cierre' }[etapa]!
+      : 'etapa sin declarar')
+
+    await entrar(page)
+
+    // ── EL GANTT GLOBAL ────────────────────────────────────────────────────────────────────────
+    await page.goto('/obras/gantt')
+    await expect(page.getByTestId('gantt-obras')).toBeVisible({ timeout: 30_000 })
+    for (const o of enLaBase) {
+      const renglon = page.locator(`${RENGLON}[data-obra="${o.obra_id}"]`)
+      await expect(renglon, `${o.nombre} no está en el Gantt global`).toHaveCount(1)
+      // El VALOR CRUDO: es lo que prueba de qué columna sale. Y el rótulo en el `title`, que es lo
+      // que se lee — las dos cosas, porque el crudo puede estar bien y el texto igual mentir.
+      await expect(
+        renglon,
+        `${o.nombre}: el Gantt muestra una etapa que no es la de obra_panel`,
+      ).toHaveAttribute('data-etapa', (o.etapa as string | null) ?? '')
+      await expect(
+        renglon,
+        `${o.nombre}: el renglón del Gantt no dice la etapa en palabras`,
+      ).toHaveAttribute('title', new RegExp(rotulo(o.etapa as string | null)))
+    }
+
+    // ── Y EL RESUMEN, CONTRA LA MISMA FUENTE ───────────────────────────────────────────────────
+    //
+    // Se compara cada pantalla contra `obra_panel`, no una contra la otra: dos pantallas que leen
+    // la misma columna equivocada coincidirían perfectamente entre ellas.
+    await page.goto('/obras')
+    await expect(page.getByTestId('portafolio-tabla')).toBeVisible({ timeout: 30_000 })
+    for (const o of enLaBase) {
+      const fila = page.locator(`[data-obra="${o.obra_id}"]`)
+      await expect(fila, `${o.nombre} no está en el Resumen`).toHaveCount(1)
+      await expect(fila, `${o.nombre}: el Resumen no dice la etapa de obra_panel`)
+        .toContainText(rotulo(o.etapa as string | null))
+    }
+  } finally {
+    await sb.auth.signOut()
+  }
+})
+
+test('el Gantt global no empuja la página de costado en el teléfono', async ({ page }) => {
+  // El Gantt es más ancho que un teléfono por definición. Lo que no puede pasar es que arrastre la
+  // PÁGINA: el desplazamiento tiene que quedar adentro del contenedor del cronograma.
+  await page.setViewportSize({ width: 390, height: 844 })
+  await entrar(page)
+  await page.goto('/obras/gantt')
+  await expect(page.getByTestId('gantt-obras')).toBeVisible({ timeout: 30000 })
+  const desborde = await page.evaluate(() =>
+    document.documentElement.scrollWidth - document.documentElement.clientWidth)
+  expect(desborde, `/obras/gantt desborda ${desborde}px de costado en 390px`).toBeLessThanOrEqual(1)
+})

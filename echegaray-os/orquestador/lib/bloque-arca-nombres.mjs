@@ -26,13 +26,32 @@ export const CABECERA_ARCA = 'Cobertura del libro de IVA de ARCA'
  * cuelgan de la primera y la sangría es lo que lo muestra—. La búsqueda compara sin espacios de los
  * bordes, así que la sangría se puede cambiar sin romper el reapuntado.
  */
+// ═══ POR QUÉ CADA LÍNEA LLEVA UN `ancla` ADEMÁS DE SU `texto` (15/08/2026) ═══
+//
+// `texto` es lo que el generador MANDA. `ancla` es el trozo por el que se lo RECONOCE en la pestaña.
+// Durante meses fueron lo mismo, y por eso el reapuntado se ancló en la grilla que se quiso escribir
+// en vez de en la que quedó. Medido hoy contra el archivo vivo y contra la huella sellada:
+//
+//   manda  'Comprobantes de compra (neto de notas)'
+//   quedó  'Comprobantes de compra (neto de notas de crédito)'      ← Proveedores!A177
+//   manda  '  · cargados sin su N° de comprobante'
+//   quedó  '· cargados SIN su N° de comprobante'                    ← Proveedores!A180
+//
+// No es un residuo que la corrida siguiente vaya a corregir: es la REGLA 0 haciendo su trabajo. Un
+// rótulo que el dueño reescribió gana sobre el del generador (`conEdicionesRespetadas`), así que el
+// generador NO PUEDE imponer su texto — y un contrato que una de las dos partes no puede cumplir no
+// es un contrato. Lo que se sincroniza no es el texto: es la parte del texto que la Regla 0 no toca.
+//
+// El `ancla` se compara NORMALIZADA (minúsculas, sin acentos, espacios colapsados) y por `includes`,
+// así que tolera lo que efectivamente cambia —el "SIN" en mayúsculas, la sangría, el glifo ⚠ o el "·"
+// del principio, la cola "de crédito"— y NO tolera lo que distingue una línea de otra.
 export const LINEAS_ARCA = Object.freeze([
-  { texto: 'Comprobantes de compra (neto de notas)', n: ARCA.comprobantes, monto: ARCA.total },
-  { texto: '  · notas de crédito (restan)', n: ARCA.notasN, monto: ARCA.notasMonto },
-  { texto: '  · cargados en Compras, por N° de comprobante', n: ARCA.enComprasN, monto: ARCA.enComprasMonto },
-  { texto: '  · cargados sin su N° de comprobante', n: ARCA.sinNumeroN, monto: ARCA.sinNumeroMonto },
-  { texto: `  · ${ALERTA} sin cargar en Compras`, n: ARCA.faltanN, monto: ARCA.faltanMonto, publica: true },
-  { texto: 'Comprobantes emitidos (ventas)', n: ARCA.ventasN, monto: ARCA.ventasMonto },
+  { texto: 'Comprobantes de compra (neto de notas)', ancla: 'comprobantes de compra', n: ARCA.comprobantes, monto: ARCA.total },
+  { texto: '  · notas de crédito (restan)', ancla: 'notas de credito (restan)', n: ARCA.notasN, monto: ARCA.notasMonto },
+  { texto: '  · cargados en Compras, por N° de comprobante', ancla: 'cargados en compras', n: ARCA.enComprasN, monto: ARCA.enComprasMonto },
+  { texto: '  · cargados sin su N° de comprobante', ancla: 'cargados sin su n° de comprobante', n: ARCA.sinNumeroN, monto: ARCA.sinNumeroMonto },
+  { texto: `  · ${ALERTA} sin cargar en Compras`, ancla: 'sin cargar en compras', n: ARCA.faltanN, monto: ARCA.faltanMonto, publica: true },
+  { texto: 'Comprobantes emitidos (ventas)', ancla: 'comprobantes emitidos', n: ARCA.ventasN, monto: ARCA.ventasMonto },
 ].map(Object.freeze))
 
 // ═══ DIEZ DE LOS DOCE NOMBRES NO LOS LEÍA NADIE (14/08/2026) ═══
@@ -178,4 +197,92 @@ export function dondeViveCadaNombre(nombres = [], rangos = [], sheetId = null) {
     destinos.push({ name, fila: (r.startRowIndex ?? 0) + 1, col: (r.startColumnIndex ?? 0) + 1 })
   }
   return { destinos, ausentes, enOtraPestana }
+}
+
+/**
+ * Cómo se compara un rótulo con su ancla: lo que la Regla 0 puede cambiar, se borra; lo que
+ * distingue una línea de otra, se conserva.
+ */
+export const norm = (s) => String(s ?? '')
+  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase().replace(/\s+/g, ' ').trim()
+
+/**
+ * NÚCLEO PURO: DÓNDE ESTÁ EL BLOQUE VIVO EN LA PESTAÑA, LEÍDO DE LA PESTAÑA.
+ *
+ * ═══ EL PROBLEMA QUE RESUELVE, Y POR QUÉ NO LO RESOLVÍA `destinosDeArca` (15/08/2026) ═══
+ *
+ * `destinosDeArca` ancla en la grilla que el generador ACABA DE ESCRIBIR, y eso arregló el defecto de
+ * "el último" — pero deja el reapuntado atado a que el generador corra. Mientras esté en
+ * `PASOS_RETIRADOS`, los doce nombres se quedan clavados donde cayeron: MEDIDO hoy sobre el archivo
+ * vivo, `ARCA_FALTAN_N` → `Proveedores!B144` = "23-36911157-4" (un CUIT) y `ARCA_FALTAN_MONTO` →
+ * `C144` = "0010-00000001" (un número de comprobante), mientras el bloque bueno vive en 177-182 y su
+ * línea publicadora en la 181. El nombre que promete plata publica un comprobante, y quien lo cita
+ * —`Materiales!B53` y `Proveedores!G11`— muestra eso.
+ *
+ * ═══ POR QUÉ NO ALCANZA CON BUSCAR EL RÓTULO ═══
+ *
+ * Porque hay MÁS DE UNA COPIA. En la pestaña viva conviven una capa fósil (139-145: la cabecera del
+ * bloque y dos de sus líneas, entreveradas fila por fila con CUITs y comprobantes de otra tabla) y el
+ * bloque bueno (177-182). Buscar el rótulo y quedarse con el primero elige la fósil; con el último,
+ * eligió el fragmento huérfano de las filas 229-230 el 13/08. **Anclar en "el último" es anclar en la
+ * posición**: no dice nada sobre cuál de las copias es la buena.
+ *
+ * ═══ LO QUE SÍ DISTINGUE: LA GRAMÁTICA, NO LA POSICIÓN ═══
+ *
+ * El bloque bueno es el único donde las SEIS líneas aparecen CONSECUTIVAS Y EN ORDEN. La capa fósil no
+ * puede cumplirlo: es un residuo entrelazado, y sus huecos están ocupados por filas de otra tabla. Es
+ * la misma clase de criterio que usa el resto de este archivo —una forma que sólo produce el
+ * generador— en vez de una coordenada que envejece.
+ *
+ * FALLA CERRADO. Cero candidatos o más de uno devuelven `fila: null` con su motivo: preferir un
+ * error visible a reapuntar un nombre a la copia equivocada, que es la mentira silenciosa que este
+ * archivo persigue. Con dos copias completas no hay forma honesta de elegir.
+ *
+ * @param {Array<Array<unknown>>|string[]} colA la columna A de la pestaña, desde `filaArranque`
+ * @param {number} filaArranque fila REAL (1-indexada) del primer elemento de `colA`
+ * @returns {{fila:number|null, filas:number[], candidatos:number[], motivo:string}}
+ */
+export function ubicarBloqueVivo(colA = [], filaArranque = 1) {
+  const rotulos = (colA || []).map((f) => norm(Array.isArray(f) ? f[0] : f))
+  const anclas = LINEAS_ARCA.map((l) => l.ancla)
+  const candidatos = []
+  for (let i = 0; i + anclas.length <= rotulos.length; i++) {
+    if (anclas.every((a, k) => rotulos[i + k].includes(a))) candidatos.push(filaArranque + i)
+  }
+  if (!candidatos.length) {
+    return { fila: null, filas: [], candidatos, motivo: 'no encontré las seis líneas del bloque consecutivas y en orden en la pestaña' }
+  }
+  if (candidatos.length > 1) {
+    return {
+      fila: null, filas: [], candidatos,
+      motivo: `${candidatos.length} bloques completos en la pestaña (filas ${candidatos.join(', ')}): no sé cuál es el bueno y no elijo por posición`,
+    }
+  }
+  const fila = candidatos[0]
+  return { fila, filas: anclas.map((_, k) => fila + k), candidatos, motivo: `bloque vivo en las filas ${fila}-${fila + anclas.length - 1}` }
+}
+
+/** B es SIEMPRE cuántos y C es SIEMPRE plata — la misma convención que usa `destinosDeArca`. */
+/**
+ * NÚCLEO PURO: a qué celda apunta cada nombre publicado, SEGÚN LA PESTAÑA.
+ *
+ * La contracara de `destinosDeArca`: misma salida, otra fuente. Sirve para reapuntar sin depender de
+ * que el generador corra, y para verificar lo que el generador afirma haber escrito con información
+ * que no produjo él.
+ *
+ * @param {Array<Array<unknown>>|string[]} colA la columna A de la pestaña, desde `filaArranque`
+ * @param {number} filaArranque
+ * @returns {{destinos:Array<{name:string,fila:number,col:number}>, ubicacion:object}}
+ */
+export function destinosDeLaPestana(colA = [], filaArranque = 1) {
+  const ubicacion = ubicarBloqueVivo(colA, filaArranque)
+  if (ubicacion.fila == null) return { destinos: [], ubicacion }
+  const destinos = []
+  LINEAS_ARCA.forEach((l, k) => {
+    if (!l.publica) return
+    const fila = ubicacion.fila + k
+    destinos.push({ name: l.n, fila, col: COL_N }, { name: l.monto, fila, col: COL_MONTO })
+  })
+  return { destinos, ubicacion }
 }

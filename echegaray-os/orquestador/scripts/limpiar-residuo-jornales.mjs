@@ -29,7 +29,7 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { letraCol } from '../lib/preservar-anotaciones.mjs'
-import { residuosDeclarados, candidatasDeBancoOficina } from '../lib/jornales-residuo.mjs'
+import { residuosDeclarados, candidatasDeBancoOficina, candidatasDeBancoDireccion } from '../lib/jornales-residuo.mjs'
 
 const ID = process.env.ORQ_CASHFLOW_ID || '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTAÑA = 'Jornales por Quincena'
@@ -55,11 +55,12 @@ export const CANDIDATAS = [
 ]
 
 /**
- * CUÁNTAS CELDAS ES CREÍBLE VACIAR EN ESTA PESTAÑA. Las cinco declaradas a mano más, como mucho, los
- * doce meses de la columna «Banco» de Oficina. Si alguna vez se probaran más, es que alguien amplió
- * la lista sin mirar —o que el ancla cayó en otro cuadro— y entonces no escribo.
+ * CUÁNTAS CELDAS ES CREÍBLE VACIAR EN ESTA PESTAÑA. Las declaradas a mano más, como mucho, los doce
+ * meses de la columna «Banco» de CADA uno de los dos cuadros mensuales —Oficina y Dirección—. Si
+ * alguna vez se probaran más, es que alguien amplió la lista sin mirar —o que un ancla cayó en otro
+ * cuadro— y entonces no escribo.
  */
-const TOPE = CANDIDATAS.length + 12
+const TOPE = CANDIDATAS.length + 24
 
 async function main() {
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
@@ -72,7 +73,11 @@ async function main() {
   // se puede escribir con números de fila: el bloque se corre un renglón cada vez que entra una línea
   // arriba, y una coordenada vieja borra la celda de al lado. La prueba es la misma para todas — la
   // cosa que hay en la celda está viva, hoy, en su columna, adentro de otro cuadro.
-  const candidatas = [...CANDIDATAS, ...candidatasDeBancoOficina(grid)]
+  // LOS DOS CUADROS MENSUALES, NO UNO. Oficina y Dirección tienen el MISMO encabezado y hasta el
+  // 15/08 sólo se miraba el primero: la «Banco» de Dirección publicaba `F88 = "Básico convenio"`
+  // —encabezado del bloque 4.1, que hoy vive en F96— arriba del renglón de Diciembre, y ningún
+  // control la nombraba. Ver `encabezadosDeMesBanco`.
+  const candidatas = [...CANDIDATAS, ...candidatasDeBancoOficina(grid), ...candidatasDeBancoDireccion(grid)]
   const { vaciables, conservadas } = residuosDeclarados(grid, candidatas)
   for (const c of conservadas) {
     console.log(`  ✋ ${letraCol(c.col)}${c.fila} = "${c.valor}" — ${c.motivo}`)

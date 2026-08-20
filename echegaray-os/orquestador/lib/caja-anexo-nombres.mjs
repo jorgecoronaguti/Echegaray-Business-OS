@@ -42,6 +42,19 @@ export const ANEXO = {
   chequesSinFecha: 'ANEXO_CHEQUES_SIN_FECHA',
   // Días de liquidez: el ritmo de egreso contra la disponibilidad. Va al veredicto de CAJA.
   diasDeCaja: 'ANEXO_DIAS_CAJA',
+  // LA FECHA DE LOS DOS CONTEOS DE EFECTIVO — la columna D de CAJA para las filas que NO tienen banco.
+  //
+  // El dueño borró la celda donde él la tipeaba y lo dijo: *"te borré la fecha de los saldos en caja
+  // para q no te guíes en eso sino en lo q marca los timestamps del código"*. Desde entonces las dos
+  // filas de efectivo —el 40% del disponible— no decían de cuándo eran, y el aviso de "congelado" de
+  // la tarjeta no podía dispararse nunca sobre ellas porque su condición empieza por `ISNUMBER($D$n)`.
+  //
+  // No se le vuelve a pedir: sale del CENTINELA (`caja_conteo_observado`), que registra el instante en
+  // que el OS vio por primera vez cada valor del conteo. Es un número pegado por la corrida, de la
+  // misma especie que el SELLO y por el mismo motivo: ninguna fórmula de Sheets puede saber CUÁNDO
+  // cambió una celda. CAJA lo cita por nombre y no lo recalcula.
+  conteoArsDia: 'ANEXO_CONTEO_ARS_DIA',
+  conteoUsdDia: 'ANEXO_CONTEO_USD_DIA',
 }
 
 /**
@@ -76,9 +89,11 @@ export const CELDA_CAJA_MINIMA = { pestana: '01_Valores Iniciales', fila: 3, col
 
 /**
  * Qué especie promete cada nombre nuevo, para que `desalineados()` lo verifique después de publicar.
- * Los contadores de días son ENTEROS; todo lo demás es plata. `CAJA_BANCO_CORTE` es una fecha y no se
- * declara: la API la devuelve como serial y "entero" no distingue una fecha de un contador — declarar
- * una especie que no discrimina es peor que no declararla.
+ * Los contadores de días son ENTEROS; todo lo demás es plata. `CAJA_BANCO_CORTE` y los dos
+ * `ANEXO_CONTEO_*_DIA` son fechas y no se declaran: la API las devuelve como serial y "entero" no
+ * distingue una fecha de un contador — declarar una especie que no discrimina es peor que no
+ * declararla. Y la de dólares está VACÍA mientras no haya conteo cargado, que es un estado legítimo:
+ * exigirle especie la haría fallar por no tener un dato que no existe.
  */
 export const ESPECIE_ANEXO = {
   [ANEXO.efectivoNeto]: 'importe',
@@ -99,6 +114,22 @@ export const ESPECIE_ANEXO = {
   // El tipo de cambio no es plata, pero la especie que hace falta verificar es la misma: que haya un
   // NÚMERO ahí y no un texto ni una celda vacía. `importe` es el predicado que acepta entero o decimal.
   TIPO_CAMBIO_USD: 'importe',
+}
+
+/**
+ * LOS ÚNICOS NOMBRES QUE PUEDEN APUNTAR A UNA CELDA VACÍA — nominales, y con el motivo al lado.
+ *
+ * La regla del archivo es que todo nombre publicado declara su especie y se verifica después de
+ * publicar. Estos dos no pueden: su celda está legítimamente vacía cuando no hay conteo cargado, y
+ * `publicar` con especie declarada DESCARTA el destino vacío — el nombre no se crearía y la fórmula que
+ * lo cita en CAJA daría `#NAME?` en la primera pantalla de la pestaña más mirada del archivo.
+ *
+ * La excepción es NOMINAL a propósito: una excepción sin nombre propio es un agujero por el que entra
+ * el próximo nombre sin verificar. Si alguien agrega un tercero, tiene que venir acá y escribir por qué.
+ */
+export const PUEDE_ESTAR_VACIO = {
+  [ANEXO.conteoArsDia]: 'sin conteo en pesos cargado no hay fecha que publicar, y una fecha inventada sobre un arqueo que no ocurrió es peor que la celda vacía',
+  [ANEXO.conteoUsdDia]: 'hoy está SIEMPRE vacía: `CAJA_ARQUEO_USD` vale 0 y no hay conteo en dólares. El nombre existe igual para que `CAJA!D8` no quede en #NAME? y se complete sola el día que se cargue uno',
 }
 
 /** El nombre de la pestaña auxiliar. Prefijo `_` como `_BANCO_RAW` y `_PROVEEDORES_OS`: no se lee. */

@@ -82,6 +82,24 @@ export function origenDelMes(m, { mesesDDJJ = [], ancla = 0, mesesArca = [], mes
   return ORIGEN.vacio
 }
 
+/**
+ * NÚCLEO PURO: de qué mes es el saldo a favor que el hero publica como LA POSICIÓN DE HOY.
+ *
+ * ES EL ÚLTIMO MES CERRADO, Y NO EL ANCLA DE LA PROYECCIÓN — son dos preguntas distintas que estaban
+ * contestadas con el mismo número. El ancla dice "desde dónde proyecto" y sube hasta el último mes con
+ * un importe en la hoja; esto dice "qué tengo a favor hoy", que sólo puede salir de un período
+ * terminado. Cuando julio dejó de anclar (su celda tenía una leyenda), el hero se llevó puesto el
+ * saldo de junio —$19.344.911— cuando el de julio, ya cerrado y con sus comprobantes en ARCA, es de
+ * ~$7,5M: casi $12M de activo fiscal sobredeclarado en la celda más visible de la pestaña.
+ *
+ * El mes EN CURSO queda afuera a propósito: se completa a medida que ARCA se carga, así que su saldo
+ * se movería todos los días bajo un rótulo que dice "la posición al <fecha>".
+ */
+export function mesDelSaldoVigente(porOrigen = {}) {
+  const cerrados = [ORIGEN.ddjj, ORIGEN.ajeno, ORIGEN.arca].flatMap((o) => porOrigen[o] ?? [])
+  return cerrados.length ? Math.max(...cerrados) : 0
+}
+
 export function bloqueIva(G, { anio, ivaOficial, proy, arca, hoy }) {
   G.push([seccion(4, 'IVA — la DDJJ oficial (F.2051): qué se debe o se tiene a favor')])
   G.cabecera()
@@ -371,6 +389,20 @@ export function bloqueCierre(G, { proy, vencimientos }) {
   // sentado donde el ojo busca plata.
   G.lista(`${ALERTA} Anticipo de Ganancias — sin registro desde mayo`, [],
     'HUECO DECLARADO · último anticipo cargado: abril. De mayo en adelante Compras no tiene ninguna fila. ¿Se dio de baja el anticipo, o no se cargó el comprobante? Si sigue vigente son ~$144.427 por mes que el cash flow no está proyectando. Lo confirma el estudio contable.')
+  // ═══ LO QUE SE DESCARTÓ DE LA FILA DE LIBRE DISPONIBILIDAD (17/08) ═══
+  //
+  // El 17/08 la celda de julio tenía "⚠ vence 20/08" —una leyenda tipeada a mano donde la fila promete
+  // un importe— y `esNumero` la tomaba por $2.008, anclando ahí la proyección entera. Ahora se
+  // descarta, y julio se recalcula desde ARCA. Pero descartar en silencio le borraría a una persona lo
+  // que escribió sin decirle por qué: el aviso que ella quiso dejar tiene lugar propio —esta sección,
+  // la fila "DDJJ presentada" y la columna de procedencia—, y ese lugar no es una celda de plata.
+  for (const { mes, valor } of proy?.textoDondeVaImporte ?? []) {
+    G.lista(`${ALERTA} ${MES[mes - 1]}: había un texto donde va el saldo de libre disponibilidad`, [],
+      `HUECO DECLARADO · la celda decía "${valor}", que no es un importe: se descartó para no anclar la `
+      + 'proyección en un número que no existe, y el mes se recalculó desde los comprobantes de _ARCA_RAW. '
+      + 'Si ese aviso hace falta, va en esta sección o en la fila "DDJJ presentada" — nunca en una celda '
+      + 'que otras fórmulas suman.')
+  }
   G.push([`${ALERTA} El vencimiento de IIBB de San Juan es un SUPUESTO: ${vencimientos.iibb}`])
   G.push([`${ALERTA} Los pagos de IVA e IIBB no están cargados en Compras: el cash flow los ve por esta pestaña, no por Compras.`])
   if (proy?.meses?.length) G.push([`${ALERTA} IVA de ${MES[proy.meses[0] - 1]} a diciembre: ${proy.supuesto}`])

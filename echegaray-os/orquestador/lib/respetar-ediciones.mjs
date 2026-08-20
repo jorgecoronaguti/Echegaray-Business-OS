@@ -180,7 +180,26 @@ export function respetarEdiciones(generado = [], actual = [], registro = new Map
     // volvió atrás): se deja de respetar y se vuelve a la versión del generador.
     if (presentes.has(sinApostrofo(clave(celda)))) return celda
     respetadas.push({ mio: String(celda), suyo: reemplazo })
-    return reemplazo
+    // ═══ "BORRASTE MI RÓTULO" SE ESCRIBE CON EL CENTINELA, NO CON UNA CADENA VACÍA (14/08/2026) ═══
+    //
+    // Dos módulos usan `''` para dos cosas OPUESTAS, y acá se cruzaban:
+    //   · acá, `''` significa "el dueño borró este texto, la celda va vacía";
+    //   · en `fusionar`, `''` significa "esta celda NO es mía: conservá lo que haya en la pestaña".
+    //
+    // Así que un borrado respetado no dejaba la celda vacía: le entregaba el control a lo que hubiera
+    // debajo. Medido en el archivo real, filas 118-145 de "Proveedores": la fila de encabezado del
+    // cuadro 4 aterrizó con SÓLO la F y la G del layout nuevo ("Qué es", "Anula → la reemplaza") y la
+    // A/B/C/D mostrando una fila de datos del layout ANTERIOR —proveedor · CUIT · comprobante ·
+    // fecha—, porque 'Proveedor', 'Fecha' e 'Importe' estaban registrados como borrados y su `''`
+    // preservó el sedimento en vez de limpiarlo. Eso es, celda por celda, el "capas superpuestas" que
+    // el dueño ve; y explica por qué el barrido informa 0: para cuando la guarda mira, la grilla ya
+    // trae los valores viejos escritos encima de los míos, así que no hay ninguna celda vacía sobre
+    // contenido que barrer.
+    //
+    // Con el centinela la intención queda dicha entera: la celda es MÍA y va VACÍA. `fusionar` la
+    // traduce a vacío real, y quien decide si se puede vaciar sigue siendo `no-borrar.mjs` sobre el
+    // destino que ella misma relee — el residuo propio se limpia, una anotación del dueño no.
+    return reemplazo === '' ? VACIO : reemplazo
   }))
   return { grid, respetadas }
 }

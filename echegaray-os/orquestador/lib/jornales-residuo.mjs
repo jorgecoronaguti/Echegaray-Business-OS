@@ -95,6 +95,86 @@ export function copiaHuerfana(grid = [], { fila, col, tabla }) {
 }
 
 /**
+ * NÚCLEO PURO: TODAS las filas cuyo renglón es el encabezado «Mes … Banco … Proyectado».
+ *
+ * ═══ POR QUÉ "TODAS" Y NO `findIndex` (15/08) ═══
+ *
+ * Esta pestaña tiene DOS cuadros con ese encabezado, carácter por carácter: «2 · OFICINA — SUELDOS
+ * POR MES» y «3 · DIRECCIÓN — RETIROS MENSUALES DE LOS SOCIOS». Es a propósito —son la misma tabla
+ * para dos poblaciones, y el generador los emite con la misma lista de columnas—, pero `findIndex`
+ * devuelve el primero y se queda ahí: la columna «Banco» del cuadro de Dirección nunca fue candidata
+ * de nada. Medido en el archivo vivo, ahí adentro estaba `F88 = "Básico convenio"` —el encabezado de
+ * la columna F del bloque 4.1, que hoy vive ocho filas más abajo, en F96— publicado en el renglón de
+ * Diciembre de los retiros de los socios.
+ *
+ * Es la misma falla que dejó la columna N fuera del auditor de pantalla y OBRAS fuera del censo: un
+ * control que sólo mira la primera coincidencia informa lo mismo que uno que revisó todo.
+ *
+ * @returns {number[]} índices 0-based de la grilla
+ */
+export function encabezadosDeMesBanco(grid = []) {
+  const out = []
+  ;(grid || []).forEach((f, i) => {
+    if (String(f?.[0] ?? '').trim() === 'Mes' && (f || []).includes('Banco') && (f || []).includes('Proyectado')) out.push(i)
+  })
+  return out
+}
+
+/**
+ * NÚCLEO PURO: dónde termina un bloque que arranca en la fila `enc` (0-based) — su fila de TOTAL.
+ *
+ * El total de cada cuadro de esta pestaña se rotula con `⇒` en la columna A (`patron-pestana.total`).
+ * Sin fila de total no se devuelve un tope inventado: se devuelve -1 y quien pregunta no busca ahí.
+ * Un rango que se estira "hasta donde sea" es cómo un gemelo se encuentra en otra tabla.
+ *
+ * @returns {number} fila 1-based del total, o -1
+ */
+export function finDeBloque(grid = [], enc = 0, tope = 40) {
+  for (let i = enc + 1; i < Math.min(grid.length, enc + 1 + tope); i++) {
+    if (String(grid[i]?.[0] ?? '').trim().startsWith('⇒')) return i + 1
+  }
+  return -1
+}
+
+/**
+ * NÚCLEO PURO: LAS CANDIDATAS DE LA COLUMNA «Banco» DEL BLOQUE 3 (DIRECCIÓN) — LAS QUE NADIE MIRABA.
+ *
+ * ═══ QUÉ HAY AHÍ, Y CONTRA QUÉ SE PRUEBA ═══
+ *
+ * Igual que en Oficina, la «Banco» de Dirección es columna de CARGA del dueño: el generador emite
+ * cadena vacía —"no es mía, preservá lo que haya"— y esa protección no se afloja. Lo que quedó
+ * adentro es residuo del rediseño del 13/08, que corrió los bloques ocho filas hacia abajo:
+ *
+ *   F88  "Básico convenio"   ← el encabezado vivo de esa misma columna está en F96, adentro del 4.1
+ *
+ * LA TABLA DONDE SE BUSCA EL GEMELO ES EL BLOQUE 4.1, no el propio cuadro de Dirección, y es la
+ * diferencia con Oficina: en Oficina el residuo venía del calendario y de su propia fila de total —
+ * dos cuadros que escriben en ESA columna—; acá viene del cuadro que HOY ocupa la columna F más
+ * abajo. La prueba es la misma de siempre y no se afloja: la misma cosa, viva, hoy, en la misma
+ * columna, adentro de una tabla que el generador sí posee.
+ *
+ * FALLA CERRADO: sin el segundo encabezado, sin fila de total o sin el bloque 4.1, devuelve lista
+ * vacía y no se toca una sola celda.
+ *
+ * @param {any[][]} grid la pestaña leída con render FORMULA
+ * @param {number} meses cuántas filas de mes tiene el bloque
+ * @returns {{fila:number, col:number, tabla:number[][]}[]}
+ */
+export function candidatasDeBancoDireccion(grid = [], meses = 12) {
+  const enc = encabezadosDeMesBanco(grid)[1] ?? -1
+  if (enc < 0) return []
+  const col = grid[enc].indexOf('Banco')
+  const total = enc + 1 + meses + 1 // 1-based: encabezado, doce meses, total
+  if (!String((grid[total - 1] || [])[0] ?? '').trim()) return []
+  // El 4.1 se ubica por su propio encabezado —«Categoría … Básico convenio»— y termina en su total.
+  const p41 = (grid || []).findIndex((f) => String(f?.[0] ?? '').trim() === 'Categoría' && (f || []).includes('Básico convenio'))
+  const tablas = [[total, total]]
+  const fin41 = p41 > enc ? finDeBloque(grid, p41) : -1
+  if (fin41 > 0) tablas.push([p41 + 1, fin41])
+  return Array.from({ length: meses }, (_, i) => ({ fila: enc + 2 + i, col, tabla: tablas }))
+}
+
+/**
  * NÚCLEO PURO: LAS CANDIDATAS DE LA COLUMNA «Banco» DE OFICINA, UBICADAS POR SU ENCABEZADO.
  *
  * ═══ QUÉ ENCONTRÓ ESTO, Y CUÁNTO COSTABA (14/08) ═══
@@ -130,8 +210,7 @@ export function copiaHuerfana(grid = [], { fila, col, tabla }) {
  */
 export function candidatasDeBancoOficina(grid = [], meses = 12) {
   const celda = (f, c) => String((grid[f] || [])[c] ?? '').trim()
-  const enc = grid.findIndex((f) => String(f?.[0] ?? '').trim() === 'Mes'
-    && (f || []).includes('Banco') && (f || []).includes('Proyectado'))
+  const enc = encabezadosDeMesBanco(grid)[0] ?? -1
   if (enc < 0) return []
   const col = grid[enc].indexOf('Banco')
   const total = enc + 1 + meses + 1 // 1-based: encabezado, doce meses, total

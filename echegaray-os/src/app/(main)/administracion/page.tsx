@@ -1,146 +1,158 @@
+// ADMINISTRACIÓN — LA ENTRADA DEL ÁREA. NO ES UN MENÚ DE TARJETAS.
+//
+// `design/screens/administracion.md` §2a, textual: *"No es un menú de tarjetas ni repite la barra:
+// dos columnas."* Las dos columnas contestan dos preguntas distintas —a dónde voy y qué falta— y
+// mezclarlas en cinco tarjetas iguales obliga a leer las cinco para descubrir que sólo una pide
+// trabajo.
+//
+// El buscador de arriba a la derecha es global a propósito: quien lo usa tiene un nombre en la mano
+// y quiere la ficha, no la sección. Ver `services/entradaService.ts`.
+
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { getDashboardDatosFuente } from '@/features/dashboard/services/dashboardDataService'
-import { construirAlertasDashboard } from '@/features/dashboard/types'
-import { getAcciones, accionesPorAlertaOrigen } from '@/features/acciones/services/accionesService'
-import { SeccionAlertas } from '@/features/dashboard/components/SeccionAlertas'
-import { alertasPorArea } from '@/features/areas/types'
-import { getClasificacionesPendientes } from '@/features/clasificacion-costos/services/clasificacionCostosService'
-import { ColaClasificacionCostos } from '@/features/clasificacion-costos/components/ColaClasificacionCostos'
-import { getObras } from '@/features/obras/services/obrasService'
+import { PageShell } from '@/shared/components/ui'
+import { Eyebrow, Num, Nulo, Vacio } from '@/shared/components/ds'
+import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
+import { BuscadorURL } from '@/features/administracion/components/Controles'
+import {
+  atencionesDe, buscarGlobal, cuandoCorto, getConteos, getUltimoMovimiento, maestrosDe,
+  type Atencion, type Hallazgo, type Maestro,
+} from '@/features/administracion/services/entradaService'
 
-async function loadAdministracionData() {
-  try {
-    const supabase = await createClient()
-    const [datos, acciones, clasificaciones, obras] = await Promise.all([
-      getDashboardDatosFuente(supabase),
-      getAcciones(supabase),
-      getClasificacionesPendientes(supabase),
-      getObras(supabase),
-    ])
-    return { datos, acciones, clasificaciones, obras }
-  } catch (err) {
-    const error = err instanceof Error ? err.message : 'Error desconocido al conectar con Supabase'
-    const failed = { data: null, error } as const
-    return { datos: failed, acciones: failed, clasificaciones: failed, obras: failed }
-  }
+export const dynamic = 'force-dynamic'
+
+/** Una fila de maestro: nombre + contador tenue · detalle · señal a la derecha. Hairline abajo. */
+function FilaMaestro({ m }: { m: Maestro }) {
+  return (
+    <Link
+      href={m.href}
+      data-testid={`ir-${m.clave}`}
+      className="group flex items-baseline gap-3 border-b border-[#EFEEEA] py-[15px] last:border-0 hover:bg-surface-quiet"
+    >
+      {/* A 390px la fila entera son 358px útiles: con el nombre clavado en 250 y la señal de
+          estado sin poder encoger, la PÁGINA se corría 2px de costado. El nombre cede
+          primero porque es el único de los tres que se puede leer truncado. */}
+      <span className="flex w-[150px] shrink-0 items-baseline gap-2.5 sm:w-[250px]">
+        <span className="text-[14px] font-medium text-ink group-hover:underline">{m.titulo}</span>
+        {/* SIN LECTURA NO HAY CONTADOR — NUNCA UN CERO. Un «0» acá afirmaría que no hay ninguno, y
+            lo que pasó fue que la consulta falló. */}
+        {m.cuenta !== null && <Num className="text-faint">{m.cuenta}</Num>}
+      </span>
+      <span className="min-w-0 flex-1 truncate text-[12.5px] text-muted">{m.detalle}</span>
+      {m.senal && (
+        <span
+          data-testid={`senal-${m.clave}`}
+          className={`shrink-0 whitespace-nowrap text-[11.5px] ${m.resolver ? 'text-warn' : 'text-faint'}`}
+        >
+          {m.senal}
+        </span>
+      )}
+      <span aria-hidden className="pl-3 text-[13px] text-[#D7D5CF]">›</span>
+    </Link>
+  )
 }
 
-export default async function AdministracionPage() {
-  const { datos, acciones, clasificaciones, obras } = await loadAdministracionData()
-  const pageError = datos.error ?? acciones.error ?? clasificaciones.error ?? obras.error
-  const isAuthError = pageError?.toLowerCase().includes('permission denied') ?? false
+/** Una línea accionable. Rojo SÓLO si es crítico; lo demás es un dato que falta, y eso es ámbar. */
+function FilaAtencion({ a }: { a: Atencion }) {
+  return (
+    <Link
+      href={a.href}
+      data-testid={`atencion-${a.clave}`}
+      className="flex items-baseline gap-2.5 border-b border-[#EFEEEA] py-[13px] last:border-0 hover:bg-surface-quiet"
+    >
+      <span className={`mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full ${a.critico ? 'bg-neg' : 'bg-warn'}`} />
+      <span className="min-w-0 flex-1">
+        <span className="block text-[13px] text-ink">{a.texto}</span>
+        <span className="mt-0.5 block text-[11.5px] text-faint">{a.donde}</span>
+      </span>
+      <span className={`shrink-0 font-mono text-[15px] font-semibold tabular-nums ${a.critico ? 'text-neg' : 'text-ink'}`}>
+        {a.numero}
+      </span>
+    </Link>
+  )
+}
 
-  const todasLasAlertas = datos.data ? construirAlertasDashboard(datos.data) : []
-  const alertasDelArea = alertasPorArea(todasLasAlertas, 'administracion_finanzas')
-  const accionesMap = accionesPorAlertaOrigen(acciones.data ?? [])
+function Resultados({ q, hallazgos }: { q: string; hallazgos: Hallazgo[] }) {
+  return (
+    <section className="mb-8" data-testid="resultados-busqueda">
+      <Eyebrow className="mb-1">Resultados de «{q}»</Eyebrow>
+      {hallazgos.length === 0 ? (
+        <Vacio>Ningún cliente, persona ni proveedor coincide con «{q}».</Vacio>
+      ) : (
+        <ul>
+          {hallazgos.map((h) => (
+            <li key={h.clave} className="border-b border-[#EFEEEA] last:border-0">
+              <Link href={h.href} data-testid="hallazgo" className="flex items-baseline gap-3 py-2.5 hover:bg-surface-quiet">
+                <span className="w-[92px] shrink-0 text-[10px] uppercase tracking-[0.06em] text-faint">{h.maestro}</span>
+                <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{h.nombre}</span>
+                {h.detalle && <span className="shrink-0 text-[11.5px] text-faint">{h.detalle}</span>}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
 
-  const ejecucionFinanciera = datos.data?.ejecucionFinanciera ?? []
-  const totalPendienteCobrar = ejecucionFinanciera.reduce((acc, r) => acc + r.pendiente_cobrar, 0)
-  const totalPendienteFacturar = ejecucionFinanciera.reduce((acc, r) => acc + r.pendiente_facturar, 0)
+export default async function AdministracionPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+  const sp = await searchParams
+  const supabase = await createClient()
+  const [conteos, movimiento, hallazgos] = await Promise.all([
+    getConteos(supabase),
+    getUltimoMovimiento(supabase),
+    buscarGlobal(supabase, sp.q),
+  ])
+
+  const maestros = maestrosDe(conteos)
+  const atenciones = atencionesDe(conteos)
 
   return (
-    <div className="min-h-screen space-y-8 p-8">
-      <div>
-        <h1 className="text-3xl font-bold">Administración y Finanzas</h1>
-        <p className="mt-2 text-gray-600">
-          Obligaciones a pagar, cobranza pendiente y caja — qué vence, qué facturar y qué cobrar en todas las obras.
-          Reutiliza Obligaciones (PRP-010), Ejecución Financiera (PRP-007) y Caja (PRP-001), sin cálculos nuevos.
-        </p>
-        <div className="mt-2 flex gap-3 text-sm">
-          <Link href="/obligaciones" className="underline">
-            Ir a Obligaciones →
-          </Link>
-          <Link href="/caja" className="underline">
-            Ir a Caja →
-          </Link>
-          <Link href="/capital-trabajo" className="underline">
-            Ir a Capital de Trabajo →
-          </Link>
+    <PageShell
+      title="Administración"
+      subtitle="Los maestros del sistema y lo que quedó sin resolver."
+      right={
+        <BuscadorURL
+          accion="/administracion"
+          q={sp.q}
+          placeholder="Buscar cliente, persona o proveedor"
+          ancho="w-full sm:w-[300px]"
+          testid="buscador-global"
+        />
+      }
+    >
+      <NavAdministracion />
+
+      {sp.q && <Resultados q={sp.q} hallazgos={hallazgos} />}
+
+      <div className="flex flex-col gap-x-14 gap-y-8 lg:flex-row lg:items-start">
+        <div className="min-w-0 flex-1">
+          <Eyebrow className="mb-1">Maestros</Eyebrow>
+          <nav data-testid="admin-maestros">
+            {maestros.map((m) => <FilaMaestro key={m.clave} m={m} />)}
+          </nav>
+          <p className="mt-5 max-w-[760px] text-[11.5px] leading-relaxed text-faint">
+            Los contadores son de navegación: dicen cuánto hay del otro lado. Sin lectura no hay
+            contador — nunca un cero.
+          </p>
+        </div>
+
+        <div className="w-full shrink-0 lg:w-[340px]">
+          <Eyebrow className="mb-1">Requiere atención</Eyebrow>
+          <div data-testid="admin-atencion">
+            {atenciones.length === 0
+              ? <Vacio>No queda nada sin resolver en los maestros del área.</Vacio>
+              : atenciones.map((a) => <FilaAtencion key={a.clave} a={a} />)}
+          </div>
+
+          <Eyebrow className="mb-1 mt-[18px]">Último movimiento</Eyebrow>
+          <p className="py-3 text-[12.5px] leading-relaxed text-muted" data-testid="ultimo-movimiento">
+            {movimiento
+              ? <>{movimiento.texto} · <Num className="text-muted">{cuandoCorto(movimiento.cuando)}</Num></>
+              : <Nulo>sin movimientos registrados</Nulo>}
+          </p>
         </div>
       </div>
-
-      {pageError && isAuthError && (
-        <div className="rounded border border-amber-300 bg-amber-50 p-4 text-amber-900" data-testid="page-error">
-          <p className="font-semibold">No hay sesión autenticada — RLS está bloqueando el acceso correctamente.</p>
-          <p className="mt-1 text-sm">{pageError}</p>
-        </div>
-      )}
-      {pageError && !isAuthError && (
-        <div className="rounded border border-red-300 bg-red-50 p-4 text-red-800" data-testid="page-error">
-          <p className="font-semibold">Supabase no está configurado o no responde.</p>
-          <p className="mt-1 text-sm">{pageError}</p>
-        </div>
-      )}
-
-      {datos.data && (
-        <>
-          <section data-testid="administracion-resumen">
-            <dl className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm sm:grid-cols-3">
-              <div>
-                <dt className="text-gray-500">Pendiente de facturar (todas las obras)</dt>
-                <dd className="text-lg font-semibold">${totalPendienteFacturar}</dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">Pendiente de cobrar (todas las obras)</dt>
-                <dd className="text-lg font-semibold text-amber-700">${totalPendienteCobrar}</dd>
-              </div>
-            </dl>
-          </section>
-
-          <SeccionAlertas
-            titulo="Qué requiere atención hoy"
-            descripcion="Obligaciones vencidas o próximas, certificados sin facturar/cobrar, tensión de liquidez."
-            alertas={alertasDelArea}
-            testId="administracion-alertas"
-            accionesPorAlertaId={accionesMap}
-          />
-
-          <section data-testid="clasificacion-costos-section">
-            <h2 className="text-xl font-semibold">Costos sin obra confirmada</h2>
-            <p className="mt-1 text-sm text-gray-600">
-              Gastos reales de un cliente con más de una obra concurrente, sin tag de obra en la fuente de origen. El
-              OS sugiere una obra cuando la evidencia alcanza; si no, pide elegir manualmente en vez de forzar una
-              asignación (ver ciclo de Pisos, gap real encontrado el 2026-07-08).
-            </p>
-            <div className="mt-3">
-              <ColaClasificacionCostos pendientes={clasificaciones.data ?? []} obras={obras.data ?? []} />
-            </div>
-          </section>
-
-          <section data-testid="ejecucion-financiera-cross-obra">
-            <h2 className="text-xl font-semibold">Ejecución financiera por obra</h2>
-            <table className="mt-3 w-full text-left text-sm">
-              <thead>
-                <tr>
-                  <th className="pr-4">Obra</th>
-                  <th className="pr-4">Contratado</th>
-                  <th className="pr-4">Certificado</th>
-                  <th className="pr-4">Facturado</th>
-                  <th className="pr-4">Cobrado</th>
-                  <th className="pr-4">% cobrado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ejecucionFinanciera.map((r) => (
-                  <tr key={r.obra_id}>
-                    <td className="pr-4">
-                      <Link href={`/obras/${r.obra_id}`} className="underline">
-                        {r.obra_nombre}
-                      </Link>
-                    </td>
-                    <td className="pr-4">${r.monto_contratado}</td>
-                    <td className="pr-4">${r.total_certificado}</td>
-                    <td className="pr-4">${r.total_facturado}</td>
-                    <td className="pr-4">${r.total_cobrado}</td>
-                    <td className="pr-4">{r.porcentaje_contrato_cobrado ?? '—'}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-        </>
-      )}
-    </div>
+    </PageShell>
   )
 }

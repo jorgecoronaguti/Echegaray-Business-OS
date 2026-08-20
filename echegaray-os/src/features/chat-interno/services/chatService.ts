@@ -116,68 +116,78 @@ async function responderFinanciera(
   return { cubierta: true, capacidad, titulo: TITULO[capacidad], intro, datos, nota: null, capturadoEn }
 }
 
-// ── Obra: costo real (suma de comprobantes por obra) + avance físico, ambas tablas ya materializadas ──
-interface FilaCosto { obra_texto: string | null; total: number | string | null }
-interface FilaAvance { obra: string | null; avance_promedio: number | string | null; sincronizado_en: string | null }
+// ── Obra: costo real + avance físico, los dos de `obra_panel` ───────────────────────────────
+//
+// ═══ ESTA FUNCIÓN PUBLICABA OTRO AVANCE QUE LA WEB (17/08/2026) ═══
+//
+// Cruzaba `costos_obra` con `avance_obra` pegándolas por texto. Dos defectos, los dos corregidos:
+// el avance venía de un cálculo distinto al de /obras —el chat decía San Francisco 85% y la web
+// 44%, leyendo el mismo archivo de Drive en el mismo minuto— y el cruce por grafía dejaba
+// "LE - Comedor" y "Comedor" como si fueran dos obras. `obra_panel` resuelve las dos: alias
+// canónico para el nombre y `obra_avance` —la definición única— para el porcentaje.
+interface FilaPanel {
+  nombre: string
+  costo_real: number | string | null
+  avance_pct: number | string | null
+  n_actividades_medidas: number | null
+  n_actividades_sin_planificar: number | null
+  avance_sincronizado_en: string | null
+}
 
 function normObra(s: string): string {
   return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
 }
 
 async function responderObra(supabase: SupabaseClient, texto: string): Promise<ChatRespuesta> {
-  const [costosRes, avanceRes] = await Promise.all([
-    supabase.from('costos_obra').select('obra_texto, total'),
-    supabase.from('avance_obra').select('obra, avance_promedio, sincronizado_en'),
-  ])
-  if (costosRes.error || avanceRes.error) {
-    const err = costosRes.error?.message ?? avanceRes.error?.message ?? 'error de lectura'
+  const { data, error } = await supabase
+    .from('obra_panel')
+    .select('nombre, costo_real, avance_pct, n_actividades_medidas, n_actividades_sin_planificar, avance_sincronizado_en')
+  if (error) {
     return {
       cubierta: true, capacidad: 'obra', titulo: TITULO.obra, intro: null, datos: [],
-      nota: `No pude leer las obras (${err}). Sin sesión el error es de permisos (RLS).`, capturadoEn: null,
+      nota: `No pude leer las obras (${error.message}). Sin sesión el error es de permisos (RLS).`, capturadoEn: null,
     }
   }
-  // Costo real por obra = suma de comprobantes imputados (HECHO, respaldado por costos_obra).
-  const costoPorObra = new Map<string, number>()
-  for (const f of (costosRes.data ?? []) as FilaCosto[]) {
-    const nombre = (f.obra_texto ?? '').trim()
-    if (!nombre) continue
-    costoPorObra.set(nombre, (costoPorObra.get(nombre) ?? 0) + (aNumero(f.total) ?? 0))
-  }
-  const avancePorObra = new Map<string, number | null>()
+  const filas = (data ?? []) as FilaPanel[]
   let capturadoEn: string | null = null
-  for (const f of (avanceRes.data ?? []) as FilaAvance[]) {
-    const nombre = (f.obra ?? '').trim()
-    if (!nombre) continue
-    avancePorObra.set(nombre, aNumero(f.avance_promedio))
-    if (f.sincronizado_en && (!capturadoEn || f.sincronizado_en > capturadoEn)) capturadoEn = f.sincronizado_en
+  for (const f of filas) {
+    if (f.avance_sincronizado_en && (!capturadoEn || f.avance_sincronizado_en > capturadoEn)) {
+      capturadoEn = f.avance_sincronizado_en
+    }
   }
-  const nombres = Array.from(new Set([...costoPorObra.keys(), ...avancePorObra.keys()]))
-  if (!nombres.length) {
+  if (!filas.length) {
     return {
       cubierta: true, capacidad: 'obra', titulo: TITULO.obra, intro: null, datos: [],
-      nota: 'Todavía no hay costos ni avance materializados por obra.', capturadoEn: null,
+      nota: 'Todavía no hay obras cargadas.', capturadoEn: null,
     }
   }
   // Si la pregunta nombra una obra concreta, filtramos a esa; si no, listamos todas.
   const q = normObra(texto)
-  const mencionadas = nombres.filter((n) => n.length >= 3 && q.includes(normObra(n)))
-  const objetivo = mencionadas.length ? mencionadas : nombres
+  const mencionadas = filas.filter((f) => f.nombre.length >= 3 && q.includes(normObra(f.nombre)))
+  const objetivo = mencionadas.length ? mencionadas : filas
   const datos: ChatDato[] = []
-  for (const n of objetivo.sort((a, b) => a.localeCompare(b))) {
-    const costo = costoPorObra.get(n)
-    const avance = avancePorObra.get(n)
+  for (const f of [...objetivo].sort((a, b) => a.nombre.localeCompare(b.nombre))) {
+    const costo = aNumero(f.costo_real)
+    const avance = aNumero(f.avance_pct)
     const partes: string[] = []
-    if (costo !== undefined) partes.push(`costo real ${fmtValor(costo, 'pesos')}`)
-    if (avance !== undefined && avance !== null) partes.push(`avance ${fmtValor(avance, 'porcentaje')}`)
+    if (costo !== null && costo !== 0) partes.push(`costo real ${fmtValor(costo, 'pesos')}`)
+    if (avance !== null) {
+      // EL PROMEDIO NO VA SOLO: sobre cuántas actividades se tomó es parte del número, no una nota
+      // al pie. Publicar "85%" sin decir que salía de 24 de 119 actividades fue el defecto entero.
+      const medidas = f.n_actividades_medidas ?? 0
+      const sinFecha = f.n_actividades_sin_planificar ?? 0
+      const cobertura = sinFecha > 0 ? `${medidas} actividades, ${sinFecha} sin fecha` : `${medidas} actividades`
+      partes.push(`avance ${fmtValor(avance, 'porcentaje')} (${cobertura})`)
+    }
     datos.push({
-      etiqueta: n,
+      etiqueta: f.nombre,
       valor: partes.length ? partes.join(' · ') : 'aún sin datos',
-      fuente: 'costos_obra · avance_obra',
+      fuente: 'obra_panel · obra_avance',
       estado: partes.length ? 'ok' : 'sin_datos',
     })
   }
   const intro = mencionadas.length
-    ? 'Costo real (suma de comprobantes imputados) y avance físico de la obra. No incluye margen: eso necesita certificación, que el chat todavía no cruza.'
+    ? 'Costo real (suma de comprobantes imputados) y avance físico de la obra, del mismo cálculo que publica /obras. No incluye margen: eso necesita certificación, que el chat todavía no cruza.'
     : 'Costo real y avance por obra. Preguntá por una obra puntual para acotar. No incluye margen (falta cruzar certificación).'
   return { cubierta: true, capacidad: 'obra', titulo: TITULO.obra, intro, datos, nota: null, capturadoEn }
 }

@@ -37,13 +37,11 @@
 import { makeGoogleClient, WRITE_SCOPES } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import * as E from '../lib/estilo-pestana.mjs'
-import {
-  MONEDA_CUERPO, MONEDA_TOTAL, MONEDA_ALERTA, MONEDA_ALERTA_TOTAL, PORCENTAJE,
-} from '../lib/formato-statement.mjs'
 import { hallarPestana } from '../lib/sheet-pestanas.mjs'
 import { escribirPreservando, VACIO } from '../lib/preservar-anotaciones.mjs'
 import { conEdicionesRespetadas, guardarRegistro } from '../lib/respetar-ediciones.mjs'
-import { requestsTextoPorContenido } from '../lib/formato-texto-por-contenido.mjs'
+// EL FORMATO DE NÚMERO SALE DE LA ESPECIE QUE DECLARA LA GRILLA. Ver `obras-especies.mjs`.
+import { matrizDeEspecies, requestsDeEspecie } from '../lib/obras-especies.mjs'
 import {
   grillaObras, anchoColumnaA, celdasEnError, columnasDesparejas, problemaDeSintaxis, clientesDeCobranzas,
   conColaLimpiable, trabajosFueraDeObra, variantesDe, ANCHO_HISTORICO, ALTO_HISTORICO,
@@ -599,8 +597,14 @@ async function main() {
  * EL FORMATO — el mismo lenguaje que CAJA y su anexo: encabezado chico, importes protagonistas, el
  * "$" sólo en las filas de cierre, la prosa gris y al final. SE RESETEA TODO AL ESTÁNDAR y recién
  * después se pintan las excepciones: un formateador que sólo aplica apila corridas.
+ *
+ * ESTÁ EXPORTADA PARA PODER JUZGARLA SIN TOCAR EL ARCHIVO. Un formateador que aplica en capas —la
+ * primera declara moneda, la última puede pisarla con texto— no se puede verificar leyendo el código:
+ * hay que aplicar sus requests en orden y mirar con qué queda cada celda, que es lo que hace
+ * `obras-especies.test.mjs`. Escribir en el Sheet para averiguarlo es exactamente lo que este repo no
+ * puede hacer.
  */
-async function formatear(google, sheetId, g) {
+export async function formatear(google, sheetId, g) {
   const n = g.filas.length
   const r = (r0, r1, c0 = 0, c1 = ANCHO_OBRAS) => ({ sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 })
   const req = [
@@ -614,64 +618,21 @@ async function formatear(google, sheetId, g) {
   const fmt = (rg, fields, format) => req.push({ repeatCell: { range: rg, cell: { userEnteredFormat: E.conFuente(format) }, fields } })
   const borde = (rg) => req.push({ updateBorders: { range: rg, bottom: { style: 'SOLID', color: HAIR } } })
 
-  // Los importes: C..G y la I (Saldo contrato), a la derecha, sin "$" en el cuerpo. El "$" es del
-  // cierre, no de cada celda. La I entra a la lista y no a un caso aparte: es plata como las otras.
-  const PLATA = [2, 3, 4, 5, 6, 8]
-  for (const c of PLATA) {
-    fmt(r(0, n, c, c + 1), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
-      { numberFormat: MONEDA_CUERPO, horizontalAlignment: 'RIGHT' })
-  }
-  for (const f of [...(g.totales ?? []), ...(g.protagonistas ?? [])]) {
-    for (const c of PLATA) fmt(r(f - 1, f, c, c + 1), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_TOTAL })
-  }
-  // ═══ LA COLUMNA DE ALARMA SE DIBUJA CON SU PROPIO PATRÓN (14/08) ═══
+  // ═══ EL FORMATO DE NÚMERO SALE DE LA ESPECIE DE LA CELDA, NO DE UNA LISTA DE RANGOS (14/08) ═══
   //
-  // `Vencido` es el único número de esta pestaña que tiene que hacer levantar el teléfono, y hasta
-  // hoy se dibujaba igual que los otros seis importes de su fila. El ▲ va en el PATRÓN y no tipeado
-  // en la celda: tipeado la convertiría en texto —dejaría de sumar y el total de la columna sería
-  // $0— y con formato condicional habría que borrar las reglas viejas en cada corrida o se apilan.
-  // El tercer tramo del patrón sigue siendo "—": una fila sin nada vencido no lleva marca.
-  const F_VENCIDO = 5
-  fmt(r(0, n, F_VENCIDO, F_VENCIDO + 1), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_ALERTA })
-  for (const f of [...(g.totales ?? []), ...(g.protagonistas ?? [])]) {
-    // LA LÍNEA DE CARTERA ES LA EXCEPCIÓN: ahí la F no es "lo vencido" sino el tramo de 61–90 días, y
-    // sus cuatro columnas de alarma ya están marcadas UNA vez en el encabezado. Repetir el ▲ en cada
-    // celda de esa fila sería la misma señal cuatro veces, que es como una señal deja de verse.
-    if (f === g.fCartera) continue
-    fmt(r(f - 1, f, F_VENCIDO, F_VENCIDO + 1), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_ALERTA_TOTAL })
-  }
-  // …Y EN EL CUADRO 4 LA F NO ES UN IMPORTE SINO EL TEXTO QUE DECLARA POR DÓNDE EMPAREJÓ CADA OBRA.
-  // Va DESPUÉS de los dos bloques de arriba a propósito: los pisa. Con el patrón de moneda heredado
-  // el texto queda pegado al margen derecho, contra el número de la columna de al lado, y el rótulo
-  // "Imputado por" del encabezado sale alineado como si fuera plata. Es la misma razón por la que la
-  // H lleva su excepción: una columna que cambia de significado entre bloques cambia de formato.
+  // Acá vivían seis listas escritas a mano —`PLATA`, `F_VENCIDO`, `textoEnF`, `importeEnH`, más
+  // `totales` y `protagonistas`— que decidían el formato de cada celda desde 200 líneas de distancia
+  // del lugar donde se escribe su valor. Dos lugares que tienen que decir lo mismo sobre la misma
+  // celda divergen apenas alguien agrega una columna, y divergieron: `Vencido` publicó
+  // `17449303,3143` crudo mientras sus vecinas mostraban "—". El porqué entero, con la medición sobre
+  // el archivo, está en `obras-especies.mjs`.
   //
-  // Y DERRAMA. La F mide 138 px y `Compras: "Salones Comerciales"` mide 189: con el CLIP que rige en
-  // toda la hoja, el texto no se recorta — DESAPARECE, y la columna que existe para poder auditar el
-  // número quedaría en blanco justo en las obras que sí emparejaron. En el cuadro 4 la G, la H y la I
-  // están vacías (son Contratado / Falta certificar / Próx. cobro, que son del cuadro 3), así que
-  // derramar sobre ellas usa un espacio que ya está y no pisa nada. Se limita a ESTAS filas: en el
-  // cuadro 3 la G tiene el contratado y un derrame taparía plata.
-  for (const f of g.textoEnF ?? []) {
-    fmt(r(f - 1, f, F_VENCIDO, F_VENCIDO + 1),
-      'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.wrapStrategy',
-      { numberFormat: { type: 'TEXT' }, horizontalAlignment: 'LEFT', wrapStrategy: 'OVERFLOW_CELL' })
-  }
-  if (g.fCartera) {
-    for (const c of PLATA) fmt(r(g.fCartera - 1, g.fCartera, c, c + 1), 'userEnteredFormat.numberFormat', { numberFormat: MONEDA_TOTAL })
-  }
-  // La B dejó de ser un glifo y pasó a ser el % cobrado: se dibuja como porcentaje, no como texto.
-  fmt(r(0, n, 1, 2), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
-    { numberFormat: PORCENTAJE, horizontalAlignment: 'RIGHT' })
-  fmt(r(0, n, 7, 8), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
-    { numberFormat: { type: 'DATE', pattern: 'dd/mm/yyyy' }, horizontalAlignment: 'CENTER' })
-  // …salvo en la Sección 1, donde la H lleva el RETENIDO. La columna está declarada como fecha por
-  // el detalle de egresos de la Sección 2, y $7.671.680 con formato de fecha se dibuja como un día
-  // del año 2110 — un dato correcto que se lee como basura hace desconfiar de la pestaña entera.
-  for (const f of g.importeEnH ?? []) {
-    fmt(r(f - 1, f, 7, 8), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
-      { numberFormat: (g.totales ?? []).includes(f) ? MONEDA_TOTAL : MONEDA_CUERPO, horizontalAlignment: 'RIGHT' })
-  }
+  // AHORA LA GRILLA DECLARA QUÉ ES CADA CELDA y esto es su proyección a formato. Cubre las NUEVE
+  // columnas en TODAS las filas —incluida la A, que hasta hoy no recibía `numberFormat` en ninguna
+  // corrida— porque un formato que nadie repone es estado que sobrevive para siempre.
+  // La matriz se arma con el alto REAL que se va a escribir —`n` incluye la cola limpiable—, no con
+  // el de la grilla: una fila de la cola sin formato es donde sobrevive el TEXTO de la corrida vieja.
+  req.push(...requestsDeEspecie(sheetId, matrizDeEspecies(n, g.especiesDeclaradas ?? [], ANCHO_OBRAS)))
   fmt(r(0, 1), 'userEnteredFormat.textFormat', { textFormat: { bold: true, fontSize: E.TAM.titulo } })
   fmt(r(1, 2), 'userEnteredFormat.textFormat,userEnteredFormat.wrapStrategy',
     { textFormat: { italic: true, fontSize: E.TAM.nota, foregroundColor: E.COLOR.nota }, wrapStrategy: 'WRAP' })
@@ -679,7 +640,14 @@ async function formatear(google, sheetId, g) {
   g.filas.forEach((fila, i) => {
     const t = String(fila[0] ?? '')
     if (/^\d · /.test(t)) { // '1 · OBRAS DEL AÑO' — el título del bloque no necesita línea propia
-      fmt(r(i, i + 1), 'userEnteredFormat', { textFormat: { bold: true, fontFamily: E.FUENTE, fontSize: E.TAM.cuerpo, foregroundColor: INK }, horizontalAlignment: 'LEFT' })
+      // La máscara nombra los campos: un `userEnteredFormat` a secas BORRA todo lo que no declare, y
+      // se llevaba puesto el `numberFormat` de la fila entera — el agujero por donde una celda queda
+      // sin formato de número y se dibuja cruda.
+      // NO SE TOCA LA ALINEACIÓN DE LA FILA: la del rótulo ya la da su especie, y las columnas de
+      // plata de esta fila están vacías HOY — alinearlas a la izquierda las deja preparadas para
+      // dibujar el primer importe que caiga ahí como si fuera prosa.
+      fmt(r(i, i + 1), 'userEnteredFormat.textFormat',
+        { textFormat: { bold: true, fontFamily: E.FUENTE, fontSize: E.TAM.cuerpo, foregroundColor: INK } })
     }
     if (ENCABEZADO_SECCION.test(t.trim())) { // los encabezados de sección: texto, nunca plata
       fmt(r(i, i + 1), 'userEnteredFormat.numberFormat', { numberFormat: { type: 'TEXT' } })
@@ -752,15 +720,22 @@ async function formatear(google, sheetId, g) {
   // en toda la hoja, así que un rótulo más largo que su columna no se derrama — desaparece.
   const anchos = ANCHOS_OBRAS.map((px, i) => (i === 0 ? anchoColumnaA(g) : px))
   anchos.forEach((px, i) => req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: i, endIndex: i + 1 }, properties: { pixelSize: px }, fields: 'pixelSize' } }))
-  const { requests: rTxt } = requestsTextoPorContenido(sheetId, g.filas || [])
-  req.push(...rTxt)
+  // ═══ ACÁ CORRÍA `requestsTextoPorContenido`, Y ERA LA SEGUNDA MITAD DEL DEFECTO (14/08) ═══
+  //
+  // Decidía si una celda era texto OLFATEANDO su string, y corría último: ganaba siempre. Su propia
+  // documentación declara el límite —*"una celda cuyo valor lo produce una FÓRMULA no se puede
+  // clasificar sin evaluarla"*— y en esta pestaña casi todo es fórmula. Un importe releído ya
+  // formateado ("▲ 17.449.303") o el guion literal que publica una obra sin contrato ("—") no le
+  // parecen números, así que los marcaba TEXTO: eso es lo que quedó escrito en `G27`/`H27` del
+  // archivo del 14/08, en medio de una columna de moneda. Con la especie declarada por quien escribe
+  // el valor, adivinar sobra — y adivinar mal cuesta la pestaña.
   // ═══ EL ENCABEZADO SE ALINEA CON SU COLUMNA, Y VA ÚLTIMO A PROPÓSITO ═══
   //
-  // `requestsTextoPorContenido` manda a la IZQUIERDA toda celda de texto, y los rótulos de columna
-  // lo son: "Venta (neto)" quedaba pegado al borde izquierdo sobre importes alineados a la derecha,
-  // así que el ojo tenía que buscar a qué columna pertenecía cada número. En un estado financiero el
-  // rótulo de una columna de cifras va del mismo lado que las cifras. Va DESPUÉS del pase de texto
-  // porque el último request gana: adelantarlo lo dejaría sin efecto.
+  // La especie `rotulo` alinea a la IZQUIERDA, y los rótulos de columna lo son: "Venta (neto)"
+  // quedaba pegado al borde izquierdo sobre importes alineados a la derecha, así que el ojo tenía que
+  // buscar a qué columna pertenecía cada número. En un estado financiero el rótulo de una columna de
+  // cifras va del mismo lado que las cifras. Va DESPUÉS del pase de especies porque el último request
+  // gana: adelantarlo lo dejaría sin efecto.
   for (const [i, fila] of (g.filas ?? []).entries()) {
     if (!ENCABEZADO_SECCION.test(String(fila?.[0] ?? '').trim())) continue
     fmt(r(i, i + 1, 1, ANCHO_OBRAS), 'userEnteredFormat.horizontalAlignment', { horizontalAlignment: 'RIGHT' })

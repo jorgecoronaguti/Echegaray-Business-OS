@@ -68,6 +68,43 @@ export const desdeTramo = (k) => (k === 0 ? PISO_CAJA : `MAX(${PISO_CAJA};${BORD
 export const hastaTramo = (k) => BORDES[k][1] || FIN_HORIZONTE
 
 /**
+ * EL ÍNDICE DEL TRAMO DEL PASADO. Se nombra en vez de escribir `0` en tres lados: quien reordene
+ * `BORDES` tiene un test que le dice que este índice dejó de apuntar a "Vencido", en vez de aplicarle
+ * el filtro de abajo al tramo equivocado y hacer desaparecer los cobros de una semana entera.
+ */
+export const TRAMO_VENCIDO = 0
+
+/**
+ * NÚCLEO PURO: EL LADO DEL LIBRO QUE CUENTA CADA TRAMO. `null` = los dos.
+ *
+ * ═══ UN COBRO VENCIDO NO ES PLATA QUE ENTRÓ (17/08/2026) ═══
+ *
+ * El tramo del pasado abre en el serial 0 porque un cheque librado hace un mes y sin presentar sigue
+ * siendo plata que VA A SALIR (ver `DESDE_SIEMPRE`). Ese argumento vale para el egreso y NO vale para
+ * el ingreso, y sumar los dos lados con la misma regla es lo que se estaba haciendo:
+ *
+ *   · un EGRESO vencido sigue vivo — la obligación no se extingue porque pase la fecha;
+ *   · un INGRESO vencido es exactamente el cobro que NO ocurrió. Contarlo en el tramo del pasado
+ *     afirma que ya entró, que es presentar una estimación como hecho.
+ *
+ * MEDIDO EN EL ARCHIVO VIVO el 17/08: dos cobranzas en efectivo de «San Francisco» por $20.000.000
+ * (14/08) y $3.864.127 (15/08) quedaron en VENCIDO. El tramo las sumaba, así que valía +$9.073.578
+ * en lugar de −$14.790.549, y el PISO del recorrido —el número con el que se decide qué se paga hoy—
+ * publicaba $4.782.997 de colchón cuando el peor caso real era −$19.081.130.
+ *
+ * Y la pestaña se contradecía sola: la fila de acciones emitía *"Reclamar $23.864.127 de cobranzas
+ * vencidas"* (`caja-avisos.mjs`) sobre la misma plata que la escalera daba por cobrada.
+ *
+ * LO QUE ESTO NO HACE: no borra esa plata del archivo. El cobro vencido sigue en el libro, sigue en
+ * "hay $X a cobrar" y sigue en la acción que manda a reclamarlo. Lo único que deja de hacer es entrar
+ * al saldo proyectado como si hubiera entrado a la cuenta.
+ *
+ * @param {number} k el índice del tramo en `BORDES`
+ * @returns {-1|null} `-1` (SALE) para el tramo del pasado, `null` para el resto
+ */
+export const signoDelTramo = (k) => (k === TRAMO_VENCIDO ? -1 : null)
+
+/**
  * Lo que la definición única del cuadro de caja no sabe resolver sola, resuelto acá y sólo acá.
  *
  * ⚠ EL TÉRMINO DE CHEQUES ES "SIN FACTURA CARGADA", NO "TODOS LOS NO DEBITADOS": el cheque es el

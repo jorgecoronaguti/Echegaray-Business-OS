@@ -146,3 +146,25 @@ test('la tarjeta tiene un solo límite y el disponible lo declara el banco', asy
   // Y la foto tiene fecha: sin `al` no se puede decir cuán vieja es.
   assert.match(String(TARJETA.al ?? ''), /^\d{4}-\d{2}-\d{2}$/)
 })
+
+// ═══ EL CONTROL DE LA CARTERA Y LA CARTERA TIENEN QUE MIRAR LA MISMA POBLACIÓN (15/08/2026) ═══
+//
+// El control le pregunta a Cobranzas por la misma plata que la réplica del banco declara "En
+// custodia", para que la diferencia entre los dos signifique algo. La cartera no filtra por fecha:
+// cuenta todo lo que no se depositó todavía. Si el control se corta en `>TODAY()`, el echeq que se
+// acredita HOY queda de un lado y no del otro, y la diferencia publicada es menor que la real.
+//
+// El día que se midió eso valía $10.000.000: dos cheques endosados a Alumetal, uno con fecha de hoy
+// y otro a fin de mes, y el control declaraba uno solo.
+test('el control de la cartera incluye el echeq que se acredita hoy', async () => {
+  const { CUENTAS } = await import('./caja-disponibilidades.mjs')
+  const cuenta = CUENTAS.find((c) => c.control)
+  assert.ok(cuenta, 'tiene que existir la cuenta con control de cartera')
+  assert.match(cuenta.control, /Cobranzas!\$Q\$5:\$Q\$400>=TODAY\(\)/,
+    'un cheque que se acredita hoy todavía no se acreditó: el borde es >=, no >')
+  assert.doesNotMatch(cuenta.control, /\$Q\$400>TODAY\(\)/,
+    'el borde estricto deja afuera el vencimiento del día y sub-declara la diferencia')
+  // Y las dos puntas de la comparación tienen que barrer hasta la misma fila, o el desvío es del tope.
+  const topes = [...cuenta.control.matchAll(/\$(\d+)\b(?!:)/g)].map((m) => Number(m[1]))
+  assert.ok(topes.every((t) => t === 5 || t === 400), `tope inconsistente en el control: ${topes.join(',')}`)
+})

@@ -38,6 +38,58 @@
 export const ACUERDO_BANCO = 0.5
 
 /**
+ * DIRECCIÓN COBRA TODO POR BANCO — Y ES UNA ORDEN DEL DUEÑO, NO UNA MEDICIÓN.
+ *
+ * *"oficina 2 empleados 50 y 50, administracion todos por banco"* (03/08). Es exactamente el mismo
+ * tipo de dato que `ACUERDO_BANCO`: la política de pago que él fija, no un porcentaje observado.
+ *
+ * ═══ POR QUÉ ESTO NO ES "INVENTAR EL CANAL" ═══
+ *
+ * Hasta hoy la fila de Dirección del cuadro de pago publicaba «Por banco» = "—" con este argumento:
+ * *"de esos tres retiros el canal no está registrado en ninguna parte"*. Es cierto del HECHO y falso
+ * de la REGLA — y lo que el cuadro proyecta es la regla. El costo de callarlo era medible y estaba a
+ * la vista: con Dirección afuera, la fila de total publicaba «Por banco» $5.069.615 + «En efectivo»
+ * $4.090.971 = $9.160.585 contra un «Neto a pagar» de $18.331.585. La identidad que hace auditable
+ * el cuadro —POR BANCO + EN EFECTIVO = NETO— quedaba rota por $9.171.000 sin una sola celda en rojo,
+ * en el único renglón que el dueño usa para operar el pago.
+ *
+ * LO QUE ESTA CONSTANTE NO HACE: pisar un hecho. Cuando un retiro sale de verdad, el bloque de
+ * Dirección lo registra por su columna «Banco» y ese dato manda, igual que en obra y en oficina. Hay
+ * evidencia de al menos una excepción real —el retiro de Jorge Echegaray del 04/08 salió en
+ * efectivo, ver lib/direccion-retiros.mjs— y por eso la regla vale para lo PROYECTADO, que es lo
+ * único que esta constante toca.
+ */
+export const DIRECCION_POR_BANCO = 1
+
+/**
+ * NÚCLEO PURO: LAS DOS MITADES DE UNA FILA PROYECTADA — LA REGLA DE PAGO, EN UN SOLO LUGAR.
+ *
+ * ═══ POR QUÉ LAS DOS Y NO UNA (14/08) ═══
+ *
+ * El dueño pidió *"jornales con la proyección de sueldos 50 y 50"*. El calendario publicaba una sola
+ * mitad («Efectivo») y la otra no estaba en ninguna celda: para saber cuánto se transfiere había que
+ * hacer la cuenta a mano sobre tres columnas. Los dos números se operan juntos —uno se transfiere, el
+ * otro se saca del cajón— y publicar uno solo obliga a derivar el otro justo el día del pago.
+ *
+ * `/2` Y NUNCA `*0,5`: un literal decimal escrito por API viaja en el locale del archivo (es_AR),
+ * donde la coma SEPARA ARGUMENTOS. El `0,5` se parte en dos y la celda queda en #ERROR. Es la razón
+ * por la que el acuerdo vive acá como número (para el JS que lo mide) y como `/2` en la fórmula.
+ *
+ * DIRECCIÓN VA ENTERA AL BANCO y por eso no se divide: ver `DIRECCION_POR_BANCO`.
+ *
+ * LA IDENTIDAD QUE ESTO GARANTIZA: banco + efectivo = obreros + oficina + dirección, siempre y por
+ * construcción. Es lo que permite que el calendario publique las dos mitades sin una tercera columna
+ * de total: el total es la suma de las dos que están al lado.
+ *
+ * @param {{obreros:string, oficina:string, direccion:string}} c referencias A1 de la fila
+ * @returns {{banco:string, efectivo:string}} las dos fórmulas es-AR
+ */
+export function canalesProyectados({ obreros, oficina, direccion }) {
+  const mitad = `(${obreros}+${oficina})/2`
+  return { banco: `=${mitad}+${direccion}`, efectivo: `=${mitad}` }
+}
+
+/**
  * LAS COLUMNAS DEL ESPEJO `_J_OBREROS`, DECLARADAS UNA SOLA VEZ.
  *
  * Verificadas el 14/08 sobre `'_J_OBREROS'!B497:AB511`. Escribir "X" adentro de una fórmula y "la

@@ -100,11 +100,22 @@ export const INSTRUMENTO_EFECTIVO = 'efectivo'
  * SIN CORTE NO SE DECIDE NADA. Si no hay fecha de corte, no existe la ventana "después del corte" y
  * degradar a COMPROMETIDO todo el histórico convertiría años de pagos hechos en compromisos vivos.
  *
- * @param {{instrumento:string, pagado:boolean, fecha:number, corte:number|null}} m
+ * ═══ NO PAGADO NO SIGNIFICA "PLANEADO" (17/08/2026) ═══
+ *
+ * Durante meses esta función devolvía `PROYECTADO` para toda compra no pagada, y con eso el estado
+ * pasó a significar dos cosas a la vez: el gasto que alguien estimó y la factura que alguien tiene
+ * que pagar el 31/08. La tarjeta de deuda dejó de sumar `PROYECTADO` el 16/08 —bien: adentro había
+ * presupuesto— y en el mismo movimiento perdió 13 facturas por $8.598.826.
+ *
+ * `facturada` lo decide `esFacturaCargada` mirando la fila (comprobante + estado "Pendiente"), no
+ * una lista. Acá sólo se traduce: hay factura ⇒ hay obligación ⇒ COMPROMETIDO, que es literalmente
+ * la definición que este archivo ya usaba para el cheque entregado y sin debitar.
+ *
+ * @param {{instrumento:string, pagado:boolean, fecha:number, corte:number|null, facturada?:boolean}} m
  * @returns {'REAL'|'COMPROMETIDO'|'PROYECTADO'}
  */
-export function estadoDeEgreso({ instrumento, pagado, fecha, corte } = {}) {
-  if (!pagado) return 'PROYECTADO'
+export function estadoDeEgreso({ instrumento, pagado, fecha, corte, facturada = false } = {}) {
+  if (!pagado) return facturada ? 'COMPROMETIDO' : 'PROYECTADO'
   if (!Number.isFinite(fecha) || !Number.isFinite(corte)) return 'REAL'
   if (fecha <= corte) return 'REAL'
   const diferido = INSTRUMENTOS_DIFERIDOS.includes(instrumento) || instrumento === 'desconocido'

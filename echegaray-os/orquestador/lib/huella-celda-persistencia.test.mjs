@@ -67,6 +67,56 @@ test('leerHuellas acotado a la ventana no trae las huellas del otro bloque', { s
   assert.ok(soloArriba.has(claveCelda(1, 0)))
 })
 
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// EL FOOTPRINT DE LA CORRIDA ANTERIOR — la marca que el barrido se llevaba (14/08)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Éste es el defecto que hacía inmortal al residuo de "Jornales por Quincena": una celda escrita con
+// el centinela `VACIO` no sella huella nueva, así que el barrido de la corrida se llevaba la vieja y
+// con ella la única prueba de que esa celda fue del generador. Sin la marca de abandono, el test 2
+// de abajo (la corrida que NO pudo decidir) borra el registro y el residuo queda sin dueño.
+
+test('la marca de abandono sobrevive al barrido de la corrida que la creó', { skip: !hayBase && 'sin base' }, async (t) => {
+  t.after(limpiar)
+  await limpiar()
+  await guardarHuellas(FILE, TAB, [['TOTAL DEL CUADRO VIEJO']], { fila0: 1, col0: 0 })
+  // Corrida 2: el cuadro se achicó y esta celda ya no la ocupo. Se escribe vacía y se marca abandonada.
+  await guardarHuellas(FILE, TAB, [['']], {
+    fila0: 1,
+    col0: 0,
+    abandonadas: [{ fila: 1, col: 0, forma: 'total del cuadro viejo', huella: 'abc', filaMapa: 1 }],
+  })
+  const h = await leerHuellas(FILE, TAB)
+  assert.equal(h.get(claveCelda(1, 0))?.abandonada, true, 'el footprint queda registrado')
+  assert.equal(h.get(claveCelda(1, 0))?.forma, 'total del cuadro viejo', 'con la forma que dejé escrita')
+  assert.equal(h.get(claveCelda(1, 0))?.borrada, false, 'y no como un borrado del dueño')
+})
+
+test('el footprint sigue ahí después de una corrida que no pudo decidir', { skip: !hayBase && 'sin base' }, async (t) => {
+  t.after(limpiar)
+  await limpiar()
+  await guardarHuellas(FILE, TAB, [['TOTAL DEL CUADRO VIEJO']], { fila0: 1, col0: 0 })
+  await guardarHuellas(FILE, TAB, [['']], { fila0: 1, col0: 0, abandonadas: [{ fila: 1, col: 0, forma: 'total del cuadro viejo' }] })
+  // Corrida 3: la alineación no alcanzó el umbral, `aplicarHuella` no devolvió ninguna desocupada y
+  // el generador escribe igual. El registro NO se puede barrer acá: es la corrida siguiente la que
+  // lo necesita para probar de quién es el residuo.
+  await guardarHuellas(FILE, TAB, [['']], { fila0: 1, col0: 0 })
+  assert.equal((await leerHuellas(FILE, TAB)).get(claveCelda(1, 0))?.abandonada, true, 'dos corridas después sigue registrado')
+})
+
+test('la celda que vuelve a ocuparse con contenido deja de estar abandonada', { skip: !hayBase && 'sin base' }, async (t) => {
+  t.after(limpiar)
+  await limpiar()
+  await guardarHuellas(FILE, TAB, [['TOTAL']], { fila0: 1, col0: 0 })
+  await guardarHuellas(FILE, TAB, [['']], { fila0: 1, col0: 0, abandonadas: [{ fila: 1, col: 0, forma: 'total' }] })
+  // El cuadro volvió a crecer y esta fila es otra vez del layout vivo: la marca se levanta sola, si no
+  // el generador se quedaría sin poder escribir una celda que hoy sí ocupa.
+  await guardarHuellas(FILE, TAB, [['TOTAL']], { fila0: 1, col0: 0 })
+  const h = await leerHuellas(FILE, TAB)
+  assert.equal(h.get(claveCelda(1, 0))?.abandonada, false)
+  assert.equal(h.get(claveCelda(1, 0))?.borrada, false)
+})
+
 test('una celda que vuelve a tener contenido pierde la marca: el candado no es eterno', { skip: !hayBase && 'sin base' }, async (t) => {
   t.after(limpiar)
   await limpiar()

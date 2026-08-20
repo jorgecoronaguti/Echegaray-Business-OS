@@ -55,6 +55,9 @@
 // rompe en silencio si la columna se mueve (lo verifica caja-posterior-al-corte.test.mjs).
 import { COL_FECHA_CAJA } from './rubro-caja.mjs'
 import { formulaUltimaFecha, formulaFrescuraDe } from './fecha-de-frescura.mjs'
+// EL CRITERIO DE LA VENTANA VIVE EN UN SOLO LADO. Estaba escrito tres veces con `>` y una con `>=`,
+// y esa cuarta era la única correcta: dos filas equivalentes daban números distintos según el estado.
+import { ventanaDelConteo } from './caja-ancla-por-instante.mjs'
 
 // ═══ LOS RANGOS SON ABIERTOS. NINGUNA FILA FINAL. (31/07) ═══
 //
@@ -262,14 +265,27 @@ export function formulaCobrosEfectivoPosteriores(arqueo, c = COB) {
  * la caja". Desde ahora la plata que se cuenta es el MONTO PAGADO (T) — parcial o total — y no el
  * total de la factura, que además sobrecontaba una compra saldada en dos veces.
  *
- * La ventana temporal distingue el estado de la fila, porque el dato de fecha disponible es otro:
- * - "Pagado": la Fecha de caja (AD) es la fecha del pago → estrictamente POSTERIOR al arqueo. Un
- *   pago completo del mismo día del arqueo se asume DENTRO del conteo (pagaste, después contaste).
+ * ═══ EL PAGO DEL MISMO DÍA DEL CONTEO, POSTERIOR AL CONTEO, NO SE DESCONTABA NUNCA (15/08) ═══
+ *
+ * El dueño pidió que el conteo se selle con su MOMENTO "y desde ahi hacer los descargos". La rama
+ * "Pagado" comparaba `>` contra la fecha del arqueo, y con eso un pago hecho el mismo día del conteo
+ * —después de contar— quedaba afuera de la ventana PARA SIEMPRE: no volvía a entrar en el conteo
+ * siguiente porque ya era anterior a él. La plata salía del cajón y el cajón no bajaba nunca.
+ *
+ * El supuesto que lo justificaba estaba escrito acá y era cómodo, no conservador: "pagaste, después
+ * contaste". Medido en el archivo, los pagos en efectivo del día del arqueo vigente (07/08) suman
+ * $960.000 — y el criterio los daba todos por contados sin mirar.
+ *
+ * Ahora las dos ramas usan el MISMO criterio declarado, el de una SALIDA: entra desde el día del
+ * conteo INCLUSIVE. Es la dirección conservadora (baja el efectivo publicado) y se autocorrige en el
+ * conteo siguiente. Ver `CRITERIO_MISMO_DIA` en caja-ancla-por-instante.mjs, con la medición de por
+ * qué la hora —que resolvería el empate de verdad— hoy no existe en ninguna de las tres fuentes.
+ *
+ * - "Pagado": la Fecha de caja (AD) es la fecha del pago.
  * - "Pendiente" con monto pagado: AD apunta al SALDO futuro, no al billete que ya salió; la mejor
- *   fecha del parcial es la de carga (C), y entra DESDE el día del arqueo inclusive: una entrega
- *   parcial es operación en curso, casi siempre posterior al conteo. El borde de un parcial cargado
- *   el mismo día pero ANTES de contar se corrige solo en el próximo arqueo — y es el borde raro;
- *   el otro (el parcial invisible para siempre) era el defecto.
+ *   fecha del parcial es la de carga (C). Ya entraba desde el día del arqueo inclusive — esta rama
+ *   tenía el criterio correcto desde el 07/08 y la otra no, que es exactamente la clase de asimetría
+ *   que hace que dos filas iguales den números distintos.
  * @param {string} arqueo referencia a la celda con la fecha del arqueo
  * @param {object} c columnas de Compras
  * @returns {string} fórmula
@@ -280,10 +296,11 @@ export function formulaComprasEfectivoPosteriores(arqueo, c = CMP) {
     return `IFERROR(DATEVALUE(${r}&"");N(${r}))`
   }
   const pagadoCoerc = `N(${rango(c.hoja, c.montoPagado, c.desde)})`
+  const sale = (fecha) => ventanaDelConteo(fecha, arqueo, false)
   return `SUMPRODUCT((${rango(c.hoja, c.tipoPago, c.desde)}="Efectivo")`
     + `*${pagadoCoerc}`
-    + `*(((${rango(c.hoja, c.estado, c.desde)}="Pagado")*(${fechaCajaCoerc(c)}>${arqueo}))`
-    + `+((${rango(c.hoja, c.estado, c.desde)}="Pendiente")*(${fechaCargaCoerc()}>=${arqueo})))`
+    + `*(((${rango(c.hoja, c.estado, c.desde)}="Pagado")*${sale(fechaCajaCoerc(c))})`
+    + `+((${rango(c.hoja, c.estado, c.desde)}="Pendiente")*${sale(fechaCargaCoerc())}))`
     + `)`
 }
 
@@ -300,8 +317,10 @@ export function formulaComprasEfectivoPosteriores(arqueo, c = CMP) {
  */
 export function formulaDepositosEfectivoPosteriores(arqueo, c = DEP) {
   const col = (x) => `${c.hoja}!$${x}$${c.desde}:$${x}`
+  // UN DEPÓSITO SACA BILLETES DEL CAJÓN: es una SALIDA, y por eso el del día del conteo entra a la
+  // ventana igual que un pago en efectivo del día del conteo. Mismo criterio, mismo motivo.
   return `SUMPRODUCT((${col(c.flujo)}="entra")*${esDepositoDeEfectivo(col(c.concepto))}`
-    + `*ISNUMBER(${col(c.fecha)})*(${col(c.fecha)}>${arqueo})`
+    + `*ISNUMBER(${col(c.fecha)})*${ventanaDelConteo(col(c.fecha), arqueo, false)}`
     + `*IF(ISNUMBER(${col(c.importe)});${col(c.importe)};0))`
 }
 
@@ -497,8 +516,18 @@ export const JOR = {
   recibo: 'JORNALES_REAL_RECIBO',
 }
 
-/** La ventana común: quincenas con pago REGISTRADO y posterior al corte/arqueo. */
-const ventanaPagada = (corte, j) => `ISNUMBER(${j.pagado})*(${j.pagado}>${corte})`
+/**
+ * La ventana común: quincenas con pago REGISTRADO y posterior al corte/arqueo.
+ *
+ * DOS ANCLAS DISTINTAS, DOS CRITERIOS DISTINTOS, Y NO ES UNA INCONSISTENCIA. Contra el CORTE DEL
+ * EXTRACTO la ventana es exclusiva: el extracto cubre el día entero, así que lo del propio día ya
+ * está adentro del saldo. Contra el CONTEO la ventana es inclusiva para las salidas: un conteo pasa
+ * a una hora del día y no cubre el resto (ver CRITERIO_MISMO_DIA). Confundirlas fue lo que dejó el
+ * pago en efectivo del día del arqueo sin descontarse nunca.
+ */
+const ventanaPagada = (corte, j, esConteo = false) => (esConteo
+  ? `ISNUMBER(${j.pagado})*${ventanaDelConteo(j.pagado, corte, false)}`
+  : `ISNUMBER(${j.pagado})*(${j.pagado}>${corte})`)
 
 /**
  * NÚCLEO PURO: la nómina pagada en EFECTIVO después del arqueo. DESCARGA de la caja física.
@@ -509,7 +538,7 @@ const ventanaPagada = (corte, j) => `ISNUMBER(${j.pagado})*(${j.pagado}>${corte}
  * @returns {string} fórmula, separador es-AR
  */
 export function formulaJornalesEfectivoPosteriores(arqueo, j = JOR) {
-  return `SUMPRODUCT(${ventanaPagada(arqueo, j)}*(N(${j.adelanto})+N(${j.recibo})))`
+  return `SUMPRODUCT(${ventanaPagada(arqueo, j, true)}*(N(${j.adelanto})+N(${j.recibo})))`
 }
 
 /**
@@ -554,8 +583,10 @@ export function celdaJornalesEfectivo(arqueo, j = JOR) {
 /** Los rangos con nombre del bloque de Oficina que publica `jornales-pestana.mjs`. */
 export const OFI = { pago: 'OFICINA_PAGO', pagado: 'OFICINA_PAGADO', banco: 'OFICINA_BANCO' }
 
-/** La ventana común de la oficina: meses con fecha de pago posterior al corte/arqueo. */
-const ventanaOfi = (corte, o) => `ISNUMBER(${o.pago})*(${o.pago}>${corte})`
+/** La ventana común de la oficina. `esConteo` cambia el criterio del borde — ver `ventanaPagada`. */
+const ventanaOfi = (corte, o, esConteo = false) => (esConteo
+  ? `ISNUMBER(${o.pago})*${ventanaDelConteo(o.pago, corte, false)}`
+  : `ISNUMBER(${o.pago})*(${o.pago}>${corte})`)
 
 /**
  * NÚCLEO PURO: los sueldos de administración pagados por BANCO después del corte del extracto.
@@ -573,7 +604,7 @@ export function formulaOficinaEfectivoPosteriores(arqueo, o = OFI) {
   // POR DIFERENCIA, no por una segunda columna: lo que no salió por transferencia salió en billetes.
   // Así los dos canales suman SIEMPRE lo pagado y no puede existir un mes donde las partes no cierren.
   // ISNUMBER exige que el canal esté DECLARADO: con la celda vacía no se asume "todo efectivo".
-  return `SUMPRODUCT(${ventanaOfi(arqueo, o)}*ISNUMBER(${o.banco})*(N(${o.pagado})-N(${o.banco})))`
+  return `SUMPRODUCT(${ventanaOfi(arqueo, o, true)}*ISNUMBER(${o.banco})*(N(${o.pagado})-N(${o.banco})))`
 }
 
 /**
@@ -604,9 +635,12 @@ export function formulaOficinaSinCanal(corte, o = OFI) {
 export function formulaExtraccionesEfectivoPosteriores(arqueo, c = DEP) {
   const col = (x) => `${c.hoja}!$${x}$${c.desde}:$${x}`
   const concepto = `LOWER(SUBSTITUTE(${col(c.concepto)};"ó";"o"))`
+  // UNA EXTRACCIÓN METE BILLETES EN EL CAJÓN: es una ENTRADA, y la del día del conteo se asume YA
+  // CONTADA (ventana exclusiva). Las dos mitades del criterio bajan el número publicado: es el lado
+  // conservador, no una asimetría suelta.
   return `SUMPRODUCT((${col(c.flujo)}="sale")`
     + `*(ISNUMBER(SEARCH("extraccion";${concepto}))+ISNUMBER(SEARCH("retiro de efectivo";${concepto}))>0)`
-    + `*ISNUMBER(${col(c.fecha)})*(${col(c.fecha)}>${arqueo})`
+    + `*ISNUMBER(${col(c.fecha)})*${ventanaDelConteo(col(c.fecha), arqueo, true)}`
     + `*ABS(IF(ISNUMBER(${col(c.importe)});${col(c.importe)};0)))`
 }
 

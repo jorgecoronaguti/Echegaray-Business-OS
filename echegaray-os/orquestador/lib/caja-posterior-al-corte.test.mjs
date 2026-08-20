@@ -158,10 +158,15 @@ test('pagos en efectivo posteriores: el MONTO PAGADO (parcial o total), con la v
   // La plata es el MONTO PAGADO (T), no el total (O): una compra saldada en dos veces se contaba doble
   assert.match(f, /N\('Compras'!\$T\$4:\$T\)/)
   assert.doesNotMatch(f, /N\('Compras'!\$O\$4:\$O\)/)
-  // Rama Pagado: Fecha de caja (AD) estrictamente posterior — lo del día del arqueo ya está contado
-  assert.match(f, new RegExp(`\\('Compras'!\\$X\\$4:\\$X="Pagado"\\)\\*\\(IFERROR\\(DATEVALUE\\('Compras'!\\$${CMP.fecha}\\$4:\\$${CMP.fecha}&""\\);N\\('Compras'!\\$${CMP.fecha}\\$4:\\$${CMP.fecha}\\)\\)>\\$F\\$4\\)`))
-  // Rama Pendiente (parcial): fecha de CARGA (C), desde el día del arqueo inclusive
-  assert.match(f, new RegExp(`\\('Compras'!\\$X\\$4:\\$X="Pendiente"\\)\\*\\(IFERROR\\(DATEVALUE\\('Compras'!\\$C\\$4:\\$C&""\\);N\\('Compras'!\\$C\\$4:\\$C\\)\\)>=\\$F\\$4\\)`))
+  // CAMBIO DE CONTRATO (15/08): LAS DOS RAMAS USAN EL MISMO CRITERIO. La rama "Pagado" comparaba
+  // estrictamente ("lo del día del arqueo ya está contado") y la rama "Pendiente" desde el día
+  // inclusive. Dos filas equivalentes daban números distintos según el estado, y por el lado que
+  // importa —el pago completo— la plata salía del cajón y el cajón no bajaba nunca: al conteo
+  // siguiente ese pago ya era anterior a él. Ver CRITERIO_MISMO_DIA en caja-ancla-por-instante.mjs.
+  const coerc = (col) => `IFERROR\\(DATEVALUE\\('Compras'!\\$${col}\\$4:\\$${col}&""\\);N\\('Compras'!\\$${col}\\$4:\\$${col}\\)\\)`
+  const ventana = (col) => `\\(${coerc(col)}>=INT\\(\\$F\\$4\\)\\)\\*\\(${coerc(col)}>0\\)`
+  assert.match(f, new RegExp(`\\('Compras'!\\$X\\$4:\\$X="Pagado"\\)\\*${ventana(CMP.fecha)}`))
+  assert.match(f, new RegExp(`\\('Compras'!\\$X\\$4:\\$X="Pendiente"\\)\\*${ventana('C')}`))
   assert.ok(!f.includes(','), 'locale es-AR: sin comas como separador')
 })
 
@@ -180,7 +185,13 @@ test('los depósitos de efectivo se detectan como en la alerta 4.6 y sólo los p
   assert.match(f, /SEARCH\("deposito"/)
   assert.match(f, /SEARCH\("efectivo"/)
   assert.match(f, /SEARCH\("efvo"/) // el concepto del banco
-  assert.match(f, /_BANCO_RAW!\$A\$4:\$A>\$F\$4/) // ventana posterior al arqueo
+  // CAMBIO DE CONTRATO (15/08): la ventana pasó de EXCLUSIVA a INCLUSIVA en el día del conteo. Un
+  // depósito SACA billetes del cajón — es una SALIDA — y con `>` el depósito hecho el mismo día del
+  // conteo, después de contar, no bajaba la caja NUNCA (al conteo siguiente ya era anterior a él).
+  // Ver CRITERIO_MISMO_DIA en caja-ancla-por-instante.mjs. El `>0` que lo acompaña impide que una
+  // fecha vacía —que N() lleva a 0— entre a la ventana cuando el ancla es 0 (histórico completo).
+  assert.match(f, /_BANCO_RAW!\$A\$4:\$A>=INT\(\$F\$4\)/)
+  assert.match(f, /_BANCO_RAW!\$A\$4:\$A>0/)
   // ISNUMBER sobre la fecha: una fecha guardada como texto metería un depósito viejo en la ventana.
   assert.match(f, /ISNUMBER\(_BANCO_RAW!\$A\$4:\$A\)/)
 })
@@ -394,11 +405,20 @@ test('nómina en efectivo: adelantos + contra recibo, sólo de quincenas con pag
   const f = formulaJornalesEfectivoPosteriores('$F$7')
   assert.match(f, /N\(JORNALES_REAL_ADELANTO\)\+N\(JORNALES_REAL_RECIBO\)/)
   // El HECHO, no la previsión: "Pagado el", nunca "Se paga el".
-  assert.match(f, /JORNALES_REAL_PAGADO>\$F\$7/)
+  // CAMBIO DE CONTRATO (15/08): inclusiva en el día del conteo, como toda SALIDA. Un jornal pagado en
+  // billetes el mismo día del conteo, después de contar, no bajaba el cajón nunca.
+  assert.match(f, /JORNALES_REAL_PAGADO>=INT\(\$F\$7\)/)
   assert.doesNotMatch(f, /JORNALES_REAL_PAGO>/)
   // ISNUMBER descarta las quincenas sin pagar: una celda vacía compararía como texto y entrarían todas.
   assert.match(f, /ISNUMBER\(JORNALES_REAL_PAGADO\)/)
-  // Ventana EXCLUSIVA, igual que los otros canales: lo anterior ya está dentro del arqueo.
+})
+
+test('la ventana del CORTE DEL EXTRACTO sigue siendo exclusiva: no es el mismo ancla', () => {
+  // No es una inconsistencia con el test de arriba: el extracto cubre el día ENTERO, así que lo del
+  // propio día ya está adentro del saldo declarado. Un conteo, en cambio, pasa a una hora del día y no
+  // cubre el resto. Confundir los dos anclas fue lo que dejó el pago del día del arqueo sin descontar.
+  const f = formulaJornalesBancoPosteriores('$F$19')
+  assert.match(f, /JORNALES_REAL_PAGADO>\$F\$19/)
   assert.doesNotMatch(f, />=/)
 })
 

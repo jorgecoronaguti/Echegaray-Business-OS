@@ -57,18 +57,57 @@ import { DIAS_AVISO } from './fecha-de-frescura.mjs'
  */
 export const NO_REAL = Object.freeze(['COMPROMETIDO', 'PROYECTADO', 'VENCIDO'])
 
+/**
+ * ═══ EL CORTE QUE FALTABA: LO QUE SE DEBE vs LO QUE SE PLANEA GASTAR (16/08/2026) ═══
+ *
+ * `NO_REAL` son los tres estados que todavía no pasaron por el banco, y durante semanas la tarjeta
+ * los sumó en un solo titular rotulado "FALTA PAGAR". El dueño lo reclamó tres veces. Medido contra
+ * el Sheet vivo: de los $122.325.841 publicados, **$37.977.572 eran PROYECTADO** — materiales de obra
+ * estimados, "Estructura esperada", "Recurrente esperado · Movistar", nafta y gasoil por cuota.
+ * Nadie debe eso. Es presupuesto.
+ *
+ * `libro-movimientos.mjs` cita la regla absoluta de la skill de tesorería en su propia cabecera:
+ * *"Nunca se suman dos categorías distintas en la misma columna sin distinguirlas"*. El libro la
+ * cumple (el estado es un campo del movimiento, no una propiedad de la vista); la tarjeta que lo
+ * publicaba la rompía. El defecto no era la frase — las dos correcciones anteriores tocaron la frase
+ * y el dueño volvió a rechazarlas — era qué entra adentro del número.
+ *
+ * · **DEUDA** = COMPROMETIDO + VENCIDO. Plata que hay que poner sí o sí. COMPROMETIDO es la
+ *   obligación con respaldo (la factura del proveedor todavía impaga, el cheque librado y no
+ *   debitado). VENCIDO estaba previsto para una fecha que ya pasó y nadie lo concilió: **no está
+ *   probado, pero tampoco es evitable** — o la plata ya salió y falta marcarla, o se debe. En las dos
+ *   lecturas dejó de ser una decisión futura, que es lo único que puede vivir en el plan. Va acá por
+ *   prudencia y se DECLARA aparte en el contexto, porque no es lo mismo que una factura firmada.
+ * · **PLAN** = PROYECTADO. Una estimación con fecha, no un hecho (`libro-movimientos.mjs`). Depende
+ *   de que la actividad siga: si no entra plata, no se compra.
+ *
+ * SON DISJUNTOS Y SU UNIÓN ES `NO_REAL`, y hay un test que lo fija. Partir un número en dos conceptos
+ * sólo es honesto si no se pierde ni se duplica plata en la costura.
+ */
+export const DEUDA = Object.freeze(['COMPROMETIDO', 'VENCIDO'])
+/** La otra mitad de `NO_REAL`: gasto planeado que todavía no es obligación de nadie. */
+export const PLAN = Object.freeze(['PROYECTADO'])
+
 /** El horizonte histórico de la proyección, en días. Lo siguen usando consumidores fuera de acá. */
 export const HORIZONTE = 30
 /** La frontera del idioma único: fin del mes corriente, EXCLUIDA (mismo criterio `hasta` del repo). */
 export const FIN_DE_MES = 'EOMONTH(TODAY();0)+1'
 
-/** Plata dibujada dentro de una frase. Sin decimales: en una línea de contexto los centavos son ruido. */
-const plata = (e) => `TEXT(${e};"$#,##0")`
+// `plata` (pesos enteros dentro de una frase) se fue el 15/08: hacía dos corridas que no la llamaba
+// nadie —las cinco líneas de contexto hablan en millones— y el lint la marcaba en cada corrida.
 /** Una fecha dentro de una frase. dd/mm y no dd/mm/yyyy: el año se sobreentiende y ocupa lugar. */
 const dia = (e) => `TEXT(${e};"dd/mm")`
+/**
+ * Plata en millones con un decimal — la unidad de las líneas de contexto de esta fila.
+ *
+ * EL PATRÓN DE `TEXT` VA EN US (`#,##0.0`) AUNQUE LOS ARGUMENTOS VAYAN EN es-AR (`;`): son dos
+ * gramáticas distintas dentro de la misma fórmula y mezclarlas rompe en silencio. La "M" la pone
+ * quien arma la frase, no esto: adentro de un `TEXT` sería otro literal que revisar.
+ */
+const millones = (e) => `TEXT((${e})/1000000;"$#,##0.0")`
 
 /**
- * NÚCLEO PURO: el pedacito de frase que avisa que una fecha ya tiene días encima.
+ * NÚCLEO PURO: la frase de la tarjeta DISPONIBLE cuando una parte del total está congelada.
  *
  * ═══ EL DEFECTO QUE CIERRA (14/08/2026) ═══
  *
@@ -84,17 +123,49 @@ const dia = (e) => `TEXT(${e};"dd/mm")`
  * cuenta más atrasada, que es el error simétrico. La fecha del total se queda; lo que se agrega es la
  * confesión al lado.
  *
- * SE AGREGA SÓLO CUANDO HAY ATRASO. Un día en que todas las cuentas están al día, la frase es
- * LITERALMENTE la de siempre — un aviso que aparece todos los días deja de leerse.
+ * ═══ Y UN TRIÁNGULO CON UNA FECHA NO ES LA CONFESIÓN (15/08/2026) ═══
  *
- * @param {string} expr la celda o expresión con la fecha más vieja
+ * La primera versión decía *" · ▲ parte al 05/08"*. El dueño lo rechazó tres veces, y tenía razón:
+ * "parte" no se puede decidir. De los $18.270.071 de la tarjeta, ¿son $500.000 los viejos o son
+ * $15.000.000? La respuesta cambia si se paga o no se paga. Ahora la frase publica **CUÁNTA PLATA**
+ * del titular viene de esa fecha, que es el único dato con el que el lector puede decidir si eso le
+ * importa hoy.
+ *
+ * EL MONTO SE SUMA CON LA MISMA CONDICIÓN CON LA QUE SE AVISA, celda por celda: no es "el total menos
+ * lo vivo" (que sería una segunda definición del total) sino la suma de las filas que SUMAN y cuya
+ * fecha pasó el umbral. Si el dueño pega hoy el saldo en dólares, el término da 0 y la frase vuelve
+ * sola a la de siempre — un aviso que aparece todos los días deja de leerse.
+ *
+ * DICE "congelado" Y NO "a mano" A PROPÓSITO: la condición que se mide es la ANTIGÜEDAD, y una fuente
+ * viva también se congela (el importador del banco parado deja `_BANCO_RAW` quieto con su fórmula
+ * intacta). Rotularlo "a mano" sería afirmar una causa que la celda no conoce.
+ *
+ * ═══ Y EL MONTO SIN LA PALABRA "DE" ES OTRO IMPORTE, NO UNA PARTE (16/08/2026) ═══
+ *
+ * La frase decía *"al 15/08 · ▲ $1,4M congelado al 05/08"* y el dueño la leyó como lo que parece: un
+ * segundo importe, de otro origen, al lado del titular. Textual: *"confunde ese importe de origen q has
+ * diferenciado"*. Era correcta y era ilegible — dos cifras pegadas sin una preposición entre ellas no
+ * dicen si una está adentro de la otra o al lado.
+ *
+ * "$1,4M DE ESTE TOTAL son del 05/08" declara la relación en tres palabras: el $18,3M de arriba es el
+ * todo, el $1,4M es su parte vieja, y por diferencia se lee lo que queda vivo. Se descartó publicar las
+ * dos patas ("$16,9M vivos · $1,4M al 05/08") porque agrega un tercer número que NO está en ninguna
+ * celda de la pestaña: el lector no puede verificarlo contra nada, y el primero se leería como el total.
+ *
+ * @param {string} fecha la celda o expresión con la fecha más vieja de las filas que suman
+ * @param {string} monto la expresión que suma el importe de esas mismas filas cuando están viejas
  * @param {number} [avisoDias] el mismo umbral que la columna D de esta pestaña y que el resto del OS
- * @returns {string} expresión sin `=`, vacía ("") cuando no hay nada que avisar
+ * @returns {string} expresión sin `=`, con la rama vacía cuando no hay nada que avisar
  */
-export function avisoDeAtraso(expr, avisoDias = DIAS_AVISO) {
+export function avisoDeAtraso(fecha, monto, avisoDias = DIAS_AVISO) {
   // ISNUMBER primero: una celda vacía o con "" haría `TODAY()-""` = un número enorme y el aviso
   // quedaría prendido para siempre sobre un dato que ni siquiera existe.
-  return `IF(AND(ISNUMBER(${expr});TODAY()-${expr}>${avisoDias});" · ${ALERTA} parte al "&${dia(expr)};"")`
+  //
+  // Y `>0` DESPUÉS, QUE NO ES REDUNDANTE: `MIN` sobre celdas TODAS vacías devuelve 0, y 0 ES un
+  // número — el ISNUMBER no lo atrapa. Un panel al que todavía no se le cargó ninguna fecha
+  // publicaría "▲ $0,0M congelado al 30/12", que es el serial 0 dibujado como fecha. Es el mismo
+  // defecto que la fila del total ya evita con su IFERROR, escrito en el otro extremo de la cuenta.
+  return `IF(AND(ISNUMBER(${fecha});${fecha}>0;TODAY()-${fecha}>${avisoDias});" · ${ALERTA} "&${millones(monto)}&"M de este total son del "&${dia(fecha)};" · bancos y efectivo")`
 }
 
 /**
@@ -136,9 +207,18 @@ export function tarjetas(ref) {
   // La que se fue es LIBRE: el dueño no la nombró en su definición final y en su lugar está lo que
   // faltaba ver — A COBRAR, la pata de ingresos que todas las versiones anteriores escondían. El
   // piso del recorrido (el mínimo día a día) sigue vivo en la escalera de al lado, que es su casa.
-  const mesPago = terminoLibro({ signo: -1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })
+  // ═══ Y EL IDIOMA ÚNICO NO ALCANZABA: FALTABA SEPARAR LOS CONCEPTOS (16/08/2026) ═══
+  //
+  // Las cinco hablaban el mes, sí, pero la segunda metía DEUDA y PRESUPUESTO en un solo número.
+  // `mesPago` (los tres estados de `NO_REAL` juntos) se parte en dos términos que NO se solapan y
+  // cuya unión sigue siendo exactamente el viejo total: nada se perdió en la costura, y hay un test
+  // que lo fija sobre las constantes, no sobre las fórmulas.
+  const mesDeuda = terminoLibro({ signo: -1, estados: DEUDA, hasta: FIN_DE_MES, medida: 'magnitud' })
+  const mesPlan = terminoLibro({ signo: -1, estados: PLAN, hasta: FIN_DE_MES, medida: 'magnitud' })
+  // La parte de la DEUDA que nadie probó. Es un subconjunto del titular, con el mismo `hasta`: si se
+  // definiera con una ventana propia podría dejar de ser una parte de lo que rotula.
+  const sinProbar = terminoLibro({ signo: -1, estados: ['VENCIDO'], hasta: FIN_DE_MES, medida: 'magnitud' })
   const mesCobro = terminoLibro({ signo: 1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })
-  const venceEn7 = terminoLibro({ signo: -1, estados: NO_REAL, hasta: 'TODAY()+7', medida: 'magnitud' })
   // ═══ LA MISMA FRESCURA EN LAS DOS PUNTAS (orden del dueño, 07/08) ═══
   //
   // DISPONIBLE lee Compras EN VIVO (los pagos posteriores al corte se restan por fórmula), pero el
@@ -162,10 +242,45 @@ export function tarjetas(ref) {
     nuevas = `SUMPRODUCT((${colC('X')}="Pendiente")*(${fechaCaja}<${FIN_DE_MES})*(N(${colC('O')})-N(${colC('T')})))`
   }
   // Lo ya pagado del mes: para que el contexto muestre que los pagos salen de ESTA tarjeta.
+  //
+  // ═══ Y COMPARARLO CONTRA EL TITULAR ERA LA COMPARACIÓN QUE EL DUEÑO SEÑALÓ (16/08) ═══
+  //
+  // La frase decía *"de $191M pagaste $65M"*: a la izquierda, deuda + presupuesto; a la derecha,
+  // pagos reales. Son dos cosas distintas y por eso el cuadro daba la sensación de que *"de repente
+  // debemos mas en lo q falta del mes q lo q ya se ha pagado"* (textual). Lo pagado sigue publicado
+  // —es el dato que muestra que los compromisos salen de esta tarjeta— pero ya no se lo presenta
+  // como la resta de un total inventado: se publica solo, contra el titular que ahora sí es deuda.
   const pagadoMes = terminoLibro({ signo: -1, estados: ['REAL'], desde: 'EOMONTH(TODAY();-1)+1', hasta: FIN_DE_MES, medida: 'magnitud' })
+  // ═══ EL ATRASO ARRASTRADO SE MUDÓ AL RÓTULO, Y SU CAUSA AL CONTEXTO (16/08/2026) ═══
+  //
+  // El 15/08 el dueño vio la tarjeta saltar de $55,6M a $125,9M y el contexto pasó a publicar el
+  // término `atrasado` (lo impago con fecha anterior al 1° del mes) para explicarlo. Ese término se
+  // fue de acá por dos razones, no por falta de lugar:
+  //
+  // 1. EL RÓTULO LO DICE MEJOR. Decía "FALTA PAGAR ESTE MES" sobre una suma sin `desde`, o sea que
+  //    incluía todo lo atrasado: el rótulo mentía y el contexto salía a desmentirlo. "DEUDA ATRASADA
+  //    Y DEL MES" describe la ventana real, y entonces no hay nada que aclarar abajo.
+  // 2. EL "CUÁNDO" NO ERA LA PREGUNTA. Aquellos $54,6M eran seis quincenas de mayo, junio y julio que
+  //    el libro veía impagas; publicar que eran viejas no decía lo importante, que es que **nadie
+  //    probó que estén impagas**. Desde `estadoSinProbar` esas quincenas salen VENCIDO, y el contexto
+  //    publica ese monto: la misma explicación del salto, dando la causa en vez de la fecha.
+  //
+  // El lugar que ocupaba lo toma el gasto planeado, que es lo que el dueño reclamó tres veces.
   // LA SUMA VA CON N(): la celda de una fila sin dato dice "" y "" no se suma — sin el N() la tarjeta
   // entera daría #VALUE! el día que falte una de las dos patas, y con él suma la que esté.
   const invertido = `N(${ref.invArs})+N(${ref.invUsd})`
+
+  // ═══ LAS FILAS QUE SUMAN, CON SU MONTO AL LADO DE SU FECHA ═══
+  //
+  // La fecha más vieja y la plata que viene de esa fecha son LA MISMA lectura del panel: si vinieran
+  // por dos parámetros distintos podrían contradecirse (avisar por una fila y sumar otra). Entra la
+  // lista de celdas y de acá salen las dos expresiones, con la misma condición y el mismo umbral.
+  const suman = (Array.isArray(ref.celdasQueSuman) ? ref.celdasQueSuman : []).filter((c) => c?.monto && c?.fecha)
+  const fechaVieja = suman.length ? `MIN(${suman.map((c) => c.fecha).join(';')})` : ''
+  // N() en el monto y no ISNUMBER: una fila sin saldo cargado aporta 0, no rompe la suma entera.
+  const montoViejo = suman
+    .map((c) => `IF(AND(ISNUMBER(${c.fecha});TODAY()-${c.fecha}>${DIAS_AVISO});N(${c.monto});0)`)
+    .join('+')
 
   return [
     {
@@ -176,15 +291,45 @@ export function tarjetas(ref) {
       // Excluye Balanz: es la liquidez OPERATIVA — "lo q tenemos en banco y caja".
       valor: `=${ref.total}`,
       // LA FECHA QUE SE PUBLICA ES LA DEL TOTAL (un MAX) Y LA QUE AVISA ES LA MÁS VIEJA DE LAS FILAS
-      // QUE SUMAN. Sin `fechaVieja` —una corrida vieja, una fila que desapareció— el término se OMITE
-      // y la tarjeta queda como era: falla hacia el comportamiento anterior, nunca hacia una fecha
-      // inventada. Es el mismo criterio que `fronteraCompras` en la tarjeta de al lado.
-      contexto: `=IF(ISNUMBER(${ref.fecha});"al "&${dia(ref.fecha)}&" · bancos y efectivo"`
-        + `${ref.fechaVieja ? `&${avisoDeAtraso(ref.fechaVieja)}` : ''};"${ALERTA} el bloque de cuentas todavía no publicó su fecha")`,
+      // QUE SUMAN. Sin `celdasQueSuman` —una corrida vieja, una fila que desapareció— el aviso se
+      // OMITE y la tarjeta queda como era: falla hacia el comportamiento anterior, nunca hacia una
+      // fecha inventada. Es el mismo criterio que `fronteraCompras` en la tarjeta de al lado.
+      //
+      // EL DÍA DEL AVISO, "bancos y efectivo" LE CEDE EL LUGAR AL MONTO CONGELADO: la tarjeta mide
+      // 342px (A+B) y las dos frases juntas se cortan. Qué entra en el número está escrito en la fila
+      // del total tres renglones abajo ("Total disponibilidades ‖ percibido") y en la tarjeta
+      // INVERTIDA; cuánta de esa plata es vieja no está escrito en ningún otro lado.
+      contexto: `=IF(ISNUMBER(${ref.fecha});"al "&${dia(ref.fecha)}&`
+        + `${fechaVieja ? avisoDeAtraso(fechaVieja, montoViejo) : '" · bancos y efectivo"'}`
+        + `;"${ALERTA} el bloque de cuentas todavía no publicó su fecha")`,
       especie: 'plata',
     },
     {
       clave: 'comprometida',
+      // ═══ ESTE TITULAR YA TRAE LA DEUDA COMERCIAL DEL MES: +$8.598.826 (17/08/2026) ═══
+      //
+      // Hasta hoy no la traía. `estadoDeEgreso` devolvía PROYECTADO para TODA compra no pagada, así
+      // que ese estado significaba dos cosas —"materiales estimados que nadie debe" y "Alumetal
+      // 0038-00025942, $2.014.940,07, vence el 31/08"—: sacarlo del titular el 16/08 fue correcto por
+      // lo primero y se llevó puesto lo segundo, 14 facturas por $8.559.675 que publicaba `mesPlan`.
+      // Ahora la fila con N° de comprobante y Estado "Pendiente" nace COMPROMETIDA (`esFacturaCargada`).
+      //
+      //   CAJA DISPONIBLE       $17.678.974  sin cambio
+      //   DEUDA ATRASADA…       $28.574.886 → $37.173.712   +$8.598.826
+      //   SI NO COBRÁS MÁS     -$10.895.912 → -$19.494.738   -$8.598.826
+      //   CAJA INVERTIDA        $44.848.185  sin cambio
+      //   SALDO AL CIERRE      $102.968.064  SIN CAMBIO — la plata no se crea, cambia de columna
+      //   contexto "plan"       $37.977.593 → $29.378.767   -$8.598.826
+      //
+      // El cierre no se mueve por construcción (`A3 − C3 + cobros − plan`: lo que este titular gana,
+      // la línea de plan lo pierde) y está fijado con un test en `factura-no-es-plan.test.mjs`.
+      //
+      // SIGUEN AFUERA, Y NO ES OLVIDO: $2.455.725 en 2 filas sin N° de comprobante (Hormiserv, La
+      // Isla Metal) — afirmar que hay factura donde no está el dato es fabricarlo, y el auditor las
+      // grita con el motivo FALTA_EL_COMPROBANTE, que se arregla llenando una celda; y $9.740.657 en
+      // 10 filas ya pagadas con cheque sin debitar, que acá son deuda y en `Proveedores` no, y está
+      // bien. La medición completa y el paso siguiente, en `deuda-comercial-conciliacion.mjs`.
+      //
       // ═══ EL RÓTULO CONTESTA LA PREGUNTA, NO NOMBRA EL CONCEPTO (13/08, textual) ═══
       //
       // El dueño: *"la tarjeta 'caja comprometida' no sé si es algo q tengo q cubrir o ya está
@@ -197,15 +342,26 @@ export function tarjetas(ref) {
       // ($15,2M de los $62,4M). Un rótulo que nombra un estado sobre un número que suma tres estados
       // es peor que uno vago: es falso, y verificable como falso.
       //
-      // "FALTA PAGAR ESTE MES" es la definición del propio dueño (06/08: *"lo comprometido es todo
-      // lo q hay q pagar en el mes − lo q ya se pagó"*) escrita como respuesta. La palabra
-      // "comprometido" sigue viva donde es un dato y no un rótulo: el estado del libro, el anexo.
-      rotulo: 'FALTA PAGAR ESTE MES',
-      // "TODO LO QUE HAY QUE PAGAR EN EL MES − LO QUE YA SE PAGÓ": egresos no-REAL hasta fin de mes
-      // (lo REAL ya salió del saldo del banco — restarlo otra vez lo contaría dos veces), más lo
-      // vencido impago (sin `desde`). MAGNITUD y no neto: "cuánto debo" es positivo. La urgencia no
-      // se pierde: lo que vence esta semana queda en el contexto.
-      valor: nuevas ? `=${mesPago}+${nuevas}` : `=${mesPago}`,
+      // "FALTA PAGAR ESTE MES" fue la respuesta del 13/08 y duró hasta el 16/08.
+      //
+      // ═══ Y "FALTA PAGAR" SOBRE UN NÚMERO CON PRESUPUESTO ADENTRO ES FALSO (16/08, la tercera) ═══
+      //
+      // El dueño, textual: *"no estas tomando bien los conceptos q surgen de compras proveedores
+      // cobranzas, y por ende las tarjetas estan todas mal, revisar y rehacer"*. Tenía razón por
+      // tercera vez, y las dos correcciones anteriores habían tocado la frase. El rótulo prometía
+      // deuda y el número traía $37.977.572 de PROYECTADO: materiales de obra estimados, "Estructura
+      // esperada", "Recurrente esperado · Movistar", nafta y gasoil por cuota. **Nadie debe eso.**
+      //
+      // "DEUDA ATRASADA Y DEL MES" dice las dos cosas que el rótulo anterior fallaba:
+      //   · DEUDA — el titular ya no tiene presupuesto adentro (`DEUDA`, no `NO_REAL`).
+      //   · ATRASADA Y DEL MES — la ventana REAL de la suma, que es un `hasta` sin `desde`. El rótulo
+      //     viejo decía "ESTE MES" sobre una suma que arrastraba meses anteriores, y por eso hacía
+      //     falta una línea de contexto para desmentirlo.
+      rotulo: 'DEUDA ATRASADA Y DEL MES',
+      // LO QUE SE DEBE: egresos COMPROMETIDO + VENCIDO hasta fin de mes. Lo REAL queda afuera porque
+      // ya salió del saldo del banco —restarlo otra vez lo contaría dos veces— y lo PROYECTADO queda
+      // afuera porque todavía no es de nadie. MAGNITUD y no neto: "cuánto debo" es positivo.
+      valor: nuevas ? `=${mesDeuda}+${nuevas}` : `=${mesDeuda}`,
       // ═══ EL TOTAL DEL MES VA EN LA FRASE, O LA TARJETA NO SE PUEDE LEER (07/08, textual) ═══
       //
       // "es comprometida y cuando se pagan los compromisos deben salir de ahí". Salen — pero sin el
@@ -222,7 +378,34 @@ export function tarjetas(ref) {
       // generador se la devuelve a 130. "Del mes" salió de la frase porque ahora vive en el RÓTULO, y
       // "7 días" quedó abreviado: el mismo dato, con su fecha y su saldo después, está tres columnas
       // a la derecha en el tramo "Esta semana" de la escalera.
-      contexto: `="de "&TEXT((${pagadoMes}+N($C$3))/1000000;"$#,##0")&"M pagaste "&TEXT(${pagadoMes}/1000000;"$#,##0")&"M · 7d "&TEXT(${venceEn7}/1000000;"$#,##0.0")&"M"`,
+      //
+      // ═══ LA FRASE PUBLICA LO QUE EL TITULAR DEJÓ AFUERA (16/08) ═══
+      //
+      // Separar los conceptos sólo es honesto si el que sale del titular queda a la vista: si el plan
+      // desapareciera de la tarjeta, esto no sería arreglar el número sino esconder $38,0M. Por eso
+      // la PRIMERA cláusula, la que está todos los días, es el gasto planeado — nombrado "plan" para
+      // que no pueda volver a leerse como deuda, y en la misma fila que la deuda para que la suma de
+      // los dos siga siendo derivable a ojo.
+      //
+      // LA SEGUNDA CLÁUSULA ES LA DUDA, Y GANA CUANDO EXISTE. `VENCIDO` es la parte del titular que
+      // nadie probó: estaba prevista para una fecha que ya pasó y nadie la concilió. Desde
+      // `estadoSinProbar` ahí caen también las quincenas de jornales sin "Pagado el" que el extracto
+      // no respalda — los $47.415.800 que el dueño no puede probar si están pagos. Publicarlas como
+      // deuda cierta sin decir que son dudosas es exactamente lo que el Principio de Cierre prohíbe:
+      // una limitación declarada bloquea el criterio que toca, y no declararla lo anula.
+      //
+      // NO SE RESTAN DEL TITULAR. O la plata ya salió y falta marcarla, o se debe: en las dos lecturas
+      // hay que tenerla. Sacarla haría que la tarjeta dijera que hay plata que no hay — el error que
+      // ya se publicó una vez ($51,9M de deuda que el dueño había cobrado hace meses).
+      //
+      // CUANDO NO HAY DUDA, EL LUGAR LO OCUPA LO PAGADO, que es la frase que pidió el dueño el 07/08
+      // ("cuando se pagan los compromisos deben salir de ahí"). El umbral es $0,1M porque es el mínimo
+      // que la frase sabe dibujar: por debajo diría "$0,0M sin probar", ruido con forma de alarma.
+      //
+      // MEDIDO CONTRA LOS 216px (C+D) ≈ 37 caracteres: la rama con duda dibuja 35, la otra 30. La
+      // versión con las tres cláusulas medía 48 y se cortaba — y una frase cortada es peor que ninguna.
+      contexto: `=IF(${sinProbar}>=100000;"+ "&${millones(mesPlan)}&"M plan · ${ALERTA} "&${millones(sinProbar)}&"M sin probar";`
+        + `"+ "&${millones(mesPlan)}&"M plan · pagaste "&TEXT(${pagadoMes}/1000000;"$#,##0")&"M")`,
       especie: 'plata',
     },
     {
@@ -261,7 +444,30 @@ export function tarjetas(ref) {
       // cobra en el mes" en toda la pestaña— así que no puede existir el día en que una tarjeta diga
       // que alcanza y la otra que no. Es fórmula viva sobre el libro: se mueve sola con cada
       // cobranza cargada, y no hay ningún número tipeado que se pueda quedar viejo.
-      contexto: `="hay "&TEXT(${mesCobro}/1000000;"$#,##0.0")&"M a cobrar al "&${dia('EOMONTH(TODAY();0)')}`,
+      //
+      // ═══ Y LA OTRA MITAD DEL SUPUESTO, QUE NO ESTABA ESCRITA (15/08) ═══
+      //
+      // El rótulo declara una sola pata de la hipótesis (no cobrás más) y la resta usa las dos: es
+      // `disponible − TODO lo que falta pagar`, incluido el atraso de meses anteriores que la tarjeta
+      // de al lado ahora publica. Con "al 31/08" en su lugar, el lector leía el número como el saldo
+      // de fin de mes y no como el test de estrés que es. La fecha se va —la ventana ya la dice el
+      // rótulo, y en 198px no entran las dos cosas— y entra la condición que faltaba.
+      // ═══ Y EL ESCENARIO SE CONTRADECÍA A SÍ MISMO (16/08) ═══
+      //
+      // La resta apagaba los ingresos y dejaba el gasto PROYECTADO prendido: asumía cero cobranzas y
+      // compraba igual los $15,6M de "materiales de obra proyectados" y la "Estructura esperada". Si
+      // no entra plata, esos materiales no se compran. Un escenario tiene que ser internamente
+      // consistente o no sirve para decidir, y éste medía un mundo que no puede existir.
+      //
+      // LA FÓRMULA NO CAMBIÓ Y ESO ES LO BUENO DEL ARREGLO: sigue siendo la resta de las dos tarjetas
+      // vecinas, verificable con los ojos contra la fila. Lo que cambió es qué hay adentro de C3 — al
+      // sacarle el plan a la deuda, el escenario se volvió coherente solo. Un arreglo que hubiera
+      // metido un tercer término acá habría tapado el defecto en vez de sacarlo.
+      //
+      // "sin el plan" ES LA MITAD DEL SUPUESTO QUE FALTABA ESCRITA. El rótulo declara una pata (no
+      // cobrás) y la resta usa las dos. Reemplaza a "pagás todo", que era cierto y ya no alcanza:
+      // ahora importa MENOS qué se paga que qué NO se gasta.
+      contexto: `="hay "&${millones(mesCobro)}&"M a cobrar · sin el plan"`,
       especie: 'plata',
     },
     {
@@ -288,8 +494,19 @@ export function tarjetas(ref) {
       // Y SIN "hace" NO ES SÓLO POR EL ANCHO: `formulaAntiguedad` —la columna "Antigüedad" que el
       // dueño ya reconoce, y que él mismo señaló como el patrón bueno— escribe exactamente
       // `▲ N días`. Dos formas de decir la misma antigüedad en el mismo archivo se leen como dos cosas.
-      contexto: `=IF(NOT(ISNUMBER(${ref.invFecha}));"Balanz · liquidez T+1";"Balanz · al "&${dia(ref.invFecha)}`
-        + `&IF(TODAY()-${ref.invFecha}>${DIAS_AVISO};" · ${ALERTA} "&TEXT(TODAY()-${ref.invFecha};"0")&" días";" · liquidez T+1"))`,
+      //
+      // ═══ "a mano" ES AHORA UNA CONDICIÓN PERMANENTE, NO UN ATRASO (15/08/2026) ═══
+      //
+      // El dueño ordenó apagar el navegador de Balanz de la VM y quedó apagado (`echegaray-balanz-*`,
+      // stopped + disabled). No hay ninguna corrida futura que vaya a refrescar estas dos filas: la
+      // posición entra cuando él la pega, y sólo cuando él la pega. Una tarjeta que sólo dice la
+      // antigüedad promete, por omisión, que alguien la va a actualizar; ésta dice de dónde viene el
+      // dato, todos los días, y por eso "a mano" está en las TRES ramas y no sólo en la de alarma.
+      //
+      // "▲ 10d" Y NO "▲ 10 días" ES POR LOS 202px (G+H): la fila de tarjetas ya abrevia igual en
+      // "7d $97,8M" de la tarjeta COMPROMETIDA, así que la abreviatura no es nueva en este renglón.
+      contexto: `=IF(NOT(ISNUMBER(${ref.invFecha}));"Balanz · a mano · sin fecha";"Balanz · a mano al "&${dia(ref.invFecha)}`
+        + `&IF(TODAY()-${ref.invFecha}>${DIAS_AVISO};" ${ALERTA} "&TEXT(TODAY()-${ref.invFecha};"0")&"d";" · T+1"))`,
       especie: 'plata',
     },
     {
@@ -312,8 +529,24 @@ export function tarjetas(ref) {
       // COBRA NADA MÁS, y ésta con cuánto termina COBRANDO TODO. Misma cuenta, los dos extremos. La
       // cláusula condicional se conserva porque sin ella el número se lee como plata garantizada, y
       // no lo es: la fecha sigue siendo calculada, así que la frase no envejece.
-      valor: `=N($A$3)-N($C$3)+${mesCobro}`,
-      contexto: `="al "&${dia('EOMONTH(TODAY();0)')}&" cobrando todo"`,
+      // ═══ Y EL CIERRE TENÍA EL ERROR SIMÉTRICO (16/08) ═══
+      //
+      // Si la tarjeta del medio apaga los ingresos y por lo tanto NO gasta el plan, ésta —que cobra
+      // todo— tiene que gastarlo: con $151,8M entrando, los materiales se compran. Cobrar los $151,8M
+      // y no descontar los $38,0M que se van a gastar publica $38,0M de plata que no va a estar. Es el
+      // mismo descuido del otro lado, y salía gratis mientras el plan viajaba escondido en C3.
+      //
+      // LA IDENTIDAD, ENTERA: disponible − deuda + cobros − plan. Los dos primeros por referencia a
+      // sus tarjetas (A3 y C3), los otros dos con los términos únicos del libro. Las cuatro cifras
+      // están publicadas en la fila —el plan en el contexto de la deuda, los cobros en el de al
+      // lado— así que el lector puede rehacer la cuenta sin abrir nada.
+      valor: `=N($A$3)-N($C$3)+${mesCobro}-${mesPlan}`,
+      // "cobrando y gastando" declara los DOS supuestos, que es lo que la vuelve el par exacto de la
+      // tarjeta del medio: aquélla no cobra y no gasta, ésta cobra y gasta. Sin la cláusula el número
+      // se leería como plata garantizada, y no lo es. La fecha va sin el "al " que llevaba antes: los
+      // 162px (I+J) ≈ 28 caracteres no dan para las dos cosas y la preposición es lo prescindible —
+      // "31/08 cobrando y gastando" dibuja 25.
+      contexto: `=${dia('EOMONTH(TODAY();0)')}&" cobrando y gastando"`,
       especie: 'plata',
     },
   ]

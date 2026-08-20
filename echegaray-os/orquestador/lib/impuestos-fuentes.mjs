@@ -41,24 +41,81 @@ export const ARCA_RAW = '_ARCA_RAW'
 export const ARCA_FILA0 = 4
 export const BANCO_RAW = '_BANCO_RAW'
 
-// Las DDJJ de IIBB de San Juan viven en una CARPETA de Drive. Se LISTA y se leen los PDF originales:
-// son la fuente primaria (traen N° de control y fecha de presentación) y, al listar en vez de
-// hardcodear IDs, el mes nuevo aparece solo cuando se sube.
-export const CARPETA_IIBB = '1R0kTgCE35Q6AlLhjr0VB2ZAtusK1eO1W'
-/** Las DDJJ de IVA (F.2051) presentadas ante ARCA, misma mecánica (MM-2026.pdf). */
-export const CARPETA_IVA = '1tLLahzfaTKZPbOi8M6IJLbAunFgappXx'
+// ═══ LAS DDJJ SE LEEN DEL ARCHIVO FISCAL DE LA EMPRESA, NO DE UNA COPIA (19/08/2026) ═══
+//
+// LO QUE PASÓ. El cuadro publicaba *"20/08 · IVA DDJJ F.2051 · $11.328.238"* y *"17/08 · Ingresos
+// Brutos San Juan · jul ▲ VENCIDO · $2.203.467"*: $13.531.705 de egreso inminente. Las DOS DDJJ
+// estaban presentadas y las dos cierran en CERO a pagar:
+//
+//   · IVA F.2051 de julio, presentada el 18/08 (transacción 1189625475): débito $23.759.067,09,
+//     crédito $12.614.646,14, y la posición técnica la absorbe el saldo de libre disponibilidad
+//     acumulado. A pagar en efectivo: $0, y quedan $9.856.370,42 a favor.
+//   · IIBB de julio, presentada el 14/08 (control 13190510681): impuesto determinado $2.249.820,17
+//     sobre base $112.491.008,67 al 2%, menos $1.345.581,45 de retenciones y $923.311,91 de saldo a
+//     favor anterior. A ingresar: $0, y quedan $19.073,19 a favor. Y no vencía el 17/08 sino el 20/08.
+//
+// LA CAUSA NO FUE UN ERROR DE CÁLCULO: el cuadro proyectaba porque NO TENÍA EL DATO. Estas dos
+// constantes apuntaban a dos carpetas sueltas que alguien armó una vez y que se quedaron en
+// 06-2026. El archivo fiscal REAL de la empresa —el que el contador alimenta todos los meses— vive
+// en otro lado, con las DDJJ de julio adentro desde el 14 y el 18 de agosto.
+//
+// POR QUÉ SE ELIGE LA CARPETA DEL AÑO Y NO UNA FIJA. El archivo real está organizado
+// `<archivo fiscal>/<año>/<IIBB|IVA>/MM-YYYY.pdf`. Apuntar a `2026/IIBB` a mano resolvía hoy y se
+// rompía en silencio el 1° de enero — que es exactamente la familia de fallas que este repositorio
+// ya pagó varias veces: una fuente que se congela sin gritar. Se resuelve la carpeta POR AÑO en cada
+// corrida, y se leen el año en curso y el anterior (en enero el cuadro todavía necesita diciembre).
+export const ARCHIVO_FISCAL = '1-7RmmzQeJA2g2O7GqZi4o_WQtiTQLc7l'
+/** El nombre de la subcarpeta de cada régimen dentro de la carpeta del año. */
+export const SUBCARPETA = { IIBB: 'IIBB', IVA: 'IVA' }
 
-/** Lista los PDF `MM-YYYY.pdf` de una carpeta, ordenados. Un fallo NO se degrada a cero: se avisa. */
-async function pdfsDelPeriodo(google, carpeta, que) {
-  const archivos = await google.listFolder(carpeta)
-    .catch((e) => { console.error(`  ⚠ no pude listar la carpeta de ${que}: ${e.message}`); return [] })
-  return archivos.filter((f) => /^\d{2}-\d{4}\.pdf$/i.test(f.name)).sort((a, b) => a.name.localeCompare(b.name))
+/**
+ * NÚCLEO PURO: los años que hay que mirar para cubrir el cuadro de un mes dado.
+ *
+ * El cuadro es de UN año calendario, así que normalmente alcanza con el año en curso — traer el
+ * anterior metería doce meses ajenos en la réplica y en el cuadro. La única excepción es ENERO: la
+ * DDJJ de diciembre se presenta en enero y el contador la archiva en la carpeta del año que cerró,
+ * así que sin mirar atrás el arranque del año pierde el saldo a favor que viene arrastrado.
+ */
+export function anosACubrir(hoy = new Date()) {
+  const a = hoy.getFullYear()
+  return hoy.getMonth() === 0 ? [a - 1, a].map(String) : [String(a)]
+}
+
+/**
+ * Resuelve las carpetas `<archivo>/<año>/<régimen>` que existen. Devuelve [] y AVISA si no encuentra
+ * ninguna: cero carpetas no es cero DDJJ, es una fuente rota, y degradarlo a "no hay datos" es lo
+ * que hace que el cuadro proyecte $13,5M de impuesto que ya está pagado.
+ */
+async function carpetasDelRegimen(google, regimen, hoy = new Date()) {
+  const raiz = await google.listFolder(ARCHIVO_FISCAL)
+    .catch((e) => { console.error(`  ⚠ no pude abrir el archivo fiscal para ${regimen}: ${e.message}`); return [] })
+  const anos = new Set(anosACubrir(hoy))
+  const out = []
+  for (const f of raiz) {
+    if (!anos.has(String(f.name).trim())) continue
+    const dentro = await google.listFolder(f.id).catch(() => [])
+    const sub = dentro.find((d) => String(d.name).trim().toUpperCase() === SUBCARPETA[regimen])
+    if (sub) out.push({ ano: String(f.name).trim(), id: sub.id })
+  }
+  if (!out.length) console.error(`  ⚠ no encontré ninguna carpeta ${regimen} para ${[...anos].join('/')} en el archivo fiscal: el cuadro va a PROYECTAR en vez de usar la DDJJ`)
+  return out
+}
+
+/** Lista los PDF `MM-YYYY.pdf` del régimen, de todos los años que corresponden, ordenados. */
+async function pdfsDelPeriodo(google, regimen, que, hoy = new Date()) {
+  const out = []
+  for (const c of await carpetasDelRegimen(google, regimen, hoy)) {
+    const archivos = await google.listFolder(c.id)
+      .catch((e) => { console.error(`  ⚠ no pude listar ${que} ${c.ano}: ${e.message}`); return [] })
+    out.push(...archivos.filter((f) => /^\d{2}-\d{4}\.pdf$/i.test(f.name)))
+  }
+  return out.sort((a, b) => `${a.name.slice(3, 7)}${a.name.slice(0, 2)}`.localeCompare(`${b.name.slice(3, 7)}${b.name.slice(0, 2)}`))
 }
 
 /** Lee las DDJJ de IIBB desde los PDF originales de Drive. */
 export async function leerIIBB(google) {
   const out = []
-  for (const f of await pdfsDelPeriodo(google, CARPETA_IIBB, 'IIBB')) {
+  for (const f of await pdfsDelPeriodo(google, 'IIBB', 'IIBB')) {
     const periodo = `${f.name.slice(3, 7)}-${f.name.slice(0, 2)}`
     try {
       const pdf = await google.readPdfText(f.id, { maxChars: 8000 })
@@ -77,7 +134,7 @@ export async function leerIIBB(google) {
 /** Lee las DDJJ de IVA (F.2051) desde los PDF originales de Drive. Mismo patrón que leerIIBB. */
 export async function leerIVA(google) {
   const out = []
-  for (const f of await pdfsDelPeriodo(google, CARPETA_IVA, 'IVA')) {
+  for (const f of await pdfsDelPeriodo(google, 'IVA', 'IVA')) {
     const periodo = `${f.name.slice(3, 7)}-${f.name.slice(0, 2)}`
     try {
       const pdf = await google.readPdfText(f.id, { maxChars: 8000 })

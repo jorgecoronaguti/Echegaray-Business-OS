@@ -348,7 +348,11 @@ async function cuadrarContraCobranzas(google, pestana) {
     .catch((e) => ({ noPudoUbicar: `no pude leer las fuentes del cuadre (${e.message})` }))
   if (r.ok) {
     console.log(`✓ cuadre Cobranzas ↔ ${pestana}: los ${r.porMes.length} meses cierran contra la pestaña`
-      + ' (endosos y devoluciones descontados uno por uno)')
+      + ' REAL contra REAL y PROYECTADO contra PROYECTADO (endosos y devoluciones descontados uno por uno)')
+    // EL AVISO SALE AUNQUE CIERRE. Un "Cobrado" sin respaldo del banco no descuadra nada —los dos
+    // lados lo cuentan igual— así que si sólo se imprimiera en la rama de falla, el único momento en
+    // que se vería sería cuando ya hay otro problema. Es la plata que el cuadre no puede ver.
+    for (const l of informe(r, { soloFallas: true })) console.warn(`   ${l}`)
     return true
   }
   console.error(`\n⛔ COBRANZAS Y ${pestana.toUpperCase()} NO CUADRAN.`)

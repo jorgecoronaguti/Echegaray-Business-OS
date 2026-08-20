@@ -22,7 +22,7 @@ import assert from 'node:assert/strict'
 import {
   grillaObras, serialISO, REFS_OBRAS, conColaLimpiable, ANCHO_HISTORICO, ALTO_HISTORICO,
 } from './obras-grilla.mjs'
-import { OBRAS_FUTURAS, comprasObraDe, totalEgresos } from './obras-datos.mjs'
+import { OBRAS_FUTURAS, comprasObraDe, patronEstaDeclarado, totalEgresos } from './obras-datos.mjs'
 import { evaluarFormula, hojaDeGrilla } from './evaluar-formula-sheet.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 
@@ -148,20 +148,43 @@ test('la factura de 2025 no entra: la ventana es el año que la pestaña declara
 // LO QUE NO SE EMPAREJA SE VE — NO SE REPARTE
 // ─────────────────────────────────────────────────────────────────────────────
 
-test('las obras que ninguna compra nombra publican $0, y lo DECLARAN en la columna de al lado', () => {
-  // Un cero acá no dice "no gastó": dice "ninguna compra la nombra". La diferencia la publica la F,
-  // y sin ella el dueño no tendría cómo distinguir las dos cosas.
+test('NINGUNA obra tiene la celda muerta: todas emparejan por algún texto, aunque nadie lo haya escrito', () => {
+  // ═══ LA REGRESIÓN QUE ESTE TEST EXISTE PARA IMPEDIR (17/08/2026) ═══
+  //
+  // Antes, una obra sin `comprasObra` declarado producía la constante '=0'. No era un cero medido:
+  // era una celda MUERTA. El día que alguien escribiera el nombre de la obra en «Detalles / Obra»,
+  // el cuadro habría seguido publicando $0 hasta que un programador editara `obras-datos.mjs`.
+  // El dueño lo vio como "hay gastos que no se están considerando", y era exactamente eso.
+  //
+  // Con el código viejo este test FALLA en las cuatro obras nuevas: su D es la cadena '=0' y no
+  // contiene ningún SUMIFS.
   for (const [i, o] of OBRAS_FUTURAS.entries()) {
-    if (comprasObraDe(o)) continue
-    assert.equal(val(`D${g.filasCosto[i]}`), 0, `${o.clave}: sin texto declarado no puede emparejar nada`)
-    assert.match(String(hoja[`F${g.filasCosto[i]}`]), /ninguna compra la nombra/, `${o.clave}: no lo declara`)
+    const d = String(hoja[`D${g.filasCosto[i]}`])
+    assert.ok(d.includes('SUMIFS'), `${o.clave}: la celda está muerta, no empareja por nada`)
+    assert.ok(d.includes(`"*${comprasObraDe(o)}*"`), `${o.clave}: no empareja por su propio texto`)
+  }
+})
+
+test('el patrón NO verificado se declara como tarea pendiente, no como un hecho', () => {
+  // La columna F decía "ninguna compra la nombra": una afirmación sobre el MUNDO que se leía como
+  // "esta obra no gastó" cuando en realidad decía "nadie configuró el patrón". Ahora dice qué hay
+  // que hacer y dónde, que es lo único que cierra el lazo.
+  for (const [i, o] of OBRAS_FUTURAS.entries()) {
+    if (patronEstaDeclarado(o)) continue
+    const f = String(hoja[`F${g.filasCosto[i]}`])
+    assert.match(f, /escribí/, `${o.clave}: no dice qué hacer`)
+    assert.ok(f.includes(comprasObraDe(o)), `${o.clave}: no dice QUÉ texto escribir`)
+    // Y el texto que pide escribir tiene que ser EL MISMO por el que suma. Si divergieran, el dueño
+    // escribiría en Compras algo que el cuadro no mira.
+    assert.ok(String(hoja[`D${g.filasCosto[i]}`]).includes(`"*${comprasObraDe(o)}*"`),
+      `${o.clave}: pide escribir un texto distinto del que empareja`)
   }
 })
 
 test('la columna F dice el TEXTO por el que emparejó: el dueño puede ir a Compras y filtrar por él', () => {
   for (const [i, o] of OBRAS_FUTURAS.entries()) {
     const patron = comprasObraDe(o)
-    if (!patron) continue
+    if (!patronEstaDeclarado(o)) continue
     assert.equal(hoja[`F${g.filasCosto[i]}`], `Compras: "${patron}"`)
     // Y el texto declarado tiene que ser EL MISMO que la fórmula usa. Si divergieran, la pestaña
     // estaría diciendo que emparejó por un criterio y sumando por otro — mentira con firma.
@@ -217,24 +240,26 @@ test('el residuo no puede dar negativo: sería doble conteo, no un saldo', () =>
 })
 
 test('el derrame de la F llega SÓLO al cuadro 4: en el cuadro 3 taparía el contratado', () => {
-  // La F mide 138 px y el texto de auditoría mide hasta 221: el formateador la deja derramar sobre la
-  // G/H/I, que en el cuadro 4 están vacías. En el cuadro 3 la G lleva el CONTRATADO — si `textoEnF`
-  // arrastrara una fila de ese cuadro, un rótulo de texto se dibujaría encima de un importe.
+  // La F mide 138 px y el texto de auditoría mide hasta 221: el que derrama es la ESPECIE `texto`, y
+  // en el cuadro 4 la G/H/I están vacías. En el cuadro 3 la G lleva el CONTRATADO — si una fila de ese
+  // cuadro declarara `texto` en la F, un rótulo se dibujaría encima de un importe.
   const cuadro3 = g.bloques.map((b) => b.fProt)
+  const textoEnF = g.especies.map((f, i) => (f[5] === 'texto' ? i + 1 : 0)).filter(Boolean)
   // Se mira la grilla CON LA COLA, que es la que se escribe: ahí las celdas que el generador no usa
   // llevan el centinela VACIO, que la fusión convierte en una celda realmente vacía. VACIO no es
   // contenido — es la instrucción de limpiar—, así que cuenta como espacio libre para el derrame.
   const conCola = conColaLimpiable(g.filas, ANCHO_HISTORICO, ALTO_HISTORICO)
   const libre = (v) => v === undefined || v === '' || v === VACIO
-  for (const f of g.textoEnF) {
+  for (const f of textoEnF) {
     assert.ok(!cuadro3.includes(f), `la fila ${f} es del cuadro 3: no puede derramar sobre el contratado`)
     for (const c of ['G', 'H', 'I']) {
       assert.ok(libre(conCola[f - 1]?.[c.charCodeAt(0) - 65]), `${c}${f} tiene contenido: el derrame lo taparía`)
     }
   }
   // Y la contraprueba: en el cuadro 3 esas columnas SÍ tienen plata, que es lo que el derrame taparía
-  // si alguien agregara una de sus filas a `textoEnF`.
+  // si alguien declarara `texto` en la F de una de sus filas.
   assert.ok(!libre(conCola[cuadro3[0] - 1]?.[6]), 'la G del cuadro 3 lleva el contratado')
-  // Y cubre lo que tiene que cubrir: encabezado, las siete obras y el residuo.
-  assert.deepEqual(g.textoEnF, [g.filasCosto[0] - 1, ...g.filasCosto, g.fSinImputar])
+  // Y cubre lo que tiene que cubrir: las siete obras y el residuo. El ENCABEZADO ya no entra: es un
+  // rótulo de columna, no prosa de auditoría, y como rótulo se alinea con su columna y no derrama.
+  assert.deepEqual(textoEnF, [...g.filasCosto, g.fSinImputar])
 })

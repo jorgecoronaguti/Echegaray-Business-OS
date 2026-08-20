@@ -73,18 +73,27 @@
 // mucho menos que ensanchar la A, que es la que empuja de verdad. Las tablas de abajo siguen
 // salteando la E: su hueco pasa de 28 a 90px de aire, que no produce un solo defecto medido.
 
+import { filaDelSiguienteTitulo } from './proveedores-colchon.mjs'
+
 /** El ancho de cada columna de la pestaña "Proveedores", en píxeles. Índice 0 = columna A. */
 export const ANCHOS_PROVEEDORES = Object.freeze([
   330, // A · el rótulo más largo que se escribe ("TELEFONICA MOVILES ARGENTINA SOCIEDAD ANONIMA")
   130, // B · CUIT con guiones, N° de comprobante, "Se le debe"
   125, // C · "Comprado 2026" y los montos del control ($209.231.271), fechas
-  300, // D · las notas del dueño ("Qué hacer"). Era el valor que ya ganaba en la práctica.
+  // D · las notas del dueño ("Qué hacer"), al lado de la deuda de cada proveedor. Se mudaron a la G
+  // el 14/08 con el cambio de eje y volvieron acá el mismo día, cuando el dueño lo rechazó: es la
+  // columna en la que él las escribió y este ancho es el que ya tenían.
+  300, // D
   90,  // E · el tipo de pago del cuadro de detalle ("Tarjeta Crédito"), y el aire del encabezado
   210, // F · "REFACTURACIÓN — el costo sigue", "Tarjeta de crédito", los importes de la sección 4
-  // G · "0006-00003002 → 0004-00003445" en la sección 3, y desde el 14/08 "Qué hacer" —la nota del
-  // dueño— en el cuadro de detalle. Pasa de 220 a 300 porque ése era el ancho que la nota ya tenía
-  // en la D: mudarla de columna no puede costarle diez caracteres de su propio texto.
-  300, // G
+  // G · dos usos, y manda el más largo: el encadenado de notas de crédito de la sección 4
+  // ("0006-00003002 → 0004-00003445", 220px justos) y "A quiénes" del cuadro por día.
+  //
+  // MEDIDO sobre el archivo real, el peor caso de "A quiénes" es un día con cuatro proveedores:
+  //   "Mariana SA · Gerson Castro · PEDRO TELLO · Pedro Fredes" = 55 caracteres ≈ 385px
+  // con 220px entraban 31 y el resto derramaba sobre la H. La H mide 60px, así que ni sumándola
+  // alcanzaba. Y ese día no es hipotético: es el 14/08, el que el dueño estaba mirando.
+  390, // G
   60,  // H · el % de la posición
 ])
 
@@ -120,10 +129,15 @@ const PREFIJO_NUMERO = /^\s*\d+\s*·\s*/
  */
 export const SECCIONES_PROVEEDORES = [
   'deuda',              // 1 · QUÉ SE DEBE Y CUÁNDO            (tabla dinámica, no la escribe este OS)
-  'cuentaCorriente',    // 2 · CUENTA CORRIENTE POR PROVEEDOR   (tabla dinámica, ídem)
-  'notasCredito',       // 3 · NOTAS DE CRÉDITO                 ← LA FRONTERA
-  'faltanEnCompras',    // 4 · LO QUE ARCA FACTURÓ Y COMPRAS NO TIENE
-  'control',            // 5 · LO QUE HAY QUE CORREGIR EN COMPRAS
+  // 2 · QUÉ SALE CADA DÍA — el cuadro que contesta "a quiénes y cómo pago un determinado día".
+  // Va INMEDIATAMENTE debajo de la deuda porque es su consecuencia: primero a quién se le debe,
+  // después qué sale cada día. Es de fórmulas vivas, no una dinámica: la API no emite el subtotal de
+  // un nivel externo de un pivot y sin total por día el cuadro no decide nada.
+  'salePorDia',         // 2 · QUÉ SALE CADA DÍA               (proveedores-que-sale-cada-dia.mjs)
+  'cuentaCorriente',    // 3 · CUENTA CORRIENTE POR PROVEEDOR   (tabla dinámica, ídem)
+  'notasCredito',       // 4 · NOTAS DE CRÉDITO                 ← LA FRONTERA
+  'faltanEnCompras',    // 5 · LO QUE ARCA FACTURÓ Y COMPRAS NO TIENE
+  'control',            // 6 · LO QUE HAY QUE CORREGIR EN COMPRAS
 ]
 
 // ═══ DOS SECCIONES QUE SE FUERON, Y POR QUÉ (04/08) ═══
@@ -175,7 +189,11 @@ export const DUENOS_DE_PROVEEDORES = Object.freeze([
   Object.freeze({ bloque: 'de la frontera para abajo (3, 4, 5) + Materiales', script: 'proveedores-materiales-pestana.mjs' }),
   Object.freeze({ bloque: 'los títulos de las secciones 1 y 2', script: 'proveedores-titulos-sembrar.mjs' }),
   Object.freeze({ bloque: '1 · qué se debe y cuándo', script: 'proveedores-dos-cuadros.mjs' }),
-  Object.freeze({ bloque: '2 · cuenta corriente por proveedor', script: 'proveedores-seccion2-pivot.mjs' }),
+  // DESPUÉS de la sección 1 y ANTES de la cuenta corriente, y las dos razones son de posición: este
+  // bloque se ubica entre el final de la sección 1 y el título de la que sigue, así que necesita que
+  // la 1 ya esté escrita; y cuando cambia de alto corre todo lo de abajo, que se reancla por título.
+  Object.freeze({ bloque: '2 · qué sale cada día', script: 'proveedores-que-sale-cada-dia.mjs' }),
+  Object.freeze({ bloque: '3 · cuenta corriente por proveedor', script: 'proveedores-seccion2-pivot.mjs' }),
   Object.freeze({ bloque: 'la columna "Qué hacer" del dueño', script: 'proveedores-notas-visibles.mjs' }),
   Object.freeze({ bloque: 'el encabezado (la posición) y los anchos', script: 'proveedores-encabezado-aplicar.mjs' }),
 ])
@@ -260,12 +278,29 @@ export function buscarFrontera(visible = [], titulo) {
  * @returns {{fila:number, por:'titulo'|'dinamicas'}}
  */
 export function fronteraSegura({ visible = [], titulo, dinamicas = [] } = {}) {
+  // EL TÍTULO MANDA SIEMPRE, Y NO SE PROMEDIA CON NADA. Es la única fila que este generador puede
+  // AFIRMAR: la escribe él, en la primera fila de su bloque. El fin de una dinámica es una medición
+  // sobre lo que se ve, y una medición no le gana a un hecho propio. Sólo se usa cuando no hay título.
   try {
     return { fila: buscarFrontera(visible, titulo), por: 'titulo' }
   } catch (e) {
     const fin = dinamicas.reduce((m, d) => Math.max(m, d?.fin ?? 0), 0)
     if (!fin) throw e
-    return { fila: fin + 2, por: 'dinamicas' }
+    const fila = fin + 2
+    // ═══ Y EL RESPALDO NO PUEDE ATERRIZAR SOBRE LA SECCIÓN DE OTRO (14/08/2026) ═══
+    //
+    // Sin título propio, `fin + 2` es una estimación; si abajo hay OTRA sección, escribir ahí la
+    // reemplaza por texto sin dar un solo error. Que la estimación no entre no es permiso para
+    // apretarla: es la prueba de que no se sabe dónde va el bloque. Falla cerrado, como el título.
+    const otra = filaDelSiguienteTitulo(visible, fin)
+    if (otra && otra <= fila) {
+      throw new Error(`sin el título "${titulo}" me ubicaría en la fila ${fila} (debajo de la última `
+        + `dinámica), pero ahí ya empieza otra sección (fila ${otra}: `
+        + `"${String((visible[otra - 1] ?? [])[0] ?? '').slice(0, 40)}"). NO escribo: escribir encima `
+        + 'de la sección de otro la reemplaza por texto sin dar error. Hay que reponer el título ancla '
+        + '(proveedores-titulos-sembrar.mjs) antes de que este bloque se pueda ubicar.')
+    }
+    return { fila, por: 'dinamicas' }
   }
 }
 
@@ -276,15 +311,37 @@ export function fronteraSegura({ visible = [], titulo, dinamicas = [] } = {}) {
  * mientras la fila tenga algo. Se corta también en el título de la sección siguiente, para que una
  * dinámica pegada al título de abajo (sin fila en blanco entre medio) no se lo trague.
  *
+ * ═══ "ALGO" ES ALGO EN SUS COLUMNAS, NO EN CUALQUIER COLUMNA (14/08/2026) ═══
+ *
+ * EL DEFECTO. Este fin alimenta el ancla de respaldo de la frontera (`fronteraSegura`: fin + 2), o
+ * sea que decide EN QUÉ FILA arranca a escribir el generador de texto cuando el título no está. Y se
+ * medía mirando la fila ENTERA (A..BZ). El generador de texto escribe A..P: cualquier resto suyo en
+ * una fila pegada al pie de la dinámica —una capa anterior— contaba como "la dinámica sigue", el fin
+ * bajaba, la frontera bajaba con él, el bloque se escribía más abajo y dejaba una capa nueva justo en
+ * la fila que la próxima corrida vuelve a leer. Un ancla que depende de la basura que ella misma
+ * produce no converge nunca: baja una tanda de filas por corrida, para siempre.
+ *
+ * En el archivo real hay filas exactamente de esa forma —vacías en la A y con dato en la C y la D
+ * (restos del cuadro de notas de crédito de una corrida vieja)—, así que no es un caso de laboratorio.
+ *
+ * EL ANCHO DE UNA DINÁMICA ES UN HECHO DE LA API, no una estimación: los campos de fila más los de
+ * valor (`anclasDeDinamicas` lo saca del spec). Acotando el barrido a SUS columnas, el resto del
+ * generador de texto deja de poder estirarla. Con campos de COLUMNA el ancho depende de los datos y
+ * no se puede afirmar: ahí `ancho: 0` y se vuelve al criterio de siempre, que peca de largo — el lado
+ * seguro, porque un fin más largo sólo puede FRENAR la escritura (`verificarFronteraBajoDinamicas`),
+ * nunca autorizarla más arriba.
+ *
  * @param {any[][]} visible
  * @param {number} ancla fila 1-indexada del ancla
+ * @param {{col?:number, ancho?:number}} [suyo] la columna del ancla y cuántas columnas ocupa
  * @returns {number} la última fila 1-indexada que ocupa la dinámica
  */
-export function finDeDinamica(visible = [], ancla) {
+export function finDeDinamica(visible = [], ancla, { col = 0, ancho = 0 } = {}) {
+  const suya = (fila) => (ancho > 0 ? tieneAlgo((fila || []).slice(col, col + ancho)) : tieneAlgo(fila))
   let fin = ancla
   for (let f = ancla + 1; f <= visible.length; f++) {
     const fila = visible[f - 1]
-    if (!tieneAlgo(fila) || esTituloDeSeccion(fila?.[0])) break
+    if (!suya(fila) || esTituloDeSeccion(fila?.[0])) break
     fin = f
   }
   return fin
@@ -295,8 +352,14 @@ export function finDeDinamica(visible = [], ancla) {
  * tiene valor ni fórmula propios: el campo `pivotTable` en su celda ancla es la ÚNICA señal de que
  * ahí hay una, y por eso esta detección no se puede hacer con `readSheetValues`.
  *
+ * CUÁNTAS COLUMNAS OCUPA sale del mismo spec y es un hecho, no una estimación: un campo de fila por
+ * columna más un campo de valor por columna (`valueLayout: HORIZONTAL`, el único que usa esta
+ * pestaña). Hace falta para medir dónde TERMINA sin contar como suyo el resto de otro generador —ver
+ * `finDeDinamica`—. Con campos de COLUMNA el ancho lo deciden los datos y no se puede afirmar desde el
+ * spec: se devuelve 0, que significa "no sé" y no "cero columnas".
+ *
  * @param {object} grid respuesta de google.getGridData(id, 'Proveedores!A1:Z999')
- * @returns {{fila:number, col:number}[]} filas 1-indexadas
+ * @returns {{fila:number, col:number, ancho:number}[]} filas 1-indexadas
  */
 export function anclasDeDinamicas(grid) {
   const data = grid?.sheets?.[0]?.data?.[0]
@@ -304,7 +367,11 @@ export function anclasDeDinamicas(grid) {
   const out = []
   ;(data?.rowData ?? []).forEach((fila, i) => {
     (fila?.values ?? []).forEach((celda, j) => {
-      if (celda?.pivotTable) out.push({ fila: base + i, col: j })
+      const p = celda?.pivotTable
+      if (!p) return
+      const conColumnas = (p.columns ?? []).length > 0
+      const ancho = conColumnas ? 0 : (p.rows ?? []).length + (p.values ?? []).length
+      out.push({ fila: base + i, col: j, ancho })
     })
   })
   return out

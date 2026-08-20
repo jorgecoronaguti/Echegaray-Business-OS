@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { ATERRIZAJE, entrarComo } from './util/login'
 import { createClient } from '@supabase/supabase-js'
 
 // F7 — Chat interno 0-API embebido en la web.
@@ -22,7 +23,11 @@ async function preguntar(page: import('@playwright/test').Page, texto: string) {
   return page.getByTestId('chat-respuesta').last()
 }
 
+// Desde el 17/08 ninguna pantalla se ve sin sesión (ver calendario-financiero.spec.ts): este test
+// mira que la pantalla CARGUE, así que ahora entra primero. Que sin sesión mande al login lo prueba
+// obras-modulo-01.spec.ts para todas las rutas a la vez.
 test('la página del chat carga y ofrece sugerencias', async ({ page }) => {
+  await entrarComo(page, EMAIL, PASSWORD)
   const response = await page.goto('/chat')
   expect(response?.status()).toBe(200)
   await expect(page.getByRole('heading', { name: 'Chat del OS' })).toBeVisible()
@@ -44,7 +49,7 @@ test('autenticado como Dirección: responde lo cubierto con datos reales y lo no
     await page.fill('input[name="email"]', EMAIL)
     await page.fill('input[name="password"]', PASSWORD)
     await page.click('button[type="submit"]')
-    await page.waitForURL(/\/(dashboard|flujo-caja)/, { timeout: 15000 })
+    await page.waitForURL(ATERRIZAJE, { timeout: 15000 })
 
     await page.goto('/chat')
     await expect(page.getByTestId('chat-interno')).toBeVisible()

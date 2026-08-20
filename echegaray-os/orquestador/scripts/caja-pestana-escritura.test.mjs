@@ -95,6 +95,18 @@ test('CAJA no se escribe si falta la pestana del anexo: seria media pantalla en 
   assert.match(src.slice(guarda - 600, guarda + 200), /throw new Error/, 'y romper, no seguir con las alertas en error')
 })
 
+test('EL AMARILLO SE QUEDA EN LA COLUMNA DEL CONTEO: la fecha ya no se tipea', () => {
+  // Amarillo significa "acá podés escribir". La D de las filas de efectivo pasó a ser una fórmula que
+  // cita al centinela (`ANEXO_CONTEO_*_DIA`): pintarla invita a escribir encima y borrarla. Es el
+  // mismo error que este formateador ya arregló una vez con "Caja en pesos" y "Caja en dólares".
+  const src = readFileSync(new URL('./caja-pestana.mjs', import.meta.url), 'utf8')
+  const i = src.indexOf('for (const f of g.amarillas)')
+  assert.ok(i > 0, 'el bloque que pinta las celdas de carga tiene que existir')
+  const bloque = src.slice(i, i + 260)
+  assert.ok(!/\[1, 3\]/.test(bloque), 'la columna 3 (la D, la fecha) no se pinta más')
+  assert.match(bloque, /r\(f - 1, f, 1, 2\)/, 'y la B —el conteo, la única captura de la fila— sí')
+})
+
 test('EL LOG INFORMA EL EFECTO: lee la pestana escrita, no el objeto en memoria', () => {
   // Un resumen que sale de la grilla que el generador PENSABA escribir no prueba nada. El log de
   // las cinco tarjetas se arma leyendo la pestana despues de escribirla.

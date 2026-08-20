@@ -7,7 +7,7 @@ import {
   SIN_GENERADOR, constantesDeModulo, escribeEnElSheet, esPestanaAuxiliar,
   importaciones, pestanasAuxiliaresDe, MANTENIDAS_POR_DINAMICA, coberturaDeDinamica, MARGEN_DINAMICA,
 } from './pestanas-auxiliares.mjs'
-import { PASOS } from './flujo-caja-pasos.mjs'
+import { estaRetirado, PASOS } from './flujo-caja-pasos.mjs'
 
 const AQUI = dirname(fileURLToPath(import.meta.url))
 const DIR_SCRIPTS = join(AQUI, '..', 'scripts')
@@ -132,6 +132,9 @@ test('_CRUCE_ARCA se escribe DESPUÉS del rubro de Compras y ANTES de las pesta�
   assert.ok(pos('cruce-arca-pestana.mjs') > pos('rubro-caja-sheet.mjs'),
     'el cruce clasifica cada discrepancia por el rubro de caja de Compras: antes de escribirlo, reparte por la columna vieja')
   for (const lector of ['recurrentes-pestana.mjs', 'proveedores-materiales-pestana.mjs', 'estructura-pestana.mjs']) {
+    // Un lector RETIRADO no corre: no puede leer la corrida anterior porque no lee nada. El orden
+    // vuelve a exigirse solo el día que se lo reactive, porque entonces `estaRetirado` da false.
+    if (estaRetirado(lector)) continue
     assert.ok(pos(lector) > pos('cruce-arca-pestana.mjs'),
       `${lector} suma _CRUCE_ARCA con SUMIFS y corre ANTES del cruce: leería la corrida anterior`)
   }

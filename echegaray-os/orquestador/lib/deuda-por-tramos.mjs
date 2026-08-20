@@ -16,44 +16,58 @@
 // Este archivo le da dueño: define la aritmética en JS —testeable sin Google— y emite la MISMA
 // decisión como ARRAYFORMULA es-AR. Una capacidad, una fuente.
 //
-// ═══ LA SEMÁNTICA DE LAS COLUMNAS, MEDIDA CONTRA EL ARCHIVO VIVO (843 filas, 14/08) ═══
+// ═══ LA SEMÁNTICA DE LAS COLUMNAS, RE-MEDIDA CELDA POR CELDA (1.151 filas, 18/08) ═══
 //
-//   O · Total            el importe del comprobante (M neto + N IVA).
-//   S · Total o Parcial  791 "Total", 41 "Parcial", 11 vacías. NO SE PUEDE USAR: hay filas que dicen
-//                        "Total" con sólo una parte pagada (Pedro Fredes: O=3.300.000, T=2.000.000).
-//                        Es una declaración de intención, no un hecho. Se lee, no se decide con ella.
-//   T · Monto Pagado     lo efectivamente pagado. NO incluye a U ni a W.
-//   U · Monto Parcial 1  ═══ EL DATO QUE SE LEE AL REVÉS ═══
-//   W · Monto Parcial 2  En las 18 filas comerciales pendientes, U es SIEMPRE NEGATIVO y vale
-//                        exactamente −(O − T): NO es un pago, es LO QUE FALTA PAGAR, escrito entre
-//                        paréntesis. Gerson Castro: O=2.300.000 · T=1.000.000 · U=−1.300.000.
-//                        Sumar |U| como pago da deuda CERO donde faltan $1,3M; restarlo de nuevo la
-//                        duplica (medido: $30.167.844 contra $15.083.922, el doble exacto).
-//                        Un valor POSITIVO en U/W sí es un pago, y hay 143 filas con uno — todas en
-//                        estado "Pagado", donde ya no cambian ninguna deuda.
+// La medición del 14/08 se hizo leyendo VALORES. Ésta se hizo leyendo FÓRMULAS, y lo que aparece es
+// otra cosa: tres de las cuatro columnas que se estaban cruzando como si fueran declaraciones
+// independientes son celdas DERIVADAS unas de otras.
 //
-// LA REGLA, ENTONCES:  pagado = T + max(U;0) + max(W;0)   ·   falta declarada = −min(U;0) −min(W;0)
-//                      saldo  = O − pagado
+//   O · Total            el importe del comprobante (`=N+M`).
+//   S · Total o Parcial  "Total" 799 · "Parcial" 42 · vacías 295. Dice si lo que se pagó cubrió el
+//                        comprobante entero o una parte. SE MUESTRA, NO DECIDE: hay filas que dicen
+//                        "Total" con sólo una parte pagada.
+//   T · Monto Pagado     NO es un dato tipeado: en 622 de 1.081 filas es una FÓRMULA, y la forma más
+//                        común (361 filas) es `=IF(F="pago";O;0)` — o sea que depende de la MODALIDAD
+//                        (columna F). Con F = "Cuenta Corriente" rinde 0. Un cero ahí significa
+//                        «esta fórmula no se disparó», NO «no se pagó nada».
+//   U · Monto Parcial 1  ═══ EL ERROR QUE ESTE ARCHIVO COMETIÓ DOS VECES ═══
+//                        En 716 de sus 717 celdas con contenido, U es la fórmula `=T-O`. No hay UNA
+//                        SOLA celda de U con un negativo tipeado a mano en toda la pestaña.
+//                        Entonces «lo que el dueño declaró que falta entre paréntesis» nunca existió:
+//                        U es −(O−T) porque ES −(O−T), calculado por el Sheet. Cruzar U contra
+//                        O−T como si fueran dos caminos independientes al mismo número es validar un
+//                        control contra la información que él mismo produce.
+//   X · Estado           ═══ LA ÚNICA DECLARACIÓN, Y ES DEL DUEÑO ═══
+//                        619 filas con la fórmula
+//                          IF(ABS(T+W-O)<1;"Pagado";IF(T+W<O;"Pendiente";"Revisar"))
+//                        y 517 con un LITERAL TIPEADO ENCIMA (455 "Pagado" · 44 "Proyectado" ·
+//                        12 "Pendiente" · 6 "ELIMINADO"). En 114 de esas 517 el texto tipeado
+//                        CONTRADICE lo que la fórmula calcularía. Tipear encima de una fórmula viva
+//                        es la señal de edición más fuerte que existe en una planilla.
 //
-// ═══ Y LA CONTRADICCIÓN QUE EL CUADRO ESTABA TAPANDO: $11.919.063 ═══
+// ═══ LA REGLA, ENTONCES, Y ES UNA SOLA ═══
 //
-// La fórmula que hoy vive en AL arranca con `IF(X="Pendiente"; …; 0)`: si el ESTADO no dice
-// "Pendiente", la fila vale cero pase lo que pase en las columnas de pago. Medido:
+//   SE DEBE  ⇔  X · Estado = "Pendiente".            ← lo declara el dueño, y manda.
+//   CUÁNTO   ⇔  O − T − max(U;0) − max(W;0).
 //
-//   8 filas comerciales dicen "Pagado" con Monto Pagado = 0 y U negativo — o sea, la propia planilla
-//   declara que falta pagarlas — y el cuadro las cuenta como cero:
+// Los `max(…;0)` no son prolijidad: con U = `=T-O` el negativo es el saldo mismo, y restarlo otra vez
+// duplica la deuda (medido en su momento: $30.167.844 contra $15.083.922, el doble exacto). Un
+// POSITIVO en U o W sí es un pago y sí se resta.
 //
-//     Gruas San Blas   $5.124.412 · Hormiserv $3.640.067 · Con-Sec $1.700.000 (3 filas)
-//     DUPEC $1.104.585 (2 filas)  · Leandro Rojas $350.000
+// ═══ Y LOS $11.919.063 QUE ESTE ARCHIVO PUBLICÓ COMO "DEUDA ESCONDIDA" ═══
 //
-//   La pestaña muestra $15.083.922 de deuda comercial. Las columnas de pago dicen $27.002.985.
-//   El 79% de diferencia sale de creerle al ESTADO por encima de los IMPORTES.
+// No existían. Eran 8 filas donde el dueño tipeó "Pagado" encima de la fórmula, con `T` en 0 porque
+// su fórmula `=IF(F="pago";O;0)` no se disparó (F = "Cuenta Corriente") y `U` en −O porque U es
+// `=T-O`. Tres celdas derivadas de la misma, leídas como tres testigos. El cuadro las publicaba
+// pegadas al TOTAL con un ▲ y la frase "Dicen «Pagado» y falta plata", y el dueño lo reclamó tres
+// veces seguidas: *"en la pestaña compras se paga y cambia a estado pagado y lo continúa mostrando
+// como q se adeuda"*.
 //
-// ESTE ARCHIVO NO DECIDE CUÁL DE LOS DOS NÚMEROS ES EL BUENO, y es deliberado. O esas ocho facturas
-// se pagaron y la columna U quedó con basura vieja, o no se pagaron y hay $11,9M de deuda que nadie
-// está viendo. Las dos son posibles y sólo el dueño sabe cuál es; cambiar el titular por mi cuenta
-// sería fabricar una respuesta con efecto económico. Lo que sí se hace es que la contradicción deje
-// de estar enterrada en un contador al pie de la pestaña y salga AL LADO DEL TOTAL, con su plata.
+// LO QUE SÍ QUEDA, PORQUE SÍ ES INDEPENDIENTE: que en esas filas `Monto Pagado` valga 0 no dice nada
+// sobre la deuda, pero sí dice que la planilla no registra CUÁNTA plata salió — y eso le importa a
+// Caja, no a Proveedores. Se informa por el log de `compras-saldo-pendiente.mjs`, sin monto de deuda
+// al lado, porque un número en pesos en un cuadro de deuda se lee como deuda haga lo que haga el
+// rótulo.
 
 /** Las columnas de Compras que esta aritmética usa. Índice 0 = A. */
 export const COL = Object.freeze({
@@ -84,31 +98,55 @@ const positivo = (x) => (x > 0 ? x : 0)
 const txt = (v) => String(v ?? '').trim()
 
 /**
- * LO EFECTIVAMENTE PAGADO DE UNA FILA: los tres tramos, contando sólo los POSITIVOS.
+ * ═══ LO PAGADO DE UNA FILA: `T + W`. LOS DOS TRAMOS, Y NADA MÁS ═══
  *
- * El filtro no es prolijidad: un U negativo es el saldo que falta, y sumarlo como pago deja en cero
- * una factura que se debe entera. Ver la semántica medida en la cabecera.
+ * Compras registra el pago en DOS TRAMOS, y las columnas están de a pares:
+ *
+ *   tramo 1 → `Q · Fecha prevista de pago (día)`  +  `T · Monto Pagado`
+ *   tramo 2 → `V · Fecha prevista de pago 2`      +  `W · Monto Parcial 2`
+ *
+ * `U · Monto Parcial 1` NO ES UN TRAMO: es `=T-O`, el saldo que queda después del primero. Medido
+ * sobre las 8 filas del archivo con `V` cargada —las únicas con segundo tramo real— en las OCHO vale
+ * `W = |U|` exacto: Gerson Castro fila 819 (O 2.300.000 · T 1.000.000 · U −1.300.000 · V 14/08 ·
+ * W 1.300.000) y Pedro Fredes fila 832 (3.300.000 = 2.000.000 + 1.300.000). Las dos quedaron
+ * saldadas, y su Estado lo calcula sola la planilla.
+ *
+ * ═══ POR QUÉ `max(U;0)` ERA UN DEFECTO, NO UNA PRECAUCIÓN ═══
+ *
+ * Este archivo restaba además los U POSITIVOS «porque un positivo sí es un pago». No lo es: hay 60
+ * filas con U > 0 y ahí U es el importe que SALIÓ DE CAJA, que no coincide con el de la factura —
+ * nafta de Combustibles Barcelo, factura $34.460 y ticket $40.000. Restarlo cuenta el pago dos veces.
+ * En 57 de esas 60 el criterio viejo lo restaba.
+ *
+ * ═══ Y LA PRUEBA DE QUE ÉSTA ES LA DEFINICIÓN Y NO OTRA OPINIÓN ═══
+ *
+ * Es la MISMA que usa la fórmula que la planilla YA TIENE en su columna `Estado`, viva en 619 filas:
+ *
+ *     IF(ABS(T+W-O)<1;"Pagado";IF(T+W<O;"Pendiente";"Revisar"))
+ *
+ * La planilla decide el estado con `T+W` y este archivo calculaba el saldo con otra cuenta. Un cuadro
+ * cuyo "cuánto" no cierra con su propio "¿está pagada?" no puede estar bien por casualidad: el test
+ * compara las dos expresiones, no dos números que hoy empatan.
  *
  * @param {any[]} fila una fila de Compras (A..AN)
  * @returns {number}
  */
 export function pagadoDe(fila = []) {
-  return num(fila[COL.pagado]) + positivo(num(fila[COL.parcial1])) + positivo(num(fila[COL.parcial2]))
+  return pagadoDeTramos({ pagado: fila[COL.pagado], parcial2: fila[COL.parcial2] })
 }
 
 /**
- * LO QUE LA PROPIA PLANILLA DECLARA QUE FALTA, leído de los paréntesis de U y W.
+ * LA MISMA CUENTA, POR CAMPOS — para el que ya resolvió sus columnas por rótulo.
  *
- * Es un dato INDEPENDIENTE del saldo calculado, y por eso sirve de control: cuando los dos no
- * coinciden, alguien cargó mal. Un control no se valida contra la información que él mismo produce.
+ * Existe para que `libro-extractores-compras.mjs` —el que alimenta las tarjetas de CAJA— use ÉSTA y
+ * no la suya. Tenía la propia, `importe - montoPagado`, sin el segundo tramo: la misma factura valía
+ * una cosa en "Proveedores" y otra en "CAJA". Un concepto, una fuente.
  *
- * @param {any[]} fila
- * @returns {number} siempre >= 0
+ * @param {{pagado:any, parcial2:any}} f
+ * @returns {number}
  */
-export function faltaDeclarada(fila = []) {
-  // `positivo(-x)` y no `-(negativo(x))`: el segundo devuelve `-0` cuando no hay paréntesis, y `-0`
-  // no es estrictamente igual a `0` — un cero que no se compara igual a cero es una trampa gratis.
-  return positivo(-num(fila[COL.parcial1])) + positivo(-num(fila[COL.parcial2]))
+export function pagadoDeTramos({ pagado, parcial2 } = {}) {
+  return num(pagado) + num(parcial2)
 }
 
 /**
@@ -124,89 +162,71 @@ export function saldoDeLaFila(fila = []) {
 export const esComercial = (fila = []) => txt(fila[COL.comercial]) === '1'
 
 /**
- * QUÉ ES ESTA FILA, CRUZANDO LO QUE DICE EL ESTADO CON LO QUE DICEN LOS IMPORTES.
+ * QUÉ ES ESTA FILA. LO DECIDE EL ESTADO, QUE ES LO ÚNICO QUE DECLARA UNA PERSONA.
  *
- * Los cuatro resultados son distintos y cada uno pide una acción distinta:
+ *   'deuda'                Pendiente y con saldo. Es lo que el cuadro muestra.
+ *   'pendiente-sin-saldo'  Pendiente y sin saldo. Ruido: infla el conteo de facturas, no la plata.
+ *   'saldada'              cualquier otro estado. No se le debe nada, y NO se discute con los
+ *                          importes: `Monto Pagado` es una fórmula que depende de la Modalidad y
+ *                          `Monto Parcial 1` es `=T-O`. Ninguna de las dos es un testigo.
  *
- *   'deuda'          Pendiente y con saldo. Es lo que el cuadro muestra hoy.
- *   'saldada'        sin saldo. Da igual lo que diga el estado: no se le debe nada.
- *   'pagada-con-saldo'  dice "Pagado" y los importes dicen que falta plata. ES EL AGUJERO: hoy vale
- *                    cero en el cuadro. Ocho filas por $11.919.063.
- *   'pendiente-sin-saldo' dice "Pendiente" y no falta nada. Ruido: infla el conteo de facturas.
+ * Acá vivía un cuarto resultado —'pagada-con-saldo'— que declaraba "el estado dice Pagado pero los
+ * importes dicen que falta plata" y publicaba $11.919.063 al lado del TOTAL. Los importes no decían
+ * eso: eran la misma celda leída tres veces. Ver la cabecera.
  *
  * @param {any[]} fila
- * @returns {'deuda'|'saldada'|'pagada-con-saldo'|'pendiente-sin-saldo'}
+ * @returns {'deuda'|'saldada'|'pendiente-sin-saldo'}
  */
 export function clasificar(fila = []) {
-  const saldo = saldoDeLaFila(fila)
-  const estado = txt(fila[COL.estado])
-  const hay = Math.round(saldo) > TOL
-  if (estado === PENDIENTE) return hay ? 'deuda' : 'pendiente-sin-saldo'
-  if (!hay) return 'saldada'
-  return estado === PAGADO ? 'pagada-con-saldo' : 'saldada'
+  if (txt(fila[COL.estado]) !== PENDIENTE) return 'saldada'
+  return Math.round(saldoDeLaFila(fila)) > TOL ? 'deuda' : 'pendiente-sin-saldo'
 }
 
 /**
- * LA POSICIÓN DE DEUDA COMERCIAL, CON SU AGUJERO DECLARADO AL LADO.
+ * ¿EL ESTADO DE ESTA FILA ESTÁ TIPEADO A MANO, CONTRADICIENDO SU PROPIA FÓRMULA?
  *
- * Devuelve las dos cifras juntas a propósito: `enElCuadro` es lo que la pestaña muestra y
- * `contradictorio` es lo que no muestra pero podría deber. Separadas, la segunda se pierde; juntas,
- * la pregunta "¿cuál de las dos es la verdadera?" queda planteada donde se decide un pago.
+ * No cambia ninguna deuda —el tipeado gana siempre— pero es el ÚNICO cruce de este archivo entre dos
+ * fuentes de verdad distintas: una persona escribiendo una palabra contra una aritmética. Sirve para
+ * informar, nunca para corregir.
+ *
+ * Se le pasan las DOS lecturas de la misma fila: la de fórmulas y la de valores. Sin la de fórmulas
+ * no hay forma de saber si el texto lo escribió alguien o lo calculó el archivo, y suponerlo es
+ * exactamente el error que costó esta reconstrucción.
+ *
+ * @param {any[]} filaFormula  la fila leída con render FORMULA
+ * @param {any[]} filaValor    la MISMA fila leída con render UNFORMATTED_VALUE
+ * @returns {{tipeado:string, calculado:string}|null} null si el estado no está tipeado o si coinciden
+ */
+export function estadoTipeadoQueContradice(filaFormula = [], filaValor = []) {
+  const tipeado = txt(filaFormula[COL.estado])
+  if (!tipeado || tipeado.startsWith('=') || tipeado === 'ELIMINADO') return null
+  if (!txt(filaValor[COL.proveedor])) return null
+  const t = num(filaValor[COL.pagado]) + num(filaValor[COL.parcial2])
+  const o = num(filaValor[COL.total])
+  const calculado = Math.abs(t - o) < TOL ? PAGADO : (t < o ? PENDIENTE : 'Revisar')
+  return calculado === tipeado ? null : { tipeado, calculado }
+}
+
+/**
+ * LA POSICIÓN DE DEUDA COMERCIAL: una sola cifra, la que el cuadro muestra.
+ *
+ * Devolvía además un `contradictorio` y un `techo` —"la deuda si las 8 'Pagado' resultaran impagas"—
+ * y los dos salían de leer celdas derivadas como si fueran declaraciones. No hay dos extremos de un
+ * rango: hay una deuda declarada por el dueño en la columna Estado.
  *
  * @param {any[][]} filas las filas de Compras desde la 4
- * @returns {{enElCuadro:{n:number, monto:number}, contradictorio:{n:number, monto:number,
- *            filas:Array<{proveedor:string, comprobante:string, total:number, pagado:number, saldo:number}>},
- *            pendienteSinSaldo:{n:number}, techo:number}}
+ * @returns {{enElCuadro:{n:number, monto:number}, pendienteSinSaldo:{n:number}}}
  */
 export function posicionComercial(filas = []) {
   const enElCuadro = { n: 0, monto: 0 }
-  const contradictorio = { n: 0, monto: 0, filas: [] }
   let pendienteSinSaldo = 0
   for (const fila of filas ?? []) {
     if (!txt(fila?.[COL.proveedor]) || !esComercial(fila)) continue
     const clase = clasificar(fila)
-    if (clase === 'deuda') { enElCuadro.n++; enElCuadro.monto += saldoDeLaFila(fila); continue }
-    if (clase === 'pendiente-sin-saldo') { pendienteSinSaldo++; continue }
-    if (clase !== 'pagada-con-saldo') continue
-    contradictorio.n++
-    contradictorio.monto += saldoDeLaFila(fila)
-    contradictorio.filas.push({
-      proveedor: txt(fila[COL.proveedor]),
-      comprobante: txt(fila[COL.comprobante]),
-      total: num(fila[COL.total]),
-      pagado: pagadoDe(fila),
-      saldo: saldoDeLaFila(fila),
-    })
+    if (clase === 'deuda') { enElCuadro.n++; enElCuadro.monto += saldoDeLaFila(fila) }
+    else if (clase === 'pendiente-sin-saldo') pendienteSinSaldo++
   }
-  contradictorio.filas.sort((a, b) => b.saldo - a.saldo)
-  // El TECHO es la deuda si las contradictorias resultaran impagas. No se afirma: se ofrece como
-  // el otro extremo del rango, para que nadie decida creyendo que el número de arriba es el único.
-  return { enElCuadro, contradictorio, pendienteSinSaldo: { n: pendienteSinSaldo }, techo: enElCuadro.monto + contradictorio.monto }
-}
-
-/**
- * FILAS DONDE LOS PARÉNTESIS Y LA ARITMÉTICA NO SE PONEN DE ACUERDO.
- *
- * `faltaDeclarada` (lo que el dueño escribió entre paréntesis) y `saldoDeLaFila` (Total − pagado)
- * miden lo mismo por dos caminos independientes. Cuando difieren, uno de los dos está mal cargado y
- * el cuadro está mostrando una cifra que la propia planilla contradice una columna más allá.
- *
- * @param {any[][]} filas
- * @param {number} tol pesos de tolerancia
- * @returns {Array<{proveedor:string, comprobante:string, saldo:number, declarado:number, dif:number}>}
- */
-export function paréntesisQueNoCierran(filas = [], tol = TOL) {
-  const out = []
-  for (const fila of filas ?? []) {
-    if (!txt(fila?.[COL.proveedor]) || !esComercial(fila)) continue
-    const declarado = faltaDeclarada(fila)
-    if (declarado === 0) continue
-    const saldo = saldoDeLaFila(fila)
-    const dif = saldo - declarado
-    if (Math.abs(dif) <= tol) continue
-    out.push({ proveedor: txt(fila[COL.proveedor]), comprobante: txt(fila[COL.comprobante]), saldo, declarado, dif })
-  }
-  return out.sort((a, b) => Math.abs(b.dif) - Math.abs(a.dif))
+  return { enElCuadro, pendienteSinSaldo: { n: pendienteSinSaldo } }
 }
 
 /**
@@ -216,24 +236,20 @@ export function paréntesisQueNoCierran(filas = [], tol = TOL) {
  * `formula-por-api-va-en-locale`). Separador `;`, nombres de función en inglés —que la API acepta— y
  * ni una coma, para que el localizador no la confunda con un decimal.
  *
- * ═══ POR QUÉ SIGUE MIRANDO EL ESTADO, SABIENDO QUE AHÍ ESTÁ EL AGUJERO ═══
+ * ═══ NO TIENE VARIANTE, Y ESO ES EL ARREGLO (18/08) ═══
  *
- * Porque sacarlo mueve el titular de la pestaña $11.919.063 hacia arriba, y eso es una afirmación
- * sobre plata que la empresa debería o no debería pagar: tiene efecto económico y no la firma un
- * generador. `soloPendiente: false` produce la otra versión —la que le cree a los importes— para
- * poder comparar las dos con el dueño delante antes de que ninguna se escriba.
+ * Tenía un `soloPendiente: false` que producía "la otra versión, la que le cree a los importes",
+ * pensada para comparar las dos con el dueño delante. Esa segunda versión no puede existir: los
+ * importes de esta pestaña son fórmulas derivadas del propio estado y de la modalidad, así que
+ * "creerles" no es una segunda opinión, es la misma celda con otro nombre. Dos definiciones del mismo
+ * concepto es exactamente lo que este archivo vino a terminar.
  *
- * @param {{soloPendiente?:boolean}} [opts]
  * @returns {string}
  */
-export function formulaSaldoPendiente({ soloPendiente = true } = {}) {
+export function formulaSaldoPendiente() {
   const n = (r) => `IF(ISNUMBER(${r});${r};0)`
-  const pos = (r) => `IF(ISNUMBER(${r});IF(${r}>0;${r};0);0)`
-  const saldo = `${n('$O$4:$O')}-${n('$T$4:$T')}-${pos('$U$4:$U')}-${pos('$W$4:$W')}`
-  const universo = soloPendiente
-    ? `($X$4:$X="${PENDIENTE}")*($AJ$4:$AJ=1)`
-    : `($X$4:$X<>"ELIMINADO")*($AJ$4:$AJ=1)`
-  return `=ARRAYFORMULA(IF($E$4:$E="";"";IF(${universo};${saldo};0)))`
+  const saldo = `${n('$O$4:$O')}-${n('$T$4:$T')}-${n('$W$4:$W')}`
+  return `=ARRAYFORMULA(IF($E$4:$E="";"";IF(($X$4:$X="${PENDIENTE}")*($AJ$4:$AJ=1);${saldo};0)))`
 }
 
 /**
@@ -248,29 +264,71 @@ export function formulaSaldoPendiente({ soloPendiente = true } = {}) {
  */
 export function expresionSaldo(hoja = 'Compras!') {
   const n = (c) => `IF(ISNUMBER(${hoja}$${c}$4:$${c});${hoja}$${c}$4:$${c};0)`
-  const pos = (c) => `IF(ISNUMBER(${hoja}$${c}$4:$${c});IF(${hoja}$${c}$4:$${c}>0;${hoja}$${c}$4:$${c};0);0)`
-  return `(${n('O')}-${n('T')}-${pos('U')}-${pos('W')})`
+  return `(${n('O')}-${n('T')}-${n('W')})`
 }
 
 /**
- * LA DEUDA QUE EL CUADRO NO MUESTRA — plata y facturas, como fórmula viva.
+ * LAS FACTURAS PAGADAS SIN REGISTRAR CON CUÁNTO — el conteo, como fórmula viva.
  *
- * Filas comerciales cuyo ESTADO dice que ya no se deben y cuyas COLUMNAS DE PAGO dicen que falta
- * plata. Hoy valen cero en el titular, en el aging y en las dos dinámicas, porque las cuatro cuelgan
- * de `AL`, que arranca con `IF(X="Pendiente"; …; 0)`.
+ * `Estado` = "Pagado" y los dos tramos de pago suman cero. NO ES DEUDA: el dueño declaró la factura
+ * saldada tipeando el estado encima de la fórmula, y eso manda. Lo que falta es el IMPORTE, y el que
+ * lo necesita es CAJA — un egreso sin monto no se puede imputar a ningún día ni a ninguna obra.
  *
- * Va como FÓRMULA y no como número pegado (regla de oro 5): el día que alguien corrija una de esas
- * ocho filas en Compras, esta línea baja sola. Un número pegado seguiría gritando para siempre, y un
- * aviso que no se puede apagar deja de leerse.
+ * DEVUELVE UN CONTEO, NUNCA PESOS, y es la decisión entera de esta función. Durante cuatro días este
+ * mismo universo se publicó con su importe al lado del TOTAL de la deuda y se leyó —correctamente—
+ * como $11.919.063 que la empresa debía. Ver la cabecera de este archivo.
  *
- * @param {'monto'|'n'} que
  * @returns {string}
  */
-export function formulaDeudaNoMostrada(que = 'monto') {
-  const s = expresionSaldo()
-  // "ELIMINADO" queda afuera: son filas dadas de baja, no deuda escondida.
-  const universo = `(Compras!$AJ$4:$AJ=1)*(Compras!$X$4:$X<>"${PENDIENTE}")*(Compras!$X$4:$X<>"ELIMINADO")*(${s}>${TOL})`
-  return `=SUMPRODUCT(${universo}${que === 'monto' ? `*${s}` : ''})`
+export function formulaPagadasSinImporte() {
+  return `=SUMPRODUCT(${universoSinImporte()})`
+}
+
+/** A quiénes, para poder preguntar sin abrir Compras. `UNIQUE` porque hay proveedores con más de una. */
+export function formulaProveedoresSinImporte() {
+  return `=IFERROR(TEXTJOIN(" · ";TRUE;UNIQUE(FILTER(Compras!$E$4:$E;${universoSinImporte()})));"")`
+}
+
+/** El universo, en un solo lugar: el conteo y los nombres tienen que hablar de las mismas filas. */
+function universoSinImporte() {
+  const n = (c) => `IF(ISNUMBER(Compras!$${c}$4:$${c});Compras!$${c}$4:$${c};0)`
+  return `(Compras!$AJ$4:$AJ=1)*(Compras!$X$4:$X="${PAGADO}")*(Compras!$O$4:$O>0)*((${n('T')}+${n('W')})=0)`
+}
+
+/**
+ * LAS FACTURAS PENDIENTES CON UN IMPORTE TIPEADO EN «MONTO PARCIAL 1» — la pregunta que queda abierta.
+ *
+ * `saldoDeLaFila` es `Total − Monto Pagado − Monto Parcial 2` y NO resta `Monto Parcial 1`. No es un
+ * olvido, está medido sobre las 1.136 filas del archivo real:
+ *
+ *     U · Monto Parcial 1 → 716 fórmulas `=T−O` · 302 valores tipeados · 84 negativos · 61 positivos
+ *     W · Monto Parcial 2 →   0 fórmulas       ·   8 valores tipeados ·  0 negativos ·  8 positivos
+ *
+ * `U` es una columna MIXTA: casi siempre la derivada `=T−O`, que es negativa mientras la factura no
+ * se pagó. Restarla la convierte en un tramo de pago que no es — y ésa fue durante meses la segunda
+ * definición de la deuda, la que hacía que el control del pie contradijera al cuadro de arriba.
+ *
+ * PERO cuando alguien tipea ahí un importe POSITIVO sobre una factura pendiente, la fila se
+ * contradice sola: o ya está pagada y le falta el estado, o el importe está en la columna equivocada.
+ * Mientras tanto su saldo se publica entero, y puede estar de más.
+ *
+ * Esta fórmula no resuelve la contradicción: la NOMBRA, con proveedor y monto, para que se arregle en
+ * Compras, que es donde está el dato. Elegir una de las dos respuestas acá sería fabricarla.
+ *
+ * @returns {string}
+ */
+export function formulaParcial1Sospechoso() {
+  // `IF(ISNUMBER(...))` NO SOBRA, y la primera versión sin él publicó `#VALUE!` en la pestaña real.
+  // `Monto Parcial 1` tiene 302 valores cargados a mano y entre ellos hay celdas de TEXTO: la
+  // comparación `>0` las tolera, pero la MULTIPLICACIÓN de la máscara por la columna arrastra el
+  // texto y rompe el SUMPRODUCT entero. Es la misma coerción que ya hace `expresionSaldo`.
+  const n = '(IF(ISNUMBER(Compras!$U$4:$U);Compras!$U$4:$U;0))'
+  const u = `(${n}>0)*(Compras!$X$4:$X="${PENDIENTE}")*(Compras!$AJ$4:$AJ=1)`
+  return `=LET(n;SUMPRODUCT(${u});m;SUMPRODUCT(${u}*${n});`
+    + `IF(n=0;"✓ ningún importe suelto en «Monto Parcial 1»";`
+    + `n&" factura(s) pendientes con "&TEXT(m;"$#,##0")&" cargado en «Monto Parcial 1» ("`
+    + `&IFERROR(TEXTJOIN(" · ";TRUE;UNIQUE(FILTER(Compras!$E$4:$E;${u})));"sin nombre")`
+    + `&"): o ya están pagadas y falta el estado, o el importe va en «Monto Pagado»"))`
 }
 
 /** El rótulo de la columna en Compras. Una sola constante: el que escribe y el que busca leen ésta. */

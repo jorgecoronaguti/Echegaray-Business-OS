@@ -29,6 +29,33 @@ export interface Herramienta {
 
 export type ServiceResult<T> = { data: T; error: null } | { data: null; error: string }
 
+export interface MovimientoDeResponsable {
+  id_herramienta: string
+  responsable: string | null
+  fecha: string | null
+}
+
+/**
+ * EL RESPONSABLE ES DERIVADO, NO UN CAMPO PROPIO: es quien figura en el ÚLTIMO movimiento de la
+ * herramienta. Guardarlo en `herramientas` sería una segunda versión del mismo dato, que el día que
+ * alguien registre un traslado sin actualizarla queda mintiendo.
+ *
+ * Se elige por FECHA acá adentro y no se confía en el orden de la consulta: PostgREST devuelve los
+ * `null` según cómo se pidió el `order`, y una fila sin fecha ganándole a una de ayer publicaría un
+ * responsable que ya no tiene la herramienta. Un movimiento sin responsable no reemplaza al
+ * anterior — no dice quién la tiene, dice que nadie lo anotó.
+ */
+export function ultimoResponsable(movs: MovimientoDeResponsable[]): Map<string, string> {
+  const mejor = new Map<string, { fecha: string; responsable: string }>()
+  for (const m of movs ?? []) {
+    if (!m?.responsable || !m.id_herramienta) continue
+    const fecha = m.fecha ?? ''
+    const previo = mejor.get(m.id_herramienta)
+    if (!previo || fecha > previo.fecha) mejor.set(m.id_herramienta, { fecha, responsable: m.responsable })
+  }
+  return new Map([...mejor].map(([id, v]) => [id, v.responsable]))
+}
+
 export async function getHerramientas(supabase: SupabaseClient): Promise<ServiceResult<Herramienta[]>> {
   try {
     const { data, error } = await supabase
@@ -37,16 +64,13 @@ export async function getHerramientas(supabase: SupabaseClient): Promise<Service
       .order('nombre', { ascending: true })
     if (error) return { data: null, error: error.message }
 
-    // Responsable ACTUAL de cada herramienta = responsable del último movimiento hacia su
-    // ubicación actual. Una sola query, se resuelve en memoria (evita N+1).
+    // Responsable ACTUAL de cada herramienta = responsable de su último movimiento. Una sola query,
+    // se resuelve en memoria (evita N+1); quién gana lo decide `ultimoResponsable`, que es puro.
     const { data: movs } = await supabase
       .from('movimientos_herramienta')
       .select('id_herramienta, responsable, fecha')
       .order('fecha', { ascending: false })
-    const ultimoResp = new Map<string, string>()
-    for (const m of (movs ?? []) as { id_herramienta: string; responsable: string | null; fecha: string | null }[]) {
-      if (m.responsable && !ultimoResp.has(m.id_herramienta)) ultimoResp.set(m.id_herramienta, m.responsable)
-    }
+    const ultimoResp = ultimoResponsable((movs ?? []) as MovimientoDeResponsable[])
 
     const herramientas = (data ?? []).map((h) => ({
       ...h,

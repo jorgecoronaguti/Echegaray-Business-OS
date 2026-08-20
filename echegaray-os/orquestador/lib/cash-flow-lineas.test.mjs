@@ -1,4 +1,5 @@
 import test from 'node:test'
+import { fusionar, VACIO as VACIO_FUSION } from './preservar-anotaciones.mjs'
 import assert from 'node:assert/strict'
 import {
   formulaInteresSemana, edicionesConContenidoReal,
@@ -235,7 +236,12 @@ test('bajo --force la fusión preserva un renombre REAL del dueño Y no pierde u
   // CONTRASTE — la corrida NORMAL (registro completo) SÍ aplicaría el borrado: la feature sigue viva.
   const rNormal = respetarEdiciones(generado, actual, registro)
   assert.equal(rNormal.grid[1][0], `${S}Jornales de obra de LA ESTRELLA`, 'el renombre también se respeta normal')
-  assert.equal(rNormal.grid[3][0], '', 'en modo normal el borrado del dueño SÍ se aplica (no se rompe la feature)')
+  // El borrado se aplica declarando la celda MÍA Y VACÍA (el centinela), no con un '' — que para la
+  // fusión significa lo contrario: "no es mía, conservá lo que haya". Lo que prueba que el borrado se
+  // aplicó es el efecto: fusionado contra una pestaña con contenido ahí, sale vacío.
+  assert.equal(rNormal.grid[3][0], VACIO_FUSION, 'en modo normal el borrado del dueño SÍ se aplica (no se rompe la feature)')
+  assert.equal(fusionar(rNormal.grid, [[], [], [], ['lo que hubiera ahí']])[3][0], '',
+    'el borrado tiene que dejar la celda vacía, no entregarle la celda a lo que hubiera debajo')
 })
 
 test('OFICINA: la línea de la planilla de sueldos lee los rangos con nombre, no Compras', () => {

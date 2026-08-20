@@ -24,8 +24,9 @@ import {
 import { CUENTAS } from '../lib/caja-disponibilidades.mjs'
 import { VACIO } from '../lib/preservar-anotaciones.mjs'
 import { terminoLibro, LIBRO } from '../lib/libro-sumas.mjs'
-import { NO_REAL, FIN_DE_MES } from '../lib/caja-tarjetas.mjs'
-import { BORDES } from '../lib/caja-calendario.mjs'
+import { NO_REAL, DEUDA, PLAN, FIN_DE_MES } from '../lib/caja-tarjetas.mjs'
+import { BORDES, signoDelTramo, TRAMO_VENCIDO } from '../lib/caja-calendario.mjs'
+import { ANEXO } from '../lib/caja-anexo-nombres.mjs'
 
 /** Una celda VACÍA de la grilla. El generador no escribe cadena vacía: escribe el centinela VACIO, que
  *  le dice al portón "esta celda es MÍA y está vacía" (una celda ajena y vacía se preserva). */
@@ -86,7 +87,11 @@ test('LAS CINCO TARJETAS ESTÁN, EN ORDEN, Y CADA UNA OCUPA SUS TRES RENGLONES',
   // 13/08: las dos del medio se renombraron. El dueño no entendía la suya —*"no sé si es algo q
   // tengo q cubrir o ya está cubierto"*, *"la 'libre disponibilidad' es negativo lo cual me
   // confunde"*— y el defecto era del RÓTULO: los números están bien y no se tocó ninguna fórmula.
-  const esperados = ['CAJA DISPONIBLE', 'FALTA PAGAR ESTE MES', 'SI NO COBRÁS MÁS ESTE MES', 'CAJA INVERTIDA', 'SALDO AL CIERRE']
+  // 16/08: la segunda se renombró otra vez, y esta vez el defecto NO era del rótulo. "FALTA PAGAR"
+  // prometía deuda sobre un número que traía $38,0M de PROYECTADO adentro (materiales estimados,
+  // "Estructura esperada"). El arreglo fue del CONCEPTO —el titular pasó a sumar sólo `DEUDA`— y el
+  // rótulo lo acompañó. El porqué entero vive en caja-tarjetas.mjs y en caja-tarjetas-conceptos.
+  const esperados = ['CAJA DISPONIBLE', 'DEUDA ATRASADA Y DEL MES', 'SI NO COBRÁS MÁS ESTE MES', 'CAJA INVERTIDA', 'SALDO AL CIERRE']
   esperados.forEach((rot, i) => {
     const col = COLS_TARJETA[i]
     assert.equal(celda(g, g.fRotulos, col), rot, `la tarjeta ${i + 1} tiene que ser "${rot}" en la columna ${col}`)
@@ -111,15 +116,18 @@ test('LAS CIFRAS DE LAS TARJETAS SALEN DEL LIBRO O DE LA PROPIA PESTAÑA, nunca 
   const g = construir()
   const val = (i) => celda(g, g.fCifras, COLS_TARJETA[i])
   assert.equal(val(0), `=$C$${g.fCierre}`, 'la caja disponible es EL TOTAL del panel de cuentas, no una suma nueva')
-  // 6ª directiva (idioma único): el titular es el MES − lo pagado; los 7 días viven en el contexto.
-  assert.equal(val(1), `=${terminoLibro({ signo: -1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })}`)
+  // 6ª directiva (idioma único): el titular habla EL MES. 16/08: y habla de DEUDA — `COMPROMETIDO +
+  // VENCIDO`, sin el PROYECTADO, que es gasto planeado y vive en el contexto y en el cierre.
+  assert.equal(val(1), `=${terminoLibro({ signo: -1, estados: DEUDA, hasta: FIN_DE_MES, medida: 'magnitud' })}`)
   // 06/08 (4ª directiva del dueño): LIBRE = el piso de la escalera, referenciado de su fila de
   // cierre. El porqué vive en caja-tarjetas.mjs; acá sólo se fija que la grilla pase las celdas.
   assert.equal(val(2), '=N($A$3)-N($C$3)', 'LIBRE = disponible − comprometida, la definición del dueño')
   assert.equal(val(3), `=N($C$${g.fBalanzArs})+N($C$${g.fBalanzUsd})`,
     'INVERTIDO referencia las filas Balanz del panel, no una segunda fuente')
-  // La enumeración final: SALDO AL CIERRE = disponible − comprometida + cobros del mes.
-  assert.equal(val(4), `=N($A$3)-N($C$3)+${terminoLibro({ signo: 1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })}`)
+  // La enumeración final: SALDO AL CIERRE = disponible − deuda + cobros del mes − plan de gasto.
+  // El plan entra acá y no en el titular de al lado: cobrando todo, los materiales SE compran.
+  assert.equal(val(4), `=N($A$3)-N($C$3)+${terminoLibro({ signo: 1, estados: NO_REAL, hasta: FIN_DE_MES, medida: 'magnitud' })}`
+    + `-${terminoLibro({ signo: -1, estados: PLAN, hasta: FIN_DE_MES, medida: 'magnitud' })}`)
 })
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
@@ -217,7 +225,11 @@ test('EL PRIMER TRAMO ABRE EN EL SERIAL 0: un cheque viejo sin presentar no pued
   // debitado no caería en ningún tramo: el piso subiría sin que se haya pagado nada. Con el libro esto
   // es seguro porque lo que ya salió está marcado REAL, y REAL está excluido de todos los tramos.
   const g = construir()
-  assert.equal(celda(g, g.lad0, 7), `=${terminoLibro({ desde: '0', hasta: 'TODAY()', estados: NO_REAL })}`,
+  // EL LADO sale de `signoDelTramo` y no se tipea acá: este test es sobre la VENTANA (que abre en el
+  // serial 0), y con el signo escrito a mano volvería a fallar el día que la regla de lado cambie, por
+  // un invariante que no es el suyo. Quién cuenta qué lado lo prueba lib/caja-calendario.test.mjs.
+  assert.equal(celda(g, g.lad0, 7),
+    `=${terminoLibro({ desde: '0', hasta: 'TODAY()', estados: NO_REAL, signo: signoDelTramo(TRAMO_VENCIDO) })}`,
     'el tramo Vencido tiene que abrir en el serial 0 y cerrar hoy')
   assert.ok(celda(g, g.lad0 + 1, 7).includes('CAJA_FECHA_SALDO'),
     'y sólo el primero: el resto arranca en su borde, nunca antes del corte del extracto')
@@ -321,18 +333,54 @@ test('CERO NÚMEROS PEGADOS: toda celda de plata es una fórmula', () => {
 // EL ARQUEO — LA ÚNICA CAPTURA DE TODO EL ARCHIVO
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
-test('sin nada leído, el arqueo sale AUSENTE: sin dato no se sobrescribe', () => {
+test('sin nada leído, el CONTEO sale AUSENTE: sin dato no se sobrescribe', () => {
   // NO ALCANZA CON `vacia()`: el centinela VACIO pasa por vacío y significa "es mía y va vacía", o sea
   // que la fusión la LIMPIA. La primera versión de este test decía vacia() y dejó pasar un generador
   // que le borraba el conteo al dueño en la primera corrida.
+  //
+  // 16/08: LA COLUMNA B SIGUE SIENDO SUYA Y LA D DEJÓ DE SERLO. El dueño borró la fecha a propósito
+  // ("no te guíes en eso sino en lo q marca los timestamps del código") y desde entonces `D7` y `D8`
+  // estaban vacías. Ahora las deriva el centinela: la B es la única celda de captura de la fila.
   const g = construir()
   for (const f of [g.fArqArs, g.fArqUsd]) {
     assert.ok(f > 0, 'las dos filas del arqueo tienen que existir')
-    for (const col of [1, 3]) {
-      assert.equal(g.filas[f - 1][col], undefined,
-        `la celda ${col} del arqueo tiene que estar AUSENTE (ni valor ni centinela VACIO): la carga el dueño`)
-    }
+    assert.equal(g.filas[f - 1][1], undefined,
+      'el IMPORTE del conteo tiene que estar AUSENTE (ni valor ni centinela VACIO): lo carga el dueño')
   }
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LAS FECHAS DE SALDO QUE FALTABAN (16/08/2026)
+//
+// El dueño: *"no completaste las fechas de saldos"*. `D7` y `D8` —las dos filas de efectivo, el 40% del
+// disponible— estaban VACÍAS desde que él borró la celda donde las tipeaba. Dos consecuencias medidas:
+// la fila más importante del panel no decía de cuándo era, y el aviso de congelado de la tarjeta no
+// podía dispararse NUNCA sobre ellas porque su condición arranca con `ISNUMBER($D$n)`.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+test('LAS DOS FILAS DE EFECTIVO PUBLICAN SU FECHA, y sale del centinela — no de TODAY() ni de una celda tipeada', () => {
+  const g = construir()
+  const fecha = (f) => String(g.filas[f - 1][3] ?? '')
+  assert.equal(fecha(g.fArqArs), `=IF(ISNUMBER(${ANEXO.conteoArsDia});${ANEXO.conteoArsDia};"")`)
+  assert.equal(fecha(g.fArqUsd), `=IF(ISNUMBER(${ANEXO.conteoUsdDia});${ANEXO.conteoUsdDia};"")`)
+  for (const f of [g.fArqArs, g.fArqUsd]) {
+    // UN `TODAY()` ACÁ AFIRMA QUE SE CONTÓ HOY, todos los días. Es el defecto que el dueño ya señaló
+    // tres veces en esta misma columna ("aún noto desactualizadas las fechas").
+    assert.doesNotMatch(fecha(f), /TODAY\(\)/, 'la fecha del conteo no puede salir del reloj de la corrida')
+    // Y LA GUARDA: sin ella, con la celda del anexo vacía la fecha se dibujaría como el serial 0, o sea
+    // 30/12/1899 — el mismo defecto que la tarjeta ya evita en el otro extremo de la cuenta.
+    assert.match(fecha(f), /^=IF\(ISNUMBER\(/, 'sin la guarda, una celda vacía se dibuja como 30/12/1899')
+  }
+})
+
+test('la fecha del conteo NO se le vuelve a pedir al dueño: la tipeada se descarta', () => {
+  // Él la borró y lo dijo con todas las letras. Si el rescate volviera a re-emitirla, la celda
+  // amarilla reaparecería y el mecanismo entero volvería a depender de que alguien la escriba.
+  const cargado = new Map([['Efectivo en pesos', { saldo: 12000000, fecha: 46233, origen: '', quien: '' }]])
+  const g = grilla(cargado, REFS)
+  assert.equal(g.filas[g.fArqArs - 1][1], 12000000, 'el CONTEO del dueño sí viaja: es su dato')
+  assert.equal(g.filas[g.fArqArs - 1][3], `=IF(ISNUMBER(${ANEXO.conteoArsDia});${ANEXO.conteoArsDia};"")`,
+    'su FECHA ya no: la derivan los timestamps del código')
 })
 
 test('EL RESCATE LEE LA MISMA COLUMNA EN LA QUE EL GENERADOR ESCRIBE EL ARQUEO', () => {
@@ -369,10 +417,6 @@ test('con el conteo ya cargado, el arqueo se RE-EMITE en su fila nueva (no se qu
   ])
   const g = grilla(cargado, REFS)
   assert.equal(g.filas[g.fArqArs - 1][1], 0, 'el importe 0 es un dato, no un vacío')
-  // LA FECHA VIAJA COMO NÚMERO DE SERIE, no como "30/07/2026": el texto depende del locale (es_AR) y
-  // ya vació una pestaña entera por leerse como dd/mm/yy.
-  assert.equal(g.filas[g.fArqArs - 1][3], 46233)
-  assert.equal(typeof g.filas[g.fArqArs - 1][3], 'number')
   assert.equal(g.filas[g.fArqUsd - 1][1], 15000)
 })
 
@@ -534,7 +578,17 @@ test('la tarjeta DISPONIBLE mira la fecha MÁS VIEJA de las filas que suman, no 
   const g = construir()
   const contexto = g.tarjetas.find((t) => t.clave === 'disponible').contexto
   assert.match(contexto, /MIN\(/, 'sin el MIN, un corte de nueve días desaparece adentro del MAX del total')
-  assert.match(contexto, /▲ parte al/, 'y tiene que decirlo con la marca que sí se dibuja en el PDF')
+  assert.match(contexto, /▲ /, 'y tiene que decirlo con la marca que sí se dibuja en el PDF')
+  // 15/08: y CON EL MONTO. "parte al 05/08" no se puede decidir — sobre $18.270.071, "parte" tanto
+  // puede ser $500.000 como $15.000.000. La grilla tiene que pasarle a la tarjeta el saldo de cada
+  // fila junto a su fecha, o la frase vuelve a ser un adjetivo.
+  // 16/08: y con la PREPOSICIÓN que dice que ese monto está ADENTRO del titular. "▲ $1,4M congelado
+  // al 05/08" al lado de $18.270.071 se lee como un segundo importe de otro origen — el dueño lo leyó
+  // así, textual: "confunde ese importe de origen q has diferenciado".
+  assert.match(contexto, /M de este total son del /,
+    'la tarjeta dice cuánta plata viene de esa fecha Y que es una parte del número de arriba')
+  const enElMonto = (contexto.match(/N\(\$C\$\d+\)/g) ?? [])
+  assert.ok(enElMonto.length > 0, 'sin las celdas de saldo, el monto congelado no se puede sumar')
 })
 
 test('el MIN de la tarjeta EXCLUYE las filas ‖ que el total resta: avisaría por plata que no está adentro', () => {

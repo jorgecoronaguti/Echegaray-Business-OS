@@ -10,21 +10,14 @@ import { columnasObligatorias, resolverColumnas } from './compras-columnas.mjs'
 import { MARCA_ENDOSADO, COL_VALOR_BANCO } from './cash-flow-lineas.mjs'
 import { colIndex } from './rubro-caja.mjs'
 import { emparejarEndosos, ENDOSABLES } from './libro-endosos.mjs'
-import { valuarEnPesos, COL_MONEDA_COBRANZAS } from './cobranzas-contrato.mjs'
+import { valuarEnPesos, COL_MONEDA_COBRANZAS, instrumentoDeCobro } from './cobranzas-contrato.mjs'
 import { RANGO_TC } from './tipo-cambio.mjs'
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 const txt = (v) => String(v ?? '').trim()
 
-/** La forma de cobro, traducida al instrumento del libro. "eCheq" contiene "cheque": el orden manda. */
-function instrumentoDeCobro(forma) {
-  const f = txt(forma).toLowerCase()
-  if (/echeq/.test(f)) return 'echeq'
-  if (/cheque/.test(f)) return 'cheque'
-  if (/efectivo/.test(f)) return 'efectivo'
-  if (/transfer/.test(f)) return 'transferencia'
-  return 'desconocido'
-}
+// `instrumentoDeCobro` se mudó a `cobranzas-contrato.mjs` el 15/08: lo necesitan también el cruce de
+// respaldo bancario y la marca de la pestaña. Una sola definición, importada por los tres.
 
 /**
  * COBRANZAS → movimientos de ingreso.

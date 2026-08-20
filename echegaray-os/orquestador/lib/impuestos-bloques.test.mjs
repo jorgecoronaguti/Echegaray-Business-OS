@@ -9,9 +9,10 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { origenDelMes, ORIGEN, bloqueIva } from './impuestos-bloques.mjs'
+import { origenDelMes, ORIGEN, bloqueIva, bloqueCierre, mesDelSaldoVigente } from './impuestos-bloques.mjs'
 import { crearGrilla } from './impuestos-grilla.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
+import { anclaDeProyeccion } from './iva-libre-disponibilidad.mjs'
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 // LA CASCADA, EN FRÍO
@@ -109,6 +110,60 @@ test('el débito del mes ARCA es una FÓRMULA contra _ARCA_RAW, nunca un número
   assert.match(cred, /_ARCA_RAW!\$B\$4:\$B="Compras"/, 'el crédito sale del libro de COMPRAS')
 })
 
+// ── LA COLUMNA DE JULIO, Y POR QUÉ SE RECUPERA (17/08) ───────────────────────────────────────────
+//
+// EL DEFECTO COMPLETO, MEDIDO EN EL ARCHIVO. La columna H (julio-26) del cuadro de IVA está corrida
+// UNA FILA HACIA ARRIBA: alguien pegó los cinco valores del mes arrancando en la fila del encabezado.
+//
+//   H53 encabezado  = 23.623.111,82  ← el DÉBITO de julio, encima de donde va "jul-26"
+//   H54 débito      = 11.328.237,58  ← el CRÉDITO
+//   H55 crédito     = 0              ← el "a pagar"
+//   H56 a pagar     = 7.050.036,33   ← la LIBRE DISPONIBILIDAD, publicada como IVA A PAGAR EN EFECTIVO
+//   H57 libre disp  = "⚠ vence 20/08" ← la leyenda, que es lo que hace estallar el hero
+//
+// Los tres primeros importes son los del comentario de `iva-libre-disponibilidad.mjs` al centavo.
+// El daño caro no es el #VALUE!: es la fila 56, que es la que leen el Libro y el cash flow, diciendo
+// que en julio hay que pagar $7.050.036 de IVA cuando ese número es plata A FAVOR. Signo invertido en
+// la fila del contrato.
+//
+// EL GENERADOR NO PODÍA ARREGLARLO PORQUE SE ANCLABA EN LA LEYENDA: con `esNumero("⚠ vence 20/08")`
+// dando true, el ancla caía en julio y `ofOAjeno` devolvía AJENO —"no la toques"— para toda la
+// columna. La corrupción quedaba congelada para siempre. Con el ancla en junio, julio vuelve a ser un
+// mes calculable y las cinco celdas se reescriben.
+// La fila 57 EXACTA del archivo el 17/08, como la lee el generador (FORMATTED_VALUE).
+const FILA_LIBRE_REAL = ['$20.803.502', '$25.836.241', '$16.413.003', '$18.757.047', '$19.326.154',
+  '$19.344.911', '⚠ vence 20/08', '—', '—', '—', '—', '—']
+/** El ancla NO se fija a mano: sale de la fila real, que es donde vive el defecto. */
+const anclaReal = () => anclaDeProyeccion(FILA_LIBRE_REAL, [1, 2, 3, 4, 5, 6]).ultimoMesConDato
+
+test('con el ancla en junio, JULIO se recalcula: la columna corrida no queda congelada', () => {
+  const { G, iva } = armarBloque({ arca: { meses: [1, 2, 3, 4, 5, 6, 7, 8] }, ancla: anclaReal(), hoy: '2026-08-17' })
+  // AJENO viaja a la celda como cadena vacía: es la marca de "preservar lo que haya".
+  for (const [nombre, fila] of [['débito', iva.fDeb], ['crédito', iva.fCred],
+    ['a pagar', iva.fAPagar], ['libre disponibilidad', iva.fLibre]]) {
+    const v = String(celda(G, fila, 7))
+    assert.notEqual(v, '', `julio quedaría PRESERVADO en ${nombre}: el valor corrido no se corrige nunca`)
+    assert.ok(v.startsWith('='), `julio se recalcula desde ARCA en ${nombre} y da "${v}"`)
+  }
+  assert.equal(iva.porOrigen.ajeno.length, 0, 'ningún mes queda intocable con las seis DDJJ presentadas')
+})
+
+test('ninguna celda de IMPORTE del cuadro de IVA lleva texto — sólo la fila de procedencia', () => {
+  // La regla que la pestaña violaba: una leyenda no puede vivir en una celda que promete un importe,
+  // porque otras fórmulas la suman. El aviso tiene su lugar —la fila "DDJJ presentada" y la columna
+  // de procedencia—, y las cuatro filas de plata no son ese lugar.
+  const { G, iva } = armarBloque({ arca: { meses: [7, 8] }, ancla: anclaReal() })
+  for (const fila of [iva.fDeb, iva.fCred, iva.fAPagar, iva.fLibre]) {
+    for (const m of [1, 6, 7, 8, 12]) {
+      const v = celda(G, fila, m)
+      if (typeof v === 'number' || v === '' || String(v).startsWith('=')) continue
+      assert.fail(`fila ${fila}, mes ${m}: "${v}" no es ni número ni fórmula, y está en una fila de importes`)
+    }
+  }
+  // Y la leyenda de procedencia SÍ está, en la fila que le corresponde.
+  assert.match(String(celda(G, iva.fDDJJ, 7)), /ARCA/, 'el aviso vive en "DDJJ presentada"')
+})
+
 test('la fórmula de ARCA va en locale es-AR: separador ";" y ni una coma de argumento', () => {
   const { G, iva } = armarBloque({ arca: { meses: [7] } })
   const f = String(celda(G, iva.fDeb, 7))
@@ -180,4 +235,64 @@ test('sin comprobantes en ARCA el cuadro queda IDÉNTICO al de antes', () => {
     assert.match(String(celda(conArca.G, conArca.iva.fDeb, m)), /BRUTO_DEB_/)
     assert.equal(celda(conArca.G, conArca.iva.fDDJJ, m), '▲ PROYECCIÓN')
   }
+})
+
+// ── EL HUECO SE DECLARA EN LA PANTALLA, NO SÓLO EN LA CONSOLA (17/08) ────────────────────────────
+//
+// Arreglar `esNumero` evita el número inventado, pero por sí solo cambia una falla ruidosa por una
+// silenciosa: el generador recalcula la columna que una persona escribió a mano y nadie se entera de
+// que había algo puesto ahí. La sección 10 es donde viven los huecos declarados de esta pestaña, y
+// una leyenda sentada en una celda de importe es exactamente eso.
+
+test('un texto donde va un importe se declara como HUECO en la sección 10', () => {
+  const G = crearGrilla(2026)
+  bloqueCierre(G, {
+    proy: { meses: [7, 8], supuesto: 'x', textoDondeVaImporte: [{ mes: 7, valor: '⚠ vence 20/08' }] },
+    vencimientos: { iibb: 'día 20' },
+  })
+  const fila = G.filas.find((f) => /libre disponibilidad/i.test(String(f[0] ?? '')))
+  assert.ok(fila, 'la sección 10 nombra la fila donde estaba el texto')
+  assert.match(String(fila[0]), /jul/i, 'dice de qué MES era la celda: sin eso no se sabe dónde ir')
+  // La prosa va en la columna de procedencia (la última), nunca en la de importes.
+  assert.match(String(fila[fila.length - 1]), /HUECO DECLARADO/)
+  assert.match(String(fila[fila.length - 1]), /⚠ vence 20\/08/, 'cita el texto que había, para poder recuperarlo')
+  assert.equal(fila[1], VACIO, 'la columna B es de plata: el aviso no se sienta ahí')
+})
+
+test('sin texto mal puesto la sección 10 no inventa un aviso', () => {
+  const G = crearGrilla(2026)
+  bloqueCierre(G, { proy: { meses: [7], supuesto: 'x', textoDondeVaImporte: [] }, vencimientos: { iibb: 'día 20' } })
+  assert.equal(G.filas.filter((f) => /libre disponibilidad/i.test(String(f[0] ?? ''))).length, 0)
+})
+
+// ── DE QUÉ MES ES EL SALDO A FAVOR QUE PUBLICA EL HERO (17/08) ───────────────────────────────────
+//
+// EL RIESGO QUE ESTE TEST CIERRA. Al sacar el ancla de julio, `ultimoMesConDato` vuelve a junio — y
+// el hero tomaba de ahí el mes del saldo a favor. Pero julio es un período CERRADO del que ARCA ya
+// tiene los 106 comprobantes: su saldo es un hecho, no una proyección. Publicar el de junio
+// ($19.344.911) cuando el de julio es ~$7,5M sobredeclara el activo fiscal en casi $12M, en la celda
+// más visible de la pestaña. La cascada ya distingue hecho de supuesto: el hero tiene que usar ESA
+// clasificación y no el ancla, que responde otra pregunta (desde dónde proyectar).
+test('el saldo a favor del hero sale del último mes CERRADO, no del ancla ni del último del cuadro', () => {
+  const porOrigen = {
+    ddjj: [1, 2, 3, 4, 5, 6], ajeno: [], arca: [7], 'arca-parcial': [8],
+    proyeccion: [9, 10, 11, 12], vacio: [],
+  }
+  assert.equal(mesDelSaldoVigente(porOrigen), 7, 'julio está cerrado y ARCA tiene sus comprobantes')
+})
+
+test('el mes EN CURSO no publica el saldo a favor: está a medio cargar', () => {
+  // Agosto se completa solo a medida que ARCA se carga; su saldo cambiaría todos los días y el hero
+  // dice "LA POSICIÓN AL 17/08", no "la posición de un mes que todavía no terminó".
+  const porOrigen = { ddjj: [1, 2, 3, 4, 5, 6], ajeno: [], arca: [], 'arca-parcial': [8], proyeccion: [9], vacio: [] }
+  assert.equal(mesDelSaldoVigente(porOrigen), 6)
+})
+
+test('un mes calculado por una persona también es dato cerrado', () => {
+  const porOrigen = { ddjj: [1, 2], ajeno: [3], arca: [], 'arca-parcial': [], proyeccion: [4], vacio: [] }
+  assert.equal(mesDelSaldoVigente(porOrigen), 3)
+})
+
+test('sin ningún mes cerrado no se inventa una posición', () => {
+  assert.equal(mesDelSaldoVigente({ ddjj: [], ajeno: [], arca: [], 'arca-parcial': [7], proyeccion: [8], vacio: [] }), 0)
 })

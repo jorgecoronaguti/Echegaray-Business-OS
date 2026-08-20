@@ -54,6 +54,11 @@ test('EL TOP DE CONTRAPARTES NO PEGA VALORES Y NO DERRAMA', () => {
   // columna auxiliar con nombres pegados es un ranking que se congela el día que aparece un proveedor
   // nuevo. Y se pide `INDEX(...;k;col)`, una celda por vez: un QUERY que derrama es incontrolable para
   // un generador que reescribe la pestaña entera.
+  // EL ÍNDICE ARRANCA EN 2: `QUERY` con `group by` antepone su fila de encabezado aunque se le pase
+  // 0 en headers. Sin esto el anexo publicaba el texto "sum " en vez del primer importe.
+  assert.ok(topContraparte(-1, 1, 2).includes(');2;2)'), 'el primer dato de un QUERY agrupado está en la fila 2')
+  assert.ok(topContraparte(-1, 5, 2).includes(');6;2)'), 'el k-ésimo dato está en la fila k+1')
+
   const nombre = topContraparte(-1, 1, 1)
   assert.ok(nombre.startsWith('=IFERROR(INDEX(QUERY('))
   assert.ok(nombre.includes('group by J order by sum(C) desc limit'))
@@ -62,13 +67,15 @@ test('EL TOP DE CONTRAPARTES NO PEGA VALORES Y NO DERRAMA', () => {
   assert.ok(nombre.includes("H <> 'REAL'"), 'lo que ya pasó por el banco no es un pago futuro')
 })
 
-test('LAS FECHAS DEL QUERY VIAJAN EN ISO, no en dd/mm', () => {
-  // El lenguaje de QUERY es siempre en inglés y no entiende `TODAY()`: pide un literal `date
-  // 'aaaa-mm-dd'`. Con el formato del archivo (dd/mm) la comparación se rompe en silencio y el ranking
-  // sale vacío o con toda la historia adentro.
+test('LA VENTANA DEL QUERY SE COMPARA CONTRA EL SERIAL, no contra un literal `date`', () => {
+  // La columna A de `_MOVIMIENTOS` guarda el NÚMERO DE SERIE (46254), no un valor de tipo fecha.
+  // El filtro decía `A >= date '2026-08-20'`, y QUERY comparando un número contra una fecha no
+  // matchea NADA: con 56 filas que cumplían el resto de las condiciones, los dos gráficos de CAJA
+  // salían vacíos y nada decía por qué. Se compara número contra número.
   const f = topContraparte(-1, 1, 2)
-  assert.ok(f.includes('TEXT(TODAY();"yyyy-mm-dd")'))
-  assert.ok(f.includes("A >= date '"))
+  assert.ok(f.includes('TEXT(TODAY();"0")'), 'el borde de la ventana es el serial de hoy, sin formato')
+  assert.ok(!f.includes("date '"), 'un literal `date` no se puede comparar contra una columna numérica')
+  assert.ok(f.includes('A >= "&'), 'el serial entra concatenado, no como texto de fecha')
 })
 
 test('EL AÑO SE SUMA CONTRA EL LIBRO, NO CONTRA UNA SEGUNDA CUENTA', () => {

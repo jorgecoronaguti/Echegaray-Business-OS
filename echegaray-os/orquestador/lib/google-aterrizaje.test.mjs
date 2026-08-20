@@ -136,9 +136,12 @@ test('EL FALSO POSITIVO DEL 13/08: un lote anclado se verifica donde quedó el d
     ['', 'UOCRA', 'enero'],
     ['', 'Oficial Especializado', '$5.470,00'],
   ]
+  // Desde el 14/08 se miran VARIOS testigos repartidos (uno por fila con texto plano) en UNA sola
+  // relectura del rectángulo que los cubre: con un testigo único, un lote que aterriza la cabecera y
+  // descarta el cuerpo pasaba por bueno. Acá los dos aterrizaron y la guarda tiene que callarse.
   const { g, avisos, soltar } = armarCliente({
     '_J_OBREROS!A201': [],            // el ancla está vacía: leerla no prueba nada
-    '_J_OBREROS!B202': [['UOCRA']],   // el testigo SÍ aterrizó, dos filas más abajo
+    '_J_OBREROS!B202:B203': [['UOCRA'], ['Oficial Especializado']],
   })
   try {
     const r = await g.batchUpdateValues('FILE', [{ range: '_J_OBREROS!A201', values }])

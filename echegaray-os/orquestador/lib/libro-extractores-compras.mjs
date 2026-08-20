@@ -14,6 +14,7 @@
 // Es la misma partición que ya tenían `libro-extractores-nomina.mjs` y `-fechas.mjs`.
 
 import { columnasObligatorias } from './compras-columnas.mjs'
+import { pagadoDeTramos } from './deuda-por-tramos.mjs'
 import { instrumentoDePago } from './caja-canales.mjs'
 import { movimiento, estadoContraCorte } from './libro-movimientos.mjs'
 import { debitoRealDePlan } from './vencimientos-fiscales.mjs'
@@ -33,7 +34,15 @@ export const NOMBRES_COMPRAS = Object.freeze({
   // 'Estado' (columna X), NO 'Estado pago' (Z). La Z es el SEMÁFORO derivado —"✅ Pagado",
   // "🟡 Por vencer"— y /^pagado$/ no matchea un emoji adelante: TODA compra pagada quedaba
   // PROYECTADO. La X es la columna que escribe el cargador con el contrato Pagado/Pendiente.
+  // ═══ EL SEGUNDO TRAMO FALTABA, Y ES PLATA QUE CAJA CONTABA COMO IMPAGA (18/08) ═══
+  //
+  // Compras registra el pago en dos tramos —`Monto Pagado` y `Monto Parcial 2`, cada uno con su
+  // fecha— y este extractor sólo leía el primero. Una factura saldada en dos veces le llegaba a las
+  // tarjetas de CAJA debiendo el segundo tramo entero. Ver `pagadoDeTramos` en deuda-por-tramos.mjs,
+  // que es de dónde sale ahora la cuenta: la misma que usa "Proveedores" y la misma que usa la
+  // fórmula que la propia planilla tiene en su columna `Estado`.
   importe: 'Total', estado: 'Estado', tipoPago: 'Tipo pago', montoPagado: 'Monto Pagado',
+  parcial2: 'Monto Parcial 2',
   rubro: 'Rubro de caja', fechaCaja: 'Fecha de caja', obra: 'Detalles / Obra',
   // ═══ EL CLIENTE DEL EGRESO ES LA J, NO LA K ═══
   //
@@ -56,28 +65,76 @@ export const columnasDeCompras = (filas = []) => columnasObligatorias(filas[2] ?
 /** ¿La fila dice "Pagado"? Se tolera decoración alrededor de la palabra ("✅ Pagado"). */
 export const estaPagada = (celda) => /^pagado$/i.test(txt(celda).replace(/[^a-záéíóúüñ]/gi, ''))
 
+/** ¿La fila dice "Pendiente"? Mismo trato de la decoración que `estaPagada`, y por la misma razón. */
+export const estaPendiente = (celda) => /^pendiente$/i.test(txt(celda).replace(/[^a-záéíóúüñ]/gi, ''))
+
+/**
+ * NÚCLEO PURO: ¿esta fila de Compras es una FACTURA CARGADA o una ESTIMACIÓN?
+ *
+ * ═══ POR QUÉ HACE FALTA DISTINGUIRLAS Y POR QUÉ SALE DEL DATO (17/08/2026) ═══
+ *
+ * Hasta hoy `estadoDeEgreso` devolvía `PROYECTADO` para TODA compra no pagada. Ese estado terminó
+ * significando dos cosas incompatibles: *"materiales de obra estimados"* y *"Alumetal
+ * 0038-00025942, $2.014.940,07, vence el 31/08"*. Cuando el 16/08 se sacó `PROYECTADO` del titular
+ * de deuda —con razón, porque adentro estaban "Estructura esperada" y la nafta por cuota— se fueron
+ * con él 13 facturas por $8.598.826.
+ *
+ * LA DISTINCIÓN NO ES UNA LISTA DE FILAS NI DE PROVEEDORES: está escrita en la propia planilla.
+ *
+ *   · EL COMPROBANTE es el dato decisivo. Una estimación no tiene número de factura ni lo puede
+ *     tener; una factura cargada, sí. Cuando el número falta, NO se asciende la fila: afirmar que
+ *     existe una factura donde el dato no está es fabricarlo. Medido el 17/08 quedan afuera por eso
+ *     Hormiserv ($2.355.725) y La Isla Metal ($100.000) — compras reales sin el número tipeado, que
+ *     `auditar-deuda-comercial.mjs` sigue gritando con el motivo exacto y se arreglan llenando una
+ *     celda. Un control que las tapara sería peor que el defecto.
+ *
+ *   · EL ESTADO "Pendiente" es la declaración del dueño de que la obligación está viva. La planilla
+ *     ya distingue: la fila f478 de ARCA ($473.767) dice "Proyectado" en esa misma columna. Sin esta
+ *     condición, un comprobante copiado sobre una fila de proyección la convertiría en deuda.
+ *
+ * La FECHA no se pregunta acá porque `deCompras` ya descartó la fila que no la tiene.
+ *
+ * FALLA HACIA EL COMPORTAMIENTO ANTERIOR: cualquier duda devuelve `false`, o sea `PROYECTADO`. El
+ * riesgo de subir un peso de más al titular con el que se decide un pago es mayor que el de dejarlo
+ * un día más en la línea de abajo, donde además hay un auditor mirándolo.
+ *
+ * @param {{estado:any, comprobante:any}} f
+ * @returns {boolean}
+ */
+export function esFacturaCargada({ estado, comprobante } = {}) {
+  return estaPendiente(estado) && txt(comprobante) !== ''
+}
+
 /**
  * NÚCLEO PURO: lo que una fila de Compras TODAVÍA DEBE.
  *
- * Devuelve el total salvo que la fila esté abierta y con un pago parcial encima, en cuyo caso devuelve
- * el saldo. Los tres guardas no son paranoia, cada uno tapa un caso real de la planilla:
+ * Devuelve el total salvo que la fila esté abierta y con pagos encima, en cuyo caso devuelve el saldo.
+ * Los tres guardas no son paranoia, cada uno tapa un caso real de la planilla:
  *
  *   · `pagado` — la fila cerrada carga el instrumento por el total; su "Monto Pagado" es el total.
  *   · `importe > 0` — una nota de crédito viene en negativo y no tiene pagos parciales que restar.
- *   · `montoPagado < importe` — si la planilla dice "no está pagada" y a la vez "pagué todo" (hoy: la
- *     fila 457, FCL Junio, $800.000 con Estado=Proyectado), las dos columnas se contradicen. Devolver
- *     cero borraría el movimiento del libro entero por una celda mal cargada, y fabricar un cero es
- *     peor que arrastrar el total: se avisa y manda el total, que es la lectura conservadora.
+ *   · `ya >= importe` — si la planilla dice "no está pagada" y a la vez "pagué todo" (hoy: la fila
+ *     457, FCL Junio, $800.000 con Estado=Proyectado), las dos columnas se contradicen. Devolver cero
+ *     borraría el movimiento del libro entero por una celda mal cargada, y fabricar un cero es peor
+ *     que arrastrar el total: se avisa y manda el total, que es la lectura conservadora.
  *
- * @param {{importe:number, pagado:boolean, montoPagado:number|null}} f
+ * ═══ LO PAGADO SON LOS DOS TRAMOS, Y LA CUENTA NO VIVE ACÁ (18/08) ═══
+ *
+ * Era `importe - montoPagado`, sin `Monto Parcial 2`: una factura saldada en dos veces le llegaba a
+ * las tarjetas de CAJA debiendo el segundo tramo. Y el defecto de fondo no era el olvido de una
+ * columna — era que "cuánto debe esta factura" estaba escrito DOS VECES en el repositorio, acá y en
+ * `deuda-por-tramos.mjs`, así que "Proveedores" y "CAJA" podían decir cosas distintas de la misma
+ * fila sin que nada fallara. Ahora las dos llaman a `pagadoDeTramos`.
+ *
+ * @param {{importe:number, pagado:boolean, montoPagado:number|null, parcial2?:number|null}} f
  * @param {(m:string)=>void} aviso
  * @returns {number}
  */
-export function pendienteDeCompra({ importe, pagado, montoPagado }, aviso = () => {}) {
-  const ya = num(montoPagado) ?? 0
+export function pendienteDeCompra({ importe, pagado, montoPagado, parcial2 }, aviso = () => {}) {
+  const ya = pagadoDeTramos({ pagado: montoPagado, parcial2 })
   if (pagado || !(importe > 0) || !(ya > 0)) return importe
   if (ya >= importe) {
-    aviso(`"Monto Pagado" ${ya} cubre o supera el Total ${importe} pero el Estado no es "Pagado". `
+    aviso(`lo pagado ${ya} cubre o supera el Total ${importe} pero el Estado no es "Pagado". `
       + 'Va el total: la planilla se contradice y el libro no inventa un saldo cero.')
     return importe
   }

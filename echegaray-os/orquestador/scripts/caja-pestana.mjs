@@ -315,7 +315,7 @@ async function main() {
  * 3. SIN CUADRÍCULA, SIN BARRAS DE COLOR, SIN BORDES DE CAJA. La jerarquía la dan la tipografía y una
  *    hairline. Lo que se resta se distingue por el signo y por la palabra.
  */
-async function formatear(google, sheetId, g, anexo) {
+export async function formatear(google, sheetId, g, anexo) {
   const AMARILLO = { red: 1, green: 0.98, blue: 0.86 }
   const INK = { red: 0.10, green: 0.13, blue: 0.20 }
   const MUTED = { red: 0.53, green: 0.52, blue: 0.49 }
@@ -375,8 +375,11 @@ async function formatear(google, sheetId, g, anexo) {
   // que una persona escribe tiene que verse distinto de lo que el sistema calcula. El diseño anterior
   // pintaba de amarillo dos celdas CALCULADAS: un color que miente sobre quién es dueño de la celda
   // invita a escribir encima de una fórmula.
+  // LA COLUMNA B Y NADA MÁS (16/08). La D del conteo dejó de tipearse: la deriva el centinela
+  // (`ANEXO_CONTEO_*_DIA`) y ahora lleva una fórmula. Dejarla amarilla invitaría a escribir encima —
+  // es el mismo error que este bloque ya arregló una vez con "Caja en pesos" y "Caja en dólares".
   for (const f of g.amarillas) {
-    for (const c of [1, 3]) fmt(r(f - 1, f, c, c + 1), 'userEnteredFormat.backgroundColor', { backgroundColor: AMARILLO })
+    fmt(r(f - 1, f, 1, 2), 'userEnteredFormat.backgroundColor', { backgroundColor: AMARILLO })
   }
 
   // ── EL TITULAR Y LAS CINCO TARJETAS ─────────────────────────────────────────────────────────────
@@ -527,6 +530,14 @@ async function formatear(google, sheetId, g, anexo) {
     return null
   })
   if (!colA) return
+  // ═══ LAS FILAS VACÍAS DEL FINAL NO VUELVEN DE LA API (20/08/2026) ═══
+  //
+  // `readSheetValues` recorta las filas en blanco del final del rango. El ranking de cobranzas es el
+  // ÚLTIMO bloque del anexo y ese día tenía cuatro contrapartes de cinco: la quinta fila existe en la
+  // hoja pero no volvió, la lectura quedó una fila corta, y `ubicarSeries` —que exige que la serie
+  // tenga sus filas debajo, para no dibujar media verdad— la descartó. El gráfico desaparecía por un
+  // artefacto del transporte, no por falta de dato. Se rellena hasta el largo pedido.
+  while (colA.length < 600) colA.push([''])
   const charts = await requestsDeGraficos(google, ID, sheetId, anexo?.sheetId, ubicarSeries(colA))
   if (!charts.length) return
   await google.spreadsheetBatchUpdate(ID, charts)

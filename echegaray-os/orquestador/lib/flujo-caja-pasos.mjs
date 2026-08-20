@@ -102,14 +102,31 @@ export const PASOS = [
   // pestaña, y el registro es de pestañas: declararla los volvería "segundos dueños" en el censo, que
   // es exactamente el defecto que se está persiguiendo. Mismo criterio que
   // `cheques-emitidos-sync-banco.mjs`, que sincroniza una columna y declara [].
+  // ═══ LAS DOS COLUMNAS DERIVADAS DE COMPRAS VAN PRIMERO, Y NO ES UN ORDEN CUALQUIERA (14/08) ═══
+  //
+  // Todo lo que muestra "Proveedores" —el titular, el aging, el cuadro por proveedor y el detalle—
+  // suma `Compras!AL · Saldo pendiente (OS)`. Esa fórmula NO LA ESCRIBÍA NADIE: vivía tipeada a mano
+  // en una celda, sin dueño, sin test y sin paso acá. El dueño: *"tomaba mal columnas de compras"*.
+  // Y `AN · Tramo de vencimiento (OS)`, que alimenta el aging del encabezado, tenía script desde el
+  // 05/08 y tampoco estaba en esta lista: se actualizaba sólo si alguien tipeaba el comando.
+  //
+  // AN se calcula CONTRA AL, así que el orden entre las dos no es negociable: primero el saldo,
+  // después el tramo. Las dos son ARRAYFORMULA vivas, así que una vez ancladas Google las recalcula
+  // sola; el paso existe para que la definición sea del repositorio y no de una celda.
+  ['compras-saldo-pendiente.mjs', 'Compras!AL "Saldo pendiente (OS)" — la aritmética de los tres tramos de pago', [], ['--aplicar']],
+  ['proveedores-aging-columna.mjs', 'Compras!AN "Tramo de vencimiento (OS)" — el aging que lee el encabezado', [], ['--aplicar']],
   ['proveedores-cuenta-corriente.mjs', 'Compras!AM "CUIT (OS)" + la auxiliar _PROVEEDORES_OS — el origen del CUIT de la sección 2', ['_PROVEEDORES_OS'], ['--aplicar']],
-  ['proveedores-materiales-pestana.mjs', 'Proveedores (notas de crédito, ARCA y control) + Materiales — de la frontera para abajo', ['Proveedores', 'Materiales']],
+  // ['proveedores-materiales-pestana.mjs', …] — RETIRADO, ver PASOS_RETIRADOS al pie.
   // ANTES DE LAS DOS DINÁMICAS: los títulos "1 · …" y "2 · …" son su ANCLA y no los reponía nadie.
   // Si el dueño borra esa celda, los dos pasos que siguen fallan cerrado —correcto— y la pestaña se
   // congela en silencio. Escribe UNA celda y sólo si está vacía; ver lib/proveedores-titulos.mjs.
   ['proveedores-titulos-sembrar.mjs', 'Proveedores · los títulos de las secciones 1 y 2, que son el ancla de las dinámicas', [], ['--aplicar']],
   ['proveedores-dos-cuadros.mjs', 'Proveedores · sección 1 — las dos dinámicas: quién y cuánto, y cada operación', [], ['--aplicar']],
-  ['proveedores-seccion2-pivot.mjs', 'Proveedores · sección 2 — la dinámica de concentración con su resto y su total', [], ['--aplicar']],
+  // ENTRE LAS DOS DINÁMICAS. Se ubica entre el final de la sección 1 y el título de la que sigue, así
+  // que la 1 tiene que estar escrita; y como cambia de alto según cuántos días de pago haya, corre
+  // hacia abajo la cuenta corriente — que se reancla por su título en la corrida siguiente.
+  ['proveedores-que-sale-cada-dia.mjs', 'Proveedores · sección 2 — qué sale cada día: a quiénes y por qué medio', [], ['--aplicar']],
+  ['proveedores-seccion2-pivot.mjs', 'Proveedores · sección 3 — la dinámica de concentración con su resto y su total', [], ['--aplicar']],
   ['proveedores-notas-visibles.mjs', 'Proveedores · la columna "Qué hacer" del dueño, anclada a su proveedor', [], ['--aplicar']],
   ['proveedores-encabezado-aplicar.mjs', 'Proveedores · el encabezado (la posición) y LOS ANCHOS de toda la pestaña', [], ['--aplicar']],
   // ═══ OBRAS ENTRA AL PIPELINE (13/08) ═══
@@ -146,6 +163,11 @@ export const PASOS = [
   // enterara. Ahora f931-sheet sólo mantiene la réplica _F931_RAW (el insumo) y la PESTAÑA entera
   // la escribe un único generador.
   ['f931-sheet.mjs', 'la réplica _F931_RAW — las DDJJ F931 leídas de los PDF del data room', ['_F931_RAW']],
+  // ANTES DE CARGAS SOCIALES, Y NO ES ALFABÉTICO: la fila "Fondo de Cese devengado" de esa pestaña
+  // hace SUMIFS sobre esta réplica. Si la réplica se refrescara después, el devengado del mes nuevo
+  // aparecería recién en la corrida siguiente — el modo de falla más silencioso de este archivo: la
+  // pestaña no da error, envejece.
+  ['uocra-raw-pestana.mjs', 'Réplica _UOCRA_DDJJ_RAW — las DDJJ Nominativas de UOCRA leídas de los PDF de Drive (el Fondo de Cese devengado sale de acá)', ['_UOCRA_DDJJ_RAW']],
   ['cargas-sociales-pestana.mjs', 'Cargas Sociales — la pestaña entera: declarado, pagado, proyección, caja, SAC y planes', ['Cargas Sociales']],
   ['cobranzas-control.mjs', 'Cobranzas — detector de duplicados', []],
   ['cheques-cobertura-sheet.mjs', 'Cheques Emitidos — marcas de cobertura en la columna M (el bloque del Mensual se retiró: matriz 06/08)', [], ['--solo-marcas']],
@@ -256,6 +278,17 @@ export const PASOS = [
   // Escribe UNA sola pestaña (`_MOVIMIENTOS`, réplica generada y oculta) y verifica su propia
   // escritura releyéndola: si el archivo y la memoria no dicen lo mismo, sale con código ≠0.
   ['libro-movimientos-pestana.mjs', '_MOVIMIENTOS — el libro: todo movimiento de todas las fuentes, con su estado y su origen', ['_MOVIMIENTOS']],
+  // ═══ EL CENTINELA VA ANTES QUE EL ANEXO, Y NO ESCRIBE NADA (15/08/2026) ═══
+  //
+  // Mira la celda del conteo de efectivo —la tipea el dueño— y anota en Postgres qué valor vio y
+  // cuándo. De ahí sale el ANCLA con la que el anexo calcula los movimientos posteriores al conteo,
+  // así que tiene que correr primero o el anexo publicaría el ancla de la corrida anterior.
+  //
+  // NO DEJA NINGUNA PESTAÑA (tercera columna vacía, y es correcto): pide el cliente de Google sin
+  // scopes de escritura. Por eso también es el único paso de esta lista que sigue sirviendo con el
+  // freno de mano puesto — y observar es justamente lo que no puede dejar de pasar: cada corrida que
+  // no mira es una ventana en la que el conteo pudo cambiar sin que nadie lo viera.
+  ['caja-centinela-conteo.mjs', 'centinela del conteo de efectivo: cuándo apareció el monto tipeado y qué se cargó tarde sobre filas viejas', []],
   ['caja-anexo-pestana.mjs', '_CAJA_ANEXO — el detalle y las conciliaciones que sostienen los veredictos de CAJA', ['_CAJA_ANEXO']],
   ['caja-pestana.mjs', 'CAJA — la portada ejecutiva de tesorería: cinco tarjetas y una pantalla', ['CAJA']],
   // ═══ LAS DOS VISTAS VAN DESPUÉS DEL LIBRO Y DESPUÉS DE CAJA (13/08/2026) ═══
@@ -379,6 +412,70 @@ export const PASOS = [
   // No recalcula un peso ni crea tareas: consume y guarda. Va después del plan porque lo consume.
   ['sync-estrategia-financiera.mjs', 'motor: recálculo de la Estrategia Financiera → public.finanzas_estrategia_vigente (consumo, sin crear tareas)', []],
 ]
+
+/**
+ * PASOS RETIRADOS DEL PIPELINE — un freno DECLARADO, con su motivo y su condición de vuelta.
+ *
+ * Sacar un paso comentando su línea deja el bloque sin dueño y a nadie enterado: la pestaña se
+ * queda vieja y el único rastro es un comentario que no se audita. Un freno que no se puede
+ * consultar es indistinguible de un olvido. Acá cada retiro dice QUÉ dejó de actualizarse, POR QUÉ,
+ * y QUÉ TIENE QUE MEDIRSE para volver a enchufarlo — y los tests exigen esos tres campos.
+ *
+ * `vuelve` no es una intención: es un criterio verificable por alguien que no lo escribió.
+ */
+export const PASOS_RETIRADOS = Object.freeze([
+  Object.freeze({
+    script: 'proveedores-materiales-pestana.mjs',
+    desde: '2026-08-14',
+    // MEDIDO en dos corridas seguidas de hoy, con los mismos datos:
+    //   · "Proveedores" pasó de 249 a 265 filas;
+    //   · el bloque de control de ARCA cayó en la fila 131 en una corrida y en la 148 en la
+    //     siguiente — 17 filas más abajo sin que cambiara un solo dato.
+    motivo: 'escribe su bloque cada vez más abajo y no borra el anterior: cada corrida apila una '
+      + 'capa. Lo que se ve como "el cuadro 4 está roto y arrastra el error para abajo" son N '
+      + 'corridas superpuestas —columnas A/B de una capa y C/D/F de otra en la misma fila física—, '
+      + 'no un layout mal calculado. El barrido de residuo propio informa "0 vaciada(s) · '
+      + '0 conservada(s) · 0 limpiada(s)": no reconoce como suyo nada de lo que él mismo escribió. '
+      + 'Mientras esa cuenta dé cero, cada corrida agrava el archivo del dueño.',
+    // ═══ QUÉ SE CUMPLIÓ YA, MEDIDO — Y QUÉ FALTA (15/08/2026) ═══
+    //
+    // La PRECONDICIÓN que faltaba era otra y no estaba en esta lista: `sheet_huella_celda` tenía CERO
+    // filas para "Proveedores" y "Materiales" —las dos únicas pestañas de contenido del archivo sin una
+    // sola— contra 4.430 del Cash Flow Semanal. Sin huella, `aplicarHuella` no recorre una celda y las
+    // cuatro evidencias de propiedad quedan mudas de una vez: por eso el barrido daba 0 en todo.
+    //
+    // HOY, medido read-only con `node orquestador/scripts/medir-huella-pestana.mjs`:
+    //   · Proveedores  401/401 = 100,0% (corrimiento 0, rectángulo A117:G222)
+    //   · Materiales   568/568 = 100,0%
+    // contra el 186/396 = 47% de antes de `selloDeLoQueQuedo`, y contra el umbral de 0,6. La huella
+    // existe, describe la pestaña real y no reclama ninguna celda del dueño (0 marcas de borrada_en).
+    //
+    // LO QUE FALTA, y por qué NO alcanza con eso:
+    //
+    //  a) `limpiadas > 0` en una corrida REAL. Alinear es la condición para poder decidir; no es haber
+    //     limpiado. Sólo se mide corriendo, y correr esto es escribir la pestaña del dueño.
+    //  b) LA CAPA FÓSIL SIGUE EN LA PESTAÑA: filas 139-145, con la cabecera del bloque de ARCA y dos de
+    //     sus líneas entreveradas fila por fila con CUITs y comprobantes de otra tabla. Volver al
+    //     pipeline antes de que eso se vaya es volver a apilar sobre lo apilado.
+    //  c) CUATRO IMPORTES DEL BLOQUE SON TEXTO —B179, C179, B180, C180— y el generador los reescribe
+    //     así en cada corrida: el valor entra por USER_ENTERED y el `numberFormat` llega DESPUÉS, con
+    //     lo cual la celda que arrastra formato TEXTO se queda en texto para siempre. Reenchufarlo hoy
+    //     es republicar cuatro celdas rotas cada dos horas. Ver scripts/arca-reapuntar-nombres.mjs.
+    //
+    // Cada condición tiene su comando: un criterio que no se puede correr vuelve a ser una intención.
+    vuelve: 'las CUATRO, medidas y no afirmadas: (1) la huella de las dos pestañas alinea por encima '
+      + 'de 0,6 — medir-huella-pestana.mjs (CUMPLIDO 15/08: 100,0% y 100,0%); '
+      + '(2) una corrida informa celdas limpiadas > 0; (3) la pestaña NO crece entre dos corridas '
+      + 'seguidas con los mismos datos (mismo alto y misma fila del bloque de ARCA) y la capa fósil de '
+      + 'las filas 139-145 ya no está; (4) arca-reapuntar-nombres.mjs sale en verde: los nombres en su '
+      + 'línea y ningún importe del bloque guardado como texto.',
+    // Lo que queda sin actualizar mientras dure el freno. Es el costo, dicho: es menor que apilar.
+    cuesta: ['Proveedores · de la frontera para abajo (notas de crédito, ARCA y control)', 'Materiales'],
+  }),
+])
+
+/** ¿Este script está frenado a propósito? */
+export function estaRetirado(script) { return PASOS_RETIRADOS.some((p) => p.script === script) }
 
 // PASOS DE PRESENTACIÓN Y AUDITORÍA — su salida ≠0 es un DEFECTO A LA VISTA, no un fallo de datos.
 //
