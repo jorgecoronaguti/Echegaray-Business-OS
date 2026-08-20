@@ -22,6 +22,17 @@ import type {
   AsignacionDePersona, DocumentoLegajo, Persona, PersonaEnDirectorio, ServiceResult,
 } from '../types'
 
+// LAS CATORCE COLUMNAS DEL LISTADO, NOMBRADAS UNA POR UNA.
+//
+// Era `select('*')`. Hoy `persona_directorio` no publica documento ni retribución, así que el
+// asterisco no filtraba nada de más — pero la garantía dependía de que la VISTA no creciera. El día
+// que alguien le agregue una columna al final (ya pasó dos veces: `obra_actual`, `en_la_empresa`),
+// el asterisco se la lleva al navegador sin que nadie lo decida. La lista explícita convierte esa
+// garantía en algo que este archivo sostiene solo.
+const COLUMNAS_DIRECTORIO =
+  'id, nombre_completo, categoria, especialidad, puesto, fecha_ingreso, fecha_egreso, ' +
+  'cuadrilla_id, cuadrilla, obra_actual_id, obra_actual, rol_en_obra, asignada_desde, en_la_empresa'
+
 const COLUMNAS_FICHA =
   'id, nombre_completo, dni, cuil, fecha_nacimiento, nacionalidad, telefono, email, domicilio, ' +
   'contacto_emergencia, contacto_emergencia_telefono, fecha_ingreso, fecha_egreso, ' +
@@ -40,7 +51,9 @@ const COLUMNAS_FICHA =
 export type FiltroPersonal = 'plantel' | 'en_obra' | 'sin_asignar' | 'inactivos'
 
 export const FILTROS: { valor: FiltroPersonal; etiqueta: string }[] = [
-  { valor: 'plantel', etiqueta: 'En el plantel' },
+  // «Plantel», no «En el plantel»: es el rótulo del handoff y comparte renglón con la búsqueda
+  // y la primaria — tres palabras donde alcanza una empujan el resto de la línea.
+  { valor: 'plantel', etiqueta: 'Plantel' },
   { valor: 'en_obra', etiqueta: 'En obra' },
   { valor: 'sin_asignar', etiqueta: 'Sin asignar' },
   { valor: 'inactivos', etiqueta: 'Inactivos' },
@@ -64,7 +77,7 @@ export async function getDirectorio(
   filtro: FiltroPersonal = 'plantel',
   q?: string,
 ): Promise<ServiceResult<PersonaEnDirectorio[]>> {
-  let consulta = supabase.from('persona_directorio').select('*')
+  let consulta = supabase.from('persona_directorio').select(COLUMNAS_DIRECTORIO)
 
   // QUIÉN ESTÁ SE PREGUNTA POR `en_la_empresa`, NO POR LA FECHA. De los 43 legajos fuera de la
   // nómina, 15 se fueron sin baja documentada: con `fecha_egreso is null` los 15 volvían al plantel.
@@ -84,7 +97,10 @@ export async function getDirectorio(
 
   const { data, error } = await consulta.order('nombre_completo', { ascending: true })
   if (error) return { data: null, error: error.message }
-  return { data: (data ?? []) as PersonaEnDirectorio[], error: null }
+  // El casteo va por `unknown`: al nombrar las columnas, PostgREST deja de inferir la forma de la
+  // fila y el cliente la tipa como un error genérico. El contrato de columnas de la vista lo fija
+  // `orquestador/lib/vistas-security-invoker.test.mjs`, no este archivo.
+  return { data: (data ?? []) as unknown as PersonaEnDirectorio[], error: null }
 }
 
 export async function getPersona(supabase: SupabaseClient, id: string): Promise<ServiceResult<Persona | null>> {

@@ -1,100 +1,155 @@
-// ADMINISTRACIÓN — LA ENTRADA DEL ÁREA, Y NADA MÁS QUE SUS CINCO SECCIONES.
+// ADMINISTRACIÓN — LA ENTRADA DEL ÁREA. NO ES UN MENÚ DE TARJETAS.
 //
-// ═══ QUÉ SE CORRIGIÓ ACÁ (19/08/2026) ═══
+// `design/screens/administracion.md` §2a, textual: *"No es un menú de tarjetas ni repite la barra:
+// dos columnas."* Las dos columnas contestan dos preguntas distintas —a dónde voy y qué falta— y
+// mezclarlas en cinco tarjetas iguales obliga a leer las cinco para descubrir que sólo una pide
+// trabajo.
 //
-// El dueño: *"NIVEL 1: Administración | Obras. NIVEL 2 Administración: Clientes / Usuarios /
-// Personas / Proveedores / Pendientes. **No mezclar niveles en la misma barra.**"*
-//
-// Esta pantalla mezclaba tres cosas:
-//
-//   1. Tenía **Obras** adentro. Obras es el OTRO módulo de nivel 1 — está en el encabezado, al lado
-//      de Administración. Ofrecerlo también acá adentro dice que Obras es una sección de
-//      Administración, que es justamente lo que no es.
-//   2. Tenía **Usuarios dos veces**: una vez entre las entidades y otra en un bloque «Sistema».
-//   3. Tenía Pedidos, Herramientas y Movimientos apuntando a `/integraciones/*`. Esos tres dominios
-//      ahora viven dentro del workspace de cada obra, acotados por `obra_id`, que es donde
-//      significan algo. Las rutas viejas siguen respondiendo —nadie pierde un enlace guardado—, sólo
-//      dejan de ofrecerse como si fueran secciones de Administración.
-//
-// Quedan las CINCO que pidió el dueño, en su orden, y la barra de nivel 2 (`NavAdministracion`)
-// dibuja exactamente las mismas: la pantalla y la barra no pueden discrepar porque salen de la
-// misma lista de secciones.
-//
-// Los contadores son de NAVEGACIÓN, no de gestión: dicen cuánto hay del otro lado para que nadie
-// entre a una lista vacía sin saberlo. Salen de las mismas fuentes que las pantallas destino, así
-// que no pueden contradecirlas.
+// El buscador de arriba a la derecha es global a propósito: quien lo usa tiene un nombre en la mano
+// y quiere la ficha, no la sección. Ver `services/entradaService.ts`.
 
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { PageShell } from '@/shared/components/ui'
+import { Eyebrow, Num, Nulo, Vacio } from '@/shared/components/ds'
+import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
+import { BuscadorURL } from '@/features/administracion/components/Controles'
+import {
+  atencionesDe, buscarGlobal, cuandoCorto, getConteos, getUltimoMovimiento, maestrosDe,
+  type Atencion, type Hallazgo, type Maestro,
+} from '@/features/administracion/services/entradaService'
 
 export const dynamic = 'force-dynamic'
 
-/** Una línea de la lista. El contador va a la derecha, tenue: es contexto, no el título. */
-function Entrada({ href, titulo, detalle, cuenta, testid }: {
-  href: string; titulo: string; detalle: string; cuenta?: string; testid: string
-}) {
+/** Una fila de maestro: nombre + contador tenue · detalle · señal a la derecha. Hairline abajo. */
+function FilaMaestro({ m }: { m: Maestro }) {
   return (
     <Link
-      href={href}
-      data-testid={testid}
-      className="group flex items-baseline gap-3 border-b border-line/70 px-4 py-3.5 last:border-0 hover:bg-surface-quiet"
+      href={m.href}
+      data-testid={`ir-${m.clave}`}
+      className="group flex items-baseline gap-3 border-b border-[#EFEEEA] py-[15px] last:border-0 hover:bg-surface-quiet"
     >
-      <span className="text-[15px] font-medium text-ink group-hover:underline">{titulo}</span>
-      <span className="min-w-0 flex-1 truncate text-[12px] text-faint">{detalle}</span>
-      {cuenta && <span className="shrink-0 text-[12px] tabular-nums text-muted">{cuenta}</span>}
+      <span className="flex w-[250px] shrink-0 items-baseline gap-2.5">
+        <span className="text-[14.5px] font-medium text-ink group-hover:underline">{m.titulo}</span>
+        {/* SIN LECTURA NO HAY CONTADOR — NUNCA UN CERO. Un «0» acá afirmaría que no hay ninguno, y
+            lo que pasó fue que la consulta falló. */}
+        {m.cuenta !== null && <Num className="text-faint">{m.cuenta}</Num>}
+      </span>
+      <span className="min-w-0 flex-1 truncate text-[12.5px] text-muted">{m.detalle}</span>
+      {m.senal && (
+        <span
+          data-testid={`senal-${m.clave}`}
+          className={`shrink-0 whitespace-nowrap text-[11.5px] ${m.resolver ? 'text-warn' : 'text-faint'}`}
+        >
+          {m.senal}
+        </span>
+      )}
+      <span aria-hidden className="pl-3 text-[13px] text-[#D7D5CF]">›</span>
     </Link>
   )
 }
 
-/** El conteo de una tabla, sin traer una sola fila. Si la lectura falla, no hay contador — nunca un
- *  cero, que se leería como «no hay ninguno». */
-async function contar(supabase: Awaited<ReturnType<typeof createClient>>, tabla: string) {
-  const { count, error } = await supabase.from(tabla).select('*', { count: 'exact', head: true })
-  return error ? undefined : count ?? undefined
+/** Una línea accionable. Rojo SÓLO si es crítico; lo demás es un dato que falta, y eso es ámbar. */
+function FilaAtencion({ a }: { a: Atencion }) {
+  return (
+    <Link
+      href={a.href}
+      data-testid={`atencion-${a.clave}`}
+      className="flex items-baseline gap-2.5 border-b border-[#EFEEEA] py-[13px] last:border-0 hover:bg-surface-quiet"
+    >
+      <span className={`mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full ${a.critico ? 'bg-neg' : 'bg-warn'}`} />
+      <span className="min-w-0 flex-1">
+        <span className="block text-[13px] text-ink">{a.texto}</span>
+        <span className="mt-0.5 block text-[11.5px] text-faint">{a.donde}</span>
+      </span>
+      <span className={`shrink-0 font-mono text-[15px] font-semibold tabular-nums ${a.critico ? 'text-neg' : 'text-ink'}`}>
+        {a.numero}
+      </span>
+    </Link>
+  )
 }
 
-export default async function AdministracionPage() {
+function Resultados({ q, hallazgos }: { q: string; hallazgos: Hallazgo[] }) {
+  return (
+    <section className="mb-8" data-testid="resultados-busqueda">
+      <Eyebrow className="mb-1">Resultados de «{q}»</Eyebrow>
+      {hallazgos.length === 0 ? (
+        <Vacio>Ningún cliente, persona ni proveedor coincide con «{q}».</Vacio>
+      ) : (
+        <ul>
+          {hallazgos.map((h) => (
+            <li key={h.clave} className="border-b border-[#EFEEEA] last:border-0">
+              <Link href={h.href} data-testid="hallazgo" className="flex items-baseline gap-3 py-2.5 hover:bg-surface-quiet">
+                <span className="w-[92px] shrink-0 text-[10px] uppercase tracking-[0.06em] text-faint">{h.maestro}</span>
+                <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{h.nombre}</span>
+                {h.detalle && <span className="shrink-0 text-[11.5px] text-faint">{h.detalle}</span>}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+export default async function AdministracionPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+  const sp = await searchParams
   const supabase = await createClient()
-  const [clientes, personas, proveedores, pendientes] = await Promise.all([
-    contar(supabase, 'clientes'),
-    contar(supabase, 'personas'),
-    contar(supabase, 'proveedores'),
-    contar(supabase, 'proveedor_nombre_pendiente'),
+  const [conteos, movimiento, hallazgos] = await Promise.all([
+    getConteos(supabase),
+    getUltimoMovimiento(supabase),
+    buscarGlobal(supabase, sp.q),
   ])
+
+  const maestros = maestrosDe(conteos)
+  const atenciones = atencionesDe(conteos)
 
   return (
     <PageShell
       title="Administración"
-      subtitle="Lo que se administra desde acá, sin tocar la base de datos."
-      maxWidth="max-w-3xl"
+      subtitle="Los maestros del sistema y lo que quedó sin resolver."
+      right={
+        <BuscadorURL
+          accion="/administracion"
+          q={sp.q}
+          placeholder="Buscar cliente, persona o proveedor"
+          ancho="w-full sm:w-[300px]"
+          testid="buscador-global"
+        />
+      }
     >
-      <nav className="overflow-hidden rounded-lg border border-line bg-surface" data-testid="admin-entidades">
-        <Entrada
-          href="/clientes" testid="ir-clientes" titulo="Clientes"
-          detalle="Ficha, contactos, actividad, documentos y sus obras"
-          cuenta={clientes != null ? `${clientes}` : undefined}
-        />
-        <Entrada
-          href="/administracion/usuarios" testid="ir-usuarios" titulo="Usuarios"
-          detalle="Quién entra, con qué nivel, y a qué obras tiene acceso"
-        />
-        <Entrada
-          href="/administracion/personas" testid="ir-personas" titulo="Personas"
-          detalle="El plantel: función, categoría y en qué obra está cada uno"
-          cuenta={personas != null ? `${personas}` : undefined}
-        />
-        <Entrada
-          href="/administracion/proveedores" testid="ir-proveedores" titulo="Proveedores"
-          detalle="Identidad única por CUIT, y los nombres de Compras sin resolver"
-          cuenta={proveedores != null ? `${proveedores}` : undefined}
-        />
-        <Entrada
-          href="/administracion/pendientes" testid="ir-pendientes" titulo="Pendientes de imputación"
-          detalle="Lo que todavía no tiene obra, y los nombres de proveedor sin dueño"
-          cuenta={pendientes ? `${pendientes} sin dueño` : undefined}
-        />
-      </nav>
+      <NavAdministracion />
+
+      {sp.q && <Resultados q={sp.q} hallazgos={hallazgos} />}
+
+      <div className="flex flex-col gap-x-14 gap-y-8 lg:flex-row lg:items-start">
+        <div className="min-w-0 flex-1">
+          <Eyebrow className="mb-1">Maestros</Eyebrow>
+          <nav data-testid="admin-maestros">
+            {maestros.map((m) => <FilaMaestro key={m.clave} m={m} />)}
+          </nav>
+          <p className="mt-5 max-w-[760px] text-[11.5px] leading-relaxed text-faint">
+            Los contadores son de navegación: dicen cuánto hay del otro lado. Sin lectura no hay
+            contador — nunca un cero.
+          </p>
+        </div>
+
+        <div className="w-full shrink-0 lg:w-[340px]">
+          <Eyebrow className="mb-1">Requiere atención</Eyebrow>
+          <div data-testid="admin-atencion">
+            {atenciones.length === 0
+              ? <Vacio>No queda nada sin resolver en los maestros del área.</Vacio>
+              : atenciones.map((a) => <FilaAtencion key={a.clave} a={a} />)}
+          </div>
+
+          <Eyebrow className="mb-1 mt-[18px]">Último movimiento</Eyebrow>
+          <p className="py-3 text-[12.5px] leading-relaxed text-muted" data-testid="ultimo-movimiento">
+            {movimiento
+              ? <>{movimiento.texto} · <Num className="text-muted">{cuandoCorto(movimiento.cuando)}</Num></>
+              : <Nulo>sin movimientos registrados</Nulo>}
+          </p>
+        </div>
+      </div>
     </PageShell>
   )
 }

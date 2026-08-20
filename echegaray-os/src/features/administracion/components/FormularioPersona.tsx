@@ -123,9 +123,16 @@ export function CamposAlta() {
           data-testid="persona-nombre" autoFocus
         />
       </Campo>
-      <Campo label="Categoría"><SelectCategoria valor={null} /></Campo>
-      <Campo label="Puesto u oficio"><input name="puesto" maxLength={120} className={CTRL} /></Campo>
-      <Campo label="Ingreso" ancho="col-span-2"><input type="date" name="fecha_ingreso" className={CTRL} /></Campo>
+      <Campo label="Categoría de convenio"><SelectCategoria valor={null} /></Campo>
+      {/* LA ESPECIALIDAD ES LO QUE EL LISTADO MUESTRA DEBAJO DEL NOMBRE, así que se pide en el alta:
+          sin ella la fila recién creada queda con una línea menos que todas las demás. El PUESTO
+          queda para la ficha — casi siempre repite la categoría, y cuando no, es un cargo. */}
+      <Campo label="Especialidad" ayuda="Albañilería, encofrados…">
+        <input name="especialidad" maxLength={120} className={CTRL} />
+      </Campo>
+      <Campo label="Fecha de alta" ancho="col-span-2">
+        <input type="date" name="fecha_ingreso" className={CTRL} />
+      </Campo>
     </div>
   )
 }

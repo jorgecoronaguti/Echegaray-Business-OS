@@ -18,7 +18,9 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient, nombresDeConfiguracionSupabase } from '@/lib/supabase/admin'
 import { getPerfilActual, getUsuarioActual } from '@/features/auth/services/authService'
 import { veEconomia } from '@/features/auth/types/areas'
-import { Callout, PageShell } from '@/shared/components/ui'
+import { PageShell } from '@/shared/components/ui'
+import { Aviso } from '@/shared/components/ds'
+import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
 import { listarObrasElegibles, listarUsuarios } from '@/features/usuarios/services/usuariosService'
 import { UsuariosManager } from '@/features/usuarios/components/UsuariosManager'
 
@@ -32,8 +34,9 @@ export default async function UsuariosPage() {
   // de obra ya entre al resto de Administración.
   if (!usuario || !veEconomia(perfil.data?.rol)) {
     return (
-      <PageShell title="Usuarios" subtitle="Sólo Administración gestiona las cuentas del sistema." maxWidth="max-w-2xl">
-        <Callout tono="neutral">No tenés permiso para ver esta pantalla.</Callout>
+      <PageShell title="Usuarios" subtitle="Sólo Dirección y Administración gestionan las cuentas del sistema.">
+        <NavAdministracion />
+        <Aviso tono="info">No tenés permiso para ver esta pantalla.</Aviso>
       </PageShell>
     )
   }
@@ -61,13 +64,12 @@ export default async function UsuariosPage() {
     const presentes = nombresDeConfiguracionSupabase()
     return (
       <PageShell
-        eyebrow="Administración"
         title="Usuarios"
         subtitle="Esta pantalla no puede abrir porque le falta una variable de entorno."
-        maxWidth="max-w-2xl"
       >
-        <div data-testid="usuarios-sin-configuracion">
-        <Callout tono="neg">
+        <NavAdministracion />
+        <div className="max-w-[680px]" data-testid="usuarios-sin-configuracion">
+        <Aviso tono="neg" titulo="Falta la clave de servicio de Supabase">
           <p>
             Falta la <strong>clave de servicio de Supabase</strong> en las variables de entorno de
             este despliegue. Es la única pantalla que la necesita: las cuentas viven en el esquema de
@@ -85,7 +87,7 @@ export default async function UsuariosPage() {
             Variables de Supabase presentes en este despliegue:{' '}
             {presentes.length ? <code>{presentes.join(' · ')}</code> : 'ninguna'}.
           </p>
-        </Callout>
+        </Aviso>
         </div>
       </PageShell>
     )
@@ -93,12 +95,12 @@ export default async function UsuariosPage() {
 
   return (
     <PageShell
-      eyebrow="Administración"
       title="Usuarios"
-      subtitle="Quién entra al sistema, con qué rol y a qué obras. Lo que se cambia acá cambia lo que esa persona puede ver."
+      subtitle="Quién entra al sistema, con qué nivel y a qué obras."
     >
+      <NavAdministracion />
       {lista.error ? (
-        <Callout tono="neg">No pude leer las cuentas: {lista.error}</Callout>
+        <Aviso tono="neg" titulo="No pude leer las cuentas">{lista.error}</Aviso>
       ) : (
         <UsuariosManager
           usuarios={lista.data ?? []} obras={obras}
