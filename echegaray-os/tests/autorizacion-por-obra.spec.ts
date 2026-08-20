@@ -93,11 +93,21 @@ test('el jefe de obra llega a TODAS las obras: es Administración desde el 19/08
     'el jefe de obra dejó de ver la cartera entera: se revirtió la decisión del dueño').toHaveLength(count!)
   expect((await pedir(jefe, 'obra_panel?select=obra_id')).filas).toHaveLength(count!)
   // Y las cuatro tablas operativas, por el mismo motivo.
+  //
+  // SE COMPARAN CONJUNTOS, NO CANTIDADES, y se lee primero a Dirección. Comparar dos totales es un
+  // test que se rompe solo: otro spec corriendo en paralelo inserta o borra una fila entre las dos
+  // lecturas y el rojo culpa al RLS de una carrera. Leyendo antes a Dirección, lo que entre después
+  // sólo puede aparecer en la lista del jefe — y lo que se prueba, que es «al jefe no le falta
+  // ninguna», sigue igual de estricto. De hecho es más: mide identidad de filas, no volumen.
+  const direccion = await entrar(ADMIN.email, ADMIN.password)
   for (const tabla of ['costos_obra', 'pedidos_materiales', 'herramientas', 'movimientos_herramienta']) {
-    const direccion = await entrar(ADMIN.email, ADMIN.password)
-    expect((await pedir(jefe, `${tabla}?select=id`)).filas.length,
-      `${tabla}: el jefe ve menos que Dirección, y desde el 19/08 tiene que ver lo mismo`)
-      .toBe((await pedir(direccion, `${tabla}?select=id`)).filas.length)
+    const deDireccion = (await pedir(direccion, `${tabla}?select=id`)).filas as { id: string }[]
+    const deJefe = new Set(((await pedir(jefe, `${tabla}?select=id`)).filas as { id: string }[]).map((f) => f.id))
+    expect(deDireccion.length, `${tabla}: Dirección no ve nada, el test no puede medir`).toBeGreaterThan(0)
+    const faltan = deDireccion.filter((f) => !deJefe.has(f.id))
+    expect(faltan.map((f) => f.id).slice(0, 5),
+      `${tabla}: al jefe de obra le faltan ${faltan.length} filas que Dirección sí ve — se revirtió la decisión del 19/08`)
+      .toEqual([])
   }
 })
 
