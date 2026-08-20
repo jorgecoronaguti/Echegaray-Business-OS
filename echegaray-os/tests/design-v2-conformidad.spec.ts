@@ -120,19 +120,24 @@ async function reglas(page: Page, nombre: string): Promise<string[]> {
       }
     }
 
-    // 4 · UNA SOLA ACCIÓN PRIMARIA POR PANTALLA. El amarillo como FONDO es la primaria; si hay dos,
-    //     no hay ninguna. (La nav activa usa el amarillo como REGLA, no como fondo: no cuenta.)
+    // 4 · EL AMARILLO SIEMPRE LLEVA TEXTO GRAFITO. #FDC900 da 1,6:1 sobre blanco: con texto claro
+    //     encima, la acción principal de la pantalla es la menos legible que hay. Es la regla 2 de
+    //     COLOR.md y la única de contraste que se puede medir sola.
+    //
+    //     El CONTEO de primarias NO se mide acá: el handoff pide una por CONTEXTO, no por pantalla,
+    //     y el mockup de referencia tiene dos —«+ Nueva actividad» en la barra de vista y «Editar
+    //     actividad» en el pie del panel—, que son dos contextos distintos y están bien. Un umbral
+    //     de pantalla daría rojo sobre el propio diseño aprobado.
     const AMARILLO = 'rgb(253, 201, 0)'
-    const primarias = nodos.filter((e) => {
-      if (!/^(button|a)$/i.test(e.tagName) && e.getAttribute('role') !== 'button') return false
-      return getComputedStyle(e).backgroundColor === AMARILLO
-    })
-    if (primarias.length > 1) {
-      f.push(
-        `${n}: ${primarias.length} acciones primarias amarillas (${primarias
-          .map((e) => (e.textContent || '').trim().slice(0, 24))
-          .join(' · ')}) — el handoff pide una por contexto`,
-      )
+    for (const e of nodos) {
+      const s2 = getComputedStyle(e)
+      if (s2.backgroundColor !== AMARILLO) continue
+      const [r, g, b] = (s2.color.match(/\d+/g) || ['0', '0', '0']).map(Number)
+      // Luminancia relativa aproximada: cualquier texto claro sobre el amarillo es un defecto.
+      if (0.2126 * r + 0.7152 * g + 0.0722 * b > 128) {
+        f.push(`${n}: texto claro (${s2.color}) sobre el amarillo de marca — va grafito #1F1F1E`)
+        break
+      }
     }
 
     // 5 · EL ESTADO ES UN PUNTO Y UNA PALABRA, NO UNA PASTILLA DE COLOR.

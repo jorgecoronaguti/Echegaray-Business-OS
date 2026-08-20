@@ -81,8 +81,8 @@ export function AppHeader({
               «Business OS» describe qué es esto; la marca es ECHEGARAY CONSTRUCCIONES. En cuanto el
               descriptor toma peso o color, la pantalla pasa a tener dos marcas compitiendo — y la
               que gana es la que no lo es. Por eso va en 11,5px, `faint`, detrás de un separador. */}
-          <span className="hidden text-[11.5px] text-faint xl:inline" aria-hidden>
-            · Business OS
+          <span className="hidden text-[11.5px] text-faint lg:inline" aria-hidden>
+            Business OS
           </span>
         </Link>
 
