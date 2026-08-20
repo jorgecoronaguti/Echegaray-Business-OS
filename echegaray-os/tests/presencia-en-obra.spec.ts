@@ -54,8 +54,15 @@ test('el jefe de obra ve quién está, desde qué hora y con el reloj corriendo'
   await expect(activo.getByTestId('punto-activo')).toBeVisible()
 
   // EL RELOJ CORRE DESDE LA ENTRADA: tres horas son 180 minutos, con el margen del tiempo del test.
+  //
+  // Se ESPERA a que tenga valor. El reloj arranca vacío a propósito —la hora no se calcula en el
+  // render, ver `RelojDeJornada`— y la pone el efecto al montar. Leer el atributo de una sola vez
+  // agarraba el guión y `Number('')` es 0: el test fallaba sin que el reloj tuviera nada malo.
+  await expect.poll(
+    async () => Number(await activo.getByTestId('reloj-jornada').getAttribute('data-minutos') || 0),
+    { timeout: 15000 },
+  ).toBeGreaterThanOrEqual(179)
   const minutos = Number(await activo.getByTestId('reloj-jornada').getAttribute('data-minutos'))
-  expect(minutos).toBeGreaterThanOrEqual(179)
   expect(minutos).toBeLessThan(190)
 
   // Y el que ya se fue no está entre los activos.
