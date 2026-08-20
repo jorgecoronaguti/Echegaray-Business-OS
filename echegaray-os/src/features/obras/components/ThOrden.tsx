@@ -7,8 +7,14 @@
 //
 // Se conserva `archivadas`: cambiar el orden no puede hacer desaparecer las obras que el que mira
 // acababa de mostrar. Es el defecto clásico de las tablas ordenables y se evita acá, una sola vez.
+//
+// LA CELDA LA DIBUJA `Th` DEL DESIGN SYSTEM y no este archivo: los 10px en versalitas, el
+// interletrado de 0,06em, el `faint` y el `first:pl-0` son del encabezado de TODA tabla del OS
+// (`design/system/COMPONENTS.md` §Table). Acá vive sólo lo que este encabezado agrega —el enlace,
+// la dirección y la flecha—, para que una tabla ordenable y una que no lo es midan igual.
 
 import Link from 'next/link'
+import { Th } from '@/shared/components/ds'
 import { CAMPOS, proximaDireccion, type CampoOrden, type Direccion } from '../services/ordenObras'
 
 export function ThOrden({
@@ -33,7 +39,7 @@ export function ThOrden({
   q.set('dir', proxima)
 
   return (
-    <th className={`px-3 py-2.5 font-medium ${alineado === 'right' ? 'text-right' : ''} ${className}`}>
+    <Th num={alineado === 'right'} className={className}>
       <Link
         href={`${base}?${q}`}
         data-testid={`orden-${campo}`}
@@ -41,15 +47,15 @@ export function ThOrden({
         // El aria dice el estado REAL de la columna, que es lo que lee un lector de pantalla en una
         // tabla ordenable. `none` no es "no se puede ordenar": es "no está ordenada por acá".
         aria-sort={esActivo ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'}
-        className={`inline-flex items-center gap-1 whitespace-nowrap hover:text-ink ${esActivo ? 'text-ink' : ''}`}
+        className={`inline-flex items-center gap-1 whitespace-nowrap transition-colors hover:text-ink ${esActivo ? 'text-ink' : ''}`}
       >
         {CAMPOS[campo]}
         {/* LA FLECHA SÓLO EN LA COLUMNA ACTIVA. Un triangulito gris en las siete columnas es ruido:
             lo que hay que ver de un vistazo es por cuál está ordenada, no que todas se pueden. */}
-        <span aria-hidden className={esActivo ? 'text-marca' : 'text-transparent'}>
+        <span aria-hidden className={esActivo ? 'text-ink' : 'text-transparent'}>
           {esActivo && dir === 'asc' ? '▲' : '▼'}
         </span>
       </Link>
-    </th>
+    </Th>
   )
 }

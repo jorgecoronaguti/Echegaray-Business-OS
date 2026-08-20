@@ -10,12 +10,21 @@
 // Esa puerta vieja NO se retira: `crearObra` desde la ficha del cliente sigue siendo el atajo para
 // quien ya tiene todo a mano. Las dos escriben en `obra_canonica` con las mismas reglas.
 //
+// ═══ EL CHECKLIST VIVE AL COSTADO, NO AL FINAL (Design Handoff V2, §1i) ═══
+//
+// Estaba sólo en el paso 8. El handoff lo pone como panel derecho PERMANENTE, y el cambio no es de
+// composición: mientras se tipea el paso 3 se ve, sin navegar, que Personal y Drive siguen vacíos.
+// Un checklist que aparece recién al final llega tarde para lo único que sirve — decidir si vale la
+// pena seguir cargando ahora o volver mañana. Y aparece en cuanto la obra existe: antes no hay fila
+// que medir, y siete líneas en «pendiente» sobre una obra que todavía no se creó no son un estado,
+// son ruido.
+//
 // ═══ QUÉ NO HACE ═══
 //
 // No inventa un solo dato. No pone la fecha de inicio en hoy, no elige un jefe de obra, no deja el
-// contrato en cero. Lo que el dueño no tipea queda en NULL, y el checklist del último paso lo dice
-// con todas las letras. Un default cómodo acá se convierte en un desvío calculado contra una
-// ficción tres meses después.
+// contrato en cero. Lo que el dueño no tipea queda en NULL, y el checklist lo dice con todas las
+// letras. Un default cómodo acá se convierte en un desvío calculado contra una ficción tres meses
+// después.
 //
 // ═══ EL ORDEN DEL PEDIDO, CON UNA FUSIÓN DECLARADA ═══
 //
@@ -39,9 +48,23 @@ import {
 } from '@/features/obras/components/CamposObra'
 import { BarraDePasos, LinkPaso, Paso } from '@/features/obras/components/PasosAlta'
 import { ChecklistPreparacion } from '@/features/obras/components/ChecklistPreparacion'
-import { Callout, Campo, CTRL, FormAccion, PageShell } from '@/shared/components/ui'
+import { Aviso, BotonEnlace, CAMPO, Campo, Nulo, Volver } from '@/shared/components/ds'
+import { FormAccion, PageShell } from '@/shared/components/ui'
 
 export const dynamic = 'force-dynamic'
+
+// LA PRIMARIA DEL PASO ES AMARILLA, Y ESTO ES UN PARCHE DECLARADO.
+//
+// El botón de envío vive dentro de `FormAccion` (`src/shared/components/ui/FormAccion.tsx`), que lo
+// pinta `bg-slate-900`. Ese archivo es compartido por los catorce formularios del OS y está fuera
+// del alcance de este bloque, así que no se toca: se corrige el color desde afuera, con una variante
+// arbitraria acotada a este formulario. Duplicar `FormAccion` para cambiarle un color sería duplicar
+// también la regla que hace que el error del servidor SIEMPRE se muestre — y ésa no se duplica.
+//
+// LO QUE HAY QUE HACER DE VERDAD: mover el estilo del botón a `Boton` del design system, en
+// `FormAccion`. Está anotado en el informe del bloque.
+const PRIMARIA_DEL_FORM =
+  '[&_button]:bg-marca [&_button]:font-semibold [&_button]:text-ink [&_button]:hover:brightness-[0.97]'
 
 export default async function NuevaObraPage({
   searchParams,
@@ -58,10 +81,10 @@ export default async function NuevaObraPage({
   const esAdmin = esAdministracion(perfil.data?.rol ?? null)
   if (!esAdmin) {
     return (
-      <PageShell eyebrow={<Link href="/obras" className="hover:underline">← Obras</Link>} title="Nueva obra">
-        <Callout tono="warn">
+      <PageShell eyebrow={<Volver href="/obras">Obras</Volver>} title="Nueva obra">
+        <Aviso tono="warn">
           Las obras las da de alta Administración. Si necesitás una obra nueva, pedila y aparece en tu portafolio.
-        </Callout>
+        </Aviso>
       </PageShell>
     )
   }
@@ -81,187 +104,198 @@ export default async function NuevaObraPage({
   const actividades = paso === 'cronograma' && obraId ? (await getActividades(supabase, obraId)).data ?? [] : []
   const vivas = actividades.filter((a) => !a.archivada)
 
-  const eyebrow = <Link href={obraId ? `/obras/${obraId}` : '/obras'} className="hover:underline">
-    {obraId ? `← ${obra?.nombre}` : '← Obras'}
-  </Link>
-
   return (
     <PageShell
-      eyebrow={eyebrow}
+      eyebrow={<Volver href={obraId ? `/obras/${obraId}` : '/obras'}>{obraId ? obra?.nombre : 'Obras'}</Volver>}
       title={obra ? obra.nombre : 'Nueva obra'}
       subtitle={obra
         ? 'La obra ya está guardada. Cada paso escribe sobre ella: podés salir y volver cuando quieras.'
-        : 'Nombre y cliente crean la obra. Todo lo demás se puede cargar después, y el último paso dice qué falta.'}
+        : 'Nombre y cliente crean la obra. Todo lo demás se puede cargar después, y el panel de al lado dice qué falta.'}
     >
-      {error && <Callout tono="neg">No pude leer la obra: {error}</Callout>}
+      {error && <Aviso tono="neg">No pude leer la obra: {error}</Aviso>}
       {obraParam && !obra && !error && (
-        <Callout tono="warn">No existe la obra «{obraParam}». <Link className="underline" href="/obras/nueva">Empezar una nueva</Link>.</Callout>
+        <Aviso tono="warn">No existe la obra «{obraParam}». <Link className="underline" href="/obras/nueva">Empezar una nueva</Link>.</Aviso>
       )}
 
       <BarraDePasos obraId={obraId} actual={paso} />
 
-      {/* ── 1 · INFORMACIÓN Y CLIENTE ─────────────────────────────────────── */}
-      {paso === 'informacion' && !obraId && (
-        <Paso paso="informacion">
-          <FormAccion accion={crearBorradorObra} testid="form-alta-obra" enviar="Crear la obra y seguir">
-            <div className="grid grid-cols-2 gap-2.5">
-              <CampoNombre />
-              <Campo label="Cliente" ancho="col-span-2" ayuda="La obra cuelga del cliente: es la jerarquía del módulo.">
-                <select name="cliente_id" required defaultValue="" className={CTRL}>
-                  <option value="" disabled>elegí un cliente</option>
-                  {clientes.filter((c) => c.activo).map((c) => (
-                    <option key={c.cliente_id} value={c.cliente_id}>{c.nombre_comercial}</option>
-                  ))}
-                </select>
-              </Campo>
-              <CampoUbicacion />
-            </div>
-          </FormAccion>
-        </Paso>
-      )}
-
-      {/* Volver al paso 1 con la obra ya creada NO reabre el formulario: el identificador de la obra
-          sale del nombre y ya quedó fijo en la URL, en los vínculos y en las imputaciones. Renombrar
-          es una edición de la ficha, no un paso del alta. */}
-      {paso === 'informacion' && obraId && obra && (
-        <Paso
-          paso="informacion"
-          pie={<LinkPaso obraId={obraId} paso="responsable" testid="seguir-responsable" fuerte>Siguiente</LinkPaso>}
-        >
-          <dl className="grid gap-x-8 text-[13px] sm:grid-cols-2">
-            {([
-              ['Nombre', obra.nombre],
-              ['Identificador', obraId],
-              ['Cliente', obra.cliente_nombre ?? '—'],
-              ['Ubicación', ubicacion ?? '—'],
-            ] as const).map(([k, v]) => (
-              <div key={k} className="flex items-baseline justify-between gap-3 border-b border-line py-1.5">
-                <dt className="text-muted">{k}</dt>
-                <dd className="text-ink">{v}</dd>
+      <div className="flex flex-wrap items-start gap-x-12 gap-y-10">
+        {/* ── 1 · INFORMACIÓN Y CLIENTE ─────────────────────────────────────── */}
+        {paso === 'informacion' && !obraId && (
+          <Paso paso="informacion">
+            <FormAccion accion={crearBorradorObra} testid="form-alta-obra" enviar="Crear la obra y seguir" className={PRIMARIA_DEL_FORM}>
+              <div className="grid grid-cols-2 gap-3">
+                <CampoNombre />
+                <Campo rotulo="Cliente" className="col-span-2" ayuda="La obra cuelga del cliente: es la jerarquía del módulo.">
+                  <select name="cliente_id" required defaultValue="" className={CAMPO}>
+                    <option value="" disabled>elegí un cliente</option>
+                    {clientes.filter((c) => c.activo).map((c) => (
+                      <option key={c.cliente_id} value={c.cliente_id}>{c.nombre_comercial}</option>
+                    ))}
+                  </select>
+                </Campo>
+                <CampoUbicacion />
               </div>
-            ))}
-          </dl>
-          <p className="mt-3 text-[12px] text-faint">
-            El nombre y la ubicación se editan desde <Link className="underline" href={`/obras/${obraId}?vista=resumen`}>la ficha de la obra</Link>.
-          </p>
-        </Paso>
-      )}
+            </FormAccion>
+          </Paso>
+        )}
 
-      {/* ── 2 a 5 · LOS PASOS QUE ESCRIBEN UNA COLUMNA ────────────────────── */}
-      {obraId && obra && esPasoQueGuarda(paso) && (
-        <Paso
-          paso={paso}
-          pie={<>
-            <LinkPaso obraId={obraId} paso="informacion" testid="volver-informacion">Volver al principio</LinkPaso>
-            <Link
-              href={urlPaso(obraId, paso === 'responsable' ? 'fechas' : paso === 'fechas' ? 'contrato' : paso === 'contrato' ? 'drive' : 'equipo')}
-              data-testid={`saltar-${paso}`}
-              className="text-muted underline underline-offset-2 hover:text-ink"
-            >Saltar este paso</Link>
-          </>}
-        >
-          <FormAccion
-            accion={guardarPasoObra.bind(null, obraId, paso)}
-            testid={`form-paso-${paso}`}
-            enviar="Guardar y seguir"
+        {/* Volver al paso 1 con la obra ya creada NO reabre el formulario: el identificador de la obra
+            sale del nombre y ya quedó fijo en la URL, en los vínculos y en las imputaciones. Renombrar
+            es una edición de la ficha, no un paso del alta. */}
+        {paso === 'informacion' && obraId && obra && (
+          <Paso
+            paso="informacion"
+            pie={<LinkPaso obraId={obraId} paso="responsable" testid="seguir-responsable" fuerte>Siguiente</LinkPaso>}
           >
-            <div className="grid grid-cols-2 gap-2.5">
-              {paso === 'responsable' && <CampoJefeObra valor={obra.jefe_obra} />}
-              {paso === 'fechas' && <CamposFechasPlan inicio={obra.fecha_inicio_plan} fin={obra.fecha_fin_plan} />}
-              {paso === 'contrato' && <CampoMontoContratado valor={obra.monto_contratado} />}
-              {paso === 'drive' && <CampoDrive valor={obra.drive_carpeta_id} />}
-            </div>
-          </FormAccion>
-        </Paso>
-      )}
+            <dl className="border-t border-line text-[13px]">
+              {([
+                ['Nombre', obra.nombre],
+                ['Identificador', obraId],
+                ['Cliente', obra.cliente_nombre],
+                ['Ubicación', ubicacion],
+              ] as const).map(([k, v]) => (
+                <div key={k} className="flex h-10 items-center justify-between gap-3 border-b border-[#EFEEEA]">
+                  <dt className="text-muted">{k}</dt>
+                  {/* LA AUSENCIA SE ESCRIBE. Un «—» acá se lee igual que un dato corto y hace que
+                      una obra sin ubicación cargada parezca una obra con la ubicación puesta. */}
+                  <dd className="min-w-0 truncate text-ink">{v ?? <Nulo>sin cargar</Nulo>}</dd>
+                </div>
+              ))}
+            </dl>
+            <p className="mt-3 text-[12px] text-faint">
+              El nombre y la ubicación se editan desde <Link className="underline" href={`/obras/${obraId}?vista=resumen`}>la ficha de la obra</Link>.
+            </p>
+          </Paso>
+        )}
 
-      {/* ── 6 · EQUIPO ────────────────────────────────────────────────────── */}
-      {paso === 'equipo' && obraId && (
-        <Paso
-          paso="equipo"
-          pie={<LinkPaso obraId={obraId} paso="cronograma" testid="seguir-cronograma" fuerte>Siguiente</LinkPaso>}
-        >
-          <p className="mb-3 text-[13px] text-ink" data-testid="equipo-cuenta">
-            {asignaciones.length === 0
-              ? 'Todavía no hay nadie asignado.'
-              : `${asignaciones.length} ${asignaciones.length === 1 ? 'persona asignada' : 'personas asignadas'}: ${asignaciones.map((a) => a.persona_nombre ?? '—').join(', ')}`}
-          </p>
-          {/* MISMA acción que la solapa Personal de la obra: acá cambia el formulario, no la regla.
-              Duplicar la escritura sería duplicar el índice único, el mensaje de error y la RLS. */}
-          <FormAccion accion={asignarPersona.bind(null, obraId)} testid="form-alta-equipo" enviar="Asignar" limpiarAlOk mensajeOk="Asignada.">
-            <div className="grid grid-cols-2 gap-2.5">
-              <Campo label="Persona" ancho="col-span-2">
-                <select name="persona_id" required defaultValue="" className={CTRL}>
-                  <option value="" disabled>elegí del plantel</option>
-                  {personas.map((p) => <option key={p.id} value={p.id}>{p.nombre_completo}</option>)}
-                </select>
-              </Campo>
-              <Campo label="Rol">
-                <select name="rol" defaultValue="integrante" className={CTRL}>
-                  <option value="integrante">integrante</option>
-                  <option value="responsable">responsable</option>
-                </select>
-              </Campo>
-              <Campo label="Cuadrilla"><input name="cuadrilla" maxLength={80} className={CTRL} /></Campo>
-            </div>
-          </FormAccion>
-        </Paso>
-      )}
+        {/* ── 2 a 5 · LOS PASOS QUE ESCRIBEN UNA COLUMNA ────────────────────── */}
+        {obraId && obra && esPasoQueGuarda(paso) && (
+          <Paso
+            paso={paso}
+            pie={<>
+              <LinkPaso obraId={obraId} paso="informacion" testid="volver-informacion">Volver al principio</LinkPaso>
+              <Link
+                href={urlPaso(obraId, paso === 'responsable' ? 'fechas' : paso === 'fechas' ? 'contrato' : paso === 'contrato' ? 'drive' : 'equipo')}
+                data-testid={`saltar-${paso}`}
+                className="text-muted underline underline-offset-2 transition-colors hover:text-ink"
+              >Saltar este paso</Link>
+            </>}
+          >
+            <FormAccion
+              accion={guardarPasoObra.bind(null, obraId, paso)}
+              testid={`form-paso-${paso}`}
+              enviar="Guardar y seguir"
+              className={PRIMARIA_DEL_FORM}
+            >
+              <div className="grid grid-cols-2 gap-3">
+                {paso === 'responsable' && <CampoJefeObra valor={obra.jefe_obra} />}
+                {paso === 'fechas' && <CamposFechasPlan inicio={obra.fecha_inicio_plan} fin={obra.fecha_fin_plan} />}
+                {paso === 'contrato' && <CampoMontoContratado valor={obra.monto_contratado} />}
+                {paso === 'drive' && <CampoDrive valor={obra.drive_carpeta_id} />}
+              </div>
+            </FormAccion>
+          </Paso>
+        )}
 
-      {/* ── 7 · CRONOGRAMA ────────────────────────────────────────────────── */}
-      {paso === 'cronograma' && obraId && (
-        <Paso
-          paso="cronograma"
-          pie={<>
-            <LinkPaso obraId={obraId} paso="confirmar" testid="seguir-confirmar" fuerte>Siguiente</LinkPaso>
-            <Link href={`/obras/${obraId}?vista=cronograma`} className="text-muted underline underline-offset-2 hover:text-ink">
-              Abrir el cronograma completo
-            </Link>
-          </>}
-        >
-          <p className="mb-3 text-[13px] text-ink" data-testid="cronograma-cuenta">
-            {vivas.length === 0
-              ? 'Todavía no hay ninguna actividad.'
-              : `${vivas.length} ${vivas.length === 1 ? 'actividad cargada' : 'actividades cargadas'}.`}
-          </p>
-          <FormAccion accion={crearActividad.bind(null, obraId)} testid="form-alta-actividad" enviar="Agregar actividad" limpiarAlOk mensajeOk="Actividad agregada.">
-            <div className="grid grid-cols-2 gap-2.5">
-              <Campo label="Actividad" ancho="col-span-2">
-                <input name="nombre" required minLength={2} maxLength={200} className={CTRL} />
-              </Campo>
-              <Campo label="Sección" ancho="col-span-2" ayuda="Opcional. Agrupa las actividades del cronograma.">
-                <input name="seccion" maxLength={120} className={CTRL} />
-              </Campo>
-              <Campo label="Inicio previsto"><input type="date" name="inicio_plan" className={CTRL} /></Campo>
-              <Campo label="Fin previsto"><input type="date" name="fin_plan" className={CTRL} /></Campo>
-              <Campo label="HH plan" ancho="col-span-2" ayuda="Vacío = sin cargar. Sin HH plan no hay desvío de HH que medir.">
-                <input type="number" name="hh_plan" min={0} step="0.5" className={CTRL} />
-              </Campo>
-            </div>
-          </FormAccion>
-        </Paso>
-      )}
+        {/* ── 6 · EQUIPO ────────────────────────────────────────────────────── */}
+        {paso === 'equipo' && obraId && (
+          <Paso
+            paso="equipo"
+            pie={<LinkPaso obraId={obraId} paso="cronograma" testid="seguir-cronograma" fuerte>Siguiente</LinkPaso>}
+          >
+            <p className="mb-4 text-[13px] text-ink" data-testid="equipo-cuenta">
+              {asignaciones.length === 0
+                ? 'Todavía no hay nadie asignado.'
+                : `${asignaciones.length} ${asignaciones.length === 1 ? 'persona asignada' : 'personas asignadas'}: ${asignaciones.map((a) => a.persona_nombre ?? 'sin persona').join(', ')}`}
+            </p>
+            {/* MISMA acción que la solapa Personal de la obra: acá cambia el formulario, no la regla.
+                Duplicar la escritura sería duplicar el índice único, el mensaje de error y la RLS. */}
+            <FormAccion accion={asignarPersona.bind(null, obraId)} testid="form-alta-equipo" enviar="Asignar" limpiarAlOk mensajeOk="Asignada.">
+              <div className="grid grid-cols-2 gap-3">
+                <Campo rotulo="Persona" className="col-span-2">
+                  <select name="persona_id" required defaultValue="" className={CAMPO}>
+                    <option value="" disabled>elegí del plantel</option>
+                    {personas.map((p) => <option key={p.id} value={p.id}>{p.nombre_completo}</option>)}
+                  </select>
+                </Campo>
+                <Campo rotulo="Rol">
+                  <select name="rol" defaultValue="integrante" className={CAMPO}>
+                    <option value="integrante">integrante</option>
+                    <option value="responsable">responsable</option>
+                  </select>
+                </Campo>
+                <Campo rotulo="Cuadrilla"><input name="cuadrilla" maxLength={80} className={CAMPO} /></Campo>
+              </div>
+            </FormAccion>
+          </Paso>
+        )}
 
-      {/* ── 8 · CONFIRMAR ─────────────────────────────────────────────────── */}
-      {paso === 'confirmar' && obraId && (
-        <Paso
-          paso="confirmar"
-          pie={<Link
-            href={`/obras/${obraId}`}
-            data-testid="ir-a-la-obra"
-            className="rounded-control bg-slate-900 px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-slate-700"
-          >Ir a la obra</Link>}
-        >
-          {/* El MISMO componente que la solapa Resumen, con la MISMA lectura. Si acá se calculara
-              aparte, el alta podría despedirse diciendo «todo listo» sobre una obra que el Resumen
-              muestra a medio preparar. */}
-          <ChecklistPreparacion obraId={obraId} />
-          <p className="mt-3 text-[12px] text-faint">
-            Lo pendiente no bloquea nada: la obra ya existe y está en su portafolio. Esta lista vuelve
-            a aparecer en el Resumen de la obra hasta que no falte nada.
-          </p>
-        </Paso>
-      )}
+        {/* ── 7 · CRONOGRAMA ────────────────────────────────────────────────── */}
+        {paso === 'cronograma' && obraId && (
+          <Paso
+            paso="cronograma"
+            pie={<>
+              <LinkPaso obraId={obraId} paso="confirmar" testid="seguir-confirmar" fuerte>Siguiente</LinkPaso>
+              <Link href={`/obras/${obraId}?vista=cronograma`} className="text-muted underline underline-offset-2 transition-colors hover:text-ink">
+                Abrir el cronograma completo
+              </Link>
+            </>}
+          >
+            <p className="mb-4 text-[13px] text-ink" data-testid="cronograma-cuenta">
+              {vivas.length === 0
+                ? 'Todavía no hay ninguna actividad.'
+                : `${vivas.length} ${vivas.length === 1 ? 'actividad cargada' : 'actividades cargadas'}.`}
+            </p>
+            <FormAccion accion={crearActividad.bind(null, obraId)} testid="form-alta-actividad" enviar="Agregar actividad" limpiarAlOk mensajeOk="Actividad agregada.">
+              <div className="grid grid-cols-2 gap-3">
+                <Campo rotulo="Actividad" className="col-span-2">
+                  <input name="nombre" required minLength={2} maxLength={200} className={CAMPO} />
+                </Campo>
+                <Campo rotulo="Sección" className="col-span-2" ayuda="Opcional. Agrupa las actividades del cronograma.">
+                  <input name="seccion" maxLength={120} className={CAMPO} />
+                </Campo>
+                <Campo rotulo="Inicio previsto"><input type="date" name="inicio_plan" className={CAMPO} /></Campo>
+                <Campo rotulo="Fin previsto"><input type="date" name="fin_plan" className={CAMPO} /></Campo>
+                <Campo rotulo="HH plan" className="col-span-2" ayuda="Vacío = sin cargar. Sin HH plan no hay desvío de HH que medir.">
+                  <input type="number" name="hh_plan" min={0} step="0.5" className={CAMPO} />
+                </Campo>
+              </div>
+            </FormAccion>
+          </Paso>
+        )}
+
+        {/* ── 8 · CONFIRMAR ─────────────────────────────────────────────────── */}
+        {paso === 'confirmar' && obraId && (
+          <Paso
+            paso="confirmar"
+            pie={<BotonEnlace href={`/obras/${obraId}`} variante="primaria" data-testid="ir-a-la-obra">Ir a la obra</BotonEnlace>}
+          >
+            {/* EL CHECKLIST NO SE REPITE ACÁ: es el panel de la derecha, el mismo que acompañó los
+                siete pasos anteriores. Dos copias de la misma lista en la misma pantalla son dos
+                lugares donde puede decir cosas distintas. */}
+            <p className="text-[13px] text-ink">
+              La obra ya existe y está en la cartera. Lo que falte lo dice el panel de al lado, línea
+              por línea y con el número concreto: nada de esto bloquea nada.
+            </p>
+          </Paso>
+        )}
+
+        {/* ── EL PANEL DE PREPARACIÓN ───────────────────────────────────────── */}
+        {obraId && (
+          <aside className="min-w-[320px] flex-1 basis-[360px]">
+            {/* El MISMO componente que la solapa Resumen, con la MISMA lectura. Si acá se calculara
+                aparte, el alta podría despedirse diciendo «todo listo» sobre una obra que el Resumen
+                muestra a medio preparar. */}
+            <ChecklistPreparacion obraId={obraId} />
+            <p className="mt-3 max-w-[520px] text-[11.5px] leading-relaxed text-faint">
+              Lo pendiente no bloquea nada: la obra ya existe y está en la cartera. Esta misma lista
+              aparece en el Resumen de la obra hasta que no falte nada — no es un tablero, es un
+              checklist que se agota.
+            </p>
+          </aside>
+        )}
+      </div>
     </PageShell>
   )
 }

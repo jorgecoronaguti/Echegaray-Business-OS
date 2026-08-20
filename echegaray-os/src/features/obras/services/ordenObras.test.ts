@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { ordenar, valorDe, proximaDireccion, esCampo, type FilaOrdenable } from './ordenObras.ts'
+import { CAMPOS, ordenar, valorDe, proximaDireccion, esCampo, type FilaOrdenable } from './ordenObras.ts'
 
 const o = (obra_id: string, extra: Partial<FilaOrdenable> = {}): FilaOrdenable => ({ obra_id, nombre: obra_id, ...extra })
 const ids = (l: readonly FilaOrdenable[]) => l.map((x) => x.obra_id)
@@ -72,4 +72,26 @@ test('un campo inventado en la URL no ordena nada', () => {
   assert.equal(esCampo('avance'), true)
   assert.equal(esCampo('sueldo'), false)
   assert.equal(esCampo(undefined), false)
+})
+
+// ═══ LAS SIETE COLUMNAS DE LA CARTERA SON UN CONTRATO, NO UNA PREFERENCIA ═══
+//
+// `design/screens/obras.md` §1a las fija con nombre y con orden: **Obra | Cliente | Etapa | Avance |
+// Plazo | Contratado | Costo real**, y agrega *"Todas las columnas ordenan"*. `CAMPOS` es la única
+// declaración de ese conjunto en todo el módulo —la tabla dibuja un `<ThOrden>` por entrada y el
+// rótulo sale de acá—, así que una columna que se agrega, se saca o se renombra pasa por este
+// objeto o no pasa.
+//
+// Sin esta prueba, sacar «Contratado» —la columna que sólo ve Administración, y por lo tanto la que
+// nadie nota que falta cuando la mira un jefe de obra— no rompe nada: la tabla queda con seis
+// columnas y compila.
+test('la cartera declara exactamente las siete columnas del handoff, en su orden', () => {
+  assert.deepEqual(Object.keys(CAMPOS), ['nombre', 'cliente', 'etapa', 'avance', 'plazo', 'contratado', 'costo'])
+  assert.deepEqual(
+    Object.values(CAMPOS),
+    ['Obra', 'Cliente', 'Etapa', 'Avance', 'Plazo', 'Contratado', 'Costo real'],
+  )
+  // Y todas ordenan de verdad: `esCampo` es el guarda de la URL, y una columna que no lo pasa
+  // dibuja un encabezado que al tocarlo no hace nada.
+  for (const c of Object.keys(CAMPOS)) assert.ok(esCampo(c), `${c} tiene rótulo pero no ordena`)
 })
