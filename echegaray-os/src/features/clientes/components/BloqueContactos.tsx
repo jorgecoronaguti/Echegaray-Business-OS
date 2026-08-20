@@ -12,9 +12,16 @@
 // Hasta acá sólo había alta y baja: corregir un dígito de un teléfono obligaba a borrar la persona y
 // volver a cargarla, y con eso se perdía la fecha en la que entró a la relación — que es un evento
 // de la solapa Actividad. Un dato histórico no se puede tirar para arreglar un typo.
+//
+// ═══ LA AUSENCIA SE DICE POR SU NOMBRE (Design Handoff V2) ═══
+//
+// Había un «—» en teléfono, en cargo y en email. Un guión no dice nada: quien lo mira no sabe si el
+// contacto no tiene teléfono, si nadie lo cargó, o si la columna se rompió. El handoff lo pide
+// explícito —*"«sin teléfono» cuando falta"*— y es la regla 8 de UX_PRINCIPLES aplicada a texto.
 
-import Link from 'next/link'
-import { BotonAccion, Callout, Campo, CTRL, FormAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
+import { Nulo, Tabla, THead, Th, Tr, Td, Vacio } from '@/shared/components/ds'
+import { Campo, CTRL, FormAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
+import { AccionesContacto } from './AccionesContacto'
 import type { Contacto } from '../types'
 
 function CamposContacto({ c }: { c?: Contacto }) {
@@ -49,43 +56,37 @@ export function BloqueContactos({
       {/* EL ALTA VA ARRIBA. Debajo de una lista larga, «agregar un contacto» no la encuentra nadie
           —y el bloque se queda vacío para siempre—. */}
       {puedeEditar && (
-        <details className="rounded-xl border border-line bg-white" data-testid="alta-contacto">
-          <summary className="cursor-pointer select-none px-4 py-2.5 text-[13px] font-medium text-ink">+ Contacto</summary>
-          <div className="border-t border-line p-4">
+        <details className="rounded-card border border-line bg-surface" data-testid="alta-contacto">
+          <summary className="cursor-pointer select-none px-3.5 py-2 text-[12.5px] text-ink">+ Agregar contacto</summary>
+          <div className="border-t border-line p-3.5">
             <FormAccion accion={crear} testid="form-contacto" enviar="Agregar" limpiarAlOk mensajeOk="Contacto agregado.">
               <CamposContacto />
             </FormAccion>
           </div>
         </details>
       )}
-      {contactos.length === 0 ? (
-        <Callout tono="neutral">
-          Este cliente no tiene contactos cargados.
-        </Callout>
-      ) : (
-        <div className="overflow-x-auto rounded-xl border border-line bg-white">
-          <table data-testid="tabla-contactos" className="w-full min-w-[620px] text-left">
-            <thead>
-              <tr className="border-b border-line text-[10px] uppercase tracking-wide text-faint">
-                <th className="px-4 py-2.5 font-medium">Nombre</th>
-                <th className="px-3 py-2.5 font-medium">Cargo</th>
-                <th className="px-3 py-2.5 font-medium">Teléfono</th>
-                <th className="px-3 py-2.5 font-medium">Email</th>
-                <th className="px-3 py-2.5 text-right font-medium"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {contactos.map((c) => (
-                <FilaContacto
-                  key={c.id} c={c} abierta={enEdicion === c.id}
-                  urlDe={urlDe} editar={editar} borrar={borrar} puedeEditar={puedeEditar}
-                />
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
 
+      {contactos.length === 0 ? (
+        <Vacio>Este cliente no tiene contactos cargados. Se agregan acá.</Vacio>
+      ) : (
+        <Tabla testid="tabla-contactos" minWidth={620}>
+          <THead>
+            <Th>Nombre</Th>
+            <Th className="w-[170px]">Rol</Th>
+            <Th className="w-[220px]">Mail</Th>
+            <Th className="w-[140px]">Teléfono</Th>
+            {puedeEditar && <Th className="w-[52px]" />}
+          </THead>
+          <tbody>
+            {contactos.map((c) => (
+              <FilaContacto
+                key={c.id} c={c} abierta={enEdicion === c.id}
+                urlDe={urlDe} editar={editar} borrar={borrar} puedeEditar={puedeEditar}
+              />
+            ))}
+          </tbody>
+        </Tabla>
+      )}
     </div>
   )
 }
@@ -100,31 +101,36 @@ function FilaContacto({
   borrar: (contactoId: string) => Promise<ResultadoAccion>
   puedeEditar?: boolean
 }) {
+  const columnas = puedeEditar ? 5 : 4
   return (
     <>
-      <tr className={`border-b border-line/60 ${abierta ? 'bg-slate-50' : ''}`}>
-        <td className="px-4 py-2.5 text-[13px] text-ink">{c.nombre}</td>
-        <td className="px-3 py-2.5 text-[12px] text-muted">{c.rol ?? '—'}</td>
-        <td className="px-3 py-2.5 text-[12px] tabular-nums text-muted">{c.telefono ?? '—'}</td>
-        <td className="px-3 py-2.5 text-[12px] text-muted">
-          {c.email ? <a href={`mailto:${c.email}`} className="hover:underline">{c.email}</a> : '—'}
-        </td>
-        <td className="px-3 py-2.5 text-right">
-          {puedeEditar && (
-          <span className="inline-flex items-center gap-2">
-            <Link
+      <Tr seleccionada={abierta}>
+        <Td fuerte>{c.nombre}</Td>
+        <Td>{c.rol ?? <Nulo>sin rol declarado</Nulo>}</Td>
+        <Td>
+          {c.email
+            ? <a href={`mailto:${c.email}`} className="hover:underline">{c.email}</a>
+            : <Nulo>sin mail</Nulo>}
+        </Td>
+        <Td>
+          {c.telefono
+            ? <span className="font-mono text-[12.5px] tabular-nums">{c.telefono}</span>
+            : <Nulo>sin teléfono</Nulo>}
+        </Td>
+        {puedeEditar && (
+          <Td className="text-right">
+            <AccionesContacto
+              contactoId={c.id}
               href={urlDe(abierta ? null : c.id)}
-              data-testid={abierta ? 'cerrar-contacto' : 'editar-contacto'}
-              className="rounded-control border border-line px-2.5 py-1 text-[12px] text-muted hover:bg-slate-50"
-            >{abierta ? 'Cerrar' : 'Editar'}</Link>
-            <BotonAccion accion={borrar} args={[c.id]} testid="borrar-contacto" tono="peligro">Borrar</BotonAccion>
-          </span>
-          )}
-        </td>
-      </tr>
+              enEdicion={abierta}
+              borrar={borrar}
+            />
+          </Td>
+        )}
+      </Tr>
       {abierta && (
-        <tr className="border-b border-line/60 bg-slate-50">
-          <td colSpan={5} className="px-4 py-3">
+        <tr className="border-b border-[#EFEEEA] bg-surface-quiet">
+          <td colSpan={columnas} className="py-3">
             <FormAccion accion={editar(c.id)} testid="form-editar-contacto" enviar="Guardar" mensajeOk="Contacto guardado.">
               <CamposContacto c={c} />
             </FormAccion>

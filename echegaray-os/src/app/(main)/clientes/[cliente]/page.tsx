@@ -50,7 +50,8 @@ import { BloqueContactos } from '@/features/clientes/components/BloqueContactos'
 import { BloqueDocumentos } from '@/features/clientes/components/BloqueDocumentos'
 import { BloqueInformacion } from '@/features/clientes/components/BloqueInformacion'
 import { BloqueObras } from '@/features/clientes/components/BloqueObras'
-import { Callout, PageShell } from '@/shared/components/ui'
+import { Aviso, BotonEnlace, Num } from '@/shared/components/ds'
+import { PageShell } from '@/shared/components/ui'
 
 export const dynamic = 'force-dynamic'
 
@@ -81,7 +82,7 @@ export default async function ClientePage({
   if (error) {
     return (
       <PageShell eyebrow={<Link href="/clientes" className="hover:underline">← Clientes</Link>} title="No pude leer el cliente">
-        <Callout tono="neg">{error}</Callout>
+        <Aviso tono="neg">{error}</Aviso>
       </PageShell>
     )
   }
@@ -130,21 +131,24 @@ export default async function ClientePage({
       title={cliente.nombre_comercial}
       // El CUIT es LA identidad fiscal del cliente: es lo que lo cruza contra ARCA y contra el
       // banco, y por eso acompaña al nombre acá arriba en vez de esconderse en una propiedad.
-      subtitle={cliente.cuit ?? 'CUIT sin cargar'}
+      // EL CUIT EN MONO TABULAR: es un número que se compara contra ARCA y contra el banco, y en
+      // proporcional los dígitos no se alinean con nada. «CUIT sin cargar» va en texto normal
+      // porque no es un número — escribir una ausencia en mono la disfraza de dato.
+      subtitle={cliente.cuit ? <Num className="text-muted">{cliente.cuit}</Num> : <span className="text-faint">CUIT sin cargar</span>}
       right={puedeEditar && (
-        <Link
+        <BotonEnlace
           href={url({ editar: q.editar === '1' ? null : '1' })}
+          variante="discreta"
           data-testid="editar-ficha"
-          className="rounded-control border border-line bg-white px-3 py-1.5 text-[13px] text-ink hover:bg-slate-50"
-        >{q.editar === '1' ? 'Cerrar edición' : 'Editar'}</Link>
+        >{q.editar === '1' ? 'Cerrar edición' : 'Editar'}</BotonEnlace>
       )}
     >
       {!cliente.activo && (
-        <div className="mb-4" data-testid="cliente-archivado">
-          <Callout tono="neutral">
+        <div className="mb-5" data-testid="cliente-archivado">
+          <Aviso tono="info">
             Este cliente está archivado: no aparece en la lista de clientes. Se reactiva desde el
             panel de información.
-          </Callout>
+          </Aviso>
         </div>
       )}
 
@@ -153,9 +157,9 @@ export default async function ClientePage({
           y la historia y las relaciones ocupan la columna ancha. Sin `overflow-hidden` en ningún
           lado: cada tabla se desplaza sola dentro de su bloque, y así el teléfono no se corre de
           costado por culpa de la más ancha. */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid grid-cols-1 gap-7 lg:grid-cols-[minmax(0,1fr)_320px]">
         <aside className="min-w-0 space-y-3 lg:order-2" data-testid="panel-informacion">
-          <h2 className="text-[13px] font-semibold uppercase tracking-wide text-ink">Información</h2>
+          <h2 className="text-[11px] font-semibold uppercase tracking-[0.06em] text-ink">Información</h2>
           <BloqueInformacion
             cliente={cliente}
             responsables={responsables.data ?? []}
@@ -167,7 +171,7 @@ export default async function ClientePage({
           />
         </aside>
 
-        <div className="min-w-0 space-y-7 lg:order-1">
+        <div className="min-w-0 space-y-8 lg:order-1">
           <Bloque titulo="Actividad" testid="bloque-actividad">
             <BloqueActividad
               linea={linea.data ?? { eventos: [], sinFecha: 0 }}

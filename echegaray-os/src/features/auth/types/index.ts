@@ -22,7 +22,14 @@ export const ROL_LABEL: Record<Rol, string> = {
 
 // Rutas que el rol 'campo' (operario) PUEDE ver en la web. Todo lo demás (caja, reportes,
 // dirección…) queda fuera de su alcance. Se usa en el middleware y en el nav.
-export const CAMPO_RUTAS_PERMITIDAS = ['/integraciones/pedidos-materiales', '/integraciones/herramientas', '/integraciones/movimientos', '/campo', '/descargas']
+//
+// ═══ `/mi-cuenta` ES DE TODOS (20/08/2026) ═══
+//
+// Sin esta entrada, el operario que toca su email en el header termina rebotado a `/campo` — y
+// «Mis horas», «Mi legajo» y «Mis documentos» son precisamente las pantallas que existen PARA él:
+// el resto del OS no le muestra una sola hora suya. Lo que ve ahí es sólo lo propio, acotado en la
+// base por las vistas `mi_*` (20260820T3000), no por esta lista.
+export const CAMPO_RUTAS_PERMITIDAS = ['/integraciones/pedidos-materiales', '/integraciones/herramientas', '/integraciones/movimientos', '/campo', '/descargas', '/mi-cuenta']
 export function esRutaCampoPermitida(pathname: string): boolean {
   return CAMPO_RUTAS_PERMITIDAS.some((r) => pathname === r || pathname.startsWith(r + '/'))
 }

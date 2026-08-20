@@ -13,6 +13,10 @@
 // —contrato, presupuesto, plano…— porque escrito a mano el mismo contrato entra como «contrato»,
 // «Contrato» y «cto», y la clasificación deja de servir para buscar.
 //
+// «SIN CLASIFICAR» VA EN `warn` (Design Handoff V2). No es decoración: un archivo sin rol es un
+// archivo que la búsqueda no va a encontrar nunca, y el ámbar es lo que hace que alguien lo
+// clasifique. Es la definición de `warn` del sistema —*dato faltante que bloquea*—, no un error.
+//
 // ═══ POR QUÉ VINCULAR ES INLINE Y NO UN PANEL ═══
 //
 // Vincular es pegar una dirección y apretar un botón. Un panel lateral para dos campos convierte una
@@ -20,10 +24,13 @@
 // nada y el índice quede vacío para siempre. Panel lateral es para edición compleja.
 
 import Link from 'next/link'
-import { BotonAccion, Callout, Campo, CTRL, FormAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
-import { etiquetaDeTipo, urlDeDrive } from '@/features/obras/services/driveUrl'
+import { Nulo, Tabla, THead, Th, Tr, Td, Vacio } from '@/shared/components/ds'
+import { Campo, CTRL, FormAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
+import { urlDeDrive } from '@/features/obras/services/driveUrl'
+import { fecha } from '@/features/obras/components/formato'
 import { ROLES_DOCUMENTO, type DocumentoCliente } from '../types'
 import { SelectRolDocumento } from './SelectRolDocumento'
+import { AccionesDocumento } from './AccionesContacto'
 
 // ═══ POR QUÉ EL RECORD MUESTRA OCHO Y NO SESENTA (19/08/2026) ═══
 //
@@ -67,83 +74,76 @@ export function BloqueDocumentos({
             className="text-[12px] text-muted hover:underline"
           >Abrir la carpeta del cliente en Drive ↗</a>
         ) : (
-          <span className="text-[12px] text-faint">
+          <Nulo className="text-[12px]">
             Sin carpeta de Drive vinculada. Se carga en Información. No se adivina por parecido de nombre.
-          </span>
+          </Nulo>
         )}
       </div>
 
       {documentos.length === 0 ? (
-        <Callout tono="neutral">
+        <Vacio>
           Todavía no hay ningún archivo vinculado. El archivo sigue viviendo en Drive: acá queda el
           vínculo, nunca una copia.
-        </Callout>
+        </Vacio>
       ) : (
         <>
-          <div className="overflow-x-auto rounded-xl border border-line bg-white">
-            <table data-testid="tabla-documentos-cliente" className="w-full min-w-[680px] text-left">
-              <thead>
-                <tr className="border-b border-line text-[10px] uppercase tracking-wide text-faint">
-                  <th className="px-4 py-2.5 font-medium">Nombre</th>
-                  <th className="px-3 py-2.5 font-medium">Tipo</th>
-                  <th className="px-3 py-2.5 font-medium">Para qué sirve</th>
-                  <th className="px-3 py-2.5 font-medium">Relación</th>
-                  <th className="px-3 py-2.5 text-right font-medium"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibles.map((d) => (
-                  <tr key={d.drive_file_id} className="border-b border-line/60 last:border-0">
-                    <td className="max-w-[280px] px-4 py-2.5">
-                      <a
-                        href={urlDeDrive(d.drive_file_id, 'archivo')}
-                        target="_blank" rel="noreferrer"
-                        data-testid="documento-cliente-enlace"
-                        className="block truncate text-[13px] text-ink hover:underline"
-                      >
-                        {/* Sin nombre se muestra el id: es feo y es la verdad. El índice de Drive se
-                            rehace cada 4 horas y un archivo puede salir de él sin que el vínculo
-                            deje de valer. Un rótulo inventado sería peor que feo. */}
-                        {d.name ?? d.drive_file_id}
-                      </a>
-                      {d.path && <span className="block truncate text-[11px] text-faint">{d.path}</span>}
-                    </td>
-                    <td className="px-3 py-2.5 text-[12px] text-muted">
-                      {etiquetaDeTipo('archivo', d.mime_type, d.name)}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      {puedeEditar ? (
-                        <SelectRolDocumento
-                          valor={d.rol}
-                          opciones={ROLES_DOCUMENTO}
-                          guardar={clasificar(d.drive_file_id)}
-                          testid="rol-documento"
-                        />
-                      ) : (
-                        <span className="text-[12px] text-muted">{d.rol ?? 'sin clasificar'}</span>
-                      )}
-                    </td>
-                    {/* «Vinculado a mano» = una persona afirmó que este archivo es de este cliente.
-                        «Por la carpeta» = lo dedujo el sincronizador por la ruta. Es la misma
-                        distinción HECHO vs INFERENCIA que gobierna el resto del sistema, y va en la
-                        tabla porque cambia cuánto vale lo que se está mirando. Sin color: no es un
-                        problema ni un logro. */}
-                    <td className="px-3 py-2.5 text-[12px] text-muted">
-                      {d.origen === 'manual' ? 'Vinculado a mano' : 'Por la carpeta'}
-                    </td>
-                    <td className="px-3 py-2.5 text-right">
-                      {puedeEditar && (
-                        <BotonAccion
-                          accion={desvincular} args={[d.drive_file_id]}
-                          testid="desvincular-documento-cliente" tono="peligro"
-                        >Quitar</BotonAccion>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <Tabla testid="tabla-documentos-cliente" minWidth={680}>
+            <THead>
+              <Th>Documento</Th>
+              <Th className="w-[170px]">Rol</Th>
+              <Th className="w-[150px]">Cómo llegó</Th>
+              <Th num className="w-[90px]">Fecha</Th>
+              {puedeEditar && <Th className="w-[52px]" />}
+            </THead>
+            <tbody>
+              {visibles.map((d) => (
+                <Tr key={d.drive_file_id}>
+                  <Td fuerte className="max-w-[280px]">
+                    <a
+                      href={urlDeDrive(d.drive_file_id, 'archivo')}
+                      target="_blank" rel="noreferrer"
+                      data-testid="documento-cliente-enlace"
+                      className="block truncate hover:underline"
+                    >
+                      {/* Sin nombre se muestra el id: es feo y es la verdad. El índice de Drive se
+                          rehace cada 4 horas y un archivo puede salir de él sin que el vínculo deje
+                          de valer. Un rótulo inventado sería peor que feo. */}
+                      {d.name ?? d.drive_file_id}
+                    </a>
+                    {d.path && <span className="block truncate text-[11px] text-faint">{d.path}</span>}
+                  </Td>
+                  <Td>
+                    {puedeEditar ? (
+                      <SelectRolDocumento
+                        valor={d.rol}
+                        opciones={ROLES_DOCUMENTO}
+                        guardar={clasificar(d.drive_file_id)}
+                        testid="rol-documento"
+                      />
+                    ) : d.rol ? (
+                      <span className="text-[12.5px] text-muted">{d.rol}</span>
+                    ) : (
+                      <span className="text-[12.5px] text-warn">sin clasificar</span>
+                    )}
+                  </Td>
+                  {/* «Vinculado a mano» = una persona afirmó que este archivo es de este cliente.
+                      «Por la carpeta» = lo dedujo el sincronizador por la ruta. Es la misma
+                      distinción HECHO vs INFERENCIA que gobierna el resto del sistema, y va en la
+                      tabla porque cambia cuánto vale lo que se está mirando. Sin color: no es un
+                      problema ni un logro. */}
+                  <Td>{d.origen === 'manual' ? 'Vinculado a mano' : 'Por la carpeta'}</Td>
+                  <Td num className="text-muted">
+                    {d.modified_time ? fecha(d.modified_time) : <Nulo>sin fecha</Nulo>}
+                  </Td>
+                  {puedeEditar && (
+                    <Td className="text-right">
+                      <AccionesDocumento driveFileId={d.drive_file_id} desvincular={desvincular} />
+                    </Td>
+                  )}
+                </Tr>
+              ))}
+            </tbody>
+          </Tabla>
           <p className="text-[11px] text-faint" data-testid="pie-documentos-cliente">
             {documentos.length <= TOPE ? (
               `${documentos.length} archivo${documentos.length === 1 ? '' : 's'}. Viven en Drive: acá está el vínculo, nunca una copia.`
@@ -156,7 +156,7 @@ export function BloqueDocumentos({
             ) : (
               <>
                 Se muestran los {TOPE} más recientes de {documentos.length}.{' '}
-                <Link href={urlTodo} className="text-ink underline underline-offset-2" data-testid="ver-todos-documentos">Ver todos</Link>.
+                <Link href={urlTodo} className="text-ink underline underline-offset-2" data-testid="ver-todos-documentos">Ver todo ({documentos.length}) →</Link>
               </>
             )}
           </p>
@@ -169,8 +169,8 @@ export function BloqueDocumentos({
 /** El alta, plegada: dos campos y un botón. */
 function Vincular({ accion }: { accion: AccionFormulario }) {
   return (
-    <details className="w-full min-w-0 rounded-xl border border-line bg-white sm:w-auto" data-testid="alta-documento">
-      <summary className="cursor-pointer select-none px-3.5 py-2 text-[13px] text-ink">+ Vincular un archivo de Drive</summary>
+    <details className="w-full min-w-0 rounded-card border border-line bg-surface sm:w-auto" data-testid="alta-documento">
+      <summary className="cursor-pointer select-none px-3.5 py-2 text-[12.5px] text-ink">+ Vincular un archivo de Drive</summary>
       <div className="w-full border-t border-line p-3.5 sm:w-[440px]">
         <FormAccion accion={accion} testid="form-documento" enviar="Vincular" limpiarAlOk mensajeOk="Vinculado.">
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
