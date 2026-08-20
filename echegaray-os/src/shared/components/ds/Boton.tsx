@@ -19,8 +19,11 @@ const VARIANTE: Record<Variante, string> = {
   destructiva: 'text-neg hover:bg-neg-soft',
 }
 
+// 7×14 de padding y 12,5px, medido del especimen (`design/screens/visual/DesignSystem.dc.html`
+// §05). La deshabilitada CONSERVA el peso: lo que la apaga es el par fondo hundido + texto faint,
+// no adelgazarla — una primaria que además cambia de peso al deshabilitarse se lee como otro botón.
 const BASE =
-  'inline-flex items-center justify-center gap-1.5 rounded-control px-3.5 py-[7px] text-[13px] leading-[18px] transition-colors disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-faint disabled:hover:brightness-100'
+  'inline-flex items-center justify-center gap-1.5 rounded-control px-3.5 py-[7px] text-[12.5px] leading-[18px] transition-colors disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-faint disabled:hover:brightness-100'
 
 export function Boton({
   variante = 'secundaria',

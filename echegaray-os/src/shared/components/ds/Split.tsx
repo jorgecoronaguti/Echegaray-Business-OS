@@ -108,7 +108,9 @@ export function Divisor({
       data-arrastrando={arrastrando ? '' : undefined}
       title={titulo}
       onPointerDown={empezar}
-      className="group relative hidden w-[9px] shrink-0 cursor-col-resize lg:block"
+      className={`group relative hidden w-[9px] shrink-0 cursor-col-resize lg:block ${
+        arrastrando ? 'bg-marca/10' : 'hover:bg-marca/10'
+      }`}
     >
       <span
         className={`absolute inset-y-0 left-1/2 -translate-x-1/2 transition-all ${

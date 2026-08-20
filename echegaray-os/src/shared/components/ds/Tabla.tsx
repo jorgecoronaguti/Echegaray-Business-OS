@@ -28,7 +28,7 @@ export function Tabla({
   className?: string
 }) {
   return (
-    <div className={`w-full overflow-x-auto ${className}`}>
+    <div className={`w-full overflow-x-auto border-t border-line ${className}`}>
       <table data-testid={testid} className="w-full border-collapse text-left" style={{ minWidth }}>
         {children}
       </table>
@@ -39,7 +39,10 @@ export function Tabla({
 export function THead({ children }: { children: ReactNode }) {
   return (
     <thead>
-      <tr className="h-thead border-y border-line">{children}</tr>
+      {/* El encabezado se cierra con el divisor de FILA (#EFEEEA), no con el borde de bloque: el
+          borde de bloque ya lo puso el hairline superior, y dos líneas fuertes seguidas convierten
+          el encabezado en una caja. */}
+      <tr className="h-thead border-b border-[#EFEEEA]">{children}</tr>
     </thead>
   )
 }
