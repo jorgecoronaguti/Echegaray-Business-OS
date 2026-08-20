@@ -73,8 +73,11 @@ export function CabeceraTabla({ conCasilla, todas, alMarcarTodas, compacta, hayC
       )}
       <span className={`min-w-0 flex-1 truncate ${conCasilla || alAlternarTodos ? '' : 'pl-3'}`}>Actividad</span>
       <span style={{ width: COLS.estado }}>Estado</span>
-      {!compacta && <span style={{ width: COLS.fecha }}>Inicio</span>}
-      {!compacta && <span style={{ width: COLS.fecha }}>Fin</span>}
+      {/* EN TABLET LA TABLA BAJA A TRES COLUMNAS —Actividad · Estado · %— y las fechas se van:
+          `LAYOUT_RESPONSIVE.md` §Tablet. Se hace con CSS y no con la medición del divisor porque
+          abajo de `lg` no hay divisor que medir. */}
+      {!compacta && <span className="hidden lg:block" style={{ width: COLS.fecha }}>Inicio</span>}
+      {!compacta && <span className="hidden lg:block" style={{ width: COLS.fecha }}>Fin</span>}
       <span className="pr-3 text-right" style={{ width: COLS.pct }}>%</span>
     </div>
   )
@@ -161,7 +164,7 @@ function FilaActividad({ f, alto, sel, alSeleccionar, casilla, compacta }: {
 }
 
 const Fecha = ({ v }: { v: string | null }) => (
-  <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted" style={{ width: COLS.fecha }}>
+  <span className="hidden shrink-0 font-mono text-[11px] tabular-nums text-muted lg:block" style={{ width: COLS.fecha }}>
     {v ? fmtFecha(v) : <span className="text-faint">sin fecha</span>}
   </span>
 )

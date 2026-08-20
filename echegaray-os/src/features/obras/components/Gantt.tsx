@@ -224,7 +224,10 @@ export function Gantt({
           <div className="flex min-h-0 flex-1">
             {/* ── LA TABLA ─────────────────────────────────────────────────────────── */}
             <div
-              className="flex min-w-0 shrink-0 flex-col lg:[width:var(--ancho-tabla)]"
+              // ABAJO DE `lg` EL ANCHO NO SALE DEL DIVISOR —no hay divisor—: es fijo, y tiene que
+              // serlo. Sin ancho, la columna toma el de su contenido y empuja la página de costado,
+              // que es exactamente lo que el handoff prohíbe sin matices.
+              className="flex w-[300px] shrink-0 flex-col md:w-[340px] lg:[width:var(--ancho-tabla)]"
               style={{ ['--ancho-tabla' as string]: `${tabla.ancho}px` }}
             >
               <CabeceraTabla
