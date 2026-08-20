@@ -150,7 +150,7 @@ export function TabCronograma({
   const cambiarSemanas = (v: Ventana) => { setSemanasLocal(v); irA('semanas', v) }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {/* SEGUNDO NIVEL DE NAVEGACIÓN Y ÚLTIMO: área arriba, obra en el medio, y esto. Un cuarto nivel
           obligaría a decodificar la pantalla antes de leerla. Se desplaza en vez de empujar la
           página: en 390px las cuatro solapas y el ancho del contenedor no siempre entran. */}
@@ -162,7 +162,7 @@ export function TabCronograma({
             onClick={() => cambiarSub(v.id)}
             aria-current={subActual === v.id ? 'page' : undefined}
             data-testid={`subvista-${v.id}`}
-            className={`shrink-0 border-b-2 px-4 py-2.5 text-[14px] min-[1900px]:px-5 min-[1900px]:py-3 min-[1900px]:text-[17px] ${
+            className={`shrink-0 border-b-2 px-4 py-2.5 text-[clamp(14px,0.92vw,32px)] ${
               subActual === v.id ? 'border-accent font-medium text-ink' : 'border-transparent text-muted hover:text-ink'
             }`}
           >{v.label}</button>

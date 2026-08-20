@@ -110,7 +110,7 @@ export function BarraPlan({
       onClick={() => alternar(v)}
       data-testid={testid}
       aria-expanded={abierto === v}
-      className={`shrink-0 rounded-control px-3.5 py-1.5 text-[13px] min-[1900px]:px-4 min-[1900px]:py-2 min-[1900px]:text-[15px] ${
+      className={`shrink-0 rounded-control px-3.5 py-1.5 text-[clamp(13px,0.9vw,34px)] ${
         principal
           ? `bg-marca font-medium text-ink hover:brightness-95 ${abierto === v ? 'brightness-90' : ''}`
           : `border ${abierto === v ? 'border-line-strong bg-surface-sunken text-ink' : 'border-line text-ink hover:bg-surface-sunken'}`

@@ -50,29 +50,37 @@ const DIA = 86400000
 // Estaba en 26px con texto de 12: la pantalla se leía como una planilla comprimida y el dueño la
 // rechazó por eso. 36px es la densidad de una herramienta de trabajo —Linear, Asana— donde la
 // información sigue siendo compacta pero cada renglón se distingue del de al lado sin esforzarse.
-// ═══ LA ESCALA SIGUE AL ANCHO REAL, NO A UN NÚMERO FIJO (20/08/2026) ═══
+// ═══ LA ESCALA ES CONTINUA Y SIGUE AL ANCHO REAL (20/08/2026) ═══
 //
-// El dueño trabaja en un monitor de ~3.900 px CSS. Una fila de 40 px con texto de 14 ahí adentro se
-// lee como una planilla de Excel comprimida —que es exactamente la palabra que usó— mientras que en
-// 1.536 px la misma medida es correcta. Un tamaño absoluto no puede servir a los dos.
+// Tercera vuelta sobre lo mismo, y ésta es la causa de verdad. La pantalla del dueño tiene un
+// viewport enorme; la app dibujaba en píxeles fijos, así que TODO el workspace le entraba en la
+// mitad superior de la pantalla con el texto en unos seis píxeles. No era la composición —ya era la
+// del objetivo— era el TAMAÑO.
 //
-// Por eso la densidad se DERIVA del ancho medido de la caja: tres escalones, y el componente elige
-// el suyo. No es zoom —los píxeles por día no cambian—: cambia cuánto ocupa una fila y cuánto mide
-// su texto, que es lo que decide si la pantalla se lee o se descifra.
-const ESCALONES = [
-  { desde: 0, fila: 34, texto: 'text-[13px]', rotulo: 'text-[10px]', chip: 'text-[12px]', px: { mes: 11, dia: 9, barra: 10 } },
-  { desde: 1200, fila: 40, texto: 'text-[14px]', rotulo: 'text-[11px]', chip: 'text-[13px]', px: { mes: 12, dia: 10, barra: 11 } },
-  { desde: 1900, fila: 48, texto: 'text-[16px]', rotulo: 'text-[12px]', chip: 'text-[15px]', px: { mes: 14, dia: 12, barra: 12 } },
-  { desde: 2600, fila: 58, texto: 'text-[19px]', rotulo: 'text-[14px]', chip: 'text-[18px]', px: { mes: 17, dia: 14, barra: 14 } },
-  { desde: 3200, fila: 64, texto: 'text-[21px]', rotulo: 'text-[15px]', chip: 'text-[20px]', px: { mes: 19, dia: 15, barra: 15 } },
-] as const
-
-type Escalon = (typeof ESCALONES)[number]
-
-function escalonDe(ancho: number): Escalon {
-  let e: Escalon = ESCALONES[0]
-  for (const x of ESCALONES) if (ancho >= x.desde) e = x
-  return e
+// Primero lo resolví con escalones discretos. No alcanzó: el último escalón se quedaba corto justo
+// donde hace falta. Ahora es una función continua del ancho medido, con piso y techo:
+//
+//     base = ancho × 0,009   acotado a [13, 34] px
+//
+// De ahí cuelga TODO —el alto de fila, el texto de la tabla, los números del SVG— en múltiplos de
+// esa base, así que la pantalla mantiene sus proporciones en 1.024 px y en 5.000. No es zoom: los
+// píxeles por día los sigue decidiendo la escala del calendario; lo que cambia es cuánto ocupa una
+// fila y cuánto mide su texto, que es lo que decide si la pantalla se lee o se descifra.
+//
+// El 0,009 sale de la referencia: en el objetivo, a 1.536 px de ancho, el texto de una actividad
+// mide 14 px — un 0,91% del ancho. Se toma algo por debajo de la proporción lineal porque una
+// pantalla más grande también se mira desde más lejos, y el techo de 34 evita el absurdo.
+function escalaDe(ancho: number) {
+  const base = Math.min(34, Math.max(13, Math.round(ancho * 0.009)))
+  return {
+    base,
+    fila: Math.round(base * 2.8),
+    px: {
+      mes: Math.round(base * 0.86),
+      dia: Math.round(base * 0.72),
+      barra: Math.round(base * 0.76),
+    },
+  }
 }
 
 const aDate = (iso: string) => new Date(iso + 'T00:00:00Z')
@@ -169,7 +177,7 @@ export function Gantt({
   }, [])
   // La tabla toma el 38% de lo que haya: el objetivo pide 35-40% para la tabla y 60-65% para el
   // calendario, y el techo sube con la pantalla en vez de quedar clavado.
-  const esc = escalonDe(anchoCaja || 1400)
+  const esc = escalaDe(anchoCaja || 1400)
   const ALTO_FILA = esc.fila
   // LAS DOS CABECERAS MIDEN LO MISMO o las filas de la tabla y las del calendario arrancan
   // desfasadas, y a partir de ahí cada renglón miente sobre qué barra le toca.
@@ -178,7 +186,7 @@ export function Gantt({
   // pero ese 38% sobre una caja de 1.024 —1.536 con el panel abierto— deja 389 px, y ahí las cuatro
   // columnas de apoyo se comen el nombre entero. Las columnas tienen un ancho mínimo real: cuanto
   // más chica la caja, mayor tiene que ser la fracción para que la tabla siga diciendo algo.
-  const fraccion = !anchoCaja ? 0.38 : anchoCaja < 1300 ? 0.46 : 0.38
+  const fraccion = !anchoCaja ? 0.38 : anchoCaja < 1300 ? 0.52 : anchoCaja < 1900 ? 0.44 : 0.38
   const anchoFijo = anchoCaja ? Math.round(Math.max(168, anchoCaja * fraccion)) : 0
   const anchoLibre = anchoCaja ? anchoCaja - anchoFijo : 0
   // EL NOMBRE DE LA ACTIVIDAD MANDA SOBRE LAS COLUMNAS DE APOYO. Con el panel abierto la tabla mide
@@ -199,7 +207,34 @@ export function Gantt({
   // primeras veinte filas son de junio y hoy cae en agosto, así que la pantalla abría en un
   // rectángulo vacío con las barras de las filas visibles fuera de cuadro. El plan se lee de
   // principio a fin; la línea de hoy dice dónde estamos y se llega arrastrando.
+  //
+  // ═══ EL WORKSPACE ARRANCA PARTIDO (20/08/2026) ═══
+  //
+  // El dueño comparó cuatro veces su pantalla contra el objetivo y cuatro veces dijo que no era lo
+  // mismo. La diferencia no estaba en el layout: estaba en que el objetivo se dibuja CON una
+  // actividad seleccionada y la pantalla arrancaba sin ninguna. Al entrar veía una tabla ancha con
+  // un calendario al lado —«TABLA + GANTT GIGANTE», textual— y el panel, que es la mitad de lo que
+  // pidió, sólo aparecía si adivinaba que había que tocar una fila.
+  //
+  // Así que abre partido: la primera actividad con fecha viene elegida. Cerrar el panel le devuelve
+  // TODO el ancho al Gantt, que es la regla que él escribió; lo que cambia es de qué lado empieza.
+  // Sólo en la ficha de la obra: en el Gantt global cada fila es de una obra distinta y elegir una
+  // sola sería decidir por el que mira.
+  // ═══ Y SÓLO EN ESCRITORIO ═══
+  //
+  // En el teléfono el panel NO es una columna: es una hoja que sube y tapa el cronograma, con su
+  // fondo oscuro encima. Abrirla sola dejaba al jefe de obra mirando una ficha que no pidió, con el
+  // Gantt detrás y sin manera obvia de volver — y el fondo se comía el primer toque. Se elige sola
+  // cuando hay dos columnas, que es cuando ver el plan y operar la actividad pasan a la vez.
   const [selId, setSelId] = useState<string | null>(seleccionInicial)
+  const yaElegi = useRef(false)
+  useEffect(() => {
+    if (yaElegi.current || obras || seleccionInicial) return
+    yaElegi.current = true
+    if (typeof window === 'undefined' || !window.matchMedia('(min-width: 1024px)').matches) return
+    const primera = actividades.find((a) => a.inicio_plan && a.tipo !== 'resumen')
+    if (primera) setSelId((s) => s ?? primera.id)
+  }, [actividades, obras, seleccionInicial])
   const [colapsados, setColapsados] = useState<ReadonlySet<string>>(new Set())
   // LA SELECCIÓN EN LOTE VIVE EN EL CLIENTE Y NO VIAJA EN LA URL. Tildar cincuenta casillas serían
   // cincuenta vueltas al servidor, y encima un enlace compartido resucitaría una selección que el
@@ -276,7 +311,7 @@ export function Gantt({
   // ese caso devolvía un cartel de aviso y ni un solo control.
   const barra = (
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-2.5">
-      <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted">
+      <div className="flex flex-wrap items-center gap-3 text-[0.85em] text-muted">
         <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-4 rounded-sm bg-accent/25" />plan</span>
         <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-4 rounded-sm bg-accent" />ejecutado</span>
         <span className="inline-flex items-center gap-1.5"><i className="h-1.5 w-4 rounded-sm bg-line-strong" />línea base</span>
@@ -290,11 +325,11 @@ export function Gantt({
             type="button"
             onClick={() => setColapsados((p) => (p.size ? new Set() : new Set(grupos.map((g) => g.clave))))}
             data-testid="alternar-grupos"
-            className="rounded-control border border-line px-2.5 py-1 text-[12px] text-muted hover:bg-surface-sunken hover:text-ink"
+            className="rounded-control border border-line px-2.5 py-1 text-[0.92em] text-muted hover:bg-surface-sunken hover:text-ink"
           >{colapsados.size ? 'Expandir todo' : 'Contraer todo'}</button>
         )}
         {acciones && <SellarLineaBase sellar={acciones.sellar} yaSellada={yaSellada} />}
-        <div className="flex overflow-hidden rounded-control border border-line text-[12px]">
+        <div className="flex overflow-hidden rounded-control border border-line text-[0.92em]">
           {(['semana', 'mes'] as Escala[]).map((e) => (
             <button
               key={e}
@@ -316,9 +351,9 @@ export function Gantt({
 
   if (!rango) {
     return (
-      <div data-testid="gantt" className="rounded-card border border-line bg-surface">
+      <div data-testid="gantt" className="rounded-card border border-line bg-surface" style={{ fontSize: esc.base }}>
         {barra}
-        <p className="px-4 py-8 text-center text-[13px] text-muted">
+        <p className="px-4 py-8 text-center text-[1em] text-muted">
           {actividades.length
             ? 'Hay actividades cargadas, pero ninguna tiene fecha: sin fechas no hay cronograma que dibujar.'
             : 'Esta obra todavía no tiene ninguna actividad.'}
@@ -383,7 +418,7 @@ export function Gantt({
               style={anchoFijo ? { width: anchoFijo } : undefined}
               className="sticky left-0 z-20 w-[168px] shrink-0 border-r border-line bg-surface sm:w-[400px] lg:w-[460px]"
             >
-              <div className={`sticky top-0 z-10 flex items-end gap-2 border-b border-line bg-surface-quiet px-3 pb-2 font-medium uppercase tracking-wide text-faint ${esc.rotulo}`} style={{ height: ALTO_CABECERA }}>
+              <div className="sticky top-0 z-10 flex items-end gap-2 border-b border-line bg-surface-quiet px-3 pb-2 text-[0.74em] font-medium uppercase tracking-wide text-faint" style={{ height: ALTO_CABECERA }}>
                 {masivas && (
                   <Casilla
                     puesta={todasEnLote}
@@ -429,9 +464,9 @@ export function Gantt({
                         {/* EL RUBRO ES UN NIVEL, y el objetivo lo dibuja con su chevron y en
                             negrita —no en versalitas sobre una banda gris—: la jerarquía la hace la
                             indentación de las hijas, no el color de fondo del padre. */}
-                        <span aria-hidden className={`shrink-0 text-[10px] text-muted transition-transform ${cerrado ? '-rotate-90' : ''}`}>▾</span>
-                        <span className={`min-w-0 flex-1 truncate font-semibold text-ink ${esc.texto}`} title={g.nombre}>{g.nombre}</span>
-                        <span className={`shrink-0 tabular-nums text-muted ${esc.chip}`}>
+                        <span aria-hidden className={`shrink-0 text-[0.78em] text-muted transition-transform ${cerrado ? '-rotate-90' : ''}`}>▾</span>
+                        <span className="min-w-0 flex-1 truncate font-semibold text-ink" title={g.nombre}>{g.nombre}</span>
+                        <span className="shrink-0 text-[0.92em] tabular-nums text-muted">
                           {g.pct == null ? `${g.hijas.length}` : `${g.pct}%`}
                         </span>
                       </button>
@@ -443,7 +478,7 @@ export function Gantt({
                   <div
                     key={f.clave}
                     style={{ height: ALTO_FILA }}
-                    className={`flex w-full cursor-pointer items-center border-b border-line/60 pl-3 hover:bg-surface-sunken ${esc.texto} ${sel?.id === a.id ? 'bg-marca-soft' : ''}`}
+                    className={`flex w-full cursor-pointer items-center border-b border-line/60 pl-3 hover:bg-surface-sunken ${sel?.id === a.id ? 'bg-marca-soft' : ''}`}
                   >
                     {masivas && (
                       <Casilla
@@ -469,7 +504,7 @@ export function Gantt({
                   >
                     {/* INDENTADA BAJO SU RUBRO, y en el color del texto —no en gris—: es el dato
                         principal de la fila. El `title` da el nombre entero cuando no entra. */}
-                    <span aria-hidden className="shrink-0 pl-4 pr-1.5 text-[10px] text-faint">›</span>
+                    <span aria-hidden className="shrink-0 pl-4 pr-1.5 text-[0.78em] text-faint">›</span>
                     <span
                       className="min-w-0 flex-1 truncate py-2 pr-2 text-ink"
                       title={[a.seccion, a.codigo, a.nombre].filter(Boolean).join(' · ')}
@@ -480,12 +515,12 @@ export function Gantt({
                     <span className="hidden h-full shrink-0 items-center border-l border-line/50 px-2 sm:flex" style={{ width: wEstado }}>
                       <EstadoChip estado={a.estado_operativo} />
                     </span>
-                    {mostrarFechas && <span className={`hidden h-full shrink-0 items-center justify-end border-l border-line/50 px-2 tabular-nums text-muted sm:flex ${esc.chip}`} style={{ width: wFecha }}>{fmtCorto(a.inicio_plan)}</span>}
-                    {mostrarFechas && <span className={`hidden h-full shrink-0 items-center justify-end border-l border-line/50 px-2 tabular-nums text-muted sm:flex ${esc.chip}`} style={{ width: wFecha }}>{fmtCorto(a.fin_plan)}</span>}
+                    {mostrarFechas && <span className="hidden h-full shrink-0 items-center justify-end border-l border-line/50 px-2 text-[0.92em] tabular-nums text-muted sm:flex" style={{ width: wFecha }}>{fmtCorto(a.inicio_plan)}</span>}
+                    {mostrarFechas && <span className="hidden h-full shrink-0 items-center justify-end border-l border-line/50 px-2 text-[0.92em] tabular-nums text-muted sm:flex" style={{ width: wFecha }}>{fmtCorto(a.fin_plan)}</span>}
                     {/* EL AVANCE CALCULADO, no el declarado: es el mismo número que muestra el panel
                         y el que promedia la obra. «—» cuando no hay ninguno — un 0% inventado diría
                         que la actividad no arrancó cuando lo que pasa es que nadie la midió. */}
-                    <span className={`hidden h-full shrink-0 items-center justify-end border-l border-line/50 px-2 font-medium tabular-nums text-ink sm:flex ${esc.chip}`} style={{ width: wPct }}>
+                    <span className="hidden h-full shrink-0 items-center justify-end border-l border-line/50 px-2 text-[0.92em] font-medium tabular-nums text-ink sm:flex" style={{ width: wPct }}>
                       {a.avance_pct == null
                         ? <span className="font-normal text-faint">—</span>
                         : <span className={a.estado_operativo === 'en_curso' ? 'text-ink' : 'font-normal text-muted'}>{Math.round(Number(a.avance_pct))}%</span>}
@@ -550,9 +585,16 @@ export function Gantt({
 
               <svg width={ancho} height={alto} className="block">
                 <defs>
-                  <marker id="flecha-dep" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-                    <path d="M0,0 L6,3 L0,6 z" className="fill-muted" />
+                  <marker id="flecha-dep" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+                    <path d="M0,0 L7,3.5 L0,7 z" className="fill-ink" />
                   </marker>
+                  {/* LO QUE FALTA HACER VA RAYADO, no en un tono más claro. Un relleno pálido se lee
+                      como «poco» y no como «todavía nada»: la trama dice que ahí hay plan sin
+                      ejecutar, que es la mitad de lo que un Gantt tiene que contestar. */}
+                  <pattern id="trama-pendiente" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                    <rect width="6" height="6" className="fill-surface" />
+                    <line x1="0" y1="0" x2="0" y2="6" className="stroke-line-strong" strokeWidth="3" />
+                  </pattern>
                 </defs>
 
                 {finesDeSemana.map((f) => (
@@ -608,10 +650,15 @@ export function Gantt({
                   const x1 = x(a.fin_plan ?? a.inicio_plan)
                   // 8 px Y NO 3: una actividad de un solo día —la mitad de las de una obra— se
                   // dibujaba como una rayita que no se distingue de una línea de la grilla.
-                  const w = Math.max(8, x1 - x0)
                   const frenada = conRestriccion.has(a.id)
-                  const hb = Math.max(12, Math.round(ALTO_FILA * 0.42))
+                  const hb = Math.max(14, Math.round(ALTO_FILA * 0.58))
                   const centro = Math.round(ALTO_FILA / 2)
+                  // UNA ACTIVIDAD DE UN DÍA SIGUE SIENDO UNA BARRA. La mitad de las de una obra
+                  // duran una jornada: a nueve píxeles de ancho contra veintitrés de alto se
+                  // dibujaban como un punto, y treinta puntos en fila no son un cronograma. El piso
+                  // es el alto de la barra, así que lo más corto que se puede ver es un cuadrado
+                  // redondeado — chico, pero una barra.
+                  const w = Math.max(hb, x1 - x0)
                   const atrasada = estadoDe(a, hoyIso) === 'atrasada'
                   // ═══ LA BARRA DICE EN QUÉ ESTADO ESTÁ, NO SÓLO CUÁNDO ═══
                   //
@@ -638,12 +685,35 @@ export function Gantt({
                         <rect x={x0 - hb / 2} y={y + centro - hb / 2} width={hb} height={hb} className={tono} transform={`rotate(45 ${x0} ${y + centro})`} />
                       ) : (
                         <>
-                          {/* LA BARRA ES GRUESA Y REDONDEADA como en el objetivo: el plan en tono
-                              suave y lo ejecutado en pleno, uno encima del otro. Dos barras finas
-                              apiladas obligaban a comparar dos alturas en vez de leer un relleno. */}
-                          <rect x={x0} y={y + centro - hb / 2} width={w} height={hb} rx={hb / 3} className={tono} opacity={0.18} />
+                          {/* ═══ LA BARRA (20/08/2026) ═══
+                              Gruesa —60% del alto de fila, como el objetivo—, con lo PENDIENTE
+                              rayado y lo EJECUTADO en pleno. Antes eran dos rectángulos del mismo
+                              color a distinta opacidad: a cuatro píxeles de alto no se distinguía
+                              cuál era cuál, y una actividad al 20% se leía igual que una al 80%. */}
+                          <rect
+                            x={x0} y={y + centro - hb / 2} width={w} height={hb} rx={4}
+                            fill="url(#trama-pendiente)" stroke="currentColor"
+                            className="stroke-line text-transparent" strokeWidth={1}
+                          />
                           {a.pct != null && a.pct > 0 && (
-                            <rect x={x0} y={y + centro - hb / 2} width={Math.max(3, (w * Math.min(100, a.pct)) / 100)} height={hb} rx={hb / 3} className={tono} />
+                            <rect
+                              x={x0} y={y + centro - hb / 2}
+                              width={Math.max(3, (w * Math.min(100, a.pct)) / 100)}
+                              height={hb} rx={4} className={tono}
+                            />
+                          )}
+                          {/* LA TILDE DE LO TERMINADO. Es el remate del objetivo y no es adorno: en
+                              una columna de treinta barras verdes, dice cuáles cerraron de verdad
+                              contra cuáles quedaron al 99%. */}
+                          {a.pct != null && a.pct >= 100 && w >= hb * 1.6 && (
+                            <g transform={`translate(${x0 + w - hb / 2 - 2} ${y + centro})`}>
+                              <circle r={hb / 2 - 1} className="fill-surface" />
+                              <path
+                                d={`M ${-hb * 0.2} 0 L ${-hb * 0.05} ${hb * 0.15} L ${hb * 0.22} ${-hb * 0.18}`}
+                                fill="none" className={tono.replace('fill-', 'stroke-')}
+                                strokeWidth={Math.max(1.5, hb * 0.13)} strokeLinecap="round" strokeLinejoin="round"
+                              />
+                            </g>
                           )}
                           {frenada && <rect x={x0 - 5} y={y + centro - hb / 2 - 2} width={3} height={hb + 4} rx={1} className="fill-warn" />}
                           {/* EL AVANCE AL LADO DE LA BARRA. La mitad de las actividades de una obra
@@ -717,10 +787,10 @@ export function Gantt({
                 <aside data-testid="panel-actividad" className="w-full shrink-0 border-t border-line bg-surface-quiet px-4 py-3 lg:w-[340px] lg:border-l lg:border-t-0">
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
-                      <p className="text-[11px] uppercase tracking-wide text-faint">{[sel.seccion, sel.codigo, sel.tipo].filter(Boolean).join(' · ')}</p>
+                      <p className="text-[0.85em] uppercase tracking-wide text-faint">{[sel.seccion, sel.codigo, sel.tipo].filter(Boolean).join(' · ')}</p>
                       <p className="truncate text-[14px] font-semibold text-ink">{sel.nombre}</p>
                     </div>
-                    <button type="button" onClick={() => setSelId(null)} className="shrink-0 text-[12px] text-muted hover:text-ink">cerrar</button>
+                    <button type="button" onClick={() => setSelId(null)} className="shrink-0 text-[0.92em] text-muted hover:text-ink">cerrar</button>
                   </div>
                   {/* LA VISTA GLOBAL NO EDITA: lleva a la obra, que es donde la actividad se toca.
                       Reimplementar acá el panel de edición sería el segundo lugar donde se escribe
@@ -729,10 +799,10 @@ export function Gantt({
                     <Link
                       href={`/obras/${sel.obra_id}?vista=cronograma&act=${sel.id}`}
                       data-testid="ir-a-la-obra"
-                      className="mt-2 inline-block text-[12px] text-ink underline underline-offset-2"
+                      className="mt-2 inline-block text-[0.92em] text-ink underline underline-offset-2"
                     >Abrir en {nombreDeObra.get(sel.obra_id) ?? sel.obra_id} →</Link>
                   )}
-                  <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-[12px]">
+                  <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-[0.92em]">
                     <div><dt className="text-faint">Plan</dt><dd className="tabular-nums text-ink">{fmtCorto(sel.inicio_plan)} → {fmtCorto(sel.fin_plan)}</dd></div>
                     <div><dt className="text-faint">Línea base</dt><dd className="tabular-nums text-ink">{sel.inicio_base ? `${fmtCorto(sel.inicio_base)} → ${fmtCorto(sel.fin_base)}` : 'sin sellar'}</dd></div>
                     <div><dt className="text-faint">Avance</dt><dd className="tabular-nums text-ink">{sel.pct == null ? '—' : `${sel.pct}%`}</dd></div>

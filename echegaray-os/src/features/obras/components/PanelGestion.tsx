@@ -46,7 +46,7 @@ export function BloqueImpedimentosActividad({ a, abiertos, liberados, crear, lib
   const hay = abiertos.length > 0
   return (
     <div
-      className={`rounded-md border px-2.5 py-2 ${hay ? 'border-warn/30 bg-warn-soft' : 'border-line bg-surface'}`}
+      className={`rounded-card border px-3 py-2.5 ${hay ? 'border-warn/30 bg-warn-soft' : 'border-line bg-surface'}`}
       data-testid="panel-impedimentos"
     >
       <Rotulo cuenta={abiertos.length}>Impedimentos</Rotulo>
@@ -217,7 +217,7 @@ export function BloqueNotas({ notas, agregar, borrar }: {
     // LAS NOTAS SE VEN, NO SE ABREN. Eran un plegable más al final: una nota que hay que descubrir
     // no la lee nadie, y el campo para escribirla estaba a dos clics. Es el último bloque del panel
     // y el más simple que hay: texto, quién y cuándo.
-    <section className="rounded-md border border-line bg-surface px-2.5 py-2" data-testid="bloque-notas">
+    <section className="rounded-card border border-line bg-surface px-3 py-2.5" data-testid="bloque-notas">
       <Rotulo cuenta={notas.length}>Notas</Rotulo>
       <ul className="mt-1.5 space-y-1.5">
         {notas.slice(0, 8).map((n) => (

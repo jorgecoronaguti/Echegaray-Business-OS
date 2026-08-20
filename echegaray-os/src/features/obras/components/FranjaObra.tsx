@@ -30,12 +30,12 @@ function Cifra({
 }) {
   return (
     <div className="min-w-0">
-      <p className="truncate text-[11px] uppercase tracking-wide text-faint min-[1900px]:text-[13px]">{rotulo}</p>
-      <p className={`mt-0.5 text-[24px] font-semibold leading-tight tabular-nums min-[1900px]:text-[32px] min-[2600px]:text-[38px] ${tono === 'neg' ? 'text-neg' : 'text-ink'}`}>
+      <p className="truncate text-[clamp(11px,0.72vw,26px)] uppercase tracking-wide text-faint">{rotulo}</p>
+      <p className={`mt-0.5 text-[clamp(24px,1.75vw,60px)] font-semibold leading-tight tabular-nums ${tono === 'neg' ? 'text-neg' : 'text-ink'}`}>
         {/* SIN CARGAR NO ES CERO. Un 0 acá diría que la obra no avanzó, o que no consumió horas. */}
-        {valor ?? <span className="text-[14px] font-normal text-faint min-[1900px]:text-[18px]">sin cargar</span>}
+        {valor ?? <span className="text-[clamp(14px,0.92vw,32px)] font-normal text-faint">sin cargar</span>}
       </p>
-      {nota && <p className="mt-0.5 truncate text-[11px] text-muted min-[1900px]:text-[13px]">{nota}</p>}
+      {nota && <p className="mt-0.5 truncate text-[clamp(11px,0.72vw,26px)] text-muted">{nota}</p>}
     </div>
   )
 }

@@ -27,10 +27,10 @@ export function BloqueMedicion({ a, definir }: { a: Actividad; definir?: AccionF
       {/* PLAN Y REAL ENFRENTADOS. Es la pregunta del panel —¿cómo viene contra lo previsto?— y por
           eso se lee sin abrir nada. Dos listas una debajo de la otra obligan a recordar el número
           de arriba mientras se lee el de abajo. */}
-      <div className="grid grid-cols-2 gap-2">
-        <section className="rounded-md border border-line bg-surface px-2.5 py-2">
+      <div className="grid grid-cols-2 gap-3">
+        <section>
           <Rotulo>Plan</Rotulo>
-          <dl className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[0.92em]">
+          <dl className="grid grid-cols-2 gap-x-2 gap-y-1 rounded-card border border-line bg-surface px-3 py-2.5 text-[0.92em]">
             <Dato k="Unidad" v={a.unidad} />
             <Dato k="Objetivo" v={n2(a.cantidad_objetivo)} />
             <Dato k="Inicio" v={a.inicio_plan ? fecha(a.inicio_plan) : null} />
@@ -41,9 +41,9 @@ export function BloqueMedicion({ a, definir }: { a: Actividad; definir?: AccionF
         {/* REAL VA TINTADO. En el objetivo las dos tarjetas no son iguales: el plan es lo que se
             prometió y lo real es lo que pasó, y darle un fondo propio evita tener que leer el
             rótulo para saber cuál de las dos columnas se está mirando. */}
-        <section className="rounded-md border border-line bg-surface-quiet px-2.5 py-2">
+        <section>
           <Rotulo>Real</Rotulo>
-          <dl className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[0.92em]">
+          <dl className="grid grid-cols-2 gap-x-2 gap-y-1 rounded-card border border-line bg-surface-quiet px-3 py-2.5 text-[0.92em]">
             <Dato
               k="Ejecutado"
               v={a.metodo_avance === 'cantidad' ? n2(a.cantidad_ejecutada ?? 0) : `${a.n_partes} parte(s)`}
@@ -56,17 +56,17 @@ export function BloqueMedicion({ a, definir }: { a: Actividad; definir?: AccionF
                 un dato que falta, no un indicador bajo — así es como una obra sana parece
                 improductiva. */}
             {a.productividad != null && <Dato k="Prod." v={`${n2(a.productividad)} ${a.unidad}/HH`} />}
+            {/* LA BARRA DE AVANCE. Un porcentaje se lee; una barra se ve. Sólo cuando el número
+                existe: una barra vacía diría «0%» donde lo que pasa es que nadie midió. */}
+            {a.avance_pct != null && (
+              <div className="col-span-2 mt-1 h-2 w-full overflow-hidden rounded-full bg-line" data-testid="barra-avance">
+                <div
+                  className="h-full rounded-full bg-accent"
+                  style={{ width: `${Math.max(0, Math.min(100, Number(a.avance_pct)))}%` }}
+                />
+              </div>
+            )}
           </dl>
-          {/* LA BARRA DE AVANCE. Un porcentaje se lee; una barra se ve. Sólo cuando el número
-              existe: una barra vacía diría «0%» donde lo que pasa es que nadie midió. */}
-          {a.avance_pct != null && (
-            <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-line" data-testid="barra-avance">
-              <div
-                className="h-full rounded-full bg-accent"
-                style={{ width: `${Math.max(0, Math.min(100, Number(a.avance_pct)))}%` }}
-              />
-            </div>
-          )}
         </section>
       </div>
 
@@ -147,8 +147,8 @@ export function BloqueRecursos({ a, personas, reales, equipos, obraId }: {
   const hhTotal = reales.reduce((s, r) => s + r.horas, 0)
 
   return (
-    <div className="grid grid-cols-2 gap-2" data-testid="bloque-recursos">
-      <section className="rounded-md border border-line bg-surface px-2.5 py-2">
+    <div className="grid grid-cols-2 gap-3" data-testid="bloque-recursos">
+      <section className="rounded-card border border-line bg-surface px-3 py-2.5">
         <Rotulo
           cuenta={reales.length}
           {...(obraId ? { verMas: `/obras/${obraId}?vista=personal`, verMasTitulo: 'Ver el personal de la obra' } : {})}
@@ -176,7 +176,7 @@ export function BloqueRecursos({ a, personas, reales, equipos, obraId }: {
         )}
       </section>
 
-      <section className="rounded-md border border-line bg-surface px-2.5 py-2">
+      <section className="rounded-card border border-line bg-surface px-3 py-2.5">
         <Rotulo
           cuenta={equipos.length}
           {...(obraId ? { verMas: `/obras/${obraId}?vista=operacion&sub=herramientas`, verMasTitulo: 'Ver los equipos de la obra' } : {})}
@@ -229,7 +229,7 @@ export function BloqueEjecucion({ a, partes, personasPorFecha, verTodo, todas }:
   return (
     <section data-testid="ejecucion-reciente">
       <Rotulo cuenta={a.n_partes}>Ejecución reciente</Rotulo>
-      <div className="overflow-hidden rounded-md border border-line bg-surface">
+      <div className="overflow-hidden rounded-card border border-line bg-surface">
         <table className="w-full text-left text-[0.92em]">
           <thead>
             <tr className="border-b border-line text-[0.78em] uppercase tracking-wide text-faint">

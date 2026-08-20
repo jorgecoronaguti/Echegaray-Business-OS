@@ -267,7 +267,7 @@ export function PanelActividad({
       />
       <aside
         data-testid="panel-actividad"
-        className="fixed inset-x-0 bottom-0 z-40 max-h-[85vh] overflow-y-auto rounded-t-card border-t border-line bg-surface-quiet p-3 text-[13px] shadow-pop min-[1900px]:p-4 min-[1900px]:text-[15px] min-[2600px]:text-[17px] lg:static lg:z-auto lg:max-h-[78vh] lg:w-[33%] lg:min-w-[400px] lg:shrink-0 lg:rounded-none lg:border-l lg:border-t-0 lg:shadow-none"
+        className="fixed inset-x-0 bottom-0 z-40 max-h-[85vh] overflow-y-auto rounded-t-card border-t border-line bg-surface-quiet p-3 text-[clamp(13px,0.9vw,34px)] shadow-pop lg:static lg:z-auto lg:max-h-[78vh] lg:w-[33%] lg:min-w-[400px] lg:shrink-0 lg:rounded-none lg:border-l lg:border-t-0 lg:shadow-none"
       >
         {/* El tirador de la hoja. En escritorio no hay hoja que tirar. */}
         <div aria-hidden className="mx-auto mb-2 h-1 w-10 rounded-full bg-line-strong lg:hidden" />
@@ -278,8 +278,8 @@ export function PanelActividad({
             exactamente al revés de lo que se pregunta primero. */}
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-[17px] font-semibold leading-tight text-ink min-[1900px]:text-[21px] min-[2600px]:text-[25px]">{a.nombre}</p>
-            <p className="mt-1 truncate text-[12px] text-faint min-[1900px]:text-[14px]">
+            <p className="text-[1.35em] font-semibold leading-tight text-ink">{a.nombre}</p>
+            <p className="mt-1 truncate text-[0.92em] text-faint">
               <span className="text-faint">Rubro:</span>{' '}
               <span className="text-muted">{a.rubro ?? a.seccion ?? 'sin clasificar'}</span>
               {' · '}
@@ -320,7 +320,7 @@ export function PanelActividad({
             va el resumen operativo —Plan contra Real—, después con quién y con qué se hace, después
             qué pasó estos días, y recién ahí lo que la frena. Lo que se abre para HACER algo
             —tareas, precedencias, papeles, edición— queda plegado abajo. */}
-        <div className={`mt-3 space-y-2.5 ${tab === 'resumen' ? '' : 'hidden'}`}>
+        <div className={`mt-4 space-y-4 ${tab === 'resumen' ? '' : 'hidden'}`}>
           {/* LA LÍNEA BASE SE DICE SIEMPRE: es contra qué se mide el desvío, y «sin sellar» no es lo
               mismo que «en fecha». */}
           <p className="text-[0.85em] tabular-nums text-faint">
@@ -377,7 +377,7 @@ export function PanelActividad({
         </div>
 
         {/* Las tareas SÓLO en una actividad: una tarea no tiene tareas. */}
-        <div className={`mt-3 space-y-2.5 ${tab === 'tareas' && !a.actividad_padre_id ? '' : 'hidden'}`}>
+        <div className={`mt-4 space-y-4 ${tab === 'tareas' && !a.actividad_padre_id ? '' : 'hidden'}`}>
           <BloqueTareas
             tareas={datos.tareas}
             crear={acciones.crearTarea ? acciones.crearTarea.bind(null, a.id) : undefined}
@@ -386,7 +386,7 @@ export function PanelActividad({
           />
         </div>
 
-        <div className={`mt-3 space-y-2.5 ${tab === 'ejecucion' ? '' : 'hidden'}`}>
+        <div className={`mt-4 space-y-4 ${tab === 'ejecucion' ? '' : 'hidden'}`}>
           <BloqueEjecucion
             a={a}
             partes={datos.partes}
@@ -396,7 +396,7 @@ export function PanelActividad({
           />
         </div>
 
-        <div className={`mt-3 space-y-2.5 ${tab === 'dependencias' ? '' : 'hidden'}`}>
+        <div className={`mt-4 space-y-4 ${tab === 'dependencias' ? '' : 'hidden'}`}>
           <Dependencias
             a={a}
             actividades={actividades}
@@ -407,7 +407,7 @@ export function PanelActividad({
           />
         </div>
 
-        <div className={`mt-3 space-y-2.5 ${tab === 'documentos' ? '' : 'hidden'}`}>
+        <div className={`mt-4 space-y-4 ${tab === 'documentos' ? '' : 'hidden'}`}>
           <BloqueDocumentos
             a={a}
             documentos={datos.documentos}

@@ -24,9 +24,12 @@ export function Rotulo({ children, cuenta, verMas, verMasTitulo }: {
   verMasTitulo?: string
 }) {
   return (
-    <p className="mb-1 flex items-baseline gap-1.5 text-[0.78em] uppercase tracking-wide text-faint">
+    // EL RÓTULO ES UN TÍTULO DE SECCIÓN, no una etiqueta micro en versalitas. En el objetivo
+    // «Plan», «Real», «Cuadrilla / Personal», «Ejecución reciente» se leen como encabezados del
+    // panel —texto normal, en el color del texto— y son lo que deja recorrerlo de un vistazo.
+    <p className="mb-1.5 flex items-baseline gap-1.5 text-[0.98em] font-semibold text-ink">
       {children}
-      {cuenta != null && cuenta > 0 && <span className="tabular-nums text-muted">{cuenta}</span>}
+      {cuenta != null && cuenta > 0 && <span className="text-[0.85em] font-normal tabular-nums text-muted">{cuenta}</span>}
       {/* EL DETALLE NO SE REIMPLEMENTA EN EL PANEL: lleva a la solapa donde ese dato se edita. Un
           segundo lugar para asignar personal sería un segundo lugar donde se escriben horas. */}
       {verMas && (
@@ -65,7 +68,7 @@ export function Plegable({ titulo, cuenta, testid, abierto, children }: {
   children: ReactNode
 }) {
   return (
-    <details className="rounded-md border border-line bg-surface px-2.5 py-1.5" data-testid={testid} open={abierto}>
+    <details className="rounded-card border border-line bg-surface px-3 py-2" data-testid={testid} open={abierto}>
       <summary className="cursor-pointer text-[0.92em] text-muted">
         {titulo}
         {cuenta != null && cuenta > 0 && <span className="ml-2 tabular-nums text-ink">{cuenta}</span>}
