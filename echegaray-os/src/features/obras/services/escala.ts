@@ -10,13 +10,14 @@
 const DIA = 86400000
 
 export type Escala = 'semana' | 'mes'
-// ═══ EL PISO DE LA ESCALA ES UN PISO, NO UN OBJETIVO (20/08/2026) ═══
+// ═══ EL PISO DE LA ESCALA ES UN PISO, NO UN OBJETIVO ═══
 //
-// «semana» estaba en 13 px por día: una obra de dos meses medía 1.040 px de lienzo, y con el panel
-// de actividad abierto el calendario tiene ~600. Resultado: se abría el Gantt y no se veía una sola
-// barra hasta arrastrar. Con 9 el mismo plan entra casi entero y el estiramiento de `construirEscala`
-// se encarga del resto cuando sobra lugar — que es el caso normal con el panel cerrado.
-export const PX_POR_DIA: Record<Escala, number> = { semana: 9, mes: 4 }
+// El piso de «día» son los 16 px por jornada del objetivo (`Planificacion-Gantt.dc.html`, DAY_W):
+// es el ancho con el que el número del día entra sin pisarse con el de al lado, y por eso es
+// también el ancho con el que el calendario se lee como un calendario. Cuando el plan no llega a
+// llenar el lugar disponible, `construirEscala` estira; cuando lo desborda, manda este piso y el
+// calendario se desplaza — que es lo que un cronograma largo tiene que hacer.
+export const PX_POR_DIA: Record<Escala, number> = { semana: 16, mes: 4 }
 
 const aDate = (iso: string) => new Date(iso + 'T00:00:00Z')
 const isoDe = (d: Date) => d.toISOString().slice(0, 10)
@@ -68,9 +69,10 @@ export function construirEscala(desde: Date, hasta: Date, escala: Escala, pxMini
   // el martes» sin contar cuadraditos. Se hacía por SEMANA siempre, y con un calendario de 1.500 px
   // sobre dos meses eso desperdiciaba seis de cada siete divisiones.
   //
-  // El umbral es de legibilidad, no de gusto: un número de dos cifras necesita ~18 px para no
-  // pisarse con el de al lado. Por debajo se vuelve a la semana, que es lo que entra.
-  const paso = escala === 'semana' ? (px >= 18 ? 1 : 7) : 0
+  // El umbral es de legibilidad y está medido contra el objetivo: 16 px por columna alcanzan para
+  // un número de dos cifras en 9,5px sin que se toque con el vecino. Por debajo se vuelve a la
+  // semana, que es lo que entra.
+  const paso = escala === 'semana' ? (px >= 14 ? 1 : 7) : 0
   if (paso > 0) {
     const d = new Date(desde)
     if (paso === 7) d.setUTCDate(d.getUTCDate() + ((8 - d.getUTCDay()) % 7)) // primer lunes

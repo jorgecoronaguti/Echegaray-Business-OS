@@ -20,7 +20,6 @@ import {
 } from '../types'
 import type { NotaActividad } from '../services/recursosService'
 import { urlDeDrive } from '../services/driveUrl'
-import { Plegable, Rotulo } from './PanelPrimitivas'
 import { fecha } from './formato'
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -45,12 +44,11 @@ export function BloqueImpedimentosActividad({ a, abiertos, liberados, crear, lib
 }) {
   const hay = abiertos.length > 0
   return (
-    <div
-      className={`rounded-card border px-3 py-2.5 ${hay ? 'border-warn/30 bg-warn-soft' : 'border-line bg-surface'}`}
-      data-testid="panel-impedimentos"
-    >
-      <Rotulo cuenta={abiertos.length}>Impedimentos</Rotulo>
-      {!hay && <p className="text-[0.92em] text-faint">Ninguno abierto.</p>}
+    // SIN CAJA NI RÓTULO PROPIO: el título, el contador y la alerta de vencimiento los pone la
+    // sección plegable que lo contiene (`Plegable` del DS). Repetirlos acá era decir dos veces lo
+    // mismo dentro de un panel de 380px.
+    <div data-testid="panel-impedimentos">
+      {!hay && <p className="text-[12.5px] text-faint">Ninguno abierto.</p>}
       <ul className="space-y-1.5">
         {abiertos.map((r) => {
           const vencido = !!r.fecha_compromiso && r.fecha_compromiso < hoyIso
@@ -58,17 +56,17 @@ export function BloqueImpedimentosActividad({ a, abiertos, liberados, crear, lib
             // UN IMPEDIMENTO ES UNA FICHA, NO UNA LÍNEA. Quién lo resuelve y para cuándo van
             // ROTULADOS: son los dos datos que convierten una queja anotada en algo que alguien
             // tiene que destrabar, y sin el rótulo se leían como un texto suelto más.
-            <li key={r.id} className="text-[0.92em]" data-testid="impedimento-actividad">
+            <li key={r.id} className="text-[12.5px]" data-testid="impedimento-actividad">
               <div className="flex items-start justify-between gap-2">
                 <span className="min-w-0 font-medium text-ink">
                   <span aria-hidden className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle ${vencido ? 'bg-neg' : 'bg-warn'}`} />
                   {r.descripcion}
                 </span>
-                <span className="shrink-0 rounded border border-line px-1.5 py-[1px] text-[0.78em] uppercase text-muted">
+                <span className="shrink-0 rounded border border-line px-1.5 py-[1px] text-[10px] uppercase text-muted">
                   {vencido ? 'vencido' : 'abierto'}
                 </span>
               </div>
-              <p className="mt-0.5 text-[0.85em] text-muted">
+              <p className="mt-0.5 text-[11.5px] text-muted">
                 <span className="text-faint">Responsable:</span> {r.responsable ?? 'sin asignar'}
                 {' · '}
                 <span className="text-faint">Vencimiento:</span>{' '}
@@ -85,7 +83,7 @@ export function BloqueImpedimentosActividad({ a, abiertos, liberados, crear, lib
                     // «Resolver» quedaba encajado entre «Tipo» y «Quién lo resuelve» — se leía como
                     // un campo más del formulario en vez de como la otra acción del impedimento.
                     <details data-testid="editar-impedimento" className="w-full basis-full">
-                      <summary className="cursor-pointer text-[0.85em] text-muted hover:text-ink">Editar</summary>
+                      <summary className="cursor-pointer text-[11.5px] text-muted hover:text-ink">Editar</summary>
                       <div className="mt-1.5 w-full">
                         <FormAccion
                           accion={editar.bind(null, r.id)}
@@ -120,11 +118,11 @@ export function BloqueImpedimentosActividad({ a, abiertos, liberados, crear, lib
         })}
       </ul>
       {liberados.length > 0 && (
-        <p className="mt-1 text-[0.85em] text-faint">{liberados.length} ya resuelto(s).</p>
+        <p className="mt-1 text-[11.5px] text-faint">{liberados.length} ya resuelto(s).</p>
       )}
       {crear && (
         <details className="mt-1.5">
-          <summary className="cursor-pointer text-[0.92em] text-muted hover:text-ink">+ Impedimento</summary>
+          <summary className="cursor-pointer text-[12.5px] text-muted hover:text-ink">+ Impedimento</summary>
           <div className="mt-2">
             <FormAccion accion={crear} testid="form-impedimento-actividad" enviar="Anotar" limpiarAlOk mensajeOk="Impedimento anotado.">
               <input type="hidden" name="actividad_id" value={a.id} />
@@ -159,19 +157,21 @@ export function BloqueImpedimentosActividad({ a, abiertos, liberados, crear, lib
 // Que 3 de 6 estén hechas NO es 50% de la actividad: las seis no duran ni pesan lo mismo. Se dice
 // «3 de 6», que es un hecho, en vez de un porcentaje que nadie puede defender.
 
-export function BloqueTareas({ tareas, crear, alternar, abierto }: {
+export function BloqueTareas({ tareas, crear, alternar }: {
   tareas: Actividad[]
   crear?: AccionFormulario
   alternar?: (tareaId: string, estado: string) => Promise<ResultadoAccion>
-  abierto?: boolean
 }) {
   if (tareas.length === 0 && !crear) return null
   const hechas = tareas.filter((t) => t.estado === 'hecha').length
   return (
-    <Plegable titulo={tareas.length ? `Tareas · ${hechas} de ${tareas.length}` : 'Tareas'} testid="bloque-tareas" abierto={abierto}>
+    <div data-testid="bloque-tareas">
+      {/* «3 de 6» NO es 50% de la actividad: las seis no duran ni pesan lo mismo. Se dice el hecho,
+          no un porcentaje que nadie puede defender. */}
+      {tareas.length > 0 && <p className="mb-1.5 text-[11.5px] text-faint">{hechas} de {tareas.length} hechas</p>}
       <ul className="space-y-1">
         {tareas.map((t) => (
-          <li key={t.id} className="flex items-center justify-between gap-2 text-[0.92em]" data-testid="tarea">
+          <li key={t.id} className="flex items-center justify-between gap-2 text-[12.5px]" data-testid="tarea">
             <span className={t.estado === 'hecha' ? 'min-w-0 truncate text-faint line-through' : 'min-w-0 truncate text-muted'}>
               {t.nombre}
             </span>
@@ -184,7 +184,7 @@ export function BloqueTareas({ tareas, crear, alternar, abierto }: {
             )}
           </li>
         ))}
-        {tareas.length === 0 && <li className="text-[0.92em] text-faint">Ninguna. La tarea es opcional.</li>}
+        {tareas.length === 0 && <li className="text-[12.5px] text-faint">Ninguna. La tarea es opcional.</li>}
       </ul>
       {crear && (
         <div className="mt-2 border-t border-line pt-2">
@@ -196,7 +196,7 @@ export function BloqueTareas({ tareas, crear, alternar, abierto }: {
           </FormAccion>
         </div>
       )}
-    </Plegable>
+    </div>
   )
 }
 
@@ -217,21 +217,20 @@ export function BloqueNotas({ notas, agregar, borrar }: {
     // LAS NOTAS SE VEN, NO SE ABREN. Eran un plegable más al final: una nota que hay que descubrir
     // no la lee nadie, y el campo para escribirla estaba a dos clics. Es el último bloque del panel
     // y el más simple que hay: texto, quién y cuándo.
-    <section className="rounded-card border border-line bg-surface px-3 py-2.5" data-testid="bloque-notas">
-      <Rotulo cuenta={notas.length}>Notas</Rotulo>
-      <ul className="mt-1.5 space-y-1.5">
+    <div data-testid="bloque-notas">
+      <ul className="space-y-1.5">
         {notas.slice(0, 8).map((n) => (
-          <li key={n.id} className="text-[0.92em]" data-testid="nota-actividad">
+          <li key={n.id} className="text-[12.5px]" data-testid="nota-actividad">
             <div className="flex items-start justify-between gap-2">
               <span className="min-w-0 whitespace-pre-wrap text-ink">{n.texto}</span>
               {borrar && <BotonAccion accion={borrar} args={[n.id]} testid="borrar-nota">borrar</BotonAccion>}
             </div>
-            <span className="text-[0.85em] text-faint">
+            <span className="text-[11.5px] text-faint">
               {n.autor ?? 'alguien'} · {fecha(n.creado_en.slice(0, 10))}
             </span>
           </li>
         ))}
-        {notas.length === 0 && <li className="text-[0.92em] text-faint">Ninguna.</li>}
+        {notas.length === 0 && <li className="text-[12.5px] text-faint">Ninguna.</li>}
       </ul>
       {agregar && (
         <div className="mt-2 border-t border-line pt-2">
@@ -240,7 +239,7 @@ export function BloqueNotas({ notas, agregar, borrar }: {
           </FormAccion>
         </div>
       )}
-    </section>
+    </div>
   )
 }
 
@@ -248,31 +247,30 @@ export function BloqueNotas({ notas, agregar, borrar }: {
 // DOCUMENTOS — el archivo NO se copia: se guarda el vínculo de Drive
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export function BloqueDocumentos({ a, documentos, vincular, soltar, abierto }: {
+export function BloqueDocumentos({ a, documentos, vincular, soltar }: {
   a: Actividad
   /** Ya filtrados a los de ESTA actividad. Los de la obra sin actividad viven en la solapa Documentos. */
   documentos: DocumentoObra[]
   vincular?: AccionFormulario
   soltar?: (driveFileId: string) => Promise<ResultadoAccion>
-  abierto?: boolean
 }) {
   if (!vincular && documentos.length === 0) return null
   return (
-    <Plegable titulo="Documentos" cuenta={documentos.length} testid="bloque-documentos-actividad" abierto={abierto}>
+    <div data-testid="bloque-documentos-actividad">
       <ul className="space-y-1">
         {documentos.map((d) => (
-          <li key={d.drive_file_id} className="flex items-start justify-between gap-2 text-[0.92em]" data-testid="documento-actividad">
+          <li key={d.drive_file_id} className="flex items-start justify-between gap-2 text-[12.5px]" data-testid="documento-actividad">
             <a
               href={urlDeDrive(d.drive_file_id, d.tipo)}
               target="_blank"
               rel="noreferrer"
               className="min-w-0 flex-1 truncate text-ink underline underline-offset-2"
             >{d.name ?? d.drive_file_id}</a>
-            <span className="shrink-0 text-[0.85em] text-faint">{d.rol ?? ''}</span>
+            <span className="shrink-0 text-[11.5px] text-faint">{d.rol ?? ''}</span>
             {soltar && <BotonAccion accion={soltar} args={[d.drive_file_id]} testid="soltar-documento">quitar</BotonAccion>}
           </li>
         ))}
-        {documentos.length === 0 && <li className="text-[0.92em] text-faint">Ninguno.</li>}
+        {documentos.length === 0 && <li className="text-[12.5px] text-faint">Ninguno.</li>}
       </ul>
       {vincular && (
         <div className="mt-2 border-t border-line pt-2">
@@ -292,7 +290,7 @@ export function BloqueDocumentos({ a, documentos, vincular, soltar, abierto }: {
           </FormAccion>
         </div>
       )}
-    </Plegable>
+    </div>
   )
 }
 
@@ -304,13 +302,12 @@ export function BloqueDocumentos({ a, documentos, vincular, soltar, abierto }: {
 // se EDITA es sólo la primera —de qué depende ÉSTA—: dejar cargar las dos desde el mismo lado
 // duplicaría cada arista en la cabeza del que la carga.
 
-export function Dependencias({ a, actividades, dependencias, agregar, quitar, abierto }: {
+export function Dependencias({ a, actividades, dependencias, agregar, quitar }: {
   a: Actividad
   actividades: Actividad[]
   dependencias: Dependencia[]
   agregar?: (destinoId: string, form: FormData) => Promise<ResultadoAccion>
   quitar?: (dependenciaId: string) => Promise<ResultadoAccion>
-  abierto?: boolean
 }) {
   const nombre = (id: string) => actividades.find((x) => x.id === id)?.nombre ?? 'una actividad archivada'
   const dependeDe = dependencias.filter((d) => d.destino_id === a.id)
@@ -321,19 +318,14 @@ export function Dependencias({ a, actividades, dependencias, agregar, quitar, ab
   const elegibles = actividades.filter((x) => !yaLigadas.has(x.id) && x.tipo !== 'resumen')
 
   return (
-    <Plegable
-      titulo="Depende de"
-      cuenta={dependeDe.length}
-      testid="panel-dependencias"
-      abierto={abierto}
-    >
+    <div data-testid="panel-dependencias">
       {dependeDe.length === 0 ? (
-        <p className="text-[0.92em] text-faint">Nada declarado.</p>
+        <p className="text-[12.5px] text-faint">Nada declarado.</p>
       ) : (
         <ul className="space-y-1">
           {dependeDe.map((d) => (
             <li key={d.id} className="flex items-start justify-between gap-2">
-              <span className="min-w-0 text-[0.92em] text-ink">
+              <span className="min-w-0 text-[12.5px] text-ink">
                 {nombre(d.origen_id)}
                 <span className="text-faint"> · {TIPO_DEPENDENCIA_LABEL[d.tipo]}{d.lag_dias ? ` · ${d.lag_dias} d` : ''}</span>
               </span>
@@ -344,7 +336,7 @@ export function Dependencias({ a, actividades, dependencias, agregar, quitar, ab
       )}
 
       {habilitaA.length > 0 && (
-        <p className="mt-2 text-[0.85em] text-faint">
+        <p className="mt-2 text-[11.5px] text-faint">
           Habilita a {habilitaA.map((d) => nombre(d.destino_id)).join(', ')}.
         </p>
       )}
@@ -377,7 +369,7 @@ export function Dependencias({ a, actividades, dependencias, agregar, quitar, ab
           </FormAccion>
         </div>
       )}
-    </Plegable>
+    </div>
   )
 }
 
@@ -399,7 +391,7 @@ export function SelectorDeRubro({ a, rubros, mover }: {
         value={valor}
         onChange={(e) => setValor(e.target.value)}
         aria-label="Rubro de la actividad"
-        className="min-w-0 flex-1 rounded-control border border-line bg-surface px-2 py-1 text-[0.92em] text-ink"
+        className="min-w-0 flex-1 rounded-control border border-line bg-surface px-2 py-1 text-[12.5px] text-ink"
       >
         <option value="">sin rubro</option>
         {rubros.map((r) => <option key={r} value={r}>{r}</option>)}

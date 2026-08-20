@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Locator } from '@playwright/test'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { entrar } from './util/obras-e2e'
 
@@ -31,6 +31,23 @@ import { entrar } from './util/obras-e2e'
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL as string
 const SRV = process.env.SUPABASE_SERVICE_ROLE_KEY as string
 const sb = (): SupabaseClient => createClient(URL, SRV, { auth: { persistSession: false } })
+
+// ═══ ABRIR UNA SECCIÓN DEL PANEL (Design Handoff V2) ═══
+//
+// El panel dejó de tener pestañas: ahora son secciones plegables (`Plegable` del DS), cerradas por
+// defecto salvo Ejecución. Este ayudante abre la que haga falta y es idempotente.
+//
+// EL GUARDA VA CONTRA `null` Y NO CONTRA LA CADENA. Un atributo presente sin valor —`data-abierto`,
+// como `<details open>`— devuelve la cadena VACÍA, que es falsy: con `if (!attr)` la sección abierta
+// se volvería a cerrar de un clic y el test fallaría sin que hubiera un defecto.
+async function abrirSeccion(panel: Locator, testid: string): Promise<Locator> {
+  const seccion = panel.getByTestId(testid)
+  await expect(seccion).toBeVisible({ timeout: 20_000 })
+  if ((await seccion.getAttribute('data-abierto')) === null) {
+    await seccion.getByRole('button').first().click()
+  }
+  return seccion
+}
 
 const OBRA = 'pisos-120m2'
 const M = 'ZZ-CIERRE'
@@ -154,9 +171,7 @@ test('5-9 · el panel declara la precedencia, la tarea, el impedimento y la nota
   // `agregarDependencia` estaba escrita desde el 17/08 y la página no la ataba: el panel decía «nada
   // declarado» sin un solo control para declarar algo, y el Gantt no dibujaba flechas porque la
   // tabla estaba vacía por falta de PUERTA, no por falta de dato.
-  await panel.getByTestId('tab-panel-dependencias').click()
-  const dep = panel.getByTestId('panel-dependencias')
-  if ((await dep.getAttribute('open')) === null) await dep.locator('summary').click()
+  const dep = await abrirSeccion(panel, 'seccion-dependencias')
   await dep.getByTestId('dependencia-origen').selectOption({ label: PREVIA })
   await dep.getByTestId('form-dependencia').getByRole('button', { name: 'Agregar dependencia' }).click()
   await expect.poll(async () => {
@@ -166,17 +181,14 @@ test('5-9 · el panel declara la precedencia, la tarea, el impedimento y la nota
   }, { timeout: 20_000 }).toBe(1)
 
   // ═══ LA TAREA ═══
-  await panel.getByTestId('tab-panel-tareas').click()
-  const tareas = panel.getByTestId('bloque-tareas')
-  if ((await tareas.getAttribute('open')) === null) await tareas.locator('summary').click()
+  const tareas = await abrirSeccion(panel, 'seccion-tareas')
   await tareas.getByTestId('tarea-nombre').fill(`${M} encofrado`)
   await tareas.getByTestId('form-tarea').getByRole('button', { name: 'Agregar' }).click()
 
   // ═══ EL IMPEDIMENTO, ANOTADO Y RESUELTO SIN SALIR DEL PANEL ═══
-  // IMPEDIMENTOS Y NOTAS VIVEN EN «Resumen», que es la pestaña del panorama operativo. El test
-  // venía de «Tareas», así que hay que volver.
-  await panel.getByTestId('tab-panel-resumen').click()
-  const imp = panel.getByTestId('panel-impedimentos')
+  // IMPEDIMENTOS ES UNA SECCIÓN PLEGABLE del panel, como Tareas y Dependencias. Adentro, «+
+  // Impedimento» sigue siendo un `<details>`: el formulario de alta no se abre solo.
+  const imp = await abrirSeccion(panel, 'seccion-impedimentos')
   await imp.locator('summary').click()
   const form = imp.getByTestId('form-impedimento-actividad')
   await form.locator('input[name="descripcion"]').fill(`${M} falta el hierro`)
@@ -227,7 +239,7 @@ test('5-9 · el panel declara la precedencia, la tarea, el impedimento y la nota
   // ═══ LA NOTA ═══
   // LAS NOTAS YA NO SE ABREN: son un bloque visible al final del panel. El test abría el
   // `<summary>` que existía cuando estaban plegadas — medía la implementación, no la regla.
-  const notas = panel.getByTestId('bloque-notas')
+  const notas = await abrirSeccion(panel, 'seccion-notas')
   await notas.getByTestId('nota-texto').fill(`${M} el hierro llegó a media mañana`)
   await notas.getByTestId('form-nota').getByRole('button', { name: 'Agregar' }).click()
   await expect.poll(async () => {
@@ -293,8 +305,10 @@ test('10-14 · una carga: producción, horas de la persona y horas del EQUIPO, c
   await page.goto(`/obras/${OBRA}?vista=cronograma&sub=gantt&act=${actividadId}`)
   const lateral = page.getByTestId('panel-actividad')
   await expect(lateral).toBeVisible({ timeout: 25_000 })
-  await expect(lateral.getByTestId('bloque-recursos')).toContainText(`${M} Hormigonera`)
-  await expect(lateral.getByTestId('personal-real')).toBeVisible()
+  // Los recursos se partieron en dos secciones —Personal y Equipos—: son dos preguntas distintas
+  // («¿quién?» y «¿con qué?») y en una sola caja competían por el mismo ancho.
+  await expect(await abrirSeccion(lateral, 'seccion-equipos')).toContainText(`${M} Hormigonera`)
+  await expect((await abrirSeccion(lateral, 'seccion-personal')).getByTestId('personal-real')).toBeVisible()
   const fila = lateral.getByTestId('fila-parte').first()
   await expect(fila).toContainText('8')
   await expect(fila).toContainText(`${M} tres columnas`)
@@ -311,9 +325,7 @@ test('15-17 · el papel se cuelga de la actividad, el filtro recorta y el rubro 
   await expect(panel).toBeVisible({ timeout: 25_000 })
 
   // ═══ EL PAPEL — el archivo NO se copia: se guarda el vínculo ═══
-  await panel.getByTestId('tab-panel-documentos').click()
-  const docs = panel.getByTestId('bloque-documentos-actividad')
-  if ((await docs.getAttribute('open')) === null) await docs.locator('summary').click()
+  const docs = await abrirSeccion(panel, 'seccion-documentos')
   await docs.getByTestId('documento-enlace').fill(`https://drive.google.com/file/d/${M}-plano-columnas/view`)
   await docs.locator('input[name="nombre"]').fill(`${M} plano de columnas`)
   await docs.getByRole('button', { name: 'Vincular' }).click()

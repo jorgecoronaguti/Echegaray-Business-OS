@@ -1,31 +1,38 @@
 'use client'
 
-// LA BARRA DE PLANIFICACIÓN — lo que se puede HACER sobre el plan, arriba de las cuatro vistas.
+// LA BARRA DE VISTA DE PLANIFICACIÓN — 48px: las cuatro vistas a la izquierda, lo que se puede
+// HACER sobre el plan a la derecha.
 //
-// ═══ POR QUÉ ESTÁ ACÁ Y NO ADENTRO DEL GANTT ═══
+// ═══ POR QUÉ LAS ACCIONES NO VIVEN ADENTRO DEL GANTT ═══
 //
 // «+ Nueva actividad» vivía en la barra del Gantt, así que desde Lista, Tablero o Próximos no se
-// podía crear nada: había que volver al Gantt para agregar una fila que después se iba a mirar desde
-// otra vista. Crear trabajo no es una función del Gantt, es una función del PLAN — y las cuatro
-// vistas son cuatro maneras de mirar el mismo plan.
+// podía crear nada: había que volver al Gantt para agregar una fila que después se iba a mirar
+// desde otra vista. Crear trabajo no es una función del Gantt, es una función del PLAN — y las
+// cuatro vistas son cuatro maneras de mirar el mismo plan. Lo mismo con el filtro: uno que se
+// pierde al cambiar de vista hace que cambiar de vista cambie lo que se ve sin que nadie lo pida.
 //
-// Lo mismo con los filtros: un filtro que se aplica en una vista y se pierde al cambiar de solapa
-// haría que cambiar de vista cambie lo que se ve sin que nadie lo haya pedido.
+// ═══ UNA SOLA PRIMARIA ═══
+//
+// `+ Nueva actividad` es el único botón lleno de la pantalla: es lo que se hace acá. Todo lo demás
+// —Detalle, escala, línea base, Filtros, + Nuevo rubro— es secundario y se dibuja igual entre sí,
+// porque darle peso a los seis hacía que ninguno se leyera primero.
 //
 // ═══ LOS RUBROS SE GESTIONAN, Y NO SON UNA TABLA ═══
 //
 // Crear, renombrar, subir, bajar y archivar. Todo eso escribe `obra_actividad` —una fila
 // `tipo='resumen'` y la `seccion` de sus hijas—: no hay una entidad `rubro` que mantener al día.
-// Ver `services/rubros.ts`.
 
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
+import { Boton, SubTabs } from '@/shared/components/ds'
 import {
   BotonAccion, Campo, CTRL, FormAccion,
   type AccionFormulario, type ResultadoAccion,
 } from '@/shared/components/ui'
 import type { Persona } from '../types'
 import type { Rubro } from '../services/rubros'
+import type { Escala } from '../services/escala'
 import { cuantosFiltros, type FiltroPlan } from '../services/filtroPlan'
+import { SUBVISTAS, type SubVista } from '../services/subvistas'
 import { ESTADO_LABEL, COLUMNAS_TABLERO } from '../types'
 
 export interface AccionesPlan {
@@ -35,14 +42,16 @@ export interface AccionesPlan {
   archivarRubro?: (nombre: string, archivar: boolean) => Promise<ResultadoAccion>
 }
 
+const DISCRETO = 'shrink-0 text-[12.5px] text-muted transition-colors hover:text-ink'
+
 /** Un renglón de la lista de rubros: renombrar, subir, bajar, archivar. */
 function FilaRubro({ r, acciones }: { r: Rubro; acciones: AccionesPlan }) {
   const [renombrando, setRenombrando] = useState(false)
   return (
-    <li className="px-2.5 py-1.5" data-testid="fila-rubro">
+    <li className="py-1.5" data-testid="fila-rubro">
       <div className="flex items-center gap-1.5">
-        <span className="min-w-0 flex-1 truncate text-[12px] text-ink" title={r.nombre}>{r.nombre}</span>
-        <span className="shrink-0 text-[11px] tabular-nums text-faint">{r.n}</span>
+        <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink" title={r.nombre}>{r.nombre}</span>
+        <span className="shrink-0 font-mono text-[11px] tabular-nums text-faint">{r.n}</span>
         {acciones.moverRubro && (
           <>
             <BotonAccion accion={acciones.moverRubro} args={[r.nombre, 'arriba']} testid="subir-rubro">↑</BotonAccion>
@@ -50,12 +59,9 @@ function FilaRubro({ r, acciones }: { r: Rubro; acciones: AccionesPlan }) {
           </>
         )}
         {acciones.renombrarRubro && (
-          <button
-            type="button"
-            onClick={() => setRenombrando((v) => !v)}
-            data-testid="renombrar-rubro"
-            className="shrink-0 text-[11px] text-muted hover:text-ink"
-          >{renombrando ? 'cancelar' : 'renombrar'}</button>
+          <button type="button" onClick={() => setRenombrando((v) => !v)} data-testid="renombrar-rubro" className={DISCRETO}>
+            {renombrando ? 'cancelar' : 'renombrar'}
+          </button>
         )}
         {acciones.archivarRubro && (
           <BotonAccion accion={acciones.archivarRubro} args={[r.nombre, true]} testid="archivar-rubro" tono="peligro">
@@ -83,6 +89,7 @@ function FilaRubro({ r, acciones }: { r: Rubro; acciones: AccionesPlan }) {
 
 export function BarraPlan({
   rubros, personas, filtro, alFiltrar, acciones, alta, altaRubroAbierta = false,
+  sub, alCambiarSub, detalleCerrado = false, alAbrirDetalle, escala, alCambiarEscala, sellar,
 }: {
   rubros: Rubro[]
   personas: Persona[]
@@ -91,59 +98,82 @@ export function BarraPlan({
   acciones: AccionesPlan
   /** El formulario de alta de actividad, ya armado por el cronograma. Entra como nodo para que esta
    *  barra no tenga que conocer los campos de una actividad. */
-  alta?: React.ReactNode
+  alta?: ReactNode
   altaRubroAbierta?: boolean
+  sub: SubVista
+  alCambiarSub: (v: SubVista) => void
+  /** `Detalle ‹` sólo aparece con el panel cerrado: es la puerta para volver a abrirlo. */
+  detalleCerrado?: boolean
+  alAbrirDetalle?: () => void
+  /** La escala del calendario. Es una preferencia de vista, y por eso vive con las otras. */
+  escala?: Escala
+  alCambiarEscala?: (e: Escala) => void
+  /** Sellar la línea base: acción de Administración sobre TODO el plan, no sobre una actividad. */
+  sellar?: ReactNode
 }) {
   const [abierto, setAbierto] = useState<'' | 'actividad' | 'rubros' | 'filtros'>(
     altaRubroAbierta ? 'rubros' : '',
   )
   const n = cuantosFiltros(filtro)
   const alternar = (v: typeof abierto) => setAbierto((p) => (p === v ? '' : v))
-  // LA ACCIÓN PRINCIPAL VA EN EL AMARILLO DE LA MARCA. En el objetivo «+ Nueva actividad» es el
-  // único botón lleno de la pantalla: es lo que se hace acá. Los demás son iguales entre sí porque
-  // son todos secundarios, y darle el mismo peso a los tres hacía que ninguno se leyera primero.
-  const boton = (
-    v: Exclude<typeof abierto, ''>, texto: string, testid: string, insignia?: number, principal?: boolean,
-  ) => (
-    <button
-      type="button"
-      onClick={() => alternar(v)}
-      data-testid={testid}
-      aria-expanded={abierto === v}
-      className={`shrink-0 rounded-control px-3.5 py-1.5 text-[clamp(13px,0.9vw,34px)] ${
-        principal
-          ? `bg-marca font-medium text-ink hover:brightness-95 ${abierto === v ? 'brightness-90' : ''}`
-          : `border ${abierto === v ? 'border-line-strong bg-surface-sunken text-ink' : 'border-line text-ink hover:bg-surface-sunken'}`
-      }`}
-    >
-      {texto}
-      {insignia ? <span className="ml-1.5 rounded bg-ink px-1 text-[10px] font-medium text-white">{insignia}</span> : null}
-    </button>
-  )
 
   return (
-    <div className="rounded-card border border-line bg-surface" data-testid="barra-plan">
-      <div className="flex flex-wrap items-center gap-2 px-3 py-2">
-        {alta && boton('actividad', '+ Nueva actividad', 'nueva-actividad', undefined, true)}
-        {acciones.crearRubro && boton('rubros', '+ Nuevo rubro', 'nuevo-rubro')}
+    <div data-testid="barra-plan">
+      <div className="flex min-h-12 flex-wrap items-center gap-x-4 gap-y-2 py-1">
+        <SubTabs
+          testid="subvistas-plan"
+          items={SUBVISTAS.map((v) => ({
+            label: v.label,
+            onClick: () => alCambiarSub(v.id),
+            activo: sub === v.id,
+            testid: `subvista-${v.id}`,
+          }))}
+        />
         <div className="flex-1" />
-        {boton('filtros', 'Filtros', 'boton-filtros', n)}
+        {detalleCerrado && alAbrirDetalle && (
+          <button type="button" onClick={alAbrirDetalle} className={DISCRETO} data-testid="abrir-detalle">Detalle ‹</button>
+        )}
+        {sub === 'gantt' && escala && alCambiarEscala && (
+          <span className="hidden shrink-0 items-center gap-2.5 text-[12.5px] md:flex" data-testid="escala-gantt">
+            <span className="text-faint">Escala</span>
+            {(['semana', 'mes'] as Escala[]).map((e) => (
+              <button
+                key={e}
+                type="button"
+                onClick={() => alCambiarEscala(e)}
+                aria-pressed={escala === e}
+                className={escala === e ? 'border-b-[1.5px] border-ink font-medium text-ink' : 'text-muted hover:text-ink'}
+              >{e === 'semana' ? 'día' : 'mes'}</button>
+            ))}
+          </span>
+        )}
+        {sellar}
+        <button type="button" onClick={() => alternar('filtros')} aria-expanded={abierto === 'filtros'} data-testid="boton-filtros" className={DISCRETO}>
+          Filtros{n > 0 ? ` · ${n}` : ''}
+        </button>
         {n > 0 && (
-          <button
-            type="button"
-            onClick={() => alFiltrar({ rubro: '', estado: '', responsable: '' })}
-            data-testid="limpiar-filtros"
-            className="shrink-0 text-[12px] text-muted hover:text-ink"
-          >limpiar</button>
+          <button type="button" onClick={() => alFiltrar({ rubro: '', estado: '', responsable: '' })} data-testid="limpiar-filtros" className={DISCRETO}>
+            limpiar
+          </button>
+        )}
+        {acciones.crearRubro && (
+          <button type="button" onClick={() => alternar('rubros')} aria-expanded={abierto === 'rubros'} data-testid="nuevo-rubro" className={DISCRETO}>
+            + Nuevo rubro
+          </button>
+        )}
+        {alta && (
+          <Boton type="button" variante="primaria" onClick={() => alternar('actividad')} aria-expanded={abierto === 'actividad'} data-testid="nueva-actividad">
+            + Nueva actividad
+          </Boton>
         )}
       </div>
 
       {abierto === 'actividad' && alta && (
-        <div className="border-t border-line bg-surface-quiet p-3" data-testid="alta-actividad">{alta}</div>
+        <div className="border-t border-line py-3" data-testid="alta-actividad">{alta}</div>
       )}
 
       {abierto === 'rubros' && (
-        <div className="border-t border-line bg-surface-quiet p-3" data-testid="panel-rubros">
+        <div className="border-t border-line py-3" data-testid="panel-rubros">
           {acciones.crearRubro && (
             <FormAccion accion={acciones.crearRubro} testid="form-rubro" enviar="Crear rubro" limpiarAlOk mensajeOk="Rubro creado.">
               <input
@@ -153,7 +183,7 @@ export function BarraPlan({
             </FormAccion>
           )}
           {rubros.length > 0 && (
-            <ul className="mt-3 divide-y divide-line/60 rounded-card border border-line bg-surface" data-testid="lista-rubros">
+            <ul className="mt-3 divide-y divide-[#EFEEEA] border-t border-line" data-testid="lista-rubros">
               {rubros.map((r) => <FilaRubro key={r.nombre} r={r} acciones={acciones} />)}
             </ul>
           )}
@@ -166,37 +196,22 @@ export function BarraPlan({
       )}
 
       {abierto === 'filtros' && (
-        <div className="border-t border-line bg-surface-quiet p-3" data-testid="panel-filtros">
+        <div className="border-t border-line py-3" data-testid="panel-filtros">
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
             <Campo label="Rubro">
-              <select
-                value={filtro.rubro}
-                onChange={(e) => alFiltrar({ ...filtro, rubro: e.target.value })}
-                className={CTRL}
-                data-testid="filtro-rubro"
-              >
+              <select value={filtro.rubro} onChange={(e) => alFiltrar({ ...filtro, rubro: e.target.value })} className={CTRL} data-testid="filtro-rubro">
                 <option value="">todos</option>
                 {rubros.map((r) => <option key={r.nombre} value={r.nombre}>{r.nombre}</option>)}
               </select>
             </Campo>
             <Campo label="Estado">
-              <select
-                value={filtro.estado}
-                onChange={(e) => alFiltrar({ ...filtro, estado: e.target.value })}
-                className={CTRL}
-                data-testid="filtro-estado"
-              >
+              <select value={filtro.estado} onChange={(e) => alFiltrar({ ...filtro, estado: e.target.value })} className={CTRL} data-testid="filtro-estado">
                 <option value="">todos</option>
                 {COLUMNAS_TABLERO.map((e) => <option key={e} value={e}>{ESTADO_LABEL[e]}</option>)}
               </select>
             </Campo>
             <Campo label="Responsable">
-              <select
-                value={filtro.responsable}
-                onChange={(e) => alFiltrar({ ...filtro, responsable: e.target.value })}
-                className={CTRL}
-                data-testid="filtro-responsable"
-              >
+              <select value={filtro.responsable} onChange={(e) => alFiltrar({ ...filtro, responsable: e.target.value })} className={CTRL} data-testid="filtro-responsable">
                 <option value="">todos</option>
                 <option value="sin">sin responsable</option>
                 {personas.map((p) => <option key={p.id} value={p.id}>{p.nombre_completo}</option>)}
