@@ -69,7 +69,7 @@ export const TITULO_EQUILIBRIO = `${MARCA}Ingresos vs egresos por mes — punto 
 export const TITULO_PROYECCION = `${MARCA}Proyección de la caja`
 export const TITULO_PAGOS = `${MARCA}Concentración de pagos`
 export const TITULO_COBRANZAS = `${MARCA}Concentración de cobranzas`
-export const TITULO_NECESIDAD = `${MARCA}Necesidad de caja día por día — qué sale y con qué se cubre`
+export const TITULO_NECESIDAD = `${MARCA}¿Alcanza la caja? — qué sale cada día y qué saldo queda`
 
 // La misma paleta que la pestaña: tinta, gris apagado y UN acento.
 const INK = { red: 0.10, green: 0.13, blue: 0.20 }
@@ -142,15 +142,23 @@ function necesidadDiaria({ titulo, subtitulo, sheetId, anexo, rango: r, posicion
     headerCount: 1,
     domains: [{ domain: fuente(col(8)) }],
     series: [
-      // Los cinco baldes, en el orden en que la pestaña los nombra.
-      // I..M (9..13): las cinco salidas. El día está en la H y la cobranza en la N.
+      // I..M (9..13): las cinco salidas del día, apiladas. Eje IZQUIERDO, en la escala del día.
       ...[9, 10, 11, 12, 13].map((c, i) => ({
         series: fuente(col(c)), targetAxis: 'LEFT_AXIS', type: 'COLUMN', color: COLORES[i],
       })),
-      // Y lo que entra, encima: es la única serie que NO se apila con las otras.
-      { series: fuente(col(14)), targetAxis: 'LEFT_AXIS', type: 'LINE', color: ACENTO, lineStyle: { width: 3 } },
+      // ═══ Y LAS DOS CURVAS DE SALDO, EN EL EJE DERECHO ═══
+      //
+      // Van en el OTRO eje porque son otra magnitud: el saldo se mide en decenas de millones y lo que
+      // sale un día, en unidades. En el mismo eje las barras quedaban aplastadas contra el piso y el
+      // gráfico dejaba de mostrar lo que sale, que es la mitad de la pregunta.
+      { series: fuente(col(14)), targetAxis: 'RIGHT_AXIS', type: 'LINE', color: ACENTO, lineStyle: { width: 3 } },
+      { series: fuente(col(15)), targetAxis: 'RIGHT_AXIS', type: 'LINE', color: ROJO, lineStyle: { width: 2, type: 'MEDIUM_DASHED' } },
     ],
-    axis: [{ position: 'BOTTOM_AXIS', format: texto(9) }, { position: 'LEFT_AXIS', format: texto(9) }],
+    axis: [
+      { position: 'BOTTOM_AXIS', format: texto(9) },
+      { position: 'LEFT_AXIS', title: 'Sale ese día', format: texto(9) },
+      { position: 'RIGHT_AXIS', title: 'Saldo acumulado', format: texto(9) },
+    ],
   }, sheetId, posicion)
 }
 
@@ -227,7 +235,7 @@ export function graficos(sheetId, anexo, series = {}) {
   const cuadros = [
     ['necesidad', (r, posicion) => necesidadDiaria({
       titulo: TITULO_NECESIDAD,
-      subtitulo: `Salidas apiladas por rubro contra la cobranza del día, próximos ${DIAS_NECESIDAD} días — el día en que la línea queda abajo es el que hay que resolver`,
+      subtitulo: 'Barras: lo que sale ese día, abierto por rubro. Curvas (eje derecho): el saldo que queda — la llena cobrando lo previsto, la punteada sin cobrar un peso. El día que cruzan el cero, no alcanza.',
       sheetId, anexo, rango: r, posicion,
     })],
     ['equilibrio', (r, posicion) => cruce({
@@ -241,16 +249,11 @@ export function graficos(sheetId, anexo, series = {}) {
       // EL ACENTO ES DE LA PROYECCIÓN: es la única curva con la que se decide algo hoy.
       sheetId, anexo, rango: r, posicion, color: ACENTO,
     })],
-    ['pagos', (r, posicion) => ranking({
-      titulo: TITULO_PAGOS,
-      subtitulo: `Top ${TOP_N} contrapartes a ${DIAS_TOP} días — con quién se negocia el plazo`,
-      sheetId, anexo, rango: r, posicion, color: GRIS,
-    })],
-    ['cobranzas', (r, posicion) => ranking({
-      titulo: TITULO_COBRANZAS,
-      subtitulo: `Top ${TOP_N} contrapartes a ${DIAS_TOP} días — si uno solo pesa demasiado, el riesgo es comercial`,
-      sheetId, anexo, rango: r, posicion, color: ACENTO,
-    })],
+    // ═══ LOS DOS RANKINGS DE CONCENTRACIÓN YA NO SE DIBUJAN (20/08/2026) ═══
+    //
+    // El dueño: *"tenés que quitar los gráficos que ya no voy a usar, como el de concentración de
+    // pagos y cobranzas"*. Las SERIES siguen en el anexo —el dato es suyo y no pidió borrarlo, igual
+    // que con la historia de sesenta días—: se dejó de DIBUJAR, no se borró.
   ]
   const requests = []
   const faltan = []

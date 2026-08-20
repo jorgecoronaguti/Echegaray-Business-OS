@@ -479,7 +479,7 @@ export async function formatear(google, sheetId, g) {
   // El "$" es del TOTAL, no de cada celda: un símbolo repetido en cien filas no distingue nada.
   // LAS COLUMNAS DE PLATA. La 6 y la 7 (G y H) entraron con la serie de necesidad diaria: sin ellas
   // «Cargas sociales» e «Impuestos» salían como número crudo al lado de columnas formateadas.
-  for (const c of [2, 3, 4, 8, 9, 10, 11, 12, 13]) {
+  for (const c of [2, 3, 4, 8, 9, 10, 11, 12, 13, 14]) {
     fmt(r(0, n, c, c + 1), 'userEnteredFormat.numberFormat,userEnteredFormat.horizontalAlignment',
       { numberFormat: MONEDA_CUERPO, horizontalAlignment: 'RIGHT' })
   }

@@ -157,6 +157,16 @@ export const saldoProyectado = (d) =>
   `=${DESDE_CAJA.total}+${terminoLibro({ desde: 'TODAY()', hasta: dia(d + 1), estados: NO_REAL })}`
 
 /**
+ * NÚCLEO PURO: el saldo al día `d` SIN contar una sola cobranza.
+ *
+ * Es el piso del escenario: la caja de hoy menos todo lo que sale de acá a `d`. Contesta la pregunta
+ * que el plan no contesta —«¿y si no me pagan?»— y es la única de las dos curvas que no depende de
+ * que un tercero cumpla. La distancia entre las dos es exactamente cuánto se está apostando a cobrar.
+ */
+export const saldoSinCobrar = (d) =>
+  `=${DESDE_CAJA.total}-${terminoLibro({ desde: 'TODAY()', hasta: dia(d + 1), signo: -1, medida: 'magnitud' })}`
+
+/**
  * NÚCLEO PURO: el top de contrapartes por signo, con SORTN/QUERY sobre el libro y NUNCA con valores
  * pegados.
  *
@@ -287,15 +297,28 @@ export function bloqueSeries(h) {
   // la prosa dejaba los contadores del anexo sin formato de número. Las siete columnas de este bloque
   // arrancan después de todo eso.
   push([ROTULOS.necesidad, '', '', '', '', '',
-    `Salidas apiladas por rubro contra lo que entra, próximos ${DIAS_NECESIDAD} días`,
-    'Día', 'Cheques', 'Proveedores', 'Sueldos', 'Cargas sociales', 'Impuestos', 'Cobranzas'])
+    `Salidas por rubro y el saldo que queda, próximos ${DIAS_NECESIDAD} días`,
+    'Día', 'Cheques', 'Proveedores', 'Sueldos', 'Cargas sociales', 'Impuestos', 'Saldo si cobra',
+    'Saldo si NO cobra'])
   const fNec0 = h.n + 1
   for (let i = 0; i < DIAS_NECESIDAD; i++) {
     // LA FECHA VA EN LA B, DEBAJO DE SU PROPIO ENCABEZADO. En la A va el rótulo del bloque —así lo
     // ubica `ubicarSeries`— y las filas de datos la dejan vacía, igual que historia y proyección.
+    // ═══ LO QUE CONTESTA «¿ALCANZA?» ES EL SALDO, NO LA COBRANZA DEL DÍA ═══
+    //
+    // La primera versión ponía la cobranza diaria como línea. El dueño no pudo leerla, y tenía razón:
+    // la plata se ACUMULA. Un cobro de $72M el jueves cubre un pago del martes siguiente, así que
+    // comparar la barra del día contra el cobro del día no dice si alcanza — dice otra cosa.
+    //
+    // Van DOS saldos y la distancia entre ellos es la pregunta comercial:
+    //   · «Saldo si cobra»    — caja de hoy más todo lo proyectado. El escenario del plan.
+    //   · «Saldo si NO cobra» — caja de hoy menos las salidas, sin un peso de cobranza. El piso.
+    // El día en que cualquiera de las dos cruza el cero es el día que hay que ir a resolver, y se ve
+    // sin leer un número.
     push(['', '', '', '', '', '', '', `=${dia(i)}`,
       necesidadDelDia(i, 'cheques'), necesidadDelDia(i, 'proveedores'), necesidadDelDia(i, 'sueldos'),
-      necesidadDelDia(i, 'cargas'), necesidadDelDia(i, 'impuestos'), necesidadDelDia(i, 'cobranzas')])
+      necesidadDelDia(i, 'cargas'), necesidadDelDia(i, 'impuestos'),
+      saldoProyectado(i), saldoSinCobrar(i)])
   }
   const fNec1 = h.n
 

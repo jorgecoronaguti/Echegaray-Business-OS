@@ -25,17 +25,18 @@ const ANEXO = 99
 const fake = (charts) => ({ getCharts: async () => [{ sheetId: 7, title: 'Caja', charts }] })
 const equilibrio = (s = SERIES) => graficos(7, ANEXO, s).requests[1].addChart.chart.spec
 
-test('SON CINCO Y CADA UNO CONTESTA UNA PREGUNTA DISTINTA', () => {
-  // El dueño los eligió: la necesidad diaria por rubro, el equilibrio del año, la proyección y las dos
-  // concentraciones. Ninguno repite lo que ya dice una tabla — un gráfico que resume algo que está al
-  // lado es decoración.
+test('SON TRES Y CADA UNO CONTESTA UNA PREGUNTA DISTINTA', () => {
+  // El dueño los eligió: ¿alcanza la caja a treinta días?, ¿el año se paga solo?, ¿cómo viene el saldo
+  // a sesenta? Las dos concentraciones las mandó sacar el 20/08 —«gráficos que ya no voy a usar»— y
+  // sus series siguen en el anexo: se dejó de dibujarlas, no se borraron.
   const { requests, faltan } = graficos(7, ANEXO, SERIES)
-  assert.equal(requests.length, 5)
+  assert.equal(requests.length, 3)
   assert.deepEqual(faltan, [])
   assert.deepEqual(requests.map((r) => r.addChart.chart.spec.title), [
     TITULO_NECESIDAD, TITULO_EQUILIBRIO, `${MARCA}Proyección de la caja`,
-    `${MARCA}Concentración de pagos`, `${MARCA}Concentración de cobranzas`,
   ])
+  const titulos = requests.map((r) => r.addChart.chart.spec.title).join(' ')
+  assert.ok(!titulos.includes('Concentración'), 'los rankings los mandó sacar el dueño')
   for (const r of requests) {
     assert.ok(r.addChart.chart.spec.subtitle, 'un gráfico sin la pregunta que contesta es decoración')
   }
@@ -49,19 +50,18 @@ test('LA NECESIDAD DIARIA VA PRIMERA, A TODO EL ANCHO, Y NO DESALINEA A LOS DEM�
   const todos = pos(graficos(7, ANEXO, SERIES).requests)
   assert.equal(todos[0].offsetXPixels, 0, 'la necesidad arranca pegada al margen')
   assert.ok(todos[0].widthPixels > todos[1].widthPixels, 'y ocupa las dos columnas')
-  // Los cuatro de abajo: dos por fila, misma altura por fila, mismo x por columna.
-  assert.equal(todos[1].offsetXPixels, todos[3].offsetXPixels)
-  assert.equal(todos[2].offsetXPixels, todos[4].offsetXPixels)
+  // Los dos de abajo: misma altura, uno al lado del otro.
+  assert.equal(todos[1].offsetXPixels, 0)
+  assert.ok(todos[2].offsetXPixels > 0)
   assert.equal(todos[1].offsetYPixels, todos[2].offsetYPixels)
-  assert.equal(todos[3].offsetYPixels, todos[4].offsetYPixels)
+  assert.ok(todos[1].offsetYPixels > todos[0].offsetYPixels)
 
-  // Y SIN la necesidad, los cuatro restantes siguen formando la misma grilla desde arriba.
+  // Y SIN la necesidad, los dos restantes suben: no queda una fila en blanco arriba.
   const sinNec = pos(graficos(7, ANEXO, { ...SERIES, necesidad: null }).requests)
-  assert.equal(sinNec.length, 4)
+  assert.equal(sinNec.length, 2)
   assert.equal(sinNec[0].offsetXPixels, 0)
-  assert.equal(sinNec[0].offsetYPixels, 0, 'sin el primero, el resto sube: no queda una fila en blanco')
+  assert.equal(sinNec[0].offsetYPixels, 0)
   assert.equal(sinNec[0].offsetYPixels, sinNec[1].offsetYPixels)
-  assert.equal(sinNec[2].offsetXPixels, 0)
 })
 
 test('LA EVOLUCIÓN DE LA CAJA YA NO SE DIBUJA: el dueño la reemplazó por el equilibrio', () => {
@@ -73,7 +73,7 @@ test('LA EVOLUCIÓN DE LA CAJA YA NO SE DIBUJA: el dueño la reemplazó por el e
   // Y la serie del pasado sigue en el anexo sin que su ausencia se reporte como una falla: se dejó de
   // DIBUJAR, no se borró — el dato es del dueño.
   assert.ok(!faltan.includes('historia'))
-  assert.deepEqual(graficos(7, ANEXO, { ...SERIES, historia: null }).requests.length, 5)
+  assert.deepEqual(graficos(7, ANEXO, { ...SERIES, historia: null }).requests.length, 3)
 })
 
 test('EL EQUILIBRIO SON DOS SERIES SOBRE LOS DOCE MESES, Y SE CRUZAN', () => {
@@ -124,8 +124,8 @@ test('LOS DATOS SALEN DEL ANEXO, NUNCA DE UNA SEGUNDA FUENTE', () => {
   }
 })
 
-test('LAS CURVAS LEEN FECHA CONTRA IMPORTE; LOS RANKINGS, NOMBRE CONTRA IMPORTE', () => {
-  const [, eq, pr, pag, cob] = graficos(7, ANEXO, SERIES).requests.map((r) => r.addChart.chart.spec.basicChart)
+test('LAS CURVAS LEEN FECHA CONTRA IMPORTE', () => {
+  const [, eq, pr] = graficos(7, ANEXO, SERIES).requests.map((r) => r.addChart.chart.spec.basicChart)
   for (const c of [eq, pr]) {
     assert.equal(c.chartType, 'LINE', 'un saldo diario es una curva: como barras son sesenta barras ilegibles')
     assert.equal(c.domains[0].domain.sourceRange.sources[0].startColumnIndex, COL.fecha - 1)
@@ -134,12 +134,25 @@ test('LAS CURVAS LEEN FECHA CONTRA IMPORTE; LOS RANKINGS, NOMBRE CONTRA IMPORTE'
   // La proyección sigue siendo UNA curva de saldo: la leyenda le robaría ancho sin agregar nada.
   assert.equal(pr.series.length, 1)
   assert.equal(pr.legendPosition, 'NO_LEGEND')
-  for (const c of [pag, cob]) {
-    // BAR y no COLUMN: los nombres de contraparte son largos y en vertical se dibujan rotados.
-    assert.equal(c.chartType, 'BAR')
-    assert.equal(c.domains[0].domain.sourceRange.sources[0].startColumnIndex, COL.rotulo - 1)
-    assert.equal(c.legendPosition, 'NO_LEGEND', 'una sola serie: la leyenda roba ancho y no agrega nada')
-  }
+})
+
+test('EL DE NECESIDAD SEPARA LAS DOS MAGNITUDES EN DOS EJES', () => {
+  // Lo que sale un día se mide en unidades de millón; el saldo acumulado, en decenas. En un solo eje
+  // las barras quedan aplastadas contra el piso y el gráfico deja de mostrar QUÉ SALE, que es la
+  // mitad de la pregunta que contesta.
+  const nec = graficos(7, ANEXO, SERIES).requests[0].addChart.chart.spec.basicChart
+  assert.equal(nec.chartType, 'COMBO', 'COLUMN ignora el `type` por serie y dibuja siete barras')
+  assert.equal(nec.stackedType, 'STACKED', 'las salidas del día se suman, no se comparan entre sí')
+  const barras = nec.series.filter((x) => x.type === 'COLUMN')
+  const curvas = nec.series.filter((x) => x.type === 'LINE')
+  assert.equal(barras.length, 5, 'cheques, proveedores, sueldos, cargas e impuestos')
+  assert.equal(curvas.length, 2, 'el saldo cobrando lo previsto y el saldo sin cobrar un peso')
+  assert.ok(barras.every((x) => x.targetAxis === 'LEFT_AXIS'))
+  assert.ok(curvas.every((x) => x.targetAxis === 'RIGHT_AXIS'))
+  assert.ok(nec.axis.some((a) => a.position === 'RIGHT_AXIS'), 'sin el eje derecho declarado no hay dos escalas')
+  // Y la punteada es la del peor caso: si las dos fueran llenas habría que leer la leyenda para
+  // saber cuál es el piso, y el piso es el número con el que se decide.
+  assert.match(curvas[1].lineStyle.type, /DASH/)
 })
 
 test('EL ANCLA CAE DEBAJO DE LA GRILLA, y el generador garantiza esa fila', () => {
@@ -159,7 +172,6 @@ test('EL ANCLA CAE DEBAJO DE LA GRILLA, y el generador garantiza esa fila', () =
   assert.equal(ys[0], 0)
   assert.ok(ys[1] > 0 && xs[1] === 0, 'el equilibrio abre la segunda fila')
   assert.ok(xs[2] > 0 && ys[2] === ys[1], 'la proyección va a su lado')
-  assert.ok(ys[3] > ys[1] && xs[3] === 0, 'y las concentraciones bajan una fila')
   const src = readFileSync(new URL('../scripts/caja-pestana.mjs', import.meta.url), 'utf8')
   assert.match(src, /FILA_ANCLA \+ 4/, 'el generador tiene que extender la hoja hasta pasado el ancla')
   assert.match(src, /gridProperties\.rowCount/, 'y pedirle a la API que cambie el alto, no suponerlo')
@@ -177,7 +189,7 @@ test('SE BORRAN TODOS LOS DE LA PESTAÑA ANTES DE DIBUJAR, y los borrados van pr
     { chartId: 3, title: 'un gráfico que hizo el dueño sobre el layout viejo' },
   ]), 'file', 7, ANEXO, SERIES)
   assert.deepEqual(reqs.filter((r) => r.deleteEmbeddedObject).map((r) => r.deleteEmbeddedObject.objectId), [1, 3])
-  assert.equal(reqs.filter((r) => r.addChart).length, 5)
+  assert.equal(reqs.filter((r) => r.addChart).length, 3)
   assert.ok(reqs.findIndex((r) => r.deleteEmbeddedObject) < reqs.findIndex((r) => r.addChart),
     'al revés se borraría el que se acaba de crear')
 })
@@ -191,13 +203,14 @@ test('NINGUNA SALIDA SE QUEDA MUDA: si no dibuja, dice por qué', async () => {
     assert.deepEqual(await requestsDeGraficos(fake([]), 'f', 7, undefined, SERIES), [])
     assert.deepEqual(await requestsDeGraficos({ getCharts: async () => { throw new Error('429') } }, 'f', 7, ANEXO, SERIES), [])
     assert.deepEqual(await requestsDeGraficos(fake([]), 'f', 7, ANEXO, {}), [])
-    // Y una serie que falta NO cancela las otras tres: media portada es mejor que ninguna.
-    const parcial = await requestsDeGraficos(fake([]), 'f', 7, ANEXO, { ...SERIES, pagos: null })
-    assert.equal(parcial.filter((r) => r.addChart).length, 4)
+    // Y una serie que falta NO cancela las otras: media portada es mejor que ninguna.
+    const parcial = await requestsDeGraficos(fake([]), 'f', 7, ANEXO, { ...SERIES, equilibrio: null })
+    assert.equal(parcial.filter((r) => r.addChart).length, 2)
+    assert.ok(dichos.some((d) => d.includes('equilibrio')), 'el que no se dibuja se nombra')
   } finally { console.warn = warn }
   assert.ok(dichos.some((d) => d.includes('_CAJA_ANEXO')), 'sin el sheetId del anexo se dice cuál falta')
   assert.ok(dichos.some((d) => d.includes('429')), 'el error de la API se propaga al log, no se traga')
-  assert.ok(dichos.some((d) => d.includes('pagos')), 'la serie que falta se nombra')
+  assert.ok(dichos.some((d) => d.includes('necesidad')), 'la serie que falta se nombra')
 })
 
 test('el cliente de Google expone getCharts: sin eso el módulo no puede borrar', () => {

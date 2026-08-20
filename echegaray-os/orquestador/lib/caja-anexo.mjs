@@ -46,7 +46,7 @@ export { PESTANA_ANEXO }
 // LAS SIETE NUEVAS VAN DESPUÉS DE LA PROSA, no antes. La G es la columna de nota y de contadores, y
 // el formateador la ubica como «la última» (`ANCHO_ANEXO - 1`); meter las series en el medio le
 // corría el rótulo y dejaba los conteos sin formato de número. Ver el test de `fCuantos`.
-export const ANCHO_ANEXO = 14
+export const ANCHO_ANEXO = 15
 /** La columna de prosa y contadores. Era «la última»; con la serie nueva atrás, hay que nombrarla. */
 export const COL_NOTA = 7
 
@@ -201,7 +201,7 @@ export const HISTORICO_EFECTIVO = HISTORICO_EFECTIVO_BASE
 export const claveDeRotulo = (r) => String(r ?? '').trim()
 
 /** Los anchos de columna, en píxeles. Los mismos que CAJA para que las dos se lean igual. */
-export const ANCHOS_ANEXO = [420, 56, 140, 140, 140, 104, 260, 90, 130, 130, 130, 130, 130, 130]
+export const ANCHOS_ANEXO = [420, 56, 140, 140, 140, 104, 260, 90, 124, 124, 124, 124, 124, 140, 140]
 
 const ars = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-AR')}`
 
