@@ -84,7 +84,7 @@ test('LA PANTALLA NO PUEDE AFIRMAR UN PERMISO QUE LA BASE NIEGA', () => {
 test('un jefe de obra NO ve la economía, y su ficha tiene que decirlo', () => {
   // Decía «Ve todas las obras, los clientes y la economía» para todo el área Administración — y el
   // jefe de obra está en esa área con `veEconomia` en false. Afirmaba un permiso que no tiene.
-  const base = { id: 'u1', nombre: 'Marcos', email: 'm@ecsas.com.ar', obras: [], ultimoIngreso: null }
+  const base = { id: 'u1', nombre: 'Marcos', email: 'm@ecsas.com.ar', obras: [], ultimoIngreso: null, persona: null }
   const jefe = { ...base, rol: 'jefe_obra', area: 'administracion', estado: 'activo' } as UsuarioGestion
   const frase = permisosEfectivos(jefe)
   assert.match(frase, /Entra a todas las obras/)

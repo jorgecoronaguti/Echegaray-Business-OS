@@ -21,7 +21,7 @@ import { veEconomia } from '@/features/auth/types/areas'
 import { PageShell } from '@/shared/components/ui'
 import { Aviso } from '@/shared/components/ds'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
-import { listarObrasElegibles, listarUsuarios } from '@/features/usuarios/services/usuariosService'
+import { listarObrasElegibles, listarPersonasVinculables, listarUsuarios } from '@/features/usuarios/services/usuariosService'
 import { UsuariosManager } from '@/features/usuarios/components/UsuariosManager'
 
 export const dynamic = 'force-dynamic'
@@ -57,9 +57,14 @@ export default async function UsuariosPage() {
   // cuesta una sesión entera de diagnóstico.
   let lista: Awaited<ReturnType<typeof listarUsuarios>>
   let obras: Awaited<ReturnType<typeof listarObrasElegibles>>
+  let personas: Awaited<ReturnType<typeof listarPersonasVinculables>>
   try {
     const admin = createAdminClient()
-    ;[lista, obras] = await Promise.all([listarUsuarios(admin), listarObrasElegibles(admin)])
+    ;[lista, obras, personas] = await Promise.all([
+      listarUsuarios(admin),
+      listarObrasElegibles(admin),
+      listarPersonasVinculables(admin),
+    ])
   } catch {
     const presentes = nombresDeConfiguracionSupabase()
     return (
@@ -103,6 +108,7 @@ export default async function UsuariosPage() {
         <Aviso tono="neg" titulo="No pude leer las cuentas">{lista.error}</Aviso>
       ) : (
         <UsuariosManager
+          personas={personas}
           usuarios={lista.data ?? []} obras={obras}
           actorId={usuario.id} rolActor={perfil.data?.rol ?? null}
         />

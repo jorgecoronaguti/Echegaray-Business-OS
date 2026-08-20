@@ -21,10 +21,10 @@ import { ROL_LABEL, type Rol } from '@/features/auth/types'
 import { AREA_LABEL } from '@/features/auth/types/areas'
 import { motivoParaNoRegenerarClave, ROLES_DE_AREA } from '../services/reglas'
 import {
-  asignarObra, cambiarAcceso, cambiarRol, editarUsuario, quitarObra, regenerarClave,
+  asignarObra, cambiarAcceso, cambiarRol, editarUsuario, quitarObra, regenerarClave, vincularPersona,
   type ResultadoClave,
 } from '../services/usuariosActions'
-import { permisosEfectivos, type ObraElegible, type UsuarioGestion } from '../types'
+import { permisosEfectivos, type ObraElegible, type PersonaVinculable, type UsuarioGestion } from '../types'
 import { Credencial } from './Credencial'
 
 /**
@@ -97,6 +97,54 @@ function SelectorDeRol({ valor }: { valor: string }) {
   )
 }
 
+/**
+ * QUIÉN ES ESTA CUENTA — el vínculo con la persona del plantel.
+ *
+ * Sin él, «Mi cuenta» está vacío: las cuatro vistas `mi_*` de la base cuelgan de `mi_persona_id()`,
+ * que lee justamente esta columna. Vincular no es un dato administrativo más — es lo que le da a
+ * alguien acceso a un legajo, así que la pantalla dice en voz alta qué se abre al elegir.
+ *
+ * Las personas ya tomadas por otra cuenta se muestran DESHABILITADAS con el nombre de esa cuenta,
+ * no se sacan de la lista: quien busca a alguien y no lo encuentra no sabe si no está cargado, si
+ * se escribe distinto o si ya tiene cuenta, y son tres problemas con tres soluciones opuestas.
+ */
+function PersonaDeLaCuenta({ u, personas }: { u: UsuarioGestion; personas: PersonaVinculable[] }) {
+  return (
+    <section data-testid="panel-persona">
+      <Eyebrow className="mb-2">Persona del plantel</Eyebrow>
+      {u.persona ? (
+        <p className="mb-2 text-[12.5px] text-ink" data-testid="persona-vinculada">
+          Esta cuenta es <span className="font-medium">{u.persona.nombre}</span>. Ve su legajo, sus
+          horas y sus documentos en «Mi cuenta».
+        </p>
+      ) : (
+        <p className="mb-2 text-[12.5px] text-faint" data-testid="persona-sin-vincular">
+          Sin vincular: en «Mi cuenta» no ve legajo, horas ni documentos. Una casilla de sistema
+          puede quedarse así.
+        </p>
+      )}
+      <FormAccion
+        accion={(form) => vincularPersona(u.id, form)}
+        testid="form-persona"
+        enviar={u.persona ? 'Cambiar la persona' : 'Vincular'}
+        mensajeOk="Vínculo guardado."
+      >
+        <Campo label="Persona" ayuda="Vincular le abre SU legajo, sus horas y sus documentos. Nada de terceros.">
+          <select name="persona_id" defaultValue={u.persona?.id ?? ''} className={CTRL} data-testid="select-persona">
+            <option value="">Sin vincular</option>
+            {personas.map((p) => (
+              <option key={p.id} value={p.id} disabled={p.tomadaPor !== null && p.id !== u.persona?.id}>
+                {p.nombre}
+                {p.tomadaPor !== null && p.id !== u.persona?.id ? ` — ya es ${p.tomadaPor}` : ''}
+              </option>
+            ))}
+          </select>
+        </Campo>
+      </FormAccion>
+    </section>
+  )
+}
+
 /** Las obras de esta persona: las que tiene y el alta de una más. */
 function ObrasDeLaCuenta({ u, obras }: { u: UsuarioGestion; obras: ObraElegible[] }) {
   const yaTiene = new Set(u.obras.map((o) => o.obraId))
@@ -163,10 +211,11 @@ function ObrasDeLaCuenta({ u, obras }: { u: UsuarioGestion; obras: ObraElegible[
 }
 
 export function PanelUsuario({
-  usuario, obras, esUnoMismo, rolActor, alCerrar,
+  usuario, obras, personas, esUnoMismo, rolActor, alCerrar,
 }: {
   usuario: UsuarioGestion
   obras: ObraElegible[]
+  personas: PersonaVinculable[]
   /** La propia cuenta del que está mirando: no se puede cambiar el rol ni sacarse el acceso. */
   esUnoMismo: boolean
   /** El rol del que MIRA, no el de la fila. Sólo Dirección regenera contraseñas. */
@@ -233,6 +282,8 @@ export function PanelUsuario({
             </div>
           )}
         </section>
+
+        <PersonaDeLaCuenta u={u} personas={personas} />
 
         <ObrasDeLaCuenta u={u} obras={obras} />
 

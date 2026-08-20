@@ -287,6 +287,64 @@ export async function cambiarRol(usuarioId: string, form: FormData): Promise<Res
   return { ok: true }
 }
 
+// ── LA PERSONA DETRÁS DE LA CUENTA ──────────────────────────────────────────────────────────────
+
+/**
+ * VINCULA UNA CUENTA CON SU PERSONA DEL PLANTEL — y sólo puede hacerlo Administración.
+ *
+ * Es el eslabón del que cuelga todo «Mi cuenta»: `mi_persona_id()` lo resuelve en la base, y las
+ * cuatro vistas `mi_*` devuelven cero filas mientras no exista. Sin esta acción, la migración de
+ * aislamiento queda escrita y sin puerta de entrada.
+ *
+ * NADIE SE AUTOVINCULA, Y ESO ESTÁ EN LA BASE, NO ACÁ. El `grant update` de `perfiles` para
+ * `authenticated` cubre `nombre`, `telefono` y `avatar_url`: `persona_id` no está, así que Postgres
+ * rechaza la columna antes de mirar ninguna policy. Esta acción escribe con la clave de servicio
+ * después de comprobar que quien la llama es Administración — verificado el 20/08 contra la base:
+ * como `authenticated`, `update perfiles set persona_id=…` da «permission denied for table
+ * perfiles» incluso sobre la propia fila.
+ *
+ * Vincular a alguien es darle acceso a un legajo: si se elige mal, una persona ve los papeles y las
+ * horas de otra. Por eso el índice único parcial `perfiles_una_persona_por_usuario` impide que dos
+ * cuentas se cuelguen de la misma persona, y el error de esa colisión se traduce en vez de
+ * mostrarse crudo.
+ */
+export async function vincularPersona(usuarioId: string, form: FormData): Promise<Resultado> {
+  const parsed = z
+    .object({ persona_id: z.string().uuid('Elegí una persona de la lista.').or(z.literal('')) })
+    .safeParse(Object.fromEntries(form))
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
+  const puerta = await soloAdministracion()
+  if (!puerta.ok) return { ok: false, error: puerta.error }
+
+  const personaId = parsed.data.persona_id === '' ? null : parsed.data.persona_id
+
+  // `upsert` por la misma razón que `cambiarRol`: una cuenta creada a mano en Supabase no tiene
+  // fila en `perfiles`, y un `update` sobre cero filas no falla — diría «guardado» sin guardar.
+  const { data: cuenta } = await puerta.admin.auth.admin.getUserById(usuarioId)
+  if (!cuenta?.user) return { ok: false, error: 'Esa cuenta ya no existe.' }
+  const { data: previo } = await puerta.admin.from('perfiles').select('rol, nombre').eq('id', usuarioId).maybeSingle()
+
+  const { error } = await puerta.admin.from('perfiles').upsert(
+    {
+      id: usuarioId,
+      persona_id: personaId,
+      rol: (previo?.rol as string | undefined) ?? 'campo',
+      nombre: (previo?.nombre as string | undefined) ?? cuenta.user.email ?? 'Sin nombre',
+    },
+    { onConflict: 'id' },
+  )
+  if (error) {
+    // 23505 es el índice único parcial: esa persona ya está tomada por otra cuenta. El mensaje de
+    // Postgres nombra el índice, que no le dice nada a quien está mirando la pantalla.
+    if (error.code === '23505') {
+      return { ok: false, error: 'Esa persona ya está vinculada a otra cuenta. Desvinculala primero de la otra.' }
+    }
+    return { ok: false, error: error.message }
+  }
+  revalidatePath(PATH)
+  return { ok: true }
+}
+
 // ── ACCESO ──────────────────────────────────────────────────────────────────────────────────────
 
 /**

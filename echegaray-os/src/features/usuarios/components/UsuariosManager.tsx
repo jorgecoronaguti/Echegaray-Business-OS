@@ -23,7 +23,7 @@ import { ROL_LABEL, type Rol } from '@/features/auth/types'
 import { ultimoIngresoDicho, veTodasLasObras } from '../services/reglas'
 import { AltaUsuario } from './AltaUsuario'
 import { PanelUsuario } from './PanelUsuario'
-import type { ObraElegible, UsuarioGestion } from '../types'
+import type { ObraElegible, PersonaVinculable, UsuarioGestion } from '../types'
 
 type Filtro = 'todos' | 'administracion' | 'obras' | 'sin_acceso'
 
@@ -63,10 +63,12 @@ function CeldaObras({ u }: { u: UsuarioGestion }) {
 }
 
 export function UsuariosManager({
-  usuarios, obras, actorId, rolActor,
+  usuarios, obras, personas, actorId, rolActor,
 }: {
   usuarios: UsuarioGestion[]
   obras: ObraElegible[]
+  /** El plantel para vincular una cuenta con su persona. Es lo que llena «Mi cuenta». */
+  personas: PersonaVinculable[]
   /** Quién está mirando. Viene del servidor: es lo que apaga los controles sobre la propia cuenta. */
   actorId: string
   /** Con qué rol mira. Viene del servidor por el mismo motivo: sólo Dirección regenera claves. */
@@ -176,6 +178,7 @@ export function UsuariosManager({
         <PanelUsuario
           usuario={usuario}
           obras={obras}
+          personas={personas}
           esUnoMismo={usuario.id === actorId}
           rolActor={rolActor}
           alCerrar={() => setElegido(null)}

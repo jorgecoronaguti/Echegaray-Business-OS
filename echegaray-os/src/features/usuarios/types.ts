@@ -35,8 +35,32 @@ export interface ObraDeUsuario {
   papel: string
 }
 
+/** Una persona del plantel ofrecida para vincular. `tomadaPor` = la cuenta que ya la tiene. */
+export interface PersonaVinculable {
+  id: string
+  nombre: string
+  tomadaPor: string | null
+}
+
+/** La persona del plantel que ES esta cuenta. `null` = todavía nadie la vinculó. */
+export interface PersonaVinculada {
+  id: string
+  nombre: string
+}
+
 export interface UsuarioGestion {
   id: string
+  /**
+   * LA PERSONA DEL PLANTEL QUE ES ESTA CUENTA.
+   *
+   * Es el quinto eslabón del modelo, y el que faltaba: `usuario → rol → obras → permisos` decía
+   * qué PUEDE hacer una cuenta, pero no A QUIÉN pertenece. De este vínculo cuelga todo «Mi cuenta»
+   * —mi legajo, mis horas, mis documentos—, porque `mi_persona_id()` lo resuelve en la base.
+   *
+   * `null` no es un error: es una cuenta que todavía no se vinculó, y hay cuentas que nunca van a
+   * tener persona (una casilla de sistema no es un empleado). La pantalla lo escribe.
+   */
+  persona: PersonaVinculada | null
   /** El nombre del perfil. Vacío cuando la cuenta existe en auth pero nadie le cargó perfil. */
   nombre: string | null
   email: string | null
