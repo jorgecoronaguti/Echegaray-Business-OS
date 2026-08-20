@@ -30,7 +30,7 @@ export function BloqueMedicion({ a, definir }: { a: Actividad; definir?: AccionF
       <div className="grid grid-cols-2 gap-2">
         <section className="rounded-md border border-line bg-surface px-2.5 py-2">
           <Rotulo>Plan</Rotulo>
-          <dl className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[12px]">
+          <dl className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[0.92em]">
             <Dato k="Unidad" v={a.unidad} />
             <Dato k="Objetivo" v={n2(a.cantidad_objetivo)} />
             <Dato k="Inicio" v={a.inicio_plan ? fecha(a.inicio_plan) : null} />
@@ -40,7 +40,7 @@ export function BloqueMedicion({ a, definir }: { a: Actividad; definir?: AccionF
         </section>
         <section className="rounded-md border border-line bg-surface px-2.5 py-2">
           <Rotulo>Real</Rotulo>
-          <dl className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[12px]">
+          <dl className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[0.92em]">
             <Dato
               k="Ejecutado"
               v={a.metodo_avance === 'cantidad' ? n2(a.cantidad_ejecutada ?? 0) : `${a.n_partes} parte(s)`}
@@ -54,25 +54,35 @@ export function BloqueMedicion({ a, definir }: { a: Actividad; definir?: AccionF
                 improductiva. */}
             {a.productividad != null && <Dato k="Prod." v={`${n2(a.productividad)} ${a.unidad}/HH`} />}
           </dl>
+          {/* LA BARRA DE AVANCE. Un porcentaje se lee; una barra se ve. Sólo cuando el número
+              existe: una barra vacía diría «0%» donde lo que pasa es que nadie midió. */}
+          {a.avance_pct != null && (
+            <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-line" data-testid="barra-avance">
+              <div
+                className="h-full rounded-full bg-accent"
+                style={{ width: `${Math.max(0, Math.min(100, Number(a.avance_pct)))}%` }}
+              />
+            </div>
+          )}
         </section>
       </div>
 
       {/* EL CONSUMO DE HH CONTRA EL AVANCE FÍSICO. Las dos mitades o ninguna: decir «70% del plan»
           sin poder decir cuánto se avanzó es la mitad de una comparación, y la mitad engaña. */}
       {a.consumo_hh_pct != null && a.avance_pct != null && (
-        <p className="text-[11px] text-muted" data-testid="avance-vs-hh">
+        <p className="text-[0.85em] text-muted" data-testid="avance-vs-hh">
           Avance físico <span className="tabular-nums text-ink">{n2(a.avance_pct)}%</span> · HH
           consumidas <span className="tabular-nums text-ink">{n2(a.consumo_hh_pct)}%</span> del plan
         </p>
       )}
       {a.hh_real != null && a.hh_plan == null && (
-        <p className="text-[11px] text-warn">Hay horas imputadas pero falta la HH plan: el desvío no se puede medir.</p>
+        <p className="text-[0.85em] text-warn">Hay horas imputadas pero falta la HH plan: el desvío no se puede medir.</p>
       )}
 
       {/* DE DÓNDE SALIÓ EL AVANCE. Quien decide tiene que poder distinguir un número calculado de
           uno tipeado sin ir a buscarlo. */}
       {a.origen_avance && (
-        <p className="text-[11px] text-faint" data-testid="origen-avance">
+        <p className="text-[0.85em] text-faint" data-testid="origen-avance">
           Avance {a.origen_avance === 'cantidad'
             ? 'calculado desde la producción cargada'
             : a.origen_avance === 'partes' ? 'sumado de los partes diarios' : 'declarado a mano'}.
@@ -140,24 +150,24 @@ export function BloqueRecursos({ a, personas, reales, equipos, obraId }: {
           cuenta={reales.length}
           {...(obraId ? { verMas: `/obras/${obraId}?vista=personal`, verMasTitulo: 'Ver el personal de la obra' } : {})}
         >Personal</Rotulo>
-        <p className="text-[11px] text-faint">
+        <p className="text-[0.85em] text-faint">
           Previsto: <span className="text-muted">{prevista ?? 'sin cuadrilla asignada'}</span>
         </p>
-        <p className="text-[11px] text-faint">
+        <p className="text-[0.85em] text-faint">
           Responsable: <span className="text-muted">{responsable ?? 'sin asignar'}</span>
         </p>
         {reales.length === 0 ? (
-          <p className="mt-1 text-[12px] text-faint">Nadie imputó horas todavía.</p>
+          <p className="mt-1 text-[0.92em] text-faint">Nadie imputó horas todavía.</p>
         ) : (
           <ul className="mt-1 space-y-0.5" data-testid="personal-real">
             {reales.slice(0, 6).map((r) => (
-              <li key={r.persona_id} className="flex items-baseline justify-between gap-2 text-[12px]">
+              <li key={r.persona_id} className="flex items-baseline justify-between gap-2 text-[0.92em]">
                 <span className="min-w-0 truncate text-muted">{nombreDe(r.persona_id)}</span>
                 <span className="shrink-0 tabular-nums text-ink">{n2(r.horas)} h</span>
               </li>
             ))}
             {reales.length > 6 && (
-              <li className="text-[11px] text-faint">y {reales.length - 6} más · {n2(hhTotal)} h en total</li>
+              <li className="text-[0.85em] text-faint">y {reales.length - 6} más · {n2(hhTotal)} h en total</li>
             )}
           </ul>
         )}
@@ -169,11 +179,11 @@ export function BloqueRecursos({ a, personas, reales, equipos, obraId }: {
           {...(obraId ? { verMas: `/obras/${obraId}?vista=operacion&sub=herramientas`, verMasTitulo: 'Ver los equipos de la obra' } : {})}
         >Equipos</Rotulo>
         {equipos.length === 0 ? (
-          <p className="text-[12px] text-faint">Ninguno cargado. Se anotan al registrar la ejecución.</p>
+          <p className="text-[0.92em] text-faint">Ninguno cargado. Se anotan al registrar la ejecución.</p>
         ) : (
           <ul className="space-y-0.5" data-testid="equipos-actividad">
             {equipos.slice(0, 6).map((e) => (
-              <li key={e.equipo} className="flex items-baseline justify-between gap-2 text-[12px]">
+              <li key={e.equipo} className="flex items-baseline justify-between gap-2 text-[0.92em]">
                 <span className="min-w-0 truncate text-muted">{e.equipo}</span>
                 {/* HORAS SIN ANOTAR NO SON CERO: se dice en cuántas jornadas apareció, que es lo
                     único que se sabe. */}
@@ -182,7 +192,7 @@ export function BloqueRecursos({ a, personas, reales, equipos, obraId }: {
                 </span>
               </li>
             ))}
-            {equipos.length > 6 && <li className="text-[11px] text-faint">y {equipos.length - 6} más</li>}
+            {equipos.length > 6 && <li className="text-[0.85em] text-faint">y {equipos.length - 6} más</li>}
           </ul>
         )}
       </section>
@@ -207,7 +217,7 @@ export function BloqueEjecucion({ a, partes, personasPorFecha, verTodo }: {
     return (
       <section data-testid="ejecucion-reciente">
         <Rotulo>Ejecución reciente</Rotulo>
-        <p className="text-[12px] text-faint">Sin partes cargados.</p>
+        <p className="text-[0.92em] text-faint">Sin partes cargados.</p>
       </section>
     )
   }
@@ -215,9 +225,9 @@ export function BloqueEjecucion({ a, partes, personasPorFecha, verTodo }: {
     <section data-testid="ejecucion-reciente">
       <Rotulo cuenta={a.n_partes}>Ejecución reciente</Rotulo>
       <div className="overflow-hidden rounded-md border border-line bg-surface">
-        <table className="w-full text-left text-[12px]">
+        <table className="w-full text-left text-[0.92em]">
           <thead>
-            <tr className="border-b border-line text-[10px] uppercase tracking-wide text-faint">
+            <tr className="border-b border-line text-[0.78em] uppercase tracking-wide text-faint">
               <th className="px-2 py-1 font-medium">Fecha</th>
               <th className="px-2 py-1 text-right font-medium">Cant.</th>
               <th className="px-2 py-1 text-right font-medium">HH</th>
@@ -245,7 +255,7 @@ export function BloqueEjecucion({ a, partes, personasPorFecha, verTodo }: {
         </table>
       </div>
       {partes.length > 5 && (
-        <p className="mt-1 text-[11px] text-faint">
+        <p className="mt-1 text-[0.85em] text-faint">
           {verTodo
             ? <a href={verTodo} className="text-muted underline underline-offset-2" data-testid="ver-historial">
                 Ver todo el historial ({partes.length}) →

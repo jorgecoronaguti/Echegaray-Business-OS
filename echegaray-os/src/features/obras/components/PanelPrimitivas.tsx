@@ -24,7 +24,7 @@ export function Rotulo({ children, cuenta, verMas, verMasTitulo }: {
   verMasTitulo?: string
 }) {
   return (
-    <p className="mb-1 flex items-baseline gap-1.5 text-[10px] uppercase tracking-wide text-faint">
+    <p className="mb-1 flex items-baseline gap-1.5 text-[0.78em] uppercase tracking-wide text-faint">
       {children}
       {cuenta != null && cuenta > 0 && <span className="tabular-nums text-muted">{cuenta}</span>}
       {/* EL DETALLE NO SE REIMPLEMENTA EN EL PANEL: lleva a la solapa donde ese dato se edita. Un
@@ -34,7 +34,7 @@ export function Rotulo({ children, cuenta, verMas, verMasTitulo }: {
           href={verMas}
           title={verMasTitulo}
           data-testid="ver-mas-bloque"
-          className="ml-auto text-[12px] normal-case tracking-normal text-muted hover:text-ink"
+          className="ml-auto text-[0.92em] normal-case tracking-normal text-muted hover:text-ink"
           aria-label={verMasTitulo}
         >›</a>
       )}
@@ -63,7 +63,7 @@ export function Plegable({ titulo, cuenta, testid, children }: {
 }) {
   return (
     <details className="rounded-md border border-line bg-surface px-2.5 py-1.5" data-testid={testid}>
-      <summary className="cursor-pointer text-[12px] text-muted">
+      <summary className="cursor-pointer text-[0.92em] text-muted">
         {titulo}
         {cuenta != null && cuenta > 0 && <span className="ml-2 tabular-nums text-ink">{cuenta}</span>}
       </summary>

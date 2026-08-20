@@ -12,19 +12,23 @@
 
 import { ESTADO_LABEL } from '../types'
 
+// PÍLDORA CON FONDO, NO UN RECUADRO FINO. El objetivo las dibuja así y no es capricho: en una
+// columna de treinta filas, un borde de 1px con texto del mismo gris que el resto no se distingue
+// hasta que uno lo busca, y el estado es lo primero que se barre con la vista.
 const TONO: Record<string, string> = {
-  bloqueada: 'border-neg/30 bg-neg/5 text-neg',
-  hecha: 'border-pos/30 bg-pos/5 text-pos',
-  en_curso: 'border-line-strong text-ink',
+  bloqueada: 'bg-neg/10 text-neg',
+  hecha: 'bg-pos-soft text-pos',
+  en_curso: 'bg-accent/10 text-ink',
+  lista: 'bg-marca-soft text-ink',
 }
 
 export function EstadoChip({ estado }: { estado: string }) {
-  const tono = TONO[estado] ?? 'border-line text-muted'
+  const tono = TONO[estado] ?? 'bg-surface-sunken text-muted'
   return (
     <span
       data-testid="estado-chip"
       data-estado={estado}
-      className={`inline-block truncate rounded border px-1.5 py-[1px] text-[10px] leading-[15px] ${tono}`}
+      className={`inline-block truncate rounded-full px-2.5 py-[3px] text-[11px] font-medium leading-[15px] ${tono}`}
     >{ESTADO_LABEL[estado as keyof typeof ESTADO_LABEL] ?? estado}</span>
   )
 }

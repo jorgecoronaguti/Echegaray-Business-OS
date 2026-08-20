@@ -50,7 +50,30 @@ const DIA = 86400000
 // Estaba en 26px con texto de 12: la pantalla se leía como una planilla comprimida y el dueño la
 // rechazó por eso. 36px es la densidad de una herramienta de trabajo —Linear, Asana— donde la
 // información sigue siendo compacta pero cada renglón se distingue del de al lado sin esforzarse.
-const ALTO_FILA = 36
+// ═══ LA ESCALA SIGUE AL ANCHO REAL, NO A UN NÚMERO FIJO (20/08/2026) ═══
+//
+// El dueño trabaja en un monitor de ~3.900 px CSS. Una fila de 40 px con texto de 14 ahí adentro se
+// lee como una planilla de Excel comprimida —que es exactamente la palabra que usó— mientras que en
+// 1.536 px la misma medida es correcta. Un tamaño absoluto no puede servir a los dos.
+//
+// Por eso la densidad se DERIVA del ancho medido de la caja: tres escalones, y el componente elige
+// el suyo. No es zoom —los píxeles por día no cambian—: cambia cuánto ocupa una fila y cuánto mide
+// su texto, que es lo que decide si la pantalla se lee o se descifra.
+const ESCALONES = [
+  { desde: 0, fila: 34, texto: 'text-[13px]', rotulo: 'text-[10px]', chip: 'text-[12px]', px: { mes: 11, dia: 9, barra: 10 } },
+  { desde: 1200, fila: 40, texto: 'text-[14px]', rotulo: 'text-[11px]', chip: 'text-[13px]', px: { mes: 12, dia: 10, barra: 11 } },
+  { desde: 1900, fila: 48, texto: 'text-[16px]', rotulo: 'text-[12px]', chip: 'text-[15px]', px: { mes: 14, dia: 12, barra: 12 } },
+  { desde: 2600, fila: 58, texto: 'text-[19px]', rotulo: 'text-[14px]', chip: 'text-[18px]', px: { mes: 17, dia: 14, barra: 14 } },
+  { desde: 3200, fila: 64, texto: 'text-[21px]', rotulo: 'text-[15px]', chip: 'text-[20px]', px: { mes: 19, dia: 15, barra: 15 } },
+] as const
+
+type Escalon = (typeof ESCALONES)[number]
+
+function escalonDe(ancho: number): Escalon {
+  let e: Escalon = ESCALONES[0]
+  for (const x of ESCALONES) if (ancho >= x.desde) e = x
+  return e
+}
 
 const aDate = (iso: string) => new Date(iso + 'T00:00:00Z')
 const isoDe = (d: Date) => d.toISOString().slice(0, 10)
@@ -144,14 +167,23 @@ export function Gantt({
     obs.observe(caja)
     return () => obs.disconnect()
   }, [])
-  const anchoFijo = anchoCaja ? Math.round(Math.min(640, Math.max(168, anchoCaja * 0.4))) : 0
+  // La tabla toma el 38% de lo que haya: el objetivo pide 35-40% para la tabla y 60-65% para el
+  // calendario, y el techo sube con la pantalla en vez de quedar clavado.
+  const esc = escalonDe(anchoCaja || 1400)
+  const ALTO_FILA = esc.fila
+  // LAS DOS CABECERAS MIDEN LO MISMO o las filas de la tabla y las del calendario arrancan
+  // desfasadas, y a partir de ahí cada renglón miente sobre qué barra le toca.
+  const ALTO_CABECERA = esc.fila + 12
+  const anchoFijo = anchoCaja
+    ? Math.round(Math.min(Math.max(560, anchoCaja * 0.38), Math.max(168, anchoCaja * 0.38)))
+    : 0
   const anchoLibre = anchoCaja ? anchoCaja - anchoFijo : 0
   // EL NOMBRE DE LA ACTIVIDAD MANDA SOBRE LAS COLUMNAS DE APOYO. Con el panel abierto la tabla mide
   // ~390 px y las cuatro columnas de la derecha se comían 300: quedaban 88 px para el nombre y la
   // pantalla decía «Muro G 1/…». El estado y el avance se quedan —son los que se leen de un vistazo—
   // y las fechas se van cuando no hay lugar: están en la barra, que es lo que se está mirando, y
   // enteras en el panel de la actividad.
-  const mostrarFechas = anchoFijo === 0 || anchoFijo >= 470
+  const mostrarFechas = anchoFijo === 0 || anchoFijo >= 500
   // NO HAY DESPLAZAMIENTO AUTOMÁTICO. Se probó centrar en hoy y es peor: en «San Francisco» las
   // primeras veinte filas son de junio y hoy cae en agosto, así que la pantalla abría en un
   // rectángulo vacío con las barras de las filas visibles fuera de cuadro. El plan se lee de
@@ -284,7 +316,8 @@ export function Gantt({
     )
   }
 
-  const { px, ancho, x, meses, ticks } = construirEscala(rango.desde, rango.hasta, escala, anchoLibre)
+  const { px, ancho, x, meses, ticks, porDia } = construirEscala(rango.desde, rango.hasta, escala, anchoLibre)
+  const medio = Math.round(ALTO_CABECERA / 2)
   const alto = filas.length * ALTO_FILA
   const xHoy = x(hoyIso)
   const hoyVisible = xHoy >= 0 && xHoy <= ancho
@@ -339,7 +372,7 @@ export function Gantt({
               style={anchoFijo ? { width: anchoFijo } : undefined}
               className="sticky left-0 z-20 w-[168px] shrink-0 border-r border-line bg-surface sm:w-[400px] lg:w-[460px]"
             >
-              <div className="sticky top-0 z-10 flex h-11 items-end gap-2 border-b border-line bg-surface px-3 pb-2 text-[10px] font-medium uppercase tracking-wide text-faint">
+              <div className={`sticky top-0 z-10 flex items-end gap-2 border-b border-line bg-surface-quiet px-3 pb-2 font-medium uppercase tracking-wide text-faint ${esc.rotulo}`} style={{ height: ALTO_CABECERA }}>
                 {masivas && (
                   <Casilla
                     puesta={todasEnLote}
@@ -349,10 +382,10 @@ export function Gantt({
                   />
                 )}
                 <span className="flex-1">Actividad</span>
-                <span className="hidden w-[74px] sm:inline">Estado</span>
-                {mostrarFechas && <span className="hidden w-12 text-right sm:inline">Inicio</span>}
-                {mostrarFechas && <span className="hidden w-12 text-right sm:inline">Fin</span>}
-                <span className="hidden w-11 text-right sm:inline">%</span>
+                <span className="hidden w-[96px] px-2 sm:inline">Estado</span>
+                {mostrarFechas && <span className="hidden w-[68px] px-2 text-right sm:inline">Inicio</span>}
+                {mostrarFechas && <span className="hidden w-[68px] px-2 text-right sm:inline">Fin</span>}
+                <span className="hidden w-[64px] px-2 text-right sm:inline">%</span>
               </div>
               {filas.map((f) => {
                 if (f.tipo === 'grupo') {
@@ -383,8 +416,8 @@ export function Gantt({
                         {/* EL RUBRO ES UN NIVEL, NO UNA FILA MÁS. Versalitas, negrita y su propia
                             banda: la jerarquía Rubro → Actividad tiene que verse sin leer. */}
                         <span aria-hidden className={`shrink-0 text-[9px] text-muted transition-transform ${cerrado ? '' : 'rotate-90'}`}>▶</span>
-                        <span className="min-w-0 flex-1 truncate text-[12px] font-semibold uppercase tracking-wide text-ink" title={g.nombre}>{g.nombre}</span>
-                        <span className="shrink-0 text-[11px] tabular-nums text-muted">
+                        <span className={`min-w-0 flex-1 truncate font-semibold uppercase tracking-wide text-ink ${esc.texto}`} title={g.nombre}>{g.nombre}</span>
+                        <span className={`shrink-0 tabular-nums text-muted ${esc.chip}`}>
                           {g.pct == null ? `${g.hijas.length}` : `${g.pct}%`}
                         </span>
                       </button>
@@ -396,7 +429,7 @@ export function Gantt({
                   <div
                     key={f.clave}
                     style={{ height: ALTO_FILA }}
-                    className={`flex w-full items-center gap-2 border-b border-line/60 px-3 text-[13px] hover:bg-surface-sunken ${sel?.id === a.id ? 'bg-marca-soft' : ''}`}
+                    className={`flex w-full cursor-pointer items-center border-b border-line/60 pl-3 hover:bg-surface-sunken ${esc.texto} ${sel?.id === a.id ? 'bg-marca-soft' : ''}`}
                   >
                     {masivas && (
                       <Casilla
@@ -423,21 +456,21 @@ export function Gantt({
                     {/* INDENTADA BAJO SU RUBRO, y en el color del texto —no en gris—: es el dato
                         principal de la fila. El `title` da el nombre entero cuando no entra. */}
                     <span
-                      className="min-w-0 flex-1 truncate pl-4 text-ink"
+                      className="min-w-0 flex-1 truncate py-2 pl-4 pr-2 text-ink"
                       title={[a.seccion, a.codigo, a.nombre].filter(Boolean).join(' · ')}
                     >{a.nombre}</span>
                     {/* EL ESTADO OPERATIVO, no el guardado: una actividad con un impedimento
                         abierto dice «Bloqueada» aunque su estado cargado siga siendo «En curso». Es
                         la misma derivación que usa el tablero — un solo lugar donde se decide. */}
-                    <span className="hidden w-[74px] shrink-0 sm:inline">
+                    <span className="hidden h-full w-[96px] shrink-0 items-center border-l border-line/50 px-2 sm:flex">
                       <EstadoChip estado={a.estado_operativo} />
                     </span>
-                    {mostrarFechas && <span className="hidden w-12 shrink-0 text-right text-[12px] tabular-nums text-muted sm:inline">{fmtCorto(a.inicio_plan)}</span>}
-                    {mostrarFechas && <span className="hidden w-12 shrink-0 text-right text-[12px] tabular-nums text-muted sm:inline">{fmtCorto(a.fin_plan)}</span>}
+                    {mostrarFechas && <span className={`hidden h-full w-[68px] shrink-0 items-center justify-end border-l border-line/50 px-2 tabular-nums text-muted sm:flex ${esc.chip}`}>{fmtCorto(a.inicio_plan)}</span>}
+                    {mostrarFechas && <span className={`hidden h-full w-[68px] shrink-0 items-center justify-end border-l border-line/50 px-2 tabular-nums text-muted sm:flex ${esc.chip}`}>{fmtCorto(a.fin_plan)}</span>}
                     {/* EL AVANCE CALCULADO, no el declarado: es el mismo número que muestra el panel
                         y el que promedia la obra. «—» cuando no hay ninguno — un 0% inventado diría
                         que la actividad no arrancó cuando lo que pasa es que nadie la midió. */}
-                    <span className="hidden w-11 shrink-0 text-right text-[12px] font-medium tabular-nums text-ink sm:inline">
+                    <span className={`hidden h-full w-[64px] shrink-0 items-center justify-end border-l border-line/50 px-2 font-medium tabular-nums text-ink sm:flex ${esc.chip}`}>
                       {a.avance_pct == null ? <span className="font-normal text-faint">—</span> : `${Math.round(Number(a.avance_pct))}%`}
                     </span>
                   </button>
@@ -448,28 +481,51 @@ export function Gantt({
 
             {/* ── LÍNEA DE TIEMPO ──────────────────────────────────────────────────────── */}
             <div className="relative shrink-0" style={{ width: ancho }}>
-              <div className="sticky top-0 z-10 h-11 border-b border-line bg-surface">
-                <svg width={ancho} height={44} className="block">
+              <div className="sticky top-0 z-10 border-b border-line bg-surface-quiet" style={{ height: ALTO_CABECERA }}>
+                <svg width={ancho} height={ALTO_CABECERA} className="block">
                   {finesDeSemana.map((f) => (
-                    <rect key={'hfs' + f.x} x={f.x} y={22} width={f.w} height={22} className="fill-surface-quiet" />
+                    <rect key={'hfs' + f.x} x={f.x} y={medio} width={f.w} height={ALTO_CABECERA - medio} className="fill-surface-sunken" />
                   ))}
                   {meses.map((m) => (
                     <g key={m.label + m.x0}>
-                      <line x1={m.x0} y1={0} x2={m.x0} y2={44} className="stroke-line-strong" />
-                      <text x={m.x0 + 6} y={15} fontSize={11} className="fill-ink capitalize" fontWeight={600}>{m.label}</text>
+                      <line x1={m.x0} y1={0} x2={m.x0} y2={ALTO_CABECERA} className="stroke-line-strong" />
+                      <text x={m.x0 + 8} y={medio - 7} fontSize={esc.px.mes} className="fill-ink capitalize" fontWeight={600}>{m.label}</text>
                     </g>
                   ))}
+                  <line x1={0} y1={medio} x2={ancho} y2={medio} className="stroke-line" />
+                  {/* LA COLUMNA DEL DÍA, con su número. Es lo que deja decir «esto arranca el martes»
+                      sin contar cuadraditos contra la regla de arriba. */}
                   {ticks.map((t) => (
                     <g key={t.x}>
-                      <line x1={t.x} y1={22} x2={t.x} y2={44} className="stroke-line" />
-                      <text x={t.x + 3} y={37} fontSize={10} className="fill-muted tabular-nums">{t.label}</text>
+                      <line x1={t.x} y1={medio} x2={t.x} y2={ALTO_CABECERA} className="stroke-line" />
+                      <text
+                        x={porDia ? t.x + px / 2 : t.x + 4}
+                        y={ALTO_CABECERA - 7}
+                        fontSize={esc.px.dia}
+                        textAnchor={porDia ? 'middle' : 'start'}
+                        className={t.finde ? 'fill-faint tabular-nums' : 'fill-muted tabular-nums'}
+                      >{t.label}</text>
                     </g>
                   ))}
-                  {/* HOY, ROTULADO ARRIBA: la línea sola dice dónde, no qué día. */}
+                  {/* HOY: la pastilla amarilla del objetivo sobre el número del día. */}
                   {hoyVisible && (
                     <>
-                      <rect x={xHoy - 15} y={24} width={30} height={17} rx={3} className="fill-marca" />
-                      <text x={xHoy} y={36} fontSize={10} textAnchor="middle" className="fill-ink tabular-nums" fontWeight={600}>hoy</text>
+                      <rect
+                        x={porDia ? xHoy + 1 : xHoy - 14}
+                        y={medio + 3}
+                        width={porDia ? Math.max(18, px - 2) : 28}
+                        height={ALTO_CABECERA - medio - 6}
+                        rx={4}
+                        className="fill-marca"
+                      />
+                      <text
+                        x={porDia ? xHoy + px / 2 : xHoy}
+                        y={ALTO_CABECERA - 7}
+                        fontSize={esc.px.dia}
+                        textAnchor="middle"
+                        className="fill-ink tabular-nums"
+                        fontWeight={700}
+                      >{porDia ? hoyIso.slice(8, 10) : 'hoy'}</text>
                     </>
                   )}
                 </svg>
@@ -493,7 +549,7 @@ export function Gantt({
                 ))}
 
                 {ticks.map((t) => (
-                  <line key={'t' + t.x} x1={t.x} y1={0} x2={t.x} y2={alto} className="stroke-line/70" />
+                  <line key={'t' + t.x} x1={t.x} y1={0} x2={t.x} y2={alto} className={porDia ? 'stroke-line/40' : 'stroke-line/70'} />
                 ))}
 
                 {meses.map((m) => (
@@ -522,9 +578,9 @@ export function Gantt({
                     const w = Math.max(8, x(g.fin ?? g.inicio) - x0)
                     return (
                       <g key={f.clave}>
-                        <rect x={x0} y={y + 15} width={w} height={6} rx={1} className="fill-ink" opacity={0.85} />
-                        <rect x={x0} y={y + 15} width={3} height={11} className="fill-ink" opacity={0.85} />
-                        <rect x={x0 + w - 3} y={y + 15} width={3} height={11} className="fill-ink" opacity={0.85} />
+                        <rect x={x0} y={y + ALTO_FILA / 2 - 3} width={w} height={6} rx={1} className="fill-ink" opacity={0.85} />
+                        <rect x={x0} y={y + ALTO_FILA / 2 - 3} width={3} height={11} className="fill-ink" opacity={0.85} />
+                        <rect x={x0 + w - 3} y={y + ALTO_FILA / 2 - 3} width={3} height={11} className="fill-ink" opacity={0.85} />
                       </g>
                     )
                   }
@@ -537,6 +593,8 @@ export function Gantt({
                   // dibujaba como una rayita que no se distingue de una línea de la grilla.
                   const w = Math.max(8, x1 - x0)
                   const frenada = conRestriccion.has(a.id)
+                  const hb = Math.max(12, Math.round(ALTO_FILA * 0.42))
+                  const centro = Math.round(ALTO_FILA / 2)
                   const atrasada = estadoDe(a, hoyIso) === 'atrasada'
                   // ═══ LA BARRA DICE EN QUÉ ESTADO ESTÁ, NO SÓLO CUÁNDO ═══
                   //
@@ -557,24 +615,27 @@ export function Gantt({
                       {/* LÍNEA BASE — sólo si está sellada. Sin baseline no se dibuja una sombra en
                           el mismo lugar que el plan: eso haría parecer que el desvío es cero. */}
                       {a.inicio_base && a.fin_base && (
-                        <rect x={x(a.inicio_base)} y={y + 27} width={Math.max(8, x(a.fin_base) - x(a.inicio_base))} height={3} rx={1} className="fill-line-strong" />
+                        <rect x={x(a.inicio_base)} y={y + ALTO_FILA - 9} width={Math.max(8, x(a.fin_base) - x(a.inicio_base))} height={3} rx={1} className="fill-line-strong" />
                       )}
                       {a.tipo === 'hito' ? (
-                        <rect x={x0 - 6} y={y + 12} width={12} height={12} className={tono} transform={`rotate(45 ${x0} ${y + 18})`} />
+                        <rect x={x0 - hb / 2} y={y + centro - hb / 2} width={hb} height={hb} className={tono} transform={`rotate(45 ${x0} ${y + centro})`} />
                       ) : (
                         <>
-                          <rect x={x0} y={y + 11} width={w} height={14} rx={3} className={tono} opacity={0.2} />
+                          {/* LA BARRA ES GRUESA Y REDONDEADA como en el objetivo: el plan en tono
+                              suave y lo ejecutado en pleno, uno encima del otro. Dos barras finas
+                              apiladas obligaban a comparar dos alturas en vez de leer un relleno. */}
+                          <rect x={x0} y={y + centro - hb / 2} width={w} height={hb} rx={hb / 3} className={tono} opacity={0.18} />
                           {a.pct != null && a.pct > 0 && (
-                            <rect x={x0} y={y + 11} width={Math.max(2, (w * Math.min(100, a.pct)) / 100)} height={14} rx={3} className={tono} />
+                            <rect x={x0} y={y + centro - hb / 2} width={Math.max(3, (w * Math.min(100, a.pct)) / 100)} height={hb} rx={hb / 3} className={tono} />
                           )}
-                          {frenada && <rect x={x0 - 4} y={y + 9} width={3} height={18} rx={1} className="fill-warn" />}
+                          {frenada && <rect x={x0 - 5} y={y + centro - hb / 2 - 2} width={3} height={hb + 4} rx={1} className="fill-warn" />}
                           {/* EL AVANCE AL LADO DE LA BARRA. La mitad de las actividades de una obra
                               duran un día: sin este número la barra es un cuadradito de 8 px y la
                               fila no dice nada de un vistazo. Es el MISMO valor de la columna «%»
                               —no un segundo cálculo—: lo que cambia es que acá se lee sobre el
                               calendario, que es donde se compara contra las de al lado. */}
                           {a.avance_pct != null && (
-                            <text x={x0 + w + 6} y={y + 22} fontSize={10} className="fill-muted tabular-nums">
+                            <text x={x0 + w + 7} y={y + centro + esc.px.barra / 2 - 1} fontSize={esc.px.barra} className="fill-muted tabular-nums">
                               {Math.round(Number(a.avance_pct))}%
                             </text>
                           )}
@@ -594,8 +655,8 @@ export function Gantt({
                   const finO = o.actividad.fin_plan ?? o.actividad.inicio_plan
                   const iniT = t.actividad.inicio_plan
                   if (!finO || !iniT) return null
-                  const ox = x(finO); const oy = io * ALTO_FILA + 18
-                  const dx = x(iniT); const dy = id * ALTO_FILA + 18
+                  const ox = x(finO); const oy = io * ALTO_FILA + ALTO_FILA / 2
+                  const dx = x(iniT); const dy = id * ALTO_FILA + ALTO_FILA / 2
                   const codo = ox + 8
                   return (
                     <path

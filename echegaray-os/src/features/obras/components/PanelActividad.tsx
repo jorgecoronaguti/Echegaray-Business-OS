@@ -225,6 +225,10 @@ export function PanelActividad({
   const hoyIso = hoy.toISOString().slice(0, 10)
   const abiertos = impedimentos.filter((r) => r.estado !== 'liberada')
   const liberados = impedimentos.filter((r) => r.estado === 'liberada')
+  // EL FORMULARIO DE EDICIÓN SE ABRE DESDE EL PIE, que es donde el objetivo pone «Editar
+  // actividad». Sigue siendo el mismo `<details>` —no hay una segunda pantalla de edición—: lo
+  // único que cambia es que el botón que lo abre está donde se lo busca.
+  const [editando, setEditando] = useState(false)
   const responsable = a.responsable_id
     ? (personas.find((p) => p.id === a.responsable_id)?.nombre_completo ?? null)
     : null
@@ -241,7 +245,7 @@ export function PanelActividad({
       />
       <aside
         data-testid="panel-actividad"
-        className="fixed inset-x-0 bottom-0 z-40 max-h-[85vh] overflow-y-auto rounded-t-card border-t border-line bg-surface-quiet p-3 shadow-pop lg:static lg:z-auto lg:max-h-[78vh] lg:w-[34%] lg:min-w-[400px] lg:max-w-[620px] lg:shrink-0 lg:rounded-none lg:border-l lg:border-t-0 lg:shadow-none"
+        className="fixed inset-x-0 bottom-0 z-40 max-h-[85vh] overflow-y-auto rounded-t-card border-t border-line bg-surface-quiet p-3 text-[13px] shadow-pop min-[1900px]:p-4 min-[1900px]:text-[15px] min-[2600px]:text-[17px] lg:static lg:z-auto lg:max-h-[78vh] lg:w-[33%] lg:min-w-[400px] lg:shrink-0 lg:rounded-none lg:border-l lg:border-t-0 lg:shadow-none"
       >
         {/* El tirador de la hoja. En escritorio no hay hoja que tirar. */}
         <div aria-hidden className="mx-auto mb-2 h-1 w-10 rounded-full bg-line-strong lg:hidden" />
@@ -252,8 +256,8 @@ export function PanelActividad({
             exactamente al revés de lo que se pregunta primero. */}
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-[15px] font-semibold leading-tight text-ink">{a.nombre}</p>
-            <p className="mt-1 truncate text-[11px] text-faint">
+            <p className="text-[17px] font-semibold leading-tight text-ink min-[1900px]:text-[21px] min-[2600px]:text-[25px]">{a.nombre}</p>
+            <p className="mt-1 truncate text-[12px] text-faint min-[1900px]:text-[14px]">
               <span className="text-faint">Rubro:</span>{' '}
               <span className="text-muted">{a.rubro ?? a.seccion ?? 'sin clasificar'}</span>
               {' · '}
@@ -356,7 +360,12 @@ export function PanelActividad({
             soltar={acciones.soltarDocumento}
           />
 
-          <details className="rounded-md border border-line bg-surface px-2.5 py-1.5">
+          <details
+            className="rounded-md border border-line bg-surface px-2.5 py-1.5"
+            open={editando}
+            onToggle={(e) => setEditando((e.currentTarget as HTMLDetailsElement).open)}
+            data-testid="editar-la-actividad"
+          >
             <summary className="cursor-pointer text-[12px] font-medium text-ink">Editar la actividad</summary>
             <div className="mt-2 border-t border-line pt-2">
               <FormAccion
@@ -380,6 +389,23 @@ export function PanelActividad({
               </div>
             </div>
           </details>
+        </div>
+
+        {/* EL PIE NO SE VA CON EL SCROLL. El panel es largo —Plan|Real, recursos, ejecución,
+            impedimentos, notas— y las dos acciones que cierran la interacción quedaban abajo de
+            todo: había que scrollear hasta el final para salir. */}
+        <div className="sticky bottom-0 -mx-3 mt-3 flex items-center justify-end gap-2 border-t border-line bg-surface-quiet px-3 py-2.5">
+          <button
+            type="button"
+            onClick={alCerrar}
+            className="rounded-control border border-line px-3 py-1.5 text-[13px] text-muted hover:bg-surface-sunken hover:text-ink"
+          >Cerrar</button>
+          <button
+            type="button"
+            data-testid="pie-editar-actividad"
+            onClick={() => setEditando((v) => !v)}
+            className="rounded-control bg-marca px-3 py-1.5 text-[13px] font-medium text-ink hover:brightness-95"
+          >{editando ? 'Dejar de editar' : 'Editar actividad'}</button>
         </div>
       </aside>
     </>

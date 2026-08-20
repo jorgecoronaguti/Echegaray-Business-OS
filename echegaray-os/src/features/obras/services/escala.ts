@@ -52,7 +52,7 @@ export function construirEscala(desde: Date, hasta: Date, escala: Escala, pxMini
   const x = (iso: string) => ((aDate(iso).getTime() - desde.getTime()) / DIA) * px
 
   const meses: { label: string; x0: number }[] = []
-  const ticks: { label: string; x: number }[] = []
+  const ticks: { label: string; x: number; finde: boolean }[] = []
   const cur = new Date(desde)
   cur.setUTCDate(1)
   while (cur < hasta) {
@@ -62,13 +62,27 @@ export function construirEscala(desde: Date, hasta: Date, escala: Escala, pxMini
     }
     cur.setUTCMonth(cur.getUTCMonth() + 1)
   }
-  if (escala === 'semana') {
+  // ═══ LA COLUMNA ES EL DÍA CUANDO EL DÍA ENTRA (20/08/2026) ═══
+  //
+  // El objetivo dibuja una columna por día con su número arriba: es lo que deja decir «esto arranca
+  // el martes» sin contar cuadraditos. Se hacía por SEMANA siempre, y con un calendario de 1.500 px
+  // sobre dos meses eso desperdiciaba seis de cada siete divisiones.
+  //
+  // El umbral es de legibilidad, no de gusto: un número de dos cifras necesita ~18 px para no
+  // pisarse con el de al lado. Por debajo se vuelve a la semana, que es lo que entra.
+  const paso = escala === 'semana' ? (px >= 18 ? 1 : 7) : 0
+  if (paso > 0) {
     const d = new Date(desde)
-    d.setUTCDate(d.getUTCDate() + ((8 - d.getUTCDay()) % 7)) // primer lunes
+    if (paso === 7) d.setUTCDate(d.getUTCDate() + ((8 - d.getUTCDay()) % 7)) // primer lunes
     while (d < hasta) {
-      ticks.push({ label: String(d.getUTCDate()).padStart(2, '0'), x: x(isoDe(d)) })
-      d.setUTCDate(d.getUTCDate() + 7)
+      const dow = d.getUTCDay()
+      ticks.push({
+        label: String(d.getUTCDate()).padStart(2, '0'),
+        x: x(isoDe(d)),
+        finde: dow === 0 || dow === 6,
+      })
+      d.setUTCDate(d.getUTCDate() + paso)
     }
   }
-  return { px, ancho, x, meses, ticks }
+  return { px, ancho, x, meses, ticks, porDia: paso === 1 }
 }

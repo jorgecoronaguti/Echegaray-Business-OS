@@ -162,7 +162,7 @@ export function TabCronograma({
             onClick={() => cambiarSub(v.id)}
             aria-current={subActual === v.id ? 'page' : undefined}
             data-testid={`subvista-${v.id}`}
-            className={`shrink-0 border-b-2 px-3.5 py-2 text-[13px] ${
+            className={`shrink-0 border-b-2 px-4 py-2.5 text-[14px] min-[1900px]:px-5 min-[1900px]:py-3 min-[1900px]:text-[17px] ${
               subActual === v.id ? 'border-accent font-medium text-ink' : 'border-transparent text-muted hover:text-ink'
             }`}
           >{v.label}</button>

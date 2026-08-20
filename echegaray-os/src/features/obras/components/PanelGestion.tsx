@@ -50,7 +50,7 @@ export function BloqueImpedimentosActividad({ a, abiertos, liberados, crear, lib
       data-testid="panel-impedimentos"
     >
       <Rotulo cuenta={abiertos.length}>Impedimentos</Rotulo>
-      {!hay && <p className="text-[12px] text-faint">Ninguno abierto.</p>}
+      {!hay && <p className="text-[0.92em] text-faint">Ninguno abierto.</p>}
       <ul className="space-y-1.5">
         {abiertos.map((r) => {
           const vencido = !!r.fecha_compromiso && r.fecha_compromiso < hoyIso
@@ -58,17 +58,17 @@ export function BloqueImpedimentosActividad({ a, abiertos, liberados, crear, lib
             // UN IMPEDIMENTO ES UNA FICHA, NO UNA LÍNEA. Quién lo resuelve y para cuándo van
             // ROTULADOS: son los dos datos que convierten una queja anotada en algo que alguien
             // tiene que destrabar, y sin el rótulo se leían como un texto suelto más.
-            <li key={r.id} className="text-[12px]" data-testid="impedimento-actividad">
+            <li key={r.id} className="text-[0.92em]" data-testid="impedimento-actividad">
               <div className="flex items-start justify-between gap-2">
                 <span className="min-w-0 font-medium text-ink">
                   <span aria-hidden className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle ${vencido ? 'bg-neg' : 'bg-warn'}`} />
                   {r.descripcion}
                 </span>
-                <span className="shrink-0 rounded border border-line px-1.5 py-[1px] text-[10px] uppercase text-muted">
+                <span className="shrink-0 rounded border border-line px-1.5 py-[1px] text-[0.78em] uppercase text-muted">
                   {vencido ? 'vencido' : 'abierto'}
                 </span>
               </div>
-              <p className="mt-0.5 text-[11px] text-muted">
+              <p className="mt-0.5 text-[0.85em] text-muted">
                 <span className="text-faint">Responsable:</span> {r.responsable ?? 'sin asignar'}
                 {' · '}
                 <span className="text-faint">Vencimiento:</span>{' '}
@@ -85,7 +85,7 @@ export function BloqueImpedimentosActividad({ a, abiertos, liberados, crear, lib
                     // «Resolver» quedaba encajado entre «Tipo» y «Quién lo resuelve» — se leía como
                     // un campo más del formulario en vez de como la otra acción del impedimento.
                     <details data-testid="editar-impedimento" className="w-full basis-full">
-                      <summary className="cursor-pointer text-[11px] text-muted hover:text-ink">Editar</summary>
+                      <summary className="cursor-pointer text-[0.85em] text-muted hover:text-ink">Editar</summary>
                       <div className="mt-1.5 w-full">
                         <FormAccion
                           accion={editar.bind(null, r.id)}
@@ -120,11 +120,11 @@ export function BloqueImpedimentosActividad({ a, abiertos, liberados, crear, lib
         })}
       </ul>
       {liberados.length > 0 && (
-        <p className="mt-1 text-[11px] text-faint">{liberados.length} ya resuelto(s).</p>
+        <p className="mt-1 text-[0.85em] text-faint">{liberados.length} ya resuelto(s).</p>
       )}
       {crear && (
         <details className="mt-1.5">
-          <summary className="cursor-pointer text-[12px] text-muted hover:text-ink">+ Impedimento</summary>
+          <summary className="cursor-pointer text-[0.92em] text-muted hover:text-ink">+ Impedimento</summary>
           <div className="mt-2">
             <FormAccion accion={crear} testid="form-impedimento-actividad" enviar="Anotar" limpiarAlOk mensajeOk="Impedimento anotado.">
               <input type="hidden" name="actividad_id" value={a.id} />
@@ -170,7 +170,7 @@ export function BloqueTareas({ tareas, crear, alternar }: {
     <Plegable titulo={tareas.length ? `Tareas · ${hechas} de ${tareas.length}` : 'Tareas'} testid="bloque-tareas">
       <ul className="space-y-1">
         {tareas.map((t) => (
-          <li key={t.id} className="flex items-center justify-between gap-2 text-[12px]" data-testid="tarea">
+          <li key={t.id} className="flex items-center justify-between gap-2 text-[0.92em]" data-testid="tarea">
             <span className={t.estado === 'hecha' ? 'min-w-0 truncate text-faint line-through' : 'min-w-0 truncate text-muted'}>
               {t.nombre}
             </span>
@@ -183,7 +183,7 @@ export function BloqueTareas({ tareas, crear, alternar }: {
             )}
           </li>
         ))}
-        {tareas.length === 0 && <li className="text-[12px] text-faint">Ninguna. La tarea es opcional.</li>}
+        {tareas.length === 0 && <li className="text-[0.92em] text-faint">Ninguna. La tarea es opcional.</li>}
       </ul>
       {crear && (
         <div className="mt-2 border-t border-line pt-2">
@@ -220,17 +220,17 @@ export function BloqueNotas({ notas, agregar, borrar }: {
       <Rotulo cuenta={notas.length}>Notas</Rotulo>
       <ul className="mt-1.5 space-y-1.5">
         {notas.slice(0, 8).map((n) => (
-          <li key={n.id} className="text-[12px]" data-testid="nota-actividad">
+          <li key={n.id} className="text-[0.92em]" data-testid="nota-actividad">
             <div className="flex items-start justify-between gap-2">
               <span className="min-w-0 whitespace-pre-wrap text-ink">{n.texto}</span>
               {borrar && <BotonAccion accion={borrar} args={[n.id]} testid="borrar-nota">borrar</BotonAccion>}
             </div>
-            <span className="text-[11px] text-faint">
+            <span className="text-[0.85em] text-faint">
               {n.autor ?? 'alguien'} · {fecha(n.creado_en.slice(0, 10))}
             </span>
           </li>
         ))}
-        {notas.length === 0 && <li className="text-[12px] text-faint">Ninguna.</li>}
+        {notas.length === 0 && <li className="text-[0.92em] text-faint">Ninguna.</li>}
       </ul>
       {agregar && (
         <div className="mt-2 border-t border-line pt-2">
@@ -259,18 +259,18 @@ export function BloqueDocumentos({ a, documentos, vincular, soltar }: {
     <Plegable titulo="Documentos" cuenta={documentos.length} testid="bloque-documentos-actividad">
       <ul className="space-y-1">
         {documentos.map((d) => (
-          <li key={d.drive_file_id} className="flex items-start justify-between gap-2 text-[12px]" data-testid="documento-actividad">
+          <li key={d.drive_file_id} className="flex items-start justify-between gap-2 text-[0.92em]" data-testid="documento-actividad">
             <a
               href={urlDeDrive(d.drive_file_id, d.tipo)}
               target="_blank"
               rel="noreferrer"
               className="min-w-0 flex-1 truncate text-ink underline underline-offset-2"
             >{d.name ?? d.drive_file_id}</a>
-            <span className="shrink-0 text-[11px] text-faint">{d.rol ?? ''}</span>
+            <span className="shrink-0 text-[0.85em] text-faint">{d.rol ?? ''}</span>
             {soltar && <BotonAccion accion={soltar} args={[d.drive_file_id]} testid="soltar-documento">quitar</BotonAccion>}
           </li>
         ))}
-        {documentos.length === 0 && <li className="text-[12px] text-faint">Ninguno.</li>}
+        {documentos.length === 0 && <li className="text-[0.92em] text-faint">Ninguno.</li>}
       </ul>
       {vincular && (
         <div className="mt-2 border-t border-line pt-2">
@@ -324,12 +324,12 @@ export function Dependencias({ a, actividades, dependencias, agregar, quitar }: 
       testid="panel-dependencias"
     >
       {dependeDe.length === 0 ? (
-        <p className="text-[12px] text-faint">Nada declarado.</p>
+        <p className="text-[0.92em] text-faint">Nada declarado.</p>
       ) : (
         <ul className="space-y-1">
           {dependeDe.map((d) => (
             <li key={d.id} className="flex items-start justify-between gap-2">
-              <span className="min-w-0 text-[12px] text-ink">
+              <span className="min-w-0 text-[0.92em] text-ink">
                 {nombre(d.origen_id)}
                 <span className="text-faint"> · {TIPO_DEPENDENCIA_LABEL[d.tipo]}{d.lag_dias ? ` · ${d.lag_dias} d` : ''}</span>
               </span>
@@ -340,7 +340,7 @@ export function Dependencias({ a, actividades, dependencias, agregar, quitar }: 
       )}
 
       {habilitaA.length > 0 && (
-        <p className="mt-2 text-[11px] text-faint">
+        <p className="mt-2 text-[0.85em] text-faint">
           Habilita a {habilitaA.map((d) => nombre(d.destino_id)).join(', ')}.
         </p>
       )}
@@ -395,7 +395,7 @@ export function SelectorDeRubro({ a, rubros, mover }: {
         value={valor}
         onChange={(e) => setValor(e.target.value)}
         aria-label="Rubro de la actividad"
-        className="min-w-0 flex-1 rounded-control border border-line bg-surface px-2 py-1 text-[12px] text-ink"
+        className="min-w-0 flex-1 rounded-control border border-line bg-surface px-2 py-1 text-[0.92em] text-ink"
       >
         <option value="">sin rubro</option>
         {rubros.map((r) => <option key={r} value={r}>{r}</option>)}

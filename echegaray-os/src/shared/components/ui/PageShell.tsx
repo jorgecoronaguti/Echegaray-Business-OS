@@ -39,13 +39,13 @@ export function PageShell({
 }) {
   return (
     <div className="min-h-screen bg-canvas">
-      <div className="mx-auto w-full max-w-[2560px] px-4 py-5 sm:px-6 lg:px-8">
+      <div className="w-full px-4 py-5 sm:px-6 lg:px-10">
         <div className={maxWidth}>
           <header className="mb-4 flex flex-wrap items-end justify-between gap-4">
             <div className="min-w-0">
-              {eyebrow && <div className="text-[11px] font-medium uppercase tracking-wide text-faint">{eyebrow}</div>}
-              <h1 className="mt-0.5 text-[26px] font-semibold leading-tight tracking-tight text-ink">{title}</h1>
-              {subtitle && <div className="mt-1.5 text-[13px] leading-relaxed text-muted">{subtitle}</div>}
+              {eyebrow && <div className="text-[11px] font-medium uppercase tracking-wide text-faint min-[1900px]:text-[13px]">{eyebrow}</div>}
+              <h1 className="mt-0.5 text-[30px] font-semibold leading-tight tracking-tight text-ink min-[1900px]:text-[38px] min-[2600px]:text-[46px]">{title}</h1>
+              {subtitle && <div className="mt-2 text-[14px] leading-relaxed text-muted min-[1900px]:text-[17px] min-[2600px]:text-[20px]">{subtitle}</div>}
             </div>
             {/* `shrink-0` sin `min-w-0` empujaba la página entera de costado en el teléfono: la línea
                 de ciclo de vida de la obra mide más que 390px y no podía encoger. Ahora no encoge

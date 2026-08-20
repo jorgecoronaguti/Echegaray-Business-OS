@@ -327,7 +327,7 @@ export default async function ObraPage({
             href={`/obras/${obraId}?vista=${v.id}`}
             data-testid={`tab-${v.id}`}
             aria-current={vista === v.id ? 'page' : undefined}
-            className={`-mb-px shrink-0 border-b-2 px-3.5 py-2 text-[13px] transition-colors ${vista === v.id ? 'border-marca font-medium text-ink' : 'border-transparent text-muted hover:text-ink'}`}
+            className={`-mb-px shrink-0 border-b-2 px-4 py-2.5 text-[14px] transition-colors min-[1900px]:px-5 min-[1900px]:py-3 min-[1900px]:text-[17px] ${vista === v.id ? 'border-marca font-medium text-ink' : 'border-transparent text-muted hover:text-ink'}`}
           >{v.label}</Link>
         ))}
       </nav>
