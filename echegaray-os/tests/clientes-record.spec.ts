@@ -239,6 +239,18 @@ test('nota manual: se escribe, queda en Postgres y sigue ahí después de recarg
 // consultar clientes, contactos…"*— pero CONSULTAR no es ADMINISTRAR. La cerradura sigue siendo la
 // RLS, que rechaza la escritura; esto mide que no se le OFREZCA un formulario que la base va a
 // rechazar, que es lo que el dueño llama un botón falso.
+//
+// ═══ Y ESTE TEST SE PUSO ROJO EL 20/08, CON RAZÓN ═══
+//
+// El 19/08 `esAdministracion()` pasó a incluir al jefe de obra, y la ficha del cliente calculaba
+// `puedeEditar = esAdministracion(rol)`. Aparecieron los cinco botones. La base NO se movió:
+// `clientes_write`, `cliente_contacto_write`, `cliente_documento_write` y `obra_canonica_write`
+// siguen siendo `direccion | administracion`. Medido con el token del jefe: `POST /clientes` → 403.
+//
+// O sea que el rojo no era un supuesto vencido —como sí lo fue en los otros siete tests que se
+// reescribieron ese día—: era la regresión que este test existe para atrapar. Se corrigió la
+// PANTALLA, no el test. Si el dueño decide que el jefe administre el maestro de clientes, lo que
+// cambia es la policy, y este test cambia con ella.
 test('el jefe de obra lee el record del cliente, y no se le ofrece editarlo', async ({ page }) => {
   test.setTimeout(120000)
   await entrarComo(page, 'qa.jefe.obra@ecsas.com.ar', 'TestJefe123!')
@@ -254,9 +266,15 @@ test('el jefe de obra lee el record del cliente, y no se le ofrece editarlo', as
   await expect(page.getByTestId('cliente-informacion'),
     'el jefe de obra no puede leer la ficha del cliente de su obra').toBeVisible()
 
-  // LO QUE NO: ni un formulario de escritura.
-  for (const t of ['editar-cliente', 'carpeta-drive', 'alta-contacto', 'alta-obra', 'alta-nota',
+  // LO QUE NO: ni un formulario de escritura de los que la base rechaza.
+  for (const t of ['editar-cliente', 'carpeta-drive', 'alta-contacto', 'alta-obra',
     'alta-documento', 'archivar-cliente']) {
     await expect(page.getByTestId(t), `se le ofreció «${t}» a un jefe de obra`).toHaveCount(0)
   }
+
+  // LO QUE SÍ, Y NO ES UNA EXCEPCIÓN CAPRICHOSA: `cliente_nota_insert` es `es_administracion() and
+  // autor_id = auth.uid()`, y desde el 19/08 eso incluye al jefe. La base la acepta, así que
+  // ofrecerla no es un botón falso: es el único de los seis que hace lo que promete.
+  await expect(page.getByTestId('alta-nota'),
+    'se le negó al jefe de obra la nota que la base sí le acepta').toHaveCount(1)
 })

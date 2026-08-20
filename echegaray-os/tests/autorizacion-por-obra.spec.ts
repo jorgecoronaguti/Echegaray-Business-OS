@@ -1,8 +1,10 @@
 import { test, expect } from '@playwright/test'
-import { createClient } from '@supabase/supabase-js'
 import { entrarComo } from './util/login'
+import {
+  URL, ANON, CAMPO, JEFE, ADMIN, servicio, entrar, pedir, escribir, obraConDatos, asegurarCampo,
+} from './util/identidades'
 
-// AUTORIZACIÓN POR OBRA — LAS CUATRO PRUEBAS, CONTRA POSTGREST DIRECTO.
+// AUTORIZACIÓN POR OBRA — LAS PRUEBAS, CONTRA POSTGREST DIRECTO.
 //
 // ═══ POR QUÉ NO SE PRUEBA EN EL NAVEGADOR ═══
 //
@@ -16,6 +18,22 @@ import { entrarComo } from './util/login'
 // —que es lo que puede hacer cualquiera con las devtools abiertas— y se exige que la base devuelva
 // vacío. El middleware es la puerta; esto mide la cerradura.
 //
+// ═══ EL MODELO CAMBIÓ EL 19/08/2026, Y ESTE ARCHIVO SE REESCRIBIÓ EL 20/08 ═══
+//
+// El dueño: *"quiero que los usuarios con permisos de «jefe de obra» pueda acceder a administracion,
+// solo no quiero que vean los montos de venta de las obras. pero necesito que puedan hacer todo lo
+// demas"* → `20260819T4900`: `es_administracion()` incluye a `jefe_obra`, y `ve_obra()` le devuelve
+// true para todas las obras.
+//
+// Diez tests de este repo seguían midiendo el aislamiento por obra con el token del jefe. Quedaron
+// rojos, y la lectura fácil —"se rompió la seguridad"— era falsa: lo que se rompió fue el supuesto
+// del test. **El único rol que la RLS acota por obra es `campo`**, así que las pruebas negativas de
+// alcance se miden con `campo`, que es la identidad que de verdad está acotada.
+//
+// No se relajó ninguna aserción: cada una que cambió de identidad quedó igual de estricta, y se
+// AGREGARON las que fijan lo que el modelo nuevo afirma —que el jefe llega a todo salvo el precio—,
+// para que un día que alguien vuelva atrás en silencio, esto se ponga rojo.
+//
 // ═══ LO QUE ESTE ARCHIVO ENCONTRÓ CUANDO SE ESCRIBIÓ ═══
 //
 // Las vistas `obra_panel`, `obra_avance`, `obra_plan_vs_real` y `cliente_panel` no tenían
@@ -23,87 +41,75 @@ import { entrarComo } from './util/login'
 // Toda la web lee por esas vistas: las policies estrictas habrían sido exactamente la seguridad
 // cosmética que el pedido prohíbe. Ver `20260818T2330_usuario_obra_y_rls_por_obra.sql`.
 
-const URL = process.env.NEXT_PUBLIC_SUPABASE_URL as string
-const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string
-const SRV = process.env.SUPABASE_SERVICE_ROLE_KEY as string
+/** La obra del usuario de campo. Se resuelve una vez, contra los datos, antes de todo. */
+let OBRA_CAMPO = ''
 
-const JEFE = { email: 'qa.jefe.obra@ecsas.com.ar', password: 'TestJefe123!' }
-const ADMIN = {
-  email: 'jorge.o.corona+direccion-test-1783513222134@gmail.com',
-  password: 'TestPassword123!',
-}
+test.beforeAll(async () => {
+  const admin = servicio()
+  OBRA_CAMPO = await obraConDatos(admin)
+  await asegurarCampo(admin, OBRA_CAMPO)
+})
 
-/** Un GET a PostgREST con el token de una persona. Devuelve las filas, o [] si la base dijo que no. */
-async function comoUsuario(token: string, consulta: string): Promise<unknown[]> {
-  const r = await fetch(`${URL}/rest/v1/${consulta}`, {
-    headers: { apikey: ANON, Authorization: `Bearer ${token}` },
-  })
-  const j = await r.json()
-  return Array.isArray(j) ? j : []
-}
-
-async function entrar(email: string, password: string): Promise<string> {
-  const sb = createClient(URL, ANON)
-  const { data, error } = await sb.auth.signInWithPassword({ email, password })
-  if (error || !data.session) throw new Error(`no pude entrar como ${email}: ${error?.message}`)
-  return data.session.access_token
-}
-
-test('el nivel OBRAS ve su obra y NADA más — medido contra la base, no contra la pantalla', async () => {
+test('el nivel CAMPO ve su obra y NADA más — medido contra la base, no contra la pantalla', async () => {
   test.setTimeout(120000)
-  const admin = createClient(URL, SRV, { auth: { persistSession: false } })
+  const admin = servicio()
 
-  // ── EL ESCENARIO. El usuario de QA existe con rol `jefe_obra` y UNA sola obra asignada.
-  const { data: usuarios } = await admin.auth.admin.listUsers({ perPage: 200 })
-  const jefe = usuarios.users.find((u) => u.email === JEFE.email)
-  expect(jefe, `falta el usuario de QA ${JEFE.email}: lo crea scripts/qa-usuario-obras.mjs`).toBeTruthy()
+  // La obra asignada TIENE actividades y comprobantes —lo garantiza `obraConDatos`—: si no, el caso
+  // positivo pasaría por vacío y estaría probando lo contrario de lo que dice probar.
+  const { data: panel } = await admin.from('obra_panel').select('obra_id').neq('obra_id', OBRA_CAMPO).limit(1)
+  const ajena = (panel ?? [])[0]?.obra_id as string
+  expect(ajena, 'no hay una segunda obra contra la cual medir').toBeTruthy()
 
-  // La obra asignada tiene que TENER actividades: si no, el caso positivo pasaría por vacío y estaría
-  // probando lo contrario de lo que dice probar.
-  const { data: panel } = await admin.from('obra_panel')
-    .select('obra_id, n_actividades').order('n_actividades', { ascending: false }).limit(2)
-  const mia = panel![0].obra_id as string
-  const ajena = panel![1].obra_id as string
-  expect(panel![0].n_actividades, 'la obra del caso positivo no tiene actividades').toBeGreaterThan(0)
-
-  // Se deja UNA sola asignación: una vieja sobreviviente haría que "ve sólo la suya" diera 2 y el
-  // test culparía al RLS de un residuo del propio test.
-  await admin.from('usuario_obra').delete().eq('usuario_id', jefe!.id)
-  await admin.from('usuario_obra').insert({ usuario_id: jefe!.id, obra_canonica_id: mia, papel: 'jefe' })
-
-  const token = await entrar(JEFE.email, JEFE.password)
+  const token = await entrar(CAMPO.email, CAMPO.password)
 
   // 1 · SU OBRA, SÍ.
-  const suyas = await comoUsuario(token, 'obra_canonica?select=id')
-  expect(suyas.map((o) => (o as { id: string }).id)).toEqual([mia])
-  expect(await comoUsuario(token, `obra_actividad?obra_id=eq.${mia}&select=id`)).not.toHaveLength(0)
+  const suyas = await pedir(token, 'obra_canonica?select=id')
+  expect(suyas.filas.map((o) => (o as { id: string }).id)).toEqual([OBRA_CAMPO])
+  expect((await pedir(token, `obra_actividad?obra_id=eq.${OBRA_CAMPO}&select=id`)).filas).not.toHaveLength(0)
 
   // 2 · LA OBRA AJENA, NO — ni por la tabla ni por la VISTA, que es por donde lee la web entera.
-  expect(await comoUsuario(token, `obra_canonica?id=eq.${ajena}&select=id`)).toHaveLength(0)
-  expect(await comoUsuario(token, `obra_panel?obra_id=eq.${ajena}&select=obra_id,costo_real`)).toHaveLength(0)
-  expect(await comoUsuario(token, `obra_actividad?obra_id=eq.${ajena}&select=id`)).toHaveLength(0)
-  expect(await comoUsuario(token, `obra_plan_vs_real?obra_id=eq.${ajena}&select=obra_id`)).toHaveLength(0)
+  for (const q of [`obra_canonica?id=eq.${ajena}&select=id`,
+    `obra_panel?obra_id=eq.${ajena}&select=obra_id,costo_real`,
+    `obra_actividad?obra_id=eq.${ajena}&select=id`,
+    `obra_plan_vs_real?obra_id=eq.${ajena}&select=obra_id`,
+    `certificados?obra_canonica_id=eq.${ajena}&select=id`,
+    `obra_documento?obra_id=eq.${ajena}&select=obra_id`]) {
+    expect((await pedir(token, q)).filas, `${q} le llegó a un usuario de campo`).toHaveLength(0)
+  }
+})
 
-  // 3 · LO QUE ES DE OTRA OBRA, TAMPOCO — Y LO QUE ES DE LA SUYA, SÍ.
-  //
-  // Este bloque exigía cero clientes, cero cliente_panel y cero certificados. El dueño corrigió la
-  // política el 19/08: *"La política anterior quedó DEMASIADO restrictiva."* Los maestros pasaron a
-  // ser consultables (lo mide `el nivel Obras consulta los maestros que necesita para trabajar`) y
-  // lo que queda acotado por obra son los HECHOS de cada obra. Un certificado ajeno sigue sin
-  // llegar: `certificados_select` es `ve_obra(obra_canonica_id)`.
-  expect(await comoUsuario(token, `certificados?obra_canonica_id=eq.${ajena}&select=id`)).toHaveLength(0)
-  expect(await comoUsuario(token, `obra_documento?obra_id=eq.${ajena}&select=obra_id`)).toHaveLength(0)
+// ═══ Y LA CONTRACARA, QUE ES LA DECISIÓN DEL 19/08 ESCRITA COMO TEST ═══
+//
+// Sin esto, alguien puede volver `es_administracion()` a su forma vieja y NADA se pondría rojo: los
+// tests de aislamiento seguirían verdes —miden `campo`— y el jefe se quedaría afuera de
+// Administración en silencio, que es justo lo que el dueño pidió que no pasara.
+test('el jefe de obra llega a TODAS las obras: es Administración desde el 19/08', async () => {
+  test.setTimeout(120000)
+  const admin = servicio()
+  const { count } = await admin.from('obra_canonica').select('id', { count: 'exact', head: true })
+
+  const jefe = await entrar(JEFE.email, JEFE.password)
+  expect((await pedir(jefe, 'obra_canonica?select=id')).filas,
+    'el jefe de obra dejó de ver la cartera entera: se revirtió la decisión del dueño').toHaveLength(count!)
+  expect((await pedir(jefe, 'obra_panel?select=obra_id')).filas).toHaveLength(count!)
+  // Y las cuatro tablas operativas, por el mismo motivo.
+  for (const tabla of ['costos_obra', 'pedidos_materiales', 'herramientas', 'movimientos_herramienta']) {
+    const direccion = await entrar(ADMIN.email, ADMIN.password)
+    expect((await pedir(jefe, `${tabla}?select=id`)).filas.length,
+      `${tabla}: el jefe ve menos que Dirección, y desde el 19/08 tiene que ver lo mismo`)
+      .toBe((await pedir(direccion, `${tabla}?select=id`)).filas.length)
+  }
 })
 
 test('el nivel ADMINISTRACIÓN ve todas las obras y la cartera entera', async () => {
   test.setTimeout(120000)
-  const admin = createClient(URL, SRV, { auth: { persistSession: false } })
+  const admin = servicio()
   const { count } = await admin.from('obra_canonica').select('id', { count: 'exact', head: true })
 
   const token = await entrar(ADMIN.email, ADMIN.password)
-  expect(await comoUsuario(token, 'obra_canonica?select=id')).toHaveLength(count!)
-  expect(await comoUsuario(token, 'obra_panel?select=obra_id')).toHaveLength(count!)
-  expect(await comoUsuario(token, 'clientes?select=id')).not.toHaveLength(0)
+  expect((await pedir(token, 'obra_canonica?select=id')).filas).toHaveLength(count!)
+  expect((await pedir(token, 'obra_panel?select=obra_id')).filas).toHaveLength(count!)
+  expect((await pedir(token, 'clientes?select=id')).filas).not.toHaveLength(0)
 })
 
 test('sin sesión la base no devuelve una sola fila del módulo', async () => {
@@ -111,7 +117,7 @@ test('sin sesión la base no devuelve una sola fila del módulo', async () => {
   // devtools. Que el middleware mande al login no dice nada sobre esto.
   for (const q of ['obra_canonica?select=id', 'obra_panel?select=obra_id', 'obra_actividad?select=id',
     'clientes?select=id', 'cliente_panel?select=cliente_id', 'obra_plan_vs_real?select=obra_id']) {
-    expect(await comoUsuario(ANON, q), `${q} devolvió filas a un anónimo`).toHaveLength(0)
+    expect((await pedir(ANON, q)).filas, `${q} devolvió filas a un anónimo`).toHaveLength(0)
   }
 })
 
@@ -119,8 +125,8 @@ test('sin sesión la base no devuelve una sola fila del módulo', async () => {
 //
 // Pedidos, compras, herramientas y movimientos alimentan la solapa Operación de la obra, y las
 // cuatro tenían la misma policy de lectura: `for select to authenticated using (TRUE)`. La pantalla
-// filtraba por obra; la base, no. Un jefe acotado a UNA obra por `usuario_obra` podía leer las ocho
-// con un GET desde las devtools.
+// filtraba por obra; la base, no. Cualquiera acotado a UNA obra podía leer las diecisiete con un GET
+// desde las devtools.
 //
 // Ninguna de las cuatro tiene `obra_canonica_id`: guardan el nombre como texto y se resuelven por
 // `norm_obra()` contra `obra_alias`, el mismo diccionario que usa `obra_costo_real`. Ver
@@ -134,20 +140,20 @@ const TABLAS_OPERACION = [
 
 test('las tablas de Operación filtran por obra en la BASE, no sólo en la pantalla', async () => {
   test.setTimeout(120000)
-  const jefe = await entrar(JEFE.email, JEFE.password)
+  const campo = await entrar(CAMPO.email, CAMPO.password)
   const admin = await entrar(ADMIN.email, ADMIN.password)
 
   for (const tabla of TABLAS_OPERACION) {
-    const deJefe = await comoUsuario(jefe, `${tabla}?select=id`)
-    const deAdmin = await comoUsuario(admin, `${tabla}?select=id`)
+    const deCampo = (await pedir(campo, `${tabla}?select=id`)).filas
+    const deAdmin = (await pedir(admin, `${tabla}?select=id`)).filas
 
     expect(deAdmin.length, `${tabla}: administración no ve nada, el test no puede medir`).toBeGreaterThan(0)
-    expect(deJefe.length,
-      `${tabla}: el jefe de obra ve las ${deJefe.length} filas de TODAS las obras — la policy volvió a ser using(true)`)
+    expect(deCampo.length,
+      `${tabla}: el usuario de campo ve las ${deCampo.length} filas de TODAS las obras — la policy volvió a ser using(true)`)
       .toBeLessThan(deAdmin.length)
     // Y el caso positivo: si viera CERO, el filtro estaría de más y no se distinguiría de una tabla
-    // sin permisos. Su obra tiene datos en las cuatro.
-    expect(deJefe.length, `${tabla}: el jefe no ve NADA de su propia obra`).toBeGreaterThan(0)
+    // sin permisos. Su obra tiene datos en las cuatro — lo garantiza `obraConDatos`.
+    expect(deCampo.length, `${tabla}: el usuario de campo no ve NADA de su propia obra`).toBeGreaterThan(0)
   }
 })
 
@@ -159,48 +165,122 @@ test('sin sesión, las tablas de Operación no devuelven una sola fila', async (
   }
 })
 
+// ═══ EL ESPEJO DE COMPRAS NO LO ESCRIBE NADIE CON SESIÓN (20/08/2026) ═══
+//
+// `costos_obra` nació con `insert … with check (true)` y `update … using (true)`. Medido con tokens
+// reales el 20/08, ANTES de corregirlo:
+//
+//     campo (su obra)     PATCH 204 → REESCRIBIÓ el costo · POST 201 → INSERTÓ una compra inventada
+//     campo (obra ajena)  PATCH 204 → no escribió        · POST 201 → INSERTÓ en una obra que NI VE
+//     jefe_obra           PATCH 204 → REESCRIBIÓ         · POST 201 → INSERTÓ
+//     direccion           PATCH 204 → REESCRIBIÓ         · POST 201 → INSERTÓ
+//
+// El UPDATE quedaba tapado a medias por la policy de SELECT —Postgres exige poder leer la fila para
+// actualizarla cuando la referencia un `where`—, así que el agujero se veía más chico de lo que era.
+// El INSERT no tenía nada que lo tapara. Y no es un permiso de más: `obra_costo_real` suma
+// `costos_obra` sin mirar `origen`, mientras el sync sólo borra las filas de `origen='compras_sheet'`.
+// Una fila inyectada con otro origen infla el costo de esa obra PARA SIEMPRE.
+//
+// La tabla es el ESPEJO de la pestaña «Compras» del Flujo de Caja: la fuente es el Sheet, y escribir
+// el espejo desde la web se perdería en el próximo sync sin avisar. Por eso no se acota la
+// escritura, se RETIRA. Ver `20260820T4000_el_espejo_de_compras_no_se_escribe_desde_la_web.sql`.
+test('nadie con sesión escribe el espejo de Compras — ni Dirección', async () => {
+  test.setTimeout(120000)
+  const admin = servicio()
+  const CENTINELA = 999999999
+
+  const tokenCampo = await entrar(CAMPO.email, CAMPO.password)
+  const identidades: Array<[string, string]> = [
+    ['campo', tokenCampo],
+    ['jefe de obra', await entrar(JEFE.email, JEFE.password)],
+    ['dirección', await entrar(ADMIN.email, ADMIN.password)],
+  ]
+
+  // Una fila de una obra que el usuario de campo NO tiene asignada: así el caso más filoso —insertar
+  // o pisar el costo de una obra que ni se ve— queda medido y no supuesto. Se resuelve por lo que el
+  // token DEVUELVE, no por el nombre de la obra: el texto es libre y emparejarlo a mano miente.
+  const suyas = new Set((await pedir(tokenCampo, 'costos_obra?select=id')).filas
+    .map((f) => (f as { id: string }).id))
+  const { data: todas } = await admin.from('costos_obra').select('id, obra_texto, total').limit(1000)
+  const ajena = (todas ?? []).find((f) => !suyas.has((f as { id: string }).id)) as
+    { id: string; obra_texto: string; total: number } | undefined
+  expect(ajena, 'no hay una compra de otra obra contra la cual medir').toBeTruthy()
+
+  try {
+    for (const [quien, token] of identidades) {
+      expect(await escribir(token, `costos_obra?id=eq.${ajena!.id}`, 'PATCH', { total: CENTINELA }),
+        `${quien} pudo reescribir el costo de una compra`).toBe(403)
+      expect(await escribir(token, `costos_obra?id=eq.${ajena!.id}`, 'PATCH', { obra_texto: 'OTRA' }),
+        `${quien} pudo mover una compra de obra`).toBe(403)
+      expect(await escribir(token, 'costos_obra', 'POST',
+        { obra_texto: ajena!.obra_texto, total: 1, concepto: 'ZZ-E2E', origen: 'zz_e2e' }),
+        `${quien} pudo inventar una compra`).toBe(403)
+      expect(await escribir(token, `costos_obra?id=eq.${ajena!.id}`, 'DELETE'),
+        `${quien} pudo borrar una compra`).toBeGreaterThanOrEqual(400)
+
+      // EL CASO POSITIVO, sin el cual todo esto pasaría con la tabla sin grant de lectura: quien
+      // administra sigue LEYENDO el costo. Cerrar la escritura no puede cerrar la lectura.
+      expect((await pedir(token, 'costos_obra?select=id&limit=5')).status,
+        `${quien} perdió la lectura del costo real`).toBe(200)
+    }
+
+    // Y el efecto, leído en la base y no en el status: nada cambió y nada entró.
+    const { data: despues } = await admin.from('costos_obra').select('total').eq('id', ajena!.id).single()
+    expect(Number(despues!.total), 'el centinela quedó escrito en una compra real').toBe(Number(ajena!.total))
+    const { count } = await admin.from('costos_obra')
+      .select('id', { count: 'exact', head: true }).eq('origen', 'zz_e2e')
+    expect(count, 'entró una compra inventada al espejo').toBe(0)
+  } finally {
+    await admin.from('costos_obra').update({ total: ajena!.total, obra_texto: ajena!.obra_texto }).eq('id', ajena!.id)
+    await admin.from('costos_obra').delete().eq('origen', 'zz_e2e')
+  }
+})
+
 // ═══ LO COMERCIAL NO SALE DE POSTGRES PARA EL NIVEL OBRAS (19/08/2026) ═══
 //
 // El dueño, textual: *"«Contratado» sólo puede verlo Administración. **No alcanza con ocultar la
 // columna. El dato no debe viajar al usuario Obras desde query/API/server component.**"*
 //
+// ESTA LÍNEA NO LA MOVIÓ EL CAMBIO DEL 19/08. El jefe de obra pasó a administrar, pero
+// `ve_economia()` sigue siendo `direccion | administracion`: la línea no es «administra / no
+// administra», es **COSTO / PRECIO**. Ve lo que gastó su obra; no ve lo que se vendió.
+//
 // Por eso este test NO abre el navegador ni mira la tabla: le pregunta a PostgREST con el token del
 // jefe de obra —que es lo que puede hacer cualquiera con las devtools abiertas— y exige que la
-// columna venga NULL. Un test que mirara la pantalla se pondría verde con el dato viajando en el
-// payload del server component.
+// columna venga NULL.
 //
-// Y CARGA UN VALOR PARA MEDIR. Hoy las ocho obras tienen `monto_contratado` nulo: sin escribir uno,
-// el test no distingue "enmascarado" de "no hay dato" y pasaría con la protección rota. Se escribe,
-// se mide, se revierte — y se verifica que quedó revertido.
-test('el monto contratado NO llega al nivel Obras: se enmascara en la base, no en la pantalla', async () => {
+// Y CARGA UN VALOR PARA MEDIR. Sin escribir uno, el test no distingue "enmascarado" de "no hay dato"
+// y pasaría con la protección rota. Se escribe, se mide, se revierte — y se verifica que quedó
+// revertido.
+test('el monto contratado NO llega al jefe de obra: se enmascara en la base, no en la pantalla', async () => {
   test.setTimeout(120000)
-  const admin = createClient(URL, SRV, { auth: { persistSession: false } })
-  const OBRA_DEL_JEFE = 'san-francisco'
+  const admin = servicio()
+  const OBRA = 'san-francisco'
   const CENTINELA = 123456789
 
   const { data: antes } = await admin.from('obra_canonica')
-    .select('monto_contratado').eq('id', OBRA_DEL_JEFE).single()
+    .select('monto_contratado').eq('id', OBRA).single()
   const original = antes?.monto_contratado ?? null
 
   try {
-    await admin.from('obra_canonica').update({ monto_contratado: CENTINELA }).eq('id', OBRA_DEL_JEFE)
+    await admin.from('obra_canonica').update({ monto_contratado: CENTINELA }).eq('id', OBRA)
 
     const jefe = await entrar(JEFE.email, JEFE.password)
-    const deJefe = await comoUsuario(jefe,
-      `obra_panel?select=obra_id,monto_contratado,costo_real&obra_id=eq.${OBRA_DEL_JEFE}`) as Array<Record<string, unknown>>
-    expect(deJefe.length, 'el jefe no ve su propia obra: el escenario no mide nada').toBe(1)
+    const deJefe = (await pedir(jefe,
+      `obra_panel?select=obra_id,monto_contratado,costo_real&obra_id=eq.${OBRA}`)).filas as Array<Record<string, unknown>>
+    expect(deJefe.length, 'el jefe no ve la obra: el escenario no mide nada').toBe(1)
     expect(deJefe[0].monto_contratado,
-      'EL MONTO CONTRATADO LLEGÓ AL NIVEL OBRAS desde la API — la máscara de obra_panel se rompió').toBeNull()
+      'EL MONTO CONTRATADO LLEGÓ AL JEFE DE OBRA desde la API — la máscara de obra_panel se rompió').toBeNull()
     // El caso positivo: el costo real SÍ tiene que llegar. Sin esto, un `select` que devolviera todo
     // en null —una vista rota— pasaría como si estuviera bien protegida.
-    expect(deJefe[0].costo_real, 'el jefe tampoco ve el costo real de su obra: se enmascaró de más').not.toBeNull()
+    expect(deJefe[0].costo_real, 'el jefe tampoco ve el costo real: se enmascaró de más').not.toBeNull()
 
-    // Y la contraparte: Administración SÍ lo recibe. Si no, la máscara está apagando a todos y el
-    // test de arriba no prueba nada.
+    // Y la contraparte: Dirección SÍ lo recibe. Si no, la máscara está apagando a todos y el test de
+    // arriba no prueba nada.
     const adm = await entrar(ADMIN.email, ADMIN.password)
-    const deAdmin = await comoUsuario(adm,
-      `obra_panel?select=monto_contratado&obra_id=eq.${OBRA_DEL_JEFE}`) as Array<Record<string, unknown>>
-    expect(Number(deAdmin[0].monto_contratado), 'Administración no recibe el contratado').toBe(CENTINELA)
+    const deAdmin = (await pedir(adm,
+      `obra_panel?select=monto_contratado&obra_id=eq.${OBRA}`)).filas as Array<Record<string, unknown>>
+    expect(Number(deAdmin[0].monto_contratado), 'Dirección no recibe el contratado').toBe(CENTINELA)
 
     // ── LA LÍNEA FINA (19/08/2026) ──────────────────────────────────────────────────────────────
     //
@@ -211,11 +291,11 @@ test('el monto contratado NO llega al nivel Obras: se enmascara en la base, no e
     // `pendiente_certificar` no: es `contratado − certificado`. Con el certificado a la vista,
     // publicarlo publica el contrato con una resta de primer grado. Ésa es la distinción que este
     // test fija, y es la que se rompe sola si alguien "destapa una columna más".
-    const plan = await comoUsuario(jefe,
-      `obra_plan_vs_real?select=monto_contratado,monto_presupuestado,margen_actual,margen_esperado,pendiente_certificar,certificado,hh_real&obra_id=eq.${OBRA_DEL_JEFE}`) as Array<Record<string, unknown>>
+    const plan = (await pedir(jefe,
+      `obra_plan_vs_real?select=monto_contratado,monto_presupuestado,margen_actual,margen_esperado,pendiente_certificar,certificado,hh_real&obra_id=eq.${OBRA}`)).filas as Array<Record<string, unknown>>
     for (const col of ['monto_contratado', 'monto_presupuestado', 'margen_actual', 'margen_esperado',
       'pendiente_certificar']) {
-      expect(plan[0][col], `obra_plan_vs_real.${col} llegó al nivel Obras`).toBeNull()
+      expect(plan[0][col], `obra_plan_vs_real.${col} llegó al jefe de obra`).toBeNull()
     }
 
     // ── Y LA TABLA DE ABAJO, QUE ES DONDE ESTABA LA FUGA REAL ───────────────────────────────────
@@ -224,16 +304,15 @@ test('el monto contratado NO llega al nivel Obras: se enmascara en la base, no e
     // devolvía 200 y DOS FILAS CON VALOR a este mismo token. El enmascarado vivía en la vista y la
     // tabla estaba abierta. La RLS no puede cortar por columna: lo que corta es el GRANT por
     // columna, y por eso ahora la respuesta correcta es 403 y no una fila en null.
-    for (const q of [`obra_canonica?select=monto_contratado&id=eq.${OBRA_DEL_JEFE}`,
+    for (const q of [`obra_canonica?select=monto_contratado&id=eq.${OBRA}`,
       'presupuestos?select=monto_presupuestado', 'presupuestos?select=margen_esperado',
       'obra_canonica?select=*', 'personas?select=retribucion_pactada']) {
-      const r = await fetch(`${URL}/rest/v1/${q}`, { headers: { apikey: ANON, Authorization: `Bearer ${jefe}` } })
-      expect(r.status, `${q} NO dio 403 con el token de un jefe de obra`).toBe(403)
+      expect((await pedir(jefe, q)).status, `${q} NO dio 403 con el token de un jefe de obra`).toBe(403)
     }
   } finally {
-    await admin.from('obra_canonica').update({ monto_contratado: original }).eq('id', OBRA_DEL_JEFE)
+    await admin.from('obra_canonica').update({ monto_contratado: original }).eq('id', OBRA)
     const { data: despues } = await admin.from('obra_canonica')
-      .select('monto_contratado').eq('id', OBRA_DEL_JEFE).single()
+      .select('monto_contratado').eq('id', OBRA).single()
     expect(despues?.monto_contratado ?? null,
       'quedó el centinela del test escrito en el contrato de una obra real').toBe(original)
   }
@@ -244,85 +323,137 @@ test('el monto contratado NO llega al nivel Obras: se enmascara en la base, no e
 // El dueño, textual: *"La política anterior quedó DEMASIADO restrictiva… Un usuario Obras debe poder
 // consultar clientes, contactos, personas, proveedores, certificados… VER INFORMACIÓN OPERATIVA ≠
 // ADMINISTRAR EL MAESTRO."*
-//
-// Este test es el reverso exacto del que vivía acá antes, que exigía CERO en las cinco. Se reemplaza
-// entero en vez de borrarse: una capacidad que se abre sin quedar medida se cierra sola la próxima
-// vez que alguien "endurezca la seguridad".
-test('el nivel Obras consulta los maestros que necesita para trabajar', async () => {
+test('el jefe de obra consulta los maestros que necesita para trabajar', async () => {
   test.setTimeout(60000)
   const token = await entrar(JEFE.email, JEFE.password)
   for (const q of ['clientes?select=id', 'cliente_panel?select=cliente_id',
     'proveedores?select=id', 'persona_plantel?select=id']) {
-    expect(await comoUsuario(token, q),
+    expect((await pedir(token, q)).filas,
       `${q} le devolvió CERO filas a un jefe de obra: no puede operar`).not.toHaveLength(0)
   }
 })
 
-// ═══ Y `personas` SE ACOTÓ OTRA VEZ, MÁS FINO (19/08/2026, tarde) ═══
+// ═══ EL LEGAJO: QUIÉN VE A QUIÉN ═══
 //
-// El pliego del módulo PERSONAL / HH, textual: *"OBRAS: **ve las personas relacionadas con SUS
-// obras**."* No contradice lo de la mañana —sigue siendo "ver ≠ administrar"— pero acota QUÉ FILAS,
-// que es lo único que la RLS puede decidir.
+// Antes del 19/08 esto se medía con el jefe y el criterio era *"ve las personas relacionadas con SUS
+// obras"*. Ese criterio SIGUE VIVO y sigue siendo lo único que la RLS puede decidir —qué filas—,
+// pero ahora quien está acotado es `campo`. El jefe administra: lee el legajo entero.
 //
-// EL TEST NO MIDE UN NÚMERO, MIDE LA RELACIÓN. Hoy la obra del jefe de QA no tiene a nadie asignado,
-// así que lo correcto es CERO — y un `not.toHaveLength(0)` habría exigido abrir el legajo entero
+// EL TEST NO MIDE UN NÚMERO, MIDE LA RELACIÓN. Si la obra del usuario de campo no tiene a nadie
+// asignado, lo correcto es CERO, y un `not.toHaveLength(0)` habría exigido abrir el legajo entero
 // para ponerse verde. Lo que tiene que valer siempre es que lo que lee sea exactamente la gente
 // ligada a sus obras: ni una fila más, y todas las que sí.
-test('el nivel Obras ve del legajo a su gente, y a nadie más', async () => {
+test('el nivel CAMPO ve del legajo a su gente, y a nadie más', async () => {
   test.setTimeout(60000)
-  const token = await entrar(JEFE.email, JEFE.password)
+  const token = await entrar(CAMPO.email, CAMPO.password)
 
-  const legajo = await comoUsuario(token, 'personas?select=id') as { id: string }[]
-  const ligadas = await comoUsuario(token, 'obra_asignacion?select=persona_id') as { persona_id: string }[]
-  const esperadas = new Set(ligadas.map((f) => f.persona_id))
+  // LOS DOS CAMINOS POR LOS QUE UNA PERSONA SE LIGA A UNA OBRA, no uno. `personas_select` es
+  // `es_administracion() OR existe en obra_asignacion de una obra que veo OR tiene horas cargadas en
+  // una obra que veo`. Mirar sólo `obra_asignacion` hacía que el test acusara de fuga a alguien que
+  // está ahí con todo derecho: la primera corrida marcó a una persona que llega por sus horas.
+  const legajo = (await pedir(token, 'personas?select=id')).filas as { id: string }[]
+  const ligadas = (await pedir(token, 'obra_asignacion?select=persona_id')).filas as { persona_id: string }[]
+  const conHoras = (await pedir(token, 'registros_hh?select=persona_id')).filas as { persona_id: string }[]
+  const esperadas = new Set([...ligadas.map((f) => f.persona_id), ...conHoras.map((f) => f.persona_id)])
 
   for (const p of legajo) {
     expect(esperadas.has(p.id), `leyó del legajo a alguien que no trabaja en sus obras: ${p.id}`).toBe(true)
   }
   // Y al revés: nadie de su obra le queda invisible, que sería el defecto opuesto —no poder ver a
-  // quien dirige— y también silencioso.
+  // quien tiene al lado— y también silencioso.
   for (const id of esperadas) {
     expect(legajo.some((p) => p.id === id), `no puede ver a alguien de su propia obra: ${id}`).toBe(true)
   }
 
   // El PLANTEL completo le sigue llegando por la vista acotada: sin esa lista no existe la primera
   // asignación, porque todavía no hay nadie ligado a su obra a quien elegir.
-  const plantel = await comoUsuario(token, 'persona_plantel?select=id') as unknown[]
+  const plantel = (await pedir(token, 'persona_plantel?select=id')).filas
   expect(plantel.length, 'sin plantel no hay a quién asignar').toBeGreaterThan(legajo.length)
+
+  // Y LA PUERTA AL DATO PERSONAL SIGUE CERRADA PARA ÉL. `persona_legajo` es una VISTA: no tiene RLS,
+  // su portero es el `where es_administracion()` de adentro. Si ese where se cayera, esto devolvería
+  // el DNI y el CUIL de las 66 personas sin un solo error en el log.
+  expect((await pedir(token, 'persona_legajo?select=id,dni&limit=5')).filas,
+    'persona_legajo le publicó datos personales a un usuario de campo').toHaveLength(0)
 })
 
-// Y el contrapeso: consultar no es administrar. La escritura de los maestros sigue siendo de
-// Administración, y eso se prueba INTENTÁNDOLO, no leyendo la policy.
-test('el nivel Obras consulta los maestros pero no los administra', async () => {
+// La contracara, que es la decisión del dueño escrita como test: el jefe administra el legajo.
+test('el jefe de obra administra el legajo, porque es Administración', async () => {
   test.setTimeout(60000)
-  const token = await entrar(JEFE.email, JEFE.password)
-  const intentos: Array<[string, string, Record<string, unknown>]> = [
-    ['clientes',    'POST',  { nombre: 'ZZ-E2E cliente que no debe existir' }],
-    ['proveedores', 'POST',  { nombre: 'ZZ-E2E proveedor que no debe existir' }],
-    ['personas',    'POST',  { nombre_completo: 'ZZ-E2E persona que no debe existir' }],
-  ]
-  for (const [tabla, metodo, cuerpo] of intentos) {
-    const r = await fetch(`${URL}/rest/v1/${tabla}`, {
-      method: metodo,
-      headers: { apikey: ANON, Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-      body: JSON.stringify(cuerpo),
-    })
-    expect(r.status, `un jefe de obra pudo escribir en ${tabla} (${r.status})`).toBeGreaterThanOrEqual(400)
+  const jefe = await entrar(JEFE.email, JEFE.password)
+  expect((await pedir(jefe, 'persona_legajo?select=id,dni&limit=5')).filas.length,
+    'el jefe perdió el legajo: se revirtió la decisión del 19/08').toBeGreaterThan(0)
+
+  // Y LA LÍNEA QUE NO SE CRUZA NI SIENDO ADMINISTRACIÓN: la retribución pactada no sale por
+  // PostgREST para NADIE — el grant por columna de `personas` no la incluye, y `persona_legajo`
+  // tampoco la publica. Un 403 no se confunde con nada; un null se confunde con "no está cargado".
+  expect((await pedir(jefe, 'personas?select=retribucion_pactada&limit=1')).status,
+    'la retribución pactada salió por la API').toBe(403)
+  expect((await pedir(jefe, 'persona_legajo?select=retribucion_pactada&limit=1')).status,
+    'persona_legajo creció y ahora publica el sueldo').toBeGreaterThanOrEqual(400)
+})
+
+// ═══ CONSULTAR NO ES ADMINISTRAR — PARA QUIEN NO ADMINISTRA ═══
+//
+// Antes del 19/08 este test le prohibía escribir los maestros al jefe. Ya no: el dueño pidió que
+// *"puedan hacer todo lo demás"*, y escribir un proveedor es exactamente eso. Así que el test cambia
+// de identidad y de forma: **campo no escribe, jefe sí**, y las dos mitades se prueban INTENTÁNDOLO.
+//
+// La mitad positiva no es un lujo: sin ella, cerrar `proveedores` para todos pondría este archivo
+// verde y rompería Administración en silencio.
+test('los maestros los escribe quien administra, y nadie más', async () => {
+  test.setTimeout(120000)
+  const admin = servicio()
+  const campo = await entrar(CAMPO.email, CAMPO.password)
+  const jefe = await entrar(JEFE.email, JEFE.password)
+  const marca = `ZZ-E2E ${Date.now()}`
+
+  try {
+    // 1 · CAMPO NO ESCRIBE NINGUNO DE LOS TRES.
+    //
+    // El payload tiene que ser VÁLIDO. Hasta el 20/08 este test mandaba `{nombre}` a `clientes`, y
+    // esa columna se llama `nombre_comercial` desde `20260820T1000`: la base contestaba 400 por el
+    // payload y el test lo leía como "denegado". Pasaba en verde sin medir un solo permiso.
+    expect(await escribir(campo, 'clientes', 'POST', { nombre_comercial: marca }),
+      'un usuario de campo pudo crear un cliente').toBe(403)
+    expect(await escribir(campo, 'proveedores', 'POST', { nombre: marca }),
+      'un usuario de campo pudo crear un proveedor').toBe(403)
+    expect(await escribir(campo, 'personas', 'POST', { nombre_completo: marca }),
+      'un usuario de campo pudo crear una persona').toBe(403)
+
+    // 2 · EL JEFE SÍ, PORQUE ADMINISTRA.
+    expect(await escribir(jefe, 'proveedores', 'POST', { nombre: `${marca} proveedor` }),
+      'el jefe de obra no pudo crear un proveedor: se revirtió la decisión del 19/08').toBe(201)
+
+    // 3 · Y EL LEGAJO TAMBIÉN, porque administrar el plantel es administrar. `personas_insert` es
+    // `es_administracion()`.
+    //
+    // OJO CON EL 403 QUE NO ES UN 403: pedir `Prefer: return=representation` obliga a Postgres a
+    // LEER la fila recién insertada, y si el SELECT no la deja pasar devuelve
+    // *"new row violates row-level security policy"* — un 403 que parece una escritura denegada y
+    // es una lectura denegada. Por eso `escribir()` no pide representación: mide lo que dice medir.
+    expect(await escribir(jefe, 'personas', 'POST', { nombre_completo: `${marca} persona` }),
+      'el jefe de obra no pudo dar de alta a una persona: se revirtió la decisión del 19/08').toBe(201)
+  } finally {
+    // Lo que el test crea, el test lo saca. Un `ZZ-E2E` olvidado termina en el maestro real del
+    // dueño: ya pasó, y se encontró semanas después.
+    await admin.from('proveedores').delete().like('nombre', 'ZZ-E2E%')
+    await admin.from('clientes').delete().like('nombre_comercial', 'ZZ-E2E%')
+    await admin.from('personas').delete().like('nombre_completo', 'ZZ-E2E%')
   }
 })
-
 
 // ═══ LA PANTALLA NO PUEDE EXPLICAR UNA AUSENCIA QUE NO ES UNA AUSENCIA (19/08/2026) ═══
 //
 // La solapa Economía dibujaba «Contratado —» con la explicación *"Nadie lo cargó todavía"* al lado.
-// Para Administración es verdad. Para un jefe de obra es MENTIRA: el contrato puede estar cargado y
-// él no puede verlo. Una explicación falsa de una ausencia fabrica un hecho, que es lo único que
-// este sistema no puede hacer.
+// Para Dirección es verdad. Para un jefe de obra es MENTIRA: el contrato puede estar cargado y él no
+// puede verlo. Una explicación falsa de una ausencia fabrica un hecho, que es lo único que este
+// sistema no puede hacer.
 //
 // La protección sigue estando en Postgres —la columna ni llega—; esto mide que el cartel tampoco
-// mienta. Y mide el CASO POSITIVO en la misma pasada: costo y certificación SÍ se dibujan, porque
-// un test que sólo comprueba ausencias se pone verde con la pantalla rota.
-test('Economía no le inventa una explicación al nivel Obras, y le deja lo suyo', async ({ page }) => {
+// mienta. Y mide el CASO POSITIVO en la misma pasada: costo y certificación SÍ se dibujan, porque un
+// test que sólo comprueba ausencias se pone verde con la pantalla rota.
+test('Economía no le inventa una explicación al jefe de obra, y le deja lo suyo', async ({ page }) => {
   test.setTimeout(120000)
   await entrarComo(page, JEFE.email, JEFE.password)
   await page.goto('/obras/san-francisco?vista=economia')
@@ -349,14 +480,13 @@ test('Economía no le inventa una explicación al nivel Obras, y le deja lo suyo
   await expect(resumen, 'el resumen se quedó sin la línea de costo, que sí es suya').toContainText(/costo/i)
 })
 
-
-// ═══ EL CHECKLIST DE PREPARACIÓN, CON UN USUARIO DE NIVEL OBRAS (19/08/2026) ═══
+// ═══ EL CHECKLIST DE PREPARACIÓN, CON UN USUARIO SIN ECONOMÍA (19/08/2026) ═══
 //
 // El checklist se dibuja en el Resumen de la obra y tiene una línea de Contrato. Para un jefe de
 // obra, `obra_panel.monto_contratado` llega NULL: si el checklist lo leyera como respuesta, diría
 // «Contrato · pendiente» sobre una obra con el contrato cargado. La línea no se dibuja para él, y
 // eso se mide acá porque quien construyó el checklist no tenía credenciales de nivel Obras.
-test('el checklist de preparación no le habla de contrato al nivel Obras', async ({ page }) => {
+test('el checklist de preparación no le habla de contrato al jefe de obra', async ({ page }) => {
   test.setTimeout(120000)
   await entrarComo(page, JEFE.email, JEFE.password)
   await page.goto('/obras/san-francisco')
@@ -377,45 +507,60 @@ test('el checklist de preparación no le habla de contrato al nivel Obras', asyn
 
 // ═══ LAS HORAS TAMBIÉN SE ACOTAN POR OBRA (MÓDULO PERSONAL / HH, 19/08/2026) ═══
 //
-// `registros_hh` tenía la policy de SELECT en `using (true)`: cualquier jefe de obra leía por
-// PostgREST las horas imputadas a las OCHO obras. Y lo que se puede leer se puede escribir mal: sin
-// cota, la carga masiva de una obra podía sembrar imputaciones en otra.
+// `registros_hh` tenía la policy de SELECT en `using (true)`: cualquiera leía por PostgREST las
+// horas imputadas a las diecisiete obras. Y lo que se puede leer se puede escribir mal: sin cota, la
+// carga masiva de una obra podía sembrar imputaciones en otra.
 //
 // Se mide INTENTÁNDOLO, no leyendo la policy: una policy correcta sin su `grant` devuelve
 // `permission denied` y una policy floja con el grant puesto devuelve datos, y desde el código las
 // dos se ven igual de bien.
-test('el nivel Obras no lee ni escribe horas de una obra que no es suya', async () => {
+test('el nivel CAMPO no lee ni escribe horas de una obra que no es suya', async () => {
   test.setTimeout(60000)
-  const token = await entrar(JEFE.email, JEFE.password)
-  const servicio = createClient(URL, SRV, { auth: { persistSession: false } })
+  const token = await entrar(CAMPO.email, CAMPO.password)
+  const admin = servicio()
 
-  // La obra que este jefe NO ve. Se resuelve contra la base para que el test no dependa de que el
-  // catálogo de obras siga siendo el mismo dentro de seis meses.
-  const { data: suyas } = await servicio.from('usuario_obra').select('obra_canonica_id')
-  const mias = new Set((suyas ?? []).map((f) => (f as { obra_canonica_id: string }).obra_canonica_id))
-  const { data: todas } = await servicio.from('obra_canonica').select('id')
-  const ajena = (todas ?? []).map((o) => (o as { id: string }).id).find((id) => !mias.has(id))
-  expect(ajena, 'no hay ninguna obra ajena contra la cual medir').toBeTruthy()
+  // La obra que este usuario NO ve, y que TIENE horas cargadas: sin horas del otro lado, un cero
+  // significaría "no hay nada que leer" en vez de "no puede leerlo".
+  //
+  // ═══ EL ESCENARIO SE CONSTRUYE, NO SE ENCUENTRA (20/08/2026) ═══
+  //
+  // La primera versión buscaba una obra ajena que YA tuviera horas cargadas. Medido hoy:
+  // `registros_hh` tiene 19 filas y **las 19 con `obra_canonica_id` nulo** — ninguna hora está
+  // imputada a ninguna obra. O sea que el test dependía de un dato que no existe, y las dos veces
+  // que pareció encontrarlo estaba leyendo residuo de una corrida anterior de sí mismo.
+  //
+  // Un test de aislamiento no puede depender de que la producción tenga los datos que le convienen:
+  // el día que la tabla se vacía se pone verde por vacío, que es la forma más silenciosa de mentir.
+  // Así que la hora ajena la siembra el propio test, la mide, y la saca.
+  const ajena = (await admin.from('obra_canonica').select('id').neq('id', OBRA_CAMPO).limit(1)
+    .then((r) => r.data?.[0]?.id)) as string
+  expect(ajena, 'no hay una segunda obra contra la cual medir').toBeTruthy()
+  const { data: alguien } = await admin.from('personas').select('id').limit(1).single()
+  const persona = (alguien as { id: string }).id
 
-  const leidas = await comoUsuario(token, `registros_hh?select=id&obra_canonica_id=eq.${ajena}`)
-  expect(leidas, 'un jefe de obra leyó las horas de una obra ajena').toHaveLength(0)
-
-  const { data: alguien } = await servicio.from('personas').select('id').limit(1).single()
-  const r = await fetch(`${URL}/rest/v1/registros_hh`, {
-    method: 'POST',
-    headers: {
-      apikey: ANON, Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json', Prefer: 'return=representation',
-    },
-    body: JSON.stringify({
-      obra_canonica_id: ajena,
-      persona_id: (alguien as { id: string }).id,
+  try {
+    const { error } = await admin.from('registros_hh').insert({
+      obra_canonica_id: ajena, persona_id: persona,
       fecha: '2026-08-19', fecha_inicio_semana: '2026-08-17',
       horas: 8, fuente_legacy: 'ZZ-E2E autorizacion',
-    }),
-  })
-  expect(r.status, 'un jefe de obra pudo imputar horas a una obra ajena').toBeGreaterThanOrEqual(400)
+    })
+    expect(error, `no pude sembrar la hora ajena: ${error?.message ?? ''}`).toBeNull()
 
-  // Y si por algún motivo entró, no se deja en los jornales del dueño.
-  await servicio.from('registros_hh').delete().eq('fuente_legacy', 'ZZ-E2E autorizacion')
+    // 1 · NO LA LEE. Con la fila puesta, un cero significa "no puede", no "no hay".
+    expect((await pedir(token, `registros_hh?select=id&obra_canonica_id=eq.${ajena}`)).filas,
+      'un usuario de campo leyó las horas de una obra ajena').toHaveLength(0)
+
+    // 2 · NI LA ESCRIBE.
+    expect(await escribir(token, 'registros_hh', 'POST', {
+      obra_canonica_id: ajena, persona_id: persona,
+      fecha: '2026-08-19', fecha_inicio_semana: '2026-08-17',
+      horas: 8, fuente_legacy: 'ZZ-E2E autorizacion',
+    }), 'un usuario de campo pudo imputar horas a una obra ajena').toBeGreaterThanOrEqual(400)
+  } finally {
+    // Lo sembrado se saca, entre y no entre: esto son los jornales del dueño.
+    await admin.from('registros_hh').delete().eq('fuente_legacy', 'ZZ-E2E autorizacion')
+    const { count } = await admin.from('registros_hh')
+      .select('id', { count: 'exact', head: true }).eq('fuente_legacy', 'ZZ-E2E autorizacion')
+    expect(count, 'quedaron horas de prueba en los jornales').toBe(0)
+  }
 })

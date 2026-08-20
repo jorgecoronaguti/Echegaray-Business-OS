@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
+import { servicio, asegurarCampo, obraConDatos } from './util/identidades'
 
 // ADMINISTRACIÓN: PERSONAS Y PROVEEDORES — LA CERRADURA, MEDIDA CONTRA POSTGREST.
 //
@@ -31,7 +32,19 @@ const URL = process.env.NEXT_PUBLIC_SUPABASE_URL as string
 const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string
 const SRV = process.env.SUPABASE_SERVICE_ROLE_KEY as string
 
+// ═══ EL MODELO CAMBIÓ EL 19/08/2026 Y ESTOS DOS TESTS SE REESCRIBIERON EL 20/08 ═══
+//
+// El dueño: *"quiero que los usuarios con permisos de «jefe de obra» pueda acceder a administracion,
+// solo no quiero que vean los montos de venta de las obras. pero necesito que puedan hacer todo lo
+// demas"* → `20260819T4900` metió a `jefe_obra` dentro de `es_administracion()`.
+//
+// Dos tests de este archivo medían el aislamiento con el token del jefe. Desde ese día el jefe no
+// está aislado: los rojos no eran una cerradura rota, eran un supuesto vencido. **El único rol que
+// la RLS acota es `campo`**, y con ése se miden ahora las pruebas negativas. Nada se relajó: la
+// mitad negativa quedó igual de estricta con la identidad correcta, y se agregó la mitad positiva
+// —que el jefe SÍ llega— para que revertir el modelo en silencio se ponga rojo acá.
 const JEFE = { email: 'qa.jefe.obra@ecsas.com.ar', password: 'TestJefe123!' }
+const CAMPO = { email: 'qa.campo@ecsas.com.ar', password: 'TestCampo123!' }
 const ADMIN = {
   email: 'jorge.o.corona+direccion-test-1783513222134@gmail.com',
   password: 'TestPassword123!',
@@ -53,65 +66,106 @@ async function comoUsuario(token: string, consulta: string) {
   return { status: r.status, filas: Array.isArray(j) ? (j as unknown[]) : [], cuerpo: j }
 }
 
-test.describe('lo de Administración es de Administración', () => {
-  test('el nivel OBRAS consulta el legajo y el maestro de proveedores, pero no el sueldo', async () => {
-    test.setTimeout(120000)
-    const jefe = await entrar(JEFE.email, JEFE.password)
+// La cuenta de campo y su obra, resueltas igual que en `autorizacion-por-obra.spec.ts`. Los dos
+// archivos corren en paralelo y los dos la necesitan: `obraConDatos()` es determinística y
+// `asegurarCampo()` es idempotente, así que el segundo en llegar no mueve nada. Sin esto, el otro
+// spec le cambiaba la obra a este usuario a mitad de este archivo y el rojo no era de nadie.
+test.beforeAll(async () => {
+  const admin = servicio()
+  await asegurarCampo(admin, await obraConDatos(admin))
+})
 
-    // ═══ ESTE TEST CAMBIÓ DOS VECES EL MISMO DÍA, Y LAS DOS POR EL DUEÑO (19/08/2026) ═══
+test.describe('lo de Administración es de Administración', () => {
+  test('el nivel CAMPO consulta lo operativo, pero no el legajo ni el sueldo', async () => {
+    test.setTimeout(120000)
+    const campo = await entrar(CAMPO.email, CAMPO.password)
+
+    // ═══ ESTE TEST CAMBIÓ TRES VECES, Y LAS TRES POR EL DUEÑO ═══
     //
-    // Mañana: *"La política anterior quedó DEMASIADO restrictiva… Un usuario Obras debe poder
+    // 19/08 mañana: *"La política anterior quedó DEMASIADO restrictiva… Un usuario Obras debe poder
     // consultar clientes, contactos, personas, proveedores… VER INFORMACIÓN OPERATIVA ≠ ADMINISTRAR
     // EL MAESTRO."* → se abrió `personas` con `using (true)`.
     //
-    // Tarde, en el pliego del módulo PERSONAL / HH: *"OBRAS: **ve las personas relacionadas con SUS
-    // obras**."* Es más específico y no contradice lo anterior: sigue siendo "ver ≠ administrar",
-    // pero acota QUÉ FILAS. Y eso sí lo puede hacer la RLS, que es lo único que decide filas.
+    // 19/08 tarde, en el pliego de PERSONAL / HH: *"OBRAS: **ve las personas relacionadas con SUS
+    // obras**."* Más específico, no contradictorio: acota QUÉ FILAS, que es lo único que la RLS
+    // decide.
     //
-    // `proveedores` NO cambió: el maestro de proveedores no tiene eje de obra.
-    const proveedores = await comoUsuario(jefe, 'proveedores?select=id&limit=5')
-    expect(proveedores.filas.length, 'proveedores le devolvió CERO filas a un jefe de obra')
+    // 19/08 noche: el jefe de obra pasó a ser Administración. El criterio de arriba no se cayó —se
+    // mide igual—, pero quien está acotado ahora es `campo`.
+    //
+    // `proveedores` NO cambió nunca: el maestro de proveedores no tiene eje de obra, y quien está en
+    // la obra necesita saber a quién se le compra.
+    const proveedores = await comoUsuario(campo, 'proveedores?select=id&limit=5')
+    expect(proveedores.filas.length, 'proveedores le devolvió CERO filas a un usuario de campo')
       .toBeGreaterThan(0)
 
-    // LA MEDIDA ES CONTRA LA RELACIÓN, NO CONTRA UN NÚMERO FIJO. Lo que el jefe puede leer de
-    // `personas` tiene que ser EXACTAMENTE la gente ligada a las obras que ve. Un `toBeGreaterThan(0)`
-    // pasaría igual si mañana se abriera el legajo entero.
-    const suyas = await comoUsuario(jefe, 'personas?select=id')
-    expect(suyas.status, 'personas falló para un jefe de obra').toBe(200)
-    const ligadas = await comoUsuario(jefe, 'obra_asignacion?select=persona_id')
-    const esperadas = new Set((ligadas.filas as { persona_id: string }[]).map((f) => f.persona_id))
+    // LA MEDIDA ES CONTRA LA RELACIÓN, NO CONTRA UN NÚMERO FIJO. Lo que puede leer de `personas`
+    // tiene que ser EXACTAMENTE la gente ligada a las obras que ve. Un `toBeGreaterThan(0)` pasaría
+    // igual si mañana se abriera el legajo entero.
+    // LOS DOS CAMINOS, no uno: `personas_select` liga por `obra_asignacion` **o** por tener horas
+    // cargadas en una obra que se ve. Mirar sólo el primero acusaba de fuga a quien está ahí con
+    // todo derecho.
+    const suyas = await comoUsuario(campo, 'personas?select=id')
+    expect(suyas.status, 'personas falló para un usuario de campo').toBe(200)
+    const ligadas = await comoUsuario(campo, 'obra_asignacion?select=persona_id')
+    const conHoras = await comoUsuario(campo, 'registros_hh?select=persona_id')
+    const esperadas = new Set([
+      ...(ligadas.filas as { persona_id: string }[]).map((f) => f.persona_id),
+      ...(conHoras.filas as { persona_id: string }[]).map((f) => f.persona_id),
+    ])
     const leidas = new Set((suyas.filas as { id: string }[]).map((f) => f.id))
     for (const id of leidas) {
-      expect(esperadas.has(id), `el jefe leyó del legajo a alguien que no trabaja en sus obras: ${id}`)
+      expect(esperadas.has(id), `leyó del legajo a alguien que no trabaja en sus obras: ${id}`)
         .toBe(true)
     }
 
-    // Y el plantel COMPLETO le sigue llegando por la vista acotada: sin eso no puede asignar a nadie
-    // por primera vez, porque todavía no está ligado a su obra.
-    const plantel = await comoUsuario(jefe, 'persona_plantel?select=id')
+    // Y el plantel COMPLETO le sigue llegando por la vista acotada: sin eso no puede haber una
+    // primera asignación, porque todavía no está ligado a su obra.
+    const plantel = await comoUsuario(campo, 'persona_plantel?select=id')
     expect(plantel.filas.length, 'sin plantel no hay a quién asignar').toBeGreaterThan(leidas.size)
 
     // Y LA LÍNEA QUE NO SE CRUZA: pedir el sueldo tiene que FALLAR, no devolver null. Un null se
     // confunde con "no está cargado"; un 403 no se confunde con nada.
     for (const q of ['personas?select=retribucion_pactada&limit=1', 'personas?select=dni&limit=1',
       'personas?select=cuil&limit=1', 'personas?select=*&limit=1']) {
-      const r = await comoUsuario(jefe, q)
-      expect(r.status, `${q} NO falló para un jefe de obra`).toBe(403)
+      const r = await comoUsuario(campo, q)
+      expect(r.status, `${q} NO falló para un usuario de campo`).toBe(403)
     }
 
     // Y `persona_legajo` —la puerta con portero por la que Administración SÍ llega al DNI— no le
     // devuelve una sola fila. El filtro vive DENTRO de la vista: una vista no tiene RLS, así que si
-    // el `where es_administracion()` no estuviera, esto pasaría con las 30 filas.
-    const legajo = await comoUsuario(jefe, 'persona_legajo?select=id,dni&limit=5')
-    expect(legajo.filas.length, 'persona_legajo le publicó el legajo a un jefe de obra').toBe(0)
+    // el `where es_administracion()` no estuviera, esto pasaría con las 66 filas.
+    const legajo = await comoUsuario(campo, 'persona_legajo?select=id,dni&limit=5')
+    expect(legajo.filas.length, 'persona_legajo le publicó el legajo a un usuario de campo').toBe(0)
 
-    // La COLA de canonicalización sigue siendo trabajo de Administración: no es información
-    // operativa, es la resolución de un maestro. Las vistas filtran en su propio `where` — una vista
-    // no tiene RLS, así que si el filtro no estuviera adentro esto pasaría igual y no probaría nada.
+    // La COLA de canonicalización tampoco: no es información operativa, es la resolución de un
+    // maestro. Las vistas filtran en su propio `where` — una vista no tiene RLS, así que si el
+    // filtro no estuviera adentro esto pasaría igual y no probaría nada.
     for (const vista of ['proveedor_nombre_pendiente', 'proveedor_nombre_resuelto']) {
-      const r = await comoUsuario(jefe, `${vista}?select=*&limit=5`)
-      expect(r.filas.length, `${vista} se le publicó a un jefe de obra`).toBe(0)
+      const r = await comoUsuario(campo, `${vista}?select=*&limit=5`)
+      expect(r.filas.length, `${vista} se le publicó a un usuario de campo`).toBe(0)
     }
+  })
+
+  test('el jefe de obra SÍ administra el legajo y la cola de proveedores', async () => {
+    test.setTimeout(120000)
+    const jefe = await entrar(JEFE.email, JEFE.password)
+
+    // La mitad positiva de lo de arriba, y la decisión del 19/08 escrita como test. Sin esto, cerrar
+    // el legajo para todos pondría este archivo verde y dejaría a Administración sin trabajar.
+    const legajo = await comoUsuario(jefe, 'persona_legajo?select=id,dni&limit=5')
+    expect(legajo.filas.length,
+      'el jefe de obra perdió el legajo: se revirtió la decisión del dueño').toBeGreaterThan(0)
+    const cola = await comoUsuario(jefe, 'proveedor_nombre_pendiente?select=*&limit=5')
+    expect(cola.status, 'la cola de canonicalización le falló al jefe de obra').toBe(200)
+
+    // Pero el sueldo no sale por la API para NADIE: el grant por columna de `personas` no incluye
+    // `retribucion_pactada`, y `persona_legajo` tampoco la publica. Administrar el legajo no es ver
+    // lo que cobra cada uno.
+    expect((await comoUsuario(jefe, 'personas?select=retribucion_pactada&limit=1')).status,
+      'la retribución pactada salió por la API').toBe(403)
+    expect((await comoUsuario(jefe, 'persona_legajo?select=retribucion_pactada&limit=1')).status,
+      'persona_legajo creció y ahora publica el sueldo').toBeGreaterThanOrEqual(400)
   })
 
   test('el nivel OBRAS SÍ ve el plantel para poder asignar, pero sin un solo dato sensible', async () => {
@@ -129,21 +183,40 @@ test.describe('lo de Administración es de Administración', () => {
     expect(sensible.status, 'persona_plantel expone columnas del legajo').toBeGreaterThanOrEqual(400)
   })
 
-  test('el nivel OBRAS no puede escribir un proveedor ni un vínculo', async () => {
+  test('el maestro de proveedores lo escribe quien administra, y nadie más', async () => {
     test.setTimeout(120000)
+    const admin = createClient(URL, SRV, { auth: { persistSession: false } })
+    const campo = await entrar(CAMPO.email, CAMPO.password)
     const jefe = await entrar(JEFE.email, JEFE.password)
+    const marca = `ZZ-E2E proveedor ${Date.now()}`
 
-    const r = await fetch(`${URL}/rest/v1/proveedores`, {
-      method: 'POST',
-      headers: {
-        apikey: ANON,
-        Authorization: `Bearer ${jefe}`,
-        'Content-Type': 'application/json',
-        Prefer: 'return=representation',
-      },
-      body: JSON.stringify({ nombre: `QA NO DEBE ENTRAR ${Date.now()}` }),
-    })
-    expect(r.status, 'un jefe de obra pudo crear un proveedor').toBeGreaterThanOrEqual(400)
+    const crear = async (token: string, nombre: string) => {
+      const r = await fetch(`${URL}/rest/v1/proveedores`, {
+        method: 'POST',
+        headers: {
+          apikey: ANON, Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json', Prefer: 'return=representation',
+        },
+        body: JSON.stringify({ nombre }),
+      })
+      return r.status
+    }
+
+    try {
+      // LA MITAD NEGATIVA, con la identidad que de verdad está acotada.
+      expect(await crear(campo, `${marca} campo`),
+        'un usuario de campo pudo crear un proveedor').toBe(403)
+
+      // Y LA MITAD POSITIVA, que es la decisión del dueño del 19/08 escrita como test: el jefe de
+      // obra administra. Sin ella, cerrar `proveedores` para todos dejaría este archivo verde y
+      // Administración sin poder trabajar — el defecto opuesto, y silencioso.
+      expect(await crear(jefe, `${marca} jefe`),
+        'el jefe de obra no pudo crear un proveedor: se revirtió la decisión del 19/08').toBe(201)
+    } finally {
+      // Lo que el test crea, el test lo saca. Un `ZZ-E2E` olvidado termina en el maestro real: ya
+      // pasó, y se encontró semanas después.
+      await admin.from('proveedores').delete().like('nombre', 'ZZ-E2E%')
+    }
   })
 
   test('Administración sí lee las dos secciones', async () => {
