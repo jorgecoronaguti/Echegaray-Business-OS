@@ -81,7 +81,10 @@ export function BloqueImpedimentosActividad({ a, abiertos, liberados, crear, lib
                     <BotonAccion accion={liberar} args={[r.id]} testid="resolver-impedimento">Resolver</BotonAccion>
                   )}
                   {editar && (
-                    <details data-testid="editar-impedimento">
+                    // EL FORMULARIO OCUPA SU PROPIA LÍNEA. Abierto dentro de la fila de botones,
+                    // «Resolver» quedaba encajado entre «Tipo» y «Quién lo resuelve» — se leía como
+                    // un campo más del formulario en vez de como la otra acción del impedimento.
+                    <details data-testid="editar-impedimento" className="w-full basis-full">
                       <summary className="cursor-pointer text-[11px] text-muted hover:text-ink">Editar</summary>
                       <div className="mt-1.5 w-full">
                         <FormAccion
