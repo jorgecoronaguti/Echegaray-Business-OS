@@ -1,0 +1,1138 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet"><script src="./image-slot.js"></script><style>html,body{margin:0;padding:0;background:#EDECE8}*{box-sizing:border-box}a{color:#1F1F1E;text-decoration:none}a:hover{color:#30302F}div::-webkit-scrollbar{width:0;height:0}</style></helmet>
+<div style="font-family:'IBM Plex Sans',system-ui,sans-serif;color:#1F1F1E;padding:40px;display:flex;flex-direction:column;gap:44px">
+
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <div style="display:flex;align-items:baseline;gap:10px">
+      <span style="font:600 10.5px 'IBM Plex Mono',monospace;padding:3px 7px;background:#30302F;color:#fff;border-radius:4px">4e</span>
+      <span style="font-size:13px;font-weight:600">ENTRAR · mobile y desktop</span>
+      <span style="font-size:12px;color:#91918B">la puerta del OS: logo oficial, un campo por vez, sesión larga en el teléfono de obra</span>
+    </div>
+    <div style="display:flex;gap:24px;align-items:flex-start;width:max-content">
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:11.5px;color:#6B6B67">14 · Entrar (mobile)</span>
+        <div style="{{ phone }}">
+          <div style="flex:1;min-height:0;display:flex;flex-direction:column;padding:0 24px">
+            <div style="height:96px;flex:none"></div>
+            <img src="./logo-echegaray.png" alt="Echegaray Construcciones" style="width:212px;height:auto;display:block">
+            <div style="margin-top:10px;font-size:12.5px;color:#91918B">Business OS</div>
+
+            <div style="margin-top:44px;display:flex;flex-direction:column;gap:18px">
+              <div>
+                <div style="font-size:12px;color:#6B6B67;margin-bottom:7px">Email</div>
+                <div style="height:52px;border:1px solid #D7D5CF;border-radius:8px;display:flex;align-items:center;padding:0 14px;font-size:15px">jmorales@ecsas.com.ar</div>
+              </div>
+              <div>
+                <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:7px">
+                  <span style="font-size:12px;color:#6B6B67">Contraseña</span>
+                  <span style="flex:1"></span>
+                  <span style="font-size:12px;color:#6B6B67">Mostrar</span>
+                </div>
+                <div style="height:52px;border:1px solid #1F1F1E;border-radius:8px;display:flex;align-items:center;padding:0 14px;font-family:'IBM Plex Mono',monospace;font-size:16px;letter-spacing:0.18em;color:#3A3A38">••••••••</div>
+              </div>
+            </div>
+
+            <div style="margin-top:26px;height:52px;border-radius:8px;background:#FDC900;color:#1F1F1E;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:600">Entrar</div>
+            <div style="margin-top:18px;display:flex;align-items:center;gap:11px">
+              <span style="width:20px;height:20px;border-radius:4px;background:#30302F;color:#FFFFFF;display:flex;align-items:center;justify-content:center;font-size:11px;flex:none">✓</span>
+              <span style="font-size:13.5px;flex:1">Mantener la sesión en este teléfono</span>
+            </div>
+            <div style="margin-top:20px;font-size:13.5px;color:#6B6B67">Olvidé mi contraseña</div>
+          </div>
+          <div style="flex:none;padding:16px 24px 22px;border-top:1px solid #EFEEEA">
+            <div style="font-size:12px;color:#91918B;line-height:1.55">Si es tu primer ingreso, la contraseña la genera Administración. No hay registro abierto: las cuentas las crea la empresa.</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:11.5px;color:#6B6B67">15 · Error y recuperación</span>
+        <div style="{{ phone }}">
+          <div style="flex:1;min-height:0;display:flex;flex-direction:column;padding:0 24px">
+            <div style="height:96px;flex:none"></div>
+            <img src="./logo-echegaray.png" alt="Echegaray Construcciones" style="width:212px;height:auto;display:block">
+            <div style="margin-top:10px;font-size:12.5px;color:#91918B">Business OS</div>
+
+            <div style="margin-top:44px;display:flex;flex-direction:column;gap:18px">
+              <div>
+                <div style="font-size:12px;color:#6B6B67;margin-bottom:7px">Email</div>
+                <div style="height:52px;border:1px solid #D7D5CF;border-radius:8px;display:flex;align-items:center;padding:0 14px;font-size:15px">jmorales@ecsas.com.ar</div>
+              </div>
+              <div>
+                <div style="font-size:12px;color:#6B6B67;margin-bottom:7px">Contraseña</div>
+                <div style="height:52px;border:1px solid #B42318;border-radius:8px;display:flex;align-items:center;padding:0 14px;font-family:'IBM Plex Mono',monospace;font-size:16px;letter-spacing:0.18em;color:#3A3A38">••••••</div>
+                <div style="margin-top:7px;font-size:12.5px;color:#B42318">Email o contraseña incorrectos. Te quedan 3 intentos.</div>
+              </div>
+            </div>
+
+            <div style="margin-top:26px;height:52px;border-radius:8px;background:#FDC900;color:#1F1F1E;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:600">Entrar</div>
+
+            <div style="margin-top:32px;padding-top:20px;border-top:1px solid #EFEEEA">
+              <div style="font-size:11px;font-weight:500;letter-spacing:0.04em;color:#91918B">RECUPERAR ACCESO</div>
+              <p style="margin:10px 0 0;font-size:13.5px;line-height:1.55">Te mandamos un enlace a tu email para poner una contraseña nueva. Si no tenés email cargado, te lo resuelve Administración.</p>
+              <div style="margin-top:16px;height:48px;border-radius:8px;border:1px solid #D7D5CF;display:flex;align-items:center;justify-content:center;font-size:15px;color:#3A3A38">Enviarme el enlace</div>
+            </div>
+          </div>
+          <div style="flex:none;padding:16px 24px 22px;border-top:1px solid #EFEEEA">
+            <div style="font-size:12px;color:#91918B;line-height:1.55">Sin conexión no se puede entrar por primera vez. Si ya entraste antes en este teléfono, el OS abre con lo último cargado.</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:11.5px;color:#6B6B67">16 · Entrar (desktop 1440)</span>
+        <div style="width:1440px;height:812px;background:#FFFFFF;border:1px solid #E7E6E2;border-radius:10px;overflow:hidden;display:flex">
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;padding:0 120px">
+            <img src="./logo-echegaray.png" alt="Echegaray Construcciones" style="width:268px;height:auto;display:block">
+            <div style="margin-top:12px;font-size:13px;color:#91918B">Business OS</div>
+            <h1 style="margin:52px 0 0;font-size:24px;font-weight:600;letter-spacing:-0.015em">Entrar</h1>
+            <div style="margin-top:26px;width:400px;display:flex;flex-direction:column;gap:18px">
+              <div>
+                <div style="font-size:12px;color:#6B6B67;margin-bottom:6px">Email</div>
+                <div style="height:40px;border:1px solid #D7D5CF;border-radius:6px;display:flex;align-items:center;padding:0 12px;font-size:13.5px">jorge@ecsas.com.ar</div>
+              </div>
+              <div>
+                <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
+                  <span style="font-size:12px;color:#6B6B67">Contraseña</span>
+                  <span style="flex:1"></span>
+                  <span style="font-size:12px;color:#6B6B67">Mostrar</span>
+                </div>
+                <div style="height:40px;border:1px solid #1F1F1E;border-radius:6px;display:flex;align-items:center;padding:0 12px;font-family:'IBM Plex Mono',monospace;font-size:14px;letter-spacing:0.18em;color:#3A3A38">••••••••••</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:22px;margin-top:2px">
+                <span style="padding:9px 22px;border-radius:6px;background:#FDC900;color:#1F1F1E;font-size:13px;font-weight:600">Entrar</span>
+                <span style="font-size:12.5px;color:#6B6B67">Olvidé mi contraseña</span>
+              </div>
+            </div>
+            <p style="margin:40px 0 0;font-size:12px;color:#91918B;max-width:420px;line-height:1.6">Las cuentas las crea Administración desde Usuarios: no hay registro abierto. Cada usuario ve lo que su nivel permite.</p>
+          </div>
+          <div style="width:560px;flex:none;background:#FAFAF8;border-left:1px solid #E7E6E2;display:flex;flex-direction:column;justify-content:flex-end;padding:56px">
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#91918B">ECHEGARAY CONSTRUCCIONES S.A.S.</div>
+            <p style="margin:14px 0 0;font-size:19px;line-height:1.45;letter-spacing:-0.01em;max-width:400px">Obras, personal, operación y economía en un solo lugar.</p>
+            <div style="margin-top:28px;height:1px;background:#E7E6E2"></div>
+            <div style="margin-top:20px;display:flex;gap:36px">
+              <div style="display:flex;flex-direction:column;gap:2px">
+                <span style="font-size:11.5px;color:#6B6B67">Obras activas</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:18px;font-weight:600">4</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:2px">
+                <span style="font-size:11.5px;color:#6B6B67">Personas</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:18px;font-weight:600">37</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:2px">
+                <span style="font-size:11.5px;color:#6B6B67">Desde</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:18px;font-weight:600">2017</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <div style="display:flex;align-items:baseline;gap:10px">
+      <span style="font:600 10.5px 'IBM Plex Mono',monospace;padding:3px 7px;background:#30302F;color:#fff;border-radius:4px">4a</span>
+      <span style="font-size:13px;font-weight:600">EMPLEADO · HOY, MI TRABAJO, MIS TAREAS, DETALLE DE TAREA</span>
+      <span style="font-size:12px;color:#91918B">tres contextos abajo: Hoy · Mi trabajo · Mi información · touch de 48px</span>
+    </div>
+    <div style="display:flex;gap:24px;align-items:flex-start;width:max-content">
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:11.5px;color:#6B6B67">1 · Hoy</span>
+        <div style="{{ phone }}">
+          <div style="{{ topbar }}">
+            <img src="./isotipo.png" alt="" style="width:22px;height:22px;display:block">
+            <span style="font-size:12.5px;font-weight:600;letter-spacing:0.12em">ECHEGARAY</span>
+            <span style="flex:1"></span>
+            <div style="width:26px;height:26px;border-radius:50%;background:#EFEEEA;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#3A3A38">JM</div>
+          </div>
+          <div style="flex:1;min-height:0;overflow:hidden;padding:20px 16px 0">
+            <div style="display:flex;align-items:baseline;gap:8px">
+              <h2 style="margin:0;font-size:20px;font-weight:600;letter-spacing:-0.01em">Hoy</h2>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#6B6B67">miércoles 20/08</span>
+            </div>
+
+            <div style="margin-top:20px;display:flex;flex-direction:column;gap:2px">
+              <span style="font-size:11px;font-weight:500;letter-spacing:0.04em;color:#91918B">OBRA</span>
+              <span style="font-size:17px;font-weight:600;letter-spacing:-0.01em">Comedor La Estrella</span>
+              <span style="font-size:12.5px;color:#6B6B67">Ruta 5 km 12 · jefe de obra M. Duarte</span>
+            </div>
+            <div style="margin-top:16px;display:flex;flex-direction:column;gap:2px">
+              <span style="font-size:11px;font-weight:500;letter-spacing:0.04em;color:#91918B">CUADRILLA</span>
+              <span style="font-size:14px">Morales · 5 personas</span>
+            </div>
+
+            <div style="margin-top:20px;padding-top:18px;border-top:1px solid #EFEEEA">
+              <div style="display:flex;align-items:baseline;gap:8px">
+                <span style="font-size:11px;font-weight:500;letter-spacing:0.04em;color:#91918B">ASISTENCIA</span>
+                <span style="flex:1"></span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#6B6B67">07:55</span>
+              </div>
+              <div style="margin-top:8px;font-size:13.5px;color:#B54708">Todavía no registraste tu entrada</div>
+              <div style="margin-top:12px;height:52px;border-radius:8px;background:#FDC900;color:#1F1F1E;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:600">Registrar entrada</div>
+            </div>
+
+            <div style="margin-top:22px">
+              <div style="display:flex;align-items:baseline;gap:8px">
+                <span style="font-size:11px;font-weight:500;letter-spacing:0.04em;color:#91918B">TRABAJO DE HOY</span>
+                <span style="flex:1"></span>
+                <span style="font-size:12px;color:#6B6B67">Ver todo</span>
+              </div>
+              <div style="margin-top:6px">
+                <sc-for list="{{ hoyTareas }}" as="t" hint-placeholder-count="3">
+                  <div style="{{ t.rowStyle }}">
+                    <span style="{{ t.dotStyle }}"></span>
+                    <div style="flex:1;min-width:0">
+                      <div style="font-size:14px">{{ t.n }}</div>
+                      <div style="{{ t.subStyle }}">{{ t.sub }}</div>
+                    </div>
+                    <span style="font-size:15px;color:#D7D5CF">›</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="margin-top:20px;padding-top:16px;border-top:1px solid #EFEEEA">
+              <span style="font-size:11px;font-weight:500;letter-spacing:0.04em;color:#91918B">PENDIENTES</span>
+              <div style="margin-top:8px;display:flex;flex-direction:column;gap:12px">
+                <div style="display:flex;align-items:baseline;gap:10px">
+                  <span style="width:6px;height:6px;border-radius:50%;background:#B42318;flex:none;position:relative;top:-2px"></span>
+                  <div style="flex:1">
+                    <div style="font-size:13.5px">Te piden el apto médico 2026</div>
+                    <div style="font-size:12px;color:#6B6B67;margin-top:2px">Vencido el 12/07 · subilo desde Mis documentos</div>
+                  </div>
+                  <span style="font-size:15px;color:#D7D5CF">›</span>
+                </div>
+                <div style="display:flex;align-items:baseline;gap:10px">
+                  <span style="width:6px;height:6px;border-radius:50%;background:#B42318;flex:none;position:relative;top:-2px"></span>
+                  <div style="flex:1">
+                    <div style="font-size:13.5px">Falta material en el muro sur</div>
+                    <div style="font-size:12px;color:#6B6B67;margin-top:2px">Impedimento abierto de tu actividad</div>
+                  </div>
+                  <span style="font-size:15px;color:#D7D5CF">›</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style="{{ tabbar }}">
+            <div style="{{ tabOn }}">Hoy</div>
+            <div style="{{ tabOff }}">Mi trabajo</div>
+            <div style="{{ tabOff }}">Mi información</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:11.5px;color:#6B6B67">2 · Mi trabajo</span>
+        <div style="{{ phone }}">
+          <div style="{{ topbar }}">
+            <span style="font-size:13.5px;font-weight:600">Mi trabajo</span>
+            <span style="flex:1"></span>
+            <span style="font-size:12px;color:#6B6B67">Comedor La Estrella</span>
+          </div>
+          <div style="flex:1;min-height:0;overflow:hidden;padding:18px 16px 0">
+            <div style="display:flex;flex-direction:column;gap:2px">
+              <span style="font-size:11px;font-weight:500;letter-spacing:0.04em;color:#91918B">OBRA ACTUAL</span>
+              <span style="font-size:17px;font-weight:600;letter-spacing:-0.01em">Comedor La Estrella</span>
+              <span style="font-size:12.5px;color:#6B6B67">Etapa Estructura · Ruta 5 km 12</span>
+            </div>
+            <div style="margin-top:14px;display:flex;gap:28px">
+              <div style="display:flex;flex-direction:column;gap:2px">
+                <span style="font-size:11.5px;color:#6B6B67">Responsable</span>
+                <span style="font-size:13.5px">M. Duarte</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:2px">
+                <span style="font-size:11.5px;color:#6B6B67">Cuadrilla</span>
+                <span style="font-size:13.5px">Morales</span>
+              </div>
+            </div>
+
+            <div style="margin-top:20px;border-top:1px solid #EFEEEA">
+              <sc-for list="{{ trabajoSecciones }}" as="s" hint-placeholder-count="5">
+                <div style="{{ s.rowStyle }}">
+                  <div style="flex:1">
+                    <div style="font-size:14.5px">{{ s.n }}</div>
+                    <div style="{{ s.subStyle }}">{{ s.sub }}</div>
+                  </div>
+                  <span style="{{ s.badgeStyle }}">{{ s.badge }}</span>
+                  <span style="font-size:15px;color:#D7D5CF">›</span>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="margin-top:18px">
+              <span style="font-size:11px;font-weight:500;letter-spacing:0.04em;color:#91918B">MI CUADRILLA</span>
+              <div style="margin-top:10px;display:flex;flex-direction:column;gap:10px">
+                <sc-for list="{{ cuadrilla }}" as="c" hint-placeholder-count="5">
+                  <div style="display:flex;align-items:baseline;gap:10px">
+                    <span style="font-size:13.5px;flex:1">{{ c.n }}</span>
+                    <span style="{{ c.rolStyle }}">{{ c.rol }}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <p style="margin:12px 0 0;font-size:11.5px;color:#91918B">Ves quién trabaja con vos, nada más: los legajos y documentos de tus compañeros no se abren desde acá.</p>
+            </div>
+          </div>
+          <div style="{{ tabbar }}">
+            <div style="{{ tabOff }}">Hoy</div>
+            <div style="{{ tabOn }}">Mi trabajo</div>
+            <div style="{{ tabOff }}">Mi información</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:11.5px;color:#6B6B67">3 · Mis tareas</span>
+        <div style="{{ phone }}">
+          <div style="{{ topbar }}">
+            <span style="font-size:13px;color:#6B6B67">←</span>
+            <span style="font-size:13.5px;font-weight:600">Mis tareas</span>
+          </div>
+          <div style="flex:1;min-height:0;overflow:hidden">
+            <div style="display:flex;align-items:center;gap:20px;padding:14px 16px 0">
+              <span style="font-size:13.5px;font-weight:600;box-shadow:inset 0 -2px 0 #FDC900;padding-bottom:4px">Hoy</span>
+              <span style="font-size:13.5px;color:#6B6B67">Próximas</span>
+              <span style="font-size:13.5px;color:#6B6B67">Completadas</span>
+            </div>
+            <div style="padding:8px 16px 0">
+              <sc-for list="{{ tareas }}" as="t" hint-placeholder-count="5">
+                <div style="{{ t.rowStyle }}">
+                  <span style="{{ t.dotStyle }}"></span>
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:14.5px">{{ t.n }}</div>
+                    <div style="font-size:12px;color:#6B6B67;margin-top:3px">{{ t.act }}</div>
+                    <div style="{{ t.bloqStyle }}">{{ t.bloq }}</div>
+                  </div>
+                  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+                    <span style="{{ t.estadoStyle }}">{{ t.estado }}</span>
+                    <span style="{{ t.fechaStyle }}">{{ t.fecha }}</span>
+                  </div>
+                  <span style="font-size:15px;color:#D7D5CF">›</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="{{ tabbar }}">
+            <div style="{{ tabOff }}">Hoy</div>
+            <div style="{{ tabOn }}">Mi trabajo</div>
+            <div style="{{ tabOff }}">Mi información</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:11.5px;color:#6B6B67">4 · Detalle de tarea</span>
+        <div style="{{ phone }}">
+          <div style="{{ topbar }}">
+            <span style="font-size:13px;color:#6B6B67">←</span>
+            <span style="font-size:13.5px;font-weight:600">Tarea</span>
+            <span style="flex:1"></span>
+            <span style="font-size:16px;color:#6B6B67">···</span>
+          </div>
+          <div style="flex:1;min-height:0;overflow:hidden;padding:18px 16px 0">
+            <h2 style="margin:0;font-size:18px;font-weight:600;letter-spacing:-0.01em">Muro sur · 2ª hilada</h2>
+            <div style="margin-top:8px;display:flex;align-items:center;gap:8px">
+              <span style="width:6px;height:6px;border-radius:50%;background:#30302F"></span>
+              <span style="font-size:13px">En curso</span>
+              <span style="color:#D7D5CF">·</span>
+              <span style="font-size:13px;color:#6B6B67">vence hoy</span>
+            </div>
+            <div style="margin-top:6px;font-size:12.5px;color:#6B6B67">Mampostería interior · Comedor La Estrella</div>
+
+            <div style="margin-top:18px;padding-top:16px;border-top:1px solid #EFEEEA;display:flex;flex-direction:column;gap:11px">
+              <sc-for list="{{ tareaDatos }}" as="d" hint-placeholder-count="4">
+                <div style="display:flex;align-items:baseline;gap:12px">
+                  <span style="width:112px;font-size:12.5px;color:#6B6B67">{{ d.k }}</span>
+                  <span style="{{ d.s }}">{{ d.v }}</span>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="margin-top:18px;padding-top:16px;border-top:1px solid #EFEEEA">
+              <div style="font-size:11px;font-weight:500;letter-spacing:0.04em;color:#91918B">INDICACIONES</div>
+              <p style="margin:8px 0 0;font-size:13.5px;line-height:1.55">Traba a media pieza, junta de 10 mm. Dejar los pases de la instalación sanitaria antes de cerrar el paño.</p>
+            </div>
+
+            <div style="margin-top:16px;border-top:1px solid #EFEEEA">
+              <sc-for list="{{ tareaSecciones }}" as="s" hint-placeholder-count="4">
+                <div style="{{ s.rowStyle }}">
+                  <span style="font-size:14px;flex:1">{{ s.n }}</span>
+                  <span style="{{ s.metaStyle }}">{{ s.meta }}</span>
+                  <span style="font-size:15px;color:#D7D5CF">›</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="flex:none;padding:12px 16px 16px;border-top:1px solid #E7E6E2;display:flex;flex-direction:column;gap:10px">
+            <div style="height:50px;border-radius:8px;background:#FDC900;color:#1F1F1E;display:flex;align-items:center;justify-content:center;font-size:15.5px;font-weight:600">Marcar avance</div>
+            <div style="display:flex;gap:10px">
+              <div style="flex:1;height:46px;border-radius:8px;border:1px solid #E7E6E2;display:flex;align-items:center;justify-content:center;font-size:14px;color:#3A3A38">Completar</div>
+              <div style="flex:1;height:46px;border-radius:8px;border:1px solid #E7E6E2;display:flex;align-items:center;justify-content:center;font-size:14px;color:#B42318">Reportar problema</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <div style="display:flex;align-items:baseline;gap:10px">
+      <span style="font:600 10.5px 'IBM Plex Mono',monospace;padding:3px 7px;background:#30302F;color:#fff;border-radius:4px">4b</span>
+      <span style="font-size:13px;font-weight:600">MI INFORMACIÓN · legajo, horas, asistencia</span>
+      <span style="font-size:12px;color:#91918B">asistencia ≠ HH imputadas: se muestran las dos puntas y lo que falta imputar, nunca se fabrica</span>
+    </div>
+    <div style="display:flex;gap:24px;align-items:flex-start;width:max-content">
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:11.5px;color:#6B6B67">5 · Mi información</span>
+        <div style="{{ phone }}">
+          <div style="{{ topbar }}">
+            <span style="font-size:13.5px;font-weight:600">Mi información</span>
+          </div>
+          <div style="flex:1;min-height:0;overflow:hidden;padding:20px 16px 0">
+            <div style="display:flex;align-items:center;gap:16px">
+              <div style="width:60px;height:60px;border-radius:50%;overflow:hidden;flex:none;border:1px solid #E7E6E2">
+                <image-slot id="emp-avatar-2" shape="circle" fit="cover" placeholder="foto"></image-slot>
+              </div>
+              <div>
+                <div style="font-size:17px;font-weight:600">Juan Morales</div>
+                <div style="font-size:12.5px;color:#6B6B67;margin-top:2px">Oficial albañil · desde 04/03/19</div>
+              </div>
+            </div>
+            <div style="margin-top:22px;border-top:1px solid #EFEEEA">
+              <sc-for list="{{ miInfo }}" as="m" hint-placeholder-count="6">
+                <div style="{{ m.rowStyle }}">
+                  <div style="flex:1">
+                    <div style="font-size:14.5px">{{ m.n }}</div>
+                    <div style="{{ m.subStyle }}">{{ m.sub }}</div>
+                  </div>
+                  <span style="{{ m.badgeStyle }}">{{ m.badge }}</span>
+                  <span style="font-size:15px;color:#D7D5CF">›</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="{{ tabbar }}">
+            <div style="{{ tabOff }}">Hoy</div>
+            <div style="{{ tabOff }}">Mi trabajo</div>
+            <div style="{{ tabOn }}">Mi información</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:11.5px;color:#6B6B67">6 · Mi legajo</span>
+        <div style="{{ phone }}">
+          <div style="{{ topbar }}">
+            <span style="font-size:13px;color:#6B6B67">←</span>
+            <span style="font-size:13.5px;font-weight:600">Mi legajo</span>
+          </div>
+          <div style="flex:1;min-height:0;overflow:hidden;padding:18px 16px 0">
+            <div style="font-size:11px;font-weight:500;letter-spacing:0.04em;color:#91918B">IDENTIDAD</div>
+            <div style="margin-top:10px;display:flex;flex-direction:column;gap:11px">
+              <sc-for list="{{ legajoIdentidad }}" as="l" hint-placeholder-count="4">
+                <div style="display:flex;align-items:baseline;gap:12px">
+                  <span style="width:118px;font-size:12.5px;color:#6B6B67">{{ l.k }}</span>
+                  <span style="{{ l.s }}">{{ l.v }}</span>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="margin-top:20px;padding-top:16px;border-top:1px solid #EFEEEA;font-size:11px;font-weight:500;letter-spacing:0.04em;color:#91918B">SITUACIÓN LABORAL</div>
+            <div style="margin-top:10px;display:flex;flex-direction:column;gap:11px">
+              <sc-for list="{{ legajoLaboral }}" as="l" hint-placeholder-count="5">
+                <div style="display:flex;align-items:baseline;gap:12px">
+                  <span style="width:118px;font-size:12.5px;color:#6B6B67">{{ l.k }}</span>
+                  <span style="{{ l.s }}">{{ l.v }}</span>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="margin-top:20px;padding-top:16px;border-top:1px solid #EFEEEA;font-size:11px;font-weight:500;letter-spacing:0.04em;color:#91918B">MIS ASIGNACIONES</div>
+            <div style="margin-top:10px">
+              <sc-for list="{{ asignaciones }}" as="a" hint-placeholder-count="3">
+                <div style="display:flex;align-items:baseline;gap:10px;padding:10px 0;border-bottom:1px solid #EFEEEA">
+                  <div style="flex:1">
+                    <div style="font-size:13.5px">{{ a.obra }}</div>
+                    <div style="font-size:11.5px;color:#91918B;margin-top:2px">{{ a.rango }}</div>
+                  </div>
+                  <span style="{{ a.estadoStyle }}">{{ a.estado }}</span>
+                </div>
+              </sc-for>
+            </div>
+            <p style="margin:12px 0 0;font-size:11.5px;color:#91918B">Los datos los administra la empresa. Si algo está mal o falta, avisás desde acá y lo corrige Administración.</p>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:11.5px;color:#6B6B67">7 · Mis horas</span>
+        <div style="{{ phone }}">
+          <div style="{{ topbar }}">
+            <span style="font-size:13px;color:#6B6B67">←</span>
+            <span style="font-size:13.5px;font-weight:600">Mis horas</span>
+          </div>
+          <div style="flex:1;min-height:0;overflow:hidden;padding:18px 16px 0">
+            <div style="display:flex;align-items:center;gap:18px">
+              <span style="font-size:13px;font-weight:600;box-shadow:inset 0 -2px 0 #FDC900;padding-bottom:4px">Este mes</span>
+              <span style="font-size:13px;color:#6B6B67">Mes pasado</span>
+              <span style="font-size:13px;color:#6B6B67">Período</span>
+            </div>
+            <div style="margin-top:18px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#91918B">01/08 – 20/08/2025</div>
+            <div style="display:flex;align-items:baseline;gap:10px;margin-top:4px">
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:30px;font-weight:600;letter-spacing:-0.02em">148,00</span>
+              <span style="font-size:13px;color:#6B6B67">HH · 18 días</span>
+            </div>
+            <div style="margin-top:14px;display:flex;gap:26px">
+              <div style="display:flex;flex-direction:column;gap:2px">
+                <span style="font-size:11.5px;color:#6B6B67">Normales</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:600">140,00</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:2px">
+                <span style="font-size:11.5px;color:#6B6B67">Extras 50%</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:600">8,00</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:2px">
+                <span style="font-size:11.5px;color:#6B6B67">Obras</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:600">2</span>
+              </div>
+            </div>
+
+            <div style="margin-top:20px;padding-top:14px;border-top:1px solid #EFEEEA">
+              <div style="display:flex;align-items:baseline;gap:8px">
+                <span style="font-size:11px;font-weight:500;letter-spacing:0.04em;color:#91918B">PRESENCIA vs HH IMPUTADAS</span>
+              </div>
+              <div style="margin-top:10px;display:flex;flex-direction:column;gap:9px">
+                <div style="display:flex;align-items:baseline;gap:12px"><span style="flex:1;font-size:12.5px;color:#6B6B67">Presencia registrada</span><span style="font-family:'IBM Plex Mono',monospace;font-size:13px">151 h 20 min</span></div>
+                <div style="display:flex;align-items:baseline;gap:12px"><span style="flex:1;font-size:12.5px;color:#6B6B67">HH imputadas a obra</span><span style="font-family:'IBM Plex Mono',monospace;font-size:13px">148,00</span></div>
+                <div style="display:flex;align-items:baseline;gap:12px"><span style="flex:1;font-size:12.5px;color:#B54708">Pendiente de imputar</span><span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#B54708">3 h 20 min</span></div>
+              </div>
+            </div>
+
+            <div style="margin-top:18px;padding-top:14px;border-top:1px solid #EFEEEA">
+              <span style="font-size:11px;font-weight:500;letter-spacing:0.04em;color:#91918B">DETALLE</span>
+              <div style="margin-top:6px">
+                <sc-for list="{{ misHoras }}" as="h" hint-placeholder-count="5">
+                  <div style="display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid #EFEEEA">
+                    <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#6B6B67;width:50px">{{ h.fecha }}</span>
+                    <div style="flex:1;min-width:0">
+                      <div style="{{ h.actStyle }}">{{ h.act }}</div>
+                      <div style="font-size:11.5px;color:#91918B;margin-top:2px">{{ h.obra }}</div>
+                    </div>
+                    <span style="font-family:'IBM Plex Mono',monospace;font-size:13px">{{ h.hh }}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <p style="margin:10px 0 0;font-size:11.5px;color:#91918B">Son las horas que la obra imputó a tu nombre. No se editan acá; si falta un día se corrige en la obra.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:11.5px;color:#6B6B67">8 · Asistencia</span>
+        <div style="{{ phone }}">
+          <div style="{{ topbar }}">
+            <span style="font-size:13px;color:#6B6B67">←</span>
+            <span style="font-size:13.5px;font-weight:600">Asistencia</span>
+          </div>
+          <div style="flex:1;min-height:0;overflow:hidden;padding:18px 16px 0">
+            <div style="font-size:11px;font-weight:500;letter-spacing:0.04em;color:#91918B">HOY</div>
+            <div style="margin-top:12px;display:flex;gap:36px">
+              <div style="display:flex;flex-direction:column;gap:3px">
+                <span style="font-size:11.5px;color:#6B6B67">Entrada</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:600">07:58</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:3px">
+                <span style="font-size:11.5px;color:#6B6B67">Salida</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:600;color:#91918B">sin registrar</span>
+              </div>
+            </div>
+            <div style="margin-top:14px;height:50px;border-radius:8px;background:#FDC900;color:#1F1F1E;display:flex;align-items:center;justify-content:center;font-size:15.5px;font-weight:600">Registrar salida</div>
+            <div style="margin-top:10px;font-size:12px;color:#6B6B67;text-align:center">Se guarda al instante. Sin señal queda pendiente y se envía solo.</div>
+
+            <div style="margin-top:22px;padding-top:16px;border-top:1px solid #EFEEEA;display:flex;align-items:center;gap:18px">
+              <span style="font-size:13px;font-weight:600;box-shadow:inset 0 -2px 0 #FDC900;padding-bottom:4px">Este mes</span>
+              <span style="font-size:13px;color:#6B6B67">Mes pasado</span>
+              <span style="flex:1"></span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#6B6B67">151 h 20 min</span>
+            </div>
+            <div style="margin-top:10px">
+              <div style="display:flex;align-items:center;height:26px;font-size:9.5px;letter-spacing:0.06em;color:#91918B">
+                <div style="width:52px">FECHA</div><div style="width:60px">ENTRADA</div><div style="width:60px">SALIDA</div><div style="flex:1;text-align:right">TOTAL</div>
+              </div>
+              <sc-for list="{{ asistencia }}" as="a" hint-placeholder-count="6">
+                <div style="display:flex;align-items:center;padding:11px 0;border-bottom:1px solid #EFEEEA">
+                  <div style="width:52px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#6B6B67">{{ a.fecha }}</div>
+                  <div style="width:60px;font-family:'IBM Plex Mono',monospace;font-size:12.5px">{{ a.ent }}</div>
+                  <div style="width:60px"><span style="{{ a.salStyle }}">{{ a.sal }}</span></div>
+                  <div style="flex:1;text-align:right"><span style="{{ a.totStyle }}">{{ a.tot }}</span></div>
+                </div>
+              </sc-for>
+            </div>
+            <p style="margin:12px 0 0;font-size:11.5px;color:#91918B">Presencia laboral, no horas imputadas a obra. El día sin salida queda marcado hasta que Administración lo corrija.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <div style="display:flex;align-items:baseline;gap:10px">
+      <span style="font:600 10.5px 'IBM Plex Mono',monospace;padding:3px 7px;background:#30302F;color:#fff;border-radius:4px">4c</span>
+      <span style="font-size:13px;font-weight:600">DOCUMENTOS, RECIBOS Y REPORTE DE PROBLEMA</span>
+      <span style="font-size:12px;color:#91918B">solicitado → subido → en revisión → aprobado / requiere corrección</span>
+    </div>
+    <div style="display:flex;gap:24px;align-items:flex-start;width:max-content">
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:11.5px;color:#6B6B67">9 · Mis documentos</span>
+        <div style="{{ phone }}">
+          <div style="{{ topbar }}">
+            <span style="font-size:13px;color:#6B6B67">←</span>
+            <span style="font-size:13.5px;font-weight:600">Mis documentos</span>
+          </div>
+          <div style="flex:1;min-height:0;overflow:hidden;padding:18px 16px 0">
+            <div style="font-size:13px;color:#B42318">Te faltan 2 documentos</div>
+            <div style="margin-top:14px;border-top:1px solid #EFEEEA">
+              <sc-for list="{{ documentos }}" as="d" hint-placeholder-count="7">
+                <div style="{{ d.rowStyle }}">
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:14px">{{ d.n }}</div>
+                    <div style="font-size:11.5px;color:#91918B;margin-top:3px">{{ d.cat }}</div>
+                    <div style="display:flex;align-items:center;gap:7px;margin-top:5px">
+                      <span style="{{ d.dotStyle }}"></span>
+                      <span style="{{ d.estadoStyle }}">{{ d.estado }}</span>
+                      <span style="{{ d.vtoStyle }}">{{ d.vto }}</span>
+                    </div>
+                  </div>
+                  <span style="{{ d.accionStyle }}">{{ d.accion }}</span>
+                </div>
+              </sc-for>
+            </div>
+            <p style="margin:12px 0 0;font-size:11.5px;color:#91918B">Sólo tus documentos. Lo que subís queda en revisión: no reemplaza el documento oficial hasta que Administración lo apruebe.</p>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:11.5px;color:#6B6B67">10 · Subir documento</span>
+        <div style="{{ phone }}">
+          <div style="{{ topbar }}">
+            <span style="font-size:13px;color:#6B6B67">←</span>
+            <span style="font-size:13.5px;font-weight:600">Apto médico 2026</span>
+          </div>
+          <div style="flex:1;min-height:0;overflow:hidden;padding:18px 16px 0">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="width:6px;height:6px;border-radius:50%;background:#B42318"></span>
+              <span style="font-size:13px;color:#B42318">Requiere corrección</span>
+            </div>
+            <p style="margin:10px 0 0;font-size:13.5px;line-height:1.55">Administración devolvió lo que subiste: <span style="color:#6B6B67">la foto está cortada y no se lee la fecha del estudio.</span></p>
+            <div style="margin-top:6px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#91918B">Revisado el 19/08 · M. Ríos</div>
+
+            <div style="margin-top:20px;font-size:11px;font-weight:500;letter-spacing:0.04em;color:#91918B">LO QUE SUBISTE</div>
+            <div style="margin-top:10px;display:flex;gap:12px;align-items:center">
+              <div style="width:34px;height:42px;border:1px solid #E7E6E2;border-radius:4px;flex:none;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:9px;color:#91918B">JPG</div>
+              <div style="min-width:0">
+                <div style="font-size:13.5px">apto-medico.jpg</div>
+                <div style="font-size:11.5px;color:#91918B;margin-top:3px">subido 18/08 · 1,4 MB</div>
+              </div>
+            </div>
+
+            <div style="margin-top:22px;padding-top:16px;border-top:1px solid #EFEEEA;font-size:11px;font-weight:500;letter-spacing:0.04em;color:#91918B">VOLVER A SUBIR</div>
+            <div style="margin-top:12px;display:flex;flex-direction:column;gap:10px">
+              <div style="height:50px;border-radius:8px;border:1px solid #D7D5CF;display:flex;align-items:center;justify-content:center;gap:10px;font-size:15px">Sacar una foto</div>
+              <div style="height:50px;border-radius:8px;border:1px solid #D7D5CF;display:flex;align-items:center;justify-content:center;gap:10px;font-size:15px">Elegir un archivo</div>
+            </div>
+            <div style="margin-top:14px;font-size:12px;color:#6B6B67">Que se lea la fecha y entre completo en la foto. JPG o PDF, hasta 10 MB.</div>
+          </div>
+          <div style="flex:none;padding:12px 16px 16px;border-top:1px solid #E7E6E2">
+            <div style="height:50px;border-radius:8px;background:#EFEEEA;color:#91918B;display:flex;align-items:center;justify-content:center;font-size:15.5px;font-weight:600">Enviar</div>
+            <div style="margin-top:8px;font-size:11.5px;color:#91918B;text-align:center">Se habilita cuando adjuntás el archivo</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:11.5px;color:#6B6B67">11 · Recibos</span>
+        <div style="{{ phone }}">
+          <div style="{{ topbar }}">
+            <span style="font-size:13px;color:#6B6B67">←</span>
+            <span style="font-size:13.5px;font-weight:600">Recibos</span>
+          </div>
+          <div style="flex:1;min-height:0;overflow:hidden;padding:18px 16px 0">
+            <div style="border-top:1px solid #EFEEEA">
+              <sc-for list="{{ recibos }}" as="r" hint-placeholder-count="6">
+                <div style="{{ r.rowStyle }}">
+                  <div style="flex:1">
+                    <div style="font-size:14.5px">{{ r.periodo }}</div>
+                    <div style="display:flex;align-items:center;gap:7px;margin-top:4px">
+                      <span style="{{ r.dotStyle }}"></span>
+                      <span style="{{ r.estadoStyle }}">{{ r.estado }}</span>
+                    </div>
+                  </div>
+                  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
+                    <span style="{{ r.netoStyle }}">{{ r.neto }}</span>
+                    <span style="{{ r.accionStyle }}">{{ r.accion }}</span>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+            <p style="margin:14px 0 0;font-size:11.5px;color:#91918B">Sólo tus recibos. Si un período todavía no está liquidado, se dice: nunca aparece $ 0 por falta de dato.</p>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:11.5px;color:#6B6B67">12 · Detalle de recibo</span>
+        <div style="{{ phone }}">
+          <div style="{{ topbar }}">
+            <span style="font-size:13px;color:#6B6B67">←</span>
+            <span style="font-size:13.5px;font-weight:600">Julio 2025</span>
+          </div>
+          <div style="flex:1;min-height:0;overflow:hidden;padding:18px 16px 0">
+            <div style="font-size:11.5px;color:#6B6B67">Neto cobrado</div>
+            <div style="margin-top:4px;font-family:'IBM Plex Mono',monospace;font-size:28px;font-weight:600;letter-spacing:-0.02em">$ 1.284.500</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+              <span style="width:6px;height:6px;border-radius:50%;background:#067647"></span>
+              <span style="font-size:13px;color:#067647">Pagado el 05/08</span>
+            </div>
+
+            <div style="margin-top:20px;padding-top:16px;border-top:1px solid #EFEEEA;display:flex;flex-direction:column;gap:11px">
+              <sc-for list="{{ reciboDatos }}" as="d" hint-placeholder-count="5">
+                <div style="display:flex;align-items:baseline;gap:12px">
+                  <span style="flex:1;font-size:12.5px;color:#6B6B67">{{ d.k }}</span>
+                  <span style="{{ d.s }}">{{ d.v }}</span>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="margin-top:20px;padding-top:16px;border-top:1px solid #EFEEEA">
+              <div style="display:flex;align-items:center;gap:12px">
+                <div style="width:34px;height:42px;border:1px solid #E7E6E2;border-radius:4px;flex:none;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:9px;color:#91918B">PDF</div>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:13.5px">recibo-julio-2025.pdf</div>
+                  <div style="font-size:11.5px;color:#91918B;margin-top:2px">emitido 04/08 · 180 KB</div>
+                </div>
+              </div>
+              <div style="margin-top:14px;display:flex;gap:10px">
+                <div style="flex:1;height:48px;border-radius:8px;background:#FDC900;color:#1F1F1E;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600">Ver</div>
+                <div style="flex:1;height:48px;border-radius:8px;border:1px solid #D7D5CF;display:flex;align-items:center;justify-content:center;font-size:15px;color:#3A3A38">Descargar</div>
+              </div>
+            </div>
+            <p style="margin:14px 0 0;font-size:11.5px;color:#91918B">El detalle que se muestra es el que la liquidación publica. El OS no calcula tu sueldo.</p>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:11.5px;color:#6B6B67">13 · Reportar problema</span>
+        <div style="{{ phone }}">
+          <div style="{{ topbar }}">
+            <span style="font-size:13px;color:#6B6B67">✕</span>
+            <span style="font-size:13.5px;font-weight:600">Reportar problema</span>
+          </div>
+          <div style="flex:1;min-height:0;overflow:hidden;padding:18px 16px 0">
+            <div style="font-size:11px;font-weight:500;letter-spacing:0.04em;color:#91918B">DÓNDE</div>
+            <div style="margin-top:10px;padding:12px 13px;border:1px solid #E7E6E2;border-radius:8px">
+              <div style="font-size:14px">Muro sur · 2ª hilada</div>
+              <div style="font-size:12px;color:#6B6B67;margin-top:3px">Mampostería interior · Comedor La Estrella</div>
+            </div>
+            <div style="margin-top:8px;font-size:12px;color:#6B6B67">Cambiar</div>
+
+            <div style="margin-top:20px;font-size:11px;font-weight:500;letter-spacing:0.04em;color:#91918B">QUÉ PASA</div>
+            <div style="margin-top:10px;min-height:96px;border:1px solid #D7D5CF;border-radius:8px;padding:12px 13px;font-size:14px;color:#91918B">No llegaron los bloques y no podemos seguir el paño…</div>
+
+            <div style="margin-top:18px;font-size:11px;font-weight:500;letter-spacing:0.04em;color:#91918B">FOTO (OPCIONAL)</div>
+            <div style="margin-top:10px;display:flex;gap:10px">
+              <div style="width:88px;height:88px;border:1px solid #E7E6E2;border-radius:8px;overflow:hidden;flex:none">
+                <image-slot id="emp-problema-foto" shape="rect" fit="cover" placeholder="foto de obra"></image-slot>
+              </div>
+              <div style="width:88px;height:88px;border:1px dashed #D7D5CF;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;color:#91918B">+</div>
+            </div>
+
+            <div style="margin-top:20px;font-size:11px;font-weight:500;letter-spacing:0.04em;color:#91918B">FRENA EL TRABAJO</div>
+            <div style="margin-top:10px;display:flex;gap:10px">
+              <div style="flex:1;height:44px;border-radius:8px;border:1px solid #1F1F1E;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:500">Sí, estamos parados</div>
+              <div style="flex:1;height:44px;border-radius:8px;border:1px solid #E7E6E2;display:flex;align-items:center;justify-content:center;font-size:14px;color:#6B6B67">No, podemos seguir</div>
+            </div>
+          </div>
+          <div style="flex:none;padding:12px 16px 16px;border-top:1px solid #E7E6E2">
+            <div style="height:50px;border-radius:8px;background:#FDC900;color:#1F1F1E;display:flex;align-items:center;justify-content:center;font-size:15.5px;font-weight:600">Reportar</div>
+            <div style="margin-top:8px;font-size:11.5px;color:#91918B;text-align:center">Queda como impedimento de la actividad y lo ve el jefe de obra</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <div style="display:flex;align-items:baseline;gap:10px">
+      <span style="font:600 10.5px 'IBM Plex Mono',monospace;padding:3px 7px;background:#30302F;color:#fff;border-radius:4px">4d</span>
+      <span style="font-size:13px;font-weight:600">EMPLEADO · DESKTOP</span>
+      <span style="font-size:12px;color:#91918B">misma experiencia, no otra: los tres contextos pasan al header y el ancho se usa como lista + detalle</span>
+    </div>
+    <div style="width:1440px;background:#FFFFFF;border:1px solid #E7E6E2;border-radius:10px;overflow:hidden">
+      <div style="height:48px;display:flex;align-items:center;gap:4px;padding:0 40px;border-bottom:1px solid #E7E6E2">
+        <div style="display:flex;align-items:center;gap:10px;margin-right:12px">
+          <img src="./isotipo.png" alt="Echegaray Construcciones" style="width:26px;height:26px;display:block">
+          <span style="font-size:13px;font-weight:600;letter-spacing:0.14em">ECHEGARAY CONSTRUCCIONES</span>
+          <span style="font-size:11.5px;color:#91918B;padding-left:2px">Business OS</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:2px">
+          <div style="padding:6px 10px 7px;font-size:13px;font-weight:500;border-bottom:2px solid #FDC900">Hoy</div>
+          <div style="padding:6px 10px;font-size:13px;color:#6B6B67">Mi trabajo</div>
+          <div style="padding:6px 10px;font-size:13px;color:#6B6B67">Mi información</div>
+        </div>
+        <div style="flex:1"></div>
+        <span style="font-size:12px;color:#91918B">jmorales@ecsas.com.ar · Empleado</span>
+        <div style="width:26px;height:26px;border-radius:50%;background:#EFEEEA;display:flex;align-items:center;justify-content:center;margin-left:12px;font-size:10px;font-weight:600;color:#3A3A38">JM</div>
+      </div>
+      <div style="padding:28px 40px 40px;display:flex;gap:56px;align-items:flex-start">
+        <div style="width:620px;flex:none">
+          <div style="display:flex;align-items:baseline;gap:10px">
+            <h1 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.01em">Hoy</h1>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#6B6B67">miércoles 20/08/2025</span>
+          </div>
+          <div style="display:flex;gap:56px;margin-top:22px">
+            <div style="display:flex;flex-direction:column;gap:3px">
+              <span style="font-size:11px;font-weight:500;letter-spacing:0.04em;color:#91918B">OBRA</span>
+              <span style="font-size:17px;font-weight:600;letter-spacing:-0.01em">Comedor La Estrella</span>
+              <span style="font-size:12.5px;color:#6B6B67">Etapa Estructura · jefe de obra M. Duarte</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:3px">
+              <span style="font-size:11px;font-weight:500;letter-spacing:0.04em;color:#91918B">CUADRILLA</span>
+              <span style="font-size:17px;font-weight:600;letter-spacing:-0.01em">Morales</span>
+              <span style="font-size:12.5px;color:#6B6B67">5 personas · responsable J. Morales</span>
+            </div>
+          </div>
+
+          <div style="margin-top:26px;padding-top:20px;border-top:1px solid #E7E6E2;display:flex;align-items:center;gap:24px">
+            <div style="display:flex;flex-direction:column;gap:3px">
+              <span style="font-size:11px;font-weight:500;letter-spacing:0.04em;color:#91918B">ASISTENCIA</span>
+              <span style="font-size:13.5px;color:#B54708">Sin registrar · 07:55</span>
+            </div>
+            <div style="flex:1"></div>
+            <span style="font-size:12.5px;color:#6B6B67">Ver historial</span>
+            <span style="padding:9px 18px;border-radius:6px;background:#FDC900;color:#1F1F1E;font-size:13px;font-weight:600">Registrar entrada</span>
+          </div>
+
+          <div style="margin-top:26px">
+            <div style="display:flex;align-items:baseline;gap:10px">
+              <span style="font-size:11px;font-weight:500;letter-spacing:0.04em;color:#91918B">TRABAJO DE HOY</span>
+              <span style="flex:1"></span>
+              <span style="font-size:12.5px;color:#6B6B67">Ver todas mis tareas →</span>
+            </div>
+            <div style="margin-top:10px;border-top:1px solid #E7E6E2">
+              <sc-for list="{{ hoyDesktop }}" as="t" hint-placeholder-count="4">
+                <div style="{{ t.rowStyle }}">
+                  <span style="{{ t.dotStyle }}"></span>
+                  <span style="flex:1;font-size:13.5px">{{ t.n }}</span>
+                  <span style="width:190px;font-size:12.5px;color:#6B6B67">{{ t.act }}</span>
+                  <span style="{{ t.estadoStyle }}">{{ t.estado }}</span>
+                  <span style="{{ t.fechaStyle }}">{{ t.fecha }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:28px">
+          <div>
+            <div style="font-size:11px;font-weight:500;letter-spacing:0.04em;color:#91918B">PENDIENTES</div>
+            <div style="margin-top:10px;border-top:1px solid #E7E6E2">
+              <div style="display:flex;align-items:baseline;gap:12px;padding:13px 0;border-bottom:1px solid #EFEEEA">
+                <span style="width:6px;height:6px;border-radius:50%;background:#B42318;flex:none;position:relative;top:-2px"></span>
+                <div style="flex:1">
+                  <div style="font-size:13.5px">Te piden el apto médico 2026</div>
+                  <div style="font-size:11.5px;color:#91918B;margin-top:2px">Vencido el 12/07 · requiere corrección</div>
+                </div>
+                <span style="font-size:12.5px;color:#6B6B67">Subir</span>
+              </div>
+              <div style="display:flex;align-items:baseline;gap:12px;padding:13px 0;border-bottom:1px solid #EFEEEA">
+                <span style="width:6px;height:6px;border-radius:50%;background:#B42318;flex:none;position:relative;top:-2px"></span>
+                <div style="flex:1">
+                  <div style="font-size:13.5px">Falta material en el muro sur</div>
+                  <div style="font-size:11.5px;color:#91918B;margin-top:2px">Impedimento abierto de tu actividad</div>
+                </div>
+                <span style="font-size:12.5px;color:#6B6B67">Ver</span>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div style="font-size:11px;font-weight:500;letter-spacing:0.04em;color:#91918B">MI MES</div>
+            <div style="margin-top:12px;display:flex;gap:40px">
+              <div style="display:flex;flex-direction:column;gap:2px">
+                <span style="font-size:11.5px;color:#6B6B67">HH imputadas</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:600">148,00</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:2px">
+                <span style="font-size:11.5px;color:#6B6B67">Presencia</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:600">151 h 20</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:2px">
+                <span style="font-size:11.5px;color:#6B6B67">Sin imputar</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:600;color:#B54708">3 h 20</span>
+              </div>
+            </div>
+            <div style="margin-top:14px;display:flex;gap:20px">
+              <span style="font-size:12.5px;color:#6B6B67">Mis horas →</span>
+              <span style="font-size:12.5px;color:#6B6B67">Asistencia →</span>
+              <span style="font-size:12.5px;color:#6B6B67">Recibos →</span>
+            </div>
+          </div>
+
+          <div>
+            <div style="font-size:11px;font-weight:500;letter-spacing:0.04em;color:#91918B">DOCUMENTOS DE MI OBRA</div>
+            <div style="margin-top:10px;border-top:1px solid #E7E6E2">
+              <sc-for list="{{ docsObra }}" as="d" hint-placeholder-count="3">
+                <div style="display:flex;align-items:baseline;gap:12px;padding:12px 0;border-bottom:1px solid #EFEEEA">
+                  <span style="flex:1;font-size:13px">{{ d.n }}</span>
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#91918B">{{ d.fecha }}</span>
+                </div>
+              </sc-for>
+            </div>
+            <p style="margin:10px 0 0;font-size:11.5px;color:#91918B;max-width:420px">Sólo los planos y documentos que necesitás para trabajar. Contratos, presupuestos y números de la obra no se muestran a este perfil.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{}">
+const INK = '#1F1F1E', MUT = '#6B6B67', FAINT = '#91918B', POS = '#067647', NEG = '#B42318', WARN = '#B54708', ACC = '#30302F';
+const mono = { fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: 'tabular-nums' };
+const dot = (c) => ({ width: '6px', height: '6px', borderRadius: '50%', flex: 'none', background: c || 'transparent', border: c ? 'none' : '1px solid #C9C4C2' });
+
+class Component extends DCLogic {
+  renderVals() {
+    const tab = (on) => ({ flex: 1, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px',
+      fontWeight: on ? 600 : 400, color: on ? INK : MUT, boxShadow: on ? 'inset 0 2px 0 #FDC900' : 'none' });
+
+    const listRow = (i, arr, h) => ({ display: 'flex', alignItems: 'center', gap: '11px', minHeight: (h || 58) + 'px', padding: '11px 0',
+      borderBottom: i === arr.length - 1 ? 'none' : '1px solid #EFEEEA' });
+
+    const hoyTareas = [
+      { n: 'Muro sur · 2ª hilada', sub: 'En curso · Mampostería interior', c: ACC },
+      { n: 'Muro este · replanteo', sub: 'Por hacer · Mampostería interior', c: null },
+      { n: 'Dinteles del paño norte', sub: 'Frenado · falta material', c: NEG, crit: true }
+    ].map((t, i, arr) => ({
+      n: t.n, sub: t.sub, dotStyle: dot(t.c),
+      subStyle: { fontSize: '12px', color: t.crit ? NEG : MUT, marginTop: '3px' },
+      rowStyle: listRow(i, arr, 56)
+    }));
+
+    const trabajoSecciones = [
+      { n: 'Mis tareas', sub: '3 para hoy · 1 frenada', badge: '3', crit: true },
+      { n: 'Próximos trabajos', sub: 'Mampostería exterior desde el 26/08', badge: '' },
+      { n: 'Impedimentos de mi trabajo', sub: 'Falta de bloques 18×18', badge: '1', crit: true },
+      { n: 'Planos y documentos de obra', sub: 'Los que necesito para trabajar', badge: '4' },
+      { n: 'Avisos de la obra', sub: 'Hormigonado del viernes', badge: '' }
+    ].map((s, i, arr) => ({
+      n: s.n, sub: s.sub, badge: s.badge,
+      subStyle: { fontSize: '12px', color: s.crit ? NEG : MUT, marginTop: '3px' },
+      badgeStyle: Object.assign({ fontSize: '11.5px' }, mono, { color: s.crit ? NEG : FAINT, display: s.badge ? 'inline' : 'none' }),
+      rowStyle: listRow(i, arr, 62)
+    }));
+
+    const cuadrilla = [
+      { n: 'Juan Morales', rol: 'responsable', yo: true },
+      { n: 'Rubén Aguirre', rol: 'ayudante' },
+      { n: 'Luis Cabrera', rol: 'oficial' },
+      { n: 'Diego Peralta', rol: 'ayudante' },
+      { n: 'Sergio Giménez', rol: 'medio oficial' }
+    ].map(c => ({ n: c.n + (c.yo ? ' · vos' : ''), rol: c.rol, rolStyle: { fontSize: '12px', color: MUT } }));
+
+    const tareas = [
+      { n: 'Muro sur · 2ª hilada', act: 'Mampostería interior', estado: 'En curso', c: ACC, fecha: 'hoy' },
+      { n: 'Muro este · replanteo', act: 'Mampostería interior', estado: 'Por hacer', c: null, fecha: 'hoy' },
+      { n: 'Dinteles del paño norte', act: 'Mampostería interior', estado: 'Frenada', c: NEG, fecha: 'hoy', bloq: 'Falta de bloques 18×18' },
+      { n: 'Limpieza del sector', act: 'Mampostería interior', estado: 'Por hacer', c: null, fecha: 'hoy' },
+      { n: 'Pases sanitarios', act: 'Sanitarias', estado: 'Sin fecha', c: null, fecha: 'sin plan', sinPlan: true }
+    ].map((t, i, arr) => ({
+      n: t.n, act: t.act, estado: t.estado, fecha: t.fecha,
+      dotStyle: dot(t.c),
+      estadoStyle: { fontSize: '11.5px', color: t.c === NEG ? NEG : MUT, whiteSpace: 'nowrap' },
+      fechaStyle: Object.assign({ fontSize: '11px' }, t.sinPlan ? {} : mono, { color: t.sinPlan ? FAINT : FAINT }),
+      bloq: t.bloq || '',
+      bloqStyle: { fontSize: '12px', color: NEG, marginTop: '4px', display: t.bloq ? 'block' : 'none' },
+      rowStyle: listRow(i, arr, 66)
+    }));
+
+    const fv = (k, v, n) => ({ k, v: v == null ? n : v, s: v == null ? { fontSize: '12px', color: FAINT } : { fontSize: '13.5px', color: INK } });
+    const fvn = (k, v, n) => ({ k, v: v == null ? n : v, s: v == null ? { fontSize: '12px', color: FAINT } : Object.assign({ fontSize: '13.5px', color: INK }, mono) });
+
+    const tareaDatos = [
+      fv('Cómo se mide', '18 m² de paño'),
+      fvn('Avance cargado', '9,20 m² · 51%'),
+      fv('Responsable', 'J. Morales'),
+      fvn('Fecha', 'hoy 20/08'),
+      fv('Cuadrilla', 'Morales')
+    ];
+
+    const tareaSecciones = [
+      { n: 'Impedimentos', meta: '1 abierto', crit: true },
+      { n: 'Documentos', meta: 'Plano albañilería R3' },
+      { n: 'Notas', meta: '2' },
+      { n: 'Depende de', meta: 'Columnas · hecha' }
+    ].map((s, i, arr) => ({
+      n: s.n, meta: s.meta,
+      metaStyle: { fontSize: '12px', color: s.crit ? NEG : MUT },
+      rowStyle: { display: 'flex', alignItems: 'center', gap: '10px', minHeight: '48px', padding: '10px 0', borderBottom: i === arr.length - 1 ? 'none' : '1px solid #EFEEEA' }
+    }));
+
+    const miInfo = [
+      { n: 'Mi perfil', sub: 'Foto, contacto y contraseña', badge: '' },
+      { n: 'Mi legajo', sub: 'Categoría, alta y asignaciones', badge: '' },
+      { n: 'Mis horas', sub: '148,00 HH este mes', badge: '' },
+      { n: 'Asistencia', sub: '18 días · 1 sin salida', badge: '1', warn: true },
+      { n: 'Mis documentos', sub: '1 vencido · 1 solicitado', badge: '2', crit: true },
+      { n: 'Recibos', sub: 'Último: julio 2025', badge: '' }
+    ].map((m, i, arr) => ({
+      n: m.n, sub: m.sub, badge: m.badge,
+      subStyle: { fontSize: '12px', color: m.crit ? NEG : m.warn ? WARN : MUT, marginTop: '3px' },
+      badgeStyle: Object.assign({ fontSize: '11.5px' }, mono, { color: m.crit ? NEG : WARN, display: m.badge ? 'inline' : 'none' }),
+      rowStyle: listRow(i, arr, 62)
+    }));
+
+    const legajoIdentidad = [
+      fv('Nombre', 'Juan Morales'),
+      fvn('DNI', '28.114.552'),
+      fvn('CUIL', '20-28114552-4'),
+      fv('Teléfono', '351 555-1180'),
+      fv('Domicilio', null, 'sin cargar')
+    ];
+    const legajoLaboral = [
+      fv('Categoría', 'Oficial albañil'),
+      fvn('Fecha de alta', '04/03/2019'),
+      fv('Obra actual', 'Comedor La Estrella'),
+      fv('Cuadrilla', 'Morales'),
+      fv('ART', 'Provincia ART · vigente'),
+      fv('Obra social', null, 'sin cargar')
+    ];
+
+    const asignaciones = [
+      { obra: 'Comedor La Estrella', rango: 'desde 01/08/25', estado: 'vigente', ok: true },
+      { obra: 'Ampliación Escuela 12', rango: '10/07/25 – 31/07/25', estado: 'cerrada' },
+      { obra: 'Oficina y Fábrica de Palitos', rango: '02/01/25 – 09/07/25', estado: 'cerrada' }
+    ].map(a => ({
+      obra: a.obra, rango: a.rango, estado: a.estado,
+      estadoStyle: { fontSize: '11.5px', color: a.ok ? POS : FAINT }
+    }));
+
+    const misHoras = [
+      { fecha: '20/08', act: 'Mampostería interior', obra: 'Comedor La Estrella', hh: '8,00' },
+      { fecha: '19/08', act: 'Mampostería interior', obra: 'Comedor La Estrella', hh: '8,00' },
+      { fecha: '16/08', act: 'Mampostería interior · extra 50%', obra: 'Comedor La Estrella', hh: '8,00' },
+      { fecha: '15/08', act: null, obra: 'Comedor La Estrella', hh: '8,00' },
+      { fecha: '14/08', act: 'Revoques', obra: 'Ampliación Escuela 12', hh: '8,00' }
+    ].map(h => ({
+      fecha: h.fecha, obra: h.obra, hh: h.hh,
+      act: h.act == null ? 'sin actividad imputada' : h.act,
+      actStyle: { fontSize: '13.5px', color: h.act == null ? FAINT : INK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
+    }));
+
+    const asistencia = [
+      { fecha: '20/08', ent: '07:58', sal: null, tot: 'en curso', curso: true },
+      { fecha: '19/08', ent: '07:52', sal: '17:06', tot: '9 h 14' },
+      { fecha: '18/08', ent: '08:04', sal: '17:02', tot: '8 h 58' },
+      { fecha: '16/08', ent: '08:00', sal: null, tot: 'falta salida', falta: true },
+      { fecha: '15/08', ent: '07:49', sal: '17:00', tot: '9 h 11' },
+      { fecha: '14/08', ent: '07:55', sal: '17:05', tot: '9 h 10' }
+    ].map(a => ({
+      fecha: a.fecha, ent: a.ent,
+      sal: a.sal == null ? (a.curso ? '—' : 'sin dato') : a.sal,
+      salStyle: Object.assign({ fontSize: a.sal == null ? '11.5px' : '12.5px' }, a.sal == null ? {} : mono, { color: a.sal == null ? FAINT : INK }),
+      tot: a.tot,
+      totStyle: Object.assign({ fontSize: a.falta || a.curso ? '11.5px' : '12.5px' }, a.falta || a.curso ? {} : mono,
+        { color: a.falta ? WARN : a.curso ? MUT : INK })
+    }));
+
+    const documentos = [
+      { n: 'Apto médico 2026', cat: 'Apto médico', estado: 'Requiere corrección', c: NEG, vto: '', accion: 'Volver a subir' },
+      { n: 'Certificado de trabajo en altura', cat: 'Capacitaciones', estado: 'Solicitado', c: WARN, vto: 'pedido el 18/08', accion: 'Subir' },
+      { n: 'Constancia de CUIL', cat: 'Constancias', estado: 'En revisión', c: MUT, vto: 'subido el 19/08', accion: 'Ver' },
+      { n: 'DNI frente y dorso', cat: 'DNI', estado: 'Vigente', c: POS, vto: 'sin vencimiento', accion: 'Ver' },
+      { n: 'Alta temprana AFIP', cat: 'Documentación laboral', estado: 'Vigente', c: POS, vto: 'sin vencimiento', accion: 'Ver' },
+      { n: 'Entrega de EPP 2025', cat: 'Entrega EPP', estado: 'Vigente', c: POS, vto: 'firmado 04/03', accion: 'Descargar' },
+      { n: 'Cobertura ART', cat: 'ART', estado: 'Por vencer', c: WARN, vto: 'vence 30/09/25', accion: 'Ver' }
+    ].map((d, i, arr) => ({
+      n: d.n, cat: d.cat, estado: d.estado, accion: d.accion,
+      dotStyle: dot(d.c === MUT ? '#C9C4C2' : d.c),
+      estadoStyle: { fontSize: '12px', color: d.c === MUT ? MUT : d.c },
+      vto: d.vto,
+      vtoStyle: { fontSize: '11.5px', color: FAINT, display: d.vto ? 'inline' : 'none' },
+      accionStyle: { fontSize: '12.5px', color: d.c === NEG || d.c === WARN ? INK : MUT, whiteSpace: 'nowrap', fontWeight: d.c === NEG ? 500 : 400 },
+      rowStyle: listRow(i, arr, 74)
+    }));
+
+    const recibos = [
+      { periodo: 'Agosto 2025', estado: 'Todavía no liquidado', c: null, neto: null, accion: '' },
+      { periodo: 'Julio 2025', estado: 'Pagado el 05/08', c: POS, neto: '$ 1.284.500', accion: 'Ver' },
+      { periodo: 'Junio 2025', estado: 'Pagado el 04/07', c: POS, neto: '$ 1.240.800', accion: 'Ver' },
+      { periodo: 'Mayo 2025', estado: 'Pagado el 05/06', c: POS, neto: '$ 1.198.300', accion: 'Ver' },
+      { periodo: 'Abril 2025', estado: 'Pagado el 06/05', c: POS, neto: '$ 1.150.000', accion: 'Ver' }
+    ].map((r, i, arr) => ({
+      periodo: r.periodo, estado: r.estado,
+      dotStyle: dot(r.c),
+      estadoStyle: { fontSize: '12px', color: r.c ? POS : FAINT },
+      neto: r.neto == null ? 'sin recibo' : r.neto,
+      netoStyle: r.neto == null ? { fontSize: '12px', color: FAINT } : Object.assign({ fontSize: '14.5px', fontWeight: 600 }, mono),
+      accion: r.accion,
+      accionStyle: { fontSize: '12.5px', color: MUT, display: r.accion ? 'inline' : 'none' },
+      rowStyle: listRow(i, arr, 62)
+    }));
+
+    const reciboDatos = [
+      fvn('Período', 'julio 2025'),
+      fvn('Días trabajados', '21'),
+      fvn('HH imputadas', '168,00'),
+      fv('Categoría', 'Oficial albañil'),
+      fvn('Emitido', '04/08/2025')
+    ];
+
+    const hoyDesktop = [
+      { n: 'Muro sur · 2ª hilada', act: 'Mampostería interior', estado: 'En curso', c: ACC, fecha: 'hoy' },
+      { n: 'Muro este · replanteo', act: 'Mampostería interior', estado: 'Por hacer', c: null, fecha: 'hoy' },
+      { n: 'Dinteles del paño norte', act: 'Mampostería interior', estado: 'Frenada', c: NEG, fecha: 'hoy' },
+      { n: 'Pases sanitarios', act: 'Sanitarias', estado: 'Sin fecha', c: null, fecha: 'sin plan', sinPlan: true }
+    ].map((t, i, arr) => ({
+      n: t.n, act: t.act, estado: t.estado, fecha: t.fecha,
+      dotStyle: dot(t.c),
+      estadoStyle: { width: '100px', fontSize: '12px', color: t.c === NEG ? NEG : MUT },
+      fechaStyle: Object.assign({ width: '70px', textAlign: 'right', fontSize: '11.5px' }, t.sinPlan ? {} : mono, { color: FAINT }),
+      rowStyle: { display: 'flex', alignItems: 'center', gap: '12px', height: '44px', borderBottom: i === arr.length - 1 ? 'none' : '1px solid #EFEEEA' }
+    }));
+
+    const docsObra = [
+      { n: 'Plano albañilería R3.pdf', fecha: '12/08' },
+      { n: 'Detalle dinteles.pdf', fecha: '12/08' },
+      { n: 'Instructivo de seguridad.pdf', fecha: '02/07' }
+    ];
+
+    return {
+      phone: { width: '390px', height: '812px', background: '#FFFFFF', border: '1px solid #D7D5CF', borderRadius: '28px', overflow: 'hidden', display: 'flex', flexDirection: 'column' },
+      topbar: { height: '48px', flex: 'none', display: 'flex', alignItems: 'center', gap: '10px', padding: '0 16px', borderBottom: '1px solid #E7E6E2' },
+      tabbar: { height: '58px', flex: 'none', display: 'flex', borderTop: '1px solid #E7E6E2' },
+      tabOn: tab(true), tabOff: tab(false),
+      hoyTareas, trabajoSecciones, cuadrilla, tareas, tareaDatos, tareaSecciones,
+      miInfo, legajoIdentidad, legajoLaboral, asignaciones, misHoras, asistencia,
+      documentos, recibos, reciboDatos, hoyDesktop, docsObra
+    };
+  }
+}
+</script>
+</body>
+</html>

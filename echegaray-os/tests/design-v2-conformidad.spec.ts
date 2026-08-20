@@ -43,6 +43,22 @@ const PANTALLAS: { nombre: string; url: string; movil?: boolean }[] = [
   { nombre: 'herramientas', url: '/integraciones/herramientas' },
   { nombre: 'chat', url: '/chat' },
   { nombre: 'campo', url: '/campo', movil: true },
+  // ═══ PERFIL EMPLEADO (delta del 20/08/2026) ═══
+  //
+  // Se miden con la identidad de este spec —Dirección— y sin persona vinculada, así que lo que se
+  // ve es el vacío explicado. Da igual para lo que esto mide: tipografía, gradientes, pastillas de
+  // color y desborde a 390 son propiedades del MARCO, y el marco es el mismo con datos y sin ellos.
+  // Con datos se prueban en `perfil-empleado.spec.ts`, que entra como empleado de verdad.
+  { nombre: 'empleado-hoy', url: '/hoy', movil: true },
+  { nombre: 'empleado-mi-trabajo', url: '/mi-trabajo', movil: true },
+  { nombre: 'empleado-mi-informacion', url: '/mi-informacion', movil: true },
+  { nombre: 'empleado-mis-tareas', url: '/mi-trabajo/tareas', movil: true },
+  { nombre: 'empleado-asistencia', url: '/mi-informacion/asistencia', movil: true },
+  { nombre: 'empleado-documentos', url: '/mi-informacion/documentos', movil: true },
+  { nombre: 'empleado-recibos', url: '/mi-informacion/recibos', movil: true },
+  { nombre: 'empleado-legajo', url: '/mi-informacion/legajo', movil: true },
+  { nombre: 'empleado-horas', url: '/mi-informacion/horas', movil: true },
+  { nombre: 'empleado-reportar', url: '/mi-trabajo/reportar', movil: true },
 ]
 
 test.describe.configure({ mode: 'serial' })

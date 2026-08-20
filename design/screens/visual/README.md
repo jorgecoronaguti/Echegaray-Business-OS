@@ -8,6 +8,7 @@ Cada archivo abre en el navegador y es la referencia visual FINAL de sus pantall
 | `Obras.dc.html` | Cartera (1a) · Resumen (1b) · Ejecución + mobile (1c) · Planificación embebida (1d) · Personal (1e) · Operación (1f) · Documentos + `/campo` mobile (1g) · Gantt de cartera (1h) · Alta de obra (1i) |
 | `Administracion.dc.html` | Entrada (2a) · Personas (2b) · Legajo (2c) · Proveedores (2d) · Pendientes (2e) · Usuarios (2f) · Clientes cartera (2g) · Record de cliente (2h) · Cuadrillas (2i) |
 | `Accesos.dc.html` | Mi cuenta + mobile (3a) · Operación global (3b) · Herramientas (3c) · Chat interno (3d) · Mis horas / Mi legajo / Mis documentos + mobile (3e) |
+| `Empleado.dc.html` | Perfil Empleado: Hoy · Mi trabajo · Mis tareas · Detalle de tarea (4a) · Mi información · Mi legajo · Mis horas · Asistencia (4b) · Mis documentos · Subir documento · Recibos · Detalle de recibo · Reportar problema (4c) · Hoy desktop (4d) · Entrar mobile/error/desktop (4e) |
 | `DesignSystem.dc.html` | Especimen vivo: tokens, escala, navegación, acciones, foco, estados, tabla, disclosure, split, NULL, mobile |
 
 ## Cómo usarlos
