@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type Locator, type Page } from '@playwright/test'
 import { conBase, entrar, laFila, limpiar, MARCA } from './util/obras-e2e'
 
 // MVP ERP DE OBRAS · EL CLIENTE Y LA OBRA, PROBADOS CONTRA LA BASE.
@@ -30,6 +30,21 @@ import { conBase, entrar, laFila, limpiar, MARCA } from './util/obras-e2e'
 async function abrirAltaCliente(page: Page) {
   await page.getByTestId('abrir-alta-cliente').click()
   await expect(page.getByTestId('form-cliente')).toBeVisible({ timeout: 30000 })
+}
+
+/**
+ * LAS ACCIONES DE UNA FILA VIVEN EN EL `···`.
+ *
+ * `design/system/INTERACTION.md`: *«acciones de fila: sólo en hover o menú contextual. Nunca una
+ * fila llena de botones»*. Los contactos tenían «Editar» y «Borrar» como dos botones por fila; con
+ * cinco contactos eran diez objetivos de clic compitiendo con el dato que la persona vino a leer.
+ *
+ * Lo que el test mide no cambió —que se pueda editar y borrar un contacto desde la ficha—: cambió
+ * dónde está el control. Se abre el menú y se elige.
+ */
+async function accionDeFila(fila: Locator, testid: string) {
+  await fila.getByTestId('acciones-contacto').click()
+  await fila.getByTestId(testid).click()
 }
 
 test('cliente: se crea, se edita, se le agrega y se le saca un contacto — y todo sobrevive a la recarga', async ({ page }) => {
@@ -96,7 +111,7 @@ test('cliente: se crea, se edita, se le agrega y se le saca un contacto — y to
     // borrar la persona y volver a cargarla, y con eso se perdía la fecha en que entró a la relación
     // —que es un evento de la solapa Actividad—. La edición viaja en la URL: la fila se abre con un
     // enlace, no con estado de navegador.
-    await fila.getByTestId('editar-contacto').click()
+    await accionDeFila(fila, 'editar-contacto')
     const fe = page.getByTestId('form-editar-contacto')
     await fe.locator('input[name="telefono"]').fill('264 400 0000')
     await fe.locator('input[name="rol"]').fill('gerente de compras')
@@ -115,7 +130,7 @@ test('cliente: se crea, se edita, se le agrega y se le saca un contacto — y to
     await page.reload()
     await expect(page.getByTestId('tabla-contactos')).toContainText('264 400 0000')
 
-    await fila.getByTestId('borrar-contacto').click()
+    await accionDeFila(fila, 'borrar-contacto')
     await expect(page.getByTestId('tabla-contactos')).toHaveCount(0, { timeout: 30000 })
     await page.reload()
     await expect(page.getByText(`${MARCA} Contacto`)).toHaveCount(0)

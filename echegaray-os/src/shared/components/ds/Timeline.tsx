@@ -36,7 +36,9 @@ export function Timeline({
       <ul className="divide-y divide-[#EFEEEA]">
         {eventos.map((e) => (
           <li key={e.id} className="flex items-baseline gap-3 py-2.5" data-testid="evento">
-            <span className="w-[52px] shrink-0 font-mono text-[11.5px] tabular-nums text-muted">{e.fecha}</span>
+            {/* 58px: `dd/mm/aa` en mono tabular. Con 52 el año quedaba fuera y la fecha mentía por
+                omisión — en una lista que abarca años, «20/08» no dice de cuándo es. */}
+            <span className="w-[58px] shrink-0 font-mono text-[11.5px] tabular-nums text-muted">{e.fecha}</span>
             <span className="w-[92px] shrink-0 text-[10px] uppercase tracking-[0.06em] text-faint">{e.tipo}</span>
             <span className={`min-w-0 flex-1 text-[13px] ${e.tono === 'neg' ? 'text-neg' : e.tono === 'warn' ? 'text-warn' : 'text-ink-soft'}`}>
               {e.texto}
