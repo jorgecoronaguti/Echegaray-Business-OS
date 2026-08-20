@@ -2,24 +2,37 @@ import type { ReactNode } from 'react'
 
 // PAGESHELL — EL MARCO DE PÁGINA DEL OS.
 //
-// ═══ UN SOLO ANCHO ÚTIL, Y EL MISMO BORDE IZQUIERDO SIEMPRE (18/08/2026) ═══
+// ═══ LO QUE MANDA ACÁ ES `design/system/LAYOUT_RESPONSIVE.md` (20/08/2026) ═══
 //
-// El header global vive en `mx-auto max-w-[1400px] px-4 sm:px-6` y cada página traía el suyo
-// (`max-w-6xl`, `max-w-7xl`, `max-w-3xl`), centrado por su cuenta. El resultado: el logo arrancaba en
-// una vertical y el título de la página en otra, distinta en cada pantalla — y al navegar, el
-// contenido saltaba de costado. El dueño pidió *"contenido centrado con ancho consistente"*.
+// Padding de pantalla: 40px en escritorio (`lg:px-10`), 16px en el teléfono (`px-4`). El
+// contenedor NO tiene tope de ancho: los workspaces operativos —Planificación, Ejecución, las
+// tablas de cartera— usan todo lo que haya. El tope se pide por pantalla, no se impone a todas.
 //
-// Ahora el CONTENEDOR es siempre el del header, idéntico al carácter: `max-w-[1400px] px-4 sm:px-6`.
-// Lo que cambia por página es el ANCHO DE LECTURA de adentro, y ese ancho NO se centra: se alinea a
-// la izquierda. Una pantalla angosta sigue siendo angosta —una columna de texto de 1400px no se
-// lee—, pero empieza donde empiezan todas las demás.
+// ═══ EL ANCHO DE LECTURA ES UNA DECISIÓN POR PANTALLA, NO UN DEFAULT ═══
 //
-// ═══ DENSIDAD (§ el dueño, 18/08) ═══
+// Una tabla de dos columnas estirada a 1440px es ilegible: el ojo pierde la fila entre el nombre y
+// el dato. Por eso `LECTURA` publica los tres anchos del handoff —lista corta 680, formulario 560,
+// ficha con aside— y cada pantalla elige el suyo. El ancho NO se centra: se alinea a la izquierda,
+// para que el título de una pantalla angosta empiece en la misma vertical que el de una ancha y el
+// contenido no salte de costado al navegar.
 //
-// *"Quiero aprovechar mejor el espacio… No hacer contenido minúsculo centrado en una pantalla
-// enorme. En desktop el workspace de Obra y especialmente el Gantt pueden utilizar aproximadamente
-// 80–90% del ancho útil."* Por eso el default es el ancho completo: la excepción es angostar, y hay
-// que pedirla. Administración la pide; el workspace de obra, no.
+// ═══ EL TÍTULO MIDE 22px Y NO ESCALA CON LA PANTALLA ═══
+//
+// Tenía un `clamp()` que lo llevaba hasta 64px en un monitor grande. La escala tipográfica del
+// handoff tiene NUEVE tamaños fijos y el título de pantalla es uno de ellos: un h1 que crece con
+// el viewport rompe la relación con los 14px del nivel 2 y los 13px de la celda, que es
+// exactamente lo que una escala existe para sostener. Densidad se gana con más filas visibles, no
+// con letra más grande.
+
+/** Los anchos de lectura del handoff. Se eligen; no hay un default que sirva para todo. */
+export const LECTURA = {
+  /** Workspaces operativos y tablas de cartera: todo el ancho. */
+  completo: 'max-w-full',
+  /** Lista de lectura corta (dos o tres columnas), p. ej. Clientes. */
+  lista: 'max-w-[680px]',
+  /** Formulario. */
+  formulario: 'max-w-[560px]',
+} as const
 
 export function PageShell({
   eyebrow,
@@ -27,7 +40,7 @@ export function PageShell({
   subtitle,
   right,
   children,
-  maxWidth = 'max-w-full',
+  maxWidth = LECTURA.completo,
 }: {
   eyebrow?: ReactNode
   title: ReactNode
@@ -39,18 +52,17 @@ export function PageShell({
 }) {
   return (
     <div className="min-h-screen bg-canvas">
-      <div className="w-full px-4 py-5 sm:px-6 lg:px-10">
+      <div className="w-full px-4 py-6 lg:px-10">
         <div className={maxWidth}>
-          <header className="mb-4 flex flex-wrap items-end justify-between gap-4">
+          <header className="mb-5 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
             <div className="min-w-0">
-              {eyebrow && <div className="text-[clamp(11px,0.72vw,26px)] font-medium uppercase tracking-wide text-faint">{eyebrow}</div>}
-              <h1 className="mt-0.5 text-[clamp(26px,1.85vw,64px)] font-semibold leading-tight tracking-tight text-ink">{title}</h1>
-              {subtitle && <div className="mt-2 text-[clamp(14px,0.92vw,32px)] leading-relaxed text-muted">{subtitle}</div>}
+              {eyebrow && <div className="text-[11px] font-medium tracking-[0.04em] text-faint">{eyebrow}</div>}
+              <h1 className="mt-1 text-[22px] font-semibold leading-tight tracking-[-0.01em] text-ink">{title}</h1>
+              {subtitle && <div className="mt-1.5 text-[12.5px] leading-relaxed text-muted">{subtitle}</div>}
             </div>
             {/* `shrink-0` sin `min-w-0` empujaba la página entera de costado en el teléfono: la línea
-                de ciclo de vida de la obra mide más que 390px y no podía encoger. Ahora no encoge
-                cuando hay lugar, y cuando no lo hay se acomoda en vez de desbordar. */}
-            {right && <div className="min-w-0 shrink-0 max-w-full">{right}</div>}
+                de ciclo de vida de la obra mide más que 390px y no podía encoger. */}
+            {right && <div className="min-w-0 max-w-full shrink-0">{right}</div>}
           </header>
           {children}
         </div>

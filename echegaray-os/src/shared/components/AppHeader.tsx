@@ -77,6 +77,13 @@ export function AppHeader({
           <span className="hidden text-[13px] font-semibold tracking-[0.14em] text-ink sm:block">
             ECHEGARAY<span className="hidden lg:inline"> CONSTRUCCIONES</span>
           </span>
+          {/* EL DESCRIPTOR DEL PRODUCTO, Y NUNCA CON PESO NI COLOR DE MARCA (`design/system/BRAND.md`).
+              «Business OS» describe qué es esto; la marca es ECHEGARAY CONSTRUCCIONES. En cuanto el
+              descriptor toma peso o color, la pantalla pasa a tener dos marcas compitiendo — y la
+              que gana es la que no lo es. Por eso va en 11,5px, `faint`, detrás de un separador. */}
+          <span className="hidden text-[11.5px] text-faint xl:inline" aria-hidden>
+            · Business OS
+          </span>
         </Link>
 
         <nav className="flex min-w-0 items-center gap-0.5" data-testid="nav-areas">
@@ -111,9 +118,18 @@ export function AppHeader({
         <div className="ml-auto flex min-w-0 items-center gap-2" data-testid="usuario-actual">
           {email ? (
             <>
-              <span className="hidden min-w-0 truncate text-[12px] text-faint sm:block" title={`${email} · ${rolLabel ?? ''}`}>
-                {email}
-              </span>
+              {/* `[email · rol]` — el rol estaba sólo en el `title`, invisible salvo que alguien
+                  dejara el puntero quieto encima. Es el dato que contesta «¿por qué no veo tal
+                  pantalla?» sin abrir Usuarios, así que se escribe. */}
+              <Link
+                href="/mi-cuenta"
+                data-testid="mi-cuenta"
+                className="hidden min-w-0 items-center gap-1.5 rounded-control px-2 py-1 transition-colors hover:bg-surface-quiet sm:flex"
+                title={`${email}${rolLabel ? ` · ${rolLabel}` : ''} — mi cuenta`}
+              >
+                <span className="min-w-0 truncate text-[12px] text-muted">{email}</span>
+                {rolLabel && <span className="hidden shrink-0 text-[12px] text-faint lg:inline">· {rolLabel}</span>}
+              </Link>
               {salir}
             </>
           ) : (

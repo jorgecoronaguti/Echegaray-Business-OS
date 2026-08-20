@@ -78,11 +78,36 @@
   --os-info: #175cd3;
   --os-info-soft: #e9f0fd;
   --os-focus: #2f6df6; /* anillo de foco accesible */
+
+  /* Texto SOBRE el amarillo. Es siempre el grafito: #FDC900 da 1,6:1 sobre blanco y no admite
+     texto claro encima. Existe como token para que nadie tenga que volver a decidirlo. */
+  --os-on-marca: #1f1f1e;
+
+  /* ═══ LAS ALTURAS DEL SISTEMA (design/system/tokens.css) ═══
+     Las medidas que hacen que la tabla, el Gantt y el panel se alineen entre sí. Viven acá y se
+     consumen por Tailwind (`h-fila`, `h-thead`…); un `h-[46px]` suelto en un componente es la
+     forma en que dos filas que deberían medir lo mismo dejan de medirlo. */
+  --os-header-h: 48px; /* header global, una línea */
+  --os-row-h: 46px; /* fila de tabla */
+  --os-row-h-compacta: 38px; /* fila del Gantt y de la tabla que se le alinea 1:1 */
+  --os-thead-h: 32px; /* encabezado de tabla */
+  --os-disclosure-h: 44px; /* fila plegable / de rubro */
+  --os-statusbar-h: 56px; /* franja inferior de métricas */
+  --os-control-h: 34px; /* input, select, botón en escritorio */
+  --os-control-h-mobile: 48px; /* el mismo control en el teléfono */
+
+  /* Split workspace: los límites son del sistema, no de la pantalla que lo usa. */
+  --os-split-handle: 9px;
+  --os-split-min-tabla: 300px;
+  --os-split-min-panel: 340px;
+  --os-split-max: 760px;
 }
 
 @layer base {
   body {
     color: var(--os-ink);
+    background: var(--os-canvas);
+    font-family: var(--font-plex-sans), 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
