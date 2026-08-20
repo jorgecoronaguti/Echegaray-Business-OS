@@ -5,6 +5,9 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Cuadrilla, Integrante, ServiceResult } from '../types'
+// RUTA RELATIVA CON EXTENSIÓN: `node --test` no conoce el alias `@/`, y un import de VALOR por alias
+// mata la prueba con ERR_MODULE_NOT_FOUND antes de la primera aserción.
+import { esTrabajada } from '../../obras/services/tipoHora.ts'
 
 export async function getCuadrillas(
   supabase: SupabaseClient,
@@ -61,4 +64,49 @@ export async function getCuadrillaDe(
     .from('cuadrilla_integrante').select('cuadrilla_id, desde')
     .eq('persona_id', personaId).is('hasta', null).maybeSingle()
   return (data as { cuadrilla_id: string; desde: string } | null) ?? null
+}
+
+// ═══ LAS HH DE LA CUADRILLA — SUMADAS, NO GUARDADAS ═══
+//
+// El handoff pide «HH del período» en el panel de la cuadrilla. NO hay —ni va a haber— una columna
+// con ese total: la cuadrilla es un conjunto de PERÍODOS de pertenencia, así que su total depende de
+// quién la integraba en cada día del período. Un número guardado al lado quedaría viejo el primer
+// día que entre o salga alguien, y nadie se enteraría.
+//
+// Se suma sobre `registros_hh`, que es la misma fuente que lee la ficha de cada persona y la solapa
+// Personal de la obra. Una sola definición de «HH», leída por tres pantallas.
+
+/** Sólo las horas TRABAJADAS y sólo dentro de la ventana. Una ausencia tiene horas y no es trabajo:
+ *  sumarla diría que la cuadrilla trabajó el día que faltó medio equipo. */
+export function sumarHHTrabajadas(
+  filas: { fecha: string | null; horas: number | string | null; tipo_hora: string }[],
+  desde: string,
+  hasta: string,
+): number {
+  return filas
+    .filter((f) => f.fecha != null && f.fecha >= desde && f.fecha <= hasta && esTrabajada(f.tipo_hora))
+    .reduce((a, f) => a + Number(f.horas ?? 0), 0)
+}
+
+/**
+ * Las HH del período de las personas indicadas.
+ *
+ * `null` —y no 0— cuando no hay a quién sumarle o cuando la lectura falló: «0,00 HH» afirma que la
+ * cuadrilla no trabajó, y eso no es lo mismo que no saberlo.
+ */
+export async function getHHDeCuadrilla(
+  supabase: SupabaseClient,
+  personaIds: string[],
+  desde: string,
+  hasta: string,
+): Promise<number | null> {
+  if (personaIds.length === 0) return null
+  const { data, error } = await supabase
+    .from('registros_hh').select('fecha, horas, tipo_hora')
+    .in('persona_id', personaIds).gte('fecha', desde).lte('fecha', hasta)
+  if (error) return null
+  return sumarHHTrabajadas(
+    (data ?? []) as { fecha: string | null; horas: number | string | null; tipo_hora: string }[],
+    desde, hasta,
+  )
 }

@@ -11,8 +11,11 @@
 // Los permisos efectivos no son una columna: son una lectura. Guardarlos crearía una segunda
 // versión de la verdad que se desincroniza el primer día que alguien cambia un rol en la base.
 
+// RUTAS RELATIVAS CON EXTENSIÓN en los imports de VALOR: `reglas.test.ts` ejercita
+// `permisosEfectivos` con `node --test`, que no conoce el alias `@/`.
 import type { Rol } from '@/features/auth/types'
-import type { Area } from '@/features/auth/types/areas'
+import { veEconomia, type Area } from '../auth/types/areas.ts'
+import { veTodasLasObras } from './services/reglas.ts'
 
 /**
  * EL ESTADO NO ES UNA COLUMNA NUESTRA: ES EL BLOQUEO DE `auth.users`.
@@ -61,8 +64,19 @@ export interface ObraElegible {
  */
 export function permisosEfectivos(u: UsuarioGestion): string {
   if (u.estado === 'sin_acceso') return 'No puede entrar al sistema.'
-  if (u.area === 'administracion') return 'Ve todas las obras, los clientes y la economía.'
-  if (u.obras.length === 0) return 'Sin obras asignadas: entra al sistema y no ve ninguna obra.'
-  const nombres = u.obras.map((o) => o.obraNombre).join(', ')
-  return `Ve ${u.obras.length === 1 ? 'la obra' : 'las obras'} ${nombres}. No ve clientes ni economía.`
+
+  // DOS PREGUNTAS SEPARADAS, PORQUE LA BASE LAS CONTESTA POR SEPARADO: `ve_obra()` decide a qué
+  // obras entra y `es_administracion()`/el rol deciden si ve el PRECIO. Esta frase decía «Ve todas
+  // las obras, los clientes y la economía» para todo el área de navegación Administración — y un
+  // jefe de obra está en esa área y NO ve la economía. La pantalla afirmaba un permiso que la base
+  // niega, que es la peor forma de equivocarse en una pantalla de accesos.
+  const obras = veTodasLasObras(u.rol)
+    ? 'Entra a todas las obras'
+    : u.obras.length === 0
+      ? 'Sin obras asignadas: entra al sistema y no ve ninguna obra'
+      : `Entra a ${u.obras.length === 1 ? 'la obra' : 'las obras'} ${u.obras.map((o) => o.obraNombre).join(', ')}`
+  const economia = veEconomia(u.rol)
+    ? 'Ve los clientes, el precio de venta y la economía.'
+    : 'No ve el precio de venta ni la economía.'
+  return `${obras}. ${economia}`
 }

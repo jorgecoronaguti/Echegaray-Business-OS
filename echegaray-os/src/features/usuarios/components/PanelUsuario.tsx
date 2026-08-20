@@ -16,6 +16,7 @@
 
 import { useState, useTransition } from 'react'
 import { BotonAccion, Campo, CTRL, FormAccion } from '@/shared/components/ui'
+import { Estado, Eyebrow, Nulo, PanelDetalle } from '@/shared/components/ds'
 import { ROL_LABEL, type Rol } from '@/features/auth/types'
 import { AREA_LABEL } from '@/features/auth/types/areas'
 import { motivoParaNoRegenerarClave, ROLES_DE_AREA } from '../services/reglas'
@@ -43,7 +44,7 @@ function Contrasena({ u, rolActor }: { u: UsuarioGestion; rolActor: Rol | null }
 
   return (
     <section data-testid="panel-contrasena">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-faint">Contraseña</p>
+      <Eyebrow className="mb-2">Contraseña</Eyebrow>
       {impedimento ? (
         <p className="mt-1.5 text-[12px] text-muted" data-testid="clave-sin-permiso">{impedimento}</p>
       ) : (
@@ -103,7 +104,7 @@ function ObrasDeLaCuenta({ u, obras }: { u: UsuarioGestion; obras: ObraElegible[
 
   return (
     <section data-testid="panel-obras">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-faint">Obras asignadas</p>
+      <Eyebrow className="mb-2">Obras con acceso</Eyebrow>
       {u.area === 'administracion' ? (
         <p className="mt-1.5 text-[12px] text-muted">
           Administración entra a todas las obras. No hace falta asignarle ninguna.
@@ -176,37 +177,34 @@ export function PanelUsuario({
   const activo = u.estado === 'activo'
 
   return (
-    <>
-      <button
-        type="button" aria-label="Cerrar el panel" onClick={alCerrar}
-        className="fixed inset-0 z-30 bg-ink/20 lg:hidden"
-      />
-      <aside
-        data-testid="panel-usuario"
-        className="fixed inset-x-0 bottom-0 z-40 max-h-[85vh] space-y-5 overflow-y-auto rounded-t-card border-t border-line bg-surface-quiet p-3.5 shadow-pop lg:sticky lg:top-16 lg:z-auto lg:max-h-none lg:w-[340px] lg:shrink-0 lg:rounded-none lg:border-l lg:border-t-0 lg:shadow-none"
-      >
-        <div aria-hidden className="mx-auto mb-2 h-1 w-10 rounded-full bg-line-strong lg:hidden" />
-
-        <header className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="truncate text-[11px] uppercase tracking-wide text-faint">
-              {u.rol ? ROL_LABEL[u.rol] : 'Sin rol asignado'} · {AREA_LABEL[u.area]}
-            </p>
-            <h2 className="truncate text-[15px] font-semibold text-ink">{u.nombre ?? u.email ?? 'Sin nombre'}</h2>
-            <p className="mt-1 text-[12px] leading-relaxed text-muted" data-testid="permisos-efectivos">
-              {permisosEfectivos(u)}
-            </p>
-          </div>
-          <button
-            type="button" onClick={alCerrar} data-testid="cerrar-panel"
-            className="shrink-0 rounded-control border border-line px-2 py-1 text-[12px] text-muted hover:bg-surface-sunken"
-          >
-            Cerrar
-          </button>
-        </header>
+    // LA CUENTA ES EL CORREO, y por eso es el título del panel: es lo único único y es con lo que
+    // esa persona entra. El nombre del perfil va debajo, y cuando falta se DICE — una cuenta que
+    // puede entrar y de la que no se sabe de quién es, es lo que esta pantalla existe para evitar.
+    <PanelDetalle
+      titulo={u.email ?? 'sin correo'}
+      subtitulo={
+        <>
+          {u.nombre ?? <Nulo>sin persona vinculada</Nulo>}
+          <span className="text-faint"> · {u.rol ? ROL_LABEL[u.rol] : 'sin nivel'} · {AREA_LABEL[u.area]}</span>
+        </>
+      }
+      estado={activo
+        ? <Estado tono="pos" clave="activa">activa</Estado>
+        : <Estado tono="warn" clave="sin_acceso">sin acceso</Estado>}
+      onCerrar={alCerrar}
+      ancho={340}
+      testid="panel-usuario"
+    >
+      <div className="space-y-6">
+        {/* LO QUE VE ESTA PERSONA, EN CASTELLANO. Es exactamente lo que contestan
+            `es_administracion()` y `ve_obra()` en la base, dicho para alguien que no sabe qué es una
+            policy: el nombre de la tabla no le sirve a nadie que use esta pantalla. */}
+        <p className="text-[12.5px] leading-relaxed text-muted" data-testid="permisos-efectivos">
+          {permisosEfectivos(u)}
+        </p>
 
         <section>
-          <p className="text-[11px] font-medium uppercase tracking-wide text-faint">Datos</p>
+          <Eyebrow className="mb-2">Datos de la cuenta</Eyebrow>
           <div className="mt-1.5">
             <FormAccion accion={(form) => editarUsuario(u.id, form)} testid="form-datos" mensajeOk="Guardado.">
               <div className="grid grid-cols-2 gap-2.5">
@@ -222,7 +220,7 @@ export function PanelUsuario({
         </section>
 
         <section>
-          <p className="text-[11px] font-medium uppercase tracking-wide text-faint">Rol</p>
+          <Eyebrow className="mb-2">Nivel</Eyebrow>
           {esUnoMismo ? (
             <p className="mt-1.5 text-[12px] text-muted" data-testid="rol-propio">
               Es tu propia cuenta: el rol te lo tiene que cambiar otra persona de Administración.
@@ -241,7 +239,7 @@ export function PanelUsuario({
         <Contrasena u={u} rolActor={rolActor} />
 
         <section>
-          <p className="text-[11px] font-medium uppercase tracking-wide text-faint">Acceso</p>
+          <Eyebrow className="mb-2">Acceso</Eyebrow>
           {esUnoMismo ? (
             <p className="mt-1.5 text-[12px] text-muted" data-testid="acceso-propio">
               No podés sacarte el acceso a vos mismo.
@@ -260,7 +258,7 @@ export function PanelUsuario({
             </div>
           )}
         </section>
-      </aside>
-    </>
+      </div>
+    </PanelDetalle>
   )
 }

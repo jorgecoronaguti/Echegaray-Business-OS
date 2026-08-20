@@ -26,6 +26,7 @@ import {
   BotonAccion, CTRL, FormAccion,
   type AccionFormulario, type ResultadoAccion,
 } from '@/shared/components/ui'
+import { Eyebrow, Nulo, Num } from '@/shared/components/ds'
 import { fecha, plata } from '@/features/obras/components/formato'
 import { CamposProveedor } from './PanelProveedor'
 import { formatearCuit } from './TablaProveedores'
@@ -38,15 +39,15 @@ function Candidatos({ nombre, candidatos, vincular }: {
 }) {
   if (candidatos.length === 0) {
     return (
-      <p data-testid="sin-candidatos" className="px-1 py-3 text-[12px] text-muted">
+      <p data-testid="sin-candidatos" className="py-3 text-[12.5px] text-muted">
         Ningún proveedor del maestro coincide con lo buscado.
       </p>
     )
   }
   return (
-    <div className="max-h-72 overflow-y-auto rounded-lg border border-line bg-white" data-testid="candidatos">
+    <div className="max-h-72 overflow-y-auto" data-testid="candidatos">
       {candidatos.map((p) => (
-        <div key={p.id} data-testid="candidato" className="flex items-center gap-3 border-b border-line/60 px-2.5 py-1.5 last:border-0">
+        <div key={p.id} data-testid="candidato" className="flex items-center gap-3 border-b border-[#EFEEEA] py-2 last:border-0">
           <div className="min-w-0 flex-1">
             <span className="block truncate text-[13px] text-ink">{p.nombre}</span>
             <span className="block truncate text-[11px] text-faint">
@@ -84,43 +85,46 @@ export function PanelNombre({
   return (
     <aside
       data-testid="panel-nombre"
-      className="w-full shrink-0 border-t border-line bg-surface p-4 lg:w-[26rem] lg:border-l lg:border-t-0"
+      className="w-full shrink-0 border-t border-line pt-4 lg:w-[392px] lg:border-l lg:border-t-0 lg:py-1 lg:pl-6 lg:pt-0"
     >
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="truncate text-[14px] font-semibold text-ink">{nombre.nombre_origen}</h2>
-          <p className="text-[11px] tabular-nums text-faint">
-            {nombre.comprobantes} comprobante(s) · {plata(nombre.total)} ·{' '}
-            {fecha(nombre.primera_fecha)} → {fecha(nombre.ultima_fecha)}
-          </p>
-        </div>
-        <Link href={cerrarHref} data-testid="cerrar-nombre" className="text-[12px] text-muted hover:text-ink">
-          Cerrar
-        </Link>
+      <div className="flex items-baseline gap-2.5">
+        <h2 className="min-w-0 flex-1 truncate font-mono text-[14px] font-semibold text-ink">{nombre.nombre_origen}</h2>
+        <Link
+          href={cerrarHref} data-testid="cerrar-nombre" aria-label="Cerrar el panel"
+          className="shrink-0 text-[12px] leading-none text-faint transition-colors hover:text-ink"
+        >✕</Link>
       </div>
+      <p className="mt-1.5 text-[12px] text-muted">
+        {nombre.comprobantes} comprobante(s) ·{' '}
+        {Number(nombre.total ?? 0) > 0 ? <Num className="text-muted">{plata(nombre.total)}</Num> : <Nulo>sin importe</Nulo>}
+        {' · '}
+        <Num className="text-faint">{fecha(nombre.primera_fecha)} → {fecha(nombre.ultima_fecha)}</Num>
+      </p>
 
       {/* ── 1 · ES UN PROVEEDOR QUE YA EXISTE ── */}
-      <form method="get" action={accionBuscar} className="mb-2 flex items-end gap-2" data-testid="buscar-proveedor">
+      <Eyebrow className="mb-2 mt-5">Buscar en el maestro</Eyebrow>
+      <form method="get" action={accionBuscar} className="mb-1 flex items-end gap-2" data-testid="buscar-proveedor">
         {Object.entries(camposBuscar).map(([k, v]) => (v ? <input key={k} type="hidden" name={k} value={v} /> : null))}
-        <label className="flex min-w-0 flex-1 flex-col text-[11px] text-faint">
-          Buscar en el maestro
+        <label className="min-w-0 flex-1">
+          <span className="sr-only">Buscar en el maestro</span>
           <input
             type="search" name="bq" defaultValue={busqueda ?? ''}
             placeholder="Nombre, razón social o CUIT" className={CTRL} data-testid="buscar-proveedor-q"
           />
         </label>
-        <button type="submit" className="rounded-control border border-line px-3 py-1.5 text-[12px] text-muted hover:bg-slate-50">
-          Buscar
-        </button>
+        <button
+          type="submit"
+          className="h-control shrink-0 rounded-control border border-line px-3 text-[12.5px] text-muted transition-colors hover:bg-surface-quiet hover:text-ink"
+        >Buscar</button>
       </form>
       <Candidatos nombre={nombre} candidatos={candidatos} vincular={vincular} />
 
       {/* ── 2 · ES UN PROVEEDOR NUEVO ── */}
-      <details className="mt-4 rounded-lg border border-line bg-white" data-testid="crear-desde-pendiente">
-        <summary className="cursor-pointer px-3 py-2 text-[12px] font-medium text-ink">
+      <details className="mt-5 border-t border-line pt-3" data-testid="crear-desde-pendiente">
+        <summary className="cursor-pointer text-[12.5px] text-muted transition-colors hover:text-ink">
           + Es un proveedor nuevo: crearlo con este nombre
         </summary>
-        <div className="border-t border-line p-3">
+        <div className="pt-3">
           <FormAccion
             accion={crearYVincular.bind(null, nombre.nombre_norm, nombre.nombre_origen)}
             testid="form-crear-vincular"
@@ -137,7 +141,7 @@ export function PanelNombre({
       </details>
 
       {/* ── 3 · NO ES UN PROVEEDOR ── */}
-      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-3">
+      <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-line pt-3">
         <BotonAccion accion={noEsProveedor} args={[nombre.nombre_norm, nombre.nombre_origen]} testid="no-es-proveedor">
           No es un proveedor
         </BotonAccion>

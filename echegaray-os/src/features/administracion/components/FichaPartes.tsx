@@ -1,14 +1,20 @@
 // LAS PIEZAS CHICAS DE LA FICHA — el bloque, el dato y el alta de documento.
 //
-// Viven separadas de la página porque las tres se usan varias veces y porque una página de 300
-// líneas con el marcado de un `<dl>` repetido ocho veces deja de leerse.
+// ═══ EL BLOQUE YA NO ES UNA CAJA ═══
 //
-// UN DATO SIN CARGAR SE DICE, NO SE DIBUJA VACÍO. `Dato` escribe «sin cargar» en gris: una ficha con
-// ocho renglones en blanco es indistinguible de una ficha que no se pudo leer.
+// Tenía borde, radio y fondo blanco. `design/system/SPACING_BORDERS.md`: *"Antes de crear una caja:
+// ¿hace falta para entender el dato? La jerarquía se consigue con tipografía, espacio, alineación y
+// proximidad."* Seis cajas apiladas en una ficha son seis bordes que el ojo tiene que procesar para
+// leer nueve renglones de texto. Queda el rótulo en `Eyebrow` y el espacio.
+//
+// UN DATO SIN CARGAR SE DICE, NO SE DIBUJA VACÍO. `Dato` escribe «sin cargar» en `faint`: una ficha
+// con ocho renglones en blanco es indistinguible de una ficha que no se pudo leer.
 
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { Campo, CTRL, FormAccion, type AccionFormulario } from '@/shared/components/ui'
+import { Eyebrow, Nulo } from '@/shared/components/ds'
+import { PRIMARIA_FORM } from './Controles'
 import { CATEGORIAS_DOCUMENTO } from '../types'
 
 export function Bloque({
@@ -16,24 +22,25 @@ export function Bloque({
 }: {
   titulo: string
   testid: string
-  ayuda?: string
-  /** Con enlace, el bloque se edita en el panel lateral. Sin él, es de sólo lectura y NO dibuja un
+  ayuda?: ReactNode
+  /** Con enlace, el bloque se edita en el panel lateral. Sin él es de sólo lectura y NO dibuja un
    *  control que no lleva a ninguna parte. */
   editarHref?: string
   children: ReactNode
 }) {
   return (
-    <section className="rounded-xl border border-line bg-white px-4 py-3.5" data-testid={testid}>
-      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-[11px] font-medium uppercase tracking-wide text-faint">{titulo}</h2>
-        {ayuda && <p className="text-[11px] text-faint">{ayuda}</p>}
-        {/* La acción secundaria va discreta: en esta pantalla la primaria es «Dar de baja», que vive
-            en el encabezado. Dos botones sólidos compitiendo no dejan ver cuál es cuál. */}
+    <section data-testid={testid}>
+      <div className="mb-3 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+        <Eyebrow>{titulo}</Eyebrow>
+        <span className="flex-1" />
+        {ayuda && <span className="text-[12px] text-faint">{ayuda}</span>}
+        {/* La acción secundaria va discreta: la primaria de esta pantalla es «Dar de baja» y vive en
+            el encabezado. Dos botones sólidos compitiendo no dejan ver cuál es cuál. */}
         {editarHref && (
           <Link
             href={editarHref}
             data-testid={`${testid}-editar`}
-            className="text-[12px] text-muted hover:text-ink hover:underline"
+            className="text-[12px] text-muted transition-colors hover:text-ink"
           >Editar</Link>
         )}
       </div>
@@ -42,17 +49,16 @@ export function Bloque({
   )
 }
 
-export function Dato({ k, v }: { k: string; v: string | null }) {
-  // `min-w-0` EN LA RAÍZ, NO SÓLO EN EL VALOR (19/08/2026, QA en teléfono). El `truncate` de abajo
-  // no cortaba nada: un ítem de grid arranca con `min-width: auto`, así que la pista crecía hasta el
-  // ancho del texto y estiraba la PÁGINA ENTERA — 557 px de contenido en una pantalla de 390, con
-  // "Ingreso: sin cargar" empujado fuera de la vista y sin ninguna señal de que había que correrse.
-  // Una nota larga en el legajo alcanzaba para romper la ficha en el teléfono.
+/** Un renglón rotulado: etiqueta a la izquierda, valor a la derecha, hairline abajo. */
+export function Dato({ k, v, mono }: { k: string; v: string | null; mono?: boolean }) {
+  // `min-w-0` EN LA RAÍZ, NO SÓLO EN EL VALOR (QA en teléfono): un ítem de grid arranca con
+  // `min-width:auto`, así que sin esto la pista crece hasta el ancho del texto y estira la PÁGINA
+  // ENTERA — 557px de contenido en una pantalla de 390. Una nota larga alcanzaba para romperla.
   return (
-    <div className="flex min-w-0 items-baseline justify-between gap-3 border-b border-line/60 py-1.5 last:border-0">
-      <span className="shrink-0 text-[12px] text-faint">{k}</span>
-      <span className={`min-w-0 truncate text-right text-[13px] ${v ? 'text-ink' : 'text-faint'}`}>
-        {v ?? 'sin cargar'}
+    <div className="flex min-w-0 items-baseline justify-between gap-4 border-b border-[#EFEEEA] py-[9px] last:border-0">
+      <span className="shrink-0 text-[12px] text-muted">{k}</span>
+      <span className={`min-w-0 truncate text-right ${mono ? 'font-mono text-[12.5px] tabular-nums text-ink' : 'text-[12.5px] text-ink'}`}>
+        {v ?? <Nulo>sin cargar</Nulo>}
       </span>
     </div>
   )
@@ -61,10 +67,15 @@ export function Dato({ k, v }: { k: string; v: string | null }) {
 /** Vincular un documento de Drive al legajo. NO sube el archivo: pide el enlace y guarda el id. */
 export function AltaDocumento({ vincular }: { vincular: AccionFormulario }) {
   return (
-    <details className="mt-3 rounded-lg border border-line bg-surface-quiet" data-testid="alta-documento">
-      <summary className="cursor-pointer px-3.5 py-2 text-[12px] text-muted">+ Vincular documento</summary>
-      <div className="border-t border-line p-3.5">
-        <FormAccion accion={vincular} testid="form-documento" enviar="Vincular" limpiarAlOk mensajeOk="Vinculado.">
+    <details className="mt-4 border-t border-line pt-3" data-testid="alta-documento">
+      <summary className="cursor-pointer text-[12px] text-muted transition-colors hover:text-ink">
+        + Vincular documento
+      </summary>
+      <div className="pt-3">
+        <FormAccion
+          accion={vincular} testid="form-documento" enviar="Vincular" limpiarAlOk
+          mensajeOk="Vinculado." className={PRIMARIA_FORM}
+        >
           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
             <Campo label="Categoría">
               <select name="tipo_documento" required defaultValue="" className={CTRL}>

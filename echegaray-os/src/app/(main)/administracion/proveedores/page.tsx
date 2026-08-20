@@ -1,27 +1,31 @@
 // PROVEEDORES — el maestro canónico y la cola de nombres sin resolver.
 //
-// El dueño (19/08/2026): *"Proveedor debe ser entidad canónica administrable y evitar duplicados
-// por texto libre"*. Las dos mitades de esa frase son las dos sub-vistas de esta pantalla:
+// El dueño: *"Proveedor debe ser entidad canónica administrable y evitar duplicados por texto
+// libre"*. Las dos mitades de esa frase son las dos sub-vistas de esta pantalla:
 //
 //   MAESTRO   quién es un proveedor, con el CUIT como identidad.
 //   RESOLVER  los nombres que el Sheet trae sueltos y todavía no son nadie.
 //
-// La segunda es la que de verdad evita el duplicado: sin un lugar donde decir "este texto es este
-// proveedor", el maestro se llena de variantes del mismo nombre y nadie sabe cuál es la buena.
-// Cuál está abierta viaja en la URL, como todo el resto del estado de esta pantalla.
+// La segunda es la que de verdad evita el duplicado: sin un lugar donde decir «este texto es este
+// proveedor», el maestro se llena de variantes del mismo nombre y nadie sabe cuál es la buena.
+//
+// Las dos sub-vistas son NIVEL 3 —texto con subrayado, no una segunda barra de solapas—: arriba ya
+// está la barra del área, y una tercera barra deja de decir dónde está parado el que mira. Cuál está
+// abierta viaja en la URL, como todo el resto del estado de esta pantalla.
 
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { PageShell } from '@/shared/components/ui'
+import { Aviso, BotonEnlace, SubTabs, Vacio } from '@/shared/components/ds'
 import { plata } from '@/features/obras/components/formato'
-import { BarraFiltros, SelectFiltro } from '@/features/administracion/components/BarraFiltros'
+import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
+import { BuscadorURL, FiltrosURL } from '@/features/administracion/components/Controles'
 import { NombresResueltos, TablaNombres } from '@/features/administracion/components/TablaNombres'
 import { PanelNombre } from '@/features/administracion/components/PanelNombre'
 import { PanelProveedor } from '@/features/administracion/components/PanelProveedor'
 import { TablaProveedores } from '@/features/administracion/components/TablaProveedores'
 import {
-  getNombresPendientes, getNombresResueltos, getProveedor, getProveedores,
+  getComprasDelProveedor, getNombresPendientes, getNombresResueltos, getProveedor, getProveedores,
   type FiltroActivo,
 } from '@/features/administracion/services/proveedoresService'
 import {
@@ -53,22 +57,6 @@ function armarHref(base: Busqueda, cambios: Partial<Busqueda> = {}): string {
   return `/administracion/proveedores${qs ? `?${qs}` : ''}`
 }
 
-function Pestana({ href, activa, children, testid }: {
-  href: string; activa: boolean; children: string; testid: string
-}) {
-  return (
-    <Link
-      href={href}
-      data-testid={testid}
-      className={`border-b-2 px-1 pb-1.5 text-[13px] ${
-        activa ? 'border-slate-900 font-medium text-ink' : 'border-transparent text-muted hover:text-ink'
-      }`}
-    >
-      {children}
-    </Link>
-  )
-}
-
 export default async function ProveedoresPage({ searchParams }: { searchParams: Promise<Busqueda> }) {
   const sp = await searchParams
   const vista = sp.vista === 'resolver' ? 'resolver' : 'maestro'
@@ -77,17 +65,19 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
 
   // El maestro se lee siempre. Los CANDIDATOS de la cola se leen con el término del panel: la
   // vinculación se elige buscando, no recorriendo una lista entera de proveedores.
-  const [listado, candidatos] = await Promise.all([
+  const [listado, candidatos, pendientesCuenta] = await Promise.all([
     getProveedores(supabase, { q: sp.q, activo }),
     getProveedores(supabase, { q: sp.bq, activo: 'activos' }),
+    getNombresPendientes(supabase),
   ])
 
   if (listado.error) {
     return (
-      <PageShell title="Proveedores" subtitle="El maestro de proveedores.">
-        <p data-testid="proveedores-error" className="text-[13px] text-neg">
-          No pude leer los proveedores: {listado.error}
-        </p>
+      <PageShell title="Proveedores">
+        <NavAdministracion />
+        <div data-testid="proveedores-error">
+          <Aviso tono="neg" titulo="No pude leer los proveedores">{listado.error}</Aviso>
+        </div>
       </PageShell>
     )
   }
@@ -101,66 +91,97 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
     if (r.error) redirect(armarHref(sp, { p: undefined }))
     seleccionado = r.data
   }
+  const compras = seleccionado ? await getComprasDelProveedor(supabase, seleccionado.id) : null
 
-  const [pendientes, resueltos] = vista === 'resolver'
-    ? await Promise.all([getNombresPendientes(supabase), getNombresResueltos(supabase)])
-    : [null, null]
-
-  const cola = pendientes?.data ?? []
+  const resueltos = vista === 'resolver' ? await getNombresResueltos(supabase) : null
+  const cola = pendientesCuenta.data ?? []
   const nombreAbierto = sp.n ? cola.find((n) => n.nombre_norm === sp.n) : undefined
   const panelAbierto = abrirAlta || seleccionado !== null
 
   return (
     <PageShell
       title="Proveedores"
-      subtitle="A quién se le compra, identificado por CUIT."
-      maxWidth="max-w-6xl"
+      subtitle="Identidad única por CUIT. Los nombres que llegan de Compras se resuelven contra ese maestro."
     >
-      <nav className="mb-4 flex gap-4 border-b border-line" data-testid="vistas-proveedores">
-        <Pestana href={armarHref(sp, { vista: undefined })} activa={vista === 'maestro'} testid="vista-maestro">
-          Proveedores
-        </Pestana>
-        <Pestana href={armarHref(sp, { vista: 'resolver', p: undefined, q: undefined })} activa={vista === 'resolver'} testid="vista-resolver">
-          Nombres sin asignar
-        </Pestana>
-      </nav>
+      <NavAdministracion />
+
+      <div className="mb-4">
+        <SubTabs
+          testid="vistas-proveedores"
+          items={[
+            {
+              href: armarHref(sp, { vista: undefined, n: undefined, bq: undefined }),
+              label: 'Proveedores', cuenta: proveedores.length,
+              activo: vista === 'maestro', testid: 'vista-maestro',
+            },
+            {
+              href: armarHref(sp, { vista: 'resolver', p: undefined, q: undefined }),
+              label: 'Nombres sin resolver', cuenta: pendientesCuenta.error ? null : cola.length,
+              activo: vista === 'resolver', testid: 'vista-resolver',
+            },
+          ]}
+        />
+      </div>
 
       {vista === 'maestro'
         ? (
             <>
-              <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-                <BarraFiltros
+              <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-3">
+                <BuscadorURL
                   accion="/administracion/proveedores"
                   q={sp.q}
-                  placeholder="Nombre, razón social o CUIT"
+                  placeholder="Buscar por nombre o CUIT"
+                  oculto={{ activo: activo === 'activos' ? undefined : activo, p: sp.p }}
+                  ancho="w-full sm:w-[240px]"
                   testid="filtros-proveedores"
-                  extra={{ p: sp.p }}
-                >
-                  <SelectFiltro
-                    label="Estado" name="activo" valor={activo} testid="filtro-activo"
-                    opciones={ACTIVOS.map((a) => ({ valor: a.valor, etiqueta: a.etiqueta }))}
-                  />
-                </BarraFiltros>
-                <a
-                  href={armarHref(sp, { p: 'nuevo' })}
-                  data-testid="nuevo-proveedor"
-                  className="rounded-control bg-slate-900 px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-slate-700"
-                >
-                  Nuevo proveedor
-                </a>
+                />
+                <FiltrosURL
+                  testid="filtro-activo"
+                  opciones={ACTIVOS.map((a) => ({
+                    label: a.etiqueta,
+                    href: armarHref(sp, { activo: a.valor === 'activos' ? undefined : a.valor }),
+                    activo: a.valor === activo,
+                    testid: `filtro-activo-${a.valor}`,
+                  }))}
+                />
+                <div className="ml-auto flex items-center gap-4">
+                  {cola.length > 0 && (
+                    <a
+                      href={armarHref(sp, { vista: 'resolver', p: undefined, q: undefined })}
+                      className="text-[12px] text-warn hover:underline"
+                      data-testid="aviso-sin-resolver"
+                    >{cola.length} {cola.length === 1 ? 'nombre' : 'nombres'} sin resolver</a>
+                  )}
+                  <BotonEnlace href={armarHref(sp, { p: 'nuevo' })} variante="primaria" data-testid="nuevo-proveedor">
+                    + Nuevo proveedor
+                  </BotonEnlace>
+                </div>
               </div>
 
-              <div className="flex flex-col overflow-hidden rounded-xl border border-line bg-white lg:flex-row">
-                <div className="min-w-0 flex-1">
-                  <TablaProveedores
-                    proveedores={proveedores}
-                    seleccionado={seleccionado?.id}
-                    hrefDe={(id) => armarHref(sp, { p: id })}
-                  />
+              {/* TRES COLUMNAS NO SE ESTIRAN A 1440. `LAYOUT_RESPONSIVE.md`: «una tabla de dos
+                  columnas estirada a 1440 es ilegible». Con el panel abierto la lista usa lo que le
+                  queda; con el panel cerrado se acota, para que el nombre y su CUIT sigan siendo la
+                  misma fila para el ojo. */}
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
+                <div className={`min-w-0 flex-1 ${panelAbierto ? '' : 'lg:max-w-[900px]'}`}>
+                  {proveedores.length === 0
+                    ? <div data-testid="proveedores-vacio"><Vacio>Ningún proveedor coincide con lo buscado.</Vacio></div>
+                    : (
+                        <TablaProveedores
+                          proveedores={proveedores}
+                          seleccionado={seleccionado?.id}
+                          hrefDe={(id) => armarHref(sp, { p: id })}
+                        />
+                      )}
+                  <p className="mt-3 text-[11px] text-faint">
+                    {proveedores.length} {proveedores.length === 1 ? 'proveedor' : 'proveedores'} · el
+                    CUIT es lo que identifica a un proveedor: dos fichas con el mismo CUIT no pueden existir.
+                  </p>
                 </div>
                 {panelAbierto && (
                   <PanelProveedor
                     proveedor={seleccionado}
+                    compras={compras}
                     crear={crearProveedor}
                     editar={seleccionado ? editarProveedor.bind(null, seleccionado.id) : crearProveedor}
                     archivar={archivarProveedor}
@@ -168,35 +189,31 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
                   />
                 )}
               </div>
-
-              <p className="mt-3 px-1 text-[11px] text-faint">
-                {proveedores.length} {proveedores.length === 1 ? 'proveedor' : 'proveedores'}.
-                El CUIT es lo que identifica a un proveedor: dos fichas con el mismo CUIT no pueden existir.
-              </p>
             </>
           )
         : (
             <>
-              {pendientes?.error
+              {pendientesCuenta.error
                 ? (
-                    <p data-testid="cola-error" className="text-[13px] text-neg">
-                      No pude leer los nombres de compras: {pendientes.error}
-                    </p>
+                    <div data-testid="cola-error">
+                      <Aviso tono="neg" titulo="No pude leer los nombres de compras">{pendientesCuenta.error}</Aviso>
+                    </div>
                   )
                 : (
                     <>
-                      <p className="mb-2 px-1 text-[12px] text-muted" data-testid="cola-total">
+                      <p className="mb-3 text-[12px] text-muted" data-testid="cola-total">
                         {cola.length} {cola.length === 1 ? 'nombre' : 'nombres'} sin proveedor ·{' '}
                         {cola.reduce((a, n) => a + n.comprobantes, 0)} comprobantes ·{' '}
                         {plata(cola.reduce((a, n) => a + Number(n.total ?? 0), 0))}
                       </p>
-                      <div className="flex flex-col overflow-hidden rounded-xl border border-line bg-white lg:flex-row">
+                      <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
                         <div className="min-w-0 flex-1">
                           <TablaNombres
                             pendientes={cola}
                             seleccionado={nombreAbierto?.nombre_norm}
                             hrefDe={(n) => armarHref(sp, { n, bq: undefined })}
                           />
+                          <NombresResueltos resueltos={resueltos?.data ?? []} deshacer={deshacerResolucion} />
                         </div>
                         {nombreAbierto && (
                           <PanelNombre
@@ -212,10 +229,9 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
                           />
                         )}
                       </div>
-                      <NombresResueltos resueltos={resueltos?.data ?? []} deshacer={deshacerResolucion} />
                     </>
                   )}
-              <p className="mt-3 px-1 text-[11px] text-faint">
+              <p className="mt-4 max-w-[760px] text-[11px] leading-relaxed text-faint">
                 Estos nombres vienen de la columna de proveedor de Compras, que es texto libre. El OS
                 no los vincula solo: sólo reconoce el nombre escrito exactamente igual — nunca por
                 parecido. Resolver uno resuelve sus N comprobantes de una vez.

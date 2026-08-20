@@ -12,6 +12,7 @@
 import Link from 'next/link'
 import { fecha, plata } from '@/features/obras/components/formato'
 import { BotonAccion, type ResultadoAccion } from '@/shared/components/ui'
+import { Eyebrow, Nulo, Num, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
 import type { NombrePendiente, NombreResuelto } from '../types'
 
 export function TablaNombres({ pendientes, seleccionado, hrefDe }: {
@@ -21,45 +22,37 @@ export function TablaNombres({ pendientes, seleccionado, hrefDe }: {
 }) {
   if (pendientes.length === 0) {
     return (
-      <p data-testid="cola-vacia" className="px-3 py-6 text-[13px] text-muted">
-        Todos los nombres de compras tienen proveedor. No hay nada que resolver.
-      </p>
+      <div data-testid="cola-vacia">
+        <Vacio>Todos los nombres de compras tienen proveedor. No hay nada que resolver.</Vacio>
+      </div>
     )
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table data-testid="cola-nombres" className="w-full min-w-[520px] text-left">
-        <thead>
-          <tr className="border-b border-line text-[10px] uppercase tracking-wide text-faint">
-            <th className="px-3 py-2 font-medium">Nombre en el Sheet</th>
-            <th className="px-3 py-2 text-right font-medium">Comprob.</th>
-            <th className="px-3 py-2 text-right font-medium">Importe</th>
-            <th className="px-3 py-2 font-medium">Período</th>
-          </tr>
-        </thead>
-        <tbody>
-          {pendientes.map((n) => (
-            <tr
-              key={n.nombre_norm}
-              data-testid="nombre-pendiente"
-              className={`border-b border-line/60 last:border-0 hover:bg-surface-quiet ${n.nombre_norm === seleccionado ? 'bg-surface-quiet' : ''}`}
-            >
-              <td className="px-3 py-2">
-                <Link href={hrefDe(n.nombre_norm)} data-testid="abrir-nombre" className="block min-w-0">
-                  <span className="text-[13px] text-ink hover:underline">{n.nombre_origen}</span>
-                </Link>
-              </td>
-              <td className="px-3 py-2 text-right text-[12px] tabular-nums text-muted">{n.comprobantes}</td>
-              <td className="px-3 py-2 text-right text-[12px] tabular-nums text-ink">{plata(n.total)}</td>
-              <td className="px-3 py-2 text-[11px] tabular-nums text-faint">
-                {fecha(n.primera_fecha)} → {fecha(n.ultima_fecha)}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <Tabla testid="cola-nombres" minWidth={560}>
+      <THead>
+        <Th>Nombre en el Sheet</Th>
+        <Th num>Comprob.</Th>
+        <Th num>Importe</Th>
+        <Th>Período</Th>
+      </THead>
+      <tbody>
+        {pendientes.map((n) => (
+          <Tr key={n.nombre_norm} data-testid="nombre-pendiente" seleccionada={n.nombre_norm === seleccionado}>
+            <Td fuerte>
+              <Link href={hrefDe(n.nombre_norm)} data-testid="abrir-nombre" className="block min-w-0">
+                <span className="text-[13px] text-ink hover:underline">{n.nombre_origen}</span>
+              </Link>
+            </Td>
+            <Td num className="w-[100px] text-muted">{n.comprobantes}</Td>
+            <Td num fuerte className="w-[150px]">{plata(n.total)}</Td>
+            <Td className="w-[170px]">
+              <Num className="text-faint">{fecha(n.primera_fecha)} → {fecha(n.ultima_fecha)}</Num>
+            </Td>
+          </Tr>
+        ))}
+      </tbody>
+    </Tabla>
   )
 }
 
@@ -73,20 +66,22 @@ export function NombresResueltos({ resueltos, deshacer }: {
   if (manuales.length === 0) return null
 
   return (
-    <section className="mt-5">
-      <h2 className="mb-2 px-1 text-[11px] font-medium uppercase tracking-wide text-faint">Resueltos a mano</h2>
-      <div className="overflow-hidden rounded-xl border border-line bg-white" data-testid="cola-resueltos">
+    <section className="mt-8">
+      <Eyebrow className="mb-2">Resueltos a mano · {manuales.length}</Eyebrow>
+      <div data-testid="cola-resueltos">
         {manuales.map((r) => (
           <div
             key={r.nombre_norm}
             data-testid="nombre-resuelto"
-            className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-line/60 px-3 py-2 last:border-0"
+            className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-[#EFEEEA] py-2.5 last:border-0"
           >
             <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{r.nombre_norm}</span>
-            <span className="text-[11px] text-faint">
-              {r.estado === 'no_es_proveedor' ? 'no es un proveedor' : (r.proveedor_nombre ?? '—')}
+            <span className="text-[11.5px] text-muted">
+              {r.estado === 'no_es_proveedor'
+                ? <Nulo>no es un proveedor</Nulo>
+                : (r.proveedor_nombre ?? <Nulo>sin proveedor</Nulo>)}
             </span>
-            <span className="text-[11px] tabular-nums text-faint">{r.comprobantes}</span>
+            <Num className="text-faint">{r.comprobantes}</Num>
             {r.alias_id && (
               <BotonAccion accion={deshacer} args={[r.alias_id]} testid="deshacer-resolucion">
                 Deshacer

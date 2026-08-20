@@ -24,6 +24,7 @@
 // tiene que poder resolverse. Es la misma razón por la que `areas.test.ts` importa `'./areas.ts'`.
 import type { Rol } from '@/features/auth/types'
 import { veEconomia, type Area } from '../../auth/types/areas.ts'
+import { cuandoCorto } from '../../administracion/services/entradaService.ts'
 
 /**
  * LOS ROLES QUE SE PUEDEN ELEGIR, AGRUPADOS POR NIVEL.
@@ -105,4 +106,39 @@ export function motivoParaNoCambiarRol(c: CuentaEnJuego, rolNuevo: Rol): string 
   // la puerta es la misma y por eso el motivo también.
   if (veEconomia(c.rolActual) && !veEconomia(rolNuevo) && c.adminsActivos <= 1) return ULTIMO_ADMIN
   return null
+}
+
+/**
+ * EL ÚLTIMO INGRESO, DICHO EN LA HORA DE LA EMPRESA.
+ *
+ * `null` cuando la cuenta NUNCA entró. Es un dato, no un hueco: una invitación que nadie usó y una
+ * cuenta que entra todos los días son dos situaciones opuestas, y un guión las iguala. La pantalla
+ * lo escribe («nunca ingresó»).
+ *
+ * El formato sale de `cuandoCorto`, que fija la zona horaria a la de San Juan y no a la del proceso
+ * —Vercel corre en UTC, tres horas adelante—. Se IMPORTA en vez de reescribirse: dos definiciones de
+ * «hoy» en el mismo sistema es exactamente el defecto que la zona fija viene a evitar.
+ */
+export function ultimoIngresoDicho(iso: string | null, ahora = new Date()): string | null {
+  if (!iso) return null
+  return cuandoCorto(iso, ahora)
+}
+
+/**
+ * ¿ENTRA A TODAS LAS OBRAS SIN NECESIDAD DE `usuario_obra`?
+ *
+ * Es el espejo en TypeScript de `public.ve_obra()`: Dirección, Administración y —desde
+ * `20260819T4600_el_jefe_de_obra_ve_y_opera_todas_las_obras.sql`— el jefe de obra. Cualquier otro
+ * rol ve sólo las obras vinculadas.
+ *
+ * ═══ POR QUÉ NO SE PREGUNTA POR EL «ÁREA» ═══
+ *
+ * La pantalla de cuentas decidía esto con `areaDe(rol) === 'administracion'`, y hoy ACIERTA por
+ * casualidad: `areaDe` mete al jefe de obra en Administración porque es el área de NAVEGACIÓN —qué
+ * pantallas abre—, no el alcance de obra. Son dos preguntas distintas que hoy dan la misma
+ * respuesta; el día que una de las dos cambie, la pantalla va a afirmar un permiso que la base no
+ * da, y nadie se va a enterar hasta que alguien no vea una obra que creía tener.
+ */
+export function veTodasLasObras(rol: Rol | null | undefined): boolean {
+  return rol === 'direccion' || rol === 'administracion' || rol === 'jefe_obra'
 }

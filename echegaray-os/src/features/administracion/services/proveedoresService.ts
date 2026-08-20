@@ -80,3 +80,58 @@ export async function getNombresResueltos(
   if (error) return { data: null, error: error.message }
   return { data: (data ?? []) as NombreResuelto[], error: null }
 }
+
+// ═══ LOS NOMBRES DE COMPRAS DE UN PROVEEDOR, Y LO QUE PESAN ═══
+//
+// El handoff pide en la ficha «los nombres de Compras vinculados a ese CUIT». No es decoración: es
+// la prueba de que la canonicalización funcionó. Ver «CORRALON DEL CENTRO · CORRALON CENTRO SRL ·
+// CORR. CENTRO» colgando de una sola ficha es lo que deja confirmar que las tres grafías dejaron de
+// ser tres proveedores.
+//
+// Y de ahí sale también LO COMPRADO, sumando lo que ya suma `proveedor_nombre_resuelto` sobre
+// `costos_obra`. NO se guarda en la ficha: un total al lado de sus filas es la segunda versión del
+// mismo número, y el día que entre un comprobante nuevo dejan de coincidir sin avisar.
+//
+// LO QUE NO SE PUEDE MOSTRAR: la ÚLTIMA COMPRA. `proveedor_nombre_resuelto` publica comprobantes y
+// total, no la fecha máxima —a diferencia de la cola de pendientes, que sí la tiene—. Ponerle la
+// fecha de otra cosa sería inventarla; agregarla exige tocar la vista, o sea una migración, y este
+// bloque no abre migraciones. Queda declarado.
+
+export interface ComprasDelProveedor {
+  nombres: { nombre_norm: string; comprobantes: number; total: number; manual: boolean }[]
+  comprobantes: number
+  /** En pesos, histórico. `null` si no hay ningún nombre vinculado: 0 diría que nunca se le compró. */
+  comprado: number | null
+}
+
+/** El resumen, separado de la consulta para poder probarlo sin base. */
+export function resumirCompras(filas: NombreResuelto[]): ComprasDelProveedor {
+  const nombres = filas
+    .map((f) => ({
+      nombre_norm: f.nombre_norm,
+      comprobantes: Number(f.comprobantes ?? 0),
+      total: Number(f.total ?? 0),
+      manual: f.via === 'resolucion_manual',
+    }))
+    .sort((a, b) => b.total - a.total)
+  const comprobantes = nombres.reduce((a, n) => a + n.comprobantes, 0)
+  return {
+    nombres,
+    comprobantes,
+    comprado: nombres.length === 0 ? null : nombres.reduce((a, n) => a + n.total, 0),
+  }
+}
+
+export async function getComprasDelProveedor(
+  supabase: SupabaseClient,
+  proveedorId: string,
+): Promise<ComprasDelProveedor> {
+  const { data, error } = await supabase
+    .from('proveedor_nombre_resuelto')
+    .select('nombre_norm, comprobantes, total, estado, proveedor_id, proveedor_nombre, via, alias_id')
+    .eq('proveedor_id', proveedorId)
+  // Un error de lectura NO se dibuja como «no compró nada»: se devuelve la lista vacía con
+  // `comprado: null`, que la ficha escribe como ausencia y no como cero.
+  if (error) return { nombres: [], comprobantes: 0, comprado: null }
+  return resumirCompras((data ?? []) as NombreResuelto[])
+}
