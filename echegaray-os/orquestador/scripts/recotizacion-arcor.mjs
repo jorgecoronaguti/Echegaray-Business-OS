@@ -114,10 +114,20 @@ const TRABAJOS = [
     hoja: 'C · CIELORRASO VESTUARIOS',
     titulo: 'REPARACIÓN DE CIELORRASO EN VESTUARIOS',
     archivo: 'Reparacion de Cielo raso - Vestuario.pdf',
-    fecha: '23/06/2026', mesBase: 6,
+    // ═══ LA FECHA BASE LA DECIDIÓ EL DUEÑO (20/08/2026) ═══
+    //
+    // El PDF está fechado 23/06/2026 pero dice que el trabajo SE EJECUTÓ el sábado 07/02/2026, y
+    // ésa era la duda #2. El dueño la resolvió: *"la cotizacion de la reparacion de cielorrasos se
+    // consideraran en la misma fecha q el de febrero"*. Así que la actualización arranca en
+    // FEBRERO, igual que el Trabajo B, y no en junio.
+    //
+    // La fecha del documento no se borra: se sigue mostrando, porque es un hecho. Lo que cambia es
+    // desde cuándo se indexa, que es una decisión y está declarada como tal.
+    fecha: '23/06/2026 (documento) · 07/02/2026 (ejecución)', mesBase: 2,
     pago: '70 días FF', req: '22929405',
-    nota: 'El propio PDF dice que el trabajo SE EJECUTÓ el sábado 07/02/2026, pero el documento '
-      + 'está fechado 23/06/2026. La fecha base cambia el resultado: ver la pestaña DUDAS.',
+    nota: 'Se indexa desde FEBRERO 2026 por decisión del dueño (20/08/2026): el trabajo se ejecutó '
+      + 'el 07/02/2026 y se cotiza en la misma fecha que «Materiales Varios». El documento está '
+      + 'fechado 23/06/2026 y eso no cambia: cambia desde cuándo corre la actualización.',
     items: [
       ['Mano de obra', 'hr', 12, 65806.14, 789673.68, 'Mano de obra'],
     ],
@@ -326,8 +336,8 @@ function hojaDudas() {
   f.push(['#', 'Qué falta', 'Por qué importa', 'Quién lo resuelve'])
   f.push([1, 'El margen: ¿markup histórico o 20-30% sobre costo real?',
     'El costo real medido del Trabajo B da un margen muy superior al 20-30% declarado. Las dos opciones dan precios distintos. Ver la pestaña MARGEN.', 'El dueño'])
-  f.push([2, 'La fecha base del Trabajo C: ¿07/02/2026 (ejecución) o 23/06/2026 (documento)?',
-    'Con febrero el factor es ~+16%; con junio es ~+2%. Son dos cotizaciones distintas.', 'El dueño / Rodrigo'])
+  f.push([2, 'RESUELTA · La fecha base del Trabajo C',
+    'El dueño decidió el 20/08/2026 que se cotiza en la misma fecha que el de febrero, porque el trabajo se ejecutó el 07/02/2026. Se indexa desde febrero, no desde junio: el factor pasa de +2,5% a +17,4%.', 'Ya decidida'])
   f.push([3, 'El dato UOCRA de enero-2026 (baja de 14,5% contra diciembre)',
     'Si esa fila está mal, cualquier cálculo de mano de obra anclado en enero arranca torcido.', 'Verificar contra UOCRA oficial'])
   f.push([4, 'El +$100.000 en los Trabajos A y B',
@@ -375,7 +385,7 @@ function hojaResumen() {
   f.push(['3 · LO QUE ESTE ARCHIVO NO DECIDE'])
   f.push(['El MARGEN. El dueño pidió que las dos opciones se muestren y que la elección quede en sus manos: están en la pestaña MARGEN.'])
   f.push(['El Trabajo B es el único con costo real atribuible, y ahí el margen que de hecho tuvo fue 57-59% sobre precio, no el 20-30% declarado. Recotizar al 20-30% BAJA el precio.'])
-  f.push(['Y hay siete cosas sin resolver que cambian el número: están en DUDAS, numeradas.'])
+  f.push(['La fecha base del cielorraso ya la decidió el dueño: febrero, no junio. Quedan seis cosas sin resolver en DUDAS, numeradas.'])
   f.push(V())
   f.push(['Generado por', 'orquestador/scripts/recotizacion-arcor.mjs', 'Echegaray Business OS'])
   return f
@@ -430,6 +440,12 @@ async function main() {
   if (!r.ok) throw new Error(`no pude crear las pestañas: ${r.status} ${String(await r.text()).slice(0, 200)}`)
 
   for (const [nombre, filas] of hojas) {
+    // NO SE LIMPIA ANTES DE ESCRIBIR, Y NO ES UN OLVIDO. El intento está registrado: `no-borrar.mjs`
+    // —regla permanente de este repo— rechaza cualquier borrado explícito sobre una pestaña con
+    // contenido, y no se evade. La consecuencia hay que tenerla en la cabeza: si una versión futura
+    // de este generador ACORTA una pestaña, las filas de más quedan vivas y no se distinguen del
+    // contenido bueno. Mientras el ancho y el alto de cada bloque no bajen, sobrescribir alcanza; el
+    // día que bajen, se rehace el archivo entero en vez de reescribirlo encima.
     const ancho = Math.max(...filas.map((r) => r.length), 1)
     const cuadro = filas.map((r) => [...r, ...Array(ancho - r.length).fill('')])
     await google.updateSheetValues(creado.id, `'${nombre}'!A1`, cuadro)
