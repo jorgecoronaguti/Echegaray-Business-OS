@@ -49,7 +49,8 @@ test('cronograma: la actividad creada desde el Gantt se edita, recibe avance y s
     await expect(panel).toContainText('sin sellar')
 
     // ── EDICIÓN ─────────────────────────────────────────────────────────────
-    await panel.locator('summary', { hasText: 'Editar la actividad' }).click()
+    // EDITAR SE ABRE DESDE EL PIE DEL PANEL, que es donde el objetivo pone «Editar actividad».
+    await panel.getByTestId('pie-editar-actividad').click()
     const editar = page.getByTestId('form-editar-actividad')
     await editar.locator('input[name="hh_plan"]').fill('40')
     await editar.locator('input[name="cuadrilla"]').fill(`${MARCA} cuadrilla`)
@@ -94,7 +95,7 @@ test('cronograma: la actividad creada desde el Gantt se edita, recibe avance y s
     // rodeo del test: archivar cambia la DEFINICIÓN de la actividad, no su avance del día, y
     // dejarlo suelto en el panel ponía un botón destructivo al lado del que se aprieta todos los
     // días. El panel muestra arriba lo que se mira y esconde lo que se decide.
-    await page.locator('summary', { hasText: 'Editar la actividad' }).click()
+    await page.getByTestId('pie-editar-actividad').click()
     await page.getByTestId('archivar-actividad').click()
     await expect(async () => {
       const { data } = await sb.from('obra_actividad').select('archivada, pct').eq('id', guardada.id).single()

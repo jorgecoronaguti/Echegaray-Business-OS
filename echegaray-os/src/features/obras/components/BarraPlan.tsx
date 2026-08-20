@@ -99,25 +99,32 @@ export function BarraPlan({
   )
   const n = cuantosFiltros(filtro)
   const alternar = (v: typeof abierto) => setAbierto((p) => (p === v ? '' : v))
-  const boton = (v: Exclude<typeof abierto, ''>, texto: string, testid: string, insignia?: number) => (
+  // LA ACCIÓN PRINCIPAL VA EN EL AMARILLO DE LA MARCA. En el objetivo «+ Nueva actividad» es el
+  // único botón lleno de la pantalla: es lo que se hace acá. Los demás son iguales entre sí porque
+  // son todos secundarios, y darle el mismo peso a los tres hacía que ninguno se leyera primero.
+  const boton = (
+    v: Exclude<typeof abierto, ''>, texto: string, testid: string, insignia?: number, principal?: boolean,
+  ) => (
     <button
       type="button"
       onClick={() => alternar(v)}
       data-testid={testid}
       aria-expanded={abierto === v}
-      className={`shrink-0 rounded-control border px-2.5 py-1 text-[12px] ${
-        abierto === v ? 'border-line-strong bg-surface-sunken text-ink' : 'border-line text-ink hover:bg-surface-sunken'
+      className={`shrink-0 rounded-control px-3.5 py-1.5 text-[13px] min-[1900px]:px-4 min-[1900px]:py-2 min-[1900px]:text-[15px] ${
+        principal
+          ? `bg-marca font-medium text-ink hover:brightness-95 ${abierto === v ? 'brightness-90' : ''}`
+          : `border ${abierto === v ? 'border-line-strong bg-surface-sunken text-ink' : 'border-line text-ink hover:bg-surface-sunken'}`
       }`}
     >
       {texto}
-      {insignia ? <span className="ml-1.5 rounded bg-marca px-1 text-[10px] font-medium text-ink">{insignia}</span> : null}
+      {insignia ? <span className="ml-1.5 rounded bg-ink px-1 text-[10px] font-medium text-white">{insignia}</span> : null}
     </button>
   )
 
   return (
     <div className="rounded-card border border-line bg-surface" data-testid="barra-plan">
       <div className="flex flex-wrap items-center gap-2 px-3 py-2">
-        {alta && boton('actividad', '+ Nueva actividad', 'nueva-actividad')}
+        {alta && boton('actividad', '+ Nueva actividad', 'nueva-actividad', undefined, true)}
         {acciones.crearRubro && boton('rubros', '+ Nuevo rubro', 'nuevo-rubro')}
         <div className="flex-1" />
         {boton('filtros', 'Filtros', 'boton-filtros', n)}

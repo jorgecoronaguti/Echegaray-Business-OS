@@ -38,7 +38,10 @@ export function BloqueMedicion({ a, definir }: { a: Actividad; definir?: AccionF
             <Dato k="HH plan" v={n2(a.hh_plan)} />
           </dl>
         </section>
-        <section className="rounded-md border border-line bg-surface px-2.5 py-2">
+        {/* REAL VA TINTADO. En el objetivo las dos tarjetas no son iguales: el plan es lo que se
+            prometió y lo real es lo que pasó, y darle un fondo propio evita tener que leer el
+            rótulo para saber cuál de las dos columnas se está mirando. */}
+        <section className="rounded-md border border-line bg-surface-quiet px-2.5 py-2">
           <Rotulo>Real</Rotulo>
           <dl className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[0.92em]">
             <Dato
@@ -204,7 +207,7 @@ export function BloqueRecursos({ a, personas, reales, equipos, obraId }: {
 // EJECUCIÓN RECIENTE — el historial de la actividad, sin salir del panel
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export function BloqueEjecucion({ a, partes, personasPorFecha, verTodo }: {
+export function BloqueEjecucion({ a, partes, personasPorFecha, verTodo, todas }: {
   a: Actividad
   partes: ParteEjecucion[]
   /** A dónde lleva «ver todo el historial». Sin él se dice cuántos quedan, sin enlace. */
@@ -212,6 +215,8 @@ export function BloqueEjecucion({ a, partes, personasPorFecha, verTodo }: {
   /** Cuántas HH y cuántas personas se imputaron a ESTA actividad cada día. Sale de `registros_hh`,
    *  no del parte: el parte no guarda horas, y por eso las dos columnas pueden faltar. */
   personasPorFecha: Map<string, { horas: number; personas: number }>
+  /** La pestaña «Ejecución» del panel muestra el historial entero; el resumen, los últimos cinco. */
+  todas?: boolean
 }) {
   if (partes.length === 0) {
     return (
@@ -236,7 +241,7 @@ export function BloqueEjecucion({ a, partes, personasPorFecha, verTodo }: {
             </tr>
           </thead>
           <tbody>
-            {partes.slice(0, 5).map((p) => {
+            {(todas ? partes : partes.slice(0, 5)).map((p) => {
               const hh = personasPorFecha.get(p.fecha)
               return (
                 <tr key={p.id} className="border-b border-line/60 last:border-0" data-testid="fila-parte">

@@ -55,14 +55,17 @@ export function Dato({ k, v }: { k: string; v: ReactNode }) {
 
 /** El plegable de los bloques secundarios. Compacto y con el conteo a la vista: lo que hay adentro
  *  se sabe sin abrirlo, que es lo que hace que abrirlo valga la pena. */
-export function Plegable({ titulo, cuenta, testid, children }: {
+export function Plegable({ titulo, cuenta, testid, abierto, children }: {
   titulo: string
   cuenta?: number | null
   testid?: string
+  /** Abierto de entrada. Lo usa el panel cuando el bloque ES la pestaña: ahí no hay nada que
+   *  desplegar, ya se eligió mirarlo. */
+  abierto?: boolean
   children: ReactNode
 }) {
   return (
-    <details className="rounded-md border border-line bg-surface px-2.5 py-1.5" data-testid={testid}>
+    <details className="rounded-md border border-line bg-surface px-2.5 py-1.5" data-testid={testid} open={abierto}>
       <summary className="cursor-pointer text-[0.92em] text-muted">
         {titulo}
         {cuenta != null && cuenta > 0 && <span className="ml-2 tabular-nums text-ink">{cuenta}</span>}

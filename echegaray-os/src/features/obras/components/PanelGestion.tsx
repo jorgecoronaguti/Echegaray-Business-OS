@@ -159,15 +159,16 @@ export function BloqueImpedimentosActividad({ a, abiertos, liberados, crear, lib
 // Que 3 de 6 estén hechas NO es 50% de la actividad: las seis no duran ni pesan lo mismo. Se dice
 // «3 de 6», que es un hecho, en vez de un porcentaje que nadie puede defender.
 
-export function BloqueTareas({ tareas, crear, alternar }: {
+export function BloqueTareas({ tareas, crear, alternar, abierto }: {
   tareas: Actividad[]
   crear?: AccionFormulario
   alternar?: (tareaId: string, estado: string) => Promise<ResultadoAccion>
+  abierto?: boolean
 }) {
   if (tareas.length === 0 && !crear) return null
   const hechas = tareas.filter((t) => t.estado === 'hecha').length
   return (
-    <Plegable titulo={tareas.length ? `Tareas · ${hechas} de ${tareas.length}` : 'Tareas'} testid="bloque-tareas">
+    <Plegable titulo={tareas.length ? `Tareas · ${hechas} de ${tareas.length}` : 'Tareas'} testid="bloque-tareas" abierto={abierto}>
       <ul className="space-y-1">
         {tareas.map((t) => (
           <li key={t.id} className="flex items-center justify-between gap-2 text-[0.92em]" data-testid="tarea">
@@ -247,16 +248,17 @@ export function BloqueNotas({ notas, agregar, borrar }: {
 // DOCUMENTOS — el archivo NO se copia: se guarda el vínculo de Drive
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export function BloqueDocumentos({ a, documentos, vincular, soltar }: {
+export function BloqueDocumentos({ a, documentos, vincular, soltar, abierto }: {
   a: Actividad
   /** Ya filtrados a los de ESTA actividad. Los de la obra sin actividad viven en la solapa Documentos. */
   documentos: DocumentoObra[]
   vincular?: AccionFormulario
   soltar?: (driveFileId: string) => Promise<ResultadoAccion>
+  abierto?: boolean
 }) {
   if (!vincular && documentos.length === 0) return null
   return (
-    <Plegable titulo="Documentos" cuenta={documentos.length} testid="bloque-documentos-actividad">
+    <Plegable titulo="Documentos" cuenta={documentos.length} testid="bloque-documentos-actividad" abierto={abierto}>
       <ul className="space-y-1">
         {documentos.map((d) => (
           <li key={d.drive_file_id} className="flex items-start justify-between gap-2 text-[0.92em]" data-testid="documento-actividad">
@@ -302,12 +304,13 @@ export function BloqueDocumentos({ a, documentos, vincular, soltar }: {
 // se EDITA es sólo la primera —de qué depende ÉSTA—: dejar cargar las dos desde el mismo lado
 // duplicaría cada arista en la cabeza del que la carga.
 
-export function Dependencias({ a, actividades, dependencias, agregar, quitar }: {
+export function Dependencias({ a, actividades, dependencias, agregar, quitar, abierto }: {
   a: Actividad
   actividades: Actividad[]
   dependencias: Dependencia[]
   agregar?: (destinoId: string, form: FormData) => Promise<ResultadoAccion>
   quitar?: (dependenciaId: string) => Promise<ResultadoAccion>
+  abierto?: boolean
 }) {
   const nombre = (id: string) => actividades.find((x) => x.id === id)?.nombre ?? 'una actividad archivada'
   const dependeDe = dependencias.filter((d) => d.destino_id === a.id)
@@ -322,6 +325,7 @@ export function Dependencias({ a, actividades, dependencias, agregar, quitar }: 
       titulo="Depende de"
       cuenta={dependeDe.length}
       testid="panel-dependencias"
+      abierto={abierto}
     >
       {dependeDe.length === 0 ? (
         <p className="text-[0.92em] text-faint">Nada declarado.</p>

@@ -174,16 +174,27 @@ export function Gantt({
   // LAS DOS CABECERAS MIDEN LO MISMO o las filas de la tabla y las del calendario arrancan
   // desfasadas, y a partir de ahí cada renglón miente sobre qué barra le toca.
   const ALTO_CABECERA = esc.fila + 12
-  const anchoFijo = anchoCaja
-    ? Math.round(Math.min(Math.max(560, anchoCaja * 0.38), Math.max(168, anchoCaja * 0.38)))
-    : 0
+  // LA PROPORCIÓN NO ES LA MISMA EN 1.000 PX QUE EN 2.500. El objetivo pide 35-40% para la tabla,
+  // pero ese 38% sobre una caja de 1.024 —1.536 con el panel abierto— deja 389 px, y ahí las cuatro
+  // columnas de apoyo se comen el nombre entero. Las columnas tienen un ancho mínimo real: cuanto
+  // más chica la caja, mayor tiene que ser la fracción para que la tabla siga diciendo algo.
+  const fraccion = !anchoCaja ? 0.38 : anchoCaja < 1300 ? 0.46 : 0.38
+  const anchoFijo = anchoCaja ? Math.round(Math.max(168, anchoCaja * fraccion)) : 0
   const anchoLibre = anchoCaja ? anchoCaja - anchoFijo : 0
   // EL NOMBRE DE LA ACTIVIDAD MANDA SOBRE LAS COLUMNAS DE APOYO. Con el panel abierto la tabla mide
   // ~390 px y las cuatro columnas de la derecha se comían 300: quedaban 88 px para el nombre y la
   // pantalla decía «Muro G 1/…». El estado y el avance se quedan —son los que se leen de un vistazo—
   // y las fechas se van cuando no hay lugar: están en la barra, que es lo que se está mirando, y
   // enteras en el panel de la actividad.
-  const mostrarFechas = anchoFijo === 0 || anchoFijo >= 500
+  const mostrarFechas = anchoFijo === 0 || anchoFijo >= 440
+  // LAS COLUMNAS DE APOYO SE ENCOGEN ANTES QUE EL NOMBRE. Medido en 1536 —el ancho del objetivo—:
+  // la tabla mide 583 px y estado+inicio+fin+% se llevaban 284, así que «Colocación de Plegados de
+  // Ventanas» entraba en 180 px y salía «Colocacion de Plegad…». El nombre es el dato de la fila;
+  // las otras cuatro columnas son apoyo y pueden apretarse sin perder nada.
+  const angosta = anchoFijo > 0 && anchoFijo < 760
+  const wEstado = angosta ? 84 : 100
+  const wFecha = angosta ? 52 : 68
+  const wPct = angosta ? 48 : 64
   // NO HAY DESPLAZAMIENTO AUTOMÁTICO. Se probó centrar en hoy y es peor: en «San Francisco» las
   // primeras veinte filas son de junio y hoy cae en agosto, así que la pantalla abría en un
   // rectángulo vacío con las barras de las filas visibles fuera de cuadro. El plan se lee de
@@ -382,10 +393,10 @@ export function Gantt({
                   />
                 )}
                 <span className="flex-1">Actividad</span>
-                <span className="hidden w-[96px] px-2 sm:inline">Estado</span>
-                {mostrarFechas && <span className="hidden w-[68px] px-2 text-right sm:inline">Inicio</span>}
-                {mostrarFechas && <span className="hidden w-[68px] px-2 text-right sm:inline">Fin</span>}
-                <span className="hidden w-[64px] px-2 text-right sm:inline">%</span>
+                <span className="hidden px-2 sm:inline" style={{ width: wEstado }}>Estado</span>
+                {mostrarFechas && <span className="hidden px-2 text-right sm:inline" style={{ width: wFecha }}>Inicio</span>}
+                {mostrarFechas && <span className="hidden px-2 text-right sm:inline" style={{ width: wFecha }}>Fin</span>}
+                <span className="hidden px-2 text-right sm:inline" style={{ width: wPct }}>%</span>
               </div>
               {filas.map((f) => {
                 if (f.tipo === 'grupo') {
@@ -396,7 +407,7 @@ export function Gantt({
                     <div
                       key={f.clave}
                       style={{ height: ALTO_FILA }}
-                      className="flex w-full items-center gap-1.5 border-b border-line bg-surface-quiet px-3 hover:bg-surface-sunken"
+                      className="flex w-full items-center gap-1.5 border-b border-line px-3 hover:bg-surface-sunken"
                     >
                       {masivas && suyas.length > 0 && (
                         <Casilla
@@ -415,8 +426,11 @@ export function Gantt({
                       >
                         {/* EL RUBRO ES UN NIVEL, NO UNA FILA MÁS. Versalitas, negrita y su propia
                             banda: la jerarquía Rubro → Actividad tiene que verse sin leer. */}
-                        <span aria-hidden className={`shrink-0 text-[9px] text-muted transition-transform ${cerrado ? '' : 'rotate-90'}`}>▶</span>
-                        <span className={`min-w-0 flex-1 truncate font-semibold uppercase tracking-wide text-ink ${esc.texto}`} title={g.nombre}>{g.nombre}</span>
+                        {/* EL RUBRO ES UN NIVEL, y el objetivo lo dibuja con su chevron y en
+                            negrita —no en versalitas sobre una banda gris—: la jerarquía la hace la
+                            indentación de las hijas, no el color de fondo del padre. */}
+                        <span aria-hidden className={`shrink-0 text-[10px] text-muted transition-transform ${cerrado ? '-rotate-90' : ''}`}>▾</span>
+                        <span className={`min-w-0 flex-1 truncate font-semibold text-ink ${esc.texto}`} title={g.nombre}>{g.nombre}</span>
                         <span className={`shrink-0 tabular-nums text-muted ${esc.chip}`}>
                           {g.pct == null ? `${g.hijas.length}` : `${g.pct}%`}
                         </span>
@@ -455,23 +469,26 @@ export function Gantt({
                   >
                     {/* INDENTADA BAJO SU RUBRO, y en el color del texto —no en gris—: es el dato
                         principal de la fila. El `title` da el nombre entero cuando no entra. */}
+                    <span aria-hidden className="shrink-0 pl-4 pr-1.5 text-[10px] text-faint">›</span>
                     <span
-                      className="min-w-0 flex-1 truncate py-2 pl-4 pr-2 text-ink"
+                      className="min-w-0 flex-1 truncate py-2 pr-2 text-ink"
                       title={[a.seccion, a.codigo, a.nombre].filter(Boolean).join(' · ')}
                     >{a.nombre}</span>
                     {/* EL ESTADO OPERATIVO, no el guardado: una actividad con un impedimento
                         abierto dice «Bloqueada» aunque su estado cargado siga siendo «En curso». Es
                         la misma derivación que usa el tablero — un solo lugar donde se decide. */}
-                    <span className="hidden h-full w-[96px] shrink-0 items-center border-l border-line/50 px-2 sm:flex">
+                    <span className="hidden h-full shrink-0 items-center border-l border-line/50 px-2 sm:flex" style={{ width: wEstado }}>
                       <EstadoChip estado={a.estado_operativo} />
                     </span>
-                    {mostrarFechas && <span className={`hidden h-full w-[68px] shrink-0 items-center justify-end border-l border-line/50 px-2 tabular-nums text-muted sm:flex ${esc.chip}`}>{fmtCorto(a.inicio_plan)}</span>}
-                    {mostrarFechas && <span className={`hidden h-full w-[68px] shrink-0 items-center justify-end border-l border-line/50 px-2 tabular-nums text-muted sm:flex ${esc.chip}`}>{fmtCorto(a.fin_plan)}</span>}
+                    {mostrarFechas && <span className={`hidden h-full shrink-0 items-center justify-end border-l border-line/50 px-2 tabular-nums text-muted sm:flex ${esc.chip}`} style={{ width: wFecha }}>{fmtCorto(a.inicio_plan)}</span>}
+                    {mostrarFechas && <span className={`hidden h-full shrink-0 items-center justify-end border-l border-line/50 px-2 tabular-nums text-muted sm:flex ${esc.chip}`} style={{ width: wFecha }}>{fmtCorto(a.fin_plan)}</span>}
                     {/* EL AVANCE CALCULADO, no el declarado: es el mismo número que muestra el panel
                         y el que promedia la obra. «—» cuando no hay ninguno — un 0% inventado diría
                         que la actividad no arrancó cuando lo que pasa es que nadie la midió. */}
-                    <span className={`hidden h-full w-[64px] shrink-0 items-center justify-end border-l border-line/50 px-2 font-medium tabular-nums text-ink sm:flex ${esc.chip}`}>
-                      {a.avance_pct == null ? <span className="font-normal text-faint">—</span> : `${Math.round(Number(a.avance_pct))}%`}
+                    <span className={`hidden h-full shrink-0 items-center justify-end border-l border-line/50 px-2 font-medium tabular-nums text-ink sm:flex ${esc.chip}`} style={{ width: wPct }}>
+                      {a.avance_pct == null
+                        ? <span className="font-normal text-faint">—</span>
+                        : <span className={a.estado_operativo === 'en_curso' ? 'text-ink' : 'font-normal text-muted'}>{Math.round(Number(a.avance_pct))}%</span>}
                     </span>
                   </button>
                   </div>

@@ -154,8 +154,9 @@ test('5-9 · el panel declara la precedencia, la tarea, el impedimento y la nota
   // `agregarDependencia` estaba escrita desde el 17/08 y la página no la ataba: el panel decía «nada
   // declarado» sin un solo control para declarar algo, y el Gantt no dibujaba flechas porque la
   // tabla estaba vacía por falta de PUERTA, no por falta de dato.
+  await panel.getByTestId('tab-panel-dependencias').click()
   const dep = panel.getByTestId('panel-dependencias')
-  await dep.locator('summary').click()
+  if ((await dep.getAttribute('open')) === null) await dep.locator('summary').click()
   await dep.getByTestId('dependencia-origen').selectOption({ label: PREVIA })
   await dep.getByTestId('form-dependencia').getByRole('button', { name: 'Agregar dependencia' }).click()
   await expect.poll(async () => {
@@ -165,12 +166,16 @@ test('5-9 · el panel declara la precedencia, la tarea, el impedimento y la nota
   }, { timeout: 20_000 }).toBe(1)
 
   // ═══ LA TAREA ═══
+  await panel.getByTestId('tab-panel-tareas').click()
   const tareas = panel.getByTestId('bloque-tareas')
-  await tareas.locator('summary').click()
+  if ((await tareas.getAttribute('open')) === null) await tareas.locator('summary').click()
   await tareas.getByTestId('tarea-nombre').fill(`${M} encofrado`)
   await tareas.getByTestId('form-tarea').getByRole('button', { name: 'Agregar' }).click()
 
   // ═══ EL IMPEDIMENTO, ANOTADO Y RESUELTO SIN SALIR DEL PANEL ═══
+  // IMPEDIMENTOS Y NOTAS VIVEN EN «Resumen», que es la pestaña del panorama operativo. El test
+  // venía de «Tareas», así que hay que volver.
+  await panel.getByTestId('tab-panel-resumen').click()
   const imp = panel.getByTestId('panel-impedimentos')
   await imp.locator('summary').click()
   const form = imp.getByTestId('form-impedimento-actividad')
@@ -306,8 +311,9 @@ test('15-17 · el papel se cuelga de la actividad, el filtro recorta y el rubro 
   await expect(panel).toBeVisible({ timeout: 25_000 })
 
   // ═══ EL PAPEL — el archivo NO se copia: se guarda el vínculo ═══
+  await panel.getByTestId('tab-panel-documentos').click()
   const docs = panel.getByTestId('bloque-documentos-actividad')
-  await docs.locator('summary').click()
+  if ((await docs.getAttribute('open')) === null) await docs.locator('summary').click()
   await docs.getByTestId('documento-enlace').fill(`https://drive.google.com/file/d/${M}-plano-columnas/view`)
   await docs.locator('input[name="nombre"]').fill(`${M} plano de columnas`)
   await docs.getByRole('button', { name: 'Vincular' }).click()

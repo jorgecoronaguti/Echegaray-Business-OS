@@ -93,7 +93,7 @@ test('1-9 · crear la actividad, medirla en m², y verla en las cuatro vistas', 
   await expect(page.getByTestId('gantt')).toBeVisible({ timeout: 20_000 })
   await expect(page.getByTestId('panel-actividad')).toBeVisible({ timeout: 20_000 })
   const medicion = page.getByTestId('bloque-medicion')
-  if (!(await medicion.getAttribute('open'))) await medicion.locator('summary').click()
+  if ((await medicion.getAttribute('open')) === null) await medicion.locator('summary').click()
   await medicion.locator('input[name="unidad"]').fill('m²')
   await medicion.locator('input[name="cantidad_objetivo"]').fill('180')
   await medicion.getByTestId('metodo-avance').selectOption('cantidad')
@@ -211,8 +211,11 @@ test('8 · la tarea descompone la actividad, y no aparece como una fila más del
   const panel = page.getByTestId('panel-actividad')
   await expect(panel).toBeVisible({ timeout: 20_000 })
 
+  // LAS TAREAS VIVEN EN SU PESTAÑA desde el 20/08: el panel dejó de ser una columna de bloques
+  // plegados y pasó a Resumen · Tareas · Ejecución · Dependencias · Documentos.
+  await panel.getByTestId('tab-panel-tareas').click()
   const bloque = panel.getByTestId('bloque-tareas')
-  if (!(await bloque.getAttribute('open'))) await bloque.locator('summary').click()
+  if ((await bloque.getAttribute('open')) === null) await bloque.locator('summary').click()
   await bloque.getByTestId('tarea-nombre').fill(`${MARCA} encofrado`)
   await bloque.getByTestId('form-tarea').getByRole('button', { name: 'Agregar' }).click()
 

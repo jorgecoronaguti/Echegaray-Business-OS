@@ -92,6 +92,20 @@ export interface DatosDeActividad {
   hhPorFecha: Map<string, { horas: number; personas: number }>
 }
 
+// ═══ LAS PESTAÑAS DEL PANEL ═══
+// «Resumen» trae TODO lo operativo —Plan|Real, personal, equipos, ejecución reciente, impedimentos
+// y notas— sin un solo clic. Las otras cuatro son el detalle: lo que antes vivía plegado al final
+// de una columna de mil píxeles, donde no lo encontraba nadie.
+type Tab = 'resumen' | 'tareas' | 'ejecucion' | 'dependencias' | 'documentos'
+
+const TABS: { id: Tab; label: string; cuenta: (d: DatosDeActividad, imp: Restriccion[]) => number }[] = [
+  { id: 'resumen', label: 'Resumen', cuenta: () => 0 },
+  { id: 'tareas', label: 'Tareas', cuenta: (d) => d.tareas.length },
+  { id: 'ejecucion', label: 'Ejecución', cuenta: (d) => d.partes.length },
+  { id: 'dependencias', label: 'Dependencias', cuenta: () => 0 },
+  { id: 'documentos', label: 'Documentos', cuenta: (d) => d.documentos.length },
+]
+
 export const DATOS_VACIOS: DatosDeActividad = {
   partes: [], tareas: [], notas: [], documentos: [], personasReales: [], equipos: [],
   hhPorFecha: new Map(),
@@ -229,6 +243,14 @@ export function PanelActividad({
   // actividad». Sigue siendo el mismo `<details>` —no hay una segunda pantalla de edición—: lo
   // único que cambia es que el botón que lo abre está donde se lo busca.
   const [editando, setEditando] = useState(false)
+  // ═══ LAS PESTAÑAS DEL PANEL (20/08/2026) ═══
+  //
+  // El objetivo las dibuja así: Resumen · Tareas · Ejecución · Dependencias · Documentos. «Resumen»
+  // NO es un recorte —trae Plan|Real, personal, equipos, ejecución reciente, impedimentos y notas,
+  // todo visible sin un solo clic—: las otras cuatro son el detalle que antes vivía plegado abajo
+  // de todo, donde no lo encontraba nadie. Se remonta al cambiar de actividad para no dejar abierta
+  // la pestaña de la anterior.
+  const [tab, setTab] = useState<Tab>('resumen')
   const responsable = a.responsable_id
     ? (personas.find((p) => p.id === a.responsable_id)?.nombre_completo ?? null)
     : null
@@ -272,17 +294,25 @@ export function PanelActividad({
           </div>
         </div>
 
-        {/* LA LÍNEA BASE SE DICE SIEMPRE: es contra qué se mide el desvío, y «sin sellar» no es lo
-            mismo que «en fecha». */}
-        <p className="mt-1.5 text-[11px] tabular-nums text-faint">
-          Línea base: {a.inicio_base ? `${fecha(a.inicio_base)} → ${fecha(a.fin_base)}` : 'sin sellar'}
-        </p>
-
-        {acciones.moverDeRubro && rubros.length > 0 && (
-          <div className="mt-2">
-            <SelectorDeRubro a={a} rubros={rubros} mover={acciones.moverDeRubro} />
-          </div>
-        )}
+        <nav className="-mx-3 mt-3 flex gap-1 overflow-x-auto border-b border-line px-3" data-testid="tabs-panel">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              aria-current={tab === t.id ? 'page' : undefined}
+              data-testid={`tab-panel-${t.id}`}
+              className={`-mb-px shrink-0 border-b-2 px-2.5 py-2 text-[0.92em] ${
+                tab === t.id ? 'border-marca font-medium text-ink' : 'border-transparent text-muted hover:text-ink'
+              }`}
+            >
+              {t.label}
+              {t.cuenta(datos, impedimentos) > 0 && (
+                <span className="ml-1 tabular-nums text-faint">{t.cuenta(datos, impedimentos)}</span>
+              )}
+            </button>
+          ))}
+        </nav>
 
         {/* ═══ EL ORDEN DEL PANEL ES EL ORDEN DE LAS PREGUNTAS (20/08/2026) ═══
             Arrancaba por los impedimentos: la primera lectura de CUALQUIER actividad era «no hay
@@ -290,7 +320,17 @@ export function PanelActividad({
             va el resumen operativo —Plan contra Real—, después con quién y con qué se hace, después
             qué pasó estos días, y recién ahí lo que la frena. Lo que se abre para HACER algo
             —tareas, precedencias, papeles, edición— queda plegado abajo. */}
-        <div className="mt-3 space-y-2.5">
+        <div className={`mt-3 space-y-2.5 ${tab === 'resumen' ? '' : 'hidden'}`}>
+          {/* LA LÍNEA BASE SE DICE SIEMPRE: es contra qué se mide el desvío, y «sin sellar» no es lo
+              mismo que «en fecha». */}
+          <p className="text-[0.85em] tabular-nums text-faint">
+            Línea base: {a.inicio_base ? `${fecha(a.inicio_base)} → ${fecha(a.fin_base)}` : 'sin sellar'}
+          </p>
+
+          {acciones.moverDeRubro && rubros.length > 0 && (
+            <SelectorDeRubro a={a} rubros={rubros} mover={acciones.moverDeRubro} />
+          )}
+
           <BloqueMedicion
             a={a}
             definir={acciones.definirMedicion ? acciones.definirMedicion.bind(null, a.id) : undefined}
@@ -334,32 +374,52 @@ export function PanelActividad({
             borrar={acciones.borrarNota}
           />
 
-          {/* ── DE ACÁ PARA ABAJO, LO QUE SE ABRE CUANDO SE VA A HACER ALGO ────────── */}
+        </div>
 
-          {/* Las tareas SÓLO en una actividad: una tarea no tiene tareas. */}
-          {!a.actividad_padre_id && (
-            <BloqueTareas
-              tareas={datos.tareas}
-              crear={acciones.crearTarea ? acciones.crearTarea.bind(null, a.id) : undefined}
-              alternar={acciones.cambiarEstadoTarea}
-            />
-          )}
+        {/* Las tareas SÓLO en una actividad: una tarea no tiene tareas. */}
+        <div className={`mt-3 space-y-2.5 ${tab === 'tareas' && !a.actividad_padre_id ? '' : 'hidden'}`}>
+          <BloqueTareas
+            tareas={datos.tareas}
+            crear={acciones.crearTarea ? acciones.crearTarea.bind(null, a.id) : undefined}
+            alternar={acciones.cambiarEstadoTarea}
+            abierto
+          />
+        </div>
 
+        <div className={`mt-3 space-y-2.5 ${tab === 'ejecucion' ? '' : 'hidden'}`}>
+          <BloqueEjecucion
+            a={a}
+            partes={datos.partes}
+            personasPorFecha={datos.hhPorFecha}
+            todas
+            {...(obraId ? { verTodo: `/obras/${obraId}?vista=ejecucion` } : {})}
+          />
+        </div>
+
+        <div className={`mt-3 space-y-2.5 ${tab === 'dependencias' ? '' : 'hidden'}`}>
           <Dependencias
             a={a}
             actividades={actividades}
             dependencias={dependencias}
             agregar={acciones.agregarDependencia}
             quitar={acciones.quitarDependencia}
+            abierto
           />
+        </div>
 
+        <div className={`mt-3 space-y-2.5 ${tab === 'documentos' ? '' : 'hidden'}`}>
           <BloqueDocumentos
             a={a}
             documentos={datos.documentos}
             vincular={acciones.vincularDocumento}
             soltar={acciones.soltarDocumento}
+            abierto
           />
+        </div>
 
+        {/* EDITAR NO ES UNA PESTAÑA: es la acción del pie, y tiene que abrirse mirando cualquiera de
+            las cinco. Metido adentro de «Documentos» el botón parecía roto desde las otras cuatro. */}
+        <div className={`mt-3 ${editando ? '' : 'hidden'}`}>
           <details
             className="rounded-md border border-line bg-surface px-2.5 py-1.5"
             open={editando}
