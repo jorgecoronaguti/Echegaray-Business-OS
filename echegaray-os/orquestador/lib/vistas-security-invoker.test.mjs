@@ -49,14 +49,35 @@ const CON_RLS = [
  *    NO publica `retribucion_pactada`, y eso también lo fija este contrato.
  */
 const DESESCALADA_DECLARADA = {
-  // `mi_legajo` es la TERCERA, y es de otra familia: no publica un listado, publica UNA fila —la
-  // del que está mirando— porque lleva `where p.id = mi_persona_id()` adentro. Con la cuenta sin
-  // vincular devuelve cero filas: falla cerrado. Y NO publica `dni`, `cuil`, `domicilio` ni
-  // `retribucion_pactada` aunque sean del propio interesado: ninguna pantalla los muestra, y una
-  // columna que viaja sin dibujarse es una fuga sin beneficio.
+  // `mi_legajo` es de otra familia: no publica un listado, publica UNA fila —la del que está
+  // mirando— porque lleva `where p.id = mi_persona_id()` adentro. Con la cuenta sin vincular
+  // devuelve cero filas: falla cerrado.
+  //
+  // ═══ EL 20/08/2026 SE LE AGREGÓ LA IDENTIDAD, Y NO ES UN AFLOJE ═══
+  //
+  // Hasta ese día no publicaba `dni`, `cuil` ni `domicilio`, con este criterio: «ninguna pantalla los
+  // muestra, y una columna que viaja sin dibujarse es una fuga sin beneficio». El criterio era
+  // correcto y lo que cambió es el hecho: el perfil empleado tiene una pantalla —«Mi legajo»,
+  // sección IDENTIDAD— que los muestra, y a quien se los muestra es al propio interesado.
+  //
+  // El DNI de UNO es de uno. Lo que el grant de columna sobre `personas` protege es el DNI de LOS
+  // DEMÁS, y eso sigue igual: esta vista devuelve exactamente una fila, la de quien pregunta.
+  //
+  // `retribucion_pactada` NO entra, y sigue sin entrar en ninguna vista: lo que se cobra se lee en
+  // el recibo, que es el documento que vale.
   mi_legajo: [
-    'id', 'nombre_completo', 'categoria', 'especialidad', 'puesto', 'convenio_colectivo',
-    'fecha_ingreso', 'fecha_egreso', 'en_la_empresa', 'legajo',
+    'id', 'nombre_completo', 'dni', 'cuil', 'fecha_nacimiento', 'nacionalidad', 'telefono', 'email',
+    'domicilio', 'contacto_emergencia', 'contacto_emergencia_telefono', 'categoria', 'especialidad',
+    'puesto', 'convenio_colectivo', 'art', 'obra_social', 'fecha_ingreso', 'fecha_egreso',
+    'en_la_empresa', 'legajo',
+  ],
+  // `mi_cuadrilla` publica DOS columnas de la persona y ninguna más: nombre y rol. El handoff lo
+  // dice literal —«los integrantes se listan por nombre y rol, sin acceso a legajos ni documentos de
+  // terceros»— y por eso NO hay un `persona_id` acá: lo que no se publica no se puede pedir después.
+  // Es la única vista de esta familia que devuelve filas de OTRA gente, y ése es todo el motivo por
+  // el que su lista de columnas está fijada acá.
+  mi_cuadrilla: [
+    'cuadrilla_id', 'cuadrilla', 'nombre_completo', 'rol', 'es_responsable', 'soy_yo',
   ],
   persona_plantel: ['id', 'nombre_completo', 'categoria', 'especialidad', 'fecha_egreso'],
   persona_legajo: [

@@ -25,10 +25,13 @@ El **contrato visual y UX del Echegaray Business OS**: el diseño aprobado que h
 - Administración: entrada, Personas, legajo, Cuadrillas, Proveedores, Pendientes de imputación, Usuarios (`screens/administracion.md`).
 - Clientes: cartera y record del cliente (`screens/clientes.md`).
 - Accesos: Mi cuenta, **Mi legajo · Mis horas · Mis documentos** (desktop + mobile), `/campo` mobile, chat interno por obra, Operación global y Herramientas (`screens/accesos.md`).
+- **Perfil Empleado** (`screens/empleado.md`) — mobile primero: Hoy · Mi trabajo · Mis tareas · Detalle de tarea · Mi información · Mi legajo · Mis horas · Asistencia · Mis documentos · Subir documento · Recibos · Detalle de recibo · Reportar problema · Entrar · Hoy desktop. Incorporado el 20/08/2026 desde el delta «Diseño Empleado».
 
 ## Fuera del alcance actual (declarado, no pendiente)
-Economía y Finanzas (certificaciones, flujo de caja, calendario financiero, ingeniería financiera, scorecard, aprobaciones, reportes), Descargas, Login/Signup y Operarios. No están diseñados a propósito: no se implementan desde este handoff.
-El mobile diseñado es el alcance operativo: `/campo`, parte diario, Mi cuenta / Mis horas / Mis documentos. El ERP de escritorio no se lleva completo al teléfono.
+Economía y Finanzas (certificaciones, flujo de caja, calendario financiero, ingeniería financiera, scorecard, aprobaciones, reportes), Descargas y Operarios. No están diseñados a propósito: no se implementan desde este handoff.
+
+**Login/Signup salió de esta lista el 20/08/2026**: el delta del Perfil Empleado trae la pantalla `Entrar` diseñada (4e, mobile · error · desktop 1440) y queda como contrato en `screens/empleado.md`. Está ESPECIFICADA pero todavía NO implementada: el pedido de implementación del perfil empleado excluyó tocar Login para no arriesgar una regresión en la puerta del OS.
+El mobile diseñado es el alcance operativo: `/campo`, parte diario, Mi cuenta / Mis horas / Mis documentos y **el Perfil Empleado completo**. El ERP de escritorio no se lleva completo al teléfono.
 
 ## Regla de implementación
 Claude Code debe implementar las pantallas aprobadas con máxima fidelidad visual y UX, reutilizando la arquitectura funcional real del Echegaray Business OS. No debe rediseñar ni reinterpretar el producto sin modificar primero el Design System aprobado.

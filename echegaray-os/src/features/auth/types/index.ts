@@ -17,7 +17,10 @@ export const ROL_LABEL: Record<Rol, string> = {
   direccion: 'Dirección',
   administracion: 'Administración',
   jefe_obra: 'Jefe de Obra',
-  campo: 'Campo',
+  // «Empleado» y no «Campo» desde el 20/08/2026: es el nombre del PERFIL que el handoff diseñó, y
+  // es como se llama a sí misma la persona que entra. La CLAVE sigue siendo `campo` —renombrarla
+  // obligaría a migrar cada policy escrita contra ese literal— y esto es sólo cómo se escribe.
+  campo: 'Empleado',
 }
 
 // Rutas que el rol 'campo' (operario) PUEDE ver en la web. Todo lo demás (caja, reportes,
@@ -29,7 +32,16 @@ export const ROL_LABEL: Record<Rol, string> = {
 // «Mis horas», «Mi legajo» y «Mis documentos» son precisamente las pantallas que existen PARA él:
 // el resto del OS no le muestra una sola hora suya. Lo que ve ahí es sólo lo propio, acotado en la
 // base por las vistas `mi_*` (20260820T3000), no por esta lista.
-export const CAMPO_RUTAS_PERMITIDAS = ['/integraciones/pedidos-materiales', '/integraciones/herramientas', '/integraciones/movimientos', '/campo', '/descargas', '/mi-cuenta']
+// ═══ EL PERFIL EMPLEADO ENTRA ACÁ (20/08/2026) ═══
+//
+// `/hoy`, `/mi-trabajo` y `/mi-informacion` son los TRES CONTEXTOS del perfil empleado. `/campo` y
+// las tres pantallas de operación NO se sacan: son funcionalidad viva que el nivel campo usa hoy, y
+// desde «Mi trabajo» se llega a todas. Retirar una ruta de la navegación es una cosa; sacarle el
+// permiso, otra muy distinta.
+//
+// Y ESTO NO ES LA CERRADURA: lo que estas pantallas muestran lo deciden las vistas `mi_*`, que
+// filtran por `mi_persona_id()` en la base.
+export const CAMPO_RUTAS_PERMITIDAS = ['/hoy', '/mi-trabajo', '/mi-informacion', '/integraciones/pedidos-materiales', '/integraciones/herramientas', '/integraciones/movimientos', '/campo', '/descargas', '/mi-cuenta']
 export function esRutaCampoPermitida(pathname: string): boolean {
   return CAMPO_RUTAS_PERMITIDAS.some((r) => pathname === r || pathname.startsWith(r + '/'))
 }

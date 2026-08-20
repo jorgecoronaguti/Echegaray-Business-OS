@@ -44,13 +44,28 @@ test('y la base acepta exactamente ese vocabulario', { skip: SIN_BASE }, async (
 })
 
 test('ningún documento del legajo afirma sin poder mostrarse', { skip: SIN_BASE }, async () => {
-  // Una fila sin `drive_file_id` es "el papel está" sin papel que abrir. La columna es NOT NULL;
-  // esto vigila que siga siéndolo, porque el día que alguien la afloje nada más se rompe.
+  // Una fila con `presente = true` y sin `drive_file_id` es "el papel está" sin papel que abrir.
+  //
+  // ═══ ERA UN NOT NULL, Y EL NOT NULL DECÍA DE MÁS (20/08/2026) ═══
+  //
+  // Prohibía también el caso contrario —`presente = false`, «te lo estamos pidiendo»— que es el
+  // primer estado del ciclo documental del perfil empleado. Con el NOT NULL puesto, Administración
+  // sólo podía declarar que un papel falta inventándole la dirección de un archivo que no existe.
+  //
+  // La regla no es «siempre tiene archivo»: es «si dice que está, tiene que poder abrirse», y ahora
+  // es un CHECK, que la dice entera.
   const { rows } = await query(
-    `select is_nullable from information_schema.columns
-      where table_schema = 'public' and table_name = 'documentacion_legajo'
-        and column_name = 'drive_file_id'`)
-  assert.equal(rows[0]?.is_nullable, 'NO')
+    `select pg_get_constraintdef(oid) as def from pg_constraint
+      where conrelid = 'public.documentacion_legajo'::regclass
+        and conname = 'documentacion_legajo_presente_con_archivo'`)
+  assert.equal(rows.length, 1, 'desapareció el CHECK: una fila puede volver a afirmar sin poder mostrarse')
+  assert.match(rows[0].def, /presente/)
+  assert.match(rows[0].def, /drive_file_id IS NOT NULL/)
+
+  // Y la regla se cumple hoy, no sólo está declarada.
+  const { rows: malas } = await query(
+    'select count(*)::int as n from documentacion_legajo where presente and drive_file_id is null')
+  assert.equal(malas[0].n, 0)
 })
 
 test('nadie con fecha de egreso sigue figurando en la empresa', { skip: SIN_BASE }, async () => {

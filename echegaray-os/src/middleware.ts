@@ -44,14 +44,16 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // RBAC de campo: un operario (rol 'campo') solo puede ver las rutas operativas. Si intenta
-  // entrar a cualquier otra (caja, reportes, dirección…), lo mandamos a su pantalla de campo.
+  // RBAC de campo: un empleado (rol 'campo') solo puede ver las rutas de su perfil y las
+  // operativas. Si intenta entrar a cualquier otra (caja, reportes, dirección…), lo mandamos a
+  // «Hoy», que desde el 20/08/2026 es su pantalla de inicio: es la que contesta las tres preguntas
+  // con las que abre el OS —dónde trabajo, qué tengo que hacer, tengo algo pendiente—.
   const esApiOAuth = pathname.startsWith('/api') || pathname.startsWith('/login') || pathname.startsWith('/signup')
   if (user && !esApiOAuth) {
     const { data: perfil } = await supabase.from('perfiles').select('rol').eq('id', user.id).maybeSingle()
     if (perfil?.rol === 'campo' && !esRutaCampoPermitida(pathname)) {
       const url = request.nextUrl.clone()
-      url.pathname = '/campo'
+      url.pathname = '/hoy'
       return NextResponse.redirect(url)
     }
     // ── EL NIVEL «OBRAS» NO ENTRA A LO DE ADMINISTRACIÓN (18/08/2026).

@@ -12,8 +12,14 @@
 // otra— y ahora está escrito UNA vez. Si mañana vuelve a cambiar, se cambia acá.
 import type { Page } from '@playwright/test'
 
-/** La pantalla donde cae una sesión recién abierta. `redirect('/obras')` en features/auth. */
-export const ATERRIZAJE = /\/(obras|clientes|flujo-caja)/
+/**
+ * La pantalla donde cae una sesión recién abierta. `redirect('/obras')` en features/auth.
+ *
+ * `hoy` entró el 20/08/2026: el nivel campo es el PERFIL EMPLEADO y el middleware lo lleva a `/hoy`,
+ * que es la pantalla que contesta sus tres preguntas. Sin esto, entrar como empleado espera para
+ * siempre una URL a la que ese rol no llega nunca.
+ */
+export const ATERRIZAJE = /\/(obras|clientes|flujo-caja|hoy)/
 
 export async function entrarComo(page: Page, email: string, password: string) {
   await page.goto('/login')
