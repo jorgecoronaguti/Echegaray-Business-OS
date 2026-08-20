@@ -12,6 +12,7 @@ import {
 } from '@/features/empleado/services/empleadoService'
 import { hoyISO } from '@/features/empleado/services/acciones'
 import { clasificar, lecturaDeEstado, lecturaDeFecha } from '@/features/empleado/services/tareas'
+import { legible } from '@/features/empleado/services/fecha'
 import type { MiTarea } from '@/features/empleado/types'
 
 // «MI TRABAJO» — la obra donde estoy, lo que tengo que hacer y con quién.
@@ -170,7 +171,7 @@ export default async function MiTrabajoPage() {
                     {c.soy_yo && <span className="text-faint"> · vos</span>}
                   </>
                 }
-                detalle={c.rol ?? 'sin categoría'}
+                detalle={legible(c.rol) ?? 'sin categoría'}
                 senal={c.es_responsable ? <Estado tono="curso">responsable</Estado> : undefined}
               />
             ))}

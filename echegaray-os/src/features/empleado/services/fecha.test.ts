@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { diaFechaYAnio, diaYFecha, dm, mesAnterior, mesDe, mesLargo } from './fecha.ts'
+import { diaFechaYAnio, diaYFecha, dm, legible, mesAnterior, mesDe, mesLargo } from './fecha.ts'
 
 test('el día de la semana sale en castellano SIN depender del ICU del servidor', () => {
   // El defecto que atrapa: con ICU reducido, `toLocaleDateString('es-AR')` devuelve «Wednesday» y la
@@ -32,4 +32,14 @@ test('el mes largo y el día corto', () => {
   assert.equal(mesLargo('2026-08-01'), 'Agosto 2026')
   assert.equal(dm('2026-08-05'), '05/08')
   assert.equal(dm(null), null)
+})
+
+test('la clave de la base se muestra como palabra, no como clave', () => {
+  // El defecto que atrapa: «oficial_especializado» en la pantalla de un albañil. Es la clave del
+  // vocabulario de Postgres, no su categoría — y un diccionario a mano deja sin traducir la primera
+  // clave que alguien agregue.
+  assert.equal(legible('oficial_especializado'), 'Oficial especializado')
+  assert.equal(legible('MAQUINISTA'), 'MAQUINISTA')
+  assert.equal(legible(null), null)
+  assert.equal(legible(''), null)
 })

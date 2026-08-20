@@ -9,7 +9,7 @@ import { Fila } from '@/features/empleado/components/Filas'
 import { getMiAsistencia, getMiLegajo, getMisDocumentos, getMisRecibos } from '@/features/empleado/services/empleadoService'
 import { hoyISO } from '@/features/empleado/services/acciones'
 import { avisoDeDocumentos } from '@/features/empleado/services/documentos'
-import { mesDe, mesLargo } from '@/features/empleado/services/fecha'
+import { legible, mesDe, mesLargo } from '@/features/empleado/services/fecha'
 import { duracion, totalDelPeriodo } from '@/features/empleado/services/asistencia'
 
 // «MI INFORMACIÓN» — una lista con su señal en cada renglón, no seis tarjetas gigantes.
@@ -63,7 +63,7 @@ export default async function MiInformacionPage() {
           <>
             <span className="block text-[15px] text-ink">{l.nombre_completo}</span>
             <span className="block text-faint">
-              {l.categoria ?? l.puesto ?? 'sin categoría'}
+              {legible(l.categoria) ?? legible(l.puesto) ?? 'sin categoría'}
               {l.fecha_ingreso ? ` · desde ${l.fecha_ingreso.slice(8, 10)}/${l.fecha_ingreso.slice(5, 7)}/${l.fecha_ingreso.slice(2, 4)}` : ''}
             </span>
           </>
