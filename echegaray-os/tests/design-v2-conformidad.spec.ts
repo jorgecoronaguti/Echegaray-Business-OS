@@ -45,12 +45,6 @@ const PANTALLAS: { nombre: string; url: string; movil?: boolean }[] = [
   { nombre: 'campo', url: '/campo', movil: true },
 ]
 
-// La escala del handoff tiene NUEVE entradas. Se admiten además los tamaños que el navegador
-// hereda sin que nadie los declare (16 del root) y los intermedios que el sistema ya usa para
-// apoyo. Un tamaño fuera de esta lista es escala inventada, que es como una escala de nueve se
-// convierte en una de veinte sin que nadie lo decida.
-const ESCALA = new Set([10, 10.5, 11, 11.5, 12, 12.5, 13, 13.5, 14, 15, 15.5, 16, 18, 20, 22, 26, 28])
-
 test.describe.configure({ mode: 'serial' })
 
 test.beforeAll(() => mkdirSync(SALIDA, { recursive: true }))
@@ -150,8 +144,11 @@ async function reglas(page: Page, nombre: string): Promise<string[]> {
       }
     }
 
-    // 6 · LOS TAMAÑOS SALEN DE LA ESCALA. Sólo se miran los nodos con texto propio: un contenedor
-    //     hereda un tamaño que ya se midió en su hijo.
+    // 6 · LOS TAMAÑOS SALEN DE LA ESCALA. La del handoff tiene NUEVE entradas; se admiten además
+    //     los intermedios que el sistema ya usa para texto de apoyo. Un tamaño fuera de esta lista
+    //     es escala inventada — que es como una escala de nueve se convierte en una de veinte sin
+    //     que nadie lo decida. Sólo se miran los nodos con texto PROPIO: un contenedor hereda un
+    //     tamaño que ya se midió en su hijo.
     const ESCALA = [10, 10.5, 11, 11.5, 12, 12.5, 13, 13.5, 14, 15, 15.5, 16, 18, 20, 22, 26, 28]
     const fuera = new Map<number, string>()
     for (const e of nodos) {
