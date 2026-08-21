@@ -148,7 +148,11 @@ test('la lista cambia al TECLEAR tres letras, sin Enter ni botón', async ({ pag
   // Este test NO toca Enter y NO hace clic en nada: sólo escribe. Si alguien vuelve a poner un
   // `form` GET, la tabla no se mueve y esto se pone rojo.
   await entrar(page)
-  await page.goto('/obras')
+  // `?etapa=&q=` ES «ver todas, sin buscar nada», y se pide EXPLÍCITO. `/obras` a secas restaura la
+  // última vista guardada en la cookie —incluida la búsqueda—, así que este test arrancaría con el
+  // campo ya escrito por el test anterior y tecleando encima. No es un detalle del test: es la
+  // misma memoria de vista que el buscador tiene que respetar.
+  await page.goto('/obras?etapa=&q=')
   const total = await filas(page).count()
   expect(total).toBeGreaterThan(1)
 
@@ -177,7 +181,7 @@ test('borrar el buscador devuelve la lista entera: la vista recordada no lo resu
   // búsqueda anterior y el buscador se llenaría solo. La lista quedaría filtrada con el campo en
   // blanco: el peor estado posible, porque no hay nada en pantalla que explique lo que falta.
   await entrar(page)
-  await page.goto('/obras')
+  await page.goto('/obras?etapa=&q=')
   const total = await filas(page).count()
 
   const nombres = await contenido(page)

@@ -30,6 +30,10 @@ async function tresLetrasDe(page: Page, filas: string): Promise<string> {
  * de envío.
  */
 async function teclear(page: Page, campo: string, texto: string) {
+  // Se vacía primero: `pressSequentially` AGREGA al final. Varias de estas pantallas pueden abrir
+  // con el campo ya escrito —`/obras` restaura la última vista desde una cookie— y tecleando encima
+  // el test buscaría «Messinames», que no es lo que dice estar probando.
+  await page.getByTestId(campo).fill('')
   await page.getByTestId(campo).pressSequentially(texto, { delay: 60 })
 }
 
