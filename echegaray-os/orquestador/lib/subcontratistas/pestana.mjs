@@ -28,6 +28,7 @@
 // decorativo: la columna O de Compras tiene dos celdas con el texto «USD 25,20», y sin la guarda
 // la multiplicación de SUMPRODUCT devuelve #VALUE! y se cae el cuadro entero.
 import { GRUPOS, ALIAS_PROBABLE } from './padron.mjs'
+import { VACIO } from '../preservar-anotaciones.mjs'
 
 const V = () => []
 const R = (col) => `Compras!$${col}$4:$${col}$2000`
@@ -81,7 +82,12 @@ export function construir() {
     const f0 = f.length + 1
     g.filas.forEach(([nombre, rubro], j) => f.push(fila(nombre, rubro, f0 + j)))
     const f1 = f0 + g.filas.length - 1
-    f.push(['TOTAL', '', '', '', `=SUM(E${f0}:E${f1})`, `=SUM(F${f0}:F${f1})`])
+    // LAS CELDAS VACÍAS DE LA FILA TOTAL VAN CON CENTINELA, NO CON CADENA VACÍA.
+    // Para la fusión de la Regla 0 una cadena vacía significa «no es mía, conservá lo que había»;
+    // `VACIO` significa «es mi celda y va vacía». Con '' el cuadro NO convergía: la fila TOTAL se
+    // quedaba con el rubro y el COUNTIF del último renglón del layout anterior, corrida tras
+    // corrida, y el cuadro publicaba «TOTAL | Asado en taller | 0».
+    f.push(['TOTAL', VACIO, VACIO, VACIO, `=SUM(E${f0}:E${f1})`, `=SUM(F${f0}:F${f1})`])
     totales.push(f.length)
     azul.push(`A${f0}:B${f1}`)
     verde.push(`C${f0}:F${f1}`)
