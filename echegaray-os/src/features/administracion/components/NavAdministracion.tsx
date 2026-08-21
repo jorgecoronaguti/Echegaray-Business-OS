@@ -22,6 +22,9 @@ const VISTAS = [
   { href: '/administracion/personas', label: 'Personas' },
   { href: '/administracion/proveedores', label: 'Proveedores' },
   { href: '/administracion/pendientes', label: 'Pendientes' },
+  // La biblioteca de análisis de precio unitario. Va última porque es la sección de CONSULTA del
+  // área: no se entra a hacer un trámite, se entra a mirar con qué se cotiza.
+  { href: '/administracion/base-maestra', label: 'Base maestra' },
 ] as const
 
 export function NavAdministracion() {
