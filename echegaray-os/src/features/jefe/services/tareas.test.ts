@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { agruparPorFrente, detalleDeTarea, filtrar, filtroDe, normalizar, SIN_FRENTE } from './tareas.ts'
+import { agruparPorFrente, detalleDeTarea, filtrar, filtroDe, SIN_FRENTE } from './tareas.ts'
 import type { ActividadDelJefe } from './jefeService.ts'
 
 const a = (p: Partial<ActividadDelJefe> & { actividad_id: string }): ActividadDelJefe => ({
@@ -16,7 +16,7 @@ test('BUSCAR SIN TILDES ENCUENTRA CON TILDES', () => {
   // no encontraba «Mampostería» y la pantalla decía que la tarea no existía.
   const l = [a({ actividad_id: '1', nombre: 'Mampostería ladrillón' })]
   assert.equal(filtrar(l, 'mamposteria', 'todas', '2026-08-21').length, 1)
-  assert.equal(normalizar('Compactación'), 'compactacion')
+  assert.equal(filtrar(l, '  MAMPOSTERÍA ', 'todas', '2026-08-21').length, 1)
 })
 
 test('SE BUSCA TAMBIÉN POR FRENTE Y POR CUADRILLA', () => {

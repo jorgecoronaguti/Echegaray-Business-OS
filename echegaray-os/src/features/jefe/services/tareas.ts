@@ -16,6 +16,14 @@
 import { diasDeAtraso } from './frentes.ts'
 import type { ActividadDelJefe } from './jefeService.ts'
 import { estaTerminada, soloTareas } from './dia.ts'
+// LA DEFINICIÓN DE «BUSCAR TEXTO» ES UNA SOLA, y es de `shared/utils/busqueda`. Este módulo tenía
+// la suya —tildes y minúsculas— y era exactamente igual: dos implementaciones idénticas hoy son dos
+// implementaciones distintas dentro de seis meses, y ahí «  galpon» encuentra en una pantalla y no
+// en la de al lado.
+// La ruta es relativa y no por alias: `node --test` resuelve módulos como Node, y `@/` es un
+// alias de TypeScript que no existe en tiempo de ejecución. Es la misma forma que ya usan
+// `filtroObras` y `presencia`.
+import { contieneEnAlguno } from '../../../shared/utils/busqueda.ts'
 
 export const FILTROS = ['todas', 'curso', 'atrasadas', 'problema'] as const
 export type Filtro = (typeof FILTROS)[number]
@@ -32,19 +40,11 @@ export function filtroDe(valor: string | null | undefined): Filtro {
   return (FILTROS as readonly string[]).includes(valor ?? '') ? (valor as Filtro) : 'todas'
 }
 
-/** Sin tildes y en minúsculas: «Mampostería» tiene que encontrarse tecleando «mamposteria». */
-export function normalizar(s: string): string {
-  return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-}
-
 export function filtrar(
   actividades: ActividadDelJefe[], q: string, filtro: Filtro, hoy: string,
 ): ActividadDelJefe[] {
-  const texto = normalizar(q.trim())
   return soloTareas(actividades).filter((a) => {
-    if (texto && !normalizar(`${a.nombre} ${a.rubro ?? ''} ${a.cuadrilla_prevista ?? ''}`).includes(texto)) {
-      return false
-    }
+    if (!contieneEnAlguno([a.nombre, a.rubro, a.cuadrilla_prevista], q)) return false
     if (filtro === 'curso') return a.estado_operativo === 'en_curso'
     if (filtro === 'atrasadas') {
       return !estaTerminada(a) && diasDeAtraso(a.fin_plan, a.fin_real, hoy) != null

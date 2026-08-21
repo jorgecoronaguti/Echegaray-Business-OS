@@ -59,6 +59,18 @@ const PANTALLAS: { nombre: string; url: string; movil?: boolean }[] = [
   { nombre: 'empleado-legajo', url: '/mi-informacion/legajo', movil: true },
   { nombre: 'empleado-horas', url: '/mi-informacion/horas', movil: true },
   { nombre: 'empleado-reportar', url: '/mi-trabajo/reportar', movil: true },
+  // ═══ JEFE DE OBRA EN EL TELÉFONO (21/08/2026) ═══
+  //
+  // Las seis del contrato J01–J06. Van con `movil: true` porque NO tienen versión de escritorio: el
+  // contrato dice «optimizado para teléfono y campo, no desktop reducido», así que medirlas a 1440
+  // mediría un tamaño que nadie va a usar. Lo económico de esta obra no aparece por rol —el jefe no
+  // ve precio— y eso se mide aparte, en `zz-jefe-capturas.spec.ts`.
+  { nombre: 'jefe-hoy', url: '/obra/hoy?obra=san-francisco', movil: true },
+  { nombre: 'jefe-tareas', url: '/obra/tareas?obra=san-francisco', movil: true },
+  { nombre: 'jefe-avance', url: '/obra/avance?obra=san-francisco', movil: true },
+  { nombre: 'jefe-avance-masivo', url: '/obra/avance-masivo?obra=san-francisco', movil: true },
+  { nombre: 'jefe-personas', url: '/obra/personas?obra=san-francisco', movil: true },
+  { nombre: 'jefe-frente', url: '/obra/frente?obra=san-francisco', movil: true },
 ]
 
 test.describe.configure({ mode: 'serial' })

@@ -10,12 +10,23 @@ import { JEFE } from './util/identidades'
 // contrato. Lo que además se verifica acá con reglas —y no a ojo— es lo que a ojo no se ve:
 // el logo que carga de verdad, los objetivos táctiles, y que en ninguna de las seis viaje un peso.
 
-const CARPETA = 'capturas/jefe'
+// A `test-results/`, como el spec de conformidad: es la carpeta de salida de las pruebas y está
+// ignorada por git. Una captura versionada envejece en silencio —queda en el repo mostrando una
+// pantalla que ya cambió— y encima engorda cada clon con medio megabyte por corrida.
+const CARPETA = 'test-results/jefe'
 const OBRA = 'san-francisco'
 
 test.beforeAll(() => { mkdirSync(CARPETA, { recursive: true }) })
 
 test.use({ viewport: { width: 390, height: 900 } })
+
+// EL TIEMPO ES DEL SERVIDOR DE DESARROLLO, NO DE LA PANTALLA.
+//
+// Cada uno de estos tests recorre las seis rutas, y contra `next dev` la primera visita a una ruta
+// la COMPILA: 30 s por navegación se agotan en la ruta que le tocó ser la primera, y el rojo no
+// dice nada sobre el código. Contra un `build` la misma vuelta tarda segundos. Se sube el techo en
+// vez de bajar la exigencia — un test que falla por el compilador enseña a ignorar los rojos.
+test.describe.configure({ mode: 'serial', timeout: 240_000 })
 
 const PANTALLAS: [string, string][] = [
   ['J01-hoy', `/obra/hoy?obra=${OBRA}`],
@@ -36,7 +47,6 @@ async function tareaEnCurso(page: Page): Promise<string> {
 }
 
 test('las seis pantallas del jefe, a 390px', async ({ page }) => {
-  test.setTimeout(180_000)
   await entrarComo(page, JEFE.email, JEFE.password)
 
   for (const [nombre, ruta] of PANTALLAS) {

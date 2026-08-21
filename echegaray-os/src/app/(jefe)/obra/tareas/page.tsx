@@ -1,5 +1,6 @@
 import Link from 'next/link'
-import { Aviso, IconoBuscar } from '@/shared/components/ds'
+import { Aviso } from '@/shared/components/ds'
+import { BuscadorURL } from '@/shared/components/ds/BuscadorURL'
 import { PieDeAccion } from '@/features/jefe/components/ShellJefe'
 import {
   Barra, Encabezado, EnlacePrimario, Nada, Panel, Rotulo,
@@ -51,24 +52,21 @@ export default async function JefeTareasPage({
     <>
       <Encabezado titulo="Tareas" sub={`${obra.nombre} · ${total} en la obra`} />
 
-      <form action="/obra/tareas" className="flex flex-col gap-2.5 px-4 pb-3">
-        <input type="hidden" name="obra" value={obra.id} />
-        <input type="hidden" name="filtro" value={filtro} />
-        <div className="flex items-center gap-2.5 rounded-[12px] bg-surface px-3.5">
-          {/* El icono es el del DS y no el glifo `⌕`: IBM Plex no lo tiene y el navegador dibuja
-              un cuadrito vacío. Medido en la captura a 390px, no supuesto. */}
-          <IconoBuscar className="h-[15px] w-[15px]" />
-          <input
-            type="search"
-            name="q"
-            defaultValue={q}
-            placeholder="Buscar tarea"
-            aria-label="Buscar tarea"
-            data-testid="buscar-tarea"
-            className="h-[48px] w-full border-none bg-transparent text-[15px] text-ink outline-none placeholder:text-faint"
-          />
-        </div>
-      </form>
+      {/* EL BUSCADOR ES EL DEL SISTEMA, y filtra al teclear. El contrato lo dice literal —«sin
+          Enter ni botón Buscar»— y `BuscadorURL` ya lo resuelve para toda la aplicación: deja el
+          filtro en la URL, se comparte, vuelve con el botón de atrás y sigue funcionando sin
+          JavaScript. Escribir acá un `form` GET propio habría sido el cuarto comportamiento
+          distinto de la misma lupa. */}
+      <div className="px-4 pb-3">
+        <BuscadorURL
+          accion="/obra/tareas"
+          q={q}
+          placeholder="Buscar tarea"
+          oculto={{ obra: obra.id, filtro }}
+          ancho="w-full"
+          testid="buscar-tarea"
+        />
+      </div>
 
       <div className="flex gap-2 overflow-x-auto px-4 pb-3">
         {FILTROS.map((f) => {
