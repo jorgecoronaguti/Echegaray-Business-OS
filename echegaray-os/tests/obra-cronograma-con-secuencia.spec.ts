@@ -12,6 +12,16 @@
 // Escribe DOS dependencias en `messina`, identificadas por su par exacto (origen, destino), y las
 // borra en el `finally`. También borra ANTES de empezar: una corrida interrumpida no puede dejarle
 // al dueño un cronograma encadenado que él no armó.
+//
+// ═══ Y NO CORRE POR ACCIDENTE (21/08/2026) ═══
+//
+// El `finally` cubre el fallo del test, no la muerte del proceso: entre el `insert` y el `delete`
+// hay una ventana en la que un `kill` deja dos dependencias que el dueño no cargó, en la obra viva,
+// y sin nadie mirando. Un cronograma encadenado que apareció solo es peor que un test que no corrió.
+//
+// Por eso exige `E2E_ESCRIBE_EN_LA_BASE=si`. Se corre a mano, con alguien mirando; en una corrida
+// automática se salta y lo dice. Es la misma lógica que el `--aplicar` de los importadores: la
+// escritura sobre datos vivos no puede ser el comportamiento por defecto de nada.
 
 import { expect, test } from '@playwright/test'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -29,6 +39,10 @@ async function limpiar(sb: SupabaseClient) {
     await sb.from('obra_dependencia').delete().eq('obra_id', OBRA).eq('origen_id', origen).eq('destino_id', destino)
   }
 }
+
+const ESCRIBE = process.env.E2E_ESCRIBE_EN_LA_BASE === 'si'
+
+test.skip(!ESCRIBE, 'escribe dependencias en la obra viva: correlo a mano con E2E_ESCRIBE_EN_LA_BASE=si')
 
 test('con secuencia cargada aparece el camino crítico, y el arrastre dice qué corre', async ({ page }) => {
   test.slow()
