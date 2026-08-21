@@ -8,6 +8,25 @@ import type { Cuadrilla, Integrante, ServiceResult } from '../types'
 // RUTA RELATIVA CON EXTENSIÓN: `node --test` no conoce el alias `@/`, y un import de VALOR por alias
 // mata la prueba con ERR_MODULE_NOT_FOUND antes de la primera aserción.
 import { esTrabajada } from '../../obras/services/tipoHora.ts'
+import { contieneEnAlguno } from '../../../shared/utils/busqueda.ts'
+
+/**
+ * FILTRAR POR TEXTO — en memoria, sobre lo que la consulta ya trajo.
+ *
+ * `cuadrilla_panel` son unas pocas filas y ya viajan enteras: pedirle a Postgres un `ilike` por cada
+ * tecla sería un viaje para descartar tres filas. Lo que sí queda en la URL es el texto, para que la
+ * vista filtrada se pueda compartir y recargar.
+ *
+ * Se busca por NOMBRE, RESPONSABLE Y OBRA porque son las tres columnas que la tabla muestra. Buscar
+ * sólo por el nombre haría que escribir el apellido del capataz —que está a la vista— vaciara la
+ * lista, y quien busca concluiría que la cuadrilla no existe.
+ */
+export function filtrarCuadrillas<T extends Pick<Cuadrilla, 'nombre' | 'responsable' | 'obras_actuales'>>(
+  cuadrillas: T[],
+  q: string,
+): T[] {
+  return cuadrillas.filter((c) => contieneEnAlguno([c.nombre, c.responsable, c.obras_actuales], q))
+}
 
 export async function getCuadrillas(
   supabase: SupabaseClient,

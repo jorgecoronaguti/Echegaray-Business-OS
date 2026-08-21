@@ -18,7 +18,8 @@
 // desincronizar con lo que se ve.
 
 import { useMemo, useState } from 'react'
-import { Boton, Estado, Filtros, IconoBuscar, Nulo, Num, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
+import { Boton, Buscador, Estado, Filtros, Nulo, Num, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
+import { contieneEnAlguno } from '@/shared/utils/busqueda'
 import { ROL_LABEL, type Rol } from '@/features/auth/types'
 import { ultimoIngresoDicho, veTodasLasObras } from '../services/reglas'
 import { AltaUsuario } from './AltaUsuario'
@@ -34,11 +35,8 @@ const FILTROS: readonly { value: Filtro; label: string }[] = [
   { value: 'sin_acceso', label: 'Sin acceso' },
 ]
 
-const normal = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-
 export function coincide(u: UsuarioGestion, texto: string, filtro: Filtro): boolean {
-  const t = normal(texto.trim())
-  const enTexto = t === '' || normal(`${u.nombre ?? ''} ${u.email ?? ''}`).includes(t)
+  const enTexto = contieneEnAlguno([u.nombre, u.email], texto)
   const enFiltro =
     filtro === 'todos' ? true
       : filtro === 'sin_acceso' ? u.estado === 'sin_acceso'
@@ -91,18 +89,14 @@ export function UsuariosManager({
           su estado en dos extremos que el ojo no relaciona. */}
       <div className={`min-w-0 flex-1 ${alta || usuario ? '' : 'lg:max-w-[1160px]'}`}>
         <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-3">
-          {/* La anatomía es la del DS —hairline inferior, lupa de 13px, sin caja— y la lupa es
-              literalmente la del DS. Se arma acá y no con `<Buscador>` porque este listado filtra
-              en el navegador sobre una lista ya cargada: el `data-testid` y el `aria-label` son
-              propios de la cuenta, no de una lista genérica. */}
-          <div className="flex min-w-0 items-center gap-2 border-b border-line sm:w-[220px]">
-            <IconoBuscar />
-            <input
-              type="search" value={texto} onChange={(e) => setTexto(e.target.value)}
-              placeholder="Buscar cuenta" aria-label="Buscar cuenta" data-testid="buscar-usuario"
-              className="h-control min-w-0 flex-1 bg-transparent text-[13px] text-ink outline-none placeholder:text-faint max-lg:h-control-movil"
-            />
-          </div>
+          {/* EL `<Buscador>` DEL DS, NO UNA COPIA. Estuvo armado a mano acá con el argumento de que
+              el `data-testid` y el `aria-label` eran propios de la cuenta — pero los dos son props.
+              Lo que la copia costaba de verdad era que la misma lupa tuviera tres
+              comportamientos según la pantalla, y por eso ahora no queda ninguna. */}
+          <Buscador
+            value={texto} onChange={setTexto}
+            placeholder="Buscar cuenta" testid="buscar-usuario" className="sm:w-[220px]"
+          />
           <Filtros
             testid="filtros-usuarios"
             opciones={FILTROS.map((f) => ({

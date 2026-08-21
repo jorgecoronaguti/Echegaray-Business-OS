@@ -83,12 +83,19 @@ export class CalendarioObra {
   /**
    * Índice de día hábil de `iso` contando desde `origen` (origen = 0). Si `iso` cae en un día no
    * laborable, devuelve el índice del próximo hábil: una tarea no puede empezar un domingo.
+   *
+   * Puede ser NEGATIVO, y tiene que poder serlo: una actividad que arrancó antes del origen del
+   * cronograma existe igual. Devolver 0 la aplastaría contra el primer día y el plan entero se
+   * dibujaría arrancando hoy — que es exactamente el error que esto vino a arreglar.
    */
   indice(origen, iso) {
-    return this.habilesEntre(origen, this.proximoHabil(iso)) - 1
+    const f = this.proximoHabil(iso)
+    const o = aISO(origen)
+    if (f >= o) return this.habilesEntre(o, f) - 1
+    return -(this.habilesEntre(f, o) - 1)
   }
 
-  /** La vuelta: qué fecha es el día hábil número `i` contando desde `origen`. */
+  /** La vuelta: qué fecha es el día hábil número `i` contando desde `origen`. Acepta i negativo. */
   fecha(origen, i) {
     return this.sumarHabiles(origen, i)
   }
