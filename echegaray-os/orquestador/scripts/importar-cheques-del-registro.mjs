@@ -112,23 +112,29 @@ async function main() {
   // es decorativo: sin él, cada corrida reescribe las 104 filas y `importado_en` deja de significar
   // "cuándo cambió esto".
   // `discrepan` NO entra: la base tiene ahí el dato del banco y el registro el tipeado a mano.
-  const aEscribir = [...plan.nuevos, ...plan.cambian]
+  //
+  // `yaEstan` SÍ entra, y no es redundante: el `where` del UPDATE no deja pasar nada salvo que algo
+  // haya cambiado de verdad, así que una fila idéntica cuesta un no-op — pero es lo que permite
+  // rellenar un campo que se agregó después (la cuenta) sin escribir un script aparte para eso.
+  const aEscribir = [...plan.nuevos, ...plan.cambian, ...plan.yaEstan]
   let escritos = 0
   for (const c of aEscribir) {
     await query(
       `insert into public.cheques (tipo, instrumento, numero, banco, contraparte, contraparte_cuit,
-         fecha_pago, importe, estado, obra, origen, corte)
-       values ($1,$2,$3,$4,$5,$6,$7::date,$8,$9,$10,$11,$12::date)
+         fecha_pago, importe, estado, obra, origen, corte, cuenta)
+       values ($1,$2,$3,$4,$5,$6,$7::date,$8,$9,$10,$11,$12::date,$13)
        on conflict (tipo, coalesce(instrumento,''), coalesce(banco,''), numero) do update
          set importe = excluded.importe, fecha_pago = excluded.fecha_pago, estado = excluded.estado,
              contraparte = coalesce(excluded.contraparte, public.cheques.contraparte),
              obra = coalesce(excluded.obra, public.cheques.obra),
+             cuenta = coalesce(public.cheques.cuenta, excluded.cuenta),
              origen = excluded.origen, corte = excluded.corte, importado_en = now()
          where public.cheques.importe is distinct from excluded.importe
             or public.cheques.fecha_pago is distinct from excluded.fecha_pago
-            or public.cheques.estado is distinct from excluded.estado`,
+            or public.cheques.estado is distinct from excluded.estado
+            or public.cheques.cuenta is null`,
       [c.tipo, c.instrumento, c.numero, c.banco, c.contraparte, c.contraparte_cuit,
-        c.fecha_pago, c.importe, c.estado, c.obra, c.origen, c.corte]
+        c.fecha_pago, c.importe, c.estado, c.obra, c.origen, c.corte, c.cuenta]
     )
     escritos++
   }

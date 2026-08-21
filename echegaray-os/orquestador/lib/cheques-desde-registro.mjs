@@ -33,6 +33,9 @@
 //
 // LO QUE ESTE MÓDULO NO HACE: no decide, no escribe y no corrige el registro. Devuelve un plan.
 
+/** La cuenta corriente desde la que la empresa libra sus cheques (la declaran las filas del banco). */
+export const CUENTA_EMPRESA = 'CC - 00000913836'
+
 /** Sólo dígitos y sin ceros a la izquierda: "00000303" y "303" son el mismo cheque. */
 export const norm = (n) => String(n ?? '').replace(/\D/g, '').replace(/^0+/, '')
 
@@ -125,6 +128,12 @@ export function aCheque(r = [], { fila = 0, corte } = {}) {
       instrumento,
       numero,
       banco: 'Santander',
+      // LA CUENTA NO ES UNA INFERENCIA: un cheque emitido por la empresa sale de la cuenta corriente
+      // de la empresa, y es la misma que declaran las 23 filas que ya venían del módulo del banco.
+      // Va escrita porque si la columna queda vacía, el espejo `_CHEQUES_RAW` conserva —por la
+      // Regla 0— los valores de la corrida anterior en su posición FIJA, y al entrar 81 cheques el
+      // orden de las filas cambia entero: 22 celdas quedaron colgadas del cheque equivocado.
+      cuenta: CUENTA_EMPRESA,
       contraparte: texto(r[COL.proveedor]),
       contraparte_cuit: texto(r[COL.cuit]),
       fecha_pago: fechaPago,
