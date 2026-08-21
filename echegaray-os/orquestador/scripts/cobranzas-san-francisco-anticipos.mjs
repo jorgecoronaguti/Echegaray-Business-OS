@@ -27,6 +27,22 @@
 // `J67` no dice 20.000.000: dice `=40000000*50%`. El número tiene su origen escrito al lado, que es
 // la regla de oro del archivo. Al partir el anticipo en dos quincenas las filas dicen
 // `=40000000*25%`, no `10000000`. Si mañana cambia el contrato, cambia un lugar.
+//
+// ═══ REGLA 0 · `respetar: false`, Y ESTÁ GANADO CON UNA GUARDA, NO DECLARADO A DEDO ═══
+//
+// La primera versión de este script escribía en crudo y **le borró al dueño el fragmento
+// «Cotización n°» de H67 y H68**: mi rótulo reemplazaba el suyo en vez de sumarse. Chico, real, y
+// exactamente lo que la Regla 0 existe para impedir.
+//
+// La salida NO es `conEdicionesRespetadas` fila por fila: este script no regenera un bloque, edita
+// CELDAS ENUMERADAS. La salida es más fuerte que respetar — **antes de escribir, cada celda se lee
+// y se compara con lo que tiene que tener**. Si una no coincide ni con el valor previo ni con el
+// que se va a escribir, el script ABORTA nombrándola y no escribe NADA. No se discute qué texto
+// gana: directamente no se escribe sobre lo que no se reconoce.
+//
+// Y el rótulo del dueño se CONSERVA: el sufijo se agrega al texto que ya estaba, no lo reemplaza.
+//
+// Eso además lo hace idempotente: correrlo dos veces no cambia nada la segunda vez.
 import { makeGoogleClient } from '../lib/google.mjs'
 import { accessTokenFor } from '../lib/google-oauth.mjs'
 
@@ -63,13 +79,16 @@ export const CERTIFICACIONES = [
 ]
 
 /** Los dos anticipos pendientes se parten en dos quincenas cada uno. */
+/** El sufijo se AGREGA al rótulo del dueño; nunca lo reemplaza. */
+export const SUFIJO_1 = ' — 1ª de 2 cuotas quincenales'
+
 export const ANTICIPOS = [
   { fila: 67, filaNueva: 96, obra: 'Instalaciones Eléctricas', contrato: 40000000,
-    h1: 'Anticipo inicio obra 50% $ 40.000.000 — 1ª de 2 cuotas quincenales',
-    h2: 'Anticipo inicio obra 50% $ 40.000.000 — 2ª de 2 cuotas quincenales · cancela el anticipo' },
+    hDueno: 'Anticipo inicio obra 50% $ 40.000.000 Cotización n°',
+    h2: 'Anticipo inicio obra 50% $ 40.000.000 Cotización n° — 2ª de 2 cuotas quincenales · cancela el anticipo' },
   { fila: 68, filaNueva: 97, obra: 'Entrepiso y Escaleras', contrato: 7728254,
-    h1: 'Anticipo inicio obra 50% $ 7.728.254 — 1ª de 2 cuotas quincenales',
-    h2: 'Anticipo inicio obra 50% $ 7.728.254 — 2ª de 2 cuotas quincenales · cancela el anticipo' },
+    hDueno: 'Anticipo inicio obra 50% $ 7.728.254 Cotización n°',
+    h2: 'Anticipo inicio obra 50% $ 7.728.254 Cotización n° — 2ª de 2 cuotas quincenales · cancela el anticipo' },
 ]
 
 /** La fila nueva copia la anatomía de su hermana: mismas fórmulas, con su propio número de fila. */
@@ -99,44 +118,96 @@ export function filaDeAnticipo(a, n) {
   ]
 }
 
+/**
+ * Cada escritura declara qué tiene que encontrar y qué va a dejar.
+ * `antes` es el valor previo · `nuevo` el que se escribe. Si la celda no tiene ninguno de los dos,
+ * alguien la tocó y el script no escribe nada.
+ */
+export function planDeEscritura(leer) {
+  const p = []
+  for (const c of CERTIFICACIONES) {
+    p.push({ rango: `Cobranzas!Q${c.fila}`, celda: `Q${c.fila}`, nuevo: serie(c.q), que: `${c.que} → ${c.q}` })
+  }
+  for (const a of ANTICIPOS) {
+    p.push({ rango: `Cobranzas!H${a.fila}`, celda: `H${a.fila}`, nuevo: a.hDueno + SUFIJO_1,
+             tolera: [a.hDueno, a.hDueno.replace(' Cotización n°', '') + SUFIJO_1],
+             que: `${a.obra} · rótulo de la 1ª cuota (conserva el texto del dueño)` })
+    p.push({ rango: `Cobranzas!J${a.fila}`, celda: `J${a.fila}`, nuevo: `=${a.contrato}*25%`,
+             tolera: [`=${a.contrato}*50%`], formula: true, que: `${a.obra} · 1ª cuota = ${a.contrato}*25%` })
+    p.push({ rango: `Cobranzas!Q${a.fila}`, celda: `Q${a.fila}`, nuevo: serie(F.ANT_1), que: `${a.obra} · 1ª cuota → ${F.ANT_1}` })
+    p.push({ rango: `Cobranzas!A${a.filaNueva}:V${a.filaNueva}`, celda: `A${a.filaNueva}`, fila: true,
+             nuevo: filaDeAnticipo(a, a.filaNueva), que: `${a.obra} · 2ª cuota → ${F.ANT_2} (fila ${a.filaNueva})` })
+  }
+  return p
+}
+
 async function main() {
   const aplicar = process.argv.includes('--aplicar')
   const g = makeGoogleClient({ auth: { getAccessToken: () => accessTokenFor(CUENTA) } })
 
-  const antes = await g.readSheetValues(FLUJO, 'Cobranzas!A66:R97', { render: 'FORMATTED_VALUE' })
-  console.log('═══ ANTES ═══')
-  for (const r of [66, 67, 68, 71, 72, 73, 74, 75, 76, 77, 78, 79]) {
-    const f = antes[r - 66] || []
-    console.log(`  f${r}  ${String(f[14] || '').padEnd(10)} Q=${String(f[16] || '—').padEnd(12)} ${String(f[12] || '').padStart(16)}  ${String(f[8] || '').slice(0, 34)}`)
+  const plan = planDeEscritura()
+
+  // ── LA GUARDA: leer antes de escribir, y abortar si algo no se reconoce ──────────────────────
+  // Se leen las FÓRMULAS, no los valores: si J67 dice `=40000000*50%` hay que verlo así y no como
+  // 20.000.000, porque lo que se conserva es la fórmula con su origen.
+  const celdas = plan.map((p) => `Cobranzas!${p.celda}`)
+  const actual = []
+  for (const c of celdas) {
+    const v = await g.readSheetValues(FLUJO, c, { render: 'FORMULA' })
+    actual.push(String((v[0] || [])[0] ?? ''))
   }
 
-  const escrituras = []
-  for (const c of CERTIFICACIONES) {
-    escrituras.push({ rango: `Cobranzas!Q${c.fila}`, valores: [[serie(c.q)]], que: `${c.que} → ${c.q}` })
-  }
-  for (const a of ANTICIPOS) {
-    escrituras.push({ rango: `Cobranzas!H${a.fila}`, valores: [[a.h1]], que: `${a.obra} · rótulo 1ª cuota` })
-    escrituras.push({ rango: `Cobranzas!J${a.fila}`, valores: [[`=${a.contrato}*25%`]], que: `${a.obra} · 1ª cuota = ${a.contrato}*25%` })
-    escrituras.push({ rango: `Cobranzas!Q${a.fila}`, valores: [[serie(F.ANT_1)]], que: `${a.obra} · 1ª cuota → ${F.ANT_1}` })
-    escrituras.push({ rango: `Cobranzas!A${a.filaNueva}:V${a.filaNueva}`, valores: [filaDeAnticipo(a, a.filaNueva)], que: `${a.obra} · 2ª cuota → ${F.ANT_2} (fila nueva ${a.filaNueva})` })
+  const desconocidas = []
+  const yaHechas = []
+  const aEscribir = []
+  plan.forEach((p, i) => {
+    const hoy = actual[i]
+    const nuevo = p.fila ? '' : String(p.nuevo)
+    if (p.fila) {
+      // La fila nueva sólo se escribe si está VACÍA o si ya la escribió esta misma rutina.
+      if (hoy === '' || /^=IF\(C\d+=/.test(hoy)) { (hoy === '' ? aEscribir : yaHechas).push(p) }
+      else desconocidas.push({ p, hoy })
+      return
+    }
+    if (hoy === nuevo) { yaHechas.push(p); return }
+    const tolera = [...(p.tolera || [])].map(String)
+    // Para las fechas: el valor previo puede ser cualquier serial anterior al esquema. Se acepta
+    // un número, que es lo que una fecha tiene que ser; un texto ahí sí sería de alguien.
+    const esFechaPrevia = p.celda.startsWith('Q') && /^\d+$/.test(hoy)
+    if (tolera.includes(hoy) || esFechaPrevia) { aEscribir.push(p); return }
+    desconocidas.push({ p, hoy })
+  })
+
+  console.log('═══ LA GUARDA ═══')
+  console.log(`  ${yaHechas.length} celda(s) ya están como tienen que estar`)
+  console.log(`  ${aEscribir.length} celda(s) a escribir`)
+  if (desconocidas.length) {
+    console.log(`\n✗ ${desconocidas.length} celda(s) tienen algo que NO reconozco. No escribo NADA:`)
+    for (const d of desconocidas) console.log(`    ${d.p.celda} = ${JSON.stringify(d.hoy).slice(0, 70)}  ·  esperaba escribir: ${d.p.que}`)
+    console.log('\n  Alguien las editó. Mirá la pestaña y decidí: no voy a discutir contra tu edición.')
+    process.exitCode = 1
+    return
   }
 
   console.log('\n═══ EL PLAN ═══')
-  escrituras.forEach((e) => console.log(`  ${e.rango.padEnd(24)} ${e.que}`))
-
+  aEscribir.forEach((p) => console.log(`  ${p.rango.padEnd(24)} ${p.que}`))
+  if (!aEscribir.length) { console.log('  (nada: ya está aplicado)'); return }
   if (!aplicar) { console.log('\n(sin --aplicar) no escribí nada.'); return }
 
-  for (const e of escrituras) {
-    await g.updateSheetValues(FLUJO, e.rango, e.valores)
+  for (const p of aEscribir) {
+    // REGLA 0 — `respetar: false`, y está GANADO arriba: cada celda se leyó y se reconoció antes
+    // de tocarla, y el rótulo del dueño se conserva porque el sufijo se le AGREGA. Una guarda que
+    // aborta ante lo que no reconoce protege más que discutir después qué texto gana.
+    await g.updateSheetValues(FLUJO, p.rango, p.fila ? [p.nuevo] : [[p.nuevo]], { respetar: false })
   }
-  console.log(`\n✓ ${escrituras.length} escrituras hechas.`)
+  console.log(`\n✓ ${aEscribir.length} escrituras hechas.`)
 
   const despues = await g.readSheetValues(FLUJO, 'Cobranzas!A66:R97', { render: 'FORMATTED_VALUE' })
   console.log('\n═══ DESPUÉS, releído del Sheet ═══')
   for (const r of [66, 67, 68, 71, 72, 73, 74, 75, 76, 77, 78, 79, 96, 97]) {
     const f = despues[r - 66] || []
     if (!String(f[8] || '').trim()) continue
-    console.log(`  f${r}  ${String(f[14] || '').padEnd(10)} Q=${String(f[16] || '—').padEnd(12)} R=${String(f[17] || '—').padEnd(9)} ${String(f[12] || '').padStart(16)}  ${String(f[8] || '').slice(0, 34)}`)
+    console.log(`  f${r}  ${String(f[14] || '').padEnd(10)} Q=${String(f[16] || '—').padEnd(12)} R=${String(f[17] || '—').padEnd(9)} ${String(f[12] || '').padStart(16)}  ${String(f[7] || '').slice(0, 46)}`)
   }
 }
 
