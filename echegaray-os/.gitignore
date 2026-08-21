@@ -83,3 +83,6 @@ scripts/arca/estado/
 /extension.zip
 orquestador/scripts/.caja-backup-*.json
 orquestador/scripts/.cfsemanal-backup-*.json
+
+# Capturas de QA visual: evidencia local, no artefacto del repo.
+/capturas
