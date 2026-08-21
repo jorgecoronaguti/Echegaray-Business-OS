@@ -20,10 +20,11 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { ESTADOS } from '../types'
+// El estado inicial y los tipos NO se declaran acá: un archivo `'use server'` sólo puede exportar
+// funciones async, y una constante exportada rompe la pantalla en tiempo de ejecución sin que
+// typecheck, lint ni build digan una palabra. Ver `./accion`.
+import type { EstadoAccion, Resultado } from './accion'
 
-export type Resultado = { ok: true; id?: string; mensaje?: string } | { ok: false; error: string }
-export type EstadoAccion = { error: string | null; ok?: boolean; mensaje?: string }
-export const INICIAL: EstadoAccion = { error: null }
 
 const RAIZ = '/presupuestos'
 const refrescar = (id?: string) => {

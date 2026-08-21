@@ -29,6 +29,7 @@ import { cantidad as fCantidad, hh as fHH, importe, plata, porcentaje, rendimien
 import { TablaComposicion } from '@/features/presupuestos/components/TablaComposicion'
 import { ContraElHistorico } from '@/features/presupuestos/components/ContraElHistorico'
 import { Aviso, BarraContexto, MetaContexto, Nulo } from '@/shared/components/ds'
+import { EstadoError } from '@/shared/components/estado'
 
 export const dynamic = 'force-dynamic'
 
@@ -58,7 +59,7 @@ export default async function PartidaPage({
   ])
   if (!p || !presupuesto) {
     if (error?.startsWith('No existe')) notFound()
-    return <div className="px-4 py-6 lg:px-10"><Aviso tono="neg" titulo="No pude leer la partida">{error ?? 'sin detalle'}</Aviso></div>
+    return <EstadoError mensaje={error ?? 'La consulta no devolvió la partida y tampoco un error.'} que="el análisis de la partida" />
   }
 
   const [composicion, rend] = await Promise.all([

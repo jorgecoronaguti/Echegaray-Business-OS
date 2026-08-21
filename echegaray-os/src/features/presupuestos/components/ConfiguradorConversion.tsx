@@ -24,7 +24,8 @@ import {
   nombresPorDefecto, repartirIgual, type Frente,
 } from '../services/frentes'
 import { cantidad as fCantidad, hh as fHH, rendimiento } from '../services/formato'
-import { convertirPartida, INICIAL, type EstadoAccion } from '../services/actionsConversion'
+import { convertirPartida } from '../services/actionsConversion'
+import { INICIAL, type EstadoAccion } from '../services/accion'
 
 const MAX_FRENTES = 6
 

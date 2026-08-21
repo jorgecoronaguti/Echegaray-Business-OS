@@ -25,6 +25,7 @@ import { crearPresupuesto } from '@/features/presupuestos/services/actions'
 import { ListaPresupuestos } from '@/features/presupuestos/components/ListaPresupuestos'
 import { CamposPresupuesto } from '@/features/presupuestos/components/CamposPresupuesto'
 import { Aviso, BotonEnlace } from '@/shared/components/ds'
+import { EstadoError } from '@/shared/components/estado'
 import { PageShell, StatTile, FormAccion } from '@/shared/components/ui'
 
 export const dynamic = 'force-dynamic'
@@ -75,8 +76,11 @@ export default async function PresupuestosPage({
       subtitle="Lo que está en la calle, lo que se ganó y con qué margen. Tocá uno para abrir su cómputo."
     >
       {error ? (
-        // UNA LISTA VACÍA POR ERROR NO SE DIBUJA COMO «NO HAY DATOS».
-        <Aviso tono="neg" titulo="No pude leer los presupuestos">{error}</Aviso>
+        // UNA LISTA VACÍA POR ERROR NO SE DIBUJA COMO «NO HAY DATOS»: son cosas opuestas, y
+        // confundirlas hace que un permiso faltante parezca una empresa sin trabajo. `EstadoError`
+        // muestra el mensaje REAL de la base — hoy, «permission denied for table cotizaciones»,
+        // que apunta exactamente al arreglo.
+        <EstadoError mensaje={error} que="la cartera de presupuestos" />
       ) : (
         <>
           <div className="mb-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-4" data-testid="kpis-cartera">

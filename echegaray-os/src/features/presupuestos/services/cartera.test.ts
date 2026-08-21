@@ -110,3 +110,9 @@ test('un filtro inventado en la URL cae en «todos» en vez de vaciar la lista',
   assert.equal(esFiltro(null), 'todos')
   assert.equal(esFiltro('cerrados'), 'cerrados')
 })
+
+test('el buscador ignora las tildes: nadie las escribe cuando busca', () => {
+  const lista = [p('enviada', 1, 10, { obra_nombre: 'Albañilería del pañol', cliente: 'Orica' })]
+  assert.equal(filtrarCartera(lista, 'todos', 'albanileria').length, 1)
+  assert.equal(filtrarCartera(lista, 'todos', 'PAÑOL').length, 1)
+})

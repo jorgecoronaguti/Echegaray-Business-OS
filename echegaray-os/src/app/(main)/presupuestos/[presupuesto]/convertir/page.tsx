@@ -24,6 +24,7 @@ import { PipelineConversion } from '@/features/presupuestos/components/PipelineC
 import { ListaPartidasConversion } from '@/features/presupuestos/components/ListaPartidasConversion'
 import { ConfiguradorConversion } from '@/features/presupuestos/components/ConfiguradorConversion'
 import { Aviso, BarraContexto, MetaContexto } from '@/shared/components/ds'
+import { EstadoError } from '@/shared/components/estado'
 
 export const dynamic = 'force-dynamic'
 
@@ -62,7 +63,7 @@ export default async function ConvertirPage({
   const { data: presupuesto, error } = await getPresupuesto(supabase, id)
   if (!presupuesto) {
     if (error?.startsWith('No existe')) notFound()
-    return <div className="px-4 py-6 lg:px-10"><Aviso tono="neg" titulo="No pude leer el presupuesto">{error ?? 'sin detalle'}</Aviso></div>
+    return <EstadoError mensaje={error ?? 'La consulta no devolvió el presupuesto y tampoco un error.'} que="la conversión a plan de obra" />
   }
 
   const [partidas, plantillas, obras] = await Promise.all([

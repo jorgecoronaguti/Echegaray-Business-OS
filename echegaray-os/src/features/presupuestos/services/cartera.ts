@@ -23,6 +23,9 @@
 // cuatro veces la misma obra en el KPI de cotizado.
 
 import type { PresupuestoCascada } from '../types/index.ts'
+// Ruta relativa y con extensión: `node --test` no resuelve el alias `@/`, y estos módulos puros
+// se prueban con el runner directo. Es la misma forma que usan `filtroObras` y `presencia`.
+import { contieneEnAlguno } from '../../../shared/utils/busqueda.ts'
 import { aNumero } from './formato.ts'
 import { lecturaEstado } from './estado.ts'
 
@@ -40,19 +43,17 @@ export function esFiltro(v: string | null | undefined): FiltroCartera {
   return FILTROS.some((f) => f.clave === v) ? (v as FiltroCartera) : 'todos'
 }
 
-/** El texto contra el que busca el buscador: número, obra y cliente. Al teclear, sin botón. */
-function textoDe(p: PresupuestoCascada): string {
-  return `${p.numero ?? ''} ${p.obra_nombre ?? ''} ${p.cliente ?? ''}`.toLowerCase()
-}
-
 export function filtrarCartera(
   lista: readonly PresupuestoCascada[],
   filtro: FiltroCartera,
   busqueda: string,
 ): PresupuestoCascada[] {
-  const q = busqueda.trim().toLowerCase()
+  const q = busqueda
   return lista.filter((p) => {
-    if (q && !textoDe(p).includes(q)) return false
+    // La normalización es la del OS (`shared/utils/busqueda`): sin tildes y sin mayúsculas. Con un
+    // `includes` propio, «albañilería» no se encontraba escribiendo «albanileria» acá y sí en la
+    // lista de al lado — el mismo tipeo tiene que dar el mismo resultado en todas.
+    if (!contieneEnAlguno([p.numero, p.obra_nombre, p.cliente], q)) return false
     const grupo = lecturaEstado(p.estado).grupo
     switch (filtro) {
       case 'abiertos': return grupo === 'abierto'

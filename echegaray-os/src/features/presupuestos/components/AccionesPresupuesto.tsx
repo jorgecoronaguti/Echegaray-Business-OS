@@ -13,7 +13,8 @@
 
 import Link from 'next/link'
 import { useActionState, startTransition, type FormEvent } from 'react'
-import { cambiarEstado, congelar, nuevaVersion, INICIAL, type EstadoAccion } from '../services/actions'
+import { cambiarEstado, congelar, nuevaVersion } from '../services/actions'
+import { INICIAL, type EstadoAccion } from '../services/accion'
 import { transicionesDe, lecturaEstado } from '../services/estado'
 import type { EstadoPresupuesto } from '../types'
 

@@ -21,7 +21,8 @@
 
 import { useActionState, startTransition } from 'react'
 import type { PartidaValorizada, RendimientoRecomendado } from '../types'
-import { editarCampoPartida, INICIAL, type EstadoAccion } from '../services/actionsPartida'
+import { editarCampoPartida } from '../services/actionsPartida'
+import { INICIAL, type EstadoAccion } from '../services/accion'
 import { rendimiento } from '../services/formato'
 
 export function ContraElHistorico({

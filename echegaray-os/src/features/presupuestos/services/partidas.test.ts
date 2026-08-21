@@ -122,3 +122,9 @@ test('sin subcontratadas no hay nada que avisar, y el monto no contado es null, 
   assert.equal(r.n, 0)
   assert.equal(r.precioNoContado, null)
 })
+
+test('el buscador de partidas también ignora tildes y espacios de sobra', () => {
+  const lista = [part({ codigo: 'T1009', descripcion: 'Columna de encadenado', rubro: 'Albañilería' })]
+  assert.equal(filtrarPartidas(lista, ' albanileria ').length, 1)
+  assert.equal(filtrarPartidas(lista, '').length, 1)
+})

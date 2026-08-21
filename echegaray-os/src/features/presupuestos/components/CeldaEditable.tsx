@@ -21,7 +21,8 @@
 // cómputo cargado por error, y por eso el campo NO tiene `required`.
 
 import { useActionState, useRef, startTransition, type FormEvent } from 'react'
-import { INICIAL, editarCampoPartida, type EstadoAccion } from '../services/actionsPartida'
+import { editarCampoPartida } from '../services/actionsPartida'
+import { INICIAL, type EstadoAccion } from '../services/accion'
 
 export function CeldaEditable({
   partidaId,

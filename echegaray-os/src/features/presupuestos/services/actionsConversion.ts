@@ -22,9 +22,9 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { controlDeCierre, type Frente } from './frentes'
+// Ver `./accion`: un archivo `'use server'` no puede exportar una constante.
+import type { EstadoAccion } from './accion'
 
-export type EstadoAccion = { error: string | null; ok?: boolean; mensaje?: string }
-export const INICIAL: EstadoAccion = { error: null }
 
 const metodoSchema = z.enum(['cantidad', 'pasos', 'manual'])
 

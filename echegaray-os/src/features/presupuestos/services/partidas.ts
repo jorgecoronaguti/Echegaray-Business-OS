@@ -17,6 +17,9 @@
 // dos caminos hacia el mismo número y el día que difieran nadie sabría cuál mirar.
 
 import type { PartidaValorizada } from '../types/index.ts'
+// Ruta relativa y con extensión: `node --test` no resuelve el alias `@/`, y estos módulos puros
+// se prueban con el runner directo. Es la misma forma que usan `filtroObras` y `presencia`.
+import { contieneEnAlguno } from '../../../shared/utils/busqueda.ts'
 import { aNumero } from './formato.ts'
 import { incidencia } from './cascada.ts'
 
@@ -96,10 +99,7 @@ export function filasDeLaTabla(
 export function filtrarPartidas(
   partidas: readonly PartidaValorizada[], busqueda: string,
 ): PartidaValorizada[] {
-  const q = busqueda.trim().toLowerCase()
-  if (!q) return [...partidas]
-  return partidas.filter((p) =>
-    `${p.codigo ?? ''} ${p.descripcion} ${rubroDe(p)}`.toLowerCase().includes(q))
+  return partidas.filter((p) => contieneEnAlguno([p.codigo, p.descripcion, rubroDe(p)], busqueda))
 }
 
 /**

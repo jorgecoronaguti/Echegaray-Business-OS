@@ -30,6 +30,7 @@ import { PanelPartida } from '@/features/presupuestos/components/PanelPartida'
 import { AltaPartida } from '@/features/presupuestos/components/AltaPartida'
 import { AccionesPresupuesto } from '@/features/presupuestos/components/AccionesPresupuesto'
 import { Aviso, BarraContexto, Estado, MetaContexto } from '@/shared/components/ds'
+import { EstadoError } from '@/shared/components/estado'
 
 export const dynamic = 'force-dynamic'
 
@@ -59,7 +60,7 @@ export default async function PresupuestoPage({
   if (error && !p) {
     // Un id que no existe es 404; un error de lectura NO se disfraza de «no hay datos».
     if (error.startsWith('No existe')) notFound()
-    return <div className="px-4 py-6 lg:px-10"><Aviso tono="neg" titulo="No pude leer el presupuesto">{error}</Aviso></div>
+    return <EstadoError mensaje={error} que="el presupuesto" />
   }
   const presupuesto = p!
 
