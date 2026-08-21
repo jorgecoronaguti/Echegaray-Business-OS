@@ -241,6 +241,14 @@ async function cargar({ texto, port, actor, google, fileIds, postId, mattermost,
     // vocabulario de la columna K con el que se resuelve la obra escrita a mano, y la historia de
     // imputación con la que aprende `imputacion-aprendida.mjs`.
     comprasDe: () => indiceDeCompras(google),
+    // EL EXTRACTO BANCARIO que el importador carga todos los días: contra él se cruza todo
+    // comprobante que declare «pagada por transferencia». Últimos 25 días de débitos alcanzan: la
+    // ventana del cruce es de ±5 días por comprobante. Si la consulta falla, `marcarBanco` lo
+    // declara `no_verificable` — nunca frena la carga.
+    bancoDe: () => port.query(
+      `select fecha, concepto, importe, referencia from banco_movimientos
+        where importe < 0 and fecha >= current_date - 25 order by fecha desc limit 800`,
+    ).then((r) => r.rows),
     // EL FEEDER DE RESERVA de esa misma lib: el espejo en Postgres. Se usa sólo si no se pudo leer
     // la pestaña. Es el que ya consume el cargador de Claude Code — la misma lib, otra lectura.
     perfilesDesdeDB: () => perfilesDeImputacionDesdeDB({ query: (...a) => port.query(...a) }),

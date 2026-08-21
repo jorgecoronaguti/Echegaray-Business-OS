@@ -10,6 +10,8 @@
 
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
+import { getPerfilActual } from '@/features/auth/services/authService'
+import { puedeVerRuta } from '@/features/auth/types/areas'
 import { PageShell } from '@/shared/components/ui'
 import { BuscadorURL, Eyebrow, Num, Nulo, Vacio } from '@/shared/components/ds'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
@@ -97,13 +99,17 @@ function Resultados({ q, hallazgos }: { q: string; hallazgos: Hallazgo[] }) {
 export default async function AdministracionPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const sp = await searchParams
   const supabase = await createClient()
-  const [conteos, movimiento, hallazgos] = await Promise.all([
+  const [conteos, movimiento, hallazgos, perfil] = await Promise.all([
     getConteos(supabase),
     getUltimoMovimiento(supabase),
     buscarGlobal(supabase, sp.q),
+    getPerfilActual(supabase),
   ])
 
-  const maestros = maestrosDe(conteos)
+  // La pantalla no ofrece lo que la puerta va a negar: la tarjeta «Usuarios» le aparecía al jefe
+  // de obra y el clic moría en un redirect mudo a /obras (QA del 21/08). Mismo criterio que la
+  // barra (4a8e79f1) y que /presupuestos: un botón que lleva a «no hay nada» no se dibuja.
+  const maestros = maestrosDe(conteos).filter((m) => puedeVerRuta(perfil.data?.rol ?? null, m.href))
   const atenciones = atencionesDe(conteos)
 
   return (

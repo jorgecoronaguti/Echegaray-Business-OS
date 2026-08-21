@@ -60,6 +60,8 @@ export const MOTIVO = Object.freeze({
   // tiene impreso.
   FECHA_IMPOSIBLE: 'fecha_imposible',
   IVA_IMPOSIBLE: 'iva_imposible',
+  // El 21/08: dos presupuestos de CON-SEC encaminados a carga como si fueran facturas.
+  NO_ES_FACTURA: 'no_es_factura',
 })
 
 /**
@@ -81,6 +83,7 @@ export const ROTULO = Object.freeze({
   [MOTIVO.NUMERO]: 'el número',
   [MOTIVO.ARITMETICA]: 'que los importes cierren',
   [MOTIVO.ESCALA]: 'confirmar el total',
+  [MOTIVO.NO_ES_FACTURA]: 'confirmar que sea una factura',
 })
 
 /**
@@ -217,6 +220,18 @@ export function faltantesDe(item = {}, politica = POLITICA.CARGADOR, { ahora } =
   const p = politica ?? POLITICA.CARGADOR
   const out = []
   const falta = (codigo, texto, pregunta) => out.push({ codigo, texto, pregunta: pregunta ?? texto })
+
+  // ═══ UN PRESUPUESTO NO ES UN GASTO (21/08) ═══
+  //
+  // Cuando la visión declara que el papel es un presupuesto/remito/nota de pedido, no hay nada que
+  // completar después: la fila entera sería un gasto que todavía no existe. Frena en TODAS las
+  // políticas —el campo sólo existe cuando un modelo leyó el papel— y la salida es Descartar, o
+  // Corregir si la lectura se equivocó de clase de papel.
+  if (c.esPresupuestoORemito) {
+    falta(MOTIVO.NO_ES_FACTURA, 'es un presupuesto/remito, no una factura',
+      'esto parece un **presupuesto o remito**, no una factura: todavía no es un gasto y no se carga '
+      + 'a Compras. Si me equivoqué y es una factura de verdad, tocá **Corregir**; si no, **Descartar**.')
+  }
 
   // UN PROVEEDOR QUE NO ESTÁ EN EL DESPLEGABLE YA NO FRENA LA FILA cuando el CUIT y el número la
   // identifican solos: entra con la celda E vacía, con el nombre leído transcripto en el concepto, y

@@ -102,7 +102,11 @@ export function aFila(c) {
   const est = String(c.estado).trim()
   return {
     tipo: String(c.tipo).trim(),
-    numero: String(c.numero).trim(),
+    // ═══ EL NÚMERO VA NORMALIZADO — 20260821T1100 (21/08) ═══
+    // La base guarda «366», el banco imprime «00000366». Sin normalizar acá, el mismo fajo de la
+    // pantalla del banco entraba entero como «nuevo» y duplicaba lo que ya estaba: `novedades()` y
+    // el índice único comparan el número canónico, no el impreso. Mismo norm() que el sync.
+    numero: String(c.numero ?? '').replace(/\D/g, '').replace(/^0+/, '') || String(c.numero).trim(),
     banco: c.banco ? String(c.banco).trim() : null,
     librador: c.librador ? String(c.librador).trim() : null,
     librador_cuit: c.librador_cuit ? soloDigitos(c.librador_cuit) : null,

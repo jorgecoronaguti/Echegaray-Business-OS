@@ -41,7 +41,10 @@ export const ROL_LABEL: Record<Rol, string> = {
 //
 // Y ESTO NO ES LA CERRADURA: lo que estas pantallas muestran lo deciden las vistas `mi_*`, que
 // filtran por `mi_persona_id()` en la base.
-export const CAMPO_RUTAS_PERMITIDAS = ['/hoy', '/mi-trabajo', '/mi-informacion', '/integraciones/pedidos-materiales', '/integraciones/herramientas', '/integraciones/movimientos', '/campo', '/descargas', '/mi-cuenta']
+// `/marca` va acá por lo mismo que ya está en RUTAS_PUBLICAS (18/08): el isotipo es una imagen,
+// no una pantalla. Sin esta entrada el middleware redirigía `/marca/isotipo.png` a `/hoy` para todo
+// usuario campo y el logo se veía ROTO en cada pantalla mobile del rol Empleado (QA del 21/08).
+export const CAMPO_RUTAS_PERMITIDAS = ['/hoy', '/mi-trabajo', '/mi-informacion', '/integraciones/pedidos-materiales', '/integraciones/herramientas', '/integraciones/movimientos', '/campo', '/descargas', '/mi-cuenta', '/marca']
 export function esRutaCampoPermitida(pathname: string): boolean {
   return CAMPO_RUTAS_PERMITIDAS.some((r) => pathname === r || pathname.startsWith(r + '/'))
 }
