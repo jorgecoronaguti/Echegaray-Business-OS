@@ -40,7 +40,9 @@ async function main() {
   if (noEstan.length) console.log(`  ⚠ no encontré en el archivo: ${noEstan.join(', ')}`)
   for (const [n, motivo] of Object.entries(A_LA_VISTA_A_PROPOSITO)) console.log(`  👁 ${n} se queda a la vista: ${motivo}`)
   if (!cambios.length) { console.log('nada que ocultar.'); return }
-  console.log(`\nocultar ${cambios.length}: ${ESPEJOS_A_OCULTAR.filter((n) => !yaOcultas.includes(n) && !noEstan.includes(n)).join(', ')}`)
+  const nombres = [...ESPEJOS_A_OCULTAR, ...Object.keys(NO_LAS_USA_A_OCULTAR)]
+    .filter((n) => !yaOcultas.includes(n) && !noEstan.includes(n))
+  console.log(`\nocultar ${cambios.length}: ${nombres.join(', ')}`)
   if (seco) { console.log('\n(--dry) no toqué nada.'); return }
   await batch(tok, cambios)
   console.log('✓ ocultas. Para revertir: node orquestador/scripts/ocultar-espejos.mjs --mostrar')
