@@ -71,6 +71,24 @@ export interface GrupoCronograma {
 }
 
 /**
+ * DE QUÉ GRUPO ES UNA FILA — la regla, sola, para que no exista dos veces.
+ *
+ * El grupo de una fila de resumen es SU PROPIO NOMBRE, y el de una tarea es su `seccion`. En los
+ * datos reales la `seccion` de una fila de resumen viene arrastrada de la sección anterior —la
+ * fila «Encofrado» de Messina trae `seccion='Armadura…'`—, así que agrupar la cabecera por ahí la
+ * metería dentro del grupo de arriba.
+ *
+ * Se extrajo de `agruparActividades` cuando la 08 necesitó la MISMA regla para armar los frentes
+ * de la dotación: dos implementaciones de esto darían un frente en el cronograma y otro distinto
+ * en la proyección, sobre las mismas actividades.
+ */
+export function claveDeGrupo(a: { tipo?: string | null; nombre: string; seccion?: string | null }): string {
+  if (a.tipo === 'resumen') return a.nombre
+  const s = a.seccion?.trim()
+  return s ? s : SIN_GRUPO
+}
+
+/**
  * AGRUPA EL CRONOGRAMA respetando el orden del tracker.
  *
  * La fila de resumen se consume como CABECERA del grupo y no vuelve a aparecer como hija: si
@@ -99,7 +117,7 @@ export function agruparActividades(actividades: Actividad[]): GrupoCronograma[] 
       if (g.cabecera === null) g.cabecera = a
       else g.hijas.push(a)
     } else {
-      const clave = a.seccion?.trim() ? a.seccion.trim() : SIN_GRUPO
+      const clave = claveDeGrupo(a)
       tomar(clave, clave === SIN_GRUPO ? 'Sin clasificar' : clave).hijas.push(a)
     }
   }

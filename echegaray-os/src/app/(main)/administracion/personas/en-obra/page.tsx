@@ -4,14 +4,14 @@ import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual, getUsuarioActual } from '@/features/auth/services/authService'
 import { esAdministracion } from '@/features/auth/types/areas'
 import { PageShell } from '@/shared/components/ui'
-import { Aviso, Estado, Eyebrow, Vacio } from '@/shared/components/ds'
+import { Aviso, BuscadorURL, Estado, Eyebrow, Vacio } from '@/shared/components/ds'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
 import { RelojDeJornada, PuntoActivo } from '@/features/administracion/components/RelojDeJornada'
 import {
   getEsperados, getObrasConGente, getPresencia,
 } from '@/features/administracion/services/presenciaService'
 import {
-  agrupar, lecturaDePunto, mapa, resumen, type Esperado, type FilaPresencia,
+  agrupar, filtrarGrupos, lecturaDePunto, mapa, resumen, type Esperado, type FilaPresencia,
 } from '@/features/administracion/services/presencia'
 
 // «EN OBRA AHORA» — quién está, desde qué hora y dónde arrancó el día.
@@ -48,7 +48,7 @@ const hoyISO = (d = new Date()) =>
 export default async function EnObraPage({
   searchParams,
 }: {
-  searchParams: Promise<{ obra?: string }>
+  searchParams: Promise<{ obra?: string; q?: string }>
 }) {
   const supabase = await createClient()
   const user = await getUsuarioActual(supabase)
@@ -56,7 +56,7 @@ export default async function EnObraPage({
   const perfil = await getPerfilActual(supabase, user.id)
   if (!esAdministracion(perfil.data?.rol)) redirect('/obras')
 
-  const { obra } = await searchParams
+  const { obra, q } = await searchParams
   const fecha = hoyISO()
 
   const [presencia, esperados, obras] = await Promise.all([
@@ -74,8 +74,15 @@ export default async function EnObraPage({
     )
   }
 
-  const g = agrupar(presencia.data ?? [], esperados.data ?? [])
-  const hayAlgo = g.enObra.length + g.cerradas.length + g.faltaSalida.length + g.sinRegistrar.length > 0
+  // DOS CONTEOS DISTINTOS. `hayAlgo` dice si HAY jornada de la que hablar; `hayResultado`, si la
+  // búsqueda encontró a alguien. Sin esa separación, escribir un apellido que no está mostraría el
+  // texto de «nadie marcó asistencia hoy» —que es una afirmación sobre la obra, no sobre la
+  // búsqueda— y eso es exactamente el tipo de conclusión que esta pantalla no puede inducir.
+  const todos = agrupar(presencia.data ?? [], esperados.data ?? [])
+  const g = filtrarGrupos(todos, q ?? '')
+  const cuenta = (x: typeof todos) => x.enObra.length + x.cerradas.length + x.faltaSalida.length + x.sinRegistrar.length
+  const hayAlgo = cuenta(todos) > 0
+  const hayResultado = cuenta(g) > 0
 
   return (
     <PageShell
@@ -90,12 +97,20 @@ export default async function EnObraPage({
       <NavAdministracion />
 
       <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <BuscadorURL
+          accion="/administracion/personas/en-obra"
+          q={q}
+          placeholder="Buscar persona, categoría u obra"
+          oculto={{ obra }}
+          ancho="w-full sm:w-[240px]"
+          testid="buscar-presencia"
+        />
         <nav className="flex flex-wrap gap-1" data-testid="filtro-obra">
-          <FiltroObra href="/administracion/personas/en-obra" activo={!obra}>Todas las obras</FiltroObra>
+          <FiltroObra href={hrefObra(undefined, q)} activo={!obra}>Todas las obras</FiltroObra>
           {(obras.data ?? []).map((o) => (
             <FiltroObra
               key={o.id}
-              href={`/administracion/personas/en-obra?obra=${encodeURIComponent(o.id)}`}
+              href={hrefObra(o.id, q)}
               activo={obra === o.id}
             >
               {o.nombre}
@@ -113,6 +128,12 @@ export default async function EnObraPage({
           hace cada persona desde su teléfono, en «Hoy»; las asignaciones las carga Administración
           desde la solapa Personal de la obra.
         </Vacio>
+      )}
+
+      {hayAlgo && !hayResultado && (
+        <div data-testid="presencia-sin-resultado">
+          <Vacio>Nadie de los que hoy están en la jornada coincide con «{q}».</Vacio>
+        </div>
       )}
 
       {g.enObra.length > 0 && (
@@ -149,6 +170,16 @@ export default async function EnObraPage({
       )}
     </PageShell>
   )
+}
+
+/** El filtro de obra CONSERVA la búsqueda: cambiar de obra no puede vaciar el buscador a espaldas
+ *  de quien lo escribió. */
+function hrefObra(obraId: string | undefined, q: string | undefined): string {
+  const p = new URLSearchParams()
+  if (obraId) p.set('obra', obraId)
+  if (q) p.set('q', q)
+  const qs = p.toString()
+  return `/administracion/personas/en-obra${qs ? `?${qs}` : ''}`
 }
 
 function FiltroObra({ href, activo, children }: { href: string; activo: boolean; children: React.ReactNode }) {

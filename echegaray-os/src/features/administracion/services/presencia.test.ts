@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  agrupar, jornadaLarga, lecturaDePunto, mapa, minutosDesde, reloj, resumen,
+  agrupar, filtrarGrupos, jornadaLarga, lecturaDePunto, mapa, minutosDesde, reloj, resumen,
 } from './presencia.ts'
 import type { Esperado, FilaPresencia } from './presencia.ts'
 
@@ -84,4 +84,44 @@ test('el resumen no nombra los grupos vacíos', () => {
     [e('c', 'Nadie')],
   )
   assert.equal(resumen(g2), '1 en obra · 1 ya cerraron · 1 sin registrar')
+})
+
+// ═══ EL BUSCADOR DE «EN OBRA AHORA» ═══
+
+test('el buscador filtra DESPUÉS de agrupar: nadie salta de «en obra» a «sin registrar»', () => {
+  // El defecto que atrapa, y es el caro: `agrupar` arma «sin registrar» restando de los esperados a
+  // los que ya marcaron. Filtrar la presencia CRUDA por texto le sacaría la marca a alguien que sí
+  // marcó, y la resta lo devolvería como «sin registrar» — la pantalla diría que un operario que
+  // está trabajando no fichó, sobre la única lista que después se mira para discutir una ausencia.
+  const g = agrupar(
+    [f({ persona_id: 'a', nombre_completo: 'Ramón Gómez', estado: 'activo', entrada: '2026-08-20T10:00:00Z' })],
+    [e('a', 'Ramón Gómez'), e('b', 'Juan Pérez')],
+  )
+  const soloJuan = filtrarGrupos(g, 'juan')
+  assert.deepEqual(soloJuan.enObra.map((x) => x.persona_id), [])
+  assert.deepEqual(soloJuan.sinRegistrar.map((x) => x.id), ['b'])
+
+  const soloRamon = filtrarGrupos(g, 'gomez')
+  assert.deepEqual(soloRamon.enObra.map((x) => x.persona_id), ['a'])
+  // Y NO reaparece del otro lado.
+  assert.deepEqual(soloRamon.sinRegistrar.map((x) => x.id), [])
+})
+
+test('sin texto los cuatro grupos quedan como estaban', () => {
+  const g = agrupar(
+    [
+      f({ persona_id: 'a', nombre_completo: 'Ramón Gómez', estado: 'activo' }),
+      f({ persona_id: 'c', nombre_completo: 'Luis Díaz', estado: 'cerrada' }),
+      f({ persona_id: 'd', nombre_completo: 'Ana Ruiz', estado: 'falta_salida' }),
+    ],
+    [e('a', 'Ramón Gómez'), e('b', 'Juan Pérez')],
+  )
+  assert.deepEqual(filtrarGrupos(g, ''), g)
+  assert.deepEqual(filtrarGrupos(g, '   '), g)
+})
+
+test('se busca también por la obra, escrita sin acentos', () => {
+  const g = agrupar([f({ persona_id: 'a', nombre_completo: 'Ramón Gómez', obra: 'Galpón Messina', estado: 'activo' })], [])
+  assert.equal(filtrarGrupos(g, 'galpon').enObra.length, 1)
+  assert.equal(filtrarGrupos(g, 'arcor').enObra.length, 0)
 })

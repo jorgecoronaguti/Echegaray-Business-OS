@@ -11,9 +11,8 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { PageShell } from '@/shared/components/ui'
-import { Eyebrow, Num, Nulo, Vacio } from '@/shared/components/ds'
+import { BuscadorURL, Eyebrow, Num, Nulo, Vacio } from '@/shared/components/ds'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
-import { BuscadorURL } from '@/features/administracion/components/Controles'
 import {
   atencionesDe, buscarGlobal, cuandoCorto, getConteos, getUltimoMovimiento, maestrosDe,
   type Atencion, type Hallazgo, type Maestro,

@@ -420,6 +420,20 @@ export interface Certificado {
 
 export type ServiceResult<T> = { data: T; error: null } | { data: null; error: string }
 
+/**
+ * LO QUE PUEDE NO EXISTIR, sin que eso sea un fallo.
+ *
+ * `ServiceResult` obliga a que `data: null` venga con un `error: string`, y ese contrato empujaba a
+ * las lecturas por identificador a INVENTAR un error —`No existe la obra "x"`— para poder devolver
+ * la ausencia. Consecuencia: la ficha dibujaba la pantalla roja de una base caída para una obra que
+ * simplemente no está, y su `notFound()` era código inalcanzable.
+ *
+ * Con esto son TRES estados y no dos: encontrado, no encontrado, y fallo real. Quien pregunta
+ * decide qué hacer con cada uno —la ficha manda el segundo al 404, el alta ofrece crear una nueva—
+ * y el compilador obliga a mirar los dos casos.
+ */
+export type ServiceResultOpcional<T> = { data: T | null; error: null } | { data: null; error: string }
+
 /** Días de desvío del fin planificado contra la línea base. Positivo = atrasado.
  *  Devuelve null si no hay baseline: un desvío sin contra qué medir no es cero, es desconocido. */
 export function desvioDias(a: Pick<Actividad, 'fin_plan' | 'fin_base'>): number | null {

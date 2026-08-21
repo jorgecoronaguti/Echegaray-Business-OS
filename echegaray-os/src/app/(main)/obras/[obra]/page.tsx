@@ -91,8 +91,10 @@ import {
   asignarActividadADocumento, desvincularDocumento, soltarDocumentoDeActividad, vincularDocumento,
 } from '@/features/obras/services/actionsDocumentos'
 import { fecha as fmtFecha } from '@/features/obras/components/formato'
-import { BotonAccion, FormAccion, PageShell } from '@/shared/components/ui'
-import { EntityHeader, Tabs } from '@/shared/components/ds'
+import { BotonAccion, FormAccion } from '@/shared/components/ui'
+import { Aviso, EntityHeader, Tabs } from '@/shared/components/ds'
+import { crearLector } from '@/shared/components/estado/lecturas'
+import { EstadoError } from '@/shared/components/estado'
 // `anchoSplit` se importa por su RUTA y no por el barril del DS: usa `next/headers`, y ese barril lo
 // importan componentes de cliente. Ver el comentario en `ds/index.ts`.
 import { anchoSplit } from '@/shared/components/ds/split-servidor'
@@ -130,11 +132,9 @@ export default async function ObraPage({
   // faltaba un `grant` y el módulo entero se veía como "página no encontrada" en vez de decir que no
   // tenía permiso. Buscar un defecto de permisos detrás de un 404 es buscarlo en el lugar equivocado.
   if (error) {
-    return (
-      <PageShell eyebrow={<Link href="/obras" className="hover:underline">← Obras</Link>} title="No pude leer la obra">
-        <p className="rounded-lg border border-neg/25 bg-neg-soft px-3.5 py-2.5 text-[13px] text-neg">{error}</p>
-      </PageShell>
-    )
+    // El cartel COMPARTIDO, no uno propio: trae el diagnóstico del mensaje de la base (permisos,
+    // sesión vencida, no se llegó), Reintentar y la hora del último dato bueno de esta ficha.
+    return <EstadoError mensaje={error} que="la ficha de la obra" />
   }
   if (!obra) notFound()
 
@@ -147,12 +147,25 @@ export default async function ObraPage({
     || subTareas === 'tablero' || subTareas === 'proximos')
   const esParte = enTareas && subTareas === 'parte'
 
-  const [{ data: actividades }, { data: restricciones }, { data: plan }] = await Promise.all([
+  // ═══ UN ERROR DE LECTURA NO SE DIBUJA COMO UNA OBRA VACÍA ═══
+  //
+  // Todo lo de abajo se leía con `.data ?? []`: si la consulta fallaba, la solapa mostraba «esta
+  // obra todavía no tiene actividades cargadas» o «nadie tiene una asignación en esta obra». Son
+  // afirmaciones sobre la obra sacadas de un fallo de la base — y la ficha se sigue dibujando
+  // (media pantalla es mejor que ninguna), pero ahora con el cartel de lo que no se pudo leer.
+  const lector = crearLector()
+  const [actividades, restricciones, plan] = await Promise.all([
     getActividades(supabase, obraId),
     getRestricciones(supabase, obraId),
     getPlanVsReal(supabase, obraId),
-  ])
-  const todas = actividades ?? []
+  ]).then(([a, r, p]) => [
+    lector.leer(a, [] as NonNullable<typeof a.data>),
+    lector.leer(r, [] as NonNullable<typeof r.data>),
+    // El plan conserva su `null`: «esta obra no tiene línea base» es un hecho distinto de «no se
+    // pudo leer el plan», y aplanarlo a un objeto vacío borraría esa diferencia.
+    lector.leer<NonNullable<typeof p.data> | null>(p, null),
+  ] as const)
+  const todas = actividades
   // LAS ARCHIVADAS NO ENTRAN AL CRONOGRAMA NI A NINGUNA LISTA: para eso se archivan. Siguen
   // existiendo, y por eso hay dentro de Cronograma una lista aparte para volver a traerlas.
   // LAS TAREAS NO SON FILAS DEL PLAN. Descomponen una actividad y viven DENTRO de su panel: en el
@@ -174,16 +187,16 @@ export default async function ObraPage({
   // una: la ficha se abre muchas veces por día desde el teléfono, en obra y con mala señal.
   // Las precedencias sólo las dibuja el Gantt: traerlas en las otras cinco solapas es una consulta
   // por visita para nadie.
-  const dependencias = esCronograma ? (await getDependencias(supabase, obraId)).data ?? [] : []
+  const dependencias = esCronograma ? lector.leer(await getDependencias(supabase, obraId), []) : []
   const necesitaPersonas = esCronograma || vista === 'personal' || esParte
-  const personas = necesitaPersonas ? (await getPersonas(supabase)).data ?? [] : []
+  const personas = necesitaPersonas ? lector.leer(await getPersonas(supabase), []) : []
   const ubicacion = vista === 'resumen' ? await getUbicacion(supabase, obraId) : null
-  const asignaciones = vista === 'personal' ? (await getAsignaciones(supabase, obraId)).data ?? [] : []
-  const registros = vista === 'personal' ? (await getRegistrosHH(supabase, obraId)).data ?? [] : []
+  const asignaciones = vista === 'personal' ? lector.leer(await getAsignaciones(supabase, obraId), []) : []
+  const registros = vista === 'personal' ? lector.leer(await getRegistrosHH(supabase, obraId), []) : []
   // Plan contra real por actividad y las cuadrillas: sólo los pide la solapa Personal.
   // Cronograma la usa para mostrar HH real en el panel de la actividad, con el MISMO cálculo.
   const actividadHH = vista === 'personal' || esCronograma
-    ? (await getActividadHH(supabase, obraId)).data ?? [] : []
+    ? lector.leer(await getActividadHH(supabase, obraId), []) : []
   const necesitaCuadrillas = vista === 'personal' || esParte || esArbol
   const cuadrillas = necesitaCuadrillas ? await getCuadrillas(supabase) : []
   const integrantes = esParte ? await getIntegrantesPorCuadrilla(supabase) : {}
@@ -192,19 +205,19 @@ export default async function ObraPage({
   // movimiento» es literalmente el último parte: sin ellos esa línea no se dibujaba, y una sección
   // que no aparece porque la página no pidió el dato se lee igual que una obra sin movimiento.
   const partes = esParte || esCronograma || vista === 'resumen'
-    ? (await getPartes(supabase, obraId)).data ?? [] : []
+    ? lector.leer(await getPartes(supabase, obraId), []) : []
   const partesPorActividad = new Map<string, typeof partes>()
   for (const p of partes) {
     const previos = partesPorActividad.get(p.actividad_id) ?? []
     previos.push(p)
     partesPorActividad.set(p.actividad_id, previos)
   }
-  const certificados = vista === 'economia' ? (await getCertificados(supabase, obraId)).data ?? [] : []
+  const certificados = vista === 'economia' ? lector.leer(await getCertificados(supabase, obraId), []) : []
   // LOS PAPELES LOS PIDEN DOS SOLAPAS. Documentos muestra los de la obra; Planificación, los que
   // alguien colgó de una actividad. Es la MISMA lectura: dos consultas darían dos listas que un día
   // no coinciden.
   const documentos = vista === 'documentos' || esCronograma
-    ? (await getDocumentos(supabase, obraId)).data ?? [] : []
+    ? lector.leer(await getDocumentos(supabase, obraId), []) : []
 
   // ═══ LO QUE MUESTRA EL PANEL DE UNA ACTIVIDAD ═══
   //
@@ -341,6 +354,17 @@ export default async function ObraPage({
         />
       </div>
       <div className="w-full px-4 pb-6 pt-4 lg:px-10">
+
+      {/* LO QUE NO SE PUDO LEER SE DICE ACÁ, ARRIBA DE LA SOLAPA. Sin este cartel, una consulta
+          caída se veía como una obra sin actividades, sin partes o sin nadie asignado — el error
+          dibujado como un vacío, que es lo que `INTERACTION.md` prohíbe. */}
+      {lector.falla() && (
+        <div className="mb-4">
+          <Aviso tono="neg" titulo="Parte de esta ficha no se pudo leer" testid="obra-lectura-fallida">
+            Lo que falta abajo NO significa que no exista: significa que la consulta falló. {lector.falla()}
+          </Aviso>
+        </div>
+      )}
 
       {vista === 'resumen' && (
         <TabResumen

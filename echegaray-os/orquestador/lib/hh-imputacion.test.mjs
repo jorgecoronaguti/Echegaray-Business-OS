@@ -23,10 +23,19 @@ async function escenario() {
     `insert into public.personas (nombre_completo) values ($1) returning id`, [MARCA])
   const { rows: [o] } = await query(
     `select id from public.obra_canonica order by orden limit 1`)
+  // ═══ `limit 1` SIN `order by` ELIGE CUALQUIERA (21/08/2026) ═══
+  //
+  // Postgres devuelve las filas en el orden en que están en el heap, y ese orden cambia con
+  // cualquier UPDATE masivo. Al rellenar la jerarquía de 161 actividades, este `limit 1` empezó a
+  // devolver otra actividad —una que ya tenía una hora imputada— y el test se puso rojo sin que
+  // cambiara ni la vista ni el trigger que mide. Un escenario que depende del orden físico de la
+  // tabla no prueba lo que dice probar.
   const { rows: [a] } = await query(
-    `select id, obra_id from public.obra_actividad where obra_id = $1 and not archivada limit 1`, [o.id])
+    `select id, obra_id from public.obra_actividad
+      where obra_id = $1 and not archivada order by orden, id limit 1`, [o.id])
   const { rows: [otra] } = await query(
-    `select id from public.obra_actividad where obra_id <> $1 and not archivada limit 1`, [o.id])
+    `select id from public.obra_actividad
+      where obra_id <> $1 and not archivada order by orden, id limit 1`, [o.id])
   return { personaId: p.id, obraId: o.id, actividadId: a?.id ?? null, actividadAjena: otra?.id ?? null }
 }
 
@@ -132,31 +141,26 @@ test('las HH reales de la actividad son la SUMA de sus imputaciones, no una colu
   assert.equal(col.n, 0,
     '`obra_actividad.hh_real` volvió a existir: hay lugar para una segunda versión de las horas reales')
 
-  // ═══ SE MIDE EL DELTA, NO EL TOTAL (corregido el 21/08/2026) ═══
-  //
-  // `escenario()` no crea una actividad: toma la PRIMERA actividad viva de la primera obra, que es
-  // una actividad REAL con las horas que le hayan imputado de verdad. La aserción era
-  // `hh_real === 6.5`, o sea el total de esa actividad — así que el día que alguien imputara una
-  // hora a ese trabajo, este test se ponía rojo sin que cambiara una línea de código. Pasó: da 7,5.
-  //
-  // Lo que el canario tiene que afirmar es que la vista REFLEJA la imputación recién hecha, y eso
-  // es la diferencia entre antes y después. Es la misma corrección que ya tiene escrita este
-  // repositorio: un test que afirma el estado del mundo mide el mundo, no el código.
   const e = await escenario()
   if (!e.actividadId) return
-  const antesDe = async () => {
-    const { rows } = await query(
-      `select hh_real from public.obra_actividad_hh where actividad_id = $1`, [e.actividadId])
-    return rows.length === 0 ? 0 : Number(rows[0].hh_real ?? 0)
-  }
-  const antes = await antesDe()
   try {
+    // Se mide el DELTA, no el total. La actividad que toca puede tener horas de antes —de hecho
+    // las tiene— y afirmar «el total es 6,5» probaba que esa actividad estuviera vacía, no que la
+    // vista sumara. Lo que hay que probar es que la imputación nueva LLEGA.
+    const leer = async () => {
+      const { rows: [v] } = await query(
+        `select coalesce(hh_real, 0) as hh_real from public.obra_actividad_hh where actividad_id = $1`,
+        [e.actividadId])
+      return Number(v?.hh_real ?? 0)
+    }
+    const antes = await leer()
     await query(
       `insert into public.registros_hh
          (obra_canonica_id, persona_id, actividad_id, fecha, fecha_inicio_semana, horas, fuente_legacy)
        values ($1, $2, $3, '2026-08-19', '2026-08-19', 6.5, $4)`,
       [e.obraId, e.personaId, e.actividadId, MARCA])
-    assert.equal(Math.round(((await antesDe()) - antes) * 100) / 100, 6.5,
+    const despues = await leer()
+    assert.equal(despues - antes, 6.5,
       '`obra_actividad_hh` no refleja la imputación recién hecha')
   } finally { await limpiar(e.personaId) }
 })

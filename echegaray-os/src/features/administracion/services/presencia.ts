@@ -14,6 +14,8 @@
 // EL DÍA SIN SALIDA DE AYER NO ES «ACTIVO». Alguien que entró ayer y nunca cerró no está trabajando
 // hace veinte horas: le falta la salida. Son dos estados distintos y la base ya los distingue.
 
+import { contieneEnAlguno } from '../../../shared/utils/busqueda.ts'
+
 export type EstadoPresencia = 'activo' | 'cerrada' | 'falta_salida' | 'sin_registrar'
 
 export interface FilaPresencia {
@@ -67,6 +69,25 @@ export function agrupar(presencia: FilaPresencia[], esperados: Esperado[] = []):
     sinRegistrar: esperados
       .filter((e) => !marcaron.has(e.id))
       .sort((a, b) => a.nombre_completo.localeCompare(b.nombre_completo, 'es')),
+  }
+}
+
+/**
+ * FILTRAR LOS CUATRO GRUPOS POR TEXTO — después de agrupar, nunca antes.
+ *
+ * Filtrar la presencia CRUDA rompería el grupo «sin registrar»: `agrupar` lo arma restando de los
+ * esperados a los que ya marcaron, y si la búsqueda sacara una marca antes de esa resta, la persona
+ * aparecería a la vez filtrada de «en obra» y agregada a «sin registrar» — o sea, la pantalla diría
+ * que alguien que está en obra no marcó. Por eso esto recibe `Grupos` ya armados.
+ *
+ * Se busca por persona, categoría/puesto y obra: son los tres datos que cada fila muestra.
+ */
+export function filtrarGrupos(g: Grupos, q: string): Grupos {
+  return {
+    enObra: g.enObra.filter((f) => contieneEnAlguno([f.nombre_completo, f.categoria, f.puesto, f.obra], q)),
+    cerradas: g.cerradas.filter((f) => contieneEnAlguno([f.nombre_completo, f.categoria, f.puesto, f.obra], q)),
+    faltaSalida: g.faltaSalida.filter((f) => contieneEnAlguno([f.nombre_completo, f.categoria, f.puesto, f.obra], q)),
+    sinRegistrar: g.sinRegistrar.filter((e) => contieneEnAlguno([e.nombre_completo, e.categoria, e.obra_actual], q)),
   }
 }
 
