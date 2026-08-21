@@ -101,6 +101,13 @@ test('el tope del frente es el MÁS BAJO de sus actividades: el más estrecho ma
   assert.equal(f.limite, 'tope del frente')
 })
 
+test('la dotación pedida por URL se recorta al tope: 99 personas no acortan un frente con tope 3', () => {
+  const [conTope] = frentesDe([fila({ seccion: 'A', hh_plan: 96, tope_frente: 3 })], { dotaciones: { A: 99 } })
+  const [alTope] = frentesDe([fila({ seccion: 'A', hh_plan: 96, tope_frente: 3 })], { dotaciones: { A: 3 } })
+  assert.equal(conTope.dias, alTope.dias, 'pedir 99 dio un plazo distinto que pedir el tope')
+  assert.equal(conTope.dotacion, 3)
+})
+
 test('el FIN se calcula con el calendario de la obra, y sin fecha de arranque es null', () => {
   const sumar = (desde: string, n: number) => `${desde}+${n}`
   const [con] = frentesDe([fila({ seccion: 'A', hh_plan: 80 })], {

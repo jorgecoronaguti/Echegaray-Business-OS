@@ -109,7 +109,7 @@ async function armar(
   q: string,
 ): Promise<Armado> {
   if (vista === 'mano-obra') {
-    const r = await getManoDeObra(supabase, hoy)
+    const r = await getManoDeObra(supabase, hoy, economia)
     if (r.error || !r.data) return { nodo: null, subtitulo: '', error: r.error ?? 'sin datos' }
     const { categorias, cargas, meta } = r.data
     return {
