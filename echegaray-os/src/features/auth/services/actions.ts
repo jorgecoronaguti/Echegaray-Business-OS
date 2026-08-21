@@ -3,7 +3,11 @@
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import { loginInputSchema, signupInputSchema } from '../types'
+import { siteUrl } from '@/lib/site-url'
+import {
+  contrasenaNuevaInputSchema, loginInputSchema, recuperarInputSchema, signupInputSchema,
+} from '../types'
+import { urlDeRecuperacion } from './recuperacion'
 
 export type ActionState = { error: string | null }
 
@@ -65,6 +69,76 @@ export async function signupAction(_prev: ActionState, formData: FormData): Prom
 
   revalidatePath('/', 'layout')
   redirect('/login?registrado=1')
+}
+
+// ═══ RECUPERAR LA CONTRASEÑA (M01) ═══
+
+export type EnvioState = { error: string | null; enviado: boolean }
+
+/**
+ * PEDIR EL CORREO DE RECUPERACIÓN.
+ *
+ * ═══ LA RESPUESTA ES LA MISMA EXISTA O NO LA CUENTA ═══
+ *
+ * `resetPasswordForEmail` contesta OK aunque el email no exista, y está bien que así sea: si la
+ * pantalla dijera «esa dirección no está registrada», cualquiera con el formulario en la mano podría
+ * averiguar quién tiene cuenta en el OS probando direcciones. Por eso esta acción nunca distingue
+ * los dos casos y la pantalla dice «si esa dirección tiene cuenta».
+ *
+ * Lo único que sí se devuelve como error es lo que hay que ver: el límite de envíos de Supabase.
+ * Tragárselo dejaría a alguien tocando «Enviar» sin que llegue nunca nada.
+ *
+ * LA URL DE VUELTA sale de `siteUrl()`, la URL pública canónica del OS — la misma que usa el resto
+ * del sistema. No se arma con el `Host` del pedido: ese encabezado lo elige quien llama, y con él un
+ * atacante haría que el enlace del correo apunte a su servidor. Supabase además exige que esté en la
+ * lista de Redirect URLs del proyecto, que es la segunda cerradura.
+ */
+export async function recuperarAction(_prev: EnvioState, formData: FormData): Promise<EnvioState> {
+  const parsed = recuperarInputSchema.safeParse({ email: formData.get('email') })
+  if (!parsed.success) return { error: parsed.error.issues[0].message, enviado: false }
+
+  const supabase = await createClient()
+  const { error } = await supabase.auth.resetPasswordForEmail(parsed.data.email, {
+    redirectTo: urlDeRecuperacion(siteUrl()),
+  })
+  if (error) return { error: error.message, enviado: false }
+  return { error: null, enviado: true }
+}
+
+/**
+ * FIJAR LA CONTRASEÑA NUEVA, con la sesión que dejó el canje del enlace.
+ *
+ * Reusa `updateUser({ password })`, que es exactamente lo que hace «Mi cuenta»: es la misma
+ * operación con otra puerta de entrada, y dos implementaciones del cambio de contraseña serían dos
+ * reglas de largo mínimo que se pueden separar.
+ *
+ * SIN SESIÓN NO HAY CAMBIO, y el motivo se dice: el enlace del correo vence, y «no se pudo guardar»
+ * a secas manda a la persona a probar de nuevo con el mismo enlace muerto.
+ */
+export async function contrasenaNuevaAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const parsed = contrasenaNuevaInputSchema.safeParse({
+    password: formData.get('password'),
+    password2: formData.get('password2'),
+  })
+  if (!parsed.success) return { error: parsed.error.issues[0].message }
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return {
+      error: 'El enlace ya venció o se usó. Pedí uno nuevo desde «Olvidé mi contraseña»: los enlaces '
+        + 'de recuperación duran poco a propósito.',
+    }
+  }
+
+  const { error } = await supabase.auth.updateUser({ password: parsed.data.password })
+  if (error) return { error: error.message }
+
+  revalidatePath('/', 'layout')
+  // Mismo aterrizaje que el login: quien acaba de recuperar la contraseña ya está adentro, y el
+  // nivel campo no puede abrir `/obras`.
+  const rol = await rolDe(supabase, user.id)
+  redirect(rol === 'campo' ? '/hoy' : '/obras')
 }
 
 export async function logoutAction(): Promise<void> {

@@ -27,6 +27,10 @@ const VISTAS = [
   { href: '/administracion/personas', label: 'Personas' },
   { href: '/administracion/proveedores', label: 'Proveedores' },
   { href: '/administracion/pendientes', label: 'Pendientes' },
+  // M05 · la cola de correcciones de asistencia. Va al lado de «Pendientes» porque es lo mismo que
+  // ella —una cola de trabajo con dos salidas— y NO adentro de «Personas», que es un maestro: un
+  // pedido de corrección no es un atributo de una persona, y metido en la ficha no lo ve nadie.
+  { href: '/administracion/asistencia', label: 'Asistencia' },
   // La biblioteca de análisis de precio unitario. Va última porque es la sección de CONSULTA del
   // área: no se entra a hacer un trámite, se entra a mirar con qué se cotiza.
   //

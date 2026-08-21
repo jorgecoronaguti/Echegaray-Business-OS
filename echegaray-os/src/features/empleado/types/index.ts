@@ -130,6 +130,22 @@ export interface MiLegajoCompleto {
 
 export type EstadoPresentacion = 'en_revision' | 'aprobado' | 'requiere_correccion'
 
+export type EstadoCorreccion = 'pendiente' | 'aprobada' | 'rechazada'
+
+/** Un pedido de corregir una marca. Es el PEDIDO, no el hecho: el hecho vive en `asistencia_marca` y
+ *  sólo lo escribe la aprobación. `hora_propuesta` llega como `HH:MM:SS` desde Postgres. */
+export interface MiCorreccion {
+  id: string
+  fecha: string
+  tipo: 'entrada' | 'salida'
+  hora_propuesta: string
+  motivo: string
+  estado: EstadoCorreccion
+  nota_resolucion: string | null
+  resuelta_en: string | null
+  creado_en: string
+}
+
 // ═══ LO QUE ENTRA POR FORMULARIO ═══
 
 /** Registrar una marca. El tipo lo decide el servidor mirando el día, no el formulario: si viniera
@@ -154,6 +170,24 @@ export const marcaInputSchema = z.object({
   lon: coordenada(-180, 180),
   // Un radio de precisión negativo o absurdo no es un dato: se descarta y el punto queda sin él.
   precision_m: z.coerce.number().int().min(0).max(100000).optional().catch(undefined),
+})
+
+/**
+ * PEDIR LA CORRECCIÓN DE UN DÍA (M05).
+ *
+ * El `tipo` NO viene del formulario: la pantalla sólo ofrece corregir la SALIDA, que es el caso que
+ * `mi_asistencia_dia` sabe detectar (`falta_salida`). Una entrada faltante deja el día en
+ * `sin_registrar` y ahí no hay nada que corregir — hay que registrar el día entero, y eso lo carga
+ * Administración. Aceptar un `tipo` del cliente sería aceptar un pedido que la pantalla no sabe
+ * mostrar ni la bandeja juzgar.
+ *
+ * Las reglas de NEGOCIO —día pasado, salida después de la entrada— viven en `services/correccion.ts`
+ * y se prueban aparte: acá sólo está la forma.
+ */
+export const correccionInputSchema = z.object({
+  fecha: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, 'Falta el día a corregir'),
+  hora: z.string().trim().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, 'Escribí la hora con formato 18:20'),
+  motivo: z.string().trim().min(3, 'Contá en una línea qué pasó ese día').max(300, 'Máximo 300 caracteres'),
 })
 
 export const incidenciaInputSchema = z.object({

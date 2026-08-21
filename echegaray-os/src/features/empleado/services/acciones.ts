@@ -3,8 +3,10 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import {
-  DOC_MAX_BYTES, DOC_TIPOS, incidenciaInputSchema, marcaInputSchema, problemaInputSchema,
+  DOC_MAX_BYTES, DOC_TIPOS, correccionInputSchema, incidenciaInputSchema, marcaInputSchema,
+  problemaInputSchema,
 } from '../types'
+import { revisarPedido } from './correccion'
 
 // LAS CUATRO ESCRITURAS DEL PERFIL EMPLEADO.
 //
@@ -94,6 +96,56 @@ export async function registrarIncidencia(form: FormData): Promise<Resultado> {
 
   revalidatePath('/hoy'); revalidatePath('/mi-informacion/asistencia')
   return { ok: true, mensaje: 'Anotada. La ve Administración cuando arma la quincena.' }
+}
+
+/**
+ * PEDIR LA CORRECCIÓN DE UN DÍA SIN SALIDA (M05).
+ *
+ * ═══ ESTO NO ESCRIBE LA ASISTENCIA ═══
+ *
+ * Escribe un PEDIDO. La marca la escribe la aprobación de Administración, adentro de
+ * `aprobar_correccion_asistencia()`, y ésa es toda la diferencia: si esta acción tocara
+ * `asistencia_marca`, la hora de salida pasaría a ser lo que cada uno declara de sí mismo. La base
+ * tampoco lo permitiría —`asistencia_marca_update` es de Administración sola— pero la razón por la
+ * que no se intenta es la de arriba, no la policy.
+ *
+ * LA ENTRADA DEL DÍA SE LEE DEL SERVIDOR, no del formulario. `revisarPedido` necesita saber a qué
+ * hora entró esa persona ese día para rechazar una salida anterior; si ese dato viajara por el
+ * formulario, mandarlo vacío a mano desactivaría la regla.
+ */
+export async function pedirCorreccionAsistencia(form: FormData): Promise<Resultado> {
+  const parsed = correccionInputSchema.safeParse(Object.fromEntries(form))
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
+
+  const { supabase, personaId } = await miPersona()
+  if (!personaId) return { ok: false, error: SIN_PERSONA }
+
+  const { data: dia, error: eLectura } = await supabase
+    .from('mi_asistencia_dia').select('*').eq('fecha', parsed.data.fecha).maybeSingle()
+  if (eLectura) return { ok: false, error: traducir(eLectura.message) }
+
+  const revision = revisarPedido({
+    ...parsed.data,
+    hoy: await hoyISO(),
+    dia: dia as Parameters<typeof revisarPedido>[0]['dia'],
+  })
+  if (!revision.ok) return { ok: false, error: revision.error }
+
+  const { error } = await supabase.from('solicitud_correccion_asistencia').insert({
+    persona_id: personaId,
+    fecha: parsed.data.fecha,
+    tipo: 'salida',
+    hora_propuesta: parsed.data.hora,
+    motivo: parsed.data.motivo,
+    estado: 'pendiente',
+  })
+  if (error) return { ok: false, error: traducirCorreccion(error.message) }
+
+  revalidatePath('/mi-informacion/asistencia'); revalidatePath('/administracion/asistencia')
+  return {
+    ok: true,
+    mensaje: 'Pedido enviado. Lo aprueba Administración: hasta entonces el día sigue sin salida.',
+  }
 }
 
 /**
@@ -216,6 +268,19 @@ export async function reportarProblema(form: FormData): Promise<Resultado> {
 function puntoDe(d: { lat?: number; lon?: number; precision_m?: number }) {
   if (d.lat == null || d.lon == null) return {}
   return { lat: d.lat, lon: d.lon, precision_m: d.precision_m ?? null }
+}
+
+/** El único parcial de la solicitud (una pendiente por día) rebota con «duplicate key», y «Eso ya
+ *  estaba registrado» no explica qué hacer. Acá sí: ya pediste, esperá. */
+function traducirCorreccion(mensaje: string): string {
+  if (/duplicate key/i.test(mensaje)) {
+    return 'Ya tenés un pedido pendiente para ese día. Espera a que Administración lo resuelva.'
+  }
+  if (/relation .* does not exist|schema cache/i.test(mensaje)) {
+    return 'Todavía no puedo recibir pedidos de corrección: falta aplicar la migración en la base. '
+      + 'Avisale a Administración.'
+  }
+  return traducir(mensaje)
 }
 
 /** El `42501` de Postgres es «permission denied» y no le dice nada a nadie parado en una obra. */
