@@ -63,7 +63,9 @@ test('«Cheques Emitidos» NO se oculta: es la fuente, y está candada', () => {
   // _CAJA_ANEXO leen esas filas— y es la única pestaña candada del libro.
   const aOcultar = [...ESPEJOS_A_OCULTAR, ...Object.keys(NO_LAS_USA_A_OCULTAR)]
   assert.ok(!aOcultar.includes('Cheques Emitidos'), 'se pidió ocultar la fuente de los cheques')
-  assert.ok(aOcultar.includes('Cheques Recibidos'), 'la vista redundante tiene que ocultarse')
-  // Y tiene que poder volver: el día que entre un cheque de un tercero en cartera, se muestra.
+  // ═══ Y «Cheques Recibidos» TAMPOCO (21/08/2026) ═══
+  // La oculté con un argumento medido y el dueño la pidió de vuelta. Su decisión sobre qué abre no
+  // se vuelve a evaluar: se fija acá para que ninguna corrida futura la esconda de nuevo.
+  assert.ok(!aOcultar.includes('Cheques Recibidos'), 'el dueño la quiere a la vista')
   assert.equal(sePuedeVolverAMostrar('Cheques Recibidos'), true)
 })
