@@ -230,7 +230,8 @@ export function faltantesDe(item = {}, politica = POLITICA.CARGADOR, { ahora } =
   if (c.esPresupuestoORemito) {
     falta(MOTIVO.NO_ES_FACTURA, 'es un presupuesto/remito, no una factura',
       'esto parece un **presupuesto o remito**, no una factura: todavía no es un gasto y no se carga '
-      + 'a Compras. Si me equivoqué y es una factura de verdad, tocá **Corregir**; si no, **Descartar**.')
+      + 'a Compras. Si me equivoqué, tocá **Corregir** y contestá SI en «¿Es una factura de verdad?»; '
+      + 'si no, **Descartar**.')
   }
 
   // UN PROVEEDOR QUE NO ESTÁ EN EL DESPLEGABLE YA NO FRENA LA FILA cuando el CUIT y el número la

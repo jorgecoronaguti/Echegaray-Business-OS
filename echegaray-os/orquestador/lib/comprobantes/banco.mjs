@@ -19,6 +19,10 @@
 //   · El vínculo con el proveedor es por nombre (palabras significativas en el concepto del
 //     movimiento) o por CUIT, y por cercanía de fecha (el débito puede ser unos días posterior).
 //
+// LÍMITE DECLARADO: el cruce AGRUPADO sólo suma facturas del MISMO envío. Dos facturas pagadas con
+// una transferencia pero mandadas en mensajes distintos dan «sin débito» — un aviso de más, nunca
+// una «verificada» de menos. Ampliarlo al fajo entero es posible; hoy no está hecho.
+//
 // DECLARA, NO DECIDE. Devuelve evidencia (`cruza` / `sin_debito` / `no_verificable`) y el mensaje
 // la muestra; no cambia el estado de la fila ni bloquea la carga: el sello PAGADO del papel también
 // es evidencia, y el extracto puede correr un día atrás. Un aviso que dice «no encuentro el débito»
@@ -45,14 +49,31 @@ export function dicePagadaPorBanco(c = {}) {
 
 const norm = (v) => palabras(v)
 
-/** ¿El concepto del movimiento nombra a este proveedor? Por palabra significativa o por CUIT. */
+/** Palabras que aparecen en media plaza de San Juan y en el propio concepto bancario: no afirman
+ *  identidad. «CONSTRUCCIONES DEL VALLE» compartiendo «construcciones» con el concepto
+ *  «PAGO PROVEEDOR ECHEGARAY CONSTRUCCIONES» no es un cruce — es la razón de esta lista
+ *  (auditoría de cierre, 21/08). */
+const GENERICAS = new Set([
+  'construcciones', 'construccion', 'constructora', 'servicios', 'servicio', 'materiales',
+  'distribuidora', 'distribuciones', 'hermanos', 'hnos', 'grupo', 'echegaray',
+  'transferencia', 'inmediata', 'pago', 'pagos', 'proveedor', 'var',
+])
+
+/**
+ * ¿El concepto del movimiento nombra a ESTE proveedor? Por CUIT (evidencia dura) o por nombre —
+ * y por nombre sólo con palabras que identifiquen: las genéricas no cuentan, y si el nombre tiene
+ * dos o más palabras identificatorias, tienen que coincidir al menos dos. Un nombre hecho SÓLO de
+ * genéricas no se puede afirmar y no cruza: mejor un «sin débito» de más que una «verificada» falsa.
+ */
 export function movimientoDelProveedor(mov = {}, c = {}) {
   const concepto = String(mov.concepto ?? '')
   const cuit = String(c.cuit ?? '').replace(/\D/g, '')
   if (cuit.length === 11 && concepto.replace(/\D/g, ' ').includes(cuit)) return true
   const delMov = new Set(norm(concepto))
-  const delProv = norm(c.proveedor)
-  return delProv.length > 0 && delProv.some((p) => delMov.has(p))
+  const identifican = norm(c.proveedor).filter((p) => !GENERICAS.has(p))
+  if (!identifican.length) return false
+  const compartidas = identifican.filter((p) => delMov.has(p))
+  return compartidas.length >= Math.min(2, identifican.length)
 }
 
 const diasEntre = (a, b) => Math.abs(a.getTime() - b.getTime()) / 86_400_000
@@ -87,10 +108,13 @@ export function cruceBancario(items = [], movimientos = null) {
     .map((m) => ({ ...m, monto: Math.abs(Number(m.importe) || 0), cuando: fechaDeMov(m.fecha) }))
     .filter((m) => Number(m.importe) < 0 && m.monto > 0)
 
+  // UN DÉBITO RESPALDA UN SOLO PAGO. Sin esto, un débito de $50.000 «verificaba» dos facturas de
+  // $50.000 del mismo envío — el doble conteo que este repo ya pagó con el endoso contado dos veces.
+  const usados = new Set()
   const candidatosDe = (c) => {
     const f = aFecha(c.fecha)
     return debitos.filter((m) =>
-      movimientoDelProveedor(m, c) && (!f || !m.cuando || diasEntre(f, m.cuando) <= DIAS_VENTANA))
+      !usados.has(m) && movimientoDelProveedor(m, c) && (!f || !m.cuando || diasEntre(f, m.cuando) <= DIAS_VENTANA))
   }
   const cerca = (a, b) => Math.abs(a - b) <= TOLERANCIA_PESOS
   const comoEvidencia = (m, extra = {}) => ({
@@ -102,7 +126,7 @@ export function cruceBancario(items = [], movimientos = null) {
   for (const it of pagables) {
     const c = it.comprobante
     const m = candidatosDe(c).find((x) => cerca(x.monto, Math.abs(Number(c.total))))
-    if (m) it.banco = comoEvidencia(m)
+    if (m) { usados.add(m); it.banco = comoEvidencia(m) }
     else sinCruce.push(it)
   }
 
@@ -117,6 +141,7 @@ export function cruceBancario(items = [], movimientos = null) {
     const m = grupo.length > 1
       ? candidatosDe(grupo[0].comprobante).find((x) => Math.abs(x.monto - suma) <= TOLERANCIA_PESOS * grupo.length)
       : null
+    if (m) usados.add(m)
     for (const it of grupo) {
       if (m) it.banco = comoEvidencia(m, { agrupado: grupo.length, suma })
       else it.banco = { estado: 'sin_debito', candidatos: candidatosDe(it.comprobante).length }

@@ -125,6 +125,17 @@ export function colapsarRepetidos(items = [], { ahora } = {}) {
     const { ganador } = mejorDe(candidatos, { ahora })
     const todos = f.subgrupos.flatMap((s) => s.miembros)
     const copia = { ...ganador }
+    // ═══ «NO ES UNA FACTURA» SE PROPAGA POR OR, NO POR GANADOR (21/08, auditoría de cierre) ═══
+    //
+    // Dos fotos del mismo presupuesto: una lectura marcó `esPresupuestoORemito` y la otra —más
+    // completa— no. Si gana la que no lo marcó, el presupuesto pasa a carga. La sospecha de
+    // cualquier lectura vale para el papel entero; sólo la palabra de una persona
+    // (`esFacturaTipeada`) la levanta.
+    if (!copia?.comprobante?.esFacturaTipeada
+        && todos.some((it) => it?.comprobante?.esPresupuestoORemito)
+        && !copia?.comprobante?.esPresupuestoORemito) {
+      copia.comprobante = { ...copia.comprobante, esPresupuestoORemito: true }
+    }
     const copias = [...(ganador?.copias ?? [])]
     for (const it of todos) {
       if (it === ganador) continue

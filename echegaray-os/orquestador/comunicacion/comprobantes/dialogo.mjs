@@ -17,6 +17,10 @@ export const MAX_ELEMENTOS = 5
 export const CALLBACK_ID = 'comprobantes.corregir'
 
 const CAMPOS = Object.freeze({
+  // La salida del freno «no es una factura» (21/08): la visión puede equivocarse de clase de papel,
+  // y un freno sin salida deja de ser un control y pasa a ser un gasto perdido — misma lección que
+  // el neto del 04/08. SI lo levanta una persona con el papel en la mano; cualquier otra cosa, no.
+  factura: { display_name: '¿Es una factura de verdad?', help_text: 'Escribí SI sólo si el papel es una factura o un tique — no un presupuesto, cotización ni remito.' },
   obra: { display_name: 'Obra', help_text: 'Tiene que ser una de las obras de Compras.' },
   proveedor: { display_name: 'Proveedor', help_text: 'Tal como figura en la lista de Compras.' },
   numero: { display_name: 'N° de comprobante', help_text: 'Punto de venta y número: 0113-00010489.' },
@@ -31,12 +35,14 @@ const CAMPOS = Object.freeze({
 })
 
 /** Orden de prioridad. La obra va primera SIEMPRE: es el dato que el papel casi nunca trae. */
-const PRIORIDAD = ['obra', 'proveedor', 'numero', 'fecha', 'total', 'neto', 'iva']
+const PRIORIDAD = ['factura', 'obra', 'proveedor', 'numero', 'fecha', 'total', 'neto', 'iva']
 
 /** ¿Qué campos de este ítem están vacíos o dudosos? Son los que se muestran primero. */
 export function camposFaltantes(item = {}) {
   const c = item.comprobante ?? {}
   const f = []
+  // El papel frenado como presupuesto/remito: el único campo que lo destraba va primero.
+  if (c.esPresupuestoORemito) f.push('factura')
   if (!c.obra) f.push('obra')
   if (!c.proveedor || item.proveedorNuevo) f.push('proveedor')
   if (!c.numero) f.push('numero')
@@ -69,8 +75,14 @@ export function elementosDe(item = {}, { obras = [] } = {}) {
   const faltan = new Set(camposFaltantes(item))
   const orden = [...PRIORIDAD].sort((a, b) => (faltan.has(b) ? 1 : 0) - (faltan.has(a) ? 1 : 0))
   const valor = {
-    obra: c.obra ?? '', proveedor: c.proveedor ?? '', numero: c.numero ?? '',
+    factura: '', obra: c.obra ?? '', proveedor: c.proveedor ?? '', numero: c.numero ?? '',
     fecha: c.fecha ?? '', total: c.total ?? '', iva: c.iva ?? '', neto: c.neto ?? '',
+  }
+  // El campo «factura» sólo aparece cuando el ítem está frenado por eso: mostrárselo a toda factura
+  // normal sería preguntar por preguntar.
+  if (!c.esPresupuestoORemito) {
+    const i = orden.indexOf('factura')
+    if (i >= 0) orden.splice(i, 1)
   }
   return orden.slice(0, MAX_ELEMENTOS).map((name) => {
     const base = { name, ...CAMPOS[name], type: 'text', optional: true }
@@ -132,6 +144,19 @@ export function aplicarCorreccion(item = {}, submission = {}, { obras = [] } = {
   const dado = (k) => {
     const v = submission[k]
     return v == null || String(v).trim() === '' ? null : String(v).trim()
+  }
+
+  const fac = dado('factura')
+  if (fac) {
+    if (/^s[ií]$/i.test(fac)) {
+      // UNA PERSONA CON EL PAPEL EN LA MANO DIJO QUE ES FACTURA. Misma regla que `totalTipeado`:
+      // el control duda de lo que leyó un modelo, nunca de lo que escribió una persona — y la marca
+      // impide que otra lectura del mismo papel vuelva a frenarlo (el colapso respeta `esFacturaTipeada`).
+      c.esPresupuestoORemito = false
+      c.esFacturaTipeada = true
+    } else if (!/^no$/i.test(fac)) {
+      errors.factura = 'Contestá SI (es una factura) o NO (es un presupuesto/remito).'
+    }
   }
 
   const prov = dado('proveedor')

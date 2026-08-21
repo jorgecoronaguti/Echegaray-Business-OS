@@ -77,3 +77,32 @@ test('lo ya cargado no se vuelve a cruzar', () => {
   cruceBancario(items, [DEBITO_TRIELEC])
   assert.equal(items[0].banco, undefined)
 })
+
+// ─── Los dos contraejemplos de la auditoría de cierre (21/08) ───
+
+test('un débito NO puede «verificar» dos facturas del mismo importe: se consume', () => {
+  const items = [item(trielec(95277.07, '0038-00002973')), item(trielec(95277.07, '0038-00002999'))]
+  cruceBancario(items, [{ ...DEBITO_TRIELEC, importe: -95277.07 }])
+  const estados = items.map((it) => it.banco?.estado).sort()
+  assert.deepEqual(estados, ['cruza', 'sin_debito'], 'el mismo débito respaldó dos pagos')
+})
+
+test('una palabra genérica compartida no es identidad: CONSTRUCCIONES DEL VALLE no cruza con ECHEGARAY CONSTRUCCIONES', () => {
+  assert.equal(movimientoDelProveedor(
+    { concepto: 'PAGO PROVEEDOR ECHEGARAY CONSTRUCCIONES SA', importe: -100000 },
+    { proveedor: 'CONSTRUCCIONES DEL VALLE SRL' },
+  ), false)
+  const items = [item({ proveedor: 'CONSTRUCCIONES DEL VALLE SRL', total: 100000, fecha: '20/08/2026', formaPago: 'Transferencia' })]
+  cruceBancario(items, [{ fecha: '2026-08-20', concepto: 'PAGO PROVEEDOR ECHEGARAY CONSTRUCCIONES SA', importe: -100000, referencia: 'R9' }])
+  assert.equal(items[0].banco?.estado, 'sin_debito', 'declaró «verificada» sobre una palabra de media plaza')
+})
+
+test('un proveedor cuyo nombre es TODO genérico no cruza nunca por nombre (sólo por CUIT)', () => {
+  assert.equal(movimientoDelProveedor({ concepto: 'algo con servicios y construcciones' }, { proveedor: 'Servicios y Construcciones SRL' }), false)
+  assert.equal(movimientoDelProveedor({ concepto: 'x 30558640355 x' }, { proveedor: 'Servicios y Construcciones SRL', cuit: '30558640355' }), true)
+})
+
+test('con dos o más palabras identificatorias hacen falta al menos dos coincidencias', () => {
+  assert.equal(movimientoDelProveedor({ concepto: 'Transferencia a corralon del centro' }, { proveedor: 'Corralon Progreso' }), false)
+  assert.equal(movimientoDelProveedor({ concepto: 'Transferencia a corralon progreso' }, { proveedor: 'Corralon Progreso' }), true)
+})
