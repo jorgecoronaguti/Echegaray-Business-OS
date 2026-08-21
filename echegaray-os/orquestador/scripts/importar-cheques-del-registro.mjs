@@ -31,6 +31,7 @@ const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const MIGRACIONES = [
   '20260821T1000_el_numero_no_identifica_un_cheque.sql',   // el instrumento entra a la clave
   '20260821T1100_el_numero_del_cheque_va_normalizado.sql', // "00000366" y "366" son el mismo cheque
+  '20260821T1200_el_banco_del_cheque_propio_es_el_nuestro.sql', // un NULL en la clave es un duplicado esperando
 ].map((f) => join(RAIZ, 'supabase', 'migrations', f))
 
 const FLUJO = '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -147,8 +148,18 @@ async function main() {
        from public.cheques where tipo='emitido'`)).rows[0]
   console.log(`\n✓ ${escritos} escrituras. La base ahora: ${despues.n} emitidos · ${$(despues.m)}`)
   console.log(`  no debitados (Aceptado): ${despues.pend} · ${$(despues.mpend)}`)
+  // ═══ EL CONTROL DE CIERRE: NI UNA FILA MENOS, NI UNA MÁS ═══
+  //
+  // Comparaba con `<` y sólo avisaba si faltaban. Las dos veces que este importador se equivocó
+  // SOBRARON filas —un duplicado por el número con ceros y otro por el banco en NULL— y el control
+  // se quedó callado las dos. Un control que mira para un solo lado es medio control.
   const enRegistro = registro.length - plan.conflictos.reduce((a, c) => a + c.filas.length, 0) - plan.rechazados.length
-  if (despues.n < enRegistro) console.log(`  ⚠ el registro tiene ${enRegistro} cargables y la base ${despues.n}: falta revisar la diferencia`)
+  if (despues.n !== enRegistro) {
+    console.log(`  ⚠ el registro tiene ${enRegistro} cheques cargables y la base quedó con ${despues.n}: ${despues.n > enRegistro ? 'SOBRAN' : 'FALTAN'} ${Math.abs(despues.n - enRegistro)}`)
+    process.exitCode = 1
+  } else {
+    console.log(`  ✓ la base tiene exactamente los ${enRegistro} cheques del registro`)
+  }
 }
 
 main().catch((e) => { console.error(e); process.exitCode = 1 }).finally(() => closePool())
