@@ -26,6 +26,13 @@ const VISTAS = [
   { href: '/administracion/usuarios', label: 'Usuarios' },
   { href: '/administracion/personas', label: 'Personas' },
   { href: '/administracion/proveedores', label: 'Proveedores' },
+  // El libro de compras de ARCA (pantalla 24). Va pegada a Proveedores porque es su continuación
+  // natural —el comprobante ES la compra— y antes de Pendientes, que es la cola que ésta alimenta.
+  //
+  // NO entra en RUTAS_SOLO_ECONOMIA: una compra es COSTO, no PRECIO, y el jefe de obra ve el costo
+  // de su obra (19/08). Ponerla en la lista negra la sacaría de la barra sin cerrar nada, porque la
+  // policy de `comprobantes_arca` publica el mismo importe a cualquier sesión autenticada.
+  { href: '/administracion/compras', label: 'Compras' },
   { href: '/administracion/pendientes', label: 'Pendientes' },
   // La biblioteca de análisis de precio unitario. Va última porque es la sección de CONSULTA del
   // área: no se entra a hacer un trámite, se entra a mirar con qué se cotiza.
