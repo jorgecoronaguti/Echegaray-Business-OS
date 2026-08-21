@@ -28,6 +28,30 @@ export const VISTAS_OBRA = [
 ] as const
 export type VistaObra = (typeof VISTAS_OBRA)[number]['id']
 
+// ═══ EL GANTT DE TAREAS Y LA PANTALLA «CRONOGRAMA» NO SON DOS VERDADES (21/08/2026) ═══
+//
+// Conviven, y hay que decir por qué antes de que alguien las tome por un descuido. Las DOS leen
+// `obra_actividad_control` —la misma fuente, con el mismo portero— y contestan preguntas distintas:
+//
+//   `?vista=tareas&sub=gantt`      → **el plan COMO ESTÁ CARGADO**. Dibuja `inicio_plan`/`fin_plan`
+//                                     tal como alguien los escribió. Es el tracker de todos los días.
+//   `/obras/<obra>/cronograma`     → **el plan COMO LO IMPLICA LA SECUENCIA**. Recalcula fechas desde
+//                                     las dependencias y las duraciones, y de ahí salen la holgura y
+//                                     el camino crítico. Con cero dependencias cargadas se niega a
+//                                     publicar un fin de obra y dice «sin secuencia cargada».
+//
+// Las dos son pantallas del contrato (03 · Obra Tareas y 07 · Obra Cronograma). Lo que sí sería un
+// defecto es que las barras difieran y nadie explique por qué: por eso el rótulo de la sub-vista
+// dice «Gantt» y no «Cronograma», y por eso `CRONOGRAMA_CALCULADO` existe acá y no como una URL
+// escrita a mano en un componente.
+
+/** La pantalla 07: el cronograma calculado desde la secuencia. Vive fuera del workspace porque
+ *  recalcula en vez de dibujar lo guardado, y esa diferencia tiene que ser visible en la URL. */
+export const hrefCronogramaCalculado = (obraId: string) => `/obras/${obraId}/cronograma`
+
+/** La pantalla 08, por la misma razón. */
+export const hrefDotacion = (obraId: string) => `/obras/${obraId}/dotacion`
+
 /** Las vistas del workspace de Tareas: el árbol nuevo y las cuatro del cronograma más el parte. */
 export const SUBS_TAREAS = [
   { id: 'arbol', label: 'Tareas' },
