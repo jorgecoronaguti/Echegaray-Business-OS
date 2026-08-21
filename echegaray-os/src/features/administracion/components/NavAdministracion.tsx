@@ -1,54 +1,22 @@
-'use client'
-
-// LA NAVEGACIÓN DEL ÁREA ADMINISTRACIÓN — el segundo y último nivel.
+// LA BARRA DE NIVEL 2 DE ADMINISTRACIÓN — el envoltorio que sabe QUIÉN está mirando.
 //
-// El dueño: *"NIVEL 1: Administración | Obras. NIVEL 2 Administración: Clientes / Usuarios /
-// Personas / Proveedores / Pendientes. **No mezclar niveles en la misma barra.**"* Y
-// `design/system/LAYOUT_RESPONSIVE.md` lo repite: máximo dos niveles visibles, el nivel 2 con la
-// regla amarilla de 2px.
+// ═══ POR QUÉ ESTÁ PARTIDA EN DOS (21/08/2026) ═══
 //
-// LAS SOLAPAS YA NO SE DIBUJAN ACÁ. Este archivo dibujaba su propia barra —copiada de `NavObras`,
-// con los mismos píxeles escritos por tercera vez—; ahora declara QUÉ secciones hay y delega el CÓMO
-// en `Tabs` del design system. Es la regla 11 de `UX_PRINCIPLES.md`: si el patrón existe, ese es el
-// que se usa. Lo que queda acá es lo único que es propio del área: la lista y qué cuenta como estar
-// adentro de cada sección.
+// Las solapas necesitan dos cosas que viven en lados opuestos: la RUTA ACTUAL, que sólo se sabe en
+// el navegador (`usePathname`), y el ROL de quien mira, que sólo se sabe en el servidor. Mientras
+// la barra fue un único componente de cliente, el rol no llegaba — y la barra le dibujaba
+// «Usuarios» a un jefe de obra que el middleware después rebotaba.
+//
+// La alternativa era pasarle `rol` desde los trece lugares que la usan. Se descartó: dos de ellos
+// son layouts que hoy no cargan el perfil, y una barra que hay que acordarse de alimentar bien en
+// trece lugares se alimenta mal en el catorceavo. Acá el rol lo busca ella, una vez, y ningún
+// llamador cambia.
+import { createClient } from '@/lib/supabase/server'
+import { getPerfilActual } from '@/features/auth/services/authService'
+import { NavAdministracionTabs } from './NavAdministracionTabs'
 
-import { usePathname } from 'next/navigation'
-import { Tabs } from '@/shared/components/ds'
-
-const VISTAS = [
-  { href: '/clientes', label: 'Clientes' },
-  // Presupuestos entra en la barra el 21/08/2026 con el módulo: la cartera de ofertas es de
-  // Administración, y sin la solapa la única forma de llegar sería escribir la URL.
-  { href: '/presupuestos', label: 'Presupuestos' },
-  { href: '/administracion/usuarios', label: 'Usuarios' },
-  { href: '/administracion/personas', label: 'Personas' },
-  { href: '/administracion/proveedores', label: 'Proveedores' },
-  { href: '/administracion/pendientes', label: 'Pendientes' },
-] as const
-
-export function NavAdministracion() {
-  const pathname = usePathname()
-  return (
-    <div
-      // `nav-admin-secciones` y no `nav-administracion`: ese nombre YA es el del enlace al ÁREA en
-      // el encabezado global (`nav-${area}`). Dos elementos con el mismo identificador de prueba
-      // hacen fallar por ambigüedad a cualquier test que los busque, y el mensaje no dice cuál sobra.
-      data-testid="nav-admin-secciones"
-      className="mb-5"
-    >
-      <Tabs
-        testid="tabs-administracion"
-        tabs={VISTAS.map((v) => ({
-          href: v.href,
-          label: v.label,
-          // `startsWith` y no igualdad: la ficha de un cliente (`/clientes/la-estrella`) o el legajo
-          // de una persona siguen estando DENTRO de su sección. Sin esto, entrar a una ficha apaga
-          // la barra entera y la pantalla deja de decir dónde está parado el que la mira.
-          activo: pathname === v.href || pathname.startsWith(v.href + '/'),
-          testid: `nav-admin-secciones-${v.label.toLowerCase()}`,
-        }))}
-      />
-    </div>
-  )
+export async function NavAdministracion() {
+  const supabase = await createClient()
+  const perfil = await getPerfilActual(supabase)
+  return <NavAdministracionTabs rol={perfil.data?.rol ?? null} />
 }

@@ -101,6 +101,11 @@ export const AREA_HREF: Record<Area, string> = {
 export const RUTAS_SOLO_ECONOMIA = [
   '/administracion/usuarios', '/flujo-caja', '/ingenieria-financiera', '/calendario-financiero',
   '/calendario-caja', '/scorecard-finanzas', '/reportes', '/aprobaciones', '/operarios',
+  // `/presupuestos` entra el 21/08/2026 con el módulo. Un presupuesto ES precio: costo unitario,
+  // margen, cascada y precio de venta. La base ya lo cierra —`cotizaciones_select` exige
+  // `ve_economia()`— y esta lista es lo que hace que el jefe de obra ni siquiera vea la solapa.
+  // Sin ella la pantalla sería más ancha que la base: un botón que lleva a «no hay nada».
+  '/presupuestos',
 ] as const
 
 /**
