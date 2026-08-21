@@ -87,6 +87,16 @@ export function PanelProveedor({
         <h2 className="min-w-0 flex-1 truncate text-[15px] font-semibold text-ink">
           {proveedor?.nombre ?? 'Nuevo proveedor'}
         </h2>
+        {/* LA PUERTA A LA FICHA. El panel sirve para ELEGIR y para editar cuatro campos; la ficha
+            es donde el proveedor se entiende (qué se le compró, a qué obras fue, qué provee). Sin
+            este enlace la única forma de llegar sería escribir la URL. */}
+        {!esAlta && (
+          <Link
+            href={`/administracion/proveedores/${proveedor.id}`}
+            data-testid="abrir-ficha-proveedor"
+            className="shrink-0 text-[12px] leading-none text-muted underline transition-colors hover:text-ink"
+          >Ver ficha</Link>
+        )}
         <Link
           href={cerrarHref} data-testid="cerrar-panel" aria-label="Cerrar el panel"
           className="shrink-0 text-[12px] leading-none text-faint transition-colors hover:text-ink"

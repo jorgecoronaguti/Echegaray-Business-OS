@@ -1,6 +1,8 @@
 'use client'
 
-import { useActionState } from 'react'
+import { useActionState, useMemo, useState } from 'react'
+import { Buscador } from '@/shared/components/ds'
+import { contieneEnAlguno } from '@/shared/utils/busqueda'
 import { asignarComprobanteObraAction, type ActionState } from '../services/costosActions'
 import type { ComprobanteConSugerencia } from '../services/costosObraService'
 
@@ -21,7 +23,7 @@ function Fila({ c, obras }: { c: ComprobanteConSugerencia; obras: string[] }) {
   // Propone, no aplica: pre-seleccionamos la obra sugerida, pero el dueño confirma con el botón
   // y puede cambiarla. El chip muestra la EVIDENCIA (N de M comprobantes previos del proveedor).
   return (
-    <form action={asignar} className="flex flex-wrap items-center gap-3 px-4 py-3">
+    <form action={asignar} data-testid="fila-comprobante" className="flex flex-wrap items-center gap-3 px-4 py-3">
       <input type="hidden" name="id" value={c.id} />
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium text-gray-900">{c.emisor_nombre || 'Sin nombre'}</div>
@@ -68,6 +70,18 @@ function Fila({ c, obras }: { c: ComprobanteConSugerencia; obras: string[] }) {
 }
 
 export function AsignarComprobantes({ comprobantes, obras }: { comprobantes: ComprobanteConSugerencia[]; obras: string[] }) {
+  // FILTRO EN MEMORIA Y SIN DEBOUNCE: los comprobantes sin asignar ya viajaron enteros —la pantalla
+  // los necesita todos para dibujar sus totales—, así que buscar es un `filter` instantáneo. Un
+  // debounce acá sería introducir una espera sin ningún viaje que ahorrar.
+  //
+  // SE BUSCA POR PROVEEDOR, CUIT Y NÚMERO porque son los tres datos que trae el papel que se está
+  // mirando: quien asigna tiene la factura delante y busca por lo que ahí dice.
+  const [texto, setTexto] = useState('')
+  const visibles = useMemo(
+    () => comprobantes.filter((c) => contieneEnAlguno([c.emisor_nombre, c.emisor_cuit, c.numero], texto)),
+    [comprobantes, texto],
+  )
+
   if (comprobantes.length === 0) {
     return (
       <div className="rounded-xl border border-gray-200 bg-white px-4 py-12 text-center text-sm text-gray-400 shadow-sm">
@@ -76,10 +90,30 @@ export function AsignarComprobantes({ comprobantes, obras }: { comprobantes: Com
     )
   }
   return (
-    <div className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-      {comprobantes.map((c) => (
-        <Fila key={c.id} c={c} obras={obras} />
-      ))}
+    <div className="space-y-3">
+      {comprobantes.length > 1 && (
+        <Buscador
+          value={texto}
+          onChange={setTexto}
+          placeholder="Buscar proveedor, CUIT o número"
+          testid="buscar-comprobante"
+          className="max-w-[320px]"
+        />
+      )}
+      {visibles.length === 0 ? (
+        <div
+          data-testid="comprobantes-sin-resultado"
+          className="rounded-xl border border-gray-200 bg-white px-4 py-12 text-center text-sm text-gray-400 shadow-sm"
+        >
+          Ningún comprobante sin asignar coincide con «{texto}».
+        </div>
+      ) : (
+        <div className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+          {visibles.map((c) => (
+            <Fila key={c.id} c={c} obras={obras} />
+          ))}
+        </div>
+      )}
     </div>
   )
 }

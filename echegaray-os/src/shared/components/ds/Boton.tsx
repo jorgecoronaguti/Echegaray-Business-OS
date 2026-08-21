@@ -19,34 +19,59 @@ const VARIANTE: Record<Variante, string> = {
   destructiva: 'text-neg hover:bg-neg-soft',
 }
 
-// 7×14 de padding y 12,5px, medido del especimen (`design/screens/visual/DesignSystem.dc.html`
-// §05). La deshabilitada CONSERVA el peso: lo que la apaga es el par fondo hundido + texto faint,
-// no adelgazarla — una primaria que además cambia de peso al deshabilitarse se lee como otro botón.
+// Todo lo que NO es tamaño. Se separó del tamaño el 21/08/2026: pegarle un `className` con otro
+// alto a una constante que ya trae `px-3.5 py-[7px] text-[12.5px]` deja dos reglas del mismo grupo
+// compitiendo, y sin `tailwind-merge` gana la que Tailwind ordene en el CSS, no la que se escribió
+// último. Es decir: a veces. Un botón que mide bien «a veces» es peor que uno que mide mal siempre.
 const BASE =
-  'inline-flex items-center justify-center gap-1.5 rounded-control px-3.5 py-[7px] text-[12.5px] leading-[18px] transition-colors disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-faint disabled:hover:brightness-100'
+  'inline-flex items-center justify-center gap-1.5 rounded-control transition-colors disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-faint disabled:hover:brightness-100'
+
+/**
+ * LOS DOS TAMAÑOS.
+ *
+ * `normal` — 7×14 de padding y 12,5px, medido del especimen
+ * (`design/screens/visual/DesignSystem.dc.html` §05). Es el botón del escritorio.
+ *
+ * `bloque` — 48px de alto y ancho completo. NO es «el mismo botón más grande»: es la acción del día
+ * del teléfono, la que va fija abajo, y `LAYOUT_RESPONSIVE.md` §Mobile la fija en 48px porque se
+ * toca parado, en obra, muchas veces con guante. Existe acá y no en cada perfil porque el jefe de
+ * obra y el empleado ya habían dibujado su propia versión de lo mismo un píxel distinto.
+ *
+ * La deshabilitada CONSERVA el peso: lo que la apaga es el par fondo hundido + texto faint, no
+ * adelgazarla — una primaria que además cambia de peso al deshabilitarse se lee como otro botón.
+ */
+export type TamanoBoton = 'normal' | 'bloque'
+
+const TAMANO: Record<TamanoBoton, string> = {
+  normal: 'px-3.5 py-[7px] text-[12.5px] leading-[18px]',
+  bloque: 'h-[48px] w-full rounded-[12px] px-4 text-[15px]',
+}
 
 export function Boton({
   variante = 'secundaria',
+  tamano = 'normal',
   className = '',
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variante?: Variante }) {
-  return <button {...props} className={`${BASE} ${VARIANTE[variante]} ${className}`} />
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variante?: Variante; tamano?: TamanoBoton }) {
+  return <button {...props} className={`${BASE} ${TAMANO[tamano]} ${VARIANTE[variante]} ${className}`} />
 }
 
 export function BotonEnlace({
   href,
   variante = 'secundaria',
+  tamano = 'normal',
   className = '',
   children,
   ...props
 }: {
   href: string
   variante?: Variante
+  tamano?: TamanoBoton
   className?: string
   children: ReactNode
 } & Omit<React.ComponentProps<typeof Link>, 'href' | 'className'>) {
   return (
-    <Link href={href} {...props} className={`${BASE} ${VARIANTE[variante]} ${className}`}>
+    <Link href={href} {...props} className={`${BASE} ${TAMANO[tamano]} ${VARIANTE[variante]} ${className}`}>
       {children}
     </Link>
   )

@@ -37,4 +37,4 @@ npx playwright test tests/<x>.spec.ts   # los 47 del navegador
 ```
 
 Los tests del núcleo son `.test.mjs` (`node --test`); los del navegador, `tests/*.spec.ts`
-(Playwright). **No hay tests bajo `src/`** — buscar ahí es buscar donde no hay.
+(Playwright). Desde el 21/08 también hay `.test.ts` bajo `src/features/**` (los puertos web de los motores); `orq:test` los corre.

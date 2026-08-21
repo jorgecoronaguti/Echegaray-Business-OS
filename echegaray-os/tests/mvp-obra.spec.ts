@@ -35,10 +35,20 @@ const admin = () => createClient(URL, SRV, { auth: { persistSession: false } })
  * cambió es el número, no la regla — el handoff es el contrato más nuevo que firmó el dueño.
  */
 const SOLAPAS = [
-  'Resumen', 'Planificación', 'Ejecución', 'Personal', 'Operación', 'Economía', 'Documentos',
+  'Resumen', 'Tareas', 'Personal', 'Operación', 'Economía', 'Documentos',
 ] as const
 
-test('el workspace de obra tiene SIETE solapas y son las del handoff', async ({ page }) => {
+// ═══ CAMBIO DE CONTRATO (21/08/2026): SEIS SOLAPAS, Y «EJECUCIÓN» NO ES UNA ═══
+//
+// Este test medía las SIETE de agosto, con «Planificación» y «Ejecución» separadas. El handoff v5
+// (`design/screens/gestion-obras-v5.md` §3) las funde: eran las MISMAS actividades vistas de dos
+// maneras, y tener las dos obligaba a decidir en cuál se carga cada cosa. **Una actividad existe
+// una sola vez**, y su lugar es «Tareas».
+//
+// No es un test ajustado para que pase: lo que cambió es lo que el sistema debe hacer, y este test
+// pasa a medir lo nuevo con la misma dureza — sigue exigiendo el tope exacto y sigue prohibiendo
+// que el nombre de un artefacto vuelva como solapa principal.
+test('el workspace de obra tiene SEIS solapas y son las del handoff v5', async ({ page }) => {
   test.setTimeout(120000)
   await entrar(page)
   await page.goto(`/obras/${OBRA}`)
@@ -49,13 +59,14 @@ test('el workspace de obra tiene SIETE solapas y son las del handoff', async ({ 
     await expect(tabs.getByRole('link', { name: s, exact: true })).toBeVisible()
   }
   expect(await tabs.getByRole('link').count(),
-    'hay más de siete solapas principales: el tope del handoff son siete').toBe(SOLAPAS.length)
+    'el tope del handoff v5 son SEIS solapas principales').toBe(SOLAPAS.length)
 
   // Y lo que NO puede volver como solapa principal es el nombre del artefacto: el Gantt es una de
   // las cuatro vistas de Planificación, no un lugar del sistema.
   const texto = await tabs.innerText()
-  expect(texto, '«Gantt» volvió como solapa principal: es una vista DENTRO de Planificación').not.toContain('Gantt')
-  expect(texto, '«Cronograma» volvió: el handoff renombró esa solapa a «Planificación»').not.toContain('Cronograma')
+  expect(texto, '«Gantt» volvió como solapa principal: es una vista DENTRO de Tareas').not.toContain('Gantt')
+  expect(texto, '«Cronograma» volvió: es una vista DENTRO de Tareas').not.toContain('Cronograma')
+  expect(texto, '«Ejecución» volvió como solapa: dejó de existir, el trabajo se carga en Tareas').not.toContain('Ejecución')
 })
 
 test('las URLs viejas de las solapas siguen llevando a donde llevaban', async ({ page }) => {
@@ -63,11 +74,18 @@ test('las URLs viejas de las solapas siguen llevando a donde llevaban', async ({
   await entrar(page)
   // Estaban en links mandados por chat y en marcadores. Un default silencioso a Resumen mandaría a
   // otro lado a alguien que pidió el cronograma, sin decirle que su link quedó viejo.
-  for (const vieja of ['gantt', 'planificacion']) {
+  for (const vieja of ['gantt', 'planificacion', 'cronograma', 'ejecucion']) {
     await page.goto(`/obras/${OBRA}?vista=${vieja}`)
-    await expect(page.getByTestId('tab-cronograma'), `?vista=${vieja} no llevó a Cronograma`)
+    await expect(page.getByTestId('tab-tareas'), `?vista=${vieja} no llevó a Tareas`)
       .toHaveAttribute('aria-current', 'page')
   }
+  // Y CADA UNA ABRE DONDE ABRÍA. Que la solapa sea la correcta no alcanza: `?vista=ejecucion` tiene
+  // que caer en el parte diario, no en el árbol — el formulario que la persona venía a usar es lo
+  // que se estaba por perder.
+  await page.goto(`/obras/${OBRA}?vista=cronograma`)
+  await expect(page.getByTestId('sub-gantt')).toHaveAttribute('aria-current', 'true')
+  await page.goto(`/obras/${OBRA}?vista=ejecucion`)
+  await expect(page.getByTestId('sub-parte')).toHaveAttribute('aria-current', 'true')
 })
 
 test('el Resumen abre con CUATRO cifras y sin cadenas técnicas de base de datos', async ({ page }) => {

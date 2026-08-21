@@ -65,3 +65,33 @@ test('un PDF ilegible devuelve nulls, NUNCA ceros', () => {
   assert.equal(d.fondo_cese_devengado, null)
   assert.equal(d.total_determinado, null)
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UNA CARPETA EN LA PAPELERA SE LEE COMO UNA CARPETA VACÍA, Y ESO NO PUEDE PASAR CALLADO.
+//
+// Medido el 21/08/2026: `CARPETA_UOCRA` apuntaba a una carpeta que alguien mandó a la papelera.
+// Drive la seguía devolviendo por su ID, con su nombre, y `files.list` daba cero archivos sin un
+// solo error. La réplica quedó clavada en junio mientras las DDJJ de julio se subían puntualmente
+// a la carpeta buena: dos meses de Fondo de Cese estimados en vez de declarados, sin ninguna alarma.
+import { porQueNoSirve, CARPETA_UOCRA } from './uocra-ddjj.mjs'
+
+test('la papelera se detecta — es el modo de fallar que no grita', () => {
+  assert.match(porQueNoSirve({ trashed: true }, [{ name: 'a.pdf' }]) ?? '', /PAPELERA/)
+})
+
+test('una carpeta viva pero sin PDF tampoco sirve', () => {
+  assert.match(porQueNoSirve({ trashed: false }, []) ?? '', /ningún PDF|no tiene un solo PDF/)
+  assert.match(porQueNoSirve({ trashed: false }, [{ name: 'notas.txt' }]) ?? '', /no tiene un solo PDF/)
+})
+
+test('sin acceso a la carpeta tampoco se sigue de largo', () => {
+  assert.ok(porQueNoSirve(null, []))
+})
+
+test('la carpeta buena pasa', () => {
+  assert.equal(porQueNoSirve({ trashed: false }, [{ name: '2026-07 UOCRA.pdf' }]), null)
+})
+
+test('el ID cableado NO es el que estaba en la papelera', () => {
+  assert.notEqual(CARPETA_UOCRA, '1nURWIZqNN_0TMZB--O_jSseVWGGPih0u', 'volvió el ID de la carpeta borrada')
+})

@@ -391,6 +391,13 @@ export function normalizar_lectura(crudo = {}) {
       // resuelve leyendo varios de un archivo —eso cambia el contrato de la visión y de la
       // idempotencia—: se resuelve DECLARÁNDOLO, para que el dueño mande los otros por separado en vez
       // de darlos por cargados. Un gasto perdido en silencio es el peor resultado de este flujo.
+      // ═══ EL PAPEL QUE NO ES UNA FACTURA (21/08) ═══
+      //
+      // Dos presupuestos de CON-SEC llegaron por el chat; el modelo ESCRIBIÓ «no es una factura: es
+      // un presupuesto/remito» en las dudas… y el flujo igual los encaminó a carga, eligiendo encima
+      // el precio «de lista» entre dos totales impresos. La duda en texto libre no gobierna nada:
+      // el dato tiene que viajar como CAMPO para que `faltantes.mjs` lo pueda frenar.
+      esPresupuestoORemito: crudo.es_presupuesto_o_remito === true,
       variosComprobantes: crudo.varios_comprobantes === true,
       cuantosComprobantes: Number.isFinite(Number(crudo.cuantos_comprobantes))
         ? Number(crudo.cuantos_comprobantes) : null,

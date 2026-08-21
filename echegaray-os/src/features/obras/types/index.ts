@@ -147,6 +147,24 @@ export interface Actividad {
   /** Pedidos de material colgados de esta actividad. El pedido sigue siendo de la OBRA: esto sólo
    *  dice para qué se pidió, cuando alguien lo declaró. */
   n_pedidos: number
+
+  // ═══ LO QUE AGREGÓ EL MODELO DEL 21/08/2026 ═══
+  //
+  // Las cuatro primeras salen de `obra_actividad_control`; las cuatro últimas, de la tabla. Todas
+  // llegan `undefined` en una base donde la migración todavía no se aplicó —el `select *` de
+  // PostgREST devuelve las columnas que existan— y por eso el tipo las declara opcionales: una
+  // migración en el repositorio no es una migración aplicada.
+  n_pasos?: number
+  n_pasos_hechos?: number
+  /** La suma de los pesos de los pasos. Es la BASE del porcentaje, no el porcentaje. */
+  peso_pasos?: number | null
+  /** Qué es este contenedor dentro de la obra. NULL es válido: una obra chica no declara sectores. */
+  rol_estructura?: 'rubro' | 'sector' | 'nivel' | 'frente' | 'elemento' | null
+  /** El tope de personas simultáneas. Es del FRENTE: más gente que el tope no acorta el plazo. */
+  tope_frente?: number | null
+  dotacion_prevista?: number | null
+  /** El análisis de la base maestra con el que se planificó. Sin él no hay rendimiento ni duración. */
+  analisis_id?: string | null
 }
 
 /** Los cinco estados del tablero. `bloqueada` NO se guarda: sale de tener un impedimento abierto. */
@@ -164,13 +182,21 @@ export const ESTADO_LABEL: Record<EstadoActividad | 'bloqueada', string> = {
 /** El orden del tablero, de izquierda a derecha. */
 export const COLUMNAS_TABLERO = ['pendiente', 'lista', 'en_curso', 'bloqueada', 'hecha'] as const
 
-export type MetodoAvance = 'cantidad' | 'partes' | 'manual'
-export type OrigenAvance = 'cantidad' | 'partes' | 'declarado'
+// LOS CUATRO MÉTODOS. `pasos` se agregó el 21/08/2026 y `partes` NO se retiró: son 141 actividades
+// vivas que hoy se miden así, y sacarlo obligaría a reinterpretarlas sin que nadie lo haya pedido.
+export type MetodoAvance = 'cantidad' | 'pasos' | 'partes' | 'manual'
+export type OrigenAvance = 'cantidad' | 'pasos' | 'partes' | 'declarado'
 
 export const METODO_LABEL: Record<MetodoAvance, string> = {
   cantidad: 'Se calcula desde la producción cargada',
+  pasos: 'Pasos ponderados',
   partes: 'Se suma de los partes diarios',
   manual: 'Lo declara una persona',
+}
+
+/** El rótulo corto de la columna MEDICIÓN. `null` no es un método: es una deuda de carga. */
+export const METODO_CORTO: Record<MetodoAvance, string> = {
+  cantidad: 'Cantidad', pasos: 'Pasos', partes: 'Partes', manual: 'Manual',
 }
 
 /**
@@ -393,6 +419,20 @@ export interface Certificado {
 }
 
 export type ServiceResult<T> = { data: T; error: null } | { data: null; error: string }
+
+/**
+ * LO QUE PUEDE NO EXISTIR, sin que eso sea un fallo.
+ *
+ * `ServiceResult` obliga a que `data: null` venga con un `error: string`, y ese contrato empujaba a
+ * las lecturas por identificador a INVENTAR un error —`No existe la obra "x"`— para poder devolver
+ * la ausencia. Consecuencia: la ficha dibujaba la pantalla roja de una base caída para una obra que
+ * simplemente no está, y su `notFound()` era código inalcanzable.
+ *
+ * Con esto son TRES estados y no dos: encontrado, no encontrado, y fallo real. Quien pregunta
+ * decide qué hacer con cada uno —la ficha manda el segundo al 404, el alta ofrece crear una nueva—
+ * y el compilador obliga a mirar los dos casos.
+ */
+export type ServiceResultOpcional<T> = { data: T | null; error: null } | { data: null; error: string }
 
 /** Días de desvío del fin planificado contra la línea base. Positivo = atrasado.
  *  Devuelve null si no hay baseline: un desvío sin contra qué medir no es cero, es desconocido. */

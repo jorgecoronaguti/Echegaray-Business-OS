@@ -169,6 +169,10 @@ export const PROMPT_LECTURA = [
   '  del rubro que ese nombre sugiere. No repitas acá la anotación manuscrita: ésa ya viaja entera en',
   '  "anotacion_manuscrita". Si el papel no da para una línea útil, poné null: una nota inventada es',
   '  peor que una celda vacía.',
+  '· UN PRESUPUESTO NO ES UN COMPROBANTE DE GASTO. Si el papel es un PRESUPUESTO, una COTIZACIÓN,',
+  '  un REMITO o una NOTA DE PEDIDO —dice "presupuesto"/"remito", no tiene letra ni CUIT del emisor',
+  '  ni CAE, o muestra precios alternativos tipo "de lista" vs "de contado"— poné',
+  '  es_presupuesto_o_remito=true. Leé sus datos igual, pero ese papel NO es un gasto todavía.',
   '· UN ARCHIVO, UN COMPROBANTE. Si en esta imagen o en este PDF hay MÁS DE UN comprobante DISTINTO',
   '  (dos tickets sobre la mesa, un PDF con varias facturas), contestá SÓLO por el primero y poné',
   '  varios_comprobantes=true y cuantos_comprobantes=<cuántos contás>. No los mezcles en un solo JSON:',
@@ -189,6 +193,7 @@ export const PROMPT_LECTURA = [
   'del proveedor>","detalle_libre":"<la nota de la compra, o null>",',
   '"anotacion_manuscrita":"<tal cual, o null>",',
   '"varios_comprobantes":<true|false>,"cuantos_comprobantes":<número o null>,',
+  '"es_presupuesto_o_remito":<true|false>,',
   '"legible":<true|false>,"dudas":["<qué no pudiste leer>"]}',
 ].join('\n')
 

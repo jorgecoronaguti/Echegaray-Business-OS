@@ -25,6 +25,7 @@ import { claveComprobante, MEDIA_ACEPTADOS, MAX_BYTES_ADJUNTO, tipoPorExtension 
 import { prepararParaVision } from '../../lib/comprobantes/imagen.mjs'
 import { conciliarConArca, aplicarArca, ESTADO_ARCA } from '../../lib/comprobantes/arca.mjs'
 import { buscarEnCompras, HALLAZGO, escalaDelProveedor, detallesFirmes, obrasFirmes } from '../../lib/comprobantes/compras-vivas.mjs'
+import { cruceBancario, dicePagadaPorBanco } from '../../lib/comprobantes/banco.mjs'
 import { colapsarRepetidos, entraEnElFajo, estaCompleto, imputacionPendiente, rotulosDe, ESTADO } from '../../lib/comprobantes/fajo.mjs'
 import { mensajeFajo } from '../../lib/comprobantes/mensaje.mjs'
 import { rendicionDeAdjuntos, textoRendicion } from '../../lib/comprobantes/rendicion.mjs'
@@ -126,6 +127,22 @@ export async function conciliarItems(items = [], arcaDe) {
     }
   }
   return items
+}
+
+/**
+ * Cruza los ítems que declaran pago bancario contra el extracto importado. `bancoDe` es inyectable
+ * y puede no estar: sin él, el que declara pago por banco queda `no_verificable` y se dice — no
+ * poder mirar el extracto no es haberlo mirado. Nunca bloquea: el sello del papel también es
+ * evidencia y el extracto puede correr un día atrás.
+ */
+export async function marcarBanco(items = [], bancoDe) {
+  const declaran = items.filter((it) => dicePagadaPorBanco(it?.comprobante ?? {}))
+  if (!declaran.length) return items
+  let movimientos = null
+  if (typeof bancoDe === 'function') {
+    try { movimientos = await bancoDe() } catch { movimientos = null }
+  }
+  return cruceBancario(items, movimientos)
 }
 
 /**
@@ -263,7 +280,7 @@ export async function procesarPost(d, m = {}) {
   // `arcaDe` y `comprasDe` son OPCIONALES y por eso están fuera del destructuring con default: sin
   // ellas el flujo funciona igual y lo declara. Que el padrón de ARCA no conteste no puede impedir
   // que una foto se lea.
-  const { port, mattermost, leer, listas, url, log, arcaDe, comprasDe } = d
+  const { port, mattermost, leer, listas, url, log, arcaDe, comprasDe, bancoDe } = d
   // El repositorio entra INYECTABLE (default: el real). Es la costura que permite probar el flujo
   // entero —puerta, lectura, agrupado, idempotencia, mensaje— con un doble en memoria, sin Postgres.
   const repo = d.repo ?? repoReal
@@ -367,6 +384,13 @@ export async function procesarPost(d, m = {}) {
   // 7 bis) Lo que el papel no dijo, lo dice la historia de Compras — vía el módulo que ya aprende
   //        para todo el OS. Nunca pisa lo escrito a mano.
   completarConHistorial(unicos, await perfilesDeHistorial(indiceCompras, d))
+
+  // 7 ter) EL BANCO. Un comprobante que declara «pagada por transferencia» se cruza contra los
+  //        débitos del extracto que se importa todos los días (`banco_movimientos`). El caso que lo
+  //        creó: dos facturas de Trielec pagadas con UNA transferencia de $323.149,37 — el extracto
+  //        confirmaba el pago Y desmentía la lectura ×100 que ese día entró a Compras, y nadie lo
+  //        miró. Igual que ARCA: declara, no bloquea, y sin base queda `no_verificable`.
+  await marcarBanco(unicos, bancoDe)
 
   // 8) Abrir o ampliar el fajo.
   const abierto = await repo.fajoAbierto(port, {

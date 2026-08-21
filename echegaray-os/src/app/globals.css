@@ -64,6 +64,10 @@
      `soft` es su versión de fondo, para un realce que no compita con el semántico. */
   --os-marca: #fdc900;
   --os-marca-soft: #fef4cf;
+  /* La barra de PROYECCIÓN del cronograma. Es el amarillo de la marca rebajado a fondo: el
+     tramo proyectado tiene que leerse como continuación de la barra de plan, no como un estado.
+     Vive acá y no en el componente porque un color suelto es cómo un sistema visual tiene dos. */
+  --os-marca-track: #f6e4a8;
 
   /* Semántico — reservado para ESTADO, con tinte tenue de fondo.
      El warn se corrió a un ámbar más rojizo para que no se confunda con la marca:

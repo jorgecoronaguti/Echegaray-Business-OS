@@ -136,3 +136,60 @@ test('un cobro en USD que se EXCLUYE se declara en pesos, como el resto del cuad
   assert.equal(ms.length, 0)
   assert.equal(Math.round(excluidos[0].importe), 22_984_870)
 })
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// FACTURADO NO ES COBRADO — el dueño, 21/08/2026
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// La aclaración es del dueño y el extractor ya la respetaba (`/^cobrado$/` es exacto), pero NINGÚN
+// test la fijaba: alcanzaba con que alguien relajara esa expresión a `/cobrad/` o agregara
+// "Facturado" a una lista de estados cerrados para que $8.620.282 pasaran de proyectados a reales
+// sin que nada gritara. Un criterio implementado y no protegido dura hasta la próxima edición.
+//
+// Y el modo de fallar es del lado caro: la plata aparecería como YA ENTRADA, así que ninguna vista
+// de proyección la miraría, la escalera de cobranzas la daría por cerrada y CAJA la sumaría al
+// disponible. Emitir la factura es un hecho del devengado; la caja se mueve cuando el cliente paga.
+//
+// Las dos filas reales al momento de escribir esto: MESSINA $7.228.782 con cobro previsto el
+// 17/09/2026 y ARCOR $1.391.500 para el 12/10/2026. Verificado en `_MOVIMIENTOS`: las dos entran
+// como PROYECTADO.
+
+/** La fecha de cobro de las dos filas reales cae DESPUÉS del corte: son cobros que todavía no
+ *  vencieron. Usar una fecha pasada las volvería VENCIDO —correcto, pero otra cosa— y taparía lo
+ *  que estos tests miden, que es que NO son REAL. */
+const F_FUTURA = CORTE + 27
+
+/** La misma fila real, con el estado que se le quiera dar. */
+const conEstado = (estado, importe = 7_228_782, fecha = F_FUTURA) =>
+  ['', 'MESSINA', estado, importe, fecha, fecha, 'Transferencia', '', '']
+
+test('FACTURADO no es COBRADO: entra como PROYECTADO, no como plata que ya está', () => {
+  const [m] = deCobranzas(hoja(conEstado('Facturado')), CORTE, { tipoCambio: TC })
+  assert.equal(m.estado, 'PROYECTADO',
+    'una factura emitida se contó como cobrada: la plata aparece en caja sin que el cliente haya pagado')
+  assert.equal(m.importe, 7_228_782)
+})
+
+test('los cuatro estados vivos se reducen a dos, y sólo «Cobrado» exacto es REAL', () => {
+  const estadoDe = (e) => deCobranzas(hoja(conEstado(e)), CORTE, { tipoCambio: TC })[0]?.estado
+  assert.equal(estadoDe('Cobrado'), 'REAL')
+  assert.equal(estadoDe('Facturado'), 'PROYECTADO')
+  assert.equal(estadoDe('Pendiente'), 'PROYECTADO')
+  assert.equal(estadoDe('Proyectado'), 'PROYECTADO')
+})
+
+test('una cobranza NO cobrada con fecha ya pasada es VENCIDO — sigue sin ser plata que entró', () => {
+  // El otro lado de la misma regla: vencido y proyectado son distintos entre sí, pero ninguno de
+  // los dos es REAL. Lo que no puede pasar nunca es que una factura emitida cuente como cobrada.
+  const [m] = deCobranzas(hoja(conEstado('Facturado', 7_228_782, CORTE - 6)), CORTE, { tipoCambio: TC })
+  assert.equal(m.estado, 'VENCIDO')
+  assert.notEqual(m.estado, 'REAL')
+})
+
+test('«Facturado» no se cuela por parecerse: la comparación es exacta, no por prefijo', () => {
+  // Si la regla se relajara a /cobrad/, «Facturado — a cobrar» o «Por cobrar» entrarían como REAL.
+  for (const e of ['Por cobrar', 'A cobrar', 'Facturado, a cobrar', 'cobrado parcial']) {
+    assert.equal(deCobranzas(hoja(conEstado(e)), CORTE, { tipoCambio: TC })[0]?.estado, 'PROYECTADO',
+      `"${e}" entró como REAL: la comparación dejó de ser exacta`)
+  }
+})

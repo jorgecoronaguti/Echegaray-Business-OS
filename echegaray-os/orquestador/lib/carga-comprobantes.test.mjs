@@ -30,6 +30,26 @@ test('el proveedor se matchea contra la lista y marca los nuevos', () => {
   assert.equal(nuevo.valor, 'Corralón El Sol') // el nombre tal cual, sin inventar variante
 })
 
+test('el punto decimal impreso NO es un separador de miles — el ticket de Trielec (21/08)', () => {
+  // El tique 0038-00002973 imprime los decimales con PUNTO. Borrar todos los puntos cargó
+  // $95.277,07 como $9.527.707 — cada importe ×100, coherentes entre sí, invisibles para la
+  // identidad aritmética. Un grupo final de DOS dígitos tras el punto es un decimal, siempre.
+  assert.equal(aNumero('95277.07'), 95277.07)
+  assert.equal(aNumero('76836.35'), 76836.35)
+  assert.equal(aNumero('16135.63'), 16135.63)
+  assert.equal(aNumero('2305.09'), 2305.09)
+  assert.equal(aNumero('12806.0590'), 12806.059, 'cuatro decimales tampoco son un grupo de miles')
+  assert.equal(aNumero('227872.31'), 227872.31)
+  // Lo es-AR de siempre sigue intacto: puntos que agrupan de a tres son miles.
+  assert.equal(aNumero('9.527.707'), 9527707)
+  assert.equal(aNumero('686.070,00'), 686070)
+  assert.equal(aNumero('1.234'), 1234)
+  // Y el espejo US con comas de miles no fabrica un decimal.
+  assert.equal(aNumero('1,234,567'), 1234567)
+  assert.equal(aNumero('1,234.56'), 1234.56)
+  assert.equal(aNumero('-95277.07'), -95277.07)
+})
+
 test('los importes es-AR entran como número y las fechas como DD/MM/YYYY', () => {
   assert.equal(aNumero('$28.479,30'), 28479.30)
   assert.equal(aNumero('$ 5.981'), 5981)

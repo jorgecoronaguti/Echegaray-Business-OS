@@ -144,3 +144,32 @@ async function main() {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main().catch((e) => { console.error(e.message ?? e); process.exitCode = 1 })
+
+// ── LA PREGUNTA AL REVÉS: ¿qué compra con cheque quedó pendiente y sin respaldo? ───────────────
+//
+// El informe de arriba va del CHEQUE a la factura. El dueño (21/08/2026) preguntó al revés: *"todo
+// aquello que diga en Compras que se paga por ese medio, buscar en Cheques Emitidos, ver si los
+// montos se cubren y a qué corresponden, y pasar a pagado"*.
+//
+// La vuelta importa porque las dos preguntas NO son la misma. Un cheque vivo cruza contra facturas
+// que en Compras YA dicen "Pagado" —por eso el cruce existe: para descubrir que esa fila era mitad
+// hecho y mitad compromiso—. Una compra PENDIENTE con medio "Cheque" es otra cosa: es una factura
+// que todavía no tiene instrumento emitido.
+//
+// **Y por eso ninguna se pasa a Pagado sola.** Marcar "Pagado" una fila sin cheque que la respalde
+// sería declarar un pago que no ocurrió: la plata seguiría en la cuenta y el cuadro diría que salió.
+export function comprasConChequeSinRespaldo(compras, cheques, { col, norm }) {
+  const n = (s) => Number(String(s ?? '').replace(/[^\d,-]/g, '').replace(/\./g, '').replace(',', '.')) || 0
+  const sinRespaldo = []
+  for (const [i, f] of compras.entries()) {
+    const medio = String(f[col.tipoPago] ?? '')
+    if (!/cheque|echeq/i.test(medio)) continue
+    if (/pagado/i.test(String(f[col.estado] ?? ''))) continue
+    const importe = n(f[col.total])
+    const prov = norm(f[col.proveedor])
+    const respaldo = cheques.filter((c) =>
+      Math.abs(Number(c.importe) - importe) < 1 && norm(c.contraparte) === prov)
+    if (!respaldo.length) sinRespaldo.push({ fila: i + 1, proveedor: String(f[col.proveedor] ?? ''), importe, medio })
+  }
+  return sinRespaldo
+}

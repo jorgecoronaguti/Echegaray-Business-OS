@@ -26,6 +26,12 @@
 // antes de correr una sola aserción. `ETAPAS` es un valor real y tiene que poder resolverse; es la
 // misma razón por la que `usuarios/services/reglas.ts` importa `'../../auth/types/areas.ts'`.
 import { ETAPAS } from '../types/index.ts'
+// EL NÚCLEO DEL ORDEN VIVE EN `shared/`: las tres decisiones de arriba no son del portafolio, son
+// de cualquier tabla del OS, y escribirlas de nuevo en cada una es cómo se llega a que dos tablas
+// traten al nulo distinto. Acá queda sólo lo que ES del portafolio: qué campos hay y qué significan.
+import { ordenarPor, proximaDireccion as proximaGenerica, type Direccion } from '../../../shared/services/orden.ts'
+
+export type { Direccion }
 
 /** Cada campo por el que se puede ordenar, con el rótulo que ya muestra la tabla. */
 export const CAMPOS = {
@@ -39,7 +45,6 @@ export const CAMPOS = {
 } as const
 
 export type CampoOrden = keyof typeof CAMPOS
-export type Direccion = 'asc' | 'desc'
 
 /** La dirección con la que conviene ABRIR cada campo: la que contesta la pregunta que uno se hace. */
 const PRIMERA_DIRECCION: Record<CampoOrden, Direccion> = {
@@ -59,10 +64,9 @@ export function esCampo(v: unknown): v is CampoOrden {
   return typeof v === 'string' && Object.hasOwn(CAMPOS, v)
 }
 
-/** NÚCLEO PURO: la dirección con la que hay que abrir un campo, o la contraria si ya está abierto. */
+/** La dirección con la que hay que abrir un campo. El criterio general está en `shared/services/orden`. */
 export function proximaDireccion(campo: CampoOrden, campoActual: CampoOrden | null, dirActual: Direccion | null): Direccion {
-  if (campo !== campoActual || !dirActual) return PRIMERA_DIRECCION[campo]
-  return dirActual === 'asc' ? 'desc' : 'asc'
+  return proximaGenerica(campo, campoActual, dirActual, (c) => PRIMERA_DIRECCION[c])
 }
 
 /** El índice de la etapa en el ciclo de vida. Fuera de la lista (o sin declarar) = sin ubicar. */
@@ -114,21 +118,11 @@ export function ordenar<T extends FilaOrdenable>(
   dir: Direccion,
   desvio: DesvioDeObra = () => null,
 ): T[] {
-  const filas = [...obras]
-  if (!campo) return filas
-  const signo = dir === 'asc' ? 1 : -1
-  const nombre = (o: T) => (o.nombre ?? '').toLocaleLowerCase('es-AR')
-  return filas.sort((a, b) => {
-    const va = valorDe(a, campo, desvio)
-    const vb = valorDe(b, campo, desvio)
-    // EL NULO NO COMPITE: va al fondo en las dos direcciones. Ver la decisión 2 de la cabecera.
-    if (va === null && vb === null) return nombre(a).localeCompare(nombre(b), 'es-AR')
-    if (va === null) return 1
-    if (vb === null) return -1
-    const cmp = typeof va === 'string' && typeof vb === 'string'
-      ? va.localeCompare(String(vb), 'es-AR', { sensitivity: 'base' })
-      : Number(va) - Number(vb)
-    if (cmp !== 0) return cmp * signo
-    return nombre(a).localeCompare(nombre(b), 'es-AR')
-  })
+  if (!campo) return [...obras]
+  return ordenarPor(
+    obras,
+    (o) => valorDe(o, campo, desvio),
+    dir,
+    (o) => (o.nombre ?? '').toLocaleLowerCase('es-AR'),
+  )
 }

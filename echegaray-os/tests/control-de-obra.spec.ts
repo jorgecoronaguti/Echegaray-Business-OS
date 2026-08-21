@@ -256,15 +256,28 @@ test('8 · la tarea descompone la actividad, y no aparece como una fila más del
   // corre en paralelo y también crea actividades en Messina, así que el total cambia entre las dos
   // lecturas. Lo que este test afirma es la regla —las tareas no entran—, y eso se ve en que las
   // dos cuentas coincidan aunque el total suba.
+  //
+  // ═══ CÓMO SE CUENTA «UNA ACTIVIDAD DEL PLAN» (corregido el 21/08/2026) ═══
+  //
+  // Esta cuenta era `actividad_padre_id is null and tipo <> 'resumen'`, y funcionaba porque la
+  // columna estaba NULL en las 350 filas. `20260821T2000` la convirtió en la arista del árbol de la
+  // obra y le colgó las actividades de su rubro: con la cuenta vieja, las 30 actividades reales de
+  // esta obra pasaban a leerse como subtareas y el test daba 30 de diferencia contra una vista que
+  // estaba bien. Es un cambio de contrato del modelo, no un ajuste para que pase.
+  //
+  // La regla correcta —la misma que aplica la pantalla, en `services/subtareas.ts`— la da el TIPO
+  // DEL PADRE: hija de un `resumen` es una actividad del plan; hija de una ejecutable es una
+  // subtarea. Lo que el test sigue afirmando es idéntico: las subtareas no entran al avance.
   const { data: enLaVista } = await c.from('obra_avance').select('n_actividades').eq('obra_id', OBRA).single()
-  const { count: enTabla } = await c.from('obra_actividad')
-    .select('id', { count: 'exact', head: true })
-    .eq('obra_id', OBRA).is('actividad_padre_id', null).neq('tipo', 'resumen')
-  const { count: tareas } = await c.from('obra_actividad')
-    .select('id', { count: 'exact', head: true })
-    .eq('obra_id', OBRA).not('actividad_padre_id', 'is', null)
+  const { data: filas } = await c.from('obra_actividad')
+    .select('id, tipo, actividad_padre_id').eq('obra_id', OBRA).eq('archivada', false)
+  const porId = new Map((filas ?? []).map((f) => [f.id as string, f]))
+  const esSubtarea = (f: { actividad_padre_id: string | null }) =>
+    f.actividad_padre_id !== null && porId.get(f.actividad_padre_id)?.tipo !== 'resumen'
+  const enTabla = (filas ?? []).filter((f) => f.tipo !== 'resumen' && !esSubtarea(f)).length
+  const tareas = (filas ?? []).filter(esSubtarea).length
   expect(tareas, 'sin tareas cargadas no hay nada que excluir').toBeGreaterThan(0)
-  expect(Math.abs(Number((enLaVista as { n_actividades: number }).n_actividades) - (enTabla as number)))
+  expect(Math.abs(Number((enLaVista as { n_actividades: number }).n_actividades) - enTabla))
     .toBeLessThanOrEqual(1)
 })
 

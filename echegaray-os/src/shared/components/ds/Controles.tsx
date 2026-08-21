@@ -38,19 +38,15 @@ export function Campo({
 }
 
 /**
- * El buscador de una lista: SÓLO hairline inferior + icono. Sin caja.
- * Un buscador con borde completo arriba de una tabla sin caja es la caja que la tabla no tiene.
- */
-/**
  * LA LUPA DEL SISTEMA — SVG, NUNCA EL CARÁCTER `⌕` (U+2315).
  *
  * IBM Plex Sans no trae ese glifo: el navegador dibuja el rectángulo vacío del «tofu». Y no falla,
  * se dibuja mal — que es peor, porque nada avisa. Un icono que depende de qué caracteres traiga la
  * tipografía es un icono que un día no está.
  *
- * Se exporta porque hay tres buscadores en el OS con formas distintas —uno controlado, dos como
- * formulario GET sobre la propia pantalla— y los tres necesitan ESTA lupa. Las tres áreas la
- * redibujaron por su cuenta el mismo día; una sola definición es lo que evita la cuarta.
+ * Se exporta porque además de los dos buscadores del sistema hay pantallas que dibujan la lupa
+ * suelta. Tres áreas la redibujaron por su cuenta el mismo día; una sola definición es lo que evita
+ * la cuarta.
  */
 export function IconoBuscar({ className = '' }: { className?: string }) {
   return (
@@ -70,15 +66,30 @@ export function IconoBuscar({ className = '' }: { className?: string }) {
   )
 }
 
+/**
+ * EL BUSCADOR DE UNA LISTA: sólo hairline inferior + icono. Sin caja. Un buscador con borde completo
+ * arriba de una tabla sin caja es la caja que la tabla no tiene.
+ *
+ * Es LA caja de búsqueda del OS, y filtra al teclear porque no tiene otra forma de hacerlo: avisa
+ * cada tecla y no sabe nada de Enter. Ésta es la versión CONTROLADA, para listas que ya viajaron
+ * enteras al navegador —Clientes, Cuentas, Operarios, Costos—: filtrar es un `filter` en memoria,
+ * instantáneo y sin debounce, porque no hay ningún viaje que ahorrar.
+ *
+ * Cuando el filtro lo resuelve Postgres y el estado tiene que quedar en la URL, el que va es
+ * `BuscadorURL`, que dibuja EXACTAMENTE éste y le pone la navegación encima.
+ */
 export function Buscador({
   value,
   onChange,
+  name,
   placeholder = 'Buscar',
   testid = 'buscador',
   className = '',
 }: {
   value: string
   onChange: (v: string) => void
+  /** Sólo cuando va dentro de un `form` que tiene que seguir funcionando sin JavaScript. */
+  name?: string
   placeholder?: string
   testid?: string
   className?: string
@@ -88,6 +99,7 @@ export function Buscador({
       <IconoBuscar />
       <input
         type="search"
+        name={name}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}

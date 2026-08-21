@@ -12,9 +12,9 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { PageShell } from '@/shared/components/ui'
-import { Aviso, BotonEnlace, Vacio } from '@/shared/components/ds'
+import { Aviso, BotonEnlace, BuscadorURL, Vacio } from '@/shared/components/ds'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
-import { BuscadorURL, FiltrosURL } from '@/features/administracion/components/Controles'
+import { FiltrosURL } from '@/features/administracion/components/Controles'
 import { CamposAlta } from '@/features/administracion/components/FormularioPersona'
 import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
 import { TablaPersonas } from '@/features/administracion/components/TablaPersonas'
@@ -79,7 +79,7 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
           placeholder="Buscar…"
           oculto={{ f: filtro === 'plantel' ? undefined : filtro }}
           ancho="w-full sm:w-[208px]"
-          testid="filtros-personas"
+          testid="buscar-persona"
         />
         <FiltrosURL
           testid="filtros-personal"
@@ -91,6 +91,12 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
           }))}
         />
         <div className="ml-auto flex items-center gap-4">
+          {/* «En obra ahora» va al lado de Cuadrillas y por el mismo motivo: es NAVEGACIÓN dentro de
+              Personal, no una sección nueva del sistema. Quién está hoy y quién es el plantel son la
+              misma pregunta mirada a dos distancias. */}
+          <BotonEnlace href="/administracion/personas/en-obra" variante="discreta" data-testid="ir-en-obra">
+            En obra ahora
+          </BotonEnlace>
           <BotonEnlace href="/administracion/personas/cuadrillas" variante="discreta" data-testid="ir-cuadrillas">
             Cuadrillas
           </BotonEnlace>

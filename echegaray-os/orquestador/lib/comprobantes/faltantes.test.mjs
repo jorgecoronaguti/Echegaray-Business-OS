@@ -207,3 +207,16 @@ test('una NOTA DE CRÉDITO no comparte clave con la factura del mismo número', 
   const nc = claveComprobante({ cuit: '30712345678', numero: '0113-00010489', esNotaCredito: true })
   assert.notEqual(factura.clave, nc.clave)
 })
+
+test('un presupuesto/remito NO es un gasto: frena en las dos políticas — CON-SEC, 21/08', () => {
+  // Dos presupuestos de CON-SEC llegaron por el chat con dos totales impresos (lista vs contado).
+  // El modelo escribió «no es una factura» en las dudas de texto libre... y el flujo igual los
+  // encaminó a carga. La duda no gobierna nada: el dato viaja como campo y acá se frena.
+  const presupuesto = item({ comprobante: { esPresupuestoORemito: true } })
+  assert.ok(codigos(presupuesto, POLITICA.CHAT).includes(MOTIVO.NO_ES_FACTURA))
+  assert.ok(codigos(presupuesto, POLITICA.CARGADOR).includes(MOTIVO.NO_ES_FACTURA))
+  assert.equal(puedeCargarse(presupuesto, POLITICA.CHAT), false)
+  assert.equal(puedeCargarse(presupuesto, POLITICA.CARGADOR), false)
+  // Una factura común no se ve tocada por el campo nuevo.
+  assert.equal(codigos(item(), POLITICA.CHAT).includes(MOTIVO.NO_ES_FACTURA), false)
+})

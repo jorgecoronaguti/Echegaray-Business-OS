@@ -157,8 +157,13 @@ test('portafolio → obra → resumen · gantt · planificación · documentos',
   // POR `data-testid` Y NO POR EL RÓTULO. Buscaba el enlace «Cronograma» y la solapa se llama
   // «Planificación» desde que el dueño la renombró: el id de la vista no cambia cuando cambia la
   // palabra que lee una persona, y lo que este test mide es la NAVEGACIÓN, no el diccionario.
-  await page.getByTestId('tab-cronograma').click()
-  await page.waitForURL(/vista=cronograma/)
+  // «Cronograma» dejó de ser solapa el 21/08/2026: es una VISTA de Tareas, que es el workspace
+  // único de la obra. La navegación que este test mide es la misma —llegar al Gantt desde la
+  // ficha—, con un clic más porque ahora el Gantt vive adentro del workspace.
+  await page.getByTestId('tab-tareas').click()
+  await page.waitForURL(/vista=tareas/)
+  await page.getByTestId('sub-gantt').click()
+  await page.waitForURL(/sub=gantt/)
   const gantt = page.getByTestId('gantt')
   await expect(gantt).toBeVisible()
   // BARRAS DIBUJADAS DE VERDAD. Se cuentan las FILAS del calendario y no los nodos del SVG: con el

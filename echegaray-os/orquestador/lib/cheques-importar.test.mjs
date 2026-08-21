@@ -170,3 +170,11 @@ test('un cheque sin instrumento no empareja con nada (antes que emparejar mal, n
   const cruce = cruceEmitidos(cheques, conciliarDebitosDeCheques([DEBITO_307], cheques).resultados)
   assert.equal(cruce[0].movimiento, null)
 })
+
+test('el número del banco entra normalizado: «00000366» es el «366» que ya está en la base (21/08)', () => {
+  // La pantalla del banco imprime con ceros; la base guarda canónico (T1100). Sin normalizar en
+  // aFila, el mismo fajo entraba entero como «nuevo» y duplicaba 14 cheques.
+  const f = aFila({ tipo: 'emitido', numero: '00000366', importe: 635020.10, estado: 'Pagado', origen: 'pantalla echeq', corte: '21/08/2026' })
+  assert.equal(f.numero, '366')
+  assert.equal(clave(f), 'emitido||366')
+})

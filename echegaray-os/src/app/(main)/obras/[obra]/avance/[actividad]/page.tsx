@@ -1,0 +1,98 @@
+// ═══ 05 · REGISTRAR AVANCE ═══
+//
+// Pantalla entera y no un cajón: registrar avance es el acto con más consecuencias del módulo
+// —mueve el avance de la obra, el rendimiento y la proyección de HH— y se hace mirando tres cosas a
+// la vez: los pasos, las horas y la evidencia. En 412px no entran.
+//
+// El `actividad_id` llega por la RUTA y la acción se ata con `.bind`: el id nunca viaja en un campo
+// del formulario, porque un id editable desde el navegador dejaría escribir el avance de la
+// actividad de al lado.
+
+import Link from 'next/link'
+import { notFound } from 'next/navigation'
+import { createClient } from '@/lib/supabase/server'
+import { getObra } from '@/features/obras/services/obrasService'
+import { getArbol, getHistorial, getPasos } from '@/features/obras/services/tareasService'
+import { getCuadrillas } from '@/features/obras/services/personalService'
+import { getPerfilActual } from '@/features/auth/services/authService'
+import { registrarAvance } from '@/features/obras/services/actionsAvance'
+import { FormAvance } from '@/features/obras/components/FormAvance'
+import { fecha, porcentaje } from '@/features/obras/components/formato'
+
+export const dynamic = 'force-dynamic'
+
+export default async function RegistrarAvancePage({ params }: {
+  params: Promise<{ obra: string; actividad: string }>
+}) {
+  const { obra: obraId, actividad } = await params
+  const supabase = await createClient()
+
+  const [{ data: obra }, arbol, cuadrillas, perfil] = await Promise.all([
+    getObra(supabase, obraId),
+    getArbol(supabase, obraId),
+    getCuadrillas(supabase),
+    getPerfilActual(supabase),
+  ])
+  if (!obra) notFound()
+  const nodo = arbol.data?.find((n) => n.id === actividad)
+  if (!nodo) notFound()
+
+  const [pasos, historial] = await Promise.all([
+    getPasos(supabase, actividad),
+    getHistorial(supabase, actividad),
+  ])
+
+  return (
+    <div className="min-h-screen bg-canvas">
+      <div className="mx-auto w-full max-w-[1060px] px-4 py-6 lg:px-10">
+        <p className="mb-3 text-[11px] text-faint">
+          <Link href={`/obras/${obraId}?vista=tareas&act=${actividad}`} className="hover:underline">
+            ← {obra.nombre} · Tareas
+          </Link>
+        </p>
+
+        {/* UN CONTENEDOR NO SE MIDE, SE AGREGA. La base lo rechaza con un trigger; acá se dice antes
+            de que alguien complete un formulario que va a rebotar. */}
+        {nodo.es_contenedor ? (
+          <p className="border-l-[3px] border-warn bg-warn-soft px-3.5 py-3 text-[13px] text-warn" data-testid="es-contenedor">
+            «{nodo.nombre}» agrupa a otras actividades: el avance se registra en las que agrupa, y de
+            ahí sube solo.
+          </p>
+        ) : (
+          <FormAvance
+            nodo={nodo}
+            pasos={pasos.data ?? []}
+            cuadrillas={cuadrillas}
+            autor={perfil.data?.nombre ?? 'sin identificar'}
+            hoy={new Date().toISOString().slice(0, 10)}
+            registrar={registrarAvance.bind(null, obraId, actividad)}
+          />
+        )}
+
+        <section className="mt-8">
+          <h2 className="mb-1.5 text-[13px] font-semibold text-ink">Registros anteriores</h2>
+          {(historial.data ?? []).length === 0 ? (
+            <p className="text-[12.5px] text-muted">Todavía no se registró un solo avance en esta actividad.</p>
+          ) : (
+            <ul className="max-w-[560px]">
+              {(historial.data ?? []).slice(0, 12).map((h) => (
+                <li key={h.id} className="flex items-baseline gap-2 border-b border-[#EFEEEA] py-1.5 last:border-0">
+                  <span className="w-[50px] shrink-0 font-mono text-[10px] tabular-nums text-faint">{fecha(h.fecha)}</span>
+                  <span className="flex-1">
+                    <span className="block text-[11.5px] text-ink-soft">{h.criterio || h.comentario || 'Avance registrado'}</span>
+                    <span className="block text-[10px] text-muted">
+                      {h.autor ?? 'sin firma'} · {h.fuente ?? 'sin origen'}{h.masivo && ' · en lote'}
+                    </span>
+                  </span>
+                  <span className="shrink-0 font-mono text-[11.5px] tabular-nums text-ink-soft">
+                    {h.avance_pct !== null ? porcentaje(h.avance_pct) : h.cantidad !== null ? String(h.cantidad) : '—'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+    </div>
+  )
+}

@@ -12,6 +12,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
   Actividad, Dependencia, DocumentoObra, ObraPanel, PlanVsReal, Restriccion, ServiceResult,
+  ServiceResultOpcional,
 } from '../types'
 
 /** El portafolio: una fila por obra, ordenado por el orden declarado y después por nombre. */
@@ -25,10 +26,20 @@ export async function getPortafolio(supabase: SupabaseClient): Promise<ServiceRe
   return { data: (data ?? []) as ObraPanel[], error: null }
 }
 
-export async function getObra(supabase: SupabaseClient, obraId: string): Promise<ServiceResult<ObraPanel>> {
+export async function getObra(supabase: SupabaseClient, obraId: string): Promise<ServiceResultOpcional<ObraPanel>> {
   const { data, error } = await supabase.from('obra_panel').select('*').eq('obra_id', obraId).maybeSingle()
   if (error) return { data: null, error: error.message }
-  if (!data) return { data: null, error: `No existe la obra "${obraId}"` }
+  // ═══ NO EXISTE NO ES UN ERROR ═══
+  //
+  // Devolvía `error: "No existe la obra X"`, y entonces la ficha entraba por la rama de fallo: una
+  // obra borrada se dibujaba con la regla roja de una base caída, y el `notFound()` de la línea
+  // siguiente era inalcanzable. Es el mismo defecto que ya costó horas al revés —un `grant` que
+  // faltaba se veía como «página no encontrada»— con los dos hechos invertidos.
+  //
+  // La ausencia se devuelve como ausencia y decide quien pregunta: la ficha llama `notFound()`, y
+  // el alta —que ya lo esperaba así, con un aviso que hasta hoy no se dibujaba nunca— ofrece
+  // empezar una obra nueva.
+  if (!data) return { data: null, error: null }
   return { data: data as ObraPanel, error: null }
 }
 

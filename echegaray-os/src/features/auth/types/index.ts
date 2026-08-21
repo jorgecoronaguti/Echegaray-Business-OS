@@ -41,7 +41,10 @@ export const ROL_LABEL: Record<Rol, string> = {
 //
 // Y ESTO NO ES LA CERRADURA: lo que estas pantallas muestran lo deciden las vistas `mi_*`, que
 // filtran por `mi_persona_id()` en la base.
-export const CAMPO_RUTAS_PERMITIDAS = ['/hoy', '/mi-trabajo', '/mi-informacion', '/integraciones/pedidos-materiales', '/integraciones/herramientas', '/integraciones/movimientos', '/campo', '/descargas', '/mi-cuenta']
+// `/marca` va acá por lo mismo que ya está en RUTAS_PUBLICAS (18/08): el isotipo es una imagen,
+// no una pantalla. Sin esta entrada el middleware redirigía `/marca/isotipo.png` a `/hoy` para todo
+// usuario campo y el logo se veía ROTO en cada pantalla mobile del rol Empleado (QA del 21/08).
+export const CAMPO_RUTAS_PERMITIDAS = ['/hoy', '/mi-trabajo', '/mi-informacion', '/integraciones/pedidos-materiales', '/integraciones/herramientas', '/integraciones/movimientos', '/campo', '/descargas', '/mi-cuenta', '/marca']
 export function esRutaCampoPermitida(pathname: string): boolean {
   return CAMPO_RUTAS_PERMITIDAS.some((r) => pathname === r || pathname.startsWith(r + '/'))
 }
@@ -61,6 +64,8 @@ export const RUTAS_PUBLICAS = [
   '/login',
   '/signup',
   '/descargar', // la landing de descarga de la extensión: estática, sin dato de la empresa
+  '/api/oauth/start', // la ida a Google: la abre quien todavía NO autorizó — exigir sesión acá
+                      // devolvía un 307 al login y el consentimiento no arrancaba nunca
   '/api/oauth/callback', // el retorno de Google: llega sin sesión por definición
   '/api/os', // el proxy que consume la extensión, con su propia autorización
   '/echegaray-os-extension.zip', // el archivo que descarga la landing pública: sin él, /descargar

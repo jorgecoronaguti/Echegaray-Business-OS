@@ -7,7 +7,7 @@
 // nombre en null —que es la verdad— en lugar de perder la fila en un `inner join`.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { ObraPanel, ServiceResult } from '@/features/obras/types'
+import type { ObraPanel, ServiceResult, ServiceResultOpcional } from '@/features/obras/types'
 import type {
   ClientePanel, Contacto, DocumentoCliente, FuentesActividad, LineaDeTiempo, NotaCliente, Responsable,
 } from '../types'
@@ -50,10 +50,13 @@ export async function getClientes(supabase: SupabaseClient): Promise<ServiceResu
   return { data: (data ?? []).map((r) => normalizar(r as Record<string, unknown>)), error: null }
 }
 
-export async function getCliente(supabase: SupabaseClient, slug: string): Promise<ServiceResult<ClientePanel>> {
+export async function getCliente(supabase: SupabaseClient, slug: string): Promise<ServiceResultOpcional<ClientePanel>> {
   const { data, error } = await supabase.from('cliente_panel').select('*').eq('slug', slug).maybeSingle()
   if (error) return { data: null, error: error.message }
-  if (!data) return { data: null, error: `No existe el cliente "${slug}"` }
+  // NO EXISTE NO ES UN ERROR: la ficha ya distingue las dos ramas —`if (error)` dibuja el fallo con
+  // el mensaje de la base, `if (!cliente) notFound()` dibuja el 404— pero devolver la ausencia como
+  // error hacía que la segunda no se alcanzara nunca. Mismo defecto que tenía `getObra`.
+  if (!data) return { data: null, error: null }
   return { data: normalizar(data as Record<string, unknown>), error: null }
 }
 

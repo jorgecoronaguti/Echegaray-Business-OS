@@ -40,6 +40,8 @@ export function FormAccion({
   className = '',
   limpiarAlOk = false,
   mensajeOk = 'Guardado.',
+  bloqueado = false,
+  motivoBloqueo,
 }: {
   accion: AccionFormulario
   children: ReactNode
@@ -50,6 +52,14 @@ export function FormAccion({
    *  porque dejaría los campos vacíos sobre un registro que sí tiene valores. */
   limpiarAlOk?: boolean
   mensajeOk?: string
+  /** LA PRIMARIA APAGADA CUANDO FALTA ALGO QUE EL SERVIDOR VA A RECHAZAR IGUAL.
+   *
+   *  No reemplaza la validación del servidor —la misma fila entra por otras tres puertas— y por eso
+   *  el motivo se escribe AL LADO del botón: un botón gris sin explicación deja a la persona
+   *  probando dónde tocar. El único caso hoy es el criterio del método manual, que la base exige
+   *  con un CHECK. */
+  bloqueado?: boolean
+  motivoBloqueo?: ReactNode
 }) {
   const ref = useRef<HTMLFormElement>(null)
   const [estado, ejecutar, pendiente] = useActionState<ResultadoAccion | null, FormData>(
@@ -83,7 +93,7 @@ export function FormAccion({
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <button
           type="submit"
-          disabled={pendiente}
+          disabled={pendiente || bloqueado}
           data-testid={testid ? `${testid}-enviar` : undefined}
           // LA PRIMARIA DEL SISTEMA, NO UN NEGRO DE TAILWIND (20/08/2026). Era `bg-slate-900`, un
           // color que no está en la paleta del handoff — y lo comparten los catorce formularios
@@ -93,6 +103,9 @@ export function FormAccion({
         >
           {pendiente ? 'Guardando…' : enviar}
         </button>
+        {bloqueado && motivoBloqueo && (
+          <span data-testid={testid ? `${testid}-bloqueado` : undefined} className="text-[12px] text-warn">{motivoBloqueo}</span>
+        )}
         {estado?.ok === true && (
           <span data-testid={testid ? `${testid}-ok` : undefined} className="text-[12px] text-pos">{estado.mensaje ?? mensajeOk}</span>
         )}

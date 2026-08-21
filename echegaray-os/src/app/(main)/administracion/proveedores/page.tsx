@@ -13,13 +13,12 @@
 // está la barra del área, y una tercera barra deja de decir dónde está parado el que mira. Cuál está
 // abierta viaja en la URL, como todo el resto del estado de esta pantalla.
 
-import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { PageShell } from '@/shared/components/ui'
-import { Aviso, BotonEnlace, SubTabs, Vacio } from '@/shared/components/ds'
+import { Aviso, BotonEnlace, BuscadorURL, SubTabs, Vacio } from '@/shared/components/ds'
 import { plata } from '@/features/obras/components/formato'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
-import { BuscadorURL, FiltrosURL } from '@/features/administracion/components/Controles'
+import { FiltrosURL } from '@/features/administracion/components/Controles'
 import { NombresResueltos, TablaNombres } from '@/features/administracion/components/TablaNombres'
 import { PanelNombre } from '@/features/administracion/components/PanelNombre'
 import { PanelProveedor } from '@/features/administracion/components/PanelProveedor'
@@ -86,10 +85,15 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
   const abrirAlta = sp.p === 'nuevo'
   const seleccionadoId = abrirAlta ? undefined : sp.p
   let seleccionado: Proveedor | null = null
+  // NO SE PUDO LEER ≠ NO ESTÁ. Esto redirigía sacando `p` de la URL: el panel se cerraba solo y la
+  // pantalla quedaba idéntica a la de alguien que nunca hizo clic — el error dibujado como si nada
+  // hubiera pasado, que es la versión más silenciosa del defecto que `INTERACTION.md` prohíbe. Un
+  // fallo de permisos o de red se dice; la selección se conserva en la URL para poder reintentarla.
+  let errorSeleccionado: string | null = null
   if (seleccionadoId) {
     const r = await getProveedor(supabase, seleccionadoId)
-    if (r.error) redirect(armarHref(sp, { p: undefined }))
-    seleccionado = r.data
+    if (r.error) errorSeleccionado = r.error
+    else seleccionado = r.data
   }
   const compras = seleccionado ? await getComprasDelProveedor(supabase, seleccionado.id) : null
 
@@ -123,6 +127,12 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
         />
       </div>
 
+      {errorSeleccionado && (
+        <div className="mb-4" data-testid="proveedor-seleccionado-error">
+          <Aviso tono="neg" titulo="No pude abrir ese proveedor">{errorSeleccionado}</Aviso>
+        </div>
+      )}
+
       {vista === 'maestro'
         ? (
             <>
@@ -133,7 +143,7 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
                   placeholder="Buscar por nombre o CUIT"
                   oculto={{ activo: activo === 'activos' ? undefined : activo, p: sp.p }}
                   ancho="w-full sm:w-[240px]"
-                  testid="filtros-proveedores"
+                  testid="buscar-proveedor"
                 />
                 <FiltrosURL
                   testid="filtro-activo"

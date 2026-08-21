@@ -101,6 +101,21 @@ export const AREA_HREF: Record<Area, string> = {
 export const RUTAS_SOLO_ECONOMIA = [
   '/administracion/usuarios', '/flujo-caja', '/ingenieria-financiera', '/calendario-financiero',
   '/calendario-caja', '/scorecard-finanzas', '/reportes', '/aprobaciones', '/operarios',
+  // `/presupuestos` entra el 21/08/2026 con el módulo. Un presupuesto ES precio: costo unitario,
+  // margen, cascada y precio de venta. La base ya lo cierra —`cotizaciones_select` exige
+  // `ve_economia()`— y esta lista es lo que hace que el jefe de obra ni siquiera vea la solapa.
+  // Sin ella la pantalla sería más ancha que la base: un botón que lleva a «no hay nada».
+  '/presupuestos',
+  // `/documentos` entra el 21/08/2026 con la vista transversal del archivo. Las tres carpetas raíz
+  // del índice de Drive son `administracion`, `archivo-fiscal` y `libro-sueldos`: la lista incluye
+  // presupuestos de clientes, declaraciones juradas y libros de sueldos.
+  //
+  // ACÁ LA PUERTA NO TIENE CERRADURA DETRÁS, y por eso se escribe. La policy de `drive_index` es
+  // `using (true)` para todo `authenticated`: cualquiera con sesión puede pedirle a PostgREST el
+  // catálogo completo de nombres y rutas sin pasar por esta ruta. Cerrar la ruta evita el acceso
+  // accidental; no evita el deliberado. Cerrarlo de verdad es una migración, y esa decisión no es
+  // de esta pantalla.
+  '/documentos',
 ] as const
 
 /**
