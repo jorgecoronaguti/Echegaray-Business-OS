@@ -17,6 +17,7 @@
 // obligaría a elegir umbrales que nadie pidió.
 
 import { ETAPAS, type Etapa } from '../types/index.ts'
+import { plano } from '../../../shared/utils/busqueda.ts'
 
 export interface FiltroObras {
   /** Etapa exacta, o `null` = todas. */
@@ -42,11 +43,6 @@ export function filtroDesde(params: {
 
 export function hayFiltro(f: FiltroObras): boolean {
   return f.etapa !== null || f.q !== ''
-}
-
-/** Sin tildes y en minúscula: buscar «galpon» tiene que encontrar «Galpón». */
-function plano(s: string): string {
-  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 }
 
 export interface ObraFiltrable {

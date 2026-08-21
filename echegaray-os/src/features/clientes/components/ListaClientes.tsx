@@ -33,13 +33,8 @@
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { Buscador, Nulo, Tabla, THead, Th, Tr, Td } from '@/shared/components/ds'
+import { contieneEnAlguno } from '@/shared/utils/busqueda'
 import type { ClientePanel } from '../types'
-
-/** Sin acentos, sin mayúsculas y sin espacios de más: «La Estrella», «la estrella» y «ESTRELLA»
- *  tienen que encontrar la misma fila. Nadie escribe los acentos cuando busca. */
-function normalizar(s: string): string {
-  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim()
-}
 
 export function ListaClientes({
   clientes,
@@ -52,16 +47,13 @@ export function ListaClientes({
   accion?: React.ReactNode
 }) {
   const [busqueda, setBusqueda] = useState('')
-  const q = normalizar(busqueda)
   // SE BUSCA POR LOS DOS NOMBRES. Desde que el cliente tiene nombre comercial y razón social por
   // separado, buscar sólo por el comercial dejaría a «Alimentos del Sur SAS» sin resultado aunque
   // esté cargado — el que busca por la razón social es justamente el que la tiene delante, en una
   // factura o en un contrato. La lista muestra el comercial igual: el hallazgo no cambia el rótulo.
   const visibles = useMemo(
-    () => (q
-      ? clientes.filter((c) => normalizar(`${c.nombre_comercial} ${c.razon_social ?? ''}`).includes(q))
-      : clientes),
-    [clientes, q],
+    () => clientes.filter((c) => contieneEnAlguno([c.nombre_comercial, c.razon_social], busqueda)),
+    [clientes, busqueda],
   )
 
   return (

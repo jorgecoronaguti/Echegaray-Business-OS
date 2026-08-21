@@ -13,7 +13,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { sumarHHTrabajadas } from './cuadrillasService.ts'
+import { filtrarCuadrillas, sumarHHTrabajadas } from './cuadrillasService.ts'
 
 const fila = (fecha: string | null, horas: number | string, tipo_hora = 'normal') => ({ fecha, horas, tipo_hora })
 
@@ -40,4 +40,32 @@ test('una fila sin fecha no entra en ninguna ventana', () => {
   // Las 19 filas históricas de `registros_hh` vienen del Sheet por SEMANA y sin día. Meterlas en la
   // quincena por defecto le atribuiría horas a un período al que nadie dijo que pertenecen.
   assert.equal(sumarHHTrabajadas([fila(null, 8)], '2026-08-16', '2026-08-31'), 0)
+})
+
+// ═══ EL BUSCADOR DE CUADRILLAS ═══
+
+const cua = (nombre: string, responsable: string | null, obras: string | null) =>
+  ({ nombre, responsable, obras_actuales: obras })
+
+const TRES = [
+  cua('Cuadrilla Norte', 'Ramón Gómez', 'Galpón Messina'),
+  cua('Cuadrilla Sur', 'Juan Pérez', null),
+  cua('Terminaciones', null, 'Ampliación ARCOR'),
+]
+
+test('se encuentra por el capataz y por la obra, no sólo por el nombre', () => {
+  // El defecto que atrapa: buscar por lo que la tabla MUESTRA y no encontrarlo. El apellido del
+  // capataz está a la vista en su columna; si el filtro sólo mirara el nombre de la cuadrilla,
+  // escribirlo vaciaría la lista y quien busca concluiría que la cuadrilla no existe.
+  assert.deepEqual(filtrarCuadrillas(TRES, 'gomez').map((c) => c.nombre), ['Cuadrilla Norte'])
+  assert.deepEqual(filtrarCuadrillas(TRES, 'arcor').map((c) => c.nombre), ['Terminaciones'])
+  assert.deepEqual(filtrarCuadrillas(TRES, 'cuadrilla').map((c) => c.nombre), ['Cuadrilla Norte', 'Cuadrilla Sur'])
+})
+
+test('sin texto no filtra nada, y una cuadrilla sin capataz no desaparece', () => {
+  // Una columna en `null` no puede sacar la fila de la lista: «Terminaciones» no tiene responsable y
+  // tiene que seguir estando cuando no se buscó nada.
+  assert.equal(filtrarCuadrillas(TRES, '').length, 3)
+  assert.equal(filtrarCuadrillas(TRES, '   ').length, 3)
+  assert.deepEqual(filtrarCuadrillas(TRES, 'terminac').map((c) => c.nombre), ['Terminaciones'])
 })

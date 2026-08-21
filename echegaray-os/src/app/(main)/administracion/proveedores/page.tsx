@@ -15,10 +15,10 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { PageShell } from '@/shared/components/ui'
-import { Aviso, BotonEnlace, SubTabs, Vacio } from '@/shared/components/ds'
+import { Aviso, BotonEnlace, BuscadorURL, SubTabs, Vacio } from '@/shared/components/ds'
 import { plata } from '@/features/obras/components/formato'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
-import { BuscadorURL, FiltrosURL } from '@/features/administracion/components/Controles'
+import { FiltrosURL } from '@/features/administracion/components/Controles'
 import { NombresResueltos, TablaNombres } from '@/features/administracion/components/TablaNombres'
 import { PanelNombre } from '@/features/administracion/components/PanelNombre'
 import { PanelProveedor } from '@/features/administracion/components/PanelProveedor'
@@ -143,7 +143,7 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
                   placeholder="Buscar por nombre o CUIT"
                   oculto={{ activo: activo === 'activos' ? undefined : activo, p: sp.p }}
                   ancho="w-full sm:w-[240px]"
-                  testid="filtros-proveedores"
+                  testid="buscar-proveedor"
                 />
                 <FiltrosURL
                   testid="filtro-activo"
