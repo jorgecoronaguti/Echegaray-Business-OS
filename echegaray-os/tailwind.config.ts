@@ -32,7 +32,7 @@ const config: Config = {
         },
         // LA MARCA. Es identidad, nunca estado ni acción: el amarillo #FDC900 da 1,6:1 sobre
         // blanco y no puede llevar texto encima. Ver el porqué completo en globals.css.
-        marca: { DEFAULT: 'var(--os-marca)', soft: 'var(--os-marca-soft)' },
+        marca: { DEFAULT: 'var(--os-marca)', soft: 'var(--os-marca-soft)', track: 'var(--os-marca-track)' },
         pos: { DEFAULT: 'var(--os-pos)', soft: 'var(--os-pos-soft)' },
         neg: { DEFAULT: 'var(--os-neg)', soft: 'var(--os-neg-soft)' },
         warn: { DEFAULT: 'var(--os-warn)', soft: 'var(--os-warn-soft)' },
