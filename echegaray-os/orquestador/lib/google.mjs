@@ -1377,9 +1377,21 @@ export function makeGoogleClient({ config, auth, fetchImpl, impersonate, scopes,
      * por eso una nota mal escrita sobrevive a que se reescriba la pestaña entera.
      */
     async apiGetSheets(url) { return apiGet(url) },
+    /**
+     * Las pestañas del archivo con su tamaño y SI ESTÁN OCULTAS.
+     *
+     * `hidden` entró el 21/08/2026 después de tropezar con él: la máscara pedía sólo
+     * `sheetId,title,gridProperties`, así que `h.hidden` volvía `undefined` — que es falso — y un
+     * control escrito para comprobar que una pestaña había quedado oculta informó las 35 visibles
+     * justo después de ocultar una. El modo de fallar de un campo que falta en la máscara no es un
+     * error: es una respuesta tranquilizadora y equivocada.
+     *
+     * Se normaliza a booleano a propósito: la API OMITE `hidden` cuando es falso, y `undefined`
+     * obliga a cada consumidor a acordarse de la diferencia entre "no está oculta" y "no pregunté".
+     */
     async getSheetMeta(fileId) {
-      const j = await apiGet(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}?fields=sheets.properties(sheetId,title,gridProperties)`)
-      return (j.sheets || []).map((s) => ({ sheetId: s.properties?.sheetId, title: s.properties?.title, rows: s.properties?.gridProperties?.rowCount, cols: s.properties?.gridProperties?.columnCount }))
+      const j = await apiGet(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}?fields=sheets.properties(sheetId,title,hidden,gridProperties)`)
+      return (j.sheets || []).map((s) => ({ sheetId: s.properties?.sheetId, title: s.properties?.title, hidden: !!s.properties?.hidden, rows: s.properties?.gridProperties?.rowCount, cols: s.properties?.gridProperties?.columnCount }))
     },
     /**
      * ¿QUÉ HAY DE VERDAD EN ESTAS CELDAS? — la grilla cruda de un rango.
