@@ -219,7 +219,6 @@ create or replace view public.obra_actividad_control with (security_invoker = tr
     a.archivada,
     a.clave,
     a.dias_plan,
-    a.tiempo_tecnico,
     a.dias_real,
     a.editado_a_mano,
     a.fuente_pestana,
@@ -311,7 +310,10 @@ create or replace view public.obra_actividad_control with (security_invoker = tr
     a.dotacion_prevista,
     a.analisis_id,
     a.tarea_tipo_id,
-    a.cotizacion_partida_id
+    a.cotizacion_partida_id,
+    -- Al FINAL a propósito: CREATE OR REPLACE VIEW no puede insertar columnas en el medio
+    -- (falló en vivo con «cannot change name of view column "dias_real" to "tiempo_tecnico"»).
+    a.tiempo_tecnico
    FROM obra_actividad a
      LEFT JOIN LATERAL ( SELECT sum(x.cantidad) AS cantidad_ejecutada,
             sum(x.avance_pct) AS avance_partes,
