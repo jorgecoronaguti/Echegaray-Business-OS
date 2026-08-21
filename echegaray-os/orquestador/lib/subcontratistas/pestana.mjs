@@ -28,7 +28,6 @@
 // decorativo: la columna O de Compras tiene dos celdas con el texto «USD 25,20», y sin la guarda
 // la multiplicación de SUMPRODUCT devuelve #VALUE! y se cae el cuadro entero.
 import { GRUPOS, ALIAS_PROBABLE } from './padron.mjs'
-import { VACIO } from '../preservar-anotaciones.mjs'
 
 const V = () => []
 const R = (col) => `Compras!$${col}$4:$${col}$2000`
@@ -82,12 +81,20 @@ export function construir() {
     const f0 = f.length + 1
     g.filas.forEach(([nombre, rubro], j) => f.push(fila(nombre, rubro, f0 + j)))
     const f1 = f0 + g.filas.length - 1
-    // LAS CELDAS VACÍAS DE LA FILA TOTAL VAN CON CENTINELA, NO CON CADENA VACÍA.
-    // Para la fusión de la Regla 0 una cadena vacía significa «no es mía, conservá lo que había»;
-    // `VACIO` significa «es mi celda y va vacía». Con '' el cuadro NO convergía: la fila TOTAL se
-    // quedaba con el rubro y el COUNTIF del último renglón del layout anterior, corrida tras
-    // corrida, y el cuadro publicaba «TOTAL | Asado en taller | 0».
-    f.push(['TOTAL', VACIO, VACIO, VACIO, `=SUM(E${f0}:E${f1})`, `=SUM(F${f0}:F${f1})`])
+    // ═══ LA FILA TOTAL ESCRIBE SUS CUATRO CELDAS, NO DEJA NINGUNA VACÍA ═══
+    //
+    // El rediseño achicó el cuadro y la fila TOTAL cayó encima del último renglón del layout
+    // anterior. La fusión de la Regla 0 lee una celda vacía como «no es mía, conservá lo que
+    // había» —y el centinela `VACIO` tampoco alcanzó, porque la capa de ediciones ya había
+    // anotado ese texto como del dueño—: el cuadro publicaba «TOTAL | Asado en taller | 0»
+    // corrida tras corrida y NO convergía.
+    //
+    // Forzar al guardián habría sido el camino equivocado: existe para esto. La salida es que la
+    // fila diga algo. C y D pasan a mostrar el PERÍODO que cubre el bloque —dato útil, no relleno—
+    // y B lleva una fórmula que devuelve vacío: es mi celda, se ve vacía, y sobrescribe el fantasma.
+    f.push(['TOTAL', '=""',
+      `=IFERROR(MIN(C${f0}:C${f1});"")`, `=IFERROR(MAX(D${f0}:D${f1});"")`,
+      `=SUM(E${f0}:E${f1})`, `=SUM(F${f0}:F${f1})`])
     totales.push(f.length)
     azul.push(`A${f0}:B${f1}`)
     verde.push(`C${f0}:F${f1}`)

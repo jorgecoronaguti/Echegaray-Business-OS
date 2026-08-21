@@ -8,7 +8,6 @@ import assert from 'node:assert/strict'
 import { construir, ANCHO } from './pestana.mjs'
 import { pedidos, AZUL, VERDE } from './formato.mjs'
 import { SUBCONTRATISTAS, PROFESIONALES, COMERCIOS } from './padron.mjs'
-import { VACIO } from '../preservar-anotaciones.mjs'
 
 const d = construir()
 const { filas, bloques } = d
@@ -18,8 +17,7 @@ test('ningún monto está pegado: las columnas de plata son todas fórmula', () 
     for (let f = b.f0; f <= b.total; f++) {
       for (const col of [2, 3, 4, 5]) { // C..F
         const v = filas[f - 1]?.[col]
-        // El centinela no es un número pegado: es «esta celda es mía y va vacía».
-        if (v === undefined || v === '' || v === null || v === VACIO) continue
+        if (v === undefined || v === '' || v === null) continue
         assert.ok(String(v).startsWith('='), `fila ${f} col ${col} tiene un valor pegado: ${v}`)
       }
     }
@@ -71,14 +69,16 @@ test('CLASE MUNDIAL: azul lo tipeado, verde lo que viene de Compras', () => {
   for (const r of d.verde) assert.match(r, /^C\d+:F\d+$/, `el verde cayó fuera de lo calculado: ${r}`)
 })
 
-test('la fila TOTAL limpia lo suyo: centinela, no cadena vacía', () => {
-  // Con '' la fusión conserva lo que había y el cuadro no converge: quedaba «TOTAL | Asado en
-  // taller | 0» corrida tras corrida, con el rubro y el COUNTIF del layout viejo.
+test('la fila TOTAL no deja ninguna celda vacía — si no, el cuadro no converge', () => {
+  // Una celda vacía en la fila TOTAL la lee la fusión como «no es mía» y conserva lo que hubiera
+  // debajo. Cuando el rediseño achicó el cuadro, ahí quedó el último renglón del layout anterior:
+  // el cuadro publicaba «TOTAL | Asado en taller | 0» y no se limpiaba nunca.
   for (const b of bloques) {
     const total = filas[b.total - 1]
     assert.equal(total[0], 'TOTAL')
-    for (const col of [1, 2, 3]) {
-      assert.equal(total[col], VACIO, `la fila TOTAL deja col ${col} sin centinela: no se limpia sola`)
+    for (const col of [1, 2, 3, 4, 5]) {
+      const v = String(total[col] ?? '')
+      assert.ok(v.startsWith('='), `la fila TOTAL deja la col ${col} vacía: el fantasma de abajo sobrevive`)
     }
   }
 })
