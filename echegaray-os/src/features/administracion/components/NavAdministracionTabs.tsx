@@ -34,6 +34,13 @@ const VISTAS = [
   // el jefe de obra los necesita para planificar. Lo económico de esa pantalla es el PRECIO, y eso
   // lo cierra la base — `recurso_precio` sólo abre para `ve_economia()`.
   { href: '/administracion/base-maestra', label: 'Base maestra' },
+  // El archivo transversal de Drive (pantalla 27). Entra el 21/08/2026: sin la solapa la única
+  // forma de llegar sería escribir la URL.
+  //
+  // SÍ entra en RUTAS_SOLO_ECONOMIA, y por eso el jefe de obra NO ve esta solapa: las tres carpetas
+  // raíz del índice son `administracion`, `archivo-fiscal` y `libro-sueldos`. Los documentos de SU
+  // obra los ve en la obra; ésta es la vista de la empresa entera.
+  { href: '/documentos', label: 'Documentos' },
 ] as const
 
 // ═══ LA BARRA NO PUEDE SER MÁS ANCHA QUE LA BASE (21/08/2026) ═══
