@@ -26,17 +26,28 @@ import { loadConfig } from '../lib/config.mjs'
 import { getTokenFor, accessTokenFor, OAUTH_SCOPES } from '../lib/google-oauth.mjs'
 import { escribirPreservando } from '../lib/preservar-anotaciones.mjs'
 import { conColaLimpiable } from '../lib/cola-de-rango.mjs'
-import { construir } from '../lib/subcontratistas/pestana.mjs'
+import { construir, ANCHO } from '../lib/subcontratistas/pestana.mjs'
+import { pedidos } from '../lib/subcontratistas/formato.mjs'
 
 const CUENTA = process.env.ORQ_SUBCONTRATISTAS_CUENTA || 'jorge@ecsas.com.ar'
 const FLUJO = '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTANA = 'SUBCONTRATISTAS'
-const ANCHO_HISTORICO = 9
 const ALTO_HISTORICO = 90
+// EL ANCHO HISTÓRICO NO ES EL ANCHO DEL CUADRO, Y LA DIFERENCIA IMPORTA.
+//
+// El cuadro mide 6 columnas desde el rediseño minimalista. Pero la primera versión, escrita el
+// 21/08/2026, medía 9: si se declaran 6, las columnas G, H e I de aquella corrida quedan vivas
+// abajo del cuadro nuevo y no se distinguen del contenido bueno. Se declara 9 —lo que este
+// generador ESCRIBIÓ alguna vez— para que su propia cola se limpie sola.
+//
+// Al revés también es un defecto, y este repo ya lo pagó: declarar más ancho del que se escribió
+// rellena con centinelas columnas ajenas y borra lo que el dueño anotó al costado. 9 es exacto.
+const ANCHO_HISTORICO = 9
 
 async function main() {
   const seco = process.argv.includes('--dry')
-  const { filas, fechas, monedas, porcentajes } = construir()
+  const d = construir()
+  const { filas } = d
   if (seco) {
     console.log(`${PESTANA}: ${filas.length} filas`)
     for (const [i, f] of filas.entries()) {
@@ -74,23 +85,8 @@ async function main() {
     + `${r.respetadas.length ? ` · ${r.respetadas.length} textos del dueño respetados` : ''}`)
   for (const c of r.conservadas.slice(0, 10)) console.log(`   · se conservó lo que había en fila ${c.fila}, col ${c.col}: ${String(c.valor).slice(0, 60)}`)
 
-  const a1 = (rango) => {
-    const [, c0, f0, c1, f1] = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/.exec(rango)
-    const col = (s) => [...s].reduce((a, ch) => a * 26 + ch.charCodeAt(0) - 64, 0) - 1
-    return { sheetId: hoja.sheetId, startRowIndex: +f0 - 1, endRowIndex: +f1, startColumnIndex: col(c0), endColumnIndex: col(c1) + 1 }
-  }
-  // El formato en patrón US aunque el archivo sea es_AR: `numberFormat` no habla locale.
-  const pintar = (rangos, pattern, type) => rangos.map((r) => ({
-    repeatCell: { range: a1(r), cell: { userEnteredFormat: { numberFormat: { type, pattern } } }, fields: 'userEnteredFormat.numberFormat' },
-  }))
-  await batch([
-    ...pintar(fechas, 'dd/mm/yyyy', 'DATE'),
-    ...pintar(monedas, '"$"#,##0', 'CURRENCY'),
-    ...pintar(porcentajes, '0.0%', 'PERCENT'),
-    { updateSheetProperties: { properties: { sheetId: hoja.sheetId, gridProperties: { frozenRowCount: 2 } }, fields: 'gridProperties.frozenRowCount' } },
-    { autoResizeDimensions: { dimensions: { sheetId: hoja.sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: ANCHO_HISTORICO } } },
-  ])
-  console.log('✓ formato aplicado')
+  await batch(pedidos(hoja.sheetId, d, ANCHO))
+  console.log('✓ formato aplicado — sin cuadrícula, código de color de banca, una línea por total')
   console.log(`\nhttps://docs.google.com/spreadsheets/d/${FLUJO}/edit#gid=${hoja.sheetId}`)
 }
 
