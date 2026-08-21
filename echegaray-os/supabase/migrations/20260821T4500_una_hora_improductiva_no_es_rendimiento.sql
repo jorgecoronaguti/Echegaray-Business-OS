@@ -84,6 +84,24 @@ comment on column public.registros_hh.causa_desvio is
   'Obligatorio cuando la hora es improductiva: una hora perdida sin causa no se puede corregir ni '
   'reclamar, y en el aprendizaje del estándar sería ruido puro.';
 
+-- UN CAMPO EN LA CLAVE LO IMPONE EL MODELO, NO LA COSTUMBRE.
+--
+-- `registros_hh_persona_unico` era (obra, persona, fecha, actividad, tipo_hora) y existe para que
+-- nadie impute dos veces el mismo día. Con la partición que introduce esta migración, ese día
+-- LEGÍTIMAMENTE se parte: «8 h normales productivas + 2 h normales esperando el camión» son dos
+-- filas con la misma quíntupla, y el índice las rechazaba — así que la única manera de cargarlas
+-- habría sido no declarar la improductiva, que es justo el dato que vinimos a capturar.
+--
+-- La clave se extiende con `improductiva` y con la causa: dos causas distintas el mismo día (2 h de
+-- espera y 1 h de retrabajo) también son dos hechos distintos. Sigue impidiendo el duplicado real,
+-- que es la misma persona con la misma causa dos veces.
+drop index if exists public.registros_hh_persona_unico;
+create unique index if not exists registros_hh_persona_unico
+  on public.registros_hh (obra_canonica_id, persona_id, fecha,
+                          coalesce(actividad_id, '00000000-0000-0000-0000-000000000000'::uuid),
+                          tipo_hora, improductiva, (coalesce(causa_desvio, '')))
+  where persona_id is not null;
+
 -- ── 3 · el parte de avance puede declarar la incidencia del día ───────────────────────────────
 alter table public.obra_ejecucion add column if not exists causa_desvio text
   references public.causa_desvio (clave) on delete restrict;
