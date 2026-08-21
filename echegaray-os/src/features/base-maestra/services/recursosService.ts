@@ -66,6 +66,9 @@ export async function getRecursos(
 export async function getManoDeObra(
   supabase: SupabaseClient,
   hoyISO: string,
+  // La escala UOCRA es paritaria pública, pero el server no le manda plata al navegador de quien
+  // no ve economía: la UI ya la escondía con un `if` — esconder no es no mandar (auditoría 21/08).
+  economia: boolean = true,
   jornadaHoras: number = JORNADA_HORAS,
 ): Promise<ServiceResult<{ categorias: CategoriaManoObra[]; cargas: CargaSocialFila[]; meta: Pick<MetaRecursos, 'escala_vigente' | 'escala_fuente' | 'cargas_vigencia' | 'cargas_total' | 'jornada_horas'> }>> {
   const [escala, cargas, categorias, personas] = await Promise.all([
@@ -111,10 +114,10 @@ export async function getManoDeObra(
       clave,
       nombre: nombrePorClave.get(clave) ?? String(e.categoria),
       nombre_convenio: String(e.categoria),
-      basico_hora: n(e.basico_hora),
-      mensual: n(e.mensual),
-      jornal: costo.jornal,
-      valor_hora: costo.valorHora,
+      basico_hora: economia ? n(e.basico_hora) : null,
+      mensual: economia ? n(e.mensual) : null,
+      jornal: economia ? costo.jornal : null,
+      valor_hora: economia ? costo.valorHora : null,
       cargas_hora: costo.cargasHora,
       costo_empresa_hora: costo.costoEmpresaHora,
       capacidad: capacidadPorClave.get(clave) ?? null,

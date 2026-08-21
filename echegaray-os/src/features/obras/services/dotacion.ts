@@ -175,7 +175,11 @@ export function frentesDe(filas: FilaCronograma[], opciones: OpcionesFrentes = {
     const topes = hijas.map((h) => num(h.tope_frente)).filter((x): x is number => x != null)
     const tope = topes.length ? Math.min(...topes) : null
     const previstas = hijas.map((h) => num(h.dotacion_prevista)).filter((x): x is number => x != null)
-    const dotacion = dotaciones[clave] ?? (previstas.length ? Math.max(...previstas) : 0)
+    // El tope del frente no es decorativo: una dotación pedida por la URL (`?dot=99`) no puede
+    // producir un plazo que el tope declara imposible. Se recorta acá, donde nace el divisor
+    // — el stepper de la pantalla ya lo respetaba, pero la URL entraba sin pasar por el stepper.
+    const pedida = dotaciones[clave] ?? (previstas.length ? Math.max(...previstas) : 0)
+    const dotacion = tope != null ? Math.min(pedida, tope) : pedida
     // Un frente sin trabajo pendiente no se planifica: 0 días y ninguna fecha. Publicar «termina
     // hoy» sobre algo que ya está hecho llena el fin de obra de fechas que nadie va a esperar.
     const dias = hh === 0 ? 0 : (dotacion > 0 ? duracionDias(hh, dotacion, jornada) : null)
