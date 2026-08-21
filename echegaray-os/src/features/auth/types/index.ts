@@ -61,6 +61,8 @@ export const RUTAS_PUBLICAS = [
   '/login',
   '/signup',
   '/descargar', // la landing de descarga de la extensión: estática, sin dato de la empresa
+  '/api/oauth/start', // la ida a Google: la abre quien todavía NO autorizó — exigir sesión acá
+                      // devolvía un 307 al login y el consentimiento no arrancaba nunca
   '/api/oauth/callback', // el retorno de Google: llega sin sesión por definición
   '/api/os', // el proxy que consume la extensión, con su propia autorización
   '/echegaray-os-extension.zip', // el archivo que descarga la landing pública: sin él, /descargar
