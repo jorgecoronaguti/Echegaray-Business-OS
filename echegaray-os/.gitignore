@@ -86,3 +86,6 @@ orquestador/scripts/.cfsemanal-backup-*.json
 
 # Guiones de verificación de una sesión: se corren, se pega su salida en el informe, y no viajan.
 .scratch/
+
+# Capturas de QA visual: evidencia local, no artefacto del repo.
+/capturas
