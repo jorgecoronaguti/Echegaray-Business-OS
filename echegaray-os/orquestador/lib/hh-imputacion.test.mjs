@@ -132,17 +132,32 @@ test('las HH reales de la actividad son la SUMA de sus imputaciones, no una colu
   assert.equal(col.n, 0,
     '`obra_actividad.hh_real` volvió a existir: hay lugar para una segunda versión de las horas reales')
 
+  // ═══ SE MIDE EL DELTA, NO EL TOTAL (corregido el 21/08/2026) ═══
+  //
+  // `escenario()` no crea una actividad: toma la PRIMERA actividad viva de la primera obra, que es
+  // una actividad REAL con las horas que le hayan imputado de verdad. La aserción era
+  // `hh_real === 6.5`, o sea el total de esa actividad — así que el día que alguien imputara una
+  // hora a ese trabajo, este test se ponía rojo sin que cambiara una línea de código. Pasó: da 7,5.
+  //
+  // Lo que el canario tiene que afirmar es que la vista REFLEJA la imputación recién hecha, y eso
+  // es la diferencia entre antes y después. Es la misma corrección que ya tiene escrita este
+  // repositorio: un test que afirma el estado del mundo mide el mundo, no el código.
   const e = await escenario()
   if (!e.actividadId) return
+  const antesDe = async () => {
+    const { rows } = await query(
+      `select hh_real from public.obra_actividad_hh where actividad_id = $1`, [e.actividadId])
+    return rows.length === 0 ? 0 : Number(rows[0].hh_real ?? 0)
+  }
+  const antes = await antesDe()
   try {
     await query(
       `insert into public.registros_hh
          (obra_canonica_id, persona_id, actividad_id, fecha, fecha_inicio_semana, horas, fuente_legacy)
        values ($1, $2, $3, '2026-08-19', '2026-08-19', 6.5, $4)`,
       [e.obraId, e.personaId, e.actividadId, MARCA])
-    const { rows: [v] } = await query(
-      `select hh_real from public.obra_actividad_hh where actividad_id = $1`, [e.actividadId])
-    assert.equal(Number(v.hh_real), 6.5, '`obra_actividad_hh` no refleja la imputación recién hecha')
+    assert.equal(Math.round(((await antesDe()) - antes) * 100) / 100, 6.5,
+      '`obra_actividad_hh` no refleja la imputación recién hecha')
   } finally { await limpiar(e.personaId) }
 })
 

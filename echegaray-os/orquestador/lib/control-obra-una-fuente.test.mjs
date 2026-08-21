@@ -57,10 +57,20 @@ test('un parte de ejecución dice algo: cantidad o avance, nunca los dos en blan
 test('LAS HORAS NO SE GUARDAN DOS VECES: `obra_ejecucion` no tiene columna de horas', { skip: SIN_BASE }, async () => {
   // Un parte con sus propias horas al lado de `registros_hh` sería la misma hora cargada dos veces,
   // y la liquidación futura no sabría cuál contar. La fuente canónica de tiempo es una sola.
+  //
+  // ═══ EL PATRÓN SE ACOTA (21/08/2026) — CAMBIO DE CONTRATO, NO UN AJUSTE PARA QUE PASE ═══
+  //
+  // Vigilaba `hora|hh|persona|cuadrilla`, y `20260821T2100` agregó `obra_ejecucion.cuadrilla_id` a
+  // propósito: es QUIÉN FIRMA la medición, no cuántas horas trabajó nadie. Son dos hechos distintos
+  // —un avance medido por el capataz de la Cuadrilla 2 no dice una sola hora— y el registro sin esa
+  // columna es justamente el «porcentaje mágico» que la migración vino a eliminar.
+  //
+  // Lo que el canario protege sigue intacto: horas y personas. Si mañana aparece `horas`,
+  // `hh_reales` o `persona_id` en esta tabla, este test la nombra igual que antes.
   const { rows } = await query(
     `select column_name from information_schema.columns
       where table_schema = 'public' and table_name = 'obra_ejecucion'
-        and column_name ~* 'hora|hh|persona|cuadrilla'`)
+        and column_name ~* 'hora|hh|persona'`)
   assert.deepEqual(rows, [])
 })
 
