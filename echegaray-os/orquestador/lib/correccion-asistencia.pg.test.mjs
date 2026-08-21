@@ -31,7 +31,7 @@ import { getPool } from './db.mjs'
 
 const hayBase = await getPool().query('select 1').then(() => true).catch(() => false)
 
-const MIGRACION = '20260821T5500_la_salida_que_falta_se_pide_y_la_aprueba_administracion.sql'
+const MIGRACION = '20260821T5460_la_salida_que_falta_se_pide_y_la_aprueba_administracion.sql'
 const FECHA = '2019-03-05' // un día viejo cualquiera: nadie tiene marcas ahí
 
 test('la corrección de asistencia: se pide, se aprueba y el efecto está en la asistencia',

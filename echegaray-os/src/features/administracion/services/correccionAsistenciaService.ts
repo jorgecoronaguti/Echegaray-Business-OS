@@ -8,7 +8,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ServiceResult } from '@/features/auth/services/authService'
 
-export const MIGRACION = '20260821T5500_la_salida_que_falta_se_pide_y_la_aprueba_administracion'
+export const MIGRACION = '20260821T5460_la_salida_que_falta_se_pide_y_la_aprueba_administracion'
 
 export type EstadoCorreccion = 'pendiente' | 'aprobada' | 'rechazada'
 

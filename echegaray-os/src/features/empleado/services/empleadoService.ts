@@ -115,7 +115,7 @@ export async function getMiDiaDeHoy(
 /** LA MIGRACIÓN DE M05, aparte de la del perfil: una base con el perfil aplicado y sin ésta muestra
  *  la asistencia entera y sólo se queda sin el pedido de corrección. Decir el nombre correcto es lo
  *  que hace que el mensaje sirva para algo. */
-export const MIGRACION_CORRECCION = '20260821T5500_la_salida_que_falta_se_pide_y_la_aprueba_administracion'
+export const MIGRACION_CORRECCION = '20260821T5460_la_salida_que_falta_se_pide_y_la_aprueba_administracion'
 
 /** Mis pedidos de corrección de la ventana que se está mirando. Es lo PEDIDO, no lo corregido: el
  *  efecto de una aprobación se lee en `mi_asistencia_dia`, que ya trae la marca escrita. */
