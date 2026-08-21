@@ -11,7 +11,7 @@
 import { makeGoogleClient } from '../lib/google.mjs'
 import { loadConfig } from '../lib/config.mjs'
 import { getTokenFor, accessTokenFor, OAUTH_SCOPES } from '../lib/google-oauth.mjs'
-import { ESPEJOS_A_OCULTAR, A_LA_VISTA_A_PROPOSITO, pedidosDeOcultar } from '../lib/pestanas-visibles.mjs'
+import { ESPEJOS_A_OCULTAR, A_LA_VISTA_A_PROPOSITO, NO_LAS_USA_A_OCULTAR, sePuedeVolverAMostrar, pedidosDeOcultar } from '../lib/pestanas-visibles.mjs'
 
 const CUENTA = process.env.ORQ_SHEET_CUENTA || 'jorge@ecsas.com.ar'
 const FLUJO = '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
@@ -26,7 +26,8 @@ async function main() {
   const hojas = (meta.sheets || []).map((s) => s.properties)
 
   if (mostrar) {
-    const req = hojas.filter((h) => ESPEJOS_A_OCULTAR.includes(h.title) && h.hidden)
+    // Sólo se deshace lo que ocultó el OS: lo que ocultó el dueño con la mano se queda oculto.
+    const req = hojas.filter((h) => ESPEJOS_A_OCULTAR.includes(h.title) && h.hidden && sePuedeVolverAMostrar(h.title))
       .map((h) => ({ updateSheetProperties: { properties: { sheetId: h.sheetId, hidden: false }, fields: 'hidden' } }))
     console.log(`vuelvo a mostrar ${req.length} pestaña(s)`)
     if (!seco && req.length) await batch(tok, req)
