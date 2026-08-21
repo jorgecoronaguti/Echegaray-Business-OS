@@ -383,7 +383,7 @@ export default async function ObraPage({
               <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-medium text-ink">Editar la obra</summary>
               <div className="border-t border-line p-4">
                 <FormAccion accion={editarObra.bind(null, obraId)} testid="form-editar-obra" enviar="Guardar la obra" mensajeOk="Obra guardada.">
-                  <CamposObra obra={obra} ubicacion={ubicacion} />
+                  <CamposObra obra={obra} ubicacion={ubicacion} veEconomia={veComercial} />
                 </FormAccion>
               </div>
             </details>

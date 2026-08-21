@@ -35,7 +35,7 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
-import { esAdministracion } from '@/features/auth/types/areas'
+import { esAdministracion, veEconomia } from '@/features/auth/types/areas'
 import { getClientes } from '@/features/clientes/services/clientesService'
 import { getActividades, getObra, getUbicacion } from '@/features/obras/services/obrasService'
 import { getAsignaciones, getPersonas } from '@/features/obras/services/personalService'
@@ -66,6 +66,10 @@ export default async function NuevaObraPage({
   // final. Falla al nivel MENOS privilegiado: sin perfil legible, no se entra.
   const perfil = await getPerfilActual(supabase)
   const esAdmin = esAdministracion(perfil.data?.rol ?? null)
+  // El monto contratado es PRECIO, no operación: desde la 5000 sólo `ve_economia()` puede fijarlo
+  // (`fijar_monto_contratado`). Sin esto el paso «contrato» le pediría al jefe de obra un número que
+  // la base le va a rechazar.
+  const veContrato = veEconomia(perfil.data?.rol ?? null)
   if (!esAdmin) {
     return (
       <PageShell eyebrow={<Volver href="/obras">Obras</Volver>} title="Nueva obra">
@@ -177,7 +181,7 @@ export default async function NuevaObraPage({
               <div className="grid grid-cols-2 gap-3">
                 {paso === 'responsable' && <CampoJefeObra valor={obra.jefe_obra} />}
                 {paso === 'fechas' && <CamposFechasPlan inicio={obra.fecha_inicio_plan} fin={obra.fecha_fin_plan} />}
-                {paso === 'contrato' && <CampoMontoContratado valor={obra.monto_contratado} />}
+                {paso === 'contrato' && veContrato && <CampoMontoContratado valor={obra.monto_contratado} />}
                 {paso === 'drive' && <CampoDrive valor={obra.drive_carpeta_id} />}
               </div>
             </FormAccion>

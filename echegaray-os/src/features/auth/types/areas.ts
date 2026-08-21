@@ -110,11 +110,12 @@ export const RUTAS_SOLO_ECONOMIA = [
   // del índice de Drive son `administracion`, `archivo-fiscal` y `libro-sueldos`: la lista incluye
   // presupuestos de clientes, declaraciones juradas y libros de sueldos.
   //
-  // ACÁ LA PUERTA NO TIENE CERRADURA DETRÁS, y por eso se escribe. La policy de `drive_index` es
-  // `using (true)` para todo `authenticated`: cualquiera con sesión puede pedirle a PostgREST el
-  // catálogo completo de nombres y rutas sin pasar por esta ruta. Cerrar la ruta evita el acceso
-  // accidental; no evita el deliberado. Cerrarlo de verdad es una migración, y esa decisión no es
-  // de esta pantalla.
+  // LA CERRADURA YA ESTÁ PUESTA (21/08/2026, migración 5100). Hasta ese día esta línea decía que la
+  // puerta no tenía cerradura detrás: `drive_index` era `using (true)` y cualquiera con sesión le
+  // pedía a PostgREST el catálogo completo sin pasar por esta ruta. Ahora la policy dice lo MISMO
+  // que esta lista —el catálogo entero es de `ve_economia()`— y el que no ve economía sólo alcanza
+  // los archivos con vínculo propio (su legajo, sus obras, los del cliente si administra). La ruta
+  // y la base ya no se contradicen.
   '/documentos',
 ] as const
 
