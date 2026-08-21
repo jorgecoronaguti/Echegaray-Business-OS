@@ -98,7 +98,9 @@ export function construir() {
     totales.push(f.length)
     azul.push(`A${f0}:B${f1}`)
     verde.push(`C${f0}:F${f1}`)
-    fechas.push(`C${f0}:D${f1}`)
+    // Hasta la fila TOTAL inclusive: ahí van el primer y el último trabajo del bloque, y sin el
+    // formato el cuadro publica el número de serie de la fecha (46027) en vez de la fecha.
+    fechas.push(`C${f0}:D${f.length}`)
     monedas.push(`E${f0}:F${f.length}`)
     bloques.push({ clave: g.clave, f0, f1, total: f.length })
     f.push(V())
