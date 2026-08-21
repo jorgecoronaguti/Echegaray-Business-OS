@@ -203,11 +203,17 @@ async function main() {
   let escritos = 0
   for (const f of filas) {
     await query(
+      // ═══ LA CLAVE ES (tipo, instrumento, banco, número) — 20260821T1000 (21/08) ═══
+      //
+      // La migración cambió el índice único para que el FISICO 313 y el ECHEQ 313 dejen de ser el
+      // mismo cheque, y este upsert quedó con la clave vieja: el primer fajo real después del cambio
+      // murió con «no unique constraint matching the ON CONFLICT specification» — 0 filas escritas.
+      // El instrumento se AFIRMA (instrumentoDe) o queda NULL: adivinar la chequera es peor que no saber.
       `insert into public.cheques
          (tipo,numero,banco,librador,librador_cuit,contraparte,contraparte_cuit,caracter,
-          fecha_pago,importe,estado,cuenta,orden_pago,obra,origen,corte)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
-       on conflict (tipo, coalesce(banco,''), numero) do update set
+          fecha_pago,importe,estado,cuenta,orden_pago,obra,origen,corte,instrumento)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+       on conflict (tipo, coalesce(instrumento,''), coalesce(banco,''), numero) do update set
          librador = coalesce(excluded.librador, public.cheques.librador),
          librador_cuit = coalesce(excluded.librador_cuit, public.cheques.librador_cuit),
          contraparte = coalesce(excluded.contraparte, public.cheques.contraparte),
@@ -223,10 +229,11 @@ async function main() {
          corte = excluded.corte,
          importado_en = now()`,
       [f.tipo, f.numero, f.banco, f.librador, f.librador_cuit, f.contraparte, f.contraparte_cuit,
-        f.caracter, f.fecha_pago, f.importe, f.estado, f.cuenta, f.orden_pago, f.obra, f.origen, f.corte])
+        f.caracter, f.fecha_pago, f.importe, f.estado, f.cuenta, f.orden_pago, f.obra, f.origen, f.corte,
+        instrumentoDe(f)])
     escritos++
   }
-  console.log(`\n✓ ${escritos} cheque(s) cargado(s) (upsert sobre tipo+banco+número)`)
+  console.log(`\n✓ ${escritos} cheque(s) cargado(s) (upsert sobre tipo+instrumento+banco+número)`)
   await mostrarCartera()
 }
 

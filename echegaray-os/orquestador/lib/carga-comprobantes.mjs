@@ -218,8 +218,33 @@ export function aNumero(v) {
   if (v == null || v === '') return null
   const s = String(v).replace(/[^\d.,-]/g, '')
   if (!s) return null
-  // es-AR: punto = miles, coma = decimal.
-  const n = Number(s.replace(/\./g, '').replace(',', '.'))
+  // ═══ EL PUNTO NO SIEMPRE ES DE MILES (21/08) ═══
+  //
+  // La regla era «es-AR: punto = miles, coma = decimal» y borraba TODOS los puntos. Con eso, el
+  // tique de Trielec 0038-00002973 —que imprime el decimal CON PUNTO, «95277.07»— se cargó como
+  // $9.527.707: cada importe ×100, todos coherentes entre sí, así que ninguna identidad aritmética
+  // lo delató. $9.432.429,93 de gasto falso en Compras.
+  //
+  // La desambiguación no es una heurística: es estructural. Un separador de miles agrupa SIEMPRE de
+  // a tres dígitos. «9.527.707» agrupa de a tres → miles. «95277.07» tiene un grupo final de DOS →
+  // ese punto es un decimal, no puede ser otra cosa. Lo mismo para la coma al revés («1,234,567»).
+  // Cuando están los dos separadores, el que aparece ÚLTIMO es el decimal — cubre «1.234,56» (es-AR)
+  // y «1,234.56» (US) sin elegir un locale a ciegas.
+  const tienePunto = s.includes('.')
+  const tieneComa = s.includes(',')
+  let limpio = s
+  if (tienePunto && tieneComa) {
+    limpio = s.lastIndexOf(',') > s.lastIndexOf('.')
+      ? s.replace(/\./g, '').replace(',', '.')   // 1.234,56 → 1234.56
+      : s.replace(/,/g, '')                      // 1,234.56 → 1234.56
+  } else if (tienePunto) {
+    // Sólo puntos: son de miles ÚNICAMENTE si agrupan de a tres; si no, el último es el decimal.
+    limpio = /^-?\d{1,3}(\.\d{3})+$/.test(s) ? s.replace(/\./g, '') : s
+  } else if (tieneComa) {
+    // Sólo comas: espejo exacto. «1,234,567» agrupa de a tres → miles US; «28479,30» → decimal es-AR.
+    limpio = /^-?\d{1,3}(,\d{3})+$/.test(s) ? s.replace(/,/g, '') : s.replace(/,/g, '.')
+  }
+  const n = Number(limpio)
   return Number.isFinite(n) ? n : null
 }
 

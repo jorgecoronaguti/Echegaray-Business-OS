@@ -353,8 +353,24 @@ export function notasDe(item = {}) {
   }
   const arca = lineaArca(item.arca)
   if (arca) l.push(arca)
+  const banco = lineaBanco(item.banco)
+  if (banco) l.push(banco)
   if (item.comprasNoRevisadas) l.push('**no pude leer la pestaña Compras**, así que no puedo asegurarte que no esté ya cargado')
   return l
+}
+
+/** El resultado del cruce contra el extracto, en una línea. Sólo existe para los comprobantes que
+ *  declaran pago bancario; el resto no tiene débito que buscar. Ver lib/comprobantes/banco.mjs. */
+function lineaBanco(banco) {
+  if (!banco) return null
+  if (banco.estado === 'cruza') {
+    const junto = banco.agrupado > 1 ? ` — una sola transferencia de ${money(banco.importe)} paga las ${banco.agrupado} facturas de este envío` : ''
+    return `pagada verificada en el banco: débito${banco.fecha ? ` del ${String(banco.fecha).slice(0, 10)}` : ''} por ${money(banco.importe)}${banco.referencia ? ` · ref ${banco.referencia}` : ''}${junto}`
+  }
+  if (banco.estado === 'sin_debito') {
+    return 'dice pagada por transferencia y **no encuentro ese débito en el extracto** — puede que el banco todavía no lo muestre, o que no esté paga: vale la pena mirarlo'
+  }
+  return 'no pude cruzarla contra el extracto bancario'
 }
 
 function lineaArca(arca) {
