@@ -60,12 +60,19 @@ import {
 } from '@/features/obras/services/recursosService'
 import { borrarHH, imputarHH, imputarHHMasivo } from '@/features/obras/services/actionsHH'
 import { borrarCertificado, crearCertificado } from '@/features/obras/services/actionsContrato'
-import { ETAPAS, ETAPA_LABEL, type Etapa } from '@/features/obras/types'
+import { ETAPA_LABEL, type Etapa } from '@/features/obras/types'
 import { CamposObra } from '@/features/obras/components/CamposObra'
+import { CicloDeVida } from '@/features/obras/components/CicloDeVida'
 import { TabResumen } from '@/features/obras/components/TabResumen'
 import { TabCronograma } from '@/features/obras/components/TabCronograma'
 import type { DatosDeActividad } from '@/features/obras/components/PanelActividad'
 import { esSubVista } from '@/features/obras/services/subvistas'
+import { separarPlanYSubtareas } from '@/features/obras/services/subtareas'
+import {
+  resolverVistaObra, SUBS_TAREAS, VISTAS_OBRA,
+} from '@/features/obras/services/vistasObra'
+import { WorkspaceTareas } from '@/features/obras/components/WorkspaceTareas'
+import { SubTabs } from '@/shared/components/ds'
 import { TabEjecucion } from '@/features/obras/components/TabEjecucion'
 import { getPartes } from '@/features/obras/services/ejecucionService'
 import { getIntegrantesPorCuadrilla } from '@/features/obras/services/personalService'
@@ -94,59 +101,23 @@ import { anchoSplit } from '@/shared/components/ds/split-servidor'
 
 export const dynamic = 'force-dynamic'
 
-const VISTAS = [
-  { id: 'resumen', label: 'Resumen' },
-  { id: 'cronograma', label: 'Planificación' },
-  { id: 'ejecucion', label: 'Ejecución' },
-  { id: 'personal', label: 'Personal' },
-  { id: 'operacion', label: 'Operación' },
-  { id: 'economia', label: 'Economía' },
-  { id: 'documentos', label: 'Documentos' },
-] as const
-type Vista = (typeof VISTAS)[number]['id']
-
-/** Las solapas que existían antes y siguen llegando por link. Redirigen, no se pierden. */
-// PLANIFICACIÓN Y EJECUCIÓN SON DOS PREGUNTAS DISTINTAS: qué debería pasar y qué pasó de verdad.
-// La solapa que se llamaba «Cronograma» era la primera y ahora lo dice; la segunda es nueva.
-const ALIAS: Record<string, Vista> = {
-  gantt: 'cronograma', planificacion: 'cronograma', cronograma: 'cronograma',
-}
-
-function resolverVista(raw: string | undefined): Vista {
-  if (!raw) return 'resumen'
-  const directa = VISTAS.find((v) => v.id === raw)
-  return directa ? directa.id : (ALIAS[raw] ?? 'resumen')
-}
-
-/** La línea de ciclo de vida. Es el estado de la obra, y ese estado gobierna qué habilita el módulo:
- *  una obra en «previo» sin línea base sellada no debería pasar a ejecución. */
-function CicloDeVida({ etapa }: { etapa: string | null }) {
-  // Ninguna etapa resaltada cuando nadie la declaró: se ven las cinco en gris y se entiende que
-  // falta definirla, en vez de afirmar uno de los cinco estados sin que nadie lo haya dicho.
-  const i = etapa ? ETAPAS.indexOf(etapa as (typeof ETAPAS)[number]) : -1
-  return (
-    <ol className="flex flex-wrap items-center gap-1.5">
-      {ETAPAS.map((e, k) => (
-        <li key={e} className="flex items-center gap-1.5">
-          <span className={`rounded-full px-2.5 py-1 text-[11px] ${k < i ? 'bg-surface-quiet text-muted' : k === i ? 'bg-accent font-medium text-white' : 'border border-line text-faint'}`}>
-            {ETAPA_LABEL[e]}
-          </span>
-          {k < ETAPAS.length - 1 && <span className="text-faint">›</span>}
-        </li>
-      ))}
-    </ol>
-  )
-}
+/** El ancho por defecto del split cuando no hay cookie: la tabla manda, el panel acompaña. */
+const ANCHO_TABLA = 470
+const ANCHO_PANEL = 452
 
 export default async function ObraPage({
   params, searchParams,
 }: {
   params: Promise<{ obra: string }>
-  searchParams: Promise<{ vista?: string; sub?: string; semanas?: string; act?: string }>
+  searchParams: Promise<{
+    vista?: string; sub?: string; semanas?: string; act?: string; filtro?: string; sol?: string
+  }>
 }) {
   const { obra: obraId } = await params
-  const { vista: vistaRaw, sub, semanas, act } = await searchParams
-  const vista = resolverVista(vistaRaw)
+  const { vista: vistaRaw, sub, semanas, act, filtro, sol } = await searchParams
+  // LA VISTA Y LA SUB-VISTA SE RESUELVEN JUNTAS: el alias de una URL vieja decide también con qué
+  // vista abre. `?vista=ejecucion` tiene que caer en el parte diario, no en el árbol.
+  const { vista, sub: subTareas } = resolverVistaObra(vistaRaw, sub)
 
   const supabase = await createClient()
   // UNA SOLA LECTURA DEL PERFIL PARA TODA LA FICHA. El dato comercial ya no llega de la base a quien
@@ -166,6 +137,15 @@ export default async function ObraPage({
     return <EstadoError mensaje={error} que="la ficha de la obra" />
   }
   if (!obra) notFound()
+
+  // ═══ QUÉ VISTA DEL WORKSPACE SE ESTÁ MIRANDO ═══
+  // Cada una pide SÓLO lo suyo: la ficha se abre muchas veces por día desde el teléfono, en obra y
+  // con mala señal, y traerlo todo en cada visita serían seis consultas para mostrar una.
+  const enTareas = vista === 'tareas'
+  const esArbol = enTareas && subTareas === 'arbol'
+  const esCronograma = enTareas && (subTareas === 'gantt' || subTareas === 'lista'
+    || subTareas === 'tablero' || subTareas === 'proximos')
+  const esParte = enTareas && subTareas === 'parte'
 
   // ═══ UN ERROR DE LECTURA NO SE DIBUJA COMO UNA OBRA VACÍA ═══
   //
@@ -192,15 +172,13 @@ export default async function ObraPage({
   // Gantt serían una fila más y en el promedio de avance pesarían doble contra una actividad que
   // nadie partió. Se separan una sola vez, acá, y no cinco veces en cada vista.
   const vivas = todas.filter((a) => !a.archivada)
-  const acts = vivas.filter((a) => !a.actividad_padre_id)
+  // ═══ QUÉ ES DEL PLAN Y QUÉ DESCOMPONE UNA ACTIVIDAD ═══
+  // Lo decide el TIPO DEL PADRE, no la mera presencia de un padre: desde `20260821T2000` hay 161
+  // actividades reales colgadas de su rubro, y el filtro viejo (`!actividad_padre_id`) las dejaba
+  // afuera del Gantt, de la Lista, del Tablero y de Próximos sin un solo error. Ver `subtareas.ts`.
+  const { plan: filasDelPlan, subtareas: tareasPorActividad } = separarPlanYSubtareas(vivas)
+  const acts = filasDelPlan
   const archivadas = todas.filter((a) => a.archivada)
-  const tareasPorActividad = new Map<string, typeof vivas>()
-  for (const t of vivas) {
-    if (!t.actividad_padre_id) continue
-    const previas = tareasPorActividad.get(t.actividad_padre_id) ?? []
-    previas.push(t)
-    tareasPorActividad.set(t.actividad_padre_id, previas)
-  }
   const restr = restricciones ?? []
   const abiertas = restr.filter((r) => r.estado !== 'liberada')
   const yaSellada = todas.some((a) => a.sellada_en != null)
@@ -209,24 +187,24 @@ export default async function ObraPage({
   // una: la ficha se abre muchas veces por día desde el teléfono, en obra y con mala señal.
   // Las precedencias sólo las dibuja el Gantt: traerlas en las otras cinco solapas es una consulta
   // por visita para nadie.
-  const dependencias = vista === 'cronograma' ? lector.leer(await getDependencias(supabase, obraId), []) : []
-  const necesitaPersonas = vista === 'cronograma' || vista === 'personal' || vista === 'ejecucion'
+  const dependencias = esCronograma ? lector.leer(await getDependencias(supabase, obraId), []) : []
+  const necesitaPersonas = esCronograma || vista === 'personal' || esParte
   const personas = necesitaPersonas ? lector.leer(await getPersonas(supabase), []) : []
   const ubicacion = vista === 'resumen' ? await getUbicacion(supabase, obraId) : null
   const asignaciones = vista === 'personal' ? lector.leer(await getAsignaciones(supabase, obraId), []) : []
   const registros = vista === 'personal' ? lector.leer(await getRegistrosHH(supabase, obraId), []) : []
   // Plan contra real por actividad y las cuadrillas: sólo los pide la solapa Personal.
   // Cronograma la usa para mostrar HH real en el panel de la actividad, con el MISMO cálculo.
-  const actividadHH = vista === 'personal' || vista === 'cronograma'
+  const actividadHH = vista === 'personal' || esCronograma
     ? lector.leer(await getActividadHH(supabase, obraId), []) : []
-  const necesitaCuadrillas = vista === 'personal' || vista === 'ejecucion'
+  const necesitaCuadrillas = vista === 'personal' || esParte || esArbol
   const cuadrillas = necesitaCuadrillas ? await getCuadrillas(supabase) : []
-  const integrantes = vista === 'ejecucion' ? await getIntegrantesPorCuadrilla(supabase) : {}
+  const integrantes = esParte ? await getIntegrantesPorCuadrilla(supabase) : {}
   // Los partes también en Planificación: el panel de la actividad muestra su ejecución reciente, que
   // es lo que contesta «¿cómo viene?» sin salir del cronograma. Y en el Resumen, porque «último
   // movimiento» es literalmente el último parte: sin ellos esa línea no se dibujaba, y una sección
   // que no aparece porque la página no pidió el dato se lee igual que una obra sin movimiento.
-  const partes = vista === 'ejecucion' || vista === 'cronograma' || vista === 'resumen'
+  const partes = esParte || esCronograma || vista === 'resumen'
     ? lector.leer(await getPartes(supabase, obraId), []) : []
   const partesPorActividad = new Map<string, typeof partes>()
   for (const p of partes) {
@@ -238,7 +216,7 @@ export default async function ObraPage({
   // LOS PAPELES LOS PIDEN DOS SOLAPAS. Documentos muestra los de la obra; Planificación, los que
   // alguien colgó de una actividad. Es la MISMA lectura: dos consultas darían dos listas que un día
   // no coinciden.
-  const documentos = vista === 'documentos' || vista === 'cronograma'
+  const documentos = vista === 'documentos' || esCronograma
     ? lector.leer(await getDocumentos(supabase, obraId), []) : []
 
   // ═══ LO QUE MUESTRA EL PANEL DE UNA ACTIVIDAD ═══
@@ -246,24 +224,24 @@ export default async function ObraPage({
   // Cuatro lecturas por OBRA y no una por actividad: el panel cambia de actividad con cada clic, y
   // una consulta por clic haría el cronograma pegajoso justo en lo que más se usa. Se indexan una
   // vez, acá, y el Gantt sólo se las pasa al panel.
-  const trabajo = vista === 'cronograma'
+  const trabajo = esCronograma
     ? await getTrabajoPorActividad(supabase, obraId)
     : { personas: new Map(), porFecha: new Map() }
-  const equiposPorActividad = vista === 'cronograma'
+  const equiposPorActividad = esCronograma
     ? await getEquiposPorActividad(supabase, obraId) : new Map()
-  const notasPorActividad = vista === 'cronograma'
+  const notasPorActividad = esCronograma
     ? await getNotas(supabase, obraId) : new Map()
   // El catálogo de equipos es AYUDA de carga, no restricción: el campo acepta cualquier texto, y un
   // equipo alquilado por una semana no puede ser motivo para no anotarlo.
-  const catalogoEquipos = vista === 'ejecucion' ? await getCatalogoEquipos(supabase) : []
+  const catalogoEquipos = esParte ? await getCatalogoEquipos(supabase) : []
   // ═══ EL ANCHO DEL SPLIT SE LEE EN EL SERVIDOR ═══
   // La cookie la escribe el navegador al soltar el divisor y la lee acá el servidor, así que la
   // PRIMERA pintura del workspace ya sale con el reparto que la persona eligió. Leyéndola en el
   // cliente, la pantalla más pesada del sistema nacería con el ancho por defecto y se corregiría
   // sola cien milisegundos después — un salto visible justo donde más molesta.
-  const [anchoTabla, anchoPanel] = vista === 'cronograma'
-    ? await Promise.all([anchoSplit('obra-tabla', 470, 300, 760), anchoSplit('obra-panel', 452, 340, 760)])
-    : [470, 452]
+  const [anchoTabla, anchoPanel] = esCronograma
+    ? await Promise.all([anchoSplit('obra-tabla', ANCHO_TABLA, 300, 760), anchoSplit('obra-panel', ANCHO_PANEL, 340, 760)])
+    : [ANCHO_TABLA, ANCHO_PANEL]
 
   const docsPorActividad = new Map<string, typeof documentos>()
   for (const d of documentos) {
@@ -274,7 +252,7 @@ export default async function ObraPage({
   }
 
   const datosPorActividad = new Map<string, DatosDeActividad>()
-  if (vista === 'cronograma') {
+  if (esCronograma) {
     for (const a of acts) {
       datosPorActividad.set(a.id, {
         partes: partesPorActividad.get(a.id) ?? [],
@@ -363,10 +341,11 @@ export default async function ObraPage({
             </div>
           }
         />
-        {/* Nivel 2: siete solapas que se desplazan en vez de empujar la página — en 390px no entran. */}
+        {/* Nivel 2: SEIS solapas —Ejecución dejó de ser una— que se desplazan en vez de empujar la
+            página: en 390px no entran. */}
         <Tabs
           testid="tabs-obra"
-          tabs={VISTAS.map((v) => ({
+          tabs={VISTAS_OBRA.map((v) => ({
             href: `/obras/${obraId}?vista=${v.id}`,
             label: v.label,
             activo: vista === v.id,
@@ -433,7 +412,30 @@ export default async function ObraPage({
         />
       )}
 
-      {vista === 'cronograma' && (
+      {/* Nivel 3 de Tareas: TEXTO subrayado, nunca otra barra. Son seis maneras de mirar LAS
+          MISMAS actividades — el árbol nuevo, las cuatro del cronograma y el parte diario. */}
+      {vista === 'tareas' && (
+        <div className="pb-3">
+          <SubTabs
+            testid="subtabs-tareas"
+            items={SUBS_TAREAS.map((sv) => ({
+              href: `/obras/${obraId}?vista=tareas&sub=${sv.id}`,
+              label: sv.label,
+              activo: subTareas === sv.id,
+              testid: `sub-${sv.id}`,
+            }))}
+          />
+        </div>
+      )}
+
+      {esArbol && (
+        <WorkspaceTareas
+          supabase={supabase} obraId={obraId} act={act} filtro={filtro} sol={sol}
+          cuadrillas={cuadrillas}
+        />
+      )}
+
+      {esCronograma && (
         <TabCronograma
           obraId={obraId}
           sub={esSubVista(sub) ? sub : 'gantt'}
@@ -498,7 +500,7 @@ export default async function ObraPage({
         />
       )}
 
-      {vista === 'ejecucion' && (
+      {esParte && (
         <TabEjecucion
           obraId={obraId}
           actividades={acts}

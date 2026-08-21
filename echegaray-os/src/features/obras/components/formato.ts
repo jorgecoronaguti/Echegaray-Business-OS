@@ -36,3 +36,24 @@ export const plataCorta = (n: number | null | undefined) => {
   if (a >= 1e3) return f(n / 1e3 * (n < 0 ? -1 : 1), 'k')
   return s + Math.round(a).toLocaleString('es-AR')
 }
+
+/** Un porcentaje con el espacio del es-AR: `35 %`. `null` no es `0 %`: devuelve `null` y la
+ *  pantalla escribe qué falta. */
+export const porcentaje = (n: number | null | undefined) =>
+  n == null ? null : `${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 1 })} %`
+
+/** `DD/MM` — el formato de la columna PLAZO, donde el año no aporta y sí ocupa.
+ *
+ *  SE ARMA A MANO Y NO CON `toLocaleDateString`: con `day: '2-digit'` el ICU del navegador igual
+ *  devuelve `26/6` en es-AR, y una columna donde unas fechas miden cinco caracteres y otras cuatro
+ *  deja de estar alineada — que es lo único para lo que existe una columna de fechas en mono. */
+export const fechaCorta = (iso: string | null | undefined) =>
+  iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : null
+
+/** Una cantidad con su unidad: `2,84 m³`. Sin unidad, sólo el número. */
+export const cantidad = (n: number | null | undefined, unidad: string | null | undefined) =>
+  n == null ? null : `${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 2 })}${unidad ? ` ${unidad}` : ''}`
+
+/** HH sin decimales: en obra nadie planifica media hora hombre. */
+export const hh = (n: number | null | undefined) =>
+  n == null ? null : Math.round(Number(n)).toLocaleString('es-AR')

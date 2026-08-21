@@ -27,6 +27,13 @@ const VISTAS = [
   { href: '/administracion/personas', label: 'Personas' },
   { href: '/administracion/proveedores', label: 'Proveedores' },
   { href: '/administracion/pendientes', label: 'Pendientes' },
+  // La biblioteca de análisis de precio unitario. Va última porque es la sección de CONSULTA del
+  // área: no se entra a hacer un trámite, se entra a mirar con qué se cotiza.
+  //
+  // NO entra en RUTAS_SOLO_ECONOMIA: la tarea tipo, su análisis y su rendimiento son OPERATIVOS y
+  // el jefe de obra los necesita para planificar. Lo económico de esa pantalla es el PRECIO, y eso
+  // lo cierra la base — `recurso_precio` sólo abre para `ve_economia()`.
+  { href: '/administracion/base-maestra', label: 'Base maestra' },
 ] as const
 
 // ═══ LA BARRA NO PUEDE SER MÁS ANCHA QUE LA BASE (21/08/2026) ═══
