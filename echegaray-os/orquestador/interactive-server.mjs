@@ -1225,7 +1225,9 @@ const server = http.createServer(async (req, res) => {
   // /oauth/start: devuelve la URL de consentimiento. /oauth/exchange: canjea el code y
   // guarda el refresh_token (lo llama el callback de Vercel). El code es de un solo uso.
   if (req.method === 'GET' && req.url.startsWith('/oauth/start')) {
-    try { return send(res, 200, { url: authUrl('os') }) } catch (e) { return send(res, 400, { error: String(e.message) }) }
+    // `state` viaja hasta el callback y vuelve: sirve para saber quién arrancó el pedido.
+    const quien = new URL(req.url, 'http://x').searchParams.get('state') || 'os'
+    try { return send(res, 200, { url: authUrl(quien) }) } catch (e) { return send(res, 400, { error: String(e.message) }) }
   }
   if (req.method === 'GET' && req.url.startsWith('/oauth/exchange')) {
     const code = new URL(req.url, 'http://x').searchParams.get('code')
