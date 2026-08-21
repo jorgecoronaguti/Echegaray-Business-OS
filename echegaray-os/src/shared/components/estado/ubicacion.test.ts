@@ -52,3 +52,14 @@ test('las subpantallas de personas se nombran por lo que son', () => {
   assert.equal(ubicarPantalla('/administracion/personas/en-obra').que, 'quién está hoy en obra')
   assert.equal(ubicarPantalla('/administracion/personas').que, 'el legajo de personas')
 })
+
+test('las tres pantallas de presupuestos vuelven a su cartera, no al inicio', () => {
+  // El defecto que atrapa: sin entrada propia, `/presupuestos/<id>/partida/<id>` cae en el genérico
+  // y el error ofrece «Volver al inicio» — que en esa situación es un botón que castiga.
+  assert.equal(ubicarPantalla('/presupuestos').que, 'la cartera de presupuestos')
+  assert.equal(ubicarPantalla('/presupuestos').volver, null)
+  for (const ruta of ['/presupuestos/abc', '/presupuestos/abc/convertir', '/presupuestos/abc/partida/def']) {
+    assert.equal(ubicarPantalla(ruta).que, 'el presupuesto', ruta)
+    assert.deepEqual(ubicarPantalla(ruta).volver, { href: '/presupuestos', texto: 'Presupuestos' }, ruta)
+  }
+})

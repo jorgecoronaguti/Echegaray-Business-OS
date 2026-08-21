@@ -24,6 +24,7 @@ type Entrada = { prefijo: string; que: string; cartera?: { href: string; texto: 
 
 const OBRAS = { href: '/obras', texto: 'Cartera de obras' }
 const CLIENTES = { href: '/clientes', texto: 'Cartera de clientes' }
+const PRESUPUESTOS = { href: '/presupuestos', texto: 'Presupuestos' }
 const ADMIN = { href: '/administracion', texto: 'Administración' }
 const PERSONAS = { href: '/administracion/personas', texto: 'Personas' }
 const INICIO = { href: '/', texto: 'Inicio' }
@@ -38,6 +39,10 @@ const MAPA: readonly Entrada[] = [
   { prefijo: '/control-obras/', que: 'el control económico de la obra', cartera: { href: '/control-obras', texto: 'Control de obras' } },
   { prefijo: '/control-obras', que: 'el control de obras' },
   { prefijo: '/clientes/', que: 'la ficha del cliente', cartera: CLIENTES },
+  // Presupuestos: tres niveles y los tres vuelven a la cartera de presupuestos, no al inicio. Si se
+  // cayó el análisis de una partida, el lugar al que quiere ir la persona es su presupuesto.
+  { prefijo: '/presupuestos/', que: 'el presupuesto', cartera: PRESUPUESTOS },
+  { prefijo: '/presupuestos', que: 'la cartera de presupuestos' },
   { prefijo: '/clientes', que: 'la cartera de clientes' },
   { prefijo: '/administracion/personas/cuadrillas', que: 'las cuadrillas', cartera: PERSONAS },
   { prefijo: '/administracion/personas/en-obra', que: 'quién está hoy en obra', cartera: PERSONAS },
