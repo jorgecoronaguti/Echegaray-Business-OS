@@ -56,3 +56,14 @@ test('nada se oculta sin su motivo escrito al lado', () => {
 })
 
 
+
+test('«Cheques Emitidos» NO se oculta: es la fuente, y está candada', () => {
+  // Se unifica por resta: la vista de 9 filas se oculta, la fuente de 106 se queda. Ocultar la
+  // fuente le sacaría al dueño la pestaña donde TIPEA los cheques —12 fórmulas de CAJA y
+  // _CAJA_ANEXO leen esas filas— y es la única pestaña candada del libro.
+  const aOcultar = [...ESPEJOS_A_OCULTAR, ...Object.keys(NO_LAS_USA_A_OCULTAR)]
+  assert.ok(!aOcultar.includes('Cheques Emitidos'), 'se pidió ocultar la fuente de los cheques')
+  assert.ok(aOcultar.includes('Cheques Recibidos'), 'la vista redundante tiene que ocultarse')
+  // Y tiene que poder volver: el día que entre un cheque de un tercero en cartera, se muestra.
+  assert.equal(sePuedeVolverAMostrar('Cheques Recibidos'), true)
+})
