@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { SelloDatoBueno } from '@/shared/components/estado/SelloDatoBueno'
 
 // PAGESHELL — EL MARCO DE PÁGINA DEL OS.
 //
@@ -52,6 +53,10 @@ export function PageShell({
 }) {
   return (
     <div className="min-h-screen bg-canvas">
+      {/* LA HORA DEL ÚLTIMO DATO BUENO se sella acá y en ningún otro lado. Si la página lanza, este
+          marco no llega a dibujarse y el sello conserva la hora de la última vez que hubo datos —que
+          es lo que el `error.tsx` muestra. Ver `shared/components/estado/SelloDatoBueno.tsx`. */}
+      <SelloDatoBueno />
       <div className="w-full px-4 py-6 lg:px-10">
         <div className={maxWidth}>
           <header className="mb-5 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">

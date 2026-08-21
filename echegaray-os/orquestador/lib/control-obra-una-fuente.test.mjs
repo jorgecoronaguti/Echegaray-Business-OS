@@ -57,10 +57,22 @@ test('un parte de ejecución dice algo: cantidad o avance, nunca los dos en blan
 test('LAS HORAS NO SE GUARDAN DOS VECES: `obra_ejecucion` no tiene columna de horas', { skip: SIN_BASE }, async () => {
   // Un parte con sus propias horas al lado de `registros_hh` sería la misma hora cargada dos veces,
   // y la liquidación futura no sabría cuál contar. La fuente canónica de tiempo es una sola.
+  //
+  // ═══ POR QUÉ `cuadrilla` SALIÓ DE LA LISTA (21/08/2026) ═══
+  //
+  // La expresión decía `hora|hh|persona|cuadrilla` y era más ancha que la regla que protege. El
+  // contrato de diseño exige que TODO registro de avance guarde «autor, fecha/hora, cuadrilla o
+  // subcontratista, método, origen y evidencia»: sin `cuadrilla_id` no se puede contestar quién
+  // hizo lo que se midió, que es la mitad de la trazabilidad del avance.
+  //
+  // Y `cuadrilla_id` NO abre la puerta que este test cuida: no guarda ni una hora. Las horas
+  // siguen viniendo únicamente de `registros_hh`; esto es a quién se le atribuye el avance. Lo que
+  // sigue prohibido —y por eso `persona` y `hora` se quedan— es una hora, o una persona con su
+  // hora, dentro del parte.
   const { rows } = await query(
     `select column_name from information_schema.columns
       where table_schema = 'public' and table_name = 'obra_ejecucion'
-        and column_name ~* 'hora|hh|persona|cuadrilla'`)
+        and column_name ~* 'hora|hh|persona'`)
   assert.deepEqual(rows, [])
 })
 

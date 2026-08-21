@@ -11,12 +11,12 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { Campo, CTRL, PageShell } from '@/shared/components/ui'
-import { Aviso, BotonEnlace, TituloPantalla, Vacio, Volver } from '@/shared/components/ds'
+import { Aviso, BotonEnlace, BuscadorURL, TituloPantalla, Vacio, Volver } from '@/shared/components/ds'
 import { FiltrosURL } from '@/features/administracion/components/Controles'
 import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
 import { PanelCuadrilla } from '@/features/administracion/components/PanelCuadrilla'
 import { TablaCuadrillas } from '@/features/administracion/components/TablaCuadrillas'
-import { getCuadrillas, getHHDeCuadrilla, getIntegrantes } from '@/features/administracion/services/cuadrillasService'
+import { filtrarCuadrillas, getCuadrillas, getHHDeCuadrilla, getIntegrantes } from '@/features/administracion/services/cuadrillasService'
 import { rotulo, ventanaDe } from '@/features/administracion/services/periodoHH'
 import {
   agregarIntegrante, archivarCuadrilla, crearCuadrilla, editarCuadrilla, quitarIntegrante,
@@ -27,11 +27,12 @@ import { getPortafolio } from '@/features/obras/services/obrasService'
 
 export const dynamic = 'force-dynamic'
 
-type Busqueda = { c?: string; archivadas?: string }
+type Busqueda = { c?: string; archivadas?: string; q?: string }
 
 const href = (sp: Busqueda, c?: string) => {
   const p = new URLSearchParams()
   if (sp.archivadas) p.set('archivadas', sp.archivadas)
+  if (sp.q) p.set('q', sp.q)
   if (c) p.set('c', c)
   const qs = p.toString()
   return `/administracion/personas/cuadrillas${qs ? `?${qs}` : ''}`
@@ -59,6 +60,9 @@ export default async function CuadrillasPage({ searchParams }: { searchParams: P
   }
 
   const cuadrillas = listado.data ?? []
+  // EL PANEL ABIERTO SE BUSCA SOBRE LA LISTA ENTERA, NO SOBRE LA FILTRADA: si no, escribir en el
+  // buscador cerraría de golpe la cuadrilla que se estaba mirando.
+  const visibles = filtrarCuadrillas(cuadrillas, sp.q ?? '')
   const alta = sp.c === 'nueva'
   const abierta = alta ? null : cuadrillas.find((c) => c.id === sp.c) ?? null
   const integrantes = abierta ? (await getIntegrantes(supabase, abierta.id, true)).data ?? [] : []
@@ -82,12 +86,21 @@ export default async function CuadrillasPage({ searchParams }: { searchParams: P
         </div>
 
         <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-3">
+          <BuscadorURL
+            accion="/administracion/personas/cuadrillas"
+            q={sp.q}
+            placeholder="Buscar cuadrilla, capataz u obra"
+            oculto={{ archivadas: sp.archivadas, c: sp.c }}
+            ancho="w-full sm:w-[240px]"
+            testid="buscar-cuadrilla"
+          />
           <FiltrosURL
             testid="filtros-cuadrillas"
             opciones={[
               { label: 'Activas', href: href({ ...sp, archivadas: undefined }), activo: !verArchivadas, testid: 'ver-activas' },
               { label: 'Ver también las archivadas', href: href({ ...sp, archivadas: '1' }), activo: verArchivadas, testid: 'ver-archivadas' },
             ]}
+            cuenta={{ n: visibles.length, total: cuadrillas.length }}
           />
           <BotonEnlace href={href(sp, 'nueva')} variante="primaria" className="ml-auto" data-testid="nueva-cuadrilla">
             + Nueva cuadrilla
@@ -96,9 +109,17 @@ export default async function CuadrillasPage({ searchParams }: { searchParams: P
 
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
           <div className="min-w-0 flex-1">
-            {cuadrillas.length === 0
-              ? <div data-testid="cuadrillas-vacio"><Vacio>Todavía no hay cuadrillas cargadas.</Vacio></div>
-              : <TablaCuadrillas cuadrillas={cuadrillas} abierta={abierta?.id} hrefDe={(id) => href(sp, id)} />}
+            {visibles.length === 0
+              ? (
+                  <div data-testid="cuadrillas-vacio">
+                    <Vacio>
+                      {sp.q
+                        ? `Ninguna cuadrilla coincide con «${sp.q}».`
+                        : 'Todavía no hay cuadrillas cargadas.'}
+                    </Vacio>
+                  </div>
+                )
+              : <TablaCuadrillas cuadrillas={visibles} abierta={abierta?.id} hrefDe={(id) => href(sp, id)} />}
           </div>
 
           {alta && (

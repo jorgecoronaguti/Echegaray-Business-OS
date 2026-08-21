@@ -51,6 +51,8 @@ import { BloqueDocumentos } from '@/features/clientes/components/BloqueDocumento
 import { BloqueInformacion } from '@/features/clientes/components/BloqueInformacion'
 import { BloqueObras } from '@/features/clientes/components/BloqueObras'
 import { Aviso, BotonEnlace, Num } from '@/shared/components/ds'
+import { EstadoError } from '@/shared/components/estado'
+import { crearLector } from '@/shared/components/estado/lecturas'
 import { PageShell } from '@/shared/components/ui'
 
 export const dynamic = 'force-dynamic'
@@ -80,11 +82,9 @@ export default async function ClientePage({
   // NO EXISTE y NO PUEDO LEER son dos cosas distintas: confundirlas escondió un defecto de permisos
   // detrás de un «página no encontrada» durante horas.
   if (error) {
-    return (
-      <PageShell eyebrow={<Link href="/clientes" className="hover:underline">← Clientes</Link>} title="No pude leer el cliente">
-        <Aviso tono="neg">{error}</Aviso>
-      </PageShell>
-    )
+    // El cartel COMPARTIDO: diagnostica el mensaje de la base (permisos, sesión, no se llegó),
+    // ofrece Reintentar y dice desde cuándo no hay dato bueno de esta ficha.
+    return <EstadoError mensaje={error} que="la ficha del cliente" />
   }
   if (!cliente) notFound()
 
@@ -123,9 +123,13 @@ export default async function ClientePage({
     getActividadCliente(supabase, id),
     getDocumentosCliente(supabase, id),
   ])
+  // ESTAS CINCO LECTURAS SE LEÍAN CON `?? []`: si la de obras fallaba, la ficha decía que el cliente
+  // no tiene obras. Sobre un cliente eso es una afirmación comercial, sacada de un fallo de la base.
+  // La ficha se sigue dibujando —el resto de los bloques sirve—, pero con el cartel de qué faltó.
+  const lector = crearLector()
 
   const conArchivadas = q.archivadas === '1'
-  const todas = obras.data ?? []
+  const todas = lector.leer(obras, [])
   const cerradas = todas.filter((o) => o.estado === 'cerrada')
 
   /** La misma dirección con un parámetro cambiado. Los demás se preservan: desplegar la actividad
@@ -158,6 +162,14 @@ export default async function ClientePage({
         >{q.editar === '1' ? 'Cerrar edición' : 'Editar'}</BotonEnlace>
       )}
     >
+      {lector.falla() && (
+        <div className="mb-5" data-testid="cliente-lectura-fallida">
+          <Aviso tono="neg" titulo="Parte de esta ficha no se pudo leer">
+            Lo que falta abajo NO significa que no exista: significa que la consulta falló. {lector.falla()}
+          </Aviso>
+        </div>
+      )}
+
       {!cliente.activo && (
         <div className="mb-5" data-testid="cliente-archivado">
           <Aviso tono="info">
@@ -177,7 +189,7 @@ export default async function ClientePage({
           <h2 className="text-[11px] font-semibold uppercase tracking-[0.06em] text-ink">Información</h2>
           <BloqueInformacion
             cliente={cliente}
-            responsables={responsables.data ?? []}
+            responsables={lector.leer(responsables, [])}
             editar={editarCliente.bind(null, id)}
             vincularCarpeta={vincularCarpetaCliente.bind(null, id)}
             archivar={archivarCliente}
@@ -189,7 +201,7 @@ export default async function ClientePage({
         <div className="min-w-0 space-y-8 lg:order-1">
           <Bloque titulo="Actividad" testid="bloque-actividad">
             <BloqueActividad
-              linea={linea.data ?? { eventos: [], sinFecha: 0 }}
+              linea={lector.leer(linea, { eventos: [], sinFecha: 0 })}
               puedeVerContractuales={VE_CONTRACTUALES.includes(rol ?? '')}
               puedeEscribir={puedeEditar}
               crearNota={crearNota.bind(null, id)}
@@ -212,9 +224,9 @@ export default async function ClientePage({
             />
           </Bloque>
 
-          <Bloque titulo="Contactos" cuenta={(contactos.data ?? []).length} testid="bloque-contactos">
+          <Bloque titulo="Contactos" cuenta={lector.leer(contactos, []).length} testid="bloque-contactos">
             <BloqueContactos
-              contactos={contactos.data ?? []}
+              contactos={lector.leer(contactos, [])}
               enEdicion={q.contacto ?? null}
               urlDe={(c) => url({ contacto: c })}
               editar={(c) => editarContacto.bind(null, c)}
@@ -224,9 +236,9 @@ export default async function ClientePage({
             />
           </Bloque>
 
-          <Bloque titulo="Documentos" cuenta={(documentos.data ?? []).length} testid="bloque-documentos">
+          <Bloque titulo="Documentos" cuenta={lector.leer(documentos, []).length} testid="bloque-documentos">
             <BloqueDocumentos
-              documentos={documentos.data ?? []}
+              documentos={lector.leer(documentos, [])}
               carpetaDriveId={cliente.drive_carpeta_id}
               vincular={vincularDocumentoCliente.bind(null, id)}
               clasificar={(f) => clasificarDocumentoCliente.bind(null, id, f)}
