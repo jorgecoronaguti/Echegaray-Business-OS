@@ -118,9 +118,12 @@ async function main() {
   // haya cambiado de verdad, así que una fila idéntica cuesta un no-op — pero es lo que permite
   // rellenar un campo que se agregó después (la cuenta) sin escribir un script aparte para eso.
   const aEscribir = [...plan.nuevos, ...plan.cambian, ...plan.yaEstan]
+  // SE CUENTAN LAS FILAS QUE CAMBIARON, NO LOS INTENTOS. El `where` del UPDATE convierte casi todo
+  // en un no-op, así que contar llamadas informaba "99 escrituras" con cero filas tocadas — un log
+  // que felicita sin haber escrito es peor que no tenerlo: tapa el día que de verdad no escribió.
   let escritos = 0
   for (const c of aEscribir) {
-    await query(
+    const r = await query(
       `insert into public.cheques (tipo, instrumento, numero, banco, contraparte, contraparte_cuit,
          fecha_pago, importe, estado, obra, origen, corte, cuenta)
        values ($1,$2,$3,$4,$5,$6,$7::date,$8,$9,$10,$11,$12::date,$13)
@@ -137,7 +140,7 @@ async function main() {
       [c.tipo, c.instrumento, c.numero, c.banco, c.contraparte, c.contraparte_cuit,
         c.fecha_pago, c.importe, c.estado, c.obra, c.origen, c.corte, c.cuenta]
     )
-    escritos++
+    escritos += r.rowCount ?? 0
   }
 
   // ── LA EVIDENCIA ES DEL EFECTO: SE RELEE LA BASE ──────────────────────────────────────────────
@@ -146,7 +149,7 @@ async function main() {
             count(*) filter (where estado='Aceptado')::int pend,
             sum(importe) filter (where estado='Aceptado')::numeric mpend
        from public.cheques where tipo='emitido'`)).rows[0]
-  console.log(`\n✓ ${escritos} escrituras. La base ahora: ${despues.n} emitidos · ${$(despues.m)}`)
+  console.log(`\n✓ ${escritos} fila(s) escritas de ${aEscribir.length} evaluadas. La base ahora: ${despues.n} emitidos · ${$(despues.m)}`)
   console.log(`  no debitados (Aceptado): ${despues.pend} · ${$(despues.mpend)}`)
   // ═══ EL CONTROL DE CIERRE: NI UNA FILA MENOS, NI UNA MÁS ═══
   //
