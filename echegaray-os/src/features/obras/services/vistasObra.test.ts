@@ -1,6 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { resolverVistaObra, SUBS_TAREAS, hrefCronogramaCalculado, hrefDotacion } from './vistasObra.ts'
+import {
+  resolverVistaObra, SUBS_TAREAS, hrefCronogramaCalculado, hrefDotacion, hrefSubcontratos,
+} from './vistasObra.ts'
 
 // LAS URLS VIEJAS ESTÁN EN LINKS MANDADOS POR CHAT, EN MARCADORES Y EN LOS TESTS. Ninguna puede
 // caer en el default silencioso, que mandaría a Resumen a alguien que pidió el cronograma.
@@ -45,6 +47,16 @@ test('el cronograma calculado y la dotación tienen su propia URL, y no se escri
   // tiene que ser visible en la URL: son preguntas distintas sobre la misma fuente.
   assert.equal(hrefCronogramaCalculado('messina'), '/obras/messina/cronograma')
   assert.equal(hrefDotacion('messina'), '/obras/messina/dotacion')
+  assert.equal(hrefSubcontratos('messina'), '/obras/messina/subcontratos')
+})
+
+// EL DEFECTO QUE ATRAPA: que «Subcontratos» se cuele como sub-vista de Tareas. Si estuviera en
+// `SUBS_TAREAS`, `resolverVistaObra` la aceptaría como `?sub=subcontratos` y el workspace abriría
+// el árbol de actividades creyendo que muestra los paquetes — la pantalla 10 no existiría y nadie
+// vería un error.
+test('«Subcontratos» es una pantalla aparte, no una sub-vista del workspace', () => {
+  assert.equal(SUBS_TAREAS.some((s) => s.id === ('subcontratos' as string)), false)
+  assert.equal(resolverVistaObra('tareas', 'subcontratos').sub, 'arbol')
 })
 
 test('«Cronograma» NO es una sub-vista de Tareas: el Gantt de ahí dibuja lo guardado', () => {

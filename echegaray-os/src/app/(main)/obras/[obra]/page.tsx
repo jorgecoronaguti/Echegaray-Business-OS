@@ -69,7 +69,7 @@ import type { DatosDeActividad } from '@/features/obras/components/PanelActivida
 import { esSubVista } from '@/features/obras/services/subvistas'
 import { separarPlanYSubtareas } from '@/features/obras/services/subtareas'
 import {
-  resolverVistaObra, SUBS_TAREAS, VISTAS_OBRA,
+  hrefSubcontratos, resolverVistaObra, SUBS_TAREAS, VISTAS_OBRA,
 } from '@/features/obras/services/vistasObra'
 import { WorkspaceTareas } from '@/features/obras/components/WorkspaceTareas'
 import { SubTabs } from '@/shared/components/ds'
@@ -418,12 +418,23 @@ export default async function ObraPage({
         <div className="pb-3">
           <SubTabs
             testid="subtabs-tareas"
-            items={SUBS_TAREAS.map((sv) => ({
-              href: `/obras/${obraId}?vista=tareas&sub=${sv.id}`,
-              label: sv.label,
-              activo: subTareas === sv.id,
-              testid: `sub-${sv.id}`,
-            }))}
+            items={[
+              ...SUBS_TAREAS.map((sv) => ({
+                href: `/obras/${obraId}?vista=tareas&sub=${sv.id}`,
+                label: sv.label,
+                activo: subTareas === sv.id,
+                testid: `sub-${sv.id}`,
+              })),
+              // LA PANTALLA 10 ENTRA POR ACÁ y nunca queda activa: es otra URL, no otra sub-vista.
+              // Es el MISMO alcance de la obra mirado desde el lado del tercero que lo ejecuta, y
+              // por eso cuelga de Tareas en vez de ser una séptima solapa —el tope de seis está
+              // declarado arriba—.
+              {
+                href: hrefSubcontratos(obraId),
+                label: 'Subcontratos',
+                testid: 'sub-subcontratos',
+              },
+            ]}
           />
         </div>
       )}

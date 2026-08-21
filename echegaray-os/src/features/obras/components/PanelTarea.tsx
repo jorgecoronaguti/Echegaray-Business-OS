@@ -301,6 +301,13 @@ export function PanelTarea({
             <>
               <Dato clave="Ejecuta" valor={nodo.responsable} />
               <p className="mt-2 text-[12.5px] text-muted">El avance de un paquete lo firma el jefe de obra.</p>
+              {/* EL PAQUETE VIVE EN LA PANTALLA 10, no acá. Esta solapa dice que la actividad es de
+                  un tercero; el contrato, los aportes de Echegaray, los papeles y su gente son otra
+                  pantalla — duplicar acá cualquiera de los cuatro sería una segunda versión del
+                  mismo dato con otra fuente. */}
+              <Link href={`/obras/${obraId}/subcontratos`}
+                className="mt-3 inline-block text-[12.5px] font-medium text-ink hover:underline"
+                data-testid="ver-paquete">Ver paquete</Link>
             </>
           ) : (
             <p className="text-[12.5px] text-muted">Se ejecuta con personal propio.</p>

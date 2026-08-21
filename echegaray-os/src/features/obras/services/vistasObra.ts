@@ -52,6 +52,11 @@ export const hrefCronogramaCalculado = (obraId: string) => `/obras/${obraId}/cro
 /** La pantalla 08, por la misma razón. */
 export const hrefDotacion = (obraId: string) => `/obras/${obraId}/dotacion`
 
+/** La pantalla 10. Cuelga de Tareas —un paquete es una porción del alcance de actividades que ya
+ *  existen, no un trabajo paralelo— pero vive fuera del workspace: mira el MISMO alcance desde el
+ *  lado del tercero que lo ejecuta, con su contrato, sus papeles y su gente. */
+export const hrefSubcontratos = (obraId: string) => `/obras/${obraId}/subcontratos`
+
 /** Las vistas del workspace de Tareas: el árbol nuevo y las cuatro del cronograma más el parte. */
 export const SUBS_TAREAS = [
   { id: 'arbol', label: 'Tareas' },
