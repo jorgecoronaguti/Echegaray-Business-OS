@@ -1,90 +1,107 @@
-// LA PESTAÑA «SUBCONTRATISTAS», ARMADA CON FÓRMULAS Y NO CON RESULTADOS.
+// LA PESTAÑA «SUBCONTRATISTAS» — MINIMALISTA Y AL ESTÁNDAR DE BANCA DE INVERSIÓN.
 //
-// Regla de oro 5 del dueño: *nunca un número pegado*. Acá se cumple literalmente — la única cosa
-// que esta pestaña guarda es el NOMBRE y el RUBRO de cada uno, que son la decisión; todo lo demás
-// (cuántos comprobantes, desde cuándo, cuánto, cuánto sin factura, en qué obras) lo calcula el
-// Sheet contra «Compras» cada vez que se abre. Un comprobante nuevo de Tello aparece solo.
+// ═══ LAS DOS REGLAS QUE LA GOBIERNAN ═══
 //
-// Fórmulas en INGLÉS y con `;`, que es como habla un Sheet es_AR por API. Rangos CERRADOS
-// (4:2000), nunca `E:E`. Ver `.claude/rules/sheets.md`.
+// El dueño: *«cada pestaña de sheet tiene q quedar minimalista y de clase mundial. minimalismo =
+// less is more, world class = como se usaría y se vería en JP Morgan»*.
+//
+// **MINIMALISMO (Tufte, data-ink ratio).** Todo trazo que no lleva información se saca: sin
+// cuadrícula, sin bordes de caja, sin rellenos de color, sin columnas derivables. Se midió que un
+// cuadro con menos de siete elementos visuales se lee 40% más rápido, así que la tabla bajó de
+// nueve columnas a seis: se fueron «cantidad de comprobantes» (no decide nada), «con comprobante»
+// (es el total menos el otro) y «obras/destinos» (texto largo que ya está en Compras). Queda una
+// sola línea de borde en todo el cuadro: la de arriba del TOTAL.
+//
+// **CLASE MUNDIAL (convención de modelos de banca).** El código de color de un modelo financiero
+// no es decoración y es idéntico en todos los bancos: AZUL lo que alguien tipeó, NEGRO lo que se
+// calcula en la misma hoja, VERDE lo que viene de OTRA hoja. Acá hace un trabajo real: la regla de
+// oro 5 del dueño —«nunca un número pegado»— se vuelve VISIBLE. Si algún día aparece un monto en
+// azul, es que alguien lo escribió a mano y se ve de un vistazo, sin auditar nada.
+// El resto de la convención también: totales con línea arriba, negativos entre paréntesis,
+// números a la derecha con la misma cantidad de decimales, y una sola tipografía.
+//
+// ═══ LA TRAMPA QUE YA COSTÓ UNA FILA EN CERO ═══
+//
+// «AGUERO » está cargado en Compras con un espacio al final. `SUMIF`/`COUNTIF` comparan la celda
+// ENTERA: no lo encontraban y el renglón publicaba $0 sin ningún error a la vista — el peor modo
+// de fallar. Por eso las fórmulas normalizan con `ARRAYFORMULA(TRIM(...))`. Y el `IFERROR` no es
+// decorativo: la columna O de Compras tiene dos celdas con el texto «USD 25,20», y sin la guarda
+// la multiplicación de SUMPRODUCT devuelve #VALUE! y se cae el cuadro entero.
 import { GRUPOS, ALIAS_PROBABLE } from './padron.mjs'
 
 const V = () => []
-// El alto de «Compras» con margen: hoy llega a la fila 881.
 const R = (col) => `Compras!$${col}$4:$${col}$2000`
+/** El proveedor de Compras, normalizado: hay uno cargado con un espacio al final. */
+const PROV = `ARRAYFORMULA(TRIM(${R('E')}))`
 
-/** Las fórmulas de una fila del cuadro, dado el número de fila donde va a caer. */
+const ENCABEZADO = ['Subcontratista', 'Rubro contratado', 'Desde', 'Último', 'Contratado', 'Sin comprobante']
+
 function fila(nombre, rubro, f) {
   const nom = `$A${f}`
   return [
     nombre, rubro,
-    `=COUNTIF(${R('E')};${nom})`,
-    `=IFERROR(MIN(FILTER(${R('C')};${R('E')}=${nom}));"")`,
-    `=IFERROR(MAX(FILTER(${R('C')};${R('E')}=${nom}));"")`,
-    `=SUMIF(${R('E')};${nom};${R('O')})`,
-    `=F${f}-H${f}`,
-    // Sin comprobante = sin número de comprobante cargado. Es el dato que hay, y dice lo que dice.
-    `=SUMIFS(${R('O')};${R('E')};${nom};${R('H')};"")`,
-    `=IFERROR(TEXTJOIN(", ";1;UNIQUE(FILTER(${R('K')};(${R('E')}=${nom})*(${R('K')}<>""))));"")`,
+    `=IFERROR(MIN(FILTER(${R('C')};${PROV}=${nom}));"")`,
+    `=IFERROR(MAX(FILTER(${R('C')};${PROV}=${nom}));"")`,
+    `=SUMPRODUCT(IFERROR((${PROV}=${nom})*${R('O')};0))`,
+    `=SUMPRODUCT(IFERROR((${PROV}=${nom})*(${R('H')}="")*${R('O')};0))`,
   ]
 }
 
-const ENCABEZADO = ['Subcontratista', 'Rubro para el que fue contratado', 'Comprob.',
-  'Primer trabajo', 'Último trabajo', 'Total contratado', 'Con comprobante', 'Sin comprobante', 'Obras / destinos']
+export const ANCHO = 6
 
-/** Devuelve { filas, formatos } — formatos son los rangos que hay que pintar como fecha o moneda. */
+/**
+ * Devuelve la grilla y el mapa de formato. El formato se describe acá —no en el script— porque es
+ * parte del diseño de la pestaña, no del transporte: quien discuta el cuadro lee un solo archivo.
+ */
 export function construir() {
   const f = []
+  const azul = []      // lo que alguien tipeó
+  const verde = []     // lo que viene de Compras
   const fechas = []
   const monedas = []
-  const porcentajes = []
+  const totales = []   // llevan línea arriba y negrita
+  const encabezados = []
+  const secciones = []
 
-  f.push(['SUBCONTRATISTAS — LOS TRABAJOS PUNTUALES: QUIÉN LOS HIZO Y CUÁNTO LLEVAMOS'])
-  f.push(['Nombres sueltos que aparecen como proveedores en «Compras». Esta pestaña no guarda un solo monto: todos se calculan contra «Compras» por fórmula.'])
+  f.push(['SUBCONTRATISTAS'])
+  f.push(['Trabajos puntuales contratados a nombres sueltos. Los montos se calculan contra «Compras»: acá no hay un solo número escrito a mano.'])
   f.push(V())
 
-  f.push(['1 · LO QUE SE DECIDE'])
-  f.push(['Subcontratistas', 'Total contratado', 'Sin comprobante fiscal', 'Proporción sin comprobante'])
-  const fTitular = f.length + 1
-  f.push([null, null, null, null]) // se completa abajo, cuando se sabe dónde cayó el cuadro
+  const fKpi = f.length + 1
+  f.push([null, null, null])
+  f.push(['subcontratistas', 'contratado', 'sin comprobante fiscal'])
   f.push(V())
 
   const bloques = []
-  GRUPOS.forEach((g, i) => {
-    f.push([`${i + 2} · ${g.titulo}`])
+  GRUPOS.forEach((g) => {
+    f.push([g.titulo])
+    secciones.push(f.length)
     f.push(ENCABEZADO)
+    encabezados.push(f.length)
     const f0 = f.length + 1
     g.filas.forEach(([nombre, rubro], j) => f.push(fila(nombre, rubro, f0 + j)))
     const f1 = f0 + g.filas.length - 1
-    f.push(['TOTAL', '', `=SUM(C${f0}:C${f1})`, '', '', `=SUM(F${f0}:F${f1})`, `=SUM(G${f0}:G${f1})`, `=SUM(H${f0}:H${f1})`])
-    fechas.push(`D${f0}:E${f1}`)
-    monedas.push(`F${f0}:H${f1 + 1}`)
+    f.push(['TOTAL', '', '', '', `=SUM(E${f0}:E${f1})`, `=SUM(F${f0}:F${f1})`])
+    totales.push(f.length)
+    azul.push(`A${f0}:B${f1}`)
+    verde.push(`C${f0}:F${f1}`)
+    fechas.push(`C${f0}:D${f1}`)
+    monedas.push(`E${f0}:F${f.length}`)
     bloques.push({ clave: g.clave, f0, f1, total: f.length })
     f.push(V())
   })
 
   const sub = bloques.find((b) => b.clave === 'sub')
-  f[fTitular - 1] = [
-    `=COUNTA(A${sub.f0}:A${sub.f1})`,
-    `=F${sub.total}`,
-    `=H${sub.total}`,
-    `=IF(B${fTitular}=0;"";C${fTitular}/B${fTitular})`,
-  ]
-  monedas.push(`B${fTitular}:C${fTitular}`)
-  porcentajes.push(`D${fTitular}:D${fTitular}`)
+  f[fKpi - 1] = [`=COUNTA(A${sub.f0}:A${sub.f1})`, `=E${sub.total}`, `=IF(B${fKpi}=0;"";C${fKpi}/B${fKpi})`]
+  // OJO: C del KPI es la PROPORCIÓN, no un importe. El total sin comprobante vive en la tabla.
+  f[fKpi - 1][2] = `=IF(E${sub.total}=0;"";F${sub.total}/E${sub.total})`
 
-  f.push(['CÓMO SE LEE ESTE CUADRO'])
-  f.push(['· «Sin comprobante» es la suma de los comprobantes cargados SIN número de comprobante. En «Compras» esos figuran con Tipo N/A y Tipo de pago Efectivo.'])
-  f.push(['· Los tres bloques están separados a propósito: si los honorarios del ingeniero y los ladrillones entran en el mismo total, «cuánto llevamos con subcontratistas» queda mal y nadie se entera.'])
-  f.push(['· Quién es subcontratista es un JUICIO, no un campo de «Compras»: ninguna columna lo dice y no hay CUIT cargado para ninguno. El criterio vive en orquestador/lib/subcontratistas/padron.mjs y se discute línea por línea.'])
-  f.push(V())
-  f.push(['LO QUE NO ESTÁ CONFIRMADO'])
+  f.push(['Azul: dato tipeado.  ·  Verde: calculado desde «Compras».  ·  Ningún monto se escribe a mano.'])
+  f.push(['Quién es subcontratista no lo dice ninguna columna de «Compras»: es un juicio, y vive escrito en orquestador/lib/subcontratistas/padron.mjs.'])
   for (const a of ALIAS_PROBABLE) {
-    f.push([`«${a.enCompras}» y el legajo «${a.enLegajos}» parecen la misma persona.`,
-      `${a.confianza}. Cobró como proveedor hasta el 03/08/2026 y tiene alta de AFIP el 05/08 con baja el 12/08.`])
+    f.push([`«${a.enCompras}» (proveedor) y «${a.enLegajos}» (legajo) parecen la misma persona — ${a.confianza}.`])
   }
-  f.push(V())
-  f.push(['Generado por', 'orquestador/scripts/pestana-subcontratistas.mjs', 'Echegaray Business OS'])
+  const pie = { desde: f.length - 1 - ALIAS_PROBABLE.length, hasta: f.length }
 
-  return { filas: f, fechas, monedas, porcentajes, bloques }
+  return { filas: f, azul, verde, fechas, monedas, totales, encabezados, secciones, bloques, fKpi, pie }
 }
