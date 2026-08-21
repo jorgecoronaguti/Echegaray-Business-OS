@@ -56,6 +56,31 @@ export const NO_LAS_USA_A_OCULTAR = {
   'Deuda viva (OS)': 'publica EXACTAMENTE el mismo total que Proveedores ($11.921.115 al 21/08). Cero '
     + 'fórmulas externas la leen. Dos pestañas con el mismo número es justo lo que confunde. Se oculta '
     + 'ahora y su detalle por comprobante se funde dentro de Proveedores cuando ese generador se repare.',
+  // ═══ POR QUÉ ÉSTA SE OCULTA EN VEZ DE FUNDIRSE CON «Cheques Emitidos» (21/08/2026) ═══
+  //
+  // El pedido era unirlas: mismo layout —siete tarjetas, calendario del mes, tramos que particionan—
+  // y el mismo tema. Se midió y NO son la misma pestaña con el signo cambiado:
+  //
+  //   · «Cheques Recibidos» es una VISTA: su registro es UNA query sobre `_CHEQUES_RAW`, 9 filas.
+  //   · «Cheques Emitidos» es una FUENTE: 106 filas tipeadas a mano por el dueño desde el 12/12/2025,
+  //     con dos columnas que sólo existen ahí —DEBITADO y el estado de cruce contra Compras—.
+  //
+  // La base tiene 23 emitidos de esos 106: faltan 83, todos anteriores a mediados de junio. Fundirlas
+  // leyendo la réplica publicaría los números con 83 cheques menos, y 10 de las 12 fórmulas de CAJA y
+  // _CAJA_ANEXO que hoy leen esta pestaña dependen de esas dos columnas que la réplica no tiene.
+  // Además «Cheques Emitidos» está CANDADA por el dueño, que es justamente quien la está completando.
+  //
+  // Así que se unifica por resta, no por fusión: la de 9 filas se oculta y queda la que decide. Hoy
+  // publica $0 EN CARTERA —los nueve cheques recibidos ya están depositados o endosados— y CERO
+  // fórmulas del libro la leen; el número que se decide vive en CAJA («Valores a depositar»), que lo
+  // toma de `_CHEQUES_RAW` sin pasar por acá. Se oculta el detalle, no el número.
+  //
+  // Volver a mostrarla es un `--mostrar` (no está en LAS_OCULTO_EL_DUENO). Fundirlas de verdad exige
+  // antes cargar los 83 cheques faltantes a `public.cheques` y darle a la base un equivalente de
+  // DEBITADO y del vínculo con el comprobante — trabajo nuevo, y decisión del dueño.
+  'Cheques Recibidos': 'es una VISTA de 9 filas sobre _CHEQUES_RAW, hoy $0 en cartera, y CERO fórmulas '
+    + 'del libro la leen. «Cheques Emitidos» no puede absorberla: es una FUENTE de 106 filas a mano, '
+    + 'está candada por el dueño y la base sólo tiene 23 de esos cheques. El número vive en CAJA.',
 }
 
 /**
