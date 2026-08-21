@@ -19,15 +19,21 @@
 // que aparece sólo cuando hay algo que quitar es el camino de vuelta — un «quitar filtros» sobre
 // una tabla sin filtrar es una acción que no hace nada.
 //
-// ═══ Y POR QUÉ NO HAY UNA LÍNEA DE JAVASCRIPT ═══
+// ═══ LA BÚSQUEDA FILTRA AL TECLEAR, Y EL FILTRO SIGUE EN LA URL ═══
 //
-// Las etapas son `<Link>` y la búsqueda es un `form` GET sobre la misma pantalla. El filtro viaja
-// en la URL, así que se comparte, se recarga y vuelve con el botón de atrás — y la tabla sigue
-// siendo un server component que lee de Postgres. El middleware recuerda el último para la próxima
-// visita: ver `services/vistaRecordada.ts`.
+// Hasta el 21/08 la búsqueda era un `form` GET: había que apretar Enter y nada en la pantalla lo
+// decía. El contrato de diseño pide lo contrario —*"Buscadores filtran al teclear, sin Enter ni
+// botón Buscar"*— y Clientes y Cuentas ya lo cumplían, así que la misma lupa tenía dos
+// comportamientos según en qué pantalla cayera.
+//
+// La caja de búsqueda es ahora `BuscadorURL` del design system, que es el ÚNICO buscador con estado
+// en la URL del OS. Las etapas siguen siendo `<Link>` y el filtro sigue viajando en la URL, así que
+// se comparte, se recarga y vuelve con el botón de atrás — y la tabla sigue siendo un server
+// component que lee de Postgres. El middleware recuerda el último para la próxima visita: ver
+// `services/vistaRecordada.ts`.
 
 import Link from 'next/link'
-import { IconoBuscar } from '@/shared/components/ds'
+import { BuscadorURL } from '@/shared/components/ds'
 import { ETAPAS, ETAPA_LABEL, type Etapa } from '../types'
 import { CLAVE_LIMPIAR } from '../services/vistaRecordada'
 import type { FiltroObras } from '../services/filtroObras'
@@ -62,23 +68,16 @@ export function FiltrosObras({
 
   return (
     <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2" data-testid="filtros-obras">
-      {/* EL BUSCADOR DE UNA LISTA VA SIN CAJA: sólo hairline inferior e icono. Un campo con borde
-          completo encima de una tabla sin caja es la caja que la tabla no tiene. */}
-      <form action={base} method="get" className="flex w-[260px] max-w-full items-center gap-2 border-b border-line">
-        {Object.entries(extra).map(([k, v]) => v
-          ? <input key={k} type="hidden" name={k} value={v} />
-          : null)}
-        {filtro.etapa && <input type="hidden" name="etapa" value={filtro.etapa} />}
-        <IconoBuscar />
-        <input
-          name="q"
-          defaultValue={filtro.q}
-          placeholder="Buscar obra o cliente"
-          aria-label="Buscar obra o cliente"
-          data-testid="buscar-obra"
-          className="h-control min-w-0 flex-1 bg-transparent text-[12.5px] text-ink outline-none placeholder:text-faint max-lg:h-control-movil"
-        />
-      </form>
+      {/* La etapa viaja como campo oculto SÓLO si hay una puesta: buscar con «Todas» seleccionada
+          tiene que dejar la URL sin `etapa`, igual que la dejaba el formulario. */}
+      <BuscadorURL
+        accion={base}
+        q={filtro.q}
+        placeholder="Buscar obra o cliente"
+        oculto={{ ...extra, etapa: filtro.etapa ?? undefined }}
+        ancho="w-[260px] max-w-full"
+        testid="buscar-obra"
+      />
 
       <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1.5">
         <Link href={href(null)} data-testid="etapa-todas" aria-current={filtro.etapa === null ? 'true' : undefined}

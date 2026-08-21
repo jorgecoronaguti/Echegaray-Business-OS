@@ -1,6 +1,8 @@
 'use client'
 
-import { useActionState, useState } from 'react'
+import { useActionState, useMemo, useState } from 'react'
+import { Buscador } from '@/shared/components/ds'
+import { contieneEnAlguno } from '@/shared/utils/busqueda'
 import {
   crearOperarioAction,
   borrarOperarioAction,
@@ -37,6 +39,15 @@ function Credencial({ email, password }: { email: string; password: string }) {
 
 export function OperariosManager({ operarios }: { operarios: Operario[] }) {
   const [state, crear, creando] = useActionState(crearOperarioAction, initial)
+  // FILTRO EN MEMORIA Y SIN DEBOUNCE: la lista de cuentas de campo ya viajó entera al navegador, así
+  // que buscar no cuesta un viaje a Postgres y esperar 250 ms sería una demora a cambio de nada. El
+  // buscador es el mismo del design system que usa `BuscadorURL`; lo único que cambia es de dónde
+  // sale el estado.
+  const [texto, setTexto] = useState('')
+  const visibles = useMemo(
+    () => operarios.filter((o) => contieneEnAlguno([o.nombre, o.email], texto)),
+    [operarios, texto],
+  )
 
   return (
     <div className="space-y-5">
@@ -65,6 +76,18 @@ export function OperariosManager({ operarios }: { operarios: Operario[] }) {
         )}
       </form>
 
+      {/* NO APARECE CON UNA SOLA FILA: un buscador sobre una lista de un elemento no ayuda, es una
+          línea de interfaz que no hace nada (`COMPONENTS.md` §Filters). */}
+      {operarios.length > 1 && (
+        <Buscador
+          value={texto}
+          onChange={setTexto}
+          placeholder="Buscar por nombre o correo"
+          testid="buscar-operario"
+          className="max-w-[280px]"
+        />
+      )}
+
       <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
         <table className="w-full text-sm">
           <thead>
@@ -75,13 +98,15 @@ export function OperariosManager({ operarios }: { operarios: Operario[] }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {operarios.map((o) => (
+            {visibles.map((o) => (
               <OperarioRow key={o.id} o={o} />
             ))}
-            {operarios.length === 0 && (
+            {visibles.length === 0 && (
               <tr>
-                <td colSpan={3} className="px-4 py-8 text-center text-gray-400">
-                  Todavía no hay operarios. Creá el primero arriba.
+                <td colSpan={3} className="px-4 py-8 text-center text-gray-400" data-testid="operarios-vacio">
+                  {operarios.length === 0
+                    ? 'Todavía no hay operarios. Creá el primero arriba.'
+                    : `Ningún operario coincide con «${texto}».`}
                 </td>
               </tr>
             )}
@@ -97,7 +122,7 @@ function OperarioRow({ o }: { o: Operario }) {
   const [, borrar, borrando] = useActionState(borrarOperarioAction, initial)
   return (
     <>
-      <tr className="hover:bg-gray-50/60">
+      <tr className="hover:bg-gray-50/60" data-testid="fila-operario">
         <td className="px-4 py-2.5 font-medium text-gray-900">{o.nombre}</td>
         <td className="px-4 py-2.5 text-gray-600">{o.email || '—'}</td>
         <td className="px-4 py-2.5">

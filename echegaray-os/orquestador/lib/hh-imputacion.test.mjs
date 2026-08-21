@@ -23,10 +23,19 @@ async function escenario() {
     `insert into public.personas (nombre_completo) values ($1) returning id`, [MARCA])
   const { rows: [o] } = await query(
     `select id from public.obra_canonica order by orden limit 1`)
+  // ═══ `limit 1` SIN `order by` ELIGE CUALQUIERA (21/08/2026) ═══
+  //
+  // Postgres devuelve las filas en el orden en que están en el heap, y ese orden cambia con
+  // cualquier UPDATE masivo. Al rellenar la jerarquía de 161 actividades, este `limit 1` empezó a
+  // devolver otra actividad —una que ya tenía una hora imputada— y el test se puso rojo sin que
+  // cambiara ni la vista ni el trigger que mide. Un escenario que depende del orden físico de la
+  // tabla no prueba lo que dice probar.
   const { rows: [a] } = await query(
-    `select id, obra_id from public.obra_actividad where obra_id = $1 and not archivada limit 1`, [o.id])
+    `select id, obra_id from public.obra_actividad
+      where obra_id = $1 and not archivada order by orden, id limit 1`, [o.id])
   const { rows: [otra] } = await query(
-    `select id from public.obra_actividad where obra_id <> $1 and not archivada limit 1`, [o.id])
+    `select id from public.obra_actividad
+      where obra_id <> $1 and not archivada order by orden, id limit 1`, [o.id])
   return { personaId: p.id, obraId: o.id, actividadId: a?.id ?? null, actividadAjena: otra?.id ?? null }
 }
 
@@ -135,14 +144,24 @@ test('las HH reales de la actividad son la SUMA de sus imputaciones, no una colu
   const e = await escenario()
   if (!e.actividadId) return
   try {
+    // Se mide el DELTA, no el total. La actividad que toca puede tener horas de antes —de hecho
+    // las tiene— y afirmar «el total es 6,5» probaba que esa actividad estuviera vacía, no que la
+    // vista sumara. Lo que hay que probar es que la imputación nueva LLEGA.
+    const leer = async () => {
+      const { rows: [v] } = await query(
+        `select coalesce(hh_real, 0) as hh_real from public.obra_actividad_hh where actividad_id = $1`,
+        [e.actividadId])
+      return Number(v?.hh_real ?? 0)
+    }
+    const antes = await leer()
     await query(
       `insert into public.registros_hh
          (obra_canonica_id, persona_id, actividad_id, fecha, fecha_inicio_semana, horas, fuente_legacy)
        values ($1, $2, $3, '2026-08-19', '2026-08-19', 6.5, $4)`,
       [e.obraId, e.personaId, e.actividadId, MARCA])
-    const { rows: [v] } = await query(
-      `select hh_real from public.obra_actividad_hh where actividad_id = $1`, [e.actividadId])
-    assert.equal(Number(v.hh_real), 6.5, '`obra_actividad_hh` no refleja la imputación recién hecha')
+    const despues = await leer()
+    assert.equal(despues - antes, 6.5,
+      '`obra_actividad_hh` no refleja la imputación recién hecha')
   } finally { await limpiar(e.personaId) }
 })
 
