@@ -18,6 +18,9 @@ import { Tabs } from '@/shared/components/ds'
 
 const VISTAS = [
   { href: '/clientes', label: 'Clientes' },
+  // Presupuestos entra en la barra el 21/08/2026 con el módulo: la cartera de ofertas es de
+  // Administración, y sin la solapa la única forma de llegar sería escribir la URL.
+  { href: '/presupuestos', label: 'Presupuestos' },
   { href: '/administracion/usuarios', label: 'Usuarios' },
   { href: '/administracion/personas', label: 'Personas' },
   { href: '/administracion/proveedores', label: 'Proveedores' },

@@ -83,3 +83,6 @@ scripts/arca/estado/
 /extension.zip
 orquestador/scripts/.caja-backup-*.json
 orquestador/scripts/.cfsemanal-backup-*.json
+
+# Guiones de verificación de una sesión: se corren, se pega su salida en el informe, y no viajan.
+.scratch/
