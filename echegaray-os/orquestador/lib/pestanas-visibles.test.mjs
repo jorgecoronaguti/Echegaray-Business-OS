@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { ESPEJOS_A_OCULTAR, A_LA_VISTA_A_PROPOSITO, pedidosDeOcultar } from './pestanas-visibles.mjs'
+import { ESPEJOS_A_OCULTAR, A_LA_VISTA_A_PROPOSITO, NO_LAS_USA_A_OCULTAR, LAS_OCULTO_EL_DUENO, sePuedeVolverAMostrar, pedidosDeOcultar } from './pestanas-visibles.mjs'
 
 test('nunca se oculta una pestaña que una persona carga o mira', () => {
   // Los tres contraejemplos que costaron pensarlos. Si alguien los mete en la lista de ocultar,
@@ -24,10 +24,35 @@ test('sólo se pide ocultar lo que hoy está visible — idempotente', () => {
   assert.equal(r.cambios.length, 1, 'pidió ocultar algo que ya estaba oculto, o algo que no toca')
   assert.equal(r.cambios[0].updateSheetProperties.properties.sheetId, 1)
   assert.deepEqual(r.yaOcultas, ['_ARCA_RAW'])
-  assert.equal(r.noEstan.length, ESPEJOS_A_OCULTAR.length - 2, 'no avisa de las que no encontró')
+  // Todas las que la lista nombra y el archivo no tiene: hay que avisarlas, no tragarlas.
+  const nombradas = ESPEJOS_A_OCULTAR.length + Object.keys(NO_LAS_USA_A_OCULTAR).length
+  assert.equal(r.noEstan.length, nombradas - 2, 'no avisa de las que no encontró')
 })
 
 test('correr dos veces no hace nada la segunda', () => {
-  const hojas = ESPEJOS_A_OCULTAR.map((t, i) => ({ title: t, sheetId: i, hidden: true }))
+  const hojas = [...ESPEJOS_A_OCULTAR, ...Object.keys(NO_LAS_USA_A_OCULTAR)]
+    .map((t, i) => ({ title: t, sheetId: i, hidden: true }))
   assert.deepEqual(pedidosDeOcultar(hojas).cambios, [])
 })
+
+test('lo que ocultó el dueño no se vuelve a mostrar nunca', () => {
+  // El 21/08 ocultó seis con la mano mientras yo analizaba — tres de ellas eran las que mi análisis
+  // había descartado. Su edición manda. `--mostrar` deshace lo mío, no lo suyo.
+  for (const n of LAS_OCULTO_EL_DUENO) {
+    assert.equal(sePuedeVolverAMostrar(n), false, `«${n}» la ocultó él y --mostrar se la devolvería`)
+  }
+  assert.equal(sePuedeVolverAMostrar('_BANCO_RAW'), true, 'lo que ocultó el OS sí se puede deshacer')
+  for (const n of ['Parámetros', '_CAJA_ANEXO', '_PRESUPUESTO_MENSUAL']) {
+    assert.ok(LAS_OCULTO_EL_DUENO.includes(n), `${n} la ocultó él: no puede volver a la lista de visibles`)
+  }
+})
+
+test('nada se oculta sin su motivo escrito al lado', () => {
+  // Ocultar una pestaña sin decir por qué es indistinguible de esconderla. El motivo es el que
+  // permite discutirlo dentro de seis meses, cuando nadie se acuerde de esta conversación.
+  for (const [n, m] of Object.entries(NO_LAS_USA_A_OCULTAR)) {
+    assert.ok(String(m).length > 60, `«${n}» se oculta sin motivo suficiente`)
+  }
+})
+
+
