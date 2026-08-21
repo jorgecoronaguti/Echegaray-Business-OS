@@ -28,7 +28,10 @@ import { FILA_HDR, FILA_DATO0, FILA_FIN } from '../lib/cheques-emitidos-geometri
 // y se corre siempre: una migración que está en el repo pero nadie aplicó es una columna que no
 // existe, y el mensaje de esa falla es idéntico al de un bootstrap sano.
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
-const MIGRACION = join(RAIZ, 'supabase', 'migrations', '20260821T1000_el_numero_no_identifica_un_cheque.sql')
+const MIGRACIONES = [
+  '20260821T1000_el_numero_no_identifica_un_cheque.sql',   // el instrumento entra a la clave
+  '20260821T1100_el_numero_del_cheque_va_normalizado.sql', // "00000366" y "366" son el mismo cheque
+].map((f) => join(RAIZ, 'supabase', 'migrations', f))
 
 const FLUJO = '1SR6HY5mMt8K9AwfAWVTV-7Z2xPGRildXMDe1QFx5HV8'
 const PESTANA = 'Cheques Emitidos'
@@ -53,7 +56,7 @@ const CORRECCIONES = {
 }
 
 async function main() {
-  await query(readFileSync(MIGRACION, 'utf8'))
+  for (const m of MIGRACIONES) await query(readFileSync(m, 'utf8'))
   const google = makeGoogleClient({ config: loadConfig(), scopes: WRITE_SCOPES })
 
   // ── EL REGISTRO, LEÍDO SIN FORMATO ────────────────────────────────────────────────────────────
