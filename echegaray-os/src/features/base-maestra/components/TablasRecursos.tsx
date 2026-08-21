@@ -56,7 +56,15 @@ export function TablaInsumos({
                   {/* 0 % de desperdicio es un DATO (no lleva desperdicio), no una ausencia. */}
                   <span className="font-mono text-[11.5px] tabular-nums text-muted">{porcentaje(r.desperdicio, 0)}</span>
                 </Td>
-                <Td className="text-[11.5px]"><Texto v={r.fuente ?? r.proveedor} falta="sin cargar" /></Td>
+                {/* LA FUENTE SE RECORTA. La ingestión escribe la procedencia entera («Planilla para
+                    Cotizar (2).xlsm · Recursos!17 · ingesta 2026-08-21») y sin recorte cada fila
+                    mide cuatro líneas: la tabla deja de poder barrerse de un vistazo, que es lo
+                    único para lo que existe. El valor completo queda en el `title`. */}
+                <Td className="text-[11.5px]">
+                  <span className="block max-w-[150px] truncate" title={r.fuente ?? r.proveedor ?? undefined}>
+                    <Texto v={r.fuente ?? r.proveedor} falta="sin cargar" />
+                  </span>
+                </Td>
                 <Td num><FechaPrecio iso={r.fecha_precio} frescura={r.frescura} /></Td>
               </Tr>
             ))}
@@ -234,7 +242,15 @@ export function TablaEquipos({ filas, q, economia }: { filas: RecursoFila[]; q: 
                 <Td className="text-[11.5px] text-muted"><Texto v={r.familia} falta="sin familia" /></Td>
                 <Td className="text-[12px]">{r.unidad}</Td>
                 {economia && <Td num><N v={r.costo_base} decimales={0} falta="sin cargar" /></Td>}
-                <Td className="text-[11.5px]"><Texto v={r.fuente ?? r.proveedor} falta="sin cargar" /></Td>
+                {/* LA FUENTE SE RECORTA. La ingestión escribe la procedencia entera («Planilla para
+                    Cotizar (2).xlsm · Recursos!17 · ingesta 2026-08-21») y sin recorte cada fila
+                    mide cuatro líneas: la tabla deja de poder barrerse de un vistazo, que es lo
+                    único para lo que existe. El valor completo queda en el `title`. */}
+                <Td className="text-[11.5px]">
+                  <span className="block max-w-[150px] truncate" title={r.fuente ?? r.proveedor ?? undefined}>
+                    <Texto v={r.fuente ?? r.proveedor} falta="sin cargar" />
+                  </span>
+                </Td>
                 <Td num><FechaPrecio iso={r.fecha_precio} frescura={r.frescura} /></Td>
               </Tr>
             ))}
