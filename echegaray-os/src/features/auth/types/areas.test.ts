@@ -45,6 +45,24 @@ test('PERO NO ENTRA A LAS RUTAS DEL DINERO', () => {
   assert.equal(veEconomia('jefe_obra'), false)
 })
 
+test('NI AL ARCHIVO TRANSVERSAL: ahí están los libros de sueldos y el archivo fiscal', () => {
+  // `/documentos` lista las tres carpetas raíz del índice de Drive —`administracion`,
+  // `archivo-fiscal`, `libro-sueldos`—, o sea presupuestos de clientes, declaraciones y sueldos.
+  // El jefe de obra ve los documentos DE SU OBRA en la obra; esta vista es de la empresa entera.
+  assert.equal(puedeVerRuta('jefe_obra', '/documentos'), false, 'un jefe de obra abrió el archivo entero')
+  assert.equal(puedeVerRuta('campo', '/documentos'), false)
+  assert.equal(puedeVerRuta(null, '/documentos'), false, 'sin perfil tiene que fallar cerrado')
+  assert.equal(puedeVerRuta('administracion', '/documentos'), true)
+  assert.equal(puedeVerRuta('direccion', '/documentos'), true)
+})
+
+test('la ficha de un proveedor SÍ la abre el jefe de obra: es costo, no precio', () => {
+  // El dueño, 19/08: ve el costo de su obra y lo que se lleva gastado. La base recorta las filas
+  // (`ve_obra_texto`), así que la ficha le muestra sus comprobantes y nada más.
+  assert.equal(puedeVerRuta('jefe_obra', '/administracion/proveedores/abc-123'), true)
+  assert.equal(puedeVerRuta('jefe_obra', '/administracion/proveedores/abc-123?vista=comprobantes'), true)
+})
+
 test('NI A GESTIONAR USUARIOS, que es la puerta a todo lo anterior', () => {
   // Si pudiera cambiar roles, se ascendería y el resto del corte sería decorativo.
   assert.equal(puedeVerRuta('jefe_obra', '/administracion/usuarios'), false)
