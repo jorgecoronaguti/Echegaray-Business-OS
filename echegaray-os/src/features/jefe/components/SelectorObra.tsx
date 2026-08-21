@@ -24,12 +24,12 @@ export function SelectorObra({ obras, actual }: { obras: ObraDelJefe[]; actual: 
   const pathname = usePathname() ?? '/obra/hoy'
 
   if (obras.length <= 1) {
-    return <span className="block truncate text-[21px] font-semibold leading-tight text-ink">{actual.nombre}</span>
+    return <span className="block truncate text-[20px] font-semibold leading-tight text-ink">{actual.nombre}</span>
   }
 
   return (
     <span className="relative flex min-h-[44px] items-center gap-2.5">
-      <span className="min-w-0 truncate text-[21px] font-semibold leading-tight text-ink">{actual.nombre}</span>
+      <span className="min-w-0 truncate text-[20px] font-semibold leading-tight text-ink">{actual.nombre}</span>
       <span aria-hidden className="shrink-0 text-[13px] text-faint">▾</span>
       <select
         aria-label="Cambiar de obra"

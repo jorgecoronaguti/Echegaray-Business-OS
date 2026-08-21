@@ -1,8 +1,8 @@
-import { Aviso } from '@/shared/components/ds'
+import { Aviso, BotonEnlace } from '@/shared/components/ds'
 import { PieDeAccion } from '@/features/jefe/components/ShellJefe'
 import { SelectorObra } from '@/features/jefe/components/SelectorObra'
 import {
-  Barra, Encabezado, EnlacePrimario, Fila, Metricas, Nada, Panel, Rotulo, porcentaje,
+  Barra, Encabezado, Fila, Metricas, Nada, Panel, Rotulo, porcentaje, porcentajeCorto,
 } from '@/features/jefe/components/Piezas'
 import { SinObra } from '@/features/jefe/components/SinObra'
 import { contextoDeObra, hoyEnObra, renglonDeObra } from '@/features/jefe/services/contexto'
@@ -82,8 +82,10 @@ export default async function JefeHoyPage({
           metricas={[
             {
               clave: 'Avance',
-              valor: porcentaje(obra.avance_pct),
-              sub: `${obra.n_actividades_medidas} de ${obra.n_actividades} medidas`,
+              valor: porcentajeCorto(obra.avance_pct),
+              sub: obra.avance_pct == null
+                ? 'sin medir todavía'
+                : `${obra.n_actividades_medidas} de ${obra.n_actividades} medidas`,
             },
             {
               clave: 'En obra',
@@ -117,7 +119,7 @@ export default async function JefeHoyPage({
                 icono={
                   <span
                     aria-hidden
-                    className={`flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[11px] text-[17px] ${
+                    className={`flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[11px] text-[16px] ${
                       p.tono === 'neg' ? 'bg-neg-soft text-neg' : 'bg-warn-soft text-warn'
                     }`}
                   >
@@ -147,12 +149,12 @@ export default async function JefeHoyPage({
                   >
                     <div className="mb-2 flex items-baseline justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="truncate text-[14.5px] font-medium text-ink">{f.frente.nombre}</div>
+                        <div className="truncate text-[15px] font-medium text-ink">{f.frente.nombre}</div>
                         <div className={`mt-0.5 text-[12.5px] ${f.atrasoDias ? 'text-warn' : 'text-muted'}`}>
                           {detalleDelFrente(f)}
                         </div>
                       </div>
-                      <span className="shrink-0 font-mono text-[19px] font-semibold tabular-nums text-ink">
+                      <span className="shrink-0 font-mono text-[20px] font-semibold tabular-nums text-ink">
                         {porcentaje(f.pct)}
                       </span>
                     </div>
@@ -185,9 +187,14 @@ export default async function JefeHoyPage({
       </div>
 
       <PieDeAccion sobreBarra>
-        <EnlacePrimario href={conObra('/obra/avance-masivo', obra.id)} testid="cargar-avance-del-dia">
+        <BotonEnlace
+          href={conObra('/obra/avance-masivo', obra.id)}
+          variante="primaria"
+          tamano="bloque"
+          data-testid="cargar-avance-del-dia"
+        >
           Cargar avance del día
-        </EnlacePrimario>
+        </BotonEnlace>
       </PieDeAccion>
     </>
   )

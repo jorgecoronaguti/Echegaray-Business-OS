@@ -7,10 +7,13 @@ import type { ReactNode } from 'react'
 // sirve: `Aviso`, `Estado`, `RelojDeJornada`, `PuntoActivo`. Lo que se crea acá es lo que el DS
 // resuelve con medidas de escritorio y en 390px no funciona:
 //
-//   · `Boton` mide 34px de alto y 12,5px de texto. `LAYOUT_RESPONSIVE.md` §Mobile pide 48px para
-//     campos y primaria, y 44px de objetivo táctil mínimo. Con guante, en obra, 34px se falla.
 //   · `Tabla` es una tabla. En 390px una tabla de seis columnas se lee con lupa o se desplaza de
 //     costado, y las dos cosas se abandonan.
+//
+// LO QUE ACÁ **NO** ESTÁ, Y ANTES SÍ: la primaria de 48px. Estuvo en este archivo hasta el
+// 21/08/2026 porque `Boton` medía 34px y no tenía tamaño de teléfono. La respuesta correcta no era
+// una primaria más en un perfil: era `tamano="bloque"` en el `Boton` del sistema, que es donde
+// ahora vive. Lo mismo con la barra del avance masivo, que es `BarraContextual`.
 //
 // Sólo tokens: si aparece un color, salió de `globals.css`.
 
@@ -77,7 +80,7 @@ export function Fila({
     <>
       {icono}
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[14.5px] font-medium text-ink">{titulo}</span>
+        <span className="block truncate text-[15px] font-medium text-ink">{titulo}</span>
         {detalle != null && <span className={`mt-0.5 block text-[12.5px] ${color}`}>{detalle}</span>}
       </span>
       {derecha}
@@ -111,6 +114,18 @@ export function porcentaje(pct: number | null): string {
   return `${new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1 }).format(pct)} %`
 }
 
+/**
+ * El porcentaje COMO VALOR DE MÉTRICA. Igual que `porcentaje`, salvo que la ausencia se escribe con
+ * un guión y la explicación baja al subtítulo.
+ *
+ * En una métrica de 22px sobre una columna de ~110px en un teléfono de 390, «sin medir» se sale del
+ * ancho y pisa la métrica de al lado. El guión no dice menos: dice lo mismo, y el renglón de abajo
+ * lo explica con espacio para hacerlo.
+ */
+export function porcentajeCorto(pct: number | null): string {
+  return pct == null ? '—' : porcentaje(pct)
+}
+
 export interface Metrica {
   clave: string
   valor: ReactNode
@@ -125,10 +140,14 @@ export function Metricas({ metricas, testid = 'metricas' }: { metricas: Metrica[
       {metricas.map((m, i) => (
         <div
           key={m.clave}
-          className={`min-w-0 flex-1 pr-3 ${i < metricas.length - 1 ? 'shadow-[inset_-1px_0_0_var(--os-surface-sunken)]' : ''}`}
+          // El divisor va a la DERECHA de cada columna, así que la de al lado necesita aire a la
+          // izquierda: sin él «EN OBRA» arranca pegado a la línea y se lee como si fuera un borde
+          // del texto. Medido en la captura a 390px.
+          className={`min-w-0 flex-1 pr-3 ${i > 0 ? 'pl-3' : ''} ${
+            i < metricas.length - 1 ? 'shadow-[inset_-1px_0_0_var(--os-surface-sunken)]' : ''}`}
         >
           <div className="mb-1 text-[10.5px] uppercase tracking-[0.05em] text-faint">{m.clave}</div>
-          <div className={`font-mono text-[24px] font-semibold leading-[1.05] tabular-nums ${
+          <div className={`font-mono text-[22px] font-semibold leading-[1.05] tabular-nums ${
             m.tono === 'neg' ? 'text-neg' : m.tono === 'warn' ? 'text-warn' : m.tono === 'pos' ? 'text-pos' : 'text-ink'
           }`}>
             {m.valor}
@@ -151,51 +170,12 @@ export function Nada({ children, testid }: { children: ReactNode; testid?: strin
   )
 }
 
-const PRIMARIA =
-  'flex h-[52px] w-full items-center justify-center gap-2.5 rounded-[14px] text-[16px] font-semibold'
-
-/** La primaria del teléfono: 52px, ancho completo. El `Boton` del DS mide 34 y es de escritorio. */
-export function AccionPrimaria({ children, testid, ...props }: {
-  children: ReactNode
-  testid?: string
-} & React.ButtonHTMLAttributes<HTMLButtonElement>) {
-  return (
-    <button
-      {...props}
-      data-testid={testid}
-      className={`${PRIMARIA} bg-marca text-[color:var(--os-on-marca)] disabled:bg-surface-sunken disabled:text-faint`}
-    >
-      {children}
-    </button>
-  )
-}
-
-export function EnlacePrimario({ href, children, testid }: { href: string; children: ReactNode; testid?: string }) {
-  return (
-    <Link href={href} data-testid={testid} className={`${PRIMARIA} bg-marca text-[color:var(--os-on-marca)]`}>
-      {children}
-    </Link>
-  )
-}
-
-export function EnlaceSecundario({ href, children, testid }: { href: string; children: ReactNode; testid?: string }) {
-  return (
-    <Link
-      href={href}
-      data-testid={testid}
-      className={`${PRIMARIA} border border-line-strong bg-surface font-normal text-ink`}
-    >
-      {children}
-    </Link>
-  )
-}
-
 /** El encabezado de pantalla: título de 21px y el renglón que dice qué obra se está mirando. */
 export function Encabezado({ titulo, sub, accion }: { titulo: ReactNode; sub?: ReactNode; accion?: ReactNode }) {
   return (
     <div className="flex items-start gap-3 px-4 pb-2.5 pt-4">
       <div className="min-w-0 flex-1">
-        <h1 className="truncate text-[21px] font-semibold leading-tight text-ink">{titulo}</h1>
+        <h1 className="truncate text-[20px] font-semibold leading-tight text-ink">{titulo}</h1>
         {sub != null && <p className="mt-0.5 text-[13.5px] text-muted">{sub}</p>}
       </div>
       {accion}

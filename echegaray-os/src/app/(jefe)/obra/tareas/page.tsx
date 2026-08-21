@@ -1,9 +1,9 @@
 import Link from 'next/link'
-import { Aviso } from '@/shared/components/ds'
+import { Aviso, BotonEnlace } from '@/shared/components/ds'
 import { BuscadorURL } from '@/shared/components/ds/BuscadorURL'
 import { PieDeAccion } from '@/features/jefe/components/ShellJefe'
 import {
-  Barra, Encabezado, EnlacePrimario, Nada, Panel, Rotulo,
+  Barra, Encabezado, Nada, Panel, Rotulo,
 } from '@/features/jefe/components/Piezas'
 import { SinObra } from '@/features/jefe/components/SinObra'
 import { contextoDeObra, hoyEnObra } from '@/features/jefe/services/contexto'
@@ -154,9 +154,14 @@ export default async function JefeTareasPage({
       </div>
 
       <PieDeAccion sobreBarra>
-        <EnlacePrimario href={conObra('/obra/avance-masivo', obra.id)} testid="cargar-avance-del-dia">
+        <BotonEnlace
+          href={conObra('/obra/avance-masivo', obra.id)}
+          variante="primaria"
+          tamano="bloque"
+          data-testid="cargar-avance-del-dia"
+        >
           Cargar avance del día
-        </EnlacePrimario>
+        </BotonEnlace>
       </PieDeAccion>
     </>
   )

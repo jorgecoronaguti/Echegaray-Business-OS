@@ -1,9 +1,8 @@
 'use client'
 
-import { useActionState, useState } from 'react'
-import { Aviso } from '@/shared/components/ds'
-import { AccionPrimaria, Confirmacion, Nada, Panel, Rotulo } from './Piezas'
-import { PieDeAccion } from './ShellJefe'
+import { useActionState, useRef, useState } from 'react'
+import { Aviso, BarraContextual, ChipsValor } from '@/shared/components/ds'
+import { Confirmacion, Nada, Panel, Rotulo } from './Piezas'
 import { AVISO_CRITERIO, VALORES_MASIVOS, avisoDePrecision, renglones } from '../services/medicion'
 import type { Renglon } from '../services/medicion'
 import type { ActividadDelJefe } from '../services/jefeService'
@@ -39,6 +38,10 @@ export function FormularioMasivo({
   const [objetivo, setObjetivo] = useState<number>(100)
   const [criterio, setCriterio] = useState('')
   const [estado, enviar, enviando] = useActionState(accion, null)
+  // La barra del sistema aplica con un `onClick`, no con un `submit`: el botón es `type="button"`
+  // para no enviar el formulario de la pantalla que la contenga. Acá SÍ hay un formulario y es el
+  // que lleva la fecha, el objetivo y los ids, así que se lo envía a mano.
+  const formulario = useRef<HTMLFormElement | null>(null)
 
   const aplicables = filas.filter((f) => f.aplicable)
   const seleccion = filas.filter((f) => elegidas.has(f.actividad_id))
@@ -49,14 +52,14 @@ export function FormularioMasivo({
   const grupos = agrupar(actividades, filas, frentes)
 
   return (
-    <form action={enviar}>
+    <form action={enviar} ref={formulario}>
       <input type="hidden" name="fecha" value={fecha} />
       <input type="hidden" name="objetivo" value={objetivo} />
       <input type="hidden" name="tareas" value={[...elegidas].join(',')} />
 
       <div className="flex items-start gap-3 px-4 pb-2.5 pt-4">
         <div className="min-w-0 flex-1">
-          <h1 className="text-[21px] font-semibold leading-tight text-ink">Avance del día</h1>
+          <h1 className="text-[20px] font-semibold leading-tight text-ink">Avance del día</h1>
           <p className="mt-0.5 text-[13.5px] text-muted">{obraNombre} · tocá las que avanzaron</p>
         </div>
         {aplicables.length > 0 && (
@@ -123,7 +126,7 @@ export function FormularioMasivo({
                           {f.motivo ?? `se mide por ${f.metodo}`}
                         </span>
                       </span>
-                      <span className="shrink-0 font-mono text-[17px] font-semibold tabular-nums text-ink">
+                      <span className="shrink-0 font-mono text-[16px] font-semibold tabular-nums text-ink">
                         {f.avance_pct == null ? '—' : `${f.avance_pct} %`}
                       </span>
                     </button>
@@ -135,67 +138,56 @@ export function FormularioMasivo({
         )}
       </div>
 
-      <PieDeAccion testid="pie-masivo">
-        {elegidas.size === 0 ? (
-          <p className="py-3 text-center text-[14px] text-muted" data-testid="sin-eleccion">
+      {/* EL HUECO PARA LA BARRA. `BarraContextual` es `fixed`: sin este espaciador la última tarea
+          de la lista queda debajo y no se puede tocar — la misma trampa que ya pagó el perfil
+          empleado. Alto generoso porque en el teléfono la barra se apila (chips + aviso + dos
+          botones) y crece cuando aparece el criterio. */}
+      <div aria-hidden data-testid="espaciador-barra" className={elegidas.size === 0 ? 'h-[92px]' : 'h-[300px] lg:h-[80px]'} />
+
+      {elegidas.size === 0 ? (
+        <div className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-[520px] border-t border-line bg-canvas px-4 py-4 text-center">
+          <p className="text-[14px] text-muted" data-testid="sin-eleccion">
             {aplicables.length === 0
               ? 'Ninguna tarea de esta obra se puede cargar por porcentaje.'
               : 'Elegí las tareas que avanzaron'}
           </p>
-        ) : (
-          <>
-            <div className="mb-3 flex items-baseline justify-between">
-              <span className="text-[14px] font-semibold text-ink">
-                {elegidas.size} {elegidas.size === 1 ? 'tarea' : 'tareas'}
-              </span>
-              <span className="text-[12.5px] text-muted">poner el avance en</span>
-            </div>
-            <div className="mb-3 flex gap-2">
-              {VALORES_MASIVOS.map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  data-testid={`valor-${v}`}
-                  aria-pressed={objetivo === v}
-                  onClick={() => setObjetivo(v)}
-                  className={`h-[46px] flex-1 rounded-[11px] border-[1.5px] font-mono text-[15px] font-semibold tabular-nums text-ink ${
-                    objetivo === v ? 'border-marca bg-marca-soft' : 'border-line-strong bg-surface'
-                  }`}
-                >
-                  {v}%
-                </button>
-              ))}
-            </div>
-            {exigeCriterio && (
-              <textarea
-                name="criterio"
-                value={criterio}
-                onChange={(e) => setCriterio(e.target.value)}
-                rows={2}
-                data-testid="criterio-masivo"
-                placeholder="Con qué criterio (lo exige el método manual)"
-                className="mb-3 w-full rounded-[12px] bg-surface px-3.5 py-3 text-[14px] leading-relaxed text-ink outline-none"
-              />
-            )}
-            {(aviso || faltaCriterio) && (
-              <p className="mb-3 flex gap-2.5 rounded-[10px] bg-warn-soft px-3.5 py-3 text-[12.5px] leading-relaxed text-warn" data-testid="aviso-masivo">
-                <span aria-hidden>△</span>
-                <span>{faltaCriterio ? AVISO_CRITERIO : aviso}</span>
-              </p>
-            )}
-            <AccionPrimaria type="submit" disabled={enviando || faltaCriterio} testid="aplicar-masivo">
-              {enviando ? 'Aplicando…' : `Aplicar a ${elegidas.size} ${elegidas.size === 1 ? 'tarea' : 'tareas'}`}
-            </AccionPrimaria>
-            <button
-              type="button"
-              onClick={() => setElegidas(new Set())}
-              className="mt-2 h-[44px] w-full text-[14px] text-muted"
-            >
-              Cancelar
-            </button>
-          </>
-        )}
-      </PieDeAccion>
+        </div>
+      ) : (
+        <BarraContextual
+          testid="barra-masivo"
+          titulo={`${elegidas.size} ${elegidas.size === 1 ? 'tarea' : 'tareas'}`}
+          subtitulo={`de ${aplicables.length} que se pueden cargar por porcentaje`}
+          // UNA SOLA OPERACIÓN, y se declara igual. El jefe en el teléfono no cambia responsable ni
+          // corre fechas: eso se decide sentado, en el workspace de Tareas. Ofrecer acá las cuatro
+          // sería la web comprimida, que es lo que el contrato de este perfil prohíbe.
+          operaciones={[{ id: 'avance', label: 'Poner el avance en' }]}
+          activa="avance"
+          alElegirOperacion={() => {}}
+          aviso={faltaCriterio ? AVISO_CRITERIO : aviso}
+          alCancelar={() => setElegidas(new Set())}
+          aplicarLabel={`Aplicar a ${elegidas.size}`}
+          alAplicar={() => formulario.current?.requestSubmit()}
+          pendiente={enviando || faltaCriterio}
+        >
+          <ChipsValor
+            valores={VALORES_MASIVOS.map((v) => ({ valor: String(v), etiqueta: `${v} %` }))}
+            activo={String(objetivo)}
+            alElegir={(v) => setObjetivo(Number(v))}
+            testid="valor"
+          />
+          {exigeCriterio && (
+            <textarea
+              name="criterio"
+              value={criterio}
+              onChange={(e) => setCriterio(e.target.value)}
+              rows={2}
+              data-testid="criterio-masivo"
+              placeholder="Con qué criterio (lo exige el método manual)"
+              className="w-full rounded-[12px] bg-accent-hover px-3 py-2.5 text-[13px] leading-relaxed text-white outline-none placeholder:text-faint"
+            />
+          )}
+        </BarraContextual>
+      )}
     </form>
   )
 }

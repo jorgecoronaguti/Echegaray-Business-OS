@@ -1,6 +1,6 @@
-import { Aviso } from '@/shared/components/ds'
+import { Aviso, Boton } from '@/shared/components/ds'
 import { PieDeAccion } from '@/features/jefe/components/ShellJefe'
-import { AccionPrimaria, Encabezado, Fila, Metricas, Nada, Panel, Rotulo } from '@/features/jefe/components/Piezas'
+import { Encabezado, Fila, Metricas, Nada, Panel, Rotulo } from '@/features/jefe/components/Piezas'
 import { SinObra } from '@/features/jefe/components/SinObra'
 import { contextoDeObra, hoyEnObra } from '@/features/jefe/services/contexto'
 import { getHHDelDia } from '@/features/jefe/services/jefeService'
@@ -182,7 +182,9 @@ export default async function JefePersonasPage({
             `obra_asignacion` la asigna a la OBRA y `cuadrilla` no cuelga de ninguna actividad. Se
             deja a la vista, apagada, en vez de sacarla: un hueco declarado se resuelve; uno que se
             borró de la pantalla se olvida. */}
-        <AccionPrimaria disabled testid="mover-gente">Mover gente de frente</AccionPrimaria>
+        <Boton disabled variante="primaria" tamano="bloque" data-testid="mover-gente">
+          Mover gente de frente
+        </Boton>
         <p className="pt-2 text-center text-[11.5px] leading-relaxed text-faint">
           Mover gente entre frentes todavía no se puede: el modelo asigna personas a la obra, no al
           frente. Lo que sí se sabe hoy es quién imputó horas a cada frente.

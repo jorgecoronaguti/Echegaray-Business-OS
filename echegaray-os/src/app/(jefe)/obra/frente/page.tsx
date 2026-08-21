@@ -1,8 +1,7 @@
-import { Aviso } from '@/shared/components/ds'
+import { Aviso, BotonEnlace } from '@/shared/components/ds'
 import { PieDeAccion } from '@/features/jefe/components/ShellJefe'
 import {
-  Barra, Encabezado, EnlacePrimario, EnlaceSecundario, Fila, Metricas, Nada, Panel, Rotulo,
-  porcentaje,
+  Barra, Encabezado, Fila, Metricas, Nada, Panel, Rotulo, porcentajeCorto,
 } from '@/features/jefe/components/Piezas'
 import { SinObra } from '@/features/jefe/components/SinObra'
 import { contextoDeObra, hoyEnObra } from '@/features/jefe/services/contexto'
@@ -109,7 +108,12 @@ export default async function JefeFrentePage({
         <Metricas
           testid="jefe-frente-metricas"
           metricas={[
-            { clave: 'Avance', valor: porcentaje(f.pct), sub: `${f.medidas} de ${f.total} medidas`, tono: f.atrasoDias ? 'warn' : 'ink' },
+            {
+              clave: 'Avance',
+              valor: porcentajeCorto(f.pct),
+              sub: f.pct == null ? 'sin medir todavía' : `${f.medidas} de ${f.total} medidas`,
+              tono: f.atrasoDias ? 'warn' : 'ink',
+            },
             { clave: 'HH hoy', valor: f.hhHoy === 0 ? '—' : String(f.hhHoy), sub: f.personasHoy === 0 ? 'nadie imputó' : `${f.personasHoy} personas` },
             {
               clave: 'Atraso',
@@ -171,7 +175,7 @@ export default async function JefeFrentePage({
                           {d.texto}
                         </div>
                       </div>
-                      <span className="shrink-0 font-mono text-[19px] font-semibold tabular-nums text-ink">
+                      <span className="shrink-0 font-mono text-[20px] font-semibold tabular-nums text-ink">
                         {t.avance_pct == null ? '—' : `${t.avance_pct} %`}
                       </span>
                     </div>
@@ -232,16 +236,22 @@ export default async function JefeFrentePage({
 
       <PieDeAccion>
         <div className="flex gap-2.5">
-          <span className="flex-1">
-            <EnlacePrimario href={conObra('/obra/avance-masivo', obra.id)} testid="frente-cargar-avance">
-              Cargar avance
-            </EnlacePrimario>
-          </span>
-          <span className="flex-1">
-            <EnlaceSecundario href={conObra('/obra/personas', obra.id)} testid="frente-ver-gente">
-              Ver la gente
-            </EnlaceSecundario>
-          </span>
+          <BotonEnlace
+            href={conObra('/obra/avance-masivo', obra.id)}
+            variante="primaria"
+            tamano="bloque"
+            data-testid="frente-cargar-avance"
+          >
+            Cargar avance
+          </BotonEnlace>
+          <BotonEnlace
+            href={conObra('/obra/personas', obra.id)}
+            variante="secundaria"
+            tamano="bloque"
+            data-testid="frente-ver-gente"
+          >
+            Ver la gente
+          </BotonEnlace>
         </div>
       </PieDeAccion>
     </>

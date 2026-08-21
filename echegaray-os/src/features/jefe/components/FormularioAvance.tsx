@@ -1,8 +1,8 @@
 'use client'
 
 import { useActionState, useState } from 'react'
-import { Aviso } from '@/shared/components/ds'
-import { AccionPrimaria, Barra, Confirmacion, Nada, Panel, porcentaje } from './Piezas'
+import { Aviso, Boton } from '@/shared/components/ds'
+import { Barra, Confirmacion, Nada, Panel, porcentaje } from './Piezas'
 import { PieDeAccion } from './ShellJefe'
 import { AVISO_CRITERIO, ROTULO_METODO, controlDe } from '../services/medicion'
 import type { Metodo } from '../services/medicion'
@@ -89,7 +89,7 @@ export function FormularioAvance({
             <span className="flex-1">
               <Barra pct={pctVivo} tono="marca" />
             </span>
-            <span className="shrink-0 font-mono text-[30px] font-semibold leading-none tabular-nums text-ink">
+            <span className="shrink-0 font-mono text-[28px] font-semibold leading-none tabular-nums text-ink">
               {pctVivo == null ? '—' : `${pctVivo} %`}
             </span>
           </div>
@@ -230,7 +230,7 @@ export function FormularioAvance({
                   className="flex min-h-[56px] items-center gap-3 rounded-[12px] bg-surface-quiet px-3.5"
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[14.5px] text-ink">{p.nombre_completo}</span>
+                    <span className="block truncate text-[15px] text-ink">{p.nombre_completo}</span>
                     <span className="block text-[12px] text-faint">{p.categoria ?? 'sin categoría'}</span>
                   </span>
                   <input
@@ -255,13 +255,15 @@ export function FormularioAvance({
       </div>
 
       <PieDeAccion>
-        <AccionPrimaria
+        <Boton
           type="submit"
+          variante="primaria"
+          tamano="bloque"
           disabled={enviando || faltaCriterio || !hayCambio}
-          testid="guardar-avance"
+          data-testid="guardar-avance"
         >
           {enviando ? 'Guardando…' : faltaCriterio ? 'Falta el criterio' : hayCambio ? 'Guardar avance' : 'Sin cambios'}
-        </AccionPrimaria>
+        </Boton>
       </PieDeAccion>
     </form>
   )

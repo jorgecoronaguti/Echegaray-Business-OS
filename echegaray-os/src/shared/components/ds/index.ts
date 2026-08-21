@@ -9,7 +9,7 @@
 // Punto de entrada único: import { Tabla, Estado, Boton } from '@/shared/components/ds'
 export { TituloPantalla, TituloPanel, Eyebrow, Num, Nulo, Valor } from './texto'
 export { Estado, type TonoEstado } from './Estado'
-export { Boton, BotonEnlace, Volver } from './Boton'
+export { Boton, BotonEnlace, Volver, type TamanoBoton } from './Boton'
 export { Tabla, THead, Th, Tr, Td, FilaTotal, Vacio } from './Tabla'
 export { Tabs, SubTabs, type Tab } from './Navegacion'
 export { EntityHeader, type CampoHeader } from './EntityHeader'
