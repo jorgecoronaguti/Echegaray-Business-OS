@@ -59,8 +59,10 @@ test('la búsqueda encuentra por cliente, no sólo por obra', async ({ page }) =
     .filter((c) => c.length > 3 && !/sin cliente/i.test(c))[0]
     .split(/[\s(]/)[0]
 
+  // SIN ENTER — y no es un detalle de estilo: el `press('Enter')` que había acá era la prueba de
+  // que el buscador exigía enviar un formulario. El contrato de diseño dice «filtran al teclear,
+  // sin Enter ni botón Buscar», así que el test tiene que filtrar como filtra una persona.
   await page.getByTestId('buscar-obra').fill(alguno)
-  await page.getByTestId('buscar-obra').press('Enter')
   await page.waitForURL(new RegExp(`q=`, 'i'))
   const visibles = await page.locator('[data-testid="portafolio-tabla"] tbody tr td:nth-child(2)').allInnerTexts()
   expect(visibles.length).toBeGreaterThan(0)
@@ -134,4 +136,57 @@ test('el Gantt recuerda su propia vista, distinta de la del Resumen', async ({ p
   await expect(page.getByTestId('limpiar-filtros')).toBeVisible()
   await page.getByTestId('limpiar-filtros').click()
   await expect(page).toHaveURL(/\/obras$/)
+})
+
+test('la lista cambia al TECLEAR tres letras, sin Enter ni botón', async ({ page }) => {
+  // ═══ EL DEFECTO QUE ATRAPA ═══
+  //
+  // Hasta el 21/08 el buscador de la cartera era un `form` GET: escribir no hacía nada hasta apretar
+  // Enter, y nada en la pantalla decía que había que apretarlo. Quien escribía tres letras veía la
+  // lista entera y concluía que el buscador estaba roto —o, peor, que la obra no estaba cargada—.
+  //
+  // Este test NO toca Enter y NO hace clic en nada: sólo escribe. Si alguien vuelve a poner un
+  // `form` GET, la tabla no se mueve y esto se pone rojo.
+  await entrar(page)
+  await page.goto('/obras')
+  const total = await filas(page).count()
+  expect(total).toBeGreaterThan(1)
+
+  const nombres = await contenido(page)
+  // Tres letras de una obra real de la cartera. El test no puede depender de que exista «Galpón»,
+  // pero sí de que lo que la primera columna muestra se pueda encontrar tecleándolo.
+  const tresLetras = nombres.find((n) => n.length >= 3)!.slice(0, 3)
+
+  await page.getByTestId('buscar-obra').pressSequentially(tresLetras, { delay: 60 })
+  // El debounce es de 250 ms: la URL cambia sola, sin ninguna otra acción.
+  await page.waitForURL(new RegExp(`q=${encodeURIComponent(tresLetras).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i'))
+  await expect(page.getByTestId('buscar-obra')).toHaveValue(tresLetras)
+
+  // Y la LISTA se movió, que es lo que se estaba probando.
+  const visibles = await contenido(page)
+  expect(visibles.length).toBeGreaterThan(0)
+  for (const n of visibles) expect(n.toLowerCase()).toContain(tresLetras.toLowerCase())
+})
+
+test('borrar el buscador devuelve la lista entera: la vista recordada no lo resucita', async ({ page }) => {
+  // ═══ EL DEFECTO QUE ATRAPA ═══
+  //
+  // `/obras` recuerda la última vista en una cookie y la restaura cuando la URL no trae ninguna
+  // clave de vista. Al dejar de ser un formulario, la URL la arma `urlDeBusqueda` — y si omitiera
+  // la `q` vacía, borrar el texto dejaría una URL «sin elección», el middleware devolvería la
+  // búsqueda anterior y el buscador se llenaría solo. La lista quedaría filtrada con el campo en
+  // blanco: el peor estado posible, porque no hay nada en pantalla que explique lo que falta.
+  await entrar(page)
+  await page.goto('/obras')
+  const total = await filas(page).count()
+
+  const nombres = await contenido(page)
+  const tresLetras = nombres.find((n) => n.length >= 3)!.slice(0, 3)
+  await page.getByTestId('buscar-obra').fill(tresLetras)
+  await page.waitForURL(/q=/)
+
+  await page.getByTestId('buscar-obra').fill('')
+  await page.waitForURL(/q=(&|$)/)
+  await expect(filas(page)).toHaveCount(total)
+  await expect(page.getByTestId('buscar-obra')).toHaveValue('')
 })
