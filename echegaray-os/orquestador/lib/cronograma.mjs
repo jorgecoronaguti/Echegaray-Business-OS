@@ -156,22 +156,36 @@ export function simularMovimiento(actividades, dependencias, id, delta) {
   const antes = calcular(actividades, dependencias)
   const base = antes.actividades.get(id)
   if (!base || base.sinPlan) {
-    return { arrastradas: [], finObraAntes: antes.finObra, finObraDespues: antes.finObra, sinPlan: true }
+    return {
+      arrastradas: [], movimientos: [],
+      finObraAntes: antes.finObra, finObraDespues: antes.finObra, sinPlan: true,
+    }
   }
   const movidas = actividades.map((a) =>
     a.id === id ? { ...a, inicioFijo: base.inicio + Number(delta) } : a)
   const despues = calcular(movidas, dependencias)
 
-  const arrastradas = []
+  // `movimientos` incluye a la MOVIDA y trae las posiciones NUEVAS, en índices de día hábil. Es lo
+  // que hay que escribir para aplicar el arrastre, y sale de este mismo cálculo a propósito: si la
+  // simulación que se muestra y la escritura que se guarda salieran de dos lugares, la pantalla
+  // podría prometer una cosa y la base guardar otra. La movida va SIEMPRE aunque su delta quede en
+  // cero: `inicioFijo` es un piso, no un imán, y una predecesora puede frenarla — el número honesto
+  // de cuánto se movió de verdad es éste, no el que pidió el gesto.
+  const movimientos = []
   for (const [otroId, d] of despues.actividades) {
-    if (otroId === id || d.sinPlan) continue
+    if (d.sinPlan) continue
     const a = antes.actividades.get(otroId)
-    if (a && !a.sinPlan && d.inicio !== a.inicio) {
-      arrastradas.push({ id: otroId, dias: d.inicio - a.inicio })
-    }
+    if (!a || a.sinPlan) continue
+    if (otroId !== id && d.inicio === a.inicio) continue
+    movimientos.push({ id: otroId, dias: d.inicio - a.inicio, inicio: d.inicio, fin: d.fin })
   }
+  const arrastradas = movimientos
+    .filter((m) => m.id !== id)
+    .map((m) => ({ id: m.id, dias: m.dias }))
+
   return {
     arrastradas,
+    movimientos,
     finObraAntes: antes.finObra,
     finObraDespues: despues.finObra,
     corrimientoFinObra: (despues.finObra ?? 0) - (antes.finObra ?? 0),

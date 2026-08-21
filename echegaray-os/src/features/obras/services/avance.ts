@@ -30,6 +30,56 @@ export function avancePorPasos(pasos: readonly PasoMedible[]): number | null {
   return Math.round((hecho / total) * 1000) / 10
 }
 
+/** Lo mínimo que hace falta de una actividad para agregarla: su avance y su peso. */
+export interface MedidaAgregable {
+  avance_pct: number | null
+  /** El peso. `null` o 0 = «esta actividad no declara cuánto trabajo es». */
+  hh_plan: number | null
+}
+
+/**
+ * EL AVANCE DE UN CONJUNTO — LA ÚNICA REGLA. Frente, rubro, obra: se agrega siempre así.
+ *
+ * **Ponderado por `hh_plan`. Si NINGUNA actividad del conjunto declara HH, promedio simple, y esa
+ * caída queda DECLARADA** (`ponderado: false`) para que la pantalla pueda decir con qué se midió.
+ * `null` cuando ninguna tiene avance: nadie sabe cómo va, y eso no es cero.
+ *
+ * ═══ POR QUÉ ACÁ Y NO EN CADA PANTALLA ═══
+ *
+ * Hasta hoy convivían DOS reglas sobre el mismo hecho: la 08 ponderaba por HH plan y la pantalla del
+ * jefe (J06) promediaba simple. El mismo frente daba dos porcentajes distintos según por dónde se
+ * entrara — y ninguno de los dos era «el avance del frente», porque el avance del frente es uno solo.
+ *
+ * ═══ LA JUSTIFICACIÓN DEL PROMEDIO SIMPLE, DESCARTADA POR ESCRITO ═══
+ *
+ * `frentes.ts` argumentaba: «el jefe de obra no ve costo, y ponderar por horas planificadas haría que
+ * un frente cambie de porcentaje cuando alguien corrige una estimación de horas — un número que se
+ * mueve solo es un número en el que nadie confía». Se descarta por tres razones:
+ *
+ *   1. HH plan NO es costo. Es la medida del trabajo, y el jefe de obra las ve en la 07 y en la 08.
+ *      El argumento protegía de una fuga de información que no existe.
+ *   2. El promedio simple TAMBIÉN se mueve solo —cambia al agregar o archivar una actividad— y
+ *      además miente en el caso que importa: 900 HH al 0 % y 100 HH al 100 % dan «50 % del frente»
+ *      con el 90 % del trabajo sin empezar. Un número estable y falso es peor que uno que se corrige.
+ *   3. La vista SQL publicada ya agrega ponderando. Dejar la pantalla del jefe promediando simple
+ *      mantenía dos verdades sobre el mismo frente en el mismo sistema.
+ *
+ * Lo que sí sobrevive del argumento viejo es el fallback: sin HH cargadas no hay peso que aplicar, y
+ * ahí el promedio simple es la única respuesta posible. Por eso se declara en vez de esconderse.
+ */
+export function avanceAgregado(
+  medidas: readonly MedidaAgregable[],
+): { pct: number | null; medidas: number; ponderado: boolean } {
+  const conDato = medidas.filter((m) => m.avance_pct != null)
+  if (!conDato.length) return { pct: null, medidas: 0, ponderado: false }
+  const pesos = conDato.map((m) => (m.hh_plan == null || m.hh_plan < 0 ? 0 : m.hh_plan))
+  const total = pesos.reduce((a, b) => a + b, 0)
+  const pct = total > 0
+    ? conDato.reduce((acc, m, i) => acc + (pesos[i] / total) * (m.avance_pct as number), 0)
+    : conDato.reduce((acc, m) => acc + (m.avance_pct as number), 0) / conDato.length
+  return { pct: Math.round(pct * 10) / 10, medidas: conDato.length, ponderado: total > 0 }
+}
+
 /** El avance por cantidad acumulada. Sin objetivo cargado no hay porcentaje: es `null`, no 0. */
 export function avancePorCantidad(ejecutada: number | null, objetivo: number | null): number | null {
   if (objetivo === null || objetivo <= 0 || ejecutada === null) return null

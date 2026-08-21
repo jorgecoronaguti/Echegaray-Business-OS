@@ -207,3 +207,57 @@ test('un frente hecho declara la base «terminada», no «plan»', () => {
   const [f] = frentesDe([fila({ seccion: 'A', avance_pct: 100, hh_plan: 40, hh_real: 40 })])
   assert.equal(f.base, 'terminada')
 })
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LOS TIEMPOS TÉCNICOS NO SE COMPRIMEN CON MÁS GENTE
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// EL DEFECTO QUE ATRAPA: `duracionDias` recibe los días técnicos como cuarto argumento desde el día
+// uno —y su función SQL gemela también—, pero `frentesDe` NUNCA se lo pasaba. Un frente de hormigón
+// con siete días de curado se comprimía como si curar fuera trabajo: la pantalla contestaba «poné el
+// doble de gente y terminás en la mitad de tiempo» sobre algo que cura siete días haya una persona
+// o veinte. Es la respuesta que se descubre el día de la entrega.
+
+test('MÁS GENTE COMPRIME EL TRABAJO Y NUNCA EL CURADO', () => {
+  const frente = (dotacion: number) => frentesDe([
+    fila({ seccion: 'Tabique', nombre: 'Armadura y hormigonado', hh_plan: 320 }),
+    fila({ seccion: 'Tabique', nombre: 'Curado', hh_plan: 0, dias_plan: 7, tiempo_tecnico: true }),
+  ], { dotaciones: { Tabique: dotacion }, jornada: 8 })[0]
+
+  const con4 = frente(4)
+  const con8 = frente(8)
+
+  assert.equal(con4.diasTecnicos, 7, 'los 7 días de curado del frente son días fijos')
+  assert.equal(con4.dias, 17, '320 HH ÷ (4 × 8) = 10 días de trabajo + 7 de curado')
+  assert.equal(con8.dias, 12, 'el doble de gente hizo 10 días de trabajo en 5')
+
+  const trabajo4 = con4.dias! - con4.diasTecnicos
+  const trabajo8 = con8.dias! - con8.diasTecnicos
+  assert.equal(trabajo8, trabajo4 / 2, 'el componente productivo sí se comprime a la mitad')
+  assert.equal(con8.diasTecnicos, con4.diasTecnicos, 'la parte técnica NO se movió un solo día')
+  assert.ok(con8.dias! >= con8.diasTecnicos, 'ninguna dotación puede bajar del piso técnico')
+
+  // El piso: con una cuadrilla absurda el frente no baja de los días de curado.
+  const con99 = frente(99)
+  assert.ok(con99.dias! >= 7, `99 personas dieron ${con99.dias} días y el curado son 7`)
+})
+
+test('el tiempo técnico lo DECLARA la actividad: no se deduce de tener días de plan', () => {
+  // Las 344 actividades traídas del tracker tienen `dias_plan` y se miden manual. Si «tiene días de
+  // plan» alcanzara para ser tiempo técnico, los días de plan de la obra entera se sumarían como
+  // días que no se comprimen, y todos los frentes quedarían inflados. Peor defecto que el original.
+  const [f] = frentesDe([
+    fila({ seccion: 'A', hh_plan: 320, dias_plan: 12 }),
+  ], { dotaciones: { A: 4 }, jornada: 8 })
+  assert.equal(f.diasTecnicos, 0)
+  assert.equal(f.dias, 10, 'los 12 días de plan no son 12 días técnicos')
+})
+
+test('un tiempo técnico YA CUMPLIDO no vuelve a sumar sus días', () => {
+  const [f] = frentesDe([
+    fila({ seccion: 'A', hh_plan: 320 }),
+    fila({ seccion: 'A', hh_plan: 8, hh_real: 8, avance_pct: 100, dias_plan: 7, tiempo_tecnico: true }),
+  ], { dotaciones: { A: 4 }, jornada: 8 })
+  assert.equal(f.diasTecnicos, 0, 'el curado que pasó, pasó')
+  assert.equal(f.dias, 10)
+})

@@ -22,7 +22,7 @@ const COLUMNAS = [
   'hh_plan', 'hh_real', 'avance_pct', 'dias_plan',
   'inicio_plan', 'fin_plan', 'inicio_base', 'fin_base', 'inicio_real', 'fin_real',
   'estado', 'cuadrilla_id', 'cuadrilla_prevista', 'cantidad_objetivo', 'unidad',
-  'dotacion_prevista', 'tope_frente', 'impedimentos_abiertos',
+  'dotacion_prevista', 'tope_frente', 'impedimentos_abiertos', 'tiempo_tecnico',
 ].join(', ')
 
 /** `pg` y PostgREST devuelven las columnas `date` de formas distintas. Todo lo que entra al motor
@@ -53,7 +53,9 @@ export async function getInsumosCronograma(
     supabase.from('obra_actividad_control')
       .select(COLUMNAS).eq('obra_id', obraId).eq('archivada', false).order('orden').limit(2000),
     supabase.from('obra_dependencia')
-      .select('origen_id, destino_id, tipo, lag_dias').eq('obra_id', obraId).limit(2000),
+      // El `id` viaja porque la 07 ahora deja QUITAR una precedencia, y `quitarDependencia` borra
+      // por id. Sin él, la pantalla mostraría la relación y no podría deshacerla.
+      .select('id, origen_id, destino_id, tipo, lag_dias').eq('obra_id', obraId).limit(2000),
     supabase.from('calendario_no_laborable').select('fecha, alcance, obra_id').limit(2000),
   ])
 

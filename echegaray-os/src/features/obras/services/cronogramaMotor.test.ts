@@ -7,7 +7,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  armarCronograma, duracionDe, hhRestantes, origenDelCronograma, simularArrastre,
+  armarCronograma, duracionDe, hhRestantes, movimientosDelArrastre, origenDelCronograma, simularArrastre,
   type ActividadCruda, type InsumosCronograma,
 } from './cronogramaMotor.ts'
 import { CalendarioObra } from '../../../../orquestador/lib/calendario-obra.mjs'
@@ -185,4 +185,75 @@ test('con secuencia la insignia vuelve, y sólo en las que el motor marcó', () 
     c.actividades.filter((a) => a.critica).map((a) => a.actividad_id).sort(),
     ['a', 'b'],
   )
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LO QUE SE ESCRIBE ES LO QUE SE SIMULÓ
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// EL DEFECTO QUE ATRAPAN: que el popover muestre un arrastre y la escritura guarde otro. Las fechas
+// que se escriben salen de la MISMA corrida del motor que dibujó la consecuencia; recalcularlas
+// aparte sería una segunda definición del plan, y la diferencia sólo se vería en la base.
+
+const enCadena = () => insumos(
+  [
+    act({ actividad_id: 'a', nombre: 'A', dias_plan: 3 }),
+    act({ actividad_id: 'b', nombre: 'B', dias_plan: 2 }),
+    act({ actividad_id: 'c', nombre: 'C', dias_plan: 2 }),
+  ],
+  [
+    { origen_id: 'a', destino_id: 'b', tipo: 'FS', lag_dias: 0 },
+    { origen_id: 'b', destino_id: 'c', tipo: 'FS', lag_dias: 0 },
+  ],
+)
+
+test('MOVER IGUAL escribe UNA fila; resecuenciar escribe la movida y las arrastradas', () => {
+  const igual = movimientosDelArrastre(enCadena(), 'a', 2, { resecuenciar: false })
+  assert.deepEqual(igual.movimientos.map((m) => m.nombre), ['A'],
+    'mover igual no puede tocar a las que el jefe decidió acomodar él')
+
+  const resec = movimientosDelArrastre(enCadena(), 'a', 2, { resecuenciar: true })
+  assert.deepEqual(resec.movimientos.map((m) => m.nombre), ['A', 'B', 'C'])
+  assert.equal(resec.movimientos[0].nombre, 'A', 'la movida va primero: es la que el resultado nombra')
+})
+
+test('las fechas escritas son EXACTAMENTE las que el popover mostró', () => {
+  const ins = enCadena()
+  const simulado = simularArrastre(ins, 'a', 2)
+  const { movimientos } = movimientosDelArrastre(ins, 'a', 2, { resecuenciar: true })
+
+  const arrastradas = new Map(simulado.arrastradas.map((x) => [x.nombre, x.dias]))
+  for (const m of movimientos.filter((x) => x.nombre !== 'A')) {
+    assert.equal(m.dias, arrastradas.get(m.nombre), `${m.nombre} se escribiría con otro corrimiento`)
+  }
+  // La obra arranca el 2026-07-06 (lunes). A dura 3 días hábiles; +2 la manda al miércoles 8.
+  assert.equal(movimientos[0].inicio_plan, '2026-07-08')
+  assert.equal(movimientos[0].fin_plan, '2026-07-10')
+  // Y el fin de la última tiene que coincidir con el fin de obra que el popover anunció.
+  assert.equal(movimientos.at(-1)!.fin_plan, simulado.finObraDespues)
+})
+
+test('NINGÚN MOVIMIENTO TOCA LA LÍNEA BASE', () => {
+  // Si alguna vez `movimientosDelArrastre` devolviera inicio_base/fin_base, el desvío de plazo
+  // quedaría en cero para siempre y el tablero diría que la obra siempre va en fecha.
+  const { movimientos } = movimientosDelArrastre(enCadena(), 'a', 2, { resecuenciar: true })
+  for (const m of movimientos) {
+    assert.deepEqual(Object.keys(m).sort(), ['dias', 'fin_plan', 'id', 'inicio_plan', 'nombre'])
+  }
+})
+
+test('mover una actividad sin plan no devuelve nada que escribir', () => {
+  const r = movimientosDelArrastre(insumos([act({ actividad_id: 'a' })]), 'a', 2, { resecuenciar: true })
+  assert.equal(r.sinPlan, true)
+  assert.deepEqual(r.movimientos, [], 'sin plan calculable no hay fecha que inventar')
+})
+
+test('una predecesora frena el retroceso, y lo escrito dice cuánto se movió DE VERDAD', () => {
+  // B no puede arrancar antes de que A termine: pedir −5 no la manda cinco días atrás. Lo que se
+  // guarda es la fecha que el motor pudo dar, y `dias` lo declara — prometer −5 y escribir 0 sería
+  // la pantalla mintiendo sobre su propia escritura.
+  const { movimientos } = movimientosDelArrastre(enCadena(), 'b', -5, { resecuenciar: true })
+  assert.equal(movimientos[0].nombre, 'B')
+  assert.equal(movimientos[0].dias, 0)
+  assert.equal(movimientos[0].inicio_plan, '2026-07-09', 'B sigue arrancando cuando A termina')
 })

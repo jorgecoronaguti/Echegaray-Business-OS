@@ -4,6 +4,22 @@ import {
   atrasoDelFrente, avanceDelFrente, diasDeAtraso, diasEntre, frentePorTarea, frentesDe,
 } from './frentes.ts'
 import type { NodoArbol } from './frentes.ts'
+import { avanceAgregado } from '../../obras/services/avance.ts'
+import { rubrosDe } from '../../obras/services/dotacion.ts'
+import type { FilaCronograma } from '../../obras/services/cronogramaMotor.ts'
+
+/** Una actividad sin nada cargado. El test llena SÓLO lo que la regla mira, para que se vea qué
+ *  entra en la cuenta y qué no. */
+const filaVacia: FilaCronograma = {
+  actividad_id: 'x', nombre: 'x', tipo: 'tarea', actividad_padre_id: null, orden: 1,
+  rubro: null, seccion: null, hh_plan: null, hh_real: null, avance_pct: null, dias_plan: null,
+  inicio_plan: null, fin_plan: null, inicio_base: null, fin_base: null, inicio_real: null,
+  fin_real: null, estado: null, cuadrilla_id: null, cuadrilla_prevista: null,
+  cantidad_objetivo: null, unidad: null, dotacion_prevista: null, tope_frente: null,
+  impedimentos_abiertos: null, duracion: null, inicio_calculado: null, fin_calculado: null,
+  holgura: null, critica: false, sin_plan: false, hh_restantes: null,
+  base_de_la_proyeccion: 'sin base',
+}
 
 const n = (p: Partial<NodoArbol> & { actividad_id: string }): NodoArbol => ({
   actividad_padre_id: null, nombre: p.actividad_id, camino: p.actividad_id, nivel: 0,
@@ -47,17 +63,23 @@ test('LA ARCHIVADA NO CUENTA, ni como frente ni como tarea', () => {
 test('SIN NINGUNA TAREA MEDIDA EL FRENTE DEVUELVE NULL, NUNCA 0', () => {
   // El defecto que atrapa: un frente sin mediciones se dibujaba con la barra en cero y se leía como
   // «no arrancó». Son dos hechos distintos: cero es no haber empezado; null es no saber.
-  const a = avanceDelFrente([{ actividad_id: 'x', avance_pct: null }, { actividad_id: 'y', avance_pct: null }])
+  const a = avanceDelFrente([
+    { actividad_id: 'x', avance_pct: null, hh_plan: 10 },
+    { actividad_id: 'y', avance_pct: null, hh_plan: 10 },
+  ])
   assert.equal(a.pct, null)
   assert.equal(a.medidas, 0)
   assert.equal(a.total, 2)
 })
 
-test('EL PROMEDIO SE SACA SOBRE LAS MEDIDAS, y la cobertura viaja con el número', () => {
+test('SIN HH CARGADAS EL PROMEDIO ES SIMPLE — y es el FALLBACK declarado, no la regla', () => {
+  // CAMBIO DE REGLA (este encargo): el avance agregado se pondera por hh_plan. Este caso —ninguna
+  // tarea con HH— es el único donde el promedio simple sigue siendo la respuesta, porque no hay
+  // peso que aplicar. El número no cambió; lo que cambió es POR QUÉ es ése.
   const a = avanceDelFrente([
-    { actividad_id: 'a', avance_pct: 100 },
-    { actividad_id: 'b', avance_pct: 20 },
-    { actividad_id: 'c', avance_pct: null },
+    { actividad_id: 'a', avance_pct: 100, hh_plan: null },
+    { actividad_id: 'b', avance_pct: 20, hh_plan: null },
+    { actividad_id: 'c', avance_pct: null, hh_plan: null },
   ])
   assert.equal(a.pct, 60)
   assert.equal(a.medidas, 2)
@@ -121,4 +143,42 @@ test('CON FRENTES ANIDADOS GANA EL MÁS CERCANO', () => {
 
 test('UNA TAREA SIN PADRE NO TIENE FRENTE, y no se le inventa uno', () => {
   assert.equal(frentePorTarea([n({ actividad_id: 'suelta' })]).get('suelta'), undefined)
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// UNA SOLA REGLA DE AVANCE AGREGADO — el mismo frente por las dos vías
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// EL DEFECTO QUE ATRAPA: hasta hoy la pantalla del jefe (J06) promediaba SIMPLE y la 08 ponderaba
+// por HH plan. Sobre el mismo frente —900 HH sin empezar y 100 HH terminadas— una decía «50 %» y la
+// otra «10 %». El 50 % es el que miente: el 90 % del trabajo del frente no arrancó.
+//
+// Si alguien vuelve a poner el promedio simple en cualquiera de las dos vías, este test se pone rojo.
+
+test('LA REGLA CANÓNICA ES PONDERADO POR hh_plan: J06 y la 08 dan EL MISMO número', () => {
+  const tareas = [
+    { actividad_id: 'grande', avance_pct: 0, hh_plan: 900 },
+    { actividad_id: 'chica', avance_pct: 100, hh_plan: 100 },
+  ]
+
+  // vía J06 — la pantalla del jefe
+  const porJefe = avanceDelFrente(tareas)
+
+  // vía 08 — la tabla por rubro de Dotación y Proyección
+  const porDotacion = rubrosDe(tareas.map((t) => ({
+    ...filaVacia, actividad_id: t.actividad_id, nombre: t.actividad_id,
+    rubro: 'R', avance_pct: t.avance_pct, hh_plan: t.hh_plan,
+  }))).find((f) => f.nivel === 'rubro')!
+
+  assert.equal(porJefe.pct, 10, 'el promedio simple habría dicho 50 % con el 90 % sin empezar')
+  assert.equal(porDotacion.avancePct, 10)
+  assert.equal(porJefe.pct, porDotacion.avancePct, 'dos pantallas, dos números, un solo frente')
+})
+
+test('el avance agregado declara CON QUÉ midió: ponderado, o promedio simple como fallback', () => {
+  assert.equal(avanceAgregado([{ avance_pct: 50, hh_plan: 10 }]).ponderado, true)
+  assert.equal(avanceAgregado([{ avance_pct: 50, hh_plan: null }]).ponderado, false)
+  assert.equal(avanceAgregado([{ avance_pct: 50, hh_plan: 0 }]).ponderado, false,
+    'peso cero no es peso: sin nada que ponderar, el fallback tiene que decirse')
+  assert.equal(avanceAgregado([]).pct, null, 'sin una sola medida es null, nunca 0')
 })
