@@ -368,7 +368,7 @@ function lineaBanco(banco) {
     return `pagada verificada en el banco: débito${banco.fecha ? ` del ${String(banco.fecha).slice(0, 10)}` : ''} por ${money(banco.importe)}${banco.referencia ? ` · ref ${banco.referencia}` : ''}${junto}`
   }
   if (banco.estado === 'sin_debito') {
-    return 'dice pagada por transferencia y **no encuentro ese débito en el extracto** — puede que el banco todavía no lo muestre, o que no esté paga: vale la pena mirarlo'
+    return 'dice pagada por transferencia y **no encuentro ese débito en el extracto** — puede que el banco todavía no lo muestre, que se haya pagado junto con facturas de otro envío, o que no esté paga: vale la pena mirarlo'
   }
   return 'no pude cruzarla contra el extracto bancario'
 }
