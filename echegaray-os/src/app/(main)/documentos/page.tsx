@@ -18,10 +18,11 @@
 // listado incluye presupuestos de clientes, declaraciones y libros de sueldos. `/documentos` entra
 // en `RUTAS_SOLO_ECONOMIA` por eso.
 //
-// Y ESO NO CIERRA EL AGUJERO, sólo la puerta: la policy de `drive_index` es `using (true)` para
-// todo `authenticated`, así que cualquier usuario con sesión puede pedirle a PostgREST la lista
-// completa de nombres y rutas sin pasar por ninguna pantalla. Queda declarado acá porque una
-// limitación que no está escrita al lado del código es una limitación que nadie va a encontrar.
+// Y LA BASE YA DICE LO MISMO (migración 5100, 21/08/2026). Hasta ese día esto declaraba el agujero:
+// `drive_index` era `using (true)` y cualquier sesión pedía la lista completa por PostgREST sin
+// pasar por esta pantalla. Ahora la policy es `ve_economia()` para el catálogo entero, y el que no
+// ve economía sólo alcanza los archivos con vínculo propio. Esta pantalla dejó de ser la única
+// cerradura: si algún día se abriera la ruta, la base seguiría filtrando.
 
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'

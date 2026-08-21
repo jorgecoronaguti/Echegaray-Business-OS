@@ -146,7 +146,37 @@ export function columnasDelPaso(paso: PasoQueGuarda, d: Record<string, unknown>)
       fecha_inicio_plan: vacioANull(d.fecha_inicio_plan as string),
       fecha_fin_plan: vacioANull(d.fecha_fin_plan as string),
     }
-    case 'contrato': return { monto_contratado: vacioANull(d.monto_contratado as number) }
+    // `contrato` ya NO devuelve columna: desde la 5000 `monto_contratado` no es escribible por
+    // PostgREST y entra por `fijar_monto_contratado()`. Se deja el caso devolviendo vacío en lugar
+    // de sacarlo del tipo para que el paso siga existiendo en el alta guiada — lo que cambió es POR
+    // DÓNDE se escribe, no que el paso desapareciera.
+    case 'contrato': return {}
     case 'drive': return { drive_carpeta_id: (d.drive_carpeta_id as string) || null }
   }
+}
+
+/**
+ * ¿HAY QUE LLAMAR A `fijar_monto_contratado()`? — la regla vive acá, pura, y no adentro de la acción.
+ *
+ * Las tres respuestas que tiene que dar, y por qué cada una costó algo:
+ *
+ * 1. EL CAMPO AUSENTE NO ES UN CAMPO VACÍO. `CamposObra` no le dibuja el monto a quien no ve
+ *    economía, así que en su POST la clave NO VIAJA. Tratar eso como «vacío» significa NULL, o sea
+ *    una orden de BORRAR el contrato: un jefe de obra corrigiendo el nombre de la obra habría
+ *    disparado un intento de borrado y recibido «el monto lo fija Dirección» por algo que ni vio.
+ *    Un vacío TIPEADO sí es una orden de borrar — ahí la clave viaja con valor `''`.
+ * 2. SIN CAMBIO NO SE LLAMA. Los formularios reenvían el campo entero en cada guardado; llamar
+ *    siempre generaría una fila de auditoría que afirma un cambio donde no lo hubo, y le pediría
+ *    permiso económico a quien está guardando otra cosa.
+ * 3. LA COMPARACIÓN ES NUMÉRICA. La base devuelve `numeric` y el cliente lo puede traer como
+ *    string: `'7500000' !== 7500000` habría disparado el RPC en cada guardado. El NULL se resuelve
+ *    ANTES de convertir, porque `Number(null)` es 0 y eso confundiría «sin cargar» con «contrato de
+ *    $0» — la distinción que este módulo entero existe para no perder.
+ */
+export function debeFijarMonto(
+  vinoElCampo: boolean, antes: number | string | null, ahora: number | null,
+): boolean {
+  if (!vinoElCampo) return false
+  if (antes === null || ahora === null) return antes !== ahora
+  return Number(antes) !== Number(ahora)
 }
