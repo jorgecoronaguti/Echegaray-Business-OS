@@ -13,7 +13,7 @@
 // decide contra qué estándar se mide el rendimiento de la obra.
 
 import { FormAccion, type AccionFormulario } from '@/shared/components/ui'
-import { CTRL } from '@/shared/components/ui/FormAccion'
+import { CTRL } from '@/shared/components/ui/estilos'
 import type { EstadoVinculacion } from '../services/vinculacionEstandar'
 import type { VinculacionTarea } from '../services/vinculacionTareaService'
 

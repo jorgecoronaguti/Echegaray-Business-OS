@@ -50,7 +50,12 @@ test('la economía de la obra, contra la base real', { skip: !hayBase }, async (
 
   try {
     await c.query('begin')
-    for (const sql of MIGRACIONES) await c.query(sql)
+    // LAS DOS ÉPOCAS (mismo patrón que circuito-productivo-migraciones.mjs): antes de integrar,
+    // el test APLICA los .sql para probar que son ejecutables; una vez vivos en la base,
+    // re-aplicarlos revienta (T6230 ya recreó las vistas por encima) y lo que corresponde es
+    // afirmar contra el esquema REAL. El centinela es el último objeto de la cadena propia.
+    const centinela = await c.query("select to_regclass('public.obra_economia') as v")
+    if (!centinela.rows[0].v) for (const sql of MIGRACIONES) await c.query(sql)
 
     const direccion = await uno(`select id from perfiles where rol='direccion' limit 1`)
     assert.ok(direccion, 'no hay ningún perfil de dirección: sin él no se puede leer la economía')

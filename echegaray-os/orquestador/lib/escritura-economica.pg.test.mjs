@@ -61,7 +61,13 @@ test('escritura económica, drive_index y bitácora — contra la base real', { 
 
   try {
     await c.query('begin')
-    for (const a of ARCHIVOS) await c.query(await readFile(join(MIGRACIONES, a), 'utf8'))
+    // LAS DOS ÉPOCAS: las tres migraciones viven en la base desde el 21/08. Re-aplicarlas acá toma
+    // AccessExclusiveLock sobre vistas vivas dentro de la transacción del test — con la suite en
+    // paralelo eso es un deadlock servido (pasó el 22/08 contra el lector de obra_panel). Si los
+    // objetos están vivos, se afirma contra el esquema real; en una base nueva, se aplican.
+    const vivo = await c.query(
+      "select to_regclass('public.bitacora_cambio') is not null and to_regclass('public.drive_index') is not null as v")
+    if (!vivo.rows[0].v) for (const a of ARCHIVOS) await c.query(await readFile(join(MIGRACIONES, a), 'utf8'))
 
     const dir = await uno(`select id from perfiles where rol='direccion' limit 1`)
     const jefe = await uno(`select id from perfiles where rol='jefe_obra' limit 1`)

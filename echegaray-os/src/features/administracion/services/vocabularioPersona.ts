@@ -26,7 +26,7 @@
 // dueño, no una migración de UI. Lo que esta capa hace es NO PUBLICAR como oficio algo que es una
 // categoría: preferir callar a afirmar el hecho equivocado.
 
-import { esCategoriaDeConvenio } from '../types'
+import { esCategoriaDeConvenio } from '../types/index.ts'
 
 /** Normaliza para comparar contra el catálogo: la nómina escribe «OFICIAL», «Medio Oficial»,
  *  «medio_oficial» y «Medio oficial» para el mismo puesto. */

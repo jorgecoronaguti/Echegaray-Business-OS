@@ -220,15 +220,11 @@ export default async function ObraPage({
     partesPorActividad.set(p.actividad_id, previos)
   }
   const certificados = vista === 'economia' ? lector.leer(await getCertificados(supabase, obraId), []) : []
-<<<<<<< HEAD
-  // LOS PAPELES LOS PIDEN DOS SOLAPAS. Documentos muestra los de la obra; Cronograma, los que
-=======
   // EL PANEL ECONÓMICO TAMBIÉN EN RESUMEN: la línea de margen del resumen sale de acá desde el
   // 22/08. Antes se armaba con `contratado − costo real` del plan, que no es margen.
   const economia = vista === 'economia' || vista === 'resumen'
     ? lector.leer(await getEconomiaObra(supabase, obraId), null) : null
-  // LOS PAPELES LOS PIDEN DOS SOLAPAS. Documentos muestra los de la obra; Planificación, los que
->>>>>>> fix/economia-semantica
+  // LOS PAPELES LOS PIDEN DOS SOLAPAS. Documentos muestra los de la obra; Cronograma, los que
   // alguien colgó de una actividad. Es la MISMA lectura: dos consultas darían dos listas que un día
   // no coinciden.
   const documentos = vista === 'documentos' || esCronograma

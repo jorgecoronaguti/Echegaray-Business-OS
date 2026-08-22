@@ -32,7 +32,11 @@ test('posible duplicado y estado de control — contra la base real', { skip: !h
   const uno = async (sql, params) => (await q(sql, params))[0]
   try {
     await c.query('begin')
-    await c.query(await readFile(MIGRACION, 'utf8'))
+    // LAS DOS ÉPOCAS: T5500 ya vive en la base y T6220 (imputación fina de compras) recreó su
+    // vista por encima — re-aplicar el .sql acá tiraba «cannot drop columns from view». Si el
+    // objeto está vivo, se afirma contra el esquema real; si no (base nueva), se aplica.
+    const vivo = await c.query("select to_regclass('public.comprobante_posible_duplicado') as v")
+    if (!vivo.rows[0].v) await c.query(await readFile(MIGRACION, 'utf8'))
 
     /** Siembra un comprobante del libro de compras y devuelve su id. */
     const sembrar = async ({ tipo, pv, nro, fecha, total = 1284600, cuit = CUIT }) =>
