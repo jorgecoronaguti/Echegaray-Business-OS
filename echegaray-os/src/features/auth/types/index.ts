@@ -44,7 +44,18 @@ export const ROL_LABEL: Record<Rol, string> = {
 // `/marca` va acá por lo mismo que ya está en RUTAS_PUBLICAS (18/08): el isotipo es una imagen,
 // no una pantalla. Sin esta entrada el middleware redirigía `/marca/isotipo.png` a `/hoy` para todo
 // usuario campo y el logo se veía ROTO en cada pantalla mobile del rol Empleado (QA del 21/08).
-export const CAMPO_RUTAS_PERMITIDAS = ['/hoy', '/mi-trabajo', '/mi-informacion', '/integraciones/pedidos-materiales', '/integraciones/herramientas', '/integraciones/movimientos', '/campo', '/descargas', '/mi-cuenta', '/marca']
+// ═══ LAS TRES DE LA RECUPERACIÓN SON DEL EMPLEADO ANTES QUE DE NADIE (21/08/2026) ═══
+//
+// SER PÚBLICA NO EXIME DEL RBAC DE CAMPO. El middleware aplica las dos reglas por separado: la lista
+// blanca decide si hace falta sesión, y `esRutaCampoPermitida` decide qué abre el nivel campo CUANDO
+// YA HAY una. Un operario con la sesión abierta en el teléfono —que es el estado normal: el OS no lo
+// desloguea— que olvida la contraseña y abre el enlace del correo, cae en `/callback` CON sesión, y
+// sin esta entrada el middleware lo manda a `/hoy` antes de que el canje ocurra. El enlace se quema,
+// la contraseña sigue siendo la vieja, y no hay un solo error en ninguna pantalla.
+//
+// `/contrasena-nueva` es el final del mismo camino y no es pública —ahí ya hay sesión por
+// definición—, así que sin la entrada pasa exactamente lo mismo un paso más tarde.
+export const CAMPO_RUTAS_PERMITIDAS = ['/hoy', '/mi-trabajo', '/mi-informacion', '/integraciones/pedidos-materiales', '/integraciones/herramientas', '/integraciones/movimientos', '/campo', '/descargas', '/mi-cuenta', '/marca', '/recuperar', '/callback', '/contrasena-nueva']
 export function esRutaCampoPermitida(pathname: string): boolean {
   return CAMPO_RUTAS_PERMITIDAS.some((r) => pathname === r || pathname.startsWith(r + '/'))
 }
@@ -63,6 +74,14 @@ export function esRutaCampoPermitida(pathname: string): boolean {
 export const RUTAS_PUBLICAS = [
   '/login',
   '/signup',
+  // ═══ LAS DOS MITADES DE LA RECUPERACIÓN (21/08/2026) ═══
+  //
+  // Quien pide recuperar la contraseña NO TIENE SESIÓN —ése es el problema que vino a resolver— y
+  // quien vuelve del correo tampoco la tiene todavía: la sesión la crea el canje que hace
+  // `/callback`. Exigir sesión en cualquiera de las dos es la misma trampa que ya se pagó con
+  // `/api/oauth/start`: un 307 al login, silencioso, y la persona sigue afuera.
+  '/recuperar',
+  '/callback',
   '/descargar', // la landing de descarga de la extensión: estática, sin dato de la empresa
   '/api/oauth/start', // la ida a Google: la abre quien todavía NO autorizó — exigir sesión acá
                       // devolvía un 307 al login y el consentimiento no arrancaba nunca
@@ -104,3 +123,22 @@ export const signupInputSchema = z.object({
   nombre: z.string().trim().min(1, 'Indicá tu nombre'),
 })
 export type SignupInput = z.infer<typeof signupInputSchema>
+
+/** Pedir el correo de recuperación. Sólo el email: pedir algo más sería pedírselo a alguien que ya
+ *  demostró que no se acuerda de nada. */
+export const recuperarInputSchema = z.object({
+  email: z.string().trim().email('Email inválido'),
+})
+export type RecuperarInput = z.infer<typeof recuperarInputSchema>
+
+/** La contraseña nueva. Mismo mínimo que el alta y que «Mi cuenta»: tres mínimos distintos para la
+ *  misma contraseña son dos reglas mintiendo. Y se pide dos veces por lo mismo que en Mi cuenta —un
+ *  error de tipeo acá deja a la persona afuera, y afuera no puede entrar a arreglarlo. */
+export const contrasenaNuevaInputSchema = z.object({
+  password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),
+  password2: z.string(),
+}).refine((d) => d.password === d.password2, {
+  message: 'Las dos contraseñas no coinciden',
+  path: ['password2'],
+})
+export type ContrasenaNuevaInput = z.infer<typeof contrasenaNuevaInputSchema>

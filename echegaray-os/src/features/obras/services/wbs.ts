@@ -52,8 +52,17 @@ export interface NodoObra {
   peso_pasos: number | null
   /** El análisis de la base maestra con el que se planificó. Sin él no hay rendimiento ni duración. */
   analisis_id: string | null
+  /** La tarea tipo: la llave del histórico de rendimiento. */
+  tarea_tipo_id: string | null
+  /** La partida del presupuesto de la que salió. Es lo que habilita «Ver partida». */
+  cotizacion_partida_id: string | null
   tope_frente: number | null
   dotacion_prevista: number | null
+  cuadrilla_id: string | null
+  /** Días que NO se comprimen con más gente. Van al cuarto argumento de `duracionDias`, sumados
+   *  aparte: curar dos días son dos días haya una persona o veinte. */
+  tiempo_tecnico: boolean
+  dias_plan: number | null
   es_critica: boolean
 }
 

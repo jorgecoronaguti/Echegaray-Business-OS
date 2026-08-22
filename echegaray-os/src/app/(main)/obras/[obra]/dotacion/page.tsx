@@ -7,11 +7,13 @@
 // **no alcanza** cuando el tope del frente lo impide. NULL no es cero: prometer una fecha que el
 // tope impide se descubre el día de la entrega.
 //
-// ═══ EL SIMULADOR NO GUARDA NADA, Y LA URL ES SU MEMORIA ═══
+// ═══ LA URL ES LA MEMORIA DEL SIMULADOR, Y «APLICAR AL PLAN» LA CONVIERTE EN PLAN ═══
 //
 // Las dotaciones elegidas viajan en `?dot=<frente>~<n>`. No hay estado en el navegador: el mismo
-// link abre la misma simulación del otro lado del chat. Cuando el plan cambie debajo, la URL deja
-// de significar lo que significaba — por eso esto simula y no escribe.
+// link abre la misma simulación del otro lado del chat. Mientras están en la URL no son un plan —si
+// el plan cambia debajo, el link deja de significar lo que significaba—; se vuelven plan cuando
+// alguien las aplica, y ahí se escriben en `dotacion_prevista`, que es la capacidad con la que el
+// motor calcula la duración de cada actividad sin cuadrilla asignada.
 //
 // ═══ ESTA PANTALLA NO HABLA DE PLATA ═══
 //
@@ -28,9 +30,12 @@ import { armarCronograma } from '@/features/obras/services/cronogramaMotor'
 import {
   dotacionNecesaria, frentesDe, rubrosDe, sumaCompleta, type Frente,
 } from '@/features/obras/services/dotacion'
+import { aplicarDotacionAlPlan } from '@/features/obras/services/actionsPlan'
+import { getPerfilActual } from '@/features/auth/services/authService'
+import { esAdministracion } from '@/features/auth/types/areas'
 import { BarraContextoObra } from '@/features/obras/components/BarraContextoObra'
 import { TablaRubrosHH } from '@/features/obras/components/TablaRubrosHH'
-import { Callout } from '@/shared/components/ui'
+import { Callout, FormAccion } from '@/shared/components/ui'
 import { CalendarioObra } from '../../../../../../orquestador/lib/calendario-obra.mjs'
 
 export const dynamic = 'force-dynamic'
@@ -64,11 +69,15 @@ export default async function DotacionObraPage(
   const dotaciones = dotacionesDe(sp.dot)
   const supabase = await createClient()
 
-  const [{ data: insumos, error }, capacidad, disponibles] = await Promise.all([
+  const [{ data: insumos, error }, capacidad, disponibles, perfil] = await Promise.all([
     getInsumosCronograma(supabase, obraId),
     getCapacidadPonderada(supabase),
     getPersonasDisponibles(supabase, obraId),
+    getPerfilActual(supabase),
   ])
+  // Aplicar la dotación cambia la duración calculada del plan: es de Administración y de la
+  // jefatura de obra. La guarda de verdad vive en la acción; esto evita ofrecer el gesto.
+  const puedeAplicar = esAdministracion(perfil.data?.rol ?? null)
   if (error?.startsWith(`la obra ${obraId} no existe`)) notFound()
   if (error || !insumos) {
     return <main className="p-4 lg:p-8"><Callout tono="neg">No pude leer la obra: {error ?? 'sin datos'}</Callout></main>
@@ -147,13 +156,10 @@ export default async function DotacionObraPage(
                   tono={desvio == null ? 'normal' : (desvio > 0 ? 'neg' : (desvio < 0 ? 'pos' : 'normal'))}
                 />
               </div>
-              <button
-                type="button" disabled
-                title="Escribir el plan es del frente que rehace el workspace de la obra: acá todavía se simula, no se guarda."
-                className="cursor-not-allowed rounded-control bg-surface-sunken px-3 py-1.5 text-[12.5px] font-semibold text-faint"
-              >
-                Aplicar al plan
-              </button>
+              <AplicarAlPlan
+                obraId={obraId} dotaciones={dotaciones} puedeAplicar={puedeAplicar}
+                aEscribir={frentes.filter((f) => f.dotacion > 0 && f.clave in dotaciones).length}
+              />
             </div>
 
             {excede && (
@@ -207,6 +213,47 @@ export default async function DotacionObraPage(
         </section>
       </div>
     </main>
+  )
+}
+
+/**
+ * APLICAR LA SIMULACIÓN AL PLAN — el botón que convierte la URL en `dotacion_prevista`.
+ *
+ * El rótulo dice a cuántos frentes toca de verdad. «Aplicar al plan» sobre una pantalla donde nadie
+ * movió un stepper no escribiría nada y diría que sí; y los frentes en 0 quedan afuera porque cero
+ * personas no es un plan, es la ausencia de uno.
+ *
+ * Las dotaciones viajan como campos ocultos con el MISMO formato que la URL (`frente~n`): la
+ * pantalla y la escritura no pueden entender distinto el mismo texto. El servidor las vuelve a
+ * recortar por el tope del frente y recalcula qué actividades toca — la lista de actividades no
+ * viaja desde el navegador.
+ */
+function AplicarAlPlan({ obraId, dotaciones, puedeAplicar, aEscribir }: {
+  obraId: string
+  dotaciones: Record<string, number>
+  puedeAplicar: boolean
+  aEscribir: number
+}) {
+  if (!puedeAplicar) {
+    return (
+      <p className="max-w-[280px] text-[11.5px] text-faint">
+        Esto simula. Aplicarlo al plan es de Administración y de la jefatura de obra.
+      </p>
+    )
+  }
+  return (
+    <FormAccion
+      accion={aplicarDotacionAlPlan.bind(null, obraId)}
+      testid="form-aplicar-dotacion"
+      enviar={aEscribir === 1 ? 'Aplicar al plan (1 frente)' : `Aplicar al plan (${aEscribir} frentes)`}
+      mensajeOk="Dotación aplicada."
+      bloqueado={aEscribir === 0}
+      motivoBloqueo="Movés un stepper y se habilita: no hay ninguna dotación elegida para guardar."
+    >
+      {Object.entries(dotaciones).map(([clave, n]) => (
+        <input key={clave} type="hidden" name="dot" value={`${clave}~${n}`} />
+      ))}
+    </FormAccion>
   )
 }
 
@@ -273,6 +320,13 @@ function TablaFrentes({ frentes, href }: { frentes: Frente[]; href: (clave: stri
               <td className="px-2 py-1.5 text-right text-[12.5px] font-semibold text-ink tnum">
                 {f.dias == null ? <span className="font-normal text-faint">—</span>
                   : f.dias.toLocaleString('es-AR', { maximumFractionDigits: 1 })}
+                {/* Un frente que no baja de N días por más gente que se le ponga tiene que decir
+                    por qué: el curado son días fijos, no trabajo que se pueda repartir. */}
+                {f.diasTecnicos > 0 && f.dias != null && (
+                  <div className="text-[9.5px] font-normal text-warn">
+                    {f.diasTecnicos} d técnicos
+                  </div>
+                )}
               </td>
               <td className={`px-2 py-1.5 text-right text-[12px] tnum ${f.fin ? 'text-ink-soft' : 'text-faint'}`}>
                 {fmt(f.fin) ?? 'sin plan'}

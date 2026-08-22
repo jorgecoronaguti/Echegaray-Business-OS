@@ -17,6 +17,8 @@
 // Un frente sin una sola tarea medida devuelve `null`, nunca 0. Cero es un frente que no arrancó;
 // null es un frente que nadie sabe cómo va.
 
+import { avanceAgregado } from '../../obras/services/avance.ts'
+
 /** Una fila de `obra_wbs`. Sólo lo que este módulo mira. */
 export interface NodoArbol {
   actividad_id: string
@@ -32,6 +34,9 @@ export interface NodoArbol {
 export interface TareaMedida {
   actividad_id: string
   avance_pct: number | null
+  /** El PESO de la tarea dentro del frente. HH plan no es costo —el jefe de obra las ve en la 07 y
+   *  en la 08—: es cuánto trabajo es cada tarea, y sin eso el frente promedia peras con sandías. */
+  hh_plan: number | null
 }
 
 export interface Frente {
@@ -92,21 +97,22 @@ function medibles(raiz: NodoArbol, hijasDe: Map<string, NodoArbol[]>): string[] 
 }
 
 /**
- * El avance del frente: promedio simple de las tareas que TIENEN avance, y cuántas son.
+ * El avance del frente, con la cobertura pegada al número.
  *
- * Promedio simple y no ponderado por HH o por monto a propósito: el jefe de obra no ve costo, y
- * ponderar por horas planificadas haría que un frente cambie de porcentaje cuando alguien corrige
- * una estimación de horas — un número que se mueve solo es un número en el que nadie confía.
+ * ═══ LA REGLA ES UNA SOLA Y VIVE EN `avance.ts` ═══
+ *
+ * `avanceAgregado`: **ponderado por HH plan, con promedio simple DECLARADO como fallback** cuando
+ * ninguna tarea tiene HH cargadas. Este módulo promediaba simple y la 08 ponderaba: el mismo frente
+ * daba dos porcentajes distintos según por dónde se entrara. La justificación vieja del promedio
+ * simple —y por qué se descartó— está escrita en el módulo canónico, al lado de la regla que la
+ * reemplaza.
+ *
+ * Lo que sí es propio de acá y no se movió: un frente sin una sola tarea medida devuelve `null`,
+ * nunca 0, y el número viaja siempre con sobre cuántas tareas se sacó.
  */
 export function avanceDelFrente(tareas: TareaMedida[]): AvanceDeFrente {
-  const conDato = tareas.filter((t) => t.avance_pct != null)
-  if (conDato.length === 0) return { pct: null, medidas: 0, total: tareas.length }
-  const suma = conDato.reduce((s, t) => s + (t.avance_pct as number), 0)
-  return {
-    pct: Math.round((suma / conDato.length) * 10) / 10,
-    medidas: conDato.length,
-    total: tareas.length,
-  }
+  const { pct, medidas } = avanceAgregado(tareas)
+  return { pct, medidas, total: tareas.length }
 }
 
 /** `2026-08-21` → días de calendario entre dos fechas. Positivo si `b` es posterior a `a`. */

@@ -9,8 +9,9 @@ const nodo = (id: string, extra: Partial<NodoObra> = {}): NodoObra => ({
   cantidad_objetivo: null, cantidad_ejecutada: null, hh_plan: null, hh_real: null,
   metodo_avance: 'manual', avance_pct: null, fin_plan: null, responsable: null,
   es_subcontrato: false, estado: null, impedimentos_abiertos: 0, n_pasos: 0, n_pasos_hechos: 0,
-  peso_pasos: null, analisis_id: null, tope_frente: null, dotacion_prevista: null,
-  es_critica: false, ...extra,
+  peso_pasos: null, analisis_id: null, tarea_tipo_id: null, cotizacion_partida_id: null,
+  tope_frente: null, dotacion_prevista: null, cuadrilla_id: null, tiempo_tecnico: false,
+  dias_plan: null, es_critica: false, ...extra,
 })
 const contenedor = (id: string, extra: Partial<NodoObra> = {}): NodoObra =>
   nodo(id, { tipo: 'resumen', es_contenedor: true, tiene_hijas: true, ...extra })

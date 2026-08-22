@@ -10,6 +10,7 @@ import type {
 
 /** Una fila de `documentacion_legajo` con la persona embebida por PostgREST. */
 export interface VinculoLegajo {
+  id: string
   drive_file_id: string | null
   tipo_documento: string | null
   fecha_vencimiento: string | null
@@ -33,6 +34,7 @@ export interface ArchivoIndexado {
   mime_type: string | null
   size_bytes: number | null
   modified_time: string | null
+  nombre_norm: string | null
 }
 
 // ═══ LOS ARCHIVOS NO SE COPIAN: SE VINCULAN ═══
@@ -41,6 +43,45 @@ export interface ArchivoIndexado {
 // el `drive_file_id` que el indexador ya guardó. El OS no guarda el archivo, no lo sirve y no lo
 // duplica: si mañana alguien lo mueve de carpeta en Drive, este enlace sigue siendo el bueno.
 export const enlaceDrive = (driveFileId: string) => `https://drive.google.com/file/d/${driveFileId}/view`
+
+// ═══ DESCARGAR Y PREVISUALIZAR SON DOS URL DE DRIVE, NO UNA INTEGRACIÓN ═══
+//
+// `drive_index` NO guarda `webContentLink` ni `webViewLink` —sus columnas son id, nombre, ruta,
+// mime, tamaño y fechas—, así que las dos direcciones se DERIVAN del id. Son las direcciones
+// públicas y estables de Drive: el OS no sirve el archivo, no lo copia y no lo proxya. Quien las
+// abre las abre con SU sesión de Google, y por eso los permisos siguen siendo los de Drive: si no
+// tiene acceso, Google se lo dice. Eso es lo correcto, no una falla.
+//
+// LO QUE NO ANDA, MEDIDO: 3.108 de los 3.123 archivos son binarios (2.677 PDF, 322 planillas
+// Office, 40 imágenes…) y bajan bien. Los 15 restantes son de Google: 10 nativos
+// (`vnd.google-apps.document`/`.spreadsheet`) que no tienen bytes que bajar sino un formato de
+// exportación que habría que elegir a mano, y 5 `vnd.google-apps.shortcut`, que son accesos
+// directos y no tienen contenido en absoluto. Para esos 15 no se dibuja el botón: un «Descargar»
+// que baja un archivo de 0 bytes es peor que no tenerlo.
+
+const NATIVO_GOOGLE = 'application/vnd.google-apps.'
+
+/** La descarga directa del binario. `null` cuando el archivo no ES un binario de Drive. */
+export function enlaceDescarga(driveFileId: string, mimeType: string | null): string | null {
+  if (mimeType?.startsWith(NATIVO_GOOGLE)) return null
+  return `https://drive.google.com/uc?export=download&id=${driveFileId}`
+}
+
+/**
+ * El visor embebible de Drive. `null` para los accesos directos, que no tienen nada que mostrar.
+ *
+ * Los nativos de Google SÍ se previsualizan, con el visor de su producto. Se separan del binario
+ * porque `drive.google.com/file/d/…` sobre un Doc nativo devuelve un error, no el documento.
+ */
+export function enlacePreview(driveFileId: string, mimeType: string | null): string | null {
+  if (mimeType === `${NATIVO_GOOGLE}shortcut` || mimeType === `${NATIVO_GOOGLE}folder`) return null
+  const producto = mimeType?.startsWith(NATIVO_GOOGLE)
+    ? { document: 'document', spreadsheet: 'spreadsheets', presentation: 'presentation' }[mimeType.slice(NATIVO_GOOGLE.length)]
+    : undefined
+  if (producto) return `https://docs.google.com/${producto}/d/${driveFileId}/preview`
+  if (mimeType?.startsWith(NATIVO_GOOGLE)) return null
+  return `https://drive.google.com/file/d/${driveFileId}/preview`
+}
 
 /**
  * DE QUIÉN ES CADA ARCHIVO.
@@ -66,6 +107,7 @@ export function conVinculos(
       nombre: l.personas?.nombre_completo?.trim() || 'persona sin nombre',
       detalle: etiquetaLegajo(l.tipo_documento),
       href: l.persona_id ? `/administracion/personas/${l.persona_id}` : null,
+      legajoId: l.id,
     })
     if (l.drive_file_id && l.fecha_vencimiento) vence.set(l.drive_file_id, l.fecha_vencimiento)
   }
@@ -75,6 +117,10 @@ export function conVinculos(
       nombre: d.clientes?.nombre_comercial?.trim() || 'cliente sin nombre',
       detalle: d.rol?.trim() || null,
       href: d.clientes?.slug ? `/clientes/${d.clientes.slug}` : null,
+      // `cliente_documento` NO tiene columna de vencimiento: sus cinco columnas son cliente_id,
+      // drive_file_id, rol, origen y creado_en. Un contrato colgado de un cliente no puede vencer
+      // en el OS todavía, y eso se dice en el panel en vez de ofrecer un campo que no guarda nada.
+      legajoId: null,
     })
   }
   return archivos.map((a) => ({
@@ -108,6 +154,25 @@ export function estadoVigencia(vence: string | null, hoy: string): EstadoVigenci
   if (dias < 0) return 'vencido'
   if (dias <= 30) return 'vence-pronto'
   return 'vigente'
+}
+
+/**
+ * ═══ LA VENTANA QUE MIDE LA BANDA DE ALERTAS ═══
+ *
+ * Dos cortes y nada más: lo que YA venció (antes de hoy) y lo que vence ANTES DE QUE TERMINE EL MES.
+ * «Este mes» es el mes calendario, no «los próximos 30 días»: quien mira la banda un 28 quiere saber
+ * qué tiene que renovar antes de cerrar el mes, y «30 días» le contestaría por el mes siguiente.
+ *
+ * El último día se calcula con el día 0 del mes que viene, que es el truco que hace bien febrero y
+ * los años bisiestos sin una tabla de largos de mes. Todo en UTC: la fecha de vencimiento es una
+ * `date` de Postgres —un día del calendario, sin hora—, y restarle un huso la correría un día.
+ */
+export function ventanaVencimientos(hoy: string): { desde: string; hasta: string } {
+  const desde = hoy.slice(0, 10)
+  const d = new Date(`${desde}T00:00:00Z`)
+  if (Number.isNaN(d.getTime())) return { desde, hasta: desde }
+  const fin = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0))
+  return { desde, hasta: fin.toISOString().slice(0, 10) }
 }
 
 const DIA_MS = 86400000

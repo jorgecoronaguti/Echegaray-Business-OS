@@ -79,6 +79,8 @@ export interface ActividadDelJefe extends TareaDelDia {
   n_pasos: number
   n_pasos_hechos: number
   cuadrilla_prevista: string | null
+  /** El peso de la tarea. Entra en el avance ponderado del frente (`avance.ts`). NO es costo. */
+  hh_plan: number | null
   hh_real: number | null
   inicio_plan: string | null
   fin_plan: string | null
@@ -92,7 +94,7 @@ export interface ActividadDelJefe extends TareaDelDia {
 const COLUMNAS_ACTIVIDAD =
   'actividad_id, obra_id, nombre, tipo, rubro, metodo_avance, avance_pct, origen_avance,'
   + ' estado_operativo, impedimentos_abiertos, n_pasos, n_pasos_hechos, cuadrilla_prevista,'
-  + ' hh_real, inicio_plan, fin_plan, fin_real, ultimo_parte, unidad, cantidad_objetivo,'
+  + ' hh_plan, hh_real, inicio_plan, fin_plan, fin_real, ultimo_parte, unidad, cantidad_objetivo,'
   + ' cantidad_ejecutada'
 
 export async function getActividades(
@@ -132,6 +134,7 @@ function aActividad(o: unknown): ActividadDelJefe {
     n_pasos: Number(f.n_pasos ?? 0),
     n_pasos_hechos: Number(f.n_pasos_hechos ?? 0),
     cuadrilla_prevista: (f.cuadrilla_prevista as string | null) ?? null,
+    hh_plan: numero(f.hh_plan),
     hh_real: numero(f.hh_real),
     inicio_plan: (f.inicio_plan as string | null) ?? null,
     fin_plan: (f.fin_plan as string | null) ?? null,

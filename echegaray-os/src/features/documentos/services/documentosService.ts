@@ -17,12 +17,17 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ServiceResult } from '@/features/administracion/types'
-import type { CarpetaRaiz, Documento } from '../types'
+import type { CarpetaRaiz, Documento, ResumenVencimientos } from '../types'
 import {
-  conVinculos, type ArchivoIndexado, type VinculoCliente, type VinculoLegajo,
+  conVinculos, ventanaVencimientos,
+  type ArchivoIndexado, type VinculoCliente, type VinculoLegajo,
 } from './documentos'
+import { esCategoria, patronesAnteriores, patronesDe, type ClaveCategoria, type Patron } from './categorias'
 
-const COLUMNAS = 'drive_file_id, name, path, tipo, mime_type, size_bytes, modified_time'
+// `nombre_norm` viaja porque es el campo que CLASIFICA: la etiqueta de categoría de cada fila se
+// calcula con el mismo texto contra el que filtró Postgres. Normalizar el nombre otra vez en el
+// navegador dejaría al chip y a la fila discutiendo sobre el mismo archivo.
+const COLUMNAS = 'drive_file_id, name, path, tipo, mime_type, size_bytes, modified_time, nombre_norm'
 
 /** Tope de filas dibujadas. Cuando se alcanza, la pantalla dice «se listan N de M». */
 export const TOPE = 200
@@ -32,6 +37,12 @@ export interface FiltroDocumentos {
   /** Prefijo de ruta: una carpeta del catálogo, no una categoría inventada. */
   carpeta?: string
   tipo?: string
+  /** Una clave de `categorias.ts`. Se traduce a patrones SQL, no a una columna que no existe. */
+  categoria?: string
+  /** `vencido` o `mes`: el recorte de la banda de alertas, aplicado a la tabla. */
+  vence?: string
+  /** El día contra el que se mide `vence`, en ISO. Lo fija la pantalla una sola vez. */
+  hoy?: string
 }
 
 export interface Catalogo {
@@ -40,14 +51,52 @@ export interface Catalogo {
   total: number
 }
 
+/**
+ * Un patrón dentro de `or=(…)` de PostgREST. LAS COMILLAS NO SON DECORATIVAS: sin ellas el punto de
+ * `%.dwg` separa columna de operador y la consulta entera falla. Ningún patrón contiene `"`.
+ */
+const comoOr = (p: Patron) => `${p.campo}.ilike."${p.patron}"`
+
+/**
+ * EL FILTRO DE CATEGORÍA, TRADUCIDO A POSTGRES.
+ *
+ * Dos mitades, y la segunda es la que hace que el chip y la etiqueta de la fila digan lo mismo:
+ * los patrones PROPIOS de la categoría, y la negación de los de TODA categoría anterior. Sin la
+ * negación, «Certificado Afiliacion - ART.pdf» entraría por el chip `certificados` aunque su fila
+ * diga `Seguros`, y quien filtre no podría confiar en lo que ve. `otros` es sólo negación.
+ */
+function conCategoria<T extends { or: (f: string) => T; not: (c: string, o: string, v: string) => T }>(
+  consulta: T,
+  clave: ClaveCategoria,
+): T {
+  const propios = patronesDe(clave)
+  let c = propios.length > 0 ? consulta.or(propios.map(comoOr).join(',')) : consulta
+  for (const p of patronesAnteriores(clave)) c = c.not(p.campo, 'ilike', p.patron)
+  return c
+}
+
 export async function getDocumentos(
   supabase: SupabaseClient,
   filtro: FiltroDocumentos = {},
 ): Promise<ServiceResult<Catalogo>> {
+  // EL RECORTE POR VENCIMIENTO SE RESUELVE ANTES: los vencimientos viven en `documentacion_legajo` y
+  // el catálogo en `drive_index`. Se piden los ids de la ventana y se acota con ellos.
+  let ids: string[] | null = null
+  if (filtro.vence) {
+    const r = await idsPorVencer(supabase, filtro.vence, filtro.hoy ?? new Date().toISOString().slice(0, 10))
+    if (r.error) return { data: null, error: r.error }
+    ids = r.data ?? []
+    // CERO IDS ES CERO DOCUMENTOS, no «traé todo». Un `.in()` con la lista vacía es la clase de
+    // filtro que se cae hacia el lado abierto y muestra 3.123 archivos donde no había ninguno.
+    if (ids.length === 0) return { data: { documentos: [], total: 0 }, error: null }
+  }
+
   let consulta = supabase
     .from('drive_index')
     .select(COLUMNAS, { count: 'exact' })
     .eq('is_folder', false)
+  if (ids) consulta = consulta.in('drive_file_id', ids)
+  if (esCategoria(filtro.categoria)) consulta = conCategoria(consulta, filtro.categoria)
 
   const q = filtro.q?.trim()
   if (q) {
@@ -88,7 +137,9 @@ async function leerVinculos(
   const [legajo, cliente] = await Promise.all([
     supabase
       .from('documentacion_legajo')
-      .select('drive_file_id, tipo_documento, fecha_vencimiento, persona_id, personas(nombre_completo)')
+      // `id` viaja porque es lo que la acción de fijar el vencimiento necesita para saber QUÉ fila
+      // escribe. Sin él, el panel tendría que buscarla por (persona, tipo) y elegir una de varias.
+      .select('id, drive_file_id, tipo_documento, fecha_vencimiento, persona_id, personas(nombre_completo)')
       .in('drive_file_id', ids),
     supabase
       .from('cliente_documento')
@@ -99,6 +150,68 @@ async function leerVinculos(
     legajos: (legajo.data ?? []) as unknown as VinculoLegajo[],
     clientes: (cliente.data ?? []) as unknown as VinculoCliente[],
   }
+}
+
+// ═══ VENCIMIENTOS ══════════════════════════════════════════════════════════════════════════════
+//
+// `documentacion_legajo.fecha_vencimiento` es HOY la única fecha de vigencia que existe en el OS:
+// `cliente_documento` no tiene la columna (cliente_id, drive_file_id, rol, origen, creado_en y nada
+// más). Así que la banda mide sobre 847 filas posibles, no sobre los 3.123 archivos, y lo dice.
+
+/**
+ * CUÁNTOS VENCIERON Y CUÁNTOS VENCEN ESTE MES — sobre la base entera, no sobre la página.
+ *
+ * Tres `count` con `head: true`: no bajan una sola fila, sólo el número. Un aviso de vencimientos
+ * que se calculara sobre las 200 filas dibujadas diría «0 vencidos» cuando el vencido está en la
+ * fila 340, que es exactamente el caso en el que hace falta el aviso.
+ *
+ * `conFecha` en 0 NO se dibuja como «está todo en orden»: son dos hechos opuestos y la pantalla los
+ * separa. Hoy `conFecha` es 0 en las 847 filas — nadie cargó ninguna fecha todavía.
+ */
+export async function getResumenVencimientos(
+  supabase: SupabaseClient,
+  hoy: string,
+): Promise<ServiceResult<ResumenVencimientos>> {
+  const { desde, hasta } = ventanaVencimientos(hoy)
+  const base = () => supabase
+    .from('documentacion_legajo')
+    .select('id', { count: 'exact', head: true })
+    .not('fecha_vencimiento', 'is', null)
+
+  const [conFecha, vencidos, mes] = await Promise.all([
+    base(),
+    base().lt('fecha_vencimiento', desde),
+    base().gte('fecha_vencimiento', desde).lte('fecha_vencimiento', hasta),
+  ])
+  const fallo = conFecha.error ?? vencidos.error ?? mes.error
+  if (fallo) return { data: null, error: fallo.message }
+  return {
+    data: { conFecha: conFecha.count ?? 0, vencidos: vencidos.count ?? 0, venceEsteMes: mes.count ?? 0 },
+    error: null,
+  }
+}
+
+/** Los archivos de Drive que caen en la ventana pedida. Es lo que convierte la banda en un filtro. */
+async function idsPorVencer(
+  supabase: SupabaseClient,
+  ventana: string,
+  hoy: string,
+): Promise<ServiceResult<string[]>> {
+  const { desde, hasta } = ventanaVencimientos(hoy)
+  let consulta = supabase
+    .from('documentacion_legajo')
+    .select('drive_file_id')
+    .not('drive_file_id', 'is', null)
+  consulta = ventana === 'vencido'
+    ? consulta.lt('fecha_vencimiento', desde)
+    : consulta.gte('fecha_vencimiento', desde).lte('fecha_vencimiento', hasta)
+
+  const { data, error } = await consulta
+  if (error) return { data: null, error: error.message }
+  const ids = (data ?? []).map((f) => (f as { drive_file_id: string }).drive_file_id)
+  // Un mismo PDF puede estar en el legajo de dos personas: sin deduplicar, el `.in()` lo pediría
+  // dos veces y el `count` de la tabla contaría de más.
+  return { data: [...new Set(ids)], error: null }
 }
 
 /**

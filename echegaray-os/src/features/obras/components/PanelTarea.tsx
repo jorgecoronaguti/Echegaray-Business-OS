@@ -20,6 +20,13 @@ import { METODO_CORTO, METODO_LABEL } from '../types'
 import type { NodoObra } from '../services/wbs'
 import { avancePorPasos, hhProyectadas, proyeccionExcedida } from '../services/avance'
 import type { PasoDeActividad, RegistroAvance, RelacionLegible } from '../services/tareasService'
+import type { ContextoTarea } from '../services/panelTareaService'
+import { motivoNoDividir } from '../services/panelTarea'
+import type { AccionFormulario } from '@/shared/components/ui/FormAccion'
+import { PanelTareaRecursos } from './PanelTareaRecursos'
+import { PanelTareaRendimiento } from './PanelTareaRendimiento'
+import { PanelTareaDependencias } from './PanelTareaDependencias'
+import { DividirEnFrentes } from './DividirEnFrentes'
 
 export const SOLAPAS = [
   ['general', 'General'], ['avance', 'Avance'], ['recursos', 'Recursos y HH'],
@@ -84,6 +91,7 @@ function Cifra({ rotulo, valor, falta, alerta = false }: {
 
 export function PanelTarea({
   obraId, nodo, solapa, pasos, relaciones, historial, hrefLista, cuadrillas, editarCampo,
+  contexto, dotacion, puedeEditar, acciones,
 }: {
   obraId: string
   nodo: NodoObra
@@ -96,11 +104,25 @@ export function PanelTarea({
   cuadrillas: { id: string; nombre: string }[]
   /** Ya atada a la obra y a la actividad: el id nunca viaja en un campo del navegador. */
   editarCampo: (campo: string, valor: string) => Promise<{ ok: true } | { ok: false; error: string }>
+  /** Lo que el árbol no trae: jornada, calendario, capacidad, partida de origen e histórico. */
+  contexto: ContextoTarea
+  /** La dotación simulada, de la URL. Es simulación: no toca `dotacion_prevista`. */
+  dotacion: number
+  /** Administración o jefatura de obra. Decide qué GESTOS se ofrecen, no qué se puede: eso lo
+   *  decide cada acción del servidor. */
+  puedeEditar: boolean
+  acciones: {
+    dividir: AccionFormulario
+    /** Ya atadas a la obra; el id de la dependencia se ata con `.bind` donde se dibuja. */
+    cambiarRelacion: (dependenciaId: string, form: FormData) => ReturnType<AccionFormulario>
+    quitarRelacion: (dependenciaId: string, form: FormData) => ReturnType<AccionFormulario>
+  }
 }) {
   const base = `${hrefLista}&act=${nodo.id}`
   const avancePasos = avancePorPasos(pasos.map((p) => ({ peso: Number(p.peso), hecho: p.hecho_en !== null })))
   const antes = relaciones.filter((r) => r.destino_id === nodo.id)
   const despues = relaciones.filter((r) => r.origen_id === nodo.id)
+  const evidencias = historial.flatMap((h) => h.evidencia)
 
   return (
     <aside data-testid="panel-tarea" className="border-l border-line pl-4 xl:h-full">
@@ -194,14 +216,52 @@ export function PanelTarea({
             />
           } />
           <Dato clave="Responsable declarado" valor={nodo.responsable} falta="sin asignar" />
-          <Dato clave="Rendimiento del análisis" valor={null} falta="sin análisis" />
+          {/* El rendimiento del ANÁLISIS VIGENTE, de la tarea tipo. No es el planificado ni el
+              observado: los cinco, uno debajo del otro, están en la solapa Rendimiento. */}
+          <Dato clave="Rendimiento del análisis"
+            valor={contexto.historico?.hsAnalisis != null
+              ? `${contexto.historico.hsAnalisis.toLocaleString('es-AR', { maximumFractionDigits: 2 })} hs${nodo.unidad ? `/${nodo.unidad}` : ''}`
+              : null}
+            falta={nodo.tarea_tipo_id ? 'sin análisis vigente' : 'sin tarea tipo'} />
           <div className="mt-3 flex flex-wrap items-center gap-4 text-[12.5px]">
             <Link href={`/obras/${obraId}/avance/${nodo.id}`} data-testid="general-registrar"
               className="font-medium text-ink hover:underline">Registrar avance</Link>
+            {/* ═══ «VER PARTIDA» SÓLO CUANDO HAY ADÓNDE IR, Y CUANDO SE PUEDE ENTRAR ═══
+                El análisis de una partida es costo de punta a punta y la pantalla 16 lo cierra a
+                quien ve economía. Ofrecer el link a un jefe de obra lo mandaría a un cartel de «sin
+                permiso»: un botón que no lleva a ningún lado es peor que no tenerlo. La lectura de
+                la partida ni se pide cuando el rol no la ve, así que `contexto.partida` en null
+                cubre los dos casos —no existe y no la puedo leer— y los dos se dibujan igual. */}
+            {contexto.partida && (
+              <Link href={`/presupuestos/${contexto.partida.cotizacionId}/partida/${contexto.partida.id}`}
+                data-testid="ver-partida" className="text-ink-soft hover:underline">
+                Ver partida{contexto.partida.codigo ? ` ${contexto.partida.codigo}` : ''}
+              </Link>
+            )}
             <Link href={`/obras/${obraId}?vista=operacion&sub=impedimentos`} className="text-neg hover:underline">
               Marcar impedimento
             </Link>
           </div>
+          {puedeEditar && (
+            <div className="mt-3 border-t border-line pt-3">
+              {/* El motivo se calcula con lo que el panel YA leyó: el historial dice si tiene
+                  avances y `pasos` si se mide por pasos. El padre no se conoce acá —el árbol trae
+                  `padre_id`, no su tipo—, así que ese caso lo contesta la acción. */}
+              <DividirEnFrentes
+                nombre={nodo.nombre} cantidad={nodo.cantidad_objetivo} unidad={nodo.unidad}
+                dividir={acciones.dividir}
+                motivo={motivoNoDividir({
+                  esContenedor: nodo.es_contenedor,
+                  tieneHijas: nodo.tiene_hijas,
+                  tipo: nodo.tipo,
+                  cotizacionPartidaId: nodo.cotizacion_partida_id,
+                  nAvances: historial.length,
+                  nPasos: pasos.length,
+                  tipoPadre: null,
+                })}
+              />
+            </div>
+          )}
         </section>
       )}
 
@@ -234,65 +294,78 @@ export function PanelTarea({
             </>
           )}
           <BloqueHH plan={nodo.hh_plan} real={nodo.hh_real} avance={nodo.avance_pct} />
-          <Link href={`/obras/${obraId}/avance/${nodo.id}`} data-testid="panel-registrar-avance"
-            className="mt-3 inline-block rounded-control bg-marca px-3 py-1.5 text-[12px] font-semibold text-ink hover:opacity-90">
-            Registrar avance
-          </Link>
+
+          {/* ═══ «ADJUNTAR FOTO»: LA DECISIÓN, ESCRITA ═══
+              El contrato visual pide subir una foto desde acá. NO se monta, y no es por falta de
+              infraestructura: Supabase Storage está configurado y en uso (buckets `impedimentos`,
+              `documentos-legajo`, `herramientas`). Es porque la pantalla 05 —la que registra el
+              avance— ya decidió por escrito lo contrario: «no hay subida de archivos en el OS: el
+              archivo vive en Drive y acá se guarda el enlace», y `obra_ejecucion.evidencia` es
+              justamente un `text[]` de enlaces. Montar un cargador acá crearía una SEGUNDA copia del
+              mismo papel con otro dueño, y la que se desactualiza es siempre la copia.
+              Además la foto es evidencia DE UN REGISTRO, no de la actividad: adjuntarla sin decir a
+              cuál de los avances pertenece la dejaría colgada del último por casualidad.
+              Lo que sí se hace acá es MOSTRAR lo que hay, que antes no se veía en ninguna parte. */}
+          <section className="mt-4 border-t border-line pt-3" data-testid="evidencia-actividad">
+            <Titulo>Evidencia cargada</Titulo>
+            {evidencias.length === 0
+              ? (
+                <p className="text-[11.5px] leading-relaxed text-muted">
+                  Ningún registro de avance trae evidencia. Se adjunta al registrar el avance, como
+                  enlace de Drive: el OS no guarda una segunda copia del papel.
+                </p>
+              )
+              : (
+                <ul className="flex flex-col gap-0.5">
+                  {evidencias.map((url) => (
+                    <li key={url}>
+                      <a href={url} target="_blank" rel="noreferrer"
+                        className="block truncate text-[11.5px] text-ink-soft hover:underline">{url}</a>
+                    </li>
+                  ))}
+                </ul>
+              )}
+          </section>
+
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <Link href={`/obras/${obraId}/avance/${nodo.id}`} data-testid="panel-registrar-avance"
+              className="inline-block rounded-control bg-marca px-3 py-1.5 text-[12px] font-semibold text-ink hover:opacity-90">
+              Registrar avance
+            </Link>
+            <Link href={`/obras/${obraId}/avance/${nodo.id}#evidencia`} data-testid="panel-adjuntar-evidencia"
+              className="text-[11.5px] text-muted hover:text-ink hover:underline">
+              Adjuntar evidencia
+            </Link>
+          </div>
         </section>
       )}
 
       {solapa === 'recursos' && (
-        <section data-testid="panel-recursos">
-          <Dato clave="Dotación prevista" valor={nodo.dotacion_prevista} falta="sin declarar" />
-          <Dato clave="Tope del frente" valor={nodo.tope_frente ? `${nodo.tope_frente} personas` : null}
-            falta="sin declarar" />
+        <>
+          <PanelTareaRecursos nodo={nodo} contexto={contexto} base={base} dotacion={dotacion} />
+          <Dato clave="Dotación prevista del plan" valor={nodo.dotacion_prevista} falta="sin declarar" />
           <Dato clave="Cuadrilla" valor={nodo.responsable} falta="sin asignar" />
-          {nodo.tope_frente !== null && nodo.dotacion_prevista !== null
-            && nodo.dotacion_prevista >= nodo.tope_frente && (
-            <p className="mt-2 border-l-[3px] border-warn bg-warn-soft px-3 py-2 text-[12px] text-warn">
-              Tope del frente: {nodo.tope_frente} personas. Más gente no acorta el plazo.
-            </p>
-          )}
           <BloqueHH plan={nodo.hh_plan} real={nodo.hh_real} avance={nodo.avance_pct} />
+          {/* LA SIMULACIÓN NO ES EL PLAN. Guardarla es la 08, que la escribe sobre el FRENTE entero
+              —`dotacion_prevista` es de todas las actividades del frente— y por eso no se puede
+              aplicar desde acá sin decidir por las demás. */}
           <p className="mt-3 text-[11.5px] leading-relaxed text-muted">
-            La duración se calcula con el análisis de la base maestra, la jornada y el calendario de
-            la obra. Esta actividad todavía no tiene análisis vinculado, así que no hay duración que
-            mostrar — no es cero días.
+            Esto simula. La dotación se guarda en el plan desde Dotación y proyección, que la aplica
+            al frente completo —no a una actividad suelta—.{' '}
+            <Link href={`/obras/${obraId}/dotacion`} className="font-medium text-ink hover:underline">
+              Ir a Dotación y proyección
+            </Link>
           </p>
-        </section>
+        </>
       )}
 
       {solapa === 'dependencias' && (
-        <section data-testid="panel-dependencias">
-          <Titulo>Antes de esto</Titulo>
-          {antes.length === 0
-            ? <p className="text-[12.5px] text-muted">Nadie declaró qué tiene que pasar antes.</p>
-            : <ul>{antes.map((r) => (
-                <li key={r.id} className="border-b border-[#EFEEEA] py-1.5 last:border-0">
-                  <span className="text-[12.5px] text-ink-soft">{r.origen}</span>
-                  <span className="block text-[11px] text-muted">{r.relacion}</span>
-                </li>))}</ul>}
-          <div className="mt-3">
-            <Titulo>Después de esto</Titulo>
-            {despues.length === 0
-              ? <p className="text-[12.5px] text-muted">Nada depende de esta actividad todavía.</p>
-              : <ul>{despues.map((r) => (
-                  <li key={r.id} className="border-b border-[#EFEEEA] py-1.5 last:border-0">
-                    <span className="text-[12.5px] text-ink-soft">{r.destino}</span>
-                    <span className="block text-[11px] text-muted">{r.relacion}</span>
-                  </li>))}</ul>}
-          </div>
-          {/* SIN PRECEDENCIAS NO HAY CAMINO CRÍTICO. Deducirlo de las fechas sería inventar una
-              secuencia: dos actividades consecutivas pueden serlo sólo porque comparten cuadrilla. */}
-          {antes.length === 0 && despues.length === 0 && (
-            <p className="mt-3 text-[11.5px] leading-relaxed text-muted">
-              Sin una sola precedencia declarada en la obra no hay camino crítico que calcular, y por
-              eso ninguna actividad se muestra como crítica.
-            </p>
-          )}
-          <Link href={`/obras/${obraId}?vista=cronograma&sub=gantt&act=${nodo.id}`}
-            className="mt-3 inline-block text-[12.5px] font-medium text-ink hover:underline">Vincular</Link>
-        </section>
+        <PanelTareaDependencias
+          antes={antes} despues={despues}
+          hrefVincular={`/obras/${obraId}?vista=cronograma&sub=gantt&act=${nodo.id}`}
+          puedeEditar={puedeEditar}
+          cambiarRelacion={acciones.cambiarRelacion} quitarRelacion={acciones.quitarRelacion}
+        />
       )}
 
       {solapa === 'subcontrato' && (
@@ -315,21 +388,7 @@ export function PanelTarea({
         </section>
       )}
 
-      {solapa === 'rendimiento' && (
-        <section data-testid="panel-rendimiento">
-          <Dato clave="Teórico (tabla)" valor={null} falta="sin análisis" />
-          <Dato clave="Presupuestado" valor={null} falta="sin análisis" />
-          <Dato clave="Real observado"
-            valor={nodo.hh_real !== null && nodo.cantidad_ejecutada
-              ? (Number(nodo.hh_real) / Number(nodo.cantidad_ejecutada)).toLocaleString('es-AR', { maximumFractionDigits: 2 })
-              : null}
-            falta="sin base" />
-          <p className="mt-3 text-[11.5px] leading-relaxed text-muted">
-            El rendimiento real necesita producción física Y horas imputadas. Con una sola de las dos
-            no hay rendimiento: hay una de las dos puntas.
-          </p>
-        </section>
-      )}
+      {solapa === 'rendimiento' && <PanelTareaRendimiento nodo={nodo} contexto={contexto} />}
 
       {solapa === 'historial' && (
         <section data-testid="panel-historial">

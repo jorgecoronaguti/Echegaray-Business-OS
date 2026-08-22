@@ -18,8 +18,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  ESQUEMA_PASO, PASOS, columnasDelPaso, esPasoQueGuarda, idDeObra, pasoAnterior, pasoSiguiente,
-  resolverPaso, urlPaso,
+  ESQUEMA_PASO, PASOS, columnasDelPaso, debeFijarMonto, esPasoQueGuarda, idDeObra, pasoAnterior,
+  pasoSiguiente, resolverPaso, urlPaso,
 } from '../../src/features/obras/services/alta.ts'
 
 /** El camino COMPLETO del paso: lo que manda el navegador → Zod → las columnas. Probar sólo
@@ -63,7 +63,12 @@ test('cada paso escribe SÓLO sus columnas: ninguno puede pisar lo que cargó ot
   const columnas = {
     responsable: ['jefe_obra'],
     fechas: ['fecha_inicio_plan', 'fecha_fin_plan'],
-    contrato: ['monto_contratado'],
+    // ═══ CAMBIO DE CONTRATO declarado (migración 20260821T5000) ═══
+    // `monto_contratado` dejó de ser escribible por PostgREST: la columna quedó fuera del GRANT y
+    // la plata entra SÓLO por `fijar_monto_contratado()` con permiso económico. El paso «contrato»
+    // ya no devuelve columnas de escritura directa — la regla de cuándo llamar al RPC vive en
+    // `debeFijarMonto` y se prueba abajo.
+    contrato: [],
     drive: ['drive_carpeta_id'],
   }
   for (const [paso, esperadas] of Object.entries(columnas)) {
@@ -81,7 +86,8 @@ test('ninguna escritura de un paso toca `estado`: «previo» es una ETAPA y el C
 test('el campo vacío se guarda NULL, nunca cero ni cadena vacía', () => {
   // Es la diferencia entre «no hay contrato cargado» y «el contrato es de $0», y es la que hace que
   // el checklist pueda decir la verdad.
-  assert.deepEqual(columnasDelPaso('contrato', { monto_contratado: '' }), { monto_contratado: null })
+  // El contrato ya no escribe directo (ver arriba): vacío o no, no devuelve columna.
+  assert.deepEqual(columnasDelPaso('contrato', { monto_contratado: '' }), {})
   assert.deepEqual(columnasDelPaso('fechas', { fecha_inicio_plan: '', fecha_fin_plan: '2026-11-30' }),
     { fecha_inicio_plan: null, fecha_fin_plan: '2026-11-30' })
   assert.deepEqual(columnasDelPaso('responsable', { jefe_obra: '' }), { jefe_obra: null })
@@ -96,25 +102,32 @@ test('el formulario en blanco, PASANDO POR EL ESQUEMA, guarda NULL y no cero', (
   // pasaba a ser un contrato de $0 y el checklist anunciaba «monto y fechas cargados» sobre una obra
   // sin contrato. Lo encontró el recorrido de navegador; la prueba de `columnasDelPaso` sola no,
   // porque le pasaba `''` a mano y saltaba el esquema. Por eso este caso parte del FORMULARIO.
-  assert.deepEqual(guardaria('contrato', { monto_contratado: '' }), { monto_contratado: null })
+  assert.deepEqual(guardaria('contrato', { monto_contratado: '' }), {})
   assert.deepEqual(guardaria('fechas', { fecha_inicio_plan: '', fecha_fin_plan: '' }),
     { fecha_inicio_plan: null, fecha_fin_plan: null })
   assert.deepEqual(guardaria('responsable', { jefe_obra: '' }), { jefe_obra: null })
   assert.deepEqual(guardaria('drive', { drive_carpeta_id: '' }), { drive_carpeta_id: null })
 })
 
-test('lo que sí se tipeó llega tal cual, incluido un cero explícito', () => {
-  assert.deepEqual(guardaria('contrato', { monto_contratado: '187450000' }), { monto_contratado: 187450000 })
-  // Un cero TIPEADO es una afirmación de alguien y se respeta. La diferencia con el caso de arriba
-  // es toda la diferencia entre «no sé» y «cero».
-  assert.deepEqual(guardaria('contrato', { monto_contratado: '0' }), { monto_contratado: 0 })
+test('lo que sí se tipeó pasa el esquema tal cual, incluido un cero explícito', () => {
+  // El esquema sigue distinguiendo «no sé» de «cero» aunque la escritura vaya por RPC: es el dato
+  // que `debeFijarMonto` recibe como `ahora`.
+  assert.deepEqual(ESQUEMA_PASO.contrato.parse({ monto_contratado: '187450000' }), { monto_contratado: 187450000 })
+  assert.deepEqual(ESQUEMA_PASO.contrato.parse({ monto_contratado: '0' }), { monto_contratado: 0 })
   assert.equal(ESQUEMA_PASO.contrato.safeParse({ monto_contratado: '-5' }).success, false)
   assert.equal(ESQUEMA_PASO.fechas.safeParse({ fecha_inicio_plan: '01/03/2026' }).success, false)
 })
 
-test('un monto cargado de verdad SÍ llega, incluido el cero explícito', () => {
-  assert.deepEqual(columnasDelPaso('contrato', { monto_contratado: 187450000 }), { monto_contratado: 187450000 })
-  assert.deepEqual(columnasDelPaso('contrato', { monto_contratado: 0 }), { monto_contratado: 0 })
+test('el RPC del monto se llama exactamente cuando corresponde: la regla de `debeFijarMonto`', () => {
+  // 1 · el campo AUSENTE no es un vacío: quien no ve economía no manda la clave, y eso jamás borra.
+  assert.equal(debeFijarMonto(false, 187450000, null), false)
+  // 2 · el vacío TIPEADO sí es una orden de borrar.
+  assert.equal(debeFijarMonto(true, 187450000, null), true)
+  // 3 · sin cambio no se llama — y la comparación es numérica (`numeric` puede llegar como string).
+  assert.equal(debeFijarMonto(true, '187450000', 187450000), false)
+  assert.equal(debeFijarMonto(true, null, null), false)
+  // 4 · cargar de verdad, incluido el cero explícito sobre un sin-cargar.
+  assert.equal(debeFijarMonto(true, null, 0), true)
 })
 
 test('sólo los cuatro pasos de una columna guardan por su propio formulario', () => {

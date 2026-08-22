@@ -75,7 +75,14 @@ test('con secuencia cargada aparece el camino crítico, y el arrastre dice qué 
     await expect(popover).toContainText('Hormigonado piso')
     await expect(popover).toContainText('Desencofrado de losa')
     await expect(popover).toContainText('Fin de obra')
-    await expect(popover).toContainText('todavía no escribe el plan')
+    // CAMBIO DE COMPORTAMIENTO (este encargo): el popover DEJÓ DE SER una simulación ciega. Antes
+    // acá se medía «todavía no escribe el plan» con los dos botones apagados; ahora escribe
+    // `inicio_plan`/`fin_plan` y lo que se sigue midiendo es la promesa que hace: que la línea base
+    // NO se toca. Ese texto es el contrato con quien va a apretar el botón.
+    await expect(popover).toContainText('La línea base no se toca')
+    await expect(popover.getByRole('button', { name: 'Mover igual' })).toBeEnabled()
+    // Este test NO aprieta el botón: escribiría el plan de una obra viva, y lo único que esta
+    // corrida se permite escribir son las dos dependencias que borra en el `finally`.
     await page.screenshot({ path: 'capturas/07-cronograma-arrastre.png', fullPage: true })
   } finally {
     await limpiar(sb)

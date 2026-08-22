@@ -7,7 +7,7 @@ import type { NodoArbol } from './frentes.ts'
 const a = (p: Partial<ActividadDelJefe> & { actividad_id: string }): ActividadDelJefe => ({
   obra_id: 'o', nombre: p.actividad_id, tipo: 'tarea', rubro: null, metodo_avance: 'partes',
   avance_pct: 0, origen_avance: 'partes', estado_operativo: 'en_curso', impedimentos_abiertos: 0,
-  n_pasos: 0, n_pasos_hechos: 0, cuadrilla_prevista: null, hh_real: null, inicio_plan: null,
+  n_pasos: 0, n_pasos_hechos: 0, cuadrilla_prevista: null, hh_plan: null, hh_real: null, inicio_plan: null,
   fin_plan: null, fin_real: null, ultimo_parte: null, unidad: null, cantidad_objetivo: null,
   cantidad_ejecutada: null, ...p,
 })

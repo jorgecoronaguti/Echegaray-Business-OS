@@ -9,6 +9,7 @@ import Link from 'next/link'
 import { Estado, Nulo, Tabla, THead, Th, Tr, Td, Vacio } from '@/shared/components/ds'
 import { fecha } from '@/features/obras/components/formato'
 import { estadoVigencia, hayVencimientos, migajaDe } from '../services/documentos'
+import { categoriaDe, ETIQUETA_CATEGORIA } from '../services/categorias'
 import type { Documento } from '../types'
 
 const TONO = { vencido: 'neg', 'vence-pronto': 'warn', vigente: 'pos' } as const
@@ -46,6 +47,12 @@ export function TablaDocumentos({
                 <Link href={hrefDe(d.drive_file_id)} data-testid="abrir-documento" className="block truncate hover:underline">
                   {d.name}
                 </Link>
+                {/* LA CATEGORÍA VA ACÁ Y NO EN UNA COLUMNA PROPIA: es lo que hace verificable el
+                    chip de arriba —se ve por qué esta fila entró— y una columna más empujaría la
+                    ruta fuera de la pantalla. Se calcula con la misma regla que filtró en Postgres. */}
+                <span className="block text-[10.5px] font-normal text-faint" data-testid="categoria-documento">
+                  {ETIQUETA_CATEGORIA[categoriaDe(d)]}
+                </span>
               </Td>
               <Td className="max-w-0">
                 {d.vinculos.length === 0 ? (

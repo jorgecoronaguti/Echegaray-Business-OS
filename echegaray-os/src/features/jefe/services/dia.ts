@@ -118,7 +118,11 @@ export function frentesDelDia(
 
   return frentesDe(arbol).map((frente) => {
     const tareas = frente.tareas.map((id) => porId.get(id)).filter((a): a is ActividadDelJefe => !!a)
-    const avance = avanceDelFrente(tareas.map((t) => ({ actividad_id: t.actividad_id, avance_pct: t.avance_pct })))
+    // Las HH plan viajan porque el avance del frente se pondera por ellas — la regla canónica está
+    // en `avance.ts`. Sin este campo el frente volvería a promediar simple sin decirlo.
+    const avance = avanceDelFrente(tareas.map(
+      (t) => ({ actividad_id: t.actividad_id, avance_pct: t.avance_pct, hh_plan: t.hh_plan }),
+    ))
     const gente = new Set<string>()
     let hhHoy = 0
     for (const t of tareas) {

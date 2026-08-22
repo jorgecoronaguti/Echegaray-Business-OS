@@ -14,6 +14,12 @@ export interface Vinculo {
   /** El tipo de documento del legajo, el rol del documento del cliente. `null` = sin clasificar. */
   detalle: string | null
   href: string | null
+  /**
+   * El id de la fila de `documentacion_legajo`. Es la ÚNICA de las dos tablas de vínculo que tiene
+   * `fecha_vencimiento`, así que también es lo único sobre lo que se puede fijar un vencimiento.
+   * `null` en el vínculo de cliente, y la ausencia se explica en el panel en vez de esconderse.
+   */
+  legajoId: string | null
 }
 
 export interface Documento {
@@ -24,10 +30,25 @@ export interface Documento {
   mime_type: string | null
   size_bytes: number | null
   modified_time: string | null
+  /** El nombre como lo normalizó el indexador. Es lo que clasifica al archivo — ver `categorias.ts`. */
+  nombre_norm: string | null
   /** Todos los vínculos conocidos. Un mismo archivo puede colgar de una persona y de un cliente. */
   vinculos: Vinculo[]
   /** Sólo lo trae `documentacion_legajo`. Hoy es `null` en las 847 filas: nadie lo cargó todavía. */
   vence: string | null
+}
+
+/**
+ * EL ESTADO DE VENCIMIENTOS DE TODO EL ARCHIVO, no el de la página.
+ *
+ * Se cuenta contra la base entera y no contra las 200 filas dibujadas: una banda que dijera
+ * «0 vencidos» porque los vencidos quedaron fuera del tope sería el peor aviso posible.
+ */
+export interface ResumenVencimientos {
+  vencidos: number
+  venceEsteMes: number
+  /** Cuántos vínculos tienen fecha cargada. `0` significa «nadie cargó ninguna», no «está todo bien». */
+  conFecha: number
 }
 
 /** Una carpeta raíz de Drive, tal como la indexó el catálogo. No es una taxonomía inventada. */

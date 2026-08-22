@@ -8,10 +8,14 @@ import { PantallaEmpleado, Seccion } from '@/features/empleado/components/ShellE
 import { Nada } from '@/features/empleado/components/Filas'
 import { SelectorMes } from '@/features/empleado/components/SelectorMes'
 import { BloqueAsistencia } from '@/features/empleado/components/BloqueAsistencia'
-import { getMiAsistencia, getMiDiaDeHoy, getMiObra } from '@/features/empleado/services/empleadoService'
+import { PedirCorreccion } from '@/features/empleado/components/PedirCorreccion'
+import {
+  getMiAsistencia, getMiDiaDeHoy, getMiObra, getMisCorrecciones,
+} from '@/features/empleado/services/empleadoService'
 import { hoyISO } from '@/features/empleado/services/acciones'
 import { mesAnterior, mesDe, dm } from '@/features/empleado/services/fecha'
 import { duracion, hora, totalDelPeriodo } from '@/features/empleado/services/asistencia'
+import { diaAPedirCorreccion, horaCorta, pendienteDe } from '@/features/empleado/services/correccion'
 
 // «ASISTENCIA» — la presencia, con su historial. NO son las HH imputadas a la obra.
 //
@@ -53,18 +57,39 @@ export default async function AsistenciaPage({ searchParams }: { searchParams: P
   const hoy = await hoyISO()
   const v = cual === 'mes-pasado' ? mesAnterior(hoy) : mesDe(hoy)
 
-  const [dia, dias, obras] = await Promise.all([
+  const [dia, dias, obras, correcciones] = await Promise.all([
     getMiDiaDeHoy(supabase, hoy), getMiAsistencia(supabase, v.desde, v.hasta), getMiObra(supabase),
+    getMisCorrecciones(supabase, v.desde, v.hasta),
   ])
   const total = totalDelPeriodo(dias.data ?? [])
+
+  // ═══ EL PEDIDO DE CORRECCIÓN (M05) ═══
+  //
+  // Sin la lectura de correcciones no se ofrece nada. Si `getMisCorrecciones` falló —la migración no
+  // está aplicada, la base no contesta— NO se sabe si ya hay un pedido para ese día, y ofrecer el
+  // botón igual invitaría a pedir por segunda vez algo que ya está en la bandeja. Falla cerrado: el
+  // aviso no aparece y el error se muestra arriba, como el de la asistencia.
+  const aCorregir = correcciones.data ? diaAPedirCorreccion(dias.data ?? [], correcciones.data) : null
 
   return (
     <PantallaEmpleado titulo="Asistencia" volver={{ href: '/mi-informacion', label: 'Mi información' }}>
       {dias.error && <Aviso tono="neg" titulo="No se pudo leer tu asistencia." testid="asistencia-error-lectura">{dias.error}</Aviso>}
 
+      {correcciones.error && (
+        <Aviso tono="neg" titulo="No se pudieron leer tus pedidos de corrección." testid="correcciones-error-lectura">
+          {correcciones.error}
+        </Aviso>
+      )}
+
       <Seccion titulo="HOY">
         <BloqueAsistencia dia={dia.data} obraId={obras.data?.[0]?.id ?? null} compacto />
       </Seccion>
+
+      {aCorregir && (
+        <div className="mt-5">
+          <PedirCorreccion fecha={aCorregir.fecha} entrada={hora(aCorregir.entrada)} />
+        </div>
+      )}
 
       <div className="mt-7">
         <SelectorMes base="/mi-informacion/asistencia" actual={cual} />
@@ -95,14 +120,24 @@ export default async function AsistenciaPage({ searchParams }: { searchParams: P
         ) : (
           (dias.data ?? []).map((d) => {
             const e = ESTADO[d.estado] ?? ESTADO.sin_registrar
+            // EL DÍA QUE YA SE PIDIÓ NO SE VE IGUAL QUE EL QUE FALTA PEDIR. Sin este chip, alguien
+            // que ya mandó el pedido ve exactamente la misma fila «falta salida» que antes y vuelve
+            // a pedir —o le avisa a Administración por teléfono, que es lo que M05 vino a evitar.
+            const pedido = pendienteDe(correcciones.data ?? [], d.fecha)
             return (
               <div key={d.fecha} data-testid="dia-asistencia" data-estado={d.estado} className="flex items-center gap-3 border-b border-[#EFEEEA] py-2.5 text-[13px]">
                 <span className="w-[70px] shrink-0 font-mono tabular-nums text-ink">{dm(d.fecha)}</span>
                 <span className="w-[64px] shrink-0 text-right font-mono tabular-nums text-ink">{hora(d.entrada) ?? '—'}</span>
-                <span className="w-[64px] shrink-0 text-right font-mono tabular-nums text-ink">{hora(d.salida) ?? '—'}</span>
+                <span className="w-[64px] shrink-0 text-right font-mono tabular-nums text-ink">
+                  {hora(d.salida) ?? (pedido ? `${horaCorta(pedido.hora_propuesta)}?` : '—')}
+                </span>
                 <span className="flex-1 text-right">
                   {d.minutos != null ? (
                     <span className="font-mono tabular-nums text-ink">{duracion(d.minutos)}</span>
+                  ) : pedido ? (
+                    <Estado tono="pendiente" clave="correccion_pendiente" testid="chip-correccion">
+                      corrección pendiente
+                    </Estado>
                   ) : (
                     <Estado tono={e.tono} clave={d.estado}>{e.texto}</Estado>
                   )}
@@ -114,8 +149,9 @@ export default async function AsistenciaPage({ searchParams }: { searchParams: P
       </div>
 
       <p className="mt-6 text-[11.5px] leading-relaxed text-faint">
-        Presencia laboral, no horas imputadas a obra. El día sin salida queda marcado hasta que
-        Administración lo corrija: desde acá no se edita una marca ya registrada.
+        Presencia laboral, no horas imputadas a obra. Desde acá no se edita una marca ya registrada:
+        si falta tu salida, lo que se manda es un pedido y la corrección la escribe Administración
+        cuando lo aprueba. Mientras esté pendiente, el día sigue sin salida y no suma al total.
       </p>
     </PantallaEmpleado>
   )

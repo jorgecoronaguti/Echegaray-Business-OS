@@ -1,11 +1,22 @@
-// EL LEGAJO DE UNA PERSONA — ficha de entidad con cuatro solapas.
+// EL LEGAJO DE UNA PERSONA — ficha de entidad con seis solapas.
 //
 // ═══ POR QUÉ NO ESTÁ TODO A LA VISTA ═══
 //
 // El dueño: *"NO mostrar toda la información simultáneamente en 15 cards."* La ficha tiene
-// identidad, relación laboral, historial de asignaciones, horas y documentos: junto es una pared.
-// Separado en Resumen · Asignaciones · Horas · Documentos, cada pregunta tiene su solapa y el
+// identidad, relación laboral, historial de asignaciones, horas, documentos, la cuenta con la que
+// entra y la bitácora de cambios: junto es una pared. Separado, cada pregunta tiene su solapa y el
 // Resumen contesta las tres que se hacen todos los días —quién es, qué categoría cobra, dónde está—.
+//
+// ═══ DOS SOLAPAS QUE NO SON COMO LAS OTRAS ═══
+//
+// «Usuario y permisos» y «Auditoría» no describen a la PERSONA: describen su CUENTA y lo que se le
+// hizo a su ficha. Por eso cada una tiene su propio control de acceso, distinto del de la pantalla:
+//
+//   Usuario y permisos   `veLaCuentaDeOtro` = `ve_economia()`, el MISMO predicado que cierra
+//                        `/administracion/usuarios`. Sin esto, la ficha sería el camino largo hasta
+//                        la pantalla que la lista negra le cierra al jefe de obra.
+//   Auditoría            `es_administracion()`, que es lo que la RLS de `entidad_cambio` ya exige.
+//                        Por eso la retribución llega tapada desde la base: el jefe de obra entra.
 //
 // Y CADA SOLAPA PIDE SÓLO LO SUYO: el Resumen se abre muchas veces por día y no necesita el
 // historial de horas para decir quién es esta persona.
@@ -27,12 +38,18 @@ import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { BotonAccion, PageShell } from '@/shared/components/ui'
 import { Aviso, EntityHeader, Estado, Eyebrow, Nulo, Vacio } from '@/shared/components/ds'
+import { getPerfilActual, getUsuarioActual } from '@/features/auth/services/authService'
 import { BloqueAsignacion, BloqueDocumentos, BloqueHoras } from '@/features/administracion/components/BloquesFicha'
+import { BloqueAuditoria } from '@/features/administracion/components/BloqueAuditoria'
+import { BloqueUsuario } from '@/features/administracion/components/BloqueUsuario'
 import { CamposIdentidad, CamposLaboral } from '@/features/administracion/components/FormularioPersona'
 import { AltaDocumento, Bloque, Dato } from '@/features/administracion/components/FichaPartes'
 import { NavFicha, VISTAS_FICHA, type VistaFicha } from '@/features/administracion/components/NavFicha'
 import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
 import { getAsignacionesDe, getDocumentos, getPersona } from '@/features/administracion/services/personasService'
+import { veLaCuentaDeOtro } from '@/features/administracion/services/accesoPersona'
+import { getCuentaDePersona } from '@/features/administracion/services/accesoService'
+import { getBitacora, TRAMO } from '@/features/administracion/services/auditoriaService'
 import { getHHDePersona, resumenDelPeriodo } from '@/features/administracion/services/hhPersonaService'
 import { esPeriodo, rotulo, ventanaDe, type Periodo } from '@/features/administracion/services/periodoHH'
 import { darDeBaja, editarPersona, reincorporar, type GrupoEdicion } from '@/features/administracion/services/personasActions'
@@ -44,7 +61,16 @@ import { fecha } from '@/features/obras/components/formato'
 
 export const dynamic = 'force-dynamic'
 
-type Busqueda = { v?: string; editar?: string; p?: string }
+type Busqueda = { v?: string; editar?: string; p?: string; n?: string }
+
+/** Cuántos cambios de la bitácora se piden. El «ver más» viaja en la URL, no en un estado de cliente. */
+function cuantosCambios(n: string | undefined): number {
+  const pedidos = Number(n)
+  // UN TOPE, Y NO POR PRUDENCIA: `?n=` viene del navegador. Sin techo, cualquiera con sesión pide
+  // la bitácora entera de una persona en una sola consulta y la pantalla tarda lo que tarde.
+  if (!Number.isInteger(pedidos) || pedidos <= 0) return TRAMO
+  return Math.min(pedidos, TRAMO * 20)
+}
 
 // EL PERÍODO LO ELIGE QUIEN MIRA. Antes era una ventana fija de 30 días, que no coincide con NINGUNA
 // liquidación: el dueño pidió *"día · semana · quincena · mes"*, y la quincena es la de la empresa
@@ -66,7 +92,15 @@ export default async function FichaPersonaPage({
     `${base}${v === 'resumen' && !e ? '' : `?${new URLSearchParams({ ...(v !== 'resumen' ? { v } : {}), ...(e ? { editar: e } : {}) })}`}`
 
   const supabase = await createClient()
-  const { data: persona, error } = await getPersona(supabase, id)
+  // EL ROL DEL QUE MIRA se necesita en TODAS las vistas, no sólo en la de la cuenta: `NavFicha`
+  // decide con él si dibuja la solapa, y una barra que cambia de largo al moverse entre solapas es
+  // un defecto visual. El id del actor viaja a `getPerfilActual` para no repetir el `getUser()`.
+  const [{ data: persona, error }, actor] = await Promise.all([
+    getPersona(supabase, id),
+    getUsuarioActual(supabase),
+  ])
+  const rolActor = (await getPerfilActual(supabase, actor?.id)).data?.rol ?? null
+  const veLaCuenta = veLaCuentaDeOtro(rolActor)
   // NO EXISTE y NO PUEDO LEER son dos cosas distintas: confundirlas manda a buscar un defecto de
   // permisos detrás de un 404, que ya costó media jornada en este repo.
   if (error) {
@@ -82,6 +116,11 @@ export default async function FichaPersonaPage({
     ? await getAsignacionesDe(supabase, id) : null
   const horas = vista === 'horas' ? await getHHDePersona(supabase, id) : null
   const documentos = vista === 'documentos' ? await getDocumentos(supabase, id) : null
+  // LA CUENTA NO SE LEE SI EL QUE MIRA NO PUEDE VERLA. Esconder la solapa y leer igual dejaría los
+  // datos en el HTML de la página para el que sepa mirar la respuesta del servidor.
+  const cuenta = vista === 'usuario' && veLaCuenta ? await getCuentaDePersona(supabase, id) : null
+  const cuantos = cuantosCambios(sp.n)
+  const bitacora = vista === 'auditoria' ? await getBitacora(supabase, 'personas', id, cuantos) : null
 
   const vigente = (asignaciones?.data ?? []).find((a) => !a.hasta) ?? null
   const cerradas = (asignaciones?.data ?? []).filter((a) => a.hasta)
@@ -126,7 +165,7 @@ export default async function FichaPersonaPage({
           : <BotonAccion accion={darDeBaja} args={[id]} testid="dar-de-baja">Dar de baja</BotonAccion>}
       />
 
-      <NavFicha activa={vista} hrefDe={(v) => href(v)} />
+      <NavFicha activa={vista} hrefDe={(v) => href(v)} ocultar={veLaCuenta ? [] : ['usuario']} />
 
       {fallo && <div className="mb-4"><Aviso tono="neg">{fallo}</Aviso></div>}
 
@@ -215,6 +254,44 @@ export default async function FichaPersonaPage({
                 carpetaDrive={persona.drive_folder_id}
               />
               <AltaDocumento vincular={vincularDocumento.bind(null, id)} />
+            </Bloque>
+          )}
+
+          {/* LA SOLAPA SE ESCONDE Y ADEMÁS SE CIERRA. Esconder el tab evita ofrecer algo que rebota;
+              este `if` es lo que impide que `?v=usuario` escrito a mano devuelva el correo y el
+              estado de la cuenta de alguien a quien la lista negra le cierra `/administracion/usuarios`. */}
+          {vista === 'usuario' && !veLaCuenta && (
+            <div data-testid="usuario-sin-permiso">
+              <Aviso tono="info" titulo="Esta solapa es de Dirección y Administración">
+                La cuenta con la que alguien entra al sistema y sus permisos se ven donde se
+                gestionan las cuentas. Administrar el legajo y administrar el acceso son dos cosas
+                distintas.
+              </Aviso>
+            </div>
+          )}
+
+          {vista === 'usuario' && cuenta && (
+            <BloqueUsuario
+              personaId={id}
+              lectura={cuenta}
+              rolActor={rolActor}
+              // NADIE SE SACA EL ACCESO A SÍ MISMO, y acá se sabe antes de apretar: la regla también
+              // vive en `reglas.ts` y la acción la vuelve a aplicar, pero un botón que rebota no
+              // explica por qué.
+              esUnoMismo={cuenta.hay && cuenta.cuenta.usuarioId === actor?.id}
+            />
+          )}
+
+          {vista === 'auditoria' && bitacora && (
+            <Bloque
+              titulo="Auditoría de cambios"
+              testid="bloque-auditoria"
+              ayuda="Cada cambio de la ficha, con quién y cuándo."
+            >
+              <BloqueAuditoria
+                bitacora={bitacora}
+                hrefMas={`${base}?${new URLSearchParams({ v: 'auditoria', n: String(cuantos + TRAMO) })}`}
+              />
             </Bloque>
           )}
         </div>

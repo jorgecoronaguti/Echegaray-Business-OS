@@ -7,6 +7,7 @@ import { PieDeAccion } from './ShellJefe'
 import { AVISO_CRITERIO, ROTULO_METODO, controlDe } from '../services/medicion'
 import type { Metodo } from '../services/medicion'
 import type { ActividadDelJefe, PasoDeActividad } from '../services/jefeService'
+import { avancePorPasos } from '@/features/obras/services/avance'
 import type { Esperado } from '@/features/administracion/services/presencia'
 
 // J03 · REGISTRAR AVANCE — la pantalla donde el jefe firma un número.
@@ -55,9 +56,13 @@ export function FormularioAvance({
   const [gente, setGente] = useState<Record<string, string>>({})
   const [estado, enviar, enviando] = useActionState(accion, null)
 
+  // LA CUENTA NO SE REPITE ACÁ. `avancePorPasos` es la misma función que usa la vista y la
+  // escritura; recalcularla en el formulario dejaba tres implementaciones de «peso hecho sobre peso
+  // total», y la del formulario es la que la persona ve mientras decide.
+  const pctPasos = avancePorPasos(pasos.map((p) => ({ peso: p.peso, hecho: marcados.has(p.id) })))
+  // El peso total NO es el avance: es lo que convierte «peso 30» en «30 % de la tarea» al lado de
+  // cada paso. Se queda acá porque es una etiqueta de la lista, no una segunda cuenta del avance.
   const pesoTotal = pasos.reduce((s, p) => s + p.peso, 0)
-  const pesoHecho = pasos.filter((p) => marcados.has(p.id)).reduce((s, p) => s + p.peso, 0)
-  const pctPasos = pesoTotal > 0 ? Math.round((pesoHecho / pesoTotal) * 1000) / 10 : null
   const pctVivo = control === 'pasos' ? pctPasos : actividad.avance_pct
 
   const faltaCriterio = metodo === 'manual' && criterio.trim() === ''
