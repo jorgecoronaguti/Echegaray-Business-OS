@@ -28,14 +28,18 @@ import { aNumero } from './formato.ts'
 
 /** Un escalón de la cascada. `monto` null = no se puede publicar todavía. */
 export interface Escalon {
-  clave: 'costo_directo' | 'indirectos' | 'gastos_generales' | 'margen' | 'financiero' | 'impuestos' | 'precio_venta'
+  clave:
+    | 'costo_directo' | 'gastos_generales' | 'costo_industrial' | 'beneficio' | 'financiero'
+    | 'iibb' | 'ganancias' | 'subtotal' | 'impuesto_cheque' | 'venta_sin_iva' | 'iva' | 'venta_final'
   rotulo: string
-  /** El porcentaje del escalón, en FRACCIÓN. `null` en costo directo y precio, que no llevan. */
+  /** El porcentaje del escalón, en FRACCIÓN. `null` en los que son sumas, que no llevan. */
   pct: number | null
   monto: number | null
   subtitulo: string
-  /** El precio de venta cierra la cascada: se dibuja más grande y con `=` delante. */
+  /** La venta sin IVA cierra el precio de la empresa: se dibuja más grande y con `=` delante. */
   final?: boolean
+  /** Un subtotal acumulado, no un escalón que se suma. Se dibuja como corte, no como renglón. */
+  acumulado?: boolean
 }
 
 /** ¿La cascada tiene algo que publicar, o sus ceros los puso un `coalesce`? */
@@ -44,11 +48,14 @@ export function tieneCifras(c: Pick<PresupuestoCascada, 'n_partidas'>): boolean 
 }
 
 /**
- * Los siete escalones, en orden, tal como los define la vista.
+ * LOS ESCALONES DE LA CASCADA DEL LIBRO, en orden y con su base declarada en el subtítulo.
  *
- * El financiero se dibuja SÓLO si tiene porcentaje: el contrato visual muestra cinco bloques y no
- * seis, y un escalón de «0 %» ocupando el mismo lugar que el margen sugiere que se decidió no
- * cobrarlo. Cuando el presupuesto lo carga, aparece.
+ * Cada renglón dice SOBRE QUÉ se aplica su porcentaje, porque ahí está lo que más plata cuesta
+ * entender mal: el beneficio no va sobre el costo directo, el financiero no incluye el beneficio, y
+ * IIBB y Ganancias van sobre industrial + beneficio y no sobre la venta.
+ *
+ * El financiero se dibuja SÓLO si tiene porcentaje: un escalón de «0 %» ocupando el mismo lugar que
+ * el beneficio sugiere que se decidió no cobrarlo. Cuando el presupuesto lo carga, aparece.
  */
 export function escalonesDe(c: PresupuestoCascada): Escalon[] {
   const hay = tieneCifras(c)
@@ -59,31 +66,72 @@ export function escalonesDe(c: PresupuestoCascada): Escalon[] {
       subtitulo: subtituloDirecto(c),
     },
     {
-      clave: 'indirectos', rotulo: 'INDIRECTOS', pct: aNumero(c.pct_indirectos), monto: v(c.indirectos),
-      subtitulo: 'obrador, vigilancia, seguros',
-    },
-    {
       clave: 'gastos_generales', rotulo: 'GASTOS GENERALES', pct: aNumero(c.pct_gastos_generales),
-      monto: v(c.gastos_generales), subtitulo: 'estructura de empresa',
+      monto: v(c.gastos_generales), subtitulo: 'sobre el costo directo · estructura y obrador',
     },
     {
-      clave: 'margen', rotulo: 'MARGEN', pct: aNumero(c.pct_margen), monto: v(c.margen),
-      subtitulo: 'objetivo de la empresa',
+      clave: 'costo_industrial', rotulo: 'COSTO INDUSTRIAL', pct: null, monto: v(c.costo_industrial),
+      subtitulo: 'lo que la obra cuesta puesta en marcha', acumulado: true,
+    },
+    {
+      clave: 'beneficio', rotulo: 'BENEFICIO', pct: aNumero(c.pct_beneficio), monto: v(c.beneficio),
+      subtitulo: 'sobre el costo industrial · markup, no margen',
     },
     {
       clave: 'financiero', rotulo: 'FINANCIERO', pct: aNumero(c.pct_financiero), monto: v(c.financiero),
-      subtitulo: 'costo de fondear la obra',
+      subtitulo: `sobre el costo industrial · ${porFactor(c.factor_financiero)} del período`,
     },
     {
-      clave: 'impuestos', rotulo: 'IMPUESTOS', pct: aNumero(c.pct_impuestos), monto: v(c.impuestos),
-      subtitulo: 'IIBB y sellos',
+      clave: 'iibb', rotulo: 'IIBB Y LOTE HOGAR', pct: aNumero(c.pct_iibb), monto: v(c.iibb),
+      subtitulo: 'sobre industrial + beneficio',
     },
     {
-      clave: 'precio_venta', rotulo: 'PRECIO DE VENTA', pct: null, monto: v(c.precio_venta),
-      subtitulo: 'sin IVA', final: true,
+      clave: 'ganancias', rotulo: 'GANANCIAS', pct: aNumero(c.pct_ganancias), monto: v(c.ganancias),
+      subtitulo: 'sobre industrial + beneficio · proxy de costeo',
+    },
+    {
+      clave: 'subtotal', rotulo: 'SUBTOTAL', pct: null, monto: v(c.subtotal),
+      subtitulo: 'antes del impuesto al cheque', acumulado: true,
+    },
+    {
+      clave: 'impuesto_cheque', rotulo: 'IMPUESTO AL CHEQUE', pct: aNumero(c.pct_cheque),
+      monto: v(c.impuesto_cheque), subtitulo: 'sobre el subtotal acumulado',
+    },
+    {
+      clave: 'venta_sin_iva', rotulo: 'VENTA SIN IVA', pct: null, monto: v(c.venta_sin_iva),
+      subtitulo: subtituloCoeficiente(c), final: true,
+    },
+    {
+      clave: 'iva', rotulo: 'IVA', pct: aNumero(c.pct_iva), monto: v(c.iva),
+      subtitulo: 'sobre la venta sin IVA · lo único normativo de la cascada',
+    },
+    {
+      clave: 'venta_final', rotulo: 'VENTA FINAL', pct: null, monto: v(c.venta_final),
+      subtitulo: 'lo que factura al cliente', acumulado: true,
     },
   ]
   return escalones.filter((e) => e.clave !== 'financiero' || (e.pct ?? 0) > 0)
+}
+
+/** `0,5` → «medio». El factor financiero declara qué fracción del período se financia. */
+function porFactor(factor: number | null): string {
+  const f = aNumero(factor)
+  if (f === null || f === 0) return 'sin financiar'
+  if (f === 0.5) return 'medio'
+  if (f === 1) return 'todo el'
+  return `${(f * 100).toLocaleString('es-AR', { maximumFractionDigits: 1 })} % del`
+}
+
+/**
+ * EL COEFICIENTE, que es lo que la empresa mira para saber si la cascada es la de siempre.
+ *
+ * Sale de la vista —acá no se divide nada—. Con los parámetros del libro da 1,682 sin IVA; el
+ * default que ofrecía esta pantalla antes daba 1,4287, que son 18 puntos de precio.
+ */
+function subtituloCoeficiente(c: PresupuestoCascada): string {
+  const coef = aNumero(c.coeficiente_sin_iva)
+  if (coef === null) return 'el precio que se oferta'
+  return `coeficiente ${coef.toLocaleString('es-AR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })} sobre el costo directo`
 }
 
 function subtituloDirecto(c: PresupuestoCascada): string {

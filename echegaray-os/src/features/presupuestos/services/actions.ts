@@ -43,6 +43,15 @@ const pctSchema = z.string().trim()
   .refine((n) => Number.isFinite(n) && n >= 0 && n <= 100, 'El porcentaje va entre 0 y 100')
   .transform((n) => n / 100)
 
+/**
+ * El FACTOR financiero no es un porcentaje: es qué fracción del período se financia. `0,5` es medio
+ * período. Pasarlo por `pctSchema` lo dividiría por cien y el costo financiero saldría cien veces
+ * más chico — un error que no se ve porque el escalón es el más chico de la cascada.
+ */
+const factorSchema = z.string().trim()
+  .transform((v) => (v === '' ? 0 : Number(v.replace(',', '.'))))
+  .refine((n) => Number.isFinite(n) && n >= 0 && n <= 5, 'El factor financiero va entre 0 y 5')
+
 /** Copia un registro sin las claves dadas. Explícito y sin variables muertas que nadie lee. */
 function sin(fila: Record<string, unknown>, claves: readonly string[]): Record<string, unknown> {
   const r: Record<string, unknown> = {}
@@ -65,12 +74,31 @@ const nuevoSchema = z.object({
   cliente: z.string().trim().max(200).optional(),
   cliente_id: z.union([z.string().uuid(), z.literal('')]).optional(),
   obra_canonica_id: z.string().trim().optional(),
-  pct_indirectos: pctSchema,
+  parametro_comercial_id: z.union([z.string().uuid(), z.literal('')]).optional(),
   pct_gastos_generales: pctSchema,
-  pct_margen: pctSchema,
+  pct_beneficio: pctSchema,
   pct_financiero: pctSchema,
-  pct_impuestos: pctSchema,
+  factor_financiero: factorSchema,
+  pct_iibb: pctSchema,
+  pct_ganancias: pctSchema,
+  pct_cheque: pctSchema,
+  pct_iva: pctSchema,
 })
+
+/** Los ocho de la cascada, tal como los guarda la base: en FRACCIÓN, salvo el factor. */
+function cascadaDe(d: z.infer<typeof nuevoSchema>) {
+  return {
+    parametro_comercial_id: d.parametro_comercial_id || null,
+    pct_gastos_generales: d.pct_gastos_generales,
+    pct_beneficio: d.pct_beneficio,
+    pct_financiero: d.pct_financiero,
+    factor_financiero: d.factor_financiero,
+    pct_iibb: d.pct_iibb,
+    pct_ganancias: d.pct_ganancias,
+    pct_cheque: d.pct_cheque,
+    pct_iva: d.pct_iva,
+  }
+}
 
 /**
  * EL NÚMERO SE DERIVA, NO SE PIDE. `COT-2026-024`.
@@ -107,11 +135,7 @@ export async function crearPresupuesto(form: FormData): Promise<Resultado> {
     cliente: d.cliente || null,
     cliente_id: d.cliente_id || null,
     obra_canonica_id: d.obra_canonica_id || null,
-    pct_indirectos: d.pct_indirectos,
-    pct_gastos_generales: d.pct_gastos_generales,
-    pct_margen: d.pct_margen,
-    pct_financiero: d.pct_financiero,
-    pct_impuestos: d.pct_impuestos,
+    ...cascadaDe(d),
   }).select('id').single()
   if (e) return { ok: false, error: e.message }
   refrescar()
@@ -131,12 +155,10 @@ export async function guardarCabecera(_prev: EstadoAccion, form: FormData): Prom
     cliente: d.cliente || null,
     cliente_id: d.cliente_id || null,
     obra_canonica_id: d.obra_canonica_id || null,
-    pct_indirectos: d.pct_indirectos,
-    pct_gastos_generales: d.pct_gastos_generales,
-    pct_margen: d.pct_margen,
-    pct_financiero: d.pct_financiero,
-    pct_impuestos: d.pct_impuestos,
+    ...cascadaDe(d),
   }).eq('id', id)
+  // El trigger `cotizacion_congelada_solo_lectura` rechaza este UPDATE si el presupuesto ya salió,
+  // y su mensaje —que nombra la vía legítima— se muestra tal cual.
   if (e) return { error: e.message }
   refrescar(id)
   return { error: null, ok: true }
@@ -162,9 +184,9 @@ export async function cambiarEstado(_prev: EstadoAccion, form: FormData): Promis
 /**
  * CONGELAR. Copia la composición viva de cada partida y fija el costo unitario.
  *
- * La función devuelve cuántas LÍNEAS copió. Cero líneas con partidas cargadas no es un error de la
- * llamada: es que ninguna partida tiene análisis, y el presupuesto queda congelado sin composición
- * que respalde su precio. Se dice, en vez de festejar un «listo».
+ * DESDE LA 4400 DEVUELVE UN jsonb, no un entero. El entero eran «líneas copiadas» y cero líneas
+ * significaba tres cosas distintas sin poder distinguirlas: sin partidas, sin análisis, o todo
+ * subcontratado —que ni siquiera es deuda—. Ahora el mensaje dice qué quedó congelado y qué no.
  */
 export async function congelar(_prev: EstadoAccion, form: FormData): Promise<EstadoAccion> {
   const id = String(form.get('id') ?? '')
@@ -174,13 +196,21 @@ export async function congelar(_prev: EstadoAccion, form: FormData): Promise<Est
   const { data, error: e } = await c.rpc('congelar_presupuesto', { p_cotizacion_id: id })
   if (e) return { error: e.message }
   refrescar(id)
-  const lineas = Number(data ?? 0)
-  return {
-    error: null, ok: true,
-    mensaje: lineas === 0
-      ? 'Congelado, pero no se copió ninguna línea de composición: ninguna partida tiene análisis.'
-      : `Congelado. Se copiaron ${lineas} líneas de composición.`,
+
+  const r = (data ?? {}) as {
+    lineas_composicion?: number; n_partidas?: number; n_partidas_congeladas?: number
+    n_subcontratadas?: number; n_sin_analisis?: number; n_subcontratadas_sin_precio?: number
   }
+  const n = (v: number | undefined) => Number(v ?? 0)
+  const partes = [`${n(r.n_partidas_congeladas)} de ${n(r.n_partidas)} partidas congeladas`]
+  if (n(r.lineas_composicion) > 0) partes.push(`${n(r.lineas_composicion)} líneas de composición`)
+  if (n(r.n_subcontratadas) > 0) partes.push(`${n(r.n_subcontratadas)} subcontratadas`)
+  // Lo que NO quedó respaldado se dice, no se festeja: es deuda que ya no se puede corregir sin
+  // crear una versión nueva.
+  if (n(r.n_sin_analisis) > 0) partes.push(`${n(r.n_sin_analisis)} sin análisis, sin composición que respalde su precio`)
+  if (n(r.n_subcontratadas_sin_precio) > 0) partes.push(`${n(r.n_subcontratadas_sin_precio)} paquetes sin precio contratado`)
+
+  return { error: null, ok: true, mensaje: `Congelado: ${partes.join(' · ')}.` }
 }
 
 /**

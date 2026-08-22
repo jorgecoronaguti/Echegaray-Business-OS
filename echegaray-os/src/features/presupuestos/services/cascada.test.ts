@@ -4,12 +4,17 @@
 //
 // `cotizacion_cascada` hace `coalesce(sum(v.subtotal), 0)` para poder agrupar. Un presupuesto
 // recién creado, sin una sola partida, devuelve costo directo 0 y —arrastrado por la cascada—
-// PRECIO DE VENTA 0. Si la pantalla lo dibujara tal cual, la cartera mostraría una oferta de $ 0
-// junto a las reales y el KPI «cotizado abierto» sumaría ceros como si fueran decisiones.
+// VENTA 0. Si la pantalla lo dibujara tal cual, la cartera mostraría una oferta de $ 0 junto a las
+// reales y el KPI «cotizado abierto» sumaría ceros como si fueran decisiones.
 //
 // El test contrario importa igual: un presupuesto CON partidas cuyo costo da 0 sí publica 0. Ahí
 // el cero es un hecho —recursos sin precio en la base maestra— y taparlo escondería la deuda de
 // carga que `n_sin_analisis` está denunciando en la misma fila.
+//
+// LOS NÚMEROS DEL FIXTURE SON LOS REALES de la obra ORICA con los parámetros vigentes: costo
+// directo $92.087.947,11 → venta sin IVA $154.888.969,47 → venta final $187.415.653,06. Salen de
+// `cotizacion_cascada`, no se recalculan acá, y así el fixture no puede quedar internamente
+// inconsistente sin que alguien lo note.
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -19,45 +24,79 @@ import type { PresupuestoCascada } from '../types/index.ts'
 function cascada(over: Partial<PresupuestoCascada> = {}): PresupuestoCascada {
   return {
     id: 'p1', numero: 'COT-2026-018', version: 1, vigente: true, estado: 'borrador',
-    cliente: 'Orica', cliente_id: null, obra_nombre: 'Escuela San Juan', obra_canonica_id: null,
+    cliente: 'Orica', cliente_id: null, obra_nombre: 'Demolición y mortero', obra_canonica_id: null,
     fecha_cotizacion: '2026-02-28', congelada_en: null, convertida_obra_id: null,
-    pct_indirectos: 0.12, pct_gastos_generales: 0.06, pct_margen: 0.17, pct_financiero: 0,
-    pct_impuestos: 0.035,
-    costo_directo: 131082400, hh_previstas: 1496, n_partidas: 24, n_sin_analisis: 0, n_sin_computo: 0,
-    indirectos: 15729888, gastos_generales: 7864944, costo_total: 154677232,
-    margen: 26295129, financiero: 0, subtotal_antes_impuestos: 180972361,
-    impuestos: 6334032, precio_venta: 187306393, margen_sobre_precio_pct: 14.53,
+    parametro_comercial_id: 'pc1',
+    pct_gastos_generales: 0.27, pct_beneficio: 0.22, pct_financiero: 0.07, factor_financiero: 0.5,
+    pct_iibb: 0.024, pct_ganancias: 0.02, pct_cheque: 0.012, pct_iva: 0.21,
+    costo_directo: 92087947.11, hh_previstas: 1496, n_partidas: 24,
+    n_sin_analisis: 0, n_sin_computo: 0, n_sin_precio_subcontrato: 0,
+    gastos_generales: 24863745.72, costo_industrial: 116951692.83,
+    beneficio: 25729372.42, financiero: 4093309.25,
+    iibb: 3424345.57, ganancias: 2853621.31, subtotal: 153052341.37,
+    impuesto_cheque: 1836628.10, venta_sin_iva: 154888969.47,
+    iva: 32526683.59, venta_final: 187415653.06,
+    coeficiente_sin_iva: 1.681968, coeficiente_con_iva: 2.035181,
+    precio_venta: 154888969.47, margen_sobre_precio_pct: 16.61,
     ...over,
   }
 }
 
-test('un presupuesto SIN partidas no publica un precio de venta de cero', () => {
-  const vacio = cascada({ n_partidas: 0, costo_directo: 0, indirectos: 0, gastos_generales: 0,
-    costo_total: 0, margen: 0, financiero: 0, subtotal_antes_impuestos: 0, impuestos: 0,
-    precio_venta: 0, hh_previstas: 0 })
+/** Todos los importes de la cascada en cero, que es lo que devuelve la vista sin partidas. */
+const EN_CERO: Partial<PresupuestoCascada> = {
+  costo_directo: 0, gastos_generales: 0, costo_industrial: 0, beneficio: 0, financiero: 0,
+  iibb: 0, ganancias: 0, subtotal: 0, impuesto_cheque: 0, venta_sin_iva: 0, iva: 0,
+  venta_final: 0, precio_venta: 0,
+}
+
+test('un presupuesto SIN partidas no publica una venta de cero', () => {
+  const vacio = cascada({ n_partidas: 0, hh_previstas: 0, ...EN_CERO })
   assert.equal(tieneCifras(vacio), false)
   for (const e of escalonesDe(vacio)) assert.equal(e.monto, null, `${e.clave} publicó un cero fabricado`)
 })
 
 test('un presupuesto CON partidas y costo cero SÍ publica el cero: ahí el cero es un hecho', () => {
-  const sinPrecios = cascada({ n_partidas: 3, n_sin_analisis: 3, costo_directo: 0, indirectos: 0,
-    gastos_generales: 0, costo_total: 0, margen: 0, financiero: 0, subtotal_antes_impuestos: 0,
-    impuestos: 0, precio_venta: 0, hh_previstas: null })
+  const sinPrecios = cascada({ n_partidas: 3, n_sin_analisis: 3, hh_previstas: null, ...EN_CERO })
   assert.equal(tieneCifras(sinPrecios), true)
-  const precio = escalonesDe(sinPrecios).find((e) => e.clave === 'precio_venta')
-  assert.equal(precio?.monto, 0)
+  const venta = escalonesDe(sinPrecios).find((e) => e.clave === 'venta_sin_iva')
+  assert.equal(venta?.monto, 0)
 })
 
-test('los escalones salen en el orden de la cascada y el precio la cierra', () => {
+test('los escalones salen en el ORDEN DEL LIBRO, con el industrial y el subtotal como cortes', () => {
   const claves = escalonesDe(cascada()).map((e) => e.clave)
-  assert.deepEqual(claves, ['costo_directo', 'indirectos', 'gastos_generales', 'margen', 'impuestos', 'precio_venta'])
-  assert.equal(escalonesDe(cascada()).at(-1)?.final, true)
+  assert.deepEqual(claves, [
+    'costo_directo', 'gastos_generales', 'costo_industrial', 'beneficio', 'financiero',
+    'iibb', 'ganancias', 'subtotal', 'impuesto_cheque', 'venta_sin_iva', 'iva', 'venta_final',
+  ])
+  // La VENTA SIN IVA cierra el precio de la empresa: el IVA es plata de terceros que pasa.
+  assert.equal(escalonesDe(cascada()).find((e) => e.clave === 'venta_sin_iva')?.final, true)
+})
+
+test('cada escalón declara SOBRE QUÉ BASE se aplica: ahí está lo que cuesta plata entender mal', () => {
+  const porClave = Object.fromEntries(escalonesDe(cascada()).map((e) => [e.clave, e]))
+  assert.match(porClave.gastos_generales.subtitulo, /sobre el costo directo/)
+  // El beneficio es MARKUP sobre el costo, no margen sobre el precio: el error más caro.
+  assert.match(porClave.beneficio.subtitulo, /sobre el costo industrial/)
+  assert.match(porClave.beneficio.subtitulo, /markup, no margen/)
+  // El financiero NO incluye el beneficio en su base, y financia medio período.
+  assert.match(porClave.financiero.subtitulo, /sobre el costo industrial · medio del período/)
+  assert.match(porClave.iibb.subtitulo, /sobre industrial \+ beneficio/)
+  assert.match(porClave.ganancias.subtitulo, /sobre industrial \+ beneficio/)
+  assert.match(porClave.impuesto_cheque.subtitulo, /sobre el subtotal/)
+})
+
+test('el coeficiente que publica la venta es el de la BASE, no uno recalculado acá', () => {
+  const sub = escalonesDe(cascada()).find((e) => e.clave === 'venta_sin_iva')!.subtitulo
+  assert.match(sub, /coeficiente 1,6820/)
+  // Sin coeficiente no se inventa uno dividiendo: se dice qué es el renglón y ya.
+  const sinCoef = escalonesDe(cascada({ coeficiente_sin_iva: null })).find((e) => e.clave === 'venta_sin_iva')!
+  assert.equal(sinCoef.subtitulo, 'el precio que se oferta')
 })
 
 test('el escalón financiero aparece SÓLO si el presupuesto lo cargó', () => {
-  assert.ok(!escalonesDe(cascada()).some((e) => e.clave === 'financiero'))
-  const conFinanciero = escalonesDe(cascada({ pct_financiero: 0.04, financiero: 6187089 }))
-  assert.ok(conFinanciero.some((e) => e.clave === 'financiero'))
+  const sinFinanciero = escalonesDe(cascada({ pct_financiero: 0, financiero: 0 }))
+  assert.ok(!sinFinanciero.some((e) => e.clave === 'financiero'))
+  assert.ok(escalonesDe(cascada()).some((e) => e.clave === 'financiero'))
 })
 
 test('el subtítulo del costo directo NUNCA dice «0 HH»: sin análisis no hay horas que declarar', () => {

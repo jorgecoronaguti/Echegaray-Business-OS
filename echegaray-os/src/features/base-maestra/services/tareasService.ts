@@ -293,5 +293,7 @@ function aRendimiento(r: Fila): Rendimiento {
     dispersion: n(r.dispersion),
     hs_recomendado: n(r.hs_recomendado),
     lectura: String(r.lectura ?? 'sin dato'),
+    ultima_muestra: r.ultima_muestra == null ? null : String(r.ultima_muestra),
+    hh_improductivas: n(r.hh_improductivas_de_la_muestra),
   }
 }

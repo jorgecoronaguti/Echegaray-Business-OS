@@ -74,7 +74,10 @@ export function PanelPartida({
         <Fila k="Incidencia en el presupuesto" v={porcentaje(inc, 'auto')} falta="sin base" />
         <Fila k="HH previstas" v={fHH(p.hh)} falta="sin dato" />
         <Fila k="Rendimiento" v={p.hs_unitarias === null ? null : `${rendimiento(p.hs_unitarias)} hs/${p.unidad ?? 'un'}`} falta="sin dato" />
-        <Fila k="Margen aplicado" v={porcentajeDeFraccion(presupuesto.pct_margen)} falta="sin cargar" />
+        {/* BENEFICIO, no «margen»: el 22 % se aplica sobre el costo industrial, así que es markup
+            sobre el costo y no margen sobre el precio. El margen sobre el precio lo publica la
+            cascada aparte y siempre da menos — confundirlos es el error más caro de presupuestar. */}
+        <Fila k="Beneficio aplicado" v={porcentajeDeFraccion(presupuesto.pct_beneficio)} falta="sin cargar" />
       </dl>
 
       <div className="mt-4 rounded-card bg-surface-quiet px-3 py-2.5 text-[12px] leading-relaxed text-muted">

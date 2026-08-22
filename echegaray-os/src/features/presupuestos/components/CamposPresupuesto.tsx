@@ -2,36 +2,57 @@
 //
 // ═══ LOS PORCENTAJES SE PIDEN EN ESCALA 0–100 Y SE GUARDAN EN FRACCIÓN ═══
 //
-// Nadie escribe «0,12» cuando piensa «12 % de indirectos». La conversión la hace la acción, una
-// sola vez, y el campo dice `%` al lado para que no queden dudas de en qué escala está escribiendo.
+// Nadie escribe «0,27» cuando piensa «27 % de gastos generales». La conversión la hace la acción,
+// una sola vez, y el campo dice `%` al lado para que no queden dudas de en qué escala está
+// escribiendo. El factor financiero es la excepción y por eso NO lleva `%`: es una fracción de
+// período (0,5 = medio período), no un porcentaje.
 //
-// ═══ LOS VALORES POR DEFECTO SON LOS DEL CONTRATO, Y SE PUEDEN CAMBIAR ═══
+// ═══ LOS VALORES POR DEFECTO YA NO VIVEN ACÁ ═══
 //
-// 12 · 6 · 17 · 0 · 3,5 son los del mockup y los que la empresa viene usando. Se ofrecen como
-// arranque para que un presupuesto nuevo no nazca con cero margen —que publicaría un precio igual
-// al costo—, y quedan editables porque cada obra los negocia distinto.
+// Hasta la migración 4300, este archivo tenía `12 · 6 · 17 · 0 · 3,5` tipeados en una constante.
+// Eran una DECISIÓN EMPRESARIAL viviendo en un componente de React: sin historial, invisibles para
+// el chat, y editables por quien tocara el `.tsx`. Peor todavía, no eran los de la empresa — daban
+// un coeficiente de 1,4287 contra el 1,682 del libro con el que se cotiza de verdad.
+//
+// Ahora llegan de `parametro_comercial` por props, leídos en el server component. Si no hubiera
+// ninguno vigente, los campos nacen VACÍOS y se dice por qué: inventar un default acá sería volver
+// exactamente al problema.
 
 import { Campo, CTRL } from '@/shared/components/ui'
-import type { PresupuestoCascada } from '../types'
+import type { ParametroComercial, PresupuestoCascada } from '../types'
 import type { ObraDestino } from '../services/conversionService'
 
 export interface ClienteOpcion { id: string; nombre: string }
 
-const POR_DEFECTO = { indirectos: 12, gastos_generales: 6, margen: 17, financiero: 0, impuestos: 3.5 }
+/** La fracción de la base vuelve a escala 0–100 para el campo. `0,027` → `2,7`. */
+const aCampo = (fraccion: number | null | undefined): string =>
+  fraccion === null || fraccion === undefined
+    ? ''
+    : String(Math.round(fraccion * 1000000) / 10000).replace('.', ',')
 
-/** La fracción de la base vuelve a escala 0–100 para el campo. `0,035` → `3,5`. */
-const aCampo = (fraccion: number | undefined, defecto: number): string =>
-  fraccion === undefined ? String(defecto).replace('.', ',') : String(Math.round(fraccion * 1000000) / 10000).replace('.', ',')
+/** El factor financiero NO es un porcentaje: se escribe tal cual, `0,5`. */
+const aCampoFactor = (v: number | null | undefined): string =>
+  v === null || v === undefined ? '' : String(v).replace('.', ',')
 
 export function CamposPresupuesto({
   p,
   clientes,
   obras,
+  parametro,
 }: {
   p?: PresupuestoCascada
   clientes: ClienteOpcion[]
   obras: ObraDestino[]
+  /** El vigente de `parametro_comercial`. `null` = no hay ninguno cargado, y se dice. */
+  parametro: ParametroComercial | null
 }) {
+  // El presupuesto que ya existe manda sobre el parámetro: sus porcentajes son los que se ofertó.
+  const de = (
+    campo: 'pct_gastos_generales' | 'pct_beneficio' | 'pct_financiero' | 'pct_iibb'
+      | 'pct_ganancias' | 'pct_cheque' | 'pct_iva',
+  ): string => aCampo(p ? p[campo] : parametro?.[campo])
+  const factor = aCampoFactor(p ? p.factor_financiero : parametro?.factor_financiero)
+
   return (
     <div className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-2">
@@ -61,30 +82,65 @@ export function CamposPresupuesto({
 
       <fieldset className="rounded-card border border-line px-3 py-2.5">
         <legend className="px-1 text-[10px] font-medium uppercase tracking-[0.06em] text-faint">
-          La cascada, en porcentaje
+          La cascada comercial
         </legend>
-        <div className="grid gap-3 sm:grid-cols-5">
-          <Campo label="Indirectos %">
-            <input name="pct_indirectos" inputMode="decimal" defaultValue={aCampo(p?.pct_indirectos, POR_DEFECTO.indirectos)} className={CTRL} data-testid="campo-indirectos" />
-          </Campo>
+
+        <input type="hidden" name="parametro_comercial_id" value={p?.parametro_comercial_id ?? parametro?.id ?? ''} />
+
+        <div className="grid gap-3 sm:grid-cols-4">
           <Campo label="Gastos generales %">
-            <input name="pct_gastos_generales" inputMode="decimal" defaultValue={aCampo(p?.pct_gastos_generales, POR_DEFECTO.gastos_generales)} className={CTRL} data-testid="campo-gg" />
+            <input name="pct_gastos_generales" inputMode="decimal" defaultValue={de('pct_gastos_generales')}
+              className={CTRL} data-testid="campo-gg" />
           </Campo>
-          <Campo label="Margen %">
-            <input name="pct_margen" inputMode="decimal" defaultValue={aCampo(p?.pct_margen, POR_DEFECTO.margen)} className={CTRL} data-testid="campo-margen" />
+          <Campo label="Beneficio %">
+            <input name="pct_beneficio" inputMode="decimal" defaultValue={de('pct_beneficio')}
+              className={CTRL} data-testid="campo-beneficio" />
           </Campo>
           <Campo label="Financiero %">
-            <input name="pct_financiero" inputMode="decimal" defaultValue={aCampo(p?.pct_financiero, POR_DEFECTO.financiero)} className={CTRL} data-testid="campo-financiero" />
+            <input name="pct_financiero" inputMode="decimal" defaultValue={de('pct_financiero')}
+              className={CTRL} data-testid="campo-financiero" />
           </Campo>
-          <Campo label="Impuestos %">
-            <input name="pct_impuestos" inputMode="decimal" defaultValue={aCampo(p?.pct_impuestos, POR_DEFECTO.impuestos)} className={CTRL} data-testid="campo-impuestos" />
+          <Campo label="Factor financiero" ayuda="Qué fracción del período se financia. 0,5 = medio período.">
+            <input name="factor_financiero" inputMode="decimal" defaultValue={factor}
+              className={CTRL} data-testid="campo-factor-financiero" />
           </Campo>
         </div>
-        <p className="mt-2 text-[11px] text-faint">
-          Indirectos y gastos generales se aplican sobre el costo directo; margen y financiero sobre
-          la suma de los tres; impuestos sobre todo lo anterior. La cuenta la hace la base, no esta
-          pantalla.
+
+        <div className="mt-3 grid gap-3 sm:grid-cols-4">
+          <Campo label="IIBB + Lote Hogar %">
+            <input name="pct_iibb" inputMode="decimal" defaultValue={de('pct_iibb')}
+              className={CTRL} data-testid="campo-iibb" />
+          </Campo>
+          <Campo label="Ganancias %">
+            <input name="pct_ganancias" inputMode="decimal" defaultValue={de('pct_ganancias')}
+              className={CTRL} data-testid="campo-ganancias" />
+          </Campo>
+          <Campo label="Impuesto al cheque %">
+            <input name="pct_cheque" inputMode="decimal" defaultValue={de('pct_cheque')}
+              className={CTRL} data-testid="campo-cheque" />
+          </Campo>
+          <Campo label="IVA %">
+            <input name="pct_iva" inputMode="decimal" defaultValue={de('pct_iva')}
+              className={CTRL} data-testid="campo-iva" />
+          </Campo>
+        </div>
+
+        <p className="mt-2 text-[11px] leading-relaxed text-faint" data-testid="nota-cascada">
+          Gastos generales sobre el costo directo → costo industrial. Beneficio y financiero sobre el
+          industrial. IIBB y Ganancias sobre industrial + beneficio. El impuesto al cheque sobre el
+          subtotal, y el IVA sobre la venta. La cuenta la hace la base, no esta pantalla.
         </p>
+        {parametro ? (
+          <p className="mt-1 text-[11px] text-faint" data-testid="fuente-parametro">
+            Vienen de los parámetros comerciales v{parametro.version} · {parametro.fuente}
+          </p>
+        ) : (
+          <p className="mt-1 text-[11px] text-warn" data-testid="sin-parametro">
+            No hay parámetros comerciales vigentes cargados: los campos nacen vacíos a propósito. Un
+            valor por defecto inventado acá es lo que hacía que la empresa cotizara con un
+            coeficiente de 1,43 en vez del 1,68 con el que cotiza de verdad.
+          </p>
+        )}
       </fieldset>
     </div>
   )

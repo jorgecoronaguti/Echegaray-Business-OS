@@ -35,27 +35,60 @@ export interface PresupuestoCascada {
   congelada_en: string | null
   convertida_obra_id: string | null
 
-  pct_indirectos: number
+  parametro_comercial_id: string | null
+
+  // LOS OCHO DE LA CASCADA DEL LIBRO, en FRACCIÓN. Siete son decisión empresarial; el IVA es lo
+  // único normativo. Antes eran cinco con otras bases, y sus valores «de la empresa» vivían en un
+  // `defaultValue` de React.
   pct_gastos_generales: number
-  pct_margen: number
+  pct_beneficio: number
   pct_financiero: number
-  pct_impuestos: number
+  factor_financiero: number
+  pct_iibb: number
+  pct_ganancias: number
+  pct_cheque: number
+  pct_iva: number
 
   costo_directo: number | null
   hh_previstas: number | null
   n_partidas: number
   n_sin_analisis: number
   n_sin_computo: number
+  n_sin_precio_subcontrato: number
 
-  indirectos: number | null
   gastos_generales: number | null
-  costo_total: number | null
-  margen: number | null
+  costo_industrial: number | null
+  beneficio: number | null
   financiero: number | null
-  subtotal_antes_impuestos: number | null
-  impuestos: number | null
+  iibb: number | null
+  ganancias: number | null
+  subtotal: number | null
+  impuesto_cheque: number | null
+  venta_sin_iva: number | null
+  iva: number | null
+  venta_final: number | null
+  coeficiente_sin_iva: number | null
+  coeficiente_con_iva: number | null
+  /** Alias de `venta_sin_iva`: el precio que se oferta. El IVA no es precio de la empresa. */
   precio_venta: number | null
+  /** El MARGEN sobre el precio, que NO es el beneficio: el beneficio es markup sobre el costo. */
   margen_sobre_precio_pct: number | null
+}
+
+/** Una fila de `parametro_comercial`: los ocho porcentajes vigentes, con su fuente. */
+export interface ParametroComercial {
+  id: string
+  version: number
+  pct_gastos_generales: number
+  pct_beneficio: number
+  pct_financiero: number
+  factor_financiero: number
+  pct_iibb: number
+  pct_ganancias: number
+  pct_cheque: number
+  pct_iva: number
+  fuente: string
+  notas: string | null
 }
 
 /** Una fila de `cotizacion_partida_valorizada`: la partida con su costo congelado o vivo. */

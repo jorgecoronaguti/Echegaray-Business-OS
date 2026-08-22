@@ -21,10 +21,15 @@ function p(over: Partial<PresupuestoCascada> = {}): PresupuestoCascada {
     id: 'p1', numero: 'COT-1', version: 1, vigente: true, estado: 'adjudicada', cliente: null,
     cliente_id: null, obra_nombre: null, obra_canonica_id: 'escuela', fecha_cotizacion: null,
     congelada_en: '2026-02-28T10:00:00Z', convertida_obra_id: null,
-    pct_indirectos: 0, pct_gastos_generales: 0, pct_margen: 0, pct_financiero: 0, pct_impuestos: 0,
+    parametro_comercial_id: null,
+    pct_gastos_generales: 0, pct_beneficio: 0, pct_financiero: 0, factor_financiero: 0,
+    pct_iibb: 0, pct_ganancias: 0, pct_cheque: 0, pct_iva: 0,
     costo_directo: 100, hh_previstas: 10, n_partidas: 2, n_sin_analisis: 0, n_sin_computo: 0,
-    indirectos: 0, gastos_generales: 0, costo_total: 100, margen: 0, financiero: 0,
-    subtotal_antes_impuestos: 100, impuestos: 0, precio_venta: 100, margen_sobre_precio_pct: 0,
+    n_sin_precio_subcontrato: 0,
+    gastos_generales: 0, costo_industrial: 100, beneficio: 0, financiero: 0, iibb: 0, ganancias: 0,
+    subtotal: 100, impuesto_cheque: 0, venta_sin_iva: 100, iva: 0, venta_final: 100,
+    coeficiente_sin_iva: 1, coeficiente_con_iva: 1,
+    precio_venta: 100, margen_sobre_precio_pct: 0,
     ...over,
   }
 }

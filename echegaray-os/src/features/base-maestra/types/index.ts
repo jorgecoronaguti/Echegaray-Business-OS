@@ -93,6 +93,10 @@ export type Rendimiento = {
   dispersion: number | null
   hs_recomendado: number | null
   lectura: string
+  /** Cuándo entró la última muestra. Es lo que hace CADUCAR una decisión anterior. */
+  ultima_muestra: string | null
+  /** Las horas de la muestra que NO produjeron. El rendimiento ya las descuenta. */
+  hh_improductivas: number | null
 }
 
 export type PasoPlantilla = {
