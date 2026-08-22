@@ -45,9 +45,16 @@ export interface PlazoObra {
   fin_plan: string | null
   inicio_base: string | null
   fin_base: string | null
+  /** Evidencia, nunca futuro. Sale de `obra_fechas`, la misma fuente que la cabecera de la ficha. */
+  inicio_real: string | null
+  fin_real: string | null
+  /** Cuándo termina al ritmo medido. Nunca anterior a hoy si la obra sigue abierta. */
+  forecast_fin: string | null
   avance_pct: number | null
   desvio_plazo_dias: number | null
   n_actividades: number
+  /** Las que no tienen NINGUNA fecha: el renglón no las puede dibujar y hay que decirlo. */
+  actividades_sin_fecha: number
 }
 
 /**
@@ -67,7 +74,8 @@ export interface PlazoObra {
  */
 export const COLUMNAS_PLAZO =
   'obra_id,nombre,cliente_nombre,etapa,estado,'
-  + 'inicio_plan,fin_plan,inicio_base,fin_base,avance_pct,desvio_plazo_dias,n_actividades'
+  + 'inicio_plan,fin_plan,inicio_base,fin_base,inicio_real,fin_real,forecast_fin,'
+  + 'avance_pct,desvio_plazo_dias,n_actividades,actividades_sin_fecha'
 
 /**
  * EL PLAZO DE CADA OBRA VISIBLE. Qué obras vuelven NO lo decide esta función: lo decide el RLS de

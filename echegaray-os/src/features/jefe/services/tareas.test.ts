@@ -8,6 +8,7 @@ const a = (p: Partial<ActividadDelJefe> & { actividad_id: string }): ActividadDe
   avance_pct: 0, origen_avance: 'partes', estado_operativo: 'en_curso', impedimentos_abiertos: 0,
   n_pasos: 0, n_pasos_hechos: 0, cuadrilla_prevista: 'Cuadrilla 2', hh_plan: null, hh_real: null, inicio_plan: null,
   fin_plan: null, fin_real: null, ultimo_parte: null, unidad: null, cantidad_objetivo: null,
+  inicio_real: null, forecast_fin: null, estado_fecha: null,
   cantidad_ejecutada: null, ...p,
 })
 

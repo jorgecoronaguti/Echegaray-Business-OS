@@ -23,6 +23,10 @@ const act = (id: string, seccion: string | null): Actividad => ({
   cantidad_ejecutada: null, n_partes: 0, ultimo_parte: null, hh_real: null, hh_extra: null,
   n_imputaciones: 0, impedimentos_abiertos: 0, avance_pct: null, origen_avance: null,
   estado_operativo: 'pendiente', productividad: null, consumo_hh_pct: null,
+  inicio_real_declarado: null, fin_real_declarado: null, origen_inicio_real: null,
+  origen_fin_real: null, forecast_fin: null, base_del_forecast: null, dias_restantes: null,
+  tiene_fecha: true, tiene_fecha_plan: true, estado_fecha: 'planificada',
+  desvio_plan_dias: null, desvio_forecast_dias: null,
   actividad_padre_id: null, n_tareas: 0, n_tareas_hechas: 0, n_pedidos: 0,
 })
 

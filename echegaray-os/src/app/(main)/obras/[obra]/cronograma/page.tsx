@@ -38,6 +38,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { esAdministracion } from '@/features/auth/types/areas'
 import { getInsumosCronograma } from '@/features/obras/services/cronogramaObraService'
+import { getObra } from '@/features/obras/services/obrasService'
 import { armarCronograma, simularArrastre, type Cronograma } from '@/features/obras/services/cronogramaMotor'
 import { editarDuracion, moverActividad } from '@/features/obras/services/actionsPlan'
 import { agregarDependencia, quitarDependencia } from '@/features/obras/services/actions'
@@ -79,9 +80,13 @@ export default async function CronogramaObraPage(
   const enProyeccion = sp.proyeccion === '1'
   const supabase = await createClient()
 
-  const [{ data: insumos, error }, perfil] = await Promise.all([
+  // La obra viaja por el «Fin plan» del encabezado y NADA MÁS: es la misma fecha que muestran la
+  // cabecera de la ficha y el Resumen, publicada por `obra_fechas`. Calcularla acá con otro
+  // `max(fin_plan)` propio era la cuarta cuenta del mismo número en la misma pantalla.
+  const [{ data: insumos, error }, perfil, { data: obra }] = await Promise.all([
     getInsumosCronograma(supabase, obraId),
     getPerfilActual(supabase),
+    getObra(supabase, obraId),
   ])
   // Reprogramar el plan corre fechas de entrega: es de Administración y de la jefatura de obra. La
   // guarda de verdad está en la acción —la misma se puede invocar sin pasar por el botón—; esto
@@ -121,7 +126,7 @@ export default async function CronogramaObraPage(
         volverLabel={`Obras · ${obraId}`}
         titulo="Cronograma"
         kpis={[
-          { rotulo: 'Fin plan', valor: fmt(finDelPlan(crono)), falta: 'sin secuencia' },
+          { rotulo: 'Fin plan', valor: fmt(obra?.fecha_fin_plan?.slice(0, 10) ?? null), falta: 'sin fecha' },
           {
             rotulo: enProyeccion ? 'Fin proyectado' : 'Fin de obra',
             valor: fmt(crono.finObra), proyectado: true, falta: 'sin secuencia',
@@ -209,16 +214,6 @@ export default async function CronogramaObraPage(
       </div>
     </main>
   )
-}
-
-/** El fin del PLAN GUARDADO — el máximo `fin_plan` de las actividades. Es otra cosa que el fin
- *  calculado: uno es lo que alguien escribió, el otro lo que el motor deduce de la secuencia. */
-function finDelPlan(crono: Cronograma): string | null {
-  const fines = crono.actividades
-    .map((a) => (a.fin_plan ? String(a.fin_plan).slice(0, 10) : null))
-    .filter((x): x is string => Boolean(x))
-    .sort()
-  return fines.at(-1) ?? null
 }
 
 function textosDeConflicto(crono: Cronograma): string[] {

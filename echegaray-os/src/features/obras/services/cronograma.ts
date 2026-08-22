@@ -46,12 +46,23 @@ export const ESTADO_LABEL: Record<EstadoActividad, string> = {
  * atrasada. Al revés —clasificar por fecha y después mirar el avance— el tablero marcaría en rojo
  * todo lo que se hizo y se entregó, que es la manera más rápida de que nadie lo mire más.
  */
-export function estadoDe(a: Pick<Actividad, 'inicio_plan' | 'fin_plan' | 'pct'>, hoy: string): EstadoActividad {
-  if ((a.pct ?? 0) >= 100) return 'terminada'
-  if (!a.inicio_plan) return 'sin_fecha'
-  const fin = a.fin_plan ?? a.inicio_plan
-  if (fin < hoy) return 'atrasada'
-  if (a.inicio_plan <= hoy) return 'en_curso'
+export function estadoDe(
+  a: Pick<Actividad, 'inicio_plan' | 'fin_plan' | 'pct'>
+    & Partial<Pick<Actividad, 'estado_fecha' | 'inicio_real' | 'fin_real'>>,
+  hoy: string,
+): EstadoActividad {
+  if ((a.pct ?? 0) >= 100 || a.estado_fecha === 'terminada' || a.fin_real != null) return 'terminada'
+  // SIN FECHA ES LO QUE DICE LA FUENTE, no «le falta el inicio del plan». Una actividad con fin de
+  // plan cargado, o con partes de avance encima, TIENE fecha: decirle «sin fecha» acá y dibujarle
+  // una barra en el Gantt es cómo la misma tarea aparecía con y sin fecha en dos pantallas.
+  const sinPlan = a.inicio_plan == null && a.fin_plan == null
+  if (a.estado_fecha === 'sin_fecha' || (sinPlan && a.inicio_real == null)) return 'sin_fecha'
+  // EL ATRASO SE MIDE CONTRA EL PLAN. Una actividad que arrancó y no tiene fecha comprometida no
+  // puede estar atrasada: no hay contra qué. Ponerla en rojo por su propia fecha de arranque es
+  // castigar a la que sí registró el parte.
+  const finPlan = a.fin_plan ?? a.inicio_plan
+  if (finPlan != null && finPlan < hoy) return 'atrasada'
+  if (a.inicio_plan != null ? a.inicio_plan <= hoy : a.inicio_real != null) return 'en_curso'
   return 'por_empezar'
 }
 
