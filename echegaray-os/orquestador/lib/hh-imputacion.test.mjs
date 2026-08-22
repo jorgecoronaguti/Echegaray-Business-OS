@@ -13,6 +13,23 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { query } from './db.mjs'
+import { declararEscrituraEnPrueba } from './guarda-base-de-prueba.mjs'
+
+// ═══ ESTE ARCHIVO ESCRIBE COMMITEADO SOBRE LA BASE PRODUCTIVA, Y ESO NO ESTÁ BIEN ═══
+//
+// Se declara para que quede A LA VISTA, no porque esté resuelto. A diferencia de los tres
+// `*-persistencia.test.mjs` —que escriben commiteado porque lo que miden ES la supervivencia del
+// dato entre corridas—, acá el commit no aporta nada: cada caso crea su persona, imputa, verifica y
+// borra. Todo eso entraría igual en un `begin` … `rollback`, y entonces un corte a mitad de camino
+// no dejaría una persona «ZZ-E2E hh-imputacion» suelta en el plantel real.
+//
+// No se convirtió en esta tarea porque son ocho casos que comparten `escenario()` y `limpiar()` por
+// llamada suelta: pasarlos a un cliente con transacción es un refactor del archivo entero, y el
+// encargo era instalar la guarda sin poner en rojo una suite que hoy está verde. QUEDA PENDIENTE, y
+// esta declaración es el recordatorio: mientras esté acá, este archivo escribe en producción.
+declararEscrituraEnPrueba('PENDIENTE DE CONVERTIR a transacción + rollback: los ocho casos crean '
+  + 'personas y registros_hh commiteados sobre la base real y los borran a mano; un corte en el '
+  + 'medio deja una persona ZZ-E2E suelta en el plantel')
 
 const SIN_BASE = !process.env.DATABASE_URL
 const MARCA = 'ZZ-E2E hh-imputacion'

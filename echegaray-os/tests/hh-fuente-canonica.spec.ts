@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
-import { entrar, OBRA } from './util/obras-e2e'
+import { conBase, entrar, OBRA } from './util/obras-e2e'
+import { limpiarPersonasDePrueba, marca } from './util/rastro'
 
 // EL CIRCUITO REAL DE PUNTA A PUNTA — la única prueba de que HH es la fuente canónica de tiempo.
 //
@@ -14,7 +15,25 @@ import { entrar, OBRA } from './util/obras-e2e'
 // aparecer en la ficha de la persona. Si hubiera dos lugares donde se guardan las horas, este test
 // se pondría rojo — que es exactamente lo que el dueño quiere impedir.
 
-const MARCA = `e2e-hh-${Date.now()}`
+// ═══ LA MARCA, Y POR QUÉ CAMBIÓ (22/08/2026) ═══
+//
+// Era `e2e-hh-${Date.now()}`. En la base productiva quedaron dos personas con ese nombre —
+// «e2e-hh-1787238441197» y «e2e-hh-1787239591040»— visibles en el plantel real. No fue un descuido
+// del último test: el último test archiva la persona a propósito, porque el modelo dice que un
+// legajo no se borra. Sólo que ESTA persona no es un legajo: es un maniquí, y un maniquí archivado
+// sigue estando en la pantalla de Administración.
+//
+// Dos cambios: la marca ahora es la canónica —la misma que barren todas las demás suites— y lo que
+// este archivo crea, este archivo lo saca.
+const MARCA = marca('hh')
+
+test.afterAll(async () => {
+  // Por MARCA y no por el id que el test recuerda: si el test murió en el medio no hay id que
+  // recordar, y ése es justamente el caso en el que la limpieza importa.
+  const problemas = await limpiarPersonasDePrueba(await conBase(), MARCA)
+  // Se avisa, no se tumba: un fallo de limpieza no puede tapar el resultado de la prueba.
+  if (problemas.length) console.warn(`[rastro] quedó sin limpiar → ${problemas.join(' · ')}`)
+})
 
 /** Abre un `<details>` SÓLO si está cerrado: clickear el resumen es un interruptor, y hacerlo dos
  *  veces lo vuelve a cerrar — que es lo que pasaba después de la primera carga, porque el formulario

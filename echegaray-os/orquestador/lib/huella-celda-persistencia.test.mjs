@@ -11,6 +11,13 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { guardarHuellas, leerHuellas, claveCelda } from './huella-celda.mjs'
 import { query } from './db.mjs'
+import { declararEscrituraEnPrueba } from './guarda-base-de-prueba.mjs'
+
+// ESCRIBE COMMITEADO SOBRE LA BASE PRODUCTIVA A PROPÓSITO: la marca de borrado se prueba contra la
+// tabla real porque lo que se mide es que el barrido de la corrida SIGUIENTE no se la lleve. Con
+// rollback no hay corrida siguiente. Se declara — la guarda frena a cualquier otro que no lo haga.
+declararEscrituraEnPrueba('la marca de borrado se prueba contra la tabla real porque lo que se mide '
+  + 'es que sobreviva al barrido de la corrida siguiente; file_id sintético y borrado al final')
 
 const FILE = `TEST_HUELLA_${process.pid}`
 const TAB = 'Pestaña de prueba'

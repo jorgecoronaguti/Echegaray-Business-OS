@@ -10,6 +10,14 @@ import assert from 'node:assert/strict'
 import { anclaDelConteo, observar, observarMuchas, ultimaObservacion } from './caja-conteo-centinela.mjs'
 import { instanteDelSello } from './caja-ancla-por-instante.mjs'
 import { query } from './db.mjs'
+import { declararEscrituraEnPrueba } from './guarda-base-de-prueba.mjs'
+
+// ESTE ARCHIVO ESCRIBE COMMITEADO SOBRE LA BASE PRODUCTIVA, Y NO ES UN DESCUIDO: lo que prueba es
+// que la racha SOBREVIVE a la corrida siguiente. Dentro de una transacción con rollback no habría
+// corrida siguiente que mirar. Se declara para que quede en una lista enumerable en vez de ser un
+// hábito invisible — el resto de la suite no puede escribir sin decirlo.
+declararEscrituraEnPrueba('la racha del centinela se prueba contra la tabla real porque la '
+  + 'propiedad ES que sobreviva a la corrida siguiente; file_id sintético y borrado al final')
 
 const FILE = `TEST_CENTINELA_${process.pid}`
 const hayBase = await query('select 1').then(() => true).catch(() => false)

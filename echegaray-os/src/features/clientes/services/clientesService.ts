@@ -91,9 +91,28 @@ export async function getContactos(supabase: SupabaseClient, clienteId: string):
  * Sale de `perfiles`, que es la misma tabla que decide el rol de quien entra: un texto libre haría
  * que «Rodrigo», «R. Echegaray» y «rodri» fueran tres responsables distintos y que la pregunta
  * «¿de quién es este cliente?» dejara de tener respuesta.
+ *
+ * ═══ Y NO OFRECE LAS IDENTIDADES DE PRUEBA (22/08/2026) ═══
+ *
+ * `perfiles` guarda también las tres cuentas con las que la suite mide la cerradura —«Usuario de
+ * prueba E2E», «QA Jefe», «QA Campo»—. Sin este filtro, el desplegable de responsable las ofrecía
+ * al lado de Rodrigo y de Jorge, y nombrar responsable a una cuenta de QA es una decisión de
+ * negocio tomada por accidente.
+ *
+ * Se filtra por `es_prueba`, no por el texto del nombre: hay un proveedor real llamado CHAPA
+ * SEMILLA MELO y archivos reales llamados «Ejemplo …». Filtrar por texto es filtrar datos reales.
+ *
+ * ESTO ES UN SELECTOR, no un listado de auditoría: en `/administracion/usuarios` y en cualquier
+ * rastro de autoría esas cuentas SIGUEN viéndose — pueden entrar, así que tienen que verse.
+ *
+ * EXIGE LA MIGRACIÓN `20260822T6400_lo_que_existe_para_probar_se_declara_…sql` APLICADA. Sin la
+ * columna, PostgREST devuelve 42703 y la pantalla de clientes se queda sin responsables: el error
+ * es ruidoso a propósito, porque el modo de falla silencioso —seguir mostrando las cuentas de QA—
+ * es el que se está corrigiendo.
  */
 export async function getResponsables(supabase: SupabaseClient): Promise<ServiceResult<Responsable[]>> {
-  const { data, error } = await supabase.from('perfiles').select('id, nombre, rol').order('nombre')
+  const { data, error } = await supabase
+    .from('perfiles').select('id, nombre, rol').eq('es_prueba', false).order('nombre')
   if (error) return { data: null, error: error.message }
   return { data: (data ?? []) as Responsable[], error: null }
 }

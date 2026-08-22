@@ -242,7 +242,7 @@ test.describe('la identidad del proveedor la impone la base, no el formulario', 
     test.setTimeout(120000)
     const admin = createClient(URL, SRV, { auth: { persistSession: false } })
     const cuit = '30500001234'
-    const marca = `QA-IDENTIDAD-${Date.now()}`
+    const marca = `ZZ-E2E identidad ${Date.now()}`
     const creados: string[] = []
 
     try {
@@ -270,7 +270,7 @@ test.describe('la identidad del proveedor la impone la base, no el formulario', 
   test('un nombre del Sheet se resuelve UNA vez, y "no es un proveedor" no lleva proveedor', async () => {
     test.setTimeout(120000)
     const admin = createClient(URL, SRV, { auth: { persistSession: false } })
-    const nombre = `QA-NOMBRE-${Date.now()}`
+    const nombre = `ZZ-E2E nombre ${Date.now()}`
     const creados: string[] = []
     let proveedorId: string | null = null
 
@@ -343,7 +343,7 @@ test.describe('la identidad del proveedor la impone la base, no el formulario', 
     }
 
     const elegido = cola[0] as { nombre_norm: string; nombre_origen: string }
-    const prov = await admin.from('proveedores').insert({ nombre: `QA-COLA-${Date.now()}` }).select('id').single()
+    const prov = await admin.from('proveedores').insert({ nombre: `ZZ-E2E cola ${Date.now()}` }).select('id').single()
     expect(prov.error).toBeNull()
     const provId = prov.data!.id as string
     let aliasId: string | null = null
