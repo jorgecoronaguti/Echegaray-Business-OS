@@ -108,10 +108,7 @@ export function FormularioAvance({
         {control === 'pasos' && (
           <Panel titulo="Pasos ejecutados" testid="pasos">
             {pasos.length === 0 ? (
-              <Nada>
-                Esta tarea se mide por pasos y todavía no tiene pasos cargados. Se definen desde la
-                planificación de la obra, con su peso.
-              </Nada>
+              <Nada>Se mide por pasos y no tiene pasos cargados. Se definen en la planificación.</Nada>
             ) : (
               <div className="flex flex-col gap-2 px-5 pb-5">
                 {pasos.map((p) => {
@@ -167,9 +164,9 @@ export function FormularioAvance({
                 <span className="shrink-0 text-[15px] text-muted">{actividad.unidad ?? 'unidades'}</span>
               </label>
               <p className="mt-2.5 text-[12px] leading-relaxed text-faint">
-                Es lo de HOY, no el acumulado: el OS los suma.
+                Lo de HOY, no el acumulado.
                 {actividad.cantidad_objetivo != null && (
-                  <> Objetivo de la tarea: {actividad.cantidad_objetivo} {actividad.unidad ?? ''}.</>
+                  <> Objetivo: {actividad.cantidad_objetivo} {actividad.unidad ?? ''}.</>
                 )}
               </p>
             </div>
@@ -192,8 +189,7 @@ export function FormularioAvance({
                 <span className="shrink-0 text-[15px] text-muted">%</span>
               </label>
               <p className="mt-2.5 text-[12px] leading-relaxed text-faint">
-                Es a cuánto llegó la tarea en total, no lo que se hizo hoy.
-                Venía en {porcentaje(actividad.avance_pct)}.
+                Total de la tarea, no lo de hoy. Venía en {porcentaje(actividad.avance_pct)}.
               </p>
             </div>
           </Panel>
@@ -222,10 +218,7 @@ export function FormularioAvance({
 
         <Panel titulo="Quién lo hizo" contador="horas" testid="quien">
           {plantel.length === 0 ? (
-            <Nada>
-              No hay nadie asignado a esta obra. Las asignaciones las carga Administración desde
-              Personal; sin eso no se pueden imputar horas desde acá.
-            </Nada>
+            <Nada>Nadie asignado a esta obra. Las carga Administración, desde Personal.</Nada>
           ) : (
             <div className="flex flex-col gap-2 px-5 pb-4">
               {plantel.map((p) => (
@@ -245,16 +238,20 @@ export function FormularioAvance({
                     onChange={(e) => setGente({ ...gente, [p.id]: e.target.value })}
                     placeholder="—"
                     aria-label={`Horas de ${p.nombre_completo}`}
-                    className="h-[44px] w-[68px] shrink-0 rounded-[10px] bg-surface text-center font-mono text-[16px] tabular-nums text-ink outline-none"
+                    // 48 y no 44: es un CAMPO, y el handoff le da a los campos del teléfono los
+                    // mismos 48px que a la primaria (`--os-control-h-mobile`). Con guante, 44 es el
+                    // piso de lo que se toca, no la medida de lo que se escribe.
+                    className="h-[48px] w-[72px] shrink-0 rounded-[10px] bg-surface text-center font-mono text-[16px] tabular-nums text-ink outline-none"
                   />
                   <span className="shrink-0 text-[12.5px] text-muted">hs</span>
                 </label>
               ))}
             </div>
           )}
+          {/* La línea se acorta pero NO se va: confundir HH con avance es el error más caro del
+              control de obra, y el que carga tiene que verlo mientras carga. */}
           <p className="px-5 pb-4 text-[11.5px] leading-relaxed text-faint">
-            Son HORAS y van a las HH de la obra. No mueven el porcentaje de avance: son dos hechos
-            distintos.
+            Son horas: van a las HH y no mueven el avance.
           </p>
         </Panel>
       </div>

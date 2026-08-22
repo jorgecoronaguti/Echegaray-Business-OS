@@ -1,6 +1,7 @@
 import { Aviso, Boton } from '@/shared/components/ds'
 import { PieDeAccion } from '@/features/jefe/components/ShellJefe'
 import { Encabezado, Fila, Metricas, Nada, Panel, Rotulo } from '@/features/jefe/components/Piezas'
+import { IconoUbicacion } from '@/features/jefe/components/Iconos'
 import { SinObra } from '@/features/jefe/components/SinObra'
 import { contextoDeObra, hoyEnObra } from '@/features/jefe/services/contexto'
 import { getHHDelDia } from '@/features/jefe/services/jefeService'
@@ -90,16 +91,14 @@ export default async function JefePersonasPage({
 
         {r.sinCerrar > 0 && (
           <Aviso tono="warn" titulo={`${r.sinCerrar} sin cerrar la jornada`} testid="sin-cerrar">
-            Marcaron entrada y no marcaron salida. Casi siempre es una salida sin registrar, no
-            alguien que sigue trabajando: el reloj queda corriendo hasta que se cierre.
+            Marcaron entrada y no salida: el reloj corre hasta que se cierre.
           </Aviso>
         )}
 
         {cuadrillas.length === 0 ? (
           <Panel testid="jefe-personas-vacio">
             <Nada>
-              Todavía no marcó nadie en esta obra hoy. La marca la hace cada persona desde su
-              teléfono, en Asistencia; no hay una carga paralela desde acá.
+              Nadie marcó hoy. La marca la hace cada persona desde su teléfono, en Asistencia.
             </Nada>
           </Panel>
         ) : (
@@ -117,17 +116,11 @@ export default async function JefePersonasPage({
                       key={p.persona_id}
                       testid="persona-en-obra"
                       titulo={p.nombre_completo}
-                      detalle={
-                        enlace ? (
-                          <a href={enlace} target="_blank" rel="noreferrer" className="underline" data-testid="ver-ubicacion">
-                            Ver ubicación · {punto.texto}
-                          </a>
-                        ) : (
-                          // NO es una falta: es un dato ausente (permiso de GPS denegado, o el
-                          // teléfono no lo mandó).
-                          punto.texto
-                        )
-                      }
+                      // El texto dice lo que se sabe del punto —o que no hay punto, que NO es una
+                      // falta: puede ser el permiso de GPS denegado, o el teléfono que no lo mandó.
+                      // «Ver ubicación» dejó de ser un enlace de 16px metido en la oración y pasó a
+                      // ser el objetivo de 44 de la derecha: con el pulgar se acertaba una de tres.
+                      detalle={punto.texto}
                       tonoDetalle={punto.fiable ? 'muted' : 'warn'}
                       icono={
                         <span className="relative flex h-[40px] w-[40px] shrink-0 items-center justify-center rounded-full bg-accent text-[12.5px] font-semibold text-white">
@@ -136,9 +129,23 @@ export default async function JefePersonasPage({
                         </span>
                       }
                       derecha={
-                        <span className="shrink-0 text-right">
-                          <RelojDeJornada entrada={p.entrada} />
-                          <span className="block text-[11px] text-faint">{p.categoria ?? 'sin categoría'}</span>
+                        <span className="flex shrink-0 items-center gap-1">
+                          <span className="text-right">
+                            <RelojDeJornada entrada={p.entrada} />
+                            <span className="block text-[11px] text-faint">{p.categoria ?? 'sin categoría'}</span>
+                          </span>
+                          {enlace && (
+                            <a
+                              href={enlace}
+                              target="_blank"
+                              rel="noreferrer"
+                              data-testid="ver-ubicacion"
+                              aria-label={`Ver en el mapa dónde marcó ${p.nombre_completo}`}
+                              className="-mr-2 flex h-[44px] w-[44px] items-center justify-center rounded-[12px] text-muted active:bg-surface-quiet"
+                            >
+                              <IconoUbicacion className="h-[20px] w-[20px]" />
+                            </a>
+                          )}
                         </span>
                       }
                     />
@@ -167,9 +174,10 @@ export default async function JefePersonasPage({
                   }
                 />
               ))}
+              {/* «Sin marca» NO es «ausente», y eso no es explicación: cambia lo que el jefe hace
+                  con la fila. Se dice en un renglón, no en tres. */}
               <p className="px-[18px] pb-3.5 pt-1 text-[11.5px] leading-relaxed text-faint">
-                No hay marca suya hoy. No dice que faltaron: un teléfono sin batería, un permiso de
-                GPS denegado y una falta se ven igual desde acá. La falta se declara en Personal.
+                Sin marca no es ausente. La falta se declara en Personal.
               </p>
             </Panel>
           </div>
@@ -186,8 +194,7 @@ export default async function JefePersonasPage({
           Mover gente de frente
         </Boton>
         <p className="pt-2 text-center text-[11.5px] leading-relaxed text-faint">
-          Mover gente entre frentes todavía no se puede: el modelo asigna personas a la obra, no al
-          frente. Lo que sí se sabe hoy es quién imputó horas a cada frente.
+          Todavía no se puede: el modelo asigna a la obra, no al frente.
         </p>
       </PieDeAccion>
     </>

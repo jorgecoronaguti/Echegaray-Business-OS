@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { CONTEXTOS, contextoActivo, conObra, volverDe } from '../services/navegacion'
+import { IconoGente, IconoHoy, IconoTareas } from './Iconos'
 
 // EL MARCO DEL JEFE DE OBRA EN EL TELÉFONO — el hermano mayor de `ShellEmpleado`, no la web achicada.
 //
@@ -27,7 +28,17 @@ import { CONTEXTOS, contextoActivo, conObra, volverDe } from '../services/navega
 // Sin el `pb`, la última fila de cualquier lista queda tapada por la barra y nadie la puede tocar.
 // Es la misma trampa que ya pagó el perfil empleado.
 
-const ALTO_BARRA = 54
+const ALTO_BARRA = 58
+
+// LA FORMA DE CADA CONTEXTO, ACÁ Y NO EN `navegacion.ts`. Ese archivo es el que corre bajo
+// `node --test`, y el runner no entiende JSX: por eso la lógica de la barra vive separada de su
+// dibujo. Se mapea por `href`, que es la clave que ese módulo declara — si mañana aparece un cuarto
+// contexto sin icono, la barra lo dibuja igual con su palabra en vez de romperse.
+const ICONO: Record<string, (p: { className?: string }) => ReactNode> = {
+  '/obra/hoy': IconoHoy,
+  '/obra/tareas': IconoTareas,
+  '/obra/personas': IconoGente,
+}
 
 export function ShellJefe({
   iniciales,
@@ -76,20 +87,27 @@ export function ShellJefe({
       {activo && (
         <nav
           data-testid="barra-jefe"
-          className="fixed inset-x-0 bottom-0 z-20 mx-auto flex h-[54px] max-w-[520px] border-t border-line bg-surface"
+          className="fixed inset-x-0 bottom-0 z-20 mx-auto flex h-[58px] max-w-[520px] border-t border-line bg-surface"
         >
-          {CONTEXTOS.map((c) => (
-            <Link
-              key={c.href}
-              href={conObra(c.href, obraId)}
-              data-testid={c.testid}
-              aria-current={activo === c.href ? 'page' : undefined}
-              className="relative flex flex-1 items-center justify-center text-[12.5px]"
-            >
-              {activo === c.href && <span aria-hidden className="absolute inset-x-0 top-0 h-[2px] bg-marca" />}
-              <span className={activo === c.href ? 'font-semibold text-ink' : 'text-muted'}>{c.label}</span>
-            </Link>
-          ))}
+          {CONTEXTOS.map((c) => {
+            const Icono = ICONO[c.href]
+            const encendido = activo === c.href
+            return (
+              <Link
+                key={c.href}
+                href={conObra(c.href, obraId)}
+                data-testid={c.testid}
+                aria-current={encendido ? 'page' : undefined}
+                className={`relative flex flex-1 flex-col items-center justify-center gap-[3px] text-[11.5px] ${
+                  encendido ? 'font-semibold text-ink' : 'text-muted'
+                }`}
+              >
+                {encendido && <span aria-hidden className="absolute inset-x-0 top-0 h-[2px] bg-marca" />}
+                {Icono && <Icono className="h-[21px] w-[21px]" />}
+                <span>{c.label}</span>
+              </Link>
+            )
+          })}
         </nav>
       )}
     </div>
