@@ -3,6 +3,7 @@ import { PieDeAccion } from '@/features/jefe/components/ShellJefe'
 import {
   Barra, Encabezado, Fila, Metricas, Nada, Panel, Rotulo, porcentajeCorto,
 } from '@/features/jefe/components/Piezas'
+import { IconoAlerta } from '@/features/jefe/components/Iconos'
 import { SinObra } from '@/features/jefe/components/SinObra'
 import { contextoDeObra, hoyEnObra } from '@/features/jefe/services/contexto'
 import { getActividades, getArbol, getHHDelDia, getImpedimentos } from '@/features/jefe/services/jefeService'
@@ -62,10 +63,7 @@ export default async function JefeFrentePage({
         <Encabezado titulo="Frente" sub={obra.nombre} />
         <div className="px-4 pb-6">
           <Panel>
-            <Nada>
-              Esta obra no tiene frentes. Los frentes son los rubros que agrupan tareas en el árbol
-              de la obra, y se arman desde la planificación.
-            </Nada>
+            <Nada>Esta obra no tiene frentes. Se arman desde la planificación.</Nada>
           </Panel>
         </div>
       </>
@@ -139,8 +137,8 @@ export default async function JefeFrentePage({
                   ].filter(Boolean).join(' · ')}
                   tonoDetalle="neg"
                   icono={
-                    <span aria-hidden className="flex h-[40px] w-[40px] shrink-0 items-center justify-center rounded-[11px] bg-neg-soft text-[18px] text-neg">
-                      △
+                    <span className="flex h-[40px] w-[40px] shrink-0 items-center justify-center rounded-[11px] bg-neg-soft text-neg">
+                      <IconoAlerta className="h-[20px] w-[20px]" />
                     </span>
                   }
                 />
@@ -194,10 +192,10 @@ export default async function JefeFrentePage({
           <Rotulo>IMPUTARON HORAS HOY</Rotulo>
           <Panel testid="frente-gente">
             {horasPorPersona.size === 0 ? (
+              // «Sin horas» NO es «sin trabajo»: son dos hechos distintos y esa línea se queda.
               <Nada>
-                Nadie tiene horas imputadas a este frente hoy. Las horas se cargan al registrar el
-                avance de una tarea, o desde Personal. Que no haya horas no dice que no se trabajó:
-                dice que todavía no se imputaron.
+                Nadie imputó horas acá hoy — no dice que no se trabajó. Se cargan al registrar el
+                avance de una tarea, o desde Personal.
               </Nada>
             ) : (
               [...horasPorPersona.entries()].map(([personaId, horas]) => {

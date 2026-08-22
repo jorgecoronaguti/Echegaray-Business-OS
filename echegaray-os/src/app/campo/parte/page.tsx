@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getUsuarioActual, getPerfilActual } from '@/features/auth/services/authService'
-import { Aviso, Volver } from '@/shared/components/ds'
+import { Aviso } from '@/shared/components/ds'
 import { hoyISO, leerDatosCampo } from '../datos'
 import { puedeCargarParte } from '../permisos'
 import { FormParte, type ActividadDelParte } from './FormParte'
@@ -49,8 +49,8 @@ export default async function ParteCampoPage({ searchParams }: { searchParams: P
     return (
       <MarcoCampo titulo="Parte del día">
         <Aviso tono="warn" titulo="Tu usuario no puede cargar el parte.">
-          El parte lo carga el jefe de obra, administración o dirección. Podés pedir material y registrar movimientos
-          de herramientas desde <Link href="/campo" className="underline">la pantalla de campo</Link>.
+          Lo carga el jefe de obra. Material y herramientas sí:{' '}
+          <Link href="/campo" className="underline">volver a Campo</Link>.
         </Aviso>
       </MarcoCampo>
     )
@@ -80,8 +80,10 @@ export default async function ParteCampoPage({ searchParams }: { searchParams: P
 
   const { actividades, error: errorAct } = await actividadesDe(obra.id)
 
+  // El `volver` de 44px lo pone `MarcoCampo` por defecto y va al mismo lugar: pasarle el `Volver`
+  // del escritorio dejaba un objetivo de 16px de alto en la pantalla del andamio.
   return (
-    <MarcoCampo titulo="Parte del día" subtitulo={obra.nombre} volver={<Volver href="/campo">Campo</Volver>}>
+    <MarcoCampo titulo="Parte del día" subtitulo={obra.nombre}>
       {errorAct ? (
         <Aviso tono="neg" titulo="No se pudieron leer las actividades de la obra." testid="parte-error">
           {errorAct}

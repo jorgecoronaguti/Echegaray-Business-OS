@@ -23,8 +23,14 @@ export function MarcoCampo({
   return (
     <div className="min-h-screen bg-surface">
       <div className="mx-auto w-full max-w-[560px] px-4 py-5">
+        {/* La migaja es texto de 12px, pero el OBJETIVO que abre son 44: se toca con el pulgar,
+            parado, y una flecha de 16px de alto se falla más veces de las que se acierta. */}
         {volver ?? (
-          <Link href="/campo" className="text-[12px] text-muted hover:text-ink">
+          <Link
+            href="/campo"
+            data-testid="volver"
+            className="-ml-1 inline-flex min-h-[44px] items-center px-1 text-[12px] text-muted hover:text-ink"
+          >
             ← Campo
           </Link>
         )}
@@ -42,11 +48,7 @@ export function MarcoCampo({
  */
 export function ElegirObra({ obras, hrefBase }: { obras: ObraDelCampo[]; hrefBase: string }) {
   if (obras.length === 0) {
-    return (
-      <Vacio>
-        No tenés ninguna obra asignada. Las asigna Administración desde Usuarios; hasta entonces no hay dónde cargar.
-      </Vacio>
-    )
+    return <Vacio>Sin obra asignada. Las asigna Administración, desde Usuarios.</Vacio>
   }
   return (
     <div>

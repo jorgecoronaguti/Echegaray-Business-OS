@@ -1,13 +1,15 @@
+import Link from 'next/link'
 import { Aviso, BotonEnlace } from '@/shared/components/ds'
 import { PieDeAccion } from '@/features/jefe/components/ShellJefe'
 import { SelectorObra } from '@/features/jefe/components/SelectorObra'
+import { IconoAlerta, IconoGente, IconoTareas } from '@/features/jefe/components/Iconos'
 import {
   Barra, Encabezado, Fila, Metricas, Nada, Panel, Rotulo, porcentaje, porcentajeCorto,
 } from '@/features/jefe/components/Piezas'
 import { SinObra } from '@/features/jefe/components/SinObra'
 import { contextoDeObra, hoyEnObra, renglonDeObra } from '@/features/jefe/services/contexto'
 import { getActividades, getArbol, getHHDelDia, getImpedimentos } from '@/features/jefe/services/jefeService'
-import { frentesAbiertos, frentesDelDia, problemasDelDia } from '@/features/jefe/services/dia'
+import { estaTerminada, frentesAbiertos, frentesDelDia, problemasDelDia, soloTareas } from '@/features/jefe/services/dia'
 import { conObra } from '@/features/jefe/services/navegacion'
 import { diasDeAtraso } from '@/features/jefe/services/frentes'
 import { getEsperados, getPresencia } from '@/features/administracion/services/presenciaService'
@@ -17,7 +19,7 @@ import { agrupar } from '@/features/administracion/services/presencia'
 //
 // ═══ EL ORDEN ES LA JERARQUÍA ═══
 //
-// Cómo va la obra → qué la frena → cómo va cada frente → quién está. Lo que decide primero va
+// Cómo va la obra → qué la frena → cómo va cada frente → a dónde ir. Lo que decide primero va
 // primero, y lo que no se usa en obra no viaja: acá no hay contratado, ni costo, ni certificado, ni
 // margen. No porque estén escondidos —`ve_economia()` se los niega a este rol en la base— sino
 // porque parado frente a un encofrado ninguno de los cuatro cambia lo que hay que hacer hoy.
@@ -59,6 +61,9 @@ export default async function JefeHoyPage({
   const atrasoObra = diasDeAtraso(obra.fecha_fin_plan, null, hoy)
   const asignados = (esperados.data ?? []).length
   const enObra = grupos.enObra.length
+  // Las tareas abiertas de la obra, para el acceso a Tareas. No es una lectura nueva: sale de las
+  // mismas actividades que ya se leyeron, con las funciones puras que definen «terminada».
+  const abiertas = soloTareas(actividades.data ?? []).filter((a) => !estaTerminada(a)).length
 
   const primerError = error ?? actividades.error ?? arbol.error ?? impedimentos.error
     ?? presencia.error ?? esperados.error ?? hh.error ?? null
@@ -118,12 +123,11 @@ export default async function JefeHoyPage({
                 tonoDetalle={p.tono}
                 icono={
                   <span
-                    aria-hidden
-                    className={`flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[11px] text-[16px] ${
+                    className={`flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[11px] ${
                       p.tono === 'neg' ? 'bg-neg-soft text-neg' : 'bg-warn-soft text-warn'
                     }`}
                   >
-                    △
+                    <IconoAlerta className="h-[19px] w-[19px]" />
                   </span>
                 }
               />
@@ -136,8 +140,7 @@ export default async function JefeHoyPage({
           <Panel testid="jefe-hoy-frentes">
             {frentes.length === 0 ? (
               <Nada testid="sin-frentes">
-                Esta obra no tiene ningún frente con trabajo abierto. Los frentes salen del árbol de
-                la obra: son los rubros que agrupan tareas, y se arman desde la planificación.
+                Ningún frente con trabajo abierto. Se arman desde la planificación de la obra.
               </Nada>
             ) : (
               frentes.map((f) => (
@@ -166,24 +169,41 @@ export default async function JefeHoyPage({
           </Panel>
         </div>
 
-        <Panel testid="jefe-hoy-gente">
-          <Fila
-            testid="ir-a-personas"
+        {/* LOS DOS DESTINOS QUE SE ABREN DESDE ACÁ, como bloques y no como filas de texto.
+            Estaban: Gente era una fila de 60px con tres renglones y Tareas no estaba —se llegaba
+            sólo por la barra de abajo, que es donde el pulgar YA está pero que no dice cuántas hay.
+            Dos bloques de 88px con su forma dibujada contestan «¿cuánto queda?» y «¿quién vino?»
+            sin leer una oración, y se tocan sin recolocar la mano. */}
+        <div className="grid grid-cols-2 gap-3">
+          <Link
+            href={conObra('/obra/tareas', obra.id)}
+            data-testid="ir-a-tareas"
+            className="flex min-h-[88px] flex-col justify-center gap-1 rounded-[14px] bg-surface px-[18px] active:bg-surface-quiet"
+          >
+            <IconoTareas className="h-[22px] w-[22px] text-muted" />
+            <span className="text-[15px] font-medium text-ink">Tareas</span>
+            <span className="text-[12.5px] text-muted">
+              {abiertas === 0 ? 'ninguna abierta' : `${abiertas} ${abiertas === 1 ? 'abierta' : 'abiertas'}`}
+            </span>
+          </Link>
+          <Link
             href={conObra('/obra/personas', obra.id)}
-            titulo="Quién está hoy"
-            detalle={
-              asignados === 0
-                ? 'Sin plantel asignado a esta obra'
-                : `${enObra} en obra · ${grupos.sinRegistrar.length} sin registrar`
-            }
-            tonoDetalle={grupos.sinRegistrar.length > 0 ? 'warn' : 'muted'}
-            icono={
-              <span aria-hidden className="flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-[12px] bg-marca-soft text-[20px]">
-                ◔
-              </span>
-            }
-          />
-        </Panel>
+            data-testid="ir-a-personas"
+            className="flex min-h-[88px] flex-col justify-center gap-1 rounded-[14px] bg-surface px-[18px] active:bg-surface-quiet"
+          >
+            <IconoGente
+              className={`h-[22px] w-[22px] ${grupos.sinRegistrar.length > 0 ? 'text-warn' : 'text-muted'}`}
+            />
+            <span className="text-[15px] font-medium text-ink">Gente</span>
+            <span className={`text-[12.5px] ${grupos.sinRegistrar.length > 0 ? 'text-warn' : 'text-muted'}`}>
+              {asignados === 0
+                ? 'sin plantel'
+                : grupos.sinRegistrar.length > 0
+                  ? `${enObra} en obra · ${grupos.sinRegistrar.length} sin marca`
+                  : `${enObra} en obra`}
+            </span>
+          </Link>
+        </div>
       </div>
 
       <PieDeAccion sobreBarra>
