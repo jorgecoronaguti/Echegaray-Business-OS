@@ -7,6 +7,9 @@
 //
 // EL PANEL SE ARMA EN EL SERVIDOR y baja como `children`: sus solapas son tres lecturas más, y
 // traerlas al cliente por cada clic sería traerlas por cada clic.
+//
+// LAS LECTURAS DEL PANEL SÓLO CORREN CON EL PANEL ABIERTO. Son datos de UNA actividad: pedirlos
+// junto con la lista sería pagarlos 350 veces para mostrar uno.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { TabTareas } from './TabTareas'
@@ -14,18 +17,46 @@ import { PanelTarea, esSolapa, type Solapa } from './PanelTarea'
 import {
   getArbol, getAvancesSobreContenedor, getHistorial, getPasos, getRelaciones,
 } from '../services/tareasService'
+import { getContextoTarea, type ContextoTarea } from '../services/panelTareaService'
 import { esVistaArbol, type VistaArbol } from '../services/vistaArbol'
 import { aplicarEnLote, editarCampoDeTarea } from '../services/actionsAvance'
+import { cambiarRelacion, dividirEnFrentes, quitarRelacion } from '../services/actionsEstructura'
+
+/** El contexto que se dibuja cuando ninguna de sus lecturas pudo correr: todo en null y ninguna
+ *  afirmación. La pantalla dice «sin dato» por cada cosa, que es exactamente lo que pasa. */
+const CONTEXTO_VACIO: ContextoTarea = {
+  jornadaHoras: null, diasHabiles: null, capacidadCuadrilla: null, partida: null,
+  puedeVerPartida: false, historico: null, diasHastaFinPlan: null,
+}
+
+/** `?dot=` — la dotación simulada, acotada a 0–99. Es la misma lectura que la 08: un `dot=99999`
+ *  desde la barra de direcciones no puede hacer que el panel dibuje un plantel imposible. Sin
+ *  parámetro arranca en la dotación prevista del plan, que es contra lo que se quiere comparar. */
+function dotacionDe(raw: string | undefined, prevista: number | null, tope: number | null): number {
+  const pedida = raw === undefined ? null : Number(raw)
+  const base = pedida != null && Number.isInteger(pedida) && pedida >= 0 && pedida <= 99
+    ? pedida
+    : Math.max(0, Math.round(prevista ?? 0))
+  // El tope del frente no es decorativo: recorta también lo que entra por la URL, igual que en la
+  // 08 — el stepper ya lo respeta, pero la URL entra sin pasar por el stepper.
+  return tope != null ? Math.min(base, tope) : base
+}
 
 export async function WorkspaceTareas({
-  supabase, obraId, act, filtro, sol, cuadrillas,
+  supabase, obraId, act, filtro, sol, dot, cuadrillas, puedeEditar, veEconomia,
 }: {
   supabase: SupabaseClient
   obraId: string
   act: string | undefined
   filtro: string | undefined
   sol: string | undefined
+  dot: string | undefined
   cuadrillas: { id: string; nombre: string }[]
+  /** Administración o jefatura de obra: decide qué gestos se OFRECEN. Cada acción lo vuelve a
+   *  chequear del lado del servidor — la misma escritura entra por otras puertas. */
+  puedeEditar: boolean
+  /** Quien no ve economía no ve la partida de origen, y la lectura ni se hace. */
+  veEconomia: boolean
 }) {
   const vista: VistaArbol = esVistaArbol(filtro) ? filtro : 'todo'
   const [arbolRes, malImputados] = await Promise.all([
@@ -43,13 +74,19 @@ export async function WorkspaceTareas({
   }
   const arbol = arbolRes.data
   const abierta = act ? arbol.find((n) => n.id === act) ?? null : null
-  const [pasos, relaciones, historial] = abierta
+  const [pasos, relaciones, historial, contexto] = abierta
     ? await Promise.all([
         getPasos(supabase, abierta.id),
         getRelaciones(supabase, obraId),
         getHistorial(supabase, abierta.id),
+        getContextoTarea(supabase, obraId, {
+          cuadrillaId: abierta.cuadrilla_id,
+          cotizacionPartidaId: abierta.cotizacion_partida_id,
+          tareaTipoId: abierta.tarea_tipo_id,
+          finPlan: abierta.fin_plan,
+        }, veEconomia),
       ])
-    : [null, null, null]
+    : [null, null, null, null]
   const solapa: Solapa = esSolapa(sol) ? sol : 'avance'
   const hrefLista = `/obras/${obraId}?vista=tareas&filtro=${vista}`
 
@@ -75,6 +112,14 @@ export async function WorkspaceTareas({
           hrefLista={hrefLista}
           cuadrillas={cuadrillas}
           editarCampo={editarCampoDeTarea.bind(null, obraId, abierta.id)}
+          contexto={contexto ?? CONTEXTO_VACIO}
+          dotacion={dotacionDe(dot, abierta.dotacion_prevista, abierta.tope_frente)}
+          puedeEditar={puedeEditar}
+          acciones={{
+            dividir: dividirEnFrentes.bind(null, obraId, abierta.id),
+            cambiarRelacion: cambiarRelacion.bind(null, obraId),
+            quitarRelacion: quitarRelacion.bind(null, obraId),
+          }}
         />
       ) : undefined}
     />

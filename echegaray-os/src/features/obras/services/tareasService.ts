@@ -66,8 +66,16 @@ function aNodo(w: FilaWbs, a: Actividad, subcontratista: string | undefined): No
     n_pasos_hechos: a.n_pasos_hechos ?? 0,
     peso_pasos: a.peso_pasos ?? null,
     analisis_id: a.analisis_id ?? null,
+    tarea_tipo_id: a.tarea_tipo_id ?? null,
+    cotizacion_partida_id: a.cotizacion_partida_id ?? null,
     tope_frente: a.tope_frente ?? null,
     dotacion_prevista: a.dotacion_prevista ?? null,
+    cuadrilla_id: a.cuadrilla_id ?? null,
+    // `undefined` mientras la migración del tiempo técnico no esté aplicada: el `select *` de
+    // PostgREST devuelve las columnas que existan. Se lee como `false`, que es el default de la
+    // columna — no como «no sé», porque el cálculo tiene que poder correr igual.
+    tiempo_tecnico: a.tiempo_tecnico === true,
+    dias_plan: a.dias_plan ?? null,
     // Ver la cabecera: sin una sola precedencia declarada no hay camino crítico que afirmar.
     es_critica: false,
   }
@@ -155,6 +163,11 @@ export interface RelacionLegible {
   /** LA RELACIÓN EN PALABRAS, DESDE LA BASE. Si el texto se armara acá, cada pantalla inventaría
    *  el suyo y un día dejarían de coincidir. La sigla (FS/SS/FF/SF) no se muestra nunca. */
   relacion: string
+  /** LA SIGLA NO SE MUESTRA: SE EDITA. Viaja para poder abrir el selector de «Cambiar relación» en
+   *  lo que la dependencia ES hoy — un desplegable que arranca siempre en FS haría que cambiar la
+   *  demora de una SS la convierta en FS sin que nadie lo pida. */
+  tipo: 'FS' | 'SS' | 'FF' | 'SF'
+  lag_dias: number
 }
 
 export async function getRelaciones(
@@ -162,7 +175,7 @@ export async function getRelaciones(
 ): Promise<ServiceResult<RelacionLegible[]>> {
   const { data, error } = await supabase
     .from('obra_dependencia_legible')
-    .select('id, origen_id, destino_id, origen, destino, relacion').eq('obra_id', obraId)
+    .select('id, origen_id, destino_id, origen, destino, relacion, tipo, lag_dias').eq('obra_id', obraId)
   if (error) return { data: null, error: error.message }
   return { data: (data ?? []) as RelacionLegible[], error: null }
 }
@@ -179,6 +192,9 @@ export interface RegistroAvance {
   fuente: string | null
   masivo: boolean
   autor: string | null
+  /** Los enlaces de la evidencia (`obra_ejecucion.evidencia`, `text[]`). El OS NO guarda archivos:
+   *  el papel vive en Drive y acá queda su enlace. Ver la nota de la solapa Avance en el panel. */
+  evidencia: string[]
 }
 
 /**
@@ -192,7 +208,7 @@ export async function getHistorial(
 ): Promise<ServiceResult<RegistroAvance[]>> {
   const { data, error } = await supabase
     .from('obra_ejecucion')
-    .select('id, fecha, creado_en, cantidad, avance_pct, comentario, criterio, metodo, fuente, masivo, creado_por')
+    .select('id, fecha, creado_en, cantidad, avance_pct, comentario, criterio, metodo, fuente, masivo, creado_por, evidencia')
     .eq('actividad_id', actividadId)
     .order('fecha', { ascending: false }).order('creado_en', { ascending: false })
   if (error) return { data: null, error: error.message }
@@ -215,6 +231,7 @@ export async function getHistorial(
     fuente: (r.fuente as string) ?? null,
     masivo: Boolean(r.masivo),
     autor: r.creado_por ? (nombres.get(r.creado_por as string) ?? null) : null,
+    evidencia: Array.isArray(r.evidencia) ? (r.evidencia as string[]).filter(Boolean) : [],
   }))
   return { data: filas, error: null }
 }
