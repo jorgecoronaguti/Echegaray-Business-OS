@@ -5,6 +5,9 @@
 // ninguna tabla de este módulo, y no debe haberla. Lo mismo con HH y con cobranza.
 
 import type { FechasDeActividad } from './fechas.ts'
+// La economía de la obra vive en su propio archivo y se reexporta acá: los consumidores siguen
+// importando de `@/features/obras/types` y no tienen que saber de la división.
+export type * from './economia.ts' 
 
 /** Las cinco etapas del ciclo de vida, en su orden. La etapa gobierna qué habilita el módulo. */
 export const ETAPAS = ['previo', 'inicio', 'desarrollo', 'terminacion', 'cierre'] as const
@@ -57,7 +60,8 @@ export interface ObraPanel {
   drive_carpeta_id: string | null
   costo_real: number | null
   n_comprobantes: number | null
-  margen_sobre_contratado_pct: number | null
+  /** La porción del costo real con `area = 'personas'`. En 0: no tiene una hora adentro. */
+  costo_mano_de_obra: number | null
   /** Promedio sobre las actividades PLANIFICADAS (con fecha) que no son de resumen.
    *  Se calcula UNA vez, en la vista `obra_avance`, y de ahí lo leen también /chat y
    *  /control-obras: dos cálculos del mismo número fue el defecto que obligó a unificarlo. */
@@ -389,13 +393,17 @@ export interface PlanVsReal {
   desvio_costo_pct: number | null
   monto_contratado: number | null
   margen_esperado: number | null
-  margen_actual: number | null
+  // `margen_actual` NO ESTÁ: era `contratado − costo real`, que no es margen. Ver `EconomiaObra`.
   // Contrato
   certificado: number | null
   facturado: number | null
+  /** De `cobranzas`, no de `certificados` (que está vacía). Ver 20260822T6200. */
   cobrado: number | null
+  cobrado_neto: number | null
   pendiente_certificar: number | null
-  pendiente_cobrar: number | null
+  /** Lo agendado y todavía no cobrado. Reemplaza a `pendiente_cobrar`, que daba 0 sobre dos vacíos. */
+  por_cobrar_proyectado: number | null
+  n_cobranzas: number | null
   // Plazo real y proyectado — la misma fuente que la cabecera de la ficha (`obra_fechas`).
   inicio_real: string | null
   fin_real: string | null
@@ -407,6 +415,7 @@ export interface PlanVsReal {
   /** El fin declarado a mano en la ficha de la obra. Se muestra rotulado, nunca como «el plan». */
   fin_plan_declarado: string | null
 }
+
 
 /** Una persona del legajo. `personas` es la única fuente de nombres del plantel. */
 /** El plantel elegible, tal como lo publica `persona_plantel`: CINCO columnas y ninguna más. El

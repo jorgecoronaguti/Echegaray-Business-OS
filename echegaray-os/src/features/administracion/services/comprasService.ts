@@ -10,7 +10,7 @@
 // «400 capturadas» para siempre, y el número de arriba dejaría de ser el de la empresa.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { aplicarFiltro, type Filtrable, type FiltroCompras } from './comprasEstado'
+import { aplicarFiltro, FILTROS, type Filtrable, type FiltroCompras, type Imputacion } from './comprasEstado'
 
 /**
  * UN CONTADOR DE POSTGREST, VISTO POR SU MÍNIMO.
@@ -32,6 +32,9 @@ const COLUMNAS = [
   'periodo', 'origen', 'created_at',
   'obra_texto', 'obra_asignada_por', 'obra_asignada_en',
   'estado_control', 'estado_control_por', 'estado_control_en', 'tiene_posible_duplicado',
+  // El estado FINO y la obra canónica a la que llega el gasto (20260822T6220). `obra_texto` sigue
+  // porque es lo que dice el papel; `obra_id` es a dónde llega de verdad, y no siempre coinciden.
+  'obra_id', 'imputacion',
 ].join(', ')
 
 /**
@@ -71,6 +74,9 @@ export interface ComprobanteCompra {
   estado_control_por: string | null
   estado_control_en: string | null
   tiene_posible_duplicado: boolean | null
+  /** La obra canónica a la que llega este gasto. `null` también cuando la imputación es Estructura. */
+  obra_id: string | null
+  imputacion: Imputacion | null
 }
 
 export interface Parecido {
@@ -91,7 +97,7 @@ export interface ListadoCompras {
   truncado: boolean
 }
 
-/** Los cuatro números de arriba, que además son el filtro. */
+/** Los números de arriba, que además son el filtro. */
 export type Conteos = Record<FiltroCompras, number>
 
 export async function getCompras(
@@ -131,13 +137,16 @@ export async function getCompras(
 }
 
 /**
- * Los cuatro conteos, cada uno con el MISMO predicado que usa la lista (`aplicarFiltro`).
+ * Los conteos, cada uno con el MISMO predicado que usa la lista (`aplicarFiltro`).
  *
- * `head: true` no trae filas: sólo el número. Cuatro consultas de conteo cuestan menos que traerse
+ * `head: true` no trae filas: sólo el número. Seis consultas de conteo cuestan menos que traerse
  * el libro entero para contarlo en memoria, y sobre todo no dependen del tope de la lista.
+ *
+ * LA LISTA SALE DE `FILTROS` y no de una copia escrita acá: una segunda lista es la forma clásica de
+ * agregar un KPI a la pantalla y que su número nunca se calcule.
  */
 export async function getConteos(supabase: SupabaseClient): Promise<ServiceResult<Conteos>> {
-  const filtros: FiltroCompras[] = ['capturadas', 'por-revisar', 'sin-imputar', 'duplicados']
+  const filtros: FiltroCompras[] = FILTROS
   const respuestas = await Promise.all(
     filtros.map((f) =>
       aplicarFiltro(

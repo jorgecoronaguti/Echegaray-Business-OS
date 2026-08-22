@@ -233,8 +233,9 @@ test('la lectura no pide una sola columna de plata', () => {
   // El Gantt no habla de dinero. Si alguien agrega `monto_contratado` o `monto_presupuestado` a la
   // lectura "porque ya que estamos", esto se pone rojo antes de que el importe viaje al navegador
   // de todos los que abran la pantalla.
-  for (const prohibida of ['monto_contratado', 'monto_presupuestado', 'costo_real', 'margen_actual',
-    'margen_esperado', 'costo_presupuestado', 'certificado', 'facturado', 'cobrado']) {
+  for (const prohibida of ['monto_contratado', 'monto_presupuestado', 'costo_real', 'margen_esperado',
+    'margen_cotizado', 'margen_final_proyectado', 'costo_presupuestado', 'certificado', 'facturado',
+    'cobrado', 'por_cobrar_proyectado']) {
     assert.ok(!COLUMNAS_PLAZO.split(',').includes(prohibida), `${prohibida} no puede viajar al Gantt`)
   }
 })

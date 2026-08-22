@@ -145,6 +145,21 @@ export function PanelCompra({
       {/* ── imputación ───────────────────────────────────────────────────────────────────────── */}
       <div className="mt-5">
         <Eyebrow className="mb-2">Imputación</Eyebrow>
+        {/* A DÓNDE LLEGA EL GASTO, que no siempre es lo que dice el rótulo. Un texto que el
+            diccionario de obras no conoce se ve imputado en el papel y no llega a ninguna obra: si
+            esto no se dice acá, se corrige la obra equivocada o no se corrige nada. */}
+        {compra.imputacion === 'estructura' && (
+          <p className="mb-2 text-[11.5px] leading-relaxed text-muted" data-testid="imputacion-estructura">
+            Imputado a <span className="font-medium text-ink">Estructura</span>: no es costo de
+            ninguna obra y no está pendiente de imputar.
+          </p>
+        )}
+        {compra.imputacion === 'sin_resolver' && (
+          <p className="mb-2 text-[11.5px] leading-relaxed text-warn" data-testid="imputacion-sin-resolver">
+            «{compra.obra_texto}» no está en el diccionario de obras: este gasto NO llega a ninguna
+            obra. Se arregla declarando el alias, no eligiendo otra obra acá.
+          </p>
+        )}
         <FormAccion
           accion={imputarComprobante}
           testid="form-imputar"

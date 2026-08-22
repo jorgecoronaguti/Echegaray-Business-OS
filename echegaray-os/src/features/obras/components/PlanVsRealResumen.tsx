@@ -23,7 +23,7 @@
 
 import Link from 'next/link'
 import { Estado, Eyebrow, type TonoEstado } from '@/shared/components/ds'
-import type { PlanVsReal } from '../types'
+import type { EconomiaObra, PlanVsReal } from '../types'
 import { lineasPlanVsReal, type Tono } from '../services/planVsReal'
 
 const TONO: Record<Tono, TonoEstado> = {
@@ -33,10 +33,10 @@ const TONO: Record<Tono, TonoEstado> = {
   falta: 'nulo',
 }
 
-export function PlanVsRealResumen({ plan, obraId, veComercial = true }: {
-  plan: PlanVsReal; obraId: string; veComercial?: boolean
+export function PlanVsRealResumen({ plan, obraId, veComercial = true, economia = null }: {
+  plan: PlanVsReal; obraId: string; veComercial?: boolean; economia?: EconomiaObra | null
 }) {
-  const lineas = lineasPlanVsReal(plan, veComercial)
+  const lineas = lineasPlanVsReal(plan, veComercial, economia)
   return (
     <section data-testid="plan-vs-real">
       <Eyebrow className="mb-3">Lecturas del plan</Eyebrow>

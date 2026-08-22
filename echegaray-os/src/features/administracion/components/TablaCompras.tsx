@@ -33,6 +33,41 @@ function Importe({ c }: { c: ComprobanteCompra }) {
   return <span className={valor < 0 ? 'text-pos' : 'text-ink'}>{plata(valor)}</span>
 }
 
+/**
+ * LA COLUMNA OBRA DICE DÓNDE LLEGA EL GASTO, NO QUÉ DICE EL PAPEL.
+ *
+ * Antes mostraba `obra_texto` o «SIN OBRA» en ámbar. Con eso, «Sueldos» —que está imputado a
+ * Estructura y no reclama nada— se veía igual que «Quattropani», y un rótulo que el diccionario no
+ * conoce se veía igual que uno que sí: el gasto no llegaba a ninguna obra y la pantalla lo mostraba
+ * como imputado. Ahora el texto sigue arriba (es lo que dice el papel) y debajo va a dónde llegó.
+ */
+function Imputada({ c }: { c: ComprobanteCompra }) {
+  const texto = c.obra_texto?.trim()
+  if (c.imputacion === 'sin_identificar' || (!texto && !c.imputacion)) {
+    // «SIN OBRA» no es un vacío tipográfico: es trabajo pendiente y por eso se escribe y se pinta,
+    // en vez de dejar un guion que se lee como «no aplica».
+    return <span className="block truncate text-warn">SIN OBRA</span>
+  }
+  return (
+    <>
+      <span className="block truncate text-ink">{texto}</span>
+      {c.imputacion === 'estructura' && (
+        <span className="block truncate text-[10.5px] text-faint" title="Imputado a Estructura: no es costo de ninguna obra.">
+          Estructura
+        </span>
+      )}
+      {c.imputacion === 'sin_resolver' && (
+        <span
+          className="block truncate text-[10.5px] text-warn"
+          title="Este rótulo no está en el diccionario de obras: el gasto no llega a ninguna obra. Se resuelve declarando el alias."
+        >
+          sin resolver
+        </span>
+      )}
+    </>
+  )
+}
+
 export function TablaCompras({
   filas,
   seleccionado,
@@ -76,11 +111,7 @@ export function TablaCompras({
                 </span>
                 <span className="block truncate text-[10.5px] text-faint">{c.tipo_nombre}</span>
               </Td>
-              <Td className={`max-w-0 truncate ${c.obra_texto?.trim() ? '' : 'text-warn'}`}>
-                {/* «SIN OBRA» no es un vacío tipográfico: es trabajo pendiente y por eso se escribe
-                    y se pinta, en vez de dejar un guion que se lee como «no aplica». */}
-                {c.obra_texto?.trim() || 'SIN OBRA'}
-              </Td>
+              <Td className="max-w-0"><Imputada c={c} /></Td>
               <Td num className="w-[120px]"><Importe c={c} /></Td>
               <Td className="w-[130px]">
                 <Estado tono={control.tono} clave={control.clave}>{control.etiqueta}</Estado>

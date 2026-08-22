@@ -1,4 +1,4 @@
-// LOS CUATRO NÚMEROS DE ARRIBA SON EL FILTRO — pantalla 24, §estados de control.
+// LOS NÚMEROS DE ARRIBA SON EL FILTRO — pantalla 24, §estados de control.
 //
 // No es un tablero decorativo: cada cifra se toca y la lista de abajo queda con esas filas. Es la
 // regla 10 del CLAUDE.md raíz —*nunca crear un dashboard sin decisiones asociadas*— resuelta de la
@@ -20,14 +20,24 @@ import Link from 'next/link'
 import { ROTULO_FILTRO, type FiltroCompras } from '../services/comprasEstado'
 import type { Conteos } from '../services/comprasService'
 
+// ESTRUCTURA NO SE ENCIENDE NUNCA. No es trabajo pendiente: el gasto ya está donde va. Está en la
+// fila porque explica por qué el costo de las obras es menor que el libro entero, y porque poder
+// verlo separado es lo que impide contarlo como «sin imputar».
 const TONO: Record<FiltroCompras, string> = {
   capturadas: 'text-ink',
   'por-revisar': 'text-warn',
   'sin-imputar': 'text-warn',
+  'sin-resolver': 'text-warn',
+  estructura: 'text-ink',
   duplicados: 'text-neg',
 }
 
-const ORDEN: FiltroCompras[] = ['capturadas', 'por-revisar', 'sin-imputar', 'duplicados']
+const ORDEN: FiltroCompras[] = [
+  'capturadas', 'por-revisar', 'sin-imputar', 'sin-resolver', 'estructura', 'duplicados',
+]
+
+/** Los que son trabajo pendiente: sólo ésos se pintan cuando tienen algo. */
+const PENDIENTE: FiltroCompras[] = ['por-revisar', 'sin-imputar', 'sin-resolver', 'duplicados']
 
 export function EstadosDeControl({
   conteos,
@@ -45,7 +55,7 @@ export function EstadosDeControl({
     >
       {ORDEN.map((f) => {
         const n = conteos[f]
-        const encendido = f !== 'capturadas' && n > 0
+        const encendido = PENDIENTE.includes(f) && n > 0
         return (
           <Link
             key={f}

@@ -14,6 +14,15 @@
 // atención con la cifra, que es lo que la persona vino a mirar. Un origen que hay que leer todos los
 // días para entender la pantalla significa que la pantalla no se entiende.
 //
+// ═══ QUÉ CAMBIÓ, Y POR QUÉ (22/08/2026) ═══
+//
+// El bloque «Resultado» publicaba «Margen actual» = contratado − costo real. No es margen: le falta
+// todo lo que queda por gastar, y el costo real de esta casa no incluye la mano de obra (se imputa
+// a Estructura). Ahora los números salen de `obra_economia`, que separa VENTA / COSTO OBJETIVO /
+// COSTO REAL / COMPROMETIDO / ETC / EAC / MARGEN COTIZADO / MARGEN FINAL PROYECTADO, y publica NULL
+// donde no hay base. Sin base, la pantalla dice «Margen proyectado no disponible» y por qué — no
+// muestra una resta parcial con nombre de margen.
+//
 // ═══ LO QUE NO CAMBIA: DONDE FALTA UNA PUNTA, SE DICE CUÁL ═══
 //
 // `obra_plan_vs_real` anula el desvío cuando le falta un lado de la comparación. Acá NUNCA se rellena
@@ -28,7 +37,7 @@ import {
   BotonAccion, Callout, Campo, CTRL, FormAccion,
   type AccionFormulario, type ResultadoAccion,
 } from '@/shared/components/ui'
-import type { Certificado, PlanVsReal } from '../types'
+import type { Certificado, EconomiaObra, PlanVsReal } from '../types'
 import { fecha, plata } from './formato'
 
 /** Un renglón: concepto ↔ cifra. El origen va en el `title`; el "qué falta", visible sólo si falta. */
@@ -74,9 +83,11 @@ function pct(valor: number | null | undefined, base: number | null | undefined):
 }
 
 export function TabEconomia({
-  plan, certificados, crearCert, borrarCert, veComercial = true,
+  plan, economia, certificados, crearCert, borrarCert, veComercial = true,
 }: {
   plan: PlanVsReal | null
+  /** El panel económico (`obra_economia`). `null` = no llegó: no se dibuja margen ninguno. */
+  economia: EconomiaObra | null
   certificados: Certificado[]
   crearCert: AccionFormulario
   borrarCert: (certificadoId: string) => Promise<ResultadoAccion>
@@ -95,12 +106,27 @@ export function TabEconomia({
 }) {
   if (!plan) return <Callout tono="neg">No pude leer el plan contra real de esta obra.</Callout>
 
-  const sinPresupuesto = plan.costo_presupuestado == null
+  const e = economia
+  const sinObjetivo = e?.costo_objetivo == null
   // `costo_real` llega en 0 cuando la obra existe pero no tiene un solo comprobante imputado. Ese 0
   // es real —la vista lo calcula— pero significa "todavía nadie cargó nada", no "salió gratis".
-  const sinComprobantes = !plan.costo_real
-  const desvioPesos = plan.costo_presupuestado != null && plan.costo_real
-    ? plan.costo_real - plan.costo_presupuestado : null
+  const sinComprobantes = !e?.costo_real_n_comprobantes
+  const desvioPesos = e && e.costo_objetivo != null && e.costo_real != null && !sinComprobantes
+    ? e.costo_real - e.costo_objetivo : null
+  // LA COBERTURA DEL COSTO REAL, dicha al lado del número. La mano de obra se carga con rótulos que
+  // el diccionario clasifica como Estructura y por eso casi nunca llega a una obra: un costo sin
+  // una hora adentro no sostiene ninguna conclusión sobre rentabilidad.
+  const sinManoDeObra = !sinComprobantes && !e?.costo_real_mano_de_obra
+  /**
+   * EXPLICAR MAL UNA AUSENCIA FABRICA UN HECHO — la misma regla del `veComercial` de más abajo.
+   *
+   * El costo objetivo, el forecast y los dos márgenes salen de fuentes con portero económico
+   * (`presupuestos` con RLS `ve_economia()`, `obra_forecast_economico` con el portero adentro). Para
+   * el nivel Obras llegan en null SIEMPRE, tenga o no la obra un presupuesto cargado: decirle
+   * «esta obra no tiene presupuesto» sería afirmar algo que esta pantalla no puede saber.
+   */
+  const falta = (razon: string) =>
+    veComercial ? razon : 'Sale del presupuesto de la obra, que no llega a este nivel.'
 
   return (
     <div className="space-y-6">
@@ -108,44 +134,76 @@ export function TabEconomia({
           Sin recuadro por bloque — son cuatro listas de definición, no cuatro tarjetas. */}
       <div className="grid gap-x-10 gap-y-6 lg:grid-cols-2">
         {veComercial && (
-        <Bloque titulo="Contrato" testid="economia-contrato">
+        <Bloque titulo="Venta" testid="economia-contrato">
           <Linea
-            concepto="Contratado" fuerte
-            valor={plan.monto_contratado == null ? null : plata(plan.monto_contratado)}
+            concepto="Contratado"
+            valor={e?.venta_contratada == null ? null : plata(e.venta_contratada)}
             origen="El monto del contrato de la obra. Se carga en Resumen › Editar la obra."
             falta="Nadie lo cargó todavía. Se carga en Resumen › Editar la obra."
           />
           <Linea
-            concepto="Presupuestado (venta)"
-            valor={plan.monto_presupuestado == null ? null : plata(plan.monto_presupuestado)}
-            origen="Lo que se cotizó, del presupuesto aprobado de esta obra."
-            falta="Esta obra no tiene presupuesto cargado."
+            concepto="Adicionales aprobados"
+            valor={e?.adicionales_aprobados == null ? null : plata(e.adicionales_aprobados)}
+            origen={`${e?.n_adicionales_aprobados ?? 0} adicional(es) con fecha y monto de aprobación. Los cotizados sin aprobar no suman: todavía no son venta.`}
+            falta="Ningún adicional aprobado en esta obra."
+          />
+          <Linea
+            concepto="Venta contratada" fuerte
+            valor={e?.venta_total == null ? null : plata(e.venta_total)}
+            origen="Contrato más adicionales aprobados: lo que el cliente debe pagar por esta obra."
+            falta="Falta el monto contratado."
           />
         </Bloque>
         )}
 
         <Bloque titulo="Costo" testid="economia-costo">
           <Linea
-            concepto="Presupuesto"
-            valor={plan.costo_presupuestado == null ? null : plata(plan.costo_presupuestado)}
-            origen="Costo directo presupuestado, de la versión aprobada del presupuesto."
-            falta="Sin presupuesto: no hay contra qué medir el gasto."
+            concepto="Costo objetivo"
+            valor={e?.costo_objetivo == null ? null : plata(e.costo_objetivo)}
+            origen={e?.costo_objetivo_origen ?? 'Lo que se cotizó que iba a costar.'}
+            falta={falta('Sin presupuesto: no hay contra qué medir el gasto.')}
           />
           <Linea
-            concepto="Costo real"
-            valor={sinComprobantes ? null : plata(plan.costo_real)}
-            origen="Suma de los comprobantes de Compras imputados a esta obra."
+            concepto="Costo real a hoy"
+            valor={sinComprobantes ? null : plata(e?.costo_real ?? null)}
+            origen={`Comprobantes de Compras imputados a esta obra${
+              e?.costo_real_n_comprobantes ? ` (${e.costo_real_n_comprobantes}).` : '.'
+            } Es lo que se logró imputar, no todo lo que la obra consumió.`}
             falta="Ningún comprobante imputado. No es que costó $0."
           />
+          {sinManoDeObra && (
+            <p className="py-1 text-[11px] leading-snug text-warn" data-testid="costo-sin-mano-de-obra">
+              Sin una hora adentro: la mano de obra de esta obra está imputada a Estructura. El costo
+              real está incompleto y ningún margen calculado sobre él es defendible.
+            </p>
+          )}
           <Linea
-            concepto="Desvío" fuerte
+            concepto="Costo comprometido"
+            valor={e?.costo_comprometido == null ? null : plata(e.costo_comprometido)}
+            origen="Lo pedido y todavía no facturado."
+            falta={e?.costo_comprometido_estado ?? 'No disponible.'}
+          />
+          <Linea
+            concepto="Desvío contra el objetivo"
             valor={desvioPesos == null ? null
               : `${desvioPesos > 0 ? '+' : ''}${plata(desvioPesos)}` +
-                (pct(desvioPesos, plan.costo_presupuestado) ? ` · ${plan.desvio_costo_pct}%` : '')}
-            origen="Costo real menos presupuesto. Positivo = se gastó de más."
-            falta={sinPresupuesto && sinComprobantes ? 'Faltan las dos puntas.'
-              : sinPresupuesto ? 'Falta el presupuesto.' : 'Faltan comprobantes imputados.'}
+                (pct(desvioPesos, e?.costo_objetivo) ? ` · ${pct(desvioPesos, e?.costo_objetivo)}` : '')}
+            origen="Costo real menos costo objetivo. Positivo = se gastó de más."
+            falta={sinComprobantes && !sinObjetivo ? 'Faltan comprobantes imputados.'
+              : falta(sinComprobantes ? 'Faltan las dos puntas.' : 'Falta el costo objetivo.')}
             tono={desvioPesos != null && desvioPesos > 0 ? 'neg' : 'pos'}
+          />
+          <Linea
+            concepto="Costo restante proyectado"
+            valor={e?.costo_restante_proyectado == null ? null : plata(e.costo_restante_proyectado)}
+            origen="Lo que falta gastar para terminar: costo final proyectado menos costo real."
+            falta={falta('Sin proyección no hay restante: no se estima lo que falta a ojo.')}
+          />
+          <Linea
+            concepto="Costo final proyectado" fuerte
+            valor={e?.costo_final_proyectado == null ? null : plata(e.costo_final_proyectado)}
+            origen={e?.base_del_forecast ?? 'Lo que va a costar terminar la obra.'}
+            falta={falta(e?.base_del_forecast ?? 'No hay base para proyectar el costo a fin de obra.')}
           />
         </Bloque>
 
@@ -183,18 +241,22 @@ export function TabEconomia({
             origen="Certificados que ya tienen fecha y monto de facturación."
             falta="Ningún certificado tiene facturación cargada."
           />
+          {/* COBRADO Y POR COBRAR SALEN DE COBRANZAS, no de `certificados`. Mientras salían de ahí,
+              quattropani mostraba «cobrado —» y «pendiente 0» con $79,3M cobrados y $59,1M
+              agendados: un cero calculado sobre dos ausencias afirmaba que no quedaba nada por
+              cobrar. Van con IVA porque es lo que entra al banco. */}
           <Linea
             concepto="Cobrado"
             valor={plan.cobrado == null ? null : plata(plan.cobrado)}
-            origen="Certificados que ya tienen fecha y monto de cobranza."
-            falta="Ningún certificado tiene cobranza cargada."
+            origen="Cobranzas con estado cobrado y fecha ya pasada, con IVA: lo que entró al banco."
+            falta="No hay ninguna cobranza cargada para esta obra."
           />
           <Linea
-            concepto="Pendiente de cobrar" fuerte
-            valor={certificados.length ? plata(plan.pendiente_cobrar) : null}
-            origen="Certificado menos cobrado: la plata que ya se ganó y todavía no entró."
-            falta="Sin certificados no hay nada pendiente de cobrar."
-            tono={plan.pendiente_cobrar ? 'warn' : 'ink'}
+            concepto="Por cobrar (proyectado)" fuerte
+            valor={plan.por_cobrar_proyectado == null ? null : plata(plan.por_cobrar_proyectado)}
+            origen="Cobranzas agendadas y todavía no cobradas. Es una proyección de entrada, no una resta contable."
+            falta="No hay ninguna cobranza cargada para esta obra."
+            tono={plan.por_cobrar_proyectado ? 'warn' : 'ink'}
           />
           <Linea
             concepto="Pendiente de certificar"
@@ -205,24 +267,46 @@ export function TabEconomia({
         </Bloque>
         )}
 
+        {/* ═══ POR QUÉ NO HAY «MARGEN ACTUAL» (22/08/2026) ═══
+
+            Había uno y era `contratado − costo real`: sobre quattropani daba $64.713.000 —66% de
+            rentabilidad— con TRES facturas de materiales imputadas, la obra al 86% de avance y una
+            hora registrada. No era un error de cálculo: la resta da eso. Estaba mal NOMBRADO, y el
+            nombre es lo que decide.
+
+            Un margen necesita las dos puntas cerradas: la venta entera y el costo ENTERO, que
+            incluye lo que falta gastar. Sin forecast no hay margen a fin de obra, y publicar la
+            resta parcial con nombre de margen es peor que no publicar nada — la ausencia se
+            investiga, un número cómodo se cree. */}
         {veComercial && (
-        <Bloque titulo="Resultado" testid="economia-resultado">
+        <Bloque titulo="Margen" testid="economia-resultado">
           <Linea
-            concepto="Margen esperado"
-            valor={plan.margen_esperado == null ? null
-              : `${plata(plan.margen_esperado)}${pct(plan.margen_esperado, plan.monto_presupuestado) ? ` · ${pct(plan.margen_esperado, plan.monto_presupuestado)}` : ''}`}
-            origen="El margen del presupuesto aprobado, en pesos, y sobre la venta cotizada."
-            falta="Sale del presupuesto, y esta obra no tiene uno cargado."
+            concepto="Margen cotizado" fuerte
+            valor={e?.margen_cotizado == null ? null
+              : `${plata(e.margen_cotizado)}${pct(e.margen_cotizado, e.venta_total) ? ` · ${pct(e.margen_cotizado, e.venta_total)}` : ''}`}
+            origen="Venta contratada menos costo objetivo: el margen con el que se vendió la obra."
+            falta={e?.venta_total == null
+              ? 'Margen cotizado no disponible: falta el monto contratado.'
+              : 'Margen cotizado no disponible: esta obra no tiene costo objetivo (ni presupuesto congelado ni presupuesto cargado).'}
+            tono={e?.margen_cotizado != null && e.margen_cotizado < 0 ? 'neg' : 'ink'}
           />
           <Linea
-            concepto="Margen actual" fuerte
-            valor={plan.margen_actual == null ? null
-              : `${plata(plan.margen_actual)}${pct(plan.margen_actual, plan.monto_contratado) ? ` · ${pct(plan.margen_actual, plan.monto_contratado)}` : ''}`}
-            // ES A HOY, NO A FIN DE OBRA, y decirlo importa: un margen alto al 20% de avance no
-            // significa que la obra vaya bien, significa que todavía no se gastó.
-            origen="Contratado menos costo real, a hoy. NO es una proyección a fin de obra."
-            falta={plan.monto_contratado == null ? 'Falta el monto contratado.' : 'Falta el costo real.'}
-            tono={plan.margen_actual != null && plan.margen_actual < 0 ? 'neg' : 'ink'}
+            concepto="Margen final proyectado" fuerte
+            valor={e?.margen_final_proyectado == null ? null
+              : `${plata(e.margen_final_proyectado)}${pct(e.margen_final_proyectado, e.venta_total) ? ` · ${pct(e.margen_final_proyectado, e.venta_total)}` : ''}`}
+            origen="Venta contratada menos costo final proyectado: con qué margen va a terminar la obra."
+            falta={`Margen proyectado no disponible. ${
+              e?.venta_total == null ? 'Falta el monto contratado.'
+                : e?.base_del_forecast ?? 'No hay base para proyectar el costo a fin de obra.'
+            }`}
+            tono={e?.margen_final_proyectado != null && e.margen_final_proyectado < 0 ? 'neg' : 'ink'}
+          />
+          <Linea
+            concepto="Margen del presupuesto"
+            valor={plan.margen_esperado == null ? null
+              : `${plata(plan.margen_esperado)}${pct(plan.margen_esperado, plan.monto_presupuestado) ? ` · ${pct(plan.margen_esperado, plan.monto_presupuestado)}` : ''}`}
+            origen="El margen que declara el presupuesto aprobado, sobre la venta cotizada."
+            falta="Sale del presupuesto, y esta obra no tiene uno cargado."
           />
         </Bloque>
         )}

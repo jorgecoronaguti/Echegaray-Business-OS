@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { Estado, Eyebrow, Nulo, Num, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
-import type { Actividad, ObraPanel, ParteEjecucion, PlanVsReal, Restriccion } from '@/features/obras/types'
+import type {
+  Actividad, EconomiaObra, ObraPanel, ParteEjecucion, PlanVsReal, Restriccion,
+} from '@/features/obras/types'
 import { PlanVsRealResumen } from './PlanVsRealResumen'
 import { ChecklistPreparacion } from './ChecklistPreparacion'
 import { proximasDeLaObra } from '../services/resumenDelPlan'
@@ -336,11 +338,14 @@ function UltimoMovimiento({ partes, actividadDe, obraId }: {
 }
 
 export function TabResumen({
-  obra, plan, abiertas, obraId, editar, archivar, veComercial = true,
+  obra, plan, economia = null, abiertas, obraId, editar, archivar, veComercial = true,
   actividades, partes, hoy = new Date().toISOString().slice(0, 10),
 }: {
   obra: ObraPanel
   plan: PlanVsReal | null
+  /** El panel económico. SIN ÉL NO SE ARMA LÍNEA DE MARGEN: la línea vieja era `contratado − costo
+   *  real`, que no es margen. Ver `lineasPlanVsReal`. */
+  economia?: EconomiaObra | null
   abiertas: Restriccion[]
   obraId: string
   /** El bloque de edición, que la página arma con su action atada a esta obra. */
@@ -370,7 +375,7 @@ export function TabResumen({
 
         {actividades && <Proximas actividades={actividades} obraId={obraId} hoy={hoy} />}
 
-        {plan && <PlanVsRealResumen plan={plan} obraId={obraId} veComercial={veComercial} />}
+        {plan && <PlanVsRealResumen plan={plan} obraId={obraId} veComercial={veComercial} economia={economia} />}
 
         {/* LO QUE FALTA PARA QUE LA OBRA PRODUZCA, plegado: explica los «sin medir» de arriba, no
             compite con ellos. Y desaparece solo cuando no falta nada — un checklist entero en ✓

@@ -32,8 +32,8 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import {
-  getActividades, getDependencias, getDocumentos, getObra, getPlanVsReal, getRestricciones,
-  getUbicacion,
+  getActividades, getDependencias, getDocumentos, getEconomiaObra, getObra, getPlanVsReal,
+  getRestricciones, getUbicacion,
 } from '@/features/obras/services/obrasService'
 import {
   getActividadHH, getAsignaciones, getCuadrillas, getPersonas, getRegistrosHH,
@@ -220,7 +220,15 @@ export default async function ObraPage({
     partesPorActividad.set(p.actividad_id, previos)
   }
   const certificados = vista === 'economia' ? lector.leer(await getCertificados(supabase, obraId), []) : []
+<<<<<<< HEAD
   // LOS PAPELES LOS PIDEN DOS SOLAPAS. Documentos muestra los de la obra; Cronograma, los que
+=======
+  // EL PANEL ECONÓMICO TAMBIÉN EN RESUMEN: la línea de margen del resumen sale de acá desde el
+  // 22/08. Antes se armaba con `contratado − costo real` del plan, que no es margen.
+  const economia = vista === 'economia' || vista === 'resumen'
+    ? lector.leer(await getEconomiaObra(supabase, obraId), null) : null
+  // LOS PAPELES LOS PIDEN DOS SOLAPAS. Documentos muestra los de la obra; Planificación, los que
+>>>>>>> fix/economia-semantica
   // alguien colgó de una actividad. Es la MISMA lectura: dos consultas darían dos listas que un día
   // no coinciden.
   const documentos = vista === 'documentos' || esCronograma
@@ -377,6 +385,7 @@ export default async function ObraPage({
         <TabResumen
           obra={obra}
           plan={plan}
+          economia={economia}
           abiertas={abiertas}
           obraId={obraId}
           veComercial={veComercial}
@@ -575,6 +584,7 @@ export default async function ObraPage({
       {vista === 'economia' && (
         <TabEconomia
           plan={plan}
+          economia={economia}
           certificados={certificados}
           crearCert={crearCertificado.bind(null, obraId)}
           borrarCert={borrarCertificado.bind(null, obraId)}

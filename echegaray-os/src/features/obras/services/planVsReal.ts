@@ -8,7 +8,7 @@
 // nadie tocara una línea de código — el código decía la verdad, el test afirmaba un estado del
 // mundo. Acá la regla se prueba con datos armados, en las dos ramas, sin navegador y sin base.
 
-import type { PlanVsReal } from '../types/index.ts'
+import type { EconomiaObra, PlanVsReal } from '../types/index.ts'
 import { desvio, fecha, plata } from '../components/formato.ts'
 
 export type Tono = 'alerta' | 'atencion' | 'ok' | 'falta'
@@ -31,8 +31,11 @@ const hoy = () => new Date().toISOString().slice(0, 10)
  * oculte un número: la base ya devolvió NULL y el número no existe de este lado. Lo que se evita es
  * el cartel *"falta el monto contratado"*, que para un jefe de obra es MENTIRA — el contrato puede
  * estar cargado y él no puede verlo. Explicar mal una ausencia fabrica un hecho.
+ * @param eco El panel económico (`obra_economia`). Sin él NO se arma línea de margen: hasta el
+ * 22/08 la línea decía «Margen a hoy $X (contratado − costo)», que no es margen. Ver el bloque
+ * MARGEN de abajo.
  */
-export function lineasPlanVsReal(p: PlanVsReal, veComercial = true): Linea[] {
+export function lineasPlanVsReal(p: PlanVsReal, veComercial = true, eco: EconomiaObra | null = null): Linea[] {
   const l: Linea[] = []
 
   // ── PLAZO ──────────────────────────────────────────────────────────────────
@@ -137,22 +140,44 @@ export function lineasPlanVsReal(p: PlanVsReal, veComercial = true): Linea[] {
 
   if (veComercial) {
     // ── MARGEN ─────────────────────────────────────────────────────────────────
-    if (p.margen_actual != null) {
+    //
+    // ═══ LO QUE ESTA LÍNEA DECÍA HASTA EL 22/08 ═══
+    //
+    //     «Margen a hoy $64.713.000 (contratado $97.650.000 − costo $32.937.000)»
+    //
+    // sobre una obra al 86% de avance con TRES facturas de materiales imputadas y una hora
+    // registrada. La resta está bien hecha; lo que está mal es llamarla margen. Le falta lo que
+    // queda por gastar, y el costo real de esta casa tampoco tiene la mano de obra adentro.
+    //
+    // Ahora hay DOS márgenes y ninguno se inventa: el COTIZADO (venta − costo objetivo) existe si
+    // hay presupuesto, y el FINAL PROYECTADO (venta − costo final proyectado) existe si hay
+    // forecast. Cuando falta el segundo se dice, con la razón que da la base. Un renglón que dice
+    // «no disponible y por qué» manda a alguien a cargar el presupuesto; uno que dice $64.713.000
+    // no manda a nadie a ningún lado.
+    if (eco?.margen_final_proyectado != null) {
       l.push({
         clave: 'margen',
-        tono: p.margen_actual < 0 ? 'alerta' : 'ok',
-        titulo: `Margen a hoy ${plata(p.margen_actual)} (contratado ${plata(p.monto_contratado)} − costo ${plata(p.costo_real)})`,
-        origen: 'obra_canonica.monto_contratado contra el costo real de Compras. NO es el margen de fin de obra: falta lo que queda por gastar.',
+        tono: eco.margen_final_proyectado < 0 ? 'alerta' : 'ok',
+        titulo: `Margen final proyectado ${plata(eco.margen_final_proyectado)} (venta ${plata(eco.venta_total)} − costo final proyectado ${plata(eco.costo_final_proyectado)})`,
+        origen: eco.base_del_forecast ?? 'vista obra_economia',
+        vista: 'economia',
+      })
+    } else if (eco?.margen_cotizado != null) {
+      l.push({
+        clave: 'margen',
+        tono: eco.margen_cotizado < 0 ? 'alerta' : 'ok',
+        titulo: `Margen cotizado ${plata(eco.margen_cotizado)} — el margen proyectado a fin de obra todavía no se puede calcular`,
+        origen: `venta ${plata(eco.venta_total)} contra el costo objetivo. ${eco.base_del_forecast ?? 'Sin forecast de costo a terminación.'}`,
         vista: 'economia',
       })
     } else {
       l.push({
         clave: 'margen',
         tono: 'falta',
-        titulo: p.monto_contratado == null
-          ? 'No hay margen que calcular: falta el monto contratado'
-          : 'No hay margen que calcular: falta el costo real imputado',
-        origen: 'obra_canonica.monto_contratado y Compras por obra',
+        titulo: 'Margen proyectado no disponible',
+        origen: eco == null ? 'vista obra_economia'
+          : eco.venta_total == null ? 'Falta el monto contratado de la obra.'
+            : `Falta el costo objetivo: ${eco.costo_objetivo_origen}.`,
         vista: 'economia',
       })
     }

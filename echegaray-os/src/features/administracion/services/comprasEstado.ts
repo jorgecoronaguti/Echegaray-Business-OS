@@ -15,15 +15,41 @@
 
 export type EstadoControl = 'sin_revisar' | 'confirmado' | 'en_revision'
 
-/** Las cuatro claves de KPI/filtro. Viajan en la URL (`?f=`), así que se escriben con guion. */
-export type FiltroCompras = 'capturadas' | 'por-revisar' | 'sin-imputar' | 'duplicados'
+/**
+ * DÓNDE ESTÁ IMPUTADA LA COMPRA. Lo calcula `comprobante_compra.imputacion` (20260822T6220) con el
+ * diccionario de `obra_alias`, que es el MISMO que resuelve el costo por obra. No se deriva acá: el
+ * día que se derivara en TypeScript habría dos definiciones de «a qué obra pertenece este gasto».
+ *
+ * · `obra`            → una obra concreta, y la vista publica su `obra_id`.
+ * · `estructura`      → imputada a Estructura (sueldos, UOCRA, administración): NO es de una obra,
+ *                       y tampoco es trabajo pendiente. El binario viejo no las distinguía.
+ * · `sin_resolver`    → alguien escribió un rótulo que el diccionario no conoce. El gasto no llega a
+ *                       ninguna obra y NADIE se entera: es la fuga silenciosa del costo por obra.
+ * · `sin_identificar` → nadie dijo nada. Esto sí es «sin imputar».
+ */
+export type Imputacion = 'obra' | 'estructura' | 'sin_resolver' | 'sin_identificar'
 
-export const FILTROS: FiltroCompras[] = ['capturadas', 'por-revisar', 'sin-imputar', 'duplicados']
+export const ROTULO_IMPUTACION: Record<Imputacion, string> = {
+  obra: 'obra identificada',
+  estructura: 'Estructura',
+  sin_resolver: 'obra sin resolver',
+  sin_identificar: 'sin imputar',
+}
+
+/** Las claves de KPI/filtro. Viajan en la URL (`?f=`), así que se escriben con guion. */
+export type FiltroCompras =
+  | 'capturadas' | 'por-revisar' | 'sin-imputar' | 'sin-resolver' | 'estructura' | 'duplicados'
+
+export const FILTROS: FiltroCompras[] = [
+  'capturadas', 'por-revisar', 'sin-imputar', 'sin-resolver', 'estructura', 'duplicados',
+]
 
 export const ROTULO_FILTRO: Record<FiltroCompras, string> = {
   capturadas: 'capturadas',
   'por-revisar': 'por revisar',
   'sin-imputar': 'sin imputar',
+  'sin-resolver': 'obra sin resolver',
+  estructura: 'Estructura',
   duplicados: 'duplicados',
 }
 
@@ -41,10 +67,13 @@ export interface ControlEntrada {
   emisor_cuit: string | null
   comprobante: string | null
   obra_texto: string | null
+  /** El estado FINO, calculado en la base. `null` = la vista no lo trajo. */
+  imputacion: Imputacion | null
 }
 
 export type ClaveControl =
-  | 'por-revisar' | 'duplicado' | 'sin-clasificar' | 'sin-imputar' | 'confirmada' | 'sincronizada'
+  | 'por-revisar' | 'duplicado' | 'sin-clasificar' | 'sin-imputar' | 'sin-resolver'
+  | 'confirmada' | 'sincronizada'
 
 export interface Control {
   clave: ClaveControl
@@ -63,6 +92,17 @@ export interface Control {
  * · CONFIRMAR NO ES IMPUTAR. Un comprobante confirmado sin obra sigue diciendo «Sin imputar»: si
  *   «Confirmada» tapara la falta de obra, el trabajo se daría por hecho por haber mirado el papel.
  *   Ése es el defecto que este orden impide y el que prueba `comprasEstado.test.ts`.
+ *
+ * ═══ LO QUE CAMBIÓ EL 22/08/2026 ═══
+ *
+ * El estado de imputación era binario —`obra_texto is null`— y con eso metía en la misma bolsa
+ * cuatro situaciones que piden cosas distintas. Ahora sólo `sin_identificar` reclama trabajo de
+ * imputación; ESTRUCTURA no es un pendiente (el gasto ya está donde va) y `sin_resolver` es un
+ * pendiente DISTINTO: no hay que averiguar la obra, hay que declarar el alias.
+ *
+ * Cuando `imputacion` no llega —una fuente vieja que no publica la columna— se cae al criterio
+ * anterior: sin `obra_texto`, «Sin imputar». Fallar al estado que PIDE trabajo, nunca al que lo da
+ * por hecho.
  */
 export function controlDe(c: ControlEntrada): Control {
   if (c.estado_control === 'en_revision') return { clave: 'por-revisar', etiqueta: 'Por revisar', tono: 'warn' }
@@ -74,7 +114,13 @@ export function controlDe(c: ControlEntrada): Control {
   if (c.signo === null || !c.emisor_cuit?.trim() || !c.comprobante?.trim()) {
     return { clave: 'sin-clasificar', etiqueta: 'Sin clasificar', tono: 'neg' }
   }
-  if (!c.obra_texto?.trim()) return { clave: 'sin-imputar', etiqueta: 'Sin imputar', tono: 'warn' }
+  const imputacion = c.imputacion ?? (c.obra_texto?.trim() ? 'obra' : 'sin_identificar')
+  if (imputacion === 'sin_identificar') return { clave: 'sin-imputar', etiqueta: 'Sin imputar', tono: 'warn' }
+  if (imputacion === 'sin_resolver') {
+    // El rótulo existe y el gasto NO llega a ninguna obra. No se arregla eligiendo obra en el
+    // panel: se arregla declarando el alias, que es otra decisión y otra pantalla.
+    return { clave: 'sin-resolver', etiqueta: 'Obra sin resolver', tono: 'warn' }
+  }
   if (c.estado_control === 'confirmado') return { clave: 'confirmada', etiqueta: 'Confirmada', tono: 'pos' }
   return { clave: 'sincronizada', etiqueta: 'Sincronizada', tono: 'pos' }
 }
@@ -97,7 +143,12 @@ export interface Filtrable<T> {
  */
 export function aplicarFiltro<T extends Filtrable<T>>(query: T, filtro: FiltroCompras): T {
   if (filtro === 'por-revisar') return query.eq('estado_control', 'en_revision')
-  if (filtro === 'sin-imputar') return query.is('obra_texto', null)
+  // `imputacion` Y NO `obra_texto is null`: el predicado viejo contaba como pendiente a los gastos
+  // de Estructura que sí tenían rótulo, y dejaba fuera del conteo a los que tienen un rótulo que el
+  // diccionario no conoce — que son los que de verdad no llegan a ninguna obra.
+  if (filtro === 'sin-imputar') return query.eq('imputacion', 'sin_identificar')
+  if (filtro === 'sin-resolver') return query.eq('imputacion', 'sin_resolver')
+  if (filtro === 'estructura') return query.eq('imputacion', 'estructura')
   if (filtro === 'duplicados') {
     return query.eq('tiene_posible_duplicado', true).eq('estado_control', 'sin_revisar')
   }
