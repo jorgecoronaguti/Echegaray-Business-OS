@@ -28,6 +28,12 @@ export interface ResumenDelPlan {
   /** `hh_real − hh_plan` en horas. `null` si falta cualquiera de las dos puntas. */
   desvioHH: number | null
   actividades: number
+  /** Las que no tienen NINGUNA fecha —ni plan, ni línea base sellada, ni un parte encima—, según
+   *  `actividad_fechas.tiene_fecha`. Es lo que falta programar, y es el MISMO número que publica
+   *  `obra_plan_vs_real.actividades_sin_fecha`: la regla vive en la vista, acá sólo se cuenta lo
+   *  que la vista marcó. Cuando cada pantalla decidía sola qué era «sin fecha» —una miraba
+   *  `inicio_plan`, otra dibujaba con `fin_plan`—, la misma actividad tenía y no tenía fecha. */
+  sinFecha: number
   enCurso: number
   impedimentosAbiertos: number
   /** Impedimentos abiertos cuya fecha de compromiso ya pasó. Ésos son los que duelen. */
@@ -70,6 +76,7 @@ export function resumenDelPlan(
     hhPlan,
     desvioHH: hhReal == null || hhPlan == null ? null : Math.round((hhReal - hhPlan) * 10) / 10,
     actividades: vivas.length,
+    sinFecha: vivas.filter((a) => a.tiene_fecha === false).length,
     enCurso: vivas.filter((a) => a.estado_operativo === 'en_curso').length,
     impedimentosAbiertos: abiertos.length,
     impedimentosVencidos: abiertos.filter((i) => i.fecha_compromiso != null && i.fecha_compromiso < hoy).length,

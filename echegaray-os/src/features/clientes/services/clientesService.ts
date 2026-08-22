@@ -196,8 +196,11 @@ export async function getActividadCliente(
 ): Promise<ServiceResult<LineaDeTiempo>> {
   const [ficha, obras, contactos, documentos, notas] = await Promise.all([
     supabase.from('clientes').select('nombre_comercial, created_at, updated_at').eq('id', clienteId).maybeSingle(),
-    supabase.from('obra_canonica')
-      .select('id, nombre, created_at, fecha_inicio_real, fecha_fin_real')
+    // Las fechas reales salen de `obra_panel` —o sea de `obra_fechas`— y no de la tabla: el CRM
+    // llegó a publicar «arrancó la obra» con fecha de pasado mañana, porque el campo del formulario
+    // acepta cualquier cosa. Acá no se filtra nada a mano: lo que la fuente no publica, no existe.
+    supabase.from('obra_panel')
+      .select('obra_id, nombre, creada_en, fecha_inicio_real, fecha_fin_real')
       .eq('cliente_id', clienteId),
     supabase.from('cliente_contacto').select('id, nombre, rol, creado_en').eq('cliente_id', clienteId),
     supabase.from('cliente_documento').select('drive_file_id, rol, origen, creado_en').eq('cliente_id', clienteId),
@@ -224,8 +227,8 @@ export async function getActividadCliente(
       rol: (c.rol as string) ?? null, creado_en: (c.creado_en as string) ?? null,
     })),
     obras: obrasDelCliente.map((o) => ({
-      obra_id: o.id as string, nombre: o.nombre as string,
-      creada_en: (o.created_at as string) ?? null,
+      obra_id: o.obra_id as string, nombre: o.nombre as string,
+      creada_en: (o.creada_en as string) ?? null,
       fecha_inicio_real: (o.fecha_inicio_real as string) ?? null,
       fecha_fin_real: (o.fecha_fin_real as string) ?? null,
     })),
@@ -249,7 +252,7 @@ async function certificadosDe(
   obras: Record<string, unknown>[],
 ): Promise<FuentesActividad['certificados']> {
   if (!obras.length) return []
-  const nombrePorId = new Map(obras.map((o) => [o.id as string, o.nombre as string]))
+  const nombrePorId = new Map(obras.map((o) => [o.obra_id as string, o.nombre as string]))
   const { data } = await supabase
     .from('certificados')
     .select('id, numero, obra_canonica_id, fecha_certificacion, monto_certificado, fecha_facturacion, monto_facturado, fecha_cobranza, monto_cobrado')

@@ -17,10 +17,14 @@ import type {
 
 /** Sólo las columnas que el motor usa. Pedir `*` traería el ancho entero de la vista de control
  *  —incluidas columnas que otra pantalla podría considerar económicas— por comodidad. */
+// Las siete fechas viajan JUNTAS y salen de `actividad_fechas` a través de la vista de control:
+// `inicio_real` acá ya es evidencia (no la columna declarada), y por eso el motor puede anclar en
+// ella el arranque de lo que ya empezó sin arrastrar una fecha que nadie vivió.
 const COLUMNAS = [
   'actividad_id', 'nombre', 'tipo', 'actividad_padre_id', 'orden', 'rubro', 'seccion',
   'hh_plan', 'hh_real', 'avance_pct', 'dias_plan',
-  'inicio_plan', 'fin_plan', 'inicio_base', 'fin_base', 'inicio_real', 'fin_real',
+  'inicio_plan', 'fin_plan', 'inicio_base', 'fin_base', 'inicio_real', 'fin_real', 'forecast_fin',
+  'estado_fecha', 'tiene_fecha',
   'estado', 'cuadrilla_id', 'cuadrilla_prevista', 'cantidad_objetivo', 'unidad',
   'dotacion_prevista', 'tope_frente', 'impedimentos_abiertos', 'tiempo_tecnico',
 ].join(', ')
@@ -28,7 +32,9 @@ const COLUMNAS = [
 /** `pg` y PostgREST devuelven las columnas `date` de formas distintas. Todo lo que entra al motor
  *  se normaliza a `AAAA-MM-DD`: comparar «2026-07-08» con «Wed Jul 08 2026» ordena mal y en
  *  silencio. */
-const CAMPOS_FECHA = ['inicio_plan', 'fin_plan', 'inicio_base', 'fin_base', 'inicio_real', 'fin_real']
+const CAMPOS_FECHA = [
+  'inicio_plan', 'fin_plan', 'inicio_base', 'fin_base', 'inicio_real', 'fin_real', 'forecast_fin',
+]
 
 function normalizarFechas(fila: unknown): ActividadCruda {
   const salida = { ...(fila as Record<string, unknown>) }

@@ -17,6 +17,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ServiceResult } from '@/features/auth/services/authService'
+import type { EstadoFecha } from '@/features/obras/types'
 import type { NodoArbol } from './frentes.ts'
 import type { Metodo, TareaDelDia } from './medicion.ts'
 
@@ -84,18 +85,26 @@ export interface ActividadDelJefe extends TareaDelDia {
   hh_real: number | null
   inicio_plan: string | null
   fin_plan: string | null
+  /** Evidencia, nunca futuro: de `actividad_fechas`. */
+  inicio_real: string | null
   fin_real: string | null
+  forecast_fin: string | null
+  estado_fecha: EstadoFecha | null
   ultimo_parte: string | null
   unidad: string | null
   cantidad_objetivo: number | null
   cantidad_ejecutada: number | null
 }
 
+// `inicio_real`/`fin_real` salen de `actividad_fechas` (evidencia, nunca futuro): son las que usan
+// `diasDeAtraso` y «terminada el …». Con la columna cruda de la tabla —vacía en las 350 filas— una
+// tarea cerrada hace dos semanas se publicaba como terminada SIN FECHA y una abierta hace un mes no
+// se distinguía de una que no arrancó.
 const COLUMNAS_ACTIVIDAD =
   'actividad_id, obra_id, nombre, tipo, rubro, metodo_avance, avance_pct, origen_avance,'
   + ' estado_operativo, impedimentos_abiertos, n_pasos, n_pasos_hechos, cuadrilla_prevista,'
-  + ' hh_plan, hh_real, inicio_plan, fin_plan, fin_real, ultimo_parte, unidad, cantidad_objetivo,'
-  + ' cantidad_ejecutada'
+  + ' hh_plan, hh_real, inicio_plan, fin_plan, inicio_real, fin_real, forecast_fin, estado_fecha,'
+  + ' ultimo_parte, unidad, cantidad_objetivo, cantidad_ejecutada'
 
 export async function getActividades(
   supabase: SupabaseClient, obraId: string,
@@ -138,7 +147,10 @@ function aActividad(o: unknown): ActividadDelJefe {
     hh_real: numero(f.hh_real),
     inicio_plan: (f.inicio_plan as string | null) ?? null,
     fin_plan: (f.fin_plan as string | null) ?? null,
+    inicio_real: (f.inicio_real as string | null) ?? null,
     fin_real: (f.fin_real as string | null) ?? null,
+    forecast_fin: (f.forecast_fin as string | null) ?? null,
+    estado_fecha: (f.estado_fecha as EstadoFecha | null) ?? null,
     ultimo_parte: (f.ultimo_parte as string | null) ?? null,
     unidad: (f.unidad as string | null) ?? null,
     cantidad_objetivo: numero(f.cantidad_objetivo),

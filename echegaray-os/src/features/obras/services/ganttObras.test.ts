@@ -32,6 +32,7 @@ const obra = (p: Partial<PlazoObra> & { obra_id: string, nombre: string }): Plaz
   avance_pct: null,
   desvio_plazo_dias: null,
   n_actividades: 0,
+  inicio_real: null, fin_real: null, forecast_fin: null, actividades_sin_fecha: 0,
   ...p,
 })
 
