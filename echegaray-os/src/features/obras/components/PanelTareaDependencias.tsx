@@ -84,10 +84,9 @@ export function PanelTareaDependencias({
       {/* DECLARAR UNA PRECEDENCIA NUEVA ES EL CRONOGRAMA, y no este cajón de 412 px: elegir contra
           qué actividad se ata exige ver la lista entera de la obra y las fechas de cada una. Acá se
           cambia y se quita lo que YA está declarado, que es lo que se puede decidir mirando una
-          sola actividad. */}
-      <p className="mt-1 text-[10.5px] text-faint">
-        Atar esta actividad a otra se hace en el cronograma, donde se ve contra qué se está atando.
-      </p>
+          sola actividad.
+          22/08/2026 · La línea que explicaba eso se borró: el enlace de arriba YA lleva al
+          cronograma, así que el párrafo describía el destino de un enlace que se lee solo. */}
     </section>
   )
 }

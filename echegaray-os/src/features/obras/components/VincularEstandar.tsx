@@ -14,6 +14,7 @@
 
 import { FormAccion, type AccionFormulario } from '@/shared/components/ui'
 import { CTRL } from '@/shared/components/ui/estilos'
+import { Ayuda } from '@/shared/components/ds'
 import type { EstadoVinculacion } from '../services/vinculacionEstandar'
 import type { VinculacionTarea } from '../services/vinculacionTareaService'
 
@@ -84,10 +85,13 @@ export function VincularEstandar({ vinculacion, vincular, puedeEditar }: {
                   ))}
                 </select>
               </label>
-              <p className="mt-1.5 text-[11px] leading-relaxed text-muted">
+              {/* 22/08/2026 · Qué toca vincular se pliega: la garantía de que no pisa nada se
+                  consulta una vez, y el resultado de la acción la vuelve a decir después. Lo que
+                  queda a la vista es el desplegable, que es lo que hay que elegir. */}
+              <Ayuda titulo="Qué toca al vincular" testid="ayuda-vincular-estandar">
                 Trae las hs/unidad del análisis vigente. NO pisa lo que la obra ya cargó: si esta
                 actividad ya tiene hh_plan o unidad, quedan como están y el resultado lo dice.
-              </p>
+              </Ayuda>
             </FormAccion>
           )}
     </section>

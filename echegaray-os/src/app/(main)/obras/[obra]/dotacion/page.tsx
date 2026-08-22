@@ -208,12 +208,15 @@ export default async function DotacionObraPage(
         </section>
 
         <section className="rounded-card border border-line bg-surface p-4">
-          <h2 className="mb-1 text-[13px] font-semibold text-ink">Plan · Real · Proyección por rubro</h2>
-          <p className="mb-3 text-[11px] text-muted">
-            La proyección usa el rendimiento observado donde hay avance y HH reales; donde no lo hay,
-            dice <em>sin base</em>. Nunca el plan disfrazado de proyección.
-          </p>
+          <h2 className="mb-3 text-[13px] font-semibold text-ink">Plan · Real · Proyección por rubro</h2>
+          {/* 22/08/2026 · De dónde sale la proyección baja a la ayuda. Lo que no se puede esconder
+              —que un rubro sin base NO tiene proyección— sigue escrito en la tabla misma, celda por
+              celda: la honestidad va en el dato, no en un párrafo encima del dato. */}
           <TablaRubrosHH filas={rubrosDe(crono.actividades)} />
+          <Ayuda titulo="De dónde sale la proyección" testid="ayuda-proyeccion-rubros">
+            Usa el rendimiento observado donde hay avance y HH reales; donde no lo hay, dice{' '}
+            <em>sin base</em>. Nunca el plan disfrazado de proyección.
+          </Ayuda>
         </section>
       </div>
     </main>
