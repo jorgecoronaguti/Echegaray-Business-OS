@@ -82,6 +82,10 @@ export const RUTAS_PUBLICAS = [
   // `/api/oauth/start`: un 307 al login, silencioso, y la persona sigue afuera.
   '/recuperar',
   '/callback',
+  // Y LA TERCERA MITAD (QA 21/08): `/contrasena-nueva` también llega SIN sesión cuando el enlace
+  // venció o se abrió dos veces. Con sesión exigida, el middleware manda a /login ANTES de que la
+  // página pueda decir «pedí otro enlace» — la página ya sabe explicarlo; hay que dejarla hablar.
+  '/contrasena-nueva',
   '/descargar', // la landing de descarga de la extensión: estática, sin dato de la empresa
   '/api/oauth/start', // la ida a Google: la abre quien todavía NO autorizó — exigir sesión acá
                       // devolvía un 307 al login y el consentimiento no arrancaba nunca

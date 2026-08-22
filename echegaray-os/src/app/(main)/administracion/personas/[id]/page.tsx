@@ -84,6 +84,10 @@ export default async function FichaPersonaPage({
   searchParams: Promise<Busqueda>
 }) {
   const { id } = await params
+  // Un segmento que no es UUID (una URL mal tipeada como /personas/asistencia) caía en la consulta
+  // y la pantalla mostraba el error crudo de Postgres («invalid input syntax for type uuid»).
+  // El 404 amable ya existe: usarlo. (QA visual, 21/08/2026)
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) notFound()
   const sp = await searchParams
   const vista = (VISTAS_FICHA.find((v) => v === sp.v) ?? 'resumen') as VistaFicha
   const editar = sp.editar === 'identidad' || sp.editar === 'laboral' ? (sp.editar as GrupoEdicion) : null
