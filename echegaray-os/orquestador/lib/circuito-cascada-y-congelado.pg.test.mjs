@@ -277,6 +277,30 @@ test('cascada comercial del XLSM y congelado de solo lectura', { skip: !hayBase 
         () => c.query(`update cotizaciones set congelada_en = null where id=$1`, [cot.id]),
         /no se desactiva/i, 'el congelado se desactivó a mano y todo volvió a ser editable')
       await c.query('rollback to savepoint intento_descongelar')
+
+      // A4-bis · la mudanza también se rechaza HACIA AFUERA: sacar una partida de la congelada
+      // achica la oferta emitida igual que borrarla (probado por el auditor como N1).
+      const propia = await uno(`select id from cotizacion_partida where cotizacion_id=$1 limit 1`, [cot.id])
+      await c.query('savepoint intento_fuga')
+      await assert.rejects(
+        () => c.query(`update cotizacion_partida set cotizacion_id=$2 where id=$1`, [propia.id, ajena.id]),
+        /no se muda/i, 'una partida se fugó de la oferta congelada hacia otra cotización')
+      await c.query('rollback to savepoint intento_fuga')
+
+      // N4/N6 · la QUINTA puerta (T1400): el RESPALDO congelado no se vacía ni se le inventan
+      // líneas — el precio no se movía, pero el número quedaba sin memoria de cálculo que lo explique.
+      await c.query('savepoint intento_respaldo')
+      await assert.rejects(
+        () => c.query(`delete from cotizacion_partida_composicion where partida_id=$1`, [propia.id]),
+        /no se toca/i, 'se vació la memoria de cálculo de una oferta emitida')
+      await c.query('rollback to savepoint intento_respaldo')
+      await c.query('savepoint intento_respaldo2')
+      await assert.rejects(
+        () => c.query(`insert into cotizacion_partida_composicion
+                         (partida_id, recurso_nombre, cantidad, costo_unitario)
+                       values ($1, 'ZZ inventado', 1, 1)`, [propia.id]),
+        /no se toca/i, 'se inventó una línea en la memoria de cálculo de una oferta emitida')
+      await c.query('rollback to savepoint intento_respaldo2')
     })
 
     await t.test('T4400 · la versión nueva se lleva los ocho porcentajes', async () => {
