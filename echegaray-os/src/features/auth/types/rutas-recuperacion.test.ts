@@ -37,9 +37,18 @@ test('las tres rutas de la recuperación las abre el nivel campo CON sesión', (
   }
 })
 
-test('la contraseña nueva NO es pública: ahí ya hay sesión', () => {
-  assert.equal(esRutaPublica(RUTA_CONTRASENA_NUEVA), false,
-    'se abrió sin sesión una pantalla que sólo tiene sentido con la sesión del canje')
+test('la contraseña nueva SÍ es pública: sin eso, el enlace vencido no puede explicarse', () => {
+  // ═══ CAMBIO DE REGLA DECLARADO (QA visual, 21/08/2026) ═══
+  //
+  // La versión anterior de este test exigía lo contrario («ahí ya hay sesión»), y era cierto para
+  // el camino feliz: quien viene del canje llega con sesión. Pero el QA probó el camino triste —
+  // enlace vencido o abierto dos veces, SIN sesión— y el middleware mandaba a /login ANTES de que
+  // la página pudiera decir «pedí otro enlace», que es exactamente lo que su propio código sabe
+  // hacer (redirige a /recuperar?vencido=1). Pública no la vuelve peligrosa: sin la sesión del
+  // canje la página no puede cambiar ninguna contraseña (updateUser exige sesión) — sólo puede
+  // explicar. Y explicar era la intención de producto que el middleware se estaba tragando.
+  assert.equal(esRutaPublica(RUTA_CONTRASENA_NUEVA), true,
+    'el enlace vencido volvió a morir en /login sin explicación')
 })
 
 test('abrir la recuperación no abrió nada más', () => {

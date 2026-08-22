@@ -53,6 +53,23 @@ export async function archivosDelCircuito(filtro = PREFIJOS_CIRCUITO) {
  * @returns {Promise<string[]>} los archivos aplicados, en orden.
  */
 export async function aplicarMigracionesDelCircuito(client, opciones = {}) {
+  // ═══ LAS DOS ÉPOCAS DEL MISMO TEST (22/08/2026) ═══
+  //
+  // Antes de la integración, la base no tenía el circuito y el test APLICABA los .sql en su
+  // transacción — así medía que los archivos fueran ejecutables. Después de la integración las
+  // migraciones VIVEN en la base, y re-aplicarlas acá revienta («ya existe» / «cannot drop columns
+  // from view»): el mismo test pasó a medir un mundo que ya no existe. Desde entonces: si el
+  // circuito completo ya está vivo (el centinela es el ÚLTIMO objeto de la cadena, la vista
+  // `actividad_horas` de 20260822T1000, más `parametro_comercial` de T4300), no se aplica nada y
+  // las aserciones corren contra el esquema REAL — que es la regla de la casa: verificar objetos en
+  // la base, no en migrations/. Si el circuito NO está (una base nueva, un entorno de prueba), se
+  // aplica como siempre. En ningún caso un esquema a medias pasa en silencio: sin centinela y con
+  // un .sql roto, el test se pone rojo igual que antes.
+  const centinela = await client.query(
+    "select to_regclass('public.actividad_horas') as vista, to_regclass('public.parametro_comercial') as tabla",
+  )
+  if (centinela.rows[0].vista && centinela.rows[0].tabla) return []
+
   const archivos = await archivosDelCircuito()
   const hasta = opciones.hasta ?? null
   const aplicados = []
