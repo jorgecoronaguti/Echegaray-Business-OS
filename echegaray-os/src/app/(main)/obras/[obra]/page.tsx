@@ -36,7 +36,7 @@ import {
   getRestricciones, getUbicacion,
 } from '@/features/obras/services/obrasService'
 import {
-  getActividadHH, getAsignaciones, getCuadrillas, getPersonas, getRegistrosHH,
+  getActividadHH, getAsignaciones, getCausasDesvio, getCuadrillas, getPersonas, getRegistrosHH,
 } from '@/features/obras/services/personalService'
 import { getCertificados } from '@/features/obras/services/contratoService'
 import {
@@ -199,6 +199,7 @@ export default async function ObraPage({
   const personas = necesitaPersonas ? lector.leer(await getPersonas(supabase), []) : []
   const ubicacion = vista === 'resumen' ? await getUbicacion(supabase, obraId) : null
   const asignaciones = vista === 'personal' ? lector.leer(await getAsignaciones(supabase, obraId), []) : []
+  const causasDesvio = vista === 'personal' ? lector.leer(await getCausasDesvio(supabase), []) : []
   const registros = vista === 'personal' ? lector.leer(await getRegistrosHH(supabase, obraId), []) : []
   // Plan contra real por actividad y las cuadrillas: sólo los pide la solapa Personal.
   // Cronograma la usa para mostrar HH real en el panel de la actividad, con el MISMO cálculo.
@@ -551,6 +552,7 @@ export default async function ObraPage({
           cerrar={cerrarAsignacion.bind(null, obraId)}
           quitar={quitarAsignacion.bind(null, obraId)}
           imputar={imputarHH.bind(null, obraId)}
+          causas={causasDesvio}
           imputarMasivo={imputarHHMasivo.bind(null, obraId)}
           borrarHoras={borrarHH.bind(null, obraId)}
         />

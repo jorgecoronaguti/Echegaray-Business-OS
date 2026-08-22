@@ -168,7 +168,7 @@ function Alta({ titulo, testid, children }: {
 
 export function TabPersonal({
   plan, asignaciones, personas, cuadrillas, actividades, actividadHH, registros,
-  asignar, cerrar, quitar, imputar, imputarMasivo, borrarHoras,
+  asignar, cerrar, quitar, imputar, imputarMasivo, borrarHoras, causas = [],
 }: {
   plan: PlanVsReal | null
   asignaciones: Asignacion[]
@@ -181,6 +181,7 @@ export function TabPersonal({
   cerrar: (asignacionId: string) => Promise<ResultadoAccion>
   quitar: (asignacionId: string) => Promise<ResultadoAccion>
   imputar: AccionFormulario
+  causas?: { clave: string; nombre: string }[]
   imputarMasivo: AccionFormulario
   borrarHoras: (registroId: string) => Promise<ResultadoAccion>
 }) {
@@ -248,7 +249,7 @@ export function TabPersonal({
 
           <Alta titulo="+ Imputar horas" testid="alta-hh">
             <FormIndividual personas={personas} asignadas={asignaciones.map((a) => a.persona_id)}
-              actividades={actividades} imputar={imputar} />
+              actividades={actividades} imputar={imputar} causas={causas} />
           </Alta>
 
           <Alta titulo="+ Imputar a la cuadrilla" testid="alta-hh-masiva">

@@ -45,6 +45,15 @@ const imputacionSchema = z.object({
   horas: HORAS,
   tipo_hora: TIPO,
   notas: z.string().trim().max(300).optional(),
+  // ═══ LA HORA IMPRODUCTIVA LLEVA SU CAUSA (22/08 · E2E Quattropani, §19) ═══
+  // El modelo las distingue desde T4500 (la captura del estándar descuenta improductivas y la
+  // causa alimenta el aprendizaje), pero ninguna pantalla las escribía: toda hora entraba como
+  // productiva y el desvío quedaba sin causa. El CHECK de la base exige causa si es improductiva;
+  // acá está la primera línea con su mensaje.
+  improductiva: z.union([z.literal('on'), z.literal('')]).optional(),
+  causa_desvio: z.string().trim().optional(),
+}).refine((d) => d.improductiva !== 'on' || Boolean(d.causa_desvio), {
+  message: 'Una hora improductiva lleva su causa: elegila para que el desvío se pueda explicar',
 })
 
 const YA_CARGADO =
@@ -76,6 +85,8 @@ export async function imputarHH(obraId: string, form: FormData): Promise<Resulta
     tipo_hora: d.tipo_hora,
     fuente_legacy: 'web:obra',
     notas: d.notas || null,
+    improductiva: d.improductiva === 'on',
+    causa_desvio: d.improductiva === 'on' ? d.causa_desvio : null,
   })
   if (error) return { ok: false, error: traducir(error) }
   revalidatePath(`/obras/${obraId}`)

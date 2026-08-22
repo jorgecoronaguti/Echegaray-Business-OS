@@ -34,6 +34,19 @@ export async function getPersonas(supabase: SupabaseClient): Promise<ServiceResu
   return { data: (data ?? []) as Persona[], error: null }
 }
 
+/** El catálogo de causas de desvío para la hora improductiva (§19, 22/08). Sólo las activas. */
+export async function getCausasDesvio(
+  supabase: SupabaseClient,
+): Promise<ServiceResult<{ clave: string; nombre: string }[]>> {
+  const { data, error } = await supabase
+    .from('causa_desvio')
+    .select('clave, nombre')
+    .eq('activa', true)
+    .order('orden', { ascending: true })
+  if (error) return { data: null, error: error.message }
+  return { data: (data ?? []) as { clave: string; nombre: string }[], error: null }
+}
+
 /** Las cuadrillas para el selector. Se leen enteras: hay pocas y la lista no depende de la obra. */
 export async function getCuadrillas(
   supabase: SupabaseClient,

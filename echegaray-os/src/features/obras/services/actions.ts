@@ -187,7 +187,7 @@ export async function archivarObra(obraId: string, archivar: boolean): Promise<R
 
 // ── ACTIVIDADES DEL CRONOGRAMA ───────────────────────────────────────────────
 
-const actividadSchema = z.object({
+const actividadBase = z.object({
   nombre: z.string().trim().min(2, 'La actividad necesita un nombre'),
   seccion: z.string().trim().optional(),
   inicio_plan: fechaOpt,
@@ -200,6 +200,18 @@ const actividadSchema = z.object({
   comentario: z.string().trim().optional(),
   es_hito: z.union([z.literal('on'), z.literal('')]).optional(),
 })
+
+// PASADA D del E2E Quattropani (22/08): el formulario aceptaba fin < inicio y la fila quedaba en la
+// base con un plazo negativo. La base tiene además su CHECK (20260822T6800) — esto es la primera
+// línea, con el mensaje que el formulario puede mostrar. Como ISO (YYYY-MM-DD), comparar los
+// strings ES comparar las fechas.
+export const finNoAnteriorAlInicio = [
+  (d: { inicio_plan?: string; fin_plan?: string }) =>
+    !d.inicio_plan || !d.fin_plan || d.fin_plan >= d.inicio_plan,
+  { message: 'El fin previsto no puede ser anterior al inicio' },
+] as const
+
+const actividadSchema = actividadBase.refine(...finNoAnteriorAlInicio)
 
 export async function crearActividad(obraId: string, form: FormData): Promise<Resultado> {
   const parsed = actividadSchema.safeParse(Object.fromEntries(form))
@@ -244,7 +256,8 @@ export async function crearActividad(obraId: string, form: FormData): Promise<Re
 }
 
 export async function editarActividad(obraId: string, actividadId: string, form: FormData): Promise<Resultado> {
-  const parsed = actividadSchema.partial({ nombre: true }).safeParse(Object.fromEntries(form))
+  const parsed = actividadBase.partial({ nombre: true }).refine(...finNoAnteriorAlInicio)
+    .safeParse(Object.fromEntries(form))
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
   const d = parsed.data
   const supabase = await createClient()

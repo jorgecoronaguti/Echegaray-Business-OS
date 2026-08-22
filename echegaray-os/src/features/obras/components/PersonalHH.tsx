@@ -131,23 +131,36 @@ function SelectTipoHora({ nombre = 'tipo_hora', compacto = false }: { nombre?: s
 }
 
 function SelectActividad({ actividades }: { actividades: Actividad[] }) {
+  // DOS ACTIVIDADES CON EL MISMO NOMBRE SON INDISTINGUIBLES EN UN SELECT (22/08, E2E Quattropani):
+  // la del tracker y la convertida del presupuesto se llaman igual, y 8 HH fueron a parar a la
+  // equivocada. Cuando el nombre se repite, la opción dice también de dónde viene — el usuario
+  // decide con un dato, no con una moneda.
+  const repetidos = new Set(
+    [...actividades.reduce((m, a) => m.set(a.nombre, (m.get(a.nombre) ?? 0) + 1), new Map<string, number>())]
+      .filter(([, n]) => n > 1).map(([nombre]) => nombre),
+  )
+  const rotulo = (a: Actividad) => repetidos.has(a.nombre)
+    ? `${a.nombre} · ${a.seccion?.trim() || 'sin rubro'} (${a.id.slice(0, 4)})`
+    : a.nombre
   return (
     <select name="actividad_id" defaultValue="" className={CAMPO}>
       <option value="">toda la obra</option>
-      {actividades.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+      {actividades.map((a) => <option key={a.id} value={a.id}>{rotulo(a)}</option>)}
     </select>
   )
 }
 
 /** CARGA A: una persona, un día. */
 export function FormIndividual({
-  personas, asignadas, actividades, imputar,
+  personas, asignadas, actividades, imputar, causas = [],
 }: {
   personas: Persona[]
   /** Los ids de quienes están asignados a ESTA obra hoy. Se muestran primero. */
   asignadas?: string[]
   actividades: Actividad[]
   imputar: AccionFormulario
+  /** El catálogo de causas de desvío (`causa_desvio`): una hora improductiva lleva la suya. */
+  causas?: { clave: string; nombre: string }[]
 }) {
   // ═══ LOS DE ESTA OBRA ARRIBA, EL RESTO DEL PLANTEL DESPUÉS (19/08/2026, QA) ═══
   //
@@ -195,6 +208,25 @@ export function FormIndividual({
         <Campo rotulo="Observación" className="col-span-2">
           <input name="notas" maxLength={300} className={CAMPO} />
         </Campo>
+        {/* §19 (22/08): la hora improductiva se declara ACÁ, con su causa — antes el modelo las
+            distinguía y ninguna pantalla las escribía. Plegado: el caso común es la hora normal. */}
+        {causas.length > 0 && (
+          <details className="col-span-2" data-testid="hh-improductiva">
+            <summary className="cursor-pointer text-[12px] text-muted">Hora improductiva (con causa)</summary>
+            <div className="mt-2 grid grid-cols-2 gap-2.5">
+              <label className="flex items-center gap-2 text-[12.5px] text-ink">
+                <input type="checkbox" name="improductiva" className="h-3.5 w-3.5" data-testid="marca-improductiva" />
+                Improductiva
+              </label>
+              <Campo rotulo="Causa">
+                <select name="causa_desvio" defaultValue="" className={CAMPO} data-testid="causa-desvio">
+                  <option value="">elegir la causa</option>
+                  {causas.map((c) => <option key={c.clave} value={c.clave}>{c.nombre}</option>)}
+                </select>
+              </Campo>
+            </div>
+          </details>
+        )}
       </div>
     </FormAccion>
   )
