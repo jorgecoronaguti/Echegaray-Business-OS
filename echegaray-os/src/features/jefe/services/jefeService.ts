@@ -10,7 +10,8 @@
 //
 // ═══ NO SE PIDE UNA SOLA COLUMNA DE DINERO ═══
 //
-// `obra_panel` publica `monto_contratado`, `costo_real` y `margen_sobre_contratado_pct`. Ninguna se
+// `obra_panel` publica `monto_contratado` y `costo_real`, y `obra_economia` la venta y el margen.
+// Ninguna se
 // nombra en este archivo. No es por prudencia: es que la lista de columnas de un `select` es la
 // única parte del contrato que se puede leer de un vistazo, y la que un revisor puede verificar sin
 // levantar la base. La cerradura sigue siendo `ve_economia()`.

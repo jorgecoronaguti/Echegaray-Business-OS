@@ -11,8 +11,8 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
-  Actividad, Dependencia, DocumentoObra, ObraPanel, PlanVsReal, Restriccion, ServiceResult,
-  ServiceResultOpcional,
+  Actividad, Dependencia, DocumentoObra, EconomiaObra, ObraPanel, PlanVsReal, Restriccion,
+  ServiceResult, ServiceResultOpcional,
 } from '../types'
 
 /** El portafolio: una fila por obra, ordenado por el orden declarado y después por nombre. */
@@ -68,7 +68,22 @@ export async function getPlanVsReal(supabase: SupabaseClient, obraId: string): P
   return { data: data as PlanVsReal, error: null }
 }
 
-/** El plan contra real de TODAS las obras: es lo que le da al portafolio sus columnas de plazo y margen. */
+/**
+ * EL PANEL ECONÓMICO de una obra, entero de la vista `obra_economia`. Acá NO se resta ni se
+ * completa: los márgenes ya vienen en null cuando falta la base, y la pantalla dice qué falta.
+ *
+ * Devuelve `null` sin error cuando la vista no publica fila: para quien no ve la economía, la venta
+ * y el margen llegan en null desde Postgres y esta pantalla no tiene nada que dibujar.
+ */
+export async function getEconomiaObra(
+  supabase: SupabaseClient, obraId: string,
+): Promise<ServiceResult<EconomiaObra | null>> {
+  const { data, error } = await supabase.from('obra_economia').select('*').eq('obra_id', obraId).maybeSingle()
+  if (error) return { data: null, error: error.message }
+  return { data: (data as EconomiaObra) ?? null, error: null }
+}
+
+/** El plan contra real de TODAS las obras: es lo que le da al portafolio sus columnas de plazo. */
 export async function getPlanVsRealPortafolio(supabase: SupabaseClient): Promise<ServiceResult<PlanVsReal[]>> {
   const { data, error } = await supabase.from('obra_plan_vs_real').select('*')
   if (error) return { data: null, error: error.message }
