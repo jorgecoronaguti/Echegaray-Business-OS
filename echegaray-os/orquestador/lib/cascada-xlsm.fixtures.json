@@ -1,0 +1,75 @@
+{
+  "fuente": "Planilla para Cotizar (2).xlsm — hoja Presupuesto (obra ORICA, DEMOLICION Y APLICACION DE MORTERO)",
+  "nota": "Valores cacheados leídos del XML del XLSM (openpyxl data_only=True). El libro tiene fullPrecision=\"0\": cada celda quedó guardada redondeada a su formato (2 decimales). Tolerancia de paridad: < $1.",
+  "parametros_vigentes": {
+    "gastos_generales": { "valor": 0.27, "celda": "Presupuesto!E64", "clasificacion": "DECISION", "nota": "GG!J6 calcula 0,2698 (=indirectos/CD) y está a la vista en F64, pero la cascada usa el 0,27 tipeado" },
+    "beneficio": { "valor": 0.22, "celda": "Presupuesto!E68", "clasificacion": "DECISION" },
+    "costo_financiero": { "valor": 0.07, "celda": "Presupuesto!E71", "clasificacion": "DECISION", "nota": "comentario en I71: 'ARCOR ES DEL 6,75% A 30 DIAS'" },
+    "factor_financiero": { "valor": 0.5, "celda": "Presupuesto!F71", "clasificacion": "DECISION", "nota": "se financia medio período" },
+    "iibb_lote_hogar": { "valor": 0.024, "celda": "Presupuesto!E73", "clasificacion": "DECISION", "nota": "IIBB + Lote Hogar San Juan; alícuota tipeada, verificar vigencia DGR antes de citarla" },
+    "ganancias": { "valor": 0.02, "celda": "Presupuesto!E75", "clasificacion": "DECISION" },
+    "impuesto_cheque": { "valor": 0.012, "celda": "Presupuesto!E79", "clasificacion": "DECISION", "nota": "0,6% débito + 0,6% crédito" },
+    "iva": { "valor": 0.21, "celda": "Presupuesto!E83", "clasificacion": "DERIVABLE (normativo)" }
+  },
+  "casos": [
+    {
+      "descripcion": "Cascada global de la obra ORICA: costo directo total -> venta final",
+      "tipo": "cascada_global",
+      "costo_directo": 92087947.11,
+      "parametros": {
+        "gastos_generales": 0.27, "beneficio": 0.22, "costo_financiero": 0.07,
+        "factor_financiero": 0.5, "iibb_lote_hogar": 0.024, "ganancias": 0.02,
+        "impuesto_cheque": 0.012, "iva": 0.21
+      },
+      "precio_final_xlsm": 187415653.4,
+      "precio_sin_iva_xlsm": 154888969.7,
+      "coeficiente_h89": 2.03518114239348,
+      "celdas_origen": { "costo_directo": "Presupuesto!H62 (=CDT=I52)", "precio_final": "Presupuesto!H86", "venta_sin_iva": "Presupuesto!H81", "coeficiente": "Presupuesto!H89" }
+    },
+    {
+      "descripcion": "Partida T1001 REPLANTEO (fila 10)",
+      "tipo": "partida",
+      "costo_directo": 315632.12,
+      "coeficiente_h89": 2.03518114239348,
+      "precio_final_xlsm": 642368.54,
+      "precio_sin_iva_xlsm": 530883.09,
+      "celdas_origen": { "costo_directo": "Presupuesto!H10", "precio_con_iva": "Presupuesto!L10 (=H10*$H$89)", "precio_sin_iva": "Presupuesto!K10 (=L10/1,21)" }
+    },
+    {
+      "descripcion": "Partida T1018 MAMPOSTERIA LADRILLON CERAMICO e=0,20 (fila 21)",
+      "tipo": "partida",
+      "costo_directo": 7158333,
+      "coeficiente_h89": 2.03518114239348,
+      "precio_final_xlsm": 14568504.33,
+      "precio_sin_iva_xlsm": 12040086.22,
+      "celdas_origen": { "costo_directo": "Presupuesto!H21", "precio_con_iva": "Presupuesto!L21", "precio_sin_iva": "Presupuesto!K21" }
+    },
+    {
+      "descripcion": "Partida T1075.1 TECHO METALICO Panel Autoportante (fila 24)",
+      "tipo": "partida",
+      "costo_directo": 23362682.61,
+      "coeficiente_h89": 2.03518114239348,
+      "precio_final_xlsm": 47547291.08,
+      "precio_sin_iva_xlsm": 39295281.88,
+      "celdas_origen": { "costo_directo": "Presupuesto!H24", "precio_con_iva": "Presupuesto!L24", "precio_sin_iva": "Presupuesto!K24" }
+    },
+    {
+      "descripcion": "Partida T1124.1 CERRAMIENTO VERTICAL METALICO (fila 26)",
+      "tipo": "partida",
+      "costo_directo": 15329754.9,
+      "coeficiente_h89": 2.03518114239348,
+      "precio_final_xlsm": 31198828.09,
+      "precio_sin_iva_xlsm": 25784155.45,
+      "celdas_origen": { "costo_directo": "Presupuesto!H26", "precio_con_iva": "Presupuesto!L26", "precio_sin_iva": "Presupuesto!K26" }
+    },
+    {
+      "descripcion": "Partida T1122 RETIRO DE ESCOMBROS con RSU (fila 38)",
+      "tipo": "partida",
+      "costo_directo": 2520000,
+      "coeficiente_h89": 2.03518114239348,
+      "precio_final_xlsm": 5128656.48,
+      "precio_sin_iva_xlsm": 4238559.07,
+      "celdas_origen": { "costo_directo": "Presupuesto!H38", "precio_con_iva": "Presupuesto!L38", "precio_sin_iva": "Presupuesto!K38" }
+    }
+  ]
+}

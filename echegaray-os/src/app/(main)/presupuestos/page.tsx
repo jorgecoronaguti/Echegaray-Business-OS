@@ -16,7 +16,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { veEconomia } from '@/features/auth/types/areas'
-import { getCartera } from '@/features/presupuestos/services/presupuestosService'
+import { getCartera, getParametroComercialVigente } from '@/features/presupuestos/services/presupuestosService'
 import { getObrasDestino } from '@/features/presupuestos/services/conversionService'
 import { kpisDeCartera } from '@/features/presupuestos/services/cartera'
 import { esFiltro } from '@/features/presupuestos/services/cartera'
@@ -54,9 +54,14 @@ export default async function PresupuestosPage({
     )
   }
 
-  const [{ data, error }, obras] = await Promise.all([
+  // El parámetro comercial vigente se lee ACÁ, en el servidor, y baja por props. Los ocho
+  // porcentajes son una decisión empresarial: hasta la 4300 vivían tipeados en un `defaultValue` de
+  // `CamposPresupuesto.tsx` y no eran los de la empresa — daban un coeficiente de 1,43 contra el
+  // 1,68 del libro con el que se cotiza.
+  const [{ data, error }, obras, parametro] = await Promise.all([
     getCartera(supabase),
     getObrasDestino(supabase),
+    getParametroComercialVigente(supabase),
   ])
   const presupuestos = data ?? []
   const k = kpisDeCartera(presupuestos)
@@ -132,7 +137,7 @@ export default async function PresupuestosPage({
               {/* El número lo deriva la acción: `COT-<año>-<NNN>`. Pedirlo sería pedirle a alguien
                   que administre a mano la clave por la que se agrupan las versiones. */}
               <FormAccion accion={crearPresupuesto} testid="form-presupuesto" enviar="Crear presupuesto" limpiarAlOk mensajeOk="Presupuesto creado en borrador.">
-                <CamposPresupuesto clientes={clientes} obras={obras.data ?? []} />
+                <CamposPresupuesto clientes={clientes} obras={obras.data ?? []} parametro={parametro} />
               </FormAccion>
             </div>
           )}

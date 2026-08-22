@@ -12,8 +12,10 @@
 //
 // ═══ EL ORDEN DE LOS PASOS ES LA GARANTÍA, PORQUE NO HAY TRANSACCIÓN ═══
 //
-// PostgREST no da transacciones de varias sentencias, y `analisis_uno_vigente` es un índice único
-// parcial: NO PUEDEN CONVIVIR DOS VIGENTES. Así que el orden importa y es éste:
+// PostgREST no da transacciones de varias sentencias, y `analisis_una_variante_vigente` es un
+// índice único parcial —desde la 4100, sobre (tarea_tipo_id, variante); antes era
+// `analisis_uno_vigente`, sobre la tarea sola—: NO PUEDEN CONVIVIR DOS VIGENTES DE LA MISMA
+// VARIANTE. Así que el orden importa y es éste:
 //
 //   1. Insertar la versión nueva con `vigente = false`   ← no puede chocar con el índice
 //   2. Copiar TODAS las líneas a la versión nueva        ← si falla, se borra y no pasó nada
@@ -24,8 +26,11 @@
 // análisis» —visible y falso por defecto, no invisible y falso—, y si el paso 4 falla se vuelve a
 // subir la vieja. El estado que NO puede pasar es dos vigentes, y el índice lo impide.
 //
-// LO CORRECTO SERÍA UNA FUNCIÓN EN POSTGRES con esto adentro de una transacción. Está declarado
-// como deuda en el informe; no se agrega acá porque el modelo está cerrado para esta tarea.
+// LO CORRECTO SERÍA UNA FUNCIÓN EN POSTGRES con esto adentro de una transacción. Desde la 4100 esa
+// función EXISTE —`nueva_version_de_analisis(analisis, motivo, hs_unitarias)`— pero resuelve otro
+// caso: versiona COPIANDO las líneas (opcionalmente escaladas a un rendimiento objetivo), y es la
+// que usa «aceptar una recomendación». Acá las líneas vienen EDITADAS desde la pantalla, así que la
+// copia no alcanza. Migrar esta acción a una función propia sigue siendo deuda declarada.
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'

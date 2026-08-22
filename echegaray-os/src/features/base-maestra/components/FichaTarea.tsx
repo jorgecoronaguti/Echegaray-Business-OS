@@ -10,8 +10,12 @@
 
 import Link from 'next/link'
 import { Aviso, Nulo, TituloPanel } from '@/shared/components/ds'
+// `Campo` de este archivo es la fila rótulo/valor de la ficha; el del formulario es otro. Se
+// renombra en el import en vez de tocar el local: el local lo usan seis solapas.
+import { Campo as CampoFormulario, CTRL, FormAccion } from '@/shared/components/ui'
 import type { FichaTarea as Ficha } from '../types'
 import { motivoDelEstado, numero, pesosCierran, sumaDePesos } from '../services/reglas'
+import { aceptarRecomendacion, descartarRecomendacion } from '../services/recomendacionActions'
 import { EstadoAnalisisCelda, N, Rotulo, Texto } from './celdas'
 import { SolapaAnalisis } from './SolapaAnalisis'
 
@@ -289,11 +293,88 @@ function Rendimiento({ ficha }: { ficha: Ficha }) {
       <Fila rotulo="Recomendado">
         {r.hs_recomendado == null ? <Nulo>sin recomendación</Nulo> : <N v={r.hs_recomendado} className="font-semibold" />}
       </Fila>
+      <Fila rotulo="Horas improductivas de la muestra">
+        <N v={r.hh_improductivas} falta="ninguna declarada" />
+      </Fila>
       <div className="mt-3 rounded-card bg-surface-quiet px-3 py-2.5">
         <div className="text-[12.5px] text-ink-soft">{r.lectura}</div>
         <div className="mt-1 text-[11.5px] text-faint">
-          Muestra: {r.obras} {r.obras === 1 ? 'obra' : 'obras'}, {r.muestra} {r.muestra === 1 ? 'registro' : 'registros'}.
+          Muestra: {r.obras} {r.obras === 1 ? 'obra' : 'obras'}, {r.muestra} {r.muestra === 1 ? 'registro' : 'registros'}
+          {r.ultima_muestra
+            ? ` · última el ${new Date(r.ultima_muestra).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })}`
+            : ''}.
         </div>
+        <div className="mt-1 text-[11.5px] text-faint">
+          El rendimiento observado descuenta las horas improductivas: una espera de equipo no es el
+          estándar de la tarea.
+        </div>
+      </div>
+
+      {/* ═══ LA DECISIÓN ══════════════════════════════════════════════════════════════════════
+          La vista PROPONE; acá alguien decide, y las dos decisiones quedan escritas. Aceptar crea
+          una versión nueva del análisis y NO mueve ningún presupuesto ya congelado. Descartar
+          también se registra: sin eso, la misma recomendación vuelve mañana y alguien la vuelve a
+          evaluar de cero. */}
+      <DecisionRecomendacion tareaTipoId={ficha.tarea.id} r={r} />
+    </div>
+  )
+}
+
+function DecisionRecomendacion({ tareaTipoId, r }: { tareaTipoId: string; r: Ficha['rendimiento'] }) {
+  if (!r || r.hs_recomendado == null) {
+    return (
+      <p className="mt-3 text-[12px] text-faint" data-testid="sin-decision">
+        No hay recomendación que decidir: {r?.lectura ?? 'sin dato'}. Con una sola obra medida hay un
+        dato, no una distribución — aceptarlo metería un caso raro en la base maestra para siempre.
+      </p>
+    )
+  }
+  const cambio = r.hs_analisis && r.hs_analisis > 0
+    ? ((r.hs_recomendado - r.hs_analisis) / r.hs_analisis) * 100
+    : null
+
+  return (
+    <div className="mt-4 border-t border-line pt-4" data-testid="decision-recomendacion">
+      <p className="text-[12.5px] text-ink-soft">
+        Pasar de <span className="font-mono tabular-nums">{numero(r.hs_analisis, 3) ?? 'sin dato'}</span> a{' '}
+        <span className="font-mono font-semibold tabular-nums">{numero(r.hs_recomendado, 3)}</span> hs/unidad
+        {cambio === null ? '' : ` (${cambio > 0 ? '+' : ''}${numero(cambio, 1)} %)`}.
+      </p>
+
+      <div className="mt-3 grid gap-4 sm:grid-cols-2">
+        <FormAccion
+          accion={aceptarRecomendacion}
+          testid="form-aceptar-recomendacion"
+          enviar="Aceptar y versionar"
+          mensajeOk="Versión nueva creada."
+        >
+          <input type="hidden" name="tarea_tipo_id" value={tareaTipoId} />
+          <CampoFormulario label="Motivo (opcional)" ayuda="Se agrega adelante de la muestra, que la función escribe sola.">
+            <input name="motivo" maxLength={300} className={CTRL} data-testid="motivo-aceptar"
+              placeholder="probado en dos obras del mismo tipo" />
+          </CampoFormulario>
+          <p className="mt-1 text-[11px] text-faint">
+            Crea la versión siguiente del análisis escalando la mano de obra y sus cargas. Los
+            presupuestos ya congelados NO cambian: apuntan a la versión con la que se cotizaron.
+          </p>
+        </FormAccion>
+
+        <FormAccion
+          accion={descartarRecomendacion}
+          testid="form-descartar-recomendacion"
+          enviar="Descartar"
+          mensajeOk="Descartada, con su motivo."
+        >
+          <input type="hidden" name="tarea_tipo_id" value={tareaTipoId} />
+          <CampoFormulario label="Motivo (obligatorio)" ayuda="Sin él, mañana nadie sabe contra qué se comparó.">
+            <input name="motivo" maxLength={300} required className={CTRL} data-testid="motivo-descartar"
+              placeholder="las dos obras fueron en altura, no comparan" />
+          </CampoFormulario>
+          <p className="mt-1 text-[11px] text-faint">
+            No toca el análisis. Sale de la lista de pendientes y vuelve sola si llega una muestra
+            nueva — que ya sería otra recomendación.
+          </p>
+        </FormAccion>
       </div>
     </div>
   )

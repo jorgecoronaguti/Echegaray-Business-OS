@@ -21,27 +21,50 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
-import { controlDeCierre, type Frente } from './frentes'
+import { controlDeCierre, controlDeFechas, type Frente } from './frentes'
 // Ver `./accion`: un archivo `'use server'` no puede exportar una constante.
 import type { EstadoAccion } from './accion'
 
 
 const metodoSchema = z.enum(['cantidad', 'pasos', 'manual'])
 
-/** Los frentes llegan como pares repetidos del formulario: un nombre y una cantidad por frente. */
+/** Un entero opcional del formulario: vacío es «no lo declaró», nunca cero. */
+const enteroOpcional = z.string().trim().transform((v) => (v === '' ? null : Number(v)))
+  .refine((n) => n === null || (Number.isInteger(n) && n > 0), 'Tiene que ser un número entero de personas')
+
+const fechaSchema = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, 'La fecha va como AAAA-MM-DD')
+
+/**
+ * Los frentes llegan como listas paralelas del formulario: nombre, cantidad, inicio, dotación y
+ * tope, uno por frente. El inicio es OBLIGATORIO y la validación está también en la base — acá se
+ * comprueba para que el mensaje llegue nombrando el frente y no como una excepción de Postgres.
+ */
 function leerFrentes(form: FormData): { frentes: Frente[]; error: string | null } {
   const nombres = form.getAll('frente_nombre').map((v) => String(v).trim())
   const cantidades = form.getAll('frente_cantidad').map((v) => String(v).trim())
+  const inicios = form.getAll('frente_inicio').map((v) => String(v).trim())
+  const dotaciones = form.getAll('frente_dotacion').map((v) => String(v).trim())
+  const topes = form.getAll('frente_tope').map((v) => String(v).trim())
   if (nombres.length === 0) return { frentes: [], error: 'No hay frentes que generar' }
-  if (nombres.length !== cantidades.length) {
-    return { frentes: [], error: 'Los frentes llegaron incompletos: cada uno necesita nombre y cantidad' }
+  if (nombres.length !== cantidades.length || nombres.length !== inicios.length) {
+    return { frentes: [], error: 'Los frentes llegaron incompletos: cada uno necesita nombre, cantidad y fecha de inicio' }
   }
   const frentes: Frente[] = []
   for (let i = 0; i < nombres.length; i += 1) {
     const nombre = nombres[i] || `Frente ${i + 1}`
     const n = Number(cantidades[i].replace(',', '.'))
     if (!Number.isFinite(n)) return { frentes: [], error: `El frente «${nombre}» no tiene una cantidad válida` }
-    frentes.push({ nombre, cantidad: n })
+
+    const fecha = fechaSchema.safeParse(inicios[i])
+    if (!fecha.success) {
+      return { frentes: [], error: `El frente «${nombre}» no tiene fecha de inicio: sin fecha se crearían actividades que parecen planificadas y no lo están` }
+    }
+    const dot = enteroOpcional.safeParse(dotaciones[i] ?? '')
+    if (!dot.success) return { frentes: [], error: `La dotación del frente «${nombre}» no es un número de personas` }
+    const tope = enteroOpcional.safeParse(topes[i] ?? '')
+    if (!tope.success) return { frentes: [], error: `El tope del frente «${nombre}» no es un número de personas` }
+
+    frentes.push({ nombre, cantidad: n, inicio: fecha.data, dotacion: dot.data, tope: tope.data })
   }
   // Dos frentes con el mismo nombre generan dos contenedores indistinguibles en el árbol de la
   // obra, y la `clave` de la conversión —`conv:<partida>:<nombre>`— deja de identificar a uno solo.
@@ -92,28 +115,45 @@ export async function convertirPartida(_prev: EstadoAccion, form: FormData): Pro
   if (eP) return { error: eP.message }
   const control = controlDeCierre(frentes, partida?.cantidad == null ? null : Number(partida.cantidad))
   if (!control.cierra) return { error: control.motivo! }
+  const fechas = controlDeFechas(frentes)
+  if (!fechas.ok) return { error: fechas.motivo! }
 
   const { data, error } = await c.rpc('convertir_partida_a_plan', {
     p_partida_id: partida_id,
     p_obra_id: obra_id,
-    p_frentes: frentes.map((f) => ({ nombre: f.nombre, cantidad: f.cantidad })),
+    p_frentes: frentes.map((f) => ({
+      nombre: f.nombre, cantidad: f.cantidad, inicio: f.inicio,
+      dotacion: f.dotacion ?? null, tope: f.tope ?? null,
+    })),
     p_plantilla_id: plantilla_id,
     p_metodo: metodo,
   })
   // EL ERROR DE LA BASE, TAL CUAL. Es el que dice cuánto suman los frentes y cuánto tiene la partida.
   if (error) return { error: error.message }
 
-  const r = (data ?? {}) as { frentes?: number; actividades?: number; hh_total?: number | null; sin_analisis?: boolean }
+  const r = (data ?? {}) as {
+    frentes?: number; actividades?: number; hh_total?: number | null; sin_analisis?: boolean
+    subcontratada?: boolean; paquete_sin_precio?: boolean | null; sin_dotacion?: boolean
+    fechas?: string; desde?: string | null; hasta?: string | null
+  }
   revalidatePath(`/presupuestos/${cotizacion_id}`, 'layout')
   revalidatePath(`/obras/${obra_id}`, 'layout')
 
   // El mensaje dice lo que quedó, incluido lo que NO quedó: una partida sin análisis genera el plan
-  // sin HH, y eso es deuda de carga que alguien tiene que ver, no un detalle.
-  const horas = r.sin_analisis || r.hh_total == null
-    ? 'sin HH: la partida no tiene análisis cargado'
-    : `${Math.round(Number(r.hh_total)).toLocaleString('es-AR')} HH`
-  return {
-    error: null, ok: true,
-    mensaje: `${r.actividades ?? 0} actividades en ${r.frentes ?? 0} frente${(r.frentes ?? 0) === 1 ? '' : 's'} · ${horas}`,
+  // sin HH, y un plan sin dotación sale con inicio y sin fin. Las dos son deuda que alguien tiene
+  // que ver, no un detalle.
+  const partes: string[] = [
+    `${r.actividades ?? 0} actividades en ${r.frentes ?? 0} frente${(r.frentes ?? 0) === 1 ? '' : 's'}`,
+  ]
+  if (r.subcontratada) {
+    partes.push('paquete subcontratado creado, sin HH propias')
+    if (r.paquete_sin_precio) partes.push('el paquete quedó SIN precio: cargalo desde la obra')
+  } else if (r.sin_analisis || r.hh_total == null) {
+    partes.push('sin HH: la partida no tiene análisis cargado')
+  } else {
+    partes.push(`${Math.round(Number(r.hh_total)).toLocaleString('es-AR')} HH`)
   }
+  if (r.fechas) partes.push(`fechas ${r.fechas}`)
+
+  return { error: null, ok: true, mensaje: partes.join(' · ') }
 }

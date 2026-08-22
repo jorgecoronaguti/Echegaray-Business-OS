@@ -20,7 +20,7 @@ import { useActionState, useState, startTransition } from 'react'
 import { Aviso } from '@/shared/components/ds'
 import type { MetodoMedicion, PartidaValorizada, Plantilla } from '../types'
 import {
-  actividadesPrevistas, arbolPrevisto, controlDeCierre, hhDelFrente, metodoEfectivo,
+  actividadesPrevistas, arbolPrevisto, controlDeCierre, controlDeFechas, hhDelFrente, metodoEfectivo,
   nombresPorDefecto, repartirIgual, type Frente,
 } from '../services/frentes'
 import { cantidad as fCantidad, hh as fHH, rendimiento } from '../services/formato'
@@ -54,6 +54,7 @@ export function ConfiguradorConversion({
   const plantilla = plantillas.find((x) => x.id === plantillaId) ?? null
   const pasos = plantilla?.pasos ?? []
   const control = controlDeCierre(frentes, p.cantidad)
+  const fechas = controlDeFechas(frentes)
   const metodo = metodoEfectivo(metodoElegido, p.metodo_medicion, plantilla !== null)
   const nActividades = actividadesPrevistas(frentes.length, pasos.length)
   // SIN `useMemo`. El compilador de React memoiza esto solo, y una lista de dependencias con
@@ -78,6 +79,9 @@ export function ConfiguradorConversion({
     for (const f of frentes) {
       d.append('frente_nombre', f.nombre)
       d.append('frente_cantidad', String(f.cantidad))
+      d.append('frente_inicio', f.inicio ?? '')
+      d.append('frente_dotacion', f.dotacion == null ? '' : String(f.dotacion))
+      d.append('frente_tope', f.tope == null ? '' : String(f.tope))
     }
     startTransition(() => ejecutar(d))
   }
@@ -196,8 +200,70 @@ export function ConfiguradorConversion({
           <p className="mt-2 text-[11.5px] leading-relaxed text-muted" data-testid="nota-metodo">{NOTA_METODO[metodo]}</p>
         </section>
 
+        {/* ═══ 4 · FECHAS Y DOTACIÓN ═══════════════════════════════════════════════════════════
+            La fecha de inicio de cada frente es OBLIGATORIA y la exige la base. Sin ella, la
+            conversión creaba actividades que parecen planificadas y no tienen dimensión temporal:
+            `obra_avance` sólo cuenta las que tienen inicio, así que la obra recién convertida
+            publicaba «sin actividades medidas» con el plan entero cargado.
+
+            La dotación es opcional a propósito — hay obras que se planifican antes de saber con
+            cuánta gente— y sin ella el plan sale con inicio y SIN fin, dicho en el resultado. */}
+        <section data-testid="bloque-fechas">
+          <h3 className="text-[10px] font-medium uppercase tracking-[0.06em] text-faint">
+            4 · Fechas y dotación por frente
+          </h3>
+          <ul className="mt-2 space-y-1.5">
+            {frentes.map((f, i) => (
+              <li key={i} className="flex items-center gap-2" data-testid="frente-plan">
+                <span className="min-w-0 flex-1 truncate text-[12px] text-muted">{f.nombre}</span>
+                <input
+                  type="date"
+                  value={f.inicio ?? ''}
+                  onChange={(e) => setFrentes(frentes.map((x, j) => (j === i ? { ...x, inicio: e.target.value } : x)))}
+                  aria-label={`Inicio del frente ${i + 1}`}
+                  data-testid={`frente-inicio-${i}`}
+                  className="w-[130px] shrink-0 rounded-control border border-line bg-surface px-2 py-1 font-mono text-[12px] tabular-nums text-ink"
+                />
+                <input
+                  value={f.dotacion == null ? '' : String(f.dotacion)}
+                  inputMode="numeric"
+                  placeholder="dot."
+                  onChange={(e) => setFrentes(frentes.map((x, j) => (j === i
+                    ? { ...x, dotacion: e.target.value.trim() === '' ? null : Number(e.target.value) } : x)))}
+                  aria-label={`Dotación del frente ${i + 1}`}
+                  data-testid={`frente-dotacion-${i}`}
+                  className="w-[58px] shrink-0 rounded-control border border-line bg-surface px-2 py-1 text-right font-mono text-[12px] tabular-nums text-ink"
+                />
+                <input
+                  value={f.tope == null ? '' : String(f.tope)}
+                  inputMode="numeric"
+                  placeholder="tope"
+                  onChange={(e) => setFrentes(frentes.map((x, j) => (j === i
+                    ? { ...x, tope: e.target.value.trim() === '' ? null : Number(e.target.value) } : x)))}
+                  aria-label={`Tope del frente ${i + 1}`}
+                  data-testid={`frente-tope-${i}`}
+                  className="w-[58px] shrink-0 rounded-control border border-line bg-surface px-2 py-1 text-right font-mono text-[12px] tabular-nums text-ink"
+                />
+              </li>
+            ))}
+          </ul>
+          {fechas.motivo && (
+            <p className="mt-1.5 text-[11.5px] text-warn" data-testid="motivo-fechas">{fechas.motivo}</p>
+          )}
+          {fechas.ok && fechas.sinDotacion && (
+            <p className="mt-1.5 text-[11.5px] text-muted" data-testid="aviso-sin-dotacion">
+              Sin dotación el plan sale con fecha de inicio y sin fecha de fin: la duración de un paso
+              sale de sus HH divididas por la gente que lo hace. El tiempo técnico (curado, fraguado)
+              sí queda, porque son días fijos.
+            </p>
+          )}
+          <p className="mt-1.5 text-[11px] text-faint">
+            El trabajo se mide en días hábiles de la obra; el tiempo técnico, en días de calendario.
+          </p>
+        </section>
+
         <section data-testid="bloque-plan">
-          <h3 className="text-[10px] font-medium uppercase tracking-[0.06em] text-faint">4 · Plan que se va a generar</h3>
+          <h3 className="text-[10px] font-medium uppercase tracking-[0.06em] text-faint">5 · Plan que se va a generar</h3>
           <pre className="mt-2 overflow-x-auto whitespace-pre font-mono text-[12px] leading-[1.6] text-ink-soft" data-testid="arbol-previsto">
 {arbol.map((nodo) => `${'   '.repeat(Math.max(0, nodo.nivel - 1))}${nodo.nivel === 0 ? '' : '└ '}${nodo.texto}`).join('\n')}
           </pre>
@@ -208,7 +274,7 @@ export function ConfiguradorConversion({
         <button
           type="button"
           onClick={generar}
-          disabled={!control.cierra || pendiente || nActividades === 0}
+          disabled={!control.cierra || !fechas.ok || pendiente || nActividades === 0}
           data-testid="generar-actividades"
           className="rounded-control bg-marca px-3.5 py-[7px] text-[12.5px] font-semibold text-[color:var(--os-on-marca)] hover:brightness-[0.97] disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-faint"
         >
@@ -220,7 +286,24 @@ export function ConfiguradorConversion({
       </div>
 
       {estado.ok && (
-        <div className="mt-3"><Aviso tono="info" titulo="Convertida" testid="conversion-ok">{estado.mensaje}</Aviso></div>
+        <div className="mt-3">
+          <Aviso tono="info" titulo="Convertida" testid="conversion-ok">
+            {estado.mensaje}
+            {/* EL PLAN GENERADO TODAVÍA NO ES LÍNEA BASE. Las fechas que puso la conversión son
+                `inicio_plan`/`fin_plan`; `inicio_base`/`fin_base` los escribe `sellarBaseline`, y
+                sellar antes de revisar congela un cronograma que nadie miró. El CTA lleva a
+                revisarlo, no a sellarlo. */}
+            <span className="mt-2 block">
+              Las fechas son del PLAN, todavía no línea base.{' '}
+              <a href={`/obras/${obraId}/cronograma`} data-testid="ir-al-cronograma"
+                className="font-medium text-ink underline underline-offset-2">
+                Revisar el cronograma y sellar la línea base
+              </a>
+              {' '}— sellar antes de mirarlo congela un plan que nadie revisó, y el desvío se mide
+              contra él.
+            </span>
+          </Aviso>
+        </div>
       )}
       {estado.error && (
         // EL ERROR DE LA BASE, TAL CUAL: es el que dice cuánto suman los frentes y cuánto tiene la

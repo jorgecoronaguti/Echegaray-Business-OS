@@ -33,6 +33,52 @@ const aDecimal = (n: number) => n / ESCALA
 export interface Frente {
   nombre: string
   cantidad: number
+  /**
+   * Cuándo arranca el frente, `YYYY-MM-DD`. OBLIGATORIO para generar: sin fecha, la conversión
+   * creaba actividades que PARECEN planificadas y no tienen dimensión temporal — y `obra_avance`,
+   * que sólo cuenta las que tienen `inicio_plan`, publicaba «sin actividades medidas» con el plan
+   * entero cargado. Es opcional en el tipo porque el formulario lo llena después de repartir.
+   */
+  inicio?: string
+  /** Cuánta gente va a este frente. Sin dotación el plan sale con inicio y SIN fin, declarado. */
+  dotacion?: number | null
+  /** El tope físico del frente: arriba de él, poner más gente no acorta nada. */
+  tope?: number | null
+}
+
+/**
+ * EL CONTROL DE FECHAS Y DOTACIÓN — el que decide si el botón «Generar» se puede apretar.
+ *
+ * Va separado de `controlDeCierre` porque son dos preguntas distintas: una es «¿la cantidad se
+ * conserva?» y la otra «¿esto se puede ubicar en el tiempo?». La autoridad de las dos es
+ * `convertir_partida_a_plan`; acá se comprueban antes para que nadie llene seis frentes y recién al
+ * final descubra que le falta una fecha.
+ */
+export function controlDeFechas(
+  frentes: readonly Frente[],
+): { ok: boolean; motivo: string | null; sinDotacion: boolean } {
+  const sinFecha = frentes.find((f) => !f.inicio)
+  if (sinFecha) {
+    return {
+      ok: false, sinDotacion: false,
+      motivo: `El frente «${sinFecha.nombre}» no tiene fecha de inicio: sin fecha no se generan actividades.`,
+    }
+  }
+  const dotacionMala = frentes.find((f) => f.dotacion != null && !(Number.isFinite(f.dotacion) && f.dotacion > 0))
+  if (dotacionMala) {
+    return {
+      ok: false, sinDotacion: false,
+      motivo: `El frente «${dotacionMala.nombre}» declara una dotación de cero: no es una dotación.`,
+    }
+  }
+  const sobreTope = frentes.find((f) => f.dotacion != null && f.tope != null && f.dotacion > f.tope)
+  if (sobreTope) {
+    return {
+      ok: false, sinDotacion: false,
+      motivo: `El frente «${sobreTope.nombre}» pone ${sobreTope.dotacion} personas sobre un tope de ${sobreTope.tope}: arriba del tope, más gente no acorta nada.`,
+    }
+  }
+  return { ok: true, motivo: null, sinDotacion: frentes.some((f) => f.dotacion == null) }
 }
 
 /**
