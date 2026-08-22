@@ -1,7 +1,7 @@
 'use client'
 
 import { useActionState, useRef, useState } from 'react'
-import { Estado } from '@/shared/components/ds'
+import { Ayuda, Estado } from '@/shared/components/ds'
 import { registrarMarca } from '../services/acciones'
 import { hora, lecturaDelDia, siguienteAccion } from '../services/asistencia'
 import type { DiaDeAsistencia } from '../types'
@@ -137,12 +137,20 @@ export function BloqueAsistencia({
       {estado.mensaje && !estado.error && (
         <p className="mt-2 text-[12px] text-muted" data-testid="asistencia-ok">{estado.mensaje}</p>
       )}
-      {!estado.error && !estado.mensaje && siguiente.tipo && (
+      {/* 22/08/2026 · EL TELÉFONO SE ABRE PARA APRETAR UN BOTÓN, DOS VECES POR DÍA. Dos líneas
+          permanentes debajo del botón se leen la primera semana y después son ruido en la pantalla
+          más chica del OS. La ubicación SÍ se queda a la vista y sólo en la entrada: es lo único
+          que el botón hace además de registrar la marca, y eso hay que saberlo ANTES de apretarlo.
+          El resto —qué pasa sin señal— se consulta cuando pasa, y cuando pasa el error lo dice. */}
+      {!estado.error && !estado.mensaje && siguiente.tipo === 'entrada' && (
         <p className="mt-2 text-[11px] leading-relaxed text-faint">
-          Se guarda al instante. Sin señal no se envía: te lo va a decir, no lo da por hecho.
-          {siguiente.tipo === 'entrada'
-            && ' Al registrar la entrada se guarda desde dónde la marcaste; si el teléfono no puede ubicarte, se registra igual.'}
+          Al entrar se guarda desde dónde marcaste. Si el teléfono no puede ubicarte, se registra igual.
         </p>
+      )}
+      {!estado.error && !estado.mensaje && siguiente.tipo && (
+        <Ayuda titulo="Qué pasa si no tengo señal" testid="ayuda-marca">
+          Se guarda al instante. Sin señal no se envía: te lo va a decir, no lo da por hecho.
+        </Ayuda>
       )}
     </div>
   )

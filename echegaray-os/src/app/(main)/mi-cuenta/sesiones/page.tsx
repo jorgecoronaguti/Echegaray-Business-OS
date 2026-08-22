@@ -24,7 +24,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getUsuarioActual } from '@/features/auth/services/authService'
 import { MiCuentaShell } from '@/features/mi-cuenta/components/MiCuentaShell'
 import { CerrarSesiones } from '@/features/mi-cuenta/components/CerrarSesiones'
-import { Aviso, Estado, Nulo, Num, Tabla, THead, Th, Tr, Td } from '@/shared/components/ds'
+import { Aviso, Ayuda, Estado, Nulo, Num, Tabla, THead, Th, Tr, Td } from '@/shared/components/ds'
 
 export const dynamic = 'force-dynamic'
 
@@ -81,12 +81,18 @@ export default async function SesionesPage() {
         </tbody>
       </Tabla>
 
+      {/* 22/08/2026 · LO QUE HAY QUE HACER SE QUEDA; EL PORQUÉ TÉCNICO BAJA. Cuatro líneas
+          permanentes explicando en qué esquema vive el listado de dispositivos no ayudan a nadie a
+          decidir: la única acción posible es «cerrar todas», y eso es lo que tiene que estar a la
+          vista. El límite se sigue declarando —no se afirma que ésta sea la única sesión—. */}
       <p className="mt-3 max-w-[820px] text-[11px] leading-relaxed text-faint">
-        Sólo se puede mostrar la sesión desde la que estás mirando: el listado de dispositivos vive en
-        el esquema interno de autenticación y llegar ahí exige privilegios de administrador, que no
-        se abren en una pantalla personal. Si sospechás que quedó una sesión abierta en otro lado,
-        cerrá todas: es lo que de verdad la corta.
+        Sólo se puede mostrar la sesión desde la que estás mirando. Si sospechás que quedó una
+        abierta en otro lado, cerrá todas: es lo que de verdad la corta.
       </p>
+      <Ayuda titulo="Por qué no se listan los otros dispositivos" testid="ayuda-sesiones">
+        El listado vive en el esquema interno de autenticación y llegar ahí exige privilegios de
+        administrador, que no se abren en una pantalla personal.
+      </Ayuda>
 
       <div className="mt-8 max-w-[460px] border-t border-[#EFEEEA] pt-4">
         <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-faint">Cerrar todas las sesiones</div>

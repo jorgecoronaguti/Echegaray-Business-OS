@@ -6,7 +6,7 @@
 // sector pertenece cada una. Un árbol filtrado que pierde el camino deja de ser un árbol: se
 // conservan los ANTEPASADOS de cada coincidencia, aunque ellos no coincidan.
 
-import { sinAnalisis, type Agregado, type NodoObra } from './wbs.ts'
+import { ejecutorDe, sinAnalisis, type Agregado, type NodoObra } from './wbs.ts'
 import type { EstadoActividad } from '../types/index.ts'
 
 export const VISTAS_ARBOL = ['todo', 'en_curso', 'critico', 'problema'] as const
@@ -49,7 +49,10 @@ export function estadoDeFila(
   if (enCurso && n.es_critica) return { clave: 'en_curso_critica', label: 'En curso · crítica' }
   if (enCurso) return { clave: 'en_curso', label: 'En curso' }
   if (sinAnalisis(n)) return { clave: 'sin_analisis', label: 'Sin análisis' }
-  if (!n.es_contenedor && n.responsable === null) return { clave: 'sin_cuadrilla', label: 'Sin cuadrilla' }
+  // «SIN CUADRILLA» PREGUNTA POR EL EJECUTOR, NO POR EL RESPONSABLE. Mientras el campo mezclaba los
+  // dos daba lo mismo; ahora no: una actividad con jefe asignado y sin cuadrilla sigue sin poder
+  // arrancar, y un paquete subcontratado nunca estuvo en deuda de cuadrilla.
+  if (!n.es_contenedor && ejecutorDe(n) === null) return { clave: 'sin_cuadrilla', label: 'Sin cuadrilla' }
   if (!n.fin_plan && !n.es_contenedor) return { clave: 'sin_plan', label: 'Sin plan' }
   return { clave: 'pendiente', label: 'Pendiente' }
 }
@@ -69,14 +72,18 @@ export function coincide(
 ): boolean {
   if (query) {
     const q = normalizar(query)
-    const texto = normalizar(`${n.nombre} ${n.partida_codigo ?? ''} ${n.responsable ?? ''}`)
+    // Se busca por los TRES: quien escribe «Pérez» busca al responsable y quien escribe «Cuadrilla
+    // 2» busca la composición. Con un solo campo, una de las dos búsquedas no encontraba nada.
+    const texto = normalizar(
+      `${n.nombre} ${n.partida_codigo ?? ''} ${n.responsable ?? ''} ${n.cuadrilla ?? ''} ${n.subcontratista ?? ''}`,
+    )
     if (!texto.includes(q)) return false
   }
   switch (vista) {
     case 'todo': return true
     case 'en_curso': return avance !== null && avance > 0 && avance < 100
     case 'critico': return n.es_critica
-    case 'problema': return sinAnalisis(n) || n.es_subcontrato || n.responsable === null
+    case 'problema': return sinAnalisis(n) || n.es_subcontrato || ejecutorDe(n) === null
   }
 }
 

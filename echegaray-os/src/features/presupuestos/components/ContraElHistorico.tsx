@@ -61,7 +61,12 @@ export function ContraElHistorico({
 
   return (
     <section className="mt-5 border-t border-line pt-3.5" data-testid="contra-historico">
-      <h3 className="text-[10px] font-medium uppercase tracking-[0.06em] text-faint">Contra el histórico</h3>
+      {/* LA MAGNITUD, EN EL TÍTULO. Las dos filas son hs/unidad —esfuerzo—: sin decirlo, «observado
+          mayor que cotizado» parece una mejora y es lo contrario, que es justo lo que el ámbar de
+          la fila de abajo está señalando. */}
+      <h3 className="text-[10px] font-medium uppercase tracking-[0.06em] text-faint">
+        Contra el histórico · esfuerzo hs/{p.unidad ?? 'un'}
+      </h3>
       <dl className="mt-2 text-[12px]">
         <Fila k="Cotizado ahora" v={rendimiento(cotizado)} falta="sin dato" fuerte />
         <Fila k="Observado (mediana)" v={rendimiento(r.hs_observado_mediana)} falta="sin medir"
@@ -99,7 +104,7 @@ export function ContraElHistorico({
       </p>
 
       {estado.error && <p className="mt-1 text-[11px] text-neg" data-testid="error-rendimiento">{estado.error}</p>}
-      {estado.ok && <p className="mt-1 text-[11px] text-pos">Rendimiento aplicado a esta partida.</p>}
+      {estado.ok && <p className="mt-1 text-[11px] text-pos">Esfuerzo aplicado a esta partida.</p>}
     </section>
   )
 }

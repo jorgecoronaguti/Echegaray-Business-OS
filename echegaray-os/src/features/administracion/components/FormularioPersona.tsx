@@ -85,9 +85,18 @@ export function CamposLaboral({ persona }: { persona: Persona | null }) {
         ayuda="Cargar la fecha la saca del plantel. Para volver a incorporarla está el botón."
       />
       <Texto name="convenio_colectivo" label="Convenio" valor={persona?.convenio_colectivo ?? null} max={120} />
-      <Campo label="Categoría"><SelectCategoria valor={persona?.categoria ?? null} /></Campo>
-      <Texto name="especialidad" label="Especialidad" valor={persona?.especialidad ?? null} max={120} />
-      <Texto name="puesto" label="Puesto u oficio" valor={persona?.puesto ?? null} max={120} />
+      {/* CADA CAMPO DICE QUÉ HECHO PIDE. «Categoría / Especialidad / Puesto u oficio» sonaban a
+          tres maneras de contestar lo mismo, y así se cargaron: hay legajos con «OFICIAL» en el
+          puesto, que es la categoría otra vez. Ver `services/vocabularioPersona.ts`. */}
+      <Campo label="Categoría UOCRA"><SelectCategoria valor={persona?.categoria ?? null} /></Campo>
+      <Texto
+        name="especialidad" label="Oficio / especialidad" valor={persona?.especialidad ?? null} max={120}
+        ayuda="Lo que sabe hacer: albañil, electricista, yesero. No es la categoría."
+      />
+      <Texto
+        name="puesto" label="Puesto en la nómina" valor={persona?.puesto ?? null} max={120}
+        ayuda="El cargo tal como lo escribe la nómina. Si repite la categoría, la ficha no lo muestra."
+      />
       <Campo label="Modalidad">
         <select name="modalidad_liquidacion" defaultValue={persona?.modalidad_liquidacion ?? ''} className={CTRL}>
           <option value="">sin declarar</option>
@@ -123,11 +132,11 @@ export function CamposAlta() {
           data-testid="persona-nombre" autoFocus
         />
       </Campo>
-      <Campo label="Categoría de convenio"><SelectCategoria valor={null} /></Campo>
-      {/* LA ESPECIALIDAD ES LO QUE EL LISTADO MUESTRA DEBAJO DEL NOMBRE, así que se pide en el alta:
-          sin ella la fila recién creada queda con una línea menos que todas las demás. El PUESTO
+      <Campo label="Categoría UOCRA"><SelectCategoria valor={null} /></Campo>
+      {/* EL OFICIO ES LO QUE EL LISTADO MUESTRA DEBAJO DEL NOMBRE, así que se pide en el alta:
+          sin él la fila recién creada queda con una línea menos que todas las demás. El PUESTO
           queda para la ficha — casi siempre repite la categoría, y cuando no, es un cargo. */}
-      <Campo label="Especialidad" ayuda="Albañilería, encofrados…">
+      <Campo label="Oficio / especialidad" ayuda="Albañil, electricista, yesero. No es la categoría.">
         <input name="especialidad" maxLength={120} className={CTRL} />
       </Campo>
       <Campo label="Fecha de alta" ancho="col-span-2">

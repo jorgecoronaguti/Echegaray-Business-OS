@@ -124,7 +124,7 @@ export function FormAccion({
  *
  * `accion={() => quitar(fila.id)}` sólo se puede escribir dentro de un componente de cliente: una
  * función no cruza la frontera del servidor. Con `args`, las pantallas que son server components
- * —las tablas de Personal, Economía y Planificación— pasan la acción del servidor y su id, y no
+ * —las tablas de Personal, Economía y Cronograma— pasan la acción del servidor y su id, y no
  * necesitan volverse de cliente enteras sólo para tener un botón de borrar.
  */
 export function BotonAccion<A extends unknown[] = []>({

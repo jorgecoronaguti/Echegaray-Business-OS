@@ -16,6 +16,7 @@
 import Link from 'next/link'
 import { Tabla, THead, Th, Tr, Td, Nulo } from '@/shared/components/ds'
 import { esCategoriaDeConvenio, etiquetaCategoria, type PersonaEnDirectorio } from '../types'
+import { oficioVisible } from '../services/vocabularioPersona'
 
 /** dd/mm/aa en mono. Una fecha sin cargar se dice; un guión se lee como cero o como «no aplica». */
 function Fecha({ iso, falta }: { iso: string | null; falta: string }) {
@@ -35,7 +36,10 @@ export function TablaPersonas({
     <Tabla testid="tabla-personas" minWidth={880}>
       <THead>
         <Th>Persona</Th>
-        <Th>Categoría</Th>
+        {/* CATEGORÍA UOCRA y no «Categoría» a secas: es la del convenio, la que LIQUIDA. Debajo del
+            nombre va el oficio, que es otra cosa; sin decir cuál es cuál las dos se leían como la
+            misma pregunta contestada dos veces. */}
+        <Th>Categoría UOCRA</Th>
         <Th>Cuadrilla</Th>
         <Th>Obra actual</Th>
         <Th>Alta</Th>
@@ -53,9 +57,12 @@ export function TablaPersonas({
                 {/* EL OFICIO, NO LA CATEGORÍA. Acá decía el puesto, y el puesto traía el CARGO de la
                     nómina —que ES la categoría del convenio—: la fila mostraba «OFICIAL» debajo del
                     nombre y «Ayudante» en la columna CATEGORÍA, dos respuestas al mismo hecho y
-                    distintas. El puesto sólo aparece cuando dice algo que no es una categoría. */}
-                {(p.especialidad ?? p.puesto) && (
-                  <span className="block truncate text-[11px] text-faint">{p.especialidad ?? p.puesto}</span>
+                    distintas. El `??` pelado no alcanzaba porque no MIRABA el valor; la regla y su
+                    prueba viven en `services/vocabularioPersona.ts`. */}
+                {oficioVisible(p.especialidad, p.puesto) && (
+                  <span className="block truncate text-[11px] text-faint">
+                    {oficioVisible(p.especialidad, p.puesto)}
+                  </span>
                 )}
               </Link>
             </Td>

@@ -37,7 +37,10 @@ export function BloqueAsignacion({
         <Th>Obra</Th>
         <Th>Actividad</Th>
         <Th>Cuadrilla</Th>
-        <Th>Rol</Th>
+        {/* «ROL EN LA ASIGNACIÓN» (responsable · integrante) y no «Rol» a secas: en esta misma
+            ficha «rol» también podría leerse como el rol organizacional —jefe de obra,
+            administración—, que es otro hecho y no se decide por obra. */}
+        <Th>Rol en la obra</Th>
         <Th>Desde</Th>
         <Th>Hasta</Th>
         <Th />

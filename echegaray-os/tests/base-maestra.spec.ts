@@ -130,7 +130,10 @@ test.describe('las dos pantallas abren con datos de la base', () => {
 
     await page.getByTestId('solapa-rendimiento').click()
     await expect(page.getByTestId('panel-rendimiento')).toBeVisible()
-    // La solapa viaja en la URL: este enlace abre en Rendimiento, no en Resumen.
+    // La solapa viaja en la URL: este enlace abre en la solapa de esfuerzo, no en Resumen.
+    // 22/08/2026 · La CLAVE sigue siendo `rendimiento` justamente para no romper este enlace; lo que
+    // cambió es el RÓTULO («Esfuerzo»), porque hs/unidad no es un rendimiento. Este test mide la
+    // clave y por eso no lo toca el renombre — que es la razón por la que la clave no se renombró.
     await expect(page).toHaveURL(/s=rendimiento/)
   })
 

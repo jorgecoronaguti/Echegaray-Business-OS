@@ -31,8 +31,10 @@ export function TablaProductividad({ actividades }: { actividades: ActividadHH[]
   if (conAlgo.length === 0) {
     return (
       <Vacio>
-        Ninguna actividad tiene HH plan cargadas ni horas imputadas. El plan se carga en
-        Planificación; las horas, con «+ Imputar horas».
+        {/* 22/08/2026 · «Planificación» dejó de ser un lugar: el plan se edita en Cronograma, sobre
+            las MISMAS actividades. Mandar a una pestaña que no existe es mandar a nadie. */}
+        Ninguna actividad tiene HH plan cargadas ni horas imputadas. Las HH plan se cargan en
+        Cronograma, sobre la actividad; las horas, con «+ Imputar horas».
       </Vacio>
     )
   }

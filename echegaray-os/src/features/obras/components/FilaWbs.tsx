@@ -17,6 +17,7 @@ import Link from 'next/link'
 import { Estado, Td, Tr } from '@/shared/components/ds'
 import { cantidad as fmtCantidad, fechaCorta, porcentaje } from './formato'
 import { estadoDeFila, type ClaveEstado, type FilaVisible } from '../services/vistaArbol'
+import { ejecutorDe } from '../services/wbs'
 import type { TonoEstado } from '@/shared/components/ds'
 
 const TONO: Record<ClaveEstado, TonoEstado> = {
@@ -131,8 +132,12 @@ export function FilaWbs({
         })()}
       </Td>
 
+      {/* LA COLUMNA ES «QUIÉN LO HACE», Y ESO ES LA CUADRILLA O EL SUBCONTRATISTA. Decía
+          RESPONSABLE y mostraba esto mismo: el árbol publicaba una composición productiva bajo el
+          rótulo de la persona que rinde cuentas. El responsable —una persona— está en el panel de
+          la tarea, que es donde se lo asigna. */}
       <Td className="hidden w-[124px] text-[11.5px] lg:table-cell">
-        {n.es_contenedor ? '' : n.responsable ?? <span className="text-faint">sin asignar</span>}
+        {n.es_contenedor ? '' : ejecutorDe(n) ?? <span className="text-faint">sin asignar</span>}
       </Td>
 
       <Td className="w-[112px]">

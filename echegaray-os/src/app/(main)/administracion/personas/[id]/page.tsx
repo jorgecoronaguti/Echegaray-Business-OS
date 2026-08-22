@@ -57,6 +57,7 @@ import { cerrarAsignacionDePersona } from '@/features/administracion/services/as
 import { desvincularDocumento, vincularDocumento } from '@/features/administracion/services/documentosActions'
 import { formatearCuit, formatearDni } from '@/features/administracion/services/identidad'
 import { etiquetaCategoria } from '@/features/administracion/types'
+import { pareceCategoria } from '@/features/administracion/services/vocabularioPersona'
 import { fecha } from '@/features/obras/components/formato'
 
 export const dynamic = 'force-dynamic'
@@ -149,7 +150,9 @@ export default async function FichaPersonaPage({
         volverLabel="Personal"
         titulo={persona.nombre_completo}
         campos={[
-          { rotulo: 'Categoría', valor: persona.categoria ? etiquetaCategoria(persona.categoria) : null, falta: 'sin categoría' },
+          // CATEGORÍA UOCRA: la del convenio, la que liquida. El oficio y el rol organizacional son
+          // otros dos hechos y viven en el bloque de legajo, cada uno con su rótulo.
+          { rotulo: 'Categoría UOCRA', valor: persona.categoria ? etiquetaCategoria(persona.categoria) : null, falta: 'sin categoría' },
           { rotulo: 'Cuadrilla', valor: vigente?.cuadrilla ?? null, falta: 'sin cuadrilla' },
           { rotulo: 'Obra actual', valor: vigente?.obra_nombre ?? null, falta: 'sin asignar' },
           { rotulo: 'Alta', valor: persona.fecha_ingreso ? fecha(persona.fecha_ingreso) : null, falta: 'sin fecha' },
@@ -331,10 +334,16 @@ export default async function FichaPersonaPage({
                 v={persona.fecha_egreso ? fecha(persona.fecha_egreso) : (egresada ? 'sin papel de baja' : 'no egresó')}
                 mono={Boolean(persona.fecha_egreso)}
               />
+              {/* TRES HECHOS, TRES RÓTULOS. La CATEGORÍA es lo que la persona cobra (CCT, efecto
+                  económico); el OFICIO es lo que sabe hacer; el PUESTO es el cargo tal como lo
+                  escribe la nómina. Los tres decían casi lo mismo —«Categoría», «Especialidad»,
+                  «Puesto u oficio»— y en los legajos donde la nómina cargó «OFICIAL» en el puesto,
+                  la ficha mostraba la categoría dos veces con nombres distintos. Ahora el puesto se
+                  rotula por su origen y se calla cuando NO agrega nada sobre la categoría. */}
               <Dato k="Convenio" v={persona.convenio_colectivo} />
-              <Dato k="Categoría" v={persona.categoria ? etiquetaCategoria(persona.categoria) : null} />
-              <Dato k="Especialidad" v={persona.especialidad} />
-              <Dato k="Puesto u oficio" v={persona.puesto} />
+              <Dato k="Categoría UOCRA" v={persona.categoria ? etiquetaCategoria(persona.categoria) : null} />
+              <Dato k="Oficio / especialidad" v={persona.especialidad} />
+              {!pareceCategoria(persona.puesto) && <Dato k="Puesto en la nómina" v={persona.puesto} />}
               <Dato k="Modalidad" v={persona.modalidad_liquidacion} />
               <Dato k="Notas" v={persona.notas} />
             </Bloque>

@@ -29,7 +29,7 @@ import {
   BotonAccion, FormAccion, type AccionFormulario, type ResultadoAccion,
 } from '@/shared/components/ui'
 import {
-  BotonEnlace, CAMPO, Campo, Nulo, Tabla, Td, Th, THead, Tr, Vacio,
+  Ayuda, BotonEnlace, CAMPO, Campo, Nulo, Tabla, Td, Th, THead, Tr, Vacio,
 } from '@/shared/components/ds'
 import type { Actividad, DocumentoObra, TipoDrive } from '../types'
 import { AsignarActividad } from './AsignarActividad'
@@ -210,10 +210,15 @@ export function TabDocumentos({
               ))}
             </tbody>
           </Tabla>
-          <p className="text-[11.5px] leading-relaxed text-faint">
+          {/* 22/08/2026 · Era un párrafo permanente al pie de la tabla explicando cómo funciona la
+              pantalla. Baja ENTERO a la ayuda, incluida la consecuencia de «Quitar»: `BotonAccion`
+              no acepta un `title`, y ensancharlo para meter una frase es un cambio de un componente
+              compartido que esta tarea no justifica. La frase sigue estando y sigue encontrándose
+              con Ctrl+F — cerrar el `details` no la saca del documento. */}
+          <Ayuda titulo="De dónde salen estos papeles" testid="ayuda-documentos-obra">
             Los papeles se leen de Drive: acá se clasifican y se cuelgan de la actividad que los usa.
             Nada se copia — quitar un documento corta el vínculo, no borra el archivo.
-          </p>
+          </Ayuda>
         </>
       )}
     </div>

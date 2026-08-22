@@ -36,6 +36,7 @@ import { esAdministracion } from '@/features/auth/types/areas'
 import { BarraContextoObra } from '@/features/obras/components/BarraContextoObra'
 import { TablaRubrosHH } from '@/features/obras/components/TablaRubrosHH'
 import { Callout, FormAccion } from '@/shared/components/ui'
+import { Ayuda } from '@/shared/components/ds'
 import { CalendarioObra } from '../../../../../../orquestador/lib/calendario-obra.mjs'
 
 export const dynamic = 'force-dynamic'
@@ -181,10 +182,13 @@ export default async function DotacionObraPage(
             <AlReves hh={hhRest} jornada={crono.jornada} tope={topeMasBajo(frentes)} desde={desde} calendario={calendario} />
             <div className="rounded-card border border-line bg-surface p-4">
               <h2 className="mb-2 text-[13px] font-semibold text-ink">Capacidad ponderada</h2>
-              <p className="mb-2 text-[11px] text-muted">
+              {/* 22/08/2026 · La explicación del ponderado baja a la ayuda: la lista de factores que
+                  sigue ES el dato, y dos líneas de teoría encima la empujaban fuera de la primera
+                  mirada cada vez que se abre la pantalla. */}
+              <Ayuda titulo="Por qué no se cuentan cabezas" testid="ayuda-capacidad">
                 Dos oficiales y dos ayudantes son cuatro personas y 3,2 de capacidad. Contar cabezas
                 para dividir HH deja el plan un 20 % optimista.
-              </p>
+              </Ayuda>
               {capacidad.data?.length
                 ? (
                   <ul className="flex flex-col gap-1">

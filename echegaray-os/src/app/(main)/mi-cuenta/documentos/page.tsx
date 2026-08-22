@@ -28,7 +28,7 @@ import { getDocumentosPropios, getPerfilPropio } from '@/features/mi-cuenta/serv
 import { categoriaDe, estadoDe, ordenar, resumenDeAlerta } from '@/features/mi-cuenta/services/documentos'
 import { MiCuentaShell } from '@/features/mi-cuenta/components/MiCuentaShell'
 import { SinVinculo } from '@/features/mi-cuenta/components/SinVinculo'
-import { Aviso, Estado, Nulo, Tabla, THead, Th, Tr, Td, Vacio } from '@/shared/components/ds'
+import { Aviso, Ayuda, Estado, Nulo, Tabla, THead, Th, Tr, Td, Vacio } from '@/shared/components/ds'
 import { fecha } from '@/features/obras/components/formato'
 import type { EstadoDocumento } from '@/features/mi-cuenta/types'
 
@@ -135,11 +135,17 @@ export default async function MisDocumentosPage() {
         </Tabla>
       )}
 
+      {/* 22/08/2026 · La acción se queda arriba y el mecanismo baja: al que mira esta lista lo
+          único que le sirve saber es a quién le lleva un papel nuevo. Dónde vive el archivo es
+          cómo funciona la pantalla. */}
       <p className="mt-3 max-w-[820px] text-[11px] leading-relaxed text-faint">
-        Los documentos los carga Administración al legajo y quedan vinculados a su archivo en Drive:
-        no se duplican acá. Para entregar uno nuevo —un apto médico, un certificado de capacitación—
-        se lo pasás a Administración y aparece en esta lista.
+        Para entregar un documento nuevo —un apto médico, un certificado de capacitación— se lo
+        pasás a Administración y aparece en esta lista.
       </p>
+      <Ayuda titulo="Dónde vive cada archivo" testid="ayuda-mis-documentos">
+        Los documentos los carga Administración al legajo y quedan vinculados a su archivo en Drive:
+        no se duplican acá.
+      </Ayuda>
     </MiCuentaShell>
   )
 }

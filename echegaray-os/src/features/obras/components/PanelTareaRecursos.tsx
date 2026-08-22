@@ -19,6 +19,7 @@ import { hh as fmtHH } from './formato'
 import { dotacionNecesaria, duracionDias } from '../services/dotacion'
 import { hhRestantes } from '../services/cronogramaMotor'
 import { restriccionesDe } from '../services/panelTarea'
+import { MAGNITUD, produccionDeCuadrilla } from '@/features/base-maestra/services/vocabulario'
 import type { NodoObra } from '../services/wbs'
 import type { ContextoTarea } from '../services/panelTareaService'
 
@@ -55,8 +56,15 @@ export function PanelTareaRecursos({ nodo, contexto, base, dotacion }: {
     jornadaHoras: contexto.jornadaHoras,
     diasHabiles: contexto.diasHabiles,
     capacidadCuadrilla: contexto.capacidadCuadrilla,
-    cuadrilla: nodo.responsable,
+    cuadrilla: nodo.cuadrilla,
   })
+  // El esfuerzo de ESTA actividad: HH del plan sobre la cantidad objetivo. No se toma el del
+  // análisis de la tarea tipo — la producción que se le pide al frente sale de lo que se planificó
+  // acá, que es contra lo que el jefe de obra puede compararse.
+  const esfuerzo = nodo.hh_plan != null && nodo.cantidad_objetivo != null && nodo.cantidad_objetivo > 0
+    ? nodo.hh_plan / nodo.cantidad_objetivo
+    : null
+  const produccion = produccionDeCuadrilla(esfuerzo, contexto.capacidadCuadrilla, contexto.jornadaHoras)
 
   const href = (n: number) => `${base}&sol=recursos&dot=${n}`
 
@@ -89,6 +97,21 @@ export function PanelTareaRecursos({ nodo, contexto, base, dotacion }: {
       {enTope && (
         <p className="mt-2 border-l-[3px] border-warn bg-warn-soft px-3 py-2 text-[12px] text-warn">
           Tope del frente: {nodo.tope_frente} personas. Más gente no acorta el plazo.
+        </p>
+      )}
+
+      {/* PRODUCCIÓN DE CUADRILLA — la cuarta magnitud, y la única que un jefe de obra puede
+          verificar mirando el frente: cuánto tiene que salir hoy. Es la MISMA cuenta que la
+          duración, contada al derecho. Se dibuja sólo cuando existen los tres insumos (esfuerzo,
+          capacidad ponderada y jornada): con uno estimado sería un objetivo inventado, y un
+          objetivo inventado se persigue igual que uno medido. */}
+      {produccion !== null && (
+        <p className="mt-2 text-[11.5px] text-muted" data-testid="produccion-cuadrilla">
+          {MAGNITUD.produccion.rotulo}:{' '}
+          <strong className="font-mono font-normal tabular-nums text-ink-soft">
+            {produccion.toLocaleString('es-AR', { maximumFractionDigits: 2 })}
+          </strong>{' '}
+          {MAGNITUD.produccion.unidad(nodo.unidad)}
         </p>
       )}
 

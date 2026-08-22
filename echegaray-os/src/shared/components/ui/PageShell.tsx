@@ -6,7 +6,7 @@ import { SelloDatoBueno } from '@/shared/components/estado/SelloDatoBueno'
 // ═══ LO QUE MANDA ACÁ ES `design/system/LAYOUT_RESPONSIVE.md` (20/08/2026) ═══
 //
 // Padding de pantalla: 40px en escritorio (`lg:px-10`), 16px en el teléfono (`px-4`). El
-// contenedor NO tiene tope de ancho: los workspaces operativos —Planificación, Ejecución, las
+// contenedor NO tiene tope de ancho: los workspaces operativos —Cronograma, Ejecución, las
 // tablas de cartera— usan todo lo que haya. El tope se pide por pantalla, no se impone a todas.
 //
 // ═══ EL ANCHO DE LECTURA ES UNA DECISIÓN POR PANTALLA, NO UN DEFAULT ═══

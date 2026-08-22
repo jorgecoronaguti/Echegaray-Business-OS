@@ -46,8 +46,22 @@ export interface NodoObra {
   metodo_avance: MetodoAvance
   avance_pct: number | null
   fin_plan: string | null
-  /** El texto que va en RESPONSABLE. `null` = nadie lo declaró; la pantalla escribe «sin asignar». */
+  /** LA PERSONA que responde por la actividad, resuelta desde `responsable_id`. `null` = nadie la
+   *  declaró; la pantalla escribe «sin asignar».
+   *
+   *  ANTES ACÁ VENÍA LA CUADRILLA (22/08/2026). El campo se llamaba `responsable` y lo llenaba
+   *  `cuadrilla_prevista ?? cuadrilla`, así que el árbol, el panel y Próximos trabajos publicaban
+   *  «2 oficiales + 2 ayudantes» debajo del rótulo RESPONSABLE. Son dos hechos distintos y ninguno
+   *  reemplaza al otro: una cuadrilla no rinde cuentas de una fecha ni firma un avance, y una
+   *  persona no es una composición productiva. Mezclados, la obra no puede contestar a quién
+   *  reclamarle — que es la única razón por la que el rótulo existe. */
   responsable: string | null
+  /** LA COMPOSICIÓN PRODUCTIVA prevista: el nombre de la cuadrilla (`cuadrilla_prevista`, con el
+   *  texto legacy de `cuadrilla` como respaldo). Su peso real está en `cuadrilla_capacidad`. */
+  cuadrilla: string | null
+  /** Quién EJECUTA cuando la actividad está subcontratada. Va junto a `es_subcontrato`: un paquete
+   *  de un tercero no tiene cuadrilla propia ni responsable interno de la ejecución. */
+  subcontratista: string | null
   es_subcontrato: boolean
   estado: EstadoActividad | null
   impedimentos_abiertos: number
@@ -68,6 +82,17 @@ export interface NodoObra {
   tiempo_tecnico: boolean
   dias_plan: number | null
   es_critica: boolean
+}
+
+/**
+ * QUIÉN LA EJECUTA — el subcontratista si está subcontratada, si no la cuadrilla prevista.
+ *
+ * Existe para que separar RESPONSABLE de CUADRILLA no cambie qué actividades se marcan «sin
+ * cuadrilla»: un paquete de un tercero no tiene cuadrilla propia y nunca fue una deuda de carga.
+ * Es la pregunta «¿hay alguien que la haga?», distinta de «¿quién responde por ella?».
+ */
+export function ejecutorDe(n: NodoObra): string | null {
+  return n.subcontratista ?? n.cuadrilla
 }
 
 /**

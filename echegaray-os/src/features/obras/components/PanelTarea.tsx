@@ -31,7 +31,9 @@ import { DividirEnFrentes } from './DividirEnFrentes'
 export const SOLAPAS = [
   ['general', 'General'], ['avance', 'Avance'], ['recursos', 'Recursos y HH'],
   ['dependencias', 'Dependencias'], ['subcontrato', 'Subcontrato'],
-  ['rendimiento', 'Rendimiento'], ['historial', 'Historial'],
+  // La CLAVE sigue siendo `rendimiento` —viaja en la URL (`?sol=`)—; el RÓTULO dice lo que el
+  // número es: hs/unidad, o sea esfuerzo. Ver `base-maestra/services/vocabulario.ts`.
+  ['rendimiento', 'Esfuerzo'], ['historial', 'Historial'],
 ] as const
 export type Solapa = (typeof SOLAPAS)[number][0]
 
@@ -206,19 +208,26 @@ export function PanelTarea({
               guardar={editarCampo.bind(null, 'fin_plan')}
             />
           } />
+          {/* DOS HECHOS, DOS FILAS. El selector arrancaba siempre en `valor={null}` —«sin asignar»
+              aunque la actividad tuviera cuadrilla— y la fila de abajo, rotulada RESPONSABLE,
+              mostraba justamente esa cuadrilla. Quien miraba el panel leía la composición
+              productiva como si fuera la persona que rinde cuentas, y el selector le decía que no
+              había ninguna. La cuadrilla ahora arranca en la que está cargada — con el ID y no con
+              el nombre, porque el `<select>` compara contra el `value` de cada opción, que es
+              `cuadrilla.id`; con el nombre ninguna coincidiría y volvería a arrancar vacío. */}
           <Dato clave="Cuadrilla" valor={
             <InlineEdit
-              valor={null} tipo="seleccion" ancho="w-40" falta="sin asignar"
+              valor={nodo.cuadrilla_id} tipo="seleccion" ancho="w-40" falta="sin asignar"
               opciones={[{ valor: '', etiqueta: 'sin asignar' },
                 ...cuadrillas.map((c) => ({ valor: c.id, etiqueta: c.nombre }))]}
               etiqueta={`Cuadrilla de ${nodo.nombre}`} testid="editar-cuadrilla"
               guardar={editarCampo.bind(null, 'cuadrilla_id')}
             />
           } />
-          <Dato clave="Responsable declarado" valor={nodo.responsable} falta="sin asignar" />
-          {/* El rendimiento del ANÁLISIS VIGENTE, de la tarea tipo. No es el planificado ni el
-              observado: los cinco, uno debajo del otro, están en la solapa Rendimiento. */}
-          <Dato clave="Rendimiento del análisis"
+          <Dato clave="Responsable" valor={nodo.responsable} falta="sin asignar" />
+          {/* El esfuerzo del ANÁLISIS VIGENTE, de la tarea tipo. No es el planificado ni el
+              observado: los cinco, uno debajo del otro, están en la solapa Esfuerzo. */}
+          <Dato clave="Esfuerzo del análisis"
             valor={contexto.historico?.hsAnalisis != null
               ? `${contexto.historico.hsAnalisis.toLocaleString('es-AR', { maximumFractionDigits: 2 })} hs${nodo.unidad ? `/${nodo.unidad}` : ''}`
               : null}
@@ -344,7 +353,7 @@ export function PanelTarea({
         <>
           <PanelTareaRecursos nodo={nodo} contexto={contexto} base={base} dotacion={dotacion} />
           <Dato clave="Dotación prevista del plan" valor={nodo.dotacion_prevista} falta="sin declarar" />
-          <Dato clave="Cuadrilla" valor={nodo.responsable} falta="sin asignar" />
+          <Dato clave="Cuadrilla" valor={nodo.cuadrilla} falta="sin asignar" />
           <BloqueHH plan={nodo.hh_plan} real={nodo.hh_real} avance={nodo.avance_pct} />
           {/* LA SIMULACIÓN NO ES EL PLAN. Guardarla es la 08, que la escribe sobre el FRENTE entero
               —`dotacion_prevista` es de todas las actividades del frente— y por eso no se puede
@@ -372,7 +381,7 @@ export function PanelTarea({
         <section data-testid="panel-subcontrato">
           {nodo.es_subcontrato ? (
             <>
-              <Dato clave="Ejecuta" valor={nodo.responsable} />
+              <Dato clave="Ejecuta" valor={nodo.subcontratista} />
               <p className="mt-2 text-[12.5px] text-muted">El avance de un paquete lo firma el jefe de obra.</p>
               {/* EL PAQUETE VIVE EN LA PANTALLA 10, no acá. Esta solapa dice que la actividad es de
                   un tercero; el contrato, los aportes de Echegaray, los papeles y su gente son otra

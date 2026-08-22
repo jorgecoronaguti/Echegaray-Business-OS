@@ -50,7 +50,7 @@ import { TablaDocumentos } from '@/features/documentos/components/TablaDocumento
 import { PanelDocumento } from '@/features/documentos/components/PanelDocumento'
 import { BandaVencimientos } from '@/features/documentos/components/BandaVencimientos'
 import { FiltrosURL } from '@/features/administracion/components/Controles'
-import { Aviso, BuscadorURL } from '@/shared/components/ds'
+import { Aviso, Ayuda, BuscadorURL } from '@/shared/components/ds'
 import { EstadoError } from '@/shared/components/estado'
 import { PageShell } from '@/shared/components/ui'
 
@@ -201,13 +201,19 @@ export default async function DocumentosPage({ searchParams }: { searchParams: P
               )
             }
           />
+          {/* EL PIE SE QUEDA CON EL DATO. La cuenta y el tope son un hecho de esta pantalla —«lo
+              que falta no está vacío» evita leer 500 documentos como si fueran todos—, así que se
+              lee siempre. Cómo llegan los archivos al índice es cómo funciona la pantalla: se lee
+              una vez y estorba las otras trescientas, así que baja a la ayuda. */}
           <p className="mt-3 text-[11px] leading-relaxed text-faint" data-testid="pie-documentos">
             {documentos.length < total
               ? `Se listan ${documentos.length} de ${total.toLocaleString('es-AR')} documentos, los modificados más recientemente. Lo que falta no está vacío: está fuera del tope de ${TOPE} filas de esta pantalla.`
-              : `${total.toLocaleString('es-AR')} ${total === 1 ? 'documento' : 'documentos'}.`}{' '}
+              : `${total.toLocaleString('es-AR')} ${total === 1 ? 'documento' : 'documentos'}.`}
+          </p>
+          <Ayuda titulo="De dónde salen estos documentos" testid="ayuda-documentos">
             Los archivos no se copian ni se suben desde acá: se cargan en Drive y el indexador los
             trae al índice en la corrida siguiente.
-          </p>
+          </Ayuda>
         </div>
 
         {sp.d && (
