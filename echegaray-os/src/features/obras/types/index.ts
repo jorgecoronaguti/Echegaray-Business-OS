@@ -165,6 +165,13 @@ export interface Actividad {
   dotacion_prevista?: number | null
   /** El análisis de la base maestra con el que se planificó. Sin él no hay rendimiento ni duración. */
   analisis_id?: string | null
+  /** La tarea tipo de la base maestra. Es la llave del histórico (`rendimiento_recomendado`). */
+  tarea_tipo_id?: string | null
+  /** La partida del presupuesto de la que salió. Con ella se llega al análisis CONGELADO. */
+  cotizacion_partida_id?: string | null
+  /** Marca lo que NO se comprime con más gente: curado, fraguado, secado. Sus `dias_plan` son días
+   *  fijos y entran aparte en la división HH ÷ capacidad. */
+  tiempo_tecnico?: boolean | null
 }
 
 /** Los cinco estados del tablero. `bloqueada` NO se guarda: sale de tener un impedimento abierto. */

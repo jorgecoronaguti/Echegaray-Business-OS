@@ -234,7 +234,10 @@ export function FormAvance({
               </div>
             </section>
 
-            <section className="mt-5 border-t border-line pt-3">
+            {/* El `id` es el destino de «Adjuntar evidencia» del panel de la tarea (04): esta es la
+                pantalla donde la evidencia se carga, porque la evidencia es de UN registro de
+                avance y no de la actividad entera. */}
+            <section id="evidencia" className="mt-5 border-t border-line pt-3">
               <h2 className="mb-1.5 text-[13px] font-semibold text-ink">Evidencia</h2>
               {/* NO HAY SUBIDA DE ARCHIVOS EN EL OS: el archivo vive en Drive y acá se guarda el
                   enlace, igual que en Documentos. Un cargador propio sería una segunda copia del

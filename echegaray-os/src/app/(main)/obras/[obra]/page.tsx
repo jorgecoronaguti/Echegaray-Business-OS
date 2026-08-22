@@ -83,7 +83,7 @@ import {
 import { TabPersonal } from '@/features/obras/components/TabPersonal'
 import { TabOperacion } from '@/features/obras/components/TabOperacion'
 import { getOperacionObra, SUBS_OPERACION, type SubOperacion } from '@/features/obras/services/operacionService'
-import { veEconomia } from '@/features/auth/types/areas'
+import { esAdministracion, veEconomia } from '@/features/auth/types/areas'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { TabEconomia } from '@/features/obras/components/TabEconomia'
 import { TabDocumentos } from '@/features/obras/components/TabDocumentos'
@@ -111,10 +111,13 @@ export default async function ObraPage({
   params: Promise<{ obra: string }>
   searchParams: Promise<{
     vista?: string; sub?: string; semanas?: string; act?: string; filtro?: string; sol?: string
+    /** La dotación simulada del panel de la tarea (04). Igual que en la 08: la URL es la memoria
+     *  del simulador, así que el mismo link abre la misma simulación del otro lado del chat. */
+    dot?: string
   }>
 }) {
   const { obra: obraId } = await params
-  const { vista: vistaRaw, sub, semanas, act, filtro, sol } = await searchParams
+  const { vista: vistaRaw, sub, semanas, act, filtro, sol, dot } = await searchParams
   // LA VISTA Y LA SUB-VISTA SE RESUELVEN JUNTAS: el alias de una URL vieja decide también con qué
   // vista abre. `?vista=ejecucion` tiene que caer en el parte diario, no en el árbol.
   const { vista, sub: subTareas } = resolverVistaObra(vistaRaw, sub)
@@ -126,7 +129,11 @@ export default async function ObraPage({
   // COMERCIAL ES PRECIO, y el precio es de Dirección y Administración. El jefe de obra entra a
   // Administración desde el 19/08 y ve el COSTO de su obra —el presupuestado y el gastado—, pero no
   // cuánto se vendió: `veEconomia`, no `esAdministracion`.
-  const veComercial = veEconomia((await getPerfilActual(supabase)).data?.rol ?? null)
+  // ESCRIBIR EL PLAN ES OTRA PREGUNTA QUE VER EL PRECIO: dividir en frentes o cambiar una
+  // precedencia corre fechas de entrega y es de Administración (que incluye a la jefatura de obra).
+  const rolActual = (await getPerfilActual(supabase)).data?.rol ?? null
+  const veComercial = veEconomia(rolActual)
+  const puedeEditarPlan = esAdministracion(rolActual)
   const { data: obra, error } = await getObra(supabase, obraId)
   // NO EXISTE y NO PUEDO LEER son dos cosas distintas, y confundirlas ya costó caro (17/08/2026):
   // faltaba un `grant` y el módulo entero se veía como "página no encontrada" en vez de decir que no
@@ -441,8 +448,8 @@ export default async function ObraPage({
 
       {esArbol && (
         <WorkspaceTareas
-          supabase={supabase} obraId={obraId} act={act} filtro={filtro} sol={sol}
-          cuadrillas={cuadrillas}
+          supabase={supabase} obraId={obraId} act={act} filtro={filtro} sol={sol} dot={dot}
+          cuadrillas={cuadrillas} puedeEditar={puedeEditarPlan} veEconomia={veComercial}
         />
       )}
 
