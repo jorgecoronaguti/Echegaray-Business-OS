@@ -14,11 +14,14 @@
 // Un desvío de HH sin plan cargado no es 0%: es desconocido, y devuelve `null`. Publicarlo como cero
 // diría «vamos justo» sobre una obra que nadie presupuestó en horas.
 
+import { avanceAgregado } from './avance.ts'
 import type { Actividad, Restriccion } from '../types'
 
 export interface ResumenDelPlan {
-  /** Promedio de las actividades con fecha. Es el MISMO criterio que `obra_avance`, que es lo que
-   *  lee el portafolio: si acá se ponderara por HH, la obra tendría dos avances. */
+  /** El avance de las actividades con fecha, por la ÚNICA regla del OS (`avanceAgregado`):
+   *  ponderado por `hh_plan`, promedio simple sólo cuando ninguna declara HH. Entero, porque es lo
+   *  que publica `obra_avance` —la vista que lee el portafolio— y la ficha no puede decir otro
+   *  número que el listado de obras sobre las mismas actividades. */
   avance: number | null
   hhReal: number | null
   hhPlan: number | null
@@ -42,10 +45,14 @@ export function resumenDelPlan(
   actividades: Actividad[], impedimentos: Restriccion[], hoy: string, semanas = 2,
 ): ResumenDelPlan {
   const vivas = actividades.filter((a) => a.tipo !== 'resumen' && !a.archivada)
-  const conAvance = vivas.filter((a) => a.inicio_plan && a.avance_pct != null)
-  const avance = conAvance.length === 0
-    ? null
-    : Math.round(conAvance.reduce((s, a) => s + (a.avance_pct as number), 0) / conAvance.length)
+  // UNA SOLA REGLA DE AVANCE AGREGADO para todo el OS: `avanceAgregado` en `avance.ts`. Acá se
+  // promediaba simple mientras `obra_avance` ponderaba por HH: la misma obra podía decir 50 % en la
+  // ficha y 10 % en el portafolio, sin un solo error. El set es el mismo que mide la vista —viva,
+  // con fecha de inicio— y el redondeo a entero también.
+  const { pct } = avanceAgregado(
+    vivas.filter((a) => a.inicio_plan).map((a) => ({ avance_pct: a.avance_pct, hh_plan: a.hh_plan })),
+  )
+  const avance = pct == null ? null : Math.round(pct)
 
   const hhReal = suma(vivas.map((a) => a.hh_real))
   const hhPlan = suma(vivas.map((a) => a.hh_plan))

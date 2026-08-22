@@ -85,6 +85,21 @@ test('la hija sin avance no entra al ponderado, y no lo baja', () => {
   assert.equal(rollup(arbol).get('r')?.avance_pct, 100)
 })
 
+// EL ROLLUP DELEGA EN `avanceAgregado` (21/08/2026): era la tercera implementación de la misma
+// cuenta. La equivalencia que hay que preservar está acá: la hija que NO declara HH pesa CERO, no
+// entra en partes iguales. Si alguien la hiciera pesar 1, este rubro caería a 50 % con el 100 % del
+// trabajo dimensionado terminado.
+test('con HH en unas hijas y no en otras, las sin HH pesan cero y el criterio sigue siendo «hh»', () => {
+  const arbol = [
+    contenedor('r'),
+    nodo('a', { padre_id: 'r', nivel: 1, hh_plan: 100, avance_pct: 100 }),
+    nodo('b', { padre_id: 'r', nivel: 1, avance_pct: 0 }),
+  ]
+  const ag = rollup(arbol).get('r')
+  assert.equal(ag?.avance_pct, 100)
+  assert.equal(ag?.ponderacion, 'hh')
+})
+
 test('un contenedor sin ninguna hija con avance no tiene avance: es null, no 0', () => {
   const arbol = [contenedor('r'), nodo('a', { padre_id: 'r', nivel: 1 })]
   const ag = rollup(arbol).get('r')

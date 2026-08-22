@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { proximasDeLaObra, resumenDelPlan } from './resumenDelPlan.ts'
+import { avanceAgregado } from './avance.ts'
 import type { Actividad, Restriccion } from '../types/index.ts'
 
 const act = (x: Partial<Actividad>): Actividad => ({
@@ -23,7 +24,11 @@ const imp = (x: Partial<Restriccion>): Restriccion => ({
   estado: 'abierta', ...x,
 } as Restriccion)
 
-test('el avance promedia sólo las actividades con fecha y con avance', () => {
+// CAMBIO DECLARADO (21/08/2026): este test medía «el avance PROMEDIA las actividades con fecha».
+// Ya no promedia: agrega con `avanceAgregado`, la única regla del OS —ponderada por HH, con promedio
+// simple sólo cuando ninguna declara horas—. El caso de abajo no tiene HH cargadas, así que su
+// resultado no cambia (75); lo que cambió es POR QUÉ da 75. El caso con HH dispares está más abajo.
+test('el avance mide sólo las actividades con fecha y con avance; sin HH cae al promedio simple', () => {
   const r = resumenDelPlan([
     act({ id: '1', inicio_plan: '2026-08-01', avance_pct: 100 }),
     act({ id: '2', inicio_plan: '2026-08-01', avance_pct: 50 }),
@@ -31,6 +36,55 @@ test('el avance promedia sólo las actividades con fecha y con avance', () => {
     act({ id: '4', inicio_plan: '2026-08-01' }), // sin avance: no entra
   ], [], '2026-08-19')
   assert.equal(r.avance, 75)
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA FICHA Y EL PORTAFOLIO DICEN EL MISMO NÚMERO — el defecto que atrapa este bloque.
+//
+// `resumenDelPlan` promediaba simple mientras la vista publicada `obra_avance` pondera por HH
+// (migración 20260821T2900). Con 900 HH al 0 % y 100 HH al 100 % la ficha de la obra decía 50 % y el
+// listado de obras 10 %: dos avances de la misma obra, los dos «bien» según su propia cuenta.
+// Si alguien devuelve el promedio simple, el primero de estos dos tests se pone rojo.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+const MEDIDAS_HH_DISPARES = [
+  { id: '1', inicio_plan: '2026-08-01', hh_plan: 900, avance_pct: 0 },
+  { id: '2', inicio_plan: '2026-08-01', hh_plan: 100, avance_pct: 100 },
+]
+
+test('con HH dispares la ficha pondera: 900 HH al 0 % y 100 al 100 % son 10 %, no 50 %', () => {
+  const r = resumenDelPlan(MEDIDAS_HH_DISPARES.map(act), [], '2026-08-19')
+  assert.equal(r.avance, 10)
+})
+
+// El mismo set de actividades, agregado por la regla canónica —la que también implementa la vista
+// publicada— tiene que dar el MISMO entero que publica la ficha. Es el cruce que impide que vuelvan
+// a existir dos definiciones del avance de una obra.
+test('la ficha y la regla publicada dan el mismo número sobre el mismo set', () => {
+  const casos: Partial<Actividad>[][] = [
+    MEDIDAS_HH_DISPARES,
+    [
+      { id: '1', inicio_plan: '2026-08-01', hh_plan: 40, avance_pct: 50 },
+      { id: '2', inicio_plan: '2026-08-01', hh_plan: 60, avance_pct: 100 },
+      { id: '3', inicio_plan: '2026-08-01', hh_plan: 20, avance_pct: null }, // sin avance: no pesa
+    ],
+    [
+      // HH sólo en una: la que no las declara pesa 0, igual que en la vista.
+      { id: '1', inicio_plan: '2026-08-01', hh_plan: 200, avance_pct: 25 },
+      { id: '2', inicio_plan: '2026-08-01', avance_pct: 100 },
+    ],
+    [
+      { id: '1', inicio_plan: '2026-08-01', avance_pct: 30 },
+      { id: '2', inicio_plan: '2026-08-01', avance_pct: 90 },
+    ],
+  ]
+  for (const caso of casos) {
+    const ficha = resumenDelPlan(caso.map(act), [], '2026-08-19').avance
+    const publicado = avanceAgregado(
+      caso.map((a) => ({ avance_pct: a.avance_pct ?? null, hh_plan: a.hh_plan ?? null })),
+    ).pct
+    assert.equal(ficha, publicado === null ? null : Math.round(publicado))
+  }
 })
 
 test('sin ninguna actividad medida el avance es null, no cero', () => {
