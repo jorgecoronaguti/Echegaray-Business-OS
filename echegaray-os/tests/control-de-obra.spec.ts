@@ -125,17 +125,15 @@ test('1-9 · crear la actividad, medirla en m², y verla en las cuatro vistas', 
     return d && { ...d, cantidad_objetivo: Number(d.cantidad_objetivo) }
   }, { timeout: 15_000 }).toMatchObject({ unidad: 'm²', cantidad_objetivo: 180, metodo_avance: 'cantidad' })
 
-  // ═══ LAS CUATRO VISTAS MUESTRAN LA MISMA ACTIVIDAD ═══
-  // No es una comprobación de que "se ve": es la que impide que existan dos sistemas. Si una vista
-  // trajera sus propias filas, alcanzaría con que filtrara distinto para que la obra tuviera dos
-  // planes — y nadie lo notaría hasta que los números no cerraran.
+  // ═══ CAMBIO DE REGLA DECLARADO (22/08/2026 · overhaul UX) ═══
+  // Lista, Tablero y Próximos se RETIRARON: eran cuatro representaciones del mismo dataset. Lo que
+  // este bloque medía —que no existan dos sistemas con filas propias— hoy lo garantiza que las
+  // URLs viejas caigan en el Cronograma único y muestren LA MISMA actividad.
   for (const sub of ['lista', 'tablero', 'proximos'] as const) {
     await page.goto(`/obras/${OBRA}?vista=cronograma&sub=${sub}`)
-    await expect(page.getByText(NOMBRE).first(), `no aparece en ${sub}`).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByTestId('gantt'), `?sub=${sub} no cayó en el Cronograma`).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByText(NOMBRE).first(), `no aparece viniendo de ${sub}`).toBeVisible()
   }
-  // En el tablero cae en «En curso», que es su estado.
-  await page.goto(`/obras/${OBRA}?vista=cronograma&sub=tablero`)
-  await expect(page.getByTestId('columna-en_curso').getByText(NOMBRE)).toBeVisible()
 })
 
 test('14-20 · un parte mueve la producción, el avance, las HH de la obra y las de la persona', async ({ page }) => {
@@ -243,12 +241,13 @@ test('8 · la tarea descompone la actividad, y no aparece como una fila más del
     return data
   }, { timeout: 15_000 }).toMatchObject({ n_tareas: 1, n_tareas_hechas: 0 })
 
-  // LA TAREA NO ES UNA FILA DEL PLAN. En la Lista aparecería como una actividad más y en el promedio
-  // de avance pesaría igual que la actividad entera — una obra informando distinto según cuánto se
-  // detalló el plan.
-  await page.goto(`/obras/${OBRA}?vista=cronograma&sub=lista`)
-  await expect(page.getByTestId('vista-lista')).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByTestId('vista-lista').getByText(`${MARCA} encofrado`)).toHaveCount(0)
+  // LA TAREA NO ES UNA FILA DEL PLAN. En el Cronograma aparecería como una actividad más y en el
+  // promedio de avance pesaría igual que la actividad entera — una obra informando distinto según
+  // cuánto se detalló el plan. (22/08: la Lista se retiró; se afirma sobre la tabla del Cronograma,
+  // acotado a las filas para no confundir con el panel de la actividad madre.)
+  await page.goto(`/obras/${OBRA}?vista=cronograma`)
+  await expect(page.getByTestId('gantt')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId('actividad-cronograma').filter({ hasText: `${MARCA} encofrado` })).toHaveCount(0)
 
   // Y NO CUENTA EN EL AVANCE DE LA OBRA, que es la definición que lee todo el OS.
   //
@@ -281,7 +280,7 @@ test('8 · la tarea descompone la actividad, y no aparece como una fila más del
     .toBeLessThanOrEqual(1)
 })
 
-test('9 · la Lista mide muchas actividades de una vez', async ({ page }) => {
+test('9 · la medición se corrige en la celda del panel, y medir es elegir el método', async ({ page }) => {
   const c = sb()
   const { data: act } = await c.from('obra_actividad').select('id').eq('obra_id', OBRA).ilike('nombre', `%${MIA}%`).single()
   const actividadId = (act as { id: string }).id
@@ -289,16 +288,24 @@ test('9 · la Lista mide muchas actividades de una vez', async ({ page }) => {
   await c.from('obra_actividad')
     .update({ unidad: null, cantidad_objetivo: null, metodo_avance: 'manual' }).eq('id', actividadId)
 
+  // 22/08 (overhaul UX): la Lista y su formulario de medición en lote se retiraron. La medición se
+  // corrige EN LA CELDA del panel de la tarea (InlineEdit): clic en el valor → escribir → Enter.
+  // Lo que el test afirma es lo mismo de siempre: medirla es elegir el método.
   await entrar(page)
-  await page.goto(`/obras/${OBRA}?vista=cronograma&sub=lista`)
-  await expect(page.getByTestId('vista-lista')).toBeVisible({ timeout: 20_000 })
-  const fila = page.locator('tr', { hasText: NOMBRE })
-  await fila.getByTestId('lista-unidad').fill('un')
-  await fila.getByTestId('lista-cantidad').fill('12')
-  await page.getByTestId('form-medicion-lote').getByRole('button', { name: 'Guardar medición' }).click()
+  await page.goto(`/obras/${OBRA}?vista=tareas&act=${actividadId}&sol=general`)
+  await page.getByTestId('editar-unidad').click()
+  await page.getByTestId('editar-unidad-campo').fill('un')
+  await page.getByTestId('editar-unidad-campo').press('Enter')
+  await expect.poll(async () => {
+    const { data } = await c.from('obra_actividad').select('unidad').eq('id', actividadId).single()
+    return (data as { unidad: string | null } | null)?.unidad
+  }, { timeout: 20_000 }).toBe('un')
+  await page.getByTestId('editar-cantidad').click()
+  await page.getByTestId('editar-cantidad-campo').fill('12')
+  await page.getByTestId('editar-cantidad-campo').press('Enter')
 
   // MEDIRLA ES ELEGIR EL MÉTODO: pasa a calcular su avance desde la producción, sin volver a entrar
-  // al panel de cada una.
+  // a un formulario aparte.
   await expect.poll(async () => {
     const { data } = await c.from('obra_actividad_control')
       .select('unidad, cantidad_objetivo, metodo_avance').eq('actividad_id', actividadId).single()

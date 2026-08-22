@@ -345,15 +345,16 @@ test('15-17 · el papel se cuelga de la actividad, el filtro recorta y el rubro 
     return (data ?? []).length
   }, { timeout: 20_000 }).toBe(1)
 
-  // ═══ EL FILTRO RECORTA LAS CUATRO VISTAS Y NO ROMPE LOS RUBROS ═══
+  // ═══ EL FILTRO RECORTA EL CRONOGRAMA Y NO ROMPE LOS RUBROS ═══
   // Filtrar por estado se llevaba puestas las filas de RESUMEN, que son la cabecera del grupo: sin
-  // ellas las hijas quedaban colgando de «Sin sección».
-  await page.goto(`/obras/${OBRA}?vista=cronograma&sub=lista`)
-  await expect(page.getByTestId('vista-lista')).toBeVisible({ timeout: 25_000 })
+  // ellas las hijas quedaban colgando de «Sin sección». (22/08: la Lista se retiró; el mismo filtro
+  // vive en la barra del Cronograma y se afirma sobre su tabla.)
+  await page.goto(`/obras/${OBRA}?vista=cronograma`)
+  await expect(page.getByTestId('gantt')).toBeVisible({ timeout: 25_000 })
   await page.getByTestId('boton-filtros').click()
   await page.getByTestId('filtro-rubro').selectOption(RUBRO)
   await expect(page.getByTestId('aviso-filtro')).toBeVisible()
-  await expect(page.getByTestId('vista-lista')).toContainText(ACT)
+  await expect(page.getByTestId('actividad-cronograma').filter({ hasText: ACT }).first()).toBeVisible()
   await page.getByTestId('limpiar-filtros').click()
 
   // ═══ RENOMBRAR ARRASTRA A LAS HIJAS ═══
