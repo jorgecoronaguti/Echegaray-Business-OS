@@ -9,6 +9,13 @@
 --
 -- Este archivo es IDEMPOTENTE y NO-OP sobre una base Supabase real: todo está guardado con
 -- if-not-exists o con un DO que primero pregunta. Nunca reemplaza lo que la plataforma ya puso.
+--
+-- ⚠ ESPERAR A QUE EL CONTENEDOR ESTÉ healthy ANTES DE APLICAR. `pg_isready` responde "accepting
+-- connections" mientras el init de la imagen todavía corre, y aplicar en esa ventana pisa la
+-- carrera con el init (hallazgo del auditor: duplicate key en pg_type creando auth.users). La
+-- espera correcta:
+--   until [ "$(docker inspect --format '{{.State.Health.Status}}' pg-reprod)" = healthy ]; do sleep 2; done
+-- Además el DO de auth.users tolera la carrera por si el procedimiento no espera.
 
 create extension if not exists pg_cron;
 grant usage on schema cron to postgres;
@@ -29,14 +36,22 @@ alter default privileges for role postgres in schema public
 do $$
 begin
   if to_regclass('auth.users') is null then
-    create table auth.users (
-      id uuid primary key default gen_random_uuid(),
-      email text unique,
-      created_at timestamptz not null default now()
-    );
-    comment on table auth.users is
-      'Sustituto mínimo del bootstrap: en Supabase real esta tabla la crea y la gobierna GoTrue.';
-    -- en hosted el rol postgres puede colgarle FKs y leerla; acá se replica ese permiso
+    begin
+      create table auth.users (
+        id uuid primary key default gen_random_uuid(),
+        email text unique,
+        created_at timestamptz not null default now()
+      );
+      comment on table auth.users is
+        'Sustituto mínimo del bootstrap: en Supabase real esta tabla la crea y la gobierna GoTrue.';
+    exception when unique_violation or duplicate_table or duplicate_object then
+      -- la carrera con el init de la imagen: otro proceso la está creando ahora mismo. Suya gana.
+      null;
+    end;
+  end if;
+  -- en hosted el rol postgres puede colgarle FKs y leerla; acá se replica ese permiso.
+  -- (fuera del if: si la carrera la creó el init, el grant hace falta igual — y es idempotente)
+  if to_regclass('auth.users') is not null then
     grant references, select on auth.users to postgres;
   end if;
 end $$;

@@ -315,3 +315,15 @@ ENTENDER EL PROCESO REAL  →  CONSTRUIR  →  AUDITAR (independiente)  →  COR
 | Evidencia | caso controlado 13/13 (`orquestador/lib/caso-controlado-circuito.pg.test.mjs`, evidencia impresa + rollback) · suite 8.359/0 · build verde · QA visual 56 capturas, 22 combos, 0 errores de consola · sondas en vivo de cada migración con rol asumido |
 | Límites aceptados y abiertos | forecast económico sin dato real que calcular (cotizaciones reales = 0) · aprendizaje sin muestra real (job 11:20 corre desde hoy; siembra XLSM sin mapeo de tarea a propósito) · cadena de migraciones NO re-aplicable en base virgen (helper de dos épocas la esquiva en la viva) · pantallas del circuito (8 campos, configurador, botones 17) sin QA visual propio · `campo` lee estructura de costos vía vistas nuevas (decisión del dueño) |
 | **Valida / Autoriza** | **PENDIENTE DEL DUEÑO** — A3: usar el circuito cinco minutos, en su celular, con un caso real; y aceptar por escrito los límites de arriba. Además: confirmar `monto_contratado` de san-francisco ($204.361.104) contra el contrato — la bitácora registró 26 escrituras de prueba sin sesión que el enmascarado no permite reconstruir |
+
+## Registro · Hardening de reproducibilidad de Supabase (22/08/2026)
+
+| Campo | Contenido |
+|---|---|
+| Módulo | Cadena de migraciones reproducible: BASE VACÍA → SCHEMA FUNCIONAL sin intervención manual |
+| Construyó | Coordinador (sesión 22/08) |
+| Auditó | `auditor-de-cierre` — **RECHAZÓ** (H1–H11: regeneración de caja pisada en las dos direcciones, $95,3M de quincenas en el mes equivocado EN PRODUCCIÓN, comparador ciego al cuerpo, ledger sin verificar contra el efecto, carrera del bootstrap, semilla sin guarda, cero tests) → correcciones → re-verificación |
+| Commits | `c05ce13f` (mecanismo) · el commit de correcciones post-rechazo (T1600 núcleo de caja al final de la cadena + template con el fix del 31/07, T1700 comentarios/tipo, comparador estricto `comparar-esquemas.mjs`, candados con test, healthy-wait) |
+| Evidencia | Reconstrucción desde contenedor destruido: 260/260 aplicadas · `comparar-esquemas.mjs`: **TOTAL DIFERENCIAS 0**, 5 conocidas aceptadas declaradas en el script · smoke circuito 50/50 · `--estado`: 260 con constancia, 0 editadas · vistas de caja de producción restauradas a `coalesce(fecha_pago, hasta)` (verificado leyendo `pg_get_viewdef`) |
+| Límites | El ledger registra constancia, no efecto: la prueba de aplicación es el comparador estricto contra una base reconstruida, no el conteo de filas. `esUrlLocal` no ve un túnel local a producción — la última defensa de la semilla es su candado de contenido (0 perfiles reales). `supabase_migrations` (41 filas, era CLI) no se reproduce: metadato de plataforma. Orden de columnas de `finanzas_plan_vigente` difiere (11/12): reordenar exige reescribir la tabla. |
+| Valida/Autoriza | La re-imputación de $95,3M de quincenas al mes de PAGO restaura la decisión del 31/07 (evidencia: extracto Santander) que una regeneración había pisado — el dueño debe saberlo al leer el calendario de caja. |

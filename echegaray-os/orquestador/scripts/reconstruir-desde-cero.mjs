@@ -7,6 +7,9 @@
 //
 //   docker run -d --name pg-reprod -e POSTGRES_PASSWORD=x -p 127.0.0.1:55452:5432 \
 //     supabase/postgres:17.6.1.165
+//   until [ "$(docker inspect --format '{{.State.Health.Status}}' pg-reprod)" = healthy ]; do sleep 2; done
+//   # ↑ healthy, no pg_isready: el init de la imagen sigue corriendo cuando el puerto ya responde,
+//   #   y aplicar el bootstrap en esa ventana pisa la carrera (hallazgo del auditor, 22/08)
 //   docker exec -i pg-reprod psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
 //     < supabase/bootstrap/entorno-plataforma.sql          # como superusuario: piezas de plataforma
 //   node orquestador/scripts/reconstruir-desde-cero.mjs \
@@ -31,6 +34,7 @@ import { createHash } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import pg from 'pg'
+import { esUrlLocal, decisionSobreBase, semillaPermitida, PREFIJO_SEMILLA } from '../lib/reconstruccion-candados.mjs'
 
 const AQUI = dirname(fileURLToPath(import.meta.url))
 const RAIZ = join(AQUI, '..', '..')
@@ -43,8 +47,7 @@ if (!args.includes('--url') || !url || url.startsWith('--')) {
   console.error('falta --url postgres://… (no se lee DATABASE_URL a propósito: esa apunta a producción)')
   process.exit(1)
 }
-const esLocal = /@(127\.0\.0\.1|localhost)[:/]/.test(url)
-if (!esLocal && !args.includes('--si-remoto')) {
+if (!esUrlLocal(url) && !args.includes('--si-remoto')) {
   console.error('la URL no es local. Reconstruir un host remoto exige decirlo: --si-remoto')
   process.exit(1)
 }
@@ -61,8 +64,9 @@ await c.connect()
 const { rows: [censo] } = await c.query(`select
   (select count(*)::int from pg_tables where schemaname = 'public') as tablas,
   (to_regclass('public.migracion_aplicada') is not null)            as con_ledger`)
-if (censo.tablas > 0 && !censo.con_ledger) {
-  console.error(`la base ya tiene ${censo.tablas} tablas en public y ningún ledger de este mecanismo: no es vacía ni mía. No se toca.`)
+const decision = decisionSobreBase({ tablas: censo.tablas, conLedger: censo.con_ledger })
+if (!decision.seguir) {
+  console.error(decision.motivo)
   await c.end(); process.exit(1)
 }
 
@@ -105,8 +109,20 @@ for (const f of archivos) {
   }
 }
 
-// ── 3. la semilla, sólo si se pidió ──
+// ── 3. la semilla, sólo si se pidió — y sólo en una base SIN GENTE REAL ──
+// El candado de arriba no alcanza acá: una base productiva alcanzada por túnel local con las 258
+// hasheadas pasa los dos candados sin aplicar nada… y la semilla insertaría cuentas de prueba en
+// producción. La regla: si perfiles tiene UNA sola fila que no sea de la propia semilla, no hay
+// semilla — un entorno de prueba recién reconstruido no tiene a nadie.
 if (args.includes('--con-semilla')) {
+  const { rows: [gente] } = await c.query(
+    `select count(*)::int as ajenos from public.perfiles where id::text not like $1`,
+    [`${PREFIJO_SEMILLA}%`])
+  const veredicto = semillaPermitida({ perfilesAjenos: gente.ajenos })
+  if (!veredicto.permitida) {
+    console.error(`✗ sin semilla: ${veredicto.motivo}`)
+    await c.end(); process.exit(1)
+  }
   await c.query(readFileSync(join(DIR_BOOTSTRAP, 'semilla-minima.sql'), 'utf8'))
   console.log('semilla mínima aplicada (identidades + Base Maestra de prueba)')
 }

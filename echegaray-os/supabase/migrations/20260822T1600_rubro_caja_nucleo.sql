@@ -1,41 +1,4 @@
-#!/usr/bin/env node
-// GENERA LA MIGRACIÓN QUE LLEVA LA REGLA DE CAJA AL NÚCLEO POSTGRES.
-//
-// POR QUÉ SE GENERA Y NO SE ESCRIBE A MANO. La regla que dice qué es cada gasto ya está escrita dos
-// veces —una para JavaScript y otra para la fórmula es-AR del Sheet— y las dos salen del MISMO array
-// de rubro-caja.mjs, pegadas a propósito para que no puedan desincronizarse. La tercera cara, SQL,
-// tiene que salir del mismo lugar por la misma razón: un CASE tipeado a mano en una migración se
-// desincroniza el día que alguien agrega un rubro, y nadie se entera hasta que los números no
-// cierran. Hay un test que compara el archivo generado contra el generador.
-//
-// QUÉ PROBLEMA RESUELVE, MEDIDO. El calendario de caja de la web mostraba $4.121.169 de egresos
-// futuros contra $352M+ en la planilla. No era un bug de la web: la definición de la proyección
-// vivía sólo en las fórmulas del Sheet, así que la web y el chat miraban un universo distinto.
-//
-//   node orquestador/scripts/generar-migracion-caja.mjs
-
-import { writeFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-import { dirname, resolve } from 'node:path'
-import { sqlRubroDeCaja } from '../lib/rubro-caja.mjs'
-import { RUBROS_SIN_PROYECCION, MIN_MESES } from '../lib/cash-flow-lineas.mjs'
-
-// El DESTINO tiene que ser el ÚLTIMO archivo de la cadena que defina rubro_caja y sus vistas:
-// una migración generada más vieja que quede DESPUÉS en el orden de nombres se devora la regla
-// vigente en cualquier base reconstruida (pasó con 20260731140000 vs 20260720173000: la cadena
-// terminaba con la regla vieja, y producción con las vistas viejas — $95,3M de quincenas en el
-// mes equivocado). migracion-caja.test.mjs vigila este invariante.
-export const DESTINO = resolve(dirname(fileURLToPath(import.meta.url)), '../../supabase/migrations/20260822T1600_rubro_caja_nucleo.sql')
-
-/** NÚCLEO PURO: el texto completo de la migración. Se genera para poder testearlo sin tocar disco. */
-/** La línea del cash flow que NO sale de Compras porque mide lo que a Compras le falta. */
-const LINEA_INSTRUMENTOS = 'Cheques y tarjeta sin factura cargada'
-
-export function migracion() {
-  const sinProy = RUBROS_SIN_PROYECCION.map((r) => `'${r.replace(/'/g, "''")}'`).join(', ')
-  const caso = sqlRubroDeCaja().split('\n').map((l) => `  ${l}`).join('\n')
-
-  return `-- LA REGLA DE CAJA, EN EL NÚCLEO.
+-- LA REGLA DE CAJA, EN EL NÚCLEO.
 --
 -- ⚠ GENERADO por orquestador/scripts/generar-migracion-caja.mjs — NO editar a mano.
 -- Hay un test (orquestador/lib/migracion-caja.test.mjs) que compara este archivo contra el
@@ -60,13 +23,27 @@ create or replace function public.rubro_caja(
   proveedor text, unidad_negocio text, obra_texto text, concepto text
 ) returns text language sql immutable as $fn$
   select
-${caso}
+    case
+      when lower(coalesce(proveedor, '')) = 'sac' then 'Nómina · SAC'
+      when lower(coalesce(concepto, '')) ~ 'deuda previcional|deuda previsional|plan f931' then 'Deuda previsional (planes de pago)'
+      when lower(coalesce(obra_texto, '')) = 'f931' then 'Nómina · Cargas sociales'
+      when (lower(coalesce(proveedor, '')) ~ '^(sindicatos|uocra|fcl|ieric|fodeco)$' or lower(coalesce(obra_texto, '')) ~ '^(uocra|fcl|ieric|fodeco)$') then 'Nómina · Gremiales'
+      when (lower(coalesce(proveedor, '')) = 'sueldos' and lower(coalesce(obra_texto, '')) ~ '^(obras|san francisco|la estrella|messinas|arcor|javier sanchez|imotor)$') then 'Nómina · Jornales de obra'
+      when lower(coalesce(proveedor, '')) = 'sueldos' then 'Nómina · Sueldos administración'
+      when (lower(coalesce(unidad_negocio, '')) = 'impuestos' or lower(coalesce(proveedor, '')) = 'arca' or lower(coalesce(obra_texto, '')) = 'plan de pago') then 'Impuestos'
+      when (lower(coalesce(unidad_negocio, '')) = 'financiero' or lower(coalesce(obra_texto, '')) = 'credito prendario' or lower(coalesce(proveedor, '')) = 'banco') then 'Financiero'
+      when (lower(coalesce(proveedor, '')) ~ '^(robles jose maria|movistar|meglioli facundo fabian|sanitarios od s\.a\.s\.|ruviño matias esteban|rsv|mass consultora)$' and (lower(coalesce(unidad_negocio, '')) not in ('civil', 'mantenimiento') or lower(coalesce(proveedor, '')) ~ '^(rsv|mass consultora)$')) then 'Servicios recurrentes'
+      when lower(coalesce(unidad_negocio, '')) = 'civil' then 'Materiales Civil'
+      when lower(coalesce(unidad_negocio, '')) = 'mantenimiento' then 'Materiales Mantenimiento'
+      when lower(coalesce(unidad_negocio, '')) = 'estructura' then 'Estructura'
+      else 'SIN CLASIFICAR'
+    end
 $fn$;
 comment on function public.rubro_caja is
   'A qué línea del cash flow pertenece un gasto. Generado desde orquestador/lib/rubro-caja.mjs: es la misma regla que la columna AC de Compras, no una copia.';
 
 -- Se dropean en orden inverso a la dependencia: proyeccion_egreso y calendario_caja leen de
--- egreso_rubro_mes, y \`create or replace view\` no admite insertar una columna en el medio. Sin
+-- egreso_rubro_mes, y `create or replace view` no admite insertar una columna en el medio. Sin
 -- cascade a propósito: si mañana algo más depende de estas vistas, el drop tiene que fallar y
 -- avisar, no llevárselo puesto.
 drop view if exists public.calendario_caja;
@@ -81,7 +58,7 @@ drop view if exists public.egreso_rubro_mes;
 -- CUÁNDO salen. Meterlos en el mes de la factura hacía que el núcleo mostrara $2.088.225 de más
 -- repartidos entre abril y julio, y hacía desaparecer el problema en vez de mostrarlo. El Sheet los
 -- deja fuera de todo mes y los reporta en su control; acá se hace lo mismo, y quedan visibles con
--- \`select * from costos_obra where fecha_pago is null\`.
+-- `select * from costos_obra where fecha_pago is null`.
 --
 -- TRES FUENTES, PORQUE COMPRAS NO ALCANZA. Contrastando contra el Sheet, el núcleo daba $60.402.163
 -- menos en el año, y $53.637.487 salían de acá:
@@ -114,7 +91,7 @@ create or replace view public.egreso_rubro_mes as
              date_trunc('month', coalesce(j.fecha_pago, j.hasta))::date, j.clase, j.total, 1
         from public.jornal_quincena j
       union all
-      select '${LINEA_INSTRUMENTOS}', date_trunc('month', i.fecha_pago)::date, 'real', i.monto, 1
+      select 'Cheques y tarjeta sin factura cargada', date_trunc('month', i.fecha_pago)::date, 'real', i.monto, 1
         from public.instrumento_pago i
        where not i.factura_en_compras
          and i.comprobante_norm is not null
@@ -132,7 +109,7 @@ comment on view public.egreso_rubro_mes is
 --     regla que ya usa el Cash Flow del Sheet, y tienen que dar lo mismo o hay dos verdades;
 --   · el GUARD cuenta los meses con gasto sobre el AÑO ENTERO, no sobre la ventana de 3: un rubro
 --     que apareció en 4 meses salteados no es una tendencia aunque los últimos 3 tengan plata;
---   · GUARD DE ${MIN_MESES} MESES — un rubro que apareció en menos de ${MIN_MESES} meses no es un ritmo, es un pago
+--   · GUARD DE 4 MESES — un rubro que apareció en menos de 4 meses no es un ritmo, es un pago
 --     suelto. Sin este guard el SAC (se paga en junio y en diciembre) se proyectaba todos los meses:
 --     $18.777.459 de aguinaldo inventado contra $7.368.710 reales;
 --   · × inflación, con el factor NORMALIZADO al mes actual. public.factor_ajuste acumula desde el
@@ -183,16 +160,16 @@ select r.rubro,
   left join (select rubro, mes, sum(monto) as real_mes
                from public.egreso_rubro_mes where clase = 'real' group by 1, 2) yr
          on yr.rubro = r.rubro and yr.mes = f.mes
- where r.meses_con_gasto >= ${MIN_MESES}
+ where r.meses_con_gasto >= 4
    -- Estos rubros ya tienen sus cuotas futuras CARGADAS (quincenas de jornales, planes de pago,
    -- prendario). Proyectarlos encima inventaría plata que nadie va a pagar: un plan de pago tiene un
    -- número de cuotas fijo, no un ritmo.
-   and r.rubro not in (${sinProy})
+   and r.rubro not in ('Nómina · Jornales de obra', 'Deuda previsional (planes de pago)', 'Financiero')
    -- Un mes cuyo real ya supera el ritmo no proyecta nada: greatest() lo deja en 0 y la fila se
    -- descarta acá para no ensuciar el calendario con proyecciones de $0.
    and coalesce(yr.real_mes, 0) < round(r.promedio * coalesce(fa.factor_acumulado, b.f) / nullif(b.f, 0));
 comment on view public.proyeccion_egreso is
-  'Egresos ESPERADOS por rubro y mes futuro. SUPUESTO declarado, no dato: promedio de los últimos 3 meses cerrados (con al menos ${MIN_MESES} meses con gasto en el año) ajustado por IPC. Misma regla que el Cash Flow del Sheet.';
+  'Egresos ESPERADOS por rubro y mes futuro. SUPUESTO declarado, no dato: promedio de los últimos 3 meses cerrados (con al menos 4 meses con gasto en el año) ajustado por IPC. Misma regla que el Cash Flow del Sheet.';
 
 -- El calendario que lee la web, ahora con el futuro adentro y DICIENDO que es proyección.
 --
@@ -255,11 +232,3 @@ create or replace view public.calendario_caja as
     from public.proyeccion_egreso p;
 comment on view public.calendario_caja is
   'Movimientos de caja pasados y futuros. clase = real (hay un comprobante) o proyeccion (es un supuesto). Nunca mostrar las dos con el mismo color.';
-`
-}
-
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop())) {
-  writeFileSync(DESTINO, migracion())
-  console.log(`escrito ${DESTINO}`)
-  console.log(`  rubros sin proyección: ${RUBROS_SIN_PROYECCION.join(' · ')}`)
-}
