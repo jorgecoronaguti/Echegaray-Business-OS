@@ -8,20 +8,46 @@
 import Link from 'next/link'
 import { Nulo, Num, Tabla, Td, Th, THead, Tr } from '@/shared/components/ds'
 import type { Cuadrilla } from '../types'
+import type { CapacidadCuadrilla } from '../services/cuadrillasService'
+
+/** `2.4` → `2,4`. Un decimal: la capacidad se compara de un vistazo entre cuadrillas, no se liquida. */
+const capacidad = (n: number) => n.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+
+/** «—» y no 0 cuando la vista `cuadrilla_capacidad` no trajo la fila: un 0 diría que la cuadrilla no
+ *  rinde nada, que es una afirmación distinta de «no lo sé». */
+function CapPond({ cap }: { cap?: CapacidadCuadrilla }) {
+  if (!cap) return <Nulo>—</Nulo>
+  return (
+    <span
+      data-testid="cap-pond"
+      title={cap.personas_sin_categoria > 0 ? `${cap.personas_sin_categoria} sin categoría cargada pesan 1,0` : undefined}
+    >
+      <Num>{capacidad(cap.capacidad_ponderada)}</Num>
+      {/* El supuesto se VE, no se esconde adentro del total. */}
+      {cap.personas_sin_categoria > 0 && <span className="ml-1 text-[10px] text-faint">·s/cat</span>}
+    </span>
+  )
+}
 
 export function TablaCuadrillas({
-  cuadrillas, abierta, hrefDe,
+  cuadrillas, abierta, hrefDe, capacidades,
 }: {
   cuadrillas: Cuadrilla[]
   abierta?: string
   hrefDe: (id: string) => string
+  /** De la vista `cuadrilla_capacidad`. Una cuadrilla que no está en el mapa muestra «—»: la vista
+   *  no pudo leerse, y un 0 ahí diría que la cuadrilla no rinde nada. */
+  capacidades?: Map<string, CapacidadCuadrilla>
 }) {
   return (
-    <Tabla testid="tabla-cuadrillas" minWidth={640}>
+    <Tabla testid="tabla-cuadrillas" minWidth={720}>
       <THead>
         <Th>Cuadrilla</Th>
         <Th>Responsable</Th>
         <Th num>Integrantes</Th>
+        {/* CUATRO AYUDANTES NO SON CUATRO OFICIALES: son 2,4. La columna existe para que el tamaño
+            de una cuadrilla deje de leerse como cabezas. */}
+        <Th num>Cap. pond.</Th>
         <Th>Obras (derivadas)</Th>
       </THead>
       <tbody>
@@ -37,6 +63,7 @@ export function TablaCuadrillas({
               {c.responsable ?? <Nulo>sin responsable</Nulo>}
             </Td>
             <Td num className="w-[110px]"><Num className="text-muted">{c.integrantes}</Num></Td>
+            <Td num className="w-[110px]"><CapPond cap={capacidades?.get(c.id)} /></Td>
             <Td className="w-[240px]">
               {c.obras_actuales ?? <Nulo>sin obra vigente</Nulo>}
             </Td>

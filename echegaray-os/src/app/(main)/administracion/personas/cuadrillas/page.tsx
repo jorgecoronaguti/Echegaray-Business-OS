@@ -15,15 +15,24 @@ import { Aviso, BotonEnlace, BuscadorURL, TituloPantalla, Vacio, Volver } from '
 import { FiltrosURL } from '@/features/administracion/components/Controles'
 import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
 import { PanelCuadrilla } from '@/features/administracion/components/PanelCuadrilla'
+import { PoolSinCuadrilla } from '@/features/administracion/components/PoolSinCuadrilla'
+import { SolapasHH } from '@/features/administracion/components/SolapasHH'
 import { TablaCuadrillas } from '@/features/administracion/components/TablaCuadrillas'
-import { filtrarCuadrillas, getCuadrillas, getHHDeCuadrilla, getIntegrantes } from '@/features/administracion/services/cuadrillasService'
+import {
+  filtrarCuadrillas, getCapacidadDeCuadrillas, getCuadrillas, getHHDeCuadrilla, getIntegrantes,
+  getSinCuadrilla,
+} from '@/features/administracion/services/cuadrillasService'
 import { rotulo, ventanaDe } from '@/features/administracion/services/periodoHH'
 import {
-  agregarIntegrante, archivarCuadrilla, crearCuadrilla, editarCuadrilla, quitarIntegrante,
+  agregarIntegrante, archivarCuadrilla, asignarACuadrilla, crearCuadrilla, editarCuadrilla,
+  quitarIntegrante,
 } from '@/features/administracion/services/cuadrillasActions'
 import { asignarCuadrillaAObra } from '@/features/obras/services/actionsPersonal'
 import { getPersonas } from '@/features/obras/services/personalService'
 import { getPortafolio } from '@/features/obras/services/obrasService'
+// LOS FACTORES SALEN DE `categoria_obra`, la MISMA fuente que usa la 08 — no hay una tabla de pesos
+// escrita a mano acá. El día que cambie un factor, las dos pantallas cambian juntas.
+import { getCapacidadPonderada } from '@/features/obras/services/cronogramaObraService'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,10 +52,12 @@ export default async function CuadrillasPage({ searchParams }: { searchParams: P
   const supabase = await createClient()
   const verArchivadas = sp.archivadas === '1'
 
-  const [listado, plantel, obras] = await Promise.all([
+  const [listado, plantel, obras, sinCuadrilla, factores] = await Promise.all([
     getCuadrillas(supabase, verArchivadas),
     getPersonas(supabase),
     getPortafolio(supabase),
+    getSinCuadrilla(supabase),
+    getCapacidadPonderada(supabase),
   ])
 
   if (listado.error) {
@@ -74,6 +85,9 @@ export default async function CuadrillasPage({ searchParams }: { searchParams: P
   const vigentes = integrantes.filter((i) => !i.hasta).map((i) => i.persona_id)
   const hh = abierta ? await getHHDeCuadrilla(supabase, vigentes, ventana.desde, ventana.hasta) : null
   const activas = (obras.data ?? []).filter((o) => o.estado !== 'cerrada')
+  // La capacidad se pide para las cuadrillas que se VEN, no para todas: la vista `cuadrilla_capacidad`
+  // agrupa sobre integrantes y personas, y traerla entera para pintar cuatro filas es un viaje pago.
+  const capacidades = await getCapacidadDeCuadrillas(supabase, visibles.map((c) => c.id))
 
   return (
     // Sin `PageShell`: su encabezado dibuja un `h1` y acá el título va con su `← volver` encima, que
@@ -82,7 +96,10 @@ export default async function CuadrillasPage({ searchParams }: { searchParams: P
       <div className="w-full px-4 py-6 lg:px-10">
         <div className="mb-5">
           <Volver href="/administracion/personas">Personal</Volver>
-          <TituloPantalla className="mt-2">Cuadrillas</TituloPantalla>
+          <TituloPantalla className="mt-2">Cuadrillas y HH</TituloPantalla>
+          <div className="mt-3">
+            <SolapasHH vista="cuadrillas" cuenta={cuadrillas.length} />
+          </div>
         </div>
 
         <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-3">
@@ -119,7 +136,22 @@ export default async function CuadrillasPage({ searchParams }: { searchParams: P
                     </Vacio>
                   </div>
                 )
-              : <TablaCuadrillas cuadrillas={visibles} abierta={abierta?.id} hrefDe={(id) => href(sp, id)} />}
+              : (
+                  <TablaCuadrillas
+                    cuadrillas={visibles} abierta={abierta?.id} hrefDe={(id) => href(sp, id)}
+                    capacidades={capacidades}
+                  />
+                )}
+
+            {/* EL POOL VA DEBAJO DE LAS CUADRILLAS, NO EN UNA PANTALLA APARTE: quien mira las
+                cuadrillas es quien tiene que ver a los que no están en ninguna, o el pool no se
+                mira nunca. */}
+            <PoolSinCuadrilla
+              personas={sinCuadrilla.data ?? []}
+              cuadrillas={cuadrillas.filter((c) => c.activa).map((c) => ({ id: c.id, nombre: c.nombre }))}
+              factores={factores.data ?? []}
+              asignar={asignarACuadrilla}
+            />
           </div>
 
           {alta && (
@@ -155,6 +187,8 @@ export default async function CuadrillasPage({ searchParams }: { searchParams: P
               obras={activas.map((o) => ({ id: o.obra_id, nombre: o.nombre }))}
               hh={hh}
               ventana={rotulo(ventana)}
+              capacidad={capacidades.get(abierta.id) ?? null}
+              factores={factores.data ?? []}
               // `bind` y NO una arrow: una función nueva la rechaza React en runtime y la pantalla
               // queda en blanco sin que typecheck ni build lo vean.
               editar={editarCuadrilla.bind(null, abierta.id)}
