@@ -29,7 +29,7 @@
 import {
   BotonAccion, FormAccion, type AccionFormulario, type ResultadoAccion,
 } from '@/shared/components/ui'
-import { CAMPO, Campo, Estado, Nulo, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
+import { Ayuda, CAMPO, Campo, Estado, Nulo, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
 import {
   TIPO_RESTRICCION, TIPO_RESTRICCION_LABEL, type Actividad, type Restriccion,
 } from '../types'
@@ -63,10 +63,16 @@ export function BloqueImpedimentos({
   return (
     <div className="flex flex-col gap-3.5" data-testid="bloque-impedimentos">
       {impedimentos.length === 0 ? (
-        <Vacio>
-          Nadie anotó un impedimento en esta obra. En una obra en ejecución eso rara vez significa
-          que no haya: significa que nadie los anotó.
-        </Vacio>
+        /* EL MATIZ NO SE PERDIÓ, DEJÓ DE SER UN PÁRRAFO. «Nadie los anotó» no es «no hay», y eso
+           hay que poder leerlo — una vez, el que entra por primera vez. Clavado en la pantalla se
+           lee cero veces y empuja el formulario hacia abajo. */
+        <>
+          <Vacio>Sin impedimentos anotados.</Vacio>
+          <Ayuda titulo="Por qué esto no significa que no haya" testid="ayuda-impedimentos-vacio">
+            En una obra en ejecución, un tablero de impedimentos vacío rara vez significa que no
+            haya: significa que nadie los anotó. Lo que no está acá no se gestiona.
+          </Ayuda>
+        </>
       ) : (
         <Tabla testid="tabla-impedimentos" minWidth={720}>
           <THead>
@@ -109,10 +115,16 @@ export function BloqueImpedimentos({
       )}
 
       {abiertos.length > 0 && (
-        <p className="text-[11.5px] text-faint">
-          {abiertos.length} sin resolver de {impedimentos.length}. Liberar uno lo marca resuelto con
-          la fecha de hoy; la fila queda.
-        </p>
+        /* `div` y no `p`: `Ayuda` es un `details`, y un `details` dentro de un `p` es HTML
+           inválido — el navegador lo saca del párrafo y la hidratación de React se queja. */
+        <div className="text-[11.5px] text-faint">
+          {abiertos.length} sin resolver de {impedimentos.length}.
+          {/* QUÉ HACE «Liberar» va plegado: es ayuda de uso, no un estado que haya que leer. */}
+          <Ayuda titulo="Qué pasa al liberar" testid="ayuda-liberar">
+            Liberar marca el impedimento resuelto con la fecha de hoy. La fila no se borra: queda
+            como historia de la obra, abajo de los abiertos.
+          </Ayuda>
+        </div>
       )}
 
       <details data-testid="alta-impedimento">
