@@ -105,6 +105,23 @@ export async function agregarIntegrante(cuadrillaId: string, form: FormData): Pr
   return { ok: true }
 }
 
+const asignacionSchema = z.object({
+  cuadrilla_id: z.string().uuid('Elegí a qué cuadrilla la mandás'),
+})
+
+/**
+ * ASIGNAR DESDE EL POOL «Sin cuadrilla». La cuadrilla la elige quien asigna —por eso viaja en el
+ * formulario y no atada en el `bind`— y el resto lo hace `agregarIntegrante`, sin copiar una línea:
+ * cerrar el período anterior y abrir el nuevo es UNA regla, y tenerla dos veces garantiza que un día
+ * una de las dos deje de cerrar el período viejo y queden dos cuadrillas vigentes para la misma
+ * persona.
+ */
+export async function asignarACuadrilla(form: FormData): Promise<Resultado> {
+  const parsed = asignacionSchema.safeParse(Object.fromEntries(form))
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
+  return agregarIntegrante(parsed.data.cuadrilla_id, form)
+}
+
 /** Sacar a alguien: se cierra el período con la fecha de hoy. La fila NO se borra — es el historial
  *  de quién estuvo en esta cuadrilla, y es lo que respalda las horas cargadas en ese tiempo. */
 export async function quitarIntegrante(integranteId: string): Promise<Resultado> {

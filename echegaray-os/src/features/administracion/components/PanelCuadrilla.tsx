@@ -15,9 +15,33 @@ import {
 } from '@/shared/components/ui'
 import { Eyebrow, Nulo, Num } from '@/shared/components/ds'
 import type { Cuadrilla, Integrante } from '../types'
+import type { CapacidadCuadrilla } from '../services/cuadrillasService'
+import type { CategoriaCapacidad } from '@/features/obras/services/cronogramaObraService'
 
 interface Plantel { id: string; nombre_completo: string }
 interface Obra { id: string; nombre: string }
+
+const unDecimal = (n: number) => n.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+
+/**
+ * EL PESO DE UN INTEGRANTE — de `categoria_obra`, nunca de una tabla escrita a mano acá.
+ *
+ * Los factores del diseño (1,2 · 1,0 · 0,8 · 0,6) son los que hoy tiene la base, pero son un DATO
+ * con vigencia: el día que cambien, esta pantalla tiene que cambiar sola. Una persona sin categoría
+ * cargada devuelve `null` y la pantalla escribe «sin categoría» — la vista la cuenta como 1,0 y ese
+ * supuesto se dice, no se dibuja como si fuera un dato.
+ */
+function Peso({ categoria, factores }: { categoria: string | null; factores: CategoriaCapacidad[] }) {
+  const f = categoria ? factores.find((x) => x.clave === categoria) : undefined
+  if (!f) {
+    return <span className="shrink-0 text-[11px] text-faint" title="Pesa 1,0 por defecto">sin categoría</span>
+  }
+  return (
+    <span className="shrink-0 text-[11px] text-muted" title={f.nombre} data-testid="peso-integrante">
+      {f.nombre} <Num className="text-[11px] text-faint">{unDecimal(f.factor)}</Num>
+    </span>
+  )
+}
 
 function Propiedad({ k, children }: { k: string; children: React.ReactNode }) {
   return (
@@ -51,13 +75,16 @@ function CamposCuadrilla({ cuadrilla, plantel }: { cuadrilla: Cuadrilla | null; 
 }
 
 export function PanelCuadrilla({
-  cuadrilla, integrantes, plantel, obras, hh, ventana,
+  cuadrilla, integrantes, plantel, obras, hh, ventana, capacidad, factores,
   editar, archivar, agregar, quitar, asignarAObra, cerrarHref,
 }: {
   cuadrilla: Cuadrilla
   integrantes: Integrante[]
   plantel: Plantel[]
   obras: Obra[]
+  /** De la vista `cuadrilla_capacidad`. `null` = no se pudo leer; nunca 0. */
+  capacidad: CapacidadCuadrilla | null
+  factores: CategoriaCapacidad[]
   /** HH trabajadas del período por los integrantes vigentes. `null` = no hay a quién sumarle o no
    *  se pudo leer. Nunca 0: «0,00 HH» afirma que no trabajaron. */
   hh: number | null
@@ -97,6 +124,19 @@ export function PanelCuadrilla({
                 </span>
               )}
         </Propiedad>
+        <Propiedad k="Cap. ponderada">
+          {capacidad === null
+            ? <Nulo>sin dato</Nulo>
+            : (
+                <span data-testid="cap-pond-panel">
+                  <Num>{unDecimal(capacidad.capacidad_ponderada)}</Num>
+                  <span className="ml-1 text-[11px] text-faint">
+                    {capacidad.personas} {capacidad.personas === 1 ? 'persona' : 'personas'}
+                    {capacidad.personas_sin_categoria > 0 && ` · ${capacidad.personas_sin_categoria} sin categoría`}
+                  </span>
+                </span>
+              )}
+        </Propiedad>
         <Propiedad k="Estado">{cuadrilla.activa ? 'activa' : <Nulo>archivada</Nulo>}</Propiedad>
       </div>
 
@@ -111,6 +151,7 @@ export function PanelCuadrilla({
                     <Link href={`/administracion/personas/${i.persona_id}`} className="min-w-0 flex-1 truncate text-ink hover:underline">
                       {i.nombre_completo ?? i.persona_id}
                     </Link>
+                    <Peso categoria={i.categoria} factores={factores} />
                     {/* EL PERÍODO, NO UNA MARCA DE PERTENENCIA: desde cuándo está es lo que hace que
                         las HH de marzo se le puedan atribuir a esta cuadrilla y no a la de ahora. */}
                     <Num className="shrink-0 text-[11px] text-faint">desde {i.desde}</Num>

@@ -4,7 +4,7 @@
 // integrantes. La vista `cuadrilla_panel` hace esa derivación y es la única que la hace.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Cuadrilla, Integrante, ServiceResult } from '../types'
+import type { Cuadrilla, Integrante, ServiceResult, SinCuadrilla } from '../types'
 // RUTA RELATIVA CON EXTENSIÓN: `node --test` no conoce el alias `@/`, y un import de VALOR por alias
 // mata la prueba con ERR_MODULE_NOT_FOUND antes de la primera aserción.
 import { esTrabajada } from '../../obras/services/tipoHora.ts'
@@ -61,17 +61,78 @@ export async function getIntegrantes(
 
   const filas = (data ?? []) as { id: string; persona_id: string; desde: string; hasta: string | null }[]
   const ids = [...new Set(filas.map((f) => f.persona_id))]
-  const nombres = new Map<string, string>()
+  const persona = new Map<string, { nombre_completo: string; categoria: string | null }>()
   if (ids.length > 0) {
-    const { data: personas } = await supabase.from('persona_plantel').select('id, nombre_completo').in('id', ids)
-    for (const p of (personas ?? []) as { id: string; nombre_completo: string }[]) {
-      nombres.set(p.id, p.nombre_completo)
+    // `categoria` es una de las CINCO columnas que publica `persona_plantel`, y es la que le da su
+    // peso al integrante. Sin ella el panel mostraría cinco nombres y una capacidad de 4,2 sin poder
+    // explicar de dónde sale.
+    const { data: personas } = await supabase
+      .from('persona_plantel').select('id, nombre_completo, categoria').in('id', ids)
+    for (const p of (personas ?? []) as { id: string; nombre_completo: string; categoria: string | null }[]) {
+      persona.set(p.id, { nombre_completo: p.nombre_completo, categoria: p.categoria })
     }
   }
   return {
-    data: filas.map((f) => ({ ...f, nombre_completo: nombres.get(f.persona_id) ?? null })),
+    data: filas.map((f) => ({
+      ...f,
+      nombre_completo: persona.get(f.persona_id)?.nombre_completo ?? null,
+      categoria: persona.get(f.persona_id)?.categoria ?? null,
+    })),
     error: null,
   }
+}
+
+// ═══ LA CAPACIDAD PONDERADA — NO SE CUENTAN CABEZAS ═══
+//
+// Cuatro ayudantes no son cuatro oficiales: son 2,4. El cálculo YA existe y vive en la vista
+// `cuadrilla_capacidad` (migración 20260821T2400), que es la que lee la 08. Acá se lee esa misma
+// vista y no se vuelve a multiplicar nada en TypeScript — dos definiciones de «cuánto rinde esta
+// cuadrilla» terminarían en dos números distintos en dos pantallas.
+
+export interface CapacidadCuadrilla {
+  capacidad_ponderada: number
+  personas: number
+  /** Quiénes pesan 1,0 por defecto porque no tienen categoría cargada. Se publica para que el
+   *  supuesto se vea, en vez de esconderse adentro del total. */
+  personas_sin_categoria: number
+}
+
+export async function getCapacidadDeCuadrillas(
+  supabase: SupabaseClient, ids: string[],
+): Promise<Map<string, CapacidadCuadrilla>> {
+  const mapa = new Map<string, CapacidadCuadrilla>()
+  if (ids.length === 0) return mapa
+  const { data } = await supabase
+    .from('cuadrilla_capacidad')
+    .select('cuadrilla_id, personas, capacidad_ponderada, personas_sin_categoria')
+    .in('cuadrilla_id', ids)
+  for (const c of (data ?? []) as Record<string, unknown>[]) {
+    mapa.set(String(c.cuadrilla_id), {
+      // `numeric` llega como TEXTO por PostgREST: sin Number, «2.4» no se puede ni comparar ni sumar.
+      capacidad_ponderada: Number(c.capacidad_ponderada ?? 0),
+      personas: Number(c.personas ?? 0),
+      personas_sin_categoria: Number(c.personas_sin_categoria ?? 0),
+    })
+  }
+  return mapa
+}
+
+/**
+ * EL POOL: quién está en el plantel y hoy no integra ninguna cuadrilla.
+ *
+ * Sale de `persona_directorio`, que ya deriva la cuadrilla vigente de cada persona — la misma
+ * derivación que usa la ficha. Calcularlo acá restando listas daría un pool que discrepa con la
+ * ficha el día que alguien cierre un período con fecha futura.
+ */
+export async function getSinCuadrilla(
+  supabase: SupabaseClient,
+): Promise<ServiceResult<SinCuadrilla[]>> {
+  const { data, error } = await supabase
+    .from('persona_directorio').select('id, nombre_completo, categoria, obra_actual')
+    .eq('en_la_empresa', true).is('cuadrilla_id', null)
+    .order('nombre_completo', { ascending: true })
+  if (error) return { data: null, error: error.message }
+  return { data: (data ?? []) as unknown as SinCuadrilla[], error: null }
 }
 
 /** La cuadrilla vigente de cada persona, para el selector de la ficha. */

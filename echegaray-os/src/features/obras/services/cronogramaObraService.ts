@@ -110,18 +110,26 @@ async function conCapacidadPonderada(
   ))
 }
 
-export interface CategoriaCapacidad { nombre: string; factor: number }
+export interface CategoriaCapacidad {
+  /** La clave de `categoria_obra` — la MISMA que `personas.categoria`. Sin ella el factor no se
+   *  puede pegar a una persona, que es lo que necesita la 21 para escribir el peso al lado de cada
+   *  integrante: `nombre` es texto para mostrar, no una clave. */
+  clave: string
+  nombre: string
+  factor: number
+}
 
-/** Los factores de capacidad, de la tabla `categoria_obra`. Se muestran en la 08 porque son la
- *  razón por la que cuatro personas no son cuatro: sin verlos, el número parece arbitrario. */
+/** Los factores de capacidad, de la tabla `categoria_obra`. Se muestran en la 08 y en la 21 porque
+ *  son la razón por la que cuatro personas no son cuatro: sin verlos, el número parece arbitrario. */
 export async function getCapacidadPonderada(
   supabase: SupabaseClient,
 ): Promise<ServiceResult<CategoriaCapacidad[]>> {
   const { data, error } = await supabase
-    .from('categoria_obra').select('nombre, capacidad').eq('activa', true).order('capacidad', { ascending: false })
+    .from('categoria_obra').select('clave, nombre, capacidad').eq('activa', true).order('capacidad', { ascending: false })
   if (error) return { data: null, error: error.message }
   return {
     data: (data ?? []).map((c) => ({
+      clave: (c as { clave: string }).clave,
       nombre: (c as { nombre: string }).nombre,
       factor: Number((c as { capacidad: number }).capacidad),
     })),
