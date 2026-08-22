@@ -291,3 +291,23 @@ export function cuandoCorto(iso: string, ahora: Date = new Date()): string {
   if (dia === `${ayer.day}/${ayer.month}/${ayer.year}`) return `ayer ${hora}`
   return `${e.day}/${e.month} ${hora}`
 }
+
+/**
+ * LO MISMO, PERO SIN PERDER EL AÑO — para las listas que miran hacia atrás.
+ *
+ * `cuandoCorto` está pensado para «lo último que pasó»: ahí el año sobra porque siempre es éste. La
+ * bitácora de cambios de una persona arranca el día del alta, y hay legajos de 2022: un «14/03
+ * 16:30» en esa lista es indistinguible de uno de este año, o sea que la fila miente sobre CUÁNDO
+ * pasó. Se agrega el año sólo cuando no es el corriente, para no ensuciar las filas de hoy.
+ *
+ * No se cambió `cuandoCorto`: lo usan cinco pantallas donde el año efectivamente sobra, y ensanchar
+ * su salida para arreglar un caso ajeno es cambiarle el contrato a las otras cuatro. La ZONA sigue
+ * definida una sola vez, que es lo que no puede duplicarse.
+ */
+export function cuandoConAno(iso: string, ahora: Date = new Date()): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return 'sin fecha'
+  const e = enZona(d)
+  if (e.year === enZona(ahora).year) return cuandoCorto(iso, ahora)
+  return `${e.day}/${e.month}/${e.year.slice(2)} ${e.hour}:${e.minute}`
+}
