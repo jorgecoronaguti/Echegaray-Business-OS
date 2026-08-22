@@ -301,3 +301,17 @@ ENTENDER EL PROCESO REAL  →  CONSTRUIR  →  AUDITAR (independiente)  →  COR
 ---
 
 *Este proceso nació de los 38 incidentes del módulo Asistencia (30–31/07/2026). Cada regla cita el suyo. Si una regla de acá no se puede rastrear a un incidente real, sobra: borrala.*
+
+---
+
+## Registro · Cierre funcional post-auditoría + addendum Horas Hombre (21–22/08/2026)
+
+| Campo | Valor |
+|---|---|
+| Módulo | Circuito productivo completo (cascada XLSM · estándar versionado · conversión con fechas · HH/causas · aprendizaje · forecast · cómputo) + pantallas 04/10/20/21/24/27 + mobile M01/M05 + seguridad económica/drive_index/auditoría + períodos HH + consolidación §31 |
+| Construyó | 15 agentes ejecutores en worktrees, coordinados por la sesión 6f1ea72c (21–22/08) |
+| Auditó | `auditor-de-cierre` con contexto nuevo — **RECHAZÓ** el primer cierre (candado del congelado con cuatro puertas abiertas: INSERT de partida, DELETE de cabecera, re-parentado, descongelado a mano) reproduciendo los ataques como `authenticated` real; corregido con `20260822T1200` y sus contraejemplos convertidos en tests |
+| SHA | `49b73432` → el commit de cierre de esta fila |
+| Evidencia | caso controlado 13/13 (`orquestador/lib/caso-controlado-circuito.pg.test.mjs`, evidencia impresa + rollback) · suite 8.359/0 · build verde · QA visual 56 capturas, 22 combos, 0 errores de consola · sondas en vivo de cada migración con rol asumido |
+| Límites aceptados y abiertos | forecast económico sin dato real que calcular (cotizaciones reales = 0) · aprendizaje sin muestra real (job 11:20 corre desde hoy; siembra XLSM sin mapeo de tarea a propósito) · cadena de migraciones NO re-aplicable en base virgen (helper de dos épocas la esquiva en la viva) · pantallas del circuito (8 campos, configurador, botones 17) sin QA visual propio · `campo` lee estructura de costos vía vistas nuevas (decisión del dueño) |
+| **Valida / Autoriza** | **PENDIENTE DEL DUEÑO** — A3: usar el circuito cinco minutos, en su celular, con un caso real; y aceptar por escrito los límites de arriba. Además: confirmar `monto_contratado` de san-francisco ($204.361.104) contra el contrato — la bitácora registró 26 escrituras de prueba sin sesión que el enmascarado no permite reconstruir |

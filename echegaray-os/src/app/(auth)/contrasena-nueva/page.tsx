@@ -15,9 +15,11 @@ import { ContrasenaNuevaForm } from '@/features/auth/components/ContrasenaNuevaF
 // Es una comprobación de PANTALLA, no la cerradura: `contrasenaNuevaAction` vuelve a preguntar quién
 // llama, y `updateUser` sin sesión lo rechaza Supabase venga de donde venga.
 //
-// Esta ruta NO está en `RUTAS_PUBLICAS` justamente porque acá ya hay sesión — pero sí está en
-// `CAMPO_RUTAS_PERMITIDAS`: sin eso el middleware rebota al operario a `/hoy` con la contraseña
-// vieja todavía puesta, que es el caso más común de todos.
+// Esta ruta SÍ está en `RUTAS_PUBLICAS` desde el QA del 21/08: el enlace vencido llega SIN sesión,
+// y con sesión exigida el middleware lo mandaba a /login antes de que esta página pudiera decir
+// «pedí otro enlace» (que es lo único que puede hacer sin sesión — `updateUser` la exige igual).
+// Y también está en `CAMPO_RUTAS_PERMITIDAS`: sin eso el middleware rebota al operario a `/hoy`
+// con la contraseña vieja todavía puesta, que es el caso más común de todos.
 
 export const dynamic = 'force-dynamic'
 

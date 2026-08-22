@@ -2,7 +2,7 @@
 -- UNA OBSERVACIÓN DE RENDIMIENTO DICE DE QUÉ CELDA SALIÓ — Y NO SE PUEDE CARGAR DOS VECES
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════
 --
--- ⚠ ESCRITA, NO APLICADA. La aplica el coordinador, no el agente que la escribió.
+-- Aplicada por el coordinador el 22/08/2026 (la escribió el agente del addendum, la aplicó quien integra).
 --
 -- `rendimiento_historico` nació para lo que vuelve de la obra: la actividad lo cierra, el capturador
 -- lo escribe, y el índice `rendimiento_historico_una_por_actividad` garantiza una fila por

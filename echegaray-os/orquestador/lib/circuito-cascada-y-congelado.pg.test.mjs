@@ -239,6 +239,46 @@ test('cascada comercial del XLSM y congelado de solo lectura', { skip: !hayBase 
       assert.equal(est.estado, 'adjudicada')
     })
 
+    await t.test('T1200 · las cuatro puertas que el auditor de cierre encontró abiertas', async (t2) => {
+      // ═══ CONTRAEJEMPLOS DEL AUDITOR (22/08/2026) — sus ataques, ahora tests ═══
+      // Con los tres verbos de arriba en verde, una oferta emitida de $10,1M igual pasó a $1.025M:
+      // el candado cubría UPDATE y DELETE de partida, y nada más. Cada puerta de acá abajo estuvo
+      // ABIERTA y reproducida contra la base real (aud-congelado*.mjs).
+
+      // A1 · agregar una partida nueva a la oferta congelada (la cascada recalcula sobre lo vivo).
+      await c.query('savepoint intento_insert')
+      await assert.rejects(
+        () => c.query(`insert into cotizacion_partida (cotizacion_id, descripcion, cantidad)
+                       values ($1, 'ZZ colada', 999)`, [cot.id]),
+        /congelada/i, 'se pudo AGREGAR una partida a una oferta ya emitida')
+      await c.query('rollback to savepoint intento_insert')
+
+      // A2 · borrar la cabecera entera: el CASCADE dispara el trigger de la partida cuando la
+      // cabecera YA no existe, y el candado de partida se evadía borrando el padre.
+      await c.query('savepoint intento_borrar_todo')
+      await assert.rejects(
+        () => c.query(`delete from cotizaciones where id=$1`, [cot.id]),
+        /no se borra/i, 'se pudo borrar la oferta congelada entera')
+      await c.query('rollback to savepoint intento_borrar_todo')
+
+      // A4 · mudar una partida ajena HACIA la congelada (el trigger de INSERT sólo ve inserts).
+      const ajena = await uno(`insert into cotizaciones (cliente, estado) values ('ZZ ajena','borrador') returning id`)
+      const pAjena = await uno(`insert into cotizacion_partida (cotizacion_id, descripcion, cantidad)
+                                values ($1,'ZZ mudable',5) returning id`, [ajena.id])
+      await c.query('savepoint intento_mudanza')
+      await assert.rejects(
+        () => c.query(`update cotizacion_partida set cotizacion_id=$2 where id=$1`, [pAjena.id, cot.id]),
+        /no se muda/i, 'una partida ajena entró a la oferta congelada por re-parentado')
+      await c.query('rollback to savepoint intento_mudanza')
+
+      // A5 · descongelar a mano: `congelada_en = null` reabría todos los demás candados de un saque.
+      await c.query('savepoint intento_descongelar')
+      await assert.rejects(
+        () => c.query(`update cotizaciones set congelada_en = null where id=$1`, [cot.id]),
+        /no se desactiva/i, 'el congelado se desactivó a mano y todo volvió a ser editable')
+      await c.query('rollback to savepoint intento_descongelar')
+    })
+
     await t.test('T4400 · la versión nueva se lleva los ocho porcentajes', async () => {
       const nueva = await uno(`select public.nueva_version_de_presupuesto($1, 'ZZ motivo') as id`, [cot.id])
       const v = await uno(`select pct_gastos_generales, pct_beneficio, pct_iva, congelada_en, estado, vigente
