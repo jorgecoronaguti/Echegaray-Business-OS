@@ -152,6 +152,7 @@ test('el contexto interno no queda ciego: sin JWT la función sí devuelve el da
   const c = await getPool().connect()
   try {
     await c.query('begin')
+    await c.query('select pg_advisory_xact_lock(20260822)')
     await c.query(`update public.obra_canonica set monto_contratado = 987654321 where id = 'san-francisco'`)
     const { rows: [r] } = await c.query(
       `select monto_contratado from public.obra_panel where obra_id = 'san-francisco'`)

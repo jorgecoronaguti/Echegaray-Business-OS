@@ -61,6 +61,10 @@ test('escritura económica, drive_index y bitácora — contra la base real', { 
 
   try {
     await c.query('begin')
+    // Los pg-tests que escriben las tablas calientes (obra_canonica, cotizaciones, registros)
+    // no se entrelazan: un advisory lock transaccional los serializa entre sí — el deadlock de
+    // filas del 22/08 (suite en paralelo) no puede volver. Se libera solo con el rollback.
+    await c.query('select pg_advisory_xact_lock(20260822)')
     // LAS DOS ÉPOCAS: las tres migraciones viven en la base desde el 21/08. Re-aplicarlas acá toma
     // AccessExclusiveLock sobre vistas vivas dentro de la transacción del test — con la suite en
     // paralelo eso es un deadlock servido (pasó el 22/08 contra el lector de obra_panel). Si los

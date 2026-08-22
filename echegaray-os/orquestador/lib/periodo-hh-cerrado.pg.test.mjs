@@ -48,7 +48,16 @@ test('el período de HH se cierra, y cerrado bloquea de verdad', { skip: !hayBas
 
   try {
     await c.query('begin')
-    await c.query(readFileSync(MIGRACION, 'utf8'))
+    // Los pg-tests que escriben las tablas calientes (obra_canonica, cotizaciones, registros)
+    // no se entrelazan: un advisory lock transaccional los serializa entre sí — el deadlock de
+    // filas del 22/08 (suite en paralelo) no puede volver. Se libera solo con el rollback.
+    await c.query('select pg_advisory_xact_lock(20260822)')
+    // LAS DOS ÉPOCAS (22/08): T5800 vive en la base desde el 21/08 y re-aplicarla acá toma
+    // AccessExclusiveLock sobre sus vistas EN VIVO — con la suite en paralelo eso fue un deadlock
+    // real (economia-de-obra leyendo del otro lado). Si el período ya existe, se afirma contra el
+    // esquema real; en una base nueva se aplica como siempre.
+    const vivo = await c.query("select to_regclass('public.periodo_hh') is not null as v")
+    if (!vivo.rows[0].v) await c.query(readFileSync(MIGRACION, 'utf8'))
 
     const dir = await uno(`select id from perfiles where rol='direccion' limit 1`)
     const jefe = await uno(`select id from perfiles where rol='jefe_obra' limit 1`)

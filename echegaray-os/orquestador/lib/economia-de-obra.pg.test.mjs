@@ -50,6 +50,10 @@ test('la economía de la obra, contra la base real', { skip: !hayBase }, async (
 
   try {
     await c.query('begin')
+    // Los pg-tests que escriben las tablas calientes (obra_canonica, cotizaciones, registros)
+    // no se entrelazan: un advisory lock transaccional los serializa entre sí — el deadlock de
+    // filas del 22/08 (suite en paralelo) no puede volver. Se libera solo con el rollback.
+    await c.query('select pg_advisory_xact_lock(20260822)')
     // LAS DOS ÉPOCAS (mismo patrón que circuito-productivo-migraciones.mjs): antes de integrar,
     // el test APLICA los .sql para probar que son ejecutables; una vez vivos en la base,
     // re-aplicarlos revienta (T6230 ya recreó las vistas por encima) y lo que corresponde es

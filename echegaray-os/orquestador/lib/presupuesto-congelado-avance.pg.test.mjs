@@ -28,6 +28,10 @@ test('presupuesto congelado, subcontrato y obra_avance — contra la base real',
   const uno = async (sql, params) => (await q(sql, params))[0]
   try {
     await c.query('begin')
+    // Los pg-tests que escriben las tablas calientes (obra_canonica, cotizaciones, registros)
+    // no se entrelazan: un advisory lock transaccional los serializa entre sí — el deadlock de
+    // filas del 22/08 (suite en paralelo) no puede volver. Se libera solo con el rollback.
+    await c.query('select pg_advisory_xact_lock(20260822)')
     const dir = await uno(`select id from perfiles where rol='direccion' limit 1`)
     const jefe = await uno(`select id from perfiles where rol='jefe_obra' limit 1`)
     await c.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: dir.id, role: 'authenticated' })])

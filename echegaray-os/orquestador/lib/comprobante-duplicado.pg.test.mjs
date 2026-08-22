@@ -32,6 +32,10 @@ test('posible duplicado y estado de control — contra la base real', { skip: !h
   const uno = async (sql, params) => (await q(sql, params))[0]
   try {
     await c.query('begin')
+    // Los pg-tests que escriben las tablas calientes (obra_canonica, cotizaciones, registros)
+    // no se entrelazan: un advisory lock transaccional los serializa entre sí — el deadlock de
+    // filas del 22/08 (suite en paralelo) no puede volver. Se libera solo con el rollback.
+    await c.query('select pg_advisory_xact_lock(20260822)')
     // LAS DOS ÉPOCAS: T5500 ya vive en la base y T6220 (imputación fina de compras) recreó su
     // vista por encima — re-aplicar el .sql acá tiraba «cannot drop columns from view». Si el
     // objeto está vivo, se afirma contra el esquema real; si no (base nueva), se aplica.
