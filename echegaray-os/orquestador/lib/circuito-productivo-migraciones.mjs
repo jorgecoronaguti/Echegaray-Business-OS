@@ -21,8 +21,15 @@ import { fileURLToPath } from 'node:url'
 const AQUI = dirname(fileURLToPath(import.meta.url))
 export const DIR_MIGRACIONES = join(AQUI, '..', '..', 'supabase', 'migrations')
 
-/** Las migraciones del circuito, en orden. El prefijo es el del encargo: T4000 … T4900. */
-export const PREFIJOS_CIRCUITO = /^20260821T4[0-9]00_/
+/**
+ * Las migraciones del circuito, en orden. El encargo asignó T4000 … T4900.
+ *
+ * Y la banda T5xxx de otro frente, que hay que aplicar EN EL MEDIO: `20260821T5450` reescribe dos de
+ * los mismos objetos —`obra_actividad_control` y `convertir_partida_a_plan`— y `20260822T1000` es la
+ * que los reconcilia. Si el test aplicara sólo las 4xxx, mediría un estado que en producción no va a
+ * existir nunca, y el pisado silencioso de la conversión pasaría en verde.
+ */
+export const PREFIJOS_CIRCUITO = /^20260821T4[0-9]00_|^20260821T5450_|^20260822T1000_/
 
 /**
  * Los archivos del circuito, ordenados por nombre — que es el orden de aplicación, porque el

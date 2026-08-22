@@ -19,7 +19,11 @@
 --
 -- Por eso el total real NO se toca: `hh_real` sigue siendo el total, porque es lo que se pagó y es lo
 -- que consume el presupuesto. Lo que se agrega es la PARTICIÓN: productivas e improductivas, con la
--- causa al lado. La productividad pasa a medirse sobre las productivas y la vista lo declara.
+-- causa al lado, en `actividad_horas` — una sola definición que leen los tres consumidores.
+--
+-- La productividad de `obra_actividad_control` pasa a medirse sobre las productivas, pero eso NO se
+-- hace acá: esa vista la reescribe también otro frente (`20260821T5450`) y dos `create or replace`
+-- con listas de columnas distintas no pueden convivir. Las dos listas se juntan en `20260822T1000`.
 --
 -- ═══ LA CAUSA ES UN CATÁLOGO, NO UN TEXTO LIBRE ═══
 --
@@ -111,181 +115,46 @@ comment on column public.obra_ejecucion.causa_desvio is
   'pantalla la pide sólo cuando el avance viene por debajo de lo previsto, y exigirla siempre haría '
   'que se cargue cualquier cosa para poder guardar.';
 
--- ── 4 · la vista parte las horas y lo dice ────────────────────────────────────────────────────
+-- ── 4 · la partición de las horas, con UNA sola definición ────────────────────────────────────
 --
--- DESVÍO DECLARADO: `obra_actividad.tiempo_tecnico` EXISTE en la base viva (boolean not null default
--- false) y **ninguna migración de `main` la crea** — la publica `obra_actividad_control` en la
--- posición 68. Es deriva de otro frente que todavía no integró su migración. `create or replace
--- view` no puede renombrar columnas, así que esta vista tiene que reproducirla o aborta. Se declara
--- acá con `if not exists`, con la MISMA definición que tiene la base viva: en la base real es un
--- no-op y en cualquier otra hace que esta migración sea autosuficiente. Si el otro frente integra
--- su versión, la suya llega primero o la nuestra: son idénticas.
-alter table public.obra_actividad add column if not exists tiempo_tecnico boolean not null default false;
+-- Va en su propia vista y no dentro de `obra_actividad_control` por dos razones, y las dos importan:
+--
+--   · UNA CAPACIDAD, UNA FUENTE. La cuenta «cuáles de estas horas produjeron» la necesitan tres
+--     consumidores —el control de la actividad, la captura de rendimiento y el forecast— y escrita
+--     tres veces son tres definiciones que van a divergir el día que alguien agregue un tipo de hora.
+--   · Y porque `obra_actividad_control` la reescribe también OTRO FRENTE (`20260821T5450`, que le
+--     agrega `tiempo_tecnico`). Dos migraciones haciendo `create or replace` sobre la misma vista
+--     con listas de columnas distintas no pueden convivir: la segunda aborta con «cannot drop
+--     columns from view». Al vivir la cuenta acá, cada frente publica lo suyo y la reconciliación
+--     —`20260822T1000`— junta las dos listas en un solo lugar y una sola vez.
+create or replace view public.actividad_horas with (security_invoker = true) as
+select a.id                                                    as actividad_id,
+       a.obra_id,
+       h.hh_real,
+       coalesce(h.hh_improductivas, 0)                          as hh_improductivas,
+       case when h.hh_real is null then null
+            else h.hh_real - coalesce(h.hh_improductivas, 0) end as hh_productivas,
+       h.hh_extra,
+       coalesce(e.n_incidencias, 0)                             as n_incidencias
+  from public.obra_actividad a
+  left join lateral (
+        select sum(r.horas) filter (where r.tipo_hora in ('normal','extra_50','extra_100'))              as hh_real,
+               sum(r.horas) filter (where r.tipo_hora in ('extra_50','extra_100'))                       as hh_extra,
+               sum(r.horas) filter (where r.tipo_hora in ('normal','extra_50','extra_100') and r.improductiva) as hh_improductivas
+          from public.registros_hh r where r.actividad_id = a.id) h on true
+  left join lateral (
+        select count(*) filter (where x.causa_desvio is not null)::int as n_incidencias
+          from public.obra_ejecucion x where x.actividad_id = a.id) e on true;
 
-create or replace view public.obra_actividad_control with (security_invoker = true) as
- SELECT a.id AS actividad_id,
-    a.id,
-    a.obra_id,
-    a.codigo,
-    a.codigo_padre,
-    a.nombre,
-    a.tipo,
-    a.orden,
-    a.seccion,
-    a.archivada,
-    a.clave,
-    a.dias_plan,
-    a.dias_real,
-    a.editado_a_mano,
-    a.fuente_pestana,
-    a.creada_en_web,
-    a.cuadrilla,
-    ( SELECT p.nombre
-           FROM obra_actividad p
-          WHERE p.obra_id = a.obra_id AND p.codigo = a.codigo_padre AND p.tipo = 'resumen'::text
-          ORDER BY p.orden
-         LIMIT 1) AS rubro,
-    a.estado,
-    a.unidad,
-    a.cantidad_objetivo,
-    a.metodo_avance,
-    a.inicio_plan,
-    a.fin_plan,
-    a.inicio_base,
-    a.fin_base,
-    a.sellada_en,
-    a.inicio_real,
-    a.fin_real,
-    a.hh_plan,
-    a.responsable_id,
-    a.cuadrilla_id,
-    ( SELECT c.nombre
-           FROM cuadrilla c
-          WHERE c.id = a.cuadrilla_id) AS cuadrilla_prevista,
-    a.comentario,
-    a.partida_codigo,
-    a.partida_cantidad,
-    a.pct,
-    a.pct AS avance_declarado,
-    e.cantidad_ejecutada,
-    e.avance_partes,
-    e.n_partes,
-    e.ultimo_parte,
-    h.hh_real,
-    h.hh_extra,
-    COALESCE(h.n_imputaciones, 0::bigint)::integer AS n_imputaciones,
-    COALESCE(imp.abiertos, 0) AS impedimentos_abiertos,
-        CASE a.metodo_avance
-            WHEN 'cantidad'::text THEN
-            CASE
-                WHEN a.cantidad_objetivo > 0::numeric THEN LEAST(100::numeric, round(COALESCE(e.cantidad_ejecutada, 0::numeric) / a.cantidad_objetivo * 100::numeric, 1))
-                ELSE NULL::numeric
-            END
-            WHEN 'partes'::text THEN LEAST(100::numeric, round(COALESCE(e.avance_partes, 0::numeric), 1))
-            WHEN 'pasos'::text THEN
-            CASE
-                WHEN ps.peso_total > 0::numeric THEN round(COALESCE(ps.peso_hecho, 0::numeric) / ps.peso_total * 100::numeric, 1)
-                ELSE NULL::numeric
-            END
-            ELSE a.pct
-        END AS avance_pct,
-        CASE a.metodo_avance
-            WHEN 'cantidad'::text THEN 'cantidad'::text
-            WHEN 'partes'::text THEN 'partes'::text
-            WHEN 'pasos'::text THEN 'pasos'::text
-            ELSE
-            CASE
-                WHEN a.pct IS NOT NULL THEN 'declarado'::text
-                ELSE NULL::text
-            END
-        END AS origen_avance,
-        CASE
-            WHEN COALESCE(imp.abiertos, 0) > 0 THEN 'bloqueada'::text
-            ELSE a.estado
-        END AS estado_operativo,
-        -- PRODUCTIVIDAD SOBRE LAS HORAS PRODUCTIVAS. Antes dividía por el total y una espera de
-        -- equipo bajaba el rendimiento de la tarea como si la cuadrilla hubiera trabajado peor.
-        -- El total no desaparece: sigue publicado en hh_real, que es lo que se pagó.
-        CASE
-            WHEN e.cantidad_ejecutada > 0::numeric
-             AND (h.hh_real - COALESCE(h.hh_improductivas, 0::numeric)) > 0::numeric
-            THEN round(e.cantidad_ejecutada / (h.hh_real - COALESCE(h.hh_improductivas, 0::numeric)), 3)
-            ELSE NULL::numeric
-        END AS productividad,
-        CASE
-            WHEN a.hh_plan > 0::numeric AND h.hh_real IS NOT NULL THEN round(h.hh_real / a.hh_plan * 100::numeric, 1)
-            ELSE NULL::numeric
-        END AS consumo_hh_pct,
-    a.actividad_padre_id,
-    COALESCE(t.n_tareas, 0) AS n_tareas,
-    COALESCE(t.n_tareas_hechas, 0) AS n_tareas_hechas,
-    COALESCE(ped.n_pedidos, 0) AS n_pedidos,
-    COALESCE(nt.n_notas, 0) AS n_notas,
-    COALESCE(doc.n_documentos, 0) AS n_documentos,
-    COALESCE(eq.n_equipos, 0) AS n_equipos,
-    COALESCE(ps.n_pasos, 0) AS n_pasos,
-    COALESCE(ps.n_pasos_hechos, 0) AS n_pasos_hechos,
-    ps.peso_total AS peso_pasos,
-    a.rol_estructura,
-    a.tope_frente,
-    a.dotacion_prevista,
-    a.analisis_id,
-    a.tarea_tipo_id,
-    a.cotizacion_partida_id,
-    a.tiempo_tecnico,
-    COALESCE(h.hh_improductivas, 0::numeric) AS hh_improductivas,
-    CASE WHEN h.hh_real IS NULL THEN NULL::numeric
-         ELSE h.hh_real - COALESCE(h.hh_improductivas, 0::numeric) END AS hh_productivas,
-    COALESCE(e.n_incidencias, 0) AS n_incidencias
-   FROM obra_actividad a
-     LEFT JOIN LATERAL ( SELECT sum(x.cantidad) AS cantidad_ejecutada,
-            sum(x.avance_pct) AS avance_partes,
-            count(*)::integer AS n_partes,
-            max(x.fecha) AS ultimo_parte,
-            count(*) FILTER (WHERE x.causa_desvio IS NOT NULL)::integer AS n_incidencias
-           FROM obra_ejecucion x
-          WHERE x.actividad_id = a.id) e ON true
-     LEFT JOIN LATERAL ( SELECT sum(r.horas) FILTER (WHERE r.tipo_hora = ANY (ARRAY['normal'::text, 'extra_50'::text, 'extra_100'::text])) AS hh_real,
-            sum(r.horas) FILTER (WHERE r.tipo_hora = ANY (ARRAY['extra_50'::text, 'extra_100'::text])) AS hh_extra,
-            sum(r.horas) FILTER (WHERE r.tipo_hora = ANY (ARRAY['normal'::text, 'extra_50'::text, 'extra_100'::text]) AND r.improductiva) AS hh_improductivas,
-            count(*) FILTER (WHERE r.tipo_hora = ANY (ARRAY['normal'::text, 'extra_50'::text, 'extra_100'::text])) AS n_imputaciones
-           FROM registros_hh r
-          WHERE r.actividad_id = a.id) h ON true
-     LEFT JOIN LATERAL ( SELECT count(*)::integer AS abiertos
-           FROM obra_restriccion x
-          WHERE x.actividad_id = a.id AND x.fecha_liberacion IS NULL) imp ON true
-     LEFT JOIN LATERAL ( SELECT count(*)::integer AS n_tareas,
-            count(*) FILTER (WHERE x.estado = 'hecha'::text)::integer AS n_tareas_hechas
-           FROM obra_actividad x
-          WHERE x.actividad_padre_id = a.id AND NOT x.archivada) t ON true
-     LEFT JOIN LATERAL ( SELECT count(*)::integer AS n_pedidos
-           FROM pedidos_materiales x
-          WHERE x.actividad_id = a.id) ped ON true
-     LEFT JOIN LATERAL ( SELECT count(*)::integer AS n_notas
-           FROM obra_actividad_nota x
-          WHERE x.actividad_id = a.id) nt ON true
-     LEFT JOIN LATERAL ( SELECT count(*)::integer AS n_documentos
-           FROM obra_documento x
-          WHERE x.actividad_id = a.id) doc ON true
-     LEFT JOIN LATERAL ( SELECT count(*)::integer AS n_pasos,
-            count(*) FILTER (WHERE x.hecho_en IS NOT NULL)::integer AS n_pasos_hechos,
-            sum(x.peso) AS peso_total,
-            sum(x.peso) FILTER (WHERE x.hecho_en IS NOT NULL) AS peso_hecho
-           FROM obra_actividad_paso x
-          WHERE x.actividad_id = a.id) ps ON true
-     LEFT JOIN LATERAL ( SELECT count(DISTINCT x.equipo)::integer AS n_equipos
-           FROM obra_ejecucion_equipo x
-             JOIN obra_ejecucion p ON p.id = x.ejecucion_id
-          WHERE p.actividad_id = a.id) eq ON true;
+comment on view public.actividad_horas is
+  'La única definición de «cuáles de las horas de esta actividad produjeron». hh_real es EL TOTAL '
+  '—es lo que se pagó y lo que consume el presupuesto—, hh_improductivas la parte que no produjo y '
+  'hh_productivas la diferencia. La leen el control de la actividad, la captura de rendimiento y el '
+  'forecast: escrita tres veces serían tres definiciones que divergen el día que aparezca un tipo '
+  'de hora nuevo.';
 
-comment on view public.obra_actividad_control is
-  'El control de una actividad. hh_real es EL TOTAL —lo que se pagó y lo que consume el '
-  'presupuesto—; hh_improductivas es la parte que no produjo y hh_productivas la diferencia. La '
-  'productividad se calcula sobre las PRODUCTIVAS: dividir por el total hacía que una espera de '
-  'equipo bajara el rendimiento de la tarea como si la cuadrilla hubiera trabajado peor.';
-
-grant select on public.obra_actividad_control to authenticated;
-grant select on public.obra_actividad_control to service_role;
+grant select on public.actividad_horas to authenticated;
+grant select on public.actividad_horas to service_role;
 
 -- ── 5 · las causas de una obra, contadas ──────────────────────────────────────────────────────
 -- Una sola fuente para «¿por qué se nos fue el tiempo en esta obra?». Suma las dos puertas por las

@@ -43,15 +43,18 @@ with base as (
          c.cantidad_ejecutada,
          c.avance_pct,
          c.hh_plan,
-         c.hh_real,
-         c.hh_improductivas,
-         c.hh_productivas,
+         -- De `actividad_horas` (4500), que es LA definición de la partición. No de
+         -- `obra_actividad_control`: esa vista la reescriben dos frentes y sus columnas dependen del
+         -- orden de aplicación — el forecast no puede depender de eso.
+         ah.hh_real,
+         ah.hh_improductivas,
+         ah.hh_productivas,
          c.inicio_plan, c.fin_plan, c.inicio_base, c.fin_base, c.inicio_real, c.fin_real,
          coalesce(c.dotacion_prevista, padre.dotacion_prevista) as dotacion,
          coalesce(o.jornada_horas, 8)                           as jornada,
          -- El rendimiento OBSERVADO en horas por unidad, sobre lo productivo.
-         case when coalesce(c.cantidad_ejecutada, 0) > 0 and coalesce(c.hh_productivas, 0) > 0
-              then c.hh_productivas / c.cantidad_ejecutada end  as rendimiento_real,
+         case when coalesce(c.cantidad_ejecutada, 0) > 0 and coalesce(ah.hh_productivas, 0) > 0
+              then ah.hh_productivas / c.cantidad_ejecutada end  as rendimiento_real,
          -- Lo que falta, en unidades cuando el método las mide.
          case when c.metodo_avance = 'cantidad' and c.cantidad_objetivo is not null
               then greatest(c.cantidad_objetivo - coalesce(c.cantidad_ejecutada, 0), 0) end
@@ -60,6 +63,7 @@ with base as (
          case when c.avance_pct is not null
               then greatest(1 - c.avance_pct / 100.0, 0) end     as fraccion_restante
     from public.obra_actividad_control c
+    join public.actividad_horas ah on ah.actividad_id = c.actividad_id
     left join public.obra_actividad padre on padre.id = c.actividad_padre_id
     left join public.obra_canonica o on o.id = c.obra_id
    where c.tipo <> 'resumen' and not c.archivada

@@ -137,6 +137,28 @@ test('cascada comercial del XLSM y congelado de solo lectura', { skip: !hayBase 
       }
     })
 
+    await t.test('T4300 · los ocho porcentajes son POR OBRA: otra obra, otro coeficiente', async () => {
+      // Confirmado contra «Horas Hombre.xlsm», un fork más nuevo de la misma planilla: los mismos
+      // ocho parámetros se negocian por obra. Una cotizó con GG 15 · financiero 3×0,5 · IIBB 1,2 ·
+      // Ganancias 1 y le dio coeficiente 1,7769 CON IVA. Por eso la cotización COPIA los ocho a
+      // columnas propias en vez de referenciar la versión del parámetro: si los referenciara, esta
+      // obra necesitaría una versión nueva del estándar de la empresa para negociar su precio.
+      const otra = await uno(`insert into cotizaciones (cliente, obra_nombre, numero, fecha_cotizacion, estado,
+          pct_gastos_generales, pct_beneficio, pct_financiero, factor_financiero,
+          pct_iibb, pct_ganancias, pct_cheque, pct_iva, parametro_comercial_id)
+        values ('ZZ otra','ZZ obra negociada','ZZ-OBRA-2', current_date,'borrador',
+                0.15, 0.22, 0.03, 0.5, 0.012, 0.01, 0.012, 0.21, $1) returning id`, [p.id])
+      await q(`insert into cotizacion_partida (cotizacion_id, orden, descripcion, cantidad, unidad, costo_unitario, hs_unitarias)
+               values ($1, 1, 'ZZ cd', 1, 'gl', 1000000, 0)`, [otra.id])
+      const r = await uno(`select coeficiente_con_iva, coeficiente_sin_iva from cotizacion_cascada where id=$1`, [otra.id])
+      assert.ok(Math.abs(n(r.coeficiente_con_iva) - 1.7769) < 0.0005,
+        `coeficiente ${r.coeficiente_con_iva} contra el 1,7769 de la obra del libro`)
+
+      // Y el vigente NO se movió: la obra negocia su precio, no el estándar de la empresa.
+      const vigente = await uno(`select pct_gastos_generales from parametro_comercial where vigente`)
+      assert.equal(n(vigente.pct_gastos_generales), 0.27)
+    })
+
     // ── el congelado ────────────────────────────────────────────────────────────────────────────
     const cot = await uno(`insert into cotizaciones (cliente, obra_nombre, numero, fecha_cotizacion, estado,
         pct_gastos_generales, pct_beneficio, pct_iva)

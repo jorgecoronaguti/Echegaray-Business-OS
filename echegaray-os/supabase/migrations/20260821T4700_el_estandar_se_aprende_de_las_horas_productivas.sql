@@ -75,8 +75,11 @@ with base as (
          c.unidad,
          c.metodo_avance,
          c.cantidad_objetivo,
-         c.hh_real,
-         c.hh_improductivas,
+         -- Las horas salen de `actividad_horas`, que es LA definición de la partición (4500), y no
+         -- de `obra_actividad_control`: esa vista la reescriben dos frentes y sus columnas dependen
+         -- del orden en que se apliquen. Esta cuenta no puede depender de eso.
+         ah.hh_real,
+         ah.hh_improductivas,
          c.cuadrilla_id,
          c.avance_pct,
          c.archivada,
@@ -96,6 +99,7 @@ with base as (
          coalesce(c.fin_real,    ev.hasta)        as fin_real
     from public.obra_actividad_control c
     join public.obra_actividad a on a.id = c.actividad_id
+    join public.actividad_horas ah on ah.actividad_id = c.actividad_id
     left join public.analisis_costo ac on ac.analisis_id = a.analisis_id
     left join lateral (select min(x.fecha) as desde, max(x.fecha) as hasta, sum(x.cantidad) as cantidad
                          from public.obra_ejecucion x where x.actividad_id = c.actividad_id) ev on true

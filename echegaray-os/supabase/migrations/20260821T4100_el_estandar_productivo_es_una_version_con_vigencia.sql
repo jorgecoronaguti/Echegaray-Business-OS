@@ -162,9 +162,37 @@ comment on function public.nueva_version_de_analisis(uuid, text, numeric) is
 grant execute on function public.nueva_version_de_analisis(uuid, text, numeric) to authenticated;
 
 -- ── 4 · el estándar publicado, una magnitud por columna ───────────────────────────────────────
--- La JORNADA DE REFERENCIA de esta vista son 8 horas y está escrita acá a propósito: el estándar no
--- pertenece a ninguna obra, así que no puede usar `obra_canonica.jornada_horas`. Cuando el estándar
--- se aplica a una obra, el plazo lo calcula la conversión con la jornada DE ESA OBRA.
+--
+-- ═══ LA JORNADA ES UN PARÁMETRO, NO UNA CONSTANTE ESCONDIDA ═══
+--
+-- La producción diaria es `capacidad × jornada ÷ hh por unidad`. La jornada NO puede salir de
+-- `obra_canonica.jornada_horas` porque el estándar no pertenece a ninguna obra — y por eso el
+-- riesgo era escribir un 8 en el medio de la cuenta y que nadie lo volviera a ver.
+--
+-- Va como PARÁMETRO con default 8, que es el default vigente de `obra_canonica.jornada_horas` y por
+-- lo tanto lo que hoy rige en el OS. Y queda dicho que hay evidencia de otro número: la planilla
+-- «Horas Hombre.xlsm» —un fork más nuevo de la misma planilla de cotizar— calcula sus jornadas con
+-- **7,5 h** (`DIAGRAMACION`: jornadas = MAX por categoría de HH_cat ÷ (n_cat × 7,5)). NO se cambia
+-- el default con eso: son dos fuentes y ninguna dice cuál manda para el OS. Quien necesite la de
+-- 7,5 la pasa —`produccion_diaria(hs, capacidad, 7.5)`— y quien decida cuál rige cambia un default,
+-- no busca un 8 tipeado adentro de una vista.
+create or replace function public.produccion_diaria(
+  p_hs_unitarias numeric, p_capacidad numeric, p_jornada numeric default 8)
+returns numeric language sql immutable as $$
+  select case
+           when coalesce(p_hs_unitarias, 0) <= 0 or coalesce(p_capacidad, 0) <= 0 then null
+           else round(p_capacidad * coalesce(nullif(p_jornada, 0), 8) / p_hs_unitarias, 3)
+         end;
+$$;
+
+comment on function public.produccion_diaria(numeric, numeric, numeric) is
+  'Cuántas unidades por día rinde una cuadrilla con ese estándar: capacidad ponderada × jornada ÷ '
+  'hh por unidad. La jornada es un PARÁMETRO con default 8 —el mismo default que obra_canonica—; '
+  'hay evidencia de que la planilla «Horas Hombre.xlsm» calcula con 7,5 h, y por eso es un '
+  'argumento y no un número tipeado adentro de una vista. Devuelve NULL —nunca 0— cuando no hay '
+  'rendimiento o no hay cuadrilla: «sin dato» no es «no produce nada».';
+
+grant execute on function public.produccion_diaria(numeric, numeric, numeric) to authenticated;
 create or replace view public.estandar_productivo with (security_invoker = true) as
 select a.id                                         as analisis_id,
        a.tarea_tipo_id,
@@ -182,8 +210,7 @@ select a.id                                         as analisis_id,
        cu.cuadrilla,
        cu.personas                                  as cuadrilla_personas,
        cu.capacidad_ponderada,
-       case when ac.hs_unitarias > 0 and cu.capacidad_ponderada > 0
-            then round(cu.capacidad_ponderada * 8 / ac.hs_unitarias, 3) end
+       public.produccion_diaria(ac.hs_unitarias, cu.capacidad_ponderada)
                                                     as produccion_diaria_referencia,
        ac.costo_directo                             as costo_unitario,
        ac.n_lineas,
@@ -203,10 +230,12 @@ select a.id                                         as analisis_id,
 comment on view public.estandar_productivo is
   'El estándar vigente de cada tarea, con CADA MAGNITUD EN SU COLUMNA y ninguna mezclada: '
   'hh_por_unidad es esfuerzo, rendimiento_unidades_por_hh es su inversa, capacidad_ponderada es '
-  'plantel y produccion_diaria_referencia es ritmo (capacidad × 8 h ÷ hh por unidad). La jornada de '
-  '8 h es de REFERENCIA y vive acá porque el estándar no pertenece a ninguna obra; el plazo real lo '
-  'calcula la conversión con la jornada de la obra. costo_unitario sale de recurso_precio: para '
-  'quien no ve economía llega en NULL, igual que en analisis_costo.';
+  'plantel y produccion_diaria_referencia es ritmo. Esta última la calcula produccion_diaria(), con '
+  'la jornada como PARÁMETRO y default 8 —el mismo de obra_canonica—: es de REFERENCIA porque el '
+  'estándar no pertenece a ninguna obra, y el plazo real lo calcula la conversión con la jornada de '
+  'la obra. Hay evidencia de que «Horas Hombre.xlsm» calcula con 7,5 h; cambiar cuál rige es cambiar '
+  'un default, no buscar un número tipeado adentro de una vista. costo_unitario sale de '
+  'recurso_precio: para quien no ve economía llega en NULL, igual que en analisis_costo.';
 
 -- ── 5 · permisos ──────────────────────────────────────────────────────────────────────────────
 -- La cuadrilla tipo es OPERATIVA: es con cuánta gente se hace, no cuánto sale. Mismo portero que

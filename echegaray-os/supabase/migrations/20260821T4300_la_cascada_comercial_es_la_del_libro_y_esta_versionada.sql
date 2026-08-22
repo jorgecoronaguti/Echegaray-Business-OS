@@ -81,7 +81,13 @@ create unique index if not exists parametro_comercial_uno_vigente
 comment on table public.parametro_comercial is
   'Los ocho porcentajes de la cascada comercial, versionados con fuente y vigencia. Siete son '
   'DECISIÓN EMPRESARIAL y uno —el IVA— es normativo. Vivían como defaultValue de un componente de '
-  'React: sin historial, invisibles para el chat, y editables por quien tocara el .tsx.';
+  'React: sin historial, invisibles para el chat, y editables por quien tocara el .tsx. '
+  'ESTA TABLA ES EL PISO, NO EL TECHO: se confirmó contra «Horas Hombre.xlsm» —un fork más nuevo de '
+  'la misma planilla— que los mismos ocho porcentajes se deciden POR OBRA (una obra cotizó con GG '
+  '15 % · financiero 3 %×0,5 · IIBB 1,2 % · Ganancias 1 %, coeficiente 1,7769; ORICA con 27 · 7×0,5 '
+  '· 2,4 · 2, coeficiente 2,0352). Por eso cada cotización COPIA los ocho a columnas propias en vez '
+  'de referenciar la versión: la obra que negocia distinto no necesita una versión nueva del '
+  'parámetro, y la que no negocia nada arranca del vigente.';
 comment on column public.parametro_comercial.factor_financiero is
   'Qué fracción del período se financia. 0,5 = medio período, que es lo que el libro asume. El costo '
   'financiero es pct_financiero × factor_financiero sobre el costo industrial.';

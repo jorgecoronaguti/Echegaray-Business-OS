@@ -142,6 +142,18 @@ test('estándar productivo, versiones y moneda — con las migraciones aplicadas
       assert.deepEqual(e.cuadrilla, { oficial: 1, ayudante: 2 })
       // 2,2 × 8 h ÷ 3,0 hs/m² = 5,867 m²/día
       assert.equal(Number(e.produccion_diaria_referencia), 5.867)
+
+      // LA JORNADA ES UN PARÁMETRO, no un 8 tipeado adentro de la vista. Con la jornada de 7,5 h
+      // que usa «Horas Hombre.xlsm» la misma cuadrilla rinde otra cosa, y se puede preguntar sin
+      // tocar una migración. El default sigue siendo 8 —el de obra_canonica— a propósito: hay dos
+      // fuentes y ninguna dice cuál manda para el OS.
+      const conJornadaReal = await uno(`select public.produccion_diaria(3.0, 2.2, 7.5) as v`)
+      assert.equal(Number(conJornadaReal.v), 5.5, '2,2 × 7,5 ÷ 3,0')
+      const porDefecto = await uno(`select public.produccion_diaria(3.0, 2.2) as v`)
+      assert.equal(Number(porDefecto.v), 5.867, 'el default de la jornada dejó de ser 8')
+      // Sin cuadrilla no rinde «cero por día»: no se sabe. NULL, nunca 0.
+      const sinCuadrilla = await uno(`select public.produccion_diaria(3.0, null) as v`)
+      assert.equal(sinCuadrilla.v, null)
       // La inversa, que es OTRA magnitud y por eso está en otra columna.
       assert.equal(Number(e.rendimiento_unidades_por_hh), 0.3333)
       assert.equal(e.sin_cuadrilla_declarada, false)

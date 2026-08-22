@@ -41,6 +41,24 @@ test('horas improductivas y conversión con fechas', { skip: !hayBase }, async (
              values ($1,'ZZ Circuito', 8, '{1,2,3,4,5}')`, [OBRA])
     const persona = await uno(`select id from personas limit 1`)
 
+    await t.test('T5450 + circuito · los dos frentes conviven: ninguno pisa al otro', async () => {
+      // Los dos tocan `obra_actividad_control` y `convertir_partida_a_plan`. Aplicadas en el orden
+      // real —4000…4900, 5450, 20260822T1000— tienen que sobrevivir LAS DOS cosas. Sin la
+      // reconciliación esto se rompe de dos maneras distintas: la vista ABORTA («cannot drop columns
+      // from view») y la conversión se pisa EN SILENCIO, que es la peligrosa.
+      const cols = (await q(`select column_name from information_schema.columns
+                              where table_name='obra_actividad_control'
+                                and column_name in ('tiempo_tecnico','hh_improductivas','hh_productivas','n_incidencias')`))
+        .map((x) => x.column_name).sort()
+      assert.deepEqual(cols, ['hh_improductivas', 'hh_productivas', 'n_incidencias', 'tiempo_tecnico'],
+        'la vista perdió lo que publicaba uno de los dos frentes')
+
+      const fn = (await uno(`select pg_get_functiondef(oid) as d from pg_proc where proname='convertir_partida_a_plan'`)).d
+      assert.match(fn, /no tiene fecha de inicio/, 'la conversión perdió las fechas obligatorias (4600)')
+      assert.match(fn, /subcontrato_fijar_precio/, 'la conversión perdió la rama del paquete (4600)')
+      assert.match(fn, /v_paso\.tiempo_tecnico/, 'la conversión dejó de persistir el tiempo técnico (5450)')
+    })
+
     await t.test('T4500 · la productividad se mide sobre las horas PRODUCTIVAS', async () => {
       const act = await uno(`insert into obra_actividad (obra_id, nombre, tipo, orden, unidad,
           cantidad_objetivo, metodo_avance, hh_plan, clave, fuente)
@@ -128,7 +146,8 @@ test('horas improductivas y conversión con fechas', { skip: !hayBase }, async (
       assert.equal(r.sin_dotacion, false)
       assert.equal(n(r.hh_total), 100)
 
-      const pasos = await q(`select nombre, inicio_plan, fin_plan, dias_plan, hh_plan, metodo_avance
+      const pasos = await q(`select nombre, inicio_plan, fin_plan, dias_plan, hh_plan, metodo_avance,
+                                    tiempo_tecnico
                                from obra_actividad
                               where cotizacion_partida_id=$1 and tipo='tarea' order by orden`, [part.id])
       assert.equal(pasos.length, 5)
@@ -140,6 +159,9 @@ test('horas improductivas y conversión con fechas', { skip: !hayBase }, async (
       for (const p of trabajo) {
         assert.ok(p.fin_plan, `«${p.nombre}» quedó sin fin teniendo dotación`)
         assert.equal(n(p.dias_plan), 1, `«${p.nombre}» duró ${p.dias_plan} días`)
+        // Y NO quedan marcados como tiempo técnico aunque ahora todos tengan dias_plan: es el
+        // backfill de la 5450, cuya premisa la 4600 vuelve falsa.
+        assert.equal(p.tiempo_tecnico, false, `«${p.nombre}» quedó marcado como no comprimible`)
       }
       for (let i = 1; i < trabajo.length; i += 1) {
         assert.ok(new Date(trabajo[i].inicio_plan) > new Date(trabajo[i - 1].fin_plan),
@@ -152,6 +174,8 @@ test('horas improductivas y conversión con fechas', { skip: !hayBase }, async (
       assert.equal(dias(curado.inicio_plan, curado.fin_plan), 6,
         'el tiempo técnico se comprimió como si fuera trabajo: curar siete días son siete días')
       assert.equal(curado.metodo_avance, 'manual')
+      // Y queda PERSISTIDO, que es lo que le faltaba a la pantalla 08 para no comprimirlo (5450).
+      assert.equal(curado.tiempo_tecnico, true, 'el curado no quedó marcado como no comprimible')
 
       // El contenedor del frente lleva el inicio, el fin de la cadena, la dotación y el tope.
       const frente = await uno(`select inicio_plan, fin_plan, dotacion_prevista, tope_frente, rol_estructura
