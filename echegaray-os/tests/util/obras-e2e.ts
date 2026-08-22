@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { MARCA_PRUEBA } from './rastro'
 
 // LO COMPARTIDO POR LOS RECORRIDOS DEL MVP ERP DE OBRAS.
 //
@@ -11,8 +12,11 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 export const EMAIL = 'jorge.o.corona+direccion-test-1783513222134@gmail.com'
 export const PASSWORD = 'TestPassword123!'
 
-/** Todo lo que crean estos recorridos lleva esta marca en el nombre: hace el borrado inequívoco. */
-export const MARCA = 'ZZ-E2E'
+/** Todo lo que crean estos recorridos lleva esta marca en el nombre: hace el borrado inequívoco.
+ *  Se REEXPORTA desde `rastro.ts`, que es donde vive la definición y donde está escrito por qué es
+ *  ésta y no otra. Dos constantes con el mismo valor en dos archivos se separan el día que alguien
+ *  cambia una — y ese día la limpieza deja de encontrar la mitad del residuo. */
+export const MARCA = MARCA_PRUEBA
 export const OBRA = 'le-comedor'
 
 /**

@@ -20,7 +20,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { query } from './db.mjs'
+import { getPool, query } from './db.mjs'
 
 /**
  * La decisión, en un solo lugar. Cada entrada dice: en esta tabla, `authenticated` no puede leer
@@ -137,21 +137,29 @@ test('el contexto interno no queda ciego: sin JWT la función sí devuelve el da
   // punto de vista de los permisos estaba funcionando perfecto.
   //
   // Este test corre POR CONEXIÓN DIRECTA, así que mide exactamente ese contexto.
-  const { rows: [antes] } = await query(
-    `select monto_contratado from public.obra_canonica where id = 'san-francisco'`)
+  //
+  // ═══ Y CORRE DENTRO DE UNA TRANSACCIÓN QUE TERMINA EN ROLLBACK (22/08/2026) ═══
+  //
+  // Antes escribía `monto_contratado = 987654321` COMMITEADO sobre `san-francisco` —una obra
+  // real— y lo restauraba en el `finally`. Entre las dos sentencias, cualquiera que mirara la
+  // pantalla, un reporte o el briefing veía un contrato inventado de $987.654.321 en una obra de
+  // verdad; y si el proceso moría en el medio (un timeout, un SIGKILL), el número inventado se
+  // quedaba. El `finally` protege del error, no de la muerte.
+  //
+  // Adentro de la transacción se mide EXACTAMENTE lo mismo: la misma conexión directa, el mismo
+  // contexto sin JWT, y `obra_panel` lee el update no confirmado porque es la misma sesión. Nada
+  // sale nunca de acá.
+  const c = await getPool().connect()
   try {
-    await query(`update public.obra_canonica set monto_contratado = 987654321 where id = 'san-francisco'`)
-    const { rows: [r] } = await query(
+    await c.query('begin')
+    await c.query(`update public.obra_canonica set monto_contratado = 987654321 where id = 'san-francisco'`)
+    const { rows: [r] } = await c.query(
       `select monto_contratado from public.obra_panel where obra_id = 'san-francisco'`)
     assert.equal(Number(r.monto_contratado), 987654321,
       'el contexto interno (pg_cron, el orquestador) dejó de ver el contrato: las rutinas mienten en silencio')
   } finally {
-    await query(`update public.obra_canonica set monto_contratado = $1 where id = 'san-francisco'`,
-      [antes?.monto_contratado ?? null])
-    const { rows: [fin] } = await query(
-      `select monto_contratado from public.obra_canonica where id = 'san-francisco'`)
-    assert.equal(fin.monto_contratado, antes?.monto_contratado ?? null,
-      'quedó el centinela del test escrito en el contrato de una obra real')
+    await c.query('rollback')
+    c.release()
   }
 })
 
