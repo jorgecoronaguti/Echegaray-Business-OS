@@ -142,7 +142,7 @@ export function PanelTarea({
           )}
           <h2 className="text-[16px] font-semibold text-ink">{nodo.nombre}</h2>
         </div>
-        <Link href={hrefLista} data-testid="cerrar-panel" aria-label="Cerrar el panel"
+        <Link href={hrefLista} scroll={false} data-testid="cerrar-panel" aria-label="Cerrar el panel"
           className="text-[13px] text-faint hover:text-ink">✕</Link>
       </div>
 
@@ -164,6 +164,29 @@ export function PanelTarea({
           </div>
         </div>
       </div>
+
+      {/* ═══ LAS DEPENDENCIAS SE VEN SIN ABRIR SU SOLAPA (22/08/2026 · overhaul UX) ═══
+          «← la que espera esta actividad · → la que espera a ésta», con salto directo al panel de
+          la otra punta. La edición sigue viviendo en la solapa Dependencias; esto es leer. */}
+      {(antes.length > 0 || despues.length > 0) && (
+        <div className="flex flex-col gap-1 border-b border-[#EFEEEA] py-2 text-[12px]" data-testid="deps-compactas">
+          {antes.map((r) => (
+            <span key={r.id} className="flex min-w-0 items-baseline gap-1.5">
+              <span aria-hidden className="shrink-0 text-faint">←</span>
+              <Link href={`${hrefLista}&act=${r.origen_id}`} scroll={false}
+                className="truncate text-ink-soft hover:text-ink hover:underline">{r.origen}</Link>
+              <span className="shrink-0 text-[11px] text-faint">{r.relacion}</span>
+            </span>
+          ))}
+          {despues.map((r) => (
+            <span key={r.id} className="flex min-w-0 items-baseline gap-1.5">
+              <span aria-hidden className="shrink-0 text-faint">→</span>
+              <Link href={`${hrefLista}&act=${r.destino_id}`} scroll={false}
+                className="truncate text-ink-soft hover:text-ink hover:underline">{r.destino}</Link>
+            </span>
+          ))}
+        </div>
+      )}
 
       <div className="py-2.5">
         <SubTabs

@@ -20,6 +20,7 @@
 // evidencia. Acá se ve, se filtra, se selecciona y se opera EN LOTE.
 
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { useMemo, useState } from 'react'
 import { Buscador, SubTabs, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
 import { hh as fmtHH } from './formato'
@@ -66,17 +67,26 @@ export function TabTareas({
 
   const agregados = useMemo(() => rollup(nodos), [nodos])
   const total = useMemo(() => totalObra(nodos, agregados), [nodos, agregados])
+  // El día se fija una vez por montaje: «atrasada» se decide contra el mismo hoy en toda la lista.
+  const hoy = useMemo(() => new Date().toISOString().slice(0, 10), [])
   const filas = useMemo(
-    () => filasVisibles(nodos, agregados, { vista: filtro, query, plegados }),
-    [nodos, agregados, filtro, query, plegados],
+    () => filasVisibles(nodos, agregados, { vista: filtro, query, plegados, hoy }),
+    [nodos, agregados, filtro, query, plegados, hoy],
   )
   const seleccion = useMemo(
     () => nodos.filter((n) => marcadas.has(n.id)).map(candidata),
     [nodos, marcadas],
   )
 
+  // CAMBIAR DE FILTRO NO CIERRA EL PANEL: `act` y `sol` viajan con el enlace. Antes cada clic en
+  // un filtro desmontaba la actividad abierta y reseteaba el scroll — el gesto más barato de la
+  // pantalla costaba el contexto entero.
+  const params = useSearchParams()
+  const actAbierta = params.get('act')
+  const solAbierta = params.get('sol')
+  const cola = (actAbierta ? `&act=${actAbierta}` : '') + (solAbierta ? `&sol=${solAbierta}` : '')
   const base = `/obras/${obraId}?vista=tareas`
-  const hrefFiltro = (v: VistaArbol) => `${base}&filtro=${v}`
+  const hrefFiltro = (v: VistaArbol) => `${base}&filtro=${v}${cola}`
   const limpiar = () => { setQuery(''); setMarcadas(new Set()) }
 
   const marcar = (id: string, v: boolean) => setMarcadas((p) => {
@@ -166,7 +176,10 @@ export function TabTareas({
                 seleccionable={seleccionable(candidata(f.nodo))}
                 alSeleccionar={(v) => marcar(f.nodo.id, v)}
                 alPlegar={() => plegar(f.nodo.id)}
-                hrefBase={hrefFiltro(filtro)}
+                hrefBase={`${base}&filtro=${filtro}`}
+                // La solapa abierta se conserva al pasar de una actividad a otra: quien recorre
+                // filas mirando Rendimiento sigue mirando Rendimiento.
+                sol={solAbierta}
               />
             ))}
             {filas.length === 0 && (

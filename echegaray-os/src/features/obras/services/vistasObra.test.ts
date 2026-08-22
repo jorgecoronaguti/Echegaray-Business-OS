@@ -21,9 +21,14 @@ test('cada alias abre en la vista que la URL vieja mostraba', () => {
   assert.deepEqual(resolverVistaObra('gantt', undefined), { vista: 'tareas', sub: 'gantt' })
 })
 
-test('la sub-vista explícita de una URL vieja se respeta', () => {
-  assert.deepEqual(resolverVistaObra('cronograma', 'lista'), { vista: 'tareas', sub: 'lista' })
-  assert.deepEqual(resolverVistaObra('cronograma', 'tablero'), { vista: 'tareas', sub: 'tablero' })
+// ═══ CAMBIO DE REGLA DECLARADO (22/08/2026 · overhaul UX) ═══
+// Lista, Tablero y Próximos se RETIRARON: eran representaciones del mismo dataset. Sus URLs viejas
+// no caen en el default silencioso (el árbol): abren el Cronograma, que es donde vive lo que
+// mostraban.
+test('las sub-vistas retiradas caen en el Cronograma, no en el árbol', () => {
+  assert.deepEqual(resolverVistaObra('cronograma', 'lista'), { vista: 'tareas', sub: 'gantt' })
+  assert.deepEqual(resolverVistaObra('tareas', 'tablero'), { vista: 'tareas', sub: 'gantt' })
+  assert.deepEqual(resolverVistaObra('tareas', 'proximos'), { vista: 'tareas', sub: 'gantt' })
 })
 
 test('Tareas sin sub abre en el árbol, que es el workspace nuevo', () => {
@@ -59,11 +64,12 @@ test('«Subcontratos» es una pantalla aparte, no una sub-vista del workspace', 
   assert.equal(resolverVistaObra('tareas', 'subcontratos').sub, 'arbol')
 })
 
-test('«Cronograma» NO es una sub-vista de Tareas: el Gantt de ahí dibuja lo guardado', () => {
-  // El alias viejo `?vista=cronograma` sigue cayendo en el Gantt del workspace —eso no se toca,
-  // hay marcadores y enlaces vivos— pero la sub-vista se llama «Gantt» a propósito. Llamarla
-  // «Cronograma» haría creer que ahí se ve el camino crítico, que se calcula en otra pantalla.
-  assert.ok(!SUBS_TAREAS.some((s) => /cronograma/i.test(s.label)))
-  assert.equal(SUBS_TAREAS.find((s) => s.id === 'gantt')?.label, 'Gantt')
+// ═══ CAMBIO DE REGLA DECLARADO (22/08/2026 · overhaul UX) ═══
+// La sub-vista pasó a llamarse «Cronograma»: con Lista/Tablero/Próximos retiradas ya no compite
+// con nada, y «Gantt» nombraba la herramienta en vez del trabajo. La distinción con la secuencia
+// CALCULADA (camino crítico, `/obras/<obra>/cronograma`) vive como enlace dentro de la vista.
+test('el workspace queda en tres sub-vistas: Tareas, Cronograma y Parte diario', () => {
+  assert.deepEqual(SUBS_TAREAS.map((s) => s.id), ['arbol', 'gantt', 'parte'])
+  assert.equal(SUBS_TAREAS.find((s) => s.id === 'gantt')?.label, 'Cronograma')
   assert.deepEqual(resolverVistaObra('cronograma', undefined), { vista: 'tareas', sub: 'gantt' })
 })

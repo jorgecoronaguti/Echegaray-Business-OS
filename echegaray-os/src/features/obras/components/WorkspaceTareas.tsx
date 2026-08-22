@@ -65,9 +65,16 @@ export async function WorkspaceTareas({
   veEconomia: boolean
 }) {
   const vista: VistaArbol = esVistaArbol(filtro) ? filtro : 'todo'
-  const [arbolRes, malImputados] = await Promise.all([
+  // LAS LECTURAS DEL PANEL SALEN JUNTO CON EL ÁRBOL (22/08/2026 · overhaul UX). Pasos, relaciones
+  // e historial sólo necesitan el `act` de la URL, no el nodo resuelto: esperarlas DESPUÉS del
+  // árbol era un viaje entero de más en cada clic sobre una fila. Sólo el contexto y la
+  // vinculación necesitan campos del nodo, y quedan como segunda tanda.
+  const [arbolRes, malImputados, pasos, relaciones, historial] = await Promise.all([
     getArbol(supabase, obraId),
     getAvancesSobreContenedor(supabase, obraId),
+    act ? getPasos(supabase, act) : null,
+    act ? getRelaciones(supabase, obraId) : null,
+    act ? getHistorial(supabase, act) : null,
   ])
   // NO EXISTE y NO PUDE LEER son dos cosas distintas: una lista vacía por error dibujada como «no
   // hay nada» hace que un problema de permisos parezca una obra sin trabajo.
@@ -80,11 +87,8 @@ export async function WorkspaceTareas({
   }
   const arbol = arbolRes.data
   const abierta = act ? arbol.find((n) => n.id === act) ?? null : null
-  const [pasos, relaciones, historial, contexto, vinculacion] = abierta
+  const [contexto, vinculacion] = abierta
     ? await Promise.all([
-        getPasos(supabase, abierta.id),
-        getRelaciones(supabase, obraId),
-        getHistorial(supabase, abierta.id),
         getContextoTarea(supabase, obraId, {
           cuadrillaId: abierta.cuadrilla_id,
           cotizacionPartidaId: abierta.cotizacion_partida_id,
@@ -93,7 +97,7 @@ export async function WorkspaceTareas({
         }, veEconomia),
         getVinculacionTarea(supabase, abierta),
       ])
-    : [null, null, null, null, null]
+    : [null, null]
   const solapa: Solapa = esSolapa(sol) ? sol : 'avance'
   const hrefLista = `/obras/${obraId}?vista=tareas&filtro=${vista}`
 

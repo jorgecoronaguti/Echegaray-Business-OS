@@ -250,7 +250,7 @@ function Proximas({ actividades, obraId, hoy }: {
   return (
     <section data-testid="proximas-resumen">
       <Rotulo accion={
-        <Link href={`/obras/${obraId}?vista=cronograma&sub=proximos`} className="text-[12px] text-muted hover:text-ink">
+        <Link href={`/obras/${obraId}?vista=tareas&sub=gantt`} className="text-[12px] text-muted hover:text-ink">
           Ver cronograma →
         </Link>
       }>Próximas 2 semanas</Rotulo>

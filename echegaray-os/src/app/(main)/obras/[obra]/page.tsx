@@ -61,6 +61,7 @@ import {
 import { borrarHH, imputarHH, imputarHHMasivo } from '@/features/obras/services/actionsHH'
 import { borrarCertificado, crearCertificado } from '@/features/obras/services/actionsContrato'
 import { ETAPA_LABEL, type Etapa } from '@/features/obras/types'
+import { AccionesRapidas } from '@/features/obras/components/AccionesRapidas'
 import { CamposObra } from '@/features/obras/components/CamposObra'
 import { CicloDeVida } from '@/features/obras/components/CicloDeVida'
 import { TabResumen } from '@/features/obras/components/TabResumen'
@@ -77,8 +78,8 @@ import { TabEjecucion } from '@/features/obras/components/TabEjecucion'
 import { getPartes } from '@/features/obras/services/ejecucionService'
 import { getIntegrantesPorCuadrilla } from '@/features/obras/services/personalService'
 import {
-  asignarActividadAPedido, borrarParte, cambiarEstado, cambiarEstadoTarea, crearTarea,
-  definirMedicion, medirEnLote, registrarEjecucion,
+  asignarActividadAPedido, borrarParte, cambiarEstadoTarea, crearTarea,
+  definirMedicion, registrarEjecucion,
 } from '@/features/obras/services/actionsEjecucion'
 import { TabPersonal } from '@/features/obras/components/TabPersonal'
 import { TabOperacion } from '@/features/obras/components/TabOperacion'
@@ -123,21 +124,89 @@ export default async function ObraPage({
   const { vista, sub: subTareas } = resolverVistaObra(vistaRaw, sub)
 
   const supabase = await createClient()
-  // UNA SOLA LECTURA DEL PERFIL PARA TODA LA FICHA. El dato comercial ya no llega de la base a quien
-  // no es Administración; esto decide qué CARTEL se dibuja, para no explicar una ausencia que no lo
-  // es. Ver el comentario largo en `TabEconomia`.
-  // COMERCIAL ES PRECIO, y el precio es de Dirección y Administración. El jefe de obra entra a
-  // Administración desde el 19/08 y ve el COSTO de su obra —el presupuestado y el gastado—, pero no
-  // cuánto se vendió: `veEconomia`, no `esAdministracion`.
-  // ESCRIBIR EL PLAN ES OTRA PREGUNTA QUE VER EL PRECIO: dividir en frentes o cambiar una
-  // precedencia corre fechas de entrega y es de Administración (que incluye a la jefatura de obra).
-  const rolActual = (await getPerfilActual(supabase)).data?.rol ?? null
+
+  // ═══ QUÉ VISTA DEL WORKSPACE SE ESTÁ MIRANDO ═══
+  const enTareas = vista === 'tareas'
+  const esArbol = enTareas && subTareas === 'arbol'
+  const esCronograma = enTareas && subTareas === 'gantt'
+  const esParte = enTareas && subTareas === 'parte'
+
+  // ═══ TODAS LAS LECTURAS DE LA VISTA SALEN JUNTAS (22/08/2026) ═══
+  //
+  // Este bloque era una escalera de once `await` — un viaje entero a la base detrás del otro: el
+  // Resumen tardaba 12,5 s en empezar a dibujarse con consultas que individualmente vuelven en
+  // menos de medio segundo. La vista decide QUÉ se pide (cada solapa paga sólo lo suyo); el
+  // `Promise.all` decide CUÁNDO: todo a la vez, y la página tarda lo que su consulta más lenta.
+  //
+  // UN ERROR DE LECTURA NO SE DIBUJA COMO UNA OBRA VACÍA: lo que admite fallo parcial pasa por
+  // `lector.leer` DESPUÉS de resolver, y el cartel de arriba dice qué no se pudo leer.
+  const lector = crearLector()
+  const necesitaPersonas = esCronograma || vista === 'personal' || esParte
+  const necesitaCuadrillas = vista === 'personal' || esParte || esArbol
+  // Los partes también en Cronograma y Resumen: el panel de la actividad muestra su ejecución
+  // reciente, y «último movimiento» del Resumen es literalmente el último parte.
+  const necesitaPartes = esParte || esCronograma || vista === 'resumen'
+  const [
+    perfilRes, obraRes, actividadesRes, restriccionesRes, planRes,
+    dependenciasRes, personasRes, ubicacion, asignacionesRes, causasRes, registrosRes,
+    actividadHHRes, cuadrillas, integrantes, partesRes, certificadosRes, economiaRes,
+    documentosRes, trabajo, equiposPorActividad, notasPorActividad, catalogoEquipos,
+    anchosDelSplit, opRes,
+  ] = await Promise.all([
+    // COMERCIAL ES PRECIO, y el precio es de Dirección y Administración: el jefe de obra ve el
+    // COSTO de su obra, pero no cuánto se vendió — `veEconomia`, no `esAdministracion`.
+    getPerfilActual(supabase),
+    getObra(supabase, obraId),
+    getActividades(supabase, obraId),
+    getRestricciones(supabase, obraId),
+    getPlanVsReal(supabase, obraId),
+    // Las precedencias sólo las dibuja el Gantt: traerlas en las otras solapas es una consulta
+    // por visita para nadie.
+    esCronograma ? getDependencias(supabase, obraId) : null,
+    necesitaPersonas ? getPersonas(supabase) : null,
+    vista === 'resumen' ? getUbicacion(supabase, obraId) : null,
+    vista === 'personal' ? getAsignaciones(supabase, obraId) : null,
+    vista === 'personal' ? getCausasDesvio(supabase) : null,
+    vista === 'personal' ? getRegistrosHH(supabase, obraId) : null,
+    // Plan contra real por actividad: Personal la publica y Cronograma la usa en el panel de la
+    // actividad, con el MISMO cálculo.
+    vista === 'personal' || esCronograma ? getActividadHH(supabase, obraId) : null,
+    necesitaCuadrillas ? getCuadrillas(supabase) : [],
+    esParte ? getIntegrantesPorCuadrilla(supabase) : {},
+    necesitaPartes ? getPartes(supabase, obraId) : null,
+    vista === 'economia' ? getCertificados(supabase, obraId) : null,
+    // EL PANEL ECONÓMICO TAMBIÉN EN RESUMEN: la línea de margen del resumen sale de acá desde el
+    // 22/08. Antes se armaba con `contratado − costo real` del plan, que no es margen.
+    vista === 'economia' || vista === 'resumen' ? getEconomiaObra(supabase, obraId) : null,
+    // LOS PAPELES LOS PIDEN DOS SOLAPAS: es la MISMA lectura — dos consultas darían dos listas
+    // que un día no coinciden.
+    vista === 'documentos' || esCronograma ? getDocumentos(supabase, obraId) : null,
+    // Cuatro lecturas por OBRA y no una por actividad: el panel cambia de actividad con cada clic.
+    esCronograma
+      ? getTrabajoPorActividad(supabase, obraId)
+      : { personas: new Map(), porFecha: new Map() },
+    esCronograma ? getEquiposPorActividad(supabase, obraId) : new Map(),
+    esCronograma ? getNotas(supabase, obraId) : new Map(),
+    // El catálogo de equipos es AYUDA de carga, no restricción: el campo acepta cualquier texto.
+    esParte ? getCatalogoEquipos(supabase) : [],
+    // El ancho del split se lee en el servidor: la PRIMERA pintura ya sale con el reparto que la
+    // persona eligió. Leído en el cliente, la pantalla nacería con el ancho por defecto y saltaría.
+    esCronograma
+      ? Promise.all([anchoSplit('obra-tabla', ANCHO_TABLA, 300, 760), anchoSplit('obra-panel', ANCHO_PANEL, 340, 760)])
+      : null,
+    // Operación trae sus cuatro listas de una vez: se atan a la obra por el MISMO puente
+    // (`obra_alias`); si esa fuente falla, fallan juntas. Los impedimentos son tabla del OS y no
+    // dependen de ese puente.
+    vista === 'operacion' ? getOperacionObra(supabase, obraId) : null,
+  ])
+
+  const rolActual = perfilRes.data?.rol ?? null
   const veComercial = veEconomia(rolActual)
   const puedeEditarPlan = esAdministracion(rolActual)
-  const { data: obra, error } = await getObra(supabase, obraId)
   // NO EXISTE y NO PUEDO LEER son dos cosas distintas, y confundirlas ya costó caro (17/08/2026):
   // faltaba un `grant` y el módulo entero se veía como "página no encontrada" en vez de decir que no
   // tenía permiso. Buscar un defecto de permisos detrás de un 404 es buscarlo en el lugar equivocado.
+  const { data: obra, error } = obraRes
   if (error) {
     // El cartel COMPARTIDO, no uno propio: trae el diagnóstico del mensaje de la base (permisos,
     // sesión vencida, no se llegó), Reintentar y la hora del último dato bueno de esta ficha.
@@ -145,33 +214,25 @@ export default async function ObraPage({
   }
   if (!obra) notFound()
 
-  // ═══ QUÉ VISTA DEL WORKSPACE SE ESTÁ MIRANDO ═══
-  // Cada una pide SÓLO lo suyo: la ficha se abre muchas veces por día desde el teléfono, en obra y
-  // con mala señal, y traerlo todo en cada visita serían seis consultas para mostrar una.
-  const enTareas = vista === 'tareas'
-  const esArbol = enTareas && subTareas === 'arbol'
-  const esCronograma = enTareas && (subTareas === 'gantt' || subTareas === 'lista'
-    || subTareas === 'tablero' || subTareas === 'proximos')
-  const esParte = enTareas && subTareas === 'parte'
+  const actividades = lector.leer(actividadesRes, [] as NonNullable<typeof actividadesRes.data>)
+  const restricciones = lector.leer(restriccionesRes, [] as NonNullable<typeof restriccionesRes.data>)
+  // El plan conserva su `null`: «esta obra no tiene línea base» es un hecho distinto de «no se
+  // pudo leer el plan», y aplanarlo a un objeto vacío borraría esa diferencia.
+  const plan = lector.leer<NonNullable<typeof planRes.data> | null>(planRes, null)
+  const dependencias = dependenciasRes ? lector.leer(dependenciasRes, []) : []
+  const personas = personasRes ? lector.leer(personasRes, []) : []
+  const asignaciones = asignacionesRes ? lector.leer(asignacionesRes, []) : []
+  const causasDesvio = causasRes ? lector.leer(causasRes, []) : []
+  const registros = registrosRes ? lector.leer(registrosRes, []) : []
+  const actividadHH = actividadHHRes ? lector.leer(actividadHHRes, []) : []
+  const partes = partesRes ? lector.leer(partesRes, []) : []
+  const certificados = certificadosRes ? lector.leer(certificadosRes, []) : []
+  const economia = economiaRes ? lector.leer(economiaRes, null) : null
+  const documentos = documentosRes ? lector.leer(documentosRes, []) : []
+  const [anchoTabla, anchoPanel] = anchosDelSplit ?? [ANCHO_TABLA, ANCHO_PANEL]
+  const operacion = opRes?.data ?? null
+  const subOp: SubOperacion = SUBS_OPERACION.find((x) => x === sub) ?? 'pedidos'
 
-  // ═══ UN ERROR DE LECTURA NO SE DIBUJA COMO UNA OBRA VACÍA ═══
-  //
-  // Todo lo de abajo se leía con `.data ?? []`: si la consulta fallaba, la solapa mostraba «esta
-  // obra todavía no tiene actividades cargadas» o «nadie tiene una asignación en esta obra». Son
-  // afirmaciones sobre la obra sacadas de un fallo de la base — y la ficha se sigue dibujando
-  // (media pantalla es mejor que ninguna), pero ahora con el cartel de lo que no se pudo leer.
-  const lector = crearLector()
-  const [actividades, restricciones, plan] = await Promise.all([
-    getActividades(supabase, obraId),
-    getRestricciones(supabase, obraId),
-    getPlanVsReal(supabase, obraId),
-  ]).then(([a, r, p]) => [
-    lector.leer(a, [] as NonNullable<typeof a.data>),
-    lector.leer(r, [] as NonNullable<typeof r.data>),
-    // El plan conserva su `null`: «esta obra no tiene línea base» es un hecho distinto de «no se
-    // pudo leer el plan», y aplanarlo a un objeto vacío borraría esa diferencia.
-    lector.leer<NonNullable<typeof p.data> | null>(p, null),
-  ] as const)
   const todas = actividades
   // LAS ARCHIVADAS NO ENTRAN AL CRONOGRAMA NI A NINGUNA LISTA: para eso se archivan. Siguen
   // existiendo, y por eso hay dentro de Cronograma una lista aparte para volver a traerlas.
@@ -182,79 +243,19 @@ export default async function ObraPage({
   // ═══ QUÉ ES DEL PLAN Y QUÉ DESCOMPONE UNA ACTIVIDAD ═══
   // Lo decide el TIPO DEL PADRE, no la mera presencia de un padre: desde `20260821T2000` hay 161
   // actividades reales colgadas de su rubro, y el filtro viejo (`!actividad_padre_id`) las dejaba
-  // afuera del Gantt, de la Lista, del Tablero y de Próximos sin un solo error. Ver `subtareas.ts`.
+  // afuera del Gantt sin un solo error. Ver `subtareas.ts`.
   const { plan: filasDelPlan, subtareas: tareasPorActividad } = separarPlanYSubtareas(vivas)
   const acts = filasDelPlan
   const archivadas = todas.filter((a) => a.archivada)
   const restr = restricciones ?? []
   const abiertas = restr.filter((r) => r.estado !== 'liberada')
   const yaSellada = todas.some((a) => a.sellada_en != null)
-
-  // Cada solapa pide SÓLO lo suyo. Traerlo todo en cada visita costaría seis consultas para mostrar
-  // una: la ficha se abre muchas veces por día desde el teléfono, en obra y con mala señal.
-  // Las precedencias sólo las dibuja el Gantt: traerlas en las otras cinco solapas es una consulta
-  // por visita para nadie.
-  const dependencias = esCronograma ? lector.leer(await getDependencias(supabase, obraId), []) : []
-  const necesitaPersonas = esCronograma || vista === 'personal' || esParte
-  const personas = necesitaPersonas ? lector.leer(await getPersonas(supabase), []) : []
-  const ubicacion = vista === 'resumen' ? await getUbicacion(supabase, obraId) : null
-  const asignaciones = vista === 'personal' ? lector.leer(await getAsignaciones(supabase, obraId), []) : []
-  const causasDesvio = vista === 'personal' ? lector.leer(await getCausasDesvio(supabase), []) : []
-  const registros = vista === 'personal' ? lector.leer(await getRegistrosHH(supabase, obraId), []) : []
-  // Plan contra real por actividad y las cuadrillas: sólo los pide la solapa Personal.
-  // Cronograma la usa para mostrar HH real en el panel de la actividad, con el MISMO cálculo.
-  const actividadHH = vista === 'personal' || esCronograma
-    ? lector.leer(await getActividadHH(supabase, obraId), []) : []
-  const necesitaCuadrillas = vista === 'personal' || esParte || esArbol
-  const cuadrillas = necesitaCuadrillas ? await getCuadrillas(supabase) : []
-  const integrantes = esParte ? await getIntegrantesPorCuadrilla(supabase) : {}
-  // Los partes también en Cronograma: el panel de la actividad muestra su ejecución reciente, que
-  // es lo que contesta «¿cómo viene?» sin salir del cronograma. Y en el Resumen, porque «último
-  // movimiento» es literalmente el último parte: sin ellos esa línea no se dibujaba, y una sección
-  // que no aparece porque la página no pidió el dato se lee igual que una obra sin movimiento.
-  const partes = esParte || esCronograma || vista === 'resumen'
-    ? lector.leer(await getPartes(supabase, obraId), []) : []
   const partesPorActividad = new Map<string, typeof partes>()
   for (const p of partes) {
     const previos = partesPorActividad.get(p.actividad_id) ?? []
     previos.push(p)
     partesPorActividad.set(p.actividad_id, previos)
   }
-  const certificados = vista === 'economia' ? lector.leer(await getCertificados(supabase, obraId), []) : []
-  // EL PANEL ECONÓMICO TAMBIÉN EN RESUMEN: la línea de margen del resumen sale de acá desde el
-  // 22/08. Antes se armaba con `contratado − costo real` del plan, que no es margen.
-  const economia = vista === 'economia' || vista === 'resumen'
-    ? lector.leer(await getEconomiaObra(supabase, obraId), null) : null
-  // LOS PAPELES LOS PIDEN DOS SOLAPAS. Documentos muestra los de la obra; Cronograma, los que
-  // alguien colgó de una actividad. Es la MISMA lectura: dos consultas darían dos listas que un día
-  // no coinciden.
-  const documentos = vista === 'documentos' || esCronograma
-    ? lector.leer(await getDocumentos(supabase, obraId), []) : []
-
-  // ═══ LO QUE MUESTRA EL PANEL DE UNA ACTIVIDAD ═══
-  //
-  // Cuatro lecturas por OBRA y no una por actividad: el panel cambia de actividad con cada clic, y
-  // una consulta por clic haría el cronograma pegajoso justo en lo que más se usa. Se indexan una
-  // vez, acá, y el Gantt sólo se las pasa al panel.
-  const trabajo = esCronograma
-    ? await getTrabajoPorActividad(supabase, obraId)
-    : { personas: new Map(), porFecha: new Map() }
-  const equiposPorActividad = esCronograma
-    ? await getEquiposPorActividad(supabase, obraId) : new Map()
-  const notasPorActividad = esCronograma
-    ? await getNotas(supabase, obraId) : new Map()
-  // El catálogo de equipos es AYUDA de carga, no restricción: el campo acepta cualquier texto, y un
-  // equipo alquilado por una semana no puede ser motivo para no anotarlo.
-  const catalogoEquipos = esParte ? await getCatalogoEquipos(supabase) : []
-  // ═══ EL ANCHO DEL SPLIT SE LEE EN EL SERVIDOR ═══
-  // La cookie la escribe el navegador al soltar el divisor y la lee acá el servidor, así que la
-  // PRIMERA pintura del workspace ya sale con el reparto que la persona eligió. Leyéndola en el
-  // cliente, la pantalla más pesada del sistema nacería con el ancho por defecto y se corregiría
-  // sola cien milisegundos después — un salto visible justo donde más molesta.
-  const [anchoTabla, anchoPanel] = esCronograma
-    ? await Promise.all([anchoSplit('obra-tabla', ANCHO_TABLA, 300, 760), anchoSplit('obra-panel', ANCHO_PANEL, 340, 760)])
-    : [ANCHO_TABLA, ANCHO_PANEL]
-
   const docsPorActividad = new Map<string, typeof documentos>()
   for (const d of documentos) {
     if (!d.actividad_id) continue
@@ -277,18 +278,6 @@ export default async function ObraPage({
       })
     }
   }
-  // Operación trae sus cuatro listas de una sola vez: las cuatro se atan a la obra por el MISMO
-  // puente (`obra_alias`), así que resolverlo cuatro veces sería resolverlo cuatro veces mal.
-  // LAS CUATRO LISTAS Y LOS IMPEDIMENTOS NO COMPARTEN DESTINO (20/08/2026). Pedidos, compras,
-  // herramientas y movimientos salen de una fuente externa por el puente de alias; si esa fuente
-  // falla, las cuatro fallan juntas —y eso está bien, porque media pantalla llena se leería como
-  // «esta obra no tiene movimientos»—. Los impedimentos son una tabla del OS y no tienen NADA que
-  // ver con ese puente: hasta hoy se escondían con las otras cuatro, así que un problema del Sheet
-  // dejaba a la obra sin poder anotar qué la está frenando.
-  const opRes = vista === 'operacion' ? await getOperacionObra(supabase, obraId) : null
-  const operacion = opRes?.data ?? null
-  const subOp: SubOperacion = SUBS_OPERACION.find((x) => x === sub) ?? 'pedidos'
-
   // ═══ EL CONTEXTO: DÓNDE ESTOY, DE QUIÉN ES ═══
   // El dueño lo dibujó así: «← Obras», el nombre de la obra, y debajo el cliente. El cliente es un
   // link cuando existe en el eje canónico; cuando la obra sólo tiene el nombre del cliente escrito
@@ -341,6 +330,8 @@ export default async function ObraPage({
           campos={campos}
           derecha={
             <div className="flex flex-wrap items-center gap-3" data-testid="cabecera-obra">
+              {/* Las cinco operaciones de todos los días, sin buscar en qué solapa viven. */}
+              <AccionesRapidas obraId={obraId} />
               {/* ARCHIVADA SE DICE EN EL ENCABEZADO: es la única señal de que esta ficha se abrió
                   por su URL y no desde el portafolio, y sin ella alguien podría cargar HH o avance
                   sobre una obra archivada sin enterarse de que lo está. */}
@@ -516,9 +507,7 @@ export default async function ObraPage({
             baseline: sellarBaselineMasivo.bind(null, obraId),
           }}
           restaurarActividad={archivarActividad.bind(null, obraId)}
-          cambiarEstado={cambiarEstado.bind(null, obraId)}
           datosPorActividad={datosPorActividad}
-          medirEnLote={medirEnLote.bind(null, obraId)}
           anchoTabla={anchoTabla}
           anchoPanel={anchoPanel}
         />

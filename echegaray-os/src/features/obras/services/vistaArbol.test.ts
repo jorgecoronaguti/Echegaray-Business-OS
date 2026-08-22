@@ -56,21 +56,45 @@ test('la vista En curso deja afuera lo que no arrancó y lo terminado', () => {
     ['Estructura', 'Encofrado de piso'])
 })
 
-// 22/08/2026 · SE SEPARÓ RESPONSABLE DE CUADRILLA. Las fixtures decían `responsable: 'Cuadrilla 1'`
-// —una composición productiva metida en el campo de la persona—, que es exactamente el defecto que
-// se corrigió: `NodoObra` ahora tiene `responsable` (persona), `cuadrilla` y `subcontratista`. Lo
-// que la vista «Con problema» mira es el EJECUTOR, no el responsable.
-test('la vista Con problema junta la deuda de carga, el subcontrato y lo que no tiene quién lo ejecute', () => {
+// ═══ CAMBIO DE REGLA DECLARADO (22/08/2026 · overhaul UX) ═══
+// «Con problema» se retiró: agrupaba conceptos del modelo bajo un rótulo impredecible. Los filtros
+// nuevos nombran lo que se busca en obra: Atrasadas, Bloqueadas, Sin asignar.
+test('Atrasadas: venció el fin de plan y no está terminada — el avance nulo no la esconde', () => {
   const arbol: NodoObra[] = [
     contenedor('R'),
-    nodo('ok', { padre_id: 'R', nivel: 1, hh_plan: 4, cuadrilla: 'Cuadrilla 1' }),
-    nodo('sin-analisis', { padre_id: 'R', nivel: 1, cuadrilla: 'Cuadrilla 1' }),
+    nodo('vencida-a-medias', { padre_id: 'R', nivel: 1, hh_plan: 4, fin_plan: '2026-08-01', avance_pct: 60 }),
+    nodo('vencida-sin-medir', { padre_id: 'R', nivel: 1, hh_plan: 4, fin_plan: '2026-08-01' }),
+    nodo('vencida-pero-hecha', { padre_id: 'R', nivel: 1, hh_plan: 4, fin_plan: '2026-08-01', avance_pct: 100 }),
+    nodo('al-dia', { padre_id: 'R', nivel: 1, hh_plan: 4, fin_plan: '2026-09-01', avance_pct: 10 }),
+    nodo('sin-plan', { padre_id: 'R', nivel: 1, hh_plan: 4 }),
+  ]
+  const ids = filasVisibles(arbol, rollup(arbol), { vista: 'atrasadas', query: '', plegados: new Set(), hoy: '2026-08-22' })
+    .map((f) => f.nodo.id)
+  assert.deepEqual(ids, ['R', 'vencida-a-medias', 'vencida-sin-medir'])
+})
+
+test('Bloqueadas: sólo lo que tiene un impedimento abierto', () => {
+  const arbol: NodoObra[] = [
+    contenedor('R'),
+    nodo('libre', { padre_id: 'R', nivel: 1, hh_plan: 4 }),
+    nodo('frenada', { padre_id: 'R', nivel: 1, hh_plan: 4, impedimentos_abiertos: 2 }),
+  ]
+  const ids = filasVisibles(arbol, rollup(arbol), { vista: 'bloqueadas', query: '', plegados: new Set() })
+    .map((f) => f.nodo.id)
+  assert.deepEqual(ids, ['R', 'frenada'])
+})
+
+test('Sin asignar mira el EJECUTOR: el subcontrato tiene quién lo haga, el responsable solo no alcanza', () => {
+  const arbol: NodoObra[] = [
+    contenedor('R'),
+    nodo('con-cuadrilla', { padre_id: 'R', nivel: 1, hh_plan: 4, cuadrilla: 'Cuadrilla 1' }),
     nodo('sub', { padre_id: 'R', nivel: 1, hh_plan: 4, subcontratista: 'Yeseros', es_subcontrato: true }),
+    nodo('solo-responsable', { padre_id: 'R', nivel: 1, hh_plan: 4, responsable: 'PEREZ JUAN' }),
     nodo('sin-nadie', { padre_id: 'R', nivel: 1, hh_plan: 4 }),
   ]
-  const ids = filasVisibles(arbol, rollup(arbol), { vista: 'problema', query: '', plegados: new Set() })
+  const ids = filasVisibles(arbol, rollup(arbol), { vista: 'sin_asignar', query: '', plegados: new Set() })
     .map((f) => f.nodo.id)
-  assert.deepEqual(ids, ['R', 'sin-analisis', 'sub', 'sin-nadie'])
+  assert.deepEqual(ids, ['R', 'solo-responsable', 'sin-nadie'])
 })
 
 // EL DEFECTO 4.3, ATRAPADO. Una actividad CON responsable declarado y SIN cuadrilla sigue sin poder

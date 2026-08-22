@@ -49,7 +49,7 @@ export function AvanceMasivo({
 
   const valor = valores[operacion] ?? ''
   const visibles = useMemo(
-    () => nodos.filter((n) => coincide(n, n.avance_pct, 'todo', query)),
+    () => nodos.filter((n) => coincide(n, n.avance_pct, 'todo', query, '')),
     [nodos, query],
   )
   const seleccion = useMemo(

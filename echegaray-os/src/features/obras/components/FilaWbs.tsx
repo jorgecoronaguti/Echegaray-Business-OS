@@ -42,7 +42,7 @@ function BarraAvance({ pct, critica }: { pct: number; critica: boolean }) {
 }
 
 export function FilaWbs({
-  fila, abierta, seleccionada, seleccionable, alSeleccionar, alPlegar, hrefBase,
+  fila, abierta, seleccionada, seleccionable, alSeleccionar, alPlegar, hrefBase, sol = null,
 }: {
   fila: FilaVisible
   abierta: boolean
@@ -52,6 +52,8 @@ export function FilaWbs({
   alPlegar: () => void
   /** La URL de la fila conserva la vista y el buscador: abrir el panel no puede reordenar la lista. */
   hrefBase: string
+  /** La solapa del panel abierta ahora, si hay una: la fila la conserva al cambiar de actividad. */
+  sol?: string | null
 }) {
   const n = fila.nodo
   const est = estadoDeFila(n, fila.avance)
@@ -93,7 +95,8 @@ export function FilaWbs({
               className="w-3 shrink-0 text-[11px] text-faint hover:text-ink"
             >{fila.plegado ? '▸' : '▾'}</button>
           ) : <span className="w-3 shrink-0" aria-hidden />}
-          <Link href={`${hrefBase}&act=${n.id}`} data-testid={`fila-${n.id}`} className={`${jerarquia} hover:underline`}>
+          {/* `scroll={false}`: abrir el panel no puede mandar la lista al tope. */}
+          <Link href={`${hrefBase}&act=${n.id}${sol ? `&sol=${sol}` : ''}`} scroll={false} data-testid={`fila-${n.id}`} className={`${jerarquia} hover:underline`}>
             {n.nombre}
           </Link>
           {n.partida_codigo && (
@@ -111,15 +114,35 @@ export function FilaWbs({
       </Td>
 
       <Td className="w-[132px]">
-        {fila.avance === null ? (
-          <span className="text-[11.5px] text-faint">sin avance</span>
+        {/* EL AVANCE ES UNA PUERTA (22/08/2026 · overhaul UX): tocarlo abre el panel en la solapa
+            Avance — registrar lo hecho arranca desde el número, no desde un menú. El contenedor no
+            la ofrece: su avance se agrega, no se carga. */}
+        {n.es_contenedor ? (
+          fila.avance === null
+            ? <span className="text-[11.5px] text-faint">sin avance</span>
+            : (
+              <span className="flex items-center gap-2">
+                <BarraAvance pct={fila.avance} critica={n.es_critica} />
+                <span className="w-[42px] shrink-0 text-right font-mono text-[11.5px] tabular-nums text-ink-soft">
+                  {porcentaje(fila.avance)}
+                </span>
+              </span>
+            )
         ) : (
-          <span className="flex items-center gap-2">
-            <BarraAvance pct={fila.avance} critica={n.es_critica} />
-            <span className="w-[42px] shrink-0 text-right font-mono text-[11.5px] tabular-nums text-ink-soft">
-              {porcentaje(fila.avance)}
-            </span>
-          </span>
+          <Link href={`${hrefBase}&act=${n.id}&sol=avance`} scroll={false}
+            aria-label={`Avance de ${n.nombre}`} data-testid={`avance-${n.id}`}
+            className="group flex items-center gap-2">
+            {fila.avance === null ? (
+              <span className="text-[11.5px] text-faint group-hover:text-ink group-hover:underline">sin avance</span>
+            ) : (
+              <>
+                <BarraAvance pct={fila.avance} critica={n.es_critica} />
+                <span className="w-[42px] shrink-0 text-right font-mono text-[11.5px] tabular-nums text-ink-soft group-hover:underline">
+                  {porcentaje(fila.avance)}
+                </span>
+              </>
+            )}
+          </Link>
         )}
       </Td>
 

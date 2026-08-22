@@ -70,7 +70,9 @@ export function SubTabs({
             : 'border-b-[1.5px] border-transparent text-muted hover:text-ink'
         }`
         return i.href ? (
-          <Link key={i.href} href={i.href} data-testid={i.testid} aria-current={i.activo ? 'true' : undefined} className={clase}>
+          // `scroll={false}`: cambiar de sub-vista o de filtro no puede mandar la página al tope —
+          // el que está mirando la fila 200 del árbol sigue mirando la fila 200.
+          <Link key={i.href} href={i.href} scroll={false} data-testid={i.testid} aria-current={i.activo ? 'true' : undefined} className={clase}>
             {contenido}
           </Link>
         ) : (

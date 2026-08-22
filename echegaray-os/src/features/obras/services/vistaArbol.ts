@@ -9,14 +9,22 @@
 import { ejecutorDe, sinAnalisis, type Agregado, type NodoObra } from './wbs.ts'
 import type { EstadoActividad } from '../types/index.ts'
 
-export const VISTAS_ARBOL = ['todo', 'en_curso', 'critico', 'problema'] as const
+// ═══ FILTROS RÁPIDOS AL ESTILO DE UN GESTOR DE PROYECTOS (22/08/2026 · overhaul UX) ═══
+//
+// «Con problema» agrupaba conceptos del modelo (sin análisis, subcontrato, sin ejecutor) bajo un
+// rótulo que nadie podía predecir. Los filtros nuevos nombran lo que un jefe de obra busca:
+// atrasadas, bloqueadas, sin asignar. La deuda de carga (sin análisis) sigue visible como estado
+// de la fila; no necesita un filtro con nombre técnico.
+export const VISTAS_ARBOL = ['todo', 'en_curso', 'atrasadas', 'bloqueadas', 'sin_asignar', 'critico'] as const
 export type VistaArbol = (typeof VISTAS_ARBOL)[number]
 
 export const VISTA_ARBOL_LABEL: Record<VistaArbol, string> = {
   todo: 'Todo',
   en_curso: 'En curso',
+  atrasadas: 'Atrasadas',
+  bloqueadas: 'Bloqueadas',
+  sin_asignar: 'Sin asignar',
   critico: 'Camino crítico',
-  problema: 'Con problema',
 }
 
 export function esVistaArbol(v: unknown): v is VistaArbol {
@@ -66,9 +74,10 @@ function normalizar(s: string): string {
   return s.toLocaleLowerCase('es-AR').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 }
 
-/** ¿La fila, por sí sola, entra en la vista y en la búsqueda? Sin mirar a sus antepasados. */
+/** ¿La fila, por sí sola, entra en la vista y en la búsqueda? Sin mirar a sus antepasados.
+ *  `hoy` viene de afuera: la regla es pura y el test no depende del día en que corre. */
 export function coincide(
-  n: NodoObra, avance: number | null, vista: VistaArbol, query: string,
+  n: NodoObra, avance: number | null, vista: VistaArbol, query: string, hoy: string,
 ): boolean {
   if (query) {
     const q = normalizar(query)
@@ -82,8 +91,15 @@ export function coincide(
   switch (vista) {
     case 'todo': return true
     case 'en_curso': return avance !== null && avance > 0 && avance < 100
+    // ATRASADA = venció su fin de plan y no está terminada. El avance nulo cuenta: «nadie midió»
+    // no puede esconder un vencimiento — se muestra y que se resuelva mirándola.
+    case 'atrasadas':
+      return !n.es_contenedor && n.fin_plan !== null && n.fin_plan < hoy && (avance === null || avance < 100)
+    case 'bloqueadas': return n.impedimentos_abiertos > 0
+    // SIN ASIGNAR pregunta por el EJECUTOR (cuadrilla o subcontratista), no por el responsable:
+    // una actividad con jefe y sin cuadrilla sigue sin poder arrancar.
+    case 'sin_asignar': return !n.es_contenedor && ejecutorDe(n) === null
     case 'critico': return n.es_critica
-    case 'problema': return sinAnalisis(n) || n.es_subcontrato || ejecutorDe(n) === null
   }
 }
 
@@ -106,15 +122,15 @@ export interface FilaVisible {
 export function filasVisibles(
   nodos: readonly NodoObra[],
   agregados: Map<string, Agregado>,
-  opciones: { vista: VistaArbol; query: string; plegados: ReadonlySet<string> },
+  opciones: { vista: VistaArbol; query: string; plegados: ReadonlySet<string>; hoy?: string },
 ): FilaVisible[] {
-  const { vista, query, plegados } = opciones
+  const { vista, query, plegados, hoy = '' } = opciones
   const porId = new Map(nodos.map((n) => [n.id, n]))
   const avances = new Map(nodos.map((n) => [n.id, avanceDe(n, agregados)]))
 
   const dentro = new Set<string>()
   for (const n of nodos) {
-    if (!coincide(n, avances.get(n.id) ?? null, vista, query)) continue
+    if (!coincide(n, avances.get(n.id) ?? null, vista, query, hoy)) continue
     dentro.add(n.id)
     let p = n.padre_id
     while (p && !dentro.has(p)) { dentro.add(p); p = porId.get(p)?.padre_id ?? null }
