@@ -18,9 +18,11 @@ import {
   getArbol, getAvancesSobreContenedor, getHistorial, getPasos, getRelaciones,
 } from '../services/tareasService'
 import { getContextoTarea, type ContextoTarea } from '../services/panelTareaService'
+import { getVinculacionTarea, type VinculacionTarea } from '../services/vinculacionTareaService'
 import { esVistaArbol, type VistaArbol } from '../services/vistaArbol'
 import { aplicarEnLote, editarCampoDeTarea } from '../services/actionsAvance'
 import { cambiarRelacion, dividirEnFrentes, quitarRelacion } from '../services/actionsEstructura'
+import { vincularActividadAEstandar } from '../services/actionsVinculacion'
 
 /** El contexto que se dibuja cuando ninguna de sus lecturas pudo correr: todo en null y ninguna
  *  afirmación. La pantalla dice «sin dato» por cada cosa, que es exactamente lo que pasa. */
@@ -28,6 +30,10 @@ const CONTEXTO_VACIO: ContextoTarea = {
   jornadaHoras: null, diasHabiles: null, capacidadCuadrilla: null, partida: null,
   puedeVerPartida: false, historico: null, diasHastaFinPlan: null,
 }
+
+/** Sin panel abierto no hay actividad que vincular. `no_aplica` y no `sin_vincular`: el default
+ *  visible es «sin vincular» para una TAREA, y acá no hay ninguna. */
+const VINCULACION_VACIA: VinculacionTarea = { estado: 'no_aplica', sugerencia: null, opciones: [] }
 
 /** `?dot=` — la dotación simulada, acotada a 0–99. Es la misma lectura que la 08: un `dot=99999`
  *  desde la barra de direcciones no puede hacer que el panel dibuje un plantel imposible. Sin
@@ -74,7 +80,7 @@ export async function WorkspaceTareas({
   }
   const arbol = arbolRes.data
   const abierta = act ? arbol.find((n) => n.id === act) ?? null : null
-  const [pasos, relaciones, historial, contexto] = abierta
+  const [pasos, relaciones, historial, contexto, vinculacion] = abierta
     ? await Promise.all([
         getPasos(supabase, abierta.id),
         getRelaciones(supabase, obraId),
@@ -85,8 +91,9 @@ export async function WorkspaceTareas({
           tareaTipoId: abierta.tarea_tipo_id,
           finPlan: abierta.fin_plan,
         }, veEconomia),
+        getVinculacionTarea(supabase, abierta),
       ])
-    : [null, null, null, null]
+    : [null, null, null, null, null]
   const solapa: Solapa = esSolapa(sol) ? sol : 'avance'
   const hrefLista = `/obras/${obraId}?vista=tareas&filtro=${vista}`
 
@@ -115,10 +122,12 @@ export async function WorkspaceTareas({
           contexto={contexto ?? CONTEXTO_VACIO}
           dotacion={dotacionDe(dot, abierta.dotacion_prevista, abierta.tope_frente)}
           puedeEditar={puedeEditar}
+          vinculacion={vinculacion ?? VINCULACION_VACIA}
           acciones={{
             dividir: dividirEnFrentes.bind(null, obraId, abierta.id),
             cambiarRelacion: cambiarRelacion.bind(null, obraId),
             quitarRelacion: quitarRelacion.bind(null, obraId),
+            vincularEstandar: vincularActividadAEstandar.bind(null, obraId, abierta.id),
           }}
         />
       ) : undefined}

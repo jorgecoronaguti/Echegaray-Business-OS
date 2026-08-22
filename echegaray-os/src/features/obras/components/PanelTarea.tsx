@@ -21,6 +21,7 @@ import type { NodoObra } from '../services/wbs'
 import { avancePorPasos, hhProyectadas, proyeccionExcedida } from '../services/avance'
 import type { PasoDeActividad, RegistroAvance, RelacionLegible } from '../services/tareasService'
 import type { ContextoTarea } from '../services/panelTareaService'
+import type { VinculacionTarea } from '../services/vinculacionTareaService'
 import { motivoNoDividir } from '../services/panelTarea'
 import type { AccionFormulario } from '@/shared/components/ui/FormAccion'
 import { PanelTareaRecursos } from './PanelTareaRecursos'
@@ -93,7 +94,7 @@ function Cifra({ rotulo, valor, falta, alerta = false }: {
 
 export function PanelTarea({
   obraId, nodo, solapa, pasos, relaciones, historial, hrefLista, cuadrillas, editarCampo,
-  contexto, dotacion, puedeEditar, acciones,
+  contexto, dotacion, puedeEditar, acciones, vinculacion,
 }: {
   obraId: string
   nodo: NodoObra
@@ -113,11 +114,15 @@ export function PanelTarea({
   /** Administración o jefatura de obra. Decide qué GESTOS se ofrecen, no qué se puede: eso lo
    *  decide cada acción del servidor. */
   puedeEditar: boolean
+  /** El estado de vinculación con el motor de estándares. Se calcula sobre el nodo que el árbol ya
+   *  trajo; sus dos lecturas sólo corren si hay algo que resolver. */
+  vinculacion: VinculacionTarea
   acciones: {
     dividir: AccionFormulario
     /** Ya atadas a la obra; el id de la dependencia se ata con `.bind` donde se dibuja. */
     cambiarRelacion: (dependenciaId: string, form: FormData) => ReturnType<AccionFormulario>
     quitarRelacion: (dependenciaId: string, form: FormData) => ReturnType<AccionFormulario>
+    vincularEstandar: AccionFormulario
   }
 }) {
   const base = `${hrefLista}&act=${nodo.id}`
@@ -397,7 +402,10 @@ export function PanelTarea({
         </section>
       )}
 
-      {solapa === 'rendimiento' && <PanelTareaRendimiento nodo={nodo} contexto={contexto} />}
+      {solapa === 'rendimiento' && (
+        <PanelTareaRendimiento nodo={nodo} contexto={contexto} vinculacion={vinculacion}
+          vincular={acciones.vincularEstandar} puedeEditar={puedeEditar} />
+      )}
 
       {solapa === 'historial' && (
         <section data-testid="panel-historial">

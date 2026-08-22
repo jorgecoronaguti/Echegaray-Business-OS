@@ -314,7 +314,11 @@ export interface ReferenciaDrive {
 export interface DocumentoObra {
   drive_file_id: string
   rol: string | null
-  origen: 'confirmado' | 'inferido'
+  /** De dónde salió el vínculo. `carpeta_drive` NO es lo mismo que `confirmado`: es evidencia dura
+   *  —el archivo está adentro de la carpeta de Drive que declara la obra, alguien lo puso ahí— pero
+   *  nadie lo afirmó todavía. Mostrarlos con la misma palabra borraría exactamente la distinción
+   *  que permite saber qué falta revisar. */
+  origen: 'confirmado' | 'inferido' | 'carpeta_drive'
   tipo: TipoDrive
   name: string | null
   path: string | null
