@@ -37,6 +37,14 @@ import { etiquetaDeTipo, urlDeDrive } from '../services/driveUrl'
 import { CATEGORIAS_SUGERIDAS, SIN_CLASIFICAR, porCategoria } from '../services/documentosCategoria'
 import { fecha as fmtFecha } from './formato'
 
+/** Cómo se lee cada origen. Un mapa y no un ternario: el día que se agregue un cuarto, el ternario
+ *  lo dibujaría como «Inferido» sin que nadie lo note. */
+const ORIGEN: Record<DocumentoObra['origen'], string> = {
+  confirmado: 'Confirmado',
+  carpeta_drive: 'Carpeta de Drive',
+  inferido: 'Inferido',
+}
+
 /**
  * El alta, plegada. Hay DOS y no una: el handoff dibuja un solo «Vincular documento», pero un id de
  * Drive pelado no dice si es un archivo o una carpeta, y abrir un id de carpeta como archivo da 404
@@ -178,7 +186,10 @@ export function TabDocumentos({
                   <Td className={categoria === SIN_CLASIFICAR ? 'text-warn' : ''}>
                     {categoria === SIN_CLASIFICAR ? 'sin clasificar' : categoria}
                   </Td>
-                  <Td>{d.origen === 'confirmado' ? 'Confirmado' : 'Inferido'}</Td>
+                  {/* TRES ORÍGENES Y NO DOS: «carpeta de Drive» es evidencia dura —el archivo vive
+                      adentro de la carpeta que declara la obra— pero ninguna persona lo afirmó.
+                      Llamarlo «Confirmado» borraría justo lo que hay que poder revisar. */}
+                  <Td>{ORIGEN[d.origen] ?? 'Inferido'}</Td>
                   {asignar && (
                     <Td>
                       <AsignarActividad

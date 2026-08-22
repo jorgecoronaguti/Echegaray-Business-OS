@@ -15,13 +15,20 @@ import Link from 'next/link'
 import { cadenaDeRendimiento } from '../services/panelTarea'
 import type { NodoObra } from '../services/wbs'
 import type { ContextoTarea } from '../services/panelTareaService'
+import type { VinculacionTarea } from '../services/vinculacionTareaService'
+import type { AccionFormulario } from '@/shared/components/ui/FormAccion'
+import { VincularEstandar } from './VincularEstandar'
 
 const n2 = (v: number | null) =>
   (v == null ? null : v.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
 
-export function PanelTareaRendimiento({ nodo, contexto }: {
+export function PanelTareaRendimiento({ nodo, contexto, vinculacion, vincular, puedeEditar }: {
   nodo: NodoObra
   contexto: ContextoTarea
+  /** El estado de vinculación con el motor de estándares y con qué resolverlo. */
+  vinculacion: VinculacionTarea
+  vincular: AccionFormulario
+  puedeEditar: boolean
 }) {
   const cadena = cadenaDeRendimiento({
     hsAnalisis: contexto.historico?.hsAnalisis ?? null,
@@ -85,6 +92,10 @@ export function PanelTareaRendimiento({ nodo, contexto }: {
             nada a la base maestra: el histórico se arma por tarea tipo, no por nombre.
           </p>
         )}
+
+      {/* HASTA EL 22/08/2026 ESTA FRASE NO TENÍA CÓMO RESOLVERSE. Decía el problema —las 350
+          actividades importadas del tracker están sin vincular— y no ofrecía el gesto. */}
+      <VincularEstandar vinculacion={vinculacion} vincular={vincular} puedeEditar={puedeEditar} />
     </section>
   )
 }

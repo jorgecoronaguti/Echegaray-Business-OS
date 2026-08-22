@@ -180,7 +180,13 @@ export async function getDocumentos(
       // `manual`/`path_inferido` es el vocabulario viejo de la tabla. Se traduce acá para que la
       // pantalla no muestre dos palabras distintas para lo mismo durante la ventana en la que la
       // migración está escrita pero no aplicada.
-      origen: v.origen === 'inferido' || v.origen === 'path_inferido' ? 'inferido' : 'confirmado',
+      //
+      // `carpeta_drive` (20260822T6500) NO se colapsa en `confirmado`: el vínculo salió de que el
+      // archivo vive adentro de la carpeta que declara la obra —evidencia dura— pero ninguna persona
+      // lo afirmó. Mezclarlos haría que los 32 papeles que entran por barrido se lean como revisados.
+      origen: v.origen === 'carpeta_drive'
+        ? 'carpeta_drive'
+        : v.origen === 'inferido' || v.origen === 'path_inferido' ? 'inferido' : 'confirmado',
       // `drive_index` GANA: un archivo renombrado en Drive aparece con su nombre nuevo sin que nadie
       // toque el vínculo. Lo guardado al vincular es el respaldo para los archivos que el índice no
       // conoce — sólo espeja la carpeta `administracion`.
