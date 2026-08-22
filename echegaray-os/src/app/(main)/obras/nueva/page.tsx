@@ -48,7 +48,7 @@ import {
 } from '@/features/obras/components/CamposObra'
 import { BarraDePasos, LinkPaso, Paso } from '@/features/obras/components/PasosAlta'
 import { ChecklistPreparacion } from '@/features/obras/components/ChecklistPreparacion'
-import { Aviso, BotonEnlace, CAMPO, Campo, Nulo, Volver } from '@/shared/components/ds'
+import { Aviso, Ayuda, BotonEnlace, CAMPO, Campo, Nulo, Volver } from '@/shared/components/ds'
 import { FormAccion, PageShell } from '@/shared/components/ui'
 
 export const dynamic = 'force-dynamic'
@@ -264,9 +264,12 @@ export default async function NuevaObraPage({
             {/* EL CHECKLIST NO SE REPITE ACÁ: es el panel de la derecha, el mismo que acompañó los
                 siete pasos anteriores. Dos copias de la misma lista en la misma pantalla son dos
                 lugares donde puede decir cosas distintas. */}
+            {/* 22/08/2026 · Se recorta a las dos frases que son ESTADO —la obra existe, y dónde
+                mirar lo que falta—. La explicación de por qué nada bloquea era la misma que el
+                panel de al lado repetía tres líneas más abajo. */}
             <p className="text-[13px] text-ink">
-              La obra ya existe y está en la cartera. Lo que falte lo dice el panel de al lado, línea
-              por línea y con el número concreto: nada de esto bloquea nada.
+              La obra ya existe y está en la cartera. Lo que falte lo dice el panel de al lado, y
+              nada de eso la bloquea.
             </p>
           </Paso>
         )}
@@ -278,11 +281,13 @@ export default async function NuevaObraPage({
                 aparte, el alta podría despedirse diciendo «todo listo» sobre una obra que el Resumen
                 muestra a medio preparar. */}
             <ChecklistPreparacion obraId={obraId} />
-            <p className="mt-3 max-w-[520px] text-[11.5px] leading-relaxed text-faint">
-              Lo pendiente no bloquea nada: la obra ya existe y está en la cartera. Esta misma lista
-              aparece en el Resumen de la obra hasta que no falte nada — no es un tablero, es un
-              checklist que se agota.
-            </p>
+            {/* 22/08/2026 · El párrafo acompañaba al checklist en los OCHO pasos del alta. Qué es
+                la lista se pregunta una vez; que lo pendiente no bloquea ya se lee en el paso de
+                confirmación, que es donde alguien podría creer que sí. */}
+            <Ayuda titulo="Qué es esta lista" testid="ayuda-checklist-alta">
+              Lo pendiente no bloquea nada: la obra ya existe y está en la cartera. Aparece igual en
+              el Resumen hasta que no falte nada — no es un tablero, es un checklist que se agota.
+            </Ayuda>
           </aside>
         )}
       </div>

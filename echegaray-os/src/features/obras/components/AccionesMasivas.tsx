@@ -24,6 +24,7 @@
 import { useState, type ReactNode } from 'react'
 import type { Persona } from '../types'
 import { CTRL, type ResultadoAccion } from '@/shared/components/ui'
+import { Ayuda } from '@/shared/components/ds'
 import type { EntradaHH, ResultadoMasivo } from '../services/actionsMasivas'
 
 export type AccionesEnLote = {
@@ -166,10 +167,13 @@ function HHPlan({ correr }: { correr: (e: EntradaHH) => Promise<void> }) {
           )}
         </label>
       )}
-      <p className="mt-2 text-[11px] leading-relaxed text-muted">
-        No se escribe 0: cero horas dice que la actividad no lleva mano de obra, y eso no es lo mismo
-        que todavía no saberlo.
-      </p>
+      {/* 22/08/2026 · El motivo de no escribir 0 se pliega. El popover tiene 286 px y el párrafo
+          empujaba el botón de cargar fuera de la primera mirada; la regla sigue acá, a un clic, para
+          el que se pregunte por qué el 0 no sirve. */}
+      <Ayuda titulo="Por qué no se escribe 0" testid="ayuda-hh-cero">
+        Cero horas dice que la actividad no lleva mano de obra, y eso no es lo mismo que todavía no
+        saberlo.
+      </Ayuda>
       <div className="mt-2.5">
         <Disparar
           label="Cargar HH"

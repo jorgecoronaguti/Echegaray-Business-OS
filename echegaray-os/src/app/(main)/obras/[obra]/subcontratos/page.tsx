@@ -168,14 +168,17 @@ export default async function SubcontratosObraPage({
               }}
             />
           ) : (
+            /* 22/08/2026 · «Tocá un paquete para ver…» se borró: la lista de la izquierda es
+               clicleable y el panel aparece al tocarla — describir el gesto no lo enseña, lo repite.
+               El enlace a las actividades SÍ queda: es la única forma de salir de acá sin volver
+               por el menú, y no se deduce de ninguna otra cosa de la pantalla. */
             <aside className="rounded-card border border-line bg-surface p-4">
-              <p className="text-[12.5px] leading-relaxed text-muted">
-                Tocá un paquete para ver su alcance contratado, lo que Echegaray le pone, sus papeles
-                y su gente.{' '}
-                <Link href={`/obras/${obraId}?vista=tareas&sub=arbol`} className="font-medium text-ink hover:underline">
-                  Ver las actividades de la obra
-                </Link>
-              </p>
+              <Link
+                href={`/obras/${obraId}?vista=tareas&sub=arbol`}
+                className="text-[12.5px] font-medium text-ink hover:underline"
+              >
+                Ver las actividades de la obra
+              </Link>
             </aside>
           )}
         </div>

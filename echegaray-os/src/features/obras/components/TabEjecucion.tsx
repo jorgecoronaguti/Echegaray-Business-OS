@@ -28,7 +28,7 @@ import {
   BotonAccion, FormAccion, type AccionFormulario, type ResultadoAccion,
 } from '@/shared/components/ui'
 import {
-  CAMPO, Campo, Estado, Eyebrow, Nulo, Tabla, Td, Th, THead, Tr, Vacio,
+  Ayuda, CAMPO, Campo, Estado, Eyebrow, Nulo, Tabla, Td, Th, THead, Tr, Vacio,
 } from '@/shared/components/ds'
 import type { Actividad, ParteEjecucion, Persona } from '../types'
 import { deHoy, kpisDelDia } from '../services/ejecucionService'
@@ -288,11 +288,15 @@ export function TabEjecucion({
               </div>
             </Extra>
 
-            <p className="text-[11px] leading-relaxed text-faint">
-              Un parte mueve la producción y el avance de la actividad; las horas van a Personal, a la
-              obra y a cada persona; el equipo y la evidencia quedan en la actividad. Se carga una
-              sola vez, y no cierra el día.
-            </p>
+            {/* 22/08/2026 · Las cuatro líneas de «qué mueve un parte» dejaron de estar clavadas al
+                pie del formulario: el que carga partes todos los días ya lo sabe, y el que entra la
+                primera vez la encuentra a un clic. El aviso que sí hay que leer —el resultado del
+                envío— deja de competir con un párrafo que no cambia nunca. */}
+            <Ayuda titulo="Qué mueve un parte" testid="ayuda-parte-diario">
+              Un mismo parte escribe la producción de la actividad y las horas: van a Personal, a la
+              obra y a cada persona. Se carga una sola vez —no hay que repetir las horas en
+              Personal— y no cierra el día.
+            </Ayuda>
           </div>
         </FormAccion>
       </section>

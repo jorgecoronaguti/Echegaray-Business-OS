@@ -17,7 +17,7 @@
 // distinta de `personas` a propósito — mezclarlas contaminaría HH propias, cargas sociales y
 // capacidad, que son tres cuentas del plantel propio.
 
-import { Aviso, CAMPO, Campo, Estado, Plegable, TituloPanel } from '@/shared/components/ds'
+import { Aviso, Ayuda, CAMPO, Campo, Estado, Plegable, TituloPanel } from '@/shared/components/ds'
 import { BotonAccion, FormAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
 import { cantidad as fmtCantidad, fecha as fmtFecha, plata } from './formato'
 import type { AportePaquete, Paquete } from '../services/subcontratosService'
@@ -316,9 +316,12 @@ function PersonalExterno({ paquete, accion }: { paquete: Paquete; accion: Accion
           )
         })}
       </ul>
-      <p className="mt-2 text-[11px] leading-relaxed text-muted" data-testid="nota-nomina">
+      {/* 22/08/2026 · La nota se pliega. Es una regla del modelo —esta gente no es nuestra— que se
+          consulta la primera vez y después estorba una lista que se lee todos los días. El testid se
+          conserva: el texto sigue en el documento, sólo cerrado. */}
+      <Ayuda titulo="Por qué no suma a la nómina" testid="nota-nomina">
         No entra en la nómina ni en la capacidad de obra.
-      </p>
+      </Ayuda>
       <Plegable titulo="Registrar una persona" testid="abrir-persona">
         <FormAccion accion={accion} testid="form-persona" enviar="Registrar" limpiarAlOk mensajeOk="Persona registrada.">
           <input type="hidden" name="subcontrato_id" value={p.id} />

@@ -13,7 +13,7 @@
 // puede decir esta pantalla.
 
 import { FormAccion, BotonAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
-import { CAMPO, Campo, Nulo, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
+import { Ayuda, CAMPO, Campo, Nulo, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
 import type { ActividadHH, RegistroHH } from '../services/personalService'
 import type { Actividad, Asignacion, Persona } from '../types'
 import { lecturaProductividad } from '../services/productividadHH'
@@ -303,10 +303,13 @@ export function FormMasiva({
         ))}
       </div>
 
-      <p className="mt-2 text-[11px] text-faint">
-        El que no trabajó se deja en blanco o en cero: no se imputa. Quien ya tenga horas cargadas ese
-        día se saltea y se avisa cuántos fueron.
-      </p>
+      {/* 22/08/2026 · La regla de la carga masiva se pliega: quien imputa la cuadrilla todos los
+          días no la relee, y el resultado del envío —cuántos entraron y cuántos se saltearon— ya
+          dice lo mismo DESPUÉS de actuar, que es cuando importa. */}
+      <Ayuda titulo="Quién queda afuera" testid="ayuda-hh-masiva">
+        El que no trabajó se deja en blanco o en cero: no se imputa. Quien ya tenga horas cargadas
+        ese día se saltea y se avisa cuántos fueron.
+      </Ayuda>
       <Campo rotulo="Observación" className="mt-2 block">
         <input name="notas" maxLength={300} className={CAMPO} />
       </Campo>
