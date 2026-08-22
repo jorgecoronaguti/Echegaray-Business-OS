@@ -24,6 +24,8 @@ test('debitadoDe: sólo Pagado sale de la cuenta; el muerto no se toca', () => {
   assert.equal(debitadoDe('Pagado'), 'SI')
   assert.equal(debitadoDe('Aceptado'), 'No')
   assert.equal(debitadoDe('Por aceptar'), 'No')
+  // «Emitido» (22/08): salió del banco y el beneficiario aún no aceptó — compromiso vivo, no muerto.
+  assert.equal(debitadoDe('Emitido'), 'No')
   // Un anulado/repudiado/rechazado NO se marca: contarlo inventaría una deuda que no existe.
   assert.equal(debitadoDe('Rechazado'), null)
   assert.equal(debitadoDe('Anulado'), null)

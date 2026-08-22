@@ -73,7 +73,11 @@ export function sinComprobante({ registro = [], agregar = [] } = {}) {
 export function debitadoDe(estado) {
   const e = String(estado ?? '').trim().toLowerCase()
   if (e === 'pagado') return 'SI'
-  if (e === 'aceptado' || e === 'por aceptar' || e === 'en custodia') return 'No'
+  // «Emitido» es el eCheq que salió pero el beneficiario todavía no aceptó (pantalla del banco,
+  // 22/08): compromiso VIVO, plata que va a salir — igual que Aceptado, DEBITADO «No». Tratarlo
+  // como muerto dejaba fuera del registro justo los cheques más nuevos (374/375/376: $6,5M que
+  // los proveedores reclamaban y la pestaña no mostraba).
+  if (e === 'aceptado' || e === 'emitido' || e === 'por aceptar' || e === 'en custodia') return 'No'
   return null
 }
 
