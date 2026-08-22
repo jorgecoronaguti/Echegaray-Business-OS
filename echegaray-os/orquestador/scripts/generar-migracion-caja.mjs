@@ -20,7 +20,9 @@ import { dirname, resolve } from 'node:path'
 import { sqlRubroDeCaja } from '../lib/rubro-caja.mjs'
 import { RUBROS_SIN_PROYECCION, MIN_MESES } from '../lib/cash-flow-lineas.mjs'
 
-export const DESTINO = resolve(dirname(fileURLToPath(import.meta.url)), '../../supabase/migrations/20260720160000_rubro_caja_nucleo.sql')
+// (renombrada 160000→173000 el 22/08/2026: dependía de jornal_quincena, que nace en 170000 — el
+// hardening de reproducibilidad ordenó la cadena por su dependencia real)
+export const DESTINO = resolve(dirname(fileURLToPath(import.meta.url)), '../../supabase/migrations/20260720173000_rubro_caja_nucleo.sql')
 
 /** NÚCLEO PURO: el texto completo de la migración. Se genera para poder testearlo sin tocar disco. */
 /** La línea del cash flow que NO sale de Compras porque mide lo que a Compras le falta. */

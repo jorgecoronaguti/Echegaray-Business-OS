@@ -41,7 +41,7 @@ async function esperarListo(intentos = 40) {
 }
 
 async function aplicarMigracion() {
-  const sql = readFileSync(join(RAIZ, 'db/migrations/0001_comunicacion.sql'), 'utf8')
+  const sql = readFileSync(join(RAIZ, '..', 'echegaray-os', 'supabase', 'migrations', '20260730125500_comunicacion_fundacion.sql'), 'utf8')
   const c = new pg.Client({ connectionString: URL })
   await c.connect(); await c.query(sql); await c.end()
   console.log('→ migración 0001 aplicada')

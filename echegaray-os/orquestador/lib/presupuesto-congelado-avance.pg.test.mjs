@@ -50,13 +50,20 @@ test('presupuesto congelado, subcontrato y obra_avance — contra la base real',
     })
 
     await t.test('el subcontrato de $5.000.000 aporta su precio: subtotal 5M, HH 0 (no NULL)', async () => {
+      // ═══ CAMBIO DE REGLA DECLARADO (22/08/2026) ═══
+      // Antes esta partida se insertaba en `cot`, que el subtest anterior YA congeló — y T1200
+      // ahora rechaza agregar partidas a una oferta congelada (era una de las puertas del
+      // auditor). El subcontrato vive en su propia cotización, que es además el caso real:
+      // el paquete se cotiza, no se le agrega a una oferta emitida.
+      const cot2 = await uno(`insert into cotizaciones (cliente, obra_nombre, numero, fecha_cotizacion, estado)
+        values ('ZZ TEST','ZZ','ZZ-T-2', current_date, 'borrador') returning id`)
       const p = await uno(`insert into cotizacion_partida (cotizacion_id, orden, descripcion, cantidad, unidad, subcontratada, precio_subcontrato)
-        values ($1, 2, 'ZZ instalación', 1, 'gl', true, 5000000) returning id`, [cot.id])
+        values ($1, 1, 'ZZ instalación', 1, 'gl', true, 5000000) returning id`, [cot2.id])
       const v = await uno(`select subtotal, hh, sin_precio_de_subcontrato from cotizacion_partida_valorizada where partida_id=$1`, [p.id])
       assert.equal(Number(v.subtotal), 5000000)
       assert.equal(Number(v.hh), 0)
       assert.equal(v.sin_precio_de_subcontrato, false)
-      const casc = await uno(`select precio_venta from cotizacion_cascada where id=$1`, [cot.id])
+      const casc = await uno(`select precio_venta from cotizacion_cascada where id=$1`, [cot2.id])
       assert.ok(Number(casc.precio_venta) >= 5000000, `precio_venta=${casc.precio_venta}: el paquete quedó fuera del precio`)
     })
 

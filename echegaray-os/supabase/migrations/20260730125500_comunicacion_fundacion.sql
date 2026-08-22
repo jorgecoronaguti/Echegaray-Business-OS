@@ -1,3 +1,9 @@
+-- ═══ CONSTANCIA RETROACTIVA (mudado acá el 22/08/2026) ═══
+-- Este archivo nació como communication-service/db/migrations/0001_comunicacion.sql y se aplicó a
+-- la base real el 30/07/2026, por fuera de la cadena de supabase/migrations. La fecha del nombre es
+-- la del hecho: sin esta pieza, la cadena no se puede reproducir sobre una base virgen (asistencia
+-- 20260730130000 asume el esquema `comunicacion` ya creado). Contenido intacto — sólo se mudó.
+
 -- PR-3 · Communication Layer — schema `comunicacion` (esquema final tras los
 -- ajustes bloqueantes de la auditoría: M2 dedup atómico, M3 inbox/DLQ, M4 lease,
 -- M7 auditoría de rechazos, M10 puente).
