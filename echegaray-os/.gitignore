@@ -89,3 +89,4 @@ orquestador/scripts/.cfsemanal-backup-*.json
 
 # Capturas de QA visual: evidencia local, no artefacto del repo.
 /capturas
+orquestador/scripts/diff-esquemas.txt
