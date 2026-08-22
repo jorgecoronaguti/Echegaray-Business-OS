@@ -17,7 +17,7 @@ import { useMemo, useState } from 'react'
 import { Buscador, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
 import { BarraTareas, VALOR_INICIAL } from './BarraTareas'
 import { porcentaje } from './formato'
-import type { NodoObra } from '../services/wbs'
+import { ejecutorDe, type NodoObra } from '../services/wbs'
 import { coincide } from '../services/vistaArbol'
 import {
   quedaraEn, seleccionable, type CandidataMasiva, type OperacionMasiva,
@@ -105,7 +105,10 @@ export function AvanceMasivo({
           <Th>Medición</Th>
           <Th>Avance actual</Th>
           {seleccion.length > 0 && <Th className="text-[color:var(--os-marca)]">Quedará en</Th>}
-          <Th>Responsable</Th>
+          {/* CUADRILLA: la columna dice quién EJECUTA (cuadrilla prevista o subcontratista), que es
+              lo que ayuda a decidir sobre qué filas cargar avance junto. Quién responde por la
+              actividad es otra pregunta y vive en el panel de la tarea. */}
+          <Th>Cuadrilla</Th>
         </THead>
         <tbody>
           {visibles.map((n) => {
@@ -153,7 +156,7 @@ export function AvanceMasivo({
                   </Td>
                 )}
                 <Td className="text-[11.5px]">
-                  {n.es_contenedor ? '' : n.responsable ?? <span className="text-faint">sin asignar</span>}
+                  {n.es_contenedor ? '' : ejecutorDe(n) ?? <span className="text-faint">sin asignar</span>}
                 </Td>
               </Tr>
             )

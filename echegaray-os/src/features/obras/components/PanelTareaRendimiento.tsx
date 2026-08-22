@@ -1,4 +1,4 @@
-// 04 · SOLAPA RENDIMIENTO — el mismo número en cinco momentos, uno debajo del otro.
+// 04 · SOLAPA ESFUERZO — el mismo número en cinco momentos, uno debajo del otro.
 //
 // ═══ ACÁ NO SE ACEPTA NI SE VERSIONA NADA ═══
 //
@@ -13,6 +13,7 @@
 
 import Link from 'next/link'
 import { cadenaDeRendimiento } from '../services/panelTarea'
+import { MAGNITUD } from '@/features/base-maestra/services/vocabulario'
 import type { NodoObra } from '../services/wbs'
 import type { ContextoTarea } from '../services/panelTareaService'
 
@@ -45,8 +46,11 @@ export function PanelTareaRendimiento({ nodo, contexto }: {
 
   return (
     <section data-testid="panel-rendimiento">
+      {/* ESFUERZO, NO RENDIMIENTO: los cinco eslabones son hs/unidad y MEJORAN CUANDO BAJAN. Ver
+          `features/base-maestra/services/vocabulario.ts`, que es donde viven las cuatro magnitudes
+          y el porqué. La clave de la solapa sigue siendo `rendimiento`: viaja en la URL. */}
       <h3 className="mb-1.5 text-[12.5px] font-semibold text-ink">
-        Rendimiento en hs{nodo.unidad ? `/${nodo.unidad}` : ' por unidad'}
+        {MAGNITUD.esfuerzo.rotulo} en {MAGNITUD.esfuerzo.unidad(nodo.unidad)}
       </h3>
       <ul data-testid="cadena-rendimiento">
         {cadena.map((e) => (
@@ -64,11 +68,11 @@ export function PanelTareaRendimiento({ nodo, contexto }: {
         ))}
       </ul>
 
-      {/* SIN LAS DOS PUNTAS NO HAY RENDIMIENTO REAL, y decirlo importa: es la fila que decide si la
+      {/* SIN LAS DOS PUNTAS NO HAY ESFUERZO REAL, y decirlo importa: es la fila que decide si la
           obra está aprendiendo algo o sólo consumiendo horas. */}
       <p className="mt-3 text-[11.5px] leading-relaxed text-muted">
-        El rendimiento real necesita producción física Y horas imputadas. Con una sola de las dos no
-        hay rendimiento: hay una de las dos puntas.
+        El esfuerzo real necesita producción física Y horas imputadas. Con una sola de las dos hay
+        una punta, no una medición.
       </p>
 
       {nodo.tarea_tipo_id

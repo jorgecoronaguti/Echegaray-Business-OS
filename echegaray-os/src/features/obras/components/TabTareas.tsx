@@ -151,7 +151,9 @@ export function TabTareas({
             <Th num>Cant.</Th>
             <Th>Avance</Th>
             <Th num className="hidden lg:table-cell">Plazo</Th>
-            <Th className="hidden lg:table-cell">Responsable</Th>
+            {/* CUADRILLA, no «Responsable»: la columna publica la composición productiva prevista
+                (o el subcontratista). Ver el comentario de la celda en `FilaWbs`. */}
+            <Th className="hidden lg:table-cell">Cuadrilla</Th>
             <Th>Estado</Th>
           </THead>
           <tbody>

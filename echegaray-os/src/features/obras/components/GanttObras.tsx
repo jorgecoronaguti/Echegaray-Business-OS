@@ -50,6 +50,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState, useEffect, useRef } from 'react'
+import { Ayuda } from '@/shared/components/ds'
 import { construirEscala, type Escala } from '../services/escala'
 import { UMBRAL_ATRASO, ventana, type Barra, type FilaObra, type Semaforo } from '../services/ganttObras'
 import { ETAPA_LABEL } from '../types'
@@ -398,15 +399,23 @@ export function GanttObras({ filas, hoyIso }: { filas: FilaObra[]; hoyIso: strin
           discutir, y el que lo mira le inventa un significado al rojo. Los cuatro umbrales salen de
           `UMBRAL_ATRASO`, que es de donde los lee la función que pinta: si mañana cambian, este
           párrafo cambia solo. */}
+      {/* 22/08/2026 · SEIS LÍNEAS PERMANENTES DEBAJO DEL GRÁFICO PASARON A LA AYUDA. El criterio no
+          se tira —sigue entero, y sigue leyendo `UMBRAL_ATRASO`—, pero es una leyenda: se consulta
+          cuando alguien discute un color, no cada vez que se abre la cartera de obras. Lo que sí
+          queda a la vista es que el avance esperado es una ESTIMACIÓN, porque eso cambia cómo se
+          lee CADA barra y no se puede esconder detrás de un clic. */}
       <p className="mt-3 max-w-[900px] text-[11.5px] leading-relaxed text-faint" data-testid="regla-semaforo">
+        El avance esperado es una <strong className="font-medium text-muted">ESTIMACIÓN</strong>:
+        ordena la atención, no afirma cuánto se atrasó una obra.
+      </p>
+      <Ayuda titulo="Cómo se pinta el semáforo" testid="ayuda-semaforo">
         La obra sin fechas de plan no dibuja barra: no se le inventa un inicio, se dice el motivo. El
         rojo no es «se pasó la fecha»: es una brecha de más de {UMBRAL_ATRASO.criticoPuntos} puntos
         contra el avance esperado, o más de {UMBRAL_ATRASO.criticoDias} días de atraso —ámbar a partir
         de {UMBRAL_ATRASO.menorPuntos} puntos o {UMBRAL_ATRASO.menorDias} días—. Terminada al 100% va
-        al día aunque haya cerrado tarde. El avance esperado es una <strong className="font-medium text-muted">ESTIMACIÓN</strong>:
-        supone que el trabajo se reparte parejo sobre el calendario, y ninguna obra avanza así. Sirve
-        para ordenar la atención, no para afirmar cuánto se atrasó una obra.
-      </p>
+        al día aunque haya cerrado tarde. El avance esperado supone que el trabajo se reparte parejo
+        sobre el calendario, y ninguna obra avanza así.
+      </Ayuda>
     </div>
   )
 }

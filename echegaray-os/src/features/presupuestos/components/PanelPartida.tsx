@@ -73,7 +73,9 @@ export function PanelPartida({
         />
         <Fila k="Incidencia en el presupuesto" v={porcentaje(inc, 'auto')} falta="sin base" />
         <Fila k="HH previstas" v={fHH(p.hh)} falta="sin dato" />
-        <Fila k="Rendimiento" v={p.hs_unitarias === null ? null : `${rendimiento(p.hs_unitarias)} hs/${p.unidad ?? 'un'}`} falta="sin dato" />
+        {/* ESFUERZO Y NO «RENDIMIENTO»: hs/unidad baja cuando la tarea mejora. Con el rótulo viejo,
+            cotizar «con más rendimiento» significaba cotizar con MÁS horas. */}
+        <Fila k="Esfuerzo" v={p.hs_unitarias === null ? null : `${rendimiento(p.hs_unitarias)} hs/${p.unidad ?? 'un'}`} falta="sin dato" />
         {/* BENEFICIO, no «margen»: el 22 % se aplica sobre el costo industrial, así que es markup
             sobre el costo y no margen sobre el precio. El margen sobre el precio lo publica la
             cascada aparte y siempre da menos — confundirlos es el error más caro de presupuestar. */}

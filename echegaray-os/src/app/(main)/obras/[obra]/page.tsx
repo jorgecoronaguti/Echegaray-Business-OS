@@ -207,7 +207,7 @@ export default async function ObraPage({
   const necesitaCuadrillas = vista === 'personal' || esParte || esArbol
   const cuadrillas = necesitaCuadrillas ? await getCuadrillas(supabase) : []
   const integrantes = esParte ? await getIntegrantesPorCuadrilla(supabase) : {}
-  // Los partes también en Planificación: el panel de la actividad muestra su ejecución reciente, que
+  // Los partes también en Cronograma: el panel de la actividad muestra su ejecución reciente, que
   // es lo que contesta «¿cómo viene?» sin salir del cronograma. Y en el Resumen, porque «último
   // movimiento» es literalmente el último parte: sin ellos esa línea no se dibujaba, y una sección
   // que no aparece porque la página no pidió el dato se lee igual que una obra sin movimiento.
@@ -220,7 +220,7 @@ export default async function ObraPage({
     partesPorActividad.set(p.actividad_id, previos)
   }
   const certificados = vista === 'economia' ? lector.leer(await getCertificados(supabase, obraId), []) : []
-  // LOS PAPELES LOS PIDEN DOS SOLAPAS. Documentos muestra los de la obra; Planificación, los que
+  // LOS PAPELES LOS PIDEN DOS SOLAPAS. Documentos muestra los de la obra; Cronograma, los que
   // alguien colgó de una actividad. Es la MISMA lectura: dos consultas darían dos listas que un día
   // no coinciden.
   const documentos = vista === 'documentos' || esCronograma

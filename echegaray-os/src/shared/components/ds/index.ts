@@ -21,6 +21,7 @@ export { useSplit, Divisor, ZonaSplit } from './Split'
 // componentes de cliente. Se importa por su ruta: '@/shared/components/ds/split-servidor'.
 export { PanelDetalle, PlanVsReal, BarraAvance } from './Panel'
 export { Aviso, ErrorCampo } from './Aviso'
+export { Ayuda } from './Ayuda'
 export { CAMPO, Campo, Buscador, IconoBuscar, Filtros } from './Controles'
 export { BuscadorURL, ESPERA_MS } from './BuscadorURL'
 export { MenuContextual } from './Menu'

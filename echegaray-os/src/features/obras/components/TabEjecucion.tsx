@@ -371,8 +371,10 @@ export function TabEjecucion({
 
         <section>
           <Eyebrow className="mb-2.5">Cómo viene cada frente</Eyebrow>
+          {/* 22/08/2026 · «Se crean en Planificación» mandaba a una pestaña que ya no existe: el
+              plan vive en Cronograma, sobre las mismas actividades que se ejecutan acá. */}
           {orden.length === 0
-            ? <Vacio>Esta obra todavía no tiene actividades cargadas. Se crean en Planificación.</Vacio>
+            ? <Vacio>Esta obra todavía no tiene actividades cargadas. Se crean en Cronograma.</Vacio>
             : (
                 <Tabla testid="tabla-ejecucion" minWidth={680}>
                   <THead>

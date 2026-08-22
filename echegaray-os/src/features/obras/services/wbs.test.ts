@@ -23,6 +23,8 @@ const nodo = (id: string, extra: Partial<NodoObra> = {}): NodoObra => ({
   avance_pct: null,
   fin_plan: null,
   responsable: null,
+  cuadrilla: null,
+  subcontratista: null,
   es_subcontrato: false,
   estado: null,
   impedimentos_abiertos: 0,

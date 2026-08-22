@@ -103,7 +103,10 @@ export function TareasTipo({
             <Th className="w-[86px]">Código</Th>
             <Th>Tarea tipo</Th>
             <Th className="w-[56px]">Un.</Th>
-            <Th num className="w-[82px]">Hs/un.</Th>
+            {/* ESFUERZO Y NO «RENDIMIENTO»: son hs por unidad, y bajan cuando la tarea mejora.
+                La unidad queda en el rótulo porque una columna de números sin magnitud declarada
+                se lee al revés. */}
+            <Th num className="w-[82px]">Esfuerzo hs/un.</Th>
             <Th className="w-[118px]">Análisis</Th>
           </THead>
           <tbody>
@@ -118,7 +121,8 @@ export function TareasTipo({
                 </Td>
                 <Td className="text-[12px]">{t.unidad}</Td>
                 <Td num>
-                  {/* «sin dato» y no 0: una tarea sin rendimiento aporta 0 HH al plan, que es mentira. */}
+                  {/* «sin dato» y no 0: una tarea sin esfuerzo cargado aporta 0 HH al plan, que es
+                      la afirmación de que no lleva mano de obra. */}
                   <N v={t.hs_unitarias} decimales={2} falta="sin dato" />
                 </Td>
                 <Td>

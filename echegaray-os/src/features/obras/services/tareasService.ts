@@ -32,13 +32,15 @@ interface FilaWbs {
   archivada: boolean
 }
 
-/** El nombre del que responde por la actividad, con la precedencia que ya usa el resto del módulo. */
-function responsableDe(a: Actividad, subcontratista: string | undefined): string | null {
-  if (subcontratista) return subcontratista
+/** La composición productiva prevista. La cuadrilla canónica manda; el texto legacy ('1', '2') que
+ *  quedó en `obra_actividad.cuadrilla` es el respaldo mientras haya actividades sin migrar. */
+function cuadrillaDe(a: Actividad): string | null {
   return a.cuadrilla_prevista ?? a.cuadrilla ?? null
 }
 
-function aNodo(w: FilaWbs, a: Actividad, subcontratista: string | undefined): NodoObra {
+function aNodo(
+  w: FilaWbs, a: Actividad, subcontratista: string | undefined, responsable: string | null,
+): NodoObra {
   return {
     id: w.actividad_id,
     padre_id: w.actividad_padre_id,
@@ -58,7 +60,9 @@ function aNodo(w: FilaWbs, a: Actividad, subcontratista: string | undefined): No
     metodo_avance: a.metodo_avance,
     avance_pct: a.avance_pct,
     fin_plan: a.fin_plan,
-    responsable: responsableDe(a, subcontratista),
+    responsable,
+    cuadrilla: cuadrillaDe(a),
+    subcontratista: subcontratista ?? null,
     es_subcontrato: subcontratista !== undefined,
     estado: a.estado_operativo === 'bloqueada' ? null : (a.estado_operativo ?? null),
     impedimentos_abiertos: a.impedimentos_abiertos,
@@ -103,6 +107,25 @@ async function subcontratistasPorActividad(
   return salida
 }
 
+/** EL NOMBRE DEL RESPONSABLE, contra `persona_plantel`.
+ *
+ * La vista `obra_actividad_control` publica `responsable_id` y no el nombre, así que sin esta
+ * lectura la pantalla sólo tendría un uuid — y eso es lo que llevó a rellenar RESPONSABLE con la
+ * cuadrilla, que sí venía con nombre. `persona_plantel` es la ÚNICA puerta a los nombres del
+ * plantel (misma que usa `personalService`): no se lee `personas`, cuya RLS es de Administración.
+ *
+ * Un id que la vista no devuelve queda en `null` y la pantalla escribe «sin asignar»: quien no está
+ * en el plantel vigente no puede seguir figurando como responsable de una actividad en curso.
+ */
+async function nombresDeResponsables(
+  supabase: SupabaseClient, ids: string[],
+): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map()
+  const { data } = await supabase
+    .from('persona_plantel').select('id, nombre_completo').in('id', ids)
+  return new Map((data ?? []).map((p) => [p.id as string, p.nombre_completo as string]))
+}
+
 /**
  * EL ÁRBOL DE LA OBRA, en orden constructivo y sin las archivadas.
  *
@@ -123,12 +146,21 @@ export async function getArbol(
   if (control.error) return { data: null, error: control.error.message }
 
   const porId = new Map((control.data ?? []).map((a) => [a.actividad_id as string, a as Actividad]))
+  // Los ids se juntan de la MISMA lectura y se resuelven de una sola vez: una consulta por
+  // actividad serían 275 viajes en san-francisco para pintar una columna.
+  const nombres = await nombresDeResponsables(
+    supabase,
+    [...new Set([...porId.values()].map((a) => a.responsable_id).filter((v): v is string => Boolean(v)))],
+  )
   const nodos: NodoObra[] = []
   for (const w of (wbs.data ?? []) as FilaWbs[]) {
     if (w.archivada) continue
     const a = porId.get(w.actividad_id)
     if (!a) continue
-    nodos.push(aNodo(w, a, subs.get(w.actividad_id)))
+    nodos.push(aNodo(
+      w, a, subs.get(w.actividad_id),
+      a.responsable_id ? nombres.get(a.responsable_id) ?? null : null,
+    ))
   }
   return { data: nodos, error: null }
 }

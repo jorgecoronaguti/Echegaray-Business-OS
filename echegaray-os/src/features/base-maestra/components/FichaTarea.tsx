@@ -2,7 +2,7 @@
 //
 // Server component: no hay un solo dato que el navegador tenga que ir a buscar después. La solapa
 // abierta viaja en la URL (`?s=analisis`), igual que la tarea seleccionada, así que un enlace a
-// «HA-140, solapa Rendimiento» abre exactamente ahí.
+// «HA-140, solapa Esfuerzo» (`?s=rendimiento`) abre exactamente ahí.
 //
 // LA SOLAPA `Análisis` NO SE RENDERIZA SIN PERMISO ECONÓMICO. No se muestra vacía ni con guiones:
 // no existe. El contrato lo pide («esconder por completo, no mostrar —») y el motivo es que una
@@ -15,16 +15,21 @@ import { Aviso, Nulo, TituloPanel } from '@/shared/components/ds'
 import { Campo as CampoFormulario, CTRL, FormAccion } from '@/shared/components/ui'
 import type { FichaTarea as Ficha } from '../types'
 import { motivoDelEstado, numero, pesosCierran, sumaDePesos } from '../services/reglas'
+import { MAGNITUD, productividad } from '../services/vocabulario'
 import { aceptarRecomendacion, descartarRecomendacion } from '../services/recomendacionActions'
 import { EstadoAnalisisCelda, N, Rotulo, Texto } from './celdas'
 import { SolapaAnalisis } from './SolapaAnalisis'
 
+// LA CLAVE `rendimiento` NO SE RENOMBRA, EL RÓTULO SÍ (22/08/2026). La clave viaja en la URL
+// (`?s=rendimiento`) y está en enlaces mandados por chat, en marcadores y en los tests: cambiarla
+// rompe los que ya existen para no arreglar nada. Lo que estaba mal es la PALABRA en pantalla — el
+// número que muestra la solapa es hs/unidad, o sea ESFUERZO, y un esfuerzo mejora cuando baja.
 export const SOLAPAS = ['resumen', 'analisis', 'secuencia', 'rendimiento', 'versiones', 'uso'] as const
 export type Solapa = (typeof SOLAPAS)[number]
 
 const ETIQUETA: Record<Solapa, string> = {
   resumen: 'Resumen', analisis: 'Análisis', secuencia: 'Secuencia',
-  rendimiento: 'Rendimiento', versiones: 'Versiones', uso: 'Uso',
+  rendimiento: 'Esfuerzo', versiones: 'Versiones', uso: 'Uso',
 }
 
 export function solapaDe(v: string | undefined, economia: boolean): Solapa {
@@ -156,13 +161,16 @@ function Resumen({ ficha }: { ficha: Ficha }) {
           ? `${etiquetaMedicion(tarea.metodo_medicion) ?? 'Pasos ponderados'} · ${plantilla.pasos.length} pasos`
           : <Texto v={etiquetaMedicion(tarea.metodo_medicion)} falta="sin definir" />}
       </Campo>
-      <Campo rotulo="Cuánto rinde">
+      {/* ESFUERZO, NO «CUÁNTO RINDE». El número es hs/unidad: MEJORA CUANDO BAJA. Rotulado como
+          rendimiento, «subió de 30 a 36,5» se leía como una buena noticia siendo un 22 % más de
+          mano de obra por unidad — y es el número con el que se cotiza. La productividad (la misma
+          medición al derecho) va al lado para que la dirección de la mejora quede a la vista. */}
+      <Campo rotulo={`${MAGNITUD.esfuerzo.rotulo} · ${MAGNITUD.esfuerzo.unidad(tarea.unidad)}`}>
         {tarea.hs_unitarias == null ? (
           <Nulo>sin análisis: no aporta HH</Nulo>
         ) : (
           <span>
-            <span className="font-mono tabular-nums">{numero(tarea.hs_unitarias, 2)}</span> {tarea.unidad
-              ? `hs/${tarea.unidad}` : 'hs'} presupuestado
+            <span className="font-mono tabular-nums">{numero(tarea.hs_unitarias, 2)}</span> presupuestado
             {rendimiento?.hs_observado_mediana != null && (
               <span className="text-warn">
                 {' · '}<span className="font-mono tabular-nums">{numero(rendimiento.hs_observado_mediana, 2)}</span> observado
@@ -170,6 +178,11 @@ function Resumen({ ficha }: { ficha: Ficha }) {
             )}
           </span>
         )}
+      </Campo>
+      <Campo rotulo={`${MAGNITUD.productividad.rotulo} · ${MAGNITUD.productividad.unidad(tarea.unidad)}`}>
+        {productividad(tarea.hs_unitarias) == null
+          ? <Nulo>sin esfuerzo cargado</Nulo>
+          : <span className="font-mono tabular-nums">{numero(productividad(tarea.hs_unitarias), 3)}</span>}
       </Campo>
       <Campo rotulo="Qué necesita">
         {ficha.costo
@@ -263,11 +276,15 @@ function Secuencia({ ficha }: { ficha: Ficha }) {
   )
 }
 
-// ═══ RENDIMIENTO ═══════════════════════════════════════════════════════════════════════════════
+// ═══ ESFUERZO ══════════════════════════════════════════════════════════════════════════════════
 //
 // La cadena teórico → real → recomendado sale entera de `rendimiento_recomendado`. CON UNA SOLA
 // OBRA MEDIDA NO HAY RECOMENDACIÓN: la vista devuelve `hs_recomendado` en NULL y su `lectura` dice
 // por qué. La pantalla repite esa lectura en vez de mostrar un número que parecería una conclusión.
+//
+// La vista de Postgres se sigue llamando `rendimiento_recomendado` y NO se renombra: la consumen el
+// orquestador, los presupuestos y esta pantalla. Lo que cambia es lo que lee el que mira — todos
+// estos números son hs/unidad, o sea esfuerzo, y bajan cuando la tarea mejora.
 function Rendimiento({ ficha }: { ficha: Ficha }) {
   const r = ficha.rendimiento
   const u = ficha.tarea.unidad
@@ -276,14 +293,18 @@ function Rendimiento({ ficha }: { ficha: Ficha }) {
       <div data-testid="rendimiento-tarea">
         <Fila rotulo="Presupuestado vigente"><N v={ficha.tarea.hs_unitarias} falta="sin dato" /></Fila>
         <p className="mt-3 text-[12.5px] text-muted">
-          Todavía no se midió en obra: no hay rendimiento real ni recomendación.
+          Todavía no se midió en obra: no hay esfuerzo real ni recomendación.
         </p>
       </div>
     )
   }
   return (
     <div data-testid="rendimiento-tarea">
-      <p className="mb-2 text-[11.5px] text-faint">Todo en hs/{u}.</p>
+      {/* LA UNIDAD ADELANTE, Y CON LA DIRECCIÓN DE LA MEJORA. Seis filas de números sin decir qué
+          magnitud son se leen como un rendimiento, que es al revés. */}
+      <p className="mb-2 text-[11.5px] text-faint">
+        Todo en {MAGNITUD.esfuerzo.unidad(u)} — esfuerzo: baja cuando la tarea mejora.
+      </p>
       <Fila rotulo="Presupuestado vigente"><N v={r.hs_analisis ?? ficha.tarea.hs_unitarias} falta="sin dato" /></Fila>
       <Fila rotulo="Real observado · promedio"><N v={r.hs_observado_promedio} falta="sin base" /></Fila>
       <Fila rotulo={`Real observado · mediana de ${r.obras} ${r.obras === 1 ? 'obra' : 'obras'}`}>
@@ -305,7 +326,7 @@ function Rendimiento({ ficha }: { ficha: Ficha }) {
             : ''}.
         </div>
         <div className="mt-1 text-[11.5px] text-faint">
-          El rendimiento observado descuenta las horas improductivas: una espera de equipo no es el
+          El esfuerzo observado descuenta las horas improductivas: una espera de equipo no es el
           estándar de la tarea.
         </div>
       </div>

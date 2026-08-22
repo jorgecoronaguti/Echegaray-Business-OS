@@ -3,7 +3,7 @@
 // PRÓXIMOS TRABAJOS — qué viene y qué lo está frenando.
 //
 // ES OTRA MIRADA DE LAS MISMAS ACTIVIDADES, no una segunda lista. Sale de filtrar el cronograma con
-// `lookahead()`, la misma función que ya usaba la pestaña de Planificación: si la ventana se
+// `lookahead()`, la misma función que usa el resto de Cronograma: si la ventana se
 // recalculara acá con otra regla, la obra tendría dos respuestas para "qué viene esta semana".
 //
 // SIN JERGA. Adentro el concepto se llama restricción y la tabla `obra_restriccion`, pero en la
@@ -63,10 +63,15 @@ export function VistaProximos({
     [actividades, ventana, hoy],
   )
 
+  // RESPONSABLE Y CUADRILLA SON DOS COLUMNAS, NO UNA CON RESPALDO. Esto caía a `a.cuadrilla` cuando
+  // la actividad no tenía responsable cargado, así que la columna RESPONSABLE mostraba «Cuadrilla 2»
+  // y nadie podía distinguir a quién le habían asignado la actividad de con qué se ejecuta. Peor:
+  // una actividad sin responsable se leía como si lo tuviera, y la deuda de carga desaparecía.
   const nombrePersona = useMemo(() => {
     const m = new Map(personas.map((p) => [p.id, p.nombre_completo]))
-    return (a: Actividad) => (a.responsable_id ? m.get(a.responsable_id) ?? null : null) ?? a.cuadrilla ?? null
+    return (a: Actividad) => (a.responsable_id ? m.get(a.responsable_id) ?? null : null)
   }, [personas])
+  const cuadrillaDe = (a: Actividad) => a.cuadrilla_prevista ?? a.cuadrilla ?? null
 
   const abiertos = useMemo(() => impedimentos.filter((r) => r.estado !== 'liberada'), [impedimentos])
 
@@ -104,11 +109,12 @@ export function VistaProximos({
           </p>
         ) : (
           <div className="overflow-x-auto rounded-card border border-line bg-surface">
-            <table data-testid="proximos-trabajos" className="w-full min-w-[560px] text-left">
+            <table data-testid="proximos-trabajos" className="w-full min-w-[660px] text-left">
               <thead><tr className="border-b border-line text-[10px] uppercase tracking-wide text-faint">
                 <th className="px-3 py-2 font-medium">Actividad</th>
                 <th className="px-3 py-2 font-medium">Fecha</th>
                 <th className="px-3 py-2 font-medium">Responsable</th>
+                <th className="px-3 py-2 font-medium">Cuadrilla</th>
                 <th className="px-3 py-2 text-right font-medium">Avance</th>
                 <th className="px-3 py-2 text-right font-medium">Estado</th>
               </tr></thead>
@@ -126,6 +132,7 @@ export function VistaProximos({
                         {fecha(a.inicio_plan)}{a.fin_plan && a.fin_plan !== a.inicio_plan ? ` → ${fecha(a.fin_plan)}` : ''}
                       </td>
                       <td className="px-3 py-2 text-[12px] text-muted">{nombrePersona(a) ?? '—'}</td>
+                      <td className="px-3 py-2 text-[12px] text-muted">{cuadrillaDe(a) ?? '—'}</td>
                       <td className="px-3 py-2 text-right text-[12px] tabular-nums text-ink">{a.pct == null ? '—' : `${a.pct}%`}</td>
                       <td className={`whitespace-nowrap px-3 py-2 text-right text-[12px] ${TONO_ESTADO[estado]}`}>
                         {ESTADO_LABEL[estado]}
