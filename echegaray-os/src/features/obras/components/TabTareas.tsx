@@ -64,30 +64,41 @@ export function TabTareas({
   const [marcadas, setMarcadas] = useState<ReadonlySet<string>>(new Set())
   const [operacion, setOperacion] = useState<OperacionMasiva>('avance')
   const [valores, setValores] = useState<Record<string, string>>({ ...VALOR_INICIAL })
+  // ═══ EL FILTRO ES ESTADO CLIENTE (22/08/2026 · QA del overhaul) ═══
+  // El filtrado corre acá, sobre las 350 filas YA cargadas — pero el filtro viajaba como <Link>,
+  // y esa navegación re-montaba la página entera: el skeleton de loading.tsx reemplazaba la lista
+  // ~110 ms y el scroll se clavaba en el tope aunque el Link llevara scroll={false}. El filtro se
+  // aplica en el estado y la URL se actualiza con replaceState para seguir siendo compartible.
+  const [filtroLocal, setFiltroLocal] = useState<VistaArbol>(filtro)
+  const [filtroDeLaUrl, setFiltroDeLaUrl] = useState<VistaArbol>(filtro)
+  if (filtro !== filtroDeLaUrl) { setFiltroDeLaUrl(filtro); setFiltroLocal(filtro) }
+  const elegirFiltro = (v: VistaArbol) => {
+    setFiltroLocal(v)
+    const p = new URLSearchParams(window.location.search)
+    p.set('vista', 'tareas')
+    p.set('filtro', v)
+    window.history.replaceState(null, '', `${window.location.pathname}?${p.toString()}`)
+  }
 
   const agregados = useMemo(() => rollup(nodos), [nodos])
   const total = useMemo(() => totalObra(nodos, agregados), [nodos, agregados])
   // El día se fija una vez por montaje: «atrasada» se decide contra el mismo hoy en toda la lista.
   const hoy = useMemo(() => new Date().toISOString().slice(0, 10), [])
   const filas = useMemo(
-    () => filasVisibles(nodos, agregados, { vista: filtro, query, plegados, hoy }),
-    [nodos, agregados, filtro, query, plegados, hoy],
+    () => filasVisibles(nodos, agregados, { vista: filtroLocal, query, plegados, hoy }),
+    [nodos, agregados, filtroLocal, query, plegados, hoy],
   )
   const seleccion = useMemo(
     () => nodos.filter((n) => marcadas.has(n.id)).map(candidata),
     [nodos, marcadas],
   )
 
-  // CAMBIAR DE FILTRO NO CIERRA EL PANEL: `act` y `sol` viajan con el enlace. Antes cada clic en
-  // un filtro desmontaba la actividad abierta y reseteaba el scroll — el gesto más barato de la
-  // pantalla costaba el contexto entero.
+  // Cambiar de filtro no navega, así que tampoco cierra el panel ni toca el scroll. La solapa
+  // abierta se lee de la URL para que las filas la conserven al abrir otra actividad.
   const params = useSearchParams()
-  const actAbierta = params.get('act')
   const solAbierta = params.get('sol')
-  const cola = (actAbierta ? `&act=${actAbierta}` : '') + (solAbierta ? `&sol=${solAbierta}` : '')
   const base = `/obras/${obraId}?vista=tareas`
-  const hrefFiltro = (v: VistaArbol) => `${base}&filtro=${v}${cola}`
-  const limpiar = () => { setQuery(''); setMarcadas(new Set()) }
+  const limpiar = () => { setQuery(''); setMarcadas(new Set()); elegirFiltro('todo') }
 
   const marcar = (id: string, v: boolean) => setMarcadas((p) => {
     const s = new Set(p)
@@ -117,8 +128,8 @@ export function TabTareas({
                 <span className="font-mono text-[11px] tabular-nums text-faint">{filas.length} filas</span>
                 {/* La ✕ limpia la búsqueda Y la vista: dejar el filtro puesto después de limpiar el
                     texto es la manera de que alguien crea que la obra tiene tres actividades. */}
-                <Link href={hrefFiltro('todo')} onClick={limpiar} data-testid="limpiar-busqueda"
-                  className="text-[12px] text-faint hover:text-ink">✕</Link>
+                <button type="button" onClick={limpiar} data-testid="limpiar-busqueda"
+                  className="text-[12px] text-faint hover:text-ink">✕</button>
               </>
             )}
           </div>
@@ -126,7 +137,7 @@ export function TabTareas({
           <SubTabs
             testid="filtros-tareas"
             items={VISTAS_ARBOL.map((v) => ({
-              href: hrefFiltro(v), label: VISTA_ARBOL_LABEL[v], activo: filtro === v, testid: `filtro-${v}`,
+              onClick: () => elegirFiltro(v), label: VISTA_ARBOL_LABEL[v], activo: filtroLocal === v, testid: `filtro-${v}`,
             }))}
           />
 
@@ -176,7 +187,7 @@ export function TabTareas({
                 seleccionable={seleccionable(candidata(f.nodo))}
                 alSeleccionar={(v) => marcar(f.nodo.id, v)}
                 alPlegar={() => plegar(f.nodo.id)}
-                hrefBase={`${base}&filtro=${filtro}`}
+                hrefBase={`${base}&filtro=${filtroLocal}`}
                 // La solapa abierta se conserva al pasar de una actividad a otra: quien recorre
                 // filas mirando Rendimiento sigue mirando Rendimiento.
                 sol={solAbierta}
@@ -184,7 +195,7 @@ export function TabTareas({
             ))}
             {filas.length === 0 && (
               <Tr><Td colSpan={7}>
-                <Vacio accion={<Link href={hrefFiltro('todo')} onClick={limpiar} className="font-medium text-ink hover:underline">Ver todo</Link>}>
+                <Vacio accion={<button type="button" onClick={limpiar} className="font-medium text-ink hover:underline">Ver todo</button>}>
                   {query ? `Nada coincide con «${query}».` : 'Ninguna actividad entra en esta vista.'}
                 </Vacio>
               </Td></Tr>
