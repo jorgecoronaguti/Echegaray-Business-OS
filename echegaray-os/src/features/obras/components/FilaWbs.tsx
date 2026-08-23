@@ -95,8 +95,11 @@ export function FilaWbs({
               className="w-3 shrink-0 text-[11px] text-faint hover:text-ink"
             >{fila.plegado ? '▸' : '▾'}</button>
           ) : <span className="w-3 shrink-0" aria-hidden />}
-          {/* `scroll={false}`: abrir el panel no puede mandar la lista al tope. */}
-          <Link href={`${hrefBase}&act=${n.id}${sol ? `&sol=${sol}` : ''}`} scroll={false} data-testid={`fila-${n.id}`} className={`${jerarquia} hover:underline`}>
+          {/* `scroll={false}`: abrir el panel no puede mandar la lista al tope.
+              `prefetch={false}`: 350 filas × prefetch = 350 renders RSC completos del workspace en
+              cuanto la lista entra al viewport — la estampida que tenía al servidor ocupado y hacía
+              tardar 12-26 s CERRAR el panel. La ruta es force-dynamic: el prefetch no compra nada. */}
+          <Link href={`${hrefBase}&act=${n.id}${sol ? `&sol=${sol}` : ''}`} scroll={false} prefetch={false} data-testid={`fila-${n.id}`} className={`${jerarquia} hover:underline`}>
             {n.nombre}
           </Link>
           {n.partida_codigo && (
@@ -129,7 +132,7 @@ export function FilaWbs({
               </span>
             )
         ) : (
-          <Link href={`${hrefBase}&act=${n.id}&sol=avance`} scroll={false}
+          <Link href={`${hrefBase}&act=${n.id}&sol=avance`} scroll={false} prefetch={false}
             aria-label={`Avance de ${n.nombre}`} data-testid={`avance-${n.id}`}
             className="group flex items-center gap-2">
             {fila.avance === null ? (

@@ -24,9 +24,13 @@ export function Tabs({ tabs, testid = 'tabs' }: { tabs: Tab[]; testid?: string }
       className="-mb-px flex items-end gap-1 overflow-x-auto border-b border-line [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       {tabs.map((t) => (
+        // `prefetch={false}`: los tabs apuntan a rutas force-dynamic donde el prefetch dispara un
+        // render RSC completo por tab visible — seis renders de servidor por página vista, para
+        // nada. Ver el mismo motivo en `FilaWbs`.
         <Link
           key={t.href}
           href={t.href}
+          prefetch={false}
           data-testid={t.testid}
           aria-current={t.activo ? 'page' : undefined}
           className={`shrink-0 whitespace-nowrap border-b-2 px-3.5 py-[9px] text-[14px] transition-colors ${
@@ -72,7 +76,9 @@ export function SubTabs({
         return i.href ? (
           // `scroll={false}`: cambiar de sub-vista o de filtro no puede mandar la página al tope —
           // el que está mirando la fila 200 del árbol sigue mirando la fila 200.
-          <Link key={i.href} href={i.href} scroll={false} data-testid={i.testid} aria-current={i.activo ? 'true' : undefined} className={clase}>
+          // `prefetch={false}`: mismo motivo que en Tabs — rutas dinámicas, el prefetch es un
+          // render completo por ítem visible.
+          <Link key={i.href} href={i.href} scroll={false} prefetch={false} data-testid={i.testid} aria-current={i.activo ? 'true' : undefined} className={clase}>
             {contenido}
           </Link>
         ) : (

@@ -142,7 +142,7 @@ export function PanelTarea({
           )}
           <h2 className="text-[16px] font-semibold text-ink">{nodo.nombre}</h2>
         </div>
-        <Link href={hrefLista} scroll={false} data-testid="cerrar-panel" aria-label="Cerrar el panel"
+        <Link href={hrefLista} scroll={false} prefetch={false} data-testid="cerrar-panel" aria-label="Cerrar el panel"
           className="text-[13px] text-faint hover:text-ink">✕</Link>
       </div>
 
@@ -173,7 +173,7 @@ export function PanelTarea({
           {antes.map((r) => (
             <span key={r.id} className="flex min-w-0 items-baseline gap-1.5">
               <span aria-hidden className="shrink-0 text-faint">←</span>
-              <Link href={`${hrefLista}&act=${r.origen_id}`} scroll={false}
+              <Link href={`${hrefLista}&act=${r.origen_id}`} scroll={false} prefetch={false}
                 className="truncate text-ink-soft hover:text-ink hover:underline">{r.origen}</Link>
               <span className="shrink-0 text-[11px] text-faint">{r.relacion}</span>
             </span>
@@ -181,7 +181,7 @@ export function PanelTarea({
           {despues.map((r) => (
             <span key={r.id} className="flex min-w-0 items-baseline gap-1.5">
               <span aria-hidden className="shrink-0 text-faint">→</span>
-              <Link href={`${hrefLista}&act=${r.destino_id}`} scroll={false}
+              <Link href={`${hrefLista}&act=${r.destino_id}`} scroll={false} prefetch={false}
                 className="truncate text-ink-soft hover:text-ink hover:underline">{r.destino}</Link>
             </span>
           ))}

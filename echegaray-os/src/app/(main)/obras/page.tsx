@@ -173,7 +173,7 @@ function Avance({ pct, total }: { pct: number | null; total: number }) {
 function Cliente({ o }: { o: ObraPanel }) {
   if (o.cliente_slug && o.cliente_nombre) {
     return (
-      <Link href={`/clientes/${o.cliente_slug}`} className="text-ink transition-colors hover:underline">
+      <Link href={`/clientes/${o.cliente_slug}`} prefetch={false} className="text-ink transition-colors hover:underline">
         {o.cliente_nombre}
       </Link>
     )
@@ -304,7 +304,7 @@ export default async function ObrasPage({
             {obras.map((o) => (
               <Tr key={o.obra_id} data-obra={o.obra_id}>
                 <Td fuerte>
-                  <Link href={`/obras/${o.obra_id}`} className="font-semibold text-ink transition-colors hover:underline">
+                  <Link href={`/obras/${o.obra_id}`} prefetch={false} className="font-semibold text-ink transition-colors hover:underline">
                     {o.nombre}
                   </Link>
                 </Td>

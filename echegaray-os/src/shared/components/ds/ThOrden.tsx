@@ -47,6 +47,7 @@ export function ThOrden({
     <Th num={alineado === 'right'} className={className}>
       <Link
         href={`${base}?${q}`}
+        prefetch={false}
         data-testid={`orden-${campo}`}
         data-activo={esActivo ? dir : undefined}
         // El aria dice el estado REAL de la columna. `none` no es "no se puede ordenar": es "no
