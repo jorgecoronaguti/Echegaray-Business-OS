@@ -64,6 +64,7 @@ export function AppHeader({
             no un redibujo mío: una marca redibujada a ojo es una marca distinta.
             El logotipo va al lado en grafito, que es exactamente como está compuesto el logo. */}
         <Link
+          prefetch={false}
           href={areas.includes('administracion') ? '/administracion' : '/obras'}
           className="mr-3 flex shrink-0 items-center gap-2"
           data-testid="marca"
@@ -95,6 +96,7 @@ export function AppHeader({
             areas.map((a) => (
               <Link
                 key={a}
+                prefetch={false}
                 href={AREA_HREF[a]}
                 data-testid={`nav-${a}`}
                 aria-current={activa === a ? 'page' : undefined}
@@ -124,6 +126,7 @@ export function AppHeader({
                   dejara el puntero quieto encima. Es el dato que contesta «¿por qué no veo tal
                   pantalla?» sin abrir Usuarios, así que se escribe. */}
               <Link
+                prefetch={false}
                 href="/mi-cuenta"
                 data-testid="mi-cuenta"
                 className="hidden min-w-0 items-center gap-1.5 rounded-control px-2 py-1 transition-colors hover:bg-surface-quiet sm:flex"
