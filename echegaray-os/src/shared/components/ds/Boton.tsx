@@ -14,9 +14,21 @@ type Variante = 'primaria' | 'secundaria' | 'discreta' | 'destructiva'
 
 const VARIANTE: Record<Variante, string> = {
   primaria: 'bg-marca text-[color:var(--os-on-marca)] font-semibold hover:brightness-[0.97]',
-  secundaria: 'border border-line bg-surface text-ink hover:bg-surface-quiet',
+  // `text-ink-soft`, no `text-ink`: el especimen §05 dibuja la secundaria con borde en #3A3A38.
+  // Un párrafo de razón: la primaria y la secundaria se distinguen por SUPERFICIE (amarillo contra
+  // borde), y si además comparten la tinta más oscura del sistema, las dos piden lo mismo. Medio
+  // tono menos es lo que la deja leerse como la alternativa y no como la otra mitad de un par.
+  secundaria: 'border border-line bg-surface text-ink-soft hover:bg-surface-quiet',
   discreta: 'text-muted hover:bg-surface-quiet hover:text-ink',
   destructiva: 'text-neg hover:bg-neg-soft',
+}
+
+// QUIÉN LLEVA BORDE, para compensarlo en el padding (ver `PX`).
+const CON_BORDE: Record<Variante, boolean> = {
+  primaria: false,
+  secundaria: true,
+  discreta: false,
+  destructiva: false,
 }
 
 // Todo lo que NO es tamaño. Se separó del tamaño el 21/08/2026: pegarle un `className` con otro
@@ -45,13 +57,43 @@ const BASE =
  *
  * La deshabilitada CONSERVA el peso: lo que la apaga es el par fondo hundido + texto faint, no
  * adelgazarla — una primaria que además cambia de peso al deshabilitarse se lee como otro botón.
+ *
+ * RADIO 8px en los dos tamaños de teléfono, medido del especimen §10 (los tres controles móviles
+ * van en `border-radius:8px`). Estaban en 12px, que no es un radio de este sistema: `SPACING_BORDERS`
+ * sólo tiene 6 de control y 10 de contenedor, y 12 hacía que la acción del día se leyera como una
+ * tarjeta con texto adentro en vez de como el control más grande de la pantalla.
  */
 export type TamanoBoton = 'normal' | 'bloque' | 'acceso'
 
 const TAMANO: Record<TamanoBoton, string> = {
-  normal: 'px-3.5 py-[7px] text-[12.5px] leading-[18px]',
-  bloque: 'h-[48px] w-full rounded-[12px] px-4 text-[15px]',
-  acceso: 'h-[52px] w-full rounded-[12px] px-4 text-[16px]',
+  normal: 'py-[7px] text-[12.5px] leading-[18px]',
+  bloque: 'h-[48px] w-full rounded-[8px] text-[15px]',
+  acceso: 'h-[52px] w-full rounded-[8px] text-[16px]',
+}
+
+/**
+ * EL PADDING HORIZONTAL LO DECIDE EL TAMAÑO **Y** EL BORDE, y por eso no vive en `TAMANO`.
+ *
+ * El especimen §05 escribe la primaria en `padding:7px 14px` sin borde y la secundaria en
+ * `padding:7px 13px` **con** borde de 1px. No es un descuido de un píxel: con `border-box`, el
+ * borde se come el ancho, así que 13+1 y 14+0 dejan el texto a los mismos 14px del filo exterior.
+ * Un botón primario y uno secundario que conviven en la misma barra tienen que medir igual; si la
+ * secundaria se queda con `px-3.5`, mide 1px más de cada lado y la fila deja de estar peinada.
+ *
+ * Va en su propia tabla y no concatenado al de `TAMANO` porque dos `px-*` en la misma cadena de
+ * clases los resuelve el orden del CSS generado, no el del código — el mismo motivo por el que el
+ * tamaño ya se había separado de la variante en 08/2026.
+ */
+const PX: Record<TamanoBoton, { conBorde: string; sinBorde: string }> = {
+  normal: { conBorde: 'px-[13px]', sinBorde: 'px-[14px]' },
+  bloque: { conBorde: 'px-[15px]', sinBorde: 'px-4' },
+  acceso: { conBorde: 'px-[15px]', sinBorde: 'px-4' },
+}
+
+/** Las clases completas de un botón. Una sola regla por propiedad: nada compite con nada. */
+function clases(variante: Variante, tamano: TamanoBoton, extra: string) {
+  const px = CON_BORDE[variante] ? PX[tamano].conBorde : PX[tamano].sinBorde
+  return `${BASE} ${TAMANO[tamano]} ${px} ${VARIANTE[variante]} ${extra}`
 }
 
 export function Boton({
@@ -60,7 +102,7 @@ export function Boton({
   className = '',
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variante?: Variante; tamano?: TamanoBoton }) {
-  return <button {...props} className={`${BASE} ${TAMANO[tamano]} ${VARIANTE[variante]} ${className}`} />
+  return <button {...props} className={`${clases(variante, tamano, className)}`} />
 }
 
 export function BotonEnlace({
@@ -78,7 +120,7 @@ export function BotonEnlace({
   children: ReactNode
 } & Omit<React.ComponentProps<typeof Link>, 'href' | 'className'>) {
   return (
-    <Link href={href} {...props} className={`${BASE} ${TAMANO[tamano]} ${VARIANTE[variante]} ${className}`}>
+    <Link href={href} {...props} className={`${clases(variante, tamano, className)}`}>
       {children}
     </Link>
   )

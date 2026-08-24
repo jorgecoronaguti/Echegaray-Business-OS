@@ -29,11 +29,13 @@ export type Tab = {
   cuenta?: number | null
 }
 
+// La separación ENTRE tabs es de 2px (especimen §04), no de 4: el padding de 14px de cada tab ya
+// los separa de sobra, y el hueco extra rompía la sensación de fila continua sobre el hairline.
 export function Tabs({ tabs, testid = 'tabs' }: { tabs: Tab[]; testid?: string }) {
   return (
     <nav
       data-testid={testid}
-      className="-mb-px flex items-end gap-1 overflow-x-auto border-b border-line [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className="-mb-px flex items-end gap-[2px] overflow-x-auto border-b border-line [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       {tabs.map((t) => (
         // `prefetch={false}`: los tabs apuntan a rutas force-dynamic donde el prefetch dispara un

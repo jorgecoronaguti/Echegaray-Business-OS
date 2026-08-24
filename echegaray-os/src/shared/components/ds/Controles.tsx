@@ -128,7 +128,9 @@ export function Filtros({
   testid?: string
 }) {
   return (
-    <div data-testid={testid} className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5">
+    // `gap-x-5` = 20px, la separación entre filtros del especimen §04. Con 16px el subrayado del
+    // activo casi tocaba la palabra siguiente y la fila se leía como una sola tira de texto.
+    <div data-testid={testid} className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-1.5">
       {opciones.map((o, k) => {
         const clase = `pb-[2px] text-[12.5px] transition-colors ${
           o.activo ? 'border-b-[1.5px] border-ink font-medium text-ink' : 'border-b-[1.5px] border-transparent text-muted hover:text-ink'

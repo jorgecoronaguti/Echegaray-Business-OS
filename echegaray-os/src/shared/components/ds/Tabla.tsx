@@ -51,6 +51,9 @@ export function THead({ children }: { children: ReactNode }) {
   )
 }
 
+// PESO NORMAL, no `font-medium`. El especimen (§07) dibuja el encabezado en 400: ya se separa del
+// dato por tamaño (10px), color (`faint`), versalitas e interletrado. Sumarle peso es la cuarta
+// señal para decir lo mismo, y la que lo devuelve a competir con el dato que rotula.
 export function Th({
   children,
   num,
@@ -60,7 +63,7 @@ export function Th({
   return (
     <th
       {...props}
-      className={`px-3 align-middle text-[10px] font-medium uppercase tracking-[0.06em] text-faint first:pl-0 last:pr-0 ${
+      className={`px-3 align-middle text-[10px] uppercase tracking-[0.06em] text-faint first:pl-0 last:pr-0 ${
         num ? 'text-right' : ''
       } ${className}`}
     >
@@ -101,6 +104,13 @@ export function Tr({
   )
 }
 
+// EL NÚMERO SIEMPRE VA EN `ink`, y por eso `fuerte` no lo toca.
+//
+// El especimen §07 dibuja la celda numérica en `#1F1F1E` y la de texto secundario en `muted`: el
+// número ES el valor que la persona vino a comparar, nunca el acompañamiento. Acá el número
+// heredaba `ink-soft` salvo que quien lo escribió se acordara de pasar `fuerte`, así que la misma
+// columna de importes salía en dos tintas distintas según la pantalla. `fuerte` sigue existiendo
+// para la celda de TEXTO, que es donde la distinción nombre/atributo sí es real.
 export function Td({
   children,
   num,
@@ -112,8 +122,8 @@ export function Td({
     <td
       {...props}
       className={`px-3 align-middle first:pl-0 last:pr-0 ${
-        num ? 'text-right font-mono text-[12.5px] tabular-nums' : 'text-[13px]'
-      } ${fuerte ? 'text-ink' : 'text-ink-soft'} ${className}`}
+        num ? 'text-right font-mono text-[12.5px] tabular-nums text-ink' : `text-[13px] ${fuerte ? 'text-ink' : 'text-ink-soft'}`
+      } ${className}`}
     >
       {children}
     </td>

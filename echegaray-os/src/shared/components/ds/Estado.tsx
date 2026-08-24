@@ -22,8 +22,18 @@ const PUNTO: Record<Exclude<TonoEstado, 'nulo'>, string> = {
   pendiente: 'border border-[#C9C4C2] bg-transparent',
 }
 
+// LA PALABRA TOMA EL COLOR DEL PUNTO, salvo «en curso» y «pendiente».
+//
+// Medido del especimen (`Echegaray Design System.dc.html` §06 y §07, `getComputedStyle`): «Hecha»
+// se dibuja en `#067647` —el verde del punto—, no en tinta. Acá estaba en `text-ink`, y el efecto
+// era que el ÚNICO estado que el ojo puede saltear —el trabajo terminado, el que ya no requiere
+// nada de nadie— se leía con el mismo peso visual que el resto de la columna.
+//
+// Las dos excepciones son deliberadas y están en el mismo especimen: «En curso» es grafito (`INK`,
+// «neutro, sin color») porque estar trabajando no es una noticia, y «Pendiente» queda en `muted`
+// porque su punto es hueco: no hay color que heredar.
 const TEXTO: Record<TonoEstado, string> = {
-  pos: 'text-ink',
+  pos: 'text-pos',
   neg: 'text-neg',
   warn: 'text-warn',
   curso: 'text-ink',
@@ -31,6 +41,8 @@ const TEXTO: Record<TonoEstado, string> = {
   nulo: 'text-faint',
 }
 
+// La separación punto→palabra es de 8px (`gap-2`), medida del especimen §06. Estaba en 6px, que
+// pegaba el punto a la letra y lo hacía leer como parte de la palabra en vez de como su marca.
 export function Estado({
   tono,
   children,
@@ -50,7 +62,7 @@ export function Estado({
     <span
       data-testid={testid ?? 'estado'}
       data-estado={clave}
-      className={`inline-flex items-center gap-1.5 whitespace-nowrap text-[12.5px] ${TEXTO[tono]} ${className ?? ''}`}
+      className={`inline-flex items-center gap-2 whitespace-nowrap text-[12.5px] ${TEXTO[tono]} ${className ?? ''}`}
     >
       {tono !== 'nulo' && <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${PUNTO[tono]}`} />}
       {children}
