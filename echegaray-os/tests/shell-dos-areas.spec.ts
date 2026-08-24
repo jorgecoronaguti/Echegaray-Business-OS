@@ -103,7 +103,10 @@ test('Administración tiene sus secciones, y ni una de otro nivel', async ({ pag
   await entrarComo(page, EMAIL, PASSWORD)
   await page.goto('/administracion')
 
-  await expect(page.getByRole('heading', { name: 'Administración' })).toBeVisible()
+  // EL `h1` «Administración» SE FUE (24/08/2026, canónico 00): el mockup arranca en la barra de
+  // áreas y el título repetía la solapa de nivel 1 ya encendida arriba. Lo que se exige ahora es que
+  // la pantalla siga teniendo su punto de entrada —el título de la lista— y su barra de áreas.
+  await expect(page.getByRole('heading', { name: 'Clientes', level: 1 })).toBeVisible()
 
   // ═══ EL CONTRATO, TEXTUAL (19/08/2026) ═══
   //

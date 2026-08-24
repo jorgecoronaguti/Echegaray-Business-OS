@@ -17,8 +17,18 @@
 // pantalla en dos viajes encadenados. Se lanza todo junto y se descarta después: lo que el rol no
 // puede ver lo cierra la base, no el orden de las consultas.
 //
-// El buscador de arriba a la derecha es global a propósito: quien lo usa tiene un nombre en la mano
-// —de un papel, de un WhatsApp, de una factura— y quiere la ficha, no la sección.
+// ═══ SE FUERON EL H1 Y EL BUSCADOR GLOBAL (24/08/2026, auditoría lado a lado del canónico) ═══
+//
+// La pantalla arrancaba con «Administración» a 22px y un buscador global de 300px a la derecha. El
+// mockup 00 no dibuja ninguno de los dos: la primera línea del contenido ES la barra de áreas, y
+// abajo la banda de atención. El título repetía la solapa de nivel 1 —«Administración» ya está
+// encendida arriba— y el buscador global vive en la LUPA de la barra de la aplicación, no dentro de
+// la página; tenerlo acá lo convertía en un buscador de Administración disfrazado de global, que
+// desaparecía apenas alguien entraba a Personas.
+//
+// LO QUE ESTO SE LLEVA, DICHO: `buscarGlobal` —cliente + persona + proveedor en una consulta— queda
+// sin puerta en la interfaz. El servicio y su prueba siguen en `entradaService`: lo que falta es la
+// lupa de la barra de aplicación, que no es de esta pantalla.
 
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
@@ -30,46 +40,20 @@ import {
 import { separarArchivados } from '@/features/clientes/services/cartera'
 import { ListaClientes, type ObraEnCurso } from '@/features/clientes/components/ListaClientes'
 import { PageShell } from '@/shared/components/ui'
-import { Aviso, BotonEnlace, BuscadorURL, Eyebrow, TituloPanel, Vacio } from '@/shared/components/ds'
+import { Aviso, BotonEnlace, TituloPantalla, Vacio } from '@/shared/components/ds'
 import { BarraAreas } from '@/features/administracion/components/BarraAreas'
 import { BarraAtencion } from '@/features/administracion/components/BarraAtencion'
-import { buscarGlobal, type Hallazgo } from '@/features/administracion/services/entradaService'
 import {
   areasDeAdministracion, atencionNoLeida, chipsDeAtencion, getConteosHome,
 } from '@/features/administracion/services/homeAdministracion'
 
 export const dynamic = 'force-dynamic'
 
-function Resultados({ q, hallazgos }: { q: string; hallazgos: Hallazgo[] }) {
-  return (
-    <section className="mb-6" data-testid="resultados-busqueda">
-      <Eyebrow className="mb-1">Resultados de «{q}»</Eyebrow>
-      {hallazgos.length === 0 ? (
-        <Vacio>Ningún cliente, persona ni proveedor coincide con «{q}».</Vacio>
-      ) : (
-        <ul>
-          {hallazgos.map((h) => (
-            <li key={h.clave} className="border-b border-[#EFEEEA] last:border-0">
-              <Link href={h.href} data-testid="hallazgo" className="flex items-baseline gap-3 py-2.5 hover:bg-surface-quiet">
-                <span className="w-[92px] shrink-0 text-[10px] uppercase tracking-[0.06em] text-faint">{h.maestro}</span>
-                <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{h.nombre}</span>
-                {h.detalle && <span className="shrink-0 text-[11.5px] text-faint">{h.detalle}</span>}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  )
-}
-
-export default async function AdministracionPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
-  const sp = await searchParams
+export default async function AdministracionPage() {
   const supabase = await createClient()
-  const [conteos, cartera, hallazgos, perfil, enEjecucion, todasLasObras] = await Promise.all([
+  const [conteos, cartera, perfil, enEjecucion, todasLasObras] = await Promise.all([
     getConteosHome(supabase),
     getClientes(supabase),
-    buscarGlobal(supabase, sp.q),
     getPerfilActual(supabase),
     // LAS DOS LECTURAS DEL PANEL. Van en la MISMA tanda que las dieciséis de arriba —no encadenadas
     // detrás de la cartera— y son de toda la cartera de una vez, no una por cliente tocado: la
@@ -85,26 +69,15 @@ export default async function AdministracionPage({ searchParams }: { searchParam
   const { activos } = separarArchivados(cartera.data ?? [])
 
   return (
-    <PageShell
-      // SIN SUBTÍTULO: decía «Los maestros del sistema y lo que quedó sin resolver», que es una
-      // descripción de la pantalla para quien ya la está mirando. La barra y los chips lo dicen solos.
-      title="Administración"
-      right={
-        <BuscadorURL
-          accion="/administracion"
-          q={sp.q}
-          placeholder="Buscar cliente, persona o proveedor"
-          ancho="w-full sm:w-[300px]"
-          testid="buscador-global"
-        />
-      }
-    >
+    // SIN ENCABEZADO DE PÁGINA: el canónico arranca en la barra de áreas. El `h1` que había decía
+    // «Administración» a 60px de la solapa «Administración» de la barra de aplicación, ya encendida.
+    <PageShell title="Administración" encabezado={false}>
       <BarraAreas areas={areas} />
       <BarraAtencion chips={chips} noLeida={atencionNoLeida(conteos)} />
 
-      {sp.q && <Resultados q={sp.q} hallazgos={hallazgos} />}
-
-      <TituloPanel className="mb-3">Clientes</TituloPanel>
+      {/* EL ÚNICO `h1` DE LA PANTALLA. Sin el encabezado de página, el título de la lista es el
+          título: una pantalla sin `h1` deja al lector de pantalla sin punto de entrada. */}
+      <TituloPantalla className="mb-3">Clientes</TituloPantalla>
 
       {/* UNA LISTA VACÍA POR ERROR NO SE DIBUJA COMO «NO HAY DATOS» (INTERACTION.md §Error). */}
       {cartera.error ? (

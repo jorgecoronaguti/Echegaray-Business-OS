@@ -148,20 +148,25 @@ test('la ficha del cliente muestra identidad, contactos y actividad desde cualqu
 
   // ═══ LA ANATOMÍA DE FICHA DE ENTIDAD (Design 23/08, COMPONENTS.md) ═══
   //
-  // «Cliente, Proveedor, Persona, Obra y Herramienta usan la MISMA estructura»: slab de identidad
-  // grafito con filo amarillo, sus métricas, y solapas con contador. Es el MISMO componente que
-  // `slab-proveedor` — si alguien le escribe uno propio al cliente, esto no lo atrapa, pero el
-  // `slab-cliente` que exige es el `BarraContexto` del DS y no otra cosa.
+  // «Cliente, Proveedor, Persona, Obra y Herramienta usan la MISMA estructura»: cabecera BLANCA de
+  // ficha de entidad —avatar, nombre a 21px, pastilla de estado, línea de identidad y solapas
+  // pegadas abajo—, con las métricas en su tira sobre el cuerpo.
+  //
+  // EL DEFECTO QUE ATRAPA (24/08/2026): la ficha del cliente se coronaba con el slab GRAFITO
+  // (`BarraContexto`), una cabecera oscura que no existe en ningún mockup del zip. Se exige que la
+  // identidad y las solapas estén dentro de la cabecera y que la tira de métricas exista aparte;
+  // si alguien devuelve el slab, `metricas-cliente` desaparece y esto se pone rojo.
   //
   // LAS SOLAPAS CAMBIAN DE VISTA Y EL ESTADO VIAJA EN LA URL. Se exige que cada una LLEVE a su cara
   // —una solapa que no cambia nada es un enlace muerto que nadie nota— y que la identidad siga
   // visible en todas: ése es el precio que el 19/08 no quería pagar y que acá queda acotado.
   const slab = page.getByTestId('slab-cliente')
   await expect(slab).toBeVisible()
-  await expect(slab).toContainText('CUIT')
-  // Las métricas viven en el slab. `Obras` es la que siempre está, con o sin permiso económico.
-  await expect(slab.locator('[data-kpi="Obras"]')).toBeVisible()
-  await expect(page.getByTestId('solapas-cliente')).toBeVisible()
+  // La miga de pan y el nombre viven en la cabecera; las solapas, adentro de ella.
+  await expect(slab.getByTestId('ficha-volver')).toBeVisible()
+  await expect(slab.getByTestId('solapas-cliente')).toBeVisible()
+  // Las métricas bajaron a su tira. `Obras` es la que siempre está, con o sin permiso económico.
+  await expect(page.getByTestId('metricas-cliente').locator('[data-metrica="Obras"]')).toBeVisible()
   for (const [solapa, bloque] of [
     ['solapa-obras', 'bloque-obras'],
     ['solapa-documentos', 'bloque-documentos'],

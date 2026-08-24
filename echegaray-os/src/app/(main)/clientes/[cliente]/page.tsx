@@ -18,16 +18,21 @@
 // actividad y los documentos muestran los últimos, con el total al lado y el resto a un clic—, que
 // es lo que hace que una ficha con 214 documentos siga siendo una pantalla.
 //
-// ═══ LO QUE EL CANÓNICO 26 AGREGA, Y LA SOLAPA QUE NO VUELVE (Design 23/08/2026) ═══
+// ═══ LA CABECERA DEJÓ DE SER EL SLAB GRAFITO (24/08/2026, auditoría lado a lado del canónico) ═══
 //
-// El canónico dibuja la anatomía de ficha de entidad: **slab de identidad grafito con filo
-// amarillo**, **solapas con contador mono**, **resumen de 3–4 métricas** y **aside** con
-// propiedades, contactos, actividad y documentos. El aside ya estaba; lo que faltaba era el slab con
-// sus métricas y el índice, y son este trabajo.
+// Hasta hoy la ficha se coronaba con `BarraContexto`: fondo #30302F, filo amarillo, métricas
+// adentro. Se eligió el 23/08 «por consistencia entre fichas» — y la consistencia era con una ficha
+// que YA no se dibuja así. Puesto el mockup 26 al lado de la pantalla, el zip no tiene ninguna
+// cabecera oscura: el 26 es BLANCO, con avatar de iniciales, nombre a 21px, pastilla de estado al
+// lado, la línea de identidad separada por puntos medios y las solapas pegadas abajo. Es exactamente
+// la anatomía que `CabeceraFicha` ya implementa para Persona (20) y Proveedor (23).
 //
-// LAS MÉTRICAS VAN DENTRO DEL SLAB, no en una fila aparte: es donde las pone `slab-proveedor`, que
-// usa el MISMO componente, y `COMPONENTS.md` exige que las cinco fichas se vean iguales. El canónico
-// las dibuja abajo; ganó la consistencia entre fichas sobre el calco de un mockup.
+// Así que la consistencia se cumple mejor al revés: el cliente usa el MISMO componente que las otras
+// dos fichas de entidad, no un componente distinto en nombre de parecerse a ellas.
+//
+// LAS MÉTRICAS BAJAN A SU TIRA. En el slab vivían adentro; el canónico las dibuja como una fila de
+// celdas sobre el cuerpo (`TiraMetricas`), que es donde ya están en 20 y en 23. Los números son los
+// MISMOS y salen de las mismas lecturas: no se agrega ni se recalcula ninguno.
 //
 // ═══ LAS SOLAPAS VUELVEN — Y ESTO REVIERTE UNA DECISIÓN DEL DUEÑO (24/08/2026) ═══
 //
@@ -81,7 +86,10 @@ import { BloqueInformacion } from '@/features/clientes/components/BloqueInformac
 import { BloqueObras } from '@/features/clientes/components/BloqueObras'
 import { FichaCuenta } from '@/features/clientes/components/FichaCuenta'
 import { FichaPresupuestos } from '@/features/clientes/components/FichaPresupuestos'
-import { Aviso, BarraContexto, BotonEnlace, MetaContexto, Num, SubTabs } from '@/shared/components/ds'
+import { Aviso, BotonEnlace, SubTabs } from '@/shared/components/ds'
+import {
+  CabeceraFicha, HechoFicha, PastillaFicha, Punto, TiraMetricas,
+} from '@/features/administracion/components/FichaCanonica'
 import { EstadoError } from '@/shared/components/estado'
 import { crearLector } from '@/shared/components/estado/lecturas'
 import { PageShell } from '@/shared/components/ui'
@@ -209,96 +217,114 @@ export default async function ClientePage({
       // el de `PageShell` daría dos `h1` con el mismo nombre a 60px de distancia.
       encabezado={false}
     >
-      {/* EL SLAB DE IDENTIDAD, con el MISMO componente que la ficha del proveedor (`slab-proveedor`).
-          `COMPONENTS.md`: *"Cliente, Proveedor, Persona, Obra y Herramienta usan la MISMA
-          estructura"*. Escribir uno propio para el cliente habría garantizado que el tercero lo
-          copie con otro radio y otro gris — que es cómo `NavAdministracion` terminó dibujando su
-          barra de solapas tres veces.
+      {/* LA CABECERA BLANCA DEL CANÓNICO 26 — el MISMO `CabeceraFicha` que coronan la ficha de
+          Persona (20) y la de Proveedor (23). Va a sangre (`-mx`) porque su filo inferior es el que
+          separa la identidad del cuerpo, y un filo que arranca a 40px del borde no separa nada.
 
-          LA MIGA DE PAN vive adentro del slab: «01 · Obras · Clientes» contradecía a la barra de
-          Administración que corona la pantalla y repetía en tres niveles lo que esa barra ya dice. */}
-      <div className="mb-6 -mx-4 lg:-mx-10">
-        <BarraContexto
+          LA MIGA DE PAN vive adentro de la cabecera: «01 · Obras · Clientes» contradecía a la barra
+          de Administración que corona la pantalla y repetía en tres niveles lo que esa barra dice. */}
+      <div className="-mx-4 mb-4 lg:-mx-10">
+        <CabeceraFicha
           testid="slab-cliente"
           volverA="/clientes"
           volverLabel="Clientes"
           titulo={cliente.nombre_comercial}
-          meta={
+          avatar={
+            // EL GLIFO DE EMPRESA, el mismo que lleva el proveedor. Un cliente no tiene iniciales de
+            // persona: «La Estrella» abreviado a «LE» al lado de su propio nombre no agrega nada.
+            <span
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-line bg-canvas text-muted"
+              data-testid="glifo-cliente"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
+                <path d="M3 21h18M5 21V7l7-4 7 4v14" /><path d="M9 21v-5h6v5" /><path d="M9 10h.01M15 10h.01" />
+              </svg>
+            </span>
+          }
+          pastillas={
+            // ARCHIVADO GANA SOBRE EL RESTO: es la razón por la que esta ficha no aparece en la
+            // cartera, y saberlo cambia lo que se hace con ella.
+            <PastillaFicha
+              tono={!cliente.activo ? 'neutro' : enCurso.length > 0 ? 'curso' : 'neutro'}
+              testid="pastilla-estado-cliente"
+            >
+              {!cliente.activo
+                ? 'Archivado'
+                : enCurso.length > 0
+                  ? `${enCurso.length} ${enCurso.length === 1 ? 'obra en curso' : 'obras en curso'}`
+                  : 'Sin obra en curso'}
+            </PastillaFicha>
+          }
+          hechos={
             <>
+              <HechoFicha>{cliente.razon_social?.trim() || 'sin razón social'}</HechoFicha>
+              <Punto />
               {/* EL CUIT EN MONO TABULAR: es un número que se compara contra ARCA y contra el banco,
                   y en proporcional los dígitos no se alinean con nada. La ausencia va en texto
                   normal porque no es un número — escribirla en mono la disfraza de dato. */}
-              <MetaContexto rotulo="CUIT">
-                {cliente.cuit ? <Num className="text-[11.5px]">{cliente.cuit}</Num> : 'sin cargar'}
-              </MetaContexto>
-              <MetaContexto rotulo="Razón social">{cliente.razon_social ?? 'sin cargar'}</MetaContexto>
-              <MetaContexto rotulo="Responsable">{cliente.responsable_nombre ?? 'sin asignar'}</MetaContexto>
-              {/* ARCHIVADO GANA SOBRE EL RESTO: es la razón por la que esta ficha no aparece en la
-                  cartera, y saberlo cambia lo que se hace con ella. */}
-              <MetaContexto rotulo="Estado">
-                {!cliente.activo
-                  ? 'archivado'
-                  : enCurso.length > 0
-                    ? `${enCurso.length} ${enCurso.length === 1 ? 'obra' : 'obras'} en curso`
-                    : 'sin obra en curso'}
-              </MetaContexto>
+              {cliente.cuit
+                ? <HechoFicha mono>{cliente.cuit}</HechoFicha>
+                : <HechoFicha>sin CUIT</HechoFicha>}
+              <Punto />
+              <HechoFicha>{cliente.responsable_nombre ?? 'sin responsable asignado'}</HechoFicha>
             </>
           }
-          // EL RESUMEN DE 3–4 MÉTRICAS, en el slab y no en una fila de tarjetas: es donde lo pone la
-          // ficha del proveedor, y `COMPONENTS.md` §Cuándo NO usar panel prohíbe envolver un valor
-          // con su rótulo en una caja. Ninguna se inventa: obras y contratado salen de las obras ya
-          // leídas —misma fuente que la tabla de abajo, así que no pueden discrepar—, contactos y
-          // documentos de sus propias listas.
-          kpis={[
-            {
-              rotulo: 'Obras',
-              valor: todas.length || null,
-              falta: 'ninguna cargada',
-            },
-            ...(veEconomia
-              ? [{
-                rotulo: 'Contratado en curso',
-                // NADIE CARGÓ EL MONTO ≠ CONTRATADO $ 0. Con obras en curso sin monto, la métrica lo
-                // dice en vez de publicar un cero que se leería como «trabajamos gratis».
-                valor: conMontoEnCurso.length
-                  ? money(conMontoEnCurso.reduce((s, o) => s + (o.monto_contratado ?? 0), 0))
-                  : null,
-                falta: enCurso.length ? 'sin monto cargado' : 'sin obra en curso',
-              }]
-              : []),
-            { rotulo: 'Contactos', valor: lector.leer(contactos, []).length || null, falta: 'ninguno' },
-            { rotulo: 'Documentos', valor: lector.leer(documentos, []).length || null, falta: 'ninguno' },
-          ]}
           acciones={puedeEditar && (
-            // UNA SOLA ACCIÓN EN EL SLAB. El canónico pone acá la primaria «Nueva obra»; en esta
-            // pantalla esa alta ES un formulario que vive dentro del bloque Obras (`alta-obra`), y un
-            // segundo botón con el mismo nombre daría dos entradas a la misma escritura. Queda
-            // declarado como desviación: la primaria del objeto está en su bloque, no en el slab.
+            // UNA SOLA ACCIÓN. El canónico pone acá la primaria «Nueva obra»; en esta pantalla esa
+            // alta ES un formulario que vive dentro del bloque Obras (`alta-obra`), y un segundo
+            // botón con el mismo nombre daría dos entradas a la misma escritura. Queda declarado
+            // como desviación: la primaria del objeto está en su bloque, no en la cabecera.
             <BotonEnlace
               href={url({ editar: q.editar === '1' ? null : '1' })}
               data-testid="editar-ficha"
             >{q.editar === '1' ? 'Cerrar edición' : 'Editar'}</BotonEnlace>
           )}
+          solapas={
+            /* LAS SOLAPAS DEL CANÓNICO 26 — con contador mono, DENTRO de la cabecera, para que la
+               activa se apoye sobre su filo. Cambian de vista, no de página: el estado viaja en
+               `?solapa=`, así que cada cara es una dirección compartible y «atrás» vuelve a la
+               anterior. Sin contador las que no cuentan nada (Resumen, Cuenta): un «0» al lado de
+               Cuenta se leería como saldo. */
+            <SubTabs
+              testid="solapas-cliente"
+              items={[
+                { href: url({ solapa: null }), label: 'Resumen', cuenta: null, activo: solapa === 'resumen', testid: 'solapa-resumen' },
+                { href: url({ solapa: 'obras' }), label: 'Obras', cuenta: todas.length, activo: solapa === 'obras', testid: 'solapa-obras' },
+                ...(veEconomia
+                  ? [{ href: url({ solapa: 'presupuestos' }), label: 'Presupuestos', cuenta: presupuestos.length, activo: solapa === 'presupuestos', testid: 'solapa-presupuestos' }]
+                  : []),
+                { href: url({ solapa: 'documentos' }), label: 'Documentos', cuenta: lector.leer(documentos, []).length, activo: solapa === 'documentos', testid: 'solapa-documentos' },
+                ...(veEconomia
+                  ? [{ href: url({ solapa: 'cuenta' }), label: 'Cuenta', cuenta: null, activo: solapa === 'cuenta', testid: 'solapa-cuenta' }]
+                  : []),
+              ]}
+            />
+          }
         />
       </div>
 
-      {/* LAS SOLAPAS DEL CANÓNICO 26 — con contador mono. Cambian de vista, no de página: el
-          estado viaja en `?solapa=`, así que cada cara es una dirección compartible y «atrás»
-          vuelve a la anterior. Sin contador las que no cuentan nada (Resumen, Cuenta): un «0» al
-          lado de Cuenta se leería como saldo. */}
+      {/* EL RESUMEN DE MÉTRICAS, sobre el cuerpo y no adentro de la cabecera: es donde lo pone el
+          canónico y donde ya está en las fichas de Persona y de Proveedor. Ninguna se inventa —obras
+          y contratado salen de las obras ya leídas, misma fuente que la tabla de abajo, así que no
+          pueden discrepar— y ninguna escribe un cero por una ausencia. */}
       <div className="mb-6">
-        <SubTabs
-          testid="solapas-cliente"
-          items={[
-            { href: url({ solapa: null }), label: 'Resumen', cuenta: null, activo: solapa === 'resumen', testid: 'solapa-resumen' },
-            { href: url({ solapa: 'obras' }), label: 'Obras', cuenta: todas.length, activo: solapa === 'obras', testid: 'solapa-obras' },
+        <TiraMetricas
+          testid="metricas-cliente"
+          metricas={[
+            { rotulo: 'Obras', valor: todas.length || null, falta: 'ninguna cargada' },
             ...(veEconomia
-              ? [{ href: url({ solapa: 'presupuestos' }), label: 'Presupuestos', cuenta: presupuestos.length, activo: solapa === 'presupuestos', testid: 'solapa-presupuestos' }]
+              ? [{
+                  rotulo: 'Contratado en curso',
+                  // NADIE CARGÓ EL MONTO ≠ CONTRATADO $ 0. Con obras en curso sin monto, la métrica
+                  // lo dice en vez de publicar un cero que se leería como «trabajamos gratis».
+                  valor: conMontoEnCurso.length
+                    ? money(conMontoEnCurso.reduce((s, o) => s + (o.monto_contratado ?? 0), 0))
+                    : null,
+                  falta: enCurso.length ? 'sin monto cargado' : 'sin obra en curso',
+                }]
               : []),
-            { href: url({ solapa: 'documentos' }), label: 'Documentos', cuenta: lector.leer(documentos, []).length, activo: solapa === 'documentos', testid: 'solapa-documentos' },
-            ...(veEconomia
-              ? [{ href: url({ solapa: 'cuenta' }), label: 'Cuenta', cuenta: null, activo: solapa === 'cuenta', testid: 'solapa-cuenta' }]
-              : []),
+            { rotulo: 'Contactos', valor: lector.leer(contactos, []).length || null, falta: 'ninguno' },
+            { rotulo: 'Documentos', valor: lector.leer(documentos, []).length || null, falta: 'ninguno' },
           ]}
         />
       </div>

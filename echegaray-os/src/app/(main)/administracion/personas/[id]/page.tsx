@@ -68,6 +68,7 @@ import { NavFicha, VISTAS_FICHA, type VistaFicha } from '@/features/administraci
 import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
 import { getAsignacionesDe, getDocumentos, getPersona } from '@/features/administracion/services/personasService'
 import { antiguedadEnAnios, DOCUMENTO_ESTADO, estadoDocumento, papelesPendientes } from '@/features/administracion/services/fichaPersona'
+import { rotuloDocumento } from '@/features/administracion/services/rotuloDocumento'
 import { veLaCuentaDeOtro } from '@/features/administracion/services/accesoPersona'
 import { getCuentaDePersona } from '@/features/administracion/services/accesoService'
 import { getBitacora, TRAMO } from '@/features/administracion/services/auditoriaService'
@@ -78,6 +79,7 @@ import { cerrarAsignacionDePersona } from '@/features/administracion/services/as
 import { desvincularDocumento, vincularDocumento } from '@/features/administracion/services/documentosActions'
 import { formatearCuit, formatearDni } from '@/features/administracion/services/identidad'
 import { etiquetaCategoria } from '@/features/administracion/types'
+import { oracion } from '@/shared/utils/texto'
 import { pareceCategoria } from '@/features/administracion/services/vocabularioPersona'
 import { fecha } from '@/features/obras/components/formato'
 
@@ -206,7 +208,11 @@ export default async function FichaPersonaPage({
         volverA="/administracion/personas"
         volverLabel="Personal"
         avatar={<Avatar nombre={persona.nombre_completo} url={null} lado={44} />}
-        titulo={persona.nombre_completo}
+        // EL NOMBRE SE DIBUJA EN ORACIÓN. Llega gritado desde el legajo («CRISTIAN AGÜERO») porque
+        // así lo escriben las planillas de jornales; el canónico 20 lo pinta «Cristian Agüero». El
+        // DATO no se toca: `oracion` es de dibujo, y el nombre que viaja al recibo, al alta temprana
+        // y al IERIC sigue siendo el guardado.
+        titulo={oracion(persona.nombre_completo)}
         pastillas={
           // EL ESTADO SALE DE `en_la_empresa`, NO DE LA FECHA: hay 15 personas que se fueron sin baja
           // documentada y por la fecha figurarían activas.
@@ -536,18 +542,28 @@ export default async function FichaPersonaPage({
                 ? <p className="px-3.5 py-3 text-[12px] text-faint">Todavía no hay documentos vinculados al legajo.</p>
                 : papeles.slice(0, 6).map((d) => {
                     const estado = estadoDocumento(d)
+                    // EL RÓTULO CURADO, NO EL NOMBRE DEL ARCHIVO (canónico 20 · 24/08/2026). Acá se
+                    // dibujaba «Recibo 2026-07 Q2 - AGUERO CRISTIAN (firmado).pdf» —seis de ésos no
+                    // contestan qué papeles tiene la persona, que es para lo que existe la lista—.
+                    // La regla y el período viven en `rotuloDocumento.ts`, con su prueba.
+                    const { titulo, archivo } = rotuloDocumento(d)
+                    const palabra = estado === 'cargado'
+                      ? (d.fecha_documento ? `cargado ${fecha(d.fecha_documento)}` : 'cargado')
+                      : DOCUMENTO_ESTADO[estado].palabra
                     return (
                       <FilaTarjeta
                         key={d.id}
                         href={href('documentos')}
                         testid={`aside-doc-${d.id}`}
-                        titulo={d.nombre ?? d.tipo_documento?.replace(/_/g, ' ') ?? 'sin nombre'}
+                        titulo={titulo}
                         // NO HAY VENCIMIENTO QUE MOSTRAR: `documento_legajo` no guarda fecha de
                         // vencimiento, así que la fecha que se escribe es la del documento y se
                         // rotula como tal. Pintar «vence en 20 días» sería inventarlo.
-                        detalle={estado === 'cargado'
-                          ? (d.fecha_documento ? `cargado ${fecha(d.fecha_documento)}` : 'cargado')
-                          : DOCUMENTO_ESTADO[estado].palabra}
+                        //
+                        // EL NOMBRE DEL ARCHIVO NO SE TIRA: es lo único que permite encontrarlo en
+                        // Drive cuando algo no cuadra. Viaja en el `title`, fuera del camino de
+                        // quien barre la lista y a mano para quien se detiene.
+                        detalle={<span title={archivo ?? undefined}>{palabra}</span>}
                         tonoDetalle={estado === 'cargado' ? 'faint' : 'neg'}
                       />
                     )
@@ -587,7 +603,7 @@ export default async function FichaPersonaPage({
         {editar && (
           <PanelEdicion
             titulo={editar === 'identidad' ? 'Editar identidad' : 'Editar datos laborales'}
-            subtitulo={persona.nombre_completo}
+            subtitulo={oracion(persona.nombre_completo)}
             accion={editarPersona.bind(null, id, editar)}
             cerrarHref={href(vista)}
             testid={`panel-editar-${editar}`}

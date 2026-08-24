@@ -133,7 +133,9 @@ test.describe('los buscadores con estado en la URL', () => {
       ['/administracion/proveedores', 'buscar-proveedor'],
       ['/administracion/personas/cuadrillas', 'buscar-cuadrilla'],
       ['/administracion/personas/en-obra', 'buscar-presencia'],
-      ['/administracion', 'buscador-global'],
+      // `/administracion` SALIÓ DE LA LISTA (24/08/2026). Tenía un buscador global de cliente,
+      // persona y proveedor que el canónico 00 no dibuja: la lupa global vive en la barra de
+      // aplicación, no dentro de la página. La entrada de Administración ya no tiene campo propio.
     ]
     for (const [ruta, campo] of donde) {
       await page.goto(ruta)

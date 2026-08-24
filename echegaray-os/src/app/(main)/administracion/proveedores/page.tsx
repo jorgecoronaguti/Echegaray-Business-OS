@@ -15,7 +15,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { PageShell } from '@/shared/components/ui'
-import { Aviso, Ayuda, BotonEnlace, BuscadorURL, SubTabs, Vacio } from '@/shared/components/ds'
+import { Aviso, Ayuda, BotonEnlace, BuscadorURL, SubTabs, TituloPantalla, Vacio } from '@/shared/components/ds'
 import { IconoCrear } from '@/shared/components/iconos'
 import { plata } from '@/features/obras/components/formato'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
@@ -96,7 +96,7 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
 
   if (listado.error) {
     return (
-      <PageShell title="Proveedores">
+      <PageShell title="Proveedores" encabezado={false}>
         <NavAdministracion />
         <div data-testid="proveedores-error">
           <Aviso tono="neg" titulo="No pude leer los proveedores">{listado.error}</Aviso>
@@ -158,7 +158,9 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
   }
 
   return (
-    <PageShell title="Proveedores">
+    // SIN ENCABEZADO DE PÁGINA (24/08/2026, canónico 22). Igual que en 00 y 19: la pantalla arranca
+    // en la sub-navegación, que ya dice «Proveedores» con su contador y su ⚠.
+    <PageShell title="Proveedores" encabezado={false}>
       <NavAdministracion />
 
       <div className="mb-4">
@@ -189,6 +191,8 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
         ? (
             <>
               <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-3">
+                {/* El nombre de la lista, en su línea de controles. */}
+                <TituloPantalla className="mr-1">Proveedores</TituloPantalla>
                 <BuscadorURL
                   accion="/administracion/proveedores"
                   q={sp.q}

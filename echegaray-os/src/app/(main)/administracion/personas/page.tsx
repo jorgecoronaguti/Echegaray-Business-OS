@@ -12,7 +12,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { PageShell } from '@/shared/components/ui'
-import { Aviso, BotonEnlace, BuscadorURL, Franja, Vacio } from '@/shared/components/ds'
+import { Aviso, BotonEnlace, BuscadorURL, Franja, TituloPantalla, Vacio } from '@/shared/components/ds'
 import { IconoCrear, IconoCuadrilla, IconoPersona } from '@/shared/components/iconos'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
 import { FiltrosURL } from '@/features/administracion/components/Controles'
@@ -114,7 +114,7 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
   // ("permission denied for table personas") y este mensaje es lo que permitió encontrarlo.
   if (listado.error) {
     return (
-      <PageShell title="Personal">
+      <PageShell title="Personas" encabezado={false}>
         <NavAdministracion />
         <div data-testid="personas-error">
           <Aviso tono="neg" titulo="No pude leer el legajo">{listado.error}</Aviso>
@@ -144,7 +144,12 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
     : []
 
   return (
-    <PageShell title="Personal">
+    // SIN ENCABEZADO DE PÁGINA (24/08/2026, auditoría lado a lado del canónico 19). El mockup no
+    // dibuja el «Personal» a 22px arriba de todo: la pantalla arranca en la sub-navegación —donde
+    // «Personas» ya está encendida con su contador— y el nombre de la lista vive en la MISMA línea
+    // que su buscador, sus filtros y su alta. El título separado sumaba un renglón que no decidía
+    // nada y empujaba la primera fila del plantel hacia abajo.
+    <PageShell title="Personas" encabezado={false}>
       <NavAdministracion />
 
       {/* EL PULSO ANTES QUE EL DIRECTORIO (Design 23/08, pantalla 19). Lo que hay que mirar hoy va
@@ -199,6 +204,8 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
       {/* UNA SOLA LÍNEA: buscar · filtros · Cuadrillas · la acción primaria. Cuadrillas va discreta
           porque es NAVEGACIÓN, no una acción — y vive DENTRO de Personal, no como sección nueva. */}
       <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-3">
+        {/* EL NOMBRE DE LA LISTA, EN SU LÍNEA DE CONTROLES — es donde lo pone el canónico 19. */}
+        <TituloPantalla className="mr-1">Personas</TituloPantalla>
         <BuscadorURL
           accion="/administracion/personas"
           q={sp.q}

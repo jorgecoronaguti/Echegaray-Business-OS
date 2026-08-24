@@ -34,7 +34,7 @@ import { getPerfilActual } from '@/features/auth/services/authService'
 import { esAdministracion } from '@/features/auth/types/areas'
 import { getObrasCanonicas } from '@/features/control-obras/services/costosObraService'
 import { PageShell } from '@/shared/components/ui'
-import { Aviso, Ayuda, BuscadorURL, Num } from '@/shared/components/ds'
+import { Aviso, Ayuda, BuscadorURL, Num, TituloPantalla } from '@/shared/components/ds'
 import { IconoCompra } from '@/shared/components/iconos'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
 import { AtencionCompras, FiltrosCompras } from '@/features/administracion/components/EstadosDeControl'
@@ -97,7 +97,7 @@ export default async function ComprasPage({
   // evita mostrarle la pantalla a quien no administra nada.
   if (!esAdministracion(perfil.data?.rol ?? null)) {
     return (
-      <PageShell title="Compras">
+      <PageShell title="Compras" encabezado={false}>
         <NavAdministracion />
         <Aviso tono="info">Esta pantalla es de Administración.</Aviso>
       </PageShell>
@@ -116,7 +116,7 @@ export default async function ComprasPage({
 
   if (listado.error || !listado.data || conteos.error || !conteos.data) {
     return (
-      <PageShell title="Compras">
+      <PageShell title="Compras" encabezado={false}>
         <NavAdministracion />
         <div data-testid="compras-error">
           <Aviso tono="neg" titulo="No pude leer el libro de compras">
@@ -136,7 +136,10 @@ export default async function ComprasPage({
   const atajos = obrasFrecuentes(historialObras, { excluir: abierta?.obra_texto ?? null })
 
   return (
-    <PageShell title="Compras">
+    // SIN ENCABEZADO DE PÁGINA (24/08/2026, canónico 24). El «Compras» a 22px arriba de todo no
+    // está en el mockup: la sub-navegación ya lo nombra con su contador, y el nombre de la lista
+    // baja a la misma línea que el buscador y la acción primaria.
+    <PageShell title="Compras" encabezado={false}>
       <NavAdministracion />
 
       {/* ═══ UNA SOLA LÍNEA DE CONTROL, Y LA ALARMA DEBAJO (canónico 24 · 24/08/2026) ═══
@@ -146,6 +149,7 @@ export default async function ComprasPage({
           seis KPIs grandes debajo— y la lista arrancaba a 190px del encabezado: en un portátil se
           veían cuatro filas del libro de compras. */}
       <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <TituloPantalla className="mr-1">Compras</TituloPantalla>
         <BuscadorURL
           accion={RUTA}
           q={sp.q}
