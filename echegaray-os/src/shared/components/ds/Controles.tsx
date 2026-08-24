@@ -85,6 +85,7 @@ export function Buscador({
   placeholder = 'Buscar',
   testid = 'buscador',
   className = '',
+  variante = 'hairline',
 }: {
   value: string
   onChange: (v: string) => void
@@ -93,9 +94,25 @@ export function Buscador({
   placeholder?: string
   testid?: string
   className?: string
+  /**
+   * `caja` es el buscador de las carteras del zip (`22:60`, `24:60`, `25:56`): caja completa con
+   * borde #E7E6E2, radio 6 y padding 4px 8px, en 12px.
+   *
+   * El argumento del `hairline` —«un buscador con borde completo arriba de una tabla sin caja es la
+   * caja que la tabla no tiene»— sigue siendo cierto DONDE la tabla no tiene caja. En las carteras
+   * portadas del zip la tabla SÍ va en caja (`shared/components/canon`), y ahí el que desentona es
+   * el hairline. Por eso es una variante y no un reemplazo: las pantallas que no se portaron
+   * siguen viéndose igual.
+   */
+  variante?: 'hairline' | 'caja'
 }) {
+  const caja = variante === 'caja'
   return (
-    <div className={`flex min-w-0 items-center gap-2 border-b border-line ${className}`}>
+    <div
+      className={`flex min-w-0 items-center ${
+        caja ? 'gap-1.5 rounded-[6px] border border-[#E7E6E2] bg-white px-2 py-1' : 'gap-2 border-b border-line'
+      } ${className}`}
+    >
       <IconoBuscar />
       <input
         type="search"
@@ -105,7 +122,9 @@ export function Buscador({
         placeholder={placeholder}
         data-testid={testid}
         aria-label={placeholder}
-        className="h-control min-w-0 flex-1 bg-transparent text-[13px] text-ink outline-none placeholder:text-faint max-lg:h-control-movil"
+        className={`min-w-0 flex-1 bg-transparent outline-none placeholder:text-faint ${
+          caja ? 'text-[12px] text-ink' : 'h-control text-[13px] text-ink max-lg:h-control-movil'
+        }`}
       />
     </div>
   )
