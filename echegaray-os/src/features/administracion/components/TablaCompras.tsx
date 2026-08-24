@@ -17,10 +17,27 @@
 // como lo habitual es el error de origen; mostrarlo como un problema es el arreglo.
 
 import Link from 'next/link'
-import { Estado, Nulo, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
+import { Estado, FilaTotal, Nulo, Num, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
 import { fecha, plata } from '@/features/obras/components/formato'
-import { controlDe } from '../services/comprasEstado'
+import { controlDe, totalDeLaVista, type Control } from '../services/comprasEstado'
 import type { ComprobanteCompra } from '../services/comprasService'
+
+// ═══ LA FILA TRANSACCIONAL (Design 23/08 · COMPONENTS.md §Transaction row) ═══
+//
+// La excepción se marca con una REGLA INTERIOR de 3px en el borde izquierdo, no con un badge de
+// color en la columna de estado. El motivo es de escaneo: el ojo recorre el borde izquierdo de una
+// tabla de arriba abajo sin leer nada, así que las tres filas que piden trabajo se encuentran en un
+// barrido; una pastilla en la última columna obliga a leer las treinta.
+//
+// La regla es `boxShadow` y no un `border-l`: un borde real corre la fila 3px y desalinea la
+// columna de fecha con el encabezado. Es la misma técnica con la que `Tr` dibuja la selección — y
+// por eso la selección GANA cuando ambas coinciden: el estilo en línea de `Tr` pisa a esta clase,
+// que es exactamente lo que pide el contrato («la fila seleccionada usa la regla amarilla de 2px»).
+const REGLA: Record<Control['tono'], string> = {
+  pos: '',
+  warn: 'shadow-[inset_3px_0_0_var(--os-warn)]',
+  neg: 'shadow-[inset_3px_0_0_var(--os-neg)]',
+}
 
 function Importe({ c }: { c: ComprobanteCompra }) {
   if (c.imp_total == null) return <Nulo>sin importe</Nulo>
@@ -84,6 +101,8 @@ export function TablaCompras({
       </div>
     )
   }
+  const suma = totalDeLaVista(filas)
+  const afuera = suma.sinImporte + suma.sinSigno
   return (
     <Tabla testid="tabla-compras" minWidth={720}>
       <THead>
@@ -98,7 +117,15 @@ export function TablaCompras({
         {filas.map((c) => {
           const control = controlDe(c)
           return (
-            <Tr key={c.id} data-testid="fila-compra" seleccionada={c.id === seleccionado} compacta>
+            <Tr
+              key={c.id}
+              data-testid="fila-compra"
+              // El estado va al DOM aunque la columna no lo dibuje: es lo que deja verificar una fila
+              // normal desde un test sin depender de un texto que el diseño decidió no escribir.
+              data-control={control.clave}
+              seleccionada={c.id === seleccionado}
+              className={REGLA[control.tono]}
+            >
               <Td num className="w-[76px] text-muted">{fecha(c.fecha_emision)}</Td>
               <Td fuerte className="max-w-0">
                 <Link href={hrefDe(c.id)} data-testid="abrir-compra" className="block min-w-0 truncate hover:underline">
@@ -113,13 +140,46 @@ export function TablaCompras({
               </Td>
               <Td className="max-w-0"><Imputada c={c} /></Td>
               <Td num className="w-[120px]"><Importe c={c} /></Td>
+              {/* SINCRONIZADA NO DIBUJA NADA — COMPONENTS.md §Sync state, textual: «la
+                  sincronización con el Sheet no se celebra». Era el estado de la enorme mayoría de
+                  las filas, así que la columna de control decía lo mismo treinta veces y el
+                  problema real quedaba escondido entre treinta confirmaciones de que todo va bien.
+                  Confirmada SÍ se escribe: no es el estado de una máquina, es una persona que miró
+                  el papel y se hizo cargo. */}
               <Td className="w-[130px]">
-                <Estado tono={control.tono} clave={control.clave}>{control.etiqueta}</Estado>
+                {control.clave !== 'sincronizada' && (
+                  <Estado tono={control.tono} clave={control.clave}>{control.etiqueta}</Estado>
+                )}
               </Td>
             </Tr>
           )
         })}
       </tbody>
+      {/* LA FILA DE TOTAL DICE «EN PANTALLA», NO «EL LIBRO». Con un filtro puesto o con el tope
+          recortando, suma un subconjunto: rotularla «Total» a secas la convertiría en una
+          afirmación sobre la empresa que no es cierta. Y los que no se pudieron sumar se cuentan al
+          lado — un total que se come en silencio los comprobantes sin importe miente hacia abajo. */}
+      <tfoot>
+        <FilaTotal>
+          <Td colSpan={3} fuerte>
+            <span className="text-[12px] font-normal text-muted">En pantalla</span>{' '}
+            <Num className="text-ink">{filas.length}</Num>
+          </Td>
+          <Td className="text-right">
+            {afuera > 0 && (
+              <span data-testid="total-fuera-de-suma" className="text-[11.5px] font-normal text-warn">
+                {afuera} sin sumar
+              </span>
+            )}
+          </Td>
+          <Td num className="w-[120px]">
+            {suma.total === null
+              ? <Nulo>sin importes</Nulo>
+              : <span data-testid="total-compras" className={suma.total < 0 ? 'text-pos' : 'text-ink'}>{plata(suma.total)}</span>}
+          </Td>
+          <Td />
+        </FilaTotal>
+      </tfoot>
     </Tabla>
   )
 }

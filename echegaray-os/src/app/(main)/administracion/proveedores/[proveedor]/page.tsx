@@ -27,14 +27,16 @@ import { veEconomia } from '@/features/auth/types/areas'
 import { getProveedor } from '@/features/administracion/services/proveedoresService'
 import { getComprobantes, getNombresDelProveedor } from '@/features/administracion/services/fichaProveedorService'
 import {
-  comprasPorObra, conceptosProvistos, resumirProveedor,
+  comprasPorObra, conceptosProvistos, resumirProveedor, ultimosMovimientos,
 } from '@/features/administracion/services/fichaProveedor'
 import { formatearCuit } from '@/features/administracion/services/identidad'
 import {
-  ComprasPorObra, ConceptosProvistos, PropiedadesProveedor,
+  ComprasPorObra, ConceptosProvistos, MovimientosProveedor, PropiedadesProveedor,
 } from '@/features/administracion/components/ProveedorResumen'
 import { TablaComprobantes } from '@/features/administracion/components/TablaComprobantes'
-import { Aviso, BarraContexto, BotonEnlace, MetaContexto, Nulo, SubTabs } from '@/shared/components/ds'
+import {
+  Aviso, Ayuda, BarraContexto, BotonEnlace, Eyebrow, MetaContexto, Nulo, SubTabs,
+} from '@/shared/components/ds'
 import { EstadoError } from '@/shared/components/estado'
 import { fecha, plataCorta } from '@/features/obras/components/formato'
 
@@ -162,6 +164,11 @@ export default async function ProveedorFichaPage({ params, searchParams }: { par
             )}
           </div>
 
+          {/* CONTACTO, CONDICIÓN DE IVA Y PLAZO DE PAGO SE FUERON DE ESTA LISTA (Design 23/08).
+              `public.proveedores` no tiene esas columnas: dibujarlas en «sin cargar» promete un
+              campo que el sistema no puede guardar, y quien lo intentara no encontraría dónde. Es
+              el mismo criterio con el que `PanelProveedor` nunca las dibujó. Lo que falta se dice
+              una vez, abajo, con el motivo — no nueve veces sin él. */}
           <PropiedadesProveedor
             filas={[
               { k: 'CUIT', v: formatearCuit(proveedor.cuit) ?? <Nulo>sin CUIT</Nulo> },
@@ -169,9 +176,6 @@ export default async function ProveedorFichaPage({ params, searchParams }: { par
               { k: 'Estado', v: proveedor.activo ? 'Activo' : 'Archivado' },
               { k: 'Primera compra', v: resumen.primera ? fecha(resumen.primera) : <Nulo>sin registro</Nulo> },
               { k: 'Comprobantes', v: resumen.comprobantes || <Nulo>ninguno</Nulo> },
-              { k: 'Contacto', v: <Nulo>sin cargar</Nulo> },
-              { k: 'Condición IVA', v: <Nulo>sin cargar</Nulo> },
-              { k: 'Plazo de pago', v: <Nulo>sin acordar</Nulo> },
               { k: 'Notas', v: proveedor.notas?.trim() || <Nulo>sin notas</Nulo> },
             ]}
             nombres={(nombres.data ?? []).map((n) => ({
@@ -179,16 +183,32 @@ export default async function ProveedorFichaPage({ params, searchParams }: { par
               comprobantes: Number(n.comprobantes ?? 0),
               manual: n.via === 'resolucion_manual',
             }))}
-          />
+          >
+            <MovimientosProveedor
+              filas={ultimosMovimientos(filas)}
+              total={resumen.comprobantes}
+              verTodoHref={href('comprobantes')}
+            />
+
+            {/* DOCUMENTOS — el cuarto bloque de la anatomía del aside. Está vacío y se dice por qué:
+                un bloque ausente se lee como «este proveedor no tiene papeles», que es una
+                afirmación sobre el mundo que esta pantalla no puede hacer. */}
+            <section className="mt-6" data-testid="documentos-proveedor">
+              <Eyebrow className="mb-1.5">Documentos</Eyebrow>
+              <p className="text-[12px] leading-relaxed text-muted">
+                Ninguna tabla vincula un archivo con un proveedor: hoy los documentos cuelgan de una
+                persona o de un cliente. Esta ficha no puede decir si tiene los papeles al día.
+              </p>
+            </section>
+          </PropiedadesProveedor>
         </div>
 
-        {/* LAS TRES COSAS QUE ESTA FICHA TODAVÍA NO PUEDE CONTESTAR, DICHAS UNA VEZ. Repetir
-            «sin cargar» en nueve propiedades explica qué falta; esto explica POR QUÉ. */}
-        <p className="max-w-[760px] text-[11px] leading-relaxed text-faint" data-testid="limites-ficha">
-          Contacto, condición de IVA y plazo de pago no tienen columna en <code>proveedores</code>:
-          la ficha no los adivina. Los documentos del proveedor tampoco aparecen — no hay ninguna
-          tabla que vincule un archivo de Drive con un proveedor, sólo con una persona o un cliente.
-        </p>
+        <Ayuda titulo="Qué no puede contestar esta ficha" testid="limites-ficha">
+          Contacto, condición de IVA y plazo de pago no tienen columna en <code>proveedores</code>,
+          así que no se dibujan: prometerían un campo donde no hay dónde guardarlo. Todo lo demás
+          —lo comprado, a qué obras fue, qué provee y su actividad— se DERIVA de los comprobantes;
+          ningún total se guarda al lado de sus filas.
+        </Ayuda>
       </div>
     </main>
   )

@@ -179,6 +179,33 @@ export async function getParecidos(supabase: SupabaseClient, id: string): Promis
   return (data ?? []) as unknown as Parecido[]
 }
 
+/**
+ * A QUÉ OBRAS FUE ANTES ESTE PROVEEDOR — el historial que alimenta los atajos del panel.
+ *
+ * No es una sugerencia y no lleva umbral: son los rótulos que ya se usaron para el MISMO CUIT, que
+ * es la única forma barata de acortar la decisión sin inventarle criterio. Se filtra por
+ * `imputacion = 'obra'` —la clasificación que la base calcula con el diccionario de alias—, así que
+ * Estructura y los rótulos sin alias no pueden entrar como atajo: ofrecerlos propagaría el error.
+ *
+ * Sin CUIT no hay historial. Cruzar por `emisor_nombre` traería «Acindar» y «ACINDAR S.A.» como dos
+ * proveedores distintos, que es el duplicado por texto libre que el maestro existe para evitar.
+ */
+export async function getObrasDelEmisor(
+  supabase: SupabaseClient,
+  cuit: string | null,
+): Promise<(string | null)[]> {
+  const limpio = cuit?.trim()
+  if (!limpio) return []
+  const { data } = await supabase
+    .from('comprobante_compra')
+    .select('obra_texto')
+    .eq('emisor_cuit', limpio)
+    .eq('imputacion', 'obra')
+    .order('fecha_emision', { ascending: false, nullsFirst: false })
+    .limit(60)
+  return ((data ?? []) as unknown as { obra_texto: string | null }[]).map((f) => f.obra_texto)
+}
+
 /** Un comprobante por su id, para el panel. `null` = no existe o la base no lo publica. */
 export async function getCompra(supabase: SupabaseClient, id: string): Promise<ComprobanteCompra | null> {
   const { data } = await supabase.from('comprobante_compra').select(COLUMNAS).eq('id', id).maybeSingle()
