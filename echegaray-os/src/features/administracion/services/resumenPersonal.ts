@@ -22,7 +22,9 @@
 // en vez de dibujarse en 0.
 
 import type { Metrica } from '@/shared/components/ds'
+import type { MetricaCanon } from '@/shared/components/canon/ListaCanon'
 import type { FiltroPersonal } from './personasService'
+import { estadoHoy, horasVisibles, type MarcaDeHoy } from './pulsoDelPlantel.ts'
 
 /** Lo mínimo que el pie necesita de cada fila. Se tipa por estructura y no con
  *  `PersonaEnDirectorio` para que la prueba no tenga que fabricar catorce campos. */
@@ -45,7 +47,7 @@ export function contar(personas: FilaContable[]) {
 }
 
 /** Cómo se llama el conjunto que la pantalla está mostrando ahora mismo. */
-function rotuloDelConjunto(filtro: FiltroPersonal, buscando: boolean): string {
+export function rotuloDelConjunto(filtro: FiltroPersonal, buscando: boolean): string {
   if (buscando) return 'Coinciden'
   if (filtro === 'inactivos') return 'Inactivos'
   if (filtro === 'en_obra') return 'En obra'
@@ -87,4 +89,67 @@ export function metricasDelListado({
   })
 
   return metricas
+}
+
+// ═══ EL PIE DEL CANÓNICO 19, AHORA CON LAS CUATRO CIFRAS ═══
+//
+// `19 · Personal Cartera.dc.html` cierra la caja de la lista con
+// `PLANTEL · EN OBRA HOY · SIN ASIGNAR · HH DEL MES`. La versión de arriba declaraba que HH DEL MES
+// no se podía dibujar —«el listado sale de `persona_directorio`, que no publica horas»— y era
+// cierto en su momento. Dejó de serlo: desde el pulso del plantel, la pantalla YA lee
+// `registros_hh` del mes para la columna HH MES, así que la suma no cuesta una consulta más.
+//
+// Y «EN OBRA HOY» del canónico es PRESENCIA, no asignación. `metricasDelListado` cuenta «En obra»
+// por `obra_actual_id`, que es dónde está asignada la persona — otra pregunta, y la respuesta puede
+// diferir en diez personas un lunes de lluvia. Acá se cuenta por la fichada, que es lo que el
+// rótulo promete.
+//
+// CADA CIFRA SE CALLA SI SU FUENTE NO SE PUDO LEER. Un «EN OBRA HOY 0» producido por una vista de
+// presencia caída dice que no vino nadie a trabajar.
+
+
+/** Lo mínimo que el pie canónico necesita de cada fila. */
+export interface FilaDelPie extends FilaContable {
+  id: string
+}
+
+export function metricasCanonicas({
+  filtro, buscando, personas, marcas, hh, hoyDisponible, hhDisponible,
+}: {
+  filtro: FiltroPersonal
+  buscando: boolean
+  personas: FilaDelPie[]
+  /** Las fichadas de hoy por persona. `null` = no se leyó, y entonces EN OBRA HOY no se dibuja. */
+  marcas: Map<string, MarcaDeHoy> | null
+  /** Las horas del mes por persona. `null` = no se leyó. */
+  hh: Map<string, number> | null
+  hoyDisponible: boolean
+  hhDisponible: boolean
+}): MetricaCanon[] {
+  const m: MetricaCanon[] = [
+    { rotulo: rotuloDelConjunto(filtro, buscando).toUpperCase(), valor: String(personas.length) },
+  ]
+
+  // A QUIEN YA NO ESTÁ NO SE LE PREGUNTA SI FICHÓ HOY NI CUÁNTAS HORAS HIZO ESTE MES.
+  if (filtro === 'inactivos') return m
+
+  if (marcas && hoyDisponible) {
+    const enObra = personas.filter((p) => estadoHoy(marcas.get(p.id)) === 'en_obra').length
+    m.push({ rotulo: 'EN OBRA HOY', valor: String(enObra) })
+  }
+
+  if (filtro === 'plantel') {
+    const sinAsignar = personas.filter((p) => p.obra_actual_id == null).length
+    // El ámbar SÓLO cuando hay alguien: un ámbar sobre un 0 gasta la señal.
+    m.push({ rotulo: 'SIN ASIGNAR', valor: String(sinAsignar), tono: sinAsignar > 0 ? 'warn' : 'ink' })
+  }
+
+  if (hh && hhDisponible) {
+    // ES LA SUMA DE LO IMPUTADO, no una estimación del mes: quien no tiene registros no suma, que es
+    // distinto de «trabajó 0». La columna HH MES de su fila ya dice «sin HH».
+    const total = personas.reduce((t, p) => t + (hh.get(p.id) ?? 0), 0)
+    m.push({ rotulo: 'HH DEL MES', valor: `${horasVisibles(total)} h` })
+  }
+
+  return m
 }

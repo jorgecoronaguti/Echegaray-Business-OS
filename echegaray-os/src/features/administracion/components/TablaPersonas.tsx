@@ -1,48 +1,52 @@
-// EL LISTADO DE PERSONAL — y ninguna columna de más.
+// PANTALLA 19 · LA LISTA DE PERSONAL — porte literal de `19 · Personal Cartera.dc.html`.
 //
-// El dueño, textual: *"PERSONA | CATEGORÍA | CUADRILLA | OBRA ACTUAL | ESTADO. Nada más. NO mostrar
-// en la tabla DNI, CUIL, sueldo, teléfono, documentación ni métricas."* Después pidió las fechas:
-// ALTA está siempre; BAJA sólo en el filtro Inactivos, que es donde significa algo —en el plantel
-// sería un hueco en las diecisiete filas, y una columna que nunca tiene dato es ancho gastado.
+// ═══ LO QUE SE MIDIÓ DEL CANÓNICO ═══
 //
-// No es sólo una decisión visual: lo que la tabla no muestra TAMPOCO SE LE PIDE A LA BASE. El
-// listado sale de `persona_directorio` y `personasService` nombra sus catorce columnas una por una,
-// así que el día que la vista crezca, el documento y la retribución no se cuelan al navegador por
-// un `select('*')`.
+//   grilla   `minmax(0,1.3fr) minmax(0,1fr) minmax(0,1.3fr) 148px 82px 76px 26px` · `gap:10px`
+//   fila     48px · `borderBottom:1px solid #F1F0EC` · `padding:0 14px` · hover `#FAFAF8`
+//   avatar   26×26 radio 13, teñido por el estado del día (verde en obra, neutro el resto)
+//   nombre   12,5px peso 500 · rol 12px `#3A3A38` · cuadrilla 11px `#91918B`
+//   HOY      icono 14px + palabra, los dos del color del estado
+//   HH MES   mono 12px a la derecha · PAPELES centrado · `···` 26px
 //
-// CUADRILLA y OBRA ACTUAL son DERIVADAS —de la pertenencia vigente y de la asignación vigente—, no
-// columnas guardadas. Por eso no pueden quedar desactualizadas respecto de la ficha.
+// La caja, el encabezado de 38px y el pie viven en `shared/components/canon/ListaCanon`, que es el
+// mismo dibujo en los canónicos 00, 17, 19 y 22/25.
 //
-// ═══ CINCO HECHOS, CINCO LUGARES (Design 23/08/2026, pantalla 19) ═══
+// ═══ LO QUE ESTABA ANTES, Y POR QUÉ CAMBIA ═══
 //
-// El canónico junta OBRA / CUADRILLA en una columna y titula la otra «ROL», pero en el modelo son
-// CINCO cosas distintas y ninguna se deduce de otra: el OFICIO es lo que sabe hacer, la CATEGORÍA
-// UOCRA es lo que cobra, el ROL es qué hace en esta obra, la CUADRILLA es con quién y la OBRA es
-// dónde. Colapsarlas para parecerse al mockup es exactamente el defecto que esta tabla ya arregló
-// una vez —mostraba «OFICIAL» debajo del nombre y «Ayudante» en CATEGORÍA, dos respuestas al mismo
-// hecho—. Se preserva la separación y se adapta lo visual: el oficio bajo el nombre, el rol bajo la
-// obra, categoría y cuadrilla en su columna.
-
-// ═══ EL PULSO DEL DÍA (Design 23/08, pantalla 19) ═══
+// Era una `ds/Tabla` de hasta diez columnas: PERSONA · CATEGORÍA UOCRA · CUADRILLA · OBRA ACTUAL ·
+// HOY · HH MES · PAPELES · ALTA · [BAJA] · ESTADO. El canónico dibuja SIETE y junta dos pares. El
+// argumento que defendía las diez —«son cinco hechos distintos y ninguno se deduce de otro: oficio,
+// categoría UOCRA, rol en obra, cuadrilla y obra»— sigue siendo cierto y NO se descarta: los cinco
+// siguen en pantalla. Lo que cambia es que se agrupan de a dos por columna, exactamente como el
+// canónico ya hace con OBRA / CUADRILLA, en vez de gastar una columna cada uno.
 //
-// «Nada más salvo razón operativa fuerte» seguía valiendo, y las tres columnas nuevas —HOY, HH MES,
-// PAPELES— son exactamente esa razón: el canónico no dibuja un directorio, dibuja el estado del
-// plantel hoy. Ninguna sale de `persona_directorio`; llegan agrupadas desde la página, y por eso son
-// OPCIONALES: sin `pulso` la tabla es la de antes, que es lo que necesita cualquier pantalla que la
-// reuse sin pagar las tres lecturas extra.
+//   OFICIO / CATEGORÍA   el oficio arriba (lo que sabe hacer), la categoría UOCRA abajo (lo que
+//                        cobra). El canónico titula esta columna «ROL» y muestra una sola línea; el
+//                        rótulo se cambia porque en este modelo «rol» es otra cosa —qué hace en ESTA
+//                        obra— y usar la palabra para el oficio es el error que esta misma tabla ya
+//                        corrigió una vez. DESVÍO DECLARADO respecto del canónico.
+//   OBRA / CUADRILLA     la obra arriba, y abajo la cuadrilla con el rol en obra cuando existe
+//                        («Cuadrilla 1 · capataz»).
 //
-// Cada silencio se escribe con su palabra —«sin fichar», «sin HH», «sin legajo»— y ninguno es 0. El
-// porqué de cada uno está en `services/pulsoDelPlantel.ts`, que es donde vive la regla.
+// ALTA, BAJA y ESTADO se van de la lista: el canónico no las dibuja. ALTA se mira una vez por
+// persona en la vida y vive en la ficha. En el filtro «Inactivos» la geometría cambia —no hay HOY ni
+// HH que preguntarle a quien ya no está— y ahí BAJA vuelve, porque es el dato por el que se abre esa
+// lista. `en_la_empresa` no necesita columna: es el filtro con el que se llegó.
+//
+// Y lo que la tabla no muestra TAMPOCO SE LE PIDE A LA BASE: `personasService` sigue nombrando sus
+// columnas una por una, así que ni DNI, ni CUIL, ni retribución viajan al navegador.
 
 import Link from 'next/link'
-import { Tabla, THead, Th, Tr, Td, Nulo, Estado } from '@/shared/components/ds'
-import { Avatar } from '@/shared/components/Avatar'
+import { CabezaCanon, FilaCanon, ListaCanon, PieCanon, RotuloCanon, VacioCanon, type MetricaCanon } from '@/shared/components/canon/ListaCanon'
+import { Avatar, type TonoAvatar } from '@/shared/components/Avatar'
 import { oracion } from '@/shared/utils/texto'
 import { esCategoriaDeConvenio, etiquetaCategoria, type PersonaEnDirectorio } from '../types'
 import { oficioVisible } from '../services/vocabularioPersona'
+import { AccionesPersona } from './AccionesPersona'
 import {
-  HOY_LABEL, HOY_TONO, estadoHoy, horasVisibles, lecturaDePapeles,
-  type EstadoDePapeles, type MarcaDeHoy,
+  HOY_LABEL, estadoHoy, horasVisibles, lecturaDePapeles,
+  type EstadoDePapeles, type EstadoHoy, type MarcaDeHoy,
 } from '../services/pulsoDelPlantel'
 
 /** Las tres lecturas del día, ya agrupadas por persona. Cada `disponible` en false apaga SU columna:
@@ -58,171 +62,203 @@ export interface PulsoDelPlantel {
   papelesDisponible: boolean
 }
 
+// ── LOS ANCHOS, TAL COMO LOS FIJA EL CANÓNICO ───────────────────────────────────────────────────
+//
+// Las tres primeras columnas son fraccionales y las demás fijas: el nombre y la obra son lo que
+// crece con la pantalla; «HOY», «HH MES» y «PAPELES» miden siempre lo mismo, y si respiraran, la
+// columna de números dejaría de estar alineada entre una pantalla y otra.
+const BASE = 'minmax(0,1.3fr) minmax(0,1fr) minmax(0,1.3fr)'
+
+function columnas({ pulso, conPapeles, conBaja }: { pulso: boolean; conPapeles: boolean; conBaja: boolean }): string {
+  if (conBaja) return `${BASE} 96px 110px 26px`
+  return [BASE, pulso ? '148px 82px' : null, conPapeles ? '76px' : null, '26px'].filter(Boolean).join(' ')
+}
+
 /** dd/mm/aa en mono. Una fecha sin cargar se dice; un guión se lee como cero o como «no aplica». */
 function Fecha({ iso, falta }: { iso: string | null; falta: string }) {
-  if (!iso) return <Nulo>{falta}</Nulo>
+  if (!iso) return <span className="text-[11.5px] text-faint">{falta}</span>
   const [a, m, d] = iso.slice(0, 10).split('-')
   return <span className="font-mono text-[11.5px] tabular-nums text-muted">{`${d}/${m}/${a.slice(2)}`}</span>
 }
 
+// EL ICONO Y EL COLOR DE «HOY», medidos del canónico (`P.ok`, `P.reloj`, `P.libre`).
+//
+// «ausente» NO existe acá y no es un olvido del porte: el mockup la dibuja y el modelo no la tiene.
+// Que no haya marca incluye al que no tiene teléfono, al que no le dio permiso al GPS y al que
+// faltó — el mismo silencio visto desde acá. Convertirlo en una falta fabricaría una novedad de
+// liquidación. Quién faltó lo declara el jefe de obra, que es quien lo ve.
+const HOY: Record<EstadoHoy, { d: string; color: string; avatar: TonoAvatar }> = {
+  en_obra: { d: 'M5 13l4 4L19 7', color: 'text-pos', avatar: 'pos' },
+  ya_cerro: { d: 'M12 8v4.5l3 2', color: 'text-muted', avatar: 'neutro' },
+  sin_fichar: { d: 'M5 12h14', color: 'text-muted', avatar: 'neutro' },
+}
+
+function IconoHoy({ estado }: { estado: EstadoHoy }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      {estado === 'ya_cerro' && <circle cx="12" cy="12" r="8.5" />}
+      <path d={HOY[estado].d} />
+    </svg>
+  )
+}
+
+const TINTA_PAPELES: Record<'neg' | 'warn' | 'pos' | 'nulo', string> = {
+  neg: 'text-neg', warn: 'text-warn', pos: 'text-pos', nulo: 'text-faint',
+}
+
 export function TablaPersonas({
-  personas, conBaja = false, pulso,
+  personas, conBaja = false, pulso, metricas, vacio = 'Nada coincide.',
 }: {
   personas: PersonaEnDirectorio[]
-  /** El listado de Inactivos agrega la fecha de baja. */
+  /** El listado de Inactivos cambia la geometría: sin HOY ni HH, y con BAJA. */
   conBaja?: boolean
-  /** Sin pulso la tabla es la de siempre: el día de hoy no se le pregunta a quien ya no está. */
+  /** Sin pulso la lista es la de siempre: el día de hoy no se le pregunta a quien ya no está. */
   pulso?: PulsoDelPlantel
+  /** El pie del canónico. Lo calcula el servidor (`resumenPersonal.metricasCanonicas`). */
+  metricas?: MetricaCanon[]
+  /** Qué decir cuando ningún filtro deja nada. Lo decide la página: depende del corte activo. */
+  vacio?: string
 }) {
-  const conPapeles = pulso?.papelesDisponible ?? false
-  return (
-    <Tabla testid="tabla-personas" minWidth={pulso ? 1180 : 880}>
-      <THead>
-        <Th>Persona</Th>
-        {/* CATEGORÍA UOCRA y no «Categoría» a secas: es la del convenio, la que LIQUIDA. Debajo del
-            nombre va el oficio, que es otra cosa; sin decir cuál es cuál las dos se leían como la
-            misma pregunta contestada dos veces. */}
-        <Th>Categoría UOCRA</Th>
-        <Th>Cuadrilla</Th>
-        <Th>Obra actual</Th>
-        {/* LAS TRES DEL PULSO VAN JUNTAS Y ANTES DE LAS FECHAS: son lo que se mira todos los días;
-            el alta se mira una vez por persona en la vida. */}
-        {pulso && <Th>Hoy</Th>}
-        {pulso && <Th>HH mes</Th>}
-        {conPapeles && <Th>Papeles</Th>}
-        <Th>Alta</Th>
-        {conBaja && <Th>Baja</Th>}
-        <Th>Estado</Th>
-      </THead>
-      <tbody>
-        {personas.map((p) => (
-          <Tr key={p.id} data-testid="fila-persona">
-            <Td fuerte className="w-[28%]">
-              {/* La fila entera lleva a la ficha: en un listado de trabajo, apuntar a un lápiz de
-                  16px con el dedo es la diferencia entre usarlo y no usarlo. */}
-              <Link href={`/administracion/personas/${p.id}`} className="flex min-w-0 items-center gap-2.5" data-testid="abrir-persona">
-                {/* LAS INICIALES, NO UNA SILUETA (Design 23/08, pantallas 19 y 20). En una tabla de
-                    diecisiete apellidos parecidos —Agüero, Alaniz, Ochoa— el ancla del ojo es el
-                    par de letras, no el nombre completo que hay que leer entero. Es el MISMO
-                    componente de Mi cuenta y de la ficha: una sola definición de «cómo se ve una
-                    persona» en todo el OS. Sin foto todavía: `persona_directorio` no publica una
-                    URL de avatar y no se inventa una. */}
-                <Avatar nombre={p.nombre_completo} url={null} lado={26} />
-                <span className="min-w-0">
-                  <span className="block truncate text-[13px] text-ink hover:underline">{oracion(p.nombre_completo)}</span>
-                  {/* EL OFICIO, NO LA CATEGORÍA. Acá decía el puesto, y el puesto traía el CARGO de
-                      la nómina —que ES la categoría del convenio—: la fila mostraba «OFICIAL» debajo
-                      del nombre y «Ayudante» en la columna CATEGORÍA, dos respuestas al mismo hecho
-                      y distintas. El `??` pelado no alcanzaba porque no MIRABA el valor; la regla y
-                      su prueba viven en `services/vocabularioPersona.ts`. */}
-                  {oficioVisible(p.especialidad, p.puesto) && (
-                    <span className="block truncate text-[11px] text-faint">
-                      {oficioVisible(p.especialidad, p.puesto)}
-                    </span>
-                  )}
-                </span>
-              </Link>
-            </Td>
-            <Td className="w-[130px]">
-              <span className="text-[12px] text-muted">{etiquetaCategoria(p.categoria)}</span>
-              {/* Un código mal importado no se esconde ni se corrige solo: se marca para que alguien
-                  lo mire. Ámbar porque es una falta de dato que bloquea, no una decoración. */}
-              {p.categoria && !esCategoriaDeConvenio(p.categoria) && (
-                <span className="block text-[10px] text-warn">fuera de convenio</span>
-              )}
-            </Td>
-            <Td className="w-[130px]">
-              {p.cuadrilla
-                ? <span className="text-[12px] text-muted">{p.cuadrilla}</span>
-                : <Nulo>sin cuadrilla</Nulo>}
-            </Td>
-            <Td className="w-[210px]">
-              {/* SIN ASIGNAR NO ES UN HUECO: es una respuesta, y se escribe. Y la obra va por su
-                  NOMBRE — el id es el slug de la URL, que en ninguna otra pantalla se muestra. */}
-              {p.obra_actual_id
-                ? (
-                    <>
-                      <Link href={`/obras/${p.obra_actual_id}`} className="text-[12px] text-ink hover:underline">
-                        {p.obra_actual ?? p.obra_actual_id}
-                      </Link>
-                      {/* EL ROL ES EL QUINTO HECHO, Y ESTABA EN LA CONSULTA SIN LLEGAR A NADIE.
-                          `persona_directorio` publica `rol_en_obra` y el listado lo pedía desde
-                          siempre: la fila lo tiraba. No es la categoría (lo que cobra) ni el oficio
-                          (lo que sabe hacer): es qué hace EN ESTA OBRA —capataz, integrante—, y
-                          cuelga de la asignación, por eso vive acá y no en su propia columna. */}
-                      {p.rol_en_obra?.trim() && (
-                        <span className="block truncate text-[11px] text-faint">{p.rol_en_obra}</span>
-                      )}
-                    </>
-                  )
-                : <Nulo>sin asignar</Nulo>}
-            </Td>
+  const conPapeles = (pulso?.papelesDisponible ?? false) && !conBaja
+  const conPulso = Boolean(pulso) && !conBaja
+  const cols = columnas({ pulso: conPulso, conPapeles, conBaja })
 
-            {/* HOY — punto y palabra, y NUNCA la palabra «ausente». Que no haya marca incluye al que
-                no tiene teléfono, al que no le dio permiso al GPS y al que faltó: son el mismo
-                silencio visto desde acá, y convertirlo en una falta fabricaría una novedad de
-                liquidación. Quién faltó lo declara el jefe de obra, que es quien lo ve. */}
-            {pulso && (
-              <Td className="w-[110px]">
-                {pulso.hoyDisponible
-                  ? (() => {
-                      const e = estadoHoy(pulso.marcas.get(p.id))
-                      return <Estado tono={HOY_TONO[e]} clave={e} testid="hoy-persona">{HOY_LABEL[e]}</Estado>
-                    })()
-                  : <Nulo>sin lectura</Nulo>}
-              </Td>
+  return (
+    <ListaCanon testid="tabla-personas">
+      <CabezaCanon cols={cols}>
+        <RotuloCanon>PERSONA</RotuloCanon>
+        {/* El canónico dice «ROL»; acá dice qué es cada renglón, porque son dos hechos distintos. */}
+        <RotuloCanon>OFICIO / CATEGORÍA</RotuloCanon>
+        <RotuloCanon>OBRA / CUADRILLA</RotuloCanon>
+        {conPulso && <RotuloCanon>HOY</RotuloCanon>}
+        {conPulso && <RotuloCanon alinear="right">HH MES</RotuloCanon>}
+        {conPapeles && <RotuloCanon alinear="center">PAPELES</RotuloCanon>}
+        {conBaja && <RotuloCanon>ALTA</RotuloCanon>}
+        {conBaja && <RotuloCanon>BAJA</RotuloCanon>}
+        <RotuloCanon />
+      </CabezaCanon>
+
+      {personas.length === 0 && <VacioCanon testid="personas-vacio">{vacio}</VacioCanon>}
+
+      {personas.map((p) => {
+        const hoy = pulso && pulso.hoyDisponible ? estadoHoy(pulso.marcas.get(p.id)) : null
+        const oficio = oficioVisible(p.especialidad, p.puesto)
+        const papeles = lecturaDePapeles(pulso?.papeles.get(p.id))
+        return (
+          <FilaCanon key={p.id} cols={cols} alto={48} testid="fila-persona">
+            {/* La fila entera lleva a la ficha: en un listado de trabajo, apuntar a un lápiz de
+                16px con el dedo es la diferencia entre usarlo y no usarlo. */}
+            <Link
+              href={`/administracion/personas/${p.id}`}
+              prefetch={false}
+              data-testid="abrir-persona"
+              className="flex min-w-0 items-center gap-[9px]"
+            >
+              {/* LAS INICIALES, NO UNA SILUETA. Y TEÑIDAS POR EL ESTADO DEL DÍA (canónico 19): es la
+                  única señal de color de la fila que no cuesta una columna. Sin foto todavía:
+                  `persona_directorio` no publica una URL de avatar y no se inventa una. */}
+              <Avatar nombre={p.nombre_completo} url={null} lado={26} tono={hoy ? HOY[hoy].avatar : 'neutro'} />
+              <span className="min-w-0 truncate text-[12.5px] font-medium text-ink hover:underline">
+                {oracion(p.nombre_completo)}
+              </span>
+            </Link>
+
+            <div className="min-w-0">
+              {/* EL OFICIO ARRIBA, LA CATEGORÍA ABAJO, y cada uno donde se lo espera. El `??` pelado
+                  no alcanzaba porque no MIRABA el valor: la regla y su prueba viven en
+                  `services/vocabularioPersona.ts`. */}
+              <div className="truncate text-[12px] text-ink-soft">
+                {oficio ?? <span className="text-faint">sin oficio cargado</span>}
+              </div>
+              <div className="truncate text-[11px] text-faint">
+                {etiquetaCategoria(p.categoria)}
+                {/* Un código mal importado no se esconde ni se corrige solo: se marca. */}
+                {p.categoria && !esCategoriaDeConvenio(p.categoria) && (
+                  <span className="ml-1 text-warn">fuera de convenio</span>
+                )}
+              </div>
+            </div>
+
+            <div className="min-w-0">
+              {/* SIN ASIGNAR NO ES UN HUECO: es una respuesta, y se escribe en ámbar como en el
+                  canónico (`cobra: "#B54708"`). La obra va por su NOMBRE. */}
+              <div className={`truncate text-[12px] ${p.obra_actual_id ? 'text-ink' : 'text-warn'}`}>
+                {p.obra_actual_id ? (p.obra_actual ?? p.obra_actual_id) : 'sin asignar'}
+              </div>
+              <div className="truncate text-[11px] text-faint">
+                {[p.cuadrilla ?? 'sin cuadrilla', p.rol_en_obra?.trim()].filter(Boolean).join(' · ')}
+              </div>
+            </div>
+
+            {/* HOY — icono y palabra, y NUNCA la palabra «ausente». */}
+            {conPulso && (
+              <div className="flex min-w-0 items-center gap-[6px]" data-testid="hoy-persona">
+                {hoy ? (
+                  <>
+                    <span className={`flex shrink-0 ${HOY[hoy].color}`}><IconoHoy estado={hoy} /></span>
+                    <span className={`truncate text-[12px] ${HOY[hoy].color}`}>{HOY_LABEL[hoy]}</span>
+                  </>
+                ) : (
+                  <span className="text-[12px] text-faint">sin lectura</span>
+                )}
+              </div>
             )}
 
-            {/* HH MES — la persona sin imputaciones dice «sin HH», no 0. Las 19 filas legacy de
-                `registros_hh` llegan sin `persona_id` y no se reparten por parecido de nombre: un 0
-                acá afirmaría que alguien no trabajó en todo el mes. */}
-            {pulso && (
-              <Td className="w-[92px]">
-                {!pulso.hhDisponible
-                  ? <Nulo>sin lectura</Nulo>
-                  : pulso.hh.has(p.id)
-                    ? (
-                        <span data-testid="hh-mes" className="font-mono text-[12px] tabular-nums text-muted">
-                          {horasVisibles(pulso.hh.get(p.id) ?? 0)} h
-                        </span>
-                      )
-                    : <Nulo>sin HH</Nulo>}
-              </Td>
+            {/* HH MES — la persona sin imputaciones dice «sin HH», no 0: un 0 acá afirmaría que
+                alguien no trabajó en todo el mes. */}
+            {conPulso && (
+              <div className="text-right">
+                {!pulso?.hhDisponible ? (
+                  <span className="text-[11.5px] text-faint">sin lectura</span>
+                ) : pulso.hh.has(p.id) ? (
+                  <span data-testid="hh-mes" className="font-mono text-[12px] tabular-nums text-ink">
+                    {horasVisibles(pulso.hh.get(p.id) ?? 0)}
+                  </span>
+                ) : (
+                  <span className="text-[11.5px] text-faint">sin HH</span>
+                )}
+              </div>
             )}
 
             {/* PAPELES — «sin legajo» y «al día» son dos respuestas opuestas que sin la cuenta de
-                filas serían los mismos tres ceros: un legajo revisado y uno que nadie abrió nunca. */}
+                filas serían los mismos tres ceros. El canónico dibuja el ✓ verde y el ⚠ con su
+                número; la palabra completa viaja en el `title`. */}
             {conPapeles && (
-              <Td className="w-[112px]">
-                {(() => {
-                  const l = lecturaDePapeles(pulso?.papeles.get(p.id))
-                  return l.tono === 'nulo'
-                    ? <Nulo>{l.texto}</Nulo>
-                    : <Estado tono={l.tono} clave={l.tono} testid="papeles-persona">{l.texto}</Estado>
-                })()}
-              </Td>
+              <div
+                className={`flex items-center justify-center gap-[3px] ${TINTA_PAPELES[papeles.tono]}`}
+                title={papeles.texto}
+                data-testid="papeles-persona"
+              >
+                {papeles.tono === 'pos' ? (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden>
+                    <path d="M5 13l4 4L19 7" />
+                  </svg>
+                ) : papeles.tono === 'nulo' ? (
+                  <span className="text-[11px]">sin legajo</span>
+                ) : (
+                  <>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                      <path d="M12 4l9 16H3z" /><path d="M12 10v4M12 17.5v.01" />
+                    </svg>
+                    <span className="font-mono text-[11px] tabular-nums">{papeles.texto.split(' ')[0]}</span>
+                  </>
+                )}
+              </div>
             )}
 
-            <Td className="w-[90px]"><Fecha iso={p.fecha_ingreso} falta="sin cargar" /></Td>
+            {conBaja && <Fecha iso={p.fecha_ingreso} falta="sin cargar" />}
             {conBaja && (
-              <Td className="w-[110px]">
-                {/* SE FUE SIN FECHA NO ES LO MISMO QUE NO SE FUE. De los 45 legajos cerrados, 22 no
-                    tienen baja documentada: «sin papel de baja» ES el dato, y un guión ahí haría
-                    pensar que falta cargarla cuando lo que falta es el papel. */}
-                <Fecha iso={p.fecha_egreso} falta="sin papel de baja" />
-              </Td>
+              // SE FUE SIN FECHA NO ES LO MISMO QUE NO SE FUE. De los 45 legajos cerrados, 22 no
+              // tienen baja documentada: «sin papel de baja» ES el dato.
+              <Fecha iso={p.fecha_egreso} falta="sin papel de baja" />
             )}
-            <Td className="w-[90px]">
-              {/* EL ESTADO SALE DE `en_la_empresa`, NO DE LA FECHA: hay 15 personas que se fueron sin
-                  baja documentada y por la fecha figurarían activas. Sin punto de color: en una
-                  columna de diecisiete filas iguales el punto es ruido, no señal. */}
-              {p.en_la_empresa
-                ? <span data-estado="activa" className="text-[12px] text-muted">activa</span>
-                : <span data-estado="inactiva" className="text-[12px] text-faint">inactiva</span>}
-            </Td>
-          </Tr>
-        ))}
-      </tbody>
-    </Tabla>
+
+            <AccionesPersona personaId={p.id} nombre={p.nombre_completo} enLaEmpresa={p.en_la_empresa} />
+          </FilaCanon>
+        )
+      })}
+
+      {metricas && metricas.length > 0 && <PieCanon metricas={metricas} testid="franja-personal" />}
+    </ListaCanon>
   )
 }

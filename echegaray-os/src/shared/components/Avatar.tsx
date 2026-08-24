@@ -15,14 +15,37 @@
 
 /* eslint-disable @next/next/no-img-element */
 
+/**
+ * EL TINTE DEL AVATAR — canónicos 19 y 20.
+ *
+ * `19 · Personal Cartera.dc.html` pinta el círculo de iniciales según el estado del día
+ * (`avFondo` / `avColor`): verde a quien está en obra, neutro al resto; `20 · Persona Ficha 360`
+ * usa el mismo verde en el avatar de 44px del encabezado. Es la ÚNICA señal de color de la fila que
+ * no cuesta una columna, y por eso vale.
+ *
+ * `marca` es el tinte por defecto —grafito con iniciales blancas—, que es el que usan Mi cuenta, el
+ * shell del jefe y cualquier avatar que no esté hablando de presencia. El color NUNCA se decide acá:
+ * llega decidido por quien conoce el estado.
+ */
+export type TonoAvatar = 'marca' | 'pos' | 'neutro'
+
+const TINTE: Record<TonoAvatar, string> = {
+  marca: 'bg-accent text-white',
+  // Medidos del canónico 19: fondo #F1F9F4 sobre tinta #067647 (que es el token `pos`).
+  pos: 'bg-[#F1F9F4] text-pos',
+  neutro: 'bg-[#EFEEEA] text-ink-soft',
+}
+
 export function Avatar({
   nombre,
   url,
   lado = 88,
+  tono = 'marca',
 }: {
   nombre: string
   url: string | null
   lado?: number
+  tono?: TonoAvatar
 }) {
   const iniciales = nombre
     .trim()
@@ -39,7 +62,7 @@ export function Avatar({
     // padre antes de tiempo y React avisa de una discrepancia de hidratación en producción. Con
     // `inline-flex` y el tamaño en píxeles se ve exactamente igual.
     <span
-      className="inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-line bg-accent align-middle text-white"
+      className={`inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-line align-middle ${TINTE[tono]}`}
       style={{ width: lado, height: lado }}
       data-testid="avatar"
     >
