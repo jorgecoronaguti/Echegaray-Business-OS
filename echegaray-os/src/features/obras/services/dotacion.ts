@@ -77,6 +77,10 @@ export interface Frente {
    *  restantes del frente son `null`: un total al que le falta una parte no es un total. */
   sinDato: number
   dotacion: number
+  /** La dotación que el PLAN tiene escrita (`dotacion_prevista`), sin la simulación encima. Es a lo
+   *  que vuelve «Volver al plan», y contra lo que se lee el delta: sin ella, una simulación no se
+   *  distingue de lo que ya estaba guardado. */
+  dotacionPlan: number
   tope: number | null
   /** Días con la dotación elegida. `null` si no hay HH o la dotación es 0. */
   dias: number | null
@@ -214,7 +218,8 @@ export function frentesDe(filas: FilaCronograma[], opciones: OpcionesFrentes = {
     // El tope del frente no es decorativo: una dotación pedida por la URL (`?dot=99`) no puede
     // producir un plazo que el tope declara imposible. Se recorta acá, donde nace el divisor
     // — el stepper de la pantalla ya lo respetaba, pero la URL entraba sin pasar por el stepper.
-    const pedida = dotaciones[clave] ?? (previstas.length ? Math.max(...previstas) : 0)
+    const delPlan = previstas.length ? Math.max(...previstas) : 0
+    const pedida = dotaciones[clave] ?? delPlan
     const dotacion = tope != null ? Math.min(pedida, tope) : pedida
     // Los días técnicos NO se comprimen: entran por el cuarto argumento, sumados aparte.
     const diasTecnicos = diasTecnicosDe(hijas)
@@ -231,6 +236,7 @@ export function frentesDe(filas: FilaCronograma[], opciones: OpcionesFrentes = {
       base,
       sinDato,
       dotacion,
+      dotacionPlan: tope != null ? Math.min(delPlan, tope) : delPlan,
       tope,
       dias,
       diasTecnicos,
@@ -241,6 +247,80 @@ export function frentesDe(filas: FilaCronograma[], opciones: OpcionesFrentes = {
       nActividades: hijas.filter((h) => h.tipo !== 'resumen').length,
     }
   })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// EL SIMULADOR, RECALCULADO EN EL NAVEGADOR
+//
+// El stepper de la 08 navegaba: cada clic era una vuelta al servidor con seis frentes recalculados
+// y la pantalla entera remontada. Mover una dotación de 2 a 6 costaba cuatro navegaciones y cuatro
+// esqueletos. Ahora la cuenta corre donde está el gesto y la URL se sincroniza con `replaceState`,
+// así que el link compartido sigue abriendo la MISMA simulación.
+//
+// Lo único que el navegador no puede saber es qué días trabaja la obra: el calendario vive en el
+// servidor (`CalendarioObra`, con los feriados y los no laborables cargados). Por eso la página
+// manda los días hábiles ya resueltos y acá sólo se INDEXA — no se recalcula un calendario paralelo
+// que el día que aparezca un feriado nuevo diría otra fecha que el resto del OS.
+
+export interface Simulacion {
+  /** La pedida ya recortada por el tope del frente. */
+  dotacion: number
+  dias: number | null
+  fin: string | null
+  limite: Limite
+  /** La pedida superaba el tope y se recortó. La pantalla lo dice: un stepper que muestra 8 cuando
+   *  el motor calculó con 4 enseña a desconfiar del número. */
+  recortada: boolean
+}
+
+export function simularFrente(
+  f: Pick<Frente, 'hhRestantes' | 'tope' | 'diasTecnicos'>,
+  pedida: number,
+  jornada: number,
+  habiles: readonly string[],
+): Simulacion {
+  const dotacion = f.tope != null ? Math.min(pedida, f.tope) : pedida
+  const dias = f.hhRestantes === 0
+    ? 0
+    : (dotacion > 0 ? duracionDias(f.hhRestantes, dotacion, jornada, f.diasTecnicos) : null)
+  return {
+    dotacion,
+    dias,
+    // El fin es el día hábil número `dias` contando desde el arranque, y el arranque es el índice 0:
+    // un frente de un día termina el día que empieza. Fuera del calendario que mandó el servidor no
+    // se inventa una fecha — se devuelve null y la pantalla dice «sin plan».
+    fin: dias != null && dias > 0 ? habiles[dias - 1] ?? null : null,
+    limite: limiteDe(dotacion, f.tope, f.hhRestantes),
+    recortada: f.tope != null && pedida > f.tope,
+  }
+}
+
+export interface ResumenSimulacion {
+  genteTotal: number
+  fin: string | null
+  /** Días de trabajo contra el fin del plan. `null` sin plan o sin simulación.
+   *
+   *  ═══ EL DEFECTO QUE ESTO ARREGLA ═══
+   *
+   *  La cuenta anterior era `habilesEntre(finPlan, finSimulado) - 1 || 0`, y `habilesEntre` devuelve
+   *  0 cuando el hasta es anterior al desde. O sea: CUALQUIER adelanto —un día o dos meses— se
+   *  publicaba como «−1 d». La pantalla que existe para decir cuánto se gana poniendo gente decía
+   *  siempre lo mismo. Con índices de día hábil con signo, adelantar 12 días dice −12. */
+  desvioDias: number | null
+}
+
+export function resumenSimulacion(
+  sims: readonly { dotacion: number; dias: number | null }[],
+  idxFinPlan: number | null,
+  habiles: readonly string[],
+): ResumenSimulacion {
+  const dias = sims.map((s) => s.dias).filter((d): d is number => d != null && d > 0)
+  const maxDias = dias.length ? Math.max(...dias) : null
+  return {
+    genteTotal: sims.reduce((a, s) => a + s.dotacion, 0),
+    fin: maxDias == null ? null : habiles[maxDias - 1] ?? null,
+    desvioDias: maxDias == null || idxFinPlan == null ? null : (maxDias - 1) - idxFinPlan,
+  }
 }
 
 export interface OpcionInversa {

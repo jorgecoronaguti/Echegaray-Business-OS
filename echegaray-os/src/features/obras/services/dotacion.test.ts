@@ -5,7 +5,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   claveDeFrente, dotacionNecesaria, duracionDias, frentesDe, hhProyectadas, limiteDe,
-  opcionesInversas, rendimiento, rubrosDe, sumaCompleta,
+  opcionesInversas, rendimiento, resumenSimulacion, rubrosDe, simularFrente, sumaCompleta,
 } from './dotacion.ts'
 import type { FilaCronograma } from './cronogramaMotor.ts'
 
@@ -260,4 +260,72 @@ test('un tiempo técnico YA CUMPLIDO no vuelve a sumar sus días', () => {
   ], { dotaciones: { A: 4 }, jornada: 8 })
   assert.equal(f.diasTecnicos, 0, 'el curado que pasó, pasó')
   assert.equal(f.dias, 10)
+})
+
+// ═══ EL SIMULADOR QUE CORRE EN EL NAVEGADOR ═══
+//
+// LO QUE ATRAPAN: que el what-if del stepper diga otra cosa que el cálculo del servidor, y que un
+// adelanto de plazo se publique siempre como «−1 d».
+
+/** Diez días hábiles corridos desde el lunes 6/7/2026 (sin feriados), como los manda la página. */
+const HABILES = [
+  '2026-07-06', '2026-07-07', '2026-07-08', '2026-07-09', '2026-07-10',
+  '2026-07-13', '2026-07-14', '2026-07-15', '2026-07-16', '2026-07-17',
+]
+
+test('el simulador del navegador da EXACTAMENTE lo mismo que frentesDe en el servidor', () => {
+  // Si estos dos números se separan, la pantalla muestra un plazo mientras el «Aplicar al plan»
+  // escribe otro. Es el defecto entero de mover una cuenta al cliente.
+  const filas = [fila({ seccion: 'A', hh_plan: 320 })]
+  for (const n of [0, 1, 3, 7]) {
+    const [servidor] = frentesDe(filas, { dotaciones: { A: n }, jornada: 8 })
+    const cliente = simularFrente(servidor, n, 8, HABILES)
+    assert.equal(cliente.dias, servidor.dias, `con ${n} personas`)
+    assert.equal(cliente.limite, servidor.limite)
+  }
+})
+
+test('el tope recorta la pedida y lo DICE, en vez de mostrar un plazo que el tope impide', () => {
+  const [f] = frentesDe([fila({ seccion: 'A', hh_plan: 320, tope_frente: 4 })], { jornada: 8 })
+  const s = simularFrente(f, 9, 8, HABILES)
+  assert.equal(s.dotacion, 4)
+  assert.equal(s.recortada, true)
+  assert.equal(s.limite, 'tope del frente')
+})
+
+test('sin HH no hay días ni fecha por más gente que se ponga: NULL no es 0', () => {
+  const [f] = frentesDe([fila({ seccion: 'A' })], { jornada: 8 })
+  const s = simularFrente(f, 6, 8, HABILES)
+  assert.equal(s.dias, null)
+  assert.equal(s.fin, null, 'una fecha de fin sin HH sería una promesa sin trabajo detrás')
+})
+
+test('el fin sale del calendario que mandó el servidor, y fuera de él es null', () => {
+  // 320 HH con 4 personas = 10 días: el último día hábil que la página mandó.
+  const [f] = frentesDe([fila({ seccion: 'A', hh_plan: 320 })], { jornada: 8 })
+  assert.equal(simularFrente(f, 4, 8, HABILES).fin, '2026-07-17')
+  // 320 HH con 2 personas = 20 días, y el calendario recibido tiene 10: no se inventa la fecha.
+  assert.equal(simularFrente(f, 2, 8, HABILES).fin, null)
+})
+
+test('ADELANTAR EL PLAZO SE MIDE: no todo adelanto es «−1 d»', () => {
+  // El fin simulado cae en el índice 4 (2026-07-10) y el plan estaba en el índice 9 (2026-07-17):
+  // son cinco días de trabajo de adelanto. La cuenta vieja —habilesEntre(plan, sim) − 1— devolvía
+  // −1 para éste y para cualquier otro adelanto, porque habilesEntre da 0 cuando el hasta es antes.
+  const r = resumenSimulacion([{ dotacion: 8, dias: 5 }], 9, HABILES)
+  assert.equal(r.fin, '2026-07-10')
+  assert.equal(r.desvioDias, -5)
+})
+
+test('el fin de la obra simulada es el del frente más largo, y la gente se suma toda', () => {
+  const r = resumenSimulacion([{ dotacion: 4, dias: 3 }, { dotacion: 2, dias: 8 }], 9, HABILES)
+  assert.equal(r.genteTotal, 6)
+  assert.equal(r.fin, '2026-07-15')
+  assert.equal(r.desvioDias, -2)
+})
+
+test('sin ningún frente con días no hay fin simulado ni desvío: no se publica «en fecha»', () => {
+  const r = resumenSimulacion([{ dotacion: 0, dias: null }], 9, HABILES)
+  assert.equal(r.fin, null)
+  assert.equal(r.desvioDias, null)
 })

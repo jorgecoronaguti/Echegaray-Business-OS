@@ -13,9 +13,17 @@
 //
 // ═══ EL ESTADO VIVE EN LA URL ═══
 //
-// Vista, escala, actividad seleccionada y días del arrastre son parámetros. Un cronograma que se
-// mira entre dos personas se manda por chat: si el estado viviera en el navegador, el link
-// abriría otra pantalla del otro lado.
+// Vista, escala, capas, actividad seleccionada y días del arrastre son parámetros. Un cronograma que
+// se mira entre dos personas se manda por chat: si el estado viviera en el navegador, el link
+// abriría otra pantalla del otro lado. La ÚNICA excepción es plegar un frente —no cambia lo que el
+// cronograma dice, sólo cuánto entra en la pantalla de quien lo está mirando.
+//
+// ═══ TRES CAPAS, Y CADA UNA ES UNA AFIRMACIÓN DISTINTA (Design 23/08 · 07) ═══
+//
+// La línea BASE es lo que se prometió al sellar; la barra es el plan de hoy con su avance; la
+// PROYECCIÓN es lo que va a pasar al rendimiento observado. Se superponen porque el desvío ES la
+// diferencia entre capas: en tres pantallas separadas hay que recordarla de memoria. La base se
+// puede apagar (`?base=0`) y la proyección es el modo del motor, no un dibujo encima.
 //
 // ═══ ESTA PANTALLA NO HABLA DE PLATA ═══
 //
@@ -39,24 +47,31 @@ import { getPerfilActual } from '@/features/auth/services/authService'
 import { esAdministracion } from '@/features/auth/types/areas'
 import { getInsumosCronograma } from '@/features/obras/services/cronogramaObraService'
 import { getObra } from '@/features/obras/services/obrasService'
-import { armarCronograma, simularArrastre, type Cronograma } from '@/features/obras/services/cronogramaMotor'
-import { editarDuracion, moverActividad } from '@/features/obras/services/actionsPlan'
-import { agregarDependencia, quitarDependencia } from '@/features/obras/services/actions'
+import { armarCronograma, simularArrastre } from '@/features/obras/services/cronogramaMotor'
+import { moverActividad } from '@/features/obras/services/actionsPlan'
 import {
   celdasDe, construirEscalaCronograma, UNIDADES, UNIDAD_LABEL, ventanaDe, type UnidadEscala,
 } from '@/features/obras/services/escalaCronograma'
 import {
   esVista, filasDeVista, hrefCronograma, VISTAS, VISTA_LABEL, type EstadoUrl, type Vista,
 } from '@/features/obras/services/vistaCronograma'
+import { metricasDelPlazo } from '@/features/obras/services/metricasCronograma'
 import { LienzoCronogramaObra } from '@/features/obras/components/LienzoCronogramaObra'
 import { BarraContextoObra } from '@/features/obras/components/BarraContextoObra'
 import { PopoverArrastre } from '@/features/obras/components/PopoverArrastre'
-import { Callout, Campo, CTRL, FormAccion } from '@/shared/components/ui'
+import {
+  Conflictos, Dependencias, PlanDeLaSeleccionada, textosDeConflicto,
+} from '@/features/obras/components/PanelesCronograma'
+import { Callout } from '@/shared/components/ui'
+import { Ayuda, Franja } from '@/shared/components/ds'
+import { CalendarioObra } from '../../../../../../orquestador/lib/calendario-obra.mjs'
 
 export const dynamic = 'force-dynamic'
 
 type Params = Promise<{ obra: string }>
-type Search = Promise<{ vista?: string; escala?: string; sel?: string; mover?: string; proyeccion?: string }>
+type Search = Promise<{
+  vista?: string; escala?: string; sel?: string; mover?: string; proyeccion?: string; base?: string
+}>
 
 const esUnidad = (u: string | undefined): u is UnidadEscala => UNIDADES.includes(u as UnidadEscala)
 const fmt = (iso: string | null | undefined) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : null)
@@ -78,6 +93,7 @@ export default async function CronogramaObraPage(
   const vista: Vista = esVista(sp.vista) ? sp.vista : 'actividades'
   const unidad: UnidadEscala = esUnidad(sp.escala) ? sp.escala : 'semana'
   const enProyeccion = sp.proyeccion === '1'
+  const verBase = sp.base !== '0'
   const supabase = await createClient()
 
   // La obra viaja por el «Fin plan» del encabezado y NADA MÁS: es la misma fecha que muestran la
@@ -103,8 +119,18 @@ export default async function CronogramaObraPage(
 
   const hoy = new Date().toISOString().slice(0, 10)
   const crono = armarCronograma(insumos, enProyeccion ? 'proyeccion' : 'plan', hoy)
-  const filas = filasDeVista(crono, vista)
-  const ventana = ventanaDe(filas.map((f) => ({ inicio: f.inicio, fin: f.fin })))
+  // EL DESVÍO SE MIDE EN DÍAS DE TRABAJO DE ESTA OBRA, no en días corridos: un fin de semana no es
+  // atraso, y contarlo así infla dos días cada semana de desvío. El calendario es el mismo que usa
+  // el motor para ubicar las barras.
+  const calendario = new CalendarioObra(insumos.obra.dias_habiles ?? [1, 2, 3, 4, 5], insumos.noLaborables)
+  const desvioDe = (finBase: string, fin: string) => calendario.indice(finBase, fin)
+  const filas = filasDeVista(crono, vista, desvioDe)
+  const ventana = ventanaDe(
+    // LA VENTANA TIENE QUE ABARCAR TAMBIÉN LA LÍNEA BASE. Una actividad que se adelantó dibujaría
+    // su base fuera del lienzo —o sea, no la dibujaría— y el desvío que la pantalla existe para
+    // mostrar sería justo el que no se ve.
+    filas.flatMap((f) => [{ inicio: f.inicio, fin: f.fin }, { inicio: f.inicioBase, fin: f.finBase }]),
+  )
   const escala = ventana ? construirEscalaCronograma(ventana, unidad, hoy) : null
 
   const seleccionada = sp.sel && crono.actividades.some((a) => a.actividad_id === sp.sel) ? sp.sel : null
@@ -113,7 +139,9 @@ export default async function CronogramaObraPage(
     ? simularArrastre(insumos, seleccionada, delta, hoy)
     : null
 
-  const estadoUrl: EstadoUrl = { vista, escala: unidad, sel: seleccionada, mover: delta, proyeccion: enProyeccion }
+  const estadoUrl: EstadoUrl = {
+    vista, escala: unidad, sel: seleccionada, mover: delta, proyeccion: enProyeccion, base: verBase,
+  }
   const href = (cambios: Partial<EstadoUrl>) => hrefCronograma(obraId, estadoUrl, cambios)
 
   const filaSel = crono.actividades.find((a) => a.actividad_id === seleccionada) ?? null
@@ -138,24 +166,27 @@ export default async function CronogramaObraPage(
 
       <div className="flex flex-col gap-3 px-4 lg:px-8">
         <Barra
-          vista={vista} unidad={unidad} enProyeccion={enProyeccion} href={href}
+          vista={vista} unidad={unidad} enProyeccion={enProyeccion} verBase={verBase} href={href}
         />
 
+        {/* EL PÁRRAFO SE PLIEGA, EL HECHO NO (Design 23/08). Que la obra no tenga secuencia hay que
+            verlo siempre —cambia lo que significa todo lo de abajo— pero el porqué se lee una vez. */}
         {crono.sinSecuencia && (
           <Callout tono="warn">
             <strong>Sin secuencia cargada.</strong>{' '}
-            Esta obra no tiene ninguna dependencia entre actividades, así que no hay camino crítico
-            ni fin de obra que calcular: lo que se ve abajo son {crono.actividades.length} actividades
-            con sus fechas, no un plan encadenado.{' '}
-            {crono.finObraSiTodoEnParalelo && (
-              <>Si todo pasara en paralelo terminarían el{' '}
-                <span className="tnum font-semibold">{fmt(crono.finObraSiTodoEnParalelo)}</span> — es
-                el piso teórico del plazo, no una fecha de entrega.{' '}
-              </>
-            )}
+            {crono.actividades.length} actividades con fechas, sin encadenar.{' '}
             <Link href={`/obras/${obraId}?vista=cronograma`} className="font-medium underline">
               Cargar la secuencia
             </Link>
+            <Ayuda titulo="Qué no se puede calcular" testid="ayuda-sin-secuencia">
+              Sin dependencias no hay camino crítico ni fin de obra: nada secuencia a nada.
+              {crono.finObraSiTodoEnParalelo && (
+                <> Si todo pasara en paralelo terminarían el{' '}
+                  <span className="tnum font-semibold">{fmt(crono.finObraSiTodoEnParalelo)}</span> — es
+                  el piso teórico del plazo, no una fecha de entrega.
+                </>
+              )}
+            </Ayuda>
           </Callout>
         )}
 
@@ -175,16 +206,14 @@ export default async function CronogramaObraPage(
         )}
 
         {escala && (
-          <>
-            <Leyenda />
-            <LienzoCronogramaObra
-              filas={filas}
-              escala={escala}
-              diasVentana={celdasDe(escala.desde, escala.hasta)}
-              obraId={obraId}
-              estadoUrl={estadoUrl}
-            />
-          </>
+          <LienzoCronogramaObra
+            filas={filas}
+            escala={escala}
+            diasVentana={celdasDe(escala.desde, escala.hasta)}
+            obraId={obraId}
+            estadoUrl={estadoUrl}
+            dependencias={insumos.dependencias}
+          />
         )}
 
         {arrastre && seleccionada && nombreSel && delta != null && (
@@ -212,22 +241,25 @@ export default async function CronogramaObraPage(
         </div>
         <Conflictos crono={crono} />
       </div>
+      <Franja metricas={metricasDelPlazo(filas, crono, enProyeccion, desvioDe)} testid="franja-cronograma" />
     </main>
   )
 }
 
-function textosDeConflicto(crono: Cronograma): string[] {
-  const nombre = new Map(crono.actividades.map((a) => [a.actividad_id, a.nombre]))
-  return crono.conflictos.map((c) => {
-    const [a, b] = c.actividades
-    return `${nombre.get(a) ?? a} y ${nombre.get(b) ?? b} piden la misma cuadrilla entre el ${fmt(c.desde)} y el ${fmt(c.hasta)}`
-  })
-}
-
-function Barra({ vista, unidad, enProyeccion, href }: {
+/**
+ * LA BARRA DE LA VISTA — vistas, zoom y capas.
+ *
+ * ═══ LAS CAPAS SON LA LEYENDA (Design 23/08 · 07) ═══
+ *
+ * Antes había un interruptor de proyección y, aparte, una leyenda de seis muestras al pie. Eran las
+ * mismas seis cosas dichas dos veces: la muestra de color al lado del interruptor dice qué se
+ * enciende Y con qué se dibuja, y el que no lo enciende no necesita saber de qué color es.
+ */
+function Barra({ vista, unidad, enProyeccion, verBase, href }: {
   vista: Vista
   unidad: UnidadEscala
   enProyeccion: boolean
+  verBase: boolean
   href: (c: Partial<EstadoUrl>) => string
 }) {
   return (
@@ -244,217 +276,59 @@ function Barra({ vista, unidad, enProyeccion, href }: {
           </Link>
         ))}
       </div>
-      <div className="flex items-center gap-1.5">
+      {/* Control segmentado en GRAFITO: el zoom es una vista, no una selección de marca. El amarillo
+          queda reservado para el hito de hoy y para la fila seleccionada. */}
+      <div className="flex items-center overflow-hidden rounded-control border border-line" data-testid="escala-cronograma">
         {UNIDADES.map((u) => (
           <Link
             key={u} href={href({ escala: u })} scroll={false}
-            className={`rounded-control border px-2 py-0.5 text-[11.5px] ${
-              unidad === u ? 'border-marca bg-marca-soft text-ink' : 'border-line text-muted hover:text-ink'
+            className={`border-r border-line px-2.5 py-1 text-[12px] last:border-r-0 ${
+              unidad === u ? 'bg-accent font-semibold text-white' : 'bg-surface text-muted hover:text-ink'
             }`}
           >
             {UNIDAD_LABEL[u]}
           </Link>
         ))}
       </div>
-      <Link
-        href={href({ proyeccion: !enProyeccion, mover: null })} scroll={false}
-        className={`text-[12.5px] ${enProyeccion ? 'font-medium text-ink shadow-[inset_0_-1.5px_0_var(--os-ink)]' : 'text-muted hover:text-ink'}`}
-      >
-        Proyección por rendimiento observado
-      </Link>
+      <div className="flex flex-wrap items-center gap-2">
+        <Capa
+          activa={verBase} href={href({ base: !verBase })} testid="capa-base"
+          titulo="Lo que se prometió al sellar la línea base"
+          muestra={<span className="h-[4px] w-[11px] rounded-[2px] bg-line-strong" />}
+        >
+          Línea base
+        </Capa>
+        <Capa
+          activa={enProyeccion} href={href({ proyeccion: !enProyeccion, mover: null })} testid="capa-proyeccion"
+          titulo="Lo que va a pasar con el rendimiento observado hasta hoy"
+          muestra={<span className="h-[10px] w-[11px] rounded-[2px] border border-dashed border-neg" />}
+        >
+          Proyección
+        </Capa>
+      </div>
     </div>
   )
 }
 
-function Leyenda() {
-  return (
-    <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[11.5px] text-muted">
-      <span><span className="mr-1 inline-block h-2 w-3 rounded-[2px] bg-surface-sunken align-middle" />plan</span>
-      <span><span className="mr-1 inline-block h-2 w-3 rounded-[2px] bg-accent align-middle" />ejecutado</span>
-      <span><span className="mr-1 inline-block h-2 w-3 rounded-[2px] bg-marca-track align-middle" />proyectado</span>
-      <span><span className="mr-1 inline-block h-2 w-2 rotate-45 bg-ink align-middle" />hito</span>
-      <span className="text-neg">△ impedimento</span>
-      <span><span className="mr-1 inline-block h-3 w-[1.5px] bg-marca align-middle" />hoy</span>
-    </div>
-  )
-}
-
-/**
- * LA DURACIÓN DE LA SELECCIONADA, EDITABLE DESDE ACÁ.
- *
- * ═══ POR QUÉ MUESTRA DE DÓNDE SALE LA DURACIÓN ═══
- *
- * `duracionDe` usa `dias_plan` cuando está cargado y, si no, HH ÷ capacidad. Son dos orígenes y la
- * diferencia importa: escribir días de plan sobre una actividad que hoy se calcula por HH la
- * CONGELA —deja de acompañar los cambios de dotación—, y eso tiene que decirse antes, no después.
- */
-function PlanDeLaSeleccionada({ obraId, fila, puedeEditar, jornada }: {
-  obraId: string
-  fila: Cronograma['actividades'][number] | null
-  puedeEditar: boolean
-  jornada: number
+function Capa({ activa, href, titulo, muestra, testid, children }: {
+  activa: boolean
+  href: string
+  titulo: string
+  muestra: React.ReactNode
+  testid: string
+  children: React.ReactNode
 }) {
-  const dias = fila?.dias_plan == null || fila.dias_plan === '' ? null : Number(fila.dias_plan)
-  const porHH = dias == null && fila?.duracion != null
   return (
-    <section className="rounded-card border border-line bg-surface p-4" data-testid="plan-seleccionada">
-      <h2 className="mb-3 text-[13px] font-semibold text-ink">Plan de la seleccionada</h2>
-      {!fila && <p className="text-[12px] text-muted">Tocá una actividad para cambiarle la duración.</p>}
-      {fila && (
-        <>
-          <p className="mb-2 text-[12px] text-ink-soft">
-            <strong className="font-semibold">{fila.nombre}</strong>{' '}
-            {fila.duracion == null
-              ? <span className="text-warn">no tiene plan calculable</span>
-              : (<>dura <span className="tnum">{fila.duracion}</span> {fila.duracion === 1 ? 'día hábil' : 'días hábiles'}
-                  <span className="text-muted">{porHH ? ` · calculados con HH ÷ capacidad (jornada de ${jornada} h)` : ' · días de plan cargados'}</span>
-                </>)}
-          </p>
-          {puedeEditar
-            ? (
-              <FormAccion
-                accion={editarDuracion.bind(null, obraId, fila.actividad_id)}
-                testid="form-duracion" enviar="Guardar duración" mensajeOk="Duración guardada."
-              >
-                <div className="flex flex-wrap items-end gap-3">
-                  <Campo
-                    label="Días de plan" ancho="w-[140px]"
-                    ayuda={porHH ? 'Cargarlos deja de calcular por HH' : 'Vacío = volver a calcular por HH'}
-                  >
-                    <input
-                      type="number" name="dias" min={0} max={3650} step={1}
-                      defaultValue={dias ?? ''} className={CTRL} placeholder="sin cargar"
-                    />
-                  </Campo>
-                </div>
-              </FormAccion>
-            )
-            : (
-              <p className="text-[11.5px] text-faint">
-                Cambiar la duración es de Administración y de la jefatura de obra.
-              </p>
-            )}
-        </>
-      )}
-    </section>
-  )
-}
-
-function Dependencias({ crono, insumos, seleccionada, obraId, puedeEditar }: {
-  crono: Cronograma
-  insumos: { dependencias: { id?: string; origen_id: string; destino_id: string; tipo: string; lag_dias: number | string | null }[] }
-  seleccionada: string | null
-  obraId: string
-  puedeEditar: boolean
-}) {
-  const nombre = new Map(crono.actividades.map((a) => [a.actividad_id, a.nombre]))
-  const relacion = (tipo: string, lag: number, dir: 'antes' | 'después') => {
-    const base = dir === 'antes'
-      ? ({ FS: 'termina antes', SS: 'empieza en paralelo', FF: 'termina junto', SF: 'empieza antes' }[tipo] ?? 'termina antes')
-      : ({ FS: 'empieza después', SS: 'empieza en paralelo', FF: 'termina junto', SF: 'termina después' }[tipo] ?? 'empieza después')
-    return lag ? `${base} · ${lag > 0 ? '+' : ''}${lag} d` : base
-  }
-  const filas = seleccionada
-    ? [
-        ...insumos.dependencias.filter((d) => d.destino_id === seleccionada)
-          .map((d) => ({ dir: 'antes' as const, dep: d.id, id: d.origen_id, rel: relacion(d.tipo, Number(d.lag_dias ?? 0), 'antes') })),
-        ...insumos.dependencias.filter((d) => d.origen_id === seleccionada)
-          .map((d) => ({ dir: 'después' as const, dep: d.id, id: d.destino_id, rel: relacion(d.tipo, Number(d.lag_dias ?? 0), 'después') })),
-      ]
-    : []
-  // Candidatas a predecesora: las ejecutables de la obra menos ella misma y menos las que ya lo son.
-  // Ofrecer una que ya está cargada haría que el único resultado posible sea el error de duplicado.
-  const yaSonPredecesoras = new Set(
-    insumos.dependencias.filter((d) => d.destino_id === seleccionada).map((d) => d.origen_id),
-  )
-  const candidatas = crono.actividades.filter(
-    (a) => a.actividad_id !== seleccionada && !yaSonPredecesoras.has(a.actividad_id),
-  )
-
-  return (
-    <section className="rounded-card border border-line bg-surface p-4" data-testid="dependencias">
-      <h2 className="mb-3 text-[13px] font-semibold text-ink">Dependencias de la seleccionada</h2>
-      {!seleccionada && <p className="text-[12px] text-muted">Tocá una actividad para ver de qué depende y qué depende de ella.</p>}
-      {seleccionada && filas.length === 0 && (
-        <p className="text-[12px] text-warn">
-          Esta actividad no tiene ninguna dependencia cargada: no arrastra a nadie y nadie la arrastra.
-        </p>
-      )}
-      <ul className="flex flex-col gap-1.5">
-        {filas.map((f) => (
-          <li key={`${f.dir}-${f.id}`} className="flex items-baseline gap-3">
-            <span className="w-[52px] shrink-0 text-[11px] text-faint">{f.dir}</span>
-            <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink-soft">{nombre.get(f.id) ?? f.id}</span>
-            <span className="shrink-0 text-[11px] text-muted">{f.rel}</span>
-            {puedeEditar && f.dep && (
-              <FormAccion
-                accion={quitarDependencia.bind(null, obraId, f.dep)}
-                enviar="Quitar" className="shrink-0" mensajeOk="Precedencia quitada."
-              >
-                <span className="sr-only">Quitar la precedencia con {nombre.get(f.id) ?? f.id}</span>
-              </FormAccion>
-            )}
-          </li>
-        ))}
-      </ul>
-
-      {seleccionada && puedeEditar && (
-        <div className="mt-3 border-t border-line pt-3">
-          <FormAccion
-            accion={agregarDependencia.bind(null, obraId, seleccionada)}
-            testid="form-dependencia" enviar="Declarar" mensajeOk="Precedencia declarada." limpiarAlOk
-          >
-            <div className="flex flex-wrap items-end gap-2">
-              <Campo label="Depende de" ancho="min-w-[180px] flex-1">
-                <select name="origen_id" className={CTRL} defaultValue="">
-                  <option value="" disabled>Elegí la actividad</option>
-                  {candidatas.map((a) => (
-                    <option key={a.actividad_id} value={a.actividad_id}>{a.nombre}</option>
-                  ))}
-                </select>
-              </Campo>
-              <Campo label="Relación" ancho="w-[92px]">
-                <select name="tipo" className={CTRL} defaultValue="FS">
-                  <option value="FS">FS</option>
-                  <option value="SS">SS</option>
-                  <option value="FF">FF</option>
-                  <option value="SF">SF</option>
-                </select>
-              </Campo>
-              <Campo label="Demora (d)" ancho="w-[92px]" ayuda="Puede ser negativa">
-                <input type="number" name="lag_dias" min={-365} max={365} step={1} defaultValue={0} className={CTRL} />
-              </Campo>
-            </div>
-          </FormAccion>
-        </div>
-      )}
-    </section>
-  )
-}
-
-function Conflictos({ crono }: { crono: Cronograma }) {
-  const textos = textosDeConflicto(crono)
-  return (
-    <section className="rounded-card border border-line bg-surface p-4">
-      <h2 className="mb-3 text-[13px] font-semibold text-ink">Conflictos de recurso detectados</h2>
-      {crono.actividades.every((a) => !a.cuadrilla_id) && (
-        <p className="text-[12px] text-warn">
-          Ninguna actividad de esta obra tiene cuadrilla asignada: no se puede detectar si dos
-          frentes piden la misma gente el mismo día. No es que no haya conflictos — es que no se
-          pueden ver.
-        </p>
-      )}
-      {textos.length === 0 && crono.actividades.some((a) => a.cuadrilla_id) && (
-        <p className="text-[12px] text-muted">Ninguna cuadrilla queda pedida en dos frentes a la vez.</p>
-      )}
-      <ul className="flex flex-col gap-2">
-        {textos.map((t) => (
-          <li key={t} className="flex items-baseline gap-2">
-            <span className="shrink-0 text-warn">△</span>
-            <span className="text-[12.5px] text-ink-soft">{t}</span>
-          </li>
-        ))}
-      </ul>
-    </section>
+    <Link
+      href={href} scroll={false} title={titulo} data-testid={testid}
+      data-activa={activa ? '1' : undefined}
+      aria-pressed={activa}
+      className={`flex items-center gap-2 rounded-control border px-2.5 py-1 text-[12px] ${
+        activa ? 'border-line-strong bg-surface-quiet text-ink' : 'border-line bg-surface text-muted hover:text-ink'
+      }`}
+    >
+      {muestra}
+      {children}
+    </Link>
   )
 }

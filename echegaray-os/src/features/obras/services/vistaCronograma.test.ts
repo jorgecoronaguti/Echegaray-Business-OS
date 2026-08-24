@@ -78,7 +78,7 @@ test('esVista rechaza cualquier cosa que venga en la URL', () => {
 })
 
 test('la URL no arrastra los valores por defecto: el link se puede compartir limpio', () => {
-  const base = { vista: 'actividades', escala: 'semana', sel: null, mover: null, proyeccion: false } as const
+  const base = { vista: 'actividades', escala: 'semana', sel: null, mover: null, proyeccion: false, base: true } as const
   assert.equal(hrefCronograma('messina', base), '/obras/messina/cronograma')
   assert.equal(hrefCronograma('messina', base, { vista: 'critico' }), '/obras/messina/cronograma?vista=critico')
   assert.equal(
@@ -88,6 +88,53 @@ test('la URL no arrastra los valores por defecto: el link se puede compartir lim
 })
 
 test('cancelar el arrastre saca sólo el movimiento y conserva la selección', () => {
-  const base = { vista: 'frente', escala: 'mes', sel: 'abc', mover: 3, proyeccion: false } as const
+  const base = { vista: 'frente', escala: 'mes', sel: 'abc', mover: 3, proyeccion: false, base: true } as const
   assert.equal(hrefCronograma('m', base, { mover: null }), '/obras/m/cronograma?vista=frente&escala=mes&sel=abc')
+})
+
+test('apagar la línea base viaja en el link; encendida —que es lo normal— no ensucia la URL', () => {
+  const base = { vista: 'actividades', escala: 'semana', sel: null, mover: null, proyeccion: false, base: true } as const
+  assert.equal(hrefCronograma('m', base, { base: false }), '/obras/m/cronograma?base=0')
+  assert.equal(hrefCronograma('m', { ...base, base: false }, { base: true }), '/obras/m/cronograma')
+})
+
+// ═══ LA LÍNEA BASE Y EL DESVÍO ═══
+//
+// LO QUE ATRAPA: que una obra SIN línea base sellada se lea «en fecha». Sin base no hay promesa
+// contra la cual estar en fecha, y `desvio: 0` haría que la 07 pinte de verde diecisiete obras que
+// nadie prometió. El día que alguien devuelva 0 en vez de null, este test se pone rojo.
+
+test('SIN base sellada el desvío es null, nunca 0', () => {
+  const c = crono([fila({ actividad_id: 'a', fin_calculado: '2026-07-20', fin_base: null })])
+  const [f] = filasDeVista(c, 'actividades', () => 99)
+  assert.equal(f.finBase, null)
+  assert.equal(f.desvio, null, 'sin base no se llama a la cuenta: no hay contra qué medir')
+})
+
+test('el desvío se mide con el calendario que le pasan, no con días corridos', () => {
+  const c = crono([fila({ actividad_id: 'a', fin_calculado: '2026-07-20', fin_base: '2026-07-13' })])
+  // El calendario real devuelve 5 días hábiles para esos 7 corridos; acá se verifica que la fila
+  // use EXACTAMENTE lo que la función inyectada dice y no vuelva a contar por su cuenta.
+  const [f] = filasDeVista(c, 'actividades', (fb, fin) => (fb === '2026-07-13' && fin === '2026-07-20' ? 5 : -1))
+  assert.equal(f.desvio, 5)
+})
+
+test('el desvío del FRENTE es el peor de sus hijas, no el promedio', () => {
+  const c = crono([
+    fila({ actividad_id: 'a', seccion: 'P', fin_calculado: '2026-07-20', fin_base: '2026-07-20' }),
+    fila({ actividad_id: 'b', seccion: 'P', fin_calculado: '2026-07-30', fin_base: '2026-07-20' }),
+  ])
+  const desvios: Record<string, number> = { '2026-07-20': 0, '2026-07-30': 15 }
+  const filas = filasDeVista(c, 'frente', (_fb, fin) => desvios[fin] ?? null)
+  assert.equal(filas[0].desvio, 15, 'un frente con una actividad quince días tarde atrasa quince días')
+})
+
+test('la línea base viaja a la fila para poder dibujarse: las dos puntas o ninguna', () => {
+  const c = crono([fila({
+    actividad_id: 'a', inicio_calculado: '2026-07-06', fin_calculado: '2026-07-20',
+    inicio_base: '2026-07-01T00:00:00Z', fin_base: '2026-07-13T00:00:00Z',
+  })])
+  const [f] = filasDeVista(c, 'actividades')
+  assert.equal(f.inicioBase, '2026-07-01', 'el timestamp se recorta a fecha o el tramo no se puede posicionar')
+  assert.equal(f.finBase, '2026-07-13')
 })
