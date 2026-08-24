@@ -21,8 +21,8 @@ import { createClient } from '@/lib/supabase/server'
 import { filasDeObras, getPlazoPorObra } from '@/features/obras/services/ganttObras'
 import { esCampo, type Direccion } from '@/features/obras/services/ordenObras'
 import { OrdenGantt } from '@/features/obras/components/OrdenGantt'
-import { filtrar, filtroDesde } from '@/features/obras/services/filtroObras'
-import { FiltrosObras } from '@/features/obras/components/FiltrosObras'
+import { esAtrasada, filtrar, filtrarPorAtraso, filtroDesde } from '@/features/obras/services/filtroObras'
+import { FiltrosObras, type ConteosObras } from '@/features/obras/components/FiltrosObras'
 import { GanttObras } from '@/features/obras/components/GanttObras'
 import { NavObras } from '@/features/obras/components/NavObras'
 import { RecordarVista } from '@/features/obras/components/RecordarVista'
@@ -50,19 +50,43 @@ export default async function GanttGlobalPage({
   // al rango de lo que muestra, así que filtrar después dejaría un calendario de obras que ya no
   // están en pantalla.
   const cartera = filtrar(data ?? [], filtro)
-  const filas = filasDeObras(cartera, hoyIso, verArchivadas === '1', orden, dir)
-  const visiblesSinFiltrar = filasDeObras(data ?? [], hoyIso, verArchivadas === '1', null, dir).length
+  // EL ATRASO SE FILTRA SOBRE LA FILA YA ARMADA, no sobre la lectura cruda: el semáforo vive en la
+  // barra, y es el MISMO que la tabla usa en su columna de estado. Una obra sin barra no tiene
+  // semáforo que juzgar y `sin_datos` no cuenta como atraso — ver `esAtrasada`.
+  const filas = filtrarPorAtraso(
+    filasDeObras(cartera, hoyIso, verArchivadas === '1', orden, dir),
+    filtro,
+    (f) => f.barra?.desvio.semaforo ?? 'sin_datos',
+  )
+  const todasLasFilas = filasDeObras(data ?? [], hoyIso, verArchivadas === '1', null, dir)
+  const visiblesSinFiltrar = todasLasFilas.length
+  // Los conteos de los chips se cuentan sobre la cartera visible, nunca sobre lo ya filtrado: un
+  // chip que dice «Terminación 2» tiene que seguir diciendo 2 después de tocar otro chip.
+  const conteos: ConteosObras = {
+    todas: visiblesSinFiltrar,
+    porEtapa: todasLasFilas.reduce<ConteosObras['porEtapa']>((acc, f) => {
+      if (f.etapa) acc[f.etapa] = (acc[f.etapa] ?? 0) + 1
+      return acc
+    }, {}),
+    atraso: todasLasFilas.filter((f) => esAtrasada(f.barra?.desvio.semaforo ?? 'sin_datos')).length,
+  }
   const conPlan = filas.filter((f) => f.barra).length
   const archivadas = (data ?? []).filter((o) => o.estado === 'cerrada').length
 
   return (
     <PageShell
-      title="Gantt"
+      // ES LA MISMA PANTALLA QUE LA TABLA, MIRADA SOBRE EL CALENDARIO (Design canónico 01): el
+      // título es el del área y el conmutador de arriba dice cuál de las dos vistas está puesta.
+      // «Gantt» como título anunciaba un lugar distinto del sistema, y no lo es.
+      title="OBRAS"
+      // QUÉ HAY, NO CÓMO FUNCIONA. «Cada barra va del inicio al fin de la obra, agregados de sus
+      // actividades. Tocar una abre su cronograma» explicaba el artefacto: se entiende mirándolo una
+      // vez, y después son dos líneas empujando el lienzo hacia abajo todos los días. El criterio
+      // del color —lo único que hay que saber para leerlo— sigue en la ayuda del propio Gantt.
       subtitle={
-        `${filas.length} obra${filas.length === 1 ? '' : 's'} en la cartera, ${conPlan} con fechas de plan. `
-        + `Cada barra va del inicio al fin de la obra, agregados de sus actividades. Tocar una abre su cronograma.`
+        `${filas.length} obra${filas.length === 1 ? '' : 's'}, ${conPlan} con fechas de plan`
         + (archivadas && verArchivadas !== '1'
-            ? ` ${archivadas} archivada${archivadas === 1 ? '' : 's'} queda${archivadas === 1 ? '' : 'n'} afuera.`
+            ? ` · ${archivadas} archivada${archivadas === 1 ? '' : 's'} afuera`
             : '')
       }
     >
@@ -76,11 +100,12 @@ export default async function GanttGlobalPage({
           por leer, no una acción de la pantalla. */}
       {!error && visiblesSinFiltrar > 1 && (
         <FiltrosObras filtro={filtro} base="/obras/gantt" resultados={filas.length} total={visiblesSinFiltrar}
+          conteos={conteos}
           extra={{ archivadas: verArchivadas === '1' ? '1' : undefined, orden: orden ?? undefined, dir: orden ? dir : undefined }} />
       )}
 
       {!error && filas.length > 1 && <OrdenGantt activo={orden} dir={dir} archivadas={verArchivadas === '1'}
-        etapa={filtro.etapa ?? undefined} q={filtro.q || undefined} />}
+        etapa={filtro.etapa ?? undefined} q={filtro.q || undefined} atraso={filtro.atraso} />}
 
       {/* SIN DESPLEGABLE PARA ELEGIR OBRA. Existía cuando la vista global desplegaba 344 actividades
           y hacía falta una forma de saltar a una. Ahora cada renglón ES una obra y se toca: un

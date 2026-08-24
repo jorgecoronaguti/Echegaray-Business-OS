@@ -136,6 +136,21 @@ export const UMBRAL_ATRASO = {
 
 export type Semaforo = 'sin_datos' | 'al_dia' | 'atraso_menor' | 'atraso_critico'
 
+/**
+ * CÓMO SE LLAMA CADA ESTADO, en un solo lugar.
+ *
+ * Lo leen el Gantt de cartera y la curva «real contra esperado» del Resumen de la obra. Estaban
+ * escritas sólo adentro del componente del Gantt, así que la segunda pantalla que midiera lo mismo
+ * iba a nombrarlo distinto —«atrasada» acá, «atraso menor» allá— sobre EL MISMO número. El color y
+ * la palabra son la salida visible de esta regla: si la regla es una, el vocabulario también.
+ */
+export const PALABRA_SEMAFORO: Record<Semaforo, string> = {
+  al_dia: 'al día',
+  atraso_menor: 'atraso menor',
+  atraso_critico: 'atraso crítico',
+  sin_datos: 'sin datos para juzgar',
+}
+
 export interface Desvio {
   semaforo: Semaforo
   /** Cuánto debería llevar avanzado por calendario. `null` = no se puede juzgar. ESTIMACIÓN. */

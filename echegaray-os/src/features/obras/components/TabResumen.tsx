@@ -1,10 +1,12 @@
 import Link from 'next/link'
-import { Estado, Eyebrow, Nulo, Num, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
+import { Estado, Eyebrow, Nulo, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
 import type {
   Actividad, EconomiaObra, ObraPanel, ParteEjecucion, PlanVsReal, Restriccion,
 } from '@/features/obras/types'
 import { PlanVsRealResumen } from './PlanVsRealResumen'
 import { ChecklistPreparacion } from './ChecklistPreparacion'
+import { CurvaAvance } from './CurvaAvance'
+import { Ficha, UltimoMovimiento } from './FichaObra'
 import { proximasDeLaObra } from '../services/resumenDelPlan'
 import { lineasPlanVsReal } from '../services/planVsReal'
 import type { PersonasDeHoy } from '../services/personalService'
@@ -14,7 +16,11 @@ import { fecha, plataCorta } from './formato'
 //
 //   ¿CÓMO VAMOS?            → la fila de métricas: avance, plazo, costo, personas.
 //   ¿QUÉ NECESITA ATENCIÓN? → «Atención», y SÓLO lo que está mal.
+//   ¿VAMOS AL RITMO?        → «Avance real vs esperado»: el avance medido contra el calendario.
 //   ¿QUÉ HAY QUE HACER?     → «Próximas 2 semanas».
+//
+// Y en la columna de contexto, qué obra es (la ficha), qué le falta para producir (preparación) y
+// si se está reportando (último movimiento).
 //
 // ═══ POR EXCEPCIÓN: LO NORMAL ES SILENCIOSO ═══
 //
@@ -359,63 +365,6 @@ function Proximas({ actividades, obraId, hoy }: {
   )
 }
 
-/** La ficha del aside: rótulo a la izquierda, valor a la derecha, sin recuadro. */
-function Ficha({ obra, plan }: { obra: ObraPanel; plan: PlanVsReal | null }) {
-  const filas: { k: string; v: React.ReactNode }[] = [
-    { k: 'Cliente', v: obra.cliente_nombre ?? obra.cliente_texto ?? <Nulo>sin cliente declarado</Nulo> },
-    { k: 'Responsable', v: obra.jefe_obra ?? <Nulo>sin jefe de obra</Nulo> },
-    { k: 'Actividades', v: obra.n_actividades > 0 ? <Num>{obra.n_actividades}</Num> : <Nulo>sin cronograma</Nulo> },
-    {
-      k: 'Línea base',
-      v: plan?.actividades_con_baseline
-        ? <Num>{plan.actividades_con_baseline} selladas</Num>
-        : <Nulo>sin sellar</Nulo>,
-    },
-    { k: 'Inicio real', v: obra.fecha_inicio_real ? <Num>{fecha(obra.fecha_inicio_real)}</Num> : <Nulo>sin arrancar</Nulo> },
-    { k: 'Carpeta Drive', v: obra.drive_carpeta_id ? 'vinculada' : <Nulo>sin vincular</Nulo> },
-  ]
-  return (
-    <div className="border-t border-[#EFEEEA] pt-3.5">
-      <Eyebrow className="mb-3">La obra</Eyebrow>
-      <dl className="flex flex-col gap-2.5">
-        {filas.map((f) => (
-          <div key={f.k} className="flex items-baseline justify-between gap-3">
-            <dt className="shrink-0 text-[12px] text-muted">{f.k}</dt>
-            <dd className="min-w-0 truncate text-right text-[12.5px] text-ink">{f.v}</dd>
-          </div>
-        ))}
-      </dl>
-    </div>
-  )
-}
-
-/** El último parte cargado, en una oración. Es la señal de si la obra se está reportando. */
-function UltimoMovimiento({ partes, actividadDe, obraId }: {
-  partes: ParteEjecucion[]; actividadDe: Map<string, string>; obraId: string
-}) {
-  const p = partes[0] ?? null
-  return (
-    <div className="border-t border-[#EFEEEA] pt-3.5">
-      <Eyebrow className="mb-2.5">Último movimiento</Eyebrow>
-      {p == null ? (
-        <p className="text-[13px] text-muted">Ningún parte cargado todavía.</p>
-      ) : (
-        <p className="text-[13px] leading-relaxed text-ink">
-          Parte del <Num>{fecha(p.fecha)}</Num>
-          {': '}
-          {p.cantidad != null
-            ? `+${p.cantidad.toLocaleString('es-AR', { maximumFractionDigits: 2 })} `
-            : p.avance_pct != null ? `+${p.avance_pct}% ` : ''}
-          en {actividadDe.get(p.actividad_id) ?? 'una actividad archivada'}
-          {p.comentario ? `. ${p.comentario}` : '.'}
-        </p>
-      )}
-      <Link href={`/obras/${obraId}?vista=ejecucion`} className="mt-2.5 inline-block text-[12px] text-muted hover:text-ink">
-        Ir a Ejecución →
-      </Link>
-    </div>
-  )
-}
 
 export function TabResumen({
   obra, plan, economia = null, abiertas, obraId, editar, archivar, veComercial = true,
@@ -459,7 +408,22 @@ export function TabResumen({
 
         <Atencion items={atencion} />
 
-        {actividades && <Proximas actividades={actividades} obraId={obraId} hoy={hoy} />}
+        {/* ¿CÓMO VIENE CONTRA EL CALENDARIO? y ¿QUÉ VIENE? van uno al lado del otro (Design 02): son
+            las dos mitades de la misma pregunta —cómo vamos y qué sigue— y apiladas empujaban la
+            segunda fuera de la primera pantalla. En angosto se apilan solas. */}
+        <div className="flex flex-col gap-8 xl:flex-row xl:gap-10">
+          <CurvaAvance
+            inicio={plan?.inicio_plan ?? obra.fecha_inicio_plan}
+            fin={plan?.fin_plan ?? obra.fecha_fin_plan}
+            avancePct={obra.avance_pct}
+            hoy={hoy}
+          />
+          {actividades && (
+            <div className="min-w-0 flex-1">
+              <Proximas actividades={actividades} obraId={obraId} hoy={hoy} />
+            </div>
+          )}
+        </div>
 
         {/* LAS LECTURAS COMPLETAS, PLEGADAS. Lo que está bien y lo que no se puede medir no se
             perdió: dejó de competir por la primera pantalla con lo que hay que ir a resolver. */}
@@ -474,14 +438,18 @@ export function TabResumen({
           </details>
         )}
 
-        {/* LO QUE FALTA PARA QUE LA OBRA PRODUZCA, plegado: explica los «sin medir» de arriba, no
-            compite con ellos. Y desaparece solo cuando no falta nada — un checklist entero en ✓
-            ocupa lugar sin decir nada. */}
-        <ChecklistPreparacion obraId={obraId} plegado ocultarSiCompleto />
       </div>
 
       <aside className="flex w-full shrink-0 flex-col gap-5 lg:w-[360px]">
         <Ficha obra={obra} plan={plan} />
+        {/* LO QUE FALTA PARA QUE LA OBRA PRODUZCA. Va en la columna de contexto y ABIERTO (Design
+            canónico 02): estaba plegado al final del cuerpo, donde explicaba los «sin medir» de las
+            métricas a dos pantallas de distancia y sólo si alguien lo abría. Sigue desapareciendo
+            solo cuando no falta nada — un checklist entero en ✓ ocupa lugar sin decir nada.
+            SIN MARCO PROPIO: cuando no falta nada el componente devuelve `null`, y un `border-t`
+            envolviéndolo dejaría una línea suelta en el aside separando dos bloques que no existen.
+            La lista trae su propio hairline. */}
+        <ChecklistPreparacion obraId={obraId} ocultarSiCompleto />
         {partes && <UltimoMovimiento partes={partes} actividadDe={actividadDe} obraId={obraId} />}
         <div className="border-t border-[#EFEEEA] pt-3.5">{editar}</div>
         {archivar && <div className="border-t border-[#EFEEEA] pt-3.5">{archivar}</div>}

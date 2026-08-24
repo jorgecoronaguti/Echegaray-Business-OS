@@ -20,22 +20,40 @@
 //   NIVEL 3  la obra individual, con SUS solapas      (`/obras/[obra]`)
 // Ningún nivel se mezcla con otro en la misma barra.
 //
-// Se reusa el patrón que ya existe en el workspace de la obra —línea de solapas, subrayado en el
-// amarillo de la marca— en vez de inventar uno: dos formas distintas de decir "dónde estoy" en la
-// misma pantalla se aprenden dos veces y se aprenden mal.
+// ═══ NO SON DOS PANTALLAS: SON DOS VISTAS DE LA MISMA (Design canónico 01 · 23/08) ═══
+//
+// Se llamaban «Resumen» y «Gantt» en una barra de solapas a todo el ancho, y las dos cosas estaban
+// mal:
+//
+//   · «RESUMEN» ES EL NOMBRE DE OTRA PANTALLA. La primera solapa DENTRO de una obra también se
+//     llama Resumen, en otro nivel de la jerarquía. Preguntar «¿lo viste en el Resumen?» tenía dos
+//     respuestas posibles, que es exactamente el defecto que la barra de seis entradas ya había
+//     costado. Los dos nombres nuevos dicen QUÉ SE VE: la misma cartera como tabla o sobre el
+//     calendario.
+//   · UNA BARRA DE SOLAPAS ANUNCIA SECCIONES DISTINTAS. Acá el dato es el mismo —las mismas obras,
+//     los mismos filtros, el mismo semáforo— y sólo cambia la forma de mirarlo. El Design lo pone
+//     como un conmutador de vista en la barra de herramientas, no como navegación: pesa menos,
+//     ocupa una línea y devuelve al contenido los 40px que se llevaba el borde inferior.
+//
+// SIGUEN SIENDO DOS RUTAS, y eso no cambia: la URL es la verdad —se comparte, se recarga, vuelve
+// con el botón de atrás— y cada vista recuerda su propia preferencia (`vistaRecordada`).
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
 const VISTAS = [
-  { href: '/obras', id: 'resumen', label: 'Resumen' },
-  { href: '/obras/gantt', id: 'gantt', label: 'Gantt' },
+  { href: '/obras', id: 'resumen', label: 'Tabla' },
+  { href: '/obras/gantt', id: 'gantt', label: 'Línea de tiempo' },
 ] as const
 
 export function NavObras() {
   const pathname = usePathname()
   return (
-    <nav className="mb-5 flex gap-1 overflow-x-auto overscroll-x-contain border-b border-line" data-testid="nav-vistas-obras">
+    // EL PUESTO VA SUBRAYADO EN INK, no en el amarillo de la marca: `COMPONENTS.md` §Secondary tabs.
+    // El amarillo queda para la primaria de la pantalla, que está a la misma altura y a la derecha —
+    // dos amarillos en la misma línea hacen que el ojo lea dos acciones principales.
+    <nav className="mb-4 flex items-center gap-4" data-testid="nav-vistas-obras">
+      <span className="text-[12px] text-faint">Ver</span>
       {VISTAS.map((v) => {
         const activa = pathname === v.href
         return (
@@ -44,8 +62,8 @@ export function NavObras() {
             href={v.href}
             data-testid={`nav-vistas-obras-${v.id}`}
             aria-current={activa ? 'page' : undefined}
-            className={`-mb-px shrink-0 border-b-2 px-3.5 py-2 text-[13px] transition-colors ${
-              activa ? 'border-marca font-medium text-ink' : 'border-transparent text-muted hover:text-ink'
+            className={`shrink-0 pb-[2px] text-[12.5px] transition-colors ${
+              activa ? 'font-medium text-ink shadow-[inset_0_-1.5px_0_var(--os-ink)]' : 'text-muted hover:text-ink'
             }`}
           >{v.label}</Link>
         )
