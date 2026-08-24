@@ -276,8 +276,12 @@ export function TabCronograma({
 
       {/* AL PIE Y NO ARRIBA: el plan es el trabajo y va primero. Estas cifras se leen al terminar de
           mirarlo, y salen de las MISMAS actividades que se acaban de dibujar —filtradas incluidas,
-          porque una franja que cuenta lo que la pantalla no muestra contradice a la pantalla. */}
-      <Franja testid="franja-obra" metricas={metricasDelPlan(resumen, Number(ventanaActual))} />
+          porque una franja que cuenta lo que la pantalla no muestra contradice a la pantalla.
+          Desde el mockup 07 es una TARJETA de celdas, así que el aire de arriba lo pone quien la
+          coloca: el componente no trae margen propio. */}
+      <div className="pt-3">
+        <Franja testid="franja-obra" metricas={metricasDelPlan(resumen, Number(ventanaActual))} />
+      </div>
     </div>
   )
 }

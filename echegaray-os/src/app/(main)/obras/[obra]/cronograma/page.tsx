@@ -229,6 +229,10 @@ export default async function CronogramaObraPage(
             obraId={obraId}
             estadoUrl={estadoUrl}
             dependencias={insumos.dependencias}
+            // Los días que ESTA obra trabaja, los mismos que usa el calendario del desvío: el
+            // lienzo sombrea los otros. Asumir sábado y domingo pintaría de franco los sábados de
+            // una obra que trabaja los sábados.
+            diasHabiles={insumos.obra.dias_habiles ?? [1, 2, 3, 4, 5]}
           />
         )}
 
@@ -257,7 +261,10 @@ export default async function CronogramaObraPage(
         </div>
         <Conflictos crono={crono} />
       </div>
-      <div className="pt-4">
+      {/* AL PIE Y COMO TARJETA (mockup 07): la franja es el cierre de la pantalla, no una barra
+          flotante. Lleva el mismo marco que el resto del contenido, o queda 20px más ancha que el
+          cronograma que resume. */}
+      <div className="px-4 pt-3 lg:px-10">
         <Franja metricas={metricasDelPlazo(filas, crono, enProyeccion, desvioDe)} testid="franja-cronograma" />
       </div>
     </main>
@@ -281,45 +288,48 @@ function Barra({ vista, unidad, enProyeccion, verBase, href }: {
   href: (c: Partial<EstadoUrl>) => string
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-      <div className="flex items-center gap-4 text-[13px]">
+    // LA BANDA DE VISTA, A SANGRE (mockup 07): fondo #FAFAF8 y hairline abajo, de borde a borde de
+    // la pantalla. Sin la banda, las vistas y los controles flotaban sobre el canvas y no se leía
+    // que gobiernan lo de abajo. Los márgenes negativos son los del marco de la página.
+    <div className="-mx-4 flex flex-wrap items-center gap-x-[14px] gap-y-1 border-y border-line bg-surface-quiet px-4 lg:-mx-10 lg:px-10">
+      <div className="flex items-stretch">
         {VISTAS.map((v) => (
           <Link
             key={v} href={href({ vista: v, mover: null })} scroll={false}
-            className={vista === v
-              ? 'font-medium text-ink shadow-[inset_0_-1.5px_0_var(--os-ink)]'
-              : 'text-muted hover:text-ink'}
+            className={`px-2.5 py-[9px] text-[12.5px] ${vista === v
+              ? 'font-semibold text-ink shadow-[inset_0_-2px_0_var(--os-accent)]'
+              : 'text-muted hover:text-ink'}`}
           >
             {VISTA_LABEL[v]}
           </Link>
         ))}
       </div>
-      {/* Control segmentado en GRAFITO: el zoom es una vista, no una selección de marca. El amarillo
-          queda reservado para el hito de hoy y para la fila seleccionada. */}
-      <div className="flex items-center overflow-hidden rounded-control border border-line" data-testid="escala-cronograma">
-        {UNIDADES.map((u) => (
-          <Link
-            key={u} href={href({ escala: u })} scroll={false}
-            className={`border-r border-line px-2.5 py-1 text-[12px] last:border-r-0 ${
-              unidad === u ? 'bg-accent font-semibold text-white' : 'bg-surface text-muted hover:text-ink'
-            }`}
-          >
-            {UNIDAD_LABEL[u]}
-          </Link>
-        ))}
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="ml-auto flex flex-wrap items-center gap-2 py-[5px]">
+        {/* Control segmentado en GRAFITO: el zoom es una vista, no una selección de marca. El
+            amarillo queda reservado para el hito de hoy y para la fila seleccionada. */}
+        <div className="flex items-center overflow-hidden rounded-control border border-line" data-testid="escala-cronograma">
+          {UNIDADES.map((u) => (
+            <Link
+              key={u} href={href({ escala: u })} scroll={false}
+              className={`border-r border-line px-[11px] py-[5px] text-[12px] last:border-r-0 ${
+                unidad === u ? 'bg-accent font-semibold text-white' : 'bg-surface text-ink-soft hover:text-ink'
+              }`}
+            >
+              {UNIDAD_LABEL[u]}
+            </Link>
+          ))}
+        </div>
         <Capa
           activa={verBase} href={href({ base: !verBase })} testid="capa-base"
           titulo="Lo que se prometió al sellar la línea base"
-          muestra={<span className="h-[4px] w-[11px] rounded-[2px] bg-line-strong" />}
+          muestra={<span className="h-[4px] w-[10px] rounded-[2px] bg-line-strong" />}
         >
           Línea base
         </Capa>
         <Capa
           activa={enProyeccion} href={href({ proyeccion: !enProyeccion, mover: null })} testid="capa-proyeccion"
           titulo="Lo que va a pasar con el rendimiento observado hasta hoy"
-          muestra={<span className="h-[10px] w-[11px] rounded-[2px] border border-dashed border-neg" />}
+          muestra={<span className="h-[13px] w-[10px] border-t-[1.5px] border-dashed border-neg" />}
         >
           Proyección
         </Capa>
@@ -341,8 +351,8 @@ function Capa({ activa, href, titulo, muestra, testid, children }: {
       href={href} scroll={false} title={titulo} data-testid={testid}
       data-activa={activa ? '1' : undefined}
       aria-pressed={activa}
-      className={`flex items-center gap-2 rounded-control border px-2.5 py-1 text-[12px] ${
-        activa ? 'border-line-strong bg-surface-quiet text-ink' : 'border-line bg-surface text-muted hover:text-ink'
+      className={`flex items-center gap-[6px] rounded-control border px-[9px] py-1 text-[12px] ${
+        activa ? 'border-accent bg-surface-sunken text-ink' : 'border-line bg-surface text-muted hover:text-ink'
       }`}
     >
       {muestra}

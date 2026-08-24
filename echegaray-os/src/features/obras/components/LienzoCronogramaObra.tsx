@@ -1,6 +1,6 @@
 'use client'
 
-// EL GANTT DE LA OBRA — panel fijo a la izquierda, barras a la derecha, y el arrastre que avisa.
+// EL GANTT DE LA OBRA — la tabla a la izquierda, las barras a la derecha, y el arrastre que avisa.
 //
 // ═══ LO ÚNICO QUE CORRE EN EL NAVEGADOR ES EL GESTO ═══
 //
@@ -17,56 +17,61 @@
 // depende del ancho real del contenedor, que sólo se conoce en el navegador. Se mide del elemento,
 // no se asume: con una ventana angosta, asumir 1000px convertiría un arrastre de un día en cuatro.
 //
-// ═══ TRES CAPAS SUPERPUESTAS, Y CADA UNA DICE OTRA COSA (Design 23/08 · 07) ═══
+// ═══ TRES CAPAS SUPERPUESTAS, Y CADA UNA DICE OTRA COSA (mockup 07) ═══
 //
-// BASE lo que se prometió al sellar (hairline gris arriba) · REAL/PLAN la barra con su relleno de
-// avance · PROYECCIÓN el tramo punteado que el plan todavía no reconoce. Superponerlas es el punto
-// entero de la pantalla: el desvío es la DIFERENCIA entre capas, y en tres pantallas separadas hay
-// que recordarlo de memoria. La base no se dibuja cuando no fue sellada — un hueco es el dato.
+// BASE lo que se prometió al sellar (hairline gris arriba, 4px) · PLAN la barra de 15px con su
+// relleno de avance · PROYECCIÓN el mismo alto en punteado rojo. Superponerlas es el punto entero
+// de la pantalla: el desvío es la DIFERENCIA entre capas, y en tres pantallas separadas hay que
+// recordarlo de memoria. La base no se dibuja cuando no fue sellada — un hueco es el dato.
+//
+// ═══ LAS MEDIDAS SON LAS DEL MOCKUP, NO LAS DEL COMPONENTE ═══
+//
+// Fila 36px · cabecera 46px partida en 22 (período) + 24 (divisiones) · base `top:6 h:4 r:2` ·
+// barra `top:13 h:15 r:4` · resumen de frente `top:18 h:5` · línea de hoy 1,5px amarilla. El color
+// de la barra dice el estado: verde terminada, ámbar en curso y crítica, azul en curso, gris sin
+// arrancar; el relleno es el avance declarado y el fondo tenue es lo que falta.
 //
 // El plegado de un frente es estado del navegador: cerrar un rubro no cambia el plan y no tiene por
 // qué costar una vuelta al servidor.
 
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMemo, useRef, useState } from 'react'
-import { IconoDependencia, IconoDesplegar, IconoProblema } from '@/shared/components/iconos'
+import { IconoDependencia, IconoProblema } from '@/shared/components/iconos'
 import type { EscalaCronograma } from '../services/escalaCronograma'
 import { tramoDe } from '../services/escalaCronograma'
+import { bandasDePeriodo, franjasNoLaborables } from '../services/bandaCronograma'
 import { conectoresDe, type Conector, type DependenciaConector } from '../services/conectoresGantt'
 import type { EstadoUrl, FilaVista } from '../services/vistaCronograma'
 import { hrefCronograma } from '../services/vistaCronograma'
+import { TablaCronogramaObra, estaSeleccionada } from './TablaCronogramaObra'
 
-/** El alto de la fila del Gantt es un TOKEN del sistema (`--os-row-h-compacta`), no un número de
- *  esta pantalla: la tabla de la izquierda se alinea 1:1 con las barras de la derecha, y el día que
- *  los dos números se separen la barra deja de estar en la fila de su actividad sin dar un error. */
-const ALTO_FILA = 38
+/** El alto de la fila y el de la cabecera son del canon visual de la 07 (`ROWH = 36`, cabecera de
+ *  46 = 22 + 24). Los leen las DOS columnas —la tabla y el lienzo— desde acá: el día que se
+ *  separen, la barra deja de estar en la fila de su actividad y ningún test lo nota. */
+const ALTO_FILA = 36
 const ALTO_HEAD = 46
+const ALTO_PERIODO = 22
 
 const fmt = (iso: string | null) =>
   (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : null)
 
-/** UNA CABECERA DE FRENTE NUNCA ESTÁ SELECCIONADA. Su `actividadId` es null y la comparación
- *  `seleccionada === f.actividadId` daba verdadero con nada seleccionado —null === null—: las diez
- *  cabeceras aparecían resaltadas en amarillo como si el usuario las hubiera tocado todas. */
-const estaSeleccionada = (f: FilaVista, sel: string | null) => f.actividadId != null && f.actividadId === sel
-
-/** El color de la barra ejecutada. Verde sólo cuando terminó de verdad; naranja cuando está en el
- *  camino crítico; grafito el resto. El amarillo de la marca no pinta estado nunca. */
-function colorEjecutado(f: FilaVista): string {
-  if (f.avancePct != null && f.avancePct >= 100) return 'bg-pos'
-  return f.critica ? 'bg-warn' : 'bg-accent'
+/** Cómo se pinta una barra según su estado. Los cuatro casos del mockup: terminada, en curso sobre
+ *  el camino crítico, en curso, y sin arrancar. `relleno` es el avance ya ejecutado; `fondo` es lo
+ *  que falta, y por eso es el mismo color rebajado y no un gris cualquiera. */
+function pinturaDeBarra(f: FilaVista): { relleno: string; fondo: string; borde: string } {
+  if (f.avancePct != null && f.avancePct >= 100) return { relleno: 'bg-pos', fondo: 'bg-pos-soft', borde: '--os-pos' }
+  if (f.avancePct != null && f.avancePct > 0) {
+    return f.critica
+      ? { relleno: 'bg-warn', fondo: 'bg-warn-soft', borde: '--os-warn' }
+      : { relleno: 'bg-info', fondo: 'bg-info-soft', borde: '--os-info' }
+  }
+  return { relleno: 'bg-line-strong', fondo: 'bg-surface-sunken', borde: '--os-line' }
 }
 
-/** El desvío contra la base, en palabras. `null` NO es «en fecha»: es que nadie selló una base
- *  contra la cual estar en fecha, y decirlo «en fecha» convertiría una obra sin línea base en una
- *  obra perfectamente cumplida. */
-function textoDesvio(d: number | null): { texto: string; clase: string } {
-  if (d == null) return { texto: 'sin base', clase: 'text-faint' }
-  if (d === 0) return { texto: 'en fecha', clase: 'text-pos' }
-  if (d < 0) return { texto: `${d} d`, clase: 'text-pos' }
-  return { texto: `+${d} d`, clase: d > 5 ? 'text-neg' : 'text-warn' }
-}
+/** El borde de la barra es su propio color REBAJADO, como en el mockup (#CDE7D7 sobre #E6F3EB). Va
+ *  por `style` y no por clase porque es una mezcla calculada sobre un token: un hex nuevo por cada
+ *  estado sería el sexto verde del sistema. */
+const bordeDeBarra = (v: string) => `color-mix(in srgb, var(${v}) 30%, #ffffff)`
 
 /** Qué filas se ven con estos frentes cerrados. Una cabecera plegada se lleva sus hijas hasta la
  *  próxima cabecera: las filas vienen planas y el nivel es la única jerarquía que tienen. */
@@ -97,10 +102,13 @@ export interface Props {
   /** Las precedencias declaradas. Se dibujan en L sobre el lienzo: una dependencia que sólo vive en
    *  una lista obliga a reconstruir de memoria qué arrastra qué. */
   dependencias?: DependenciaConector[]
+  /** Los días que ESTA obra trabaja (isodow). Los otros se sombrean: sin eso, diez días de barra
+   *  sobre el calendario no se distinguen de diez días de trabajo. */
+  diasHabiles?: readonly number[]
 }
 
 export function LienzoCronogramaObra({
-  filas, escala, diasVentana, obraId, estadoUrl, dependencias = [],
+  filas, escala, diasVentana, obraId, estadoUrl, dependencias = [], diasHabiles = [],
 }: Props) {
   const seleccionada = estadoUrl.sel
   const hrefDe = (c: { sel?: string | null; mover?: number | null }) => hrefCronograma(obraId, estadoUrl, c)
@@ -118,6 +126,10 @@ export function LienzoCronogramaObra({
     ),
     [filasVisibles, dependencias, escala],
   )
+  const francos = useMemo(
+    () => franjasNoLaborables(escala.desde, escala.hasta, diasHabiles),
+    [escala.desde, escala.hasta, diasHabiles],
+  )
 
   const plegar = (clave: string) => setCerrados((p) => {
     const s = new Set(p)
@@ -134,11 +146,7 @@ export function LienzoCronogramaObra({
   const alSoltar = (id: string, dx: number) => {
     const dias = diasDelGesto(dx)
     setArrastre(null)
-    if (dias === 0) {
-      router.push(hrefDe({ sel: id, mover: null }))
-      return
-    }
-    router.push(hrefDe({ sel: id, mover: dias }))
+    router.push(hrefDe({ sel: id, mover: dias === 0 ? null : dias }))
   }
 
   const iniciarArrastre = (e: React.PointerEvent, id: string) => {
@@ -156,15 +164,15 @@ export function LienzoCronogramaObra({
 
   return (
     <div className="flex flex-col">
-      <div className="flex overflow-x-auto rounded-card border border-line bg-surface" data-testid="cronograma">
-        <PanelIzquierdo
+      <div className="flex overflow-hidden rounded-card border border-line bg-surface" data-testid="cronograma">
+        <TablaCronogramaObra
           filas={filasVisibles} seleccionada={seleccionada} hrefDe={hrefDe}
-          cerrados={cerrados} plegar={plegar}
+          cerrados={cerrados} plegar={plegar} altoFila={ALTO_FILA} altoCabecera={ALTO_HEAD}
         />
-        <div className="min-w-[560px] flex-1 border-l border-line" ref={lienzo}>
-          <Encabezado escala={escala} />
+        <div className="min-w-[560px] flex-1" ref={lienzo}>
+          <Encabezado escala={escala} francos={francos} />
           <div className="relative">
-            <Guias escala={escala} />
+            <Fondo escala={escala} francos={francos} />
             {escala.hoyPosPct != null && (
               <div
                 aria-hidden data-testid="linea-hoy"
@@ -199,15 +207,22 @@ export function LienzoCronogramaObra({
   )
 }
 
-/** Las divisiones de la escala, apenas visibles. Son referencia para leer una barra contra el
- *  calendario, no contenido: si se notan, compiten con las barras. */
-function Guias({ escala }: { escala: EscalaCronograma }) {
+/** Las columnas del calendario: la división de la escala y, detrás, los días que no se trabajan.
+ *  Son referencia para leer una barra, no contenido: si se notan, compiten con las barras. */
+function Fondo({ escala, francos }: { escala: EscalaCronograma; francos: { clave: string; izqPct: number; anchoPct: number }[] }) {
   return (
-    <div aria-hidden className="pointer-events-none absolute inset-0">
+    <div aria-hidden className="pointer-events-none absolute inset-0" data-testid="fondo-calendario">
+      {francos.map((f) => (
+        <span
+          key={`franco-${f.clave}`}
+          className="absolute inset-y-0 bg-surface-quiet"
+          style={{ left: `${f.izqPct}%`, width: `${f.anchoPct}%` }}
+        />
+      ))}
       {escala.columnas.map((c) => (
         <span
           key={`guia-${c.posPct}`}
-          className="absolute inset-y-0 w-px bg-[color:var(--os-surface-quiet)]"
+          className="absolute inset-y-0 w-px bg-[color:var(--os-surface-sunken)]"
           style={{ left: `${c.posPct}%` }}
         />
       ))}
@@ -245,110 +260,56 @@ function Conectores({ conectores }: { conectores: Conector[] }) {
   )
 }
 
-function Encabezado({ escala }: { escala: EscalaCronograma }) {
-  return (
-    <div
-      className="relative border-b border-line bg-surface-quiet"
-      style={{ height: ALTO_HEAD }}
-    >
-      <span className="absolute left-3 top-1.5 text-[10px] uppercase tracking-[0.05em] text-faint">
-        {escala.unidad === 'dia' ? 'Días' : (escala.unidad === 'semana' ? 'Semanas' : 'Meses')}
-      </span>
-      {escala.columnas.filter((c) => c.nueva).map((c) => (
-        <span
-          key={`${c.etiqueta}-${c.posPct}`}
-          className="absolute bottom-1.5 font-mono text-[9.5px] tracking-[0.04em] text-muted tabular-nums"
-          style={{ left: `${c.posPct}%`, paddingLeft: 4 }}
-        >
-          {c.etiqueta}
-        </span>
-      ))}
-      {escala.hoyPosPct != null && (
-        <span
-          className="absolute bottom-1 -translate-x-1/2 rounded-[4px] bg-marca px-1.5 py-px font-mono text-[9.5px] font-semibold text-ink"
-          style={{ left: `${escala.hoyPosPct}%` }}
-        >
-          hoy
-        </span>
-      )}
-    </div>
-  )
-}
-
-function PanelIzquierdo({ filas, seleccionada, hrefDe, cerrados, plegar }: {
-  filas: FilaVista[]
-  seleccionada: string | null
-  hrefDe: (c: { sel?: string | null; mover?: number | null }) => string
-  cerrados: ReadonlySet<string>
-  plegar: (clave: string) => void
+/**
+ * LA CABECERA DE DOS BANDAS (mockup 07): el período arriba, las divisiones de la escala abajo.
+ *
+ * Doce rótulos «S32 S33 S34…» no dicen en qué mes cae la obra. El mes va arriba porque es la
+ * pregunta que se hace primero.
+ */
+function Encabezado({ escala, francos }: {
+  escala: EscalaCronograma
+  francos: { clave: string; izqPct: number; anchoPct: number }[]
 }) {
-  // La sangría sólo tiene sentido cuando hay de qué colgar: en la vista plana de actividades todas
-  // las filas son del mismo nivel, y sangrarlas a todas es un margen izquierdo disfrazado de árbol.
-  const hayGrupos = filas.some((f) => f.nivel === 0)
+  const periodos = bandasDePeriodo(escala.desde, escala.hasta, escala.unidad)
   return (
-    <div className="w-[300px] shrink-0 lg:w-[340px]">
-      <div
-        className="flex items-end gap-2 border-b border-line bg-surface-quiet px-3 pb-2 text-[10px] uppercase tracking-[0.05em] text-faint"
-        style={{ height: ALTO_HEAD }}
-      >
-        <span className="flex-1">Actividad</span>
-        <span>Desvío</span>
-      </div>
-      {filas.map((f) => {
-        const d = textoDesvio(f.desvio)
-        const esGrupo = f.nivel === 0
-        return (
-          <div
-            key={f.clave}
-            className={`flex items-center gap-2 border-b border-surface-sunken px-3 ${
-              estaSeleccionada(f, seleccionada) ? 'bg-marca-soft shadow-[inset_3px_0_0_var(--os-marca)]' : 'hover:bg-surface-quiet'
-            }`}
-            style={{ height: ALTO_FILA }}
+    <div className="relative border-b border-line bg-surface-quiet" style={{ height: ALTO_HEAD }}>
+      <div className="relative" style={{ height: ALTO_PERIODO }}>
+        {periodos.map((p) => (
+          <span
+            key={p.clave}
+            className="absolute flex h-full items-center justify-center overflow-hidden whitespace-nowrap border-r border-line text-[11px] font-medium text-ink-soft"
+            style={{ left: `${p.izqPct}%`, width: `${p.anchoPct}%` }}
           >
-            {esGrupo
-              ? (
-                <button
-                  type="button" onClick={() => plegar(f.clave)}
-                  aria-expanded={!cerrados.has(f.clave)}
-                  aria-label={`${cerrados.has(f.clave) ? 'Abrir' : 'Cerrar'} ${f.nombre}`}
-                  className="shrink-0 text-faint hover:text-ink"
-                >
-                  <IconoDesplegar className={`h-3 w-3 transition-transform ${cerrados.has(f.clave) ? '-rotate-90' : ''}`} />
-                </button>
-                )
-              : <span className="w-3 shrink-0" aria-hidden />}
-            <Link
-              href={f.actividadId ? hrefDe({ sel: f.actividadId, mover: null }) : hrefDe({ sel: null, mover: null })}
-              scroll={false}
-              data-sel={estaSeleccionada(f, seleccionada) ? '1' : undefined}
-              className="flex min-w-0 flex-1 items-center gap-1.5"
-              style={{ paddingLeft: hayGrupos && !esGrupo ? 14 : 0 }}
-            >
-              <span className={`truncate ${esGrupo
-                ? 'text-[11.5px] font-semibold uppercase tracking-[0.05em] text-ink'
-                : 'text-[12.5px] text-ink-soft'}`}
-              >
-                {f.nombre}
-              </span>
-              {/* CRÍTICA ES TEXTO, NO ICONO: el △ ya significa «impedimento abierto» en esta misma
-                  fila, y el mismo dibujo para dos cosas distintas se lee mal justo cuando importa. */}
-              {f.critica && (
-                <span className="shrink-0 text-[10px] uppercase tracking-[0.04em] text-warn" data-testid="marca-critica">
-                  crítica
-                </span>
-              )}
-              {f.tieneImpedimento && (
-                <span className="shrink-0 text-neg" title="Impedimento abierto">
-                  <IconoProblema className="h-3.5 w-3.5" />
-                </span>
-              )}
-            </Link>
-            <span className={`shrink-0 font-mono text-[11.5px] tabular-nums ${d.clase}`} data-testid="desvio-fila">
-              {d.texto}
-            </span>
-          </div>
-        )
-      })}
+            {p.etiqueta}
+          </span>
+        ))}
+      </div>
+      <div className="relative" style={{ height: ALTO_HEAD - ALTO_PERIODO }}>
+        {francos.map((f) => (
+          <span
+            key={`franco-head-${f.clave}`}
+            aria-hidden className="absolute inset-y-0 bg-surface-sunken"
+            style={{ left: `${f.izqPct}%`, width: `${f.anchoPct}%` }}
+          />
+        ))}
+        {escala.columnas.filter((c) => c.nueva).map((c) => (
+          <span
+            key={`${c.etiqueta}-${c.posPct}`}
+            className="absolute bottom-1 font-mono text-[9.5px] tracking-[0.04em] text-muted tabular-nums"
+            style={{ left: `${c.posPct}%`, paddingLeft: 4 }}
+          >
+            {c.etiqueta}
+          </span>
+        ))}
+        {escala.hoyPosPct != null && (
+          <span
+            className="absolute bottom-0.5 -translate-x-1/2 rounded-[4px] bg-marca px-1.5 py-px font-mono text-[9.5px] font-semibold text-ink"
+            style={{ left: `${escala.hoyPosPct}%` }}
+          >
+            hoy
+          </span>
+        )}
+      </div>
     </div>
   )
 }
@@ -373,6 +334,7 @@ function Renglon({ fila, escala, diasVentana, verBase, seleccionada, arrastreDia
     : null
   const base = verBase ? tramoDe(escala, fila.inicioBase, fila.finBase) : null
   const esGrupo = fila.nivel === 0
+  const pintura = pinturaDeBarra(fila)
 
   return (
     <div
@@ -380,6 +342,7 @@ function Renglon({ fila, escala, diasVentana, verBase, seleccionada, arrastreDia
       style={{ height: ALTO_FILA }}
       data-fila={fila.clave}
     >
+      {/* NULL NO ES CERO: una actividad sin fechas no se dibuja arrancando hoy, se dice. */}
       {!tramo && !esGrupo && (
         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[11px] text-warn">
           sin fechas · falta análisis
@@ -389,28 +352,33 @@ function Renglon({ fila, escala, diasVentana, verBase, seleccionada, arrastreDia
       {base && (
         <div
           aria-hidden data-testid="barra-base"
-          className="absolute top-[7px] h-[4px] rounded-[2px] bg-line-strong"
+          className="absolute top-[6px] h-[4px] rounded-[2px] bg-line-strong"
           style={{ left: `${base.izqPct}%`, width: `${base.anchoPct}%` }}
         />
       )}
       {proyeccion && (
         <div
           aria-hidden data-testid="barra-proyeccion"
-          className="absolute top-[15px] h-[14px] rounded-[3px] border border-dashed border-neg"
+          className="absolute top-[13px] h-[15px] rounded-[4px] border-[1.5px] border-dashed border-neg"
           style={{ left: `${proyeccion.izqPct}%`, width: `${proyeccion.anchoPct}%` }}
         />
       )}
       {tramo && esGrupo && (
         <div
-          aria-hidden
-          className="absolute top-[19px] h-[5px] rounded-[2px] bg-line-strong"
+          aria-hidden data-testid="barra-resumen"
+          className="absolute top-[18px] h-[5px] rounded-[2px] bg-line-strong"
           style={{ left: `${tramo.izqPct}%`, width: `${tramo.anchoPct}%` }}
         />
       )}
       {tramo && !esGrupo && (
         <div
-          className="absolute top-[15px] h-[14px] overflow-hidden rounded-[3px] border border-line bg-surface-sunken"
-          style={{ left: `${tramo.izqPct + desplPct}%`, width: `${tramo.anchoPct}%` }}
+          data-testid="barra-plan"
+          className={`absolute top-[13px] h-[15px] overflow-hidden rounded-[4px] border ${pintura.fondo}`}
+          style={{
+            left: `${tramo.izqPct + desplPct}%`,
+            width: `${tramo.anchoPct}%`,
+            borderColor: bordeDeBarra(pintura.borde),
+          }}
           onPointerDown={fila.actividadId ? (e) => alArrastrar(e, fila.actividadId!) : undefined}
           role={fila.actividadId ? 'button' : undefined}
           tabIndex={fila.actividadId ? 0 : undefined}
@@ -420,14 +388,20 @@ function Renglon({ fila, escala, diasVentana, verBase, seleccionada, arrastreDia
         >
           {fila.avancePct != null && fila.avancePct > 0 && (
             <div
-              className={`h-full ${colorEjecutado(fila)}`}
+              className={`h-full ${pintura.relleno}`}
               style={{ width: `${Math.min(100, fila.avancePct)}%` }}
             />
           )}
-          {fila.esHito && (
-            <span className="absolute -right-1 top-1/2 h-2 w-2 -translate-y-1/2 rotate-45 bg-ink" aria-hidden />
-          )}
         </div>
+      )}
+      {/* EL ROMBO DEL HITO VA FUERA DE LA BARRA. Vivía adentro, con `-right-1` sobre un contenedor
+          `overflow-hidden`: el navegador lo recortaba entero y ningún hito se veía nunca. */}
+      {tramo && !esGrupo && fila.esHito && (
+        <span
+          aria-hidden data-testid="hito"
+          className="absolute top-[20.5px] h-[9px] w-[9px] -translate-x-1/2 -translate-y-1/2 rotate-45 border border-surface bg-ink"
+          style={{ left: `calc(${tramo.izqPct + tramo.anchoPct}% + ${desplPct}%)` }}
+        />
       )}
       {fila.tieneImpedimento && tramo && (
         <span
