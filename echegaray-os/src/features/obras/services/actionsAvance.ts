@@ -331,6 +331,11 @@ async function escribirAtributoEnLote(
 // El campo viaja como literal ACOTADO por Zod y el nombre de la columna sale de un mapa cerrado: un
 // campo libre desde el navegador sería un `update` a la columna que se le ocurra a quien lo mande.
 const CAMPOS_EDITABLES = {
+  // EL NOMBRE SE CORRIGE EN LA LISTA (24/08): un typo en el nombre de una actividad obligaba a
+  // abrir otra pantalla, y por eso no se corregía nunca. No puede quedar VACÍO —la columna es NOT
+  // NULL y una actividad sin nombre desaparece de la lista, del Gantt y del panel a la vez—, así
+  // que es el único campo cuyo vacío es un error y no un «sin cargar».
+  nombre: 'texto_obligatorio',
   cantidad_objetivo: 'numero',
   unidad: 'texto',
   hh_plan: 'numero',
@@ -340,13 +345,16 @@ const CAMPOS_EDITABLES = {
 } as const
 
 const campoSchema = z.object({
-  campo: z.enum(['cantidad_objetivo', 'unidad', 'hh_plan', 'cuadrilla_id', 'fin_plan', 'inicio_plan']),
+  campo: z.enum(['nombre', 'cantidad_objetivo', 'unidad', 'hh_plan', 'cuadrilla_id', 'fin_plan', 'inicio_plan']),
   valor: z.string().trim().max(120),
 })
 
 /** Un vacío se guarda como NULL, nunca como 0 ni como cadena vacía: «sin cargar» es un estado real
  *  y confundirlo con cero ya guardó una vez un contrato de $0 en este repositorio. */
 function valorTipado(campo: keyof typeof CAMPOS_EDITABLES, crudo: string): unknown | { error: string } {
+  if (CAMPOS_EDITABLES[campo] === 'texto_obligatorio') {
+    return crudo.length >= 2 ? crudo : { error: 'La actividad no puede quedarse sin nombre.' }
+  }
   if (crudo === '') return null
   switch (CAMPOS_EDITABLES[campo]) {
     case 'numero': {

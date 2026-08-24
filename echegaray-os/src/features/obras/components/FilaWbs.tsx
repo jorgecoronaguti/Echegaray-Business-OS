@@ -20,14 +20,28 @@
 // lectura. Plazo no se pierde nunca: cuando la pantalla es angosta y el Gantt no entra, la columna
 // vuelve (`xl:hidden`) — el mismo `verFechas = !verGantt` del canónico.
 //
+// ═══ SE EDITA DONDE SE LEE, Y NO EN OTRA PANTALLA (24/08 · pedido del dueño) ═══
+//
+// Un clic simple sigue ABRIENDO el panel: es el gesto más usado de la pantalla y no se toca. La
+// edición entra por el lápiz que aparece al pasar el mouse —el «···» del canónico— y convierte la
+// fila en una TIRA DE CELDAS EDITABLES, sin agregar una fila ni una columna.
+//
+// POR QUÉ LA TIRA OCUPA LA FILA ENTERA Y NO CADA COLUMNA POR SEPARADO: la lista y el Gantt están
+// alineados 1:1 a 38px por fila, y el canónico le dio el ancho de la columna central al tiempo —
+// Cantidad y Cuadrilla ya no tienen columna donde vivir. Una fila extra desplegable, o una fila más
+// alta, correría todas las barras de abajo respecto de su actividad: el Gantt pasaría a afirmar
+// fechas que no son. La tira reemplaza el contenido de la MISMA fila, con su propio scroll cuando
+// la lista está angosta.
+//
 // El nombre se TRUNCA con un tope en px, no con `min-w-0`: la tabla es `table-layout:auto`, así que
 // un nombre largo con `white-space:nowrap` y sin tope ensancha la columna, empuja Estado y % fuera
 // del ancho de la lista y los deja detrás del scroll (QA 24/08 — la fila se veía sin estado).
 
-import { Estado, Td, Tr } from '@/shared/components/ds'
+import { Estado, InlineEdit, Td, Tr } from '@/shared/components/ds'
+import { IconoEditar } from '@/shared/components/iconos'
 import { fechaCorta, porcentaje } from './formato'
 import { estadoDeFila, type ClaveEstado, type FilaVisible } from '../services/vistaArbol'
-import type { TonoEstado } from '@/shared/components/ds'
+import type { ResultadoInline, TonoEstado } from '@/shared/components/ds'
 import type { Solapa } from '../services/solapasTarea'
 
 const TONO: Record<ClaveEstado, TonoEstado> = {
@@ -41,8 +55,16 @@ const TONO: Record<ClaveEstado, TonoEstado> = {
   pendiente: 'pendiente',
 }
 
+export interface EdicionDeFila {
+  /** La misma acción del panel, ya atada a la obra y a la actividad. */
+  editarCampo: (campo: string, valor: string) => Promise<ResultadoInline>
+  cuadrillas: { id: string; nombre: string }[]
+  alTerminar: () => void
+}
+
 export function FilaWbs({
   fila, abierta, seleccionada, seleccionable, alSeleccionar, alPlegar, alAbrir, conGantt,
+  puedeEditar = false, alEditar, edicion = null,
 }: {
   fila: FilaVisible
   abierta: boolean
@@ -54,6 +76,11 @@ export function FilaWbs({
   alAbrir: (sol?: Solapa) => void
   /** Con Gantt al lado, la fecha de plan se lee en la barra y la columna Plazo sobra. */
   conGantt: boolean
+  /** Sin permiso no se ofrece el lápiz. La acción lo vuelve a chequear del lado del servidor. */
+  puedeEditar?: boolean
+  alEditar?: () => void
+  /** Presente = esta fila está en edición. */
+  edicion?: EdicionDeFila | null
 }) {
   const n = fila.nodo
   const est = estadoDeFila(n, fila.avance)
@@ -67,8 +94,48 @@ export function FilaWbs({
   // pueda barrer de arriba abajo buscando lo terminado sin leer un solo número.
   const tinta = fila.avance === null ? 'text-faint' : fila.avance >= 100 ? 'text-[#067647]' : 'text-ink'
 
+  // ═══ LA FILA EN EDICIÓN: la MISMA altura, la fila entera como tira de celdas ═══
+  if (edicion) {
+    const campo = (c: string) => (v: string) => edicion.editarCampo(c, v)
+    return (
+      <Tr compacta seleccionada={abierta} data-testid={`fila-edicion-${n.id}`}>
+        <Td colSpan={5} className="!py-0">
+          <div className="flex items-center gap-1 overflow-x-auto whitespace-nowrap"
+            style={{ paddingLeft: sangria }}>
+            <InlineEdit valor={n.nombre} tipo="texto" ancho="w-[168px]" etiqueta={`Nombre de ${n.nombre}`}
+              testid={`ed-nombre-${n.id}`} guardar={campo('nombre')} />
+            {/* CANTIDAD Y UNIDAD VAN JUNTAS: la base rechaza medir por cantidad con una sola de las
+                dos (`obra_actividad_medible_completa`), y separarlas en dos gestos deja la mitad
+                cargada esperando a la otra. */}
+            <InlineEdit valor={n.cantidad_objetivo} tipo="numero" alineado="right" ancho="w-[62px]"
+              falta="cant." etiqueta={`Cantidad objetivo de ${n.nombre}`}
+              testid={`ed-cantidad-${n.id}`} guardar={campo('cantidad_objetivo')} />
+            <InlineEdit valor={n.unidad} tipo="texto" ancho="w-[52px]" falta="un."
+              etiqueta={`Unidad de ${n.nombre}`} testid={`ed-unidad-${n.id}`} guardar={campo('unidad')} />
+            <InlineEdit valor={n.inicio_plan} tipo="fecha" ancho="w-[92px]" falta="inicio"
+              etiqueta={`Inicio de plan de ${n.nombre}`} testid={`ed-inicio-${n.id}`}
+              guardar={campo('inicio_plan')} />
+            <InlineEdit valor={n.fin_plan} tipo="fecha" ancho="w-[92px]" falta="fin"
+              etiqueta={`Fin de plan de ${n.nombre}`} testid={`ed-fin-${n.id}`} guardar={campo('fin_plan')} />
+            <InlineEdit valor={n.cuadrilla_id} tipo="seleccion" ancho="w-[124px]" falta="sin asignar"
+              opciones={[{ valor: '', etiqueta: 'sin asignar' },
+                ...edicion.cuadrillas.map((c) => ({ valor: c.id, etiqueta: c.nombre }))]}
+              etiqueta={`Cuadrilla de ${n.nombre}`} testid={`ed-cuadrilla-${n.id}`}
+              guardar={campo('cuadrilla_id')} />
+            {/* «Listo» y no una ✕: no cancela nada. Cada celda ya guardó al salir; esto sólo
+                devuelve la fila a su forma de lectura. */}
+            <button type="button" onClick={edicion.alTerminar} data-testid={`ed-listo-${n.id}`}
+              className="ml-auto shrink-0 rounded-control border border-line px-2 py-0.5 text-[11.5px] text-muted hover:text-ink">
+              Listo
+            </button>
+          </div>
+        </Td>
+      </Tr>
+    )
+  }
+
   return (
-    <Tr compacta seleccionada={abierta} className={n.nivel === 0 ? 'bg-surface-quiet' : ''}>
+    <Tr compacta seleccionada={abierta} className={`group ${n.nivel === 0 ? 'bg-surface-quiet' : ''}`}>
       <Td className="w-6">
         {/* La casilla va SÓLO en las actividades: un contenedor no se mide, se agrega. Y va como
             hermana del enlace, nunca adentro: un input dentro de un link deja el clic en cualquiera
@@ -107,6 +174,15 @@ export function FilaWbs({
           )}
           {n.es_subcontrato && (
             <span className="shrink-0 rounded border border-line px-1 text-[9.5px] text-muted">SUB</span>
+          )}
+          {/* EL LÁPIZ NO COMPITE CON EL CLIC: aparece al pasar el mouse (y con el foco de teclado,
+              que si no la edición no existiría para quien no usa mouse) y es otro objetivo. */}
+          {puedeEditar && alEditar && !n.es_contenedor && (
+            <button type="button" onClick={alEditar} data-testid={`editar-${n.id}`}
+              aria-label={`Editar ${n.nombre} en la lista`} title="Editar acá"
+              className="shrink-0 p-0.5 text-faint opacity-0 hover:text-ink focus:opacity-100 group-hover:opacity-100">
+              <IconoEditar className="h-[13px] w-[13px]" />
+            </button>
           )}
         </span>
       </Td>

@@ -19,42 +19,26 @@
 // inventada desde «hoy» lo taparía.
 
 import type { ReactNode } from 'react'
+import {
+  DIA_PX, conectoresEnL, type BarraGantt, type EscalaGantt, type RelacionEnGantt, type TonoBarra,
+} from '../services/gantt'
 
-export const DIA_PX = 24
-const DIA_MS = 86_400_000
+export { DIA_PX }
+export type { BarraGantt, EscalaGantt, TonoBarra }
 
 /** Los tonos del canónico: la pista es el plan, el relleno lo hecho. Verde 100 · azul en curso ·
  *  ámbar crítica o vencida · gris lo que todavía no arrancó. */
-const TONO = {
+const TONO: Record<TonoBarra, { fill: string; pista: string; borde: string }> = {
   pos: { fill: '#067647', pista: '#E6F3EB', borde: '#CDE7D7' },
   curso: { fill: '#175CD3', pista: '#E4EEFC', borde: '#CFE0FA' },
   warn: { fill: '#B54708', pista: '#FBEFE1', borde: '#F0E1CD' },
   plan: { fill: '#D7D5CF', pista: '#F0EFEB', borde: '#E7E6E2' },
-} as const
-
-export type TonoBarra = keyof typeof TONO
-
-export interface EscalaGantt {
-  /** Medianoche UTC del primer día dibujado. */
-  desde: number
-  dias: number
-  /** Índice del día de hoy dentro de la escala, o null si la obra no lo contiene. */
-  hoy: number | null
 }
 
-export interface BarraGantt {
-  id: string
-  /** Día de inicio y cantidad de días, en índices de la escala. */
-  dia: number
-  dias: number
-  tono: TonoBarra
-  /** 0–100. El relleno de la pista. */
-  avance: number
-  /** El % al final de la barra; null cuando no hay nada medido que anunciar. */
-  etiqueta: string | null
-  /** Barra plana de contenedor: agrega a sus hijas, no se mide. */
-  resumen: boolean
-}
+const DIA_MS = 86_400_000
+/** El alto de fila del canónico. Es `h-fila-compacta` en CSS: los dos números tienen que ser el
+ *  mismo o la tabla y el carril se despegan una fila cada veinte. */
+const ALTO_FILA = 38
 
 export interface FilaGantt {
   id: string
@@ -66,19 +50,6 @@ export interface FilaGantt {
 }
 
 const utc = (ms: number) => new Date(ms)
-
-export function escalaDe(rango: { desde: number; hasta: number }, hoy: number): EscalaGantt {
-  const dias = Math.max(1, Math.round((rango.hasta - rango.desde) / DIA_MS))
-  const i = Math.floor((hoy - rango.desde) / DIA_MS)
-  return { desde: rango.desde, dias, hoy: i >= 0 && i < dias ? i : null }
-}
-
-/** El día `iso` como índice de la escala. Fuera de rango se recorta: una fecha de plan anterior al
- *  rango sólo pasa si el rango se calculó sobre otro conjunto de nodos. */
-export function indiceDe(iso: string, e: EscalaGantt): number {
-  const ms = Date.parse(`${iso.slice(0, 10)}T00:00:00Z`)
-  return Math.min(e.dias - 1, Math.max(0, Math.round((ms - e.desde) / DIA_MS)))
-}
 
 /** Los meses del rango con su ancho en días: el rótulo «Agosto 2025» del canónico. */
 function mesesDe(e: EscalaGantt): { key: number; label: string; dias: number }[] {
@@ -174,13 +145,52 @@ function Barra({ b }: { b: BarraGantt }) {
   )
 }
 
+/** ═══ LAS DEPENDENCIAS, EN L SOBRE LAS BARRAS (canónico 03) ═══
+ *
+ * UN SOLO SVG para las N flechas y no uno por fila: superpuesto al área de filas, sin capturar el
+ * mouse (`pointer-events:none`) — las filas de abajo siguen abriendo el panel al clic.
+ *
+ * El TRAZO ES GRIS Y DE 1px A PROPÓSITO: la secuencia es contexto, no es el dato. Con el peso de
+ * una barra, veinte flechas tapan la obra que vinieron a explicar.
+ *
+ * SIN RELACIONES NO SE DIBUJA NADA: ni el `<svg>` ni el `<defs>`. Un marcador de flecha definido y
+ * nunca usado es un id global de más en cada pantalla que monte un Gantt. */
+function Dependencias({ filas, relaciones, ancho }: {
+  filas: readonly FilaGantt[]
+  relaciones: readonly RelacionEnGantt[]
+  ancho: number
+}) {
+  const { conectores } = conectoresEnL(
+    filas.map((f) => ({ id: f.id, barra: f.barra })), relaciones, { altoFila: ALTO_FILA },
+  )
+  if (conectores.length === 0) return null
+  return (
+    <svg width={ancho} height={filas.length * ALTO_FILA} data-testid="gantt-dependencias"
+      className="pointer-events-none absolute inset-0 z-10 overflow-visible" aria-hidden>
+      <defs>
+        <marker id="gantt-flecha" viewBox="0 0 8 8" refX="6" refY="4"
+          markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M0 1l6 3-6 3z" fill="#A8A6A0" />
+        </marker>
+      </defs>
+      {conectores.map((c) => (
+        <path key={c.clave} d={c.d} fill="none" stroke="#A8A6A0" strokeWidth={1.1}
+          markerEnd="url(#gantt-flecha)" data-testid={`gantt-dep-${c.clave}`} />
+      ))}
+    </svg>
+  )
+}
+
 /**
  * El Gantt entero. Recibe filas ya resueltas —el cálculo de qué barra le toca a cada actividad vive
- * en `TabTareas`, junto al del árbol— y sólo las dibuja.
+ * en `services/gantt.ts`, probado sin navegador— y sólo las dibuja.
  */
-export function GanttTareas({ escala, filas, encabezado }: {
+export function GanttTareas({ escala, filas, relaciones = [], encabezado }: {
   escala: EscalaGantt
   filas: readonly FilaGantt[]
+  /** Las precedencias de la obra. Las que tengan una punta fuera de esta vista no se dibujan: media
+   *  flecha apuntando al borde se lee como una dependencia hacia afuera de la obra. */
+  relaciones?: readonly RelacionEnGantt[]
   /** Lo que va arriba de la primera fila si la tabla de al lado tiene algo antes del thead. */
   encabezado?: ReactNode
 }) {
@@ -195,7 +205,7 @@ export function GanttTareas({ escala, filas, encabezado }: {
           Gantt se había cortado. Las barras se posicionan en px, así que no se estiran. */}
       <div style={{ width: ancho }} className="relative min-w-full">
         <Cabecera e={escala} />
-        <div className="relative" style={{ height: filas.length * 38 }}>
+        <div className="relative" style={{ height: filas.length * ALTO_FILA }}>
           <div className="absolute inset-0" style={fondoDeGrilla(escala)} aria-hidden />
           {hoyX != null && (
             <div className="absolute inset-y-0 z-10 w-[1.5px] bg-marca" style={{ left: hoyX }}
@@ -212,6 +222,9 @@ export function GanttTareas({ escala, filas, encabezado }: {
               )}
             </div>
           ))}
+          {/* ÚLTIMO Y NO PRIMERO: el orden del DOM es el que pone las flechas POR ENCIMA de las
+              barras. Dibujadas antes, cada barra les pasaba por arriba y la L se cortaba. */}
+          <Dependencias filas={filas} relaciones={relaciones} ancho={ancho} />
         </div>
       </div>
     </div>

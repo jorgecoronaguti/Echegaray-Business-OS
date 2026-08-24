@@ -16,8 +16,12 @@ import { TabTareas } from './TabTareas'
 import { getArbol, getAvancesSobreContenedor, getRelaciones } from '../services/tareasService'
 import { getPanelDeObra } from '../services/panelObraService'
 import { getDocumentos } from '../services/obrasService'
-import { getPersonas } from '../services/personalService'
+import { getIntegrantesPorCuadrilla, getPersonas } from '../services/personalService'
+import { getEquiposPorActividad, getNotas } from '../services/recursosService'
+import { getPerfilActual } from '@/features/auth/services/authService'
 import { crearActividad } from '../services/actions'
+import { registrarAvance } from '../services/actionsAvance'
+import { agregarNota } from '../services/actionsNotas'
 import { crearRubro } from '../services/actionsRubro'
 import { urlDeDrive } from '../services/driveUrl'
 import { esVistaArbol, type VistaArbol } from '../services/vistaArbol'
@@ -61,11 +65,27 @@ export async function WorkspaceTareas({
   // La segunda tanda necesita los ids del árbol; junta el material del panel y los papeles.
   // Las personas sólo se leen si esta cara va a OFRECER el alta: quien no puede crear no necesita
   // el desplegable de responsable, y la lectura ni se hace.
-  const [panel, documentosRes, personasRes] = await Promise.all([
-    getPanelDeObra(supabase, obraId, arbol, veEconomia),
-    getDocumentos(supabase, obraId),
-    puedeEditar ? getPersonas(supabase) : Promise.resolve(null),
-  ])
+  // ═══ LO QUE EL PANEL 04 MUESTRA DE VERDAD ═══
+  //
+  // Las tres lecturas nuevas van POR OBRA y no por actividad, igual que el resto del material del
+  // panel: cambiar de actividad es un clic y no puede costar una consulta.
+  //
+  // EL PLANTEL SE LEE SIEMPRE Y NO SÓLO PARA QUIEN EDITA: los avatares de la cuadrilla necesitan
+  // ponerle nombre a un `persona_id`, y sin eso el panel dibujaría iniciales «?» —gente afirmada
+  // que nadie puede ver—. `persona_plantel` es la ÚNICA puerta al legajo y ya está acotada por sus
+  // propias políticas: quien no puede verlo recibe la lista vacía y el panel lo dice.
+  const [panel, documentosRes, personasRes, integrantes, equiposPorActividad, notasPorActividad, perfil] =
+    await Promise.all([
+      getPanelDeObra(supabase, obraId, arbol, veEconomia),
+      getDocumentos(supabase, obraId),
+      getPersonas(supabase),
+      getIntegrantesPorCuadrilla(supabase),
+      getEquiposPorActividad(supabase, obraId),
+      getNotas(supabase, obraId),
+      getPerfilActual(supabase),
+    ])
+  const nombrePorPersona: Record<string, string> = {}
+  for (const p of personasRes.data ?? []) nombrePorPersona[p.id] = p.nombre_completo
   const docsPorActividad: Record<string, { id: string; nombre: string; url: string }[]> = {}
   for (const d of documentosRes.data ?? []) {
     if (!d.actividad_id) continue
@@ -95,7 +115,12 @@ export async function WorkspaceTareas({
       solInicial={sol ?? null}
       dotInicial={dot ?? null}
       puedeEditar={puedeEditar}
-      personas={personasRes?.data ?? []}
+      personas={personasRes.data ?? []}
+      integrantesPorCuadrilla={integrantes}
+      nombrePorPersona={nombrePorPersona}
+      equiposPorActividad={Object.fromEntries(equiposPorActividad)}
+      notasPorActividad={Object.fromEntries(notasPorActividad)}
+      autor={perfil.data?.nombre ?? null}
       // LA BARRA DE ACCIONES DE LA PANTALLA 03: crear trabajo es una función del plan, y hasta hoy
       // sólo se podía desde Cronograma. Son las MISMAS acciones —no hay una segunda alta.
       accionesBarra={{
@@ -108,6 +133,11 @@ export async function WorkspaceTareas({
         cambiarRelacion: cambiarRelacion.bind(null, obraId),
         quitarRelacion: quitarRelacion.bind(null, obraId),
         vincularEstandar: vincularActividadAEstandar.bind(null, obraId),
+        // LAS MISMAS DOS ACCIONES QUE YA USABAN LA PANTALLA 05 Y EL PANEL DEL CRONOGRAMA. El
+        // `actividad_id` lo ata el cliente con otro `.bind`, y cada una vuelve a acotar por
+        // `obra_id` del lado del servidor antes de escribir.
+        registrarAvance: registrarAvance.bind(null, obraId),
+        agregarNota: agregarNota.bind(null, obraId),
       }}
     />
   )

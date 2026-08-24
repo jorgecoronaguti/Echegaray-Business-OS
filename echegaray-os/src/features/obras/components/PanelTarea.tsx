@@ -37,6 +37,10 @@ import { estadoDeFila } from '../services/vistaArbol'
 import { SOLAPAS, type Solapa } from '../services/solapasTarea'
 import type { AccionFormulario } from '@/shared/components/ui/FormAccion'
 import { PanelTareaRecursos } from './PanelTareaRecursos'
+import { FormAvance } from './FormAvance'
+import { BloqueNotas } from './PanelGestion'
+import { cuadrillaDeLaTarea, iniciales } from '../services/contextoTarea'
+import type { EquipoEnActividad, NotaActividad } from '../services/recursosService'
 import { PanelTareaRendimiento } from './PanelTareaRendimiento'
 import { PanelTareaDependencias } from './PanelTareaDependencias'
 import { DividirEnFrentes } from './DividirEnFrentes'
@@ -50,6 +54,10 @@ export interface AccionesDelPanel {
   cambiarRelacion: (dependenciaId: string, form: FormData) => ReturnType<AccionFormulario>
   quitarRelacion: (dependenciaId: string, form: FormData) => ReturnType<AccionFormulario>
   vincularEstandar: (actividadId: string, form: FormData) => ReturnType<AccionFormulario>
+  /** REGISTRAR AVANCE SIN IRSE DE LA PANTALLA (24/08 · pedido del dueño). Ausente = la solapa
+   *  Avance no ofrece el formulario y la primaria vuelve a ser el enlace a la pantalla 05. */
+  registrarAvance?: (actividadId: string, form: FormData) => ReturnType<AccionFormulario>
+  agregarNota?: (actividadId: string, form: FormData) => ReturnType<AccionFormulario>
 }
 
 /** Clave a la izquierda, valor a la derecha. La ausencia se dice con su nombre, nunca con un guión
@@ -133,6 +141,7 @@ function FilaPlegable({ clave, resumen, icono, alerta = false, children, testid 
 export function PanelTarea({
   obraId, nodo, solapa, alCambiarSolapa, alCerrar, alAbrirActividad,
   pasos, historial, relaciones, documentos, cuadrillas,
+  integrantesPorCuadrilla = {}, nombrePorPersona = {}, equipos = [], notas = [], autor = null,
   contexto, vinculacion, dotacion, alCambiarDotacion, puedeEditar, acciones,
 }: {
   obraId: string
@@ -146,6 +155,16 @@ export function PanelTarea({
   relaciones: RelacionLegible[]
   documentos: { id: string; nombre: string; url: string }[]
   cuadrillas: { id: string; nombre: string }[]
+  /** Quiénes integran cada cuadrilla HOY, y cómo se llama cada persona. Los dos juntos son los
+   *  avatares del canónico 04; sin el segundo no se dibuja ninguno (ver `cuadrillaDeLaTarea`). */
+  integrantesPorCuadrilla?: Record<string, string[]>
+  nombrePorPersona?: Record<string, string>
+  /** Los equipos que APARECIERON EN LOS PARTES de esta actividad. No hay una asignación de
+   *  máquinas a tareas: si nadie los anotó, la sección lo dice — no los inventa. */
+  equipos?: EquipoEnActividad[]
+  notas?: NotaActividad[]
+  /** Quién está firmando, para el formulario de avance embebido. */
+  autor?: string | null
   contexto: ContextoTarea
   vinculacion: VinculacionTarea
   dotacion: number
@@ -165,16 +184,36 @@ export function PanelTarea({
   const frente = ultimoTramoDelCamino(nodo.camino, nodo.nombre)
   const editar = (campo: string) => (v: string) => acciones.editarCampo(nodo.id, campo, v)
   const ultima = historial[0]?.fecha ?? null
+  const cuadrilla = cuadrillaDeLaTarea(nodo, cuadrillas, integrantesPorCuadrilla, nombrePorPersona)
+  // UN CONTENEDOR NO SE MIDE: ofrecerle el formulario de avance sería ofrecer una escritura que la
+  // base rechaza con un trigger.
+  const avanceEmbebido = puedeEditar && !nodo.es_contenedor && acciones.registrarAvance != null
+  const hoyISO = new Date().toISOString().slice(0, 10)
 
   return (
     <aside data-testid="panel-tarea" className="border-l border-line pl-4">
       {/* ═══ ACCIÓN PRIMARIA ARRIBA — a la vista sin scroll ═══ */}
       <div className="flex items-center gap-2 pt-0.5">
-        <Link href={`/obras/${obraId}/avance/${nodo.id}`} data-testid="panel-registrar-avance"
-          className="inline-flex items-center gap-1.5 rounded-control bg-marca px-3 py-[7px] text-[12.5px] font-semibold text-ink hover:opacity-90">
-          <IconoEditar className="h-[14px] w-[14px]" />
-          Registrar avance
-        </Link>
+        {/* ═══ NO SE VA A OTRA PANTALLA A CARGAR (24/08 · pedido del dueño) ═══
+            El avance se registra ACÁ: la primaria abre la solapa Avance con el formulario adentro
+            del panel. La pantalla 05 sigue existiendo y sigue siendo la misma acción —el mismo
+            `registrarAvance`, la misma validación—: es la puerta ancha para cargar una jornada
+            entera con evidencia, no una segunda manera de escribir el avance.
+            Sin la acción atada (o sin permiso) la primaria vuelve a ser el enlace: un botón que
+            abre una solapa vacía es peor que un viaje. */}
+        {avanceEmbebido ? (
+          <button type="button" onClick={() => alCambiarSolapa('avance')} data-testid="panel-registrar-avance"
+            className="inline-flex items-center gap-1.5 rounded-control bg-marca px-3 py-[7px] text-[12.5px] font-semibold text-ink hover:opacity-90">
+            <IconoEditar className="h-[14px] w-[14px]" />
+            Registrar avance
+          </button>
+        ) : (
+          <Link href={`/obras/${obraId}/avance/${nodo.id}`} data-testid="panel-registrar-avance"
+            className="inline-flex items-center gap-1.5 rounded-control bg-marca px-3 py-[7px] text-[12.5px] font-semibold text-ink hover:opacity-90">
+            <IconoEditar className="h-[14px] w-[14px]" />
+            Registrar avance
+          </Link>
+        )}
         {/* DOS ICONOS, DOS DESTINOS DISTINTOS. El Design dibuja adjuntar y cámara uno al lado del
             otro; si los dos llevaran al mismo lado sería un botón falso. El clip cuelga PAPEL de la
             obra (donde el panel ya dice que se cuelga), la cámara sube EVIDENCIA del avance. */}
@@ -328,6 +367,46 @@ export function PanelTarea({
             } />
             <Dato clave="Responsable" icono={<IconoPersona className="h-[13px] w-[13px]" />}
               valor={nodo.responsable} falta="sin asignar" />
+            {/* ═══ QUIÉNES SON, NO CUÁNTOS (canónico 04: «5 personas · Cuadrilla 2») ═══
+                El conteo sale de la LISTA de integrantes vigentes, nunca de la dotación simulada
+                de abajo: esa es una hipótesis del que planifica, y ésta es la gente que la
+                cuadrilla tiene hoy. Mostrarlas con el mismo número las volvería la misma cosa. */}
+            {cuadrilla && (
+              <div className="flex items-center justify-between gap-3 border-b border-[#EFEEEA] py-1.5"
+                data-testid="panel-cuadrilla-gente">
+                <span className="flex shrink-0 items-center gap-2 text-[11.5px] text-faint">
+                  <IconoCuadrilla className="h-[13px] w-[13px]" />Gente
+                </span>
+                <span className="flex min-w-0 items-center justify-end gap-1.5">
+                  {cuadrilla.integrantes.slice(0, 3).map((nombre) => (
+                    <span key={nombre} title={nombre} data-testid="avatar-integrante"
+                      className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-surface-sunken text-[9.5px] font-semibold text-ink-soft">
+                      {iniciales(nombre)}
+                    </span>
+                  ))}
+                  {cuadrilla.integrantes.length > 3 && (
+                    <span className="shrink-0 text-[11px] text-faint">+{cuadrilla.integrantes.length - 3}</span>
+                  )}
+                  <span className="truncate text-[12.5px] text-ink-soft">
+                    {/* CERO INTEGRANTES NO SE ESCRIBE COMO «0 personas»: la cuadrilla existe, lo
+                        que falta es su gente cargada, y son dos arreglos distintos. */}
+                    {cuadrilla.integrantes.length > 0
+                      ? `${cuadrilla.integrantes.length} personas · ${cuadrilla.nombre}`
+                      : `${cuadrilla.nombre} · sin integrantes cargados`}
+                  </span>
+                </span>
+              </div>
+            )}
+            <Dato clave="Equipos" falta="sin equipos cargados"
+              valor={equipos.length === 0 ? null : (
+                <span data-testid="panel-equipos">
+                  {/* HORAS SIN ANOTAR NO SON CERO: se dice en cuántas jornadas apareció la máquina,
+                      que es lo único que el parte llegó a registrar. */}
+                  {equipos.slice(0, 3).map((e) => `${e.equipo} · ${
+                    e.horas == null ? `${e.jornadas} jorn.` : `${e.horas.toLocaleString('es-AR', { maximumFractionDigits: 1 })} h`}`).join(' · ')}
+                  {equipos.length > 3 && ` +${equipos.length - 3}`}
+                </span>
+              )} />
             <FilaPlegable clave="Dotación" testid="fila-dotacion"
               icono={<IconoHH className="h-[13px] w-[13px]" />}
               alerta={nodo.tope_frente != null && dotacion >= nodo.tope_frente}
@@ -394,6 +473,21 @@ export function PanelTarea({
             </section>
           )}
 
+          {/* LAS NOTAS SE VEN Y SE ESCRIBEN ACÁ MISMO. Es el MISMO bloque del panel del cronograma
+              y la MISMA acción (`agregarNota`): una segunda caja de notas sería un segundo lugar
+              donde buscar lo que alguien dijo de esta actividad. */}
+          {(acciones.agregarNota || notas.length > 0) && (
+            <section className="mt-3 border-t border-line pt-3" data-testid="panel-notas">
+              <Titulo>Notas</Titulo>
+              <BloqueNotas
+                notas={notas}
+                {...(puedeEditar && acciones.agregarNota
+                  ? { agregar: acciones.agregarNota.bind(null, nodo.id) }
+                  : {})}
+              />
+            </section>
+          )}
+
           {puedeEditar && (
             <div className="mt-3 border-t border-line pt-3">
               <DividirEnFrentes
@@ -416,6 +510,25 @@ export function PanelTarea({
 
       {solapa === 'avance' && (
         <section data-testid="panel-avance-solapa">
+          {/* EL MISMO FORMULARIO DE LA PANTALLA 05, embebido. No es una segunda manera de escribir
+              el avance: es la misma server action, con la misma exigencia de criterio cuando el
+              método es manual. Lo que la 05 agrega es espacio para la evidencia y el historial. */}
+          {avanceEmbebido && acciones.registrarAvance && (
+            <div className="mb-4 border-b border-line pb-4" data-testid="panel-form-avance">
+              <FormAvance
+                nodo={nodo}
+                pasos={pasos}
+                cuadrillas={cuadrillas}
+                autor={autor ?? 'sin identificar'}
+                hoy={hoyISO}
+                registrar={acciones.registrarAvance.bind(null, nodo.id)}
+              />
+              <Link href={`/obras/${obraId}/avance/${nodo.id}`} data-testid="panel-avance-pantalla-completa"
+                className="mt-2 inline-block text-[12px] text-muted hover:text-ink">
+                Abrir en pantalla completa (evidencia y registros anteriores) →
+              </Link>
+            </div>
+          )}
           <Titulo>Pasos ponderados</Titulo>
           {pasos.length === 0 ? (
             <p className="text-[12.5px] text-muted">

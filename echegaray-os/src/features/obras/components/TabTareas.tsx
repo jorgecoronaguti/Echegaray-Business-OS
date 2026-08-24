@@ -19,16 +19,17 @@ import { FormNuevaActividad } from './FormActividad'
 import { hh as fmtHH, porcentaje } from './formato'
 import { FilaWbs } from './FilaWbs'
 import { BarraTareas, VALOR_INICIAL } from './BarraTareas'
-import { escalaDe, GanttTareas, indiceDe, type BarraGantt, type EscalaGantt } from './GanttTareas'
+import { GanttTareas } from './GanttTareas'
+import { barraDe, escalaDe, rangoDeObra, t, tramosDeContenedores } from '../services/gantt'
 import { PanelTarea, type AccionesDelPanel } from './PanelTarea'
 import { rollup, totalObra, type NodoObra } from '../services/wbs'
 import {
-  contenedores, filasVisibles, VISTA_ARBOL_LABEL, VISTAS_ARBOL,
-  type FilaVisible, type VistaArbol,
+  contenedores, filasVisibles, VISTA_ARBOL_LABEL, VISTAS_ARBOL, type VistaArbol,
 } from '../services/vistaArbol'
 import { seleccionable, type CandidataMasiva, type OperacionMasiva } from '../services/avance'
 import type { ResultadoMasivo } from '../services/actionsMasivas'
 import type { AvanceMalImputado, RelacionLegible } from '../services/tareasService'
+import type { EquipoEnActividad, NotaActividad } from '../services/recursosService'
 import type { PanelDeObra } from '../services/panelObraService'
 import type { Persona } from '../types'
 import { armarContexto, armarVinculacion } from '../services/contextoTarea'
@@ -55,76 +56,11 @@ function dotacionInicial(n: NodoObra, pedida: string | null): number {
   return n.tope_frente != null ? Math.min(base, n.tope_frente) : base
 }
 
-const DIA = 86_400_000
-const t = (iso: string) => Date.parse(`${iso.slice(0, 10)}T00:00:00Z`)
-
-/** El rango temporal del carril: del primer inicio al último fin de plan, con hoy adentro. */
-function rangoDeObra(nodos: readonly NodoObra[], hoy: string): { desde: number; hasta: number } | null {
-  let desde = Infinity, hasta = -Infinity
-  for (const n of nodos) {
-    if (n.inicio_plan) desde = Math.min(desde, t(n.inicio_plan))
-    if (n.fin_plan) hasta = Math.max(hasta, t(n.fin_plan))
-  }
-  if (!Number.isFinite(desde) || !Number.isFinite(hasta) || hasta <= desde) return null
-  const h = t(hoy)
-  return { desde: Math.min(desde, h), hasta: Math.max(hasta, h) + DIA }
-}
-
-/** El tramo de un contenedor: del primer inicio al último fin de sus descendientes.
- *  `Agregado` publica `fin_plan` pero NO el inicio, y el corchete del canónico necesita los dos
- *  extremos. Se calcula acá y no se le agrega un campo al rollup: el rollup lo consumen el pie y
- *  la fila, y ninguno de los dos necesita saber cuándo arranca un rubro. */
-function tramosDeContenedores(nodos: readonly NodoObra[]): Map<string, { inicio: string; fin: string }> {
-  const padre = new Map<string, string | null>(nodos.map((n) => [n.id, n.padre_id]))
-  const tramo = new Map<string, { inicio: string; fin: string }>()
-  for (const n of nodos) {
-    if (n.es_contenedor || !n.inicio_plan || !n.fin_plan) continue
-    let id = n.padre_id
-    while (id) {
-      const p = tramo.get(id)
-      tramo.set(id, p
-        ? { inicio: n.inicio_plan < p.inicio ? n.inicio_plan : p.inicio, fin: n.fin_plan > p.fin ? n.fin_plan : p.fin }
-        : { inicio: n.inicio_plan, fin: n.fin_plan })
-      id = padre.get(id) ?? null
-    }
-  }
-  return tramo
-}
-
-/** La barra de una fila: la pista es el PLAN y el relleno el avance medido. Pura y testeable.
- *  Sin fechas de plan devuelve null — la fila queda vacía y el Gantt escribe el motivo, porque una
- *  barra inventada desde hoy taparía el único dato que hay: que esa actividad no está planificada. */
-function barraDe(
-  f: FilaVisible, e: EscalaGantt, hoy: string, tramos: Map<string, { inicio: string; fin: string }>,
-): BarraGantt | null {
-  const n = f.nodo
-  const tr = n.es_contenedor ? tramos.get(n.id) ?? null : null
-  const inicio = n.es_contenedor ? tr?.inicio ?? null : n.inicio_plan
-  const fin = n.es_contenedor ? tr?.fin ?? null : n.fin_plan
-  if (!inicio || !fin) return null
-  const dia = indiceDe(inicio, e)
-  const dias = Math.max(1, indiceDe(fin, e) - dia + 1)
-  // El contenedor no se mide: su barra es el corchete plano del canónico, sin relleno ni %.
-  if (n.es_contenedor) {
-    return { id: n.id, dia, dias, tono: 'plan', avance: 0, etiqueta: null, resumen: true }
-  }
-  const av = f.avance
-  const hecha = av != null && av >= 100
-  const arranco = (av != null && av > 0) || n.estado === 'en_curso'
-  const vencida = fin < hoy && !hecha
-  const tono = hecha ? 'pos'
-    : arranco ? (n.es_critica || vencida ? 'warn' : 'curso')
-    : vencida ? 'warn' : 'plan'
-  return {
-    id: n.id, dia, dias, tono, avance: Math.min(100, Math.max(0, av ?? 0)),
-    etiqueta: av != null && av > 0 ? porcentaje(av) : null, resumen: false,
-  }
-}
-
 export function TabTareas({
   obraId, nodos, filtro, cuadrillas, aplicarEnLote, malImputados,
   panelDeObra, relaciones, docsPorActividad, actInicial, solInicial, dotInicial,
-  puedeEditar, personas, accionesBarra, accionesPanel,
+  puedeEditar, personas, integrantesPorCuadrilla, nombrePorPersona,
+  equiposPorActividad, notasPorActividad, autor, accionesBarra, accionesPanel,
 }: {
   obraId: string
   nodos: NodoObra[]
@@ -140,6 +76,15 @@ export function TabTareas({
   dotInicial: string | null
   puedeEditar: boolean
   personas: Persona[]
+  /** El material del canónico 04 que faltaba: quién integra cada cuadrilla, cómo se llama cada
+   *  persona, qué equipos aparecieron en los partes y qué se anotó. Todo por OBRA — cambiar de
+   *  actividad no puede costar una consulta. */
+  integrantesPorCuadrilla: Record<string, string[]>
+  nombrePorPersona: Record<string, string>
+  equiposPorActividad: Record<string, EquipoEnActividad[]>
+  notasPorActividad: Record<string, NotaActividad[]>
+  /** Quién firma el avance que se registre desde el panel. */
+  autor: string | null
   /** Crear trabajo desde la pantalla 03. Las mismas acciones del cronograma. */
   accionesBarra: { crearActividad: AccionFormulario; crearRubro: AccionFormulario }
   accionesPanel: AccionesDelPanel
@@ -152,6 +97,10 @@ export function TabTareas({
   const [valores, setValores] = useState<Record<string, string>>({ ...VALOR_INICIAL })
 
   // ═══ SELECCIÓN, SOLAPA Y DOTACIÓN: ESTADO CLIENTE CON LA URL DE ESPEJO ═══
+  // QUÉ FILA SE ESTÁ EDITANDO. UNA sola: dos filas abiertas a la vez en una lista de 350 es la
+  // manera de guardar en la actividad equivocada. No va a la URL — no es un lugar de la pantalla,
+  // es un gesto a medio hacer, y compartir un link con una fila en edición no significa nada.
+  const [editando, setEditando] = useState<string | null>(null)
   const [sel, setSel] = useState<string | null>(actInicial)
   const [solapa, setSolapa] = useState<Solapa>(resolverSolapa(solInicial))
   const [dot, setDot] = useState<Record<string, number>>({})
@@ -333,6 +282,13 @@ export function TabTareas({
                     alPlegar={() => plegar(f.nodo.id)}
                     alAbrir={(s) => abrir(f.nodo.id, s)}
                     conGantt={escala != null}
+                    puedeEditar={puedeEditar}
+                    alEditar={() => setEditando(f.nodo.id)}
+                    edicion={editando === f.nodo.id ? {
+                      editarCampo: (campo, valor) => accionesPanel.editarCampo(f.nodo.id, campo, valor),
+                      cuadrillas,
+                      alTerminar: () => setEditando(null),
+                    } : null}
                   />
                 ))}
                 {filas.length === 0 && (
@@ -350,6 +306,7 @@ export function TabTareas({
             <div className="hidden min-w-0 flex-1 xl:flex">
               <GanttTareas
                 escala={escala}
+                relaciones={relaciones}
                 filas={filas.map((f) => {
                   const b = barraDe(f, escala, hoy, tramos)
                   return {
@@ -382,6 +339,11 @@ export function TabTareas({
             relaciones={relaciones}
             documentos={docsPorActividad[abierta.id] ?? []}
             cuadrillas={cuadrillas}
+            integrantesPorCuadrilla={integrantesPorCuadrilla}
+            nombrePorPersona={nombrePorPersona}
+            equipos={equiposPorActividad[abierta.id] ?? []}
+            notas={notasPorActividad[abierta.id] ?? []}
+            autor={autor}
             contexto={armarContexto(abierta, panelDeObra)}
             vinculacion={armarVinculacion(abierta, panelDeObra)}
             dotacion={dot[abierta.id] ?? dotacionInicial(abierta, sel === actInicial ? dotInicial : null)}
