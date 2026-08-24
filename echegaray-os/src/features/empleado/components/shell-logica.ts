@@ -21,6 +21,17 @@ export function contextoActivo(pathname: string): string | null {
   return c?.href ?? null
 }
 
+/** ¿Es una de las TRES pantallas raíz? Lo decide la igualdad exacta, no el prefijo: `/mi-informacion`
+ *  es raíz y `/mi-informacion/horas` no.
+ *
+ *  De esto depende QUÉ CHROME se dibuja (Design System · Employee shell, 23/08/2026): la barra de
+ *  contextos «se usa sólo en las pantallas raíz; las de detalle llevan back en el topbar». Una barra
+ *  de tres destinos abajo Y una flecha de volver arriba son dos formas de salir compitiendo en 390px
+ *  —y la de abajo tapa la última fila de la lista, que es donde vive lo que se vino a buscar. */
+export function esRaiz(pathname: string): boolean {
+  return CONTEXTOS.some((c) => c.href === pathname)
+}
+
 /** Iniciales de un nombre, para el círculo del header. Nunca un avatar genérico: un muñequito gris
  *  parece una persona que no es. */
 export function inicialesDe(nombre: string | null | undefined, email: string | null | undefined): string {

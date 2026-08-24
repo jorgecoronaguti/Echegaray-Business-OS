@@ -65,11 +65,22 @@ test('la barra de tres contextos lleva a los tres, y marca dónde estás', async
   await page.waitForURL(/\/mi-informacion/)
   await expect(page.getByTestId('nav-mi-informacion')).toHaveAttribute('aria-current', 'page')
 
-  // Una SUBpantalla mantiene encendido su contexto: si se apagara, la barra dejaría de decir dónde
-  // estás justo cuando más lejos estás de la raíz.
+  // CAMBIO DE REGLA DECLARADO (Design 23/08) · Employee shell: la barra de contextos «se usa sólo en
+  // las pantallas raíz; las de detalle llevan back en el topbar». Antes la barra seguía abajo en la
+  // subpantalla y lo que se probaba era que su tab quedara encendido. Ahora la subpantalla no la
+  // dibuja: lo que hay que probar es que NO deja a nadie encerrado — arriba está la flecha, con el
+  // destino en su `aria-label`, y el objetivo mide 48px.
   await page.getByTestId('ir-legajo').click()
   await page.waitForURL(/\/mi-informacion\/legajo/)
-  await expect(page.getByTestId('nav-mi-informacion')).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByTestId('barra-contextos')).toHaveCount(0)
+  await expect(page.getByTestId('topbar-detalle')).toBeVisible()
+  const volver = page.getByTestId('volver')
+  await expect(volver).toHaveAttribute('aria-label', 'Volver a Mi información')
+  expect((await volver.boundingBox())?.height).toBeGreaterThanOrEqual(44)
+
+  await volver.click()
+  await page.waitForURL(/\/mi-informacion$/)
+  await expect(page.getByTestId('barra-contextos')).toBeVisible()
 })
 
 test('el teléfono no se corre de costado en ninguna pantalla del perfil', async ({ page }) => {

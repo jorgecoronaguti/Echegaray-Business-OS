@@ -2,6 +2,7 @@
 
 import { useActionState, useRef, useState } from 'react'
 import { Ayuda, Estado } from '@/shared/components/ds'
+import { BloqueDato } from './Filas'
 import { registrarMarca } from '../services/acciones'
 import { hora, lecturaDelDia, siguienteAccion } from '../services/asistencia'
 import type { DiaDeAsistencia } from '../types'
@@ -15,6 +16,12 @@ import type { DiaDeAsistencia } from '../types'
 //
 // EL BOTÓN SE DESHABILITA MIENTRAS ENVÍA. Sin eso, dos toques nerviosos mandan dos entradas; la
 // segunda rebota contra el único de Postgres y el operario ve un error rojo por haber tocado bien.
+//
+// ═══ ENTRADA Y SALIDA, ENFRENTADAS Y EN GRANDE (Design System · Attendance control, 23/08/2026) ═══
+//
+// Las dos puntas del día van como dos bloques de dato grande, una al lado de la otra: es la única
+// pregunta que esta pantalla contesta y se mira de reojo, con el teléfono en la mano y sin frenar.
+// La que falta dice «sin registrar» y NUNCA `00:00` — un cero ahí afirma una hora que nadie marcó.
 
 type EstadoForm = { error: string | null; mensaje?: string | null }
 
@@ -104,14 +111,13 @@ export function BloqueAsistencia({
 
   return (
     <div data-testid="bloque-asistencia">
-      <div className="flex items-baseline gap-3">
-        <Estado tono={lectura.tono} clave={dia?.estado ?? 'sin_registrar'} testid="estado-asistencia">
-          {lectura.texto}
-        </Estado>
-        <span className="ml-auto font-mono text-[12.5px] tabular-nums text-muted">
-          {entrada ? `entrada ${entrada}` : ''}
-          {salida ? ` · salida ${salida}` : ''}
-        </span>
+      <Estado tono={lectura.tono} clave={dia?.estado ?? 'sin_registrar'} testid="estado-asistencia">
+        {lectura.texto}
+      </Estado>
+
+      <div className="mt-3 flex gap-10">
+        <BloqueDato etiqueta="Entrada" valor={entrada} testid="dato-entrada" />
+        <BloqueDato etiqueta="Salida" valor={salida} testid="dato-salida" />
       </div>
 
       {siguiente.tipo && (
