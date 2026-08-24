@@ -98,7 +98,7 @@ test('las rutas retiradas de la navegación SIGUEN respondiendo', async ({ page 
   }
 })
 
-test('Administración tiene sus CINCO secciones, y ni una de otro nivel', async ({ page }) => {
+test('Administración tiene sus secciones, y ni una de otro nivel', async ({ page }) => {
   test.setTimeout(120000)
   await entrarComo(page, EMAIL, PASSWORD)
   await page.goto('/administracion')
@@ -123,10 +123,16 @@ test('Administración tiene sus CINCO secciones, y ni una de otro nivel', async 
   // Y «Usuarios» aparece UNA sola vez: estaba dos veces, entre las entidades y en un bloque aparte.
   await expect(page.getByTestId('ir-usuarios')).toHaveCount(1)
 
-  // La barra de nivel 2 dibuja las mismas cinco, y dice dónde estoy parado.
+  // CAMBIO DE REGLA DECLARADO (Design 23/08): la entrada ya no dibuja la barra Y ABAJO una lista de
+  // maestros con los mismos nombres — el contador y el aviso se mudaron ADENTRO de la barra, y los
+  // `ir-*` de arriba son ahora sus enlaces. Por eso las dos comprobaciones miran el mismo elemento.
+  //
+  // Y el número pasa de cinco a DIEZ, que es lo que la barra dibuja desde que entraron Presupuestos,
+  // Compras, Asistencia, Base maestra y Documentos: esta línea estaba en rojo desde entonces sin que
+  // nadie la corrigiera. Se cuenta para dirección, que es el rol con el que entra este test.
   const barra = page.getByTestId('nav-admin-secciones')
   await expect(barra).toBeVisible()
-  await expect(barra.getByRole('link')).toHaveCount(5)
+  await expect(barra.getByRole('link')).toHaveCount(10)
 
   // Y llevan a donde dicen.
   await page.getByTestId('ir-clientes').click()

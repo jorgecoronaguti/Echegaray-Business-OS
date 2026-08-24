@@ -1,81 +1,46 @@
-// ADMINISTRACIÓN — LA ENTRADA DEL ÁREA. NO ES UN MENÚ DE TARJETAS.
+// 00 · ADMINISTRACIÓN — LA ENTRADA DEL ÁREA. NO ES UN ÍNDICE TEXTUAL.
 //
-// `design/screens/administracion.md` §2a, textual: *"No es un menú de tarjetas ni repite la barra:
-// dos columnas."* Las dos columnas contestan dos preguntas distintas —a dónde voy y qué falta— y
-// mezclarlas en cinco tarjetas iguales obliga a leer las cinco para descubrir que sólo una pide
-// trabajo.
+// ═══ QUÉ CAMBIÓ EL 23/08/2026 (Design canónico, pantalla 00) ═══
+//
+// La pantalla decía dos veces lo mismo: la barra de nivel 2 nombraba las secciones arriba y, abajo,
+// una lista de «maestros» repetía cada nombre con una frase explicándolo («Ficha, contactos,
+// actividad, documentos y sus obras»). Diez renglones de prosa para decir a dónde lleva un enlace que
+// ya estaba dibujado. Ahora:
+//
+//   · el contador y el ⚠ viven ADENTRO de la barra, que es donde el nombre del área ya estaba;
+//   · lo accionable es una fila de chips, cada uno con su número y con el FILTRO donde se corrige;
+//   · debajo queda la entidad activa —la cartera de clientes— para abrir una ficha.
+//
+// ═══ POR QUÉ LAS DIECISÉIS LECTURAS VAN EN UNA SOLA TANDA ═══
+//
+// El perfil hace falta para decidir QUÉ áreas se dibujan, pero pedirlo antes de contar convertiría la
+// pantalla en dos viajes encadenados. Se lanza todo junto y se descarta después: lo que el rol no
+// puede ver lo cierra la base, no el orden de las consultas.
 //
 // El buscador de arriba a la derecha es global a propósito: quien lo usa tiene un nombre en la mano
-// y quiere la ficha, no la sección. Ver `services/entradaService.ts`.
+// —de un papel, de un WhatsApp, de una factura— y quiere la ficha, no la sección.
 
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
-import { puedeVerRuta } from '@/features/auth/types/areas'
+import { veEconomia } from '@/features/auth/types/areas'
+import { getClientes } from '@/features/clientes/services/clientesService'
+import { separarArchivados } from '@/features/clientes/services/cartera'
 import { PageShell } from '@/shared/components/ui'
-import { BuscadorURL, Eyebrow, Num, Nulo, Vacio } from '@/shared/components/ds'
-import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
+import { Aviso, BotonEnlace, BuscadorURL, Eyebrow, TituloPanel, Vacio } from '@/shared/components/ds'
+import { BarraAreas } from '@/features/administracion/components/BarraAreas'
+import { BarraAtencion } from '@/features/administracion/components/BarraAtencion'
+import { TablaClientesHome } from '@/features/administracion/components/TablaClientesHome'
+import { buscarGlobal, type Hallazgo } from '@/features/administracion/services/entradaService'
 import {
-  atencionesDe, buscarGlobal, cuandoCorto, getConteos, getUltimoMovimiento, maestrosDe,
-  type Atencion, type Hallazgo, type Maestro,
-} from '@/features/administracion/services/entradaService'
+  areasDeAdministracion, atencionNoLeida, chipsDeAtencion, getConteosHome,
+} from '@/features/administracion/services/homeAdministracion'
 
 export const dynamic = 'force-dynamic'
 
-/** Una fila de maestro: nombre + contador tenue · detalle · señal a la derecha. Hairline abajo. */
-function FilaMaestro({ m }: { m: Maestro }) {
-  return (
-    <Link
-      href={m.href}
-      data-testid={`ir-${m.clave}`}
-      className="group flex items-baseline gap-3 border-b border-[#EFEEEA] py-[15px] last:border-0 hover:bg-surface-quiet"
-    >
-      {/* A 390px la fila entera son 358px útiles: con el nombre clavado en 250 y la señal de
-          estado sin poder encoger, la PÁGINA se corría 2px de costado. El nombre cede
-          primero porque es el único de los tres que se puede leer truncado. */}
-      <span className="flex w-[150px] shrink-0 items-baseline gap-2.5 sm:w-[250px]">
-        <span className="text-[14px] font-medium text-ink group-hover:underline">{m.titulo}</span>
-        {/* SIN LECTURA NO HAY CONTADOR — NUNCA UN CERO. Un «0» acá afirmaría que no hay ninguno, y
-            lo que pasó fue que la consulta falló. */}
-        {m.cuenta !== null && <Num className="text-faint">{m.cuenta}</Num>}
-      </span>
-      <span className="min-w-0 flex-1 truncate text-[12.5px] text-muted">{m.detalle}</span>
-      {m.senal && (
-        <span
-          data-testid={`senal-${m.clave}`}
-          className={`shrink-0 whitespace-nowrap text-[11.5px] ${m.resolver ? 'text-warn' : 'text-faint'}`}
-        >
-          {m.senal}
-        </span>
-      )}
-      <span aria-hidden className="pl-3 text-[13px] text-[#D7D5CF]">›</span>
-    </Link>
-  )
-}
-
-/** Una línea accionable. Rojo SÓLO si es crítico; lo demás es un dato que falta, y eso es ámbar. */
-function FilaAtencion({ a }: { a: Atencion }) {
-  return (
-    <Link
-      href={a.href}
-      data-testid={`atencion-${a.clave}`}
-      className="flex items-baseline gap-2.5 border-b border-[#EFEEEA] py-[13px] last:border-0 hover:bg-surface-quiet"
-    >
-      <span className={`mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full ${a.critico ? 'bg-neg' : 'bg-warn'}`} />
-      <span className="min-w-0 flex-1">
-        <span className="block text-[13px] text-ink">{a.texto}</span>
-        <span className="mt-0.5 block text-[11.5px] text-faint">{a.donde}</span>
-      </span>
-      <span className={`shrink-0 font-mono text-[15px] font-semibold tabular-nums ${a.critico ? 'text-neg' : 'text-ink'}`}>
-        {a.numero}
-      </span>
-    </Link>
-  )
-}
-
 function Resultados({ q, hallazgos }: { q: string; hallazgos: Hallazgo[] }) {
   return (
-    <section className="mb-8" data-testid="resultados-busqueda">
+    <section className="mb-6" data-testid="resultados-busqueda">
       <Eyebrow className="mb-1">Resultados de «{q}»</Eyebrow>
       {hallazgos.length === 0 ? (
         <Vacio>Ningún cliente, persona ni proveedor coincide con «{q}».</Vacio>
@@ -99,23 +64,24 @@ function Resultados({ q, hallazgos }: { q: string; hallazgos: Hallazgo[] }) {
 export default async function AdministracionPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const sp = await searchParams
   const supabase = await createClient()
-  const [conteos, movimiento, hallazgos, perfil] = await Promise.all([
-    getConteos(supabase),
-    getUltimoMovimiento(supabase),
+  const [conteos, cartera, hallazgos, perfil] = await Promise.all([
+    getConteosHome(supabase),
+    getClientes(supabase),
     buscarGlobal(supabase, sp.q),
     getPerfilActual(supabase),
   ])
 
-  // La pantalla no ofrece lo que la puerta va a negar: la tarjeta «Usuarios» le aparecía al jefe
-  // de obra y el clic moría en un redirect mudo a /obras (QA del 21/08). Mismo criterio que la
-  // barra (4a8e79f1) y que /presupuestos: un botón que lleva a «no hay nada» no se dibuja.
-  const maestros = maestrosDe(conteos).filter((m) => puedeVerRuta(perfil.data?.rol ?? null, m.href))
-  const atenciones = atencionesDe(conteos)
+  const rol = perfil.data?.rol ?? null
+  const vePrecio = veEconomia(rol)
+  const areas = areasDeAdministracion(conteos, rol)
+  const chips = chipsDeAtencion(conteos, rol)
+  const { activos } = separarArchivados(cartera.data ?? [])
 
   return (
     <PageShell
+      // SIN SUBTÍTULO: decía «Los maestros del sistema y lo que quedó sin resolver», que es una
+      // descripción de la pantalla para quien ya la está mirando. La barra y los chips lo dicen solos.
       title="Administración"
-      subtitle="Los maestros del sistema y lo que quedó sin resolver."
       right={
         <BuscadorURL
           accion="/administracion"
@@ -126,38 +92,26 @@ export default async function AdministracionPage({ searchParams }: { searchParam
         />
       }
     >
-      <NavAdministracion />
+      <BarraAreas areas={areas} />
+      <BarraAtencion chips={chips} noLeida={atencionNoLeida(conteos)} />
 
       {sp.q && <Resultados q={sp.q} hallazgos={hallazgos} />}
 
-      <div className="flex flex-col gap-x-14 gap-y-8 lg:flex-row lg:items-start">
-        <div className="min-w-0 flex-1">
-          <Eyebrow className="mb-1">Maestros</Eyebrow>
-          <nav data-testid="admin-maestros">
-            {maestros.map((m) => <FilaMaestro key={m.clave} m={m} />)}
-          </nav>
-          <p className="mt-5 max-w-[760px] text-[11.5px] leading-relaxed text-faint">
-            Los contadores son de navegación: dicen cuánto hay del otro lado. Sin lectura no hay
-            contador — nunca un cero.
-          </p>
-        </div>
-
-        <div className="w-full shrink-0 lg:w-[340px]">
-          <Eyebrow className="mb-1">Requiere atención</Eyebrow>
-          <div data-testid="admin-atencion">
-            {atenciones.length === 0
-              ? <Vacio>No queda nada sin resolver en los maestros del área.</Vacio>
-              : atenciones.map((a) => <FilaAtencion key={a.clave} a={a} />)}
-          </div>
-
-          <Eyebrow className="mb-1 mt-[18px]">Último movimiento</Eyebrow>
-          <p className="py-3 text-[12.5px] leading-relaxed text-muted" data-testid="ultimo-movimiento">
-            {movimiento
-              ? <>{movimiento.texto} · <Num className="text-muted">{cuandoCorto(movimiento.cuando)}</Num></>
-              : <Nulo>sin movimientos registrados</Nulo>}
-          </p>
-        </div>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <TituloPanel>Clientes</TituloPanel>
+        {/* El alta vive en `/clientes`: una segunda pantalla de alta sería un segundo formulario del
+            mismo cliente. Acá se ofrece la puerta, no una copia. */}
+        <BotonEnlace href="/clientes?nuevo=1" variante="primaria" data-testid="ir-alta-cliente">
+          + Nuevo cliente
+        </BotonEnlace>
       </div>
+
+      {/* UNA LISTA VACÍA POR ERROR NO SE DIBUJA COMO «NO HAY DATOS» (INTERACTION.md §Error). */}
+      {cartera.error ? (
+        <Aviso tono="neg" titulo="No pude leer los clientes">{cartera.error}</Aviso>
+      ) : (
+        <TablaClientesHome clientes={activos} veEconomia={vePrecio} />
+      )}
     </PageShell>
   )
 }
