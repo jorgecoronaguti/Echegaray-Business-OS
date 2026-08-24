@@ -78,7 +78,10 @@ function Metrica({ k, v, falta, contra, tonoContra = 'muted', pista, sub, tono =
   const pie = <span className="text-[11.5px] leading-snug text-faint">{sub}</span>
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-1.5" data-metrica={k}>
-      <span className="text-[12px] text-muted">{k}</span>
+      {/* Rótulo de métrica en versalitas de 10px `faint` — es la etiqueta de la franja de cifras que
+          fija COMPONENTS.md §Status bar, no un eyebrow de sección: acá el peso lo tiene que llevar
+          la cifra, y un rótulo de 12px en `muted` compite con ella. */}
+      <span className="text-[10px] uppercase tracking-[0.06em] text-faint">{k}</span>
       <div className="flex items-baseline gap-2">
         {v == null ? (
           <span className="text-[15px] leading-none text-faint" data-nulo="">{falta ?? 'sin dato'}</span>
@@ -203,32 +206,52 @@ function mPersonas(obraId: string, hoy: PersonasDeHoy | null): PropsMetrica {
   return { ...base, v: String(hoy.asignadas), sub: 'asignadas · sin fichar hoy' }
 }
 
-/** El titular: cuatro cifras y, en letra chica, las HH — que no son ninguna de las cuatro. Avance
- *  físico, plazo y HH son dimensiones distintas y ninguna resume a la otra. */
+/**
+ * HH — LA QUINTA CIFRA, NO UN PIE DE PÁGINA.
+ *
+ * Estaba abajo del titular en 11,5px: la dimensión que decide si la obra se está comiendo la mano
+ * de obra se leía como una nota al pie. El canónico la dibuja al lado de las otras cuatro porque es
+ * del mismo rango — avance físico, plazo, HH, costo y gente son cinco preguntas distintas y ninguna
+ * resume a otra.
+ *
+ * `hh_real` en null es «nadie imputó», no cero: un «0» acá afirmaría que la obra no consumió horas.
+ */
+function mHH(plan: PlanVsReal | null): PropsMetrica {
+  const hhPlan = plan?.hh_plan ?? plan?.hh_estimada ?? null
+  const hhReal = plan?.hh_real ?? null
+  const n = (x: number) => Math.round(x).toLocaleString('es-AR')
+  const desvio = hhReal != null && hhPlan != null ? Math.round(hhReal - hhPlan) : null
+  const alto = plan?.desvio_hh_pct != null && plan.desvio_hh_pct > 10
+  return {
+    k: 'HH',
+    v: hhReal == null ? null : n(hhReal),
+    falta: 'sin imputar',
+    // El contraste es el DESVÍO contra el plan, que es lo que se mira; el plan entero va al pie.
+    contra: desvio == null ? undefined : `${desvio > 0 ? '+' : ''}${n(desvio)} vs plan`,
+    tonoContra: alto ? 'neg' : 'muted',
+    tono: alto ? 'warn' : 'ink',
+    pista: fraccion(hhReal, hhPlan),
+    sub: hhPlan == null
+      ? (hhReal == null ? 'sin HH imputadas ni plan de HH cargado' : 'sin plan de HH contra qué medir')
+      : `plan ${n(hhPlan)}`,
+  }
+}
+
+/** El titular: cinco cifras del mismo rango. Avance físico, plazo, HH, costo y gente son dimensiones
+ *  distintas y ninguna resume a la otra. */
 function Titular({ obra, plan, obraId, veComercial, hoy, personasDeHoy }: {
   obra: ObraPanel; plan: PlanVsReal | null; obraId: string; veComercial: boolean; hoy: string
   personasDeHoy: PersonasDeHoy | null
 }) {
-  const metricas = [mAvance(obra), mPlazo(obra, plan, hoy), mCosto(obra, plan, veComercial), mPersonas(obraId, personasDeHoy)]
-  const hhPlan = plan?.hh_plan ?? plan?.hh_estimada ?? null
-  const hhReal = plan?.hh_real ?? null
-  const n = (x: number) => Math.round(x).toLocaleString('es-AR')
-  const alto = plan?.desvio_hh_pct != null && plan.desvio_hh_pct > 10
+  const metricas = [
+    mAvance(obra), mPlazo(obra, plan, hoy), mHH(plan),
+    mCosto(obra, plan, veComercial), mPersonas(obraId, personasDeHoy),
+  ]
   return (
     <section data-testid="titular-obra">
       <div className="flex flex-wrap gap-x-8 gap-y-5 sm:flex-nowrap">
         {metricas.map((m) => <Metrica key={m.k} {...m} />)}
       </div>
-      <p className="mt-4 flex items-baseline gap-2 border-t border-[#EFEEEA] pt-2.5 text-[11.5px] text-faint">
-        <span className="text-muted">HH</span>
-        {hhReal == null ? (
-          <span>sin imputar{hhPlan == null ? '' : ` · ${n(hhPlan)} planificadas`}</span>
-        ) : (
-          <span className={alto ? 'text-warn' : undefined}>
-            {n(hhReal)} imputadas{hhPlan == null ? ' · sin plan contra qué medir' : ` de ${n(hhPlan)}`}
-          </span>
-        )}
-      </p>
     </section>
   )
 }
