@@ -1,52 +1,26 @@
-// EL WORKSPACE DE TAREAS, CABLEADO — un Server Component que hace SUS lecturas y arma sus dos
-// piezas: la tabla del árbol (03) y, si hay una actividad abierta, su panel de siete solapas (04).
+// EL WORKSPACE DE TAREAS, CABLEADO — un Server Component que hace LAS lecturas y le entrega al
+// cliente todo lo que la pantalla 03 puede llegar a mostrar: el árbol, y el material del panel de
+// CUALQUIER actividad.
 //
-// Vive acá y no en `page.tsx` por una razón medible: la página de la obra ya tenía 554 líneas —por
-// encima del tope de 500 del repositorio— y sumarle las diez lecturas de este workspace la dejaba
-// en 617. Cada solapa que se cablea adentro de la página hace más difícil ver qué pide cada una.
+// ═══ EL PANEL DEJÓ DE SER UNA NAVEGACIÓN (23/08/2026 · Design canónico §16) ═══
 //
-// EL PANEL SE ARMA EN EL SERVIDOR y baja como `children`: sus solapas son tres lecturas más, y
-// traerlas al cliente por cada clic sería traerlas por cada clic.
-//
-// LAS LECTURAS DEL PANEL SÓLO CORREN CON EL PANEL ABIERTO. Son datos de UNA actividad: pedirlos
-// junto con la lista sería pagarlos 350 veces para mostrar uno.
+// Hasta hoy abrir una fila era `?act=` → render RSC completo → dos tandas de lecturas: 2-6 s por
+// clic, y cerrar otro tanto. El contrato nuevo pide < 200 ms percibidos. La selección, la solapa y
+// la dotación simulada pasaron a ser estado del CLIENTE (con la URL sincronizada por
+// `replaceState`, así el mismo link sigue abriendo la misma tarea); los datos del panel se leen acá
+// EN BLOQUE una vez por obra (`getPanelDeObra`) — los volúmenes son decenas de filas, no miles.
+// La base sigue siendo la única fuente: cada escritura pasa por su server action y revalida.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { TabTareas } from './TabTareas'
-import { PanelTarea, esSolapa, type Solapa } from './PanelTarea'
-import {
-  getArbol, getAvancesSobreContenedor, getHistorial, getPasos, getRelaciones,
-} from '../services/tareasService'
-import { getContextoTarea, type ContextoTarea } from '../services/panelTareaService'
-import { getVinculacionTarea, type VinculacionTarea } from '../services/vinculacionTareaService'
+import { getArbol, getAvancesSobreContenedor, getRelaciones } from '../services/tareasService'
+import { getPanelDeObra } from '../services/panelObraService'
+import { getDocumentos } from '../services/obrasService'
+import { urlDeDrive } from '../services/driveUrl'
 import { esVistaArbol, type VistaArbol } from '../services/vistaArbol'
 import { aplicarEnLote, editarCampoDeTarea } from '../services/actionsAvance'
 import { cambiarRelacion, dividirEnFrentes, quitarRelacion } from '../services/actionsEstructura'
 import { vincularActividadAEstandar } from '../services/actionsVinculacion'
-
-/** El contexto que se dibuja cuando ninguna de sus lecturas pudo correr: todo en null y ninguna
- *  afirmación. La pantalla dice «sin dato» por cada cosa, que es exactamente lo que pasa. */
-const CONTEXTO_VACIO: ContextoTarea = {
-  jornadaHoras: null, diasHabiles: null, capacidadCuadrilla: null, partida: null,
-  puedeVerPartida: false, historico: null, diasHastaFinPlan: null,
-}
-
-/** Sin panel abierto no hay actividad que vincular. `no_aplica` y no `sin_vincular`: el default
- *  visible es «sin vincular» para una TAREA, y acá no hay ninguna. */
-const VINCULACION_VACIA: VinculacionTarea = { estado: 'no_aplica', sugerencia: null, opciones: [] }
-
-/** `?dot=` — la dotación simulada, acotada a 0–99. Es la misma lectura que la 08: un `dot=99999`
- *  desde la barra de direcciones no puede hacer que el panel dibuje un plantel imposible. Sin
- *  parámetro arranca en la dotación prevista del plan, que es contra lo que se quiere comparar. */
-function dotacionDe(raw: string | undefined, prevista: number | null, tope: number | null): number {
-  const pedida = raw === undefined ? null : Number(raw)
-  const base = pedida != null && Number.isInteger(pedida) && pedida >= 0 && pedida <= 99
-    ? pedida
-    : Math.max(0, Math.round(prevista ?? 0))
-  // El tope del frente no es decorativo: recorta también lo que entra por la URL, igual que en la
-  // 08 — el stepper ya lo respeta, pero la URL entra sin pasar por el stepper.
-  return tope != null ? Math.min(base, tope) : base
-}
 
 export async function WorkspaceTareas({
   supabase, obraId, act, filtro, sol, dot, cuadrillas, puedeEditar, veEconomia,
@@ -65,16 +39,10 @@ export async function WorkspaceTareas({
   veEconomia: boolean
 }) {
   const vista: VistaArbol = esVistaArbol(filtro) ? filtro : 'todo'
-  // LAS LECTURAS DEL PANEL SALEN JUNTO CON EL ÁRBOL (22/08/2026 · overhaul UX). Pasos, relaciones
-  // e historial sólo necesitan el `act` de la URL, no el nodo resuelto: esperarlas DESPUÉS del
-  // árbol era un viaje entero de más en cada clic sobre una fila. Sólo el contexto y la
-  // vinculación necesitan campos del nodo, y quedan como segunda tanda.
-  const [arbolRes, malImputados, pasos, relaciones, historial] = await Promise.all([
+  const [arbolRes, malImputados, relacionesRes] = await Promise.all([
     getArbol(supabase, obraId),
     getAvancesSobreContenedor(supabase, obraId),
-    act ? getPasos(supabase, act) : null,
-    act ? getRelaciones(supabase, obraId) : null,
-    act ? getHistorial(supabase, act) : null,
+    getRelaciones(supabase, obraId),
   ])
   // NO EXISTE y NO PUDE LEER son dos cosas distintas: una lista vacía por error dibujada como «no
   // hay nada» hace que un problema de permisos parezca una obra sin trabajo.
@@ -86,20 +54,21 @@ export async function WorkspaceTareas({
     )
   }
   const arbol = arbolRes.data
-  const abierta = act ? arbol.find((n) => n.id === act) ?? null : null
-  const [contexto, vinculacion] = abierta
-    ? await Promise.all([
-        getContextoTarea(supabase, obraId, {
-          cuadrillaId: abierta.cuadrilla_id,
-          cotizacionPartidaId: abierta.cotizacion_partida_id,
-          tareaTipoId: abierta.tarea_tipo_id,
-          finPlan: abierta.fin_plan,
-        }, veEconomia),
-        getVinculacionTarea(supabase, abierta),
-      ])
-    : [null, null]
-  const solapa: Solapa = esSolapa(sol) ? sol : 'avance'
-  const hrefLista = `/obras/${obraId}?vista=tareas&filtro=${vista}`
+
+  // La segunda tanda necesita los ids del árbol; junta el material del panel y los papeles.
+  const [panel, documentosRes] = await Promise.all([
+    getPanelDeObra(supabase, obraId, arbol, veEconomia),
+    getDocumentos(supabase, obraId),
+  ])
+  const docsPorActividad: Record<string, { id: string; nombre: string; url: string }[]> = {}
+  for (const d of documentosRes.data ?? []) {
+    if (!d.actividad_id) continue
+    ;(docsPorActividad[d.actividad_id] ??= []).push({
+      id: d.drive_file_id,
+      nombre: d.name ?? d.path ?? d.drive_file_id,
+      url: urlDeDrive(d.drive_file_id, d.tipo),
+    })
+  }
 
   return (
     <TabTareas
@@ -109,32 +78,24 @@ export async function WorkspaceTareas({
       cuadrillas={cuadrillas}
       // `.bind(null, obraId)` Y NO UNA ARROW: una arrow escrita en el servidor es una función
       // nueva, no la acción, y React la rechaza en tiempo de ejecución dejando la solapa en blanco.
-      // Ni el typecheck ni el build lo ven — sólo el navegador.
+      // El id de la ACTIVIDAD lo ata el cliente con otro `.bind` — viaja como argumento, igual que
+      // viajaba en la URL, y cada acción vuelve a acotar por `obra_id` del lado del servidor.
       aplicarEnLote={aplicarEnLote.bind(null, obraId)}
       malImputados={malImputados}
-      panel={abierta ? (
-        <PanelTarea
-          obraId={obraId}
-          nodo={abierta}
-          solapa={solapa}
-          pasos={pasos?.data ?? []}
-          relaciones={relaciones?.data ?? []}
-          historial={historial?.data ?? []}
-          hrefLista={hrefLista}
-          cuadrillas={cuadrillas}
-          editarCampo={editarCampoDeTarea.bind(null, obraId, abierta.id)}
-          contexto={contexto ?? CONTEXTO_VACIO}
-          dotacion={dotacionDe(dot, abierta.dotacion_prevista, abierta.tope_frente)}
-          puedeEditar={puedeEditar}
-          vinculacion={vinculacion ?? VINCULACION_VACIA}
-          acciones={{
-            dividir: dividirEnFrentes.bind(null, obraId, abierta.id),
-            cambiarRelacion: cambiarRelacion.bind(null, obraId),
-            quitarRelacion: quitarRelacion.bind(null, obraId),
-            vincularEstandar: vincularActividadAEstandar.bind(null, obraId, abierta.id),
-          }}
-        />
-      ) : undefined}
+      panelDeObra={panel}
+      relaciones={relacionesRes.data ?? []}
+      docsPorActividad={docsPorActividad}
+      actInicial={act ?? null}
+      solInicial={sol ?? null}
+      dotInicial={dot ?? null}
+      puedeEditar={puedeEditar}
+      accionesPanel={{
+        editarCampo: editarCampoDeTarea.bind(null, obraId),
+        dividir: dividirEnFrentes.bind(null, obraId),
+        cambiarRelacion: cambiarRelacion.bind(null, obraId),
+        quitarRelacion: quitarRelacion.bind(null, obraId),
+        vincularEstandar: vincularActividadAEstandar.bind(null, obraId),
+      }}
     />
   )
 }

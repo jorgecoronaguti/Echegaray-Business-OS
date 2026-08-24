@@ -59,6 +59,7 @@ function aNodo(
     hh_real: a.hh_real,
     metodo_avance: a.metodo_avance,
     avance_pct: a.avance_pct,
+    inicio_plan: a.inicio_plan,
     fin_plan: a.fin_plan,
     responsable,
     cuadrilla: cuadrillaDe(a),

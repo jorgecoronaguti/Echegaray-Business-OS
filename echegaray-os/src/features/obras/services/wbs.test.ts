@@ -21,6 +21,7 @@ const nodo = (id: string, extra: Partial<NodoObra> = {}): NodoObra => ({
   hh_real: null,
   metodo_avance: 'manual',
   avance_pct: null,
+  inicio_plan: null,
   fin_plan: null,
   responsable: null,
   cuadrilla: null,

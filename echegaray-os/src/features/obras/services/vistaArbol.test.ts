@@ -7,7 +7,7 @@ const nodo = (id: string, extra: Partial<NodoObra> = {}): NodoObra => ({
   id, padre_id: null, nivel: 0, camino: id, es_contenedor: false, tiene_hijas: false,
   nombre: id, tipo: 'tarea', rol_estructura: null, partida_codigo: null, unidad: null,
   cantidad_objetivo: null, cantidad_ejecutada: null, hh_plan: null, hh_real: null,
-  metodo_avance: 'manual', avance_pct: null, fin_plan: null, responsable: null,
+  metodo_avance: 'manual', avance_pct: null, inicio_plan: null, fin_plan: null, responsable: null,
   cuadrilla: null, subcontratista: null,
   es_subcontrato: false, estado: null, impedimentos_abiertos: 0, n_pasos: 0, n_pasos_hechos: 0,
   peso_pasos: null, analisis_id: null, tarea_tipo_id: null, cotizacion_partida_id: null,

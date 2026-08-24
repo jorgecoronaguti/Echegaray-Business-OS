@@ -45,6 +45,7 @@ export interface NodoObra {
   hh_real: number | null
   metodo_avance: MetodoAvance
   avance_pct: number | null
+  inicio_plan: string | null
   fin_plan: string | null
   /** LA PERSONA que responde por la actividad, resuelta desde `responsable_id`. `null` = nadie la
    *  declaró; la pantalla escribe «sin asignar».

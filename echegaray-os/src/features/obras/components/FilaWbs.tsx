@@ -5,20 +5,25 @@
 // ═══ LA JERARQUÍA SE LEE POR PESO Y SANGRÍA, NO POR COLOR ═══
 //
 // Rubro y sector en versalitas de 11,5px/600; nivel y frente en 12,5px/600; la actividad en 12,5px
-// normal. 15px de sangría por nivel. Con N niveles habilitados desde el 21/08 la sangría se topa a
-// los seis: más adentro la columna del nombre deja de tener ancho para el nombre.
+// normal. 15px de sangría por nivel, con tope a los seis.
 //
-// ═══ LA BARRA DE AVANCE SÓLO SI EL NÚMERO ES UNA FRACCIÓN DE 0 A 100 ═══
+// ═══ ABRIR ES UN CALLBACK, NO UNA NAVEGACIÓN (23/08 · Design §16) ═══
 //
-// «sin plan» no lleva barra: una pista vacía se lee como 0 %, que es exactamente lo que la regla de
-// NULL prohíbe. Y una barra debajo de `+16 d`, de HH o de un importe no significa nada.
+// El nombre y el avance abren el panel EN EL CLIENTE: el material ya vino con el árbol y un viaje
+// al servidor por clic era lo que hacía tardar segundos el gesto más usado de la pantalla.
+//
+// ═══ EL CARRIL DE TIEMPO, ALINEADO 1:1 CON LA FILA ═══
+//
+// Plan como pista gris, real hasta HOY (pos terminada · grafito en curso · warn vencida), línea
+// amarilla de hoy. Sin fechas no se dibuja barra: el hueco ES el dato. El Gantt operable (arrastre,
+// dependencias gráficas) es la vista Cronograma; esto es leer el tiempo sin salir del árbol.
 
-import Link from 'next/link'
 import { Estado, Td, Tr } from '@/shared/components/ds'
 import { cantidad as fmtCantidad, fechaCorta, porcentaje } from './formato'
 import { estadoDeFila, type ClaveEstado, type FilaVisible } from '../services/vistaArbol'
 import { ejecutorDe } from '../services/wbs'
 import type { TonoEstado } from '@/shared/components/ds'
+import type { Solapa } from '../services/solapasTarea'
 
 const TONO: Record<ClaveEstado, TonoEstado> = {
   impedimento: 'neg',
@@ -31,6 +36,14 @@ const TONO: Record<ClaveEstado, TonoEstado> = {
   pendiente: 'pendiente',
 }
 
+export interface CarrilDeFila {
+  plan: { l: number; w: number }
+  real: { l: number; w: number; tono: 'pos' | 'ink' | 'warn' } | null
+  hoy: number
+}
+
+const REAL_TONO = { pos: 'bg-pos', ink: 'bg-accent', warn: 'bg-warn' } as const
+
 /** La barra de 4px. Verde al llegar a 100, warn en el camino crítico, grafito el resto. */
 function BarraAvance({ pct, critica }: { pct: number; critica: boolean }) {
   const color = pct >= 100 ? 'bg-pos' : critica ? 'bg-warn' : 'bg-accent'
@@ -42,7 +55,7 @@ function BarraAvance({ pct, critica }: { pct: number; critica: boolean }) {
 }
 
 export function FilaWbs({
-  fila, abierta, seleccionada, seleccionable, alSeleccionar, alPlegar, hrefBase, sol = null,
+  fila, abierta, seleccionada, seleccionable, alSeleccionar, alPlegar, alAbrir, carril, conCarril,
 }: {
   fila: FilaVisible
   abierta: boolean
@@ -50,10 +63,12 @@ export function FilaWbs({
   seleccionable: boolean
   alSeleccionar: (v: boolean) => void
   alPlegar: () => void
-  /** La URL de la fila conserva la vista y el buscador: abrir el panel no puede reordenar la lista. */
-  hrefBase: string
-  /** La solapa del panel abierta ahora, si hay una: la fila la conserva al cambiar de actividad. */
-  sol?: string | null
+  /** Abre el panel en el cliente; `sol` fuerza la solapa (el % abre en Avance). */
+  alAbrir: (sol?: Solapa) => void
+  carril: CarrilDeFila | null
+  /** La columna del carril existe para toda la tabla o para nadie: si la obra no tiene rango de
+   *  fechas, no se dibuja ni la celda vacía. */
+  conCarril: boolean
 }) {
   const n = fila.nodo
   const est = estadoDeFila(n, fila.avance)
@@ -95,13 +110,10 @@ export function FilaWbs({
               className="w-3 shrink-0 text-[11px] text-faint hover:text-ink"
             >{fila.plegado ? '▸' : '▾'}</button>
           ) : <span className="w-3 shrink-0" aria-hidden />}
-          {/* `scroll={false}`: abrir el panel no puede mandar la lista al tope.
-              `prefetch={false}`: 350 filas × prefetch = 350 renders RSC completos del workspace en
-              cuanto la lista entra al viewport — la estampida que tenía al servidor ocupado y hacía
-              tardar 12-26 s CERRAR el panel. La ruta es force-dynamic: el prefetch no compra nada. */}
-          <Link href={`${hrefBase}&act=${n.id}${sol ? `&sol=${sol}` : ''}`} scroll={false} prefetch={false} data-testid={`fila-${n.id}`} className={`${jerarquia} hover:underline`}>
+          <button type="button" onClick={() => alAbrir()} data-testid={`fila-${n.id}`}
+            className={`${jerarquia} text-left hover:underline`}>
             {n.nombre}
-          </Link>
+          </button>
           {n.partida_codigo && (
             <span className="hidden shrink-0 font-mono text-[10px] text-faint lg:inline">{n.partida_codigo}</span>
           )}
@@ -117,9 +129,8 @@ export function FilaWbs({
       </Td>
 
       <Td className="w-[132px]">
-        {/* EL AVANCE ES UNA PUERTA (22/08/2026 · overhaul UX): tocarlo abre el panel en la solapa
-            Avance — registrar lo hecho arranca desde el número, no desde un menú. El contenedor no
-            la ofrece: su avance se agrega, no se carga. */}
+        {/* EL AVANCE ES UNA PUERTA: tocarlo abre el panel en la solapa Avance. El contenedor no la
+            ofrece: su avance se agrega, no se carga. */}
         {n.es_contenedor ? (
           fila.avance === null
             ? <span className="text-[11.5px] text-faint">sin avance</span>
@@ -132,9 +143,9 @@ export function FilaWbs({
               </span>
             )
         ) : (
-          <Link href={`${hrefBase}&act=${n.id}&sol=avance`} scroll={false} prefetch={false}
+          <button type="button" onClick={() => alAbrir('avance')}
             aria-label={`Avance de ${n.nombre}`} data-testid={`avance-${n.id}`}
-            className="group flex items-center gap-2">
+            className="group flex w-full items-center gap-2">
             {fila.avance === null ? (
               <span className="text-[11.5px] text-faint group-hover:text-ink group-hover:underline">sin avance</span>
             ) : (
@@ -145,7 +156,7 @@ export function FilaWbs({
                 </span>
               </>
             )}
-          </Link>
+          </button>
         )}
       </Td>
 
@@ -158,10 +169,8 @@ export function FilaWbs({
         })()}
       </Td>
 
-      {/* LA COLUMNA ES «QUIÉN LO HACE», Y ESO ES LA CUADRILLA O EL SUBCONTRATISTA. Decía
-          RESPONSABLE y mostraba esto mismo: el árbol publicaba una composición productiva bajo el
-          rótulo de la persona que rinde cuentas. El responsable —una persona— está en el panel de
-          la tarea, que es donde se lo asigna. */}
+      {/* LA COLUMNA ES «QUIÉN LO HACE», Y ESO ES LA CUADRILLA O EL SUBCONTRATISTA. El responsable
+          —una persona— está en el panel de la tarea, que es donde se lo asigna. */}
       <Td className="hidden w-[124px] text-[11.5px] lg:table-cell">
         {n.es_contenedor ? '' : ejecutorDe(n) ?? <span className="text-faint">sin asignar</span>}
       </Td>
@@ -169,6 +178,24 @@ export function FilaWbs({
       <Td className="w-[112px]">
         <Estado tono={TONO[est.clave]} clave={est.clave} testid={`estado-${n.id}`}>{est.label}</Estado>
       </Td>
+
+      {conCarril && (
+        <Td className="hidden w-[240px] md:table-cell">
+          <span className="relative block h-[14px] w-full" data-testid={carril ? `carril-${n.id}` : undefined}>
+            {carril && (
+              <>
+                <span className="absolute top-[4.5px] h-[5px] rounded-[2px] bg-[#EAE7E6]"
+                  style={{ left: `${carril.plan.l}%`, width: `${carril.plan.w}%` }} />
+                {carril.real && (
+                  <span className={`absolute top-[8px] h-[5px] rounded-[2px] ${REAL_TONO[carril.real.tono]}`}
+                    style={{ left: `${carril.real.l}%`, width: `${carril.real.w}%` }} />
+                )}
+                <span className="absolute inset-y-0 w-[1.5px] bg-marca" style={{ left: `${carril.hoy}%` }} aria-hidden />
+              </>
+            )}
+          </span>
+        </Td>
+      )}
     </Tr>
   )
 }

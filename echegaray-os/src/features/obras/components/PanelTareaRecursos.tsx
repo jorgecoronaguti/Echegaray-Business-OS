@@ -14,7 +14,6 @@
 // del otro lado del chat. Y mientras está en la URL NO es un plan: aplicarla al plan es la 08, que
 // escribe `dotacion_prevista` sobre el frente entero.
 
-import Link from 'next/link'
 import { hh as fmtHH } from './formato'
 import { dotacionNecesaria, duracionDias } from '../services/dotacion'
 import { hhRestantes } from '../services/cronogramaMotor'
@@ -33,12 +32,13 @@ const n1 = (v: number | null) =>
 
 const enCriollo = (iso: string) => iso.split('-').reverse().join('/')
 
-export function PanelTareaRecursos({ nodo, contexto, base, dotacion }: {
+export function PanelTareaRecursos({ nodo, contexto, dotacion, alCambiarDotacion }: {
   nodo: NodoObra
   contexto: ContextoTarea
-  /** `…&act=<id>` — la solapa y la dotación se agregan acá. */
-  base: string
   dotacion: number
+  /** El stepper es estado del CLIENTE desde el 23/08 (Design §16): antes cada ± era un viaje
+   *  entero al servidor por la URL. La simulación sigue sin ser el plan. */
+  alCambiarDotacion: (n: number) => void
 }) {
   const jornada = contexto.jornadaHoras ?? JORNADA_DEFECTO
   // Los días técnicos son de la ACTIVIDAD y salen de su marca, no de tener días de plan: `manual`
@@ -66,13 +66,11 @@ export function PanelTareaRecursos({ nodo, contexto, base, dotacion }: {
     : null
   const produccion = produccionDeCuadrilla(esfuerzo, contexto.capacidadCuadrilla, contexto.jornadaHoras)
 
-  const href = (n: number) => `${base}&sol=recursos&dot=${n}`
-
   return (
     <section data-testid="panel-recursos">
       <h3 className="mb-1.5 text-[12.5px] font-semibold text-ink">Dotación → duración</h3>
       <div className="flex flex-wrap items-center gap-3">
-        <Stepper valor={dotacion} href={href} enTope={enTope} nombre={nodo.nombre} />
+        <Stepper valor={dotacion} alCambiar={alCambiarDotacion} enTope={enTope} nombre={nodo.nombre} />
         <div className="ml-auto text-right">
           <div className="text-[10px] uppercase tracking-[0.05em] text-faint">Duración</div>
           <div className="font-mono text-[18px] font-semibold tabular-nums text-ink" data-testid="duracion-simulada">
@@ -147,16 +145,16 @@ export function PanelTareaRecursos({ nodo, contexto, base, dotacion }: {
 
 /** El `+` se apaga en el tope del frente: un botón que responde sin cambiar nada enseña a
  *  desconfiar de la pantalla. Es el mismo comportamiento que el stepper de la 08. */
-function Stepper({ valor, href, enTope, nombre }: {
-  valor: number; href: (n: number) => string; enTope: boolean; nombre: string
+function Stepper({ valor, alCambiar, enTope, nombre }: {
+  valor: number; alCambiar: (n: number) => void; enTope: boolean; nombre: string
 }) {
   const caja = 'flex h-[30px] w-[30px] items-center justify-center border border-line text-[14px]'
   return (
     <div className="flex items-center" data-testid="stepper-dotacion">
       {valor > 0
         ? (
-          <Link href={href(valor - 1)} scroll={false} aria-label={`Quitar una persona de ${nombre}`}
-            className={`${caja} rounded-l-control text-ink-soft hover:bg-surface-quiet`}>−</Link>
+          <button type="button" onClick={() => alCambiar(valor - 1)} aria-label={`Quitar una persona de ${nombre}`}
+            className={`${caja} rounded-l-control text-ink-soft hover:bg-surface-quiet`}>−</button>
         )
         : <span className={`${caja} rounded-l-control text-faint`} aria-hidden>−</span>}
       <span className="flex h-[30px] w-[38px] items-center justify-center border-y border-line font-mono text-[14px] font-semibold tabular-nums text-ink">
@@ -165,8 +163,8 @@ function Stepper({ valor, href, enTope, nombre }: {
       {enTope
         ? <span className={`${caja} rounded-r-control text-faint`} title="Más gente no acorta el plazo">+</span>
         : (
-          <Link href={href(valor + 1)} scroll={false} aria-label={`Sumar una persona a ${nombre}`}
-            className={`${caja} rounded-r-control text-ink-soft hover:bg-surface-quiet`}>+</Link>
+          <button type="button" onClick={() => alCambiar(valor + 1)} aria-label={`Sumar una persona a ${nombre}`}
+            className={`${caja} rounded-r-control text-ink-soft hover:bg-surface-quiet`}>+</button>
         )}
     </div>
   )
