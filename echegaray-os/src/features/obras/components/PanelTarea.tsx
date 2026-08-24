@@ -1,43 +1,65 @@
 'use client'
 
-// 04 · TAREA — PANEL LATERAL. Cliente puro: abrir, cerrar, cambiar de actividad o de solapa es
-// estado — el material vino EN BLOQUE con el árbol (`panelObraService`) y acá sólo se elige y se
-// dibuja. Ninguna de esas cuatro cosas vuelve al servidor; las ESCRITURAS sí, por sus server
-// actions de siempre, que revalidan y refrescan los props.
+// ═══ 04 · TAREA — PANEL LATERAL. PORTE LITERAL DE «04 · Tarea Panel lateral.dc.html» ═══
 //
-// ═══ EL CONTRATO DEL DESIGN (23/08/2026) ═══
+//   tarjeta   `background:#FFFFFF; border:1px solid #E7E6E2; borderRadius:10px; overflow:hidden`
+//   cabecera  `padding:14px 16px 0`
+//   primaria  amarilla, `padding:7px 13px`, 12,5px/600; los íconos, 30×30 con borde
+//   título    15,5px/600, `lineHeight:1.3`
+//   sublínea  11,5px `#6B6B67`, íconos de 12,5px, separadores «·» en `#D7D5CF`
+//   solapas   12px, `padding:7px 8px`, activa 600 con `inset 0 -2px 0 #FDC900`
+//   cuerpo    `padding:14px 16px 16px`, con su propio scroll
 //
-//   · Acción primaria ARRIBA: «Registrar avance» a la vista sin scroll; adjuntar queda como icono.
-//   · PLAN | REAL enfrentados: el plan editable en la celda, el real con su última carga.
-//   · El PROBLEMA no se esconde: el impedimento se ve en Resumen aunque su solapa esté cerrada.
-//   · Seis solapas: Resumen · Avance · Dependencias · Rendimiento · Historial · Documentos.
-//     Recursos y Subcontrato viven como filas del Resumen con su detalle plegado.
-//   · HH no es avance: van al lado, con su propio rótulo.
+// Cliente puro: abrir, cerrar, cambiar de actividad o de solapa es estado — el material vino EN
+// BLOQUE con el árbol (`panelObraService`) y acá sólo se elige y se dibuja. Las ESCRITURAS sí van
+// al servidor, por sus server actions de siempre, que revalidan y refrescan los props.
 //
-// EL ID DE LA ACTIVIDAD viaja como argumento (`.bind` del cliente sobre la acción ya atada a la
+// ═══ ACÁ NO SE NAVEGA A NINGÚN LADO (defecto #1 del dueño, 24/08/2026) ═══
+//
+// El dueño, textual: *«necesito que la pantalla permita que si quiero editar edite ahí mismo, no me
+// sirve que me cargue y me lleve a otro lado»*. Hasta hoy este panel tenía TRES enlaces que se iban
+// de la pantalla: la primaria cuando no había acción atada, la cámara (`…/avance/<id>#evidencia`) y
+// «Abrir en pantalla completa». Los tres apuntaban a la misma pantalla, y sobre una fila agrupadora
+// esa pantalla contestaba con un cartel — un viaje entero para leer que no se podía.
+//
+// Ahora:
+//   · la primaria abre la solapa Avance con el formulario adentro del panel;
+//   · la cámara abre esa MISMA solapa (el campo de evidencia es del formulario, no de la actividad);
+//   · el clip abre la solapa Documentos;
+//   · sobre una AGRUPADORA no hay primaria: el mockup 03 ni siquiera selecciona una agrupadora, así
+//     que no hay botón que dibujar. En su lugar, una línea que dice dónde se registra de verdad y
+//     un salto a la primera hija ejecutable — la acción queda a un clic, no a un cartel.
+//   · sin permiso de escritura tampoco hay primaria: un botón que la base va a rebotar es peor que
+//     su ausencia.
+//
+// El ID DE LA ACTIVIDAD viaja como argumento (`.bind` del cliente sobre la acción ya atada a la
 // obra): igual de manipulable que cuando viajaba en la URL, y por eso cada acción vuelve a acotar
 // por `obra_id` del lado del servidor antes de escribir una fila.
 
 import Link from 'next/link'
-import { Estado, InlineEdit, SubTabs } from '@/shared/components/ds'
+import { InlineEdit } from '@/shared/components/ds'
+import { C, MONO } from './canon/tokens'
+import { Ico, P } from './canon/Ico'
+import { ESTILO_PRIMARIA, ESTILO_SECUNDARIA, Pastilla } from './canon/Piezas'
 import {
-  IconoAdjuntar, IconoCerrar, IconoCuadrilla, IconoEditar, IconoFoto, IconoHH, IconoObra,
-  IconoPersona, IconoProblema,
-} from '@/shared/components/iconos'
-import { fecha, hh as fmtHH, porcentaje } from './formato'
+  BotonIcono, Celda, Cuadro, FilaPlegable, FilaRecurso, Impedimento, Titulo,
+} from './panel/PanelPiezas'
+import {
+  EjecucionReciente, SolapaAvance, SolapaDocumentos, SolapaHistorial,
+} from './panel/PanelSolapas'
+import { fecha, porcentaje } from './formato'
 import { METODO_LABEL } from '../types'
 import type { NodoObra } from '../services/wbs'
-import { avancePorPasos, hhProyectadas, proyeccionExcedida } from '../services/avance'
 import type { PasoDeActividad, RegistroAvance, RelacionLegible } from '../services/tareasService'
 import type { ContextoTarea } from '../services/panelTareaService'
 import type { VinculacionTarea } from '../services/vinculacionTareaService'
-import { motivoNoDividir } from '../services/panelTarea'
+import { factorDeEsfuerzo, motivoNoDividir } from '../services/panelTarea'
 import { ultimoTramoDelCamino } from '../services/frente'
-import { estadoDeFila } from '../services/vistaArbol'
+import { estadoDeFila, type ClaveEstado } from '../services/vistaArbol'
 import { SOLAPAS, type Solapa } from '../services/solapasTarea'
 import type { AccionFormulario } from '@/shared/components/ui/FormAccion'
 import { PanelTareaRecursos } from './PanelTareaRecursos'
-import { FormAvance } from './FormAvance'
+import { FormAvanceEmbebido } from './FormAvance'
 import { BloqueNotas } from './PanelGestion'
 import { cuadrillaDeLaTarea, iniciales } from '../services/contextoTarea'
 import type { EquipoEnActividad, NotaActividad } from '../services/recursosService'
@@ -48,6 +70,11 @@ import { oracionDeActividad } from '../services/nombreDeActividad'
 
 type ResultadoInline = { ok: true } | { ok: false; error: string }
 
+const TONO: Record<ClaveEstado, 'neg' | 'pos' | 'warn' | 'curso' | 'neutro'> = {
+  impedimento: 'neg', hecha: 'pos', en_curso_critica: 'warn', en_curso: 'curso',
+  sin_analisis: 'warn', sin_cuadrilla: 'warn', sin_plan: 'neutro', pendiente: 'neutro',
+}
+
 export interface AccionesDelPanel {
   /** Atadas a la OBRA; el id de la actividad lo ata este componente. */
   editarCampo: (actividadId: string, campo: string, valor: string) => Promise<ResultadoInline>
@@ -55,88 +82,9 @@ export interface AccionesDelPanel {
   cambiarRelacion: (dependenciaId: string, form: FormData) => ReturnType<AccionFormulario>
   quitarRelacion: (dependenciaId: string, form: FormData) => ReturnType<AccionFormulario>
   vincularEstandar: (actividadId: string, form: FormData) => ReturnType<AccionFormulario>
-  /** REGISTRAR AVANCE SIN IRSE DE LA PANTALLA (24/08 · pedido del dueño). Ausente = la solapa
-   *  Avance no ofrece el formulario y la primaria vuelve a ser el enlace a la pantalla 05. */
+  /** REGISTRAR AVANCE SIN IRSE DE LA PANTALLA. Ausente = no hay primaria, y se dice por qué. */
   registrarAvance?: (actividadId: string, form: FormData) => ReturnType<AccionFormulario>
   agregarNota?: (actividadId: string, form: FormData) => ReturnType<AccionFormulario>
-}
-
-/** Clave a la izquierda, valor a la derecha. La ausencia se dice con su nombre, nunca con un guión
- *  suelto — un «—» al lado de «Responsable» se lee como «nadie», y es «nadie lo cargó». */
-function Dato({ clave, valor, icono, falta = 'sin cargar' }: {
-  clave: string; valor: React.ReactNode | null; icono?: React.ReactNode; falta?: string
-}) {
-  return (
-    <div className="flex items-baseline justify-between gap-3 border-b border-[#EFEEEA] py-1.5 last:border-0">
-      <span className="flex shrink-0 items-center gap-2 text-[11.5px] text-faint">
-        {icono}{clave}
-      </span>
-      <span className="text-right text-[12.5px] text-ink-soft">
-        {valor ?? <span className="text-faint">{falta}</span>}
-      </span>
-    </div>
-  )
-}
-
-function Titulo({ children }: { children: React.ReactNode }) {
-  return <h3 className="mb-1.5 text-[12.5px] font-semibold text-ink">{children}</h3>
-}
-
-/** El bloque de HH. Su TÍTULO es parte del contrato: separa el hecho de la interpretación. */
-function BloqueHH({ plan, real, avance }: { plan: number | null; real: number | null; avance: number | null }) {
-  const proy = hhProyectadas(real, avance)
-  return (
-    <section className="mt-4 border-t border-line pt-3" data-testid="hh-consumidas">
-      <Titulo>HH consumidas — no es avance</Titulo>
-      <div className="grid grid-cols-3 gap-2">
-        <Cifra rotulo="Plan" valor={fmtHH(plan)} falta="sin cargar" />
-        <Cifra rotulo="Real" valor={fmtHH(real)} falta="sin registro" />
-        <Cifra rotulo="Proyectadas" valor={fmtHH(proy)} falta="sin base"
-          alerta={proyeccionExcedida(proy, plan)} />
-      </div>
-    </section>
-  )
-}
-
-function Cifra({ rotulo, valor, falta, alerta = false }: {
-  rotulo: string; valor: string | null; falta: string; alerta?: boolean
-}) {
-  return (
-    <div>
-      <div className="text-[10px] uppercase tracking-[0.05em] text-faint">{rotulo}</div>
-      <div className={`font-mono text-[15px] font-semibold tabular-nums ${alerta ? 'text-warn' : 'text-ink'}`}>
-        {valor ?? <span className="font-sans text-[12px] font-normal text-faint">{falta}</span>}
-      </div>
-    </div>
-  )
-}
-
-/** Una celda del bloque PLAN | REAL: rótulo a la izquierda, valor mono a la derecha. */
-function Celda({ k, v, falta = 'sin cargar' }: { k: string; v: React.ReactNode | null; falta?: string }) {
-  return (
-    <div className="flex items-baseline justify-between gap-2 py-[3px]">
-      <span className="text-[11px] text-faint">{k}</span>
-      <span className="text-right font-mono text-[12px] tabular-nums text-ink">
-        {v ?? <span className="font-sans text-[11.5px] text-faint">{falta}</span>}
-      </span>
-    </div>
-  )
-}
-
-/** Fila plegable del Resumen (Dotación, Subcontrato): resumen a la vista, detalle bajo demanda. */
-function FilaPlegable({ clave, resumen, icono, alerta = false, children, testid }: {
-  clave: string; resumen: React.ReactNode; icono?: React.ReactNode
-  alerta?: boolean; children: React.ReactNode; testid?: string
-}) {
-  return (
-    <details className="border-b border-[#EFEEEA] last:border-0" data-testid={testid}>
-      <summary className="flex cursor-pointer items-baseline justify-between gap-3 py-1.5 [&::-webkit-details-marker]:hidden">
-        <span className="flex shrink-0 items-center gap-2 text-[11.5px] text-faint">{icono}{clave}</span>
-        <span className={`text-right text-[12.5px] ${alerta ? 'text-warn' : 'text-ink-soft'}`}>{resumen} ›</span>
-      </summary>
-      <div className="pb-3">{children}</div>
-    </details>
-  )
 }
 
 export function PanelTarea({
@@ -144,6 +92,7 @@ export function PanelTarea({
   pasos, historial, relaciones, documentos, cuadrillas,
   integrantesPorCuadrilla = {}, nombrePorPersona = {}, equipos = [], notas = [], autor = null,
   contexto, vinculacion, dotacion, alCambiarDotacion, puedeEditar, acciones,
+  hijasEjecutables = [],
 }: {
   obraId: string
   nodo: NodoObra
@@ -156,12 +105,10 @@ export function PanelTarea({
   relaciones: RelacionLegible[]
   documentos: { id: string; nombre: string; url: string }[]
   cuadrillas: { id: string; nombre: string }[]
-  /** Quiénes integran cada cuadrilla HOY, y cómo se llama cada persona. Los dos juntos son los
-   *  avatares del canónico 04; sin el segundo no se dibuja ninguno (ver `cuadrillaDeLaTarea`). */
   integrantesPorCuadrilla?: Record<string, string[]>
   nombrePorPersona?: Record<string, string>
-  /** Los equipos que APARECIERON EN LOS PARTES de esta actividad. No hay una asignación de
-   *  máquinas a tareas: si nadie los anotó, la sección lo dice — no los inventa. */
+  /** Los equipos que APARECIERON EN LOS PARTES de esta actividad. No hay una asignación de máquinas
+   *  a tareas: si nadie los anotó, la sección lo dice — no los inventa. */
   equipos?: EquipoEnActividad[]
   notas?: NotaActividad[]
   /** Quién está firmando, para el formulario de avance embebido. */
@@ -172,492 +119,357 @@ export function PanelTarea({
   alCambiarDotacion: (n: number) => void
   puedeEditar: boolean
   acciones: AccionesDelPanel
+  /** Las actividades medibles que cuelgan de esta agrupadora. Es lo que hace que la agrupadora
+   *  ofrezca un salto en vez de un cartel. */
+  hijasEjecutables?: { id: string; nombre: string }[]
 }) {
-  const avancePasos = avancePorPasos(pasos.map((p) => ({ peso: Number(p.peso), hecho: p.hecho_en !== null })))
   const antes = relaciones.filter((r) => r.destino_id === nodo.id)
   const despues = relaciones.filter((r) => r.origen_id === nodo.id)
-  const evidencias = historial.flatMap((h) => h.evidencia)
   const est = estadoDeFila(nodo, nodo.avance_pct)
-  const TONO = {
-    impedimento: 'neg', hecha: 'pos', en_curso_critica: 'warn', en_curso: 'curso',
-    sin_analisis: 'warn', sin_cuadrilla: 'warn', sin_plan: 'pendiente', pendiente: 'pendiente',
-  } as const
   const frente = ultimoTramoDelCamino(nodo.camino, nodo.nombre)
   const editar = (campo: string) => (v: string) => acciones.editarCampo(nodo.id, campo, v)
   const ultima = historial[0]?.fecha ?? null
   const cuadrilla = cuadrillaDeLaTarea(nodo, cuadrillas, integrantesPorCuadrilla, nombrePorPersona)
+  const factor = factorDeEsfuerzo({
+    hhReal: nodo.hh_real, cantidadEjecutada: nodo.cantidad_ejecutada,
+    hhPlan: nodo.hh_plan, cantidadObjetivo: nodo.cantidad_objetivo,
+  })
   // UN CONTENEDOR NO SE MIDE: ofrecerle el formulario de avance sería ofrecer una escritura que la
   // base rechaza con un trigger.
-  const avanceEmbebido = puedeEditar && !nodo.es_contenedor && acciones.registrarAvance != null
+  const puedeRegistrar = puedeEditar && !nodo.es_contenedor && acciones.registrarAvance != null
   const hoyISO = new Date().toISOString().slice(0, 10)
 
   return (
-    <aside data-testid="panel-tarea" className="border-l border-line pl-4">
-      {/* ═══ ACCIÓN PRIMARIA ARRIBA — a la vista sin scroll ═══ */}
-      <div className="flex items-center gap-2 pt-0.5">
-        {/* ═══ NO SE VA A OTRA PANTALLA A CARGAR (24/08 · pedido del dueño) ═══
-            El avance se registra ACÁ: la primaria abre la solapa Avance con el formulario adentro
-            del panel. La pantalla 05 sigue existiendo y sigue siendo la misma acción —el mismo
-            `registrarAvance`, la misma validación—: es la puerta ancha para cargar una jornada
-            entera con evidencia, no una segunda manera de escribir el avance.
-            Sin la acción atada (o sin permiso) la primaria vuelve a ser el enlace: un botón que
-            abre una solapa vacía es peor que un viaje. */}
-        {avanceEmbebido ? (
-          <button type="button" onClick={() => alCambiarSolapa('avance')} data-testid="panel-registrar-avance"
-            className="inline-flex items-center gap-1.5 rounded-control bg-marca px-3 py-[7px] text-[12.5px] font-semibold text-ink hover:opacity-90">
-            <IconoEditar className="h-[14px] w-[14px]" />
-            Registrar avance
-          </button>
-        ) : (
-          <Link href={`/obras/${obraId}/avance/${nodo.id}`} data-testid="panel-registrar-avance"
-            className="inline-flex items-center gap-1.5 rounded-control bg-marca px-3 py-[7px] text-[12.5px] font-semibold text-ink hover:opacity-90">
-            <IconoEditar className="h-[14px] w-[14px]" />
-            Registrar avance
-          </Link>
-        )}
-        {/* DOS ICONOS, DOS DESTINOS DISTINTOS. El Design dibuja adjuntar y cámara uno al lado del
-            otro; si los dos llevaran al mismo lado sería un botón falso. El clip cuelga PAPEL de la
-            obra (donde el panel ya dice que se cuelga), la cámara sube EVIDENCIA del avance. */}
-        <Link href={`/obras/${obraId}?vista=documentos`} aria-label="Adjuntar documento"
-          title="Adjuntar documento" data-testid="panel-adjuntar-evidencia"
-          className="flex h-[30px] w-[30px] items-center justify-center rounded-control border border-line text-muted hover:border-line-strong hover:text-ink">
-          <IconoAdjuntar className="h-[15px] w-[15px]" />
-        </Link>
-        <Link href={`/obras/${obraId}/avance/${nodo.id}#evidencia`} aria-label="Foto o evidencia"
-          title="Foto o evidencia" data-testid="panel-foto-evidencia"
-          className="flex h-[30px] w-[30px] items-center justify-center rounded-control border border-line text-muted hover:border-line-strong hover:text-ink">
-          <IconoFoto className="h-[15px] w-[15px]" />
-        </Link>
-        <button type="button" onClick={alCerrar} data-testid="cerrar-panel" aria-label="Cerrar el panel"
-          className="ml-auto p-1 text-faint hover:text-ink">
-          <IconoCerrar className="h-[14px] w-[14px]" />
-        </button>
-      </div>
-
-      <div className="mt-2.5 flex items-start justify-between gap-2">
-        {/* El mismo criterio que la fila del árbol: se LEE en oración, se GUARDA como se cargó. */}
-        <h2 className="min-w-0 text-[16px] font-semibold leading-snug text-ink">{oracionDeActividad(nodo.nombre)}</h2>
-        <span className="shrink-0 pt-0.5">
-          <Estado tono={TONO[est.clave]} clave={est.clave} testid="panel-estado">{est.label}</Estado>
-        </span>
-      </div>
-      {/* LA SUB-LÍNEA DEL DESIGN: frente · cuadrilla · código, cada uno con su icono y separados
-          por un punto tenue. Lo que no está cargado NO deja su icono huérfano: se omite entero. */}
-      <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] text-muted"
-        data-testid="panel-sublinea">
-        {frente && (
-          <span className="flex items-center gap-1">
-            <IconoObra className="h-[12.5px] w-[12.5px] shrink-0" />{frente}
-          </span>
-        )}
-        {frente && nodo.cuadrilla && <span aria-hidden className="text-line-strong">·</span>}
-        {nodo.cuadrilla && (
-          <span className="flex items-center gap-1">
-            <IconoCuadrilla className="h-[12.5px] w-[12.5px] shrink-0" />{nodo.cuadrilla}
-          </span>
-        )}
-        {(frente || nodo.cuadrilla) && nodo.partida_codigo && (
-          <span aria-hidden className="text-line-strong">·</span>
-        )}
-        {nodo.partida_codigo && <span className="font-mono text-[11px] text-faint">{nodo.partida_codigo}</span>}
-      </p>
-
-      {/* Las dependencias se ven sin abrir su solapa: ← la que espera esta actividad · → la que
-          espera a ésta, con salto directo a la otra punta. */}
-      {(antes.length > 0 || despues.length > 0) && (
-        <div className="mt-2 flex flex-col gap-1 border-y border-[#EFEEEA] py-2 text-[12px]" data-testid="deps-compactas">
-          {antes.map((r) => (
-            <span key={r.id} className="flex min-w-0 items-baseline gap-1.5">
-              <span aria-hidden className="shrink-0 text-faint">←</span>
-              <button type="button" onClick={() => alAbrirActividad(r.origen_id)}
-                className="truncate text-left text-ink-soft hover:text-ink hover:underline">{r.origen}</button>
-              <span className="shrink-0 text-[11px] text-faint">{r.relacion}</span>
-            </span>
-          ))}
-          {despues.map((r) => (
-            <span key={r.id} className="flex min-w-0 items-baseline gap-1.5">
-              <span aria-hidden className="shrink-0 text-faint">→</span>
-              <button type="button" onClick={() => alAbrirActividad(r.destino_id)}
-                className="truncate text-left text-ink-soft hover:text-ink hover:underline">{r.destino}</button>
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* EL PROBLEMA NO SE ESCONDE: visible en cualquier solapa. */}
-      {nodo.impedimentos_abiertos > 0 && (
-        <Link href={`/obras/${obraId}?vista=operacion&sub=impedimentos`}
-          className="mt-2 flex items-start gap-2 rounded-[8px] border border-neg/25 bg-neg-soft px-3 py-2.5 hover:opacity-90"
-          data-testid="panel-impedimento">
-          <IconoProblema className="mt-[2px] h-[14px] w-[14px] shrink-0 text-neg" />
-          <span className="min-w-0">
-            <span className="block text-[12.5px] font-medium text-neg">
-              {nodo.impedimentos_abiertos} impedimento(s) abiertos
-            </span>
-            <span className="block text-[11px] text-muted">La actividad está frenada · ver en Operación</span>
-          </span>
-          <span aria-hidden className="ml-auto shrink-0 self-center text-[12px] text-faint">›</span>
-        </Link>
-      )}
-
-      {/* ═══ LAS SEIS SOLAPAS, EN UNA SOLA FILA (24/08 · auditoría a 1280 y 1470) ═══
-          En 412px las seis no entran y «Documentos» caía sola a una segunda línea: una solapa
-          huérfana debajo de las otras cinco no se lee como la sexta hermana, se lee como otra cosa.
-          `SubTabs` es `flex-wrap` a propósito —en un ancho normal envolver es lo correcto— así que
-          el que sabe que acá el ancho es fijo es ESTE contenedor, no el componente: le cancela el
-          wrap y deja la fila deslizable. La barra de scroll se oculta porque el gesto es el táctil o
-          el del trackpad, y una barra de 15px sobre una fila de 24px se come la solapa activa.
-          Se descartó recortar a las cuatro del mockup: `SOLAPAS` gobierna también el `?sol=` de la
-          URL, y sacar dos rompería links compartidos por una razón de ancho. */}
-      <div className="overflow-x-auto py-2.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>div]:flex-nowrap [&>div>*]:shrink-0">
-        <SubTabs
-          testid="solapas-tarea"
-          items={SOLAPAS.map(([id, label]) => ({
-            onClick: () => alCambiarSolapa(id), label, activo: solapa === id, testid: `sol-${id}`,
-          }))}
-        />
-      </div>
-
-      {solapa === 'resumen' && (
-        <section data-testid="panel-general">
-          {/* ═══ PLAN | REAL, enfrentados. El plan se corrige en la celda — donde se lee. ═══ */}
-          <div className="grid grid-cols-2 gap-2">
-            <div className="rounded-[8px] border border-line bg-[#FAFAF8] px-2.5 py-2">
-              <div className="mb-1 text-[10px] uppercase tracking-[0.05em] text-faint">Plan</div>
-              <Celda k="Unidad" v={
-                <InlineEdit valor={nodo.unidad} tipo="texto" ancho="w-16" falta="sin unidad"
-                  etiqueta={`Unidad de ${nodo.nombre}`} testid="editar-unidad" guardar={editar('unidad')} />
-              } />
-              <Celda k="Cantidad" v={
-                <InlineEdit valor={nodo.cantidad_objetivo} tipo="numero" alineado="right" ancho="w-20"
-                  etiqueta={`Cantidad objetivo de ${nodo.nombre}`} testid="editar-cantidad"
-                  guardar={editar('cantidad_objetivo')} />
-              } />
-              <Celda k="Inicio" v={
-                <InlineEdit valor={nodo.inicio_plan ?? null} tipo="fecha" ancho="w-28" falta="sin plan"
-                  etiqueta={`Inicio de plan de ${nodo.nombre}`} testid="editar-inicio"
-                  guardar={editar('inicio_plan')} />
-              } />
-              <Celda k="Fin" v={
-                <InlineEdit valor={nodo.fin_plan} tipo="fecha" ancho="w-28" falta="sin plan"
-                  etiqueta={`Fin de plan de ${nodo.nombre}`} testid="editar-fin"
-                  guardar={editar('fin_plan')} />
-              } />
-              <Celda k="HH" v={
-                <InlineEdit valor={nodo.hh_plan} tipo="numero" alineado="right" ancho="w-20"
-                  etiqueta={`HH plan de ${nodo.nombre}`} testid="editar-hh" guardar={editar('hh_plan')} />
-              } />
-            </div>
-            <div className="rounded-[8px] border border-[#DCE9E0] bg-[#F5FAF7] px-2.5 py-2" data-testid="panel-real">
-              <div className="mb-1 text-[10px] uppercase tracking-[0.05em] text-pos">Real</div>
-              <Celda k="Ejecutado" v={nodo.cantidad_ejecutada != null
-                ? `${nodo.cantidad_ejecutada.toLocaleString('es-AR', { maximumFractionDigits: 2 })}${nodo.unidad ? ` ${nodo.unidad}` : ''}`
-                : null} falta="sin registro" />
-              <Celda k="Avance" v={porcentaje(nodo.avance_pct)} falta="sin avance" />
-              <Celda k="HH reales" v={fmtHH(nodo.hh_real)} falta="sin registro" />
-              <Celda k="Última carga" v={ultima ? fecha(ultima) : null} falta="sin cargas" />
-              <Celda k="Método" v={METODO_LABEL[nodo.metodo_avance]} />
-            </div>
-          </div>
-          {/* La barra sólo si el número ES una fracción. */}
-          {nodo.avance_pct != null && (
-            <span className="mt-2 block h-1 w-full overflow-hidden rounded-full bg-surface-sunken">
-              <span className="block h-full bg-accent" style={{ width: `${Math.min(100, Math.max(0, nodo.avance_pct))}%` }} />
-            </span>
-          )}
-
-          <div className="mt-3">
-            <Dato clave="Cuadrilla" icono={<IconoCuadrilla className="h-[13px] w-[13px]" />} valor={
-              <InlineEdit
-                valor={nodo.cuadrilla_id} tipo="seleccion" ancho="w-40" falta="sin asignar"
-                opciones={[{ valor: '', etiqueta: 'sin asignar' },
-                  ...cuadrillas.map((c) => ({ valor: c.id, etiqueta: c.nombre }))]}
-                etiqueta={`Cuadrilla de ${nodo.nombre}`} testid="editar-cuadrilla"
-                guardar={editar('cuadrilla_id')}
-              />
-            } />
-            <Dato clave="Responsable" icono={<IconoPersona className="h-[13px] w-[13px]" />}
-              valor={nodo.responsable} falta="sin asignar" />
-            {/* ═══ QUIÉNES SON, NO CUÁNTOS (canónico 04: «5 personas · Cuadrilla 2») ═══
-                El conteo sale de la LISTA de integrantes vigentes, nunca de la dotación simulada
-                de abajo: esa es una hipótesis del que planifica, y ésta es la gente que la
-                cuadrilla tiene hoy. Mostrarlas con el mismo número las volvería la misma cosa. */}
-            {cuadrilla && (
-              <div className="flex items-center justify-between gap-3 border-b border-[#EFEEEA] py-1.5"
-                data-testid="panel-cuadrilla-gente">
-                <span className="flex shrink-0 items-center gap-2 text-[11.5px] text-faint">
-                  <IconoCuadrilla className="h-[13px] w-[13px]" />Gente
-                </span>
-                <span className="flex min-w-0 items-center justify-end gap-1.5">
-                  {cuadrilla.integrantes.slice(0, 3).map((nombre) => (
-                    <span key={nombre} title={nombre} data-testid="avatar-integrante"
-                      className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-surface-sunken text-[9.5px] font-semibold text-ink-soft">
-                      {iniciales(nombre)}
-                    </span>
-                  ))}
-                  {cuadrilla.integrantes.length > 3 && (
-                    <span className="shrink-0 text-[11px] text-faint">+{cuadrilla.integrantes.length - 3}</span>
-                  )}
-                  <span className="truncate text-[12.5px] text-ink-soft">
-                    {/* CERO INTEGRANTES NO SE ESCRIBE COMO «0 personas»: la cuadrilla existe, lo
-                        que falta es su gente cargada, y son dos arreglos distintos. */}
-                    {cuadrilla.integrantes.length > 0
-                      ? `${cuadrilla.integrantes.length} personas · ${cuadrilla.nombre}`
-                      : `${cuadrilla.nombre} · sin integrantes cargados`}
-                  </span>
-                </span>
-              </div>
-            )}
-            <Dato clave="Equipos" falta="sin equipos cargados"
-              valor={equipos.length === 0 ? null : (
-                <span data-testid="panel-equipos">
-                  {/* HORAS SIN ANOTAR NO SON CERO: se dice en cuántas jornadas apareció la máquina,
-                      que es lo único que el parte llegó a registrar. */}
-                  {equipos.slice(0, 3).map((e) => `${e.equipo} · ${
-                    e.horas == null ? `${e.jornadas} jorn.` : `${e.horas.toLocaleString('es-AR', { maximumFractionDigits: 1 })} h`}`).join(' · ')}
-                  {equipos.length > 3 && ` +${equipos.length - 3}`}
-                </span>
-              )} />
-            <FilaPlegable clave="Dotación" testid="fila-dotacion"
-              icono={<IconoHH className="h-[13px] w-[13px]" />}
-              alerta={nodo.tope_frente != null && dotacion >= nodo.tope_frente}
-              resumen={nodo.tope_frente != null
-                ? `${dotacion} de ${nodo.tope_frente}${dotacion >= nodo.tope_frente ? ' · tope del frente' : ''}`
-                : `${dotacion} pers.`}>
-              <PanelTareaRecursos nodo={nodo} contexto={contexto} dotacion={dotacion}
-                alCambiarDotacion={alCambiarDotacion} />
-              <p className="mt-2 text-[11px] text-muted">
-                Esto simula: el plan se escribe desde{' '}
-                <Link href={`/obras/${obraId}/dotacion`} className="font-medium text-ink hover:underline">
-                  Dotación y proyección</Link>, sobre el frente completo.
-              </p>
-            </FilaPlegable>
-            {nodo.es_subcontrato && (
-              <FilaPlegable clave="Subcontrato" resumen={nodo.subcontratista ?? 'paquete'} testid="fila-subcontrato">
-                <p className="text-[12px] text-muted">El avance de un paquete lo firma el jefe de obra.</p>
-                <Link href={`/obras/${obraId}/subcontratos`} data-testid="ver-paquete"
-                  className="mt-1.5 inline-block text-[12.5px] font-medium text-ink hover:underline">Ver paquete →</Link>
-              </FilaPlegable>
-            )}
-          </div>
-
-          {/* EJECUCIÓN RECIENTE (design 03): las últimas tres cargas se ven sin cambiar de solapa —
-              lo primero que se pregunta al abrir una actividad es cuándo se tocó por última vez. */}
-          {historial.length > 0 && (
-            <section className="mt-3 border-t border-line pt-3" data-testid="ejecucion-reciente">
-              <Titulo>Ejecución reciente</Titulo>
-              {/* MINI-TABLA, no una lista suelta: sin encabezado el número del medio se lee como
-                  porcentaje siempre, y en las actividades medidas por cantidad no lo es. NO HAY
-                  COLUMNA DE HH: `obra_ejecucion` no las publica por registro y ponerla vacía sería
-                  prometer un dato que la base no tiene. */}
-              <div className="flex items-baseline gap-2 pb-1 text-[10px] uppercase tracking-[0.05em] text-faint">
-                <span className="w-[52px] shrink-0">Fecha</span>
-                <span className="flex-1">Cant. / avance</span>
-                <span className="shrink-0">Quién</span>
-              </div>
-              <ul>
-                {historial.slice(0, 3).map((h) => (
-                  <li key={h.id} className="flex items-baseline gap-2 border-b border-[#EFEEEA] py-1 last:border-0">
-                    <span className="w-[52px] shrink-0 font-mono text-[10.5px] tabular-nums text-faint">{fecha(h.fecha)}</span>
-                    <span className="flex-1 font-mono text-[11.5px] tabular-nums text-ink-soft">
-                      {h.avance_pct !== null ? porcentaje(h.avance_pct) : h.cantidad !== null ? String(h.cantidad) : '—'}
-                    </span>
-                    <span className="shrink-0 text-[11px] text-muted">{h.autor ?? 'sin firma'}</span>
-                  </li>
-                ))}
-              </ul>
-              <button type="button" onClick={() => alCambiarSolapa('historial')} data-testid="ver-historial"
-                className="mt-1.5 text-[12px] text-muted hover:text-ink">Ver historial →</button>
-            </section>
-          )}
-
-          {/* LAS NOTAS SE VEN Y SE ESCRIBEN ACÁ MISMO. Es el MISMO bloque del panel del cronograma
-              y la MISMA acción (`agregarNota`): una segunda caja de notas sería un segundo lugar
-              donde buscar lo que alguien dijo de esta actividad. */}
-          {(acciones.agregarNota || notas.length > 0) && (
-            <section className="mt-3 border-t border-line pt-3" data-testid="panel-notas">
-              <Titulo>Notas</Titulo>
-              <BloqueNotas
-                notas={notas}
-                {...(puedeEditar && acciones.agregarNota
-                  ? { agregar: acciones.agregarNota.bind(null, nodo.id) }
-                  : {})}
-              />
-            </section>
-          )}
-
-          {puedeEditar && (
-            <div className="mt-3 border-t border-line pt-3">
-              <DividirEnFrentes
-                nombre={nodo.nombre} cantidad={nodo.cantidad_objetivo} unidad={nodo.unidad}
-                dividir={acciones.dividir.bind(null, nodo.id)}
-                motivo={motivoNoDividir({
-                  esContenedor: nodo.es_contenedor,
-                  tieneHijas: nodo.tiene_hijas,
-                  tipo: nodo.tipo,
-                  cotizacionPartidaId: nodo.cotizacion_partida_id,
-                  nAvances: historial.length,
-                  nPasos: pasos.length,
-                  tipoPadre: null,
-                })}
-              />
-            </div>
-          )}
-        </section>
-      )}
-
-      {solapa === 'avance' && (
-        <section data-testid="panel-avance-solapa">
-          {/* EL MISMO FORMULARIO DE LA PANTALLA 05, embebido. No es una segunda manera de escribir
-              el avance: es la misma server action, con la misma exigencia de criterio cuando el
-              método es manual. Lo que la 05 agrega es espacio para la evidencia y el historial. */}
-          {avanceEmbebido && acciones.registrarAvance && (
-            <div className="mb-4 border-b border-line pb-4" data-testid="panel-form-avance">
-              <FormAvance
-                nodo={nodo}
-                pasos={pasos}
-                cuadrillas={cuadrillas}
-                autor={autor ?? 'sin identificar'}
-                hoy={hoyISO}
-                registrar={acciones.registrarAvance.bind(null, nodo.id)}
-              />
-              <Link href={`/obras/${obraId}/avance/${nodo.id}`} data-testid="panel-avance-pantalla-completa"
-                className="mt-2 inline-block text-[12px] text-muted hover:text-ink">
-                Abrir en pantalla completa (evidencia y registros anteriores) →
-              </Link>
-            </div>
-          )}
-          <Titulo>Pasos ponderados</Titulo>
-          {pasos.length === 0 ? (
-            <p className="text-[12.5px] text-muted">
-              Sin pasos cargados: su avance se mide por{' '}
-              <strong className="text-ink">{METODO_LABEL[nodo.metodo_avance].toLowerCase()}</strong>.
+    <aside data-testid="panel-tarea" style={{
+      background: C.superficie, border: `1px solid ${C.borde}`, borderRadius: '10px',
+      display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100%',
+    }}>
+      <div style={{ padding: '14px 16px 0' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {puedeRegistrar ? (
+            <button type="button" onClick={() => alCambiarSolapa('avance')} data-testid="panel-registrar-avance"
+              style={{ ...ESTILO_PRIMARIA, padding: '7px 13px' }}>
+              <Ico d={P.editar} s={14} />Registrar avance
+            </button>
+          ) : nodo.es_contenedor ? (
+            // LA AGRUPADORA NO TIENE BOTÓN, TIENE UN CAMINO. El mockup 03 no selecciona agrupadoras
+            // y el 04 dibuja una actividad; el cartel de la pantalla vieja llegaba después de un
+            // viaje. Acá el hecho se dice en el lugar y la acción queda a un clic.
+            <p data-testid="panel-agrupadora" style={{
+              margin: 0, fontSize: '11.5px', color: C.tintaSuave, flex: 1, minWidth: 0,
+            }}>
+              El avance se registra en las actividades que agrupa y sube solo.
+              {hijasEjecutables.length > 0 && (
+                <>
+                  {' '}
+                  <button type="button" onClick={() => alAbrirActividad(hijasEjecutables[0].id)}
+                    data-testid="panel-ir-a-hija"
+                    style={{
+                      border: 'none', background: 'none', padding: 0, cursor: 'pointer',
+                      color: C.tinta, fontWeight: 500, textDecoration: 'underline', font: 'inherit',
+                    }}>
+                    Ir a «{oracionDeActividad(hijasEjecutables[0].nombre)}»
+                  </button>
+                </>
+              )}
             </p>
           ) : (
-            <>
-              <ul>
-                {pasos.map((p) => (
-                  <li key={p.id} className="flex items-center gap-2 border-b border-[#EFEEEA] py-1.5 last:border-0">
-                    <span aria-hidden className={`h-3.5 w-3.5 shrink-0 rounded-[3px] border ${p.hecho_en ? 'border-marca bg-marca' : 'border-line-strong'}`} />
-                    <span className="flex-1 text-[12.5px] text-ink-soft">{p.nombre}</span>
-                    {p.tiempo_tecnico && <span className="text-[10.5px] text-warn">tiempo técnico</span>}
-                    <span className="w-[34px] text-right font-mono text-[11.5px] tabular-nums text-muted">{p.peso}</span>
-                  </li>
-                ))}
-              </ul>
-              <p className="mt-2 flex items-baseline justify-between">
-                <span className="text-[11.5px] text-faint">Suma de pesos hechos</span>
-                <span className="font-mono text-[13.5px] font-semibold tabular-nums text-ink">
-                  {porcentaje(avancePasos) ?? 'sin base'}
-                </span>
-              </p>
-            </>
+            <p data-testid="panel-sin-permiso" style={{ margin: 0, fontSize: '11.5px', color: C.tintaSuave, flex: 1 }}>
+              No tenés permiso para registrar avance en esta obra.
+            </p>
           )}
-          <BloqueHH plan={nodo.hh_plan} real={nodo.hh_real} avance={nodo.avance_pct} />
+          {/* DOS ÍCONOS, DOS DESTINOS DISTINTOS, LOS DOS ADENTRO DEL PANEL. El clip abre los papeles
+              de la actividad; la cámara abre el registro de avance, porque la evidencia es de UN
+              registro y no de la actividad entera. */}
+          <BotonIcono titulo="Documentos de la actividad" testid="panel-adjuntar-evidencia"
+            d={P.adjuntar} onClick={() => alCambiarSolapa('documentos')} />
+          {puedeRegistrar && (
+            <BotonIcono titulo="Foto o evidencia" testid="panel-foto-evidencia"
+              d={P.foto} onClick={() => alCambiarSolapa('avance')} />
+          )}
+          <button type="button" onClick={alCerrar} data-testid="cerrar-panel" aria-label="Cerrar el panel"
+            style={{
+              marginLeft: 'auto', display: 'flex', color: C.tenue, cursor: 'pointer',
+              border: 'none', background: 'none', padding: 0, flexShrink: 0,
+            }}>
+            <Ico d={P.cerrar} s={15} />
+          </button>
+        </div>
 
-          {/* La evidencia es del REGISTRO y vive en Drive como enlace: el OS no guarda una segunda
-              copia del papel (decisión escrita de la pantalla 05). Acá se MUESTRA lo cargado. */}
-          <section className="mt-4 border-t border-line pt-3" data-testid="evidencia-actividad">
-            <Titulo>Evidencia cargada</Titulo>
-            {evidencias.length === 0
-              ? <p className="text-[11.5px] text-muted">Ningún registro trae evidencia. Se adjunta al registrar el avance.</p>
-              : (
-                <ul className="flex flex-col gap-0.5">
-                  {evidencias.map((url) => (
-                    <li key={url}>
-                      <a href={url} target="_blank" rel="noreferrer"
-                        className="block truncate text-[11.5px] text-ink-soft hover:underline">{url}</a>
-                    </li>
-                  ))}
-                </ul>
-              )}
-          </section>
-        </section>
-      )}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginTop: '12px' }}>
+          {/* El mismo criterio que la fila del árbol: se LEE en oración, se GUARDA como se cargó. */}
+          <h2 style={{
+            fontSize: '15.5px', fontWeight: 600, color: C.tinta, lineHeight: 1.3, flex: 1,
+            minWidth: 0, margin: 0,
+          }}>{oracionDeActividad(nodo.nombre)}</h2>
+          <span style={{ flexShrink: 0 }} data-testid="panel-estado" data-clave={est.clave}>
+            <Pastilla tono={TONO[est.clave]}>{est.label}</Pastilla>
+          </span>
+        </div>
 
-      {solapa === 'dependencias' && (
-        <PanelTareaDependencias
-          antes={antes} despues={despues}
-          hrefVincular={`/obras/${obraId}?vista=cronograma&sub=gantt&act=${nodo.id}`}
-          puedeEditar={puedeEditar}
-          cambiarRelacion={acciones.cambiarRelacion} quitarRelacion={acciones.quitarRelacion}
-        />
-      )}
+        {/* LA SUB-LÍNEA DEL ZIP: frente · cuadrilla · código. Lo que no está cargado NO deja su
+            ícono huérfano: se omite entero. */}
+        <div data-testid="panel-sublinea" style={{
+          display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11.5px',
+          color: C.tintaSuave, marginTop: '4px', flexWrap: 'wrap',
+        }}>
+          {frente && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Ico d={P.obra} s={12.5} />{frente}
+            </span>
+          )}
+          {frente && nodo.cuadrilla && <span style={{ color: C.bordeFuerte }} aria-hidden>·</span>}
+          {nodo.cuadrilla && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Ico d={P.cuadrilla} s={12.5} />{nodo.cuadrilla}
+            </span>
+          )}
+          {(frente || nodo.cuadrilla) && nodo.partida_codigo && (
+            <span style={{ color: C.bordeFuerte }} aria-hidden>·</span>
+          )}
+          {nodo.partida_codigo && <span style={{ fontFamily: MONO }}>{nodo.partida_codigo}</span>}
+        </div>
 
-      {solapa === 'rendimiento' && (
-        <>
-          {/* ═══ DE DÓNDE SALIÓ EL NÚMERO, DONDE SE DISCUTE EL NÚMERO (24/08 · canónico 04) ═══
-              «Esfuerzo del análisis» y «Partida de origen» vivían en Resumen, entre Cuadrilla y
-              Dotación. El canónico deja ahí las CUATRO filas que contestan «¿cómo va esto hoy?» y
-              estas dos no contestan eso: contestan «¿con qué se cotizó?», que es exactamente la
-              pregunta de Rendimiento. Además empujaban el impedimento —lo único que hay que ver sin
-              buscar— fuera de la primera pantalla del panel. No se pierde nada: se leen a un clic,
-              al lado del rendimiento observado que se compara contra ellas. */}
-          <div className="mb-3 border-b border-line pb-2" data-testid="origen-del-analisis">
-            <Dato clave="Esfuerzo del análisis"
-              valor={contexto.historico?.hsAnalisis != null
-                ? `${contexto.historico.hsAnalisis.toLocaleString('es-AR', { maximumFractionDigits: 2 })} hs${nodo.unidad ? `/${nodo.unidad}` : ''}`
-                : null}
-              falta={nodo.tarea_tipo_id ? 'sin análisis vigente' : 'sin tarea tipo'} />
-            {contexto.partida && (
-              <Dato clave="Partida de origen" valor={
-                <Link href={`/presupuestos/${contexto.partida.cotizacionId}/partida/${contexto.partida.id}`}
-                  data-testid="ver-partida" className="text-ink-soft hover:underline">
-                  {contexto.partida.codigo ?? 'ver partida'} →
-                </Link>
+        {/* LAS SEIS SOLAPAS EN UNA FILA. En 404px no entran las seis: la fila es deslizable y la
+            barra se oculta —15px de barra sobre 24px de fila se comen la solapa activa—. Se
+            descartó recortar a las cuatro del mockup 03: `SOLAPAS` gobierna también el `?sol=` de
+            la URL, y sacar dos rompería links compartidos por una razón de ancho. */}
+        <nav data-testid="solapas-tarea" style={{
+          display: 'flex', alignItems: 'stretch', marginTop: '11px',
+          borderBottom: `1px solid ${C.borde}`, overflowX: 'auto', scrollbarWidth: 'none',
+        }}>
+          {SOLAPAS.map(([id, label]) => (
+            <button key={id} type="button" onClick={() => alCambiarSolapa(id)} data-testid={`sol-${id}`}
+              aria-current={solapa === id ? 'true' : undefined}
+              style={{
+                fontSize: '12px', padding: '7px 8px', whiteSpace: 'nowrap', cursor: 'pointer',
+                border: 'none', background: 'none', font: 'inherit',
+                color: solapa === id ? C.tinta : C.tintaSuave, fontWeight: solapa === id ? 600 : 400,
+                boxShadow: solapa === id ? `inset 0 -2px 0 ${C.marca}` : 'none',
+              }}>{label}</button>
+          ))}
+        </nav>
+      </div>
+
+      <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px 16px' }}>
+        {solapa === 'resumen' && (
+          <section data-testid="panel-general">
+            {/* PLAN | REAL, enfrentados. El plan se corrige en la celda — donde se lee. */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <Cuadro rotulo="PLAN" tono="plan">
+                <Celda k="Unidad" v={<InlineEdit valor={nodo.unidad} tipo="texto" ancho="w-16" falta="sin unidad"
+                  etiqueta={`Unidad de ${nodo.nombre}`} testid="editar-unidad" guardar={editar('unidad')} />} />
+                <Celda k="Cantidad" v={<InlineEdit valor={nodo.cantidad_objetivo} tipo="numero" alineado="right"
+                  ancho="w-20" etiqueta={`Cantidad objetivo de ${nodo.nombre}`} testid="editar-cantidad"
+                  guardar={editar('cantidad_objetivo')} />} />
+                <Celda k="Inicio" v={<InlineEdit valor={nodo.inicio_plan ?? null} tipo="fecha" ancho="w-24"
+                  falta="sin plan" etiqueta={`Inicio de plan de ${nodo.nombre}`} testid="editar-inicio"
+                  guardar={editar('inicio_plan')} />} />
+                <Celda k="Fin" v={<InlineEdit valor={nodo.fin_plan} tipo="fecha" ancho="w-24" falta="sin plan"
+                  etiqueta={`Fin de plan de ${nodo.nombre}`} testid="editar-fin" guardar={editar('fin_plan')} />} />
+                <Celda k="HH" v={<InlineEdit valor={nodo.hh_plan} tipo="numero" alineado="right" ancho="w-20"
+                  etiqueta={`HH plan de ${nodo.nombre}`} testid="editar-hh" guardar={editar('hh_plan')} />} />
+              </Cuadro>
+              <Cuadro rotulo="REAL" tono="real">
+                <Celda k="Ejecutado" falta="sin medir" v={nodo.cantidad_ejecutada != null
+                  ? `${nodo.cantidad_ejecutada.toLocaleString('es-AR', { maximumFractionDigits: 2 })}${nodo.unidad ? ` ${nodo.unidad}` : ''}`
+                  : null} />
+                <Celda k="Avance" v={porcentaje(nodo.avance_pct)} falta="—"
+                  color={nodo.avance_pct != null ? C.pos : undefined} />
+                <Celda k="HH reales" v={nodo.hh_real != null ? Math.round(nodo.hh_real).toLocaleString('es-AR') : null}
+                  falta="sin imputar" />
+                {/* «1,32×» del canónico: el esfuerzo real contra el planificado. Sin los cuatro
+                    insumos NO se dibuja «1,00×» —eso diría «va como el plan» y nadie iría a
+                    mirar—: dice «sin dato». */}
+                <Celda k="Rendimiento" falta="sin dato"
+                  v={factor != null ? `${factor.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}×` : null}
+                  color={factor == null ? undefined : factor > 1.15 ? C.warn : C.pos} />
+                <Celda k="Última carga" v={ultima ? fecha(ultima) : null} falta="sin parte" />
+              </Cuadro>
+            </div>
+            {/* La barra sólo si el número ES una fracción. */}
+            {nodo.avance_pct != null && (
+              <div style={{ height: '5px', background: C.barraCanal, borderRadius: '3px', marginTop: '10px', overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%', width: `${Math.min(100, Math.max(0, nodo.avance_pct))}%`,
+                  background: nodo.avance_pct >= 100 ? C.pos : nodo.es_critica ? C.warn : C.curso,
+                }} />
+              </div>
+            )}
+
+            <div style={{ marginTop: '16px' }}>
+              <FilaRecurso clave="Cuadrilla" icono={<Ico d={P.cuadrilla} s={14} />} valor={
+                <InlineEdit valor={nodo.cuadrilla_id} tipo="seleccion" ancho="w-40" falta="sin asignar"
+                  opciones={[{ valor: '', etiqueta: 'sin asignar' },
+                    ...cuadrillas.map((c) => ({ valor: c.id, etiqueta: c.nombre }))]}
+                  etiqueta={`Cuadrilla de ${nodo.nombre}`} testid="editar-cuadrilla" guardar={editar('cuadrilla_id')} />
               } />
-            )}
-          </div>
-          <PanelTareaRendimiento nodo={nodo} contexto={contexto} vinculacion={vinculacion}
-            vincular={acciones.vincularEstandar.bind(null, nodo.id)} puedeEditar={puedeEditar} />
-        </>
-      )}
-
-      {solapa === 'historial' && (
-        <section data-testid="panel-historial">
-          {historial.length === 0
-            ? <p className="text-[12.5px] text-muted">Todavía no se registró un solo avance en esta actividad.</p>
-            : <ul>{historial.slice(0, 30).map((h) => (
-                <li key={h.id} className="flex items-baseline gap-2 border-b border-[#EFEEEA] py-1.5 last:border-0">
-                  <span className="w-[62px] shrink-0 font-mono text-[10.5px] tabular-nums text-faint">{fecha(h.fecha)}</span>
-                  <span className="flex-1">
-                    <span className="block text-[12px] text-ink-soft">
-                      {h.criterio || h.comentario || (h.metodo ? METODO_LABEL[h.metodo as keyof typeof METODO_LABEL] ?? h.metodo : 'Avance registrado')}
+              <FilaRecurso clave="Responsable" icono={<Ico d={P.persona} s={14} />}
+                valor={nodo.responsable} falta="sin asignar" />
+              {/* QUIÉNES SON, NO CUÁNTOS (canónico 04: «5 personas · Cuadrilla 2»). El conteo sale
+                  de la LISTA de integrantes vigentes, nunca de la dotación simulada de abajo: esa
+                  es una hipótesis del que planifica, y ésta es la gente que hay hoy. */}
+              {cuadrilla && (
+                <FilaRecurso clave="Gente" testid="panel-cuadrilla-gente" icono={<Ico d={P.cuadrilla} s={14} />}
+                  alerta={cuadrilla.integrantes.length === 0} valor={
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      {cuadrilla.integrantes.slice(0, 4).map((n, i) => (
+                        <span key={n} title={n} data-testid="avatar-integrante" style={{
+                          width: '26px', height: '26px', borderRadius: '13px', background: C.bordeTarjeta,
+                          color: C.tintaMedia, border: `2px solid ${C.superficie}`,
+                          marginLeft: i === 0 ? 0 : '-7px', fontSize: '10px', fontWeight: 600,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                        }}>{iniciales(n)}</span>
+                      ))}
+                      {cuadrilla.integrantes.length > 4 && (
+                        <span style={{
+                          width: '26px', height: '26px', borderRadius: '13px', background: C.grafito,
+                          color: C.superficie, border: `2px solid ${C.superficie}`, marginLeft: '-7px',
+                          fontSize: '10px', fontWeight: 600, display: 'flex', alignItems: 'center',
+                          justifyContent: 'center', flexShrink: 0,
+                        }}>+{cuadrilla.integrantes.length - 4}</span>
+                      )}
+                      {/* CERO INTEGRANTES NO SE ESCRIBE COMO «0 personas»: la cuadrilla existe, lo
+                          que falta es su gente cargada, y son dos arreglos distintos. */}
+                      <span style={{ fontSize: '11.5px' }}>
+                        {cuadrilla.integrantes.length > 0
+                          ? `${cuadrilla.integrantes.length} personas · ${cuadrilla.nombre}`
+                          : `${cuadrilla.nombre} · sin integrantes cargados`}
+                      </span>
                     </span>
-                    <span className="block text-[10.5px] text-muted">
-                      {h.autor ?? 'sin firma'} · {h.fuente ?? 'sin origen'} · {h.metodo ?? 'método no declarado'}
-                      {h.masivo && ' · en lote'}
-                    </span>
+                  } />
+              )}
+              <FilaRecurso clave="Equipos" icono={<Ico d={P.equipo} s={14} />} falta="sin asignar"
+                valor={equipos.length === 0 ? null : (
+                  <span data-testid="panel-equipos">
+                    {/* HORAS SIN ANOTAR NO SON CERO: se dice en cuántas jornadas apareció la
+                        máquina, que es lo único que el parte llegó a registrar. */}
+                    {equipos.slice(0, 3).map((e) => `${e.equipo} · ${
+                      e.horas == null ? `${e.jornadas} jorn.` : `${e.horas.toLocaleString('es-AR', { maximumFractionDigits: 1 })} h`}`).join(' · ')}
+                    {equipos.length > 3 && ` +${equipos.length - 3}`}
                   </span>
-                  <span className="shrink-0 font-mono text-[11.5px] tabular-nums text-ink-soft">
-                    {h.avance_pct !== null ? porcentaje(h.avance_pct) : h.cantidad !== null ? String(h.cantidad) : '—'}
-                  </span>
-                </li>))}</ul>}
-        </section>
-      )}
+                )} />
+              <FilaPlegable clave="Dotación" testid="fila-dotacion" icono={<Ico d={P.hh} s={14} />}
+                alerta={nodo.tope_frente != null && dotacion >= nodo.tope_frente}
+                resumen={nodo.tope_frente != null
+                  ? `${dotacion} de ${nodo.tope_frente}${dotacion >= nodo.tope_frente ? ' · tope del frente' : ''}`
+                  : `${dotacion} pers.`}>
+                <PanelTareaRecursos nodo={nodo} contexto={contexto} dotacion={dotacion}
+                  alCambiarDotacion={alCambiarDotacion} />
+                <p style={{ marginTop: '8px', fontSize: '11px', color: C.tintaSuave }}>
+                  Esto simula: el plan se escribe desde{' '}
+                  <Link href={`/obras/${obraId}/dotacion`} style={{ fontWeight: 500, color: C.tinta }}>
+                    Dotación y proyección</Link>, sobre el frente completo.
+                </p>
+              </FilaPlegable>
+              {nodo.es_subcontrato && (
+                <FilaPlegable clave="Subcontrato" resumen={nodo.subcontratista ?? 'paquete'} testid="fila-subcontrato"
+                  icono={<Ico d={P.cuadrilla} s={14} />}>
+                  <p style={{ fontSize: '12px', color: C.tintaSuave, margin: 0 }}>
+                    El avance de un paquete lo firma el jefe de obra.
+                  </p>
+                  <Link href={`/obras/${obraId}/subcontratos`} data-testid="ver-paquete"
+                    style={{ display: 'inline-block', marginTop: '6px', fontSize: '12.5px', fontWeight: 500, color: C.tinta }}>
+                    Ver paquete →</Link>
+                </FilaPlegable>
+              )}
+              <FilaRecurso clave="Método" icono={<Ico d={P.avance} s={14} />}
+                valor={METODO_LABEL[nodo.metodo_avance]} />
+            </div>
 
-      {solapa === 'documentos' && (
-        <section data-testid="panel-documentos">
-          {documentos.length === 0
-            ? (
-              <p className="text-[12.5px] text-muted">
-                Ningún papel colgado de esta actividad. Se cuelgan desde{' '}
-                <Link href={`/obras/${obraId}?vista=documentos`} className="font-medium text-ink hover:underline">
-                  Documentos</Link>.
-              </p>
-            )
-            : (
-              <ul>
-                {documentos.map((d) => (
-                  <li key={d.id} className="border-b border-[#EFEEEA] py-1.5 last:border-0">
-                    <a href={d.url} target="_blank" rel="noreferrer"
-                      className="block truncate text-[12.5px] text-ink-soft hover:underline">{d.nombre}</a>
-                  </li>
-                ))}
-              </ul>
+            {/* EL PROBLEMA NO SE ESCONDE: visible aunque su solapa esté cerrada. */}
+            {nodo.impedimentos_abiertos > 0 && (
+              <Impedimento testid="panel-impedimento"
+                href={`/obras/${obraId}?vista=operacion&sub=impedimentos`}
+                titulo={`${nodo.impedimentos_abiertos} impedimento(s) abiertos`}
+                detalle="La actividad está frenada · ver en Operación" />
             )}
-        </section>
-      )}
+
+            {historial.length > 0 && (
+              <EjecucionReciente historial={historial} hoyISO={hoyISO}
+                alVerHistorial={() => alCambiarSolapa('historial')} />
+            )}
+
+            {/* LAS NOTAS SE VEN Y SE ESCRIBEN ACÁ MISMO, con la MISMA acción del panel del
+                cronograma: una segunda caja de notas sería un segundo lugar donde buscar lo que
+                alguien dijo de esta actividad. */}
+            {(acciones.agregarNota || notas.length > 0) && (
+              <section style={{ marginTop: '16px' }} data-testid="panel-notas">
+                <Titulo>Notas</Titulo>
+                <BloqueNotas notas={notas}
+                  {...(puedeEditar && acciones.agregarNota
+                    ? { agregar: acciones.agregarNota.bind(null, nodo.id) }
+                    : {})} />
+              </section>
+            )}
+
+            {puedeEditar && (
+              <div style={{ marginTop: '16px', borderTop: `1px solid ${C.borde}`, paddingTop: '12px' }}>
+                <DividirEnFrentes
+                  nombre={nodo.nombre} cantidad={nodo.cantidad_objetivo} unidad={nodo.unidad}
+                  dividir={acciones.dividir.bind(null, nodo.id)}
+                  motivo={motivoNoDividir({
+                    esContenedor: nodo.es_contenedor, tieneHijas: nodo.tiene_hijas, tipo: nodo.tipo,
+                    cotizacionPartidaId: nodo.cotizacion_partida_id, nAvances: historial.length,
+                    nPasos: pasos.length, tipoPadre: null,
+                  })}
+                />
+              </div>
+            )}
+          </section>
+        )}
+
+        {solapa === 'avance' && (
+          <SolapaAvance nodo={nodo} pasos={pasos} formulario={
+            puedeRegistrar && acciones.registrarAvance ? (
+              <FormAvanceEmbebido nodo={nodo} pasos={pasos} cuadrillas={cuadrillas}
+                autor={autor ?? 'sin identificar'} hoy={hoyISO}
+                registrar={acciones.registrarAvance.bind(null, nodo.id)} />
+            ) : null
+          } />
+        )}
+
+        {solapa === 'dependencias' && (
+          <PanelTareaDependencias antes={antes} despues={despues}
+            hrefVincular={`/obras/${obraId}?vista=tareas&sub=gantt&act=${nodo.id}`}
+            puedeEditar={puedeEditar}
+            cambiarRelacion={acciones.cambiarRelacion} quitarRelacion={acciones.quitarRelacion} />
+        )}
+
+        {solapa === 'rendimiento' && (
+          <>
+            {/* DE DÓNDE SALIÓ EL NÚMERO, DONDE SE DISCUTE EL NÚMERO (canónico 04). */}
+            <div style={{ marginBottom: '12px', borderBottom: `1px solid ${C.borde}`, paddingBottom: '8px' }}
+              data-testid="origen-del-analisis">
+              <FilaRecurso clave="Esfuerzo" icono={<Ico d={P.base} s={14} />}
+                falta={nodo.tarea_tipo_id ? 'sin análisis vigente' : 'sin tarea tipo'}
+                valor={contexto.historico?.hsAnalisis != null
+                  ? `${contexto.historico.hsAnalisis.toLocaleString('es-AR', { maximumFractionDigits: 2 })} hs${nodo.unidad ? `/${nodo.unidad}` : ''}`
+                  : null} />
+              {contexto.partida && (
+                <FilaRecurso clave="Partida" icono={<Ico d={P.doc} s={14} />} valor={
+                  <Link href={`/presupuestos/${contexto.partida.cotizacionId}/partida/${contexto.partida.id}`}
+                    data-testid="ver-partida" style={{ color: C.tinta }}>
+                    {contexto.partida.codigo ?? 'ver partida'} →
+                  </Link>
+                } />
+              )}
+            </div>
+            <PanelTareaRendimiento nodo={nodo} contexto={contexto} vinculacion={vinculacion}
+              vincular={acciones.vincularEstandar.bind(null, nodo.id)} puedeEditar={puedeEditar} />
+          </>
+        )}
+
+        {solapa === 'historial' && <SolapaHistorial historial={historial} />}
+
+        {solapa === 'documentos' && (
+          <SolapaDocumentos documentos={documentos} alSubir={
+            <Link href={`/obras/${obraId}?vista=documentos`} style={{ ...ESTILO_SECUNDARIA, width: 'fit-content', padding: '7px 10px' }}>
+              <Ico d={P.subir} s={14} />Subir documento
+            </Link>
+          } />
+        )}
+      </div>
     </aside>
   )
 }

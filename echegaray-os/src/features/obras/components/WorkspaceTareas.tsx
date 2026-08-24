@@ -25,7 +25,7 @@ import { agregarNota } from '../services/actionsNotas'
 import { crearRubro } from '../services/actionsRubro'
 import { urlDeDrive } from '../services/driveUrl'
 import { esVistaArbol, type VistaArbol } from '../services/vistaArbol'
-import { aplicarEnLote, editarCampoDeTarea } from '../services/actionsAvance'
+import { editarCampoDeTarea } from '../services/actionsAvance'
 import { cambiarRelacion, dividirEnFrentes, quitarRelacion } from '../services/actionsEstructura'
 import { vincularActividadAEstandar } from '../services/actionsVinculacion'
 
@@ -102,11 +102,9 @@ export async function WorkspaceTareas({
       nodos={arbol}
       filtro={vista}
       cuadrillas={cuadrillas}
-      // `.bind(null, obraId)` Y NO UNA ARROW: una arrow escrita en el servidor es una función
-      // nueva, no la acción, y React la rechaza en tiempo de ejecución dejando la solapa en blanco.
-      // El id de la ACTIVIDAD lo ata el cliente con otro `.bind` — viaja como argumento, igual que
-      // viajaba en la URL, y cada acción vuelve a acotar por `obra_id` del lado del servidor.
-      aplicarEnLote={aplicarEnLote.bind(null, obraId)}
+      // LA SELECCIÓN EN LOTE YA NO VIVE EN LA 03 (24/08 · porte literal): el canónico no dibuja
+      // casillas en esta lista y sí dibuja la pantalla «06 · Avance masivo» entera para eso.
+      // `aplicarEnLote` sigue existiendo y sigue siendo la MISMA acción — la usa la 06.
       malImputados={malImputados}
       panelDeObra={panel}
       relaciones={relacionesRes.data ?? []}

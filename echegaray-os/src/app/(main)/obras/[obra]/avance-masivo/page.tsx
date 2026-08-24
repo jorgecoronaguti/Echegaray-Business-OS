@@ -28,7 +28,7 @@ export default async function AvanceMasivoPage({ params }: { params: Promise<{ o
 
   return (
     <div className="min-h-screen bg-canvas">
-      <div className="w-full px-4 py-6 lg:px-10">
+      <>
         {/* LA CABECERA ES LA DE LA OBRA, no un encabezado propio (24/08 · C-CANON §12). Ya usaba
             `EntityHeader` —el slab grafito se había retirado el 23/08— pero titulaba «Avance
             masivo» y no mostraba ni los campos de identidad ni las solapas: seguía siendo una
@@ -48,7 +48,7 @@ export default async function AvanceMasivoPage({ params }: { params: Promise<{ o
         />
 
         {arbol.error !== null || arbol.data === null ? (
-          <p className="rounded-lg border border-neg/25 bg-neg-soft px-3.5 py-2.5 text-[13px] text-neg">
+          <p className="mx-5 mt-4 rounded-lg border border-neg/25 bg-neg-soft px-3.5 py-2.5 text-[13px] text-neg">
             No pude leer la estructura de la obra: {arbol.error ?? 'la lectura volvió vacía'}
           </p>
         ) : (
@@ -59,7 +59,7 @@ export default async function AvanceMasivoPage({ params }: { params: Promise<{ o
             aplicarEnLote={aplicarEnLote.bind(null, obraId)}
           />
         )}
-      </div>
+      </>
     </div>
   )
 }

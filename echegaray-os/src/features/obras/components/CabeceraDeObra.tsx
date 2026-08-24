@@ -1,43 +1,43 @@
 // LA CABECERA DE LA OBRA — UNA SOLA, PARA TODAS LAS PANTALLAS DE LA OBRA.
 //
-// ═══ QUÉ DEFECTO CIERRA (QA 24/08 · C-CANON §12) ═══
+// ═══ PORTE LITERAL DE LA BANDA QUE DIBUJAN LOS MOCKUPS 02, 03, 05 Y 06 ═══
 //
-// El workspace (`/obras/<obra>`) dibujaba `EntityHeader` + solapas sobre el fondo del OS, y sus
-// cuatro pantallas hijas —Cronograma, Dotación, Subcontratos, Avance masivo— una banda grafito
-// propia con KPI adentro. Eran dos cabeceras distintas para la MISMA entidad: entrar al cronograma
-// parecía entrar a otra aplicación, y desde ahí no había forma de volver a Personal o a Economía
-// sin pasar por el workspace. El contrato (pantallas 03/05/06/07/08/10) muestra en las cuatro la
-// misma cabecera del workspace, con las seis solapas de la obra visibles.
+// Los cuatro repiten EXACTAMENTE el mismo bloque, y de ahí salen estas medidas:
+//
+//   banda        `background:#FFFFFF; borderBottom:1px solid #E7E6E2; padding:9px 20px 0`
+//   migaja       11,5px `#91918B`, el nombre de la obra en `#3A3A38`
+//   título       21px/600, `letterSpacing:-.01em`, con 5px de aire arriba
+//   pastilla     11,5px/500, radio 12, `padding:2px 10px`
+//   meta         12px `#6B6B67`, 16px de gap, separadores «·» en `#D7D5CF`
+//   solapas      13px, `padding:8px 11px`, activa 600 con `boxShadow:inset 0 -2px 0 #FDC900`
+//
+// La versión anterior componía `EntityHeader` + `Tabs` del design system y quedaba parecida, no
+// igual: el título medía 20px, la migaja no existía y la línea de identidad no llevaba íconos.
+//
+// ═══ POR QUÉ LA BANDA ES DE ANCHO COMPLETO Y LA PÁGINA NO LE PONE PADDING ═══
+//
+// En los cuatro mockups la banda blanca llega a los dos bordes de la ventana y el aire de 20px va
+// ADENTRO. Envuelta en el contenedor con padding de la página, quedaba una tarjeta blanca flotando
+// con lienzo a los costados — que es lo que se veía hasta hoy. Por eso las seis pantallas de la
+// obra la sacan de su contenedor: es el único cambio que este porte les hace.
 //
 // ═══ POR QUÉ RECIBE LA OBRA YA LEÍDA ═══
 //
-// No consulta nada. Las cuatro páginas ya leen `obra_panel` para lo suyo; una lectura propia acá
-// sería una quinta consulta por visita para repetir un dato que la página tiene en la mano — y el
+// No consulta nada. Las seis páginas ya leen `obra_panel` para lo suyo; una lectura propia acá
+// sería una séptima consulta por visita para repetir un dato que la página tiene en la mano — y el
 // día que las dos lecturas discrepen, el título diría una cosa y el cuerpo otra.
 //
 // ═══ LO QUE ESTA CABECERA NO HACE ═══
 //
-// NO DIBUJA EL TRACKER DE ETAPAS. Acá iba `<CicloDeVida>`: las cinco etapas en fila con la actual
-// resaltada. Los mockups 02 y 03 —que son LA cabecera de la obra— no lo dibujan, y mirándolo de
-// cerca decía dos veces lo mismo: la etapa vigente ya está escrita en la línea de identidad
-// («Etapa: Estructura»), y lo único que el tracker agregaba era la SECUENCIA de las cinco, que es
-// información de plan y no de identidad. Ocupaba además el ancho entero de la derecha, que es
-// donde el zip pone las acciones. El componente `CicloDeVida.tsx` NO se borró y sigue exportado:
-// retirar un uso es reversible en una línea; borrar el componente, no. Si el dueño lo quiere de
-// vuelta, el lugar que le corresponde es la solapa Resumen o el menú «···», no la cabecera.
-//
-// No dibuja el nivel 3. El contrato marca en la 07 la sub-solapa «Cronograma» como activa, pero en
-// este repositorio «Cronograma» es la sub-vista `?vista=tareas&sub=gantt` —el plan COMO ESTÁ
-// CARGADO— y esta pantalla es otra cosa: el plan COMO LO IMPLICA LA SECUENCIA (ver el bloque largo
-// de `services/vistasObra.ts`). Marcar esa sub-solapa como activa afirmaría que son la misma vista.
-// Mientras esa ambigüedad no la resuelva el dueño, la pantalla se identifica por su nombre en la
-// línea meta —que es honesto y no inventa navegación— y el nivel 3 lo pone cada página cuando su
-// mapeo es inequívoco (Subcontratos).
+// NO DIBUJA EL TRACKER DE ETAPAS. Los mockups 02 y 03 —que son LA cabecera de la obra— no lo
+// dibujan, y decía dos veces lo mismo: la etapa vigente ya está escrita en la línea de identidad.
+// `CicloDeVida.tsx` NO se borró y sigue exportado: retirar un uso es reversible en una línea.
 
 import Link from 'next/link'
 import type { ReactNode } from 'react'
-import { EntityHeader, Tabs } from '@/shared/components/ds'
-import { EstadoChip } from './EstadoChip'
+import { C, MONO } from './canon/tokens'
+import { Ico, P } from './canon/Ico'
+import { Pastilla } from './canon/Piezas'
 import { fechaCorta } from './formato'
 import { ETAPA_LABEL, type Etapa, type ObraPanel } from '../types'
 import { VISTAS_OBRA, type VistaObra } from '../services/vistasObra'
@@ -49,7 +49,7 @@ export type ObraDeCabecera = Pick<
   ObraPanel,
   'nombre' | 'estado' | 'etapa' | 'cliente_slug' | 'cliente_nombre' | 'cliente_texto'
   | 'fecha_inicio_plan' | 'fecha_fin_plan'
->
+> & Partial<Pick<ObraPanel, 'jefe_obra'>>
 
 /**
  * Un número que contesta la pregunta de ESTA pantalla, no de la obra.
@@ -64,45 +64,19 @@ export type KpiPantalla = {
   falta?: string
 }
 
-/** Los campos de identidad de la obra: los MISMOS en las cinco pantallas, calculados una sola vez.
- *  Rotulados desde el 20/08 — «La Estrella · 06/07/26 → 22/08/26» obligaba a adivinar cuál era el
- *  cliente, cuál la etapa y cuál de las dos fechas era el fin. */
-function camposDeIdentidad(obra: ObraDeCabecera) {
-  // El cliente es un LINK cuando existe en el eje canónico. Cuando la obra sólo tiene el nombre
-  // escrito a mano, se muestra el texto y se dice que falta vincularlo: la ficha no se inventa.
-  const deQuien = obra.cliente_slug ? (
-    <Link href={`/clientes/${obra.cliente_slug}`} prefetch={false} className="text-ink hover:underline">
-      {obra.cliente_nombre}
-    </Link>
-  ) : obra.cliente_texto ? (
-    <>{obra.cliente_texto} <span className="text-faint">· sin ficha de cliente vinculada</span></>
-  ) : null
+/** La pastilla del estado de la obra, con los tres colores del mockup 02. */
+function pastillaDeEstado(estado: string): { t: string; tono: 'pos' | 'curso' | 'neutro' } {
+  if (estado === 'cerrada') return { t: 'Terminada', tono: 'pos' }
+  if (estado === 'activa') return { t: 'En ejecución', tono: 'curso' }
+  if (estado === 'pausada') return { t: 'Pausada', tono: 'neutro' }
+  // UN ESTADO QUE ESTA PANTALLA NO CONOCE SE MUESTRA COMO VINO: un default de «en ejecución»
+  // afirmaría que la obra está trabajando sin que nadie lo haya dicho.
+  return { t: estado, tono: 'neutro' }
+}
 
-  // EL PLAZO ES UN SOLO CAMPO, NO DOS (mockup 02/03: «03/08 → 05/09»). «Inicio: 03/08 · Fin plan:
-  // 05/09» son dos islas que el ojo tiene que volver a juntar para leer un plazo, que es lo único
-  // que significan. Cuando falta UNA de las dos NO se dibuja media flecha: se nombra cuál falta,
-  // porque «empieza el 03/08 y no sé cuándo termina» es un hecho distinto de «no tiene plan».
-  //
-  // `fechaCorta` (dd/mm) y no `fecha` (dd/mm/aa) porque es lo que mide el zip. Se pierde el año:
-  // aceptable en la cabecera de UNA obra abierta —el año lo da el contexto y está en Economía y en
-  // el cronograma—, y sería inaceptable en una tabla de cartera, que compara obras de años
-  // distintos. Por eso el cambio vive acá y no en el formateador.
-  const desde = obra.fecha_inicio_plan ? fechaCorta(obra.fecha_inicio_plan) : null
-  const hasta = obra.fecha_fin_plan ? fechaCorta(obra.fecha_fin_plan) : null
-  const plazo = desde && hasta ? <span className="tabular-nums">{desde} → {hasta}</span> : null
-  const faltaPlazo = desde ? 'sin fecha de fin' : hasta ? 'sin fecha de inicio' : 'sin fechas de plan'
-
-  return [
-    // El cliente va SIN rótulo, como en el zip: nadie necesita que le digan que «Orica» es el
-    // cliente de la obra. La etapa sí lo lleva, porque «Estructura» sola no dice de qué es.
-    ...(deQuien ? [{ rotulo: '', valor: deQuien }] : []),
-    {
-      rotulo: 'Etapa',
-      valor: obra.etapa ? (ETAPA_LABEL[obra.etapa as Etapa] ?? obra.etapa) : null,
-      falta: 'sin declarar',
-    },
-    { rotulo: '', valor: plazo, falta: faltaPlazo },
-  ]
+/** El separador «·» tenue que el zip pone entre los campos de la línea meta. */
+function Punto() {
+  return <span style={{ color: C.bordeFuerte }} aria-hidden>·</span>
 }
 
 export function CabeceraDeObra({
@@ -112,12 +86,8 @@ export function CabeceraDeObra({
   obraId: string
   obra: ObraDeCabecera
   /**
-   * A dónde vuelve. Por defecto al portafolio, que es la migaja del contrato («Obras / <obra>»):
-   * las seis solapas ya llevan a cualquier parte de la obra, así que la flecha sube un nivel.
-   *
-   * Se puede cambiar, y hay un caso donde hay que hacerlo: la pantalla de registrar avance se abre
-   * DESDE una actividad concreta y su vuelta es a esa actividad. Mandarla al portafolio la
-   * obligaría a buscar de nuevo la fila que acababa de tocar.
+   * A dónde vuelve la migaja. Por defecto a la cartera, que es lo que dice el zip («Obras /
+   * Escuela San Juan»): las seis solapas ya llevan a cualquier parte de la obra.
    */
   volverA?: string
   volverLabel?: ReactNode
@@ -125,76 +95,131 @@ export function CabeceraDeObra({
    *  URL no sea la del workspace: Cronograma y Subcontratos SON Trabajo, Dotación ES Personal. */
   vistaActiva?: VistaObra
   /** Cómo se llama esta pantalla dentro de la obra. En el workspace no va: la solapa activa ya lo
-   *  dice. En las hijas es lo único que las distingue entre sí, porque comparten solapa activa. */
+   *  dice. En las hijas es lo único que las distingue entre sí, porque comparten solapa activa.
+   *  El zip lo pone en la línea meta (06: «Cierre de la jornada · Sáb 23/08»). */
   pantalla?: ReactNode
   kpis?: KpiPantalla[]
-  /** Lo que se puede hacer desde acá (acciones rápidas, archivar, sellar). Lo pone cada página:
-   *  no son de la obra, son de la pantalla. */
+  /** Lo que se puede hacer desde acá. Lo pone cada página: no son de la obra, son de la pantalla. */
   acciones?: ReactNode
 }) {
   const archivada = obra.estado === 'cerrada'
-  const hayMeta = pantalla != null || kpis.length > 0
+  const est = pastillaDeEstado(obra.estado)
+  // EL CLIENTE ES UN LINK cuando existe en el eje canónico. Cuando la obra sólo tiene el nombre
+  // escrito a mano, se muestra el texto y se dice que falta vincularlo: la ficha no se inventa.
+  const cliente = obra.cliente_slug && obra.cliente_nombre ? (
+    <Link href={`/clientes/${obra.cliente_slug}`} prefetch={false} style={{ color: C.tintaSuave }}>
+      {obra.cliente_nombre}
+    </Link>
+  ) : (obra.cliente_nombre ?? obra.cliente_texto ?? null)
+  // EL PLAZO ES UN SOLO CAMPO, NO DOS (zip: «03/08 → 05/09»). Cuando falta UNA de las dos NO se
+  // dibuja media flecha: se nombra cuál falta, porque «empieza el 03/08 y no sé cuándo termina» es
+  // un hecho distinto de «no tiene plan».
+  const desde = obra.fecha_inicio_plan ? fechaCorta(obra.fecha_inicio_plan) : null
+  const hasta = obra.fecha_fin_plan ? fechaCorta(obra.fecha_fin_plan) : null
+  const plazo = desde && hasta ? `${desde} → ${hasta}` : null
+  const faltaPlazo = desde ? 'sin fecha de fin' : hasta ? 'sin fecha de inicio' : 'sin fechas de plan'
 
   return (
-    <>
-      <EntityHeader
-        volverA={volverA}
-        volverLabel={volverLabel}
-        titulo={obra.nombre}
-        campos={camposDeIdentidad(obra)}
-        // EL ESTADO, PEGADO AL TÍTULO Y EN PASTILLA (mockup 02/03: «Escuela San Juan  [En
-        // ejecución]»). Es el mismo `EstadoChip` que pintan la cartera y las tablas de actividades:
-        // una obra no puede verse «En ejecución» en la lista y de otro color en su propia ficha.
-        derecha={
-          <div className="flex flex-wrap items-center gap-2" data-testid="cabecera-obra">
-            <EstadoChip estado={obra.estado} />
-            {/* ARCHIVADA SE DICE EN EL ENCABEZADO: es la única señal de que esta ficha se abrió por
-                su URL y no desde el portafolio —porque del portafolio ya no cuelga—, y sin ella
-                alguien podría cargar HH o avance sobre una obra archivada sin enterarse. */}
-            {archivada && (
-              <span className="rounded border border-line px-1.5 py-[1px] text-[11px] text-faint" data-testid="obra-archivada">
-                archivada
-              </span>
-            )}
-          </div>
-        }
-        acciones={acciones}
-      />
+    <div style={{
+      background: C.superficie, borderBottom: `1px solid ${C.borde}`, padding: '9px 20px 0',
+      flexShrink: 0,
+    }} data-testid="cabecera-obra-banda">
+      <div style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '11.5px', color: C.tenue }}>
+        <Link href={volverA} prefetch={false} style={{ color: C.tenue }}>{volverLabel}</Link>
+        <span aria-hidden>/</span>
+        <span style={{ color: C.tintaMedia }}>{obra.nombre}</span>
+      </div>
 
-      {/* LA LÍNEA META — el renglón que el contrato pone entre el título y las solapas (07, 08, 06):
-          de qué pantalla se trata y los dos o tres números que contesta.
-          EL KPI PROYECTADO NO VA EN AMARILLO acá: sobre el fondo claro del OS el amarillo de marca
-          no llega al contraste mínimo de texto. El rótulo ya dice «Fin proyectado» — lo que en la
-          banda grafito hacía el color, acá lo hace la palabra, que además se lee en blanco y negro. */}
-      {hayMeta && (
-        <div
-          className="-mt-1 mb-3 flex flex-wrap items-baseline gap-x-5 gap-y-1 text-[12px]"
-          data-testid="kpis-obra"
-        >
-          {pantalla != null && <span className="font-medium text-ink">{pantalla}</span>}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '5px', flexWrap: 'wrap' }}>
+        <h1 style={{
+          fontSize: '21px', fontWeight: 600, color: C.tinta, letterSpacing: '-.01em', margin: 0,
+          lineHeight: 1.25,
+        }}>{obra.nombre}</h1>
+        <span data-testid="cabecera-obra"><Pastilla tono={est.tono} radio={12} tam={11.5}>{est.t}</Pastilla></span>
+        {/* ARCHIVADA SE DICE EN EL ENCABEZADO: es la única señal de que esta ficha se abrió por su
+            URL y no desde la cartera, y sin ella alguien podría cargar HH o avance sobre una obra
+            archivada sin enterarse. */}
+        {archivada && (
+          <span data-testid="obra-archivada" style={{
+            border: `1px solid ${C.borde}`, borderRadius: '4px', padding: '1px 6px',
+            fontSize: '11px', color: C.tenue,
+          }}>archivada</span>
+        )}
+        {acciones != null && (
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}>{acciones}</div>
+        )}
+      </div>
+
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '16px', fontSize: '12px', color: C.tintaSuave,
+        marginTop: '3px', flexWrap: 'wrap',
+      }} data-testid="cabecera-obra-meta">
+        {cliente != null && (
+          <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <Ico d={P.cliente} s={13} />{cliente}
+            {!obra.cliente_slug && obra.cliente_texto && (
+              <span style={{ color: C.tenue }}>· sin ficha de cliente vinculada</span>
+            )}
+          </span>
+        )}
+        {cliente != null && <Punto />}
+        <span>Etapa: {obra.etapa
+          ? (ETAPA_LABEL[obra.etapa as Etapa] ?? obra.etapa)
+          : <span style={{ color: C.tenue, fontStyle: 'italic' }} data-nulo="">sin declarar</span>}</span>
+        <Punto />
+        <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+          <Ico d={P.fecha} s={13} />
+          {plazo
+            ? <span style={{ fontFamily: MONO }}>{plazo}</span>
+            : <span style={{ color: C.tenue, fontStyle: 'italic' }} data-nulo="">{faltaPlazo}</span>}
+        </span>
+        {obra.jefe_obra && (
+          <>
+            <Punto />
+            <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <Ico d={P.persona} s={13} />{obra.jefe_obra}
+            </span>
+          </>
+        )}
+      </div>
+
+      {/* LA LÍNEA DE PANTALLA — el renglón que el zip pone en las hijas (06: «Cierre de la jornada
+          · Sáb 23/08»). El KPI proyectado NO va en amarillo: sobre el fondo claro el amarillo de
+          marca no llega al contraste mínimo de texto, y el rótulo ya dice «Fin proyectado». */}
+      {(pantalla != null || kpis.length > 0) && (
+        <div style={{
+          display: 'flex', alignItems: 'baseline', gap: '16px', fontSize: '12px',
+          marginTop: '3px', flexWrap: 'wrap',
+        }} data-testid="kpis-obra">
+          {pantalla != null && <span style={{ fontWeight: 500, color: C.tinta }}>{pantalla}</span>}
           {kpis.map((k) => (
-            <span key={k.rotulo} className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
-              <span className="text-faint">{k.rotulo}:</span>
+            <span key={k.rotulo} style={{ display: 'inline-flex', alignItems: 'baseline', gap: '6px', whiteSpace: 'nowrap' }}>
+              <span style={{ color: C.tenue }}>{k.rotulo}:</span>
               {k.valor == null || k.valor === ''
-                ? <span className="text-faint italic">{k.falta ?? 'sin dato'}</span>
-                : <span className="tabular-nums text-ink-soft">{k.valor}</span>}
+                ? <span style={{ color: C.tenue, fontStyle: 'italic' }} data-nulo="">{k.falta ?? 'sin dato'}</span>
+                : <span style={{ fontFamily: MONO, color: C.tintaMedia }}>{k.valor}</span>}
             </span>
           ))}
         </div>
       )}
 
-      {/* Nivel 2: las SEIS solapas de la obra, iguales en las cinco pantallas. Los `href` vuelven al
-          workspace y `Tabs` ya los emite con `prefetch={false}` — seis rutas `force-dynamic`
-          prefetcheadas por página vista son seis renders de servidor que nadie pidió. */}
-      <Tabs
-        testid="tabs-obra"
-        tabs={VISTAS_OBRA.map((v) => ({
-          href: `/obras/${obraId}?vista=${v.id}`,
-          label: v.label,
-          activo: vistaActiva === v.id,
-          testid: `tab-${v.id}`,
-        }))}
-      />
-    </>
+      {/* NIVEL 2: las SEIS solapas, iguales en las seis pantallas. `prefetch={false}` porque seis
+          rutas `force-dynamic` precargadas por página vista son seis renders que nadie pidió. */}
+      <nav style={{ display: 'flex', alignItems: 'stretch', marginTop: '8px', overflowX: 'auto' }}
+        data-testid="tabs-obra">
+        {VISTAS_OBRA.map((v) => {
+          const activo = vistaActiva === v.id
+          return (
+            <Link key={v.id} href={`/obras/${obraId}?vista=${v.id}`} prefetch={false}
+              data-testid={`tab-${v.id}`} aria-current={activo ? 'page' : undefined}
+              style={{
+                fontSize: '13px', padding: '8px 11px', whiteSpace: 'nowrap',
+                color: activo ? C.tinta : C.tintaSuave, fontWeight: activo ? 600 : 400,
+                boxShadow: activo ? `inset 0 -2px 0 ${C.marca}` : 'none',
+              }}>{v.label}</Link>
+          )
+        })}
+      </nav>
+    </div>
   )
 }

@@ -189,6 +189,27 @@ export function cadenaDeRendimiento(i: InsumosRendimiento): Eslabon[] {
   ]
 }
 
+/**
+ * EL FACTOR OBSERVADO — «1,32×» del canónico 04, el número que el panel muestra en el cuadro REAL.
+ *
+ * Es el esfuerzo REAL (HH imputadas ÷ cantidad ejecutada) dividido por el PLANIFICADO (HH plan ÷
+ * cantidad objetivo). Mayor a 1 = la obra está gastando más horas por unidad de las que se
+ * planificaron; menor a 1 = está rindiendo mejor.
+ *
+ * `null` cuando falta cualquiera de los cuatro insumos, y ese `null` NO se dibuja como 1,00×: «no
+ * lo sé» y «va exactamente como el plan» son dos hechos distintos, y el segundo es el que hace que
+ * nadie vaya a mirar. Con cantidad ejecutada en 0 tampoco hay factor: dividir por cero no es
+ * infinito rendimiento, es que todavía no se produjo nada que medir.
+ */
+export function factorDeEsfuerzo(i: Pick<
+  InsumosRendimiento, 'hhReal' | 'cantidadEjecutada' | 'hhPlan' | 'cantidadObjetivo'
+>): number | null {
+  const real = rendimiento(i.hhReal, i.cantidadEjecutada)
+  const plan = rendimiento(i.hhPlan, i.cantidadObjetivo)
+  if (real == null || plan == null || plan === 0) return null
+  return real / plan
+}
+
 function historicoClave(h: InsumosRendimiento['historico']): string {
   if (!h || h.obras === 0) return 'Histórico'
   return `Histórico · ${h.obras} ${h.obras === 1 ? 'obra' : 'obras'} · ${h.muestra} ${h.muestra === 1 ? 'registro' : 'registros'}`

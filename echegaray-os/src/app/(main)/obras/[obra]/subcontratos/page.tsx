@@ -76,7 +76,9 @@ export default async function SubcontratosObraPage({
     // LA MISMA CABECERA QUE EL WORKSPACE (24/08 · C-CANON §12). La banda grafito propia hacía de
     // esta pantalla otra aplicación, y desde acá no se podía saltar a otra solapa de la obra.
     <main className="min-h-screen bg-canvas pb-10">
-      <div className="w-full px-4 pt-6 lg:px-10">
+      {/* LA BANDA VA DE BORDE A BORDE (mockups 02/03/05/06): el aire de 20px es
+          suyo, adentro. Envuelta en el padding de la página quedaba flotando. */}
+      <>
         <CabeceraDeObra
           obraId={obraId}
           obra={obra}
@@ -94,7 +96,7 @@ export default async function SubcontratosObraPage({
             },
           ]}
         />
-      </div>
+      </>
 
       <div className="flex flex-col gap-4 px-4 pt-4 lg:px-10">
         {/* Nivel 3: las dos maneras de mirar el MISMO alcance de la obra — lo que hace el plantel

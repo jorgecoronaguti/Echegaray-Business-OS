@@ -86,7 +86,19 @@ test('la cabecera no navega con prefetch: son seis rutas force-dynamic', () => {
   for (const link of links) {
     assert.match(link, /prefetch=\{false\}/, `un <Link> de la cabecera de obra prefetchea: ${link}`)
   }
-  assert.match(fuente, /<Tabs\b/, 'la cabecera dejó de dibujar las solapas de la obra')
+  // ═══ LAS SOLAPAS DEJARON DE SER `<Tabs>` (24/08/2026 · porte literal del zip) ═══
+  //
+  // Esta línea exigía `<Tabs\b` — el componente del design system. Los mockups 02, 03, 05 y 06
+  // dibujan la barra con SUS valores (13px, `padding:8px 11px`, activa 600 con
+  // `boxShadow:inset 0 -2px 0 #FDC900`) y `Tabs` produce otros; el dueño rechazó cuatro entregas
+  // por exactamente esa clase de diferencia. Gana el mockup, así que la regla pasa a medir lo que
+  // de verdad importaba: que las seis solapas se dibujen ACÁ y salgan de `VISTAS_OBRA`, no que las
+  // dibuje un componente en particular.
+  assert.match(fuente, /VISTAS_OBRA\.map\(/, 'la cabecera dejó de dibujar las solapas de la obra')
+  assert.match(
+    fuente, /inset 0 -2px 0/,
+    'la solapa activa perdió el subrayado de 2px del canónico (mockup 02: `inset 0 -2px 0 #FDC900`)',
+  )
 })
 
 test('la cabecera no inventa: un KPI sin dato dice su palabra, nunca 0', () => {

@@ -157,7 +157,9 @@ export default async function CronogramaObraPage(
     // saltar a Personal o a Economía sin volver primero al workspace. El marco es el del OS —16px
     // en el teléfono, 40px en escritorio— igual que el workspace, no el `px-4 lg:px-8` de antes.
     <main className="min-h-screen bg-canvas pb-10">
-      <div className="w-full px-4 pt-6 lg:px-10">
+      {/* LA BANDA VA DE BORDE A BORDE (mockups 02/03/05/06): el aire de 20px es
+          suyo, adentro. Envuelta en el padding de la página quedaba flotando. */}
+      <>
         <CabeceraDeObra
           obraId={obraId}
           obra={obra}
@@ -180,7 +182,7 @@ export default async function CronogramaObraPage(
             { rotulo: 'Sin plan', valor: `${crono.sinPlan.length} act.` },
           ]}
         />
-      </div>
+      </>
 
       <div className="flex flex-col gap-3 px-4 pt-4 lg:px-10">
         <Barra
