@@ -1,7 +1,7 @@
 'use client'
 
 import { useActionState, useRef, useState } from 'react'
-import { C, R, pct } from '@/shared/components/movil/tokens'
+import { C, HOVER_SUAVE, R, pct } from '@/shared/components/movil/tokens'
 import { Icono } from '@/shared/components/movil/Iconos'
 import {
   AvisoError, FranjaFiltros, TopBarDetalle, Vacio, mono,
@@ -102,7 +102,7 @@ export function FormularioMasivo({
               // «Todas» marca LO QUE SE VE, no lo que existe: con la vista filtrada, guardar tareas
               // fuera de pantalla es exactamente la escritura que nadie pidió.
               : Object.fromEntries(aplicables.map((f) => [f.actividad_id, opcionesMasivas(f.avance_pct)[0]])))}
-            className="hover:bg-[#F2F1ED]"
+            className={HOVER_SUAVE}
             style={{
               width: 44, height: 44, borderRadius: 22, display: 'flex', alignItems: 'center',
               justifyContent: 'center', color: C.muted, flexShrink: 0, border: 'none',

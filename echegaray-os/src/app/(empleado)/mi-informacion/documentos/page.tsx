@@ -5,11 +5,11 @@ import { getUsuarioActual } from '@/features/auth/services/authService'
 import { getPerfilPropio } from '@/features/mi-cuenta/services/miCuentaService'
 import { categoriaDe } from '@/features/mi-cuenta/services/documentos'
 import { SinVinculo } from '@/features/mi-cuenta/components/SinVinculo'
-import { Aviso } from '@/shared/components/ds'
 import { PantallaEmpleado } from '@/features/empleado/components/ShellEmpleado'
-import { Nada } from '@/features/empleado/components/Filas'
-import { Chips } from '@/features/empleado/components/Bloques'
 import { BotonPie, FilaGrupo, Grupo, PieFijo } from '@/features/empleado/components/Piezas'
+import { C } from '@/shared/components/movil/tokens'
+import { Icono } from '@/shared/components/movil/Iconos'
+import { AvisoError, Pastilla, Vacio } from '@/shared/components/movil/Piezas'
 import { getMisDocumentos, getMisRecibos } from '@/features/empleado/services/empleadoService'
 import { hoyISO } from '@/features/empleado/services/acciones'
 import {
@@ -93,33 +93,36 @@ export default async function MisPapelesPage({
       volver={{ href: '/mi-informacion', label: 'Yo' }}
       sub={
         porResolver > 0
-          ? <span className="text-warn" data-testid="aviso-documentos">
+          ? <span style={{ color: C.warn }} data-testid="aviso-documentos">
               {porResolver === 1 ? '1 para resolver' : `${porResolver} para resolver`} · {todos.length} papeles
             </span>
           : `${todos.length} papeles en tu legajo`
       }
+      /* CHIPS «AL DÍA» Y NO «NUEVOS». El mockup dibuja un tercer filtro «Nuevos», y el OS no tiene
+         con qué llenarlo: no existe marca de leído/no leído por persona sobre un documento, así que
+         «nuevo» sería una fecha reciente disfrazada de novedad. «Al día» sí es un hecho. */
+      franja={
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, overflowX: 'auto' }} data-testid="filtros-papeles">
+          {([['todos', 'Todos', cuenta(todos.length)], ['resolver', 'Para resolver', cuenta(porResolver)], ['al-dia', 'Al día', cuenta(todos.length - porResolver)]] as const).map(([id, label, n]) => (
+            <Pastilla
+              key={id}
+              testid={`chip-${id}`}
+              href={id === 'todos' ? '/mi-informacion/documentos' : `/mi-informacion/documentos?ver=${id}`}
+              texto={label}
+              cuenta={n}
+              activa={id === filtro}
+            />
+          ))}
+        </div>
+      }
     >
-      {docs.error && <Aviso tono="neg" titulo="No se pudieron leer tus documentos." testid="documentos-error">{docs.error}</Aviso>}
+      {docs.error && <AvisoError testid="documentos-error">{docs.error}</AvisoError>}
 
-      {/* CHIPS «AL DÍA» Y NO «NUEVOS». El mockup dibuja un tercer filtro «Nuevos», y el OS no tiene
-          con qué llenarlo: no existe marca de leído/no leído por persona sobre un documento, así
-          que «nuevo» sería una fecha reciente disfrazada de novedad. «Al día» sí es un hecho. */}
-      <Chips
-        base="/mi-informacion/documentos"
-        actual={filtro}
-        testid="filtros-papeles"
-        opciones={[
-          { id: 'todos', label: 'Todos', cuenta: cuenta(todos.length) },
-          { id: 'resolver', label: 'Para resolver', cuenta: cuenta(porResolver) },
-          { id: 'al-dia', label: 'Al día', cuenta: cuenta(todos.length - porResolver) },
-        ]}
-      />
-
-      <div className="mt-4" data-testid="lista-documentos">
+      <div data-testid="lista-documentos">
         {filtro === 'todos' && (
-          <Grupo titulo="Recibos de sueldo" cuenta={recibos.data?.length ?? 0} testid="grupo-recibos">
+          <Grupo titulo="Recibos de sueldo" icono="recibo" cuenta={recibos.data?.length ?? 0} testid="grupo-recibos">
             {ultimosRecibos.length === 0 ? (
-              <p className="px-4 py-3.5 text-[12.5px] text-faint" data-testid="sin-recibos">
+              <p style={{ padding: '14px', fontSize: 12.5, color: C.faint }} data-testid="sin-recibos">
                 Todavía no hay recibos cargados en tu legajo.
               </p>
             ) : (
@@ -134,14 +137,16 @@ export default async function MisPapelesPage({
                        Y ningún importe se escribe en esta pantalla — el neto vive en el detalle. */
                     nota={r.liquidado ? (r.fecha_documento ? `cargado ${r.fecha_documento.slice(8, 10)}/${r.fecha_documento.slice(5, 7)}` : 'cargado') : 'todavía no liquidado'}
                     tono={r.liquidado ? 'faint' : 'warn'}
-                    accion={<span aria-hidden className="shrink-0 text-[15px] text-line-strong">›</span>}
+                    icono="recibo"
+                    marca={r.liquidado ? undefined : 'nuevo'}
+                    accion={<span style={{ display: 'flex', color: C.faint, flexShrink: 0 }}><Icono nombre="descargar" tamano={20} /></span>}
                   />
                 ))}
                 {(recibos.data?.length ?? 0) > ultimosRecibos.length && (
                   <Link
                     href="/mi-informacion/recibos"
                     data-testid="ver-todos-recibos"
-                    className="flex min-h-[48px] items-center px-4 text-[12.5px] text-muted active:bg-surface-quiet"
+                    style={{ display: 'flex', minHeight: 48, alignItems: 'center', padding: '0 14px', fontSize: 12.5, color: C.muted }}
                   >
                     Ver los {recibos.data?.length} recibos →
                   </Link>
@@ -152,9 +157,9 @@ export default async function MisPapelesPage({
         )}
 
         {(['salud', 'personales'] as const).map((g) => (
-          <Grupo key={g} titulo={GRUPO_LABEL[g]} cuenta={grupos[g].length} testid={`grupo-${g}`}>
+          <Grupo key={g} titulo={GRUPO_LABEL[g]} icono={g === 'salud' ? 'salud' : 'doc'} cuenta={grupos[g].length} testid={`grupo-${g}`}>
             {grupos[g].length === 0 ? (
-              <p className="px-4 py-3.5 text-[12.5px] text-faint">
+              <p style={{ padding: '14px', fontSize: 12.5, color: C.faint }}>
                 {filtro === 'todos' ? 'No hay papeles en este grupo.' : 'Nada en este grupo con este filtro.'}
               </p>
             ) : (
@@ -165,13 +170,13 @@ export default async function MisPapelesPage({
       </div>
 
       {todos.length === 0 && (
-        <Nada testid="sin-documentos">
+        <Vacio testid="sin-documentos">
           No hay documentos cargados en tu legajo. Los carga Administración, y cuando te pidan uno
           aparece acá con el estado «Solicitado».
-        </Nada>
+        </Vacio>
       )}
 
-      <p className="mt-5 text-[11.5px] leading-relaxed text-faint">
+      <p style={{ marginTop: 18, fontSize: 11.5, lineHeight: 1.6, color: C.faint }}>
         Sólo tus papeles. Lo que subís queda en revisión: no reemplaza al documento oficial hasta que
         Administración lo apruebe.
       </p>
@@ -186,8 +191,13 @@ export default async function MisPapelesPage({
           <Link
             href={`/mi-informacion/documentos/${destinoDeSubida.id}`}
             data-testid="subir-papel"
-            className="flex h-[52px] w-full items-center justify-center rounded-[12px] bg-ink text-[14.5px] font-semibold text-white active:opacity-90"
+            style={{
+              display: 'flex', width: '100%', minHeight: 52, alignItems: 'center',
+              justifyContent: 'center', gap: 9, borderRadius: 12, border: `1px solid ${C.linea}`,
+              background: C.surface, fontSize: 15, fontWeight: 600, color: C.ink,
+            }}
           >
+            <Icono nombre="subir" tamano={20} />
             Subir {(destinoDeSubida.nombre ?? categoriaDe(destinoDeSubida.tipo_documento)).toLowerCase()}
           </Link>
         ) : (
@@ -212,6 +222,7 @@ function FilaPapel({ d, hoy }: { d: DocumentoDelEmpleado; hoy: string }) {
       titulo={d.nombre ?? categoriaDe(d.tipo_documento)}
       nota={nota.texto}
       tono={nota.tono}
+      icono={nota.tono === 'neg' || nota.tono === 'warn' ? 'alerta' : 'ok'}
       destacada={a.primaria}
       /* LA ACCIÓN PESA CUANDO ES SUYA. «Subir» y «Volver a subir» le tocan a él y van en `ink` 500;
          «Reemplazar» y «Ver lo enviado» son opciones y quedan en `muted`. Mismo lugar siempre: lo
@@ -220,7 +231,10 @@ function FilaPapel({ d, hoy }: { d: DocumentoDelEmpleado; hoy: string }) {
         <span
           data-testid="accion-documento"
           data-primaria={a.primaria ? 'si' : undefined}
-          className={`shrink-0 whitespace-nowrap text-[12px] ${a.primaria ? 'font-medium text-ink' : 'text-muted'}`}
+          style={{
+            flexShrink: 0, whiteSpace: 'nowrap', fontSize: 12,
+            fontWeight: a.primaria ? 500 : 400, color: a.primaria ? C.ink : C.muted,
+          }}
         >
           {a.texto}
         </span>

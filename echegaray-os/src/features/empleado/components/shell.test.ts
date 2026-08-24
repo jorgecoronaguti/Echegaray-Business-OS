@@ -39,8 +39,10 @@ test('SÓLO LAS CUATRO RAÍCES LLEVAN BARRA DE CONTEXTOS', () => {
 })
 
 test('una pantalla de detalle mantiene su contexto encendido AUNQUE no dibuje la barra', () => {
-  // Las dos preguntas conviven: «¿de qué contexto soy?» la sigue contestando `contextoActivo` para
-  // el header de escritorio, donde los cuatro tabs SÍ están siempre.
+  // Las dos preguntas conviven y son distintas: `esRaiz` decide si se DIBUJA la barra y
+  // `contextoActivo` decide cuál de los cuatro estaría encendido. La segunda tiene que seguir
+  // contestando bien aunque hoy no se dibuje nada: es la que enciende la pestaña cuando la persona
+  // vuelve a la raíz desde un detalle, y la que rompería en silencio si alguien las unificara.
   assert.equal(esRaiz('/mi-informacion/legajo'), false)
   assert.equal(contextoActivo('/mi-informacion/legajo'), '/mi-informacion')
 })

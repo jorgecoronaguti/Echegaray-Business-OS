@@ -67,23 +67,60 @@ test('ninguna pantalla sin sesión inventa su propio color ni su propio borde', 
   assert.deepEqual(fallas, [], `\n${fallas.join('\n')}\n`)
 })
 
-test('la primaria de cada pantalla sin sesión es la del design system, a 52px', () => {
+test('la primaria de cada pantalla sin sesión es AMARILLA DE MARCA, venga de donde venga', () => {
+  // ═══ CAMBIO DE REGLA, 24/08/2026 — el mockup gana ═══
+  //
+  // Esta regla exigía `<Boton variante="primaria" tamano="acceso">` del design system de
+  // escritorio. `M01 · Login.dc.html` mide la primaria en `minHeight:56` con `background:#FDC900`
+  // y su propio icono adentro; el `Boton` del DS no dibuja eso, así que `LoginForm` la porta con
+  // los tokens del teléfono (`C.marca`, `R.control`).
+  //
+  // Lo que la regla PROTEGE no cambió: que ninguna de las cuatro pantallas sin sesión invente el
+  // color de su acción. Antes eso se comprobaba pidiendo el componente; ahora se comprueba pidiendo
+  // el TOKEN — `variante="primaria"` (el DS) o `C.marca` (el kit del teléfono). Un `bg-black`
+  // vuelve a poner esto en rojo, que es el defecto que costó la entrega del 23/08.
   const fallas: string[] = []
   for (const archivo of FORMULARIOS) {
     const fuente = readFileSync(join(DIR, archivo), 'utf8')
-    // Un `<button type="submit">` escrito a mano es exactamente cómo volvería el `bg-black`.
-    if (/<button[^>]*type="submit"/.test(fuente)) fallas.push(`${archivo}: la primaria no es <Boton>`)
-    if (!/tamano="acceso"/.test(fuente)) fallas.push(`${archivo}: la primaria no usa el tamaño acceso (52px)`)
-    if (!/variante="primaria"/.test(fuente)) fallas.push(`${archivo}: la primaria no es la amarilla de marca`)
+    const conDS = /variante="primaria"/.test(fuente) && /tamano="acceso"/.test(fuente)
+    const conTokens = /C\.marca/.test(fuente)
+    if (!conDS && !conTokens) {
+      fallas.push(`${archivo}: la primaria no usa ni el Boton del DS ni el amarillo de marca`)
+    }
+    // Un `<button type="submit">` con su color escrito a mano es exactamente cómo volvería el
+    // `bg-black`. Se permite el botón propio SÓLO si el amarillo sale del token.
+    if (/<button[^>]*type="submit"/.test(fuente) && !conTokens) {
+      fallas.push(`${archivo}: primaria escrita a mano sin el token de marca`)
+    }
   }
   assert.deepEqual(fallas, [], `\n${fallas.join('\n')}\n`)
 })
 
-test('los campos sin sesión usan CAMPO del design system', () => {
+test('los campos sin sesión no inventan su borde: DS o tokens del teléfono', () => {
+  // Misma razón que arriba. `M01 · Login.dc.html` dibuja el campo como una caja de
+  // `1.5px solid` con radio 12 y el `input` SIN borde propio; `CAMPO` del DS es otra cosa (34px,
+  // borde en el input). Se acepta cualquiera de las dos, y se sigue prohibiendo el borde inventado.
   const fallas: string[] = []
   for (const archivo of FORMULARIOS) {
     const fuente = readFileSync(join(DIR, archivo), 'utf8')
-    if (!/className=\{CAMPO\}/.test(fuente)) fallas.push(`${archivo}: los campos no usan CAMPO`)
+    const conDS = /className=\{CAMPO\}/.test(fuente)
+    const conTokens = /C\.linea/.test(fuente)
+    if (!conDS && !conTokens) fallas.push(`${archivo}: los campos no usan CAMPO ni los tokens del teléfono`)
+  }
+  assert.deepEqual(fallas, [], `\n${fallas.join('\n')}\n`)
+})
+
+test('NINGÚN COLOR ESCRITO A MANO en las pantallas sin sesión', () => {
+  // La regla nueva que reemplaza a «usá el componente»: el color puede venir de una clase del DS o
+  // de una constante de `shared/components/movil/tokens`, pero NUNCA de un `#RRGGBB` tipeado en el
+  // archivo. Ése es el mecanismo exacto por el que la primera pantalla del sistema terminó de otro
+  // color que las 42 restantes — y ahora que el porte es con estilos en línea, es más fácil que antes.
+  const fallas: string[] = []
+  for (const archivo of FORMULARIOS) {
+    const codigo = readFileSync(join(DIR, archivo), 'utf8')
+      .split('\n').filter((l) => !l.trimStart().startsWith('//')).join('\n')
+    const hex = codigo.match(/#[0-9A-Fa-f]{6}\b/g)
+    if (hex) fallas.push(`${archivo}: color escrito a mano ${[...new Set(hex)].join(', ')}`)
   }
   assert.deepEqual(fallas, [], `\n${fallas.join('\n')}\n`)
 })

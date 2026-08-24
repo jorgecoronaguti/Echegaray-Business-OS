@@ -1,50 +1,31 @@
 import type { ReactNode } from 'react'
+import { C, R } from '@/shared/components/movil/tokens'
+import { Icono, type NombreIcono } from '@/shared/components/movil/Iconos'
+import { PieFijo as PieMovil } from '@/shared/components/movil/Piezas'
 
-// LAS PIEZAS QUE FALTABAN PARA M05, M07 Y M08 — las que `Bloques.tsx` no tiene.
+// LAS PIEZAS DE M08 — el grupo y su fila, medidos en `M08 · Mis documentos y recibos.dc.html`.
 //
-// Viven aparte y no dentro de `Bloques.tsx` porque ése ya está construido y probado: agregarle
-// cuatro componentes lo empujaba contra el techo de 500 líneas del repo y mezclaba lo que la
-// tarjeta sabe (contener) con lo que estas piezas saben (el pie fijo, el grupo, el azulejo táctil).
+// El pie fijo y el botón del pie viven ahora en `shared/components/movil/Piezas`: son los mismos en
+// las quince pantallas del teléfono, y tenerlos dos veces era cómo terminaban midiendo distinto.
+// Acá quedó lo que es propio de M08: el encabezado de grupo con su icono y su conteo, y la fila con
+// la pastilla «nuevo», el estado escrito con su color y la acción a la derecha.
+
+export { PieMovil as PieFijo }
 
 /**
- * EL PIE FIJO DE LAS PANTALLAS DE ACCIÓN (M04, M05, M07, M08).
+ * EL BOTÓN DEL PIE DE M08 — CONTORNO, no relleno.
  *
- * Los mockups dejan la primaria pegada abajo, sobre una barra blanca con su borde. No es estética:
- * en 390px, con una lista de quince filas, una primaria al final del documento exige desplazar
- * hasta el fondo para hacer lo único que la pantalla vino a hacer. Fija, se toca sin buscar.
- *
- * EL HUECO LO PONE ESTA PIEZA (`h-[76px]` en el flujo). Sin él, la última fila de la lista queda
- * tapada por la barra y nadie la puede tocar — que es el mismo defecto que ya pagó la barra de
- * contextos del shell.
- */
-export function PieFijo({ children, testid }: { children: ReactNode; testid?: string }) {
-  return (
-    <>
-      <div aria-hidden className="h-[76px]" />
-      <div
-        data-testid={testid}
-        className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface px-4 py-3 lg:static lg:mt-6 lg:border-0 lg:bg-transparent lg:px-0 lg:py-0"
-      >
-        <div className="mx-auto w-full max-w-[1100px] lg:px-8">{children}</div>
-      </div>
-    </>
-  )
-}
-
-/**
- * EL BOTÓN DE ACCIÓN DEL PIE. 52px, un solo verbo, y APAGADO DICE QUÉ FALTA.
- *
- * «Guardar avance» en gris se lee como un sistema roto; «Elegí qué pasa» se lee como la instrucción
- * que queda. Es la misma regla que ya aplica `FormProblema`, subida a una pieza para que M04, M05 y
- * M07 no la reimplementen cada una a su manera.
+ * El mockup lo dibuja con `border:1px solid #E7E6E2` y fondo blanco: «Subir un papel mío» es una
+ * acción secundaria de una pantalla de consulta, no la primaria del día. Apagado dice QUÉ FALTA
+ * —«No te falta ningún papel»— en vez de «Subir» en gris, que se lee como un sistema roto.
  */
 export function BotonPie({
-  children, tono = 'ink', disabled, type = 'submit', testid,
+  children, disabled, type = 'submit', icono = 'subir', testid,
 }: {
   children: ReactNode
-  tono?: 'ink' | 'marca'
   disabled?: boolean
   type?: 'submit' | 'button'
+  icono?: NombreIcono
   testid?: string
 }) {
   return (
@@ -52,40 +33,61 @@ export function BotonPie({
       type={type}
       disabled={disabled}
       data-testid={testid}
-      className={`flex h-[52px] w-full items-center justify-center rounded-[12px] text-[14.5px] font-semibold disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-faint ${
-        tono === 'marca' ? 'bg-marca text-[color:var(--os-on-marca)]' : 'bg-ink text-white'
-      }`}
+      style={{
+        width: '100%', minHeight: 52, borderRadius: R.control,
+        border: `1px solid ${C.linea}`, background: disabled ? C.inerte : C.surface,
+        color: disabled ? C.faint : C.ink, display: 'flex', alignItems: 'center',
+        justifyContent: 'center', gap: 9, fontSize: 15, fontWeight: 600,
+        fontFamily: 'inherit', cursor: disabled ? 'not-allowed' : 'pointer',
+      }}
     >
+      <Icono nombre={icono} tamano={20} />
       {children}
     </button>
   )
 }
 
-/** El encabezado de grupo de M08: el para-qué-sirve a la izquierda y cuántos hay a la derecha. No
- *  es una sección plegable: los tres grupos entran en una pantalla y plegarlos escondería el apto
- *  médico vencido detrás de un toque. */
-export function Grupo({ titulo, cuenta, children, testid }: {
+/** El encabezado de grupo de M08: icono, el para-qué-sirve y cuántos hay a la derecha. No es
+ *  plegable: los tres grupos entran en una pantalla y plegarlos escondería el apto médico vencido
+ *  detrás de un toque. */
+export function Grupo({ titulo, cuenta, icono = 'doc', children, testid }: {
   titulo: string
   cuenta: number
+  icono?: NombreIcono
   children: ReactNode
   testid?: string
 }) {
   return (
-    <section className="mt-5 first:mt-0" data-testid={testid}>
-      <div className="flex items-baseline gap-3 px-1">
-        <h2 className="text-[13px] font-semibold text-ink">{titulo}</h2>
-        <span className="ml-auto font-mono text-[12px] tabular-nums text-faint">{cuenta}</span>
+    <section style={{ marginBottom: 18 }} data-testid={testid}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 9 }}>
+        <span style={{ display: 'flex', color: C.muted, flexShrink: 0 }}><Icono nombre={icono} tamano={17} /></span>
+        <h2 style={{ fontSize: 14, fontWeight: 600, color: C.ink }}>{titulo}</h2>
+        <span style={{
+          marginLeft: 'auto', fontFamily: "var(--font-plex-mono), 'IBM Plex Mono', monospace",
+          fontSize: 12.5, color: C.muted,
+        }}>
+          {cuenta}
+        </span>
       </div>
-      <div className="mt-2 overflow-hidden rounded-[14px] border border-line bg-surface">{children}</div>
+      <div style={{
+        background: C.surface, border: `1px solid ${C.linea}`, borderRadius: R.tarjeta, overflow: 'hidden',
+      }}>
+        {children}
+      </div>
     </section>
   )
 }
 
-/** Una fila DENTRO de un grupo de M08: título, su estado escrito con el color que le corresponde, y
- *  la acción a la derecha. La ausencia se nombra —«sin cargar»— y nunca se deja el renglón en
- *  blanco: un hueco se lee como que la pantalla todavía está cargando. */
+/**
+ * UNA FILA DENTRO DE UN GRUPO DE M08.
+ *
+ * El estado se escribe con su color —`vencido` en rojo, `vence en 20 días` en ámbar— porque son dos
+ * cosas distintas: una es una cuenta regresiva y la otra un hecho consumado. La ausencia se nombra
+ * («sin cargar») y nunca se deja el renglón en blanco: un hueco se lee como que todavía está
+ * cargando.
+ */
 export function FilaGrupo({
-  titulo, nota, tono = 'faint', href, accion, marca, testid, destacada,
+  titulo, nota, tono = 'faint', href, accion, marca, testid, destacada, icono,
 }: {
   titulo: ReactNode
   nota: ReactNode
@@ -96,30 +98,47 @@ export function FilaGrupo({
   marca?: string
   testid?: string
   destacada?: boolean
+  icono?: NombreIcono
 }) {
-  const color = tono === 'neg' ? 'text-neg' : tono === 'warn' ? 'text-warn' : tono === 'pos' ? 'text-pos' : 'text-faint'
+  const color = tono === 'neg' ? C.neg : tono === 'warn' ? C.warn : tono === 'pos' ? C.pos : C.faint
   const cuerpo = (
     <>
-      <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-2">
-          <span className="truncate text-[14.5px] text-ink">{titulo}</span>
+      {icono && (
+        <span style={{ display: 'flex', color, flexShrink: 0 }}><Icono nombre={icono} tamano={20} /></span>
+      )}
+      <span style={{ minWidth: 0, flex: 1 }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <span style={{
+            fontSize: 13.5, fontWeight: destacada ? 600 : 400, color: C.ink, minWidth: 0,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {titulo}
+          </span>
           {marca && (
-            <span className="shrink-0 rounded-full bg-marca px-2 py-[1px] text-[10.5px] font-semibold text-[color:var(--os-on-marca)]">
+            <span style={{
+              fontSize: 10, fontWeight: 600, color: C.ink, background: C.marca,
+              borderRadius: 9, padding: '1px 7px', flexShrink: 0,
+            }}>
               {marca}
             </span>
           )}
         </span>
-        <span className={`mt-0.5 block truncate text-[12px] ${color}`}>{nota}</span>
+        <span style={{
+          display: 'block', fontSize: 11.5, color, marginTop: 2,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {nota}
+        </span>
       </span>
       {accion}
     </>
   )
-  const clases = `flex min-h-[60px] items-center gap-3 border-b border-[#EFEEEA] px-4 py-2.5 last:border-b-0 ${
-    destacada ? 'bg-marca-soft' : ''
-  }`
-  return href ? (
-    <a href={href} data-testid={testid} className={`${clases} active:bg-surface-quiet`}>{cuerpo}</a>
-  ) : (
-    <div data-testid={testid} className={clases}>{cuerpo}</div>
-  )
+  const estilo = {
+    display: 'flex', alignItems: 'center', gap: 11, padding: '13px 14px', minHeight: 60,
+    borderBottom: `1px solid ${C.divisor}`, background: destacada ? C.marcaTenue : 'transparent',
+    color: C.ink,
+  }
+  return href
+    ? <a href={href} data-testid={testid} style={estilo}>{cuerpo}</a>
+    : <div data-testid={testid} style={estilo}>{cuerpo}</div>
 }

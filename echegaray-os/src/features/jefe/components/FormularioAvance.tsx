@@ -1,7 +1,7 @@
 'use client'
 
 import { useActionState, useState } from 'react'
-import { C, R, pct } from '@/shared/components/movil/tokens'
+import { C, HOVER_CANVAS, HOVER_MARCA, R, pct } from '@/shared/components/movil/tokens'
 import { Icono } from '@/shared/components/movil/Iconos'
 import {
   AvisoError, Azulejo, BotonAncho, PieFijo, RotuloSeccion, TarjetaLista, Vacio, mono,
@@ -460,7 +460,7 @@ function BotonRedondo({ children, etiqueta, marca, onClick }: {
       title={etiqueta}
       aria-label={etiqueta}
       onClick={onClick}
-      className={marca ? 'hover:bg-[#EEBE00]' : 'hover:bg-[#F7F7F5]'}
+      className={marca ? HOVER_MARCA : HOVER_CANVAS}
       style={{
         width: 48, height: 48, borderRadius: 24, flexShrink: 0,
         border: marca ? 'none' : `1px solid ${C.linea}`, background: marca ? C.marca : C.surface,

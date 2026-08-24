@@ -122,3 +122,22 @@ export function diaMes(iso: string | null | undefined): string {
   if (!iso || iso.length < 10) return SIN_DATO
   return `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// EL HOVER, QUE NO PUEDE SER UN ESTILO EN LÍNEA
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// El mockup escribe `style-hover="background:#F2F1ED"`. Un pseudo-estado no existe como propiedad
+// de `style={{…}}`, así que va por clase de Tailwind con valor arbitrario — y Tailwind sólo genera
+// las clases que puede LEER en el fuente, o sea que el valor tiene que estar escrito, no
+// interpolado. Se escribe UNA vez, acá, al lado de la constante que lo declara: si mañana el tono
+// cambia, cambia en un lugar y no en los seis archivos que lo usan.
+
+/** El fondo del objetivo circular del topbar al pasar el dedo (`C.hover`). */
+export const HOVER_SUAVE = 'hover:bg-[#F2F1ED]'
+
+/** El amarillo al presionar la primaria circular de M04 (`C.marcaOscura`). */
+export const HOVER_MARCA = 'hover:bg-[#EEBE00]'
+
+/** El canvas al presionar un control de contorno (`C.canvas`). */
+export const HOVER_CANVAS = 'hover:bg-[#F7F7F5]'

@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import type { CSSProperties, ReactNode } from 'react'
-import { C, R, ALTO_BARRA } from './tokens'
+import { C, HOVER_SUAVE, R, ALTO_BARRA } from './tokens'
 import { Icono, type NombreIcono } from './Iconos'
 
 // LAS PIEZAS DEL TELÉFONO, PORTADAS DEL `.dc.html` — no una capa sobre el Design System.
@@ -125,7 +125,7 @@ export function TopBarDetalle({
             href={volver.href}
             data-testid={testidVolver}
             aria-label={`Volver a ${volver.label}`}
-            className="hover:bg-[#F2F1ED]"
+            className={HOVER_SUAVE}
             style={{
               width: 44, height: 44, borderRadius: 22, display: 'flex', alignItems: 'center',
               justifyContent: 'center', color: C.ink, flexShrink: 0,
@@ -167,7 +167,7 @@ export function BotonTopBar({
     justifyContent: 'center', color, flexShrink: 0,
   }
   return href ? (
-    <Link href={href} title={titulo} aria-label={titulo} data-testid={testid} className="hover:bg-[#F2F1ED]" style={estilo}>
+    <Link href={href} title={titulo} aria-label={titulo} data-testid={testid} className={HOVER_SUAVE} style={estilo}>
       {children}
     </Link>
   ) : (

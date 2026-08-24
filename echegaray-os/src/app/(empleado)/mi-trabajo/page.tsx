@@ -4,28 +4,18 @@ import { createClient } from '@/lib/supabase/server'
 import { getUsuarioActual } from '@/features/auth/services/authService'
 import { getPerfilPropio } from '@/features/mi-cuenta/services/miCuentaService'
 import { SinVinculo } from '@/features/mi-cuenta/components/SinVinculo'
-import { Aviso } from '@/shared/components/ds'
 import { PantallaEmpleado } from '@/features/empleado/components/ShellEmpleado'
-import { Nada } from '@/features/empleado/components/Filas'
-import { Barra, Chips, Tarjeta } from '@/features/empleado/components/Bloques'
+import { C, R, pct } from '@/shared/components/movil/tokens'
+import { Icono } from '@/shared/components/movil/Iconos'
+import { AvisoError, BarraAvance, Pastilla, Vacio, mono } from '@/shared/components/movil/Piezas'
 import {
   getMiCuadrilla, getMisImpedimentos, getMiObra, getMisTareas,
 } from '@/features/empleado/services/empleadoService'
 import { hoyISO } from '@/features/empleado/services/acciones'
-import { clasificar, restante } from '@/features/empleado/services/tareas'
+import { clasificar, estaCompleta, restante } from '@/features/empleado/services/tareas'
 import type { MiTarea } from '@/features/empleado/types'
 
-// «MI TRABAJO» (M03) — tres filtros y una tarjeta por frente. Nada más.
-//
-// ═══ LO QUE ESTA PANTALLA DEJÓ DE SER ═══
-//
-// Era un vestíbulo: obra actual, cuatro secciones plegadas, cuadrilla, planos, accesos operativos.
-// El mockup del dueño la convierte en UNA lista de frentes con lo que falta en cada uno, y la razón
-// está escrita en su propia nota: «Sólo lo asignado a él». Un vestíbulo obliga a decidir a dónde ir
-// antes de ver nada; esta pantalla contesta la pregunta directamente.
-//
-// La obra y la cuadrilla no se perdieron: viven en el subtítulo, que es donde el mockup las pone.
-// Los planos de obra y el mes siguen en «Hoy», y el detalle de la cuadrilla en «Yo».
+// M03 · MI TRABAJO — porte literal de `M03 · Mi trabajo.dc.html`.
 //
 // ═══ TRES FILTROS Y NO CUATRO ═══
 //
@@ -38,7 +28,14 @@ import type { MiTarea } from '@/features/empleado/types'
 //
 // La nota del mockup: «Sabe por qué no puede avanzar sin abrir nada». El renglón rojo lleva la
 // descripción real del impedimento —«falta bloque 18×18»—, no la palabra «frenada». La barra se
-// pinta roja por lo mismo: un 74% con el material faltante no es una buena noticia.
+// pinta roja por lo mismo: un 74 % con el material faltante no es una buena noticia.
+//
+// ═══ LO QUE EL MOCKUP NO DIBUJA Y NO SE BORRA ═══
+//
+// Pedidos de materiales, herramientas, movimientos y el parte de campo son pantallas vivas que el
+// nivel campo usa hoy. El mockup no las dibuja porque describe el día del empleado, no el
+// inventario del OS — y borrarlas para «cumplir el diseño» sería eliminar funcionalidad. Bajan al
+// pie, en texto, después de la última tarjeta.
 
 export const dynamic = 'force-dynamic'
 
@@ -90,84 +87,112 @@ export default async function MiTrabajoPage({
   const cuenta = (n: number) => (tareas.error ? null : n)
 
   return (
-    <PantallaEmpleado
-      titulo="Mi trabajo"
-      sub={
-        <>
-          {obra?.nombre ?? 'sin obra asignada'}
-          {' · '}
-          {cuadrilla.data?.[0]?.cuadrilla ?? obra?.cuadrilla ?? 'sin cuadrilla'}
-        </>
-      }
-    >
-      {error && <Aviso tono="neg" titulo="No se pudo leer todo." testid="trabajo-error">{error}</Aviso>}
+    <>
+      <PantallaEmpleado
+        titulo="Mi trabajo"
+        sub={`${obra?.nombre ?? 'sin obra asignada'} · ${cuadrilla.data?.[0]?.cuadrilla ?? obra?.cuadrilla ?? 'sin cuadrilla'}`}
+        franja={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, overflowX: 'auto' }} data-testid="filtros-trabajo">
+            {FILTROS.map((f) => (
+              <Pastilla
+                key={f}
+                testid={`chip-${f}`}
+                href={f === 'hoy' ? '/mi-trabajo' : `/mi-trabajo?ver=${f}`}
+                texto={ETIQUETA[f]}
+                cuenta={cuenta(f === 'hoy' ? grupos.hoy.length : f === 'terminadas' ? grupos.completadas.length : todas.length)}
+                activa={f === filtro}
+              />
+            ))}
+          </div>
+        }
+      >
+        {error && <AvisoError testid="trabajo-error">{error}</AvisoError>}
 
-      <Chips
-        base="/mi-trabajo"
-        actual={filtro}
-        testid="filtros-trabajo"
-        opciones={[
-          { id: 'hoy', label: ETIQUETA.hoy, cuenta: cuenta(grupos.hoy.length) },
-          { id: 'terminadas', label: ETIQUETA.terminadas, cuenta: cuenta(grupos.completadas.length) },
-          { id: 'todas', label: ETIQUETA.todas, cuenta: cuenta(todas.length) },
-        ]}
-      />
-
-      <div className="mt-3 space-y-2.5" data-testid="lista-tareas">
-        {lista.length === 0 ? (
-          <Nada testid="sin-tareas">
-            {filtro === 'terminadas'
-              ? 'Todavía no terminaste ninguna tarea.'
-              : 'No tenés tareas asignadas. Una actividad es tuya cuando sos su responsable o es de tu cuadrilla; lo asigna el jefe de obra.'}
-          </Nada>
-        ) : (
-          lista.map((t) => <TarjetaDeTarea key={t.id} t={t} porQue={porQue.get(t.id) ?? null} />)
-        )}
-      </div>
-
-      {/* ═══ LO OPERATIVO QUE NO SE SACA, PERO YA NO COMPITE CON LOS FRENTES ═══
-          Pedidos de materiales, herramientas, movimientos y el parte de campo son pantallas vivas
-          que el nivel campo usa hoy (`CAMPO_RUTAS_PERMITIDAS`). El mockup no las dibuja porque
-          describe el día del empleado, no el inventario del OS — y borrarlas para «cumplir el
-          diseño» sería eliminar funcionalidad. Bajan al pie, en texto, después de la última
-          tarjeta: siguen a un toque y no le disputan el lugar a lo que la pantalla vino a decir. */}
-      <div className="mt-8 border-t border-[#EFEEEA] pt-4" data-testid="mas-de-obra">
-        <p className="text-[10.5px] font-semibold tracking-[0.14em] text-faint">TAMBIÉN DESDE ACÁ</p>
-        <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2 text-[12.5px]">
-          <Link href="/integraciones/pedidos-materiales" data-testid="ir-pedidos" className="text-muted hover:text-ink">Pedir material →</Link>
-          <Link href="/integraciones/herramientas" data-testid="ir-herramientas" className="text-muted hover:text-ink">Herramientas →</Link>
-          <Link href="/integraciones/movimientos" data-testid="ir-movimientos" className="text-muted hover:text-ink">Movimientos →</Link>
-          <Link href="/campo" data-testid="ir-campo" className="text-muted hover:text-ink">Parte de campo →</Link>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }} data-testid="lista-tareas">
+          {lista.length === 0 ? (
+            <Vacio testid="sin-tareas">
+              {filtro === 'terminadas'
+                ? 'Todavía no terminaste ninguna tarea.'
+                : 'No tenés tareas en este filtro. Una actividad es tuya cuando sos su responsable o es de tu cuadrilla; lo asigna el jefe de obra.'}
+            </Vacio>
+          ) : lista.map((t) => <TarjetaDeTarea key={t.id} t={t} porQue={porQue.get(t.id) ?? null} />)}
         </div>
-      </div>
-    </PantallaEmpleado>
+
+        <div style={{ marginTop: 28, borderTop: `1px solid ${C.inerte}`, paddingTop: 14 }} data-testid="mas-de-obra">
+          <p style={{ fontSize: 11, color: C.faint, letterSpacing: '.06em' }}>TAMBIÉN DESDE ACÁ</p>
+          <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: '8px 18px', fontSize: 12.5 }}>
+            <Link href="/integraciones/pedidos-materiales" data-testid="ir-pedidos" style={{ color: C.muted }}>Pedir material →</Link>
+            <Link href="/integraciones/herramientas" data-testid="ir-herramientas" style={{ color: C.muted }}>Herramientas →</Link>
+            <Link href="/integraciones/movimientos" data-testid="ir-movimientos" style={{ color: C.muted }}>Movimientos →</Link>
+            <Link href="/campo" data-testid="ir-campo" style={{ color: C.muted }}>Parte de campo →</Link>
+          </div>
+        </div>
+      </PantallaEmpleado>
+    </>
   )
 }
 
-/** La tarjeta de un frente: qué hay que hacer, cuánto falta EN SU UNIDAD, y el avance como barra.
- *  `restante()` devuelve `null` sin las dos puntas y entonces se escribe «sin medición»: sin
- *  objetivo daría «0,00 m² restantes» —la tarea terminada— y sin porcentaje el objetivo entero. */
+/**
+ * La tarjeta de un frente: qué hay que hacer, cuánto falta EN SU UNIDAD, y el avance como barra.
+ *
+ * `restante()` devuelve `null` sin las dos puntas y entonces se escribe «sin medición»: sin
+ * objetivo daría «0,00 m² restantes» —la tarea terminada— y sin porcentaje el objetivo entero.
+ */
 function TarjetaDeTarea({ t, porQue }: { t: MiTarea; porQue: string | null }) {
   const frenada = porQue != null || t.impedimentos > 0
+  const hecha = estaCompleta(t)
+  const icono = hecha ? 'ok' : frenada ? 'bloqueo' : t.estado === 'en_curso' ? 'reloj' : 'pendiente'
+  const color = hecha ? C.pos : frenada ? C.neg : t.estado === 'en_curso' ? C.info : C.tenue
   return (
-    <Tarjeta href={`/mi-trabajo/tareas/${t.id}`} testid="tarjeta-tarea">
-      <span className="flex items-start gap-3">
-        <span className="min-w-0 flex-1">
-          <span className="block text-[15px] font-semibold text-ink">{t.nombre}</span>
-          <span className="mt-1 block truncate font-mono text-[12px] text-faint">
-            {t.seccion ?? t.obra ?? 'sin sección'}
-            {' · '}
-            {restante(t) ?? 'sin medición'}
-          </span>
+    <Link
+      href={`/mi-trabajo/tareas/${t.id}`}
+      data-testid="tarjeta-tarea"
+      style={{
+        background: C.surface, border: `1px solid ${frenada ? C.negBorde : C.linea}`,
+        borderRadius: R.tarjeta, padding: 14, display: 'block', color: C.ink,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 11 }}>
+        <span style={{ display: 'flex', color, flexShrink: 0, marginTop: 2 }}>
+          <Icono nombre={icono} tamano={20} />
         </span>
-        <span aria-hidden className="shrink-0 pt-0.5 text-[15px] text-line-strong">›</span>
-      </span>
-      <Barra pct={t.pct} frenada={frenada} />
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: hecha ? C.muted : C.ink, lineHeight: 1.3 }}>
+            {t.nombre}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 4, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12.5, color: C.muted }}>{t.seccion ?? t.obra ?? 'sin sección'}</span>
+            <span style={{ color: C.lineaFuerte }}>·</span>
+            <span style={{ ...mono, fontSize: 12.5, color: C.muted }}>{restante(t) ?? 'sin medición'}</span>
+          </div>
+        </div>
+        <span style={{ display: 'flex', color: C.tenue, flexShrink: 0, marginTop: 4 }}>
+          <Icono nombre="siguiente" tamano={18} />
+        </span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 12 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <BarraAvance
+            pct={t.pct}
+            color={hecha ? C.pos : frenada ? C.neg : (t.pct ?? 0) > 0 ? C.info : C.lineaFuerte}
+          />
+        </div>
+        <span style={{ ...mono, fontSize: 13, fontWeight: 600, color: t.pct == null ? C.faint : hecha ? C.pos : C.ink }}>
+          {t.pct == null ? '—' : pct(t.pct)}
+        </span>
+      </div>
       {frenada && (
-        <span className="mt-2.5 block border-t border-[#EFEEEA] pt-2.5 text-[12.5px] text-neg" data-testid="frente-parado">
+        <div
+          data-testid="frente-parado"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 7, marginTop: 10, paddingTop: 10,
+            borderTop: `1px solid ${C.divisorSuave}`, fontSize: 12, color: C.neg,
+          }}
+        >
+          <Icono nombre="material" tamano={14} />
           Frente parado: {porQue ?? 'hay un impedimento abierto'}
-        </span>
+        </div>
       )}
-    </Tarjeta>
+    </Link>
   )
 }

@@ -2,107 +2,131 @@
 
 import Link from 'next/link'
 import { useActionState, useState } from 'react'
-import { Boton, CAMPO, Campo } from '@/shared/components/ds'
+import { C, R } from '@/shared/components/movil/tokens'
+import { Icono } from '@/shared/components/movil/Iconos'
 import { loginAction, type ActionState } from '../services/actions'
 
 const initialState: ActionState = { error: null }
 
-// ═══ VER / OCULTAR LA CONTRASEÑA (M01) ═══
+// M01 · ENTRAR — porte literal de `M01 · Login.dc.html`.
 //
-// El diseño lo pide y en el teléfono no es una comodidad: se tipea con una mano, con guantes o con
-// el sol de frente, y el único remedio a un error de tipeo invisible es borrar todo y empezar de
-// nuevo. Arranca OCULTA: el estado por defecto es el seguro, y mostrarla es una decisión de quien
-// está mirando su propia pantalla.
+// ═══ LO QUE SE PORTA ═══
 //
-// ═══ POR QUÉ ESTA PANTALLA NO SE DIBUJA SOLA (Design 23/08/2026) ═══
+// El campo del mockup es una caja de `1.5px solid` con radio 12 y `padding:14px`, con un icono de
+// 20px a la izquierda y el valor en 18px SIN borde propio: el borde es de la caja, no del `input`.
+// La primaria mide 56px, es amarilla cuando se puede seguir e inerte cuando no, y su TEXTO dice qué
+// falta —«Poné tu teléfono»— en vez de quedar en gris sin explicación.
 //
-// Tenía sus propios controles: `rounded border px-3 py-2` para los campos y `bg-black text-white`
-// para la primaria. No era feo y ya está — era la PRIMERA pantalla del sistema afirmando que el
-// negro es el color de la acción, cuando en las otras 42 la acción es el amarillo de marca. Ahora
-// usa `CAMPO` y `Boton` del design system, que es lo que dibuja el resto del OS: si mañana cambia
-// el borde de un campo, esta pantalla cambia con las demás en vez de quedar como la excepción que
-// nadie recuerda.
+// ═══ LO QUE NO SE PORTA, Y NO ES UN OLVIDO ═══
 //
-// La primaria va en `acceso` (52px, ancho completo). El mínimo táctil de `LAYOUT_RESPONSIVE.md` es
-// 44px, y acá el botón es lo ÚNICO tocable de la pantalla: no compite con nada, así que no gana
-// nada por ser chico. La contraseña, además, se escribe mal seguido — el botón se toca dos veces.
+// El artboard pide TELÉFONO + CÓDIGO de cuatro dígitos. Acá sigue habiendo email + contraseña: el
+// modelo de autenticación no es un detalle visual —cambia quién puede entrar, cómo se recupera el
+// acceso y qué le manda Supabase a quién—, y esa decisión es del dueño. Las cuatro celdas del
+// código no se dibujan vacías «para que se parezca»: una pantalla que muestra un control que no
+// hace nada enseña que la pantalla miente.
 //
-// ═══ LO QUE NO SE IMPLEMENTA, Y POR QUÉ ═══
+// Tampoco se dibuja «Quedan 3 intentos»: Supabase no publica cuántos quedan y ese contador sólo
+// podría salir de un estado inventado en el cliente, que se reinicia recargando la página. Lo que
+// sí se dice es que el sistema limita los intentos.
 //
-// El diseño dibuja «Quedan 3 intentos» debajo del error. Supabase NO publica cuántos intentos
-// quedan —limita por su cuenta y contesta el mismo error genérico—, así que ese contador sólo podría
-// salir de un estado inventado acá adentro: un número que se reinicia recargando la página y que no
-// tiene ninguna relación con el momento en que la cuenta se bloquea de verdad. Un contador que
-// miente es peor que ningún contador. Lo que sí se dice es que el sistema limita los intentos.
+// ═══ VER / OCULTAR LA CONTRASEÑA ═══
 //
-// El artboard M01 dibuja TELÉFONO + CÓDIGO. Acá sigue habiendo email + contraseña: el modelo de
-// autenticación no es un detalle visual —cambia quién puede entrar, cómo se recupera el acceso y
-// qué le manda Supabase a quién—, y esa decisión es del dueño. Lo que sí se cumple del artboard es
-// todo lo demás: logo oficial sobre claro, un campo por línea con su rótulo arriba, primaria a
-// ancho completo que dice qué pasa después, y la ayuda al pie separada por un hairline.
+// En el teléfono no es una comodidad: se tipea con una mano, con guantes o con el sol de frente, y
+// el único remedio a un error de tipeo invisible es borrar todo y empezar. Arranca OCULTA: el
+// estado por defecto es el seguro.
 
 export function LoginForm() {
   const [state, formAction, pending] = useActionState(loginAction, initialState)
   const [ver, setVer] = useState(false)
+  const [email, setEmail] = useState('')
+  const [clave, setClave] = useState('')
+
+  const listo = email.trim().length > 3 && clave.length > 0
 
   return (
-    <form action={formAction} className="flex flex-col gap-4" data-testid="login-form">
-      <Campo rotulo="Email">
-        <input name="email" type="email" required autoComplete="email" className={CAMPO} />
-      </Campo>
-
-      <Campo
-        rotulo={
-          <span className="flex items-baseline justify-between gap-3">
-            Contraseña
-            {/* Target de 44px por alto sin ocupar 44px de alto: el `py` se lo come el `-my`, que es
-                lo que evita que un enlace de 12px separe el rótulo de su campo. */}
-            <button
-              type="button"
-              onClick={() => setVer((v) => !v)}
-              data-testid="ver-contrasena"
-              aria-pressed={ver}
-              className="-my-3 py-3 text-[12px] text-muted underline decoration-line underline-offset-2 transition-colors hover:text-ink"
-            >
-              {ver ? 'ocultar' : 'ver'}
-            </button>
-          </span>
-        }
-      >
+    <form action={formAction} data-testid="login-form">
+      <Rotulo>Usuario</Rotulo>
+      <Caja llena={email.trim() !== ''}>
+        <span style={{ display: 'flex', color: C.faint, flexShrink: 0 }}><Icono nombre="id" tamano={20} /></span>
         <input
-          name="password"
-          type={ver ? 'text' : 'password'}
+          name="email"
+          type="email"
           required
-          autoComplete="current-password"
-          className={CAMPO}
+          autoComplete="email"
+          placeholder="tu.correo@ecsas.com.ar"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          style={CAMPO_M01}
         />
-      </Campo>
+      </Caja>
+
+      <div style={{ marginTop: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 7 }}>
+          <span style={{ fontSize: 12.5, color: C.muted }}>Contraseña</span>
+          <button
+            type="button"
+            onClick={() => setVer((v) => !v)}
+            data-testid="ver-contrasena"
+            aria-pressed={ver}
+            style={{
+              marginLeft: 'auto', fontSize: 12.5, color: C.inkSuave, padding: 4,
+              background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            {ver ? 'ocultar' : 'ver'}
+          </button>
+        </div>
+        <Caja llena={clave !== ''}>
+          <span style={{ display: 'flex', color: C.faint, flexShrink: 0 }}><Icono nombre="llave" tamano={20} /></span>
+          <input
+            name="password"
+            type={ver ? 'text' : 'password'}
+            required
+            autoComplete="current-password"
+            value={clave}
+            onChange={(e) => setClave(e.target.value)}
+            style={CAMPO_M01}
+          />
+        </Caja>
+      </div>
 
       {state.error && (
-        <div data-testid="login-error">
-          {/* `text-neg` y no un rojo de Tailwind: el rojo del OS es #B42318 y está en un token
-              porque es el MISMO rojo del impedimento de obra y del saldo negativo. Dos rojos
-              distintos diciendo «problema» en la misma aplicación son dos problemas distintos. */}
-          <p className="text-[13px] text-neg">{state.error}</p>
-          <p className="mt-1 text-[12px] text-faint">
+        <div data-testid="login-error" style={{ marginTop: 16 }}>
+          {/* El rojo sale de `C.neg`, que es el MISMO del impedimento de obra: dos rojos distintos
+              diciendo «problema» en la misma aplicación son dos problemas distintos. */}
+          <p style={{ fontSize: 13, color: C.neg }}>{state.error}</p>
+          <p style={{ marginTop: 4, fontSize: 12, color: C.faint }}>
             El sistema limita los intentos seguidos. Si no entrás,{' '}
-            <Link href="/recuperar" className="underline">recuperá la contraseña</Link>.
+            <Link href="/recuperar" style={{ textDecoration: 'underline' }}>recuperá la contraseña</Link>.
           </p>
         </div>
       )}
 
-      <Boton type="submit" variante="primaria" tamano="acceso" disabled={pending} className="mt-1">
-        {/* «Ingresar», la misma palabra del título: dos verbos para la misma acción en la misma
-            pantalla hacen dudar de si son dos cosas. */}
-        {pending ? 'Ingresando…' : 'Ingresar'}
-      </Boton>
+      <button
+        type="submit"
+        disabled={pending}
+        style={{
+          marginTop: 24, minHeight: 56, width: '100%', borderRadius: R.control,
+          background: listo && !pending ? C.marca : C.inerte,
+          color: listo && !pending ? C.ink : C.faint,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
+          fontSize: 17, fontWeight: 600, border: 'none', fontFamily: 'inherit',
+          cursor: pending ? 'progress' : 'pointer',
+        }}
+      >
+        <Icono nombre={listo ? 'flecha' : 'llave'} tamano={20} />
+        {pending ? 'Ingresando…' : listo ? 'Entrar' : 'Poné tu usuario y tu contraseña'}
+      </button>
 
       {/* Debajo de la primaria y sin competir con ella: es la salida de quien ya falló, no la
-          acción de quien llega. El diseño la ubica en el mismo lugar. */}
+          acción de quien llega. El mockup la ubica en el mismo lugar. */}
       <Link
         href="/recuperar"
         data-testid="ir-a-recuperar"
-        className="-my-1 py-3 text-center text-[13px] text-muted underline decoration-line underline-offset-2 transition-colors hover:text-ink"
+        style={{
+          display: 'block', marginTop: 14, textAlign: 'center', fontSize: 13, color: C.muted,
+          textDecoration: 'underline', textUnderlineOffset: 2, padding: '10px 0',
+        }}
       >
         Olvidé mi contraseña
       </Link>
@@ -110,16 +134,36 @@ export function LoginForm() {
       {/* ═══ POR QUÉ SIGUE HABIENDO «CREAR UNA» ═══
           El artboard no dibuja alta pública, y con razón: acá no hay usuarios externos. Pero
           `/signup` EXISTE como ruta, `signupAction` llama a `supabase.auth.signUp` y
-          `supabase/config.toml:176` declara `enable_signup = true`. Sacar el enlace no cierra nada
+          `supabase/config.toml` declara `enable_signup = true`. Sacar el enlace no cierra nada
           —deja una puerta abierta y sin cartel, que es peor que una puerta con cartel—. Se queda,
-          en `faint` y al pie, hasta que el registro se apague donde de verdad se apaga: la
-          configuración de auth del proyecto. Queda declarado en el informe del frente. */}
-      <p className="mt-2 border-t border-line pt-4 text-[12px] text-faint">
+          apagado y al pie, hasta que el registro se apague donde de verdad se apaga: la
+          configuración de auth del proyecto. */}
+      <p style={{ marginTop: 18, fontSize: 12, color: C.faint }}>
         El acceso lo da Administración. ¿No tenés cuenta?{' '}
-        <Link href="/signup" className="underline decoration-line underline-offset-2 hover:text-ink">
-          Crear una
-        </Link>
+        <Link href="/signup" style={{ textDecoration: 'underline' }}>Crear una</Link>.
       </p>
     </form>
+  )
+}
+
+const CAMPO_M01 = {
+  border: 'none', background: 'transparent', fontSize: 18, color: C.ink, width: '100%',
+  padding: 0, outline: 'none', fontFamily: 'inherit',
+} as const
+
+function Rotulo({ children }: { children: React.ReactNode }) {
+  return <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 7 }}>{children}</div>
+}
+
+/** La caja del campo: el borde se ENCIENDE cuando hay algo escrito, como en el mockup (`bordeTel`). */
+function Caja({ children, llena }: { children: React.ReactNode; llena: boolean }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 10,
+      border: `1.5px solid ${llena ? C.lineaFuerte : C.linea}`,
+      borderRadius: R.control, padding: '14px 14px',
+    }}>
+      {children}
+    </div>
   )
 }
