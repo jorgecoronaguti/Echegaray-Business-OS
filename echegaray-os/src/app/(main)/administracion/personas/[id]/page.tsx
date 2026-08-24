@@ -21,6 +21,19 @@
 // Y CADA SOLAPA PIDE SÓLO LO SUYO: el Resumen se abre muchas veces por día y no necesita el
 // historial de horas para decir quién es esta persona.
 //
+// ═══ DOS LECTURAS QUE SÍ CORREN SIEMPRE, Y POR QUÉ (Design 23/08/2026) ═══
+//
+// La asignación vigente y los documentos se leen en las SEIS vistas. No es un descuido del
+// principio de arriba: es que el slab de identidad los AFIRMA en todas.
+//
+// Y afirmarlos sin leerlos era un defecto real. El encabezado decía «Cuadrilla: sin cuadrilla ·
+// Obra actual: sin asignar» en las solapas Horas, Documentos, Usuario y Auditoría —porque
+// `asignaciones` sólo se pedía en dos— sobre personas que estaban en obra. Un control que no pudo
+// mirar no dice «no está»: o mira, o se calla. Miran.
+//
+// Las dos son chicas (las asignaciones y los papeles de UNA persona). La cara sigue siendo `horas`,
+// que lee `registros_hh` entera, y ésa sigue corriendo sólo en su solapa.
+//
 // ═══ Y POR QUÉ SE EDITA EN UN PANEL ═══
 //
 // *"Priorizar click sobre entidad/campo → panel lateral. Nada de páginas de formulario gigantes para
@@ -37,7 +50,8 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { BotonAccion, PageShell } from '@/shared/components/ui'
-import { Aviso, EntityHeader, Estado, Eyebrow, Nulo, Vacio } from '@/shared/components/ds'
+import { Aviso, BarraContexto, Eyebrow, MetaContexto, Nulo, Vacio } from '@/shared/components/ds'
+import { Avatar } from '@/shared/components/Avatar'
 import { getPerfilActual, getUsuarioActual } from '@/features/auth/services/authService'
 import { BloqueAsignacion, BloqueDocumentos, BloqueHoras } from '@/features/administracion/components/BloquesFicha'
 import { BloqueAuditoria } from '@/features/administracion/components/BloqueAuditoria'
@@ -47,6 +61,7 @@ import { AltaDocumento, Bloque, Dato } from '@/features/administracion/component
 import { NavFicha, VISTAS_FICHA, type VistaFicha } from '@/features/administracion/components/NavFicha'
 import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
 import { getAsignacionesDe, getDocumentos, getPersona } from '@/features/administracion/services/personasService'
+import { antiguedadEnAnios, papelesPendientes } from '@/features/administracion/services/fichaPersona'
 import { veLaCuentaDeOtro } from '@/features/administracion/services/accesoPersona'
 import { getCuentaDePersona } from '@/features/administracion/services/accesoService'
 import { getBitacora, TRAMO } from '@/features/administracion/services/auditoriaService'
@@ -117,10 +132,13 @@ export default async function FichaPersonaPage({
   }
   if (!persona) notFound()
 
-  const asignaciones = vista === 'resumen' || vista === 'asignaciones'
-    ? await getAsignacionesDe(supabase, id) : null
+  // Las dos que el slab afirma en TODAS las vistas van juntas y en paralelo; la cara —las horas—
+  // sigue corriendo sólo cuando alguien abre su solapa.
+  const [asignaciones, documentos] = await Promise.all([
+    getAsignacionesDe(supabase, id),
+    getDocumentos(supabase, id),
+  ])
   const horas = vista === 'horas' ? await getHHDePersona(supabase, id) : null
-  const documentos = vista === 'documentos' ? await getDocumentos(supabase, id) : null
   // LA CUENTA NO SE LEE SI EL QUE MIRA NO PUEDE VERLA. Esconder la solapa y leer igual dejaría los
   // datos en el HTML de la página para el que sepa mirar la respuesta del servidor.
   const cuenta = vista === 'usuario' && veLaCuenta ? await getCuentaDePersona(supabase, id) : null
@@ -129,7 +147,12 @@ export default async function FichaPersonaPage({
 
   const vigente = (asignaciones?.data ?? []).find((a) => !a.hasta) ?? null
   const cerradas = (asignaciones?.data ?? []).filter((a) => a.hasta)
+  const papeles = documentos?.data ?? []
   const egresada = !persona.en_la_empresa
+  // El slab publica los años de antigüedad. El día se fija en el SERVIDOR, igual que la ventana de
+  // HH: calcularlo en el navegador daría una antigüedad distinta a cada lado de la medianoche.
+  const antiguedad = antiguedadEnAnios(persona.fecha_ingreso, new Date().toISOString().slice(0, 10))
+  const pendientes = papelesPendientes(papeles, persona.en_la_empresa)
   const filasHH = horas?.data ?? []
   const periodo = esPeriodo(sp.p) ? sp.p : PERIODO_POR_DEFECTO
   // EL DÍA SE FIJA EN EL SERVIDOR: calcularlo en el cliente daría una quincena distinta alrededor
@@ -139,31 +162,66 @@ export default async function FichaPersonaPage({
   const fallo = asignaciones?.error ?? horas?.error ?? documentos?.error
 
   return (
-    // SIN `PageShell`: su encabezado dibuja un `h1` propio, y `EntityHeader` dibuja el suyo. Dos
-    // `h1` en la misma pantalla no son un detalle de accesibilidad —son dos títulos compitiendo por
-    // decir qué es esta pantalla—. Lo que se reusa es el MARCO exacto de `PageShell` (canvas, 40px
-    // de padding en escritorio y 16 en el teléfono), que es lo único que hacía falta de él.
+    // SIN `PageShell`: su encabezado dibuja un `h1` propio y el slab dibuja el suyo. Dos `h1` en la
+    // misma pantalla no son un detalle de accesibilidad —son dos títulos compitiendo por decir qué
+    // es esta pantalla—. Lo que se reusa es el MARCO exacto de `PageShell` (canvas, 40px de padding
+    // en escritorio y 16 en el teléfono), que es lo único que hacía falta de él. El slab va FUERA
+    // de ese padding: es una franja de borde a borde, igual que en la ficha del proveedor.
     <div className="min-h-screen bg-canvas">
-      <div className="w-full px-4 py-6 lg:px-10">
-      <EntityHeader
+      {/* EL SLAB DE IDENTIDAD — `COMPONENTS.md` §Anatomía de ficha de entidad: «Cliente, Proveedor,
+          Persona, Obra y Herramienta usan la MISMA estructura: slab de identidad grafito con filo
+          amarillo · nivel 2 de solapas con contador mono · resumen de métricas · aside».
+          Era un `EntityHeader` blanco: correcto por sí solo, pero distinto del de Proveedor y del
+          de Obra, y una persona que va de una ficha a otra no debería tener que reaprender dónde
+          está el nombre. Se reusa `BarraContexto`, el mismo componente que ya corona al proveedor.
+
+          LOS CINCO HECHOS SIGUEN SEPARADOS Y ROTULADOS: oficio (lo que sabe hacer) · categoría
+          UOCRA (lo que cobra) · rol en la obra · cuadrilla · obra. El canónico los apila en una
+          línea sin rótulos; acá cada uno dice su nombre porque tres de ellos se confundieron entre
+          sí en este mismo módulo hace dos semanas. */}
+      <BarraContexto
+        testid="slab-persona"
         volverA="/administracion/personas"
         volverLabel="Personal"
-        titulo={persona.nombre_completo}
-        campos={[
-          // CATEGORÍA UOCRA: la del convenio, la que liquida. El oficio y el rol organizacional son
-          // otros dos hechos y viven en el bloque de legajo, cada uno con su rótulo.
-          { rotulo: 'Categoría UOCRA', valor: persona.categoria ? etiquetaCategoria(persona.categoria) : null, falta: 'sin categoría' },
-          { rotulo: 'Cuadrilla', valor: vigente?.cuadrilla ?? null, falta: 'sin cuadrilla' },
-          { rotulo: 'Obra actual', valor: vigente?.obra_nombre ?? null, falta: 'sin asignar' },
-          { rotulo: 'Alta', valor: persona.fecha_ingreso ? fecha(persona.fecha_ingreso) : null, falta: 'sin fecha' },
-        ]}
-        derecha={
-          // EL ESTADO SALE DE `en_la_empresa`, NO DE LA FECHA: hay 15 personas que se fueron sin baja
-          // documentada y por la fecha figurarían activas.
-          egresada
-            ? <Estado tono="nulo" clave="inactiva">{persona.fecha_egreso ? `inactiva desde ${fecha(persona.fecha_egreso)}` : 'ya no está en la empresa'}</Estado>
-            : <Estado tono="pos" clave="activa">activa</Estado>
+        titulo={
+          <span className="flex items-center gap-3">
+            <Avatar nombre={persona.nombre_completo} url={null} lado={32} />
+            <span className="min-w-0 truncate">{persona.nombre_completo}</span>
+          </span>
         }
+        meta={
+          <>
+            {persona.especialidad?.trim() && (
+              <MetaContexto rotulo="Oficio">{persona.especialidad}</MetaContexto>
+            )}
+            <MetaContexto rotulo="Categoría UOCRA">
+              {persona.categoria ? etiquetaCategoria(persona.categoria) : 'sin categoría'}
+            </MetaContexto>
+            <MetaContexto rotulo="Obra">{vigente?.obra_nombre ?? 'sin asignar'}</MetaContexto>
+            <MetaContexto rotulo="Cuadrilla">{vigente?.cuadrilla ?? 'sin cuadrilla'}</MetaContexto>
+            {vigente?.rol && <MetaContexto rotulo="Rol">{vigente.rol}</MetaContexto>}
+            <MetaContexto rotulo="Legajo">{persona.legajo ?? 'sin número'}</MetaContexto>
+            {/* EL ESTADO SALE DE `en_la_empresa`, NO DE LA FECHA: hay 15 personas que se fueron
+                sin baja documentada y por la fecha figurarían activas. */}
+            <MetaContexto destacado={egresada}>
+              {egresada
+                ? (persona.fecha_egreso ? `inactiva desde ${fecha(persona.fecha_egreso)}` : 'ya no está en la empresa')
+                : 'activa'}
+            </MetaContexto>
+          </>
+        }
+        kpis={[
+          // TRES NÚMEROS QUE NO CAMBIAN DE SOLAPA EN SOLAPA. Salen de lo que se lee siempre: si
+          // dependieran de la vista abierta, el slab diría una cosa distinta en cada pestaña.
+          { rotulo: 'Antigüedad', valor: antiguedad === null ? null : `${antiguedad.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} a`, falta: 'sin fecha de alta' },
+          { rotulo: 'Obras', valor: asignaciones?.data?.length || null, falta: 'ninguna' },
+          {
+            rotulo: 'Papeles pendientes',
+            valor: pendientes || null,
+            falta: persona.en_la_empresa ? 'ninguno' : 'legajo cerrado',
+            destacado: pendientes > 0,
+          },
+        ]}
         acciones={egresada
           ? <BotonAccion accion={reincorporar} args={[id]} testid="reincorporar">Reincorporar</BotonAccion>
           // `args` y NO una función flecha: `accion={() => darDeBaja(id)}` crea una función nueva que
@@ -172,7 +230,13 @@ export default async function FichaPersonaPage({
           : <BotonAccion accion={darDeBaja} args={[id]} testid="dar-de-baja">Dar de baja</BotonAccion>}
       />
 
-      <NavFicha activa={vista} hrefDe={(v) => href(v)} ocultar={veLaCuenta ? [] : ['usuario']} />
+      <div className="w-full px-4 py-6 lg:px-10">
+      <NavFicha
+        activa={vista}
+        hrefDe={(v) => href(v)}
+        ocultar={veLaCuenta ? [] : ['usuario']}
+        cuentas={{ asignaciones: asignaciones?.data?.length ?? null, documentos: papeles.length }}
+      />
 
       {fallo && <div className="mb-4"><Aviso tono="neg">{fallo}</Aviso></div>}
 

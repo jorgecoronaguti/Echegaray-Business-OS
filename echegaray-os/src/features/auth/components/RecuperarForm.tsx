@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useActionState } from 'react'
+import { Boton, CAMPO, Campo } from '@/shared/components/ds'
 import { recuperarAction, type EnvioState } from '../services/actions'
 
 const initialState: EnvioState = { error: null, enviado: false }
@@ -32,32 +33,31 @@ export function RecuperarForm() {
           deseado — y si tampoco está, avisale a Administración: puede que tu cuenta esté registrada
           con otra dirección.
         </p>
-        <Link href="/login" className="mt-5 block text-sm underline">Volver a ingresar</Link>
+        <Link href="/login" className="mt-5 inline-block py-2 text-[13px] text-muted underline decoration-line underline-offset-2 hover:text-ink">
+          Volver a ingresar
+        </Link>
       </div>
     )
   }
 
   return (
-    <form action={formAction} className="flex flex-col gap-3" data-testid="recuperar-form">
-      <label className="flex flex-col text-sm">
-        Email
-        <input
-          name="email"
-          type="email"
-          required
-          autoComplete="email"
-          autoFocus
-          className="rounded border px-3 py-2"
-        />
-      </label>
+    // Los controles son los del design system (`CAMPO`, `Boton`), igual que en el login: las cuatro
+    // pantallas sin sesión comparten marco, así que compartir también los controles es lo que evita
+    // que una de las cuatro se quede con el borde crudo el día que el DS cambie.
+    <form action={formAction} className="flex flex-col gap-4" data-testid="recuperar-form">
+      <Campo rotulo="Email">
+        <input name="email" type="email" required autoComplete="email" autoFocus className={CAMPO} />
+      </Campo>
 
-      {state.error && <p className="text-sm text-red-600" data-testid="recuperar-error">{state.error}</p>}
+      {state.error && <p className="text-[13px] text-neg" data-testid="recuperar-error">{state.error}</p>}
 
-      <button type="submit" disabled={pending} className="rounded bg-black px-4 py-2 text-white disabled:opacity-50">
-        {pending ? 'Enviando...' : 'Enviarme el enlace'}
-      </button>
+      <Boton type="submit" variante="primaria" tamano="acceso" disabled={pending}>
+        {pending ? 'Enviando…' : 'Enviarme el enlace'}
+      </Boton>
 
-      <Link href="/login" className="text-center text-sm text-muted underline">Volver a ingresar</Link>
+      <Link href="/login" className="-my-1 py-3 text-center text-[13px] text-muted underline decoration-line underline-offset-2 hover:text-ink">
+        Volver a ingresar
+      </Link>
     </form>
   )
 }

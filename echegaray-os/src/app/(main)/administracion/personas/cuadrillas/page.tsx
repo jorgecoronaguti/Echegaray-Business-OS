@@ -11,7 +11,8 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { Campo, CTRL, PageShell } from '@/shared/components/ui'
-import { Aviso, BotonEnlace, BuscadorURL, TituloPantalla, Vacio, Volver } from '@/shared/components/ds'
+import { Aviso, BotonEnlace, BuscadorURL, Franja, TituloPantalla, Vacio, Volver } from '@/shared/components/ds'
+import { IconoCrear } from '@/shared/components/iconos'
 import { FiltrosURL } from '@/features/administracion/components/Controles'
 import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
 import { PanelCuadrilla } from '@/features/administracion/components/PanelCuadrilla'
@@ -20,7 +21,7 @@ import { SolapasHH } from '@/features/administracion/components/SolapasHH'
 import { TablaCuadrillas } from '@/features/administracion/components/TablaCuadrillas'
 import {
   filtrarCuadrillas, getCapacidadDeCuadrillas, getCuadrillas, getHHDeCuadrilla, getIntegrantes,
-  getSinCuadrilla,
+  getSinCuadrilla, resumirCuadrillas,
 } from '@/features/administracion/services/cuadrillasService'
 import { rotulo, ventanaDe } from '@/features/administracion/services/periodoHH'
 import {
@@ -37,6 +38,10 @@ import { getCapacidadPonderada } from '@/features/obras/services/cronogramaObraS
 export const dynamic = 'force-dynamic'
 
 type Busqueda = { c?: string; archivadas?: string; q?: string }
+
+/** Un decimal, como la columna CAP. POND. de la tabla: la capacidad se compara, no se liquida. */
+const capacidadPonderada = (n: number) =>
+  n.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
 
 const href = (sp: Busqueda, c?: string) => {
   const p = new URLSearchParams()
@@ -89,6 +94,36 @@ export default async function CuadrillasPage({ searchParams }: { searchParams: P
   // agrupa sobre integrantes y personas, y traerla entera para pintar cuatro filas es un viaje pago.
   const capacidades = await getCapacidadDeCuadrillas(supabase, visibles.map((c) => c.id))
 
+  // EL PIE CUENTA LO QUE LA PANTALLA MUESTRA, y se llama por eso. Con texto en el buscador esas
+  // filas son coincidencias, no «las cuadrillas de la empresa»: el número sería correcto y el
+  // rótulo, falso. Misma regla que el pie del listado de Personal.
+  const r = resumirCuadrillas(
+    visibles.map((c) => ({ id: c.id, integrantes: c.integrantes })),
+    capacidades,
+    (sinCuadrilla.data ?? []).length,
+  )
+  const metricasDelPie = [
+    { etiqueta: sp.q?.trim() ? 'Coinciden' : 'Cuadrillas', valor: r.cuadrillas },
+    { etiqueta: 'Personas', valor: r.personas, contexto: 'en cuadrilla' },
+    {
+      // LA CAPACIDAD SE PONDERA EN LA VISTA `cuadrilla_capacidad`, NO ACÁ: los factores por
+      // categoría salen de `categoria_obra` y la 08 lee la misma vista. Escribir el multiplicador
+      // en este pie sería la segunda definición de cuánto rinde un ayudante.
+      etiqueta: 'Capacidad ponderada',
+      valor: r.capacidad === null ? 'sin medir' : capacidadPonderada(r.capacidad),
+      contexto: r.sinCapacidad > 0 ? `${r.sinCapacidad} sin integrantes vigentes` : 'equivalente en oficiales',
+      tono: r.sinCapacidad > 0 ? ('warn' as const) : undefined,
+    },
+    {
+      etiqueta: 'Sin cuadrilla',
+      // «No pude leer el pool» NO es «no hay nadie suelto»: el 0 acá diría que todo el plantel está
+      // encuadrado, que es justo la conclusión que hace que nadie mire.
+      valor: sinCuadrilla.error ? 'sin leer' : r.sinCuadrilla,
+      contexto: sinCuadrilla.error ? undefined : 'personas del plantel',
+      tono: !sinCuadrilla.error && r.sinCuadrilla > 0 ? ('warn' as const) : undefined,
+    },
+  ]
+
   return (
     // Sin `PageShell`: su encabezado dibuja un `h1` y acá el título va con su `← volver` encima, que
     // es la anatomía de una pantalla de segundo nivel. Se reusa el MARCO exacto de `PageShell`.
@@ -120,7 +155,8 @@ export default async function CuadrillasPage({ searchParams }: { searchParams: P
             cuenta={{ n: visibles.length, total: cuadrillas.length }}
           />
           <BotonEnlace href={href(sp, 'nueva')} variante="primaria" className="ml-auto" data-testid="nueva-cuadrilla">
-            + Nueva cuadrilla
+            <IconoCrear className="h-[15px] w-[15px]" />
+            Nueva cuadrilla
           </BotonEnlace>
         </div>
 
@@ -152,6 +188,7 @@ export default async function CuadrillasPage({ searchParams }: { searchParams: P
               factores={factores.data ?? []}
               asignar={asignarACuadrilla}
             />
+
           </div>
 
           {alta && (
@@ -199,6 +236,15 @@ export default async function CuadrillasPage({ searchParams }: { searchParams: P
               cerrarHref={href({ ...sp, c: undefined })}
             />
           )}
+        </div>
+
+        {/* EL PIE DE LA PANTALLA (Design 23/08, §Status bar). Los cuatro números salen de lo que la
+            pantalla YA leyó: ninguna consulta nueva, así que no puede haber un total que discrepe
+            con la tabla de arriba. La regla del «—» en la capacidad —una cuadrilla sin fila en
+            `cuadrilla_capacidad` no suma 0— vive en `resumirCuadrillas`, con su prueba.
+            Va FUERA de la fila para que el panel abierto no lo tape, y de borde a borde. */}
+        <div className="-mx-4 mt-4 lg:-mx-10">
+          <Franja testid="franja-cuadrillas" metricas={metricasDelPie} />
         </div>
       </div>
     </div>

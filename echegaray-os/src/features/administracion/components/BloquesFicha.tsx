@@ -14,7 +14,7 @@ import { Estado, Eyebrow, Nulo, Num, Tabla, Td, Th, THead, Tr, Vacio } from '@/s
 import { urlDeDrive } from '@/features/obras/services/driveUrl'
 import { fecha } from '@/features/obras/components/formato'
 import type { TotalHH } from '../services/hhPersonaService'
-import { faltaEnElLegajo } from '../types'
+import { DOCUMENTO_ESTADO, estadoDocumento, solicitadosDelLegajo } from '../services/fichaPersona'
 import type { AsignacionDePersona, DocumentoLegajo, ImputacionHH } from '../types'
 import { TIPO_HORA_LABEL, type TipoHora } from '@/features/obras/services/tipoHora'
 import { PERIODOS, PERIODO_LABEL, type Periodo } from '../services/periodoHH'
@@ -239,17 +239,20 @@ export function BloqueDocumentos({
   enLaEmpresa?: boolean
   carpetaDrive?: string | null
 }) {
-  const falta = enLaEmpresa ? faltaEnElLegajo(documentos) : []
+  const solicitados = solicitadosDelLegajo(documentos, enLaEmpresa)
   const encabezado = (
-    <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+    <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+      {/* MENOS PALABRAS (Design 23/08). Acá se enumeraban los faltantes en una frase —«Falta alta
+          temprana · examen medico · epp»— y abajo la tabla no los mostraba: el que leía la lista
+          tenía que retenerla para saber qué buscar. Ahora cada faltante ES una fila con su acción,
+          y este renglón sólo cuenta cuántos son. */}
       <p className="text-[12.5px]" data-testid="falta-en-el-legajo">
-        {falta.length === 0
+        {solicitados.length === 0
           ? <span className="text-muted">{enLaEmpresa ? 'El legajo está completo.' : 'Legajo cerrado.'}</span>
           : (
-              <>
-                <span className="text-faint">Falta </span>
-                <span className="text-warn">{falta.map((f) => f.replace(/_/g, ' ')).join(' · ')}</span>
-              </>
+              <span className="text-warn">
+                Falta{solicitados.length === 1 ? ' 1 papel' : `n ${solicitados.length} papeles`} del legajo
+              </span>
             )}
       </p>
       {carpetaDrive && (
@@ -260,52 +263,91 @@ export function BloqueDocumentos({
       )}
     </div>
   )
-  if (documentos.length === 0) {
+  if (documentos.length === 0 && solicitados.length === 0) {
     return <>{encabezado}<Vacio>Sin documentos vinculados. Se agregan con el enlace de Drive, sin copiar el archivo.</Vacio></>
   }
   return (
     <>
       {encabezado}
-      <Tabla testid="ficha-documentos" minWidth={620}>
-        <THead>
-          <Th>Categoría</Th>
-          <Th>Documento</Th>
-          <Th>Fecha</Th>
-          <Th />
-        </THead>
-        <tbody>
-          {documentos.map((d) => (
-            <Tr key={d.id} data-testid="fila-documento">
-              <Td className="w-[150px]">{d.tipo_documento?.replace(/_/g, ' ') ?? <Nulo>sin clasificar</Nulo>}</Td>
-              <Td fuerte>
+      {/* ═══ DOCUMENT REQUEST ROW — `COMPONENTS.md` ═══
+          «Punto + palabra para el estado, vencimiento en `faint`, y la acción como texto a la
+          derecha, más oscura y en 500 cuando requiere acción». Era una tabla de cuatro columnas: un
+          legajo son seis papeles, no un listado — la tabla gastaba un encabezado de columnas para
+          seis filas y no tenía dónde poner lo que FALTA.
+
+          LOS TRES ESTADOS SON LOS QUE LA BASE SOSTIENE. El patrón del Design describe cinco
+          (solicitado → subido → en revisión → aprobado / requiere corrección). «En revisión» y
+          «requiere corrección» necesitan revisor, fecha y motivo, y ninguna de las tres columnas
+          existe en `documentacion_legajo`: dibujarlas sería inventar un hecho de RRHH sobre el
+          legajo de una persona. Se declara acá y en el informe del frente. */}
+      <ul data-testid="ficha-documentos">
+        {documentos.map((d) => {
+          const estado = estadoDocumento(d)
+          const { palabra, pide } = DOCUMENTO_ESTADO[estado]
+          return (
+            <li
+              key={d.id}
+              data-testid="fila-documento"
+              className="flex items-center gap-x-4 gap-y-1 border-b border-[#EFEEEA] py-2.5 last:border-0"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13px] text-ink">
+                  {d.nombre ?? d.tipo_documento?.replace(/_/g, ' ') ?? 'documento'}
+                </span>
+                <span className="block truncate text-[11px] text-faint">
+                  {d.tipo_documento?.replace(/_/g, ' ') ?? 'sin clasificar'}
+                  {' · '}
+                  {d.fecha_documento ? fecha(d.fecha_documento) : 'sin fecha'}
+                  {d.notas ? ` · ${d.notas}` : ''}
+                </span>
+              </span>
+              <Estado tono={estado === 'cargado' ? 'pos' : 'warn'} clave={estado}>{palabra}</Estado>
+              <span className="w-[64px] shrink-0 text-right">
                 {d.drive_file_id
                   ? (
                       <a
                         href={urlDeDrive(d.drive_file_id, 'archivo')} target="_blank" rel="noreferrer"
-                        className="text-ink hover:underline" data-testid="abrir-documento"
-                      >{d.nombre ?? d.tipo_documento ?? 'documento'}</a>
+                        className="text-[12px] text-muted transition-colors hover:text-ink"
+                        data-testid="abrir-documento"
+                      >Ver</a>
                     )
-                  : <span className="text-warn">{d.nombre ?? 'sin vínculo a Drive'}</span>}
-                {d.notas && <span className="block text-[11px] text-faint">{d.notas}</span>}
-              </Td>
-              <Td num className="w-[110px]">
-                {d.fecha_documento ? fecha(d.fecha_documento) : <Nulo>sin fecha</Nulo>}
-              </Td>
-              <Td className="w-[70px] text-right">
-                {/* UNA sola acción, no un menú. `MenuContextual` del DS cierra con `onClick`, o sea
-                    una FUNCIÓN, y este archivo es un server component: una flecha pasada a un
-                    componente de cliente no es una server action —compila, pasa el build y deja la
-                    pantalla en blanco—. `BotonAccion` existe justamente para esto: recibe la acción
-                    del servidor y sus argumentos como datos.
-                    Desvincular saca el vínculo del legajo; el archivo sigue en Drive. */}
+                  // «Subir» en `ink` y 500: es la fila que pide trabajo. El archivo se sube a Drive
+                  // y se vincula acá abajo — el OS no guarda copias.
+                  : <span className={`text-[12px] ${pide ? 'font-medium text-ink' : 'text-faint'}`}>Sin archivo</span>}
+              </span>
+              {/* UNA sola acción, no un menú. `MenuContextual` del DS cierra con `onClick`, o sea
+                  una FUNCIÓN, y este archivo es un server component: una flecha pasada a un
+                  componente de cliente no es una server action —compila, pasa el build y deja la
+                  pantalla en blanco—. `BotonAccion` existe justamente para esto: recibe la acción
+                  del servidor y sus argumentos como datos.
+                  Desvincular saca el vínculo del legajo; el archivo sigue en Drive. */}
+              <span className="shrink-0">
                 <BotonAccion accion={desvincular} args={[d.id]} testid="desvincular-documento" tono="peligro">
                   Desvincular
                 </BotonAccion>
-              </Td>
-            </Tr>
-          ))}
-        </tbody>
-      </Tabla>
+              </span>
+            </li>
+          )
+        })}
+
+        {/* LO QUE SE PIDIÓ Y NO LLEGÓ TAMBIÉN ES UNA FILA. Testid propio: el conteo de
+            `fila-documento` mide los papeles VINCULADOS, y una prueba que cuenta vínculos no puede
+            empezar a contar ausencias sin que nadie lo decida. */}
+        {solicitados.map((tipo) => (
+          <li
+            key={`solicitado-${tipo}`}
+            data-testid="fila-documento-solicitado"
+            className="flex items-center gap-x-4 border-b border-[#EFEEEA] py-2.5 last:border-0"
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13px] text-ink-soft">{tipo.replace(/_/g, ' ')}</span>
+              <span className="block text-[11px] text-faint">lo exige el legajo de quien trabaja hoy</span>
+            </span>
+            <Estado tono="pendiente" clave="solicitado">solicitado</Estado>
+            <span className="w-[64px] shrink-0 text-right text-[12px] font-medium text-ink">Subir</span>
+          </li>
+        ))}
+      </ul>
     </>
   )
 }

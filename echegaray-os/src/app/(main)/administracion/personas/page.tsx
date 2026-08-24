@@ -12,13 +12,15 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { PageShell } from '@/shared/components/ui'
-import { Aviso, BotonEnlace, BuscadorURL, Vacio } from '@/shared/components/ds'
+import { Aviso, BotonEnlace, BuscadorURL, Franja, Vacio } from '@/shared/components/ds'
+import { IconoCrear, IconoCuadrilla, IconoPersona } from '@/shared/components/iconos'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
 import { FiltrosURL } from '@/features/administracion/components/Controles'
 import { CamposAlta } from '@/features/administracion/components/FormularioPersona'
 import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
 import { TablaPersonas } from '@/features/administracion/components/TablaPersonas'
 import { FILTROS, getDirectorio, type FiltroPersonal } from '@/features/administracion/services/personasService'
+import { metricasDelListado } from '@/features/administracion/services/resumenPersonal'
 import { crearPersona } from '@/features/administracion/services/personasActions'
 
 export const dynamic = 'force-dynamic'
@@ -94,14 +96,20 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
           {/* «En obra ahora» va al lado de Cuadrillas y por el mismo motivo: es NAVEGACIÓN dentro de
               Personal, no una sección nueva del sistema. Quién está hoy y quién es el plantel son la
               misma pregunta mirada a dos distancias. */}
+          {/* UNA ACCIÓN = UN ICONO (Design 23/08). Los tres son de `shared/components/iconos`, que
+              es la única fuente de iconografía del OS: el «+» tipográfico de la primaria era el
+              único signo dibujado con una tipografía en toda la barra. */}
           <BotonEnlace href="/administracion/personas/en-obra" variante="discreta" data-testid="ir-en-obra">
+            <IconoPersona className="h-[15px] w-[15px]" />
             En obra ahora
           </BotonEnlace>
           <BotonEnlace href="/administracion/personas/cuadrillas" variante="discreta" data-testid="ir-cuadrillas">
+            <IconoCuadrilla className="h-[15px] w-[15px]" />
             Cuadrillas
           </BotonEnlace>
           <BotonEnlace href={armarHref(sp, filtro, true)} variante="primaria" data-testid="nueva-persona">
-            + Nueva persona
+            <IconoCrear className="h-[15px] w-[15px]" />
+            Nueva persona
           </BotonEnlace>
         </div>
       </div>
@@ -111,10 +119,6 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
           {personas.length === 0
             ? <div data-testid="personas-vacio"><Vacio>{vacioDe(filtro, sp.q)}</Vacio></div>
             : <TablaPersonas personas={personas} conBaja={filtro === 'inactivos'} />}
-          <p className="mt-3 text-[11px] text-faint">
-            {personas.length} {personas.length === 1 ? 'persona' : 'personas'} · el estado sale de la
-            pertenencia vigente, no de la fecha de baja.
-          </p>
         </div>
 
         {sp.nueva === '1' && (
@@ -130,6 +134,24 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
           </PanelEdicion>
         )}
       </div>
+
+      {/* EL PÁRRAFO SE FUE, LOS NÚMEROS SE QUEDARON (Design 23/08, §Status bar). Decía «17 personas
+          · el estado sale de la pertenencia vigente, no de la fecha de baja»: una frase permanente
+          explicando una regla que la columna ESTADO ya aplica sola. El pie contesta de un vistazo
+          las tres preguntas que se le hacen al plantel, y cada número se llama por el conjunto que
+          contó — la regla del rótulo vive en `resumenPersonal.ts`, con su prueba.
+
+          VA FUERA DE LA FILA, no debajo de la tabla: es el pie de la PANTALLA y va de borde a borde
+          (por eso el `-mx` que sangra el padding de `PageShell`). Adentro de la columna se metería
+          por debajo del panel de alta cuando está abierto. */}
+      {personas.length > 0 && (
+        <div className="-mx-4 mt-4 lg:-mx-10">
+          <Franja
+            testid="franja-personal"
+            metricas={metricasDelListado({ filtro, buscando: Boolean(sp.q?.trim()), personas })}
+          />
+        </div>
+      )}
     </PageShell>
   )
 }

@@ -117,6 +117,44 @@ export async function getCapacidadDeCuadrillas(
   return mapa
 }
 
+// ═══ EL PIE DE «CUADRILLAS Y HH» — Design 23/08/2026, pantalla 21 §Status bar ═══
+//
+// El canónico corona la pantalla con cuatro números. Tres se cuentan sobre lo que ya está leído;
+// el cuarto —la capacidad total— es el que tiene la trampa.
+//
+// UNA CAPACIDAD QUE NO SE PUDO LEER NO ES CERO. `cuadrilla_capacidad` puede no traer la fila de una
+// cuadrilla (la vista agrupa sobre integrantes: sin integrantes vigentes no hay fila). Sumar esas
+// cuadrillas como 0 devuelve un total que parece completo y no lo es: nadie puede distinguir «la
+// empresa rinde 12,4 oficiales» de «rinde 12,4 de las que pude mirar». Por eso el total se acompaña
+// SIEMPRE de cuántas quedaron afuera, y cuando no se pudo leer ninguna el total es `null`.
+//
+// Es la misma regla que la columna CAP. POND. de la tabla, que muestra «—» y no 0.
+
+export interface ResumenCuadrillas {
+  cuadrillas: number
+  personas: number
+  /** `null` cuando NINGUNA cuadrilla trajo su capacidad: un 0 afirmaría que la empresa no rinde. */
+  capacidad: number | null
+  /** Cuántas cuadrillas de la lista no tienen capacidad leída. El supuesto se ve, no se esconde. */
+  sinCapacidad: number
+  sinCuadrilla: number
+}
+
+export function resumirCuadrillas(
+  cuadrillas: { id: string; integrantes: number }[],
+  capacidades: Map<string, CapacidadCuadrilla>,
+  sinCuadrilla: number,
+): ResumenCuadrillas {
+  const leidas = cuadrillas.map((c) => capacidades.get(c.id)).filter((c): c is CapacidadCuadrilla => Boolean(c))
+  return {
+    cuadrillas: cuadrillas.length,
+    personas: cuadrillas.reduce((a, c) => a + Number(c.integrantes ?? 0), 0),
+    capacidad: leidas.length === 0 ? null : leidas.reduce((a, c) => a + c.capacidad_ponderada, 0),
+    sinCapacidad: cuadrillas.length - leidas.length,
+    sinCuadrilla,
+  }
+}
+
 /**
  * EL POOL: quién está en el plantel y hoy no integra ninguna cuadrilla.
  *

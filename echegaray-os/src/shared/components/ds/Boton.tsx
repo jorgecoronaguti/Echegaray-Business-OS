@@ -37,14 +37,21 @@ const BASE =
  * toca parado, en obra, muchas veces con guante. Existe acá y no en cada perfil porque el jefe de
  * obra y el empleado ya habían dibujado su propia versión de lo mismo un píxel distinto.
  *
+ * `acceso` — 52px. Es la primaria de las pantallas SIN SESIÓN, y no es «bloque un poco más alto»:
+ * `COMPONENTS.md` §Employee shell fija la acción de pantalla en 50–52px, y acá es la ÚNICA cosa
+ * tocable que hay —no compite con nada, así que no gana nada por ser chica—. `bloque` se queda en
+ * 48 porque lo usan las pantallas del jefe y del empleado, donde la primaria convive con una lista:
+ * subirla allá movería tres pantallas de otros frentes para arreglar ésta.
+ *
  * La deshabilitada CONSERVA el peso: lo que la apaga es el par fondo hundido + texto faint, no
  * adelgazarla — una primaria que además cambia de peso al deshabilitarse se lee como otro botón.
  */
-export type TamanoBoton = 'normal' | 'bloque'
+export type TamanoBoton = 'normal' | 'bloque' | 'acceso'
 
 const TAMANO: Record<TamanoBoton, string> = {
   normal: 'px-3.5 py-[7px] text-[12.5px] leading-[18px]',
   bloque: 'h-[48px] w-full rounded-[12px] px-4 text-[15px]',
+  acceso: 'h-[52px] w-full rounded-[12px] px-4 text-[16px]',
 }
 
 export function Boton({

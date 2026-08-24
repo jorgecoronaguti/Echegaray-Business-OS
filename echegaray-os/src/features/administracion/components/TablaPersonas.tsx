@@ -12,9 +12,20 @@
 //
 // CUADRILLA y OBRA ACTUAL son DERIVADAS —de la pertenencia vigente y de la asignación vigente—, no
 // columnas guardadas. Por eso no pueden quedar desactualizadas respecto de la ficha.
+//
+// ═══ CINCO HECHOS, CINCO LUGARES (Design 23/08/2026, pantalla 19) ═══
+//
+// El canónico junta OBRA / CUADRILLA en una columna y titula la otra «ROL», pero en el modelo son
+// CINCO cosas distintas y ninguna se deduce de otra: el OFICIO es lo que sabe hacer, la CATEGORÍA
+// UOCRA es lo que cobra, el ROL es qué hace en esta obra, la CUADRILLA es con quién y la OBRA es
+// dónde. Colapsarlas para parecerse al mockup es exactamente el defecto que esta tabla ya arregló
+// una vez —mostraba «OFICIAL» debajo del nombre y «Ayudante» en CATEGORÍA, dos respuestas al mismo
+// hecho—. Se preserva la separación y se adapta lo visual: el oficio bajo el nombre, el rol bajo la
+// obra, categoría y cuadrilla en su columna.
 
 import Link from 'next/link'
 import { Tabla, THead, Th, Tr, Td, Nulo } from '@/shared/components/ds'
+import { Avatar } from '@/shared/components/Avatar'
 import { esCategoriaDeConvenio, etiquetaCategoria, type PersonaEnDirectorio } from '../types'
 import { oficioVisible } from '../services/vocabularioPersona'
 
@@ -52,18 +63,27 @@ export function TablaPersonas({
             <Td fuerte className="w-[28%]">
               {/* La fila entera lleva a la ficha: en un listado de trabajo, apuntar a un lápiz de
                   16px con el dedo es la diferencia entre usarlo y no usarlo. */}
-              <Link href={`/administracion/personas/${p.id}`} className="block min-w-0" data-testid="abrir-persona">
-                <span className="text-[13px] text-ink hover:underline">{p.nombre_completo}</span>
-                {/* EL OFICIO, NO LA CATEGORÍA. Acá decía el puesto, y el puesto traía el CARGO de la
-                    nómina —que ES la categoría del convenio—: la fila mostraba «OFICIAL» debajo del
-                    nombre y «Ayudante» en la columna CATEGORÍA, dos respuestas al mismo hecho y
-                    distintas. El `??` pelado no alcanzaba porque no MIRABA el valor; la regla y su
-                    prueba viven en `services/vocabularioPersona.ts`. */}
-                {oficioVisible(p.especialidad, p.puesto) && (
-                  <span className="block truncate text-[11px] text-faint">
-                    {oficioVisible(p.especialidad, p.puesto)}
-                  </span>
-                )}
+              <Link href={`/administracion/personas/${p.id}`} className="flex min-w-0 items-center gap-2.5" data-testid="abrir-persona">
+                {/* LAS INICIALES, NO UNA SILUETA (Design 23/08, pantallas 19 y 20). En una tabla de
+                    diecisiete apellidos parecidos —Agüero, Alaniz, Ochoa— el ancla del ojo es el
+                    par de letras, no el nombre completo que hay que leer entero. Es el MISMO
+                    componente de Mi cuenta y de la ficha: una sola definición de «cómo se ve una
+                    persona» en todo el OS. Sin foto todavía: `persona_directorio` no publica una
+                    URL de avatar y no se inventa una. */}
+                <Avatar nombre={p.nombre_completo} url={null} lado={26} />
+                <span className="min-w-0">
+                  <span className="block truncate text-[13px] text-ink hover:underline">{p.nombre_completo}</span>
+                  {/* EL OFICIO, NO LA CATEGORÍA. Acá decía el puesto, y el puesto traía el CARGO de
+                      la nómina —que ES la categoría del convenio—: la fila mostraba «OFICIAL» debajo
+                      del nombre y «Ayudante» en la columna CATEGORÍA, dos respuestas al mismo hecho
+                      y distintas. El `??` pelado no alcanzaba porque no MIRABA el valor; la regla y
+                      su prueba viven en `services/vocabularioPersona.ts`. */}
+                  {oficioVisible(p.especialidad, p.puesto) && (
+                    <span className="block truncate text-[11px] text-faint">
+                      {oficioVisible(p.especialidad, p.puesto)}
+                    </span>
+                  )}
+                </span>
               </Link>
             </Td>
             <Td className="w-[130px]">
@@ -84,9 +104,19 @@ export function TablaPersonas({
                   NOMBRE — el id es el slug de la URL, que en ninguna otra pantalla se muestra. */}
               {p.obra_actual_id
                 ? (
-                    <Link href={`/obras/${p.obra_actual_id}`} className="text-[12px] text-ink hover:underline">
-                      {p.obra_actual ?? p.obra_actual_id}
-                    </Link>
+                    <>
+                      <Link href={`/obras/${p.obra_actual_id}`} className="text-[12px] text-ink hover:underline">
+                        {p.obra_actual ?? p.obra_actual_id}
+                      </Link>
+                      {/* EL ROL ES EL QUINTO HECHO, Y ESTABA EN LA CONSULTA SIN LLEGAR A NADIE.
+                          `persona_directorio` publica `rol_en_obra` y el listado lo pedía desde
+                          siempre: la fila lo tiraba. No es la categoría (lo que cobra) ni el oficio
+                          (lo que sabe hacer): es qué hace EN ESTA OBRA —capataz, integrante—, y
+                          cuelga de la asignación, por eso vive acá y no en su propia columna. */}
+                      {p.rol_en_obra?.trim() && (
+                        <span className="block truncate text-[11px] text-faint">{p.rol_en_obra}</span>
+                      )}
+                    </>
                   )
                 : <Nulo>sin asignar</Nulo>}
             </Td>

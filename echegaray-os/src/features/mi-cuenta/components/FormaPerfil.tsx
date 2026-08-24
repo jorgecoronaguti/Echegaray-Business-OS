@@ -26,7 +26,7 @@ import { CAMPO } from '@/shared/components/ds'
 import { FormAccion, Campo } from '@/shared/components/ui'
 import { guardarPerfil, pedirCambioDeEmail, quitarFoto, subirFoto } from '../services/actions'
 import { AVATAR_LADO_MINIMO } from '../types'
-import { Avatar } from './Avatar'
+import { Avatar } from '@/shared/components/Avatar'
 
 export function FormaPerfil({
   nombre, email, telefono, avatarUrl, cargo, legajoNombre, legajoAlta, vinculoDisponible = true,
