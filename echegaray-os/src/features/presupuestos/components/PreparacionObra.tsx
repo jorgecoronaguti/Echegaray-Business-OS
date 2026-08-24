@@ -38,14 +38,21 @@ export interface Props {
   plantillas: Plantilla[]
   obra: ObraDelPlan
   datos: DatosDePreparacion
-  hrefDetalle: (partidaId: string) => string
+  /**
+   * La URL de esta pantalla, sin parámetros. El link «partir en frentes» se arma ACÁ ADENTRO y no
+   * llega como función: una arrow creada en un Server Component NO cruza la frontera —React la
+   * rechaza en tiempo de ejecución y la pantalla queda en blanco—, y ni el typecheck ni el build lo
+   * ven. Es el mismo defecto que documenta `LienzoCronogramaObra` con el constructor de links.
+   */
+  hrefBase: string
   /** Ya atada al presupuesto con `.bind`: el id no viaja en un campo editable del formulario. */
   crear: (form: FormData) => Promise<ResultadoAccion>
 }
 
 export function PreparacionObra({
-  partidas, conversiones, plantillas, obra, datos, hrefDetalle, crear,
+  partidas, conversiones, plantillas, obra, datos, hrefBase, crear,
 }: Props) {
+  const hrefDetalle = (partidaId: string) => `${hrefBase}?partida=${partidaId}`
   const filasBase = useMemo(
     () => filasDePreparacion(partidas, conversiones), [partidas, conversiones],
   )

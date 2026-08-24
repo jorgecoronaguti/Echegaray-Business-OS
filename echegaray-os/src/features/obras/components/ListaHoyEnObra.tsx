@@ -37,7 +37,12 @@ const hh = (v: number) => v.toLocaleString('es-AR', { minimumFractionDigits: 1, 
 
 export function ListaHoyEnObra({ grupos, horas, navegacion, accion, panel, kpis, fecha }: {
   grupos: GrupoHoy[]
-  horas: Map<string, number>
+  /**
+   * Horas imputadas hoy por persona. Objeto plano y NO un `Map`: éste es el borde
+   * servidor→cliente, y lo que cruza tiene que ser lo más aburrido posible. El `Map` se arma y se
+   * consume del lado del servidor (`horasDeHoy`); acá llega ya aplanado.
+   */
+  horas: Record<string, number>
   /** La banda de cinco cifras. Llega dibujada desde el servidor: es presentación pura y no tiene
    *  por qué recompilarse en el navegador para que la lista se pueda filtrar. */
   kpis?: ReactNode
@@ -133,9 +138,9 @@ export function ListaHoyEnObra({ grupos, horas, navegacion, accion, panel, kpis,
   )
 }
 
-function Grupo({ grupo, horas }: { grupo: GrupoHoy; horas: Map<string, number> }) {
+function Grupo({ grupo, horas }: { grupo: GrupoHoy; horas: Record<string, number> }) {
   const completa = grupo.asignados > 0 && grupo.presentes >= grupo.asignados
-  const hhGrupo = grupo.filas.reduce((t, f) => t + (horas.get(f.personaId) ?? 0), 0)
+  const hhGrupo = grupo.filas.reduce((t, f) => t + (horas[f.personaId] ?? 0), 0)
   return (
     <div data-testid="grupo-cuadrilla" data-cuadrilla={grupo.cuadrilla}>
       <div className="flex items-center gap-2.5 border-y border-surface-sunken bg-surface-quiet px-3.5 py-2">
@@ -162,11 +167,13 @@ function Grupo({ grupo, horas }: { grupo: GrupoHoy; horas: Map<string, number> }
 // asignaciones de abajo, y un botón que no escribe es peor que ningún botón.
 const COLS = 'minmax(0,1.4fr) minmax(0,1fr) 132px 60px 64px'
 
-function Fila({ fila, horas }: { fila: FilaHoy; horas: Map<string, number> }) {
+function Fila({ fila, horas }: { fila: FilaHoy; horas: Record<string, number> }) {
   const e = estadoDeFila(fila)
   const activo = fila.marca?.estado === 'activo'
   const punto = lecturaDePunto(fila.marca ?? { lat: null, lon: null, precision_m: null })
-  const suyas = horas.get(fila.personaId)
+  // `Record` sin `noUncheckedIndexedAccess`: TypeScript diría `number` y la comparación con null
+  // quedaría muerta. Se anota la ausencia, que es el caso de casi todas las filas de la mañana.
+  const suyas: number | undefined = horas[fila.personaId]
   return (
     <div
       className={`grid h-fila items-center gap-2.5 border-b border-surface-sunken px-3.5 last:border-b-0 ${

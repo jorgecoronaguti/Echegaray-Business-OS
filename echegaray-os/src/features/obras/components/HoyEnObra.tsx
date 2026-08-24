@@ -82,7 +82,7 @@ export async function HoyEnObra({ obraId, asignaciones, registros = [], navegaci
     <section data-testid="hoy-en-obra">
       <ListaHoyEnObra
         grupos={r.grupos}
-        horas={horas.porPersona}
+        horas={Object.fromEntries(horas.porPersona)}
         navegacion={navegacion}
         accion={accion}
         fecha={hoy.split('-').reverse().join('/')}

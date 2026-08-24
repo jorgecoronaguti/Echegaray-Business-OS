@@ -154,7 +154,7 @@ export default async function ConvertirPage({
           montoContratado: obra?.monto_contratado ?? null,
           driveCarpeta: obra?.drive_carpeta_id ?? null,
         }}
-        hrefDetalle={(p) => `/presupuestos/${id}/convertir?partida=${p}`}
+        hrefBase={`/presupuestos/${id}/convertir`}
         // `.bind`, no una arrow: una función creada en un Server Component no cruza a un componente
         // cliente, compila igual y deja la pantalla en blanco en producción.
         crear={convertirPartidasEnLote.bind(null, id)}
