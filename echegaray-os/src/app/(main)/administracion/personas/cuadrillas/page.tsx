@@ -17,6 +17,7 @@ import { FiltrosURL } from '@/features/administracion/components/Controles'
 import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
 import { PanelCuadrilla } from '@/features/administracion/components/PanelCuadrilla'
 import { PoolSinCuadrilla } from '@/features/administracion/components/PoolSinCuadrilla'
+import { HHPorObraSemana } from '@/features/administracion/components/HHPorObraSemana'
 import { SolapasHH } from '@/features/administracion/components/SolapasHH'
 import { TablaCuadrillas } from '@/features/administracion/components/TablaCuadrillas'
 import {
@@ -24,6 +25,7 @@ import {
   getSinCuadrilla, resumirCuadrillas,
 } from '@/features/administracion/services/cuadrillasService'
 import { rotulo, ventanaDe } from '@/features/administracion/services/periodoHH'
+import { getHHSemanaPorCuadrilla } from '@/features/administracion/services/hhSemanaCuadrillas'
 import {
   agregarIntegrante, archivarCuadrilla, asignarACuadrilla, crearCuadrilla, editarCuadrilla,
   quitarIntegrante,
@@ -94,6 +96,17 @@ export default async function CuadrillasPage({ searchParams }: { searchParams: P
   // agrupa sobre integrantes y personas, y traerla entera para pintar cuatro filas es un viaje pago.
   const capacidades = await getCapacidadDeCuadrillas(supabase, visibles.map((c) => c.id))
 
+  // ═══ LAS HH DE LA SEMANA — la tarjeta, la columna y el aside, de UNA lectura ═══
+  //
+  // El canónico 21 encabeza con «HH DE LA SEMANA» y reparte por obra al costado. Las dos cosas y la
+  // columna de la tabla salen del MISMO agrupado: si el aside consultara aparte, la pantalla podría
+  // mostrar dos totales de la misma semana. La ventana es la SEMANA de la empresa (`periodoHH`), la
+  // misma con la que se rotula arriba — no «los últimos siete días».
+  const semana = ventanaDe('semana', new Date().toISOString().slice(0, 10))
+  const hhSemana = await getHHSemanaPorCuadrilla(
+    supabase, visibles.map((c) => c.id), semana.desde, semana.hasta,
+  )
+
   // EL PIE CUENTA LO QUE LA PANTALLA MUESTRA, y se llama por eso. Con texto en el buscador esas
   // filas son coincidencias, no «las cuadrillas de la empresa»: el número sería correcto y el
   // rótulo, falso. Misma regla que el pie del listado de Personal.
@@ -102,9 +115,33 @@ export default async function CuadrillasPage({ searchParams }: { searchParams: P
     capacidades,
     (sinCuadrilla.data ?? []).length,
   )
+  // ═══ LAS TARJETAS DE CABECERA DEL CANÓNICO 21, Y LAS DOS QUE NO SE DIBUJAN ═══
+  //
+  // El zip encabeza con CINCO: CUADRILLAS · HH DE LA SEMANA · RENDIMIENTO MEDIO · SIN ASIGNAR ·
+  // LUGAR LIBRE. Acá van CUATRO, y las que faltan faltan por falta de fuente, no de espacio:
+  //
+  //  · **RENDIMIENTO MEDIO** («1,14× · 14% sobre base») necesita HH DE BASE de lo ejecutado. La base
+  //    maestra las tiene por TAREA y estas HH se imputan por PERSONA y obra: no existe el vínculo
+  //    cuadrilla → tarea que las haría comparables. Un multiplicador armado sobre una tarea que no
+  //    es de esa cuadrilla sería un número inventado con forma de medición, y con él se decide a
+  //    quién se le suma gente.
+  //  · **LUGAR LIBRE** («4 hasta el tope de frentes») necesita la dotación TOPE de cada cuadrilla —
+  //    el denominador del «4 / 5» que el zip dibuja en DOTACIÓN—. `tope_frente` y `dotacion_prevista`
+  //    existen, pero en el plan de la TAREA, no en la cuadrilla, y una cuadrilla no está asignada a
+  //    un frente en ninguna tabla. Sin denominador no hay lugar libre que contar.
+  //
+  // En su lugar queda CAPACIDAD PONDERADA, que sí tiene fuente (`cuadrilla_capacidad`) y contesta la
+  // misma pregunta de fondo: cuánto puede esta gente, no cuántos son.
   const metricasDelPie = [
     { etiqueta: sp.q?.trim() ? 'Coinciden' : 'Cuadrillas', valor: r.cuadrillas },
     { etiqueta: 'Personas', valor: r.personas, contexto: 'en cuadrilla' },
+    {
+      etiqueta: `HH de la semana`,
+      // «sin leer» y NO 0: las dos consultas de `registros_hh` pueden fallar por RLS, y un 0 ahí
+      // diría que la empresa no trabajó esta semana.
+      valor: hhSemana === null ? 'sin leer' : hhSemana.total.toLocaleString('es-AR', { maximumFractionDigits: 0 }),
+      contexto: hhSemana === null ? undefined : `imputadas · ${rotulo(semana)}`,
+    },
     {
       // LA CAPACIDAD SE PONDERA EN LA VISTA `cuadrilla_capacidad`, NO ACÁ: los factores por
       // categoría salen de `categoria_obra` y la 08 lee la misma vista. Escribir el multiplicador
@@ -135,6 +172,16 @@ export default async function CuadrillasPage({ searchParams }: { searchParams: P
           <div className="mt-3">
             <SolapasHH vista="cuadrillas" cuenta={cuadrillas.length} />
           </div>
+        </div>
+
+        {/* LAS TARJETAS VAN ARRIBA, COMO EN EL CANÓNICO 21 (y como en el 07). Estaban al pie de la
+            pantalla; el zip las pone bajo el título, que es donde se leen antes de mirar la tabla —
+            «cuántas cuadrillas, cuántas HH, cuántos sueltos» es el marco de todo lo de abajo, no su
+            resumen—. Cada número sale de lo que la pantalla YA leyó: ninguna consulta nueva, así que
+            no puede haber un total que discrepe con la tabla. La regla del «—» en la capacidad —una
+            cuadrilla sin fila en `cuadrilla_capacidad` no suma 0— vive en `resumirCuadrillas`. */}
+        <div className="mb-4">
+          <Franja testid="franja-cuadrillas" metricas={metricasDelPie} />
         </div>
 
         <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-3">
@@ -175,7 +222,7 @@ export default async function CuadrillasPage({ searchParams }: { searchParams: P
               : (
                   <TablaCuadrillas
                     cuadrillas={visibles} abierta={abierta?.id} hrefDe={(id) => href(sp, id)}
-                    capacidades={capacidades}
+                    capacidades={capacidades} hhSemana={hhSemana?.porCuadrilla}
                   />
                 )}
 
@@ -190,6 +237,17 @@ export default async function CuadrillasPage({ searchParams }: { searchParams: P
             />
 
           </div>
+
+          {/* EL ASIDE DEL CANÓNICO — sólo cuando NO hay panel abierto: el panel de la cuadrilla
+              ocupa esa misma columna, y dos bloques peleando el costado a 1440px dejan la tabla en
+              600px. La lectura es la misma que la de la columna HH SEMANA, sin consulta propia. */}
+          {!alta && !abierta && hhSemana && (
+            <HHPorObraSemana
+              porObra={hhSemana.porObra}
+              rotuloVentana={`semana ${rotulo(semana)}`}
+              fueraDeCuadrilla={hhSemana.personasFueraDeCuadrilla}
+            />
+          )}
 
           {alta && (
             <PanelEdicion
@@ -238,14 +296,6 @@ export default async function CuadrillasPage({ searchParams }: { searchParams: P
           )}
         </div>
 
-        {/* EL PIE DE LA PANTALLA (Design 23/08, §Status bar). Los cuatro números salen de lo que la
-            pantalla YA leyó: ninguna consulta nueva, así que no puede haber un total que discrepe
-            con la tabla de arriba. La regla del «—» en la capacidad —una cuadrilla sin fila en
-            `cuadrilla_capacidad` no suma 0— vive en `resumirCuadrillas`, con su prueba.
-            Va FUERA de la fila para que el panel abierto no lo tape, y de borde a borde. */}
-        <div className="-mx-4 mt-4 lg:-mx-10">
-          <Franja testid="franja-cuadrillas" metricas={metricasDelPie} />
-        </div>
       </div>
     </div>
   )

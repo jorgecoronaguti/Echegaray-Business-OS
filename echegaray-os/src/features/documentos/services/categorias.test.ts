@@ -18,7 +18,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   CATEGORIAS, categoriaDe, coincide, esCategoria, ETIQUETA_CATEGORIA,
-  patronesAnteriores, patronesDe, type ClaveCategoria,
+  patronesAnteriores, patronesDe, PROPOSITO, type ClaveCategoria,
 } from './categorias.ts'
 
 /** Un archivo como lo devuelve el índice: la ruta real y el `nombre_norm` que escribe el indexador. */
@@ -139,4 +139,26 @@ test('sólo se acepta una clave de categoría conocida', () => {
 test('toda categoría tiene etiqueta legible, incluida «otros»', () => {
   for (const c of CATEGORIAS) assert.equal(ETIQUETA_CATEGORIA[c.clave], c.etiqueta)
   assert.equal(ETIQUETA_CATEGORIA.otros, 'Otros')
+})
+
+// ═══ PARA QUÉ SIRVE — el defecto que atrapa: inventarle un uso a la mitad del archivo ═══
+
+test('«otros» no tiene para qué sirve, y son 1.605 de 3.123 archivos', () => {
+  // Si alguien completa el diccionario «para que no queden huecos», la mitad del archivo —los
+  // presupuestos de clientes y el archivo fiscal— sale afirmando un uso que nadie declaró.
+  assert.equal(PROPOSITO.otros, null, 'le inventó un uso a la categoría que existe por no saber')
+})
+
+test('cada categoría real tiene su uso, y ninguna queda sin decidir', () => {
+  for (const c of CATEGORIAS) {
+    assert.equal(typeof PROPOSITO[c.clave], 'string', `${c.clave} no dice para qué sirve`)
+  }
+})
+
+test('el uso se deriva de la categoría, no de una segunda regla', () => {
+  // Es lo que hace auditable la columna: la fila dice «para poder trabajar» porque cayó en
+  // `personal` o en `seguros`, y la etiqueta de la categoría queda debajo para probarlo.
+  const conART = arch('administracion/PERSONAL/Certificado Afiliacion - ART.pdf', 'certificado afiliacion art')
+  assert.equal(categoriaDe(conART), 'seguros')
+  assert.equal(PROPOSITO[categoriaDe(conART)], 'para poder trabajar')
 })

@@ -120,6 +120,35 @@ export const ETIQUETA_CATEGORIA: Record<ClaveCategoria, string> = {
   otros: 'Otros',
 } as Record<ClaveCategoria, string>
 
+/**
+ * PARA QUÉ SIRVE — la tercera columna del canónico 27.
+ *
+ * El canónico no rotula el TIPO del papel («Seguros», «Planos»): rotula PARA QUÉ SE USA («para
+ * poder trabajar», «para construir», «para cobrar»). Es la misma información leída desde la
+ * pregunta que trae a alguien a esta pantalla —«¿me falta algo para arrancar el lunes?»— en vez de
+ * desde la carpeta donde el papel quedó guardado.
+ *
+ * NO ES UN DATO NUEVO NI UNA FUENTE NUEVA: es un diccionario fijo sobre la categoría que ya deriva
+ * `categoriaDe`. Por eso la columna se puede auditar igual que el chip —si una fila dice «para
+ * cobrar» es porque cayó en `certificados` o en `contrato`, y la etiqueta de la categoría va abajo
+ * en la misma celda—. Un propósito que se guardara aparte de la categoría sería la segunda
+ * definición del mismo hecho.
+ *
+ * `otros` es `null` A PROPÓSITO, y es el 51% del archivo: son 1.154 presupuestos de clientes y 376
+ * archivos fiscales. Inventarles un uso («para cobrar», «para pagar») sería exactamente fabricar el
+ * dato que la categoría se negó a fabricar. La celda dice que no está clasificado.
+ */
+export const PROPOSITO: Record<ClaveCategoria, string | null> = {
+  personal: 'para poder trabajar',
+  seguros: 'para poder trabajar',
+  planos: 'para construir',
+  certificados: 'para cobrar',
+  contrato: 'para cobrar',
+  compras: 'para pagar',
+  evidencia: 'para respaldar el avance',
+  otros: null,
+}
+
 /** `true` si la clave que llegó por la URL es una categoría de verdad. Nada más se acepta. */
 export function esCategoria(valor: string | undefined): valor is ClaveCategoria {
   if (!valor) return false

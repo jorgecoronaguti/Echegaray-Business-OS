@@ -7,9 +7,15 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   carpetaDe, conVinculos, enlaceDescarga, enlaceDrive, enlacePreview, estadoVigencia, etiquetaLegajo,
-  hayVencimientos, IDS_POR_PARTE, migajaDe, partirIds, pesoLegible, unirPartes,
+  hayVencimientos, IDS_POR_PARTE, migajaDe, partirIds, pesoLegible, resumirListado, unirPartes,
   type ArchivoIndexado, type VinculoCliente, type VinculoLegajo, type VinculoObra,
 } from './documentos.ts'
+
+/** Una fila ya armada, como la recibe la tabla. Sólo importan `vence` y el id. */
+const doc = (vence: string | null, id = Math.random().toString(36)) => ({
+  drive_file_id: id, name: 'x.pdf', path: null, tipo: 'pdf', mime_type: null, size_bytes: null,
+  modified_time: null, nombre_norm: 'x', vinculos: [], vence,
+})
 
 const archivo = (p: Partial<ArchivoIndexado> = {}): ArchivoIndexado => ({
   drive_file_id: 'f1',
@@ -246,4 +252,37 @@ test('un archivo sin fecha de modificación no encabeza la lista', () => {
   // es haberlo tocado recién.
   const unido = unirPartes([[{ modified_time: null }, { modified_time: '2026-08-24' }]], 10)
   assert.deepEqual(unido.map((d) => d.modified_time), ['2026-08-24', null])
+})
+
+// ═══ EL PIE DE TOTALES — el defecto que atrapa: afirmar que está todo en orden ═══
+
+test('el pie NO puede afirmar «0 vencidos» cuando nadie cargó una fecha', () => {
+  // Es el estado real de hoy: 847 filas de legajo con `fecha_vencimiento` en null. Un pie que
+  // dijera VENCIDOS 0 se lee «está todo controlado», y lo que pasa es que el control no existe.
+  // `conVencimiento` es lo que deja al componente callarse; si volviera a contar filas en vez de
+  // fechas, este test se pone rojo.
+  const r = resumirListado([doc(null), doc(null), doc(null)], '2026-08-24')
+  assert.equal(r.documentos, 3)
+  assert.equal(r.conVencimiento, 0, 'contó como controlado un documento sin fecha')
+  assert.equal(r.vencidos, 0)
+})
+
+test('el pie cuenta vencido, por vencer y vigente con la misma regla que pinta la fila', () => {
+  const r = resumirListado(
+    [doc('2026-08-01'), doc('2026-09-10'), doc('2027-01-01'), doc(null)],
+    '2026-08-24',
+  )
+  assert.equal(r.documentos, 4, 'el total son las filas dibujadas, tengan fecha o no')
+  assert.equal(r.conVencimiento, 3)
+  assert.equal(r.vencidos, 1)
+  assert.equal(r.porVencer, 1, 'el que vence en 17 días entra en la ventana de 30')
+  // El vigente no se cuenta en ninguno de los dos avisos: existe y no es noticia.
+  assert.equal(r.vencidos + r.porVencer, 2)
+})
+
+test('el pie usa el MISMO día que la fila: el corte de los 30 días no se corre', () => {
+  // El día 30 todavía es «vence pronto» y el 31 ya es «vigente». Si el pie contara con otra
+  // ventana que `estadoVigencia`, la tabla mostraría una pastilla ámbar que el pie no cuenta.
+  assert.equal(resumirListado([doc('2026-09-23')], '2026-08-24').porVencer, 1)
+  assert.equal(resumirListado([doc('2026-09-24')], '2026-08-24').porVencer, 0)
 })

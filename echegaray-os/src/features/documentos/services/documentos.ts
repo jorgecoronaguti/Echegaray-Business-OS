@@ -211,6 +211,47 @@ function diasEntre(desdeISO: string, hastaISO: string): number {
  */
 export const hayVencimientos = (docs: Documento[]) => docs.some((d) => d.vence !== null)
 
+/**
+ * EL PIE DE TOTALES DE LA TABLA — el canónico 27 lo cierra con DOCUMENTOS · VENCIDOS · POR VENCER.
+ *
+ * ═══ POR QUÉ SE CUENTA SOBRE LAS FILAS DIBUJADAS Y NO SOBRE LA BASE ═══
+ *
+ * Arriba ya hay un contador del ARCHIVO ENTERO: `getResumenVencimientos` cuenta las 847 filas de
+ * `documentacion_legajo` contra Postgres, y por eso la banda avisa de un vencido que quedó en la
+ * fila 340. Este pie cuenta OTRA cosa: lo que la persona tiene delante después de filtrar.
+ *
+ * Mezclarlos sería el error caro. Un pie que dijera «DOCUMENTOS 100» (filtrados) al lado de
+ * «VENCIDOS 12» (de toda la base) invita a leer «12 de estos 100», y son dos universos distintos:
+ * uno son archivos de Drive, el otro son vínculos de legajo. Cada número de este pie sale de las
+ * MISMAS filas que la tabla acaba de dibujar, con el MISMO `hoy` con el que se pintó cada fila.
+ *
+ * `conVencimiento` no es decorativo: es la condición para poder decir «0 vencidos». Con cero fechas
+ * cargadas —el estado de hoy— un «VENCIDOS 0» se lee «está todo en orden», que es justo lo que no
+ * se sabe. Quien dibuja el pie usa este campo para callarse en vez de afirmarlo.
+ */
+export interface ResumenListado {
+  documentos: number
+  /** Cuántas de las filas dibujadas tienen fecha de vencimiento. `0` ⇒ no hay nada que afirmar. */
+  conVencimiento: number
+  vencidos: number
+  /** Vencen dentro de la ventana de aviso de `estadoVigencia`, sin estar vencidos todavía. */
+  porVencer: number
+}
+
+export function resumirListado(docs: Documento[], hoy: string): ResumenListado {
+  let conVencimiento = 0
+  let vencidos = 0
+  let porVencer = 0
+  for (const d of docs) {
+    const vigencia = estadoVigencia(d.vence, hoy)
+    if (vigencia === null) continue
+    conVencimiento += 1
+    if (vigencia === 'vencido') vencidos += 1
+    else if (vigencia === 'vence-pronto') porVencer += 1
+  }
+  return { documentos: docs.length, conVencimiento, vencidos, porVencer }
+}
+
 /** La carpeta donde vive, sin el nombre del archivo. `null` cuando el índice no trae ruta. */
 export function carpetaDe(path: string | null): string | null {
   const p = path?.trim()
