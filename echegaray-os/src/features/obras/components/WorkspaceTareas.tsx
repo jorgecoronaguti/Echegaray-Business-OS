@@ -16,6 +16,9 @@ import { TabTareas } from './TabTareas'
 import { getArbol, getAvancesSobreContenedor, getRelaciones } from '../services/tareasService'
 import { getPanelDeObra } from '../services/panelObraService'
 import { getDocumentos } from '../services/obrasService'
+import { getPersonas } from '../services/personalService'
+import { crearActividad } from '../services/actions'
+import { crearRubro } from '../services/actionsRubro'
 import { urlDeDrive } from '../services/driveUrl'
 import { esVistaArbol, type VistaArbol } from '../services/vistaArbol'
 import { aplicarEnLote, editarCampoDeTarea } from '../services/actionsAvance'
@@ -56,9 +59,12 @@ export async function WorkspaceTareas({
   const arbol = arbolRes.data
 
   // La segunda tanda necesita los ids del árbol; junta el material del panel y los papeles.
-  const [panel, documentosRes] = await Promise.all([
+  // Las personas sólo se leen si esta cara va a OFRECER el alta: quien no puede crear no necesita
+  // el desplegable de responsable, y la lectura ni se hace.
+  const [panel, documentosRes, personasRes] = await Promise.all([
     getPanelDeObra(supabase, obraId, arbol, veEconomia),
     getDocumentos(supabase, obraId),
+    puedeEditar ? getPersonas(supabase) : Promise.resolve(null),
   ])
   const docsPorActividad: Record<string, { id: string; nombre: string; url: string }[]> = {}
   for (const d of documentosRes.data ?? []) {
@@ -89,6 +95,13 @@ export async function WorkspaceTareas({
       solInicial={sol ?? null}
       dotInicial={dot ?? null}
       puedeEditar={puedeEditar}
+      personas={personasRes?.data ?? []}
+      // LA BARRA DE ACCIONES DE LA PANTALLA 03: crear trabajo es una función del plan, y hasta hoy
+      // sólo se podía desde Cronograma. Son las MISMAS acciones —no hay una segunda alta.
+      accionesBarra={{
+        crearActividad: crearActividad.bind(null, obraId),
+        crearRubro: crearRubro.bind(null, obraId),
+      }}
       accionesPanel={{
         editarCampo: editarCampoDeTarea.bind(null, obraId),
         dividir: dividirEnFrentes.bind(null, obraId),

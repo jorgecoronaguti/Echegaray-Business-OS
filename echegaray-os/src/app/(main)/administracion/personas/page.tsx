@@ -24,6 +24,7 @@ import { metricasDelListado } from '@/features/administracion/services/resumenPe
 import { crearPersona } from '@/features/administracion/services/personasActions'
 import {
   alertasDelPlantel, hayControlDeVencimientos, hhPorPersona, marcasPorPersona, mesCorriente,
+  partirCifra,
   papelesPorPersona,
 } from '@/features/administracion/services/pulsoDelPlantel'
 import {
@@ -150,13 +151,34 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
           arriba de la tabla, no escondido en una columna de la fila catorce. Sin nada que avisar no
           se dibuja NADA: un cartel verde permanente que diga «todo en orden» entrena a la gente a no
           leer los carteles, y entonces el día que uno diga algo grave tampoco se lee. */}
+      {/* ═══ TRES PASTILLAS, NO TRES TARJETAS (Design canónico 19) ═══
+          Eran tres `Aviso` en una grilla: tres bloques de dos renglones, con su párrafo explicativo,
+          ocupando el tercio superior de la pantalla antes de que apareciera una sola persona. El
+          canónico las dibuja como una fila de pastillas suaves —cifra teñida, rótulo en tinta— que
+          es la MISMA banda del 00. El detalle no se tira: viaja en el `title`, disponible para quien
+          se detiene y fuera del camino de quien está barriendo el plantel. */}
       {alertas.length > 0 && (
-        <div data-testid="alertas-plantel" className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {alertas.map((a) => (
-            <Aviso key={a.clave} tono={a.tono} titulo={a.texto} testid={`alerta-${a.clave}`}>
-              {a.detalle}
-            </Aviso>
-          ))}
+        <div data-testid="alertas-plantel" className="mb-4 flex flex-wrap items-center gap-2">
+          {alertas.map((a) => {
+            const { cifra, rotulo } = partirCifra(a.texto)
+            return (
+              <span
+                key={a.clave}
+                data-testid={`alerta-${a.clave}`}
+                title={a.detalle}
+                className={`inline-flex items-baseline gap-2 rounded-md border px-3 py-1.5 ${
+                  a.tono === 'neg' ? 'border-neg/25 bg-neg-soft' : 'border-warn/25 bg-warn-soft'
+                }`}
+              >
+                {cifra && (
+                  <span className={`font-mono text-[13px] font-semibold tabular-nums ${a.tono === 'neg' ? 'text-neg' : 'text-warn'}`}>
+                    {cifra}
+                  </span>
+                )}
+                <span className="text-[12px] text-ink-soft">{rotulo}</span>
+              </span>
+            )
+          })}
         </div>
       )}
 

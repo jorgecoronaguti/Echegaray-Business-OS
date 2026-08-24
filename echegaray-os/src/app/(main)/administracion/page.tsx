@@ -24,13 +24,15 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { veEconomia } from '@/features/auth/types/areas'
-import { getClientes } from '@/features/clientes/services/clientesService'
+import {
+  getClientes, getObrasEnEjecucion, getObrasPorCliente,
+} from '@/features/clientes/services/clientesService'
 import { separarArchivados } from '@/features/clientes/services/cartera'
+import { ListaClientes, type ObraEnCurso } from '@/features/clientes/components/ListaClientes'
 import { PageShell } from '@/shared/components/ui'
 import { Aviso, BotonEnlace, BuscadorURL, Eyebrow, TituloPanel, Vacio } from '@/shared/components/ds'
 import { BarraAreas } from '@/features/administracion/components/BarraAreas'
 import { BarraAtencion } from '@/features/administracion/components/BarraAtencion'
-import { TablaClientesHome } from '@/features/administracion/components/TablaClientesHome'
 import { buscarGlobal, type Hallazgo } from '@/features/administracion/services/entradaService'
 import {
   areasDeAdministracion, atencionNoLeida, chipsDeAtencion, getConteosHome,
@@ -64,11 +66,16 @@ function Resultados({ q, hallazgos }: { q: string; hallazgos: Hallazgo[] }) {
 export default async function AdministracionPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const sp = await searchParams
   const supabase = await createClient()
-  const [conteos, cartera, hallazgos, perfil] = await Promise.all([
+  const [conteos, cartera, hallazgos, perfil, enEjecucion, todasLasObras] = await Promise.all([
     getConteosHome(supabase),
     getClientes(supabase),
     buscarGlobal(supabase, sp.q),
     getPerfilActual(supabase),
+    // LAS DOS LECTURAS DEL PANEL. Van en la MISMA tanda que las dieciséis de arriba —no encadenadas
+    // detrás de la cartera— y son de toda la cartera de una vez, no una por cliente tocado: la
+    // selección en el panel tiene que ser instantánea o deja de ser un panel.
+    getObrasEnEjecucion(supabase),
+    getObrasPorCliente(supabase),
   ])
 
   const rol = perfil.data?.rol ?? null
@@ -97,20 +104,34 @@ export default async function AdministracionPage({ searchParams }: { searchParam
 
       {sp.q && <Resultados q={sp.q} hallazgos={hallazgos} />}
 
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <TituloPanel>Clientes</TituloPanel>
-        {/* El alta vive en `/clientes`: una segunda pantalla de alta sería un segundo formulario del
-            mismo cliente. Acá se ofrece la puerta, no una copia. */}
-        <BotonEnlace href="/clientes?nuevo=1" variante="primaria" data-testid="ir-alta-cliente">
-          + Nuevo cliente
-        </BotonEnlace>
-      </div>
+      <TituloPanel className="mb-3">Clientes</TituloPanel>
 
       {/* UNA LISTA VACÍA POR ERROR NO SE DIBUJA COMO «NO HAY DATOS» (INTERACTION.md §Error). */}
       {cartera.error ? (
         <Aviso tono="neg" titulo="No pude leer los clientes">{cartera.error}</Aviso>
+      ) : activos.length === 0 ? (
+        <Vacio accion={<Link href="/clientes?nuevo=1" className="text-ink underline underline-offset-2">Cargar el primero</Link>}>
+          Todavía no hay clientes activos.
+        </Vacio>
       ) : (
-        <TablaClientesHome clientes={activos} veEconomia={vePrecio} />
+        // ES LA MISMA CARTERA DE `/clientes`, NO UNA SEGUNDA. Acá vivía `TablaClientesHome`: cuatro
+        // columnas escritas aparte que terminaron siendo las mismas cuatro del canónico 25, con sus
+        // propios «—» y su propio criterio de qué es «en ejecución». Dos tablas del mismo maestro se
+        // contradicen el día que una aprende una columna, y el mockup 00 dibuja exactamente ésta —con
+        // avatar de iniciales, razón social debajo y el panel de 372px al costado.
+        <ListaClientes
+          clientes={activos}
+          enEjecucion={Object.fromEntries(enEjecucion) as Record<string, ObraEnCurso[]>}
+          obrasPorCliente={Object.fromEntries(todasLasObras)}
+          veEconomia={vePrecio}
+          // El alta vive en `/clientes`: un segundo formulario del mismo cliente sería una segunda
+          // puerta al mismo maestro. Acá se ofrece la puerta, no una copia.
+          accion={
+            <BotonEnlace href="/clientes?nuevo=1" variante="primaria" data-testid="ir-alta-cliente" className="shrink-0">
+              + Nuevo cliente
+            </BotonEnlace>
+          }
+        />
       )}
     </PageShell>
   )

@@ -11,12 +11,18 @@
 
 import Link from 'next/link'
 import { Aviso } from '@/shared/components/ds'
-import { IconoProblema } from '@/shared/components/iconos'
 import type { ChipAtencion } from '../services/homeAdministracion'
 
-const TONO: Record<ChipAtencion['tono'], string> = {
-  warn: 'border-warn/30 bg-warn-soft text-warn hover:border-warn/60',
-  neg: 'border-neg/30 bg-neg-soft text-neg hover:border-neg/60',
+// ═══ EL COLOR ESTÁ EN LA CIFRA, NO EN LA BANDA (Design canónico 00 y 19) ═══
+//
+// El chip pintaba el rótulo entero del color del problema y le ponía un ⚠ delante. Con cuatro chips
+// seguidos eso son cuatro bloques ámbar en el renglón más alto de la pantalla: el ojo ve una alarma
+// general y no llega a leer CUÁL es. El canónico pinta sólo el NÚMERO —que es lo que se barre— y
+// deja el texto en tinta normal sobre una superficie apenas teñida. El ⚠ se va porque el color de
+// la cifra ya dice lo mismo y el ícono repetido cuatro veces no agrega ni un bit.
+const TONO: Record<ChipAtencion['tono'], { caja: string; cifra: string }> = {
+  warn: { caja: 'border-warn/25 bg-warn-soft hover:border-warn/50', cifra: 'text-warn' },
+  neg: { caja: 'border-neg/25 bg-neg-soft hover:border-neg/50', cifra: 'text-neg' },
 }
 
 export function BarraAtencion({ chips, noLeida }: { chips: ChipAtencion[]; noLeida: boolean }) {
@@ -42,10 +48,9 @@ export function BarraAtencion({ chips, noLeida }: { chips: ChipAtencion[]; noLei
           href={c.href}
           prefetch={false}
           data-testid={`atencion-${c.clave}`}
-          className={`inline-flex items-center gap-2 rounded-md border px-2.5 py-1.5 transition-colors ${TONO[c.tono]}`}
+          className={`inline-flex items-baseline gap-2 rounded-md border px-3 py-1.5 transition-colors ${TONO[c.tono].caja}`}
         >
-          <IconoProblema className="h-[14px] w-[14px] shrink-0" />
-          <span className="font-mono text-[13px] font-semibold tabular-nums">{c.numero}</span>
+          <span className={`font-mono text-[13px] font-semibold tabular-nums ${TONO[c.tono].cifra}`}>{c.numero}</span>
           <span className="text-[12px] text-ink-soft">{c.texto}</span>
         </Link>
       ))}

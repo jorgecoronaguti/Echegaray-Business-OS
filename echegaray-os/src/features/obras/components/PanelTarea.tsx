@@ -215,9 +215,15 @@ export function PanelTarea({
       {/* EL PROBLEMA NO SE ESCONDE: visible en cualquier solapa. */}
       {nodo.impedimentos_abiertos > 0 && (
         <Link href={`/obras/${obraId}?vista=operacion&sub=impedimentos`}
-          className="mt-2 block rounded-card border-l-[3px] border-neg bg-neg-soft px-3 py-2 text-[12px] text-neg hover:opacity-90"
+          className="mt-2 flex items-start gap-2 rounded-[8px] border border-neg/25 bg-neg-soft px-3 py-2.5 hover:opacity-90"
           data-testid="panel-impedimento">
-          {nodo.impedimentos_abiertos} impedimento(s) abiertos: la actividad está frenada. Ver en Operación →
+          <span aria-hidden className="mt-[3px] h-3 w-3 shrink-0 rounded-full border-[1.5px] border-neg" />
+          <span className="min-w-0">
+            <span className="block text-[12.5px] font-medium text-neg">
+              {nodo.impedimentos_abiertos} impedimento(s) abiertos
+            </span>
+            <span className="block text-[11px] text-neg/80">La actividad está frenada · ver en Operación →</span>
+          </span>
         </Link>
       )}
 
@@ -234,7 +240,7 @@ export function PanelTarea({
         <section data-testid="panel-general">
           {/* ═══ PLAN | REAL, enfrentados. El plan se corrige en la celda — donde se lee. ═══ */}
           <div className="grid grid-cols-2 gap-2">
-            <div className="rounded-card bg-surface-quiet px-2.5 py-2">
+            <div className="rounded-[8px] border border-line bg-[#FAFAF8] px-2.5 py-2">
               <div className="mb-1 text-[10px] uppercase tracking-[0.05em] text-faint">Plan</div>
               <Celda k="Unidad" v={
                 <InlineEdit valor={nodo.unidad} tipo="texto" ancho="w-16" falta="sin unidad"
@@ -260,7 +266,7 @@ export function PanelTarea({
                   etiqueta={`HH plan de ${nodo.nombre}`} testid="editar-hh" guardar={editar('hh_plan')} />
               } />
             </div>
-            <div className="rounded-card bg-pos-soft/60 px-2.5 py-2" data-testid="panel-real">
+            <div className="rounded-[8px] border border-[#DCE9E0] bg-[#F5FAF7] px-2.5 py-2" data-testid="panel-real">
               <div className="mb-1 text-[10px] uppercase tracking-[0.05em] text-pos">Real</div>
               <Celda k="Ejecutado" v={nodo.cantidad_ejecutada != null
                 ? `${nodo.cantidad_ejecutada.toLocaleString('es-AR', { maximumFractionDigits: 2 })}${nodo.unidad ? ` ${nodo.unidad}` : ''}`
@@ -323,6 +329,27 @@ export function PanelTarea({
               } />
             )}
           </div>
+
+          {/* EJECUCIÓN RECIENTE (design 03): las últimas tres cargas se ven sin cambiar de solapa —
+              lo primero que se pregunta al abrir una actividad es cuándo se tocó por última vez. */}
+          {historial.length > 0 && (
+            <section className="mt-3 border-t border-line pt-3" data-testid="ejecucion-reciente">
+              <Titulo>Ejecución reciente</Titulo>
+              <ul>
+                {historial.slice(0, 3).map((h) => (
+                  <li key={h.id} className="flex items-baseline gap-2 border-b border-[#EFEEEA] py-1 last:border-0">
+                    <span className="w-[52px] shrink-0 font-mono text-[10.5px] tabular-nums text-faint">{fecha(h.fecha)}</span>
+                    <span className="flex-1 font-mono text-[11.5px] tabular-nums text-ink-soft">
+                      {h.avance_pct !== null ? porcentaje(h.avance_pct) : h.cantidad !== null ? String(h.cantidad) : '—'}
+                    </span>
+                    <span className="shrink-0 text-[11px] text-muted">{h.autor ?? 'sin firma'}</span>
+                  </li>
+                ))}
+              </ul>
+              <button type="button" onClick={() => alCambiarSolapa('historial')} data-testid="ver-historial"
+                className="mt-1.5 text-[12px] text-muted hover:text-ink">Ver historial →</button>
+            </section>
+          )}
 
           {puedeEditar && (
             <div className="mt-3 border-t border-line pt-3">

@@ -14,7 +14,9 @@
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { Buscador, SubTabs, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
-import { hh as fmtHH } from './formato'
+import { CTRL, FormAccion, type AccionFormulario } from '@/shared/components/ui'
+import { FormNuevaActividad } from './FormActividad'
+import { hh as fmtHH, porcentaje } from './formato'
 import { FilaWbs, type CarrilDeFila } from './FilaWbs'
 import { BarraTareas, VALOR_INICIAL } from './BarraTareas'
 import { PanelTarea, type AccionesDelPanel } from './PanelTarea'
@@ -26,6 +28,7 @@ import { seleccionable, type CandidataMasiva, type OperacionMasiva } from '../se
 import type { ResultadoMasivo } from '../services/actionsMasivas'
 import type { AvanceMalImputado, RelacionLegible } from '../services/tareasService'
 import type { PanelDeObra } from '../services/panelObraService'
+import type { Persona } from '../types'
 import { armarContexto, armarVinculacion } from '../services/contextoTarea'
 import { resolverSolapa, type Solapa } from '../services/solapasTarea'
 
@@ -92,7 +95,7 @@ function carrilDe(
 export function TabTareas({
   obraId, nodos, filtro, cuadrillas, aplicarEnLote, malImputados,
   panelDeObra, relaciones, docsPorActividad, actInicial, solInicial, dotInicial,
-  puedeEditar, accionesPanel,
+  puedeEditar, personas, accionesBarra, accionesPanel,
 }: {
   obraId: string
   nodos: NodoObra[]
@@ -107,8 +110,12 @@ export function TabTareas({
   solInicial: string | null
   dotInicial: string | null
   puedeEditar: boolean
+  personas: Persona[]
+  /** Crear trabajo desde la pantalla 03. Las mismas acciones del cronograma. */
+  accionesBarra: { crearActividad: AccionFormulario; crearRubro: AccionFormulario }
   accionesPanel: AccionesDelPanel
 }) {
+  const [alta, setAlta] = useState<'' | 'actividad' | 'rubro'>('')
   const [query, setQuery] = useState('')
   const [plegados, setPlegados] = useState<ReadonlySet<string>>(new Set())
   const [marcadas, setMarcadas] = useState<ReadonlySet<string>>(new Set())
@@ -157,6 +164,14 @@ export function TabTareas({
     [nodos, marcadas],
   )
   const abierta = sel ? nodos.find((n) => n.id === sel) ?? null : null
+  // La franja cuenta sobre TODAS las actividades de la obra, no sobre las visibles: un filtro
+  // puesto no cambia cuántas actividades tiene la obra ni cuántos problemas hay abiertos.
+  const enCurso = useMemo(
+    () => nodos.filter((n) => !n.es_contenedor && n.estado === 'en_curso').length, [nodos],
+  )
+  const problemas = useMemo(
+    () => nodos.reduce((s, n) => s + (n.es_contenedor ? 0 : n.impedimentos_abiertos), 0), [nodos],
+  )
 
   const marcar = (id: string, v: boolean) => setMarcadas((p) => {
     const s = new Set(p)
@@ -170,6 +185,7 @@ export function TabTareas({
   })
 
   return (
+    <div className="flex flex-col">
     <div className="flex flex-col gap-3 xl:flex-row">
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pb-3">
@@ -199,17 +215,54 @@ export function TabTareas({
             }))}
           />
 
+        </div>
+
+        {/* ═══ BARRA DE ACCIONES (design 03) — lo que se HACE, a la izquierda; lo que cambia cómo se
+            MIRA, a la derecha. Una sola primaria: crear trabajo es lo que se hace acá.
+            «Importar cotización» del mockup NO se dibuja: no existe hoy ese flujo en el OS y un
+            botón muerto es peor que su ausencia. ═══ */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-2 pb-3">
+          {puedeEditar && (
+            <>
+              <button type="button" data-testid="abrir-alta-actividad"
+                onClick={() => setAlta((p) => (p === 'actividad' ? '' : 'actividad'))}
+                className="rounded-control bg-marca px-3 py-1.5 text-[12.5px] font-semibold text-ink hover:opacity-90">
+                + Nueva actividad
+              </button>
+              <button type="button" data-testid="abrir-alta-rubro"
+                onClick={() => setAlta((p) => (p === 'rubro' ? '' : 'rubro'))}
+                className="rounded-control border border-line px-3 py-1.5 text-[12.5px] text-ink-soft hover:text-ink">
+                Rubro
+              </button>
+            </>
+          )}
           <div className="ml-auto flex items-center gap-3 text-[12.5px]">
             <button type="button" data-testid="expandir" onClick={() => setPlegados(new Set())}
               className="text-muted hover:text-ink">Expandir</button>
             <button type="button" data-testid="colapsar" onClick={() => setPlegados(new Set(contenedores(nodos)))}
               className="text-muted hover:text-ink">Colapsar</button>
             <Link href={`/obras/${obraId}/avance-masivo`} data-testid="ir-avance-masivo"
-              className="rounded-control bg-marca px-2.5 py-1 font-medium text-ink hover:opacity-90">
+              className="rounded-control border border-line px-2.5 py-1 text-ink-soft hover:text-ink">
               Avance masivo
             </Link>
           </div>
         </div>
+
+        {alta === 'actividad' && (
+          <div className="mb-3 rounded-card border border-line bg-surface-quiet p-3" data-testid="alta-actividad">
+            <FormNuevaActividad personas={personas} crear={accionesBarra.crearActividad}
+              rubros={nodos.filter((n) => n.es_contenedor).map((n) => n.nombre)} />
+          </div>
+        )}
+        {alta === 'rubro' && (
+          <div className="mb-3 rounded-card border border-line bg-surface-quiet p-3" data-testid="alta-rubro-tareas">
+            <FormAccion accion={accionesBarra.crearRubro} testid="form-nuevo-rubro"
+              enviar="Crear rubro" limpiarAlOk mensajeOk="Rubro creado.">
+              <input name="nombre" required minLength={2} maxLength={120} className={CTRL}
+                placeholder="Nombre del rubro" />
+            </FormAccion>
+          </div>
+        )}
 
         {/* LOS AVANCES CARGADOS CONTRA UN CONTENEDOR NO SE ESCONDEN: trabajo declarado real que
             quedó fuera de todo total. */}
@@ -225,7 +278,7 @@ export function TabTareas({
         <Tabla testid="tabla-wbs" minWidth={560}>
           <THead>
             <Th />
-            <Th>Estructura de obra</Th>
+            <Th>Actividad</Th>
             <Th num>Cant.</Th>
             <Th>Avance</Th>
             <Th num className="hidden lg:table-cell">Plazo</Th>
@@ -261,18 +314,6 @@ export function TabTareas({
               </Td></Tr>
             )}
           </tbody>
-          <tfoot>
-            <tr className="border-t border-line-strong">
-              <td colSpan={8} className="pt-2">
-                <span className="flex flex-wrap items-center gap-x-6 gap-y-1">
-                  <Pie rotulo="Actividades" valor={String(total.n_actividades)} />
-                  <Pie rotulo="HH plan" valor={fmtHH(total.hh_plan) ?? 'sin cargar'} />
-                  <Pie rotulo="Sin análisis" valor={String(total.n_sin_analisis)}
-                    alerta={total.n_sin_analisis > 0} />
-                </span>
-              </td>
-            </tr>
-          </tfoot>
         </Tabla>
       </div>
 
@@ -318,6 +359,50 @@ export function TabTareas({
         alElegirValor={(v) => setValores((p) => ({ ...p, [operacion]: v }))}
       />
     </div>
+
+    <Franja total={total} enCurso={enCurso} problemas={problemas} />
+    </div>
+  )
+}
+
+/** Una celda de la franja: rótulo chico, número grande, contexto al lado. */
+function Metrica({ rotulo, valor, contexto, tono = 'ink' }: {
+  rotulo: string; valor: string | null; contexto?: string; tono?: 'ink' | 'warn'
+}) {
+  return (
+    <div className="min-w-0 flex-1 border-r border-line px-4 last:border-0">
+      <div className="text-[10px] uppercase tracking-[0.05em] text-faint">{rotulo}</div>
+      <p className="flex items-baseline gap-1.5">
+        {/* NULL NO ES CERO: «sin cargar» dicho con todas las letras, nunca un 0 que miente. */}
+        {valor === null
+          ? <span className="text-[12px] text-faint">sin cargar</span>
+          : <span className={`font-mono text-[16px] font-semibold tabular-nums ${tono === 'warn' ? 'text-warn' : 'text-ink'}`}>{valor}</span>}
+        {contexto && <span className="truncate text-[11px] text-muted">{contexto}</span>}
+      </p>
+    </div>
+  )
+}
+
+/** LA FRANJA DE PIE (design 03): lo que decide si la obra está bien, sin scrollear la tabla. */
+function Franja({ total, enCurso, problemas }: {
+  total: ReturnType<typeof totalObra>; enCurso: number; problemas: number
+}) {
+  // El desvío existe sólo si existen LOS DOS: contra un plan sin cargar, «+0» sería una mentira.
+  const desvio = total.hh_plan != null && total.hh_real != null ? total.hh_real - total.hh_plan : null
+  const ctx = [`${enCurso} en curso`, total.n_sin_analisis > 0 ? `${total.n_sin_analisis} sin análisis` : null]
+    .filter(Boolean).join(' · ')
+  return (
+    <div data-testid="franja-tareas"
+      className="mt-3 flex h-14 items-center border-t border-line-strong bg-surface-quiet">
+      <Metrica rotulo="Avance físico" valor={porcentaje(total.avance_pct)} contexto="sobre HH plan" />
+      <Metrica rotulo="HH plan" valor={fmtHH(total.hh_plan)} />
+      <Metrica rotulo="HH reales" valor={fmtHH(total.hh_real)} contexto="imputadas" />
+      <Metrica rotulo="Desvío HH" tono={desvio != null && desvio > 0 ? 'warn' : 'ink'}
+        valor={desvio == null ? null : `${desvio > 0 ? '+' : ''}${fmtHH(desvio)}`} contexto="vs plan" />
+      <Metrica rotulo="Actividades" valor={String(total.n_actividades)} {...(ctx ? { contexto: ctx } : {})} />
+      <Metrica rotulo="Problemas" valor={String(problemas)} contexto="para resolver"
+        tono={problemas > 0 ? 'warn' : 'ink'} />
+    </div>
   )
 }
 
@@ -347,11 +432,3 @@ function CabeceraCarril({ rango }: { rango: { desde: number; hasta: number } }) 
   )
 }
 
-function Pie({ rotulo, valor, alerta = false }: { rotulo: string; valor: string; alerta?: boolean }) {
-  return (
-    <span className="inline-flex items-baseline gap-1.5">
-      <span className="text-[11px] text-faint">{rotulo}</span>
-      <span className={`font-mono text-[12px] tabular-nums ${alerta ? 'text-neg' : 'text-ink'}`}>{valor}</span>
-    </span>
-  )
-}

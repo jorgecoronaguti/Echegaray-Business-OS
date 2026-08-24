@@ -207,6 +207,24 @@ export interface AlertaDelPlantel {
   tono: 'neg' | 'warn'
 }
 
+/**
+ * PARTE EL TEXTO DE UNA ALERTA EN CIFRA Y RÓTULO, para que la banda del canónico 19 pinte sólo el
+ * número y deje el rótulo en tinta normal.
+ *
+ * No es cosmética: si esto devolviera la cifra vacía o se comiera un dígito, la banda diría
+ * «personas con papeles vencidos» sin decir cuántas — un aviso sin magnitud no se puede priorizar
+ * contra los otros dos. Y si el rótulo se quedara con el número, la pantalla mostraría «7 7 papeles
+ * vencidos». Por eso se parte acá, con prueba, y no con un `split(' ')` escrito en la vista.
+ *
+ * Un texto que NO empieza con un número se devuelve entero como rótulo, sin cifra: es lo que tiene
+ * que pasar el día que alguien agregue una alerta que no cuenta nada.
+ */
+export function partirCifra(texto: string): { cifra: string | null; rotulo: string } {
+  const m = /^(\d[\d.]*)\s+(.+)$/.exec(texto.trim())
+  if (!m) return { cifra: null, rotulo: texto.trim() }
+  return { cifra: m[1], rotulo: m[2] }
+}
+
 /** Una fila del listado, acotada a lo que cuentan los banners. */
 export interface FilaDelPulso {
   id: string
