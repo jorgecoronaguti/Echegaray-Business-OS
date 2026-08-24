@@ -73,6 +73,33 @@
  * "Anticipo 50% inicio obra": es UN anticipo cobrado en tres tramos (el Concepto los distingue:
  * "(paga el 33% del 50%)", "(paga el 66% del 50%)"). Sumar 50% tres veces daría 150%. Se agrupa por
  * el texto del hito, que es lo que lo nombra.
+ *
+ * ═══ EL 150% QUE VOLVIÓ POR OTRA PUERTA (24/08/2026) ═══
+ *
+ * La pestaña publicó `150,0%` y `$60.000.000` certificados contra un contrato de $40.000.000 en San
+ * Francisco · INSTALACIÓN ELÉCTRICA, y lo mismo en ENTREPISO Y ESCALERA ($11.592.381 sobre
+ * $7.728.254). El contrato estaba bien leído —$40.000.000, una sola vez, aunque cinco filas lo
+ * repitan—: lo que se contó dos veces fue el ANTICIPO. Entre el 14 y el 24/08 el dueño lo partió en
+ * dos cobros quincenales, y cada fila repite el hito COMPLETO:
+ *
+ *   f67  "Anticipo inicio obra 50% $ 40.000.000 Cotización n° — 1ª de 2 cuotas quincenales"   $10.000.000
+ *   f96  "Anticipo inicio obra 50% $ 40.000.000 — 2ª de 2 cuotas quincenales · cancela el …"  $10.000.000
+ *
+ * Los dos declaran "50%" y son textos DISTINTOS, así que la agrupación por texto —la que arregla las
+ * f61/f62/f63, idénticas al carácter— no los junta: el anticipo aportaba 50%+50% = 100% del contrato
+ * él solo, más el 50% de las cuatro certificaciones. 150%, sin un solo error a la vista.
+ *
+ * LA REGLA QUE FALTABA ES LA QUE EL "RESTO" YA APLICABA, ESCRITA UNA VEZ PARA TODOS LOS HITOS: **el
+ * porcentaje que un hito declara se reparte entre las N partes en que el propio texto dice que se
+ * cobra.** "certificación quincenal 1/4" lo decía con `k/n`; "1ª de 2 cuotas quincenales" lo dice con
+ * palabras y nadie lo leía. Cada fila aporta `pct/N`, y el `k` no entra en la cuenta — leerlo
+ * contaría 1+2 en vez de dos mitades, el mismo error que el `RESTO` ya evitaba.
+ *
+ * POR QUÉ NO SE ARREGLÓ NORMALIZANDO LA CLAVE (borrar el sufijo "— 1ª de 2 cuotas…" para que los dos
+ * textos colapsen en un hito). Daba el mismo total HOY y mentía mañana: con sólo la 1ª cuota cargada
+ * publicaría el anticipo entero como certificado y el `Falta certificar` no vería la mitad que
+ * todavía no existe. Repartir por cuotas degrada informando de MENOS —la dirección correcta para
+ * equivocarse en este archivo— y hace que la pestaña siga la carga real del dueño, fila por fila.
  */
 
 import { contratoDeclarado, filasDeObra } from './cobranzas-contrato.mjs'
@@ -87,6 +114,18 @@ const RESTO = /resto\s+(\d{1,3})\s*%[\s\S]*?certificaci[óo]n[\s\S]*?\d+\s*\/\s*
 
 /** "cobro íntegro al cierre de obra": la obra entera en una fila, sin anticipo ni cuotas. */
 const INTEGRO = /cobro\s+[íi]ntegro/i
+
+/**
+ * "1ª de 2 cuotas quincenales" — UN HITO COBRADO EN PARTES, DICHO CON PALABRAS Y NO CON `k/n`.
+ *
+ * EXIGE EL ORDINAL, y ésa es la decisión: un "pagadero en 2 cuotas" suelto no alcanza. Sin un ordinal
+ * que diga cuál de las N es ESTA fila, dividir sería suponer que las otras N−1 están cargadas en
+ * alguna parte; el ordinal es lo que prueba que la fila es una parte y no el hito entero.
+ *
+ * El `k` se captura para exigir la forma completa —que el patrón no matchee media frase— pero no
+ * entra en la cuenta, igual que el `k` del `RESTO`.
+ */
+const CUOTAS_DEL_HITO = /(\d{1,2})\s*(?:ª|º|°|era|nda|ra|da|va|ta)?\s*de\s+(\d{1,2})\s*cuotas?/i
 
 /** "Anticipo 50% inicio obra" · "Anticipo inicio de obra 50% Blanco $65.000.000". El `%` puede ir
  *  antes o después de las palabras del medio; lo que no cambia es que el número pegado al `%` es la
@@ -121,15 +160,21 @@ export function hitoDeclarado(textoOC) {
     const pct = Number(resto[1])
     const cuotas = Number(resto[2])
     if (!pct || !cuotas) return null
+    // El `RESTO` ya trae sus cuotas en el `k/n`: no se vuelven a repartir.
     return { clave, num: pct, den: 100 * cuotas, base }
   }
-  if (INTEGRO.test(texto)) return { clave, num: 100, den: 100, base }
+
+  // Las partes en que ESTA fila dice que se cobra el hito. Sin declaración, la fila es el hito entero.
+  const partido = texto.match(CUOTAS_DEL_HITO)
+  const partes = partido && Number(partido[2]) > 0 ? Number(partido[2]) : 1
+
+  if (INTEGRO.test(texto)) return { clave, num: 100, den: 100 * partes, base }
 
   const ant = texto.match(ANTICIPO)
   if (ant) {
     const pct = Number(ant[1])
     if (!pct) return null
-    return { clave, num: pct, den: 100, base }
+    return { clave, num: pct, den: 100 * partes, base }
   }
   return null
 }
