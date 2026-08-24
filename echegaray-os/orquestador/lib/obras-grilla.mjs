@@ -1240,11 +1240,54 @@ function bloqueCosto(h, refs, o, idx) {
   return { clave: o.clave, fila: f, proyectado, patron }
 }
 
+/** El texto que va en la celda D cuando un egreso de `obras-datos.mjs` no declara fecha. */
+export const SIN_FECHA_PREVISTA = 'sin fecha'
+
+/**
+ * LOS ÍTEMS DEL CUADRO 5 COMO LOS DECLARA `obras-datos.mjs` — LA SEMILLA, YA EN FORMA DE CELDA.
+ *
+ * Es la ÚNICA definición de cómo se dibuja un ítem previsto, y por eso vive acá y no en la fusión:
+ * el que siembra un ítem nuevo tiene que producir exactamente la misma fila que produciría este
+ * generador solo. Dos renderizados del mismo ítem se desincronizan sin dar error, y la diferencia
+ * aparecería como un ítem "distinto" que nunca vuelve a emparejar.
+ *
+ * LA ESPECIE DE LA D ES PARTE DEL DATO: una fecha única va como SERIAL con especie `fecha` (Sheets
+ * la muestra DD/MM); varias cuotas van como TEXTO con «·», que el parser de Sheets no puede
+ * convertir a fecha a escondidas — un «24/08» crudo se auto-parseaba a serial y mostraba 46258.
+ *
+ * @param {Array} obras las de `obras-datos.mjs`
+ * @returns {Array<{rotulo:string, familia:string, proveedor:string, fecha:number|string,
+ *   especieFecha:'fecha'|'texto', previsto:number, nota:string, origen:'semilla'}>}
+ */
+export function itemsSemilla(obras = []) {
+  const items = []
+  for (const o of obras) {
+    for (const e of (o.egresos ?? [])) {
+      const multi = Array.isArray(e.cuotas) && e.cuotas.length > 0
+      const fecha = multi
+        ? e.cuotas.map((c) => `${c.fecha.slice(8, 10)}/${c.fecha.slice(5, 7)}`).join(' · ')
+        : (e.fechaEstimada ? serialISO(e.fechaEstimada) : SIN_FECHA_PREVISTA)
+      items.push({
+        rotulo: `${o.obra ?? o.clave} — ${e.concepto}`,
+        familia: e.familia ?? '',
+        proveedor: e.proveedor ?? 'sin proveedor',
+        fecha,
+        especieFecha: multi || !e.fechaEstimada ? 'texto' : 'fecha',
+        previsto: e.monto,
+        nota: e.nota ?? '',
+        origen: 'semilla',
+      })
+    }
+  }
+  return items
+}
+
 /**
  * LA GRILLA COMPLETA DE `OBRAS`.
  *
  * @param {object} ctx `obras` (defecto: OBRAS_FUTURAS de obras-datos.mjs, inyectable en los tests),
- *   `refs` (defecto: REFS_OBRAS; el escritor pasa las resueltas por rótulo), `clientes`.
+ *   `refs` (defecto: REFS_OBRAS; el escritor pasa las resueltas por rótulo), `clientes`,
+ *   `materiales` (los ítems YA fusionados contra la pestaña; sin ellos se dibuja la semilla).
  * @returns {{filas:Array, tipeadas:Array, protagonistas:number[], detalles:number[], totales:number[],
  *   bloques:Array, fClientes:number[]}} `bloques` expone la anatomía de cada obra (protagonista,
  *   rango de detalle, MO, no-caja) para que la verificación mire la estructura y no el texto.
@@ -1387,31 +1430,30 @@ export function grillaObras(ctx = {}) {
   // proyección del calendario de caja. El 24/08 el dueño sacó esas proyecciones del calendario
   // («nada de eso va a suceder mañana») y pidió VERLAS en una pestaña: este cuadro es el plan,
   // ítem por ítem, con su fecha estimada — SIN tocar la caja. La compra real entra por Compras y
-  // el neteo del cuadro 4 la descuenta sola. Números tipeados con origen declarado: obras-datos
-  // (los PDF del dueño), la misma licencia que la Sección 2.
+  // el neteo del cuadro 4 la descuenta sola.
+  //
+  // ═══ EL CUADRO 5 SE FUSIONA: LA PESTAÑA ES EL ORIGEN DESDE EL 24/08 ═══
+  //
+  // `obras-datos.mjs` SÓLO SIEMBRA ÍTEMS NUEVOS. La fecha y el importe de un ítem que ya está en la
+  // pestaña salen de la PESTAÑA, porque ahí es donde el dueño los edita —el 24/08 movió los 17 al
+  // 01/10/2026— y desde ese día el libro los lee de ahí (`lib/materiales-previstos.mjs`). Este
+  // generador escribía las constantes en cada corrida y le pisaba la corrección: por eso el timer
+  // del flujo de caja estuvo detenido. Quien fusiona es `lib/materiales-fusion.mjs`; acá sólo se
+  // DIBUJA la lista que llega en `ctx.materiales`, y sin ella se dibuja la semilla —que es lo
+  // correcto para un test, para el `--dry` y para la primera corrida sobre una pestaña sin cuadro.
   h.push([])
   h.push([`${SECCION_MATERIALES} · MATERIALES PREVISTOS — el plan, ítem por ítem (fuera del calendario de caja desde el 24/08)`], ['rotulo'])
   h.push(['Obra — concepto', 'Familia', 'Proveedor', 'Fecha estimada', 'Previsto', 'Nota'], ENCABEZADO)
   const filasMateriales = []
   {
     const filasItem = []
-    for (const o of obras) {
-      for (const e of (o.egresos ?? [])) {
-        // UNA fecha va como SERIAL con especie `fecha` (Sheets la muestra DD/MM); varias cuotas
-        // van como texto con «·», que el parser de Sheets no puede convertir a fecha a escondidas.
-        // Un «24/08» crudo se auto-parseaba a serial y la celda mostraba 46258.
-        const multi = Array.isArray(e.cuotas) && e.cuotas.length > 0
-        const fecha = multi
-          ? e.cuotas.map((c) => `${c.fecha.slice(8, 10)}/${c.fecha.slice(5, 7)}`).join(' · ')
-          : (e.fechaEstimada ? serialISO(e.fechaEstimada) : 'sin fecha')
-        const f = h.n + 1
-        filasItem.push(f)
-        filasMateriales.push(f)
-        h.push([`${o.obra ?? o.clave} — ${e.concepto}`, e.familia ?? '', e.proveedor ?? 'sin proveedor',
-          fecha, e.monto, e.nota ?? ''],
-        ['rotulo', 'texto', 'texto', multi || !e.fechaEstimada ? 'texto' : 'fecha', 'moneda', 'texto'])
-        h.tipeadas.push({ fila: f, col: 4 })
-      }
+    for (const it of (ctx.materiales ?? itemsSemilla(obras))) {
+      const f = h.n + 1
+      filasItem.push(f)
+      filasMateriales.push(f)
+      h.push([it.rotulo, it.familia, it.proveedor, it.fecha, it.previsto, it.nota],
+        ['rotulo', 'texto', 'texto', it.especieFecha, 'moneda', 'texto'])
+      h.tipeadas.push({ fila: f, col: 4 })
     }
     if (filasItem.length) {
       const fT = h.n + 1
