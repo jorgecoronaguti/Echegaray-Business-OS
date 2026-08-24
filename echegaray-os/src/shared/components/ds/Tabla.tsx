@@ -27,8 +27,12 @@ export function Tabla({
   minWidth?: number
   className?: string
 }) {
+  // `relative` NO es decorativo: un `sr-only` (position:absolute) dentro de la tabla escapa del
+  // clip de un scroll container no posicionado, aterriza en su posición estática (x=822 en la
+  // lista de presupuestos) y EXPANDE el viewport móvil a ese ancho para siempre (QA 24/08,
+  // innerWidth 390→823 tras hidratar). Posicionado, el ancestro lo contiene y lo recorta.
   return (
-    <div className={`w-full overflow-x-auto border-t border-line ${className}`}>
+    <div className={`relative w-full overflow-x-auto border-t border-line ${className}`}>
       <table data-testid={testid} className="w-full border-collapse text-left" style={{ minWidth }}>
         {children}
       </table>
