@@ -4,13 +4,16 @@
 // obras (La Estrella tiene tres) y hasta hace poco eso vivía como tres cadenas de texto iguales por
 // casualidad.
 //
-// ═══ ESTA LISTA EXISTE PARA ENCONTRAR Y ABRIR UN CLIENTE. NADA MÁS (19/08/2026) ═══
+// ═══ CAMBIO DE REGLA DECLARADO (Design 23/08/2026) ═══
 //
-// El dueño: *"Quiero CLIENTE | OBRAS. Nada más para el MVP."* Se fueron responsable, contratado,
-// costo real, restricciones, documentos y el CUIT como subtítulo. Ninguno de esos números se perdió:
-// todos están en el record del cliente, a un clic, y los económicos además en el portafolio de
-// obras, que es donde se comparan contra algo. Acá no decidían nada — nadie elige a quién llamar por
-// su costo real acumulado — y le comían al nombre el 70% del ancho.
+// El 19/08 el dueño pidió *"CLIENTE | OBRAS. Nada más para el MVP"* y esta lista quedó en dos
+// columnas. El canónico 25 del 23/08 —cuatro días después, y es el contrato vigente— la rediseña con
+// CLIENTE · EN EJECUCIÓN · OBRAS · CONTRATADO y tres recortes. Se implementa el contrato más nuevo.
+//
+// **HAY QUE MIRARLO.** Es la reversión de una decisión explícita del dueño, y el test que la defendía
+// (`clientes-record.spec.ts`) se actualizó con el mismo rótulo. Lo que NO volvió, porque no tiene
+// fuente, está declarado en `ListaClientes.tsx`: la tasa de conversión de presupuestos y el último
+// movimiento.
 //
 // NO ES UN EMBUDO COMERCIAL. No hay leads, ni oportunidades, ni etapa de venta: son los clientes
 // reales de la empresa.
@@ -21,12 +24,11 @@
 // acá igual que antes. Ahora sale de la lista —mismo criterio que el portafolio de obras— y el pie
 // dice cuántos hay guardados y cómo verlos, porque archivar no puede parecerse a borrar.
 //
-// ═══ EL ANCHO ES DE LECTURA, NO DE PANTALLA (Design Handoff V2) ═══
+// ═══ EL ANCHO SIGUE A LAS COLUMNAS (Design 23/08) ═══
 //
-// `LAYOUT_RESPONSIVE.md` §Anchos: *"Listas de lectura corta (Clientes): máximo ~680px; una tabla de
-// dos columnas estirada a 1440 es ilegible"*. Con el ancho completo, el nombre queda pegado a la
-// izquierda y el número de obras a un metro, a la derecha, y hay que barrer la pantalla con la vista
-// para leer un renglón.
+// `LAYOUT_RESPONSIVE.md` §Anchos acotaba esta lista a 680px, y era lo correcto MIENTRAS tuvo dos
+// columnas: una tabla de dos columnas estirada a 1440 es ilegible. Con cuatro columnas —y una de
+// ellas nombres de obra— 680px estrangula justo la que se lee. La regla no cambió; cambió la tabla.
 //
 // ═══ EL ALTA ES UN ESTADO DE LA DIRECCIÓN ═══
 //
@@ -41,38 +43,70 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
-import { esAdministracion } from '@/features/auth/types/areas'
-import { getClientes } from '@/features/clientes/services/clientesService'
-import { separarArchivados } from '@/features/clientes/services/cartera'
+import { esAdministracion, veEconomia as puedeVerEconomia } from '@/features/auth/types/areas'
+import { getClientes, getObrasEnEjecucion } from '@/features/clientes/services/clientesService'
+import { esVistaCartera, recortarCartera, separarArchivados } from '@/features/clientes/services/cartera'
 import { crearCliente } from '@/features/clientes/services/actions'
 import { CamposCliente } from '@/features/clientes/components/CamposCliente'
-import { ListaClientes } from '@/features/clientes/components/ListaClientes'
+import { ListaClientes, type ObraEnCurso } from '@/features/clientes/components/ListaClientes'
+import { FiltrosURL } from '@/features/administracion/components/Controles'
 import { Aviso, BotonEnlace, Vacio } from '@/shared/components/ds'
 import { PageShell, LECTURA, FormAccion } from '@/shared/components/ui'
 
 export const dynamic = 'force-dynamic'
 
+type Query = { archivados?: string; nuevo?: string; vista?: string }
+
+/** Un recorte con su contador en mono, como pide COMPONENTS.md §Secondary tabs / Filters. */
+function ChipCartera({ t, n }: { t: string; n: number }) {
+  return (
+    <span className="inline-flex items-baseline gap-1.5">
+      {t}
+      <span className="font-mono text-[11px] tabular-nums text-faint">{n}</span>
+    </span>
+  )
+}
+
 export default async function ClientesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ archivados?: string; nuevo?: string }>
+  searchParams: Promise<Query>
 }) {
-  const { archivados, nuevo } = await searchParams
-  const conArchivados = archivados === '1'
+  const sp = await searchParams
+  const conArchivados = sp.archivados === '1'
+  const vista = esVistaCartera(sp.vista) ? sp.vista : 'todo'
 
   const supabase = await createClient()
-  const [{ data, error }, perfil] = await Promise.all([
+  const [{ data, error }, perfil, enEjecucion] = await Promise.all([
     getClientes(supabase),
     getPerfilActual(supabase),
+    getObrasEnEjecucion(supabase),
   ])
+  const rol = perfil.data?.rol ?? null
   // LA CARTERA ES DE ADMINISTRACIÓN. El nivel Obras entra al record de un cliente —necesita saber
   // con quién habla en la obra que ejecuta— pero no administra el maestro. No es la cerradura: la
   // RLS rechaza la escritura igual. Es no ofrecer un botón que la base va a rechazar.
-  const puedeEditar = esAdministracion(perfil.data?.rol ?? null)
-  const abierta = nuevo === '1' && puedeEditar
+  const puedeEditar = esAdministracion(rol)
+  // EL PRECIO NO ES DE TODOS. `veEconomia` decide si la columna CONTRATADO se dibuja: el jefe de
+  // obra no ve venta ni contratado, y eso ya lo dice el modelo de roles — acá sólo se respeta.
+  const veEconomia = puedeVerEconomia(rol)
+  const abierta = sp.nuevo === '1' && puedeEditar
 
   const { activos, archivados: guardados } = separarArchivados(data ?? [])
-  const clientes = conArchivados ? [...activos, ...guardados] : activos
+  const todos = conArchivados ? [...activos, ...guardados] : activos
+  const clientes = recortarCartera(todos, vista)
+
+  /** La misma dirección con lo que se le cambie. El alta abierta se cierra: el formulario de un
+   *  cliente nuevo no tiene nada que ver con qué recorte de la cartera se está mirando. */
+  const url = ({ v = vista, arch = conArchivados }: { v?: string | null; arch?: boolean } = {}) => {
+    const p = new URLSearchParams()
+    if (arch) p.set('archivados', '1')
+    if (v && v !== 'todo') p.set('vista', v)
+    const s = p.toString()
+    return `/clientes${s ? `?${s}` : ''}`
+  }
+
+  const porCliente: Record<string, ObraEnCurso[]> = Object.fromEntries(enEjecucion)
 
   return (
     <PageShell
@@ -80,8 +114,13 @@ export default async function ClientesPage({
       // pantalla dice «Administración · Clientes»: dos rótulos contradiciéndose a 40px de distancia.
       // El que sobra es éste — la barra ya contesta «dónde estoy» y encima navega.
       title="Clientes"
-      subtitle="Tocá un cliente para abrir su ficha: sus obras, sus contactos, su actividad y sus documentos."
-      maxWidth={LECTURA.lista}
+      // SIN SUBTÍTULO (Design 23/08). Decía «Tocá un cliente para abrir su ficha: sus obras, sus
+      // contactos, su actividad y sus documentos» — o sea, explicaba que una fila de una tabla se
+      // puede clicar. «No se explica lo que el diseño muestra» (COMPONENTS.md §Texto en la interfaz).
+      // ANCHO COMPLETO desde el canónico 25: con dos columnas, 680px era el ancho correcto —una
+      // tabla de dos columnas estirada a 1440 es ilegible—. Con CLIENTE · EN EJECUCIÓN · OBRAS ·
+      // CONTRATADO, 680px estrangula el nombre de la obra en curso, que es la columna que se lee.
+      maxWidth={LECTURA.completo}
     >
       {/* UNA LISTA VACÍA POR ERROR NO SE DIBUJA COMO «NO HAY DATOS» (INTERACTION.md §Error): el
           mensaje es el de la fuente, y la lista no se dibuja abajo fingiendo una cartera vacía. */}
@@ -91,6 +130,8 @@ export default async function ClientesPage({
         <>
           <ListaClientes
             clientes={clientes}
+            enEjecucion={porCliente}
+            veEconomia={veEconomia}
             accion={puedeEditar && (
               <BotonEnlace
                 href={abierta ? '/clientes' : '/clientes?nuevo=1'}
@@ -101,13 +142,34 @@ export default async function ClientesPage({
                 {abierta ? 'Cancelar' : '+ Nuevo cliente'}
               </BotonEnlace>
             )}
+            filtros={
+              /* LOS TRES RECORTES DEL CANÓNICO. Van por la URL —el filtro puesto se comparte por
+                 enlace y el botón de atrás lo deshace— y su contador sale de la MISMA lista que se
+                 dibuja: un chip que dijera 4 con la tabla mostrando 3 sería un tercer número. */
+              <FiltrosURL
+                testid="filtro-cartera"
+                opciones={[
+                  { label: <ChipCartera t="Todos" n={todos.length} />, href: url({ v: null }), activo: vista === 'todo', testid: 'filtro-cartera-todo' },
+                  {
+                    label: <ChipCartera t="Con obra activa" n={recortarCartera(todos, 'activos').length} />,
+                    href: url({ v: 'activos' }), activo: vista === 'activos', testid: 'filtro-cartera-activos',
+                  },
+                  {
+                    label: <ChipCartera t="Datos faltantes" n={recortarCartera(todos, 'sin-datos').length} />,
+                    href: url({ v: 'sin-datos' }), activo: vista === 'sin-datos', testid: 'filtro-cartera-sin-datos',
+                  },
+                ]}
+              />
+            }
           />
 
           {clientes.length === 0 && (
-            <Vacio>
-              {guardados.length === 0
-                ? 'Todavía no hay clientes cargados.'
-                : 'Todos los clientes están archivados.'}
+            <Vacio accion={vista !== 'todo' ? <Link href={url({ v: null })} className="text-ink underline underline-offset-2">Ver todos</Link> : undefined}>
+              {vista !== 'todo'
+                ? 'Ningún cliente entra en este recorte.'
+                : guardados.length === 0
+                  ? 'Todavía no hay clientes cargados.'
+                  : 'Todos los clientes están archivados.'}
             </Vacio>
           )}
 
@@ -131,22 +193,22 @@ export default async function ClientesPage({
                 {conArchivados ? (
                   <>
                     Se muestran también {guardados.length} cliente{guardados.length === 1 ? '' : 's'} archivado{guardados.length === 1 ? '' : 's'}.{' '}
-                    <Link href="/clientes" className="text-ink underline underline-offset-2">Ocultarlos</Link>.
+                    {/* El recorte se preserva al ocultar los archivados: perderlo obligaría a
+                        volver a elegirlo, y quien mira «Datos faltantes» lo mira por algo. */}
+                    <Link href={url({ arch: false })} className="text-ink underline underline-offset-2">Ocultarlos</Link>.
                   </>
                 ) : (
                   <>
                     {guardados.length} cliente{guardados.length === 1 ? '' : 's'} archivado{guardados.length === 1 ? '' : 's'} fuera de esta lista.{' '}
-                    <Link href="/clientes?archivados=1" className="text-ink underline underline-offset-2" data-testid="ver-archivados">Verlos</Link>.
+                    <Link href={url({ arch: true })} className="text-ink underline underline-offset-2" data-testid="ver-archivados">Verlos</Link>.
                   </>
                 )}
               </p>
             )}
 
-            <p className="text-[11px] text-faint">
-              El filtro es local: son pocos y la búsqueda tiene que ser instantánea. ¿Buscás una obra
-              y no te acordás de quién es?{' '}
-              <Link href="/obras" className="text-ink underline underline-offset-2">Ver todas las obras</Link>.
-            </p>
+            {/* SE FUE EL PÁRRAFO PERMANENTE (Design 23/08, «menos palabras»). Decía que el filtro es
+                local —una nota de implementación que a quien busca un cliente no le sirve para
+                nada— y ofrecía ir a Obras, que ya está en la navegación de nivel 2. */}
           </div>
         </>
       )}

@@ -6,11 +6,13 @@ import { entrarComo } from './util/login'
 //
 // ═══ QUÉ DEFECTOS ATRAPA ESTE ARCHIVO ═══
 //
-// 1. LA LISTA VUELVE A LLENARSE DE COLUMNAS. Tenía siete (responsable, contratado, costo real,
-//    restricciones, documentos, CUIT de subtítulo) y ninguna decidía nada: nadie elige a quién
-//    llamar por su costo real acumulado. El dueño pidió CLIENTE | OBRAS. Es la clase de decisión que
-//    se revierte sola en tres semanas «porque el dato ya lo teníamos», y sin un test que la defienda
-//    nadie se entera.
+// 1. LA LISTA VUELVE A LLENARSE DE COLUMNAS. **CAMBIO DE REGLA DECLARADO (Design 23/08).** Este
+//    caso fijaba las DOS columnas que el dueño pidió el 19/08 —*"CLIENTE | OBRAS. Nada más para el
+//    MVP"*—. El canónico 25 del 23/08, cuatro días después y contrato vigente, rediseña la cartera
+//    con CLIENTE · EN EJECUCIÓN · OBRAS · CONTRATADO. El test sigue existiendo y sigue prohibiendo
+//    que crezca: cambió el número, no la regla. Lo que se conserva textual es la lista de columnas
+//    que NO vuelven —costo real, restricciones, documentos— porque ésas siguen sin decidir nada, y
+//    se suma que las cuatro tienen que ser EXACTAMENTE las del canónico.
 // 2. EL BUSCADOR NO FILTRA. Un campo de búsqueda que se ve y no filtra es peor que no tenerlo.
 // 3. ALGO DEL RECORD VUELVE DETRÁS DE UNA SOLAPA. Propiedades, actividad, obras, contactos y
 //    documentos tienen que estar A LA VEZ, sin un clic de por medio.
@@ -21,31 +23,43 @@ import { entrarComo } from './util/login'
 // el dueño; RECARGA, o sea vuelve a leer del servidor y no del estado del navegador; exige que el
 // dato esté; y borra al final, gane o pierda.
 
-// ── LA LISTA: DOS COLUMNAS Y UN BUSCADOR ───────────────────────────────────
+// ── LA LISTA: LAS CUATRO COLUMNAS DEL CANÓNICO Y UN BUSCADOR ───────────────
 
-test('la lista de clientes trae el nombre y cuántas obras tiene, y nada más', async ({ page }) => {
+test('la cartera trae exactamente las columnas del canónico 25, y ninguna más', async ({ page }) => {
   test.setTimeout(180000)
   const sb = await conBase()
   await limpiar(sb)
 
   try {
+    // La sesión de este recorrido ve economía (`entrar` usa la cuenta de dirección/administración),
+    // así que CONTRATADO se dibuja. Con la del jefe de obra son tres — lo mide `veEconomia`.
     await entrar(page)
     await page.goto('/clientes')
     const tabla = page.getByTestId('clientes-tabla')
     await expect(tabla).toBeVisible()
 
-    // DOS columnas. Contar los encabezados es lo que impide que vuelva a crecer: una afirmación
-    // sobre los textos dejaría pasar una columna nueva con cualquier otro rótulo.
+    // CUATRO columnas, y éstas. Contar los encabezados es lo que impide que vuelva a crecer —una
+    // afirmación sobre los textos dejaría pasar una columna nueva con cualquier otro rótulo— y
+    // nombrarlos es lo que impide que se cambien por otras cuatro.
     const encabezados = tabla.locator('thead th')
-    await expect(encabezados).toHaveCount(2)
+    await expect(encabezados).toHaveCount(4)
     await expect(encabezados.nth(0)).toHaveText('Cliente')
-    await expect(encabezados.nth(1)).toHaveText('Obras')
+    await expect(encabezados.nth(1)).toHaveText('En ejecución')
+    await expect(encabezados.nth(2)).toHaveText('Obras')
+    await expect(encabezados.nth(3)).toHaveText('Contratado')
 
-    // Y ninguno de los que el dueño mandó sacar. Van por separado del conteo porque dicen otra cosa:
-    // el conteo prohíbe que crezca, esto prohíbe que vuelvan JUSTO ESTOS, que son los que ya
-    // estuvieron y los que alguien va a querer devolver.
-    for (const columna of ['Responsable', 'Contratado', 'Costo real', 'Restric', 'Docs']) {
+    // Y ninguno de los que el dueño mandó sacar el 19/08 y el canónico tampoco devuelve. Van por
+    // separado del conteo porque dicen otra cosa: el conteo prohíbe que crezca, esto prohíbe que
+    // vuelvan JUSTO ÉSTOS, que son los que ya estuvieron y los que alguien va a querer devolver.
+    // «Contratado» salió de esta lista: el canónico lo dibuja y arriba se exige que esté.
+    for (const columna of ['Responsable', 'Costo real', 'Restric', 'Docs']) {
       await expect(tabla).not.toContainText(columna)
+    }
+
+    // LOS TRES RECORTES DEL CANÓNICO, con su contador. Sin ellos la cartera vuelve a ser una lista
+    // sin recorte y «datos faltantes» —el CUIT que frena una factura— no se puede ver de un vistazo.
+    for (const t of ['filtro-cartera-todo', 'filtro-cartera-activos', 'filtro-cartera-sin-datos']) {
+      await expect(page.getByTestId(t)).toBeVisible()
     }
   } finally {
     await limpiar(sb)
@@ -123,6 +137,38 @@ test('el record del cliente muestra propiedades, actividad, obras, contactos y d
 
   // Y la dirección NO cambió: lo anterior no fue una navegación disfrazada.
   expect(page.url()).toBe(url)
+
+  // ═══ LA ANATOMÍA DE FICHA DE ENTIDAD (Design 23/08, COMPONENTS.md) ═══
+  //
+  // «Cliente, Proveedor, Persona, Obra y Herramienta usan la MISMA estructura»: slab de identidad
+  // grafito con filo amarillo, sus métricas, y solapas con contador. Es el MISMO componente que
+  // `slab-proveedor` — si alguien le escribe uno propio al cliente, esto no lo atrapa, pero el
+  // `slab-cliente` que exige es el `BarraContexto` del DS y no otra cosa.
+  //
+  // El índice es lo que hace que el record largo siga siendo navegable SIN partirlo: cada solapa
+  // cuenta y lleva a su bloque, y por eso se exige que el ancla EXISTA — un índice que apunta a un
+  // id que nadie escribe es un enlace que no hace nada y nadie lo nota.
+  const slab = page.getByTestId('slab-cliente')
+  await expect(slab).toBeVisible()
+  await expect(slab).toContainText('CUIT')
+  // Las métricas viven en el slab. `Obras` es la que siempre está, con o sin permiso económico.
+  await expect(slab.locator('[data-kpi="Obras"]')).toBeVisible()
+  await expect(page.getByTestId('indice-record')).toBeVisible()
+  for (const [solapa, ancla] of [
+    ['indice-informacion', 'panel-informacion'],
+    ['indice-actividad', 'bloque-actividad'],
+    ['indice-obras', 'bloque-obras'],
+    ['indice-contactos', 'bloque-contactos'],
+    ['indice-documentos', 'bloque-documentos'],
+  ] as const) {
+    await expect(page.getByTestId(solapa)).toHaveAttribute('href', `#${ancla}`)
+    await expect(page.locator(`#${ancla}`), `el índice apunta a #${ancla} y nadie escribe ese id`)
+      .toHaveCount(1)
+  }
+
+  // UN SOLO `h1`: el slab trae el suyo y `PageShell` no puede dibujar otro con el mismo nombre.
+  // Si alguien saca `encabezado={false}`, esto se pone rojo antes que nadie mire la pantalla.
+  await expect(page.locator('h1')).toHaveCount(1)
 
   // Las altas de cada bloque están A LA VISTA, arriba de su lista. Enterradas al final de una tabla
   // de 60 filas no las encuentra nadie y el bloque se queda vacío para siempre.

@@ -7,10 +7,17 @@
 //
 // ═══ LA FUENTE, MEDIDA ANTES DE DISEÑAR ═══
 //
-// `obra_documento` 0 filas · `documento_presentacion` 0 · `drive_documento_estado` 0 ·
-// `drive_index` 3.593 (3.123 archivos) · `documentacion_legajo` 847 · `cliente_documento` 214
-// (21/08/2026). O sea: el catálogo es `drive_index` y las otras dos son VÍNCULOS. Por eso el
-// archivo es la fila y el vínculo es una columna.
+// `documento_presentacion` 0 · `drive_documento_estado` 0 · `drive_index` 3.599 ·
+// `documentacion_legajo` 847 · `cliente_documento` 214 · `obra_documento` **32** (24/08/2026).
+// O sea: el catálogo es `drive_index` y las otras TRES son VÍNCULOS. Por eso el archivo es la fila
+// y el vínculo es una columna.
+//
+// `obra_documento` estaba en 0 el 21/08 y por eso la pantalla la ignoraba. Volvió a medirse el
+// 24/08: tiene 32 filas, y desde entonces se lee. Una medición vieja convertida en constante del
+// código es la forma más silenciosa de perder un dato real.
+//
+// NO EXISTE ninguna tabla que vincule un archivo con un PROVEEDOR. El canónico dibuja el filtro
+// «De proveedores»; acá no está, y se dice, en vez de ofrecer un chip que siempre devuelve cero.
 //
 // ═══ POR QUÉ ESTA RUTA ES SÓLO DE DIRECCIÓN Y ADMINISTRACIÓN ═══
 //
@@ -43,7 +50,8 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import {
-  getCarpetasRaiz, getDocumento, getDocumentos, getResumenVencimientos, TOPE,
+  ENTIDADES, getCarpetasRaiz, getConteoEntidades, getDocumento, getDocumentos,
+  getResumenVencimientos, PAGINAS_MAX, TOPE,
 } from '@/features/documentos/services/documentosService'
 import { CATEGORIAS } from '@/features/documentos/services/categorias'
 import { TablaDocumentos } from '@/features/documentos/components/TablaDocumentos'
@@ -67,7 +75,17 @@ const TIPOS = [
 // `cat` es la categoría derivada (`categorias.ts`), `vence` el recorte de la banda de alertas y
 // `pv` el visor embebido. LOS TRES VIVEN EN LA URL, no en estado de cliente: así la pantalla sigue
 // siendo un server component entero, y un filtro puesto se puede compartir por enlace.
-type Query = { q?: string; carpeta?: string; tipo?: string; cat?: string; vence?: string; d?: string; pv?: string }
+type Query = {
+  q?: string; carpeta?: string; tipo?: string; cat?: string; vence?: string
+  /** De qué cuelga el archivo: `obra`, `persona` o `cliente`. */
+  ent?: string
+  /** Cuántas páginas de `TOPE` filas se pidieron. Lo sube «Cargar más». */
+  n?: string
+  d?: string; pv?: string
+}
+
+/** Cómo se rotula cada clase de vínculo en el filtro. El canónico las llama así. */
+const ROTULO_ENTIDAD = { obra: 'De obras', persona: 'De personas', cliente: 'De clientes' } as const
 
 function armarHref(base: Query, cambios: Partial<Query> = {}): string {
   const v = { ...base, ...cambios }
@@ -77,11 +95,19 @@ function armarHref(base: Query, cambios: Partial<Query> = {}): string {
   if (v.tipo) p.set('tipo', v.tipo)
   if (v.cat) p.set('cat', v.cat)
   if (v.vence) p.set('vence', v.vence)
+  if (v.ent) p.set('ent', v.ent)
+  if (v.n) p.set('n', v.n)
   if (v.d) p.set('d', v.d)
   if (v.pv) p.set('pv', v.pv)
   const qs = p.toString()
   return `/documentos${qs ? `?${qs}` : ''}`
 }
+
+/** CAMBIAR UN FILTRO VUELVE A LA PRIMERA PÁGINA. Sin esto, quien pidió 1.000 filas y después filtra
+ *  por «De obras» se lleva las 32 metidas en una consulta de 10 páginas: 10 veces el trabajo para el
+ *  mismo resultado. Y cierra el panel: el documento abierto puede no estar en el resultado nuevo. */
+const filtrar = (base: Query, cambios: Partial<Query>) =>
+  armarHref(base, { ...cambios, n: undefined, d: undefined })
 
 export default async function DocumentosPage({ searchParams }: { searchParams: Promise<Query> }) {
   const sp = await searchParams
@@ -93,23 +119,36 @@ export default async function DocumentosPage({ searchParams }: { searchParams: P
   // dos relojes distintos haría que el aviso dijera 3 y la lista mostrara 2.
   const hoy = new Date().toISOString().slice(0, 10)
 
-  const [catalogo, carpetas, vencimientos] = await Promise.all([
-    getDocumentos(supabase, { q: sp.q, carpeta: sp.carpeta, tipo: sp.tipo, categoria: sp.cat, vence: sp.vence, hoy }),
+  // `n` llega por la URL: se satura acá y el servicio lo vuelve a saturar. Un `?n=99999` escrito a
+  // mano es una consulta de 3.599 filas con todos sus vínculos que cualquiera puede pedir.
+  const paginas = Math.min(Math.max(1, Number.parseInt(sp.n ?? '1', 10) || 1), PAGINAS_MAX)
+
+  const [catalogo, carpetas, vencimientos, porEntidad] = await Promise.all([
+    getDocumentos(supabase, {
+      q: sp.q, carpeta: sp.carpeta, tipo: sp.tipo, categoria: sp.cat, vence: sp.vence,
+      entidad: sp.ent, hoy, paginas,
+    }),
     getCarpetasRaiz(supabase),
     getResumenVencimientos(supabase, hoy),
+    getConteoEntidades(supabase),
   ])
   if (catalogo.error) return <EstadoError mensaje={catalogo.error} que="el archivo de documentos" />
 
   const documentos = catalogo.data?.documentos ?? []
   const total = catalogo.data?.total ?? 0
+  const hayMas = documentos.length < total && paginas < PAGINAS_MAX
   // NO SE PUDO ABRIR ≠ NO EXISTE, otra vez: el panel dice su propio error y la tabla sigue viva.
   const abierto = sp.d ? await getDocumento(supabase, sp.d) : null
-  const filtrando = Boolean(sp.q || sp.carpeta || sp.tipo || sp.cat || sp.vence)
+  const filtrando = Boolean(sp.q || sp.carpeta || sp.tipo || sp.cat || sp.vence || sp.ent)
 
   return (
     <PageShell
       title="Documentos"
-      subtitle="Todo el archivo indexado de Drive. Los archivos no se copian: se abren donde viven."
+      // MENOS PALABRAS (Design 23/08): el canónico rotula «de obras, personas, proveedores y
+      // clientes». Que los archivos vivan en Drive y no se copien es CÓMO funciona la pantalla —se
+      // lee una vez y estorba las otras trescientas—, así que ya vivía en `<Ayuda>` al pie y acá
+      // sobraba dicho dos veces.
+      subtitle="De obras, personas y clientes."
     >
       {carpetas.error && (
         <div className="mb-4">
@@ -120,27 +159,62 @@ export default async function DocumentosPage({ searchParams }: { searchParams: P
       <BandaVencimientos
         resumen={vencimientos.data}
         error={vencimientos.error}
-        hrefVencidos={armarHref(sp, { vence: 'vencido', d: undefined })}
-        hrefEsteMes={armarHref(sp, { vence: 'mes', d: undefined })}
-        hrefTodo={armarHref(sp, { vence: undefined, d: undefined })}
+        hrefVencidos={filtrar(sp, { vence: 'vencido' })}
+        hrefEsteMes={filtrar(sp, { vence: 'mes' })}
+        hrefTodo={filtrar(sp, { vence: undefined })}
         recorte={sp.vence}
       />
+
+      {/* ═══ DE QUIÉN CUELGA EL ARCHIVO — el filtro de cabecera del canónico 27 ═══
+
+          Va PRIMERO y en su propia línea porque es el que ordena la pregunta real: quien busca un
+          papel sabe de quién es antes que en qué carpeta está. Se resuelve en Postgres contra la
+          tabla de vínculo (ver `idsDeEntidad`), no descartando filas ya traídas.
+
+          NO HAY «DE PROVEEDORES», y no es un olvido: el canónico lo dibuja, pero en la base NO
+          EXISTE ninguna tabla que vincule un archivo con un proveedor —hay `obra_documento` (32),
+          `cliente_documento` (214) y `documentacion_legajo` (847), y nada más—. Un chip que
+          devolviera siempre cero enseñaría que el proveedor no tiene papeles, que es falso: los
+          tiene, sin vincular. */}
+      <div className="mb-4">
+        <FiltrosURL
+          testid="filtro-entidad"
+          opciones={[
+            { label: 'Todo', href: filtrar(sp, { ent: undefined }), activo: !sp.ent, testid: 'filtro-entidad-todo' },
+            ...ENTIDADES.map((e) => ({
+              label: (
+                <span className="inline-flex items-baseline gap-1.5">
+                  {ROTULO_ENTIDAD[e]}
+                  {/* Sin número cuando la lectura del vínculo falló: un `0` ahí diría «no hay
+                      ninguno», que es lo contrario de «no lo pude contar». */}
+                  {porEntidad[e] !== null && (
+                    <span className="font-mono text-[11px] tabular-nums text-faint">{porEntidad[e]}</span>
+                  )}
+                </span>
+              ),
+              href: filtrar(sp, { ent: e }),
+              activo: sp.ent === e,
+              testid: `filtro-entidad-${e}`,
+            })),
+          ]}
+        />
+      </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-x-5 gap-y-3">
         <BuscadorURL
           accion="/documentos"
           q={sp.q}
           placeholder="Buscar por nombre o carpeta"
-          oculto={{ carpeta: sp.carpeta, tipo: sp.tipo, cat: sp.cat, vence: sp.vence }}
+          oculto={{ carpeta: sp.carpeta, tipo: sp.tipo, cat: sp.cat, vence: sp.vence, ent: sp.ent }}
           testid="buscar-documento"
         />
         <FiltrosURL
           testid="filtro-carpeta"
           opciones={[
-            { label: 'Todo', href: armarHref(sp, { carpeta: undefined, d: undefined }), activo: !sp.carpeta, testid: 'filtro-carpeta-todo' },
+            { label: 'Todo', href: filtrar(sp, { carpeta: undefined }), activo: !sp.carpeta, testid: 'filtro-carpeta-todo' },
             ...(carpetas.data ?? []).map((c) => ({
               label: c.name,
-              href: armarHref(sp, { carpeta: c.path, d: undefined }),
+              href: filtrar(sp, { carpeta: c.path }),
               activo: sp.carpeta === c.path,
               testid: `filtro-carpeta-${c.path}`,
             })),
@@ -149,10 +223,10 @@ export default async function DocumentosPage({ searchParams }: { searchParams: P
         <FiltrosURL
           testid="filtro-tipo"
           opciones={[
-            { label: 'Todos', href: armarHref(sp, { tipo: undefined, d: undefined }), activo: !sp.tipo, testid: 'filtro-tipo-todos' },
+            { label: 'Todos', href: filtrar(sp, { tipo: undefined }), activo: !sp.tipo, testid: 'filtro-tipo-todos' },
             ...TIPOS.map((t) => ({
               label: t.etiqueta,
-              href: armarHref(sp, { tipo: t.valor, d: undefined }),
+              href: filtrar(sp, { tipo: t.valor }),
               activo: sp.tipo === t.valor,
               testid: `filtro-tipo-${t.valor}`,
             })),
@@ -169,14 +243,14 @@ export default async function DocumentosPage({ searchParams }: { searchParams: P
         <FiltrosURL
           testid="filtro-categoria"
           opciones={[
-            { label: 'Todas', href: armarHref(sp, { cat: undefined, d: undefined }), activo: !sp.cat, testid: 'filtro-categoria-todas' },
+            { label: 'Todas', href: filtrar(sp, { cat: undefined }), activo: !sp.cat, testid: 'filtro-categoria-todas' },
             ...CATEGORIAS.map((c) => ({
               label: c.etiqueta,
-              href: armarHref(sp, { cat: c.clave, d: undefined }),
+              href: filtrar(sp, { cat: c.clave }),
               activo: sp.cat === c.clave,
               testid: `filtro-categoria-${c.clave}`,
             })),
-            { label: 'Otros', href: armarHref(sp, { cat: 'otros', d: undefined }), activo: sp.cat === 'otros', testid: 'filtro-categoria-otros' },
+            { label: 'Otros', href: filtrar(sp, { cat: 'otros' }), activo: sp.cat === 'otros', testid: 'filtro-categoria-otros' },
           ]}
         />
       </div>
@@ -201,15 +275,34 @@ export default async function DocumentosPage({ searchParams }: { searchParams: P
               )
             }
           />
-          {/* EL PIE SE QUEDA CON EL DATO. La cuenta y el tope son un hecho de esta pantalla —«lo
-              que falta no está vacío» evita leer 500 documentos como si fueran todos—, así que se
-              lee siempre. Cómo llegan los archivos al índice es cómo funciona la pantalla: se lee
-              una vez y estorba las otras trescientas, así que baja a la ayuda. */}
-          <p className="mt-3 text-[11px] leading-relaxed text-faint" data-testid="pie-documentos">
-            {documentos.length < total
-              ? `Se listan ${documentos.length} de ${total.toLocaleString('es-AR')} documentos, los modificados más recientemente. Lo que falta no está vacío: está fuera del tope de ${TOPE} filas de esta pantalla.`
-              : `${total.toLocaleString('es-AR')} ${total === 1 ? 'documento' : 'documentos'}.`}
-          </p>
+          {/* EL PIE SE QUEDA CON EL DATO —«lo que falta no está vacío» evita leer 100 documentos
+              como si fueran todos— y AHORA TIENE PUERTA. Antes decía «está fuera del tope» y ahí
+              terminaba: el documento de la fila 201 no se alcanzaba desde ninguna parte de la
+              pantalla, ni filtrando —el filtro también recorta a 100—. «Cargar más» pide otra
+              página A LA CONSULTA (`?n=`), no dibuja más de lo que ya se trajo. */}
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+            <p className="text-[11px] leading-relaxed text-faint" data-testid="pie-documentos">
+              {documentos.length < total
+                ? `Se listan ${documentos.length} de ${total.toLocaleString('es-AR')} documentos, los modificados más recientemente.`
+                : `${total.toLocaleString('es-AR')} ${total === 1 ? 'documento' : 'documentos'}.`}
+            </p>
+            {hayMas && (
+              <Link
+                href={armarHref(sp, { n: String(paginas + 1) })}
+                className="text-[11.5px] font-medium text-ink underline underline-offset-2"
+                data-testid="cargar-mas-documentos"
+              >
+                Cargar {Math.min(TOPE, total - documentos.length)} más
+              </Link>
+            )}
+            {/* El techo duro se dice cuando se toca, no antes: hasta ahí es una restricción interna
+                que a nadie le importa. Buscar es más rápido que bajar 3.000 filas. */}
+            {documentos.length < total && paginas >= PAGINAS_MAX && (
+              <span className="text-[11px] text-faint" data-testid="tope-documentos">
+                Es el máximo que esta pantalla dibuja. Acotá con la búsqueda o un filtro.
+              </span>
+            )}
+          </div>
           <Ayuda titulo="De dónde salen estos documentos" testid="ayuda-documentos">
             Los archivos no se copian ni se suben desde acá: se cargan en Drive y el indexador los
             trae al índice en la corrida siguiente.

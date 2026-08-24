@@ -6,12 +6,20 @@
 // `cliente_documento` (214) no son catálogos: son VÍNCULOS de un archivo de Drive con una entidad.
 // Por eso acá el archivo es la fila y el vínculo es una columna, y no al revés.
 
-export type ClaseVinculo = 'persona' | 'cliente'
+// ═══ `obra_documento` DEJÓ DE ESTAR VACÍA (medido el 24/08/2026) ═══
+//
+// El comentario de arriba se escribió el 21/08 con la tabla en 0 filas, y por eso la vista
+// transversal ignoraba las obras: no había nada que mostrar. Vuelto a medir contra la base real:
+// `drive_index` 3.599 · `documentacion_legajo` 847 · `cliente_documento` 214 · `obra_documento` 32.
+// Un vínculo que existe y la pantalla no lee es peor que uno que no existe: quien filtra «de obras»
+// concluye que la obra no tiene papeles.
+export type ClaseVinculo = 'persona' | 'cliente' | 'obra'
 
 export interface Vinculo {
   clase: ClaseVinculo
   nombre: string
-  /** El tipo de documento del legajo, el rol del documento del cliente. `null` = sin clasificar. */
+  /** El tipo de documento del legajo, el rol del documento del cliente o de la obra. `null` = sin
+   *  clasificar. */
   detalle: string | null
   href: string | null
   /**

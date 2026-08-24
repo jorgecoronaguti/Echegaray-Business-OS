@@ -18,6 +18,24 @@
 // actividad y los documentos muestran los últimos, con el total al lado y el resto a un clic—, que
 // es lo que hace que una ficha con 214 documentos siga siendo una pantalla.
 //
+// ═══ LO QUE EL CANÓNICO 26 AGREGA, Y LA SOLAPA QUE NO VUELVE (Design 23/08/2026) ═══
+//
+// El canónico dibuja la anatomía de ficha de entidad: **slab de identidad grafito con filo
+// amarillo**, **solapas con contador mono**, **resumen de 3–4 métricas** y **aside** con
+// propiedades, contactos, actividad y documentos. El aside ya estaba; lo que faltaba era el slab con
+// sus métricas y el índice, y son este trabajo.
+//
+// LAS MÉTRICAS VAN DENTRO DEL SLAB, no en una fila aparte: es donde las pone `slab-proveedor`, que
+// usa el MISMO componente, y `COMPONENTS.md` exige que las cinco fichas se vean iguales. El canónico
+// las dibuja abajo; ganó la consistencia entre fichas sobre el calco de un mockup.
+//
+// LAS SOLAPAS SON UN ÍNDICE, NO UNA PARTICIÓN, y es una desviación deliberada. El canónico las
+// dibuja como nivel 2 con una vista por solapa; su solapa por defecto («Resumen») muestra igual
+// todas las caras a la vez. Acá se conserva la regla que el dueño fijó el 19/08 —*"el record no
+// puede quedar detrás de una solapa"*—, así que el índice CUENTA y LLEVA a cada bloque, y ninguno
+// se esconde. Partir el record rompería además el caso que lo motivó: «¿tiene el contrato cargado y
+// a quién llamo?» son dos solapas y dos viajes al servidor.
+//
 // ═══ EL ESTADO VIAJA EN LA URL, NO EN EL NAVEGADOR ═══
 //
 // `?editar=1` abre el formulario de la ficha, `?contacto=<id>` el de un contacto, `?archivadas=1`
@@ -29,11 +47,10 @@
 // FRONTERA: el cliente CONSOLIDA, no administra. El contratado y el costo real salen de `obra_panel`
 // —o sea, de Compras y de Cotización—. Acá no se calcula ni se guarda un número propio.
 
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
-import { esAdministracion } from '@/features/auth/types/areas'
+import { esAdministracion, veEconomia as puedeVerEconomia } from '@/features/auth/types/areas'
 import {
   getActividadCliente, getCliente, getContactos, getDocumentosCliente, getObrasDelCliente, getResponsables,
 } from '@/features/clientes/services/clientesService'
@@ -50,10 +67,11 @@ import { BloqueContactos } from '@/features/clientes/components/BloqueContactos'
 import { BloqueDocumentos } from '@/features/clientes/components/BloqueDocumentos'
 import { BloqueInformacion } from '@/features/clientes/components/BloqueInformacion'
 import { BloqueObras } from '@/features/clientes/components/BloqueObras'
-import { Aviso, BotonEnlace, Num } from '@/shared/components/ds'
+import { Aviso, BarraContexto, BotonEnlace, MetaContexto, Num, SubTabs } from '@/shared/components/ds'
 import { EstadoError } from '@/shared/components/estado'
 import { crearLector } from '@/shared/components/estado/lecturas'
 import { PageShell } from '@/shared/components/ui'
+import { money } from '@/shared/utils/format'
 
 export const dynamic = 'force-dynamic'
 
@@ -113,6 +131,9 @@ export default async function ClientePage({
   // La lección, que es la que importa: el predicado de pantalla SIGUE a la policy, nunca al revés.
   const rol = (await getPerfilActual(supabase)).data?.rol ?? null
   const puedeEditar = esAdministracion(rol)
+  // EL PRECIO NO ES DE TODOS: el jefe de obra no ve contratado. Decide la RLS; acá sólo se deja de
+  // dibujar la métrica, para no mostrarle un rótulo económico vacío y que parezca un error.
+  const veEconomia = puedeVerEconomia(rol)
 
   // Las cinco caras del record, en una sola vuelta. Secuencial, cada una sumaría su latencia a la
   // apertura de una pantalla que antes mostraba una sola.
@@ -142,26 +163,106 @@ export default async function ClientePage({
     return `/clientes/${slug}${s ? `?${s}` : ''}`
   }
 
+  const enCurso = todas.filter((o) => o.estado === 'activa')
+  // El contratado de las obras que HOY se están ejecutando. Sale de las obras ya leídas: es la misma
+  // fuente que la tabla de abajo, así que la métrica y la tabla no pueden discrepar.
+  const conMontoEnCurso = enCurso.filter((o) => o.monto_contratado != null)
+
   return (
     <PageShell
-      // La miga de pan es UNA: volver a la lista. «01 · Obras · Clientes» contradecía a la barra de
-      // Administración que corona la pantalla, y repetía en tres niveles lo que esa barra ya dice.
-      eyebrow={<Link href="/clientes" className="hover:underline">← Clientes</Link>}
       title={cliente.nombre_comercial}
-      // El CUIT es LA identidad fiscal del cliente: es lo que lo cruza contra ARCA y contra el
-      // banco, y por eso acompaña al nombre acá arriba en vez de esconderse en una propiedad.
-      // EL CUIT EN MONO TABULAR: es un número que se compara contra ARCA y contra el banco, y en
-      // proporcional los dígitos no se alinean con nada. «CUIT sin cargar» va en texto normal
-      // porque no es un número — escribir una ausencia en mono la disfraza de dato.
-      subtitle={cliente.cuit ? <Num className="text-muted">{cliente.cuit}</Num> : <span className="text-faint">CUIT sin cargar</span>}
-      right={puedeEditar && (
-        <BotonEnlace
-          href={url({ editar: q.editar === '1' ? null : '1' })}
-          variante="discreta"
-          data-testid="editar-ficha"
-        >{q.editar === '1' ? 'Cerrar edición' : 'Editar'}</BotonEnlace>
-      )}
+      // EL ENCABEZADO LO TRAE EL SLAB (`COMPONENTS.md` §Anatomía de ficha de entidad): dejar también
+      // el de `PageShell` daría dos `h1` con el mismo nombre a 60px de distancia.
+      encabezado={false}
     >
+      {/* EL SLAB DE IDENTIDAD, con el MISMO componente que la ficha del proveedor (`slab-proveedor`).
+          `COMPONENTS.md`: *"Cliente, Proveedor, Persona, Obra y Herramienta usan la MISMA
+          estructura"*. Escribir uno propio para el cliente habría garantizado que el tercero lo
+          copie con otro radio y otro gris — que es cómo `NavAdministracion` terminó dibujando su
+          barra de solapas tres veces.
+
+          LA MIGA DE PAN vive adentro del slab: «01 · Obras · Clientes» contradecía a la barra de
+          Administración que corona la pantalla y repetía en tres niveles lo que esa barra ya dice. */}
+      <div className="mb-6 -mx-4 lg:-mx-10">
+        <BarraContexto
+          testid="slab-cliente"
+          volverA="/clientes"
+          volverLabel="Clientes"
+          titulo={cliente.nombre_comercial}
+          meta={
+            <>
+              {/* EL CUIT EN MONO TABULAR: es un número que se compara contra ARCA y contra el banco,
+                  y en proporcional los dígitos no se alinean con nada. La ausencia va en texto
+                  normal porque no es un número — escribirla en mono la disfraza de dato. */}
+              <MetaContexto rotulo="CUIT">
+                {cliente.cuit ? <Num className="text-[11.5px]">{cliente.cuit}</Num> : 'sin cargar'}
+              </MetaContexto>
+              <MetaContexto rotulo="Razón social">{cliente.razon_social ?? 'sin cargar'}</MetaContexto>
+              <MetaContexto rotulo="Responsable">{cliente.responsable_nombre ?? 'sin asignar'}</MetaContexto>
+              {/* ARCHIVADO GANA SOBRE EL RESTO: es la razón por la que esta ficha no aparece en la
+                  cartera, y saberlo cambia lo que se hace con ella. */}
+              <MetaContexto rotulo="Estado">
+                {!cliente.activo
+                  ? 'archivado'
+                  : enCurso.length > 0
+                    ? `${enCurso.length} ${enCurso.length === 1 ? 'obra' : 'obras'} en curso`
+                    : 'sin obra en curso'}
+              </MetaContexto>
+            </>
+          }
+          // EL RESUMEN DE 3–4 MÉTRICAS, en el slab y no en una fila de tarjetas: es donde lo pone la
+          // ficha del proveedor, y `COMPONENTS.md` §Cuándo NO usar panel prohíbe envolver un valor
+          // con su rótulo en una caja. Ninguna se inventa: obras y contratado salen de las obras ya
+          // leídas —misma fuente que la tabla de abajo, así que no pueden discrepar—, contactos y
+          // documentos de sus propias listas.
+          kpis={[
+            {
+              rotulo: 'Obras',
+              valor: todas.length || null,
+              falta: 'ninguna cargada',
+            },
+            ...(veEconomia
+              ? [{
+                rotulo: 'Contratado en curso',
+                // NADIE CARGÓ EL MONTO ≠ CONTRATADO $ 0. Con obras en curso sin monto, la métrica lo
+                // dice en vez de publicar un cero que se leería como «trabajamos gratis».
+                valor: conMontoEnCurso.length
+                  ? money(conMontoEnCurso.reduce((s, o) => s + (o.monto_contratado ?? 0), 0))
+                  : null,
+                falta: enCurso.length ? 'sin monto cargado' : 'sin obra en curso',
+              }]
+              : []),
+            { rotulo: 'Contactos', valor: lector.leer(contactos, []).length || null, falta: 'ninguno' },
+            { rotulo: 'Documentos', valor: lector.leer(documentos, []).length || null, falta: 'ninguno' },
+          ]}
+          acciones={puedeEditar && (
+            // UNA SOLA ACCIÓN EN EL SLAB. El canónico pone acá la primaria «Nueva obra»; en esta
+            // pantalla esa alta ES un formulario que vive dentro del bloque Obras (`alta-obra`), y un
+            // segundo botón con el mismo nombre daría dos entradas a la misma escritura. Queda
+            // declarado como desviación: la primaria del objeto está en su bloque, no en el slab.
+            <BotonEnlace
+              href={url({ editar: q.editar === '1' ? null : '1' })}
+              data-testid="editar-ficha"
+            >{q.editar === '1' ? 'Cerrar edición' : 'Editar'}</BotonEnlace>
+          )}
+        />
+      </div>
+
+      {/* EL ÍNDICE DEL RECORD — «solapas con contador mono» del canónico, sin partir el record.
+          Cada una lleva a su bloque, que está a la vista más abajo: cuenta y ubica, no esconde. */}
+      <div className="mb-6">
+        <SubTabs
+          testid="indice-record"
+          items={[
+            { href: '#panel-informacion', label: 'Información', cuenta: null, testid: 'indice-informacion' },
+            { href: '#bloque-actividad', label: 'Actividad', cuenta: lector.leer(linea, { eventos: [], sinFecha: 0 }).eventos.length, testid: 'indice-actividad' },
+            { href: '#bloque-obras', label: 'Obras', cuenta: todas.length, testid: 'indice-obras' },
+            { href: '#bloque-contactos', label: 'Contactos', cuenta: lector.leer(contactos, []).length, testid: 'indice-contactos' },
+            { href: '#bloque-documentos', label: 'Documentos', cuenta: lector.leer(documentos, []).length, testid: 'indice-documentos' },
+          ]}
+        />
+      </div>
+
       {lector.falla() && (
         <div className="mb-5" data-testid="cliente-lectura-fallida">
           <Aviso tono="neg" titulo="Parte de esta ficha no se pudo leer">
@@ -172,10 +273,9 @@ export default async function ClientePage({
 
       {!cliente.activo && (
         <div className="mb-5" data-testid="cliente-archivado">
-          <Aviso tono="info">
-            Este cliente está archivado: no aparece en la lista de clientes. Se reactiva desde el
-            panel de información.
-          </Aviso>
+          {/* QUE ESTÁ ARCHIVADO ya lo dice el slab. Lo que el slab no puede decir es cómo se
+              deshace, y ésa es la única frase que queda. */}
+          <Aviso tono="info">Se reactiva desde el panel de información.</Aviso>
         </div>
       )}
 
@@ -185,7 +285,7 @@ export default async function ClientePage({
           lado: cada tabla se desplaza sola dentro de su bloque, y así el teléfono no se corre de
           costado por culpa de la más ancha. */}
       <div className="grid grid-cols-1 gap-7 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <aside className="min-w-0 space-y-3 lg:order-2" data-testid="panel-informacion">
+        <aside id="panel-informacion" className="min-w-0 scroll-mt-4 space-y-3 lg:order-2" data-testid="panel-informacion">
           <h2 className="text-[11px] font-semibold uppercase tracking-[0.06em] text-ink">Información</h2>
           <BloqueInformacion
             cliente={cliente}
