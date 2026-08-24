@@ -50,7 +50,9 @@ export function EntityHeader({
           )}
         </div>
         {(derecha || acciones) && (
-          <div className="flex min-w-0 shrink-0 flex-wrap items-center gap-3">
+          {/* SIN `shrink-0`: con él, el tracker de etapas imponía su ancho completo y la página
+              entera medía 492px en un teléfono de 390 (QA 24/08). `min-w-0` + wrap alcanzan. */}
+          <div className="flex min-w-0 flex-wrap items-center gap-3">
             {derecha}
             {acciones}
           </div>
