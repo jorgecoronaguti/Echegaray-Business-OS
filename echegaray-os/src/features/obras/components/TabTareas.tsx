@@ -277,7 +277,9 @@ export function TabTareas({
       </div>
 
       {abierta && (
-        <div className="w-full shrink-0 xl:w-[412px]">
+        // STICKY: la lista scrollea, el panel queda a la vista — es un tercio de lo que la
+        // pantalla 03 promete, y abajo de xl vuelve a ser un bloque normal.
+        <div className="w-full shrink-0 xl:sticky xl:top-14 xl:max-h-[calc(100vh-72px)] xl:w-[412px] xl:self-start xl:overflow-y-auto">
           <PanelTarea
             obraId={obraId}
             nodo={abierta}

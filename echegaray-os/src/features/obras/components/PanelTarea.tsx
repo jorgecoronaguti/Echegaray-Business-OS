@@ -160,7 +160,7 @@ export function PanelTarea({
   const ultima = historial[0]?.fecha ?? null
 
   return (
-    <aside data-testid="panel-tarea" className="border-l border-line pl-4 xl:h-full xl:overflow-y-auto">
+    <aside data-testid="panel-tarea" className="border-l border-line pl-4">
       {/* ═══ ACCIÓN PRIMARIA ARRIBA — a la vista sin scroll ═══ */}
       <div className="flex items-center gap-2 pt-0.5">
         <Link href={`/obras/${obraId}/avance/${nodo.id}`} data-testid="panel-registrar-avance"
