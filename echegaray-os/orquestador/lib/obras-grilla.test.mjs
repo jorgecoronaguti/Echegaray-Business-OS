@@ -787,8 +787,9 @@ test('los ÚNICOS números tipeados son los proyectados del dueño, y son los su
   const items = numeros.filter(([ref]) => ref.startsWith('E')).map(([, v]) => v)
   assert.deepEqual(items, OBRAS_FUTURAS.flatMap((o) => (o.egresos ?? []).map((e) => e.monto)),
     'cada ítem previsto, el número del dueño sin retocar')
-  // Fuera de C (costo por obra), E (ítems del cuadro 5) y G (contrato releído de Cobranzas), nada tipeado.
-  for (const [ref] of numeros) assert.ok(/^[CEG]/.test(ref), `${ref}: un número tipeado fuera de C, E y G`)
+  // Fuera de C (costo por obra), D (fechas del cuadro 5, serial con especie `fecha`), E (ítems del
+  // cuadro 5) y G (contrato releído de Cobranzas), nada tipeado.
+  for (const [ref] of numeros) assert.ok(/^[CDEG]/.test(ref), `${ref}: un número tipeado fuera de C, D, E y G`)
 })
 
 test('el total proyectado de caja es egresos + MO, y la máquina propia NO está adentro', () => {
