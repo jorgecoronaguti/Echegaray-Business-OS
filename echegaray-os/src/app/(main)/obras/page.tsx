@@ -80,8 +80,9 @@ import { personasQueFicharon } from '@/features/obras/services/senalesCartera'
 // CÓMO SE ESCRIBE CADA CELDA vive al lado, en `components/celdasCartera`: esta página decide qué se
 // lee y con qué permiso, no cómo se dice un hueco.
 import {
-  Avance, Cliente, Etapa, HH, Plazo, SenalHoy, SenalImpedimentos,
+  Avance, Cliente, Etapa, EstadoObra, HH, Plazo, SenalHoy, SenalImpedimentos,
 } from '@/features/obras/components/celdasCartera'
+import { IconoProblema } from '@/shared/components/iconos'
 
 export const dynamic = 'force-dynamic'
 
@@ -247,47 +248,73 @@ export default async function ObrasPage({
         // `minWidth` hace que el desplazamiento pase por DENTRO de la tabla: a 390px la página no se
         // corre de costado, se corre la tabla. Sin él desaparecían las columnas de la derecha —todo
         // lo que esta pantalla existe para mostrar— y sin manera de llegar a ellas.
-        <Tabla testid="portafolio-tabla" minWidth={1060}>
+        <Tabla testid="portafolio-tabla" minWidth={1240}>
           <THead>
             {/* CASI TODAS LAS COLUMNAS ORDENAN. `qBase` conserva `archivadas`, la etapa, el atraso y
                 la búsqueda: cambiar el orden no puede hacer desaparecer las obras que se acababan de
                 mostrar. HH no ordena y no es un olvido: el orden por HH necesitaría meter una
                 segunda lectura adentro de `ordenar`, que hoy compara sólo columnas de la fila.
-                SIN COLUMNA «ESTADO», Y ES DECISIÓN DEL DUEÑO (19/08, textual: «NO: Margen; Estado;
-                Impedimentos») — el canon 01 la dibuja, pero acá Etapa ya cuenta el ciclo de vida y
-                los chips de arriba cuentan el estado con su conteo. El spec obras-ejecucion.spec.ts
-                vigila que no vuelva. */}
-            <ThOrden campo="nombre" activo={orden} dir={dir} base="/obras" extra={qBase} className="w-[20%]" />
-            <ThOrden campo="cliente" activo={orden} dir={dir} base="/obras" extra={qBase} className="w-[13%]" />
-            <ThOrden campo="etapa" activo={orden} dir={dir} base="/obras" extra={qBase} className="w-[13%]" />
-            <ThOrden campo="avance" activo={orden} dir={dir} base="/obras" extra={qBase} className="w-[14%]" />
-            <ThOrden campo="plazo" activo={orden} dir={dir} base="/obras" extra={qBase} className="w-[10%]" />
-            <Th num className="w-[10%]">HH</Th>
+
+                ═══ ESTADO, HOY E IMPEDIMENTOS VUELVEN (canónico 01, 24/08) ═══
+
+                El 19/08 el dueño las había sacado por lista («NO: Margen; Estado; Impedimentos») y
+                el 24/08 rechazó la entrega por infidelidad contra su propio diseño: el canon 01
+                dibuja ESTADO, HOY y la columna del triángulo, y el diseño manda sobre la lista
+                previa. La única exclusión que sigue viva es MARGEN.
+
+                ESTADO Y ETAPA NO SON LA MISMA COLUMNA, y por eso conviven: la etapa dice en qué
+                tramo del ciclo va la obra (Estructura, Terminación) y el estado dice si hoy se está
+                trabajando —activa, pausada, cerrada— más el atraso pegado. Una obra pausada en
+                Terminación necesita las dos para leerse.
+
+                ESTADO NO ORDENA: `ordenar` compara campos de la fila y el atraso que se pega al
+                estado sale de la otra lectura. Ordenar por plazo hace ese trabajo hoy. */}
+            <ThOrden campo="nombre" activo={orden} dir={dir} base="/obras" extra={qBase} className="w-[18%]" />
+            <ThOrden campo="cliente" activo={orden} dir={dir} base="/obras" extra={qBase} className="w-[12%]" />
+            <Th className="w-[13%]">Estado</Th>
+            <ThOrden campo="etapa" activo={orden} dir={dir} base="/obras" extra={qBase} className="w-[12%]" />
+            <ThOrden campo="avance" activo={orden} dir={dir} base="/obras" extra={qBase} className="w-[13%]" />
+            <ThOrden campo="plazo" activo={orden} dir={dir} base="/obras" extra={qBase} className="w-[9%]" />
+            <Th num className="w-[9%]">HH</Th>
+            <Th className="w-[44px] text-center">Hoy</Th>
+            {/* EL ENCABEZADO DEL TRIÁNGULO ES EL TRIÁNGULO, como en el canon: la palabra
+                «Impedimentos» pedía tres veces el ancho de la columna que rotula. El nombre viaja
+                igual para quien lee con lector de pantalla y para el que pasa el mouse. */}
+            <Th className="w-[52px] text-center" title="Impedimentos abiertos">
+              <IconoProblema className="mx-auto h-[12px] w-[12px]" />
+              <span className="sr-only">Impedimentos abiertos</span>
+            </Th>
             {esAdmin && <ThOrden campo="contratado" activo={orden} dir={dir} base="/obras" extra={qBase} alineado="right" />}
             <ThOrden campo="costo" activo={orden} dir={dir} base="/obras" extra={qBase} alineado="right" className="w-[10%]" />
           </THead>
           <tbody>
             {obras.map((o) => (
               <Tr key={o.obra_id} data-obra={o.obra_id}>
-                {/* LAS DOS SEÑALES DE HOY VAN PEGADAS AL NOMBRE y no en dos columnas propias como
-                    en el canon: la tabla ya tiene nueve columnas y 1060px de ancho mínimo, y dos
-                    más la mandaban al desplazamiento horizontal en cualquier pantalla de trabajo
-                    —donde lo primero que se pierde de vista es justamente la punta derecha—. Acá
-                    viajan con el nombre de la obra, que es donde el ojo ya está parado. */}
+                {/* LA PRIMERA COLUMNA ES ÚNICAMENTE LA OBRA (dueño, 20/08). Las dos señales del día
+                    salieron de acá el 24/08: el canon les da columna propia, y apiladas contra el
+                    nombre se leían como parte del título de la obra. */}
                 <Td fuerte>
-                  <span className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
-                    <Link href={`/obras/${o.obra_id}`} prefetch={false} className="font-semibold text-ink transition-colors hover:underline">
-                      {o.nombre}
-                    </Link>
-                    <SenalHoy conParte={senales.partesHoy?.has(o.obra_id) ?? false} />
-                    <SenalImpedimentos n={senales.impedimentos?.get(o.obra_id) ?? 0} />
-                  </span>
+                  <Link href={`/obras/${o.obra_id}`} prefetch={false} className="font-semibold text-ink transition-colors hover:underline">
+                    {o.nombre}
+                  </Link>
                 </Td>
                 <Td><Cliente o={o} /></Td>
+                <Td><EstadoObra estado={o.estado} semaforo={semaforo(o)} /></Td>
                 <Td><Etapa etapa={o.etapa} /></Td>
                 <Td><Avance pct={o.avance_pct} total={o.n_actividades} /></Td>
                 <Td><Plazo p={porObra.get(o.obra_id)} /></Td>
                 <Td num className="text-muted"><HH p={porObra.get(o.obra_id)} /></Td>
+                {/* LAS DOS SEÑALES DEL DÍA, CENTRADAS Y SIN NÚMERO DE MÁS: la celda es un vistazo,
+                    no una lectura. `partesHoy` en `null` es lectura caída, no «no cargó»: la señal
+                    se apaga entera y el pie de la pantalla dice qué no se pudo mirar. */}
+                <Td className="text-center">
+                  {senales.partesHoy != null && (
+                    <SenalHoy conParte={senales.partesHoy.has(o.obra_id)} activa={o.estado === 'activa'} />
+                  )}
+                </Td>
+                <Td className="text-center">
+                  <SenalImpedimentos n={senales.impedimentos ? (senales.impedimentos.get(o.obra_id) ?? 0) : null} />
+                </Td>
                 {/* LA AUSENCIA SE ESCRIBE: un contratado en «sin cargar» es un contrato que nadie
                     cargó, y es distinto de un contrato de $0. `Valor` es el guarda que impide que
                     un `?? 0` se cuele en una columna de plata. */}
@@ -322,7 +349,7 @@ export default async function ObrasPage({
               faltan siguen nombradas en el pie de abajo. */}
           <tfoot>
             <FilaTotal>
-              <Td colSpan={esAdmin ? 9 : 8}>
+              <Td colSpan={esAdmin ? 11 : 10}>
                 <span className="flex flex-wrap items-baseline justify-end gap-x-7 gap-y-1 text-[11.5px] font-normal text-faint">
                   <span>OBRAS <Num className="text-ink">{obras.length}</Num></span>
                   <span>EN EJECUCIÓN <Num className="text-ink">{activas.length}</Num></span>

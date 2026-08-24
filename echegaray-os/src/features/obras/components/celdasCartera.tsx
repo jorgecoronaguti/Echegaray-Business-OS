@@ -13,7 +13,7 @@
 
 import Link from 'next/link'
 import { Estado, Nulo, Num } from '@/shared/components/ds'
-import { IconoProblema } from '@/shared/components/iconos'
+import { IconoCompletar, IconoHH, IconoProblema } from '@/shared/components/iconos'
 import { ETAPAS, ETAPA_LABEL, type ObraPanel, type PlanVsReal } from '@/features/obras/types'
 import { PALABRA_SEMAFORO, type Semaforo } from '@/features/obras/services/ganttObras'
 import { tituloImpedimentos } from '@/features/obras/services/senalesCartera'
@@ -177,25 +177,40 @@ export function HH({ p }: { p: PlanVsReal | undefined }) {
 }
 
 /**
- * «HOY» — esta obra tiene parte de ejecución cargado hoy (Design canónico 01, columna HOY).
+ * «HOY» — columna propia (Design canónico 01: encabezado HOY, celda centrada, icono de 14px).
  *
- * ═══ AFIRMA PRESENCIA, NUNCA AUSENCIA ═══
+ * ═══ LOS DOS ICONOS DEL CANON, Y QUÉ AFIRMA CADA UNO ═══
  *
- * El canon dibuja también el caso contrario: un reloj naranja que dice «sin parte de hoy». No se
- * implementa, y no es un olvido. A las nueve de la mañana ninguna obra cargó el parte todavía, así
- * que el reloj naranja saldría en las diecisiete filas todos los días hasta el mediodía: una alarma
- * que suena siempre deja de mirarse, y encima llama «obra sin reportar» a una obra que está
- * trabajando. Cuando el OS tenga la hora a partir de la cual el parte SÍ se espera —hoy no la
- * tiene—, la señal negativa se puede escribir sin mentir. Mientras tanto, la fila sin «HOY» no
- * afirma nada, que es exactamente lo que se sabe.
+ * El check verde afirma un HECHO: hoy se cargó parte de ejecución en esa obra. El reloj ámbar
+ * afirma OTRO hecho, y sólo ése: todavía no se cargó. No dice que la obra esté parada ni que nadie
+ * haya trabajado —eso no lo sabe el OS a las nueve de la mañana— y por eso el título lo escribe con
+ * «todavía» y el icono es un reloj, no una alarma. Hasta el 24/08 la señal negativa no se dibujaba
+ * por miedo a que gritara toda la mañana; el canon la dibuja y la fila muda era peor: no se
+ * distinguía «no cargó» de «esta obra no lleva parte».
  *
- * PUNTO + PALABRA, como el estado: es un hecho del día, no una etiqueta de categoría.
+ * SÓLO SOBRE OBRAS ACTIVAS. A una obra pausada o cerrada nadie le espera un parte, así que ahí la
+ * celda queda vacía en vez de mentir un pendiente.
  */
-export function SenalHoy({ conParte }: { conParte: boolean }) {
-  if (!conParte) return null
+export function SenalHoy({ conParte, activa }: { conParte: boolean; activa: boolean }) {
+  if (conParte) {
+    return (
+      <span
+        className="inline-flex text-pos"
+        title="Hoy se cargó parte de ejecución en esta obra"
+        data-testid="senal-hoy"
+      >
+        <IconoCompletar className="h-[14px] w-[14px]" />
+      </span>
+    )
+  }
+  if (!activa) return null
   return (
-    <span title="Hoy se cargó parte de ejecución en esta obra" data-testid="senal-hoy">
-      <Estado tono="pos" clave="parte-hoy">HOY</Estado>
+    <span
+      className="inline-flex text-warn"
+      title="Todavía no se cargó parte de ejecución hoy. No dice que la obra esté parada."
+      data-testid="senal-sin-parte"
+    >
+      <IconoHH className="h-[14px] w-[14px]" />
     </span>
   )
 }
@@ -208,12 +223,16 @@ export function SenalHoy({ conParte }: { conParte: boolean }) {
  * indicador, es una fila de trabajo esperando a alguien.
  *
  * EL NÚMERO VA AL LADO DEL ICONO: un triángulo solo dice «pasa algo» y obliga a entrar a la obra
- * para saber si es uno o son nueve. Sin ninguno no se dibuja un cero —ni el guion del canon dentro
- * de la celda del nombre, que sería una raya suelta al lado del título—: la obra sin impedimentos
- * simplemente no muestra la señal.
+ * para saber si es uno o son nueve.
+ *
+ * COLUMNA PROPIA, CON EL GUION DEL CANON. Ahora que la señal tiene su columna, el «—» significa lo
+ * que el canon quiere que signifique: contamos y no hay ninguno. Cuando la consulta NO se pudo
+ * hacer llega `null` y la celda queda vacía —un control que no pudo mirar no dice «no hay»—; el pie
+ * de la pantalla nombra la lectura caída.
  */
-export function SenalImpedimentos({ n }: { n: number }) {
-  if (n <= 0) return null
+export function SenalImpedimentos({ n }: { n: number | null }) {
+  if (n == null) return null
+  if (n <= 0) return <span className="text-faint" data-nulo="">—</span>
   return (
     <span
       className="inline-flex items-center gap-1 text-warn"
