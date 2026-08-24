@@ -52,7 +52,12 @@ function ComprobanteOriginal({ compra }: { compra: ComprobanteCompra }) {
     <div className="mt-4" data-testid="archivo-original">
       <div className="flex items-baseline justify-between gap-3">
         <Eyebrow>Comprobante original</Eyebrow>
-        <span className="text-[11.5px] text-faint">no disponible</span>
+        {/* «SIN ARCHIVO ADJUNTO» y no «no disponible» (canónico 24 · 24/08): el mockup dibuja acá la
+            vista previa del papel cuando existe. Que no exista es un HECHO de la fuente —el libro de
+            IVA de ARCA publica datos fiscales, no el PDF—, y decirlo con el mismo nombre que usa el
+            resto del OS para un adjunto ausente evita que alguien lo lea como una falla de esta
+            pantalla. El día que la base guarde la referencia a Drive, acá va la previa. */}
+        <span className="text-[11.5px] text-faint">sin archivo adjunto</span>
       </div>
       <div className="mt-1.5 flex items-center gap-2.5 rounded-control bg-surface-sunken px-3 py-3">
         <IconoDocumento className="h-[15px] w-[15px] shrink-0 text-faint" aria-hidden />

@@ -1,7 +1,12 @@
 // EL LIBRO DE COMPRAS, UNA FILA POR COMPROBANTE — pantalla 24, §tabla.
 //
 // Las seis columnas son las del contrato de diseño y las seis las puede contestar la fuente:
-// Fecha · Proveedor · Comprobante · Obra · Importe · Control. No hay una séptima de «concepto»
+// Fecha · Proveedor · Comprobante · Obra · Estado · Importe.
+//
+// EL ORDEN ES EL DEL MOCKUP 24, y el 24/08 cambió: el estado iba ÚLTIMO y ahora va antes del
+// importe. No es capricho de dibujo — el importe cierra la fila contra el borde derecho, que es
+// donde se lo busca cuando se barre una columna de plata de arriba abajo, y el estado deja de
+// separar el número de su propio borde. No hay una séptima de «concepto»
 // porque el libro de ARCA no trae el detalle de lo comprado: inventar la columna y dejarla vacía
 // haría parecer que falta cargar algo que no existe.
 //
@@ -106,12 +111,16 @@ export function TablaCompras({
   return (
     <Tabla testid="tabla-compras" minWidth={720}>
       <THead>
-        <Th>Fecha</Th>
+        {/* LA FECHA SE CORRE 9px, ENCABEZADO Y CELDA JUNTOS: la regla interior de 3px que marca la
+            excepción se dibuja sobre el borde izquierdo de la fila, y con la fecha pegada a ese
+            borde le comía el primer dígito («21/08» se leía «1/08»). Va en un `span` porque
+            `first:pl-0` del `Td` gana por especificidad a cualquier `pl-*` de la clase. */}
+        <Th><span className="block pl-[9px]">Fecha</span></Th>
         <Th>Proveedor</Th>
         <Th>Comprobante</Th>
         <Th>Obra</Th>
+        <Th>Estado</Th>
         <Th num>Importe</Th>
-        <Th>Control</Th>
       </THead>
       <tbody>
         {filas.map((c) => {
@@ -126,7 +135,12 @@ export function TablaCompras({
               seleccionada={c.id === seleccionado}
               className={REGLA[control.tono]}
             >
-              <Td num className="w-[76px] text-muted">{fecha(c.fecha_emision)}</Td>
+              {/* MONO Y A LA IZQUIERDA: el canónico dibuja la fecha tabular —para que los días se
+                  alineen columna contra columna— pero pegada al borde, no empujada contra el
+                  proveedor. `Td num` da mono y derecha juntas, así que acá va la clase directa. */}
+              <Td className="w-[76px] font-mono text-[11.5px] tabular-nums text-muted">
+                <span className="block pl-[9px]">{fecha(c.fecha_emision)}</span>
+              </Td>
               <Td fuerte className="max-w-0">
                 <Link href={hrefDe(c.id)} data-testid="abrir-compra" className="block min-w-0 truncate hover:underline">
                   {c.emisor_nombre?.trim() || <Nulo>sin proveedor</Nulo>}
@@ -139,7 +153,6 @@ export function TablaCompras({
                 <span className="block truncate text-[10.5px] text-faint">{c.tipo_nombre}</span>
               </Td>
               <Td className="max-w-0"><Imputada c={c} /></Td>
-              <Td num className="w-[120px]"><Importe c={c} /></Td>
               {/* SINCRONIZADA NO DIBUJA NADA — COMPONENTS.md §Sync state, textual: «la
                   sincronización con el Sheet no se celebra». Era el estado de la enorme mayoría de
                   las filas, así que la columna de control decía lo mismo treinta veces y el
@@ -151,6 +164,7 @@ export function TablaCompras({
                   <Estado tono={control.tono} clave={control.clave}>{control.etiqueta}</Estado>
                 )}
               </Td>
+              <Td num className="w-[120px]"><Importe c={c} /></Td>
             </Tr>
           )
         })}
@@ -172,12 +186,12 @@ export function TablaCompras({
               </span>
             )}
           </Td>
+          <Td />
           <Td num className="w-[120px]">
             {suma.total === null
               ? <Nulo>sin importes</Nulo>
               : <span data-testid="total-compras" className={suma.total < 0 ? 'text-pos' : 'text-ink'}>{plata(suma.total)}</span>}
           </Td>
-          <Td />
         </FilaTotal>
       </tfoot>
     </Tabla>

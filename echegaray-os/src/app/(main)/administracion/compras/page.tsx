@@ -37,7 +37,7 @@ import { PageShell } from '@/shared/components/ui'
 import { Aviso, Ayuda, BuscadorURL, Num } from '@/shared/components/ds'
 import { IconoCompra } from '@/shared/components/iconos'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
-import { EstadosDeControl } from '@/features/administracion/components/EstadosDeControl'
+import { AtencionCompras, FiltrosCompras } from '@/features/administracion/components/EstadosDeControl'
 import { TablaCompras } from '@/features/administracion/components/TablaCompras'
 import { PanelCompra } from '@/features/administracion/components/PanelCompra'
 import {
@@ -139,7 +139,13 @@ export default async function ComprasPage({
     <PageShell title="Compras">
       <NavAdministracion />
 
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+      {/* ═══ UNA SOLA LÍNEA DE CONTROL, Y LA ALARMA DEBAJO (canónico 24 · 24/08/2026) ═══
+
+          El mockup pone buscador, filtros y la acción primaria en el MISMO renglón, y recién debajo
+          la banda suave de lo que pide trabajo. Antes eran dos bloques apilados —buscador arriba,
+          seis KPIs grandes debajo— y la lista arrancaba a 190px del encabezado: en un portátil se
+          veían cuatro filas del libro de compras. */}
+      <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
         <BuscadorURL
           accion={RUTA}
           q={sp.q}
@@ -147,14 +153,15 @@ export default async function ComprasPage({
           oculto={{ f: filtro === 'capturadas' ? undefined : filtro, c: sp.c }}
           testid="buscar-compra"
         />
-        <CargarComprobante />
+        <FiltrosCompras
+          conteos={conteos.data}
+          activo={filtro}
+          hrefDe={(f) => url({ f, q, c: sp.c })}
+        />
+        <div className="ml-auto"><CargarComprobante /></div>
       </div>
 
-      <EstadosDeControl
-        conteos={conteos.data}
-        activo={filtro}
-        hrefDe={(f) => url({ f, q, c: sp.c })}
-      />
+      <AtencionCompras conteos={conteos.data} hrefDe={(f) => url({ f, q, c: sp.c })} />
 
       {/* EL SUBTÍTULO EXPLICATIVO SE FUE ACÁ ADENTRO (Design 23/08). Lo que la pantalla muestra no
           se explica; lo que NO se ve —de dónde sale cada fila y qué manda cuando dos fuentes

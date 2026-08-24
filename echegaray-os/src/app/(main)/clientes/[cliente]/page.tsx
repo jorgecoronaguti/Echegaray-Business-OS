@@ -29,12 +29,23 @@
 // usa el MISMO componente, y `COMPONENTS.md` exige que las cinco fichas se vean iguales. El canónico
 // las dibuja abajo; ganó la consistencia entre fichas sobre el calco de un mockup.
 //
-// LAS SOLAPAS SON UN ÍNDICE, NO UNA PARTICIÓN, y es una desviación deliberada. El canónico las
-// dibuja como nivel 2 con una vista por solapa; su solapa por defecto («Resumen») muestra igual
-// todas las caras a la vez. Acá se conserva la regla que el dueño fijó el 19/08 —*"el record no
-// puede quedar detrás de una solapa"*—, así que el índice CUENTA y LLEVA a cada bloque, y ninguno
-// se esconde. Partir el record rompería además el caso que lo motivó: «¿tiene el contrato cargado y
-// a quién llamo?» son dos solapas y dos viajes al servidor.
+// ═══ LAS SOLAPAS VUELVEN — Y ESTO REVIERTE UNA DECISIÓN DEL DUEÑO (24/08/2026) ═══
+//
+// Hasta ayer el índice era eso, un índice: cinco anclas que contaban y llevaban a bloques que
+// estaban todos a la vista, porque el 19/08 el dueño fijó que *"el record no puede quedar detrás de
+// una solapa"*. HOY ESO SE REVIERTE, por orden de máxima fidelidad al mockup del 24/08: el canónico
+// 26 dibuja SOLAPAS REALES —Resumen · Obras · Presupuestos · Documentos · Cuenta, con contador
+// mono— y una vista por solapa. Manda el mockup.
+//
+// Lo que se paga, dicho: «¿tiene el contrato cargado y a quién llamo?» vuelve a ser dos vistas.
+// Se paga sólo en parte, y por eso el corte no es donde parecía: LO QUE IDENTIFICA AL CLIENTE NO
+// ENTRA EN NINGUNA SOLAPA. Datos, contactos y actividad viven en el aside —es donde los dibuja el
+// mockup— y se ven desde las cinco. La solapa parte lo que el cliente TIENE (obras, presupuestos,
+// documentos, cuenta), nunca quién es ni a quién se llama.
+//
+// La lectura sigue siendo UNA sola vuelta: los contadores de las solapas necesitan los largos de
+// todas las listas, así que esconder una cara no ahorra la consulta — ahorra el dibujo, que era la
+// mitad cara de las dos.
 //
 // ═══ EL ESTADO VIAJA EN LA URL, NO EN EL NAVEGADOR ═══
 //
@@ -61,12 +72,15 @@ import {
   clasificarDocumentoCliente, desvincularDocumentoCliente, vincularCarpetaCliente, vincularDocumentoCliente,
 } from '@/features/clientes/services/actionsDocumentos'
 import { crearObra } from '@/features/obras/services/actions'
+import { getCartera } from '@/features/presupuestos/services/presupuestosService'
 import { Bloque } from '@/features/clientes/components/Bloque'
 import { BloqueActividad } from '@/features/clientes/components/BloqueActividad'
 import { BloqueContactos } from '@/features/clientes/components/BloqueContactos'
 import { BloqueDocumentos } from '@/features/clientes/components/BloqueDocumentos'
 import { BloqueInformacion } from '@/features/clientes/components/BloqueInformacion'
 import { BloqueObras } from '@/features/clientes/components/BloqueObras'
+import { FichaCuenta } from '@/features/clientes/components/FichaCuenta'
+import { FichaPresupuestos } from '@/features/clientes/components/FichaPresupuestos'
 import { Aviso, BarraContexto, BotonEnlace, MetaContexto, Num, SubTabs } from '@/shared/components/ds'
 import { EstadoError } from '@/shared/components/estado'
 import { crearLector } from '@/shared/components/estado/lecturas'
@@ -84,7 +98,15 @@ const VE_CONTRACTUALES = ['direccion', 'administracion']
 type Params = { cliente: string }
 type Query = {
   contacto?: string; editar?: string; archivadas?: string; actividad?: string; documentos?: string
+  solapa?: string
 }
+
+/** Las cinco caras del canónico 26. Una solapa que no existe abre Resumen: un enlace viejo o
+ *  tipeado a mano no puede dejar la ficha en blanco. */
+const SOLAPAS = ['resumen', 'obras', 'presupuestos', 'documentos', 'cuenta'] as const
+type Solapa = (typeof SOLAPAS)[number]
+const solapaDe = (v: string | undefined): Solapa =>
+  (SOLAPAS as readonly string[]).includes(v ?? '') ? (v as Solapa) : 'resumen'
 
 export default async function ClientePage({
   params, searchParams,
@@ -137,17 +159,29 @@ export default async function ClientePage({
 
   // Las cinco caras del record, en una sola vuelta. Secuencial, cada una sumaría su latencia a la
   // apertura de una pantalla que antes mostraba una sola.
-  const [responsables, contactos, obras, linea, documentos] = await Promise.all([
+  //
+  // LOS PRESUPUESTOS SÓLO PARA QUIEN VE ECONOMÍA: un presupuesto ES el precio de venta, y ésa es
+  // justo la cifra que el jefe de obra no ve (la misma frontera que la métrica «Contratado»). No es
+  // la cerradura —la RLS de `cotizacion_cascada` decide—, es no dibujar una solapa que va a venir
+  // vacía y se va a leer como «este cliente nunca pidió un presupuesto».
+  const [responsables, contactos, obras, linea, documentos, cartera] = await Promise.all([
     puedeEditar ? getResponsables(supabase) : Promise.resolve({ data: [], error: null }),
     getContactos(supabase, id),
     getObrasDelCliente(supabase, id),
     getActividadCliente(supabase, id),
     getDocumentosCliente(supabase, id),
+    veEconomia ? getCartera(supabase) : Promise.resolve({ data: [], error: null }),
   ])
   // ESTAS CINCO LECTURAS SE LEÍAN CON `?? []`: si la de obras fallaba, la ficha decía que el cliente
   // no tiene obras. Sobre un cliente eso es una afirmación comercial, sacada de un fallo de la base.
   // La ficha se sigue dibujando —el resto de los bloques sirve—, pero con el cartel de qué faltó.
   const lector = crearLector()
+
+  const solapa = solapaDe(q.solapa)
+  // Los presupuestos DE ESTE CLIENTE. `getCartera` trae la cartera entera —es la vista que ya usa
+  // /presupuestos— y el corte se hace acá por `cliente_id`: filtrar por el nombre escrito en el
+  // presupuesto ataría la ficha a la grafía del texto, que es lo que `cliente_id` vino a arreglar.
+  const presupuestos = lector.leer(cartera, []).filter((p) => p.cliente_id === id)
 
   const conArchivadas = q.archivadas === '1'
   const todas = lector.leer(obras, [])
@@ -248,20 +282,23 @@ export default async function ClientePage({
         />
       </div>
 
-      {/* EL ÍNDICE DEL RECORD — «solapas con contador mono» del canónico, sin partir el record.
-          Cada una lleva a su bloque, que está a la vista más abajo: cuenta y ubica, no esconde. */}
+      {/* LAS SOLAPAS DEL CANÓNICO 26 — con contador mono. Cambian de vista, no de página: el
+          estado viaja en `?solapa=`, así que cada cara es una dirección compartible y «atrás»
+          vuelve a la anterior. Sin contador las que no cuentan nada (Resumen, Cuenta): un «0» al
+          lado de Cuenta se leería como saldo. */}
       <div className="mb-6">
         <SubTabs
-          // `scroll` va en `true` porque estos `href` son ANCLAS: con el default (`false`) el índice
-          // se dibujaba entero y al tocarlo no pasaba nada.
-          scroll
-          testid="indice-record"
+          testid="solapas-cliente"
           items={[
-            { href: '#panel-informacion', label: 'Información', cuenta: null, testid: 'indice-informacion' },
-            { href: '#bloque-actividad', label: 'Actividad', cuenta: lector.leer(linea, { eventos: [], sinFecha: 0 }).eventos.length, testid: 'indice-actividad' },
-            { href: '#bloque-obras', label: 'Obras', cuenta: todas.length, testid: 'indice-obras' },
-            { href: '#bloque-contactos', label: 'Contactos', cuenta: lector.leer(contactos, []).length, testid: 'indice-contactos' },
-            { href: '#bloque-documentos', label: 'Documentos', cuenta: lector.leer(documentos, []).length, testid: 'indice-documentos' },
+            { href: url({ solapa: null }), label: 'Resumen', cuenta: null, activo: solapa === 'resumen', testid: 'solapa-resumen' },
+            { href: url({ solapa: 'obras' }), label: 'Obras', cuenta: todas.length, activo: solapa === 'obras', testid: 'solapa-obras' },
+            ...(veEconomia
+              ? [{ href: url({ solapa: 'presupuestos' }), label: 'Presupuestos', cuenta: presupuestos.length, activo: solapa === 'presupuestos', testid: 'solapa-presupuestos' }]
+              : []),
+            { href: url({ solapa: 'documentos' }), label: 'Documentos', cuenta: lector.leer(documentos, []).length, activo: solapa === 'documentos', testid: 'solapa-documentos' },
+            ...(veEconomia
+              ? [{ href: url({ solapa: 'cuenta' }), label: 'Cuenta', cuenta: null, activo: solapa === 'cuenta', testid: 'solapa-cuenta' }]
+              : []),
           ]}
         />
       </div>
@@ -283,49 +320,26 @@ export default async function ClientePage({
       )}
 
       {/* EL RECORD. En el teléfono es UNA columna y las propiedades van primero —quién es este
-          cliente antes que qué le pasó—; en escritorio las propiedades se van a la derecha, fijas,
-          y la historia y las relaciones ocupan la columna ancha. Sin `overflow-hidden` en ningún
-          lado: cada tabla se desplaza sola dentro de su bloque, y así el teléfono no se corre de
-          costado por culpa de la más ancha. */}
+          cliente antes que qué le pasó—; en escritorio la identidad se va a la derecha, fija, y la
+          solapa abierta ocupa la columna ancha. El aside NO cambia con la solapa: es lo que el
+          canónico 26 dibuja siempre —Datos, Contactos, Actividad— y es lo que hace que partir el
+          record en cinco vistas no cueste el caso del 19/08 («¿a quién llamo?» se contesta desde
+          las cinco). Sin `overflow-hidden` en ningún lado: cada tabla se desplaza sola dentro de su
+          bloque, y así el teléfono no se corre de costado por culpa de la más ancha. */}
       <div className="grid grid-cols-1 gap-7 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <aside id="panel-informacion" className="min-w-0 scroll-mt-4 space-y-3 lg:order-2" data-testid="panel-informacion">
-          <h2 className="text-[11px] font-semibold uppercase tracking-[0.06em] text-ink">Información</h2>
-          <BloqueInformacion
-            cliente={cliente}
-            responsables={lector.leer(responsables, [])}
-            editar={editarCliente.bind(null, id)}
-            vincularCarpeta={vincularCarpetaCliente.bind(null, id)}
-            archivar={archivarCliente}
-            puedeEditar={puedeEditar}
-            edicionAbierta={q.editar === '1'}
-          />
-        </aside>
-
-        <div className="min-w-0 space-y-8 lg:order-1">
-          <Bloque titulo="Actividad" testid="bloque-actividad">
-            <BloqueActividad
-              linea={lector.leer(linea, { eventos: [], sinFecha: 0 })}
-              puedeVerContractuales={VE_CONTRACTUALES.includes(rol ?? '')}
-              puedeEscribir={puedeEditar}
-              crearNota={crearNota.bind(null, id)}
-              todo={q.actividad === 'todo'}
-              urlTodo={url({ actividad: 'todo' })}
-              urlPoco={url({ actividad: null })}
-            />
-          </Bloque>
-
-          <Bloque titulo="Obras asociadas" cuenta={todas.length} testid="bloque-obras">
-            <BloqueObras
-              obras={conArchivadas ? todas : todas.filter((o) => o.estado !== 'cerrada')}
-              archivadas={cerradas.length}
-              conArchivadas={conArchivadas}
-              urlArchivadas={url({ archivadas: '1' })}
-              urlSinArchivadas={url({ archivadas: null })}
-              clienteId={id}
-              crearObra={crearObra}
+        <aside id="panel-informacion" className="min-w-0 scroll-mt-4 space-y-6 lg:order-2" data-testid="panel-informacion">
+          <div className="space-y-3">
+            <h2 className="text-[11px] font-semibold uppercase tracking-[0.06em] text-ink">Información</h2>
+            <BloqueInformacion
+              cliente={cliente}
+              responsables={lector.leer(responsables, [])}
+              editar={editarCliente.bind(null, id)}
+              vincularCarpeta={vincularCarpetaCliente.bind(null, id)}
+              archivar={archivarCliente}
               puedeEditar={puedeEditar}
+              edicionAbierta={q.editar === '1'}
             />
-          </Bloque>
+          </div>
 
           <Bloque titulo="Contactos" cuenta={lector.leer(contactos, []).length} testid="bloque-contactos">
             <BloqueContactos
@@ -339,19 +353,66 @@ export default async function ClientePage({
             />
           </Bloque>
 
-          <Bloque titulo="Documentos" cuenta={lector.leer(documentos, []).length} testid="bloque-documentos">
-            <BloqueDocumentos
-              documentos={lector.leer(documentos, [])}
-              carpetaDriveId={cliente.drive_carpeta_id}
-              vincular={vincularDocumentoCliente.bind(null, id)}
-              clasificar={(f) => clasificarDocumentoCliente.bind(null, id, f)}
-              desvincular={desvincularDocumentoCliente.bind(null, id)}
-              puedeEditar={puedeEditar}
-              todo={q.documentos === 'todo'}
-              urlTodo={url({ documentos: 'todo' })}
-              urlPoco={url({ documentos: null })}
+          <Bloque titulo="Actividad" testid="bloque-actividad">
+            <BloqueActividad
+              linea={lector.leer(linea, { eventos: [], sinFecha: 0 })}
+              puedeVerContractuales={VE_CONTRACTUALES.includes(rol ?? '')}
+              puedeEscribir={puedeEditar}
+              crearNota={crearNota.bind(null, id)}
+              todo={q.actividad === 'todo'}
+              urlTodo={url({ actividad: 'todo' })}
+              urlPoco={url({ actividad: null })}
             />
           </Bloque>
+        </aside>
+
+        <div className="min-w-0 space-y-8 lg:order-1" data-testid={`solapa-abierta-${solapa}`}>
+          {/* RESUMEN Y OBRAS COMPARTEN LA TABLA, y no es un descuido: el canónico dibuja el resumen
+              con las obras y su avance adentro, que es la respuesta a «¿cómo va este cliente?».
+              La diferencia entre las dos vistas es lo que las rodea —en Obras se puede además
+              desplegar las archivadas y dar de alta—, no una segunda tabla con otros números. */}
+          {(solapa === 'resumen' || solapa === 'obras') && (
+            <Bloque titulo="Obras asociadas" cuenta={todas.length} testid="bloque-obras">
+              <BloqueObras
+                obras={conArchivadas ? todas : todas.filter((o) => o.estado !== 'cerrada')}
+                archivadas={cerradas.length}
+                conArchivadas={conArchivadas}
+                urlArchivadas={url({ archivadas: '1' })}
+                urlSinArchivadas={url({ archivadas: null })}
+                clienteId={id}
+                crearObra={crearObra}
+                puedeEditar={puedeEditar}
+              />
+            </Bloque>
+          )}
+
+          {veEconomia && (solapa === 'resumen' || solapa === 'presupuestos') && (
+            <Bloque titulo="Presupuestos" cuenta={presupuestos.length} testid="bloque-presupuestos">
+              <FichaPresupuestos presupuestos={presupuestos} />
+            </Bloque>
+          )}
+
+          {solapa === 'documentos' && (
+            <Bloque titulo="Documentos" cuenta={lector.leer(documentos, []).length} testid="bloque-documentos">
+              <BloqueDocumentos
+                documentos={lector.leer(documentos, [])}
+                carpetaDriveId={cliente.drive_carpeta_id}
+                vincular={vincularDocumentoCliente.bind(null, id)}
+                clasificar={(f) => clasificarDocumentoCliente.bind(null, id, f)}
+                desvincular={desvincularDocumentoCliente.bind(null, id)}
+                puedeEditar={puedeEditar}
+                todo={q.documentos === 'todo'}
+                urlTodo={url({ documentos: 'todo' })}
+                urlPoco={url({ documentos: null })}
+              />
+            </Bloque>
+          )}
+
+          {solapa === 'cuenta' && veEconomia && (
+            <Bloque titulo="Cuenta" testid="bloque-cuenta">
+              <FichaCuenta obras={todas} />
+            </Bloque>
+          )}
         </div>
       </div>
     </PageShell>

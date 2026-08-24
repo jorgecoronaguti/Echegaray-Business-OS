@@ -115,7 +115,15 @@ test('el buscador deja sólo los clientes que se llaman así', async ({ page }) 
 
 // ── EL RECORD: LAS CINCO CARAS A LA VEZ ────────────────────────────────────
 
-test('el record del cliente muestra propiedades, actividad, obras, contactos y documentos sin navegar', async ({ page }) => {
+// ═══ LO QUE ESTE TEST AFIRMABA HASTA EL 24/08 ═══
+//
+// Que las CINCO caras del cliente se veían de una sola vez, sin un clic — la regla del 19/08 («el
+// record no puede quedar detrás de una solapa»). El canónico 26 la revierte por orden de máxima
+// fidelidad al mockup: hoy hay SOLAPAS reales, y este test las sigue. Lo que NO se movió, y por eso
+// se sigue exigiendo acá, es la identidad: datos, contactos y actividad viven en el aside y se ven
+// desde las cinco solapas. Ése era el caso que motivó la regla vieja («¿tiene el contrato cargado y
+// a quién llamo?») y es el que este test protege ahora.
+test('la ficha del cliente muestra identidad, contactos y actividad desde cualquier solapa', async ({ page }) => {
   test.setTimeout(180000)
   await entrar(page)
 
@@ -125,15 +133,15 @@ test('el record del cliente muestra propiedades, actividad, obras, contactos y d
   await expect(page.getByRole('heading', { name: /La Estrella/ })).toBeVisible()
   const url = page.url()
 
-  // LAS CINCO CARAS, TODAS A LA VEZ. Ni un clic entre una y otra.
+  // LA IDENTIDAD NO ENTRA EN NINGUNA SOLAPA: se ve al abrir, sin un clic.
   await expect(page.getByTestId('panel-informacion')).toBeVisible()
   await expect(page.getByRole('term').filter({ hasText: 'CUIT' })).toBeVisible()
   await expect(page.getByRole('term').filter({ hasText: 'Responsable interno' })).toBeVisible()
   await expect(page.getByTestId('bloque-actividad')).toBeVisible()
   await expect(page.getByTestId('tabla-actividad')).toBeVisible()
-  await expect(page.getByTestId('obras-del-cliente')).toBeVisible()
   await expect(page.getByTestId('bloque-contactos')).toBeVisible()
-  await expect(page.getByTestId('bloque-documentos')).toBeVisible()
+  // Y el Resumen abre con las obras y su avance, que es la respuesta a «¿cómo va este cliente?».
+  await expect(page.getByTestId('obras-del-cliente')).toBeVisible()
 
   // Y la dirección NO cambió: lo anterior no fue una navegación disfrazada.
   expect(page.url()).toBe(url)
@@ -145,25 +153,26 @@ test('el record del cliente muestra propiedades, actividad, obras, contactos y d
   // `slab-proveedor` — si alguien le escribe uno propio al cliente, esto no lo atrapa, pero el
   // `slab-cliente` que exige es el `BarraContexto` del DS y no otra cosa.
   //
-  // El índice es lo que hace que el record largo siga siendo navegable SIN partirlo: cada solapa
-  // cuenta y lleva a su bloque, y por eso se exige que el ancla EXISTA — un índice que apunta a un
-  // id que nadie escribe es un enlace que no hace nada y nadie lo nota.
+  // LAS SOLAPAS CAMBIAN DE VISTA Y EL ESTADO VIAJA EN LA URL. Se exige que cada una LLEVE a su cara
+  // —una solapa que no cambia nada es un enlace muerto que nadie nota— y que la identidad siga
+  // visible en todas: ése es el precio que el 19/08 no quería pagar y que acá queda acotado.
   const slab = page.getByTestId('slab-cliente')
   await expect(slab).toBeVisible()
   await expect(slab).toContainText('CUIT')
   // Las métricas viven en el slab. `Obras` es la que siempre está, con o sin permiso económico.
   await expect(slab.locator('[data-kpi="Obras"]')).toBeVisible()
-  await expect(page.getByTestId('indice-record')).toBeVisible()
-  for (const [solapa, ancla] of [
-    ['indice-informacion', 'panel-informacion'],
-    ['indice-actividad', 'bloque-actividad'],
-    ['indice-obras', 'bloque-obras'],
-    ['indice-contactos', 'bloque-contactos'],
-    ['indice-documentos', 'bloque-documentos'],
+  await expect(page.getByTestId('solapas-cliente')).toBeVisible()
+  for (const [solapa, bloque] of [
+    ['solapa-obras', 'bloque-obras'],
+    ['solapa-documentos', 'bloque-documentos'],
+    ['solapa-cuenta', 'bloque-cuenta'],
   ] as const) {
-    await expect(page.getByTestId(solapa)).toHaveAttribute('href', `#${ancla}`)
-    await expect(page.locator(`#${ancla}`), `el índice apunta a #${ancla} y nadie escribe ese id`)
-      .toHaveCount(1)
+    await page.getByTestId(solapa).click()
+    await expect(page.getByTestId(bloque), `${solapa} no abre ${bloque}`).toBeVisible()
+    // La identidad sobrevive al cambio de solapa. Sin esto, partir el record habría escondido
+    // justo lo que el dueño exigió que estuviera siempre.
+    await expect(page.getByTestId('panel-informacion')).toBeVisible()
+    await expect(page.getByTestId('bloque-contactos')).toBeVisible()
   }
 
   // UN SOLO `h1`: el slab trae el suyo y `PageShell` no puede dibujar otro con el mismo nombre.
@@ -171,10 +180,13 @@ test('el record del cliente muestra propiedades, actividad, obras, contactos y d
   await expect(page.locator('h1')).toHaveCount(1)
 
   // Las altas de cada bloque están A LA VISTA, arriba de su lista. Enterradas al final de una tabla
-  // de 60 filas no las encuentra nadie y el bloque se queda vacío para siempre.
+  // de 60 filas no las encuentra nadie y el bloque se queda vacío para siempre. Con solapas, cada
+  // alta se exige EN SU CARA: la de documentos vive en la solapa Documentos, que es donde está su
+  // lista — pedirla en todas obligaría a dibujar cuatro formularios en cada vista.
+  await expect(page.getByTestId('alta-documento')).toBeVisible()
+  await page.getByTestId('solapa-resumen').click()
   await expect(page.getByTestId('alta-obra')).toBeVisible()
   await expect(page.getByTestId('alta-contacto')).toBeVisible()
-  await expect(page.getByTestId('alta-documento')).toBeVisible()
   await expect(page.getByTestId('alta-nota')).toBeVisible()
 
   // ═══ EL RECORD ENTRA EN UN TELÉFONO SIN CORRERSE DE COSTADO ═══
@@ -319,9 +331,13 @@ test('el jefe de obra administra el record del cliente, porque es Administració
 
   // LO QUE SÍ: los formularios de administración del maestro, porque la base los acepta. Si alguno
   // faltara, el jefe estaría viendo una ficha de sólo lectura sobre un cliente que sí administra.
-  for (const t of ['editar-cliente', 'alta-contacto', 'alta-obra', 'alta-documento',
-    'alta-nota', 'archivar-cliente']) {
+  for (const t of ['editar-cliente', 'alta-contacto', 'alta-obra', 'alta-nota', 'archivar-cliente']) {
     await expect(page.getByTestId(t),
       `no se le ofreció «${t}» a un jefe de obra, y la base sí se lo acepta`).toHaveCount(1)
   }
+  // El alta de documentos vive en SU solapa desde el canónico 26 (24/08): se la exige donde está,
+  // no donde estaba. Que no aparezca en Resumen es diseño; que no aparezca acá sería el defecto.
+  await page.getByTestId('solapa-documentos').click()
+  await expect(page.getByTestId('alta-documento'),
+    'no se le ofreció «alta-documento» a un jefe de obra, y la base sí se lo acepta').toHaveCount(1)
 })
