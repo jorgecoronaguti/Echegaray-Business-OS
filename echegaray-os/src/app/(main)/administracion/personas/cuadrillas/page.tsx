@@ -11,15 +11,16 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { Campo, CTRL, PageShell } from '@/shared/components/ui'
-import { Aviso, BotonEnlace, BuscadorURL, Franja, TituloPantalla, Vacio, Volver } from '@/shared/components/ds'
+import { Aviso, BotonEnlace, BuscadorURL, Franja, TituloPantalla, Volver } from '@/shared/components/ds'
+import { ChipsCanon } from '@/shared/components/canon/ChipsCanon'
 import { IconoCrear } from '@/shared/components/iconos'
-import { FiltrosURL } from '@/features/administracion/components/Controles'
 import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
 import { PanelCuadrilla } from '@/features/administracion/components/PanelCuadrilla'
 import { PoolSinCuadrilla } from '@/features/administracion/components/PoolSinCuadrilla'
 import { HHPorObraSemana } from '@/features/administracion/components/HHPorObraSemana'
 import { SolapasHH } from '@/features/administracion/components/SolapasHH'
 import { TablaCuadrillas } from '@/features/administracion/components/TablaCuadrillas'
+import type { MetricaCanon } from '@/shared/components/canon/ListaCanon'
 import {
   filtrarCuadrillas, getCapacidadDeCuadrillas, getCuadrillas, getHHDeCuadrilla, getIntegrantes,
   getSinCuadrilla, resumirCuadrillas,
@@ -161,6 +162,31 @@ export default async function CuadrillasPage({ searchParams }: { searchParams: P
     },
   ]
 
+  // EL PIE DE LA LISTA — `CUADRILLAS · HH SEMANA · SIN ASIGNAR` del canónico 21, adentro de la
+  // caja. Son los MISMOS números de la franja de arriba: salen del mismo `resumirCuadrillas` y del
+  // mismo agrupado de HH, así que no pueden discrepar entre el encabezado y el pie de la pantalla.
+  const metricasDeLaLista: MetricaCanon[] = [
+    { rotulo: sp.q?.trim() ? 'COINCIDEN' : 'CUADRILLAS', valor: String(r.cuadrillas) },
+    {
+      rotulo: 'HH SEMANA',
+      // «sin leer» y NO 0: las consultas de `registros_hh` pueden fallar por RLS, y un 0 ahí diría
+      // que la empresa no trabajó esta semana.
+      valor: hhSemana === null ? 'sin leer' : hhSemana.total.toLocaleString('es-AR', { maximumFractionDigits: 0 }),
+    },
+    {
+      rotulo: 'SIN CUADRILLA',
+      valor: sinCuadrilla.error ? 'sin leer' : String(r.sinCuadrilla),
+      tono: !sinCuadrilla.error && r.sinCuadrilla > 0 ? 'warn' : 'ink',
+    },
+  ]
+
+  // ARCHIVAR desde el `···` de la fila. `archivarCuadrilla(id, activa)` recibe el estado destino;
+  // la fila sólo archiva, así que el `false` se fija acá y no viaja por el formulario.
+  const archivarDesdeLaFila = async (cuadrillaId: string) => {
+    'use server'
+    return archivarCuadrilla(cuadrillaId, false)
+  }
+
   return (
     // Sin `PageShell`: su encabezado dibuja un `h1` y acá el título va con su `← volver` encima, que
     // es la anatomía de una pantalla de segundo nivel. Se reusa el MARCO exacto de `PageShell`.
@@ -193,13 +219,23 @@ export default async function CuadrillasPage({ searchParams }: { searchParams: P
             ancho="w-full sm:w-[240px]"
             testid="buscar-cuadrilla"
           />
-          <FiltrosURL
+          {/* PASTILLAS, como en los canónicos 17/19/21 — el mismo control en las tres listas del
+              área. El contador dice cuántas quedan del otro lado antes de hacer clic. */}
+          <ChipsCanon
             testid="filtros-cuadrillas"
             opciones={[
-              { label: 'Activas', href: href({ ...sp, archivadas: undefined }), activo: !verArchivadas, testid: 'ver-activas' },
-              { label: 'Ver también las archivadas', href: href({ ...sp, archivadas: '1' }), activo: verArchivadas, testid: 'ver-archivadas' },
+              {
+                clave: 'activas', label: 'Activas', href: href({ ...sp, archivadas: undefined }),
+                activo: !verArchivadas, testid: 'ver-activas',
+                // Con «Ver también las archivadas» encendido, `cuadrillas` las incluye: contar sobre
+                // esa lista diría que hay más activas de las que hay.
+                cuenta: verArchivadas ? cuadrillas.filter((c) => c.activa).length : cuadrillas.length,
+              },
+              {
+                clave: 'archivadas', label: 'Ver también las archivadas',
+                href: href({ ...sp, archivadas: '1' }), activo: verArchivadas, testid: 'ver-archivadas',
+              },
             ]}
-            cuenta={{ n: visibles.length, total: cuadrillas.length }}
           />
           <BotonEnlace href={href(sp, 'nueva')} variante="primaria" className="ml-auto" data-testid="nueva-cuadrilla">
             <IconoCrear className="h-[15px] w-[15px]" />
@@ -209,22 +245,21 @@ export default async function CuadrillasPage({ searchParams }: { searchParams: P
 
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
           <div className="min-w-0 flex-1">
-            {visibles.length === 0
-              ? (
-                  <div data-testid="cuadrillas-vacio">
-                    <Vacio>
-                      {sp.q
-                        ? `Ninguna cuadrilla coincide con «${sp.q}».`
-                        : 'Todavía no hay cuadrillas cargadas.'}
-                    </Vacio>
-                  </div>
-                )
-              : (
-                  <TablaCuadrillas
-                    cuadrillas={visibles} abierta={abierta?.id} hrefDe={(id) => href(sp, id)}
-                    capacidades={capacidades} hhSemana={hhSemana?.porCuadrilla}
-                  />
-                )}
+            {/* LA CAJA SE DIBUJA IGUAL SIN FILAS: el canónico pone el «nada coincide» ADENTRO de
+                la lista, debajo del encabezado de columnas, que es la referencia que hace falta
+                justo cuando el filtro no devolvió nada. */}
+            <TablaCuadrillas
+              cuadrillas={visibles} abierta={abierta?.id} hrefDe={(id) => href(sp, id)}
+              capacidades={capacidades} hhSemana={hhSemana?.porCuadrilla}
+              vacio={sp.q
+                ? `Ninguna cuadrilla coincide con «${sp.q}».`
+                : 'Todavía no hay cuadrillas cargadas.'}
+              metricas={metricasDeLaLista}
+              // ARCHIVAR DESDE LA FILA — la misma acción del panel. `bind` del lado del servidor:
+              // la fila nunca manda por el formulario qué cuadrilla tocar, y `false` es el estado
+              // al que va (`archivarCuadrilla(id, activa)`).
+              archivar={archivarDesdeLaFila}
+            />
 
             {/* EL POOL VA DEBAJO DE LAS CUADRILLAS, NO EN UNA PANTALLA APARTE: quien mira las
                 cuadrillas es quien tiene que ver a los que no están en ninguna, o el pool no se
