@@ -4,8 +4,11 @@
 //
 // Hasta hoy el libro leía los egresos de materiales de las constantes de `lib/obras-datos.mjs` —la
 // transcripción de los PDF de explosión de gastos del dueño, con las fechas del día en que se
-// transcribieron (casi todo el 25/08)—. El dueño ENTRÓ A LA PESTAÑA y corrigió esas fechas a mano:
-// movió el grueso al 07/09/2026 y repartió tres ítems en cuotas mensuales.
+// transcribieron (casi todo el 25/08)—. El dueño ENTRÓ A LA PESTAÑA y corrigió esas fechas a mano.
+// (Al 24/08 movió los 17 ítems al 01/10/2026 y colapsó las cuotas de cuatro de ellos en una fecha
+// única; el número exacto cambia cada vez que él la toca, que es justamente por qué la fuente es la
+// celda y no la constante. Desde el 24/08 el GENERADOR de la pestaña también la respeta: fusiona en
+// vez de regenerar — `lib/materiales-fusion.mjs`.)
 //
 // La regla del repo no admite matices: **la edición manual del dueño es la verdad definitiva.** Un
 // generador que sigue leyendo la constante le pisa la corrección en la corrida siguiente y el cash
@@ -155,6 +158,47 @@ export function ubicarCuadro5(filas = []) {
 export function totalDeclarado(filas = []) {
   const u = ubicarCuadro5(filas)
   return u?.filaTotal === null || u === null ? null : num(filas[u.filaTotal]?.[4])
+}
+
+/**
+ * LOS ÍTEMS DEL CUADRO 5 TAL CUAL ESTÁN EN LA PESTAÑA — SIN INTERPRETAR NADA.
+ *
+ * La hermana cruda de `materialesDesdeCuadro5`: aquélla EXPLOTA las cuotas y resuelve los seriales
+ * para el calendario de caja; ésta devuelve las celdas como están, porque su consumidor —la fusión
+ * que regenera la pestaña— tiene que volver a ESCRIBIR exactamente lo que el dueño escribió. Un
+ * ítem que se lee explotado y se escribe de vuelta ya no es el mismo: cuatro cuotas volverían como
+ * cuatro filas de un cuarto cada una, y la línea que él editó desaparecería.
+ *
+ * `hayCuadro` distingue las dos situaciones que NO son lo mismo: la pestaña todavía no tiene el
+ * cuadro (primera corrida ⇒ hay que sembrarlo entero) y el cuadro está pero vacío (⇒ no hay nada
+ * que sembrar, el dueño lo vació). Devolver `[]` para las dos las confundiría.
+ *
+ * @param {Array<Array>} filas la pestaña OBRAS entera, cruda (UNFORMATTED_VALUE)
+ * @returns {{hayCuadro:boolean, items:Array<{fila:number, rotulo:string, familia:string,
+ *   proveedor:string, fecha:any, previsto:any, nota:string}>}}
+ */
+export function itemsCrudosDeCuadro5(filas = []) {
+  const u = ubicarCuadro5(filas)
+  if (!u) return { hayCuadro: false, items: [] }
+  const items = []
+  for (let i = u.primera; i <= u.ultima; i++) {
+    const f = filas[i] ?? []
+    const rotulo = txt(f[0])
+    if (!rotulo) continue
+    items.push({
+      fila: i + 1,
+      rotulo,
+      familia: txt(f[1]),
+      proveedor: txt(f[2]),
+      // LA D Y LA E VIAJAN CRUDAS, NO NORMALIZADAS: son las dos celdas que el dueño edita y las dos
+      // que se reescriben. El centinela VACIO y el `undefined` sí se traducen a '' — no son valores
+      // suyos, son plomería del generador y agujeros de la lectura.
+      fecha: f[3] === VACIO || f[3] === undefined || f[3] === null ? '' : f[3],
+      previsto: f[4] === VACIO || f[4] === undefined || f[4] === null ? '' : f[4],
+      nota: txt(f[5]),
+    })
+  }
+  return { hayCuadro: true, items }
 }
 
 /**
