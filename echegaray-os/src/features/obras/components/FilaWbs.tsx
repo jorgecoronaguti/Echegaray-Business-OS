@@ -12,16 +12,21 @@
 // El nombre y el avance abren el panel EN EL CLIENTE: el material ya vino con el árbol y un viaje
 // al servidor por clic era lo que hacía tardar segundos el gesto más usado de la pantalla.
 //
-// ═══ EL CARRIL DE TIEMPO, ALINEADO 1:1 CON LA FILA ═══
+// ═══ TRES COLUMNAS: ACTIVIDAD · ESTADO · % (canónico 03) ═══
 //
-// Plan como pista gris, real hasta HOY (pos terminada · grafito en curso · warn vencida), línea
-// amarilla de hoy. Sin fechas no se dibuja barra: el hueco ES el dato. El Gantt operable (arrastre,
-// dependencias gráficas) es la vista Cronograma; esto es leer el tiempo sin salir del árbol.
+// Cantidad y Cuadrilla salieron de la fila el 24/08: el canónico le da el ancho al Gantt, y esos
+// dos datos ya se leen —y se EDITAN— en el panel de la actividad, que es donde se decide sobre
+// ellos. Dejarlos también acá era pagar 224px de la columna central por un duplicado de sólo
+// lectura. Plazo no se pierde nunca: cuando la pantalla es angosta y el Gantt no entra, la columna
+// vuelve (`xl:hidden`) — el mismo `verFechas = !verGantt` del canónico.
+//
+// El nombre se TRUNCA con un tope en px, no con `min-w-0`: la tabla es `table-layout:auto`, así que
+// un nombre largo con `white-space:nowrap` y sin tope ensancha la columna, empuja Estado y % fuera
+// del ancho de la lista y los deja detrás del scroll (QA 24/08 — la fila se veía sin estado).
 
 import { Estado, Td, Tr } from '@/shared/components/ds'
-import { cantidad as fmtCantidad, fechaCorta, porcentaje } from './formato'
+import { fechaCorta, porcentaje } from './formato'
 import { estadoDeFila, type ClaveEstado, type FilaVisible } from '../services/vistaArbol'
-import { ejecutorDe } from '../services/wbs'
 import type { TonoEstado } from '@/shared/components/ds'
 import type { Solapa } from '../services/solapasTarea'
 
@@ -36,26 +41,8 @@ const TONO: Record<ClaveEstado, TonoEstado> = {
   pendiente: 'pendiente',
 }
 
-export interface CarrilDeFila {
-  plan: { l: number; w: number }
-  real: { l: number; w: number; tono: 'pos' | 'ink' | 'warn' } | null
-  hoy: number
-}
-
-const REAL_TONO = { pos: 'bg-pos', ink: 'bg-accent', warn: 'bg-warn' } as const
-
-/** La barra de 4px. Verde al llegar a 100, warn en el camino crítico, grafito el resto. */
-function BarraAvance({ pct, critica }: { pct: number; critica: boolean }) {
-  const color = pct >= 100 ? 'bg-pos' : critica ? 'bg-warn' : 'bg-accent'
-  return (
-    <span className="h-1 w-full min-w-[36px] overflow-hidden rounded-full bg-surface-sunken">
-      <span className={`block h-full ${color}`} style={{ width: `${Math.min(100, Math.max(0, pct))}%` }} />
-    </span>
-  )
-}
-
 export function FilaWbs({
-  fila, abierta, seleccionada, seleccionable, alSeleccionar, alPlegar, alAbrir, carril, conCarril,
+  fila, abierta, seleccionada, seleccionable, alSeleccionar, alPlegar, alAbrir, conGantt,
 }: {
   fila: FilaVisible
   abierta: boolean
@@ -65,10 +52,8 @@ export function FilaWbs({
   alPlegar: () => void
   /** Abre el panel en el cliente; `sol` fuerza la solapa (el % abre en Avance). */
   alAbrir: (sol?: Solapa) => void
-  carril: CarrilDeFila | null
-  /** La columna del carril existe para toda la tabla o para nadie: si la obra no tiene rango de
-   *  fechas, no se dibuja ni la celda vacía. */
-  conCarril: boolean
+  /** Con Gantt al lado, la fecha de plan se lee en la barra y la columna Plazo sobra. */
+  conGantt: boolean
 }) {
   const n = fila.nodo
   const est = estadoDeFila(n, fila.avance)
@@ -78,6 +63,9 @@ export function FilaWbs({
       ? 'text-[11.5px] font-semibold uppercase tracking-[0.05em] text-ink'
       : 'text-[12.5px] font-semibold text-ink'
     : 'text-[12.5px] text-ink-soft'
+  // El 100 en verde y el resto en tinta: el canónico usa el color del % para que la columna se
+  // pueda barrer de arriba abajo buscando lo terminado sin leer un solo número.
+  const tinta = fila.avance === null ? 'text-faint' : fila.avance >= 100 ? 'text-[#067647]' : 'text-ink'
 
   return (
     <Tr compacta seleccionada={abierta} className={n.nivel === 0 ? 'bg-surface-quiet' : ''}>
@@ -111,11 +99,11 @@ export function FilaWbs({
             >{fila.plegado ? '▸' : '▾'}</button>
           ) : <span className="w-3 shrink-0" aria-hidden />}
           <button type="button" onClick={() => alAbrir()} data-testid={`fila-${n.id}`}
-            className={`${jerarquia} text-left hover:underline`}>
+            className={`${jerarquia} truncate text-left hover:underline max-w-[380px] xl:max-w-[140px] 2xl:max-w-[240px]`}>
             {n.nombre}
           </button>
           {n.partida_codigo && (
-            <span className="hidden shrink-0 font-mono text-[10px] text-faint lg:inline">{n.partida_codigo}</span>
+            <span className="hidden shrink-0 font-mono text-[10px] text-faint 2xl:inline">{n.partida_codigo}</span>
           )}
           {n.es_subcontrato && (
             <span className="shrink-0 rounded border border-line px-1 text-[9.5px] text-muted">SUB</span>
@@ -123,44 +111,12 @@ export function FilaWbs({
         </span>
       </Td>
 
-      <Td num className="w-[100px] whitespace-nowrap">
-        {n.es_contenedor ? '' : (fmtCantidad(n.cantidad_objetivo, n.unidad)
-          ?? <span className="font-sans text-[11.5px] text-faint">sin cargar</span>)}
+      <Td className="w-[116px]">
+        <Estado tono={TONO[est.clave]} clave={est.clave} testid={`estado-${n.id}`}>{est.label}</Estado>
       </Td>
 
-      <Td className="w-[132px]">
-        {/* EL AVANCE ES UNA PUERTA: tocarlo abre el panel en la solapa Avance. El contenedor no la
-            ofrece: su avance se agrega, no se carga. */}
-        {n.es_contenedor ? (
-          fila.avance === null
-            ? <span className="text-[11.5px] text-faint">sin avance</span>
-            : (
-              <span className="flex items-center gap-2">
-                <BarraAvance pct={fila.avance} critica={n.es_critica} />
-                <span className="w-[42px] shrink-0 text-right font-mono text-[11.5px] tabular-nums text-ink-soft">
-                  {porcentaje(fila.avance)}
-                </span>
-              </span>
-            )
-        ) : (
-          <button type="button" onClick={() => alAbrir('avance')}
-            aria-label={`Avance de ${n.nombre}`} data-testid={`avance-${n.id}`}
-            className="group flex w-full items-center gap-2">
-            {fila.avance === null ? (
-              <span className="text-[11.5px] text-faint group-hover:text-ink group-hover:underline">sin avance</span>
-            ) : (
-              <>
-                <BarraAvance pct={fila.avance} critica={n.es_critica} />
-                <span className="w-[42px] shrink-0 text-right font-mono text-[11.5px] tabular-nums text-ink-soft group-hover:underline">
-                  {porcentaje(fila.avance)}
-                </span>
-              </>
-            )}
-          </button>
-        )}
-      </Td>
-
-      <Td num className="hidden w-[84px] lg:table-cell">
+      {/* PLAZO SÓLO SIN GANTT: con el Gantt al lado, la misma fecha se lee dos veces. */}
+      <Td num className={`w-[84px] ${conGantt ? 'xl:hidden' : ''}`}>
         {(() => {
           const f = fechaCorta(n.es_contenedor ? fila.agregado?.fin_plan ?? null : n.fin_plan)
           if (!f) return <span className="font-sans text-[11px] text-faint">sin plan</span>
@@ -169,33 +125,21 @@ export function FilaWbs({
         })()}
       </Td>
 
-      {/* LA COLUMNA ES «QUIÉN LO HACE», Y ESO ES LA CUADRILLA O EL SUBCONTRATISTA. El responsable
-          —una persona— está en el panel de la tarea, que es donde se lo asigna. */}
-      <Td className="hidden w-[124px] text-[11.5px] lg:table-cell">
-        {n.es_contenedor ? '' : ejecutorDe(n) ?? <span className="text-faint">sin asignar</span>}
-      </Td>
-
-      <Td className="w-[112px]">
-        <Estado tono={TONO[est.clave]} clave={est.clave} testid={`estado-${n.id}`}>{est.label}</Estado>
-      </Td>
-
-      {conCarril && (
-        <Td className="hidden w-[280px] md:table-cell">
-          <span className="relative block h-[14px] w-full" data-testid={carril ? `carril-${n.id}` : undefined}>
-            {carril && (
-              <>
-                <span className="absolute top-[4.5px] h-[5px] rounded-[2px] bg-[#EAE7E6]"
-                  style={{ left: `${carril.plan.l}%`, width: `${carril.plan.w}%` }} />
-                {carril.real && (
-                  <span className={`absolute top-[8px] h-[5px] rounded-[2px] ${REAL_TONO[carril.real.tono]}`}
-                    style={{ left: `${carril.real.l}%`, width: `${carril.real.w}%` }} />
-                )}
-                <span className="absolute inset-y-0 w-[1.5px] bg-marca" style={{ left: `${carril.hoy}%` }} aria-hidden />
-              </>
-            )}
+      <Td num className="w-[52px] whitespace-nowrap">
+        {/* EL AVANCE ES UNA PUERTA: tocarlo abre el panel en la solapa Avance. El contenedor no la
+            ofrece: su avance se agrega, no se carga. */}
+        {n.es_contenedor ? (
+          <span className={`text-[11.5px] font-semibold ${tinta}`}>
+            {fila.avance === null ? '—' : porcentaje(fila.avance)}
           </span>
-        </Td>
-      )}
+        ) : (
+          <button type="button" onClick={() => alAbrir('avance')}
+            aria-label={`Avance de ${n.nombre}`} data-testid={`avance-${n.id}`}
+            className={`text-[11.5px] hover:underline ${tinta}`}>
+            {fila.avance === null ? '—' : porcentaje(fila.avance)}
+          </button>
+        )}
+      </Td>
     </Tr>
   )
 }

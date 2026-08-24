@@ -17,12 +17,14 @@ import { Buscador, SubTabs, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/com
 import { CTRL, FormAccion, type AccionFormulario } from '@/shared/components/ui'
 import { FormNuevaActividad } from './FormActividad'
 import { hh as fmtHH, porcentaje } from './formato'
-import { FilaWbs, type CarrilDeFila } from './FilaWbs'
+import { FilaWbs } from './FilaWbs'
 import { BarraTareas, VALOR_INICIAL } from './BarraTareas'
+import { escalaDe, GanttTareas, indiceDe, type BarraGantt, type EscalaGantt } from './GanttTareas'
 import { PanelTarea, type AccionesDelPanel } from './PanelTarea'
 import { rollup, totalObra, type NodoObra } from '../services/wbs'
 import {
-  contenedores, filasVisibles, VISTA_ARBOL_LABEL, VISTAS_ARBOL, type VistaArbol,
+  contenedores, filasVisibles, VISTA_ARBOL_LABEL, VISTAS_ARBOL,
+  type FilaVisible, type VistaArbol,
 } from '../services/vistaArbol'
 import { seleccionable, type CandidataMasiva, type OperacionMasiva } from '../services/avance'
 import type { ResultadoMasivo } from '../services/actionsMasivas'
@@ -68,28 +70,55 @@ function rangoDeObra(nodos: readonly NodoObra[], hoy: string): { desde: number; 
   return { desde: Math.min(desde, h), hasta: Math.max(hasta, h) + DIA }
 }
 
-function pct(x: number, r: { desde: number; hasta: number }): number {
-  return Math.min(100, Math.max(0, ((x - r.desde) / (r.hasta - r.desde)) * 100))
+/** El tramo de un contenedor: del primer inicio al último fin de sus descendientes.
+ *  `Agregado` publica `fin_plan` pero NO el inicio, y el corchete del canónico necesita los dos
+ *  extremos. Se calcula acá y no se le agrega un campo al rollup: el rollup lo consumen el pie y
+ *  la fila, y ninguno de los dos necesita saber cuándo arranca un rubro. */
+function tramosDeContenedores(nodos: readonly NodoObra[]): Map<string, { inicio: string; fin: string }> {
+  const padre = new Map<string, string | null>(nodos.map((n) => [n.id, n.padre_id]))
+  const tramo = new Map<string, { inicio: string; fin: string }>()
+  for (const n of nodos) {
+    if (n.es_contenedor || !n.inicio_plan || !n.fin_plan) continue
+    let id = n.padre_id
+    while (id) {
+      const p = tramo.get(id)
+      tramo.set(id, p
+        ? { inicio: n.inicio_plan < p.inicio ? n.inicio_plan : p.inicio, fin: n.fin_plan > p.fin ? n.fin_plan : p.fin }
+        : { inicio: n.inicio_plan, fin: n.fin_plan })
+      id = padre.get(id) ?? null
+    }
+  }
+  return tramo
 }
 
-/** El carril de una fila: plan (pista), real hasta hoy, y su tono. Puro, testeable a ojo. */
-function carrilDe(
-  n: NodoObra, avance: number | null, rango: { desde: number; hasta: number } | null, hoy: string,
-): CarrilDeFila | null {
-  if (!rango || !n.inicio_plan || !n.fin_plan || n.es_contenedor) return null
-  const l = pct(t(n.inicio_plan), rango)
-  const w = Math.max(0.8, pct(t(n.fin_plan) + DIA, rango) - l)
-  const hecho = avance != null && avance >= 100
-  const arranco = (avance != null && avance > 0) || n.estado === 'en_curso'
-  const vencida = n.fin_plan < hoy && !hecho
-  let real: CarrilDeFila['real'] = null
-  if (hecho) real = { l, w, tono: 'pos' }
-  else if (arranco) {
-    // La barra real que no llegó a su fin se dibuja HASTA HOY, no hasta su fin planificado.
-    const wReal = Math.max(0.8, pct(Math.min(t(hoy) + DIA, t(n.fin_plan) + DIA), rango) - l)
-    real = { l, w: wReal, tono: vencida ? 'warn' : 'ink' }
-  } else if (vencida) real = { l, w: 0.8, tono: 'warn' }
-  return { plan: { l, w }, real, hoy: pct(t(hoy) + DIA / 2, rango) }
+/** La barra de una fila: la pista es el PLAN y el relleno el avance medido. Pura y testeable.
+ *  Sin fechas de plan devuelve null — la fila queda vacía y el Gantt escribe el motivo, porque una
+ *  barra inventada desde hoy taparía el único dato que hay: que esa actividad no está planificada. */
+function barraDe(
+  f: FilaVisible, e: EscalaGantt, hoy: string, tramos: Map<string, { inicio: string; fin: string }>,
+): BarraGantt | null {
+  const n = f.nodo
+  const tr = n.es_contenedor ? tramos.get(n.id) ?? null : null
+  const inicio = n.es_contenedor ? tr?.inicio ?? null : n.inicio_plan
+  const fin = n.es_contenedor ? tr?.fin ?? null : n.fin_plan
+  if (!inicio || !fin) return null
+  const dia = indiceDe(inicio, e)
+  const dias = Math.max(1, indiceDe(fin, e) - dia + 1)
+  // El contenedor no se mide: su barra es el corchete plano del canónico, sin relleno ni %.
+  if (n.es_contenedor) {
+    return { id: n.id, dia, dias, tono: 'plan', avance: 0, etiqueta: null, resumen: true }
+  }
+  const av = f.avance
+  const hecha = av != null && av >= 100
+  const arranco = (av != null && av > 0) || n.estado === 'en_curso'
+  const vencida = fin < hoy && !hecha
+  const tono = hecha ? 'pos'
+    : arranco ? (n.es_critica || vencida ? 'warn' : 'curso')
+    : vencida ? 'warn' : 'plan'
+  return {
+    id: n.id, dia, dias, tono, avance: Math.min(100, Math.max(0, av ?? 0)),
+    etiqueta: av != null && av > 0 ? porcentaje(av) : null, resumen: false,
+  }
 }
 
 export function TabTareas({
@@ -159,6 +188,8 @@ export function TabTareas({
     [nodos, agregados, filtroLocal, query, plegados, hoy],
   )
   const rango = useMemo(() => rangoDeObra(nodos, hoy), [nodos, hoy])
+  const escala = useMemo(() => (rango ? escalaDe(rango, t(hoy)) : null), [rango, hoy])
+  const tramos = useMemo(() => tramosDeContenedores(nodos), [nodos])
   const seleccion = useMemo(
     () => nodos.filter((n) => marcadas.has(n.id)).map(candidata),
     [nodos, marcadas],
@@ -275,46 +306,64 @@ export function TabTareas({
           </p>
         )}
 
-        <Tabla testid="tabla-wbs" minWidth={560}>
-          <THead>
-            <Th />
-            <Th>Actividad</Th>
-            <Th num>Cant.</Th>
-            <Th>Avance</Th>
-            <Th num className="hidden lg:table-cell">Plazo</Th>
-            {/* CUADRILLA, no «Responsable»: la columna publica la composición productiva prevista
-                (o el subcontratista). El responsable —una persona— vive en el panel. */}
-            <Th className="hidden lg:table-cell">Cuadrilla</Th>
-            <Th>Estado</Th>
-            {/* El carril de tiempo, alineado 1:1 con la fila: plan como pista, real hasta hoy,
-                línea amarilla de HOY. El Gantt operable (arrastre, dependencias gráficas) es la
-                vista Cronograma; esto es LEER el tiempo sin salir del árbol. */}
-            {rango && <Th className="hidden w-[280px] md:table-cell"><CabeceraCarril rango={rango} /></Th>}
-          </THead>
-          <tbody>
-            {filas.map((f) => (
-              <FilaWbs
-                key={f.nodo.id}
-                fila={f}
-                abierta={sel === f.nodo.id}
-                seleccionada={marcadas.has(f.nodo.id)}
-                seleccionable={seleccionable(candidata(f.nodo))}
-                alSeleccionar={(v) => marcar(f.nodo.id, v)}
-                alPlegar={() => plegar(f.nodo.id)}
-                alAbrir={(s) => abrir(f.nodo.id, s)}
-                carril={rango ? carrilDe(f.nodo, f.avance, rango, hoy) : null}
-                conCarril={rango != null}
+        {/* ═══ LA TABLA Y EL GANTT SON HERMANOS, NO PADRE E HIJO (canónico 03) ═══
+            El tiempo necesita 24px por día para decir CUÁNDO —dentro de la tabla medía 9px el mes—
+            y su propio scroll horizontal, que arrastrando la tabla se llevaría de costado la lista
+            que ancla la lectura. La alineación 1:1 la sostiene `h-fila-compacta` en los dos lados.
+            Abajo de xl el Gantt no entra: la tabla se ensancha y recupera la columna Plazo. */}
+        <div className="flex items-start">
+          <div className={`min-w-0 flex-1 ${escala ? 'xl:w-[440px] xl:flex-none 2xl:w-[540px]' : ''}`}>
+            <Tabla testid="tabla-wbs" minWidth={340}>
+              <THead>
+                <Th />
+                <Th>Actividad</Th>
+                <Th>Estado</Th>
+                <Th num className={escala ? 'xl:hidden' : ''}>Plazo</Th>
+                <Th num>%</Th>
+              </THead>
+              <tbody>
+                {filas.map((f) => (
+                  <FilaWbs
+                    key={f.nodo.id}
+                    fila={f}
+                    abierta={sel === f.nodo.id}
+                    seleccionada={marcadas.has(f.nodo.id)}
+                    seleccionable={seleccionable(candidata(f.nodo))}
+                    alSeleccionar={(v) => marcar(f.nodo.id, v)}
+                    alPlegar={() => plegar(f.nodo.id)}
+                    alAbrir={(s) => abrir(f.nodo.id, s)}
+                    conGantt={escala != null}
+                  />
+                ))}
+                {filas.length === 0 && (
+                  <Tr><Td colSpan={5}>
+                    <Vacio accion={<button type="button" onClick={limpiar} className="font-medium text-ink hover:underline">Ver todo</button>}>
+                      {query ? `Nada coincide con «${query}».` : 'Ninguna actividad entra en esta vista.'}
+                    </Vacio>
+                  </Td></Tr>
+                )}
+              </tbody>
+            </Tabla>
+          </div>
+
+          {escala && filas.length > 0 && (
+            <div className="hidden min-w-0 flex-1 xl:flex">
+              <GanttTareas
+                escala={escala}
+                filas={filas.map((f) => {
+                  const b = barraDe(f, escala, hoy, tramos)
+                  return {
+                    id: f.nodo.id,
+                    barra: b,
+                    motivo: b ? null : 'sin fechas de plan',
+                    abierta: sel === f.nodo.id,
+                    alAbrir: () => abrir(f.nodo.id),
+                  }
+                })}
               />
-            ))}
-            {filas.length === 0 && (
-              <Tr><Td colSpan={8}>
-                <Vacio accion={<button type="button" onClick={limpiar} className="font-medium text-ink hover:underline">Ver todo</button>}>
-                  {query ? `Nada coincide con «${query}».` : 'Ninguna actividad entra en esta vista.'}
-                </Vacio>
-              </Td></Tr>
-            )}
-          </tbody>
-        </Tabla>
+            </div>
+          )}
+        </div>
       </div>
 
       {abierta && (
@@ -407,30 +456,3 @@ function Franja({ total, enCurso, problemas }: {
     </div>
   )
 }
-
-/** Los meses del rango, para leer el carril sin adivinar. */
-function CabeceraCarril({ rango }: { rango: { desde: number; hasta: number } }) {
-  const meses: { l: number; label: string }[] = []
-  const d = new Date(rango.desde)
-  d.setUTCDate(1)
-  while (d.getTime() < rango.hasta) {
-    meses.push({
-      l: pct(Math.max(d.getTime(), rango.desde), rango),
-      label: d.toLocaleDateString('es-AR', { month: 'short', timeZone: 'UTC' }),
-    })
-    d.setUTCMonth(d.getUTCMonth() + 1)
-  }
-  // Un rango más corto que un mes deja la lista vacía y la columna parecía no tener nombre (QA
-  // 24/08): el rótulo genérico sólo aparece cuando no hay meses que la nombren mejor.
-  if (meses.length === 0) return <span className="normal-case">Cronograma</span>
-  return (
-    <span className="relative block h-3 w-full normal-case">
-      {meses.map((m) => (
-        <span key={m.l} className="absolute top-0 text-[9.5px] font-normal text-faint" style={{ left: `${m.l}%` }}>
-          {m.label}
-        </span>
-      ))}
-    </span>
-  )
-}
-
