@@ -19,7 +19,8 @@
 // El lienzo NO lleva texto adentro: el SVG escala con el ancho del bloque y las letras escalarían
 // con él. Los números van afuera, en la tipografía del sistema.
 
-import { Ayuda, Eyebrow } from '@/shared/components/ds'
+import { Ayuda } from '@/shared/components/ds'
+import { Tarjeta, CabeceraTarjeta } from './TarjetaResumen'
 import { lecturaCurva, puntosDeHoy, type LecturaCurva } from '../services/curvaAvance'
 import type { Semaforo } from '../services/ganttObras'
 import { fecha } from './formato'
@@ -50,23 +51,31 @@ export function CurvaAvance({
   const { lectura, motivo } = lecturaCurva(inicio, fin, avancePct, hoy)
 
   return (
-    <section data-testid="curva-avance" className="min-w-0 flex-1">
-      <div className="mb-3 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-        <Eyebrow>Avance real vs esperado</Eyebrow>
-        {lectura && (
-          <span className={`ml-auto text-[11.5px] ${COLOR[lectura.semaforo].texto}`} data-testid="curva-desvio">
+    // Enmarcada como el resto del canónico 02: sin marco, la curva y «Próximas 2 semanas» quedaban
+    // flotando una al lado de la otra sobre el mismo blanco y se leían como un solo bloque.
+    <Tarjeta testid="curva-avance" className="min-w-0 flex-1">
+      <CabeceraTarjeta
+        icono={
+          <svg aria-hidden width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 19V9M10 19V5M16 19v-7M22 19H2" />
+          </svg>
+        }
+        titulo="Avance real vs esperado"
+        accion={lectura && (
+          <span className={`text-[11.5px] ${COLOR[lectura.semaforo].texto}`} data-testid="curva-desvio">
             {lectura.titular}
           </span>
         )}
-      </div>
+      />
 
       {lectura == null ? (
         // EL HUECO CON SU MOTIVO, sin gráfico. Un lienzo vacío se lee como una obra sin avance.
-        <p className="border-t border-line pt-3 text-[12.5px] text-faint" data-nulo="" data-testid="curva-sin-datos">
+        <p className="px-4 py-4 text-[12.5px] text-faint" data-nulo="" data-testid="curva-sin-datos">
           {motivo}
         </p>
       ) : (
-        <div className="border-t border-line pt-3.5">
+        <div className="px-4 pb-3 pt-3.5">
           <Lienzo l={lectura} />
           <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px] text-muted">
             <span className="inline-flex items-center gap-1.5">
@@ -101,7 +110,7 @@ export function CurvaAvance({
           </Ayuda>
         </div>
       )}
-    </section>
+    </Tarjeta>
   )
 }
 

@@ -10,11 +10,22 @@
 //
 // ═══ LO QUE NO TIENE, A PROPÓSITO ═══
 //
-// Ni porcentaje de preparación, ni barra, ni semáforo de tres colores, ni una tarjeta por línea, ni
-// una caja alrededor. *"Esto NO es un dashboard. Es un checklist operativo de preparación."* Un ✓ y
-// el faltante CONCRETO alcanzan para saber qué hacer; lo demás es decoración que compite con el
-// trabajo. La lista va con hairline superior y divisores de fila, igual que cualquier tabla del OS
-// (`design/system/COMPONENTS.md` §Table).
+// Ni semáforo de tres colores, ni una tarjeta por línea, ni un porcentaje. *"Esto NO es un
+// dashboard. Es un checklist operativo de preparación."* Un ✓ y el faltante CONCRETO alcanzan para
+// saber qué hacer; lo demás es decoración que compite con el trabajo.
+//
+// ═══ LA EXCEPCIÓN: `enTarjeta`, Y POR QUÉ SE REVIRTIÓ MEDIO PÁRRAFO ═══
+//
+// Este archivo decía «ni barra, ni una caja alrededor», y en el alta sigue siendo así. En el
+// Resumen no: el canónico 02 lo enmarca y le pone una barra de 70px en la cabecera. No es que la
+// regla estuviera mal — es que cambió el contexto. En el alta el checklist es LA pantalla y no
+// compite con nadie; en el Resumen es uno de siete bloques en dos columnas, y sin marco se leía
+// como el pie de «La obra». La barra tampoco es un porcentaje de dashboard: es la misma cuenta que
+// ya publica el texto («5 de 7»), dibujada, para que el estado se vea sin leer. Sigue sin haber
+// número: nadie tiene que decidir nada con un «71 % preparada».
+//
+// El default es `false`: el alta no cambió. La lista sigue con hairline superior y divisores de
+// fila, igual que cualquier tabla del OS (`design/system/COMPONENTS.md` §Table).
 //
 // ═══ EL ROL SE RESUELVE ACÁ, Y FALLA AL NIVEL MENOS PRIVILEGIADO ═══
 //
@@ -27,6 +38,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { veEconomia } from '@/features/auth/types/areas'
 import { Eyebrow } from '@/shared/components/ds'
+import { Tarjeta, CabeceraTarjeta, BarraFina } from './TarjetaResumen'
 import { getPreparacion } from '../services/preparacionService'
 import { loQueFalta, preparacionDeObra, type LineaPreparacion } from '../services/preparacion'
 
@@ -57,12 +69,15 @@ export async function ChecklistPreparacion({
   obraId,
   plegado = false,
   ocultarSiCompleto = false,
+  enTarjeta = false,
 }: {
   obraId: string
   /** En el Resumen va cerrado: explica los guiones de la pantalla, no compite con ellos. */
   plegado?: boolean
   /** Cuando no falta nada, la lista deja de existir. Un checklist entero en ✓ no es información. */
   ocultarSiCompleto?: boolean
+  /** El marco y la barra del canónico 02. Sólo en el Resumen; ver el porqué arriba. */
+  enTarjeta?: boolean
 }) {
   const supabase = await createClient()
   const perfil = await getPerfilActual(supabase)
@@ -93,6 +108,31 @@ export async function ChecklistPreparacion({
   const resumenTexto = faltan.length === 0
     ? 'Preparación completa'
     : `${faltan.length} de ${lineas.length} pendientes`
+
+  if (enTarjeta) {
+    const hechas = lineas.length - faltan.length
+    return (
+      <Tarjeta testid="preparacion">
+        <CabeceraTarjeta
+          titulo="Preparación"
+          cifra={<span data-testid="preparacion-cuenta">{`${hechas} de ${lineas.length}`}</span>}
+          tonoCifra={faltan.length === 0 ? 'pos' : 'warn'}
+          accion={
+            <BarraFina
+              pct={lineas.length === 0 ? null : Math.round((hechas / lineas.length) * 100)}
+              tono={faltan.length === 0 ? 'bg-pos' : 'bg-marca'}
+              className="w-[70px]"
+            />
+          }
+        />
+        <div className="px-4 pb-2 pt-1">
+          <ul data-testid="checklist-preparacion">
+            {lineas.map((l) => <Fila key={l.clave} l={l} />)}
+          </ul>
+        </div>
+      </Tarjeta>
+    )
+  }
 
   if (!plegado) {
     return (
