@@ -25,7 +25,10 @@
 
 import { useMemo, useState } from 'react'
 import { FormAccion, type AccionFormulario } from '@/shared/components/ui'
-import { resumenSimulacion, simularFrente, type Frente } from '../services/dotacion'
+import { resumenSimulacion, simularFrente, sumaCompleta, type Frente } from '../services/dotacion'
+import {
+  celdasDelImpacto, estadoDelImpacto, type CeldaImpacto, type Direccion,
+} from '../services/impactoDotacion'
 
 const n0 = (v: number | null) => (v == null ? null : Math.round(v).toLocaleString('es-AR'))
 const fmt = (iso: string | null) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : null)
@@ -81,10 +84,28 @@ export function SimuladorDotacion({
     [simulados, idxFinPlan, habiles],
   )
 
+  // EL LADO «PLAN» DE LA COMPARACIÓN se corre con la MISMA función que el lado simulado: si fueran
+  // dos cuentas, la columna de la izquierda y la de la derecha del canónico dirían números que no
+  // se pueden restar entre sí.
+  const plan = useMemo(
+    () => resumenSimulacion(
+      frentes.map((f) => simularFrente(f, f.dotacionPlan, jornada, habiles)), idxFinPlan, habiles,
+    ),
+    [frentes, jornada, habiles, idxFinPlan],
+  )
+
   const tocados = Object.keys(dot).length
   const aEscribir = simulados.filter((s) => s.sim.dotacion > 0 && s.frente.clave in dot).length
   const excede = disponibles != null && resumen.genteTotal > disponibles
   const sinDotacion = simulados.filter((s) => s.sim.dotacion === 0 && s.sim.limite !== 'terminado').length
+  const noEjecutables = simulados.filter((s) => s.sim.recortada).length
+  // Las HH que faltan NO admiten sumandos ausentes: un total al que le falta una parte no es un
+  // total, y ése es el número que fija el plazo de toda la pantalla.
+  const hhRestantes = sumaCompleta(frentes.map((f) => f.hhRestantes))
+
+  const insumos = {
+    plan, simulado: resumen, hhRestantes, noEjecutables, tocados, disponibles,
+  }
 
   return (
     <div className="rounded-card border border-line bg-surface p-4" data-testid="simulador-dotacion">
@@ -102,32 +123,30 @@ export function SimuladorDotacion({
 
       <TablaFrentes filas={simulados} mover={mover} />
 
-      <div className="mt-4 flex flex-wrap items-end justify-between gap-4 border-t border-line pt-3">
-        <div className="flex flex-wrap items-end gap-x-8 gap-y-2" data-testid="impacto-simulacion">
-          <Kpi
-            rotulo="Gente total" valor={resumen.genteTotal ? String(resumen.genteTotal) : null}
-            falta="sin asignar" tono={excede ? 'neg' : 'normal'}
-          />
-          <Kpi
-            rotulo="Fin de obra" valor={fmt(resumen.fin)} falta="sin dato"
-            tono={resumen.desvioDias != null && resumen.desvioDias > 0 ? 'neg' : 'normal'}
-          />
-          <Kpi
-            rotulo="Contra el plan"
-            valor={resumen.desvioDias == null ? null : `${resumen.desvioDias > 0 ? '+' : ''}${resumen.desvioDias} d`}
-            falta="sin plan"
-            tono={resumen.desvioDias == null
-              ? 'normal'
-              : (resumen.desvioDias > 0 ? 'neg' : (resumen.desvioDias < 0 ? 'pos' : 'normal'))}
-          />
+      {/* ═══ EL IMPACTO, COMO LO DIBUJA EL CANÓNICO 08 ═══
+          Eran tres cifras sueltas —gente, fin, contra el plan— que dicen dónde se llegó y no de
+          dónde se salió: mover un stepper cambiaba el número y no había con qué compararlo salvo la
+          memoria. Ahora cada celda trae el valor del PLAN y, al lado, el simulado con su flecha. */}
+      <div className="mt-4 overflow-hidden rounded-card border border-line" data-testid="impacto-simulacion">
+        <div className="flex items-center gap-2.5 border-b border-surface-sunken px-4 py-2.5">
+          <h3 className="text-[13px] font-semibold text-ink">Impacto de la simulación</h3>
+          <Estado estado={estadoDelImpacto(insumos)} />
         </div>
+        <div className="flex flex-wrap">
+          {celdasDelImpacto(insumos).map((c) => <Celda key={c.clave} c={c} />)}
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-end justify-end gap-4">
         <AplicarAlPlan dot={dot} puedeAplicar={puedeAplicar} aEscribir={aEscribir} aplicar={aplicar} />
       </div>
 
+      {/* LOS DOS NÚMEROS YA ESTÁN EN EL ESTADO DE ARRIBA («pide 9 y la obra tiene 5»): acá va lo
+          único que el estado no puede decir, que es qué hacer con eso. Repetir la cuenta obligaría
+          a compararla con la de 40px más arriba antes de creerle a alguna de las dos. */}
       {excede && (
         <p className="mt-3 border-l-[3px] border-neg bg-neg-soft px-3 py-2 text-[12.5px] text-ink-soft">
-          Pediste {resumen.genteTotal} personas y la obra tiene {disponibles}. Hay que traer gente de
-          otra obra o correr un frente.
+          Hay que traer gente de otra obra o correr un frente.
         </p>
       )}
       {!excede && sinDotacion > 0 && (
@@ -327,14 +346,48 @@ function AplicarAlPlan({ dot, puedeAplicar, aEscribir, aplicar }: {
   )
 }
 
-function Kpi({ rotulo, valor, falta, tono }: {
-  rotulo: string; valor: string | null; falta: string; tono: 'normal' | 'neg' | 'pos'
-}) {
-  const clase = valor == null ? 'text-faint' : (tono === 'neg' ? 'text-neg' : (tono === 'pos' ? 'text-pos' : 'text-ink'))
+/** La pastilla de estado de la cabecera del impacto. Sin caja de color de fondo: es una lectura,
+ *  no una alarma — el rojo del texto ya dice que algo no cierra. */
+function Estado({ estado }: { estado: { texto: string; tono: 'neg' | 'warn' | 'pos' } }) {
+  const clase = estado.tono === 'neg' ? 'text-neg' : (estado.tono === 'warn' ? 'text-warn' : 'text-pos')
   return (
-    <div>
-      <div className="text-[10px] uppercase tracking-[0.05em] text-faint">{rotulo}</div>
-      <div className={`font-mono text-[20px] font-semibold leading-tight tabular-nums ${clase}`}>{valor ?? falta}</div>
+    <span className={`ml-auto text-[11.5px] ${clase}`} data-testid="estado-impacto">{estado.texto}</span>
+  )
+}
+
+const FLECHA: Record<Direccion, string> = { sube: '↑', baja: '↓', igual: '=' }
+
+/**
+ * UNA CELDA DEL IMPACTO — el valor del plan en mono de 18/600 y el simulado al lado, más chico.
+ *
+ * Las medidas son las del canónico 08: celda `flex:1 minWidth:170px`, padding 12/16, hairline a la
+ * derecha y abajo, rótulo de 10,5px, cifra de 18px, detalle de 11px.
+ *
+ * NULL SE DICE CON SU PALABRA. Una celda sin dato muestra «sin dato» en `faint`, no un guión: el
+ * guión se lee como cero cuando la columna de al lado tiene números.
+ */
+function Celda({ c }: { c: CeldaImpacto }) {
+  const clase = c.tono === 'neg' ? 'text-neg' : (c.tono === 'pos' ? 'text-pos' : 'text-muted')
+  return (
+    <div
+      className="min-w-[170px] flex-1 border-b border-r border-surface-sunken px-4 py-3"
+      data-celda={c.clave}
+    >
+      <div className="whitespace-nowrap text-[10.5px] tracking-[0.04em] text-faint">{c.rotulo}</div>
+      <div className="mt-[3px] flex flex-wrap items-baseline gap-2">
+        <span className={`whitespace-nowrap font-mono text-[18px] font-semibold tabular-nums ${
+          c.plan == null ? 'text-faint' : 'text-ink'}`}
+        >
+          {c.plan ?? 'sin dato'}
+        </span>
+        {c.simulado != null && (
+          <span className={`flex items-center gap-1 whitespace-nowrap font-mono text-[13px] tabular-nums ${clase}`}>
+            <span aria-hidden>{FLECHA[c.direccion]}</span>
+            {c.simulado}
+          </span>
+        )}
+      </div>
+      <div className="mt-px text-[11px] text-faint">{c.detalle}</div>
     </div>
   )
 }
