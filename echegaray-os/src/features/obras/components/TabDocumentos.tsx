@@ -46,12 +46,13 @@ import {
   Ayuda, BotonEnlace, Buscador, CAMPO, Campo, FilaGrupo, Filtros, Nulo, Tabla, Td, Th, THead, Tr,
   Vacio,
 } from '@/shared/components/ds'
-import { IconoAbrir, IconoDocumento } from '@/shared/components/iconos'
+import { IconoAbrir, IconoDocumento, IconoFoto } from '@/shared/components/iconos'
 import type { Actividad, DocumentoObra, TipoDrive } from '../types'
 import { AsignarActividad } from './AsignarActividad'
 import { etiquetaDeTipo, urlDeDrive } from '../services/driveUrl'
 import {
-  CATEGORIAS_CANONICAS, SIN_CLASIFICAR, categoriaDeclarada, paraQueSirve, porCategoriaFiltrado,
+  CATEGORIAS, CATEGORIAS_CANONICAS, SIN_CLASIFICAR, categoriaDeclarada, paraQueSirve,
+  porCategoriaFiltrado,
 } from '../services/documentosCategoria'
 import { requiereAtencion, ultimosCambios } from '../services/documentosPaneles'
 import { CeldaCategoriaDocumento } from './CeldaCategoriaDocumento'
@@ -69,6 +70,75 @@ const ORIGEN: Record<DocumentoObra['origen'], string> = {
 /** A partir de acá el buscador vale la fila que ocupa. Con seis papeles a la vista, filtrar es un
  *  control que nadie toca; con veinte, es la única forma de encontrar uno. */
 const FILAS_PARA_BUSCAR = 12
+
+/**
+ * LOS DOS TRAZOS QUE EL CANÓNICO DIBUJA Y EL BARRIL NO TIENE (`P.plano` y `P.seguridad`).
+ *
+ * Viven acá y no en `shared/components/iconos.tsx` por lo mismo que `IconoClima` vive en
+ * `TabOperacion`: ese archivo lo están tocando otros frentes del mismo rediseño y un icono de una
+ * sola pantalla no justifica un conflicto de merge. Si una segunda pantalla los necesita, suben.
+ */
+function IconoPlano({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3 7l6-3 6 3 6-3v13l-6 3-6-3-6 3z" /><path d="M9 4v13M15 7v13" />
+    </svg>
+  )
+}
+
+function IconoEscudo({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z" /><path d="M9 12l2 2 4-4" />
+    </svg>
+  )
+}
+
+/** El icono de cada grupo, del canónico. `Sin clasificar` no tiene: no es una categoría más. */
+const ICONO_GRUPO: Record<string, (p: { className?: string }) => React.JSX.Element> = {
+  [CATEGORIAS.PLANOS]: IconoPlano,
+  [CATEGORIAS.CONTRATO]: IconoDocumento,
+  [CATEGORIAS.SEGURIDAD]: IconoEscudo,
+  [CATEGORIAS.EVIDENCIA]: IconoFoto,
+}
+
+/** El rótulo corto del chip. El nombre entero es el título del grupo; repetirlo en el chip da una
+ *  fila de filtros que ocupa dos renglones y se lee peor. */
+const CHIP_CORTO: Record<string, string> = {
+  [CATEGORIAS.PLANOS]: 'Planos',
+  [CATEGORIAS.CONTRATO]: 'Contrato',
+  [CATEGORIAS.SEGURIDAD]: 'Seguridad',
+  [CATEGORIAS.EVIDENCIA]: 'Evidencia',
+  [SIN_CLASIFICAR]: 'Sin clasificar',
+}
+
+/** El chip del canónico: rótulo y, al lado, su número en monoespaciada. El número no se pega al
+ *  texto con un punto medio — es un dato, y los datos van en mono en todo el OS. */
+function ChipCuenta({ label, n }: { label: string; n: number }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {label}
+      <span className="font-mono text-[10.5px] tabular-nums text-faint">{n}</span>
+    </span>
+  )
+}
+
+/**
+ * EL RESUMEN DEL GRUPO, a la derecha de su cabecera.
+ *
+ * El canónico escribe ahí «1 para resolver» / «3 al día» a partir de vencimientos y revisiones, que
+ * `obra_documento` NO tiene (ver `documentosPaneles.ts`). Lo que sí es verificable contra las filas
+ * es cuántos vínculos nadie confirmó, y cuántos papeles nadie clasificó. Eso es lo que se publica:
+ * la misma forma del dibujo, con el único trabajo pendiente que los datos prueban.
+ */
+function resumenGrupo(categoria: string, docs: DocumentoObra[]): { texto: string; alerta: boolean } | null {
+  if (docs.length === 0) return null
+  if (categoria === SIN_CLASIFICAR) return { texto: `${docs.length} para clasificar`, alerta: true }
+  const sinConfirmar = docs.filter((d) => d.origen !== 'confirmado').length
+  return sinConfirmar > 0
+    ? { texto: `${sinConfirmar} sin confirmar`, alerta: true }
+    : { texto: `${docs.length} confirmados`, alerta: false }
+}
 
 /**
  * El alta, plegada. Hay DOS y no una: el handoff dibuja un solo «Vincular documento», pero un id de
@@ -215,9 +285,14 @@ export function TabDocumentos({
         <Filtros
           testid="chips-categoria-documento"
           opciones={[
-            { label: `Todo · ${documentos.length}`, onClick: () => setChip(null), activo: chip === null, testid: 'chip-todo' },
+            {
+              label: <ChipCuenta label="Todo" n={documentos.length} />,
+              onClick: () => setChip(null),
+              activo: chip === null,
+              testid: 'chip-todo',
+            },
             ...[...CATEGORIAS_CANONICAS, SIN_CLASIFICAR].map((c) => ({
-              label: `${c} · ${cuentas.get(c) ?? 0}`,
+              label: <ChipCuenta label={CHIP_CORTO[c] ?? c} n={cuentas.get(c) ?? 0} />,
               onClick: () => setChip(c),
               activo: chip === c,
               testid: `chip-${c === SIN_CLASIFICAR ? 'sin-clasificar' : c}`,
@@ -302,20 +377,37 @@ function GrupoDocumentos({
 }) {
   const sinClasificar = categoria === SIN_CLASIFICAR
   const para = paraQueSirve(categoria)
+  const Icono = ICONO_GRUPO[categoria]
+  const resumen = resumenGrupo(categoria, docs)
   return (
     <>
       <FilaGrupo
-        titulo={categoria}
+        /* EL TÍTULO DEL CANÓNICO ES ICONO + NOMBRE + PARA QUÉ SIRVE, los tres en el mismo renglón.
+           «Para qué sirve» NO es un subtítulo decorativo: es lo que hace que quien busca el papel
+           para cobrar sepa dónde mirar sin abrir cuatro grupos. La categoría sin clasificar no dice
+           para qué sirve porque nadie lo declaró, y eso se escribe en `warn` —es trabajo pendiente—
+           y no en gris, que se leería como «da igual». */
+        titulo={
+          <span className="flex min-w-0 items-center gap-2">
+            {Icono && <Icono className="h-[14px] w-[14px] shrink-0 text-muted" />}
+            <span className="truncate">{categoria}</span>
+            {para && (
+              <span className={`truncate font-normal ${sinClasificar ? 'text-warn' : 'text-muted'}`}>{para}</span>
+            )}
+          </span>
+        }
         cuenta={docs.length}
         abierto={abierto}
         onToggle={onToggle}
         colSpan={columnas}
         testid={`grupo-documentos-${sinClasificar ? 'sin-clasificar' : categoria}`}
-        /* «PARA QUÉ SIRVE» ES EL TÍTULO DEL GRUPO, NO UN SUBTÍTULO DECORATIVO: la categoría sin
-           clasificar no dice para qué sirve porque nadie lo declaró, y eso se dice en `warn` —es
-           trabajo pendiente— y no en gris, que se leería como «da igual». */
-        derecha={para && (
-          <span className={`text-[11.5px] ${sinClasificar ? 'text-warn' : 'text-muted'}`}>{para}</span>
+        derecha={resumen && (
+          <span
+            data-testid="resumen-grupo-documentos"
+            className={`font-mono text-[11.5px] tabular-nums ${resumen.alerta ? 'text-warn' : 'text-muted'}`}
+          >
+            {resumen.texto}
+          </span>
         )}
       />
       {/* EL GRUPO VACÍO DICE QUÉ FALTA. No es un estado de error ni un «no hay resultados»: es la

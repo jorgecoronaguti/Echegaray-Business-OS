@@ -177,8 +177,18 @@ export function BloqueImpedimentos({
           <Vacio>Ninguno con este filtro. Los otros siguen ahí.</Vacio>
         ) : (
         <Tabla testid="tabla-impedimentos" minWidth={720}>
+          {/* LAS COLUMNAS SON LAS DEL CANÓNICO 23/08: IMPEDIMENTO · DÓNDE · ESTADO · RESPONSABLE ·
+              FECHA. Dos cambios contra la versión anterior, y los dos son de lectura:
+              · DÓNDE deja de ser un renglón chico debajo de la descripción y pasa a ser columna. El
+                dibujo la pone ahí porque la pregunta de la mañana es «¿dónde está el problema?», y
+                un dato que hay que ir a buscar bajo otro se lee después de todos los de su fila.
+              · ESTADO deja de ser el color del texto de la descripción y pasa a ser la pastilla del
+                sistema. El tono sobre el texto obliga a saber que el rojo quiere decir vencido;
+                la pastilla lo escribe.
+              TIPO se fue de la tabla porque el canónico no la dibuja — no se perdió: la muestra el
+              panel, que es donde se mira un impedimento de a uno. */}
           <THead>
-            <Th>Qué frena</Th><Th>Tipo</Th><Th>Responsable</Th><Th num>Compromiso</Th><Th num />
+            <Th>Impedimento</Th><Th>Dónde</Th><Th>Estado</Th><Th>Responsable</Th><Th num>Fecha</Th><Th num />
           </THead>
           <tbody>
             {orden.map((r) => {
@@ -209,24 +219,32 @@ export function BloqueImpedimentos({
                           ? <IconoCompletar className="h-[14px] w-[14px]" />
                           : <IconoBloqueo className="h-[14px] w-[14px]" />}
                       </span>
-                      <span className="min-w-0">
-                        <Estado
-                          tono={liberado ? 'pos' : vencido ? 'neg' : 'pendiente'}
-                          clave={liberado ? 'liberado' : vencido ? 'vencido' : 'abierto'}
-                        >
-                          {r.descripcion}
-                        </Estado>
-                        <span className="mt-0.5 block text-[11px] text-faint">
-                          {act ?? 'no frena una actividad en particular'}
-                        </span>
-                      </span>
+                      <span className="min-w-0">{r.descripcion}</span>
                     </span>
                   </Td>
-                  <Td>{TIPO_RESTRICCION_LABEL[r.tipo] ?? r.tipo}</Td>
+                  {/* DÓNDE. Sin actividad no se escribe «toda la obra» —eso diría que frena todo—
+                      sino la misma frase que ofrece el formulario al elegir. */}
+                  <Td className="text-muted">{act ?? <Nulo>ninguna en particular</Nulo>}</Td>
+                  <Td>
+                    <Estado
+                      tono={liberado ? 'pos' : vencido ? 'neg' : 'pendiente'}
+                      clave={liberado ? 'liberado' : vencido ? 'vencido' : 'abierto'}
+                    >
+                      {liberado ? 'Resuelto' : vencido ? 'Vencido' : 'Abierto'}
+                    </Estado>
+                  </Td>
                   <Td>{r.responsable ?? <span className="text-[12.5px] text-warn">sin responsable</span>}</Td>
+                  {/* LA FECHA LLEVA SU VERBO, como en el canónico: «vence 22/08» y «resuelto 16/08»
+                      son dos hechos distintos y la columna sola no los distingue. El verbo sale del
+                      estado de la fila, no de una segunda fuente. */}
                   <Td num className={`whitespace-nowrap ${vencido ? 'font-medium text-neg' : 'text-muted'}`}>
-                    {r.fecha_compromiso ? fecha(r.fecha_compromiso) : <Nulo>sin fecha</Nulo>}
-                    {vencido && ' · vencido'}
+                    {liberado
+                      ? (r.fecha_liberacion
+                        ? <>resuelto {fecha(r.fecha_liberacion)}</>
+                        : <Nulo>resuelto sin fecha</Nulo>)
+                      : r.fecha_compromiso
+                        ? <>{vencido ? 'venció' : 'vence'} {fecha(r.fecha_compromiso)}</>
+                        : <Nulo>sin fecha</Nulo>}
                   </Td>
                   <Td num>
                     {liberado
