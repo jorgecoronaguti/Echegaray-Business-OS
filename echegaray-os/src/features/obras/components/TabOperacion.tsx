@@ -350,7 +350,11 @@ export function TabOperacion({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+      {/* LA BANDA DEL CANÓNICO 11, A SANGRE: fondo `surface-quiet` y hairline arriba y abajo, de
+          borde a borde del marco de la ficha. Sin la banda, las sub-vistas y el buscador flotaban
+          sobre el canvas y no se leía que gobiernan la lista de abajo. Los márgenes negativos son
+          los del marco de la página —16px en el teléfono, 40px en escritorio—. */}
+      <div className="-mx-4 flex flex-wrap items-center gap-x-[14px] gap-y-2 border-y border-line bg-surface-quiet px-4 py-1.5 lg:-mx-10 lg:px-10">
         <SubTabs
           testid="subs-operacion"
           items={SUBS.map((s) => ({
@@ -366,12 +370,16 @@ export function TabOperacion({
             campo de texto ahí es una fila de interfaz que no hace nada. */}
         {sub !== 'impedimentos' && sub !== 'clima' && !errorFuente && (
           <div className="ml-auto flex items-center gap-2">
+            {/* En CAJA: sobre el #FAFAF8 de la banda el hairline inferior del buscador de lista
+                no se ve y el campo queda flotando sin decir dónde empieza. 206px es la medida del
+                canónico 11. */}
             <Buscador
               value={query}
               onChange={setQuery}
               placeholder={actual.buscar}
+              variante="caja"
               testid="buscar-operacion"
-              className="w-[220px]"
+              className="w-[206px]"
             />
             {query && (
               <button type="button" onClick={() => setQuery('')} data-testid="limpiar-busqueda"

@@ -55,3 +55,33 @@ test('las pastillas y la lista filtran con la MISMA regla, que vive fuera del co
   // porque `node --test` no sabe leer un `.tsx`.
   assert.equal(/\.filter\(\(f\) => f\.marca\?\.estado === 'activo'\)/.test(src), false)
 })
+
+// ═══ LA MISMA BANDA EN LAS TRES PANTALLAS QUE LA DIBUJAN (canónicos 09, 11 y 12) ═══
+//
+// Es la misma forma en las tres del zip: fondo #FAFAF8, hairline arriba y abajo, a sangre del marco
+// de la ficha. Escrita tres veces se separa en el primer cambio de densidad, y ya estaba separada
+// —Operación y Documentos tenían sus controles flotando sobre el canvas, sin banda—.
+
+const BANDA = /-mx-4 flex flex-wrap items-center gap-x-\[14px\] gap-y-2 border-y border-line bg-surface-quiet px-4 py-1\.5 lg:-mx-10 lg:px-10/
+
+test('Operación y Documentos dibujan la MISMA banda que Personal', () => {
+  assert.match(fuente('TabOperacion.tsx'), BANDA)
+  assert.match(fuente('TabDocumentos.tsx'), BANDA)
+})
+
+test('el buscador de las tres bandas es el de CAJA, con la medida de su canónico', () => {
+  // El defecto que atrapa: dejar el buscador de línea sobre el #FAFAF8, donde su único borde no se
+  // ve y el campo queda flotando.
+  assert.match(fuente('TabOperacion.tsx'), /variante="caja"[\s\S]{0,200}w-\[206px\]/)
+  assert.match(fuente('TabDocumentos.tsx'), /variante="caja"[\s\S]{0,200}w-\[216px\]/)
+})
+
+test('en Documentos el buscador y los chips gobiernan la misma lista y viven juntos', () => {
+  // El defecto que atrapa —y que estaba vivo—: el buscador en la fila de acciones de arriba y los
+  // chips una fila más abajo. Dos controles de la misma lista separados por una fila entera.
+  const src = fuente('TabDocumentos.tsx')
+  const banda = src.indexOf('LA BANDA DEL CANÓNICO 12')
+  const buscador = src.indexOf('testid="buscar-documento-obra"')
+  const chips = src.indexOf('testid="chips-categoria-documento"')
+  assert.ok(banda > 0 && chips > banda && buscador > chips, 'el buscador volvió a salirse de la banda')
+})
