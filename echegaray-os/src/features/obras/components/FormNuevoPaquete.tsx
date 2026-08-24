@@ -10,6 +10,7 @@
 // acción, para que un rechazo del precio no se lleve puesta el alta entera.
 
 import { CAMPO, Campo, Plegable } from '@/shared/components/ds'
+import { IconoCrear } from '@/shared/components/iconos'
 import { FormAccion, type AccionFormulario } from '@/shared/components/ui'
 import type { ActividadElegible } from '../services/subcontratosService'
 
@@ -21,7 +22,12 @@ export function FormNuevoPaquete({
   accion: AccionFormulario
 }) {
   return (
-    <Plegable titulo="Nuevo paquete" testid="abrir-nuevo-paquete">
+    <Plegable
+      /* Icono + texto porque es la acción de creación del contexto: una acción = un icono, y el de
+         crear es el mismo en toda la plataforma (`iconos.tsx`). */
+      titulo={<span className="inline-flex items-center gap-1.5"><IconoCrear className="h-[13px] w-[13px]" />Nuevo paquete</span>}
+      testid="abrir-nuevo-paquete"
+    >
       <FormAccion
         accion={accion}
         testid="form-nuevo-paquete"

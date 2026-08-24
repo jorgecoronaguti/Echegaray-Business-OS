@@ -10,7 +10,7 @@
 // vacía con su motivo. Un costo propio estimado convertiría esta tabla en una recomendación con
 // números inventados — y la recomendación se leería igual de convincente.
 
-import { Tabla, Td, Th, THead, Tr } from '@/shared/components/ds'
+import { Ayuda, Tabla, Td, Th, THead, Tr } from '@/shared/components/ds'
 import { hh as fmtHH, plata } from './formato'
 import type { Celda, FilaComparacion, FormatoCelda } from '../services/subcontratosReglas'
 
@@ -40,14 +40,20 @@ function diferencia(f: FilaComparacion): { texto: string | null; mejor: boolean 
   return { texto: `${signo}${cuerpo}`, mejor }
 }
 
+/** Una fila cuyas tres celdas dicen «sin permiso» no es una fila: es el permiso repetido tres
+ *  veces. `COMPONENTS.md` §Subcontract compare lo resuelve con UNA línea, y esto la detecta. */
+const esDePlata = (f: FilaComparacion) => f.formato === 'plata'
+
 export function ComparadorPropioSubcontrato({
-  filas, titulo, subtitulo,
+  filas, titulo, subtitulo, economia,
 }: {
   filas: FilaComparacion[]
   titulo: string
   subtitulo: string
+  economia: boolean
 }) {
-  const faltantes = [...new Set(filas.map((f) => f.falta).filter((x): x is string => !!x))]
+  const visibles = economia ? filas : filas.filter((f) => !esDePlata(f))
+  const faltantes = [...new Set(visibles.map((f) => f.falta).filter((x): x is string => !!x))]
   return (
     <section className="rounded-card border border-line bg-surface p-4" data-testid="comparador-propio-subcontrato">
       <h2 className="text-[13px] font-semibold text-ink">{titulo}</h2>
@@ -62,7 +68,7 @@ export function ComparadorPropioSubcontrato({
           </tr>
         </THead>
         <tbody>
-          {filas.map((f) => {
+          {visibles.map((f) => {
             const dif = diferencia(f)
             return (
               <Tr key={f.clave} compacta data-testid={`comparacion-${f.clave}`}>
@@ -77,6 +83,11 @@ export function ComparadorPropioSubcontrato({
           })}
         </tbody>
       </Tabla>
+      {!economia && (
+        <p className="mt-2 text-[11.5px] text-faint" data-testid="comparacion-sin-permiso">
+          El costo no se compara acá: no tenés permiso económico.
+        </p>
+      )}
       {faltantes.length > 0 && (
         <ul className="mt-3 flex flex-col gap-1">
           {faltantes.map((f) => (
@@ -84,14 +95,14 @@ export function ComparadorPropioSubcontrato({
           ))}
         </ul>
       )}
-      {/* NO ES UN `Aviso`: no hay ningún problema. Un bloque de color permanente que explica algo
-          entrena a la gente a no leer los bloques de color, y entonces el día que uno diga algo
-          grave tampoco se lee (`Aviso.tsx`). */}
-      <p className="mt-3 text-[11.5px] leading-relaxed text-muted" data-testid="nota-costo-real">
-        El lado del subcontrato es el <strong className="font-medium text-ink-soft">costo real</strong>:
-        contratado más los aportes de Echegaray. Comparar contra el precio del contrato solo daría
-        siempre a favor del subcontrato — lo que le ponemos lo paga la obra igual, por otra ventanilla.
-      </p>
+      {/* 23/08/2026 · Era un párrafo permanente al pie. Baja a la ayuda ENTERO: es la regla que hace
+          válida la comparación —se consulta una vez y después estorba la tabla que se mira todos los
+          días— y sigue encontrándose con Ctrl+F, porque cerrar un `details` no la saca del documento. */}
+      <Ayuda titulo="Por qué el subcontrato se mide por su costo real" testid="nota-costo-real">
+        El lado del subcontrato es el costo real: contratado más los aportes de Echegaray. Comparar
+        contra el precio del contrato daría siempre a favor del subcontrato — lo que le ponemos lo
+        paga la obra igual, por otra ventanilla.
+      </Ayuda>
     </section>
   )
 }

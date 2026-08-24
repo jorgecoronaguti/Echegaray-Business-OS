@@ -10,7 +10,9 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { porCategoria, SIN_CLASIFICAR, CATEGORIAS_SUGERIDAS } from './documentosCategoria.ts'
+import {
+  CATEGORIAS_SUGERIDAS, paraQueSirve, porCategoria, porCategoriaFiltrado, SIN_CLASIFICAR,
+} from './documentosCategoria.ts'
 
 const doc = (drive_file_id: string, rol: string | null) => ({
   drive_file_id, rol, tipo: 'archivo', name: drive_file_id, path: null,
@@ -48,4 +50,42 @@ test('no se clasifica por el nombre del archivo — sólo por el rol que alguien
   // «Contrato» convierte una suposición en un hecho que después alguien cita.
   const g = porCategoria([doc('contrato_v3_final.pdf', null)])
   assert.equal(g[0].categoria, SIN_CLASIFICAR, 'adivinó la categoría por el nombre del archivo')
+})
+
+// ═══ PARA QUÉ SIRVE — Design canónico 23/08, pantalla 12 ═══
+//
+// El defecto que atrapan estos dos: inventarle una función a una categoría que escribió una persona.
+// «Acta de medición» puede ser para cobrar, para cerrar el mes o para respaldar un adicional, y
+// escribir cualquiera de las tres al lado del título la convierte en un hecho que nadie declaró.
+
+test('la frase del grupo sale sólo de las categorías que el OS propone', () => {
+  assert.equal(paraQueSirve('Contrato'), 'para cobrar')
+  assert.equal(paraQueSirve('SEGURIDAD'), 'para poder trabajar', 'la frase depende de cómo se escribió')
+  assert.equal(paraQueSirve('Acta de medición'), null, 'le inventó una función a una categoría libre')
+})
+
+test('«Sin clasificar» dice que nadie lo miró, no que no sirva para nada', () => {
+  assert.equal(paraQueSirve(SIN_CLASIFICAR), 'nadie dijo todavía para qué sirve')
+})
+
+// ═══ EL FILTRO AL TECLEAR ═══
+
+test('buscar por categoría trae el grupo entero y no deja cabeceras vacías', () => {
+  const docs = [doc('nomina.xlsx', 'Seguridad'), doc('art.pdf', 'Seguridad'), doc('acta.pdf', 'Contrato')]
+  const g = porCategoriaFiltrado(docs, 'segur')
+  assert.deepEqual(g.map((x) => x.categoria), ['Seguridad'],
+    'un grupo sin coincidencias quedó dibujado con cero filas: se lee como «este grupo está vacío»')
+  assert.equal(g[0].docs.length, 2, 'buscar la categoría tiene que traer TODOS sus papeles')
+})
+
+test('buscar por nombre recorta dentro del grupo y conserva su cabecera', () => {
+  const docs = [doc('plano-columnas.pdf', 'Planos'), doc('plano-losa.pdf', 'Planos'), doc('acta.pdf', 'Contrato')]
+  const g = porCategoriaFiltrado(docs, 'columnas')
+  assert.deepEqual(g.map((x) => x.categoria), ['Planos'], 'la fila que coincide perdió su grupo')
+  assert.equal(g[0].docs.length, 1)
+})
+
+test('sin texto no filtra nada: la lista completa es la lista completa', () => {
+  const docs = [doc('a.pdf', 'Planos'), doc('b.pdf', null)]
+  assert.equal(porCategoriaFiltrado(docs, '   ').length, porCategoria(docs).length)
 })

@@ -1,26 +1,34 @@
-// OPERACIÓN DE LA OBRA — qué pidió, qué compró, qué recursos se movieron y qué la está frenando.
+// 11 · OBRA OPERACIÓN — qué pidió, qué compró, qué recursos se movieron y qué la está frenando.
 //
-// ═══ LA FORMA LA FIJA EL HANDOFF APROBADO (design/screens/obras.md §1f) ═══
+// ═══ LA FORMA LA FIJA EL DESIGN CANÓNICO 23/08 (pantalla 11) ═══
 //
-//   Cinco sublistas con contador —Pedidos · Compras · Herramientas · Movimientos · Impedimentos—
-//   como SubTabs de nivel 3: texto con contador mono y subrayado en el activo. Eran pastillas
-//   rellenas dentro de una caja, o sea una tercera barra de navegación disfrazada, y el sistema
-//   permite dos.
+//   Cinco sublistas con icono y contador —Pedidos · Compras · Herramientas · Movimientos ·
+//   Impedimentos— como SubTabs de nivel 3, y un buscador que filtra al teclear sobre la lista
+//   abierta. Un icono por sub-vista, ninguno repetido: la barra se reconoce de un vistazo sin
+//   leerla, que es para lo que existe.
 //
 // LAS CINCO LISTAS SON LO MISMO CON DISTINTO CONTENIDO, y por eso salen todas de la misma `Tabla`
 // del design system: cinco tablas escritas a mano se desalinean en el primer cambio de densidad. La
 // sub-vista viaja por query string igual que `vista`, así que cada lista es una URL que se comparte
-// y el servidor renderiza sin estado de cliente.
+// y el servidor renderiza sin estado de cliente. El TEXTO del buscador, en cambio, es cliente: las
+// filas ya viajaron enteras y un viaje de red por tecla no ahorraría nada.
 //
 // LO QUE NO ESTÁ ES LO QUE NO EXISTE. Pedidos no muestra «solicitante»: ni el Sheet de respaldo ni
 // la tabla espejo lo tienen, y una columna vacía o rellenada con el responsable de otra cosa sería
 // un dato fabricado. Compras no suma su propio total: muestra el que declara la fuente única del
 // costo real, y si el detalle no llega a ese total lo dice en una línea en vez de disimularlo.
+//
+// CUATRO DE LAS CINCO LISTAS SON DE FUENTE EXTERNA (AppSheet / Sheet) Y ACÁ NO SE EDITAN. El único
+// bloque que escribe es Impedimentos, que es del OS. Por eso el error de la fuente tapa a los
+// cuatro y no al quinto.
 
 'use client'
 
-import { useState } from 'react'
-import { Aviso, Estado, FilaTotal, Nulo, SubTabs, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
+import { useState, type ReactNode } from 'react'
+import { Aviso, Buscador, CAMPO, Estado, FilaTotal, Nulo, SubTabs, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
+import {
+  IconoBloqueo, IconoCompra, IconoDinero, IconoHerramienta, IconoHistorial,
+} from '@/shared/components/iconos'
 import { estadoInfo } from '@/features/integraciones/services/herramientasService'
 import type {
   HerramientaOperacion, MovimientoOperacion, PedidoOperacion,
@@ -31,12 +39,14 @@ import type { AccionFormulario, ResultadoAccion } from '@/shared/components/ui'
 import type { Actividad, Restriccion } from '../types'
 import { fecha, plata } from './formato'
 
-const SUBS: { id: SubOperacion; label: string }[] = [
-  { id: 'pedidos', label: 'Pedidos' },
-  { id: 'compras', label: 'Compras' },
-  { id: 'herramientas', label: 'Herramientas' },
-  { id: 'movimientos', label: 'Movimientos' },
-  { id: 'impedimentos', label: 'Impedimentos' },
+const ICONO = 'h-[14px] w-[14px]'
+
+const SUBS: { id: SubOperacion; label: string; icono: ReactNode; buscar: string }[] = [
+  { id: 'pedidos', label: 'Pedidos', icono: <IconoCompra className={ICONO} />, buscar: 'Buscar material' },
+  { id: 'compras', label: 'Compras', icono: <IconoDinero className={ICONO} />, buscar: 'Buscar proveedor o concepto' },
+  { id: 'herramientas', label: 'Herramientas', icono: <IconoHerramienta className={ICONO} />, buscar: 'Buscar herramienta' },
+  { id: 'movimientos', label: 'Movimientos', icono: <IconoHistorial className={ICONO} />, buscar: 'Buscar herramienta o responsable' },
+  { id: 'impedimentos', label: 'Impedimentos', icono: <IconoBloqueo className={ICONO} />, buscar: 'Buscar impedimento' },
 ]
 
 const cantidad = (n: number | null) => (n == null ? '—' : n.toLocaleString('es-AR', { maximumFractionDigits: 2 }))
@@ -46,6 +56,11 @@ const entregado = (estado: string | null) => (estado ?? '').toLowerCase().includ
 
 /** El tono de estado de una herramienta, traducido a los tonos del sistema visual. */
 const TONO_HERRAMIENTA = { ok: 'pos', info: 'pendiente', amber: 'warn', red: 'neg' } as const
+
+/** El filtro al teclear del sistema: sin Enter, sin distinguir mayúsculas ni acentos. */
+const normal = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+const contiene = (campos: (string | null | undefined)[], q: string) =>
+  q === '' || normal(campos.filter(Boolean).join(' ')).includes(q)
 
 /**
  * LOS PEDIDOS, Y PARA QUÉ ACTIVIDAD SON.
@@ -57,15 +72,18 @@ const TONO_HERRAMIENTA = { ok: 'pos', info: 'pendiente', amber: 'warn', red: 'ne
  * pedido; esto contesta «¿qué está esperando esta actividad?» cuando alguien lo sabe.
  */
 function Pedidos({
-  pedidos, actividades = [], asignar,
+  pedidos, actividades = [], asignar, q,
 }: {
   pedidos: PedidoOperacion[]
   actividades?: Actividad[]
   asignar?: (idPedido: string, actividadId: string) => Promise<ResultadoAccion>
+  q: string
 }) {
   if (!pedidos.length) {
     return <Vacio>Los pedidos de material se registran a nombre de la obra, y ninguno quedó a nombre de ésta.</Vacio>
   }
+  const visibles = pedidos.filter((p) => contiene([p.material, p.estado], q))
+  if (!visibles.length) return <Vacio>Ningún pedido coincide.</Vacio>
   const elegibles = actividades.filter((a) => a.tipo !== 'resumen' && !a.archivada && !a.actividad_padre_id)
   const conActividad = Boolean(asignar) && elegibles.length > 0
   return (
@@ -75,7 +93,7 @@ function Pedidos({
         {conActividad && <Th>Para</Th>}
       </THead>
       <tbody>
-        {pedidos.map((p) => (
+        {visibles.map((p) => (
           <Tr key={p.id_pedido} compacta {...{ 'data-obra': p.obra_canonica_id ?? undefined }}>
             <Td num className="whitespace-nowrap text-muted">{fecha(p.fecha)}</Td>
             <Td fuerte>{p.material ?? <Nulo>sin material declarado</Nulo>}</Td>
@@ -118,7 +136,8 @@ function SelectActividad({
         defaultValue={valor ?? ''}
         disabled={guardando}
         data-testid="pedido-actividad"
-        className="w-full max-w-[220px] rounded-control border border-line-strong bg-surface px-1.5 py-1 text-[12px] text-muted"
+        aria-label="Para la actividad"
+        className={`${CAMPO} h-[30px] max-w-[220px] border-line px-1.5 py-0 text-[12px] text-muted`}
         onChange={async (e) => {
           setGuardando(true)
           setError(null)
@@ -137,7 +156,15 @@ function SelectActividad({
   )
 }
 
-function Compras({ compras }: { compras: ComprasObra }) {
+/**
+ * COMPRAS COMO FILA TRANSACCIONAL (`COMPONENTS.md` §Transaction row).
+ *
+ * Fecha mono · comprobante · concepto · proveedor · importe mono a la derecha. La EXCEPCIÓN lleva
+ * la regla interior de 3px en `warn`: un comprobante sin número es una decisión pendiente de
+ * alguien —hay que ir a buscar el papel—, no una característica del gasto. Nunca un badge de color
+ * por estado: el estado es texto.
+ */
+function Compras({ compras, q }: { compras: ComprasObra; q: string }) {
   if (!compras.filas.length) {
     // NO HAY COMPRAS y NO PUDE TRAERLAS son cosas distintas. Si la fuente del costo real declara
     // plata para esta obra y el detalle vino vacío, decir "no hay ninguna" sería tapar un agujero
@@ -150,22 +177,31 @@ function Compras({ compras }: { compras: ComprasObra }) {
       </Aviso>
     )
   }
+  const visibles = compras.filas.filter((c) => contiene([c.proveedor, c.concepto, c.comprobante], q))
   return (
     <div className="flex flex-col gap-2.5">
       <Tabla testid="tabla-compras" minWidth={820}>
         <THead>
-          <Th num>Fecha</Th><Th>Proveedor</Th><Th>Concepto</Th><Th>Comprobante</Th><Th num>Importe</Th>
+          <Th num>Fecha</Th><Th>Comprobante</Th><Th>Concepto</Th><Th>Proveedor</Th><Th num>Importe</Th>
         </THead>
         <tbody>
-          {compras.filas.map((c) => (
-            <Tr key={c.id} compacta {...{ 'data-obra': c.obra_canonica_id ?? undefined }}>
-              <Td num className="whitespace-nowrap text-muted">{fecha(c.fecha)}</Td>
-              <Td fuerte>{c.proveedor ?? <Nulo>sin proveedor</Nulo>}</Td>
-              <Td>{c.concepto ?? <Nulo>sin concepto</Nulo>}</Td>
-              <Td num className="text-muted">{c.comprobante ?? <Nulo>sin comprobante</Nulo>}</Td>
-              <Td num fuerte>{plata(c.total)}</Td>
-            </Tr>
-          ))}
+          {visibles.map((c) => {
+            const sinComprobante = !c.comprobante
+            return (
+              <Tr
+                key={c.id}
+                compacta
+                {...{ 'data-obra': c.obra_canonica_id ?? undefined }}
+                className={sinComprobante ? 'border-l-[3px] border-l-warn' : ''}
+              >
+                <Td num className="whitespace-nowrap text-muted">{fecha(c.fecha)}</Td>
+                <Td num className="text-muted">{c.comprobante ?? <Nulo>sin comprobante</Nulo>}</Td>
+                <Td>{c.concepto ?? <Nulo>sin concepto</Nulo>}</Td>
+                <Td fuerte>{c.proveedor ?? <Nulo>sin proveedor</Nulo>}</Td>
+                <Td num fuerte>{plata(c.total)}</Td>
+              </Tr>
+            )
+          })}
           {/* EL TOTAL NO SE SUMA ACÁ: es el que declara `obra_costo_real`, la fuente única del costo
               de la obra. Sumar la columna daría un número que coincide sólo mientras el detalle esté
               completo, y el día que no lo esté nadie sabría cuál de los dos mirar. */}
@@ -185,13 +221,15 @@ function Compras({ compras }: { compras: ComprasObra }) {
   )
 }
 
-function Herramientas({ herramientas }: { herramientas: HerramientaOperacion[] }) {
+function Herramientas({ herramientas, q }: { herramientas: HerramientaOperacion[]; q: string }) {
   if (!herramientas.length) return <Vacio>Ninguna herramienta figura hoy en esta obra.</Vacio>
+  const visibles = herramientas.filter((h) => contiene([h.nombre, h.categoria, h.responsable_actual], q))
+  if (!visibles.length) return <Vacio>Ninguna herramienta coincide.</Vacio>
   return (
     <Tabla testid="tabla-herramientas" minWidth={600}>
       <THead><Th>Herramienta</Th><Th>Categoría</Th><Th>Estado</Th><Th>Responsable</Th></THead>
       <tbody>
-        {herramientas.map((h) => {
+        {visibles.map((h) => {
           const e = estadoInfo(h.estado)
           return (
             <Tr key={h.id_herramienta} compacta {...{ 'data-obra': h.obra_canonica_id ?? undefined }}>
@@ -207,13 +245,15 @@ function Herramientas({ herramientas }: { herramientas: HerramientaOperacion[] }
   )
 }
 
-function Movimientos({ movimientos }: { movimientos: MovimientoOperacion[] }) {
+function Movimientos({ movimientos, q }: { movimientos: MovimientoOperacion[]; q: string }) {
   if (!movimientos.length) return <Vacio>Todavía no se movió ninguna herramienta hacia esta obra.</Vacio>
+  const visibles = movimientos.filter((m) => contiene([m.herramienta_nombre, m.responsable], q))
+  if (!visibles.length) return <Vacio>Ningún movimiento coincide.</Vacio>
   return (
     <Tabla testid="tabla-movimientos" minWidth={520}>
       <THead><Th num>Fecha</Th><Th>Herramienta</Th><Th>Responsable</Th></THead>
       <tbody>
-        {movimientos.map((m) => (
+        {visibles.map((m) => (
           <Tr key={m.id_movimiento} compacta {...{ 'data-obra': m.obra_canonica_id ?? undefined }}>
             <Td num className="whitespace-nowrap text-muted">{fecha(m.fecha)}</Td>
             <Td fuerte>{m.herramienta_nombre ?? <Nulo>sin herramienta</Nulo>}</Td>
@@ -247,6 +287,13 @@ export function TabOperacion({
   crearImpedimento: AccionFormulario
   liberarImpedimento: (restriccionId: string) => Promise<ResultadoAccion>
 }) {
+  // El texto del buscador se borra al cambiar de sub-vista: arrastrarlo dejaría a alguien mirando
+  // una lista de tres filas convencido de que la obra no tiene herramientas.
+  const [query, setQuery] = useState('')
+  const [subPrevia, setSubPrevia] = useState(sub)
+  if (sub !== subPrevia) { setSubPrevia(sub); setQuery('') }
+  const q = normal(query.trim())
+
   const abiertos = impedimentos.filter((r) => r.estado !== 'liberada').length
   const cuenta: Record<SubOperacion, number> = {
     pedidos: pedidos.length,
@@ -260,19 +307,40 @@ export function TabOperacion({
     // describen trabajo pendiente.
     impedimentos: abiertos,
   }
+  const actual = SUBS.find((s) => s.id === sub) ?? SUBS[0]
 
   return (
     <div className="flex flex-col gap-4">
-      <SubTabs
-        testid="subs-operacion"
-        items={SUBS.map((s) => ({
-          href: `/obras/${obraId}?vista=operacion&sub=${s.id}`,
-          label: s.label,
-          cuenta: cuenta[s.id],
-          activo: s.id === sub,
-          testid: `sub-${s.id}`,
-        }))}
-      />
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+        <SubTabs
+          testid="subs-operacion"
+          items={SUBS.map((s) => ({
+            href: `/obras/${obraId}?vista=operacion&sub=${s.id}`,
+            label: <span className="inline-flex items-center gap-1.5">{s.icono}{s.label}</span>,
+            cuenta: cuenta[s.id],
+            activo: s.id === sub,
+            testid: `sub-${s.id}`,
+          }))}
+        />
+        {/* El buscador NO aparece sobre los impedimentos: ese bloque escribe, tiene su propio
+            formulario y rara vez pasa de una docena de filas. Un campo de filtro ahí es una fila de
+            interfaz que no hace nada. */}
+        {sub !== 'impedimentos' && !errorFuente && (
+          <div className="ml-auto flex items-center gap-2">
+            <Buscador
+              value={query}
+              onChange={setQuery}
+              placeholder={actual.buscar}
+              testid="buscar-operacion"
+              className="w-[220px]"
+            />
+            {query && (
+              <button type="button" onClick={() => setQuery('')} data-testid="limpiar-busqueda"
+                className="text-[12px] text-faint hover:text-ink">✕</button>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* CUATRO LISTAS VACÍAS NO SON «no hay nada»: son «no pude leer». Se dice cuál es, con el
           mensaje de la fuente, y sólo sobre los bloques que dependen de ella — Impedimentos sale de
@@ -281,11 +349,11 @@ export function TabOperacion({
         <Aviso tono="neg" titulo="No pude leer esta información de su fuente">{errorFuente}</Aviso>
       )}
       {!errorFuente && sub === 'pedidos' && (
-        <Pedidos pedidos={pedidos} actividades={actividades} asignar={asignarActividadAPedido} />
+        <Pedidos pedidos={pedidos} actividades={actividades} asignar={asignarActividadAPedido} q={q} />
       )}
-      {!errorFuente && sub === 'compras' && <Compras compras={compras} />}
-      {!errorFuente && sub === 'herramientas' && <Herramientas herramientas={herramientas} />}
-      {!errorFuente && sub === 'movimientos' && <Movimientos movimientos={movimientos} />}
+      {!errorFuente && sub === 'compras' && <Compras compras={compras} q={q} />}
+      {!errorFuente && sub === 'herramientas' && <Herramientas herramientas={herramientas} q={q} />}
+      {!errorFuente && sub === 'movimientos' && <Movimientos movimientos={movimientos} q={q} />}
       {sub === 'impedimentos' && (
         <BloqueImpedimentos
           impedimentos={impedimentos}

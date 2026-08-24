@@ -146,6 +146,49 @@ export function estadoDelPaquete(
   return ESTADO_LABEL[estado] ?? { label: estado, tono: 'nulo', clave: estado }
 }
 
+// ═══ QUÉ CUENTA COMO «PARA RESOLVER» (Design canónico 23/08, pantalla 10) ═══
+//
+// La pantalla abre con un botón rojo que dice cuántos paquetes hay que destrabar, y ese número
+// decide a cuál entra primero el jefe de obra. Vive acá y no en el componente por la misma razón
+// que el resto: es una REGLA —qué es un problema y qué no—, y una regla escrita dentro de un `.tsx`
+// no se puede ejercitar sin levantar un navegador.
+//
+// Son dos cosas y sólo dos:
+//   · un papel que BLOQUEA el inicio (hoy, la ART) — es seguridad, hay gente de un tercero en obra;
+//   · el paquete SIN actividad vinculada — sin ella no se puede medir ni comparar, que es para lo
+//     único que existe un paquete. No es una molestia estética: es un paquete que no descuenta del
+//     alcance propio y que va a aparecer dos veces en el costo de la obra.
+//
+// Un paquete SIN PRECIO no entra: cotizar es un trabajo pendiente de Administración, no algo que
+// frene la obra, y mezclarlo acá diluiría el número que sí frena.
+export const necesitaResolverse = (
+  p: { revision: RevisionDocumental; vinculos: unknown[] },
+): boolean => p.revision.bloqueos.length > 0 || p.vinculos.length === 0
+
+export interface ResumenContratado {
+  /** La suma de los que TIENEN precio. Nunca incluye un `null` tratado como cero. */
+  total: number
+  /** Cuántos quedaron afuera de esa suma. Si es > 0, el total es un piso, no el contratado. */
+  sinPrecio: number
+}
+
+/**
+ * EL TOTAL CONTRATADO NO SUMA LOS NULOS COMO CERO.
+ *
+ * Un paquete sin precio cargado no vale cero: vale lo que nadie escribió todavía. Sumarlo como cero
+ * publica un contratado más chico que el real, con la misma cara de número cerrado — y nada en la
+ * pantalla avisaría. Por eso el resumen devuelve también cuántos faltan: el total es un piso.
+ */
+export function resumenContratado(
+  paquetes: { precio_contratado: number | null }[],
+): ResumenContratado {
+  const conPrecio = paquetes.filter((p) => p.precio_contratado != null)
+  return {
+    total: conPrecio.reduce((t, p) => t + Number(p.precio_contratado), 0),
+    sinPrecio: paquetes.length - conPrecio.length,
+  }
+}
+
 export interface VinculoActividad {
   actividad_id: string
   actividad: string

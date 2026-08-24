@@ -27,6 +27,29 @@ export const CATEGORIAS_SUGERIDAS = ['Contrato', 'Planos', 'Certificaciones', 'C
 
 export const SIN_CLASIFICAR = 'Sin clasificar'
 
+// ═══ PARA QUÉ SIRVE CADA GRUPO (Design canónico 23/08, pantalla 12) ═══
+//
+// «Los documentos se agrupan por para qué sirven, no por tipo de archivo». La frase que acompaña al
+// título del grupo no es decoración: es lo que hace que alguien que busca el papel para cobrar sepa
+// dónde mirar sin abrir cuatro grupos.
+//
+// SÓLO PARA LAS CATEGORÍAS QUE EL OS PROPONE. `rol` es texto libre: si alguien escribe «Acta de
+// medición», nadie sabe para qué sirve salvo quien la escribió, e inventarle una función sería
+// afirmar algo que nadie declaró. Esas categorías van sin frase — y eso es correcto, no un hueco.
+const PARA_QUE: Record<string, string> = {
+  contrato: 'para cobrar',
+  planos: 'para construir',
+  certificaciones: 'para certificar el avance',
+  compras: 'para respaldar el costo',
+  seguridad: 'para poder trabajar',
+}
+
+/** La frase de la cabecera del grupo, o `null` cuando la categoría la inventó una persona. */
+export function paraQueSirve(categoria: string): string | null {
+  if (categoria === SIN_CLASIFICAR) return 'nadie dijo todavía para qué sirve'
+  return PARA_QUE[categoria.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')] ?? null
+}
+
 /**
  * Los documentos por categoría, en el orden en que se leen: las sugeridas primero y en su orden
  * —es el orden del ciclo de vida de la obra, no el alfabético—, después las que alguien inventó, y
@@ -55,4 +78,33 @@ export function porCategoria(documentos: DocumentoObra[]): { categoria: string; 
   return [...grupos.entries()]
     .map(([categoria, docs]) => ({ categoria, docs }))
     .sort((a, b) => peso(a.categoria) - peso(b.categoria) || a.categoria.localeCompare(b.categoria, 'es'))
+}
+
+const normalizar = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+
+/**
+ * LO MISMO, FILTRADO AL TECLEAR.
+ *
+ * Filtra por nombre, ruta y CATEGORÍA —escribir «seguridad» tiene que traer el grupo entero, que es
+ * lo que alguien espera cuando busca por para qué sirve el papel— y **descarta los grupos que
+ * quedan vacíos**: una cabecera con cero filas debajo se lee como «este grupo está vacío», que es
+ * lo contrario de «nada de este grupo coincide con lo que escribiste».
+ *
+ * Vive acá y no en el componente por la misma razón que `porCategoria`: es la regla que decide qué
+ * se ve, y `node --test` no sabe leer un `.tsx`.
+ */
+export function porCategoriaFiltrado(
+  documentos: DocumentoObra[], consulta: string,
+): { categoria: string; docs: DocumentoObra[] }[] {
+  const q = normalizar(consulta.trim())
+  const grupos = porCategoria(documentos)
+  if (q === '') return grupos
+  return grupos
+    .map(({ categoria, docs }) => ({
+      categoria,
+      docs: normalizar(categoria).includes(q)
+        ? docs
+        : docs.filter((d) => normalizar(`${d.name ?? d.drive_file_id} ${d.path ?? ''}`).includes(q)),
+    }))
+    .filter((g) => g.docs.length > 0)
 }

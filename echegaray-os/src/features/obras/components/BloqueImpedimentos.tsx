@@ -30,6 +30,7 @@ import {
   BotonAccion, FormAccion, type AccionFormulario, type ResultadoAccion,
 } from '@/shared/components/ui'
 import { Ayuda, CAMPO, Campo, Estado, Nulo, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
+import { IconoBloqueo, IconoCompletar, IconoCrear } from '@/shared/components/iconos'
 import {
   TIPO_RESTRICCION, TIPO_RESTRICCION_LABEL, type Actividad, type Restriccion,
 } from '../types'
@@ -84,16 +85,32 @@ export function BloqueImpedimentos({
               const vencido = !liberado && !!r.fecha_compromiso && r.fecha_compromiso < hoyIso
               const act = nombreDe(r.actividad_id)
               return (
-                <Tr key={r.id} {...{ 'data-testid': 'fila-impedimento' }}>
+                <Tr
+                  key={r.id}
+                  {...{ 'data-testid': 'fila-impedimento' }}
+                  /* LA EXCEPCIÓN SE MARCA CON LA REGLA INTERIOR DE 3px (`COMPONENTS.md`
+                     §Transaction row): el compromiso vencido es lo que hay que ir a destrabar hoy y
+                     tiene que encontrarse barriendo el borde, sin leer la fila. */
+                  className={vencido ? 'border-l-[3px] border-l-neg' : ''}
+                >
                   <Td fuerte>
-                    <Estado
-                      tono={liberado ? 'pos' : vencido ? 'neg' : 'pendiente'}
-                      clave={liberado ? 'liberado' : vencido ? 'vencido' : 'abierto'}
-                    >
-                      {r.descripcion}
-                    </Estado>
-                    <span className="mt-0.5 block text-[11px] text-faint">
-                      {act ?? 'no frena una actividad en particular'}
+                    <span className="flex items-start gap-2">
+                      <span className={`mt-[3px] flex shrink-0 ${liberado ? 'text-pos' : vencido ? 'text-neg' : 'text-faint'}`}>
+                        {liberado
+                          ? <IconoCompletar className="h-[14px] w-[14px]" />
+                          : <IconoBloqueo className="h-[14px] w-[14px]" />}
+                      </span>
+                      <span className="min-w-0">
+                        <Estado
+                          tono={liberado ? 'pos' : vencido ? 'neg' : 'pendiente'}
+                          clave={liberado ? 'liberado' : vencido ? 'vencido' : 'abierto'}
+                        >
+                          {r.descripcion}
+                        </Estado>
+                        <span className="mt-0.5 block text-[11px] text-faint">
+                          {act ?? 'no frena una actividad en particular'}
+                        </span>
+                      </span>
                     </span>
                   </Td>
                   <Td>{TIPO_RESTRICCION_LABEL[r.tipo] ?? r.tipo}</Td>
@@ -128,8 +145,11 @@ export function BloqueImpedimentos({
       )}
 
       <details data-testid="alta-impedimento">
-        <summary className="cursor-pointer select-none text-[12.5px] text-muted hover:text-ink">
-          + Anotar impedimento
+        {/* Sigue siendo `details`/`summary`: es lo que abre sin JavaScript y lo que los tests de
+            navegador clican. Lo que cambia es el «+» de texto por el icono de crear del sistema. */}
+        <summary className="inline-flex cursor-pointer select-none items-center gap-1.5 text-[12.5px] text-muted hover:text-ink">
+          <IconoCrear className="h-[13px] w-[13px]" />
+          Anotar impedimento
         </summary>
         <div className="mt-3 border-t border-[#EFEEEA] pt-3.5">
           <FormAccion accion={crear} testid="form-impedimento" enviar="Anotar" limpiarAlOk mensajeOk="Impedimento anotado.">
