@@ -50,15 +50,20 @@ export function ResumenPresupuesto({ p }: { p: PresupuestoCascada }) {
         rotulo="HH del cómputo"
         valor={hay ? hh(p.hh_previstas) : null}
         falta="sin cargar"
-        contexto="del análisis"
+        contexto="base maestra"
       />
       {/* Cero partidas sin análisis no es un logro que haya que anunciar: la celda dice «ninguna»
-          en `faint` y deja de competir con los cuatro números que sí se leen. */}
+          en `faint` y deja de competir con los cuatro números que sí se leen.
+
+          El contexto dice «partidas» y no el conteo de las que están sin cómputo (canon 15): son
+          dos deudas distintas y meterlas en una sola celda hacía leer «3 · 2 sin cómputo» como si
+          el 3 se descompusiera. La deuda de cómputo tiene su propio chip en la toolbar de la
+          tabla, que además FILTRA — el número al lado de las filas que hay que arreglar. */}
       <Celda
         rotulo="Sin análisis"
         valor={p.n_sin_analisis === 0 ? null : String(p.n_sin_analisis)}
         falta="ninguna"
-        contexto={p.n_sin_computo > 0 ? `${p.n_sin_computo} sin cómputo` : 'partidas'}
+        contexto="partidas"
         tono={p.n_sin_analisis > 0 ? 'warn' : undefined}
         testid="celda-sin-analisis"
       />

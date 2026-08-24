@@ -95,19 +95,31 @@ export default async function PresupuestoPage({
           volverA="/presupuestos"
           volverLabel="Presupuestos"
           titulo={presupuesto.obra_nombre ?? 'sin objeto'}
+          // LA LÍNEA DE CAMPOS DEL CANON 15: cliente · cuántas partidas · cuándo se cotizó. El
+          // TAMAÑO del presupuesto es dato de identidad —«68 partidas» dice de qué se está
+          // hablando antes de bajar a la tabla— y estaba sólo adentro de la tarjeta TOTAL.
+          //
+          // La VERSIÓN se fue al chip de estado («Enviado · rev 1»): estado y revisión se leen
+          // juntos siempre —«¿qué revisión mandé?»— y separados obligaban a cruzar la pantalla.
+          // El NÚMERO se queda: es la identidad con la que el cliente lo nombra por teléfono, y el
+          // canon lo omite porque su maqueta no tenía que abrir un enlace mandado por chat.
           campos={[
             { rotulo: 'Presupuesto', valor: presupuesto.numero, falta: 'sin número' },
             { rotulo: 'Cliente', valor: presupuesto.cliente, falta: 'sin cliente' },
             {
-              rotulo: 'Versión',
-              valor: `${presupuesto.version}${presupuesto.vigente ? '' : ' · reemplazada'}`,
+              rotulo: 'Partidas',
+              valor: `${presupuesto.n_partidas} ${presupuesto.n_partidas === 1 ? 'partida' : 'partidas'}`,
             },
             { rotulo: 'Cotizado', valor: fecha(presupuesto.fecha_cotizacion), falta: 'sin fecha' },
             ...(congelado
               ? [{ rotulo: 'Congelado', valor: fecha(presupuesto.congelada_en), falta: 'sin fecha' }]
               : []),
           ]}
-          derecha={<Estado tono={e.tono} clave={e.clave}>{e.label}</Estado>}
+          derecha={
+            <Estado tono={e.tono} clave={e.clave}>
+              {`${e.label} · rev ${presupuesto.version}${presupuesto.vigente ? '' : ' · reemplazada'}`}
+            </Estado>
+          }
           acciones={
             <AccionesPresupuesto
               id={presupuesto.id}
@@ -163,6 +175,9 @@ export default async function PresupuestoPage({
             partidas={lista}
             cotizacionId={presupuesto.id}
             costoDirecto={tieneCifras(presupuesto) ? presupuesto.costo_directo : null}
+            hhPrevistas={tieneCifras(presupuesto) ? presupuesto.hh_previstas : null}
+            precioVenta={tieneCifras(presupuesto) ? presupuesto.precio_venta : null}
+            margenPct={presupuesto.margen_sobre_precio_pct}
             seleccionada={partidaId ?? null}
             congelado={congelado}
             accion={

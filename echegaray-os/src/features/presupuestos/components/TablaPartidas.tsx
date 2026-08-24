@@ -41,7 +41,7 @@ import {
   contarFaltantes, filasDeLaTabla, filtrarPartidas, filtrarPorFalta, faltantesDe,
   type FaltaPartida,
 } from '../services/partidas'
-import { hh as fHH, importe, plata, rendimiento } from '../services/formato'
+import { hh as fHH, importe, plata, porcentaje, rendimiento } from '../services/formato'
 import { quitarPartida } from '../services/actionsPartida'
 import { CeldaEditable } from './CeldaEditable'
 
@@ -51,6 +51,9 @@ export function TablaPartidas({
   partidas,
   cotizacionId,
   costoDirecto,
+  hhPrevistas,
+  precioVenta,
+  margenPct,
   seleccionada,
   congelado,
   accion,
@@ -58,6 +61,10 @@ export function TablaPartidas({
   partidas: PartidaValorizada[]
   cotizacionId: string
   costoDirecto: number | null
+  /** Los tres del pie salen de `cotizacion_cascada`, igual que el costo directo: nunca se suman acá. */
+  hhPrevistas: number | null
+  precioVenta: number | null
+  margenPct: number | null
   seleccionada: string | null
   congelado: boolean
   accion?: React.ReactNode
@@ -135,16 +142,23 @@ export function TablaPartidas({
                   abierto={!cerrados.includes(f.clave)}
                   onToggle={() => alternar(f.clave)}
                   derecha={
-                    <span className="flex items-baseline gap-4 pr-1">
+                    // Los dos números del rubro caen bajo SU columna —HH y TOTAL—, no apilados al
+                    // borde: en el canon 15 el subtotal del rubro se lee en la misma vertical que
+                    // los importes de sus partidas, que es lo que lo vuelve comparable de un
+                    // vistazo. Los anchos replican los de la tabla; el resto de las columnas del
+                    // rubro está vacío a propósito (un rubro no tiene unidad ni cantidad).
+                    <span className="flex items-baseline">
                       {f.nSinAnalisis > 0 && (
-                        <span className="text-[10.5px] text-warn">{f.nSinAnalisis} sin análisis</span>
+                        <span className="mr-4 text-[10.5px] text-warn">{f.nSinAnalisis} sin análisis</span>
                       )}
-                      <span className="font-mono text-[11.5px] tabular-nums text-muted">
+                      <span className="w-[80px] px-3 text-right font-mono text-[11.5px] tabular-nums text-muted">
                         {fHH(f.hh) ?? <Nulo>sin dato</Nulo>}
                       </span>
-                      <span className="font-mono text-[12.5px] font-semibold tabular-nums text-ink">
+                      <span className="w-[112px]" aria-hidden />
+                      <span className="w-[124px] px-3 text-right font-mono text-[12.5px] font-semibold tabular-nums text-ink">
                         {importe(f.subtotal) ?? <Nulo>sin cargar</Nulo>}
                       </span>
+                      <span className="w-[64px]" aria-hidden />
                     </span>
                   }
                 />
@@ -161,14 +175,21 @@ export function TablaPartidas({
               />
             )
           })}
-          {/* EL TOTAL SALE DE LA VISTA, NO DE LA SUMA DE ARRIBA. */}
+          {/* EL PIE SALE DE LA VISTA, NO DE LA SUMA DE ARRIBA (canon 15: HH TOTALES · COSTO ·
+              TOTAL · MARGEN). Los cuatro son los mismos números de la franja de arriba, y ésa es la
+              razón de que estén: al pie de 68 filas la franja quedó tres pantallas atrás, y quien
+              termina de recorrer el cómputo necesita ver contra qué total lo estuvo comparando sin
+              volver a subir. Repetir el número es barato; recalcularlo sería otro camino al mismo
+              total, y el día que difieran nadie sabría cuál mirar. */}
           <FilaTotal>
-            <Td className="text-[12px]">Costo directo del presupuesto</Td>
-            <Td /><Td /><Td /><Td /><Td />
-            <Td num className="font-semibold" data-testid="total-costo-directo">
-              {plata(costoDirecto) ?? <Nulo>sin cargar</Nulo>}
+            <Td colSpan={COLUMNAS} className="text-[12px]">
+              <div className="flex flex-wrap items-baseline justify-end gap-x-7 gap-y-1" data-testid="pie-presupuesto">
+                <Cifra rotulo="HH totales" valor={fHH(hhPrevistas)} falta="sin cargar" testid="total-hh" />
+                <Cifra rotulo="Costo" valor={plata(costoDirecto)} falta="sin cargar" testid="total-costo-directo" />
+                <Cifra rotulo="Total" valor={plata(precioVenta)} falta="sin cargar" grande testid="total-precio-venta" />
+                <Cifra rotulo="Margen" valor={porcentaje(margenPct)} falta="sin dato" tono="pos" testid="total-margen" />
+              </div>
             </Td>
-            <Td />
           </FilaTotal>
         </tbody>
       </Tabla>
@@ -185,6 +206,26 @@ export function TablaPartidas({
         </p>
       )}
     </div>
+  )
+}
+
+/** Una cifra del pie: rótulo chico al lado del número, como el canon 15 lo dibuja. */
+function Cifra({ rotulo, valor, falta, tono, grande, testid }: {
+  rotulo: string; valor: string | null; falta: string
+  tono?: 'pos'; grande?: boolean; testid: string
+}) {
+  return (
+    <span className="flex items-baseline gap-2">
+      <span className="text-[10px] uppercase tracking-[0.06em] text-faint">{rotulo}</span>
+      <span
+        data-testid={testid}
+        className={`font-mono tabular-nums ${grande ? 'text-[15px] font-semibold' : 'text-[13px] font-semibold'} ${
+          valor === null ? 'text-faint' : tono === 'pos' ? 'text-pos' : 'text-ink'
+        }`}
+      >
+        {valor ?? <span className="font-sans text-[12px] font-normal"><Nulo>{falta}</Nulo></span>}
+      </span>
+    </span>
   )
 }
 
@@ -228,7 +269,7 @@ function FilaPartida({
       <Td>
         <div className="flex min-w-0 items-center gap-2">
           <CeldaEditable partidaId={p.partida_id} cotizacionId={cotizacionId} campo="codigo"
-            valor={p.codigo ?? ''} mono ancho="w-[58px]" placeholder="sin código"
+            valor={p.codigo ?? ''} mono ancho="w-[58px]" placeholder="s/c"
             deshabilitada={congelado} testid={`codigo-${p.partida_id}`} />
           <CeldaEditable partidaId={p.partida_id} cotizacionId={cotizacionId} campo="descripcion"
             valor={p.descripcion} deshabilitada={congelado} testid={`descripcion-${p.partida_id}`} />

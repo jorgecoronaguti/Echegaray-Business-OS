@@ -109,32 +109,23 @@ export default async function PartidaPage({
       </div>
 
       <div className="w-full px-4 pb-5 lg:px-10">
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
           <div className="min-w-0">
-            <div className="flex flex-wrap items-baseline justify-between gap-3">
-              <h2 className="text-[15px] font-semibold text-ink">
-                Composición por {p.unidad ?? 'unidad'}
-              </h2>
-              <div className="flex items-center gap-3 text-[12px]" data-testid="toggle-origen">
-                <span className="font-semibold text-ink">Usa base maestra</span>
-                <span className="text-faint" aria-disabled data-testid="analisis-propio-no-disponible">
-                  Análisis propio
-                </span>
-              </div>
-            </div>
-
-            {/* LA BRECHA DECLARADA, no escondida — pero bajo demanda: es la explicación de POR QUÉ un
-                control está apagado, no una advertencia que cambie lo que se hace hoy. Como bloque
-                `info` permanente empujaba la composición —el trabajo de la pantalla— 90px abajo. */}
-            <Ayuda titulo="Por qué «Análisis propio» está apagado" testid="ayuda-analisis-propio">
-              Editar las cantidades sólo para esta cotización necesita una composición por
+            {/* EL TOGGLE «Usa base maestra ↔ Análisis propio» SE FUE, y no por prolijidad: era un
+                control dibujado sobre una capacidad que la base no tiene. Una pantalla con un
+                interruptor apagado promete que existe la otra posición. El canon 16 no lo dibuja y
+                la brecha sigue declarada acá abajo, que es donde se la busca cuando se la necesita:
+                al querer cambiar una cantidad. */}
+            <Ayuda titulo="Por qué las cantidades no se editan acá" testid="ayuda-analisis-propio">
+              Cambiar las cantidades sólo para esta cotización necesita una composición por
               presupuesto que la base no tiene: la única copia (`cotizacion_partida_composicion`) la
-              escribe el congelado y no interviene en el costo. Lo que sí se puede ajustar sin tocar
-              la base maestra es el ESFUERZO, en «Contra el histórico».
+              escribe el congelado y no interviene en el costo. Editarlas movería un desglose que no
+              cambia ningún precio. Lo que sí se puede ajustar sin tocar la base maestra es el
+              ESFUERZO, en «Contra el histórico».
             </Ayuda>
 
             <div className="mt-3">
-              <TablaComposicion desglose={desglose} testid="composicion-partida" />
+              <TablaComposicion desglose={desglose} unidad={p.unidad} testid="composicion-partida" />
             </div>
 
             {!control.cierra && (
@@ -160,10 +151,17 @@ export default async function PartidaPage({
                 a decir de qué está hecho el peso: cada sección en PLATA, el costo unitario, y cuánto
                 da multiplicado por el cómputo. La barra no se pierde: se pierde la barra que medía
                 una incidencia contra otra incidencia, que no es una fracción del mismo todo. */}
-            <section data-testid="costo-unitario-armado">
-              <h3 className="text-[10px] font-medium uppercase tracking-[0.06em] text-faint">
-                Costo unitario
-              </h3>
+            <section
+              data-testid="costo-unitario-armado"
+              className="overflow-hidden rounded-card border border-line bg-surface px-4 py-3"
+            >
+              {/* DICE «COSTO UNITARIO» Y NO «PRECIO UNITARIO» COMO EL CANON: el precio de venta de
+                  UNA partida no existe en el modelo. Gastos generales y margen se aplican sobre el
+                  presupuesto entero en `cotizacion_cascada`, que es la única cascada del sistema;
+                  prorratearlos acá para llenar la tarjeta sería un segundo camino al mismo número,
+                  con el resultado garantizado de que un día no coincidan. El precio de venta se lee
+                  en la 15, entero y una sola vez. */}
+              <h3 className="text-[13px] font-semibold text-ink">Costo unitario</h3>
               <dl className="mt-2 text-[12px]">
                 {desglose.secciones.map((s) => (
                   <Fila
