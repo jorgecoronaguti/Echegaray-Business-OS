@@ -234,7 +234,7 @@ export function TabTareas({
               className="text-muted hover:text-ink">Expandir</button>
             <button type="button" data-testid="colapsar" onClick={() => setPlegados(new Set(contenedores(nodos)))}
               className="text-muted hover:text-ink">Colapsar</button>
-            <Link href={`/obras/${obraId}/avance-masivo`} data-testid="ir-avance-masivo"
+            <Link href={`/obras/${obraId}/avance-masivo`} prefetch={false} data-testid="ir-avance-masivo"
               className="rounded-control border border-line px-2.5 py-1 text-ink-soft hover:text-ink">
               Avance masivo
             </Link>

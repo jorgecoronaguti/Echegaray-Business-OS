@@ -84,7 +84,7 @@ export function PanelTareaRendimiento({ nodo, contexto, vinculacion, vincular, p
 
       {nodo.tarea_tipo_id
         ? (
-          <Link href={`/administracion/base-maestra/tareas?t=${nodo.tarea_tipo_id}`}
+          <Link href={`/administracion/base-maestra/tareas?t=${nodo.tarea_tipo_id}`} prefetch={false}
             data-testid="ver-en-base-maestra"
             className="mt-2 inline-block text-[12.5px] font-medium text-ink hover:underline">
             Ver en Base Maestra

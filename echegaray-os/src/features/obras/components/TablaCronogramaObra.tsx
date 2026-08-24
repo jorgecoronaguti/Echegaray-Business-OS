@@ -101,7 +101,7 @@ export function TablaCronogramaObra({
                 )
               : <span className="w-[11px] shrink-0" aria-hidden />}
             <Link
-              href={f.actividadId ? hrefDe({ sel: f.actividadId, mover: null }) : hrefDe({ sel: null, mover: null })}
+              href={f.actividadId ? hrefDe({ sel: f.actividadId, mover: null }) : hrefDe({ sel: null, mover: null })} prefetch={false}
               scroll={false}
               data-sel={sel ? '1' : undefined}
               className="flex min-w-0 flex-1 items-center gap-[7px]"

@@ -61,7 +61,7 @@ export function OrdenGantt({ activo, dir, archivadas, etapa, q: texto, atraso }:
     <div data-testid="orden-gantt" className="mb-4 flex flex-wrap items-center gap-x-3.5 gap-y-1.5">
       <span className="shrink-0 text-[12px] text-faint">Ordenar por</span>
       <Link
-        href={q({})}
+        href={q({})} prefetch={false}
         data-testid="orden-gantt-cronologico"
         data-activo={activo === null ? 'si' : undefined}
         className={`${OPCION} ${activo === null ? PUESTA : SUELTA}`}
@@ -73,7 +73,7 @@ export function OrdenGantt({ activo, dir, archivadas, etapa, q: texto, atraso }:
         return (
           <Link
             key={campo}
-            href={q({ orden: campo, dir: proximaDireccion(campo, activo, esActivo ? dir : null) })}
+            href={q({ orden: campo, dir: proximaDireccion(campo, activo, esActivo ? dir : null) })} prefetch={false}
             data-testid={`orden-gantt-${campo}`}
             data-activo={esActivo ? dir : undefined}
             className={`${OPCION} ${esActivo ? PUESTA : SUELTA}`}
@@ -85,7 +85,7 @@ export function OrdenGantt({ activo, dir, archivadas, etapa, q: texto, atraso }:
       })}
       <span aria-hidden className="text-line-strong">·</span>
       <Link
-        href={q(ordenPuesto, !archivadas)}
+        href={q(ordenPuesto, !archivadas)} prefetch={false}
         data-testid="gantt-archivadas"
         className={`${OPCION} ${archivadas ? PUESTA : SUELTA}`}
       >

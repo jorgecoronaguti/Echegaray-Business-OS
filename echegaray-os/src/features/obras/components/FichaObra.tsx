@@ -29,7 +29,7 @@ function FilaFicha({ k, v, href }: { k: string; v: React.ReactNode; href?: strin
   return (
     <li className="border-b border-surface-sunken last:border-b-0">
       {href
-        ? <Link href={href} className="flex items-center gap-2.5 py-[7px] transition-colors hover:bg-surface-quiet">{cuerpo}</Link>
+        ? <Link href={href} prefetch={false} className="flex items-center gap-2.5 py-[7px] transition-colors hover:bg-surface-quiet">{cuerpo}</Link>
         : <div className="flex items-center gap-2.5 py-[7px]">{cuerpo}</div>}
     </li>
   )
@@ -91,7 +91,7 @@ export function UltimoMovimiento({ partes, actividadDe, obraId }: {
         }
         titulo="Último movimiento"
         accion={
-          <Link href={`/obras/${obraId}?vista=ejecucion`} className="text-[11.5px] text-muted hover:text-ink">
+          <Link href={`/obras/${obraId}?vista=ejecucion`} prefetch={false} className="text-[11.5px] text-muted hover:text-ink">
             Ver todo →
           </Link>
         }

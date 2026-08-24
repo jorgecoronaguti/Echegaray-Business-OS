@@ -411,12 +411,12 @@ export default async function ObrasPage({
           {archivadas.length > 0 && (conArchivadas ? (
             <>
               Se muestran también {archivadas.length} obra{archivadas.length === 1 ? '' : 's'} archivada{archivadas.length === 1 ? '' : 's'}.{' '}
-              <Link href={`/obras${qOrden}`} className="text-ink underline underline-offset-2">Ocultarlas</Link>.{' '}
+              <Link href={`/obras${qOrden}`} prefetch={false} className="text-ink underline underline-offset-2">Ocultarlas</Link>.{' '}
             </>
           ) : (
             <>
               {archivadas.length} obra{archivadas.length === 1 ? '' : 's'} archivada{archivadas.length === 1 ? '' : 's'} fuera de esta lista.{' '}
-              <Link href={`/obras?archivadas=1${qOrden ? `&${qOrden.slice(1)}` : ''}`} className="text-ink underline underline-offset-2" data-testid="ver-archivadas">Verlas</Link>.{' '}
+              <Link href={`/obras?archivadas=1${qOrden ? `&${qOrden.slice(1)}` : ''}`} prefetch={false} className="text-ink underline underline-offset-2" data-testid="ver-archivadas">Verlas</Link>.{' '}
             </>
           ))}
           {sinContratado && 'Las obras sin monto contratado no lo tienen cargado en ninguna fuente del OS — no es que valgan cero.'}

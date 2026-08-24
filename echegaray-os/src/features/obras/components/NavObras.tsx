@@ -59,7 +59,7 @@ export function NavObras() {
         return (
           <Link
             key={v.href}
-            href={v.href}
+            href={v.href} prefetch={false}
             data-testid={`nav-vistas-obras-${v.id}`}
             aria-current={activa ? 'page' : undefined}
             className={`shrink-0 pb-[2px] text-[12.5px] transition-colors ${

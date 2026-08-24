@@ -209,7 +209,7 @@ export function PanelTarea({
             Registrar avance
           </button>
         ) : (
-          <Link href={`/obras/${obraId}/avance/${nodo.id}`} data-testid="panel-registrar-avance"
+          <Link href={`/obras/${obraId}/avance/${nodo.id}`} prefetch={false} data-testid="panel-registrar-avance"
             className="inline-flex items-center gap-1.5 rounded-control bg-marca px-3 py-[7px] text-[12.5px] font-semibold text-ink hover:opacity-90">
             <IconoEditar className="h-[14px] w-[14px]" />
             Registrar avance
@@ -218,12 +218,12 @@ export function PanelTarea({
         {/* DOS ICONOS, DOS DESTINOS DISTINTOS. El Design dibuja adjuntar y cámara uno al lado del
             otro; si los dos llevaran al mismo lado sería un botón falso. El clip cuelga PAPEL de la
             obra (donde el panel ya dice que se cuelga), la cámara sube EVIDENCIA del avance. */}
-        <Link href={`/obras/${obraId}?vista=documentos`} aria-label="Adjuntar documento"
+        <Link href={`/obras/${obraId}?vista=documentos`} prefetch={false} aria-label="Adjuntar documento"
           title="Adjuntar documento" data-testid="panel-adjuntar-evidencia"
           className="flex h-[30px] w-[30px] items-center justify-center rounded-control border border-line text-muted hover:border-line-strong hover:text-ink">
           <IconoAdjuntar className="h-[15px] w-[15px]" />
         </Link>
-        <Link href={`/obras/${obraId}/avance/${nodo.id}#evidencia`} aria-label="Foto o evidencia"
+        <Link href={`/obras/${obraId}/avance/${nodo.id}#evidencia`} prefetch={false} aria-label="Foto o evidencia"
           title="Foto o evidencia" data-testid="panel-foto-evidencia"
           className="flex h-[30px] w-[30px] items-center justify-center rounded-control border border-line text-muted hover:border-line-strong hover:text-ink">
           <IconoFoto className="h-[15px] w-[15px]" />
@@ -286,7 +286,7 @@ export function PanelTarea({
 
       {/* EL PROBLEMA NO SE ESCONDE: visible en cualquier solapa. */}
       {nodo.impedimentos_abiertos > 0 && (
-        <Link href={`/obras/${obraId}?vista=operacion&sub=impedimentos`}
+        <Link href={`/obras/${obraId}?vista=operacion&sub=impedimentos`} prefetch={false}
           className="mt-2 flex items-start gap-2 rounded-[8px] border border-neg/25 bg-neg-soft px-3 py-2.5 hover:opacity-90"
           data-testid="panel-impedimento">
           <IconoProblema className="mt-[2px] h-[14px] w-[14px] shrink-0 text-neg" />
@@ -428,14 +428,14 @@ export function PanelTarea({
                 alCambiarDotacion={alCambiarDotacion} />
               <p className="mt-2 text-[11px] text-muted">
                 Esto simula: el plan se escribe desde{' '}
-                <Link href={`/obras/${obraId}/dotacion`} className="font-medium text-ink hover:underline">
+                <Link href={`/obras/${obraId}/dotacion`} prefetch={false} className="font-medium text-ink hover:underline">
                   Dotación y proyección</Link>, sobre el frente completo.
               </p>
             </FilaPlegable>
             {nodo.es_subcontrato && (
               <FilaPlegable clave="Subcontrato" resumen={nodo.subcontratista ?? 'paquete'} testid="fila-subcontrato">
                 <p className="text-[12px] text-muted">El avance de un paquete lo firma el jefe de obra.</p>
-                <Link href={`/obras/${obraId}/subcontratos`} data-testid="ver-paquete"
+                <Link href={`/obras/${obraId}/subcontratos`} prefetch={false} data-testid="ver-paquete"
                   className="mt-1.5 inline-block text-[12.5px] font-medium text-ink hover:underline">Ver paquete →</Link>
               </FilaPlegable>
             )}
@@ -521,7 +521,7 @@ export function PanelTarea({
                 hoy={hoyISO}
                 registrar={acciones.registrarAvance.bind(null, nodo.id)}
               />
-              <Link href={`/obras/${obraId}/avance/${nodo.id}`} data-testid="panel-avance-pantalla-completa"
+              <Link href={`/obras/${obraId}/avance/${nodo.id}`} prefetch={false} data-testid="panel-avance-pantalla-completa"
                 className="mt-2 inline-block text-[12px] text-muted hover:text-ink">
                 Abrir en pantalla completa (evidencia y registros anteriores) →
               </Link>
@@ -601,7 +601,7 @@ export function PanelTarea({
               falta={nodo.tarea_tipo_id ? 'sin análisis vigente' : 'sin tarea tipo'} />
             {contexto.partida && (
               <Dato clave="Partida de origen" valor={
-                <Link href={`/presupuestos/${contexto.partida.cotizacionId}/partida/${contexto.partida.id}`}
+                <Link href={`/presupuestos/${contexto.partida.cotizacionId}/partida/${contexto.partida.id}`} prefetch={false}
                   data-testid="ver-partida" className="text-ink-soft hover:underline">
                   {contexto.partida.codigo ?? 'ver partida'} →
                 </Link>
@@ -642,7 +642,7 @@ export function PanelTarea({
             ? (
               <p className="text-[12.5px] text-muted">
                 Ningún papel colgado de esta actividad. Se cuelgan desde{' '}
-                <Link href={`/obras/${obraId}?vista=documentos`} className="font-medium text-ink hover:underline">
+                <Link href={`/obras/${obraId}?vista=documentos`} prefetch={false} className="font-medium text-ink hover:underline">
                   Documentos</Link>.
               </p>
             )
