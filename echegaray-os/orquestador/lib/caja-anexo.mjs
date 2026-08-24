@@ -27,7 +27,9 @@ import {
   formulaJornalesBancoPosteriores, formulaOficinaBancoPosteriores, formulaOficinaSinCanal,
   formulaCobrosEfectivoPosteriores, formulaComprasEfectivoPosteriores, formulaDepositosEfectivoPosteriores,
   formulaJornalesEfectivoPosteriores, formulaOficinaEfectivoPosteriores, formulaExtraccionesEfectivoPosteriores,
+  formulaFechaUltimoEfectivo,
 } from './caja-posterior-al-corte.mjs'
+import { anclaDeSalida } from './caja-ancla-por-instante.mjs'
 import { filaHuecoDelExtracto } from './banco-detalle-declarado.mjs'
 import { VACIO } from './preservar-anotaciones.mjs'
 import {
@@ -94,6 +96,25 @@ export const FECHA_DEL_CONTEO = {
   ars: '      · la fecha que CAJA publica para el conteo en pesos',
   usd: '      · la fecha que CAJA publica para el conteo en dólares',
   origen: 'La estampa la corrida desde el centinela: el DÍA del borde más viejo del intervalo en que se vio el conteo (resolución 2 h, el período del timer). No es el ancla del cálculo —ésa es el instante, en F del SELLO—: es la fecha que se muestra. Vacía = no hay conteo cargado, y entonces CAJA no publica fecha en vez de inventar una.',
+}
+
+/**
+ * EL RENGLÓN DE LA FECHA QUE CAJA PUBLICA DE VERDAD EN `D7` (24/08/2026).
+ *
+ * El dueño: *"la fila 7 q marca el efectivo disponible me confunde con la fecha del saldo porque se
+ * realizaron cobranzas en efectivo y pagos pero no me indica la fecha del ultimo movimiento de
+ * efectivo"*. El renglón de arriba fecha el CONTEO; éste fecha el SALDO, que no es lo mismo desde que
+ * el saldo se mueve solo con seis fuentes. Los dos quedan a la vista, uno debajo del otro, porque son
+ * dos preguntas distintas: "¿cuándo contaste?" y "¿hasta cuándo llega este número?".
+ *
+ * A DIFERENCIA DE LOS DOS DE ARRIBA, ÉSTE ES UNA FÓRMULA Y NO UN NÚMERO PEGADO: no depende de saber
+ * cuándo cambió una celda, sino de leer las mismas seis fuentes que el neto ya suma. Por eso no se
+ * rescata ni se estampa — se recalcula solo cada vez que alguien abre el archivo, que es la única
+ * forma de que no vuelva a envejecer en silencio.
+ */
+export const FECHA_ULTIMO_EFECTIVO = {
+  rotulo: '      · la fecha del ÚLTIMO movimiento de efectivo — es la que CAJA publica en D7',
+  origen: 'MAX del día del conteo y de la fecha de cada una de las seis fuentes del neto, con LOS MISMOS criterios y la MISMA ventana con que cada una entra al importe. Sin movimientos posteriores queda el día del conteo. OJO: OFICINA fecha por MES y JORNALES por QUINCENA — son las únicas fechas que esos bloques tienen.',
 }
 
 /**
@@ -172,7 +193,9 @@ export function historicoEfectivo(ancla = '0') {
   // El resultado siempre es el piso, nunca el techo. La plata del mismo día que queda afuera se
   // NOMBRA en la pestaña en vez de desaparecer — un dato que no se puede ubicar no es un dato que no
   // existe. El día que las fuentes traigan hora, esto se borra y manda el instante.
-  const desdeElDia = ancla === '0' ? '0' : `(${ancla}-1)`
+  // `anclaDeSalida` vive en caja-ancla-por-instante.mjs porque la lee también la fórmula que publica la
+  // FECHA del último movimiento: las dos tienen que mirar EXACTAMENTE la misma ventana.
+  const desdeElDia = anclaDeSalida(ancla)
   return HISTORICO_EFECTIVO_BASE.map((l) => ({ ...l, formula: l.fn(l.entra ? ancla : desdeElDia) }))
 }
 
@@ -444,8 +467,15 @@ function bloqueMovimientos(h) {
   const fechaConteo = (campo) => { const v = h.previo(FECHA_DEL_CONTEO[campo], 'dia'); return v === '' ? '' : v }
   const fFechaArs = push([FECHA_DEL_CONTEO.ars, '', '', '', '', fechaConteo('ars'), FECHA_DEL_CONTEO.origen])
   const fFechaUsd = push([FECHA_DEL_CONTEO.usd, '', '', '', '', fechaConteo('usd'), FECHA_DEL_CONTEO.origen])
+  // EL ANCLA QUE RECIBE ES LA MISMA QUE LA DE LOS SEIS RENGLONES —`$F$fSello`, el instante sellado— y
+  // no una copia: si la fecha mirara otra ventana que el importe, publicaría frescura por plata que no
+  // está contada, o se quedaría quieta con el saldo moviéndose. El PISO es el día que CAJA muestra
+  // (`ANEXO_CONTEO_ARS_DIA`, dos filas arriba) y no `INT` del instante: el instante puede caer del otro
+  // lado de la medianoche y publicaría un día que el conteo no tuvo.
+  const fUltimoEfectivo = push([FECHA_ULTIMO_EFECTIVO.rotulo, '', '', '', '',
+    formulaFechaUltimoEfectivo(ancla, { conteo: ANEXO.conteoArsDia }), FECHA_ULTIMO_EFECTIVO.origen])
   return {
-    fNeto, fSinCanal, fSello, fEstado, fImposible, fCargaTardia, fFechaArs, fFechaUsd,
+    fNeto, fSinCanal, fSello, fEstado, fImposible, fCargaTardia, fFechaArs, fFechaUsd, fUltimoEfectivo,
     filasHistorico: [f0, fSello - 1],
   }
 }
@@ -635,6 +665,9 @@ export function grillaAnexo(ctx = {}) {
     // mientras no haya conteo. Ver ESPECIE_ANEXO en caja-anexo-nombres.mjs.
     { name: ANEXO.conteoArsDia, fila: mov.fFechaArs, col: 6 },
     { name: ANEXO.conteoUsdDia, fila: mov.fFechaUsd, col: 6 },
+    // La fecha del último movimiento va SIN especie por lo mismo que las dos de arriba: es un serial y
+    // "entero" no distingue una fecha de un contador. Ver PUEDE_ESTAR_VACIO en caja-anexo-nombres.mjs.
+    { name: ANEXO.ultimoEfectivoDia, fila: mov.fUltimoEfectivo, col: 6 },
     { name: ANEXO.efectivoImposible, fila: mov.fImposible, col: 5 },
     { name: ANEXO.oficinaSinCanal, fila: mov.fSinCanal, col: 3 },
     { name: ANEXO.difEcheq, fila: car.fDifCartera, col: 3 },

@@ -14,7 +14,7 @@
 // posible que el anexo cambie de forma sin romper CAJA y al revés.
 
 import * as BANCO from './banco-santander.mjs'
-import { formulaJornalesEfectivoPosteriores, formulaOficinaEfectivoPosteriores, formulaExtraccionesEfectivoPosteriores } from './caja-posterior-al-corte.mjs'
+import { formulaJornalesEfectivoPosteriores, formulaOficinaEfectivoPosteriores, formulaExtraccionesEfectivoPosteriores, celdaFechaDelEfectivo } from './caja-posterior-al-corte.mjs'
 import { terminoLibro } from './libro-sumas.mjs'
 import { DESDE_CAJA, ANEXO } from './caja-anexo-nombres.mjs'
 import { formulaEgresoDiario } from './egreso-diario.mjs'
@@ -248,9 +248,12 @@ export function bloqueTrazabilidad(h) {
   // desde que él la borró este renglón también quedó sin fecha — el mismo defecto que en la portada,
   // acá donde nadie lo miró. Hoy la fecha del conteo la estampa la corrida dos bloques más arriba:
   // citarla directo es una referencia menos y saca el rodeo por la otra pestaña.
+  // Y ES LA MISMA CELDA DE FECHA QUE PUBLICA `CAJA!D7`, importada y no copiada (24/08/2026): este
+  // renglón muestra EXACTAMENTE el mismo número que la fila 7, así que si una de las dos fechara por el
+  // conteo y la otra por el último movimiento, el archivo tendría dos fechas para la misma plata.
   const fFisica = push(['Efectivo en el cajón HOY (arqueo ± posteriores)', '', '', '',
     `=N(${DESDE_CAJA.arqueoArs})+N(${ANEXO.efectivoNeto})`,
-    `=IF(ISNUMBER(${ANEXO.conteoArsDia});${ANEXO.conteoArsDia};"")`, ''])
+    celdaFechaDelEfectivo(ANEXO.conteoArsDia, ANEXO.ultimoEfectivoDia), ''])
   const fSinExpl = push(['⇒ EFECTIVO SIN EXPLICAR', '', '', '',
     `=E${fCob}-E${fDup}+E${fExt}-E${fDep}-E${fGasto}-E${fFisica}`, '', ''])
 

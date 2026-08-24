@@ -1392,6 +1392,7 @@ export function grillaObras(ctx = {}) {
   h.push([])
   h.push([`${SECCION_MATERIALES} · MATERIALES PREVISTOS — el plan, ítem por ítem (fuera del calendario de caja desde el 24/08)`], ['rotulo'])
   h.push(['Obra — concepto', 'Familia', 'Proveedor', 'Fecha estimada', 'Previsto', 'Nota'], ENCABEZADO)
+  const filasMateriales = []
   {
     const filasItem = []
     for (const o of obras) {
@@ -1405,6 +1406,7 @@ export function grillaObras(ctx = {}) {
           : (e.fechaEstimada ? serialISO(e.fechaEstimada) : 'sin fecha')
         const f = h.n + 1
         filasItem.push(f)
+        filasMateriales.push(f)
         h.push([`${o.obra ?? o.clave} — ${e.concepto}`, e.familia ?? '', e.proveedor ?? 'sin proveedor',
           fecha, e.monto, e.nota ?? ''],
         ['rotulo', 'texto', 'texto', multi || !e.fechaEstimada ? 'texto' : 'fecha', 'moneda', 'texto'])
@@ -1415,7 +1417,7 @@ export function grillaObras(ctx = {}) {
       const fT = h.n + 1
       h.push([`⇒ TOTAL — ${filasItem.length} ÍTEMS PREVISTOS`, '', '', '', suma('E', filasItem), ''],
         ['rotulo', null, null, null, 'monedaTotal', 'texto'])
-      void fT
+      filasMateriales.push(fT)
     }
   }
 
@@ -1440,6 +1442,9 @@ export function grillaObras(ctx = {}) {
     /** Las filas del cuadro de costo. El formateador las necesita aparte: su `C` es una PROYECCIÓN
      *  (la explosión del dueño) y su `D` un HECHO, al revés que en los cuadros de venta. */
     filasCosto,
+    /** Las filas del cuadro 5 (ítems + total): también declaran `texto` en la F (Nota), y el control
+     *  de derrame necesita saber que son legítimas — su G/H/I van vacías, no llevan contratado. */
+    filasMateriales,
     totales,
     /** Los cierres de cada cuadro, en orden — el escritor los cita por nombre y no por posición. */
     fTotObras: fTot2,

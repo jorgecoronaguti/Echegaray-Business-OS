@@ -93,6 +93,31 @@ export function formulaRealDeCompras(cols, proveedor, cliente, inicioSerial) {
 }
 
 /**
+ * NÚCLEO PURO: las celdas de importe VIVO de una secuencia de cuotas del mismo (obra, proveedor).
+ *
+ * Está extraída a propósito: desde el 24/08 hay DOS productores de egresos de obra —éste, desde las
+ * constantes, y `lib/materiales-previstos.mjs`, desde el cuadro 5 que el dueño edita— y el neteo
+ * secuencial tiene que ser EL MISMO. Dos copias de esta cuenta se desincronizan sin dar error: una
+ * restaría el real de cada cuota y la factura de $1M se descontaría tres veces.
+ *
+ * `cuota k = MAX(0; acum_k − MAX(acum_{k−1}; real))` — el real absorbe las cuotas EN ORDEN.
+ *
+ * @param {number[]} montos los importes planificados, YA ORDENADOS POR FECHA
+ * @param {string|null} real el SUMPRODUCT contra Compras; `null` ⇒ importes pegados (falla cerrado)
+ * @returns {Array<string|null>} una celda por monto, en el mismo orden
+ */
+export function celdasNeteoSecuencial(montos = [], real = null) {
+  if (!real) return montos.map(() => null)
+  if (montos.length === 1) return [`=MAX(0;${nAR(montos[0])}-${real})`]
+  let acum = 0
+  return montos.map((m) => {
+    const prev = acum
+    acum = r2(acum + m)
+    return `=MAX(0;${nAR(acum)}-MAX(${nAR(prev)};${real}))`
+  })
+}
+
+/**
  * LOS EGRESOS DE OBRAS FUTURAS → movimientos PROYECTADOS de signo −1, con importe vivo.
  *
  * @param {Array<{clave:string, cliente:string, obra:string, inicio:string|null, fin:string|null,
@@ -144,14 +169,9 @@ export function deObras(obras = [], colsCompras = null, corte = 0, aviso = () =>
       if (!puntos.length) continue
       puntos.sort((a, b) => a.fecha - b.fecha) // el acumulado planificado es por FECHA, no por orden de carga
       const real = cols ? formulaRealDeCompras(cols, prov, o?.cliente, inicio) : null
-      let acum = 0
+      const celdas = celdasNeteoSecuencial(puntos.map((p) => p.monto), real)
       puntos.forEach((p, k) => {
-        const acumPrev = acum
-        acum = r2(acum + p.monto)
-        const vivo = !real ? null
-          : puntos.length === 1
-            ? `=MAX(0;${nAR(p.monto)}-${real})`
-            : `=MAX(0;${nAR(acum)}-MAX(${nAR(acumPrev)};${real}))`
+        const vivo = celdas[k]
         const cuota = puntos.length > 1 ? ` · cuota ${k + 1}/${puntos.length}` : ''
         const base = movimiento({
           // Una fecha planificada que ya pasó no dice VENCIDO: se corre a mañana, va a salir ya.

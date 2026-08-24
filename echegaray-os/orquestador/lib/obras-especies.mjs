@@ -136,7 +136,11 @@ export function celdasDePlataSinFormatoDeNumero(filas = [], especies = []) {
     const esNumero = typeof v === 'number' || (typeof v === 'string' && SUMA.test(v))
     if (!esNumero) return
     const e = especies?.[i]?.[j]
-    if (ESPECIES_DE_PLATA.includes(e) || e === 'porcentaje') return
+    // `fecha` también es un número que NO es plata: el cuadro 5 escribe la fecha estimada como
+    // serial con su especie declarada (24/08 crudo se auto-parseaba y mostraba 46258). Esta regla
+    // es anterior a que existiera una columna de fechas; sin la excepción, declarar bien la fecha
+    // contaba como defecto.
+    if (ESPECIES_DE_PLATA.includes(e) || e === 'porcentaje' || e === 'fecha') return
     out.push({ fila: i + 1, col: j, especie: e ?? null, valor: String(v).slice(0, 60) })
   }))
   return out

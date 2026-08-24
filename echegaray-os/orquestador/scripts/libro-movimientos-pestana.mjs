@@ -37,7 +37,19 @@ import {
 } from '../lib/libro-extractores.mjs'
 import { deRecurrentes } from '../lib/libro-extractores-recurrentes.mjs'
 import { deEstructura, diaTipicoDeEstructura, PESTANA_ESTRUCTURA } from '../lib/libro-extractores-estructura.mjs'
-import { deObras, conciliarConObras } from '../lib/libro-extractores-obras.mjs'
+// ═══ LOS MATERIALES PREVISTOS SALEN DEL CUADRO 5 DE LA PESTAÑA `OBRAS` (24/08/2026) ═══
+//
+// `deObras`/`conciliarConObras` (lib/libro-extractores-obras.mjs) leían los egresos de las CONSTANTES
+// de obras-datos y ya no se llaman desde acá: el dueño editó esas fechas en la pestaña y su edición
+// manda. De ese módulo se siguen usando el rubro, el SUMPRODUCT del neteo y `serialDeFecha`, que son
+// comunes a los dos caminos.
+import { serialDeFecha } from '../lib/libro-extractores-obras.mjs'
+import {
+  materialesDesdeCuadro5, movimientosDeMateriales, exigirNeteoDeMateriales, totalDeclarado,
+} from '../lib/materiales-previstos.mjs'
+// El nombre REAL de la pestaña lo publica su propio generador: escribirlo acá a mano es la segunda
+// definición que se desincroniza el día que la pestaña se renombre.
+import { PESTANA_OBRAS as PESTANA_OBRAS_HOJA } from '../lib/obras-grilla.mjs'
 // La medición de si la MO de las obras llegó de verdad al flujo. Ver la nota al pie de la
 // conciliación con OBRAS: la línea que decía "$126.974.442 de MO va por Jornales" no medía nada.
 import {
@@ -65,6 +77,9 @@ const DRY = process.argv.includes('--dry')
 
 /** El serial de HOY en el huso del archivo (es-AR): el corte para vencidos. */
 const hoySerial = () => Math.floor((Date.now() - Date.UTC(1899, 11, 30)) / 86400000)
+
+/** Dos decimales — sumar pesos con coma flotante deja centavos que después no cierran contra el Sheet. */
+const r2c = (v) => Math.round(v * 100) / 100
 
 // `Cliente` va DESPUÉS de `Clave` y no al lado de `Obra`, que es donde se leería mejor: el portón
 // (conciliar-libro.mjs) lee esta pestaña por índice —origen es el 13— y una columna insertada en el
@@ -221,53 +236,95 @@ async function extraerDeLasFuentes(google, corte) {
   // planilla mueva una columna, mientras el extractor se adapta solo. Ver lib/libro-estado-vivo.mjs.
   const colEstadoCompras = columnaEstadoDeCompras(compras)
   const colsVivas = columnasVivasDeCompras(compras)
-  // ═══ LAS OBRAS FUTURAS ENTRAN CON IMPORTE VIVO: MAX(0; planificado − real de Compras) ═══
+  // ═══ LOS MATERIALES PREVISTOS SALEN DEL CUADRO 5 DE `OBRAS`, NO DE obras-datos.mjs (24/08/2026) ═══
   //
-  // El módulo de datos (lib/obras-datos.mjs) se está construyendo en paralelo: el import es dinámico
-  // y con guarda para que este script corra igual sin él — la fuente sale vacía y el aviso lo dice.
-  // Al mergear la rama que lo trae, se activa solo, sin tocar una línea de acá.
+  // Hasta hoy este bloque leía los egresos de `lib/obras-datos.mjs` —la transcripción de los PDF del
+  // dueño, con las fechas del día de la transcripción: casi todo el 25/08—. El dueño ENTRÓ A LA
+  // PESTAÑA y las corrigió a mano: movió el grueso al 07/09/2026 y repartió tres ítems en cuotas.
+  // **La edición manual del dueño es la verdad definitiva**, así que el cuadro 5 pasa a ser EL ORIGEN
+  // de estos movimientos y la constante deja de serlo para este camino. La lógica de lectura es pura
+  // y está probada en frío en lib/materiales-previstos.mjs; acá sólo se lee la pestaña.
+  //
+  // SIN FALLBACK, A PROPÓSITO: si la pestaña no se puede leer o el cuadro no aparece, salen CERO
+  // materiales y se grita. Caer a las constantes sería republicar en silencio las fechas viejas que
+  // él ya corrigió — exactamente el defecto que este cambio arregla.
+  //
   // ═══ LA LLAVE DEL DUEÑO (24/08/2026): «esas proyecciones no deben considerarse por el momento» ═══
   //
-  // Pedido textual sobre el pico de $16,3M del 25/08 en CAJA: los materiales proyectados de las
-  // obras (obras-datos.mjs, sus propios PDF de explosión de gastos) salen del libro mientras la
-  // llave esté puesta. Es una LLAVE, no un borrado: los datos quedan intactos y la fuente vuelve
-  // sacando la variable. Jornales, cargas, estructura y recurrentes NO pasan por acá.
+  // La llave se conserva con su semántica: con ORQ_LIBRO_SIN_OBRAS=1 el libro sale sin «Materiales de
+  // obra proyectados». Lo que cambió es el DEFECTO: sin la llave vuelven a entrar, ahora con las
+  // fechas del dueño. Jornales, cargas, estructura y recurrentes NO pasan por acá.
   const sinObras = process.env.ORQ_LIBRO_SIN_OBRAS === '1'
-  const OBRAS_FUTURAS = sinObras
-    ? []
-    : await import('../lib/obras-datos.mjs').then((m) => m.OBRAS_FUTURAS ?? []).catch(() => [])
+  // La FICHA de cada obra (cliente y fecha de inicio) sigue viniendo de obras-datos: el cuadro 5 no
+  // publica ninguno de los dos y el SUMPRODUCT del neteo los necesita. Lo que dejó de leerse de ahí
+  // es lo que el dueño editó — la fecha y el importe de cada ítem. Import dinámico con guarda, como
+  // estaba: sin el módulo la ficha sale vacía y el aviso de cada obra lo dice.
+  const OBRAS_FUTURAS = await import('../lib/obras-datos.mjs').then((m) => m.OBRAS_FUTURAS ?? []).catch(() => [])
+  const contextoObras = new Map(OBRAS_FUTURAS.map((o) => [String(o?.obra ?? '').trim(), {
+    clave: o?.clave, cliente: o?.cliente, inicioSerial: serialDeFecha(o?.inicio),
+  }]))
+  // LA PESTAÑA OBRAS SE LEE ENTERA Y SIN FORMATEAR: la columna D del cuadro 5 es un SERIAL cuando la
+  // fecha es única, y sólo `UNFORMATTED_VALUE` lo devuelve como número. Formateada llegaría "07/09/26"
+  // y el parser tendría que adivinar el año dos veces.
+  const filasObras = sinObras ? [] : await google.readSheetValues(ID, `'${PESTANA_OBRAS_HOJA}'!A1:I`,
+    { render: 'UNFORMATTED_VALUE' }).catch((e) => {
+    console.error(`  ⚠⚠ NO PUDE LEER LA PESTAÑA ${PESTANA_OBRAS_HOJA} (${e.message}). Los materiales previstos `
+      + 'salen en CERO: no caigo a obras-datos.mjs porque eso republicaría las fechas viejas que el dueño '
+      + 'ya corrigió a mano, y saldrían sin que nadie se entere.')
+    return []
+  })
+  const cuadro5 = sinObras
+    ? { movimientos: [], omitidas: [], resumen: { items: 0, movimientos: 0, total: 0, omitidas: 0 } }
+    : materialesDesdeCuadro5(filasObras, { aviso: (m) => console.warn(`  ⚠ ${m}`) })
   if (sinObras) {
-    console.warn('  ⚠ obras futuras: EXCLUIDAS por ORQ_LIBRO_SIN_OBRAS=1 (pedido del dueño 24/08) — el libro sale sin «Materiales de obra proyectados».')
-  } else if (!OBRAS_FUTURAS.length) {
-    console.warn('  ⚠ obras futuras: lib/obras-datos.mjs no existe todavía o no publica OBRAS_FUTURAS — la fuente Obras sale vacía.')
+    console.warn('  ⚠ materiales previstos: EXCLUIDOS por ORQ_LIBRO_SIN_OBRAS=1 (llave del dueño, 24/08) — el libro sale sin «Materiales de obra proyectados».')
   }
   // ═══ SIN NETEO NO SE PUBLICA: ABORTA, Y EL MENSAJE DICE QUÉ COLUMNA FALTÓ (13/08/2026) ═══
   //
   // `exigirColumnasNeteo` tira con el rótulo adentro ("Fecha factura") en lugar de degradar a importes
   // pegados. El criterio, y por qué un dato muerto en silencio es peor que una corrida caída, viven
-  // con la función en lib/libro-estado-vivo.mjs. Sin obras futuras no hay nada que netear y no hay
-  // nada que exigir: la corrida no depende de un encabezado que no va a usar.
-  const colsNeteo = OBRAS_FUTURAS.length ? exigirColumnasNeteo(compras) : null
-  const obrasFuturas = deObras(OBRAS_FUTURAS, colsNeteo, corte, (m) => console.warn(`  · ${m}`))
+  // con la función en lib/libro-estado-vivo.mjs. Sin materiales previstos no hay nada que netear y no
+  // hay nada que exigir: la corrida no depende de un encabezado que no va a usar.
+  const colsNeteo = cuadro5.movimientos.length ? exigirColumnasNeteo(compras) : null
+  const obrasFuturas = movimientosDeMateriales(cuadro5.movimientos, {
+    contexto: contextoObras, colsCompras: colsNeteo, corte, aviso: (m) => console.warn(`  ⚠ ${m}`),
+  })
+  // Y ACÁ TAMPOCO SE DEGRADA: si algún grupo no pudo netear, aborta con la obra y el proveedor
+  // adentro. Es la misma puerta que `exigirColumnasNeteo`, una fila más abajo. Ver la función.
+  exigirNeteoDeMateriales(obrasFuturas)
   if (obrasFuturas.resumen.movimientos) {
-    console.log(`  obras futuras: ${obrasFuturas.resumen.obras} obra(s) · ${obrasFuturas.resumen.movimientos} egreso(s) `
-      + `proyectado(s) · ${pesos(obrasFuturas.resumen.totalProyectado)} planificado (con neteo vivo contra Compras)`)
+    console.log(`  materiales previstos (cuadro 5 de ${PESTANA_OBRAS_HOJA}): ${obrasFuturas.resumen.obras} obra(s) · `
+      + `${cuadro5.resumen.items} ítem(s) · ${obrasFuturas.resumen.movimientos} egreso(s) proyectado(s) · `
+      + `${pesos(obrasFuturas.resumen.total)} planificado (con neteo vivo contra Compras)`)
   }
-  // LA CONCILIACIÓN CONTRA LA PESTAÑA OBRAS, IMPRESA EN CADA CORRIDA. Sin esto, un egreso que se cae
-  // —una obra a la que le sacaron las fechas, un monto que quedó en cero— deja el cash flow corto y
-  // coherente consigo mismo: nadie se entera hasta que el dueño lo nota. Ver `conciliarConObras`.
-  {
-    const c = conciliarConObras(OBRAS_FUTURAS, obrasFuturas.movimientos)
-    console.log(`  OBRAS → libro: ${pesos(c.enElLibro)} de ${pesos(c.caja)} de egresos de caja proyectados`
-      + ` · ${pesos(c.porJornales)} de MO va por Jornales · ${pesos(c.noCaja)} de máquina propia no es caja`)
-    for (const x of c.faltan) {
-      console.warn(`  ⚠ OBRAS declara "${x.obra} · ${x.concepto} · ${x.proveedor}" por ${pesos(x.monto)} `
-        + 'y NO llegó al libro: el cash flow lo va a mostrar de menos.')
+  // EL CONTROL DE LA LECTURA CONTRA EL TOTAL QUE PUBLICA LA PROPIA PESTAÑA. No es autocomplaciente:
+  // ese total lo calcula una fórmula SUM() de Sheets sobre las mismas celdas que el dueño edita, así
+  // que es una fuente distinta de este parser. Si no cierra, algún ítem se está leyendo mal o se está
+  // omitiendo — y un cuadro corto y coherente consigo mismo es el modo de falla más caro del archivo.
+  if (!sinObras) {
+    const declarado = totalDeclarado(filasObras)
+    const leido = r2c(cuadro5.resumen.total + cuadro5.omitidas.reduce((s, o) => s + (Number(o.previsto) || 0), 0))
+    if (declarado === null) {
+      console.warn(`  ⚠ el cuadro 5 de ${PESTANA_OBRAS_HOJA} no publica su fila «⇒ TOTAL»: leí ${pesos(leido)} y `
+        + 'no tengo contra qué contrastarlo.')
+    } else if (Math.abs(declarado - leido) > 1) {
+      console.warn(`  ⚠ el cuadro 5 declara ${pesos(declarado)} y yo leí ${pesos(leido)} `
+        + `(${pesos(declarado - leido)} de diferencia): hay ítems que no estoy interpretando.`)
+    } else {
+      console.log(`  ✓ cuadro 5: leí ${pesos(leido)} y la pestaña declara ${pesos(declarado)} — cierran.`)
     }
+    if (cuadro5.resumen.omitidas) {
+      console.warn(`  ⚠ ${cuadro5.resumen.omitidas} fila(s) del cuadro 5 quedaron FUERA del calendario `
+        + '(ver los avisos de arriba): esa plata no está en ningún cash flow.')
+    }
+  }
+  {
     // ═══ "$X DE MO VA POR JORNALES" ERA UNA AFIRMACIÓN, NO UNA MEDICIÓN (14/08/2026) ═══
     //
-    // La línea de arriba copia `moCargasPesos` de la explosión del dueño y lo da por llegado. Pero la
-    // MO de las obras entra al libro a través de la pestaña Jornales, cuya celda proyectada es
+    // El bloque de arriba copiaba `moCargasPesos` de la explosión del dueño y lo daba por llegado (ya
+    // no existe: la conciliación contra las constantes se reemplazó por el control contra el total que
+    // publica el propio cuadro 5). Pero la MO de las obras SIGUE entrando al libro por otra puerta —la
+    // pestaña Jornales, que esta medición no toca—, cuya celda proyectada es
     // `MAX(convenio; demanda)`: donde el piso del plantel vigente supera a la demanda, la MO de la
     // obra está ADENTRO de lo publicado; donde la planilla queda corta, el cash flow muestra de menos
     // y hasta hoy nada lo decía. Se mide contra lo que la planilla publica de verdad —dos fuentes
@@ -321,10 +378,10 @@ async function extraerDeLasFuentes(google, corte) {
       // mes menos lo ya materializado en Compras. Sin esto, el mes en curso no debía ningún
       // recurrente y el pago real le pegaba a LIBRE (07/08). Ver libro-extractores-recurrentes.mjs.
       Recurrentes: deRecurrentes(compras, corte, (m) => console.log(`  · ${m}`)),
-      // Los egresos de caja de las obras futuras (materiales/alquileres/combustible). La MO va por
-      // Jornales y la máquina propia no es caja: el extractor no los emite NUNCA — ver
-      // lib/libro-extractores-obras.mjs. El importe es fórmula: se descuenta solo cuando la factura
-      // real entra a Compras.
+      // Los materiales previstos del cuadro 5 de OBRAS, con LAS FECHAS QUE EL DUEÑO EDITÓ A MANO. La
+      // MO no está en ese cuadro (va por Jornales) y la máquina propia tampoco (no es caja): el
+      // cuadro sólo lista egresos de caja, así que no hay nada que filtrar. El importe es fórmula: se
+      // descuenta solo cuando la factura real entra a Compras. Ver lib/materiales-previstos.mjs.
       Obras: obrasFuturas.movimientos,
       // Los gastos de estructura de los meses que todavía no llegaron, leídos de la pestaña que ya los
       // calcula. Netos de lo facturado: la factura real entra por Compras, la provisión se apaga sola.

@@ -54,10 +54,10 @@
 // en Compras. Escritor y lector comparten una sola definición, así el efecto Compras→CAJA no se
 // rompe en silencio si la columna se mueve (lo verifica caja-posterior-al-corte.test.mjs).
 import { COL_FECHA_CAJA } from './rubro-caja.mjs'
-import { formulaUltimaFecha, formulaFrescuraDe } from './fecha-de-frescura.mjs'
+import { formulaUltimaFecha, formulaFrescuraDe, fechaNumerica } from './fecha-de-frescura.mjs'
 // EL CRITERIO DE LA VENTANA VIVE EN UN SOLO LADO. Estaba escrito tres veces con `>` y una con `>=`,
 // y esa cuarta era la única correcta: dos filas equivalentes daban números distintos según el estado.
-import { ventanaDelConteo } from './caja-ancla-por-instante.mjs'
+import { ventanaDelConteo, anclaDeSalida } from './caja-ancla-por-instante.mjs'
 
 // ═══ LOS RANGOS SON ABIERTOS. NINGUNA FILA FINAL. (31/07) ═══
 //
@@ -634,14 +634,27 @@ export function formulaOficinaSinCanal(corte, o = OFI) {
  */
 export function formulaExtraccionesEfectivoPosteriores(arqueo, c = DEP) {
   const col = (x) => `${c.hoja}!$${x}$${c.desde}:$${x}`
-  const concepto = `LOWER(SUBSTITUTE(${col(c.concepto)};"ó";"o"))`
   // UNA EXTRACCIÓN METE BILLETES EN EL CAJÓN: es una ENTRADA, y la del día del conteo se asume YA
   // CONTADA (ventana exclusiva). Las dos mitades del criterio bajan el número publicado: es el lado
   // conservador, no una asimetría suelta.
   return `SUMPRODUCT((${col(c.flujo)}="sale")`
-    + `*(ISNUMBER(SEARCH("extraccion";${concepto}))+ISNUMBER(SEARCH("retiro de efectivo";${concepto}))>0)`
+    + `*${esExtraccionDeEfectivo(col(c.concepto))}`
     + `*ISNUMBER(${col(c.fecha)})*${ventanaDelConteo(col(c.fecha), arqueo, true)}`
     + `*ABS(IF(ISNUMBER(${col(c.importe)});${col(c.importe)};0)))`
+}
+
+/**
+ * ¿ESTE CONCEPTO DEL BANCO ES UNA EXTRACCIÓN? — el espejo de `esDepositoDeEfectivo`, y extraído por el
+ * mismo motivo: desde que la FECHA del último movimiento se calcula aparte, este criterio lo leen DOS
+ * fórmulas. Escrito dos veces, la primera vez que el Santander estrene una redacción nueva sólo se
+ * arreglaría una de las dos y la fecha dejaría de ver un movimiento que el importe sí ve.
+ *
+ * @param {string} rango la referencia a la columna del concepto, ya armada
+ * @returns {string} el trozo de fórmula booleano, ya parentizado
+ */
+export function esExtraccionDeEfectivo(rango) {
+  const limpio = `LOWER(SUBSTITUTE(${rango};"ó";"o"))`
+  return `(ISNUMBER(SEARCH("extraccion";${limpio}))+ISNUMBER(SEARCH("retiro de efectivo";${limpio}))>0)`
 }
 
 /** Los renglones del desglose, con su signo, para que el desglose siga siendo la misma fórmula. */
@@ -702,4 +715,166 @@ export function formulaCobrosUsdEfectivoPosteriores(arqueo, c = COB) {
  */
 export function celdaCajaDolares(arqueo, contado, c = COB) {
   return `=N(${contado})+IF(NOT(ISNUMBER(${arqueo}));0;${formulaCobrosUsdEfectivoPosteriores(arqueo, c)})`
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA FECHA DEL SALDO DE EFECTIVO ES LA DEL ÚLTIMO MOVIMIENTO, NO LA DEL CONTEO (24/08/2026)
+//
+// EL DUEÑO, textual: *"la fila 7 q marca el efectivo disponible me confunde con la fecha del saldo
+// porque se realizaron cobranzas en efectivo y pagos pero no me indica la fecha del ultimo movimiento
+// de efectivo"*.
+//
+// TENÍA RAZÓN Y ERA UNA CONTRADICCIÓN ADENTRO DE LA MISMA FILA. `CAJA!C7` es el conteo MÁS las seis
+// fuentes de movimientos posteriores (`ANEXO_EFECTIVO_NETO`), o sea un número que se mueve solo con
+// cada cobro en efectivo, cada pago, cada jornal, cada extracción y cada depósito. `CAJA!D7` publicaba
+// el día del CONTEO. Las dos celdas están una al lado de la otra y hablan de cosas distintas: el saldo
+// llega hasta hoy y su fecha se quedó en el 19/08. Un número nuevo con fecha vieja es peor que ninguna
+// fecha, porque el que decide un pago lee la fecha para saber si puede confiar en el número.
+//
+// ═══ LA REGLA, Y POR QUÉ NO SE PUEDE ESCRIBIR "A OJO" ═══
+//
+//     LA FECHA QUE SE PUBLICA ES LA DEL ÚLTIMO MOVIMIENTO QUE YA ESTÁ ADENTRO DEL NÚMERO.
+//
+// El "que ya está adentro" es todo el problema. Si el MAX mirara una ventana distinta de la que suma
+// —otro ancla, otro criterio de estado, otra coacción de fecha—, aparecerían las dos mentiras
+// simétricas, y las dos son peores que la de hoy:
+//
+//   · una fecha que la SUMA ve y el MAX no  →  el saldo sube y la fecha se queda quieta: el defecto
+//     que el dueño acaba de reportar, ahora escondido detrás de una fecha que parece calculada;
+//   · una fecha que el MAX ve y la SUMA no  →  la fila declara frescura por plata que no está contada,
+//     y apaga el aviso de atraso de la tarjeta CAJA DISPONIBLE (que mide el MIN de estas fechas).
+//
+// Por eso cada término de abajo NO es una fórmula nueva: es la MISMA condición de su fórmula de
+// importe, con la misma ventana (`anclaDeSalida` para las salidas, el ancla pelada para las entradas),
+// los mismos criterios de estado/forma/moneda/concepto y la MISMA coacción de fecha. Los cinco
+// términos que hoy tienen `SUMPRODUCT(MAX(...))` usan ese idioma —el mismo de `formulaUltimoSaldo` y
+// `formulaUltimaFecha`— porque obliga a Sheets a evaluar el array sin un ARRAYFORMULA que derramaría.
+//
+// ═══ EL ÚNICO PREDICADO QUE SE AGREGA, Y POR QUÉ NO ES UN CAPRICHO ═══
+//
+// Cada término lleva un factor `(importe<>0)` que la fórmula de importe no escribe porque no le hace
+// falta: ella MULTIPLICA por el importe, así que una fila sin plata aporta 0 sola. El MAX no
+// multiplica por el importe —multiplica por la fecha—, y sin ese factor una fila con la forma correcta
+// y CERO pesos publicaría su fecha. No es teórico ni marginal: `Compras` tiene cientos de filas
+// "Pendiente" con tipo de pago Efectivo y sin monto pagado, y su fecha de carga es la de ayer. Sin el
+// factor, D7 diría "el último movimiento fue ayer" cada vez que alguien carga una factura que todavía
+// no pagó. El factor NO amplía lo que se ve: lo recorta exactamente hasta las filas que mueven el
+// número, que es la definición de "movimiento considerado".
+//
+// ═══ LO QUE ESTA FECHA NO PUEDE DECIR, DECLARADO ═══
+//
+//   · OFICINA no tiene fecha por movimiento: `OFICINA_PAGO` es la fecha de pago DEL MES. Es la única
+//     que ese bloque tiene y es la misma con la que su importe entra a la ventana, así que la fecha
+//     publicada es coherente con el número — pero es mensual, no del día en que salió el billete.
+//   · JORNALES es por QUINCENA: `JORNALES_REAL_PAGADO` es la fecha en que se pagó la quincena entera.
+//   · Un parcial que crece sobre una fila vieja de Compras no gana fecha nueva (es la misma ceguera
+//     que ya declara el renglón de CARGA TARDÍA del anexo): mueve el importe y no mueve la fecha.
+
+/** El idioma de la casa para forzar el array adentro de un MAX sin ARRAYFORMULA. */
+const maxDe = (expr) => `SUMPRODUCT(MAX(${expr}))`
+
+/** 1/6 · el último COBRO en efectivo. Espeja `formulaCobrosEfectivoPosteriores` criterio por criterio,
+ *  incluida la comparación contra el ancla PELADA (sin INT): es una entrada. */
+function maxCobrosEfectivo(arqueo, c = COB) {
+  const f = fechaNumerica(rango(c.hoja, c.fecha, c.desde))
+  return maxDe(`(${rango(c.hoja, c.estado, c.desde)}="Cobrado")`
+    + `*(${rango(c.hoja, c.forma, c.desde)}="Efectivo")`
+    + `*(${rango(c.hoja, c.moneda, c.desde)}<>"${MONEDA_USD}")`
+    + `*(N(${rango(c.hoja, c.total, c.desde)})<>0)`
+    + `*(${f}>${arqueo})*${f}`)
+}
+
+/** 2/6 · el último PAGO en efectivo de Compras — las DOS ramas, cada una con la fecha que su rama usa
+ *  para entrar a la ventana ("Pagado" por Fecha de caja, "Pendiente" por fecha de carga). */
+function maxComprasEfectivo(arqueo, c = CMP) {
+  const caja = fechaCajaCoerc(c)
+  const carga = fechaNumerica(rango(c.hoja, c.fechaCarga, c.desde), { mixto: true })
+  const sale = (f) => ventanaDelConteo(f, arqueo, false)
+  return maxDe(`(${rango(c.hoja, c.tipoPago, c.desde)}="Efectivo")`
+    + `*(N(${rango(c.hoja, c.montoPagado, c.desde)})<>0)`
+    + `*(((${rango(c.hoja, c.estado, c.desde)}="Pagado")*${sale(caja)}*${caja})`
+    + `+((${rango(c.hoja, c.estado, c.desde)}="Pendiente")*${sale(carga)}*${carga}))`)
+}
+
+/** 3/6 · la última QUINCENA pagada en efectivo. Granularidad quincenal: es la fecha del lote. */
+function maxJornalesEfectivo(arqueo, j = JOR) {
+  const f = fechaNumerica(j.pagado)
+  return maxDe(`ISNUMBER(${j.pagado})*${ventanaDelConteo(f, arqueo, false)}`
+    + `*((N(${j.adelanto})+N(${j.recibo}))<>0)*${f}`)
+}
+
+/** 4/6 · el último MES de OFICINA pagado en efectivo. `ISNUMBER(banco)` es el mismo requisito que el
+ *  importe: sin el canal declarado no se resta de ningún lado, así que tampoco fecha nada. */
+function maxOficinaEfectivo(arqueo, o = OFI) {
+  const f = fechaNumerica(o.pago)
+  return maxDe(`ISNUMBER(${o.pago})*${ventanaDelConteo(f, arqueo, false)}`
+    + `*ISNUMBER(${o.banco})*((N(${o.pagado})-N(${o.banco}))<>0)*${f}`)
+}
+
+/** 5/6 · la última EXTRACCIÓN del banco (entra al cajón: ventana exclusiva, igual que su importe). */
+function maxExtraccionesEfectivo(arqueo, c = DEP) {
+  const col = (x) => `${c.hoja}!$${x}$${c.desde}:$${x}`
+  const f = fechaNumerica(col(c.fecha))
+  const imp = `IF(ISNUMBER(${col(c.importe)});${col(c.importe)};0)`
+  return maxDe(`(${col(c.flujo)}="sale")*${esExtraccionDeEfectivo(col(c.concepto))}`
+    + `*ISNUMBER(${col(c.fecha)})*${ventanaDelConteo(f, arqueo, true)}*(${imp}<>0)*${f}`)
+}
+
+/** 6/6 · el último DEPÓSITO de efectivo al banco (sale del cajón: ventana inclusiva). */
+function maxDepositosEfectivo(arqueo, c = DEP) {
+  const col = (x) => `${c.hoja}!$${x}$${c.desde}:$${x}`
+  const f = fechaNumerica(col(c.fecha))
+  const imp = `IF(ISNUMBER(${col(c.importe)});${col(c.importe)};0)`
+  return maxDe(`(${col(c.flujo)}="entra")*${esDepositoDeEfectivo(col(c.concepto))}`
+    + `*ISNUMBER(${col(c.fecha)})*${ventanaDelConteo(f, arqueo, false)}*(${imp}<>0)*${f}`)
+}
+
+/**
+ * NÚCLEO PURO: la fecha del ÚLTIMO movimiento de efectivo que ya está sumado en el saldo vivo.
+ *
+ * Las seis fuentes son las mismas seis de `HISTORICO_EFECTIVO_BASE` y en el mismo orden, para que el
+ * desglose del anexo y esta fecha se lean como lo que son: dos vistas del mismo conjunto de hechos.
+ *
+ * SIN MOVIMIENTOS QUEDA LA FECHA DEL CONTEO, NUNCA UN CERO. Cada término vale 0 cuando no matchea
+ * nada, y un 0 formateado como fecha se dibuja "30/12/1899" — el defecto que la guarda `ISNUMBER` de
+ * `CAJA!D7` ya evitaba y que no se puede reintroducir por la puerta de atrás. El piso del MAX es el
+ * día del conteo, y sin ancla la celda devuelve texto vacío en vez de una fecha inventada.
+ *
+ * @param {string} arqueo referencia al ancla del conteo — el INSTANTE que estampa la corrida (`$F$n`),
+ *   el mismo que recibe `historicoEfectivo`. No es la fecha que se muestra: es la que ordena.
+ * @param {{conteo?:string}} [opts] `conteo` = la referencia al DÍA publicado del conteo, que es el
+ *   piso del MAX. Por defecto `INT(arqueo)`; el anexo pasa `ANEXO_CONTEO_ARS_DIA`, que es el día que
+ *   CAJA muestra — usar `INT(arqueo)` ahí publicaría un día que el conteo no tuvo cuando el intervalo
+ *   de la corrida cruzó la medianoche (ver `diaDelConteo`).
+ * @returns {string} fórmula completa, con el `=` adelante, separador es-AR
+ */
+export function formulaFechaUltimoEfectivo(arqueo, { conteo = `INT(${arqueo})` } = {}) {
+  const salida = anclaDeSalida(arqueo)
+  const terminos = [
+    conteo,
+    maxCobrosEfectivo(arqueo),
+    maxComprasEfectivo(salida),
+    maxJornalesEfectivo(salida),
+    maxOficinaEfectivo(salida),
+    maxExtraccionesEfectivo(arqueo),
+    maxDepositosEfectivo(salida),
+  ]
+  return `=IF(NOT(ISNUMBER(${arqueo}));"";MAX(${terminos.join(';')}))`
+}
+
+/**
+ * LA CELDA QUE FECHA UNA FILA DE EFECTIVO — una sola definición para las dos pestañas que la muestran.
+ *
+ * CAJA la escribe en la columna D de la fila del efectivo, y el control "Efectivo en el cajón HOY" del
+ * anexo la repite al lado del MISMO número. Escritas aparte, las dos celdas que fechan la misma plata
+ * podrían decir cosas distintas — es literalmente el defecto que este cambio arregla, en chico.
+ *
+ * @param {string} conteo la referencia al día del conteo (`ANEXO_CONTEO_ARS_DIA`)
+ * @param {string} [ultimo] la referencia a la fecha del último movimiento. Sin ella —la caja en
+ *   dólares, que no tiene desglose de movimientos— la celda queda como estaba: el día del conteo.
+ * @returns {string} fórmula con `=`
+ */
+export function celdaFechaDelEfectivo(conteo, ultimo = '') {
+  const valor = ultimo ? `IF(ISNUMBER(${ultimo});${ultimo};${conteo})` : conteo
+  return `=IF(ISNUMBER(${conteo});${valor};"")`
 }
