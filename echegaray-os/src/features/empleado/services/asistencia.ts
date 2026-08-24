@@ -90,3 +90,55 @@ export function pendienteDeImputar(
   const pendiente = minutosDePresencia - Math.round(hhImputadas * 60)
   return { presencia: minutosDePresencia, imputadas: hhImputadas, pendiente }
 }
+
+/**
+ * EL ENCABEZADO GRANDE DE M05 — el estado en dos renglones, y ninguno inventa una hora.
+ *
+ * La nota del mockup: «Un estado grande, un botón grande». El primer renglón dice EN QUÉ ESTADO
+ * está —«En obra»— y el segundo lo justifica con el hecho que lo produjo —«fichaste hoy a las
+ * 07:12»—. Sin el segundo, el estado es una afirmación del sistema sin evidencia a la vista.
+ *
+ * `detalle` es `null` cuando no hay marca: «fichaste hoy a las 00:00» sería una hora que nadie
+ * marcó, y una hora falsa en la pantalla de asistencia termina en una discusión de sueldo.
+ */
+export function encabezadoDelDia(dia: DiaDeAsistencia | null): {
+  titulo: string
+  detalle: string | null
+  tono: 'pos' | 'curso' | 'warn' | 'nulo'
+} {
+  const entrada = hora(dia?.entrada ?? null)
+  const salida = hora(dia?.salida ?? null)
+  switch (dia?.estado ?? 'sin_registrar') {
+    case 'en_curso':
+      return { titulo: 'En obra', detalle: entrada ? `fichaste hoy a las ${entrada}` : null, tono: 'curso' }
+    case 'completo':
+      return {
+        titulo: 'Jornada cerrada',
+        detalle: entrada && salida ? `${entrada} a ${salida}` : null,
+        tono: 'pos',
+      }
+    case 'falta_salida':
+      return {
+        titulo: 'Falta la salida',
+        detalle: entrada ? `entraste ${entrada} y no marcaste la salida` : null,
+        tono: 'warn',
+      }
+    default:
+      return { titulo: 'Todavía no fichaste', detalle: null, tono: 'nulo' }
+  }
+}
+
+/**
+ * LO TRABAJADO HOY, PARA EL AZULEJO DE M05 — y por qué el día en curso NO tiene número.
+ *
+ * El mockup dibuja «TRABAJADO 2,5 h» sobre un día que sigue abierto. Acá devuelve `null` mientras
+ * falte la salida, y es una desviación DELIBERADA del dibujo: la regla del OS —escrita en el
+ * encabezado de este archivo y en la migración de asistencia— es que un día sin cerrar no publica
+ * total. El elapsed desde la entrada parece la jornada trabajada, se lee como la jornada trabajada,
+ * y no lo es: nadie descontó el almuerzo ni la salida a buscar material. Publicarlo es fabricar
+ * horas que después alguien cobra o reclama.
+ */
+export function trabajadoHoy(dia: DiaDeAsistencia | null): string | null {
+  if (dia?.minutos == null) return null
+  return duracion(dia.minutos)
+}

@@ -3,8 +3,10 @@
 import { useActionState, useRef, useState } from 'react'
 import { Ayuda, Estado } from '@/shared/components/ds'
 import { BloqueDato } from './Filas'
+import { Azulejo } from './Bloques'
+import { PieFijo } from './Piezas'
 import { registrarMarca } from '../services/acciones'
-import { hora, lecturaDelDia, siguienteAccion } from '../services/asistencia'
+import { encabezadoDelDia, hora, lecturaDelDia, siguienteAccion, trabajadoHoy } from '../services/asistencia'
 import type { DiaDeAsistencia } from '../types'
 
 // ASISTENCIA EN «HOY» — una sola acción primaria, de 52px, y nada al lado.
@@ -26,12 +28,18 @@ import type { DiaDeAsistencia } from '../types'
 type EstadoForm = { error: string | null; mensaje?: string | null }
 
 export function BloqueAsistencia({
-  dia, obraId, compacto = false,
+  dia, obraId, compacto = false, grande = false, tarjeta = false,
 }: {
   dia: DiaDeAsistencia | null
   obraId: string | null
   /** En escritorio el bloque comparte fila con «Ver historial» y el botón no ocupa el ancho. */
   compacto?: boolean
+  /** LA VARIANTE DE M05: el estado como tarjeta grande y el botón fijo al pie. Cambia SÓLO la
+   *  composición — el formulario, la server action y la geolocalización son los mismos objetos. */
+  grande?: boolean
+  /** LA VARIANTE DE M02: la tarjeta amarilla ENTERA es el botón. «Fichar es una sola acción: un
+   *  botón grande que cambia de estado, nunca un formulario». */
+  tarjeta?: boolean
 }) {
   const formRef = useRef<HTMLFormElement>(null)
   // EL SEGUNDO SUBMIT TIENE QUE PASAR DE LARGO. `requestSubmit()` vuelve a disparar `onSubmit`: sin
@@ -109,33 +117,126 @@ export function BloqueAsistencia({
   const entrada = hora(dia?.entrada ?? null)
   const salida = hora(dia?.salida ?? null)
 
+  const cabeza = encabezadoDelDia(dia)
+  const trabajado = trabajadoHoy(dia)
+
+  // EL FORMULARIO ES UNO SOLO Y SE ARMA UNA VEZ. En la variante grande viaja al pie fijo y en la
+  // compacta queda en el flujo: lo que cambia es DÓNDE se dibuja, no qué hace. Duplicar el <form>
+  // por variante duplicaría el `ref` y `requestSubmit()` dispararía sobre el que no está montado.
+  const formulario = siguiente.tipo ? (
+    <form ref={formRef} action={accion} onSubmit={enviarConUbicacion} className={grande ? '' : compacto ? 'mt-3' : 'mt-3.5'}>
+      <input type="hidden" name="obra_id" value={obraId ?? ''} />
+      {tarjeta ? (
+        /* LA TARJETA AMARILLA DE M02, ENTERA COMO OBJETIVO TÁCTIL. El disco negro a la izquierda,
+           el verbo en 16px y debajo el estado real —«todavía no fichaste hoy»—. El objetivo mide la
+           tarjeta y no el texto: en obra se toca con guante, apurado y sin mirar. */
+        <button
+          type="submit"
+          disabled={enviando || ubicando}
+          data-testid="registrar-marca"
+          data-tipo={siguiente.tipo}
+          className="flex w-full items-center gap-3.5 rounded-[14px] bg-marca px-4 py-4 text-left disabled:opacity-60"
+        >
+          <span aria-hidden className="h-[52px] w-[52px] shrink-0 rounded-full bg-ink" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-[16px] font-semibold text-[color:var(--os-on-marca)]">
+              {ubicando ? 'Tomando la ubicación…' : enviando ? 'Registrando…' : siguiente.texto}
+            </span>
+            <span className="mt-0.5 block truncate text-[12.5px] text-[color:var(--os-on-marca)] opacity-70">
+              {cabeza.detalle ?? 'todavía no fichaste hoy'}
+            </span>
+          </span>
+          <span aria-hidden className="shrink-0 text-[17px] text-[color:var(--os-on-marca)] opacity-60">›</span>
+        </button>
+      ) : (
+      <button
+        type="submit"
+        disabled={enviando || ubicando}
+        data-testid="registrar-marca"
+        data-tipo={siguiente.tipo}
+        className={`flex h-[52px] items-center justify-center rounded-control bg-marca text-[15px] font-semibold text-[color:var(--os-on-marca)] disabled:opacity-60 ${
+          grande ? 'w-full rounded-[12px]' : compacto ? 'w-full lg:h-[40px] lg:w-auto lg:px-5' : 'w-full'
+        }`}
+      >
+        {ubicando ? 'Tomando la ubicación…' : enviando ? 'Registrando…' : siguiente.texto}
+      </button>
+      )}
+    </form>
+  ) : null
+
+  // EL DÍA CERRADO NO DEJA A M02 SIN TARJETA. Sin acción pendiente `formulario` es null, y una
+  // pantalla que no dice nada del fichaje se lee como que no fichó. Se dice que ya está cerrado.
+  if (tarjeta) {
+    return (
+      <div data-testid="bloque-asistencia">
+        {formulario ?? (
+          <div data-testid="fichaje-cerrado" className="flex items-center gap-3.5 rounded-[14px] border border-pos-soft bg-pos-soft px-4 py-4">
+            <span aria-hidden className="h-[52px] w-[52px] shrink-0 rounded-full bg-pos" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-[16px] font-semibold text-ink" data-testid="estado-asistencia">{cabeza.titulo}</span>
+              <span className="mt-0.5 block truncate text-[12.5px] text-muted">{cabeza.detalle ?? 'sin marcas del día'}</span>
+            </span>
+          </div>
+        )}
+        {estado.error && <p className="mt-2 text-[12px] text-neg" data-testid="asistencia-error">{estado.error}</p>}
+      </div>
+    )
+  }
+
   return (
     <div data-testid="bloque-asistencia">
-      <Estado tono={lectura.tono} clave={dia?.estado ?? 'sin_registrar'} testid="estado-asistencia">
-        {lectura.texto}
-      </Estado>
-
-      <div className="mt-3 flex gap-10">
-        <BloqueDato etiqueta="Entrada" valor={entrada} testid="dato-entrada" />
-        <BloqueDato etiqueta="Salida" valor={salida} testid="dato-salida" />
-      </div>
-
-      {siguiente.tipo && (
-        <form ref={formRef} action={accion} onSubmit={enviarConUbicacion} className={compacto ? 'mt-3' : 'mt-3.5'}>
-          <input type="hidden" name="obra_id" value={obraId ?? ''} />
-          <button
-            type="submit"
-            disabled={enviando || ubicando}
-            data-testid="registrar-marca"
-            data-tipo={siguiente.tipo}
-            className={`flex h-[52px] items-center justify-center rounded-control bg-marca text-[15px] font-semibold text-[color:var(--os-on-marca)] disabled:opacity-60 ${
-              compacto ? 'w-full lg:h-[40px] lg:w-auto lg:px-5' : 'w-full'
+      {grande ? (
+        /* ═══ LA TARJETA DE ESTADO DE M05 ═══
+           Un disco de color, el estado en 20px y el hecho que lo produjo debajo. El disco no lleva
+           ícono a propósito: en obra, a contraluz, la mancha de color se ve de lejos y un glifo de
+           18px no. Debajo, ENTRADA y TRABAJADO ENFRENTADOS — es la única pregunta que la pantalla
+           contesta y se mira de reojo, con el teléfono en la mano y sin frenar. */
+        <div
+          data-testid="tarjeta-estado"
+          data-estado={dia?.estado ?? 'sin_registrar'}
+          className={`rounded-[14px] border px-4 py-5 text-center ${
+            cabeza.tono === 'pos' ? 'border-pos-soft bg-pos-soft'
+              : cabeza.tono === 'curso' ? 'border-pos-soft bg-pos-soft'
+                : cabeza.tono === 'warn' ? 'border-neg-soft bg-neg-soft'
+                  : 'border-line bg-surface'
+          }`}
+        >
+          <span
+            aria-hidden
+            className={`mx-auto block h-[68px] w-[68px] rounded-full ${
+              cabeza.tono === 'nulo' ? 'bg-surface-sunken' : cabeza.tono === 'warn' ? 'bg-neg' : 'bg-pos'
             }`}
-          >
-            {ubicando ? 'Tomando la ubicación…' : enviando ? 'Registrando…' : siguiente.texto}
-          </button>
-        </form>
+          />
+          {/* EL TESTID HISTÓRICO VIAJA EN EL TÍTULO. En esta variante el estado NO es una pastilla
+              chica al costado: es el renglón de 20px del medio, y duplicarlo en un chip invisible
+              dejaría un objeto que ningún ojo ni ningún test puede ver. */}
+          <span className="mt-3 block text-[20px] font-semibold text-ink" data-testid="estado-asistencia">{cabeza.titulo}</span>
+          {/* SIN MARCA NO HAY RENGLÓN CON HORA: se dice qué hacer, y no una hora que nadie marcó. */}
+          <span className="mt-1 block text-[12.5px] text-muted">
+            {cabeza.detalle ?? 'la jornada empieza cuando marcás tu entrada'}
+          </span>
+          <span className="mt-4 flex gap-3 border-t border-[#E3E7E3] pt-4">
+            <Azulejo etiqueta="Entrada" valor={entrada} testid="dato-entrada" />
+            {/* «TRABAJADO» EN CURSO NO ES UN NÚMERO. La regla del OS gana sobre el dibujo: un día
+                sin cerrar no publica total, y el elapsed desde la entrada se lee como jornada
+                trabajada sin serlo. Cerrado, sí: los minutos los cerró la base con las dos puntas. */}
+            <Azulejo etiqueta="Trabajado" valor={trabajado} falta="en curso" testid="dato-trabajado" />
+          </span>
+        </div>
+      ) : (
+        <>
+          <Estado tono={lectura.tono} clave={dia?.estado ?? 'sin_registrar'} testid="estado-asistencia">
+            {lectura.texto}
+          </Estado>
+
+          <div className="mt-3 flex gap-10">
+            <BloqueDato etiqueta="Entrada" valor={entrada} testid="dato-entrada" />
+            <BloqueDato etiqueta="Salida" valor={salida} testid="dato-salida" />
+          </div>
+        </>
       )}
+
+      {formulario && !grande && formulario}
 
       {estado.error && (
         <p className="mt-2 text-[12px] text-neg" data-testid="asistencia-error">{estado.error}</p>
@@ -158,6 +259,11 @@ export function BloqueAsistencia({
           Se guarda al instante. Sin señal no se envía: te lo va a decir, no lo da por hecho.
         </Ayuda>
       )}
+
+      {/* EL BOTÓN GRANDE VA AL PIE Y SE QUEDA AHÍ. M05: «un estado grande, un botón grande». Con la
+          semana debajo, una primaria al final del documento obliga a desplazar hasta el fondo para
+          hacer lo único que la pantalla vino a hacer. */}
+      {grande && formulario && <PieFijo testid="pie-asistencia">{formulario}</PieFijo>}
     </div>
   )
 }

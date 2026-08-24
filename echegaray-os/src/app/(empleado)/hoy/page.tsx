@@ -99,44 +99,14 @@ export default async function HoyPage() {
 
       <div className="lg:flex lg:gap-10">
         <div className="min-w-0 lg:w-[620px] lg:shrink-0">
-          <Seccion titulo="OBRA">
-            {obra ? (
-              <div data-testid="mi-obra">
-                <p className="text-[16px] font-medium text-ink">{obra.nombre}</p>
-                <p className="mt-0.5 text-[12.5px] text-faint">
-                  {obra.ubicacion ?? 'sin ubicación cargada'}
-                  {obra.jefe_obra ? ` · jefe de obra ${obra.jefe_obra}` : ' · sin jefe de obra cargado'}
-                </p>
-              </div>
-            ) : (
-              <Nada testid="sin-obra">
-                No tenés ninguna obra asignada hoy. Las asignaciones las carga Administración desde
-                Personal; hasta entonces el OS no sabe dónde estás trabajando.
-              </Nada>
-            )}
-          </Seccion>
-
-          <Seccion titulo="CUADRILLA">
-            {cuadrilla.data && cuadrilla.data.length > 0 ? (
-              <p className="text-[14px] text-ink" data-testid="mi-cuadrilla">
-                {cuadrilla.data[0].cuadrilla}
-                <span className="text-faint"> · {cuadrilla.data.length} {cuadrilla.data.length === 1 ? 'persona' : 'personas'}</span>
-              </p>
-            ) : obra?.cuadrilla ? (
-              <p className="text-[14px] text-ink" data-testid="mi-cuadrilla">
-                {obra.cuadrilla}
-                <span className="text-faint"> · sin integrantes cargados</span>
-              </p>
-            ) : (
-              <Nada testid="sin-cuadrilla">
-                No estás en ninguna cuadrilla. Las arma Administración desde Personal → Cuadrillas.
-              </Nada>
-            )}
-          </Seccion>
-
-          <Seccion titulo="ASISTENCIA">
-            <BloqueAsistencia dia={dia.data} obraId={obra?.id ?? null} compacto />
-          </Seccion>
+          {/* ═══ FICHAR ES UNA SOLA ACCIÓN, Y ES LO PRIMERO (M02) ═══
+              La nota del mockup: «Un botón grande que cambia de estado; nunca un formulario». La
+              tarjeta amarilla entera es el objetivo táctil y va ARRIBA de las tareas: a las siete
+              de la mañana la única pregunta es si ya fichó, y la lista de frentes viene después.
+              El rótulo «ASISTENCIA» se fue con la sección: el verbo del botón ya lo dice. */}
+          <div className="mb-6">
+            <BloqueAsistencia dia={dia.data} obraId={obra?.id ?? null} tarjeta />
+          </div>
 
           {/* ═══ CADA TAREA ES UNA TARJETA CON SU BARRA (M02, 24/08/2026) ═══
               El mockup pide tres datos por tarjeta y en ese orden: qué hay que hacer, cuánto falta
@@ -150,7 +120,7 @@ export default async function HoyPage() {
                 <span className="font-mono text-[12px] tabular-nums text-faint" data-testid="cuenta-hoy">
                   {deHoy.filter((t) => t.estado === 'terminada').length} de {deHoy.length}
                 </span>
-                <Link href="/mi-trabajo/tareas" className="text-muted hover:text-ink" data-testid="ver-todas-tareas">Ver todo ›</Link>
+                <Link href="/mi-trabajo" className="text-muted hover:text-ink" data-testid="ver-todas-tareas">Ver todo ›</Link>
               </span>
             }
           >
@@ -195,6 +165,35 @@ export default async function HoyPage() {
             )}
           </Seccion>
 
+          {/* ═══ LA TARJETA ROSA DEL PROBLEMA (M02) ═══
+              La nota del mockup: «Si hay algo que frena el trabajo, aparece arriba de los accesos».
+              No es un aviso del sistema: es el impedimento REAL de una actividad suya, con su
+              descripción y cuándo se avisó, y lleva a la tarea donde se puede ver el resto. Si no
+              hay ninguno, la tarjeta no se dibuja — un bloque que siempre dice algo deja de decir. */}
+          {(impedimentos.data ?? []).length > 0 && (
+            <div className="mt-4" data-testid="frena-mi-trabajo">
+              {(impedimentos.data ?? []).slice(0, 2).map((i) => (
+                <Tarjeta
+                  key={i.id}
+                  tono="alerta"
+                  testid="tarjeta-problema"
+                  href={i.actividad_id ? `/mi-trabajo/tareas/${i.actividad_id}` : '/mi-trabajo'}
+                >
+                  <span className="flex items-center gap-3">
+                    <span aria-hidden className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full border border-neg text-[13px] font-semibold text-neg">!</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[14.5px] font-semibold text-ink">{i.descripcion ?? 'Hay un impedimento abierto'}</span>
+                      <span className="mt-0.5 block truncate text-[12px] text-muted">
+                        {i.actividad ?? 'problema de la obra'} · avisado el {i.creado_en.slice(8, 10)}/{i.creado_en.slice(5, 7)}
+                      </span>
+                    </span>
+                    <span aria-hidden className="shrink-0 text-[15px] text-line-strong">›</span>
+                  </span>
+                </Tarjeta>
+              ))}
+            </div>
+          )}
+
           {/* ═══ LOS TRES ACCESOS DEL PIE (M02) ═══
               El mockup dibuja «Avisar problema · Subir foto · Mis papeles». Van dos de esos tres y
               «Mis horas» en lugar de «Subir foto»: subir una foto suelta no tiene destino en la
@@ -213,6 +212,46 @@ export default async function HoyPage() {
         </div>
 
         <div className="min-w-0 lg:flex-1">
+          {/* ═══ OBRA Y CUADRILLA BAJAN, NO SE VAN (M02) ═══
+              El mockup pone la obra en la barra de marca —«ECHEGARAY CONSTRUCCIONES / Escuela San
+              Juan»— y no la repite como sección: arriba del todo compite con el fichaje, que es lo
+              único que se hace a las siete. Bajan acá, donde siguen siendo consultables, y el jefe
+              de obra y el conteo de la cuadrilla con ellas. */}
+          <Seccion titulo="OBRA">
+            {obra ? (
+              <div data-testid="mi-obra">
+                <p className="text-[16px] font-medium text-ink">{obra.nombre}</p>
+                <p className="mt-0.5 text-[12.5px] text-faint">
+                  {obra.ubicacion ?? 'sin ubicación cargada'}
+                  {obra.jefe_obra ? ` · jefe de obra ${obra.jefe_obra}` : ' · sin jefe de obra cargado'}
+                </p>
+              </div>
+            ) : (
+              <Nada testid="sin-obra">
+                No tenés ninguna obra asignada hoy. Las asignaciones las carga Administración desde
+                Personal; hasta entonces el OS no sabe dónde estás trabajando.
+              </Nada>
+            )}
+          </Seccion>
+
+          <Seccion titulo="CUADRILLA">
+            {cuadrilla.data && cuadrilla.data.length > 0 ? (
+              <p className="text-[14px] text-ink" data-testid="mi-cuadrilla">
+                {cuadrilla.data[0].cuadrilla}
+                <span className="text-faint"> · {cuadrilla.data.length} {cuadrilla.data.length === 1 ? 'persona' : 'personas'}</span>
+              </p>
+            ) : obra?.cuadrilla ? (
+              <p className="text-[14px] text-ink" data-testid="mi-cuadrilla">
+                {obra.cuadrilla}
+                <span className="text-faint"> · sin integrantes cargados</span>
+              </p>
+            ) : (
+              <Nada testid="sin-cuadrilla">
+                No estás en ninguna cuadrilla. Las arma Administración desde Personal → Cuadrillas.
+              </Nada>
+            )}
+          </Seccion>
+
           {nPendientes > 0 && (
             <Seccion titulo="PENDIENTES">
               <div data-testid="pendientes">

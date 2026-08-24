@@ -201,6 +201,11 @@ export const problemaInputSchema = z.object({
   descripcion: z.string().trim().min(5, 'Contá qué está pasando').max(1000, 'Máximo 1000 caracteres'),
   // «¿Frena el trabajo?» no es decoración: un impedimento que frena es lo que el jefe mira primero.
   frena: z.enum(['si', 'no']),
+  // EL MOTIVO DE M07 (24/08/2026). Va como id de pantalla y lo traduce `tipoDeMotivo()` a la clave
+  // que acepta `obra_restriccion_tipo_check`. Opcional en el esquema y NO por comodidad: los avisos
+  // que ya existían entraron sin motivo, y exigirlo acá rechazaría un reporte de obra parada por
+  // una categoría — que es exactamente el reporte que no se puede perder.
+  motivo: z.string().trim().max(40).optional().transform((v) => v || null),
 })
 export type ProblemaInput = z.infer<typeof problemaInputSchema>
 

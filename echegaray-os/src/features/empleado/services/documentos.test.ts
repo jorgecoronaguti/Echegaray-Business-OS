@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { accionDe, avisoDeDocumentos, estadoEnPantalla, ordenar, pendientes } from './documentos.ts'
+import { accionDe, agrupar, avisoDeDocumentos, estadoEnPantalla, grupoDe, notaDeVencimiento, ordenar, pendientes } from './documentos.ts'
 import type { DocumentoDelEmpleado } from './documentos.ts'
 
 const HOY = '2026-08-20'
@@ -43,4 +43,50 @@ test('el aviso cuenta lo accionable y calla cuando no hay nada', () => {
 test('un vigente igual se puede reemplazar, pero sin gritar', () => {
   assert.equal(accionDe('vigente').primaria, false)
   assert.equal(accionDe('vigente').texto, 'Reemplazar')
+})
+
+const papel = (over: Partial<DocumentoDelEmpleado>): DocumentoDelEmpleado => ({
+  id: 'x', tipo_documento: 'dni', nombre: null, presente: true, drive_file_id: 'd',
+  fecha_documento: '2026-01-01', fecha_vencimiento: null, presentacion_id: null,
+  presentacion_estado: null, motivo_revision: null, presentado_en: null, revisado_en: null,
+  presentado_nombre: null, ...over,
+})
+
+test('un tipo de documento NUEVO de salud no se cuela en Personales', () => {
+  // EL DEFECTO QUE ATRAPA: con un diccionario cerrado, «curso_de_altura_avanzado» —un tipo que
+  // Administración da de alta mañana— cae en Personales y su vencimiento deja de saltar a la vista.
+  assert.equal(grupoDe('curso_de_altura_avanzado'), 'salud')
+  assert.equal(grupoDe('apto_medico'), 'salud')
+  assert.equal(grupoDe('constancia_art'), 'salud')
+  assert.equal(grupoDe('dni'), 'personales')
+  assert.equal(grupoDe('carnet_de_conducir'), 'personales')
+  // Lo desconocido cae en Personales, que es el grupo SIN consecuencia de seguridad.
+  assert.equal(grupoDe('formulario_x'), 'personales')
+})
+
+test('agrupar reparte todos los papeles y no pierde ninguno', () => {
+  const docs = [papel({ id: 'a', tipo_documento: 'apto_medico' }), papel({ id: 'b', tipo_documento: 'dni' })]
+  const g = agrupar(docs, '2026-08-24')
+  assert.equal(g.salud.length + g.personales.length, docs.length)
+  assert.deepEqual(g.salud.map((d) => d.id), ['a'])
+})
+
+test('«vence en 20 días» y «vencido el 30/06» son dos textos distintos, no el mismo', () => {
+  const porVencer = notaDeVencimiento(papel({ fecha_vencimiento: '2026-09-13' }), '2026-08-24')
+  assert.equal(porVencer.tono, 'warn')
+  assert.match(porVencer.texto, /en 20 días/)
+
+  const vencido = notaDeVencimiento(papel({ fecha_vencimiento: '2026-06-30' }), '2026-08-24')
+  assert.equal(vencido.tono, 'neg')
+  assert.equal(vencido.texto, 'vencido el 30/06')
+  // El vencido NO cuenta días hacia atrás: «en -55 días» no es castellano ni es útil.
+  assert.doesNotMatch(vencido.texto, /-/)
+})
+
+test('lo que se envió NO vuelve a pedirse: en revisión se dice que ya está mandado', () => {
+  const enviado = notaDeVencimiento(
+    papel({ fecha_vencimiento: '2026-06-30', presentacion_estado: 'en_revision' }), '2026-08-24',
+  )
+  assert.match(enviado.texto, /esperando revisión/)
+  assert.notEqual(enviado.tono, 'neg')
 })

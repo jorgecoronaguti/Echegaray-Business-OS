@@ -5,6 +5,8 @@ import { getUsuarioActual, getPerfilActual } from '@/features/auth/services/auth
 import { Aviso, Estado, Plegable } from '@/shared/components/ds'
 import { PantallaEmpleado, Seccion } from '@/features/empleado/components/ShellEmpleado'
 import { Dato, Fila, Nada } from '@/features/empleado/components/Filas'
+import { Barra } from '@/features/empleado/components/Bloques'
+import { PieFijo } from '@/features/empleado/components/Piezas'
 import { getMiTarea, getMisImpedimentos } from '@/features/empleado/services/empleadoService'
 import { hoyISO } from '@/features/empleado/services/acciones'
 import { lecturaDeEstado, lecturaDeFecha, dm } from '@/features/empleado/services/tareas'
@@ -20,6 +22,25 @@ import { lecturaDeEstado, lecturaDeFecha, dm } from '@/features/empleado/service
 //
 // Un botón que no puede funcionar es peor que no tenerlo: enseña que la pantalla miente. Se dice
 // quién carga el avance, y se ofrece lo único que este perfil SÍ puede hacer, que es reportar.
+//
+// ═══ M04 (24/08/2026): LA TARJETA DE AVANCE SÍ, EL CONTADOR QUE ESCRIBE NO ═══
+//
+// El mockup pone arriba una tarjeta con el porcentaje grande, la barra y las dos cantidades —«71,04
+// m² hechos · de 96,00 m²»—: eso es LECTURA y está construido, porque contesta «en cuánto queda el
+// frente» sin hacer cuentas. Debajo dibuja un contador − / + con atajos que GUARDA avance, y ese no
+// se construyó. Tres razones, ninguna de comodidad:
+//
+//   1. El perfil que usa esta pantalla no puede escribir `obra_actividad` —la policy exige
+//      dirección, administración o jefe de obra—. Un contador que guarda sería un botón que rebota
+//      contra un 42501 para el 100% de sus usuarios.
+//   2. `registrarAvance` recibe la cantidad ACUMULADA, no el incremento; el acumulado real vive en
+//      `obra_actividad_control` y `mi_tarea` no lo publica. Derivarlo de `pct × objetivo` mandaría
+//      un acumulado redondeado que la acción convierte en delta: avance fabricado por redondeo.
+//   3. Hay dos migraciones sin commitear en el árbol —«avance manual sale de los hechos» y «avance
+//      manual es suma de incrementos»— que cambian justo esa semántica. Construir encima de un
+//      contrato en vuelo produce un botón que anda en el repo y no en producción.
+//
+// Queda declarado como pendiente, no disimulado con un contador apagado.
 
 export const dynamic = 'force-dynamic'
 
@@ -39,7 +60,7 @@ export default async function DetalleDeTareaPage({ params }: { params: Promise<{
   if (!t.data) {
     if (t.error) {
       return (
-        <PantallaEmpleado titulo="Tarea" volver={{ href: '/mi-trabajo/tareas', label: 'Mis tareas' }}>
+        <PantallaEmpleado titulo="Tarea" volver={{ href: '/mi-trabajo', label: 'Mi trabajo' }}>
           <Aviso tono="neg" titulo="No se pudo leer la tarea." testid="tarea-error">{t.error}</Aviso>
         </PantallaEmpleado>
       )
@@ -65,7 +86,7 @@ export default async function DetalleDeTareaPage({ params }: { params: Promise<{
   return (
     <PantallaEmpleado
       titulo={tarea.nombre}
-      volver={{ href: '/mi-trabajo/tareas', label: 'Mis tareas' }}
+      volver={{ href: '/mi-trabajo', label: 'Mi trabajo' }}
       sub={
         <>
           <Estado tono={e.tono} clave={tarea.estado ?? ''} testid="estado-tarea">{e.texto}</Estado>
@@ -80,19 +101,42 @@ export default async function DetalleDeTareaPage({ params }: { params: Promise<{
         </Aviso>
       )}
 
+      {/* ═══ LA TARJETA DE AVANCE (M04) ═══
+          El porcentaje en 30px porque es el número que decide, la barra debajo, y las dos
+          cantidades enfrentadas: lo hecho a la izquierda y el objetivo a la derecha. La nota del
+          mockup: «Muestra en cuánto queda el frente, no cómo se calcula».
+
+          SIN LAS DOS PUNTAS NO SE DIBUJAN CANTIDADES. Sin objetivo, «0,00 m² hechos» diría que no se
+          hizo nada; sin porcentaje, el objetivo entero diría lo mismo al revés. Las dos son creíbles
+          y ninguna es verificable mirando la pantalla, así que se escribe «sin medición». */}
+      <div className="rounded-[14px] border border-line bg-surface px-4 py-3.5" data-testid="tarjeta-avance">
+        <div className="flex items-baseline gap-3">
+          <span className="text-[13px] text-muted">Avance</span>
+          <span className="ml-auto font-mono text-[30px] font-semibold leading-none tracking-[-0.02em] tabular-nums text-ink">
+            {tarea.pct == null ? <span className="text-[14px] font-normal text-faint">sin medir</span> : `${Math.round(tarea.pct)} %`}
+          </span>
+        </div>
+        <Barra pct={tarea.pct} frenada={mios.length > 0} />
+        <div className="mt-2 flex items-baseline gap-3 font-mono text-[12.5px]">
+          {tarea.cantidad_objetivo != null && tarea.pct != null ? (
+            <>
+              <span className="text-ink">
+                {(tarea.cantidad_objetivo * tarea.pct / 100).toFixed(2).replace('.', ',')}
+                {tarea.unidad ? ` ${tarea.unidad}` : ''} hechos
+              </span>
+              <span className="ml-auto text-faint">
+                de {tarea.cantidad_objetivo.toFixed(2).replace('.', ',')}{tarea.unidad ? ` ${tarea.unidad}` : ''}
+              </span>
+            </>
+          ) : (
+            <span className="text-faint">sin medición: falta {tarea.cantidad_objetivo == null ? 'la cantidad objetivo' : 'el avance cargado'}</span>
+          )}
+        </div>
+      </div>
+
       <Seccion titulo="DATOS">
         <div data-testid="datos-tarea">
           <Dato rotulo="Cómo se mide" valor={tarea.metodo_avance ?? (tarea.unidad ? `por ${tarea.unidad}` : null)} falta="no se declaró" />
-          <Dato
-            rotulo="Avance cargado"
-            valor={tarea.pct == null ? null : `${tarea.pct}%`}
-            falta="todavía no se cargó avance"
-          />
-          <Dato
-            rotulo="Objetivo"
-            valor={tarea.cantidad_objetivo != null ? `${tarea.cantidad_objetivo}${tarea.unidad ? ` ${tarea.unidad}` : ''}` : null}
-            falta="sin cantidad objetivo"
-          />
           <Dato rotulo="Plan" valor={tarea.inicio_plan || tarea.fin_plan ? `${tarea.inicio_plan ? dm(tarea.inicio_plan, hoy) : '—'} a ${tarea.fin_plan ? dm(tarea.fin_plan, hoy) : '—'}` : null} falta="sin planificar" />
           <Dato rotulo="Obra" valor={tarea.obra} />
           <Dato rotulo="Código" valor={tarea.codigo} falta="sin código" />
@@ -147,13 +191,15 @@ export default async function DetalleDeTareaPage({ params }: { params: Promise<{
 
       {/* ── AL PIE: UNA PRIMARIA, Y SÓLO LA QUE PUEDE FUNCIONAR ────────────────────────── */}
       <div className="mt-8">
-        <Link
-          href={`/mi-trabajo/reportar?obra=${encodeURIComponent(tarea.obra_id)}&tarea=${tarea.id}`}
-          data-testid="reportar-problema"
-          className="flex h-[52px] w-full items-center justify-center rounded-control bg-marca text-[15px] font-semibold text-[color:var(--os-on-marca)] lg:h-[40px] lg:w-auto lg:px-5"
-        >
-          Reportar problema
-        </Link>
+        <PieFijo testid="pie-tarea">
+          <Link
+            href={`/mi-trabajo/reportar?obra=${encodeURIComponent(tarea.obra_id)}&tarea=${tarea.id}`}
+            data-testid="reportar-problema"
+            className="flex h-[52px] w-full items-center justify-center rounded-[12px] bg-marca text-[15px] font-semibold text-[color:var(--os-on-marca)] active:opacity-90"
+          >
+            Avisar un problema
+          </Link>
+        </PieFijo>
         {escribe ? (
           <p className="mt-2.5 text-[11.5px] text-faint">
             El avance y el cierre de la actividad se cargan en el parte del día de la obra, que es

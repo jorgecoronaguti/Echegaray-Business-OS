@@ -64,3 +64,31 @@ export function legible(v: string | null | undefined): string | null {
   const t = v.replace(/_/g, ' ').trim()
   return t ? t[0].toUpperCase() + t.slice(1) : null
 }
+
+/**
+ * LA SEMANA DE UNA FECHA, DE LUNES A DOMINGO — la ventana que M05 dibuja como lista.
+ *
+ * Lunes y no domingo: la semana de obra empieza el lunes y el sábado es media jornada, así que un
+ * corte en domingo partiría el sábado del resto de su semana. `getUTCDay()` devuelve 0 para el
+ * domingo, y por eso el corrimiento del domingo es 6 y no −1: sin ese caso, la semana del domingo
+ * arranca al día siguiente y la lista queda vacía justo el día que alguien la mira desde su casa.
+ */
+export function semanaDe(iso: string): { desde: string; hasta: string } {
+  const base = new Date(`${iso.slice(0, 10)}T00:00:00Z`)
+  if (Number.isNaN(base.getTime())) return { desde: iso, hasta: iso }
+  const dow = base.getUTCDay()
+  const atras = dow === 0 ? 6 : dow - 1
+  const lunes = new Date(base.getTime() - atras * 86400000)
+  const domingo = new Date(lunes.getTime() + 6 * 86400000)
+  return { desde: lunes.toISOString().slice(0, 10), hasta: domingo.toISOString().slice(0, 10) }
+}
+
+const DIAS_CORTOS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
+
+/** `2026-08-18` → `Lun 18`. El rótulo de fila de la semana de M05: el día de la semana es lo que se
+ *  busca con el pulgar, el número es lo que confirma. Sin el mes, que ya lo dice el encabezado. */
+export function diaCorto(iso: string): string {
+  const d = new Date(`${iso.slice(0, 10)}T00:00:00Z`)
+  if (Number.isNaN(d.getTime())) return iso
+  return `${DIAS_CORTOS[d.getUTCDay()]} ${iso.slice(8, 10)}`
+}

@@ -6,6 +6,7 @@ import {
   DOC_MAX_BYTES, DOC_TIPOS, correccionInputSchema, incidenciaInputSchema, marcaInputSchema,
   problemaInputSchema,
 } from '../types'
+import { tipoDeMotivo } from './problemas'
 import { revisarPedido } from './correccion'
 
 // LAS CUATRO ESCRITURAS DEL PERFIL EMPLEADO.
@@ -221,6 +222,7 @@ export async function reportarProblema(form: FormData): Promise<Resultado> {
     actividad_id: form.get('actividad_id') ?? '',
     descripcion: form.get('descripcion') ?? '',
     frena: form.get('frena') ?? 'no',
+    motivo: form.get('motivo') ?? undefined,
   })
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
   const d = parsed.data
@@ -245,9 +247,10 @@ export async function reportarProblema(form: FormData): Promise<Resultado> {
   const { error } = await supabase.from('obra_restriccion').insert({
     obra_id: d.obra_id,
     actividad_id: d.actividad_id,
-    // `sin_clasificar` y no `otro`: el empleado no elige tipo —el diseño no se lo pide— y `otro`
-    // AFIRMA que alguien miró la lista y no encajaba en ninguna. El jefe lo reclasifica al tomarlo.
-    tipo: 'sin_clasificar',
+    // EL MOTIVO ELEGIDO EN M07, TRADUCIDO A LA CLAVE DE LA BASE. Sin motivo sigue entrando
+    // `sin_clasificar` —y no `otro`, que AFIRMA que alguien miró las seis y no encajaba en
+    // ninguna—. El jefe lo reclasifica al tomarlo.
+    tipo: tipoDeMotivo(d.motivo),
     descripcion: d.descripcion,
     frena: d.frena === 'si',
     foto_path: fotoPath,
