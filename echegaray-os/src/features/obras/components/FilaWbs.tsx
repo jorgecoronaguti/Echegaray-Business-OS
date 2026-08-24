@@ -166,7 +166,7 @@ export function FilaWbs({
             >{fila.plegado ? '▸' : '▾'}</button>
           ) : <span className="w-3 shrink-0" aria-hidden />}
           <button type="button" onClick={() => alAbrir()} data-testid={`fila-${n.id}`}
-            className={`${jerarquia} truncate text-left hover:underline max-w-[380px] xl:max-w-[140px] 2xl:max-w-[240px]`}>
+            className={`${jerarquia} truncate text-left hover:underline max-w-[380px] xl:max-w-[210px] 2xl:max-w-[280px]`}>
             {n.nombre}
           </button>
           {n.partida_codigo && (

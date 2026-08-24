@@ -261,7 +261,7 @@ export function TabTareas({
             que ancla la lectura. La alineación 1:1 la sostiene `h-fila-compacta` en los dos lados.
             Abajo de xl el Gantt no entra: la tabla se ensancha y recupera la columna Plazo. */}
         <div className="flex items-start">
-          <div className={`min-w-0 flex-1 ${escala ? 'xl:w-[440px] xl:flex-none 2xl:w-[540px]' : ''}`}>
+          <div className={`min-w-0 flex-1 ${escala ? 'xl:w-[520px] xl:flex-none 2xl:w-[600px]' : ''}`}>
             <Tabla testid="tabla-wbs" minWidth={340}>
               <THead>
                 <Th />
