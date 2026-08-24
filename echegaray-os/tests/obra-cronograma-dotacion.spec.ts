@@ -13,7 +13,15 @@
 // que la columna de HH restantes NO diga 0.
 
 import { expect, test } from '@playwright/test'
-import { conBase, entrar } from './util/obras-e2e'
+import { abrir, conBase, entrar } from './util/obras-e2e'
+
+// ═══ POR QUÉ CADA `goto` PASA POR `abrir` (24/08/2026) ═══
+//
+// Con la suite en paralelo, Postgres corta consultas de estas dos pantallas por `statement timeout`.
+// La de Dotación no lo dice: `getObra` vuelve sin fila y la página cae en `notFound()`, así que un
+// corte se publica como **«No encontramos esa obra»** — una ausencia explicada con un hecho falso.
+// Está informado como defecto del producto; acá se reintenta para que el rojo de estos tests siga
+// significando lo que dicen sus títulos.
 
 const OBRA = 'messina'
 
@@ -28,6 +36,10 @@ async function nombreDeLaObra(sb: Awaited<ReturnType<typeof conBase>>): Promise<
 }
 
 test('07 · sin dependencias cargadas la pantalla lo DICE y no publica fin de obra', async ({ page }) => {
+  // 120 s Y NO LOS 30 POR DEFECTO: con la suite en paralelo, abrir esta pantalla puede costar varios
+  // reintentos (ver `abrir`). Con el presupuesto de fábrica el test moría por el reloj a mitad del
+  // primer reintento, y el rojo decía «tiempo agotado» sobre una pantalla que nadie llegó a mirar.
+  test.setTimeout(120000)
   const sb = await conBase()
   // ── LA VERDAD SE MIDE EN LA BASE PRIMERO ──────────────────────────────────
   const { count, error } = await sb
@@ -35,7 +47,7 @@ test('07 · sin dependencias cargadas la pantalla lo DICE y no publica fin de ob
   expect(error, error?.message).toBeNull()
 
   await entrar(page)
-  await page.goto(`/obras/${OBRA}/cronograma`)
+  await abrir(page, `/obras/${OBRA}/cronograma`, 'tabs-obra')
   // LA CABECERA ES LA DE LA OBRA (24/08 · C-CANON §12), no una banda propia de la pantalla. Se
   // exige el NOMBRE DE LA OBRA como título —con «Cronograma» de título esto se pone rojo— y las
   // seis solapas visibles, que es lo que esta pantalla no tenía y por eso era un callejón.
@@ -58,8 +70,9 @@ test('07 · sin dependencias cargadas la pantalla lo DICE y no publica fin de ob
 })
 
 test('07 · la vista de camino crítico queda vacía sin secuencia, y explica por qué', async ({ page }) => {
+  test.setTimeout(120000)
   await entrar(page)
-  await page.goto(`/obras/${OBRA}/cronograma?vista=critico`)
+  await abrir(page, `/obras/${OBRA}/cronograma?vista=critico`, 'tabs-obra')
   await expect(page.getByText('No hay camino crítico que mostrar')).toBeVisible()
   await expect(page.getByText('sería inventar un camino crítico')).toBeVisible()
   await page.screenshot({ path: 'capturas/07-cronograma-critico-vacio.png', fullPage: true })
@@ -71,11 +84,9 @@ test('07 · las tres escalas y la vista por frente abren sin romper el lienzo', 
   test.slow()
   await entrar(page)
   for (const escala of ['dia', 'semana', 'mes']) {
-    await page.goto(`/obras/${OBRA}/cronograma?escala=${escala}`)
-    await expect(page.getByTestId('cronograma')).toBeVisible()
+    await abrir(page, `/obras/${OBRA}/cronograma?escala=${escala}`, 'cronograma')
   }
-  await page.goto(`/obras/${OBRA}/cronograma?vista=frente&escala=mes`)
-  await expect(page.getByTestId('cronograma')).toBeVisible()
+  await abrir(page, `/obras/${OBRA}/cronograma?vista=frente&escala=mes`, 'cronograma')
   // Sin nada seleccionado, NINGUNA fila puede estar resaltada. `null === null` marcaba las diez
   // cabeceras de frente como si el usuario las hubiera tocado todas.
   await expect(page.locator('[data-sel="1"]')).toHaveCount(0)
@@ -83,6 +94,7 @@ test('07 · las tres escalas y la vista por frente abren sin romper el lienzo', 
 })
 
 test('08 · sin HH cargadas la dotación dice «sin dato», nunca 0', async ({ page }) => {
+  test.setTimeout(120000)
   const sb = await conBase()
   const { count, error } = await sb
     .from('obra_actividad_control').select('actividad_id', { count: 'exact', head: true })
@@ -90,7 +102,7 @@ test('08 · sin HH cargadas la dotación dice «sin dato», nunca 0', async ({ p
   expect(error, error?.message).toBeNull()
 
   await entrar(page)
-  await page.goto(`/obras/${OBRA}/dotacion`)
+  await abrir(page, `/obras/${OBRA}/dotacion`, 'tabs-obra')
   // LA CABECERA ES LA DE LA OBRA (24/08 · C-CANON §12), no una banda propia de la pantalla. Se
   // exige el NOMBRE DE LA OBRA como título —con «Cronograma» de título esto se pone rojo— y las
   // seis solapas visibles, que es lo que esta pantalla no tenía y por eso era un callejón.
@@ -112,8 +124,9 @@ test('08 · sin HH cargadas la dotación dice «sin dato», nunca 0', async ({ p
 // test verifica NO cambió —que la dotación no fabrique un plazo sin HH, y que el link siga siendo
 // compartible— pero el rol del elemento sí, y por eso se busca un botón.
 test('08 · el stepper recalcula sin navegar, deja la URL compartible y no inventa días sin HH', async ({ page }) => {
+  test.setTimeout(120000)
   await entrar(page)
-  await page.goto(`/obras/${OBRA}/dotacion`)
+  await abrir(page, `/obras/${OBRA}/dotacion`, 'kpis-obra')
   // Se elige un frente que NO tiene HH cargadas: es donde el defecto se ve. En un frente terminado
   // «0 días» es la verdad, y probar contra ése haría pasar el test justamente cuando está roto.
   const sinHH = page.locator('tbody tr').filter({ hasText: 'sin dato' }).first()
