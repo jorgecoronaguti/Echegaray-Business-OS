@@ -24,7 +24,10 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { NombreResuelto, ServiceResult } from '../types'
-import { textosCrudosDe, type ComprobanteProveedor } from './fichaProveedor'
+import {
+  armarPaquetes, textosCrudosDe,
+  type ComprobanteProveedor, type FilaSubcontrato, type PaqueteDelProveedor,
+} from './fichaProveedor'
 
 const COLUMNAS = 'id, fecha, comprobante, tipo, obra_texto, concepto, modalidad, total'
 
@@ -74,4 +77,32 @@ export async function getComprobantes(
   const filas = (data ?? []) as ComprobanteProveedor[]
   const truncado = filas.length > TOPE_COMPROBANTES
   return { data: { filas: truncado ? filas.slice(0, TOPE_COMPROBANTES) : filas, truncado }, error: null }
+}
+
+// ═══ LOS PAQUETES CONTRATADOS (canónico 23) ═══
+//
+// El canónico dibuja «Paquetes contratados» con obra, trabajo, estado y contrato. Hasta el 21/08 la
+// ficha declaraba que eso «no existe como tabla»: DEJÓ DE SER CIERTO ese mismo día, cuando la
+// migración `20260821T2500_el_subcontrato_es_un_paquete_no_un_empleado` creó `public.subcontrato`
+// con su `proveedor_id`. Una limitación declarada que nadie vuelve a medir es una mentira con fecha
+// de vencimiento: el dato estaba y la pantalla seguía diciendo que no.
+//
+// LO QUE SIGUE SIN PODERSE DIBUJAR ES EL AVANCE. El canónico pinta una barra de % por paquete;
+// `subcontrato` guarda estado, no porcentaje. Derivarlo del estado («terminado ⇒ 100 %») sería
+// inventar una medición: un paquete terminado administrativamente y uno certificado al 100 % no son
+// el mismo hecho. Se muestra el estado, que es lo que la base afirma.
+//
+// SE VE POR OBRA. `subcontrato_por_obra` recorta por las obras de quien mira, así que un jefe ve los
+// paquetes de sus obras y nadie más. Por eso la ausencia de paquetes no se escribe como «no tiene».
+
+export async function getPaquetesDelProveedor(
+  supabase: SupabaseClient,
+  proveedorId: string,
+): Promise<ServiceResult<PaqueteDelProveedor[]>> {
+  const { data, error } = await supabase
+    .from('subcontrato')
+    .select('id, nombre, estado, precio_contratado, documentacion_ok, obra_id, obra_canonica(nombre)')
+    .eq('proveedor_id', proveedorId)
+  if (error) return { data: null, error: error.message }
+  return { data: armarPaquetes((data ?? []) as unknown as FilaSubcontrato[]), error: null }
 }

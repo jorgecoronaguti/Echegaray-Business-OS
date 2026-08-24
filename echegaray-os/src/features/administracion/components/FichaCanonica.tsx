@@ -22,12 +22,16 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 
-export type TonoPastilla = 'pos' | 'neg' | 'warn' | 'neutro'
+export type TonoPastilla = 'pos' | 'neg' | 'warn' | 'curso' | 'neutro'
 
+// `curso` lleva el azul MEDIDO del zip —el mismo trío que ya usa `Estado` para «En curso» y para
+// la pastilla «Subcontratista» del canónico 22 y 23—. Se escribe con los mismos hex y no con un
+// token nuevo: dos definiciones del mismo azul se separan en cuanto una de las dos se retoca.
 const PASTILLA: Record<TonoPastilla, string> = {
   pos: 'border-[#D6EBDF] bg-pos-soft text-pos',
   neg: 'border-[#F3D3CF] bg-neg-soft text-neg',
   warn: 'border-[#F0DCC4] bg-warn-soft text-warn',
+  curso: 'border-[#D6E4FB] bg-[#EFF5FF] text-[#175CD3]',
   neutro: 'border-line bg-canvas text-muted',
 }
 

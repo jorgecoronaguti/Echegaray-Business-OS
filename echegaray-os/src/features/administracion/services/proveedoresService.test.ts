@@ -11,8 +11,8 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { resumirCompras } from './proveedoresService.ts'
-import type { NombreResuelto } from '../types/index.ts'
+import { agruparComprado, resumirCartera, resumirCompras } from './proveedoresService.ts'
+import type { NombreResuelto, Proveedor } from '../types/index.ts'
 
 const n = (nombre_norm: string, comprobantes: number, total: number, via: NombreResuelto['via']): NombreResuelto => ({
   nombre_norm, comprobantes, total, estado: 'vinculado', proveedor_id: 'p1',
@@ -47,4 +47,70 @@ test('un total que llega como cadena se suma, no se concatena', () => {
   ;(filas[0] as unknown as { total: unknown }).total = '100.50'
   ;(filas[1] as unknown as { total: unknown }).total = '200.25'
   assert.equal(resumirCompras(filas).comprado, 300.75)
+})
+
+// ═══ LA CARTERA (canónico 22) ═══
+//
+// Tres formas de mentir en el listado, y una prueba para cada una:
+//
+//   1. SUMARLE A UN PROVEEDOR LOS TEXTOS QUE LA RESOLUCIÓN DESCARTÓ. `proveedor_nombre_resuelto`
+//      guarda también los `no_es_proveedor` —el impuesto, el retiro, el nombre que no era nadie—.
+//      Agrupar sin mirar el estado le regala esas compras a un proveedor real.
+//   2. DECIR «$ 0» EN EL PIE cuando ninguna fila tiene compras leídas. Es el mismo defecto que ya
+//      cubre `resumirCompras`, ahora en la fila de total: un 0 afirma que no se compró.
+//   3. CONTAR SUBCONTRATISTAS CUANDO NO SE PUDO LEER `subcontrato`. Un 0 ahí diría que la empresa
+//      no subcontrata a nadie; la verdad es que la lectura falló.
+
+const cartera = (id: string, cuit: string | null): Proveedor => ({
+  id, nombre: id, razon_social: null, cuit, notas: null, activo: true,
+})
+
+const resuelto = (
+  proveedor_id: string | null, comprobantes: number, total: number,
+  estado: NombreResuelto['estado'] = 'vinculado',
+): NombreResuelto => ({
+  nombre_norm: `${proveedor_id}-${comprobantes}`, comprobantes, total, estado,
+  proveedor_id, proveedor_nombre: null, via: 'exacto', alias_id: null,
+})
+
+test('agrupar lo comprado NO le suma a un proveedor los textos marcados «no es proveedor»', () => {
+  const mapa = agruparComprado([
+    resuelto('p1', 3, 1_000),
+    resuelto('p1', 2, 500),
+    resuelto('p1', 9, 9_000_000, 'no_es_proveedor'),
+    resuelto(null, 4, 400),
+  ])
+  assert.deepEqual(mapa.get('p1'), { comprobantes: 5, total: 1_500 })
+  assert.equal(mapa.size, 1)
+})
+
+test('un proveedor sin compras NO entra al mapa: la tabla escribe ausencia, no cero', () => {
+  const mapa = agruparComprado([resuelto('p1', 1, 100)])
+  assert.equal(mapa.has('p2'), false)
+  assert.notEqual(mapa.get('p2'), 0)
+})
+
+test('el pie suma sólo las filas visibles y con dato', () => {
+  const mapa = agruparComprado([resuelto('p1', 1, 100), resuelto('p2', 2, 200), resuelto('p3', 5, 5_000)])
+  const r = resumirCartera([cartera('p1', '30123456780'), cartera('p2', null)], mapa, new Set(['p2']))
+  assert.equal(r.comprado, 300, 'p3 no está en la lista: su total no puede entrar al pie')
+  assert.equal(r.proveedores, 2)
+  assert.equal(r.sinCuit, 1)
+  assert.equal(r.subcontratistas, 1)
+})
+
+test('sin ninguna fila con compras, el pie es AUSENCIA y no $ 0', () => {
+  const r = resumirCartera([cartera('p1', null)], new Map(), null)
+  assert.equal(r.comprado, null)
+  assert.notEqual(r.comprado, 0)
+})
+
+test('cuando no se pudo leer lo comprado, el pie tampoco inventa un total', () => {
+  const r = resumirCartera([cartera('p1', '30123456780')], null, null)
+  assert.equal(r.comprado, null)
+})
+
+test('el CUIT vacío cuenta como ausencia igual que el nulo', () => {
+  const r = resumirCartera([cartera('p1', ''), cartera('p2', '30123456780')], null, null)
+  assert.equal(r.sinCuit, 1)
 })

@@ -26,8 +26,8 @@ import { PanelNombre } from '@/features/administracion/components/PanelNombre'
 import { PanelProveedor } from '@/features/administracion/components/PanelProveedor'
 import { TablaProveedores } from '@/features/administracion/components/TablaProveedores'
 import {
-  getComprasDelProveedor, getNombresPendientes, getNombresResueltos, getProveedor, getProveedores,
-  type FiltroActivo,
+  getComprasDelProveedor, getCompradoDeLaCartera, getNombresPendientes, getNombresResueltos,
+  getProveedor, getProveedores, getSubcontratistas, resumirCartera, type FiltroActivo,
 } from '@/features/administracion/services/proveedoresService'
 import {
   archivarProveedor, crearProveedor, crearYVincular, deshacerResolucion,
@@ -46,6 +46,8 @@ const ACTIVOS: { valor: FiltroActivo; etiqueta: string }[] = [
 
 type Busqueda = {
   q?: string; activo?: string; p?: string; vista?: string; n?: string; bq?: string; cuit?: string
+  /** `sub` = sólo los que tienen al menos un paquete de subcontrato. */
+  tipo?: string
 }
 
 function armarHref(base: Busqueda, cambios: Partial<Busqueda> = {}): string {
@@ -58,6 +60,7 @@ function armarHref(base: Busqueda, cambios: Partial<Busqueda> = {}): string {
   if (v.n) params.set('n', v.n)
   if (v.bq) params.set('bq', v.bq)
   if (v.cuit) params.set('cuit', v.cuit)
+  if (v.tipo) params.set('tipo', v.tipo)
   const qs = params.toString()
   return `/administracion/proveedores${qs ? `?${qs}` : ''}`
 }
@@ -67,6 +70,7 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
   const vista = sp.vista === 'resolver' ? 'resolver' : 'maestro'
   const activo = (ACTIVOS.find((a) => a.valor === sp.activo)?.valor ?? 'activos') as FiltroActivo
   const soloSinCuit = sp.cuit === 'falta'
+  const soloSubcontratistas = sp.tipo === 'sub'
   const supabase = await createClient()
 
   // El maestro se lee siempre. Los CANDIDATOS de la cola se leen con el término del panel: la
@@ -77,11 +81,17 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
   // lista no muestra. Va sin `q`: un aviso de atención cuenta lo que la empresa debe resolver, no
   // lo que quedó dentro de la búsqueda de este momento. Es una lectura chica —el maestro son
   // decenas de filas, no miles—.
-  const [listado, candidatos, pendientesCuenta, sinCuit] = await Promise.all([
+  //
+  // LO COMPRADO Y EL TIPO SE LEEN UNA VEZ PARA TODA LA LISTA, no una consulta por fila: son dos
+  // lecturas de decenas de filas que se agrupan en memoria. `null` en cualquiera de las dos es
+  // «no pude leerlo» y la columna lo escribe así — nunca como un cero ni como un tipo ausente.
+  const [listado, candidatos, pendientesCuenta, sinCuit, comprado, subcontratistas] = await Promise.all([
     getProveedores(supabase, { q: sp.q, activo, sinCuit: soloSinCuit }),
     getProveedores(supabase, { q: sp.bq, activo: 'activos' }),
     getNombresPendientes(supabase),
     getProveedores(supabase, { activo, sinCuit: true }),
+    getCompradoDeLaCartera(supabase),
+    getSubcontratistas(supabase),
   ])
 
   if (listado.error) {
@@ -95,7 +105,15 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
     )
   }
 
-  const proveedores = listado.data ?? []
+  // EL FILTRO POR TIPO SE APLICA ACÁ Y NO EN LA CONSULTA: «es subcontratista» no es una columna
+  // de `proveedores`, es la existencia de un paquete en otra tabla. Cuando no se pudo leer, el
+  // filtro no recorta nada: esconder filas por un error de lectura sería dibujar una cartera más
+  // chica que la real sin decirlo.
+  const todos = listado.data ?? []
+  const proveedores = soloSubcontratistas && subcontratistas.data
+    ? todos.filter((p) => subcontratistas.data?.has(p.id))
+    : todos
+  const resumen = resumirCartera(proveedores, comprado.data, subcontratistas.data)
   const abrirAlta = sp.p === 'nuevo'
   const seleccionadoId = abrirAlta ? undefined : sp.p
   let seleccionado: Proveedor | null = null
@@ -199,6 +217,19 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
                       activo: soloSinCuit,
                       testid: 'filtro-sin-cuit',
                     },
+                    // «Subcontratistas» es el ÚNICO recorte por tipo que la base puede probar: son
+                    // los que tienen un paquete en `subcontrato`. El canónico dibuja además
+                    // «Papeles faltantes» y no está: no hay tabla que cuelgue un papel de un
+                    // proveedor, así que ese chip contaría siempre cero y mandaría a mirar una lista
+                    // vacía como si no hubiera nada pendiente.
+                    ...(subcontratistas.data
+                      ? [{
+                          label: 'Subcontratistas',
+                          href: armarHref(sp, { tipo: soloSubcontratistas ? undefined : 'sub' }),
+                          activo: soloSubcontratistas,
+                          testid: 'filtro-subcontratistas',
+                        }]
+                      : []),
                   ]}
                 />
                 <div className="ml-auto">
@@ -221,6 +252,14 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
                 </p>
               )}
 
+              {(comprado.error || subcontratistas.error) && (
+                <p className="mb-3 text-[12px] text-warn" data-testid="cartera-sin-derivados">
+                  {comprado.error
+                    ? 'No pude leer lo comprado por proveedor: esa columna no dice nada, y ningún «sin compras» de esta lista significa que no se le compró.'
+                    : 'No pude leer los paquetes de subcontrato: esta lista no puede decir quién es subcontratista.'}
+                </p>
+              )}
+
               {/* TRES COLUMNAS NO SE ESTIRAN A 1440. `LAYOUT_RESPONSIVE.md`: «una tabla de dos
                   columnas estirada a 1440 es ilegible». Con el panel abierto la lista usa lo que le
                   queda; con el panel cerrado se acota, para que el nombre y su CUIT sigan siendo la
@@ -234,13 +273,21 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
                           proveedores={proveedores}
                           seleccionado={seleccionado?.id}
                           hrefDe={(id) => armarHref(sp, { p: id })}
+                          comprado={comprado.data}
+                          subcontratistas={subcontratistas.data}
+                          resumen={resumen}
                         />
                       )}
                   <Ayuda titulo="Qué identifica a un proveedor" testid="ayuda-proveedores">
                     El CUIT, no el nombre: «Corralón Progreso», «CORRALON PROGRESO» y «Corralon
                     Progreso SRL» son tres textos y un proveedor. Dos fichas con el mismo CUIT no
                     pueden existir. Los nombres que llegan de Compras se resuelven contra este
-                    maestro, y sin CUIT el proveedor no cruza con ARCA ni con el banco.
+                    maestro, y sin CUIT el proveedor no cruza con ARCA ni con el banco.{' '}
+                    El canónico dibuja además RUBRO y PAPELES: ninguna de las dos tiene fuente
+                    —<code>proveedores</code> no guarda rubro, y ninguna tabla vincula un archivo
+                    con un proveedor—, así que no se dibujan vacías. Lo COMPRADO es histórico, no
+                    de los últimos 12 meses: la vista que lo suma no publica la fecha de cada
+                    comprobante.
                   </Ayuda>
                 </div>
                 {panelAbierto && (

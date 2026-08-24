@@ -6,10 +6,13 @@
 // contestar se escribe como ausencia, con su nombre.
 
 import Link from 'next/link'
-import { Eyebrow, Num, Nulo, Tabla, THead, Th, Timeline, Tr, Td, Vacio } from '@/shared/components/ds'
-import type { Evento } from '@/shared/components/ds'
+import { Estado, Eyebrow, FilaTotal, Num, Nulo, Tabla, THead, Th, Timeline, Tr, Td, Vacio } from '@/shared/components/ds'
+import type { Evento, TonoEstado } from '@/shared/components/ds'
 import { fecha, plata } from '@/features/obras/components/formato'
-import type { CompraPorObra, ComprobanteProveedor, ConceptoProvisto } from '../services/fichaProveedor'
+import { CuerpoDatos, DatoFicha, FilaTarjeta, TarjetaFicha } from './FichaCanonica'
+import type {
+  CompraPorObra, ComprobanteProveedor, ConceptoProvisto, PaqueteDelProveedor,
+} from '../services/fichaProveedor'
 
 export function ComprasPorObra({ filas }: { filas: CompraPorObra[] }) {
   if (filas.length === 0) return null
@@ -124,8 +127,8 @@ export function MovimientosProveedor({
     tono: f.obra_texto?.trim() ? undefined : 'warn',
   }))
   return (
-    <section className="mt-6" data-testid="movimientos-proveedor">
-      <Eyebrow className="mb-1.5">Últimos movimientos</Eyebrow>
+    <TarjetaFicha titulo="Últimos movimientos" indicador={total || null} testid="movimientos-proveedor">
+      <div className="px-3.5 py-3">
       <Timeline
         eventos={eventos}
         total={total}
@@ -137,37 +140,128 @@ export function MovimientosProveedor({
           </Link>
         }
       />
+      </div>
+    </TarjetaFicha>
+  )
+}
+
+/** LOS PAQUETES CONTRATADOS — el bloque del canónico 23 que sí tiene fuente desde el 21/08.
+ *
+ * Sale de `public.subcontrato`. NO lleva barra de avance: la tabla guarda estado, no porcentaje, y
+ * pintar «terminado ⇒ 100 %» convertiría una decisión administrativa en una medición de obra.
+ */
+export function PaquetesContratados({ filas, error }: { filas: PaqueteDelProveedor[]; error?: string | null }) {
+  if (error) {
+    return (
+      <section data-testid="paquetes-error">
+        <Eyebrow className="mb-1.5">Paquetes contratados</Eyebrow>
+        <p className="text-[12px] leading-relaxed text-warn">
+          No pude leer los paquetes de subcontrato: esta ficha no puede decir si tiene alguno.
+        </p>
+      </section>
+    )
+  }
+  const contratado = filas.reduce((a, p) => a + (p.precio ?? 0), 0)
+  const conPrecio = filas.filter((p) => p.precio !== null).length
+  return (
+    <section data-testid="paquetes-proveedor">
+      <div className="mb-2.5 flex items-baseline justify-between gap-3">
+        <Eyebrow>Paquetes contratados</Eyebrow>
+        <Num className="text-faint">{filas.length} {filas.length === 1 ? 'paquete' : 'paquetes'}</Num>
+      </div>
+      {filas.length === 0 ? (
+        <Vacio>
+          Ningún paquete de subcontrato cuelga de este proveedor en las obras que podés ver.
+        </Vacio>
+      ) : (
+        <Tabla testid="tabla-paquetes" minWidth={520}>
+          <THead>
+            <Th>Obra</Th>
+            <Th>Trabajo</Th>
+            <Th>Estado</Th>
+            <Th num>Contrato</Th>
+          </THead>
+          <tbody>
+            {filas.map((p) => (
+              <Tr key={p.id} compacta>
+                <Td fuerte className="max-w-0 truncate">{p.obra}</Td>
+                <Td className="max-w-0 truncate text-muted">{p.trabajo}</Td>
+                <Td className="w-[130px]">
+                  <Estado tono={TONO_PAQUETE[p.estado] ?? 'pendiente'} clave={p.estado}>
+                    {ROTULO_PAQUETE[p.estado] ?? p.estado}
+                  </Estado>
+                </Td>
+                {/* SIN PRECIO NO ES $ 0: el paquete existe y todavía no se pactó cuánto vale. */}
+                <Td num className="w-[130px]">
+                  {p.precio === null ? <Nulo>sin precio</Nulo> : <Num>{plata(p.precio)}</Num>}
+                </Td>
+              </Tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <FilaTotal>
+              <Td fuerte><Num className="text-ink">{filas.length}</Num></Td>
+              <Td />
+              <Td>
+                {conPrecio < filas.length && (
+                  <span className="text-[11.5px] font-normal text-warn">
+                    {filas.length - conPrecio} sin precio
+                  </span>
+                )}
+              </Td>
+              <Td num>{conPrecio === 0 ? <Nulo>sin precio</Nulo> : <Num className="text-ink">{plata(contratado)}</Num>}</Td>
+            </FilaTotal>
+          </tfoot>
+        </Tabla>
+      )}
+      <p className="mt-2 text-[11px] leading-relaxed text-faint">
+        El canónico dibuja además el avance de cada paquete. `subcontrato` guarda estado, no
+        porcentaje: derivar «terminado = 100 %» sería inventar una certificación.
+      </p>
     </section>
   )
 }
 
-/** El aside de la ficha: lo que la base sabe del proveedor, y lo que todavía no. */
+const TONO_PAQUETE: Record<string, TonoEstado> = {
+  previsto: 'pendiente', contratado: 'curso', en_curso: 'curso', terminado: 'pos', anulado: 'neg',
+}
+const ROTULO_PAQUETE: Record<string, string> = {
+  previsto: 'Previsto', contratado: 'Contratado', en_curso: 'En curso',
+  terminado: 'Terminado', anulado: 'Anulado',
+}
+
+/** EL ASIDE DE LA FICHA, EN TARJETAS — la anatomía del canónico 23.
+ *
+ * Antes eran tres bloques sueltos con un `Eyebrow` cada uno, colgando del fondo del canvas. El zip
+ * los dibuja como TARJETAS con borde, encabezado propio y contador a la derecha, iguales a las de
+ * la ficha de persona y la de cliente: es el mismo componente (`TarjetaFicha`), no una copia. Un
+ * aside sin caja se lee como el pie de la pantalla y no como la columna de propiedades.
+ */
 export function PropiedadesProveedor({
-  filas,
+  datos,
   nombres,
   children,
 }: {
-  filas: { k: string; v: React.ReactNode }[]
+  datos: { k: string; v: React.ReactNode | null; mono?: boolean; falta?: string }[]
   nombres: { nombre_norm: string; comprobantes: number; manual: boolean }[]
   /** Actividad y documentos: el resto de la anatomía del aside, que la página compone. */
   children?: React.ReactNode
 }) {
   return (
-    <aside className="w-full shrink-0 lg:w-[300px]" data-testid="propiedades-proveedor">
-      <Eyebrow className="mb-2.5">Propiedades</Eyebrow>
-      <dl className="border-t border-line">
-        {filas.map((f) => (
-          <div key={f.k} className="flex items-baseline justify-between gap-3 border-b border-[#EFEEEA] py-2">
-            <dt className="shrink-0 text-[12px] text-faint">{f.k}</dt>
-            <dd className="min-w-0 truncate text-right text-[12.5px] text-ink">{f.v}</dd>
-          </div>
-        ))}
-      </dl>
+    <aside className="flex w-full shrink-0 flex-col gap-3.5 lg:w-[320px]" data-testid="propiedades-proveedor">
+      <TarjetaFicha titulo="Datos" testid="tarjeta-datos-proveedor">
+        <CuerpoDatos>
+          {datos.map((d) => <DatoFicha key={d.k} k={d.k} v={d.v} mono={d.mono} falta={d.falta ?? 'sin cargar'} />)}
+        </CuerpoDatos>
+      </TarjetaFicha>
 
-      <div className="mt-6">
-        <Eyebrow className="mb-2.5">Nombres de Compras vinculados</Eyebrow>
+      <TarjetaFicha
+        titulo="Nombres de Compras vinculados"
+        indicador={nombres.length || null}
+        testid="tarjeta-nombres-proveedor"
+      >
         {nombres.length === 0 ? (
-          <p className="text-[12px] leading-relaxed text-muted" data-testid="sin-nombres-vinculados">
+          <p className="px-3.5 py-3 text-[12px] leading-relaxed text-muted" data-testid="sin-nombres-vinculados">
             Ningún texto de la pestaña Compras apunta a esta ficha todavía. Por eso no hay
             comprobantes: se vinculan desde{' '}
             <Link href="/administracion/proveedores?vista=resolver" className="text-ink underline">
@@ -175,17 +269,18 @@ export function PropiedadesProveedor({
             </Link>.
           </p>
         ) : (
-          <ul className="space-y-1.5" data-testid="nombres-vinculados">
+          <div data-testid="nombres-vinculados">
             {nombres.map((n) => (
-              <li key={n.nombre_norm} className="flex items-baseline gap-3">
-                <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink-soft">{n.nombre_norm}</span>
-                <Num className="shrink-0 text-faint">{n.comprobantes}</Num>
-                {n.manual && <span className="shrink-0 text-[10.5px] text-faint">a mano</span>}
-              </li>
+              <FilaTarjeta
+                key={n.nombre_norm}
+                titulo={n.nombre_norm}
+                detalle={n.manual ? 'resuelto a mano' : undefined}
+                valor={n.comprobantes}
+              />
             ))}
-          </ul>
+          </div>
         )}
-      </div>
+      </TarjetaFicha>
 
       {children}
     </aside>

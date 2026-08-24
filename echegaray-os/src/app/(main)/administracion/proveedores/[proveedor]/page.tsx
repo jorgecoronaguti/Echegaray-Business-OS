@@ -25,18 +25,20 @@ import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { veEconomia } from '@/features/auth/types/areas'
 import { getProveedor } from '@/features/administracion/services/proveedoresService'
-import { getComprobantes, getNombresDelProveedor } from '@/features/administracion/services/fichaProveedorService'
+import {
+  getComprobantes, getNombresDelProveedor, getPaquetesDelProveedor,
+} from '@/features/administracion/services/fichaProveedorService'
 import {
   comprasPorObra, conceptosProvistos, resumirProveedor, ultimosMovimientos,
 } from '@/features/administracion/services/fichaProveedor'
 import { formatearCuit } from '@/features/administracion/services/identidad'
 import {
-  ComprasPorObra, ConceptosProvistos, MovimientosProveedor, PropiedadesProveedor,
+  ComprasPorObra, ConceptosProvistos, MovimientosProveedor, PaquetesContratados, PropiedadesProveedor,
 } from '@/features/administracion/components/ProveedorResumen'
 import { TablaComprobantes } from '@/features/administracion/components/TablaComprobantes'
-import { Aviso, Ayuda, BotonEnlace, Eyebrow, Nulo, SubTabs } from '@/shared/components/ds'
+import { Aviso, Ayuda, BotonEnlace, SubTabs } from '@/shared/components/ds'
 import {
-  CabeceraFicha, HechoFicha, PastillaFicha, Punto, TiraMetricas,
+  CabeceraFicha, HechoFicha, PastillaFicha, Punto, TarjetaFicha, TiraMetricas,
 } from '@/features/administracion/components/FichaCanonica'
 import { EstadoError } from '@/shared/components/estado'
 import { fecha, plataCorta } from '@/features/obras/components/formato'
@@ -59,7 +61,12 @@ export default async function ProveedorFichaPage({ params, searchParams }: { par
   if (!ficha.data) notFound()
   const proveedor = ficha.data
 
-  const nombres = await getNombresDelProveedor(supabase, proveedor.id)
+  // LOS PAQUETES SE LEEN SIEMPRE: son la mitad de lo que el canónico 23 muestra de un
+  // subcontratista, y también son lo que decide la pastilla de tipo de la cabecera.
+  const [nombres, paquetes] = await Promise.all([
+    getNombresDelProveedor(supabase, proveedor.id),
+    getPaquetesDelProveedor(supabase, proveedor.id),
+  ])
   const norms = (nombres.data ?? []).map((n) => n.nombre_norm)
   const lectura = await getComprobantes(supabase, norms)
   const filas = lectura.data?.filas ?? []
@@ -70,6 +77,9 @@ export default async function ProveedorFichaPage({ params, searchParams }: { par
   const conceptosTotal = new Set(filas.map((f) => f.concepto?.trim()).filter(Boolean)).size
   const declarados = (nombres.data ?? []).reduce((a, n) => a + Number(n.comprobantes ?? 0), 0)
   const completo = veEconomia(perfil.data?.rol ?? null)
+  // SIN NINGÚN PAQUETE CON PRECIO, «contratado» es AUSENCIA y no cero.
+  const conPrecio = (paquetes.data ?? []).filter((p) => p.precio !== null)
+  const contratado = conPrecio.length === 0 ? null : conPrecio.reduce((a, p) => a + (p.precio ?? 0), 0)
 
   const href = (v?: string) =>
     `/administracion/proveedores/${proveedor.id}${v ? `?vista=${v}` : ''}`
@@ -96,10 +106,15 @@ export default async function ProveedorFichaPage({ params, searchParams }: { par
             <PastillaFicha tono={proveedor.activo ? 'pos' : 'neutro'} testid="pastilla-estado-proveedor">
               {proveedor.activo ? 'Activo' : 'Archivado'}
             </PastillaFicha>
-            {/* EL CANÓNICO DIBUJA ADEMÁS UNA PASTILLA DE HABILITACIÓN («No habilitado») y otra de
-                tipo («Subcontratista»). Ninguna de las dos tiene columna en `proveedores`: la
-                habilitación depende de papeles que hoy no cuelgan de un proveedor, y el tipo no se
-                carga en ningún lado. Se declaran abajo, en «Qué no puede contestar esta ficha». */}
+            {/* «SUBCONTRATISTA» YA NO ES UNA PASTILLA SIN FUENTE: es un hecho —tiene al menos un
+                paquete en `subcontrato`—, y por eso se dibuja. Se dibuja SÓLO cuando hay paquetes:
+                su ausencia no afirma que sea proveedor de materiales, porque `proveedores` sigue sin
+                columna de tipo y porque los paquetes se ven por obra.
+                LA DE HABILITACIÓN («No habilitado») sigue afuera: depende de papeles que hoy no
+                cuelgan de un proveedor. Se declara abajo, en «Qué no puede contestar esta ficha». */}
+            {(paquetes.data?.length ?? 0) > 0 && (
+              <PastillaFicha tono="curso" testid="pastilla-tipo-proveedor">Subcontratista</PastillaFicha>
+            )}
           </>
         }
         hechos={
@@ -152,9 +167,10 @@ export default async function ProveedorFichaPage({ params, searchParams }: { par
           </p>
         )}
 
-        {/* LA TIRA DE MÉTRICAS DEL CANÓNICO 23. «Contratado», «Certificado» y «Cumplimiento» son de
-            paquetes de subcontrato, que no existen como tabla: lo que esta ficha sí puede afirmar es
-            lo comprado, sus comprobantes y qué quedó sin imputar. */}
+        {/* LA TIRA DE MÉTRICAS DEL CANÓNICO 23. «CONTRATADO» ya se puede afirmar: es la suma de los
+            paquetes de `subcontrato` de este proveedor. «Certificado» y «Cumplimiento» siguen sin
+            fuente —no hay certificación de paquete ni plazos pactados medidos—, así que su lugar lo
+            ocupan lo comprado y lo que quedó sin imputar, que sí salen de los comprobantes. */}
         <TiraMetricas
           testid="metricas-proveedor"
           metricas={[
@@ -165,6 +181,16 @@ export default async function ProveedorFichaPage({ params, searchParams }: { par
               detalle: porObra.length ? `en ${porObra.length} ${porObra.length === 1 ? 'obra' : 'obras'}` : undefined,
             },
             { rotulo: 'COMPROBANTES', valor: resumen.comprobantes || null, falta: 'ninguno' },
+            {
+              // SIN PAQUETES NO ES $ 0. `null` cuando no hay ninguno con precio: un cero diría que
+              // se le contrató trabajo por nada.
+              rotulo: 'CONTRATADO',
+              valor: contratado === null ? null : plataCorta(contratado),
+              falta: 'sin paquetes',
+              detalle: (paquetes.data?.length ?? 0) > 0
+                ? `${paquetes.data?.length} ${paquetes.data?.length === 1 ? 'paquete' : 'paquetes'}`
+                : undefined,
+            },
             {
               rotulo: 'ÚLTIMA COMPRA',
               valor: resumen.ultima ? fecha(resumen.ultima) : null,
@@ -184,6 +210,7 @@ export default async function ProveedorFichaPage({ params, searchParams }: { par
           <div className="flex min-w-0 flex-1 flex-col gap-8">
             {vista === 'resumen' ? (
               <>
+                <PaquetesContratados filas={paquetes.data ?? []} error={paquetes.error} />
                 <ComprasPorObra filas={porObra} />
                 <ConceptosProvistos filas={conceptos} total={conceptosTotal} />
               </>
@@ -201,14 +228,17 @@ export default async function ProveedorFichaPage({ params, searchParams }: { par
               campo que el sistema no puede guardar, y quien lo intentara no encontraría dónde. Es
               el mismo criterio con el que `PanelProveedor` nunca las dibujó. Lo que falta se dice
               una vez, abajo, con el motivo — no nueve veces sin él. */}
+          {/* `DatoFicha` escribe la ausencia sola cuando el valor es `null`: por eso acá se pasa
+              `null` y su rótulo, en vez de un `<Nulo>` armado a mano en cada renglón. */}
           <PropiedadesProveedor
-            filas={[
-              { k: 'CUIT', v: formatearCuit(proveedor.cuit) ?? <Nulo>sin CUIT</Nulo> },
-              { k: 'Razón social', v: proveedor.razon_social?.trim() || <Nulo>sin cargar</Nulo> },
+            datos={[
+              { k: 'CUIT', v: formatearCuit(proveedor.cuit), mono: true, falta: 'sin CUIT' },
+              { k: 'Razón social', v: proveedor.razon_social?.trim() || null },
               { k: 'Estado', v: proveedor.activo ? 'Activo' : 'Archivado' },
-              { k: 'Primera compra', v: resumen.primera ? fecha(resumen.primera) : <Nulo>sin registro</Nulo> },
-              { k: 'Comprobantes', v: resumen.comprobantes || <Nulo>ninguno</Nulo> },
-              { k: 'Notas', v: proveedor.notas?.trim() || <Nulo>sin notas</Nulo> },
+              { k: 'Primera compra', v: resumen.primera ? fecha(resumen.primera) : null, falta: 'sin registro' },
+              { k: 'Comprobantes', v: resumen.comprobantes || null, falta: 'ninguno' },
+              { k: 'Paquetes', v: paquetes.data?.length || null, falta: paquetes.error ? 'sin leer' : 'ninguno' },
+              { k: 'Notas', v: proveedor.notas?.trim() || null, falta: 'sin notas' },
             ]}
             nombres={(nombres.data ?? []).map((n) => ({
               nombre_norm: n.nombre_norm,
@@ -225,20 +255,22 @@ export default async function ProveedorFichaPage({ params, searchParams }: { par
             {/* DOCUMENTOS — el cuarto bloque de la anatomía del aside. Está vacío y se dice por qué:
                 un bloque ausente se lee como «este proveedor no tiene papeles», que es una
                 afirmación sobre el mundo que esta pantalla no puede hacer. */}
-            <section className="mt-6" data-testid="documentos-proveedor">
-              <Eyebrow className="mb-1.5">Documentos</Eyebrow>
-              <p className="text-[12px] leading-relaxed text-muted">
+            <TarjetaFicha titulo="Documentación" testid="documentos-proveedor">
+              <p className="px-3.5 py-3 text-[12px] leading-relaxed text-muted">
                 Ninguna tabla vincula un archivo con un proveedor: hoy los documentos cuelgan de una
-                persona o de un cliente. Esta ficha no puede decir si tiene los papeles al día.
+                persona o de un cliente. Esta ficha no puede decir si tiene los papeles al día, y por
+                eso tampoco dice que le falten.
               </p>
-            </section>
+            </TarjetaFicha>
           </PropiedadesProveedor>
         </div>
 
         <Ayuda titulo="Qué no puede contestar esta ficha" testid="limites-ficha">
-          Habilitación para entrar a obra, tipo de proveedor (material o subcontratista), paquetes
-          contratados y su certificación NO existen como dato: no hay tabla que los guarde, así que
-          el canónico los dibuja y esta ficha no los puede afirmar. Contacto, condición de IVA y
+          Habilitación para entrar a obra y la CERTIFICACIÓN de cada paquete no existen como dato:
+          no hay tabla que los guarde. Los paquetes contratados sí —`subcontrato`, desde el 21/08—
+          y por eso arriba están; su avance no, porque la tabla guarda estado y no porcentaje.
+          Tipo de proveedor: se puede afirmar «subcontratista» cuando tiene paquetes, nunca lo
+          contrario —no hay columna de rubro—. Contacto, condición de IVA y
           plazo de pago tampoco tienen columna en <code>proveedores</code>,
           así que no se dibujan: prometerían un campo donde no hay dónde guardarlo. Todo lo demás
           —lo comprado, a qué obras fue, qué provee y su actividad— se DERIVA de los comprobantes;

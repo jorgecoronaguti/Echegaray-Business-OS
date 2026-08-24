@@ -147,3 +147,98 @@ export async function getComprasDelProveedor(
   if (error) return { nombres: [], comprobantes: 0, comprado: null }
   return resumirCompras((data ?? []) as NombreResuelto[])
 }
+
+// ═══ LA CARTERA (canónico 22): LO COMPRADO Y EL TIPO, PARA TODAS LAS FILAS DE UNA VEZ ═══
+//
+// El canónico dibuja seis columnas: PROVEEDOR · RUBRO · TIPO · CUIT · COMPRADO 12 M · PAPELES.
+// Tres de ellas tienen fuente y tres no, y la diferencia se resuelve acá, no en el componente:
+//
+//   COMPRADO  sale de `proveedor_nombre_resuelto`, la misma vista que ya alimenta la ficha. Se lee
+//             una vez para toda la lista y se agrupa en memoria —son decenas de filas, no miles—;
+//             una consulta por proveedor sería N viajes para el mismo número.
+//             NO ES «12 M»: la vista publica comprobantes y total, no la fecha de cada uno. El
+//             rótulo dice COMPRADO a secas. Poner «12 M» sobre un total histórico sería declarar
+//             una ventana de tiempo que el dato no tiene — la regla 3 de las de oro.
+//   TIPO      «Subcontratista» es un HECHO derivable: tiene al menos un paquete en `subcontrato`.
+//             Material / Equipos / Servicio NO se derivan de nada: `proveedores` no tiene columna
+//             de tipo ni de rubro. Se dibuja el único que la base puede probar.
+//   RUBRO     sin fuente. PAPELES sin fuente: ninguna tabla vincula un archivo con un proveedor
+//             (mismo agujero que declara la ficha 23). No se dibujan columnas vacías.
+
+export interface CompradoProveedor {
+  comprobantes: number
+  /** En pesos, histórico. Nunca 0 por ausencia: un proveedor sin filas no está en el mapa. */
+  total: number
+}
+
+/** El agrupado, separado de la consulta para poder probarlo sin base. */
+export function agruparComprado(filas: NombreResuelto[]): Map<string, CompradoProveedor> {
+  const mapa = new Map<string, CompradoProveedor>()
+  for (const f of filas) {
+    // `no_es_proveedor` marca un texto que NO es nadie: sumarlo le regalaría compras a un
+    // proveedor que la resolución justamente descartó.
+    if (!f.proveedor_id || f.estado !== 'vinculado') continue
+    const previo = mapa.get(f.proveedor_id) ?? { comprobantes: 0, total: 0 }
+    mapa.set(f.proveedor_id, {
+      comprobantes: previo.comprobantes + Number(f.comprobantes ?? 0),
+      total: previo.total + Number(f.total ?? 0),
+    })
+  }
+  return mapa
+}
+
+export async function getCompradoDeLaCartera(
+  supabase: SupabaseClient,
+): Promise<ServiceResult<Map<string, CompradoProveedor>>> {
+  const { data, error } = await supabase
+    .from('proveedor_nombre_resuelto')
+    .select('nombre_norm, comprobantes, total, estado, proveedor_id, proveedor_nombre, via, alias_id')
+    .not('proveedor_id', 'is', null)
+  // UN ERROR DE LECTURA NO ES UN MAPA VACÍO. Vacío se dibuja como «a ninguno se le compró nada»;
+  // el error se dice y la columna queda sin afirmar nada.
+  if (error) return { data: null, error: error.message }
+  return { data: agruparComprado((data ?? []) as NombreResuelto[]), error: null }
+}
+
+/**
+ * Los proveedores con al menos un paquete de subcontrato.
+ *
+ * `subcontrato` está filtrada por obra (`subcontrato_por_obra`): un jefe de obra ve los paquetes de
+ * SUS obras. Por eso el conjunto es «los que puedo probar que son subcontratistas», no «todos los
+ * que lo son» — y por eso la ausencia del chip nunca se escribe como «no es subcontratista».
+ */
+export async function getSubcontratistas(supabase: SupabaseClient): Promise<ServiceResult<Set<string>>> {
+  const { data, error } = await supabase.from('subcontrato').select('proveedor_id').not('proveedor_id', 'is', null)
+  if (error) return { data: null, error: error.message }
+  const ids = new Set<string>()
+  for (const f of (data ?? []) as { proveedor_id: string | null }[]) if (f.proveedor_id) ids.add(f.proveedor_id)
+  return { data: ids, error: null }
+}
+
+export interface ResumenCartera {
+  proveedores: number
+  sinCuit: number
+  subcontratistas: number
+  /** `null` cuando ninguna fila visible tiene compras leídas: 0 diría que no se compró nada. */
+  comprado: number | null
+}
+
+/** El pie de la cartera: cuenta lo que la pantalla MUESTRA, con el mismo dato con que la dibuja. */
+export function resumirCartera(
+  proveedores: Proveedor[],
+  comprado: Map<string, CompradoProveedor> | null,
+  subcontratistas: Set<string> | null,
+): ResumenCartera {
+  let total = 0
+  let conDato = 0
+  for (const p of proveedores) {
+    const c = comprado?.get(p.id)
+    if (c) { total += c.total; conDato += 1 }
+  }
+  return {
+    proveedores: proveedores.length,
+    sinCuit: proveedores.filter((p) => !p.cuit).length,
+    subcontratistas: subcontratistas ? proveedores.filter((p) => subcontratistas.has(p.id)).length : 0,
+    comprado: conDato === 0 ? null : total,
+  }
+}

@@ -199,3 +199,51 @@ export function conceptosProvistos(filas: ComprobanteProveedor[], limite = 12): 
     .sort((a, b) => b.comprobantes - a.comprobantes || a.concepto.localeCompare(b.concepto, 'es'))
     .slice(0, limite)
 }
+
+// ═══ LOS PAQUETES CONTRATADOS (canónico 23) ═══
+//
+// La ARITMÉTICA vive acá y la lectura en `fichaProveedorService.ts`, como el resto de este par: un
+// archivo con `SupabaseClient` adentro no lo puede ejercitar `node --test`, y lo que hay que probar
+// —que un paquete sin precio no vale $ 0— es exactamente esto.
+
+export interface PaqueteDelProveedor {
+  id: string
+  obra: string
+  trabajo: string
+  estado: string
+  /** `null` cuando el paquete todavía no tiene precio: 0 diría que se contrató gratis. */
+  precio: number | null
+  documentacion_ok: boolean
+}
+
+export interface FilaSubcontrato {
+  id: string
+  nombre: string
+  estado: string
+  precio_contratado: number | string | null
+  documentacion_ok: boolean
+  obra_id: string
+  obra_canonica: { nombre: string } | { nombre: string }[] | null
+}
+
+/** El nombre de la obra, o su slug. Nunca vacío: una fila sin obra legible sigue siendo un paquete. */
+function nombreDeObra(fila: FilaSubcontrato): string {
+  const rel = Array.isArray(fila.obra_canonica) ? fila.obra_canonica[0] : fila.obra_canonica
+  return rel?.nombre?.trim() || fila.obra_id
+}
+
+export function armarPaquetes(filas: FilaSubcontrato[]): PaqueteDelProveedor[] {
+  return filas
+    .map((f) => ({
+      id: f.id,
+      obra: nombreDeObra(f),
+      trabajo: f.nombre,
+      estado: f.estado,
+      precio: f.precio_contratado === null || f.precio_contratado === undefined
+        ? null
+        : Number(f.precio_contratado),
+      documentacion_ok: f.documentacion_ok,
+    }))
+    .sort((a, b) => (b.precio ?? 0) - (a.precio ?? 0))
+}
+
