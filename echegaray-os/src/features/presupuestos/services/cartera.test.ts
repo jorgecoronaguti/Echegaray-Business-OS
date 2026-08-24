@@ -13,7 +13,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  filtrarCartera, kpisDeCartera, ordenarCartera, esFiltro, problemasDe, cuentasPorFiltro,
+  filtrarCartera, kpisDeCartera, ordenarCartera, esFiltro, problemasDe, cuentasPorFiltro, FILTROS,
 } from './cartera.ts'
 import type { EstadoPresupuesto, PresupuestoCascada } from '../types/index.ts'
 
@@ -118,6 +118,35 @@ test('un presupuesto SIN partidas no está «sin margen»: le falta empezar, no 
 test('un presupuesto CERRADO no aparece «con problema»: ya no se puede corregir', () => {
   assert.deepEqual(problemasDe(p('perdida', 1, null, { n_sin_analisis: 4 })), [])
   assert.deepEqual(problemasDe(p('anulada', 1, null, { n_sin_analisis: 4 })), [])
+})
+
+test('todo el que entra al chip «Con problema» tiene un motivo para mostrar', () => {
+  // EL DEFECTO QUE ATRAPA: el panel de la 14 escribía a mano dos deudas —«sin análisis» y «sin
+  // cómputo»— mientras el chip contaba CUATRO con `problemasDe`. Un presupuesto cuyo único
+  // problema era un subcontrato sin precio entraba al filtro y abría una ficha que no decía nada:
+  // el filtro mandaba a alguien a una pantalla que no explicaba por qué estaba ahí.
+  //
+  // Ahora el panel RENDERIZA `problemasDe`, así que el invariante es que las dos puntas no puedan
+  // separarse: cada fila que el chip cuenta tiene al menos una frase. Si alguien ensancha el
+  // filtro sin ensanchar los motivos, el panel dibuja una caja de alerta vacía y esto se pone rojo.
+  const casos = [
+    p('enviada', 1, 12, { n_sin_analisis: 3 }),
+    p('enviada', 1, 12, { n_sin_computo: 2 }),
+    p('enviada', 1, 12, { n_sin_precio_subcontrato: 1 }),
+    p('borrador', 1, null, { n_partidas: 8 }),
+  ]
+  for (const x of filtrarCartera(casos, 'con_problema', '')) {
+    assert.ok(problemasDe(x).length > 0, `${x.id} entra al chip sin motivo que mostrar en el panel`)
+  }
+})
+
+test('el rótulo del filtro se puede cambiar; su clave es la URL y no', () => {
+  // «Adjudicados» pasó a llamarse «Ganados» (canónico 14). La clave sigue siendo `adjudicados`
+  // porque es el estado del CHECK de `cotizaciones` y lo que quedó pegado en links compartidos.
+  // Renombrar la clave junto con el rótulo rompería esos links en silencio: `esFiltro` no
+  // reconocería el valor y caería en «Todos», mostrando de más sin avisar.
+  assert.deepEqual(FILTROS.map((f) => f.clave), ['todos', 'abiertos', 'adjudicados', 'cerrados', 'con_problema'])
+  assert.equal(esFiltro('adjudicados'), 'adjudicados')
 })
 
 test('el contador de cada chip respeta la búsqueda de la caja', () => {

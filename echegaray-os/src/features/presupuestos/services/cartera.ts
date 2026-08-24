@@ -34,7 +34,10 @@ export type FiltroCartera = 'todos' | 'abiertos' | 'adjudicados' | 'cerrados' | 
 export const FILTROS: { clave: FiltroCartera; label: string }[] = [
   { clave: 'todos', label: 'Todos' },
   { clave: 'abiertos', label: 'Abiertos' },
-  { clave: 'adjudicados', label: 'Adjudicados' },
+  // «Ganados» es la palabra del canónico 14 y la que se usa hablando. La CLAVE sigue siendo
+  // `adjudicados` —es el estado que tiene el CHECK de `cotizaciones`— así que los links guardados
+  // y `?filtro=adjudicados` siguen abriendo lo mismo: cambió el rótulo, no la vista.
+  { clave: 'adjudicados', label: 'Ganados' },
   { clave: 'cerrados', label: 'Cerrados' },
   { clave: 'con_problema', label: 'Con problema' },
 ]

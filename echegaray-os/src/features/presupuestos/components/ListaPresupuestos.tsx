@@ -158,7 +158,7 @@ export function ListaPresupuestos({
             <Th>Estado</Th>
             <Th num>Total</Th>
             <Th num>Margen</Th>
-            <Th num>Versión</Th>
+            <Th num>Rev.</Th>
             <Th num>
               <span className="sr-only">Partidas sin análisis</span>
               <span className="inline-flex justify-end" title="Partidas sin análisis de precio">
@@ -184,7 +184,7 @@ export function ListaPresupuestos({
                   <span className="ml-1.5 font-mono tabular-nums">{k.nAbiertos}</span>
                   <Rotulo className="ml-4">Ganados</Rotulo>
                   <span className="ml-1.5 font-mono tabular-nums">{k.nAdjudicados}</span>
-                  <Rotulo className="ml-4">Adjudicado</Rotulo>
+                  <Rotulo className="ml-4">Ganado</Rotulo>
                   <span className="ml-1.5 font-mono tabular-nums text-pos" data-testid="total-adjudicado">
                     {plata(k.adjudicado) ?? <Nulo>sin cargar</Nulo>}
                   </span>
