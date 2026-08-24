@@ -248,7 +248,7 @@ export default async function ObrasPage({
         // `minWidth` hace que el desplazamiento pase por DENTRO de la tabla: a 390px la página no se
         // corre de costado, se corre la tabla. Sin él desaparecían las columnas de la derecha —todo
         // lo que esta pantalla existe para mostrar— y sin manera de llegar a ellas.
-        <Tabla testid="portafolio-tabla" minWidth={1240}>
+        <Tabla testid="portafolio-tabla" minWidth={1160}>
           <THead>
             {/* CASI TODAS LAS COLUMNAS ORDENAN. `qBase` conserva `archivadas`, la etapa, el atraso y
                 la búsqueda: cambiar el orden no puede hacer desaparecer las obras que se acababan de
