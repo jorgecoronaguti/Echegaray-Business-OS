@@ -532,6 +532,7 @@ export const SECCION_OBRAS = 3
 /** El bloque del gasto por obra. Mismo motivo que `SECCION_OBRAS`: el número aparece en el título del
  *  bloque y en el rótulo de cada fila, y los dos tienen que moverse juntos. */
 export const SECCION_COSTO = 4
+export const SECCION_MATERIALES = 5
 
 /**
  * LA VENTANA DEL AÑO — porque el rótulo dice "⇒ TOTAL 2026" y hasta ahora era toda la pestaña.
@@ -1377,6 +1378,40 @@ export function grillaObras(ctx = {}) {
         `=${clientes3.map((c) => compradoDeCliente(refs.cmp, c)).join('+')}-D${fTot3}`, '',
         `${ALERTA} falta escribir la obra en Compras`],
       ['rotulo', null, null, 'monedaTotal', null, 'texto'])
+    }
+  }
+
+  // ═══ CUADRO 5 — MATERIALES PREVISTOS, ÍTEM POR ÍTEM (24/08/2026, pedido del dueño) ═══
+  //
+  // El detalle de la explosión de gastos que antes sólo viajaba agregado en el cuadro 4 y como
+  // proyección del calendario de caja. El 24/08 el dueño sacó esas proyecciones del calendario
+  // («nada de eso va a suceder mañana») y pidió VERLAS en una pestaña: este cuadro es el plan,
+  // ítem por ítem, con su fecha estimada — SIN tocar la caja. La compra real entra por Compras y
+  // el neteo del cuadro 4 la descuenta sola. Números tipeados con origen declarado: obras-datos
+  // (los PDF del dueño), la misma licencia que la Sección 2.
+  h.push([])
+  h.push([`${SECCION_MATERIALES} · MATERIALES PREVISTOS — el plan, ítem por ítem (fuera del calendario de caja desde el 24/08)`], ['rotulo'])
+  h.push(['Obra — concepto', 'Familia', 'Proveedor', 'Fecha estimada', 'Previsto', 'Nota'], ENCABEZADO)
+  {
+    const filasItem = []
+    for (const o of obras) {
+      for (const e of (o.egresos ?? [])) {
+        const cuotas = Array.isArray(e.cuotas) && e.cuotas.length
+          ? e.cuotas.map((c) => `${c.fecha.slice(8, 10)}/${c.fecha.slice(5, 7)}`).join(' · ')
+          : (e.fechaEstimada ? `${e.fechaEstimada.slice(8, 10)}/${e.fechaEstimada.slice(5, 7)}` : 'sin fecha')
+        const f = h.n + 1
+        filasItem.push(f)
+        h.push([`${o.obra ?? o.clave} — ${e.concepto}`, e.familia ?? '', e.proveedor ?? 'sin proveedor',
+          cuotas, e.monto, e.nota ?? ''],
+        ['rotulo', 'texto', 'texto', 'texto', 'moneda', 'texto'])
+        h.tipeadas.push({ fila: f, col: 4 })
+      }
+    }
+    if (filasItem.length) {
+      const fT = h.n + 1
+      h.push([`⇒ TOTAL — ${filasItem.length} ÍTEMS PREVISTOS`, '', '', '', suma('E', filasItem), ''],
+        ['rotulo', null, null, null, 'monedaTotal', 'texto'])
+      void fT
     }
   }
 

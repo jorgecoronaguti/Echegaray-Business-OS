@@ -18,7 +18,7 @@ import {
   grillaObras, serialISO, criterioCliente, variantesDe, anchoColumnaA, pxDeTexto, clientesDeCobranzas,
   celdasEnError, problemaDeSintaxis, ERRORES_SHEET, nombreEnCostos, ANO, trabajosFueraDeObra,
   ANCHO_OBRAS, ANCHOS_OBRAS, ANCHO_HISTORICO, ALTO_HISTORICO, conColaLimpiable, REFS_OBRAS, CLIENTES_MUESTRA,
-  rotuloDeObra, SIN_CONTRATO, SECCION_OBRAS, SECCION_COSTO,
+  rotuloDeObra, SIN_CONTRATO, SECCION_OBRAS, SECCION_COSTO, SECCION_MATERIALES,
 } from './obras-grilla.mjs'
 import { ESPECIES_DE_PLATA } from './obras-especies.mjs'
 import { OBRAS_FUTURAS, CLIENTES_CANONICOS, comprasObraDe, esProyectable, totalEgresos } from './obras-datos.mjs'
@@ -616,7 +616,9 @@ test('LA NUMERACIÓN DE BLOQUES ES CONSECUTIVA Y SIN HUECOS, y el rótulo de cad
   const titulos = g.filas.map((f) => String(f[0] ?? '')).filter((t) => /^\d+ · /.test(t))
     .concat(g.rotulos.filter((r) => /^\d+ · /.test(r.texto)).map((r) => r.texto))
   const numeros = [...new Set(titulos.map((t) => Number(t.split(' · ')[0])))].sort((a, b) => a - b)
-  assert.deepEqual(numeros, [1, 2, SECCION_OBRAS, SECCION_COSTO], 'los cuatro bloques, sin huecos')
+  // 24/08: entra el cuadro 5 —MATERIALES PREVISTOS, ítem por ítem— pedido del dueño al sacar
+  // estas proyecciones del calendario de caja. La regla sigue siendo la misma: consecutiva y sin huecos.
+  assert.deepEqual(numeros, [1, 2, SECCION_OBRAS, SECCION_COSTO, SECCION_MATERIALES], 'los cinco bloques, sin huecos')
   // Y cada obra lleva el número de SU cuadro, en los dos: 3.n arriba y 4.n abajo, en el mismo orden.
   for (const [i, b] of g.bloques.entries()) {
     assert.match(g.rotulos.find((r) => r.fila === b.fProt).texto, new RegExp(`^${SECCION_OBRAS}\\.${i + 1} · `))
@@ -781,9 +783,12 @@ test('los ÚNICOS números tipeados son los proyectados del dueño, y son los su
   const numeros = g.filas.flatMap((f, i) => f.map((v, c) => [`${COLS[c]}${i + 1}`, v]).filter(([, v]) => typeof v === 'number'))
   const montos = numeros.filter(([ref]) => ref.startsWith('C')).map(([, v]) => v)
   assert.deepEqual(montos, OBRAS_FUTURAS.map((o) => totalEgresos(o)), 'el costo proyectado, sin retocar')
-  // Lo único que puede ser un número tipeado fuera de la C es el CONTRATO de la G, y ése no lo elige
-  // el código: `obras-pestana.mjs` lo vuelve a leer de la ORDEN DE COMPRA de Cobranzas en cada corrida.
-  for (const [ref] of numeros) assert.ok(/^[CG]/.test(ref), `${ref}: un número tipeado fuera de C y G`)
+  // 24/08: el cuadro 5 publica el ítem por ítem en la E — los MISMOS montos del dueño, sin retocar.
+  const items = numeros.filter(([ref]) => ref.startsWith('E')).map(([, v]) => v)
+  assert.deepEqual(items, OBRAS_FUTURAS.flatMap((o) => (o.egresos ?? []).map((e) => e.monto)),
+    'cada ítem previsto, el número del dueño sin retocar')
+  // Fuera de C (costo por obra), E (ítems del cuadro 5) y G (contrato releído de Cobranzas), nada tipeado.
+  for (const [ref] of numeros) assert.ok(/^[CEG]/.test(ref), `${ref}: un número tipeado fuera de C, E y G`)
 })
 
 test('el total proyectado de caja es egresos + MO, y la máquina propia NO está adentro', () => {
