@@ -92,9 +92,9 @@ import {
   vincularDocumento,
 } from '@/features/obras/services/actionsDocumentos'
 import { BotonAccion, FormAccion } from '@/shared/components/ui'
-import { Aviso } from '@/shared/components/ds'
+
 import { crearLector } from '@/shared/components/estado/lecturas'
-import { EstadoError } from '@/shared/components/estado'
+import { AvisoDeLectura, EstadoError } from '@/shared/components/estado'
 // `anchoSplit` se importa por su RUTA y no por el barril del DS: usa `next/headers`, y ese barril lo
 // importan componentes de cliente. Ver el comentario en `ds/index.ts`.
 import { anchoSplit } from '@/shared/components/ds/split-servidor'
@@ -313,9 +313,7 @@ export default async function ObraPage({
           dibujado como un vacío, que es lo que `INTERACTION.md` prohíbe. */}
       {lector.falla() && (
         <div className="mb-4">
-          <Aviso tono="neg" titulo="Parte de esta ficha no se pudo leer" testid="obra-lectura-fallida">
-            Lo que falta abajo NO significa que no exista: significa que la consulta falló. {lector.falla()}
-          </Aviso>
+          <AvisoDeLectura mensaje={lector.falla() as string} que="parte de esta ficha" testid="obra-lectura-fallida" />
         </div>
       )}
 

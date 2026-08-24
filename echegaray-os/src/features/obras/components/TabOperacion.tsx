@@ -41,6 +41,7 @@
 import { useState, type ReactNode } from 'react'
 import { Aviso, Buscador, CAMPO, Estado, FilaTotal, Nulo, SubTabs, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
 import { IconoBloqueo, IconoCompra, IconoDinero, IconoHerramienta } from '@/shared/components/iconos'
+import { AvisoDeLectura } from '@/shared/components/estado'
 import { estadoInfo } from '@/features/integraciones/services/herramientasService'
 import { impedimentoDeClima } from '../../../../orquestador/lib/obra-operacion.mjs'
 import type {
@@ -384,7 +385,7 @@ export function TabOperacion({
           mensaje de la fuente, y sólo sobre los bloques que dependen de ella — Impedimentos sale de
           Postgres y no se entera de que el Sheet está caído. */}
       {errorFuente && sub !== 'impedimentos' && sub !== 'clima' && (
-        <Aviso tono="neg" titulo="No pude leer esta información de su fuente">{errorFuente}</Aviso>
+        <AvisoDeLectura mensaje={errorFuente} que="la operación de esta obra" testid="operacion-lectura-fallida" />
       )}
       {!errorFuente && sub === 'pedidos' && (
         <Pedidos pedidos={pedidos} actividades={actividades} asignar={asignarActividadAPedido} q={q} />

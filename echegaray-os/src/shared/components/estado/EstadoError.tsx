@@ -66,9 +66,14 @@ export function EstadoError({
 
   // El error ya ocurrió: dejarlo en la consola es lo único que permite reconstruirlo desde el
   // navegador de quien lo sufrió, porque el mensaje de un Server Component no viaja al cliente.
+  // EL TEXTO CRUDO VA A LA CONSOLA SIEMPRE —también cuando llega como `mensaje` desde una página de
+  // servidor—; en pantalla sólo se dibuja cuando el diagnóstico no lo supo explicar. Un «canceling
+  // statement due to statement timeout» al lado de «la consulta tardó más de lo que la base
+  // permite» no informa: asusta (auditoría 24/08/2026).
   useEffect(() => {
-    if (error) console.error('[pantalla caída]', pathname, error)
-  }, [error, pathname])
+    if (error || mensaje) console.error('[pantalla caída]', pathname, d.clave, error ?? mensaje)
+  }, [error, mensaje, pathname, d.clave])
+  const detalleEnPantalla = d.clave === 'desconocido' ? d.detalle : null
 
   const reintentar = () => (reset ? reset() : router.refresh())
 
@@ -84,12 +89,12 @@ export function EstadoError({
             {d.causa}
           </p>
 
-          {d.detalle && (
+          {detalleEnPantalla && (
             <p
               className="mt-3 overflow-x-auto rounded-card bg-surface-sunken px-3 py-2.5 font-mono text-[12px] leading-relaxed text-muted"
               data-testid="error-detalle"
             >
-              {d.detalle}
+              {detalleEnPantalla}
             </p>
           )}
           {d.queHacer && <p className="mt-3 text-[12.5px] leading-relaxed text-muted">{d.queHacer}</p>}
@@ -115,7 +120,7 @@ export function EstadoError({
 
           <p className="mt-4 text-[11.5px] text-faint" data-testid="ultimo-dato-bueno">
             Último dato bueno: {frescura.texto}
-            {d.digest && d.detalle && <> · código {d.digest}</>}
+            {d.digest && detalleEnPantalla && <> · código {d.digest}</>}
           </p>
         </div>
       </div>
