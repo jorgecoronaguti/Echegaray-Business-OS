@@ -145,6 +145,62 @@ export function deltaHasta(objetivo: number, actual: number | null): number | nu
 /** Los cinco valores del pie de J04. Son los del contrato visual, no una escala inventada. */
 export const VALORES_MASIVOS = [25, 50, 75, 90, 100] as const
 
+/**
+ * LOS CUATRO VALORES QUE OFRECE UNA FILA DE J04 — cambio de regla del 24/08/2026.
+ *
+ * ═══ QUÉ CAMBIÓ ═══
+ *
+ * Hasta hoy la pantalla tenía UN valor para toda la selección: se elegían diez tareas y las diez
+ * iban al mismo porcentaje. El mockup `J04 · Jefe Avance masivo.dc.html` pone los pasos DENTRO de
+ * cada tarjeta (`f.pasos`, cuatro botones por fila) y en el ejemplo guarda `a1` al 80 % y `a2` al
+ * 65 % en el mismo envío. Eso no es un detalle visual: es lo que hace que la pantalla sirva para
+ * cerrar un día real, donde cada frente llegó hasta donde llegó.
+ *
+ * ═══ POR QUÉ NO SE OFRECE UN VALOR MENOR AL ACTUAL ═══
+ *
+ * `obra_ejecucion` guarda INCREMENTOS y `avance_partes` los suma: no existe «bajar» una tarea desde
+ * acá. Ofrecer 25 en una que va en 40 produciría un rechazo («ya estaba en 40 % o más») por cada
+ * fila tocada. Se ofrecen sólo los que mueven algo, y si ninguno queda —la tarea va arriba de 90—
+ * queda el 100, que siempre es un destino válido mientras no esté terminada.
+ */
+export function opcionesMasivas(avanceActual: number | null): number[] {
+  const arriba = VALORES_MASIVOS.filter((v) => v > (avanceActual ?? 0))
+  const cuatro = arriba.slice(-4)
+  return cuatro.length > 0 ? [...cuatro] : [100]
+}
+
+/** Una fila elegida en J04: la tarea y el porcentaje al que la mandó el jefe. */
+export interface Elegida { actividad_id: string; objetivo: number }
+
+/**
+ * EL CAMPO `tareas` DEL FORMULARIO — `id:80,id:65`.
+ *
+ * ═══ POR QUÉ UN SOLO CAMPO Y NO UN INPUT POR FILA ═══
+ *
+ * La selección vive en el estado de React (se toca y se destoca sin recargar) y viaja en UN campo
+ * oculto. Con un input por fila habría que crearlos y destruirlos al ritmo del filtro, y una fila
+ * filtrada fuera de pantalla que se quedara montada mandaría al servidor una tarea que el jefe no
+ * está viendo — que es exactamente la escritura que nadie pidió.
+ *
+ * ACEPTA EL FORMATO VIEJO (`id,id`) devolviendo `objetivo` en `null`, para que un enlace o una
+ * prueba anterior no se rompa en silencio: quien lo reciba decide si cae al valor global.
+ */
+export function leerSeleccion(texto: string): { actividad_id: string; objetivo: number | null }[] {
+  const salida: { actividad_id: string; objetivo: number | null }[] = []
+  const vistos = new Set<string>()
+  for (const bruto of texto.split(',')) {
+    const parte = bruto.trim()
+    if (!parte) continue
+    const [id, valor] = parte.split(':')
+    const limpio = id.trim()
+    if (!limpio || vistos.has(limpio)) continue
+    vistos.add(limpio)
+    const n = valor == null ? NaN : Number(valor)
+    salida.push({ actividad_id: limpio, objetivo: Number.isFinite(n) ? n : null })
+  }
+  return salida
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 // LAS TRES VISTAS DE J04 — la lógica separada de su dibujo, porque `node --test` no entiende JSX.
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
