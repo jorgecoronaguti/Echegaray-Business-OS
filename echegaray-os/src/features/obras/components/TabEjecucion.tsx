@@ -1,35 +1,39 @@
 'use client'
 
-// EJECUCIÓN — LA PANTALLA DE CAMPO. Lo que pasó hoy en la obra, y cargarlo en segundos.
+// EJECUCIÓN — «¿QUÉ SE HIZO HOY?». La pantalla de campo, en el lenguaje del Design canónico (05).
 //
-// ═══ LA FORMA LA FIJA EL HANDOFF APROBADO (design/screens/obras.md §1c) ═══
+// ═══ EL FORMULARIO NO COMPITE CON EL INFORME ═══
 //
-//   Izquierda: el parte del día, SIEMPRE ABIERTO. Derecha: los KPIs de la jornada y la tabla de
-//   partes, con la de hoy resaltada.
+//   Izquierda: el parte del día, SIEMPRE ABIERTO y de una sola lectura —Fecha → Actividad →
+//   Cantidad/HH → quién y con qué → nota → Registrar—. Derecha: lo cargado en esa jornada y cómo
+//   viene cada frente. Nada más: el que carga un parte a las 18:30 no necesita un tablero al lado.
 //
-// El formulario estaba detrás de un botón «+ Registrar». Un parte diario que hay que abrir es un
-// parte diario que se carga dos semanas: la acción del día tiene que estar a la vista al entrar,
-// no a un clic. Por eso `abrir-registrar` ya no existe — no se escondió, se dejó de esconder.
+// ═══ LO SECUNDARIO ES UN ICONO, NO UN BLOQUE ═══
 //
-// ═══ UNA CARGA, MUCHOS EFECTOS ═══
+// Personas, equipos, evidencia e impedimento eran cuatro secciones permanentes, y el reparto de
+// horas dibujaba dieciocho casilleros que hay que pasar de largo todos los días para llegar al
+// botón. Ahora cada uno es un chip con su icono y su cuenta. Mismos campos, mismo envío —la
+// producción a `obra_ejecucion` y las horas a `registros_hh`—: lo que cambió es que el 90% de los
+// partes no los ve. El «qué mueve un parte» quedó en la ayuda plegada.
 //
-// El mismo envío escribe la producción en `obra_ejecucion` y las horas en `registros_hh`. Por eso
-// abajo del formulario se dice, en una línea, qué se va a mover: sin eso, cargar horas acá parece
-// una tercera forma de imputar HH en vez de la misma de siempre.
+// ═══ LO QUE NO SE PUEDE MOSTRAR, NO SE INVENTA ═══
 //
-// ═══ LAS DOS TABLAS SON DOS PREGUNTAS ═══
-//
-// «Partes registrados» contesta qué se cargó —es la del handoff, y es la que se audita—. «Cómo
-// viene cada frente» contesta cómo va cada actividad contra su objetivo, y NO se borró al rediseñar:
-// es el acumulado que el jefe de obra mira para decidir a dónde mandar la cuadrilla mañana.
+// El Design pone «HH» y «PERSONAS» de la jornada en la cabecera de «Cargado hoy». Esta solapa no lee
+// `registros_hh` —las horas del parte las escribe la carga de Personal— y sumarlas desde otra fuente
+// sería una segunda definición de las HH del día. Se muestran el día que la página las pase; hasta
+// entonces, la cabecera dice sólo lo que sabe. Ver `ejecucionService.kpisDelDia`.
 
 import { useMemo, useState } from 'react'
 import {
   BotonAccion, FormAccion, type AccionFormulario, type ResultadoAccion,
 } from '@/shared/components/ui'
 import {
-  Ayuda, CAMPO, Campo, Estado, Eyebrow, Nulo, Tabla, Td, Th, THead, Tr, Vacio,
+  Ayuda, BarraAvance, CAMPO, Campo, Estado, Filtros, Nulo, Plegable, Tabla, Td, Th, THead, Tr, Vacio,
 } from '@/shared/components/ds'
+import {
+  IconoComentario, IconoCompletar, IconoCrear, IconoCuadrilla, IconoFoto, IconoHerramienta,
+  IconoProblema,
+} from '@/shared/components/iconos'
 import type { Actividad, ParteEjecucion, Persona } from '../types'
 import { deHoy, kpisDelDia } from '../services/ejecucionService'
 import { FilasDeEquipo } from './FilasDeEquipo'
@@ -39,39 +43,85 @@ import { fecha as fmtFecha } from './formato'
 const num = (n: number | null | undefined, dec = 1) =>
   n == null ? '—' : n.toLocaleString('es-AR', { maximumFractionDigits: dec })
 
-/** El avance en una barra de 3px. No es un gráfico: es la misma cifra, legible de un vistazo. */
+/** El avance con la barra del sistema. Sin fracción no se dibuja la pista: el hueco ES el dato. */
 function Barra({ pct }: { pct: number | null }) {
-  if (pct == null) return <Nulo>sin cargar</Nulo>
+  if (pct == null) return <Nulo>sin medición</Nulo>
   return (
     <span className="flex items-center gap-2">
-      <span className="h-[3px] w-16 shrink-0 overflow-hidden rounded-full bg-surface-sunken">
-        <span className="block h-full bg-accent" style={{ width: `${Math.min(100, pct)}%` }} />
-      </span>
+      <span className="w-16 shrink-0"><BarraAvance pct={pct} /></span>
       <span className="font-mono text-[12px] tabular-nums text-muted">{num(pct)}%</span>
     </span>
   )
 }
 
-/** Una cifra de la jornada. `neg` sólo para el frente que hoy no reportó: eso sí es un problema. */
-function Kpi({ k, v, sub, neg }: { k: string; v: string; sub: string; neg?: boolean }) {
+/**
+ * UN CHIP QUE ABRE LO SUYO. Es `<details>` y no un botón con estado: el contenido son CAMPOS del
+ * formulario, y un campo que sólo existe cuando React decide dibujarlo no viaja en el envío si
+ * alguien lo cerró antes de guardar. Con `<details>` el campo está siempre en el DOM.
+ * Abierto ocupa su propia línea (`open:w-full`) para que el panel no deforme la fila de chips.
+ */
+function Chip({ icono, rotulo, texto, tono = 'neutral', testid, children }: {
+  icono: React.ReactNode
+  /** El nombre accesible, SIEMPRE. Un chip de sólo icono sin `title` es un botón sin nombre. */
+  rotulo: string
+  /** Sin texto, el chip es sólo icono: toolbar, no botonera. */
+  texto?: string
+  tono?: 'neutral' | 'falta'
+  testid: string
+  children: React.ReactNode
+}) {
   return (
-    <div className="min-w-0" data-kpi={k}>
-      <div className="text-[10px] font-medium uppercase tracking-[0.06em] text-faint">{k}</div>
-      <div className="mt-1 flex items-baseline gap-1.5">
-        <span className={`font-mono text-[16px] font-semibold tabular-nums ${neg ? 'text-neg' : 'text-ink'}`}>{v}</span>
-        <span className="truncate text-[11.5px] text-muted">{sub}</span>
-      </div>
-    </div>
+    <details data-testid={testid} className="min-w-0 open:order-last open:w-full">
+      <summary
+        title={rotulo} aria-label={rotulo}
+        className={`inline-flex cursor-pointer list-none items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] [&::-webkit-details-marker]:hidden ${
+          tono === 'falta' ? 'border-warn/40 bg-warn-soft text-warn' : 'border-line text-ink-soft hover:border-line-strong hover:text-ink'
+        }`}
+      >
+        <span className="[&>svg]:h-[15px] [&>svg]:w-[15px]">{icono}</span>
+        {texto}
+      </summary>
+      <div className="mt-2.5">{children}</div>
+    </details>
   )
 }
 
-/** Un bloque plegado del parte: lo secundario está a un clic, no a una pantalla de distancia. */
-function Extra({ titulo, testid, children }: { titulo: string; testid: string; children: React.ReactNode }) {
+/**
+ * UN PARTE, EN UNA FILA — la misma en la jornada y en el historial: si la fila de auditoría se
+ * dibujara distinta, el mismo hecho tendría dos formas. La nota va como icono con el texto en el
+ * `title`; una columna de comentarios es media pantalla para lo que casi siempre está vacío.
+ *
+ * El borrado va en la fila y NO en el `···`: ese menú dibuja sus ítems dentro de un `<button>` y
+ * `BotonAccion` es un `<form>` —anidarlos es marcado inválido, y un `onClick` perdería el error del
+ * servidor, que es la única prueba de que la fila se borró—. Visible en hover o al tabular: borrar
+ * no puede ser lo más llamativo de una lista que se abre para LEER.
+ */
+function FilaParte({ parte: p, actividad: a, conFecha = false, borrar }: {
+  parte: ParteEjecucion
+  actividad: Actividad | undefined
+  conFecha?: boolean
+  borrar: (parteId: string) => Promise<ResultadoAccion>
+}) {
   return (
-    <details className="border-t border-[#EFEEEA] pt-2.5" data-testid={testid}>
-      <summary className="cursor-pointer text-[12.5px] text-muted hover:text-ink">{titulo}</summary>
-      <div className="mt-2.5">{children}</div>
-    </details>
+    <li className="group flex items-center gap-2.5 border-b border-[#F5F4F0] px-4 py-2 last:border-0">
+      {conFecha
+        ? <span className="w-[52px] shrink-0 font-mono text-[11px] tabular-nums text-faint">{fmtFecha(p.fecha)}</span>
+        : <IconoCompletar className="h-[14px] w-[14px] shrink-0 text-pos" />}
+      <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink">
+        {a?.nombre ?? <Nulo>actividad archivada</Nulo>}
+      </span>
+      {p.comentario && (
+        <span title={p.comentario} className="shrink-0 text-faint"><IconoComentario className="h-[13px] w-[13px]" /></span>
+      )}
+      <span className="shrink-0 font-mono text-[12.5px] tabular-nums text-ink">
+        {p.cantidad != null
+          ? `+${num(p.cantidad, 2)} ${a?.unidad ?? ''}`
+          : p.avance_pct != null ? `+${num(p.avance_pct)}%` : <Nulo>sin medición</Nulo>}
+      </span>
+      <span className="shrink-0 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+        <BotonAccion accion={borrar} args={[p.id]} testid="borrar-parte" tono="peligro">Borrar</BotonAccion>
+      </span>
+    </li>
   )
 }
 
@@ -95,10 +145,12 @@ export function TabEjecucion({
   const [dia, setDia] = useState(hoy)
   const [cuadrilla, setCuadrilla] = useState('')
   const [elegida, setElegida] = useState('')
-  // LAS HH DEL DÍA SE SUMAN DE LOS CASILLEROS, no de un campo aparte. El handoff dibuja «HH del
-  // día» como un número suelto; acá una hora pertenece SIEMPRE a una persona, porque de esa fila
-  // sale la liquidación. El número del handoff existe igual: es esta suma, en vivo.
-  const [hhDelParte, setHhDelParte] = useState(0)
+  const [hayMedida, setHayMedida] = useState(false)
+  const [soloCurso, setSoloCurso] = useState(true)
+  // LAS HH DEL DÍA SE SUMAN DE LOS CASILLEROS, no de un campo aparte: una hora pertenece SIEMPRE a
+  // una persona, porque de esa fila sale la liquidación. El chip dice cuántas personas ya tienen
+  // horas puestas — que es lo que el Design muestra sin abrir la lista.
+  const [reparto, setReparto] = useState({ hh: 0, gente: 0 })
 
   // Sólo las que se ejecutan: un rubro de resumen no se produce, se completa solo con sus hijas.
   const ejecutables = useMemo(
@@ -107,10 +159,11 @@ export function TabEjecucion({
   const movidoHoy = useMemo(() => deHoy(partes, dia), [partes, dia])
   const porActividad = useMemo(() => new Map(ejecutables.map((a) => [a.id, a])), [ejecutables])
   const kpis = useMemo(() => kpisDelDia(partes, actividades, dia), [partes, actividades, dia])
+  const delDia = useMemo(() => partes.filter((p) => p.fecha === dia), [partes, dia])
 
   // Elegir una cuadrilla recorta los casilleros a los suyos. Sin cuadrilla, el plantel entero: no
   // toda obra las tiene armadas, y exigirlas para poder cargar horas sería fricción por nada.
-  const delReparto = useMemo(() => {
+  const delPlantel = useMemo(() => {
     const suyos = cuadrilla ? new Set(integrantes[cuadrilla] ?? []) : null
     return suyos ? personas.filter((p) => suyos.has(p.id)) : personas
   }, [personas, cuadrilla, integrantes])
@@ -122,41 +175,65 @@ export function TabEjecucion({
     return vivo(a) - vivo(b) || a.orden - b.orden
   }), [ejecutables])
 
+  // EN CURSO ES UN HECHO, NO UN RÓTULO: la actividad declarada en curso, o la que tiene avance
+  // empezado y sin terminar. Con sólo el rótulo, un frente que avanza y nadie declaró desaparece
+  // de la lista donde se lo carga.
+  const enCurso = (a: Actividad) =>
+    a.estado_operativo === 'en_curso' || (a.avance_pct != null && a.avance_pct > 0 && a.avance_pct < 100)
+  const frentes = soloCurso ? orden.filter(enCurso) : orden
+
   const sel = elegida ? porActividad.get(elegida) ?? null : null
-  const porDeclaracion = sel != null && sel.metodo_avance === 'manual'
+  // EL % DEL DÍA ES EL CAMPO DE `manual` **Y** DE `partes`: la vista de control suma
+  // `obra_ejecucion.avance_pct` para los dos. El campo estaba deshabilitado para `partes` con el
+  // rótulo «sin medición», y como la acción exige cantidad o avance, una actividad medida por sus
+  // partes no podía recibir un parte por ninguna puerta: el formulario rebotaba siempre.
+  const porDeclaracion = sel != null && (sel.metodo_avance === 'manual' || sel.metodo_avance === 'partes')
+  // LO QUE FALTA SE NOMBRA, y es lo que el SERVIDOR exige: sin cantidad ni avance devuelve «Poné la
+  // cantidad ejecutada o el avance del día». Las HH solas no alcanzan, y prometer que sí sería
+  // mandar a la persona a un error que la pantalla ya conocía.
+  const falta = sel == null
+    ? 'Elegí la actividad'
+    : !hayMedida
+      ? (porDeclaracion ? 'Cargá el avance del día' : 'Cargá la cantidad')
+      : null
 
   function sumarHoras(e: React.FormEvent<HTMLDivElement>) {
     const casilleros = e.currentTarget.querySelectorAll<HTMLInputElement>('input[name^="horas_"]')
-    let t = 0
-    for (const c of casilleros) t += Number(c.value) || 0
-    setHhDelParte(t)
+    let hh = 0
+    let gente = 0
+    for (const c of casilleros) {
+      const v = Number(c.value) || 0
+      hh += v
+      if (v > 0) gente += 1
+    }
+    setReparto({ hh, gente })
   }
 
   return (
-    <div className="flex flex-col gap-7 lg:flex-row lg:gap-6">
+    <div className="flex flex-col gap-6 lg:flex-row">
       {/* ═══ EL PARTE DEL DÍA ═══ */}
       <section
         data-testid="panel-registrar"
-        className="min-w-0 lg:w-[452px] lg:shrink-0 lg:border-r lg:border-[#EFEEEA] lg:pr-6"
+        className="min-w-0 rounded-card border border-line bg-surface p-4 lg:w-[420px] lg:shrink-0"
       >
-        <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-          <h2 className="text-[14px] font-semibold text-ink">Parte del día</h2>
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+          <h2 className="text-[14px] font-semibold text-ink">¿Qué se hizo hoy?</h2>
           <input
             type="date" value={dia} onChange={(e) => setDia(e.target.value)}
             aria-label="Jornada del parte" data-testid="dia-ejecucion"
-            className="w-[132px] rounded-control border border-line-strong bg-surface px-2 py-[3px] font-mono text-[12px] tabular-nums text-muted"
+            className="ml-auto w-[128px] rounded-control border border-line bg-surface px-2 py-[3px] font-mono text-[12px] tabular-nums text-muted"
           />
-          <span className="ml-auto text-[11.5px] text-faint">se carga por actividad</span>
         </div>
 
         <FormAccion
           accion={registrar} testid="form-ejecucion" enviar="Registrar parte"
-          mensajeOk="Parte registrado." className="mt-4"
+          mensajeOk="Parte registrado." className="mt-3.5"
+          bloqueado={falta !== null} motivoBloqueo={falta}
         >
           <input type="hidden" name="fecha" value={dia} />
-          <div className="flex flex-col gap-3.5">
-            <Campo rotulo="Actividad" ayuda={sel
-              ? `${sel.rubro ? `Rubro ${sel.rubro} · ` : ''}objetivo ${num(sel.cantidad_objetivo, 2)} ${sel.unidad ?? ''} · ejecutado ${num(sel.cantidad_ejecutada ?? 0, 2)} ${sel.unidad ?? ''}`
+          <div className="flex flex-col gap-3">
+            <Campo rotulo="Actividad" ayuda={sel && sel.metodo_avance === 'cantidad'
+              ? `${num(sel.cantidad_ejecutada ?? 0, 2)} de ${num(sel.cantidad_objetivo, 2)} ${sel.unidad ?? ''}`
               : undefined}>
               <select
                 name="actividad_id" className={CAMPO} value={elegida} data-testid="parte-actividad" required
@@ -172,18 +249,17 @@ export function TabEjecucion({
               </select>
             </Campo>
 
-            {/* CANTIDAD Y AVANCE SON EXCLUYENTES, y el que no aplica va DESHABILITADO: un campo
-                deshabilitado no viaja en el formulario, así que no se puede colar un 0 en una
-                actividad que no se mide por cantidad. La actividad que avanza por partes no acepta
-                ninguno de los dos —su avance es la cuenta de partes— y lo dice con esas palabras. */}
-            <div className="flex gap-3">
+            {/* CANTIDAD Y AVANCE SON EXCLUYENTES: se dibuja UNO, el que mueve el número de esta
+                actividad. El otro nombre no existe en el DOM, así que no se puede colar un 0 en una
+                actividad que no se mide así. */}
+            <div className="flex gap-2.5">
               <Campo rotulo={porDeclaracion ? 'Avance del día' : 'Cantidad ejecutada'} className="flex-1">
                 <span className="relative block">
                   <input
                     name={porDeclaracion ? 'avance_pct' : 'cantidad'}
                     type="number" step="any" min="0" max={porDeclaracion ? 100 : undefined}
-                    disabled={sel != null && sel.metodo_avance === 'partes'}
-                    placeholder={sel != null && sel.metodo_avance === 'partes' ? 'sin medición' : ''}
+                    placeholder="0,00"
+                    onChange={(e) => setHayMedida(e.target.value !== '')}
                     className={`${CAMPO} pr-11 font-mono tabular-nums`}
                     data-testid={porDeclaracion ? 'parte-avance' : 'parte-cantidad'}
                   />
@@ -194,104 +270,112 @@ export function TabEjecucion({
                   </span>
                 </span>
               </Campo>
-              <Campo rotulo="HH del día" className="w-[132px] shrink-0"
-                ayuda={hhDelParte > 0 ? undefined : 'se cargan abajo'}>
+              <Campo rotulo="HH" className="w-[96px] shrink-0">
                 <span className={`${CAMPO} flex items-center justify-between font-mono tabular-nums`}>
-                  <span data-testid="parte-hh-total" className={hhDelParte > 0 ? 'text-ink' : 'text-faint'}>
-                    {num(hhDelParte, 2)}
+                  <span data-testid="parte-hh-total" className={reparto.hh > 0 ? 'text-ink' : 'text-faint'}>
+                    {num(reparto.hh, 2)}
                   </span>
-                  <span className="text-[11.5px] text-faint">HH</span>
                 </span>
               </Campo>
             </div>
+            {/* EL AVISO DEL NO-OP SILENCIOSO: en una actividad medida por pasos, la cantidad de este
+                parte se guarda y su porcentaje NO se mueve —lo produce el tildado de los pasos—.
+                Éxito informado con el dato quieto es el peor modo de falla, y acá se dice antes. */}
+            {sel?.metodo_avance === 'pasos' && (
+              <p className="-mt-1 flex items-center gap-1.5 text-[11.5px] text-warn" data-testid="aviso-pasos">
+                <IconoProblema className="h-[13px] w-[13px] shrink-0" />
+                Se mide por pasos: su avance sale de tildarlos, no de este parte
+              </p>
+            )}
 
-            {/* ═══ LAS HORAS SON LAS MISMAS DE PERSONAL ═══
-                No es una tercera forma de imputar HH: el reparto viaja con el mismo contrato
-                (`horas_<uuid>`) que la carga masiva de la pestaña Personal, y lo escribe la misma
-                acción. La misma hora se carga UNA vez. */}
-            <div data-testid="parte-personal" onInput={sumarHoras}>
-              <Campo rotulo="Cuadrilla" ayuda="Poné las horas de quien trabajó. En blanco no se imputa.">
-                <select
-                  className={CAMPO} value={cuadrilla} data-testid="parte-cuadrilla"
-                  onChange={(e) => setCuadrilla(e.target.value)}
-                >
-                  <option value="">Todo el plantel · {personas.length} personas</option>
-                  {cuadrillas.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                </select>
-              </Campo>
-              <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
-                {delReparto.map((p) => (
-                  <label key={p.id} className="flex items-center justify-between gap-2 rounded-control border border-line px-2.5 py-1 text-[12px]">
-                    <span className="min-w-0 truncate text-ink-soft">{p.nombre_completo}</span>
-                    <input
-                      name={`horas_${p.id}`} type="number" step="0.5" min="0" max="24" placeholder="HH"
-                      className="w-[58px] shrink-0 bg-transparent text-right font-mono text-[12px] tabular-nums text-ink outline-none placeholder:text-faint"
-                      data-testid={`horas-${p.id}`}
-                    />
-                  </label>
-                ))}
-              </div>
+            {/* ═══ LO SECUNDARIO, A UN TOQUE ═══ */}
+            <div className="flex flex-wrap items-start gap-2">
+              {/* LAS HORAS SON LAS MISMAS DE PERSONAL: el reparto viaja con el mismo contrato
+                  (`horas_<uuid>`) que la carga masiva de la pestaña Personal, y lo escribe la misma
+                  acción. La misma hora se carga UNA vez. */}
+              <Chip
+                icono={<IconoCuadrilla />} testid="parte-personal" rotulo="Quién trabajó y cuántas horas"
+                texto={reparto.gente > 0 ? `${reparto.gente} personas` : 'quién trabajó'}
+                tono={reparto.gente > 0 ? 'neutral' : 'falta'}
+              >
+                <div onInput={sumarHoras}>
+                  <select
+                    className={CAMPO} value={cuadrilla} data-testid="parte-cuadrilla"
+                    aria-label="Cuadrilla" onChange={(e) => setCuadrilla(e.target.value)}
+                  >
+                    <option value="">Todo el plantel · {personas.length} personas</option>
+                    {cuadrillas.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                  </select>
+                  <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                    {delPlantel.map((p) => (
+                      <label key={p.id} className="flex items-center justify-between gap-2 rounded-control border border-line px-2.5 py-1 text-[12px]">
+                        <span className="min-w-0 truncate text-ink-soft">{p.nombre_completo}</span>
+                        <input
+                          name={`horas_${p.id}`} type="number" step="0.5" min="0" max="24" placeholder="HH"
+                          className="w-[58px] shrink-0 bg-transparent text-right font-mono text-[12px] tabular-nums text-ink outline-none placeholder:text-faint"
+                          data-testid={`horas-${p.id}`}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </Chip>
+
+              {/* EL EQUIPO NO ES UNA PERSONA: las horas de una persona van a `registros_hh` —de
+                  donde sale la liquidación— y las de una máquina a `obra_ejecucion_equipo`. Si
+                  compartieran tabla, el costo de mano de obra incluiría a la hormigonera. */}
+              <Chip icono={<IconoHerramienta />} rotulo="Equipos utilizados" texto="equipos" testid="parte-equipos">
+                <FilasDeEquipo catalogo={equipos} />
+              </Chip>
+
+              {/* LA EVIDENCIA NO SE COPIA: se guarda el vínculo de Drive, y queda colgada de la
+                  actividad — no suelta en la obra. */}
+              <Chip icono={<IconoFoto />} rotulo="Adjuntar foto o remito" testid="parte-evidencia">
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Campo rotulo="Enlace de Drive" className="sm:col-span-2">
+                    <input name="evidencia" className={CAMPO} placeholder="https://drive.google.com/file/d/…" data-testid="parte-evidencia-enlace" />
+                  </Campo>
+                  <Campo rotulo="Nombre" ayuda="Sólo si el archivo no está en el índice de Drive.">
+                    <input name="evidencia_nombre" maxLength={300} className={CAMPO} />
+                  </Campo>
+                </div>
+              </Chip>
+
+              {/* EL IMPEDIMENTO SE ANOTA CUANDO PASA. El que hay que ir a cargar a otra pantalla se
+                  anota mañana o nunca. Sale por la MISMA acción que lo anota en Operación, atado a
+                  la actividad de este parte. */}
+              <Chip icono={<IconoProblema />} rotulo="Anotar un impedimento" testid="parte-impedimento">
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Campo rotulo="Qué frenó el trabajo" className="sm:col-span-2">
+                    <input name="impedimento" maxLength={300} className={CAMPO} data-testid="parte-impedimento-desc" />
+                  </Campo>
+                  <Campo rotulo="Tipo">
+                    <select name="impedimento_tipo" defaultValue="material" className={CAMPO}>
+                      {TIPO_RESTRICCION.map((t) => <option key={t} value={t}>{TIPO_RESTRICCION_LABEL[t]}</option>)}
+                    </select>
+                  </Campo>
+                  <Campo rotulo="Quién lo resuelve">
+                    <input name="impedimento_responsable" maxLength={120} className={CAMPO} />
+                  </Campo>
+                  <Campo rotulo="Para cuándo" className="sm:col-span-2"
+                    ayuda="Sin responsable y sin fecha no es gestión: es una queja anotada, y por eso no se guarda.">
+                    <input type="date" name="impedimento_compromiso" className={CAMPO} />
+                  </Campo>
+                </div>
+              </Chip>
             </div>
 
-            {/* ═══ EL EQUIPO NO ES UNA PERSONA ═══
-                Las horas de una persona van a `registros_hh` —de donde sale la liquidación— y las de
-                una máquina a `obra_ejecucion_equipo`. Si compartieran tabla, el costo de mano de
-                obra incluiría a la hormigonera. */}
-            <Extra titulo="Equipos utilizados" testid="parte-equipos">
-              <FilasDeEquipo catalogo={equipos} />
-            </Extra>
-
-            <Campo rotulo="Comentario">
-              {/* El comentario NO usa `CAMPO`: esa clase fija el alto del control (34px, 48 en el
-                  teléfono) y un área de texto tiene que poder crecer. Mismo borde, mismo radio,
-                  mismo tamaño de letra. */}
+            {/* El comentario NO usa `CAMPO`: esa clase fija el alto del control y un área de texto
+                tiene que poder crecer. Mismo borde, mismo radio, mismo tamaño de letra. */}
+            <div className="flex items-start gap-2 rounded-control border border-line-strong bg-surface px-2.5 py-2">
+              <IconoComentario className="mt-[3px] h-[14px] w-[14px] shrink-0 text-faint" />
               <textarea
                 name="comentario" maxLength={500} rows={2} data-testid="parte-comentario"
-                className="w-full rounded-control border border-line-strong bg-surface px-2.5 py-2 text-[13px] leading-relaxed text-ink placeholder:text-faint"
-                placeholder="Muro norte 2ª hilada. Falta bloque 18×18 para el muro sur."
+                aria-label="Nota del día" placeholder="Nota del día"
+                className="w-full bg-transparent text-[13px] leading-relaxed text-ink outline-none placeholder:text-faint"
               />
-            </Campo>
+            </div>
 
-            {/* ═══ EL IMPEDIMENTO SE ANOTA CUANDO PASA ═══
-                El que hay que ir a cargar a otra pantalla se anota mañana o nunca. Sale por la MISMA
-                acción que lo anota en Operación, atado a la actividad de este parte. */}
-            <Extra titulo="Anotar impedimento" testid="parte-impedimento">
-              <div className="grid gap-2.5 sm:grid-cols-2">
-                <Campo rotulo="Qué frenó el trabajo" className="sm:col-span-2">
-                  <input name="impedimento" maxLength={300} className={CAMPO} data-testid="parte-impedimento-desc" />
-                </Campo>
-                <Campo rotulo="Tipo">
-                  <select name="impedimento_tipo" defaultValue="material" className={CAMPO}>
-                    {TIPO_RESTRICCION.map((t) => <option key={t} value={t}>{TIPO_RESTRICCION_LABEL[t]}</option>)}
-                  </select>
-                </Campo>
-                <Campo rotulo="Quién lo resuelve">
-                  <input name="impedimento_responsable" maxLength={120} className={CAMPO} />
-                </Campo>
-                <Campo rotulo="Para cuándo" className="sm:col-span-2"
-                  ayuda="Sin responsable y sin fecha no es gestión: es una queja anotada, y por eso no se guarda.">
-                  <input type="date" name="impedimento_compromiso" className={CAMPO} />
-                </Campo>
-              </div>
-            </Extra>
-
-            {/* LA EVIDENCIA NO SE COPIA: se guarda el vínculo de Drive, y queda colgada de la
-                actividad — no suelta en la obra. */}
-            <Extra titulo="Evidencia (foto, remito, plano)" testid="parte-evidencia">
-              <div className="grid gap-2.5 sm:grid-cols-2">
-                <Campo rotulo="Enlace de Drive" className="sm:col-span-2">
-                  <input name="evidencia" className={CAMPO} placeholder="https://drive.google.com/file/d/…" data-testid="parte-evidencia-enlace" />
-                </Campo>
-                <Campo rotulo="Nombre" ayuda="Sólo si el archivo no está en el índice de Drive.">
-                  <input name="evidencia_nombre" maxLength={300} className={CAMPO} />
-                </Campo>
-              </div>
-            </Extra>
-
-            {/* 22/08/2026 · Las cuatro líneas de «qué mueve un parte» dejaron de estar clavadas al
-                pie del formulario: el que carga partes todos los días ya lo sabe, y el que entra la
-                primera vez la encuentra a un clic. El aviso que sí hay que leer —el resultado del
-                envío— deja de competir con un párrafo que no cambia nunca. */}
             <Ayuda titulo="Qué mueve un parte" testid="ayuda-parte-diario">
               Un mismo parte escribe la producción de la actividad y las horas: van a Personal, a la
               obra y a cada persona. Se carga una sola vez —no hay que repetir las horas en
@@ -301,96 +385,61 @@ export function TabEjecucion({
         </FormAccion>
       </section>
 
-      {/* ═══ LA JORNADA, Y LO QUE LA RESPALDA ═══ */}
-      <div className="flex min-w-0 flex-1 flex-col gap-7">
-        <div className="flex flex-wrap gap-x-9 gap-y-4" data-testid="kpis-jornada">
-          <Kpi k="Partes de la jornada" v={String(kpis.partes)} sub={fmtFecha(dia)} />
-          <Kpi k="Actividades tocadas" v={String(kpis.tocadas)} sub={`de ${kpis.enCurso} en curso`} />
-          <Kpi
-            k="Sin parte" v={String(kpis.sinParte)} neg={kpis.sinParte > 0}
-            sub={kpis.enCurso === 0 ? 'ningún frente declarado en curso' : 'frentes en curso sin reportar'}
-          />
-        </div>
-
-        <section>
-          <Eyebrow className="mb-2.5">Partes registrados</Eyebrow>
-          {partes.length === 0 ? (
-            <Vacio>Todavía no se cargó ningún parte. El primero se registra en el formulario de la izquierda.</Vacio>
+      {/* ═══ LA JORNADA, Y CÓMO VIENE CADA FRENTE ═══ */}
+      <div className="flex min-w-0 flex-1 flex-col gap-4">
+        <section className="rounded-card border border-line bg-surface" data-testid="cargado-hoy">
+          <div className="flex items-center gap-2.5 border-b border-[#EFEEEA] px-4 py-2.5">
+            <h2 className="text-[13px] font-semibold text-ink">
+              {dia === hoy ? 'Cargado hoy' : `Cargado el ${fmtFecha(dia)}`}
+            </h2>
+            <span className="font-mono text-[11.5px] tabular-nums text-muted">
+              {delDia.length} {delDia.length === 1 ? 'parte' : 'partes'}
+            </span>
+          </div>
+          {delDia.length === 0 ? (
+            <p className="px-4 py-5 text-[12.5px] text-faint">Todavía no se cargó nada de esta jornada.</p>
           ) : (
-            <>
-              <Tabla testid="tabla-partes" minWidth={720}>
-                <THead>
-                  <Th>Fecha</Th><Th>Actividad</Th><Th num>Cantidad</Th>
-                  <Th>Comentario</Th><Th>Origen</Th><Th num />
-                </THead>
-                <tbody>
-                  {partes.slice(0, 60).map((p) => {
-                    const a = porActividad.get(p.actividad_id)
-                    return (
-                      // La fila de la jornada que se está cargando se marca con la regla de marca,
-                      // que es como el sistema dice «esto es lo que estás mirando».
-                      <Tr key={p.id} compacta seleccionada={p.fecha === dia} className="group">
-                        <Td num className="whitespace-nowrap text-muted">{fmtFecha(p.fecha)}</Td>
-                        <Td fuerte>{a?.nombre ?? <Nulo>actividad archivada</Nulo>}</Td>
-                        <Td num>
-                          {p.cantidad != null
-                            ? `+${num(p.cantidad, 2)} ${a?.unidad ?? ''}`
-                            : p.avance_pct != null ? `+${num(p.avance_pct)}%` : <Nulo>sin medición</Nulo>}
-                        </Td>
-                        <Td className="max-w-[240px] truncate">{p.comentario ?? ''}</Td>
-                        <Td>
-                          <span className="text-[11.5px] text-faint">
-                            {p.fuente === 'web' ? 'cargado en la web' : 'Avances de Obra'}
-                          </span>
-                        </Td>
-                        {/* El borrado va en la celda y NO en el `···` del sistema: el menú
-                            contextual dibuja sus ítems dentro de un `<button>`, y `BotonAccion` es
-                            un `<form>` —anidarlos es marcado inválido, y reemplazarlo por un
-                            `onClick` perdería el error del servidor, que es la única prueba de que
-                            la fila se borró de verdad. */}
-                        <Td num>
-                          {/* «Acciones de fila: sólo en hover o menú contextual» — sesenta botones
-                              rojos apilados convierten la columna de borrar en lo más llamativo de
-                              una tabla que se abre para LEER. Sigue alcanzable con el teclado:
-                              `focus-within` la muestra al tabular. */}
-                          <span className="opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-                            <BotonAccion accion={borrarParte} args={[p.id]} testid="borrar-parte" tono="peligro">
-                              Borrar
-                            </BotonAccion>
-                          </span>
-                        </Td>
-                      </Tr>
-                    )
-                  })}
-                </tbody>
-              </Tabla>
-              <p className="mt-2.5 text-[11.5px] text-faint">
-                {partes.length > 60 && `Se muestran los 60 más recientes de ${partes.length}. `}
-                Las actividades sin medición definida no aceptan cantidad — sólo HH y comentario. No
-                se cargan como 0.
-              </p>
-            </>
+            <ul>
+              {delDia.map((p) => (
+                <FilaParte key={p.id} parte={p} actividad={porActividad.get(p.actividad_id)} borrar={borrarParte} />
+              ))}
+            </ul>
           )}
         </section>
 
-        <section>
-          <Eyebrow className="mb-2.5">Cómo viene cada frente</Eyebrow>
-          {/* 22/08/2026 · «Se crean en Planificación» mandaba a una pestaña que ya no existe: el
-              plan vive en Cronograma, sobre las mismas actividades que se ejecutan acá. */}
-          {orden.length === 0
-            ? <Vacio>Esta obra todavía no tiene actividades cargadas. Se crean en Cronograma.</Vacio>
+        <section className="rounded-card border border-line bg-surface" data-testid="frentes">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[#EFEEEA] px-4 py-2.5">
+            <h2 className="text-[13px] font-semibold text-ink">Frentes</h2>
+            {/* EL PROBLEMA, VISIBLE SIN ABRIR NADA: frentes en curso que hoy no reportaron. */}
+            {kpis.sinParte > 0 && <Estado tono="warn" clave="sin-parte">{kpis.sinParte} sin parte</Estado>}
+            <div className="ml-auto">
+              <Filtros
+                testid="frentes-filtro"
+                opciones={[
+                  { label: 'En curso', activo: soloCurso, onClick: () => setSoloCurso(true), testid: 'frentes-curso' },
+                  { label: 'Todos', activo: !soloCurso, onClick: () => setSoloCurso(false), testid: 'frentes-todo' },
+                ]}
+              />
+            </div>
+          </div>
+          {frentes.length === 0
+            ? (
+                <div className="px-4 py-4"><Vacio>{soloCurso
+                  ? 'Ningún frente declarado en curso. Están en «Todos».'
+                  : 'Esta obra todavía no tiene actividades cargadas. Se crean en Cronograma.'}</Vacio></div>
+              )
             : (
-                <Tabla testid="tabla-ejecucion" minWidth={680}>
+                <Tabla testid="tabla-ejecucion" minWidth={620} className="border-t-0 px-4">
                   <THead>
                     <Th>Actividad</Th><Th num>Jornada</Th><Th num>Acumulado</Th>
-                    <Th>Avance</Th><Th num>HH</Th>
+                    <Th>Avance</Th><Th num>HH</Th><Th num />
                   </THead>
                   <tbody>
-                    {orden.map((a) => {
+                    {frentes.map((a) => {
                       const hoyDe = movidoHoy.get(a.id)
                       const cant = a.metodo_avance === 'cantidad'
                       return (
-                        <Tr key={a.id} compacta>
+                        <Tr key={a.id} compacta seleccionada={a.id === elegida}>
                           <Td fuerte>
                             {a.nombre}
                             {a.rubro && <span className="block text-[11px] text-faint">{a.rubro}</span>}
@@ -413,6 +462,14 @@ export function TabEjecucion({
                               : <Barra pct={a.avance_pct} />}
                           </Td>
                           <Td num>{a.hh_real == null ? <Nulo>—</Nulo> : num(a.hh_real)}</Td>
+                          <Td num>
+                            <button
+                              type="button" onClick={() => setElegida(a.id)}
+                              title="Cargar el parte de este frente" aria-label={`Cargar el parte de ${a.nombre}`}
+                              data-testid={`cargar-frente-${a.id}`}
+                              className="text-faint transition-colors hover:text-ink"
+                            ><IconoCrear className="h-[14px] w-[14px]" /></button>
+                          </Td>
                         </Tr>
                       )
                     })}
@@ -420,6 +477,21 @@ export function TabEjecucion({
                 </Tabla>
               )}
         </section>
+
+        {/* EL HISTORIAL COMPLETO NO ES LA PANTALLA: es la auditoría de la pantalla. Plegado, porque
+            el que carga el parte del día no lo abre nunca y el que audita lo abre una vez. */}
+        {partes.length > 0 && (
+          <Plegable titulo="Todos los partes" cuenta={partes.length} testid="todos-los-partes">
+            <ul data-testid="lista-partes" className="rounded-card border border-line bg-surface">
+              {partes.slice(0, 60).map((p) => (
+                <FilaParte key={p.id} parte={p} actividad={porActividad.get(p.actividad_id)} conFecha borrar={borrarParte} />
+              ))}
+            </ul>
+            {partes.length > 60 && (
+              <p className="mt-2 text-[11.5px] text-faint">Se muestran los 60 más recientes de {partes.length}.</p>
+            )}
+          </Plegable>
+        )}
       </div>
     </div>
   )

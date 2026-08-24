@@ -265,15 +265,19 @@ test('10-14 · una carga: producción, horas de la persona y horas del EQUIPO, c
 
   await entrar(page)
   await page.goto(`/obras/${OBRA}?vista=ejecucion`)
-  // El parte YA NO SE ABRE: desde el Design Handoff V2 (20/08/2026) el formulario del día es la
-  // columna izquierda de la solapa y está siempre a la vista, y el reparto de horas dejó de ser un
-  // bloque plegado. Un parte diario que hay que desplegar es un parte diario que se carga dos
-  // semanas. Por eso se fueron el clic en `abrir-registrar` y el clic en el `summary` de
-  // `parte-personal`: no se borró funcionalidad, se dejó de esconder.
+  // El parte NO SE ABRE: desde el Design Handoff V2 (20/08/2026) el formulario del día es la
+  // columna izquierda de la solapa y está siempre a la vista. Por eso se fue el clic en
+  // `abrir-registrar`: no se borró funcionalidad, se dejó de esconder.
+  //
+  // CAMBIO DE REGLA DECLARADO (Design 23/08): el REPARTO DE HORAS vuelve a ser un disclosure —un
+  // chip «quién trabajó» con la cuenta— porque dieciocho casilleros permanentes son el bloque que
+  // hay que pasar de largo todos los días para llegar al botón. El campo es el mismo (`horas_<id>`)
+  // y sigue en el DOM; lo que cambia es que hay que abrirlo, como los equipos.
   const panel = page.getByTestId('panel-registrar')
   await panel.getByTestId('parte-actividad').selectOption(actividadId)
   await panel.getByTestId('parte-cantidad').fill('3')
   await panel.getByTestId('parte-comentario').fill(`${M} tres columnas`)
+  await panel.getByTestId('parte-personal').locator('summary').click()
   await panel.getByTestId(`horas-${personaId}`).fill('8')
   await panel.getByTestId('parte-equipos').locator('summary').click()
   await panel.getByTestId('equipo-0').fill(`${M} Hormigonera`)

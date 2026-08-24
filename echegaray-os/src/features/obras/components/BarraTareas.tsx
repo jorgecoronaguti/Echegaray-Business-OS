@@ -60,9 +60,7 @@ export function BarraTareas({
     <BarraContextual
       testid="barra-tareas"
       titulo={`${seleccion.length} ${seleccion.length === 1 ? 'actividad' : 'actividades'}`}
-      subtitulo={operacion === 'avance'
-        ? `${r.por_pasos} por pasos · ${r.otros_metodos} otros métodos`
-        : undefined}
+      subtitulo={operacion === 'avance' ? calidadDeLaSeleccion(seleccion) : undefined}
       operaciones={OPERACIONES_MASIVAS.map((o) => ({ id: o, label: OPERACION_LABEL[o] }))}
       activa={operacion}
       alElegirOperacion={(id) => { if (esOperacionMasiva(id)) { alElegirOperacion(id); setResultado(null) } }}
@@ -108,6 +106,25 @@ export function BarraTareas({
       )}
     </BarraContextual>
   )
+}
+
+/**
+ * CON QUÉ CALIDAD QUEDA LA SELECCIÓN — el subtítulo del Design («N con paso real · N estimadas»),
+ * dicho con los métodos que esta escritura acepta.
+ *
+ * Decía «3 por pasos · 5 otros métodos»: dos números que no contestan la pregunta de quien está por
+ * escribir. Lo que importa es que una medida por cantidad se convierte en cantidad ejecutada contra
+ * el objetivo —es una medición— y que manual y partes las declara una persona. Las de pasos no
+ * entran, y de eso ya se ocupa el aviso y el conteo del botón.
+ */
+function calidadDeLaSeleccion(seleccion: CandidataMasiva[]): string | undefined {
+  const medidas = seleccion.filter((a) => a.metodo_avance === 'cantidad').length
+  const estimadas = seleccion.filter((a) => a.metodo_avance === 'manual' || a.metodo_avance === 'partes').length
+  const partes = [
+    medidas > 0 ? `${medidas} ${medidas === 1 ? 'medida' : 'medidas'}` : null,
+    estimadas > 0 ? `${estimadas} ${estimadas === 1 ? 'estimada' : 'estimadas'}` : null,
+  ].filter((p): p is string => p !== null)
+  return partes.length > 0 ? partes.join(' · ') : undefined
 }
 
 /**
