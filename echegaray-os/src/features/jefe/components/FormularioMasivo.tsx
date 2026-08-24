@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useEffect, useRef, useState } from 'react'
+import { useActionState, useRef, useState } from 'react'
 import { Aviso, BarraContextual, ChipsValor } from '@/shared/components/ds'
 import { Confirmacion, Nada, Panel, Rotulo } from './Piezas'
 import { IconoObra } from '@/shared/components/iconos'
@@ -51,9 +51,15 @@ export function FormularioMasivo({
   // ofreciendo «Guardar N avances» invita a un segundo tap, y como el guardado manual escribe
   // INCREMENTOS, ese segundo tap no es inocuo: duplica el avance (E2E 24/08, defecto observado
   // en las dos pasadas).
-  useEffect(() => {
-    if (estado?.ok) setElegidas(new Set())
-  }, [estado])
+  // Estado DERIVADO durante el render, no en un efecto: React permite `setState` en render cuando
+  // se compara contra el valor anterior (mismo patrón que `filtroDeLaUrl` en TabTareas). Un
+  // `useEffect` que llama a `setState` es el anti-patrón que eslint marca, y además pinta un frame
+  // con la selección vieja antes de vaciarla.
+  const [ultimoOk, setUltimoOk] = useState<Estado>(null)
+  if (estado?.ok && estado !== ultimoOk) {
+    setUltimoOk(estado)
+    setElegidas(new Set())
+  }
 
   // «Todas» marca LO QUE SE VE, no lo que existe. Con la vista filtrada, marcar tareas fuera de
   // pantalla y guardarlas es exactamente el tipo de escritura que nadie pidió.
