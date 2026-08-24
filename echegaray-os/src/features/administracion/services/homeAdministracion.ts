@@ -82,8 +82,13 @@ const head = { count: 'exact' as const, head: true }
  */
 type Contador = Filtrable<Contador> & PromiseLike<{ count: number | null; error: { message: string } | null }>
 
-/** `null` cuando la lectura falló. Un conteo que no se pudo hacer NO es cero. */
-async function cuenta(
+/**
+ * `null` cuando la lectura falló. Un conteo que no se pudo hacer NO es cero.
+ *
+ * Se exporta sólo para poder probar eso sin base: es la línea donde un `?? 0` de más convertiría un
+ * permiso negado en la afirmación «no hay ninguno».
+ */
+export async function cuenta(
   consulta: PromiseLike<{ count: number | null; error: unknown }>,
 ): Promise<number | null> {
   const { count, error } = await consulta

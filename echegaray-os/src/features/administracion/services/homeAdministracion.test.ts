@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import {
-  areasDeAdministracion, atencionNoLeida, chipsDeAtencion, type ConteosHome,
+  areasDeAdministracion, atencionNoLeida, chipsDeAtencion, cuenta, type ConteosHome,
 } from './homeAdministracion.ts'
 
 // Lo que la pantalla 00 no puede hacer nunca: inventar un cero, encender un aviso que no mide nada,
@@ -26,6 +26,16 @@ const CERO: ConteosHome = {
 const con = (p: Partial<ConteosHome>): ConteosHome => ({ ...CERO, ...p })
 const area = (c: ConteosHome, clave: string) =>
   areasDeAdministracion(c, 'direccion').find((a) => a.clave === clave)!
+
+test('un permiso negado NO se cuenta como cero', async () => {
+  // La línea donde un `?? 0` de más convierte un error de red en la afirmación «no hay ninguno».
+  assert.equal(await cuenta(Promise.resolve({ count: null, error: { message: 'permission denied' } })), null)
+  assert.equal(await cuenta(Promise.resolve({ count: 7, error: { message: 'permission denied' } })), null)
+  // Y un cero LEÍDO sí es cero: la empresa puede no tener ningún proveedor sin CUIT.
+  assert.equal(await cuenta(Promise.resolve({ count: 0, error: null })), 0)
+  // PostgREST puede contestar sin error y sin número: eso tampoco es cero.
+  assert.equal(await cuenta(Promise.resolve({ count: null, error: null })), null)
+})
 
 test('una lectura que falló NO se dibuja como cero', () => {
   for (const a of areasDeAdministracion(NADA, 'direccion')) {
