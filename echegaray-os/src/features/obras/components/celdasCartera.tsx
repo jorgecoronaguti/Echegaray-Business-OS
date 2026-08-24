@@ -14,7 +14,11 @@
 import Link from 'next/link'
 import { Estado, Nulo, Num } from '@/shared/components/ds'
 import { IconoCompletar, IconoHH, IconoProblema } from '@/shared/components/iconos'
-import { ETAPAS, ETAPA_LABEL, type ObraPanel, type PlanVsReal } from '@/features/obras/types'
+import { ETAPAS, ETAPA_LABEL, type ObraPanel } from '@/features/obras/types'
+// El tipo de lo que la cartera LEE, no el de la vista entera: `getPlanVsRealPortafolio` pide siete
+// columnas y estas dos celdas son las únicas que las dibujan. Pedir el tipo ancho acá obligaba a
+// traer las ~40 columnas de `obra_plan_vs_real` para usar siete.
+import type { PlazoYHHDeCartera } from '@/features/obras/services/obrasService'
 import { PALABRA_SEMAFORO, type Semaforo } from '@/features/obras/services/ganttObras'
 import { tituloImpedimentos } from '@/features/obras/services/senalesCartera'
 
@@ -32,7 +36,7 @@ const ddmm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
  * hiciera su propia cuenta, un día diría una cosa distinta de la ficha de la obra y no habría
  * manera de saber cuál de las dos miente.
  */
-export function Plazo({ p }: { p: PlanVsReal | undefined }) {
+export function Plazo({ p }: { p: PlazoYHHDeCartera | undefined }) {
   if (!p) return <Nulo>sin plan</Nulo>
   if (p.desvio_plazo_dias != null) {
     const d = p.desvio_plazo_dias
@@ -160,7 +164,7 @@ export function EstadoObra({ estado, semaforo }: { estado: string; semaforo: Sem
  * SIN PLAN NO HAY «/ 0»: se dice «sin plan». Y sin imputar no es cero horas trabajadas, es que
  * todavía no se imputó ninguna — dos huecos distintos con dos palabras distintas.
  */
-export function HH({ p }: { p: PlanVsReal | undefined }) {
+export function HH({ p }: { p: PlazoYHHDeCartera | undefined }) {
   const plan = p?.hh_plan ?? p?.hh_estimada ?? null
   const real = p?.hh_real ?? null
   const n = (x: number) => Math.round(x).toLocaleString('es-AR')
