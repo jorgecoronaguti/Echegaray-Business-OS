@@ -14,8 +14,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  armarComparacion, avanceDelPaquete, estadoDelPaquete, faltaEnLaBase, plazoDelPaquete,
-  puedeIniciar, revisarDocumentacion,
+  armarComparacion, avanceDelPaquete, estadoDelPaquete, faltaEnLaBase, necesitaResolverse,
+  plazoDelPaquete, puedeIniciar, resumenContratado, revisarDocumentacion,
   type DocumentoPaquete, type VinculoActividad,
 } from './subcontratosReglas.ts'
 
@@ -164,4 +164,46 @@ test('los tres modos en que PostgREST dice «ese objeto no existe» se reconocen
   assert.equal(faltaEnLaBase('Could not find the function public.subcontrato_fijar_precio'), true)
   assert.equal(faltaEnLaBase('permission denied for table subcontrato'), false,
     'un problema de permisos NO es una migración sin aplicar, y confundirlos manda a arreglar lo que no es')
+})
+
+// ═══ 6 · LO QUE LA PANTALLA 10 PONE EN ROJO ARRIBA DE TODO ═══
+//
+// El botón «N para resolver» decide a qué paquete entra primero el jefe de obra. Los dos defectos
+// que atrapan estas pruebas: que un paquete sin actividad vinculada deje de contar como problema
+// —es el que después aparece dos veces en el costo de la obra— y que «sin cotizar» se cuele en el
+// mismo número, diluyendo lo que de verdad frena.
+
+const revisionDe = (docs: DocumentoPaquete[]) => revisarDocumentacion(docs, HOY)
+
+test('bloquea el inicio ⇒ hay que resolverlo', () => {
+  const p = { revision: revisionDe([]), vinculos: [{} as VinculoActividad] }
+  assert.equal(necesitaResolverse(p), true, 'un paquete sin ART dejó de contarse como problema')
+})
+
+test('sin actividad vinculada ⇒ hay que resolverlo, aunque los papeles estén al día', () => {
+  const docs: DocumentoPaquete[] = [
+    { id: '1', tipo: 'art', descripcion: null, fecha_emision: '2026-01-01', vence_el: '2027-01-01' },
+    { id: '2', tipo: 'contrato', descripcion: null, fecha_emision: '2026-01-01', vence_el: null },
+    { id: '3', tipo: 'seguro_rc', descripcion: null, fecha_emision: '2026-01-01', vence_el: '2027-01-01' },
+  ]
+  const revision = revisionDe(docs)
+  assert.equal(puedeIniciar(revision), true, 'con los tres papeles al día el paquete puede arrancar')
+  assert.equal(necesitaResolverse({ revision, vinculos: [] }), true,
+    'un paquete que no cubre ninguna actividad no se puede medir ni comparar: es un problema')
+  assert.equal(necesitaResolverse({ revision, vinculos: [{} as VinculoActividad] }), false,
+    'un paquete con papeles al día y su actividad NO es un problema')
+})
+
+test('el contratado no suma los precios que nadie cargó como si fueran cero', () => {
+  const r = resumenContratado([
+    { precio_contratado: 3_500_000 }, { precio_contratado: null }, { precio_contratado: 1_850_000 },
+  ])
+  assert.equal(r.total, 5_350_000)
+  assert.equal(r.sinPrecio, 1, 'el total se publicó como cerrado escondiendo un paquete sin precio')
+})
+
+test('sin ningún precio cargado el total es cero PERO lo dice: son tres sin precio, no $ 0 contratado', () => {
+  const r = resumenContratado([{ precio_contratado: null }, { precio_contratado: null }, { precio_contratado: null }])
+  assert.equal(r.total, 0)
+  assert.equal(r.sinPrecio, 3)
 })

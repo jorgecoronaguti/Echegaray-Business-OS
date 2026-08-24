@@ -14,6 +14,14 @@
 // puerta: sin esto el servidor le mandaría al navegador de un jefe de obra un JSON con precios que
 // la pantalla después esconde con un `if`. Esconder no es no mandar.
 //
+// ═══ EL SERVIDOR TRAE, EL CLIENTE ELIGE (Design canónico 23/08) ═══
+//
+// Acá sólo se lee y se atan las acciones. Elegir un paquete, buscarlo y filtrarlo pasó a
+// `WorkspaceSubcontratos`, del lado del cliente: los paquetes viajan enteros en el primer render y
+// cada clic era un render completo de una ruta `force-dynamic` para mostrar datos que ya estaban en
+// el navegador. `?sel=` sigue existiendo y sigue abriendo el mismo paquete — el workspace lo espeja
+// con `replaceState`.
+//
 // ═══ LO QUE ESTA PANTALLA NO INVENTA ═══
 //
 // El costo de hacer el paquete con gente propia. El comparador deja la celda vacía con su motivo:
@@ -21,22 +29,18 @@
 // estimación convertiría la comparación —que es la decisión de subcontratar o no— en un número
 // fabricado con apariencia de cálculo.
 
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getObra } from '@/features/obras/services/obrasService'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { veEconomia } from '@/features/auth/types/areas'
 import { getSubcontratos } from '@/features/obras/services/subcontratosService'
-import { armarComparacion } from '@/features/obras/services/subcontratosReglas'
 import {
   agregarPersonaExterna, cambiarEstadoPaquete, crearPaquete, fijarPrecioPaquete, registrarAporte,
   registrarDocumento,
 } from '@/features/obras/services/actionsSubcontratos'
 import { BarraContextoObra } from '@/features/obras/components/BarraContextoObra'
-import { TablaSubcontratos } from '@/features/obras/components/TablaSubcontratos'
-import { PanelSubcontrato } from '@/features/obras/components/PanelSubcontrato'
-import { ComparadorPropioSubcontrato } from '@/features/obras/components/ComparadorPropioSubcontrato'
+import { WorkspaceSubcontratos } from '@/features/obras/components/WorkspaceSubcontratos'
 import { FormNuevoPaquete } from '@/features/obras/components/FormNuevoPaquete'
 import { Aviso, SubTabs } from '@/shared/components/ds'
 import { EstadoError } from '@/shared/components/estado'
@@ -65,30 +69,6 @@ export default async function SubcontratosObraPage({
   if (error || !data) {
     return <EstadoError mensaje={error ?? 'sin datos'} que="los subcontratos de la obra" />
   }
-
-  const seleccionado = data.paquetes.find((p) => p.id === sel) ?? null
-  const href = (id: string | null) =>
-    id ? `/obras/${obraId}/subcontratos?sel=${id}` : `/obras/${obraId}/subcontratos`
-
-  const comparacion = seleccionado
-    ? armarComparacion(
-      {
-        paquete: {
-          cantidad: seleccionado.cantidad,
-          unidad: seleccionado.unidad,
-          precio_contratado: seleccionado.precio_contratado,
-          aportes: seleccionado.aportes_total,
-          costo_real: seleccionado.costo_real,
-          hh_apoyo: seleccionado.hh_apoyo,
-          personas_externas: seleccionado.personas_externas,
-          fecha_inicio_plan: seleccionado.fecha_inicio_plan,
-          fecha_fin_plan: seleccionado.fecha_fin_plan,
-        },
-        actividad: seleccionado.vinculos[0] ?? null,
-      },
-      economia,
-    )
-    : null
 
   const bloqueados = data.paquetes.filter((p) => p.revision.bloqueos.length > 0)
 
@@ -134,54 +114,22 @@ export default async function SubcontratosObraPage({
           accion={crearPaquete.bind(null, obraId)}
         />
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_384px]">
-          <div className="flex min-w-0 flex-col gap-6">
-            <TablaSubcontratos
-              paquetes={data.paquetes}
-              seleccionado={seleccionado?.id ?? null}
-              economia={economia}
-              href={href}
-            />
-            {comparacion && seleccionado && (
-              <ComparadorPropioSubcontrato
-                filas={comparacion}
-                titulo="Propio vs subcontrato"
-                subtitulo={`${seleccionado.vinculos[0]?.actividad ?? seleccionado.nombre} · antes de firmar`}
-              />
-            )}
-          </div>
-
-          {seleccionado ? (
-            <PanelSubcontrato
-              paquete={seleccionado}
-              economia={economia}
-              cerrarHref={href(null)}
-              /* `.bind(null, obraId)` Y NO UNA ARROW: una arrow escrita acá es una función nueva
-                 creada en el servidor, no la acción. React la rechaza en tiempo de ejecución y la
-                 pantalla queda en blanco — ni el typecheck ni el build lo ven. */
-              acciones={{
-                aporte: registrarAporte.bind(null, obraId),
-                persona: agregarPersonaExterna.bind(null, obraId),
-                documento: registrarDocumento.bind(null, obraId),
-                precio: fijarPrecioPaquete.bind(null, obraId),
-                estado: cambiarEstadoPaquete.bind(null, obraId),
-              }}
-            />
-          ) : (
-            /* 22/08/2026 · «Tocá un paquete para ver…» se borró: la lista de la izquierda es
-               clicleable y el panel aparece al tocarla — describir el gesto no lo enseña, lo repite.
-               El enlace a las actividades SÍ queda: es la única forma de salir de acá sin volver
-               por el menú, y no se deduce de ninguna otra cosa de la pantalla. */
-            <aside className="rounded-card border border-line bg-surface p-4">
-              <Link
-                href={`/obras/${obraId}?vista=tareas&sub=arbol`}
-                className="text-[12.5px] font-medium text-ink hover:underline"
-              >
-                Ver las actividades de la obra
-              </Link>
-            </aside>
-          )}
-        </div>
+        <WorkspaceSubcontratos
+          paquetes={data.paquetes}
+          economia={economia}
+          obraId={obraId}
+          selInicial={sel ?? null}
+          /* `.bind(null, obraId)` Y NO UNA ARROW: una arrow escrita acá es una función nueva
+             creada en el servidor, no la acción. React la rechaza en tiempo de ejecución y la
+             pantalla queda en blanco — ni el typecheck ni el build lo ven. */
+          acciones={{
+            aporte: registrarAporte.bind(null, obraId),
+            persona: agregarPersonaExterna.bind(null, obraId),
+            documento: registrarDocumento.bind(null, obraId),
+            precio: fijarPrecioPaquete.bind(null, obraId),
+            estado: cambiarEstadoPaquete.bind(null, obraId),
+          }}
+        />
       </div>
     </main>
   )
