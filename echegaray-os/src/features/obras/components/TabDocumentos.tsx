@@ -4,15 +4,21 @@
 //
 // ═══ AGRUPADO POR PARA QUÉ SIRVE (Design canónico 23/08, pantalla 12) ═══
 //
-// «Los documentos se agrupan por para qué sirven, no por tipo de archivo». El grupo ES la categoría
-// que alguien declaró en `rol` —Planos, Contrato, Seguridad, Certificaciones, Compras— con su frase
-// al lado cuando el OS sabe para qué sirve, y con «Sin clasificar» al final, que es trabajo
-// pendiente y no una categoría más.
+// «Los documentos se agrupan por para qué sirven, no por tipo de archivo». Cuatro grupos fijos
+// —Planos y documentación técnica · Contrato y cliente · Seguridad e higiene · Evidencia de obra—
+// con su frase al lado, y «Sin clasificar» al final, que es trabajo pendiente y no una categoría
+// más. El vocabulario y el porqué viven en `documentosCategoria.ts`.
 //
-// La categoría dejó de ser una COLUMNA: repetirla en cada fila del mismo grupo es escribir cuatro
-// veces lo que la cabecera ya dice una. Los grupos se pliegan (patrón *grouped rows*) y nacen
-// abiertos: una obra tiene entre cuatro y treinta papeles, y arrancar con todo cerrado obligaría a
-// abrir cuatro grupos para ver una lista que entra en una pantalla.
+// LOS GRUPOS VACÍOS SE DIBUJAN IGUAL, CON SU CERO. Es el cambio que hace que la pantalla sirva:
+// hasta hoy sólo aparecían los grupos con papeles adentro, así que una obra sin contrato cargado
+// se veía idéntica a una obra con el contrato cargado. Un cero es información — y además es la
+// invitación a clasificar, que es lo que hace falta con 32 papeles sin categoría.
+//
+// La categoría no se repite como texto en cada fila: la cabecera ya la dice. Lo que hay en la fila
+// es el CONTROL para moverla, escondido hasta que se apoya el mouse en los grupos ya clasificados
+// (ver `CeldaCategoriaDocumento`). Los grupos se pliegan (patrón *grouped rows*) y nacen abiertos:
+// una obra tiene entre cuatro y treinta papeles, y arrancar con todo cerrado obligaría a abrir
+// cuatro grupos para ver una lista que entra en una pantalla.
 //
 // EL BUSCADOR FILTRA AL TECLEAR y arrastra al grupo: buscar «seguridad» trae el grupo entero,
 // buscar «columnas» trae la fila con su cabecera. La regla vive en `porCategoriaFiltrado` —una
@@ -37,15 +43,19 @@ import {
   BotonAccion, FormAccion, type AccionFormulario, type ResultadoAccion,
 } from '@/shared/components/ui'
 import {
-  Ayuda, BotonEnlace, Buscador, CAMPO, Campo, FilaGrupo, Nulo, Tabla, Td, Th, THead, Tr, Vacio,
+  Ayuda, BotonEnlace, Buscador, CAMPO, Campo, FilaGrupo, Filtros, Nulo, Tabla, Td, Th, THead, Tr,
+  Vacio,
 } from '@/shared/components/ds'
 import { IconoAbrir, IconoDocumento } from '@/shared/components/iconos'
 import type { Actividad, DocumentoObra, TipoDrive } from '../types'
 import { AsignarActividad } from './AsignarActividad'
 import { etiquetaDeTipo, urlDeDrive } from '../services/driveUrl'
 import {
-  CATEGORIAS_SUGERIDAS, SIN_CLASIFICAR, paraQueSirve, porCategoriaFiltrado,
+  CATEGORIAS_CANONICAS, SIN_CLASIFICAR, categoriaDeclarada, paraQueSirve, porCategoriaFiltrado,
 } from '../services/documentosCategoria'
+import { requiereAtencion, ultimosCambios } from '../services/documentosPaneles'
+import { CeldaCategoriaDocumento } from './CeldaCategoriaDocumento'
+import { PanelDocumentos } from './PanelDocumentos'
 import { fecha as fmtFecha } from './formato'
 
 /** Cómo se lee cada origen. Un mapa y no un ternario: el día que se agregue un cuarto, el ternario
@@ -103,10 +113,13 @@ function Vincular({
             <Campo rotulo="Nombre" className="sm:col-span-2" ayuda="Sólo si el archivo no está en el índice de Drive.">
               <input name="nombre" maxLength={300} className={CAMPO} />
             </Campo>
-            <Campo rotulo="Para qué sirve" ayuda="Contrato, plano, seguridad…">
+            {/* El alta ofrece EL MISMO vocabulario que la tabla. Sigue siendo un `datalist` y no un
+                `select`: se puede dejar vacío —y entonces el papel cae en «Sin clasificar», que es
+                honesto— y se puede escribir otra cosa, porque `rol` es texto libre en la base. */}
+            <Campo rotulo="Para qué sirve" ayuda="Se puede dejar vacío y clasificarlo después.">
               <input name="rol" maxLength={120} list="categorias-documento-obra" className={CAMPO} />
               <datalist id="categorias-documento-obra">
-                {CATEGORIAS_SUGERIDAS.map((c) => <option key={c} value={c} />)}
+                {CATEGORIAS_CANONICAS.map((c) => <option key={c} value={c} />)}
               </datalist>
             </Campo>
           </div>
@@ -117,7 +130,7 @@ function Vincular({
 }
 
 export function TabDocumentos({
-  documentos, carpetaDriveId, vincular, desvincular, actividades = [], asignarActividad,
+  documentos, carpetaDriveId, vincular, desvincular, actividades = [], asignarActividad, clasificar,
 }: {
   documentos: DocumentoObra[]
   /** El cronograma vivo, para poder decir de qué actividad es un papel. Sin él no se dibuja el
@@ -128,13 +141,29 @@ export function TabDocumentos({
   carpetaDriveId: string | null
   vincular: AccionFormulario
   desvincular: (driveFileId: string) => Promise<ResultadoAccion>
+  /** Escribe `obra_documento.rol`. Sin ella la pantalla es de sólo lectura y no se dibuja el
+   *  selector: un control que no guarda es peor que no tenerlo. */
+  clasificar?: (driveFileId: string, categoria: string) => Promise<ResultadoAccion>
 }) {
   const asignar = actividades.length > 0 ? asignarActividad : undefined
   const [query, setQuery] = useState('')
+  const [chip, setChip] = useState<string | null>(null)
   const [plegados, setPlegados] = useState<ReadonlySet<string>>(new Set())
 
-  const grupos = useMemo(() => porCategoriaFiltrado(documentos, query), [documentos, query])
-  const columnas = asignar ? 5 : 4
+  const grupos = useMemo(() => porCategoriaFiltrado(documentos, query, chip), [documentos, query, chip])
+  // Los conteos de los chips salen de TODOS los papeles, no de los filtrados: un chip que dice «0»
+  // porque el otro chip está apretado es un número que miente.
+  const cuentas = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const d of documentos) {
+      const c = categoriaDeclarada(d.rol)
+      m.set(c, (m.get(c) ?? 0) + 1)
+    }
+    return m
+  }, [documentos])
+  const avisos = useMemo(() => requiereAtencion(documentos), [documentos])
+  const cambios = useMemo(() => ultimosCambios(documentos), [documentos])
+  const columnas = 4 + (asignar ? 1 : 0) + (clasificar ? 1 : 0)
   const plegar = (c: string) => setPlegados((p) => {
     const s = new Set(p)
     if (s.has(c)) s.delete(c); else s.add(c)
@@ -178,6 +207,25 @@ export function TabDocumentos({
         </div>
       </div>
 
+      {/* LOS CHIPS DE CATEGORÍA. Están los cinco grupos siempre, con su conteo — también en cero:
+          «Contrato y cliente · 0» es la forma más corta de decir que a esta obra le falta el
+          contrato. Filtrar es una elección explícita, así que el chip deja el grupo aunque quede
+          vacío; el buscador, en cambio, esconde los grupos sin coincidencias. */}
+      {documentos.length > 0 && (
+        <Filtros
+          testid="chips-categoria-documento"
+          opciones={[
+            { label: `Todo · ${documentos.length}`, onClick: () => setChip(null), activo: chip === null, testid: 'chip-todo' },
+            ...[...CATEGORIAS_CANONICAS, SIN_CLASIFICAR].map((c) => ({
+              label: `${c} · ${cuentas.get(c) ?? 0}`,
+              onClick: () => setChip(c),
+              activo: chip === c,
+              testid: `chip-${c === SIN_CLASIFICAR ? 'sin-clasificar' : c}`,
+            })),
+          ]}
+        />
+      )}
+
       {documentos.length === 0 ? (
         <Vacio>
           Todavía no hay ningún documento vinculado a esta obra. Se vincula pegando el enlace que da
@@ -192,28 +240,35 @@ export function TabDocumentos({
         </Vacio>
       ) : (
         <>
-          <Tabla testid="tabla-documentos" minWidth={820}>
-            <THead>
-              <Th>Nombre</Th><Th>Relación</Th>
-              {asignar && <Th>Actividad</Th>}
-              <Th num>Fecha</Th><Th num />
-            </THead>
-            <tbody>
-              {grupos.map(({ categoria, docs }) => (
-                <GrupoDocumentos
-                  key={categoria}
-                  categoria={categoria}
-                  docs={docs}
-                  columnas={columnas}
-                  abierto={!plegados.has(categoria)}
-                  onToggle={() => plegar(categoria)}
-                  actividades={actividades}
-                  asignar={asignar}
-                  desvincular={desvincular}
-                />
-              ))}
-            </tbody>
-          </Tabla>
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+            <div className="min-w-0 flex-1">
+              <Tabla testid="tabla-documentos" minWidth={clasificar ? 980 : 820}>
+                <THead>
+                  <Th>Nombre</Th><Th>Relación</Th>
+                  {asignar && <Th>Actividad</Th>}
+                  {clasificar && <Th>Categoría</Th>}
+                  <Th num>Fecha</Th><Th num />
+                </THead>
+                <tbody>
+                  {grupos.map(({ categoria, docs }) => (
+                    <GrupoDocumentos
+                      key={categoria}
+                      categoria={categoria}
+                      docs={docs}
+                      columnas={columnas}
+                      abierto={!plegados.has(categoria)}
+                      onToggle={() => plegar(categoria)}
+                      actividades={actividades}
+                      asignar={asignar}
+                      clasificar={clasificar}
+                      desvincular={desvincular}
+                    />
+                  ))}
+                </tbody>
+              </Tabla>
+            </div>
+            <PanelDocumentos avisos={avisos} cambios={cambios} irA={setChip} />
+          </div>
           {/* 22/08/2026 · Era un párrafo permanente al pie de la tabla explicando cómo funciona la
               pantalla. Baja ENTERO a la ayuda, incluida la consecuencia de «Quitar»: `BotonAccion`
               no acepta un `title`, y ensancharlo para meter una frase es un cambio de un componente
@@ -233,7 +288,7 @@ export function TabDocumentos({
 /** Un grupo: su cabecera plegable y sus filas. Separado para que ninguna función pase de 50 líneas
  *  y para que la fila del papel se lea de una sola vez. */
 function GrupoDocumentos({
-  categoria, docs, columnas, abierto, onToggle, actividades, asignar, desvincular,
+  categoria, docs, columnas, abierto, onToggle, actividades, asignar, clasificar, desvincular,
 }: {
   categoria: string
   docs: DocumentoObra[]
@@ -242,6 +297,7 @@ function GrupoDocumentos({
   onToggle: () => void
   actividades: Actividad[]
   asignar?: (driveFileId: string, actividadId: string) => Promise<ResultadoAccion>
+  clasificar?: (driveFileId: string, categoria: string) => Promise<ResultadoAccion>
   desvincular: (driveFileId: string) => Promise<ResultadoAccion>
 }) {
   const sinClasificar = categoria === SIN_CLASIFICAR
@@ -262,6 +318,15 @@ function GrupoDocumentos({
           <span className={`text-[11.5px] ${sinClasificar ? 'text-warn' : 'text-muted'}`}>{para}</span>
         )}
       />
+      {/* EL GRUPO VACÍO DICE QUÉ FALTA. No es un estado de error ni un «no hay resultados»: es la
+          ausencia de un papel que la obra debería tener, escrita donde se busca ese papel. */}
+      {abierto && docs.length === 0 && (
+        <Tr>
+          <Td colSpan={columnas} className="text-[12.5px] text-faint">
+            Ningún documento en este grupo todavía.
+          </Td>
+        </Tr>
+      )}
       {abierto && docs.map((d) => (
         <Tr key={d.drive_file_id} className="group" {...{ 'data-testid': 'fila-documento-obra' }}>
           <Td fuerte className="max-w-[320px]">
@@ -299,6 +364,11 @@ function GrupoDocumentos({
                 actividades={actividades}
                 asignar={asignar}
               />
+            </Td>
+          )}
+          {clasificar && (
+            <Td>
+              <CeldaCategoriaDocumento doc={d} clasificar={clasificar} />
             </Td>
           )}
           <Td num className="whitespace-nowrap text-muted">

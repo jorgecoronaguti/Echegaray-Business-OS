@@ -88,7 +88,8 @@ import { getPerfilActual } from '@/features/auth/services/authService'
 import { TabEconomia } from '@/features/obras/components/TabEconomia'
 import { TabDocumentos } from '@/features/obras/components/TabDocumentos'
 import {
-  asignarActividadADocumento, desvincularDocumento, soltarDocumentoDeActividad, vincularDocumento,
+  asignarActividadADocumento, clasificarDocumento, desvincularDocumento, soltarDocumentoDeActividad,
+  vincularDocumento,
 } from '@/features/obras/services/actionsDocumentos'
 import { BotonAccion, FormAccion } from '@/shared/components/ui'
 import { Aviso } from '@/shared/components/ds'
@@ -537,6 +538,7 @@ export default async function ObraPage({
           vincular={vincularDocumento.bind(null, obraId)}
           desvincular={desvincularDocumento.bind(null, obraId)}
           asignarActividad={asignarActividadADocumento.bind(null, obraId)}
+          clasificar={clasificarDocumento.bind(null, obraId)}
         />
       )}
       </div>
