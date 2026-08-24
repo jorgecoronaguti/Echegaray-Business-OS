@@ -37,6 +37,7 @@
 import Link from 'next/link'
 import { Tabla, THead, Th, Tr, Td, Nulo, Estado } from '@/shared/components/ds'
 import { Avatar } from '@/shared/components/Avatar'
+import { oracion } from '@/shared/utils/texto'
 import { esCategoriaDeConvenio, etiquetaCategoria, type PersonaEnDirectorio } from '../types'
 import { oficioVisible } from '../services/vocabularioPersona'
 import {
@@ -108,7 +109,7 @@ export function TablaPersonas({
                     URL de avatar y no se inventa una. */}
                 <Avatar nombre={p.nombre_completo} url={null} lado={26} />
                 <span className="min-w-0">
-                  <span className="block truncate text-[13px] text-ink hover:underline">{p.nombre_completo}</span>
+                  <span className="block truncate text-[13px] text-ink hover:underline">{oracion(p.nombre_completo)}</span>
                   {/* EL OFICIO, NO LA CATEGORÍA. Acá decía el puesto, y el puesto traía el CARGO de
                       la nómina —que ES la categoría del convenio—: la fila mostraba «OFICIAL» debajo
                       del nombre y «Ayudante» en la columna CATEGORÍA, dos respuestas al mismo hecho
