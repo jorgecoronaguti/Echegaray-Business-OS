@@ -28,16 +28,18 @@
 import { useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import {
-  Aviso, BarraAvance, CAMPO, Campo, Estado, Plegable, SubTabs, TituloPanel,
+  BarraAvance, CAMPO, Campo, Estado, Plegable, SubTabs, TituloPanel,
 } from '@/shared/components/ds'
 import { BotonAccion, FormAccion } from '@/shared/components/ui'
 import type { AccionFormulario, ResultadoAccion } from '@/shared/components/ui'
 import {
-  IconoCerrar, IconoDependencia, IconoDocumento, IconoFecha, IconoHH, IconoPersona, IconoProveedor,
+  IconoAbrir, IconoAdjuntar, IconoBloqueo, IconoCerrar, IconoCompletar, IconoDependencia,
+  IconoDocumento, IconoFecha, IconoHH, IconoPersona, IconoProveedor,
 } from '@/shared/components/iconos'
 import { cantidad as fmtCantidad, fecha as fmtFecha, plata } from './formato'
 import { Aportes, Documentacion, PersonalExterno } from './PanelSubcontratoSecciones'
 import { SIN_REGISTRO_DE_CERTIFICACIONES } from '../services/subcontratosReglas'
+import type { FilaComparacion } from '../services/subcontratosReglas'
 import type { Paquete } from '../services/subcontratosService'
 
 type Solapa = 'resumen' | 'certificaciones' | 'documentos' | 'personal'
@@ -51,12 +53,14 @@ export interface AccionesPaquete {
 }
 
 export function PanelSubcontrato({
-  paquete, economia, obraId, onCerrar, acciones,
+  paquete, economia, obraId, comparacion, onCerrar, acciones,
 }: {
   paquete: Paquete
   economia: boolean
   /** Para salir a registrar el avance de la actividad que el paquete cubre. */
   obraId: string
+  /** Propio vs subcontrato, ya armada por `armarComparacion`. Vive en el Resumen del panel. */
+  comparacion: FilaComparacion[]
   onCerrar: () => void
   acciones: AccionesPaquete
 }) {
@@ -94,11 +98,24 @@ export function PanelSubcontrato({
 
       {/* EL BLOQUEO SE VE EN LAS CUATRO SOLAPAS. Es de seguridad: gente de un tercero parada en la
           obra sin cobertura. Esconderlo detrás de «Documentos» lo dejaría a un clic de distancia de
-          quien está por tocar «Iniciar». */}
+          quien está por tocar «Iniciar».
+          ES TARJETA SUAVE Y NO CARTEL DE ERROR (canónico 10): rojo de fondo apagado, el motivo en
+          tinta y la flecha a la derecha. Y la flecha LLEVA A ALGÚN LADO —la solapa Documentos, que
+          es donde se arregla—: una flecha dibujada que no va a ninguna parte es el botón falso que
+          ya costó una pantalla entera. */}
       {bloqueado && (
-        <Aviso tono="neg" titulo={p.revision.bloqueos.join(' · ')} testid="bloqueo-inicio">
-          El paquete no puede iniciar.
-        </Aviso>
+        <button
+          type="button"
+          onClick={() => setSolapa('documentos')}
+          data-testid="bloqueo-inicio"
+          className="flex w-full items-center gap-2 rounded-card border border-neg/25 bg-neg-soft px-2.5 py-2 text-left"
+        >
+          <IconoBloqueo className="h-[14px] w-[14px] shrink-0 text-neg" />
+          <span className="min-w-0 flex-1 text-[12px] font-medium text-ink">
+            {p.revision.bloqueos.join(' · ')}
+          </span>
+          <IconoAbrir className="h-[13px] w-[13px] shrink-0 text-muted" />
+        </button>
       )}
 
       {solapa === 'resumen' && (
@@ -129,7 +146,8 @@ export function PanelSubcontrato({
             <Dato icono={<IconoFecha className="h-[14px] w-[14px]" />} clave="Plazo" valor={rangoDeFechas(p)}
               falta="sin fechas de plan" />
             <Dato icono={<IconoPersona className="h-[14px] w-[14px]" />} clave="Personal externo"
-              valor={p.personas_externas ? `${p.personas_externas} declaradas` : null} falta="sin declarar" />
+              valor={p.personas_externas ? `${p.personas_externas} personas declaradas` : null}
+              falta="sin declarar" />
             <Dato icono={<IconoDocumento className="h-[14px] w-[14px]" />} clave="Documentación"
               valor={bloqueado ? null : resumenDocumental(p)} falta={p.revision.bloqueos.join(' · ')}
               tono={bloqueado ? 'neg' : undefined} />
@@ -140,6 +158,8 @@ export function PanelSubcontrato({
             <Dato icono={<IconoDocumento className="h-[14px] w-[14px]" />} clave="Alcance en palabras"
               valor={p.alcance} falta="sin describir" />
           </div>
+
+          <PropioVsSubcontrato paquete={p} filas={comparacion} economia={economia} />
         </>
       )}
 
@@ -178,28 +198,140 @@ export function PanelSubcontrato({
         <PersonalExterno paquete={p} accion={acciones.persona} hoyISO={hoyISO} />
       )}
 
-      <section className="border-t border-line pt-3" data-testid="mover-estado">
-        <div className="flex flex-wrap items-center gap-2">
-          {p.estado !== 'en_curso' && p.estado !== 'terminado' && (
-            <BotonAccion accion={acciones.estado} args={[p.id, 'en_curso']} testid="iniciar-paquete">
-              Iniciar
-            </BotonAccion>
-          )}
-          {p.estado === 'en_curso' && (
-            <BotonAccion accion={acciones.estado} args={[p.id, 'terminado']} testid="terminar-paquete">
-              Dar por terminado
-            </BotonAccion>
-          )}
-          <span className="text-[11.5px] text-faint">guardado: {p.estado}</span>
-          <CertificarAvance paquete={p} obraId={obraId} />
-        </div>
+      {/* ═══ EL PIE DEL PANEL (canónico 10) ═══
+          Una sola barra separada por una línea: a la izquierda los dos atajos —los papeles y la
+          actividad que el paquete cubre—, a la derecha la primaria. Los movimientos de estado
+          quedan en el medio porque son la acción real de esta pantalla y el mockup no los dibuja:
+          sacarlos por fidelidad dejaría el paquete sin manera de arrancar ni de cerrarse. */}
+      <section className="mt-auto flex flex-wrap items-center gap-2 border-t border-line pt-3"
+        data-testid="mover-estado">
+        <button type="button" onClick={() => setSolapa('documentos')} title="Ver la documentación"
+          aria-label="Ver la documentación" data-testid="atajo-documentos"
+          className="flex h-[30px] w-[30px] items-center justify-center rounded-control border border-line text-muted hover:border-line-strong hover:text-ink">
+          <IconoAdjuntar className="h-[15px] w-[15px]" />
+        </button>
+        {p.vinculos[0] && (
+          <Link href={`/obras/${obraId}?vista=tareas&act=${p.vinculos[0].actividad_id}`} prefetch={false}
+            title="Ver la actividad vinculada" aria-label="Ver la actividad vinculada"
+            data-testid="atajo-actividad"
+            className="flex h-[30px] w-[30px] items-center justify-center rounded-control border border-line text-muted hover:border-line-strong hover:text-ink">
+            <IconoDependencia className="h-[15px] w-[15px]" />
+          </Link>
+        )}
+        {p.estado !== 'en_curso' && p.estado !== 'terminado' && (
+          <BotonAccion accion={acciones.estado} args={[p.id, 'en_curso']} testid="iniciar-paquete">
+            Iniciar
+          </BotonAccion>
+        )}
+        {p.estado === 'en_curso' && (
+          <BotonAccion accion={acciones.estado} args={[p.id, 'terminado']} testid="terminar-paquete">
+            Dar por terminado
+          </BotonAccion>
+        )}
+        {/* EL GUARDADO SE DICE APARTE: la pastilla de arriba muestra el estado EFECTIVO —un
+            paquete sin ART dice «bloqueado» aunque en la base diga «en curso»— y sin esta línea no
+            hay dónde leer cuál de los dos es el que está escrito. */}
+        <span className="text-[11.5px] text-faint">guardado: {p.estado}</span>
+        <CertificarAvance paquete={p} obraId={obraId} />
         {bloqueado && (
-          <p className="mt-2 text-[11.5px] text-neg" data-testid="motivo-bloqueo">
+          <p className="w-full text-[11.5px] text-neg" data-testid="motivo-bloqueo">
             {p.revision.bloqueos.join(' · ')}: iniciar va a ser rechazado también del lado del servidor.
           </p>
         )}
       </section>
     </aside>
+  )
+}
+
+/**
+ * ═══ PROPIO VS SUBCONTRATO — DENTRO DEL RESUMEN (canónico 10) ═══
+ *
+ * Dos barras comparables y un veredicto. No es la tabla de cuatro columnas: acá se decide una sola
+ * cosa —contratarlo o hacerlo con gente propia— y para eso alcanza con ver los dos costos a la
+ * misma escala.
+ *
+ * EL VEREDICTO NO SE FUERZA. El costo de hacerlo con plantel propio necesita el análisis de costo
+ * de la actividad, que hoy no existe en el modelo: mientras falte, la barra propia queda vacía con
+ * su motivo y el veredicto dice que falta un dato. Un «conviene subcontratar» calculado contra un
+ * cero implícito es exactamente la recomendación que esta pantalla no puede dar.
+ */
+function PropioVsSubcontrato({ paquete, filas, economia }: {
+  paquete: Paquete
+  filas: FilaComparacion[]
+  economia: boolean
+}) {
+  const costo = filas.find((f) => f.formato === 'plata') ?? null
+  if (!costo) return null
+
+  const sub = costo.subcontrato.valor
+  const propio = costo.propio.valor
+  const tope = Math.max(sub ?? 0, propio ?? 0) || 1
+  const convieneSub = sub == null || propio == null ? null : sub <= propio
+
+  return (
+    <section data-testid="comparador-propio-subcontrato">
+      <h3 className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold text-ink">
+        Propio vs subcontrato
+        <span title="Costo total del paquete: hacerlo con plantel propio o contratarlo. El lado del subcontrato es el COSTO REAL —contratado más lo que le pone Echegaray—, porque el material y la ayuda de gremio los paga la obra igual."
+          className="text-faint">?</span>
+      </h3>
+
+      {!economia ? (
+        <p className="text-[11.5px] text-faint" data-testid="comparacion-sin-permiso">
+          El costo no se compara acá: no tenés permiso económico.
+        </p>
+      ) : (
+        <>
+          <Lado rotulo="Subcontrato" valor={sub} tope={tope} destacado={convieneSub === true}
+            pie={fmtCantidad(paquete.cantidad, paquete.unidad) ?? 'sin alcance cargado'} testid="lado-subcontrato" />
+          <Lado rotulo="Plantel propio" valor={propio} tope={tope} destacado={convieneSub === false}
+            pie={paquete.hh_apoyo ? `${paquete.hh_apoyo} HH de apoyo declaradas` : 'sin rendimiento cargado'}
+            testid="lado-propio" />
+          <p className={`mt-1 flex items-start gap-1.5 text-[11.5px] font-medium ${convieneSub === null ? 'text-warn' : 'text-pos'}`}
+            data-testid="veredicto-comparacion">
+            {convieneSub === null
+              ? <IconoBloqueo className="mt-[2px] h-[13px] w-[13px] shrink-0" />
+              : <IconoCompletar className="mt-[2px] h-[13px] w-[13px] shrink-0" />}
+            {convieneSub === null
+              ? `Falta un dato para comparar: ${costo.falta ?? 'uno de los dos costos no existe'}`
+              : convieneSub
+                ? `Conviene subcontratar · ${plata((propio ?? 0) - (sub ?? 0))}`
+                : `Conviene hacerlo propio · ${plata((sub ?? 0) - (propio ?? 0))}`}
+          </p>
+        </>
+      )}
+    </section>
+  )
+}
+
+/** Un lado de la comparación: rótulo, monto, barra a escala del mayor y de dónde sale el número.
+ *  SIN VALOR NO HAY BARRA —una pista vacía a la par de otra llena ya afirma «cuesta cero»—: hay el
+ *  motivo, en el mismo renglón donde iría la plata. */
+function Lado({ rotulo, valor, tope, destacado, pie, testid }: {
+  rotulo: string
+  valor: number | null
+  tope: number
+  destacado: boolean
+  pie: string
+  testid: string
+}) {
+  const tinta = destacado ? 'font-semibold text-ink' : 'text-ink-soft'
+  return (
+    <div className="mb-2" data-testid={testid}>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className={`text-[11.5px] ${tinta}`}>{rotulo}</span>
+        <span className={`font-mono text-[12.5px] tabular-nums ${valor == null ? 'text-faint' : tinta}`}>
+          {valor == null ? 'sin dato' : plata(valor)}
+        </span>
+      </div>
+      {valor != null && (
+        <div className="mt-1 h-2 overflow-hidden rounded-[2px] bg-[#F0EFEB]">
+          <div className={`h-full ${destacado ? 'bg-pos' : 'bg-[#B9B7B1]'}`}
+            style={{ width: `${Math.round((valor / tope) * 100)}%` }} />
+        </div>
+      )}
+      <div className="mt-0.5 text-[10.5px] text-faint">{pie}</div>
+    </div>
   )
 }
 

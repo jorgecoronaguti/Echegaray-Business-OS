@@ -19,18 +19,29 @@ import type { ObraDelJefe } from '../services/jefeService'
 // LA OBRA VIVE EN LA URL. Al cambiarla se navega a la MISMA pantalla con otra obra — no se pierde
 // dónde estaba el jefe, que es lo que pasa cuando cambiar de obra te devuelve al inicio.
 
-export function SelectorObra({ obras, actual }: { obras: ObraDelJefe[]; actual: ObraDelJefe }) {
+export function SelectorObra({ obras, actual, compacto = false }: {
+  obras: ObraDelJefe[]
+  actual: ObraDelJefe
+  /**
+   * El renglón chico de arriba del título, como lo dibuja el encabezado de J01: la obra no es el
+   * título de la pantalla —el título es «Hoy»— sino el contexto en el que se lee todo lo demás.
+   */
+  compacto?: boolean
+}) {
   const router = useRouter()
   const pathname = usePathname() ?? '/obra/hoy'
+  const letra = compacto
+    ? 'text-[13px] font-medium leading-tight text-muted'
+    : 'text-[20px] font-semibold leading-tight text-ink'
 
   if (obras.length <= 1) {
-    return <span className="block truncate text-[20px] font-semibold leading-tight text-ink">{actual.nombre}</span>
+    return <span className={`block truncate ${letra}`}>{actual.nombre}</span>
   }
 
   return (
-    <span className="relative flex min-h-[44px] items-center gap-2.5">
-      <span className="min-w-0 truncate text-[20px] font-semibold leading-tight text-ink">{actual.nombre}</span>
-      <span aria-hidden className="shrink-0 text-[13px] text-faint">▾</span>
+    <span className={`relative flex items-center gap-2 ${compacto ? 'min-h-[28px]' : 'min-h-[44px] gap-2.5'}`}>
+      <span className={`min-w-0 truncate ${letra}`}>{actual.nombre}</span>
+      <span aria-hidden className="shrink-0 text-[11px] text-faint">▾</span>
       <select
         aria-label="Cambiar de obra"
         data-testid="selector-obra"

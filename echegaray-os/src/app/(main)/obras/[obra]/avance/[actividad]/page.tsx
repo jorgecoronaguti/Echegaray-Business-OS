@@ -7,6 +7,9 @@
 // El `actividad_id` llega por la RUTA y la acción se ata con `.bind`: el id nunca viaja en un campo
 // del formulario, porque un id editable desde el navegador dejaría escribir el avance de la
 // actividad de al lado.
+//
+// EL FORMULARIO ES EL MISMO QUE EL DEL PANEL LATERAL (`FormAvanceEmbebido`). Esta página pone el
+// envase —cabecera de obra, ancho, historial—; la regla vive en el componente, una sola vez.
 
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
@@ -59,23 +62,18 @@ export default async function RegistrarAvancePage({ params }: {
           pantalla={`Registrar avance · ${nodo.nombre}`}
         />
 
-        {/* UN CONTENEDOR NO SE MIDE, SE AGREGA. La base lo rechaza con un trigger; acá se dice antes
-            de que alguien complete un formulario que va a rebotar. */}
-        {nodo.es_contenedor ? (
-          <p className="border-l-[3px] border-warn bg-warn-soft px-3.5 py-3 text-[13px] text-warn" data-testid="es-contenedor">
-            «{nodo.nombre}» agrupa a otras actividades: el avance se registra en las que agrupa, y de
-            ahí sube solo.
-          </p>
-        ) : (
-          <FormAvance
-            nodo={nodo}
-            pasos={pasos.data ?? []}
-            cuadrillas={cuadrillas}
-            autor={perfil.data?.nombre ?? 'sin identificar'}
-            hoy={new Date().toISOString().slice(0, 10)}
-            registrar={registrarAvance.bind(null, obraId, actividad)}
-          />
-        )}
+        {/* UN CONTENEDOR NO SE MIDE, SE AGREGA: la base lo rechaza con un trigger y el formulario
+            lo dice antes de que alguien lo complete. La guarda se mudó ADENTRO del componente
+            (24/08): el mismo formulario se embebe en el panel lateral de la tarea, y una regla
+            escrita en la página es una regla que el otro envase no cumple. */}
+        <FormAvance
+          nodo={nodo}
+          pasos={pasos.data ?? []}
+          cuadrillas={cuadrillas}
+          autor={perfil.data?.nombre ?? 'sin identificar'}
+          hoy={new Date().toISOString().slice(0, 10)}
+          registrar={registrarAvance.bind(null, obraId, actividad)}
+        />
 
         <section className="mt-8">
           <h2 className="mb-1.5 text-[13px] font-semibold text-ink">Registros anteriores</h2>

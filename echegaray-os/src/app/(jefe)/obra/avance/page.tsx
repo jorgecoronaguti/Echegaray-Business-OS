@@ -1,5 +1,6 @@
 import { Aviso } from '@/shared/components/ds'
 import { Encabezado, Panel, Rotulo } from '@/features/jefe/components/Piezas'
+import { IconoDependencia } from '@/shared/components/iconos'
 import { ComoVieneLaObra } from '@/features/jefe/components/ComoVieneLaObra'
 import { FormularioAvance } from '@/features/jefe/components/FormularioAvance'
 import { SinObra } from '@/features/jefe/components/SinObra'
@@ -88,7 +89,9 @@ export default async function JefeAvancePage({
     <>
       {dependencias.data && dependencias.data.length > 0 && (
         <div className="px-4 pt-4">
-          <Rotulo tono="warn">DEPENDE DE</Rotulo>
+          <Rotulo tono="warn" icono={<IconoDependencia className="h-[16px] w-[16px]" />}>
+            Depende de
+          </Rotulo>
           <Panel testid="dependencias">
             {dependencias.data.map((d) => (
               <p key={d.id} className="px-[18px] py-3 text-[13px] leading-relaxed text-ink">

@@ -2,6 +2,7 @@ import { Aviso, Boton } from '@/shared/components/ds'
 import { PieDeAccion } from '@/features/jefe/components/ShellJefe'
 import { Encabezado, Fila, Metricas, Nada, Panel, Rotulo } from '@/features/jefe/components/Piezas'
 import { IconoUbicacion } from '@/features/jefe/components/Iconos'
+import { IconoCuadrilla, IconoPersona } from '@/shared/components/iconos'
 import { SinObra } from '@/features/jefe/components/SinObra'
 import { ZONA_OBRA, contextoDeObra, hoyEnObra } from '@/features/jefe/services/contexto'
 import { getHHDelDia } from '@/features/jefe/services/jefeService'
@@ -74,8 +75,14 @@ export default async function JefePersonasPage({
       <Encabezado
         titulo="Quién está hoy"
         sub={
-          <span className="inline-flex items-center gap-2">
-            {obra.nombre}
+          <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            <span>
+              {r.asignados === 0
+                ? `${r.enObra} ${r.enObra === 1 ? 'marca' : 'marcas'} hoy`
+                : `${r.enObra} de ${r.asignados} fichados`}
+              {cuadrillas.length > 0
+                && ` · ${cuadrillas.length} ${cuadrillas.length === 1 ? 'cuadrilla' : 'cuadrillas'}`}
+            </span>
             <span className="inline-flex items-center gap-1.5 text-faint">
               <PuntoActivo /> en vivo
             </span>
@@ -120,11 +127,12 @@ export default async function JefePersonasPage({
                   tenía que estar. Sin el denominador, cuatro presentes de cinco esperados y cuatro
                   de cuatro se leen igual. */}
               <Rotulo
+                icono={<IconoCuadrilla className="h-[16px] w-[16px]" />}
                 extra={cuadrillaEsperada.has(c.nombre)
                   ? `${c.presentes.length} de ${cuadrillaEsperada.get(c.nombre)}`
                   : `${c.presentes.length} ${c.presentes.length === 1 ? 'persona' : 'personas'}`}
               >
-                {c.nombre.toUpperCase()}
+                {c.nombre}
               </Rotulo>
               <Panel testid="cuadrilla">
                 {c.presentes.map((p) => {
@@ -192,7 +200,13 @@ export default async function JefePersonasPage({
 
         {grupos.sinRegistrar.length > 0 && (
           <div>
-            <Rotulo tono="warn">SIN REGISTRAR</Rotulo>
+            <Rotulo
+              tono="warn"
+              icono={<IconoPersona className="h-[16px] w-[16px]" />}
+              extra={`${grupos.sinRegistrar.length} sin marca`}
+            >
+              Sin registrar
+            </Rotulo>
             <Panel testid="sin-registrar" filo="warn">
               {grupos.sinRegistrar.map((e) => (
                 <Fila

@@ -1,8 +1,11 @@
 // LA TABLA DE PAQUETES — una fila por subcontrato de la obra (Design canónico 23/08, pantalla 10).
 //
-// Proveedor · Trabajo · Estado · Avance · Plazo · Contrato. El alcance dejó de ser columna: es el
-// mismo dato que el panel ya publica con su unidad y su partida de origen, y acá sólo servía para
-// empujar el avance fuera de la pantalla del que mira seis paquetes.
+// Proveedor · Trabajo · Estado · Avance · Contrato — las cinco del canónico 10, en ese orden.
+//
+// El alcance dejó de ser columna: es el mismo dato que el panel ya publica con su unidad y su
+// partida de origen, y acá sólo servía para empujar el avance fuera de la pantalla del que mira
+// seis paquetes. EL PLAZO SALIÓ POR LO MISMO (24/08, canónico 10): el mockup dibuja cinco columnas
+// y el plazo es la primera fila de datos del panel, donde además se lee con su fecha de fin.
 //
 // La columna CONTRATO existe sólo para quien ve economía. No se dibuja en gris ni con un candado:
 // no se dibuja. Un lugar vacío donde va la plata invita a preguntar por qué, y la respuesta —«no
@@ -46,14 +49,13 @@ export function TablaSubcontratos({
   const cert = resumenCertificado(paquetes)
 
   return (
-    <Tabla testid="tabla-subcontratos" minWidth={economia ? 720 : 600}>
+    <Tabla testid="tabla-subcontratos" minWidth={economia ? 640 : 520}>
       <THead>
         <tr>
           <Th>Proveedor</Th>
           <Th>Trabajo</Th>
           <Th>Estado</Th>
           <Th>Avance</Th>
-          <Th num>Plazo</Th>
           {economia && <Th num>Contrato</Th>}
         </tr>
       </THead>
@@ -106,17 +108,18 @@ export function TablaSubcontratos({
                     </span>
                   )}
               </Td>
-              <Td num className="whitespace-nowrap">{p.plazo.texto}</Td>
               {economia && (
+                /* SIN MONTO VA EN `warn`, NO EN GRIS (canónico 10): un paquete sin precio no es un
+                   dato que todavía no llegó, es un trabajo que se está por ejecutar sin contrato. */
                 <Td num>{p.precio_contratado == null
-                  ? <span className="text-faint">sin precio</span>
+                  ? <span className="text-warn">sin monto</span>
                   : plata(p.precio_contratado)}</Td>
               )}
             </Tr>
           )
         })}
         <FilaTotal>
-          <Td colSpan={economia ? 6 : 5}>
+          <Td colSpan={economia ? 5 : 4}>
             <span className="flex flex-wrap items-baseline justify-end gap-x-7 gap-y-1">
               {/* PAQUETES VA SIEMPRE: es el único total que un jefe de obra puede ver, y sin él el
                   pie desaparecía entero para el rol que más entra a esta pantalla. */}

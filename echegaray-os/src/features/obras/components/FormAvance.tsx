@@ -2,9 +2,15 @@
 
 // ═══ 05 · REGISTRAR AVANCE — los métodos, el criterio y la firma ═══
 //
-// Es una PANTALLA ENTERA y no un panel: registrar avance es el acto que más consecuencias tiene en
-// el módulo —mueve el avance de la obra, el rendimiento y la proyección de HH— y se hace mirando
-// tres cosas a la vez (los pasos, las horas y la evidencia). En un cajón lateral de 412px no entran.
+// UNA SOLA DEFINICIÓN, DOS ENVASES (orden del dueño 24/08). La pantalla entera de
+// `/obras/[obra]/avance/[actividad]` y el formulario embebido en el panel lateral de la tarea son
+// EL MISMO componente con `variante`: lo que cambia es el envase —el título y las dos columnas—,
+// nunca la regla. Duplicar el formulario para el panel sería duplicar el criterio del método
+// manual, la resta del acumulado y la firma: tres reglas que ya tienen su gemela en la base y que
+// nadie volvería a corregir en los dos lados.
+//
+// Lo que la variante `panel` NO trae es el chrome de página: ni cabecera de obra, ni contenedor, ni
+// el historial. Eso lo pone quien la embebe.
 //
 // ═══ EL CRITERIO DEL MÉTODO MANUAL ═══
 //
@@ -39,15 +45,20 @@ function metodoInicial(n: NodoObra): MetodoRegistrable {
   return 'manual'
 }
 
-export function FormAvance({
-  nodo, pasos, cuadrillas, autor, hoy, registrar,
-}: {
+export interface DatosFormAvance {
   nodo: NodoObra
   pasos: PasoDeActividad[]
   cuadrillas: { id: string; nombre: string }[]
   autor: string
   hoy: string
   registrar: (form: FormData) => Promise<{ ok: true; mensaje?: string } | { ok: false; error: string }>
+}
+
+export function FormAvance({
+  nodo, pasos, cuadrillas, autor, hoy, registrar, variante = 'pagina',
+}: DatosFormAvance & {
+  /** `panel`: sin título propio y en una sola columna, para un cajón de ~412px. */
+  variante?: 'pagina' | 'panel'
 }) {
   const [metodo, setMetodo] = useState<MetodoRegistrable>(metodoInicial(nodo))
   const [tildados, setTildados] = useState<ReadonlySet<string>>(
@@ -57,6 +68,12 @@ export function FormAvance({
   const [declarado, setDeclarado] = useState(String(nodo.avance_pct ?? 0))
   const [criterio, setCriterio] = useState('')
 
+  // UN CONTENEDOR NO SE MIDE, SE AGREGA: la base lo rechaza con un trigger. La guarda vive ACÁ y
+  // no en la página porque el mismo formulario se embebe en el panel de la tarea: dejada afuera,
+  // cada embebedor tendría que acordarse de repetirla y el primero que se olvide muestra un
+  // formulario que la base va a rebotar después de completarlo.
+  const esContenedor = nodo.es_contenedor
+
   const pesoTotal = pasos.reduce((s, p) => s + Number(p.peso), 0)
   const pesoHecho = pasos.filter((p) => tildados.has(p.id)).reduce((s, p) => s + Number(p.peso), 0)
   const avancePasos = pesoTotal > 0 ? Math.round((pesoHecho / pesoTotal) * 1000) / 10 : null
@@ -65,21 +82,37 @@ export function FormAvance({
   const faltaCriterio = metodo === 'manual' && criterio.trim() === ''
   const proy = hhProyectadas(nodo.hh_real, resultante)
 
+  if (esContenedor) {
+    return (
+      <p className="border-l-[3px] border-warn bg-warn-soft px-3.5 py-3 text-[13px] text-warn"
+        data-testid="es-contenedor">
+        «{nodo.nombre}» agrupa a otras actividades: el avance se registra en las que agrupa, y de
+        ahí sube solo.
+      </p>
+    )
+  }
+
+  const enPanel = variante === 'panel'
+
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-[20px] font-semibold text-ink">{nodo.nombre}</h1>
-          <p className="text-[12px] text-muted">
-            {/* La ruta sólo si agrega algo: en una actividad de la raíz, `camino` es el nombre. */}
-            {nodo.camino !== nodo.nombre && nodo.camino}
-            {nodo.cantidad_objetivo !== null && (
-              <span className="ml-2 font-mono text-[11px] text-faint">
-                {nodo.cantidad_objetivo} {nodo.unidad ?? ''}
-              </span>
-            )}
-          </p>
-        </div>
+        {/* EN EL PANEL EL TÍTULO YA ESTÁ ARRIBA: repetirlo empuja el número grande fuera de la
+            vista, que es justo lo único que este bloque tiene que mostrar primero. */}
+        {!enPanel && (
+          <div>
+            <h1 className="text-[20px] font-semibold text-ink">{nodo.nombre}</h1>
+            <p className="text-[12px] text-muted">
+              {/* La ruta sólo si agrega algo: en una actividad de la raíz, `camino` es el nombre. */}
+              {nodo.camino !== nodo.nombre && nodo.camino}
+              {nodo.cantidad_objetivo !== null && (
+                <span className="ml-2 font-mono text-[11px] text-faint">
+                  {nodo.cantidad_objetivo} {nodo.unidad ?? ''}
+                </span>
+              )}
+            </p>
+          </div>
+        )}
         <div className="flex items-center gap-3">
           <div className="text-right">
             <div className="text-[10.5px] uppercase tracking-[0.05em] text-faint">Avance</div>
@@ -125,7 +158,7 @@ export function FormAvance({
         <input type="hidden" name="metodo" value={metodo} />
         <input type="hidden" name="fecha" value={hoy} />
 
-        <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
+        <div className={enPanel ? 'grid gap-5' : 'grid gap-6 lg:grid-cols-[1fr_300px]'}>
           <div>
             {metodo === 'pasos' && (
               <section data-testid="cuerpo-pasos">
@@ -287,6 +320,18 @@ export function FormAvance({
       </FormAccion>
     </div>
   )
+}
+
+/**
+ * EL MISMO FORMULARIO, EMBEBIDO EN EL PANEL LATERAL DE LA TAREA.
+ *
+ * Es un envase, no una copia: fija `variante` y nada más. Quien lo importa le pasa la actividad, la
+ * cuadrilla, el autor y la server action ya atada con `.bind` a la obra y a la actividad — el
+ * `actividad_id` NUNCA viaja en un campo del formulario, porque un id editable desde el navegador
+ * deja escribir el avance de la actividad de al lado.
+ */
+export function FormAvanceEmbebido(datos: DatosFormAvance) {
+  return <FormAvance {...datos} variante="panel" />
 }
 
 function Firma({ clave, valor }: { clave: string; valor: string }) {

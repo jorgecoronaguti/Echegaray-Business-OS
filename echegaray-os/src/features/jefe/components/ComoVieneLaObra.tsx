@@ -1,4 +1,5 @@
 import { Barra, BarraConPlan, Fila, Metricas, Nada, Panel, Rotulo, porcentaje } from './Piezas'
+import { IconoAvance, IconoBloqueo } from '@/shared/components/iconos'
 import { IconoAlerta } from './Iconos'
 import type { CausaDeAtraso, Esperado, FinProyectado, GrupoDeAvance, HHDeLaObra } from '../services/progreso'
 
@@ -98,8 +99,11 @@ export function ComoVieneLaObra({
       />
 
       <div>
-        <Rotulo extra={`${frentes.length} ${frentes.length === 1 ? 'frente' : 'frentes'}`}>
-          POR FRENTE
+        <Rotulo
+          icono={<IconoAvance className="h-[16px] w-[16px]" />}
+          extra={`${frentes.length} ${frentes.length === 1 ? 'frente' : 'frentes'}`}
+        >
+          Por frente
         </Rotulo>
         <Panel testid="avance-por-frente">
           {frentes.length === 0 ? (
@@ -117,7 +121,13 @@ export function ComoVieneLaObra({
       </div>
 
       <div>
-        <Rotulo tono={causas.length > 0 ? 'neg' : 'faint'}>QUÉ FRENA EL TRABAJO</Rotulo>
+        <Rotulo
+          tono={causas.length > 0 ? 'neg' : 'faint'}
+          icono={<IconoBloqueo className="h-[16px] w-[16px]" />}
+          extra={causas.length > 0 ? `${causas.length} ${causas.length === 1 ? 'causa' : 'causas'}` : undefined}
+        >
+          Qué frena el trabajo
+        </Rotulo>
         <Panel testid="causas-de-atraso" filo={causas.length > 0 ? 'neg' : undefined}>
           {causas.length === 0 ? (
             <Nada>Ningún impedimento abierto. Los carga quien encuentra el problema, desde el frente.</Nada>

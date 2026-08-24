@@ -19,7 +19,7 @@ import type { ReactNode } from 'react'
 
 /** El panel blanco del contrato: `#FFFFFF`, hairline, radio grande de teléfono. */
 export function Panel({
-  titulo, contador, children, testid, filo,
+  titulo, contador, children, testid, filo, icono,
 }: {
   titulo?: ReactNode
   /** El número que califica al título. Mono, porque es un dato. */
@@ -28,15 +28,25 @@ export function Panel({
   testid?: string
   /** La regla interior de 3px que marca la excepción. `neg` frena; `warn` avisa. */
   filo?: 'neg' | 'warn'
+  /** El icono del título, a 17px. J01 dibuja «Resolver ahora» con el suyo delante. */
+  icono?: ReactNode
 }) {
   const regla = filo === 'neg' ? 'shadow-[inset_3px_0_0_var(--os-neg)]'
     : filo === 'warn' ? 'shadow-[inset_3px_0_0_var(--os-warn)]' : ''
+  // El conteo hereda el filo: en J01 el «3» de «Resolver ahora» está en rojo. Es el mismo dato que
+  // el título, y decirlo en gris al lado de una regla roja lo desmiente.
+  const tinta = filo === 'neg' ? 'text-neg' : filo === 'warn' ? 'text-warn' : 'text-muted'
   return (
     <section data-testid={testid} className={`overflow-hidden rounded-[14px] bg-surface ${regla}`}>
       {titulo != null && (
-        <div className="flex items-baseline justify-between gap-3 px-[18px] pb-2.5 pt-[15px]">
-          <h2 className="text-[13px] font-semibold text-ink">{titulo}</h2>
-          {contador != null && <span className="font-mono text-[12px] tabular-nums text-muted">{contador}</span>}
+        <div className="flex items-center justify-between gap-3 px-[18px] pb-2.5 pt-[15px]">
+          <h2 className="flex min-w-0 items-center gap-2 text-[14.5px] font-semibold leading-tight text-ink">
+            {icono != null && <span className={`flex shrink-0 items-center ${tinta}`}>{icono}</span>}
+            <span className="truncate">{titulo}</span>
+          </h2>
+          {contador != null && (
+            <span className={`shrink-0 font-mono text-[12.5px] font-medium tabular-nums ${tinta}`}>{contador}</span>
+          )}
         </div>
       )}
       {children}
@@ -44,17 +54,35 @@ export function Panel({
   )
 }
 
-/** El rótulo en versalitas que agrupa paneles. `tono` lo enciende cuando el grupo es la excepción. */
-export function Rotulo({ children, extra, tono = 'faint' }: {
+/**
+ * EL TÍTULO DE SECCIÓN QUE AGRUPA PANELES — icono, palabra en caja normal, y el número a la derecha.
+ *
+ * Fue una versalita gris de 11px hasta el 24/08/2026. Los seis mockups del jefe (J01 «Frentes de
+ * hoy · 4 frentes», J03 «Por rubro», J05 «Cuadrilla 1 · Fundaciones · 4 de 5», J06 «Pasos · 2 de
+ * 4») dibujan lo mismo en los cuatro: icono al frente, título en tinta a 14,5px con peso, y el
+ * conteo a la derecha en monoespaciada. La versalita gris pesaba menos que el panel que titulaba y
+ * en 390px la sección se leía como un pie de la anterior, no como el encabezado de la siguiente.
+ *
+ * `tono` enciende EL ICONO, no el título: el que avisa es el símbolo. Un título en rojo compite con
+ * el contenido rojo del panel que encabeza y deja de haber jerarquía.
+ */
+export function Rotulo({ children, extra, tono = 'faint', icono }: {
   children: ReactNode
   extra?: ReactNode
   tono?: 'faint' | 'warn' | 'neg'
+  /** El icono canónico de la sección (`shared/components/iconos`), a 16px. */
+  icono?: ReactNode
 }) {
-  const color = tono === 'neg' ? 'text-neg' : tono === 'warn' ? 'text-warn' : 'text-faint'
+  const color = tono === 'neg' ? 'text-neg' : tono === 'warn' ? 'text-warn' : 'text-muted'
   return (
-    <div className="flex items-baseline justify-between gap-3 px-1 pb-2">
-      <span className={`text-[11px] tracking-[0.06em] ${color}`}>{children}</span>
-      {extra != null && <span className="text-[11.5px] text-muted">{extra}</span>}
+    <div className="flex items-center justify-between gap-3 px-1 pb-2 pt-1">
+      <span className="flex min-w-0 items-center gap-2">
+        {icono != null && <span className={`flex shrink-0 items-center ${color}`}>{icono}</span>}
+        <span className="truncate text-[14.5px] font-semibold leading-tight text-ink">{children}</span>
+      </span>
+      {extra != null && (
+        <span className="shrink-0 font-mono text-[12px] tabular-nums tracking-[0.02em] text-muted">{extra}</span>
+      )}
     </div>
   )
 }
@@ -193,11 +221,22 @@ export function Nada({ children, testid }: { children: ReactNode; testid?: strin
   )
 }
 
-/** El encabezado de pantalla: título de 21px y el renglón que dice qué obra se está mirando. */
-export function Encabezado({ titulo, sub, accion }: { titulo: ReactNode; sub?: ReactNode; accion?: ReactNode }) {
+/**
+ * El encabezado de pantalla: título de 20px y el renglón que dice qué obra se está mirando.
+ *
+ * `sobre` es el contexto que va ARRIBA del título — en J01 la obra, con su `▾`. El título de esa
+ * pantalla es «Hoy» y no el nombre de la obra: lo que cambia entre visitas es el día, no la obra.
+ */
+export function Encabezado({ titulo, sub, accion, sobre }: {
+  titulo: ReactNode
+  sub?: ReactNode
+  accion?: ReactNode
+  sobre?: ReactNode
+}) {
   return (
     <div className="flex items-start gap-3 px-4 pb-2.5 pt-4">
       <div className="min-w-0 flex-1">
+        {sobre != null && <div className="mb-1 min-w-0">{sobre}</div>}
         <h1 className="truncate text-[20px] font-semibold leading-tight text-ink">{titulo}</h1>
         {sub != null && <p className="mt-0.5 text-[13.5px] text-muted">{sub}</p>}
       </div>

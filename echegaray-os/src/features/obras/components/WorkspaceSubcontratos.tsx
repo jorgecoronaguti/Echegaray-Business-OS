@@ -22,14 +22,16 @@ import { Buscador, SubTabs, Vacio } from '@/shared/components/ds'
 import { IconoProblema } from '@/shared/components/iconos'
 import { TablaSubcontratos } from './TablaSubcontratos'
 import { PanelSubcontrato, type AccionesPaquete } from './PanelSubcontrato'
-import { ComparadorPropioSubcontrato } from './ComparadorPropioSubcontrato'
 import { armarComparacion, necesitaResolverse } from '../services/subcontratosReglas'
 import type { Paquete } from '../services/subcontratosService'
 
 type Filtro = 'todo' | 'curso' | 'problema'
 
+// Los tres rótulos son los del canónico 10, literales. «Para resolver» era la misma idea con otra
+// palabra, y con eso la pastilla del filtro y el botón de arriba decían cosas distintas del mismo
+// número.
 const FILTRO_LABEL: Record<Filtro, string> = {
-  todo: 'Todo', curso: 'En curso', problema: 'Para resolver',
+  todo: 'Todo', curso: 'En curso', problema: 'Problemas',
 }
 
 const enCurso = (p: Paquete) => p.estado === 'en_curso'
@@ -103,39 +105,40 @@ export function WorkspaceSubcontratos({
           </button>
         )}
 
-        {/* NI EL BUSCADOR NI LOS FILTROS APARECEN CON UNA SOLA FILA (`COMPONENTS.md` §Filters):
-            filtrar seis paquetes ayuda; filtrar uno es una fila de interfaz que no hace nada. */}
-        {paquetes.length > 1 && (
-          <>
-            <div className="flex items-center gap-2">
-              <Buscador
-                value={query}
-                onChange={setQuery}
-                placeholder="Buscar paquete o subcontratista"
-                testid="buscar-paquete"
-                className="w-[228px]"
-              />
-              {query && (
-                <>
-                  <span className="font-mono text-[11px] tabular-nums text-faint">{visibles.length}</span>
-                  <button type="button" onClick={limpiar}
-                    data-testid="limpiar-busqueda" className="text-[12px] text-faint hover:text-ink">✕</button>
-                </>
-              )}
-            </div>
-
-            <SubTabs
-              testid="filtros-subcontratos"
-              items={(['todo', 'curso', 'problema'] as Filtro[]).map((f) => ({
-                onClick: () => setFiltro(f),
-                label: FILTRO_LABEL[f],
-                cuenta: f === 'todo' ? paquetes.length : f === 'curso' ? nCurso : nProblema,
-                activo: filtro === f,
-                testid: `filtro-${f}`,
-              }))}
+        {/* EL BUSCADOR Y LOS CHIPS VAN SIEMPRE (canónico 10, orden del dueño 24/08). Estaban
+            condicionados a `paquetes.length > 1`: la barra cambiaba de forma según cuántos paquetes
+            hubiera, y la pantalla de una obra con un solo paquete no era la pantalla dibujada. El
+            costo de mostrarlos con una fila es una fila que filtra una fila; el de esconderlos es
+            que nadie sabe que se puede buscar hasta que ya hay demasiado para buscar. */}
+        <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-2">
+          <div className="flex items-center gap-2">
+            <Buscador
+              value={query}
+              onChange={setQuery}
+              placeholder="Buscar paquete o proveedor"
+              testid="buscar-paquete"
+              className="w-[228px]"
             />
-          </>
-        )}
+            {query && (
+              <>
+                <span className="font-mono text-[11px] tabular-nums text-faint">{visibles.length}</span>
+                <button type="button" onClick={limpiar}
+                  data-testid="limpiar-busqueda" className="text-[12px] text-faint hover:text-ink">✕</button>
+              </>
+            )}
+          </div>
+
+          <SubTabs
+            testid="filtros-subcontratos"
+            items={(['todo', 'curso', 'problema'] as Filtro[]).map((f) => ({
+              onClick: () => setFiltro(f),
+              label: FILTRO_LABEL[f],
+              cuenta: f === 'todo' ? paquetes.length : f === 'curso' ? nCurso : nProblema,
+              activo: filtro === f,
+              testid: `filtro-${f}`,
+            }))}
+          />
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_384px]">
@@ -158,21 +161,17 @@ export function WorkspaceSubcontratos({
               onSeleccionar={elegir}
             />
           )}
-          {comparacion && seleccionado && (
-            <ComparadorPropioSubcontrato
-              filas={comparacion}
-              economia={economia}
-              titulo="Propio vs subcontrato"
-              subtitulo={`${seleccionado.vinculos[0]?.actividad ?? seleccionado.nombre} · antes de firmar`}
-            />
-          )}
         </div>
 
         {seleccionado ? (
+          /* LA COMPARACIÓN VIAJA AL PANEL (canónico 10): estaba debajo de la lista, o sea a media
+             pantalla de distancia del paquete que compara, y cuando la lista crecía se iba abajo
+             del pliegue. Es la decisión de subcontratar o no: va pegada al paquete. */
           <PanelSubcontrato
             paquete={seleccionado}
             economia={economia}
             obraId={obraId}
+            comparacion={comparacion ?? []}
             onCerrar={() => { setSel(null); sincronizarUrl(null) }}
             acciones={acciones}
           />

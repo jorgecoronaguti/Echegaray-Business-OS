@@ -82,12 +82,14 @@ export default async function JefeTareasPage({
               href={conObra('/obra/tareas', obra.id, { filtro: f, q })}
               data-testid={`filtro-${f}`}
               aria-current={activo ? 'true' : undefined}
-              className={`flex h-[44px] shrink-0 items-center gap-2 rounded-[10px] border px-3.5 text-[13.5px] ${
-                activo ? 'border-marca bg-marca-soft font-semibold text-ink' : 'border-surface bg-surface text-ink'
+              // LA PASTILLA ELEGIDA ES GRAFITO. J02, J04 y J05 la dibujan igual: `#30302F` con
+              // texto blanco y radio completo. El amarillo queda para la acción que escribe.
+              className={`flex h-[44px] shrink-0 items-center gap-2 rounded-[999px] border px-4 text-[13.5px] ${
+                activo ? 'border-accent bg-accent font-semibold text-white' : 'border-line bg-surface text-ink'
               }`}
             >
               {FILTRO_LABEL[f]}
-              <span className={`font-mono text-[12px] tabular-nums ${activo ? 'text-ink' : 'text-faint'}`}>
+              <span className={`font-mono text-[12px] tabular-nums ${activo ? 'text-white/70' : 'text-faint'}`}>
                 {n}
               </span>
             </Link>
@@ -157,9 +159,9 @@ function GrupoDeFrente({
     <details open data-testid="grupo-frente">
       <summary className="flex min-h-[44px] cursor-pointer list-none items-center gap-2 px-1 [&::-webkit-details-marker]:hidden">
         <span aria-hidden className="text-[13px] text-faint transition-transform">▾</span>
-        <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold text-ink">{nombre}</span>
+        <span className="min-w-0 flex-1 truncate text-[14.5px] font-semibold text-ink">{nombre}</span>
         <span className="font-mono text-[12px] tabular-nums text-faint">{tareas.length}</span>
-        <span className="font-mono text-[13.5px] font-semibold tabular-nums text-ink">
+        <span className="font-mono text-[14.5px] font-semibold tabular-nums text-ink">
           {pct == null ? '—' : porcentaje(pct)}
         </span>
       </summary>

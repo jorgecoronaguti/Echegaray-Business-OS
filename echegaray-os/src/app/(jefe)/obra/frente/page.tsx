@@ -5,6 +5,7 @@ import {
   Barra, Encabezado, Fila, Metricas, Nada, Panel, Rotulo, porcentajeCorto,
 } from '@/features/jefe/components/Piezas'
 import { IconoAlerta } from '@/features/jefe/components/Iconos'
+import { IconoBloqueo, IconoCompletar, IconoCuadrilla } from '@/shared/components/iconos'
 import { SinObra } from '@/features/jefe/components/SinObra'
 import { contextoDeObra, hoyEnObra } from '@/features/jefe/services/contexto'
 import { getActividades, getArbol, getHHDelDia, getImpedimentos } from '@/features/jefe/services/jefeService'
@@ -120,7 +121,13 @@ export default async function JefeFrentePage({
             ahí. Un impedimento abierto le gana a cualquier número. */}
         {impedimentosDelFrente.length > 0 && (
           <div>
-            <Rotulo tono="neg">IMPEDIMENTOS ABIERTOS</Rotulo>
+            <Rotulo
+              tono="neg"
+              icono={<IconoBloqueo className="h-[16px] w-[16px]" />}
+              extra={`${impedimentosDelFrente.length} ${impedimentosDelFrente.length === 1 ? 'abierto' : 'abiertos'}`}
+            >
+              Impedimentos abiertos
+            </Rotulo>
             <Panel testid="frente-impedimentos" filo="neg">
               {impedimentosDelFrente.map((i) => (
                 <Fila
@@ -186,8 +193,11 @@ export default async function JefeFrentePage({
         />
 
         <div>
-          <Rotulo extra={`${tareas.length} ${tareas.length === 1 ? 'tarea' : 'tareas'}`}>
-            TAREAS DEL FRENTE
+          <Rotulo
+            icono={<IconoCompletar className="h-[16px] w-[16px]" />}
+            extra={`${tareas.length} ${tareas.length === 1 ? 'tarea' : 'tareas'}`}
+          >
+            Tareas del frente
           </Rotulo>
           <Panel testid="frente-tareas">
             {tareas.length === 0 ? (
@@ -227,7 +237,14 @@ export default async function JefeFrentePage({
         </div>
 
         <div>
-          <Rotulo>IMPUTARON HORAS HOY</Rotulo>
+          <Rotulo
+            icono={<IconoCuadrilla className="h-[16px] w-[16px]" />}
+            extra={horasPorPersona.size === 0
+              ? 'sin horas hoy'
+              : `${horasPorPersona.size} con horas hoy`}
+          >
+            Quién está en el frente
+          </Rotulo>
           <Panel testid="frente-gente">
             {horasPorPersona.size === 0 ? (
               // «Sin horas» NO es «sin trabajo»: son dos hechos distintos y esa línea se queda.

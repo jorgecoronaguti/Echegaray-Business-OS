@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useRef, useState } from 'react'
 import { Aviso, BarraContextual, ChipsValor } from '@/shared/components/ds'
 import { Confirmacion, Nada, Panel, Rotulo } from './Piezas'
+import { IconoObra } from '@/shared/components/iconos'
 import {
   AVISO_CRITERIO, VALORES_MASIVOS, VISTAS_MASIVAS, avisoDePrecision, enVista, renglones, vistaInicial,
 } from '../services/medicion'
@@ -107,12 +108,18 @@ export function FormularioMasivo({
                 onClick={() => { setVista(id); setElegidas(new Set()) }}
                 data-testid={`vista-${id}`}
                 aria-pressed={vista === id}
-                className={`flex h-[44px] shrink-0 items-center gap-2 rounded-[10px] border px-3.5 text-[13.5px] ${
-                  vista === id ? 'border-marca bg-marca-soft font-semibold text-ink' : 'border-surface bg-surface text-ink'
+                // EL FILTRO ELEGIDO ES GRAFITO, NO AMARILLO. Los mockups J04 y J05 dibujan la
+                // pastilla activa en `#30302F` con texto blanco: el amarillo de la marca ya es el
+                // botón que GUARDA, y usarlo también para «qué estoy mirando» hace que la pantalla
+                // tenga dos amarillos que significan cosas distintas.
+                className={`flex h-[44px] shrink-0 items-center gap-2 rounded-[999px] border px-4 text-[13.5px] ${
+                  vista === id
+                    ? 'border-accent bg-accent font-semibold text-white'
+                    : 'border-line bg-surface text-ink'
                 }`}
               >
                 {label}
-                <span className={`font-mono text-[12px] tabular-nums ${vista === id ? 'text-ink' : 'text-faint'}`}>
+                <span className={`font-mono text-[12px] tabular-nums ${vista === id ? 'text-white/70' : 'text-faint'}`}>
                   {n}
                 </span>
               </button>
@@ -137,7 +144,12 @@ export function FormularioMasivo({
         ) : (
           grupos.map((g) => (
             <div key={g.nombre}>
-              <Rotulo>{g.nombre.toUpperCase()}</Rotulo>
+              <Rotulo
+                icono={<IconoObra className="h-[16px] w-[16px]" />}
+                extra={`${g.filas.length} ${g.filas.length === 1 ? 'tarea' : 'tareas'}`}
+              >
+                {g.nombre}
+              </Rotulo>
               <Panel>
                 {g.filas.map((f) => {
                   const marcada = elegidas.has(f.actividad_id)
