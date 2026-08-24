@@ -7,18 +7,27 @@
 // LA SOLAPA `Análisis` NO SE RENDERIZA SIN PERMISO ECONÓMICO. No se muestra vacía ni con guiones:
 // no existe. El contrato lo pide («esconder por completo, no mostrar —») y el motivo es que una
 // columna de guiones sigue diciendo cuántas líneas tiene el análisis y cuál es el insumo más caro.
+//
+// ═══ LAS CINCO PREGUNTAS, EN ESTE ORDEN ═══
+//
+// Qué es · cómo se mide · cuánto rinde · qué necesita · qué aprendimos. Resumen las contesta las
+// cinco sin que haya que abrir nada; la composición completa —que es la respuesta larga a «qué
+// necesita»— queda plegada, porque son diez líneas que casi nunca se leen enteras y que empujan el
+// aprendizaje fuera de la pantalla.
 
 import Link from 'next/link'
-import { Aviso, Nulo, TituloPanel } from '@/shared/components/ds'
+import { Aviso, Nulo, Plegable, TituloPanel } from '@/shared/components/ds'
 // `Campo` de este archivo es la fila rótulo/valor de la ficha; el del formulario es otro. Se
 // renombra en el import en vez de tocar el local: el local lo usan seis solapas.
-import { Campo as CampoFormulario, CTRL, FormAccion } from '@/shared/components/ui'
-import type { FichaTarea as Ficha } from '../types'
-import { motivoDelEstado, numero, pesosCierran, sumaDePesos } from '../services/reglas'
+import { IconoCerrar } from '@/shared/components/iconos'
+import type { FichaTarea as Ficha, LineaAnalisis } from '../types'
+import {
+  desvioObservado, motivoDelEstado, numero, pesosCierran, sumaDePesos,
+} from '../services/reglas'
 import { MAGNITUD, productividad } from '../services/vocabulario'
-import { aceptarRecomendacion, descartarRecomendacion } from '../services/recomendacionActions'
-import { EstadoAnalisisCelda, N, Rotulo, Texto } from './celdas'
+import { EstadoAnalisisCelda, EsfuerzoObservado, N, Rotulo, Texto } from './celdas'
 import { SolapaAnalisis } from './SolapaAnalisis'
+import { SolapaRendimiento } from './SolapaRendimiento'
 
 // LA CLAVE `rendimiento` NO SE RENOMBRA, EL RÓTULO SÍ (22/08/2026). La clave viaja en la URL
 // (`?s=rendimiento`) y está en enlaces mandados por chat, en marcadores y en los tests: cambiarla
@@ -48,7 +57,7 @@ export function FichaTarea({
   hrefSolapa: (s: Solapa) => string
   hrefCerrar: string
 }) {
-  const { tarea } = ficha
+  const { tarea, rendimiento } = ficha
   const visibles = SOLAPAS.filter((s) => s !== 'analisis' || economia)
 
   return (
@@ -59,31 +68,75 @@ export function FichaTarea({
       <header className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           <div className="font-mono text-[10.5px] text-faint">
-            {tarea.codigo}{tarea.division ? ` · ${tarea.division}` : ''}
+            {tarea.codigo}
+            {tarea.division ? ` · ${tarea.division}` : ''}
+            {/* LA VERSIÓN VIVE ACÁ Y NO SÓLO EN LA SOLAPA ECONÓMICA. Saber con qué versión se está
+                mirando una tarea no es un dato de precio: es lo que permite decir si el análisis que
+                cotizó una obra es éste o el anterior. */}
+            {tarea.version != null ? ` · v${tarea.version}` : ''}
           </div>
           <TituloPanel className="mt-1">{tarea.nombre}</TituloPanel>
           {/* El estado va en la CABECERA y no sólo en la lista: quien entró por un enlace directo a
-              la ficha nunca vio la fila, y el estado es lo primero que decide si este análisis sirve. */}
-          <div className="mt-1.5">
+              la ficha nunca vio la fila, y el estado es lo primero que decide si este análisis sirve.
+              Al lado, el método de medición como TEXTO —nunca una pastilla— según §Method chip. */}
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
             <EstadoAnalisisCelda estado={tarea.estado} titulo={motivoDelEstado(tarea.estado, tarea.falta)} />
+            <span className="text-[11.5px] text-muted">
+              Mide por <Texto v={etiquetaMedicion(tarea.metodo_medicion)} falta="sin definir" className="text-[11.5px]" />
+            </span>
           </div>
         </div>
-        <Link href={hrefCerrar} scroll={false} data-testid="cerrar-ficha" className="shrink-0 text-[13px] text-faint hover:text-ink">
-          ✕
+        <Link
+          href={hrefCerrar}
+          scroll={false}
+          data-testid="cerrar-ficha"
+          title="Cerrar"
+          aria-label="Cerrar la ficha"
+          className="shrink-0 text-faint transition-colors hover:text-ink"
+        >
+          <IconoCerrar className="h-[15px] w-[15px]" />
         </Link>
       </header>
 
-      <div className="mt-4 flex divide-x divide-[#EFEEEA] border-y border-[#EFEEEA] py-3">
-        <Bloque rotulo="Hs / unidad">
-          <span className="font-mono text-[18px] font-semibold tabular-nums text-ink">
-            {numero(tarea.hs_unitarias, 2) ?? <Nulo>sin dato</Nulo>}
-          </span>
-        </Bloque>
-        <Bloque rotulo="Unidad"><span className="text-[12.5px] text-ink">{tarea.unidad}</span></Bloque>
-        <Bloque rotulo="Medición">
-          <Texto v={etiquetaMedicion(tarea.metodo_medicion)} falta="sin definir" className="text-ink" />
-        </Bloque>
+      {/* LOS DOS NÚMEROS QUE DECIDEN, ENFRENTADOS. Con qué se cotiza y qué pasó cuando se hizo: la
+          comparación es el objeto de esta pantalla, y separados en dos lugares no se compara nada. */}
+      <div className="mt-4 grid grid-cols-2 gap-2.5">
+        <Cifra rotulo="Esfuerzo base" pie={MAGNITUD.esfuerzo.unidad(tarea.unidad)}>
+          {numero(tarea.hs_unitarias, 2) ?? <Nulo>sin análisis</Nulo>}
+        </Cifra>
+        <Cifra
+          rotulo="Real de obra"
+          pie={
+            rendimiento && rendimiento.muestra > 0
+              ? `${rendimiento.obras} ${rendimiento.obras === 1 ? 'obra medida' : 'obras medidas'}`
+              : 'todavía no se midió'
+          }
+        >
+          <EsfuerzoObservado base={tarea.hs_unitarias} observado={tarea.hs_observado} />
+        </Cifra>
       </div>
+
+      {/* LA ACCIÓN APARECE CUANDO EL MOTOR PROPUSO ALGO, NO CUANDO LA PANTALLA CALCULA UNA
+          DIFERENCIA. `hs_recomendado` en NULL significa que la muestra no alcanza para decidir, y
+          ofrecer «actualizar la base» ahí invitaría a meter un caso raro en la base para siempre. */}
+      {tarea.hs_recomendado != null && solapa !== 'rendimiento' && (
+        <Link
+          href={hrefSolapa('rendimiento')}
+          scroll={false}
+          data-testid="ir-a-decidir"
+          className="mt-3 flex items-center gap-2 rounded-card border border-warn/30 bg-warn-soft px-3 py-2 text-[12px] text-ink transition-colors hover:border-warn/60"
+        >
+          <span className="min-w-0 flex-1">
+            Actualizar la base con el real
+            <span className="mt-0.5 block text-[11px] text-muted">
+              pasar de <span className="font-mono tabular-nums">{numero(tarea.hs_unitarias, 2) ?? 'sin dato'}</span> a{' '}
+              <span className="font-mono tabular-nums">{numero(tarea.hs_recomendado, 2)}</span>{' '}
+              {MAGNITUD.esfuerzo.unidad(tarea.unidad)} afecta los presupuestos que vengan
+            </span>
+          </span>
+          <span aria-hidden className="shrink-0 text-faint">›</span>
+        </Link>
+      )}
 
       <nav data-testid="solapas-ficha" className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
         {visibles.map((s) => (
@@ -114,7 +167,7 @@ export function FichaTarea({
         {solapa === 'resumen' && <Resumen ficha={ficha} />}
         {solapa === 'analisis' && economia && <SolapaAnalisis ficha={ficha} />}
         {solapa === 'secuencia' && <Secuencia ficha={ficha} />}
-        {solapa === 'rendimiento' && <Rendimiento ficha={ficha} />}
+        {solapa === 'rendimiento' && <SolapaRendimiento ficha={ficha} />}
         {solapa === 'versiones' && <Versiones ficha={ficha} />}
         {solapa === 'uso' && <Uso ficha={ficha} />}
       </div>
@@ -125,20 +178,13 @@ export function FichaTarea({
 const etiquetaMedicion = (m: string | null) =>
   m === 'pasos' ? 'Pasos ponderados' : m === 'cantidad' ? 'Cantidad' : m === 'manual' ? 'Manual' : null
 
-function Bloque({ rotulo, children }: { rotulo: string; children: React.ReactNode }) {
+/** Un número grande con su rótulo y su pie. No es un panel: es peso tipográfico y espacio. */
+function Cifra({ rotulo, pie, children }: { rotulo: string; pie: string; children: React.ReactNode }) {
   return (
-    <div className="min-w-0 flex-1 px-3 first:pl-0 last:pr-0">
+    <div className="min-w-0 rounded-card bg-surface-quiet px-3 py-2.5">
       <Rotulo>{rotulo}</Rotulo>
-      <div className="mt-1">{children}</div>
-    </div>
-  )
-}
-
-function Fila({ rotulo, children }: { rotulo: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-baseline justify-between gap-4 border-b border-[#EFEEEA] py-2 last:border-b-0">
-      <span className="shrink-0 text-[11.5px] text-faint">{rotulo}</span>
-      <span className="min-w-0 text-right text-[12.5px] text-ink-soft">{children}</span>
+      <div className="mt-1 font-mono text-[17px] font-semibold tabular-nums text-ink">{children}</div>
+      <div className="mt-0.5 truncate text-[11px] text-muted">{pie}</div>
     </div>
   )
 }
@@ -149,8 +195,12 @@ function Fila({ rotulo, children }: { rotulo: string; children: React.ReactNode 
 // APRENDIMOS» sólo aparece cuando hay muestra REAL de obra — con una sola obra medida no hay
 // aprendizaje, hay un dato, y así lo declara `rendimiento_recomendado.lectura`.
 function Resumen({ ficha }: { ficha: Ficha }) {
-  const { tarea, rendimiento, plantilla } = ficha
+  const { tarea, rendimiento, plantilla, lineas } = ficha
   const recomendable = rendimiento?.hs_recomendado != null
+  const desvio = desvioObservado(tarea.hs_unitarias, tarea.hs_observado)
+  const cuadrilla = lineas.filter((l) => l.tipo === 'mano_obra')
+  const insumos = lineas.filter((l) => l.tipo === 'material' || l.tipo === 'equipo')
+
   return (
     <div className="space-y-4" data-testid="resumen-tarea">
       <Campo rotulo="Qué es">
@@ -171,9 +221,9 @@ function Resumen({ ficha }: { ficha: Ficha }) {
         ) : (
           <span>
             <span className="font-mono tabular-nums">{numero(tarea.hs_unitarias, 2)}</span> presupuestado
-            {rendimiento?.hs_observado_mediana != null && (
-              <span className="text-warn">
-                {' · '}<span className="font-mono tabular-nums">{numero(rendimiento.hs_observado_mediana, 2)}</span> observado
+            {tarea.hs_observado != null && (
+              <span className={desvio?.direccion === 'peor' ? 'text-warn' : undefined}>
+                {' · '}<span className="font-mono tabular-nums">{numero(tarea.hs_observado, 2)}</span> observado
               </span>
             )}
           </span>
@@ -184,9 +234,18 @@ function Resumen({ ficha }: { ficha: Ficha }) {
           ? <Nulo>sin esfuerzo cargado</Nulo>
           : <span className="font-mono tabular-nums">{numero(productividad(tarea.hs_unitarias), 3)}</span>}
       </Campo>
+      {/* LA CUADRILLA NO ES UN CAMPO DEL MODELO: ES LA MANO DE OBRA DEL ANÁLISIS. Un puesto y sus
+          horas por unidad — eso es con quién se hace la tarea, y sale de las líneas que ya están
+          leídas. Inventar una tabla de «cuadrilla tipo» al lado sería una segunda definición del
+          mismo hecho, y la que cotiza es ésta. */}
+      <Campo rotulo="Con qué cuadrilla">
+        {cuadrilla.length === 0
+          ? <Nulo>sin mano de obra en el análisis</Nulo>
+          : <span>{cuadrilla.map((l) => `${l.nombre} ${numero(l.cantidad, 2)} ${l.unidad}`.trim()).join(' · ')}</span>}
+      </Campo>
       <Campo rotulo="Qué necesita">
         {ficha.costo
-          ? `${ficha.costo.n_lineas} líneas de análisis${ficha.costo.tiene_mano_obra ? ' · con mano de obra' : ''}${
+          ? `${ficha.costo.n_lineas} líneas · ${insumos.length} entre materiales y equipos${
               ficha.costo.tiene_cargas_sociales ? ' · con cargas sociales' : ''}`
           : <Nulo>sin análisis cargado</Nulo>}
       </Campo>
@@ -200,12 +259,43 @@ function Resumen({ ficha }: { ficha: Ficha }) {
           <Nulo>sin base: todavía no se midió en obra</Nulo>
         )}
       </Campo>
+
+      {/* LA COMPOSICIÓN COMPLETA, BAJO DEMANDA. Sin precios: las cantidades son operativas y las ve
+          cualquiera; el costo de cada línea vive en la solapa Análisis, que sólo existe con permiso
+          económico. Cerrada por defecto — son diez líneas que empujan el aprendizaje fuera de la
+          pantalla y casi nunca se leen enteras. */}
+      {lineas.length > 0 && (
+        <Plegable titulo="Composición por unidad" cuenta={lineas.length} testid="composicion-plegada">
+          <ul>
+            {lineas.map((l) => <LineaComposicion key={l.id} linea={l} />)}
+          </ul>
+        </Plegable>
+      )}
+
       {tarea.estado !== 'completo' && (
         <Aviso tono={tarea.estado === 'sin_analisis' ? 'neg' : 'warn'} titulo="Deuda de carga">
           {motivoDelEstado(tarea.estado, tarea.falta) ?? 'Falta completar el análisis.'}
         </Aviso>
       )}
     </div>
+  )
+}
+
+const RUBRO: Record<LineaAnalisis['tipo'], string> = {
+  mano_obra: 'mano de obra', carga_social: 'carga social', material: 'material', equipo: 'equipo', otro: 'otro',
+}
+
+function LineaComposicion({ linea }: { linea: LineaAnalisis }) {
+  return (
+    <li className="flex items-baseline gap-3 border-b border-[#EFEEEA] py-1.5 last:border-b-0">
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[12px] text-ink-soft">{linea.nombre}</span>
+        <span className="text-[10px] text-faint">{RUBRO[linea.tipo]}</span>
+      </span>
+      <span className="shrink-0 font-mono text-[11.5px] tabular-nums text-ink-soft">
+        {numero(linea.cantidad, 2)} {linea.unidad}
+      </span>
+    </li>
   )
 }
 
@@ -272,131 +362,6 @@ function Secuencia({ ficha }: { ficha: Ficha }) {
           </div>
         </div>
       ) : null}
-    </div>
-  )
-}
-
-// ═══ ESFUERZO ══════════════════════════════════════════════════════════════════════════════════
-//
-// La cadena teórico → real → recomendado sale entera de `rendimiento_recomendado`. CON UNA SOLA
-// OBRA MEDIDA NO HAY RECOMENDACIÓN: la vista devuelve `hs_recomendado` en NULL y su `lectura` dice
-// por qué. La pantalla repite esa lectura en vez de mostrar un número que parecería una conclusión.
-//
-// La vista de Postgres se sigue llamando `rendimiento_recomendado` y NO se renombra: la consumen el
-// orquestador, los presupuestos y esta pantalla. Lo que cambia es lo que lee el que mira — todos
-// estos números son hs/unidad, o sea esfuerzo, y bajan cuando la tarea mejora.
-function Rendimiento({ ficha }: { ficha: Ficha }) {
-  const r = ficha.rendimiento
-  const u = ficha.tarea.unidad
-  if (!r || r.muestra === 0) {
-    return (
-      <div data-testid="rendimiento-tarea">
-        <Fila rotulo="Presupuestado vigente"><N v={ficha.tarea.hs_unitarias} falta="sin dato" /></Fila>
-        <p className="mt-3 text-[12.5px] text-muted">
-          Todavía no se midió en obra: no hay esfuerzo real ni recomendación.
-        </p>
-      </div>
-    )
-  }
-  return (
-    <div data-testid="rendimiento-tarea">
-      {/* LA UNIDAD ADELANTE, Y CON LA DIRECCIÓN DE LA MEJORA. Seis filas de números sin decir qué
-          magnitud son se leen como un rendimiento, que es al revés. */}
-      <p className="mb-2 text-[11.5px] text-faint">
-        Todo en {MAGNITUD.esfuerzo.unidad(u)} — esfuerzo: baja cuando la tarea mejora.
-      </p>
-      <Fila rotulo="Presupuestado vigente"><N v={r.hs_analisis ?? ficha.tarea.hs_unitarias} falta="sin dato" /></Fila>
-      <Fila rotulo="Real observado · promedio"><N v={r.hs_observado_promedio} falta="sin base" /></Fila>
-      <Fila rotulo={`Real observado · mediana de ${r.obras} ${r.obras === 1 ? 'obra' : 'obras'}`}>
-        <span className="font-semibold text-warn"><N v={r.hs_observado_mediana} falta="sin base" /></span>
-      </Fila>
-      <Fila rotulo="Dispersión de la muestra"><N v={r.dispersion} falta="sin base" /></Fila>
-      <Fila rotulo="Recomendado">
-        {r.hs_recomendado == null ? <Nulo>sin recomendación</Nulo> : <N v={r.hs_recomendado} className="font-semibold" />}
-      </Fila>
-      <Fila rotulo="Horas improductivas de la muestra">
-        <N v={r.hh_improductivas} falta="ninguna declarada" />
-      </Fila>
-      <div className="mt-3 rounded-card bg-surface-quiet px-3 py-2.5">
-        <div className="text-[12.5px] text-ink-soft">{r.lectura}</div>
-        <div className="mt-1 text-[11.5px] text-faint">
-          Muestra: {r.obras} {r.obras === 1 ? 'obra' : 'obras'}, {r.muestra} {r.muestra === 1 ? 'registro' : 'registros'}
-          {r.ultima_muestra
-            ? ` · última el ${new Date(r.ultima_muestra).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })}`
-            : ''}.
-        </div>
-        <div className="mt-1 text-[11.5px] text-faint">
-          El esfuerzo observado descuenta las horas improductivas: una espera de equipo no es el
-          estándar de la tarea.
-        </div>
-      </div>
-
-      {/* ═══ LA DECISIÓN ══════════════════════════════════════════════════════════════════════
-          La vista PROPONE; acá alguien decide, y las dos decisiones quedan escritas. Aceptar crea
-          una versión nueva del análisis y NO mueve ningún presupuesto ya congelado. Descartar
-          también se registra: sin eso, la misma recomendación vuelve mañana y alguien la vuelve a
-          evaluar de cero. */}
-      <DecisionRecomendacion tareaTipoId={ficha.tarea.id} r={r} />
-    </div>
-  )
-}
-
-function DecisionRecomendacion({ tareaTipoId, r }: { tareaTipoId: string; r: Ficha['rendimiento'] }) {
-  if (!r || r.hs_recomendado == null) {
-    return (
-      <p className="mt-3 text-[12px] text-faint" data-testid="sin-decision">
-        No hay recomendación que decidir: {r?.lectura ?? 'sin dato'}. Con una sola obra medida hay un
-        dato, no una distribución — aceptarlo metería un caso raro en la base maestra para siempre.
-      </p>
-    )
-  }
-  const cambio = r.hs_analisis && r.hs_analisis > 0
-    ? ((r.hs_recomendado - r.hs_analisis) / r.hs_analisis) * 100
-    : null
-
-  return (
-    <div className="mt-4 border-t border-line pt-4" data-testid="decision-recomendacion">
-      <p className="text-[12.5px] text-ink-soft">
-        Pasar de <span className="font-mono tabular-nums">{numero(r.hs_analisis, 3) ?? 'sin dato'}</span> a{' '}
-        <span className="font-mono font-semibold tabular-nums">{numero(r.hs_recomendado, 3)}</span> hs/unidad
-        {cambio === null ? '' : ` (${cambio > 0 ? '+' : ''}${numero(cambio, 1)} %)`}.
-      </p>
-
-      <div className="mt-3 grid gap-4 sm:grid-cols-2">
-        <FormAccion
-          accion={aceptarRecomendacion}
-          testid="form-aceptar-recomendacion"
-          enviar="Aceptar y versionar"
-          mensajeOk="Versión nueva creada."
-        >
-          <input type="hidden" name="tarea_tipo_id" value={tareaTipoId} />
-          <CampoFormulario label="Motivo (opcional)" ayuda="Se agrega adelante de la muestra, que la función escribe sola.">
-            <input name="motivo" maxLength={300} className={CTRL} data-testid="motivo-aceptar"
-              placeholder="probado en dos obras del mismo tipo" />
-          </CampoFormulario>
-          <p className="mt-1 text-[11px] text-faint">
-            Crea la versión siguiente del análisis escalando la mano de obra y sus cargas. Los
-            presupuestos ya congelados NO cambian: apuntan a la versión con la que se cotizaron.
-          </p>
-        </FormAccion>
-
-        <FormAccion
-          accion={descartarRecomendacion}
-          testid="form-descartar-recomendacion"
-          enviar="Descartar"
-          mensajeOk="Descartada, con su motivo."
-        >
-          <input type="hidden" name="tarea_tipo_id" value={tareaTipoId} />
-          <CampoFormulario label="Motivo (obligatorio)" ayuda="Sin él, mañana nadie sabe contra qué se comparó.">
-            <input name="motivo" maxLength={300} required className={CTRL} data-testid="motivo-descartar"
-              placeholder="las dos obras fueron en altura, no comparan" />
-          </CampoFormulario>
-          <p className="mt-1 text-[11px] text-faint">
-            No toca el análisis. Sale de la lista de pendientes y vuelve sola si llega una muestra
-            nueva — que ya sería otra recomendación.
-          </p>
-        </FormAccion>
-      </div>
     </div>
   )
 }

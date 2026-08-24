@@ -70,21 +70,19 @@ export default async function BaseMaestraTareasPage({ searchParams }: { searchPa
   const ficha = sp.t ? await getFichaTarea(supabase, sp.t, economia) : null
   const solapa: Solapa = solapaDe(sp.s, economia)
 
-  const sinAnalisis = todas.filter((t) => t.estado === 'sin_analisis').length
-
   return (
-    <PageShell
-      title="Base maestra"
-      subtitle={subtitulo(todas.length, sinAnalisis, economia)}
-    >
+    <PageShell title="Base maestra" eyebrow="Administración" subtitle="Tareas tipo">
       <NavAdministracion />
       <NavBaseMaestra activa="tareas" />
 
+      {/* EL PERMISO SE DICE UNA VEZ Y EN UNA LÍNEA. El párrafo que había explicaba tres veces lo
+          mismo; lo que el jefe de obra necesita saber es que la columna de costo no está vacía sino
+          cerrada — el resto de la pantalla ya le muestra que las HH sí son suyas. */}
       {!economia && (
         <div className="mb-4">
-          <Aviso tono="info" titulo="Ves la tarea, el análisis y las HH; no ves el costo">
-            El precio y el costo unitario son económicos y quedan en Dirección y Administración. El
-            rendimiento y las HH sí son tuyos: son lo que necesitás para planificar.
+          <Aviso tono="info">
+            El esfuerzo y las HH son tuyos; el precio y el costo unitario quedan en Dirección y
+            Administración. No los ves: no están vacíos.
           </Aviso>
         </div>
       )}
@@ -117,14 +115,4 @@ export default async function BaseMaestraTareasPage({ searchParams }: { searchPa
       </div>
     </PageShell>
   )
-}
-
-function subtitulo(total: number, sinAnalisis: number, economia: boolean): string {
-  if (total === 0) {
-    return 'Tareas tipo · todavía no hay ninguna cargada'
-  }
-  const partes = [`${total} tareas tipo`]
-  if (sinAnalisis) partes.push(`${sinAnalisis} sin análisis`)
-  if (!economia) partes.push('sin permiso económico')
-  return partes.join(' · ')
 }

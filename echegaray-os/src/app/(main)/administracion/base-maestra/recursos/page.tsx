@@ -17,18 +17,21 @@ import { Aviso } from '@/shared/components/ds'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { veEconomia } from '@/features/auth/types/areas'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
-import { NavBaseMaestra, hrefRecursos, vistaDe, type VistaRecursos } from '@/features/base-maestra/components/NavBaseMaestra'
 import {
-  TablaEquipos, TablaInsumos, TablaManoDeObra, TablaPlantillas, TablaVersiones,
+  NavBaseMaestra, RUTA_RECURSOS, hrefRecursos, vistaDe, type VistaRecursos,
+} from '@/features/base-maestra/components/NavBaseMaestra'
+import {
+  TablaRecursos, TablaManoDeObra, TablaPlantillas, TablaVersiones,
 } from '@/features/base-maestra/components/TablasRecursos'
+import { FichaRecurso } from '@/features/base-maestra/components/FichaRecurso'
 import {
-  contarRecursos, getManoDeObra, getPlantillas, getRecursos, getVersionesDePrecio,
+  contarRecursos, getFichaRecurso, getManoDeObra, getPlantillas, getRecursos, getVersionesDePrecio,
 } from '@/features/base-maestra/services/recursosService'
 import { fechaLarga, porcentaje } from '@/features/base-maestra/services/reglas'
 
 export const dynamic = 'force-dynamic'
 
-type Busqueda = { v?: string; q?: string }
+type Busqueda = { v?: string; q?: string; r?: string }
 
 export default async function BaseMaestraRecursosPage({ searchParams }: { searchParams: Promise<Busqueda> }) {
   const sp = await searchParams
@@ -47,7 +50,7 @@ export default async function BaseMaestraRecursosPage({ searchParams }: { search
   // preguntaran la hora por separado, una corrida a medianoche podría pintar dos frescuras distintas.
   const hoy = new Date().toISOString().slice(0, 10)
 
-  const contenido = await armar(supabase, vista, hoy, economia, q)
+  const contenido = await armar(supabase, vista, hoy, economia, q, sp.r ?? null)
   if (contenido.error) {
     return (
       <Marco vista={vista} titulo={TITULO[vista]} subtitulo="">
@@ -86,11 +89,13 @@ function Marco({
     <PageShell title={titulo} eyebrow="Base maestra" subtitle={subtitulo}>
       <NavAdministracion />
       <NavBaseMaestra activa={vista} />
+      {/* UNA LÍNEA, NO UN PÁRRAFO. Lo único que hay que entender es que las columnas de precio no
+          están vacías sino cerradas — el resto lo muestra la pantalla sola. */}
       {economia === false && (
         <div className="mb-4">
-          <Aviso tono="info" titulo="Ves el recurso y su unidad; no ves el precio">
-            El costo de cada insumo, el jornal y el costo empresa por hora son económicos y quedan en
-            Dirección y Administración. Las columnas no están vacías: no se muestran.
+          <Aviso tono="info">
+            Ves el recurso y su unidad; no ves el precio, el jornal ni el costo empresa: quedan en
+            Dirección y Administración. Las columnas no están vacías, no se muestran.
           </Aviso>
         </div>
       )}
@@ -107,6 +112,7 @@ async function armar(
   hoy: string,
   economia: boolean,
   q: string,
+  recursoId: string | null,
 ): Promise<Armado> {
   if (vista === 'mano-obra') {
     const r = await getManoDeObra(supabase, hoy, economia)
@@ -162,23 +168,46 @@ async function armar(
   if (r.error || !r.data) return { nodo: null, subtitulo: '', error: r.error ?? 'sin datos' }
   const meta = contarRecursos(r.data)
 
-  if (vista === 'equipos') {
-    const equipos = r.data.filter((x) => x.tipo === 'equipo')
-    return {
-      error: null,
-      subtitulo: `${meta.n_equipos} equipos con costo horario en la base maestra`,
-      nodo: <TablaEquipos filas={equipos} q={q} economia={economia} />,
-    }
-  }
+  const esEquipos = vista === 'equipos'
+  const filas = r.data.filter((x) => x.tipo === (esEquipos ? 'equipo' : 'material'))
+  // LA FICHA SE PIDE SÓLO SI EL RECURSO ESTÁ EN LA VISTA ABIERTA. Un `?r=` de un insumo sobre la
+  // sub-vista de equipos abriría un panel que no corresponde a ninguna fila de la tabla, y la
+  // selección quedaría invisible: se ignora en vez de contradecir a la lista.
+  const abierto = recursoId && filas.some((x) => x.recurso_id === recursoId) ? recursoId : null
+  const ficha = abierto ? await getFichaRecurso(supabase, abierto, hoy, economia) : null
 
-  const insumos = r.data.filter((x) => x.tipo === 'material')
   return {
     error: null,
-    subtitulo: [
-      `${meta.n_insumos} insumos`,
-      `${meta.n_familias} familias`,
-      economia ? 'precio de la última carga registrada' : null,
-    ].filter(Boolean).join(' · '),
-    nodo: <TablaInsumos filas={insumos} q={q} economia={economia} />,
+    subtitulo: esEquipos
+      ? `${meta.n_equipos} equipos con costo horario`
+      : [`${meta.n_insumos} insumos`, `${meta.n_familias} familias`].join(' · '),
+    nodo: (
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+        <div className="min-w-0 flex-1">
+          <TablaRecursos
+            filas={filas}
+            q={q}
+            economia={economia}
+            clase={esEquipos ? 'equipos' : 'insumos'}
+            seleccionado={abierto}
+            ruta={RUTA_RECURSOS}
+            otros={{ v: vista }}
+          />
+        </div>
+        {ficha?.error && (
+          <div className="lg:w-[372px]" data-testid="ficha-recurso-error">
+            <Aviso tono="neg" titulo="No pude abrir ese recurso">{ficha.error}</Aviso>
+          </div>
+        )}
+        {ficha?.data && (
+          <FichaRecurso
+            ficha={ficha.data}
+            hoy={hoy}
+            economia={economia}
+            hrefCerrar={`${RUTA_RECURSOS}?v=${vista}${q ? `&q=${encodeURIComponent(q)}` : ''}`}
+          />
+        )}
+      </div>
+    ),
   }
 }

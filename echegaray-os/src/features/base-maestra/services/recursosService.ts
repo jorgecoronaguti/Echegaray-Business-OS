@@ -14,8 +14,8 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
-  CargaSocialFila, CategoriaManoObra, MetaRecursos, Plantilla, RecursoFila, ServiceResult,
-  VersionPrecio,
+  CargaSocialFila, CategoriaManoObra, FichaRecurso, MetaRecursos, Plantilla, PrecioHistorico,
+  RecursoFila, ServiceResult, UsoDeRecurso, VersionPrecio,
 } from '../types'
 import {
   JORNADA_HORAS, claveDeCategoria, contarPorCategoria, costoDeCategoria, frescuraDePrecio, sumaDeCargas,
@@ -32,7 +32,11 @@ export async function getRecursos(
 ): Promise<ServiceResult<RecursoFila[]>> {
   const { data, error } = await supabase.from('recurso_costo').select('*').eq('activo', true).order('codigo')
   if (error) return { data: null, error: error.message }
-  const filas = ((data ?? []) as Fila[]).map((r): RecursoFila => ({
+  return { data: ((data ?? []) as Fila[]).map((r) => aRecurso(r, hoyISO)), error: null }
+}
+
+function aRecurso(r: Fila, hoyISO: string): RecursoFila {
+  return {
     recurso_id: String(r.recurso_id),
     codigo: String(r.codigo),
     nombre: String(r.nombre),
@@ -48,8 +52,112 @@ export async function getRecursos(
     fuente: s(r.fuente),
     proveedor: s(r.proveedor),
     frescura: frescuraDePrecio(s(r.fecha_precio), hoyISO),
-  }))
-  return { data: filas, error: null }
+  }
+}
+
+/**
+ * LA FICHA DE UN RECURSO — qué vale, cómo llegó a valer eso, y a qué le pega si cambia.
+ *
+ * ═══ TRES LECTURAS SIMPLES EN VEZ DE UNA CON EMBEDS ═══
+ *
+ * El uso se arma con `analisis_linea` → `analisis` (sólo la versión vigente) → `tarea_tipo`, cada
+ * una por su lado y emparejadas en memoria. Es el mismo criterio que `getTareasTipo`: un `select`
+ * anidado depende del nombre exacto de la relación y falla en tiempo de ejecución, no de compilado.
+ *
+ * ═══ EL HISTORIAL NO SE PIDE SIN PERMISO ═══
+ *
+ * `recurso_precio` es `ve_economia()` y a un jefe de obra le devuelve CERO FILAS sin error — igual
+ * que un recurso que nunca tuvo precio. Por eso ni se consulta, y la ficha publica
+ * `historial_visible: false`: la pantalla tiene que poder escribir «sin permiso» y no «sin
+ * historial», que es la mentira que manda a alguien a cargar precios que ya están cargados.
+ */
+export async function getFichaRecurso(
+  supabase: SupabaseClient,
+  recursoId: string,
+  hoyISO: string,
+  economia: boolean,
+): Promise<ServiceResult<FichaRecurso>> {
+  const { data, error } = await supabase
+    .from('recurso_costo').select('*').eq('recurso_id', recursoId).maybeSingle()
+  if (error) return { data: null, error: error.message }
+  if (!data) return { data: null, error: 'Ese recurso no existe o no está activo' }
+
+  const avisos: string[] = []
+  const [historial, usos] = await Promise.all([
+    economia ? getHistorial(supabase, recursoId, avisos) : Promise.resolve([]),
+    getUsoDelRecurso(supabase, recursoId, avisos),
+  ])
+
+  return {
+    data: { recurso: aRecurso(data as Fila, hoyISO), historial, historial_visible: economia, usos, avisos },
+    error: null,
+  }
+}
+
+/** El historial, del más nuevo al más viejo, con la variación contra el precio ANTERIOR de la lista. */
+async function getHistorial(
+  supabase: SupabaseClient, recursoId: string, avisos: string[],
+): Promise<PrecioHistorico[]> {
+  const { data, error } = await supabase
+    .from('recurso_precio').select('costo, fecha_precio, fuente, proveedor, vigente')
+    .eq('recurso_id', recursoId)
+    .order('fecha_precio', { ascending: false, nullsFirst: false })
+  if (error) { avisos.push(`No pude leer el historial de precio: ${error.message}`); return [] }
+
+  const filas = (data ?? []) as Fila[]
+  return filas.map((p, i): PrecioHistorico => {
+    const costo = n(p.costo)
+    const anterior = n(filas[i + 1]?.costo)
+    return {
+      costo,
+      fecha_precio: s(p.fecha_precio),
+      fuente: s(p.fuente),
+      proveedor: s(p.proveedor),
+      vigente: p.vigente === true,
+      // LA VARIACIÓN ES CONTRA EL PRECIO ANTERIOR REAL, NO CONTRA UNA VENTANA FIJA. El mockup dice
+      // «+38 % vs febrero»; acá no hay ningún febrero garantizado, y un porcentaje contra un mes que
+      // puede no tener carga sería un número sin referente. Dividir por 0 tampoco: sería infinito.
+      variacion: costo == null || anterior == null || anterior === 0 ? null : costo / anterior - 1,
+    }
+  })
+}
+
+/**
+ * DÓNDE ENTRA ESTE RECURSO. Sólo la versión VIGENTE de cada análisis: las históricas siguen
+ * existiendo —la base maestra nunca borra historia— pero cambiar un precio hoy no le pega a un
+ * análisis que ya no cotiza nada.
+ */
+async function getUsoDelRecurso(
+  supabase: SupabaseClient, recursoId: string, avisos: string[],
+): Promise<UsoDeRecurso[]> {
+  const lineas = await supabase.from('analisis_linea').select('analisis_id, cantidad').eq('recurso_id', recursoId)
+  if (lineas.error) { avisos.push(`No pude leer dónde se usa: ${lineas.error.message}`); return [] }
+  const ids = [...new Set(((lineas.data ?? []) as Fila[]).map((l) => String(l.analisis_id)))]
+  if (!ids.length) return []
+
+  const analisis = await supabase.from('analisis').select('id, tarea_tipo_id').eq('vigente', true).in('id', ids)
+  if (analisis.error) { avisos.push(`No pude leer los análisis: ${analisis.error.message}`); return [] }
+  const tareaPorAnalisis = new Map<string, string>()
+  for (const a of ((analisis.data ?? []) as Fila[])) tareaPorAnalisis.set(String(a.id), String(a.tarea_tipo_id))
+  if (!tareaPorAnalisis.size) return []
+
+  const tareas = await supabase.from('tarea_tipo').select('id, codigo, nombre, unidad')
+    .in('id', [...new Set(tareaPorAnalisis.values())])
+  if (tareas.error) { avisos.push(`No pude leer las tareas tipo: ${tareas.error.message}`); return [] }
+  const porTarea = new Map<string, Fila>()
+  for (const t of ((tareas.data ?? []) as Fila[])) porTarea.set(String(t.id), t)
+
+  const filas: UsoDeRecurso[] = []
+  for (const l of ((lineas.data ?? []) as Fila[])) {
+    const tareaId = tareaPorAnalisis.get(String(l.analisis_id))
+    const t = tareaId ? porTarea.get(tareaId) : undefined
+    if (!t) continue
+    filas.push({
+      tarea_tipo_id: String(t.id), codigo: String(t.codigo), nombre: String(t.nombre),
+      unidad_tarea: String(t.unidad), cantidad: Number(l.cantidad),
+    })
+  }
+  return filas.sort((a, b) => a.codigo.localeCompare(b.codigo, 'es'))
 }
 
 /**

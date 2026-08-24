@@ -243,6 +243,48 @@ export function sumaDePesos(pasos: { peso: number | null }[]): number {
 export const pesosCierran = (pasos: { peso: number | null }[]) => Math.abs(sumaDePesos(pasos) - 100) < 0.01
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
+// 5b · LA BASE CONTRA LO QUE PASÓ EN OBRA
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Las dos puntas son ESFUERZO en hs/unidad, así que el cociente se lee al derecho: 1,32 significa
+// que la obra necesitó un 32 % MÁS de mano de obra que lo que dice la base. Por eso `peor` es el
+// cociente ALTO — al revés de lo que sugiere la palabra «rendimiento», que es el error que
+// `vocabulario.ts` documenta.
+//
+// LA BANDA ES SIMÉTRICA DE 10 %, Y NO SALE DEL MOCKUP. El diseño canónico pinta 1,10 para lo
+// adverso y 0,95 para lo favorable; esa asimetría haría que una tarea se declare «mejor» con la
+// mitad de evidencia que necesita para declararse «peor», que es exactamente al revés de lo
+// prudente. Debajo de 10 % la diferencia está dentro de la dispersión típica de estas muestras y
+// llamarla desvío pondría un color en casi todas las filas — con lo cual el color deja de decir algo.
+//
+// ESTO NO DECIDE NADA. Es la LECTURA de dos números que ya existen: si la base tiene que cambiar lo
+// decide `rendimiento_recomendado.hs_recomendado`, que es el motor de aprendizaje y no se toca. Un
+// umbral de pantalla que habilitara la acción sería un control validado contra su propia salida.
+
+export type DireccionDesvio = 'peor' | 'mejor' | 'igual'
+
+export type Desvio = {
+  /** observado ÷ base. > 1 = la obra pidió más horas que la base. */
+  ratio: number
+  direccion: DireccionDesvio
+}
+
+export const BANDA_DESVIO = 0.1
+
+/** `null` cuando falta cualquiera de las dos puntas, o cuando la base es 0 (dividir daría infinito). */
+export function desvioObservado(
+  baseHsUnidad: number | null | undefined,
+  observadoHsUnidad: number | null | undefined,
+): Desvio | null {
+  if (baseHsUnidad == null || !Number.isFinite(baseHsUnidad) || baseHsUnidad <= 0) return null
+  if (observadoHsUnidad == null || !Number.isFinite(observadoHsUnidad)) return null
+  const ratio = observadoHsUnidad / baseHsUnidad
+  if (ratio > 1 + BANDA_DESVIO) return { ratio, direccion: 'peor' }
+  if (ratio < 1 - BANDA_DESVIO) return { ratio, direccion: 'mejor' }
+  return { ratio, direccion: 'igual' }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
 // 6 · BUSCAR MIENTRAS SE ESCRIBE
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 //

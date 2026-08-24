@@ -35,6 +35,12 @@ export type TareaTipoFila = {
   hs_unitarias: number | null
   /** De `rendimiento_recomendado`. NULL = nunca se midió en obra. */
   hs_observado: number | null
+  /** El esfuerzo que el motor de aprendizaje PROPONE, o NULL si la muestra no alcanza. Viaja hasta
+   *  el listado para que la fila pueda decir «hay una decisión pendiente» sin inventarse un umbral
+   *  propio: quien decide que la base tiene que cambiar es la vista, no la pantalla. */
+  hs_recomendado: number | null
+  /** Cuántos registros de obra sostienen lo observado. 0 = nunca se midió. */
+  muestra: number
   estado: EstadoAnalisis
   falta: string | null
   analisis_id: string | null
@@ -155,6 +161,36 @@ export type RecursoFila = {
   fuente: string | null
   proveedor: string | null
   frescura: Frescura
+}
+
+/** Un precio de `recurso_precio`, con de dónde salió. Es historia: nunca se pisa, se agrega. */
+export type PrecioHistorico = {
+  costo: number | null
+  fecha_precio: string | null
+  fuente: string | null
+  proveedor: string | null
+  vigente: boolean
+  /** Contra el precio ANTERIOR de este mismo recurso, como fracción. null en el primero. */
+  variacion: number | null
+}
+
+/** Dónde entra este recurso: la tarea tipo y cuánto lleva por unidad. */
+export type UsoDeRecurso = {
+  tarea_tipo_id: string
+  codigo: string
+  nombre: string
+  unidad_tarea: string
+  cantidad: number
+}
+
+export type FichaRecurso = {
+  recurso: RecursoFila
+  /** Vacío puede significar dos cosas opuestas y por eso está `historial_visible`. */
+  historial: PrecioHistorico[]
+  /** false = no se leyó por permiso económico. La pantalla NO puede decir «sin historial». */
+  historial_visible: boolean
+  usos: UsoDeRecurso[]
+  avisos: string[]
 }
 
 export type CategoriaManoObra = {
