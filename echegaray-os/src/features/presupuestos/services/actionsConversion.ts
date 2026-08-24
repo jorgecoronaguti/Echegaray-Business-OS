@@ -157,3 +157,140 @@ export async function convertirPartida(_prev: EstadoAccion, form: FormData): Pro
 
   return { error: null, ok: true, mensaje: partes.join(' · ') }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA CONVERSIÓN EN LOTE — el gesto del canónico 13: marcar partidas y crear el plan de una vez.
+//
+// ═══ POR QUÉ EXISTE ADEMÁS DE `convertirPartida` ═══
+//
+// Un presupuesto adjudicado tiene entre seis y cuarenta partidas, y hasta hoy cada una había que
+// elegirla, configurarle los frentes y generar: cuarenta viajes para el caso normal, que es «esta
+// obra se organiza como está cotizada». Eso NO reemplaza al configurador: partir una partida en
+// tres frentes por eje sigue siendo un gesto de una partida a la vez, y para eso está.
+//
+// ═══ UN FRENTE POR PARTIDA, Y LA CANTIDAD LA PONE LA BASE ═══
+//
+// El lote aplica la regla «obra chica sin burocracia»: un frente con la cantidad ENTERA de la
+// partida. Y esa cantidad se lee de `cotizacion_partida` acá adentro, no del formulario: la regla
+// más cara del módulo es que la suma de los frentes iguale la partida, y un número que viaja por el
+// navegador es un número que se puede editar desde la consola.
+//
+// ═══ CADA PARTIDA ES SU PROPIA TRANSACCIÓN ═══
+//
+// `convertir_partida_a_plan` no acepta un lote, y envolver las cuarenta en una sola llamada haría
+// que un error en la última tirara las treinta y nueve buenas. Se convierten una por una y el
+// resultado DICE cuáles quedaron afuera con el motivo de la base — un «se convirtieron algunas» sin
+// nombres obliga a recorrer la lista a ojo para encontrar la que falta.
+
+/** El método de medición sólo se ofrece elegir; la autoridad sigue siendo la función de Postgres. */
+type PedidoDeLote = { partidaId: string; metodo: string | null; plantillaId: string | null }
+
+/** `partida=<uuid>~<metodo>~<plantilla|->`. Un solo campo repetido y no tres listas paralelas: tres
+ *  listas que llegan de largos distintos aparean el método de una partida con la plantilla de otra. */
+function leerPedidos(form: FormData): { pedidos: PedidoDeLote[]; error: string | null } {
+  const crudos = form.getAll('partida').map((v) => String(v))
+  const pedidos: PedidoDeLote[] = []
+  for (const crudo of crudos) {
+    const [id, metodoCrudo = '', plantillaCruda = ''] = crudo.split('~')
+    if (!z.string().uuid().safeParse(id).success) return { pedidos: [], error: 'Llegó una partida que no existe' }
+    const metodo = metodoCrudo === '' || metodoCrudo === '-' ? null : metodoSchema.safeParse(metodoCrudo).data ?? null
+    if (metodoCrudo !== '' && metodoCrudo !== '-' && metodo === null) {
+      return { pedidos: [], error: 'Ese método de medición no existe' }
+    }
+    const plantillaId = plantillaCruda === '' || plantillaCruda === '-' ? null : plantillaCruda
+    if (plantillaId && !z.string().uuid().safeParse(plantillaId).success) {
+      return { pedidos: [], error: 'Esa plantilla no existe' }
+    }
+    // MEDIR POR PASOS SIN PLANTILLA ES UNA ACTIVIDAD QUE NO SE PUEDE MEDIR. La base la crearía igual
+    // —marca `metodo_avance = 'pasos'` y no inserta ningún paso— y el avance quedaría mudo.
+    if (metodo === 'pasos' && !plantillaId) {
+      return { pedidos: [], error: 'Elegiste medir por pasos sin plantilla de secuencia: los pasos salen de una plantilla, y sin ella la actividad nace sin ninguno.' }
+    }
+    pedidos.push({ partidaId: id, metodo, plantillaId })
+  }
+  if (pedidos.length === 0) return { pedidos: [], error: 'No hay ninguna partida elegida' }
+  return { pedidos, error: null }
+}
+
+export async function convertirPartidasEnLote(
+  cotizacionId: string, form: FormData,
+): Promise<{ ok: true; mensaje?: string } | { ok: false; error: string }> {
+  const inicio = String(form.get('inicio') ?? '').trim()
+  if (!fechaSchema.safeParse(inicio).success) {
+    return { ok: false, error: 'Falta la fecha de arranque del plan: sin fecha las actividades nacen sin dimensión temporal.' }
+  }
+  const { pedidos, error: eP } = leerPedidos(form)
+  if (eP) return { ok: false, error: eP }
+
+  let c
+  try {
+    c = await createClient()
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'No pude conectar con la base' }
+  }
+
+  const { data: cab, error: eC } = await c.from('cotizaciones')
+    .select('estado, congelada_en, obra_canonica_id').eq('id', cotizacionId).maybeSingle()
+  if (eC) return { ok: false, error: eC.message }
+  if (!cab) return { ok: false, error: 'No encontré el presupuesto, o no tenés permiso para verlo.' }
+  if (cab.estado !== 'adjudicada') return { ok: false, error: 'El presupuesto todavía no está adjudicado.' }
+  if (!cab.congelada_en) return { ok: false, error: 'Congelá el presupuesto antes de convertir: el plan sale del costo que se ofertó.' }
+  const obraId = String(cab.obra_canonica_id ?? '').trim()
+  if (!obraId) return { ok: false, error: 'Este presupuesto no tiene obra vinculada: las actividades se crean dentro de una obra.' }
+
+  // LAS CANTIDADES SALEN DE LA BASE, NO DEL NAVEGADOR. Ver el encabezado del bloque.
+  const { data: filas, error: eF } = await c.from('cotizacion_partida')
+    .select('id, descripcion, cantidad').in('id', pedidos.map((p) => p.partidaId))
+  if (eF) return { ok: false, error: eF.message }
+  const porId = new Map((filas ?? []).map((f) => [String(f.id), f]))
+
+  let actividades = 0
+  let frentes = 0
+  let hh: number | null = null
+  const fallas: string[] = []
+  let hecho = 0
+
+  for (const pedido of pedidos) {
+    const p = porId.get(pedido.partidaId)
+    const nombre = p ? String(p.descripcion ?? 'partida') : pedido.partidaId
+    if (!p) { fallas.push(`«${nombre}»: no existe o no tenés permiso para verla`); continue }
+    if (p.cantidad == null) {
+      fallas.push(`«${nombre}»: sin cómputo, no hay cantidad contra la cual cerrar el reparto`)
+      continue
+    }
+    const { data, error } = await c.rpc('convertir_partida_a_plan', {
+      p_partida_id: pedido.partidaId,
+      p_obra_id: obraId,
+      p_frentes: [{ nombre, cantidad: Number(p.cantidad), inicio, dotacion: null, tope: null }],
+      p_plantilla_id: pedido.plantillaId,
+      p_metodo: pedido.metodo,
+    })
+    // EL ERROR DE LA BASE, TAL CUAL, con el nombre de la partida adelante: es el que dice cuánto
+    // suman los frentes y cuánto tiene la partida.
+    if (error) { fallas.push(`«${nombre}»: ${error.message}`); continue }
+    const r = (data ?? {}) as { frentes?: number; actividades?: number; hh_total?: number | null }
+    hecho += 1
+    actividades += r.actividades ?? 0
+    frentes += r.frentes ?? 0
+    // NULL NO ES CERO: una partida sin análisis no suma 0 HH, no suma.
+    if (r.hh_total != null) hh = (hh ?? 0) + Number(r.hh_total)
+  }
+
+  if (hecho > 0) {
+    revalidatePath(`/presupuestos/${cotizacionId}`, 'layout')
+    revalidatePath(`/obras/${obraId}`, 'layout')
+  }
+
+  const resumen = [
+    `${hecho} ${hecho === 1 ? 'partida convertida' : 'partidas convertidas'}`,
+    `${actividades} ${actividades === 1 ? 'actividad' : 'actividades'} en ${frentes} ${frentes === 1 ? 'frente' : 'frentes'}`,
+    hh == null ? 'sin HH: ninguna de las partidas tiene análisis' : `${Math.round(hh).toLocaleString('es-AR')} HH`,
+  ].join(' · ')
+
+  // UNA CONVERSIÓN PARCIAL NO ES UN ÉXITO. Se informa como error con los nombres de las que
+  // quedaron afuera: «se convirtieron algunas» obliga a recorrer la lista a ojo para encontrarlas.
+  if (fallas.length > 0) {
+    return { ok: false, error: `${resumen}. Quedaron sin convertir ${fallas.length}: ${fallas.join(' · ')}` }
+  }
+  return { ok: true, mensaje: resumen }
+}
