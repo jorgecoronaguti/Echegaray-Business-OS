@@ -17,6 +17,15 @@
 //
 // ═══ LO QUE ESTA CABECERA NO HACE ═══
 //
+// NO DIBUJA EL TRACKER DE ETAPAS. Acá iba `<CicloDeVida>`: las cinco etapas en fila con la actual
+// resaltada. Los mockups 02 y 03 —que son LA cabecera de la obra— no lo dibujan, y mirándolo de
+// cerca decía dos veces lo mismo: la etapa vigente ya está escrita en la línea de identidad
+// («Etapa: Estructura»), y lo único que el tracker agregaba era la SECUENCIA de las cinco, que es
+// información de plan y no de identidad. Ocupaba además el ancho entero de la derecha, que es
+// donde el zip pone las acciones. El componente `CicloDeVida.tsx` NO se borró y sigue exportado:
+// retirar un uso es reversible en una línea; borrar el componente, no. Si el dueño lo quiere de
+// vuelta, el lugar que le corresponde es la solapa Resumen o el menú «···», no la cabecera.
+//
 // No dibuja el nivel 3. El contrato marca en la 07 la sub-solapa «Cronograma» como activa, pero en
 // este repositorio «Cronograma» es la sub-vista `?vista=tareas&sub=gantt` —el plan COMO ESTÁ
 // CARGADO— y esta pantalla es otra cosa: el plan COMO LO IMPLICA LA SECUENCIA (ver el bloque largo
@@ -28,8 +37,8 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { EntityHeader, Tabs } from '@/shared/components/ds'
-import { CicloDeVida } from './CicloDeVida'
-import { fecha as fmtFecha } from './formato'
+import { EstadoChip } from './EstadoChip'
+import { fechaCorta } from './formato'
 import { ETAPA_LABEL, type Etapa, type ObraPanel } from '../types'
 import { VISTAS_OBRA, type VistaObra } from '../services/vistasObra'
 
@@ -69,27 +78,30 @@ function camposDeIdentidad(obra: ObraDeCabecera) {
     <>{obra.cliente_texto} <span className="text-faint">· sin ficha de cliente vinculada</span></>
   ) : null
 
+  // EL PLAZO ES UN SOLO CAMPO, NO DOS (mockup 02/03: «03/08 → 05/09»). «Inicio: 03/08 · Fin plan:
+  // 05/09» son dos islas que el ojo tiene que volver a juntar para leer un plazo, que es lo único
+  // que significan. Cuando falta UNA de las dos NO se dibuja media flecha: se nombra cuál falta,
+  // porque «empieza el 03/08 y no sé cuándo termina» es un hecho distinto de «no tiene plan».
+  //
+  // `fechaCorta` (dd/mm) y no `fecha` (dd/mm/aa) porque es lo que mide el zip. Se pierde el año:
+  // aceptable en la cabecera de UNA obra abierta —el año lo da el contexto y está en Economía y en
+  // el cronograma—, y sería inaceptable en una tabla de cartera, que compara obras de años
+  // distintos. Por eso el cambio vive acá y no en el formateador.
+  const desde = obra.fecha_inicio_plan ? fechaCorta(obra.fecha_inicio_plan) : null
+  const hasta = obra.fecha_fin_plan ? fechaCorta(obra.fecha_fin_plan) : null
+  const plazo = desde && hasta ? <span className="tabular-nums">{desde} → {hasta}</span> : null
+  const faltaPlazo = desde ? 'sin fecha de fin' : hasta ? 'sin fecha de inicio' : 'sin fechas de plan'
+
   return [
-    ...(deQuien ? [{ rotulo: 'Cliente', valor: deQuien }] : []),
+    // El cliente va SIN rótulo, como en el zip: nadie necesita que le digan que «Orica» es el
+    // cliente de la obra. La etapa sí lo lleva, porque «Estructura» sola no dice de qué es.
+    ...(deQuien ? [{ rotulo: '', valor: deQuien }] : []),
     {
       rotulo: 'Etapa',
       valor: obra.etapa ? (ETAPA_LABEL[obra.etapa as Etapa] ?? obra.etapa) : null,
       falta: 'sin declarar',
     },
-    {
-      rotulo: 'Inicio',
-      valor: obra.fecha_inicio_plan
-        ? <span className="tabular-nums">{fmtFecha(obra.fecha_inicio_plan)}</span>
-        : null,
-      falta: 'sin fecha',
-    },
-    {
-      rotulo: 'Fin plan',
-      valor: obra.fecha_fin_plan
-        ? <span className="tabular-nums">{fmtFecha(obra.fecha_fin_plan)}</span>
-        : null,
-      falta: 'sin fecha',
-    },
+    { rotulo: '', valor: plazo, falta: faltaPlazo },
   ]
 }
 
@@ -130,9 +142,12 @@ export function CabeceraDeObra({
         volverLabel={volverLabel}
         titulo={obra.nombre}
         campos={camposDeIdentidad(obra)}
+        // EL ESTADO, PEGADO AL TÍTULO Y EN PASTILLA (mockup 02/03: «Escuela San Juan  [En
+        // ejecución]»). Es el mismo `EstadoChip` que pintan la cartera y las tablas de actividades:
+        // una obra no puede verse «En ejecución» en la lista y de otro color en su propia ficha.
         derecha={
-          <div className="flex flex-wrap items-center gap-3" data-testid="cabecera-obra">
-            {acciones}
+          <div className="flex flex-wrap items-center gap-2" data-testid="cabecera-obra">
+            <EstadoChip estado={obra.estado} />
             {/* ARCHIVADA SE DICE EN EL ENCABEZADO: es la única señal de que esta ficha se abrió por
                 su URL y no desde el portafolio —porque del portafolio ya no cuelga—, y sin ella
                 alguien podría cargar HH o avance sobre una obra archivada sin enterarse. */}
@@ -141,9 +156,9 @@ export function CabeceraDeObra({
                 archivada
               </span>
             )}
-            <CicloDeVida etapa={obra.etapa} />
           </div>
         }
+        acciones={acciones}
       />
 
       {/* LA LÍNEA META — el renglón que el contrato pone entre el título y las solapas (07, 08, 06):

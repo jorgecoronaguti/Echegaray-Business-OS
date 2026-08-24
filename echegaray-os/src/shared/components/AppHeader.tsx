@@ -3,7 +3,9 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useEffect, useRef, useState } from 'react'
 import { AREA_HREF, AREA_LABEL, type Area } from '@/features/auth/types/areas'
+import { iniciales } from './iniciales'
 
 // EL HEADER DEL ERP — UNA LÍNEA, DOS ÁREAS, Y NADA MÁS.
 //
@@ -32,11 +34,14 @@ import { AREA_HREF, AREA_LABEL, type Area } from '@/features/auth/types/areas'
 
 export function AppHeader({
   areas,
+  nombre,
   email,
   rolLabel,
   salir,
 }: {
   areas: Area[]
+  /** El nombre del perfil. Alimenta las iniciales del avatar; sin él se caen al correo. */
+  nombre?: string | null
   email: string | null
   rolLabel: string | null
   salir: React.ReactNode
@@ -70,28 +75,28 @@ export function AppHeader({
           data-testid="marca"
           aria-label="Echegaray Construcciones — inicio"
         >
-          <Image src="/marca/isotipo.png" alt="" width={26} height={26} priority className="h-[26px] w-[26px]" />
+          <Image src="/marca/isotipo.png" alt="" width={24} height={24} priority className="h-[24px] w-[24px]" />
           {/* EL NOMBRE ENTERO, Y LAS DOS PALABRAS CON EL MISMO FORMATO (19/08/2026).
               La primera versión ponía «CONSTRUCCIONES» en peso normal y gris, como si fuera una
               bajada. El dueño lo corrigió: no son una marca y su descripción — son UN nombre. Mismo
               peso, mismo color, mismo interletrado; lo único que cambia es que la segunda palabra se
               retira por debajo de `lg`, donde compite con el nombre de la obra. En el teléfono queda
               sólo el isotipo: 26px dicen lo mismo que 120px. */}
-          <span className="hidden text-[13px] font-semibold tracking-[0.14em] text-ink sm:block">
+          <span className="hidden text-[11.5px] font-semibold tracking-[0.04em] text-ink sm:block">
             ECHEGARAY<span className="hidden lg:inline"> CONSTRUCCIONES</span>
           </span>
           {/* EL DESCRIPTOR DEL PRODUCTO, Y NUNCA CON PESO NI COLOR DE MARCA (`design/system/BRAND.md`).
               «Business OS» describe qué es esto; la marca es ECHEGARAY CONSTRUCCIONES. En cuanto el
               descriptor toma peso o color, la pantalla pasa a tener dos marcas compitiendo — y la
               que gana es la que no lo es. Por eso va en 11,5px, `faint`, detrás de un separador. */}
-          <span className="hidden text-[11.5px] text-faint lg:inline" aria-hidden>
+          <span className="hidden text-[11px] text-faint lg:inline" aria-hidden>
             Business OS
           </span>
         </Link>
 
-        <nav className="flex min-w-0 items-center gap-0.5" data-testid="nav-areas">
+        <nav className="flex h-full min-w-0 items-stretch" data-testid="nav-areas">
           {areas.length === 1 ? (
-            <span className="px-2 text-[13px] font-medium text-muted">{AREA_LABEL[areas[0]]}</span>
+            <span className="flex h-full items-center px-3 text-[13px] font-medium text-muted">{AREA_LABEL[areas[0]]}</span>
           ) : (
             areas.map((a) => (
               <Link
@@ -105,9 +110,15 @@ export function AppHeader({
                 // un control con texto encima es ilegible. Como REGLA no lleva texto, así que el
                 // contraste no aplica y la identidad aparece donde de verdad significa algo:
                 // dónde estoy parado. Ver globals.css.
-                className={`rounded-t-md border-b-2 px-2.5 pb-[7px] pt-1.5 text-[13px] transition-colors ${
+                // ALTO COMPLETO, NO UNA PASTILLA FLOTANDO (mockup 00/02/03). El mockup marca el
+                // área activa con `inset 0 -2px 0 #FDC900` sobre un item que ocupa los 43px de su
+                // header: la regla amarilla apoya en el borde inferior y el tab parece continuar la
+                // superficie de abajo. Con `rounded-t-md pb-[7px] pt-1.5` la regla quedaba a mitad
+                // de altura, flotando. `h-full` + `border-b-2` da la MISMA geometría que el
+                // `inset` del mockup y conserva el token `border-marca` en vez de clavar #FDC900.
+                className={`flex h-full items-center border-b-2 px-3 text-[13px] transition-colors ${
                   activa === a
-                    ? 'border-marca font-medium text-ink'
+                    ? 'border-marca font-semibold text-ink'
                     : 'border-transparent text-muted hover:bg-surface-quiet hover:text-ink'
                 }`}
               >
@@ -117,26 +128,16 @@ export function AppHeader({
           )}
         </nav>
 
-        {/* El usuario, a la derecha, sin empujar. `min-w-0` + `truncate`: un email largo cortaba la
-            página de costado en el teléfono (568px de ancho real contra 390 de pantalla, medido). */}
-        <div className="ml-auto flex min-w-0 items-center gap-2" data-testid="usuario-actual">
+        {/* EL USUARIO ES UN AVATAR, NO UNA LÍNEA DE TEXTO (mockup 00/01/02/03 · orden del dueño 24/08).
+            Acá vivía `[email · rol]` + el botón «Cerrar sesión» escritos en el header. En el correo
+            de trabajo real —`jorge.o.corona+direccion-test-…@gmail.com`, 54 caracteres— eso comía
+            media barra y le ganaba en peso visual a la navegación, que es para lo que existe el
+            header. El mockup pone un círculo de 27px con las iniciales y guarda lo demás detrás de
+            un clic: el email y el rol NO se borraron, se muestran adentro del menú, que es donde se
+            los va a buscar cuando hacen falta («¿por qué no veo tal pantalla?»). */}
+        <div className="ml-auto flex min-w-0 items-center gap-1.5" data-testid="usuario-actual">
           {email ? (
-            <>
-              {/* `[email · rol]` — el rol estaba sólo en el `title`, invisible salvo que alguien
-                  dejara el puntero quieto encima. Es el dato que contesta «¿por qué no veo tal
-                  pantalla?» sin abrir Usuarios, así que se escribe. */}
-              <Link
-                prefetch={false}
-                href="/mi-cuenta"
-                data-testid="mi-cuenta"
-                className="hidden min-w-0 items-center gap-1.5 rounded-control px-2 py-1 transition-colors hover:bg-surface-quiet sm:flex"
-                title={`${email}${rolLabel ? ` · ${rolLabel}` : ''} — mi cuenta`}
-              >
-                <span className="min-w-0 truncate text-[12px] text-muted">{email}</span>
-                {rolLabel && <span className="hidden shrink-0 text-[12px] text-faint lg:inline">· {rolLabel}</span>}
-              </Link>
-              {salir}
-            </>
+            <MenuUsuario nombre={nombre} email={email} rolLabel={rolLabel} salir={salir} />
           ) : (
             <Link href="/login" className="rounded-md px-2.5 py-1.5 text-[13px] text-muted hover:bg-surface-quiet">
               Ingresar
@@ -145,5 +146,103 @@ export function AppHeader({
         </div>
       </div>
     </header>
+  )
+}
+
+// ═══ LO QUE EL MOCKUP DIBUJA Y ACÁ NO ESTÁ, A PROPÓSITO ═══
+//
+// El header del zip trae, a la izquierda del avatar, una LUPA y una CAMPANITA con punto rojo.
+// Ninguna de las dos se dibuja, y no es por falta de tiempo:
+//
+//   LUPA — no existe búsqueda global en este repositorio. Lo que hay es `BuscadorURL`, que filtra
+//   la tabla de la pantalla en la que ya estás y vive dentro de esa pantalla; el header no puede
+//   saber cuál es ni si esa pantalla tiene una. Una lupa que no busca es peor que ninguna: enseña
+//   que la búsqueda global existe y después no aparece.
+//
+//   CAMPANITA — el punto rojo del mockup afirma «tenés algo pendiente». No hay ninguna fuente de
+//   novedades que lo respalde. `/aprobaciones` es lo más parecido, pero leerla obligaría a una
+//   consulta a Supabase en CADA pantalla del sistema, y este layout se volvió síncrono justamente
+//   para sacarle esperas al primer pintado (ver `(main)/layout.tsx`: 95 s de pantalla congelada
+//   medidos el 19/08). Un punto rojo permanentemente apagado —o peor, permanentemente prendido—
+//   sería un dato inventado en el lugar más visible del OS.
+//
+// Las dos vuelven el día que exista la capacidad detrás. Dibujarlas antes es fabricar una promesa.
+
+function MenuUsuario({
+  nombre,
+  email,
+  rolLabel,
+  salir,
+}: {
+  nombre?: string | null
+  email: string
+  rolLabel: string | null
+  salir: React.ReactNode
+}) {
+  const [abierto, setAbierto] = useState(false)
+  const caja = useRef<HTMLDivElement>(null)
+
+  // Mismo cierre que `ds/MenuContextual`: clic afuera y Escape. Se repite y no se importa porque
+  // aquel componente dibuja un `···` de fila y recibe `items` planos — acá el contenido es el
+  // `<form>` de logout que renderiza el servidor, que no entra en un `{ label, onClick }`.
+  useEffect(() => {
+    if (!abierto) return
+    const fuera = (e: MouseEvent) => {
+      if (caja.current && !caja.current.contains(e.target as Node)) setAbierto(false)
+    }
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setAbierto(false)
+    document.addEventListener('mousedown', fuera)
+    document.addEventListener('keydown', esc)
+    return () => {
+      document.removeEventListener('mousedown', fuera)
+      document.removeEventListener('keydown', esc)
+    }
+  }, [abierto])
+
+  return (
+    <div ref={caja} className="relative">
+      <button
+        type="button"
+        data-testid="avatar-usuario"
+        aria-haspopup="menu"
+        aria-expanded={abierto}
+        aria-label={`${email}${rolLabel ? ` · ${rolLabel}` : ''} — mi cuenta`}
+        title={`${email}${rolLabel ? ` · ${rolLabel}` : ''}`}
+        onClick={() => setAbierto((v) => !v)}
+        // 27px / radio 14 / #30302F / 10,5px / 600 — medido de los estilos inline del zip
+        // (`03 · Obra Tareas.dc.html`). El grafito va en hexadecimal por la misma razón que en
+        // `ds/Estado.tsx`: es un valor MEDIDO del mockup, no una decisión que se re-tome acá.
+        className="flex h-[27px] w-[27px] items-center justify-center rounded-full bg-[#30302F] text-[10.5px] font-semibold text-white transition-opacity hover:opacity-85"
+      >
+        {iniciales(nombre, email)}
+      </button>
+      {abierto && (
+        <div
+          role="menu"
+          data-testid="menu-usuario"
+          className="absolute right-0 top-full z-40 mt-1.5 min-w-[220px] rounded-card border border-line bg-surface py-1 shadow-pop"
+        >
+          {/* La identidad completa, que es lo que el header dejó de escribir. No es un ítem del
+              menú: no se clickea, se lee. */}
+          <div className="border-b border-line px-3 pb-2 pt-1.5">
+            <div className="truncate text-[12px] text-ink">{email}</div>
+            {rolLabel && <div className="text-[11.5px] text-faint">{rolLabel}</div>}
+          </div>
+          <Link
+            prefetch={false}
+            href="/mi-cuenta"
+            role="menuitem"
+            data-testid="mi-cuenta"
+            onClick={() => setAbierto(false)}
+            className="block px-3 py-1.5 text-[13px] text-ink-soft hover:bg-surface-quiet hover:text-ink"
+          >
+            Mi cuenta
+          </Link>
+          <div className="[&_button]:w-full [&_button]:rounded-none [&_button]:px-3 [&_button]:py-1.5 [&_button]:text-left [&_button]:text-[13px] [&_button]:text-ink-soft [&_button:hover]:bg-surface-quiet">
+            {salir}
+          </div>
+        </div>
+      )}
+    </div>
   )
 }

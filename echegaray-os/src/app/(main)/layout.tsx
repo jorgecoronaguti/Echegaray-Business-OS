@@ -49,18 +49,23 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 }
 
 async function HeaderConUsuario() {
-  const { email, rolLabel, rol } = await loadUsuario()
-  return <AppHeader areas={areasDe(rol)} email={email} rolLabel={rolLabel} salir={<LogoutButton />} />
+  const { nombre, email, rolLabel, rol } = await loadUsuario()
+  return (
+    <AppHeader areas={areasDe(rol)} nombre={nombre} email={email} rolLabel={rolLabel} salir={<LogoutButton />} />
+  )
 }
 
 async function loadUsuario() {
   try {
     const supabase = await createClient()
     const user = await getUsuarioActual(supabase)
-    if (!user) return { email: null, rolLabel: null, rol: null }
+    if (!user) return { nombre: null, email: null, rolLabel: null, rol: null }
     // El id ya está: `getPerfilActual()` sin él volvía a preguntarle a Supabase quién es el usuario.
     const perfil = await getPerfilActual(supabase, user.id)
     return {
+      // El nombre es sólo para las iniciales del avatar: si el perfil no lo tiene, `iniciales()`
+      // se cae al correo. Nunca se dibuja entero en el header.
+      nombre: perfil.data?.nombre ?? null,
       email: user.email ?? null,
       rolLabel: perfil.data ? ROL_LABEL[perfil.data.rol] : 'Sin rol asignado',
       rol: perfil.data?.rol ?? null,
@@ -68,6 +73,6 @@ async function loadUsuario() {
   } catch {
     // Sin perfil legible se cae al nivel MENOS privilegiado (`areasDe(null)` → sólo Obras), nunca al
     // más. Un error de lectura no puede ser una puerta a la economía de la empresa.
-    return { email: null, rolLabel: null, rol: null }
+    return { nombre: null, email: null, rolLabel: null, rol: null }
   }
 }

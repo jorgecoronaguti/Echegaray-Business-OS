@@ -47,7 +47,10 @@ export function Tabs({ tabs, testid = 'tabs' }: { tabs: Tab[]; testid?: string }
           prefetch={false}
           data-testid={t.testid}
           aria-current={t.activo ? 'page' : undefined}
-          className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3.5 py-[9px] text-[14px] transition-colors ${
+          // 13px / padding 8px 11px — medido de los estilos inline del zip (`02 · Obra Resumen`,
+          // `03 · Obra Tareas`: `fontSize:13px;padding:8px 11px`). Estaba en 14px / 14px / 9px, y
+          // con seis solapas esos 3px de más por lado son 36px de fila que no dicen nada.
+          className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-[11px] py-2 text-[13px] transition-colors ${
             t.activo
               ? 'border-marca font-medium text-ink'
               : 'border-transparent text-muted hover:text-ink'
