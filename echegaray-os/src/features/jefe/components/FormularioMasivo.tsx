@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useRef, useState } from 'react'
+import { useActionState, useEffect, useRef, useState } from 'react'
 import { Aviso, BarraContextual, ChipsValor } from '@/shared/components/ds'
 import { Confirmacion, Nada, Panel, Rotulo } from './Piezas'
 import {
@@ -45,6 +45,14 @@ export function FormularioMasivo({
   // para no enviar el formulario de la pantalla que la contenga. Acá SÍ hay un formulario y es el
   // que lleva la fecha, el objetivo y los ids, así que se lo envía a mano.
   const formulario = useRef<HTMLFormElement | null>(null)
+
+  // TRAS UN GUARDADO EXITOSO LA SELECCIÓN SE VACÍA — y con ella se va la barra. Dejarla abierta
+  // ofreciendo «Guardar N avances» invita a un segundo tap, y como el guardado manual escribe
+  // INCREMENTOS, ese segundo tap no es inocuo: duplica el avance (E2E 24/08, defecto observado
+  // en las dos pasadas).
+  useEffect(() => {
+    if (estado?.ok) setElegidas(new Set())
+  }, [estado])
 
   // «Todas» marca LO QUE SE VE, no lo que existe. Con la vista filtrada, marcar tareas fuera de
   // pantalla y guardarlas es exactamente el tipo de escritura que nadie pidió.
