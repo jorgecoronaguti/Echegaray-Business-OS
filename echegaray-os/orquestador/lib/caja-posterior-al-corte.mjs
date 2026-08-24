@@ -769,6 +769,10 @@ export function celdaCajaDolares(arqueo, contado, c = COB) {
 //   · JORNALES es por QUINCENA: `JORNALES_REAL_PAGADO` es la fecha en que se pagó la quincena entera.
 //   · Un parcial que crece sobre una fila vieja de Compras no gana fecha nueva (es la misma ceguera
 //     que ya declara el renglón de CARGA TARDÍA del anexo): mueve el importe y no mueve la fecha.
+//   · UN PAGO PROGRAMADO NO ES UN MOVIMIENTO. El importe SÍ cuenta salidas con fecha futura ya
+//     cargada (el criterio conservador del piso: la plata comprometida se muestra afuera), pero la
+//     fecha publicada es la del último movimiento OCURRIDO: cada término filtra `<=TODAY()`. Medido
+//     en vivo el 24/08: OFICINA agosto con pago programado 01/09 fechaba D7 en el futuro.
 
 /** El idioma de la casa para forzar el array adentro de un MAX sin ARRAYFORMULA. */
 const maxDe = (expr) => `SUMPRODUCT(MAX(${expr}))`
@@ -781,7 +785,7 @@ function maxCobrosEfectivo(arqueo, c = COB) {
     + `*(${rango(c.hoja, c.forma, c.desde)}="Efectivo")`
     + `*(${rango(c.hoja, c.moneda, c.desde)}<>"${MONEDA_USD}")`
     + `*(N(${rango(c.hoja, c.total, c.desde)})<>0)`
-    + `*(${f}>${arqueo})*${f}`)
+    + `*(${f}>${arqueo})*(${f}<=TODAY())*${f}`)
 }
 
 /** 2/6 · el último PAGO en efectivo de Compras — las DOS ramas, cada una con la fecha que su rama usa
@@ -792,14 +796,14 @@ function maxComprasEfectivo(arqueo, c = CMP) {
   const sale = (f) => ventanaDelConteo(f, arqueo, false)
   return maxDe(`(${rango(c.hoja, c.tipoPago, c.desde)}="Efectivo")`
     + `*(N(${rango(c.hoja, c.montoPagado, c.desde)})<>0)`
-    + `*(((${rango(c.hoja, c.estado, c.desde)}="Pagado")*${sale(caja)}*${caja})`
-    + `+((${rango(c.hoja, c.estado, c.desde)}="Pendiente")*${sale(carga)}*${carga}))`)
+    + `*(((${rango(c.hoja, c.estado, c.desde)}="Pagado")*${sale(caja)}*(${caja}<=TODAY())*${caja})`
+    + `+((${rango(c.hoja, c.estado, c.desde)}="Pendiente")*${sale(carga)}*(${carga}<=TODAY())*${carga}))`)
 }
 
 /** 3/6 · la última QUINCENA pagada en efectivo. Granularidad quincenal: es la fecha del lote. */
 function maxJornalesEfectivo(arqueo, j = JOR) {
   const f = fechaNumerica(j.pagado)
-  return maxDe(`ISNUMBER(${j.pagado})*${ventanaDelConteo(f, arqueo, false)}`
+  return maxDe(`ISNUMBER(${j.pagado})*${ventanaDelConteo(f, arqueo, false)}*(${f}<=TODAY())`
     + `*((N(${j.adelanto})+N(${j.recibo}))<>0)*${f}`)
 }
 
@@ -807,7 +811,7 @@ function maxJornalesEfectivo(arqueo, j = JOR) {
  *  importe: sin el canal declarado no se resta de ningún lado, así que tampoco fecha nada. */
 function maxOficinaEfectivo(arqueo, o = OFI) {
   const f = fechaNumerica(o.pago)
-  return maxDe(`ISNUMBER(${o.pago})*${ventanaDelConteo(f, arqueo, false)}`
+  return maxDe(`ISNUMBER(${o.pago})*${ventanaDelConteo(f, arqueo, false)}*(${f}<=TODAY())`
     + `*ISNUMBER(${o.banco})*((N(${o.pagado})-N(${o.banco}))<>0)*${f}`)
 }
 
@@ -817,7 +821,7 @@ function maxExtraccionesEfectivo(arqueo, c = DEP) {
   const f = fechaNumerica(col(c.fecha))
   const imp = `IF(ISNUMBER(${col(c.importe)});${col(c.importe)};0)`
   return maxDe(`(${col(c.flujo)}="sale")*${esExtraccionDeEfectivo(col(c.concepto))}`
-    + `*ISNUMBER(${col(c.fecha)})*${ventanaDelConteo(f, arqueo, true)}*(${imp}<>0)*${f}`)
+    + `*ISNUMBER(${col(c.fecha)})*${ventanaDelConteo(f, arqueo, true)}*(${imp}<>0)*(${f}<=TODAY())*${f}`)
 }
 
 /** 6/6 · el último DEPÓSITO de efectivo al banco (sale del cajón: ventana inclusiva). */
@@ -826,7 +830,7 @@ function maxDepositosEfectivo(arqueo, c = DEP) {
   const f = fechaNumerica(col(c.fecha))
   const imp = `IF(ISNUMBER(${col(c.importe)});${col(c.importe)};0)`
   return maxDe(`(${col(c.flujo)}="entra")*${esDepositoDeEfectivo(col(c.concepto))}`
-    + `*ISNUMBER(${col(c.fecha)})*${ventanaDelConteo(f, arqueo, false)}*(${imp}<>0)*${f}`)
+    + `*ISNUMBER(${col(c.fecha)})*${ventanaDelConteo(f, arqueo, false)}*(${imp}<>0)*(${f}<=TODAY())*${f}`)
 }
 
 /**

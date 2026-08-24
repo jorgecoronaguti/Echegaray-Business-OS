@@ -573,5 +573,10 @@ test('la fórmula de la fecha va en es-AR y usa el idioma de la casa para el arr
   assert.doesNotMatch(ULTIMA, /ARRAYFORMULA/)
   // Rangos ABIERTOS: una fila final tipeada deja de ver lo nuevo y NO da error.
   assert.doesNotMatch(ULTIMA, /\$[A-Z]{1,2}\$\d+:\$[A-Z]{1,2}\$\d+/)
-  assert.doesNotMatch(ULTIMA, /TODAY\(\)/, 'la fecha del saldo sale del dato, nunca del reloj de la corrida')
+  // `TODAY()` acá NO es el reloj de la corrida: es el del archivo, vivo, y acota el futuro. Un pago
+  // PROGRAMADO (OFICINA agosto con pago 01/09, medido en vivo el 24/08) entra al saldo por el
+  // criterio conservador del piso, pero no es un movimiento ocurrido: sin el filtro, D7 publicaba
+  // una fecha futura. Siete puertas: una por fuente, y Compras lleva dos (sus dos ramas).
+  assert.equal(ULTIMA.match(/<=TODAY\(\)/g)?.length, 7,
+    'cada fuente filtra el futuro: un pago programado no fecha el último movimiento')
 })
