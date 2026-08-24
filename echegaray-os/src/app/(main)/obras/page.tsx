@@ -80,7 +80,7 @@ import { personasQueFicharon } from '@/features/obras/services/senalesCartera'
 // CÓMO SE ESCRIBE CADA CELDA vive al lado, en `components/celdasCartera`: esta página decide qué se
 // lee y con qué permiso, no cómo se dice un hueco.
 import {
-  Avance, Cliente, EstadoObra, Etapa, HH, Plazo, SenalHoy, SenalImpedimentos,
+  Avance, Cliente, Etapa, HH, Plazo, SenalHoy, SenalImpedimentos,
 } from '@/features/obras/components/celdasCartera'
 
 export const dynamic = 'force-dynamic'
@@ -251,12 +251,14 @@ export default async function ObrasPage({
           <THead>
             {/* CASI TODAS LAS COLUMNAS ORDENAN. `qBase` conserva `archivadas`, la etapa, el atraso y
                 la búsqueda: cambiar el orden no puede hacer desaparecer las obras que se acababan de
-                mostrar. ESTADO y HH no ordenan y no es un olvido: ordenar por estado es lo que hacen
-                los chips de arriba —con su conteo— y el orden por HH necesitaría meter una segunda
-                lectura adentro de `ordenar`, que hoy compara sólo columnas de la fila. */}
+                mostrar. HH no ordena y no es un olvido: el orden por HH necesitaría meter una
+                segunda lectura adentro de `ordenar`, que hoy compara sólo columnas de la fila.
+                SIN COLUMNA «ESTADO», Y ES DECISIÓN DEL DUEÑO (19/08, textual: «NO: Margen; Estado;
+                Impedimentos») — el canon 01 la dibuja, pero acá Etapa ya cuenta el ciclo de vida y
+                los chips de arriba cuentan el estado con su conteo. El spec obras-ejecucion.spec.ts
+                vigila que no vuelva. */}
             <ThOrden campo="nombre" activo={orden} dir={dir} base="/obras" extra={qBase} className="w-[20%]" />
             <ThOrden campo="cliente" activo={orden} dir={dir} base="/obras" extra={qBase} className="w-[13%]" />
-            <Th className="w-[14%]">Estado</Th>
             <ThOrden campo="etapa" activo={orden} dir={dir} base="/obras" extra={qBase} className="w-[13%]" />
             <ThOrden campo="avance" activo={orden} dir={dir} base="/obras" extra={qBase} className="w-[14%]" />
             <ThOrden campo="plazo" activo={orden} dir={dir} base="/obras" extra={qBase} className="w-[10%]" />
@@ -282,7 +284,6 @@ export default async function ObrasPage({
                   </span>
                 </Td>
                 <Td><Cliente o={o} /></Td>
-                <Td><EstadoObra estado={o.estado} semaforo={semaforo(o)} /></Td>
                 <Td><Etapa etapa={o.etapa} /></Td>
                 <Td><Avance pct={o.avance_pct} total={o.n_actividades} /></Td>
                 <Td><Plazo p={porObra.get(o.obra_id)} /></Td>
