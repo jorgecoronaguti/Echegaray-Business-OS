@@ -21,6 +21,7 @@
 
 import { useState } from 'react'
 import { FormAccion } from '@/shared/components/ui'
+import { IconoFoto, IconoProblema } from '@/shared/components/iconos'
 import { avancePorCantidad, hhProyectadas, proyeccionExcedida } from '../services/avance'
 import { hh as fmtHH, porcentaje } from './formato'
 import type { PasoDeActividad } from '../services/tareasService'
@@ -106,9 +107,10 @@ export function FormAvance({
       {/* LA CONVERSIÓN SE DICE ANTES DE HACERLA. 141 actividades vivas se miden sumando partes
           diarios; registrar acá las pasa a otro método, y eso cambia de dónde sale su número. */}
       {nodo.metodo_avance === 'partes' && (
-        <p className="mb-3 border-l-[3px] border-warn bg-warn-soft px-3 py-2 text-[12px] text-warn" data-testid="aviso-partes">
-          Esta actividad venía sumando los avances de sus partes diarios. Registrar acá la pasa a
-          «{METODOS.find(([m]) => m === metodo)?.[1]}» y su porcentaje pasa a salir de otro lado.
+        <p className="mb-3 flex items-start gap-2 border-l-[3px] border-warn bg-warn-soft px-3 py-2 text-[12px] text-warn" data-testid="aviso-partes">
+          <IconoProblema className="mt-[1px] h-[14px] w-[14px] shrink-0" />
+          Venía sumando sus partes diarios: registrar acá la pasa a
+          «{METODOS.find(([m]) => m === metodo)?.[1]}» y su porcentaje sale de otro lado.
         </p>
       )}
 
@@ -130,8 +132,7 @@ export function FormAvance({
                 <h2 className="mb-1.5 text-[13px] font-semibold text-ink">Pasos ejecutados</h2>
                 {pasos.length === 0 ? (
                   <p className="text-[12.5px] text-muted">
-                    Esta actividad todavía no tiene pasos cargados: sin pasos no hay peso que sumar.
-                    Elegí otro método o cargá la secuencia primero.
+                    Sin pasos cargados no hay peso que sumar. Elegí otro método o cargá la secuencia.
                   </p>
                 ) : (
                   <ul>
@@ -183,8 +184,8 @@ export function FormAvance({
                   <span className="text-[13px] text-muted">{nodo.unidad ?? ''}</span>
                   <span className="text-[12.5px] text-faint">
                     {nodo.cantidad_objetivo === null
-                      ? 'sin cantidad objetivo cargada: no hay porcentaje que calcular'
-                      : `de ${nodo.cantidad_objetivo} ${nodo.unidad ?? ''} contratados`}
+                      ? 'sin cantidad objetivo: no hay porcentaje que calcular'
+                      : `de ${nodo.cantidad_objetivo} ${nodo.unidad ?? ''}`}
                   </span>
                 </div>
                 <p className="mt-2 text-[12px] text-muted">
@@ -196,8 +197,10 @@ export function FormAvance({
 
             {metodo === 'manual' && (
               <section data-testid="cuerpo-manual">
-                <h2 className="mb-1 text-[13px] font-semibold text-ink">Avance declarado</h2>
-                <p className="mb-2 text-[12px] text-muted">Medir por unidad no representa este trabajo.</p>
+                {/* SIN PÁRRAFO DE APOYO: que el método manual sea para lo que no se mide por unidad
+                    ya lo dice el selector de método, y la regla que sí importa —el criterio— está
+                    donde se incumple, al lado del campo. */}
+                <h2 className="mb-2 text-[13px] font-semibold text-ink">Avance declarado</h2>
                 <input type="hidden" name="avance_pct" value={declarado} />
                 <div className="flex flex-wrap gap-1.5">
                   {ESCALONES.map((v) => (
@@ -224,8 +227,12 @@ export function FormAvance({
               </section>
             )}
 
+            {/* HH NO ES AVANCE: van al lado, con su propio rótulo. Es la regla del modelo, y por eso
+                el rótulo se conserva aunque el resto de la pantalla haya perdido palabras. */}
             <section className="mt-5 border-t border-line pt-3" data-testid="hh-consumidas">
-              <h2 className="mb-1.5 text-[13px] font-semibold text-ink">HH consumidas — no es avance</h2>
+              <h2 className="mb-1.5 text-[13px] font-semibold text-ink">
+                HH consumidas <span className="font-normal text-faint">— no es avance</span>
+              </h2>
               <div className="grid grid-cols-3 gap-3">
                 <Cifra rotulo="Plan" valor={fmtHH(nodo.hh_plan)} falta="sin cargar" sub="del análisis" />
                 <Cifra rotulo="Real" valor={fmtHH(nodo.hh_real)} falta="sin registro" sub="cargadas por asistencia" />
@@ -242,11 +249,14 @@ export function FormAvance({
               {/* NO HAY SUBIDA DE ARCHIVOS EN EL OS: el archivo vive en Drive y acá se guarda el
                   enlace, igual que en Documentos. Un cargador propio sería una segunda copia del
                   mismo papel, y la que se desactualiza es siempre la copia. */}
-              <input
-                type="url" name="evidencia" placeholder="Pegá el enlace de Drive de la foto o el remito"
-                aria-label="Enlace de la evidencia" data-testid="campo-evidencia"
-                className="h-control w-full rounded-control border border-line-strong px-2.5 text-[13px] text-ink placeholder:text-faint"
-              />
+              <span className="flex items-center gap-2 rounded-control border border-line-strong px-2.5">
+                <IconoFoto className="h-[15px] w-[15px] shrink-0 text-faint" />
+                <input
+                  type="url" name="evidencia" placeholder="Enlace de Drive de la foto o el remito"
+                  aria-label="Enlace de la evidencia" data-testid="campo-evidencia"
+                  className="h-control w-full bg-transparent text-[13px] text-ink outline-none placeholder:text-faint"
+                />
+              </span>
             </section>
           </div>
 

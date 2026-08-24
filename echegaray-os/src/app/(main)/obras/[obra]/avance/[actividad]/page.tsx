@@ -8,7 +8,6 @@
 // del formulario, porque un id editable desde el navegador dejaría escribir el avance de la
 // actividad de al lado.
 
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getObra } from '@/features/obras/services/obrasService'
@@ -17,6 +16,7 @@ import { getCuadrillas } from '@/features/obras/services/personalService'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { registrarAvance } from '@/features/obras/services/actionsAvance'
 import { FormAvance } from '@/features/obras/components/FormAvance'
+import { Volver } from '@/shared/components/ds'
 import { fecha, porcentaje } from '@/features/obras/components/formato'
 
 export const dynamic = 'force-dynamic'
@@ -45,11 +45,10 @@ export default async function RegistrarAvancePage({ params }: {
   return (
     <div className="min-h-screen bg-canvas">
       <div className="mx-auto w-full max-w-[1060px] px-4 py-6 lg:px-10">
-        <p className="mb-3 text-[11px] text-faint">
-          <Link href={`/obras/${obraId}?vista=tareas&act=${actividad}`} className="hover:underline">
-            ← {obra.nombre} · Tareas
-          </Link>
-        </p>
+        {/* EL VOLVER DEL SISTEMA, no un enlace propio: es el mismo control en las 22 pantallas. */}
+        <div className="mb-3">
+          <Volver href={`/obras/${obraId}?vista=tareas&act=${actividad}`}>{obra.nombre} · Tareas</Volver>
+        </div>
 
         {/* UN CONTENEDOR NO SE MIDE, SE AGREGA. La base lo rechaza con un trigger; acá se dice antes
             de que alguien complete un formulario que va a rebotar. */}
@@ -72,7 +71,7 @@ export default async function RegistrarAvancePage({ params }: {
         <section className="mt-8">
           <h2 className="mb-1.5 text-[13px] font-semibold text-ink">Registros anteriores</h2>
           {(historial.data ?? []).length === 0 ? (
-            <p className="text-[12.5px] text-muted">Todavía no se registró un solo avance en esta actividad.</p>
+            <p className="text-[12.5px] text-faint">Sin avances registrados.</p>
           ) : (
             <ul className="max-w-[560px]">
               {(historial.data ?? []).slice(0, 12).map((h) => (

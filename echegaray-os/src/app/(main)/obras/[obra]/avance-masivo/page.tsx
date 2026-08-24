@@ -4,7 +4,6 @@
 // tilda por rango y se escribe una vez — y la columna «QUEDARÁ EN» muestra, antes de escribir, qué
 // va a quedar en cada fila y cuáles no se van a tocar.
 
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getObra } from '@/features/obras/services/obrasService'
@@ -12,7 +11,8 @@ import { getArbol } from '@/features/obras/services/tareasService'
 import { getCuadrillas } from '@/features/obras/services/personalService'
 import { aplicarEnLote } from '@/features/obras/services/actionsAvance'
 import { AvanceMasivo } from '@/features/obras/components/AvanceMasivo'
-import { porcentaje } from '@/features/obras/components/formato'
+import { EntityHeader } from '@/shared/components/ds'
+import { fecha, porcentaje } from '@/features/obras/components/formato'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,18 +29,18 @@ export default async function AvanceMasivoPage({ params }: { params: Promise<{ o
   return (
     <div className="min-h-screen bg-canvas">
       <div className="w-full px-4 py-6 lg:px-10">
-        <div className="mb-4 border-l-4 border-marca bg-accent px-4 py-2.5">
-          <p className="text-[11px] text-faint">
-            <Link href={`/obras/${obraId}?vista=tareas`} className="hover:underline">← {obra.nombre} · Tareas</Link>
-          </p>
-          <div className="flex flex-wrap items-baseline gap-x-5">
-            <h1 className="text-[20px] font-semibold text-white">Avance masivo</h1>
-            <span className="text-[11.5px] text-line">
-              Avance {porcentaje(obra.avance_pct) ?? 'sin medir'}
-              {obra.fecha_fin_plan && ` · Fin plan ${obra.fecha_fin_plan.slice(8, 10)}/${obra.fecha_fin_plan.slice(5, 7)}`}
-            </span>
-          </div>
-        </div>
+        {/* EL ENCABEZADO ES EL DEL SISTEMA, no un slab propio (Design 23/08). La pantalla vivía en
+            una franja grafito que no usa ninguna otra vista de la obra: entrar acá parecía entrar a
+            otra aplicación, que es exactamente lo que «una obra = un workspace» existe para evitar. */}
+        <EntityHeader
+          volverA={`/obras/${obraId}?vista=tareas`}
+          volverLabel={`${obra.nombre} · Tareas`}
+          titulo="Avance masivo"
+          campos={[
+            { rotulo: 'Avance de la obra', valor: porcentaje(obra.avance_pct), falta: 'sin medir' },
+            { rotulo: 'Fin plan', valor: obra.fecha_fin_plan && fecha(obra.fecha_fin_plan), falta: 'sin fecha' },
+          ]}
+        />
 
         {arbol.error !== null || arbol.data === null ? (
           <p className="rounded-lg border border-neg/25 bg-neg-soft px-3.5 py-2.5 text-[13px] text-neg">
