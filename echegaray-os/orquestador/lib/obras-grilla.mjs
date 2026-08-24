@@ -1396,14 +1396,18 @@ export function grillaObras(ctx = {}) {
     const filasItem = []
     for (const o of obras) {
       for (const e of (o.egresos ?? [])) {
-        const cuotas = Array.isArray(e.cuotas) && e.cuotas.length
+        // UNA fecha va como SERIAL con especie `fecha` (Sheets la muestra DD/MM); varias cuotas
+        // van como texto con «·», que el parser de Sheets no puede convertir a fecha a escondidas.
+        // Un «24/08» crudo se auto-parseaba a serial y la celda mostraba 46258.
+        const multi = Array.isArray(e.cuotas) && e.cuotas.length > 0
+        const fecha = multi
           ? e.cuotas.map((c) => `${c.fecha.slice(8, 10)}/${c.fecha.slice(5, 7)}`).join(' · ')
-          : (e.fechaEstimada ? `${e.fechaEstimada.slice(8, 10)}/${e.fechaEstimada.slice(5, 7)}` : 'sin fecha')
+          : (e.fechaEstimada ? serialISO(e.fechaEstimada) : 'sin fecha')
         const f = h.n + 1
         filasItem.push(f)
         h.push([`${o.obra ?? o.clave} — ${e.concepto}`, e.familia ?? '', e.proveedor ?? 'sin proveedor',
-          cuotas, e.monto, e.nota ?? ''],
-        ['rotulo', 'texto', 'texto', 'texto', 'moneda', 'texto'])
+          fecha, e.monto, e.nota ?? ''],
+        ['rotulo', 'texto', 'texto', multi || !e.fechaEstimada ? 'texto' : 'fecha', 'moneda', 'texto'])
         h.tipeadas.push({ fila: f, col: 4 })
       }
     }
