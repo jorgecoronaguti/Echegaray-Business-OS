@@ -16,8 +16,16 @@
 // Eran cuatro `StatTile` empujando la tabla 96px hacia abajo para decir cuatro números que la tabla
 // ya tenía columna por columna. Al pie y alineados con SU columna, cada total se lee contra las
 // filas que lo formaron, y responden al filtro: «cotizado» de los abiertos es el total de las filas
-// que se están viendo, no un número de otra pantalla. El contador «N de M» de la barra de filtros
-// es el que avisa que la lista está recortada.
+// que se están viendo, no un número de otra pantalla. El contador de cada chip es el que avisa
+// cuánto quedó afuera.
+//
+// ═══ CADA CHIP LLEVA SU PROPIO CONTADOR (Design 24/08) ═══
+//
+// La barra decía «N de M» al final: cuánto quedó después de filtrar, pero no cuánto hay detrás de
+// cada chip. Para decidir qué mirar hace falta lo segundo — «Con problema 3» manda a alguien ahí y
+// «Con problema 0» le ahorra el clic. Los contadores salen de `cuentasPorFiltro`, sobre la MISMA
+// búsqueda que está tipeada: un chip que cuenta la cartera entera mientras la tabla muestra dos
+// filas publica dos números distintos de la misma cosa en la misma barra.
 //
 // ═══ LO QUE NO SE DIBUJA EN CERO ═══
 //
@@ -26,12 +34,13 @@
 // Un margen NULL —no hay costo directo contra el cual medirlo— se escribe «sin dato», nunca 0 %.
 
 import Link from 'next/link'
-import { useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { useMemo, useState, useSyncExternalStore } from 'react'
 import { Buscador, Estado, Filtros, Nulo, Tabla, THead, Th, Tr, Td, FilaTotal } from '@/shared/components/ds'
 import { IconoPresupuesto, IconoProblema } from '@/shared/components/iconos'
 import type { PresupuestoCascada } from '../types'
 import {
-  FILTROS, filtrarCartera, kpisDeCartera, ordenarCartera, type FiltroCartera,
+  FILTROS, cuentasPorFiltro, filtrarCartera, kpisDeCartera, ordenarCartera, type FiltroCartera,
 } from '../services/cartera'
 import { lecturaEstado } from '../services/estado'
 import { tieneCifras } from '../services/cascada'
@@ -41,23 +50,72 @@ import { PanelPresupuesto } from './PanelPresupuesto'
 /** El objetivo de la empresa contra el que se pinta el margen. Cuando baja de acá, va en `warn`. */
 const MARGEN_OBJETIVO = 17
 
+// ═══ HAY DOS COLUMNAS O NO LAS HAY ═══
+//
+// El panel es una COLUMNA al lado de la lista, no una hoja encima. Debajo de 1024px no entra: se
+// comería la tabla y dejaría a quien tocó una fila leyendo una ficha recortada con el fondo
+// robándole el primer toque. Ahí el clic hace lo único que tiene sentido en ese ancho — abrir la
+// ficha completa—, igual que la lista de clientes.
+//
+// Se lee con `useSyncExternalStore` y no con un efecto: el servidor contesta `false` —sin panel en
+// la primera pintura, sin desajuste de hidratación— y el navegador corrige en el mismo render.
+const MQ = '(min-width: 1024px)'
+const suscribirAncho = (avisar: () => void) => {
+  const m = window.matchMedia(MQ)
+  m.addEventListener('change', avisar)
+  return () => m.removeEventListener('change', avisar)
+}
+
 export function ListaPresupuestos({
   presupuestos,
   filtro,
+  seleccionInicial = null,
 }: {
   presupuestos: PresupuestoCascada[]
   filtro: FiltroCartera
+  /** `?sel=` de la URL: el link compartido tiene que abrir la lista CON el panel abierto. */
+  seleccionInicial?: string | null
 }) {
+  const router = useRouter()
   const [busqueda, setBusqueda] = useState('')
-  const [abierto, setAbierto] = useState<string | null>(null)
+  const [abierto, setAbierto] = useState<string | null>(seleccionInicial)
+  const esEscritorio = useSyncExternalStore(
+    suscribirAncho,
+    () => window.matchMedia(MQ).matches,
+    () => false,
+  )
+
+  // ═══ LA SELECCIÓN ES ESTADO CLIENTE CON LA URL DE ESPEJO ═══
+  //
+  // El panel no lee NADA que la fila no tenga ya: `cotizacion_cascada` trae todo lo que muestra.
+  // Navegar a `?sel=` mandaría un viaje al servidor y un esqueleto por cada fila que alguien toca
+  // mientras compara tres ofertas. Con `replaceState` la dirección queda compartible y recargable
+  // sin pagar el viaje — el mismo patrón que el árbol de tareas de la obra.
+  const sincronizarUrl = (id: string | null) => {
+    const p = new URLSearchParams(window.location.search)
+    if (id === null) p.delete('sel'); else p.set('sel', id)
+    const q = p.toString()
+    window.history.replaceState(null, '', q ? `${window.location.pathname}?${q}` : window.location.pathname)
+  }
+  const abrir = (id: string) => {
+    if (!esEscritorio) { router.push(`/presupuestos/${id}`); return }
+    const proximo = abierto === id ? null : id
+    setAbierto(proximo)
+    sincronizarUrl(proximo)
+  }
+  const cerrar = () => { setAbierto(null); sincronizarUrl(null) }
+
   const visibles = useMemo(
     () => ordenarCartera(filtrarCartera(presupuestos, filtro, busqueda)),
     [presupuestos, filtro, busqueda],
   )
+  const cuentas = useMemo(() => cuentasPorFiltro(presupuestos, busqueda), [presupuestos, busqueda])
   // Los totales son de lo que se ve. Calcularlos sobre la cartera entera mientras la tabla muestra
   // cuatro filas publica un pie que no cierra con ninguna columna de arriba.
   const k = useMemo(() => kpisDeCartera(visibles), [visibles])
-  const seleccionado = visibles.find((p) => p.id === abierto) ?? null
+  // El panel sólo existe si la fila sigue en pantalla: filtrar o buscar hasta esconderla dejaría un
+  // panel hablando de un presupuesto que la lista de al lado ya no muestra.
+  const seleccionado = esEscritorio ? (visibles.find((p) => p.id === abierto) ?? null) : null
 
   return (
     <div className="flex min-w-0 gap-6">
@@ -74,12 +132,21 @@ export function ListaPresupuestos({
             <Filtros
               testid="filtros-presupuestos"
               opciones={FILTROS.map((f) => ({
-                label: f.label,
+                label: (
+                  <>
+                    {f.label}
+                    <span
+                      className="ml-1.5 font-mono text-[10.5px] tabular-nums text-faint"
+                      data-testid={`cuenta-${f.clave}`}
+                    >
+                      {cuentas[f.clave]}
+                    </span>
+                  </>
+                ),
                 href: f.clave === 'todos' ? '/presupuestos' : `/presupuestos?filtro=${f.clave}`,
                 activo: filtro === f.clave,
                 testid: `filtro-${f.clave}`,
               }))}
-              cuenta={{ n: visibles.length, total: presupuestos.length }}
             />
           )}
         </div>
@@ -104,8 +171,8 @@ export function ListaPresupuestos({
               <FilaPresupuesto
                 key={p.id}
                 p={p}
-                seleccionada={p.id === abierto}
-                onAbrir={() => setAbierto((v) => (v === p.id ? null : p.id))}
+                seleccionada={esEscritorio && p.id === abierto}
+                onAbrir={() => abrir(p.id)}
               />
             ))}
             {visibles.length > 0 && (
@@ -146,11 +213,7 @@ export function ListaPresupuestos({
       </div>
 
       {seleccionado && (
-        <PanelPresupuesto
-          p={seleccionado}
-          onCerrar={() => setAbierto(null)}
-          margenObjetivo={MARGEN_OBJETIVO}
-        />
+        <PanelPresupuesto p={seleccionado} onCerrar={cerrar} margenObjetivo={MARGEN_OBJETIVO} />
       )}
     </div>
   )

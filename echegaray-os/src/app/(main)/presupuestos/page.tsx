@@ -31,9 +31,12 @@ export const dynamic = 'force-dynamic'
 export default async function PresupuestosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ filtro?: string; nuevo?: string }>
+  searchParams: Promise<{ filtro?: string; nuevo?: string; sel?: string }>
 }) {
-  const { filtro: filtroCrudo, nuevo } = await searchParams
+  // `sel` NO dispara ninguna consulta: la fila de `cotizacion_cascada` ya trae todo lo que el panel
+  // muestra. Baja sólo como estado inicial, para que el link que alguien pegó en el chat abra la
+  // lista con el presupuesto abierto en vez de abrirla en blanco.
+  const { filtro: filtroCrudo, nuevo, sel } = await searchParams
   const filtro = esFiltro(filtroCrudo)
 
   const supabase = await createClient()
@@ -95,7 +98,7 @@ export default async function PresupuestosPage({
         <>
           {/* Los totales de la cartera bajaron al pie de la tabla, alineados con su columna: ver el
               encabezado de `ListaPresupuestos`. */}
-          <ListaPresupuestos presupuestos={presupuestos} filtro={filtro} />
+          <ListaPresupuestos presupuestos={presupuestos} filtro={filtro} seleccionInicial={sel ?? null} />
 
           {abierta && (
             <div className="mt-6 border-t border-line pt-5" data-testid="alta-presupuesto">

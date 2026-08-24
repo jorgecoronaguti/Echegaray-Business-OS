@@ -12,7 +12,9 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { filtrarCartera, kpisDeCartera, ordenarCartera, esFiltro } from './cartera.ts'
+import {
+  filtrarCartera, kpisDeCartera, ordenarCartera, esFiltro, problemasDe, cuentasPorFiltro,
+} from './cartera.ts'
 import type { EstadoPresupuesto, PresupuestoCascada } from '../types/index.ts'
 
 let n = 0
@@ -88,11 +90,53 @@ test('los filtros agrupan por el estado, y anulada no cae en adjudicados', () =>
   assert.equal(filtrarCartera(lista, 'todos', '').length, 5)
 })
 
-test('«Sin margen» busca el NULL, no el cero: un margen de 0 % es una decisión', () => {
+test('«Con problema» busca el margen NULL, no el cero: un margen de 0 % es una decisión', () => {
   const lista = [p('adjudicada', 1, null), p('adjudicada', 1, 0)]
-  const r = filtrarCartera(lista, 'sin_margen', '')
+  const r = filtrarCartera(lista, 'con_problema', '')
   assert.equal(r.length, 1)
   assert.equal(r[0].margen_sobre_precio_pct, null)
+})
+
+test('«Con problema» ve las tres deudas de carga, no sólo el margen', () => {
+  // Sin esto el chip encontraba el margen NULL y dejaba pasar el presupuesto que publica un precio
+  // incompleto —el caso caro—: tres partidas sin análisis de precio y un total que igual se manda.
+  const sinAnalisis = p('enviada', 1, 12, { n_sin_analisis: 3 })
+  const sinComputo = p('enviada', 1, 12, { n_sin_computo: 2 })
+  const sinSubcontrato = p('enviada', 1, 12, { n_sin_precio_subcontrato: 1 })
+  const sano = p('enviada', 1, 12)
+  const r = filtrarCartera([sinAnalisis, sinComputo, sinSubcontrato, sano], 'con_problema', '')
+  assert.deepEqual(r.map((x) => x.id), [sinAnalisis.id, sinComputo.id, sinSubcontrato.id])
+  assert.deepEqual(problemasDe(sano), [])
+})
+
+test('un presupuesto SIN partidas no está «sin margen»: le falta empezar, no el costo', () => {
+  // `coalesce(...,0)` de la vista deja el borrador vacío con margen NULL. Contarlo como problema
+  // llenaba el chip de presupuestos recién creados y tapaba los que de verdad hay que corregir.
+  assert.deepEqual(problemasDe(p('borrador', null, null, { n_partidas: 0 })), [])
+})
+
+test('un presupuesto CERRADO no aparece «con problema»: ya no se puede corregir', () => {
+  assert.deepEqual(problemasDe(p('perdida', 1, null, { n_sin_analisis: 4 })), [])
+  assert.deepEqual(problemasDe(p('anulada', 1, null, { n_sin_analisis: 4 })), [])
+})
+
+test('el contador de cada chip respeta la búsqueda de la caja', () => {
+  // El defecto: contar sobre la cartera entera mientras la tabla muestra lo buscado. El chip decía
+  // 2 y abajo había 1 — dos números distintos de la misma cosa, en la misma barra.
+  const lista = [
+    p('enviada', 1, 12, { obra_nombre: 'Escuela San Juan' }),
+    p('adjudicada', 1, 12, { obra_nombre: 'Galpón Pocito' }),
+  ]
+  const c = cuentasPorFiltro(lista, 'escuela')
+  assert.equal(c.todos, 1)
+  assert.equal(c.abiertos, 1)
+  assert.equal(c.adjudicados, 0)
+})
+
+test('un link viejo con ?filtro=sin_margen sigue abriendo «Con problema»', () => {
+  assert.equal(esFiltro('sin_margen'), 'con_problema')
+  assert.equal(esFiltro('con_problema'), 'con_problema')
+  assert.equal(esFiltro('cualquiera'), 'todos')
 })
 
 test('el buscador filtra por número, obra y cliente, sin distinguir mayúsculas', () => {

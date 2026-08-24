@@ -2,13 +2,13 @@
 
 // 14 · EL PANEL DE LA CARTERA — comparar candidatos sin salir de la lista.
 //
-// ═══ POR QUÉ LA SELECCIÓN NO VA A LA URL ACÁ, Y EN LA 15 SÍ ═══
+// ═══ POR QUÉ LA SELECCIÓN NO NAVEGA ACÁ, Y EN LA 15 SÍ ═══
 //
 // El panel de la 15 necesita la composición de la partida, que se lee en el servidor: sin `?partida=`
 // no habría con qué dibujarlo. Éste no lee NADA nuevo — cada fila de `cotizacion_cascada` ya trae
-// todo lo que el panel muestra—, así que mandarlo por la URL agregaría un viaje al servidor y un
-// esqueleto por cada fila que alguien toca mientras compara tres ofertas. La dirección compartible
-// del presupuesto ya existe y es la pantalla 15; el pie del panel lleva ahí.
+// todo lo que el panel muestra—, así que navegar agregaría un viaje al servidor y un esqueleto por
+// cada fila que alguien toca mientras compara tres ofertas. `?sel=` igual queda escrito en la
+// dirección, pero con `replaceState` desde `ListaPresupuestos`: compartible sin pagar el viaje.
 //
 // ═══ EL PANEL NO PUEDE PUBLICAR UN NÚMERO QUE LA LISTA NO PUBLICA ═══
 //
@@ -16,10 +16,16 @@
 // no hay margen contra el cual medir. Un panel que rellena con 0 lo que la fila declara ausente
 // contradice a la fila que lo abrió.
 
-import Link from 'next/link'
-import { Estado, Nulo, PanelDetalle } from '@/shared/components/ds'
+// ═══ «CONVERTIR A OBRA» SE OFRECE CUANDO LA BASE LO ACEPTARÍA, NO SIEMPRE ═══
+//
+// Las tres condiciones —adjudicada, congelada, con obra vinculada— las hace cumplir
+// `convertir_partida_a_plan`. Dibujar el botón igual y dejar que la pantalla siguiente lo rechace
+// mueve el error dos clics más adelante; y esconderlo sin decir nada obliga a adivinar qué falta.
+// Cuando no se puede, va el MOTIVO que devuelve `puedeConvertir`.
+
+import { BotonEnlace, Estado, Nulo, PanelDetalle } from '@/shared/components/ds'
 import type { PresupuestoCascada } from '../types'
-import { lecturaEstado } from '../services/estado'
+import { lecturaEstado, puedeConvertir } from '../services/estado'
 import { tieneCifras } from '../services/cascada'
 import { fecha, hh, plata, porcentaje } from '../services/formato'
 
@@ -36,6 +42,7 @@ export function PanelPresupuesto({
   const conCifras = tieneCifras(p)
   const margen = p.margen_sobre_precio_pct
   const bajoObjetivo = margen !== null && margen < margenObjetivo
+  const conversion = puedeConvertir(p)
 
   return (
     <PanelDetalle
@@ -50,13 +57,20 @@ export function PanelPresupuesto({
       onCerrar={onCerrar}
       testid="panel-presupuesto"
       pie={
-        <Link
-          href={`/presupuestos/${p.id}`}
-          data-testid="abrir-computo"
-          className="rounded-control bg-marca px-3.5 py-[7px] text-[12.5px] font-semibold text-[color:var(--os-on-marca)] hover:brightness-[0.97]"
-        >
-          Abrir el cómputo
-        </Link>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <BotonEnlace href={`/presupuestos/${p.id}`} variante="primaria" data-testid="abrir-computo">
+            Abrir el cómputo
+          </BotonEnlace>
+          {conversion.puede ? (
+            <BotonEnlace href={`/presupuestos/${p.id}/convertir`} data-testid="panel-convertir">
+              Convertir a obra
+            </BotonEnlace>
+          ) : (
+            <span className="min-w-0 text-[11.5px] text-faint" data-testid="panel-convertir-motivo">
+              {conversion.motivo}
+            </span>
+          )}
+        </div>
       }
     >
       <div className="grid grid-cols-2 gap-3">

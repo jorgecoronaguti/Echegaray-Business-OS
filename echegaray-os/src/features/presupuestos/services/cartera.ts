@@ -29,18 +29,44 @@ import { contieneEnAlguno } from '../../../shared/utils/busqueda.ts'
 import { aNumero } from './formato.ts'
 import { lecturaEstado } from './estado.ts'
 
-export type FiltroCartera = 'todos' | 'abiertos' | 'adjudicados' | 'cerrados' | 'sin_margen'
+export type FiltroCartera = 'todos' | 'abiertos' | 'adjudicados' | 'cerrados' | 'con_problema'
 
 export const FILTROS: { clave: FiltroCartera; label: string }[] = [
   { clave: 'todos', label: 'Todos' },
   { clave: 'abiertos', label: 'Abiertos' },
   { clave: 'adjudicados', label: 'Adjudicados' },
   { clave: 'cerrados', label: 'Cerrados' },
-  { clave: 'sin_margen', label: 'Sin margen' },
+  { clave: 'con_problema', label: 'Con problema' },
 ]
 
 export function esFiltro(v: string | null | undefined): FiltroCartera {
+  // `sin_margen` fue el nombre viejo del último chip, cuando miraba UNA sola deuda de carga. Un
+  // link guardado con ese valor tiene que seguir abriendo la misma vista: sin el alias caería en
+  // «Todos» y mostraría de más sin avisar, que es la peor forma de romper un filtro.
+  if (v === 'sin_margen') return 'con_problema'
   return FILTROS.some((f) => f.clave === v) ? (v as FiltroCartera) : 'todos'
+}
+
+/**
+ * ¿QUÉ LE FALTA A ESTE PRESUPUESTO PARA SER UN PRECIO CONFIABLE?
+ *
+ * Devuelve los motivos, en texto, para que el chip «Con problema» y el panel digan LO MISMO. Las
+ * cuatro deudas salen de columnas que la vista ya trae; ninguna se infiere.
+ *
+ * Los CERRADOS (perdida · anulada) no tienen problema aunque les falte carga: la oferta ya no se
+ * puede corregir y meterlos en el contador convertiría el chip en un archivo histórico en vez de
+ * en una lista de trabajo pendiente.
+ */
+export function problemasDe(p: PresupuestoCascada): string[] {
+  if (lecturaEstado(p.estado).grupo === 'cerrado') return []
+  const m: string[] = []
+  if (p.n_sin_analisis > 0) m.push(`${p.n_sin_analisis} sin análisis de precio`)
+  if (p.n_sin_computo > 0) m.push(`${p.n_sin_computo} sin cómputo`)
+  if (p.n_sin_precio_subcontrato > 0) m.push(`${p.n_sin_precio_subcontrato} subcontrato sin precio`)
+  // Margen NULL es «no hay costo directo contra el cual medirlo», nunca «margen cero». Un
+  // presupuesto todavía sin partidas no cuenta: no le falta el margen, le falta empezar.
+  if (p.n_partidas > 0 && aNumero(p.margen_sobre_precio_pct) === null) m.push('sin margen calculable')
+  return m
 }
 
 export function filtrarCartera(
@@ -59,12 +85,23 @@ export function filtrarCartera(
       case 'abiertos': return grupo === 'abierto'
       case 'adjudicados': return grupo === 'adjudicado'
       case 'cerrados': return grupo === 'cerrado'
-      // «Sin margen» es la deuda de carga de la cartera: el margen es NULL cuando el presupuesto
-      // no tiene costo directo contra el cual medirlo. No es «margen cero».
-      case 'sin_margen': return aNumero(p.margen_sobre_precio_pct) === null
+      case 'con_problema': return problemasDe(p).length > 0
       default: return true
     }
   })
+}
+
+/**
+ * EL NÚMERO QUE VA EN CADA CHIP. Se cuenta sobre la MISMA búsqueda que está en la caja: un chip que
+ * dice 7 mientras la tabla muestra 2 no es un contador, es una contradicción en la misma barra.
+ */
+export function cuentasPorFiltro(
+  lista: readonly PresupuestoCascada[],
+  busqueda: string,
+): Record<FiltroCartera, number> {
+  const cuentas = {} as Record<FiltroCartera, number>
+  for (const f of FILTROS) cuentas[f.clave] = filtrarCartera(lista, f.clave, busqueda).length
+  return cuentas
 }
 
 export interface KpisCartera {
