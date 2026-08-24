@@ -43,6 +43,21 @@ export interface ClientePanel {
   n_documentos: number
 }
 
+/**
+ * Una obra vista DESDE el cliente: lo mínimo que el panel lateral del canónico 00 dibuja.
+ *
+ * No es un `ObraPanel` recortado por comodidad: es lo único que se lee para toda la cartera de una
+ * vez, y traer `select *` de todas las obras para dibujar un punto y un porcentaje sería pagar la
+ * ficha entera de cada obra en la pantalla que sólo las lista.
+ */
+export interface ObraDePanel {
+  obra_id: string
+  nombre: string
+  estado: string
+  /** `null` = sin avance sincronizado. NO es 0 %. */
+  avance_pct: number | null
+}
+
 /** Una persona del OS que puede quedar como responsable interno de un cliente. */
 export interface Responsable {
   id: string

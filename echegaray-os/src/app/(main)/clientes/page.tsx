@@ -44,7 +44,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { esAdministracion, veEconomia as puedeVerEconomia } from '@/features/auth/types/areas'
-import { getClientes, getObrasEnEjecucion } from '@/features/clientes/services/clientesService'
+import { getClientes, getObrasEnEjecucion, getObrasPorCliente } from '@/features/clientes/services/clientesService'
 import { esVistaCartera, recortarCartera, separarArchivados } from '@/features/clientes/services/cartera'
 import { crearCliente } from '@/features/clientes/services/actions'
 import { CamposCliente } from '@/features/clientes/components/CamposCliente'
@@ -77,10 +77,13 @@ export default async function ClientesPage({
   const vista = esVistaCartera(sp.vista) ? sp.vista : 'todo'
 
   const supabase = await createClient()
-  const [{ data, error }, perfil, enEjecucion] = await Promise.all([
+  const [{ data, error }, perfil, enEjecucion, todasLasObras] = await Promise.all([
     getClientes(supabase),
     getPerfilActual(supabase),
     getObrasEnEjecucion(supabase),
+    // EL PANEL DEL CANÓNICO 00 necesita TODAS las obras, no sólo las activas. Una consulta más para
+    // toda la cartera, no una por cliente tocado: la selección tiene que ser instantánea.
+    getObrasPorCliente(supabase),
   ])
   const rol = perfil.data?.rol ?? null
   // LA CARTERA ES DE ADMINISTRACIÓN. El nivel Obras entra al record de un cliente —necesita saber
@@ -131,6 +134,7 @@ export default async function ClientesPage({
           <ListaClientes
             clientes={clientes}
             enEjecucion={porCliente}
+            obrasPorCliente={Object.fromEntries(todasLasObras)}
             veEconomia={veEconomia}
             accion={puedeEditar && (
               <BotonEnlace

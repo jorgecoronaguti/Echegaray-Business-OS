@@ -9,7 +9,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ObraPanel, ServiceResult, ServiceResultOpcional } from '@/features/obras/types'
 import type {
-  ClientePanel, Contacto, DocumentoCliente, FuentesActividad, LineaDeTiempo, NotaCliente, Responsable,
+  ClientePanel, Contacto, DocumentoCliente, FuentesActividad, LineaDeTiempo, NotaCliente,
+  ObraDePanel, Responsable,
 } from '../types'
 import { avisoDeNotasPendiente, faltaLaTablaDeNotas } from './notaPendiente'
 import { construirLineaDeTiempo } from './timeline'
@@ -79,6 +80,44 @@ export async function getObrasEnEjecucion(
     const cliente = o.cliente_id as string | null
     if (!cliente) continue
     por.set(cliente, [...(por.get(cliente) ?? []), { obra_id: o.obra_id as string, nombre: o.nombre as string }])
+  }
+  return por
+}
+
+/**
+ * TODAS las obras de TODOS los clientes, en UNA consulta, para el panel lateral del canónico 00.
+ *
+ * El panel se abre al tocar una fila y tiene que dibujarse SIN VIAJE: con `?cliente=` cada fila que
+ * alguien toca comparando dos clientes cuesta un round-trip y un esqueleto. Con una sola consulta
+ * más —la misma vista que ya lee la lista, sin filtro de estado— la selección es instantánea.
+ *
+ * Distinto de `getObrasEnEjecucion`, que trae SÓLO `activa` porque alimenta la columna EN EJECUCIÓN.
+ * Acá entran también las terminadas: el panel muestra la relación completa con ese cliente.
+ *
+ * Un fallo devuelve el mapa vacío y el panel dice «sin obras cargadas» — nunca inventa cero.
+ */
+export async function getObrasPorCliente(
+  supabase: SupabaseClient,
+): Promise<Map<string, ObraDePanel[]>> {
+  const { data } = await supabase
+    .from('obra_panel')
+    .select('obra_id, nombre, cliente_id, estado, avance_pct')
+    .order('orden', { ascending: true })
+    .order('nombre', { ascending: true })
+  const por = new Map<string, ObraDePanel[]>()
+  for (const o of data ?? []) {
+    const cliente = o.cliente_id as string | null
+    if (!cliente) continue
+    por.set(cliente, [
+      ...(por.get(cliente) ?? []),
+      {
+        obra_id: o.obra_id as string,
+        nombre: o.nombre as string,
+        estado: o.estado as string,
+        // NULL NO ES 0. Una obra sin avance sincronizado no avanzó cero por ciento: no se sabe.
+        avance_pct: (o.avance_pct as number | null) ?? null,
+      },
+    ])
   }
   return por
 }

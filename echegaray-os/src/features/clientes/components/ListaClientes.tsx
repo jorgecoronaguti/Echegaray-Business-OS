@@ -36,13 +36,15 @@ import { IconoProblema } from '@/shared/components/iconos'
 import { money } from '@/shared/utils/format'
 import { contieneEnAlguno } from '@/shared/utils/busqueda'
 import { avisoDeDatos, totalesCartera } from '../services/cartera'
-import type { ClientePanel } from '../types'
+import { PanelCliente, iniciales } from './PanelCliente'
+import type { ClientePanel, ObraDePanel } from '../types'
 
 export interface ObraEnCurso { obra_id: string; nombre: string }
 
 export function ListaClientes({
   clientes,
   enEjecucion,
+  obrasPorCliente,
   veEconomia,
   accion,
   filtros,
@@ -50,6 +52,8 @@ export function ListaClientes({
   clientes: ClientePanel[]
   /** Las obras `activa` de cada cliente, por `cliente_id`. Vacío = ninguna, y eso se escribe. */
   enEjecucion: Record<string, ObraEnCurso[]>
+  /** TODAS las obras de cada cliente, para el panel. Ausente = el panel dice «sin obras cargadas». */
+  obrasPorCliente?: Record<string, ObraDePanel[]>
   /** El jefe de obra NO ve el contratado. La restricción es de la RLS; acá sólo se deja de ofrecer
    *  una columna que la base le devolvería igual pero que él no tiene por qué mirar. */
   veEconomia: boolean
@@ -59,6 +63,8 @@ export function ListaClientes({
   filtros?: React.ReactNode
 }) {
   const [busqueda, setBusqueda] = useState('')
+  // LA SELECCIÓN VIVE ACÁ, NO EN LA URL: el panel no lee nada nuevo del servidor (ver `PanelCliente`).
+  const [sel, setSel] = useState<string | null>(null)
   // SE BUSCA POR LOS DOS NOMBRES. Desde que el cliente tiene nombre comercial y razón social por
   // separado, buscar sólo por el comercial dejaría a «Alimentos del Sur SAS» sin resultado aunque
   // esté cargado — el que busca por la razón social es justamente el que la tiene delante, en una
@@ -70,9 +76,13 @@ export function ListaClientes({
   // EL PIE CUENTA LO QUE SE VE. Un total calculado sobre la cartera entera mientras la tabla muestra
   // tres filas filtradas es un número que no cuadra con nada de lo que hay en pantalla.
   const total = useMemo(() => totalesCartera(visibles), [visibles])
+  // EL PANEL SIGUE A LO QUE SE VE. Si el filtro sacó de la lista al cliente seleccionado, el panel se
+  // cierra solo: un detalle abierto de una fila que ya no está es un dato huérfano en pantalla.
+  const seleccionado = useMemo(() => visibles.find((c) => c.cliente_id === sel) ?? null, [visibles, sel])
 
   return (
-    <div className="space-y-4">
+    <div className="flex min-w-0 items-start gap-3">
+    <div className="min-w-0 flex-1 space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <Buscador
           value={busqueda}
@@ -100,7 +110,14 @@ export function ListaClientes({
           </THead>
           <tbody>
             {visibles.map((c) => (
-              <Fila key={c.cliente_id} c={c} obras={enEjecucion[c.cliente_id] ?? []} veEconomia={veEconomia} />
+              <Fila
+                key={c.cliente_id}
+                c={c}
+                obras={enEjecucion[c.cliente_id] ?? []}
+                veEconomia={veEconomia}
+                elegido={c.cliente_id === sel}
+                onElegir={() => setSel((a) => (a === c.cliente_id ? null : c.cliente_id))}
+              />
             ))}
           </tbody>
           {/* LA FRANJA DE TOTALES del canónico, como fila de total de la tabla: alineada con sus
@@ -126,18 +143,57 @@ export function ListaClientes({
         </Tabla>
       )}
     </div>
+
+    {seleccionado && (
+      <PanelCliente
+        c={seleccionado}
+        obras={obrasPorCliente?.[seleccionado.cliente_id] ?? []}
+        veEconomia={veEconomia}
+        onCerrar={() => setSel(null)}
+      />
+    )}
+    </div>
   )
 }
 
-function Fila({ c, obras, veEconomia }: { c: ClientePanel; obras: ObraEnCurso[]; veEconomia: boolean }) {
+function Fila({
+  c,
+  obras,
+  veEconomia,
+  elegido,
+  onElegir,
+}: {
+  c: ClientePanel
+  obras: ObraEnCurso[]
+  veEconomia: boolean
+  elegido: boolean
+  onElegir: () => void
+}) {
   const aviso = avisoDeDatos(c)
   return (
-    <Tr>
+    // LA FILA ENTERA ABRE EL PANEL, como el canónico 00. El nombre sigue siendo un enlace a la ficha
+    // y detiene la propagación: quien quiere editar entra directo, quien está recorriendo la cartera
+    // toca en cualquier otro lado y se queda en la lista.
+    <Tr
+      onClick={onElegir}
+      data-elegido={elegido || undefined}
+      className={`cursor-pointer ${elegido ? 'bg-surface-quiet' : ''}`}
+    >
       <Td fuerte className="max-w-0">
         <span className="flex min-w-0 items-center gap-2">
+          <span
+            aria-hidden
+            className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-[7px] bg-surface-quiet text-[10px] font-semibold text-ink-soft"
+          >
+            {iniciales(c.nombre_comercial)}
+          </span>
           <span className="min-w-0">
             {c.slug ? (
-              <Link href={`/clientes/${c.slug}`} className="block truncate text-[13px] font-medium text-ink hover:underline">
+              <Link
+                href={`/clientes/${c.slug}`}
+                onClick={(e) => e.stopPropagation()}
+                className="block truncate text-[13px] font-medium text-ink hover:underline"
+              >
                 {c.nombre_comercial}
               </Link>
             ) : (
