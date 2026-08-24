@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   alertasDelPlantel, estadoHoy, hayControlDeVencimientos, hhPorPersona, horasVisibles,
-  lecturaDePapeles, marcasPorPersona, mesCorriente, papelesPorPersona,
+  lecturaDePapeles, marcasPorPersona, mesCorriente, papelesPorPersona, partirCifra,
 } from './pulsoDelPlantel.ts'
 
 const HOY = '2026-08-24'
@@ -195,4 +195,47 @@ test('la fuente que no se pudo leer NO publica un conteo', () => {
     papelesDisponible: false,
   })
   assert.deepEqual(alertas.map((a) => a.clave), ['sin_obra'])
+})
+
+// ── LA BANDA DEL CANÓNICO 19 ────────────────────────────────────────────────────────────────────
+//
+// La banda pinta la CIFRA y deja el rótulo en tinta. Si `partirCifra` se escribiera con el
+// `texto.split(' ')` que uno teclea sin pensar, cada una de estas se pone roja: el rótulo se
+// quedaría con el número («7 7 papeles vencidos»), o un texto sin cifra devolvería un rótulo vacío
+// y la alerta aparecería como una pastilla en blanco.
+
+test('la cifra se separa del rótulo y NINGUNO se queda con el otro', () => {
+  assert.deepEqual(partirCifra('3 sin obra asignada'), { cifra: '3', rotulo: 'sin obra asignada' })
+  assert.deepEqual(
+    partirCifra('7 personas con papeles vencidos'),
+    { cifra: '7', rotulo: 'personas con papeles vencidos' },
+  )
+})
+
+test('una alerta sin número conserva su texto ENTERO como rótulo', () => {
+  // El defecto que atrapa: partir a ciegas por el primer espacio se comería la primera palabra de
+  // cualquier alerta futura que no cuente nada, y la pastilla diría algo distinto de lo escrito.
+  assert.deepEqual(partirCifra('sin lectura de presencia'), { cifra: null, rotulo: 'sin lectura de presencia' })
+})
+
+test('los tres banners reales pasan por la banda sin perder su número', () => {
+  // No es una prueba de la función sola: es el contrato entre `alertasDelPlantel` (quien escribe el
+  // texto) y la banda (quien lo parte). Si alguien reescribe un texto poniendo el número al final
+  // —«papeles vencidos: 7»— la pastilla se queda sin cifra y esto lo dice acá, no en producción.
+  const alertas = alertasDelPlantel({
+    personas: PLANTEL,
+    marcas: marcasPorPersona([]),
+    papeles: papelesPorPersona(
+      [{ persona_id: 'a', presente: true, fecha_vencimiento: '2026-08-01' }],
+      HOY,
+    ),
+    hoyDisponible: true,
+    papelesDisponible: true,
+  })
+  assert.ok(alertas.length > 0, 'el plantel de prueba tiene que producir alertas')
+  for (const a of alertas) {
+    const { cifra, rotulo } = partirCifra(a.texto)
+    assert.ok(cifra !== null, `«${a.texto}» tiene que empezar por su número`)
+    assert.ok(rotulo.length > 0 && !rotulo.startsWith(cifra), `«${a.texto}» duplica su cifra en el rótulo`)
+  }
 })
