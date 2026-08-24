@@ -34,9 +34,10 @@ import {
   ComprasPorObra, ConceptosProvistos, MovimientosProveedor, PropiedadesProveedor,
 } from '@/features/administracion/components/ProveedorResumen'
 import { TablaComprobantes } from '@/features/administracion/components/TablaComprobantes'
+import { Aviso, Ayuda, BotonEnlace, Eyebrow, Nulo, SubTabs } from '@/shared/components/ds'
 import {
-  Aviso, Ayuda, BarraContexto, BotonEnlace, Eyebrow, MetaContexto, Nulo, SubTabs,
-} from '@/shared/components/ds'
+  CabeceraFicha, HechoFicha, PastillaFicha, Punto, TiraMetricas,
+} from '@/features/administracion/components/FichaCanonica'
 import { EstadoError } from '@/shared/components/estado'
 import { fecha, plataCorta } from '@/features/obras/components/formato'
 
@@ -74,12 +75,40 @@ export default async function ProveedorFichaPage({ params, searchParams }: { par
     `/administracion/proveedores/${proveedor.id}${v ? `?vista=${v}` : ''}`
 
   return (
-    <main className="flex flex-col gap-5 pb-12">
-      <BarraContexto
+    <main className="flex flex-col gap-3.5 pb-12">
+      {/* LA CABECERA DEL CANÓNICO 23: blanca, con migaja, glifo de empresa, nombre a 21px, las
+          pastillas de estado al lado y una sola primaria a la derecha. Las solapas van pegadas
+          abajo, dentro de la misma franja, para que la activa se apoye sobre su filo. */}
+      <CabeceraFicha
+        testid="slab-proveedor"
         volverA="/administracion/proveedores"
         volverLabel="Proveedores"
         titulo={proveedor.nombre}
-        testid="slab-proveedor"
+        avatar={
+          <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-line bg-canvas text-muted" data-testid="glifo-proveedor">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
+              <path d="M3 21h18M5 21V7l7-4 7 4v14" /><path d="M9 21v-5h6v5" /><path d="M9 10h.01M15 10h.01" />
+            </svg>
+          </span>
+        }
+        pastillas={
+          <>
+            <PastillaFicha tono={proveedor.activo ? 'pos' : 'neutro'} testid="pastilla-estado-proveedor">
+              {proveedor.activo ? 'Activo' : 'Archivado'}
+            </PastillaFicha>
+            {/* EL CANÓNICO DIBUJA ADEMÁS UNA PASTILLA DE HABILITACIÓN («No habilitado») y otra de
+                tipo («Subcontratista»). Ninguna de las dos tiene columna en `proveedores`: la
+                habilitación depende de papeles que hoy no cuelgan de un proveedor, y el tipo no se
+                carga en ningún lado. Se declaran abajo, en «Qué no puede contestar esta ficha». */}
+          </>
+        }
+        hechos={
+          <>
+            <HechoFicha>{proveedor.razon_social?.trim() || 'sin razón social'}</HechoFicha>
+            <Punto />
+            <HechoFicha mono>{formatearCuit(proveedor.cuit) ?? 'sin CUIT'}</HechoFicha>
+          </>
+        }
         // NO HAY PRIMARIA «CARGAR COMPROBANTE». El canónico la dibuja, pero los comprobantes entran
         // por el cargador del Sheet o por Mattermost, no por esta pantalla: un botón amarillo que
         // no lleva a ninguna parte gasta la única primaria del contexto en una promesa falsa. La
@@ -89,35 +118,21 @@ export default async function ProveedorFichaPage({ params, searchParams }: { par
             Editar
           </BotonEnlace>
         }
-        meta={
-          <>
-            <MetaContexto rotulo="CUIT">
-              {formatearCuit(proveedor.cuit) ?? 'sin CUIT'}
-            </MetaContexto>
-            {proveedor.razon_social?.trim() && (
-              <MetaContexto rotulo="Razón social">{proveedor.razon_social}</MetaContexto>
-            )}
-            <MetaContexto rotulo="Estado">{proveedor.activo ? 'activo' : 'archivado'}</MetaContexto>
-          </>
+        solapas={
+          <SubTabs
+            testid="vistas-proveedor"
+            items={[
+              { href: href(), label: 'Resumen', activo: vista === 'resumen', testid: 'vista-resumen' },
+              {
+                href: href('comprobantes'), label: 'Comprobantes', cuenta: resumen.comprobantes,
+                activo: vista === 'comprobantes', testid: 'vista-comprobantes',
+              },
+            ]}
+          />
         }
-        kpis={[
-          {
-            rotulo: completo ? 'Comprado' : 'Comprado en tus obras',
-            valor: resumen.comprado === null ? null : plataCorta(resumen.comprado),
-            falta: 'sin comprobantes',
-          },
-          { rotulo: 'Comprobantes', valor: resumen.comprobantes || null, falta: 'ninguno' },
-          { rotulo: 'Última compra', valor: resumen.ultima ? fecha(resumen.ultima) : null, falta: 'nunca' },
-          {
-            rotulo: 'Sin imputar',
-            valor: resumen.sinImputar || null,
-            falta: 'ninguno',
-            destacado: resumen.sinImputar > 0,
-          },
-        ]}
       />
 
-      <div className="flex flex-col gap-5 px-4 lg:px-8">
+      <div className="flex flex-col gap-3.5 px-4 lg:px-5">
         {lectura.error && (
           <Aviso tono="neg" titulo="No pude leer los comprobantes de este proveedor">{lectura.error}</Aviso>
         )}
@@ -137,13 +152,30 @@ export default async function ProveedorFichaPage({ params, searchParams }: { par
           </p>
         )}
 
-        <SubTabs
-          testid="vistas-proveedor"
-          items={[
-            { href: href(), label: 'Resumen', activo: vista === 'resumen', testid: 'vista-resumen' },
+        {/* LA TIRA DE MÉTRICAS DEL CANÓNICO 23. «Contratado», «Certificado» y «Cumplimiento» son de
+            paquetes de subcontrato, que no existen como tabla: lo que esta ficha sí puede afirmar es
+            lo comprado, sus comprobantes y qué quedó sin imputar. */}
+        <TiraMetricas
+          testid="metricas-proveedor"
+          metricas={[
             {
-              href: href('comprobantes'), label: 'Comprobantes', cuenta: resumen.comprobantes,
-              activo: vista === 'comprobantes', testid: 'vista-comprobantes',
+              rotulo: completo ? 'COMPRADO' : 'COMPRADO EN TUS OBRAS',
+              valor: resumen.comprado === null ? null : plataCorta(resumen.comprado),
+              falta: 'sin comprobantes',
+              detalle: porObra.length ? `en ${porObra.length} ${porObra.length === 1 ? 'obra' : 'obras'}` : undefined,
+            },
+            { rotulo: 'COMPROBANTES', valor: resumen.comprobantes || null, falta: 'ninguno' },
+            {
+              rotulo: 'ÚLTIMA COMPRA',
+              valor: resumen.ultima ? fecha(resumen.ultima) : null,
+              falta: 'nunca',
+              detalle: resumen.primera ? `desde ${fecha(resumen.primera)}` : undefined,
+            },
+            {
+              rotulo: 'SIN IMPUTAR',
+              valor: resumen.sinImputar || null,
+              falta: 'ninguno',
+              tono: 'neg',
             },
           ]}
         />
@@ -204,7 +236,10 @@ export default async function ProveedorFichaPage({ params, searchParams }: { par
         </div>
 
         <Ayuda titulo="Qué no puede contestar esta ficha" testid="limites-ficha">
-          Contacto, condición de IVA y plazo de pago no tienen columna en <code>proveedores</code>,
+          Habilitación para entrar a obra, tipo de proveedor (material o subcontratista), paquetes
+          contratados y su certificación NO existen como dato: no hay tabla que los guarde, así que
+          el canónico los dibuja y esta ficha no los puede afirmar. Contacto, condición de IVA y
+          plazo de pago tampoco tienen columna en <code>proveedores</code>,
           así que no se dibujan: prometerían un campo donde no hay dónde guardarlo. Todo lo demás
           —lo comprado, a qué obras fue, qué provee y su actividad— se DERIVA de los comprobantes;
           ningún total se guarda al lado de sus filas.
