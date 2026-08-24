@@ -46,7 +46,7 @@ function Fila({ l }: { l: LineaPreparacion }) {
   return (
     <li data-testid={`preparacion-${l.clave}`} data-listo={l.listo ? 'si' : 'no'} className="border-b border-[#EFEEEA]">
       <Link
-        href={l.href}
+        href={l.href} prefetch={false}
         className="flex h-10 items-center gap-3 text-[13px] transition-colors hover:bg-surface-quiet"
       >
         {/* ✓ o `·`. El punto hueco es «todavía no», no «mal»: el checklist no reta a nadie. */}

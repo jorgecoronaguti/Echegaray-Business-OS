@@ -358,7 +358,7 @@ export function PanelTarea({
                   alCambiarDotacion={alCambiarDotacion} />
                 <p style={{ marginTop: '8px', fontSize: '11px', color: C.tintaSuave }}>
                   Esto simula: el plan se escribe desde{' '}
-                  <Link href={`/obras/${obraId}/dotacion`} style={{ fontWeight: 500, color: C.tinta }}>
+                  <Link prefetch={false} href={`/obras/${obraId}/dotacion`} style={{ fontWeight: 500, color: C.tinta }}>
                     Dotación y proyección</Link>, sobre el frente completo.
                 </p>
               </FilaPlegable>
@@ -368,7 +368,7 @@ export function PanelTarea({
                   <p style={{ fontSize: '12px', color: C.tintaSuave, margin: 0 }}>
                     El avance de un paquete lo firma el jefe de obra.
                   </p>
-                  <Link href={`/obras/${obraId}/subcontratos`} data-testid="ver-paquete"
+                  <Link prefetch={false} href={`/obras/${obraId}/subcontratos`} data-testid="ver-paquete"
                     style={{ display: 'inline-block', marginTop: '6px', fontSize: '12.5px', fontWeight: 500, color: C.tinta }}>
                     Ver paquete →</Link>
                 </FilaPlegable>
@@ -448,7 +448,7 @@ export function PanelTarea({
                   : null} />
               {contexto.partida && (
                 <FilaRecurso clave="Partida" icono={<Ico d={P.doc} s={14} />} valor={
-                  <Link href={`/presupuestos/${contexto.partida.cotizacionId}/partida/${contexto.partida.id}`}
+                  <Link prefetch={false} href={`/presupuestos/${contexto.partida.cotizacionId}/partida/${contexto.partida.id}`}
                     data-testid="ver-partida" style={{ color: C.tinta }}>
                     {contexto.partida.codigo ?? 'ver partida'} →
                   </Link>
@@ -464,7 +464,7 @@ export function PanelTarea({
 
         {solapa === 'documentos' && (
           <SolapaDocumentos documentos={documentos} alSubir={
-            <Link href={`/obras/${obraId}?vista=documentos`} style={{ ...ESTILO_SECUNDARIA, width: 'fit-content', padding: '7px 10px' }}>
+            <Link prefetch={false} href={`/obras/${obraId}?vista=documentos`} style={{ ...ESTILO_SECUNDARIA, width: 'fit-content', padding: '7px 10px' }}>
               <Ico d={P.subir} s={14} />Subir documento
             </Link>
           } />

@@ -104,7 +104,7 @@ function Metrica({ k, v, falta, contra, tonoContra = 'muted', pista, sub, tono =
         )}
       </div>
       {pista != null && <BarraFina pct={pista} className="mt-2" />}
-      <div style={{ marginTop: '6px' }}>{href ? <Link href={href}>{pie}</Link> : pie}</div>
+      <div style={{ marginTop: '6px' }}>{href ? <Link prefetch={false} href={href}>{pie}</Link> : pie}</div>
     </div>
   )
 }

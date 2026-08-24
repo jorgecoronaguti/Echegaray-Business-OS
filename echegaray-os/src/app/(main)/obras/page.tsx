@@ -126,12 +126,12 @@ export default async function ObrasPage({
               {conArchivadas ? (
                 <>
                   Se muestran también {archivadas.length} obra{archivadas.length === 1 ? '' : 's'} archivada{archivadas.length === 1 ? '' : 's'}.{' '}
-                  <Link href="/obras" style={{ color: '#1F1F1E', textDecoration: 'underline' }}>Ocultarlas</Link>.
+                  <Link prefetch={false} href="/obras" style={{ color: '#1F1F1E', textDecoration: 'underline' }}>Ocultarlas</Link>.
                 </>
               ) : (
                 <>
                   {archivadas.length} obra{archivadas.length === 1 ? '' : 's'} archivada{archivadas.length === 1 ? '' : 's'} fuera de esta lista.{' '}
-                  <Link href="/obras?archivadas=1" data-testid="ver-archivadas"
+                  <Link prefetch={false} href="/obras?archivadas=1" data-testid="ver-archivadas"
                     style={{ color: '#1F1F1E', textDecoration: 'underline' }}>Verlas</Link>.
                 </>
               )}

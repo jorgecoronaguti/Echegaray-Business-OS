@@ -70,6 +70,7 @@ import { TabResumen } from '@/features/obras/components/TabResumen'
 import { TabCronograma } from '@/features/obras/components/TabCronograma'
 import type { DatosDeActividad } from '@/features/obras/components/PanelActividad'
 import { esSubVista } from '@/features/obras/services/subvistas'
+import { lecturasDeVista } from '@/features/obras/services/lecturasDeVista'
 import { separarPlanYSubtareas } from '@/features/obras/services/subtareas'
 import { resolverVistaObra } from '@/features/obras/services/vistasObra'
 import { SubNavTrabajo } from '@/features/obras/components/SubNavTrabajo'
@@ -141,11 +142,12 @@ export default async function ObraPage({
   // UN ERROR DE LECTURA NO SE DIBUJA COMO UNA OBRA VACÍA: lo que admite fallo parcial pasa por
   // `lector.leer` DESPUÉS de resolver, y el cartel de arriba dice qué no se pudo leer.
   const lector = crearLector()
-  const necesitaPersonas = esCronograma || vista === 'personal' || esParte
-  const necesitaCuadrillas = vista === 'personal' || esParte || esArbol
-  // Los partes también en Cronograma y Resumen: el panel de la actividad muestra su ejecución
-  // reciente, y «último movimiento» del Resumen es literalmente el último parte.
-  const necesitaPartes = esParte || esCronograma || vista === 'resumen'
+  // QUÉ PIDE ESTA SOLAPA, decidido por una función pura y probada aparte: la matriz vive en
+  // `lecturasDeVista` para que se pueda probar sin levantar el servidor ni la base, y para que
+  // agregar una lectura obligue a declarar quién la usa. Los partes, por ejemplo, también en
+  // Cronograma y Resumen: el panel de la actividad muestra su ejecución reciente y «último
+  // movimiento» del Resumen es literalmente el último parte.
+  const necesita = lecturasDeVista(vista, enTareas ? subTareas : null)
   const [
     perfilRes, obraRes, actividadesRes, restriccionesRes, planRes,
     dependenciasRes, personasRes, ubicacion, asignacionesRes, causasRes, registrosRes,
@@ -158,12 +160,15 @@ export default async function ObraPage({
     getPerfilActual(supabase),
     getObra(supabase, obraId),
     getActividades(supabase, obraId),
-    getRestricciones(supabase, obraId),
-    getPlanVsReal(supabase, obraId),
+    // Restricciones y plan DEJARON DE SER INCONDICIONALES (24/08): `obra_plan_vs_real` es la
+    // consulta más cara del workspace —864 ms medidos contra PostgREST— y sólo la miran Resumen,
+    // Personal y Economía. Las otras tres solapas la pagaban para tirarla. Ver `lecturasDeVista`.
+    necesita.restricciones ? getRestricciones(supabase, obraId) : null,
+    necesita.plan ? getPlanVsReal(supabase, obraId) : null,
     // Las precedencias sólo las dibuja el Gantt: traerlas en las otras solapas es una consulta
     // por visita para nadie.
     esCronograma ? getDependencias(supabase, obraId) : null,
-    necesitaPersonas ? getPersonas(supabase) : null,
+    necesita.personas ? getPersonas(supabase) : null,
     vista === 'resumen' ? getUbicacion(supabase, obraId) : null,
     vista === 'personal' ? getAsignaciones(supabase, obraId) : null,
     vista === 'personal' ? getCausasDesvio(supabase) : null,
@@ -171,9 +176,9 @@ export default async function ObraPage({
     // Plan contra real por actividad: Personal la publica y Cronograma la usa en el panel de la
     // actividad, con el MISMO cálculo.
     vista === 'personal' || esCronograma ? getActividadHH(supabase, obraId) : null,
-    necesitaCuadrillas ? getCuadrillas(supabase) : [],
+    necesita.cuadrillas ? getCuadrillas(supabase) : [],
     esParte ? getIntegrantesPorCuadrilla(supabase) : {},
-    necesitaPartes ? getPartes(supabase, obraId) : null,
+    necesita.partes ? getPartes(supabase, obraId) : null,
     vista === 'economia' ? getCertificados(supabase, obraId) : null,
     // EL PANEL ECONÓMICO TAMBIÉN EN RESUMEN: la línea de margen del resumen sale de acá desde el
     // 22/08. Antes se armaba con `contratado − costo real` del plan, que no es margen.
@@ -217,10 +222,10 @@ export default async function ObraPage({
   if (!obra) notFound()
 
   const actividades = lector.leer(actividadesRes, [] as NonNullable<typeof actividadesRes.data>)
-  const restricciones = lector.leer(restriccionesRes, [] as NonNullable<typeof restriccionesRes.data>)
+  const restricciones = restriccionesRes ? lector.leer(restriccionesRes, [] as NonNullable<typeof restriccionesRes.data>) : []
   // El plan conserva su `null`: «esta obra no tiene línea base» es un hecho distinto de «no se
   // pudo leer el plan», y aplanarlo a un objeto vacío borraría esa diferencia.
-  const plan = lector.leer<NonNullable<typeof planRes.data> | null>(planRes, null)
+  const plan = planRes ? lector.leer<NonNullable<typeof planRes.data> | null>(planRes, null) : null
   const dependencias = dependenciasRes ? lector.leer(dependenciasRes, []) : []
   const personas = personasRes ? lector.leer(personasRes, []) : []
   const asignaciones = asignacionesRes ? lector.leer(asignacionesRes, []) : []

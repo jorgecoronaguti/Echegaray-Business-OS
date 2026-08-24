@@ -129,7 +129,7 @@ export function PopoverArrastre({
         >
           Mover y resecuenciar{nArrastradas > 0 ? ` (${nArrastradas + 1})` : ''}
         </button>
-        <Link href={hrefCancelar} scroll={false} className="text-[12.5px] text-muted hover:text-ink">
+        <Link href={hrefCancelar} prefetch={false} scroll={false} className="text-[12.5px] text-muted hover:text-ink">
           {estado?.ok ? 'Cerrar' : 'Cancelar'}
         </Link>
       </form>

@@ -60,7 +60,7 @@ function Chip({ href, puesta, testid, n, icono, children }: {
   href: string; puesta: boolean; testid: string; n?: number; icono?: ReactNode; children: ReactNode
 }) {
   return (
-    <Link href={href} data-testid={testid} aria-current={puesta ? 'true' : undefined}
+    <Link href={href} prefetch={false} data-testid={testid} aria-current={puesta ? 'true' : undefined}
       className={`${CHIP} ${puesta ? PUESTA : SUELTA}`}>
       {icono}
       {children}
@@ -133,7 +133,7 @@ export function FiltrosObras({
         {filtrando && (
           <>
             {' · '}
-            <Link href={`${base}?${CLAVE_LIMPIAR}=1`} data-testid="limpiar-filtros" className="font-sans text-muted underline underline-offset-2 hover:text-ink">
+            <Link href={`${base}?${CLAVE_LIMPIAR}=1`} prefetch={false} data-testid="limpiar-filtros" className="font-sans text-muted underline underline-offset-2 hover:text-ink">
               quitar filtros
             </Link>
           </>

@@ -147,7 +147,7 @@ function Proximas({ actividades, obraId, hoy }: {
         cifra={proximas.length > 0 ? `${proximas.length} actividades` : undefined}
         accion={
           <Link
-            href={`/obras/${obraId}?vista=tareas&sub=gantt`}
+            href={`/obras/${obraId}?vista=tareas&sub=gantt`} prefetch={false}
             className="flex items-center gap-1.5 text-[11.5px] text-ink-soft hover:text-ink"
           >
             Cronograma
@@ -167,7 +167,7 @@ function Proximas({ actividades, obraId, hoy }: {
             return (
               <li key={p.id} className="border-b border-surface-sunken last:border-b-0">
                 <Link
-                  href={`/obras/${obraId}?vista=tareas&sub=gantt`}
+                  href={`/obras/${obraId}?vista=tareas&sub=gantt`} prefetch={false}
                   className="flex items-center gap-2.5 px-4 py-2.5 transition-colors hover:bg-surface-quiet"
                 >
                   <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink">

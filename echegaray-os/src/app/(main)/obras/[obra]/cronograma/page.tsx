@@ -203,7 +203,7 @@ export default async function CronogramaObraPage(
           <Callout tono="warn">
             <strong>Sin secuencia cargada.</strong>{' '}
             {crono.actividades.length} actividades con fechas, sin encadenar.{' '}
-            <Link href={`/obras/${obraId}?vista=cronograma`} className="font-medium underline">
+            <Link href={`/obras/${obraId}?vista=cronograma`} prefetch={false} className="font-medium underline">
               Cargar la secuencia
             </Link>
             <Ayuda titulo="Qué no se puede calcular" testid="ayuda-sin-secuencia">
@@ -319,7 +319,7 @@ function Barra({ vista, unidad, enProyeccion, verBase, href }: {
       <div className="flex items-stretch">
         {VISTAS.map((v) => (
           <Link
-            key={v} href={href({ vista: v, mover: null })} scroll={false}
+            key={v} href={href({ vista: v, mover: null })} prefetch={false} scroll={false}
             className={`px-2.5 py-[9px] text-[12.5px] ${vista === v
               ? 'font-semibold text-ink shadow-[inset_0_-2px_0_var(--os-accent)]'
               : 'text-muted hover:text-ink'}`}
@@ -334,7 +334,7 @@ function Barra({ vista, unidad, enProyeccion, verBase, href }: {
         <div className="flex items-center overflow-hidden rounded-control border border-line" data-testid="escala-cronograma">
           {UNIDADES.map((u) => (
             <Link
-              key={u} href={href({ escala: u })} scroll={false}
+              key={u} href={href({ escala: u })} prefetch={false} scroll={false}
               className={`border-r border-line px-[11px] py-[5px] text-[12px] last:border-r-0 ${
                 unidad === u ? 'bg-accent font-semibold text-white' : 'bg-surface text-ink-soft hover:text-ink'
               }`}
@@ -372,7 +372,7 @@ function Capa({ activa, href, titulo, muestra, testid, children }: {
 }) {
   return (
     <Link
-      href={href} scroll={false} title={titulo} data-testid={testid}
+      href={href} prefetch={false} scroll={false} title={titulo} data-testid={testid}
       data-activa={activa ? '1' : undefined}
       aria-pressed={activa}
       className={`flex items-center gap-[6px] rounded-control border px-[9px] py-1 text-[12px] ${

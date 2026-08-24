@@ -83,11 +83,43 @@ export async function getEconomiaObra(
   return { data: (data as EconomiaObra) ?? null, error: null }
 }
 
-/** El plan contra real de TODAS las obras: es lo que le da al portafolio sus columnas de plazo. */
-export async function getPlanVsRealPortafolio(supabase: SupabaseClient): Promise<ServiceResult<PlanVsReal[]>> {
-  const { data, error } = await supabase.from('obra_plan_vs_real').select('*')
+/** Las SIETE columnas que la cartera dibuja de `obra_plan_vs_real`, y ninguna más.
+ *
+ *  El tipo es un `Pick` y no una interfaz nueva a propósito: la fuente de la forma sigue siendo
+ *  `PlanVsReal`: si mañana `desvio_plazo_dias` cambia de tipo, esto cambia solo. */
+export type PlazoYHHDeCartera = Pick<
+  PlanVsReal,
+  'obra_id' | 'inicio_plan' | 'fin_plan' | 'desvio_plazo_dias' | 'hh_plan' | 'hh_estimada' | 'hh_real'
+>
+
+/** Las columnas pedidas, en el orden del tipo. Una sola definición para la consulta y para el test. */
+export const COLUMNAS_PLAZO_Y_HH =
+  'obra_id,inicio_plan,fin_plan,desvio_plazo_dias,hh_plan,hh_estimada,hh_real'
+
+/** El plan contra real de TODAS las obras: es lo que le da al portafolio sus columnas de plazo.
+ *
+ *  ═══ POR QUÉ NO ES `select('*')` (24/08/2026) ═══
+ *
+ *  Pedía las ~40 columnas de la vista y la cartera dibuja siete. Medido contra PostgREST con sesión
+ *  de Dirección, nueve vueltas intercaladas para no confundir la mejora con la deriva de una base
+ *  contendida:
+ *
+ *    select=*      → mediana 320 ms · p90 607 ms · 16,6 KB
+ *    siete columnas→ mediana 257 ms · p90 315 ms ·  2,5 KB
+ *
+ *  Las columnas que se dejan de pedir no son gratis: `pendiente_certificar` llama a
+ *  `es_administracion()` por fila, y el bloque económico arrastra `presupuesto_monto()` y
+ *  `presupuesto_margen()`. La cartera nunca los dibujó.
+ *
+ *  NO SE DEVUELVE UN `PlanVsReal` INCOMPLETO. Un objeto con 33 campos ausentes se lee `undefined`
+ *  —no `null`— y la primera columna nueva que alguien agregue a la tabla se dibujaría vacía sin un
+ *  solo error. El tipo dice exactamente lo que la consulta trae. */
+export async function getPlanVsRealPortafolio(
+  supabase: SupabaseClient,
+): Promise<ServiceResult<PlazoYHHDeCartera[]>> {
+  const { data, error } = await supabase.from('obra_plan_vs_real').select(COLUMNAS_PLAZO_Y_HH)
   if (error) return { data: null, error: error.message }
-  return { data: (data ?? []) as PlanVsReal[], error: null }
+  return { data: (data ?? []) as PlazoYHHDeCartera[], error: null }
 }
 
 /**

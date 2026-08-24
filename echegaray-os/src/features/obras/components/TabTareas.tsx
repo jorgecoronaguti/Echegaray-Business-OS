@@ -247,7 +247,7 @@ export function TabTareas({
           </>
         )}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <Link href={`/obras/${obraId}/avance-masivo`} data-testid="ir-avance-masivo" style={ESTILO_SECUNDARIA}>
+          <Link prefetch={false} href={`/obras/${obraId}/avance-masivo`} data-testid="ir-avance-masivo" style={ESTILO_SECUNDARIA}>
             Avance masivo
           </Link>
           <IconoBarra titulo="Expandir todo" testid="expandir" d={P.expandir} onClick={() => setPlegados(new Set())} />
