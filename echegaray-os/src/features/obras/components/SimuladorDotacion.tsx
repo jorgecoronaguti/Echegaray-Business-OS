@@ -162,7 +162,7 @@ function TablaFrentes({ filas, mover }: {
           </tr>
         </thead>
         <tbody>
-          {filas.map(({ frente: f, sim }) => (
+          {filas.map(({ frente: f, pedida, sim }) => (
             <tr key={f.clave} className="border-b border-surface-sunken">
               <td className="px-2 py-1.5 text-left">
                 <div className="truncate text-[12.5px] text-ink">{f.nombre}</div>
@@ -186,20 +186,34 @@ function TablaFrentes({ filas, mover }: {
                     una línea en decir que no cambió. */}
                 {sim.dotacion !== f.dotacionPlan
                   ? (
-                    <div className={`mt-0.5 text-center text-[9.5px] ${sim.dotacion > f.dotacionPlan ? 'text-warn' : 'text-pos'}`}>
+                    <div className={`mt-0.5 text-center text-[10px] ${sim.dotacion > f.dotacionPlan ? 'text-warn' : 'text-pos'}`}>
                       {sim.dotacion > f.dotacionPlan ? '+' : ''}{sim.dotacion - f.dotacionPlan} vs plan
                     </div>
                     )
-                  : <div className="mt-0.5 text-center text-[9.5px] text-faint">{f.base}</div>}
+                  : <div className="mt-0.5 text-center text-[10px] text-faint">{f.base}</div>}
+                {/* EL TOPE, EN PALABRAS (canónico 08). El `+` apagado dice que no se puede; esto
+                    dice por qué, que es lo único que cambia una decisión. `recortada` es distinto:
+                    ahí la URL pidió más de lo que entra y el motor calculó con menos — un stepper
+                    que muestra 8 mientras el motor usó 4 enseña a desconfiar del número. */}
+                {sim.recortada && (
+                  <div className="mt-0.5 text-center text-[10px] text-neg" data-testid="aviso-recorte">
+                    pediste {pedida}: el frente entra {f.tope}
+                  </div>
+                )}
+                {!sim.recortada && sim.limite === 'tope del frente' && (
+                  <div className="mt-0.5 text-center text-[10px] text-warn" data-testid="aviso-tope">
+                    tope {f.tope}: más gente no acelera
+                  </div>
+                )}
               </td>
-              <td className="px-2 py-1.5 text-right font-mono text-[15px] font-semibold text-ink tabular-nums">
+              <td className="px-2 py-1.5 text-right font-mono text-[17px] font-semibold text-ink tabular-nums">
                 {sim.dias == null
                   ? <span className="font-sans text-[12.5px] font-normal text-faint">—</span>
                   : sim.dias.toLocaleString('es-AR', { maximumFractionDigits: 1 })}
                 {/* Un frente que no baja de N días por más gente que se le ponga tiene que decir
                     por qué: el curado son días fijos, no trabajo que se pueda repartir. */}
                 {f.diasTecnicos > 0 && sim.dias != null && (
-                  <div className="font-sans text-[9.5px] font-normal text-warn">{f.diasTecnicos} d técnicos</div>
+                  <div className="font-sans text-[10px] font-normal text-warn">{f.diasTecnicos} d técnicos</div>
                 )}
               </td>
               {/* SIN DÍAS Y SIN FECHA NO SON LO MISMO: «sin plan» es que falta el insumo; con la
@@ -222,26 +236,36 @@ function TablaFrentes({ filas, mover }: {
   )
 }
 
-/** El `+` se apaga en el tope del frente: más gente no acorta el plazo, y un botón que responde
- *  sin cambiar nada enseña a desconfiar de la pantalla. */
+/**
+ * EL STEPPER DEL CANÓNICO 08 — `− valor +`, 34px de lado, el `+` en el amarillo de la marca.
+ *
+ * La medida es `--os-control-h` (34px), que es la altura de control del sistema: la maqueta dibuja
+ * exactamente eso y el token ya existía. El valor va en mono 17/600 porque es el número que se
+ * mueve — el único de la fila que cambia mientras se toca, y el que la vista tiene que devolver a
+ * la vista periférica sin que haya que buscarlo.
+ *
+ * El `+` se apaga en el tope del frente: más gente no acorta el plazo, y un botón que responde sin
+ * cambiar nada enseña a desconfiar de la pantalla. Desde el canónico eso ADEMÁS se dice con
+ * palabras debajo: un botón gris explica que no se puede, no explica por qué.
+ */
 function Stepper({ frente, valor, mover }: {
   frente: Frente
   valor: number
   mover: (clave: string, valor: number) => void
 }) {
   const enTope = frente.tope != null && valor >= frente.tope
-  const caja = 'flex h-[30px] w-[30px] items-center justify-center border border-line text-[14px]'
+  const caja = 'flex h-control w-[34px] shrink-0 items-center justify-center rounded-control text-[15px]'
   return (
-    <div className="flex items-center justify-center">
+    <div className="flex items-center justify-center gap-1.5">
       <button
         type="button" onClick={() => mover(frente.clave, valor - 1)} disabled={valor <= 0}
         aria-label={`Quitar una persona de ${frente.nombre}`}
-        className={`${caja} rounded-l-control ${valor > 0 ? 'text-ink-soft hover:bg-surface-quiet' : 'cursor-not-allowed text-faint'}`}
+        className={`${caja} border border-line ${valor > 0 ? 'text-ink hover:bg-surface-quiet' : 'cursor-not-allowed text-faint'}`}
       >
         −
       </button>
       <span
-        className="flex h-[30px] w-[34px] items-center justify-center border-y border-line font-mono text-[14px] font-semibold text-ink tabular-nums"
+        className="min-w-[34px] text-center font-mono text-[17px] font-semibold text-ink tabular-nums"
         data-testid="dotacion-valor"
       >
         {valor}
@@ -250,7 +274,11 @@ function Stepper({ frente, valor, mover }: {
         type="button" onClick={() => mover(frente.clave, valor + 1)} disabled={enTope}
         aria-label={`Sumar una persona a ${frente.nombre}`}
         title={enTope ? `Tope del frente: ${frente.tope} personas. Más gente no acorta el plazo.` : undefined}
-        className={`${caja} rounded-r-control ${enTope ? 'cursor-not-allowed text-faint' : 'text-ink-soft hover:bg-surface-quiet'}`}
+        // EL AMARILLO ES LA MARCA, NO UN ESTADO: acá marca cuál de los dos botones es el gesto
+        // principal —sumar gente— igual que en la maqueta. Apagado vuelve a ser una caja neutra.
+        className={`${caja} ${enTope
+          ? 'cursor-not-allowed border border-line text-faint'
+          : 'bg-marca text-ink hover:opacity-90'}`}
       >
         +
       </button>

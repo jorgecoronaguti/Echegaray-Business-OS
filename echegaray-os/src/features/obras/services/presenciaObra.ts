@@ -16,6 +16,8 @@
 // 3. Que alguien que marcó no exista. Quien fichó en esta obra sin asignación vigente aparece igual,
 //    en su propio grupo: esconderlo dejaría a una persona trabajando fuera de la pantalla.
 
+import { esTrabajada } from './tipoHora.ts'
+
 /** Lo mínimo de una marca. Es un subconjunto de `FilaPresencia` a propósito: esta regla no tiene por
  *  qué recompilarse cuando la vista agregue una columna. */
 export interface MarcaDelDia {
@@ -153,4 +155,111 @@ export function estadoDeFila(f: FilaHoy): { texto: string; tono: 'pos' | 'warn' 
   if (f.marca.estado === 'activo') return { texto: 'en obra', tono: 'pos' }
   if (f.marca.estado === 'falta_salida') return { texto: 'falta la salida', tono: 'warn' }
   return { texto: 'cerró la jornada', tono: 'pendiente' }
+}
+
+// ═══ 09 · LO QUE EL PANEL «ATENCIÓN DE HOY» PUEDE DECIR ═══
+//
+// El canónico dibuja cuatro avisos y el primero de su maqueta es «Ausente con aviso». Acá NO existe:
+// la ausencia declarada no está en ninguna tabla del OS —`presencia_del_dia` sólo sabe de marcas— y
+// un aviso que se llenara con los que no ficharon convertiría «no tengo el dato» en «faltó», que es
+// justo la afirmación que esta pantalla tiene prohibida.
+//
+// Los cuatro que sí existen salen todos del cruce que ya está hecho arriba: no hay una lectura más.
+
+export type ClaveAviso = 'sin_fichar' | 'sin_asignacion' | 'falta_salida' | 'sin_cuadrilla'
+
+export interface AvisoDelDia {
+  clave: ClaveAviso
+  titulo: string
+  detalle: string
+  n: number
+  tono: 'warn' | 'neg' | 'pendiente'
+}
+
+/**
+ * LOS AVISOS DEL DÍA, ordenados por lo que hay que hacer antes.
+ *
+ * Un aviso con 0 NO se emite. Cuatro renglones que dicen «0» son cuatro renglones que enseñan a no
+ * mirar el panel, y el día que uno diga 3 va a estar tan gris como los otros tres.
+ */
+export function avisosDelDia(r: HoyEnObra): AvisoDelDia[] {
+  const faltaSalida = r.grupos
+    .flatMap((g) => g.filas)
+    .filter((f) => f.marca?.estado === 'falta_salida').length
+  const sinCuadrilla = r.grupos.find((g) => g.cuadrilla === SIN_CUADRILLA)
+  // El grupo SIN_CUADRILLA junta dos cosas distintas: los asignados a la obra sin cuadrilla y los
+  // que ficharon sin asignación. Sólo los primeros son «sin cuadrilla»; los segundos ya tienen su
+  // propio aviso y contarlos dos veces inflaría el panel con el mismo problema dicho dos veces.
+  const huerfanos = sinCuadrilla?.asignados ?? 0
+
+  const todos: AvisoDelDia[] = [
+    {
+      clave: 'sin_asignacion',
+      titulo: 'Fichó sin asignación',
+      detalle: 'trabaja acá y no figura en el plantel de la obra',
+      n: r.sinAsignacion,
+      tono: 'neg',
+    },
+    {
+      clave: 'falta_salida',
+      titulo: 'Falta la salida',
+      detalle: 'jornada abierta de un día anterior',
+      n: faltaSalida,
+      tono: 'warn',
+    },
+    {
+      clave: 'sin_fichar',
+      // NO dice «ausente». Incluye al que no tiene teléfono y al que no le dio permiso al GPS.
+      titulo: 'Sin fichar',
+      detalle: 'asignado a la obra y todavía sin marca',
+      n: r.sinFichar,
+      tono: 'pendiente',
+    },
+    {
+      clave: 'sin_cuadrilla',
+      titulo: 'Sin cuadrilla',
+      detalle: 'asignado a la obra entera, sin frente',
+      n: huerfanos,
+      tono: 'pendiente',
+    },
+  ]
+  return todos.filter((a) => a.n > 0)
+}
+
+/** Lo mínimo de un registro de horas para esta cuenta. Subconjunto de `RegistroHH` a propósito. */
+export interface HoraDelDia {
+  persona_id: string | null
+  fecha: string | null
+  horas: number
+  tipo_hora: string
+}
+
+export interface HorasDeHoy {
+  porPersona: Map<string, number>
+  /** `null` cuando NO hay ni un registro imputado a esa fecha. Nunca 0: la jornada en curso casi
+   *  siempre se imputa al cierre, y un 0 acá diría «hoy no se trabajó» a las diez de la mañana. */
+  total: number | null
+}
+
+/**
+ * LAS HORAS IMPUTADAS AL DÍA — que no son la asistencia.
+ *
+ * Fichar y imputar son dos hechos distintos: se puede estar en obra sin una sola HH cargada, y se
+ * pueden cargar HH de alguien que nunca fichó. Por eso esta columna dice «sin imputar» y no «0», y
+ * por eso el rótulo del KPI habla de HH IMPUTADAS y no de «HH de hoy».
+ *
+ * Sólo cuentan las horas TRABAJADAS: una ausencia tiene horas cargadas y no es trabajo.
+ */
+export function horasDeHoy(registros: readonly HoraDelDia[], fecha: string): HorasDeHoy {
+  const porPersona = new Map<string, number>()
+  let total: number | null = null
+  for (const r of registros) {
+    // Sin fecha el registro es del Sheet legacy de JORNALES —semanal— y no se puede atribuir a un
+    // día. Repartirlo por siete sería fabricar el dato que falta.
+    if (r.fecha !== fecha) continue
+    if (!esTrabajada(r.tipo_hora)) continue
+    total = (total ?? 0) + r.horas
+    if (r.persona_id) porPersona.set(r.persona_id, (porPersona.get(r.persona_id) ?? 0) + r.horas)
+  }
+  return { porPersona, total }
 }

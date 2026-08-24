@@ -286,16 +286,24 @@ function LimitesReales({ frentes, disponibles }: { frentes: Frente[]; disponible
     },
   ]
   return (
-    <div className="rounded-card border border-line bg-surface p-4" data-testid="limites-reales">
-      <h2 className="mb-2 text-[13px] font-semibold text-ink">Límites reales</h2>
+    // La cabecera con hairline y las filas a 11px de padding son las del canónico: son una TABLA
+    // de restricciones, no una lista de viñetas, y la cabecera separada es lo que lo dice.
+    <div className="overflow-hidden rounded-card border border-line bg-surface" data-testid="limites-reales">
+      <div className="flex items-center gap-2 border-b border-surface-sunken px-4 py-2.5">
+        <span aria-hidden className="text-[12px] text-warn">⚠</span>
+        <h2 className="text-[13px] font-semibold text-ink">Límites reales</h2>
+      </div>
       <ul className="flex flex-col">
         {filas.map((f) => (
-          <li key={f.que} className="flex items-baseline justify-between gap-3 border-b border-surface-sunken py-1.5 last:border-b-0">
+          <li
+            key={f.que} data-limite={f.que}
+            className="flex items-center justify-between gap-3 border-b border-surface-sunken px-4 py-2.5 last:border-b-0"
+          >
             <span className="min-w-0">
-              <span className="block text-[12px] text-ink-soft">{f.que}</span>
-              <span className="block text-[10.5px] text-faint">{f.detalle}</span>
+              <span className="block text-[12.5px] text-ink">{f.que}</span>
+              <span className="block text-[11px] text-faint">{f.detalle}</span>
             </span>
-            <span className={`shrink-0 font-mono text-[13px] font-semibold tabular-nums ${f.tono}`}>{f.valor}</span>
+            <span className={`shrink-0 font-mono text-[12.5px] font-semibold tabular-nums ${f.tono}`}>{f.valor}</span>
           </li>
         ))}
       </ul>
@@ -303,16 +311,24 @@ function LimitesReales({ frentes, disponibles }: { frentes: Frente[]; disponible
   )
 }
 
-/** AL REVÉS: fijá la fecha y el sistema dice la dotación. Las fechas se ofrecen sobre el calendario
- *  real de la obra —no sobre días corridos— porque la pregunta es cuántos días TRABAJADOS quedan. */
+/**
+ * AL REVÉS: FIJÁ LA FECHA Y EL SISTEMA DICE LA DOTACIÓN — bloque quiet del canónico 08.
+ *
+ * Va sobre `surface-quiet` y no sobre una tarjeta blanca más: es la MISMA cuenta del simulador
+ * corrida al revés, no un segundo dato. La superficie apagada lo dice sin un párrafo.
+ *
+ * Las fechas se ofrecen sobre el calendario real de la obra —no sobre días corridos— porque la
+ * pregunta es cuántos días TRABAJADOS quedan. Y se ofrecen VARIAS y no una: la pregunta real del
+ * jefe de obra no es «¿cuánta gente para el 25?» sino «¿a partir de cuándo esto se vuelve posible?».
+ */
 function AlReves({ hh, jornada, tope, desde, calendario }: {
   hh: number | null; jornada: number; tope: number | null; desde: string; calendario: CalendarioObra
 }) {
   const objetivos = [4, 7, 11, 18].map((d) => ({ dias: d, fecha: calendario.sumarHabiles(desde, d - 1) }))
   return (
-    <div className="rounded-card border border-line bg-surface p-4">
+    <div className="rounded-card border border-line bg-surface-quiet p-4" data-testid="al-reves">
       <h2 className="text-[13px] font-semibold text-ink">Al revés</h2>
-      <p className="mb-2 mt-0.5 text-[11px] text-muted">Fijá la fecha y el sistema dice la dotación.</p>
+      <p className="mb-2.5 mt-0.5 text-[11px] text-muted">Fijá la fecha y el sistema dice la dotación.</p>
       {hh == null && (
         <p className="text-[12px] text-warn">
           Sin HH cargadas no hay cuenta inversa: no se puede decir cuánta gente hace falta para una
@@ -320,19 +336,36 @@ function AlReves({ hh, jornada, tope, desde, calendario }: {
         </p>
       )}
       {hh != null && (
-        <ul className="flex flex-col gap-1.5">
+        <ul className="flex flex-col">
           {objetivos.map((o) => {
             const n = dotacionNecesaria(hh, o.dias, jornada, tope)
             return (
-              <li key={o.dias} className="flex items-baseline justify-between gap-3">
-                <span>
-                  <span className="text-[12.5px] text-ink-soft">Terminar el {fmt(o.fecha)}</span>
-                  <span className="ml-1.5 text-[10.5px] text-faint">
-                    {o.dias} días{n == null ? ' · imposible por tope' : ''}
+              <li
+                key={o.dias} data-objetivo={o.dias}
+                className="flex items-baseline justify-between gap-3 border-b border-line py-2 last:border-b-0"
+              >
+                <span className="min-w-0">
+                  {/* LA FRASE ENTERA, no una etiqueta y un número sueltos: «Terminar el 02/09 →
+                      necesitás 6 personas» se lee de un saque; «02/09 · 6» hay que armarlo. */}
+                  <span className="text-[12.5px] text-ink-soft">Terminar el </span>
+                  <span className="font-mono text-[12.5px] text-ink tabular-nums">{fmt(o.fecha)}</span>
+                  <span className="block text-[10.5px] text-faint">
+                    {o.dias} días hábiles{n == null ? ' · el tope del frente lo impide' : ''}
                   </span>
                 </span>
-                <span className={`text-[14px] font-semibold tnum ${n == null ? 'text-neg' : 'text-ink'}`}>
-                  {n == null ? 'no alcanza' : `${n} pers.`}
+                {/* NULL NO ES CERO: «no alcanza» es una respuesta —el tope del frente impide llegar
+                    a esa fecha—, no un dato faltante. Prometer la fecha igual se descubre el día de
+                    la entrega. */}
+                <span className={`shrink-0 whitespace-nowrap ${n == null ? 'text-[12.5px] font-medium text-neg' : 'text-[12.5px] text-muted'}`}>
+                  {n == null
+                    ? 'no alcanza'
+                    : (
+                      <>
+                        necesitás{' '}
+                        <span className="font-mono text-[17px] font-semibold text-ink tabular-nums">{n}</span>
+                        {n === 1 ? ' persona' : ' personas'}
+                      </>
+                      )}
                 </span>
               </li>
             )

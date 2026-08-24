@@ -206,7 +206,11 @@ export function TabPersonal({
 
       {obraId && (
         <Suspense fallback={<TablaEsqueleto cols={5} filas={4} />}>
-          <HoyEnObra obraId={obraId} asignaciones={asignaciones} />
+          {/* LOS REGISTROS VIAJAN, NO SE VUELVEN A LEER. La columna de horas del canónico y el KPI
+              de HH imputadas salen de los MISMOS registros que dibujan la tabla de abajo: una
+              segunda lectura podría llegar un segundo después y publicar dos totales distintos de
+              la misma jornada en la misma pantalla. */}
+          <HoyEnObra obraId={obraId} asignaciones={asignaciones} registros={registros} />
         </Suspense>
       )}
 
