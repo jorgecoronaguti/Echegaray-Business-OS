@@ -13,9 +13,14 @@
 //
 // ═══ CUÁNTO ES UN DÍA EN PÍXELES ═══
 //
-// El lienzo es porcentual —`escalaCronograma.ts` posiciona todo en %— así que el ancho de un día
-// depende del ancho real del contenedor, que sólo se conoce en el navegador. Se mide del elemento,
-// no se asume: con una ventana angosta, asumir 1000px convertiría un arrastre de un día en cuatro.
+// Lo dice la escala y no el navegador: `escala.pxPorDia` (26px en escala de día, el valor medido
+// del mockup 07). El lienzo tiene ANCHO FIJO —`escala.anchoPx` = días de obra × píxeles por día— y
+// se desplaza dentro de su propia ventanita, sin arrastrar a la tabla de la izquierda.
+//
+// Eso ARREGLA el arrastre, además de dibujar bien. Antes el gesto se convertía a días con
+// `clientWidth` del lienzo; ahora que el lienzo se desplaza, `clientWidth` es el ancho de lo que se
+// VE y no el del calendario, y un arrastre de un día se habría leído como cuatro. La cuenta ya no
+// mide el DOM: son píxeles del gesto divididos por píxeles del día.
 //
 // ═══ TRES CAPAS SUPERPUESTAS, Y CADA UNA DICE OTRA COSA (mockup 07) ═══
 //
@@ -137,11 +142,9 @@ export function LienzoCronogramaObra({
     return s
   })
 
-  const diasDelGesto = (dx: number): number => {
-    const ancho = lienzo.current?.clientWidth ?? 0
-    if (!ancho) return 0
-    return Math.round((dx / ancho) * diasVentana)
-  }
+  // UN DÍA SON `pxPorDia` PÍXELES, SIEMPRE. No se mide el elemento: el lienzo se desplaza y su
+  // `clientWidth` es el de la ventanita visible, no el del calendario.
+  const diasDelGesto = (dx: number): number => Math.round(dx / escala.pxPorDia)
 
   const alSoltar = (id: string, dx: number) => {
     const dias = diasDelGesto(dx)
@@ -169,7 +172,10 @@ export function LienzoCronogramaObra({
           filas={filasVisibles} seleccionada={seleccionada} hrefDe={hrefDe}
           cerrados={cerrados} plegar={plegar} altoFila={ALTO_FILA} altoCabecera={ALTO_HEAD}
         />
-        <div className="min-w-[560px] flex-1" ref={lienzo}>
+        {/* EL SCROLL ES DEL LIENZO, NO DE LA PÁGINA. La tabla de actividades queda quieta: leer
+            una barra de noviembre sin ver de qué actividad es no sirve de nada. */}
+        <div className="min-w-0 flex-1 overflow-x-auto" ref={lienzo}>
+          <div style={{ width: escala.anchoPx }}>
           <Encabezado escala={escala} francos={francos} />
           <div className="relative">
             <Fondo escala={escala} francos={francos} />
@@ -190,6 +196,7 @@ export function LienzoCronogramaObra({
                 alArrastrar={iniciarArrastre}
               />
             ))}
+          </div>
           </div>
         </div>
       </div>
@@ -219,9 +226,12 @@ function Fondo({ escala, francos }: { escala: EscalaCronograma; francos: { clave
           style={{ left: `${f.izqPct}%`, width: `${f.anchoPct}%` }}
         />
       ))}
-      {escala.columnas.map((c) => (
+      {/* UNA GUÍA POR UNIDAD, NO UNA POR DÍA. En escala de día son las 365 columnas de un año y
+          es lo que corresponde —la grilla ES el calendario—; en escala de mes serían 365 líneas a
+          menos de un píxel de distancia, o sea un fondo gris liso. */}
+      {escala.columnas.filter((c) => c.nueva).map((c) => (
         <span
-          key={`guia-${c.posPct}`}
+          key={`guia-${c.iso}`}
           className="absolute inset-y-0 w-px bg-[color:var(--os-surface-sunken)]"
           style={{ left: `${c.posPct}%` }}
         />
@@ -294,7 +304,7 @@ function Encabezado({ escala, francos }: {
         ))}
         {escala.columnas.filter((c) => c.nueva).map((c) => (
           <span
-            key={`${c.etiqueta}-${c.posPct}`}
+            key={`rotulo-${c.iso}`}
             className="absolute bottom-1 font-mono text-[9.5px] tracking-[0.04em] text-muted tabular-nums"
             style={{ left: `${c.posPct}%`, paddingLeft: 4 }}
           >

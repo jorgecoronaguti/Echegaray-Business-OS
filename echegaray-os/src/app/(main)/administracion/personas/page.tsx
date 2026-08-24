@@ -269,7 +269,7 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
           (por eso el `-mx` que sangra el padding de `PageShell`). Adentro de la columna se metería
           por debajo del panel de alta cuando está abierto. */}
       {personas.length > 0 && (
-        <div className="-mx-4 mt-4 lg:-mx-10">
+        <div className="-mx-4 mt-3 lg:-mx-10">
           <Franja
             testid="franja-personal"
             metricas={metricasDelListado({ filtro, buscando: Boolean(sp.q?.trim()), personas })}

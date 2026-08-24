@@ -4,6 +4,7 @@ import { Encabezado, Fila, Metricas, Nada, Panel, Rotulo } from '@/features/jefe
 import { IconoUbicacion } from '@/features/jefe/components/Iconos'
 import { IconoCuadrilla, IconoPersona } from '@/shared/components/iconos'
 import { SinObra } from '@/features/jefe/components/SinObra'
+import { PersonasFiltro } from '@/features/jefe/components/PersonasFiltro'
 import { ZONA_OBRA, contextoDeObra, hoyEnObra } from '@/features/jefe/services/contexto'
 import { getHHDelDia } from '@/features/jefe/services/jefeService'
 import {
@@ -114,13 +115,19 @@ export default async function JefePersonasPage({
           </Aviso>
         )}
 
-        {cuadrillas.length === 0 ? (
-          <Panel testid="jefe-personas-vacio">
-            <Nada>
-              Nadie marcó hoy. La marca la hace cada persona desde su teléfono, en Asistencia.
-            </Nada>
-          </Panel>
-        ) : (
+        {/* LOS CHIPS FILTRAN EN EL NAVEGADOR, sobre bloques que YA dibujó el servidor. La lista de
+            los que ficharon y la de los que no son disjuntas: por eso alcanza con mostrar u ocultar
+            cada una, sin recalcular nada. Y no hay chip «Ausentes»: ver `personasFiltro.ts`. */}
+        <PersonasFiltro
+          fichados={r.enObra}
+          sinFichar={grupos.sinRegistrar.length}
+          bloqueFichados={cuadrillas.length === 0 ? (
+            <Panel testid="jefe-personas-vacio">
+              <Nada>
+                Nadie marcó hoy. La marca la hace cada persona desde su teléfono, en Asistencia.
+              </Nada>
+            </Panel>
+          ) : (
           cuadrillas.map((c) => (
             <div key={c.clave}>
               {/* «4 de 5» ES LA PREGUNTA DEL JEFE: no cuánta gente hay, sino cuánta falta de la que
@@ -196,9 +203,8 @@ export default async function JefePersonasPage({
               </Panel>
             </div>
           ))
-        )}
-
-        {grupos.sinRegistrar.length > 0 && (
+          )}
+          bloqueSinFichar={grupos.sinRegistrar.length > 0 && (
           <div>
             <Rotulo
               tono="warn"
@@ -229,7 +235,8 @@ export default async function JefePersonasPage({
               </p>
             </Panel>
           </div>
-        )}
+          )}
+        />
       </div>
 
       <PieDeAccion sobreBarra>

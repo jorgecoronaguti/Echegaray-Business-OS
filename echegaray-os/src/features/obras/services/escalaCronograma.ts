@@ -1,18 +1,32 @@
-// LA ESCALA DEL CRONOGRAMA DE OBRA — doce columnas y una posición en porcentaje.
+// LA ESCALA DEL CRONOGRAMA DE OBRA — un día mide una cantidad fija de píxeles, y el lienzo mide lo
+// que la obra dura.
+//
+// ═══ POR QUÉ ESTO DEJÓ DE SER DOCE COLUMNAS PORCENTUALES ═══
+//
+// Hasta acá la escala repartía SIEMPRE doce columnas iguales sobre la ventana, cualquiera fuera su
+// largo. Eso hace que el ancho de un día dependa de cuánto dura la obra: en una de tres semanas un
+// día medía 45px y en una de dos años medía 1,3px, y las dos pantallas se veían igual de llenas.
+// Un Gantt en el que el ancho no significa tiempo no es un Gantt: es un gráfico decorativo. Dos
+// actividades de cinco días en dos obras distintas tienen que medir lo mismo en pantalla, y el
+// mockup `07 · Obra Cronograma.dc.html` lo dibuja así — `DAYW = 26`, lienzo largo, scroll propio.
+//
+// La consecuencia buscada: el lienzo se sale de la pantalla y se desplaza. Eso es correcto. Meter
+// un año de obra en 900px es lo que hacía que una barra de una semana midiera 17px.
+//
+// ═══ POR QUÉ SIGUE HABIENDO PORCENTAJES ═══
+//
+// El lienzo tiene ANCHO FIJO conocido (`anchoPx`). Sobre un ancho fijo, `left: 41,6 %` y
+// `left: 260px` son EL MISMO punto: el porcentaje dejó de ser una aproximación al contenedor y pasó
+// a ser una forma de escribir el píxel. Por eso `tramoDe`, las bandas de período y los conectores
+// —que ya están probados en porcentaje— no se tocaron: cambiarlos a píxeles habría reescrito tres
+// archivos y sus tests para dibujar exactamente lo mismo.
 //
 // ═══ POR QUÉ NO ES `services/escala.ts`, QUE YA EXISTE ═══
 //
-// Esa escala resuelve OTRA pregunta: devuelve un lienzo en PÍXELES (`px`, `ancho`, `x(iso)`) para
-// un Gantt que se desplaza horizontalmente y tiene dos zooms, semana y mes. La 07 pide otra cosa —
-// doce columnas iguales rotuladas, tres zooms (día, semana, mes) y barras posicionadas en
-// PORCENTAJE del ancho disponible— y forzar una en la otra habría cambiado el contrato de
-// `construirEscala`, que hoy posiciona las barras del Gantt de cartera y las del Gantt legacy.
-// Cambiar la aritmética que dibuja tres pantallas para que entre una cuarta es cómo se corren las
-// barras de las otras tres sin que ningún test lo note.
-//
-// Lo que sí se comparte es la disciplina: la aritmética vive en un archivo puro y probado, no
-// dentro del componente. La posición de una barra es exactamente el tipo de cuenta que se equivoca
-// en silencio.
+// Esa escala posiciona las barras del Gantt de cartera y las del Gantt legacy (`TabCronograma` la
+// consume por `services/escala`). Son otras tres pantallas. Cambiar la aritmética que las dibuja
+// para que entre una cuarta es cómo se corren las barras de las otras tres sin que ningún test lo
+// note.
 
 const DIA = 86400000
 
@@ -20,16 +34,32 @@ export type UnidadEscala = 'dia' | 'semana' | 'mes'
 export const UNIDADES: UnidadEscala[] = ['dia', 'semana', 'mes']
 export const UNIDAD_LABEL: Record<UnidadEscala, string> = { dia: 'Día', semana: 'Semana', mes: 'Mes' }
 
-/** Doce columnas, como el contrato visual. No es un número mágico caprichoso: es lo que entra
- *  rotulado en 9,5px sin pisarse en el ancho mínimo de 960px que la pantalla declara. */
-export const N_COLUMNAS = 12
+/**
+ * EL ANCHO DE UN DÍA EN LA ESCALA DE DÍA — 26px, leído de los estilos inline del mockup.
+ *
+ * Es el único de los tres que está MEDIDO. Los otros dos salen de aplicarle una regla: la celda
+ * ROTULADA mide siempre 26px, así que en escala de semana la celda es la semana (26/7 por día) y en
+ * escala de mes es el mes (26/30 por día, aproximado porque los meses no miden lo mismo). Sin esa
+ * regla el zoom no serviría de nada: si los tres zooms dibujaran 26px por día, cambiar de zoom sólo
+ * cambiaría los rótulos de la cabecera y el lienzo seguiría midiendo lo mismo.
+ *
+ * `semana` y `mes` NO están medidos contra un mockup — el zip trae la escala de día. Quedan
+ * declarados acá y no escondidos adentro de un componente.
+ */
+export const DAYW = 26
+export const ANCHO_DIA: Record<UnidadEscala, number> = { dia: DAYW, semana: DAYW / 7, mes: DAYW / 30 }
 
 export interface Columna {
+  /** El día que rotula esta columna. Es el dato; la posición es su consecuencia. */
+  iso: string
   etiqueta: string
+  /** Píxeles desde el borde izquierdo del lienzo. */
+  x: number
+  /** El MISMO punto en % del lienzo. Sobre un lienzo de ancho fijo son el mismo lugar; lo consumen
+   *  los conectores y las bandas, que ya trabajan en porcentaje. */
   posPct: number
-  /** Si esta columna EMPIEZA una unidad nueva. Doce columnas sobre una obra de cuatro días caen
-   *  todas en la misma semana y el encabezado quedaba diciendo «S28» doce veces: doce rótulos
-   *  iguales no informan nada y se leen como una pantalla rota. Sólo se dibuja la primera. */
+  /** Si esta columna EMPIEZA una unidad de la escala elegida. Sólo esas llevan rótulo y guía: en
+   *  escala de semana hay siete columnas por rótulo, y siete veces «S28» no informan nada. */
   nueva: boolean
 }
 
@@ -37,9 +67,19 @@ export interface EscalaCronograma {
   unidad: UnidadEscala
   desde: string
   hasta: string
+  /** Días de la ventana contando las dos puntas. El denominador de TODO. */
+  celdas: number
+  /** Cuántos píxeles mide un día en esta escala. Convierte un gesto del puntero en días SIN medir
+   *  el DOM: el lienzo se desplaza, así que su `clientWidth` es el de la ventanita visible y no el
+   *  del calendario — con esa medida un arrastre de un día se leía como cuatro. */
+  pxPorDia: number
+  /** El ancho del lienzo, en píxeles. Es lo que la obra dura, no lo que la pantalla mide. */
+  anchoPx: number
   columnas: Columna[]
-  /** Dónde cae hoy, en % del ancho. `null` cuando hoy queda fuera de la ventana del plan: dibujar
-   *  la línea pegada al borde diría que la obra empieza o termina hoy, y no es cierto. */
+  /** Dónde cae hoy, en píxeles y en % del ancho. `null` cuando hoy queda fuera de la ventana del
+   *  plan: dibujar la línea pegada al borde diría que la obra empieza o termina hoy, y no es
+   *  cierto. */
+  hoyX: number | null
   hoyPosPct: number | null
 }
 
@@ -79,13 +119,18 @@ export function ventanaDe(
 const MES_CORTO = (iso: string) =>
   aDate(iso).toLocaleDateString('es-AR', { month: 'short', timeZone: 'UTC' }).replace('.', '').toUpperCase()
 
-/** El rótulo de una columna según el zoom. `DD/M` para día, `S<semana ISO>` para semana, `MMM`
- *  para mes — los tres del contrato visual, en es-AR. */
+/**
+ * El rótulo de una columna según el zoom.
+ *
+ * En escala de DÍA es el número del día pelado —`18`, no `18/8`— porque el mes ya está escrito en la
+ * banda de arriba y `18/8` no entra en 26px sin pisar al vecino. Repetir el mes en cada una de las
+ * treinta columnas de agosto es gastar la mitad de la cabecera en decir treinta veces «agosto».
+ */
 export function etiquetaDe(iso: string, unidad: UnidadEscala): string {
   const d = aDate(iso)
   if (unidad === 'mes') return MES_CORTO(iso)
   if (unidad === 'semana') return `S${semanaIso(d)}`
-  return `${d.getUTCDate()}/${d.getUTCMonth() + 1}`
+  return String(d.getUTCDate())
 }
 
 /** Número de semana ISO-8601. La semana 1 es la que contiene el primer jueves del año. */
@@ -97,23 +142,57 @@ export function semanaIso(d: Date): number {
 }
 
 /**
- * La escala: doce columnas repartidas por igual sobre la ventana, con el rótulo del zoom elegido.
+ * Si este día ABRE una unidad de la escala: el lunes en semana, el día 1 en mes, siempre en día.
  *
- * El zoom NO recorta la ventana —el cronograma entero se ve siempre— sino que cambia con qué
- * unidad se leen las divisiones. Recortar sería esconder trabajo que existe detrás de un control
- * de vista, y en una obra eso se llama olvidarse de un frente.
+ * Se decide por el CALENDARIO y no comparando el rótulo con el anterior. Comparar rótulos parecía
+ * equivalente y no lo es: dos meses distintos pueden rotular igual —`ENE` de 2026 y `ENE` de 2027 en
+ * una obra de dos años— y la segunda columna se quedaba sin guía y sin rótulo, con enero de 2027
+ * dibujado como si fuera la continuación de enero de 2026.
+ */
+export function abreUnidad(iso: string, unidad: UnidadEscala): boolean {
+  if (unidad === 'dia') return true
+  const d = aDate(iso)
+  if (unidad === 'mes') return d.getUTCDate() === 1
+  return (d.getUTCDay() || 7) === 1
+}
+
+/** Dónde cae un día en el lienzo, en píxeles desde el borde izquierdo. Fuera de la ventana devuelve
+ *  `null`: no existe un píxel para un día que el lienzo no dibuja, y devolver 0 o `anchoPx` lo
+ *  pegaría al borde como si empezara o terminara ahí. */
+export function xDe(
+  escala: { desde: string; hasta: string; pxPorDia: number }, iso: string,
+): number | null {
+  const d = diasEntre(escala.desde, iso)
+  if (d < 0 || d >= celdasDe(escala.desde, escala.hasta)) return null
+  return d * escala.pxPorDia
+}
+
+/**
+ * La escala: una columna POR DÍA, con el rótulo y la guía sólo en las que abren unidad.
+ *
+ * El zoom NO recorta la ventana —el cronograma entero se ve siempre, desplazándose— sino que cambia
+ * cuántos píxeles mide un día y con qué unidad se leen las divisiones. Recortar sería esconder
+ * trabajo que existe detrás de un control de vista, y en una obra eso se llama olvidarse de un
+ * frente.
  */
 export function construirEscalaCronograma(
   ventana: { desde: string; hasta: string }, unidad: UnidadEscala, hoy: string,
 ): EscalaCronograma {
   const celdas = celdasDe(ventana.desde, ventana.hasta)
+  const pxPorDia = ANCHO_DIA[unidad]
+  const anchoPx = celdas * pxPorDia
   const columnas: Columna[] = []
-  let anterior: string | null = null
-  for (let i = 0; i < N_COLUMNAS; i++) {
-    const dia = Math.min(celdas - 1, Math.floor((celdas * i) / N_COLUMNAS))
-    const etiqueta = etiquetaDe(sumar(ventana.desde, dia), unidad)
-    columnas.push({ etiqueta, posPct: (i / N_COLUMNAS) * 100, nueva: etiqueta !== anterior })
-    anterior = etiqueta
+  for (let i = 0; i < celdas; i++) {
+    const iso = sumar(ventana.desde, i)
+    columnas.push({
+      iso,
+      etiqueta: etiquetaDe(iso, unidad),
+      x: i * pxPorDia,
+      posPct: (i / celdas) * 100,
+      // La primera columna SIEMPRE abre: una obra que arranca un miércoles en escala de semana no
+      // tendría ninguna guía hasta el lunes siguiente, y el lienzo abriría sin cabecera.
+      nueva: i === 0 || abreUnidad(iso, unidad),
+    })
   }
   const dHoy = diasEntre(ventana.desde, hoy)
   const dentro = dHoy >= 0 && dHoy < celdas
@@ -121,7 +200,11 @@ export function construirEscalaCronograma(
     unidad,
     desde: ventana.desde,
     hasta: ventana.hasta,
+    celdas,
+    pxPorDia,
+    anchoPx,
     columnas,
+    hoyX: dentro ? dHoy * pxPorDia : null,
     hoyPosPct: dentro ? (dHoy / celdas) * 100 : null,
   }
 }
@@ -129,10 +212,10 @@ export function construirEscalaCronograma(
 export interface Tramo { izqPct: number; anchoPct: number }
 
 /**
- * Dónde arranca y cuánto mide una barra, en % del lienzo.
+ * Dónde arranca y cuánto mide una barra, en % del lienzo — que es decir, en píxeles del lienzo.
  *
- * El ancho mínimo es 0,6 %: una actividad de un día en una obra de un año mide 0,27 % y
- * desaparecería. Una barra invisible se lee como «no tiene fechas», que es una cosa distinta.
+ * El ancho mínimo es 0,6 %: en escala de mes una actividad de un día mide 0,27 % y desaparecería.
+ * Una barra invisible se lee como «no tiene fechas», que es una cosa distinta.
  */
 export function tramoDe(
   escala: { desde: string; hasta: string }, inicio: string | null, fin: string | null,

@@ -371,7 +371,11 @@ export function TabTareas({
       />
     </div>
 
-    <Franja total={total} enCurso={enCurso} problemas={problemas} />
+    {/* 12px DE AIRE SOBRE LA FRANJA (canónico). Pegada al bloque de arriba, la tarjeta del pie se
+        lee como una fila más de la lista y sus cifras como si fueran de la última tarea. */}
+    <div className="pt-3">
+      <Franja total={total} enCurso={enCurso} problemas={problemas} />
+    </div>
     </div>
   )
 }
