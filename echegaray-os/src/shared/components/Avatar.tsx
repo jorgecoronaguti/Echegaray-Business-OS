@@ -1,5 +1,10 @@
 // LA FOTO, O LAS INICIALES — nunca una silueta genérica.
 //
+// VIVE EN `shared/` DESDE EL DESIGN DEL 23/08: el canónico lo dibuja en Mi cuenta, en el listado de
+// Personal (19), en la ficha de la persona (20) y en el shell del jefe. Cuatro dominios lo usan, y
+// el que quedó en `features/mi-cuenta/` ya había producido una segunda copia de iniciales escrita a
+// mano en `ShellJefe`. Se mueve entero, sin tocar una línea de su lógica.
+//
 // El avatar por defecto de casi todo el software es una silueta gris. Acá no: en los partes y en las
 // cuadrillas hay que distinguir a Juan Morales de Luis Cabrera de un vistazo, y treinta siluetas
 // iguales no distinguen a nadie. Las iniciales sobre la superficie grafito de la marca sí.
@@ -28,8 +33,13 @@ export function Avatar({
     .toUpperCase()
 
   return (
-    <div
-      className="flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-line bg-accent text-white"
+    // UN `<span>` Y NO UN `<div>`: desde el Design del 23/08 el avatar aparece DENTRO del `h1` del
+    // slab de identidad y dentro del `<a>` de la fila de Personal. Un `div` ahí es contenido de
+    // flujo dentro de contenido de frase —HTML inválido—: el navegador lo «arregla» cerrando el
+    // padre antes de tiempo y React avisa de una discrepancia de hidratación en producción. Con
+    // `inline-flex` y el tamaño en píxeles se ve exactamente igual.
+    <span
+      className="inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-line bg-accent align-middle text-white"
       style={{ width: lado, height: lado }}
       data-testid="avatar"
     >
@@ -43,7 +53,7 @@ export function Avatar({
           {iniciales || '·'}
         </span>
       )}
-    </div>
+    </span>
   )
 }
 

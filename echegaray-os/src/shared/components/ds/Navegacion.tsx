@@ -15,7 +15,19 @@ import type { ReactNode } from 'react'
 // (`margin-bottom:-1px`), que es lo que hace que el tab parezca continuar la superficie de abajo
 // en vez de flotar sobre ella.
 
-export type Tab = { href: string; label: ReactNode; activo?: boolean; testid?: string }
+export type Tab = {
+  href: string
+  label: ReactNode
+  activo?: boolean
+  testid?: string
+  /**
+   * CONTADOR MONO A LA DERECHA DEL RÓTULO — `COMPONENTS.md` §Anatomía de ficha de entidad:
+   * «nivel 2 de solapas con contador mono». Sólo cuando el número se sabe: `null` o ausente no
+   * dibuja nada, porque un `0` al lado de «Documentos» dice que el legajo está vacío y eso es una
+   * afirmación distinta de «todavía no lo miré».
+   */
+  cuenta?: number | null
+}
 
 export function Tabs({ tabs, testid = 'tabs' }: { tabs: Tab[]; testid?: string }) {
   return (
@@ -33,13 +45,16 @@ export function Tabs({ tabs, testid = 'tabs' }: { tabs: Tab[]; testid?: string }
           prefetch={false}
           data-testid={t.testid}
           aria-current={t.activo ? 'page' : undefined}
-          className={`shrink-0 whitespace-nowrap border-b-2 px-3.5 py-[9px] text-[14px] transition-colors ${
+          className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3.5 py-[9px] text-[14px] transition-colors ${
             t.activo
               ? 'border-marca font-medium text-ink'
               : 'border-transparent text-muted hover:text-ink'
           }`}
         >
           {t.label}
+          {t.cuenta !== null && t.cuenta !== undefined && (
+            <span className="font-mono text-[11.5px] tabular-nums text-faint">{t.cuenta}</span>
+          )}
         </Link>
       ))}
     </nav>

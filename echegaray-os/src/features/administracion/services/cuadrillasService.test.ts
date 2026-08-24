@@ -13,7 +13,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { filtrarCuadrillas, sumarHHTrabajadas } from './cuadrillasService.ts'
+import { filtrarCuadrillas, resumirCuadrillas, sumarHHTrabajadas } from './cuadrillasService.ts'
 
 const fila = (fecha: string | null, horas: number | string, tipo_hora = 'normal') => ({ fecha, horas, tipo_hora })
 
@@ -68,4 +68,34 @@ test('sin texto no filtra nada, y una cuadrilla sin capataz no desaparece', () =
   assert.equal(filtrarCuadrillas(TRES, '').length, 3)
   assert.equal(filtrarCuadrillas(TRES, '   ').length, 3)
   assert.deepEqual(filtrarCuadrillas(TRES, 'terminac').map((c) => c.nombre), ['Terminaciones'])
+})
+
+// ═══ EL PIE DE LA PANTALLA 21 — la capacidad que no se pudo leer no es cero ═══
+//
+// `cuadrilla_capacidad` no trae fila para una cuadrilla sin integrantes vigentes. Sumarla como 0
+// devuelve un total que PARECE completo: nadie puede distinguir «la empresa rinde 6,4 oficiales» de
+// «rinde 6,4 de las que pude mirar». Es el mismo defecto que la columna CAP. POND. ya resolvió
+// mostrando «—», y el mismo que en el Sheet dejó publicar una caja de $384 M que no existía.
+
+const cap = (capacidad_ponderada: number, personas = 0) => ({
+  capacidad_ponderada, personas, personas_sin_categoria: 0,
+})
+
+test('la capacidad total NO suma como 0 las cuadrillas que no se pudieron leer', () => {
+  const r = resumirCuadrillas(
+    [{ id: 'a', integrantes: 4 }, { id: 'b', integrantes: 3 }, { id: 'c', integrantes: 0 }],
+    new Map([['a', cap(3.4)], ['b', cap(2.6)]]),
+    5,
+  )
+  assert.equal(r.capacidad, 6)
+  assert.equal(r.sinCapacidad, 1, 'la cuadrilla sin capacidad leída desapareció del total sin avisar')
+  assert.equal(r.cuadrillas, 3)
+  assert.equal(r.personas, 7)
+  assert.equal(r.sinCuadrilla, 5)
+})
+
+test('sin NINGUNA capacidad leída el total es null, nunca 0', () => {
+  const r = resumirCuadrillas([{ id: 'a', integrantes: 4 }], new Map(), 0)
+  assert.equal(r.capacidad, null, 'un 0 acá afirma que la empresa no rinde nada')
+  assert.equal(r.sinCapacidad, 1)
 })

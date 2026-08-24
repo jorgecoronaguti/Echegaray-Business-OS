@@ -45,10 +45,18 @@ const LABEL: Record<VistaFicha, string> = {
 }
 
 export function NavFicha({
-  activa, hrefDe, ocultar = [],
+  activa, hrefDe, ocultar = [], cuentas = {},
 }: {
   activa: VistaFicha
   hrefDe: (v: VistaFicha) => string
+  /**
+   * EL CONTADOR MONO DEL NIVEL 2 (Design 23/08, §Anatomía de ficha de entidad).
+   *
+   * Sólo se pasa el de las solapas cuyo número la página YA leyó. «Horas» no lo lleva a propósito:
+   * su fuente es `registros_hh` entera, y contarla para pintar un número al lado de una solapa que
+   * nadie abrió sería pagar la consulta cara en las seis vistas.
+   */
+  cuentas?: Partial<Record<VistaFicha, number | null>>
   /**
    * LAS QUE NO SE DIBUJAN PARA QUIEN MIRA.
    *
@@ -68,6 +76,7 @@ export function NavFicha({
         testid="tabs-ficha-persona"
         tabs={visibles.map((v) => ({
           href: hrefDe(v), label: LABEL[v], activo: v === activa, testid: `nav-ficha-${v}`,
+          cuenta: cuentas[v] ?? null,
         }))}
       />
     </div>

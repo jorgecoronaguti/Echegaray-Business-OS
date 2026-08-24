@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useActionState } from 'react'
+import { Boton, CAMPO, Campo } from '@/shared/components/ds'
 import { contrasenaNuevaAction, type ActionState } from '../services/actions'
 
 const initialState: ActionState = { error: null }
@@ -20,40 +21,29 @@ export function ContrasenaNuevaForm() {
   const [state, formAction, pending] = useActionState(contrasenaNuevaAction, initialState)
 
   return (
-    <form action={formAction} className="flex flex-col gap-3" data-testid="contrasena-nueva-form">
-      <label className="flex flex-col text-sm">
-        Contraseña nueva
+    <form action={formAction} className="flex flex-col gap-4" data-testid="contrasena-nueva-form">
+      <Campo rotulo="Contraseña nueva">
         <input
-          name="password"
-          type="password"
-          required
-          minLength={6}
-          autoComplete="new-password"
-          autoFocus
-          className="rounded border px-3 py-2"
+          name="password" type="password" required minLength={6}
+          autoComplete="new-password" autoFocus className={CAMPO}
         />
-      </label>
-      <label className="flex flex-col text-sm">
-        Repetila
+      </Campo>
+      <Campo rotulo="Repetila">
         <input
-          name="password2"
-          type="password"
-          required
-          minLength={6}
-          autoComplete="new-password"
-          className="rounded border px-3 py-2"
+          name="password2" type="password" required minLength={6}
+          autoComplete="new-password" className={CAMPO}
         />
-      </label>
+      </Campo>
 
       {state.error && (
-        <p className="text-sm text-red-600" data-testid="contrasena-nueva-error">{state.error}</p>
+        <p className="text-[13px] text-neg" data-testid="contrasena-nueva-error">{state.error}</p>
       )}
 
-      <button type="submit" disabled={pending} className="rounded bg-black px-4 py-2 text-white disabled:opacity-50">
-        {pending ? 'Guardando...' : 'Guardar y entrar'}
-      </button>
+      <Boton type="submit" variante="primaria" tamano="acceso" disabled={pending}>
+        {pending ? 'Guardando…' : 'Guardar y entrar'}
+      </Boton>
 
-      <Link href="/recuperar" className="text-center text-sm text-muted underline">
+      <Link href="/recuperar" className="-my-1 py-3 text-center text-[13px] text-muted underline decoration-line underline-offset-2 hover:text-ink">
         Pedir un enlace nuevo
       </Link>
     </form>

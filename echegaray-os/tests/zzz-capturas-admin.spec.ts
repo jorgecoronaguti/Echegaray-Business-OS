@@ -44,7 +44,10 @@ test('capturas de Administración', async ({ page }) => {
   if (await fila.count()) {
     await fila.click()
     await page.waitForURL(/\/administracion\/personas\/[^/?]+$/, { timeout: 30000 })
-    await page.getByTestId('entity-header').waitFor({ timeout: 30000 })
+    // CAMBIO DE REGLA DECLARADO (Design 23/08): la ficha de la persona dejó de coronarse con el
+    // `EntityHeader` blanco y pasó al slab de identidad grafito —`COMPONENTS.md` §Anatomía de ficha
+    // de entidad—, el mismo componente que ya usa la ficha del proveedor. El testid cambia con él.
+    await page.getByTestId('slab-persona').waitFor({ timeout: 30000 })
     await page.waitForTimeout(1200)
     await page.screenshot({ path: `${DIR}/1536-legajo.png`, fullPage: true })
     for (const v of ['asignaciones', 'horas', 'documentos']) {
