@@ -1,5 +1,14 @@
 // LA TARJETA DEL RESUMEN — el contenedor que el canónico 02 usa para TODOS sus bloques.
 //
+// ═══ PORTE LITERAL (24/08/2026) ═══
+//
+// Los valores salen medidos de «02 · Obra Resumen.dc.html» y no del design system:
+//   tarjeta    `background:#FFFFFF; border:1px solid #E7E6E2; borderRadius:10px; overflow:hidden`
+//   cabecera   `padding:11px 16px; borderBottom:1px solid #EFEEEA; gap:9px`
+//   título     13px/600 `#1F1F1E`; la cifra en mono de 11,5px `#6B6B67`
+// El radio del DS (`rounded-card`) y su `border-line` daban una tarjeta parecida y no igual, que es
+// exactamente lo que el dueño rechazó cuatro veces.
+//
 // El Resumen venía dibujado sin recuadros: cada bloque era un eyebrow con un hairline arriba, todos
 // sobre el mismo blanco. Eso funciona en una columna, pero el 02 pone siete bloques en dos columnas
 // y sin marco no se ve dónde termina uno y empieza el otro — «Preparación» se leía como el pie de
@@ -10,6 +19,8 @@
 // pueda hacer, empujado a la derecha. No hay una segunda variante: dos encabezados parecidos pero
 // distintos es como una pantalla empieza a tener dos sistemas visuales.
 
+import { C, MONO } from './canon/tokens'
+
 export function Tarjeta({ children, testid, className = '' }: {
   children: React.ReactNode
   testid?: string
@@ -18,7 +29,11 @@ export function Tarjeta({ children, testid, className = '' }: {
   return (
     <section
       data-testid={testid}
-      className={`overflow-hidden rounded-card border border-line bg-surface ${className}`}
+      className={className}
+      style={{
+        background: C.superficie, border: `1px solid ${C.borde}`, borderRadius: '10px',
+        overflow: 'hidden',
+      }}
     >
       {children}
     </section>
@@ -34,15 +49,18 @@ export function CabeceraTarjeta({ icono, titulo, cifra, tonoCifra = 'muted', acc
   tonoCifra?: 'muted' | 'warn' | 'neg' | 'pos'
   accion?: React.ReactNode
 }) {
-  const TONO = { muted: 'text-muted', warn: 'text-warn', neg: 'text-neg', pos: 'text-pos' } as const
+  const TONO = { muted: C.tintaSuave, warn: C.warn, neg: C.neg, pos: C.pos } as const
   return (
-    <div className="flex items-center gap-2.5 border-b border-surface-sunken px-4 py-[11px]">
-      {icono && <span className="flex shrink-0 text-muted">{icono}</span>}
-      <h3 className="text-[13px] font-semibold text-ink">{titulo}</h3>
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: '9px', padding: '11px 16px',
+      borderBottom: `1px solid ${C.bordeTarjeta}`,
+    }}>
+      {icono && <span style={{ display: 'flex', flexShrink: 0, color: C.tintaSuave }}>{icono}</span>}
+      <h3 style={{ fontSize: '13px', fontWeight: 600, color: C.tinta, margin: 0 }}>{titulo}</h3>
       {cifra != null && (
-        <span className={`font-mono text-[11.5px] tabular-nums ${TONO[tonoCifra]}`}>{cifra}</span>
+        <span style={{ fontFamily: MONO, fontSize: '11.5px', color: TONO[tonoCifra] }}>{cifra}</span>
       )}
-      {accion && <div className="ml-auto flex min-w-0 items-center">{accion}</div>}
+      {accion && <div style={{ marginLeft: 'auto', display: 'flex', minWidth: 0, alignItems: 'center' }}>{accion}</div>}
     </div>
   )
 }
@@ -51,23 +69,29 @@ export function CabeceraTarjeta({ icono, titulo, cifra, tonoCifra = 'muted', acc
 export function Chevron() {
   return (
     <svg aria-hidden width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      strokeWidth="2" strokeLinecap="round" className="shrink-0 text-line-strong">
+      strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0, color: C.fantasma }}>
       <path d="M9 6l6 6-6 6" />
     </svg>
   )
 }
 
-/** La barra fina del encabezado (Preparación) y de las métricas. La PISTA se dibuja siempre; el
- *  relleno, sólo con una fracción real — una pista vacía dice «no hay con qué llenarla». */
-export function BarraFina({ pct, tono = 'bg-accent', className = '' }: {
+/** La barra fina del encabezado (Preparación) y de las métricas. 4px sobre `#EAE7E6`, radio 2, con
+ *  el relleno en grafito — los valores del zip. La PISTA se dibuja siempre; el relleno, sólo con
+ *  una fracción real: una pista vacía dice «no hay con qué llenarla», un relleno en 0 diría «no
+ *  avanzó nada», que es la afirmación contraria. */
+export function BarraFina({ pct, tono = C.grafito, className = '' }: {
   pct: number | null
+  /** El color del relleno. Grafito por defecto: el avance no es un estado —estar al 40 % no es
+   *  bueno ni malo—, así que se pinta con la estructura y no con semántica. */
   tono?: string
   className?: string
 }) {
   return (
-    <span className={`block h-1 overflow-hidden rounded-full bg-surface-sunken ${className}`}>
+    <span className={className} style={{
+      display: 'block', height: '4px', background: C.barraCanal, borderRadius: '2px', overflow: 'hidden',
+    }}>
       {pct != null && (
-        <span className={`block h-full ${tono}`} style={{ width: `${Math.min(100, Math.max(0, pct))}%` }} />
+        <span style={{ display: 'block', height: '100%', width: `${Math.min(100, Math.max(0, pct))}%`, background: tono }} />
       )}
     </span>
   )

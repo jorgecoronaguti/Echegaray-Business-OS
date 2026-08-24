@@ -47,7 +47,7 @@ export default async function RegistrarAvancePage({ params }: {
 
   return (
     <div className="min-h-screen bg-canvas">
-      <div className="mx-auto w-full max-w-[1060px] px-4 py-6 lg:px-10">
+      <>
         {/* LA CABECERA DE LA OBRA, igual que en las otras cinco pantallas (24/08 · C-CANON §12).
             Tenía sólo el «Volver», así que desde acá no se veía de qué obra se estaba registrando
             avance ni se podía saltar a otra solapa sin deshacer el camino.
@@ -66,6 +66,7 @@ export default async function RegistrarAvancePage({ params }: {
             lo dice antes de que alguien lo complete. La guarda se mudó ADENTRO del componente
             (24/08): el mismo formulario se embebe en el panel lateral de la tarea, y una regla
             escrita en la página es una regla que el otro envase no cumple. */}
+        <div className="mx-auto w-full max-w-[1060px] px-5 py-5">
         <FormAvance
           nodo={nodo}
           pasos={pasos.data ?? []}
@@ -98,7 +99,8 @@ export default async function RegistrarAvancePage({ params }: {
             </ul>
           )}
         </section>
-      </div>
+        </div>
+      </>
     </div>
   )
 }

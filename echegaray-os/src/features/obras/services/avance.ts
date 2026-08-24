@@ -191,6 +191,35 @@ export function seleccionable(a: CandidataMasiva): boolean {
   }
 }
 
+/**
+ * LOS CUATRO VALORES QUE OFRECE CADA FILA DEL AVANCE MASIVO (canónico 06).
+ *
+ * El mockup dibuja cuatro botones por fila con porcentajes distintos en cada una, pero NO declara
+ * la regla: son datos de ejemplo escritos a mano (`pasos: [80, 85, 90, 100]`). La regla es de acá,
+ * y es una decisión de producto que conviene tener escrita y probada en vez de repartida en el JSX:
+ *
+ *   · el escalón es de 10 puntos mientras queda camino, y de 5 cuando la actividad ya pasó el 60 %
+ *     —cerca del final, mover de a diez es mentir sobre la precisión con la que alguien mira;
+ *   · se ofrecen los TRES siguientes escalones redondos por encima del avance actual;
+ *   · y SIEMPRE el 100, porque «terminada» tiene que estar a un clic desde cualquier fila.
+ *
+ * Nunca se ofrece un valor por debajo del actual: retroceder un avance es un acto deliberado y no
+ * algo que se toca sin querer al cerrar una jornada. Eso se hace en el panel de la actividad.
+ */
+export function escalonesDeAvance(actual: number | null): number[] {
+  const base = Math.min(100, Math.max(0, Math.round(actual ?? 0)))
+  if (base >= 100) return []
+  const paso = base >= 60 ? 5 : 10
+  const out: number[] = []
+  for (let i = 1; out.length < 3; i++) {
+    const v = Math.floor(base / paso) * paso + paso * i
+    if (v >= 100) break
+    out.push(v)
+  }
+  out.push(100)
+  return out
+}
+
 export interface ResumenSeleccion {
   n: number
   por_pasos: number
