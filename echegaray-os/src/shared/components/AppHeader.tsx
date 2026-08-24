@@ -51,9 +51,9 @@ export function AppHeader({
   // igual. `/clientes` y `/administracion` son la misma área; `/obras` y `/control-obras`, la otra.
   const activa: Area | null = areas.length === 1
     ? areas[0]
-    : /^\/(administracion|clientes)/.test(pathname)
+    : /^\/(administracion|clientes|presupuestos|documentos|flujo-caja)/.test(pathname)
       ? 'administracion'
-      : /^\/(obras|control-obras|integraciones|campo)/.test(pathname)
+      : /^\/(obras|obra|control-obras|integraciones|campo|hoy|mi-trabajo|mi-informacion)/.test(pathname)
         ? 'obras'
         : null
 
