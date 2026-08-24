@@ -35,7 +35,10 @@ export function PipelineConversion() {
               <span className={`block text-[12.5px] leading-tight ${activo ? 'font-semibold text-ink' : 'text-muted'}`}>
                 {p.titulo}
               </span>
-              <span className="block text-[10.5px] leading-tight text-faint">{p.sub}</span>
+              {/* El subtítulo sólo del paso ACTIVO (Design 23/08). Los cinco a la vez son 22 palabras
+                  permanentes explicando una cadena que el número y el orden ya dicen; el del paso en
+                  el que estás es el único que contesta «¿y acá qué hago?». */}
+              {activo && <span className="block text-[10.5px] leading-tight text-faint">{p.sub}</span>}
             </span>
           </li>
         )

@@ -18,19 +18,15 @@ import { getPerfilActual } from '@/features/auth/services/authService'
 import { veEconomia } from '@/features/auth/types/areas'
 import { getCartera, getParametroComercialVigente } from '@/features/presupuestos/services/presupuestosService'
 import { getObrasDestino } from '@/features/presupuestos/services/conversionService'
-import { kpisDeCartera } from '@/features/presupuestos/services/cartera'
 import { esFiltro } from '@/features/presupuestos/services/cartera'
-import { plata, porcentaje } from '@/features/presupuestos/services/formato'
 import { crearPresupuesto } from '@/features/presupuestos/services/actions'
 import { ListaPresupuestos } from '@/features/presupuestos/components/ListaPresupuestos'
 import { CamposPresupuesto } from '@/features/presupuestos/components/CamposPresupuesto'
-import { Aviso, BotonEnlace } from '@/shared/components/ds'
+import { Aviso, Ayuda, BotonEnlace } from '@/shared/components/ds'
 import { EstadoError } from '@/shared/components/estado'
-import { PageShell, StatTile, FormAccion } from '@/shared/components/ui'
+import { PageShell, FormAccion } from '@/shared/components/ui'
 
 export const dynamic = 'force-dynamic'
-
-const MARGEN_OBJETIVO = 17
 
 export default async function PresupuestosPage({
   searchParams,
@@ -44,7 +40,7 @@ export default async function PresupuestosPage({
   const perfil = await getPerfilActual(supabase)
   if (!veEconomia(perfil.data?.rol ?? null)) {
     return (
-      <PageShell title="Presupuestos" subtitle="La cartera de ofertas de la empresa.">
+      <PageShell title="Presupuestos">
         <Aviso tono="warn" titulo="Sin permiso" testid="sin-permiso">
           Los presupuestos son precio: los ve Dirección y Administración. No es que no haya datos —
           es que este nivel no los ve. Lo que se cotizó llega a la obra convertido en actividades,
@@ -64,7 +60,6 @@ export default async function PresupuestosPage({
     getParametroComercialVigente(supabase),
   ])
   const presupuestos = data ?? []
-  const k = kpisDeCartera(presupuestos)
 
   const { data: clientesData } = await supabase
     .from('clientes').select('id, nombre_comercial').order('nombre_comercial', { ascending: true })
@@ -78,7 +73,17 @@ export default async function PresupuestosPage({
   return (
     <PageShell
       title="Presupuestos"
-      subtitle="Lo que está en la calle, lo que se ganó y con qué margen. Tocá uno para abrir su cómputo."
+      right={
+        !error && (
+          <BotonEnlace
+            href={abierta ? '/presupuestos' : '/presupuestos?nuevo=1'}
+            variante={abierta ? 'secundaria' : 'primaria'}
+            data-testid="abrir-alta-presupuesto"
+          >
+            {abierta ? 'Cancelar' : 'Nuevo presupuesto'}
+          </BotonEnlace>
+        )
+      }
     >
       {error ? (
         // UNA LISTA VACÍA POR ERROR NO SE DIBUJA COMO «NO HAY DATOS»: son cosas opuestas, y
@@ -88,48 +93,9 @@ export default async function PresupuestosPage({
         <EstadoError mensaje={error} que="la cartera de presupuestos" />
       ) : (
         <>
-          <div className="mb-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-4" data-testid="kpis-cartera">
-            <StatTile
-              label="Cotizado abierto"
-              value={plata(k.cotizadoAbierto) ?? 'sin cargar'}
-              hint={`${k.nAbiertos} ${k.nAbiertos === 1 ? 'presupuesto' : 'presupuestos'} esperando respuesta`}
-            />
-            <StatTile
-              label="Adjudicado"
-              value={plata(k.adjudicado) ?? 'sin cargar'}
-              tono="pos"
-              hint={`${k.nAdjudicados} ${k.nAdjudicados === 1 ? 'obra' : 'obras'}`}
-            />
-            <StatTile
-              label="Conversión"
-              // Sin ningún presupuesto con respuesta NO es 0 %: es que todavía nadie contestó.
-              value={porcentaje(k.conversionPct, 'auto') ?? 'sin dato'}
-              hint={k.nConRespuesta === 0
-                ? 'ninguno tuvo respuesta todavía'
-                : `${k.nAdjudicados} de ${k.nConRespuesta} con respuesta`}
-            />
-            <StatTile
-              label="Margen adjudicado"
-              value={porcentaje(k.margenPonderadoPct) ?? 'sin dato'}
-              tono={k.margenPonderadoPct !== null && k.margenPonderadoPct < MARGEN_OBJETIVO ? 'warn' : 'ink'}
-              hint={k.nConMargen === 0 ? 'sin adjudicados con margen' : `ponderado por monto · objetivo ${MARGEN_OBJETIVO} %`}
-            />
-          </div>
-
-          <ListaPresupuestos
-            presupuestos={presupuestos}
-            filtro={filtro}
-            accion={
-              <BotonEnlace
-                href={abierta ? '/presupuestos' : '/presupuestos?nuevo=1'}
-                variante={abierta ? 'secundaria' : 'primaria'}
-                data-testid="abrir-alta-presupuesto"
-                className="shrink-0"
-              >
-                {abierta ? 'Cancelar' : 'Nuevo presupuesto'}
-              </BotonEnlace>
-            }
-          />
+          {/* Los totales de la cartera bajaron al pie de la tabla, alineados con su columna: ver el
+              encabezado de `ListaPresupuestos`. */}
+          <ListaPresupuestos presupuestos={presupuestos} filtro={filtro} />
 
           {abierta && (
             <div className="mt-6 border-t border-line pt-5" data-testid="alta-presupuesto">
@@ -142,10 +108,12 @@ export default async function PresupuestosPage({
             </div>
           )}
 
-          <p className="mt-5 text-[11px] text-faint">
+          {/* El párrafo permanente que explicaba el versionado pasó a ayuda bajo demanda: lo
+              necesita quien entra por primera vez, no quien abre esta lista seis veces por día. */}
+          <Ayuda titulo="Por qué hay una sola fila por presupuesto" testid="ayuda-versiones">
             La lista muestra la versión VIGENTE de cada presupuesto. Las anteriores se abren desde
             adentro: un presupuesto con cuatro versiones es una obra, no cuatro.
-          </p>
+          </Ayuda>
         </>
       )}
     </PageShell>

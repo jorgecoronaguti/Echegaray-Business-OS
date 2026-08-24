@@ -21,6 +21,14 @@ const ROTULO: Record<Seccion['clave'], string> = {
   otros: 'text-faint',
 }
 
+/** La incidencia de la sección sobre el desglose, para el rótulo «N % del costo» del Design 23/08. */
+const INCIDENCIA: Record<Seccion['clave'], keyof Desglose['incidencia'] | null> = {
+  mano_obra: 'mano_obra',
+  materiales: 'materiales',
+  equipos: 'equipos',
+  otros: null,
+}
+
 export function TablaComposicion({
   desglose,
   compacta = false,
@@ -44,19 +52,31 @@ export function TablaComposicion({
     <div data-testid={testid}>
       {desglose.secciones.map((s) => (
         <section key={s.clave} className="mt-3.5 first:mt-0">
-          <div className="flex items-baseline justify-between gap-3">
-            <h4 className={`text-[10px] font-medium uppercase tracking-[0.06em] ${ROTULO[s.clave]}`}>
-              {s.rotulo}
-            </h4>
-            {s.sinPrecio > 0 && (
-              <span className="text-[10px] text-warn" data-testid="sin-precio">
-                {s.sinPrecio} sin precio
+          {/* EL SUBTOTAL VA EN LA CABECERA DE LA SECCIÓN, NO AL PIE (Design 23/08 · pantalla 16).
+              Al pie obligaba a leer las cinco líneas para recién enterarse de cuánto pesa el bloque;
+              arriba, «MATERIALES · 87 % del costo · $ 21.990,00» contesta antes de mirar el detalle,
+              que es todo el punto de un análisis de precio unitario. */}
+          <div className="flex items-baseline justify-between gap-3 border-b border-[#EFEEEA] pb-1">
+            <h4 className="flex items-baseline gap-2">
+              <span className={`text-[10px] font-medium uppercase tracking-[0.06em] ${ROTULO[s.clave]}`}>
+                {s.rotulo}
               </span>
-            )}
+              <Parte desglose={desglose} clave={s.clave} />
+            </h4>
+            <span className="flex items-baseline gap-2.5">
+              {s.sinPrecio > 0 && (
+                <span className="text-[10px] text-warn" data-testid="sin-precio">
+                  {s.sinPrecio} sin precio
+                </span>
+              )}
+              <span className="font-mono text-[13px] font-semibold tabular-nums text-ink">
+                {importe(s.total) ?? <Nulo>sin cargar</Nulo>}
+              </span>
+            </span>
           </div>
 
           {!compacta && (
-            <div className="mt-1 grid grid-cols-[minmax(130px,1fr)_76px_44px_80px_90px] gap-x-2 border-b border-[#EFEEEA] pb-1 text-[10px] uppercase tracking-[0.05em] text-faint">
+            <div className="grid grid-cols-[minmax(130px,1fr)_76px_44px_80px_90px] gap-x-2 border-b border-[#EFEEEA] py-1 text-[10px] uppercase tracking-[0.05em] text-faint">
               <span>{s.primeraColumna}</span>
               <span className="text-right">Cant.</span>
               <span>Un.</span>
@@ -99,14 +119,19 @@ export function TablaComposicion({
             </div>
           ))}
 
-          <div className="flex items-baseline justify-between gap-3 pt-1.5">
-            <span className="text-[11.5px] text-muted">Total {s.rotulo.toLowerCase()}</span>
-            <span className="font-mono text-[13px] font-semibold tabular-nums text-ink">
-              {importe(s.total) ?? <Nulo>sin cargar</Nulo>}
-            </span>
-          </div>
         </section>
       ))}
     </div>
+  )
+}
+
+function Parte({ desglose, clave }: { desglose: Desglose; clave: Seccion['clave'] }) {
+  const k = INCIDENCIA[clave]
+  const pct = k === null ? null : desglose.incidencia[k]
+  if (pct === null) return null
+  return (
+    <span className="font-mono text-[10.5px] tabular-nums text-faint">
+      {porcentaje(pct, 'auto')} del costo
+    </span>
   )
 }

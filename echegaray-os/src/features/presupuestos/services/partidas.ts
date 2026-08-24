@@ -46,6 +46,12 @@ export interface FilaRubro {
 export interface FilaPartida {
   tipo: 'partida'
   clave: string
+  /**
+   * La clave de SU fila de rubro. La necesita la tabla para poder plegar el grupo: sin ella, saber
+   * a qué rubro pertenece una fila obliga a arrastrar una variable mutable por dentro del render
+   * —que es exactamente lo que el compilador de React prohíbe—.
+   */
+  rubroClave: string
   partida: PartidaValorizada
   /** 0–100 sobre el costo directo del presupuesto. `null` si no hay base. */
   incidenciaPct: number | null
@@ -76,10 +82,11 @@ export function filasDeLaTabla(
   let i = 0
   for (const [nombre, lista] of grupos) {
     i += 1
+    const rubroClave = `rubro:${nombre}`
     const conSubtotal = lista.map((p) => aNumero(p.subtotal)).filter((v): v is number => v !== null)
     const conHH = lista.map((p) => aNumero(p.hh)).filter((v): v is number => v !== null)
     filas.push({
-      tipo: 'rubro', clave: `rubro:${nombre}`, codigo: String(i), nombre,
+      tipo: 'rubro', clave: rubroClave, codigo: String(i), nombre,
       subtotal: conSubtotal.length === 0 ? null : conSubtotal.reduce((a, b) => a + b, 0),
       hh: conHH.length === 0 ? null : conHH.reduce((a, b) => a + b, 0),
       nPartidas: lista.length,
@@ -87,7 +94,7 @@ export function filasDeLaTabla(
     })
     for (const p of lista) {
       filas.push({
-        tipo: 'partida', clave: p.partida_id, partida: p,
+        tipo: 'partida', clave: p.partida_id, rubroClave, partida: p,
         incidenciaPct: incidencia(aNumero(p.subtotal), costoDirecto),
       })
     }
@@ -116,6 +123,37 @@ export function faltantesDe(p: PartidaValorizada): string[] {
   // Una partida marcada como subcontratada sin precio de subcontrato no vale 0: falta el precio.
   if (p.subcontratada && aNumero(p.precio_subcontrato) === null) f.push('sin precio de subcontrato')
   return f
+}
+
+/**
+ * LA DEUDA DE CARGA, CONTADA — lo que antes eran dos bloques de aviso permanentes arriba de la
+ * tabla (Design 23/08: «normal silencioso · problema visible · detalle bajo demanda»).
+ *
+ * Un contador arriba de la tabla informa; un contador que además FILTRA la tabla resuelve. Por eso
+ * `filtrarPorFalta` existe: el número y la lista de trabajo son el mismo control.
+ */
+export function contarFaltantes(partidas: readonly PartidaValorizada[]): {
+  sinAnalisis: number
+  sinComputo: number
+} {
+  return {
+    sinAnalisis: partidas.filter((p) => p.sin_analisis).length,
+    sinComputo: partidas.filter((p) => aNumero(p.cantidad) === null).length,
+  }
+}
+
+export type FaltaPartida = 'sin_analisis' | 'sin_computo'
+
+/**
+ * CANTIDAD 0 NO ES «SIN CÓMPUTO». Cero es un número que alguien escribió —una partida anulada, un
+ * ítem que quedó en cero tras recotizar— y esconderlo detrás de «falta cargar» manda a buscar un
+ * dato que ya está. Lo que falta es `null`, y sólo `null`.
+ */
+export function filtrarPorFalta(
+  partidas: readonly PartidaValorizada[], falta: FaltaPartida | null,
+): PartidaValorizada[] {
+  if (falta === null) return [...partidas]
+  return partidas.filter((p) => (falta === 'sin_analisis' ? p.sin_analisis : aNumero(p.cantidad) === null))
 }
 
 /**

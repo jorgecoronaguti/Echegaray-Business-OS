@@ -23,7 +23,7 @@ import { hh } from '@/features/presupuestos/services/formato'
 import { PipelineConversion } from '@/features/presupuestos/components/PipelineConversion'
 import { ListaPartidasConversion } from '@/features/presupuestos/components/ListaPartidasConversion'
 import { ConfiguradorConversion } from '@/features/presupuestos/components/ConfiguradorConversion'
-import { Aviso, BarraContexto, MetaContexto } from '@/shared/components/ds'
+import { Aviso, Ayuda, EntityHeader } from '@/shared/components/ds'
 import { EstadoError } from '@/shared/components/estado'
 
 export const dynamic = 'force-dynamic'
@@ -82,19 +82,23 @@ export default async function ConvertirPage({
 
   return (
     <div className="min-h-screen bg-canvas">
-      <BarraContexto
-        volverA={`/presupuestos/${id}`}
-        volverLabel={`${presupuesto.numero ?? 'Presupuesto'} · ${presupuesto.obra_nombre ?? ''}`}
-        titulo="Convertir presupuesto en plan de obra"
-        meta={<MetaContexto rotulo="Obra">{obra?.nombre ?? 'sin obra vinculada'}</MetaContexto>}
-        kpis={[
-          { rotulo: 'Partidas', valor: String(lista.length) },
-          { rotulo: 'Convertidas', valor: `${convertidas} de ${lista.length}` },
-          { rotulo: 'HH del contrato', valor: hh(presupuesto.hh_previstas), falta: 'sin cargar' },
-        ]}
-      />
+      <div className="w-full px-4 pt-6 lg:px-10">
+        {/* ENCABEZADO CLARO (Design 23/08). Los tres números que estaban como KPI del slab pasan a la
+            línea de campos: «convertidas 3 de 8» es un contador de avance de una lista de trabajo,
+            no una métrica de 20px. */}
+        <EntityHeader
+          volverA={`/presupuestos/${id}`}
+          volverLabel={`${presupuesto.numero ?? 'Presupuesto'} · ${presupuesto.obra_nombre ?? ''}`}
+          titulo="Preparar la obra"
+          campos={[
+            { rotulo: 'Obra', valor: obra?.nombre, falta: 'sin obra vinculada' },
+            { rotulo: 'Convertidas', valor: `${convertidas} de ${lista.length}` },
+            { rotulo: 'HH del contrato', valor: hh(presupuesto.hh_previstas), falta: 'sin cargar' },
+          ]}
+        />
+      </div>
 
-      <div className="w-full px-4 py-4 lg:px-10">
+      <div className="w-full px-4 pb-4 lg:px-10">
         <PipelineConversion />
 
         {!habilitada.puede && (
@@ -115,16 +119,13 @@ export default async function ConvertirPage({
 
           <div className="min-w-0">
             {!seleccionada ? (
+              // Estado vacío de una línea y accionable (COMPONENTS.md §Empty state). El porqué —cada
+              // partida se organiza distinto en obra— está en la ayuda de abajo.
               <p className="text-[13px] text-muted" data-testid="sin-partida-elegida">
-                Elegí una partida de la izquierda. Cada una se convierte por separado: no hay un
-                botón que convierta el presupuesto entero, porque cada partida se organiza distinto
-                en obra.
+                Elegí una partida de la izquierda para convertirla.
               </p>
             ) : !habilitada.puede ? (
-              <p className="text-[13px] text-muted">
-                {habilitada.motivo} Mientras tanto podés revisar cómo quedaría el plan volviendo al
-                presupuesto.
-              </p>
+              <p className="text-[13px] text-muted">{habilitada.motivo}</p>
             ) : (
               <ConfiguradorConversion
                 p={seleccionada}
@@ -138,19 +139,23 @@ export default async function ConvertirPage({
           </div>
         </div>
 
-        <section className="mt-10 border-t border-line pt-4" data-testid="reglas-conversion">
-          <h3 className="text-[10px] font-medium uppercase tracking-[0.06em] text-faint">
-            Las reglas que hace cumplir la base
-          </h3>
-          <dl className="mt-2 grid gap-x-8 gap-y-2 sm:grid-cols-2">
-            {REGLAS.map(([titulo, texto]) => (
-              <div key={titulo}>
-                <dt className="text-[12.5px] font-medium text-ink">{titulo}</dt>
-                <dd className="text-[11.5px] leading-relaxed text-muted">{texto}</dd>
-              </div>
-            ))}
-          </dl>
-        </section>
+        {/* LAS CUATRO REGLAS PASAN A AYUDA BAJO DEMANDA (Design 23/08). No son advertencias ni
+            estados: son el modelo, y el modelo lo hace cumplir `convertir_partida_a_plan` en
+            Postgres — si la pantalla y la función discreparan, no se genera nada. Un bloque de 90
+            palabras permanente debajo de la lista de trabajo es exactamente el párrafo explicativo
+            que el rediseño saca; el texto no se pierde. */}
+        <div className="mt-8 border-t border-line pt-3">
+          <Ayuda titulo="Las cuatro reglas que hace cumplir la base" testid="reglas-conversion">
+            <dl className="grid gap-x-8 gap-y-2 sm:grid-cols-2">
+              {REGLAS.map(([titulo, texto]) => (
+                <div key={titulo}>
+                  <dt className="text-[12.5px] font-medium text-ink">{titulo}</dt>
+                  <dd className="text-[11.5px] leading-relaxed text-muted">{texto}</dd>
+                </div>
+              ))}
+            </dl>
+          </Ayuda>
+        </div>
 
         {(partidas.error || plantillas.error || conversiones.error) && (
           <div className="mt-4">
