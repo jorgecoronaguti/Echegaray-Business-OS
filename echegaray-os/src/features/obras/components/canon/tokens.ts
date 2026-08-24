@@ -15,6 +15,8 @@
 // se actualice, este archivo se vuelve a medir contra él — por eso vale la pena que estén juntos y
 // no repartidos en veinte componentes.
 
+import type { CSSProperties } from 'react'
+
 /** Los colores, tal como aparecen en los `style=` de los mockups 01–06. */
 export const C = {
   /** `body { background:#F7F7F5 }` en los seis mockups. */
@@ -96,3 +98,25 @@ export const PASTILLA = {
 } as const
 
 export type TonoPastilla = keyof typeof PASTILLA
+
+// ═══ LOS DOS ESTILOS DE BOTÓN VIVEN EN UN MÓDULO NEUTRAL ═══
+//
+// Estaban en `Piezas.tsx`, que lleva `'use client'`, y la cabecera de la obra los usa desde un
+// Server Component: importar un VALOR de un módulo `use client` desde el servidor es lo que
+// `orquestador/lib/frontera-servidor-cliente.test.mjs` prohíbe. Son objetos de estilo, no
+// componentes: no tienen por qué cruzar esa frontera.
+
+/** EL BOTÓN AMARILLO — la única primaria de cada pantalla del zip. */
+export const ESTILO_PRIMARIA: CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: '6px', background: C.marca, color: C.tinta,
+  fontSize: '12.5px', fontWeight: 600, borderRadius: '6px', padding: '6px 11px', cursor: 'pointer',
+  border: 'none', fontFamily: 'inherit', lineHeight: 1.4, whiteSpace: 'nowrap',
+}
+
+/** EL BOTÓN SECUNDARIO — blanco con borde (03 «Rubro», 04 «Vincular actividad»). */
+export const ESTILO_SECUNDARIA: CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: '6px', background: C.superficie,
+  border: `1px solid ${C.borde}`, color: C.tintaMedia, fontSize: '12.5px', borderRadius: '6px',
+  padding: '6px 11px', cursor: 'pointer', fontFamily: 'inherit', lineHeight: 1.4, whiteSpace: 'nowrap',
+}
+

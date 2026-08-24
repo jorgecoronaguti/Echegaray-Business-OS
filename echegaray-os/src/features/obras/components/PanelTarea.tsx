@@ -38,9 +38,9 @@
 
 import Link from 'next/link'
 import { InlineEdit } from '@/shared/components/ds'
-import { C, MONO } from './canon/tokens'
+import { C, ESTILO_PRIMARIA, ESTILO_SECUNDARIA, MONO } from './canon/tokens'
 import { Ico, P } from './canon/Ico'
-import { ESTILO_PRIMARIA, ESTILO_SECUNDARIA, Pastilla } from './canon/Piezas'
+import { Pastilla } from './canon/Piezas'
 import {
   BotonIcono, Celda, Cuadro, FilaPlegable, FilaRecurso, Impedimento, Titulo,
 } from './panel/PanelPiezas'

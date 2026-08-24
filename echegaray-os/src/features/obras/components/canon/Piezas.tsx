@@ -173,17 +173,3 @@ export function Buscador({ valor, alCambiar, alLimpiar, placeholder, ancho, test
     </div>
   )
 }
-
-/** EL BOTÓN AMARILLO — la única primaria de cada pantalla del zip. */
-export const ESTILO_PRIMARIA: CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: '6px', background: C.marca, color: C.tinta,
-  fontSize: '12.5px', fontWeight: 600, borderRadius: '6px', padding: '6px 11px', cursor: 'pointer',
-  border: 'none', fontFamily: 'inherit', lineHeight: 1.4, whiteSpace: 'nowrap',
-}
-
-/** EL BOTÓN SECUNDARIO — blanco con borde (03 «Rubro», 04 «Vincular actividad»). */
-export const ESTILO_SECUNDARIA: CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: '6px', background: C.superficie,
-  border: `1px solid ${C.borde}`, color: C.tintaMedia, fontSize: '12.5px', borderRadius: '6px',
-  padding: '6px 11px', cursor: 'pointer', fontFamily: 'inherit', lineHeight: 1.4, whiteSpace: 'nowrap',
-}

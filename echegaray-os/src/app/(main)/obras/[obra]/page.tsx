@@ -62,7 +62,7 @@ import {
 import { borrarHH, imputarHH, imputarHHMasivo } from '@/features/obras/services/actionsHH'
 import { borrarCertificado, crearCertificado } from '@/features/obras/services/actionsContrato'
 import { AccionesRapidas } from '@/features/obras/components/AccionesRapidas'
-import { ESTILO_PRIMARIA } from '@/features/obras/components/canon/Piezas'
+import { ESTILO_PRIMARIA } from '@/features/obras/components/canon/tokens'
 import { Ico, P } from '@/features/obras/components/canon/Ico'
 import { CabeceraDeObra } from '@/features/obras/components/CabeceraDeObra'
 import { CamposObra } from '@/features/obras/components/CamposObra'

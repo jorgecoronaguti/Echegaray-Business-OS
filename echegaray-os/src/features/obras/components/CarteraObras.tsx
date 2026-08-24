@@ -22,9 +22,9 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
-import { C, MONO } from './canon/tokens'
 import { Ico, IcoMas, P } from './canon/Ico'
-import { Barra, Buscador, Chip, ESTILO_PRIMARIA, Hover, Pastilla, Tarjeta } from './canon/Piezas'
+import { C, ESTILO_PRIMARIA, MONO } from './canon/tokens'
+import { Barra, Buscador, Chip, Hover, Pastilla, Tarjeta } from './canon/Piezas'
 import {
   coincideTexto, colorDeBarra, colorDePlazo, diasDeAtraso, entraEnFiltro, esPrevio, estadoDeCartera,
   FILTROS_CARTERA, textoDePlazo, type FiltroCartera,
@@ -99,6 +99,10 @@ export function CarteraObras({ obras, personasHoy, sinDato, esAdmin, pie }: {
   const cuentas = useMemo(() => Object.fromEntries(
     FILTROS_CARTERA.map((f) => [f.k, obras.filter((o) => entraEnFiltro(o, f.k, o.impedimentos)).length]),
   ) as Record<FiltroCartera, number>, [obras])
+  // UN CONTROL QUE NO PUDO MIRAR NO DICE CUÁNTOS. Con la lectura de impedimentos caída, el filtro
+  // deja pasar todo —mostrar de más antes que esconder trabajo trabado— pero su chip NO puede
+  // publicar ese número: diría «Con problema 13» sobre una cartera donde nadie contó nada.
+  const sinImpedimentos = obras.some((o) => o.impedimentos == null)
 
   const enCurso = lista.filter((o) => o.estado === 'activa' && !esPrevio(o)).length
   const conContrato = lista.filter((o) => o.monto_contratado != null)
@@ -116,8 +120,9 @@ export function CarteraObras({ obras, personasHoy, sinDato, esAdmin, pie }: {
           placeholder="Buscar obra o cliente" testid="buscar-obra" />
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
           {FILTROS_CARTERA.map((f) => (
-            <Chip key={f.k} activo={filtro === f.k} onClick={() => setFiltro(f.k)} titulo={f.tip}
-              n={String(cuentas[f.k])}
+            <Chip key={f.k} activo={filtro === f.k} onClick={() => setFiltro(f.k)}
+              titulo={f.k === 'problema' && sinImpedimentos ? 'No se pudieron leer los impedimentos' : f.tip}
+              n={f.k === 'problema' && sinImpedimentos ? null : String(cuentas[f.k])}
               icono={<Ico s={14} d={
                 f.k === 'todo' ? P.todo : f.k === 'curso' ? P.hh
                   : f.k === 'atraso' ? P.alerta : f.k === 'problema' ? P.bloqueo : P.previo

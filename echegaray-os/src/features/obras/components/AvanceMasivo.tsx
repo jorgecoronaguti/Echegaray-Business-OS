@@ -32,9 +32,9 @@
 // prometerle una escritura que el servidor rechaza es peor que no ofrecerla.
 
 import { useMemo, useState } from 'react'
-import { C, MONO } from './canon/tokens'
+import { C, ESTILO_PRIMARIA, MONO } from './canon/tokens'
 import { Ico, P } from './canon/Ico'
-import { Buscador, Chip, ESTILO_PRIMARIA, Hover, Tarjeta } from './canon/Piezas'
+import { Buscador, Chip, Hover, Tarjeta } from './canon/Piezas'
 import { SubNavTrabajo } from './SubNavTrabajo'
 import { cantidad as fmtCantidad, porcentaje } from './formato'
 import { type NodoObra } from '../services/wbs'
@@ -106,8 +106,13 @@ export function AvanceMasivo({ obraId, nodos, aplicarEnLote }: {
   const [enviando, setEnviando] = useState(false)
   const [resultado, setResultado] = useState<string | null>(null)
 
+  // LOS RUBROS NO ENTRAN. El canónico 06 lista actividades planas con su frente como sub-línea, y
+  // un contenedor no se puede seleccionar nunca: dibujarlo con las cinco celdas vacías y la casilla
+  // apagada es ruido en la pantalla donde se cierra la jornada. La jerarquía no se pierde — viaja
+  // en la sub-línea de cada fila (`frenteDeCamino`).
   const visibles = useMemo(
-    () => nodos.filter((n) => coincide(n, n.avance_pct, 'todo', query, '') && pasaElCorte(n, corte)),
+    () => nodos.filter((n) => !n.es_contenedor
+      && coincide(n, n.avance_pct, 'todo', query, '') && pasaElCorte(n, corte)),
     [nodos, query, corte],
   )
   const aplicables = visibles.filter((n) => operacionCompatible(candidata(n), 'avance'))

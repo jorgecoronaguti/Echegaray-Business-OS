@@ -97,3 +97,27 @@ test('los colores de la barra y del plazo son los medidos en el mockup', () => {
   assert.equal(colorDePlazo(obra({ fecha_fin_plan: '2026-09-05', forecast_fin: '2026-09-08' })), '#B54708')
   assert.equal(colorDePlazo(obra({})), '#91918B')
 })
+
+// ═══ Y QUE NO VUELVA POR LA PUERTA DE ATRÁS ═══
+//
+// Las reglas de arriba prueban la cuenta nueva. Ésta prueba que la pantalla la USE: el defecto
+// original no era una función mal escrita, era una pantalla leyendo la columna equivocada. Un
+// `desvio_plazo_dias` que reaparezca en la cartera vuelve a pintar «en fecha» en verde sobre once
+// obras cuya línea base es una copia de su plan.
+
+test('la cartera NO vuelve a pintar el plazo con el desvío contra la línea base', async () => {
+  const { readFileSync } = await import('node:fs')
+  const raiz = new URL('../../../..', import.meta.url).pathname
+  for (const ruta of [
+    'src/app/(main)/obras/page.tsx',
+    'src/features/obras/components/CarteraObras.tsx',
+  ]) {
+    const fuente = readFileSync(raiz + ruta, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .split('\n').filter((l) => !l.trimStart().startsWith('//')).join('\n')
+    assert.doesNotMatch(
+      fuente, /desvio_plazo_dias/,
+      `${ruta} volvió a leer desvio_plazo_dias: compara el plan contra su propia línea base`,
+    )
+  }
+})
