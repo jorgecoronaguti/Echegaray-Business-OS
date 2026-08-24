@@ -23,7 +23,7 @@
 import { BarraAvance, Estado, FilaTotal, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
 import { IconoBloqueo, IconoProveedor } from '@/shared/components/iconos'
 import { plata, porcentaje } from './formato'
-import { resumenContratado } from '../services/subcontratosReglas'
+import { resumenCertificado, resumenContratado } from '../services/subcontratosReglas'
 import type { Paquete } from '../services/subcontratosService'
 
 /** El nombre corto del trabajo: el rubro cuando existe, si no el nombre del paquete. */
@@ -43,6 +43,7 @@ export function TablaSubcontratos({
     return <Vacio>Ningún paquete subcontratado. Se carga con «Nuevo paquete», acá arriba.</Vacio>
   }
   const { total: contratado, sinPrecio } = resumenContratado(paquetes)
+  const cert = resumenCertificado(paquetes)
 
   return (
     <Tabla testid="tabla-subcontratos" minWidth={economia ? 720 : 600}>
@@ -114,19 +115,51 @@ export function TablaSubcontratos({
             </Tr>
           )
         })}
-        {economia && (
-          /* EL TOTAL SÓLO SUMA LO QUE TIENE PRECIO, y dice cuántos quedaron afuera. Sumar en
-             silencio los que valen `null` como si valieran cero publica un contratado más chico
-             que el real, y nada en la pantalla avisaría. */
-          <FilaTotal>
-            <Td colSpan={4}>Contratado</Td>
-            <Td num className="whitespace-nowrap text-[11.5px] font-normal text-faint">
-              {sinPrecio > 0 ? `${sinPrecio} sin precio` : ''}
-            </Td>
-            <Td num fuerte>{plata(contratado)}</Td>
-          </FilaTotal>
-        )}
+        <FilaTotal>
+          <Td colSpan={economia ? 6 : 5}>
+            <span className="flex flex-wrap items-baseline justify-end gap-x-7 gap-y-1">
+              {/* PAQUETES VA SIEMPRE: es el único total que un jefe de obra puede ver, y sin él el
+                  pie desaparecía entero para el rol que más entra a esta pantalla. */}
+              <Total rotulo="Paquetes" valor={`${paquetes.length}`} />
+              {economia && (
+                /* EL TOTAL SÓLO SUMA LO QUE TIENE PRECIO, y dice cuántos quedaron afuera. Sumar en
+                   silencio los que valen `null` como si valieran cero publica un contratado más
+                   chico que el real, y nada en la pantalla avisaría. */
+                <Total rotulo="Contratado" valor={plata(contratado)}
+                  pie={sinPrecio > 0 ? `${sinPrecio} sin precio` : null} />
+              )}
+              {economia && (
+                <Total rotulo="Certificado" testid="total-certificado"
+                  valor={cert.total == null ? 'sin registro' : plata(cert.total)}
+                  falta={cert.total == null} pie={cert.motivo} />
+              )}
+            </span>
+          </Td>
+        </FilaTotal>
       </tbody>
     </Tabla>
+  )
+}
+
+/** Un total del pie: rótulo chico, número monoespaciado y —cuando hace falta— el motivo por el que
+ *  ese número no es lo que parece. El motivo NO es opcional cuando el valor está vacío. */
+function Total({ rotulo, valor, pie, falta, testid }: {
+  rotulo: string
+  valor: string
+  pie?: string | null
+  falta?: boolean
+  testid?: string
+}) {
+  return (
+    <span className="flex flex-col items-end leading-tight">
+      <span className="flex items-baseline gap-2">
+        <span className="text-[10px] uppercase tracking-[0.05em] text-faint">{rotulo}</span>
+        <span data-testid={testid}
+          className={`font-mono text-[12.5px] tabular-nums ${falta ? 'font-normal text-faint' : 'text-ink'}`}>
+          {valor}
+        </span>
+      </span>
+      {pie && <span className="text-[10.5px] font-normal text-faint">{pie}</span>}
+    </span>
   )
 }

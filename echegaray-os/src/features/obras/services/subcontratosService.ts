@@ -98,6 +98,11 @@ export interface Paquete {
   precio_contratado: number | null
   aportes_total: number | null
   costo_real: number | null
+  /** CUÁNTO SE LE CERTIFICÓ AL SUBCONTRATISTA. Hoy es SIEMPRE `null` y no es un olvido: no existe
+   *  la tabla del acto de certificar —fecha, monto, quién lo aprobó—, y `precio × avance` sería una
+   *  estimación con cara de hecho. El campo existe para que la pantalla diga que no hay registro en
+   *  vez de dibujar un hueco, y para que el día que exista la fuente entre por un solo lugar. */
+  certificado: number | null
   revision: RevisionDocumental
   estadoLegible: EstadoLegible
   avance: Avance
@@ -289,6 +294,9 @@ export async function getSubcontratos(
       precio_contratado: costo ? n(costo.precio_contratado) : null,
       aportes_total: costo ? n(costo.aportes) : null,
       costo_real: costo ? n(costo.costo_real) : null,
+      // No sale de `subcontrato_costo`: esa vista tiene lo que el paquete NOS cuesta, no lo que se
+      // le reconoció al tercero. Ver el comentario del campo en `Paquete`.
+      certificado: null,
       revision,
       estadoLegible: estadoDelPaquete(estado, revision),
       avance: avanceDelPaquete(estado, vinculos),

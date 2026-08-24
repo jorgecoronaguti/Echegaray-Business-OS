@@ -189,6 +189,34 @@ export function resumenContratado(
   }
 }
 
+export interface ResumenCertificado {
+  /** `null` = nadie certificó nada todavía. NUNCA 0: «cero certificado» es un hecho medido y
+   *  «no hay registro de certificaciones» es otra cosa — y en el pie de la tabla se leen igual. */
+  total: number | null
+  /** Por qué está vacío. Se dibuja en lugar del número: un hueco donde va plata se lee como cero. */
+  motivo: string | null
+}
+
+/** Lo que hoy NO existe en el modelo, dicho una sola vez. Ver `resumenCertificado`. */
+export const SIN_REGISTRO_DE_CERTIFICACIONES =
+  'todavía no se registra qué se le certificó al subcontratista'
+
+/**
+ * EL CERTIFICADO NO SE DEDUCE DEL AVANCE.
+ *
+ * `precio_contratado × avance` da un número plausible y con cara de cálculo, pero certificar es un
+ * ACTO —tiene fecha, monto y quién lo aprobó—, no una proporción. Publicarlo como CERTIFICADO en el
+ * pie de la tabla convertiría una estimación en el dato con el que después se le paga a un tercero.
+ * Mientras no exista el registro, el pie dice que no existe.
+ */
+export function resumenCertificado(
+  paquetes: { certificado: number | null }[],
+): ResumenCertificado {
+  const cargados = paquetes.filter((p) => p.certificado != null)
+  if (cargados.length === 0) return { total: null, motivo: SIN_REGISTRO_DE_CERTIFICACIONES }
+  return { total: cargados.reduce((t, p) => t + Number(p.certificado), 0), motivo: null }
+}
+
 export interface VinculoActividad {
   actividad_id: string
   actividad: string

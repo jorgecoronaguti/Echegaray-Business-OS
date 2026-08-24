@@ -172,6 +172,7 @@ export function WorkspaceSubcontratos({
           <PanelSubcontrato
             paquete={seleccionado}
             economia={economia}
+            obraId={obraId}
             onCerrar={() => { setSel(null); sincronizarUrl(null) }}
             acciones={acciones}
           />

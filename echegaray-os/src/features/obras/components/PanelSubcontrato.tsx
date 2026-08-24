@@ -14,12 +14,22 @@
 //
 // ═══ LAS DOS TARJETAS CAMBIAN CON EL PERMISO, NO SE VACÍAN ═══
 //
-// Con permiso económico: CONTRATO y COSTO REAL. Sin permiso: ALCANCE y PLAZO. No es una tarjeta de
+// Con permiso económico: CONTRATO y CERTIFICADO. Sin permiso: ALCANCE y PLAZO. No es una tarjeta de
 // plata tapada —una caja vacía donde iba un número pregunta qué dice y la respuesta no le sirve a
 // nadie—: es el dato que ese rol sí decide, en el mismo lugar.
+//
+// ═══ CUATRO SOLAPAS PORQUE SON CUATRO PREGUNTAS DISTINTAS (Design canónico, pantalla 10) ═══
+//
+// El panel era un rollo: lo que decide —bloqueo, avance, plata— arriba, y abajo tres formularios
+// largos que empujaban fuera de la vista justo eso. Resumen · Certificaciones · Documentos ·
+// Personal son las cuatro cosas que se vienen a mirar, y ninguna tapa a la otra. La solapa es
+// estado del cliente: los datos de las cuatro ya viajaron en el primer render.
 
-import type { ReactNode } from 'react'
-import { Aviso, BarraAvance, CAMPO, Campo, Estado, Plegable, TituloPanel } from '@/shared/components/ds'
+import { useState, type ReactNode } from 'react'
+import Link from 'next/link'
+import {
+  Aviso, BarraAvance, CAMPO, Campo, Estado, Plegable, SubTabs, TituloPanel,
+} from '@/shared/components/ds'
 import { BotonAccion, FormAccion } from '@/shared/components/ui'
 import type { AccionFormulario, ResultadoAccion } from '@/shared/components/ui'
 import {
@@ -27,7 +37,10 @@ import {
 } from '@/shared/components/iconos'
 import { cantidad as fmtCantidad, fecha as fmtFecha, plata } from './formato'
 import { Aportes, Documentacion, PersonalExterno } from './PanelSubcontratoSecciones'
+import { SIN_REGISTRO_DE_CERTIFICACIONES } from '../services/subcontratosReglas'
 import type { Paquete } from '../services/subcontratosService'
+
+type Solapa = 'resumen' | 'certificaciones' | 'documentos' | 'personal'
 
 export interface AccionesPaquete {
   aporte: AccionFormulario
@@ -38,20 +51,23 @@ export interface AccionesPaquete {
 }
 
 export function PanelSubcontrato({
-  paquete, economia, onCerrar, acciones,
+  paquete, economia, obraId, onCerrar, acciones,
 }: {
   paquete: Paquete
   economia: boolean
+  /** Para salir a registrar el avance de la actividad que el paquete cubre. */
+  obraId: string
   onCerrar: () => void
   acciones: AccionesPaquete
 }) {
   const p = paquete
+  const [solapa, setSolapa] = useState<Solapa>('resumen')
   const bloqueado = p.revision.bloqueos.length > 0
   const hoyISO = new Date().toISOString().slice(0, 10)
 
   return (
     <aside className="flex flex-col gap-4" data-testid="panel-subcontrato">
-      <header className="flex items-start gap-3 border-b border-line pb-3">
+      <header className="flex items-start gap-3 pb-1">
         <div className="min-w-0 flex-1">
           <TituloPanel>{p.vinculos[0]?.actividad ?? p.nombre}</TituloPanel>
           <p className="mt-0.5 flex items-center gap-1.5 text-[12px] text-muted">
@@ -66,63 +82,101 @@ export function PanelSubcontrato({
         </button>
       </header>
 
+      <SubTabs
+        testid="solapas-paquete"
+        items={SOLAPAS.map(([clave, label]) => ({
+          onClick: () => setSolapa(clave),
+          label,
+          activo: solapa === clave,
+          testid: `solapa-${clave}`,
+        }))}
+      />
+
+      {/* EL BLOQUEO SE VE EN LAS CUATRO SOLAPAS. Es de seguridad: gente de un tercero parada en la
+          obra sin cobertura. Esconderlo detrás de «Documentos» lo dejaría a un clic de distancia de
+          quien está por tocar «Iniciar». */}
       {bloqueado && (
         <Aviso tono="neg" titulo={p.revision.bloqueos.join(' · ')} testid="bloqueo-inicio">
           El paquete no puede iniciar.
         </Aviso>
       )}
 
-      <Avance paquete={p} />
+      {solapa === 'resumen' && (
+        <>
+          <Avance paquete={p} />
 
-      <div className="grid grid-cols-2 gap-3">
-        {economia ? (
-          <>
-            <Tarjeta rotulo="Contrato" valor={p.precio_contratado == null ? null : plata(p.precio_contratado)}
-              falta="sin precio cargado" pie={fmtCantidad(p.cantidad, p.unidad) ?? p.estado} />
+          <div className="grid grid-cols-2 gap-3">
+            {economia ? (
+              <>
+                <Tarjeta rotulo="Contrato" valor={p.precio_contratado == null ? null : plata(p.precio_contratado)}
+                  falta="sin precio cargado" pie={fmtCantidad(p.cantidad, p.unidad) ?? p.estado} />
+                {/* CERTIFICADO NO ES COSTO REAL NI AVANCE VALORIZADO: es lo que se le reconoció al
+                    tercero, y todavía no se registra en ningún lado. El costo real —que sí es un
+                    dato— vive en «Certificaciones», al lado de los aportes que lo explican. */}
+                <Tarjeta rotulo="Certificado" valor={p.certificado == null ? null : plata(p.certificado)}
+                  falta="sin registro" testid="certificado"
+                  pie={p.certificado == null ? SIN_REGISTRO_DE_CERTIFICACIONES : null} />
+              </>
+            ) : (
+              <>
+                <Tarjeta rotulo="Alcance" valor={fmtCantidad(p.cantidad, p.unidad)} falta="sin cantidad" />
+                <Tarjeta rotulo="Plazo" valor={p.plazo.texto} falta="sin plazo" />
+              </>
+            )}
+          </div>
+
+          <div>
+            <Dato icono={<IconoFecha className="h-[14px] w-[14px]" />} clave="Plazo" valor={rangoDeFechas(p)}
+              falta="sin fechas de plan" />
+            <Dato icono={<IconoPersona className="h-[14px] w-[14px]" />} clave="Personal externo"
+              valor={p.personas_externas ? `${p.personas_externas} declaradas` : null} falta="sin declarar" />
+            <Dato icono={<IconoDocumento className="h-[14px] w-[14px]" />} clave="Documentación"
+              valor={bloqueado ? null : resumenDocumental(p)} falta={p.revision.bloqueos.join(' · ')}
+              tono={bloqueado ? 'neg' : undefined} />
+            <Dato icono={<IconoDependencia className="h-[14px] w-[14px]" />} clave="Actividad"
+              valor={p.vinculos.map((v) => v.actividad).join(' · ') || null} falta="sin vincular" tono="warn" />
+            <Dato icono={<IconoHH className="h-[14px] w-[14px]" />} clave="HH de apoyo"
+              valor={p.hh_apoyo ? `${p.hh_apoyo} HH propias` : null} falta="sin declarar" />
+            <Dato icono={<IconoDocumento className="h-[14px] w-[14px]" />} clave="Alcance en palabras"
+              valor={p.alcance} falta="sin describir" />
+          </div>
+        </>
+      )}
+
+      {solapa === 'certificaciones' && (
+        <>
+          {/* SE DICE QUE NO EXISTE, no se rellena con lo que hay a mano. Los aportes son plata que
+              va en la dirección contraria —lo que le ponemos nosotros—: presentarlos acá como
+              certificaciones sería el error caro de esta pantalla. */}
+          <p className="text-[12px] text-muted" data-testid="sin-certificaciones">
+            Sin certificaciones: {SIN_REGISTRO_DE_CERTIFICACIONES}. Lo que se le paga sale hoy de
+            Compras, contra la factura del proveedor.
+          </p>
+          {economia && (
             <Tarjeta rotulo="Costo real" valor={p.costo_real == null ? null : plata(p.costo_real)}
               falta="sin precio ni aportes" testid="costo-real"
               pie={p.aportes_total ? `+ ${plata(p.aportes_total)} de aportes` : 'sin aportes cargados'} />
-          </>
-        ) : (
-          <>
-            <Tarjeta rotulo="Alcance" valor={fmtCantidad(p.cantidad, p.unidad)} falta="sin cantidad" />
-            <Tarjeta rotulo="Plazo" valor={p.plazo.texto} falta="sin plazo" />
-          </>
-        )}
-      </div>
-
-      <div>
-        <Dato icono={<IconoFecha className="h-[14px] w-[14px]" />} clave="Plazo" valor={rangoDeFechas(p)}
-          falta="sin fechas de plan" />
-        <Dato icono={<IconoPersona className="h-[14px] w-[14px]" />} clave="Personal externo"
-          valor={p.personas_externas ? `${p.personas_externas} declaradas` : null} falta="sin declarar" />
-        <Dato icono={<IconoDocumento className="h-[14px] w-[14px]" />} clave="Documentación"
-          valor={bloqueado ? null : resumenDocumental(p)} falta={p.revision.bloqueos.join(' · ')}
-          tono={bloqueado ? 'neg' : undefined} />
-        <Dato icono={<IconoDependencia className="h-[14px] w-[14px]" />} clave="Actividad"
-          valor={p.vinculos.map((v) => v.actividad).join(' · ') || null} falta="sin vincular" tono="warn" />
-        <Dato icono={<IconoHH className="h-[14px] w-[14px]" />} clave="HH de apoyo"
-          valor={p.hh_apoyo ? `${p.hh_apoyo} HH propias` : null} falta="sin declarar" />
-        <Dato icono={<IconoDocumento className="h-[14px] w-[14px]" />} clave="Alcance en palabras"
-          valor={p.alcance} falta="sin describir" />
-      </div>
-
-      {economia && (
-        <section data-testid="alcance-contratado">
-          <Plegable titulo="Fijar el precio contratado" testid="abrir-precio">
-            <FormAccion accion={acciones.precio} testid="form-precio" enviar="Guardar el precio" mensajeOk="Precio guardado.">
-              <input type="hidden" name="subcontrato_id" value={p.id} />
-              <Campo rotulo="Precio contratado" ayuda="Entra por la función con portero económico, no por la tabla.">
-                <input name="precio_contratado" type="number" step="0.01" min="0" className={CAMPO} required />
-              </Campo>
-            </FormAccion>
-          </Plegable>
-        </section>
+          )}
+          {economia && (
+            <section data-testid="alcance-contratado">
+              <Plegable titulo="Fijar el precio contratado" testid="abrir-precio">
+                <FormAccion accion={acciones.precio} testid="form-precio" enviar="Guardar el precio" mensajeOk="Precio guardado.">
+                  <input type="hidden" name="subcontrato_id" value={p.id} />
+                  <Campo rotulo="Precio contratado" ayuda="Entra por la función con portero económico, no por la tabla.">
+                    <input name="precio_contratado" type="number" step="0.01" min="0" className={CAMPO} required />
+                  </Campo>
+                </FormAccion>
+              </Plegable>
+            </section>
+          )}
+          <Aportes paquete={p} economia={economia} accion={acciones.aporte} />
+        </>
       )}
 
-      <Aportes paquete={p} economia={economia} accion={acciones.aporte} />
-      <Documentacion paquete={p} accion={acciones.documento} />
-      <PersonalExterno paquete={p} accion={acciones.persona} hoyISO={hoyISO} />
+      {solapa === 'documentos' && <Documentacion paquete={p} accion={acciones.documento} />}
+      {solapa === 'personal' && (
+        <PersonalExterno paquete={p} accion={acciones.persona} hoyISO={hoyISO} />
+      )}
 
       <section className="border-t border-line pt-3" data-testid="mover-estado">
         <div className="flex flex-wrap items-center gap-2">
@@ -137,6 +191,7 @@ export function PanelSubcontrato({
             </BotonAccion>
           )}
           <span className="text-[11.5px] text-faint">guardado: {p.estado}</span>
+          <CertificarAvance paquete={p} obraId={obraId} />
         </div>
         {bloqueado && (
           <p className="mt-2 text-[11.5px] text-neg" data-testid="motivo-bloqueo">
@@ -145,6 +200,41 @@ export function PanelSubcontrato({
         )}
       </section>
     </aside>
+  )
+}
+
+const SOLAPAS: [Solapa, string][] = [
+  ['resumen', 'Resumen'], ['certificaciones', 'Certificaciones'],
+  ['documentos', 'Documentos'], ['personal', 'Personal'],
+]
+
+/**
+ * CERTIFICAR EL AVANCE DEL PAQUETE ES REGISTRAR EL AVANCE DE SU ACTIVIDAD.
+ *
+ * No hay una acción propia de certificación —no existe el registro—, y fabricar un botón que
+ * escriba «avance del subcontrato» en otro lado crearía una segunda medición del mismo trabajo. El
+ * paquete cubre una actividad de la obra: el avance se carga ahí, una sola vez, por la pantalla que
+ * ya lo hace. Sin actividad vinculada no hay dónde cargarlo, y el botón lo dice en vez de llevar a
+ * una pantalla que no va a saber qué medir.
+ */
+function CertificarAvance({ paquete, obraId }: { paquete: Paquete; obraId: string }) {
+  const actividad = paquete.vinculos[0]
+  if (!actividad) {
+    return (
+      <span className="ml-auto text-[11.5px] text-warn" data-testid="certificar-sin-actividad">
+        Sin actividad vinculada: no hay dónde cargar el avance.
+      </span>
+    )
+  }
+  return (
+    <Link
+      href={`/obras/${obraId}/avance/${actividad.actividad_id}`}
+      prefetch={false}
+      data-testid="certificar-avance"
+      className="ml-auto rounded-control bg-marca px-3 py-1.5 text-[12.5px] font-semibold text-ink hover:brightness-95"
+    >
+      Certificar avance
+    </Link>
   )
 }
 

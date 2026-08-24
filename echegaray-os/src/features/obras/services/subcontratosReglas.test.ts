@@ -15,7 +15,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   armarComparacion, avanceDelPaquete, estadoDelPaquete, faltaEnLaBase, necesitaResolverse,
-  plazoDelPaquete, puedeIniciar, resumenContratado, revisarDocumentacion,
+  plazoDelPaquete, puedeIniciar, resumenCertificado, resumenContratado, revisarDocumentacion,
   type DocumentoPaquete, type VinculoActividad,
 } from './subcontratosReglas.ts'
 
@@ -206,4 +206,26 @@ test('sin ningún precio cargado el total es cero PERO lo dice: son tres sin pre
   const r = resumenContratado([{ precio_contratado: null }, { precio_contratado: null }, { precio_contratado: null }])
   assert.equal(r.total, 0)
   assert.equal(r.sinPrecio, 3)
+})
+
+// DEFECTO 6 · El pie de la tabla publicando un CERTIFICADO que nadie certificó. Con paquetes que
+// tienen precio y avance, la tentación es `precio × avance`: sale un número redondo, con cara de
+// cálculo, y es con lo que después se le paga a un tercero. Certificar es un acto, no una
+// proporción — mientras no haya registro, el pie tiene que decir que no hay registro.
+test('el certificado sin registro es null con motivo, nunca $ 0 ni el avance valorizado', () => {
+  const r = resumenCertificado([{ certificado: null }, { certificado: null }])
+  assert.equal(r.total, null, 'un cero acá se lee como «no se certificó nada», que es una afirmación')
+  assert.ok(r.motivo, 'sin motivo, el hueco del pie no se puede explicar en la pantalla')
+})
+
+test('el certificado suma sólo lo cargado y no cuenta los nulos como cero', () => {
+  const r = resumenCertificado([{ certificado: 816_000 }, { certificado: null }, { certificado: 1_935_000 }])
+  assert.equal(r.total, 2_751_000)
+  assert.equal(r.motivo, null)
+})
+
+test('cero certificado CARGADO sí es un hecho y se publica como cero', () => {
+  const r = resumenCertificado([{ certificado: 0 }, { certificado: null }])
+  assert.equal(r.total, 0, 'el 0 cargado se perdió: se trató un dato real como si faltara')
+  assert.equal(r.motivo, null)
 })
