@@ -27,7 +27,14 @@ import { join } from 'node:path'
 //    fallaba con el pulgar.
 
 const RAIZ = new URL('../../..', import.meta.url).pathname
-const PRODUCTOS = ['src/app/campo', 'src/app/(jefe)', 'src/features/jefe']
+// 23/08/2026 · SE SUMA EL PERFIL EMPLEADO. Es el tercer producto de teléfono del OS y hasta hoy sus
+// altos se cumplían por costumbre: el topbar de detalle, la flecha de volver de 48×48 y los tabs de
+// 58px se escriben a mano, y un `h-[36px]` en cualquiera de los tres se ve bien en el navegador de
+// escritorio y se falla con el pulgar en obra.
+const PRODUCTOS = [
+  'src/app/campo', 'src/app/(jefe)', 'src/features/jefe',
+  'src/app/(empleado)', 'src/features/empleado',
+]
 
 /** Lo que se toca. `Boton`/`BotonEnlace` traen su alto del sistema y se miran en la regla 2. */
 const INTERACTIVOS = ['a', 'button', 'input', 'select', 'textarea', 'Link']
@@ -53,11 +60,18 @@ function etiquetas(fuente: string): { tag: string; cuerpo: string }[] {
     .filter((x) => x.tag !== '')
 }
 
-/** Los altos que una etiqueta se declara a sí misma, en px. */
+/**
+ * Los altos que una etiqueta se declara a sí misma **para el teléfono**, en px.
+ *
+ * Las variantes de punto de corte NO cuentan: `lg:h-[40px]` es la altura del control en escritorio,
+ * donde el puntero es un mouse de un píxel y 40px es la medida del sistema. Exigirle 44 al escritorio
+ * no protege ningún pulgar y empuja a la solución equivocada —agrandar el botón de la pantalla que
+ * no se toca—. Por eso el alto sólo cuenta cuando abre clase, no cuando lo precede un `xx:`.
+ */
 function altos(cuerpo: string): number[] {
-  const clases = cuerpo.slice(cuerpo.indexOf('className='))
   if (!cuerpo.includes('className=')) return []
-  return [...clases.matchAll(/\b(?:min-)?h-\[(\d+(?:\.\d+)?)px\]/g)].map((m) => Number(m[1]))
+  const clases = cuerpo.slice(cuerpo.indexOf('className='))
+  return [...clases.matchAll(/(?:^|[\s'"`])(?:min-)?h-\[(\d+(?:\.\d+)?)px\]/g)].map((m) => Number(m[1]))
 }
 
 const ARCHIVOS = PRODUCTOS.flatMap((p) => fuentes(join(RAIZ, p)))

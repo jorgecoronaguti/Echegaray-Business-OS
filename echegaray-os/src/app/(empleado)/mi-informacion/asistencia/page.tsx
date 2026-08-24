@@ -5,7 +5,7 @@ import { getPerfilPropio } from '@/features/mi-cuenta/services/miCuentaService'
 import { SinVinculo } from '@/features/mi-cuenta/components/SinVinculo'
 import { Aviso, Estado } from '@/shared/components/ds'
 import { PantallaEmpleado, Seccion } from '@/features/empleado/components/ShellEmpleado'
-import { Nada } from '@/features/empleado/components/Filas'
+import { BloqueDato, Nada } from '@/features/empleado/components/Filas'
 import { SelectorMes } from '@/features/empleado/components/SelectorMes'
 import { BloqueAsistencia } from '@/features/empleado/components/BloqueAsistencia'
 import { PedirCorreccion } from '@/features/empleado/components/PedirCorreccion'
@@ -95,11 +95,18 @@ export default async function AsistenciaPage({ searchParams }: { searchParams: P
         <SelectorMes base="/mi-informacion/asistencia" actual={cual} />
       </div>
 
-      <p className="mt-4 font-mono text-[26px] leading-none tabular-nums text-ink" data-testid="total-presencia">
-        {duracion(total.minutos) ?? '0 min'}
-      </p>
-      <p className="mt-1 text-[12px] text-faint">
-        de presencia en {dm(v.desde)} – {dm(v.hasta)}
+      {/* EL TOTAL DEL PERÍODO como bloque de dato grande. Cero minutos NO es un total: es que no hay
+          nada registrado, y decirlo con «0 min» le pone cara de dato medido a un período vacío. */}
+      <div className="mt-4">
+        <BloqueDato
+          etiqueta="Presencia del período"
+          valor={total.minutos > 0 ? duracion(total.minutos) : null}
+          falta="sin registrar"
+          testid="total-presencia"
+        />
+      </div>
+      <p className="mt-1.5 text-[12px] text-faint">
+        {dm(v.desde)} – {dm(v.hasta)}
         {total.sinCerrar > 0 && (
           <span className="text-warn"> · {total.sinCerrar} día{total.sinCerrar === 1 ? '' : 's'} sin cerrar, que no suman</span>
         )}

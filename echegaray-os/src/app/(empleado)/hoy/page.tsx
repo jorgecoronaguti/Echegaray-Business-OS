@@ -7,7 +7,7 @@ import { SinVinculo } from '@/features/mi-cuenta/components/SinVinculo'
 import { Aviso, Estado } from '@/shared/components/ds'
 import { PantallaEmpleado, Seccion } from '@/features/empleado/components/ShellEmpleado'
 import { BloqueAsistencia } from '@/features/empleado/components/BloqueAsistencia'
-import { Fila, Nada } from '@/features/empleado/components/Filas'
+import { BloqueDato, Fila, Nada } from '@/features/empleado/components/Filas'
 import {
   getDocumentosDeMiObra, getMiCuadrilla, getMiDiaDeHoy, getMisDocumentos, getMisImpedimentos,
   getMiObra, getMisTareas,
@@ -218,25 +218,25 @@ export default async function HoyPage() {
 
           <Seccion titulo={`MI MES · ${mesLargo(hoy)}`}>
             <div data-testid="mi-mes">
-              <div className="flex items-baseline gap-6">
-                <span>
-                  <span className="block text-[11px] text-faint">HH imputadas</span>
-                  <span className="font-mono text-[18px] tabular-nums text-ink">
-                    {horas.data ? hhDelMes.toFixed(2).replace('.', ',') : '—'}
-                  </span>
-                </span>
-                <span>
-                  <span className="block text-[11px] text-faint">Presencia</span>
-                  <span className="font-mono text-[18px] tabular-nums text-ink">
-                    {duracion(presencia.minutos) ?? '—'}
-                  </span>
-                </span>
-                <span>
-                  <span className="block text-[11px] text-faint">Sin imputar</span>
-                  <span className="font-mono text-[18px] tabular-nums text-ink">
-                    {contraste ? (duracion(Math.max(contraste.pendiente, 0)) ?? '—') : '—'}
-                  </span>
-                </span>
+              {/* Los tres como BLOQUE DE DATO GRANDE del Employee shell. Ninguno se rellena con un
+                  cero: sin presencia registrada el bloque dice «sin registrar», y sin las dos puntas
+                  «sin imputar» no existe —no vale cero, que acusaría a la obra de no haber imputado. */}
+              <div className="flex flex-wrap gap-x-9 gap-y-4">
+                <BloqueDato
+                  etiqueta="HH imputadas"
+                  valor={horas.data ? hhDelMes.toFixed(2).replace('.', ',') : null}
+                  falta="no se pudo leer"
+                />
+                <BloqueDato
+                  etiqueta="Presencia"
+                  valor={presencia.minutos > 0 ? duracion(presencia.minutos) : null}
+                />
+                <BloqueDato
+                  etiqueta="Sin imputar"
+                  valor={contraste ? duracion(Math.max(contraste.pendiente, 0)) : null}
+                  falta="falta una punta"
+                  tono={contraste && contraste.pendiente > 0 ? 'warn' : undefined}
+                />
               </div>
               {/* LAS DOS PUNTAS O NINGUNA. Sin asistencia registrada, «sin imputar: 148 h» acusaría a
                   la obra de no imputar cuando lo que falta es la otra mitad del dato. */}

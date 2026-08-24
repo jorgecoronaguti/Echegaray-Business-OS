@@ -76,7 +76,10 @@ export default async function MisDocumentosPage() {
               <span className="w-[100px] font-mono tabular-nums text-muted">{dm(d.fecha_vencimiento) ?? 'no vence'}</span>
               <span className="w-[150px]"><Estado tono={ESTADO_TONO[e]} clave={e}>{ESTADO_LABEL[e]}</Estado></span>
               <span className="w-[110px] text-right">
-                <a href={`/mi-informacion/documentos/${d.id}`} className="text-[12.5px] text-muted underline hover:text-ink">
+                <a
+                  href={`/mi-informacion/documentos/${d.id}`}
+                  className={`text-[12.5px] underline ${accionDe(e).primaria ? 'font-medium text-ink' : 'text-muted hover:text-ink'}`}
+                >
                   {accionDe(e).texto}
                 </a>
               </span>
@@ -89,6 +92,7 @@ export default async function MisDocumentosPage() {
       <div className="lg:hidden" data-testid="lista-documentos">
         {lista.map((d) => {
           const e = estadoEnPantalla(d, hoy)
+          const a = accionDe(e)
           return (
             <Fila
               key={d.id}
@@ -102,7 +106,19 @@ export default async function MisDocumentosPage() {
                 </>
               }
               senal={<Estado tono={ESTADO_TONO[e]} clave={e}>{ESTADO_LABEL[e]}</Estado>}
-              accion={<span className="whitespace-nowrap text-[12px] text-muted">{accionDe(e).texto}</span>}
+              /* LA ACCIÓN PESA CUANDO ES SUYA (Design System · Document request row). «Subir» y
+                 «Volver a subir» le tocan a él y van en `ink` 500; «Reemplazar» y «Ver lo enviado»
+                 son opciones y quedan en `muted`. Todas en el mismo lugar: lo que cambia es el peso,
+                 no la posición — mover el texto de columna obligaría a releer la fila entera. */
+              accion={
+                <span
+                  data-testid="accion-documento"
+                  data-primaria={a.primaria ? 'si' : undefined}
+                  className={`whitespace-nowrap text-[12px] ${a.primaria ? 'font-medium text-ink' : 'text-muted'}`}
+                >
+                  {a.texto}
+                </span>
+              }
             />
           )
         })}

@@ -123,17 +123,22 @@ export function FormProblema({ tareas, obraId, tareaId }: { tareas: MiTarea[]; o
 
       {estado.error && <p className="mt-4 text-[12.5px] text-neg" data-testid="problema-error">{estado.error}</p>}
 
+      {/* EL BOTÓN DESHABILITADO NOMBRA LO QUE FALTA, no repite el paso que ya está hecho. «Reportar»
+          apagado se lee como un sistema roto; «Elegí si el trabajo está parado» se lee como una
+          instrucción, y es la única que queda. El motivo largo baja a `faint` cuando ya se puede. */}
       <button
         type="submit"
         disabled={enviando || frena === ''}
         data-testid="enviar-problema"
         className="mt-7 flex h-[52px] w-full items-center justify-center rounded-control bg-marca text-[15px] font-semibold text-[color:var(--os-on-marca)] disabled:opacity-50 lg:w-auto lg:px-6"
       >
-        {enviando ? 'Reportando…' : 'Reportar'}
+        {enviando ? 'Reportando…' : frena === '' ? 'Elegí si el trabajo está parado' : 'Reportar'}
       </button>
-      <p className="mt-2.5 text-[11.5px] text-faint">
-        {frena === '' ? 'Elegí si el trabajo está parado para poder reportar.' : 'Queda como impedimento de la actividad y lo ve el jefe de obra.'}
-      </p>
+      {frena !== '' && (
+        <p className="mt-2.5 text-[11.5px] text-faint">
+          Queda como impedimento de la actividad y lo ve el jefe de obra.
+        </p>
+      )}
     </form>
   )
 }

@@ -6,7 +6,7 @@ import { hh, resumen } from '@/features/mi-cuenta/services/horas'
 import { SinVinculo } from '@/features/mi-cuenta/components/SinVinculo'
 import { Aviso } from '@/shared/components/ds'
 import { PantallaEmpleado, Seccion } from '@/features/empleado/components/ShellEmpleado'
-import { Fila, Nada } from '@/features/empleado/components/Filas'
+import { BloqueDato, Fila, Nada } from '@/features/empleado/components/Filas'
 import { SelectorMes } from '@/features/empleado/components/SelectorMes'
 import { getMiAsistencia } from '@/features/empleado/services/empleadoService'
 import { hoyISO } from '@/features/empleado/services/acciones'
@@ -63,10 +63,17 @@ export default async function MisHorasPage({ searchParams }: { searchParams: Pro
       <div className="mt-5" data-testid="resumen-horas">
         <p className="text-[11px] text-faint">Período</p>
         <p className="font-mono text-[12.5px] tabular-nums text-muted">{dm(v.desde)} – {dm(v.hasta)}/{v.hasta.slice(0, 4)}</p>
-        <p className="mt-3 font-mono text-[30px] leading-none tabular-nums text-ink" data-testid="hh-total">
-          {horas.data ? hh(r.trabajadas) : '—'}
-        </p>
-        <p className="mt-1 text-[12px] text-faint">HH · {r.dias} {r.dias === 1 ? 'día' : 'días'}</p>
+        {/* EL NÚMERO DE LA PANTALLA, como bloque de dato grande del Employee shell. Si la lectura
+            falló va `null` y no «0,00»: un cero acá es una quincena sin trabajar que nadie vivió. */}
+        <div className="mt-3">
+          <BloqueDato
+            etiqueta="HH imputadas"
+            valor={horas.data ? hh(r.trabajadas) : null}
+            falta="no se pudo leer"
+            testid="hh-total"
+          />
+        </div>
+        <p className="mt-1.5 text-[12px] text-faint">en {r.dias} {r.dias === 1 ? 'día' : 'días'}</p>
 
         <div className="mt-5 flex flex-wrap gap-x-8 gap-y-3">
           {(Object.entries(r.porTipo) as [string, number][])
