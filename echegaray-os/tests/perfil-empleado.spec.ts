@@ -52,7 +52,7 @@ test('NO SE LE MUESTRA UN SOLO NÚMERO DE LA PLATA DE LA OBRA', async ({ page })
   }
 })
 
-test('la barra de tres contextos lleva a los tres, y marca dónde estás', async ({ page }) => {
+test('la barra de cuatro contextos lleva a los cuatro, y marca dónde estás', async ({ page }) => {
   await entrar(page)
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(page.getByTestId('barra-contextos')).toBeVisible()
@@ -61,8 +61,15 @@ test('la barra de tres contextos lleva a los tres, y marca dónde estás', async
   await page.waitForURL(/\/mi-trabajo/)
   await expect(page.getByTestId('nav-mi-trabajo')).toHaveAttribute('aria-current', 'page')
 
+  // «Horas» es su propia pestaña desde M06 (24/08), y se prueba ANTES que «Yo»: las dos rutas
+  // comparten prefijo, y si la barra las resolviera al revés estar en Mis horas encendería «Yo».
+  await page.getByTestId('nav-mis-horas').click()
+  await page.waitForURL(/\/mi-informacion\/horas/)
+  await expect(page.getByTestId('nav-mis-horas')).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByTestId('nav-mi-informacion')).not.toHaveAttribute('aria-current', 'page')
+
   await page.getByTestId('nav-mi-informacion').click()
-  await page.waitForURL(/\/mi-informacion/)
+  await page.waitForURL(/\/mi-informacion$/)
   await expect(page.getByTestId('nav-mi-informacion')).toHaveAttribute('aria-current', 'page')
 
   // CAMBIO DE REGLA DECLARADO (Design 23/08) · Employee shell: la barra de contextos «se usa sólo en
@@ -222,7 +229,7 @@ test('el escritorio es la misma experiencia, no otra', async ({ page }) => {
   await entrar(page)
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/hoy')
-  // Los tres contextos suben al header y la barra de abajo desaparece.
+  // Los cuatro contextos suben al header y la barra de abajo desaparece.
   await expect(page.getByTestId('nav-hoy-desktop')).toBeVisible()
   await expect(page.getByTestId('barra-contextos')).toBeHidden()
   // Y aparece la columna derecha del handoff: pendientes, mi mes y los papeles de la obra.

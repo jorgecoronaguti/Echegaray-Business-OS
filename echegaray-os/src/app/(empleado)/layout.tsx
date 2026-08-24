@@ -7,6 +7,7 @@ import { ShellEmpleado } from '@/features/empleado/components/ShellEmpleado'
 // función re-exportada desde un módulo de cliente no se puede llamar desde el servidor —Next la
 // convierte en una referencia y tira «Attempted to call inicialesDe() from the server».
 import { inicialesDe } from '@/features/empleado/components/shell-logica'
+import { getMiObra } from '@/features/empleado/services/empleadoService'
 
 // EL MARCO DEL PERFIL EMPLEADO.
 //
@@ -26,10 +27,17 @@ export default async function EmpleadoLayout({ children }: { children: React.Rea
   if (!user) redirect('/login')
   const perfil = await getPerfilActual(supabase, user.id)
 
+  // LA OBRA VA EN EL MARCO, NO EN CADA PANTALLA. Los mockups la ponen bajo la marca en las nueve:
+  // es el contexto de todo lo que el empleado ve, y repetirla pantalla por pantalla la deja sin
+  // dibujar en la primera que se olvide. Si la lectura falla, el topbar dice «sin obra asignada» —
+  // el marco NUNCA rompe la pantalla que contiene por un renglón de contexto.
+  const obras = await getMiObra(supabase)
+
   return (
     <ShellEmpleado
       email={user.email ?? null}
       iniciales={inicialesDe(perfil.data?.nombre, user.email)}
+      obra={obras.data?.[0]?.nombre ?? null}
       salir={<LogoutButton />}
     >
       {children}

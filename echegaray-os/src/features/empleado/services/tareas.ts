@@ -82,3 +82,25 @@ export function dm(iso: string, hoy?: string): string {
   if (!d) return iso
   return hoy && hoy.slice(0, 4) !== a ? `${d}/${m}/${a}` : `${d}/${m}`
 }
+
+/**
+ * LO QUE FALTA DE LA TAREA, EN SU UNIDAD — el renglón «24,96 m² restantes» de M02 y M03.
+ *
+ * ═══ SIN LAS DOS PUNTAS NO HAY RESTANTE, Y SE DICE «SIN MEDICIÓN» ═══
+ *
+ * El restante necesita objetivo Y porcentaje. Con uno solo se puede escribir un número que parece
+ * un dato: sin `cantidad_objetivo` daría 0 —«no falta nada», o sea la tarea terminada— y sin `pct`
+ * daría el objetivo entero —«no se hizo nada»—. Las dos mentiras son creíbles y ninguna es
+ * verificable mirando la pantalla. Por eso devuelve `null` y el mockup escribe «sin medición».
+ *
+ * El 0 SÍ es un dato cuando las dos puntas existen: una tarea al 100% muestra «0,00 m² restantes».
+ */
+export function restante(t: {
+  pct: number | null
+  cantidad_objetivo: number | null
+  unidad: string | null
+}): string | null {
+  if (t.cantidad_objetivo == null || t.pct == null) return null
+  const falta = Math.max(0, t.cantidad_objetivo * (1 - t.pct / 100))
+  return `${falta.toFixed(2).replace('.', ',')}${t.unidad ? ` ${t.unidad}` : ''} restantes`
+}

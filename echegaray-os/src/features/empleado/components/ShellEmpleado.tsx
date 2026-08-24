@@ -39,11 +39,16 @@ import { CONTEXTOS, contextoActivo, esRaiz } from './shell-logica'
 export function ShellEmpleado({
   email,
   iniciales,
+  obra,
   salir,
   children,
 }: {
   email: string | null
   iniciales: string
+  /** La obra donde trabaja hoy, bajo la marca en el topbar (M02…M09). `null` cuando no tiene
+   *  ninguna asignada: se escribe «sin obra asignada» y NUNCA se deja el renglón vacío, porque un
+   *  hueco ahí se lee como que la pantalla todavía está cargando. */
+  obra: string | null
   /** El botón de salir llega ARMADO desde el servidor: su `action` es una server action y este
    *  componente es de cliente. Es el mismo patrón que `AppHeader`. */
   salir: ReactNode
@@ -56,16 +61,26 @@ export function ShellEmpleado({
   const activo = contextoActivo(ruta)
   const raiz = esRaiz(ruta)
   return (
-    <div className="min-h-screen bg-surface" data-testid="shell-empleado">
+    <div className="min-h-screen bg-canvas" data-testid="shell-empleado">
       {/* ── EL TELÉFONO, SÓLO EN LA RAÍZ: barra de marca arriba, contextos abajo ────────── */}
+      {/* 56px y no 48: los mockups M02…M09 ponen DOS renglones bajo la marca —el nombre de la
+          empresa y la obra— y en 48px la segunda línea queda pisada contra el borde. Manda el
+          mockup. */}
       <header
         data-testid="topbar-marca"
-        className={`h-[48px] shrink-0 items-center gap-2 border-b border-line px-4 ${raiz ? 'flex lg:hidden' : 'hidden'}`}
+        className={`h-[56px] shrink-0 items-center gap-2.5 bg-surface px-4 ${raiz ? 'flex lg:hidden' : 'hidden'}`}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/marca/isotipo.png" alt="" className="h-[22px] w-[22px]" />
-        <span className="text-[12.5px] font-semibold tracking-[0.12em] text-ink">ECHEGARAY</span>
-        <span className="ml-auto flex h-[28px] w-[28px] items-center justify-center rounded-full bg-surface-quiet text-[11px] font-semibold text-ink-soft">
+        <img src="/marca/isotipo.png" alt="" className="h-[20px] w-[20px]" />
+        <span className="min-w-0">
+          <span className="block truncate text-[10.5px] font-semibold tracking-[0.13em] text-ink">
+            ECHEGARAY CONSTRUCCIONES
+          </span>
+          <span className="block truncate text-[11.5px] text-faint" data-testid="topbar-obra">
+            {obra ?? 'sin obra asignada'}
+          </span>
+        </span>
+        <span className="ml-auto flex h-[32px] w-[32px] shrink-0 items-center justify-center rounded-full bg-ink text-[11px] font-semibold text-white">
           {iniciales}
         </span>
       </header>
@@ -110,13 +125,18 @@ export function ShellEmpleado({
           data-testid="barra-contextos"
           className="fixed inset-x-0 bottom-0 z-20 flex h-[58px] border-t border-line bg-surface lg:hidden"
         >
+          {/* EL ACTIVO SE PINTA, NO SE SUBRAYA. Los mockups llenan la pestaña activa con el amarillo
+              rebajado de la marca y le dejan la regla de 2px arriba: en obra, a contraluz y con el
+              teléfono en la mano, un subrayado de 2px sobre blanco no se ve y el bloque sí. */}
           {CONTEXTOS.map((c) => (
             <Link
               key={c.href}
               href={c.href}
               data-testid={c.testid}
               aria-current={activo === c.href ? 'page' : undefined}
-              className="relative flex h-[58px] flex-1 items-center justify-center text-[12px]"
+              className={`relative flex h-[58px] flex-1 items-center justify-center text-[12px] ${
+                activo === c.href ? 'bg-marca-soft' : ''
+              }`}
             >
               {activo === c.href && <span aria-hidden className="absolute inset-x-0 top-0 h-[2px] bg-marca" />}
               <span className={activo === c.href ? 'font-semibold text-ink' : 'text-muted'}>{c.label}</span>

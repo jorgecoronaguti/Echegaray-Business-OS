@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { clasificar, dm, esDeHoy, lecturaDeEstado, lecturaDeFecha, ordenar } from './tareas.ts'
+import { clasificar, dm, esDeHoy, lecturaDeEstado, lecturaDeFecha, ordenar, restante } from './tareas.ts'
 import type { MiTarea } from '../types/index.ts'
 
 const HOY = '2026-08-20'
@@ -51,4 +51,20 @@ test('vencida, vence hoy y vence después se dicen distinto', () => {
 test('el año sólo aparece cuando no es el corriente', () => {
   assert.equal(dm('2026-08-25', HOY), '25/08')
   assert.equal(dm('2025-08-25', HOY), '25/08/2025')
+})
+
+test('SIN MEDICIÓN NO SE ESCRIBE UN RESTANTE — ni 0 ni el objetivo entero', () => {
+  // El defecto que atrapa: calcular el restante con una sola punta produce un número creíble y
+  // falso. Sin objetivo daría «0,00 restantes» (la tarea parecería terminada) y sin porcentaje
+  // daría el objetivo completo (parecería no arrancada). Las dos se leen como un dato medido.
+  assert.equal(restante({ pct: 74, cantidad_objetivo: null, unidad: 'm²' }), null)
+  assert.equal(restante({ pct: null, cantidad_objetivo: 96, unidad: 'm²' }), null)
+  assert.equal(restante({ pct: null, cantidad_objetivo: null, unidad: null }), null)
+})
+
+test('con las dos puntas el restante sale en la unidad de la tarea, y el 0 sí es un dato', () => {
+  assert.equal(restante({ pct: 74, cantidad_objetivo: 96, unidad: 'm²' }), '24,96 m² restantes')
+  assert.equal(restante({ pct: 100, cantidad_objetivo: 96, unidad: 'm²' }), '0,00 m² restantes')
+  assert.equal(restante({ pct: 40, cantidad_objetivo: 1.083, unidad: 'm³' }), '0,65 m³ restantes')
+  assert.equal(restante({ pct: 50, cantidad_objetivo: 10, unidad: null }), '5,00 restantes')
 })

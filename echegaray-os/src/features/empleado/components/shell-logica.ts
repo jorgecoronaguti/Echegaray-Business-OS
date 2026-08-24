@@ -7,26 +7,37 @@
 
 export interface Contexto { href: string; label: string; testid: string }
 
+// CUATRO CONTEXTOS Y NO TRES, PORQUE ASÍ LOS DIBUJAN LOS MOCKUPS (M02 y M09, 24/08/2026).
+//
+// El handoff escrito decía «tres contextos»; los mockups del dueño dibujan CUATRO tabs —Hoy ·
+// Trabajo · Horas · Yo— y ante la diferencia manda el mockup. La razón de negocio es visible en
+// M06: las horas son lo que el empleado mira más seguido después de fichar, y esconderlas un nivel
+// adentro de «Mi información» las ponía a dos toques de distancia.
+//
+// EL ORDEN DE LA LISTA ES PARTE DE LA LÓGICA: `/mi-informacion/horas` va ANTES que
+// `/mi-informacion` para que `contextoActivo` —que resuelve por prefijo— encienda «Horas» y no
+// «Yo». Invertirlos apaga la pestaña propia de la pantalla que se está mirando.
 export const CONTEXTOS: Contexto[] = [
   { href: '/hoy', label: 'Hoy', testid: 'nav-hoy' },
-  { href: '/mi-trabajo', label: 'Mi trabajo', testid: 'nav-mi-trabajo' },
-  { href: '/mi-informacion', label: 'Mi información', testid: 'nav-mi-informacion' },
+  { href: '/mi-trabajo', label: 'Trabajo', testid: 'nav-mi-trabajo' },
+  { href: '/mi-informacion/horas', label: 'Horas', testid: 'nav-mis-horas' },
+  { href: '/mi-informacion', label: 'Yo', testid: 'nav-mi-informacion' },
 ]
 
-/** ¿Qué contexto está activo? `/mi-informacion/horas` activa «Mi información»: el contexto es la
- *  raíz, no la pantalla. La barra tiene que dejar de compararse por igualdad exacta, pero SIN que
+/** ¿Qué contexto está activo? `/mi-informacion/documentos` activa «Yo»: el contexto es la raíz, no
+ *  la pantalla. La barra tiene que dejar de compararse por igualdad exacta, pero SIN que
  *  `/mi-trabajoso` encienda `/mi-trabajo` — por eso la barra en el prefijo. */
 export function contextoActivo(pathname: string): string | null {
   const c = CONTEXTOS.find((x) => pathname === x.href || pathname.startsWith(`${x.href}/`))
   return c?.href ?? null
 }
 
-/** ¿Es una de las TRES pantallas raíz? Lo decide la igualdad exacta, no el prefijo: `/mi-informacion`
- *  es raíz y `/mi-informacion/horas` no.
+/** ¿Es una de las CUATRO pantallas raíz? Lo decide la igualdad exacta, no el prefijo:
+ *  `/mi-informacion` es raíz y `/mi-informacion/documentos` no.
  *
  *  De esto depende QUÉ CHROME se dibuja (Design System · Employee shell, 23/08/2026): la barra de
  *  contextos «se usa sólo en las pantallas raíz; las de detalle llevan back en el topbar». Una barra
- *  de tres destinos abajo Y una flecha de volver arriba son dos formas de salir compitiendo en 390px
+ *  de cuatro destinos abajo Y una flecha de volver arriba son dos formas de salir compitiendo en 390px
  *  —y la de abajo tapa la última fila de la lista, que es donde vive lo que se vino a buscar. */
 export function esRaiz(pathname: string): boolean {
   return CONTEXTOS.some((c) => c.href === pathname)

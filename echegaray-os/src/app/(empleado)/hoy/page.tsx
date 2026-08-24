@@ -8,13 +8,14 @@ import { Aviso, Estado } from '@/shared/components/ds'
 import { PantallaEmpleado, Seccion } from '@/features/empleado/components/ShellEmpleado'
 import { BloqueAsistencia } from '@/features/empleado/components/BloqueAsistencia'
 import { BloqueDato, Fila, Nada } from '@/features/empleado/components/Filas'
+import { Barra, Tarjeta } from '@/features/empleado/components/Bloques'
 import {
   getDocumentosDeMiObra, getMiCuadrilla, getMiDiaDeHoy, getMisDocumentos, getMisImpedimentos,
   getMiObra, getMisTareas,
 } from '@/features/empleado/services/empleadoService'
 import { hoyISO } from '@/features/empleado/services/acciones'
 import { diaFechaYAnio, diaYFecha, mesDe, mesLargo } from '@/features/empleado/services/fecha'
-import { clasificar, lecturaDeEstado, lecturaDeFecha } from '@/features/empleado/services/tareas'
+import { clasificar, lecturaDeEstado, lecturaDeFecha, restante } from '@/features/empleado/services/tareas'
 import { accionDe, estadoEnPantalla, ordenar as ordenarDocs, pendientes } from '@/features/empleado/services/documentos'
 import { duracion, totalDelPeriodo, pendienteDeImputar } from '@/features/empleado/services/asistencia'
 import { getMiAsistencia } from '@/features/empleado/services/empleadoService'
@@ -137,34 +138,52 @@ export default async function HoyPage() {
             <BloqueAsistencia dia={dia.data} obraId={obra?.id ?? null} compacto />
           </Seccion>
 
+          {/* ═══ CADA TAREA ES UNA TARJETA CON SU BARRA (M02, 24/08/2026) ═══
+              El mockup pide tres datos por tarjeta y en ese orden: qué hay que hacer, cuánto falta
+              en su unidad, y el avance como barra + porcentaje. La barra se pinta ROJA cuando la
+              tarea tiene un impedimento abierto: un 74% con el material faltante no es una buena
+              noticia, y el color lo tiene que decir antes de que alguien lea la letra chica. */}
           <Seccion
-            titulo="TRABAJO DE HOY"
-            extra={<Link href="/mi-trabajo/tareas" className="text-muted hover:text-ink" data-testid="ver-todas-tareas">Ver todo ›</Link>}
+            titulo="MI TRABAJO DE HOY"
+            extra={
+              <span className="flex items-center gap-3">
+                <span className="font-mono text-[12px] tabular-nums text-faint" data-testid="cuenta-hoy">
+                  {deHoy.filter((t) => t.estado === 'terminada').length} de {deHoy.length}
+                </span>
+                <Link href="/mi-trabajo/tareas" className="text-muted hover:text-ink" data-testid="ver-todas-tareas">Ver todo ›</Link>
+              </span>
+            }
           >
             {deHoy.length > 0 ? (
-              <div data-testid="trabajo-de-hoy">
+              <div className="space-y-2.5" data-testid="trabajo-de-hoy">
                 {deHoy.slice(0, 5).map((t) => {
                   const e = lecturaDeEstado(t)
                   const f = lecturaDeFecha(t, hoy)
+                  const frenada = t.impedimentos > 0
                   return (
-                    <Fila
-                      key={t.id}
-                      href={`/mi-trabajo/tareas/${t.id}`}
-                      testid="tarea-de-hoy"
-                      titulo={t.nombre}
-                      detalle={
-                        <>
-                          {t.seccion ?? t.obra}
-                          {t.impedimentos > 0 && <span className="text-neg"> · frenada</span>}
-                        </>
-                      }
-                      senal={<Estado tono={e.tono} clave={t.estado ?? ''}>{e.texto}</Estado>}
-                      accion={
-                        <span className={`whitespace-nowrap text-[12px] ${f.vencida ? 'text-neg' : 'text-faint'}`}>
-                          {f.texto}
+                    <Tarjeta key={t.id} href={`/mi-trabajo/tareas/${t.id}`} testid="tarea-de-hoy">
+                      <span className="flex items-start gap-3">
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-[14.5px] font-medium text-ink">{t.nombre}</span>
+                          <span className="mt-1 block font-mono text-[11.5px] text-faint">
+                            {t.seccion ?? t.obra}
+                            {' · '}
+                            {restante(t) ?? 'sin medición'}
+                          </span>
+                          <Barra pct={t.pct} frenada={frenada} />
                         </span>
-                      }
-                    />
+                        <span className="flex shrink-0 flex-col items-end gap-1">
+                          <span className="text-[15px] text-line-strong" aria-hidden>›</span>
+                          <span className={`whitespace-nowrap text-[11.5px] ${f.vencida ? 'text-neg' : 'text-faint'}`}>
+                            {f.texto}
+                          </span>
+                        </span>
+                      </span>
+                      <span className="mt-1.5 flex items-center gap-2">
+                        <Estado tono={e.tono} clave={t.estado ?? ''}>{e.texto}</Estado>
+                        {frenada && <span className="text-[11.5px] text-neg">frente parado</span>}
+                      </span>
+                    </Tarjeta>
                   )
                 })}
               </div>
@@ -175,6 +194,22 @@ export default async function HoyPage() {
               </Nada>
             )}
           </Seccion>
+
+          {/* ═══ LOS TRES ACCESOS DEL PIE (M02) ═══
+              El mockup dibuja «Avisar problema · Subir foto · Mis papeles». Van dos de esos tres y
+              «Mis horas» en lugar de «Subir foto»: subir una foto suelta no tiene destino en la
+              base —las fotos cuelgan de un avance o de un documento del legajo— y un botón que no
+              lleva a ningún lado enseña que la pantalla miente. Queda declarado, no disimulado. */}
+          <div className="mt-6 grid grid-cols-3 gap-2.5" data-testid="accesos-hoy">
+            <Acceso href="/mi-trabajo/reportar" testid="acceso-problema" titulo="Avisar problema" />
+            <Acceso
+              href="/mi-informacion/documentos"
+              testid="acceso-papeles"
+              titulo="Mis papeles"
+              nota={docsPendientes.length > 0 ? `${docsPendientes.length} pendiente${docsPendientes.length === 1 ? '' : 's'}` : undefined}
+            />
+            <Acceso href="/mi-informacion/horas" testid="acceso-horas" titulo="Mis horas" />
+          </div>
         </div>
 
         <div className="min-w-0 lg:flex-1">
@@ -283,5 +318,21 @@ export default async function HoyPage() {
         </div>
       </div>
     </PantallaEmpleado>
+  )
+}
+
+/** Uno de los tres accesos del pie: 74px de alto, una sola línea de verbo y su nota debajo. Es el
+ *  objetivo táctil más grande de la pantalla después de fichar, y por eso no lleva ícono: en 390px
+ *  tres íconos con tres rótulos se leen peor que tres rótulos solos. */
+function Acceso({ href, titulo, nota, testid }: { href: string; titulo: string; nota?: string; testid: string }) {
+  return (
+    <Link
+      href={href}
+      data-testid={testid}
+      className="flex min-h-[74px] flex-col items-center justify-center gap-0.5 rounded-[14px] border border-line bg-surface px-2 text-center active:bg-surface-quiet"
+    >
+      <span className="text-[12.5px] leading-tight text-ink">{titulo}</span>
+      {nota && <span className="text-[11px] text-warn">{nota}</span>}
+    </Link>
   )
 }

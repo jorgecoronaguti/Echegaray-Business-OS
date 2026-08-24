@@ -7,6 +7,7 @@ import { SinVinculo } from '@/features/mi-cuenta/components/SinVinculo'
 import { Aviso } from '@/shared/components/ds'
 import { PantallaEmpleado, Seccion } from '@/features/empleado/components/ShellEmpleado'
 import { BloqueDato, Fila, Nada } from '@/features/empleado/components/Filas'
+import { Azulejo } from '@/features/empleado/components/Bloques'
 import { SelectorMes } from '@/features/empleado/components/SelectorMes'
 import { getMiAsistencia } from '@/features/empleado/services/empleadoService'
 import { hoyISO } from '@/features/empleado/services/acciones'
@@ -34,7 +35,7 @@ export default async function MisHorasPage({ searchParams }: { searchParams: Pro
 
   if (!perfil.data?.persona_id) {
     return (
-      <PantallaEmpleado titulo="Mis horas" volver={{ href: '/mi-informacion', label: 'Mi información' }}>
+      <PantallaEmpleado titulo="Mis horas">
         <SinVinculo que="tus horas" disponible={perfil.data?.vinculoDisponible !== false} />
       </PantallaEmpleado>
     )
@@ -55,7 +56,7 @@ export default async function MisHorasPage({ searchParams }: { searchParams: Pro
   const contraste = pendienteDeImputar(presencia.minutos, r.trabajadas)
 
   return (
-    <PantallaEmpleado titulo="Mis horas" volver={{ href: '/mi-informacion', label: 'Mi información' }}>
+    <PantallaEmpleado titulo="Mis horas">
       {horas.error && <Aviso tono="neg" titulo="No se pudieron leer tus horas." testid="horas-error">{horas.error}</Aviso>}
 
       <SelectorMes base="/mi-informacion/horas" actual={cual} />
@@ -75,19 +76,17 @@ export default async function MisHorasPage({ searchParams }: { searchParams: Pro
         </div>
         <p className="mt-1.5 text-[12px] text-faint">en {r.dias} {r.dias === 1 ? 'día' : 'días'}</p>
 
-        <div className="mt-5 flex flex-wrap gap-x-8 gap-y-3">
+        {/* LOS AZULEJOS DE M06: jornadas, obras y cada tipo de hora, cada uno en su caja. Un tipo
+            de hora en cero NO se dibuja —«extra: 0,00» ocupa un azulejo para decir que no pasó
+            nada—, pero las jornadas sí van siempre: cero jornadas en el período es un dato. */}
+        <div className="mt-5 flex flex-wrap gap-2.5" data-testid="azulejos-horas">
+          <Azulejo etiqueta="Jornadas" valor={horas.data ? String(r.dias) : null} falta="no se pudo leer" testid="azulejo-jornadas" />
+          <Azulejo etiqueta="Obras" valor={horas.data ? String(r.obras.length) : null} falta="no se pudo leer" />
           {(Object.entries(r.porTipo) as [string, number][])
             .filter(([, n]) => n > 0)
             .map(([tipo, n]) => (
-              <span key={tipo}>
-                <span className="block text-[11px] text-faint">{tipo.replace(/_/g, ' ')}</span>
-                <span className="font-mono text-[15px] tabular-nums text-ink">{hh(n)}</span>
-              </span>
+              <Azulejo key={tipo} etiqueta={tipo.replace(/_/g, ' ')} valor={hh(n)} tono={tipo.includes('extra') ? 'warn' : undefined} />
             ))}
-          <span>
-            <span className="block text-[11px] text-faint">Obras</span>
-            <span className="font-mono text-[15px] tabular-nums text-ink">{r.obras.length}</span>
-          </span>
         </div>
       </div>
 
