@@ -108,6 +108,29 @@ export function Barra({ pct, tono = 'ink' }: { pct: number | null; tono?: 'ink' 
   )
 }
 
+/**
+ * La barra con LA MARCA DE LO ESPERADO — el carril de J03.
+ *
+ * La marca es una línea vertical sobre la pista, no una segunda barra: dos barras apiladas se leen
+ * como dos avances y acá hay uno solo con una referencia. Sin esperado no se dibuja marca: un plan
+ * que nadie cargó no puede señalar dónde debería estar el trabajo.
+ */
+export function BarraConPlan({ pct, esperado }: { pct: number | null; esperado: number | null }) {
+  const tono = pct == null || esperado == null ? 'ink' : pct + 0.05 < esperado ? 'warn' : 'ink'
+  return (
+    <div className="relative" data-testid="barra-con-plan" data-esperado={esperado ?? ''}>
+      <Barra pct={pct} tono={tono} />
+      {esperado != null && (
+        <span
+          aria-hidden
+          className="absolute -top-[2px] h-[11px] w-[1.5px] bg-muted"
+          style={{ left: `calc(${Math.max(0, Math.min(100, esperado))}% - 0.75px)` }}
+        />
+      )}
+    </div>
+  )
+}
+
 /** `47` → `47 %`. `null` → `sin medir`, nunca `0 %`. */
 export function porcentaje(pct: number | null): string {
   if (pct == null) return 'sin medir'

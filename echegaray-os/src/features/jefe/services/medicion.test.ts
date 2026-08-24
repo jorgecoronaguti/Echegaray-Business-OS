@@ -1,7 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  AVISO_CRITERIO, avisoDePrecision, controlDe, deltaHasta, elPorcentajeMueveElAvance, renglones,
+  AVISO_CRITERIO, avisoDePrecision, controlDe, deltaHasta, elPorcentajeMueveElAvance, enVista,
+  renglones, vistaInicial,
 } from './medicion.ts'
 import type { TareaDelDia } from './medicion.ts'
 
@@ -96,4 +97,41 @@ test('UNA TAREA YA AL 100 % NO SE OFRECE TOCABLE en el masivo', () => {
 test('EL AVISO DE PRECISIÓN NO CUENTA LO QUE NO SE PUEDE APLICAR', () => {
   const r = renglones([t({ actividad_id: 'x', metodo_avance: 'manual', avance_pct: 100 })])
   assert.equal(avisoDePrecision(r), null)
+})
+
+test('LA VISTA ABRE EN «EN CURSO» — y en «TODO» cuando no hay ninguna en curso', () => {
+  // El defecto que atrapa: abrir siempre en «En curso» deja la pantalla vacía en una obra donde
+  // todo está al 100 %, y eso se lee como «esta obra no tiene tareas».
+  const conCurso = renglones([
+    t({ actividad_id: 'a', avance_pct: 40 }),
+    t({ actividad_id: 'b', avance_pct: 100 }),
+  ])
+  assert.equal(vistaInicial(conCurso), 'curso')
+  const todoCerrado = renglones([t({ actividad_id: 'b', avance_pct: 100 })])
+  assert.equal(vistaInicial(todoCerrado), 'todo')
+})
+
+test('«EN CURSO» NO INCLUYE LO QUE NO SE PUEDE MOVER', () => {
+  // El defecto que atrapa: filtrar sólo por «avance > 0» mete las terminadas y las medidas por
+  // pasos en la vista de trabajo del día — filas que el jefe toca y no hacen nada.
+  const [enCurso, cerrada, porPasos] = renglones([
+    t({ actividad_id: 'a', avance_pct: 40 }),
+    t({ actividad_id: 'b', avance_pct: 100 }),
+    t({ actividad_id: 'c', avance_pct: 30, metodo_avance: 'pasos' }),
+  ])
+  assert.equal(enVista(enCurso, 'curso'), true)
+  assert.equal(enVista(cerrada, 'curso'), false)
+  assert.equal(enVista(porPasos, 'curso'), false)
+  // «Todo» las muestra a las tres: apagadas y con su motivo, nunca escondidas.
+  assert.deepEqual([enCurso, cerrada, porPasos].map((f) => enVista(f, 'todo')), [true, true, true])
+})
+
+test('«SIN ARRANCAR» TRATA IGUAL EL CERO Y EL SIN MEDIR', () => {
+  const [enCero, sinMedir] = renglones([
+    t({ actividad_id: 'a', avance_pct: 0 }),
+    t({ actividad_id: 'b', avance_pct: null }),
+  ])
+  assert.equal(enVista(enCero, 'sin-arrancar'), true)
+  assert.equal(enVista(sinMedir, 'sin-arrancar'), true)
+  assert.equal(enVista(enCero, 'curso'), false)
 })

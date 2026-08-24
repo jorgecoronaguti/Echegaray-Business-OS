@@ -3,8 +3,10 @@
 import { useActionState, useRef, useState } from 'react'
 import { Aviso, BarraContextual, ChipsValor } from '@/shared/components/ds'
 import { Confirmacion, Nada, Panel, Rotulo } from './Piezas'
-import { AVISO_CRITERIO, VALORES_MASIVOS, avisoDePrecision, renglones } from '../services/medicion'
-import type { Renglon } from '../services/medicion'
+import {
+  AVISO_CRITERIO, VALORES_MASIVOS, VISTAS_MASIVAS, avisoDePrecision, enVista, renglones, vistaInicial,
+} from '../services/medicion'
+import type { Renglon, VistaMasiva } from '../services/medicion'
 import type { ActividadDelJefe } from '../services/jefeService'
 
 // J04 · AVANCE DEL DÍA — «tocá las que avanzaron».
@@ -34,6 +36,7 @@ export function FormularioMasivo({
   accion: (estado: Estado, form: FormData) => Promise<Estado>
 }) {
   const filas = renglones(actividades)
+  const [vista, setVista] = useState<VistaMasiva>(() => vistaInicial(filas))
   const [elegidas, setElegidas] = useState<Set<string>>(new Set())
   const [objetivo, setObjetivo] = useState<number>(100)
   const [criterio, setCriterio] = useState('')
@@ -43,13 +46,15 @@ export function FormularioMasivo({
   // que lleva la fecha, el objetivo y los ids, así que se lo envía a mano.
   const formulario = useRef<HTMLFormElement | null>(null)
 
-  const aplicables = filas.filter((f) => f.aplicable)
+  // «Todas» marca LO QUE SE VE, no lo que existe. Con la vista filtrada, marcar tareas fuera de
+  // pantalla y guardarlas es exactamente el tipo de escritura que nadie pidió.
+  const aplicables = filas.filter((f) => f.aplicable && enVista(f, vista))
   const seleccion = filas.filter((f) => elegidas.has(f.actividad_id))
   const aviso = avisoDePrecision(seleccion)
   const exigeCriterio = seleccion.some((f) => f.metodo === 'manual')
   const faltaCriterio = exigeCriterio && criterio.trim() === ''
 
-  const grupos = agrupar(actividades, filas, frentes)
+  const grupos = agrupar(actividades, filas.filter((f) => enVista(f, vista)), frentes)
 
   return (
     <form action={enviar} ref={formulario}>
@@ -60,7 +65,7 @@ export function FormularioMasivo({
       <div className="flex items-start gap-3 px-4 pb-2.5 pt-4">
         <div className="min-w-0 flex-1">
           <h1 className="text-[20px] font-semibold leading-tight text-ink">Avance del día</h1>
-          <p className="mt-0.5 text-[13.5px] text-muted">{obraNombre} · tocá las que avanzaron</p>
+          <p className="mt-0.5 text-[13.5px] text-muted">{obraNombre} · {diaMes(fecha)}</p>
         </div>
         {aplicables.length > 0 && (
           <button
@@ -75,6 +80,38 @@ export function FormularioMasivo({
           </button>
         )}
       </div>
+
+      {/* LAS TRES VISTAS DEL CANÓNICO J04. Arranca en «En curso» porque es lo que se cierra al final
+          del día: en esta obra 60 de 89 tareas ya están al 100 % y la lista completa entierra las
+          cinco que el jefe vino a tocar. Si no hay ninguna en curso, arranca en «Todo» — un filtro
+          que abre la pantalla vacía se lee como «no hay tareas». */}
+      {filas.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto px-4 pb-3">
+          {VISTAS_MASIVAS.map(([id, label]) => {
+            const n = filas.filter((f) => enVista(f, id)).length
+            return (
+              <button
+                key={id}
+                type="button"
+                // CAMBIAR DE VISTA SUELTA LA SELECCIÓN. Sin esto, una tarea marcada en «En curso»
+                // se guarda desde «Sin arrancar» sin estar en pantalla: una escritura que el jefe
+                // no puede ver antes de confirmarla.
+                onClick={() => { setVista(id); setElegidas(new Set()) }}
+                data-testid={`vista-${id}`}
+                aria-pressed={vista === id}
+                className={`flex h-[44px] shrink-0 items-center gap-2 rounded-[10px] border px-3.5 text-[13.5px] ${
+                  vista === id ? 'border-marca bg-marca-soft font-semibold text-ink' : 'border-surface bg-surface text-ink'
+                }`}
+              >
+                {label}
+                <span className={`font-mono text-[12px] tabular-nums ${vista === id ? 'text-ink' : 'text-faint'}`}>
+                  {n}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       <div className="flex flex-col gap-3.5 px-4 pb-6">
         {estado?.ok && <Confirmacion testid="resultado-masivo">{estado.mensaje}</Confirmacion>}
@@ -165,7 +202,9 @@ export function FormularioMasivo({
           alElegirOperacion={() => {}}
           aviso={faltaCriterio ? AVISO_CRITERIO : aviso}
           alCancelar={() => setElegidas(new Set())}
-          aplicarLabel={`Aplicar a ${elegidas.size}`}
+          // DICE QUÉ VA A PASAR, no «aplicar». Parado en la obra, «Guardar 3 avances» se verifica
+          // contra lo que uno acaba de tocar; «Aplicar a 3» obliga a recordar a qué.
+          aplicarLabel={`Guardar ${elegidas.size} ${elegidas.size === 1 ? 'avance' : 'avances'}`}
           alAplicar={() => formulario.current?.requestSubmit()}
           pendiente={enviando || faltaCriterio}
         >
@@ -191,6 +230,9 @@ export function FormularioMasivo({
     </form>
   )
 }
+
+/** `2026-08-23` → `23/08`. La fecha del día que se está cerrando, sin el año. */
+const diaMes = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
 
 function alternar(s: Set<string>, id: string): Set<string> {
   const n = new Set(s)

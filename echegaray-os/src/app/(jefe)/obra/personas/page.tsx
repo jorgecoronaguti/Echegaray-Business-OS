@@ -3,9 +3,11 @@ import { PieDeAccion } from '@/features/jefe/components/ShellJefe'
 import { Encabezado, Fila, Metricas, Nada, Panel, Rotulo } from '@/features/jefe/components/Piezas'
 import { IconoUbicacion } from '@/features/jefe/components/Iconos'
 import { SinObra } from '@/features/jefe/components/SinObra'
-import { contextoDeObra, hoyEnObra } from '@/features/jefe/services/contexto'
+import { ZONA_OBRA, contextoDeObra, hoyEnObra } from '@/features/jefe/services/contexto'
 import { getHHDelDia } from '@/features/jefe/services/jefeService'
-import { iniciales, motivoSinMarca, porCuadrilla, resumenDelDia } from '@/features/jefe/services/personas'
+import {
+  SIN_CUADRILLA, iniciales, motivoSinMarca, porCuadrilla, resumenDelDia,
+} from '@/features/jefe/services/personas'
 import { getEsperados, getPresencia } from '@/features/administracion/services/presenciaService'
 import { agrupar, lecturaDePunto, mapa } from '@/features/administracion/services/presencia'
 import { PuntoActivo, RelojDeJornada } from '@/features/administracion/components/RelojDeJornada'
@@ -55,6 +57,16 @@ export default async function JefePersonasPage({
   const r = resumenDelDia(grupos, esperados.data ?? [])
   const cuadrillas = porCuadrilla(grupos.enObra, esperados.data ?? [])
   const hhDelDia = (hh.data ?? []).reduce((s, x) => s + x.horas, 0)
+  // LAS HORAS DE CADA UNO, PARA LA FILA. No son «lo que trabajó»: son lo que alguien ya imputó
+  // contra una tarea. A media mañana están todas en cero y eso no dice que nadie trabajó — por eso
+  // la fila escribe «sin imputar» y nunca «0».
+  const hhPorPersona = new Map<string, number>()
+  for (const x of hh.data ?? []) hhPorPersona.set(x.persona_id, (hhPorPersona.get(x.persona_id) ?? 0) + x.horas)
+  const cuadrillaEsperada = new Map<string, number>()
+  for (const e of esperados.data ?? []) {
+    const c = e.cuadrilla?.trim() || SIN_CUADRILLA
+    cuadrillaEsperada.set(c, (cuadrillaEsperada.get(c) ?? 0) + 1)
+  }
   const primerError = error ?? presencia.error ?? esperados.error ?? hh.error ?? null
 
   return (
@@ -104,7 +116,14 @@ export default async function JefePersonasPage({
         ) : (
           cuadrillas.map((c) => (
             <div key={c.clave}>
-              <Rotulo extra={`${c.presentes.length} ${c.presentes.length === 1 ? 'persona' : 'personas'}`}>
+              {/* «4 de 5» ES LA PREGUNTA DEL JEFE: no cuánta gente hay, sino cuánta falta de la que
+                  tenía que estar. Sin el denominador, cuatro presentes de cinco esperados y cuatro
+                  de cuatro se leen igual. */}
+              <Rotulo
+                extra={cuadrillaEsperada.has(c.nombre)
+                  ? `${c.presentes.length} de ${cuadrillaEsperada.get(c.nombre)}`
+                  : `${c.presentes.length} ${c.presentes.length === 1 ? 'persona' : 'personas'}`}
+              >
                 {c.nombre.toUpperCase()}
               </Rotulo>
               <Panel testid="cuadrilla">
@@ -116,12 +135,20 @@ export default async function JefePersonasPage({
                       key={p.persona_id}
                       testid="persona-en-obra"
                       titulo={p.nombre_completo}
-                      // El texto dice lo que se sabe del punto —o que no hay punto, que NO es una
-                      // falta: puede ser el permiso de GPS denegado, o el teléfono que no lo mandó.
-                      // «Ver ubicación» dejó de ser un enlace de 16px metido en la oración y pasó a
-                      // ser el objetivo de 44 de la derecha: con el pulgar se acertaba una de tres.
-                      detalle={punto.texto}
-                      tonoDetalle={punto.fiable ? 'muted' : 'warn'}
+                      // PRIMERO EL HECHO QUE EL JEFE VINO A BUSCAR: a qué hora fichó. La lectura
+                      // del punto va detrás, y sólo se enciende en ámbar cuando NO es fiable — un
+                      // punto que no llegó no es una falta: puede ser el permiso de GPS denegado.
+                      // «Ver ubicación» es el objetivo de 44 de la derecha, no un enlace en la
+                      // oración: con el pulgar se acertaba uno de cada tres.
+                      detalle={
+                        <>
+                          <span className={p.entrada ? 'text-pos' : 'text-faint'}>
+                            {p.entrada ? `fichado ${hora(p.entrada)}` : 'sin hora de entrada'}
+                          </span>
+                          {!punto.fiable && <span className="text-warn"> · {punto.texto}</span>}
+                        </>
+                      }
+                      tonoDetalle="muted"
                       icono={
                         <span className="relative flex h-[40px] w-[40px] shrink-0 items-center justify-center rounded-full bg-accent text-[12.5px] font-semibold text-white">
                           {iniciales(p.nombre_completo)}
@@ -132,7 +159,14 @@ export default async function JefePersonasPage({
                         <span className="flex shrink-0 items-center gap-1">
                           <span className="text-right">
                             <RelojDeJornada entrada={p.entrada} />
-                            <span className="block text-[11px] text-faint">{p.categoria ?? 'sin categoría'}</span>
+                            {/* HH NO ES PRESENCIA, y va con su rótulo. El reloj dice cuánto hace
+                                que está; las HH, cuánto se imputó a una tarea. Sin imputar no es
+                                cero: nadie cargó todavía. */}
+                            <span className="block font-mono text-[11px] tabular-nums text-faint">
+                              {hhPorPersona.has(p.persona_id)
+                                ? `${formatearHH(hhPorPersona.get(p.persona_id) as number)} HH`
+                                : 'sin imputar'}
+                            </span>
                           </span>
                           {enlace && (
                             <a
@@ -204,4 +238,11 @@ export default async function JefePersonasPage({
 /** `78.5` → `78,5`. Las HH son un dato, y van en el separador del país. */
 function formatearHH(h: number): string {
   return new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1 }).format(h)
+}
+
+/** La hora de la marca, en la zona de la obra (`ZONA_OBRA`, escrita una sola vez). */
+function hora(iso: string): string {
+  return new Intl.DateTimeFormat('es-AR', {
+    hour: '2-digit', minute: '2-digit', hour12: false, timeZone: ZONA_OBRA,
+  }).format(new Date(iso))
 }

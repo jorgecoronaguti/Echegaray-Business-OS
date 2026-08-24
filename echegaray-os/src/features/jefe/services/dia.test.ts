@@ -1,6 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { frentesAbiertos, frentesDelDia, problemasDelDia } from './dia.ts'
+import {
+  estadoDelFrente, frentesAbiertos, frentesDelDia, problemasDelDia, resumenDeFrentes,
+} from './dia.ts'
 import type { ActividadDelJefe, HHDelDia, Impedimento } from './jefeService.ts'
 import type { NodoArbol } from './frentes.ts'
 
@@ -122,4 +124,53 @@ test('LO MÁS ATRASADO VA ARRIBA: es lo que fija la fecha de fin', () => {
 test('UN FRENTE VACÍO NO SE DIBUJA: no hay nada que mirar', () => {
   const arbol = [nodo({ actividad_id: 'g', es_contenedor: true })]
   assert.deepEqual(frentesAbiertos(frentesDelDia(arbol, [], [], '2026-08-21')), [])
+})
+
+test('EL PARTE DEL DÍA SE COMPARA POR DÍA, no por la cadena entera', () => {
+  // El defecto que atrapa: `ultimo_parte` llega como marca de tiempo («2026-08-21T13:04:00Z») según
+  // la vista. Comparándola completa contra la fecha de hoy da `false` siempre, y el frente que YA
+  // cargó su parte aparece como pendiente hasta el final de la jornada.
+  const arbol = [
+    nodo({ actividad_id: 'g', es_contenedor: true }),
+    nodo({ actividad_id: 't1', actividad_padre_id: 'g', nivel: 1 }),
+  ]
+  const f = frentesDelDia(
+    arbol, [a({ actividad_id: 't1', ultimo_parte: '2026-08-21T13:04:00Z' })], [], '2026-08-21')[0]
+  assert.equal(f.parteHoy, true)
+})
+
+test('UN PARTE DE AYER NO CUENTA COMO PARTE DE HOY', () => {
+  const arbol = [
+    nodo({ actividad_id: 'g', es_contenedor: true }),
+    nodo({ actividad_id: 't1', actividad_padre_id: 'g', nivel: 1 }),
+  ]
+  const f = frentesDelDia(arbol, [a({ actividad_id: 't1', ultimo_parte: '2026-08-20' })], [], '2026-08-21')[0]
+  assert.equal(f.parteHoy, false)
+})
+
+test('«SIN CUADRILLA» MIRA LO ABIERTO: una tarea terminada sin cuadrilla no para el frente', () => {
+  // El defecto que atrapa: contar todas las tareas deja en ámbar permanente cualquier frente con
+  // trabajo viejo cerrado sin cuadrilla cargada — que en esta obra son casi todas.
+  const arbol = [
+    nodo({ actividad_id: 'g', es_contenedor: true }),
+    nodo({ actividad_id: 't1', actividad_padre_id: 'g', nivel: 1 }),
+    nodo({ actividad_id: 't2', actividad_padre_id: 'g', nivel: 1 }),
+  ]
+  const f = frentesDelDia(arbol, [
+    a({ actividad_id: 't1', estado_operativo: 'hecha', cuadrilla_prevista: null }),
+    a({ actividad_id: 't2', cuadrilla_prevista: 'Cuadrilla 2' }),
+  ], [], '2026-08-21')[0]
+  assert.equal(f.sinCuadrilla, false)
+  assert.deepEqual(estadoDelFrente(f), { palabra: 'sin horas hoy', tono: 'faint' })
+})
+
+test('EL IMPEDIMENTO LE GANA A TODO: el frente está parado', () => {
+  const arbol = [
+    nodo({ actividad_id: 'g', es_contenedor: true }),
+    nodo({ actividad_id: 't1', actividad_padre_id: 'g', nivel: 1 }),
+  ]
+  const f = frentesDelDia(
+    arbol, [a({ actividad_id: 't1', impedimentos_abiertos: 1, cuadrilla_prevista: null })], [], '2026-08-21')[0]
+  assert.equal(estadoDelFrente(f).palabra, 'parado')
+  assert.deepEqual(resumenDeFrentes([f]), { abiertos: 1, conParte: 0, parados: 1 })
 })

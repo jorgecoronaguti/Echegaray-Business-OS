@@ -1,4 +1,5 @@
-import { Aviso, BotonEnlace } from '@/shared/components/ds'
+import { Aviso, BotonEnlace, Estado } from '@/shared/components/ds'
+import type { TonoEstado } from '@/shared/components/ds'
 import { PieDeAccion } from '@/features/jefe/components/ShellJefe'
 import {
   Barra, Encabezado, Fila, Metricas, Nada, Panel, Rotulo, porcentajeCorto,
@@ -7,7 +8,10 @@ import { IconoAlerta } from '@/features/jefe/components/Iconos'
 import { SinObra } from '@/features/jefe/components/SinObra'
 import { contextoDeObra, hoyEnObra } from '@/features/jefe/services/contexto'
 import { getActividades, getArbol, getHHDelDia, getImpedimentos } from '@/features/jefe/services/jefeService'
-import { frentesDelDia, estaTerminada } from '@/features/jefe/services/dia'
+import type { ActividadDelJefe } from '@/features/jefe/services/jefeService'
+import { estadoDelFrente, frentesDelDia, estaTerminada } from '@/features/jefe/services/dia'
+import { hhDeLaObra } from '@/features/jefe/services/progreso'
+import type { FrenteDelDia } from '@/features/jefe/services/dia'
 import { conObra } from '@/features/jefe/services/navegacion'
 import { detalleDeTarea } from '@/features/jefe/services/tareas'
 import { iniciales } from '@/features/jefe/services/personas'
@@ -82,6 +86,10 @@ export default async function JefeFrentePage({
     if (!idsDelFrente.has(h.actividad_id)) continue
     horasPorPersona.set(h.persona_id, (horasPorPersona.get(h.persona_id) ?? 0) + h.horas)
   }
+  const finPlan = finDelFrente(tareas)
+  // Las horas del frente salen de la MISMA regla que las de la obra en J03: sin una sola tarea que
+  // las declare, `null` — y `null` se escribe «sin plan de horas», nunca cero.
+  const { real: hhReales, plan: hhPlan } = hhDeLaObra(tareas)
   const nombreDe = new Map((esperados.data ?? []).map((e) => [e.id, e]))
   const marcaDe = new Map((presencia.data ?? []).map((p) => [p.persona_id, p]))
   const primerError = error ?? actividades.error ?? arbol.error ?? impedimentos.error ?? hh.error ?? null
@@ -99,29 +107,17 @@ export default async function JefeFrentePage({
           <div className="mb-1.5 truncate text-[11px] tracking-[0.06em] text-faint">
             {obra.nombre.toUpperCase()}
           </div>
-          <h1 className="mb-4 text-[20px] font-semibold leading-[1.28] text-ink">{f.frente.nombre}</h1>
-          <Barra pct={f.pct} tono={f.atrasoDias ? 'warn' : 'ink'} />
+          <h1 className="text-[20px] font-semibold leading-[1.28] text-ink">{f.frente.nombre}</h1>
+          <div className="mt-2">
+            <Estado tono={tonoDeEstado(f)} clave={estadoDelFrente(f).palabra} testid="estado-frente">
+              {estadoDelFrente(f).palabra}
+            </Estado>
+          </div>
         </section>
 
-        <Metricas
-          testid="jefe-frente-metricas"
-          metricas={[
-            {
-              clave: 'Avance',
-              valor: porcentajeCorto(f.pct),
-              sub: f.pct == null ? 'sin medir todavía' : `${f.medidas} de ${f.total} medidas`,
-              tono: f.atrasoDias ? 'warn' : 'ink',
-            },
-            { clave: 'HH hoy', valor: f.hhHoy === 0 ? '—' : String(f.hhHoy), sub: f.personasHoy === 0 ? 'nadie imputó' : `${f.personasHoy} personas` },
-            {
-              clave: 'Atraso',
-              valor: f.atrasoDias == null ? '—' : String(f.atrasoDias),
-              sub: f.atrasoDias == null ? 'sin plan vencido' : 'días pasado el plan',
-              tono: f.atrasoDias ? 'neg' : 'ink',
-            },
-          ]}
-        />
-
+        {/* EL PROBLEMA PRIMERO. Si el frente está parado, es lo primero de la pantalla: estaba
+            debajo de las tres métricas y había que bajar para enterarse de que nadie puede trabajar
+            ahí. Un impedimento abierto le gana a cualquier número. */}
         {impedimentosDelFrente.length > 0 && (
           <div>
             <Rotulo tono="neg">IMPEDIMENTOS ABIERTOS</Rotulo>
@@ -146,6 +142,48 @@ export default async function JefeFrentePage({
             </Panel>
           </div>
         )}
+
+        {/* EL AVANCE CON SU COBERTURA Y SU FECHA DE PLAN. El número solo no alcanza: «40 % sobre 3
+            de 11 tareas» y «40 % sobre 11 de 11» son dos afirmaciones muy distintas. */}
+        <section className="rounded-[14px] bg-surface px-[18px] py-4" data-testid="frente-avance">
+          <div className="mb-2.5 flex items-baseline justify-between gap-3">
+            <span className="text-[13px] text-muted">Avance del frente</span>
+            <span className="font-mono text-[24px] font-semibold tabular-nums text-ink">
+              {porcentajeCorto(f.pct)}
+            </span>
+          </div>
+          <Barra pct={f.pct} tono={f.atrasoDias ? 'warn' : 'ink'} />
+          <div className="mt-2 flex items-baseline justify-between gap-3 text-[12px]">
+            <span className="text-muted">
+              {f.pct == null ? 'sin medir todavía' : `${f.medidas} de ${f.total} medidas`}
+            </span>
+            <span className={finPlan == null ? 'text-faint' : f.atrasoDias ? 'text-neg' : 'text-muted'}>
+              {finPlan == null ? 'sin fin de plan' : `plan ${finPlan}`}
+            </span>
+          </div>
+        </section>
+
+        <Metricas
+          testid="jefe-frente-metricas"
+          metricas={[
+            // EL AVANCE YA ESTÁ ARRIBA, con su cobertura: repetirlo acá gastaba un tercio del
+            // encabezado en el mismo número. En su lugar van las HH del frente, que es lo que el
+            // contrato J06 pone al lado del avance — y HH no es avance, por eso van separadas.
+            {
+              clave: 'HH reales',
+              valor: hhReales == null ? '—' : formatearHH(hhReales),
+              sub: hhPlan == null ? 'sin plan de horas' : `de ${formatearHH(hhPlan)} plan`,
+              tono: hhReales != null && hhPlan != null && hhReales > hhPlan ? 'warn' : 'ink',
+            },
+            { clave: 'HH hoy', valor: f.hhHoy === 0 ? '—' : String(f.hhHoy), sub: f.personasHoy === 0 ? 'nadie imputó' : `${f.personasHoy} personas` },
+            {
+              clave: 'Atraso',
+              valor: f.atrasoDias == null ? '—' : String(f.atrasoDias),
+              sub: f.atrasoDias == null ? 'sin plan vencido' : 'días pasado el plan',
+              tono: f.atrasoDias ? 'neg' : 'ink',
+            },
+          ]}
+        />
 
         <div>
           <Rotulo extra={`${tareas.length} ${tareas.length === 1 ? 'tarea' : 'tareas'}`}>
@@ -254,4 +292,25 @@ export default async function JefeFrentePage({
       </PieDeAccion>
     </>
   )
+}
+
+/** `19.5` → `19,5`. Las HH son un dato, y van en el separador del país. */
+const formatearHH = (h: number) => new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1 }).format(h)
+
+/** El estado del frente, traducido al vocabulario de puntos del sistema (`ds/Estado`). */
+function tonoDeEstado(f: FrenteDelDia): TonoEstado {
+  const t = estadoDelFrente(f).tono
+  return t === 'neg' ? 'neg' : t === 'warn' ? 'warn' : t === 'ink' ? 'curso' : 'nulo'
+}
+
+/**
+ * El fin de plan DEL FRENTE: el de su tarea abierta que termina más tarde. `null` si ninguna lo
+ * tiene — un frente sin plan no está en fecha, está sin planificar, y las dos cosas no se dicen
+ * igual.
+ */
+function finDelFrente(tareas: ActividadDelJefe[]): string | null {
+  const fechas = tareas.filter((t) => !estaTerminada(t)).map((t) => t.fin_plan)
+    .filter((f): f is string => !!f).sort()
+  const ultima = fechas.at(-1)
+  return ultima ? `${ultima.slice(8, 10)}/${ultima.slice(5, 7)}` : null
 }

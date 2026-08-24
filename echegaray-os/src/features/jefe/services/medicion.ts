@@ -144,3 +144,41 @@ export function deltaHasta(objetivo: number, actual: number | null): number | nu
 
 /** Los cinco valores del pie de J04. Son los del contrato visual, no una escala inventada. */
 export const VALORES_MASIVOS = [25, 50, 75, 90, 100] as const
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LAS TRES VISTAS DE J04 — la lógica separada de su dibujo, porque `node --test` no entiende JSX.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+export type VistaMasiva = 'curso' | 'sin-arrancar' | 'todo'
+
+export const VISTAS_MASIVAS: readonly [VistaMasiva, string][] = [
+  ['curso', 'En curso'],
+  ['sin-arrancar', 'Sin arrancar'],
+  ['todo', 'Todo'],
+]
+
+/** En curso es lo que TODAVÍA SE PUEDE MOVER y ya arrancó. Al 100 % no se sube más. */
+export const enCurso = (f: Renglon): boolean => f.aplicable && (f.avance_pct ?? 0) > 0
+
+/**
+ * ¿Esta fila entra en la vista elegida?
+ *
+ * «Sin arrancar» incluye el avance en `null`: sin medir y en cero se tocan igual desde acá, y la
+ * fila ya dice cuál de las dos es. «Todo» incluye las que NO se pueden aplicar —terminadas, medidas
+ * por cantidad o por pasos—: se muestran apagadas con su motivo, nunca escondidas.
+ */
+export function enVista(f: Renglon, v: VistaMasiva): boolean {
+  if (v === 'todo') return true
+  if (v === 'curso') return enCurso(f)
+  return f.aplicable && (f.avance_pct ?? 0) === 0
+}
+
+/**
+ * Con qué vista abre la pantalla. «En curso» es lo que se cierra al final del día; en esta obra 60
+ * de 89 tareas ya están al 100 % y la lista completa entierra las cinco que el jefe vino a tocar.
+ * Si no hay ninguna en curso abre en «Todo»: un filtro que abre la pantalla vacía se lee como «esta
+ * obra no tiene tareas».
+ */
+export function vistaInicial(filas: Renglon[]): VistaMasiva {
+  return filas.some(enCurso) ? 'curso' : 'todo'
+}

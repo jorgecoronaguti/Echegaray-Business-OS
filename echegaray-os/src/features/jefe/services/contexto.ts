@@ -16,10 +16,17 @@ export interface Contexto {
   error: string | null
 }
 
-/** La fecha de hoy en San Juan. El servidor puede estar en UTC y ahí «hoy» arranca a las 21:00. */
+/**
+ * LA ZONA DE LA OBRA, ESCRITA UNA VEZ. San Juan comparte el huso con Buenos Aires y el nombre de la
+ * base de datos de zonas horarias es éste. Cada pantalla que la escriba por su cuenta es una que
+ * mañana queda en UTC: ahí «hoy» arranca a las 21:00 y una marca de las 07:12 se publica 10:12.
+ */
+export const ZONA_OBRA = 'America/Argentina/Buenos_Aires'
+
+/** La fecha de hoy en San Juan. */
 export function hoyEnObra(): string {
   return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit', day: '2-digit',
+    timeZone: ZONA_OBRA, year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(new Date())
 }
 
