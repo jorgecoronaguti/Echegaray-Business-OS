@@ -58,6 +58,7 @@ import {
 import { metricasDelPlazo } from '@/features/obras/services/metricasCronograma'
 import { LienzoCronogramaObra } from '@/features/obras/components/LienzoCronogramaObra'
 import { CabeceraDeObra } from '@/features/obras/components/CabeceraDeObra'
+import { SubTabsTrabajo } from '@/features/obras/components/SubTabsTrabajo'
 import { PopoverArrastre } from '@/features/obras/components/PopoverArrastre'
 import {
   Conflictos, Dependencias, PlanDeLaSeleccionada, textosDeConflicto,
@@ -185,6 +186,13 @@ export default async function CronogramaObraPage(
       </>
 
       <div className="flex flex-col gap-3 px-4 pt-4 lg:px-10">
+        {/* Nivel 3 (canónico 07): las cuatro maneras de operar el trabajo de la obra. Sin esto,
+            desde el cronograma no se podía llegar al parte diario ni a los subcontratos sin volver
+            al workspace — la cabecera marca «Trabajo» y ahí se terminaba la navegación.
+            NINGUNA queda activa a propósito: esta pantalla no es ninguna de las cuatro. Ver el
+            bloque «por qué en la 07 no queda ninguna activa» de `SubTabsTrabajo`. */}
+        <SubTabsTrabajo obraId={obraId} activa="ninguna" />
+
         <Barra
           vista={vista} unidad={unidad} enProyeccion={enProyeccion} verBase={verBase} href={href}
         />
