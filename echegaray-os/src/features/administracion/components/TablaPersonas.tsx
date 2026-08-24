@@ -23,11 +23,39 @@
 // hecho—. Se preserva la separación y se adapta lo visual: el oficio bajo el nombre, el rol bajo la
 // obra, categoría y cuadrilla en su columna.
 
+// ═══ EL PULSO DEL DÍA (Design 23/08, pantalla 19) ═══
+//
+// «Nada más salvo razón operativa fuerte» seguía valiendo, y las tres columnas nuevas —HOY, HH MES,
+// PAPELES— son exactamente esa razón: el canónico no dibuja un directorio, dibuja el estado del
+// plantel hoy. Ninguna sale de `persona_directorio`; llegan agrupadas desde la página, y por eso son
+// OPCIONALES: sin `pulso` la tabla es la de antes, que es lo que necesita cualquier pantalla que la
+// reuse sin pagar las tres lecturas extra.
+//
+// Cada silencio se escribe con su palabra —«sin fichar», «sin HH», «sin legajo»— y ninguno es 0. El
+// porqué de cada uno está en `services/pulsoDelPlantel.ts`, que es donde vive la regla.
+
 import Link from 'next/link'
-import { Tabla, THead, Th, Tr, Td, Nulo } from '@/shared/components/ds'
+import { Tabla, THead, Th, Tr, Td, Nulo, Estado } from '@/shared/components/ds'
 import { Avatar } from '@/shared/components/Avatar'
 import { esCategoriaDeConvenio, etiquetaCategoria, type PersonaEnDirectorio } from '../types'
 import { oficioVisible } from '../services/vocabularioPersona'
+import {
+  HOY_LABEL, HOY_TONO, estadoHoy, horasVisibles, lecturaDePapeles,
+  type EstadoDePapeles, type MarcaDeHoy,
+} from '../services/pulsoDelPlantel'
+
+/** Las tres lecturas del día, ya agrupadas por persona. Cada `disponible` en false apaga SU columna:
+ *  una lectura que falló no se dibuja como «no hay nada». */
+export interface PulsoDelPlantel {
+  marcas: Map<string, MarcaDeHoy>
+  hh: Map<string, number>
+  papeles: Map<string, EstadoDePapeles>
+  hoyDisponible: boolean
+  hhDisponible: boolean
+  /** En false la columna PAPELES no se dibuja: sin fuente de vencimientos sería una columna vacía
+   *  prometiendo un control que nadie está haciendo. */
+  papelesDisponible: boolean
+}
 
 /** dd/mm/aa en mono. Una fecha sin cargar se dice; un guión se lee como cero o como «no aplica». */
 function Fecha({ iso, falta }: { iso: string | null; falta: string }) {
@@ -37,14 +65,17 @@ function Fecha({ iso, falta }: { iso: string | null; falta: string }) {
 }
 
 export function TablaPersonas({
-  personas, conBaja = false,
+  personas, conBaja = false, pulso,
 }: {
   personas: PersonaEnDirectorio[]
   /** El listado de Inactivos agrega la fecha de baja. */
   conBaja?: boolean
+  /** Sin pulso la tabla es la de siempre: el día de hoy no se le pregunta a quien ya no está. */
+  pulso?: PulsoDelPlantel
 }) {
+  const conPapeles = pulso?.papelesDisponible ?? false
   return (
-    <Tabla testid="tabla-personas" minWidth={880}>
+    <Tabla testid="tabla-personas" minWidth={pulso ? 1180 : 880}>
       <THead>
         <Th>Persona</Th>
         {/* CATEGORÍA UOCRA y no «Categoría» a secas: es la del convenio, la que LIQUIDA. Debajo del
@@ -53,6 +84,11 @@ export function TablaPersonas({
         <Th>Categoría UOCRA</Th>
         <Th>Cuadrilla</Th>
         <Th>Obra actual</Th>
+        {/* LAS TRES DEL PULSO VAN JUNTAS Y ANTES DE LAS FECHAS: son lo que se mira todos los días;
+            el alta se mira una vez por persona en la vida. */}
+        {pulso && <Th>Hoy</Th>}
+        {pulso && <Th>HH mes</Th>}
+        {conPapeles && <Th>Papeles</Th>}
         <Th>Alta</Th>
         {conBaja && <Th>Baja</Th>}
         <Th>Estado</Th>
@@ -120,6 +156,52 @@ export function TablaPersonas({
                   )
                 : <Nulo>sin asignar</Nulo>}
             </Td>
+
+            {/* HOY — punto y palabra, y NUNCA la palabra «ausente». Que no haya marca incluye al que
+                no tiene teléfono, al que no le dio permiso al GPS y al que faltó: son el mismo
+                silencio visto desde acá, y convertirlo en una falta fabricaría una novedad de
+                liquidación. Quién faltó lo declara el jefe de obra, que es quien lo ve. */}
+            {pulso && (
+              <Td className="w-[110px]">
+                {pulso.hoyDisponible
+                  ? (() => {
+                      const e = estadoHoy(pulso.marcas.get(p.id))
+                      return <Estado tono={HOY_TONO[e]} clave={e} testid="hoy-persona">{HOY_LABEL[e]}</Estado>
+                    })()
+                  : <Nulo>sin lectura</Nulo>}
+              </Td>
+            )}
+
+            {/* HH MES — la persona sin imputaciones dice «sin HH», no 0. Las 19 filas legacy de
+                `registros_hh` llegan sin `persona_id` y no se reparten por parecido de nombre: un 0
+                acá afirmaría que alguien no trabajó en todo el mes. */}
+            {pulso && (
+              <Td className="w-[92px]">
+                {!pulso.hhDisponible
+                  ? <Nulo>sin lectura</Nulo>
+                  : pulso.hh.has(p.id)
+                    ? (
+                        <span data-testid="hh-mes" className="font-mono text-[12px] tabular-nums text-muted">
+                          {horasVisibles(pulso.hh.get(p.id) ?? 0)} h
+                        </span>
+                      )
+                    : <Nulo>sin HH</Nulo>}
+              </Td>
+            )}
+
+            {/* PAPELES — «sin legajo» y «al día» son dos respuestas opuestas que sin la cuenta de
+                filas serían los mismos tres ceros: un legajo revisado y uno que nadie abrió nunca. */}
+            {conPapeles && (
+              <Td className="w-[112px]">
+                {(() => {
+                  const l = lecturaDePapeles(pulso?.papeles.get(p.id))
+                  return l.tono === 'nulo'
+                    ? <Nulo>{l.texto}</Nulo>
+                    : <Estado tono={l.tono} clave={l.tono} testid="papeles-persona">{l.texto}</Estado>
+                })()}
+              </Td>
+            )}
+
             <Td className="w-[90px]"><Fecha iso={p.fecha_ingreso} falta="sin cargar" /></Td>
             {conBaja && (
               <Td className="w-[110px]">
