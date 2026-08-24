@@ -259,7 +259,8 @@ test('el derrame de la F llega SÓLO al cuadro 4: en el cuadro 3 taparía el con
   // Y la contraprueba: en el cuadro 3 esas columnas SÍ tienen plata, que es lo que el derrame taparía
   // si alguien declarara `texto` en la F de una de sus filas.
   assert.ok(!libre(conCola[cuadro3[0] - 1]?.[6]), 'la G del cuadro 3 lleva el contratado')
-  // Y cubre lo que tiene que cubrir: las siete obras y el residuo. El ENCABEZADO ya no entra: es un
-  // rótulo de columna, no prosa de auditoría, y como rótulo se alinea con su columna y no derrama.
-  assert.deepEqual(textoEnF, [...g.filasCosto, g.fSinImputar])
+  // Y cubre lo que tiene que cubrir: las siete obras, el residuo y el cuadro 5 (su F es la Nota,
+  // también texto, con G/H/I vacías — el primer bucle ya lo verificó). El ENCABEZADO ya no entra:
+  // es un rótulo de columna, no prosa de auditoría, y como rótulo se alinea con su columna.
+  assert.deepEqual(textoEnF, [...g.filasCosto, g.fSinImputar, ...g.filasMateriales])
 })

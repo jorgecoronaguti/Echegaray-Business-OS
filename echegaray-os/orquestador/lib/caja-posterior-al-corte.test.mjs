@@ -5,8 +5,11 @@ import {
   formulaNetaPosterior, formulaUltimoSaldo, formulaFechaCorte, COB, CHQ, CMP,
   formulaCobrosEfectivoPosteriores, formulaComprasEfectivoPosteriores,
   formulaDepositosEfectivoPosteriores, formulaNetaEfectivoPosterior, DEP, formulaFrescuraCaja,
-  formulaJornalesEfectivoPosteriores, formulaJornalesBancoPosteriores, celdaJornalesEfectivo, JOR } from './caja-posterior-al-corte.mjs'
+  formulaJornalesEfectivoPosteriores, formulaJornalesBancoPosteriores, celdaJornalesEfectivo, JOR,
+  formulaOficinaEfectivoPosteriores, formulaExtraccionesEfectivoPosteriores, OFI,
+  formulaFechaUltimoEfectivo, celdaFechaDelEfectivo } from './caja-posterior-al-corte.mjs'
 import { COL_FECHA_CAJA, colIndex } from './rubro-caja.mjs'
+import { anclaDeSalida } from './caja-ancla-por-instante.mjs'
 
 test('las compras pagadas posteriores restan sólo Transferencia y Débito, después del corte', () => {
   const f = formulaComprasPagadasPosteriores('$F$19')
@@ -455,4 +458,120 @@ test('el renglón del desglose de la nómina lleva el signo puesto y es la MISMA
 test('las fórmulas de la nómina van en es-AR: separador ; y nunca ,', () => {
   assert.ok(!formulaJornalesEfectivoPosteriores('$F$7').includes(','))
   assert.ok(!formulaJornalesBancoPosteriores('$F$9').includes(','))
+})
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// LA FECHA DEL ÚLTIMO MOVIMIENTO DE EFECTIVO (24/08/2026)
+//
+// El dueño: *"la fila 7 q marca el efectivo disponible me confunde con la fecha del saldo porque se
+// realizaron cobranzas en efectivo y pagos pero no me indica la fecha del ultimo movimiento de
+// efectivo"*. `CAJA!C7` = conteo + SEIS fuentes de movimientos posteriores; `CAJA!D7` publicaba el día
+// del conteo. El saldo llegaba a hoy y su fecha se quedaba en el 19/08.
+//
+// EL DEFECTO QUE ESTOS TESTS ATRAPAN no es "falta una fórmula": es que la fecha mire OTRA VENTANA que
+// la suma. Una fecha que la suma ve y el MAX no reproduce exactamente lo que el dueño reportó, ahora
+// escondido detrás de una fecha que parece calculada.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+const ANCLA = '$F$34'
+const ULTIMA = formulaFechaUltimoEfectivo(ANCLA)
+
+test('la fecha del último efectivo mira LAS SEIS FUENTES que mueven el saldo, ninguna menos', () => {
+  // Si mañana alguien agrega un séptimo canal al neto y no lo agrega acá, el saldo se movería con una
+  // fecha que no lo acompaña — el defecto original, de nuevo.
+  assert.match(ULTIMA, /'Cobranzas'!\$O\$5:\$O="Cobrado"/, '1/6 cobros en efectivo')
+  assert.match(ULTIMA, /'Cobranzas'!\$N\$5:\$N="Efectivo"/)
+  assert.match(ULTIMA, /'Cobranzas'!\$AA\$5:\$AA<>"USD"/, 'un cobro en dólares no es un billete de este cajón')
+  assert.match(ULTIMA, /'Compras'!\$P\$4:\$P="Efectivo"/, '2/6 pagos en efectivo')
+  assert.match(ULTIMA, /'Compras'!\$X\$4:\$X="Pagado"/, 'la rama Pagado')
+  assert.match(ULTIMA, /'Compras'!\$X\$4:\$X="Pendiente"/, 'y la rama del parcial, que también es billete que salió')
+  assert.ok(ULTIMA.includes(JOR.pagado) && ULTIMA.includes(JOR.adelanto) && ULTIMA.includes(JOR.recibo), '3/6 jornales')
+  assert.ok(ULTIMA.includes(OFI.pago) && ULTIMA.includes(OFI.banco) && ULTIMA.includes(OFI.pagado), '4/6 oficina')
+  assert.match(ULTIMA, /SEARCH\("extraccion"/, '5/6 extracciones del banco')
+  assert.match(ULTIMA, /SEARCH\("retiro de efectivo"/)
+  assert.match(ULTIMA, /SEARCH\("deposito"/, '6/6 depósitos al banco')
+  assert.match(ULTIMA, /SEARCH\("efvo"/, 'con las dos redacciones del Santander, igual que el importe')
+  assert.equal(ULTIMA.match(/SUMPRODUCT\(MAX\(/g)?.length, 6, 'seis fuentes, seis MAX: ni uno de más ni uno de menos')
+})
+
+test('EL DEFECTO: cada fuente usa EXACTAMENTE la misma ventana con la que su importe entra al saldo', () => {
+  // Es LA prueba. Una fecha que mira una ventana distinta de la que suma vuelve a publicar un saldo
+  // nuevo con fecha vieja (si el MAX ve de menos) o frescura por plata no contada (si ve de más).
+  const salida = anclaDeSalida(ANCLA)
+  // Las SALIDAS miran el ancla corrida un día; las ENTRADAS, el ancla pelada. Es la asimetría declarada
+  // en caja-ancla-por-instante.mjs y la que usa `historicoEfectivo` para los seis renglones del neto.
+  for (const [que, importe] of [
+    ['compras', formulaComprasEfectivoPosteriores(salida)],
+    ['jornales', formulaJornalesEfectivoPosteriores(salida)],
+    ['oficina', formulaOficinaEfectivoPosteriores(salida)],
+    ['depósitos', formulaDepositosEfectivoPosteriores(salida)],
+  ]) {
+    assert.ok(importe.includes(`>=INT(${salida})`), `${que}: el importe entra desde el ancla de salida`)
+    assert.ok(ULTIMA.includes(`>=INT(${salida})`), `${que}: y la fecha tiene que mirar ESA ventana, no otra`)
+  }
+  // Las dos entradas: cobros compara contra el ancla PELADA (así lo hace su SUMIFS) y la extracción
+  // contra INT del ancla (así lo hace su SUMPRODUCT). Las dos, exclusivas.
+  assert.ok(formulaCobrosEfectivoPosteriores(ANCLA).includes(`">"&${ANCLA}`))
+  assert.ok(ULTIMA.includes(`>${ANCLA})`), 'cobros: el mismo borde que su SUMIFS, sin INT')
+  assert.ok(formulaExtraccionesEfectivoPosteriores(ANCLA).includes(`>INT(${ANCLA})`))
+  assert.ok(ULTIMA.includes(`>INT(${ANCLA})`), 'extracciones: el mismo borde que su SUMPRODUCT')
+  // Y NINGUNA fuente puede mirar el ancla con un criterio que su importe no tenga.
+  assert.doesNotMatch(ULTIMA, /<=INT/)
+})
+
+test('la fecha de Compras se coacciona igual que su importe: la tipeada no puede quedar invisible', () => {
+  // La "Fecha de caja" convive como serial y como texto "dd/mm/aaaa". Un MAX crudo se queda con la
+  // última que entró como número y pierde las tipeadas EN SILENCIO: el saldo baja por un pago y la
+  // fecha no se entera. Es el mismo remedio que ya usa el importe, no uno nuevo.
+  const coerc = `IFERROR(DATEVALUE('Compras'!$AD$4:$AD&"");N('Compras'!$AD$4:$AD))`
+  assert.ok(formulaComprasEfectivoPosteriores(ANCLA).includes(coerc))
+  assert.ok(ULTIMA.includes(coerc), 'la fecha de caja, con DATEVALUE como en el importe')
+  assert.ok(ULTIMA.includes(`IFERROR(DATEVALUE('Compras'!$C$4:$C&"");N('Compras'!$C$4:$C))`),
+    'y la fecha de carga, que es la que usa la rama del pago parcial')
+})
+
+test('una fila SIN PLATA no puede fechar el saldo — el factor que el importe no necesita escribir', () => {
+  // `Compras` tiene cientos de filas "Pendiente" con tipo de pago Efectivo y sin monto pagado: su fecha
+  // de carga es la de ayer y aportan $0. La fórmula de importe las anula sola porque MULTIPLICA por el
+  // monto; el MAX multiplica por la FECHA, así que sin este factor D7 diría "el último movimiento fue
+  // ayer" cada vez que alguien carga una factura que todavía no pagó.
+  assert.match(ULTIMA, /\(N\('Compras'!\$T\$4:\$T\)<>0\)/, 'compras: sólo las filas con monto pagado')
+  assert.match(ULTIMA, /\(N\('Cobranzas'!\$M\$5:\$M\)<>0\)/, 'cobranzas: sólo las que trajeron plata')
+  assert.match(ULTIMA, /\(\(N\(JORNALES_REAL_ADELANTO\)\+N\(JORNALES_REAL_RECIBO\)\)<>0\)/,
+    'jornales: una quincena pagada 100% por banco no mueve el cajón y no puede fecharlo')
+  assert.match(ULTIMA, /\(\(N\(OFICINA_PAGADO\)-N\(OFICINA_BANCO\)\)<>0\)/,
+    'oficina: un mes pagado entero por transferencia tampoco')
+})
+
+test('SIN MOVIMIENTOS QUEDA EL DÍA DEL CONTEO, y sin ancla no se inventa ninguna fecha', () => {
+  // Cada término vale 0 cuando no matchea nada, y un 0 formateado como fecha se dibuja 30/12/1899 —
+  // el defecto que la guarda de CAJA!D7 ya evitaba y que no se puede reintroducir por atrás.
+  assert.ok(ULTIMA.startsWith(`=IF(NOT(ISNUMBER(${ANCLA}));"";MAX(INT(${ANCLA});`),
+    'el piso del MAX es el día del conteo, y sin ancla la celda queda vacía, no en 1899')
+  // El anexo pasa el DÍA que CAJA muestra como piso, no INT del instante: el instante puede caer del
+  // otro lado de la medianoche y publicaría un día que el conteo no tuvo (ver diaDelConteo).
+  const conNombre = formulaFechaUltimoEfectivo(ANCLA, { conteo: 'ANEXO_CONTEO_ARS_DIA' })
+  assert.match(conNombre, /MAX\(ANEXO_CONTEO_ARS_DIA;/)
+  assert.ok(!conNombre.includes(`MAX(INT(${ANCLA});`))
+})
+
+test('la celda que fecha el efectivo es UNA sola definición, y nunca cae en 0', () => {
+  // CAJA!D7 y el control "Efectivo en el cajón HOY" del anexo muestran el MISMO número: si cada una
+  // armara su fecha, el archivo tendría dos fechas para la misma plata.
+  assert.equal(celdaFechaDelEfectivo('ANEXO_CONTEO_ARS_DIA', 'ANEXO_EFECTIVO_ULTIMO_DIA'),
+    '=IF(ISNUMBER(ANEXO_CONTEO_ARS_DIA);IF(ISNUMBER(ANEXO_EFECTIVO_ULTIMO_DIA);ANEXO_EFECTIVO_ULTIMO_DIA;ANEXO_CONTEO_ARS_DIA);"")')
+  // Sin fuente de movimientos —la caja en dólares— la celda queda EXACTAMENTE como estaba.
+  assert.equal(celdaFechaDelEfectivo('ANEXO_CONTEO_USD_DIA'),
+    '=IF(ISNUMBER(ANEXO_CONTEO_USD_DIA);ANEXO_CONTEO_USD_DIA;"")')
+})
+
+test('la fórmula de la fecha va en es-AR y usa el idioma de la casa para el array', () => {
+  // Separador `;`: con `,` la API escribe una fórmula que el archivo no puede parsear.
+  assert.ok(!ULTIMA.includes(','), 'ni una coma: el locale del archivo es es-AR')
+  // SUMPRODUCT(MAX(...)) y no ARRAYFORMULA: en una celda de fecha un ARRAYFORMULA derramaría sobre la
+  // de al lado. Es el mismo idioma de formulaUltimoSaldo y formulaUltimaFecha.
+  assert.doesNotMatch(ULTIMA, /ARRAYFORMULA/)
+  // Rangos ABIERTOS: una fila final tipeada deja de ver lo nuevo y NO da error.
+  assert.doesNotMatch(ULTIMA, /\$[A-Z]{1,2}\$\d+:\$[A-Z]{1,2}\$\d+/)
+  assert.doesNotMatch(ULTIMA, /TODAY\(\)/, 'la fecha del saldo sale del dato, nunca del reloj de la corrida')
 })

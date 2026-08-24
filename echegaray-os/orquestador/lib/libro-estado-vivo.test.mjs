@@ -302,8 +302,15 @@ test('SIN NETEO, EL LIBRO NO SE PUBLICA: el aborto NOMBRA la columna que no enco
 
 test('EL SCRIPT EXIGE EL NETEO: no queda ningún camino que degrade a importes pegados', () => {
   const fuente = fs.readFileSync(path.join(AQUI, '../scripts/libro-movimientos-pestana.mjs'), 'utf8')
-  assert.match(fuente, /OBRAS_FUTURAS\.length \? exigirColumnasNeteo\(compras\)/,
+  // 24/08: los egresos de obra dejaron de salir de las constantes y salen del cuadro 5 de la pestaña
+  // OBRAS (el dueño editó ahí las fechas). La guarda es la misma y sigue siendo obligatoria — sólo
+  // cambió QUÉ se cuenta para saber si hay algo que netear.
+  assert.match(fuente, /cuadro5\.movimientos\.length \? exigirColumnasNeteo\(compras\)/,
     'la guarda del neteo dejó de exigir las columnas: revisá libro-movimientos-pestana.mjs')
+  // Y la segunda puerta: el cuadro 5 no publica el cliente ni el inicio de la obra, así que un grupo
+  // sin ficha tampoco puede netear. Ahí también se aborta, con la obra y el proveedor adentro.
+  assert.match(fuente, /exigirNeteoDeMateriales\(obrasFuturas\)/,
+    'el camino sin ficha de obra volvió a degradar a importes pegados')
   // El degradado silencioso vuelve como un aviso —`console.warn`/`console.log`— que anuncia importes
   // pegados o columnas sin resolver y una corrida que sigue igual. Ése es el patrón prohibido.
   const blando = fuente.split('\n').filter((l) => /console\.(warn|log)/.test(l)
