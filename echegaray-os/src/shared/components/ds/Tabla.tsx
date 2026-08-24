@@ -122,7 +122,7 @@ export function Td({
     <td
       {...props}
       className={`px-3 align-middle first:pl-0 last:pr-0 ${
-        num ? 'text-right font-mono text-[12.5px] tabular-nums text-ink' : `text-[13px] ${fuerte ? 'text-ink' : 'text-ink-soft'}`
+        num ? 'text-right font-mono text-[12.5px] tabular-nums text-ink' : `text-[12.5px] ${fuerte ? 'text-ink' : 'text-ink-soft'}`
       } ${className}`}
     >
       {children}

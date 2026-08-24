@@ -93,7 +93,7 @@ test('el número de una celda va SIEMPRE en ink, sin depender de `fuerte` (espec
 
   // El defecto: el número heredaba `ink-soft` salvo que quien escribió la pantalla se acordara de
   // pasar `fuerte`, así que la MISMA columna de importes salía en dos tintas según el módulo.
-  const rama = td.slice(td.indexOf('num ?'), td.indexOf(': `text-[13px]'))
+  const rama = td.slice(td.indexOf('num ?'), td.indexOf(': `text-[12.5px]'))
   assert.match(rama, /font-mono/)
   assert.match(rama, /tabular-nums/)
   assert.match(rama, /text-ink/)

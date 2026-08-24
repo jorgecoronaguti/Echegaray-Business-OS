@@ -92,7 +92,7 @@
      consumen por Tailwind (`h-fila`, `h-thead`…); un `h-[46px]` suelto en un componente es la
      forma en que dos filas que deberían medir lo mismo dejan de medirlo. */
   --os-header-h: 48px; /* header global, una línea */
-  --os-row-h: 46px; /* fila de tabla */
+  --os-row-h: 44px; /* fila de tabla */
   --os-row-h-compacta: 38px; /* fila del Gantt y de la tabla que se le alinea 1:1 */
   --os-thead-h: 32px; /* encabezado de tabla */
   --os-disclosure-h: 44px; /* fila plegable / de rubro */

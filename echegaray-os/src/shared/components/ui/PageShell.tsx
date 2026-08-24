@@ -67,7 +67,7 @@ export function PageShell({
           marco no llega a dibujarse y el sello conserva la hora de la última vez que hubo datos —que
           es lo que el `error.tsx` muestra. Ver `shared/components/estado/SelloDatoBueno.tsx`. */}
       <SelloDatoBueno />
-      <div className="w-full px-4 py-6 lg:px-10">
+      <div className="w-full px-4 py-6 lg:px-6">
         <div className={maxWidth}>
           {encabezado && (
             <header className="mb-5 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
