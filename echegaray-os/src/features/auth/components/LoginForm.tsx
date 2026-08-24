@@ -92,7 +92,9 @@ export function LoginForm() {
       )}
 
       <Boton type="submit" variante="primaria" tamano="acceso" disabled={pending} className="mt-1">
-        {pending ? 'Entrando…' : 'Entrar'}
+        {/* «Ingresar», la misma palabra del título: dos verbos para la misma acción en la misma
+            pantalla hacen dudar de si son dos cosas. */}
+        {pending ? 'Ingresando…' : 'Ingresar'}
       </Boton>
 
       {/* Debajo de la primaria y sin competir con ella: es la salida de quien ya falló, no la
