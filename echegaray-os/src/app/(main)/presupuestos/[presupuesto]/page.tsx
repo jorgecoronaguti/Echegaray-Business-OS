@@ -30,9 +30,12 @@ import { TablaPartidas } from '@/features/presupuestos/components/TablaPartidas'
 import { PanelPartida } from '@/features/presupuestos/components/PanelPartida'
 import { AltaPartida } from '@/features/presupuestos/components/AltaPartida'
 import { AccionesPresupuesto } from '@/features/presupuestos/components/AccionesPresupuesto'
-import { Aviso, Ayuda, EntityHeader, Estado, Plegable } from '@/shared/components/ds'
-import { IconoCerrar, IconoCrear } from '@/shared/components/iconos'
+import { Aviso, Ayuda, Estado, Plegable } from '@/shared/components/ds'
 import { EstadoError } from '@/shared/components/estado'
+import {
+  BandaDetalle, BotonMarca, BotonPlano, C, LineaCampos, PastillaTitulo, TONO,
+  IcoCerrar, IcoCliente, IcoMas,
+} from '@/shared/components/canon'
 
 export const dynamic = 'force-dynamic'
 
@@ -83,59 +86,65 @@ export default async function PresupuestoPage({
   const rubros = [...new Set(lista.map(rubroDe))]
   const subFuera = subcontratadasFueraDelPrecio(lista)
 
-  return (
-    <div className="min-h-screen bg-canvas">
-      <div className="w-full px-4 pt-6 lg:px-10">
-        {/* ENCABEZADO CLARO, NO SLAB GRAFITO (Design 23/08 · pantallas 13/15/16): el presupuesto se
-            EDITA, no se consulta como una ficha. Una barra oscura de 96px arriba de una tabla que
-            se recorre celda por celda roba el contraste que necesita la tabla, y obliga a que las
-            acciones —congelar, versionar, convertir— se dibujen en blancos translúcidos que no son
-            tokens del sistema. */}
-        <EntityHeader
-          volverA="/presupuestos"
-          volverLabel="Presupuestos"
-          titulo={presupuesto.obra_nombre ?? 'sin objeto'}
-          // LA LÍNEA DE CAMPOS DEL CANON 15: cliente · cuántas partidas · cuándo se cotizó. El
-          // TAMAÑO del presupuesto es dato de identidad —«68 partidas» dice de qué se está
-          // hablando antes de bajar a la tabla— y estaba sólo adentro de la tarjeta TOTAL.
-          //
-          // La VERSIÓN se fue al chip de estado («Enviado · rev 1»): estado y revisión se leen
-          // juntos siempre —«¿qué revisión mandé?»— y separados obligaban a cruzar la pantalla.
-          // El NÚMERO se queda: es la identidad con la que el cliente lo nombra por teléfono, y el
-          // canon lo omite porque su maqueta no tenía que abrir un enlace mandado por chat.
-          campos={[
-            { rotulo: 'Presupuesto', valor: presupuesto.numero, falta: 'sin número' },
-            { rotulo: 'Cliente', valor: presupuesto.cliente, falta: 'sin cliente' },
-            {
-              rotulo: 'Partidas',
-              valor: `${presupuesto.n_partidas} ${presupuesto.n_partidas === 1 ? 'partida' : 'partidas'}`,
-            },
-            { rotulo: 'Cotizado', valor: fecha(presupuesto.fecha_cotizacion), falta: 'sin fecha' },
-            ...(congelado
-              ? [{ rotulo: 'Congelado', valor: fecha(presupuesto.congelada_en), falta: 'sin fecha' }]
-              : []),
-          ]}
-          derecha={
-            <Estado tono={e.tono} clave={e.clave}>
-              {`${e.label} · rev ${presupuesto.version}${presupuesto.vigente ? '' : ' · reemplazada'}`}
-            </Estado>
-          }
-          acciones={
-            <AccionesPresupuesto
-              id={presupuesto.id}
-              estado={presupuesto.estado}
-              congelado={congelado}
-              puedeCongelar={congelar.puede}
-              motivoCongelar={congelar.motivo}
-              puedeConvertir={convertir.puede}
-              motivoConvertir={convertir.motivo}
-              hrefConvertir={`/presupuestos/${presupuesto.id}/convertir`}
-            />
-          }
-        />
-      </div>
+  const tono = TONO[e.tono === 'pos' ? 'pos' : e.tono === 'curso' ? 'curso' : e.tono === 'neg' ? 'neg' : e.tono === 'warn' ? 'warn' : 'neutro']
 
-      <div className="w-full px-4 pb-5 lg:px-10">
+  return (
+    <div style={{ minHeight: '100vh', background: C.fondo, display: 'flex', flexDirection: 'column' }}>
+      {/* LA BANDA BLANCA DEL CANÓNICO 15: miga de pan, título de 21px, la pastilla de estado con su
+          revisión al lado, las acciones a la derecha y la línea de campos debajo. Antes era el
+          `EntityHeader` del DS, que apila los campos como pares rótulo/valor y ocupa el doble de
+          alto: en un MacBook de 13" empujaba la tabla —que es lo que se vino a mirar— fuera de la
+          primera pantalla.
+
+          ENCABEZADO CLARO, NO SLAB GRAFITO: el presupuesto se EDITA, no se consulta como una ficha.
+          Una barra oscura arriba de una tabla que se recorre celda por celda le roba el contraste
+          que la tabla necesita. */}
+      <BandaDetalle
+        testid="banda-presupuesto"
+        miga={[
+          { texto: 'Presupuestos', href: '/presupuestos' },
+          { texto: presupuesto.obra_nombre ?? 'sin objeto' },
+        ]}
+        titulo={presupuesto.obra_nombre ?? 'sin objeto'}
+        pastillas={
+          // ESTADO Y REVISIÓN SE LEEN JUNTOS SIEMPRE —«¿qué revisión mandé?»— y separados obligaban
+          // a cruzar la pantalla. Es la pastilla del canónico: «Enviado · rev 1».
+          <PastillaTitulo color={tono.color} fondo={tono.fondo} borde={tono.borde} testid="estado-presupuesto">
+            {`${e.label} · rev ${presupuesto.version}${presupuesto.vigente ? '' : ' · reemplazada'}`}
+          </PastillaTitulo>
+        }
+        acciones={
+          <AccionesPresupuesto
+            id={presupuesto.id}
+            estado={presupuesto.estado}
+            congelado={congelado}
+            puedeCongelar={congelar.puede}
+            motivoCongelar={congelar.motivo}
+            puedeConvertir={convertir.puede}
+            motivoConvertir={convertir.motivo}
+            hrefConvertir={`/presupuestos/${presupuesto.id}/convertir`}
+          />
+        }
+        campos={
+          // LA LÍNEA DE CAMPOS DEL CANÓNICO: cliente · cuántas partidas · cuándo se cotizó. El
+          // TAMAÑO del presupuesto es dato de identidad —«68 partidas» dice de qué se está hablando
+          // antes de bajar a la tabla—. El NÚMERO se agrega: es la identidad con la que el cliente
+          // lo nombra por teléfono, y el canónico lo omite porque su maqueta no tenía que abrir un
+          // enlace mandado por chat.
+          <LineaCampos
+            testid="campos-presupuesto"
+            campos={[
+              <><IcoCliente s={13} />{presupuesto.cliente ?? 'sin cliente'}</>,
+              <span key="n" className="font-mono tabular-nums">{presupuesto.numero ?? 'sin número'}</span>,
+              `${presupuesto.n_partidas} ${presupuesto.n_partidas === 1 ? 'partida' : 'partidas'}`,
+              <span key="f" className="font-mono tabular-nums">{fecha(presupuesto.fecha_cotizacion) ?? 'sin fecha'}</span>,
+              congelado ? <span key="c">congelado {fecha(presupuesto.congelada_en) ?? 'sin fecha'}</span> : null,
+            ]}
+          />
+        }
+      />
+
+      <div style={{ padding: '14px 20px 20px' }}>
         {congelado && (
           // CONGELADO ES UN ESTADO, NO UN PROBLEMA: vive en la línea de campos del encabezado. Lo
           // que sí hace falta explicar —que ya no se edita y que para cambiarlo se versiona— pasó a
@@ -164,7 +173,7 @@ export default async function PresupuestoPage({
             mismo número, pero al lado de las filas que hay que arreglar. */}
         <ResumenPresupuesto p={presupuesto} />
 
-        <div className="mt-2">
+        <div className="mt-3">
           <Plegable titulo="Cómo se llega a ese precio" testid="cascada-plegable">
             <CascadaPrecio p={presupuesto} />
           </Plegable>
@@ -181,17 +190,19 @@ export default async function PresupuestoPage({
             seleccionada={partidaId ?? null}
             congelado={congelado}
             accion={
+              // «Partida» y no «Nueva partida»: es el rótulo del canónico (`15:100`), y en una
+              // barra donde el botón está al lado de la tabla de partidas la palabra «nueva» no
+              // agrega nada.
               !congelado && (
-                <Link
-                  href={nueva === '1' ? `/presupuestos/${id}` : `/presupuestos/${id}?nueva=1`}
-                  data-testid="abrir-alta-partida"
-                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-control px-3 py-[6px] text-[12.5px] ${
-                    nueva === '1' ? 'border border-line text-ink' : 'bg-marca font-semibold text-[color:var(--os-on-marca)]'
-                  }`}
-                >
-                  {nueva === '1' ? <IconoCerrar className="h-[14px] w-[14px]" /> : <IconoCrear className="h-[14px] w-[14px]" />}
-                  {nueva === '1' ? 'Cancelar' : 'Partida'}
-                </Link>
+                nueva === '1' ? (
+                  <BotonPlano href={`/presupuestos/${id}`} testid="abrir-alta-partida">
+                    <IcoCerrar s={14} /> Cancelar
+                  </BotonPlano>
+                ) : (
+                  <BotonMarca href={`/presupuestos/${id}?nueva=1`} testid="abrir-alta-partida">
+                    <IcoMas s={14} /> Partida
+                  </BotonMarca>
+                )
               )
             }
           />

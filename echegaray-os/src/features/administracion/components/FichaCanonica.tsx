@@ -76,7 +76,10 @@ export function CabeceraFicha({
   testid?: string
 }) {
   return (
-    <div data-testid={testid} className="border-b border-line bg-surface px-4 pt-2.5 lg:px-5">
+    // `px-5 pt-[9px]` = el `padding:9px 20px 0` del canónico (`23:37`, `26:37`), idéntico en las
+    // dos fichas y en las dos bandas de detalle (15 y 16). Era `px-4 lg:px-5`: 16px en el teléfono
+    // y 20 en escritorio, o sea la banda arrancaba en una vertical distinta que la tabla de abajo.
+    <div data-testid={testid} className="border-b border-line bg-surface px-5 pt-[9px]">
       <div className="flex items-center gap-[7px] text-[11.5px] text-faint">
         <Link href={volverA} data-testid="ficha-volver" className="transition-colors hover:text-ink">
           {volverLabel}
@@ -176,7 +179,10 @@ export function TarjetaFicha({
       data-testid={testid}
       className="overflow-hidden rounded-[10px] border border-line bg-surface"
     >
-      <div className="flex items-center gap-2.5 border-b border-[#EFEEEA] px-3.5 py-2.5">
+      {/* `px-3.5 py-[11px]` = el `padding:11px 14px` del canónico (`23:213`, `26:196`). Era
+          `py-2.5` (10px): un píxel por tarjeta que, con cinco tarjetas apiladas en el aside, corre
+          el bloque de abajo cinco píxeles respecto de la columna de al lado. */}
+      <div className="flex items-center gap-2.5 border-b border-[#EFEEEA] px-3.5 py-[11px]">
         {icono && <span className="flex text-muted">{icono}</span>}
         <h2 className="text-[12.5px] font-semibold text-ink">{titulo}</h2>
         {indicador != null && (
@@ -194,7 +200,10 @@ export function DatoFicha({
 }: { k: string; v: ReactNode | null; mono?: boolean; falta?: string }) {
   return (
     <div className="flex items-center gap-2.5 border-b border-[#F5F4F0] py-2 last:border-0">
-      <span className="w-[92px] shrink-0 text-[11.5px] text-muted">{k}</span>
+      {/* 96px — `23:302`. El ancho FIJO del rótulo es lo que alinea los valores en una columna:
+          con el rótulo libre, «CUIT» y «Condición pago» empujan el valor a dos sangrías distintas y
+          la lista deja de leerse de arriba abajo. */}
+      <span className="w-[96px] shrink-0 text-[11.5px] text-muted">{k}</span>
       <span
         className={`min-w-0 flex-1 truncate text-[12px] ${
           v == null ? 'text-faint' : mono ? 'font-mono tabular-nums text-ink' : 'text-ink'

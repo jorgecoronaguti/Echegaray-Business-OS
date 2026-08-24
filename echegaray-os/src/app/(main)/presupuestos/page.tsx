@@ -10,8 +10,13 @@
 // Por eso la pantalla se cierra entera y lo DICE. «Sin permiso» y «sin datos» son cosas opuestas y
 // confundirlas hace que un permiso faltante parezca una empresa sin trabajo.
 //
-// Lo que el jefe de obra sí necesita del presupuesto le llega convertido en actividades, con HH y
-// sin plata — que es exactamente el corte que hace `convertir_partida_a_plan`.
+// ═══ POR QUÉ ESTA PANTALLA NO USA `PageShell` (porte 24/08) ═══
+//
+// `PageShell` dibuja padding 16/24px, un `h1` de 22px y un ancho de lectura. El canon 14 dibuja
+// padding de 20px, título de 19px y la tabla a sangre, en una caja que llega hasta el borde del
+// contenido. Meter el canon adentro del shell da la pantalla anterior con otros colores. Lo único
+// del shell que NO se puede perder es `SelloDatoBueno` —es de donde `error.tsx` saca la hora del
+// último dato bueno—, así que se monta acá directo.
 
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/features/auth/services/authService'
@@ -22,9 +27,11 @@ import { esFiltro } from '@/features/presupuestos/services/cartera'
 import { crearPresupuesto } from '@/features/presupuestos/services/actions'
 import { ListaPresupuestos } from '@/features/presupuestos/components/ListaPresupuestos'
 import { CamposPresupuesto } from '@/features/presupuestos/components/CamposPresupuesto'
-import { Aviso, Ayuda, BotonEnlace } from '@/shared/components/ds'
+import { Aviso } from '@/shared/components/ds'
 import { EstadoError } from '@/shared/components/estado'
+import { SelloDatoBueno } from '@/shared/components/estado/SelloDatoBueno'
 import { PageShell, FormAccion } from '@/shared/components/ui'
+import { BotonMarca, BotonPlano, C, IcoCerrar, IcoMas, TARJETA } from '@/shared/components/canon'
 
 export const dynamic = 'force-dynamic'
 
@@ -73,52 +80,57 @@ export default async function PresupuestosPage({
 
   const abierta = nuevo === '1'
 
-  return (
-    <PageShell
-      title="Presupuestos"
-      right={
-        !error && (
-          <BotonEnlace
-            href={abierta ? '/presupuestos' : '/presupuestos?nuevo=1'}
-            variante={abierta ? 'secundaria' : 'primaria'}
-            data-testid="abrir-alta-presupuesto"
-          >
-            {abierta ? 'Cancelar' : 'Nuevo presupuesto'}
-          </BotonEnlace>
-        )
-      }
-    >
-      {error ? (
-        // UNA LISTA VACÍA POR ERROR NO SE DIBUJA COMO «NO HAY DATOS»: son cosas opuestas, y
-        // confundirlas hace que un permiso faltante parezca una empresa sin trabajo. `EstadoError`
-        // muestra el mensaje REAL de la base — hoy, «permission denied for table cotizaciones»,
-        // que apunta exactamente al arreglo.
+  if (error) {
+    // UNA LISTA VACÍA POR ERROR NO SE DIBUJA COMO «NO HAY DATOS»: son cosas opuestas, y confundirlas
+    // hace que un permiso faltante parezca una empresa sin trabajo. `EstadoError` muestra el mensaje
+    // REAL de la base — p. ej. «permission denied for table cotizaciones», que apunta al arreglo.
+    return (
+      <PageShell title="Presupuestos">
         <EstadoError mensaje={error} que="la cartera de presupuestos" />
-      ) : (
-        <>
-          {/* Los totales de la cartera bajaron al pie de la tabla, alineados con su columna: ver el
-              encabezado de `ListaPresupuestos`. */}
-          <ListaPresupuestos presupuestos={presupuestos} filtro={filtro} seleccionInicial={sel ?? null} />
+      </PageShell>
+    )
+  }
 
-          {abierta && (
-            <div className="mt-6 border-t border-line pt-5" data-testid="alta-presupuesto">
-              <h2 className="mb-3 text-[16px] font-semibold leading-tight text-ink">Nuevo presupuesto</h2>
-              {/* El número lo deriva la acción: `COT-<año>-<NNN>`. Pedirlo sería pedirle a alguien
-                  que administre a mano la clave por la que se agrupan las versiones. */}
-              <FormAccion accion={crearPresupuesto} testid="form-presupuesto" enviar="Crear presupuesto" limpiarAlOk mensajeOk="Presupuesto creado en borrador.">
-                <CamposPresupuesto clientes={clientes} obras={obras.data ?? []} parametro={parametro} />
-              </FormAccion>
-            </div>
-          )}
+  return (
+    <div style={{ minHeight: '100vh', background: C.fondo, display: 'flex', flexDirection: 'column' }}>
+      <SelloDatoBueno />
 
-          {/* El párrafo permanente que explicaba el versionado pasó a ayuda bajo demanda: lo
-              necesita quien entra por primera vez, no quien abre esta lista seis veces por día. */}
-          <Ayuda titulo="Por qué hay una sola fila por presupuesto" testid="ayuda-versiones">
-            La lista muestra la versión VIGENTE de cada presupuesto. Las anteriores se abren desde
-            adentro: un presupuesto con cuatro versiones es una obra, no cuatro.
-          </Ayuda>
-        </>
+      <ListaPresupuestos
+        presupuestos={presupuestos}
+        filtro={filtro}
+        seleccionInicial={sel ?? null}
+        accion={
+          abierta ? (
+            <BotonPlano href="/presupuestos" testid="abrir-alta-presupuesto">
+              <IcoCerrar s={14} /> Cancelar
+            </BotonPlano>
+          ) : (
+            <BotonMarca href="/presupuestos?nuevo=1" testid="abrir-alta-presupuesto">
+              <IcoMas s={14} /> Nuevo presupuesto
+            </BotonMarca>
+          )
+        }
+      />
+
+      {abierta && (
+        <div style={{ padding: '0 20px 24px' }}>
+          <div style={{ ...TARJETA, padding: '16px 16px 18px' }} data-testid="alta-presupuesto">
+            <h2 style={{ fontSize: '13px', fontWeight: 600, color: C.tinta, margin: '0 0 10px' }}>Nuevo presupuesto</h2>
+            {/* El número lo deriva la acción: `COT-<año>-<NNN>`. Pedirlo sería pedirle a alguien que
+                administre a mano la clave por la que se agrupan las versiones. */}
+            <FormAccion
+              accion={crearPresupuesto}
+              testid="form-presupuesto"
+              enviar="Crear presupuesto"
+              limpiarAlOk
+              mensajeOk="Presupuesto creado en borrador."
+            >
+              <CamposPresupuesto clientes={clientes} obras={obras.data ?? []} parametro={parametro} />
+            </FormAccion>
+          </div>
+        </div>
       )}
-    </PageShell>
+
+    </div>
   )
 }

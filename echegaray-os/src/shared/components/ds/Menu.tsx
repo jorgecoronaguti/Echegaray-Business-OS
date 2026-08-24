@@ -16,10 +16,21 @@ export function MenuContextual({
   items,
   etiqueta = 'Acciones',
   testid = 'menu-fila',
+  disparador,
 }: {
   items: { label: ReactNode; onClick?: () => void; href?: string; destructiva?: boolean; testid?: string }[]
   etiqueta?: string
   testid?: string
+  /**
+   * El botón que abre el menú, cuando la pantalla necesita OTRO dibujo. Las carteras del zip
+   * (`22:143`, `24:146`, `25:117`) dibujan tres círculos RELLENOS de 1,6px de radio en un SVG de
+   * 15px; acá el disparador es el carácter `···` en 15px, que no es lo mismo ni mide lo mismo.
+   *
+   * Es un hueco y no un reemplazo: sin `disparador` sigue saliendo el de siempre, así que las
+   * pantallas que ya lo usan no cambian. Lo que NO se delega es el comportamiento —abrir, cerrar
+   * al hacer clic afuera, cerrar con Escape, `aria-expanded`—: eso vive acá una sola vez.
+   */
+  disparador?: ReactNode
 }) {
   const [abierto, setAbierto] = useState(false)
   const caja = useRef<HTMLDivElement>(null)
@@ -49,9 +60,13 @@ export function MenuContextual({
           e.stopPropagation()
           setAbierto((v) => !v)
         }}
-        className="rounded-control px-2 py-1 text-[15px] leading-none text-faint transition-colors hover:bg-surface-quiet hover:text-ink"
+        className={
+          disparador
+            ? 'flex items-center justify-center text-[#C9C4C2] transition-colors hover:text-[#1F1F1E]'
+            : 'rounded-control px-2 py-1 text-[15px] leading-none text-faint transition-colors hover:bg-surface-quiet hover:text-ink'
+        }
       >
-        ···
+        {disparador ?? '···'}
       </button>
       {abierto && (
         <div

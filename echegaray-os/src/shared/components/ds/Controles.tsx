@@ -102,7 +102,7 @@ export function Buscador({
    * `linea` — el de siempre, arriba de una tabla sin caja. Sigue siendo el default: cambiarlo
    * habría movido doce pantallas de una sola vez.
    */
-  variante?: 'linea' | 'caja'
+  variante?: 'linea' | 'hairline' | 'caja'  // `hairline` = alias de `linea` (frente 14–27)
 }) {
   const caja = variante === 'caja'
   return (

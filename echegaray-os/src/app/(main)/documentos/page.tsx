@@ -60,7 +60,8 @@ import { BandaVencimientos } from '@/features/documentos/components/BandaVencimi
 import { FiltrosURL } from '@/features/administracion/components/Controles'
 import { Aviso, Ayuda, BuscadorURL } from '@/shared/components/ds'
 import { EstadoError } from '@/shared/components/estado'
-import { PageShell } from '@/shared/components/ui'
+import { SelloDatoBueno } from '@/shared/components/estado/SelloDatoBueno'
+import { C, CuentaChip, FranjaCartera, PAGINA } from '@/shared/components/canon'
 
 export const dynamic = 'force-dynamic'
 
@@ -142,20 +143,39 @@ export default async function DocumentosPage({ searchParams }: { searchParams: P
   const filtrando = Boolean(sp.q || sp.carpeta || sp.tipo || sp.cat || sp.vence || sp.ent)
 
   return (
-    <PageShell
-      title="Documentos"
-      // MENOS PALABRAS (Design 23/08): el canónico rotula «de obras, personas, proveedores y
-      // clientes». Que los archivos vivan en Drive y no se copien es CÓMO funciona la pantalla —se
-      // lee una vez y estorba las otras trescientas—, así que ya vivía en `<Ayuda>` al pie y acá
-      // sobraba dicho dos veces.
-      subtitle="De obras, personas y clientes."
-    >
+    // SIN `PageShell` (porte 24/08, canónico 27): el shell dibuja un `h1` de 22px y padding 16/24px;
+    // el canon dibuja el título de 19px en la misma línea que el subtítulo, el buscador y la acción,
+    // y padding de 20px. `SelloDatoBueno` venía del shell y se conserva.
+    <div style={{ minHeight: '100vh', background: C.fondo, display: 'flex', flexDirection: 'column' }}>
+      <SelloDatoBueno />
+
+      {/* El subtítulo va AL LADO del título y en 12px, como el canónico (`27:57`). Dice «de obras,
+          personas y clientes» y no «y proveedores»: no existe ninguna tabla que vincule un archivo
+          con un proveedor, y nombrarlos acá prometería un filtro que abajo no está. */}
+      <FranjaCartera
+        titulo="Documentos"
+        subtitulo="de obras, personas y clientes"
+        testid="franja-documentos"
+        accion={
+          <BuscadorURL
+            accion="/documentos"
+            q={sp.q}
+            placeholder="Buscar en todo"
+            oculto={{ carpeta: sp.carpeta, tipo: sp.tipo, cat: sp.cat, vence: sp.vence, ent: sp.ent }}
+            ancho="w-[236px] max-w-full"
+            variante="caja"
+            testid="buscar-documento"
+          />
+        }
+      />
+
       {carpetas.error && (
-        <div className="mb-4">
+        <div style={{ padding: '0 20px 12px' }}>
           <Aviso tono="warn" titulo="No pude leer las carpetas del índice">{carpetas.error}</Aviso>
         </div>
       )}
 
+      <div style={{ padding: '0 20px 12px' }}>
       <BandaVencimientos
         resumen={vencimientos.data}
         error={vencimientos.error}
@@ -164,6 +184,7 @@ export default async function DocumentosPage({ searchParams }: { searchParams: P
         hrefTodo={filtrar(sp, { vence: undefined })}
         recorte={sp.vence}
       />
+      </div>
 
       {/* ═══ DE QUIÉN CUELGA EL ARCHIVO — el filtro de cabecera del canónico 27 ═══
 
@@ -176,20 +197,18 @@ export default async function DocumentosPage({ searchParams }: { searchParams: P
           `cliente_documento` (214) y `documentacion_legajo` (847), y nada más—. Un chip que
           devolviera siempre cero enseñaría que el proveedor no tiene papeles, que es falso: los
           tiene, sin vincular. */}
-      <div className="mb-4">
+      <div style={PAGINA.atencion}>
         <FiltrosURL
           testid="filtro-entidad"
           opciones={[
             { label: 'Todo', href: filtrar(sp, { ent: undefined }), activo: !sp.ent, testid: 'filtro-entidad-todo' },
             ...ENTIDADES.map((e) => ({
               label: (
-                <span className="inline-flex items-baseline gap-1.5">
+                <span className="inline-flex items-center gap-[5px]">
                   {ROTULO_ENTIDAD[e]}
                   {/* Sin número cuando la lectura del vínculo falló: un `0` ahí diría «no hay
                       ninguno», que es lo contrario de «no lo pude contar». */}
-                  {porEntidad[e] !== null && (
-                    <span className="font-mono text-[11px] tabular-nums text-faint">{porEntidad[e]}</span>
-                  )}
+                  {porEntidad[e] !== null && <CuentaChip n={porEntidad[e]} activo={sp.ent === e} />}
                 </span>
               ),
               href: filtrar(sp, { ent: e }),
@@ -200,14 +219,7 @@ export default async function DocumentosPage({ searchParams }: { searchParams: P
         />
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center gap-x-5 gap-y-3">
-        <BuscadorURL
-          accion="/documentos"
-          q={sp.q}
-          placeholder="Buscar por nombre o carpeta"
-          oculto={{ carpeta: sp.carpeta, tipo: sp.tipo, cat: sp.cat, vence: sp.vence, ent: sp.ent }}
-          testid="buscar-documento"
-        />
+      <div style={PAGINA.atencion}>
         <FiltrosURL
           testid="filtro-carpeta"
           opciones={[
@@ -239,7 +251,7 @@ export default async function DocumentosPage({ searchParams }: { searchParams: P
           deriva de la ruta y del nombre —`categorias.ts` explica con qué reglas y qué NO puede— y
           cada fila muestra la categoría que le tocó, para que el filtro se pueda auditar mirando
           lo que devolvió. */}
-      <div className="mb-5">
+      <div style={PAGINA.atencion}>
         <FiltrosURL
           testid="filtro-categoria"
           opciones={[
@@ -255,7 +267,7 @@ export default async function DocumentosPage({ searchParams }: { searchParams: P
         />
       </div>
 
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start" style={{ padding: '0 20px 20px' }}>
         <div className="min-w-0 flex-1">
           <TablaDocumentos
             documentos={documentos}
@@ -330,6 +342,6 @@ export default async function DocumentosPage({ searchParams }: { searchParams: P
           )
         )}
       </div>
-    </PageShell>
+    </div>
   )
 }

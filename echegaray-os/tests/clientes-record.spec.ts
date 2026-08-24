@@ -38,15 +38,22 @@ test('la cartera trae exactamente las columnas del canónico 25, y ninguna más'
     const tabla = page.getByTestId('clientes-tabla')
     await expect(tabla).toBeVisible()
 
-    // CUATRO columnas, y éstas. Contar los encabezados es lo que impide que vuelva a crecer —una
-    // afirmación sobre los textos dejaría pasar una columna nueva con cualquier otro rótulo— y
-    // nombrarlos es lo que impide que se cambien por otras cuatro.
-    const encabezados = tabla.locator('thead th')
-    await expect(encabezados).toHaveCount(4)
-    await expect(encabezados.nth(0)).toHaveText('Cliente')
-    await expect(encabezados.nth(1)).toHaveText('En ejecución')
-    await expect(encabezados.nth(2)).toHaveText('Obras')
-    await expect(encabezados.nth(3)).toHaveText('Contratado')
+    // CUATRO columnas con rótulo, y éstas. Contar los encabezados es lo que impide que vuelva a
+    // crecer —una afirmación sobre los textos dejaría pasar una columna nueva con cualquier otro
+    // rótulo— y nombrarlos es lo que impide que se cambien por otras cuatro.
+    //
+    // SE BUSCA POR `role`, NO POR `thead th`: desde el porte de `25 · Clientes Cartera.dc.html` la
+    // tabla es una GRILLA y no una `<table>`, porque el canónico fija los anchos de columna en px
+    // mezclados con fracciones (`minmax(0,1.5fr) minmax(0,1.2fr) 60px 120px 26px`, línea 121) y una
+    // `<table>` los reparte por contenido. Los rótulos van en VERSALITAS, que es como los escribe
+    // el canónico. La quinta columna es la de acciones y va sin rótulo, también como el canónico.
+    const encabezados = tabla.locator('[role="columnheader"]')
+    await expect(encabezados).toHaveCount(5)
+    await expect(encabezados.nth(0)).toHaveText('CLIENTE')
+    await expect(encabezados.nth(1)).toHaveText('EN EJECUCIÓN')
+    await expect(encabezados.nth(2)).toHaveText('OBRAS')
+    await expect(encabezados.nth(3)).toHaveText('CONTRATADO')
+    await expect(encabezados.nth(4)).toHaveText('')
 
     // Y ninguno de los que el dueño mandó sacar el 19/08 y el canónico tampoco devuelve. Van por
     // separado del conteo porque dicen otra cosa: el conteo prohíbe que crezca, esto prohíbe que

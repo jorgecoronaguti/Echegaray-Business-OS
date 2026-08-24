@@ -16,10 +16,18 @@ import type { ReactNode } from 'react'
 /**
  * Los filtros de una lista, como ENLACES.
  *
- * Es el `Filtros` del DS —texto en línea, activo con subrayado `ink` de 1,5px— pero con `Link` de
- * Next en vez de `<a>`: el DS los dibuja con `<a>` porque su versión de cliente no puede navegar
- * sin recargar, y acá una recarga completa por cambiar de filtro tira el scroll de una tabla de 17
- * filas y vuelve a pedir la sesión.
+ * Es el `Filtros` del DS pero con `Link` de Next en vez de `<a>`: el DS los dibuja con `<a>` porque
+ * su versión de cliente no puede navegar sin recargar, y acá una recarga completa por cambiar de
+ * filtro tira el scroll de una tabla de 17 filas y vuelve a pedir la sesión.
+ *
+ * ═══ PASTILLA, NO SUBRAYADO (porte 24/08) ═══
+ *
+ * Este archivo seguía dibujando el subrayado `ink` de 1,5px de `COMPONENTS.md`. El mismo día que se
+ * midió el zip, `ds/Filtros` pasó a PASTILLA por orden del dueño —fondo #30302F y texto blanco
+ * cuando está activo, borde #E7E6E2 sobre blanco cuando no— y esta copia se quedó atrás. El
+ * resultado era el defecto que este componente existe para evitar: el mismo filtro con dos
+ * aspectos según la pantalla que lo dibuja. Los valores son los de `ds/Filtros`, que salieron de
+ * `03 · Obra Tareas.dc.html` líneas 96 y 648-649, y son los mismos de las cinco carteras del zip.
  */
 export function FiltrosURL({
   opciones,
@@ -32,17 +40,17 @@ export function FiltrosURL({
   testid?: string
 }) {
   return (
-    <div data-testid={testid} className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5">
+    <div data-testid={testid} className="flex min-w-0 flex-wrap items-center gap-2">
       {opciones.map((o) => (
         <Link
           key={o.href + String(o.label)}
           href={o.href}
           data-testid={o.testid}
           aria-current={o.activo ? 'true' : undefined}
-          className={`pb-[2px] text-[12.5px] transition-colors ${
+          className={`inline-flex items-center gap-[5px] rounded-[6px] border px-[9px] py-[4px] text-[12px] transition-colors ${
             o.activo
-              ? 'border-b-[1.5px] border-ink font-medium text-ink'
-              : 'border-b-[1.5px] border-transparent text-muted hover:text-ink'
+              ? 'border-[#30302F] bg-[#30302F] text-white'
+              : 'border-[#E7E6E2] bg-white text-[#3A3A38] hover:border-[#C9C4C2]'
           }`}
         >
           {o.label}
