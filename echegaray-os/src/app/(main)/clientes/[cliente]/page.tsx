@@ -232,8 +232,12 @@ export default async function ClientePage({
           avatar={
             // EL GLIFO DE EMPRESA, el mismo que lleva el proveedor. Un cliente no tiene iniciales de
             // persona: «La Estrella» abreviado a «LE» al lado de su propio nombre no agrega nada.
+            // CUADRADO CON RADIO 10, no un círculo: `26:41` dibuja
+            // `width:44px;height:44px;borderRadius:10px;background:#F2F1ED` — el mismo avatar que la
+            // ficha de proveedor y que las filas de la cartera 25, sólo que grande. El círculo es el
+            // avatar de una PERSONA; un cliente es una empresa.
             <span
-              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-line bg-canvas text-muted"
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] bg-[#F2F1ED] text-[#3A3A38]"
               data-testid="glifo-cliente"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
@@ -352,7 +356,10 @@ export default async function ClientePage({
           record en cinco vistas no cueste el caso del 19/08 («¿a quién llamo?» se contesta desde
           las cinco). Sin `overflow-hidden` en ningún lado: cada tabla se desplaza sola dentro de su
           bloque, y así el teléfono no se corre de costado por culpa de la más ancha. */}
-      <div className="grid grid-cols-1 gap-7 lg:grid-cols-[minmax(0,1fr)_320px]">
+      {/* 372px y hueco de 12px — `26:180` y `26:158`. Eran 320px con 28px de hueco: el panel
+          quedaba 52px más angosto que el de la cartera de al lado, así que el MISMO bloque «Datos»
+          truncaba un email en la ficha y no en el panel. */}
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_372px]">
         <aside id="panel-informacion" className="min-w-0 scroll-mt-4 space-y-6 lg:order-2" data-testid="panel-informacion">
           <div className="space-y-3">
             <h2 className="text-[11px] font-semibold uppercase tracking-[0.06em] text-ink">Información</h2>
