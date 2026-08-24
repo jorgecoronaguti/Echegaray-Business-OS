@@ -29,6 +29,7 @@ import { BarraTareas, VALOR_INICIAL } from './BarraTareas'
 import { cantidad as fmtCantidad, porcentaje } from './formato'
 import { ejecutorDe, type NodoObra } from '../services/wbs'
 import { coincide } from '../services/vistaArbol'
+import { frenteDeCamino } from '../services/frente'
 import {
   quedaraEn, seleccionable, type CandidataMasiva, type OperacionMasiva,
 } from '../services/avance'
@@ -47,18 +48,6 @@ function candidata(n: NodoObra): CandidataMasiva {
     avance_pct: n.avance_pct, es_contenedor: n.es_contenedor, es_subcontrato: n.es_subcontrato,
     n_pasos: n.n_pasos,
   }
-}
-
-/**
- * DÓNDE CUELGA LA ACTIVIDAD — el `camino` sin su propio nombre al final.
- *
- * Se recorta por texto y NO con una expresión regular armada con el nombre: los nombres de obra
- * traen paréntesis, `+` y `=` («Mampostería e=0,20 (m²)»), y esos caracteres construyen una regex
- * inválida o, peor, una que hace otra cosa.
- */
-function frenteDe(n: NodoObra): string {
-  if (!n.camino.endsWith(n.nombre)) return n.camino === n.nombre ? '' : n.camino
-  return n.camino.slice(0, n.camino.length - n.nombre.length).replace(/[\s·/>]+$/, '')
 }
 
 /** El corte, sobre el avance ya publicado. «Sin arrancar» incluye el avance NULO: nadie lo midió,
@@ -195,8 +184,10 @@ export function AvanceMasivo({
                     </span>
                     {/* EL FRENTE, NO LA RUTA ENTERA: `camino` incluye el nombre propio y repetirlo
                         debajo del nombre es la línea que el Design saca de todas las tablas. */}
-                    {!n.es_contenedor && frenteDe(n) && (
-                      <span className="block truncate text-[11px] text-faint">{frenteDe(n)}</span>
+                    {!n.es_contenedor && frenteDeCamino(n.camino, n.nombre) && (
+                      <span className="block truncate text-[11px] text-faint">
+                        {frenteDeCamino(n.camino, n.nombre)}
+                      </span>
                     )}
                   </span>
                 </Td>
@@ -234,7 +225,10 @@ export function AvanceMasivo({
                       ? <span className="text-[12.5px] text-line-strong">—</span>
                       : (
                           <>
-                            <span className={`block text-[12.5px] font-semibold ${destino.tono}`}>{destino.texto}</span>
+                            <span className={`block text-[12.5px] font-semibold ${destino.tono}`}>
+                              {destino.flecha && <span aria-hidden className="mr-1 font-sans text-[11px]">{destino.flecha}</span>}
+                              {destino.texto}
+                            </span>
                             {destino.calidad && (
                               <span className={`block font-sans text-[10.5px] ${destino.tonoCalidad}`}>{destino.calidad}</span>
                             )}
@@ -299,6 +293,9 @@ function destinoDeFila(c: CandidataMasiva, op: OperacionMasiva, valor: string) {
     const cal = calidadDe(c.metodo_avance)
     return {
       texto: `${v} %`, tono: baja ? 'text-neg' : 'text-pos',
+      // LA FLECHA DEL DESIGN dice el SENTIDO antes de leer el número; sin avance previo no hay
+      // sentido que declarar y no se dibuja ninguna.
+      flecha: c.avance_pct === null ? null : baja ? '↓' : '↑',
       calidad: cal?.texto ?? null, tonoCalidad: cal?.tono ?? '',
     }
   }
@@ -307,5 +304,5 @@ function destinoDeFila(c: CandidataMasiva, op: OperacionMasiva, valor: string) {
     : op === 'fechas'
       ? `${Number(valor) > 0 ? '+' : ''}${valor} d`
       : valor ? 'nueva cuadrilla' : 'sin cuadrilla'
-  return { texto, tono: 'text-ink', calidad: null, tonoCalidad: '' }
+  return { texto, tono: 'text-ink', flecha: null, calidad: null, tonoCalidad: '' }
 }

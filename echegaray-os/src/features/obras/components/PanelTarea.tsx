@@ -20,7 +20,10 @@
 
 import Link from 'next/link'
 import { Estado, InlineEdit, SubTabs } from '@/shared/components/ds'
-import { IconoAdjuntar, IconoCerrar } from '@/shared/components/iconos'
+import {
+  IconoAdjuntar, IconoCerrar, IconoCuadrilla, IconoEditar, IconoFoto, IconoHH, IconoObra,
+  IconoPersona, IconoProblema,
+} from '@/shared/components/iconos'
 import { fecha, hh as fmtHH, porcentaje } from './formato'
 import { METODO_LABEL } from '../types'
 import type { NodoObra } from '../services/wbs'
@@ -29,6 +32,7 @@ import type { PasoDeActividad, RegistroAvance, RelacionLegible } from '../servic
 import type { ContextoTarea } from '../services/panelTareaService'
 import type { VinculacionTarea } from '../services/vinculacionTareaService'
 import { motivoNoDividir } from '../services/panelTarea'
+import { ultimoTramoDelCamino } from '../services/frente'
 import { estadoDeFila } from '../services/vistaArbol'
 import { SOLAPAS, type Solapa } from '../services/solapasTarea'
 import type { AccionFormulario } from '@/shared/components/ui/FormAccion'
@@ -50,12 +54,14 @@ export interface AccionesDelPanel {
 
 /** Clave a la izquierda, valor a la derecha. La ausencia se dice con su nombre, nunca con un guión
  *  suelto — un «—» al lado de «Responsable» se lee como «nadie», y es «nadie lo cargó». */
-function Dato({ clave, valor, falta = 'sin cargar' }: {
-  clave: string; valor: React.ReactNode | null; falta?: string
+function Dato({ clave, valor, icono, falta = 'sin cargar' }: {
+  clave: string; valor: React.ReactNode | null; icono?: React.ReactNode; falta?: string
 }) {
   return (
     <div className="flex items-baseline justify-between gap-3 border-b border-[#EFEEEA] py-1.5 last:border-0">
-      <span className="shrink-0 text-[11.5px] text-faint">{clave}</span>
+      <span className="flex shrink-0 items-center gap-2 text-[11.5px] text-faint">
+        {icono}{clave}
+      </span>
       <span className="text-right text-[12.5px] text-ink-soft">
         {valor ?? <span className="text-faint">{falta}</span>}
       </span>
@@ -109,13 +115,14 @@ function Celda({ k, v, falta = 'sin cargar' }: { k: string; v: React.ReactNode |
 }
 
 /** Fila plegable del Resumen (Dotación, Subcontrato): resumen a la vista, detalle bajo demanda. */
-function FilaPlegable({ clave, resumen, alerta = false, children, testid }: {
-  clave: string; resumen: React.ReactNode; alerta?: boolean; children: React.ReactNode; testid?: string
+function FilaPlegable({ clave, resumen, icono, alerta = false, children, testid }: {
+  clave: string; resumen: React.ReactNode; icono?: React.ReactNode
+  alerta?: boolean; children: React.ReactNode; testid?: string
 }) {
   return (
     <details className="border-b border-[#EFEEEA] last:border-0" data-testid={testid}>
       <summary className="flex cursor-pointer items-baseline justify-between gap-3 py-1.5 [&::-webkit-details-marker]:hidden">
-        <span className="shrink-0 text-[11.5px] text-faint">{clave}</span>
+        <span className="flex shrink-0 items-center gap-2 text-[11.5px] text-faint">{icono}{clave}</span>
         <span className={`text-right text-[12.5px] ${alerta ? 'text-warn' : 'text-ink-soft'}`}>{resumen} ›</span>
       </summary>
       <div className="pb-3">{children}</div>
@@ -155,7 +162,7 @@ export function PanelTarea({
     impedimento: 'neg', hecha: 'pos', en_curso_critica: 'warn', en_curso: 'curso',
     sin_analisis: 'warn', sin_cuadrilla: 'warn', sin_plan: 'pendiente', pendiente: 'pendiente',
   } as const
-  const frente = nodo.camino.includes('›') ? nodo.camino.split('›').slice(-2, -1)[0]?.trim() : null
+  const frente = ultimoTramoDelCamino(nodo.camino, nodo.nombre)
   const editar = (campo: string) => (v: string) => acciones.editarCampo(nodo.id, campo, v)
   const ultima = historial[0]?.fecha ?? null
 
@@ -164,13 +171,22 @@ export function PanelTarea({
       {/* ═══ ACCIÓN PRIMARIA ARRIBA — a la vista sin scroll ═══ */}
       <div className="flex items-center gap-2 pt-0.5">
         <Link href={`/obras/${obraId}/avance/${nodo.id}`} data-testid="panel-registrar-avance"
-          className="inline-flex items-center gap-1.5 rounded-control bg-marca px-3 py-1.5 text-[12.5px] font-semibold text-ink hover:opacity-90">
+          className="inline-flex items-center gap-1.5 rounded-control bg-marca px-3 py-[7px] text-[12.5px] font-semibold text-ink hover:opacity-90">
+          <IconoEditar className="h-[14px] w-[14px]" />
           Registrar avance
         </Link>
-        <Link href={`/obras/${obraId}/avance/${nodo.id}#evidencia`} aria-label="Adjuntar evidencia"
-          title="Adjuntar evidencia" data-testid="panel-adjuntar-evidencia"
-          className="rounded-control border border-line p-1.5 text-muted hover:text-ink">
+        {/* DOS ICONOS, DOS DESTINOS DISTINTOS. El Design dibuja adjuntar y cámara uno al lado del
+            otro; si los dos llevaran al mismo lado sería un botón falso. El clip cuelga PAPEL de la
+            obra (donde el panel ya dice que se cuelga), la cámara sube EVIDENCIA del avance. */}
+        <Link href={`/obras/${obraId}?vista=documentos`} aria-label="Adjuntar documento"
+          title="Adjuntar documento" data-testid="panel-adjuntar-evidencia"
+          className="flex h-[30px] w-[30px] items-center justify-center rounded-control border border-line text-muted hover:border-line-strong hover:text-ink">
           <IconoAdjuntar className="h-[15px] w-[15px]" />
+        </Link>
+        <Link href={`/obras/${obraId}/avance/${nodo.id}#evidencia`} aria-label="Foto o evidencia"
+          title="Foto o evidencia" data-testid="panel-foto-evidencia"
+          className="flex h-[30px] w-[30px] items-center justify-center rounded-control border border-line text-muted hover:border-line-strong hover:text-ink">
+          <IconoFoto className="h-[15px] w-[15px]" />
         </Link>
         <button type="button" onClick={alCerrar} data-testid="cerrar-panel" aria-label="Cerrar el panel"
           className="ml-auto p-1 text-faint hover:text-ink">
@@ -184,10 +200,25 @@ export function PanelTarea({
           <Estado tono={TONO[est.clave]} clave={est.clave} testid="panel-estado">{est.label}</Estado>
         </span>
       </div>
-      <p className="mt-0.5 flex flex-wrap items-baseline gap-x-2 text-[11.5px] text-muted">
-        {frente && <span>{frente}</span>}
-        {nodo.cuadrilla && <span>· {nodo.cuadrilla}</span>}
-        {nodo.partida_codigo && <span className="font-mono text-[10.5px] text-faint">{nodo.partida_codigo}</span>}
+      {/* LA SUB-LÍNEA DEL DESIGN: frente · cuadrilla · código, cada uno con su icono y separados
+          por un punto tenue. Lo que no está cargado NO deja su icono huérfano: se omite entero. */}
+      <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] text-muted"
+        data-testid="panel-sublinea">
+        {frente && (
+          <span className="flex items-center gap-1">
+            <IconoObra className="h-[12.5px] w-[12.5px] shrink-0" />{frente}
+          </span>
+        )}
+        {frente && nodo.cuadrilla && <span aria-hidden className="text-line-strong">·</span>}
+        {nodo.cuadrilla && (
+          <span className="flex items-center gap-1">
+            <IconoCuadrilla className="h-[12.5px] w-[12.5px] shrink-0" />{nodo.cuadrilla}
+          </span>
+        )}
+        {(frente || nodo.cuadrilla) && nodo.partida_codigo && (
+          <span aria-hidden className="text-line-strong">·</span>
+        )}
+        {nodo.partida_codigo && <span className="font-mono text-[11px] text-faint">{nodo.partida_codigo}</span>}
       </p>
 
       {/* Las dependencias se ven sin abrir su solapa: ← la que espera esta actividad · → la que
@@ -217,13 +248,14 @@ export function PanelTarea({
         <Link href={`/obras/${obraId}?vista=operacion&sub=impedimentos`}
           className="mt-2 flex items-start gap-2 rounded-[8px] border border-neg/25 bg-neg-soft px-3 py-2.5 hover:opacity-90"
           data-testid="panel-impedimento">
-          <span aria-hidden className="mt-[3px] h-3 w-3 shrink-0 rounded-full border-[1.5px] border-neg" />
+          <IconoProblema className="mt-[2px] h-[14px] w-[14px] shrink-0 text-neg" />
           <span className="min-w-0">
             <span className="block text-[12.5px] font-medium text-neg">
               {nodo.impedimentos_abiertos} impedimento(s) abiertos
             </span>
-            <span className="block text-[11px] text-neg/80">La actividad está frenada · ver en Operación →</span>
+            <span className="block text-[11px] text-muted">La actividad está frenada · ver en Operación</span>
           </span>
+          <span aria-hidden className="ml-auto shrink-0 self-center text-[12px] text-faint">›</span>
         </Link>
       )}
 
@@ -285,7 +317,7 @@ export function PanelTarea({
           )}
 
           <div className="mt-3">
-            <Dato clave="Cuadrilla" valor={
+            <Dato clave="Cuadrilla" icono={<IconoCuadrilla className="h-[13px] w-[13px]" />} valor={
               <InlineEdit
                 valor={nodo.cuadrilla_id} tipo="seleccion" ancho="w-40" falta="sin asignar"
                 opciones={[{ valor: '', etiqueta: 'sin asignar' },
@@ -294,8 +326,10 @@ export function PanelTarea({
                 guardar={editar('cuadrilla_id')}
               />
             } />
-            <Dato clave="Responsable" valor={nodo.responsable} falta="sin asignar" />
+            <Dato clave="Responsable" icono={<IconoPersona className="h-[13px] w-[13px]" />}
+              valor={nodo.responsable} falta="sin asignar" />
             <FilaPlegable clave="Dotación" testid="fila-dotacion"
+              icono={<IconoHH className="h-[13px] w-[13px]" />}
               alerta={nodo.tope_frente != null && dotacion >= nodo.tope_frente}
               resumen={nodo.tope_frente != null
                 ? `${dotacion} de ${nodo.tope_frente}${dotacion >= nodo.tope_frente ? ' · tope del frente' : ''}`
@@ -335,6 +369,15 @@ export function PanelTarea({
           {historial.length > 0 && (
             <section className="mt-3 border-t border-line pt-3" data-testid="ejecucion-reciente">
               <Titulo>Ejecución reciente</Titulo>
+              {/* MINI-TABLA, no una lista suelta: sin encabezado el número del medio se lee como
+                  porcentaje siempre, y en las actividades medidas por cantidad no lo es. NO HAY
+                  COLUMNA DE HH: `obra_ejecucion` no las publica por registro y ponerla vacía sería
+                  prometer un dato que la base no tiene. */}
+              <div className="flex items-baseline gap-2 pb-1 text-[10px] uppercase tracking-[0.05em] text-faint">
+                <span className="w-[52px] shrink-0">Fecha</span>
+                <span className="flex-1">Cant. / avance</span>
+                <span className="shrink-0">Quién</span>
+              </div>
               <ul>
                 {historial.slice(0, 3).map((h) => (
                   <li key={h.id} className="flex items-baseline gap-2 border-b border-[#EFEEEA] py-1 last:border-0">
