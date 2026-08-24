@@ -36,7 +36,8 @@ import {
   getRestricciones, getUbicacion,
 } from '@/features/obras/services/obrasService'
 import {
-  getActividadHH, getAsignaciones, getCausasDesvio, getCuadrillas, getPersonas, getRegistrosHH,
+  getActividadHH, getAsignaciones, getCausasDesvio, getCuadrillas, getPersonas, getPersonasDeHoy,
+  getRegistrosHH,
 } from '@/features/obras/services/personalService'
 import { getCertificados } from '@/features/obras/services/contratoService'
 import {
@@ -151,7 +152,7 @@ export default async function ObraPage({
     dependenciasRes, personasRes, ubicacion, asignacionesRes, causasRes, registrosRes,
     actividadHHRes, cuadrillas, integrantes, partesRes, certificadosRes, economiaRes,
     documentosRes, trabajo, equiposPorActividad, notasPorActividad, catalogoEquipos,
-    anchosDelSplit, opRes,
+    anchosDelSplit, opRes, personasDeHoy,
   ] = await Promise.all([
     // COMERCIAL ES PRECIO, y el precio es de Dirección y Administración: el jefe de obra ve el
     // COSTO de su obra, pero no cuánto se vendió — `veEconomia`, no `esAdministracion`.
@@ -198,6 +199,8 @@ export default async function ObraPage({
     // (`obra_alias`); si esa fuente falla, fallan juntas. Los impedimentos son tabla del OS y no
     // dependen de ese puente.
     vista === 'operacion' ? getOperacionObra(supabase, obraId) : null,
+    // PERSONAS del Resumen (§25): asignadas vigentes y presentes HOY. Dos conteos con cabeza.
+    vista === 'resumen' ? getPersonasDeHoy(supabase, obraId) : null,
   ])
 
   const rolActual = perfilRes.data?.rol ?? null
@@ -373,6 +376,7 @@ export default async function ObraPage({
         <TabResumen
           obra={obra}
           plan={plan}
+          personasDeHoy={personasDeHoy}
           economia={economia}
           abiertas={abiertas}
           obraId={obraId}

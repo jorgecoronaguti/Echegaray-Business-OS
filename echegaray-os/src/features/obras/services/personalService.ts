@@ -227,3 +227,30 @@ export async function getIntegrantesPorCuadrilla(
   }
   return m
 }
+
+/** ═══ PERSONAS DEL RESUMEN (§25 · 23/08) — asignados ≠ presentes ═══
+ *
+ * ASIGNADAS sale de `obra_asignacion` vigente; PRESENTES de `presencia_del_dia` (las marcas de
+ * asistencia de HOY en esta obra — la misma vista que «En obra ahora»). Cero marcas NO afirma
+ * ausencia: se publica como «sin fichar», nunca como 0 personas. El error de lectura queda en
+ * `null` y la métrica dice «sin dato», no un número inventado. */
+export interface PersonasDeHoy {
+  asignadas: number | null
+  presentes: number | null
+}
+
+export async function getPersonasDeHoy(
+  supabase: SupabaseClient, obraId: string,
+): Promise<PersonasDeHoy> {
+  const hoy = new Date().toISOString().slice(0, 10)
+  const [a, p] = await Promise.all([
+    supabase.from('obra_asignacion').select('id', { count: 'exact', head: true })
+      .eq('obra_id', obraId).or(`hasta.is.null,hasta.gte.${hoy}`),
+    supabase.from('presencia_del_dia').select('persona_id', { count: 'exact', head: true })
+      .eq('obra_id', obraId).eq('fecha', hoy),
+  ])
+  return {
+    asignadas: a.error ? null : a.count ?? null,
+    presentes: p.error ? null : p.count ?? null,
+  }
+}

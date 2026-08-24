@@ -7,6 +7,7 @@ import { PlanVsRealResumen } from './PlanVsRealResumen'
 import { ChecklistPreparacion } from './ChecklistPreparacion'
 import { proximasDeLaObra } from '../services/resumenDelPlan'
 import { lineasPlanVsReal } from '../services/planVsReal'
+import type { PersonasDeHoy } from '../services/personalService'
 import { fecha, plataCorta } from './formato'
 
 // EL RESUMEN DE LA OBRA — tres preguntas, en este orden y sin párrafos entre medio:
@@ -167,29 +168,42 @@ function mCosto(obra: ObraPanel, plan: PlanVsReal | null, veComercial: boolean):
 }
 
 /**
- * PERSONAS — HOY NO HAY DATO, Y ESO ES LO QUE DICE.
+ * PERSONAS — ASIGNADOS ≠ PRESENTES (§25 · 23/08).
  *
- * La dotación presente sale de la asistencia del día y la asignada de `obra_asignacion`: ninguna de
- * las dos llega a este componente. Poner acá las HH imputadas sería contestar otra pregunta con un
- * número que existe —horas no son personas—, y eso es peor que el hueco declarado.
+ * Presentes sale de las marcas de asistencia de HOY (`presencia_del_dia`); cero marcas se dice
+ * «sin fichar», nunca «0 presentes»: la ausencia de registro no afirma ausencia de gente. Las
+ * asignadas vigentes salen de `obra_asignacion`. El error de lectura queda en «sin dato».
  */
-function mPersonas(obraId: string): PropsMetrica {
-  return {
+function mPersonas(obraId: string, hoy: PersonasDeHoy | null): PropsMetrica {
+  const base = {
     k: 'Personas',
-    v: null,
-    falta: 'sin dato',
     pista: null,
-    sub: 'la dotación del día no llega a esta vista · ver Personal →',
     href: `/obras/${obraId}?vista=personal`,
   }
+  if (!hoy || hoy.asignadas == null) {
+    return { ...base, v: null, falta: 'sin dato', sub: 'no se pudo leer la asignación · ver Personal →' }
+  }
+  if (hoy.presentes != null && hoy.presentes > 0) {
+    return {
+      ...base,
+      v: String(hoy.presentes),
+      contra: `de ${hoy.asignadas} asignadas`,
+      sub: 'presentes hoy, por marca de asistencia',
+    }
+  }
+  if (hoy.asignadas === 0) {
+    return { ...base, v: null, falta: 'sin asignar', sub: 'nadie tiene asignación vigente · asignar en Personal →' }
+  }
+  return { ...base, v: String(hoy.asignadas), sub: 'asignadas · sin fichar hoy' }
 }
 
 /** El titular: cuatro cifras y, en letra chica, las HH — que no son ninguna de las cuatro. Avance
  *  físico, plazo y HH son dimensiones distintas y ninguna resume a la otra. */
-function Titular({ obra, plan, obraId, veComercial, hoy }: {
+function Titular({ obra, plan, obraId, veComercial, hoy, personasDeHoy }: {
   obra: ObraPanel; plan: PlanVsReal | null; obraId: string; veComercial: boolean; hoy: string
+  personasDeHoy: PersonasDeHoy | null
 }) {
-  const metricas = [mAvance(obra), mPlazo(obra, plan, hoy), mCosto(obra, plan, veComercial), mPersonas(obraId)]
+  const metricas = [mAvance(obra), mPlazo(obra, plan, hoy), mCosto(obra, plan, veComercial), mPersonas(obraId, personasDeHoy)]
   const hhPlan = plan?.hh_plan ?? plan?.hh_estimada ?? null
   const hhReal = plan?.hh_real ?? null
   const n = (x: number) => Math.round(x).toLocaleString('es-AR')
@@ -405,8 +419,10 @@ function UltimoMovimiento({ partes, actividadDe, obraId }: {
 
 export function TabResumen({
   obra, plan, economia = null, abiertas, obraId, editar, archivar, veComercial = true,
-  actividades, partes, hoy = new Date().toISOString().slice(0, 10),
+  actividades, partes, personasDeHoy = null, hoy = new Date().toISOString().slice(0, 10),
 }: {
+  /** Asignadas vigentes y presentes hoy (§25). `null` = la página no lo pidió o no se pudo leer. */
+  personasDeHoy?: PersonasDeHoy | null
   obra: ObraPanel
   plan: PlanVsReal | null
   /** El panel económico. SIN ÉL NO SE ARMA LÍNEA DE MARGEN: la línea vieja era `contratado − costo
@@ -439,7 +455,7 @@ export function TabResumen({
   return (
     <div className="flex flex-col gap-8 lg:flex-row lg:gap-10">
       <div className="flex min-w-0 flex-1 flex-col gap-8">
-        <Titular obra={obra} plan={plan} obraId={obraId} veComercial={veComercial} hoy={hoy} />
+        <Titular obra={obra} plan={plan} obraId={obraId} veComercial={veComercial} hoy={hoy} personasDeHoy={personasDeHoy} />
 
         <Atencion items={atencion} />
 
