@@ -23,12 +23,15 @@
 // publica `obra_plan_vs_real`, que también anula el desvío cuando falta una. Acá no se vuelve a
 // sumar: se muestra lo que la vista publicó y, debajo, las filas que lo respaldan.
 
+import { Suspense } from 'react'
 import {
   BotonAccion, FormAccion, type AccionFormulario, type ResultadoAccion,
 } from '@/shared/components/ui'
 import {
   Aviso, CAMPO, Campo, Eyebrow, Nulo, Tabla, Td, Th, THead, Tr, Vacio,
 } from '@/shared/components/ds'
+import { TablaEsqueleto } from '@/shared/components/carga'
+import { HoyEnObra } from './HoyEnObra'
 import type { ActividadHH, RegistroHH } from '../services/personalService'
 import type { Actividad, Asignacion, Persona, PlanVsReal } from '../types'
 import { etiquetaCategoria } from '@/features/administracion/types'
@@ -188,10 +191,24 @@ export function TabPersonal({
   const porAsignado = horasPorAsignado(asignaciones, registros)
   const actividadDe = new Map(actividades.map((a) => [a.id, a.nombre]))
   const sinPersona = registros.filter((r) => !r.persona_id).length
+  // ═══ DE DÓNDE SALE LA OBRA (23/08) ═══
+  //
+  // La solapa no recibe el id de la obra: la ficha se lo pasa a cada una en los datos, no como
+  // parámetro, y agregarlo a la firma obliga a tocar `page.tsx` de `[obra]` —que en esta tanda tiene
+  // otro dueño—. Se toma del plan, que es la fila de `obra_plan_vs_real` de ESTA obra, con las
+  // asignaciones y las actividades como respaldo. Si las tres faltan, la obra no tiene ni plan ni
+  // gente ni trabajo cargado, y ahí la sección de presencia no tendría nada que mostrar igual.
+  const obraId = plan?.obra_id ?? asignaciones[0]?.obra_id ?? actividades[0]?.obra_id ?? null
 
   return (
     <div className="flex flex-col gap-8">
       <Titular plan={plan} asignaciones={asignaciones} registros={registros} />
+
+      {obraId && (
+        <Suspense fallback={<TablaEsqueleto cols={5} filas={4} />}>
+          <HoyEnObra obraId={obraId} asignaciones={asignaciones} />
+        </Suspense>
+      )}
 
       <section>
         <Eyebrow className="mb-2.5">Quién trabaja en esta obra</Eyebrow>
@@ -269,10 +286,12 @@ export function TabPersonal({
         <section className="min-w-0 xl:w-[520px] xl:shrink-0">
           <Eyebrow className="mb-2.5">Horas imputadas a esta obra</Eyebrow>
           <TablaHoras registros={registros} borrarHoras={borrarHoras} />
+          {/* La advertencia se queda porque evita un error real —creer que a alguien le faltan
+              horas— pero en una línea: el porqué largo vive en la ayuda, no en la pantalla. */}
           {sinPersona > 0 && (
-            <p className="mt-2.5 text-[11px] leading-relaxed text-faint">
-              {sinPersona} {sinPersona === 1 ? 'registro histórico no tiene' : 'registros históricos no tienen'} persona:
-              son horas reales aunque no se sepa de quién, y no se les inventa un dueño.
+            <p className="mt-2.5 text-[11px] text-faint">
+              {sinPersona} {sinPersona === 1 ? 'registro sin persona' : 'registros sin persona'}: son horas
+              reales sin dueño conocido.
             </p>
           )}
         </section>

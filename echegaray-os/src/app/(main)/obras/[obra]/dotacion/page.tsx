@@ -9,18 +9,22 @@
 //
 // ═══ LA URL ES LA MEMORIA DEL SIMULADOR, Y «APLICAR AL PLAN» LA CONVIERTE EN PLAN ═══
 //
-// Las dotaciones elegidas viajan en `?dot=<frente>~<n>`. No hay estado en el navegador: el mismo
-// link abre la misma simulación del otro lado del chat. Mientras están en la URL no son un plan —si
-// el plan cambia debajo, el link deja de significar lo que significaba—; se vuelven plan cuando
-// alguien las aplica, y ahí se escriben en `dotacion_prevista`, que es la capacidad con la que el
-// motor calcula la duración de cada actividad sin cuadrilla asignada.
+// Las dotaciones elegidas viajan en `?dot=<frente>~<n>`: el mismo link abre la misma simulación del
+// otro lado del chat. Mientras están en la URL no son un plan —si el plan cambia debajo, el link
+// deja de significar lo que significaba—; se vuelven plan cuando alguien las aplica, y ahí se
+// escriben en `dotacion_prevista`, que es la capacidad con la que el motor calcula la duración de
+// cada actividad sin cuadrilla asignada.
+//
+// Desde el Design del 23/08 el stepper NO navega para llegar a esa URL: recalcula en el navegador
+// con la misma función pura que corre el servidor y sincroniza la barra de direcciones con
+// `replaceState`. Antes cada clic era una vuelta completa —tabla remontada y esqueleto incluido—
+// para ver el mismo frente con un número distinto. Ver `SimuladorDotacion.tsx`.
 //
 // ═══ ESTA PANTALLA NO HABLA DE PLATA ═══
 //
 // HH, dotación, capacidad y rendimiento NO son dato económico: el jefe de obra los ve. Precio,
 // costo y margen no se piden en ninguna de las lecturas.
 
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import {
@@ -34,8 +38,9 @@ import { aplicarDotacionAlPlan } from '@/features/obras/services/actionsPlan'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { esAdministracion } from '@/features/auth/types/areas'
 import { BarraContextoObra } from '@/features/obras/components/BarraContextoObra'
+import { SimuladorDotacion } from '@/features/obras/components/SimuladorDotacion'
 import { TablaRubrosHH } from '@/features/obras/components/TablaRubrosHH'
-import { Callout, FormAccion } from '@/shared/components/ui'
+import { Callout } from '@/shared/components/ui'
 import { Ayuda } from '@/shared/components/ds'
 import { CalendarioObra } from '../../../../../../orquestador/lib/calendario-obra.mjs'
 
@@ -100,23 +105,17 @@ export default async function DotacionObraPage(
   const hhRest = sumaCompleta(frentes.map((f) => f.hhRestantes))
   const hhProy = hhRest == null ? null : (hhReal ?? 0) + hhRest
 
-  const genteTotal = frentes.reduce((a, f) => a + f.dotacion, 0)
-  const finSimulado = frentes.map((f) => f.fin).filter((x): x is string => Boolean(x)).sort().at(-1) ?? null
   const finPlan = crono.actividades
     .map((a) => (a.fin_plan ? String(a.fin_plan).slice(0, 10) : null))
     .filter((x): x is string => Boolean(x)).sort().at(-1) ?? null
-  const desvio = finSimulado && finPlan
-    ? calendario.habilesEntre(finPlan, finSimulado) - 1 || 0
-    : null
 
-  const href = (clave: string, valor: number) => {
-    const q = new URLSearchParams()
-    for (const [k, v] of Object.entries({ ...dotaciones, [clave]: valor })) q.append('dot', `${k}~${v}`)
-    return `/obras/${obraId}/dotacion?${q.toString()}`
-  }
-
-  const sinDotacion = frentes.filter((f) => f.dotacion === 0 && f.limite !== 'terminado').length
-  const excede = disponibles != null && genteTotal > disponibles
+  // EL CALENDARIO DE LA OBRA VIAJA RESUELTO, NO SUS REGLAS. El stepper recalcula en el navegador y
+  // ahí no hay feriados ni no laborables: mandar los días hábiles ya listos es lo que impide que el
+  // cliente arme un segundo calendario que el día del feriado diría otra fecha. Se manda sólo lo
+  // que el peor caso puede necesitar —el frente más largo con UNA persona— y con techo, porque un
+  // frente de 40.000 HH pediría diez años de fechas para una simulación que nadie va a hacer.
+  const habiles = diasHabilesDe(calendario, desde, frentes, crono.jornada)
+  const idxFinPlan = finPlan ? calendario.indice(desde, finPlan) : null
 
   return (
     <main className="flex flex-col gap-4 pb-10">
@@ -142,44 +141,23 @@ export default async function DotacionObraPage(
         )}
 
         <section className="grid gap-4 xl:grid-cols-[1fr_300px]">
-          <div className="rounded-card border border-line bg-surface p-4">
-            <h2 className="mb-3 text-[13px] font-semibold text-ink">Simulación de dotación</h2>
-            <TablaFrentes frentes={frentes} href={href} />
-
-            <div className="mt-4 flex flex-wrap items-end justify-between gap-4 border-t border-line pt-3">
-              <div className="flex flex-wrap items-end gap-x-8 gap-y-2">
-                <Kpi rotulo="Gente total" valor={genteTotal ? String(genteTotal) : null} falta="sin asignar" tono={excede ? 'neg' : 'normal'} />
-                <Kpi rotulo="Fin de obra" valor={fmt(finSimulado)} falta="sin dato" tono={desvio != null && desvio > 0 ? 'neg' : 'normal'} />
-                <Kpi
-                  rotulo="Contra el plan"
-                  valor={desvio == null ? null : `${desvio > 0 ? '+' : ''}${desvio} d`}
-                  falta="sin plan"
-                  tono={desvio == null ? 'normal' : (desvio > 0 ? 'neg' : (desvio < 0 ? 'pos' : 'normal'))}
-                />
-              </div>
-              <AplicarAlPlan
-                obraId={obraId} dotaciones={dotaciones} puedeAplicar={puedeAplicar}
-                aEscribir={frentes.filter((f) => f.dotacion > 0 && f.clave in dotaciones).length}
-              />
-            </div>
-
-            {excede && (
-              <p className="mt-3 border-l-[3px] border-neg bg-neg-soft px-3 py-2 text-[12.5px] text-ink-soft">
-                Pediste {genteTotal} personas y la obra tiene {disponibles}. Hay que traer gente de
-                otra obra o correr un frente.
-              </p>
-            )}
-            {!excede && sinDotacion > 0 && (
-              <p className="mt-3 border-l-[3px] border-warn bg-warn-soft px-3 py-2 text-[12.5px] text-ink-soft">
-                {sinDotacion === 1
-                  ? '1 frente sin dotación: no tiene fecha de fin.'
-                  : `${sinDotacion} frentes sin dotación: no tienen fecha de fin.`}
-              </p>
-            )}
-          </div>
+          <SimuladorDotacion
+            obraId={obraId}
+            frentes={frentes}
+            dotIniciales={dotaciones}
+            jornada={crono.jornada}
+            habiles={habiles}
+            idxFinPlan={idxFinPlan}
+            disponibles={disponibles}
+            puedeAplicar={puedeAplicar}
+            // `.bind`, no una arrow: una función creada en un Server Component no cruza a un
+            // componente cliente, compila igual y deja la pantalla en blanco en producción.
+            aplicar={aplicarDotacionAlPlan.bind(null, obraId)}
+          />
 
           <div className="flex flex-col gap-4">
             <AlReves hh={hhRest} jornada={crono.jornada} tope={topeMasBajo(frentes)} desde={desde} calendario={calendario} />
+            <LimitesReales frentes={frentes} disponibles={disponibles} />
             <div className="rounded-card border border-line bg-surface p-4">
               <h2 className="mb-2 text-[13px] font-semibold text-ink">Capacidad ponderada</h2>
               {/* 22/08/2026 · La explicación del ponderado baja a la ayuda: la lista de factores que
@@ -223,47 +201,6 @@ export default async function DotacionObraPage(
   )
 }
 
-/**
- * APLICAR LA SIMULACIÓN AL PLAN — el botón que convierte la URL en `dotacion_prevista`.
- *
- * El rótulo dice a cuántos frentes toca de verdad. «Aplicar al plan» sobre una pantalla donde nadie
- * movió un stepper no escribiría nada y diría que sí; y los frentes en 0 quedan afuera porque cero
- * personas no es un plan, es la ausencia de uno.
- *
- * Las dotaciones viajan como campos ocultos con el MISMO formato que la URL (`frente~n`): la
- * pantalla y la escritura no pueden entender distinto el mismo texto. El servidor las vuelve a
- * recortar por el tope del frente y recalcula qué actividades toca — la lista de actividades no
- * viaja desde el navegador.
- */
-function AplicarAlPlan({ obraId, dotaciones, puedeAplicar, aEscribir }: {
-  obraId: string
-  dotaciones: Record<string, number>
-  puedeAplicar: boolean
-  aEscribir: number
-}) {
-  if (!puedeAplicar) {
-    return (
-      <p className="max-w-[280px] text-[11.5px] text-faint">
-        Esto simula. Aplicarlo al plan es de Administración y de la jefatura de obra.
-      </p>
-    )
-  }
-  return (
-    <FormAccion
-      accion={aplicarDotacionAlPlan.bind(null, obraId)}
-      testid="form-aplicar-dotacion"
-      enviar={aEscribir === 1 ? 'Aplicar al plan (1 frente)' : `Aplicar al plan (${aEscribir} frentes)`}
-      mensajeOk="Dotación aplicada."
-      bloqueado={aEscribir === 0}
-      motivoBloqueo="Movés un stepper y se habilita: no hay ninguna dotación elegida para guardar."
-    >
-      {Object.entries(dotaciones).map(([clave, n]) => (
-        <input key={clave} type="hidden" name="dot" value={`${clave}~${n}`} />
-      ))}
-    </FormAccion>
-  )
-}
-
 function sumar(vs: (number | null)[]): number | null {
   const hay = vs.filter((v): v is number => v != null)
   return hay.length ? hay.reduce((a, b) => a + b, 0) : null
@@ -274,100 +211,77 @@ const topeMasBajo = (frentes: Frente[]): number | null => {
   return topes.length ? Math.min(...topes) : null
 }
 
-function Kpi({ rotulo, valor, falta, tono }: {
-  rotulo: string; valor: string | null; falta: string; tono: 'normal' | 'neg' | 'pos'
-}) {
-  const clase = valor == null ? 'text-faint' : (tono === 'neg' ? 'text-neg' : (tono === 'pos' ? 'text-pos' : 'text-ink'))
-  return (
-    <div>
-      <div className="text-[10px] uppercase tracking-[0.05em] text-faint">{rotulo}</div>
-      <div className={`text-[20px] font-semibold leading-tight tnum ${clase}`}>{valor ?? falta}</div>
-    </div>
-  )
+/** El techo de fechas que se le manda al navegador: dos años de trabajo. Más que eso no es una
+ *  simulación de dotación, es otra obra — y son 5.000 fechas viajando por cada carga de pantalla. */
+const MAX_HABILES = 520
+
+/**
+ * LOS DÍAS HÁBILES QUE EL SIMULADOR PUEDE LLEGAR A NECESITAR.
+ *
+ * El peor caso es UNA persona en el frente más pesado: es la dotación mínima que todavía produce un
+ * plazo. Se calcula sobre las HH restantes que ya trae cada frente para no mandar dos años de
+ * fechas cuando la obra entera se termina en tres semanas.
+ */
+function diasHabilesDe(
+  calendario: CalendarioObra, desde: string, frentes: Frente[], jornada: number,
+): string[] {
+  const peor = frentes.reduce((max, f) => {
+    if (f.hhRestantes == null) return max
+    const dias = Math.ceil(f.hhRestantes / (1 * (jornada || 8))) + f.diasTecnicos
+    return Math.max(max, dias)
+  }, 1)
+  const n = Math.min(MAX_HABILES, Math.max(1, peor))
+  return Array.from({ length: n }, (_, i) => calendario.sumarHabiles(desde, i))
 }
 
-function TablaFrentes({ frentes, href }: { frentes: Frente[]; href: (clave: string, valor: number) => string }) {
-  if (!frentes.length) return <p className="text-[12px] text-muted">Esta obra no tiene actividades ejecutables cargadas.</p>
+/**
+ * LOS LÍMITES REALES — Design 23/08 · 08.
+ *
+ * Lo que impide que más gente acorte el plazo, dicho con los números que la obra tiene cargados. No
+ * inventa restricciones: un tope que nadie declaró se dice «sin declarar», y ahí el simulador deja
+ * subir la dotación hasta el infinito porque nadie escribió dónde está el techo — que es un dato
+ * faltante, no un permiso.
+ */
+function LimitesReales({ frentes, disponibles }: { frentes: Frente[]; disponibles: number | null }) {
+  const tope = topeMasBajo(frentes)
+  const enTope = frentes.filter((f) => f.limite === 'tope del frente').length
+  const sinHH = frentes.filter((f) => f.hhRestantes == null).length
+  const filas: { que: string; detalle: string; valor: string; tono: string }[] = [
+    {
+      que: 'Tope del frente más estrecho',
+      detalle: tope == null
+        ? 'ninguna actividad declara cuánta gente entra'
+        : `${enTope} ${enTope === 1 ? 'frente está' : 'frentes están'} en su tope`,
+      valor: tope == null ? 'sin declarar' : String(tope),
+      tono: tope == null ? 'text-faint' : (enTope > 0 ? 'text-warn' : 'text-ink'),
+    },
+    {
+      que: 'Plantel de la obra',
+      detalle: 'personas con asignación vigente',
+      valor: disponibles == null ? 'sin dato' : String(disponibles),
+      tono: disponibles == null ? 'text-faint' : 'text-ink',
+    },
+    {
+      que: 'Frentes sin HH cargadas',
+      detalle: sinHH === 0 ? 'todos los frentes tienen con qué calcular' : 'no producen plazo con ninguna dotación',
+      valor: sinHH === 0 ? 'ok' : String(sinHH),
+      tono: sinHH === 0 ? 'text-pos' : 'text-warn',
+    },
+  ]
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[620px] border-collapse">
-        <thead>
-          <tr className="border-b border-line-strong text-[10px] uppercase tracking-[0.05em] text-faint">
-            <th className="px-2 py-1.5 text-left font-normal">Frente</th>
-            <th className="px-2 py-1.5 text-right font-normal">HH rest.</th>
-            <th className="px-2 py-1.5 text-center font-normal">Dotación</th>
-            <th className="px-2 py-1.5 text-right font-normal">Días</th>
-            <th className="px-2 py-1.5 text-right font-normal">Fin</th>
-            <th className="px-2 py-1.5 text-left font-normal">Límite</th>
-          </tr>
-        </thead>
-        <tbody>
-          {frentes.map((f) => (
-            <tr key={f.clave} className="border-b border-surface-sunken">
-              <td className="px-2 py-1.5 text-left">
-                <div className="truncate text-[12.5px] text-ink">{f.nombre}</div>
-                {f.subtitulo && (
-                  <div className={`text-[10.5px] ${f.subtituloTono === 'warn' ? 'text-warn' : 'text-faint'}`}>
-                    {f.subtitulo}
-                  </div>
-                )}
-              </td>
-              <td className={`px-2 py-1.5 text-right text-[12px] tnum ${f.hhRestantes == null ? 'text-faint' : 'text-ink-soft'}`}>
-                {n0(f.hhRestantes) ?? 'sin dato'}
-                {f.sinDato > 0 && (
-                  <div className="text-[9.5px] text-warn">
-                    {f.sinDato === 1 ? '1 actividad sin HH' : `${f.sinDato} actividades sin HH`}
-                  </div>
-                )}
-              </td>
-              <td className="px-2 py-1.5">
-                <Stepper frente={f} href={href} />
-                <div className="mt-0.5 text-center text-[9.5px] text-faint">{f.base}</div>
-              </td>
-              <td className="px-2 py-1.5 text-right text-[12.5px] font-semibold text-ink tnum">
-                {f.dias == null ? <span className="font-normal text-faint">—</span>
-                  : f.dias.toLocaleString('es-AR', { maximumFractionDigits: 1 })}
-                {/* Un frente que no baja de N días por más gente que se le ponga tiene que decir
-                    por qué: el curado son días fijos, no trabajo que se pueda repartir. */}
-                {f.diasTecnicos > 0 && f.dias != null && (
-                  <div className="text-[9.5px] font-normal text-warn">
-                    {f.diasTecnicos} d técnicos
-                  </div>
-                )}
-              </td>
-              <td className={`px-2 py-1.5 text-right text-[12px] tnum ${f.fin ? 'text-ink-soft' : 'text-faint'}`}>
-                {fmt(f.fin) ?? 'sin plan'}
-              </td>
-              <td className={`px-2 py-1.5 text-left text-[11.5px] ${
-                f.limite === 'tope del frente' ? 'text-warn'
-                  : (f.limite === 'sin gente' ? 'text-faint' : (f.limite === 'terminado' ? 'text-pos' : 'text-muted'))
-              }`}>
-                {f.limite}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-/** El `+` se apaga en el tope del frente: más gente no acorta el plazo, y un botón que responde
- *  sin cambiar nada enseña a desconfiar de la pantalla. */
-function Stepper({ frente, href }: { frente: Frente; href: (clave: string, valor: number) => string }) {
-  const enTope = frente.tope != null && frente.dotacion >= frente.tope
-  const caja = 'flex h-[26px] w-[26px] items-center justify-center border border-line text-[13px]'
-  return (
-    <div className="flex items-center justify-center">
-      {frente.dotacion > 0
-        ? <Link href={href(frente.clave, frente.dotacion - 1)} scroll={false} className={`${caja} rounded-l-control text-ink-soft hover:bg-surface-quiet`} aria-label={`Quitar una persona de ${frente.nombre}`}>−</Link>
-        : <span className={`${caja} rounded-l-control text-faint`} aria-hidden>−</span>}
-      <span className="flex h-[26px] w-[32px] items-center justify-center border-y border-line text-[13px] font-semibold text-ink tnum">
-        {frente.dotacion}
-      </span>
-      {enTope
-        ? <span className={`${caja} rounded-r-control text-faint`} title={`Tope del frente: ${frente.tope} personas. Más gente no acorta el plazo.`}>+</span>
-        : <Link href={href(frente.clave, frente.dotacion + 1)} scroll={false} className={`${caja} rounded-r-control text-ink-soft hover:bg-surface-quiet`} aria-label={`Sumar una persona a ${frente.nombre}`}>+</Link>}
+    <div className="rounded-card border border-line bg-surface p-4" data-testid="limites-reales">
+      <h2 className="mb-2 text-[13px] font-semibold text-ink">Límites reales</h2>
+      <ul className="flex flex-col">
+        {filas.map((f) => (
+          <li key={f.que} className="flex items-baseline justify-between gap-3 border-b border-surface-sunken py-1.5 last:border-b-0">
+            <span className="min-w-0">
+              <span className="block text-[12px] text-ink-soft">{f.que}</span>
+              <span className="block text-[10.5px] text-faint">{f.detalle}</span>
+            </span>
+            <span className={`shrink-0 font-mono text-[13px] font-semibold tabular-nums ${f.tono}`}>{f.valor}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }

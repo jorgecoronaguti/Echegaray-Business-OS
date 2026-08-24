@@ -87,15 +87,24 @@ test('08 · sin HH cargadas la dotación dice «sin dato», nunca 0', async ({ p
   await page.screenshot({ path: 'capturas/08-dotacion.png', fullPage: true })
 })
 
-test('08 · el stepper cambia la dotación por la URL y no inventa días sin HH', async ({ page }) => {
+// CAMBIO DE REGLA DECLARADO (Design 23/08): el stepper dejó de ser un `<Link>` que navega y pasó a
+// ser un `<button>` que recalcula en el navegador y sincroniza la URL con `replaceState`. Lo que el
+// test verifica NO cambió —que la dotación no fabrique un plazo sin HH, y que el link siga siendo
+// compartible— pero el rol del elemento sí, y por eso se busca un botón.
+test('08 · el stepper recalcula sin navegar, deja la URL compartible y no inventa días sin HH', async ({ page }) => {
   await entrar(page)
   await page.goto(`/obras/${OBRA}/dotacion`)
   // Se elige un frente que NO tiene HH cargadas: es donde el defecto se ve. En un frente terminado
   // «0 días» es la verdad, y probar contra ése haría pasar el test justamente cuando está roto.
   const sinHH = page.locator('tbody tr').filter({ hasText: 'sin dato' }).first()
   await expect(sinHH).toContainText('—')
-  await sinHH.getByRole('link', { name: /Sumar una persona/ }).click()
-  await page.waitForURL(/dot=/)
+  const valor = sinHH.getByTestId('dotacion-valor')
+  const antes = Number((await valor.textContent())?.trim() ?? '0')
+  await sinHH.getByRole('button', { name: /Sumar una persona/ }).click()
+  // El número cambia en el acto: si esto espera una navegación, es que el stepper volvió a navegar.
+  await expect(valor).toHaveText(String(antes + 1))
+  // Y la URL acompaña sin navegar: el link que se manda por chat abre esta misma simulación.
+  await expect(page).toHaveURL(/dot=/)
   // Con gente pero sin HH, DÍAS sigue siendo «—» y FIN «sin plan»: la dotación no fabrica un plazo.
   const despues = page.locator('tbody tr').filter({ hasText: 'sin dato' }).first()
   await expect(despues).toContainText('—')

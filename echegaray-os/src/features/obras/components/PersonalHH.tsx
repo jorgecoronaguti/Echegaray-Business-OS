@@ -13,10 +13,10 @@
 // puede decir esta pantalla.
 
 import { FormAccion, BotonAccion, type AccionFormulario, type ResultadoAccion } from '@/shared/components/ui'
-import { Ayuda, CAMPO, Campo, Nulo, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
+import { Ayuda, CAMPO, Campo, Estado, Nulo, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
 import type { ActividadHH, RegistroHH } from '../services/personalService'
 import type { Actividad, Asignacion, Persona } from '../types'
-import { lecturaProductividad } from '../services/productividadHH'
+import { senalProductividad } from '../services/productividadHH'
 import { TIPOS_HORA, TIPO_HORA_LABEL, type TipoHora } from '../services/tipoHora'
 
 const hh = (n: number | null) => (n == null ? '—' : n.toLocaleString('es-AR', { maximumFractionDigits: 1 }))
@@ -41,18 +41,23 @@ export function TablaProductividad({ actividades }: { actividades: ActividadHH[]
   return (
     <Tabla testid="tabla-productividad" minWidth={620}>
       <THead>
-        <Th>Actividad</Th><Th num>Avance</Th><Th num>HH plan</Th><Th num>HH real</Th><Th>Lectura</Th>
+        {/* La columna ya no se llama «Lectura» ni contiene una frase: contiene la EXCEPCIÓN, y en la
+            actividad que va como se esperaba queda vacía a propósito (Design 23/08). */}
+        <Th>Actividad</Th><Th num>Avance</Th><Th num>HH plan</Th><Th num>HH real</Th><Th />
       </THead>
       <tbody>
-        {conAlgo.map((a) => (
-          <Tr key={a.actividad_id} compacta {...{ 'data-testid': 'fila-productividad' }}>
-            <Td fuerte>{a.nombre}</Td>
-            <Td num className="text-muted">{a.avance_pct == null ? <Nulo>sin medir</Nulo> : pct(a.avance_pct)}</Td>
-            <Td num className="text-muted">{a.hh_plan == null ? <Nulo>sin cargar</Nulo> : hh(a.hh_plan)}</Td>
-            <Td num fuerte>{a.hh_real == null ? <Nulo>sin imputar</Nulo> : hh(a.hh_real)}</Td>
-            <Td className="text-[11.5px] text-muted">{lecturaProductividad(a)}</Td>
-          </Tr>
-        ))}
+        {conAlgo.map((a) => {
+          const senal = senalProductividad(a)
+          return (
+            <Tr key={a.actividad_id} compacta {...{ 'data-testid': 'fila-productividad' }}>
+              <Td fuerte>{a.nombre}</Td>
+              <Td num className="text-muted">{a.avance_pct == null ? <Nulo>sin medir</Nulo> : pct(a.avance_pct)}</Td>
+              <Td num className="text-muted">{a.hh_plan == null ? <Nulo>sin cargar</Nulo> : hh(a.hh_plan)}</Td>
+              <Td num fuerte>{a.hh_real == null ? <Nulo>sin imputar</Nulo> : hh(a.hh_real)}</Td>
+              <Td>{senal && <Estado tono={senal.tono} clave={senal.texto}>{senal.texto}</Estado>}</Td>
+            </Tr>
+          )
+        })}
       </tbody>
     </Tabla>
   )
