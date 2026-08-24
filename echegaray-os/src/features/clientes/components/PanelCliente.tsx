@@ -33,6 +33,7 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { BotonEnlace, Estado, Nulo, Num, PanelDetalle } from '@/shared/components/ds'
 import { money } from '@/shared/utils/format'
+import { iniciales } from '@/shared/components/canon'
 import type { ClientePanel, ObraDePanel } from '../types'
 
 type Solapa = 'resumen' | 'obras' | 'documentos' | 'cuenta'
@@ -45,13 +46,13 @@ function tonoDeObra(estado: string): { tono: 'pos' | 'curso' | 'pendiente' | 'nu
   return { tono: 'nulo', label: estado }
 }
 
-/** Las iniciales del avatar del canónico. Dos letras del nombre con el que se habla del cliente. */
-export function iniciales(nombre: string): string {
-  const partes = nombre.trim().split(/\s+/).filter(Boolean)
-  if (partes.length === 0) return '—'
-  if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase()
-  return (partes[0][0] + partes[1][0]).toUpperCase()
-}
+// LAS INICIALES DEL AVATAR VIVEN EN UN SOLO LUGAR.
+//
+// Esta copia era idéntica a la de `shared/components/canon/Cabeceras.tsx`, que es la que usan las
+// fichas 23 y 26. Dos definiciones del mismo avatar es cómo un sistema termina con «Q-» en una
+// pantalla y «QM» en la de al lado para el mismo cliente. Se re-exporta para no romper a quien la
+// importaba desde acá.
+export { iniciales }
 
 function Dato({ k, children }: { k: string; children: React.ReactNode }) {
   return (

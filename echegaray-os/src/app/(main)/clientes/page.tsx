@@ -50,19 +50,21 @@ import { crearCliente } from '@/features/clientes/services/actions'
 import { CamposCliente } from '@/features/clientes/components/CamposCliente'
 import { ListaClientes, type ObraEnCurso } from '@/features/clientes/components/ListaClientes'
 import { FiltrosURL } from '@/features/administracion/components/Controles'
-import { Aviso, BotonEnlace, Vacio } from '@/shared/components/ds'
-import { PageShell, LECTURA, FormAccion } from '@/shared/components/ui'
+import { Aviso } from '@/shared/components/ds'
+import { SelloDatoBueno } from '@/shared/components/estado/SelloDatoBueno'
+import { BotonMarca, BotonPlano, C, CuentaChip, IcoCerrar, IcoMas, TARJETA } from '@/shared/components/canon'
+import { FormAccion } from '@/shared/components/ui'
 
 export const dynamic = 'force-dynamic'
 
 type Query = { archivados?: string; nuevo?: string; vista?: string }
 
-/** Un recorte con su contador en mono, como pide COMPONENTS.md §Secondary tabs / Filters. */
-function ChipCartera({ t, n }: { t: string; n: number }) {
+/** Un recorte con su contador adentro del chip, en el gris que le da el zip (`25:64`). */
+function ChipCartera({ t, n, activo }: { t: string; n: number; activo: boolean }) {
   return (
-    <span className="inline-flex items-baseline gap-1.5">
+    <span className="inline-flex items-center gap-[5px]">
       {t}
-      <span className="font-mono text-[11px] tabular-nums text-faint">{n}</span>
+      <CuentaChip n={n} activo={activo} />
     </span>
   )
 }
@@ -112,23 +114,18 @@ export default async function ClientesPage({
   const porCliente: Record<string, ObraEnCurso[]> = Object.fromEntries(enEjecucion)
 
   return (
-    <PageShell
-      // SIN EYEBROW (19/08/2026). Decía «01 · OBRAS», y la barra de nivel 2 que ahora corona esta
-      // pantalla dice «Administración · Clientes»: dos rótulos contradiciéndose a 40px de distancia.
-      // El que sobra es éste — la barra ya contesta «dónde estoy» y encima navega.
-      title="Clientes"
-      // SIN SUBTÍTULO (Design 23/08). Decía «Tocá un cliente para abrir su ficha: sus obras, sus
-      // contactos, su actividad y sus documentos» — o sea, explicaba que una fila de una tabla se
-      // puede clicar. «No se explica lo que el diseño muestra» (COMPONENTS.md §Texto en la interfaz).
-      // ANCHO COMPLETO desde el canónico 25: con dos columnas, 680px era el ancho correcto —una
-      // tabla de dos columnas estirada a 1440 es ilegible—. Con CLIENTE · EN EJECUCIÓN · OBRAS ·
-      // CONTRATADO, 680px estrangula el nombre de la obra en curso, que es la columna que se lee.
-      maxWidth={LECTURA.completo}
-    >
+    // SIN `PageShell` (porte 24/08, canónico 25): el shell dibuja un `h1` de 22px y padding 16/24px;
+    // el canon dibuja el título de 19px en la misma línea que el buscador, y padding de 20px.
+    // `SelloDatoBueno` venía de ahí y se conserva: sin él, `error.tsx` pierde la hora del último
+    // dato bueno.
+    <div style={{ minHeight: '100vh', background: C.fondo, display: 'flex', flexDirection: 'column' }}>
+      <SelloDatoBueno />
       {/* UNA LISTA VACÍA POR ERROR NO SE DIBUJA COMO «NO HAY DATOS» (INTERACTION.md §Error): el
           mensaje es el de la fuente, y la lista no se dibuja abajo fingiendo una cartera vacía. */}
       {error ? (
-        <Aviso tono="neg" titulo="No pude leer los clientes">{error}</Aviso>
+        <div style={{ padding: '20px' }}>
+          <Aviso tono="neg" titulo="No pude leer los clientes">{error}</Aviso>
+        </div>
       ) : (
         <>
           <ListaClientes
@@ -137,14 +134,15 @@ export default async function ClientesPage({
             obrasPorCliente={Object.fromEntries(todasLasObras)}
             veEconomia={veEconomia}
             accion={puedeEditar && (
-              <BotonEnlace
-                href={abierta ? '/clientes' : '/clientes?nuevo=1'}
-                variante={abierta ? 'secundaria' : 'primaria'}
-                data-testid="abrir-alta-cliente"
-                className="shrink-0"
-              >
-                {abierta ? 'Cancelar' : '+ Nuevo cliente'}
-              </BotonEnlace>
+              abierta ? (
+                <BotonPlano href="/clientes" testid="abrir-alta-cliente">
+                  <IcoCerrar s={14} /> Cancelar
+                </BotonPlano>
+              ) : (
+                <BotonMarca href="/clientes?nuevo=1" testid="abrir-alta-cliente">
+                  <IcoMas s={14} /> Nuevo cliente
+                </BotonMarca>
+              )
             )}
             filtros={
               /* LOS TRES RECORTES DEL CANÓNICO. Van por la URL —el filtro puesto se comparte por
@@ -153,13 +151,13 @@ export default async function ClientesPage({
               <FiltrosURL
                 testid="filtro-cartera"
                 opciones={[
-                  { label: <ChipCartera t="Todos" n={todos.length} />, href: url({ v: null }), activo: vista === 'todo', testid: 'filtro-cartera-todo' },
+                  { label: <ChipCartera t="Todos" n={todos.length} activo={vista === 'todo'} />, href: url({ v: null }), activo: vista === 'todo', testid: 'filtro-cartera-todo' },
                   {
-                    label: <ChipCartera t="Con obra activa" n={recortarCartera(todos, 'activos').length} />,
+                    label: <ChipCartera t="Con obra activa" n={recortarCartera(todos, 'activos').length} activo={vista === 'activos'} />,
                     href: url({ v: 'activos' }), activo: vista === 'activos', testid: 'filtro-cartera-activos',
                   },
                   {
-                    label: <ChipCartera t="Datos faltantes" n={recortarCartera(todos, 'sin-datos').length} />,
+                    label: <ChipCartera t="Datos faltantes" n={recortarCartera(todos, 'sin-datos').length} activo={vista === 'sin-datos'} />,
                     href: url({ v: 'sin-datos' }), activo: vista === 'sin-datos', testid: 'filtro-cartera-sin-datos',
                   },
                 ]}
@@ -168,18 +166,20 @@ export default async function ClientesPage({
           />
 
           {clientes.length === 0 && (
-            <Vacio accion={vista !== 'todo' ? <Link href={url({ v: null })} className="text-ink underline underline-offset-2">Ver todos</Link> : undefined}>
+            // El vacío POR FILTRO lo dibuja la tabla adentro de su caja («Ningún cliente se llama
+            // así.»). Éste es el otro: no hay nada que mostrar en este recorte, y lleva la salida.
+            <p style={{ padding: '0 20px 12px', fontSize: '12.5px', color: C.apagado }} data-testid="cartera-clientes-vacia">
               {vista !== 'todo'
-                ? 'Ningún cliente entra en este recorte.'
+                ? <>Ningún cliente entra en este recorte. <Link href={url({ v: null })} style={{ color: C.tinta, textDecoration: 'underline', textUnderlineOffset: 2 }}>Ver todos</Link>.</>
                 : guardados.length === 0
                   ? 'Todavía no hay clientes cargados.'
                   : 'Todos los clientes están archivados.'}
-            </Vacio>
+            </p>
           )}
 
           {abierta && (
-            <div className="mt-6 border-t border-line pt-5" data-testid="alta-cliente">
-              <h2 className="mb-3 text-[16px] font-semibold leading-tight text-ink">Nuevo cliente</h2>
+            <div style={{ ...TARJETA, margin: '0 20px 20px', padding: '16px 16px 18px' }} data-testid="alta-cliente">
+              <h2 style={{ fontSize: '13px', fontWeight: 600, color: C.tinta, margin: '0 0 10px' }}>Nuevo cliente</h2>
               {/* El identificador de la URL sale del nombre y se calcula en el servidor: pedirlo acá
                   sería pedir que alguien invente una clave primaria. Si ya existe, la acción avisa
                   en vez de crear un segundo cliente que dejaría al primero inalcanzable. */}
@@ -189,7 +189,7 @@ export default async function ClientesPage({
             </div>
           )}
 
-          <div className="mt-5 space-y-2">
+          <div style={{ padding: '0 20px 20px' }} className="space-y-2">
             {/* LA PUERTA DE VUELTA. Un cliente archivado no es un cliente perdido: el conteo dice
                 cuántos hay y el enlace los trae a la vista sin cambiar de pantalla. */}
             {guardados.length > 0 && (
@@ -216,6 +216,6 @@ export default async function ClientesPage({
           </div>
         </>
       )}
-    </PageShell>
+    </div>
   )
 }
