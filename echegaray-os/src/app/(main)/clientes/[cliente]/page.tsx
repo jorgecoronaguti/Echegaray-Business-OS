@@ -252,6 +252,9 @@ export default async function ClientePage({
           Cada una lleva a su bloque, que está a la vista más abajo: cuenta y ubica, no esconde. */}
       <div className="mb-6">
         <SubTabs
+          // `scroll` va en `true` porque estos `href` son ANCLAS: con el default (`false`) el índice
+          // se dibujaba entero y al tocarlo no pasaba nada.
+          scroll
           testid="indice-record"
           items={[
             { href: '#panel-informacion', label: 'Información', cuenta: null, testid: 'indice-informacion' },
