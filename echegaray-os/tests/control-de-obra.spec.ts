@@ -159,7 +159,7 @@ test('14-20 · un parte mueve la producción, el avance, las HH de la obra y las
   await panel.getByTestId('parte-comentario').fill(`${MARCA} parte de prueba`)
   await panel.getByTestId('parte-personal').locator('summary').click()
   await panel.getByTestId(`horas-${personaId}`).fill('8')
-  await panel.getByTestId('form-ejecucion').getByRole('button', { name: 'Registrar parte' }).click()
+  await panel.getByTestId('form-ejecucion').getByRole('button', { name: 'Registrar' }).click()
 
   // ═══ UNA CARGA, CUATRO EFECTOS — leídos en la base, no en la pantalla ═══
   await expect.poll(async () => {

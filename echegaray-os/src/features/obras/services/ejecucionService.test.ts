@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { deHoy, kpisDelDia } from './ejecucionService.ts'
+import { deHoy, jornadaHH, kpisDelDia, pendienteDe } from './ejecucionService.ts'
+import type { HoraDeJornada } from './ejecucionService.ts'
 import type { Actividad, ParteEjecucion } from '../types/index.ts'
 
 // LOS KPIs DE LA JORNADA DE EJECUCIÓN.
@@ -80,4 +81,70 @@ test('deHoy suma por actividad sólo la jornada pedida', () => {
     parte({ id: '3', actividad_id: 'a', cantidad: 100, fecha: '2026-08-19' }),
   ], '2026-08-20')
   assert.equal(m.get('a')!.cantidad, 20)
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA CABECERA DE LA JORNADA (canónico 05: «HH 35,0 · PERSONAS 14») Y EL PENDIENTE DEL DESPLEGABLE.
+//
+// ═══ EL DEFECTO QUE ATRAPAN ═══
+//
+// 1. Que «no se sabe» se dibuje como 0. La página todavía no pasa `registros_hh` en Parte diario:
+//    con `undefined` la cifra tiene que ser NULA, no cero. Un «HH 0,0» sobre una jornada de catorce
+//    personas es una afirmación falsa sobre la obra, y encima tranquilizadora.
+// 2. Que la jornada cuente ausencias y licencias como trabajo: tienen horas y no son trabajo. Con
+//    ese criterio, un día con media obra de licencia publica las HH de un día completo.
+// 3. Que la misma persona cuente dos veces por tener dos imputaciones en el día.
+// 4. Que el pendiente salga negativo cuando lo ejecutado pasó el objetivo, o que se invente un
+//    pendiente sobre una actividad que no declara objetivo.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+const hora = (x: Partial<HoraDeJornada>): HoraDeJornada => ({
+  fecha: '2026-08-23', horas: 8, tipo_hora: 'normal', persona_id: 'p1', persona_nombre: null, ...x,
+})
+
+test('sin fuente de registros la jornada es NULA, no cero', () => {
+  assert.equal(jornadaHH(undefined, '2026-08-23'), null)
+})
+
+test('con fuente leída y vacía el cero es real', () => {
+  assert.deepEqual(jornadaHH([], '2026-08-23'), { hh: 0, personas: 0 })
+})
+
+test('la jornada suma sólo horas trabajadas y cuenta personas distintas', () => {
+  const j = jornadaHH([
+    hora({ persona_id: 'p1', horas: 8 }),
+    hora({ persona_id: 'p1', horas: 2, tipo_hora: 'extra_50' }),
+    hora({ persona_id: 'p2', horas: 8 }),
+    hora({ persona_id: 'p3', horas: 8, tipo_hora: 'ausencia' }),
+    hora({ persona_id: 'p4', horas: 8, tipo_hora: 'licencia' }),
+    hora({ persona_id: 'p5', horas: 8, fecha: '2026-08-22' }),
+    hora({ persona_id: null, persona_nombre: null, horas: 4 }),
+  ], '2026-08-23')
+  // 8 + 2 + 8 + 4 = 22. La ausencia, la licencia y el día anterior no entran.
+  assert.deepEqual(j, { hh: 22, personas: 2 })
+})
+
+test('la fila legacy sin persona_id identifica por nombre y no se duplica', () => {
+  const j = jornadaHH([
+    hora({ persona_id: null, persona_nombre: 'Ramón Reta', horas: 8 }),
+    hora({ persona_id: null, persona_nombre: 'Ramón Reta', horas: 1, tipo_hora: 'extra_100' }),
+  ], '2026-08-23')
+  assert.deepEqual(j, { hh: 9, personas: 1 })
+})
+
+test('el pendiente sólo existe cuando la actividad declara objetivo por cantidad', () => {
+  assert.equal(pendienteDe({ metodo_avance: 'manual', unidad: '%', cantidad_objetivo: 100, cantidad_ejecutada: 10 }), null)
+  assert.equal(pendienteDe({ metodo_avance: 'cantidad', unidad: 'm²', cantidad_objetivo: null, cantidad_ejecutada: 3 }), null)
+})
+
+test('el pendiente no se dibuja negativo cuando se pasó el objetivo', () => {
+  assert.deepEqual(
+    pendienteDe({ metodo_avance: 'cantidad', unidad: 'm³', cantidad_objetivo: 1.08, cantidad_ejecutada: 1.5 }),
+    { cantidad: 0, unidad: 'm³' })
+})
+
+test('sin ejecutado el pendiente es el objetivo entero, no cero', () => {
+  assert.deepEqual(
+    pendienteDe({ metodo_avance: 'cantidad', unidad: 'm²', cantidad_objetivo: 96, cantidad_ejecutada: null }),
+    { cantidad: 96, unidad: 'm²' })
 })

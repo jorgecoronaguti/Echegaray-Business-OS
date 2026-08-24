@@ -7,6 +7,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Actividad, ParteEjecucion, ServiceResult } from '../types'
+import { esTrabajada } from './tipoHora.ts'
 
 /** Los partes de la obra, del más nuevo al más viejo. Con `actividadId`, los de esa actividad. */
 export async function getPartes(
@@ -84,5 +85,72 @@ export function kpisDelDia(
     tocadas: tocadas.size,
     enCurso: enCurso.length,
     sinParte: enCurso.filter((a) => !tocadas.has(a.id)).length,
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// LA CABECERA DE LA JORNADA — el canónico 05 escribe «HH 35,0 · PERSONAS 14» al lado de «Cargado
+// hoy». Ese número NO sale de `obra_ejecucion`: un parte no sabe quién lo hizo. Sale de
+// `registros_hh`, la MISMA tabla de la que sale la liquidación, para que no existan dos HH del día.
+//
+// Por eso la firma distingue tres mundos que un `number` aplastaría en cero:
+//   `undefined` → la página no pidió los registros. No se sabe: «sin registrar».
+//   `[]`        → se leyeron y no hay ninguno. Es un CERO REAL de la jornada.
+//   con filas   → el total trabajado y la gente distinta que lo trabajó.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+/** Lo que hace falta de un registro para contar la jornada. Nada más: pedir `RegistroHH` entero
+ *  ataría esta cuenta a la forma de la tabla de Personal. */
+export interface HoraDeJornada {
+  fecha: string | null
+  horas: number
+  tipo_hora: string
+  persona_id: string | null
+  persona_nombre: string | null
+}
+
+export interface JornadaHH {
+  hh: number
+  /** Personas DISTINTAS con horas trabajadas. Una persona con dos imputaciones cuenta una vez. */
+  personas: number
+}
+
+/**
+ * HH y personas de una jornada. Descarta ausencia y licencia —tienen horas y no son trabajo— con
+ * el mismo criterio que Personal (`esTrabajada`): dos definiciones de «hora trabajada» darían dos
+ * totales para el mismo día.
+ *
+ * Devuelve `null` cuando no hay fuente. El que dibuja escribe «sin registrar», nunca 0.
+ */
+export function jornadaHH(registros: HoraDeJornada[] | undefined, dia: string): JornadaHH | null {
+  if (registros == null) return null
+  let hh = 0
+  const gente = new Set<string>()
+  for (const r of registros) {
+    if (r.fecha !== dia || !esTrabajada(r.tipo_hora)) continue
+    hh += r.horas
+    // Sin `persona_id` la fila es del Sheet legacy de JORNALES: identifica por el texto del nombre
+    // para no contar dos veces a la misma persona, y no cuenta la que no dice a quién.
+    const quien = r.persona_id ?? r.persona_nombre
+    if (quien) gente.add(quien)
+  }
+  return { hh, personas: gente.size }
+}
+
+/**
+ * LO QUE FALTA DE UNA ACTIVIDAD, para el desplegable del parte: el canónico 05 pone esa cifra al
+ * borde derecho de cada opción, y es lo que decide cuánto cargar sin salir del formulario.
+ *
+ * `null` cuando la actividad no declara objetivo: «pendiente» sobre un objetivo desconocido sería
+ * un número inventado. El que dibuja escribe «sin medición».
+ */
+export function pendienteDe(
+  a: { metodo_avance: string; unidad: string | null; cantidad_objetivo: number | null; cantidad_ejecutada: number | null },
+): { cantidad: number; unidad: string } | null {
+  if (a.metodo_avance !== 'cantidad' || a.cantidad_objetivo == null) return null
+  return {
+    // Un objetivo sobrepasado no debe leerse como pendiente negativo: ya no falta nada.
+    cantidad: Math.max(0, a.cantidad_objetivo - (a.cantidad_ejecutada ?? 0)),
+    unidad: a.unidad ?? '',
   }
 }

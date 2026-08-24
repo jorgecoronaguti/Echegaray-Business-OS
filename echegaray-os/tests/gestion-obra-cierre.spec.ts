@@ -282,7 +282,7 @@ test('10-14 · una carga: producción, horas de la persona y horas del EQUIPO, c
   await panel.getByTestId('parte-equipos').locator('summary').click()
   await panel.getByTestId('equipo-0').fill(`${M} Hormigonera`)
   await panel.getByTestId('equipo-horas-0').fill('4')
-  await panel.getByTestId('form-ejecucion').getByRole('button', { name: 'Registrar parte' }).click()
+  await panel.getByTestId('form-ejecucion').getByRole('button', { name: 'Registrar' }).click()
 
   // ═══ CADA HECHO A SU FUENTE ═══
   //   3 un de producción   → obra_ejecucion       → avance CALCULADO 25% (3 de 12)
