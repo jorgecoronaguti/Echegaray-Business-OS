@@ -31,7 +31,7 @@
 // comportamientos según en qué pantalla cayera.
 //
 // La caja de búsqueda es ahora `BuscadorURL` del design system, que es el ÚNICO buscador con estado
-// en la URL del OS. Las etapas siguen siendo `<Link>` y el filtro sigue viajando en la URL, así que
+// en la URL del OS. Las etapas siguen siendo `<Link prefetch={false}>` y el filtro sigue viajando en la URL, así que
 // se comparte, se recarga y vuelve con el botón de atrás — y la tabla sigue siendo un server
 // component que lee de Postgres. El middleware recuerda el último para la próxima visita: ver
 // `services/vistaRecordada.ts`.

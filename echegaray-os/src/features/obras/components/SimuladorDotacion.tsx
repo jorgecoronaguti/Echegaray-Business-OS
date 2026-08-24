@@ -4,7 +4,7 @@
 //
 // ═══ POR QUÉ EL STEPPER DEJÓ DE NAVEGAR (Design 23/08 · 08) ═══
 //
-// Cada clic era un `<Link>`: una vuelta al servidor, la página remontada y el esqueleto de la tabla
+// Cada clic era un `<Link prefetch={false}>`: una vuelta al servidor, la página remontada y el esqueleto de la tabla
 // entre medio. Mover un frente de 2 a 6 personas costaba cuatro navegaciones para ver cuatro veces
 // la misma tabla con un número distinto. La cuenta —`HH ÷ (capacidad × jornada)` más los días
 // técnicos— es la MISMA función pura que corre el servidor (`simularFrente`, probada contra

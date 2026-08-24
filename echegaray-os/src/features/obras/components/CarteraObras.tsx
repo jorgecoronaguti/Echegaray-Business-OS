@@ -142,7 +142,7 @@ export function CarteraObras({ obras, personasHoy, sinDato, esAdmin, pie }: {
           {/* SÓLO ADMINISTRACIÓN CREA OBRAS: la RLS lo rechaza igual, y un botón que falla es peor
               que un botón que no está. */}
           {esAdmin && (
-            <Link href="/obras/nueva" data-testid="alta-obra-nueva" style={ESTILO_PRIMARIA}>
+            <Link prefetch={false} href="/obras/nueva" data-testid="alta-obra-nueva" style={ESTILO_PRIMARIA}>
               <Ico d={P.mas} s={14} w={2.2} />Nueva obra
             </Link>
           )}
