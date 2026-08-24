@@ -39,7 +39,10 @@ export default async function AvanceMasivoPage({ params }: { params: Promise<{ o
           obra={obra}
           // Avance masivo ES Trabajo (contrato 06): cierra de una vez las actividades del árbol.
           vistaActiva="tareas"
-          pantalla="Avance masivo"
+          // «Cierre de la jornada» es el rótulo del zip para esta pantalla, y dice para qué se
+          // abre; «Avance masivo» describe el mecanismo. El nombre del mecanismo sigue estando en
+          // la barra de la 03, que es de donde se llega.
+          pantalla="Cierre de la jornada"
           // «Fin plan» ya lo publica la cabecera como campo de identidad — repetirlo acá sería el
           // mismo número dos veces en el mismo renglón. Queda el avance, que es lo que se va a mover.
           kpis={[

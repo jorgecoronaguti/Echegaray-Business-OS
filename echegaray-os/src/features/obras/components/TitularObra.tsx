@@ -1,5 +1,17 @@
 // EL TITULAR DE LA OBRA — las cinco cifras del mismo rango, enmarcadas juntas.
 //
+// ═══ PORTE LITERAL de la franja de métricas de «02 · Obra Resumen.dc.html» (24/08/2026) ═══
+//
+//   celda    `flex:1; minWidth:186px; padding:12px 16px; borderRight:1px solid #EFEEEA`
+//   rótulo   10,5px `#91918B` con `letterSpacing:.04em`, precedido por su ícono
+//   cifra    mono 22px/600, `lineHeight:1.1`
+//   delta    11px con su flecha (↑/↓) del mismo color que el texto
+//   barra    4px sobre `#EAE7E6`, relleno grafito
+//   pie      11px `#91918B`, truncado
+//
+// Los íconos son los MISMOS trazos del zip, que ahora viven en `canon/Ico.tsx` en vez de estar
+// pegados acá como cadenas HTML: se copiaron de los seis mockups y se usan en las seis pantallas.
+//
 // Sale de `TabResumen` por tamaño (el archivo pasaba las 500 líneas del repo al enmarcar los
 // bloques del canónico 02) y porque es una pieza cerrada: entra la obra, sale la franja. Avance
 // físico, plazo, HH, costo y gente son cinco preguntas distintas y ninguna resume a otra — por eso
@@ -9,24 +21,11 @@ import Link from 'next/link'
 import type { ObraPanel, PlanVsReal } from '@/features/obras/types'
 import type { PersonasDeHoy } from '../services/personalService'
 import { BarraFina } from './TarjetaResumen'
+import { C, MONO } from './canon/tokens'
+import { Ico, P } from './canon/Ico'
 import { fecha, plataCorta } from './formato'
 
-function Glifo({ d }: { d: string }) {
-  return (
-    <svg aria-hidden width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: d }} />
-  )
-}
-
-const G = {
-  avance: '<path d="M4 19V9M10 19V5M16 19v-7M22 19H2"></path>',
-  fecha: '<rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M3 10h18M8 3v4M16 3v4"></path>',
-  hh: '<circle cx="12" cy="12" r="8.5"></circle><path d="M12 8v4.5l3 2"></path>',
-  dinero: '<path d="M12 3v18M8 7h6.5a2.5 2.5 0 010 5H9.5a2.5 2.5 0 000 5H16"></path>',
-  persona: '<path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"></path><circle cx="12" cy="7" r="3.6"></circle>',
-} as const
-
-const TONO_VALOR = { ink: 'text-ink', neg: 'text-neg', warn: 'text-warn', pos: 'text-pos' } as const
+const TONO_VALOR = { ink: C.tinta, neg: C.neg, warn: C.warn, pos: C.pos } as const
 
 interface PropsMetrica {
   k: string
@@ -57,28 +56,55 @@ interface PropsMetrica {
  * no hay barra: el motivo ya lo dice el pie.
  */
 function Metrica({ k, v, falta, contra, tonoContra = 'muted', pista, sub, tono = 'ink', href, icono }: PropsMetrica) {
-  const pie = <span className="block truncate text-[11px] leading-snug text-faint">{sub}</span>
+  const pie = (
+    <span style={{
+      display: 'block', fontSize: '11px', color: C.tenue, overflow: 'hidden',
+      textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+    }}>{sub}</span>
+  )
+  const colorContra = tonoContra === 'neg' ? C.neg : tonoContra === 'pos' ? C.pos : C.tintaSuave
   return (
-    <div className="min-w-[186px] flex-1 border-b border-r border-surface-sunken px-4 py-3 last:border-r-0" data-metrica={k}>
-      <div className="flex items-center gap-1.5">
-        {icono && <span className="flex shrink-0 text-faint">{icono}</span>}
-        {/* Rótulo en versalitas de 10,5px `faint`: el peso lo tiene que llevar la cifra. */}
-        <span className="whitespace-nowrap text-[10.5px] uppercase tracking-[0.04em] text-faint">{k}</span>
+    <div data-metrica={k} style={{
+      flex: 1, minWidth: '186px', padding: '12px 16px', borderRight: `1px solid ${C.bordeTarjeta}`,
+      borderBottom: `1px solid ${C.bordeTarjeta}`,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        {icono && <span style={{ display: 'flex', flexShrink: 0, color: C.tenue }}>{icono}</span>}
+        {/* Rótulo de 10,5px tenue: el peso lo tiene que llevar la cifra. */}
+        <span style={{
+          fontSize: '10.5px', color: C.tenue, letterSpacing: '.04em', whiteSpace: 'nowrap',
+          textTransform: 'uppercase',
+        }}>{k}</span>
       </div>
-      <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '7px', marginTop: '4px', flexWrap: 'wrap' }}>
+        {/* «SIN MEDIR» NO VA EN EL MONO DE 22px: un hueco del tamaño de una cifra se lee como si
+            fuera la cifra. */}
         {v == null ? (
-          <span className="text-[15px] leading-none text-faint" data-nulo="">{falta ?? 'sin dato'}</span>
+          <span data-nulo="" style={{ fontSize: '15px', lineHeight: 1, color: C.tenue, fontStyle: 'italic' }}>
+            {falta ?? 'sin dato'}
+          </span>
         ) : (
-          <span className={`whitespace-nowrap font-mono text-[22px] font-semibold leading-[1.1] tracking-[-0.01em] tabular-nums ${TONO_VALOR[tono]}`}>{v}</span>
+          <span style={{
+            fontFamily: MONO, fontSize: '22px', fontWeight: 600, color: TONO_VALOR[tono],
+            lineHeight: 1.1, whiteSpace: 'nowrap',
+          }}>{v}</span>
         )}
         {v != null && contra && (
-          <span className={`whitespace-nowrap text-[11px] ${tonoContra === 'neg' ? 'text-neg' : tonoContra === 'pos' ? 'text-pos' : 'text-muted'}`}>
+          <span style={{
+            display: 'flex', alignItems: 'center', gap: '3px', fontSize: '11px',
+            color: colorContra, whiteSpace: 'nowrap',
+          }}>
+            {/* LA FLECHA DEL ZIP dice el SENTIDO antes de leer el número. Sólo cuando el contraste
+                declara un sentido: «de $ 29,6 M» no sube ni baja, y una flecha ahí sería adorno. */}
+            {(contra.startsWith('+') || contra.startsWith('-')) && (
+              <Ico d={contra.startsWith('+') ? P.sube : P.baja} s={12} />
+            )}
             {contra}
           </span>
         )}
       </div>
-      {pista != null && <BarraFina pct={pista} className="mt-2 w-full" />}
-      <div className="mt-1.5">{href ? <Link href={href} className="hover:text-muted">{pie}</Link> : pie}</div>
+      {pista != null && <BarraFina pct={pista} className="mt-2" />}
+      <div style={{ marginTop: '6px' }}>{href ? <Link href={href}>{pie}</Link> : pie}</div>
     </div>
   )
 }
@@ -101,7 +127,7 @@ function fraccion(real: number | null | undefined, plan: number | null | undefin
 function mAvance(obra: ObraPanel): PropsMetrica {
   return {
     k: 'Avance físico',
-    icono: <Glifo d={G.avance} />,
+    icono: <Ico d={P.avance} s={14} />,
     v: obra.avance_pct == null ? null : `${obra.avance_pct}%`,
     falta: 'sin medir',
     pista: obra.avance_pct,
@@ -122,7 +148,7 @@ function mPlazo(obra: ObraPanel, plan: PlanVsReal | null, hoy: string): PropsMet
   const forecast = plan?.forecast_fin ?? obra.forecast_fin
   return {
     k: 'Plazo',
-    icono: <Glifo d={G.fecha} />,
+    icono: <Ico d={P.fecha} s={14} />,
     v: d == null ? null : d === 0 ? 'en fecha' : `${d > 0 ? '+' : ''}${d} d`,
     falta: 'sin medir',
     contra: d == null ? undefined : d > 0 ? 'más tarde que el plan' : d < 0 ? 'antes del plan' : undefined,
@@ -146,7 +172,7 @@ function mCosto(obra: ObraPanel, plan: PlanVsReal | null, veComercial: boolean):
   const presupuesto = veComercial ? plan?.costo_presupuestado ?? null : null
   return {
     k: 'Costo real',
-    icono: <Glifo d={G.dinero} />,
+    icono: <Ico d={P.dinero} s={14} />,
     v: sinImputar ? null : plataCorta(obra.costo_real),
     falta: 'sin imputar',
     contra: presupuesto == null ? undefined : `de ${plataCorta(presupuesto)}`,
@@ -169,8 +195,10 @@ function mCosto(obra: ObraPanel, plan: PlanVsReal | null, veComercial: boolean):
  */
 function mPersonas(obraId: string, hoy: PersonasDeHoy | null): PropsMetrica {
   const base = {
-    k: 'Personas',
-    icono: <Glifo d={G.persona} />,
+    // «PERSONAS HOY» y no «Personas» (zip 02): el número es el de HOY, y el rótulo tiene que
+    // decirlo o se lee como el plantel de la obra.
+    k: 'Personas hoy',
+    icono: <Ico d={P.cuadrilla} s={14} />,
     pista: null,
     href: `/obras/${obraId}?vista=personal`,
   }
@@ -209,7 +237,7 @@ function mHH(plan: PlanVsReal | null): PropsMetrica {
   const alto = plan?.desvio_hh_pct != null && plan.desvio_hh_pct > 10
   return {
     k: 'HH',
-    icono: <Glifo d={G.hh} />,
+    icono: <Ico d={P.hh} s={14} />,
     v: hhReal == null ? null : n(hhReal),
     falta: 'sin imputar',
     // El contraste es el DESVÍO contra el plan, que es lo que se mira; el plan entero va al pie.
@@ -237,10 +265,11 @@ function Titular({ obra, plan, obraId, veComercial, hoy, personasDeHoy }: {
   // mismo rango el aire no alcanza para decir dónde termina una y empieza la otra: «612 +38 vs
   // plan» y «$18,4 M» separados sólo por un hueco se leen como una sola frase.
   return (
-    <section data-testid="titular-obra" className="overflow-hidden rounded-card border border-line bg-surface">
-      <div className="-mb-px flex flex-wrap">
-        {metricas.map((m) => <Metrica key={m.k} {...m} />)}
-      </div>
+    <section data-testid="titular-obra" style={{
+      display: 'flex', flexWrap: 'wrap', background: C.superficie, border: `1px solid ${C.borde}`,
+      borderRadius: '10px', overflow: 'hidden', marginBottom: '-1px',
+    }}>
+      {metricas.map((m) => <Metrica key={m.k} {...m} />)}
     </section>
   )
 }
