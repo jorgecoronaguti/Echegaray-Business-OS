@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { CONTEXTOS, contextoActivo, conObra, volverDe } from '../services/navegacion'
-import { IconoGente, IconoHoy, IconoTareas } from './Iconos'
+import { IconoAvance, IconoGente, IconoHoy, IconoTareas } from './Iconos'
 
 // EL MARCO DEL JEFE DE OBRA EN EL TELÉFONO — el hermano mayor de `ShellEmpleado`, no la web achicada.
 //
@@ -37,6 +37,7 @@ const ALTO_BARRA = 58
 const ICONO: Record<string, (p: { className?: string }) => ReactNode> = {
   '/obra/hoy': IconoHoy,
   '/obra/tareas': IconoTareas,
+  '/obra/avance': IconoAvance,
   '/obra/personas': IconoGente,
 }
 
@@ -50,9 +51,13 @@ export function ShellJefe({
   // La ruta la pone el navegador: un layout de App Router no la recibe, y pasarla por `headers()`
   // volvería dinámica toda pantalla sólo para encender un rótulo.
   const pathname = usePathname() ?? ''
-  const obraId = useSearchParams()?.get('obra') ?? null
-  const activo = contextoActivo(pathname)
-  const volver = volverDe(pathname, obraId)
+  const params = useSearchParams()
+  const obraId = params?.get('obra') ?? null
+  // `/obra/avance` son dos pantallas: J03 con barra, y el formulario de UNA tarea con flecha. El
+  // porqué está en `navegacion.ts`; acá sólo se le pasa cuál de las dos es.
+  const conActividad = !!params?.get('actividad')
+  const activo = contextoActivo(pathname, conActividad)
+  const volver = volverDe(pathname, obraId, conActividad)
 
   return (
     <div className="mx-auto min-h-screen w-full max-w-[520px] bg-canvas" data-testid="shell-jefe">

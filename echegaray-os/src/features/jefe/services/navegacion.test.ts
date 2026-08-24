@@ -11,14 +11,27 @@ test('EL CONTEXTO SE ENCIENDE POR PREFIJO CON BARRA, no por «empieza con»', ()
 })
 
 test('LAS PANTALLAS QUE SE ABREN DESDE OTRA NO ENCIENDEN NINGÚN CONTEXTO', () => {
-  assert.equal(contextoActivo('/obra/avance'), null)
+  // El defecto que atrapa: `/obra/avance-masivo` empieza con `/obra/avance`, que AHORA es un
+  // contexto. Sin el corte por barra, el masivo encendería «Avance» en la barra de abajo.
   assert.equal(contextoActivo('/obra/avance-masivo'), null)
   assert.equal(contextoActivo('/obra/frente'), null)
 })
 
-test('SON TRES CONTEXTOS: el cuarto del contrato no tiene pantalla y no se dibuja', () => {
-  assert.equal(CONTEXTOS.length, 3)
-  assert.deepEqual(CONTEXTOS.map((c) => c.label), ['Hoy', 'Tareas', 'Gente'])
+// CAMBIO DE REGLA DECLARADO (Design 23/08): eran tres contextos porque el cuarto del contrato viejo
+// («Más») no tenía pantalla. El canónico J01 dibuja «Hoy · Tareas · Avance · Gente» y Avance sí la
+// tiene: J03. Los dos tests de abajo afirmaban lo contrario y se actualizan, no se borran.
+test('SON CUATRO CONTEXTOS, y Avance es uno de ellos', () => {
+  assert.equal(CONTEXTOS.length, 4)
+  assert.deepEqual(CONTEXTOS.map((c) => c.label), ['Hoy', 'Tareas', 'Avance', 'Gente'])
+})
+
+test('LA MISMA RUTA SON DOS PANTALLAS: J03 lleva barra, el formulario de una tarea lleva flecha', () => {
+  // El defecto que atrapa: `/obra/avance?actividad=…` se abre desde Tareas y necesita volver. Si el
+  // contexto se decidiera sólo por el `pathname`, esa pantalla quedaría con barra y sin salida.
+  assert.equal(contextoActivo('/obra/avance'), '/obra/avance')
+  assert.equal(contextoActivo('/obra/avance', true), null)
+  assert.equal(volverDe('/obra/avance', 'messina'), null)
+  assert.equal(volverDe('/obra/avance', 'messina', true), '/obra/tareas?obra=messina')
 })
 
 test('SIN OBRA NO SE ESCRIBE UN «?obra=» VACÍO', () => {
@@ -53,7 +66,7 @@ test('LA FLECHA VUELVE A UN DESTINO DECLARADO, con la obra puesta', () => {
   // El defecto que atrapa: `avance-masivo` empieza con `/obra/avance` — evaluado en el otro orden,
   // la flecha del masivo llevaba a Tareas, que no es de donde se abre.
   assert.equal(volverDe('/obra/avance-masivo', 'messina'), '/obra/hoy?obra=messina')
-  assert.equal(volverDe('/obra/avance', 'messina'), '/obra/tareas?obra=messina')
+  assert.equal(volverDe('/obra/avance', 'messina', true), '/obra/tareas?obra=messina')
   assert.equal(volverDe('/obra/frente', 'messina'), '/obra/hoy?obra=messina')
 })
 

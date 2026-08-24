@@ -1,14 +1,15 @@
 import Link from 'next/link'
 import { Aviso, BotonEnlace } from '@/shared/components/ds'
 import { BuscadorURL } from '@/shared/components/ds/BuscadorURL'
+import { avanceAgregado } from '@/features/obras/services/avance'
 import { PieDeAccion } from '@/features/jefe/components/ShellJefe'
-import {
-  Barra, Encabezado, Nada, Panel, Rotulo,
-} from '@/features/jefe/components/Piezas'
+import { Barra, Encabezado, Nada, Panel, porcentaje } from '@/features/jefe/components/Piezas'
 import { SinObra } from '@/features/jefe/components/SinObra'
 import { contextoDeObra, hoyEnObra } from '@/features/jefe/services/contexto'
 import { getActividades, getArbol } from '@/features/jefe/services/jefeService'
+import type { ActividadDelJefe } from '@/features/jefe/services/jefeService'
 import { frentePorTarea } from '@/features/jefe/services/frentes'
+import { estaTerminada } from '@/features/jefe/services/dia'
 import { conObra } from '@/features/jefe/services/navegacion'
 import {
   FILTROS, FILTRO_LABEL, agruparPorFrente, detalleDeTarea, filtrar, filtroDe,
@@ -50,7 +51,7 @@ export default async function JefeTareasPage({
 
   return (
     <>
-      <Encabezado titulo="Tareas" sub={`${obra.nombre} · ${total} en la obra`} />
+      <Encabezado titulo="Tareas de la obra" sub={`${obra.nombre} · ${total} actividades`} />
 
       {/* EL BUSCADOR ES EL DEL SISTEMA, y filtra al teclear. El contrato lo dice literal —«sin
           Enter ni botón Buscar»— y `BuscadorURL` ya lo resuelve para toda la aplicación: deja el
@@ -68,20 +69,27 @@ export default async function JefeTareasPage({
         />
       </div>
 
+      {/* EL CHIP DICE CUÁNTAS TIENE. Sin el contador el jefe toca «Con problema» para descubrir que
+          no hay ninguna, y en 390px cada toque que no informa nada cuesta una pantalla entera. El
+          conteo respeta la búsqueda: es sobre lo que está mirando, no sobre la obra entera. */}
       <div className="flex gap-2 overflow-x-auto px-4 pb-3">
         {FILTROS.map((f) => {
           const activo = f === filtro
+          const n = filtrar(actividades.data ?? [], q, f, hoy).length
           return (
             <Link
               key={f}
               href={conObra('/obra/tareas', obra.id, { filtro: f, q })}
               data-testid={`filtro-${f}`}
               aria-current={activo ? 'true' : undefined}
-              className={`flex h-[44px] shrink-0 items-center rounded-[10px] border px-3.5 text-[13.5px] ${
+              className={`flex h-[44px] shrink-0 items-center gap-2 rounded-[10px] border px-3.5 text-[13.5px] ${
                 activo ? 'border-marca bg-marca-soft font-semibold text-ink' : 'border-surface bg-surface text-ink'
               }`}
             >
               {FILTRO_LABEL[f]}
+              <span className={`font-mono text-[12px] tabular-nums ${activo ? 'text-ink' : 'text-faint'}`}>
+                {n}
+              </span>
             </Link>
           )
         })}
@@ -106,49 +114,7 @@ export default async function JefeTareasPage({
           </Panel>
         ) : (
           grupos.map((g) => (
-            <div key={g.clave}>
-              <Rotulo extra={`${g.tareas.length} ${g.tareas.length === 1 ? 'tarea' : 'tareas'}`}>
-                {g.nombre.toUpperCase()}
-              </Rotulo>
-              <div className="flex flex-col gap-2.5">
-                {g.tareas.map((t) => {
-                  const d = detalleDeTarea(t, hoy)
-                  return (
-                    <Link
-                      key={t.actividad_id}
-                      href={conObra('/obra/avance', obra.id, { actividad: t.actividad_id })}
-                      data-testid="tarea"
-                      className={`block rounded-[15px] bg-surface px-[17px] py-[15px] active:bg-surface-quiet ${
-                        t.impedimentos_abiertos > 0 ? 'shadow-[inset_3px_0_0_var(--os-neg)]' : ''
-                      }`}
-                    >
-                      <div className="mb-2.5 flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-[15.5px] font-semibold leading-tight text-ink">{t.nombre}</div>
-                          <div className={`mt-1 text-[12.5px] ${
-                            d.tono === 'neg' ? 'text-neg' : d.tono === 'warn' ? 'text-warn' : 'text-muted'
-                          }`}>
-                            {d.texto}
-                          </div>
-                        </div>
-                        <span className="shrink-0 font-mono text-[20px] font-semibold tabular-nums text-ink">
-                          {t.avance_pct == null ? '—' : `${t.avance_pct} %`}
-                        </span>
-                      </div>
-                      <Barra
-                        pct={t.avance_pct}
-                        tono={t.avance_pct === 100 ? 'pos' : t.impedimentos_abiertos > 0 ? 'warn' : 'ink'}
-                      />
-                      {/* CÓMO SE MIDIÓ VA PEGADO AL NÚMERO. Un 74 % calculado desde producción y uno
-                          tipeado a mano no valen lo mismo, y sin esto se leen igual. */}
-                      <div className="mt-2.5 text-[12px] text-faint">
-                        {t.origen_avance ? `medido por ${t.origen_avance}` : 'sin método de medición'}
-                      </div>
-                    </Link>
-                  )
-                })}
-              </div>
-            </div>
+            <GrupoDeFrente key={g.clave} nombre={g.nombre} tareas={g.tareas} obraId={obra.id} hoy={hoy} />
           ))
         )}
       </div>
@@ -164,5 +130,77 @@ export default async function JefeTareasPage({
         </BotonEnlace>
       </PieDeAccion>
     </>
+  )
+}
+
+/**
+ * UN FRENTE PLEGABLE, SIN UNA LÍNEA DE JAVASCRIPT.
+ *
+ * `<details>` cierra el rubro con el pulgar y sobrevive a la navegación del servidor. Un estado de
+ * apertura en React habría convertido toda la lista en un componente de cliente para conservar algo
+ * que el navegador ya sabe hacer solo.
+ *
+ * El porcentaje del frente NO se promedia acá: sale de `avanceAgregado`, la misma regla ponderada
+ * que usan J01, J03 y J06. Un frente que dice 48 % en una pantalla y 52 % en la de al lado destruye
+ * la confianza en las dos.
+ */
+function GrupoDeFrente({
+  nombre, tareas, obraId, hoy,
+}: {
+  nombre: string
+  tareas: ActividadDelJefe[]
+  obraId: string
+  hoy: string
+}) {
+  const { pct } = avanceAgregado(tareas)
+  return (
+    <details open data-testid="grupo-frente">
+      <summary className="flex min-h-[44px] cursor-pointer list-none items-center gap-2 px-1 [&::-webkit-details-marker]:hidden">
+        <span aria-hidden className="text-[13px] text-faint transition-transform">▾</span>
+        <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold text-ink">{nombre}</span>
+        <span className="font-mono text-[12px] tabular-nums text-faint">{tareas.length}</span>
+        <span className="font-mono text-[13.5px] font-semibold tabular-nums text-ink">
+          {pct == null ? '—' : porcentaje(pct)}
+        </span>
+      </summary>
+      <Panel>
+        {tareas.map((t) => <FilaDeTarea key={t.actividad_id} t={t} obraId={obraId} hoy={hoy} />)}
+      </Panel>
+    </details>
+  )
+}
+
+function FilaDeTarea({ t, obraId, hoy }: { t: ActividadDelJefe; obraId: string; hoy: string }) {
+  const d = detalleDeTarea(t, hoy)
+  return (
+    <Link
+      href={conObra('/obra/avance', obraId, { actividad: t.actividad_id })}
+      data-testid="tarea"
+      className={`block min-h-[64px] border-t border-surface-sunken px-[17px] py-3 first:border-t-0 active:bg-surface-quiet ${
+        t.impedimentos_abiertos > 0 ? 'shadow-[inset_3px_0_0_var(--os-neg)]' : ''
+      }`}
+    >
+      <div className="mb-2 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="truncate text-[14.5px] font-medium leading-tight text-ink">{t.nombre}</div>
+          <div className={`mt-1 text-[12px] ${
+            d.tono === 'neg' ? 'text-neg' : d.tono === 'warn' ? 'text-warn' : 'text-muted'
+          }`}>
+            {/* CÓMO SE MIDIÓ VA PEGADO AL NÚMERO: un 74 % calculado desde producción y uno tipeado
+                a mano no valen lo mismo, y sin esto se leen igual. Antes ocupaba un tercer renglón
+                por tarea; en una lista de 89 eran 89 renglones para decir casi siempre lo mismo. */}
+            {d.texto}
+            {t.origen_avance ? ` · por ${t.origen_avance}` : ''}
+          </div>
+        </div>
+        <span className="shrink-0 font-mono text-[17px] font-semibold tabular-nums text-ink">
+          {t.avance_pct == null ? '—' : `${t.avance_pct} %`}
+        </span>
+      </div>
+      <Barra
+        pct={t.avance_pct}
+        tono={estaTerminada(t) ? 'pos' : t.impedimentos_abiertos > 0 ? 'warn' : 'ink'}
+      />
+    </Link>
   )
 }

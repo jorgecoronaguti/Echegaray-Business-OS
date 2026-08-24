@@ -1,17 +1,19 @@
-import Link from 'next/link'
-import { Aviso, BotonEnlace } from '@/shared/components/ds'
+import { Aviso, BotonEnlace, Estado } from '@/shared/components/ds'
+import type { TonoEstado } from '@/shared/components/ds'
 import { PieDeAccion } from '@/features/jefe/components/ShellJefe'
 import { SelectorObra } from '@/features/jefe/components/SelectorObra'
-import { IconoAlerta, IconoGente, IconoTareas } from '@/features/jefe/components/Iconos'
+import { IconoAlerta } from '@/features/jefe/components/Iconos'
 import {
-  Barra, Encabezado, Fila, Metricas, Nada, Panel, Rotulo, porcentaje, porcentajeCorto,
+  Barra, Encabezado, Fila, Metricas, Nada, Panel, Rotulo, porcentaje,
 } from '@/features/jefe/components/Piezas'
 import { SinObra } from '@/features/jefe/components/SinObra'
 import { contextoDeObra, hoyEnObra, renglonDeObra } from '@/features/jefe/services/contexto'
 import { getActividades, getArbol, getHHDelDia, getImpedimentos } from '@/features/jefe/services/jefeService'
-import { estaTerminada, frentesAbiertos, frentesDelDia, problemasDelDia, soloTareas } from '@/features/jefe/services/dia'
+import {
+  estadoDelFrente, frentesAbiertos, frentesDelDia, problemasDelDia, resumenDeFrentes,
+} from '@/features/jefe/services/dia'
+import type { FrenteDelDia } from '@/features/jefe/services/dia'
 import { conObra } from '@/features/jefe/services/navegacion'
-import { diasDeAtraso } from '@/features/jefe/services/frentes'
 import { getEsperados, getPresencia } from '@/features/administracion/services/presenciaService'
 import { agrupar } from '@/features/administracion/services/presencia'
 
@@ -58,12 +60,9 @@ export default async function JefeHoyPage({
     hoy,
   })
   const frentes = frentesAbiertos(frentesDelDia(arbol.data ?? [], actividades.data ?? [], hh.data ?? [], hoy))
-  const atrasoObra = diasDeAtraso(obra.fecha_fin_plan, null, hoy)
+  const resumen = resumenDeFrentes(frentes)
   const asignados = (esperados.data ?? []).length
   const enObra = grupos.enObra.length
-  // Las tareas abiertas de la obra, para el acceso a Tareas. No es una lectura nueva: sale de las
-  // mismas actividades que ya se leyeron, con las funciones puras que definen «terminada».
-  const abiertas = soloTareas(actividades.data ?? []).filter((a) => !estaTerminada(a)).length
 
   const primerError = error ?? actividades.error ?? arbol.error ?? impedimentos.error
     ?? presencia.error ?? esperados.error ?? hh.error ?? null
@@ -82,16 +81,13 @@ export default async function JefeHoyPage({
           </Aviso>
         )}
 
+        {/* LAS TRES DE J01 SON LAS TRES DEL DÍA, no las de la obra. El avance de la obra y su fin de
+            plan se mudaron a J03, que es la pantalla que los compara contra el plan: acá ocupaban
+            dos tercios del encabezado para contestar una pregunta que nadie hace parado en el
+            frente a las siete y media de la mañana. */}
         <Metricas
           testid="jefe-hoy-metricas"
           metricas={[
-            {
-              clave: 'Avance',
-              valor: porcentajeCorto(obra.avance_pct),
-              sub: obra.avance_pct == null
-                ? 'sin medir todavía'
-                : `${obra.n_actividades_medidas} de ${obra.n_actividades} medidas`,
-            },
             {
               clave: 'En obra',
               // NUNCA «0 de 14» cuando nadie marcó: sin plantel asignado el número no existe.
@@ -99,18 +95,30 @@ export default async function JefeHoyPage({
               sub: asignados === 0 ? 'sin plantel asignado' : `de ${asignados} asignados`,
             },
             {
-              clave: 'Fin de plan',
-              valor: obra.fecha_fin_plan ? fechaCorta(obra.fecha_fin_plan) : '—',
-              sub: obra.fecha_fin_plan
-                ? (atrasoObra ? `${atrasoObra} días pasado` : 'en plazo')
-                : 'sin fecha de fin',
-              tono: atrasoObra ? 'neg' : 'ink',
+              clave: 'Partes',
+              valor: resumen.abiertos === 0 ? '—' : `${resumen.conParte}/${resumen.abiertos}`,
+              sub: resumen.abiertos === 0 ? 'sin frentes abiertos' : 'frentes con parte hoy',
+              tono: resumen.abiertos > 0 && resumen.conParte < resumen.abiertos ? 'warn' : 'ink',
+            },
+            {
+              clave: 'Parados',
+              valor: String(resumen.parados),
+              sub: resumen.parados === 1 ? 'frente detenido' : 'frentes detenidos',
+              tono: resumen.parados > 0 ? 'neg' : 'ink',
             },
           ]}
         />
 
         {problemas.length > 0 && (
-          <Panel titulo="Resolver hoy" contador={String(problemas.length)} testid="jefe-hoy-problemas">
+          // La regla interior de 3px marca la excepción: `neg` cuando algo FRENA trabajo (un
+          // impedimento abierto), `warn` cuando falta un dato o una decisión. El tono lo decide el
+          // problema más grave de la lista, no el primero que llegó.
+          <Panel
+            titulo="Resolver ahora"
+            contador={String(problemas.length)}
+            testid="jefe-hoy-problemas"
+            filo={problemas.some((p) => p.tono === 'neg') ? 'neg' : 'warn'}
+          >
             {problemas.map((p) => (
               <Fila
                 key={p.clave}
@@ -136,7 +144,9 @@ export default async function JefeHoyPage({
         )}
 
         <div>
-          <Rotulo extra={frentes.length > 0 ? `${frentes.length} abiertos` : undefined}>FRENTES</Rotulo>
+          <Rotulo extra={frentes.length > 0 ? `${frentes.length} abiertos` : undefined}>
+            FRENTES DE HOY
+          </Rotulo>
           <Panel testid="jefe-hoy-frentes">
             {frentes.length === 0 ? (
               <Nada testid="sin-frentes">
@@ -144,65 +154,36 @@ export default async function JefeHoyPage({
               </Nada>
             ) : (
               frentes.map((f) => (
-                <div key={f.frente.id} className="border-t border-surface-sunken first:border-t-0">
-                  <a
-                    data-testid="frente"
-                    href={conObra('/obra/frente', obra.id, { frente: f.frente.id })}
-                    className="block min-h-[60px] px-[18px] py-3 active:bg-surface-quiet"
-                  >
-                    <div className="mb-2 flex items-baseline justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="truncate text-[15px] font-medium text-ink">{f.frente.nombre}</div>
-                        <div className={`mt-0.5 text-[12.5px] ${f.atrasoDias ? 'text-warn' : 'text-muted'}`}>
-                          {detalleDelFrente(f)}
-                        </div>
-                      </div>
-                      <span className="shrink-0 font-mono text-[20px] font-semibold tabular-nums text-ink">
-                        {porcentaje(f.pct)}
-                      </span>
-                    </div>
-                    <Barra pct={f.pct} tono={f.atrasoDias ? 'warn' : 'ink'} />
-                  </a>
-                </div>
+                <a
+                  key={f.frente.id}
+                  data-testid="frente"
+                  href={conObra('/obra/frente', obra.id, { frente: f.frente.id })}
+                  className="block min-h-[60px] border-t border-surface-sunken px-[18px] py-3 first:border-t-0 active:bg-surface-quiet"
+                >
+                  <div className="mb-1.5 flex items-baseline justify-between gap-3">
+                    <span className="min-w-0 truncate text-[15px] font-medium text-ink">
+                      {f.frente.nombre}
+                    </span>
+                    <span className="shrink-0 font-mono text-[20px] font-semibold tabular-nums text-ink">
+                      {porcentaje(f.pct)}
+                    </span>
+                  </div>
+                  {/* EL ESTADO Y EL PARTE, EN UN RENGLÓN. Son las dos cosas que el jefe mira sin
+                      abrir el frente: si algo lo frena, y si ya está dicho hasta dónde llegó hoy. */}
+                  <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <Estado tono={tonoDeEstado(f)} clave={estadoDelFrente(f).palabra} testid="estado-frente">
+                      {estadoDelFrente(f).palabra}
+                    </Estado>
+                    <span className={`text-[12.5px] ${f.parteHoy ? 'text-pos' : 'text-faint'}`}>
+                      {f.parteHoy ? 'parte cargado' : 'sin parte hoy'}
+                    </span>
+                    <span className="text-[12.5px] text-muted">{detalleDelFrente(f)}</span>
+                  </div>
+                  <Barra pct={f.pct} tono={f.atrasoDias ? 'warn' : 'ink'} />
+                </a>
               ))
             )}
           </Panel>
-        </div>
-
-        {/* LOS DOS DESTINOS QUE SE ABREN DESDE ACÁ, como bloques y no como filas de texto.
-            Estaban: Gente era una fila de 60px con tres renglones y Tareas no estaba —se llegaba
-            sólo por la barra de abajo, que es donde el pulgar YA está pero que no dice cuántas hay.
-            Dos bloques de 88px con su forma dibujada contestan «¿cuánto queda?» y «¿quién vino?»
-            sin leer una oración, y se tocan sin recolocar la mano. */}
-        <div className="grid grid-cols-2 gap-3">
-          <Link
-            href={conObra('/obra/tareas', obra.id)}
-            data-testid="ir-a-tareas"
-            className="flex min-h-[88px] flex-col justify-center gap-1 rounded-[14px] bg-surface px-[18px] active:bg-surface-quiet"
-          >
-            <IconoTareas className="h-[22px] w-[22px] text-muted" />
-            <span className="text-[15px] font-medium text-ink">Tareas</span>
-            <span className="text-[12.5px] text-muted">
-              {abiertas === 0 ? 'ninguna abierta' : `${abiertas} ${abiertas === 1 ? 'abierta' : 'abiertas'}`}
-            </span>
-          </Link>
-          <Link
-            href={conObra('/obra/personas', obra.id)}
-            data-testid="ir-a-personas"
-            className="flex min-h-[88px] flex-col justify-center gap-1 rounded-[14px] bg-surface px-[18px] active:bg-surface-quiet"
-          >
-            <IconoGente
-              className={`h-[22px] w-[22px] ${grupos.sinRegistrar.length > 0 ? 'text-warn' : 'text-muted'}`}
-            />
-            <span className="text-[15px] font-medium text-ink">Gente</span>
-            <span className={`text-[12.5px] ${grupos.sinRegistrar.length > 0 ? 'text-warn' : 'text-muted'}`}>
-              {asignados === 0
-                ? 'sin plantel'
-                : grupos.sinRegistrar.length > 0
-                  ? `${enObra} en obra · ${grupos.sinRegistrar.length} sin marca`
-                  : `${enObra} en obra`}
-            </span>
-          </Link>
         </div>
       </div>
 
@@ -220,12 +201,13 @@ export default async function JefeHoyPage({
   )
 }
 
-/** `2026-01-30` → `30/01`. En el teléfono el año sobra: nadie planifica a dos años vista acá. */
-function fechaCorta(iso: string): string {
-  return `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
+/** El estado del frente, traducido al vocabulario de puntos del sistema (`ds/Estado`). */
+function tonoDeEstado(f: FrenteDelDia): TonoEstado {
+  const t = estadoDelFrente(f).tono
+  return t === 'neg' ? 'neg' : t === 'warn' ? 'warn' : t === 'ink' ? 'curso' : 'nulo'
 }
 
-function detalleDelFrente(f: { personasHoy: number; atrasoDias: number | null; abiertas: number; medidas: number; total: number }): string {
+function detalleDelFrente(f: FrenteDelDia): string {
   // LA AUSENCIA DE HORAS NO SE REPITE DOCE VECES. Cuando nadie imputó en ninguno —que es lo
   // normal a media mañana— el renglón se llenaba del mismo texto y dejaba de decir algo. Lo que
   // siempre se dice es cuánto trabajo queda abierto; las horas, sólo cuando las hay.

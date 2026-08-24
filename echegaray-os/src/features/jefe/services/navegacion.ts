@@ -7,28 +7,39 @@
 // y guardarlo en el navegador haría que un enlace compartido abriera OTRA obra que la del que lo
 // mandó. En la URL, un enlace es un enlace: `/obra/tareas?obra=san-francisco` es siempre esa obra.
 //
-// ═══ SON TRES CONTEXTOS Y NO CUATRO ═══
+// ═══ SON CUATRO CONTEXTOS — CAMBIO DE REGLA DECLARADO (Design 23/08) ═══
 //
-// El contrato visual dibuja «Hoy · Tareas · Gente · Más». Los tres primeros son pantallas J01, J02
-// y J05. «Más» no tiene pantalla: no hay un J07 que diga qué lleva adentro. Un cuarto botón que no
-// abre nada enseña que la barra miente, así que van tres y el hueco queda declarado. Las otras tres
-// pantallas —Avance, Avance masivo y Frente— se abren DESDE éstas y vuelven con la flecha: en el
-// contrato tampoco tienen barra.
+// Hasta el 22/08 eran tres. El contrato viejo dibujaba «Hoy · Tareas · Gente · Más» y «Más» no tenía
+// pantalla, así que el cuarto botón no se dibujaba y el hueco quedaba declarado. El canónico J01 del
+// 23/08 dibuja «Hoy · Tareas · Avance · Gente», y Avance SÍ tiene pantalla: J03, «Cómo viene la
+// obra». El motivo por el que faltaba desapareció, así que el botón entra.
+//
+// Las tres pantallas que se abren DESDE éstas —registrar el avance de una tarea, el avance masivo y
+// el frente— siguen sin barra y vuelven con la flecha.
 
 export interface Contexto { href: string; label: string; testid: string }
 
 export const CONTEXTOS: Contexto[] = [
   { href: '/obra/hoy', label: 'Hoy', testid: 'nav-jefe-hoy' },
   { href: '/obra/tareas', label: 'Tareas', testid: 'nav-jefe-tareas' },
+  { href: '/obra/avance', label: 'Avance', testid: 'nav-jefe-avance' },
   { href: '/obra/personas', label: 'Gente', testid: 'nav-jefe-personas' },
 ]
 
 /** La raíz del perfil, y la única ruta a la que se llega sin saber todavía qué obra se mira. */
 export const INICIO = '/obra/hoy'
 
-/** ¿Qué contexto está encendido? Por prefijo con barra, para que `/obra/tareas-x` no encienda
- *  `/obra/tareas`. */
-export function contextoActivo(pathname: string): string | null {
+/**
+ * ¿Qué contexto está encendido? Por prefijo con barra, para que `/obra/tareas-x` no encienda
+ * `/obra/tareas` — y `/obra/avance-masivo` tampoco encienda `/obra/avance`.
+ *
+ * `conActividad` es la MISMA ruta con dos pantallas: `/obra/avance` es J03 (cómo viene la obra, un
+ * contexto de la barra) y `/obra/avance?actividad=…` es el formulario que carga el avance de UNA
+ * tarea, al que se entra desde Tareas y del que se vuelve con la flecha. Separarlas en dos rutas
+ * habría sido más limpio y rompía los enlaces que ya circulan y las pruebas que los usan.
+ */
+export function contextoActivo(pathname: string, conActividad = false): string | null {
+  if (conActividad && pathname.startsWith('/obra/avance')) return null
   const c = CONTEXTOS.find((x) => pathname === x.href || pathname.startsWith(`${x.href}/`))
   return c?.href ?? null
 }
@@ -70,9 +81,11 @@ export function obraElegida(disponibles: { id: string }[], pedida: string | null
  * la misma pantalla dos veces y la flecha deja al jefe girando en el lugar. Un destino declarado
  * siempre lleva a algún lado, y la obra viaja con él para no perder cuál estaba mirando.
  */
-export function volverDe(pathname: string, obraId: string | null): string | null {
+export function volverDe(pathname: string, obraId: string | null, conActividad = false): string | null {
   if (pathname.startsWith('/obra/avance-masivo')) return conObra('/obra/hoy', obraId)
-  if (pathname.startsWith('/obra/avance')) return conObra('/obra/tareas', obraId)
+  // Sólo el formulario de UNA tarea vuelve a Tareas. `/obra/avance` pelado es J03, que es un
+  // contexto de la barra: darle flecha lo sacaría de la barra que lo acaba de abrir.
+  if (pathname.startsWith('/obra/avance')) return conActividad ? conObra('/obra/tareas', obraId) : null
   if (pathname.startsWith('/obra/frente')) return conObra('/obra/hoy', obraId)
   return null
 }
