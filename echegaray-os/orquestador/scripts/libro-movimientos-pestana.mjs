@@ -226,8 +226,19 @@ async function extraerDeLasFuentes(google, corte) {
   // El módulo de datos (lib/obras-datos.mjs) se está construyendo en paralelo: el import es dinámico
   // y con guarda para que este script corra igual sin él — la fuente sale vacía y el aviso lo dice.
   // Al mergear la rama que lo trae, se activa solo, sin tocar una línea de acá.
-  const OBRAS_FUTURAS = await import('../lib/obras-datos.mjs').then((m) => m.OBRAS_FUTURAS ?? []).catch(() => [])
-  if (!OBRAS_FUTURAS.length) {
+  // ═══ LA LLAVE DEL DUEÑO (24/08/2026): «esas proyecciones no deben considerarse por el momento» ═══
+  //
+  // Pedido textual sobre el pico de $16,3M del 25/08 en CAJA: los materiales proyectados de las
+  // obras (obras-datos.mjs, sus propios PDF de explosión de gastos) salen del libro mientras la
+  // llave esté puesta. Es una LLAVE, no un borrado: los datos quedan intactos y la fuente vuelve
+  // sacando la variable. Jornales, cargas, estructura y recurrentes NO pasan por acá.
+  const sinObras = process.env.ORQ_LIBRO_SIN_OBRAS === '1'
+  const OBRAS_FUTURAS = sinObras
+    ? []
+    : await import('../lib/obras-datos.mjs').then((m) => m.OBRAS_FUTURAS ?? []).catch(() => [])
+  if (sinObras) {
+    console.warn('  ⚠ obras futuras: EXCLUIDAS por ORQ_LIBRO_SIN_OBRAS=1 (pedido del dueño 24/08) — el libro sale sin «Materiales de obra proyectados».')
+  } else if (!OBRAS_FUTURAS.length) {
     console.warn('  ⚠ obras futuras: lib/obras-datos.mjs no existe todavía o no publica OBRAS_FUTURAS — la fuente Obras sale vacía.')
   }
   // ═══ SIN NETEO NO SE PUBLICA: ABORTA, Y EL MENSAJE DICE QUÉ COLUMNA FALTÓ (13/08/2026) ═══
