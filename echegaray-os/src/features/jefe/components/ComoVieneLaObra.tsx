@@ -162,7 +162,7 @@ export function ComoVieneLaObra({
 
 function FilaDeFrente({ f }: { f: GrupoDeAvance }) {
   return (
-    <div className="border-t border-surface-sunken px-[18px] py-3 first:border-t-0" data-testid="frente-avance">
+    <div className="border-t border-surface-sunken px-[18px] py-3 first:border-t-0" data-testid="frente-avance-fila">
       <div className="mb-2 flex items-baseline justify-between gap-3">
         <span className="min-w-0 truncate text-[13.5px] text-ink">{f.nombre}</span>
         <span className="flex shrink-0 items-baseline gap-2">
