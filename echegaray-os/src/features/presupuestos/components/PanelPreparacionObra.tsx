@@ -130,8 +130,9 @@ export function PanelPreparacionObra({ obra, checklist, resumen }: {
           valor={`${resumen.conPasos} de ${resumen.elegidas}`}
           tono={resumen.conPasos < resumen.elegidas ? 'warn' : 'pos'}
         />
-        <p className="mt-2.5 flex items-start gap-2 text-[11.5px] leading-relaxed text-muted">
-          <span aria-hidden className="mt-px shrink-0 text-faint"><IconoProblema className="h-3.5 w-3.5" /></span>
+        {/* SIN ICONO DE ALERTA. Es una nota, no un problema: el triángulo del sistema significa
+            «algo está mal» y acá no hay nada mal — la frase explica el modelo. */}
+        <p className="mt-2.5 text-[11.5px] leading-relaxed text-muted">
           El presupuesto no es el plan: lo que se convierte queda editable en la obra sin tocar la
           cotización.
         </p>
