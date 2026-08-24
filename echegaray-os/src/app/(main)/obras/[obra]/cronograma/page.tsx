@@ -63,7 +63,7 @@ import {
   Conflictos, Dependencias, PlanDeLaSeleccionada, textosDeConflicto,
 } from '@/features/obras/components/PanelesCronograma'
 import { Callout } from '@/shared/components/ui'
-import { Ayuda, Franja } from '@/shared/components/ds'
+import { Ayuda, Franja, Plegable } from '@/shared/components/ds'
 import { CalendarioObra } from '../../../../../../orquestador/lib/calendario-obra.mjs'
 
 export const dynamic = 'force-dynamic'
@@ -166,15 +166,17 @@ export default async function CronogramaObraPage(
           // comparten solapa —Subcontratos y Avance masivo—.
           vistaActiva="tareas"
           pantalla="Cronograma calculado"
-          // Los mismos cuatro números que publicaba la banda. «Fin de obra» sigue diciendo «sin
-          // secuencia» y no una fecha: sin dependencias cargadas nada secuencia a nada.
+          // ═══ LA MISMA MÉTRICA NO SE PUBLICA DOS VECES EN LA MISMA PANTALLA (24/08) ═══
+          //
+          // Acá arriba decían «Fin plan · Fin de obra · Crítico» y 1.200px más abajo la franja del
+          // canónico 07 dice «Fin de línea base · Fin calculado · Camino crítico» — los mismos tres
+          // números, con dos rótulos distintos cada uno. Dos versiones del mismo dato en una
+          // pantalla obligan a comparar antes de creer, y la franja gana: es la del contrato, tiene
+          // el desvío contra la base y la holgura, que acá no entraban.
+          //
+          // Queda `Sin plan`, que la franja NO dice: 25 actividades sin fechas cambian lo que
+          // significa todo el resto del cronograma y hay que verlo antes de mirarlo.
           kpis={[
-            { rotulo: 'Fin plan', valor: fmt(obra.fecha_fin_plan?.slice(0, 10) ?? null), falta: 'sin fecha' },
-            {
-              rotulo: enProyeccion ? 'Fin proyectado' : 'Fin de obra',
-              valor: fmt(crono.finObra), falta: 'sin secuencia',
-            },
-            { rotulo: 'Crítico', valor: crono.sinSecuencia ? null : `${crono.criticas.length} act.`, falta: 'sin secuencia' },
             { rotulo: 'Sin plan', valor: `${crono.sinPlan.length} act.` },
           ]}
         />
@@ -250,16 +252,28 @@ export default async function CronogramaObraPage(
           />
         )}
 
-        <div className="grid gap-4 lg:grid-cols-2">
-          <PlanDeLaSeleccionada
-            obraId={obraId} fila={filaSel} puedeEditar={puedeEditarPlan} jornada={crono.jornada}
-          />
-          <Dependencias
-            crono={crono} insumos={insumos} seleccionada={seleccionada}
-            obraId={obraId} puedeEditar={puedeEditarPlan}
-          />
-        </div>
-        <Conflictos crono={crono} />
+        {/* ═══ EL CRONOGRAMA ES LA PANTALLA; LO DEMÁS ES EL DETALLE (24/08 · canónico 07) ═══
+            Los tres paneles ocupaban media pantalla debajo del lienzo y los tres arrancan vacíos
+            —«Tocá una actividad»—: el que entra a mirar el plan paga ese alto todos los días para
+            leer tres invitaciones. Se pliegan, no se borran: editar la duración, ver de qué depende
+            una actividad y saber si dos frentes piden la misma cuadrilla siguen a un clic.
+            La alerta de conflictos viaja a la fila CERRADA — un choque de recursos no puede
+            esperar a que alguien abra la sección. */}
+        <Plegable titulo="Más detalle" testid="mas-detalle-cronograma"
+          {...(crono.conflictos.length > 0 ? { alerta: `${crono.conflictos.length} conflicto(s) de recurso` } : {})}>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <PlanDeLaSeleccionada
+              obraId={obraId} fila={filaSel} puedeEditar={puedeEditarPlan} jornada={crono.jornada}
+            />
+            <Dependencias
+              crono={crono} insumos={insumos} seleccionada={seleccionada}
+              obraId={obraId} puedeEditar={puedeEditarPlan}
+            />
+          </div>
+          <div className="pt-4">
+            <Conflictos crono={crono} />
+          </div>
+        </Plegable>
       </div>
       {/* AL PIE Y COMO TARJETA (mockup 07): la franja es el cierre de la pantalla, no una barra
           flotante. Lleva el mismo marco que el resto del contenido, o queda 20px más ancha que el

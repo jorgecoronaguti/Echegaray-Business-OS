@@ -1,7 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { rollup, type NodoObra } from './wbs.ts'
-import { contenedores, estadoDeFila, filasVisibles } from './vistaArbol.ts'
+import {
+  contenedores, conteoDeVistas, estadoDeFila, filasVisibles, VISTA_ARBOL_LABEL, VISTAS_ARBOL,
+  VISTAS_PRIMARIAS, VISTAS_SECUNDARIAS,
+} from './vistaArbol.ts'
 
 const nodo = (id: string, extra: Partial<NodoObra> = {}): NodoObra => ({
   id, padre_id: null, nivel: 0, camino: id, es_contenedor: false, tiene_hijas: false,
@@ -160,4 +163,47 @@ test('el estado pone el hecho por encima de la deuda de carga, y el impedimento 
 test('el cero declarado no se confunde con la ausencia de avance', () => {
   assert.equal(estadoDeFila(nodo('a', { hh_plan: 4, cuadrilla: 'C1', fin_plan: '2026-09-01' }), 0).clave, 'pendiente')
   assert.equal(estadoDeFila(nodo('a', { hh_plan: 4, cuadrilla: 'C1', estado: 'en_curso' }), 0).clave, 'en_curso')
+})
+
+// ═══ EL CONTADOR DEL CHIP (24/08 · auditoría 03 contra el canónico) ═══
+//
+// Los filtros salían sin número: había que tocar cada uno para saber si tenía algo detrás. El
+// defecto que estos asserts atrapan es el que hace inútil el contador — contar filas del árbol en
+// vez de ACTIVIDADES. Con los rubros adentro, «Todo» daría 5 donde la franja del pie dice
+// «Actividades 3», y dos números de la misma pantalla se contradirían.
+test('el contador cuenta actividades, NO filas: los rubros no son trabajo', () => {
+  const c = conteoDeVistas(ARBOL, rollup(ARBOL), '2026-08-24')
+  assert.equal(c.todo, 3, 'los dos contenedores no pueden entrar en el total')
+  assert.equal(c.en_curso, 1, 'sólo «Encofrado de piso» está entre 0 y 100')
+})
+
+test('cada vista cuenta con su propia regla, y el buscador no la toca', () => {
+  const arbol: NodoObra[] = [
+    contenedor('Estructura'),
+    nodo('Vencida', { padre_id: 'Estructura', nivel: 1, fin_plan: '2026-08-01', avance_pct: 30 }),
+    nodo('Trabada', { padre_id: 'Estructura', nivel: 1, impedimentos_abiertos: 2, avance_pct: 10 }),
+    nodo('Del camino', { padre_id: 'Estructura', nivel: 1, es_critica: true, cuadrilla: 'C1' }),
+  ]
+  const c = conteoDeVistas(arbol, rollup(arbol), '2026-08-24')
+  assert.equal(c.todo, 3)
+  assert.equal(c.atrasadas, 1)
+  assert.equal(c.bloqueadas, 1)
+  assert.equal(c.critico, 1)
+  // Sin ejecutor: dos de las tres no tienen cuadrilla ni subcontratista.
+  assert.equal(c.sin_asignar, 2)
+})
+
+// UNA VISTA QUE SE QUEDA SIN CHIP DESAPARECE DE LA PANTALLA. Si alguien agrega una vista nueva a
+// `VISTAS_ARBOL` y no la ubica, este assert se pone rojo antes de que el filtro quede invisible.
+test('toda vista se dibuja en algún lado: primaria o secundaria, ninguna huérfana', () => {
+  const ubicadas = [...VISTAS_PRIMARIAS, ...VISTAS_SECUNDARIAS].sort()
+  assert.deepEqual(ubicadas, [...VISTAS_ARBOL].sort())
+  assert.equal(new Set(ubicadas).size, VISTAS_ARBOL.length, 'ninguna vista en los dos grupos')
+})
+
+// LOS RÓTULOS DEL CANÓNICO 03. Renombrarlos «porque el interno se entiende mejor» devuelve la
+// pantalla al estado que la auditoría marcó: chips que no dicen lo que el que mira busca.
+test('los cuatro chips del canónico se llaman como el canónico', () => {
+  assert.deepEqual(VISTAS_PRIMARIAS.map((v) => VISTA_ARBOL_LABEL[v]),
+    ['Todo', 'En curso', 'Crítico', 'Problemas'])
 })

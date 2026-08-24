@@ -18,6 +18,7 @@
 
 import Link from 'next/link'
 import { IconoDesplegar, IconoProblema } from '@/shared/components/iconos'
+import { oracionDeActividad } from '../services/nombreDeActividad'
 import type { FilaVista } from '../services/vistaCronograma'
 
 /** El desvío contra la base, en palabras. `null` NO es «en fecha»: es que nadie selló una base
@@ -110,7 +111,9 @@ export function TablaCronogramaObra({
                 ? 'text-[11.5px] font-semibold uppercase tracking-[0.05em]'
                 : 'text-[12.5px]'}`}
               >
-                {f.nombre}
+                {/* Se LEE en oración, se GUARDA como se cargó: la carga viene gritada y 30 filas
+                    en mayúsculas no tienen silueta. El dato no se toca. */}
+                {oracionDeActividad(f.nombre)}
               </span>
               {f.critica && <RayoCritico />}
               {f.tieneImpedimento && (

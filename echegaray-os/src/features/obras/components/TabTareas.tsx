@@ -24,7 +24,8 @@ import { barraDe, escalaDe, rangoDeObra, t, tramosDeContenedores } from '../serv
 import { PanelTarea, type AccionesDelPanel } from './PanelTarea'
 import { rollup, totalObra, type NodoObra } from '../services/wbs'
 import {
-  contenedores, filasVisibles, VISTA_ARBOL_LABEL, VISTAS_ARBOL, type VistaArbol,
+  conteoDeVistas, contenedores, filasVisibles, VISTA_ARBOL_LABEL, VISTAS_PRIMARIAS,
+  VISTAS_SECUNDARIAS, type VistaArbol,
 } from '../services/vistaArbol'
 import { seleccionable, type CandidataMasiva, type OperacionMasiva } from '../services/avance'
 import type { ResultadoMasivo } from '../services/actionsMasivas'
@@ -136,6 +137,7 @@ export function TabTareas({
     () => filasVisibles(nodos, agregados, { vista: filtroLocal, query, plegados, hoy }),
     [nodos, agregados, filtroLocal, query, plegados, hoy],
   )
+  const cuentas = useMemo(() => conteoDeVistas(nodos, agregados, hoy), [nodos, agregados, hoy])
   const rango = useMemo(() => rangoDeObra(nodos, hoy), [nodos, hoy])
   const escala = useMemo(() => (rango ? escalaDe(rango, t(hoy)) : null), [rango, hoy])
   const tramos = useMemo(() => tramosDeContenedores(nodos), [nodos])
@@ -188,10 +190,21 @@ export function TabTareas({
             )}
           </div>
 
+          {/* CADA FILTRO DICE CUÁNTO HAY DETRÁS (canónico 03). Las cuatro del diseño primero; las
+              otras dos, apagadas al lado — se conservan porque contestan preguntas reales, pero no
+              compiten por la mirada con las que resumen la obra. */}
           <SubTabs
             testid="filtros-tareas"
-            items={VISTAS_ARBOL.map((v) => ({
-              onClick: () => elegirFiltro(v), label: VISTA_ARBOL_LABEL[v], activo: filtroLocal === v, testid: `filtro-${v}`,
+            items={VISTAS_PRIMARIAS.map((v) => ({
+              onClick: () => elegirFiltro(v), label: VISTA_ARBOL_LABEL[v], cuenta: cuentas[v],
+              activo: filtroLocal === v, testid: `filtro-${v}`,
+            }))}
+          />
+          <SubTabs
+            testid="filtros-tareas-secundarios"
+            items={VISTAS_SECUNDARIAS.map((v) => ({
+              onClick: () => elegirFiltro(v), label: VISTA_ARBOL_LABEL[v], cuenta: cuentas[v],
+              activo: filtroLocal === v, testid: `filtro-${v}`,
             }))}
           />
 
@@ -266,7 +279,11 @@ export function TabTareas({
               <THead>
                 <Th />
                 <Th>Actividad</Th>
-                <Th>Estado</Th>
+                {/* ESTADO CEDE EL ANCHO CUANDO LA PANTALLA SE PARTE EN TRES (24/08 · auditoría a
+                    1280). Con lista + Gantt + panel, el Gantt quedaba en 256px y dejaba de decir
+                    CUÁNDO, que es lo único que aporta. El estado de la actividad abierta se lee en
+                    la cabecera del panel; el de las demás vuelve al cerrarlo. */}
+                <Th className={escala && abierta ? 'xl:hidden' : ''}>Estado</Th>
                 <Th num className={escala ? 'xl:hidden' : ''}>Plazo</Th>
                 <Th num>%</Th>
               </THead>
@@ -282,6 +299,7 @@ export function TabTareas({
                     alPlegar={() => plegar(f.nodo.id)}
                     alAbrir={(s) => abrir(f.nodo.id, s)}
                     conGantt={escala != null}
+                    conPanel={abierta != null}
                     puedeEditar={puedeEditar}
                     alEditar={() => setEditando(f.nodo.id)}
                     edicion={editando === f.nodo.id ? {

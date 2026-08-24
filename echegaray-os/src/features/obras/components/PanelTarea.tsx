@@ -44,6 +44,7 @@ import type { EquipoEnActividad, NotaActividad } from '../services/recursosServi
 import { PanelTareaRendimiento } from './PanelTareaRendimiento'
 import { PanelTareaDependencias } from './PanelTareaDependencias'
 import { DividirEnFrentes } from './DividirEnFrentes'
+import { oracionDeActividad } from '../services/nombreDeActividad'
 
 type ResultadoInline = { ok: true } | { ok: false; error: string }
 
@@ -234,7 +235,8 @@ export function PanelTarea({
       </div>
 
       <div className="mt-2.5 flex items-start justify-between gap-2">
-        <h2 className="min-w-0 text-[16px] font-semibold leading-snug text-ink">{nodo.nombre}</h2>
+        {/* El mismo criterio que la fila del árbol: se LEE en oración, se GUARDA como se cargó. */}
+        <h2 className="min-w-0 text-[16px] font-semibold leading-snug text-ink">{oracionDeActividad(nodo.nombre)}</h2>
         <span className="shrink-0 pt-0.5">
           <Estado tono={TONO[est.clave]} clave={est.clave} testid="panel-estado">{est.label}</Estado>
         </span>
@@ -298,7 +300,16 @@ export function PanelTarea({
         </Link>
       )}
 
-      <div className="py-2.5">
+      {/* ═══ LAS SEIS SOLAPAS, EN UNA SOLA FILA (24/08 · auditoría a 1280 y 1470) ═══
+          En 412px las seis no entran y «Documentos» caía sola a una segunda línea: una solapa
+          huérfana debajo de las otras cinco no se lee como la sexta hermana, se lee como otra cosa.
+          `SubTabs` es `flex-wrap` a propósito —en un ancho normal envolver es lo correcto— así que
+          el que sabe que acá el ancho es fijo es ESTE contenedor, no el componente: le cancela el
+          wrap y deja la fila deslizable. La barra de scroll se oculta porque el gesto es el táctil o
+          el del trackpad, y una barra de 15px sobre una fila de 24px se come la solapa activa.
+          Se descartó recortar a las cuatro del mockup: `SOLAPAS` gobierna también el `?sol=` de la
+          URL, y sacar dos rompería links compartidos por una razón de ancho. */}
+      <div className="overflow-x-auto py-2.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>div]:flex-nowrap [&>div>*]:shrink-0">
         <SubTabs
           testid="solapas-tarea"
           items={SOLAPAS.map(([id, label]) => ({
@@ -427,19 +438,6 @@ export function PanelTarea({
                 <Link href={`/obras/${obraId}/subcontratos`} data-testid="ver-paquete"
                   className="mt-1.5 inline-block text-[12.5px] font-medium text-ink hover:underline">Ver paquete →</Link>
               </FilaPlegable>
-            )}
-            <Dato clave="Esfuerzo del análisis"
-              valor={contexto.historico?.hsAnalisis != null
-                ? `${contexto.historico.hsAnalisis.toLocaleString('es-AR', { maximumFractionDigits: 2 })} hs${nodo.unidad ? `/${nodo.unidad}` : ''}`
-                : null}
-              falta={nodo.tarea_tipo_id ? 'sin análisis vigente' : 'sin tarea tipo'} />
-            {contexto.partida && (
-              <Dato clave="Partida de origen" valor={
-                <Link href={`/presupuestos/${contexto.partida.cotizacionId}/partida/${contexto.partida.id}`}
-                  data-testid="ver-partida" className="text-ink-soft hover:underline">
-                  {contexto.partida.codigo ?? 'ver partida'} →
-                </Link>
-              } />
             )}
           </div>
 
@@ -587,8 +585,32 @@ export function PanelTarea({
       )}
 
       {solapa === 'rendimiento' && (
-        <PanelTareaRendimiento nodo={nodo} contexto={contexto} vinculacion={vinculacion}
-          vincular={acciones.vincularEstandar.bind(null, nodo.id)} puedeEditar={puedeEditar} />
+        <>
+          {/* ═══ DE DÓNDE SALIÓ EL NÚMERO, DONDE SE DISCUTE EL NÚMERO (24/08 · canónico 04) ═══
+              «Esfuerzo del análisis» y «Partida de origen» vivían en Resumen, entre Cuadrilla y
+              Dotación. El canónico deja ahí las CUATRO filas que contestan «¿cómo va esto hoy?» y
+              estas dos no contestan eso: contestan «¿con qué se cotizó?», que es exactamente la
+              pregunta de Rendimiento. Además empujaban el impedimento —lo único que hay que ver sin
+              buscar— fuera de la primera pantalla del panel. No se pierde nada: se leen a un clic,
+              al lado del rendimiento observado que se compara contra ellas. */}
+          <div className="mb-3 border-b border-line pb-2" data-testid="origen-del-analisis">
+            <Dato clave="Esfuerzo del análisis"
+              valor={contexto.historico?.hsAnalisis != null
+                ? `${contexto.historico.hsAnalisis.toLocaleString('es-AR', { maximumFractionDigits: 2 })} hs${nodo.unidad ? `/${nodo.unidad}` : ''}`
+                : null}
+              falta={nodo.tarea_tipo_id ? 'sin análisis vigente' : 'sin tarea tipo'} />
+            {contexto.partida && (
+              <Dato clave="Partida de origen" valor={
+                <Link href={`/presupuestos/${contexto.partida.cotizacionId}/partida/${contexto.partida.id}`}
+                  data-testid="ver-partida" className="text-ink-soft hover:underline">
+                  {contexto.partida.codigo ?? 'ver partida'} →
+                </Link>
+              } />
+            )}
+          </div>
+          <PanelTareaRendimiento nodo={nodo} contexto={contexto} vinculacion={vinculacion}
+            vincular={acciones.vincularEstandar.bind(null, nodo.id)} puedeEditar={puedeEditar} />
+        </>
       )}
 
       {solapa === 'historial' && (

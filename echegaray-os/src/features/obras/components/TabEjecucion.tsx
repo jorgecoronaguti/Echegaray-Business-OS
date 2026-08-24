@@ -34,6 +34,7 @@ import {
 import type { Actividad, ParteEjecucion, Persona } from '../types'
 import type { HoraDeJornada } from '../services/ejecucionService'
 import { jornadaHH, kpisDelDia, pendienteDe } from '../services/ejecucionService'
+import { fechaCorta } from './formato'
 import { FilasDeEquipo } from './FilasDeEquipo'
 import { ParteDiarioJornada } from './ParteDiarioJornada'
 import { TIPO_RESTRICCION, TIPO_RESTRICCION_LABEL } from '../types'
@@ -181,16 +182,23 @@ export function TabEjecucion({
           type="button" title="Día anterior" aria-label="Día anterior" data-testid="dia-anterior"
           onClick={() => setDia((d) => correr(d, -1))} className={flecha}
         ><IconoDesplegar className="h-[14px] w-[14px] rotate-90" /></button>
-        <label className="flex items-center gap-[7px] rounded-control border border-line bg-surface px-2.5 py-1">
+        {/* ═══ LA FECHA SE ESCRIBE COMO SE ESCRIBE ACÁ (24/08 · canónico 05) ═══
+            Un `input type=date` dibuja el formato del NAVEGADOR: en un Chrome en inglés el parte del
+            23 de agosto se leía «08/23/2026», y en una obra donde todo lo demás es dd/mm eso no es
+            una molestia estética — es leer una fecha equivocada. El formato del navegador no se
+            puede cambiar por CSS, así que el nativo queda de PICKER, transparente y encima de todo
+            el control (sigue siendo foco de teclado y sigue abriendo el calendario al tocar), y lo
+            que se lee es el texto del sistema. El control toma la altura y el radio del DS. */}
+        <label className="relative flex h-control items-center gap-[7px] rounded-control border border-line bg-surface px-2.5 focus-within:border-ink/30">
           <IconoFecha className="h-[13px] w-[13px] text-muted" />
           <span className="text-[12.5px] font-semibold text-ink">
             {dia === hoy ? 'Hoy' : dia === correr(hoy, -1) ? 'Ayer' : 'Día'}
           </span>
-          {/* El `input` es el dato Y el control: una carga atrasada elige la fecha sin contar clics. */}
+          <span className="font-mono text-[11.5px] tabular-nums text-muted">{fechaCorta(dia)}</span>
           <input
             type="date" value={dia} max={hoy} onChange={(e) => e.target.value && setDia(e.target.value)}
             aria-label="Jornada del parte" data-testid="dia-ejecucion"
-            className="w-[104px] bg-transparent font-mono text-[11.5px] tabular-nums text-muted outline-none"
+            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
           />
         </label>
         <button

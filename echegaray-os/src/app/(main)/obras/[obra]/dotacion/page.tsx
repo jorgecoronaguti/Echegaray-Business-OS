@@ -42,7 +42,7 @@ import { CabeceraDeObra } from '@/features/obras/components/CabeceraDeObra'
 import { SimuladorDotacion } from '@/features/obras/components/SimuladorDotacion'
 import { TablaRubrosHH } from '@/features/obras/components/TablaRubrosHH'
 import { Callout } from '@/shared/components/ui'
-import { Ayuda } from '@/shared/components/ds'
+import { Ayuda, Plegable } from '@/shared/components/ds'
 import { CalendarioObra } from '../../../../../../orquestador/lib/calendario-obra.mjs'
 
 export const dynamic = 'force-dynamic'
@@ -102,6 +102,7 @@ export default async function DotacionObraPage(
   const calendario = new CalendarioObra(insumos.obra.dias_habiles ?? [1, 2, 3, 4, 5], insumos.noLaborables)
   // El simulador arranca HOY: la pregunta es «si me pongo con N personas, ¿cuándo termino?».
   const desde = calendario.proximoHabil(hoy)
+  const rubros = rubrosDe(crono.actividades)
   const frentes = frentesDe(crono.actividades, {
     dotaciones, jornada: crono.jornada, desde,
     sumarDiasHabiles: (d: string, n: number) => calendario.sumarHabiles(d, n),
@@ -202,17 +203,21 @@ export default async function DotacionObraPage(
           </div>
         </section>
 
-        <section className="rounded-card border border-line bg-surface p-4">
-          <h2 className="mb-3 text-[13px] font-semibold text-ink">Plan · Real · Proyección por rubro</h2>
+        {/* ═══ LA PANTALLA ES EL SIMULADOR; LA TABLA POR RUBRO ES EL RESPALDO (24/08 · canónico 08) ═══
+            La tabla de rubros mide más alto que el simulador entero y se lee UNA vez —para entender
+            de dónde salió el número— no cada vez que se mueve la dotación. Plegada, la decisión que
+            la pantalla existe para tomar queda sola arriba; abierta, no falta nada. */}
+        <Plegable titulo="Plan · Real · Proyección por rubro" testid="rubros-hh-plegable"
+          cuenta={rubros.length}>
           {/* 22/08/2026 · De dónde sale la proyección baja a la ayuda. Lo que no se puede esconder
               —que un rubro sin base NO tiene proyección— sigue escrito en la tabla misma, celda por
               celda: la honestidad va en el dato, no en un párrafo encima del dato. */}
-          <TablaRubrosHH filas={rubrosDe(crono.actividades)} />
+          <TablaRubrosHH filas={rubros} />
           <Ayuda titulo="De dónde sale la proyección" testid="ayuda-proyeccion-rubros">
             Usa el rendimiento observado donde hay avance y HH reales; donde no lo hay, dice{' '}
             <em>sin base</em>. Nunca el plan disfrazado de proyección.
           </Ayuda>
-        </section>
+        </Plegable>
       </div>
     </main>
   )

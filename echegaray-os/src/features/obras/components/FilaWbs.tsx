@@ -43,6 +43,7 @@ import { fechaCorta, porcentaje } from './formato'
 import { estadoDeFila, type ClaveEstado, type FilaVisible } from '../services/vistaArbol'
 import type { ResultadoInline, TonoEstado } from '@/shared/components/ds'
 import type { Solapa } from '../services/solapasTarea'
+import { oracionDeActividad } from '../services/nombreDeActividad'
 
 const TONO: Record<ClaveEstado, TonoEstado> = {
   impedimento: 'neg',
@@ -64,7 +65,7 @@ export interface EdicionDeFila {
 
 export function FilaWbs({
   fila, abierta, seleccionada, seleccionable, alSeleccionar, alPlegar, alAbrir, conGantt,
-  puedeEditar = false, alEditar, edicion = null,
+  conPanel = false, puedeEditar = false, alEditar, edicion = null,
 }: {
   fila: FilaVisible
   abierta: boolean
@@ -76,6 +77,10 @@ export function FilaWbs({
   alAbrir: (sol?: Solapa) => void
   /** Con Gantt al lado, la fecha de plan se lee en la barra y la columna Plazo sobra. */
   conGantt: boolean
+  /** Con el panel abierto la pantalla se parte en tres y el Gantt queda en 256px a 1280: ahí
+   *  ESTADO cede sus 116px. No se pierde el dato —el panel de la actividad abierta lo publica en
+   *  su cabecera— y vuelve sola al cerrar el panel o abajo de `xl`, donde no hay tres columnas. */
+  conPanel?: boolean
   /** Sin permiso no se ofrece el lápiz. La acción lo vuelve a chequear del lado del servidor. */
   puedeEditar?: boolean
   alEditar?: () => void
@@ -167,7 +172,10 @@ export function FilaWbs({
           ) : <span className="w-3 shrink-0" aria-hidden />}
           <button type="button" onClick={() => alAbrir()} data-testid={`fila-${n.id}`}
             className={`${jerarquia} truncate text-left hover:underline max-w-[380px] xl:max-w-[210px] 2xl:max-w-[280px]`}>
-            {n.nombre}
+            {/* SE LEE EN ORACIÓN, SE GUARDA COMO SE CARGÓ. La carga viene en mayúsculas y 350 filas
+                gritadas no tienen silueta: todas las palabras miden igual y hay que leerlas letra
+                por letra. La corrección es de pantalla — el dato no se toca. */}
+            {oracionDeActividad(n.nombre)}
           </button>
           {n.partida_codigo && (
             <span className="hidden shrink-0 font-mono text-[10px] text-faint 2xl:inline">{n.partida_codigo}</span>
@@ -187,7 +195,7 @@ export function FilaWbs({
         </span>
       </Td>
 
-      <Td className="w-[116px]">
+      <Td className={`w-[116px] ${conPanel && conGantt ? 'xl:hidden' : ''}`}>
         <Estado tono={TONO[est.clave]} clave={est.clave} testid={`estado-${n.id}`}>{est.label}</Estado>
       </Td>
 

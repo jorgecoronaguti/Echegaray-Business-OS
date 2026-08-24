@@ -28,7 +28,7 @@ import {
   BotonAccion, FormAccion, type AccionFormulario, type ResultadoAccion,
 } from '@/shared/components/ui'
 import {
-  Aviso, CAMPO, Campo, Eyebrow, Nulo, Tabla, Td, Th, THead, Tr, Vacio,
+  Aviso, CAMPO, Campo, Nulo, Plegable, SubTabs, Tabla, Td, Th, THead, Tr, Vacio,
 } from '@/shared/components/ds'
 import { TablaEsqueleto } from '@/shared/components/carga'
 import { HoyEnObra } from './HoyEnObra'
@@ -201,8 +201,24 @@ export function TabPersonal({
   const obraId = plan?.obra_id ?? asignaciones[0]?.obra_id ?? actividades[0]?.obra_id ?? null
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6">
       <Titular plan={plan} asignaciones={asignaciones} registros={registros} />
+
+      {/* ═══ LAS TRES MANERAS DE MIRAR A LA GENTE DE LA OBRA (canónico 09) ═══
+          Sólo se dibujan las que TIENEN A DÓNDE IR: un sub-tab que no navega es un botón muerto.
+          «Asistencia» sale de la obra —la pantalla de asistencia es de Administración y todavía no
+          recibe un filtro por obra—, así que se dibuja al final y se dice acá que cambia de
+          contexto; el día que acepte `?obra=`, este href es lo único que cambia. */}
+      {obraId && (
+        <SubTabs
+          testid="subtabs-personal"
+          items={[
+            { label: 'Hoy en obra', activo: true, testid: 'sub-hoy-en-obra' },
+            { href: `/obras/${obraId}/dotacion`, label: 'Dotación', testid: 'sub-dotacion' },
+            { href: '/administracion/asistencia', label: 'Asistencia', testid: 'sub-asistencia' },
+          ]}
+        />
+      )}
 
       {obraId && (
         <Suspense fallback={<TablaEsqueleto cols={5} filas={4} />}>
@@ -214,8 +230,13 @@ export function TabPersonal({
         </Suspense>
       )}
 
-      <section>
-        <Eyebrow className="mb-2.5">Quién trabaja en esta obra</Eyebrow>
+      {/* ═══ EL CUERPO DE LA PANTALLA ES «HOY EN OBRA»; LO DEMÁS SE ABRE (24/08 · canónico 09) ═══
+          Las tres tablas de abajo medían cuatro pantallas de alto debajo de lo único que se mira
+          todos los días —quién está hoy y cuántas horas lleva—. No se pierde nada: la asignación,
+          el plan contra real y el detalle de las horas siguen acá, a un clic, con su contador en la
+          fila cerrada para que se vea cuánto hay adentro sin abrir. */}
+      <Plegable titulo="Quién trabaja en esta obra" cuenta={asignaciones.length}
+        testid="plegable-asignaciones">
         {asignaciones.length === 0
           ? <Vacio>Nadie tiene una asignación en esta obra. Se asigna con «+ Asignar persona».</Vacio>
           : (
@@ -277,29 +298,30 @@ export function TabPersonal({
             <FormMasiva asignaciones={asignaciones} actividades={actividades} imputarMasivo={imputarMasivo} />
           </Alta>
         </div>
-      </section>
+      </Plegable>
 
-      {/* Las dos tablas de horas, enfrentadas: la de la izquierda dice si el plan alcanza, la de la
-          derecha dice de dónde sale el número. Se leen juntas o no se leen. */}
-      <div className="flex flex-col gap-8 xl:flex-row xl:gap-10">
-        <section className="min-w-0 flex-1">
-          <Eyebrow className="mb-2.5">Plan contra real por actividad</Eyebrow>
-          <TablaProductividad actividades={actividadHH} />
-        </section>
+      <Plegable titulo="Plan contra real por actividad" cuenta={actividadHH.length}
+        testid="plegable-plan-vs-real">
+        <TablaProductividad actividades={actividadHH} />
+      </Plegable>
 
-        <section className="min-w-0 xl:w-[520px] xl:shrink-0">
-          <Eyebrow className="mb-2.5">Horas imputadas a esta obra</Eyebrow>
-          <TablaHoras registros={registros} borrarHoras={borrarHoras} />
-          {/* La advertencia se queda porque evita un error real —creer que a alguien le faltan
-              horas— pero en una línea: el porqué largo vive en la ayuda, no en la pantalla. */}
-          {sinPersona > 0 && (
-            <p className="mt-2.5 text-[11px] text-faint">
-              {sinPersona} {sinPersona === 1 ? 'registro sin persona' : 'registros sin persona'}: son horas
-              reales sin dueño conocido.
-            </p>
-          )}
-        </section>
-      </div>
+      <Plegable
+        titulo="Horas imputadas a esta obra" cuenta={registros.length}
+        testid="plegable-horas"
+        {...(sinPersona > 0
+          ? { alerta: `${sinPersona} ${sinPersona === 1 ? 'registro sin persona' : 'registros sin persona'}` }
+          : {})}
+      >
+        <TablaHoras registros={registros} borrarHoras={borrarHoras} />
+        {/* La advertencia se queda porque evita un error real —creer que a alguien le faltan
+            horas— pero en una línea: el porqué largo vive en la ayuda, no en la pantalla. */}
+        {sinPersona > 0 && (
+          <p className="mt-2.5 text-[11px] text-faint">
+            {sinPersona} {sinPersona === 1 ? 'registro sin persona' : 'registros sin persona'}: son horas
+            reales sin dueño conocido.
+          </p>
+        )}
+      </Plegable>
     </div>
   )
 }

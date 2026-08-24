@@ -22,10 +22,24 @@ export const VISTA_ARBOL_LABEL: Record<VistaArbol, string> = {
   todo: 'Todo',
   en_curso: 'En curso',
   atrasadas: 'Atrasadas',
-  bloqueadas: 'Bloqueadas',
+  // «Problemas» y «Crítico» son los rótulos del canónico 03. Nombran lo que el que mira busca —hay
+  // algo trabado, hay algo que empuja la fecha de fin— y no el mecanismo interno que lo produce.
+  bloqueadas: 'Problemas',
   sin_asignar: 'Sin asignar',
-  critico: 'Camino crítico',
+  critico: 'Crítico',
 }
+
+/**
+ * LAS CUATRO QUE SE VEN PRIMERO, en el orden del canónico 03: Todo · En curso · Crítico · Problemas.
+ *
+ * Las otras dos no se borran —atrasadas y sin asignar son las dos preguntas que un jefe de obra
+ * hace todos los días— pero van detrás, apagadas: el diseño reserva la línea de arriba para las
+ * cuatro que contestan «¿cómo viene la obra?» de un vistazo.
+ */
+export const VISTAS_PRIMARIAS: readonly VistaArbol[] = ['todo', 'en_curso', 'critico', 'bloqueadas']
+export const VISTAS_SECUNDARIAS: readonly VistaArbol[] = VISTAS_ARBOL.filter(
+  (v) => !VISTAS_PRIMARIAS.includes(v),
+)
 
 export function esVistaArbol(v: unknown): v is VistaArbol {
   return typeof v === 'string' && (VISTAS_ARBOL as readonly string[]).includes(v)
@@ -162,4 +176,26 @@ export function filasVisibles(
 /** Los contenedores: lo que colapsa «Colapsar». Las actividades nunca se pliegan, no tienen hijas. */
 export function contenedores(nodos: readonly NodoObra[]): string[] {
   return nodos.filter((n) => n.es_contenedor && n.tiene_hijas).map((n) => n.id)
+}
+
+/**
+ * CUÁNTAS ACTIVIDADES HAY DETRÁS DE CADA FILTRO.
+ *
+ * El chip sin número obliga a tocarlo para saber si hay algo del otro lado; con el número, «Problemas
+ * 0» ya contestó la pregunta sin un clic. Se cuentan **actividades, no filas del árbol**: los rubros
+ * son agrupadores y sumarlos infla cada contador con trabajo que no existe — «Todo» tiene que dar el
+ * mismo número que «Actividades» en la franja del pie, o uno de los dos está mintiendo.
+ *
+ * No mira el buscador: el contador describe la OBRA, no lo que quedó en pantalla.
+ */
+export function conteoDeVistas(
+  nodos: readonly NodoObra[], agregados: Map<string, Agregado>, hoy: string,
+): Record<VistaArbol, number> {
+  const cuenta = Object.fromEntries(VISTAS_ARBOL.map((v) => [v, 0])) as Record<VistaArbol, number>
+  for (const n of nodos) {
+    if (n.es_contenedor) continue
+    const avance = avanceDe(n, agregados)
+    for (const v of VISTAS_ARBOL) if (coincide(n, avance, v, '', hoy)) cuenta[v] += 1
+  }
+  return cuenta
 }
