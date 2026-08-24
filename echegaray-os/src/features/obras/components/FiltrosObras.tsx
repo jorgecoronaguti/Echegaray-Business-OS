@@ -1,16 +1,20 @@
 // LOS FILTROS DE LA CARTERA — un renglón, dos controles, y nada más.
 //
-// ═══ POR QUÉ YA NO SON PASTILLAS (Design Handoff V2) ═══
+// ═══ CHIPS CON SU CONTEO (Design canónico 01 · 23/08) ═══
 //
-// Hasta el 20/08 esta barra dibujaba pastillas con borde amarillo. El razonamiento era evitar que
-// se leyeran como un TERCER nivel de navegación, y era razonable — pero el handoff aprobado lo
-// resuelve al revés y con una regla más simple: el nivel 3 es «texto subrayado en ink 1,5px», y una
-// pastilla rellena queda reservada para una SECUENCIA (ciclo de vida, pasos del alta). Un filtro no
-// es una secuencia. `COMPONENTS.md` §Filters: *"Texto en línea, activo subrayado; contador «N de M»
-// a la derecha"*.
+// Hasta el 20/08 esto eran pastillas con borde amarillo; el handoff V2 las bajó a texto subrayado.
+// El Design canónico las vuelve a subir, pero a otra cosa distinta de las dos: un chip con BORDE
+// hairline, el conteo en mono al lado del rótulo, y GRAFITO relleno cuando está puesto.
 //
-// El amarillo, además, no era suyo: `COLOR.md` lo reserva para identidad, selección y primaria. Un
-// filtro puesto no es la marca de la empresa.
+// Los dos cambios que importan no son de forma:
+//
+//   · EL CONTEO VA EN EL CHIP. «Con atraso 3» contesta la pregunta antes de que nadie toque nada:
+//     el filtro deja de ser sólo una acción y pasa a ser un dato de la cartera. Un chip en 0 se
+//     dibuja igual y apagado — que no haya ninguna obra en esa etapa ES la respuesta.
+//   · EL AMARILLO SIGUE SIN SER SUYO. El puesto se marca con grafito, no con la marca: `COLOR.md`
+//     reserva el amarillo para identidad, primaria y selección de fila. Un filtro puesto no es la
+//     marca de la empresa, y un chip amarillo al lado del botón amarillo de «Nueva obra» haría que
+//     el ojo lea dos primarias.
 //
 // ═══ EL CONTADOR SE MUESTRA SIEMPRE, «QUITAR FILTROS» NO ═══
 //
@@ -33,19 +37,42 @@
 // `services/vistaRecordada.ts`.
 
 import Link from 'next/link'
+import type { ReactNode } from 'react'
 import { BuscadorURL } from '@/shared/components/ds'
+import { IconoProblema } from '@/shared/components/iconos'
 import { ETAPAS, ETAPA_LABEL, type Etapa } from '../types'
 import { CLAVE_LIMPIAR } from '../services/vistaRecordada'
-import type { FiltroObras } from '../services/filtroObras'
+import { hayFiltro, type FiltroObras } from '../services/filtroObras'
 
-// El activo lleva el subrayado por `box-shadow` y no por `border-bottom`: un borde real corre el
-// texto 1,5px hacia arriba y las cinco etapas dejan de estar en la misma línea de base.
-const OPCION = 'shrink-0 pb-[2px] text-[12.5px] transition-colors'
-const PUESTA = 'font-medium text-ink shadow-[inset_0_-1.5px_0_var(--os-ink)]'
-const SUELTA = 'text-muted hover:text-ink'
+const CHIP = 'inline-flex shrink-0 items-center gap-1.5 rounded-[6px] border px-2.5 py-[3px] text-[12px] transition-colors'
+const PUESTA = 'border-accent bg-accent text-white'
+const SUELTA = 'border-line bg-surface text-ink-soft hover:border-line-strong hover:text-ink'
+
+/** Cuántas obras hay detrás de cada chip. `undefined` = la pantalla no las contó, y entonces el chip
+ *  no miente con un número: se dibuja sin él. */
+export interface ConteosObras {
+  todas: number
+  porEtapa: Partial<Record<Etapa, number>>
+  atraso: number
+}
+
+function Chip({ href, puesta, testid, n, icono, children }: {
+  href: string; puesta: boolean; testid: string; n?: number; icono?: ReactNode; children: ReactNode
+}) {
+  return (
+    <Link href={href} data-testid={testid} aria-current={puesta ? 'true' : undefined}
+      className={`${CHIP} ${puesta ? PUESTA : SUELTA}`}>
+      {icono}
+      {children}
+      {n != null && (
+        <span className={`font-mono text-[10.5px] tabular-nums ${puesta ? 'text-white/70' : 'text-faint'}`}>{n}</span>
+      )}
+    </Link>
+  )
+}
 
 export function FiltrosObras({
-  filtro, base, extra = {}, resultados, total,
+  filtro, base, extra = {}, resultados, total, conteos,
 }: {
   filtro: FiltroObras
   /** `/obras` o `/obras/gantt`: los dos comparten los mismos filtros. */
@@ -54,17 +81,21 @@ export function FiltrosObras({
   extra?: Record<string, string | undefined>
   resultados: number
   total: number
+  conteos?: ConteosObras
 }) {
-  const href = (etapa: Etapa | null) => {
+  const url = (p: { etapa?: Etapa | null; atraso?: boolean }) => {
     const q = new URLSearchParams()
     for (const [k, v] of Object.entries(extra)) if (v) q.set(k, v)
     if (filtro.q) q.set('q', filtro.q)
     // `etapa=` VACÍA y no ausente: es lo que distingue «quiero verlas todas» de «no elegí nada», y
     // sin esa diferencia la preferencia guardada volvería a filtrar sola en la próxima visita.
-    q.set('etapa', etapa ?? '')
+    q.set('etapa', (p.etapa === undefined ? filtro.etapa : p.etapa) ?? '')
+    // EL ATRASO SE COMBINA CON LA ETAPA, no la reemplaza: «terminación y con atraso» es la pregunta
+    // que hace alguien que está por cerrar obras, y un chip que pisa al otro la vuelve imposible.
+    if (p.atraso === undefined ? filtro.atraso : p.atraso) q.set('atraso', '1')
     return `${base}?${q}`
   }
-  const filtrando = filtro.etapa !== null || filtro.q !== ''
+  const filtrando = hayFiltro(filtro)
 
   return (
     <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2" data-testid="filtros-obras">
@@ -74,18 +105,24 @@ export function FiltrosObras({
         accion={base}
         q={filtro.q}
         placeholder="Buscar obra o cliente"
-        oculto={{ ...extra, etapa: filtro.etapa ?? undefined }}
+        oculto={{ ...extra, etapa: filtro.etapa ?? undefined, atraso: filtro.atraso ? '1' : undefined }}
         ancho="w-[260px] max-w-full"
         testid="buscar-obra"
       />
 
-      <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1.5">
-        <Link href={href(null)} data-testid="etapa-todas" aria-current={filtro.etapa === null ? 'true' : undefined}
-          className={`${OPCION} ${filtro.etapa === null ? PUESTA : SUELTA}`}>Todas</Link>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Chip href={url({ etapa: null })} puesta={filtro.etapa === null} testid="etapa-todas" n={conteos?.todas}>
+          Todas
+        </Chip>
         {ETAPAS.map((e) => (
-          <Link key={e} href={href(e)} data-testid={`etapa-${e}`} aria-current={filtro.etapa === e ? 'true' : undefined}
-            className={`${OPCION} ${filtro.etapa === e ? PUESTA : SUELTA}`}>{ETAPA_LABEL[e]}</Link>
+          <Chip key={e} href={url({ etapa: e })} puesta={filtro.etapa === e} testid={`etapa-${e}`}
+            n={conteos?.porEtapa[e]}>{ETAPA_LABEL[e]}</Chip>
         ))}
+        {/* CON ATRASO NO ES UNA ETAPA: es el mismo estado que pinta el semáforo de la línea de
+            tiempo, preguntado desde acá. Por eso alterna —tocarlo de nuevo lo saca— en vez de
+            comportarse como una etapa más. */}
+        <Chip href={url({ atraso: !filtro.atraso })} puesta={filtro.atraso === true} testid="filtro-atraso"
+          n={conteos?.atraso} icono={<IconoProblema className="h-3.5 w-3.5" />}>Con atraso</Chip>
       </div>
 
       {/* CUÁNTAS QUEDARON. Una tabla acortada sin decir por qué se lee como una tabla a la que le

@@ -50,138 +50,24 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getPortafolio, getPlanVsRealPortafolio } from '@/features/obras/services/obrasService'
-import { ETAPAS, ETAPA_LABEL, type ObraPanel, type PlanVsReal } from '@/features/obras/types'
+import type { ObraPanel } from '@/features/obras/types'
 import { plata } from '@/features/obras/components/formato'
 import { NavObras } from '@/features/obras/components/NavObras'
 import { RecordarVista } from '@/features/obras/components/RecordarVista'
 import { PageShell, Callout } from '@/shared/components/ui'
-import { BotonEnlace, Nulo, Num, Tabla, Td, THead, Tr, Valor } from '@/shared/components/ds'
+import { Ayuda, BotonEnlace, FilaTotal, Nulo, Num, Tabla, Td, Th, THead, Tr, Valor } from '@/shared/components/ds'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { esAdministracion } from '@/features/auth/types/areas'
 import { esCampo, ordenar, type Direccion } from '@/features/obras/services/ordenObras'
 import { ThOrden } from '@/features/obras/components/ThOrden'
-import { filtrar, filtroDesde } from '@/features/obras/services/filtroObras'
-import { FiltrosObras } from '@/features/obras/components/FiltrosObras'
+import { esAtrasada, filtrar, filtrarPorAtraso, filtroDesde } from '@/features/obras/services/filtroObras'
+import { FiltrosObras, type ConteosObras } from '@/features/obras/components/FiltrosObras'
+import { desvioDePlazo, type Semaforo } from '@/features/obras/services/ganttObras'
+// CÓMO SE ESCRIBE CADA CELDA vive al lado, en `components/celdasCartera`: esta página decide qué se
+// lee y con qué permiso, no cómo se dice un hueco.
+import { Avance, Cliente, EstadoObra, Etapa, HH, Plazo } from '@/features/obras/components/celdasCartera'
 
 export const dynamic = 'force-dynamic'
-
-/**
- * `dd/mm` A PARTIR DEL TEXTO ISO, sin `new Date` y sin `Intl`. Dos razones, las dos ya pagadas:
- * `new Date('2026-08-04')` sobre una fecha sin hora abre la puerta al corrimiento de un día por
- * huso horario, y el patrón de `es-AR` es `d/M/yy`, así que `toLocaleDateString` con `2-digit`
- * devuelve `4/8` — un ancho que cambia de fila en fila en una columna que existe para comparar.
- */
-const ddmm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
-
-/**
- * PLAZO — una de las dos preguntas que hacen que la cartera sirva de tablero: ¿esta obra llega?
- * Sale de `obra_plan_vs_real`, la misma vista que la ficha, y NO se recalcula acá: si la cartera
- * hiciera su propia cuenta, un día diría una cosa distinta de la ficha de la obra y no habría
- * manera de saber cuál de las dos miente.
- */
-function Plazo({ p }: { p: PlanVsReal | undefined }) {
-  if (!p) return <Nulo>sin plan</Nulo>
-  if (p.desvio_plazo_dias != null) {
-    const d = p.desvio_plazo_dias
-    // ═══ EL CERO DECÍA «EN FECHA» EN VERDE, Y NO ES ESO LO QUE MIDE (20/08/2026) ═══
-    //
-    // `desvio_plazo_dias` compara el fin PLANIFICADO contra el fin de la LÍNEA BASE. Medido contra
-    // producción hoy, las once obras vivas con fechas tienen `fin_base == fin_plan` —el sellado
-    // copió el plan— así que el desvío da 0 en TODAS, y la columna pintaba once «en fecha» en
-    // verde. Entre ellas, la Oficina de La Estrella: terminaba el 04/08, hoy es el 20 y va 94%.
-    //
-    // Es un control validado contra la misma información que produce, y encima en el color que
-    // significa «esto está bien». El número no se toca —es el de la ficha, y las dos tienen que
-    // decir lo mismo— pero se lo nombra por lo que mide y se le saca el verde: verde es «dentro de
-    // objetivo real», y acá lo único comprobado es que el plan no se movió. Si la obra LLEGA lo
-    // contesta el Gantt de cartera, que compara el avance contra el calendario consumido.
-    if (d === 0) {
-      return (
-        <span
-          className="font-mono text-[12.5px] tabular-nums text-muted"
-          title="El fin planificado coincide con la línea base sellada: el plan no se corrió. No dice si la obra llega — eso lo contesta el Gantt de cartera."
-        >sin corrimiento</span>
-      )
-    }
-    return (
-      <Num className={d > 0 ? 'font-medium text-neg' : 'text-pos'}>
-        {d > 0 ? `+${d} d` : `${d} d`}
-      </Num>
-    )
-  }
-  // SIN LÍNEA BASE NO HAY DESVÍO, Y UN CERO SERÍA UNA MENTIRA PROLIJA: diría "vamos en fecha"
-  // cuando nadie aprobó todavía una fecha contra la cual medir. Se dice la fecha de fin que sí
-  // existe, y al lado por qué no hay desvío.
-  return (
-    <span className="block leading-tight">
-      {p.fin_plan
-        ? <Num className="text-muted">fin {ddmm(p.fin_plan)}</Num>
-        : <Nulo>sin fechas</Nulo>}
-      <span className="mt-0.5 block text-[11px] text-faint" data-nulo="">sin línea base</span>
-    </span>
-  )
-}
-
-/** La etapa se lee de un vistazo por su posición en la línea, no por un color arbitrario. */
-function Etapa({ etapa }: { etapa: ObraPanel['etapa'] }) {
-  // Sin etapa declarada NO se dibuja una: el default de la columna ponía "Desarrollo" hasta en una
-  // obra cerrada, y un default presentado como estado del ciclo de vida es un dato fabricado.
-  if (!etapa) return <Nulo>etapa sin declarar</Nulo>
-  const i = ETAPAS.indexOf(etapa)
-  return (
-    <span className="inline-flex items-center gap-2" title={ETAPA_LABEL[etapa]}>
-      <span className="flex gap-[3px]">
-        {ETAPAS.map((_, k) => (
-          <i key={k} className={`h-1.5 w-1.5 rounded-full ${k <= i ? 'bg-accent' : 'bg-line-strong'}`} />
-        ))}
-      </span>
-      <span className="text-[12px] text-muted">{ETAPA_LABEL[etapa]}</span>
-    </span>
-  )
-}
-
-// EL AVANCE, SIN LA COBERTURA. Hasta el 19/08 esta celda publicaba también «24/80» —sobre cuántas
-// actividades se tomó el promedio—, y era correcto: un promedio sin su población es medio dato. Se
-// saca de ACÁ igual, porque contar actividades es exactamente el tipo de detalle que el dueño mandó
-// bajar al workspace de la obra. La cobertura sigue publicada en la ficha, al lado del cronograma
-// que la explica. El cálculo no cambia: sigue siendo la vista `obra_avance`, la única del OS.
-//
-// LA BARRA ES GRAFITO. Era `bg-sky-600`, un color que no existe en `design/system/COLOR.md`: *"Un
-// color que aparece en una pantalla y no está en esta tabla es un error"*. El avance no es un
-// estado —estar al 40% no es bueno ni malo—, así que se pinta con la estructura, no con semántica.
-function Avance({ pct, total }: { pct: number | null; total: number }) {
-  if (pct == null) return <Nulo>{total ? 'sin avance cargado' : 'sin cronograma'}</Nulo>
-  return (
-    <span className="flex items-center gap-2.5">
-      <span className="h-1.5 w-20 shrink-0 overflow-hidden rounded-full bg-surface-sunken">
-        <span className="block h-full rounded-full bg-accent" style={{ width: `${Math.min(100, pct)}%` }} />
-      </span>
-      <Num className="w-9 shrink-0 text-right text-ink">{pct}%</Num>
-    </span>
-  )
-}
-
-/**
- * LA CELDA DEL CLIENTE — el segundo eje de la jerarquía, y la única puerta al CRM desde esta
- * pantalla.
- *
- * El cliente que manda es el CANÓNICO (`cliente_slug` + `cliente_nombre`). `cliente_texto` es lo
- * que decía la fuente y se conserva como procedencia: tres obras de La Estrella eran tres cadenas
- * iguales de casualidad, no un cliente. Cuando sólo existe el texto se muestra el texto y no se
- * enlaza — vincularlo es trabajo de Administración, no una suposición de esta tabla.
- */
-function Cliente({ o }: { o: ObraPanel }) {
-  if (o.cliente_slug && o.cliente_nombre) {
-    return (
-      <Link href={`/clientes/${o.cliente_slug}`} prefetch={false} className="text-ink transition-colors hover:underline">
-        {o.cliente_nombre}
-      </Link>
-    )
-  }
-  const texto = o.cliente_nombre ?? o.cliente_texto
-  if (texto) return <span className="text-ink-soft">{texto}</span>
-  return <Nulo>sin cliente declarado</Nulo>
-}
 
 export default async function ObrasPage({
   searchParams,
@@ -233,24 +119,65 @@ export default async function ObrasPage({
   // consulta—, así que se le pasa como función en vez de fusionar las dos tablas para poder ordenar.
   // FILTRAR PRIMERO, ORDENAR DESPUÉS: ordenar trece filas para tirar diez es trabajo al pedo, y el
   // contador de "N de M" tiene que contar sobre lo que se ve, no sobre lo que se leyó.
-  const enFiltro = filtrar(visibles, filtro)
+  // EL DÍA LO FIJA EL SERVIDOR, igual que en la línea de tiempo: el estado de una obra no puede
+  // depender del reloj del navegador que la mira.
+  const hoyIso = new Date().toISOString().slice(0, 10)
+  /** EL SEMÁFORO DE CADA OBRA, calculado UNA vez: lo usan la columna de estado, el filtro y el
+   *  conteo del chip. Tres cuentas separadas del mismo estado se separan el día que una cambie. */
+  const semaforoDe = (o: ObraPanel): Semaforo => {
+    const p = porObra.get(o.obra_id)
+    return desvioDePlazo(
+      p?.inicio_plan ?? o.fecha_inicio_plan,
+      p?.fin_plan ?? o.fecha_fin_plan,
+      o.avance_pct,
+      hoyIso,
+    ).semaforo
+  }
+  const semaforos = new Map(visibles.map((o) => [o.obra_id, semaforoDe(o)]))
+  const semaforo = (o: ObraPanel) => semaforos.get(o.obra_id) ?? 'sin_datos'
+
+  const enFiltro = filtrarPorAtraso(filtrar(visibles, filtro), filtro, semaforo)
   const obras = ordenar(enFiltro, orden, dir, (id) => porObra.get(id)?.desvio_plazo_dias ?? null)
   const activas = obras.filter((o) => o.estado === 'activa')
+
+  // LOS CONTEOS DE LOS CHIPS SE CUENTAN SOBRE LA CARTERA VISIBLE, NO SOBRE LO FILTRADO: un chip que
+  // dice «Terminación 2» tiene que seguir diciendo 2 después de tocar otro chip. Si contara lo
+  // mostrado, todos los chips no puestos caerían a 0 y la barra dejaría de ser un mapa de la cartera.
+  const conteos: ConteosObras = {
+    todas: visibles.length,
+    porEtapa: visibles.reduce<ConteosObras['porEtapa']>((acc, o) => {
+      if (o.etapa) acc[o.etapa] = (acc[o.etapa] ?? 0) + 1
+      return acc
+    }, {}),
+    atraso: visibles.filter((o) => esAtrasada(semaforo(o))).length,
+  }
 
   // Lo que hay que conservar al tocar un encabezado o una etapa: el resto de la vista.
   const qBase = {
     archivadas: conArchivadas ? '1' : undefined,
     etapa: filtro.etapa ?? undefined,
     q: filtro.q || undefined,
+    atraso: filtro.atraso ? '1' : undefined,
   }
   // Mostrar u ocultar las archivadas NO tiene por qué perder el orden que el que mira eligió.
   const qOrden = orden ? `?orden=${orden}&dir=${dir}` : ''
   const sinContratado = esAdmin && obras.some((o) => o.monto_contratado == null)
+  // LA SUMA DEL PIE SÓLO EXISTE PARA ADMINISTRACIÓN, y sobre las obras que TIENEN el monto cargado:
+  // el `?? 0` que haría de una obra sin contrato una obra de cero pesos es exactamente el defecto
+  // que la columna ya evita fila por fila.
+  const conContrato = obras.filter((o) => o.monto_contratado != null)
+  const totalContratado = conContrato.reduce((s, o) => s + (o.monto_contratado ?? 0), 0)
 
   return (
     <PageShell
       title="OBRAS"
-      subtitle={`${activas.length} obra${activas.length === 1 ? '' : 's'} en curso. El avance sale del tracker de Drive; el costo, de Compras por obra.`}
+      // ═══ EL SUBTÍTULO SE FUE (Design canónico · «mostrar > explicar») ═══
+      //
+      // Decía de dónde salen el avance y el costo. Es procedencia —se lee una vez y estorba las
+      // otras trescientas— y encima empujaba la tabla hacia abajo. Ahora está en la ayuda del pie,
+      // que es donde se busca cuando un número no cierra. Lo único que queda arriba es cuántas
+      // obras están en curso, que es un DATO de la cartera, no una explicación de la pantalla.
+      subtitle={`${activas.length} obra${activas.length === 1 ? '' : 's'} en curso`}
       // LA PUERTA DEL ALTA. `/obras/nueva` existía y sólo se llegaba tipeando la URL, que es
       // exactamente una pantalla «preparada para» — el dueño las prohibió. Sólo Administración crea
       // obras: la RLS lo rechaza igual, y un botón que falla es peor que un botón que no está.
@@ -271,6 +198,7 @@ export default async function ObrasPage({
           Con una sola obra no aparece — filtrar una lista de uno es chrome. */}
       {!error && visibles.length > 1 && (
         <FiltrosObras filtro={filtro} base="/obras" resultados={obras.length} total={visibles.length}
+          conteos={conteos}
           extra={{ archivadas: conArchivadas ? '1' : undefined, orden: orden ?? undefined, dir: orden ? dir : undefined }} />
       )}
 
@@ -288,17 +216,22 @@ export default async function ObrasPage({
         // `minWidth` hace que el desplazamiento pase por DENTRO de la tabla: a 390px la página no se
         // corre de costado, se corre la tabla. Sin él desaparecían las columnas de la derecha —todo
         // lo que esta pantalla existe para mostrar— y sin manera de llegar a ellas.
-        <Tabla testid="portafolio-tabla" minWidth={880}>
+        <Tabla testid="portafolio-tabla" minWidth={1060}>
           <THead>
-            {/* TODAS LAS COLUMNAS ORDENAN. `qBase` conserva `archivadas`, la etapa y la búsqueda:
-                cambiar el orden no puede hacer desaparecer las obras que se acababan de mostrar. */}
-            <ThOrden campo="nombre" activo={orden} dir={dir} base="/obras" extra={qBase} className="w-[22%]" />
-            <ThOrden campo="cliente" activo={orden} dir={dir} base="/obras" extra={qBase} className="w-[14%]" />
-            <ThOrden campo="etapa" activo={orden} dir={dir} base="/obras" extra={qBase} className="w-[17%]" />
-            <ThOrden campo="avance" activo={orden} dir={dir} base="/obras" extra={qBase} className="w-[16%]" />
-            <ThOrden campo="plazo" activo={orden} dir={dir} base="/obras" extra={qBase} className="w-[11%]" />
+            {/* CASI TODAS LAS COLUMNAS ORDENAN. `qBase` conserva `archivadas`, la etapa, el atraso y
+                la búsqueda: cambiar el orden no puede hacer desaparecer las obras que se acababan de
+                mostrar. ESTADO y HH no ordenan y no es un olvido: ordenar por estado es lo que hacen
+                los chips de arriba —con su conteo— y el orden por HH necesitaría meter una segunda
+                lectura adentro de `ordenar`, que hoy compara sólo columnas de la fila. */}
+            <ThOrden campo="nombre" activo={orden} dir={dir} base="/obras" extra={qBase} className="w-[20%]" />
+            <ThOrden campo="cliente" activo={orden} dir={dir} base="/obras" extra={qBase} className="w-[13%]" />
+            <Th className="w-[14%]">Estado</Th>
+            <ThOrden campo="etapa" activo={orden} dir={dir} base="/obras" extra={qBase} className="w-[13%]" />
+            <ThOrden campo="avance" activo={orden} dir={dir} base="/obras" extra={qBase} className="w-[14%]" />
+            <ThOrden campo="plazo" activo={orden} dir={dir} base="/obras" extra={qBase} className="w-[10%]" />
+            <Th num className="w-[10%]">HH</Th>
             {esAdmin && <ThOrden campo="contratado" activo={orden} dir={dir} base="/obras" extra={qBase} alineado="right" />}
-            <ThOrden campo="costo" activo={orden} dir={dir} base="/obras" extra={qBase} alineado="right" className="w-[11%]" />
+            <ThOrden campo="costo" activo={orden} dir={dir} base="/obras" extra={qBase} alineado="right" className="w-[10%]" />
           </THead>
           <tbody>
             {obras.map((o) => (
@@ -309,9 +242,11 @@ export default async function ObrasPage({
                   </Link>
                 </Td>
                 <Td><Cliente o={o} /></Td>
+                <Td><EstadoObra estado={o.estado} semaforo={semaforo(o)} /></Td>
                 <Td><Etapa etapa={o.etapa} /></Td>
                 <Td><Avance pct={o.avance_pct} total={o.n_actividades} /></Td>
                 <Td><Plazo p={porObra.get(o.obra_id)} /></Td>
+                <Td num className="text-muted"><HH p={porObra.get(o.obra_id)} /></Td>
                 {/* LA AUSENCIA SE ESCRIBE: un contratado en «sin cargar» es un contrato que nadie
                     cargó, y es distinto de un contrato de $0. `Valor` es el guarda que impide que
                     un `?? 0` se cuele en una columna de plata. */}
@@ -337,6 +272,38 @@ export default async function ObrasPage({
               </Tr>
             ))}
           </tbody>
+          {/* ═══ EL PIE DE LA CARTERA (Design canónico 01) ═══
+              Cuántas obras hay, cuántas están en ejecución y cuánto suman los contratos. Cuenta lo
+              que SE VE: filtrada la cartera, el pie tiene que hablar de lo filtrado o pasa a ser un
+              número que no se corresponde con ninguna fila de la pantalla.
+              LA SUMA DECLARA SU COBERTURA. Sumar 9 contratos y llamarlo «CONTRATADO» sobre 13 obras
+              afirma un total de cartera que nadie cargó: el conteo va al lado del número, y las que
+              faltan siguen nombradas en el pie de abajo. */}
+          <tfoot>
+            <FilaTotal>
+              <Td colSpan={esAdmin ? 9 : 8}>
+                <span className="flex flex-wrap items-baseline justify-end gap-x-7 gap-y-1 text-[11.5px] font-normal text-faint">
+                  <span>OBRAS <Num className="text-ink">{obras.length}</Num></span>
+                  <span>EN EJECUCIÓN <Num className="text-ink">{activas.length}</Num></span>
+                  {esAdmin && (
+                    <span title={`${conContrato.length} de ${obras.length} obras con monto contratado cargado`}>
+                      CONTRATADO{' '}
+                      {conContrato.length === 0
+                        ? <Nulo>sin cargar</Nulo>
+                        : (
+                            <>
+                              <Num className="text-ink">{plata(totalContratado)}</Num>
+                              {conContrato.length < obras.length && (
+                                <span className="ml-1.5">de {conContrato.length} de {obras.length}</span>
+                              )}
+                            </>
+                          )}
+                    </span>
+                  )}
+                </span>
+              </Td>
+            </FilaTotal>
+          </tfoot>
         </Tabla>
       )}
 
@@ -361,6 +328,17 @@ export default async function ObrasPage({
           {sinContratado && 'Las obras sin monto contratado no lo tienen cargado en ninguna fuente del OS — no es que valgan cero.'}
         </p>
       )}
+
+      {/* LA PROCEDENCIA, A UN CLIC. Estaba clavada en el subtítulo, arriba de todo: se lee una vez y
+          después empuja la tabla hacia abajo trescientas veces. Acá la encuentra el que necesita
+          saber de dónde salió un número que no le cierra, que es cuando se busca. */}
+      <Ayuda titulo="De dónde salen estos números" testid="ayuda-cartera">
+        El avance sale del tracker de Drive y el costo, de los comprobantes imputados a la obra en
+        Compras. El estado «con atraso» compara el avance medido contra el calendario del plan ya
+        consumido: es una <strong className="font-medium text-ink">ESTIMACIÓN</strong> —supone el
+        trabajo repartido parejo— y ordena la atención, no afirma cuánto se atrasó una obra. Es el
+        mismo criterio que pinta las barras de la línea de tiempo.
+      </Ayuda>
     </PageShell>
   )
 }

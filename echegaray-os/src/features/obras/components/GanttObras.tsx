@@ -52,7 +52,7 @@ import { useRouter } from 'next/navigation'
 import { useMemo, useState, useEffect, useRef } from 'react'
 import { Ayuda } from '@/shared/components/ds'
 import { construirEscala, type Escala } from '../services/escala'
-import { UMBRAL_ATRASO, ventana, type Barra, type FilaObra, type Semaforo } from '../services/ganttObras'
+import { PALABRA_SEMAFORO, UMBRAL_ATRASO, ventana, type Barra, type FilaObra, type Semaforo } from '../services/ganttObras'
 import { ETAPA_LABEL } from '../types'
 
 /** 48px por renglón: la celda de la izquierda apila nombre de obra y cliente, y las dos líneas
@@ -64,12 +64,13 @@ const ALTO_FILA = 48
 const ALTO_HEAD = 40
 
 /** EL ESTADO EN UN LUGAR: el color de la barra, el del punto y la palabra del detalle salen de acá.
- *  Tres tablas separadas se desincronizan el día que alguien agrega un estado. */
+ *  Tres tablas separadas se desincronizan el día que alguien agrega un estado. LA PALABRA no se
+ *  escribe acá: sale de `PALABRA_SEMAFORO`, porque el Resumen de la obra nombra el mismo estado. */
 const ESTADO: Record<Semaforo, { fill: string; punto: string; texto: string; palabra: string }> = {
-  al_dia:         { fill: 'fill-accent', punto: 'bg-accent',      texto: 'text-muted', palabra: 'al día' },
-  atraso_menor:   { fill: 'fill-warn',   punto: 'bg-warn',        texto: 'text-warn',  palabra: 'atraso menor' },
-  atraso_critico: { fill: 'fill-neg',    punto: 'bg-neg',         texto: 'text-neg',   palabra: 'atraso crítico' },
-  sin_datos:      { fill: 'fill-faint',  punto: 'bg-line-strong', texto: 'text-faint', palabra: 'sin datos para juzgar' },
+  al_dia:         { fill: 'fill-accent', punto: 'bg-accent',      texto: 'text-muted', palabra: PALABRA_SEMAFORO.al_dia },
+  atraso_menor:   { fill: 'fill-warn',   punto: 'bg-warn',        texto: 'text-warn',  palabra: PALABRA_SEMAFORO.atraso_menor },
+  atraso_critico: { fill: 'fill-neg',    punto: 'bg-neg',         texto: 'text-neg',   palabra: PALABRA_SEMAFORO.atraso_critico },
+  sin_datos:      { fill: 'fill-faint',  punto: 'bg-line-strong', texto: 'text-faint', palabra: PALABRA_SEMAFORO.sin_datos },
 }
 
 /** TERMINADA ES VERDE, y es el único verde de la pantalla. `COMPONENTS.md` §Gantt row: *"relleno

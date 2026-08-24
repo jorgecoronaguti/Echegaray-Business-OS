@@ -1,6 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { clienteVisible, filtrar, filtroDesde, hayFiltro, SIN_FILTRO } from './filtroObras.ts'
+import {
+  clienteVisible, esAtrasada, filtrar, filtrarPorAtraso, filtroDesde, hayFiltro, SIN_FILTRO,
+} from './filtroObras.ts'
+import { desvioDePlazo, type Semaforo } from './ganttObras.ts'
 
 const CARTERA = [
   { nombre: 'Galpón 9', cliente_nombre: 'La Estrella', etapa: 'terminacion' },
@@ -74,6 +77,47 @@ test('el canónico le gana al texto de origen, igual que en la celda', () => {
   const conFicha = [{ nombre: 'Limpieza', cliente_nombre: 'Messina', cliente_texto: 'Messinas', etapa: null }]
   assert.equal(filtrar(conFicha, { etapa: null, q: 'messina' }).length, 1)
   assert.equal(filtrar(conFicha, { etapa: null, q: 'messinas' }).length, 0)
+})
+
+// ═══ «CON ATRASO» PREGUNTA POR EL MISMO ESTADO QUE PINTA EL GANTT ═══
+//
+// El chip del Design 01 no puede tener su propio criterio: el día que lo tuviera, la tabla diría
+// «3 con atraso» y la línea de tiempo dibujaría cuatro barras ámbar de la misma cartera. Estas
+// pruebas fijan las dos cosas que hacen que eso no pase: que el estado lo decide `desvioDePlazo` y
+// que lo que NO se puede juzgar no se cuenta como atrasado.
+
+test('con atraso son las dos del semáforo, y «sin datos» NO es una de ellas', () => {
+  assert.equal(esAtrasada('atraso_menor'), true)
+  assert.equal(esAtrasada('atraso_critico'), true)
+  assert.equal(esAtrasada('al_dia'), false)
+  // Una obra sin fechas o sin avance no es una obra que llega, pero tampoco una atrasada: contarla
+  // acá sería afirmar un atraso que nadie midió.
+  assert.equal(esAtrasada('sin_datos'), false)
+})
+
+test('el filtro de atraso usa el semáforo de la regla, no una cuenta de la pantalla', () => {
+  const cartera = [
+    // Esperado 38 por calendario contra 18 medido: 20 puntos de brecha, ámbar por `UMBRAL_ATRASO`.
+    { nombre: 'Escuela', inicio: '2026-06-01', fin: '2026-09-09', avance: 18 },
+    { nombre: 'Depósito', inicio: '2026-06-01', fin: '2026-09-09', avance: 60 },  // adelantada
+    { nombre: 'Salón', inicio: null as string | null, fin: null as string | null, avance: null as number | null },
+  ]
+  const sem = (o: (typeof cartera)[number]): Semaforo =>
+    desvioDePlazo(o.inicio, o.fin, o.avance, '2026-07-09').semaforo
+
+  const puesto = filtrarPorAtraso(cartera, { ...SIN_FILTRO, atraso: true }, sem)
+  assert.deepEqual(n(puesto), ['Escuela'])
+  // Sin el filtro puesto no se pierde nadie, ni siquiera la que no se puede juzgar.
+  assert.equal(filtrarPorAtraso(cartera, SIN_FILTRO, sem).length, 3)
+})
+
+test('el atraso viaja en la URL y sólo `1` lo pone', () => {
+  assert.equal(filtroDesde({ atraso: '1' }).atraso, true)
+  assert.equal(filtroDesde({ atraso: 'si' }).atraso, false)
+  assert.equal(filtroDesde({}).atraso, false)
+  // Y cuenta como filtro puesto: sin esto, «quitar filtros» no aparecería y la cartera acortada se
+  // leería como una cartera a la que le faltan obras.
+  assert.equal(hayFiltro(filtroDesde({ atraso: '1' })), true)
 })
 
 test('sin ninguna de las dos puntas la obra sigue siendo buscable por su nombre', () => {
