@@ -127,3 +127,64 @@ test('un alias que dos obras normalizan igual no se imputa a ninguna', () => {
   ])
   assert.equal(obraDeTexto(idx, 'LA ESTRELLA'), null)
 })
+
+// ═══ LOS CHIPS DE IMPEDIMENTOS ═══
+//
+// El defecto que atrapan es de CONTEO, no de excepción: un chip que dice «3 críticos» cuando hay 1
+// se ve perfecto y manda al jefe de obra a buscar dos problemas que no existen —o peor, le esconde
+// uno vencido detrás de un chip que no lo cuenta.
+import {
+  contarImpedimentos, diasDeAtraso, filtrarImpedimentos, impedimentoDeClima, impedimentoVencido,
+} from './obra-operacion.mjs'
+
+const HOY = '2026-08-24'
+const IMPEDIMENTOS = [
+  { id: 'a', estado: 'abierta', tipo: 'material', fecha_compromiso: '2026-08-20' }, // vencido
+  { id: 'b', estado: 'en_curso', tipo: 'material', fecha_compromiso: '2026-08-30' }, // abierto, a tiempo
+  { id: 'c', estado: 'abierta', tipo: 'informacion', fecha_compromiso: null }, // abierto, sin fecha
+  { id: 'd', estado: 'liberada', tipo: 'material', fecha_compromiso: '2026-08-01' }, // resuelto
+  { id: 'e', estado: 'abierta', tipo: 'clima', fecha_compromiso: '2026-08-24' }, // vence HOY
+]
+
+test('«sin resolver» incluye en_curso: un impedimento en curso sigue frenando la obra', () => {
+  const ids = filtrarImpedimentos(IMPEDIMENTOS, 'sin_resolver', HOY).map((r) => r.id)
+  assert.deepEqual(ids, ['a', 'b', 'c', 'e'])
+})
+
+test('«críticos» son los vencidos, y el que vence HOY todavía no lo es', () => {
+  // El defecto: usar `<=` contra hoy. Marcaría en rojo un compromiso que la persona todavía puede
+  // cumplir durante el día, y el chip perdería su significado — «crítico» pasaría a ser «vigente».
+  assert.deepEqual(filtrarImpedimentos(IMPEDIMENTOS, 'criticos', HOY).map((r) => r.id), ['a'])
+  assert.equal(impedimentoVencido({ estado: 'abierta', fecha_compromiso: HOY }, HOY), false)
+})
+
+test('un impedimento sin fecha de compromiso NO es crítico: es incompleto', () => {
+  assert.equal(impedimentoVencido({ estado: 'abierta', fecha_compromiso: null }, HOY), false)
+  assert.equal(impedimentoVencido({ estado: 'abierta', fecha_compromiso: '' }, HOY), false)
+})
+
+test('un impedimento liberado nunca es crítico, por vieja que sea la fecha', () => {
+  assert.equal(impedimentoVencido({ estado: 'liberada', fecha_compromiso: '2020-01-01' }, HOY), false)
+})
+
+test('los contadores se calculan sobre la lista COMPLETA, no sobre la filtrada', () => {
+  // El defecto: contar sobre lo que se ve. Con el chip «críticos» puesto, «Todo» diría 1 y nadie
+  // podría volver — el número que invita a cambiar de chip tiene que ser estable.
+  const total = contarImpedimentos(IMPEDIMENTOS, HOY)
+  const yaFiltrada = filtrarImpedimentos(IMPEDIMENTOS, 'criticos', HOY)
+  assert.deepEqual(total, { todo: 5, sin_resolver: 4, criticos: 1 })
+  assert.deepEqual(contarImpedimentos(yaFiltrada, HOY), { todo: 1, sin_resolver: 1, criticos: 1 })
+})
+
+test('el atraso es null cuando no hay atraso: 0 días diría «vencido hace nada»', () => {
+  assert.equal(diasDeAtraso({ estado: 'abierta', fecha_compromiso: null }, HOY), null)
+  assert.equal(diasDeAtraso({ estado: 'abierta', fecha_compromiso: '2026-08-30' }, HOY), null)
+  assert.equal(diasDeAtraso({ estado: 'abierta', fecha_compromiso: HOY }, HOY), null)
+  assert.equal(diasDeAtraso({ estado: 'abierta', fecha_compromiso: '2026-08-20' }, HOY), 4)
+})
+
+test('el clima es un tipo de impedimento, no otra tabla', () => {
+  assert.equal(impedimentoDeClima({ tipo: 'clima' }), true)
+  assert.equal(impedimentoDeClima({ tipo: 'material' }), false)
+  assert.equal(impedimentoDeClima({}), false)
+})

@@ -26,18 +26,45 @@
 // obligatorios en el formulario porque son obligatorios en la acción del servidor: si el formulario
 // los dejara pasar, el error volvería igual y la carga se perdería.
 
+// ═══ LO QUE AGREGÓ EL DESIGN CANÓNICO (23/08 · pantalla 11) ═══
+//
+// CHIPS Todo · Sin resolver · Críticos, del lado del cliente: las filas ya viajaron enteras y un
+// viaje de red por chip no ahorraría nada. La regla de qué es cada chip vive en
+// `orquestador/lib/obra-operacion.mjs`, que es lo único de esta pantalla que se puede probar sin
+// navegador.
+//
+// «+ IMPEDIMENTO» ES EL `summary` DEL MISMO `details` de siempre, pintado como la primaria. No es un
+// botón nuevo al lado del viejo: promoverlo era el pedido, y duplicar la puerta de alta habría dado
+// dos formularios que el día que a uno se le agregue un campo se contestan distinto. Sigue abriendo
+// sin JavaScript, que es lo que clican los tests de navegador.
+//
+// SELECCIONAR UNA FILA ABRE EL PANEL (patrón de `TabTareas`): estado de cliente, sin navegación, sin
+// esqueleto y sin salto de scroll.
+
+import { useState } from 'react'
 import {
   BotonAccion, FormAccion, type AccionFormulario, type ResultadoAccion,
 } from '@/shared/components/ui'
-import { Ayuda, CAMPO, Campo, Estado, Nulo, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
+import { Ayuda, CAMPO, Campo, Estado, Filtros, Nulo, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
 import { IconoBloqueo, IconoCompletar, IconoCrear } from '@/shared/components/iconos'
+import {
+  contarImpedimentos, filtrarImpedimentos,
+} from '../../../../orquestador/lib/obra-operacion.mjs'
 import {
   TIPO_RESTRICCION, TIPO_RESTRICCION_LABEL, type Actividad, type Restriccion,
 } from '../types'
+import { PanelImpedimento } from './PanelImpedimento'
 import { fecha } from './formato'
 
+type Chip = 'todo' | 'sin_resolver' | 'criticos'
+const CHIPS: { id: Chip; label: string }[] = [
+  { id: 'todo', label: 'Todo' },
+  { id: 'sin_resolver', label: 'Sin resolver' },
+  { id: 'criticos', label: 'Críticos' },
+]
+
 export function BloqueImpedimentos({
-  impedimentos, actividades, crear, liberar, hoy = new Date(),
+  impedimentos, actividades, crear, liberar, hoy = new Date(), tipoInicial = 'material', vacio,
 }: {
   /** TODOS los de la obra, abiertos y liberados. El filtro por ventana es de Próximos trabajos. */
   impedimentos: Restriccion[]
@@ -47,14 +74,25 @@ export function BloqueImpedimentos({
   liberar: (restriccionId: string) => Promise<ResultadoAccion>
   /** Entra por parámetro para que «vencido» se pueda probar en cualquier fecha. */
   hoy?: Date
+  /** El motivo con el que abre el formulario. En la sub-vista Clima ya viene puesto en `clima`. */
+  tipoInicial?: string
+  /** Qué decir cuando no hay ninguno. La sub-vista Clima dice otra cosa que la de Impedimentos. */
+  vacio?: string
 }) {
   const hoyIso = hoy.toISOString().slice(0, 10)
+  const [chip, setChip] = useState<Chip>('todo')
+  const [sel, setSel] = useState<string | null>(null)
   const abiertos = impedimentos.filter((r) => r.estado !== 'liberada')
   const nombreDe = (id: string | null) => (id ? actividades.find((a) => a.id === id)?.nombre ?? null : null)
+  // Los contadores se calculan SIEMPRE sobre la lista entera: un número que cambia según el chip
+  // activo no sirve para decidir a cuál ir.
+  const cuentaChip = contarImpedimentos(impedimentos, hoyIso) as Record<Chip, number>
+  const visibles = filtrarImpedimentos(impedimentos, chip, hoyIso) as Restriccion[]
+  const elegido = impedimentos.find((r) => r.id === sel) ?? null
 
   // LOS ABIERTOS PRIMERO, y entre ellos el compromiso más viejo arriba: lo vencido es lo que hay
   // que ir a destrabar hoy. Los liberados NO se esconden —son la historia de la obra— pero bajan.
-  const orden = [...impedimentos].sort((a, b) => {
+  const orden = [...visibles].sort((a, b) => {
     const abiertoA = a.estado !== 'liberada' ? 0 : 1
     const abiertoB = b.estado !== 'liberada' ? 0 : 1
     if (abiertoA !== abiertoB) return abiertoA - abiertoB
@@ -63,18 +101,81 @@ export function BloqueImpedimentos({
 
   return (
     <div className="flex flex-col gap-3.5" data-testid="bloque-impedimentos">
+      {/* LA FILA DE MANDO: por dónde mirar (chips) y la única acción que escribe (+ Impedimento).
+          El `details` es el de siempre; lo que cambió es que su `summary` se lee como la primaria
+          de la pantalla en vez de como un enlace de texto al pie de una tabla. */}
+      <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
+        {impedimentos.length > 0 && (
+          <Filtros
+            testid="chips-impedimentos"
+            opciones={CHIPS.map((c) => ({
+              label: (
+                <span className="inline-flex items-center gap-1.5">
+                  {c.label}
+                  <span className="font-mono text-[10.5px] tabular-nums text-faint">{cuentaChip[c.id]}</span>
+                </span>
+              ),
+              onClick: () => setChip(c.id),
+              activo: chip === c.id,
+              testid: `chip-${c.id}`,
+            }))}
+          />
+        )}
+        <details data-testid="alta-impedimento" className="ml-auto w-full sm:w-auto sm:open:w-full">
+          {/* Sigue siendo `details`/`summary`: es lo que abre sin JavaScript y lo que los tests de
+              navegador clican. */}
+          <summary className="inline-flex cursor-pointer select-none items-center gap-1.5 rounded-md bg-marca px-3.5 py-[7px] text-[12.5px] font-semibold leading-[18px] text-[color:var(--os-on-marca)] hover:brightness-[0.97]">
+            <IconoCrear className="h-[13px] w-[13px]" />
+            Impedimento
+          </summary>
+          <div className="mt-3 border-t border-[#EFEEEA] pt-3.5">
+            <FormAccion accion={crear} testid="form-impedimento" enviar="Anotar" limpiarAlOk mensajeOk="Impedimento anotado.">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <Campo rotulo="Qué frena el trabajo" className="col-span-2 sm:col-span-4">
+                  <input name="descripcion" required minLength={3} maxLength={300} className={CAMPO} placeholder="falta el plano de detalle del tanque" />
+                </Campo>
+                <Campo rotulo="Tipo">
+                  <select name="tipo" required defaultValue={tipoInicial} className={CAMPO}>
+                    {TIPO_RESTRICCION.map((t) => <option key={t} value={t}>{TIPO_RESTRICCION_LABEL[t]}</option>)}
+                  </select>
+                </Campo>
+                <Campo rotulo="Quién lo resuelve" ayuda="Con nombre: sin dueño no se resuelve solo.">
+                  <input name="responsable" required minLength={2} maxLength={120} className={CAMPO} />
+                </Campo>
+                <Campo rotulo="Para cuándo" ayuda="La fecha comprometida, no un deseo.">
+                  <input type="date" name="fecha_compromiso" required className={CAMPO} />
+                </Campo>
+                <Campo rotulo="Actividad que frena" ayuda="Opcional. Si se elige, la barra se marca en el Gantt.">
+                  <select name="actividad_id" defaultValue="" className={CAMPO}>
+                    <option value="">ninguna en particular</option>
+                    {actividades.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+                  </select>
+                </Campo>
+              </div>
+            </FormAccion>
+          </div>
+        </details>
+      </div>
+
       {impedimentos.length === 0 ? (
         /* EL MATIZ NO SE PERDIÓ, DEJÓ DE SER UN PÁRRAFO. «Nadie los anotó» no es «no hay», y eso
            hay que poder leerlo — una vez, el que entra por primera vez. Clavado en la pantalla se
            lee cero veces y empuja el formulario hacia abajo. */
         <>
-          <Vacio>Sin impedimentos anotados.</Vacio>
+          <Vacio>{vacio ?? 'Sin impedimentos anotados.'}</Vacio>
           <Ayuda titulo="Por qué esto no significa que no haya" testid="ayuda-impedimentos-vacio">
             En una obra en ejecución, un tablero de impedimentos vacío rara vez significa que no
             haya: significa que nadie los anotó. Lo que no está acá no se gestiona.
           </Ayuda>
         </>
       ) : (
+        /* LA LISTA Y EL PANEL, LADO A LADO EN ESCRITORIO. Debajo de `lg` el panel se pone encima —lo
+           resuelve `PanelDetalle`—, así que acá la fila no necesita saber en qué pantalla está. */
+        <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+        {orden.length === 0 ? (
+          <Vacio>Ninguno con este filtro. Los otros siguen ahí.</Vacio>
+        ) : (
         <Tabla testid="tabla-impedimentos" minWidth={720}>
           <THead>
             <Th>Qué frena</Th><Th>Tipo</Th><Th>Responsable</Th><Th num>Compromiso</Th><Th num />
@@ -91,7 +192,15 @@ export function BloqueImpedimentos({
                   /* LA EXCEPCIÓN SE MARCA CON LA REGLA INTERIOR DE 3px (`COMPONENTS.md`
                      §Transaction row): el compromiso vencido es lo que hay que ir a destrabar hoy y
                      tiene que encontrarse barriendo el borde, sin leer la fila. */
-                  className={vencido ? 'border-l-[3px] border-l-neg' : ''}
+                  /* `seleccionada` y no un fondo propio: la marca de selección del sistema es la
+                     regla amarilla a la izquierda, y pintar el fondo a mano acá haría que esta tabla
+                     se seleccione distinto de todas las demás del OS. */
+                  seleccionada={sel === r.id}
+                  className={`cursor-pointer ${vencido ? 'border-l-[3px] border-l-neg' : ''}`}
+                  /* Clic en la fila = abrir el detalle. El botón «Liberar» de la última columna
+                     sigue siendo un botón: su `onClick` no burbujea hasta acá porque `BotonAccion`
+                     vive dentro de su propio formulario, y por eso no hay que frenar el evento. */
+                  onClick={() => setSel(sel === r.id ? null : r.id)}
                 >
                   <Td fuerte>
                     <span className="flex items-start gap-2">
@@ -129,6 +238,18 @@ export function BloqueImpedimentos({
             })}
           </tbody>
         </Tabla>
+        )}
+        </div>
+        {elegido && (
+          <PanelImpedimento
+            impedimento={elegido}
+            actividadNombre={nombreDe(elegido.actividad_id)}
+            hoyIso={hoyIso}
+            liberar={liberar}
+            onCerrar={() => setSel(null)}
+          />
+        )}
+        </div>
       )}
 
       {abiertos.length > 0 && (
@@ -144,40 +265,6 @@ export function BloqueImpedimentos({
         </div>
       )}
 
-      <details data-testid="alta-impedimento">
-        {/* Sigue siendo `details`/`summary`: es lo que abre sin JavaScript y lo que los tests de
-            navegador clican. Lo que cambia es el «+» de texto por el icono de crear del sistema. */}
-        <summary className="inline-flex cursor-pointer select-none items-center gap-1.5 text-[12.5px] text-muted hover:text-ink">
-          <IconoCrear className="h-[13px] w-[13px]" />
-          Anotar impedimento
-        </summary>
-        <div className="mt-3 border-t border-[#EFEEEA] pt-3.5">
-          <FormAccion accion={crear} testid="form-impedimento" enviar="Anotar" limpiarAlOk mensajeOk="Impedimento anotado.">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <Campo rotulo="Qué frena el trabajo" className="col-span-2 sm:col-span-4">
-                <input name="descripcion" required minLength={3} maxLength={300} className={CAMPO} placeholder="falta el plano de detalle del tanque" />
-              </Campo>
-              <Campo rotulo="Tipo">
-                <select name="tipo" required defaultValue="material" className={CAMPO}>
-                  {TIPO_RESTRICCION.map((t) => <option key={t} value={t}>{TIPO_RESTRICCION_LABEL[t]}</option>)}
-                </select>
-              </Campo>
-              <Campo rotulo="Quién lo resuelve" ayuda="Con nombre: sin dueño no se resuelve solo.">
-                <input name="responsable" required minLength={2} maxLength={120} className={CAMPO} />
-              </Campo>
-              <Campo rotulo="Para cuándo" ayuda="La fecha comprometida, no un deseo.">
-                <input type="date" name="fecha_compromiso" required className={CAMPO} />
-              </Campo>
-              <Campo rotulo="Actividad que frena" ayuda="Opcional. Si se elige, la barra se marca en el Gantt.">
-                <select name="actividad_id" defaultValue="" className={CAMPO}>
-                  <option value="">ninguna en particular</option>
-                  {actividades.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
-                </select>
-              </Campo>
-            </div>
-          </FormAccion>
-        </div>
-      </details>
     </div>
   )
 }

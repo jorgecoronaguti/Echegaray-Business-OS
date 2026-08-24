@@ -82,7 +82,7 @@ import {
 } from '@/features/obras/services/actionsEjecucion'
 import { TabPersonal } from '@/features/obras/components/TabPersonal'
 import { TabOperacion } from '@/features/obras/components/TabOperacion'
-import { getOperacionObra, SUBS_OPERACION, type SubOperacion } from '@/features/obras/services/operacionService'
+import { getOperacionObra, subDeLaUrl, type SubOperacion } from '@/features/obras/services/operacionService'
 import { esAdministracion, veEconomia } from '@/features/auth/types/areas'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { TabEconomia } from '@/features/obras/components/TabEconomia'
@@ -231,7 +231,9 @@ export default async function ObraPage({
   const documentos = documentosRes ? lector.leer(documentosRes, []) : []
   const [anchoTabla, anchoPanel] = anchosDelSplit ?? [ANCHO_TABLA, ANCHO_PANEL]
   const operacion = opRes?.data ?? null
-  const subOp: SubOperacion = SUBS_OPERACION.find((x) => x === sub) ?? 'pedidos'
+  // La traducción del query string vive en el servicio: ahí están los subs y ahí están los nombres
+  // viejos que todavía llegan por enlaces guardados.
+  const subOp: SubOperacion = subDeLaUrl(sub)
 
   const todas = actividades
   // LAS ARCHIVADAS NO ENTRAN AL CRONOGRAMA NI A NINGUNA LISTA: para eso se archivan. Siguen

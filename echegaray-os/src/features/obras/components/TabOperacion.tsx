@@ -1,13 +1,26 @@
-// 11 · OBRA OPERACIÓN — qué pidió, qué compró, qué recursos se movieron y qué la está frenando.
+// 11 · OBRA OPERACIÓN — qué la está frenando, qué pidió, qué recursos tiene y qué le hizo el clima.
 //
 // ═══ LA FORMA LA FIJA EL DESIGN CANÓNICO 23/08 (pantalla 11) ═══
 //
-//   Cinco sublistas con icono y contador —Pedidos · Compras · Herramientas · Movimientos ·
-//   Impedimentos— como SubTabs de nivel 3, y un buscador que filtra al teclear sobre la lista
-//   abierta. Un icono por sub-vista, ninguno repetido: la barra se reconoce de un vistazo sin
-//   leerla, que es para lo que existe.
+//   Sub-tabs con icono y contador —Impedimentos · Pedidos · Equipos · Clima—, chips de filtro sobre
+//   los impedimentos, «+ Impedimento» como acción primaria y panel lateral del impedimento elegido.
+//   El orden empieza por lo que FRENA la obra: la lista anterior ordenaba por origen del dato (lo
+//   que viene del Sheet primero), que es el criterio de quien construyó la pantalla, no el de quien
+//   la abre a las siete de la mañana.
 //
-// LAS CINCO LISTAS SON LO MISMO CON DISTINTO CONTENIDO, y por eso salen todas de la misma `Tabla`
+//   EQUIPOS = Herramientas + Movimientos. Son el mismo recurso —qué hay en obra y cómo llegó—, y
+//   estaban en dos pestañas distintas: contestar «¿tengo la hormigonera?» obligaba a cambiar de
+//   solapa para ver si había salido. Las dos tablas siguen enteras, una debajo de la otra.
+//
+//   CLIMA sale de `obra_restriccion` con `tipo = 'clima'` (migración 20260823T1000). No es una
+//   fuente nueva: es el mismo impedimento visto por su motivo, y por eso se anota con el mismo
+//   formulario.
+//
+//   COMPRAS ES UNA DESVIACIÓN DECLARADA: el canónico no la dibuja y acá se queda, última. Es la
+//   única pantalla donde vive el detalle del costo imputado a la obra contra el total que declara
+//   `obra_costo_real`. Borrarla para parecerse al dibujo habría sido perder una capacidad real.
+//
+// LAS LISTAS SON LO MISMO CON DISTINTO CONTENIDO, y por eso salen todas de la misma `Tabla`
 // del design system: cinco tablas escritas a mano se desalinean en el primer cambio de densidad. La
 // sub-vista viaja por query string igual que `vista`, así que cada lista es una URL que se comparte
 // y el servidor renderiza sin estado de cliente. El TEXTO del buscador, en cambio, es cliente: las
@@ -18,18 +31,18 @@
 // un dato fabricado. Compras no suma su propio total: muestra el que declara la fuente única del
 // costo real, y si el detalle no llega a ese total lo dice en una línea en vez de disimularlo.
 //
-// CUATRO DE LAS CINCO LISTAS SON DE FUENTE EXTERNA (AppSheet / Sheet) Y ACÁ NO SE EDITAN. El único
-// bloque que escribe es Impedimentos, que es del OS. Por eso el error de la fuente tapa a los
-// cuatro y no al quinto.
+// PEDIDOS, EQUIPOS Y COMPRAS SON DE FUENTE EXTERNA (AppSheet / Sheet) Y ACÁ NO SE EDITAN. Los que
+// escriben son Impedimentos y Clima, que son la misma tabla del OS. Por eso el error de la fuente
+// externa tapa a los tres primeros y no a los otros dos: `obra_restriccion` sale de Postgres y no se
+// entera de que el Sheet está caído.
 
 'use client'
 
 import { useState, type ReactNode } from 'react'
 import { Aviso, Buscador, CAMPO, Estado, FilaTotal, Nulo, SubTabs, Tabla, Td, Th, THead, Tr, Vacio } from '@/shared/components/ds'
-import {
-  IconoBloqueo, IconoCompra, IconoDinero, IconoHerramienta, IconoHistorial,
-} from '@/shared/components/iconos'
+import { IconoBloqueo, IconoCompra, IconoDinero, IconoHerramienta } from '@/shared/components/iconos'
 import { estadoInfo } from '@/features/integraciones/services/herramientasService'
+import { impedimentoDeClima } from '../../../../orquestador/lib/obra-operacion.mjs'
 import type {
   HerramientaOperacion, MovimientoOperacion, PedidoOperacion,
 } from '../services/operacionService'
@@ -41,12 +54,29 @@ import { fecha, plata } from './formato'
 
 const ICONO = 'h-[14px] w-[14px]'
 
+/**
+ * EL SOL DEL CANÓNICO, DIBUJADO ACÁ Y NO EN EL BARRIL DE ICONOS.
+ *
+ * Es el único icono nuevo que pide la pantalla y el trazo es literalmente el del design (`P.clima`).
+ * No sube a `shared/components/iconos.tsx` todavía porque ese archivo lo están tocando otros frentes
+ * del mismo rediseño: un icono de una sola pantalla no justifica un conflicto de merge. Si una
+ * segunda pantalla lo necesita, ahí sube — y ahí deja de ser local.
+ */
+function IconoClima({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19" />
+    </svg>
+  )
+}
+
 const SUBS: { id: SubOperacion; label: string; icono: ReactNode; buscar: string }[] = [
-  { id: 'pedidos', label: 'Pedidos', icono: <IconoCompra className={ICONO} />, buscar: 'Buscar material' },
-  { id: 'compras', label: 'Compras', icono: <IconoDinero className={ICONO} />, buscar: 'Buscar proveedor o concepto' },
-  { id: 'herramientas', label: 'Herramientas', icono: <IconoHerramienta className={ICONO} />, buscar: 'Buscar herramienta' },
-  { id: 'movimientos', label: 'Movimientos', icono: <IconoHistorial className={ICONO} />, buscar: 'Buscar herramienta o responsable' },
   { id: 'impedimentos', label: 'Impedimentos', icono: <IconoBloqueo className={ICONO} />, buscar: 'Buscar impedimento' },
+  { id: 'pedidos', label: 'Pedidos', icono: <IconoCompra className={ICONO} />, buscar: 'Buscar material' },
+  { id: 'equipos', label: 'Equipos', icono: <IconoHerramienta className={ICONO} />, buscar: 'Buscar equipo o responsable' },
+  { id: 'clima', label: 'Clima', icono: <IconoClima className={ICONO} />, buscar: 'Buscar evento de clima' },
+  { id: 'compras', label: 'Compras', icono: <IconoDinero className={ICONO} />, buscar: 'Buscar proveedor o concepto' },
 ]
 
 const cantidad = (n: number | null) => (n == null ? '—' : n.toLocaleString('es-AR', { maximumFractionDigits: 2 }))
@@ -294,17 +324,25 @@ export function TabOperacion({
   if (sub !== subPrevia) { setSubPrevia(sub); setQuery('') }
   const q = normal(query.trim())
 
+  // EL CLIMA ES UN IMPEDIMENTO CON `tipo = 'clima'`, y sigue apareciendo TAMBIÉN en Impedimentos.
+  // Sacarlo de la lista principal para que no se repita escondería una obra parada por lluvia
+  // detrás de una pestaña que nadie abre: la lista de lo que frena la obra tiene que estar completa.
+  // Clima es una lente sobre esos mismos datos, no un cajón aparte.
+  const deClima = impedimentos.filter((r) => impedimentoDeClima(r) as boolean)
   const abiertos = impedimentos.filter((r) => r.estado !== 'liberada').length
   const cuenta: Record<SubOperacion, number> = {
     pedidos: pedidos.length,
     // La cobertura del costo real la declara la fuente; el largo de la lista es lo que se ve.
     compras: compras.nComprobantes ?? compras.filas.length,
-    herramientas: herramientas.length,
-    movimientos: movimientos.length,
-    // EL CONTADOR DE IMPEDIMENTOS CUENTA LOS ABIERTOS, no el total: los otros cuatro cuentan filas
-    // porque una fila de compra o de pedido no se «cierra», y un impedimento liberado ya no frena
-    // nada. Publicar el total pondría un número que sube para siempre al lado de cuatro que
-    // describen trabajo pendiente.
+    // EQUIPOS cuenta las herramientas que están en la obra, no los movimientos: los movimientos son
+    // el historial de cómo llegaron, y un número que crece con cada viaje diría «hay 40 equipos»
+    // cuando hay tres que fueron y volvieron.
+    equipos: herramientas.length,
+    clima: deClima.filter((r) => r.estado !== 'liberada').length,
+    // EL CONTADOR DE IMPEDIMENTOS CUENTA LOS ABIERTOS, no el total: los demás cuentan filas porque
+    // una fila de compra o de pedido no se «cierra», y un impedimento liberado ya no frena nada.
+    // Publicar el total pondría un número que sube para siempre al lado de otros que describen
+    // trabajo pendiente.
     impedimentos: abiertos,
   }
   const actual = SUBS.find((s) => s.id === sub) ?? SUBS[0]
@@ -322,10 +360,10 @@ export function TabOperacion({
             testid: `sub-${s.id}`,
           }))}
         />
-        {/* El buscador NO aparece sobre los impedimentos: ese bloque escribe, tiene su propio
-            formulario y rara vez pasa de una docena de filas. Un campo de filtro ahí es una fila de
-            interfaz que no hace nada. */}
-        {sub !== 'impedimentos' && !errorFuente && (
+        {/* El buscador NO aparece sobre los impedimentos ni sobre el clima: esos dos bloques
+            escriben, tienen sus propios chips de filtro y rara vez pasan de una docena de filas. Un
+            campo de texto ahí es una fila de interfaz que no hace nada. */}
+        {sub !== 'impedimentos' && sub !== 'clima' && !errorFuente && (
           <div className="ml-auto flex items-center gap-2">
             <Buscador
               value={query}
@@ -345,21 +383,47 @@ export function TabOperacion({
       {/* CUATRO LISTAS VACÍAS NO SON «no hay nada»: son «no pude leer». Se dice cuál es, con el
           mensaje de la fuente, y sólo sobre los bloques que dependen de ella — Impedimentos sale de
           Postgres y no se entera de que el Sheet está caído. */}
-      {errorFuente && sub !== 'impedimentos' && (
+      {errorFuente && sub !== 'impedimentos' && sub !== 'clima' && (
         <Aviso tono="neg" titulo="No pude leer esta información de su fuente">{errorFuente}</Aviso>
       )}
       {!errorFuente && sub === 'pedidos' && (
         <Pedidos pedidos={pedidos} actividades={actividades} asignar={asignarActividadAPedido} q={q} />
       )}
       {!errorFuente && sub === 'compras' && <Compras compras={compras} q={q} />}
-      {!errorFuente && sub === 'herramientas' && <Herramientas herramientas={herramientas} q={q} />}
-      {!errorFuente && sub === 'movimientos' && <Movimientos movimientos={movimientos} q={q} />}
+      {/* EQUIPOS: LAS DOS TABLAS, UNA DEBAJO DE LA OTRA. Primero qué hay hoy en la obra, después
+          cómo llegó — el estado antes que el historial, porque la pregunta de la mañana es la
+          primera. El buscador filtra las dos a la vez: es el mismo recurso. */}
+      {!errorFuente && sub === 'equipos' && (
+        <div className="flex flex-col gap-5">
+          <section className="flex flex-col gap-2">
+            <h3 className="text-[11px] uppercase tracking-[0.06em] text-faint">En la obra</h3>
+            <Herramientas herramientas={herramientas} q={q} />
+          </section>
+          <section className="flex flex-col gap-2">
+            <h3 className="text-[11px] uppercase tracking-[0.06em] text-faint">Cómo llegaron</h3>
+            <Movimientos movimientos={movimientos} q={q} />
+          </section>
+        </div>
+      )}
       {sub === 'impedimentos' && (
         <BloqueImpedimentos
           impedimentos={impedimentos}
           actividades={actividades}
           crear={crearImpedimento}
           liberar={liberarImpedimento}
+        />
+      )}
+      {/* CLIMA es el mismo bloque con el mismo formulario, filtrado por motivo. Un componente aparte
+          para «lo mismo pero con tipo clima» habría dado dos altas del mismo dato que el día que a
+          una se le agregue un campo se contestan distinto. */}
+      {sub === 'clima' && (
+        <BloqueImpedimentos
+          impedimentos={deClima}
+          actividades={actividades}
+          crear={crearImpedimento}
+          liberar={liberarImpedimento}
+          tipoInicial="clima"
+          vacio="Sin registros de clima en esta obra."
         />
       )}
     </div>
