@@ -7,13 +7,28 @@
 
 import Link from 'next/link'
 import { Estado, Nulo, Tabla, THead, Th, Tr, Td, Vacio } from '@/shared/components/ds'
+import { IconoCliente, IconoObra, IconoPersona } from '@/shared/components/iconos'
 import { fecha } from '@/features/obras/components/formato'
 import { estadoVigencia, hayVencimientos, migajaDe } from '../services/documentos'
 import { categoriaDe, ETIQUETA_CATEGORIA } from '../services/categorias'
-import type { Documento } from '../types'
+import type { ClaseVinculo, Documento } from '../types'
 
 const TONO = { vencido: 'neg', 'vence-pronto': 'warn', vigente: 'pos' } as const
 const PALABRA = { vencido: 'Vencido', 'vence-pronto': 'Vence pronto', vigente: 'Vigente' } as const
+
+// UNA ACCIÓN = UN ICONO, y acá una CLASE = UN ICONO: el canónico 27 marca de qué cuelga el archivo
+// con el mismo icono con el que se nombra esa entidad en todo el OS. Va con `title` porque solo no
+// se lee: «obra», «persona» y «cliente» son tres siluetas parecidas a 13px.
+const ICONO: Record<ClaseVinculo, typeof IconoObra> = {
+  obra: IconoObra,
+  persona: IconoPersona,
+  cliente: IconoCliente,
+}
+
+function IconoClase({ clase }: { clase: ClaseVinculo }) {
+  const Icono = ICONO[clase]
+  return <Icono className="h-[13px] w-[13px] shrink-0 text-faint" />
+}
 
 export function TablaDocumentos({
   documentos, seleccionado, hrefDe, hoy, vacio,
@@ -61,8 +76,12 @@ export function TablaDocumentos({
                   <Nulo>sin vincular</Nulo>
                 ) : (
                   <div className="min-w-0 truncate">
-                    <span className="text-[13px] text-ink-soft">
-                      {d.vinculos.map((v) => v.nombre).join(' · ')}
+                    <span className="flex min-w-0 items-center gap-1.5 text-[13px] text-ink-soft">
+                      {/* El icono de la PRIMERA clase: cuando un archivo cuelga de dos entidades, el
+                          detalle de abajo las nombra a las dos. Dos iconos en 13px de alto son dos
+                          manchas. */}
+                      <IconoClase clase={d.vinculos[0].clase} />
+                      <span className="min-w-0 truncate">{d.vinculos.map((v) => v.nombre).join(' · ')}</span>
                     </span>
                     <span className="block truncate text-[10.5px] text-faint">
                       {d.vinculos.map((v) => v.detalle ?? `${v.clase} · sin clasificar`).join(' · ')}

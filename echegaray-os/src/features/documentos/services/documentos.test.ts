@@ -7,8 +7,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   carpetaDe, conVinculos, enlaceDescarga, enlaceDrive, enlacePreview, estadoVigencia, etiquetaLegajo,
-  hayVencimientos, migajaDe, pesoLegible,
-  type ArchivoIndexado, type VinculoCliente, type VinculoLegajo,
+  hayVencimientos, IDS_POR_PARTE, migajaDe, partirIds, pesoLegible, unirPartes,
+  type ArchivoIndexado, type VinculoCliente, type VinculoLegajo, type VinculoObra,
 } from './documentos.ts'
 
 const archivo = (p: Partial<ArchivoIndexado> = {}): ArchivoIndexado => ({
@@ -150,4 +150,100 @@ test('un tamaño ausente es «sin dato», nunca «0 kB»', () => {
   assert.equal(pesoLegible(0), '0 B')
   assert.equal(pesoLegible(1766658), '1,7 MB')
   assert.equal(pesoLegible(2048), '2 kB')
+})
+
+// ── EL ARCHIVO DE UNA OBRA ─────────────────────────────────────────────────────────────────────
+//
+// EL DEFECTO QUE ATRAPA: `obra_documento` estaba en 0 filas el 21/08 y la pantalla dejó de mirarla.
+// El 24/08 tiene 32. Un vínculo que existe y no se lee hace que «De obras» devuelva vacío y que
+// alguien concluya que la obra no tiene papeles cargados.
+
+const docObra = (p: Partial<VinculoObra> = {}): VinculoObra => ({
+  drive_file_id: 'f1', rol: null, obra_canonica: { id: 'quattropani', nombre: 'Salón Comercial' }, ...p,
+})
+
+test('un archivo colgado de una obra publica su vínculo y el enlace a la obra', () => {
+  const [d] = conVinculos([archivo()], [], [], [docObra()])
+  assert.equal(d.vinculos.length, 1, 'ignoró obra_documento')
+  assert.equal(d.vinculos[0].clase, 'obra')
+  assert.equal(d.vinculos[0].nombre, 'Salón Comercial')
+  // `obra_canonica.id` ES el identificador de la URL: no existe columna `slug`.
+  assert.equal(d.vinculos[0].href, '/obras/quattropani')
+})
+
+test('un archivo que cuelga de una obra Y de un cliente muestra los dos', () => {
+  const [d] = conVinculos([archivo()], [], [docCliente()], [docObra()])
+  assert.deepEqual(d.vinculos.map((v) => v.clase).sort(), ['cliente', 'obra'])
+})
+
+test('una obra sin nombre no deja el vínculo mudo ni dibuja un enlace roto', () => {
+  const [d] = conVinculos([archivo()], [], [], [docObra({ obra_canonica: { id: null, nombre: null } })])
+  assert.equal(d.vinculos[0].nombre, 'obra sin nombre')
+  assert.equal(d.vinculos[0].href, null, 'iba a dibujar un enlace a /obras/null')
+})
+
+// ── LA CONSULTA PARTIDA ────────────────────────────────────────────────────────────────────────
+//
+// ═══ EL DEFECTO QUE ATRAPA, Y ES REAL, NO HIPOTÉTICO ═══
+//
+// `documentacion_legajo` tiene 847 `drive_file_id` distintos (medido 24/08/2026). Pedirlos en un
+// solo `drive_index?drive_file_id=in.(…)` es una URL de ~30 kB y PostgREST devuelve **400 Bad
+// Request** — comprobado contra la base real, no supuesto. El recorte por vencimiento que ya
+// existía (`idsPorVencer`) sólo funciona hoy porque NINGUNA de las 847 filas tiene fecha cargada, y
+// la fecha la carga esta misma pantalla: el día que se carguen 500, «Vencidos» deja de filtrar y
+// devuelve un error.
+//
+// Si alguien vuelve a un solo `.in()` —o sube `IDS_POR_PARTE` a 847 «porque son pocos»— este
+// archivo se pone rojo antes de que la pantalla se rompa en producción.
+
+/** El presupuesto de URL de PostgREST, con margen para el resto de los filtros. */
+const LIMITE_URL_B = 8000
+
+test('847 ids se parten en tramos que caben en una URL, y no se pierde ni se repite ninguno', () => {
+  const ids = Array.from({ length: 847 }, (_, i) => `1ljxxCI_PMRZ0HQiOo0on4z-CUZOm${String(i).padStart(4, '0')}`)
+  const partes = partirIds(ids)
+
+  for (const parte of partes) {
+    assert.ok(parte.length <= IDS_POR_PARTE, `una parte trae ${parte.length} ids`)
+    // `in.(a,b,c)` más el nombre de la columna: lo que de verdad se mide es el largo de la URL.
+    const largo = `drive_file_id=in.(${parte.join(',')})`.length
+    assert.ok(largo <= LIMITE_URL_B, `la parte arma una URL de ${largo} B y PostgREST devuelve 400`)
+  }
+
+  const unidos = partes.flat()
+  assert.equal(unidos.length, ids.length, 'se perdieron o se duplicaron ids al partir')
+  assert.deepEqual(new Set(unidos).size, ids.length)
+  assert.deepEqual(unidos, ids, 'el orden de los ids cambió')
+})
+
+test('partir una lista vacía no deja una parte vacía que consultaría TODO', () => {
+  // Un `.in('drive_file_id', [])` no devuelve cero filas: en algunos clientes se cae hacia el lado
+  // abierto. Sin partes no hay consulta, que es lo correcto.
+  assert.deepEqual(partirIds([]), [])
+})
+
+test('unir las partes rehace el orden global, no las concatena', () => {
+  // Cada parte viene ordenada por fecha descendente; el conjunto NO lo está. Concatenar dibujaría
+  // los 150 más nuevos de la parte 1, después los de la parte 2, y la lista mentiría sobre qué se
+  // tocó último.
+  const unido = unirPartes(
+    [
+      [{ modified_time: '2026-08-20' }, { modified_time: '2026-01-02' }],
+      [{ modified_time: '2026-08-24' }, { modified_time: '2026-05-05' }],
+    ],
+    10,
+  )
+  assert.deepEqual(unido.map((d) => d.modified_time), ['2026-08-24', '2026-08-20', '2026-05-05', '2026-01-02'])
+})
+
+test('unir recorta al tope: dos partes de 100 no dibujan 200 filas', () => {
+  const parte = (base: string) => Array.from({ length: 100 }, (_, i) => ({ modified_time: `${base}-${i}` }))
+  assert.equal(unirPartes([parte('2026'), parte('2025')], 100).length, 100)
+})
+
+test('un archivo sin fecha de modificación no encabeza la lista', () => {
+  // `null` ordenado como cadena vacía queda al final, que es donde va: no saber cuándo se tocó no
+  // es haberlo tocado recién.
+  const unido = unirPartes([[{ modified_time: null }, { modified_time: '2026-08-24' }]], 10)
+  assert.deepEqual(unido.map((d) => d.modified_time), ['2026-08-24', null])
 })

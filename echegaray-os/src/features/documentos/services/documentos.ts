@@ -25,6 +25,13 @@ export interface VinculoCliente {
   clientes: { nombre_comercial: string | null; slug: string | null } | null
 }
 
+/** Una fila de `obra_documento` con la obra embebida. `obra_id` ES el identificador de la URL. */
+export interface VinculoObra {
+  drive_file_id: string | null
+  rol: string | null
+  obra_canonica: { id: string | null; nombre: string | null } | null
+}
+
 /** Un archivo tal como sale de `drive_index`, todavía sin vínculo. */
 export interface ArchivoIndexado {
   drive_file_id: string
@@ -94,6 +101,7 @@ export function conVinculos(
   archivos: ArchivoIndexado[],
   legajos: VinculoLegajo[],
   documentosCliente: VinculoCliente[],
+  documentosObra: VinculoObra[] = [],
 ): Documento[] {
   const porArchivo = new Map<string, Vinculo[]>()
   const vence = new Map<string, string>()
@@ -120,6 +128,17 @@ export function conVinculos(
       // `cliente_documento` NO tiene columna de vencimiento: sus cinco columnas son cliente_id,
       // drive_file_id, rol, origen y creado_en. Un contrato colgado de un cliente no puede vencer
       // en el OS todavía, y eso se dice en el panel en vez de ofrecer un campo que no guarda nada.
+      legajoId: null,
+    })
+  }
+  for (const o of documentosObra) {
+    sumar(o.drive_file_id, {
+      clase: 'obra',
+      nombre: o.obra_canonica?.nombre?.trim() || 'obra sin nombre',
+      detalle: o.rol?.trim() || null,
+      href: o.obra_canonica?.id ? `/obras/${o.obra_canonica.id}` : null,
+      // `obra_documento` tampoco tiene columna de vencimiento (obra_id, drive_file_id, rol, origen,
+      // creado_en). El plano de una obra no puede vencer en el OS todavía.
       legajoId: null,
     })
   }
@@ -226,4 +245,45 @@ export function pesoLegible(bytes: number | null | undefined): string | null {
 export const ETIQUETA_VINCULO: Record<ClaseVinculo, string> = {
   persona: 'persona',
   cliente: 'cliente',
+  obra: 'obra',
+}
+
+// ═══ UN `.in()` LARGO NO SE FILTRA MAL: SE CAE ═══════════════════════════════════════════════
+//
+// MEDIDO CONTRA LA BASE REAL (24/08/2026): `documentacion_legajo` tiene 847 `drive_file_id`
+// distintos. Pedir `drive_index?drive_file_id=in.(…847 ids…)` es una URL de ~30 kB, y PostgREST
+// contesta **400 Bad Request** — comprobado, no supuesto. O sea: el recorte por vencimiento que ya
+// existe (`idsPorVencer`) funciona HOY sólo porque ninguna de las 847 filas tiene fecha cargada. El
+// día que se carguen ~500 vencimientos, y esa carga la hace ESTA MISMA pantalla, «Vencidos» deja de
+// devolver documentos y devuelve un error.
+//
+// La salida no es acotar la lista de ids —eso filtraría de menos en silencio, que es peor— sino
+// PARTIRLA: N consultas con los mismos filtros, cada una por debajo del límite de URL, y el
+// resultado se une. Los ids son distintos entre partes, así que los `count` son disjuntos y su suma
+// es exacta; el orden global se rehace al unir.
+
+/** Ids por parte. 33 caracteres el id + comas y escape ≈ 36 B: 150 ids son ~5,4 kB de URL, cómodo
+ *  por debajo del límite práctico de PostgREST aun sumando el resto de los filtros. */
+export const IDS_POR_PARTE = 150
+
+/** Parte una lista de ids en tramos de a lo sumo `tam`. Sin ids no hay consulta que hacer. */
+export function partirIds(ids: string[], tam: number = IDS_POR_PARTE): string[][] {
+  if (tam < 1) throw new Error('el tamaño de parte tiene que ser al menos 1')
+  const partes: string[][] = []
+  for (let i = 0; i < ids.length; i += tam) partes.push(ids.slice(i, i + tam))
+  return partes
+}
+
+/**
+ * Une los resultados de las partes en una sola página: se reordena por `modified_time` descendente
+ * —el mismo orden que pide la consulta— y se recorta al tope.
+ *
+ * SIN ESTE REORDENAMIENTO la página saldría agrupada por parte: los 150 archivos más nuevos de la
+ * parte 1, después los de la parte 2. Cada parte viene ordenada; el conjunto, no.
+ */
+export function unirPartes<T extends { modified_time: string | null }>(partes: T[][], tope: number): T[] {
+  return partes
+    .flat()
+    .sort((a, b) => String(b.modified_time ?? '').localeCompare(String(a.modified_time ?? '')))
+    .slice(0, tope)
 }

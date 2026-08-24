@@ -42,6 +42,7 @@ export function PageShell({
   right,
   children,
   maxWidth = LECTURA.completo,
+  encabezado = true,
 }: {
   eyebrow?: ReactNode
   title: ReactNode
@@ -50,6 +51,15 @@ export function PageShell({
   children: ReactNode
   /** Ancho de LECTURA del contenido, alineado a la izquierda. El contenedor no cambia nunca. */
   maxWidth?: string
+  /**
+   * `false` cuando la pantalla trae su PROPIO encabezado — el slab de identidad de una ficha de
+   * entidad (`COMPONENTS.md` §Anatomía de ficha de entidad), que lleva el `h1` adentro.
+   *
+   * El marco se conserva igual: el ancho de lectura, el padding y —sobre todo— `SelloDatoBueno`,
+   * que es lo que le da al `error.tsx` la hora del último dato bueno. Sin este interruptor había
+   * que elegir entre dos `h1` con el mismo nombre o perder el sello.
+   */
+  encabezado?: boolean
 }) {
   return (
     <div className="min-h-screen bg-canvas">
@@ -59,16 +69,18 @@ export function PageShell({
       <SelloDatoBueno />
       <div className="w-full px-4 py-6 lg:px-10">
         <div className={maxWidth}>
-          <header className="mb-5 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
-            <div className="min-w-0">
-              {eyebrow && <div className="text-[11px] font-medium tracking-[0.04em] text-faint">{eyebrow}</div>}
-              <h1 className="mt-1 text-[22px] font-semibold leading-tight tracking-[-0.01em] text-ink">{title}</h1>
-              {subtitle && <div className="mt-1.5 text-[12.5px] leading-relaxed text-muted">{subtitle}</div>}
-            </div>
-            {/* `shrink-0` sin `min-w-0` empujaba la página entera de costado en el teléfono: la línea
-                de ciclo de vida de la obra mide más que 390px y no podía encoger. */}
-            {right && <div className="min-w-0 max-w-full shrink-0">{right}</div>}
-          </header>
+          {encabezado && (
+            <header className="mb-5 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+              <div className="min-w-0">
+                {eyebrow && <div className="text-[11px] font-medium tracking-[0.04em] text-faint">{eyebrow}</div>}
+                <h1 className="mt-1 text-[22px] font-semibold leading-tight tracking-[-0.01em] text-ink">{title}</h1>
+                {subtitle && <div className="mt-1.5 text-[12.5px] leading-relaxed text-muted">{subtitle}</div>}
+              </div>
+              {/* `shrink-0` sin `min-w-0` empujaba la página entera de costado en el teléfono: la
+                  línea de ciclo de vida de la obra mide más que 390px y no podía encoger. */}
+              {right && <div className="min-w-0 max-w-full shrink-0">{right}</div>}
+            </header>
+          )}
           {children}
         </div>
       </div>

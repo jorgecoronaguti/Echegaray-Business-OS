@@ -50,6 +50,39 @@ export async function getClientes(supabase: SupabaseClient): Promise<ServiceResu
   return { data: (data ?? []).map((r) => normalizar(r as Record<string, unknown>)), error: null }
 }
 
+/**
+ * QUÉ LE ESTAMOS EJECUTANDO A CADA CLIENTE — la columna «EN EJECUCIÓN» del canónico 25.
+ *
+ * `cliente_panel.n_obras_activas` dice CUÁNTAS, no CUÁLES, y el número solo no sirve para lo que la
+ * columna contesta: «¿de qué me va a hablar si me llama?». Se resuelve con UNA lectura de
+ * `obra_panel` para toda la cartera, no una por fila.
+ *
+ * `estado = 'activa'` y no `estado <> 'cerrada'`: MEDIDO el 24/08/2026 contra la base, la suma de
+ * `n_obras_activas` (12) coincide exactamente con las obras en `activa`, no con las 13 que no están
+ * cerradas —Quattropani tiene una `pausada` y el panel le cuenta 0—. Con el otro criterio, la
+ * columna y el contador del filtro se contradirían en la misma fila.
+ *
+ * Un fallo NO tira la cartera: se devuelve el mapa vacío y la columna dice «sin cargar», que es lo
+ * cierto, en vez de afirmar que el cliente no tiene nada en ejecución.
+ */
+export async function getObrasEnEjecucion(
+  supabase: SupabaseClient,
+): Promise<Map<string, { obra_id: string; nombre: string }[]>> {
+  const { data } = await supabase
+    .from('obra_panel')
+    .select('obra_id, nombre, cliente_id')
+    .eq('estado', 'activa')
+    .order('orden', { ascending: true })
+    .order('nombre', { ascending: true })
+  const por = new Map<string, { obra_id: string; nombre: string }[]>()
+  for (const o of data ?? []) {
+    const cliente = o.cliente_id as string | null
+    if (!cliente) continue
+    por.set(cliente, [...(por.get(cliente) ?? []), { obra_id: o.obra_id as string, nombre: o.nombre as string }])
+  }
+  return por
+}
+
 export async function getCliente(supabase: SupabaseClient, slug: string): Promise<ServiceResultOpcional<ClientePanel>> {
   const { data, error } = await supabase.from('cliente_panel').select('*').eq('slug', slug).maybeSingle()
   if (error) return { data: null, error: error.message }

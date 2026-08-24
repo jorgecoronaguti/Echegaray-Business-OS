@@ -84,20 +84,65 @@ test.describe('las dos pantallas, con los datos que hay', () => {
     await expect(page.getByTestId('proveedor-no-encontrado')).toBeVisible()
   })
 
+  // ═══ ESTA ASERCIÓN ESTABA MIDIENDO LO QUE NO PODÍA CAMBIAR (corregido 24/08/2026) ═══
+  //
+  // Medía las FILAS DIBUJADAS antes y después de buscar «recibo», y exigía que el número cambiara.
+  // Pero la tabla se recorta a un tope, y medido contra la base real hay 3.128 archivos y 907 que
+  // coinciden con «recibo»: los dos números están por encima del tope, así que antes y después
+  // dibujaban exactamente la misma cantidad de filas. La prueba no podía pasar con datos reales, y
+  // el defecto que decía cuidar —el buscador no filtra— quedaba sin cubrir.
+  //
+  // Lo que SÍ cambia y es la señal correcta es el TOTAL que la consulta contó: 3.128 → 907. Se mide
+  // eso, que es lo que prueba que el filtro corrió en Postgres y no en el navegador.
   test('Documentos filtra al teclear y abre el panel del archivo', async ({ page }) => {
     await entrar(page, DIRECCION)
     await page.goto('/documentos')
     await expect(page.getByTestId('tabla-documentos')).toBeVisible()
-    const antes = await page.getByTestId('abrir-documento').count()
+    const antes = await page.getByTestId('pie-documentos').textContent()
     await page.getByTestId('buscar-documento').fill('recibo')
     // Filtra SIN Enter: el contrato de diseño lo pide y el buscador de la URL lo cumple.
     await expect
-      .poll(async () => page.getByTestId('abrir-documento').count(), { timeout: 15_000 })
+      .poll(async () => page.getByTestId('pie-documentos').textContent(), { timeout: 15_000 })
       .not.toBe(antes)
     await page.getByTestId('abrir-documento').first().click()
     await expect(page.getByTestId('panel-documento')).toBeVisible()
     // EL ARCHIVO NO SE COPIA: el único botón lleva a Drive.
     await expect(page.getByTestId('abrir-en-drive')).toHaveAttribute('href', /drive\.google\.com/)
+  })
+
+  // ═══ EL TOPE TIENE PUERTA ═══
+  //
+  // Antes el pie decía «está fuera del tope de 200 filas» y ahí terminaba: el archivo de la fila 201
+  // no se alcanzaba desde ninguna parte de la pantalla, ni filtrando —el filtro también recorta—.
+  // «Cargar más» pide otra página A LA CONSULTA (`?n=`); si alguien la vuelve a dibujar en el
+  // navegador, la cuenta del pie no sube y esto se pone rojo.
+  test('el archivo que cae fuera del tope se alcanza con «Cargar más»', async ({ page }) => {
+    await entrar(page, DIRECCION)
+    await page.goto('/documentos')
+    const primera = await page.getByTestId('abrir-documento').count()
+    await page.getByTestId('cargar-mas-documentos').click()
+    await expect
+      .poll(async () => page.getByTestId('abrir-documento').count(), { timeout: 20_000 })
+      .toBeGreaterThan(primera)
+    expect(new URL(page.url()).searchParams.get('n')).toBe('2')
+  })
+
+  // ═══ DE QUIÉN CUELGA EL ARCHIVO ═══
+  //
+  // `obra_documento` estaba en 0 filas el 21/08 y la pantalla dejó de mirarla; el 24/08 tiene 32. El
+  // recorte se resuelve EN POSTGRES contra la tabla de vínculo: si volviera a descartarse en el
+  // navegador sobre las filas ya traídas, «De obras» devolvería vacío casi siempre —las 32 no entran
+  // en las 100 más recientes— y alguien concluiría que la obra no tiene papeles cargados.
+  test('el filtro por entidad recorta contra la tabla de vínculo, no contra la página', async ({ page }) => {
+    await entrar(page, DIRECCION)
+    await page.goto('/documentos?ent=obra')
+    await expect(page.getByTestId('tabla-documentos')).toBeVisible()
+    const filas = await page.getByTestId('abrir-documento').count()
+    expect(filas, 'el filtro «De obras» no devolvió ningún archivo vinculado a una obra')
+      .toBeGreaterThan(0)
+    // Y CADA FILA tiene su vínculo: un recorte que devolviera archivos sueltos sería un filtro que
+    // no filtra. La columna dice «sin vincular» cuando no hay ninguno.
+    await expect(page.getByTestId('tabla-documentos')).not.toContainText('sin vincular')
   })
 
   test('el jefe de obra rebota en /documentos', async ({ page }) => {

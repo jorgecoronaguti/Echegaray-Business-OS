@@ -67,9 +67,20 @@ export function Tabs({ tabs, testid = 'tabs' }: { tabs: Tab[]; testid?: string }
  */
 export function SubTabs({
   items,
+  scroll = false,
   testid = 'subtabs',
 }: {
   items: { href?: string; onClick?: () => void; label: ReactNode; cuenta?: number | null; activo?: boolean; testid?: string }[]
+  /**
+   * `true` cuando los `href` son ANCLAS DE LA MISMA PÁGINA (`#bloque-obras`).
+   *
+   * El default es `false` y ésa es la razón por la que existe este interruptor: `scroll={false}`
+   * también cancela el salto al ancla, así que un índice de secciones construido con este
+   * componente se dibujaba entero y no llevaba a ninguna parte al tocarlo. Para cambiar de
+   * sub-vista sigue siendo `false`, que es lo correcto — el que mira la fila 200 del árbol tiene
+   * que seguir mirándola.
+   */
+  scroll?: boolean
   testid?: string
 }) {
   return (
@@ -89,11 +100,11 @@ export function SubTabs({
             : 'border-b-[1.5px] border-transparent text-muted hover:text-ink'
         }`
         return i.href ? (
-          // `scroll={false}`: cambiar de sub-vista o de filtro no puede mandar la página al tope —
-          // el que está mirando la fila 200 del árbol sigue mirando la fila 200.
+          // `scroll={false}` por defecto: cambiar de sub-vista o de filtro no puede mandar la página
+          // al tope — el que está mirando la fila 200 del árbol sigue mirando la fila 200.
           // `prefetch={false}`: mismo motivo que en Tabs — rutas dinámicas, el prefetch es un
           // render completo por ítem visible.
-          <Link key={i.href} href={i.href} scroll={false} prefetch={false} data-testid={i.testid} aria-current={i.activo ? 'true' : undefined} className={clase}>
+          <Link key={i.href} href={i.href} scroll={scroll} prefetch={false} data-testid={i.testid} aria-current={i.activo ? 'true' : undefined} className={clase}>
             {contenido}
           </Link>
         ) : (
