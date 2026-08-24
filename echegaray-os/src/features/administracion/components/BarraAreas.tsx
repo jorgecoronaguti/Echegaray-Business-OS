@@ -24,6 +24,9 @@ export function BarraAreas({ areas }: { areas: AreaAdmin[] }) {
     <div data-testid="nav-admin-secciones" className="mb-4">
       <Tabs
         testid="tabs-administracion"
+        // GRAFITO Y NO AMARILLO: el amarillo es del nivel 1, arriba, donde «Administración» ya está
+        // encendida. Los canónicos 00/17/18/19/21 dibujan esta barra con `inset 0 -2px 0 #30302F`.
+        filo="grafito"
         tabs={areas.map((a) => ({
           href: a.href,
           testid: `ir-${a.clave}`,

@@ -12,7 +12,10 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { Tabla, THead, Th, Tr, Td, FilaTotal, Vacio, Estado, Nulo, Aviso, Filtros } from '@/shared/components/ds'
+import { Tabla, THead, Th, Tr, Td, FilaTotal, Vacio, Estado, Nulo, Aviso } from '@/shared/components/ds'
+import {
+  CabezaCanon, FilaCanon, ListaCanon, PieCanon, RotuloCanon, VacioCanon,
+} from '@/shared/components/canon/ListaCanon'
 import type { CargaSocialFila, CategoriaManoObra, Plantilla, RecursoFila, VersionPrecio } from '../types'
 import { filtrar, numero, pesosCierran, porcentaje, sumaDePesos } from '../services/reglas'
 import { BuscadorVivo } from './BuscadorVivo'
@@ -64,6 +67,12 @@ export function TablaRecursos({
   const visibles = filtrar(filas, consulta, (r) => [r.codigo, r.nombre, r.familia, r.unidad])
     .filter(economia ? CORTES_PRECIO[corte].cumple : () => true)
 
+  // LOS ANCHOS DEL CANÓNICO. Nombre y familia son fraccionales —son lo que crece con la pantalla—;
+  // el resto es fijo, para que la columna de costos siga alineada entre una vista y otra.
+  const cols = economia
+    ? '76px minmax(0,1.5fr) minmax(0,1fr) 48px 96px 64px 150px 86px'
+    : '76px minmax(0,1.5fr) minmax(0,1fr) 48px 64px 150px 86px'
+
   const href = (recursoId: string | null) => {
     const p = new URLSearchParams()
     for (const [k, v] of Object.entries({ ...otros, q: consulta || undefined, r: recursoId ?? undefined })) {
@@ -80,91 +89,124 @@ export function TablaRecursos({
           valor={consulta} onCambio={setConsulta} placeholder={`Buscar ${c.singular.toLowerCase()}, código o familia`}
           resultados={visibles.length} total={filas.length} testid={`buscador-${clase}`}
         />
+        {/* PASTILLAS CON CONTADOR — canónico 18. El corte NO va a la URL: se calcula sobre las
+            filas que ya están en el navegador, y su resultado depende de lo que la base diga en este
+            momento, así que un enlace compartido prometería una lista que mañana es otra. */}
         {economia && (
-          <Filtros
-            testid="filtros-precio"
-            opciones={(Object.keys(CORTES_PRECIO) as CortePrecio[]).map((k) => ({
-              label: (
-                <span className="inline-flex items-center gap-1.5">
-                  {CORTES_PRECIO[k].rotulo}
-                  <span className="font-mono text-[11px] tabular-nums text-faint">
-                    {filas.filter(CORTES_PRECIO[k].cumple).length}
-                  </span>
+          <div data-testid="filtros-precio" className="flex flex-wrap items-center gap-2">
+            {(Object.keys(CORTES_PRECIO) as CortePrecio[]).map((k) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setCorte(k)}
+                data-testid={`corte-${k}`}
+                aria-pressed={corte === k}
+                className={`flex items-center gap-[5px] rounded-md border px-[9px] py-[4px] text-[12px] transition-colors ${
+                  corte === k
+                    ? 'border-accent bg-accent text-white'
+                    : 'border-line bg-surface text-ink-soft hover:border-line-strong'
+                }`}
+              >
+                {CORTES_PRECIO[k].rotulo}
+                <span className={`font-mono text-[10.5px] tabular-nums ${corte === k ? 'text-[#B9B7B1]' : 'text-faint'}`}>
+                  {filas.filter(CORTES_PRECIO[k].cumple).length}
                 </span>
-              ),
-              onClick: () => setCorte(k),
-              activo: corte === k,
-              testid: `corte-${k}`,
-            }))}
-          />
+              </button>
+            ))}
+          </div>
         )}
       </div>
 
-      {visibles.length === 0 ? (
-        <Vacio
-          accion={
-            consulta || corte !== 'todo' ? (
+      {/* ═══ LA CAJA DEL CANÓNICO 18 ═══
+          `background:#FFFFFF;border:1px solid #E7E6E2;borderRadius:10px;overflow:hidden`, encabezado
+          de 38px sobre `#FAFAF8`, filas de 44px con divisor `#F1F0EC` y el pie de marcador ADENTRO.
+
+          LAS COLUMNAS NO SON LAS DEL MOCKUP, Y ES DELIBERADO. El canónico dibuja
+          `TIPO · RECURSO · UN. · PRECIO · ACTUALIZADO · PROVEEDOR · USOS` sobre UNA lista con todos
+          los tipos mezclados. Acá la sub-vista YA separó por tipo —insumos, mano de obra, equipos—,
+          así que una columna TIPO diría lo mismo en las 268 filas; y USOS no lo cuenta ninguna
+          fuente de este listado (la ficha del recurso sí, por recurso). Lo que sí está y el mockup
+          no dibuja —CÓDIGO, FAMILIA, DESPERDICIO— es lo que identifica y lo que altera el costo.
+          DESVÍO DECLARADO. */}
+      <ListaCanon testid={`tabla-${clase}`}>
+        <CabezaCanon cols={cols}>
+          <RotuloCanon>CÓD.</RotuloCanon>
+          <RotuloCanon>{c.singular.toUpperCase()}</RotuloCanon>
+          <RotuloCanon>FAMILIA</RotuloCanon>
+          <RotuloCanon>UN.</RotuloCanon>
+          {economia && <RotuloCanon alinear="right">COSTO</RotuloCanon>}
+          <RotuloCanon alinear="right">DESP.</RotuloCanon>
+          <RotuloCanon>FUENTE</RotuloCanon>
+          <RotuloCanon alinear="right">ACTUALIZ.</RotuloCanon>
+        </CabezaCanon>
+
+        {visibles.length === 0 && (
+          <VacioCanon testid={`${clase}-vacio`}>
+            {corte !== 'todo' && !consulta
+              ? `Ninguno de los ${c.plural} queda en «${CORTES_PRECIO[corte].rotulo}».`
+              : vacio(consulta, filas.length, c.plural, 'Se cargan al importar la Planilla para Cotizar.')}{' '}
+            {(consulta || corte !== 'todo') && (
               <button
                 type="button"
                 onClick={() => { setConsulta(''); setCorte('todo') }}
-                className="text-[13px] font-medium text-ink underline"
+                className="font-medium text-ink underline underline-offset-2"
               >
                 Ver todo
               </button>
-            ) : undefined
-          }
-        >
-          {corte !== 'todo' && !consulta
-            ? `Ninguno de los ${c.plural} queda en «${CORTES_PRECIO[corte].rotulo}».`
-            : vacio(consulta, filas.length, c.plural, 'Se cargan al importar la Planilla para Cotizar.')}
-        </Vacio>
-      ) : (
-        <Tabla testid={`tabla-${clase}`} minWidth={economia ? 860 : 740}>
-          <THead>
-            <Th className="w-[76px]">Código</Th>
-            <Th>{c.singular}</Th>
-            <Th className="w-[132px]">Familia</Th>
-            <Th className="w-[54px]">Un.</Th>
-            {economia && <Th num className="w-[96px]">Costo</Th>}
-            <Th num className="w-[64px]">Desp.</Th>
-            <Th className="w-[150px]">Fuente</Th>
-            <Th num className="w-[86px]">Actualiz.</Th>
-          </THead>
-          <tbody>
-            {visibles.map((r) => (
-              <Tr
-                key={r.recurso_id}
-                seleccionada={r.recurso_id === seleccionado}
-                data-testid={`${c.testid}-${r.codigo}`}
-              >
-                <Td className="font-mono text-[11px] text-muted">{r.codigo}</Td>
-                <Td fuerte>
-                  <Link href={href(r.recurso_id)} scroll={false} className="block truncate hover:underline">
-                    {r.nombre}
-                  </Link>
-                </Td>
-                <Td className="text-[11.5px] text-muted"><Texto v={r.familia} falta="sin familia" /></Td>
-                <Td className="text-[12px]">{r.unidad}</Td>
-                {economia && <Td num><N v={r.costo_base} decimales={0} falta="sin cargar" /></Td>}
-                <Td num>
-                  {/* 0 % de desperdicio es un DATO (no lleva desperdicio), no una ausencia. */}
-                  <span className="font-mono text-[11.5px] tabular-nums text-muted">{porcentaje(r.desperdicio, 0)}</span>
-                </Td>
-                {/* LA FUENTE SE RECORTA. La ingestión escribe la procedencia entera («Planilla para
-                    Cotizar (2).xlsm · Recursos!17 · ingesta 2026-08-21») y sin recorte cada fila
-                    mide cuatro líneas: la tabla deja de poder barrerse de un vistazo, que es lo
-                    único para lo que existe. El valor completo queda en el `title`. */}
-                <Td className="text-[11.5px]">
-                  <span className="block max-w-[150px] truncate" title={r.fuente ?? r.proveedor ?? undefined}>
-                    <Texto v={r.fuente ?? r.proveedor} falta="sin cargar" />
-                  </span>
-                </Td>
-                <Td num><FechaPrecio iso={r.fecha_precio} frescura={r.frescura} /></Td>
-              </Tr>
-            ))}
-          </tbody>
-        </Tabla>
-      )}
+            )}
+          </VacioCanon>
+        )}
+
+        {visibles.map((r) => (
+          <FilaCanon
+            key={r.recurso_id}
+            cols={cols}
+            alto={44}
+            seleccionada={r.recurso_id === seleccionado}
+            testid={`${c.testid}-${r.codigo}`}
+          >
+            <span className="truncate font-mono text-[11px] text-muted">{r.codigo}</span>
+            <Link href={href(r.recurso_id)} scroll={false} className="min-w-0 truncate text-[12.5px] text-ink hover:underline">
+              {r.nombre}
+            </Link>
+            <span className="min-w-0 truncate text-[11.5px] text-muted">
+              <Texto v={r.familia} falta="sin familia" className="text-[11.5px]" />
+            </span>
+            <span className="truncate text-[11.5px] text-ink-soft">{r.unidad}</span>
+            {economia && (
+              <span className="text-right">
+                <N v={r.costo_base} decimales={0} falta="sin cargar" />
+              </span>
+            )}
+            {/* 0 % de desperdicio es un DATO (no lleva desperdicio), no una ausencia. */}
+            <span className="text-right font-mono text-[11.5px] tabular-nums text-muted">
+              {porcentaje(r.desperdicio, 0)}
+            </span>
+            {/* LA FUENTE SE RECORTA. La ingestión escribe la procedencia entera («Planilla para
+                Cotizar (2).xlsm · Recursos!17 · ingesta 2026-08-21») y sin recorte cada fila mide
+                cuatro líneas. El valor completo queda en el `title`. */}
+            <span className="min-w-0 truncate text-[11.5px]" title={r.fuente ?? r.proveedor ?? undefined}>
+              <Texto v={r.fuente ?? r.proveedor} falta="sin cargar" className="text-[11.5px]" />
+            </span>
+            <span className="text-right">
+              <FechaPrecio iso={r.fecha_precio} frescura={r.frescura} />
+            </span>
+          </FilaCanon>
+        ))}
+
+        <PieCanon
+          testid="pie-recursos"
+          metricas={[
+            { rotulo: 'RECURSOS', valor: String(filas.length) },
+            ...(economia
+              ? [
+                  { rotulo: 'SIN PRECIO', valor: String(filas.filter((f) => f.costo_base == null).length), tono: 'warn' as const },
+                  { rotulo: 'PRECIO VENCIDO', valor: String(filas.filter((f) => f.frescura === 'vieja').length), tono: 'warn' as const },
+                ]
+              : []),
+          ]}
+        />
+      </ListaCanon>
 
       {clase === 'equipos' && (
         <div className="mt-4">
@@ -177,7 +219,6 @@ export function TablaRecursos({
           </Aviso>
         </div>
       )}
-      <Pie todas={filas} visibles={visibles.length} economia={economia} />
     </>
   )
 }
@@ -440,36 +481,4 @@ function vacio(consulta: string, total: number, que: string, comoSeCargan: strin
   if (consulta) return `Nada coincide con «${consulta}».`
   if (total === 0) return `La base maestra todavía no tiene ${que} cargados. ${comoSeCargan}`
   return `No hay ${que} que mostrar.`
-}
-
-/**
- * EL MARCADOR DE LA DEUDA DE PRECIO, y sólo para quien PUEDE ver precios: sin permiso todos los
- * costos llegan en null y las dos cifras dirían que la base entera está sin cargar.
- *
- * Se cuenta sobre el TOTAL, no sobre lo visible: es el estado de la base maestra, no el de la
- * búsqueda de este momento.
- */
-function Pie({ todas, visibles, economia }: { todas: RecursoFila[]; visibles: number; economia: boolean }) {
-  return (
-    <div className="mt-3 flex flex-wrap items-baseline justify-end gap-x-6 gap-y-1" data-testid="pie-recursos">
-      {visibles !== todas.length && (
-        <span className="mr-auto text-[11px] text-faint">
-          <span className="font-mono tabular-nums">{visibles}</span> de{' '}
-          <span className="font-mono tabular-nums">{todas.length}</span> en pantalla
-        </span>
-      )}
-      <Cifra rotulo="Recursos" n={todas.length} />
-      {economia && <Cifra rotulo="Sin precio" n={todas.filter((f) => f.costo_base == null).length} alerta />}
-      {economia && <Cifra rotulo="Precio vencido" n={todas.filter((f) => f.frescura === 'vieja').length} alerta />}
-    </div>
-  )
-}
-
-function Cifra({ rotulo, n, alerta }: { rotulo: string; n: number; alerta?: boolean }) {
-  return (
-    <span className="text-[11px] text-faint">
-      {rotulo}{' '}
-      <span className={`font-mono text-[12px] tabular-nums ${n === 0 || !alerta ? 'text-ink' : 'text-warn'}`}>{n}</span>
-    </span>
-  )
 }

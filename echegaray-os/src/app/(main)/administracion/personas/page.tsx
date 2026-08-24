@@ -10,17 +10,20 @@
 // estado vive en la URL y es un server component entero — no hay un `useState` que se pierda al
 // recargar ni una segunda copia de los datos en el navegador.
 
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { PageShell } from '@/shared/components/ui'
-import { Aviso, BotonEnlace, BuscadorURL, Franja, TituloPantalla, Vacio } from '@/shared/components/ds'
+import { Aviso, BotonEnlace, BuscadorURL, TituloPantalla } from '@/shared/components/ds'
+import { ChipsCanon } from '@/shared/components/canon/ChipsCanon'
 import { IconoCrear, IconoCuadrilla, IconoPersona } from '@/shared/components/iconos'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
-import { FiltrosURL } from '@/features/administracion/components/Controles'
 import { CamposAlta } from '@/features/administracion/components/FormularioPersona'
 import { PanelEdicion } from '@/features/administracion/components/PanelEdicion'
 import { TablaPersonas, type PulsoDelPlantel } from '@/features/administracion/components/TablaPersonas'
-import { FILTROS, getDirectorio, type FiltroPersonal } from '@/features/administracion/services/personasService'
-import { metricasDelListado } from '@/features/administracion/services/resumenPersonal'
+import {
+  FILTROS, getConteosDeFiltro, getDirectorio, type FiltroPersonal,
+} from '@/features/administracion/services/personasService'
+import { metricasCanonicas } from '@/features/administracion/services/resumenPersonal'
 import { crearPersona } from '@/features/administracion/services/personasActions'
 import {
   alertasDelPlantel, hayControlDeVencimientos, hhPorPersona, marcasPorPersona, mesCorriente,
@@ -68,13 +71,16 @@ async function leerTodo(
 ) {
   const { desde, hasta } = mesCorriente(hoy)
   const conPulso = filtro !== 'inactivos'
-  const [listado, marcas, hh, papeles] = await Promise.all([
+  const [listado, marcas, hh, papeles, conteos] = await Promise.all([
     getDirectorio(supabase, filtro, q),
     conPulso ? getMarcasDeHoy(supabase, hoy) : null,
     conPulso ? getHHDelMes(supabase, desde, hasta) : null,
     conPulso ? getPapelesDelPlantel(supabase) : null,
+    // Los contadores de las pastillas: cuatro `count` sin filas, y del CORTE entero — no de lo que
+    // sobrevive a la búsqueda de este momento (ver `getConteosDeFiltro`).
+    getConteosDeFiltro(supabase),
   ])
-  return { listado, marcas, hh, papeles }
+  return { listado, marcas, hh, papeles, conteos }
 }
 
 /** Las tres lecturas agrupadas por persona. Cada fuente que falló apaga SU columna y deja el resto
@@ -106,7 +112,7 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
   const filtro = (FILTROS.find((f) => f.valor === sp.f)?.valor ?? 'plantel') as FiltroPersonal
   const supabase = await createClient()
   const hoy = hoyEnObra()
-  const { listado, marcas, hh, papeles } = await leerTodo(supabase, filtro, sp.q, hoy)
+  const { listado, marcas, hh, papeles, conteos } = await leerTodo(supabase, filtro, sp.q, hoy)
 
   // EL ERROR DE LA BASE SE MUESTRA, NO SE PINTA COMO LISTA VACÍA. Una tabla en blanco porque la RLS
   // rechazó la consulta es indistinguible de una tabla en blanco porque no hay personas, y la
@@ -152,41 +158,6 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
     <PageShell title="Personas" encabezado={false}>
       <NavAdministracion />
 
-      {/* EL PULSO ANTES QUE EL DIRECTORIO (Design 23/08, pantalla 19). Lo que hay que mirar hoy va
-          arriba de la tabla, no escondido en una columna de la fila catorce. Sin nada que avisar no
-          se dibuja NADA: un cartel verde permanente que diga «todo en orden» entrena a la gente a no
-          leer los carteles, y entonces el día que uno diga algo grave tampoco se lee. */}
-      {/* ═══ TRES PASTILLAS, NO TRES TARJETAS (Design canónico 19) ═══
-          Eran tres `Aviso` en una grilla: tres bloques de dos renglones, con su párrafo explicativo,
-          ocupando el tercio superior de la pantalla antes de que apareciera una sola persona. El
-          canónico las dibuja como una fila de pastillas suaves —cifra teñida, rótulo en tinta— que
-          es la MISMA banda del 00. El detalle no se tira: viaja en el `title`, disponible para quien
-          se detiene y fuera del camino de quien está barriendo el plantel. */}
-      {alertas.length > 0 && (
-        <div data-testid="alertas-plantel" className="mb-4 flex flex-wrap items-center gap-2">
-          {alertas.map((a) => {
-            const { cifra, rotulo } = partirCifra(a.texto)
-            return (
-              <span
-                key={a.clave}
-                data-testid={`alerta-${a.clave}`}
-                title={a.detalle}
-                className={`inline-flex items-baseline gap-2 rounded-md border px-3 py-1.5 ${
-                  a.tono === 'neg' ? 'border-neg/25 bg-neg-soft' : 'border-warn/25 bg-warn-soft'
-                }`}
-              >
-                {cifra && (
-                  <span className={`font-mono text-[13px] font-semibold tabular-nums ${a.tono === 'neg' ? 'text-neg' : 'text-warn'}`}>
-                    {cifra}
-                  </span>
-                )}
-                <span className="text-[12px] text-ink-soft">{rotulo}</span>
-              </span>
-            )
-          })}
-        </div>
-      )}
-
       {/* UNA FUENTE QUE NO SE PUDO LEER SE DICE CON SU ERROR, y su columna se apaga en vez de
           publicar «sin fichar» diecisiete veces. Un control que no pudo mirar no dice «no está». */}
       {[
@@ -204,8 +175,11 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
       {/* UNA SOLA LÍNEA: buscar · filtros · Cuadrillas · la acción primaria. Cuadrillas va discreta
           porque es NAVEGACIÓN, no una acción — y vive DENTRO de Personal, no como sección nueva. */}
       <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-3">
-        {/* EL NOMBRE DE LA LISTA, EN SU LÍNEA DE CONTROLES — es donde lo pone el canónico 19. */}
-        <TituloPantalla className="mr-1">Personas</TituloPantalla>
+        {/* EL NOMBRE DE LA LISTA, EN SU LÍNEA DE CONTROLES — es donde lo pone el canónico 19, y a
+            19px (`fontSize:19px;fontWeight:600`). `TituloPantalla` dibuja 22, que es el tamaño del
+            título de una pantalla con encabezado propio; acá el título comparte renglón con cuatro
+            controles y 22px lo convierte en el objeto más pesado de la línea. */}
+        <TituloPantalla className="mr-1 !text-[19px]">Personas</TituloPantalla>
         <BuscadorURL
           accion="/administracion/personas"
           q={sp.q}
@@ -214,12 +188,16 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
           ancho="w-full sm:w-[208px]"
           testid="buscar-persona"
         />
-        <FiltrosURL
+        {/* PASTILLAS CON SU CONTADOR, no texto subrayado: es lo que dibuja el canónico 19, y el
+            número es lo que evita el viaje a un corte vacío. */}
+        <ChipsCanon
           testid="filtros-personal"
           opciones={FILTROS.map((f) => ({
+            clave: f.valor,
             label: f.etiqueta,
             href: armarHref(sp, f.valor),
             activo: f.valor === filtro,
+            cuenta: conteos[f.valor],
             testid: `filtro-${f.valor}`,
           }))}
         />
@@ -244,12 +222,82 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
           </BotonEnlace>
         </div>
       </div>
+      {/* EL PULSO ANTES QUE EL DIRECTORIO (Design 23/08, pantalla 19). Lo que hay que mirar hoy va
+          arriba de la tabla, no escondido en una columna de la fila catorce. Sin nada que avisar no
+          se dibuja NADA: un cartel verde permanente que diga «todo en orden» entrena a la gente a no
+          leer los carteles, y entonces el día que uno diga algo grave tampoco se lee. */}
+      {/* ═══ TRES PASTILLAS, NO TRES TARJETAS (Design canónico 19) ═══
+          Eran tres `Aviso` en una grilla: tres bloques de dos renglones, con su párrafo explicativo,
+          ocupando el tercio superior de la pantalla antes de que apareciera una sola persona. El
+          canónico las dibuja como una fila de pastillas suaves —cifra teñida, rótulo en tinta— que
+          es la MISMA banda del 00. El detalle no se tira: viaja en el `title`, disponible para quien
+          se detiene y fuera del camino de quien está barriendo el plantel. */}
+      {/* ═══ Y EL CHIP QUE PUEDE FILTRAR, FILTRA (canónico 19: `go: () => setState({ filtro })`) ═══
+          De las tres alertas, sólo «sin obra asignada» tiene un corte que la muestre: es el filtro
+          `sin_asignar`, que ya existe y ya cuenta lo mismo. «Papeles» y «sin fichar» NO tienen corte
+          —no hay filtro por legajo ni por fichada del día— y por eso quedan como pastillas de
+          lectura: un chip que parece un botón y no lleva a ninguna parte enseña a no hacerles clic,
+          y entonces tampoco se usa el que sí funciona. DESVÍO DECLARADO. */}
+      {alertas.length > 0 && (
+        <div data-testid="alertas-plantel" className="mb-4 flex flex-wrap items-center gap-2">
+          {alertas.map((a) => {
+            const { cifra, rotulo } = partirCifra(a.texto)
+            const caja = `inline-flex items-baseline gap-2 rounded-[7px] border px-[11px] py-[6px] ${
+              a.tono === 'neg' ? 'border-neg/25 bg-neg-soft' : 'border-warn/25 bg-warn-soft'
+            }`
+            const cuerpo = (
+              <>
+                {cifra && (
+                  <span className={`font-mono text-[13px] font-semibold tabular-nums ${a.tono === 'neg' ? 'text-neg' : 'text-warn'}`}>
+                    {cifra}
+                  </span>
+                )}
+                <span className="text-[12px] text-ink-soft">{rotulo}</span>
+              </>
+            )
+            return a.clave === 'sin_obra' ? (
+              <Link
+                key={a.clave}
+                href={armarHref(sp, 'sin_asignar')}
+                prefetch={false}
+                data-testid={`alerta-${a.clave}`}
+                title={a.detalle}
+                className={`${caja} transition-colors hover:bg-surface`}
+              >
+                {cuerpo}
+              </Link>
+            ) : (
+              <span key={a.clave} data-testid={`alerta-${a.clave}`} title={a.detalle} className={caja}>
+                {cuerpo}
+              </span>
+            )
+          })}
+        </div>
+      )}
 
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
-        <div className="min-w-0 flex-1">
-          {personas.length === 0
-            ? <div data-testid="personas-vacio"><Vacio>{vacioDe(filtro, sp.q)}</Vacio></div>
-            : <TablaPersonas personas={personas} conBaja={filtro === 'inactivos'} pulso={pulso} />}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
+        <div className="flex min-w-0 flex-1">
+          {/* LA CAJA SE DIBUJA IGUAL SIN FILAS: el canónico pone «Nada coincide» ADENTRO de la
+              lista, debajo del encabezado de columnas. Sacarla dejaba la pantalla sin la referencia
+              de qué se estaba mirando justo cuando hace falta —el filtro se corrige leyendo los
+              rótulos que acaban de no devolver nada—. El texto sí cambia según el corte. */}
+          <TablaPersonas
+            personas={personas}
+            conBaja={filtro === 'inactivos'}
+            pulso={pulso}
+            vacio={vacioDe(filtro, sp.q)}
+            metricas={personas.length > 0
+              ? metricasCanonicas({
+                  filtro,
+                  buscando: Boolean(sp.q?.trim()),
+                  personas,
+                  marcas: pulso?.marcas ?? null,
+                  hh: pulso?.hh ?? null,
+                  hoyDisponible: pulso?.hoyDisponible ?? false,
+                  hhDisponible: pulso?.hhDisponible ?? false,
+                })
+              : undefined}
+          />
         </div>
 
         {sp.nueva === '1' && (
@@ -266,23 +314,6 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
         )}
       </div>
 
-      {/* EL PÁRRAFO SE FUE, LOS NÚMEROS SE QUEDARON (Design 23/08, §Status bar). Decía «17 personas
-          · el estado sale de la pertenencia vigente, no de la fecha de baja»: una frase permanente
-          explicando una regla que la columna ESTADO ya aplica sola. El pie contesta de un vistazo
-          las tres preguntas que se le hacen al plantel, y cada número se llama por el conjunto que
-          contó — la regla del rótulo vive en `resumenPersonal.ts`, con su prueba.
-
-          VA FUERA DE LA FILA, no debajo de la tabla: es el pie de la PANTALLA y va de borde a borde
-          (por eso el `-mx` que sangra el padding de `PageShell`). Adentro de la columna se metería
-          por debajo del panel de alta cuando está abierto. */}
-      {personas.length > 0 && (
-        <div className="-mx-4 mt-3 lg:-mx-10">
-          <Franja
-            testid="franja-personal"
-            metricas={metricasDelListado({ filtro, buscando: Boolean(sp.q?.trim()), personas })}
-          />
-        </div>
-      )}
     </PageShell>
   )
 }

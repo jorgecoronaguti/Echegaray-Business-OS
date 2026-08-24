@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 import { AREA_HREF, AREA_LABEL, type Area } from '@/features/auth/types/areas'
+import { BuscadorGlobal } from './BuscadorGlobal'
+import { Novedades } from './Novedades'
 import { iniciales } from './iniciales'
 
 // EL HEADER DEL ERP — UNA LÍNEA, DOS ÁREAS, Y NADA MÁS.
@@ -136,6 +138,14 @@ export function AppHeader({
             un clic: el email y el rol NO se borraron, se muestran adentro del menú, que es donde se
             los va a buscar cuando hacen falta («¿por qué no veo tal pantalla?»). */}
         <div className="ml-auto flex min-w-0 items-center gap-1.5" data-testid="usuario-actual">
+          {/* LUPA Y CAMPANITA, EN EL ORDEN DEL MOCKUP y sólo con sesión: sin usuario no hay RLS que
+              consultar y las dos devolverían vacío. `gap-1.5` es el `gap:6px` del canónico. */}
+          {email && (
+            <>
+              <BuscadorGlobal />
+              <Novedades />
+            </>
+          )}
           {email ? (
             <MenuUsuario nombre={nombre} email={email} rolLabel={rolLabel} salir={salir} />
           ) : (
@@ -149,24 +159,29 @@ export function AppHeader({
   )
 }
 
-// ═══ LO QUE EL MOCKUP DIBUJA Y ACÁ NO ESTÁ, A PROPÓSITO ═══
+// ═══ LA LUPA Y LA CAMPANITA VOLVIERON, Y CON FUENTE (24/08/2026) ═══
 //
-// El header del zip trae, a la izquierda del avatar, una LUPA y una CAMPANITA con punto rojo.
-// Ninguna de las dos se dibuja, y no es por falta de tiempo:
+// Acá vivía la explicación de por qué NO se dibujaban las dos cosas que el mockup 00 pone a la
+// izquierda del avatar. El argumento era correcto y ninguna de las dos volvió por decreto:
 //
-//   LUPA — no existe búsqueda global en este repositorio. Lo que hay es `BuscadorURL`, que filtra
-//   la tabla de la pantalla en la que ya estás y vive dentro de esa pantalla; el header no puede
-//   saber cuál es ni si esa pantalla tiene una. Una lupa que no busca es peor que ninguna: enseña
-//   que la búsqueda global existe y después no aparece.
+//   LUPA — decía «no existe búsqueda global en este repositorio». Existía a medias:
+//   `entradaService.buscarGlobal` —cliente + persona + proveedor en una tanda, con prueba— estaba
+//   escrita desde el 19/08 y sin ninguna puerta en la interfaz; la propia `/administracion` lo
+//   declaró el 24/08 al sacarse su buscador de página. Lo que faltaba era el borde, y es
+//   `buscadorGlobalActions`. La lupa BUSCA: ver `BuscadorGlobal.tsx`.
 //
-//   CAMPANITA — el punto rojo del mockup afirma «tenés algo pendiente». No hay ninguna fuente de
-//   novedades que lo respalde. `/aprobaciones` es lo más parecido, pero leerla obligaría a una
-//   consulta a Supabase en CADA pantalla del sistema, y este layout se volvió síncrono justamente
-//   para sacarle esperas al primer pintado (ver `(main)/layout.tsx`: 95 s de pantalla congelada
-//   medidos el 19/08). Un punto rojo permanentemente apagado —o peor, permanentemente prendido—
-//   sería un dato inventado en el lugar más visible del OS.
+//   CAMPANITA — decía que el punto rojo no tenía fuente. La tiene, con otro nombre:
+//   `chipsDeAtencion` es lo que la home de Administración publica —sin CUIT, sin imputar, sin
+//   resolver, duplicados, correcciones—, cada uno con el filtro donde se arregla y recortado por lo
+//   que el rol puede abrir. El punto se prende SÓLO con un pendiente medido, nunca mientras espera
+//   ni ante un error (`services/novedades.ts` y su prueba). Y no cuelga del primer pintado: se pide
+//   después de hidratar, así que los 95 s de pantalla congelada del 19/08 no vuelven por esta vía.
 //
-// Las dos vuelven el día que exista la capacidad detrás. Dibujarlas antes es fabricar una promesa.
+// LO QUE SIGUE SIN ESTAR: el mockup dibuja el header en ~44px (marca `padding:9px 0` sobre un
+// isotipo de 24px; solapas `padding:13px 12px` sobre 13px). Este header mide 48, que es lo que el
+// handoff fijó y lo que `tests/design-v2-conformidad.spec.ts` comprueba en 22 pantallas. No se
+// cambia desde acá: es la referencia de la que cuelgan todas, y moverla 4px es una decisión del
+// conjunto, no de este archivo.
 
 function MenuUsuario({
   nombre,

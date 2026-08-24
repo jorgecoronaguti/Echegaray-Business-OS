@@ -17,6 +17,7 @@
 
 import Link from 'next/link'
 import { Aviso, Nulo, Plegable, TituloPanel } from '@/shared/components/ds'
+import { BotonAccion } from '@/shared/components/ui'
 // `Campo` de este archivo es la fila rótulo/valor de la ficha; el del formulario es otro. Se
 // renombra en el import en vez de tocar el local: el local lo usan seis solapas.
 import { IconoCerrar } from '@/shared/components/iconos'
@@ -49,13 +50,17 @@ export function solapaDe(v: string | undefined, economia: boolean): Solapa {
 }
 
 export function FichaTarea({
-  ficha, solapa, economia, hrefSolapa, hrefCerrar,
+  ficha, solapa, economia, hrefSolapa, hrefCerrar, hrefEditar, archivar,
 }: {
   ficha: Ficha
   solapa: Solapa
   economia: boolean
   hrefSolapa: (s: Solapa) => string
   hrefCerrar: string
+  /** «Editar tarea» del canónico 17 — abre el panel con los campos de la tarea, no del análisis. */
+  hrefEditar?: string
+  /** Sacarla de la base viva. No la borra: `analisis` y `obra_actividad` cuelgan de ella. */
+  archivar?: (tareaId: string) => Promise<{ ok: true; mensaje?: string } | { ok: false; error: string }>
 }) {
   const { tarea, rendimiento } = ficha
   const visibles = SOLAPAS.filter((s) => s !== 'analisis' || economia)
@@ -97,6 +102,34 @@ export function FichaTarea({
           <IconoCerrar className="h-[15px] w-[15px]" />
         </Link>
       </header>
+
+      {/* LAS ACCIONES DE LA TAREA, donde el canónico las pone: arriba del panel, la primaria a la
+          izquierda. «Duplicar» del mockup NO está: duplicar una tarea tipo tiene que copiar también
+          su análisis vigente con todas sus líneas, y eso es la misma maquinaria de versionado que
+          `analisisActions` resuelve con cuatro pasos sin transacción. Media medida —una tarea nueva
+          con el nombre copiado y SIN composición— sería peor que no ofrecerla. DECLARADO. */}
+      {(hrefEditar || archivar) && (
+        <div className="mt-3 flex flex-wrap items-center gap-2" data-testid="acciones-tarea">
+          {hrefEditar && (
+            <Link
+              href={hrefEditar}
+              scroll={false}
+              data-testid="editar-tarea"
+              className="inline-flex items-center gap-1.5 rounded-md bg-marca px-[11px] py-[6px] text-[12.5px] font-semibold text-[color:var(--os-on-marca)] transition-[filter] hover:brightness-[0.97]"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                <path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" />
+              </svg>
+              Editar tarea
+            </Link>
+          )}
+          {archivar && (
+            <BotonAccion accion={archivar} args={[tarea.id]} tono="peligro" testid="archivar-tarea">
+              Archivar
+            </BotonAccion>
+          )}
+        </div>
+      )}
 
       {/* LOS DOS NÚMEROS QUE DECIDEN, ENFRENTADOS. Con qué se cotiza y qué pasó cuando se hizo: la
           comparación es el objeto de esta pantalla, y separados en dos lugares no se compara nada. */}

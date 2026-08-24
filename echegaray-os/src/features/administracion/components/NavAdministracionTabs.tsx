@@ -77,6 +77,10 @@ export function NavAdministracionTabs({ rol }: { rol?: Rol | null }) {
     >
       <Tabs
         testid="tabs-administracion"
+        // GRAFITO Y NO AMARILLO: el amarillo es del nivel 1 (la barra de la aplicación), donde
+        // «Administración» ya está encendida. Los canónicos 00/17/18/19/21 dibujan ESTA barra con
+        // `inset 0 -2px 0 #30302F`; con las dos en amarillo hay dos marcas de «acá estás» iguales.
+        filo="grafito"
         tabs={visibles.map((v) => ({
           href: v.href,
           label: v.label,
