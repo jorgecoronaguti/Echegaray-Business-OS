@@ -15,9 +15,11 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { PageShell } from '@/shared/components/ui'
-import { Aviso, BotonEnlace, BuscadorURL, SubTabs, Vacio } from '@/shared/components/ds'
+import { Aviso, Ayuda, BotonEnlace, BuscadorURL, SubTabs, Vacio } from '@/shared/components/ds'
+import { IconoCrear } from '@/shared/components/iconos'
 import { plata } from '@/features/obras/components/formato'
 import { NavAdministracion } from '@/features/administracion/components/NavAdministracion'
+import { BarraAtencion } from '@/features/administracion/components/BarraAtencion'
 import { FiltrosURL } from '@/features/administracion/components/Controles'
 import { NombresResueltos, TablaNombres } from '@/features/administracion/components/TablaNombres'
 import { PanelNombre } from '@/features/administracion/components/PanelNombre'
@@ -31,6 +33,7 @@ import {
   archivarProveedor, crearProveedor, crearYVincular, deshacerResolucion,
   editarProveedor, marcarNoEsProveedor, vincularNombre,
 } from '@/features/administracion/services/proveedoresActions'
+import type { ChipAtencion } from '@/features/administracion/services/homeAdministracion'
 import type { Proveedor } from '@/features/administracion/types'
 
 export const dynamic = 'force-dynamic'
@@ -41,7 +44,9 @@ const ACTIVOS: { valor: FiltroActivo; etiqueta: string }[] = [
   { valor: 'todos', etiqueta: 'Todos' },
 ]
 
-type Busqueda = { q?: string; activo?: string; p?: string; vista?: string; n?: string; bq?: string }
+type Busqueda = {
+  q?: string; activo?: string; p?: string; vista?: string; n?: string; bq?: string; cuit?: string
+}
 
 function armarHref(base: Busqueda, cambios: Partial<Busqueda> = {}): string {
   const v = { ...base, ...cambios }
@@ -52,6 +57,7 @@ function armarHref(base: Busqueda, cambios: Partial<Busqueda> = {}): string {
   if (v.p) params.set('p', v.p)
   if (v.n) params.set('n', v.n)
   if (v.bq) params.set('bq', v.bq)
+  if (v.cuit) params.set('cuit', v.cuit)
   const qs = params.toString()
   return `/administracion/proveedores${qs ? `?${qs}` : ''}`
 }
@@ -60,14 +66,22 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
   const sp = await searchParams
   const vista = sp.vista === 'resolver' ? 'resolver' : 'maestro'
   const activo = (ACTIVOS.find((a) => a.valor === sp.activo)?.valor ?? 'activos') as FiltroActivo
+  const soloSinCuit = sp.cuit === 'falta'
   const supabase = await createClient()
 
   // El maestro se lee siempre. Los CANDIDATOS de la cola se leen con el término del panel: la
   // vinculación se elige buscando, no recorriendo una lista entera de proveedores.
-  const [listado, candidatos, pendientesCuenta] = await Promise.all([
-    getProveedores(supabase, { q: sp.q, activo }),
+  //
+  // EL CHIP CUENTA CON EL MISMO PREDICADO QUE FILTRA. Contarlos en memoria con un `!p.cuit` sería
+  // una segunda definición de «sin CUIT», y el día que difiera el chip pediría un trabajo que la
+  // lista no muestra. Va sin `q`: un aviso de atención cuenta lo que la empresa debe resolver, no
+  // lo que quedó dentro de la búsqueda de este momento. Es una lectura chica —el maestro son
+  // decenas de filas, no miles—.
+  const [listado, candidatos, pendientesCuenta, sinCuit] = await Promise.all([
+    getProveedores(supabase, { q: sp.q, activo, sinCuit: soloSinCuit }),
     getProveedores(supabase, { q: sp.bq, activo: 'activos' }),
     getNombresPendientes(supabase),
+    getProveedores(supabase, { activo, sinCuit: true }),
   ])
 
   if (listado.error) {
@@ -102,11 +116,31 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
   const nombreAbierto = sp.n ? cola.find((n) => n.nombre_norm === sp.n) : undefined
   const panelAbierto = abrirAlta || seleccionado !== null
 
+  // LO QUE PIDE TRABAJO, ARRIBA Y A UN CLIC. Cada chip aterriza en el filtro que produjo su número,
+  // no en la pantalla en general. Sin pendientes no hay barra: normal silencioso.
+  const chips: ChipAtencion[] = []
+  if ((sinCuit.data?.length ?? 0) > 0) {
+    const n = sinCuit.data?.length ?? 0
+    chips.push({
+      clave: 'sin-cuit',
+      numero: n,
+      texto: n === 1 ? 'sin CUIT: no cruza con ARCA' : 'sin CUIT: no cruzan con ARCA',
+      href: armarHref({}, { cuit: 'falta' }),
+      tono: 'warn',
+    })
+  }
+  if (cola.length > 0) {
+    chips.push({
+      clave: 'sin-resolver',
+      numero: cola.length,
+      texto: cola.length === 1 ? 'nombre de Compras sin resolver' : 'nombres de Compras sin resolver',
+      href: armarHref({}, { vista: 'resolver' }),
+      tono: 'warn',
+    })
+  }
+
   return (
-    <PageShell
-      title="Proveedores"
-      subtitle="Identidad única por CUIT. Los nombres que llegan de Compras se resuelven contra ese maestro."
-    >
+    <PageShell title="Proveedores">
       <NavAdministracion />
 
       <div className="mb-4">
@@ -147,26 +181,45 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
                 />
                 <FiltrosURL
                   testid="filtro-activo"
-                  opciones={ACTIVOS.map((a) => ({
-                    label: a.etiqueta,
-                    href: armarHref(sp, { activo: a.valor === 'activos' ? undefined : a.valor }),
-                    activo: a.valor === activo,
-                    testid: `filtro-activo-${a.valor}`,
-                  }))}
+                  opciones={[
+                    ...ACTIVOS.map((a) => ({
+                      label: a.etiqueta,
+                      href: armarHref(sp, {
+                        activo: a.valor === 'activos' ? undefined : a.valor, cuit: undefined,
+                      }),
+                      activo: a.valor === activo && !soloSinCuit,
+                      testid: `filtro-activo-${a.valor}`,
+                    })),
+                    // «Sin CUIT» es el filtro al que aterriza el chip de atención. Está en la misma
+                    // fila que el resto porque es lo mismo —un recorte de la lista—, no una vista
+                    // aparte: el que viene del chip tiene que poder salir por donde entró.
+                    {
+                      label: 'Sin CUIT',
+                      href: armarHref(sp, { cuit: soloSinCuit ? undefined : 'falta' }),
+                      activo: soloSinCuit,
+                      testid: 'filtro-sin-cuit',
+                    },
+                  ]}
                 />
-                <div className="ml-auto flex items-center gap-4">
-                  {cola.length > 0 && (
-                    <a
-                      href={armarHref(sp, { vista: 'resolver', p: undefined, q: undefined })}
-                      className="text-[12px] text-warn hover:underline"
-                      data-testid="aviso-sin-resolver"
-                    >{cola.length} {cola.length === 1 ? 'nombre' : 'nombres'} sin resolver</a>
-                  )}
+                <div className="ml-auto">
                   <BotonEnlace href={armarHref(sp, { p: 'nuevo' })} variante="primaria" data-testid="nuevo-proveedor">
-                    + Nuevo proveedor
+                    <IconoCrear className="mr-1.5 inline-block h-[14px] w-[14px] align-[-2px]" aria-hidden />
+                    Nuevo proveedor
                   </BotonEnlace>
                 </div>
               </div>
+
+              {/* NO PUDE LEERLO ≠ NO HAY NINGUNO. Un chip ausente por un error de lectura dibuja una
+                  cartera sin pendientes, que es la mentira más silenciosa que puede decir esta
+                  pantalla. `noLeida` va en `false` porque su texto habla de TODAS las fuentes del
+                  home; acá se nombra la que falló. */}
+              <BarraAtencion chips={chips} noLeida={false} />
+              {(pendientesCuenta.error || sinCuit.error) && (
+                <p className="mb-5 text-[12px] text-warn" data-testid="atencion-sin-lectura">
+                  No pude contar {pendientesCuenta.error ? 'los nombres sin resolver' : 'los proveedores sin CUIT'}:
+                  esta pantalla no puede afirmar que no haya nada que resolver.
+                </p>
+              )}
 
               {/* TRES COLUMNAS NO SE ESTIRAN A 1440. `LAYOUT_RESPONSIVE.md`: «una tabla de dos
                   columnas estirada a 1440 es ilegible». Con el panel abierto la lista usa lo que le
@@ -183,10 +236,12 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
                           hrefDe={(id) => armarHref(sp, { p: id })}
                         />
                       )}
-                  <p className="mt-3 text-[11px] text-faint">
-                    {proveedores.length} {proveedores.length === 1 ? 'proveedor' : 'proveedores'} · el
-                    CUIT es lo que identifica a un proveedor: dos fichas con el mismo CUIT no pueden existir.
-                  </p>
+                  <Ayuda titulo="Qué identifica a un proveedor" testid="ayuda-proveedores">
+                    El CUIT, no el nombre: «Corralón Progreso», «CORRALON PROGRESO» y «Corralon
+                    Progreso SRL» son tres textos y un proveedor. Dos fichas con el mismo CUIT no
+                    pueden existir. Los nombres que llegan de Compras se resuelven contra este
+                    maestro, y sin CUIT el proveedor no cruza con ARCA ni con el banco.
+                  </Ayuda>
                 </div>
                 {panelAbierto && (
                   <PanelProveedor
@@ -241,11 +296,11 @@ export default async function ProveedoresPage({ searchParams }: { searchParams: 
                       </div>
                     </>
                   )}
-              <p className="mt-4 max-w-[760px] text-[11px] leading-relaxed text-faint">
-                Estos nombres vienen de la columna de proveedor de Compras, que es texto libre. El OS
-                no los vincula solo: sólo reconoce el nombre escrito exactamente igual — nunca por
-                parecido. Resolver uno resuelve sus N comprobantes de una vez.
-              </p>
+              <Ayuda titulo="Por qué hay nombres sin resolver" testid="ayuda-resolver">
+                Vienen de la columna de proveedor de Compras, que es texto libre. El OS no los
+                vincula solo: reconoce el nombre escrito exactamente igual, nunca por parecido.
+                Resolver uno resuelve sus N comprobantes de una vez.
+              </Ayuda>
             </>
           )}
     </PageShell>

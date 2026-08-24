@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  aplicarFiltro, controlDe, filtroDe, FILTROS, type ControlEntrada, type FiltroCompras,
+  aplicarFiltro, controlDe, filtroDe, FILTROS, obrasFrecuentes, totalDeLaVista,
+  type ControlEntrada, type FiltroCompras,
 } from './comprasEstado.ts'
 
 // LOS DEFECTOS QUE ESTOS TESTS ATRAPAN, uno por uno:
@@ -140,4 +141,70 @@ test('«duplicados» cuenta sólo los SIN RESOLVER: sin eso el KPI nunca bajarí
     q.llamadas.includes('eq:estado_control=sin_revisar'),
     'el filtro de duplicados dejó de excluir los ya resueltos',
   )
+})
+
+// ═══ LOS ATAJOS DE IMPUTACIÓN (Design 23/08 · COMPONENTS.md §Imputation selector) ═══
+//
+// Los defectos que atrapan estos tres tests:
+//
+//   · Un atajo con el texto vacío → la pastilla dice «» y al tocarla saca la imputación. Un botón
+//     que hace lo contrario de lo que aparenta.
+//   · La obra que el comprobante YA tiene ofrecida como atajo → gasta uno de los tres lugares en la
+//     única opción que no cambia nada.
+//   · El orden dependiente del `Map` cuando dos obras empatan → los atajos se mueven solos entre
+//     recargas y se toca el equivocado por memoria muscular.
+
+test('los atajos salen de lo más usado, sin el vacío y sin la obra que ya tiene', () => {
+  const historial = ['Quattropani', 'Escuela San Juan', 'Quattropani', '  ', null, 'Depósito Norte', undefined]
+  assert.deepEqual(
+    obrasFrecuentes(historial, { excluir: 'Escuela San Juan' }),
+    ['Quattropani', 'Depósito Norte'],
+  )
+})
+
+test('nunca ofrece más de tres atajos: la cuarta obra no entra', () => {
+  const historial = ['A', 'A', 'B', 'B', 'C', 'C', 'D', 'D']
+  assert.equal(obrasFrecuentes(historial).length, 3)
+})
+
+test('dos obras con la misma cuenta salen siempre en el mismo orden', () => {
+  const uno = obrasFrecuentes(['Zonda', 'Albardón'])
+  const otro = obrasFrecuentes(['Albardón', 'Zonda'])
+  assert.deepEqual(uno, otro, 'el empate se resolvió por orden de llegada: los atajos bailan')
+  assert.deepEqual(uno, ['Albardón', 'Zonda'])
+})
+
+// ═══ LA FILA DE TOTAL DE LA VISTA (Design 23/08 · COMPONENTS.md §Table, «fila de total») ═══
+//
+// Los defectos que atrapan, y los tres ya pasaron en este sistema:
+//
+//   · La nota de crédito sumada en vez de restada → es el bug de $41,9M del libro de ARCA.
+//   · El comprobante sin importe contado como $ 0 → el total dice que se compró menos y nadie ve
+//     que hay papeles a medio cargar.
+//   · El tipo de comprobante que la tabla de ARCA no conoce sumado como si fuera una factura →
+//     tratar lo desconocido como lo habitual es el error de origen.
+
+test('la nota de crédito RESTA del total de la vista', () => {
+  const t = totalDeLaVista([
+    { imp_total: 100_000, signo: 1 },
+    { imp_total: 30_000, signo: -1 },
+  ])
+  assert.equal(t.total, 70_000)
+})
+
+test('un comprobante sin importe no vale $ 0: sale de la suma y se cuenta', () => {
+  const t = totalDeLaVista([{ imp_total: 100_000, signo: 1 }, { imp_total: null, signo: 1 }])
+  assert.equal(t.total, 100_000)
+  assert.equal(t.sinImporte, 1)
+})
+
+test('un papel sin signo conocido no entra al total en ninguna dirección', () => {
+  const t = totalDeLaVista([{ imp_total: 100_000, signo: 1 }, { imp_total: 999_999, signo: null }])
+  assert.equal(t.total, 100_000)
+  assert.equal(t.sinSigno, 1)
+})
+
+test('una vista sin nada sumable no suma $ 0: no suma nada', () => {
+  assert.equal(totalDeLaVista([]).total, null)
+  assert.equal(totalDeLaVista([{ imp_total: null, signo: 1 }]).total, null)
 })

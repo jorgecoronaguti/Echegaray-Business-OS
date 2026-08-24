@@ -6,9 +6,10 @@
 // contestar se escribe como ausencia, con su nombre.
 
 import Link from 'next/link'
-import { Eyebrow, Num, Nulo, Tabla, THead, Th, Tr, Td, Vacio } from '@/shared/components/ds'
+import { Eyebrow, Num, Nulo, Tabla, THead, Th, Timeline, Tr, Td, Vacio } from '@/shared/components/ds'
+import type { Evento } from '@/shared/components/ds'
 import { fecha, plata } from '@/features/obras/components/formato'
-import type { CompraPorObra, ConceptoProvisto } from '../services/fichaProveedor'
+import type { CompraPorObra, ComprobanteProveedor, ConceptoProvisto } from '../services/fichaProveedor'
 
 export function ComprasPorObra({ filas }: { filas: CompraPorObra[] }) {
   if (filas.length === 0) return null
@@ -86,13 +87,70 @@ export function ConceptosProvistos({ filas, total }: { filas: ConceptoProvisto[]
   )
 }
 
+/**
+ * LA ACTIVIDAD DE LA FICHA — `COMPONENTS.md` §Timeline y §Anatomía de ficha de entidad.
+ *
+ * Un proveedor no tiene tabla de eventos: lo que le pasó SON sus comprobantes. Cada uno se escribe
+ * como el evento que es —cuándo, de qué tipo de papel, qué se compró, a qué obra y por cuánto— y se
+ * muestran los últimos, con la salida a la lista completa. Los cuatrocientos comprobantes de un
+ * corralón en su ficha no son transparencia: esconden los tres que importan entre 397 que no.
+ */
+export function MovimientosProveedor({
+  filas,
+  total,
+  verTodoHref,
+}: {
+  filas: ComprobanteProveedor[]
+  total: number
+  verTodoHref: string
+}) {
+  const eventos: Evento[] = filas.map((f) => ({
+    id: f.id,
+    fecha: f.fecha ? fecha(f.fecha) : 'sin fecha',
+    tipo: f.tipo?.trim() || 'comprobante',
+    texto: (
+      <>
+        <span className="block truncate">{f.concepto?.trim() || 'sin concepto'}</span>
+        <span className={`block truncate text-[11px] ${f.obra_texto?.trim() ? 'text-faint' : 'text-warn'}`}>
+          {f.obra_texto?.trim() || 'sin imputar'}
+        </span>
+      </>
+    ),
+    // SIN IMPORTE NO ES $ 0. La columna de la derecha se deja vacía y el hueco dice lo que un cero
+    // mentiría: que la compra existió y no costó nada.
+    derecha: f.total === null || f.total === undefined
+      ? <span className="text-[11.5px] font-normal text-faint">sin importe</span>
+      : plata(f.total),
+    tono: f.obra_texto?.trim() ? undefined : 'warn',
+  }))
+  return (
+    <section className="mt-6" data-testid="movimientos-proveedor">
+      <Eyebrow className="mb-1.5">Últimos movimientos</Eyebrow>
+      <Timeline
+        eventos={eventos}
+        total={total}
+        testid="timeline-proveedor"
+        vacio="Ningún comprobante de Compras llegó todavía a este proveedor."
+        verTodo={
+          <Link href={verTodoHref} data-testid="ver-todos-comprobantes" className="text-muted underline underline-offset-2 hover:text-ink">
+            Ver los {total} →
+          </Link>
+        }
+      />
+    </section>
+  )
+}
+
 /** El aside de la ficha: lo que la base sabe del proveedor, y lo que todavía no. */
 export function PropiedadesProveedor({
   filas,
   nombres,
+  children,
 }: {
   filas: { k: string; v: React.ReactNode }[]
   nombres: { nombre_norm: string; comprobantes: number; manual: boolean }[]
+  /** Actividad y documentos: el resto de la anatomía del aside, que la página compone. */
+  children?: React.ReactNode
 }) {
   return (
     <aside className="w-full shrink-0 lg:w-[300px]" data-testid="propiedades-proveedor">
@@ -128,6 +186,8 @@ export function PropiedadesProveedor({
           </ul>
         )}
       </div>
+
+      {children}
     </aside>
   )
 }

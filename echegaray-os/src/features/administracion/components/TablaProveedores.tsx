@@ -5,7 +5,7 @@
 // banco, que es para lo único que existe la columna.
 
 import Link from 'next/link'
-import { Nulo, Tabla, Td, Th, THead, Tr } from '@/shared/components/ds'
+import { FilaTotal, Nulo, Num, Tabla, Td, Th, THead, Tr } from '@/shared/components/ds'
 // El formateo vive en `services/identidad.ts` y no acá: en un archivo con JSX `node --test` no lo
 // puede ejercitar, y un formateador que parte a ciegas convierte un dato roto en uno con forma de
 // válido. Se re-exporta para no romper a quien ya lo importaba desde este componente.
@@ -21,6 +21,10 @@ export function TablaProveedores({
   seleccionado?: string
   hrefDe: (proveedorId: string) => string
 }) {
+  // La fila de total dice de qué está hecha ESTA lista, no la empresa: cambia con el filtro y con la
+  // búsqueda, igual que las filas que resume. El aviso de cuántos sin CUIT hay en total vive arriba,
+  // en la barra de atención, y cuenta con el predicado de la base.
+  const sinCuit = proveedores.filter((p) => !p.cuit).length
   return (
     <Tabla testid="tabla-proveedores" minWidth={560}>
       <THead>
@@ -55,6 +59,26 @@ export function TablaProveedores({
           </Tr>
         ))}
       </tbody>
+      <tfoot>
+        <FilaTotal>
+          <Td fuerte>
+            <Num className="text-ink">{proveedores.length}</Num>{' '}
+            <span className="text-[12px] font-normal text-muted">
+              {proveedores.length === 1 ? 'proveedor' : 'proveedores'}
+            </span>
+          </Td>
+          <Td>
+            {sinCuit > 0
+              ? (
+                  <span data-testid="total-sin-cuit" className="text-[12px] font-normal text-warn">
+                    <Num className="text-warn">{sinCuit}</Num> sin CUIT
+                  </span>
+                )
+              : <span className="text-[12px] font-normal text-faint">todos con CUIT</span>}
+          </Td>
+          <Td />
+        </FilaTotal>
+      </tfoot>
     </Tabla>
   )
 }

@@ -15,6 +15,16 @@ export type FiltroActivo = 'activos' | 'archivados' | 'todos'
 export interface FiltroProveedores {
   q?: string
   activo?: FiltroActivo
+  /**
+   * `true` = sólo los que NO tienen CUIT. Es el filtro al que aterriza el aviso de la cartera: un
+   * chip que dice «14 sin CUIT» y cae en una lista de 36 obliga a buscar a mano los 14 que acaba
+   * de contar. El predicado vive acá y no en la página para que el número y las filas salgan de la
+   * misma consulta.
+   *
+   * El vacío cuenta como ausencia: la columna admite `''` además de `null`, y un CUIT vacío no
+   * cruza con ARCA ni con el banco igual que uno que no está.
+   */
+  sinCuit?: boolean
 }
 
 export async function getProveedores(
@@ -26,6 +36,8 @@ export async function getProveedores(
   const activo = filtro.activo ?? 'activos'
   if (activo === 'activos') consulta = consulta.eq('activo', true)
   if (activo === 'archivados') consulta = consulta.eq('activo', false)
+
+  if (filtro.sinCuit) consulta = consulta.or('cuit.is.null,cuit.eq.')
 
   const q = filtro.q?.trim()
   if (q) {

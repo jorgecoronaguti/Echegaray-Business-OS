@@ -7,9 +7,9 @@
 //
 // ═══ TRES BLOQUES QUE EL DISEÑO PIDE Y LA FUENTE NO PUEDE CONTESTAR IGUAL ═══
 //
-// 1 · ARCHIVO ORIGINAL. `comprobantes_arca` no guarda ninguna referencia a Drive: el libro de IVA de
-//     ARCA trae los datos fiscales, no el PDF. Se dice «no disponible» y por qué. Un botón «Abrir»
-//     que no abre nada es peor que la ausencia: hace perder el tiempo dos veces.
+// 1 · COMPROBANTE ORIGINAL. `comprobantes_arca` no guarda ninguna referencia a Drive: el libro de
+//     IVA de ARCA trae los datos fiscales, no el PDF. Se dice «no disponible» y por qué. Un botón
+//     «Abrir» que no abre nada es peor que la ausencia: hace perder el tiempo dos veces.
 //
 // 2 · DETALLE DEL COMPROBANTE. El diseño dibuja ítems («Acero ADN 420 Ø12 · 320 kg»). El libro de
 //     ARCA no trae renglones — trae la APERTURA FISCAL. Eso es lo que se muestra, porque es lo que
@@ -23,20 +23,12 @@
 
 import Link from 'next/link'
 import { Campo, CTRL, FormAccion } from '@/shared/components/ui'
-import { Estado, Eyebrow, Nulo, Num } from '@/shared/components/ds'
+import { Ayuda, Estado, Eyebrow, Nulo, Num } from '@/shared/components/ds'
+import { IconoDocumento } from '@/shared/components/iconos'
 import { fecha, plata } from '@/features/obras/components/formato'
 import { controlDe } from '../services/comprasEstado'
 import { imputarComprobante, marcarControlComprobante } from '../services/actionsCompras'
 import type { ComprobanteCompra, Parecido } from '../services/comprasService'
-
-function Dato({ rotulo, children }: { rotulo: string; children: React.ReactNode }) {
-  return (
-    <div className="min-w-0">
-      <div className="text-[10px] uppercase tracking-[0.06em] text-faint">{rotulo}</div>
-      <div className="mt-0.5 truncate text-[13px] text-ink">{children}</div>
-    </div>
-  )
-}
 
 /** Una línea de la apertura fiscal. El cero SE MUESTRA: «exento $0» es un dato, no un hueco. */
 function Linea({ rotulo, valor }: { rotulo: string; valor: number | null }) {
@@ -49,34 +41,258 @@ function Linea({ rotulo, valor }: { rotulo: string; valor: number | null }) {
   )
 }
 
-function BloqueParecido({ parecidos, hrefDe }: { parecidos: Parecido[]; hrefDe: (id: string) => string }) {
+// ═══ COMPROBANTE ORIGINAL — COMPONENTS.md §Document preview ═══
+//
+// «La referencia documental es única y se reutiliza desde Compra, Proveedor, Obra y Pendientes: la
+// UI nunca sugiere que hay copias». Acá esa referencia única es el CAE: es lo que ARCA le puso al
+// papel y lo que permite pedírselo al proveedor o buscarlo en el archivo. No hay contador de
+// archivos porque no hay archivos, y no hay `Abrir` ni `Descargar` porque no habría qué abrir.
+function ComprobanteOriginal({ compra }: { compra: ComprobanteCompra }) {
+  return (
+    <div className="mt-4" data-testid="archivo-original">
+      <div className="flex items-baseline justify-between gap-3">
+        <Eyebrow>Comprobante original</Eyebrow>
+        <span className="text-[11.5px] text-faint">no disponible</span>
+      </div>
+      <div className="mt-1.5 flex items-center gap-2.5 rounded-control bg-surface-sunken px-3 py-3">
+        <IconoDocumento className="h-[15px] w-[15px] shrink-0 text-faint" aria-hidden />
+        <span className="min-w-0 text-[11.5px] leading-snug text-muted">
+          {compra.cae
+            ? <>CAE <span className="font-mono text-ink">{compra.cae}</span></>
+            : 'Sin CAE: este papel no trae su referencia fiscal.'}
+        </span>
+      </div>
+      <Ayuda titulo="Por qué no hay archivo">
+        Este comprobante viene del libro de IVA de ARCA, que publica los datos fiscales y no el PDF.
+        La base no guarda ninguna referencia al archivo, así que no hay nada que abrir. El CAE es la
+        única referencia del papel, y es la misma en Compras, en la ficha del proveedor y en la obra.
+      </Ayuda>
+    </div>
+  )
+}
+
+// ═══ IMPUTAR — COMPONENTS.md §Imputation selector ═══
+//
+// «El importe grande, el original a la vista, un select de obra y hasta tres atajos como pastillas
+// con las obras probables. Cierra con Confirmar (primaria) y Saltar (discreta)».
+//
+// Los atajos son ENLACES, no botones de envío: tocar uno deja la obra elegida en el select y en la
+// URL, y la decisión sigue cerrándose con la primaria. Tres botones amarillos que guardan solos
+// serían tres primarias en el mismo contexto —el contrato admite una— y, sobre todo, convertirían
+// un roce del dedo en una imputación guardada sin que nadie confirmara nada.
+function Imputar({
+  compra,
+  obras,
+  atajos,
+  elegida,
+  hrefObra,
+  saltarHref,
+}: {
+  compra: ComprobanteCompra
+  obras: string[]
+  atajos: string[]
+  elegida: string | undefined
+  hrefObra: (obra: string) => string
+  saltarHref: string
+}) {
+  // Lo que el atajo dejó elegido gana sobre lo que el comprobante ya tenía: es lo último que hizo
+  // la persona. Sin atajo tocado, manda el dato guardado.
+  const valor = elegida ?? compra.obra_texto ?? ''
+  return (
+    <div className="mt-5" data-testid="selector-imputacion">
+      <Eyebrow className="mb-2">Imputación</Eyebrow>
+      {/* A DÓNDE LLEGA EL GASTO, que no siempre es lo que dice el rótulo. Un texto que el
+          diccionario de obras no conoce se ve imputado en el papel y no llega a ninguna obra: si
+          esto no se dice acá, se corrige la obra equivocada o no se corrige nada. */}
+      {compra.imputacion === 'estructura' && (
+        <p className="mb-2 text-[11.5px] leading-relaxed text-muted" data-testid="imputacion-estructura">
+          Imputado a <span className="font-medium text-ink">Estructura</span>: no es costo de ninguna
+          obra y no está pendiente.
+        </p>
+      )}
+      {compra.imputacion === 'sin_resolver' && (
+        <p className="mb-2 text-[11.5px] leading-relaxed text-warn" data-testid="imputacion-sin-resolver">
+          «{compra.obra_texto}» no está en el diccionario de obras: este gasto NO llega a ninguna
+          obra. Se arregla declarando el alias, no eligiendo otra obra acá.
+        </p>
+      )}
+
+      {atajos.length > 0 && (
+        <div className="mb-2.5 flex flex-wrap items-center gap-1.5" data-testid="atajos-obra">
+          {atajos.map((o) => (
+            <Link
+              key={o}
+              href={hrefObra(o)}
+              scroll={false}
+              prefetch={false}
+              data-testid="atajo-obra"
+              data-elegido={o === valor ? '' : undefined}
+              className={`max-w-full truncate rounded-control border px-2 py-[3px] text-[11.5px] transition-colors ${
+                o === valor
+                  ? 'border-line-strong bg-surface-quiet text-ink'
+                  : 'border-line text-muted hover:border-line-strong hover:text-ink'
+              }`}
+            >{o}</Link>
+          ))}
+        </div>
+      )}
+
+      <FormAccion
+        accion={imputarComprobante}
+        testid="form-imputar"
+        enviar="Confirmar"
+        mensajeOk="Imputado."
+      >
+        <input type="hidden" name="id" value={compra.id} />
+        <input type="hidden" name="obra_previa" value={compra.obra_texto ?? ''} />
+        <Campo label="Obra">
+          {/* `key` fuerza a React a rehacer el select cuando cambia el atajo elegido: sin eso, el
+              `defaultValue` nuevo no pisa el valor que el DOM ya tenía y la pastilla se vería
+              elegida con el select mostrando otra obra. */}
+          <select
+            key={valor} name="obra_texto" defaultValue={valor} className={CTRL}
+            data-testid="obra-comprobante"
+          >
+            <option value="">sin asignar</option>
+            {/* La obra que ya tiene el comprobante puede no estar en la lista canónica (viene de
+                otra grafía o de una obra cerrada). Se agrega para no perderla al abrir el panel. */}
+            {valor && !obras.includes(valor) && <option value={valor}>{valor}</option>}
+            {obras.map((o) => <option key={o} value={o}>{o}</option>)}
+          </select>
+        </Campo>
+      </FormAccion>
+
+      <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+        <Link
+          href={saltarHref} data-testid="saltar-imputacion" prefetch={false}
+          className="text-[12px] text-muted underline underline-offset-2 hover:text-ink"
+        >Saltar</Link>
+        {compra.obra_asignada_por && (
+          <span className="text-[11px] text-faint" data-testid="firma-imputacion">
+            Imputó {compra.obra_asignada_por}
+            {compra.obra_asignada_en && ` el ${fecha(compra.obra_asignada_en)}`}.
+          </span>
+        )}
+      </div>
+      <Ayuda titulo="De dónde salen los atajos">
+        ARCA no dice a qué obra fue la compra: la atribución la hace una persona y queda firmada. Los
+        atajos son las obras a las que ya fueron otros comprobantes de este mismo CUIT — historial,
+        no recomendación. Rubro, partida y tipo de costo no se piden acá porque no existen en la
+        fuente. Dejar la obra en blanco saca la imputación y devuelve el comprobante a la cola.
+      </Ayuda>
+    </div>
+  )
+}
+
+/** Una cara de la comparación de duplicados. Ambas columnas dicen lo mismo, en el mismo orden. */
+function Cara({
+  rotulo,
+  tono,
+  numero,
+  importe,
+  cuando,
+  obra,
+  origen,
+  testid,
+}: {
+  rotulo: string
+  tono: 'neutro' | 'neg'
+  numero: string
+  importe: number | null
+  cuando: string | null
+  obra: string | null
+  origen: string | null
+  testid: string
+}) {
+  return (
+    <div
+      data-testid={testid}
+      className={`min-w-0 flex-1 px-3 py-2.5 ${tono === 'neg' ? 'bg-surface-quiet' : ''}`}
+    >
+      <div className={`text-[10px] uppercase tracking-[0.06em] ${tono === 'neg' ? 'text-neg' : 'text-faint'}`}>
+        {rotulo}
+      </div>
+      <div className="mt-1 truncate font-mono text-[12.5px] text-ink">{numero}</div>
+      <div className="mt-0.5">
+        {importe == null ? <Nulo>sin importe</Nulo> : <Num className="text-[13px] text-ink">{plata(importe)}</Num>}
+      </div>
+      <div className="mt-0.5 truncate text-[11.5px] text-muted">
+        {cuando ?? 'sin fecha'} · {obra?.trim() || <span className="text-warn">sin obra</span>}
+      </div>
+      <div className="mt-0.5 truncate text-[11px] text-faint">
+        {origen ? `origen ${origen}` : 'origen que la vista no publica'}
+      </div>
+    </div>
+  )
+}
+
+// ═══ DUPLICADO — COMPONENTS.md §Duplicate comparison ═══
+//
+// «Dos columnas de igual ancho separadas por hairline, y dos salidas explícitas».
+//
+// El contrato rotula las columnas «Ya registrada | Nueva» y ofrece «descartar». Acá no se puede:
+// los DOS comprobantes ya están registrados —los dos vinieron del libro de ARCA— y ninguno se
+// puede borrar sin falsear el libro fiscal. Las salidas son las dos que sí existen y las dos
+// deciden lo mismo que el contrato quiere decidir: si son el mismo gasto (queda en revisión, para
+// tratarlo con el proveedor) o si son dos compras distintas de verdad (se confirma y el aviso se
+// apaga). Ninguna de las dos toca la plata: la corrección de un facturado dos veces es una nota de
+// crédito del proveedor, no un borrado nuestro.
+function Duplicado({
+  compra,
+  parecidos,
+  hrefDe,
+}: {
+  compra: ComprobanteCompra
+  parecidos: Parecido[]
+  hrefDe: (id: string) => string
+}) {
   if (parecidos.length === 0) return null
   const p = parecidos[0]
   const nro = [p.parecido_punto_venta, p.parecido_numero].filter(Boolean).join('-') || 'sin número'
   return (
-    <div data-testid="bloque-duplicado" className="mt-5 rounded-control border border-neg/40 bg-neg/[0.04] p-3">
-      <div className="text-[12px] font-semibold text-neg">Posible duplicado</div>
-      <p className="mt-1 text-[12px] leading-relaxed text-muted">
-        Mismo proveedor, mismo importe y mismo tipo que <span className="font-mono">{nro}</span> del{' '}
-        {fecha(p.parecido_fecha)}
-        {p.dias_de_distancia != null && ` · ${p.dias_de_distancia} día(s) de distancia`}.
-        {p.parecido_obra_texto ? ` Aquél está imputado a ${p.parecido_obra_texto}.` : ' Aquél no tiene obra.'}
-        {parecidos.length > 1 && ` Y ${parecidos.length - 1} más.`}
+    <div data-testid="bloque-duplicado" className="mt-5 rounded-control border border-neg/40">
+      <div className="border-b border-neg/30 px-3 py-2 text-[12px] font-semibold text-neg">
+        Posible duplicado
+        {parecidos.length > 1 && <span className="ml-2 font-normal text-muted">y {parecidos.length - 1} más</span>}
+      </div>
+      <div className="flex divide-x divide-line">
+        <Cara
+          testid="cara-otro" rotulo="El otro" tono="neutro" numero={nro}
+          importe={p.parecido_imp_total} cuando={p.parecido_fecha ? fecha(p.parecido_fecha) : null}
+          obra={p.parecido_obra_texto} origen={null}
+        />
+        <Cara
+          testid="cara-este" rotulo="Éste" tono="neg" numero={compra.comprobante || 'sin número'}
+          importe={compra.imp_total} cuando={compra.fecha_emision ? fecha(compra.fecha_emision) : null}
+          obra={compra.obra_texto} origen={compra.origen}
+        />
+      </div>
+      <p className="border-t border-line px-3 py-2 text-[11.5px] leading-relaxed text-muted">
+        Mismo proveedor, mismo importe y mismo tipo
+        {p.dias_de_distancia != null && `, con ${p.dias_de_distancia} día(s) de distancia`}. Son dos
+        comprobantes distintos ante ARCA (número y CAE propios): puede ser el proveedor facturando
+        dos veces lo mismo, o dos compras iguales de verdad.
       </p>
-      {/* NO DICE «ES UN DUPLICADO». Dos comprobantes con números distintos son dos papeles fiscales
-          legítimos, y dos compras iguales de verdad existen —dos viajes de áridos del mismo camión
-          salen igual—. El OS señala el parecido; quien decide es una persona. */}
-      <p className="mt-2 text-[11px] leading-relaxed text-faint">
-        Son dos comprobantes distintos ante ARCA (número y CAE propios). Puede ser el proveedor
-        facturando dos veces lo mismo, o dos compras iguales de verdad.
-      </p>
-      <Link
-        href={hrefDe(p.parecido_a_id)}
-        data-testid="comparar-duplicado"
-        className="mt-2 inline-block text-[12px] font-medium text-ink underline underline-offset-2"
-      >
-        Comparar
-      </Link>
+      <div className="flex flex-wrap items-center gap-3 border-t border-line px-3 py-2.5">
+        <FormAccion
+          accion={marcarControlComprobante} testid="form-en-revision"
+          enviar="Es la misma · dejar en revisión" mensajeOk="Queda en revisión."
+        >
+          <input type="hidden" name="id" value={compra.id} />
+          <input type="hidden" name="estado" value="en_revision" />
+        </FormAccion>
+        <FormAccion
+          accion={marcarControlComprobante} testid="form-confirmar"
+          enviar="Son distintas · confirmar" mensajeOk="Confirmado."
+        >
+          <input type="hidden" name="id" value={compra.id} />
+          <input type="hidden" name="estado" value="confirmado" />
+        </FormAccion>
+        <Link
+          href={hrefDe(p.parecido_a_id)} data-testid="comparar-duplicado" prefetch={false}
+          className="text-[12px] text-muted underline underline-offset-2 hover:text-ink"
+        >Abrir el otro</Link>
+      </div>
     </div>
   )
 }
@@ -85,14 +301,22 @@ export function PanelCompra({
   compra,
   parecidos,
   obras,
+  atajos,
+  obraElegida,
   cerrarHref,
   hrefDe,
+  hrefObra,
 }: {
   compra: ComprobanteCompra
   parecidos: Parecido[]
   obras: string[]
+  /** Las obras a las que ya fueron otros comprobantes de este CUIT. Historial, no sugerencia. */
+  atajos: string[]
+  /** La obra que dejó elegida un atajo, si se tocó uno. */
+  obraElegida?: string
   cerrarHref: string
   hrefDe: (id: string) => string
+  hrefObra: (obra: string) => string
 }) {
   const control = controlDe(compra)
   const importe = compra.imp_total != null && compra.signo != null
@@ -118,82 +342,31 @@ export function PanelCompra({
         {compra.emisor_cuit && <span className="ml-2 font-mono text-[11px] text-faint">CUIT {compra.emisor_cuit}</span>}
       </p>
 
-      <div className="mt-4 grid grid-cols-3 gap-3 border-y border-line py-3">
-        <Dato rotulo="Importe">
+      {/* EL IMPORTE GRANDE — es el número que decide, y el que la persona compara contra el papel
+          que tiene en la mano. Al lado, la fecha y el control: los otros dos datos que se miran
+          antes de imputar. `Sincronizada` no se dibuja acá tampoco (COMPONENTS.md §Sync state). */}
+      <div className="mt-3 flex items-end justify-between gap-4 border-y border-line py-3">
+        <div className="min-w-0">
           {importe == null
             ? <Nulo>sin importe</Nulo>
-            : <Num className={importe < 0 ? 'text-pos' : 'text-ink'}>{plata(importe)}</Num>}
-        </Dato>
-        <Dato rotulo="Fecha">{fecha(compra.fecha_emision)}</Dato>
-        <Dato rotulo="Control">
-          <Estado tono={control.tono} clave={control.clave} testid="estado-panel">{control.etiqueta}</Estado>
-        </Dato>
-      </div>
-
-      {/* ── el archivo original, que hoy no está ─────────────────────────────────────────────── */}
-      <div className="mt-4 rounded-control border border-line px-3 py-2.5" data-testid="archivo-original">
-        <div className="text-[12px] text-muted">
-          Archivo original: <span className="text-faint">no disponible</span>
-        </div>
-        <p className="mt-1 text-[11px] leading-relaxed text-faint">
-          Este comprobante viene del libro de IVA de ARCA, que publica los datos fiscales y no el
-          PDF. La base no guarda ninguna referencia al archivo, así que no hay nada que abrir.
-          {compra.cae && <> La referencia fiscal es el CAE <span className="font-mono">{compra.cae}</span>.</>}
-        </p>
-      </div>
-
-      {/* ── imputación ───────────────────────────────────────────────────────────────────────── */}
-      <div className="mt-5">
-        <Eyebrow className="mb-2">Imputación</Eyebrow>
-        {/* A DÓNDE LLEGA EL GASTO, que no siempre es lo que dice el rótulo. Un texto que el
-            diccionario de obras no conoce se ve imputado en el papel y no llega a ninguna obra: si
-            esto no se dice acá, se corrige la obra equivocada o no se corrige nada. */}
-        {compra.imputacion === 'estructura' && (
-          <p className="mb-2 text-[11.5px] leading-relaxed text-muted" data-testid="imputacion-estructura">
-            Imputado a <span className="font-medium text-ink">Estructura</span>: no es costo de
-            ninguna obra y no está pendiente de imputar.
-          </p>
-        )}
-        {compra.imputacion === 'sin_resolver' && (
-          <p className="mb-2 text-[11.5px] leading-relaxed text-warn" data-testid="imputacion-sin-resolver">
-            «{compra.obra_texto}» no está en el diccionario de obras: este gasto NO llega a ninguna
-            obra. Se arregla declarando el alias, no eligiendo otra obra acá.
-          </p>
-        )}
-        <FormAccion
-          accion={imputarComprobante}
-          testid="form-imputar"
-          enviar={compra.obra_texto ? 'Cambiar la obra' : 'Imputar a la obra'}
-          mensajeOk="Imputado."
-        >
-          <input type="hidden" name="id" value={compra.id} />
-          <input type="hidden" name="obra_previa" value={compra.obra_texto ?? ''} />
-          <Campo
-            label="Obra"
-            ayuda="En blanco saca la imputación y devuelve el comprobante a la cola."
-          >
-            <select name="obra_texto" defaultValue={compra.obra_texto ?? ''} className={CTRL} data-testid="obra-comprobante">
-              <option value="">sin asignar</option>
-              {/* La obra que ya tiene el comprobante puede no estar en la lista canónica (viene de
-                  otra grafía o de una obra cerrada). Se agrega para no perderla al abrir el panel. */}
-              {compra.obra_texto && !obras.includes(compra.obra_texto) && (
-                <option value={compra.obra_texto}>{compra.obra_texto}</option>
+            : (
+                <Num className={`text-[24px] font-semibold leading-none tracking-[-0.02em] ${importe < 0 ? 'text-pos' : 'text-ink'}`}>
+                  {plata(importe)}
+                </Num>
               )}
-              {obras.map((o) => <option key={o} value={o}>{o}</option>)}
-            </select>
-          </Campo>
-        </FormAccion>
-        {compra.obra_asignada_por && (
-          <p className="mt-2 text-[11px] text-faint" data-testid="firma-imputacion">
-            Imputó {compra.obra_asignada_por}
-            {compra.obra_asignada_en && ` el ${fecha(compra.obra_asignada_en)}`}.
-          </p>
+          <div className="mt-1.5 text-[11.5px] text-muted">{fecha(compra.fecha_emision)}</div>
+        </div>
+        {control.clave !== 'sincronizada' && (
+          <Estado tono={control.tono} clave={control.clave} testid="estado-panel">{control.etiqueta}</Estado>
         )}
-        <p className="mt-2 text-[11px] leading-relaxed text-faint">
-          ARCA no dice a qué obra fue la compra: la atribución la hace una persona y queda firmada.
-          Rubro, partida y tipo de costo no se piden acá porque no existen en la fuente.
-        </p>
       </div>
+
+      <ComprobanteOriginal compra={compra} />
+
+      <Imputar
+        compra={compra} obras={obras} atajos={atajos} elegida={obraElegida}
+        hrefObra={hrefObra} saltarHref={cerrarHref}
+      />
 
       {/* ── la apertura fiscal, que es el detalle que la fuente sí tiene ─────────────────────── */}
       <div className="mt-5">
@@ -206,39 +379,48 @@ export function PanelCompra({
           <Linea rotulo="Otros tributos" valor={compra.otros_tributos} />
           <Linea rotulo="Total del comprobante" valor={compra.imp_total} />
         </div>
-        <p className="mt-1.5 text-[11px] leading-relaxed text-faint">
-          El libro de ARCA no trae los renglones de lo comprado: trae la apertura fiscal. Es lo que
-          se muestra porque es lo que hay. Período {compra.periodo ?? '—'} · origen {compra.origen ?? '—'}.
+        <p className="mt-1.5 text-[11px] text-faint">
+          Período {compra.periodo ?? '—'} · origen {compra.origen ?? '—'}
         </p>
+        <Ayuda titulo="Por qué no hay renglones">
+          El libro de ARCA no trae lo comprado ítem por ítem: trae la apertura fiscal. Es lo que se
+          muestra porque es lo que hay.
+        </Ayuda>
       </div>
 
-      <BloqueParecido parecidos={parecidos} hrefDe={hrefDe} />
+      <Duplicado compra={compra} parecidos={parecidos} hrefDe={hrefDe} />
 
-      {/* ── las dos decisiones ───────────────────────────────────────────────────────────────── */}
-      <div className="mt-4 flex flex-wrap items-start gap-3 border-t border-line pt-4">
-        <FormAccion
-          accion={marcarControlComprobante} testid="form-confirmar" enviar="Confirmar"
-          mensajeOk="Confirmado."
-        >
-          <input type="hidden" name="id" value={compra.id} />
-          <input type="hidden" name="estado" value="confirmado" />
-        </FormAccion>
-        <FormAccion
-          accion={marcarControlComprobante} testid="form-en-revision" enviar="Dejar en revisión"
-          mensajeOk="Queda en revisión."
-        >
-          <input type="hidden" name="id" value={compra.id} />
-          <input type="hidden" name="estado" value="en_revision" />
-        </FormAccion>
-      </div>
-      <p className="mt-2 text-[11px] leading-relaxed text-faint">
-        Confirmar dice que el papel está bien y apaga el aviso de parecido — no lo imputa a ninguna
-        obra. Dejar en revisión lo manda a la cola «por revisar» sin decidir.
-        {compra.estado_control_por && (
-          <> Última marca: {compra.estado_control} por {compra.estado_control_por}
-            {compra.estado_control_en && ` el ${fecha(compra.estado_control_en)}`}.</>
-        )}
-      </p>
+      {/* ── el control del papel, cuando no hay un duplicado que ya lo pregunte ──────────────── */}
+      {parecidos.length === 0 && (
+        <div className="mt-5 border-t border-line pt-4">
+          <div className="flex flex-wrap items-start gap-3">
+            <FormAccion
+              accion={marcarControlComprobante} testid="form-confirmar" enviar="Confirmar"
+              mensajeOk="Confirmado."
+            >
+              <input type="hidden" name="id" value={compra.id} />
+              <input type="hidden" name="estado" value="confirmado" />
+            </FormAccion>
+            <FormAccion
+              accion={marcarControlComprobante} testid="form-en-revision" enviar="Dejar en revisión"
+              mensajeOk="Queda en revisión."
+            >
+              <input type="hidden" name="id" value={compra.id} />
+              <input type="hidden" name="estado" value="en_revision" />
+            </FormAccion>
+          </div>
+          {compra.estado_control_por && (
+            <p className="mt-2 text-[11px] text-faint">
+              Última marca: {compra.estado_control} por {compra.estado_control_por}
+              {compra.estado_control_en && ` el ${fecha(compra.estado_control_en)}`}.
+            </p>
+          )}
+          <Ayuda titulo="Qué hace cada una">
+            Confirmar dice que el papel está bien y apaga el aviso de parecido — no lo imputa a
+            ninguna obra. Dejar en revisión lo manda a la cola «por revisar» sin decidir.
+          </Ayuda>
+        </div>
+      )}
     </aside>
   )
 }

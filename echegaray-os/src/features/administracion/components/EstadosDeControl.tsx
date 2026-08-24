@@ -64,7 +64,9 @@ export function EstadosDeControl({
             data-activo={f === activo ? '' : undefined}
             aria-current={f === activo ? 'true' : undefined}
             className={`min-w-[124px] border-r border-line px-4 py-2.5 transition-colors last:border-r-0 hover:bg-surface-quiet ${
-              f === activo ? 'bg-surface-quiet shadow-[inset_0_-2px_0_#FDC900]' : ''
+              // La regla de la marca sale del TOKEN, no de un hex suelto: `globals.css` es donde
+              // vive el amarillo, y una copia acá deja de moverse el día que se corrija allá.
+              f === activo ? 'bg-surface-quiet shadow-[inset_0_-2px_0_var(--os-marca)]' : ''
             }`}
           >
             <div className={`font-mono text-[19px] font-semibold leading-tight tabular-nums ${encendido ? TONO[f] : 'text-ink'}`}>

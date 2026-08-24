@@ -125,6 +125,86 @@ export function controlDe(c: ControlEntrada): Control {
   return { clave: 'sincronizada', etiqueta: 'Sincronizada', tono: 'pos' }
 }
 
+/**
+ * LOS ATAJOS DEL SELECTOR DE IMPUTACIÓN — hasta tres, y NINGUNO es una recomendación.
+ *
+ * `COMPONENTS.md` §Imputation selector pide «hasta tres atajos como pastillas con las obras
+ * probables». Acá «probable» se resuelve con un HECHO y no con un modelo: las obras a las que ya se
+ * imputaron otros comprobantes DE ESTE MISMO PROVEEDOR, ordenadas por cuántas veces pasó. No hay
+ * puntaje, no hay umbral y no hay preselección — el atajo ahorra dos clics, no decide.
+ *
+ * Eso es a propósito. El OS ya tiene UNA definición de «obra sugerida»
+ * (`orquestador/lib/imputacion-pendiente.mjs` · `sugerirObra`), que corre sobre `costos_obra` con el
+ * diccionario de alias y declara su evidencia. Escribir acá una segunda con otra fuente y otro
+ * criterio daría dos respuestas distintas a la misma pregunta, que es exactamente lo que la regla de
+ * realidad única prohíbe. Por eso esto NO se llama sugerencia: es historial.
+ *
+ * Lo que se descarta y por qué:
+ * · el texto vacío — no es una obra, es la ausencia de imputación;
+ * · la obra que el comprobante YA tiene — un atajo que no cambia nada gasta un lugar de tres.
+ *
+ * `Estructura` y los rótulos que el diccionario no conoce nunca llegan hasta acá: quien lee filtra
+ * por `imputacion = 'obra'`, que es la única clasificación que significa «llegó a una obra».
+ */
+export function obrasFrecuentes(
+  textos: (string | null | undefined)[],
+  { excluir, tope = 3 }: { excluir?: string | null; tope?: number } = {},
+): string[] {
+  const fuera = excluir?.trim() ?? ''
+  const veces = new Map<string, number>()
+  for (const crudo of textos) {
+    const t = crudo?.trim()
+    if (!t || t === fuera) continue
+    veces.set(t, (veces.get(t) ?? 0) + 1)
+  }
+  return [...veces.entries()]
+    // El desempate por nombre existe para que dos obras con la misma cuenta no se turnen de lugar
+    // entre recargas: un atajo que se mueve solo se toca por error.
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'es'))
+    .slice(0, tope)
+    .map(([obra]) => obra)
+}
+
+/** Lo mínimo para sumar una vista: el importe y si suma o resta. */
+export interface Sumable {
+  imp_total: number | null
+  signo: number | null
+}
+
+export interface TotalVista {
+  /** La suma de los que SÍ se pueden sumar. `null` cuando ninguno se pudo. */
+  total: number | null
+  /** Los que llegaron sin importe. No valen $ 0: quedan afuera y se cuentan. */
+  sinImporte: number
+  /** Los que tienen importe pero el código de ARCA no está en la tabla: no se sabe si suman o restan. */
+  sinSigno: number
+}
+
+/**
+ * LO QUE SUMA LO QUE HAY EN PANTALLA — la fila de total de la tabla de Compras.
+ *
+ * Tres cosas que este total NO hace, y cada una es un defecto que ya costó plata en este repo:
+ *
+ * 1 · NO TRATA `null` COMO CERO. Un comprobante sin importe cargado no es una compra de $ 0: sale
+ *     de la suma y se cuenta aparte, para que la fila pueda decir cuántos quedaron afuera.
+ * 2 · NO ASUME EL SIGNO. Una nota de crédito RESTA, y un código de ARCA que la tabla no conoce no
+ *     se puede sumar en ninguna dirección. Sumar de prepo es literalmente el bug de $41.953.276 del
+ *     21/07 (`orquestador/lib/comprobante-arca.mjs`) vestido de fila de total.
+ * 3 · NO SE PRESENTA COMO EL TOTAL DEL LIBRO. Suma lo que la pantalla trajo, que con el tope o con
+ *     un filtro puesto es un subconjunto. Quien lo dibuja tiene que rotularlo como tal.
+ */
+export function totalDeLaVista(filas: Sumable[]): TotalVista {
+  let total: number | null = null
+  let sinImporte = 0
+  let sinSigno = 0
+  for (const f of filas) {
+    if (f.imp_total == null) { sinImporte += 1; continue }
+    if (f.signo == null) { sinSigno += 1; continue }
+    total = (total ?? 0) + f.signo * f.imp_total
+  }
+  return { total, sinImporte, sinSigno }
+}
+
 /** Lo que este módulo necesita de un query de PostgREST: dos métodos que devuelven el mismo query. */
 export interface Filtrable<T> {
   eq(columna: string, valor: unknown): T
