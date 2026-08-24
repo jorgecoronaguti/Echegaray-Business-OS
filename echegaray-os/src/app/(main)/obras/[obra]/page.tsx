@@ -166,7 +166,7 @@ export default async function ObraPage({
     vista === 'resumen' ? getUbicacion(supabase, obraId) : null,
     vista === 'personal' ? getAsignaciones(supabase, obraId) : null,
     vista === 'personal' ? getCausasDesvio(supabase) : null,
-    vista === 'personal' ? getRegistrosHH(supabase, obraId) : null,
+    vista === 'personal' || esParte ? getRegistrosHH(supabase, obraId) : null,
     // Plan contra real por actividad: Personal la publica y Cronograma la usa en el panel de la
     // actividad, con el MISMO cálculo.
     vista === 'personal' || esCronograma ? getActividadHH(supabase, obraId) : null,
@@ -474,6 +474,7 @@ export default async function ObraPage({
           integrantes={integrantes}
           hoy={new Date().toISOString().slice(0, 10)}
           equipos={catalogoEquipos}
+          registrosHH={registros}
           registrar={registrarEjecucion.bind(null, obraId)}
           borrarParte={borrarParte.bind(null, obraId)}
         />
