@@ -172,11 +172,15 @@ function Fila({ c, obras, veEconomia }: { c: ClientePanel; obras: ObraEnCurso[];
         {obras.length === 0 ? (
           <Nulo>ninguna</Nulo>
         ) : (
-          <Estado tono="curso" clave="en-ejecucion">
-            <span className="block min-w-0 max-w-[26ch] truncate sm:max-w-none">
-              {obras.map((o) => o.nombre).join(' · ')}
-            </span>
-          </Estado>
+          // La celda manda: con `sm:max-w-none` una lista larga de obras se montaba sobre
+          // «Contratado» (QA 24/08). El título completo queda en el tooltip.
+          <span className="flex min-w-0 items-center" title={obras.map((o) => o.nombre).join(' · ')}>
+            <Estado tono="curso" clave="en-ejecucion" className="min-w-0 max-w-full">
+              <span className="block min-w-0 truncate">
+                {obras.map((o) => o.nombre).join(' · ')}
+              </span>
+            </Estado>
+          </span>
         )}
       </Td>
 

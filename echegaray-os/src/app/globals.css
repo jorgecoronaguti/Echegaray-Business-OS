@@ -109,6 +109,11 @@
 
 @layer base {
   body {
+  /* LA PÁGINA NUNCA SCROLLEA DE COSTADO (contrato del Design; QA 24/08). Un layout transitorio
+     ancho durante la hidratación expandía el viewport móvil a 823px y quedaba así para siempre.
+     `clip` —no `hidden`— para no romper `position: sticky` (clip no crea scroll container). Lo
+     ancho scrollea ADENTRO de su contenedor (Tabla, Gantt), que ya lo hacen. */
+  overflow-x: clip;
     color: var(--os-ink);
     background: var(--os-canvas);
     font-family: var(--font-plex-sans), 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;

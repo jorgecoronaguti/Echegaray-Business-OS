@@ -180,7 +180,7 @@ export function FilaWbs({
       </Td>
 
       {conCarril && (
-        <Td className="hidden w-[240px] md:table-cell">
+        <Td className="hidden w-[280px] md:table-cell">
           <span className="relative block h-[14px] w-full" data-testid={carril ? `carril-${n.id}` : undefined}>
             {carril && (
               <>

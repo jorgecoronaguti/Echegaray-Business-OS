@@ -57,7 +57,7 @@ import {
 } from '@/features/obras/services/vistaCronograma'
 import { metricasDelPlazo } from '@/features/obras/services/metricasCronograma'
 import { LienzoCronogramaObra } from '@/features/obras/components/LienzoCronogramaObra'
-import { BarraContextoObra } from '@/features/obras/components/BarraContextoObra'
+import { CabeceraDeObra } from '@/features/obras/components/CabeceraDeObra'
 import { PopoverArrastre } from '@/features/obras/components/PopoverArrastre'
 import {
   Conflictos, Dependencias, PlanDeLaSeleccionada, textosDeConflicto,
@@ -116,6 +116,10 @@ export default async function CronogramaObraPage(
       </main>
     )
   }
+  // La cabecera de la obra necesita la obra: sin ficha no hay nombre, ni cliente, ni etapa que
+  // mostrar. `getObra` devuelve la ausencia como ausencia —no como error—, así que se decide acá.
+  // Que `insumos` haya leído no alcanza: son dos consultas y la segunda puede no traer nada.
+  if (!obra) notFound()
 
   const hoy = new Date().toISOString().slice(0, 10)
   const crono = armarCronograma(insumos, enProyeccion ? 'proyeccion' : 'plan', hoy)
@@ -148,23 +152,35 @@ export default async function CronogramaObraPage(
   const nombreSel = filaSel?.nombre ?? null
 
   return (
-    <main className="flex flex-col gap-4 pb-10">
-      <BarraContextoObra
-        volverA={`/obras/${obraId}`}
-        volverLabel={`Obras · ${obraId}`}
-        titulo="Cronograma"
-        kpis={[
-          { rotulo: 'Fin plan', valor: fmt(obra?.fecha_fin_plan?.slice(0, 10) ?? null), falta: 'sin fecha' },
-          {
-            rotulo: enProyeccion ? 'Fin proyectado' : 'Fin de obra',
-            valor: fmt(crono.finObra), proyectado: true, falta: 'sin secuencia',
-          },
-          { rotulo: 'Crítico', valor: crono.sinSecuencia ? null : `${crono.criticas.length} act.`, falta: 'sin secuencia' },
-          { rotulo: 'Sin plan', valor: `${crono.sinPlan.length} act.` },
-        ]}
-      />
+    // LA MISMA CABECERA QUE EL WORKSPACE (24/08 · C-CANON §12). Esta pantalla vivía en una banda
+    // grafito propia: entrar al cronograma parecía entrar a otra aplicación y no había forma de
+    // saltar a Personal o a Economía sin volver primero al workspace. El marco es el del OS —16px
+    // en el teléfono, 40px en escritorio— igual que el workspace, no el `px-4 lg:px-8` de antes.
+    <main className="min-h-screen bg-canvas pb-10">
+      <div className="w-full px-4 pt-6 lg:px-10">
+        <CabeceraDeObra
+          obraId={obraId}
+          obra={obra}
+          // Cronograma ES Trabajo: el contrato (07) marca esa solapa activa aunque la URL no sea la
+          // del workspace. `pantalla` es lo único que distingue esta pantalla de las otras dos que
+          // comparten solapa —Subcontratos y Avance masivo—.
+          vistaActiva="tareas"
+          pantalla="Cronograma calculado"
+          // Los mismos cuatro números que publicaba la banda. «Fin de obra» sigue diciendo «sin
+          // secuencia» y no una fecha: sin dependencias cargadas nada secuencia a nada.
+          kpis={[
+            { rotulo: 'Fin plan', valor: fmt(obra.fecha_fin_plan?.slice(0, 10) ?? null), falta: 'sin fecha' },
+            {
+              rotulo: enProyeccion ? 'Fin proyectado' : 'Fin de obra',
+              valor: fmt(crono.finObra), falta: 'sin secuencia',
+            },
+            { rotulo: 'Crítico', valor: crono.sinSecuencia ? null : `${crono.criticas.length} act.`, falta: 'sin secuencia' },
+            { rotulo: 'Sin plan', valor: `${crono.sinPlan.length} act.` },
+          ]}
+        />
+      </div>
 
-      <div className="flex flex-col gap-3 px-4 lg:px-8">
+      <div className="flex flex-col gap-3 px-4 pt-4 lg:px-10">
         <Barra
           vista={vista} unidad={unidad} enProyeccion={enProyeccion} verBase={verBase} href={href}
         />
@@ -241,7 +257,9 @@ export default async function CronogramaObraPage(
         </div>
         <Conflictos crono={crono} />
       </div>
-      <Franja metricas={metricasDelPlazo(filas, crono, enProyeccion, desvioDe)} testid="franja-cronograma" />
+      <div className="pt-4">
+        <Franja metricas={metricasDelPlazo(filas, crono, enProyeccion, desvioDe)} testid="franja-cronograma" />
+      </div>
     </main>
   )
 }

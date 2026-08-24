@@ -49,9 +49,13 @@ export function EntityHeader({
             </div>
           )}
         </div>
+        {/* SIN `shrink-0`: con él, el tracker de etapas imponía su ancho completo y la página
+            entera medía 492px en un teléfono de 390 (QA 24/08). `min-w-0` + wrap alcanzan.
+            EL COMENTARIO VA ACÁ Y NO ADENTRO DEL `&&`: un comentario JSX en esa posición se lee
+            como un objeto literal vacío donde se espera una expresión, y el archivo dejaba de
+            compilar (typecheck rojo en toda la rama). Como hijo de un elemento es válido; como
+            primer término de un paréntesis, no. */}
         {(derecha || acciones) && (
-          {/* SIN `shrink-0`: con él, el tracker de etapas imponía su ancho completo y la página
-              entera medía 492px en un teléfono de 390 (QA 24/08). `min-w-0` + wrap alcanzan. */}
           <div className="flex min-w-0 flex-wrap items-center gap-3">
             {derecha}
             {acciones}

@@ -17,6 +17,16 @@ import { conBase, entrar } from './util/obras-e2e'
 
 const OBRA = 'messina'
 
+/** EL NOMBRE DE LA OBRA SALE DE LA BASE, no de una constante escrita acá. Un literal sería el
+ *  nombre que YO creo que tiene: el día que se renombre, el test se pone rojo por un motivo falso
+ *  —o peor, pasa comparando la pantalla contra una suposición. */
+async function nombreDeLaObra(sb: Awaited<ReturnType<typeof conBase>>): Promise<string> {
+  const { data, error } = await sb.from('obra_panel').select('nombre').eq('obra_id', OBRA).maybeSingle()
+  expect(error, error?.message).toBeNull()
+  expect(data?.nombre, `la obra ${OBRA} no está en obra_panel`).toBeTruthy()
+  return String(data?.nombre)
+}
+
 test('07 · sin dependencias cargadas la pantalla lo DICE y no publica fin de obra', async ({ page }) => {
   const sb = await conBase()
   // ── LA VERDAD SE MIDE EN LA BASE PRIMERO ──────────────────────────────────
@@ -26,7 +36,12 @@ test('07 · sin dependencias cargadas la pantalla lo DICE y no publica fin de ob
 
   await entrar(page)
   await page.goto(`/obras/${OBRA}/cronograma`)
-  await expect(page.getByTestId('barra-obra')).toBeVisible()
+  // LA CABECERA ES LA DE LA OBRA (24/08 · C-CANON §12), no una banda propia de la pantalla. Se
+  // exige el NOMBRE DE LA OBRA como título —con «Cronograma» de título esto se pone rojo— y las
+  // seis solapas visibles, que es lo que esta pantalla no tenía y por eso era un callejón.
+  // `barra-obra` era el testid de la banda grafito retirada: buscarlo hoy sería verde contra nada.
+  await expect(page.getByTestId('entity-header')).toContainText(await nombreDeLaObra(sb))
+  await expect(page.getByTestId('tabs-obra')).toBeVisible()
 
   const kpis = page.getByTestId('kpis-obra')
   if (count === 0) {
@@ -76,7 +91,12 @@ test('08 · sin HH cargadas la dotación dice «sin dato», nunca 0', async ({ p
 
   await entrar(page)
   await page.goto(`/obras/${OBRA}/dotacion`)
-  await expect(page.getByTestId('barra-obra')).toBeVisible()
+  // LA CABECERA ES LA DE LA OBRA (24/08 · C-CANON §12), no una banda propia de la pantalla. Se
+  // exige el NOMBRE DE LA OBRA como título —con «Cronograma» de título esto se pone rojo— y las
+  // seis solapas visibles, que es lo que esta pantalla no tenía y por eso era un callejón.
+  // `barra-obra` era el testid de la banda grafito retirada: buscarlo hoy sería verde contra nada.
+  await expect(page.getByTestId('entity-header')).toContainText(await nombreDeLaObra(sb))
+  await expect(page.getByTestId('tabs-obra')).toBeVisible()
 
   if (count === 0) {
     await expect(page.getByText('Ninguna actividad de esta obra tiene HH del análisis cargadas')).toBeVisible()

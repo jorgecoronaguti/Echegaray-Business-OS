@@ -28,7 +28,6 @@
 // `registros_hh`), el presupuesto (vía `presupuestos`) y los archivos de Drive (vía `drive_index`).
 // Ninguno de los cuatro se edita desde este módulo.
 
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import {
@@ -61,17 +60,16 @@ import {
 } from '@/features/obras/services/recursosService'
 import { borrarHH, imputarHH, imputarHHMasivo } from '@/features/obras/services/actionsHH'
 import { borrarCertificado, crearCertificado } from '@/features/obras/services/actionsContrato'
-import { ETAPA_LABEL, type Etapa } from '@/features/obras/types'
 import { AccionesRapidas } from '@/features/obras/components/AccionesRapidas'
+import { CabeceraDeObra } from '@/features/obras/components/CabeceraDeObra'
 import { CamposObra } from '@/features/obras/components/CamposObra'
-import { CicloDeVida } from '@/features/obras/components/CicloDeVida'
 import { TabResumen } from '@/features/obras/components/TabResumen'
 import { TabCronograma } from '@/features/obras/components/TabCronograma'
 import type { DatosDeActividad } from '@/features/obras/components/PanelActividad'
 import { esSubVista } from '@/features/obras/services/subvistas'
 import { separarPlanYSubtareas } from '@/features/obras/services/subtareas'
 import {
-  hrefSubcontratos, resolverVistaObra, SUBS_TAREAS, VISTAS_OBRA,
+  hrefSubcontratos, resolverVistaObra, SUBS_TAREAS,
 } from '@/features/obras/services/vistasObra'
 import { WorkspaceTareas } from '@/features/obras/components/WorkspaceTareas'
 import { SubTabs } from '@/shared/components/ds'
@@ -92,9 +90,8 @@ import { TabDocumentos } from '@/features/obras/components/TabDocumentos'
 import {
   asignarActividadADocumento, desvincularDocumento, soltarDocumentoDeActividad, vincularDocumento,
 } from '@/features/obras/services/actionsDocumentos'
-import { fecha as fmtFecha } from '@/features/obras/components/formato'
 import { BotonAccion, FormAccion } from '@/shared/components/ui'
-import { Aviso, EntityHeader, Tabs } from '@/shared/components/ds'
+import { Aviso } from '@/shared/components/ds'
 import { crearLector } from '@/shared/components/estado/lecturas'
 import { EstadoError } from '@/shared/components/estado'
 // `anchoSplit` se importa por su RUTA y no por el barril del DS: usa `next/headers`, y ese barril lo
@@ -282,42 +279,12 @@ export default async function ObraPage({
     }
   }
   // ═══ EL CONTEXTO: DÓNDE ESTOY, DE QUIÉN ES ═══
-  // El dueño lo dibujó así: «← Obras», el nombre de la obra, y debajo el cliente. El cliente es un
-  // link cuando existe en el eje canónico; cuando la obra sólo tiene el nombre del cliente escrito
-  // a mano, se muestra el texto y se dice que falta vincularlo — sin inventar la ficha.
-  // ARCHIVADA SE DICE EN EL ENCABEZADO. Es la única señal de que esta ficha se abrió por su URL y no
-  // desde el portafolio —porque del portafolio ya no cuelga—, y sin ella alguien podría cargar HH o
-  // avance sobre una obra archivada sin enterarse de que lo está.
+  // «← Obras», el nombre de la obra, sus campos de identidad rotulados y el ciclo de vida. Todo eso
+  // vive en `CabeceraDeObra` —la MISMA que dibujan Cronograma, Dotación, Subcontratos y Avance
+  // masivo— desde el 24/08: era la única cabecera del OS que existía dos veces, y las pantallas
+  // hijas se habían quedado con una banda grafito propia que parecía otra aplicación.
+  // `archivada` se sigue calculando acá porque el bloque de archivar del Resumen lo necesita.
   const archivada = obra.estado === 'cerrada'
-  const deQuien = obra.cliente_slug ? (
-    <Link href={`/clientes/${obra.cliente_slug}`} className="text-ink hover:underline">{obra.cliente_nombre}</Link>
-  ) : obra.cliente_texto ? (
-    <>{obra.cliente_texto} <span className="text-faint">· sin ficha de cliente vinculada</span></>
-  ) : null
-  // ═══ LA CABECERA ROTULA CADA DATO (20/08/2026) ═══
-  //
-  // Decía «La Estrella · 06/07/26 → 22/08/26»: cuatro datos distintos separados por puntos, donde
-  // el que mira tiene que adivinar cuál es el cliente, cuál la etapa y cuál de las dos fechas es el
-  // fin. El dueño lo pidió rotulado —«Cliente: · Etapa: · Inicio: · Fin plan:»— y rotulado se lee
-  // sin pensar. Cada campo dice qué le falta por su nombre: una fecha vacía es «sin fecha», nunca
-  // un guión suelto que se leería como «hoy».
-  const etapaLabel = obra.etapa
-    ? (ETAPA_LABEL[obra.etapa as Etapa] ?? obra.etapa)
-    : 'sin declarar'
-  const campos = [
-    ...(deQuien ? [{ rotulo: 'Cliente', valor: deQuien }] : []),
-    { rotulo: 'Etapa', valor: obra.etapa ? etapaLabel : null, falta: 'sin declarar' },
-    {
-      rotulo: 'Inicio',
-      valor: obra.fecha_inicio_plan ? <span className="tabular-nums">{fmtFecha(obra.fecha_inicio_plan)}</span> : null,
-      falta: 'sin fecha',
-    },
-    {
-      rotulo: 'Fin plan',
-      valor: obra.fecha_fin_plan ? <span className="tabular-nums">{fmtFecha(obra.fecha_fin_plan)}</span> : null,
-      falta: 'sin fecha',
-    },
-  ]
 
   return (
     // EL WORKSPACE NO USA `PageShell`: su encabezado es el de una ENTIDAD —volver, nombre, campos
@@ -326,37 +293,14 @@ export default async function ObraPage({
     // el mismo: 16px en el teléfono, 40px en escritorio.
     <div className="min-h-screen bg-canvas">
       <div className="w-full px-4 pt-6 lg:px-10">
-        <EntityHeader
-          volverA="/obras"
-          volverLabel="Obras"
-          titulo={obra.nombre}
-          campos={campos}
-          derecha={
-            <div className="flex flex-wrap items-center gap-3" data-testid="cabecera-obra">
-              {/* Las cinco operaciones de todos los días, sin buscar en qué solapa viven. */}
-              <AccionesRapidas obraId={obraId} />
-              {/* ARCHIVADA SE DICE EN EL ENCABEZADO: es la única señal de que esta ficha se abrió
-                  por su URL y no desde el portafolio, y sin ella alguien podría cargar HH o avance
-                  sobre una obra archivada sin enterarse de que lo está. */}
-              {archivada && (
-                <span className="rounded border border-line px-1.5 py-[1px] text-[11px] text-faint" data-testid="obra-archivada">
-                  archivada
-                </span>
-              )}
-              <CicloDeVida etapa={obra.etapa} />
-            </div>
-          }
-        />
-        {/* Nivel 2: SEIS solapas —Ejecución dejó de ser una— que se desplazan en vez de empujar la
-            página: en 390px no entran. */}
-        <Tabs
-          testid="tabs-obra"
-          tabs={VISTAS_OBRA.map((v) => ({
-            href: `/obras/${obraId}?vista=${v.id}`,
-            label: v.label,
-            activo: vista === v.id,
-            testid: `tab-${v.id}`,
-          }))}
+        {/* Nivel 2 adentro: SEIS solapas —Ejecución dejó de ser una— que se desplazan en vez de
+            empujar la página, porque en 390px no entran. */}
+        <CabeceraDeObra
+          obraId={obraId}
+          obra={obra}
+          vistaActiva={vista}
+          /* Las cinco operaciones de todos los días, sin buscar en qué solapa viven. */
+          acciones={<AccionesRapidas obraId={obraId} />}
         />
       </div>
       <div className="w-full px-4 pb-6 pt-4 lg:px-10">

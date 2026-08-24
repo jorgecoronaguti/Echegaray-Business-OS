@@ -36,18 +36,21 @@ export function Estado({
   children,
   testid,
   clave,
+  className,
 }: {
   tono: TonoEstado
   children: ReactNode
   testid?: string
   /** Va al DOM aunque no se dibuje: es lo que deja verificar el estado desde un test sin leer color. */
   clave?: string
+  /** Para cuando el contenido debe truncarse dentro de una celda: `min-w-0` y compañía. */
+  className?: string
 }) {
   return (
     <span
       data-testid={testid ?? 'estado'}
       data-estado={clave}
-      className={`inline-flex items-center gap-1.5 whitespace-nowrap text-[12.5px] ${TEXTO[tono]}`}
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap text-[12.5px] ${TEXTO[tono]} ${className ?? ''}`}
     >
       {tono !== 'nulo' && <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${PUNTO[tono]}`} />}
       {children}

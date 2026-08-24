@@ -33,8 +33,20 @@
 // «Galpones» es exactamente ese caso: `cliente_slug` en NULL. Un enlace a `/clientes/null` sería
 // una promesa que termina en 404, y el usuario aprende a no tocar los links de esta columna.
 //
-// LO QUE NO SE MUESTRA, Y ES DELIBERADO: margen, estado, impedimentos y cantidad de actividades.
-// Nada de eso se decide mirando la cartera; se decide DENTRO de la obra, con su detalle al lado.
+// LO QUE NO SE MUESTRA, Y ES DELIBERADO: margen y cantidad de actividades. Nada de eso se decide
+// mirando la cartera; se decide DENTRO de la obra, con su detalle al lado.
+//
+// ═══ LAS TRES SEÑALES DE HOY (Design canónico 01, defecto de QA del 24/08) ═══
+//
+// Los impedimentos SÍ entran, y es un cambio de criterio contra la línea de arriba tal como estaba
+// escrita el 20/08. La diferencia es qué se muestra de ellos: la cartera no lista impedimentos —eso
+// es la solapa de Operación de la obra— sino que dice CUÁNTOS hay abiertos. Un impedimento abierto
+// no describe cómo viene la obra: es trabajo trabado esperando que alguien lo libere, y saber en
+// cuál de las diecisiete obras está es exactamente para lo que se abre esta pantalla a la mañana.
+// Con el mismo criterio entran «HOY» (la obra reportó parte) y «PERSONAS HOY» en el pie.
+//
+// TRES CONSULTAS PARA TODA LA CARTERA, EN LA MISMA TANDA. El detalle y el porqué de que no lleven
+// `.in(obraIds)`, en `services/senalesCarteraService.ts`.
 //
 // LO COMERCIAL DEPENDE DEL ROL, Y NO POR LA PANTALLA. «Contratado» sólo lo ve Administración, y el
 // filtro NO es este `esAdmin`: el dato ya viene en NULL desde `obra_panel`, que lo enmascara en
@@ -63,9 +75,13 @@ import { ThOrden } from '@/features/obras/components/ThOrden'
 import { esAtrasada, filtrar, filtrarPorAtraso, filtroDesde } from '@/features/obras/services/filtroObras'
 import { FiltrosObras, type ConteosObras } from '@/features/obras/components/FiltrosObras'
 import { desvioDePlazo, type Semaforo } from '@/features/obras/services/ganttObras'
+import { getSenalesCartera } from '@/features/obras/services/senalesCarteraService'
+import { personasQueFicharon } from '@/features/obras/services/senalesCartera'
 // CÓMO SE ESCRIBE CADA CELDA vive al lado, en `components/celdasCartera`: esta página decide qué se
 // lee y con qué permiso, no cómo se dice un hueco.
-import { Avance, Cliente, EstadoObra, Etapa, HH, Plazo } from '@/features/obras/components/celdasCartera'
+import {
+  Avance, Cliente, EstadoObra, Etapa, HH, Plazo, SenalHoy, SenalImpedimentos,
+} from '@/features/obras/components/celdasCartera'
 
 export const dynamic = 'force-dynamic'
 
@@ -84,6 +100,10 @@ export default async function ObrasPage({
   const dir: Direccion = dirPedida === 'asc' ? 'asc' : 'desc'
 
   const supabase = await createClient()
+  // EL DÍA LO FIJA EL SERVIDOR, igual que en la línea de tiempo: ni el semáforo de plazo ni las
+  // señales de hoy pueden depender del reloj del navegador que las mira. Se calcula ANTES de las
+  // lecturas porque dos de las tres señales lo necesitan para consultar.
+  const hoyIso = new Date().toISOString().slice(0, 10)
   // LAS TRES LECTURAS SALEN JUNTAS, Y LA DEL PERFIL TAMBIÉN (19/08/2026).
   //
   // El perfil se esperaba SOLO y recién después salían las dos consultas de datos. Eran dos viajes
@@ -95,10 +115,16 @@ export default async function ObrasPage({
   // Contra Vercel esa cascada se paga cara: la función corre en iad1 y la base está en São Paulo, así
   // que cada viaje encadenado son ~120 ms de puro cable. En paralelo, la pantalla espera el más
   // lento en vez de la suma.
-  const [perfil, { data, error }, { data: planes }] = await Promise.all([
+  //
+  // LAS SEÑALES DE HOY VIAJAN EN LA MISMA TANDA, y son TRES CONSULTAS PARA TODA LA CARTERA — nunca
+  // una por obra. Ninguna de las tres es la razón por la que se abre esta pantalla, así que ninguna
+  // puede empujar la tabla hacia atrás: si una falla, la cartera se dibuja igual y el pie dice qué
+  // no se pudo mirar.
+  const [perfil, { data, error }, { data: planes }, senales] = await Promise.all([
     getPerfilActual(supabase),
     getPortafolio(supabase),
     getPlanVsRealPortafolio(supabase),
+    getSenalesCartera(supabase, hoyIso),
   ])
   // El nivel del usuario decide si se DIBUJA la columna comercial. El dato ya viene enmascarado de
   // Postgres; esto sólo evita una columna de guiones. Falla al nivel MENOS privilegiado.
@@ -119,9 +145,6 @@ export default async function ObrasPage({
   // consulta—, así que se le pasa como función en vez de fusionar las dos tablas para poder ordenar.
   // FILTRAR PRIMERO, ORDENAR DESPUÉS: ordenar trece filas para tirar diez es trabajo al pedo, y el
   // contador de "N de M" tiene que contar sobre lo que se ve, no sobre lo que se leyó.
-  // EL DÍA LO FIJA EL SERVIDOR, igual que en la línea de tiempo: el estado de una obra no puede
-  // depender del reloj del navegador que la mira.
-  const hoyIso = new Date().toISOString().slice(0, 10)
   /** EL SEMÁFORO DE CADA OBRA, calculado UNA vez: lo usan la columna de estado, el filtro y el
    *  conteo del chip. Tres cuentas separadas del mismo estado se separan el día que una cambie. */
   const semaforoDe = (o: ObraPanel): Semaforo => {
@@ -139,6 +162,14 @@ export default async function ObrasPage({
   const enFiltro = filtrarPorAtraso(filtrar(visibles, filtro), filtro, semaforo)
   const obras = ordenar(enFiltro, orden, dir, (id) => porObra.get(id)?.desvio_plazo_dias ?? null)
   const activas = obras.filter((o) => o.estado === 'activa')
+
+  // PERSONAS HOY se cuenta sobre las obras que SE VEN, igual que el resto del pie: un número que
+  // habla de obras que no están en la pantalla no se puede verificar mirándola. Devuelve `null` con
+  // cero marcas —«sin fichar» no es «no vino nadie»— y la lectura caída se distingue aparte, porque
+  // son dos huecos distintos y el pie los escribe con dos palabras distintas.
+  const personasHoy = senales.ficharon
+    ? personasQueFicharon(senales.ficharon, obras.map((o) => o.obra_id))
+    : null
 
   // LOS CONTEOS DE LOS CHIPS SE CUENTAN SOBRE LA CARTERA VISIBLE, NO SOBRE LO FILTRADO: un chip que
   // dice «Terminación 2» tiene que seguir diciendo 2 después de tocar otro chip. Si contara lo
@@ -236,10 +267,19 @@ export default async function ObrasPage({
           <tbody>
             {obras.map((o) => (
               <Tr key={o.obra_id} data-obra={o.obra_id}>
+                {/* LAS DOS SEÑALES DE HOY VAN PEGADAS AL NOMBRE y no en dos columnas propias como
+                    en el canon: la tabla ya tiene nueve columnas y 1060px de ancho mínimo, y dos
+                    más la mandaban al desplazamiento horizontal en cualquier pantalla de trabajo
+                    —donde lo primero que se pierde de vista es justamente la punta derecha—. Acá
+                    viajan con el nombre de la obra, que es donde el ojo ya está parado. */}
                 <Td fuerte>
-                  <Link href={`/obras/${o.obra_id}`} prefetch={false} className="font-semibold text-ink transition-colors hover:underline">
-                    {o.nombre}
-                  </Link>
+                  <span className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
+                    <Link href={`/obras/${o.obra_id}`} prefetch={false} className="font-semibold text-ink transition-colors hover:underline">
+                      {o.nombre}
+                    </Link>
+                    <SenalHoy conParte={senales.partesHoy?.has(o.obra_id) ?? false} />
+                    <SenalImpedimentos n={senales.impedimentos?.get(o.obra_id) ?? 0} />
+                  </span>
                 </Td>
                 <Td><Cliente o={o} /></Td>
                 <Td><EstadoObra estado={o.estado} semaforo={semaforo(o)} /></Td>
@@ -285,6 +325,22 @@ export default async function ObrasPage({
                 <span className="flex flex-wrap items-baseline justify-end gap-x-7 gap-y-1 text-[11.5px] font-normal text-faint">
                   <span>OBRAS <Num className="text-ink">{obras.length}</Num></span>
                   <span>EN EJECUCIÓN <Num className="text-ink">{activas.length}</Num></span>
+                  {/* ═══ «PERSONAS HOY 0» ERA LA AUSENCIA DISFRAZADA DE HECHO ═══
+                      Tres huecos distintos y tres palabras distintas. No se pudo leer la presencia:
+                      «sin dato» —un control que no pudo mirar no dice «no está»—. Nadie marcó: «sin
+                      fichar», que incluye al que no tiene teléfono y al que no le dio permiso al
+                      GPS; quién faltó lo declara el jefe, no la ausencia de un dato. Y con marcas,
+                      el número. Medido contra producción el 24/08/2026, `asistencia_marca` tiene
+                      dos filas en toda la base: sin esta distinción, el pie diría «0 personas» todos
+                      los días mientras las obras cargan partes de avance. */}
+                  <span title="Personas con entrada fichada hoy en las obras de esta lista. Sale de `presencia_del_dia`, la misma fuente que «En obra ahora».">
+                    PERSONAS HOY{' '}
+                    {senales.ficharon == null
+                      ? <Nulo>sin dato</Nulo>
+                      : personasHoy == null
+                        ? <Nulo>sin fichar</Nulo>
+                        : <Num className="text-ink">{personasHoy}</Num>}
+                  </span>
                   {esAdmin && (
                     <span title={`${conContrato.length} de ${obras.length} obras con monto contratado cargado`}>
                       CONTRATADO{' '}
@@ -305,6 +361,16 @@ export default async function ObrasPage({
             </FilaTotal>
           </tfoot>
         </Tabla>
+      )}
+
+      {/* LO QUE NO SE PUDO MIRAR SE DICE. Sin esta línea, una lectura caída se vería exactamente
+          igual que una cartera sin partes y sin impedimentos: ninguna señal dibujada. Va debajo de
+          la tabla y no en un Callout rojo arriba porque no impide leer la cartera — es una parte de
+          la pantalla que hoy no puede hablar, no una pantalla rota. */}
+      {senales.sinDato.length > 0 && (
+        <p className="mt-3 text-[12px] text-warn" data-testid="senales-sin-dato">
+          {senales.sinDato.map((s) => `No pude leer ${s.senal}: ${s.error}`).join(' · ')}
+        </p>
       )}
 
       {/* EL PIE DE LA CARTERA — una línea, dos avisos que son del mismo tipo: lo que NO está en la
@@ -337,7 +403,12 @@ export default async function ObrasPage({
         Compras. El estado «con atraso» compara el avance medido contra el calendario del plan ya
         consumido: es una <strong className="font-medium text-ink">ESTIMACIÓN</strong> —supone el
         trabajo repartido parejo— y ordena la atención, no afirma cuánto se atrasó una obra. Es el
-        mismo criterio que pinta las barras de la línea de tiempo.
+        mismo criterio que pinta las barras de la línea de tiempo.{' '}
+        <strong className="font-medium text-ink">HOY</strong> dice que en esa obra se cargó parte de
+        ejecución hoy; que no aparezca no dice que la obra esté parada — dice que todavía no hay
+        parte. El triángulo cuenta los impedimentos abiertos, los mismos que lista la solapa
+        Operación de la obra. Y «personas hoy» son las que ficharon entrada, que no es lo mismo que
+        las que trabajaron: quién faltó lo declara el jefe.
       </Ayuda>
     </PageShell>
   )

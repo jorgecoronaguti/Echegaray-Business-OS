@@ -30,6 +30,7 @@ import { createClient } from '@/lib/supabase/server'
 import {
   getCapacidadPonderada, getInsumosCronograma, getPersonasDisponibles,
 } from '@/features/obras/services/cronogramaObraService'
+import { getObra } from '@/features/obras/services/obrasService'
 import { armarCronograma } from '@/features/obras/services/cronogramaMotor'
 import {
   dotacionNecesaria, frentesDe, rubrosDe, sumaCompleta, type Frente,
@@ -37,7 +38,7 @@ import {
 import { aplicarDotacionAlPlan } from '@/features/obras/services/actionsPlan'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { esAdministracion } from '@/features/auth/types/areas'
-import { BarraContextoObra } from '@/features/obras/components/BarraContextoObra'
+import { CabeceraDeObra } from '@/features/obras/components/CabeceraDeObra'
 import { SimuladorDotacion } from '@/features/obras/components/SimuladorDotacion'
 import { TablaRubrosHH } from '@/features/obras/components/TablaRubrosHH'
 import { Callout } from '@/shared/components/ui'
@@ -75,11 +76,16 @@ export default async function DotacionObraPage(
   const dotaciones = dotacionesDe(sp.dot)
   const supabase = await createClient()
 
-  const [{ data: insumos, error }, capacidad, disponibles, perfil] = await Promise.all([
+  // LA FICHA DE LA OBRA VIAJA EN EL MISMO `Promise.all`, no en un `await` propio: la cabecera
+  // canónica necesita nombre, cliente, etapa y fechas, y `insumos.obra` sólo trae lo que el motor
+  // usa para calcular (días hábiles, jornada). Es una consulta más que sale en paralelo con las
+  // cuatro que ya salían — la página sigue tardando lo que su lectura más lenta.
+  const [{ data: insumos, error }, capacidad, disponibles, perfil, { data: obra }] = await Promise.all([
     getInsumosCronograma(supabase, obraId),
     getCapacidadPonderada(supabase),
     getPersonasDisponibles(supabase, obraId),
     getPerfilActual(supabase),
+    getObra(supabase, obraId),
   ])
   // Aplicar la dotación cambia la duración calculada del plan: es de Administración y de la
   // jefatura de obra. La guarda de verdad vive en la acción; esto evita ofrecer el gesto.
@@ -88,6 +94,8 @@ export default async function DotacionObraPage(
   if (error || !insumos) {
     return <main className="p-4 lg:p-8"><Callout tono="neg">No pude leer la obra: {error ?? 'sin datos'}</Callout></main>
   }
+  // Sin ficha no hay cabecera: `getObra` devuelve la ausencia como ausencia y decide quien pregunta.
+  if (!obra) notFound()
 
   const hoy = new Date().toISOString().slice(0, 10)
   const crono = armarCronograma(insumos, 'proyeccion', hoy)
@@ -118,19 +126,28 @@ export default async function DotacionObraPage(
   const idxFinPlan = finPlan ? calendario.indice(desde, finPlan) : null
 
   return (
-    <main className="flex flex-col gap-4 pb-10">
-      <BarraContextoObra
-        volverA={`/obras/${obraId}`}
-        volverLabel={`Obras · ${obraId}`}
-        titulo="Dotación y proyección"
-        kpis={[
-          { rotulo: 'HH plan', valor: n0(hhPlan), falta: 'sin cargar' },
-          { rotulo: 'Real', valor: n0(hhReal), falta: 'sin registro' },
-          { rotulo: 'Proyectadas', valor: n0(hhProy), proyectado: true, falta: 'sin base' },
-        ]}
-      />
+    // LA MISMA CABECERA QUE EL WORKSPACE (24/08 · C-CANON §12): una obra es un workspace, y la
+    // banda grafito propia de esta pantalla la hacía parecer otra aplicación.
+    <main className="min-h-screen bg-canvas pb-10">
+      <div className="w-full px-4 pt-6 lg:px-10">
+        <CabeceraDeObra
+          obraId={obraId}
+          obra={obra}
+          // Dotación ES Personal — así lo marca el contrato (08): la pregunta que contesta es con
+          // cuánta gente se llega, y esa es la solapa donde vive el plantel de la obra.
+          vistaActiva="personal"
+          pantalla="Dotación y proyección"
+          kpis={[
+            { rotulo: 'HH plan', valor: n0(hhPlan), falta: 'sin cargar' },
+            { rotulo: 'Real', valor: n0(hhReal), falta: 'sin registro' },
+            // Sin HH plan no hay base para proyectar: dice «sin base», nunca 0 — un 0 acá se leería
+            // «no falta trabajo», que es la afirmación contraria a la verdadera.
+            { rotulo: 'Proyectadas', valor: n0(hhProy), falta: 'sin base' },
+          ]}
+        />
+      </div>
 
-      <div className="flex flex-col gap-4 px-4 lg:px-8">
+      <div className="flex flex-col gap-4 px-4 pt-4 lg:px-10">
         {hhPlan == null && (
           <Callout tono="warn">
             <strong>Ninguna actividad de esta obra tiene HH del análisis cargadas.</strong>{' '}

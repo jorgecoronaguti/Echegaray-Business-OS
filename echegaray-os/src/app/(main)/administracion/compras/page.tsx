@@ -104,10 +104,14 @@ export default async function ComprasPage({
     )
   }
 
-  const [listado, conteos, obras] = await Promise.all([
+  // TODO EN UN VIAJE, panel incluido. `getCompra` esperaba a que terminara la lista para recién
+  // ahí salir a buscar el comprobante abierto: cada clic en una fila pagaba dos idas a la base en
+  // serie (~2,2s medidos en el QA del 24/08). El panel no depende de la lista para nada.
+  const [listado, conteos, obras, abierta] = await Promise.all([
     getCompras(supabase, { q, filtro }),
     getConteos(supabase),
     getObrasCanonicas(supabase),
+    sp.c ? getCompra(supabase, sp.c) : Promise.resolve(null),
   ])
 
   if (listado.error || !listado.data || conteos.error || !conteos.data) {
@@ -124,7 +128,6 @@ export default async function ComprasPage({
   }
 
   const { filas, total, truncado } = listado.data
-  const abierta = sp.c ? await getCompra(supabase, sp.c) : null
   // Las dos lecturas del panel van juntas: son independientes entre sí y sólo ocurren con el panel
   // abierto. En serie agregaban un viaje de red a cada clic de la lista.
   const [parecidos, historialObras] = abierta

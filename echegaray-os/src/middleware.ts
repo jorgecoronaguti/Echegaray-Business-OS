@@ -67,6 +67,14 @@ export async function middleware(request: NextRequest) {
     // middleware evita que una pantalla se dibuje vacía y desconcertante; el RLS evita que los datos
     // salgan del servidor. Redirigir sin RLS sería seguridad cosmética.
     if (!puedeVerRuta(perfil?.rol, pathname)) {
+      // ═══ /presupuestos PASA, Y SU PÁGINA DICE «SIN PERMISO» (QA 24/08) ═══
+      // La página tiene el cartel escrito («sin permiso» ≠ «no hay presupuestos») y este redirect
+      // lo convertía en código muerto: un jefe que abría un link compartido aterrizaba en /obras
+      // sin explicación. La solapa sigue sin dibujarse para él (la navegación usa puedeVerRuta) y
+      // la base sigue cerrada por ve_economia() — esto sólo decide QUÉ pantalla explica el porqué.
+      if (pathname === '/presupuestos' || pathname.startsWith('/presupuestos/')) {
+        return response
+      }
       const url = request.nextUrl.clone()
       url.pathname = '/obras'
       url.search = ''

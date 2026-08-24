@@ -133,7 +133,9 @@ export async function getConteosHome(supabase: SupabaseClient): Promise<ConteosH
     // llega como error y queda en `null`, no en 0.
     cuenta(supabase.from('correccion_asistencia_bandeja').select('*', head).eq('estado', 'pendiente')),
     cuenta(supabase.from('tarea_tipo').select('*', head).eq('activo', true)),
-    cuenta(supabase.from('drive_index').select('*', head)),
+    // ARCHIVOS, no carpetas: la pantalla /documentos cuenta `is_folder=false` y el badge tiene que
+    // decir EL MISMO número (QA 24/08: 3599 vs 3128 — los 471 de diferencia eran carpetas).
+    cuenta(supabase.from('drive_index').select('*', head).eq('is_folder', false)),
   ])
   return {
     clientes, presupuestos, usuarios, personas, proveedores, compras, pendientes, correcciones,

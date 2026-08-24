@@ -127,9 +127,9 @@ export function PanelProveedor({
               {compras && compras.comprobantes > 0 ? <Num>{compras.comprobantes}</Num> : <Nulo>ninguno</Nulo>}
             </Propiedad>
             <Propiedad k="Última compra">
-              {/* La vista que publica lo comprado no publica la fecha máxima. Decirlo es más honesto
-                  que poner la fecha de otra cosa. */}
-              <Nulo>no la publica la vista</Nulo>
+              {/* La vista que publica lo comprado no publica la fecha máxima. Se dice en lenguaje
+                  de producto (QA 24/08): «la vista» es jerga de la base, no del que mira la ficha. */}
+              <Nulo>sin fecha registrada</Nulo>
             </Propiedad>
             <Propiedad k="Notas">{proveedor.notas ?? <Nulo>sin cargar</Nulo>}</Propiedad>
           </div>

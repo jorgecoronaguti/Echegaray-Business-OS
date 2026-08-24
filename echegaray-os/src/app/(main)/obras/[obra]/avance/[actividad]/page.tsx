@@ -15,8 +15,8 @@ import { getArbol, getHistorial, getPasos } from '@/features/obras/services/tare
 import { getCuadrillas } from '@/features/obras/services/personalService'
 import { getPerfilActual } from '@/features/auth/services/authService'
 import { registrarAvance } from '@/features/obras/services/actionsAvance'
+import { CabeceraDeObra } from '@/features/obras/components/CabeceraDeObra'
 import { FormAvance } from '@/features/obras/components/FormAvance'
-import { Volver } from '@/shared/components/ds'
 import { fecha, porcentaje } from '@/features/obras/components/formato'
 
 export const dynamic = 'force-dynamic'
@@ -45,10 +45,19 @@ export default async function RegistrarAvancePage({ params }: {
   return (
     <div className="min-h-screen bg-canvas">
       <div className="mx-auto w-full max-w-[1060px] px-4 py-6 lg:px-10">
-        {/* EL VOLVER DEL SISTEMA, no un enlace propio: es el mismo control en las 22 pantallas. */}
-        <div className="mb-3">
-          <Volver href={`/obras/${obraId}?vista=tareas&act=${actividad}`}>{obra.nombre} · Tareas</Volver>
-        </div>
+        {/* LA CABECERA DE LA OBRA, igual que en las otras cinco pantallas (24/08 · C-CANON §12).
+            Tenía sólo el «Volver», así que desde acá no se veía de qué obra se estaba registrando
+            avance ni se podía saltar a otra solapa sin deshacer el camino.
+            LA VUELTA NO ES AL PORTAFOLIO: esta pantalla se abre DESDE una actividad concreta y
+            vuelve a esa actividad, con el panel abierto donde estaba. */}
+        <CabeceraDeObra
+          obraId={obraId}
+          obra={obra}
+          volverA={`/obras/${obraId}?vista=tareas&act=${actividad}`}
+          volverLabel={`${obra.nombre} · Tareas`}
+          vistaActiva="tareas"
+          pantalla={`Registrar avance · ${nodo.nombre}`}
+        />
 
         {/* UN CONTENEDOR NO SE MIDE, SE AGREGA. La base lo rechaza con un trigger; acá se dice antes
             de que alguien complete un formulario que va a rebotar. */}

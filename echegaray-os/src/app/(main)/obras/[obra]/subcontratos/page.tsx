@@ -39,7 +39,7 @@ import {
   agregarPersonaExterna, cambiarEstadoPaquete, crearPaquete, fijarPrecioPaquete, registrarAporte,
   registrarDocumento,
 } from '@/features/obras/services/actionsSubcontratos'
-import { BarraContextoObra } from '@/features/obras/components/BarraContextoObra'
+import { CabeceraDeObra } from '@/features/obras/components/CabeceraDeObra'
 import { WorkspaceSubcontratos } from '@/features/obras/components/WorkspaceSubcontratos'
 import { FormNuevoPaquete } from '@/features/obras/components/FormNuevoPaquete'
 import { Aviso, SubTabs } from '@/shared/components/ds'
@@ -73,25 +73,30 @@ export default async function SubcontratosObraPage({
   const bloqueados = data.paquetes.filter((p) => p.revision.bloqueos.length > 0)
 
   return (
-    <main className="flex flex-col gap-4 pb-10">
-      <BarraContextoObra
-        volverA={`/obras/${obraId}`}
-        volverLabel={`Obras · ${obra.nombre}`}
-        titulo="Subcontratos"
-        kpis={[
-          { rotulo: 'Paquetes', valor: `${data.paquetes.length}` },
-          {
-            rotulo: 'Sin poder iniciar',
-            valor: bloqueados.length === 0 ? '0' : `${bloqueados.length}`,
-          },
-          {
-            rotulo: 'Gente de terceros',
-            valor: `${data.paquetes.reduce((t, p) => t + p.personas_externas, 0)}`,
-          },
-        ]}
-      />
+    // LA MISMA CABECERA QUE EL WORKSPACE (24/08 · C-CANON §12). La banda grafito propia hacía de
+    // esta pantalla otra aplicación, y desde acá no se podía saltar a otra solapa de la obra.
+    <main className="min-h-screen bg-canvas pb-10">
+      <div className="w-full px-4 pt-6 lg:px-10">
+        <CabeceraDeObra
+          obraId={obraId}
+          obra={obra}
+          // Subcontratos ES Trabajo (contrato 10): un paquete es una porción del alcance de
+          // actividades que ya existen, mirado desde el lado del tercero que lo ejecuta.
+          vistaActiva="tareas"
+          pantalla="Subcontratos"
+          kpis={[
+            { rotulo: 'Paquetes', valor: `${data.paquetes.length}` },
+            // El 0 acá SÍ es un hecho medido —ninguno bloqueado—, no un dato que falta.
+            { rotulo: 'Sin poder iniciar', valor: `${bloqueados.length}` },
+            {
+              rotulo: 'Gente de terceros',
+              valor: `${data.paquetes.reduce((t, p) => t + p.personas_externas, 0)}`,
+            },
+          ]}
+        />
+      </div>
 
-      <div className="flex flex-col gap-4 px-4 lg:px-8">
+      <div className="flex flex-col gap-4 px-4 pt-4 lg:px-10">
         {/* Nivel 3: las dos maneras de mirar el MISMO alcance de la obra — lo que hace el plantel
             propio y lo que hace un tercero. */}
         <SubTabs

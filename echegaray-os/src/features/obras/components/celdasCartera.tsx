@@ -13,8 +13,10 @@
 
 import Link from 'next/link'
 import { Estado, Nulo, Num } from '@/shared/components/ds'
+import { IconoProblema } from '@/shared/components/iconos'
 import { ETAPAS, ETAPA_LABEL, type ObraPanel, type PlanVsReal } from '@/features/obras/types'
 import { PALABRA_SEMAFORO, type Semaforo } from '@/features/obras/services/ganttObras'
+import { tituloImpedimentos } from '@/features/obras/services/senalesCartera'
 
 /**
  * `dd/mm` A PARTIR DEL TEXTO ISO, sin `new Date` y sin `Intl`. Dos razones, las dos ya pagadas:
@@ -170,6 +172,59 @@ export function HH({ p }: { p: PlanVsReal | undefined }) {
   return (
     <span className={excedida ? 'text-warn' : undefined} title={excedida ? 'HH imputadas por encima del plan' : undefined}>
       {n(real)} / {plan == null ? 'sin plan' : n(plan)}
+    </span>
+  )
+}
+
+/**
+ * «HOY» — esta obra tiene parte de ejecución cargado hoy (Design canónico 01, columna HOY).
+ *
+ * ═══ AFIRMA PRESENCIA, NUNCA AUSENCIA ═══
+ *
+ * El canon dibuja también el caso contrario: un reloj naranja que dice «sin parte de hoy». No se
+ * implementa, y no es un olvido. A las nueve de la mañana ninguna obra cargó el parte todavía, así
+ * que el reloj naranja saldría en las diecisiete filas todos los días hasta el mediodía: una alarma
+ * que suena siempre deja de mirarse, y encima llama «obra sin reportar» a una obra que está
+ * trabajando. Cuando el OS tenga la hora a partir de la cual el parte SÍ se espera —hoy no la
+ * tiene—, la señal negativa se puede escribir sin mentir. Mientras tanto, la fila sin «HOY» no
+ * afirma nada, que es exactamente lo que se sabe.
+ *
+ * PUNTO + PALABRA, como el estado: es un hecho del día, no una etiqueta de categoría.
+ */
+export function SenalHoy({ conParte }: { conParte: boolean }) {
+  if (!conParte) return null
+  return (
+    <span title="Hoy se cargó parte de ejecución en esta obra" data-testid="senal-hoy">
+      <Estado tono="pos" clave="parte-hoy">HOY</Estado>
+    </span>
+  )
+}
+
+/**
+ * ⚠ N — impedimentos ABIERTOS de la obra (Design canónico 01, la columna del triángulo).
+ *
+ * Es el único dato de la cartera que no describe cómo viene la obra sino qué hay que ir a destrabar
+ * hoy, y por eso entra en una pantalla que el dueño mandó no convertir en dashboard: no es un
+ * indicador, es una fila de trabajo esperando a alguien.
+ *
+ * EL NÚMERO VA AL LADO DEL ICONO: un triángulo solo dice «pasa algo» y obliga a entrar a la obra
+ * para saber si es uno o son nueve. Sin ninguno no se dibuja un cero —ni el guion del canon dentro
+ * de la celda del nombre, que sería una raya suelta al lado del título—: la obra sin impedimentos
+ * simplemente no muestra la señal.
+ */
+export function SenalImpedimentos({ n }: { n: number }) {
+  if (n <= 0) return null
+  return (
+    <span
+      className="inline-flex items-center gap-1 text-warn"
+      title={tituloImpedimentos(n)}
+      data-testid="senal-impedimentos"
+      data-impedimentos={n}
+    >
+      {/* 14px, el tamaño del canon. El icono es el de `/campo` re-exportado por el design system:
+          el mismo triángulo que ve el jefe en el teléfono cuando reporta el problema. */}
+      <IconoProblema className="h-[14px] w-[14px]" />
+      <Num className="text-[11.5px]">{n}</Num>
     </span>
   )
 }

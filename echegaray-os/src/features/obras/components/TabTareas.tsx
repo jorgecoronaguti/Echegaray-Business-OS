@@ -236,7 +236,7 @@ export function TabTareas({
             {/* El carril de tiempo, alineado 1:1 con la fila: plan como pista, real hasta hoy,
                 línea amarilla de HOY. El Gantt operable (arrastre, dependencias gráficas) es la
                 vista Cronograma; esto es LEER el tiempo sin salir del árbol. */}
-            {rango && <Th className="hidden w-[240px] md:table-cell"><CabeceraCarril rango={rango} /></Th>}
+            {rango && <Th className="hidden w-[280px] md:table-cell"><CabeceraCarril rango={rango} /></Th>}
           </THead>
           <tbody>
             {filas.map((f) => (
@@ -333,6 +333,9 @@ function CabeceraCarril({ rango }: { rango: { desde: number; hasta: number } }) 
     })
     d.setUTCMonth(d.getUTCMonth() + 1)
   }
+  // Un rango más corto que un mes deja la lista vacía y la columna parecía no tener nombre (QA
+  // 24/08): el rótulo genérico sólo aparece cuando no hay meses que la nombren mejor.
+  if (meses.length === 0) return <span className="normal-case">Cronograma</span>
   return (
     <span className="relative block h-3 w-full normal-case">
       {meses.map((m) => (
