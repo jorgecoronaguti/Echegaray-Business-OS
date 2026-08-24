@@ -35,26 +35,29 @@
 // peso: un reloj que sigue corriendo sobre alguien que se fue a las tres es la forma más barata de
 // que la pantalla mienta durante toda la tarde.
 
+import type { ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/server'
-import { Avatar } from '@/shared/components/Avatar'
-import { PuntoActivo, RelojDeJornada } from '@/features/administracion/components/RelojDeJornada'
-import { lecturaDePunto } from '@/features/administracion/services/presencia'
 import { getPresencia } from '@/features/administracion/services/presenciaService'
-import { Aviso, Estado, Eyebrow, Vacio } from '@/shared/components/ds'
+import { Aviso, Eyebrow } from '@/shared/components/ds'
+import { ListaHoyEnObra } from './ListaHoyEnObra'
 import {
-  avisosDelDia, estadoDeFila, horasDeHoy, hoyEnObra, SIN_CUADRILLA,
-  type AsignadoDeObra, type AvisoDelDia, type FilaHoy, type GrupoHoy, type HoraDelDia,
+  avisosDelDia, horasDeHoy, hoyEnObra, SIN_CUADRILLA,
+  type AsignadoDeObra, type AvisoDelDia, type GrupoHoy, type HoraDelDia,
 } from '../services/presenciaObra'
 
-const hora = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : null)
 const hh = (v: number) => v.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
 
-export async function HoyEnObra({ obraId, asignaciones, registros = [] }: {
+export async function HoyEnObra({ obraId, asignaciones, registros = [], navegacion, accion }: {
   obraId: string
   asignaciones: AsignadoDeObra[]
   /** Los registros de HH que la solapa ya leyó. Se pasan para no volver a pedirlos: la columna de
    *  horas y el KPI de imputadas salen de ahí, no de una segunda lectura que podría diferir. */
   registros?: HoraDelDia[]
+  /** Las sub-vistas de Personal y la acción primaria: viajan hasta la BANDA, que es de la lista
+   *  (cliente) porque ahí viven también el buscador y los filtros. El canónico dibuja una sola
+   *  banda; dos apiladas le sacan 40px de alto a la lista. */
+  navegacion?: ReactNode
+  accion?: ReactNode
 }) {
   const supabase = await createClient()
   const hoy = new Date().toISOString().slice(0, 10)
@@ -77,31 +80,20 @@ export async function HoyEnObra({ obraId, asignaciones, registros = [] }: {
 
   return (
     <section data-testid="hoy-en-obra">
-      <div className="mb-2.5 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
-        <Eyebrow>Hoy en obra</Eyebrow>
-        <p className="font-mono text-[11.5px] text-faint tabular-nums">{hoy.split('-').reverse().join('/')}</p>
-      </div>
-
-      <BandaKpis r={r} horas={horas} />
-
-      {r.grupos.length === 0
-        ? <Vacio>Nadie tiene una asignación vigente ni marcó hoy en esta obra. Se asigna con «+ Asignar persona».</Vacio>
-        : (
-          // 340px es la medida del canónico para el panel lateral, y es la misma del panel de
-          // detalle del sistema (`--os-split-min-panel`). Por debajo de `xl` el panel baja: dos
-          // columnas de 300px cada una no dejan leer ni el nombre de la persona.
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-start">
-            <div className="min-w-0 flex-1 overflow-hidden rounded-card border border-line bg-surface">
-              {r.grupos.map((g) => (
-                <Grupo key={g.cuadrilla} grupo={g} horas={horas.porPersona} />
-              ))}
-            </div>
-            <div className="flex shrink-0 flex-col gap-3 xl:w-[340px]">
-              <AtencionDeHoy avisos={avisos} />
-              <DotacionPorFrente grupos={r.grupos} />
-            </div>
-          </div>
-          )}
+      <ListaHoyEnObra
+        grupos={r.grupos}
+        horas={horas.porPersona}
+        navegacion={navegacion}
+        accion={accion}
+        fecha={hoy.split('-').reverse().join('/')}
+        kpis={<BandaKpis r={r} horas={horas} />}
+        panel={
+          <>
+            <AtencionDeHoy avisos={avisos} />
+            <DotacionPorFrente grupos={r.grupos} />
+          </>
+        }
+      />
     </section>
   )
 }
@@ -143,83 +135,6 @@ function BandaKpis({ r, horas }: { r: ReturnType<typeof hoyEnObra>; horas: Retur
           </div>
         </div>
       ))}
-    </div>
-  )
-}
-
-function Grupo({ grupo, horas }: { grupo: GrupoHoy; horas: Map<string, number> }) {
-  const completa = grupo.asignados > 0 && grupo.presentes >= grupo.asignados
-  const hhGrupo = grupo.filas.reduce((t, f) => t + (horas.get(f.personaId) ?? 0), 0)
-  return (
-    <div data-testid="grupo-cuadrilla" data-cuadrilla={grupo.cuadrilla}>
-      <div className="flex items-center gap-2.5 border-y border-surface-sunken bg-surface-quiet px-3.5 py-2">
-        <span className="truncate text-[12.5px] font-semibold text-ink">{grupo.cuadrilla}</span>
-        <div className="ml-auto flex shrink-0 items-center gap-3.5">
-          {/* «N de M» y no una barra: presentes sobre asignados es una fracción de gente, no un
-              avance —y con 0 asignados no hay fracción que dibujar, hay alguien que fichó donde no
-              debía. */}
-          <span className={`font-mono text-[11.5px] tabular-nums ${completa ? 'text-pos' : 'text-muted'}`}>
-            {grupo.asignados === 0 ? `${grupo.presentes} sin asignar` : `${grupo.presentes} de ${grupo.asignados}`}
-          </span>
-          <span className="font-mono text-[12px] text-ink-soft tabular-nums">
-            {hhGrupo > 0 ? `${hh(hhGrupo)} HH` : <span className="text-faint">sin imputar</span>}
-          </span>
-        </div>
-      </div>
-      {grupo.filas.map((f) => <Fila key={f.personaId} fila={f} horas={horas} />)}
-    </div>
-  )
-}
-
-// LAS COLUMNAS SON LAS DEL CANÓNICO, con una diferencia declarada: donde la maqueta pone una flecha
-// de «mover de frente» acá no hay nada. Mover a alguien de cuadrilla se hace en la tabla de
-// asignaciones de abajo, y un botón que no escribe es peor que ningún botón.
-const COLS = 'minmax(0,1.4fr) minmax(0,1fr) 132px 60px 64px'
-
-function Fila({ fila, horas }: { fila: FilaHoy; horas: Map<string, number> }) {
-  const e = estadoDeFila(fila)
-  const activo = fila.marca?.estado === 'activo'
-  const punto = lecturaDePunto(fila.marca ?? { lat: null, lon: null, precision_m: null })
-  const suyas = horas.get(fila.personaId)
-  return (
-    <div
-      className={`grid h-fila items-center gap-2.5 border-b border-surface-sunken px-3.5 last:border-b-0 ${
-        fila.asignado ? '' : 'border-l-[3px] border-l-warn'
-      }`}
-      style={{ gridTemplateColumns: COLS }}
-      data-testid="fila-presencia-obra"
-    >
-      <div className="flex min-w-0 items-center gap-2.5">
-        {/* EL PUNTO VA PEGADO AL AVATAR y no en una columna propia: el canónico gasta el ancho en
-            el nombre, y el estado de la jornada es un atributo de la persona, no una columna. */}
-        <span className="flex w-2 shrink-0 justify-center">
-          {activo ? <PuntoActivo /> : <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-line-strong" />}
-        </span>
-        <Avatar nombre={fila.nombre} url={null} lado={24} />
-        <span className="truncate text-[12.5px] text-ink">{fila.nombre}</span>
-      </div>
-      <span className="truncate text-[12px] text-muted">
-        {fila.rol ?? <span className="text-faint">sin categoría</span>}
-      </span>
-      <span className="min-w-0">
-        <Estado tono={e.tono} clave={e.texto}>{e.texto}</Estado>
-        {/* La ubicación sólo habla cuando tiene algo que decir: un punto fiable no gasta una línea. */}
-        {fila.marca && !punto.fiable && punto.hay && (
-          <span className="block truncate text-[10.5px] text-warn">{punto.texto}</span>
-        )}
-      </span>
-      <span className="text-right font-mono text-[11.5px] text-ink-soft tabular-nums">
-        {hora(fila.marca?.entrada ?? null) ?? <span className="text-faint">—</span>}
-      </span>
-      <span className="text-right">
-        {activo
-          ? <RelojDeJornada entrada={fila.marca!.entrada} />
-          : (
-            <span className={`font-mono text-[11.5px] tabular-nums ${suyas == null ? 'text-faint' : 'text-ink-soft'}`}>
-              {suyas == null ? '—' : hh(suyas)}
-            </span>
-            )}
-      </span>
     </div>
   )
 }

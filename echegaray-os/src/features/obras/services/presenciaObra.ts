@@ -263,3 +263,70 @@ export function horasDeHoy(registros: readonly HoraDelDia[], fecha: string): Hor
   }
   return { porPersona, total }
 }
+
+// ═══ 09 · EL BUSCADOR Y LOS FILTROS DE LA BANDA (canónico 09) ═══
+//
+// El canónico pone sobre la lista un campo de búsqueda y cuatro pastillas con su cuenta. No es un
+// adorno: la obra grande tiene cuatro cuadrillas y treinta personas, y la pregunta de las siete de
+// la mañana —«¿quién no fichó?»— se contestaba leyendo las cuatro listas enteras.
+//
+// LAS PASTILLAS SON LAS DEL DATO, NO LAS DEL DIBUJO. La maqueta ofrece «Ausentes»; acá no existe
+// —ver arriba— y en su lugar van las dos excepciones que sí son hechos: los que CERRARON la
+// jornada y los que ficharon SIN ASIGNACIÓN. Una pastilla llamada «ausentes» llena con los que no
+// ficharon convertiría «no tengo el dato» en una acusación.
+
+export type FiltroHoy = 'todo' | 'en_obra' | 'sin_fichar' | 'cerraron' | 'sin_asignacion'
+
+export const FILTROS_HOY: { clave: FiltroHoy; label: string }[] = [
+  { clave: 'todo', label: 'Todos' },
+  { clave: 'en_obra', label: 'En obra' },
+  { clave: 'sin_fichar', label: 'Sin fichar' },
+  { clave: 'cerraron', label: 'Cerraron' },
+  { clave: 'sin_asignacion', label: 'Sin asignación' },
+]
+
+/** Si una fila cae dentro del filtro. Una sola definición: la usan el conteo de la pastilla y el
+ *  filtrado de la lista, y si fueran dos, la pastilla diría 3 y la lista mostraría 2. */
+export function caeEnFiltro(f: FilaHoy, filtro: FiltroHoy): boolean {
+  if (filtro === 'todo') return true
+  if (filtro === 'en_obra') return f.marca?.estado === 'activo'
+  if (filtro === 'sin_fichar') return f.asignado && !f.marca
+  if (filtro === 'cerraron') return Boolean(f.marca) && f.marca!.estado !== 'activo'
+  return !f.asignado
+}
+
+/** El texto compara contra el nombre y el rol, en minúsculas. Es lo que hace el canónico y lo que
+ *  hace falta: se busca «tello» o se busca «ayudante». */
+const coincideTexto = (f: FilaHoy, q: string) =>
+  q === '' || `${f.nombre} ${f.rol ?? ''}`.toLowerCase().includes(q)
+
+/**
+ * LAS FILAS QUE SE VEN. El grupo conserva SUS cuentas —presentes y asignados son la realidad de la
+ * cuadrilla, no de la búsqueda—: recalcularlas sobre lo filtrado haría que buscar «Tello» dijera
+ * que la Cuadrilla 1 tiene una sola persona.
+ *
+ * Un grupo sin filas visibles no se dibuja: una cabecera de cuadrilla vacía se lee como una
+ * cuadrilla sin nadie, que es un hecho distinto de «nadie de esta cuadrilla coincide».
+ */
+export function filtrarHoy(
+  grupos: readonly GrupoHoy[], { texto = '', filtro = 'todo' }: { texto?: string; filtro?: FiltroHoy } = {},
+): GrupoHoy[] {
+  const q = texto.trim().toLowerCase()
+  return grupos
+    .map((g) => ({ ...g, filas: g.filas.filter((f) => coincideTexto(f, q) && caeEnFiltro(f, filtro)) }))
+    .filter((g) => g.filas.length > 0)
+}
+
+/** Cuántas hay detrás de cada pastilla. Sobre TODAS las filas, no sobre las que quedaron a la
+ *  vista: un contador que se recalcula con el filtro puesto dice «Sin fichar 0» justo cuando se
+ *  está mirando el filtro de en obra. */
+export function cuentasDeHoy(grupos: readonly GrupoHoy[]): Record<FiltroHoy, number> {
+  const todas = grupos.flatMap((g) => g.filas)
+  return {
+    todo: todas.length,
+    en_obra: todas.filter((f) => caeEnFiltro(f, 'en_obra')).length,
+    sin_fichar: todas.filter((f) => caeEnFiltro(f, 'sin_fichar')).length,
+    cerraron: todas.filter((f) => caeEnFiltro(f, 'cerraron')).length,
+    sin_asignacion: todas.filter((f) => caeEnFiltro(f, 'sin_asignacion')).length,
+  }
+}
