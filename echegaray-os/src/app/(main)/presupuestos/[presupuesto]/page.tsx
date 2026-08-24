@@ -23,13 +23,15 @@ import {
 import { estaCongelado, tieneCifras } from '@/features/presupuestos/services/cascada'
 import { puedeCongelar, puedeConvertir, lecturaEstado } from '@/features/presupuestos/services/estado'
 import { rubroDe, subcontratadasFueraDelPrecio } from '@/features/presupuestos/services/partidas'
-import { fecha, hh, plata } from '@/features/presupuestos/services/formato'
+import { fecha, plata } from '@/features/presupuestos/services/formato'
 import { CascadaPrecio } from '@/features/presupuestos/components/CascadaPrecio'
+import { ResumenPresupuesto } from '@/features/presupuestos/components/ResumenPresupuesto'
 import { TablaPartidas } from '@/features/presupuestos/components/TablaPartidas'
 import { PanelPartida } from '@/features/presupuestos/components/PanelPartida'
 import { AltaPartida } from '@/features/presupuestos/components/AltaPartida'
 import { AccionesPresupuesto } from '@/features/presupuestos/components/AccionesPresupuesto'
-import { Aviso, BarraContexto, Estado, MetaContexto } from '@/shared/components/ds'
+import { Aviso, Ayuda, EntityHeader, Estado, Plegable } from '@/shared/components/ds'
+import { IconoCerrar, IconoCrear } from '@/shared/components/iconos'
 import { EstadoError } from '@/shared/components/estado'
 
 export const dynamic = 'force-dynamic'
@@ -83,61 +85,53 @@ export default async function PresupuestoPage({
 
   return (
     <div className="min-h-screen bg-canvas">
-      <BarraContexto
-        volverA="/presupuestos"
-        volverLabel="Presupuestos"
-        titulo={`${presupuesto.numero ?? 'sin número'} · ${presupuesto.obra_nombre ?? 'sin objeto'}`}
-        meta={
-          <>
-            <MetaContexto rotulo="Cliente">{presupuesto.cliente ?? 'sin cliente'}</MetaContexto>
-            <MetaContexto rotulo="Versión">
-              {presupuesto.version}{presupuesto.vigente ? ' · vigente' : ' · reemplazada'}
-            </MetaContexto>
-            <MetaContexto rotulo="Estado" destacado>
-              {e.label}{presupuesto.fecha_cotizacion ? ` ${fecha(presupuesto.fecha_cotizacion)}` : ''}
-            </MetaContexto>
-            <MetaContexto>
-              {presupuesto.n_partidas} {presupuesto.n_partidas === 1 ? 'partida' : 'partidas'}
-            </MetaContexto>
-            {congelado && (
-              <MetaContexto rotulo="Congelado">{fecha(presupuesto.congelada_en)}</MetaContexto>
-            )}
-          </>
-        }
-        kpis={[
-          { rotulo: 'Precio de venta', valor: tieneCifras(presupuesto) ? plata(presupuesto.precio_venta) : null, falta: 'sin cargar' },
-          { rotulo: 'HH del contrato', valor: tieneCifras(presupuesto) ? hh(presupuesto.hh_previstas) : null, falta: 'sin cargar' },
-        ]}
-        acciones={
-          <AccionesPresupuesto
-            id={presupuesto.id}
-            estado={presupuesto.estado}
-            congelado={congelado}
-            puedeCongelar={congelar.puede}
-            motivoCongelar={congelar.motivo}
-            puedeConvertir={convertir.puede}
-            motivoConvertir={convertir.motivo}
-            hrefConvertir={`/presupuestos/${presupuesto.id}/convertir`}
-          />
-        }
-      />
+      <div className="w-full px-4 pt-6 lg:px-10">
+        {/* ENCABEZADO CLARO, NO SLAB GRAFITO (Design 23/08 · pantallas 13/15/16): el presupuesto se
+            EDITA, no se consulta como una ficha. Una barra oscura de 96px arriba de una tabla que
+            se recorre celda por celda roba el contraste que necesita la tabla, y obliga a que las
+            acciones —congelar, versionar, convertir— se dibujen en blancos translúcidos que no son
+            tokens del sistema. */}
+        <EntityHeader
+          volverA="/presupuestos"
+          volverLabel="Presupuestos"
+          titulo={presupuesto.obra_nombre ?? 'sin objeto'}
+          campos={[
+            { rotulo: 'Presupuesto', valor: presupuesto.numero, falta: 'sin número' },
+            { rotulo: 'Cliente', valor: presupuesto.cliente, falta: 'sin cliente' },
+            {
+              rotulo: 'Versión',
+              valor: `${presupuesto.version}${presupuesto.vigente ? '' : ' · reemplazada'}`,
+            },
+            { rotulo: 'Cotizado', valor: fecha(presupuesto.fecha_cotizacion), falta: 'sin fecha' },
+            ...(congelado
+              ? [{ rotulo: 'Congelado', valor: fecha(presupuesto.congelada_en), falta: 'sin fecha' }]
+              : []),
+          ]}
+          derecha={<Estado tono={e.tono} clave={e.clave}>{e.label}</Estado>}
+          acciones={
+            <AccionesPresupuesto
+              id={presupuesto.id}
+              estado={presupuesto.estado}
+              congelado={congelado}
+              puedeCongelar={congelar.puede}
+              motivoCongelar={congelar.motivo}
+              puedeConvertir={convertir.puede}
+              motivoConvertir={convertir.motivo}
+              hrefConvertir={`/presupuestos/${presupuesto.id}/convertir`}
+            />
+          }
+        />
+      </div>
 
-      <div className="w-full px-4 py-5 lg:px-10">
+      <div className="w-full px-4 pb-5 lg:px-10">
         {congelado && (
-          <div className="mb-4">
-            <Aviso tono="info" titulo="Congelado" testid="aviso-congelado">
-              Este presupuesto salió el {fecha(presupuesto.congelada_en)} y su composición quedó
-              copiada tal como estaba ese día. No se edita: para cambiarlo se crea una versión nueva.
-            </Aviso>
-          </div>
-        )}
-        {presupuesto.n_sin_analisis > 0 && (
-          <div className="mb-4">
-            <Aviso tono="warn" titulo={`${presupuesto.n_sin_analisis} ${presupuesto.n_sin_analisis === 1 ? 'partida' : 'partidas'} sin análisis`} testid="aviso-sin-analisis">
-              Se cotizan igual y no valen $ 0: valen lo que todavía no se cargó. Sin análisis no
-              aportan HH, y al convertir a obra sus actividades nacen sin plazo.
-            </Aviso>
-          </div>
+          // CONGELADO ES UN ESTADO, NO UN PROBLEMA: vive en la línea de campos del encabezado. Lo
+          // que sí hace falta explicar —que ya no se edita y que para cambiarlo se versiona— pasó a
+          // ayuda bajo demanda; era un bloque `info` a ancho completo que se leía una vez.
+          <Ayuda titulo="Qué significa que esté congelado" testid="ayuda-congelado">
+            Este presupuesto salió el {fecha(presupuesto.congelada_en)} y su composición quedó
+            copiada tal como estaba ese día. No se edita: para cambiarlo se crea una versión nueva.
+          </Ayuda>
         )}
         {subFuera.n > 0 && (
           <div className="mb-4">
@@ -153,18 +147,18 @@ export default async function PresupuestoPage({
             </Aviso>
           </div>
         )}
-        {presupuesto.n_sin_computo > 0 && (
-          <div className="mb-4">
-            <Aviso tono="warn" titulo={`${presupuesto.n_sin_computo} sin cómputo`} testid="aviso-sin-computo">
-              Una partida sin cantidad no entra en el costo directo y no se puede convertir en plan
-              de obra: no hay cantidad que repartir entre frentes.
-            </Aviso>
-          </div>
-        )}
+        {/* «Sin análisis» y «sin cómputo» eran dos bloques de aviso a ancho completo. Ahora el
+            CONTADOR vive en la franja de arriba y el CHIP que filtra la tabla, en su toolbar: el
+            mismo número, pero al lado de las filas que hay que arreglar. */}
+        <ResumenPresupuesto p={presupuesto} />
 
-        <CascadaPrecio p={presupuesto} />
+        <div className="mt-2">
+          <Plegable titulo="Cómo se llega a ese precio" testid="cascada-plegable">
+            <CascadaPrecio p={presupuesto} />
+          </Plegable>
+        </div>
 
-        <div className={`mt-5 grid min-w-0 gap-6 ${seleccionada ? 'xl:grid-cols-[minmax(0,1fr)_400px]' : ''}`}>
+        <div className={`mt-4 grid min-w-0 gap-6 ${seleccionada ? 'xl:grid-cols-[minmax(0,1fr)_400px]' : ''}`}>
           <TablaPartidas
             partidas={lista}
             cotizacionId={presupuesto.id}
@@ -176,11 +170,12 @@ export default async function PresupuestoPage({
                 <Link
                   href={nueva === '1' ? `/presupuestos/${id}` : `/presupuestos/${id}?nueva=1`}
                   data-testid="abrir-alta-partida"
-                  className={`shrink-0 rounded-control px-3.5 py-[7px] text-[12.5px] ${
-                    nueva === '1' ? 'border border-line text-ink' : 'bg-marca font-medium text-[color:var(--os-on-marca)]'
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-control px-3 py-[6px] text-[12.5px] ${
+                    nueva === '1' ? 'border border-line text-ink' : 'bg-marca font-semibold text-[color:var(--os-on-marca)]'
                   }`}
                 >
-                  {nueva === '1' ? 'Cancelar' : '+ Partida'}
+                  {nueva === '1' ? <IconoCerrar className="h-[14px] w-[14px]" /> : <IconoCrear className="h-[14px] w-[14px]" />}
+                  {nueva === '1' ? 'Cancelar' : 'Partida'}
                 </Link>
               )
             }

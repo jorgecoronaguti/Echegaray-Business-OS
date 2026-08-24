@@ -1,22 +1,33 @@
 'use client'
 
-// LAS ACCIONES DEL PRESUPUESTO — una primaria por contexto, y las demás en texto.
+// LAS ACCIONES DEL PRESUPUESTO — una primaria por contexto, y las demás en icono o texto.
 //
 // «Convertir a obra» es la primaria de la pantalla 15. Cuando todavía no corresponde —el
-// presupuesto no está adjudicado, o no está congelado— NO se esconde: se dibuja apagada y con el
-// motivo al lado. Un botón que desaparece obliga a adivinar qué falta; uno apagado que dice
-// «congelá primero» enseña el ciclo.
+// presupuesto no está adjudicado, o no está congelado— NO se esconde: se dibuja apagada y el motivo
+// va en su `title`. Un botón que desaparece obliga a adivinar qué falta; uno apagado que al pasar
+// por encima dice «congelá primero» enseña el ciclo sin ocupar 240px de la línea del encabezado.
 //
 // «Congelar» tiene efecto irreversible: copia la composición y fija el costo. Por eso su leyenda
-// dice qué hace ANTES de tocarlo, y no hay `window.confirm` — un diálogo nativo no se lee en el
-// teléfono y no queda como evidencia en la pantalla.
+// dice qué hace ANTES de tocarlo —bajo demanda, en el `title`— y no hay `window.confirm`: un diálogo
+// nativo no se lee en el teléfono y no queda como evidencia en la pantalla.
+//
+// ═══ TOKENS CLAROS, NO BLANCOS TRANSLÚCIDOS (Design 23/08) ═══
+//
+// Estos controles vivían sobre el slab grafito y estaban escritos en `text-white/40`, `bg-white/10`
+// y `border-white/20` — nueve valores que no existen en `globals.css`. Con el encabezado claro de la
+// 15 pasan a los tokens del sistema, que es lo que hace que un botón deshabilitado se vea igual acá
+// que en Compras.
 
 import Link from 'next/link'
 import { useActionState, startTransition, type FormEvent } from 'react'
+import { IconoHistorial } from '@/shared/components/iconos'
 import { cambiarEstado, congelar, nuevaVersion } from '../services/actions'
 import { INICIAL, type EstadoAccion } from '../services/accion'
 import { transicionesDe, lecturaEstado } from '../services/estado'
 import type { EstadoPresupuesto } from '../types'
+
+const SECUNDARIO =
+  'inline-flex items-center gap-1.5 rounded-control border border-line px-2.5 py-[6px] text-[12.5px] text-ink transition-colors hover:bg-surface-quiet disabled:cursor-not-allowed disabled:border-line disabled:text-faint disabled:hover:bg-transparent'
 
 export function AccionesPresupuesto({
   id,
@@ -38,7 +49,7 @@ export function AccionesPresupuesto({
   hrefConvertir: string
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2" data-testid="acciones-presupuesto">
+    <div className="flex flex-wrap items-center gap-2" data-testid="acciones-presupuesto">
       <CambiarEstado id={id} estado={estado} />
       {!congelado && <Congelar id={id} puede={puedeCongelar} motivo={motivoCongelar} />}
       <NuevaVersion id={id} />
@@ -51,11 +62,14 @@ export function AccionesPresupuesto({
           Convertir a obra
         </Link>
       ) : (
-        <span className="inline-flex items-center gap-2" data-testid="convertir-bloqueado">
-          <span className="cursor-not-allowed rounded-control bg-white/10 px-3.5 py-[7px] text-[12.5px] font-semibold text-white/40">
-            Convertir a obra
-          </span>
-          <span className="max-w-[240px] text-[11px] leading-tight text-white/50">{motivoConvertir}</span>
+        // El motivo va en el `title`, no en 240px de texto permanente al lado del botón: es la
+        // respuesta a «por qué está apagado», y esa pregunta se hace una vez.
+        <span
+          data-testid="convertir-bloqueado"
+          title={motivoConvertir ?? undefined}
+          className="cursor-not-allowed rounded-control bg-surface-sunken px-3.5 py-[7px] text-[12.5px] font-semibold text-faint"
+        >
+          Convertir a obra
         </span>
       )}
     </div>
@@ -66,7 +80,7 @@ function CambiarEstado({ id, estado }: { id: string; estado: EstadoPresupuesto }
   const [res, ejecutar, pendiente] = useActionState<EstadoAccion, FormData>(cambiarEstado, INICIAL)
   const opciones = transicionesDe(estado)
   if (opciones.length === 0) {
-    return <span className="text-[11.5px] text-white/45" data-testid="estado-final">El ciclo de este presupuesto terminó</span>
+    return <span className="text-[11.5px] text-faint" data-testid="estado-final">Ciclo terminado</span>
   }
   return (
     <form
@@ -85,11 +99,11 @@ function CambiarEstado({ id, estado }: { id: string; estado: EstadoPresupuesto }
         aria-label="Pasar el presupuesto a otro estado"
         data-testid="cambiar-estado"
         onChange={(e) => { if (e.target.value) e.currentTarget.form?.requestSubmit() }}
-        className="rounded-control border border-white/20 bg-transparent px-2 py-1 text-[12px] text-white/80"
+        className="h-[32px] rounded-control border border-line-strong bg-surface px-2 text-[12.5px] text-ink"
       >
-        <option value="" disabled className="text-ink">Pasar a…</option>
+        <option value="" disabled>Pasar a…</option>
         {opciones.map((o) => (
-          <option key={o} value={o} className="text-ink">{lecturaEstado(o).label}</option>
+          <option key={o} value={o}>{lecturaEstado(o).label}</option>
         ))}
       </select>
       {res.error && <span className="text-[11px] text-neg">{res.error}</span>}
@@ -113,13 +127,11 @@ function Congelar({ id, puede, motivo }: { id: string; puede: boolean; motivo: s
         type="submit"
         disabled={!puede || pendiente}
         data-testid="congelar"
-        className="rounded-control border border-white/20 px-2.5 py-1 text-[12px] text-white/80 hover:bg-white/10 disabled:cursor-not-allowed disabled:text-white/30 disabled:hover:bg-transparent"
+        title={motivo ?? 'Copia la composición de cada partida y fija el costo. Se hace una sola vez.'}
+        className={SECUNDARIO}
       >
         {pendiente ? 'Congelando…' : 'Congelar'}
       </button>
-      <span className="max-w-[280px] text-[11px] leading-tight text-white/45">
-        {motivo ?? 'Copia la composición de cada partida y fija el costo. Se hace una sola vez.'}
-      </span>
       {res.mensaje && <span className="text-[11px] text-pos">{res.mensaje}</span>}
       {res.error && <span className="text-[11px] text-neg" data-testid="congelar-error">{res.error}</span>}
     </form>
@@ -138,8 +150,14 @@ function NuevaVersion({ id }: { id: string }) {
       className="flex items-center gap-2"
     >
       <input type="hidden" name="id" value={id} />
-      <button type="submit" disabled={pendiente} data-testid="nueva-version"
-        className="text-[12.5px] text-white/70 underline-offset-2 hover:text-white hover:underline disabled:text-white/30">
+      <button
+        type="submit"
+        disabled={pendiente}
+        data-testid="nueva-version"
+        title="Crea una versión nueva desde ésta. La anterior queda como reemplazada."
+        className={SECUNDARIO}
+      >
+        <IconoHistorial className="h-[14px] w-[14px]" />
         {pendiente ? 'Creando…' : 'Nueva versión'}
       </button>
       {res.mensaje && <span className="text-[11px] text-pos">{res.mensaje}</span>}

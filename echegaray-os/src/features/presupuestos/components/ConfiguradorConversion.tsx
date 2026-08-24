@@ -1,6 +1,17 @@
 'use client'
 
-// 13 · EL CONFIGURADOR — plantilla, frentes, método, y el árbol que se va a generar.
+// 13 · EL CONFIGURADOR — plantilla, frentes, y el árbol que se va a generar.
+//
+// ═══ TRES ZONAS, NO CINCO (Design 23/08 · COMPONENTS.md §Conversion panel) ═══
+//
+// El patrón canónico es «plantilla de secuencia · frentes · árbol resultante», con el árbol ANTES
+// de generar y la primaria adentro de esa tercera zona. Eran cinco bloques numerados y dos de ellos
+// no eran decisiones propias: el MÉTODO DE MEDICIÓN se decide con la plantilla —elegir «sin pasos»
+// ya descarta «pasos ponderados»— y las FECHAS Y LA DOTACIÓN son atributos del frente, que estaban
+// en una segunda tabla con las mismas filas que la primera. Un frente = una fila.
+//
+// El árbol pasa a la derecha, fijo: es la respuesta a «¿qué va a quedar en la obra?» y se mira
+// mientras se toca el stepper, no después de scrollear.
 //
 // ═══ ACÁ NO VIVE NINGUNA REGLA; ACÁ SE MUESTRAN ═══
 //
@@ -107,9 +118,10 @@ export function ConfiguradorConversion({
           : `Del análisis: ${rendimiento(p.hs_unitarias)} hs/${p.unidad ?? 'un'} · la conversión reparte trabajo, no cambia cantidad ni costo`}
       </p>
 
-      <div className="mt-4 grid gap-6 lg:grid-cols-2">
+      <div className="mt-4 grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,330px)]">
+        <div className="min-w-0 space-y-6">
         <section data-testid="bloque-plantilla">
-          <h3 className="text-[10px] font-medium uppercase tracking-[0.06em] text-faint">1 · Plantilla de secuencia</h3>
+          <Zona n={1}>Plantilla de secuencia</Zona>
           <div className="mt-2 space-y-1">
             {plantillas.map((pl) => (
               <Opcion key={pl.id} activa={plantillaId === pl.id} onClick={() => setPlantillaId(pl.id)}
@@ -121,10 +133,40 @@ export function ConfiguradorConversion({
           {plantillas.length === 0 && (
             <p className="mt-2 text-[11.5px] text-warn">No hay plantillas activas cargadas en la base maestra.</p>
           )}
+
+          {/* EL MÉTODO VIVE CON LA PLANTILLA, no en un bloque propio: elegir «sin pasos» ya descarta
+              «pasos ponderados», y tenerlos separados hacía parecer que eran dos decisiones
+              independientes cuando una restringe a la otra. */}
+          <div className="mt-3 border-t border-[#EFEEEA] pt-2.5" data-testid="bloque-metodo">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+              <span className="text-[11.5px] text-muted">Las actividades avanzan por</span>
+              <div className="flex flex-wrap gap-1.5">
+                {(['pasos', 'cantidad', 'manual'] as const).map((m) => {
+                  const disponible = m !== 'pasos' || plantilla !== null
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      disabled={!disponible}
+                      onClick={() => setMetodoElegido(m)}
+                      data-testid={`metodo-${m}`}
+                      title={disponible ? NOTA_METODO[m] : 'Hace falta una plantilla con pasos'}
+                      className={`rounded-control border px-2.5 py-1 text-[12px] ${
+                        metodo === m ? 'border-marca bg-marca-soft font-semibold text-ink' : 'border-line text-muted'
+                      } disabled:cursor-not-allowed disabled:text-faint`}
+                    >
+                      {m === 'pasos' ? 'Pasos ponderados' : m === 'cantidad' ? 'Cantidad' : 'Manual'}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-faint" data-testid="nota-metodo">{NOTA_METODO[metodo]}</p>
+          </div>
         </section>
 
         <section data-testid="bloque-frentes">
-          <h3 className="text-[10px] font-medium uppercase tracking-[0.06em] text-faint">2 · Frentes</h3>
+          <Zona n={2}>Frentes</Zona>
           <div className="mt-2 flex items-center gap-3">
             <div className="inline-flex items-center gap-2 rounded-control border border-line px-2 py-1">
               <button type="button" onClick={() => cambiarN(n - 1)} disabled={n <= 1}
@@ -138,15 +180,29 @@ export function ConfiguradorConversion({
             <span className="text-[11px] text-faint">reparto igual, editable</span>
           </div>
 
-          <ul className="mt-2.5 space-y-1.5">
+          {/* UN FRENTE = UNA FILA. Nombre, cantidad, HH, inicio, dotación y tope eran dos tablas con
+              las MISMAS filas separadas por un bloque de método: para saber qué fecha le tocaba al
+              frente 3 había que contar filas en dos listas. La fecha de inicio la EXIGE la base —sin
+              ella la conversión crea actividades sin dimensión temporal y `obra_avance` no las
+              cuenta—; la dotación es opcional a propósito y sin ella el plan sale con inicio y sin
+              fin, dicho abajo. */}
+          <div className="mt-2.5 grid grid-cols-[minmax(96px,1fr)_74px_54px_128px_50px_50px] gap-x-2 pb-1 text-[10px] uppercase tracking-[0.05em] text-faint">
+            <span>Frente</span>
+            <span className="text-right">Cant.</span>
+            <span className="text-right">HH</span>
+            <span>Inicio</span>
+            <span className="text-right">Dot.</span>
+            <span className="text-right">Tope</span>
+          </div>
+          <ul className="space-y-1.5">
             {frentes.map((f, i) => (
-              <li key={i} className="flex items-center gap-2" data-testid="frente">
+              <li key={i} className="grid grid-cols-[minmax(96px,1fr)_74px_54px_128px_50px_50px] items-center gap-x-2" data-testid="frente">
                 <input
                   value={f.nombre}
                   onChange={(e) => setFrentes(frentes.map((x, j) => (j === i ? { ...x, nombre: e.target.value } : x)))}
                   aria-label={`Nombre del frente ${i + 1}`}
                   data-testid={`frente-nombre-${i}`}
-                  className="min-w-0 flex-1 rounded-control border border-line bg-surface px-2 py-1 text-[12.5px] text-ink"
+                  className="min-w-0 rounded-control border border-line bg-surface px-2 py-1 text-[12.5px] text-ink"
                 />
                 <input
                   value={String(f.cantidad).replace('.', ',')}
@@ -154,11 +210,37 @@ export function ConfiguradorConversion({
                   onChange={(e) => setFrentes(frentes.map((x, j) => (j === i ? { ...x, cantidad: Number(e.target.value.replace(',', '.')) } : x)))}
                   aria-label={`Cantidad del frente ${i + 1}`}
                   data-testid={`frente-cantidad-${i}`}
-                  className="w-[86px] shrink-0 rounded-control border border-line bg-surface px-2 py-1 text-right font-mono text-[12px] tabular-nums text-ink"
+                  className="min-w-0 rounded-control border border-line bg-surface px-2 py-1 text-right font-mono text-[12px] tabular-nums text-ink"
                 />
-                <span className="w-[64px] shrink-0 text-right font-mono text-[11px] tabular-nums text-faint">
+                <span className="truncate text-right font-mono text-[11px] tabular-nums text-faint">
                   {fHH(hhDelFrente(f.cantidad, p.hs_unitarias)) ?? 'sin HH'}
                 </span>
+                <input
+                  type="date"
+                  value={f.inicio ?? ''}
+                  onChange={(e) => setFrentes(frentes.map((x, j) => (j === i ? { ...x, inicio: e.target.value } : x)))}
+                  aria-label={`Inicio del frente ${i + 1}`}
+                  data-testid={`frente-inicio-${i}`}
+                  className="min-w-0 rounded-control border border-line bg-surface px-2 py-1 font-mono text-[12px] tabular-nums text-ink"
+                />
+                <input
+                  value={f.dotacion == null ? '' : String(f.dotacion)}
+                  inputMode="numeric"
+                  onChange={(e) => setFrentes(frentes.map((x, j) => (j === i
+                    ? { ...x, dotacion: e.target.value.trim() === '' ? null : Number(e.target.value) } : x)))}
+                  aria-label={`Dotación del frente ${i + 1}`}
+                  data-testid={`frente-dotacion-${i}`}
+                  className="min-w-0 rounded-control border border-line bg-surface px-2 py-1 text-right font-mono text-[12px] tabular-nums text-ink"
+                />
+                <input
+                  value={f.tope == null ? '' : String(f.tope)}
+                  inputMode="numeric"
+                  onChange={(e) => setFrentes(frentes.map((x, j) => (j === i
+                    ? { ...x, tope: e.target.value.trim() === '' ? null : Number(e.target.value) } : x)))}
+                  aria-label={`Tope del frente ${i + 1}`}
+                  data-testid={`frente-tope-${i}`}
+                  className="min-w-0 rounded-control border border-line bg-surface px-2 py-1 text-right font-mono text-[12px] tabular-nums text-ink"
+                />
               </li>
             ))}
           </ul>
@@ -172,81 +254,6 @@ export function ConfiguradorConversion({
           {!control.cierra && (
             <p className="mt-1 text-[11.5px] text-warn" data-testid="motivo-cierre">{control.motivo}</p>
           )}
-        </section>
-
-        <section data-testid="bloque-metodo">
-          <h3 className="text-[10px] font-medium uppercase tracking-[0.06em] text-faint">
-            3 · Método de medición de las actividades
-          </h3>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {(['pasos', 'cantidad', 'manual'] as const).map((m) => {
-              const disponible = m !== 'pasos' || plantilla !== null
-              return (
-                <button
-                  key={m}
-                  type="button"
-                  disabled={!disponible}
-                  onClick={() => setMetodoElegido(m)}
-                  data-testid={`metodo-${m}`}
-                  className={`rounded-control border px-2.5 py-1 text-[12px] ${
-                    metodo === m ? 'border-marca bg-marca-soft font-semibold text-ink' : 'border-line text-muted'
-                  } disabled:cursor-not-allowed disabled:text-faint`}
-                >
-                  {m === 'pasos' ? 'Pasos ponderados' : m === 'cantidad' ? 'Cantidad' : 'Manual'}
-                </button>
-              )
-            })}
-          </div>
-          <p className="mt-2 text-[11.5px] leading-relaxed text-muted" data-testid="nota-metodo">{NOTA_METODO[metodo]}</p>
-        </section>
-
-        {/* ═══ 4 · FECHAS Y DOTACIÓN ═══════════════════════════════════════════════════════════
-            La fecha de inicio de cada frente es OBLIGATORIA y la exige la base. Sin ella, la
-            conversión creaba actividades que parecen planificadas y no tienen dimensión temporal:
-            `obra_avance` sólo cuenta las que tienen inicio, así que la obra recién convertida
-            publicaba «sin actividades medidas» con el plan entero cargado.
-
-            La dotación es opcional a propósito — hay obras que se planifican antes de saber con
-            cuánta gente— y sin ella el plan sale con inicio y SIN fin, dicho en el resultado. */}
-        <section data-testid="bloque-fechas">
-          <h3 className="text-[10px] font-medium uppercase tracking-[0.06em] text-faint">
-            4 · Fechas y dotación por frente
-          </h3>
-          <ul className="mt-2 space-y-1.5">
-            {frentes.map((f, i) => (
-              <li key={i} className="flex items-center gap-2" data-testid="frente-plan">
-                <span className="min-w-0 flex-1 truncate text-[12px] text-muted">{f.nombre}</span>
-                <input
-                  type="date"
-                  value={f.inicio ?? ''}
-                  onChange={(e) => setFrentes(frentes.map((x, j) => (j === i ? { ...x, inicio: e.target.value } : x)))}
-                  aria-label={`Inicio del frente ${i + 1}`}
-                  data-testid={`frente-inicio-${i}`}
-                  className="w-[130px] shrink-0 rounded-control border border-line bg-surface px-2 py-1 font-mono text-[12px] tabular-nums text-ink"
-                />
-                <input
-                  value={f.dotacion == null ? '' : String(f.dotacion)}
-                  inputMode="numeric"
-                  placeholder="dot."
-                  onChange={(e) => setFrentes(frentes.map((x, j) => (j === i
-                    ? { ...x, dotacion: e.target.value.trim() === '' ? null : Number(e.target.value) } : x)))}
-                  aria-label={`Dotación del frente ${i + 1}`}
-                  data-testid={`frente-dotacion-${i}`}
-                  className="w-[58px] shrink-0 rounded-control border border-line bg-surface px-2 py-1 text-right font-mono text-[12px] tabular-nums text-ink"
-                />
-                <input
-                  value={f.tope == null ? '' : String(f.tope)}
-                  inputMode="numeric"
-                  placeholder="tope"
-                  onChange={(e) => setFrentes(frentes.map((x, j) => (j === i
-                    ? { ...x, tope: e.target.value.trim() === '' ? null : Number(e.target.value) } : x)))}
-                  aria-label={`Tope del frente ${i + 1}`}
-                  data-testid={`frente-tope-${i}`}
-                  className="w-[58px] shrink-0 rounded-control border border-line bg-surface px-2 py-1 text-right font-mono text-[12px] tabular-nums text-ink"
-                />
-              </li>
-            ))}
-          </ul>
           {fechas.motivo && (
             <p className="mt-1.5 text-[11.5px] text-warn" data-testid="motivo-fechas">{fechas.motivo}</p>
           )}
@@ -261,28 +268,35 @@ export function ConfiguradorConversion({
             El trabajo se mide en días hábiles de la obra; el tiempo técnico, en días de calendario.
           </p>
         </section>
+        </div>
 
-        <section data-testid="bloque-plan">
-          <h3 className="text-[10px] font-medium uppercase tracking-[0.06em] text-faint">5 · Plan que se va a generar</h3>
-          <pre className="mt-2 overflow-x-auto whitespace-pre font-mono text-[12px] leading-[1.6] text-ink-soft" data-testid="arbol-previsto">
+        {/* ═══ ZONA 3 · EL ÁRBOL, ANTES DE GENERAR ═══
+            «El árbol resultante se muestra ANTES de generar» (COMPONENTS.md §Conversion panel). Por
+            eso la primaria vive ACÁ y no al pie de la pantalla: el botón que promete N actividades
+            tiene que estar debajo de las N actividades que promete. `nActividades` es el mismo
+            `v_n_act` que cuenta la función en Postgres — si prometiera otro número, el mensaje de
+            éxito sería el primer dato falso de la obra. */}
+        <section className="min-w-0" data-testid="bloque-plan">
+          <Zona n={3}>Lo que se va a generar</Zona>
+          <div className="mt-2 rounded-card border border-line bg-surface-quiet p-3">
+            <pre className="overflow-x-auto whitespace-pre font-mono text-[11.5px] leading-[1.6] text-ink-soft" data-testid="arbol-previsto">
 {arbol.map((nodo) => `${'   '.repeat(Math.max(0, nodo.nivel - 1))}${nodo.nivel === 0 ? '' : '└ '}${nodo.texto}`).join('\n')}
-          </pre>
+            </pre>
+          </div>
+          <button
+            type="button"
+            onClick={generar}
+            disabled={!control.cierra || !fechas.ok || pendiente || nActividades === 0}
+            data-testid="generar-actividades"
+            className="mt-3 w-full rounded-control bg-marca px-3.5 py-[8px] text-[12.5px] font-semibold text-[color:var(--os-on-marca)] hover:brightness-[0.97] disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-faint"
+          >
+            {pendiente ? 'Generando…' : `Generar ${nActividades} ${nActividades === 1 ? 'actividad' : 'actividades'}`}
+          </button>
+          {/* La trazabilidad se dice en UNA línea, no en un párrafo (COMPONENTS.md). */}
+          <p className="mt-1.5 text-[11px] text-faint">
+            Cada una guarda {p.codigo ?? 'la partida'} y su análisis.
+          </p>
         </section>
-      </div>
-
-      <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-line pt-4">
-        <button
-          type="button"
-          onClick={generar}
-          disabled={!control.cierra || !fechas.ok || pendiente || nActividades === 0}
-          data-testid="generar-actividades"
-          className="rounded-control bg-marca px-3.5 py-[7px] text-[12.5px] font-semibold text-[color:var(--os-on-marca)] hover:brightness-[0.97] disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-faint"
-        >
-          {pendiente ? 'Generando…' : `Generar ${nActividades} ${nActividades === 1 ? 'actividad' : 'actividades'}`}
-        </button>
-        <span className="text-[11.5px] text-faint">
-          Cada una guarda {p.codigo ?? 'la partida'} y su análisis.
-        </span>
       </div>
 
       {estado.ok && (
@@ -311,6 +325,21 @@ export function ConfiguradorConversion({
         <div className="mt-3"><Aviso tono="neg" titulo="No se generó nada" testid="conversion-error">{estado.error}</Aviso></div>
       )}
     </div>
+  )
+}
+
+/** El rótulo de una de las TRES zonas del patrón. El número va en su propio disco, no en el texto. */
+function Zona({ n, children }: { n: number; children: React.ReactNode }) {
+  return (
+    <h3 className="flex items-center gap-2">
+      <span
+        aria-hidden
+        className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-surface-sunken font-mono text-[10px] tabular-nums text-muted"
+      >
+        {n}
+      </span>
+      <span className="text-[10px] font-medium uppercase tracking-[0.06em] text-faint">{children}</span>
+    </h3>
   )
 }
 
