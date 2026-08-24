@@ -80,7 +80,7 @@ export function FilaWbs({
     : 'text-[12.5px] text-ink-soft'
 
   return (
-    <Tr compacta seleccionada={abierta} className={n.es_contenedor ? 'bg-surface-quiet' : ''}>
+    <Tr compacta seleccionada={abierta} className={n.nivel === 0 ? 'bg-surface-quiet' : ''}>
       <Td className="w-6">
         {/* La casilla va SÓLO en las actividades: un contenedor no se mide, se agrega. Y va como
             hermana del enlace, nunca adentro: un input dentro de un link deja el clic en cualquiera

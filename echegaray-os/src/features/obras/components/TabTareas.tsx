@@ -389,11 +389,13 @@ function Franja({ total, enCurso, problemas }: {
 }) {
   // El desvío existe sólo si existen LOS DOS: contra un plan sin cargar, «+0» sería una mentira.
   const desvio = total.hh_plan != null && total.hh_real != null ? total.hh_real - total.hh_plan : null
+  // PEGADA ABAJO: con 300 filas un pie normal sólo se lee al final del scroll, y estos seis
+  // números son los que dicen si la obra está bien mientras se mira cualquier tramo del árbol.
   const ctx = [`${enCurso} en curso`, total.n_sin_analisis > 0 ? `${total.n_sin_analisis} sin análisis` : null]
     .filter(Boolean).join(' · ')
   return (
     <div data-testid="franja-tareas"
-      className="mt-3 flex h-14 items-center border-t border-line-strong bg-surface-quiet">
+      className="sticky bottom-0 z-10 mt-3 flex h-14 items-center border-t border-line-strong bg-surface-quiet">
       <Metrica rotulo="Avance físico" valor={porcentaje(total.avance_pct)} contexto="sobre HH plan" />
       <Metrica rotulo="HH plan" valor={fmtHH(total.hh_plan)} />
       <Metrica rotulo="HH reales" valor={fmtHH(total.hh_real)} contexto="imputadas" />
