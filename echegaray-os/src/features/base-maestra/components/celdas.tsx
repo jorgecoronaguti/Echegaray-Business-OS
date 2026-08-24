@@ -7,7 +7,7 @@
 import type { ReactNode } from 'react'
 import { Estado, Nulo, type TonoEstado } from '@/shared/components/ds'
 import {
-  ETIQUETA_ANALISIS, fechaCorta, numero, pesos, porcentaje,
+  ETIQUETA_ANALISIS, desvioObservado, fechaCorta, numero, pesos, porcentaje,
   type EstadoAnalisis, type Frescura,
 } from '../services/reglas'
 
@@ -74,6 +74,36 @@ export function FechaPrecio({ iso, frescura }: { iso: string | null; frescura: F
       className={`font-mono text-[11.5px] tabular-nums ${COLOR_FRESCURA[frescura]}`}
     >
       {t}
+    </span>
+  )
+}
+
+// ═══ LO QUE PASÓ EN OBRA, AL LADO DE LA BASE ═══════════════════════════════════════════════════
+//
+// El número es el esfuerzo observado y el `×` es su cociente contra la base. Van juntos porque
+// separados no se pueden leer: 44,88 hs/m³ no dice nada hasta que se sabe que la base decía 34.
+//
+// LA DIRECCIÓN LA DICE EL COCIENTE, NO UNA FLECHA. El diseño canónico dibuja ↑/↓, pero la
+// iconografía del OS no tiene ese par y redibujarlo acá lo convertiría en el trigésimo tercer
+// icono del sistema — además de que `1,32×` es más informativo que una flecha, que sólo dice el
+// signo. El color sigue la banda de `desvioObservado`: warn cuando la obra pidió más horas.
+export function EsfuerzoObservado({
+  base, observado,
+}: { base: number | null | undefined; observado: number | null | undefined }) {
+  const t = numero(observado, 2)
+  // «sin medir» y no «sin dato»: la tarea puede estar perfectamente cargada; lo que falta es que
+  // alguien la haya ejecutado y le haya imputado horas.
+  if (t == null) return <Nulo>sin medir</Nulo>
+  const d = desvioObservado(base, observado)
+  const color = d == null ? 'text-ink-soft' : d.direccion === 'peor' ? 'text-warn' : d.direccion === 'mejor' ? 'text-pos' : 'text-ink-soft'
+  return (
+    <span
+      data-desvio={d?.direccion ?? 'sin-base'}
+      title={d == null ? 'Medido en obra, pero la tarea no tiene esfuerzo base para comparar' : undefined}
+      className={`whitespace-nowrap font-mono text-[12px] tabular-nums ${color}`}
+    >
+      {t}
+      {d && <span className="ml-1.5 text-[11px]">{numero(d.ratio, 2)}×</span>}
     </span>
   )
 }

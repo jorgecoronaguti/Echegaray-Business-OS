@@ -128,6 +128,12 @@ test.describe('las dos pantallas abren con datos de la base', () => {
     await expect(page.getByTestId('panel-analisis')).toBeVisible()
     await page.screenshot({ path: 'test-results/17-base-maestra-ficha-analisis.png' })
 
+    // LOS DOS NÚMEROS QUE DECIDEN, ENFRENTADOS (Design 23/08). La ficha tiene que abrir mostrando
+    // con qué se cotiza Y qué pasó en obra: si mañana alguien saca la segunda cifra, la pantalla
+    // vuelve a ser un catálogo y deja de ser una base de aprendizaje, que es su razón de existir.
+    await expect(page.getByTestId('ficha-tarea')).toContainText('Esfuerzo base')
+    await expect(page.getByTestId('ficha-tarea')).toContainText('Real de obra')
+
     await page.getByTestId('solapa-rendimiento').click()
     await expect(page.getByTestId('panel-rendimiento')).toBeVisible()
     // La solapa viaja en la URL: este enlace abre en la solapa de esfuerzo, no en Resumen.
@@ -192,6 +198,30 @@ test.describe('las dos pantallas abren con datos de la base', () => {
     await page.screenshot({ path: 'test-results/18-base-maestra-equipos.png' })
   })
 
+  test('18 · un insumo abre su ficha con historial y con a qué le pega', async ({ page }) => {
+    // UN PRECIO SUELTO NO SE PUEDE DEFENDER. La ficha existe para que el número tenga procedencia
+    // (de qué compra o de qué lista salió) y para que antes de tocarlo se vea a qué tareas tipo
+    // vigentes les pega. Si la ficha deja de abrirse, la pantalla vuelve a ser una lista de precios
+    // sin trazabilidad — que es el estado del que venimos.
+    await page.setViewportSize({ width: 1440, height: 950 })
+    await page.goto('/administracion/base-maestra/recursos?v=insumos')
+    if (await page.getByTestId('tabla-insumos').count() === 0) {
+      test.skip(true, 'la base maestra todavía no tiene insumos cargados')
+    }
+
+    await page.getByTestId('tabla-insumos').locator('tbody tr').first().locator('a').click()
+    await expect(page).toHaveURL(/[?&]r=/, { timeout: 10000 })
+    await expect(page.getByTestId('ficha-recurso')).toBeVisible()
+    // Las dos secciones se dibujan SIEMPRE: cuando no hay filas dicen por qué, y ese texto es el
+    // dato. Una sección que desaparece deja al que mira sin saber si preguntó mal o no hay nada.
+    await expect(page.getByTestId('historial-precio')).toBeVisible()
+    await expect(page.getByTestId('uso-recurso')).toBeVisible()
+    await page.screenshot({ path: 'test-results/18-base-maestra-ficha-recurso.png' })
+
+    await page.getByTestId('cerrar-ficha-recurso').click()
+    await expect(page).not.toHaveURL(/[?&]r=/, { timeout: 5000 })
+  })
+
   test('18 · Versiones de precio agrupa por fecha y fuente', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 950 })
     await page.goto('/administracion/base-maestra/recursos?v=precios')
@@ -232,4 +262,12 @@ test('un jefe de obra abre la base maestra y NO ve columnas de costo', async ({ 
   await page.goto('/administracion/base-maestra/recursos?v=precios')
   await expect(page).toHaveURL(/v=insumos/)
   await expect(page.getByTestId('tabla-insumos')).toBeVisible()
+
+  // Y LA FICHA DE UN INSUMO NO DICE «SIN HISTORIAL»: dice que no lo ve. `recurso_precio` le devuelve
+  // cero filas sin error, que es idéntico a un recurso que nunca tuvo precio — y escribir la segunda
+  // frase manda a alguien a cargar de nuevo precios que ya están cargados.
+  await page.getByTestId('tabla-insumos').locator('tbody tr').first().locator('a').click()
+  await expect(page.getByTestId('ficha-recurso')).toBeVisible()
+  await expect(page.getByTestId('recurso-sin-economia')).toContainText('no los ves')
+  await expect(page.getByTestId('historial-precio')).toHaveCount(0)
 })
