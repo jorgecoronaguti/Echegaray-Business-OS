@@ -12,4 +12,5 @@ export { BotonMarca, BotonPlano, BotonIcono, BuscadorCaja, ChipAtencion, CuentaC
 export { FranjaKpis, TarjetaBloque, FilaDato, BarraAvance, PastillaTitulo, TONO, LineaCampos, SolapasFicha } from './Bloques'
 export type { ClaveTono } from './Bloques'
 export { FranjaCartera, BandaDetalle, BandaFicha, iniciales } from './Cabeceras'
+export { millones, pesos, pesosConCentavos, porcentajeCanon, entero, diaMes } from './formato'
 export * from './iconos'
