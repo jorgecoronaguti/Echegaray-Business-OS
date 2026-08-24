@@ -40,9 +40,10 @@ import {
   registrarDocumento,
 } from '@/features/obras/services/actionsSubcontratos'
 import { CabeceraDeObra } from '@/features/obras/components/CabeceraDeObra'
+import { SubTabsTrabajo } from '@/features/obras/components/SubTabsTrabajo'
 import { WorkspaceSubcontratos } from '@/features/obras/components/WorkspaceSubcontratos'
 import { FormNuevoPaquete } from '@/features/obras/components/FormNuevoPaquete'
-import { Aviso, SubTabs } from '@/shared/components/ds'
+import { Aviso } from '@/shared/components/ds'
 import { EstadoError } from '@/shared/components/estado'
 
 export const dynamic = 'force-dynamic'
@@ -97,15 +98,10 @@ export default async function SubcontratosObraPage({
       </div>
 
       <div className="flex flex-col gap-4 px-4 pt-4 lg:px-10">
-        {/* Nivel 3: las dos maneras de mirar el MISMO alcance de la obra — lo que hace el plantel
-            propio y lo que hace un tercero. */}
-        <SubTabs
-          testid="subtabs-subcontratos"
-          items={[
-            { href: `/obras/${obraId}?vista=tareas&sub=arbol`, label: 'Actividades' },
-            { href: `/obras/${obraId}/subcontratos`, label: 'Subcontratos', activo: true, testid: 'sub-subcontratos' },
-          ]}
-        />
+        {/* Nivel 3: las CUATRO del canónico 07, emitidas en un solo lugar. Eran dos escritas acá
+            —Actividades y Subcontratos— y desde esta pantalla no había forma de llegar al parte
+            diario ni al cronograma sin volver al workspace. */}
+        <SubTabsTrabajo obraId={obraId} activa="subcontratos" />
 
         {data.avisos.map((a) => (
           <Aviso key={a} tono="warn" titulo="Falta parte de esta pantalla" testid="aviso-lectura">
