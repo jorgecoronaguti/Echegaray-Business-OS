@@ -34,24 +34,45 @@ function objeto(src: string, declaracion: string) {
   return src.slice(abre, src.indexOf('\n}', abre))
 }
 
-test('el estado «hecha» se dice en verde, no en tinta (especimen §06 y §07: #067647)', () => {
-  const src = fuente('Estado.tsx')
-  const mapa = src.slice(src.indexOf('const TEXTO'), src.indexOf('export function Estado'))
+// LOS TRES TESTS DE ESTADO Y FILTROS MIDEN EL ZIP, NO COMPONENTS.md — orden del dueño 24/08. Los
+// valores salieron de los estilos inline de `echegaray-design/03 · Obra Tareas.dc.html` y
+// `01 · Obras Cartera.dc.html`, que es donde el dueño exige fidelidad.
 
-  // El defecto: `pos: 'text-ink'` pintaba el trabajo TERMINADO con el mismo peso visual que el
-  // resto de la columna, y terminado es justamente el único estado que el ojo puede saltear.
-  assert.match(mapa, /pos:\s*'text-pos'/)
-  assert.doesNotMatch(mapa, /pos:\s*'text-ink'/)
+test('cada tono de estado lleva la terna EXACTA del zip: texto, fondo y borde', () => {
+  const mapa = objeto(fuente('Estado.tsx'), 'const PASTILLA')
 
-  // Las dos excepciones del especimen, para que «heredar el color del punto» no se generalice:
-  // «En curso» es grafito («neutro, sin color») y «Pendiente» queda en muted porque su punto es hueco.
-  assert.match(mapa, /curso:\s*'text-ink'/)
-  assert.match(mapa, /pendiente:\s*'text-muted'/)
+  // El defecto que atrapa: cualquiera de los 15 valores cambiado o «redondeado» a un token del
+  // sistema (`text-pos`, `bg-surface`…) que no mide lo mismo que el mockup.
+  assert.match(mapa, /pos: 'text-\[#067647\] bg-\[#F1F9F4\] border-\[#D6EBDF\]'/)
+  assert.match(mapa, /neg: 'text-\[#B42318\] bg-\[#FEF6F5\] border-\[#F3DDDA\]'/)
+  assert.match(mapa, /warn: 'text-\[#B54708\] bg-\[#FDF6EE\] border-\[#F0E1CD\]'/)
+  assert.match(mapa, /curso: 'text-\[#175CD3\] bg-\[#EFF5FF\] border-\[#D6E4FB\]'/)
+  assert.match(mapa, /pendiente: 'text-\[#6B6B67\] bg-\[#FAFAF8\] border-\[#E7E6E2\]'/)
 })
 
-test('el punto de estado se separa 8px de su palabra (especimen §06)', () => {
-  // `gap-1.5` (6px) pegaba el punto a la letra: se leía como parte de la palabra, no como su marca.
-  assert.match(fuente('Estado.tsx'), /inline-flex items-center gap-2 whitespace-nowrap/)
+test('la caja de la pastilla mide lo del zip y NO queda punto de 6px', () => {
+  const src = fuente('Estado.tsx')
+
+  // 11px / 500 / radio 11 / 1.5px×8px, idéntica en las dos pantallas medidas.
+  assert.match(src, /const CAJA = 'rounded-\[11px\] border px-2 py-\[1\.5px\] text-\[11px\] font-medium'/)
+
+  // El defecto anterior: el punto sobrevivía a la pastilla y el estado se decía dos veces. Ninguna
+  // pantalla del zip lo dibuja adentro.
+  assert.doesNotMatch(src, /rounded-full/)
+
+  // `nulo` no es pastilla: es ausencia de dato y el zip no le da caja a nada.
+  assert.match(src, /tono === 'nulo' \? 'text-\[11px\] text-faint'/)
+})
+
+test('el chip de filtro activo es pastilla oscura, no texto subrayado (zip 03, línea 96/648)', () => {
+  const src = fuente('Controles.tsx')
+
+  // El defecto: `border-b-[1.5px] border-ink` — el subrayado de COMPONENTS.md, que el zip no dibuja.
+  assert.doesNotMatch(src, /border-b-\[1\.5px\]/)
+
+  assert.match(src, /rounded-\[6px\] border px-\[9px\] py-\[4px\] text-\[12px\]/)
+  assert.match(src, /border-\[#30302F\] bg-\[#30302F\] text-white/)
+  assert.match(src, /border-\[#E7E6E2\] bg-white text-\[#3A3A38\]/)
 })
 
 test('el encabezado de tabla va en peso normal (especimen §07: 10px / 400 / 0.06em / faint)', () => {

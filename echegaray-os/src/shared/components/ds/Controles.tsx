@@ -113,9 +113,23 @@ export function Buscador({
 
 // ═══ FILTROS ═══
 //
-// «Texto en línea, activo subrayado; contador "N de M" a la derecha. NO aparecen con una sola
-// fila.» Lo último es la regla que más se olvida: un filtro sobre una lista de un elemento no es
-// una ayuda, es una fila de interfaz que no hace nada. Y el estado va a la URL, para que la vista
+// PASTILLAS, NO TEXTO SUBRAYADO — los mockups del zip ganan a COMPONENTS.md §Status badges por
+// orden del dueño 24/08. COMPONENTS.md pedía «texto en línea, activo subrayado»; el zip dibuja
+// chips en caja, y lo que se exige es fidelidad al zip.
+//
+// MAPA MEDIDO de `03 · Obra Tareas.dc.html` línea 96 (el estilo va inline: el atributo ES el valor
+// computado) y línea 648-649 (los colores):
+//
+//   caja       font 12px · radio 6px · padding 4px 9px · borde 1px · gap 5px al contador
+//   ACTIVO     fondo #30302F · borde #30302F · texto #FFFFFF   (grafito, texto claro)
+//   inactivo   fondo #FFFFFF · borde #E7E6E2 · texto #3A3A38
+//
+// El contador del zip va DENTRO del chip en mono 10,5px (#B9B7B1 activo / #91918B inactivo). Acá
+// el contador viaja dentro de `label`, que es un `ReactNode` opaco: el componente no puede
+// pintarlo sin romper la API. Lo tiñe `currentColor` heredado, no el gris del zip.
+//
+// Lo que NO cambia: los filtros no aparecen con una sola fila —un filtro sobre una lista de un
+// elemento es una fila de interfaz que no hace nada—, y el estado va a la URL para que la vista
 // filtrada se pueda pasar por chat.
 export function Filtros({
   opciones,
@@ -128,12 +142,14 @@ export function Filtros({
   testid?: string
 }) {
   return (
-    // `gap-x-5` = 20px, la separación entre filtros del especimen §04. Con 16px el subrayado del
-    // activo casi tocaba la palabra siguiente y la fila se leía como una sola tira de texto.
-    <div data-testid={testid} className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-1.5">
+    // `gap-2` = 8px entre chips: con pastilla la separación es la del zip (chips contiguos), no los
+    // 20px que necesitaba el texto suelto para que el subrayado no tocara la palabra siguiente.
+    <div data-testid={testid} className="flex min-w-0 flex-wrap items-center gap-2">
       {opciones.map((o, k) => {
-        const clase = `pb-[2px] text-[12.5px] transition-colors ${
-          o.activo ? 'border-b-[1.5px] border-ink font-medium text-ink' : 'border-b-[1.5px] border-transparent text-muted hover:text-ink'
+        const clase = `inline-flex items-center gap-[5px] rounded-[6px] border px-[9px] py-[4px] text-[12px] transition-colors ${
+          o.activo
+            ? 'border-[#30302F] bg-[#30302F] text-white'
+            : 'border-[#E7E6E2] bg-white text-[#3A3A38] hover:border-[#C9C4C2]'
         }`
         return o.href ? (
           <a key={o.href} href={o.href} data-testid={o.testid} aria-current={o.activo ? 'true' : undefined} className={clase}>

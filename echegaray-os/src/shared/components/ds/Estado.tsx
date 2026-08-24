@@ -1,48 +1,49 @@
 import type { ReactNode } from 'react'
 
-// EL ESTADO SE DICE CON UN PUNTO Y UNA PALABRA — `design/system/COMPONENTS.md` §Status badges.
+// EL ESTADO SE DICE CON UNA PASTILLA DE COLOR — los mockups del zip ganan a COMPONENTS.md
+// §Status badges por orden del dueño 24/08.
 //
-// «Prohibidas las pastillas de color». No es una preferencia estética: en una tabla de treinta
-// filas, treinta pastillas rellenas convierten la columna de estado en el elemento más ruidoso de
-// la pantalla, y el estado casi nunca es lo que la persona vino a leer. Un punto de 6px con su
-// palabra al lado se barre igual de rápido y no compite con el dato.
+// COMPONENTS.md dice «prohibidas las pastillas de color» y este archivo implementaba eso: un punto
+// de 6px con la palabra al lado. PERDIÓ. Las 28 pantallas del zip (`echegaray-design/*.dc.html`)
+// dibujan pastilla en todas las tablas, y lo que se exige es fidelidad visual al zip: si el
+// componente y el mockup no coinciden, el que está mal es el componente.
 //
-// El color del punto significa, y sólo significa cuando aparece poco: `pos` para lo terminado,
-// `neg` para el problema real, `warn` para el dato que falta y bloquea, grafito para lo que está
-// en curso, y un punto HUECO para lo que todavía no empezó — que no es un estado positivo ni
-// negativo, es la ausencia de trabajo. La ausencia de dato no lleva punto: se escribe en `faint`.
+// MAPA MEDIDO — de los estilos inline de `03 · Obra Tareas.dc.html` (líneas 491-500 el mapa de
+// color, 162 y 242 la caja) y `01 · Obras Cartera.dc.html` (220-224 y 104). Los mockups escriben
+// cada propiedad inline, así que el atributo ES el valor computado; no hay cascada que lo altere.
+//
+//   caja (idéntica en las dos pantallas): font 11px / peso 500 / radio 11px / padding 1.5px 8px /
+//                                         borde 1px sólido / sin punto adentro
+//
+//   tono        estados del zip                              texto     fondo     borde
+//   pos         «Hecha» · «Terminada»                        #067647   #F1F9F4   #D6EBDF
+//   curso       «En curso» · «En ejecución»                  #175CD3   #EFF5FF   #D6E4FB
+//   warn        «En curso · crítica» · «Sin cuadrilla»
+//               · «Sin análisis»                             #B54708   #FDF6EE   #F0E1CD
+//   neg         «Sub · sin ART» · «En ejecución · atraso»     #B42318   #FEF6F5   #F3DDDA
+//   pendiente   «Pendiente» · «Previo» · «Sin plan»          #6B6B67   #FAFAF8   #E7E6E2
+//
+// EL PUNTO DE 6px SE VA: ninguna de las dos pantallas lo dibuja dentro de la pastilla, y afuera
+// duplicaría en dos señales lo que la pastilla ya dice en una.
+//
+// `nulo` NO ES UNA PASTILLA y por eso no está en el mapa: es la AUSENCIA de dato, y el zip no le
+// da caja a nada. Una pastilla gris ahí diría que el estado es «neutro» cuando lo que pasa es que
+// no se sabe. Queda como texto en `faint`, que es lo que hacía antes.
 
 export type TonoEstado = 'pos' | 'neg' | 'warn' | 'curso' | 'pendiente' | 'nulo'
 
-const PUNTO: Record<Exclude<TonoEstado, 'nulo'>, string> = {
-  pos: 'bg-pos',
-  neg: 'bg-neg',
-  warn: 'bg-warn',
-  curso: 'bg-accent',
-  pendiente: 'border border-[#C9C4C2] bg-transparent',
+const PASTILLA: Record<Exclude<TonoEstado, 'nulo'>, string> = {
+  pos: 'text-[#067647] bg-[#F1F9F4] border-[#D6EBDF]',
+  neg: 'text-[#B42318] bg-[#FEF6F5] border-[#F3DDDA]',
+  warn: 'text-[#B54708] bg-[#FDF6EE] border-[#F0E1CD]',
+  curso: 'text-[#175CD3] bg-[#EFF5FF] border-[#D6E4FB]',
+  pendiente: 'text-[#6B6B67] bg-[#FAFAF8] border-[#E7E6E2]',
 }
 
-// LA PALABRA TOMA EL COLOR DEL PUNTO, salvo «en curso» y «pendiente».
-//
-// Medido del especimen (`Echegaray Design System.dc.html` §06 y §07, `getComputedStyle`): «Hecha»
-// se dibuja en `#067647` —el verde del punto—, no en tinta. Acá estaba en `text-ink`, y el efecto
-// era que el ÚNICO estado que el ojo puede saltear —el trabajo terminado, el que ya no requiere
-// nada de nadie— se leía con el mismo peso visual que el resto de la columna.
-//
-// Las dos excepciones son deliberadas y están en el mismo especimen: «En curso» es grafito (`INK`,
-// «neutro, sin color») porque estar trabajando no es una noticia, y «Pendiente» queda en `muted`
-// porque su punto es hueco: no hay color que heredar.
-const TEXTO: Record<TonoEstado, string> = {
-  pos: 'text-pos',
-  neg: 'text-neg',
-  warn: 'text-warn',
-  curso: 'text-ink',
-  pendiente: 'text-muted',
-  nulo: 'text-faint',
-}
+// La caja, tal como la mide el zip. Va aparte del color para que agregar un tono no pueda cambiarle
+// la geometría a los otros cinco.
+const CAJA = 'rounded-[11px] border px-2 py-[1.5px] text-[11px] font-medium'
 
-// La separación punto→palabra es de 8px (`gap-2`), medida del especimen §06. Estaba en 6px, que
-// pegaba el punto a la letra y lo hacía leer como parte de la palabra en vez de como su marca.
 export function Estado({
   tono,
   children,
@@ -62,9 +63,10 @@ export function Estado({
     <span
       data-testid={testid ?? 'estado'}
       data-estado={clave}
-      className={`inline-flex items-center gap-2 whitespace-nowrap text-[12.5px] ${TEXTO[tono]} ${className ?? ''}`}
+      className={`inline-flex items-center whitespace-nowrap ${
+        tono === 'nulo' ? 'text-[11px] text-faint' : `${CAJA} ${PASTILLA[tono]}`
+      } ${className ?? ''}`}
     >
-      {tono !== 'nulo' && <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${PUNTO[tono]}`} />}
       {children}
     </span>
   )
