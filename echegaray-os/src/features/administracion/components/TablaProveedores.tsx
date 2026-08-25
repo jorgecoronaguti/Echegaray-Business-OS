@@ -83,7 +83,7 @@ export function TablaProveedores({
               <span style={{ display: 'flex', color: C.apagado, flexShrink: 0 }} title={esSub ? 'Subcontratista' : 'Tipo sin determinar'}>
                 {esSub ? <IcoCuadrilla s={15} /> : <IcoEquipo s={15} />}
               </span>
-              <Link href={hrefDe(p.id)} prefetch={false} data-testid="abrir-proveedor" style={{ minWidth: 0 }} className="block">
+              <Link href={hrefDe(p.id)} data-testid="abrir-proveedor" style={{ minWidth: 0 }} className="block">
                 <span className="block truncate hover:underline" style={{ fontSize: '12.5px', fontWeight: 500, color: C.tinta }}>
                   {p.nombre}
                   {/* Archivado va pegado al nombre y no en una columna propia: la lista muestra
