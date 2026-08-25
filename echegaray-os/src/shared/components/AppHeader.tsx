@@ -4,7 +4,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
-import { AREA_HREF, AREA_LABEL, type Area } from '@/features/auth/types/areas'
+import { solapaActiva, type SolapaNav } from '@/features/auth/types/navegacion'
 import { BuscadorGlobal } from './BuscadorGlobal'
 import { Novedades } from './Novedades'
 import { iniciales } from './iniciales'
@@ -35,29 +35,28 @@ import { iniciales } from './iniciales'
 // no lleva a ningún lado.
 
 export function AppHeader({
-  areas,
+  solapas,
   nombre,
   email,
   rolLabel,
+  verUsuarios,
   salir,
 }: {
-  areas: Area[]
+  /** Las solapas de nivel 1 que este rol ve. Tres para Administración, una para Obras. */
+  solapas: SolapaNav[]
   /** El nombre del perfil. Alimenta las iniciales del avatar; sin él se caen al correo. */
   nombre?: string | null
   email: string | null
   rolLabel: string | null
+  /** ¿Se le ofrece «Usuarios» en el menú de la cuenta? Es la puerta a cambiar roles. */
+  verUsuarios: boolean
   salir: React.ReactNode
 }) {
   const pathname = usePathname()
-  // El área ACTIVA sale de la ruta, no de un estado: la misma URL abierta en otra pestaña se pinta
-  // igual. `/clientes` y `/administracion` son la misma área; `/obras` y `/control-obras`, la otra.
-  const activa: Area | null = areas.length === 1
-    ? areas[0]
-    : /^\/(administracion|clientes|presupuestos|documentos|flujo-caja)/.test(pathname)
-      ? 'administracion'
-      : /^\/(obras|obra|control-obras|integraciones|campo|hoy|mi-trabajo|mi-informacion)/.test(pathname)
-        ? 'obras'
-        : null
+  // Cuál está encendida lo decide `navegacion.ts`, que es puro y está probado: acá vivía una
+  // expresión regular en un componente de cliente, o sea una regla de navegación que `node --test`
+  // no podía mirar. Fue exactamente la que se rompió el 24/08.
+  const activa = solapaActiva(pathname, solapas)
 
   return (
     // UNA SOLA LÍNEA, 44px CONTANDO EL HAIRLINE (medido del mockup 00: padding 9px + isotipo 24 + hairline). El alto vive en el `<header>` y no en el div de
@@ -72,12 +71,16 @@ export function AppHeader({
             El logotipo va al lado en grafito, que es exactamente como está compuesto el logo. */}
         <Link
           prefetch={false}
-          href={areas.includes('administracion') ? '/administracion' : '/obras'}
+          href={solapas[0]?.href ?? '/obras'}
           className="mr-3 flex shrink-0 items-center gap-2"
           data-testid="marca"
           aria-label="Echegaray Construcciones — inicio"
         >
-          <Image src="/marca/isotipo.png" alt="" width={24} height={24} priority className="h-[24px] w-[24px]" />
+          {/* `unoptimized`: son 7,7 KB de PNG con transparencia que el optimizador de imágenes
+              volvía a servir en CADA carga por `/_next/image?url=…&w=32&q=75` — medido el 25/08 en
+              producción, entre 243 y 1.257 ms, en el header, o sea en TODAS las pantallas. Servido
+              desde `/public` sale con caché inmutable y no pasa por ninguna función. */}
+          <Image src="/marca/isotipo.png" alt="" width={24} height={24} priority unoptimized className="h-[24px] w-[24px]" />
           {/* EL NOMBRE ENTERO, Y LAS DOS PALABRAS CON EL MISMO FORMATO (19/08/2026).
               La primera versión ponía «CONSTRUCCIONES» en peso normal y gris, como si fuera una
               bajada. El dueño lo corrigió: no son una marca y su descripción — son UN nombre. Mismo
@@ -97,16 +100,19 @@ export function AppHeader({
         </Link>
 
         <nav className="flex h-full min-w-0 items-stretch" data-testid="nav-areas">
-          {areas.length === 1 ? (
-            <span className="flex h-full items-center px-3 text-[13px] font-medium text-muted">{AREA_LABEL[areas[0]]}</span>
+          {solapas.length === 1 ? (
+            <span className="flex h-full items-center px-3 text-[13px] font-medium text-muted">{solapas[0].label}</span>
           ) : (
-            areas.map((a) => (
+            solapas.map((a) => (
               <Link
-                key={a}
+                key={a.clave}
                 prefetch={false}
-                href={AREA_HREF[a]}
-                data-testid={`nav-${a}`}
-                aria-current={activa === a ? 'page' : undefined}
+                href={a.href}
+                data-testid={`nav-${a.clave}`}
+                aria-current={activa === a.clave ? 'page' : undefined}
+                // «Comercial, no administración: vive al lado de Obras» — el `title` del mockup para
+                // Presupuestos, que es lo único que explica por qué subió de nivel.
+                title={a.clave === 'presupuestos' ? 'Comercial, no administración: vive al lado de Obras' : undefined}
                 // EL ÁREA ACTIVA SE MARCA CON EL AMARILLO DE LA MARCA, y con una regla de 2px
                 // debajo — no con un fondo amarillo. #FDC900 da 1,6:1 sobre blanco: como fondo de
                 // un control con texto encima es ilegible. Como REGLA no lleva texto, así que el
@@ -119,12 +125,12 @@ export function AppHeader({
                 // de altura, flotando. `h-full` + `border-b-2` da la MISMA geometría que el
                 // `inset` del mockup y conserva el token `border-marca` en vez de clavar #FDC900.
                 className={`flex h-full items-center border-b-2 px-3 text-[13px] transition-colors ${
-                  activa === a
+                  activa === a.clave
                     ? 'border-marca font-semibold text-ink'
                     : 'border-transparent text-muted hover:bg-surface-quiet hover:text-ink'
                 }`}
               >
-                {AREA_LABEL[a]}
+                {a.label}
               </Link>
             ))
           )}
@@ -147,7 +153,7 @@ export function AppHeader({
             </>
           )}
           {email ? (
-            <MenuUsuario nombre={nombre} email={email} rolLabel={rolLabel} salir={salir} />
+            <MenuUsuario nombre={nombre} email={email} rolLabel={rolLabel} verUsuarios={verUsuarios} salir={salir} />
           ) : (
             <Link href="/login" className="rounded-md px-2.5 py-1.5 text-[13px] text-muted hover:bg-surface-quiet">
               Ingresar
@@ -187,11 +193,13 @@ function MenuUsuario({
   nombre,
   email,
   rolLabel,
+  verUsuarios,
   salir,
 }: {
   nombre?: string | null
   email: string
   rolLabel: string | null
+  verUsuarios: boolean
   salir: React.ReactNode
 }) {
   const [abierto, setAbierto] = useState(false)
@@ -253,6 +261,22 @@ function MenuUsuario({
           >
             Mi cuenta
           </Link>
+          {/* USUARIOS BAJÓ ACÁ (v2). Estaba en la barra del área, al lado de Clientes, que se toca
+              todos los días: administrar cuentas se toca una vez por mes y es configuración, no
+              trabajo. La RUTA no cambió y sigue cerrada por `RUTAS_SOLO_ECONOMIA` y por la RLS —
+              esto es la puerta, no la cerradura. */}
+          {verUsuarios && (
+            <Link
+              prefetch={false}
+              href="/administracion/usuarios"
+              role="menuitem"
+              data-testid="ir-usuarios"
+              onClick={() => setAbierto(false)}
+              className="block px-3 py-1.5 text-[13px] text-ink-soft hover:bg-surface-quiet hover:text-ink"
+            >
+              Usuarios
+            </Link>
+          )}
           <div className="[&_button]:w-full [&_button]:rounded-none [&_button]:px-3 [&_button]:py-1.5 [&_button]:text-left [&_button]:text-[13px] [&_button]:text-ink-soft [&_button:hover]:bg-surface-quiet">
             {salir}
           </div>
