@@ -58,6 +58,20 @@ export function dotacionNecesaria(
   return n
 }
 
+/**
+ * EL TECHO DE DOTACIÓN QUE EL SISTEMA SABE TRANSPORTAR — UNA SOLA VEZ.
+ *
+ * `?dot=<frente>~<n>` lo acota, `aplicarDotacionAlPlan` lo vuelve a acotar y la pantalla tiene que
+ * saberlo para no ofrecer un botón que va a escribir nada. Estaba escrito «99» en los tres lados, y
+ * ahí es donde se cuela el modo de falla que apareció con datos reales: la cuenta inversa de
+ * Quattropani (3.788 HH en un día) devuelve 474 personas, la URL lo descarta en silencio y el
+ * servidor contesta «no hay ninguna dotación elegida» sobre una pantalla que mostraba un número.
+ *
+ * No es un límite de negocio —474 personas es la respuesta correcta a una pregunta absurda— es el
+ * ancho del contrato entre la pantalla, la URL y la escritura.
+ */
+export const TOPE_DOTACION = 99
+
 /** Por qué el frente está donde está. Es la columna `LÍMITE` de la 08, y las cuatro son
  *  distintas: «terminado» no es «sin gente», y ninguna de las dos es «con margen». */
 export type Limite = 'terminado' | 'sin gente' | 'tope del frente' | 'con margen'

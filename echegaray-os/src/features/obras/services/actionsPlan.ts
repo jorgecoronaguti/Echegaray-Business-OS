@@ -36,7 +36,7 @@ import { esAdministracion } from '@/features/auth/types/areas'
 import type { Rol } from '@/features/auth/types'
 import { getInsumosCronograma } from './cronogramaObraService'
 import { armarCronograma, movimientosDelArrastre } from './cronogramaMotor'
-import { claveDeFrente, frentesDe } from './dotacion'
+import { claveDeFrente, frentesDe, TOPE_DOTACION } from './dotacion'
 
 /**
  * El resultado tiene la forma que `FormAccion` ya sabe mostrar (`ResultadoAccion`), con `tocadas`
@@ -190,7 +190,7 @@ export async function editarDuracion(
 // ── APLICAR LA DOTACIÓN SIMULADA AL PLAN (08) ────────────────────────────────
 
 const dotacionSchema = z.object({
-  // Mismo formato y mismo tope que la URL de la 08: `frente~n`, 0–99.
+  // Mismo formato y mismo tope que la URL de la 08: `frente~n`, 0–`TOPE_DOTACION`.
   pares: z.array(z.string()).min(1, 'No hay ninguna dotación elegida').max(200),
 })
 
@@ -268,15 +268,16 @@ export async function aplicarDotacionAlPlan(
   }
 }
 
-/** `Piso~4` → `{ Piso: 4 }`. Misma lectura que la URL de la 08, con el mismo tope: la pantalla y la
- *  escritura no pueden entender distinto el mismo texto. */
+/** `Piso~4` → `{ Piso: 4 }`. Misma lectura que la URL de la 08, y el tope es literalmente la MISMA
+ *  constante (`TOPE_DOTACION`): la pantalla y la escritura no pueden entender distinto el mismo
+ *  texto, y con el número escrito en los dos lados eso dependía de que nadie tocara uno solo. */
 function dotacionesDeLosPares(pares: string[]): Record<string, number> {
   const salida: Record<string, number> = {}
   for (const par of pares) {
     const i = par.lastIndexOf('~')
     if (i <= 0) continue
     const n = Number(par.slice(i + 1))
-    if (!Number.isInteger(n) || n < 0 || n > 99) continue
+    if (!Number.isInteger(n) || n < 0 || n > TOPE_DOTACION) continue
     salida[par.slice(0, i)] = n
   }
   return salida

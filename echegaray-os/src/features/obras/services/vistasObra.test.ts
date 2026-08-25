@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  resolverVistaObra, SUBS_TAREAS, hrefCronograma, hrefDotacion, hrefSubcontratos,
+  resolverVistaObra, rutaHermana, SUBS_TAREAS, hrefCronograma, hrefDotacion, hrefSubcontratos,
 } from './vistasObra.ts'
 
 // LAS URLS VIEJAS ESTÁN EN LINKS MANDADOS POR CHAT, EN MARCADORES Y EN LOS TESTS. Ninguna puede
@@ -72,4 +72,18 @@ test('el workspace queda en tres sub-vistas: Tareas, Cronograma y Parte diario',
   assert.deepEqual(SUBS_TAREAS.map((s) => s.id), ['arbol', 'gantt', 'parte'])
   assert.equal(SUBS_TAREAS.find((s) => s.id === 'gantt')?.label, 'Cronograma')
   assert.deepEqual(resolverVistaObra('cronograma', undefined), { vista: 'tareas', sub: 'gantt' })
+})
+
+test('`?vista=dotacion` lleva a la 08, no cae en Resumen en silencio', () => {
+  // EL DEFECTO QUE ATRAPA (auditoría del 24/08): la 08 vive en una ruta hermana y su nombre no
+  // estaba en ninguna tabla, así que `resolverVistaObra` lo mandaba a Resumen sin decir nada —
+  // quien seguía el link concluía que la pantalla no existía.
+  assert.equal(rutaHermana('dotacion', 'quattropani'), '/obras/quattropani/dotacion')
+  assert.equal(resolverVistaObra('dotacion', undefined).vista, 'resumen')
+})
+
+test('una vista del workspace NO se desvía a otra ruta', () => {
+  for (const v of ['resumen', 'tareas', 'personal', 'operacion', 'economia', 'documentos', 'gantt', undefined]) {
+    assert.equal(rutaHermana(v, 'quattropani'), null, `${v} no tiene ruta hermana`)
+  }
 })

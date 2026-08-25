@@ -115,6 +115,15 @@ export const P = {
   compra: <><path d="M4 5h2l2.2 10h9.4L20 8H7" /><circle cx="9.5" cy="19" r="1.6" /><circle cx="17.5" cy="19" r="1.6" /></>,
   /** Flecha circular: último movimiento (02). */
   reloj: <><path d="M3 12a9 9 0 109-9 9 9 0 00-7.5 4M3 4v4h4" /><path d="M12 8v4.5l3 2" /></>,
+  /** Dos rayas: «no cambió» en el impacto de la simulación (08). */
+  igual: <path d="M5 10h14M5 14h14" />,
+  /** Cuadrado dentro de otro: el espacio físico del frente (08 · límites reales). */
+  espacio: <><path d="M4 4h16v16H4z" /><path d="M9 9h6v6H9z" /></>,
+  /** Flecha circular sola, sin aguja: «volver al plan» (08). No es `reloj`: el zip dibuja el mismo
+   *  trazo SIN el segundo path, y el reloj adentro de un botón de deshacer se lee «historial». */
+  reiniciar: <path d="M3 12a9 9 0 109-9 9 9 0 00-7.5 4M3 4v4h4" />,
+  /** Menos del stepper (08). El más ya está arriba como `mas`. */
+  menos: <path d="M5 12h14" />,
 } as const
 
 /** Los tres puntos de «más acciones» (01, 02, 03). Es `fill`, no `stroke`: va aparte del resto. */
