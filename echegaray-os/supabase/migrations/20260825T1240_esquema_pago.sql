@@ -29,7 +29,7 @@ create table if not exists public.esquema_pago (
   obra_id                  text references public.obra_canonica(id) on delete set null,
 
   -- NULL = previsto sin fila en Cobranzas todavía. Ver arriba. Sin FK por la misma razón que en
-  -- certificado_cliente: el sync borra y reinserta public.cobranza entera.
+  -- certificado_cliente: el sync borra y reinserta public.cobranzas entera.
   cobranza_fila            integer,
   huella_comprobante       text,
   huella_monto             numeric,

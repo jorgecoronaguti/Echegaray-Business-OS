@@ -36,7 +36,7 @@ create table if not exists public.cobranza_cambio (
   -- Sheet SIGUIÓ existiendo en la realidad. Borrar su rastro sería mentir sobre lo que se escribió.
   esquema_pago_id uuid references public.esquema_pago(id) on delete set null,
 
-  -- La fila FÍSICA de la pestaña Cobranzas (la misma que public.cobranza.fila_sheet). Los datos
+  -- La fila FÍSICA de la pestaña Cobranzas (= sheet_id + 4 en public.cobranzas). Los datos
   -- arrancan en la fila 5: cualquier cosa por debajo es encabezado y escribir ahí rompe la tabla.
   cobranza_fila  integer not null check (cobranza_fila >= 5),
   huella_comprobante text,

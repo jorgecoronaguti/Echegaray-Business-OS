@@ -5,13 +5,13 @@
 -- ═══ ESTA TABLA NO ES UNA SEGUNDA VERDAD DEL COBRO ═══
 --
 -- La verdad del cobro sigue siendo la fila de la pestaña Cobranzas del Sheet «Flujo de Caja - Cash
--- Flow», y su réplica en `public.cobranza`. Acá vive la CARA DEL CLIENTE de ese mismo hecho: el
+-- Flow», y su réplica viva en `public.cobranzas` (la singular `public.cobranza` está fósil desde el 20/07). Acá vive la CARA DEL CLIENTE de ese mismo hecho: el
 -- número de certificado, el período, el avance, el fondo de reparo y —lo único genuinamente nuevo—
 -- el estado de aprobación del cliente, que en el Sheet no existe porque el Sheet no tiene portal.
 --
 -- `cobranza_fila` es el puente al hecho económico. Es la FILA FÍSICA de la pestaña, la misma que
--- `public.cobranza.fila_sheet`. NO es una FK: `cobranza` se borra y se reinserta entera en cada
--- sync (`delete … where origen='flujo_caja_sheet'`), así que una FK haría fallar el sync o borraría
+-- `sheet_id + 4` de `public.cobranzas`. NO es una FK: `cobranzas` se borra y se reinserta entera en cada
+-- sync (`delete … where origen='cobranzas_sheet'`), así que una FK haría fallar el sync o borraría
 -- en cascada los certificados. El puente se valida al usarlo, no con una restricción.
 --
 -- ═══ POR QUÉ EL NÚMERO DE FILA NO ALCANZA COMO IDENTIDAD ═══
@@ -75,7 +75,7 @@ create index if not exists certificado_cliente_cliente_idx
 
 comment on table public.certificado_cliente is
   'La cara del cliente de un cobro. NO es la verdad del cobro (esa es la pestaña Cobranzas y su '
-  'réplica public.cobranza): acá vive el número de certificado, el período, el fondo de reparo y el '
+  'réplica viva public.cobranzas): acá vive el número de certificado, el período, el fondo de reparo y el '
   'estado de aprobación del cliente, que en el Sheet no existe. cobranza_fila es el puente, '
   'verificado por huella porque la columna A del Sheet es ROW()-4 y se corre al insertar filas.';
 comment on column public.certificado_cliente.reparo is
