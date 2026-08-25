@@ -39,7 +39,46 @@ export interface Calendario {
   leidoEn: string
 }
 
+// ═══ EL TOKEN DE LA SERVICE ACCOUNT SE PIDE UNA VEZ POR HORA, NO UNA POR VISITA (25/08/2026) ═══
+//
+// Este archivo minteaba un JWT nuevo, lo firmaba con RSA y hacía un POST a
+// `oauth2.googleapis.com/token` en CADA carga de la pantalla. Dura una hora y se tiraba entera.
+//
+// Y ARRUINABA, SIN DECIRLO, EL CACHÉ DE ABAJO. El `batchGet` de Sheets lleva
+// `next: { revalidate: 60 }` — alguien lo puso a propósito. Pero la clave de caché de fetch de Next
+// incluye las CABECERAS (comprobado en su código: `incremental-cache/index.js`, `generateCacheKey`
+// arma el `cacheString` con `url, init.method, headers, …`). Con un `Authorization: Bearer <token>`
+// distinto en cada request, cada visita estrenaba una clave: el `revalidate` no acertaba NUNCA, se
+// leían las cinco pestañas del Sheet enteras cada vez, y encima quedaba una entrada de caché nueva
+// por visita que nadie iba a volver a leer.
+//
+// O sea DOS viajes a Google encadenados por carga —el token y después el Sheet—, que es la espera de
+// datos que el dueño ve en esta pantalla. Con el token estable, la cabecera se repite y el
+// `revalidate: 60` por fin hace lo que dice.
+//
+// ═══ POR QUÉ ACÁ SÍ VALE UN CACHÉ DE MÓDULO, Y EN `authService` NO ═══
+//
+// Éste es el token de la SERVICE ACCOUNT: no depende de quién entró, es idéntico para todos por
+// construcción y su permiso es `spreadsheets.readonly`. No hay frontera de usuario que cruzar porque
+// nunca dependió de un usuario. El perfil de una persona es exactamente lo contrario —por eso allá
+// el memo es `cache()` de React y muere con el request—.
+//
+// SE RENUEVA CINCO MINUTOS ANTES DE VENCER: un token que expira en vuelo da un 401 que esta pantalla
+// mostraría como «la conexión con el Sheet no está configurada», que es mentira.
+export interface TokenGuardado { token: string; venceEn: number }
+let tokenGuardado: TokenGuardado | null = null
+const MARGEN_MS = 5 * 60 * 1000
+
+/**
+ * Si el token guardado todavía sirve. Está separada y exportada porque es la única parte de esto que
+ * se puede probar sin red: el resto es firmar y salir a Google.
+ */
+export function tokenVigente(guardado: TokenGuardado | null, ahora: number): boolean {
+  return guardado !== null && ahora < guardado.venceEn - MARGEN_MS
+}
+
 async function getAccessToken(saJson: string): Promise<string> {
+  if (tokenVigente(tokenGuardado, Date.now())) return tokenGuardado!.token
   const sa = JSON.parse(saJson) as { client_email: string; private_key: string }
   const now = Math.floor(Date.now() / 1000)
   const b64 = (obj: object) => Buffer.from(JSON.stringify(obj)).toString('base64url')
@@ -60,7 +99,12 @@ async function getAccessToken(saJson: string): Promise<string> {
     }),
   })
   if (!res.ok) throw new Error(`token: ${res.status}`)
-  return ((await res.json()) as { access_token: string }).access_token
+  const cuerpo = (await res.json()) as { access_token: string; expires_in?: number }
+  // `expires_in` viene en segundos y Google manda 3599. Si algún día no viniera, una hora es lo que
+  // pedimos arriba en el `exp` del JWT: no se inventa una vida más larga que la que firmamos.
+  const vive = (cuerpo.expires_in ?? 3600) * 1000
+  tokenGuardado = { token: cuerpo.access_token, venceEn: Date.now() + vive }
+  return cuerpo.access_token
 }
 
 type Fila = (string | number | boolean | null)[]
