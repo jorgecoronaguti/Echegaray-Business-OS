@@ -54,10 +54,43 @@ export interface FilaCartera {
 }
 
 const GRID = 'minmax(0,1.5fr) minmax(0,1.1fr) 152px 148px 82px 108px 44px 52px 26px'
+
+/**
+ * EL ANCHO POR DEBAJO DEL CUAL ESTA GRILLA DEJA DE SER LEGIBLE — 1.000px, y sale de sumar el GRID
+ * de arriba, no del monitor de nadie: 612px de columnas fijas + 80px de los ocho gaps de 10px +
+ * 28px del padding lateral = 720px que no ceden nunca. Lo único que se reparten `1.5fr` y `1.1fr`
+ * es el resto, así que con 1.000px OBRA mide 161px y CLIENTE 118px, y con menos OBRA se va a cero.
+ *
+ * Eso es lo que pasaba en un teléfono de 390px: las dos columnas flexibles colapsaban, el nombre de
+ * la obra y el cliente desaparecían, y los tres rótulos del encabezado se apilaban en el mismo
+ * punto —se leía «OBRESTAADO»—. La cartera es la puerta de entrada al módulo desde el celular.
+ *
+ * NO SE DIBUJA UNA LISTA MÓVIL: el zip no tiene una y esta pantalla es un porte literal. La grilla
+ * se queda igual y SCROLLEA POR DENTRO. El número es 1.000 y no los 1.240 que mide la tarjeta a
+ * 1.280: la barra vertical se come ~15px del viewport, así que 1.240 haría aparecer una barra
+ * horizontal en la pantalla del dueño —justo la fidelidad que este mínimo existe para proteger—.
+ * A 1.280 y a 1.440 la tarjeta es más ancha que 1.000 y acá no cambia absolutamente nada.
+ */
+const MIN_TABLA = 1000
 const ROTULO: React.CSSProperties = {
   fontSize: '10px', color: C.tenue, letterSpacing: '.05em', paddingBottom: '8px',
 }
 const N = (x: number) => Math.round(x).toLocaleString('es-AR')
+
+/**
+ * LA TABLA SCROLLEA POR DENTRO; LA PÁGINA NUNCA DE COSTADO (regla de geometría del porte).
+ *
+ * `overflowX:'auto'` no dibuja nada mientras el contenido entra: en escritorio esto es un `div` de
+ * más y ni una barra. El pie de la tarjeta queda AFUERA a propósito —envuelve solo y se lee sin
+ * arrastrar la tabla—.
+ */
+function Ancha({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <div style={{ minWidth: `${MIN_TABLA}px` }}>{children}</div>
+    </div>
+  )
+}
 
 /** «$ 29,6 M» — el `M()` del mockup, sin inventar precisión. */
 function millones(v: number): string {
@@ -152,38 +185,40 @@ export function CarteraObras({ obras, personasHoy, sinDato, esAdmin, pie }: {
       <div style={{ padding: '0 20px 20px' }}>
         {!tiempo ? (
           <Tarjeta testid="portafolio-tabla">
-            <div style={{
-              display: 'grid', gridTemplateColumns: GRID, gap: '10px', alignItems: 'end',
-              height: '38px', borderBottom: `1px solid ${C.borde}`, background: C.tenueFondo,
-              padding: '0 14px',
-            }}>
-              <span style={ROTULO}>OBRA</span>
-              <span style={ROTULO}>CLIENTE</span>
-              <span style={ROTULO}>ESTADO</span>
-              <span style={ROTULO}>AVANCE</span>
-              <span style={{ ...ROTULO, textAlign: 'right' }}>PLAZO</span>
-              <span style={{ ...ROTULO, textAlign: 'right' }}>HH</span>
-              <span style={{ ...ROTULO, textAlign: 'center' }}>HOY</span>
-              {/* EL ENCABEZADO DEL TRIÁNGULO ES EL TRIÁNGULO, como en el canon: la palabra
-                  «Impedimentos» pedía tres veces el ancho de la columna que rotula. */}
-              <span style={{ ...ROTULO, textAlign: 'center', color: C.tenue }} title="Impedimentos abiertos">
-                <Ico d={P.alerta} s={12} style={{ margin: '0 auto' }} />
-              </span>
-              <span />
-            </div>
-
-            {lista.map((o) => <Fila key={o.obra_id} o={o} ir={() => router.push(`/obras/${o.obra_id}`)} />)}
-
-            {lista.length === 0 && (
-              <div style={{ padding: '26px 14px', fontSize: '12.5px', color: C.tintaSuave }}>
-                Nada coincide.{' '}
-                <button type="button" onClick={limpiar} data-testid="ver-todo"
-                  style={{
-                    color: C.tinta, fontWeight: 500, cursor: 'pointer', textDecoration: 'underline',
-                    border: 'none', background: 'none', font: 'inherit', padding: 0,
-                  }}>Ver todo</button>
+            <Ancha>
+              <div style={{
+                display: 'grid', gridTemplateColumns: GRID, gap: '10px', alignItems: 'end',
+                height: '38px', borderBottom: `1px solid ${C.borde}`, background: C.tenueFondo,
+                padding: '0 14px',
+              }}>
+                <span style={ROTULO}>OBRA</span>
+                <span style={ROTULO}>CLIENTE</span>
+                <span style={ROTULO}>ESTADO</span>
+                <span style={ROTULO}>AVANCE</span>
+                <span style={{ ...ROTULO, textAlign: 'right' }}>PLAZO</span>
+                <span style={{ ...ROTULO, textAlign: 'right' }}>HH</span>
+                <span style={{ ...ROTULO, textAlign: 'center' }}>HOY</span>
+                {/* EL ENCABEZADO DEL TRIÁNGULO ES EL TRIÁNGULO, como en el canon: la palabra
+                    «Impedimentos» pedía tres veces el ancho de la columna que rotula. */}
+                <span style={{ ...ROTULO, textAlign: 'center', color: C.tenue }} title="Impedimentos abiertos">
+                  <Ico d={P.alerta} s={12} style={{ margin: '0 auto' }} />
+                </span>
+                <span />
               </div>
-            )}
+
+              {lista.map((o) => <Fila key={o.obra_id} o={o} ir={() => router.push(`/obras/${o.obra_id}`)} />)}
+
+              {lista.length === 0 && (
+                <div style={{ padding: '26px 14px', fontSize: '12.5px', color: C.tintaSuave }}>
+                  Nada coincide.{' '}
+                  <button type="button" onClick={limpiar} data-testid="ver-todo"
+                    style={{
+                      color: C.tinta, fontWeight: 500, cursor: 'pointer', textDecoration: 'underline',
+                      border: 'none', background: 'none', font: 'inherit', padding: 0,
+                    }}>Ver todo</button>
+                </div>
+              )}
+            </Ancha>
 
             {/* EL PIE DEL ZIP: cuenta lo que SE VE. Filtrada la cartera, un total que hable de obras
                 fuera de la pantalla no se puede verificar mirándola. */}
@@ -387,70 +422,75 @@ function LineaDeTiempo({ obras, ir }: { obras: FilaCartera[]; ir: (id: string) =
   }
   return (
     <Tarjeta testid="cartera-linea-tiempo">
-      <div style={{ display: 'flex', height: '38px', borderBottom: `1px solid ${C.borde}`, background: C.tenueFondo }}>
-        <div style={{
-          width: '250px', flexShrink: 0, display: 'flex', alignItems: 'flex-end',
-          padding: '0 14px 8px', fontSize: '10px', color: C.tenue, letterSpacing: '.05em',
-        }}>OBRA</div>
-        <div style={{ flex: 1, display: 'flex' }}>
-          {meses.map((m) => (
-            <div key={m.clave} style={{
-              flex: 1, borderLeft: `1px solid ${C.bordeTarjeta}`, display: 'flex',
-              alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '8px',
-              fontSize: '10.5px', color: m.hoy ? C.tinta : C.tintaSuave, fontWeight: m.hoy ? 600 : 400,
-            }}>{m.t}</div>
-          ))}
+      {/* MISMO MÍNIMO QUE LA TABLA: acá la columna del nombre no colapsa (mide 250px fijos), pero la
+          pista de meses se comía todo el ancho que quedaba y a 390px quedaban ~100px para medio año
+          de plan. Una barra de Gantt de 8px no dice nada. */}
+      <Ancha>
+        <div style={{ display: 'flex', height: '38px', borderBottom: `1px solid ${C.borde}`, background: C.tenueFondo }}>
+          <div style={{
+            width: '250px', flexShrink: 0, display: 'flex', alignItems: 'flex-end',
+            padding: '0 14px 8px', fontSize: '10px', color: C.tenue, letterSpacing: '.05em',
+          }}>OBRA</div>
+          <div style={{ flex: 1, display: 'flex' }}>
+            {meses.map((m) => (
+              <div key={m.clave} style={{
+                flex: 1, borderLeft: `1px solid ${C.bordeTarjeta}`, display: 'flex',
+                alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '8px',
+                fontSize: '10.5px', color: m.hoy ? C.tinta : C.tintaSuave, fontWeight: m.hoy ? 600 : 400,
+              }}>{m.t}</div>
+            ))}
+          </div>
         </div>
-      </div>
-      {obras.map((o) => {
-        const x = pos(o.fecha_inicio_plan)
-        const x2 = pos(o.forecast_fin ?? o.fecha_fin_plan)
-        const hayBarra = x != null && x2 != null && x2 > x
-        return (
-          <Hover key={o.obra_id} onClick={() => ir(o.obra_id)} data-testid={`tiempo-${o.obra_id}`}
-            base={{
-              display: 'flex', alignItems: 'center', height: '44px',
-              borderBottom: `1px solid ${C.bordeFila}`, cursor: 'pointer',
-            }} hover={{ background: C.tenueFondo }}>
-            <div style={{ width: '250px', flexShrink: 0, padding: '0 14px', minWidth: 0 }}>
-              <div style={{
-                fontSize: '12.5px', fontWeight: 500, color: C.tinta, overflow: 'hidden',
-                textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>{o.nombre}</div>
-              <div style={{
-                fontSize: '11px', color: C.tenue, overflow: 'hidden', textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}>{o.cliente_nombre ?? o.cliente_texto ?? 'sin cliente declarado'}</div>
-            </div>
-            <div style={{ flex: 1, position: 'relative', height: '100%' }}>
-              <div style={{ position: 'absolute', inset: 0, display: 'flex' }}>
-                {meses.map((m) => (
-                  <div key={m.clave} style={{
-                    flex: 1, borderLeft: `1px solid ${C.bordeLista}`,
-                    background: m.hoy ? '#FEFCF2' : 'transparent',
-                  }} />
-                ))}
-              </div>
-              {/* SIN FECHAS NO SE DIBUJA UNA BARRA INVENTADA: el hueco ES el dato —esa obra no
-                  está planificada— y una barra desde hoy lo taparía. */}
-              {hayBarra ? (
+        {obras.map((o) => {
+          const x = pos(o.fecha_inicio_plan)
+          const x2 = pos(o.forecast_fin ?? o.fecha_fin_plan)
+          const hayBarra = x != null && x2 != null && x2 > x
+          return (
+            <Hover key={o.obra_id} onClick={() => ir(o.obra_id)} data-testid={`tiempo-${o.obra_id}`}
+              base={{
+                display: 'flex', alignItems: 'center', height: '44px',
+                borderBottom: `1px solid ${C.bordeFila}`, cursor: 'pointer',
+              }} hover={{ background: C.tenueFondo }}>
+              <div style={{ width: '250px', flexShrink: 0, padding: '0 14px', minWidth: 0 }}>
                 <div style={{
-                  position: 'absolute', top: '16px', left: `${x}%`, width: `${x2 - x}%`, height: '12px',
-                  borderRadius: '3px', overflow: 'hidden',
-                  background: (o.avance_pct ?? 0) >= 100 ? '#E6F3EB' : (o.avance_pct ?? 0) > 0 ? '#E4EEFC' : C.pistaPlan,
-                  border: `1px solid ${(o.avance_pct ?? 0) >= 100 ? '#CDE7D7' : (o.avance_pct ?? 0) > 0 ? '#CFE0FA' : C.borde}`,
-                }}>
-                  <div style={{ height: '100%', width: `${Math.min(100, o.avance_pct ?? 0)}%`, background: colorDeBarra(o) }} />
+                  fontSize: '12.5px', fontWeight: 500, color: C.tinta, overflow: 'hidden',
+                  textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>{o.nombre}</div>
+                <div style={{
+                  fontSize: '11px', color: C.tenue, overflow: 'hidden', textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}>{o.cliente_nombre ?? o.cliente_texto ?? 'sin cliente declarado'}</div>
+              </div>
+              <div style={{ flex: 1, position: 'relative', height: '100%' }}>
+                <div style={{ position: 'absolute', inset: 0, display: 'flex' }}>
+                  {meses.map((m) => (
+                    <div key={m.clave} style={{
+                      flex: 1, borderLeft: `1px solid ${C.bordeLista}`,
+                      background: m.hoy ? '#FEFCF2' : 'transparent',
+                    }} />
+                  ))}
                 </div>
-              ) : (
-                <span style={{
-                  position: 'absolute', top: '15px', left: '8px', fontSize: '11px', color: C.tenue,
-                }} data-nulo="">sin fechas de plan</span>
-              )}
-            </div>
-          </Hover>
-        )
-      })}
+                {/* SIN FECHAS NO SE DIBUJA UNA BARRA INVENTADA: el hueco ES el dato —esa obra no
+                    está planificada— y una barra desde hoy lo taparía. */}
+                {hayBarra ? (
+                  <div style={{
+                    position: 'absolute', top: '16px', left: `${x}%`, width: `${x2 - x}%`, height: '12px',
+                    borderRadius: '3px', overflow: 'hidden',
+                    background: (o.avance_pct ?? 0) >= 100 ? '#E6F3EB' : (o.avance_pct ?? 0) > 0 ? '#E4EEFC' : C.pistaPlan,
+                    border: `1px solid ${(o.avance_pct ?? 0) >= 100 ? '#CDE7D7' : (o.avance_pct ?? 0) > 0 ? '#CFE0FA' : C.borde}`,
+                  }}>
+                    <div style={{ height: '100%', width: `${Math.min(100, o.avance_pct ?? 0)}%`, background: colorDeBarra(o) }} />
+                  </div>
+                ) : (
+                  <span style={{
+                    position: 'absolute', top: '15px', left: '8px', fontSize: '11px', color: C.tenue,
+                  }} data-nulo="">sin fechas de plan</span>
+                )}
+              </div>
+            </Hover>
+          )
+        })}
+      </Ancha>
     </Tarjeta>
   )
 }

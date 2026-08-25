@@ -20,7 +20,14 @@ test('la banda es UNA sola y va a sangre del marco de la ficha de obra', () => {
   const src = fuente('ListaHoyEnObra.tsx')
   // El defecto que atrapa: dos bandas apiladas —la de sub-vistas y la de filtros— que le sacan
   // 40px de alto a la lista que la persona vino a leer.
-  assert.match(src, /-mx-4 .*border-y border-line bg-surface-quiet px-4 .*lg:-mx-10 lg:px-10/)
+  //
+  // 24/08/2026 · ERA `-mx-4 px-4 lg:-mx-10 lg:px-10` Y ESTABA MAL EN LOS DOS NÚMEROS. El marco de
+  // la ficha es `w-full px-5` —20px, sin variante por breakpoint—, así que en escritorio la banda
+  // se salía 20px por lado: la auditoría del módulo midió `scrollWidth` 1300 contra `innerWidth`
+  // 1280 en Operación y en Documentos, con la página entera scrolleando de costado. 20px además es
+  // lo que dice el canónico: `padding:0 20px` en la banda de «09 · Obra Personal.dc.html» y en la
+  // de «11 · Obra Operación.dc.html».
+  assert.match(src, /-mx-5 .*border-y border-line bg-surface-quiet px-5 /)
   assert.match(src, /data-testid="banda-personal"/)
   assert.match(src, /\{navegacion\}/)
 })
@@ -62,7 +69,7 @@ test('las pastillas y la lista filtran con la MISMA regla, que vive fuera del co
 // de la ficha. Escrita tres veces se separa en el primer cambio de densidad, y ya estaba separada
 // —Operación y Documentos tenían sus controles flotando sobre el canvas, sin banda—.
 
-const BANDA = /-mx-4 flex flex-wrap items-center gap-x-\[14px\] gap-y-2 border-y border-line bg-surface-quiet px-4 py-1\.5 lg:-mx-10 lg:px-10/
+const BANDA = /-mx-5 flex flex-wrap items-center gap-x-\[14px\] gap-y-2 border-y border-line bg-surface-quiet px-5 py-1\.5/
 
 test('Operación y Documentos dibujan la MISMA banda que Personal', () => {
   assert.match(fuente('TabOperacion.tsx'), BANDA)

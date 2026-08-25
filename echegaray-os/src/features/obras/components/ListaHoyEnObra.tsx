@@ -64,11 +64,12 @@ export function ListaHoyEnObra({ grupos, horas, navegacion, accion, panel, kpis,
 
   return (
     <>
-      {/* LA BANDA, A SANGRE (canónico 09): los márgenes negativos son los del marco de la ficha de
-          obra —16px en el teléfono, 40px en escritorio—. Sin eso, la banda flota adentro del
-          contenido y no se lee que gobierna la lista de abajo. */}
+      {/* LA BANDA, A SANGRE (canónico 09): el margen negativo es el del marco de la ficha de obra,
+          que mide 20px en todo ancho (`w-full px-5`). Sin eso, la banda flota adentro del contenido
+          y no se lee que gobierna la lista de abajo. Decía `-mx-4 lg:-mx-10` sobre un marco de
+          20px: se salía 20px por lado y hacía scrollear la página de costado. */}
       <div
-        className="-mx-4 mb-3 flex flex-wrap items-center gap-x-[14px] gap-y-2 border-y border-line bg-surface-quiet px-4 py-1.5 lg:-mx-10 lg:px-10"
+        className="-mx-5 mb-3 flex flex-wrap items-center gap-x-[14px] gap-y-2 border-y border-line bg-surface-quiet px-5 py-1.5"
         data-testid="banda-personal"
       >
         {navegacion}

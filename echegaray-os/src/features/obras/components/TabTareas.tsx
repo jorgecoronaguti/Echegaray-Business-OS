@@ -212,9 +212,18 @@ export function TabTareas({
             placeholder="Buscar actividad" testid="buscar-tarea" />
           {/* CADA FILTRO DICE CUÁNTO HAY DETRÁS (canónico 03). Las cuatro del diseño primero; las
               otras dos, detrás — se conservan porque contestan preguntas reales de todos los días
-              (atrasadas, sin asignar) y no compiten por la mirada con las que resumen la obra. */}
-          {[...VISTAS_PRIMARIAS, ...VISTAS_SECUNDARIAS].map((v) => (
+              (atrasadas, sin asignar) y no compiten por la mirada con las que resumen la obra.
+              «No compiten» era hasta hoy una intención escrita en un comentario: las seis se
+              dibujaban idénticas. Ahora las dos de atrás van en `secundario` y detrás de un filete
+              vertical, que es lo único que separa dos grupos de controles en la banda del 03. */}
+          {VISTAS_PRIMARIAS.map((v) => (
             <Chip key={v} activo={filtroLocal === v} onClick={() => elegirFiltro(v)}
+              n={String(cuentas[v])}>{VISTA_ARBOL_LABEL[v]}</Chip>
+          ))}
+          <span aria-hidden data-testid="filete-filtros"
+            style={{ width: '1px', height: '20px', background: C.borde, flexShrink: 0 }} />
+          {VISTAS_SECUNDARIAS.map((v) => (
+            <Chip key={v} secundario activo={filtroLocal === v} onClick={() => elegirFiltro(v)}
               n={String(cuentas[v])}>{VISTA_ARBOL_LABEL[v]}</Chip>
           ))}
           <button type="button" onClick={() => setVerDeps((x) => !x)} title="Dependencias"

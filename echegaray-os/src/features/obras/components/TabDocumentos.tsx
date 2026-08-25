@@ -155,11 +155,16 @@ function Vincular({
 }) {
   const esCarpeta = tipo === 'carpeta'
   return (
-    <details className="w-full min-w-0 sm:w-auto" data-testid={testid}>
+    // `group` + `hidden group-open:block`: PLEGADO NO PUEDE OCUPAR ANCHO. Los 440px del formulario
+    // seguían midiendo dentro del `<details>` cerrado —el navegador saltea pintar el contenido, no
+    // reservar su caja— y dos de estos sumaban 880px que empujaban la página hacia el costado. Con
+    // `display:none` el ancho es el del rótulo. El formulario NO se desmonta: sigue en el DOM, así
+    // que lo tipeado sobrevive a cerrar y volver a abrir.
+    <details className="group w-full min-w-0 sm:w-auto" data-testid={testid}>
       <summary className="cursor-pointer select-none text-[12.5px] text-muted hover:text-ink">
         Vincular {esCarpeta ? 'carpeta' : 'documento'}
       </summary>
-      <div className="mt-3 w-full border-t border-[#EFEEEA] pt-3.5 sm:w-[440px]">
+      <div className="mt-3 hidden w-full border-t border-[#EFEEEA] pt-3.5 group-open:block sm:w-[440px]">
         <FormAccion accion={accion} testid={`${testid}-form`} enviar="Vincular" limpiarAlOk mensajeOk="Vinculado.">
           {/* El tipo viaja en el formulario y el `obra_id` NO: uno es una preferencia de quien
               carga, el otro decide sobre qué obra se escribe. */}
@@ -271,14 +276,16 @@ export function TabDocumentos({
       {/* ═══ LA BANDA DEL CANÓNICO 12, A SANGRE: CHIPS A LA IZQUIERDA, BUSCADOR A LA DERECHA ═══
           Los chips flotaban sobre el canvas y el buscador vivía tres metros más arriba, en la fila
           de acciones: dos controles que gobiernan la MISMA lista, separados por una fila entera.
-          Fondo `surface-quiet` con hairline arriba y abajo, de borde a borde del marco de la ficha.
+          Fondo `surface-quiet` con hairline arriba y abajo, de borde a borde del marco de la ficha
+          —que mide 20px, `w-full px-5`: con `lg:-mx-10` la banda se salía 20px por lado y a 1280 la
+          página scrolleaba de costado—.
 
           LOS CHIPS SON LOS CINCO GRUPOS SIEMPRE, con su conteo — también en cero: «Contrato · 0» es
           la forma más corta de decir que a esta obra le falta el contrato. Filtrar es una elección
           explícita, así que el chip deja el grupo aunque quede vacío; el buscador, en cambio,
           esconde los grupos sin coincidencias. */}
       {documentos.length > 0 && (
-      <div className="-mx-4 flex flex-wrap items-center gap-x-[14px] gap-y-2 border-y border-line bg-surface-quiet px-4 py-1.5 lg:-mx-10 lg:px-10">
+      <div className="-mx-5 flex flex-wrap items-center gap-x-[14px] gap-y-2 border-y border-line bg-surface-quiet px-5 py-1.5">
         <Filtros
           testid="chips-categoria-documento"
           opciones={[
