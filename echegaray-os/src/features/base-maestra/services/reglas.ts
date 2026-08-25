@@ -350,3 +350,141 @@ export function fechaLarga(iso: string | null | undefined): string | null {
     day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC',
   })
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// 8 · DE QUÉ ESTÁ HECHA UNA TAREA — la columna COMPOSICIÓN del canónico 17
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// El canónico dibuja hasta tres iconos por fila: cuadrilla, material, equipo. El dato sale de
+// `analisis_linea` → `recurso.tipo`, que NO depende de `recurso_precio` y por lo tanto vale igual
+// para un jefe de obra que para Dirección. El atajo por `analisis_costo.costo_materiales` sería una
+// trampa: esos importes salen del precio, que la RLS le vacía al jefe, y él vería tareas sin
+// materiales.
+//
+// `carga_social` NO tiene icono propio y no es un olvido: acompaña siempre a la mano de obra —esa
+// es la regla que `analisis_incompleto` controla— así que un cuarto icono repetiría el primero.
+// `otro` tampoco: es el cajón de sastre de la importación, no una familia de recursos.
+
+export const TIPOS_COMPOSICION = ['mano_obra', 'material', 'equipo'] as const
+export type TipoComposicion = (typeof TIPOS_COMPOSICION)[number]
+
+/** Los tipos presentes, únicos y SIEMPRE en el mismo orden: la fila no puede bailar entre tareas. */
+export function tiposDeComposicion(tipos: readonly string[]): TipoComposicion[] {
+  const presentes = new Set(tipos)
+  return TIPOS_COMPOSICION.filter((t) => presentes.has(t))
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// 9 · LA VARIACIÓN DE UN PRECIO SE MIDE CONTRA UNA VENTANA, NO CONTRA UN MES ELEGIDO A DEDO
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// El canónico 18 escribe «+38 % · vs febrero» sobre datos de ejemplo. Acá no hay ningún febrero
+// garantizado: un recurso puede tener dos precios de agosto y ninguno antes. Por eso lo que se
+// compara es el precio VIGENTE contra el último precio que ya estaba en vigor `meses` atrás, y
+// cuando ese precio no existe la respuesta es «sin base» — nunca 0 %, que afirmaría que el precio
+// no se movió en seis meses.
+
+/** `AAAA-MM-DD` de `meses` antes, sin desbordar de mes: 31/08 − 6 meses es 28/02, no 03/03. */
+export function restarMeses(hoyISO: string, meses: number): string {
+  const base = new Date(hoyISO.slice(0, 10) + 'T00:00:00Z')
+  if (Number.isNaN(base.getTime())) return hoyISO.slice(0, 10)
+  const dia = base.getUTCDate()
+  const destino = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() - meses, 1))
+  const ultimoDelMes = new Date(Date.UTC(destino.getUTCFullYear(), destino.getUTCMonth() + 1, 0)).getUTCDate()
+  destino.setUTCDate(Math.min(dia, ultimoDelMes))
+  return destino.toISOString().slice(0, 10)
+}
+
+export type PrecioEnElTiempo = { costo: number | null; fecha_precio: string | null }
+
+/**
+ * @param historial del MÁS NUEVO al más viejo, como lo devuelve `getHistorial`
+ * @returns la fracción de variación y desde qué fecha se mide, o `null` si no hay contra qué
+ */
+export function variacionEnMeses(
+  historial: readonly PrecioEnElTiempo[],
+  meses: number,
+  hoyISO: string,
+): { fraccion: number; desde: string } | null {
+  const actual = historial.find((p) => p.costo != null && Number.isFinite(p.costo))
+  if (!actual?.costo) return null
+  const corte = restarMeses(hoyISO, meses)
+  const anterior = historial.find(
+    (p) => p !== actual && p.fecha_precio != null && p.fecha_precio.slice(0, 10) <= corte
+      && p.costo != null && Number.isFinite(p.costo) && p.costo > 0,
+  )
+  if (!anterior?.costo || !anterior.fecha_precio) return null
+  return { fraccion: actual.costo / anterior.costo - 1, desde: anterior.fecha_precio }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// 10 · RENDIMIENTO POR OBRA — el gráfico de barras del canónico 17
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// `rendimiento_historico` guarda un registro por actividad terminada, con su obra y su hs/unidad ya
+// limpio de horas improductivas. Una obra puede tener varios: la barra muestra su MEDIANA, no el
+// promedio, por la misma razón que `rendimiento_recomendado` — un registro con la cantidad mal
+// cargada corre el promedio de toda la obra y no corre la mediana.
+//
+// EL ANCHO ES RELATIVO A LA PEOR, no a la base. Es lo que hace el canónico (1,32× ocupa el 100 % y
+// 0,96× el 73 %) y es lo correcto: una barra proporcional a la base dejaría todas las obras casi
+// iguales, porque la diferencia entre ellas son décimas.
+
+export function mediana(valores: readonly number[]): number | null {
+  const v = valores.filter((x) => Number.isFinite(x)).slice().sort((a, b) => a - b)
+  if (!v.length) return null
+  const m = Math.floor(v.length / 2)
+  return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2
+}
+
+export type RegistroDeObra = { obra_id: string | null; obra_nombre: string; hs_unitarias: number | null }
+
+export type RendimientoDeObra = {
+  obra_id: string | null
+  obra_nombre: string
+  /** La mediana de los registros de esa obra. */
+  hs_unitarias: number
+  muestra: number
+  /** Contra el esfuerzo base. `null` cuando la tarea no tiene análisis con el que comparar. */
+  ratio: number | null
+  direccion: DireccionDesvio | null
+  /** 0–100. Relativo a la obra que más horas pidió, nunca a la base. */
+  ancho: number
+}
+
+export function rendimientoPorObra(
+  registros: readonly RegistroDeObra[],
+  baseHsUnidad: number | null | undefined,
+): RendimientoDeObra[] {
+  type Grupo = { nombre: string; obra_id: string | null; valores: number[] }
+  const porObra = new Map<string, Grupo>()
+  for (const r of registros) {
+    if (r.hs_unitarias == null || !Number.isFinite(r.hs_unitarias)) continue
+    const clave = r.obra_id ?? r.obra_nombre
+    const g: Grupo = porObra.get(clave) ?? { nombre: r.obra_nombre, obra_id: r.obra_id, valores: [] }
+    g.valores.push(r.hs_unitarias)
+    porObra.set(clave, g)
+  }
+
+  const filas: { g: Grupo; m: number }[] = []
+  for (const g of porObra.values()) {
+    const m = mediana(g.valores)
+    if (m != null) filas.push({ g, m })
+  }
+  filas.sort((a, b) => b.m - a.m)
+  const peor = filas.length ? filas[0].m : 0
+
+  return filas.map(({ g, m }) => {
+    const d = desvioObservado(baseHsUnidad, m)
+    return {
+      obra_id: g.obra_id,
+      obra_nombre: g.nombre,
+      hs_unitarias: m,
+      muestra: g.valores.length,
+      ratio: d?.ratio ?? null,
+      direccion: d?.direccion ?? null,
+      // Con una sola obra la barra va llena: es el 100 % de lo que hay para comparar, no un desvío.
+      ancho: peor > 0 ? Math.round((m / peor) * 100) : 0,
+    }
+  })
+}
