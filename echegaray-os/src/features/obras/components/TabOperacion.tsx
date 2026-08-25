@@ -352,9 +352,14 @@ export function TabOperacion({
     <div className="flex flex-col gap-4">
       {/* LA BANDA DEL CANÓNICO 11, A SANGRE: fondo `surface-quiet` y hairline arriba y abajo, de
           borde a borde del marco de la ficha. Sin la banda, las sub-vistas y el buscador flotaban
-          sobre el canvas y no se leía que gobiernan la lista de abajo. Los márgenes negativos son
-          los del marco de la página —16px en el teléfono, 40px en escritorio—. */}
-      <div className="-mx-4 flex flex-wrap items-center gap-x-[14px] gap-y-2 border-y border-line bg-surface-quiet px-4 py-1.5 lg:-mx-10 lg:px-10">
+          sobre el canvas y no se leía que gobiernan la lista de abajo.
+
+          EL MARGEN NEGATIVO ES EL DEL MARCO REAL, QUE MIDE 20px SIEMPRE (`w-full px-5` en
+          `app/(main)/obras/[obra]/page.tsx`). Decía `-mx-4 lg:-mx-10` porque se creyó que el marco
+          era de 16/40px: a 1280 la banda se salía 20px por lado y la PÁGINA ENTERA scrolleaba de
+          costado (`scrollWidth` 1300 contra 1280). El desborde no lo causaba la quinta sub-solapa
+          —la fila envuelve—: lo causaba este número. */}
+      <div className="-mx-5 flex flex-wrap items-center gap-x-[14px] gap-y-2 border-y border-line bg-surface-quiet px-5 py-1.5">
         <SubTabs
           testid="subs-operacion"
           items={SUBS.map((s) => ({
