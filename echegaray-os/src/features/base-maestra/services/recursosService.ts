@@ -19,7 +19,9 @@ import type {
 } from '../types'
 import {
   JORNADA_HORAS, claveDeCategoria, contarPorCategoria, costoDeCategoria, frescuraDePrecio, sumaDeCargas,
+  variacionEnMeses,
 } from './reglas'
+import { traerTodo } from './paginado'
 
 type Fila = Record<string, unknown>
 const n = (v: unknown): number | null => (v == null ? null : Number(v))
@@ -30,12 +32,52 @@ export async function getRecursos(
   supabase: SupabaseClient,
   hoyISO: string,
 ): Promise<ServiceResult<RecursoFila[]>> {
-  const { data, error } = await supabase.from('recurso_costo').select('*').eq('activo', true).order('codigo')
-  if (error) return { data: null, error: error.message }
-  return { data: ((data ?? []) as Fila[]).map((r) => aRecurso(r, hoyISO)), error: null }
+  const [recursos, usos] = await Promise.all([
+    supabase.from('recurso_costo').select('*').eq('activo', true).order('codigo'),
+    contarUsosPorRecurso(supabase),
+  ])
+  if (recursos.error) return { data: null, error: recursos.error.message }
+  return {
+    data: ((recursos.data ?? []) as Fila[]).map((r) => ({
+      ...aRecurso(r, hoyISO),
+      // NULL Y NO CERO si no se pudo contar: cero dice «no lo usa nadie», que es el permiso para
+      // cambiarle el precio sin mirar a qué le pega. Ver `contarUsosPorRecurso`.
+      usos: usos ? (usos.get(String(r.recurso_id)) ?? 0) : null,
+    })),
+    error: null,
+  }
 }
 
-function aRecurso(r: Fila, hoyISO: string): RecursoFila {
+/**
+ * EN CUÁNTAS TAREAS TIPO ENTRA CADA RECURSO — la columna USOS del canónico 18.
+ *
+ * Sólo la versión VIGENTE de cada análisis: las históricas siguen existiendo —la base maestra nunca
+ * borra historia— pero cambiar un precio hoy no le pega a un análisis que ya no cotiza nada. Es el
+ * mismo criterio que `getUsoDelRecurso`, que lo hace para UN recurso.
+ *
+ * ES ESTABLE ANTE PERMISOS: `analisis` y `analisis_linea` son legibles por cualquier autenticado.
+ * Contarlo desde `analisis_costo.costo_materiales` habría dado cero para un jefe de obra.
+ */
+async function contarUsosPorRecurso(supabase: SupabaseClient): Promise<Map<string, number> | null> {
+  const [analisis, lineas] = await Promise.all([
+    traerTodo(supabase, 'analisis', 'id, vigente'),
+    traerTodo(supabase, 'analisis_linea', 'analisis_id, recurso_id'),
+  ])
+  if (analisis.error || lineas.error) return null
+
+  const vigentes = new Set<string>()
+  for (const a of analisis.filas) if (a.vigente === true) vigentes.add(String(a.id))
+
+  const cuenta = new Map<string, number>()
+  for (const l of lineas.filas) {
+    if (!vigentes.has(String(l.analisis_id))) continue
+    const id = String(l.recurso_id)
+    cuenta.set(id, (cuenta.get(id) ?? 0) + 1)
+  }
+  return cuenta
+}
+
+function aRecurso(r: Fila, hoyISO: string): Omit<RecursoFila, 'usos'> {
   return {
     recurso_id: String(r.recurso_id),
     codigo: String(r.codigo),
@@ -89,7 +131,18 @@ export async function getFichaRecurso(
   ])
 
   return {
-    data: { recurso: aRecurso(data as Fila, hoyISO), historial, historial_visible: economia, usos, avisos },
+    data: {
+      // El contador de la LISTA no se recalcula acá: el panel ya trae las tareas una por una, y
+      // `usos.length` es el mismo hecho contado sobre las filas que se están mostrando.
+      recurso: { ...aRecurso(data as Fila, hoyISO), usos: usos.length },
+      historial,
+      historial_visible: economia,
+      usos,
+      // «VARIACIÓN 6 M» del canónico. Se calcula sobre el historial que YA se leyó: sin permiso
+      // económico el historial viene vacío y esto queda en null, que la ficha escribe «sin base».
+      variacion_6m: variacionEnMeses(historial, 6, hoyISO),
+      avisos,
+    },
     error: null,
   }
 }
@@ -313,15 +366,4 @@ export async function getPlantillas(supabase: SupabaseClient): Promise<ServiceRe
       .sort((a, b) => a.orden - b.orden),
   }))
   return { data: filas, error: null }
-}
-
-/** Los contadores del subtítulo. Se derivan de las filas ya leídas: cero consultas extra. */
-export function contarRecursos(filas: RecursoFila[]): Pick<MetaRecursos, 'n_insumos' | 'n_familias' | 'n_equipos' | 'n_sin_precio'> {
-  const insumos = filas.filter((f) => f.tipo === 'material')
-  return {
-    n_insumos: insumos.length,
-    n_familias: new Set(insumos.map((f) => f.familia).filter(Boolean)).size,
-    n_equipos: filas.filter((f) => f.tipo === 'equipo').length,
-    n_sin_precio: filas.filter((f) => f.costo_base == null).length,
-  }
 }

@@ -1,7 +1,12 @@
-// SOLAPA `ANÁLISIS` — la composición por unidad. SÓLO SE RENDERIZA CON PERMISO ECONÓMICO.
+// SOLAPA `COMPOSICIÓN` — de qué está hecha la tarea, por unidad.
 //
-// Quien la llama ya decidió eso (`FichaTarea`): acá no hay un `if` de permiso, porque un permiso
-// chequeado en dos lugares es un permiso que algún día va a estar chequeado en uno solo.
+// ═══ SIN PERMISO ECONÓMICO SE DIBUJA IGUAL, SIN LAS COLUMNAS DE COSTO ═══
+//
+// Antes esta solapa no existía para el jefe de obra: la ficha ni la ofrecía. Pero LAS CANTIDADES
+// SON OPERATIVAS —cuántas horas de oficial y cuánto hormigón lleva un m³— y son exactamente lo que
+// necesita para planificar. Lo económico es el PRECIO, y eso es lo que no se dibuja: ni el costo
+// unitario, ni el de cada línea, ni el aviso de «líneas sin precio», que también es un dato de
+// precio. La columna no se muestra vacía: no se muestra.
 //
 // Las tres secciones del contrato —mano de obra, materiales, equipos— salen de `recurso.tipo`, que
 // el modelo resuelve por UNIDAD y no por color: `hs` es mano de obra, `hr` es carga social. Los
@@ -20,7 +25,7 @@ const SECCIONES: { tipo: LineaAnalisis['tipo']; rotulo: string; color: string }[
   { tipo: 'otro', rotulo: 'Otros', color: 'text-faint' },
 ]
 
-export function SolapaAnalisis({ ficha }: { ficha: FichaTarea }) {
+export function SolapaAnalisis({ ficha, economia }: { ficha: FichaTarea; economia: boolean }) {
   const { lineas, costo, tarea } = ficha
   const hoy = new Date().toISOString().slice(0, 10)
 
@@ -49,7 +54,12 @@ export function SolapaAnalisis({ ficha }: { ficha: FichaTarea }) {
             <div className={`text-[10px] font-medium uppercase tracking-[0.05em] ${s.color}`}>{s.rotulo}</div>
             <ul className="mt-1.5">
               {filas.map((l) => (
-                <li key={l.id} className="grid grid-cols-[1fr_78px_66px_78px] items-center gap-2 border-b border-[#EFEEEA] py-2 last:border-b-0">
+                <li
+                  key={l.id}
+                  className={`grid items-center gap-2 border-b border-[#EFEEEA] py-2 last:border-b-0 ${
+                    economia ? 'grid-cols-[1fr_78px_66px_78px]' : 'grid-cols-[1fr_78px]'
+                  }`}
+                >
                   <span className="min-w-0">
                     <span className="block truncate text-[12px] text-ink-soft" title={l.nombre}>{l.nombre}</span>
                     <span className="mt-0.5 block text-[10px] text-faint">
@@ -64,18 +74,22 @@ export function SolapaAnalisis({ ficha }: { ficha: FichaTarea }) {
                     cantidad={l.cantidad}
                     unidad={l.unidad}
                   />
-                  <span className="text-right">
-                    {l.costo_base == null
-                      ? <Nulo>sin cargar</Nulo>
-                      : <span className="font-mono text-[11px] tabular-nums text-muted">{numero(l.costo_base, 0)}</span>}
-                  </span>
-                  <span className="text-right">
-                    {l.costo_con_desperdicio == null
-                      ? <Nulo>sin cargar</Nulo>
-                      : <span className="font-mono text-[11px] tabular-nums text-ink-soft">
-                          {numero(l.cantidad * l.costo_con_desperdicio, 0)}
-                        </span>}
-                  </span>
+                  {economia && (
+                    <>
+                      <span className="text-right">
+                        {l.costo_base == null
+                          ? <Nulo>sin cargar</Nulo>
+                          : <span className="font-mono text-[11px] tabular-nums text-muted">{numero(l.costo_base, 0)}</span>}
+                      </span>
+                      <span className="text-right">
+                        {l.costo_con_desperdicio == null
+                          ? <Nulo>sin cargar</Nulo>
+                          : <span className="font-mono text-[11px] tabular-nums text-ink-soft">
+                              {numero(l.cantidad * l.costo_con_desperdicio, 0)}
+                            </span>}
+                      </span>
+                    </>
+                  )}
                 </li>
               ))}
             </ul>
@@ -84,7 +98,7 @@ export function SolapaAnalisis({ ficha }: { ficha: FichaTarea }) {
       })}
 
       {/* La fila de cargas va con el fondo de «calculado»: no es un insumo que alguien compró. */}
-      {cargas.length > 0 && (
+      {economia && cargas.length > 0 && (
         <div className="mt-3 rounded-card bg-[#FEF9E6] px-3 py-2" data-testid="fila-cargas">
           <div className="flex items-baseline justify-between gap-3">
             <span className="text-[12px] text-ink-soft">
@@ -101,6 +115,7 @@ export function SolapaAnalisis({ ficha }: { ficha: FichaTarea }) {
 
       {/* EL COSTO UNITARIO NO SE SUMA ACÁ. Sale de `analisis_costo`: si se recalculara en el
           navegador habría dos definiciones del mismo número y algún día darían distinto. */}
+      {economia && (
       <div className="mt-3 border-t border-line-strong pt-2.5">
         <Total rotulo="Mano de obra" v={costo?.costo_mano_obra ?? null} />
         <Total rotulo="Materiales" v={costo?.costo_materiales ?? null} />
@@ -112,13 +127,14 @@ export function SolapaAnalisis({ ficha }: { ficha: FichaTarea }) {
           </span>
         </div>
       </div>
+      )}
 
-      {costo && costo.n_lineas_sin_precio > 0 && (
+      {economia && costo && costo.n_lineas_sin_precio > 0 && (
         <p className="mt-2 text-[11.5px] text-warn" data-testid="lineas-sin-precio">
           {costo.n_lineas_sin_precio} de {costo.n_lineas} líneas no tienen precio cargado: el costo unitario está incompleto.
         </p>
       )}
-      {costo?.precio_mas_viejo && frescuraDePrecio(costo.precio_mas_viejo, hoy) === 'vieja' && (
+      {economia && costo?.precio_mas_viejo && frescuraDePrecio(costo.precio_mas_viejo, hoy) === 'vieja' && (
         <p className="mt-1 text-[11.5px] text-warn">
           El precio más viejo de este análisis es del{' '}
           <FechaPrecio iso={costo.precio_mas_viejo} frescura="vieja" />.

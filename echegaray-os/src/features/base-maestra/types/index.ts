@@ -3,7 +3,7 @@
 // `ServiceResult` se reusa del módulo de obras a propósito: un segundo tipo con la misma forma
 // obligaría a traducir en cada borde y las dos formas terminarían divergiendo.
 
-import type { EstadoAnalisis, Frescura } from '../services/reglas'
+import type { EstadoAnalisis, Frescura, RendimientoDeObra, TipoComposicion } from '../services/reglas'
 
 export type { ServiceResult } from '@/features/obras/types'
 
@@ -45,6 +45,13 @@ export type TareaTipoFila = {
   falta: string | null
   analisis_id: string | null
   version: number | null
+  /** De qué está hecha, para la columna COMPOSICIÓN del canónico. Sale del TIPO de cada recurso del
+   *  análisis vigente, que NO depende de `recurso_precio` y por eso vale igual para un jefe de obra. */
+  composicion: TipoComposicion[]
+  /** En cuántas partidas de presupuesto y actividades de obra entró. `null` = no se pudo contar —y
+   *  eso NO es cero: `cotizacion_partida` es económica y `obra_actividad` se acota por obra, así que
+   *  quien no ve una de las dos fuentes recibe null en vez de un número que miente por lo bajo. */
+  usos: number | null
 }
 
 export type LineaAnalisis = {
@@ -139,6 +146,10 @@ export type FichaTarea = {
   rendimiento: Rendimiento | null
   plantilla: Plantilla | null
   uso: UsoDeTarea[]
+  /** Una barra por obra con dato medido — «Rendimiento por obra» del canónico 17. */
+  obras: RendimientoDeObra[]
+  /** Cuándo se actualizó por última vez la base para esta tarea: la fecha del análisis vigente. */
+  actualizado: string | null
   /** Lo que esta ficha NO pudo leer y por qué. Se muestra; no se pinta como lista vacía. */
   avisos: string[]
 }
@@ -161,6 +172,8 @@ export type RecursoFila = {
   fuente: string | null
   proveedor: string | null
   frescura: Frescura
+  /** En cuántas tareas tipo VIGENTES entra. `null` = no se pudo contar, que no es cero. */
+  usos: number | null
 }
 
 /** Un precio de `recurso_precio`, con de dónde salió. Es historia: nunca se pisa, se agrega. */
@@ -190,6 +203,8 @@ export type FichaRecurso = {
   /** false = no se leyó por permiso económico. La pantalla NO puede decir «sin historial». */
   historial_visible: boolean
   usos: UsoDeRecurso[]
+  /** «VARIACIÓN 6 M» del canónico 18: el precio vigente contra el que regía seis meses atrás. */
+  variacion_6m: { fraccion: number; desde: string } | null
   avisos: string[]
 }
 

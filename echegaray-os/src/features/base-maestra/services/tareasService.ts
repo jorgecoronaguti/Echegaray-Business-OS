@@ -17,7 +17,9 @@ import type {
   CostoAnalisis, FichaTarea, LineaAnalisis, Plantilla, Rendimiento, ServiceResult, TareaTipoFila,
   UsoDeTarea, VersionAnalisis,
 } from '../types'
-import { estadoDelAnalisis, faltaOperativa } from './reglas'
+import type { RendimientoDeObra, TipoComposicion } from './reglas'
+import { traerTodo } from './paginado'
+import { estadoDelAnalisis, faltaOperativa, rendimientoPorObra, tiposDeComposicion } from './reglas'
 
 type Fila = Record<string, unknown>
 const n = (v: unknown): number | null => (v == null ? null : Number(v))
@@ -47,7 +49,17 @@ export async function getTareasTipo(
   if (costos.error) return { data: null, error: costos.error.message }
 
   const costoPorTarea = new Map<string, Fila>()
-  for (const c of (costos.data ?? []) as Fila[]) costoPorTarea.set(String(c.tarea_tipo_id), c)
+  const tareaPorAnalisis = new Map<string, string>()
+  for (const c of (costos.data ?? []) as Fila[]) {
+    costoPorTarea.set(String(c.tarea_tipo_id), c)
+    tareaPorAnalisis.set(String(c.analisis_id), String(c.tarea_tipo_id))
+  }
+  // Las dos columnas que el canónico pide y el listado no traía. Van después de los costos porque
+  // la composición necesita saber cuál es el análisis VIGENTE de cada tarea.
+  const [composicion, usos] = await Promise.all([
+    getComposiciones(supabase, tareaPorAnalisis),
+    economia ? getUsosDeTareas(supabase) : Promise.resolve(null),
+  ])
   const faltaPorCodigo = new Map<string, string | null>()
   for (const i of (incompletos.data ?? []) as Fila[]) faltaPorCodigo.set(String(i.codigo), s(i.falta))
   const rendPorTarea = new Map<string, Fila>()
@@ -72,9 +84,85 @@ export async function getTareasTipo(
       falta: faltaDe(c, faltaPorCodigo.get(String(t.codigo)), economia),
       analisis_id: c ? String(c.analisis_id) : null,
       version: c ? n(c.version) : null,
+      composicion: composicion.get(String(t.id)) ?? [],
+      // NULL Y NO CERO cuando la fuente no se pudo contar: cero afirmaría que la tarea no se usa en
+      // ninguna parte, que es justo la luz verde para editarle el análisis sin mirar a quién le pega.
+      usos: usos ? (usos.get(String(t.id)) ?? 0) : null,
     }
   })
   return { data: filas, error: null }
+}
+
+/**
+ * DE QUÉ ESTÁ HECHA CADA TAREA — la columna COMPOSICIÓN del canónico 17.
+ *
+ * Dos lecturas enteras emparejadas en memoria, por el mismo motivo que el listado: un `in(...)` con
+ * doscientos uuid arma una URL de 7 KB, y una consulta por tarea son doscientos viajes.
+ *
+ * SI LA LECTURA FALLA, LA COLUMNA QUEDA VACÍA Y NO SE INVENTA. Un mapa vacío hace que todas las
+ * filas dibujen cero iconos, que es lo mismo que «sin análisis» — mal, pero visible. Lo que no
+ * puede pasar es que un error de red publique una composición equivocada.
+ */
+async function getComposiciones(
+  supabase: SupabaseClient, tareaPorAnalisis: Map<string, string>,
+): Promise<Map<string, TipoComposicion[]>> {
+  const salida = new Map<string, TipoComposicion[]>()
+  if (!tareaPorAnalisis.size) return salida
+
+  // `recurso` es legible por todos —el corte económico está en `recurso_precio`—, así que el tipo
+  // llega igual para un jefe de obra. Es lo que hace a esta columna estable ante permisos. Las dos
+  // van JUNTAS: en serie son dos viajes de red en fila por cada carga de la pantalla, y el tiempo
+  // de estas pantallas está en la cantidad de requests, no en el plan de la consulta.
+  const [lineas, recursos] = await Promise.all([
+    traerTodo(supabase, 'analisis_linea', 'analisis_id, recurso_id'),
+    traerTodo(supabase, 'recurso', 'id, tipo'),
+  ])
+  if (lineas.error || recursos.error) return salida
+
+  const tipoPorRecurso = new Map<string, string>()
+  for (const r of recursos.filas) tipoPorRecurso.set(String(r.id), String(r.tipo))
+
+  const crudos = new Map<string, Set<string>>()
+  for (const l of lineas.filas) {
+    const tarea = tareaPorAnalisis.get(String(l.analisis_id))
+    if (!tarea) continue
+    const tipo = tipoPorRecurso.get(String(l.recurso_id))
+    if (!tipo) continue
+    const set = crudos.get(tarea) ?? new Set<string>()
+    set.add(tipo)
+    crudos.set(tarea, set)
+  }
+  for (const [tarea, tipos] of crudos) salida.set(tarea, tiposDeComposicion([...tipos]))
+  return salida
+}
+
+/**
+ * EN CUÁNTOS LUGARES ENTRÓ CADA TAREA — la columna USOS del canónico 17.
+ *
+ * Son dos hechos distintos sumados en un número: partidas de presupuesto y actividades de obra. Se
+ * suman porque la pregunta que contesta la columna es una sola —«si le toco el análisis, a cuánto
+ * le pego»— y las dos puntas pesan igual para esa decisión.
+ *
+ * SÓLO SE PIDE CON PERMISO ECONÓMICO. `cotizacion_partida` es `ve_economia()` y devuelve CERO FILAS
+ * sin error a un jefe de obra: contarlas igual publicaría un número más chico que el real sin que
+ * nada lo dijera. Sin permiso, el llamador recibe `null` y la columna no se dibuja.
+ */
+async function getUsosDeTareas(supabase: SupabaseClient): Promise<Map<string, number> | null> {
+  const [partidas, actividades] = await Promise.all([
+    traerTodo(supabase, 'cotizacion_partida', 'tarea_tipo_id'),
+    traerTodo(supabase, 'obra_actividad', 'tarea_tipo_id, archivada'),
+  ])
+  // UNA DE LAS DOS CAÍDA NO SE COMPLETA CON LA OTRA: el número quedaría corto y parecería un dato.
+  if (partidas.error || actividades.error) return null
+
+  const cuenta = new Map<string, number>()
+  const sumar = (id: unknown) => {
+    if (id == null) return
+    cuenta.set(String(id), (cuenta.get(String(id)) ?? 0) + 1)
+  }
+  for (const p of partidas.filas) sumar(p.tarea_tipo_id)
+  for (const a of actividades.filas) if (a.archivada !== true) sumar(a.tarea_tipo_id)
+  return cuenta
 }
 
 /**
@@ -124,6 +212,7 @@ export async function getFichaTarea(
   const lineas = vigente ? await getLineas(supabase, String(vigente.analisis_id), avisos) : []
   const plantilla = await getPlantillaDe(supabase, s((t as Fila).division), avisos)
   const uso = await getUso(supabase, tareaId, avisos)
+  const obras = await getRendimientoPorObra(supabase, tareaId, n(vigente?.hs_unitarias), avisos)
 
   const tarea: TareaTipoFila = {
     id: String((t as Fila).id),
@@ -141,6 +230,10 @@ export async function getFichaTarea(
     falta,
     analisis_id: vigente ? String(vigente.analisis_id) : null,
     version: vigente ? n(vigente.version) : null,
+    composicion: tiposDeComposicion(lineas.map((l) => l.tipo)),
+    // LA FICHA NO CUENTA LOS USOS y por eso no paga sus dos lecturas enteras: el canónico pone ese
+    // contador en la LISTA, no en el panel. `null` es «no se contó», que es exactamente lo que pasó.
+    usos: null,
   }
 
   return {
@@ -152,10 +245,45 @@ export async function getFichaTarea(
       rendimiento: rendimiento.data ? aRendimiento(rendimiento.data as Fila) : null,
       plantilla,
       uso,
+      obras,
+      // CUÁNDO SE ACTUALIZÓ LA BASE PARA ESTA TAREA es la fecha del análisis VIGENTE, no la de la
+      // tarea: lo que se cotiza es la composición, y `tarea_tipo` no cambia cuando se versiona.
+      actualizado: vigente
+        ? (((versiones.data ?? []) as Fila[]).find((v) => String(v.id) === String(vigente.analisis_id))?.creado_en as string | undefined ?? null)
+        : null,
       avisos,
     },
     error: null,
   }
+}
+
+/**
+ * RENDIMIENTO POR OBRA — las barras del canónico 17.
+ *
+ * `rendimiento_historico` es legible por cualquier autenticado (`using (true)`), así que las barras
+ * salen completas para todos. EL NOMBRE de la obra no: `obra_canonica` se acota por `ve_obra`, y a
+ * un jefe de obra el `embed` le devuelve null en las obras que no son suyas. Ahí se muestra el id —
+ * que es feo y es cierto— en vez de esconder una barra que sí existe.
+ */
+async function getRendimientoPorObra(
+  supabase: SupabaseClient, tareaId: string, base: number | null, avisos: string[],
+): Promise<RendimientoDeObra[]> {
+  const { data, error } = await supabase
+    .from('rendimiento_historico')
+    .select('obra_id, hs_unitarias, obra:obra_canonica(nombre)')
+    .eq('tarea_tipo_id', tareaId)
+  if (error) {
+    avisos.push(`No pude leer el rendimiento por obra: ${error.message}`)
+    return []
+  }
+  return rendimientoPorObra(
+    ((data ?? []) as Fila[]).map((r) => ({
+      obra_id: s(r.obra_id),
+      obra_nombre: s((r.obra as Fila | null)?.nombre) ?? s(r.obra_id) ?? 'obra sin identificar',
+      hs_unitarias: n(r.hs_unitarias),
+    })),
+    base,
+  )
 }
 
 /**
