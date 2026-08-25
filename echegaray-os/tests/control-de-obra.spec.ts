@@ -153,13 +153,20 @@ test('14-20 · un parte mueve la producción, el avance, las HH de la obra y las
   // chip «quién trabajó» con la cuenta— porque dieciocho casilleros permanentes son el bloque que
   // hay que pasar de largo todos los días para llegar al botón. El campo es el mismo (`horas_<id>`)
   // y sigue en el DOM; lo que cambia es que hay que abrirlo, como los equipos.
-  const panel = page.getByTestId('panel-registrar')
-  await panel.getByTestId('parte-actividad').selectOption(actividadId)
+  //
+  // PORTE LITERAL DEL CANÓNICO 05 (24/08/2026): la actividad ya no es un `<select>` nativo —el
+  // mockup dibuja una lista con el pendiente de cada frente al borde derecho— y los chips son
+  // botones, no `<details>`. Se elige tocando el frente, y a la persona se la marca antes de
+  // ponerle las horas: el casillero de horas existe cuando la persona está marcada.
+  const panel = page.getByTestId('form-ejecucion')
+  await panel.getByTestId('parte-actividad').click()
+  await panel.getByTestId(`parte-actividad-${actividadId}`).click()
   await panel.getByTestId('parte-cantidad').fill('45')
   await panel.getByTestId('parte-comentario').fill(`${MARCA} parte de prueba`)
-  await panel.getByTestId('parte-personal').locator('summary').click()
+  await panel.getByTestId('parte-personal').click()
+  await panel.getByTestId(`marcar-${personaId}`).check()
   await panel.getByTestId(`horas-${personaId}`).fill('8')
-  await panel.getByTestId('form-ejecucion').getByRole('button', { name: 'Registrar' }).click()
+  await panel.getByRole('button', { name: 'Registrar' }).click()
 
   // ═══ UNA CARGA, CUATRO EFECTOS — leídos en la base, no en la pantalla ═══
   await expect.poll(async () => {
@@ -193,7 +200,9 @@ test('14-20 · un parte mueve la producción, el avance, las HH de la obra y las
 
   // El acumulado se ve en Ejecución con las dos puntas: lo hecho y el objetivo.
   await page.goto(`/obras/${OBRA}?vista=ejecucion`)
-  const fila = page.getByTestId('tabla-ejecucion').locator('tr', { hasText: NOMBRE })
+  // La lista de frentes del canónico 05 no es una tabla: cada fila es el botón que carga ese frente
+  // en el formulario de al lado (porte literal del 24/08/2026).
+  const fila = page.getByTestId(`cargar-frente-${actividadId}`)
   await expect(fila).toContainText('45')
   await expect(fila).toContainText('180')
   await expect(fila).toContainText('25')

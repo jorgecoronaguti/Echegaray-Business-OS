@@ -61,7 +61,7 @@ import { separarPlanYSubtareas } from '@/features/obras/services/subtareas'
 import { resolverVistaObra } from '@/features/obras/services/vistasObra'
 import { SubNavTrabajo } from '@/features/obras/components/SubNavTrabajo'
 import { WorkspaceTareas } from '@/features/obras/components/WorkspaceTareas'
-import { TabEjecucion } from '@/features/obras/components/TabEjecucion'
+import { ParteDiario } from '@/features/obras/components/parte/ParteDiario'
 import { getPartes } from '@/features/obras/services/ejecucionService'
 import { getIntegrantesPorCuadrilla } from '@/features/obras/services/personalService'
 import {
@@ -255,8 +255,9 @@ export default async function ObraPage({
         }
       />
       {/* NIVEL 3 DE TRABAJO — la banda `#FAFAF8` del zip, de borde a borde. En el árbol la dibuja
-          `TabTareas`, porque ahí comparte renglón con el buscador y los filtros, que son suyos. */}
-      {vista === 'tareas' && !esArbol && !esCronograma && <SubNavTrabajo obraId={obraId} sub={subTareas} />}
+          `TabTareas` y en el parte diario `ParteDiario`, porque ahí comparten renglón con lo suyo:
+          el buscador y los filtros en uno, el navegador de día en el otro. */}
+      {vista === 'tareas' && !esArbol && !esCronograma && !esParte && <SubNavTrabajo obraId={obraId} sub={subTareas} />}
 
       {/* LA 03 SE DIBUJA DE BORDE A BORDE: el canónico le da a la lista, al Gantt y al panel el
           ancho entero de la ventana, y el padding de 20px es interno de cada banda. */}
@@ -294,9 +295,27 @@ export default async function ObraPage({
         />
       )}
 
+      {/* LA 05 TAMBIÉN VA DE BORDE A BORDE: su banda de día y su aire de 14/20/24 son internos
+          del módulo, y el padding de la página los duplicaría. */}
+      {esParte && (
+        <ParteDiario
+          obraId={obraId}
+          actividades={acts}
+          partes={partes}
+          personas={personas}
+          cuadrillas={cuadrillas}
+          integrantes={integrantes}
+          hoy={new Date().toISOString().slice(0, 10)}
+          equipos={catalogoEquipos}
+          registrosHH={registros}
+          registrar={registrarEjecucion.bind(null, obraId)}
+          borrarParte={borrarParte.bind(null, obraId)}
+        />
+      )}
+
       {/* El resto de las solapas sí vive en un contenedor con aire. Con el árbol o el cronograma en
           pantalla este div queda vacío y sin padding: 40px de aire fantasma se ven. */}
-      <div className={esArbol || esCronograma ? '' : 'w-full px-5 pb-6 pt-3.5'}>
+      <div className={esArbol || esCronograma || esParte ? '' : 'w-full px-5 pb-6 pt-3.5'}>
 
       {vista === 'resumen' && (
         <TabResumen
@@ -346,40 +365,6 @@ export default async function ObraPage({
         />
       )}
 
-      {esParte && (
-        <TabEjecucion
-          obraId={obraId}
-          actividades={acts}
-          partes={partes}
-          personas={personas}
-          cuadrillas={cuadrillas}
-          integrantes={integrantes}
-          hoy={new Date().toISOString().slice(0, 10)}
-          equipos={catalogoEquipos}
-          registrosHH={registros}
-          registrar={registrarEjecucion.bind(null, obraId)}
-          borrarParte={borrarParte.bind(null, obraId)}
-        />
-      )}
-
-      {vista === 'personal' && (
-        <TabPersonal
-          plan={plan}
-          asignaciones={asignaciones}
-          personas={personas}
-          cuadrillas={cuadrillas}
-          actividades={acts}
-          actividadHH={actividadHH}
-          registros={registros}
-          asignar={asignarPersona.bind(null, obraId)}
-          cerrar={cerrarAsignacion.bind(null, obraId)}
-          quitar={quitarAsignacion.bind(null, obraId)}
-          imputar={imputarHH.bind(null, obraId)}
-          causas={causasDesvio}
-          imputarMasivo={imputarHHMasivo.bind(null, obraId)}
-          borrarHoras={borrarHH.bind(null, obraId)}
-        />
-      )}
 
       {vista === 'operacion' && (
         <TabOperacion
