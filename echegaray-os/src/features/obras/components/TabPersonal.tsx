@@ -242,9 +242,17 @@ function FormAsignar({ personas, cuadrillas, actividades, asignar }: {
 }
 
 export function TabPersonal({
-  plan, asignaciones, personas, cuadrillas, actividades, actividadHH, registros,
+  obraId, plan, asignaciones, personas, cuadrillas, actividades, actividadHH, registros,
   asignar, cerrar, quitar, imputar, imputarMasivo, borrarHoras, causas = [],
 }: {
+  /** LA OBRA, RECIBIDA Y NO DEDUCIDA. Hasta el 25/08 salía de `plan?.obra_id ?? asignaciones[0]
+   *  ?.obra_id ?? actividades[0]?.obra_id`, porque la solapa no estaba montada y agregarle un
+   *  parámetro obligaba a tocar un `page.tsx` que en esa tanda tenía otro dueño. La deducción falla
+   *  justo donde más duele: una obra recién abierta —sin línea base, sin nadie asignado y sin
+   *  actividades— daba `null`, y con `null` no se dibujaba la banda, así que no había buscador, no
+   *  había filtros y, sobre todo, no había «+ Asignar persona». La pantalla desde la que se asigna
+   *  a la primera persona era la única que no dejaba asignar a nadie. */
+  obraId: string
   /** LAS CUATRO COLUMNAS QUE ESTA SOLAPA DIBUJA (`obra_id`, `hh_plan`, `hh_real`, `desvio_hh_pct`),
    *  no la vista entera: pedir `obra_plan_vs_real` completa cuesta el doble de trabajo en la base y
    *  era parte de por qué esta pantalla se caía por `statement timeout`. El tipo es un `Pick<>` a
@@ -267,14 +275,6 @@ export function TabPersonal({
   const porAsignado = horasPorAsignado(asignaciones, registros)
   const actividadDe = new Map(actividades.map((a) => [a.id, a.nombre]))
   const sinPersona = registros.filter((r) => !r.persona_id).length
-  // ═══ DE DÓNDE SALE LA OBRA (23/08) ═══
-  //
-  // La solapa no recibe el id de la obra: la ficha se lo pasa a cada una en los datos, no como
-  // parámetro, y agregarlo a la firma obliga a tocar `page.tsx` de `[obra]` —que en esta tanda tiene
-  // otro dueño—. Se toma del plan, que es la fila de `obra_plan_vs_real` de ESTA obra, con las
-  // asignaciones y las actividades como respaldo. Si las tres faltan, la obra no tiene ni plan ni
-  // gente ni trabajo cargado, y ahí la sección de presencia no tendría nada que mostrar igual.
-  const obraId = plan?.obra_id ?? asignaciones[0]?.obra_id ?? actividades[0]?.obra_id ?? null
 
   return (
     <div className="flex flex-col gap-6">
@@ -286,40 +286,38 @@ export function TabPersonal({
           sub-tab que no navega es un botón muerto—. «Asistencia» sale de la obra: esa pantalla es
           de Administración y todavía no acepta un filtro por obra; el día que lo acepte, este href
           es lo único que cambia. */}
-      {obraId && (
-        <Suspense fallback={<TablaEsqueleto cols={5} filas={4} />}>
-          {/* LOS REGISTROS VIAJAN, NO SE VUELVEN A LEER. La columna de horas del canónico y el KPI
-              de HH imputadas salen de los MISMOS registros que dibujan la tabla de abajo: una
-              segunda lectura podría llegar un segundo después y publicar dos totales distintos de
-              la misma jornada en la misma pantalla. */}
-          <HoyEnObra
-            obraId={obraId}
-            asignaciones={asignaciones}
-            registros={registros}
-            navegacion={
-              <SubTabs
-                testid="subtabs-personal"
-                items={[
-                  { label: 'Hoy en obra', activo: true, testid: 'sub-hoy-en-obra' },
-                  { href: `/obras/${obraId}/dotacion`, label: 'Dotación', testid: 'sub-dotacion' },
-                  { href: '/administracion/asistencia', label: 'Asistencia', testid: 'sub-asistencia' },
-                ]}
+      <Suspense fallback={<TablaEsqueleto cols={5} filas={4} />}>
+        {/* LOS REGISTROS VIAJAN, NO SE VUELVEN A LEER. La columna de horas del canónico y el KPI
+            de HH imputadas salen de los MISMOS registros que dibujan la tabla de abajo: una
+            segunda lectura podría llegar un segundo después y publicar dos totales distintos de
+            la misma jornada en la misma pantalla. */}
+        <HoyEnObra
+          obraId={obraId}
+          asignaciones={asignaciones}
+          registros={registros}
+          navegacion={
+            <SubTabs
+              testid="subtabs-personal"
+              items={[
+                { label: 'Hoy en obra', activo: true, testid: 'sub-hoy-en-obra' },
+                { href: `/obras/${obraId}/dotacion`, label: 'Dotación', testid: 'sub-dotacion' },
+                { href: '/administracion/asistencia', label: 'Asistencia', testid: 'sub-asistencia' },
+              ]}
+            />
+          }
+          /* LA PRIMARIA DE LA PANTALLA, EN LA BANDA Y ABIERTA ACÁ MISMO (canónico 09). Estaba dos
+             niveles adentro —dentro del plegable «Quién trabaja en esta obra», dentro de un
+             `<details>`—: asignar a alguien a la obra es LO que se hace en esta solapa y había
+             que descubrirlo. No navega a ninguna parte: baja su panel debajo de la banda. */
+          accion={
+            <Alta titulo="+ Asignar persona" testid="alta-asignacion" primaria>
+              <FormAsignar
+                personas={personas} cuadrillas={cuadrillas} actividades={actividades} asignar={asignar}
               />
-            }
-            /* LA PRIMARIA DE LA PANTALLA, EN LA BANDA Y ABIERTA ACÁ MISMO (canónico 09). Estaba dos
-               niveles adentro —dentro del plegable «Quién trabaja en esta obra», dentro de un
-               `<details>`—: asignar a alguien a la obra es LO que se hace en esta solapa y había
-               que descubrirlo. No navega a ninguna parte: baja su panel debajo de la banda. */
-            accion={
-              <Alta titulo="+ Asignar persona" testid="alta-asignacion" primaria>
-                <FormAsignar
-                  personas={personas} cuadrillas={cuadrillas} actividades={actividades} asignar={asignar}
-                />
-              </Alta>
-            }
-          />
-        </Suspense>
-      )}
+            </Alta>
+          }
+        />
+      </Suspense>
 
       {/* ═══ EL CUERPO DE LA PANTALLA ES «HOY EN OBRA»; LO DEMÁS SE ABRE (24/08 · canónico 09) ═══
           Las tres tablas de abajo medían cuatro pantallas de alto debajo de lo único que se mira

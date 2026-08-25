@@ -159,11 +159,12 @@ export default async function ObraPage({
     esCronograma ? getDiasHabiles(supabase, obraId) : null,
     necesita.personas ? getPersonas(supabase) : null,
     vista === 'resumen' ? getUbicacion(supabase, obraId) : null,
-    // ═══ LAS CUATRO LECTURAS DE PERSONAL PASAN POR LA MATRIZ, Y HOY LA MATRIZ DICE QUE NO ═══
-    // `TabPersonal` está importado más arriba y NUNCA se monta en este JSX: la solapa juntaba estas
-    // cuatro consultas más el plan para tirarlas, y ése era el gasto que la volteaba con `statement
-    // timeout`. El interruptor —y cómo se vuelve a prender cuando el render regrese— está en
-    // `PERSONAL_SE_DIBUJA`, en `lecturasDeVista`. Acá no se decide: acá se obedece.
+    // ═══ LAS CUATRO LECTURAS DE PERSONAL PASAN POR LA MATRIZ, Y HOY LA MATRIZ DICE QUE SÍ ═══
+    // Estuvieron apagadas mientras `TabPersonal` estaba importado y sin montar: la solapa juntaba
+    // estas cuatro consultas más el plan para tirarlas, y ése era el gasto que la volteaba con
+    // `statement timeout`. Con el render repuesto vuelven a salir, y siguen colgadas del MISMO
+    // interruptor —`PERSONAL_SE_DIBUJA`, en `lecturasDeVista`— para que nunca puedan volver a
+    // separarse del render. Acá no se decide: acá se obedece.
     necesita.personal ? getAsignaciones(supabase, obraId) : null,
     necesita.personal ? getCausasDesvio(supabase) : null,
     necesita.personal || esParte ? getRegistrosHH(supabase, obraId) : null,
@@ -212,13 +213,11 @@ export default async function ObraPage({
   const plan = planRes ? lector.leer<NonNullable<typeof planRes.data> | null>(planRes, null) : null
   const planEconomia = planEconomiaRes
     ? lector.leer<NonNullable<typeof planEconomiaRes.data> | null>(planEconomiaRes, null) : null
-  // ═══ PERSONAL PIDE SU RECORTE Y HOY NO LO DIBUJA NADIE ═══
-  // `TabPersonal` se importa en este archivo pero NUNCA se monta: `?vista=personal` paga sus siete
-  // consultas para no pintar una sola fila. No se borran las lecturas —la solapa está en la
-  // navegación y el componente existe entero, así que le falta el render, no los datos— pero
-  // tampoco se finge que el resultado se usa. Se pasa por el lector para que un fallo de esa
-  // consulta salga en el cartel de arriba en vez de desaparecer en silencio.
-  if (planPersonalRes) lector.leer(planPersonalRes, null)
+  // El recorte de cuatro columnas que dibuja el titular de Personal. Conserva su `null` por el mismo
+  // motivo que los otros dos: «esta obra no tiene línea base» no es «no se pudo leer el plan», y
+  // `TabPersonal` sabe decir «HH plan sin cargar» en vez de un cero que la daría por cumplida.
+  const planPersonal = planPersonalRes
+    ? lector.leer<NonNullable<typeof planPersonalRes.data> | null>(planPersonalRes, null) : null
   const diasHabiles = diasHabilesRes ?? []
   const personas = personasRes ? lector.leer(personasRes, []) : []
   const asignaciones = asignacionesRes ? lector.leer(asignacionesRes, []) : []
@@ -393,6 +392,40 @@ export default async function ObraPage({
         />
       )}
 
+      {/* ═══ LA 09 VA EN EL CONTENEDOR CON AIRE, Y SU BANDA SE VA A SANGRE SOLA ═══
+          A diferencia de la 03/05/07 —que se montan arriba, fuera de este div— Personal se monta
+          ACÁ ADENTRO, igual que Operación (11) y Documentos (12), que dibujan LA MISMA banda:
+          `ListaHoyEnObra` sale del marco con `-mx-5`, que es exactamente el `px-5` de este
+          contenedor. Montarla de borde a borde la haría salirse 20px por lado y la página
+          scrollearía de costado — el defecto medido el 24/08 (`scrollWidth` 1300 contra `innerWidth`
+          1280) que dejó anclado `canonico-personal.test.ts`.
+
+          ESTE RENDER ES LO QUE PAGAN LAS SIETE CONSULTAS de arriba: mientras faltó, la solapa las
+          disparaba para tirarlas. Las dos cosas están atadas por `PERSONAL_SE_DIBUJA` y por el test
+          `lecturasDeVista.test.ts`, que se pone rojo si alguien vuelve a separarlas. */}
+      {vista === 'personal' && (
+        <TabPersonal
+          obraId={obraId}
+          plan={planPersonal}
+          asignaciones={asignaciones}
+          personas={personas}
+          cuadrillas={cuadrillas}
+          actividades={acts}
+          actividadHH={actividadHH}
+          registros={registros}
+          causas={causasDesvio}
+          // `.bind(null, obraId)` Y NO UNA ARROW, por lo mismo que en Operación: una arrow escrita
+          // acá es una función NUEVA creada en el servidor y React la rechaza en el navegador con
+          // «Functions cannot be passed directly to Client Components». Ni el typecheck ni el build
+          // lo ven. Y el `obraId` va en el `bind`, nunca en un campo del formulario.
+          asignar={asignarPersona.bind(null, obraId)}
+          cerrar={cerrarAsignacion.bind(null, obraId)}
+          quitar={quitarAsignacion.bind(null, obraId)}
+          imputar={imputarHH.bind(null, obraId)}
+          imputarMasivo={imputarHHMasivo.bind(null, obraId)}
+          borrarHoras={borrarHH.bind(null, obraId)}
+        />
+      )}
 
       {vista === 'operacion' && (
         <TabOperacion

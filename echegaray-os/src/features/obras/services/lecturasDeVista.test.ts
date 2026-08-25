@@ -25,10 +25,11 @@ const SOLAPAS: Array<[string, SubTareas]> = [
   ['personal', null], ['operacion', null], ['economia', null], ['documentos', null],
 ]
 
-test('el plan sólo lo leen las solapas que lo DIBUJAN, y hoy Personal no dibuja', () => {
-  // La lista es la de las props `plan={...}` del `page.tsx`. Personal salió el 25/08 no porque haya
-  // dejado de necesitar el plan, sino porque su componente no está montado: vuelve solo cuando
-  // `PERSONAL_SE_DIBUJA` diga `true`.
+test('el plan sólo lo leen las solapas que lo DIBUJAN', () => {
+  // La lista es la de las props `plan={...}` del `page.tsx`. Personal se cayó de ella el 25/08 no
+  // porque hubiera dejado de necesitar el plan, sino porque su componente no estaba montado; volvió
+  // el mismo día con el render. La lista se sigue leyendo del interruptor, no de una constante
+  // escrita a mano, para que las dos cosas no puedan discrepar.
   const conPlan = SOLAPAS.filter(([v, s]) => lecturasDeVista(v, s).plan).map(([v]) => v).sort()
   assert.deepEqual(conPlan, PERSONAL_SE_DIBUJA
     ? ['economia', 'personal', 'resumen'] : ['economia', 'resumen'])
@@ -154,16 +155,17 @@ test('cada solapa consume el recorte que pidió, y no el de otra', () => {
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 // QUÉ DEFECTO ATRAPA ESTE TERCER BLOQUE (25/08/2026) — EL MÁS CARO DE LOS TRES
 //
-// `TabPersonal` se importa en el `page.tsx` y NUNCA se monta: `<TabPersonal` sólo existió en el
+// `TabPersonal` se importaba en el `page.tsx` y NUNCA se montaba: `<TabPersonal` sólo existía en el
 // commit 605f8357 y se cayó del JSX sin que nadie lo notara. `?vista=personal` seguía disparando
 // SIETE consultas —`obra_plan_vs_real`, `obra_asignacion`, `causa_desvio`, `registros_hh`,
 // `obra_actividad_hh`, `persona_plantel` y `cuadrilla_panel`— para no pintar una sola fila, y con
 // ellas se llevaba puesta la ficha entera de la obra por `statement timeout`.
 //
-// El riesgo de arreglarlo cortando por lo sano es el opuesto: que quien reponga el render se
-// encuentre la pantalla sin datos. Por eso las lecturas no se borraron, se apagaron desde UN
-// interruptor, y este bloque ata las dos puntas — si `<TabPersonal` vuelve al `page.tsx` y el
-// interruptor sigue en `false`, esto se pone rojo y dice qué falta.
+// El riesgo de arreglarlo cortando por lo sano era el opuesto: que quien repusiera el render se
+// encontrara la pantalla sin datos. Por eso las lecturas no se borraron, se apagaron desde UN
+// interruptor, y este bloque ata las dos puntas EN LOS DOS SENTIDOS — si `<TabPersonal` vuelve al
+// `page.tsx` y el interruptor sigue en `false`, esto se pone rojo; y si mañana el componente se
+// vuelve a caer del JSX con el interruptor en `true`, también. El render volvió el 25/08.
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
 test('las lecturas de Personal siguen al render de Personal, en los dos sentidos', () => {
