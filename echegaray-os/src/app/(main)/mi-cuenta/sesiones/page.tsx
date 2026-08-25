@@ -21,7 +21,6 @@
 
 import { headers } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
-import { getUsuarioActual } from '@/features/auth/services/authService'
 import { MiCuentaShell } from '@/features/mi-cuenta/components/MiCuentaShell'
 import { CerrarSesiones } from '@/features/mi-cuenta/components/CerrarSesiones'
 import { Aviso, Ayuda, Estado, Nulo, Num, Tabla, THead, Th, Tr, Td } from '@/shared/components/ds'
@@ -48,7 +47,11 @@ function navegador(ua: string | null): string | null {
 
 export default async function SesionesPage() {
   const supabase = await createClient()
-  const user = await getUsuarioActual(supabase)
+  // AL SERVIDOR DE AUTH, COMO `/mi-cuenta/seguridad` y por el mismo motivo: `last_sign_in_at` no
+  // viaja en el JWT. El resto del OS resuelve la identidad verificando la firma en el proceso
+  // (`getUsuarioActual`), que no trae ese campo — y una pantalla que dice «entraste el 20/08 14:32»
+  // no puede inventarlo.
+  const { data: { user } } = await supabase.auth.getUser()
   if (!user) return <MiCuentaShell titulo="Sesiones"><Aviso tono="neg">Tu sesión venció. Volvé a entrar.</Aviso></MiCuentaShell>
 
   const h = await headers()

@@ -212,25 +212,44 @@ export interface Filtrable<T> {
 }
 
 /**
- * EL PREDICADO DE CADA KPI, ESCRITO UNA VEZ.
+ * EL PREDICADO DE CADA KPI, ESCRITO UNA VEZ — y ahora DECLARADO, no programado.
  *
- * Lo usan el conteo (`head: true`) y la lista. Escribirlos por separado es el defecto clásico: el
- * número de arriba y las filas de abajo salen de dos cuentas parecidas, nadie las compara, y la
- * pantalla se contradice consigo misma sin un solo error.
+ * Lo usan tres consumidores: la lista de la pantalla 24, su conteo contra la base (`aplicarFiltro`)
+ * y el conteo en memoria de la entrada de Administración (`cumpleFiltro`), que cuenta los cuatro
+ * números de Compras sobre UNA sola lectura en vez de cuatro. Escribirlos por separado es el
+ * defecto clásico: el número de arriba y las filas de abajo salen de dos cuentas parecidas, nadie
+ * las compara, y la pantalla se contradice consigo misma sin un solo error.
+ *
+ * `imputacion` Y NO `obra_texto is null`: el predicado viejo contaba como pendiente a los gastos de
+ * Estructura que sí tenían rótulo, y dejaba fuera del conteo a los que tienen un rótulo que el
+ * diccionario no conoce — que son los que de verdad no llegan a ninguna obra.
  *
  * `duplicados` cuenta los SIN RESOLVER. Un parecido que alguien ya confirmó o mandó a revisión no es
  * trabajo pendiente, y dejarlo en el número haría que el KPI nunca baje por más que se trabaje.
  */
+const PREDICADO: Record<FiltroCompras, readonly { columna: string; valor: unknown }[]> = {
+  capturadas: [],
+  'por-revisar': [{ columna: 'estado_control', valor: 'en_revision' }],
+  'sin-imputar': [{ columna: 'imputacion', valor: 'sin_identificar' }],
+  'sin-resolver': [{ columna: 'imputacion', valor: 'sin_resolver' }],
+  estructura: [{ columna: 'imputacion', valor: 'estructura' }],
+  duplicados: [
+    { columna: 'tiene_posible_duplicado', valor: true },
+    { columna: 'estado_control', valor: 'sin_revisar' },
+  ],
+}
+
+/** El predicado contra la base: PostgREST lo resuelve y devuelve las filas o el conteo. */
 export function aplicarFiltro<T extends Filtrable<T>>(query: T, filtro: FiltroCompras): T {
-  if (filtro === 'por-revisar') return query.eq('estado_control', 'en_revision')
-  // `imputacion` Y NO `obra_texto is null`: el predicado viejo contaba como pendiente a los gastos
-  // de Estructura que sí tenían rótulo, y dejaba fuera del conteo a los que tienen un rótulo que el
-  // diccionario no conoce — que son los que de verdad no llegan a ninguna obra.
-  if (filtro === 'sin-imputar') return query.eq('imputacion', 'sin_identificar')
-  if (filtro === 'sin-resolver') return query.eq('imputacion', 'sin_resolver')
-  if (filtro === 'estructura') return query.eq('imputacion', 'estructura')
-  if (filtro === 'duplicados') {
-    return query.eq('tiene_posible_duplicado', true).eq('estado_control', 'sin_revisar')
-  }
-  return query
+  return PREDICADO[filtro].reduce((q, c) => q.eq(c.columna, c.valor), query)
+}
+
+/**
+ * EL MISMO predicado contra una fila ya leída.
+ *
+ * `=== valor` y no una comparación laxa: `tiene_posible_duplicado` llega `true`, `false` o `null`, y
+ * `= true` en SQL tampoco toma los `null`. Las dos formas cuentan lo mismo o este test miente.
+ */
+export function cumpleFiltro(fila: Record<string, unknown>, filtro: FiltroCompras): boolean {
+  return PREDICADO[filtro].every((c) => fila[c.columna] === c.valor)
 }

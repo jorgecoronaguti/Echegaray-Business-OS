@@ -64,6 +64,7 @@ export default async function ControlObrasPage() {
             <Link
               key={o.obra}
               href={`/control-obras/${encodeURIComponent(o.obra)}`}
+              prefetch={false}
               className="group relative overflow-hidden rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-gray-900"
             >
               <span className={`absolute inset-y-0 left-0 w-1 ${alerta ? 'bg-amber-400' : 'bg-emerald-400'}`} />

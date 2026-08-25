@@ -3,7 +3,9 @@ import { z } from 'zod'
 // Perfil — rol real del usuario autenticado (PR5). El alta de perfil (asignación de
 // rol) se hace manualmente por Jorge en Supabase, no vía signup -- así nadie se
 // autoasigna 'direccion'. Ver supabase/migrations/20260708121545_login_roles.sql
-export type Rol = 'direccion' | 'administracion' | 'jefe_obra' | 'campo'
+// `cliente` es el primer rol EXTERNO: no es un empleado con menos permisos, es alguien de otra
+// empresa. Vive confinado a /portal y las reglas están en features/portal/types.ts.
+export type Rol = 'direccion' | 'administracion' | 'jefe_obra' | 'campo' | 'cliente'
 
 export interface Perfil {
   id: string
@@ -21,6 +23,9 @@ export const ROL_LABEL: Record<Rol, string> = {
   // es como se llama a sí misma la persona que entra. La CLAVE sigue siendo `campo` —renombrarla
   // obligaría a migrar cada policy escrita contra ese literal— y esto es sólo cómo se escribe.
   campo: 'Empleado',
+  // El único rol EXTERNO. Se escribe «Cliente» a secas: es como se presenta la persona y como lo
+  // nombra el dueño («el cliente entra y ve su obra»).
+  cliente: 'Cliente',
 }
 
 // Rutas que el rol 'campo' (operario) PUEDE ver en la web. Todo lo demás (caja, reportes,
@@ -110,6 +115,18 @@ export const RUTAS_PUBLICAS = [
   // exactamente el modo de fallar de una lista negra.
   '/marca', // el logotipo y el isotipo — la pantalla de login los necesita sin sesión
   '/icon.png', // el favicon que genera Next desde src/app/icon.png
+  // ═══ LA PUERTA DEL PORTAL DEL CLIENTE (25/08/2026) ═══
+  //
+  // `30 · Portal Cliente Mobile` es la única pantalla del OS que abre alguien que NO trabaja acá, y
+  // llega sin sesión por definición: lo que pide es el link que la crea. Sin esta entrada el
+  // middleware la manda a `/login`, que es la pantalla de los empleados y le pide una contraseña
+  // que el cliente no tiene ni va a tener.
+  //
+  // ES LA RUTA EXACTA, NO EL PREFIJO `/portal`: `esRutaPublica` compara con `pathname === r ||
+  // pathname.startsWith(r + '/')`, así que poner `/portal` abriría `/portal` y `/portal/obra/…` —el
+  // portal entero, con certificados e importes— a cualquier anónimo. Lo único público es pedir el
+  // link. (Los dos frentes agregaron esta misma entrada por su lado; quedó UNA.)
+  '/portal/ingresar',
 ]
 export function esRutaPublica(pathname: string): boolean {
   return RUTAS_PUBLICAS.some((r) => pathname === r || pathname.startsWith(r + '/'))

@@ -68,3 +68,57 @@ test('el memo vive UN request: es cache() de React, no una variable de módulo',
     'hay un Map de módulo en authService: eso es estado compartido ENTRE usuarios',
   )
 })
+
+// ═══ Y EL DEFECTO DE 2026-08-25: PREGUNTARLE A LA RED QUIÉN SOS ═══
+//
+// `getUsuarioActual` resolvía la identidad con `auth.getUser()`, que es un GET a `/auth/v1/user`:
+// 76 ms medidos contra el Supabase real (mediana de 5). El memo de arriba evita las repeticiones
+// DENTRO de un request, no ENTRE requests, y hay al menos dos por pantalla —el documento y la Server
+// Action de la campanita—. El proyecto firma con clave asimétrica (ES256 + JWKS público), así que la
+// firma se puede verificar en el proceso.
+//
+// Estos tests atrapan la vuelta atrás: si alguien repone `getUser()`, el primero se pone rojo. Y los
+// otros dos atrapan lo que la solución podría romper — dar por buena una sesión que no existe.
+
+test('la identidad se resuelve verificando la firma, no preguntándole a la red', () => {
+  const fuente = readFileSync(new URL('./authService.ts', import.meta.url).pathname, 'utf8')
+  const codigo = fuente
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n').filter((l) => !l.trimStart().startsWith('//')).join('\n')
+
+  assert.match(
+    codigo, /getClaims\(\)/,
+    'getUsuarioActual dejó de usar getClaims(): volvió el viaje de red por cada request',
+  )
+  assert.doesNotMatch(
+    codigo, /auth\.getUser\(\)/,
+    'authService volvió a llamar a auth.getUser(): eso es un ida y vuelta a Supabase por request',
+  )
+})
+
+test('sin claims no hay usuario — una sesión que no existe no se da por buena', async () => {
+  const { getUsuarioActual } = await import('./authService.ts')
+  const sinSesion = { auth: { getClaims: async () => ({ data: null, error: null }) } }
+  assert.equal(await getUsuarioActual(sinSesion as never), null)
+
+  // Un token sin `sub` está firmado pero no identifica a nadie: tampoco alcanza.
+  const sinSub = { auth: { getClaims: async () => ({ data: { claims: { email: 'x@y' } }, error: null }) } }
+  assert.equal(await getUsuarioActual(sinSub as never), null)
+})
+
+test('del token salen el id y el correo, y nada más', async () => {
+  const { getUsuarioActual } = await import('./authService.ts')
+  const cliente = {
+    auth: {
+      getClaims: async () => ({
+        data: { claims: { sub: 'u-1', email: 'jorge@ecsas.com.ar', role: 'authenticated' } },
+        error: null,
+      }),
+    },
+  }
+  assert.deepEqual(await getUsuarioActual(cliente as never), { id: 'u-1', email: 'jorge@ecsas.com.ar' })
+
+  // Sin correo en el token no se inventa una cadena vacía: no se sabe, y eso es `null`.
+  const sinCorreo = { auth: { getClaims: async () => ({ data: { claims: { sub: 'u-2' } }, error: null }) } }
+  assert.deepEqual(await getUsuarioActual(sinCorreo as never), { id: 'u-2', email: null })
+})

@@ -155,6 +155,7 @@ export function TablaCompras({
             <span style={{ minWidth: 0 }}>
               <Link
                 href={hrefDe(c.id)}
+                prefetch={false}
                 data-testid="abrir-compra"
                 className="block truncate hover:underline"
                 style={{ fontSize: '12.5px', color: c.emisor_nombre?.trim() ? C.tinta : C.tenue }}

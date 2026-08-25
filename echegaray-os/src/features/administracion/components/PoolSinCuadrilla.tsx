@@ -42,7 +42,7 @@ export function PoolSinCuadrilla({
                   data-testid="fila-sin-cuadrilla"
                   className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-[#EFEEEA] py-1.5 text-[12.5px] last:border-b-0"
                 >
-                  <Link href={`/administracion/personas/${p.id}`} className="min-w-0 flex-1 truncate text-ink hover:underline">
+                  <Link href={`/administracion/personas/${p.id}`} prefetch={false} className="min-w-0 flex-1 truncate text-ink hover:underline">
                     {p.nombre_completo}
                   </Link>
                   <span className="shrink-0 text-[11px] text-muted">

@@ -1,157 +1,182 @@
-// 22 · PROVEEDORES CARTERA — porte literal de `echegaray-design/22 · Proveedores Cartera.dc.html`.
+// 22 · PROVEEDORES v2 — el maestro sin caja. Porte literal de `22 · Proveedores v2.dc.html`.
 //
-// El CUIT se MUESTRA formateado para leerlo (30-70839055-7) pero se GUARDA sin guiones: el formato
-// es de la pantalla, no del dato. Guardado con guiones dejaría de cruzar contra ARCA y contra el
-// banco, que es para lo único que existe la columna.
+// ═══ QUÉ CAMBIÓ RESPECTO DEL PORTE DE AGOSTO ═══
 //
-// ═══ CUATRO COLUMNAS DE LAS SEIS DEL CANÓNICO, Y CUÁLES FALTAN ═══
+// La tabla ya no vive en una tarjeta blanca con borde, radio, encabezado gris y pie de totales:
+// criterio 3 del patrón, «sin cajas — filos, tipografía y números tabulares, el color sólo en la
+// cifra». Con la caja se fue el PIE DE TOTALES: el v2 lo reemplaza por el conteo `n/total` al final
+// de la línea de filtros, que dice lo mismo (cuánto de la cartera estoy viendo) sin un bloque gris.
+// Y se fue la columna TIPO: «subcontratista» pasó a ser un chip al lado del nombre, porque una
+// columna que dice «—» en 36 de 36 filas gasta ancho para no decir nada.
 //
-// El zip dibuja PROVEEDOR · RUBRO · TIPO · CUIT · COMPRADO 12 M · PAPELES. Acá están las cuatro que
-// la base puede probar. RUBRO no existe como columna en `proveedores` y no se deriva de nada.
-// PAPELES tampoco: ninguna tabla vincula un archivo con un proveedor —el mismo agujero que declara
-// la ficha 23—, y una columna de ✓ sobre eso sería la afirmación más cara de esta pantalla: diría
-// «tiene los papeles al día» sin haber mirado ningún papel.
+// ═══ LAS CUATRO COLUMNAS SON LAS QUE LA BASE PUEDE PROBAR ═══
 //
-// COMPRADO no dice «12 M». `proveedor_nombre_resuelto` publica comprobantes y total, no fechas: el
-// total es histórico. Rotularlo «12 M» sería inventar la ventana de tiempo (regla de oro 3).
+// PROVEEDOR · CUIT · COMPRADO · COMPROB. El canónico v1 dibujaba además RUBRO y PAPELES; el v2 ya
+// viene podado porque ninguna de las dos tiene fuente — `proveedores` no guarda rubro y ninguna
+// tabla vincula un archivo con un proveedor. COMPRADO es HISTÓRICO y así lo dice la nota al pie:
+// `proveedor_nombre_resuelto` publica comprobantes y total, no la fecha de cada uno, así que
+// rotularlo «12 M» inventaría una ventana de tiempo que el dato no tiene (regla de oro 3).
 //
-// ═══ LOS ANCHOS SON LOS DEL ZIP, MENOS LAS DOS COLUMNAS QUE NO EXISTEN ═══
+// ═══ EL NOMBRE NUNCA SE ESTRANGULA ═══
 //
-// El canónico fija `minmax(0,1.4fr) minmax(0,1.2fr) 138px 138px 124px 76px 26px`. Al caer RUBRO
-// (la segunda) y PAPELES (la sexta), cada columna que sobrevive conserva SU ancho medido y el
-// sobrante va al nombre, que es la que se estira. Reinventar los anchos porque cambió la cantidad
-// de columnas dibujaría una tabla que no se parece a ninguna de las otras cuatro carteras.
+// Por debajo de 1250px la grilla suelta COMPRADO y COMPROB. y el chip de subcontrato, y deja
+// PROVEEDOR · CUIT · verbo. El umbral y el orden en que se sueltan son del mockup (`22v2:401-409`):
+// una fila sin nombre no identifica nada, así que el déficit de ancho nunca cae sobre él. Acá lo
+// decide una media query y no `window.innerWidth`, para no volver la tabla un componente de cliente.
 
 import Link from 'next/link'
-import { Estado } from '@/shared/components/ds'
-import {
-  ALTO, C, CeldaTexto, EncabezadoCanon, FilaCanon, PieCanon, TarjetaTabla, VacioCanon,
-  IcoCuadrilla, IcoEquipo, entero, millones,
-} from '@/shared/components/canon'
-// El formateo vive en `services/identidad.ts` y no acá: en un archivo con JSX `node --test` no lo
-// puede ejercitar, y un formateador que parte a ciegas convierte un dato roto en uno con forma de
-// válido. Se re-exporta para no romper a quien ya lo importaba desde este componente.
+import { IconoProveedor } from '@/shared/components/iconos'
 import { formatearCuit } from '../services/identidad'
-import type { CompradoProveedor, ResumenCartera } from '../services/proveedoresService'
+import { pesos } from '@/shared/components/canon/formato'
+import { ALTO_V2, CAJA_CONTENIDO, ENCABEZADO, FILO_BLOQUEA, RotuloCol, V } from './proveedores/patron'
+import type { CompradoProveedor } from '../services/proveedoresService'
 import type { Proveedor } from '../types'
 
-export { formatearCuit }
-
-/** `22`, línea 100, sin RUBRO ni PAPELES. */
-const COLS = 'minmax(0,1.4fr) 138px 138px 124px 26px'
+/** `22v2:406-408`. Las clases van literales porque Tailwind no compila un valor armado en runtime. */
+const COLS
+  = 'grid-cols-[minmax(220px,1.6fr)_minmax(0,150px)_minmax(0,140px)_minmax(0,84px)_minmax(0,116px)]'
+  + ' max-[1249px]:grid-cols-[minmax(160px,1.6fr)_minmax(0,1fr)_minmax(0,104px)]'
+/**
+ * Las celdas que se sueltan en angosto, en la fila y en el encabezado.
+ *
+ * EL `display` DE ESTAS CELDAS VA POR CLASE, NUNCA INLINE. Un `style={{ display: 'grid' }}` le gana
+ * a `max-[1249px]:hidden` —un estilo inline gana a cualquier media query— y el rótulo se quedaba
+ * dibujado sobre una grilla que ya no tenía su columna: «COMPROB.» aparecía pisando el nombre de la
+ * primera fila. Medido a 1200px el 25/08/2026. Es la misma trampa que `EnvoltorioAncho` documenta.
+ */
+const SOLO_ANCHO = 'max-[1249px]:hidden'
 
 export function TablaProveedores({
-  proveedores, seleccionado, hrefDe, comprado, subcontratistas, resumen,
+  proveedores, seleccionado, hrefDe, hrefCuitDe, comprado, subcontratistas, limpiarHref,
 }: {
   proveedores: Proveedor[]
   seleccionado?: string
   hrefDe: (proveedorId: string) => string
+  /** El verbo de la fila: abre el panel CON el formulario de CUIT desplegado, sin navegar afuera. */
+  hrefCuitDe: (proveedorId: string) => string
   /** De `proveedor_nombre_resuelto`. `null` = no se pudo leer: la columna no afirma nada. */
   comprado: Map<string, CompradoProveedor> | null
   /** Los que tienen al menos un paquete en `subcontrato`. `null` = no se pudo leer. */
   subcontratistas: Set<string> | null
-  resumen: ResumenCartera
+  limpiarHref: string
 }) {
   return (
-    <TarjetaTabla testid="tabla-proveedores" cols={COLS}>
-      <EncabezadoCanon
-        cols={COLS}
-        columnas={[
-          { rotulo: 'PROVEEDOR' },
-          { rotulo: 'TIPO' },
-          { rotulo: 'CUIT' },
-          // Sin «12 M»: la vista que suma no publica la fecha de cada comprobante.
-          { rotulo: 'COMPRADO', alineacion: 'derecha' },
-          { rotulo: '', vacia: true },
-        ]}
-      />
+    <div data-testid="tabla-proveedores">
+      <div className={`grid gap-[14px] ${COLS}`} style={ENCABEZADO}>
+        <RotuloCol>Proveedor</RotuloCol>
+        <RotuloCol>CUIT · identidad</RotuloCol>
+        <span className={`grid ${SOLO_ANCHO}`}><RotuloCol derecha>Comprado</RotuloCol></span>
+        <span className={`grid ${SOLO_ANCHO}`}><RotuloCol derecha>Comprob.</RotuloCol></span>
+        <span style={{ paddingBottom: 6 }} />
+      </div>
 
       {proveedores.map((p) => {
         const c = comprado?.get(p.id)
         const esSub = subcontratistas?.has(p.id) ?? false
+        const elegido = p.id === seleccionado
         return (
-          <FilaCanon
+          <div
             key={p.id}
-            cols={COLS}
-            alto={ALTO.fila}
-            seleccionada={p.id === seleccionado}
-            testid="fila-proveedor"
+            role="row"
+            data-testid="fila-proveedor"
+            data-seleccionada={elegido ? '' : undefined}
+            className={`relative grid items-center gap-[14px] ${CAJA_CONTENIDO} ${COLS} ${elegido ? '' : 'hover:bg-[#F2F1ED]'}`}
+            style={{
+              height: ALTO_V2.fila,
+              borderBottom: `1px solid ${V.lineaFila}`,
+              background: elegido ? V.seleccion : undefined,
+              // Estado y selección por canales distintos: el filo ámbar dice «esto bloquea» y
+              // sobrevive a la selección, que se expresa sólo con el fondo (`22v2:422`).
+              boxShadow: p.cuit ? undefined : FILO_BLOQUEA,
+            }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
-              {/* El icono dice el TIPO de un vistazo, como en el canónico. Cuando no se sabe, va el
-                  genérico: no se dibuja el de material «por defecto», que afirmaría un tipo. */}
-              <span style={{ display: 'flex', color: C.apagado, flexShrink: 0 }} title={esSub ? 'Subcontratista' : 'Tipo sin determinar'}>
-                {esSub ? <IcoCuadrilla s={15} /> : <IcoEquipo s={15} />}
+            <span style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
+              <span style={{ display: 'flex', color: V.inerte, flexShrink: 0 }}>
+                <IconoProveedor className="h-[15px] w-[15px]" />
               </span>
-              <Link href={hrefDe(p.id)} data-testid="abrir-proveedor" style={{ minWidth: 0 }} className="block">
-                <span className="block truncate hover:underline" style={{ fontSize: '12.5px', fontWeight: 500, color: C.tinta }}>
-                  {p.nombre}
-                  {/* Archivado va pegado al nombre y no en una columna propia: la lista muestra
-                      activos por defecto, y una columna que dice «activo» en todas las filas gasta
-                      ancho para no decir nada. */}
-                  {!p.activo && <span style={{ marginLeft: 8, fontSize: '10px', color: C.tenue }} data-estado="archivado">archivado</span>}
-                </span>
-                {p.razon_social && p.razon_social !== p.nombre && (
-                  <span className="block truncate" style={{ fontSize: '11px', color: C.tenue }}>{p.razon_social}</span>
+              {/* El enlace se estira sobre la fila entera —el mockup la hace clicable completa— sin
+                  anidar un enlace dentro de otro, que es HTML inválido y rompe el tabulador. */}
+              <Link
+                href={hrefDe(p.id)}
+                data-testid="abrir-proveedor"
+                className="min-w-0 truncate after:absolute after:inset-0 after:content-['']"
+                style={{ fontSize: '12.5px', fontWeight: 500, color: V.tinta }}
+              >
+                {p.nombre}
+                {!p.activo && (
+                  <span style={{ marginLeft: 8, fontSize: '10px', color: V.tenue }} data-estado="archivado">archivado</span>
                 )}
               </Link>
-            </div>
+              {esSub && (
+                // Dato secundario: no encoge y en angosto se va, porque si no su déficit cae sobre
+                // el nombre. El panel lo sigue diciendo igual.
+                <span
+                  title="Tiene al menos un paquete de subcontrato"
+                  data-testid="chip-subcontrato"
+                  className={SOLO_ANCHO}
+                  style={{
+                    fontSize: '10.5px', color: V.apagado, border: `1px solid ${V.linea}`,
+                    borderRadius: 5, padding: '1px 6px', flexShrink: 0,
+                  }}
+                >
+                  subcontrato
+                </span>
+              )}
+            </span>
 
-            <div style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
-              {/* SÓLO SE DIBUJA LO QUE SE PUEDE PROBAR. Un proveedor sin paquetes no es «Material»:
-                  es uno del que no sabemos el tipo, y la celda vacía dice eso sin inventarlo. */}
-              {esSub
-                ? <Estado tono="curso" clave="subcontratista" testid="tipo-proveedor">Subcontratista</Estado>
-                : <span style={{ fontSize: '12px', color: C.tenue }}>—</span>}
-            </div>
+            <span
+              className="truncate font-mono"
+              style={{ fontSize: '12px', color: p.cuit ? V.tintaSuave : V.warn }}
+            >
+              {/* SIN CUIT NO ES UN HUECO: es lo que impide cruzar la compra con ARCA y con el banco. */}
+              {p.cuit ? formatearCuit(p.cuit) : <span data-testid="celda-sin-cuit">sin cargar</span>}
+            </span>
 
-            <CeldaTexto mono tam="11.5px" color={p.cuit ? C.tintaSuave : C.warn}>
-              {/* SIN CUIT NO ES UN HUECO: es un dato que falta y que BLOQUEA — sin él la compra no
-                  cruza con ARCA ni con el banco. Por eso va en ámbar, como en el canónico. */}
-              {p.cuit
-                ? formatearCuit(p.cuit)
-                : <span data-testid="celda-sin-cuit">sin cargar</span>}
-            </CeldaTexto>
+            <span
+              className={`font-mono tabular-nums ${SOLO_ANCHO}`}
+              style={{ fontSize: '12px', textAlign: 'right', color: c ? V.tinta : V.cuentaApagada }}
+            >
+              {/* NO PUDE LEERLO ≠ NO SE LE COMPRÓ. Y ninguno de los dos es $ 0. */}
+              {/* PESOS COMPLETOS, no la escala en millones: el mockup escribe `$ 64.180.000`
+                  (`22v2:316`). A esta escala la abreviatura «$ 64,2 M» esconde justo el orden de
+                  magnitud que separa a un proveedor de $ 900.000 de uno de $ 90.000.000. */}
+              {c ? (pesos(c.total) ?? 'sin compras') : comprado ? 'sin compras' : 'sin leer'}
+            </span>
 
-            <CeldaTexto mono alineacion="derecha" color={c ? C.tinta : C.tenue} titulo={c ? `${c.comprobantes} comprobantes` : undefined}>
-              {/* SIN NOMBRES VINCULADOS NO ES $ 0. Un cero afirmaría que se le compró por cero; lo
-                  que pasa es que ningún texto de Compras apunta todavía a esta ficha. */}
-              {c ? (millones(c.total) ?? 'sin compras') : comprado ? 'sin compras' : 'sin leer'}
-            </CeldaTexto>
+            <span
+              className={`font-mono tabular-nums ${SOLO_ANCHO}`}
+              style={{ fontSize: '12px', textAlign: 'right', color: V.apagado }}
+            >
+              {c ? c.comprobantes : comprado ? '—' : 'sin leer'}
+            </span>
 
-            <span />
-          </FilaCanon>
+            <span style={{ textAlign: 'right', paddingRight: 2, minWidth: 0 }}>
+              {/* CRITERIO 2: la fila que reclama algo trae su verbo, y el verbo abre el formulario
+                  acá mismo. Las filas que no reclaman nada no llevan verbo: una columna llena de
+                  «Ver →» es ruido que esconde a las que sí piden trabajo. */}
+              {!p.cuit && (
+                <Link
+                  href={hrefCuitDe(p.id)}
+                  data-testid="fila-cargar-cuit"
+                  className="relative z-10 hover:underline"
+                  style={{ fontSize: '12.5px', fontWeight: 500, color: V.tinta }}
+                >
+                  Cargar CUIT →
+                </Link>
+              )}
+            </span>
+          </div>
         )
       })}
 
       {proveedores.length === 0 && (
-        <VacioCanon testid="proveedores-vacio">Ningún proveedor coincide con lo buscado.</VacioCanon>
+        <div style={{ padding: '24px 2px', fontSize: '12.5px', color: V.apagado }} data-testid="proveedores-vacio">
+          Nada coincide.{' '}
+          <Link href={limpiarHref} data-testid="proveedores-ver-todo" style={{ color: V.tinta, fontWeight: 500, textDecoration: 'underline' }}>
+            Ver todo
+          </Link>
+        </div>
       )}
-
-      {/* EL PIE CUENTA LO QUE LA PANTALLA MUESTRA, no la empresa: cambia con el filtro y con la
-          búsqueda, igual que las filas que resume. El aviso de cuántos sin CUIT hay en TOTAL vive
-          arriba, en la barra de atención, y cuenta con el predicado de la base. */}
-      <PieCanon
-        totales={[
-          { rotulo: 'PROVEEDORES', valor: entero(resumen.proveedores) ?? '0' },
-          {
-            rotulo: 'SUBCONTRATISTAS',
-            valor: subcontratistas ? (entero(resumen.subcontratistas) ?? '0') : 'sin leer',
-            testid: 'total-subcontratistas',
-          },
-          {
-            rotulo: 'SIN CUIT',
-            valor: entero(resumen.sinCuit) ?? '0',
-            color: resumen.sinCuit > 0 ? C.warn : C.tinta,
-            testid: 'total-sin-cuit',
-          },
-          {
-            rotulo: 'COMPRADO',
-            valor: resumen.comprado === null ? 'sin compras' : (millones(resumen.comprado) ?? 'sin compras'),
-            fuerte: true,
-          },
-        ]}
-      />
-    </TarjetaTabla>
+    </div>
   )
 }

@@ -177,7 +177,6 @@ test('la ficha del cliente muestra identidad, contactos y actividad desde cualqu
   for (const [solapa, bloque] of [
     ['solapa-obras', 'bloque-obras'],
     ['solapa-documentos', 'bloque-documentos'],
-    ['solapa-cuenta', 'bloque-cuenta'],
   ] as const) {
     await page.getByTestId(solapa).click()
     await expect(page.getByTestId(bloque), `${solapa} no abre ${bloque}`).toBeVisible()
@@ -186,6 +185,20 @@ test('la ficha del cliente muestra identidad, contactos y actividad desde cualqu
     await expect(page.getByTestId('panel-informacion')).toBeVisible()
     await expect(page.getByTestId('bloque-contactos')).toBeVisible()
   }
+
+  // ═══ LA SOLAPA «CUENTA» SE CONVIRTIÓ EN «CUENTA CORRIENTE» (25/08/2026) ═══
+  //
+  // Hasta hoy `solapa-cuenta` abría `bloque-cuenta`: contratado y costo por obra, que es lo mismo
+  // que ya muestra la solapa Obras y que existía porque cobranzas no tenía fuente. El mockup 28 la
+  // reemplaza por la cuenta corriente entera —saldo, antigüedad, certificados, plan del día— y esa
+  // cara va A SANGRE, sin el aside de identidad: su columna derecha es el panel del certificado.
+  // Manda el mockup (BRIEFING), así que se afirma la pantalla nueva y NO se exige el aside acá.
+  await page.getByTestId('solapa-cuenta').click()
+  await expect(page.getByTestId('vista-cuenta-corriente')).toBeVisible()
+  await expect(page.getByTestId('metricas-cuenta')).toBeVisible()
+  await expect(page.getByTestId('antiguedad')).toBeVisible()
+  await page.getByTestId('solapa-obras').click()
+  await expect(page.getByTestId('panel-informacion')).toBeVisible()
 
   // UN SOLO `h1`: el slab trae el suyo y `PageShell` no puede dibujar otro con el mismo nombre.
   // Si alguien saca `encabezado={false}`, esto se pone rojo antes que nadie mire la pantalla.

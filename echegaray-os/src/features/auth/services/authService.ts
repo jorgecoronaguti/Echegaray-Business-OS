@@ -1,5 +1,5 @@
 import { cache } from 'react'
-import type { SupabaseClient, User } from '@supabase/supabase-js'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Perfil } from '@/features/auth/types'
 
 export type ServiceResult<T> = { data: T; error: null } | { data: null; error: string }
@@ -39,8 +39,18 @@ export type ServiceResult<T> = { data: T; error: null } | { data: null; error: s
 // pasa el cliente de servicio —`createAdminClient()` se usa suelto, nunca por acá—, y si algún día
 // alguien lo hace, esto es lo que tiene que leer antes.
 
+/**
+ * QUIÉN ENTRÓ. Sólo lo que sale del token firmado: el id y el correo.
+ *
+ * NO es el `User` completo de Supabase. Lo que el `User` trae de más —`factors`, `identities`,
+ * `app_metadata`…— no viaja en el JWT y hay UNA pantalla que lo necesita
+ * (`/mi-cuenta/seguridad`, que lee los factores de MFA). Esa se lo pide al servidor de Auth por su
+ * cuenta, que además es lo correcto para un estado de seguridad: ahí el viaje se justifica.
+ */
+export type Identidad = { id: string; email: string | null }
+
 /** El usuario de la sesión, resuelto UNA vez por request. */
-const memoDelUsuario = cache((): { promesa: Promise<User | null> | null } => ({ promesa: null }))
+const memoDelUsuario = cache((): { promesa: Promise<Identidad | null> | null } => ({ promesa: null }))
 
 /** Los perfiles ya leídos en este request, por id. */
 const memoDeLosPerfiles = cache((): Map<string, Promise<ServiceResult<Perfil | null>>> => new Map())
@@ -68,9 +78,31 @@ export function recordar<T>(
   return promesa
 }
 
-export async function getUsuarioActual(supabase: SupabaseClient) {
+// ═══ LA FIRMA SE VERIFICA EN EL PROCESO, NO EN SÃO PAULO (25/08/2026) ═══
+//
+// `auth.getUser()` es un GET a `/auth/v1/user`: 76 ms medidos contra el Supabase real (mediana de
+// 5). Se pagaba una vez por request —el memo de arriba evita las repeticiones DENTRO de un request,
+// no entre requests— y hay al menos dos por pantalla: el documento y la Server Action de la
+// campanita.
+//
+// El proyecto firma con clave asimétrica (`alg: ES256`, JWKS público — comprobado el 25/08
+// decodificando un token real), así que `getClaims()` verifica la firma con WebCrypto contra la
+// clave pública sin salir a la red: auth-js guarda el JWKS en `GLOBAL_JWKS`, a nivel de módulo,
+// compartido por todos los clientes del proceso. La primera verificación de cada instancia trae el
+// JWKS; las demás no.
+//
+// SIGUE SIENDO VERIFICAR, NO CREER: firma inválida y token vencido se rechazan igual, y si el
+// proyecto volviera a firmar con HS256 la propia librería se cae a `getUser()` sola. Lo único que
+// cambia es que una sesión cerrada a mano deja de verse recién cuando vence el access token —cosa
+// que ya pasaba con los DATOS, porque PostgREST tampoco le pregunta al servidor de Auth.
+export async function getUsuarioActual(supabase: SupabaseClient): Promise<Identidad | null> {
   const memo = memoDelUsuario()
-  memo.promesa ??= supabase.auth.getUser().then(({ data: { user } }) => user)
+  memo.promesa ??= supabase.auth.getClaims().then(({ data }) => {
+    const sub = data?.claims?.sub
+    if (!sub) return null
+    const email = data.claims.email
+    return { id: sub, email: typeof email === 'string' ? email : null }
+  })
   return memo.promesa
 }
 

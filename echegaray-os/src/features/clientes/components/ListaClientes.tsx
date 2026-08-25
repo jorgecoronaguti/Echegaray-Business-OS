@@ -209,6 +209,7 @@ function Fila({
           {c.slug ? (
             <Link
               href={`/clientes/${c.slug}`}
+              prefetch={false}
               onClick={(e) => e.stopPropagation()}
               className="block truncate hover:underline"
               style={{ fontSize: '12.5px', fontWeight: 500, color: C.tinta }}

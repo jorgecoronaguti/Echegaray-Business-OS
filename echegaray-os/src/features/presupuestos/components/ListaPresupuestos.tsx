@@ -256,6 +256,7 @@ function FilaPresupuesto({ p, seleccionada, onAbrir }: {
               destinos distintos y ninguno tapa al otro. */}
           <Link
             href={`/presupuestos/${p.id}`}
+            prefetch={false}
             onClick={(ev) => ev.stopPropagation()}
             className="block truncate hover:underline"
             style={{ fontSize: '12.5px', fontWeight: 500, color: C.tinta }}

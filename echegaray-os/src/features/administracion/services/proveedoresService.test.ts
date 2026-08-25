@@ -11,7 +11,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { agruparComprado, resumirCartera, resumirCompras } from './proveedoresService.ts'
+import { agruparComprado, coincideProveedor, condicionesDe, resumirCompras } from './proveedoresService.ts'
 import type { NombreResuelto, Proveedor } from '../types/index.ts'
 
 const n = (nombre_norm: string, comprobantes: number, total: number, via: NombreResuelto['via']): NombreResuelto => ({
@@ -58,8 +58,8 @@ test('un total que llega como cadena se suma, no se concatena', () => {
 //      Agrupar sin mirar el estado le regala esas compras a un proveedor real.
 //   2. DECIR «$ 0» EN EL PIE cuando ninguna fila tiene compras leídas. Es el mismo defecto que ya
 //      cubre `resumirCompras`, ahora en la fila de total: un 0 afirma que no se compró.
-//   3. CONTAR SUBCONTRATISTAS CUANDO NO SE PUDO LEER `subcontrato`. Un 0 ahí diría que la empresa
-//      no subcontrata a nadie; la verdad es que la lectura falló.
+//   3. BUSCAR CON UN `ilike`. Comparaba byte a byte: «corralon» no encontraba «Corralón Sur», y el
+//      CUIT tipeado con guiones no encontraba al que la base guarda sin ellos.
 
 const cartera = (id: string, cuit: string | null): Proveedor => ({
   id, nombre: id, razon_social: null, cuit, notas: null, activo: true,
@@ -90,27 +90,64 @@ test('un proveedor sin compras NO entra al mapa: la tabla escribe ausencia, no c
   assert.notEqual(mapa.get('p2'), 0)
 })
 
-test('el pie suma sólo las filas visibles y con dato', () => {
-  const mapa = agruparComprado([resuelto('p1', 1, 100), resuelto('p2', 2, 200), resuelto('p3', 5, 5_000)])
-  const r = resumirCartera([cartera('p1', '30123456780'), cartera('p2', null)], mapa, new Set(['p2']))
-  assert.equal(r.comprado, 300, 'p3 no está en la lista: su total no puede entrar al pie')
-  assert.equal(r.proveedores, 2)
-  assert.equal(r.sinCuit, 1)
-  assert.equal(r.subcontratistas, 1)
+// ═══ EL FILTRO POR TEXTO, QUE DEJÓ DE SER UN `ilike` ═══
+//
+// Los tres casos de abajo son los que la consulta de Postgres NO resolvía. El primero es el que se
+// vio en pantalla: buscar «corralon» devolvía cero filas teniendo «Corralón Sur» cargado, porque
+// `ilike` compara byte a byte y la tilde es otro byte. Nadie escribe los acentos cuando busca.
+
+test('buscar sin tildes encuentra al que las tiene — el defecto del `ilike`', () => {
+  const p = { ...cartera('p1', null), nombre: 'Corralón Sur' }
+  assert.equal(coincideProveedor(p, 'corralon'), true)
+  assert.equal(coincideProveedor(p, 'CORRALON'), true)
+  assert.equal(coincideProveedor(p, 'corralón'), true)
 })
 
-test('sin ninguna fila con compras, el pie es AUSENCIA y no $ 0', () => {
-  const r = resumirCartera([cartera('p1', null)], new Map(), null)
-  assert.equal(r.comprado, null)
-  assert.notEqual(r.comprado, 0)
+test('el CUIT se busca por sus dígitos: la base lo guarda sin guiones y la gente lo tipea con ellos', () => {
+  const p = cartera('p1', '30708390557')
+  assert.equal(coincideProveedor(p, '30-70839055-7'), true)
+  assert.equal(coincideProveedor(p, '30708390557'), true)
+  assert.equal(coincideProveedor(p, '7083905'), true)
+  assert.equal(coincideProveedor(p, '99-99999999-9'), false)
 })
 
-test('cuando no se pudo leer lo comprado, el pie tampoco inventa un total', () => {
-  const r = resumirCartera([cartera('p1', '30123456780')], null, null)
-  assert.equal(r.comprado, null)
+test('sin búsqueda NO se vacía la lista, y un proveedor sin CUIT no coincide con cualquier número', () => {
+  const p = cartera('p1', null)
+  assert.equal(coincideProveedor(p, undefined), true)
+  assert.equal(coincideProveedor(p, '   '), true)
+  // Un `''.includes('')` mal puesto haría que un proveedor sin CUIT apareciera en toda búsqueda
+  // numérica: el que busca un CUIT vería fichas que no lo tienen.
+  assert.equal(coincideProveedor(p, '3070'), false)
 })
 
-test('el CUIT vacío cuenta como ausencia igual que el nulo', () => {
-  const r = resumirCartera([cartera('p1', ''), cartera('p2', '30123456780')], null, null)
-  assert.equal(r.sinCuit, 1)
+test('la razón social también busca: es el nombre con el que llega la factura', () => {
+  const p = { ...cartera('p1', null), nombre: 'Hierros del Centro', razon_social: 'Aceros Cuyanos SA' }
+  assert.equal(coincideProveedor(p, 'cuyanos'), true)
+})
+
+// ═══ EL PREDICADO QUE COMPARTEN LA LISTA Y EL AVISO ═══
+//
+// El defecto que atrapa: que «sin CUIT» se escriba dos veces. El aviso de la primera línea dice
+// «14» y su enlace cae en la lista filtrada por el MISMO predicado; si uno tratara el CUIT vacío
+// como presente y el otro no, la pantalla mandaría a resolver un trabajo que no muestra.
+
+test('el CUIT VACÍO cuenta como ausencia igual que el nulo', () => {
+  const cs = condicionesDe({ sinCuit: true })
+  assert.ok(cs.some((c) => c.op === 'or' && c.filtro === 'cuit.is.null,cuit.eq.'),
+    'el predicado dejó de contemplar el CUIT vacío')
+})
+
+test('sin filtro explícito se listan los ACTIVOS: un archivado no es cartera', () => {
+  assert.deepEqual(condicionesDe({}), [{ op: 'eq', columna: 'activo', valor: true }])
+  assert.deepEqual(condicionesDe({ activo: 'archivados' }), [{ op: 'eq', columna: 'activo', valor: false }])
+  assert.deepEqual(condicionesDe({ activo: 'todos' }), [])
+})
+
+test('el aviso y la lista salen del MISMO predicado, condición por condición', () => {
+  // Si algún día la lista y el conteo dejaran de compartir `condicionesDe`, este test seguiría
+  // pasando — por eso el otro control es el estructural: acá se fija el contrato del predicado.
+  assert.deepEqual(condicionesDe({ activo: 'activos', sinCuit: true }), [
+    { op: 'eq', columna: 'activo', valor: true },
+    { op: 'or', filtro: 'cuit.is.null,cuit.eq.' },
+  ])
 })

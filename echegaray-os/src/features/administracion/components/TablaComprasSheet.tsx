@@ -92,7 +92,7 @@ export function TablaComprasSheet({
             seleccionada={seleccionada === f.fila}
             testid={`compra-${f.fila}`}
           >
-            <Link href={hrefDe(f.fila)} style={{ display: 'contents' }}>
+            <Link href={hrefDe(f.fila)} prefetch={false} style={{ display: 'contents' }}>
               <span style={{ fontFamily: 'var(--font-plex-mono)', fontSize: 11.5, color: C.tintaSuave }}>
                 {f.fecha ? diaMes(f.fecha) : '—'}
               </span>

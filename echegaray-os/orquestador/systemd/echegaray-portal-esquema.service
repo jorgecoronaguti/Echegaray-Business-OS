@@ -1,0 +1,25 @@
+[Unit]
+# PROYECTA la réplica de Cobranzas a certificado_cliente / esquema_pago (pantallas 28/29/32).
+# 0 API: lee Postgres y escribe Postgres. NO habla con Google ni con el Sheet, así que no hereda el
+# freno de mano ni falla cuando Google no está. Va aparte de echegaray-cobranzas-sync a propósito:
+# un error proyectando el portal no puede voltear el espejo del que dependen la caja y el calendario.
+Description=Echegaray OS - Proyecta Cobranzas al portal del cliente (0 API)
+Documentation=file:///home/jorge/echegaray-os/app/echegaray-os/orquestador/scripts/sync-esquema-cliente.mjs
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/jorge/echegaray-os/app/echegaray-os
+Environment=PATH=/home/jorge/.nvm/versions/node/v24.18.0/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=%h/.config/echegaray-orq/worker.env
+ExecStart=/home/jorge/.nvm/versions/node/v24.18.0/bin/node orquestador/scripts/sync-esquema-cliente.mjs --aplicar
+# Son ~100 filas y dos upserts por fila contra Postgres local: segundos. 120 s es 20x holgura. Si
+# alguna vez se acerca, el problema no es el techo — es que la proyección dejó de ser derivada.
+TimeoutStartSec=120
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=portal-esquema
+
+[Install]
+WantedBy=default.target

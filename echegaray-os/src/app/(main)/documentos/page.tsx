@@ -303,6 +303,7 @@ export default async function DocumentosPage({ searchParams }: { searchParams: P
             {hayMas && (
               <Link
                 href={armarHref(sp, { n: String(paginas + 1) })}
+                prefetch={false}
                 className="text-[11.5px] font-medium text-ink underline underline-offset-2"
                 data-testid="cargar-mas-documentos"
               >

@@ -5,6 +5,7 @@ import { puedeVerRuta } from '@/features/auth/types/areas'
 import {
   CLAVE_LIMPIAR, cookieDeVista, queryARestaurar,
 } from '@/features/obras/services/vistaRecordada'
+import { destinoPorRol } from '@/features/portal/types'
 
 // Refresca la sesión de Supabase en cada request -- sin esto, un usuario logueado
 // puede quedar con un token vencido en Server Components y verse "deslogueado" sin
@@ -29,7 +30,29 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  const { data: { user } } = await supabase.auth.getUser()
+  // ═══ LA FIRMA SE VERIFICA ACÁ, NO EN SÃO PAULO (25/08/2026) ═══
+  //
+  // Acá había `auth.getUser()`, que manda un GET a `/auth/v1/user` y espera la respuesta ANTES de
+  // dejar pasar el request. Medido contra el Supabase real desde esta VM, mediana de 5 corridas:
+  // 76 ms. Y no se paga una vez por pantalla: el matcher cubre el documento, cada payload RSC y
+  // cada Server Action. Una sola visita a `/documentos` disparaba 77 pasadas por este archivo
+  // (medido el 25/08 con el middleware instrumentado) — 77 × 76 ms de espera pura.
+  //
+  // El proyecto firma sus JWT con clave ASIMÉTRICA (`alg: ES256`, `kid` presente, JWKS público en
+  // `/auth/v1/.well-known/jwks.json` — comprobado el 25/08 decodificando un token real). Con eso,
+  // `getClaims()` verifica la firma con WebCrypto contra la clave pública, en el proceso, y sólo sale
+  // a la red la primera vez de cada instancia para traer el JWKS: `GLOBAL_JWKS` de auth-js vive en
+  // el módulo y lo comparten todos los clientes del mismo proceso.
+  //
+  // NO ES UNA PUERTA MÁS FLOJA. `getClaims()` rechaza un token con firma inválida
+  // (`AuthInvalidJwtError`) y uno vencido (`validateExp`), y si el proyecto volviera a firmar con
+  // HS256 la propia librería se cae a `getUser()` sola. Lo que cambia es CUÁNDO se entera de una
+  // sesión cerrada a mano: hasta que venza el access token (~1 h) en vez de al instante. Eso ya era
+  // así para los datos —PostgREST también valida la firma localmente y nunca le pregunta al servidor
+  // de Auth—, así que la ventana no la abre este cambio: la tenía la cerradura, no la puerta. El
+  // refresh token sí queda invalidado al instante por `signOut({ scope: 'global' })`.
+  const { data: sesion } = await supabase.auth.getClaims()
+  const user = sesion?.claims ? { id: sesion.claims.sub } : null
   const pathname = request.nextUrl.pathname
 
   // ── SIN SESIÓN NO SE VE NADA. Es lo primero que se decide, antes que cualquier rol.
@@ -51,6 +74,28 @@ export async function middleware(request: NextRequest) {
   const esApiOAuth = pathname.startsWith('/api') || pathname.startsWith('/login') || pathname.startsWith('/signup')
   if (user && !esApiOAuth) {
     const { data: perfil } = await supabase.from('perfiles').select('rol').eq('id', user.id).maybeSingle()
+
+    // ═══ EL PORTAL DEL CLIENTE SE DECIDE PRIMERO (25/08/2026) ═══
+    //
+    // Antes que el RBAC de campo y antes que las áreas, porque `cliente` no es un empleado con menos
+    // permisos: es alguien de OTRA empresa. Las reglas de abajo están escritas para gente de adentro
+    // y ninguna de ellas contempla que el usuario no lo sea — un cliente que cayera en la rama de
+    // `puedeVerRuta` pasaría a `/obras` en vez de a su portal.
+    //
+    // El confinamiento es en las DOS direcciones y la segunda suele olvidarse: nadie de adentro
+    // entra a `/portal`. Ahí las consultas filtran por `cliente_de_sesion()`, que para un empleado
+    // devuelve NULL: vería la pantalla vacía y concluiría que el cliente no tiene nada cargado.
+    //
+    // ESTO ES LA PUERTA, NO LA CERRADURA. Una llamada directa a PostgREST no pasa por acá: eso lo
+    // decide el RLS (`es_cliente()` + `cliente_de_sesion()` en Postgres).
+    const destino = destinoPorRol(perfil?.rol, pathname)
+    if (destino) {
+      const url = request.nextUrl.clone()
+      url.pathname = destino
+      url.search = ''
+      return NextResponse.redirect(url)
+    }
+
     if (perfil?.rol === 'campo' && !esRutaCampoPermitida(pathname)) {
       const url = request.nextUrl.clone()
       url.pathname = '/hoy'
